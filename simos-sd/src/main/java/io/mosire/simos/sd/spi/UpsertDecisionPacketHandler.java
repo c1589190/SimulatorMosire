@@ -82,7 +82,10 @@ public final class UpsertDecisionPacketHandler implements CommandHandler, Comman
       Optional<String> reasonInfoId = SdPayloads.optionalText(payload, "reasonInfoId");
       Optional<String> decisionNote = SdPayloads.optionalText(payload, "decisionNote");
 
-      if (!base.decisionMakers().containsKey(proposerId)) {
+      // ★ 新建包要求 proposer 存在；已有历史包的 outcome/status 回写允许 proposer 已被删除（D3 执行器写 outcome
+      //   时会覆盖同一个 id），否则"删了决策人 ⇒ 历史包永远无法回写 outcome"。
+      boolean newPacket = !base.decisionPackets().containsKey(id);
+      if (newPacket && !base.decisionMakers().containsKey(proposerId)) {
         return new HandlerOutcome.Rejected("决策人不存在: " + proposerId.value());
       }
       DecisionPacket packet =

@@ -75,8 +75,7 @@ public final class ProposalCatalog {
           "to",
           "toHouseholdId",
           "targetHouseholdId");
-  private static final Set<String> UNIT_KEYS =
-      Set.of("unitId", "unit", "targetGovUnitId");
+  private static final Set<String> UNIT_KEYS = Set.of("unitId", "unit", "targetGovUnitId");
 
   /** source 元素里的家户键（{@code levyRegion} 的 manpower source 用短名 {@code household}）。 */
   private static final Set<String> SOURCE_HOUSEHOLD_KEYS = Set.of("householdId", "household");
@@ -406,5 +405,14 @@ public final class ProposalCatalog {
   /** 目录里的工具名清单（诊断/测试读口）。 */
   public List<String> toolNames() {
     return List.copyOf(new ArrayList<>(byName.keySet()));
+  }
+
+  /**
+   * 取清单里目标工具的**真实例**（D3 执行器用：拿它跑 {@code planOnly=true} 的系统调用）。
+   *
+   * @throws IllegalArgumentException 工具不在清单（执行面 fail-closed，不落到任意工具）
+   */
+  public AgentTool requireTool(String toolName) {
+    return require(toolName).tool();
   }
 }

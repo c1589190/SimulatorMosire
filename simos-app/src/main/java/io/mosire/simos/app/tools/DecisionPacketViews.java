@@ -70,6 +70,7 @@ public final class DecisionPacketViews {
     row.put("draftChecks", call.draftChecks());
     row.put("status", call.status().name());
     call.mergedPlanId().ifPresent(value -> row.put("mergedPlanId", value));
+    call.outcomeJson().ifPresent(value -> row.put("outcomeJson", value));
     return row;
   }
 

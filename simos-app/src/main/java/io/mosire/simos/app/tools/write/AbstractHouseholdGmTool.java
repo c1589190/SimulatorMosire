@@ -48,9 +48,9 @@ import java.util.UUID;
  * ★★ <b>S3a 家户/人口 GM 窄写的共同基类</b>（2026-10-09）：四件事在一条工具里——<b>preview / apply、reason、资源围栏、
  * 结局折叠</b>——形态照 {@code EconomyAdjustTool} / {@code GovRemitTool} 的 GM 窄写口径。
  *
- * <p>★★ <b>preview=true（缺省）一个字节都不写</b>：只用 {@link QueryService} 读 base 状态并跑与落盘同源的纯推导
- * （Social 侧走 {@code HouseholdBook} 的纯函数、Unit 侧走 {@code UnitOperations} 的纯函数），把目标状态/前后差异/逐条命令
- * 预览放进结果；{@code preview=false} 才组命令走 {@link CoreSimos#submitBatch}（一批 = 一条 revision，整批原子）。
+ * <p>★★ <b>preview=true（缺省）一个字节都不写</b>：只用 {@link QueryService} 读 base 状态并跑与落盘同源的纯推导 （Social 侧走
+ * {@code HouseholdBook} 的纯函数、Unit 侧走 {@code UnitOperations} 的纯函数），把目标状态/前后差异/逐条命令 预览放进结果；{@code
+ * preview=false} 才组命令走 {@link CoreSimos#submitBatch}（一批 = 一条 revision，整批原子）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有这些工具；工具名不是命令类型 ⇒ 不进 catalog /
  * {@code PAYLOAD_HINTS}（它们提交的命令类型由各自的 handler 注册进 catalog）。
@@ -58,8 +58,8 @@ import java.util.UUID;
  * <p>★ <b>资源围栏</b>：子类声明自己的命名空间（只写 Social / 同时写 Social + Unit），{@code requireAll(WRITE, …)} 与其余 GM
  * 窄写同制；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}（由唯一入口折资源拒因）。
  *
- * <p>★ <b>失败具名</b>：参数缺失/类型错/{@code preview=false} 缺 {@code expectedRevision}/域校验不过 ⇒ {@code BAD_REQUEST}
- * （零 revision）；批被拒 ⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head。
+ * <p>★ <b>失败具名</b>：参数缺失/类型错/{@code preview=false} 缺 {@code expectedRevision}/域校验不过 ⇒ {@code
+ * BAD_REQUEST} （零 revision）；批被拒 ⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head。
  */
 abstract class AbstractHouseholdGmTool implements AgentTool {
 
@@ -121,6 +121,8 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
       Map<String, Object> args = context.arguments();
       String reason = ToolSupport.requiredText(args, "reason");
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
+      // ★ D3 内部参数：不进 jsonSchema / 工具描述，只被系统执行器注入（见 ToolSupport.plannedCommandsView）。
+      boolean planOnly = !preview && ToolSupport.optionalBoolean(args, "planOnly").orElse(false);
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
       Long expectedArg = ToolSupport.optionalLong(args, "expectedRevision");
@@ -137,7 +139,7 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
               expectedRevision < 0L
                   ? QueryTarget.head(branch)
                   : QueryTarget.at(branch, new RevisionId(expectedRevision)));
-      return run(new Request(state, branch, expectedRevision, preview, reason, args));
+      return run(new Request(state, branch, expectedRevision, preview, planOnly, reason, args));
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -155,6 +157,7 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
       BranchId branch,
       long expectedRevision,
       boolean preview,
+      boolean planOnly,
       String reason,
       Map<String, Object> args) {}
 
@@ -186,8 +189,8 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
   }
 
   /**
-   * 批提交与三结局折叠（preview/apply 的结果视图由调用方先搭好）：
-   * {@code Committed → ok（带新坐标）}；{@code Conflict → CONFLICT（真实 head）}；{@code Rejected → REJECTED（逐条真拒因）}。
+   * 批提交与三结局折叠（preview/apply 的结果视图由调用方先搭好）： {@code Committed → ok（带新坐标）}；{@code Conflict →
+   * CONFLICT（真实 head）}；{@code Rejected → REJECTED（逐条真拒因）}。
    */
   protected final ToolResult submitBatch(
       Request request, List<CommandEnvelope> batch, Map<String, Object> view) {
@@ -195,8 +198,8 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
   }
 
   /**
-   * 同 {@link #submitBatch(Request, List, Map)}，但允许在**批真的提交成功**之后跑一个钩子（例如 assign/detach 的
-   * {@code UnitLog} 生命周期事件）——被拒/冲突不跑，日志不会说谎。
+   * 同 {@link #submitBatch(Request, List, Map)}，但允许在**批真的提交成功**之后跑一个钩子（例如 assign/detach 的 {@code
+   * UnitLog} 生命周期事件）——被拒/冲突不跑，日志不会说谎。
    */
   protected final ToolResult submitBatch(
       Request request,
@@ -208,7 +211,8 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
     view.put("submitted", true);
     if (result instanceof BatchResult.Committed committed) {
       onCommitted.run();
-      view.put("submission", ToolSupport.committedView(committed.ref(), batchId(batch), batchId(batch)));
+      view.put(
+          "submission", ToolSupport.committedView(committed.ref(), batchId(batch), batchId(batch)));
       return ToolSupport.ok(view);
     }
     if (result instanceof BatchResult.Conflict conflict) {
@@ -245,8 +249,8 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
   }
 
   /**
-   * 单条命令提交与三结局折叠（preview/apply 的结果视图由调用方先搭好）：只有一条命令的工具走这里，落盘的
-   * {@code command_type} 就是命令类型本身（与 {@code core.submitBatch} 的批行区分开）。preview 一律不调本方法。
+   * 单条命令提交与三结局折叠（preview/apply 的结果视图由调用方先搭好）：只有一条命令的工具走这里，落盘的 {@code command_type} 就是命令类型本身（与
+   * {@code core.submitBatch} 的批行区分开）。preview 一律不调本方法。
    */
   protected final ToolResult submitCommand(
       Request request, String type, Map<String, Object> payload, Map<String, Object> view) {
@@ -291,6 +295,17 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
     view.put("preview", true);
     view.put("submitted", false);
     return ToolSupport.ok(view);
+  }
+
+  /**
+   * D3 内部执行器专用：把这条工具本来要提交的命令组批返回，**一个字节都不写**（不调 {@code core.submit} / {@code core.submitBatch}）。
+   *
+   * <p>★ 只在 {@code !preview && planOnly} 时被调用；{@code planOnly} 不进 jsonSchema / 工具描述。
+   */
+  protected final ToolResult planOnly(Request request, String type, Map<String, Object> payload) {
+    String commandId = UUID.randomUUID().toString();
+    CommandEnvelope envelope = envelope(request, commandId, type, payload);
+    return ToolSupport.ok(ToolSupport.plannedCommandsView(List.of(envelope)));
   }
 
   /** 无操作结果（幂等调用：不组命令、不落 revision）。 */
@@ -340,8 +355,7 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
     if (hasUnit && !hasHex) {
       return "unit";
     }
-    throw new IllegalArgumentException(
-        "参数 " + name + " 必须给 type（HEX|UNIT）或二选一的 hex/unitId");
+    throw new IllegalArgumentException("参数 " + name + " 必须给 type（HEX|UNIT）或二选一的 hex/unitId");
   }
 
   /** {@code {q,r}} 参数 ⇒ {@link HexCoord}。 */
@@ -349,7 +363,8 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
     if (!(raw instanceof Map<?, ?> map)) {
       throw new IllegalArgumentException("参数 " + name + " 必须是 {q,r} 对象");
     }
-    return new HexCoord(integralArg(map.get("q"), name + ".q"), integralArg(map.get("r"), name + ".r"));
+    return new HexCoord(
+        integralArg(map.get("q"), name + ".q"), integralArg(map.get("r"), name + ".r"));
   }
 
   private static int integralArg(Object value, String name) {
@@ -406,8 +421,8 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
   }
 
   /**
-   * ★ 必填年龄档参数（Batch 4 的 provisioning 工具共用）：只认 {@link AgeBracket#key()} 的三个稳定拼写
-   * {@code 0-14|15-59|60+}（大小写一致，不做宽容匹配）。
+   * ★ 必填年龄档参数（Batch 4 的 provisioning 工具共用）：只认 {@link AgeBracket#key()} 的三个稳定拼写 {@code
+   * 0-14|15-59|60+}（大小写一致，不做宽容匹配）。
    */
   protected static AgeBracket ageBracketArg(Map<String, Object> args, String name) {
     String text = ToolSupport.requiredText(args, name);
@@ -435,8 +450,8 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
   }
 
   /**
-   * ★ 可选时间口径参数（Batch 4 的 {@code simos.social.demand}）：缺席 ⇒ {@code null}（= 从全局口径推断）；
-   * 给了只认 {@link DemandPeriod} 的两个稳定枚举名。
+   * ★ 可选时间口径参数（Batch 4 的 {@code simos.social.demand}）：缺席 ⇒ {@code null}（= 从全局口径推断）； 给了只认 {@link
+   * DemandPeriod} 的两个稳定枚举名。
    */
   protected static DemandPeriod optionalDemandPeriodArg(Map<String, Object> args, String name) {
     String text = ToolSupport.optionalText(args, name, null);
@@ -451,7 +466,10 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
     }
   }
 
-  /** 可选的率数组成员（S3a 的 {@code [{bracketId,sex,birthRatePerMillionPerTick?,deathRatePerMillionPerTick?}…]}；ppm/tick）。 */
+  /**
+   * 可选的率数组成员（S3a 的 {@code
+   * [{bracketId,sex,birthRatePerMillionPerTick?,deathRatePerMillionPerTick?}…]}；ppm/tick）。
+   */
   protected static List<HouseholdVitalRate> vitalRatesArg(Map<String, Object> args, String name) {
     Object raw = args.get(name);
     if (raw == null) {

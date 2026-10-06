@@ -35,25 +35,25 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.unit.raiseUnit}（辖区阶段 8 / 计划 §5）：<b>GM 组合工具</b>——从地方抽人力 + 抽粮/钱，
- * 组出一个新单位；命令按 P3 批序<b>同批落一条 revision</b>。
+ * ★★ {@code simos.unit.raiseUnit}（辖区阶段 8 / 计划 §5）：<b>GM 组合工具</b>——从地方抽人力 + 抽粮/钱， 组出一个新单位；命令按 P3
+ * 批序<b>同批落一条 revision</b>。
  *
  * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：新单位在 {@code unit} 切片、家户出账/账户与国库入账在 {@code actor} 切片、人在 {@code
- * social} 切片、新家户经济行在 {@code economy} 切片、行动记录在 {@code sd} 切片——单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同
- * expectedRevision ⇒ 一批 = 一条 revision，原子）。
+ * social} 切片、新家户经济行在 {@code economy} 切片、行动记录在 {@code sd} 切片——单条命令只能落一个命名空间。本工具走 {@link
+ * CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条 revision，原子）。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点是 {@link RaiseUnitPlan#plan}（不碰 {@link ToolContext} /
- * {@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。不许出现第二份推导，也不许出现第二份分摊
- * （人力 = {@link HouseholdManpowerAllocator} 的 share-aware 家户份额瀑布；粮/钱 = {@link RegionAllocations} 的家户账瀑布）。
+ * {@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。不许出现第二份推导，也不许出现第二份分摊 （人力 = {@link
+ * HouseholdManpowerAllocator} 的 share-aware 家户份额瀑布；粮/钱 = {@link RegionAllocations} 的家户账瀑布）。
  *
  * <p>★★ <b>批的命令（按此 P3 固定顺序，按需缺席）</b>：
  *
  * <ol>
  *   <li>{@code social.SubmitHouseholdWorkOrder}（恒有）：人口腿的<b>唯一</b>命令；{@code
- *       orderId=raise-unit:<unitId>:<tick>:<manpower>} 确定性幂等键，target = 新人口家户 {@code hh-unit:<unitId>}；
- *       {@code plan} = {@code CREATE_HOUSEHOLD}（location = {@code UNIT(newUnitId)}）+ 逐来源 {@code
- *       TRANSFER_MEMBERS(from=来源家户, to=新家户, lotId, count=taken)}（<b>保持同一 lot id</b>，在 from/to 两侧按份额持有，
- *       不派生新 id）；
+ *       orderId=raise-unit:<unitId>:<tick>:<manpower>} 确定性幂等键，target = 新人口家户 {@code
+ *       hh-unit:<unitId>}； {@code plan} = {@code CREATE_HOUSEHOLD}（location = {@code
+ *       UNIT(newUnitId)}）+ 逐来源 {@code TRANSFER_MEMBERS(from=来源家户, to=新家户, lotId,
+ *       count=taken)}（<b>保持同一 lot id</b>，在 from/to 两侧按份额持有， 不派生新 id）；
  *   <li>{@code unit.CreateUnit}（恒有）：{@code
  *       id/name/position=at/households=[新人口家户]/equipment=[{type,amount}]/speed/mobilityPerMille/parent?}；{@code
  *       jurisdiction} 不进载荷 ——{@code CreateUnitHandler} 对新建单位一律取 {@code Optional.empty()}；
@@ -64,27 +64,28 @@ import java.util.UUID;
  *       条目，避免同键重复）+ 新单位国库账户（{@code ActorRef(UNIT, newUnitId)} @ {@code at}）的 <b>正增量</b>；逐值相等（Σ 扣减
  *       == 入库）；
  *   <li>{@code sd.PutInfo}（恒有）：行动记录，地址 = 单位 canonical（{@link RaiseUnitPlan#unitAddress}），{@code
- *       key="raiseUnit"}，{@code value} = JSON <b>字符串</b>（unit/region/at/三项数量/来源计数/sources/reason），{@code
- *       note} = 人可读摘要，{@code tick} = 当前世界日。
+ *       key="raiseUnit"}，{@code value} = JSON
+ *       <b>字符串</b>（unit/region/at/三项数量/来源计数/sources/reason），{@code note} = 人可读摘要，{@code tick} =
+ *       当前世界日。
  * </ol>
  *
- * <p>★★ <b>P1.3 / P3 口径</b>：{@code unit.CreateUnit} <b>不携带已退役的 {@code manpower}</b>；人员由
- * {@code households=[新人口家户]} 承载。人口腿不再逐条发 {@code social.CreateHousehold} /
- * {@code social.TransferHouseholdMembers}，收成上一条 {@code social.SubmitHouseholdWorkOrder}；旧
- * {@code social.SeedGroups} 批也已从本工具移除。P3 起同批补齐新家户的 economy 行与 actor 账户，<b>次日
- * advance</b> 不再在 {@code CLASSROW_POPULATION_PROJECTION_UNRESOLVED} 处 fail-closed。
+ * <p>★★ <b>P1.3 / P3 口径</b>：{@code unit.CreateUnit} <b>不携带已退役的 {@code manpower}</b>；人员由 {@code
+ * households=[新人口家户]} 承载。人口腿不再逐条发 {@code social.CreateHousehold} / {@code
+ * social.TransferHouseholdMembers}，收成上一条 {@code social.SubmitHouseholdWorkOrder}；旧 {@code
+ * social.SeedGroups} 批也已从本工具移除。P3 起同批补齐新家户的 economy 行与 actor 账户，<b>次日 advance</b> 不再在 {@code
+ * CLASSROW_POPULATION_PROJECTION_UNRESOLVED} 处 fail-closed。
  *
  * <p>★ <b>{@code tools} 本批不做</b>：actor 账只有商品 / 货币两维（工具形态不落 actor）⇒ 载荷出现 {@code tools} 键一律具名 {@link
  * IllegalArgumentException}（折 {@code BAD_REQUEST}），<b>不静默忽略</b>；装备只走 {@code equipment} 参数。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字也不是命令类型 ⇒ 不进 catalog / {@code
- * PAYLOAD_HINTS}。★ {@code actor.AdjustAccounts} 与 {@code actor.EnsureHouseholdAccount}、
- * {@code economy.RegisterHousehold} 都标了 {@code GmOnlyCommand}，令 / {@code RegisterEffect} / 决策人 catalog
+ * PAYLOAD_HINTS}。★ {@code actor.AdjustAccounts} 与 {@code actor.EnsureHouseholdAccount}、 {@code
+ * economy.RegisterHousehold} 都标了 {@code GmOnlyCommand}，令 / {@code RegisterEffect} / 决策人 catalog
  * 三条路径到不了这些结构写口；本工具走 GM 授权上下文同批提交。
  *
- * <p>★ <b>资源声明</b>：只写 {@code economy}/{@code unit}/{@code actor}/{@code social}/{@code sd} 五个命名空间（{@link
- * ResourcePolicy#UNRESTRICTED}，GM 侧五面 unlimited）；{@code requireAll(Operation.WRITE, …)} 与其余 GM
- * 窄写同制。
+ * <p>★ <b>资源声明</b>：只写 {@code economy}/{@code unit}/{@code actor}/{@code social}/{@code sd}
+ * 五个命名空间（{@link ResourcePolicy#UNRESTRICTED}，GM 侧五面 unlimited）；{@code requireAll(Operation.WRITE,
+ * …)} 与其余 GM 窄写同制。
  *
  * <p>★ <b>工具结果（preview 与 apply 同形）</b>：{@code
  * preview/submitted/tick/unitId/name/regionId/at/residence/parent/householdId/population/equipment[{type,amount}]/
@@ -334,6 +335,7 @@ public final class RaiseUnitTool implements AgentTool {
       Map<String, Integer> equipment = optionalEquipment(args);
       String parent = ToolSupport.optionalText(args, "parent", null);
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
+      boolean planOnly = !preview && ToolSupport.optionalBoolean(args, "planOnly").orElse(false);
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSupport.optionalLong(args, "expectedRevision");
@@ -366,7 +368,7 @@ public final class RaiseUnitTool implements AgentTool {
       if (preview) {
         return ToolSupport.ok(planView(plan, reason, true, false));
       }
-      return apply(plan, reason, branch, expectedRevision);
+      return apply(plan, reason, branch, expectedRevision, planOnly);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -475,10 +477,17 @@ public final class RaiseUnitTool implements AgentTool {
 
   /** 提交阶段：按 Plan 组按需多条命令（按需缺席）的同一批，走唯一批量写入口，把三结局折进同一份视图。 */
   private ToolResult apply(
-      RaiseUnitPlan.Plan plan, String reason, BranchId branch, long expectedRevision) {
+      RaiseUnitPlan.Plan plan,
+      String reason,
+      BranchId branch,
+      long expectedRevision,
+      boolean planOnly) {
     String batchId = UUID.randomUUID().toString();
     List<CommandEnvelope> batch =
         buildBatch(batchId, plan, reason, branch, new RevisionId(expectedRevision));
+    if (planOnly) {
+      return ToolSupport.ok(ToolSupport.plannedCommandsView(batch));
+    }
     BatchResult result = core.submitBatch(batch);
     Map<String, Object> view = planView(plan, reason, false, true);
     if (result instanceof BatchResult.Committed committed) {
@@ -519,9 +528,9 @@ public final class RaiseUnitTool implements AgentTool {
   }
 
   /**
-   * 组批：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} →
-   * {@code economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} → {@code actor.AdjustAccounts}? →
-   * {@code sd.PutInfo}（P3 固定顺序，可复现）。
+   * 组批：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} → {@code
+   * economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} → {@code
+   * actor.AdjustAccounts}? → {@code sd.PutInfo}（P3 固定顺序，可复现）。
    *
    * <p>★ 各条共享同一 {@code batchId}（correlationId）与同一 branch/expectedRevision ⇒ {@code submitBatch} 落一条
    * revision。

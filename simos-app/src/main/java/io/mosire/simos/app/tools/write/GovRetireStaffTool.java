@@ -32,27 +32,25 @@ import java.util.UUID;
 
 /**
  * ★★ {@code simos.gov.retireStaff}（阶段 13A 人员流转；P1.2 改走 Social 家户工单）：<b>GM 组合工具</b>—— 离编 + 按政策一次性
- * 支付退休待遇（支付口径未改，仍复用 {@link GovDismissPlan}）+ 从政府家户转出真实成员到明确目标家户 + 留行动记录，一批落一条
- * revision。
+ * 支付退休待遇（支付口径未改，仍复用 {@link GovDismissPlan}）+ 从政府家户转出真实成员到明确目标家户 + 留行动记录，一批落一条 revision。
  *
- * <p>★★ <b>批顺序（固定，一条 revision）</b>：{@code social.SubmitHouseholdWorkOrder}（
- * {@code orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户>} 幂等键；逐 lot {@code
- * TRANSFER_MEMBERS(from=hh-gov-<unitId>, to=目标家户, lotId, count=taken)}）→ {@code unit.DismissStaff}（形状不变）
- * →（待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}（key={@value #INFO_KEY}）。
+ * <p>★★ <b>批顺序（固定，一条 revision）</b>：{@code social.SubmitHouseholdWorkOrder}（ {@code
+ * orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户>} 幂等键；逐 lot {@code
+ * TRANSFER_MEMBERS(from=hh-gov-<unitId>, to=目标家户, lotId, count=taken)}）→ {@code
+ * unit.DismissStaff}（形状不变） →（待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code
+ * sd.PutInfo}（key={@value #INFO_KEY}）。
  *
- * <p>★★ <b>目标家户必须明确</b>：{@code toHouseholdId} 精确指定（必须存在于 Social、≠ 政府家户）；或给
- * {@code reinsertQ}/{@code reinsertR} 成对坐标，在该 hex 按 household id 升序取第一个有人口的家户；两者都没给 ⇒
- * plan 级具名拒（人不能凭空消失，也不再合并进最小批次）。
+ * <p>★★ <b>目标家户必须明确</b>：{@code toHouseholdId} 精确指定（必须存在于 Social、≠ 政府家户）；或给 {@code reinsertQ}/{@code
+ * reinsertR} 成对坐标，在该 hex 按 household id 升序取第一个有人口的家户；两者都没给 ⇒ plan 级具名拒（人不能凭空消失，也不再合并进最小批次）。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog /
- * {@code PAYLOAD_HINTS}。★ 资源声明：写 {@code unit}/{@code actor}/{@code social}/{@code sd} 四个命名空间 （GM 侧全部
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
+ * PAYLOAD_HINTS}。★ 资源声明：写 {@code unit}/{@code actor}/{@code social}/{@code sd} 四个命名空间 （GM 侧全部
  * unlimited）。
  *
  * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / 单位不是 GOV / roster 不足 / 待遇溢出 / 国库银不足 /
- * 目标家户缺失或与源相同 / 政府家户不在 Unit.households 或 Social / 政府家户人口不足 / reinsert 坐标不成对 /
- * 回写格无有人口家户 ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code
- * REJECTED} 带逐条真拒因； 提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
- * ResourceDeniedException}。
+ * 目标家户缺失或与源相同 / 政府家户不在 Unit.households 或 Social / 政府家户人口不足 / reinsert 坐标不成对 / 回写格无有人口家户 ⇒ {@link
+ * IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code REJECTED} 带逐条真拒因； 提交冲突
+ * ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}。
  */
 public final class GovRetireStaffTool implements AgentTool {
 
@@ -129,8 +127,7 @@ public final class GovRetireStaffTool implements AgentTool {
     props.put(
         "toHouseholdId",
         ToolSupport.prop(
-            "string",
-            "精确目标家户 id（可选；必须存在于 Social 且 ≠ 政府家户；与 reinsertQ/reinsertR 二选一）"));
+            "string", "精确目标家户 id（可选；必须存在于 Social 且 ≠ 政府家户；与 reinsertQ/reinsertR 二选一）"));
     props.put(
         "reinsertQ",
         ToolSupport.prop(
@@ -199,6 +196,7 @@ public final class GovRetireStaffTool implements AgentTool {
       Optional<Long> reinsertQ = Optional.ofNullable(ToolSupport.optionalLong(args, "reinsertQ"));
       Optional<Long> reinsertR = Optional.ofNullable(ToolSupport.optionalLong(args, "reinsertR"));
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
+      boolean planOnly = !preview && ToolSupport.optionalBoolean(args, "planOnly").orElse(false);
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSupport.optionalLong(args, "expectedRevision");
@@ -217,7 +215,7 @@ public final class GovRetireStaffTool implements AgentTool {
       if (preview) {
         return ToolSupport.ok(planView(plan, reason, true, false));
       }
-      return apply(plan, reason, branch, expectedRevision);
+      return apply(plan, reason, branch, expectedRevision, planOnly);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -231,10 +229,17 @@ public final class GovRetireStaffTool implements AgentTool {
   // ── apply：组批 + 折叠 ───────────────────────────────────────────────────────────────
 
   private ToolResult apply(
-      GovRetireStaffPlan.Plan plan, String reason, BranchId branch, long expectedRevision) {
+      GovRetireStaffPlan.Plan plan,
+      String reason,
+      BranchId branch,
+      long expectedRevision,
+      boolean planOnly) {
     String batchId = UUID.randomUUID().toString();
     List<CommandEnvelope> batch =
         buildBatch(batchId, plan, reason, branch, new RevisionId(expectedRevision));
+    if (planOnly) {
+      return ToolSupport.ok(ToolSupport.plannedCommandsView(batch));
+    }
     BatchResult result = core.submitBatch(batch);
     Map<String, Object> view = planView(plan, reason, false, true);
     if (result instanceof BatchResult.Committed committed) {
@@ -274,8 +279,8 @@ public final class GovRetireStaffTool implements AgentTool {
   }
 
   /**
-   * 组批（固定顺序、按需缺席）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.DismissStaff} →
-   * （待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}。
+   * 组批（固定顺序、按需缺席）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.DismissStaff} → （待遇 &gt;
+   * 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}。
    */
   private List<CommandEnvelope> buildBatch(
       String batchId,

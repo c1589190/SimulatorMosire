@@ -61,6 +61,9 @@ import io.mosire.simos.app.tools.write.ForkTool;
 import io.mosire.simos.app.tools.write.FormatUnitTool;
 import io.mosire.simos.app.tools.write.GmApproveTool;
 import io.mosire.simos.app.tools.write.GmDecidePacketTool;
+import io.mosire.simos.app.tools.write.GmMergedPlanApplyTool;
+import io.mosire.simos.app.tools.write.GmMergedPlanUpsertTool;
+import io.mosire.simos.app.tools.write.GmPacketExecuteTool;
 import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.app.tools.write.GovApplyStaffingTool;
 import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
@@ -669,6 +672,14 @@ public final class SimosToolSource implements ToolSource {
     // ★★ D2（2026-10-22 决策包计划）：GM 裁决决策包（写）。**只在 GM 桶**；工具名不是命令类型
     //   ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）。
     built.add(new GmDecidePacketTool(core, query, initiator));
+    // ★★ D3（2026-10-22 合并计划契约 §9）：三条 GM 决策效果工具——建计划 / 执行计划 / 执行已批准 call。
+    //   **只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）；
+    //   执行器复用决策人桶同源的 ProposalCatalog（真工具实例 + 目标清单 fail-closed）。
+    ProposalCatalog gmProposalCatalog =
+        new ProposalCatalog(core, calendarService, query, initiator, mapId);
+    built.add(new GmMergedPlanUpsertTool(core, query, initiator, gmProposalCatalog));
+    built.add(new GmMergedPlanApplyTool(core, query, initiator, gmProposalCatalog));
+    built.add(new GmPacketExecuteTool(core, query, initiator, gmProposalCatalog));
     // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件的 GM 窄写。
     //   **只在 GM 桶**；工具名（simos.sd.*）不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 sd。
     //   决策人侧另有同名命令型的窄工具（见 addDecisionAgentWrites）。──

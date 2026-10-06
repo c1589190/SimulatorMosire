@@ -5,6 +5,8 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
+import io.mosire.simos.sd.model.MergedEffect;
+import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.util.spi.CommandTarget;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -14,18 +16,20 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * D2 决策包两条命令载荷的**唯一拼写点**（propose/intent 写 {@code sd.UpsertDecisionPacket}；GM 写 {@code
- * sd.DecideDecisionPacket}）。
+ * 决策包 / 合并效果集命令载荷的**唯一拼写点**（propose/intent 写 {@code sd.UpsertDecisionPacket}；GM 写 {@code
+ * sd.DecideDecisionPacket}；D3 的 GM 工具与执行器写 {@code sd.UpsertMergedEffectPlan}）。
  *
- * <p>★ 工具与 handler 之间的线格式是扁平 JSON（handler 用 {@code SdPayloads} 逐字段读）；把"packet → 载荷"的映射收在一处， 避免
- * propose/intent 各拼一份、加字段时静默丢一个。
+ * <p>★ 工具与 handler 之间的线格式是扁平 JSON（handler 用 {@code SdPayloads} 逐字段读）；把领域对象 → 载荷的映射收在一处， 避免
+ * propose/intent/GM/执行器各拼一份、加字段时静默丢一个。
+ *
+ * <p>★ D3 起本类对 {@code app.decision.DecisionEffectExecutor} 公开（outcome 回写要在同一批里重建整包载荷）。
  */
-final class DecisionPacketPayloads {
+public final class DecisionPacketPayloads {
 
   private DecisionPacketPayloads() {}
 
-  /** {@code sd.UpsertDecisionPacket} 的整包载荷（propose 追加 call / intent 改写共用）。 */
-  static String upsert(DecisionPacket packet) {
+  /** {@code sd.UpsertDecisionPacket} 的整包载荷（propose 追加 call / intent 改写 / 执行器 outcome 回写共用）。 */
+  public static String upsert(DecisionPacket packet) {
     Objects.requireNonNull(packet, "packet");
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("id", packet.id().value());
@@ -57,28 +61,57 @@ final class DecisionPacketPayloads {
     return ToolSupport.json(payload);
   }
 
-  /** {@code sd.DecideDecisionPacket} 载荷（{@code callIndexes} 为空 ⇒ 整包口径）。 */
+  /**
+   * {@code sd.DecideDecisionPacket} 载荷（{@code callIndexes} 为空 ⇒ 整包口径；MERGE 时带 {@code
+   * mergedPlanId}）。
+   */
   static String decide(
       String packetId,
       String decision,
       Optional<String> note,
       List<Integer> callIndexes,
-      String decidedBy) {
+      String decidedBy,
+      Optional<String> mergedPlanId) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("id", packetId);
     payload.put("decision", decision);
     payload.put("decidedBy", decidedBy);
-    if (note.isPresent()) {
+    if (note != null && note.isPresent()) {
       payload.put("note", note.get());
     }
     if (callIndexes != null && !callIndexes.isEmpty()) {
       payload.put("callIndexes", List.copyOf(callIndexes));
     }
+    if (mergedPlanId != null && mergedPlanId.isPresent()) {
+      payload.put("mergedPlanId", mergedPlanId.get());
+    }
     return ToolSupport.json(payload);
   }
 
-  /** 一条 call 的线格式（{@code targets} 逐条 {namespace,path}）。 */
-  static Map<String, Object> callView(FormattedCall call) {
+  /** {@code sd.UpsertMergedEffectPlan} 的整包扁平载荷（GM 建计划 / 执行器 outcome 回写共用）。 */
+  public static String mergedPlan(MergedEffectPlan plan) {
+    Objects.requireNonNull(plan, "plan");
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("id", plan.id().value());
+    payload.put("tick", plan.tick());
+    payload.put("participantIds", plan.participantIds().stream().map(id -> id.value()).toList());
+    List<Map<String, Object>> effects = new ArrayList<>(plan.orderedEffects().size());
+    for (MergedEffect effect : plan.orderedEffects()) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("toolName", effect.toolName());
+      row.put("argsJson", effect.argsJson());
+      row.put("sourceCallRefs", effect.sourceCallRefs());
+      effects.add(row);
+    }
+    payload.put("orderedEffects", effects);
+    payload.put("sources", plan.sources());
+    payload.put("reasonInfoId", plan.reasonInfoId().orElse(null));
+    payload.put("outcome", plan.outcome().orElse(null));
+    return ToolSupport.json(payload);
+  }
+
+  /** 一条 call 的线格式（{@code targets} 逐条 {namespace,path}；{@code outcomeJson} 未执行 ⇒ null）。 */
+  public static Map<String, Object> callView(FormattedCall call) {
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("callIndex", call.callIndex());
     row.put("toolName", call.toolName());
@@ -95,6 +128,7 @@ final class DecisionPacketPayloads {
     row.put("draftChecks", call.draftChecks());
     row.put("status", call.status().name());
     row.put("mergedPlanId", call.mergedPlanId().orElse(null));
+    row.put("outcomeJson", call.outcomeJson().orElse(null));
     return row;
   }
 

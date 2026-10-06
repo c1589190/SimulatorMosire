@@ -20,15 +20,16 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * ★★ {@code simos.social.household.members}（S3a，2026-10-09）：<b>GM 家户成员增/减/转移窄工具</b>——
- * {@code social.AddHouseholdMembers} / {@code social.RemoveHouseholdMembers} /
- * {@code social.TransferHouseholdMembers} 三条命令的统一入口（固定命令类型由 {@code action} 选择）。
+ * ★★ {@code simos.social.household.members}（S3a，2026-10-09）：<b>GM 家户成员增/减/转移窄工具</b>—— {@code
+ * social.AddHouseholdMembers} / {@code social.RemoveHouseholdMembers} / {@code
+ * social.TransferHouseholdMembers} 三条命令的统一入口（固定命令类型由 {@code action} 选择）。
  *
  * <p>★ <b>action 语义</b>：
  *
  * <ul>
- *   <li>{@code add}：{@code householdId + sex + count（+ lotId? + ageAtAnchorDays? + anchorTick?）}；{@code lotId}
- *       缺省用 {@link AddHouseholdMembersHandler#deriveLotId} 的确定性 id（预览与落盘同一个批次身份）；
+ *   <li>{@code add}：{@code householdId + sex + count（+ lotId? + ageAtAnchorDays? +
+ *       anchorTick?）}；{@code lotId} 缺省用 {@link AddHouseholdMembersHandler#deriveLotId} 的确定性
+ *       id（预览与落盘同一个批次身份）；
  *   <li>{@code remove}：{@code householdId + lotId + count}；
  *   <li>{@code transfer}：{@code from + to + lotId + count}。
  * </ul>
@@ -83,7 +84,8 @@ public final class SocialHouseholdMembersTool extends AbstractHouseholdGmTool {
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
-        ToolSupport.prop("integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
+        ToolSupport.prop(
+            "integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
     return ToolSupport.schema(props, List.of("action", "count", "reason"));
   }
 
@@ -124,13 +126,16 @@ public final class SocialHouseholdMembersTool extends AbstractHouseholdGmTool {
     }
     String lotText = ToolSupport.optionalText(args, "lotId", null);
     PeopleLotId lotId =
-        lotText == null ? AddHouseholdMembersHandler.deriveLotId(base, id) : PeopleLotId.parse(lotText);
+        lotText == null
+            ? AddHouseholdMembersHandler.deriveLotId(base, id)
+            : PeopleLotId.parse(lotText);
     Long ageArg = ToolSupport.optionalLong(args, "ageAtAnchorDays");
     Long anchorArg = ToolSupport.optionalLong(args, "anchorTick");
     long ageAtAnchorDays = ageArg == null ? 0L : ageArg;
     long anchorTick = anchorArg == null ? request.state().meta().timestamp().tick() : anchorArg;
     SocialData projected =
-        HouseholdBook.addMembers(base, id, lotId, sex, count, ageAtAnchorDays, anchorTick, request.reason());
+        HouseholdBook.addMembers(
+            base, id, lotId, sex, count, ageAtAnchorDays, anchorTick, request.reason());
 
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("householdId", id.value());
@@ -148,8 +153,7 @@ public final class SocialHouseholdMembersTool extends AbstractHouseholdGmTool {
     view.put("count", count);
     view.put("populationBefore", base.householdPopulation(id));
     view.put("populationAfter", projected.householdPopulation(id));
-    return submitOrPreview(
-        request, AddHouseholdMembersHandler.TYPE, payload, view);
+    return submitOrPreview(request, AddHouseholdMembersHandler.TYPE, payload, view);
   }
 
   private ToolResult runRemove(Request request, SocialData base, long count) {
@@ -171,8 +175,7 @@ public final class SocialHouseholdMembersTool extends AbstractHouseholdGmTool {
     view.put("count", count);
     view.put("populationBefore", base.householdPopulation(id));
     view.put("populationAfter", projected.householdPopulation(id));
-    return submitOrPreview(
-        request, RemoveHouseholdMembersHandler.TYPE, payload, view);
+    return submitOrPreview(request, RemoveHouseholdMembersHandler.TYPE, payload, view);
   }
 
   private ToolResult runTransfer(Request request, SocialData base, long count) {
@@ -180,7 +183,8 @@ public final class SocialHouseholdMembersTool extends AbstractHouseholdGmTool {
     HouseholdId from = HouseholdId.parse(ToolSupport.requiredText(args, "from"));
     HouseholdId to = HouseholdId.parse(ToolSupport.requiredText(args, "to"));
     PeopleLotId lotId = PeopleLotId.parse(ToolSupport.requiredText(args, "lotId"));
-    SocialData projected = HouseholdBook.transferMembers(base, from, to, lotId, count, request.reason());
+    SocialData projected =
+        HouseholdBook.transferMembers(base, from, to, lotId, count, request.reason());
 
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("from", from.value());
@@ -199,13 +203,15 @@ public final class SocialHouseholdMembersTool extends AbstractHouseholdGmTool {
     view.put("fromPopulationAfter", projected.householdPopulation(from));
     view.put("toPopulationBefore", base.householdPopulation(to));
     view.put("toPopulationAfter", projected.householdPopulation(to));
-    return submitOrPreview(
-        request, TransferHouseholdMembersHandler.TYPE, payload, view);
+    return submitOrPreview(request, TransferHouseholdMembersHandler.TYPE, payload, view);
   }
 
-  /** preview / apply 的共同收口：同一条载荷、views 加 commandsPreview，preview 不提交。 */
+  /** preview / apply / planOnly 的共同收口：同一条载荷；preview 不提交、planOnly 只返回待提交命令批（D3 执行器内部用）。 */
   private ToolResult submitOrPreview(
       Request request, String type, Map<String, Object> payload, Map<String, Object> view) {
+    if (request.planOnly()) {
+      return planOnly(request, type, payload);
+    }
     view.put("commandsPreview", List.of(commandPreview(type, payload)));
     view.put("reason", request.reason());
     if (request.preview()) {

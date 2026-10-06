@@ -39,26 +39,28 @@ import java.util.UUID;
  * ArmyFormation}（= 训练一支小军队，走通用接口），<b>不造“调查组”新类型</b>。
  *
  * <p>★★ <b>出人不付退休待遇</b>：本工具直接走 {@code unit.DismissStaff}（只减 roster），<b>不经</b> {@code
- * simos.gov.dismiss} 的付款逻辑——退休待遇只在 {@code simos.gov.retireStaff} 那条链路里支付；人在同批工单里从政府家户
- * {@code hh-gov-<unitId>} 转进新人口家户 {@code hh-unit:<newUnitId>}。
+ * simos.gov.dismiss} 的付款逻辑——退休待遇只在 {@code simos.gov.retireStaff} 那条链路里支付；人在同批工单里从政府家户 {@code
+ * hh-gov-<unitId>} 转进新人口家户 {@code hh-unit:<newUnitId>}。
  *
- * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点是 {@link GovDispatchTeamPlan#plan}（不碰 {@link ToolContext} /
- * {@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。选人复用 {@link
+ * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点是 {@link GovDispatchTeamPlan#plan}（不碰 {@link
+ * ToolContext} / {@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。选人复用 {@link
  * HouseholdManpowerAllocator#allocateFromHousehold} 同一份，不另写第二份瀑布。
  *
  * <p>★★ <b>批顺序（P1.5 固定，一条 revision）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
- * orderId=gov-dispatch-team:<batchId>:<newUnitId>}；{@code CREATE_HOUSEHOLD + 逐来源 TRANSFER_MEMBERS}）→ {@code
- * unit.CreateUnit}（households=[新家户]、equipment=[]、speed=6、mobilityPerMille=900；<b>无 manpower</b>）→（armed=true）
- * {@code unit.SetArmyFormation}（masterGov=来源 GOV、role="armed-team"）→ {@code economy.RegisterHousehold}
- * → {@code actor.EnsureHouseholdAccount} → {@code unit.DismissStaff}（只减 roster）→ {@code sd.PutInfo}
- * （key={@value #INFO_KEY}，含 armed 标记）。
+ * orderId=gov-dispatch-team:<batchId>:<newUnitId>}；{@code CREATE_HOUSEHOLD + 逐来源
+ * TRANSFER_MEMBERS}）→ {@code
+ * unit.CreateUnit}（households=[新家户]、equipment=[]、speed=6、mobilityPerMille=900；<b>无
+ * manpower</b>）→（armed=true） {@code unit.SetArmyFormation}（masterGov=来源 GOV、role="armed-team"）→
+ * {@code economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} → {@code
+ * unit.DismissStaff}（只减 roster）→ {@code sd.PutInfo} （key={@value #INFO_KEY}，含 armed 标记）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
- * PAYLOAD_HINTS}。★ 资源声明：写 {@code social}/{@code unit}/{@code economy}/{@code actor}/{@code sd} 五个命名空间。
+ * PAYLOAD_HINTS}。★ 资源声明：写 {@code social}/{@code unit}/{@code economy}/{@code actor}/{@code sd}
+ * 五个命名空间。
  *
  * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / 来源不是 GOV / roster 不足 / 政府家户缺失 / 来源人口不足 /
- * 无有效位置 / 新 id 已存在 / 新家户 id 被占用 ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒
- * ⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
+ * 无有效位置 / 新 id 已存在 / 新家户 id 被占用 ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零
+ * revision）；批内域层拒 ⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
  * ResourceDeniedException}。
  */
 public final class GovDispatchTeamTool implements AgentTool {
@@ -96,8 +98,7 @@ public final class GovDispatchTeamTool implements AgentTool {
   private final CalendarService calendarService;
 
   // ★ 测试/旧路径：全缺省时钟，不读 store；生产 Shell 必须用带 CalendarService 的重载（CalendarService.load）。
-  public GovDispatchTeamTool(
-      CoreSimos core, QueryService query, String initiator, String mapId) {
+  public GovDispatchTeamTool(CoreSimos core, QueryService query, String initiator, String mapId) {
     this(core, query, initiator, mapId, CalendarService.defaults());
   }
 
@@ -213,6 +214,7 @@ public final class GovDispatchTeamTool implements AgentTool {
       boolean armed = ToolSupport.optionalBoolean(args, "armed").orElse(false);
       Optional<String> newUnitId = optionalText(args, "newUnitId");
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
+      boolean planOnly = !preview && ToolSupport.optionalBoolean(args, "planOnly").orElse(false);
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSupport.optionalLong(args, "expectedRevision");
@@ -232,7 +234,7 @@ public final class GovDispatchTeamTool implements AgentTool {
       if (preview) {
         return ToolSupport.ok(planView(plan, reason, true, false));
       }
-      return apply(plan, reason, branch, expectedRevision);
+      return apply(plan, reason, branch, expectedRevision, planOnly);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -252,10 +254,17 @@ public final class GovDispatchTeamTool implements AgentTool {
   // ── apply：组批 + 折叠 ───────────────────────────────────────────────────────────────
 
   private ToolResult apply(
-      GovDispatchTeamPlan.Plan plan, String reason, BranchId branch, long expectedRevision) {
+      GovDispatchTeamPlan.Plan plan,
+      String reason,
+      BranchId branch,
+      long expectedRevision,
+      boolean planOnly) {
     String batchId = UUID.randomUUID().toString();
     List<CommandEnvelope> batch =
         buildBatch(batchId, plan, reason, branch, new RevisionId(expectedRevision));
+    if (planOnly) {
+      return ToolSupport.ok(ToolSupport.plannedCommandsView(batch));
+    }
     BatchResult result = core.submitBatch(batch);
     Map<String, Object> view = planView(plan, reason, false, true);
     if (result instanceof BatchResult.Committed committed) {
@@ -295,9 +304,9 @@ public final class GovDispatchTeamTool implements AgentTool {
   }
 
   /**
-   * 组批（P1.5 固定顺序）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} →
-   * （armed）{@code unit.SetArmyFormation} → {@code economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} →
-   * {@code unit.DismissStaff} → {@code sd.PutInfo}。
+   * 组批（P1.5 固定顺序）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} → （armed）{@code
+   * unit.SetArmyFormation} → {@code economy.RegisterHousehold} → {@code
+   * actor.EnsureHouseholdAccount} → {@code unit.DismissStaff} → {@code sd.PutInfo}。
    */
   private List<CommandEnvelope> buildBatch(
       String batchId,

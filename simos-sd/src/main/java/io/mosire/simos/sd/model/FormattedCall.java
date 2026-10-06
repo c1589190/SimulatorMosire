@@ -13,6 +13,9 @@ import java.util.Optional;
  * <p>★ {@code draftChecks} 是拟稿期的具名检查清单（本批为 {@code ["scope-ok","preview-ok"]}）；{@code mergedPlanId}
  * 只在 {@link CallStatus#MERGED} 时存在（D3）。
  *
+ * <p>★ {@code outcomeJson} 是 D3 的**执行/批结果摘要**（JSON 字符串；未执行 = {@link Optional#empty()}）——
+ * 与效果命令同批回写，批提交才落。旧档缺键 ⇒ empty。
+ *
  * <p>★ 保序不可变：{@code targets}/{@code draftChecks} 冻在赋值处。
  */
 public record FormattedCall(
@@ -23,7 +26,30 @@ public record FormattedCall(
     String previewJson,
     List<String> draftChecks,
     CallStatus status,
-    Optional<String> mergedPlanId) {
+    Optional<String> mergedPlanId,
+    Optional<String> outcomeJson) {
+
+  /** D2 兼容构造器（8 参）：{@code outcomeJson} 取 empty，旧调用点一字不改。 */
+  public FormattedCall(
+      int callIndex,
+      String toolName,
+      String argsJson,
+      List<CommandTarget> targets,
+      String previewJson,
+      List<String> draftChecks,
+      CallStatus status,
+      Optional<String> mergedPlanId) {
+    this(
+        callIndex,
+        toolName,
+        argsJson,
+        targets,
+        previewJson,
+        draftChecks,
+        status,
+        mergedPlanId,
+        Optional.empty());
+  }
 
   public FormattedCall {
     if (callIndex < 0) {
@@ -51,6 +77,9 @@ public record FormattedCall(
       throw new IllegalArgumentException(
           "FormattedCall.mergedPlanId 不得为 null（无合并用 Optional.empty()）");
     }
+    if (outcomeJson == null) {
+      outcomeJson = Optional.empty(); // ★ 旧调用/null ⇒ empty，不抛（D3 兼容口径）
+    }
     for (CommandTarget target : targets) {
       if (target == null) {
         throw new IllegalArgumentException("FormattedCall.targets 不得含 null");
@@ -74,7 +103,15 @@ public record FormattedCall(
       throw new IllegalArgumentException("newStatus 不得为 null");
     }
     return new FormattedCall(
-        callIndex, toolName, argsJson, targets, previewJson, draftChecks, newStatus, mergedPlanId);
+        callIndex,
+        toolName,
+        argsJson,
+        targets,
+        previewJson,
+        draftChecks,
+        newStatus,
+        mergedPlanId,
+        outcomeJson);
   }
 
   /** 仅换合并计划引用的那一版（D3 用）。 */
@@ -83,6 +120,28 @@ public record FormattedCall(
       throw new IllegalArgumentException("newMergedPlanId 不得为 null");
     }
     return new FormattedCall(
-        callIndex, toolName, argsJson, targets, previewJson, draftChecks, status, newMergedPlanId);
+        callIndex,
+        toolName,
+        argsJson,
+        targets,
+        previewJson,
+        draftChecks,
+        status,
+        newMergedPlanId,
+        outcomeJson);
+  }
+
+  /** 仅换执行/批结果摘要的那一版（D3 执行器回写；{@code null} ⇒ empty）。 */
+  public FormattedCall withOutcomeJson(Optional<String> newOutcomeJson) {
+    return new FormattedCall(
+        callIndex,
+        toolName,
+        argsJson,
+        targets,
+        previewJson,
+        draftChecks,
+        status,
+        mergedPlanId,
+        newOutcomeJson == null ? Optional.empty() : newOutcomeJson);
   }
 }

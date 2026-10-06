@@ -13,6 +13,7 @@ import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
+import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.map.City;
@@ -513,6 +514,31 @@ public final class ToolSupport {
   }
 
   /**
+   * D3 执行器专用的**只规划不提交**结果视图：逐条命令的 {@code type}/{@code payloadJson}/顺序，不含提交结论。
+   *
+   * <p>★★ <b>绝不进 jsonSchema / 工具描述</b>：{@code planOnly} 是内部执行器参数，只有 {@code
+   * app.decision.DecisionEffectExecutor} 用系统上下文注入；对模型暴露它等于给出绕过预览直接组批的入口。
+   *
+   * <p>★ 七条可 propose 工具共用这一处拼装（一个批 → 一份视图），避免各写一份字段漂移。
+   */
+  public static Map<String, Object> plannedCommandsView(List<CommandEnvelope> batch) {
+    Objects.requireNonNull(batch, "batch");
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("preview", false);
+    view.put("submitted", false);
+    view.put("planOnly", true);
+    List<Map<String, Object>> commands = new ArrayList<>(batch.size());
+    for (CommandEnvelope envelope : batch) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("type", envelope.type());
+      row.put("payloadJson", envelope.payloadJson());
+      commands.add(row);
+    }
+    view.put("plannedCommands", commands);
+    return view;
+  }
+
+  /**
    * {@link CommandResult} 三结局的统一折叠（spec §7.1）：{@code Committed → ok}（带新坐标）， {@code
    * Conflict/Rejected → error}（带真实 head / 理由）。
    */
@@ -684,8 +710,8 @@ public final class ToolSupport {
   }
 
   /**
-   * ★★ S3a 的生产形态：单位清单附 {@code households[]} 与 {@code population}（从 {@code SocialData} 现算）。
-   * {@code social} 由调用方给当前 base 状态的切片；两个只读 SPI 用同一份 {@link SocialLookupAdapter} 视图。
+   * ★★ S3a 的生产形态：单位清单附 {@code households[]} 与 {@code population}（从 {@code SocialData} 现算）。 {@code
+   * social} 由调用方给当前 base 状态的切片；两个只读 SPI 用同一份 {@link SocialLookupAdapter} 视图。
    */
   public static List<Map<String, Object>> units(
       UnitState units,
@@ -716,8 +742,8 @@ public final class ToolSupport {
   }
 
   /**
-   * 同上，但每条的视图带家户/人口（S3a）；{@code social} 为当前 base 状态的 social 切片，同一份
-   * {@link SocialLookupAdapter} 同时喂两个只读 SPI。
+   * 同上，但每条的视图带家户/人口（S3a）；{@code social} 为当前 base 状态的 social 切片，同一份 {@link SocialLookupAdapter}
+   * 同时喂两个只读 SPI。
    */
   public static List<Map<String, Object>> units(
       UnitState units,
@@ -771,7 +797,8 @@ public final class ToolSupport {
   }
 
   /** 一次查询窗口的只读 SPIs：{@link SocialLookupAdapter} 绑定 base 切片 + 查询时刻 + 历法时钟。 */
-  private static SocialLookupAdapter lookup(SocialData social, SimosTimestamp at, CalendarService calendars) {
+  private static SocialLookupAdapter lookup(
+      SocialData social, SimosTimestamp at, CalendarService calendars) {
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(at, "at");
     Objects.requireNonNull(calendars, "calendars");

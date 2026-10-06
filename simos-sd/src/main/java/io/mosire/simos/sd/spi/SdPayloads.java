@@ -7,6 +7,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
+import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Action;
@@ -20,6 +22,8 @@ import io.mosire.simos.sd.model.DisclosurePolicy;
 import io.mosire.simos.sd.model.EffectKind;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.LossClass;
+import io.mosire.simos.sd.model.MergedEffect;
+import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.OutcomeOption;
 import io.mosire.simos.sd.model.OutcomeTable;
 import io.mosire.simos.sd.model.PacketStatus;
@@ -496,7 +500,8 @@ final class SdPayloads {
    * 读 {@code calls} 数组（一条扁平 {@code FormattedCall} 一个小对象）。
    *
    * <p>★ 键缺席/为 null ⇒ 空表（拟稿期"还没有 call"是合法形态）；给了就必须是对象数组。目标 {@code targets} 用 {@link CommandTarget}
-   * 的 {@code {namespace,path}} 形状，{@code mergedPlanId} 缺省 = {@link Optional#empty()}。
+   * 的 {@code {namespace,path}} 形状，{@code mergedPlanId} 缺省 = {@link Optional#empty()}； {@code
+   * outcomeJson} 缺省 = {@link Optional#empty()}（D3 旧档兼容口径）。
    */
   static List<FormattedCall> optionalFormattedCalls(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
@@ -519,6 +524,7 @@ final class SdPayloads {
       List<String> draftChecks = optionalTextList(element, "draftChecks");
       CallStatus status = parseCallStatus(requireText(element, "status"));
       Optional<String> mergedPlanId = optionalText(element, "mergedPlanId");
+      Optional<String> outcomeJson = optionalText(element, "outcomeJson");
       out.add(
           new FormattedCall(
               callIndex,
@@ -528,7 +534,8 @@ final class SdPayloads {
               previewJson,
               draftChecks,
               status,
-              mergedPlanId));
+              mergedPlanId,
+              outcomeJson));
     }
     return List.copyOf(out);
   }
@@ -598,6 +605,68 @@ final class SdPayloads {
         throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
       }
       out.add(element.asText());
+    }
+    return List.copyOf(out);
+  }
+
+  // ── D3 合并效果集（扁平载荷；整包 upsert）─────────────────────────────────────────────
+
+  /**
+   * 读 {@code sd.UpsertMergedEffectPlan} 的扁平载荷（整包）。
+   *
+   * <p>★ {@code participantIds}/{@code orderedEffects}/{@code sources} 缺省/为 null ⇒ 空表；{@code
+   * outcome}/ {@code reasonInfoId} 缺省 ⇒ {@link Optional#empty()}（旧档兼容口径）。
+   */
+  static MergedEffectPlan requireMergedEffectPlan(JsonNode payload) {
+    MergedEffectPlanId id = MergedEffectPlanId.parse(requireText(payload, "id"));
+    long tick = requireLong(payload, "tick");
+    List<DecisionMakerId> participantIds =
+        optionalMergedPlanParticipants(payload, "participantIds");
+    List<MergedEffect> orderedEffects = optionalMergedEffects(payload, "orderedEffects");
+    List<String> sources = optionalTextList(payload, "sources");
+    Optional<String> reasonInfoId = optionalText(payload, "reasonInfoId");
+    Optional<String> outcome = optionalText(payload, "outcome");
+    return new MergedEffectPlan(
+        id, tick, participantIds, orderedEffects, sources, reasonInfoId, outcome);
+  }
+
+  /** 合并计划参与者：允许指向**已删除**的决策人（与 packet 同口径，不做存在性校验）。 */
+  static List<DecisionMakerId> optionalMergedPlanParticipants(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
+    }
+    List<DecisionMakerId> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual() || element.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
+      }
+      out.add(DecisionMakerId.parse(element.asText()));
+    }
+    return List.copyOf(out);
+  }
+
+  /** 有序效果数组 {@code [{toolName,argsJson,sourceCallRefs[]?}…]}；缺省/为 null ⇒ 空表。 */
+  static List<MergedEffect> optionalMergedEffects(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是效果数组: " + payload);
+    }
+    List<MergedEffect> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是对象: " + element);
+      }
+      String toolName = requireText(element, "toolName");
+      String argsJson = optionalText(element, "argsJson").orElse("{}");
+      List<String> sourceCallRefs = optionalTextList(element, "sourceCallRefs");
+      out.add(new MergedEffect(toolName, argsJson, sourceCallRefs));
     }
     return List.copyOf(out);
   }

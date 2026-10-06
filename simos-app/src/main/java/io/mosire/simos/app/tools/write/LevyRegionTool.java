@@ -39,10 +39,9 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.unit.levyRegion}（辖区阶段 6 / 计划 §6.1；阶段 11b 补 cloth；2026-10-17 manpower 接线）：
- * <b>GM 组合工具</b>——一次性从单位辖区的家户 actor 账抽粮 / 抽钱 / 抽布，并把 region 各 hex 的 Social 家户份额
- * （MALE + 成年档，share-aware）转进单位的<b>目标家户</b>（{@code unit.households()} 恰一个且已在 Social 里）；三类改动同批落一条
- * revision。
+ * ★★ {@code simos.unit.levyRegion}（辖区阶段 6 / 计划 §6.1；阶段 11b 补 cloth；2026-10-17 manpower 接线）： <b>GM
+ * 组合工具</b>——一次性从单位辖区的家户 actor 账抽粮 / 抽钱 / 抽布，并把 region 各 hex 的 Social 家户份额 （MALE +
+ * 成年档，share-aware）转进单位的<b>目标家户</b>（{@code unit.households()} 恰一个且已在 Social 里）；三类改动同批落一条 revision。
  *
  * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：粮 / 钱 / 布在 {@code actor} 切片、人在 {@code social} 切片、行动记录在 {@code
  * sd} 切片，单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条
@@ -54,16 +53,17 @@ import java.util.UUID;
  * <p>★★ <b>批的三条命令（按此顺序，按需缺席）</b>：
  *
  * <ol>
- *   <li>{@code social.SubmitHouseholdWorkOrder}（人力 &gt; 0 时）：{@code orderId=levy-manpower:<batchId>:<unitId>}，
- *       {@code target} = Plan 的目标家户，{@code plan} = 逐 share {@code TRANSFER_MEMBERS(from=来源家户, to=目标家户,
- *       lotId, count=taken)}，{@code source.module="gov"}；不再发 {@code social.SeedGroups}（删人腿已退役）；
+ *   <li>{@code social.SubmitHouseholdWorkOrder}（人力 &gt; 0 时）：{@code
+ *       orderId=levy-manpower:<batchId>:<unitId>}， {@code target} = Plan 的目标家户，{@code plan} = 逐
+ *       share {@code TRANSFER_MEMBERS(from=来源家户, to=目标家户, lotId, count=taken)}，{@code
+ *       source.module="gov"}；不再发 {@code social.SeedGroups}（删人腿已退役）；
  *   <li>{@code actor.AdjustAccounts}（粮 / 钱 / 布任一 &gt; 0 时）：各来源家户账的<b>负增量</b>（粮与布合并进同一 {@code
  *       (owner,格)} 条目的 {@code goods} 表，钱进同条目的 {@code money} 表，避免同键重复）+ 一条单位国库账户（{@code
  *       ActorRef(UNIT, unitId)}，格 = 单位当刻有效位置）的 <b>正增量</b>；逐值相等（Σ 扣减 == 入库）；
  *   <li>{@code sd.PutInfo}（恒有）：行动记录，地址 = 单位 canonical（{@link Address#parse} → {@link
  *       Address#canonical()}，与 {@code RejectDirectiveTool} 同款），{@code key="levyRegion"}，{@code
- *       value} = JSON <b>字符串</b>（unitId/regionId/tick/四项数量/目标家户/人力 shares 的 household/lot/taken/hex/reason），
- *       {@code tick} = 当前世界日。
+ *       value} = JSON <b>字符串</b>（unitId/regionId/tick/四项数量/目标家户/人力 shares 的
+ *       household/lot/taken/hex/reason）， {@code tick} = 当前世界日。
  * </ol>
  *
  * <p>★★ <b>cloth 的上限口径（具名）</b>：<b>cloth 本批只受可用量约束；上限字段留后续</b>——{@code Jurisdiction} 只有粮/钱/人三条
@@ -79,14 +79,14 @@ import java.util.UUID;
  *
  * <p>★ <b>工具结果（preview 与 apply 同形）</b>：{@code
  * preview/submitted/tick/unitId/regionId/treasuryLocation/manpowerTargetHousehold} + 逐维度 {@code
- * grain}/{@code money}/{@code cloth}/{@code manpower} 各 {@code {requested, available, sources[]}}（账来源带 owner + 格 +
- * amount；人力来源带 household/lot/taken/hex）+ {@code infoText}；apply 另加 {@code submission}
- * （committed / conflict / rejected + 逐条拒因）。
+ * grain}/{@code money}/{@code cloth}/{@code manpower} 各 {@code {requested, available,
+ * sources[]}}（账来源带 owner + 格 + amount；人力来源带 household/lot/taken/hex）+ {@code infoText}；apply 另加
+ * {@code submission} （committed / conflict / rejected + 逐条拒因）。
  *
- * <p>★ <b>失败具名</b>：参数缺失 / 负值 / 四项全 0 / 单位不存在 / 无管辖 / 区域不在管辖或地图 / 超上限（粮/钱/人） / 无位置 /
- * 来源总量不足 / 人力目标家户为空、多个、不在 Social ⇒ {@link
- * IllegalArgumentException} 折 {@code BAD_REQUEST}；批被整条拒 ⇒ {@code REJECTED} 带逐条可读拒因；提交冲突 ⇒ {@code
- * CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}（由唯一入口折资源拒因）。
+ * <p>★ <b>失败具名</b>：参数缺失 / 负值 / 四项全 0 / 单位不存在 / 无管辖 / 区域不在管辖或地图 / 超上限（粮/钱/人） / 无位置 / 来源总量不足 /
+ * 人力目标家户为空、多个、不在 Social ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}；批被整条拒 ⇒ {@code
+ * REJECTED} 带逐条可读拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
+ * ResourceDeniedException}（由唯一入口折资源拒因）。
  */
 public final class LevyRegionTool implements AgentTool {
 
@@ -97,7 +97,8 @@ public final class LevyRegionTool implements AgentTool {
   public static final String ADJUST_ACCOUNTS_TYPE = "actor.AdjustAccounts";
 
   /** 见 {@link #ADJUST_ACCOUNTS_TYPE}。★ 常量引用 social handler，本类不另抄字面量。 */
-  public static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE = SubmitHouseholdWorkOrderHandler.TYPE;
+  public static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE =
+      SubmitHouseholdWorkOrderHandler.TYPE;
 
   /** 见 {@link #ADJUST_ACCOUNTS_TYPE}。 */
   public static final String PUT_INFO_TYPE = "sd.PutInfo";
@@ -277,6 +278,7 @@ public final class LevyRegionTool implements AgentTool {
       long cloth = optionalAmount(args, "cloth");
       long manpower = optionalAmount(args, "manpower");
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
+      boolean planOnly = !preview && ToolSupport.optionalBoolean(args, "planOnly").orElse(false);
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSupport.optionalLong(args, "expectedRevision");
@@ -297,7 +299,7 @@ public final class LevyRegionTool implements AgentTool {
       if (preview) {
         return ToolSupport.ok(planView(plan, reason, true, false));
       }
-      return apply(plan, reason, branch, expectedRevision);
+      return apply(plan, reason, branch, expectedRevision, planOnly);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -320,10 +322,17 @@ public final class LevyRegionTool implements AgentTool {
 
   /** 提交阶段：按 Plan 组三条命令（按需缺席）的同一批，走唯一批量写入口，把三结局折进同一份视图。 */
   private ToolResult apply(
-      LevyRegionPlan.Plan plan, String reason, BranchId branch, long expectedRevision) {
+      LevyRegionPlan.Plan plan,
+      String reason,
+      BranchId branch,
+      long expectedRevision,
+      boolean planOnly) {
     String batchId = UUID.randomUUID().toString();
     List<CommandEnvelope> batch =
         buildBatch(batchId, plan, reason, branch, new RevisionId(expectedRevision));
+    if (planOnly) {
+      return ToolSupport.ok(ToolSupport.plannedCommandsView(batch));
+    }
     BatchResult result = core.submitBatch(batch);
     Map<String, Object> view = planView(plan, reason, false, true);
     if (result instanceof BatchResult.Committed committed) {
@@ -364,7 +373,8 @@ public final class LevyRegionTool implements AgentTool {
   }
 
   /**
-   * 组批：{@code social.SubmitHouseholdWorkOrder}? → {@code actor.AdjustAccounts}? → {@code sd.PutInfo}（固定顺序，可复现）。
+   * 组批：{@code social.SubmitHouseholdWorkOrder}? → {@code actor.AdjustAccounts}? → {@code
+   * sd.PutInfo}（固定顺序，可复现）。
    *
    * <p>★ 三条共享同一 {@code batchId}（correlationId）与同一 branch/expectedRevision ⇒ {@code submitBatch} 落一条
    * revision；任一腿失败整批拒、零 revision。
@@ -426,15 +436,18 @@ public final class LevyRegionTool implements AgentTool {
   private static String adjustAccountsPayload(LevyRegionPlan.Plan plan) {
     LinkedHashMap<HouseholdAccountKey, Long> grainByKey = new LinkedHashMap<>();
     for (LevyRegionPlan.AccountSource source : plan.grain().sources()) {
-      grainByKey.put(new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
+      grainByKey.put(
+          new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
     }
     LinkedHashMap<HouseholdAccountKey, Long> moneyByKey = new LinkedHashMap<>();
     for (LevyRegionPlan.AccountSource source : plan.money().sources()) {
-      moneyByKey.put(new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
+      moneyByKey.put(
+          new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
     }
     LinkedHashMap<HouseholdAccountKey, Long> clothByKey = new LinkedHashMap<>();
     for (LevyRegionPlan.AccountSource source : plan.cloth().sources()) {
-      clothByKey.put(new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
+      clothByKey.put(
+          new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
     }
     LinkedHashSet<HouseholdAccountKey> order = new LinkedHashSet<>(grainByKey.keySet());
     order.addAll(moneyByKey.keySet());
@@ -488,12 +501,13 @@ public final class LevyRegionTool implements AgentTool {
   // ── 载荷：social.SubmitHouseholdWorkOrder（人力腿）──────────────────────────────────
 
   /**
-   * {@code social.SubmitHouseholdWorkOrder} 载荷（2026-10-17 接线）：{@code target} = Plan 的目标家户；{@code plan} =
-   * 逐 share {@code TRANSFER_MEMBERS(from=来源家户, to=目标家户, lotId, count=taken)}；{@code orderId} =
-   * {@code levy-manpower:<batchId>:<unitId>}；{@code source.module="gov"}；{@code reason} = 工具 reason。
+   * {@code social.SubmitHouseholdWorkOrder} 载荷（2026-10-17 接线）：{@code target} = Plan 的目标家户；{@code
+   * plan} = 逐 share {@code TRANSFER_MEMBERS(from=来源家户, to=目标家户, lotId, count=taken)}；{@code
+   * orderId} = {@code levy-manpower:<batchId>:<unitId>}；{@code source.module="gov"}；{@code reason}
+   * = 工具 reason。
    *
-   * <p>★ 目标家户的 {@code economy}/{@code actor} 行不在此批创建：GOV / raiseUnit 路径已由 createOffice / P3 同批建齐；缺行会在
-   * 工单目标不存在或后续 advance 具名拒，不静默造户。
+   * <p>★ 目标家户的 {@code economy}/{@code actor} 行不在此批创建：GOV / raiseUnit 路径已由 createOffice / P3
+   * 同批建齐；缺行会在 工单目标不存在或后续 advance 具名拒，不静默造户。
    */
   private static String submitHouseholdWorkOrderPayload(
       String batchId, LevyRegionPlan.Plan plan, String reason) {
@@ -521,8 +535,8 @@ public final class LevyRegionTool implements AgentTool {
 
   /**
    * {@code sd.PutInfo} 载荷：单位 canonical 地址 + {@code key="levyRegion"} + {@code value} = JSON
-   * <b>字符串</b>（含 unitId/regionId/tick/四项数量/目标家户/reason + 人力 shares 的
-   * household/lot/taken/hex）+ {@code note} = 人可读摘要 + {@code tick} = 当前世界日。
+   * <b>字符串</b>（含 unitId/regionId/tick/四项数量/目标家户/reason + 人力 shares 的 household/lot/taken/hex）+
+   * {@code note} = 人可读摘要 + {@code tick} = 当前世界日。
    *
    * <p>★ {@code id} 不显式给：由 {@code sd.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一单位的后续抽取自然追加 #1、#2…
    */

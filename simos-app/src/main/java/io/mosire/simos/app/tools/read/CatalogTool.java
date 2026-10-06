@@ -556,15 +556,23 @@ public final class CatalogTool implements AgentTool {
               "id, branch, tick, proposerId, status(DRAFT|PENDING|APPROVED|REJECTED|MERGED|PARTIALLY_APPROVED),"
                   + " intent?, createdAtRevision, decidedBy?, decidedAtRevision?, reasonInfoId?, decisionNote?,"
                   + " calls[{callIndex, toolName, argsJson, targets[{namespace,path}], previewJson, draftChecks[],"
-                  + " status(PENDING|APPROVED|REJECTED|MERGED), mergedPlanId?}]"
-                  + "（★ D2：整包 upsert；同 id 幂等替换；不对外窄工具，由 simos.sd.propose / intent 内部提交）"),
+                  + " status(PENDING|APPROVED|REJECTED|MERGED), mergedPlanId?, outcomeJson?}]"
+                  + "（★ D2/D3：整包 upsert；同 id 幂等替换；不对外窄工具，由 simos.sd.propose / intent /"
+                  + " 决策效果执行器内部提交）"),
           Map.entry(
               "sd.SubmitDecisionPacket",
               "id, proposerId（★ D2：DRAFT → PENDING；只被 simos.sd.packet.submit 调用）"),
           Map.entry(
               "sd.DecideDecisionPacket",
-              "id, decision(APPROVE|DENY), decidedBy, note?, callIndexes[]?"
-                  + "（★ D2：GM 整包/逐 call true-positive 裁决；decidedBy 由 simos.gm.packet.decide 从身份派生；MERGE 留 D3）"),
+              "id, decision(APPROVE|DENY|MERGE), decidedBy, note?, callIndexes[]?, mergedPlanId?"
+                  + "（★ D2/D3：GM 整包/逐 call true-positive 裁决；decidedBy 由 simos.gm.packet.decide 从身份派生；"
+                  + "MERGE 必带 mergedPlanId 且目标 plan 必须已存在，callIndexes 与 MERGE 互斥）"),
+          Map.entry(
+              "sd.UpsertMergedEffectPlan",
+              "id, tick, participantIds[决策人 id…]?, orderedEffects[{toolName, argsJson, sourceCallRefs[]?}…],"
+                  + " sources[字符串…]?, reasonInfoId?, outcome?"
+                  + "（★ D3：合并效果计划整包 upsert，同 id 幂等替换；不对外窄工具，由 simos.gm.mergedPlan.upsert /"
+                  + " 决策效果执行器 outcome 回写内部提交）"),
           Map.entry(
               "sd.SetDirectiveStatus",
               "directiveId, status(EXECUTED|CANCELLED)（★ 只允许 ISSUED → 二者之一，只由"

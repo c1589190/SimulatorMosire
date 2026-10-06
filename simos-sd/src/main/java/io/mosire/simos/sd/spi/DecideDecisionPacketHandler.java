@@ -3,9 +3,11 @@ package io.mosire.simos.sd.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionPacketId;
+import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.model.CallStatus;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
+import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -26,8 +28,8 @@ import java.util.Set;
 /**
  * {@code sd.DecideDecisionPacket} 命令的处理器（D2 决策包计划 §2）：GM 对 PENDING 决策包做整包/逐 call true-positive 裁决。
  *
- * <pre>{@code {"id":"pkt-...","decision":"APPROVE|DENY","note":"...","callIndexes":[0,1]?,
- *  "decidedBy":"external-mcp"}}</pre>
+ * <pre>{@code {"id":"pkt-...","decision":"APPROVE|DENY|MERGE","note":"...","callIndexes":[0,1]?,
+ *  "mergedPlanId":"merge-360-1"?,"decidedBy":"external-mcp"}}</pre>
  *
  * <p>★ 语义：
  *
@@ -37,7 +39,9 @@ import java.util.Set;
  *   <li>{@code APPROVE} 带 {@code callIndexes} ⇒ 点名的 APPROVED、其余 REJECTED；全部点名 ⇒ APPROVED，部分 ⇒
  *       PARTIALLY_APPROVED；
  *   <li>{@code DENY} ⇒ 全部 call REJECTED，包 REJECTED；
- *   <li>{@code MERGE} ⇒ 具名拒（留 D3）。
+ *   <li>{@code MERGE} ⇒ 必须给 {@code mergedPlanId} 且目标 plan 必须已存在；包置 {@link PacketStatus#MERGED}，
+ *       **当前 PENDING** 的 call 置 {@link CallStatus#MERGED} 并写 {@code mergedPlanId}；{@code
+ *       callIndexes} 与 MERGE 互斥。
  * </ul>
  *
  * <p>★ {@code decidedBy} 由 payload 带入，但**由 GM 工具从 {@code context.identity()} 派生后写入**——handler
@@ -83,11 +87,36 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
             "只有 PENDING 决策包可裁决，当前状态: " + packet.status() + "（" + id.value() + "）");
       }
       long decidedAtRevision = state.meta().ref().revision().value();
-      if ("MERGE".equals(decision)) {
-        return new HandlerOutcome.Rejected("MERGE 留 D3（D2 只支持 APPROVE|DENY）");
+      Optional<String> mergedPlanId = SdPayloads.optionalText(payload, "mergedPlanId");
+      if (!"APPROVE".equals(decision) && !"DENY".equals(decision) && !"MERGE".equals(decision)) {
+        return new HandlerOutcome.Rejected("decision 只允许 APPROVE|DENY|MERGE: " + decision);
       }
-      if (!"APPROVE".equals(decision) && !"DENY".equals(decision)) {
-        return new HandlerOutcome.Rejected("decision 只允许 APPROVE|DENY: " + decision);
+      if ("MERGE".equals(decision)) {
+        if (callIndexes.isPresent()) {
+          return new HandlerOutcome.Rejected("MERGE 与 callIndexes 互斥：MERGE 是整包并入合并计划");
+        }
+        if (mergedPlanId.isEmpty()) {
+          return new HandlerOutcome.Rejected("decision=MERGE 时必须给 mergedPlanId");
+        }
+        MergedEffectPlanId planId = MergedEffectPlanId.parse(mergedPlanId.get());
+        MergedEffectPlan plan = base.mergedEffectPlans().get(planId);
+        if (plan == null) {
+          return new HandlerOutcome.Rejected("合并计划不存在: " + planId.value());
+        }
+        Map<DecisionPacketId, DecisionPacket> next = new LinkedHashMap<>(base.decisionPackets());
+        next.put(
+            id,
+            packet.withDecision(
+                PacketStatus.MERGED,
+                mergePending(packet.calls(), planId.value()),
+                Optional.of(decidedBy),
+                OptionalLong.of(decidedAtRevision),
+                note));
+        return new HandlerOutcome.Applied(
+            SdChangeSet.between(base, base.withDecisionPackets(next)));
+      }
+      if (mergedPlanId.isPresent()) {
+        return new HandlerOutcome.Rejected("mergedPlanId 只在 decision=MERGE 时有意义");
       }
       List<FormattedCall> nextCalls =
           "DENY".equals(decision)
@@ -119,6 +148,19 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
     List<FormattedCall> out = new ArrayList<>(calls.size());
     for (FormattedCall call : calls) {
       out.add(call.withStatus(CallStatus.REJECTED));
+    }
+    return List.copyOf(out);
+  }
+
+  /** MERGE：把**当前 PENDING**的 call 置 MERGED + 写 mergedPlanId；已 APPROVED/REJECTED 的原样保留。 */
+  private static List<FormattedCall> mergePending(List<FormattedCall> calls, String mergedPlanId) {
+    List<FormattedCall> out = new ArrayList<>(calls.size());
+    for (FormattedCall call : calls) {
+      if (call.status() == CallStatus.PENDING) {
+        out.add(call.withMergedPlanId(Optional.of(mergedPlanId)).withStatus(CallStatus.MERGED));
+      } else {
+        out.add(call);
+      }
     }
     return List.copyOf(out);
   }

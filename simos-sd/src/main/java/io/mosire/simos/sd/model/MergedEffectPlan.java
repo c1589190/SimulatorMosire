@@ -62,4 +62,13 @@ public record MergedEffectPlan(
     orderedEffects = List.copyOf(orderedEffects);
     sources = List.copyOf(sources);
   }
+
+  /** 仅换 {@code outcome} 的那一版（D3 执行器同批回写；{@code null} ⇒ 拒）。 */
+  public MergedEffectPlan withOutcome(Optional<String> newOutcome) {
+    if (newOutcome == null) {
+      throw new IllegalArgumentException("newOutcome 不得为 null（未执行变化用 Optional.empty()）");
+    }
+    return new MergedEffectPlan(
+        id, tick, participantIds, orderedEffects, sources, reasonInfoId, newOutcome);
+  }
 }

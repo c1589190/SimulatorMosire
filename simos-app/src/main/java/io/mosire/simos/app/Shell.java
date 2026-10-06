@@ -132,6 +132,7 @@ import io.mosire.simos.sd.spi.StartDecisionHandler;
 import io.mosire.simos.sd.spi.SubmitDecisionPacketHandler;
 import io.mosire.simos.sd.spi.SubmitVerdictHandler;
 import io.mosire.simos.sd.spi.UpsertDecisionPacketHandler;
+import io.mosire.simos.sd.spi.UpsertMergedEffectPlanHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -697,6 +698,9 @@ public final class Shell implements AutoCloseable {
                 new UpsertDecisionPacketHandler(),
                 new SubmitDecisionPacketHandler(),
                 new DecideDecisionPacketHandler(),
+                // ★★ D3（2026-10-22 合并计划契约 §9）：合并效果计划整包 upsert（GM 建计划 / 执行器 outcome 回写）。
+                //   同 D2 三条：不标 GmOnlyCommand（执行器在系统上下文同批回写 outcome）。
+                new UpsertMergedEffectPlanHandler(),
                 // ★★ D5（2026-10-02 / D-003、D-005、R6）：sd 的两条外交命令（非 GmOnly；sd.* 不进指令白名单）。
                 //   变更集走 SdChangeSet 的第 11/12 个组件（diplomaticRelations / diplomaticEvents），
                 //   旧档缺这两个组件 ⇒ 空表（见 SdState / SdChangeSet 的构造期兼容）。

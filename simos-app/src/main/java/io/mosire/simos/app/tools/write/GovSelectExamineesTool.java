@@ -32,33 +32,33 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.gov.selectExaminees}（阶段 13A 人员流转；P1.5 接完整 Social 工单路径）：<b>GM 组合工具</b>——
- * 从来源 GOV 辖区的 Social 家户份额选人 + 同批建<b>无标签纯人员单位</b>（可给目的 GOV 规划路线）+ 补家户经济行/账户 + 留行动记录，一批落一条
- * revision。
+ * ★★ {@code simos.gov.selectExaminees}（阶段 13A 人员流转；P1.5 接完整 Social 工单路径）：<b>GM 组合工具</b>—— 从来源 GOV
+ * 辖区的 Social 家户份额选人 + 同批建<b>无标签纯人员单位</b>（可给目的 GOV 规划路线）+ 补家户经济行/账户 + 留行动记录，一批落一条 revision。
  *
- * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：人在 {@code social} 切片、新单位/路线在 {@code unit} 切片、家户经济行在
- * {@code economy} 切片、家户账户在 {@code actor} 切片、行动记录在 {@code sd} 切片；单条命令只能落一个命名空间。本工具走
- * {@link CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条 revision，原子）。
+ * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：人在 {@code social} 切片、新单位/路线在 {@code unit} 切片、家户经济行在 {@code
+ * economy} 切片、家户账户在 {@code actor} 切片、行动记录在 {@code sd} 切片；单条命令只能落一个命名空间。本工具走 {@link
+ * CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条 revision，原子）。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点是 {@link GovSelectExamineesPlan#plan}（不碰 {@link
  * ToolContext}/{@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。来源瀑布复用 {@link
  * HouseholdManpowerAllocator#allocateMalesOfAdult} 同一份，不另写第二份。
  *
  * <p>★★ <b>批（P1.5 固定顺序，一条 revision）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
- * orderId=gov-select-examinees:<batchId>:<newUnitId>}；{@code CREATE_HOUSEHOLD(hh-unit:<newUnitId>, UNIT) + 逐来源
- * TRANSFER_MEMBERS}）→ {@code unit.CreateUnit}（households=[新家户]、equipment=[]、speed=4、mobilityPerMille=800；<b>无
+ * orderId=gov-select-examinees:<batchId>:<newUnitId>}；{@code CREATE_HOUSEHOLD(hh-unit:<newUnitId>,
+ * UNIT) + 逐来源 TRANSFER_MEMBERS}）→ {@code
+ * unit.CreateUnit}（households=[新家户]、equipment=[]、speed=4、mobilityPerMille=800；<b>无
  * manpower</b>）→（目的 GOV 给了且不同格）{@code unit.PlanRoute} → {@code economy.RegisterHousehold}（新家户经济行）→
  * {@code actor.EnsureHouseholdAccount}（新家户零余额账户）→ {@code sd.PutInfo}（key={@value #INFO_KEY}）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ 决策人要科举仍走 {@code sd.IssueDirective} / GM 代执行这条链——本工具就是 GM 的 “代执行手”。
  *
- * <p>★ <b>资源声明</b>：写 {@code social}/{@code unit}/{@code economy}/{@code actor}/{@code sd} 五个命名空间（GM 侧五面
- * unlimited ⇒ 逐条判通过）。
+ * <p>★ <b>资源声明</b>：写 {@code social}/{@code unit}/{@code economy}/{@code actor}/{@code sd} 五个命名空间（GM
+ * 侧五面 unlimited ⇒ 逐条判通过）。
  *
- * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / 来源不是 GOV / 无管辖 / 来源不足 / 目标不是 GOV / 不可达 / 新 id 已存在 / 新家户 id 被占用
- * ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code REJECTED} 带逐条真拒因；
- * 提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}。
+ * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / 来源不是 GOV / 无管辖 / 来源不足 / 目标不是 GOV / 不可达 / 新 id 已存在 / 新家户 id 被占用 ⇒
+ * {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code REJECTED}
+ * 带逐条真拒因； 提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}。
  */
 public final class GovSelectExamineesTool implements AgentTool {
 
@@ -151,8 +151,7 @@ public final class GovSelectExamineesTool implements AgentTool {
     props.put(
         "count",
         ToolSupport.prop(
-            "integer",
-            "选送人数（≥ 1）；只抽 MALE 且当前 tick 成年档的 Social 家户份额，落成 hh-unit:<newUnitId> 的成员"));
+            "integer", "选送人数（≥ 1）；只抽 MALE 且当前 tick 成年档的 Social 家户份额，落成 hh-unit:<newUnitId> 的成员"));
     props.put("targetGovUnitId", ToolSupport.prop("string", "目的 GOV 单位 id（可选；给了就规划从来源到它的路线）"));
     props.put("role", ToolSupport.prop("string", "行动记录里的角色标签（可选；缺省 EXAMINEE；不落单位字段）"));
     props.put(
@@ -211,6 +210,7 @@ public final class GovSelectExamineesTool implements AgentTool {
       Optional<String> role = optionalText(args, "role");
       Optional<String> newUnitId = optionalText(args, "newUnitId");
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
+      boolean planOnly = !preview && ToolSupport.optionalBoolean(args, "planOnly").orElse(false);
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSupport.optionalLong(args, "expectedRevision");
@@ -230,7 +230,7 @@ public final class GovSelectExamineesTool implements AgentTool {
       if (preview) {
         return ToolSupport.ok(planView(plan, reason, true, false));
       }
-      return apply(plan, reason, branch, expectedRevision);
+      return apply(plan, reason, branch, expectedRevision, planOnly);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -251,10 +251,17 @@ public final class GovSelectExamineesTool implements AgentTool {
   // ── apply：组批 + 折叠 ───────────────────────────────────────────────────────────────
 
   private ToolResult apply(
-      GovSelectExamineesPlan.Plan plan, String reason, BranchId branch, long expectedRevision) {
+      GovSelectExamineesPlan.Plan plan,
+      String reason,
+      BranchId branch,
+      long expectedRevision,
+      boolean planOnly) {
     String batchId = UUID.randomUUID().toString();
     List<CommandEnvelope> batch =
         buildBatch(batchId, plan, reason, branch, new RevisionId(expectedRevision));
+    if (planOnly) {
+      return ToolSupport.ok(ToolSupport.plannedCommandsView(batch));
+    }
     BatchResult result = core.submitBatch(batch);
     Map<String, Object> view = planView(plan, reason, false, true);
     if (result instanceof BatchResult.Committed committed) {
@@ -294,8 +301,8 @@ public final class GovSelectExamineesTool implements AgentTool {
   }
 
   /**
-   * 组批（P1.5 固定顺序）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} →
-   * （有路线）{@code unit.PlanRoute} → {@code economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} →
+   * 组批（P1.5 固定顺序）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} → （有路线）{@code
+   * unit.PlanRoute} → {@code economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} →
    * {@code sd.PutInfo}。
    */
   private List<CommandEnvelope> buildBatch(

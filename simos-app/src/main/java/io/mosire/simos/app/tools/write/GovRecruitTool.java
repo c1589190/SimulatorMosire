@@ -32,23 +32,24 @@ import java.util.UUID;
 
 /**
  * ★★ {@code simos.gov.recruit}（阶段 10b-ii，2026-10-01 GOV/Army 计划 §2.2/§2.6；P1.1 改走 Social
- * 家户工单）：<b>GM 组合工具</b>——从辖区家户份额转移真实成员到 {@code hh-gov-<unitId>} + 同批入编 + 留行动记录，
- * 来源可追溯，一批落一条 revision。
+ * 家户工单）：<b>GM 组合工具</b>——从辖区家户份额转移真实成员到 {@code hh-gov-<unitId>} + 同批入编 + 留行动记录， 来源可追溯，一批落一条
+ * revision。
  *
  * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：人在 {@code social} 切片、编制在 {@code unit} 切片、行动记录在 {@code sd}
  * 切片；单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条
  * revision，原子）。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点是 {@link GovRecruitPlan#plan}（不碰 {@link ToolContext}
- * / {@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。不许出现第二份推导，也不许出现第二份瀑布
- * （{@link HouseholdManpowerAllocator} 是唯一那份）。
+ * / {@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。不许出现第二份推导，也不许出现第二份瀑布 （{@link
+ * HouseholdManpowerAllocator} 是唯一那份）。
  *
  * <p>★★ <b>批的三条命令（固定顺序）</b>：
  *
  * <ol>
- *   <li>{@code social.SubmitHouseholdWorkOrder}（恒有）：{@code orderId=gov-recruit:<unitId>:<role>:<tick>:<count>}
- *       确定性幂等键；target = 政府家户 {@code hh-gov-<unitId>}；{@code plan} = 逐来源 {@code
- *       TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId, count=taken)}——人真的进了政府家户；
+ *   <li>{@code social.SubmitHouseholdWorkOrder}（恒有）：{@code
+ *       orderId=gov-recruit:<unitId>:<role>:<tick>:<count>} 确定性幂等键；target = 政府家户 {@code
+ *       hh-gov-<unitId>}；{@code plan} = 逐来源 {@code TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId,
+ *       count=taken)}——人真的进了政府家户；
  *   <li>{@code unit.RecruitStaff}（恒有）：{@code {unitId, role, count, sources}}，{@code sources} = 逐来源
  *       {@code {kind:"household", id, lotId, count}}；命令本身只入编（不扣人——扣人在上一腿）；
  *   <li>{@code sd.PutInfo}（恒有）：地址 = 单位 canonical，key = {@value #INFO_KEY}，value = JSON <b>字符串</b>
@@ -65,11 +66,10 @@ import java.util.UUID;
  * ResourcePolicy#UNRESTRICTED}， GM 侧三者 unlimited）；{@code requireAll(Operation.WRITE, …)} 与其余 GM
  * 窄写同制。
  *
- * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / 单位不存在或不是 GOV / 超 staffCap / 无管辖 /
- * 辖区 Region 查无 / 政府家户不在 Unit.households 或 social.households / 来源总量不足 ⇒ {@link
- * IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒
- * {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
- * ResourceDeniedException}（由唯一入口折资源拒因）。
+ * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / 单位不存在或不是 GOV / 超 staffCap / 无管辖 / 辖区
+ * Region 查无 / 政府家户不在 Unit.households 或 social.households / 来源总量不足 ⇒ {@link
+ * IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code REJECTED} 带逐条真拒因；提交冲突
+ * ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}（由唯一入口折资源拒因）。
  */
 public final class GovRecruitTool implements AgentTool {
 
@@ -134,22 +134,22 @@ public final class GovRecruitTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 从辖区家户份额转移真实成员到政府家户并入编（组合工具，一批 = 一条 revision）："
-        + "参数 {unitId(必填, 必须是带 GovernmentFormation 的 GOV), role(必填 SCRIBE|YAMEN|POST), count(必填 ≥ 1), "
-        + "reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
+    return "GM 从辖区家户份额转移真实成员到政府家户并入编（组合工具，一批 = 一条 revision）：参数 {unitId(必填, 必须是带 GovernmentFormation"
+        + " 的 GOV), role(必填 SCRIBE|YAMEN|POST), count(必填 ≥ 1), reason(必填), preview?(缺省"
+        + " true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
-        + "), expectedRevision(preview=false 时必填)}。"
-        + "目标家户 = hh-gov-<unitId>，必须已同时在 Unit.households 与 Social 里，否则具名拒（不猜、不新建第二户）。"
-        + "来源口径：按单位 jurisdiction 的 Region 顺序把各区 hex 集合交给 HouseholdManpowerAllocator 的 MALE+ADULT "
-        + "家户份额瀑布（排除目标政府家户）；总量不足 ⇒ 整条拒（带 requested/available/缺口），不部分抽取。"
-        + "staffCap[role] 若存在且 现有+count>cap ⇒ 具名拒。"
-        + "批：social.SubmitHouseholdWorkOrder（orderId=gov-recruit:<unitId>:<role>:<tick>:<count> 幂等键，target=政府家户，"
-        + "逐来源 TRANSFER_MEMBERS(from=来源家户,to=政府家户,lotId,count=taken)）→ "
-        + "unit.RecruitStaff（sources=逐来源 {kind:\"household\",id,lotId,count}）→ sd.PutInfo（key="
+        + "), expectedRevision(preview=false 时必填)}。目标家户 = hh-gov-<unitId>，必须已同时在 Unit.households 与"
+        + " Social 里，否则具名拒（不猜、不新建第二户）。来源口径：按单位 jurisdiction 的 Region 顺序把各区 hex 集合交给"
+        + " HouseholdManpowerAllocator 的 MALE+ADULT 家户份额瀑布（排除目标政府家户）；总量不足 ⇒ 整条拒（带"
+        + " requested/available/缺口），不部分抽取。staffCap[role] 若存在且 现有+count>cap ⇒"
+        + " 具名拒。批：social.SubmitHouseholdWorkOrder（orderId=gov-recruit:<unitId>:<role>:<tick>:<count>"
+        + " 幂等键，target=政府家户，逐来源 TRANSFER_MEMBERS(from=来源家户,to=政府家户,lotId,count=taken)）→"
+        + " unit.RecruitStaff（sources=逐来源 {kind:\"household\",id,lotId,count}）→ sd.PutInfo（key="
         + INFO_KEY
-        + "）。守恒：Σ share.taken == count == roster 增量；批内不再有 social.SeedGroups。"
-        + "返回 {preview, submitted, tick, unitId, governmentHouseholdId, role, count, staffBefore, staffAfter, "
-        + "staffCap, available, sources[{householdId,lotId,taken,hex}], commands, infoText}；apply 另加 submission。";
+        + "）。守恒：Σ share.taken == count == roster 增量；批内不再有 social.SeedGroups。返回 {preview, submitted,"
+        + " tick, unitId, governmentHouseholdId, role, count, staffBefore, staffAfter, staffCap,"
+        + " available, sources[{householdId,lotId,taken,hex}], commands, infoText}；apply 另加"
+        + " submission。";
   }
 
   @Override
@@ -159,7 +159,8 @@ public final class GovRecruitTool implements AgentTool {
         "unitId",
         ToolSupport.prop(
             "string",
-            "招募主体：带 GovernmentFormation 的 GOV 单位 id（其政府家户 hh-gov-<unitId> 必须已同时在 Unit.households 与 Social 里）"));
+            "招募主体：带 GovernmentFormation 的 GOV 单位 id（其政府家户 hh-gov-<unitId> 必须已同时在 Unit.households 与"
+                + " Social 里）"));
     props.put("role", ToolSupport.prop("string", "行政角色：SCRIBE（书吏）|YAMEN（衙门）|POST（驿传）"));
     props.put("count", ToolSupport.prop("integer", "招募人数（≥ 1；不得超过 staffCap[role] 的剩余额度）"));
     props.put(
@@ -219,6 +220,7 @@ public final class GovRecruitTool implements AgentTool {
       long count = ToolSupport.requiredLong(args, "count");
       String reason = ToolSupport.requiredText(args, "reason");
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
+      boolean planOnly = !preview && ToolSupport.optionalBoolean(args, "planOnly").orElse(false);
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSupport.optionalLong(args, "expectedRevision");
@@ -238,7 +240,7 @@ public final class GovRecruitTool implements AgentTool {
       if (preview) {
         return ToolSupport.ok(planView(plan, reason, true, false));
       }
-      return apply(plan, reason, branch, expectedRevision);
+      return apply(plan, reason, branch, expectedRevision, planOnly);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -255,10 +257,17 @@ public final class GovRecruitTool implements AgentTool {
 
   /** 提交阶段：按 Plan 组三条命令的同一批，走唯一批量写入口，把三结局折进同一份视图。 */
   private ToolResult apply(
-      GovRecruitPlan.Plan plan, String reason, BranchId branch, long expectedRevision) {
+      GovRecruitPlan.Plan plan,
+      String reason,
+      BranchId branch,
+      long expectedRevision,
+      boolean planOnly) {
     String batchId = UUID.randomUUID().toString();
     List<CommandEnvelope> batch =
         buildBatch(batchId, plan, reason, branch, new RevisionId(expectedRevision));
+    if (planOnly) {
+      return ToolSupport.ok(ToolSupport.plannedCommandsView(batch));
+    }
     BatchResult result = core.submitBatch(batch);
     Map<String, Object> view = planView(plan, reason, false, true);
     if (result instanceof BatchResult.Committed committed) {
@@ -298,7 +307,10 @@ public final class GovRecruitTool implements AgentTool {
     return ToolResult.error("REJECTED", ToolSupport.json(view));
   }
 
-  /** 组批：{@code social.SubmitHouseholdWorkOrder} → {@code unit.RecruitStaff} → {@code sd.PutInfo}（固定顺序）。 */
+  /**
+   * 组批：{@code social.SubmitHouseholdWorkOrder} → {@code unit.RecruitStaff} → {@code
+   * sd.PutInfo}（固定顺序）。
+   */
   private List<CommandEnvelope> buildBatch(
       String batchId,
       GovRecruitPlan.Plan plan,

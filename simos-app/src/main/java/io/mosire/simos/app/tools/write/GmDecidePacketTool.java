@@ -18,6 +18,8 @@ import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.sd.id.DecisionPacketId;
+import io.mosire.simos.sd.id.MergedEffectPlanId;
+import io.mosire.simos.sd.model.CallStatus;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.PacketStatus;
@@ -39,8 +41,8 @@ import java.util.UUID;
 /**
  * {@code simos.gm.packet.decide}（D2 决策包计划 §4）：GM 对 PENDING 决策包做整包/逐 call 的 true/false 裁决。
  *
- * <p>★ 载荷 {packetId, decision: APPROVE|DENY, note?, callIndexes?}；{@link #MERGE} 返回 {@code
- * BAD_REQUEST("MERGE 留 D3")}。
+ * <p>★ 载荷 {packetId, decision: APPROVE|DENY|MERGE, note?, callIndexes?, mergedPlanId?}；{@code
+ * MERGE} 必带 {@code mergedPlanId}（目标 plan 必须已存在，先 upsert 再 decide），把包/当前 PENDING call 标 MERGED。
  *
  * <p>★ **执行者身份**：{@code decidedBy} 从 {@code context.identity()} 派生（GM 面 = {@code external-mcp}），
  * 模型自报不出这个字段。
@@ -52,7 +54,7 @@ public final class GmDecidePacketTool implements AgentTool {
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS。 */
   public static final String NAME = "simos.gm.packet.decide";
 
-  /** D2 不支持的第三档（D3 补合并流程）。 */
+  /** 合并裁决档（D3）：把本包当前 PENDING call 并入指定合并计划。 */
   public static final String MERGE = "MERGE";
 
   private static final ResourceManifest SD_WRITE =
@@ -75,23 +77,26 @@ public final class GmDecidePacketTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 裁决决策包（写）：参数 {packetId(必填), decision: APPROVE|DENY(必填；MERGE 留 D3), note?, "
-        + "callIndexes?(可选；APPROVE 时点名批准哪些 call，缺省 = 整包), branch?(缺省 "
+    return "GM 裁决决策包（写）：参数 {packetId(必填), decision: APPROVE|DENY|MERGE(必填), note?, "
+        + "callIndexes?(可选；APPROVE 时点名批准哪些 call，缺省 = 整包；与 MERGE 互斥), "
+        + "mergedPlanId?(decision=MERGE 时必填；目标 plan 必须已由 simos.gm.mergedPlan.upsert 建好), "
+        + "branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision?(缺省 head)}。decidedBy 从调用者身份派生。返回 {packetId, decision, decidedBy, "
-        + "status(预期), callStatuses, submission?}。";
+        + "status(预期), callStatuses, mergedPlanId?, submission?}。";
   }
 
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put("packetId", ToolSupport.prop("string", "决策包 id（必填）"));
-    props.put("decision", ToolSupport.prop("string", "APPROVE | DENY（MERGE 留 D3，返回 BAD_REQUEST）"));
+    props.put("decision", ToolSupport.prop("string", "APPROVE | DENY | MERGE"));
     props.put("note", ToolSupport.prop("string", "可选裁决注记（进 decisionNote）"));
     Map<String, Object> callIndexesProps =
-        ToolSupport.prop("array", "可选：APPROVE 时点名批准的 callIndex 列表（缺省 = 整包批准）");
+        ToolSupport.prop("array", "可选：APPROVE 时点名批准的 callIndex 列表（缺省 = 整包批准；与 MERGE 互斥）");
     callIndexesProps.put("items", ToolSupport.prop("integer", "callIndex"));
     props.put("callIndexes", callIndexesProps);
+    props.put("mergedPlanId", ToolSupport.prop("string", "decision=MERGE 时必填：目标合并效果计划 id"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
@@ -119,7 +124,9 @@ public final class GmDecidePacketTool implements AgentTool {
             + " decision="
             + args.get("decision")
             + " callIndexes="
-            + args.getOrDefault("callIndexes", "[]"),
+            + args.getOrDefault("callIndexes", "[]")
+            + " mergedPlanId="
+            + args.get("mergedPlanId"),
         AskKind.SENSITIVE);
   }
 
@@ -129,14 +136,23 @@ public final class GmDecidePacketTool implements AgentTool {
       Map<String, Object> args = context.arguments();
       String packetId = ToolSupport.requiredText(args, "packetId");
       String decision = ToolSupport.requiredText(args, "decision").trim();
-      if (MERGE.equals(decision)) {
-        return ToolResult.error("BAD_REQUEST", "MERGE 留 D3（D2 只支持 APPROVE|DENY）");
-      }
-      if (!"APPROVE".equals(decision) && !"DENY".equals(decision)) {
-        return ToolResult.error("BAD_REQUEST", "decision 只允许 APPROVE|DENY: " + decision);
+      if (!"APPROVE".equals(decision) && !"DENY".equals(decision) && !MERGE.equals(decision)) {
+        return ToolResult.error("BAD_REQUEST", "decision 只允许 APPROVE|DENY|MERGE: " + decision);
       }
       Optional<String> note = Optional.ofNullable(ToolSupport.optionalText(args, "note", null));
       List<Integer> callIndexes = optionalCallIndexes(args);
+      Optional<String> mergedPlanIdArg =
+          Optional.ofNullable(ToolSupport.optionalText(args, "mergedPlanId", null));
+      if (MERGE.equals(decision)) {
+        if (!callIndexes.isEmpty()) {
+          return ToolResult.error("BAD_REQUEST", "MERGE 与 callIndexes 互斥：MERGE 是整包并入合并计划");
+        }
+        if (mergedPlanIdArg.isEmpty()) {
+          return ToolResult.error("BAD_REQUEST", "decision=MERGE 时必须给 mergedPlanId");
+        }
+      } else if (mergedPlanIdArg.isPresent()) {
+        return ToolResult.error("BAD_REQUEST", "mergedPlanId 只在 decision=MERGE 时有意义");
+      }
       String decidedBy = context.identity().instanceId();
       if (decidedBy == null || decidedBy.isBlank()) {
         return ToolResult.error("FORBIDDEN", "调用者身份没有 instanceId，判不出执行者");
@@ -161,6 +177,11 @@ public final class GmDecidePacketTool implements AgentTool {
         return ToolResult.error(
             "BAD_REQUEST", "只有 PENDING 决策包可裁决，当前状态: " + packet.status() + "（" + packetId + "）");
       }
+      if (MERGE.equals(decision)
+          && !sd.mergedEffectPlans()
+              .containsKey(MergedEffectPlanId.parse(mergedPlanIdArg.orElseThrow()))) {
+        return ToolResult.error("NOT_FOUND", "合并计划不存在: " + mergedPlanIdArg.orElseThrow());
+      }
       ToolSupport.requireAll(
           context, Operation.WRITE, List.of(ResourceId.of(ToolSupport.SD_NAMESPACE, "*")));
       String commandId = UUID.randomUUID().toString();
@@ -172,14 +193,18 @@ public final class GmDecidePacketTool implements AgentTool {
               branch,
               new RevisionId(state.meta().ref().revision().value()),
               DecideDecisionPacketHandler.TYPE,
-              DecisionPacketPayloads.decide(packetId, decision, note, callIndexes, decidedBy));
+              DecisionPacketPayloads.decide(
+                  packetId, decision, note, callIndexes, decidedBy, mergedPlanIdArg));
       CommandResult result = core.submit(envelope);
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("packetId", packetId);
       view.put("decision", decision);
       view.put("decidedBy", decidedBy);
       view.put("status", expectedStatus(packet, decision, callIndexes).name());
-      view.put("callStatuses", callStatuses(packet, decision, callIndexes));
+      view.put(
+          "callStatuses",
+          callStatuses(packet, decision, callIndexes, mergedPlanIdArg.orElse(null)));
+      mergedPlanIdArg.ifPresent(value -> view.put("mergedPlanId", value));
       return DecisionPacketPayloads.fold(result, view, commandId);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
@@ -219,6 +244,9 @@ public final class GmDecidePacketTool implements AgentTool {
     if ("DENY".equals(decision)) {
       return PacketStatus.REJECTED;
     }
+    if (MERGE.equals(decision)) {
+      return PacketStatus.MERGED;
+    }
     Set<Integer> selected = new LinkedHashSet<>(callIndexes);
     if (selected.isEmpty()) {
       return PacketStatus.APPROVED;
@@ -232,19 +260,25 @@ public final class GmDecidePacketTool implements AgentTool {
   }
 
   private static List<Map<String, Object>> callStatuses(
-      DecisionPacket packet, String decision, List<Integer> callIndexes) {
+      DecisionPacket packet, String decision, List<Integer> callIndexes, String mergedPlanId) {
     Set<Integer> selected = new LinkedHashSet<>(callIndexes);
     List<Map<String, Object>> out = new ArrayList<>(packet.calls().size());
     for (FormattedCall call : packet.calls()) {
       Map<String, Object> row = new LinkedHashMap<>();
       row.put("callIndex", call.callIndex());
-      row.put(
-          "status",
-          "DENY".equals(decision)
-              ? "REJECTED"
-              : selected.isEmpty() || selected.contains(call.callIndex())
-                  ? "APPROVED"
-                  : "REJECTED");
+      if ("DENY".equals(decision)) {
+        row.put("status", "REJECTED");
+      } else if (MERGE.equals(decision)) {
+        boolean merged = call.status() == CallStatus.PENDING;
+        row.put("status", merged ? "MERGED" : call.status().name());
+        if (merged) {
+          row.put("mergedPlanId", mergedPlanId);
+        }
+      } else {
+        row.put(
+            "status",
+            selected.isEmpty() || selected.contains(call.callIndex()) ? "APPROVED" : "REJECTED");
+      }
       out.add(row);
     }
     return out;
