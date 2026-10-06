@@ -277,7 +277,7 @@ hh-1_1-rural-rich_peasant     Social 31  Economy 28
 > （`b663b357`）均已完成并推送。施工文档：`2026-10-11-unit-integration-p1.md`、
 > `2026-10-12-unit-integration-p3.md`、`2026-10-13-unit-integration-p2.md`、
 > `2026-10-14-unit-integration-p4a.md`。P4b 军俸政策/内部分摊（`bfb246a3`，见 `2026-10-15-unit-integration-p4b.md`）已完成；剩余：P4c（GM/决策人窄工具/白名单/军俸 FlowRow 维度）、
-> GovSelectExaminees/GovDispatchTeam/SpawnArmy 的完整接线、测试迁移与 clean verify。以下原文保留。
+> GovSelectExaminees/GovDispatchTeam/LevyRegion 已完成（`2026-10-16-unit-integration-p1.5.md`、`2026-10-17-unit-integration-levy.md`）；剩余：SpawnArmy/GovAbsorbUnit 的 GM/吸收政策、P4c 工具端、测试迁移与 clean verify。以下原文保留。
 
 1. **征兵/退伍：组合工具迁移到 Social 工单**
    - 现状：app 组合旧 `social.*` 命令；

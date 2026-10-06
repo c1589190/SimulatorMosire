@@ -14,7 +14,8 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Jurisdiction;
@@ -26,6 +27,7 @@ import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.ToLongFunction;
 
 /**
@@ -52,19 +54,21 @@ import java.util.function.ToLongFunction;
  *       requested / available / 缺口，不部分、不截断）；
  *   <li><b>分摊 = 瀑布</b>：三个账维度共用 {@link RegionAllocations#allocateAccounts}（可用量降序、同量按账键 {@link
  *       io.mosire.simos.actor.model.HouseholdAccountKey#toString()} 升序，逐户扣满为止）；
- *   <li><b>人力来源</b>：{@code social.groups()} 里 residence 在 region 各 hex、{@link
- *       io.mosire.simos.social.api.population.Sex#MALE}、且 {@code
- *       io.mosire.simos.social.population.AgeBracket.of(clock.system(),
- *       clock.dayNumberOfTick(tick), ageDaysAt(tick))} == {@link
- *       io.mosire.simos.social.population.AgeBracket#ADULT} 的批次（年龄按<b>当前 tick + 历法现算</b>，15/60
- *       整历法年、阈值不在本类另写）； 同一瀑布（count 降序、id 升序），不足 ⇒ 整条拒；
- *   <li><b>四项独立</b>：requested = 0 的维度整段跳过（不扫描、不产生来源条目、不建账）。
+ *   <li><b>人力来源（2026-10-17 接线）</b>：目标家户 = {@code unit.households()} <b>恰一个</b>且该家户在 Social 里；
+ *       来源 = {@link HouseholdManpowerAllocator#allocateMalesOfAdult}（{@link
+ *       io.mosire.simos.social.api.population.Sex#MALE} + {@link
+ *       io.mosire.simos.social.population.AgeBracket#ADULT}，share-aware，年龄按当前 tick + 历法现算；目标家户排除，
+ *       避免自我转移）对 {@code region.hexes()} 的逐份额瀑布，产出 {@code (household, lot, hex, taken)} 的
+ *       {@link HouseholdManpowerAllocator.ManpowerShare}；不足 ⇒ 整条拒（不部分、不截断）；Σ {@code share.taken}
+ *       == {@code manpower}；
+ *   <li><b>四项独立</b>：requested = 0 的维度整段跳过（不扫描、不产生来源条目、不建账）；manpower = 0 时不解析目标家户、
+ *       不扫描 Social 家户份额。
  * </ol>
  *
- * <p>★★ <b>P1.0 fail-closed（2026-10-11）</b>：{@code manpower > 0} 在负数校验之后、任何状态查询/Plan 组装之前直接抛具名
- * {@link IllegalArgumentException}（本次调用零 revision）——旧 {@code social.SeedGroups} 删人腿不再发出，因为目标家户尚未接线；
- * 粮 / 钱 / 布三维不受影响、照常可用。未来人力要走 Social 家户工单（{@code social.SubmitHouseholdWorkOrder +
- * TRANSFER_MEMBERS}）。
+ * <p>★★ <b>manpower 接线（2026-10-17）</b>：{@code manpower > 0} 不再 plan 级 fail-closed——目标家户取
+ * {@code unit.households()} 恰一个、且该家户必须已存在于 Social（为空 / 多个 / 不在 Social ⇒ plan 级具名拒，本次调用零
+ * revision；多户需显式 target 政策，不按列表顺序猜）；来源与守恒走 {@link HouseholdManpowerAllocator}；粮 / 钱 / 布三维与
+ * treasury 解析逐字不变（不走旧 {@code social.SeedGroups} 删人路径）。
  *
  * <p>★ <b>确定性</b>：本类是状态的纯函数——同一状态 + 同一参数 ⇒ 逐字段相同的 {@link Plan}（来源表是显式 {@link List}，排序键是内容的全序；没有遍历
  * {@code Map} 迭代序的余地）。Plan 里没有随机量、也没有墙钟时间：{@code tick} 是状态 meta 的函数。
@@ -131,16 +135,6 @@ final class LevyRegionPlan {
     requireNonNegative(money, "money");
     requireNonNegative(cloth, "cloth");
     requireNonNegative(manpower, "manpower");
-    // ★★ P1.0 fail-closed（2026-10-11）：manpower 的删人路径已在 plan 级关闭——本 plan 尚未接线目标家户，
-    //   不允许再走 social.SeedGroups 直接减批次 count；粮/钱/布三维不受影响。guard 放在负数校验之后、
-    //   全零校验之前，且在任何单位/区域状态查询与 Plan 组装之前 ⇒ 本次调用零 revision。
-    if (manpower > 0L) {
-      throw new IllegalArgumentException(
-          "manpower 已退役（P1.0）：未接目标家户，manpower>0 在 plan 级具名拒（本次调用零 revision），"
-              + "不再走 social.SeedGroups 删人路径；粮/钱/布路径不受影响、照常可用；"
-              + "未来人力要走 Social 家户工单（social.SubmitHouseholdWorkOrder + TRANSFER_MEMBERS）: manpower="
-              + manpower);
-    }
     if (grain == 0L && money == 0L && cloth == 0L && manpower == 0L) {
       throw new IllegalArgumentException("grain/money/cloth/manpower 四项全为 0，没有任何抽取；至少给一项 > 0");
     }
@@ -184,6 +178,41 @@ final class LevyRegionPlan {
                 () ->
                     new IllegalArgumentException(
                         "单位 " + unitId + " 当刻没有有效位置，国库落点无法确定；先 unit.PlaceAt"));
+    // ★★ 2026-10-17 Levy manpower 接线：manpower>0 的人口落点 = unit.households() 恰一个、且该家户已在 Social 里。
+    //   为空 / 多个 / 不在 Social ⇒ plan 级具名拒（本次调用零 revision）；manpower = 0 时整段跳过（不解析、不扫描）。
+    //   目标家户与国库家户是两件事：国库解析（含 GOV / masterGov / 账目落点）在下面原样进行，本段不改它的口径。
+    HouseholdId manpowerTargetHousehold = null;
+    if (manpower > 0L) {
+      SocialData targetSocial = ToolSupport.socialData(state);
+      List<HouseholdId> unitHouseholds = unit.households();
+      if (unitHouseholds.isEmpty()) {
+        throw new IllegalArgumentException(
+            "单位 "
+                + unitId
+                + " 的 unit.households() 为空：manpower>0 需要恰一个目标家户作为人口落点"
+                + "（多户需显式 target 政策；空户先 raiseUnit/createOffice 建人口户，或 unit.SetUnitHouseholds 编入）");
+      }
+      if (unitHouseholds.size() > 1) {
+        throw new IllegalArgumentException(
+            "单位 "
+                + unitId
+                + " 的 unit.households() 有多个家户 "
+                + unitHouseholds
+                + "：多户需显式 target 政策（本批不按列表顺序猜目标户，也不按第一个=国库）；"
+                + "先 unit.SetUnitHouseholds 只保留一个户，或等显式 target 政策落地");
+      }
+      HouseholdId target = unitHouseholds.get(0);
+      if (!targetSocial.households().containsKey(target)) {
+        throw new IllegalArgumentException(
+            "单位 "
+                + unitId
+                + " 的目标家户 "
+                + target.value()
+                + " 不在 Social 切片里：manpower>0 的人口落点必须是已存在的 Social 家户"
+                + "（不静默造户；先 social.CreateHousehold / social.SubmitHouseholdWorkOrder 建户）");
+      }
+      manpowerTargetHousehold = target;
+    }
     // ★★ P2-C §13.7 / P2-D：国库 = **有账户的家户**（GOV 单位 = 政府家户；非 GOV 单位 = 可确定性解析的家户），
     //   不再取 unit.households 的第一个（那是"先到者胜"的列表顺序口径）。解析规则：
     //     ① GOV 单位 → 它自己的政府家户 hh-gov-<unitId>（GovernmentHouseholdResolver 按稳定 id 解析）；
@@ -252,13 +281,15 @@ final class LevyRegionPlan {
     Manpower manpowerDimension =
         manpower == 0L
             ? Manpower.skipped()
-            : manpowerDimension(state, region, tick, manpower, clock);
+            : manpowerDimension(
+                state, region, tick, manpower, clock, manpowerTargetHousehold);
     return new Plan(
         unitId,
         regionId,
         tick,
         treasuryLocation,
         treasuryHousehold,
+        manpowerTargetHousehold,
         grainDimension,
         moneyDimension,
         clothDimension,
@@ -294,22 +325,31 @@ final class LevyRegionPlan {
     return new Dimension(allocation.requested(), allocation.available(), List.copyOf(sources));
   }
 
-  // ── 人力：social 批次的瀑布 ──────────────────────────────────────────────────────────
+  // ── 人力：Social 家户份额的瀑布（P1.0 唯一选人层）────────────────────────────────────
 
   /**
-   * 人力维度的分摊：委托给 {@link RegionAllocations#allocateManpower}（<b>全仓唯一一份人力瀑布</b>；口径见类注第 6 条）。
-   * 本类只做结果类型转换，保证 {@link Manpower}/{@link GroupSource} 的对外形状逐字不变。
+   * 人力维度的分摊：委托给 {@link HouseholdManpowerAllocator#allocateMalesOfAdult}（<b>全仓唯一一份 share-aware
+   * 选人层</b>，MALE + 成年档；口径见类注第 6 条）。目标家户整体排除（自我转移会被 Social 域层拒）；本类只做结果类型转换，保证
+   * {@link Manpower}/{@link HouseholdManpowerAllocator.ManpowerShare} 的对外形状逐字不变。
+   *
+   * @param target 目标家户（manpower &gt; 0 时由调用方保证非 null 且已在 Social 里）
    */
   private static Manpower manpowerDimension(
-      SimulationState state, Region region, long tick, long requested, CalendarClock clock) {
-    RegionAllocations.ManpowerAllocation allocation =
-        RegionAllocations.allocateManpower(
-            ToolSupport.socialData(state), region, tick, requested, clock);
-    List<GroupSource> sources = new ArrayList<>(allocation.sources().size());
-    for (RegionAllocations.GroupSource source : allocation.sources()) {
-      sources.add(new GroupSource(source.group(), source.at(), source.taken()));
-    }
-    return new Manpower(allocation.requested(), allocation.available(), List.copyOf(sources));
+      SimulationState state,
+      Region region,
+      long tick,
+      long requested,
+      CalendarClock clock,
+      HouseholdId target) {
+    HouseholdManpowerAllocator.Allocation allocation =
+        HouseholdManpowerAllocator.allocateMalesOfAdult(
+            ToolSupport.socialData(state),
+            List.of(region.hexes()),
+            requested,
+            clock,
+            tick,
+            Set.of(target));
+    return new Manpower(allocation.requested(), allocation.available(), allocation.shares());
   }
 
   // ── 校验小件 ────────────────────────────────────────────────────────────────────────
@@ -344,6 +384,9 @@ final class LevyRegionPlan {
    * @param regionId 抽取区域
    * @param tick 推导时的世界日（人力的现算年龄与行动记录的 tick 都用它）
    * @param treasuryLocation 国库落点 = 单位当刻有效位置
+   * @param treasuryHousehold 国库家户（粮/钱/布动账时非空白；解析口径与 P2-C 完全一致）
+   * @param manpowerTargetHousehold 人力目标家户（{@code manpower > 0} 时非 null；= {@code unit.households()} 恰一个
+   *     且已存在于 Social 的那一个）；{@code manpower = 0} 时为 null（该维度整段跳过）
    * @param cloth 布维度（阶段 11b；★ 无单命令上限，只受可用量约束）
    */
   record Plan(
@@ -352,6 +395,7 @@ final class LevyRegionPlan {
       long tick,
       HexCoord treasuryLocation,
       String treasuryHousehold,
+      HouseholdId manpowerTargetHousehold,
       Dimension grain,
       Dimension money,
       Dimension cloth,
@@ -376,6 +420,19 @@ final class LevyRegionPlan {
       Objects.requireNonNull(money, "money");
       Objects.requireNonNull(cloth, "cloth");
       Objects.requireNonNull(manpower, "manpower");
+      if (manpower.requested() > 0L) {
+        if (manpowerTargetHousehold == null) {
+          throw new IllegalArgumentException("manpower>0 时 manpowerTargetHousehold 不得为 null");
+        }
+        for (HouseholdManpowerAllocator.ManpowerShare share : manpower.shares()) {
+          if (share.householdId().equals(manpowerTargetHousehold)) {
+            throw new IllegalArgumentException(
+                "内部分摊不自洽：来源家户不得是目标家户 "
+                    + manpowerTargetHousehold.value()
+                    + "（自我转移会被 Social 域层拒）");
+          }
+        }
+      }
     }
 
     /** 是否需要落 {@code actor.AdjustAccounts}（粮 / 钱 / 布任一 > 0）。 */
@@ -383,7 +440,7 @@ final class LevyRegionPlan {
       return grain.requested() > 0L || money.requested() > 0L || cloth.requested() > 0L;
     }
 
-    /** 是否需要落 {@code social.SeedGroups}（人力 > 0）。 */
+    /** 是否需要落 {@code social.SubmitHouseholdWorkOrder}（人力 > 0）。 */
     boolean hasManpower() {
       return manpower.requested() > 0L;
     }
@@ -422,42 +479,40 @@ final class LevyRegionPlan {
   }
 
   /**
-   * 人力一个维度的推导结果。
+   * 人力一个维度的推导结果（P1.0 唯一选人层 {@link HouseholdManpowerAllocator} 的投影）。
    *
    * @param requested 请求量（0 = 本维度整段跳过）
-   * @param available 全部合格批次的人数之和（requested = 0 时为 0 = 未求值）
-   * @param sources 实际抽人的批次（瀑布序）
+   * @param available 全部合格家户份额的人数之和（requested = 0 时为 0 = 未求值）
+   * @param shares 实际抽到的家户份额（瀑布序；Σ {@code taken == requested}）
    */
-  record Manpower(long requested, long available, List<GroupSource> sources) {
+  record Manpower(
+      long requested, long available, List<HouseholdManpowerAllocator.ManpowerShare> shares) {
 
     Manpower {
       requireNonNegative(requested, "requested");
       requireNonNegative(available, "available");
-      sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
+      shares = List.copyOf(Objects.requireNonNull(shares, "shares"));
+      if (requested == 0L && !shares.isEmpty()) {
+        throw new IllegalArgumentException("requested == 0 时 shares 必须为空（0 = 整段跳过、不扫描）");
+      }
+      if (requested > 0L) {
+        if (available < requested) {
+          throw new IllegalArgumentException(
+              "内部分摊不自洽：available=" + available + " < requested=" + requested);
+        }
+        long total = 0L;
+        for (HouseholdManpowerAllocator.ManpowerShare share : shares) {
+          total += share.taken();
+        }
+        if (total != requested) {
+          throw new IllegalArgumentException(
+              "守恒破坏：Σshare.taken=" + total + " != manpower=" + requested);
+        }
+      }
     }
 
     static Manpower skipped() {
       return new Manpower(0L, 0L, List.of());
-    }
-  }
-
-  /** 一个被动批次：整条覆盖用的必要字段 + 来源格（S2：位置来自家户）+ 抽走的人数；{@code countAfter} 可为 0。 */
-  record GroupSource(PopulationGroup group, HexCoord at, long taken) {
-
-    GroupSource {
-      Objects.requireNonNull(group, "group");
-      Objects.requireNonNull(at, "at");
-      if (taken <= 0L) {
-        throw new IllegalArgumentException("taken 必须 > 0: " + taken);
-      }
-      if (taken > group.count()) {
-        throw new IllegalArgumentException(
-            "taken 不得超过批次人数: taken=" + taken + "，count=" + group.count());
-      }
-    }
-
-    long countAfter() {
-      return group.count() - taken;
     }
   }
 }
