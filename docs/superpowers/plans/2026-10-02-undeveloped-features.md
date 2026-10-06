@@ -174,3 +174,22 @@
   GM 窄工具由 D4 补）；**P4c 残留**（决策人受限工具、FlowRow/ledger 维度、共享国库预算优先级）仍开放。
 - **搜索纪律更正**：`git grep … -- 'simos-*/src/main'` 这类 glob pathspec 在本仓会**静默 0 命中**
   （正对照：`class Shell` 同写法也 0）；老清单里按此写法得出的「不存在」结论已在新清单里逐条重核。
+
+---
+
+## 工具面归属：工具归各模块管 + 统一工具协议（2026-10-23 用户设计意图，**未立项**）
+
+> 用户原话：「app 的 CoreSimos.submit(...)……怎么说呢，APP只是一个管前端包装、程序启动项的模块，
+> 理论上各个模块的工具归各个模块管，然后统一复写工具协议，为啥要APP管？」
+
+**现状（2026-10-23 回代码核）**：
+- 工具实现 **183 个文件全部在 `simos-app/tools/**`**；领域模块 `src/main` 里 **0 个工具类**
+  （`git grep io.mosire.agentlib.tool` 命中的生产文件：simos-app 149 + simos-core 1）。
+- app 现状远不止「前端包装 + 启动项」：还有 17 个 time participant、query/render/gui/decision/
+  household 桥接、world seeder 等；按 `AGENTS.md` 模块表它是**组合根**。
+- 协议层**已有统一基座**：AgentLib `AgentTool`/`ToolSpec` + app 的 `AbstractNarrowWriteTool` /
+  `AbstractHouseholdGmTool`（统一建 `CommandEnvelope`、统一审批与署名）+ `RecordingToolSource`（统一执行/记录）。
+- `CommandEnvelope` 已带调用方给的 `initiator`（落 revisions 表），说明「命令自带来源信息」是本仓既有模式。
+
+**结论**：属用户设计意图，**未立项**。开工前按 AGENTS §一.8 补完整架构文档（模块依赖/enforcer、工具协议归属、
+审批与权限、迁移与回退、文件所有权），单独开批次；**日志批次不承担此重构**（2026-10-23 用户选项确认）。

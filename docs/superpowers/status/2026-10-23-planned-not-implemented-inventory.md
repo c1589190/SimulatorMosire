@@ -82,7 +82,8 @@
 | 功能 | 差什么 |
 |---|---|
 | **SpotBugs 基线债** | `clean verify` 未绿（`EI_EXPOSE_REP` 于不可变 record、`UPM_UNCALLED_PRIVATE_METHOD`、`SF_SWITCH_NO_DEFAULT`、`FE_FLOATING_POINT_EQUALITY`） |
-| **其他模块 Log 调用点覆盖与测试迁移** | 8 个模块门面已建；sd 约 11 个 handler 未覆盖、gov 无生产调用者、组合工具未逐工具记行 —— AGENTS §一.9「待办（不是可选）」 |
+| **其他模块 Log 调用点覆盖与测试迁移** | 8 个模块门面已建；sd 约 11 个 handler 未覆盖、gov 无生产调用者、组合工具未逐工具记行 —— AGENTS §一.9「待办（不是可选）」；用户 2026-10-23 指定先做（L1~L4 批次见 `plans/2026-10-23-all-module-logging-rollout.md`） |
+| **工具面下沉到模块** | 用户 2026-10-23 设计意图：app 只是前端包装/启动项，**工具归各模块管 + 统一工具协议**；现状 183 个工具文件全在 app、领域模块 0 个工具类（未立项，见 `plans/2026-10-02-undeveloped-features.md` 末尾节） |
 | **enforcer 回填** | `util/map/unit` 仍不拦 `economy/economy-api/ledger`；`simos-app` 未显式声明 `util`、`economy-api`（靠传递依赖） |
 | **provider 互操作** | 真模型偶产 `tool_calls.arguments` 含 JSON `null`，runner 层不能完全消除 |
 | **`RealLlmGovScenarioTest` 的 GM 确定性补执行** | 测试方法学债：模型侧只要求 ≥1 类工具从包路径执行 |
