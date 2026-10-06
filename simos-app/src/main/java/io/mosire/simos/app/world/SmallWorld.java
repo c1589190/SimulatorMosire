@@ -58,8 +58,12 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * ★★ <b>小世界（P1.4）</b>：一个<b>程序化、确定性、可直接 bootstrap 的 15 格世界</b>——1 个 {@link Region}、1 座首都 + 1 座镇、
- * 4,000 人（3,000 农村 + 1,000 城镇），经济地基走<b>唯一路线 production-runtime</b>（政府内置）。
+ * ★★ <b>小世界（P1.4，2026-10-23 扩到 19 格）</b>：一个<b>程序化、确定性、可直接 bootstrap 的 19 格世界</b>——1 个 {@link
+ * Region}、1 座首都 + 1 座镇、4,800 人（3,800 农村 + 1,000 城镇），经济地基走<b>唯一路线 production-runtime</b>（政府内置）。
+ *
+ * <p>★ <b>扩格依据</b>：{@code
+ * docs/superpowers/specs/2026-10-23-smallworld-19hex-and-economy-360tick-design.md} §4（19 格六邻连通 / 1
+ * Region / 人口公式不变 / 地形只用 plains·low_hills / 世界 id 与地形两城口径不变）。
  *
  * <p>★★ <b>它解决哪件事</b>：{@code v17levant}（{@link RichWorld}）是 59,223 格的复刻真档，起一次要读大资源、跑一次要等很久； {@code
  * corridor}（{@link CorridorWorld}）只有 3 格且没有真实经济。<b>两者之间缺一个"浏览器能打开、经济有政府家户/国库、又足够小"的真实世界</b>——
@@ -68,20 +72,20 @@ import java.util.Set;
  * <p>★★ <b>世界形状（一切数字都是本类的具名常量，见下）</b>：
  *
  * <ul>
- *   <li><b>15 hex</b>（{@value #HEX_COUNT}，落在 13~17 的目标区间）：中心 + 完整第一环 + 8 格第二环，六邻域连通；
- *   <li><b>1 个 Region</b>（{@link #REGION_ID}，名字 {@value #REGION_NAME}）：全部 15 格都归属它；
+ *   <li><b>19 hex</b>（{@value #HEX_COUNT}）：中心 + 完整第一环（6 格）+ 完整第二环（12 格）= 半径 2 的完整六边形，六邻域连通；
+ *   <li><b>1 个 Region</b>（{@link #REGION_ID}，名字 {@value #REGION_NAME}）：全部 19 格都归属它；
  *   <li><b>1 座首都</b>（{@value #CAPITAL_ID}，{@value #CAPITAL_URBAN_POPULATION} 城镇人口）+ <b>1
  *       座镇</b>（{@value #TOWN_ID}，{@value #TOWN_URBAN_POPULATION} 城镇人口）；
- *   <li><b>人口 4,000</b>：15 格 × {@value #RURAL_POPULATION_PER_HEX} 农村人口 = 3,000，加城镇
+ *   <li><b>人口 4,800</b>：19 格 × {@value #RURAL_POPULATION_PER_HEX} 农村人口 = 3,800，加城镇
  *       1,000；人口最多的是首都格（200 + 700 = 900）⇒ 世界级政府家户 {@code hh-gov-world-silver} 落在首都；
- *   <li><b>地形</b>：平原为主（11 格）+ 低丘 4 格（城市两格取平原，故土地的"满可耕/低丘"两档都真的被 economic 播种读到）。
+ *   <li><b>地形</b>：平原 15 格（原 11 + 新增 4）+ 低丘 4 格（城市两格取平原，故土地的"满可耕/低丘"两档都真的被 economic 播种读到）。
  * </ul>
  *
  * <p>★★ <b>经济播种走真路径 production-runtime（政府内置）</b>：本类不另写一套播种逻辑，而是按 {@code WorldgenInitializeTool}
  * 的同一条命令序，把同一批<b>真命令载荷</b>交给<b>真 handler</b>：
  *
  * <pre>
- * social.SetPopulation（15 格农村人口序列）
+ * social.SetPopulation（19 格农村人口序列）
  * → social.CreateCity ×2（首都 + 镇）
  * → social.SeedGroups（同一份批次/家户，PopulationSeeder）
  * → economy.Seed（EconomySeeder.plan 的 production-runtime 载荷：产业/阶层/劳动/资产/市场 + world-silver 政府家户/国库/周期铸币政策）
@@ -94,7 +98,8 @@ import java.util.Set;
  * 创世 revision，不伪造领域命令历史。
  *
  * <p>★ <b>确定性、无随机、无时钟</b>：无 {@code UUID}、无 {@code Random}、无墙钟读取；同一 {@code mapId} 每次调用产出 {@link
- * SimulationState#equals(Object) 相等}的状态（逐字段），本类的构造序也确定：格按 {@code (q,r)}、城市按人口降序/id 升序、 家户 actor 由
+ * SimulationState#equals(Object) 相等}的状态（逐字段），本类的构造序也确定：格按 {@link #HEXES} 声明序（即 {@link
+ * GameMap#hexes()} 插入序；{@code PopulationSeeder} 另按 {@code (q,r)} 排序）、城市按人口降序/id 升序、 家户 actor 由
  * {@code HouseholdSeeder} 的确定序。★ 不承诺内部 {@code Set}/{@code Map} 的 {@code toString()} 迭代序——那是 util
  * 既有实现（{@code Set.copyOf}/{@code Map.copyOf} 的迭代序不是内容的纯函数），各世界一致。
  *
@@ -117,10 +122,10 @@ public final class SmallWorld {
   /** 唯一 Region 的显示名。 */
   public static final String REGION_NAME = "小世界";
 
-  /** 格数（13~17 的目标区间内；世界形状见类注）。 */
-  public static final int HEX_COUNT = 15;
+  /** 格数：19（半径 2 的完整六边形 = 中心 1 + 第一环 6 + 第二环 12；世界形状见类注）。 */
+  public static final int HEX_COUNT = 19;
 
-  /** 每格农村人口（15 × 200 = 3,000）。 */
+  /** 每格农村人口（19 × 200 = 3,800）。 */
   public static final long RURAL_POPULATION_PER_HEX = 200L;
 
   /** 首都城镇人口。 */
@@ -129,7 +134,7 @@ public final class SmallWorld {
   /** 镇城镇人口。 */
   public static final long TOWN_URBAN_POPULATION = 300L;
 
-  /** 总人口 = 3,000 农村 + 1,000 城镇 = 4,000（落在 3,000~5,000 的目标区间）。 */
+  /** 总人口 = 3,800 农村 + 1,000 城镇 = 4,800（19 hex 的公式推导值）。 */
   public static final long TOTAL_POPULATION =
       RURAL_POPULATION_PER_HEX * HEX_COUNT + CAPITAL_URBAN_POPULATION + TOWN_URBAN_POPULATION;
 
@@ -157,7 +162,11 @@ public final class SmallWorld {
   private static final String LOW_HILLS = "low_hills";
 
   /**
-   * 15 格：中心 + 完整第一环 + 第二环的 8 格（清单写死在下面；第二环每格都与第一环相邻，故整图六邻域连通）。
+   * 19 格 = 中心 + 完整第一环（6）+ 完整第二环（12）：半径 2 的完整六边形，六邻域连通、无重复。
+   *
+   * <p>前 15 条是 P1.4 的原有清单（相对顺序未动，最小 diff）；末尾 4 条 {@code (2,-2)/(1,-2)/(-2,1)/(-1,2)} 是第二环仅剩的四个缺口，
+   * 补齐后第二环完整。每个第二环格都与第一环相邻（新 4 格分别邻第一环的 {@code (1,-1)}、{@code (0,-1)}、{@code (-1,0)}、 {@code
+   * (-1,1)}），故整图连通。
    *
    * <p>顺序即 {@link GameMap#hexes()} 的插入序与人口序列的落盘序（确定性）。
    */
@@ -177,9 +186,13 @@ public final class SmallWorld {
           new HexCoord(-2, 2),
           new HexCoord(0, 2),
           new HexCoord(1, 1),
-          new HexCoord(-1, -1));
+          new HexCoord(-1, -1),
+          new HexCoord(2, -2),
+          new HexCoord(1, -2),
+          new HexCoord(-2, 1),
+          new HexCoord(-1, 2));
 
-  /** 低丘 4 格（城市两格刻意取平原：首都/镇的经济播种不受地形系数干扰）。 */
+  /** 低丘 4 格（保持 P1.4 原有清单不动；新增的 4 格取平原，城市两格也刻意取平原：首都/镇的经济播种不受地形系数干扰）。 */
   private static final Set<HexCoord> LOW_HILLS_HEXES =
       Set.of(new HexCoord(2, 0), new HexCoord(2, -1), new HexCoord(0, -2), new HexCoord(-2, 0));
 
@@ -314,7 +327,7 @@ public final class SmallWorld {
     };
   }
 
-  /** 15 格地图：唯一 Region（含全部格）+ 平原/低丘两档地形（块由 {@link TerrainBlocks#split} 切，分割不变式随构造校验）。 */
+  /** 19 格地图：唯一 Region（含全部格）+ 平原/低丘两档地形（块由 {@link TerrainBlocks#split} 切，分割不变式随构造校验）。 */
   private static GameMap map() {
     Map<HexCoord, String> terrainByHex = new LinkedHashMap<>();
     for (HexCoord hex : HEXES) {
