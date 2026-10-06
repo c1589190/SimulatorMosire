@@ -670,13 +670,13 @@ public final class SimosToolSource implements ToolSource {
     // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录写入（GM-only 命令 army.RecordCombat 的窄封装）。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 army 命名空间。
     built.add(new ArmyRecordCombatTool(core, initiator, mapId));
-    // ★★ D4（2026-10-02 / D-009 补裁 + D-010 + D-012）：Army 编排层的两条组合工具——让单位进入交战
-    //   （RecordCombat + 逐单位 SetStateDescription，一批一条 revision）与结算一个阶段（逐单位
-    //   AdjustComposition + ResolveCombatStage +（全阶段判定完）清除状态链接，一批一条 revision）。
-    //   **只在 GM 桶**；两条工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面各自声明
-    //   army/unit 两个命名空间（与批内命令逐条对齐）。
+    // ★★ D4（2026-10-02 / D-009 补裁 + D-010 + D-012；P2 2026-10-13 人员伤亡回写 Social）：Army 编排层的两条组合
+    //   工具——让单位进入交战（RecordCombat + 逐单位 SetStateDescription，一批一条 revision）与结算一个阶段
+    //   （逐单位 SubmitHouseholdWorkOrder + AdjustComposition + ResolveCombatStage +（全阶段判定完）清除状态链接，
+    //   一批一条 revision）。**只在 GM 桶**；两条工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面各自声明
+    //   social/unit/army 命名空间（与批内命令逐条对齐）。
     built.add(new StartCombatTool(core, query, initiator));
-    built.add(new ResolveCombatTool(core, query, initiator));
+    built.add(new ResolveCombatTool(core, query, initiator, calendarService));
     // ★★ D3a（2026-10-02 / D-010 + 补裁 R2 最小环）：Army 侧"按统一格式整表复写单位人力/装备"的工具链入口——
     //   按格式（有序条目 + 可选 jitter/上下限 + 可选 seed）算出目标表，经 unit.SetComposition 整表复写，
     //   同批写 sd.PutInfo（含生效 seed，可复现证据）。**只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。

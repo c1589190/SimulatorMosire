@@ -14,6 +14,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.CombatOutcome;
 import io.mosire.simos.core.CoreSimos;
@@ -34,10 +35,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.army.resolveCombat}（阶段 D4 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02）：GM-only
- * 组合工具——**结算一个交战阶段**： 一批（一条 revision）= 逐单位 {@code unit.AdjustComposition}（有符号损失）+ 一条 {@code
- * army.ResolveCombatStage}（选定结局/seed 落记录）+（记录内所有 阶段都已判定时）逐单位 {@code unit.SetStateDescription} 清除
- * {@code combat} 状态链接。
+ * ★★ {@code simos.army.resolveCombat}（阶段 D4 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02；P2 人员伤亡
+ * 回写 Social，2026-10-13）：GM-only 组合工具——**结算一个交战阶段**：一批（一条 revision）= 逐单位人员伤亡
+ * {@code social.SubmitHouseholdWorkOrder}（{@code REMOVE_MEMBERS}，从该单位的 Social 家户份额里真减人）+ 逐单位装备
+ * {@code unit.AdjustComposition}（只带 equipment 维度）+ 一条 {@code army.ResolveCombatStage}（选定结局/seed 落记录）
+ * +（记录内所有阶段都已判定时）逐单位 {@code unit.SetStateDescription} 清除 {@code combat} 状态链接。
  *
  * <p>★★ <b>判定语义（三条，与 {@code CombatResolution} 同源）</b>：
  *
@@ -48,39 +50,47 @@ import java.util.UUID;
  *   <li>都不给 ⇒ 由 {@code combatId+stageId+tick+概率表} 确定性派生 seed 后投骰（可复现；seed 落记录）。
  * </ol>
  *
+ * <p>★★ <b>P2 人员损失口径</b>：选中结局的 {@code CombatUnitLoss.manpower} 只接受负增量；工具按 {@code MALE + ADULT}
+ * 从 {@code Unit.households()} 的 Social 份额里抽人（唯一选人层 = {@link HouseholdManpowerAllocator}），不足 ⇒
+ * {@code BAD_REQUEST}（零 revision，不部分抽）。人员只从 Social 走，<b>Unit 侧不写第二本 headcount</b>；装备损失仍走
+ * {@code unit.AdjustComposition} 且载荷不含 manpower。<b>批内顺序</b>（P2 文档 §3）：每个 unit 先人员工单（如有）再装备命令
+ * （如有）→ {@code army.ResolveCombatStage} → 清链接。
+ *
  * <p>★★ <b>状态链接的"结束"口径（R3）</b>：本次判定后若记录里所有阶段都已判定，工具在**同一批**里显式清除所有"状态键 combat 且地址恰为 {@code
  * army:combat.<id>}"的链接（只清恰链到本记录的；本来没有链接的不发命令）。还有未判定阶段 ⇒ 链接保留到下一次显式清除。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：它既改记录又改单位，是战果结算；工具名不是命令类型 ⇒ 不进 catalog /
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：它既改记录又改单位/家户，是战果结算；工具名不是命令类型 ⇒ 不进 catalog /
  * {@code PAYLOAD_HINTS}。它提交的 {@code unit.AdjustComposition} 本身标了 {@code GmOnlyCommand}（GM
  * 直改原语），与此工具同一条权限边界。
  *
- * <p>★ <b>资源声明</b>：只写 {@code army}/{@code unit} 两个命名空间（{@link
- * ResourcePolicy#UNRESTRICTED}），与批内命令逐条对齐；**不新开写口**——GM 直改人力/装备仍走 D3a 的 {@code
- * simos.unit.set-composition}/{@code simos.unit.adjust-composition}，本工具复用 {@code
- * unit.AdjustComposition} 命令。
+ * <p>★ <b>资源声明</b>：写 {@code social}/{@code unit}/{@code army} 三个命名空间（{@link
+ * ResourcePolicy#UNRESTRICTED}），与批内命令逐条对齐；**不新开写口**——人员只经 Social 工单写，装备只经 {@code
+ * unit.AdjustComposition} 写。
  *
  * <p>★ <b>参数</b>：{@code combatId(必填), stageId(必填), outcomeId?, seed?, preview?(缺省 true), branch?,
  * expectedRevision?(preview=false 必填)}。
  *
- * <p>★ <b>失败具名</b>：记录/阶段不存在、阶段已判定、显式 outcome 不在表里、seed 与 outcome 不一致、损失指向不存在单位 ⇒ {@code
- * BAD_REQUEST}（零 revision）；批内域拒 ⇒ {@code REJECTED} 带逐条真拒因；冲突 ⇒ {@code CONFLICT} 带真实 head。
+ * <p>★ <b>失败具名</b>：记录/阶段不存在、阶段已判定、显式 outcome 不在表里、seed 与 outcome 不一致、损失指向不存在单位、manpower
+ * 非负增量、单位无家户或合格人口不足 ⇒ {@code BAD_REQUEST}（零 revision）；批内域拒 ⇒ {@code REJECTED} 带逐条真拒因；冲突 ⇒
+ * {@code CONFLICT} 带真实 head。
  */
 public final class ResolveCombatTool implements AgentTool {
 
   /** 工具名（全局唯一；用户给定）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.army.resolveCombat";
 
-  /** 本工具只写 army / unit 两个命名空间（GM 侧两片 unlimited ⇒ 逐条判通过）。 */
+  /** 本工具写 social / unit / army 三个命名空间（GM 侧三片 unlimited ⇒ 逐条判通过）。 */
   private static final ResourceManifest RESOLVE_COMBAT_WRITE =
       ResourceManifest.of(
           Map.of(
-              ToolSupport.ARMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.ARMY_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /** 与 {@link #RESOLVE_COMBAT_WRITE} 同源的逐命名空间粗断言（顺序 = 批内命令命名空间序）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
       List.of(
+          ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.ARMY_NAMESPACE, "*"));
 
@@ -88,10 +98,24 @@ public final class ResolveCombatTool implements AgentTool {
   private final QueryService query;
   private final String initiator;
 
+  /** 历法/气候服务：人员伤亡的 MALE+ADULT 年龄档现算按它取时钟（生产路径 = {@link CalendarService#load}）。 */
+  private final CalendarService calendarService;
+
+  /** 测试/旧路径：全缺省儒略历时钟，不读 store；生产 Shell 必须用带 {@link CalendarService} 的重载。 */
   public ResolveCombatTool(CoreSimos core, QueryService query, String initiator) {
+    this(core, query, initiator, CalendarService.defaults());
+  }
+
+  /** 生产构造器：历法时钟来自启动期 {@link CalendarService#load} 的同一实例。 */
+  public ResolveCombatTool(
+      CoreSimos core,
+      QueryService query,
+      String initiator,
+      CalendarService calendarService) {
     this.core = Objects.requireNonNull(core, "core");
     this.query = Objects.requireNonNull(query, "query");
     this.initiator = Objects.requireNonNull(initiator, "initiator");
+    this.calendarService = Objects.requireNonNull(calendarService, "calendarService");
   }
 
   @Override
@@ -101,15 +125,17 @@ public final class ResolveCombatTool implements AgentTool {
 
   @Override
   public String description() {
-    return "结算一个交战阶段（GM 组合工具，一批 = 一条 revision）：投骰或显式结局——逐单位 unit.AdjustComposition"
-        + "（选中结局损失的有符号增量）→ army.ResolveCombatStage（选定结局/seed 写进记录）→ 若记录内所有阶段都已判定，"
-        + "逐单位 unit.SetStateDescription 清除 state=\""
+    return "结算一个交战阶段（GM 组合工具，一批 = 一条 revision）：投骰或显式结局——逐单位"
+        + " social.SubmitHouseholdWorkOrder（manpower 损失只接受负增量，从 unit.households 的 Social 家户份额里按"
+        + " MALE+ADULT 真减人；不足整条拒）→ 逐单位 unit.AdjustComposition（只带 equipment 维度，空装备不发）→"
+        + " army.ResolveCombatStage（选定结局/seed 写进记录）→ 若记录内所有阶段都已判定，逐单位 unit.SetStateDescription"
+        + " 清除 state=\""
         + ResolveCombatPlan.STATE_KEY
         + "\" 且地址恰为 army:combat.<id> 的状态链接。参数 {combatId, stageId, outcomeId?, seed?, preview?（缺省 true）,"
         + " branch?, expectedRevision?（preview=false 必填）}。四种取法：outcomeId（不投骰）/ seed（显式投骰）/ 都不给（由"
         + " combatId+stageId+tick+概率表 确定性派生 seed）；两给则按 seed 复核 outcome。返回 {preview, submitted, combatId,"
-        + " stageId, outcome, seed, seedProvided, outcomeProvided, tick, allStagesResolvedAfter, losses, clearedLinks,"
-        + " commands}；apply 另加 submission。";
+        + " stageId, outcome, seed, seedProvided, outcomeProvided, tick, allStagesResolvedAfter, losses,"
+        + " casualtyWorkOrders, clearedLinks, commandTypes, commands}；apply 另加 submission。";
   }
 
   @Override
@@ -125,7 +151,9 @@ public final class ResolveCombatTool implements AgentTool {
     props.put(
         "preview",
         ToolSupport.prop(
-            "boolean", "true（缺省）= 只算不写；false = 提交 AdjustComposition + ResolveCombatStage 同一批"));
+            "boolean",
+            "true（缺省）= 只算不写；false = 提交 Social 人员工单 + unit.AdjustComposition + army.ResolveCombatStage"
+                + " 同一批"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
@@ -194,7 +222,8 @@ public final class ResolveCombatTool implements AgentTool {
                   ? QueryTarget.head(branch)
                   : QueryTarget.at(branch, new RevisionId(expectedRevision)));
       ResolveCombatPlan.Plan plan =
-          ResolveCombatPlan.derive(state, combatId, stageId, outcomeId, seed);
+          ResolveCombatPlan.derive(
+              state, combatId, stageId, outcomeId, seed, calendarService.clock());
       if (preview) {
         return ToolSupport.ok(view(plan, true, false, null));
       }
@@ -214,15 +243,12 @@ public final class ResolveCombatTool implements AgentTool {
 
   private ToolResult apply(ResolveCombatPlan.Plan plan, BranchId branch, long expectedRevision) {
     String batchId = UUID.randomUUID().toString();
-    List<CommandEnvelope> batch = new ArrayList<>();
-    for (String payload : plan.adjustPayloadsJson()) {
+    // ★ P2 §3：批内顺序由 Plan.unitCommands() 唯一给出——逐 unit 先人员工单（如有）再装备命令（如有），再 ResolveStage、清链接。
+    List<ResolveCombatPlan.PlannedCommand> unitCommands = plan.unitCommands();
+    List<CommandEnvelope> batch = new ArrayList<>(unitCommands.size() + 1 + plan.clearLinkUnits().size());
+    for (ResolveCombatPlan.PlannedCommand command : unitCommands) {
       batch.add(
-          envelope(
-              batchId,
-              branch,
-              expectedRevision,
-              ResolveCombatPlan.ADJUST_COMPOSITION_TYPE,
-              payload));
+          envelope(batchId, branch, expectedRevision, command.type(), command.payloadJson()));
     }
     batch.add(
         envelope(
@@ -302,7 +328,10 @@ public final class ResolveCombatTool implements AgentTool {
     view.put("tick", plan.tick());
     view.put("allStagesResolvedAfter", plan.allStagesResolvedAfter());
     view.put("losses", plan.lossesView());
+    // ★ P2：人员伤亡工单视图（orderId/target/shares/完整载荷字节）+ 实际批内命令类型（含逐单位顺序）。
+    view.put("casualtyWorkOrders", plan.casualtyOrdersView());
     view.put("clearedLinks", unitIdValues(plan.clearLinkUnits()));
+    view.put("commandTypes", plan.commandTypes());
     view.put("commands", plan.commandCounts());
     if (submission != null) {
       view.put("submission", submission);

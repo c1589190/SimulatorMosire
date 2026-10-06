@@ -66,10 +66,12 @@ import java.util.Set;
  * <p>★★ <b>输出保序不可变</b>：{@link Allocation} 与 {@link ManpowerShare} 都在紧凑构造器里校验并以
  * {@link List#copyOf} 冻结；{@code shares()} 的顺序 = 瀑布选取顺序。
  *
- * <p>★★ <b>指定家户入口（P1.2 退休）</b>：{@link #allocateFromHousehold} 与辖区入口复用同一份候选校验、全序排序与瀑布/守恒
- * 实现，差别只在候选集 = <b>单个指定家户</b>：家户必须已存在于 {@code social.households()}；{@code UNIT} 位置的家户
- * （如政府编制家户 {@code hh-gov-<unitId>}）没有格 ⇒ 产出 {@link ManpowerShare#hex()} 为 {@code null}。本入口不按辖
- * 区 HEX 扫描，也不要求来源家户在任一辖区里。
+ * <p>★★ <b>指定家户入口（P1.2 退休 / P2 战斗伤亡）</b>：{@link #allocateFromHousehold}（单个）与
+ * {@link #allocateFromHouseholds}（指定集合）都与辖区入口复用同一份候选校验、全序排序与瀑布/守恒实现，差别只在候选集 =
+ * <b>调用方点名的家户</b>：家户必须已存在于 {@code social.households()}；{@code UNIT} 位置的家户（如政府编制家户
+ * {@code hh-gov-<unitId>}、组军的人口家户 {@code hh-unit:<unitId>}）没有格 ⇒ 产出 {@link ManpowerShare#hex()} 为
+ * {@code null}。两个入口都不按辖区 HEX 扫描，也不要求来源家户在任一辖区里；指定集合入口的候选全序 = 家户 id 升序 →
+ * lotId 升序（{@code jurisdictionIndex} 恒为 0，排序仍走同一份 {@link #CANDIDATE_ORDER}）。
  *
  * <p>★ <b>P1.1 / P1.2 / P1.3 用法</b>（本层只选人；落 Social 家户工单由上层 plan 组装）：
  *
@@ -86,6 +88,11 @@ import java.util.Set;
  *     HouseholdManpowerAllocator.allocateFromHousehold(
  *         social, GovernmentHouseholds.of(unitId), count, clock, tick,
  *         Optional.empty(), Optional.empty());
+ * // P2 战斗伤亡：从单位容纳的家户集合里抽 MALE+ADULT（UNIT 家户 hex 为 null）：
+ * HouseholdManpowerAllocator.Allocation casualties =
+ *     HouseholdManpowerAllocator.allocateFromHouseholds(
+ *         social, Set.copyOf(unit.households()), lossCount, clock, tick,
+ *         Optional.of(Sex.MALE), Optional.of(AgeBracket.ADULT), Set.of());
  * </pre>
  */
 final class HouseholdManpowerAllocator {
@@ -242,6 +249,96 @@ final class HouseholdManpowerAllocator {
     List<Candidate> candidates = new ArrayList<>();
     appendCandidates(social, household, hex, 0, clock, tick, sexFilter, ageBracketFilter, candidates);
     return allocateFromCandidates(candidates, requested, "先向该家户补人、放宽过滤或降低 requested");
+  }
+
+  /**
+   * ★★ <b>P2：从调用方点名的家户集合里抽人</b>（战斗人员伤亡的来源 = {@code Unit.households()}，不适用辖区 HEX
+   * 扫描）。与 {@link #allocateFromHousehold} / 辖区入口<b>复用同一份</b>候选校验（{@link #appendCandidates}）、全序排序与
+   * 瀑布/守恒实现（{@link #allocateFromCandidates}），差别只在候选集 = 指定集合：
+   *
+   * <ul>
+   *   <li><b>家户必须存在</b>：集合里每个 id 都必须在 {@code social.households()} 里；缺一个 ⇒ 具名
+   *       {@link IllegalArgumentException}（不猜、不新建、不静默跳过）；
+   *   <li><b>允许 UNIT 家户</b>：{@code HEX} 位置逐 share 带格；{@code UNIT} 位置（如 {@code hh-unit:<unitId>}）
+   *       没有格 ⇒ {@link ManpowerShare#hex()} 为 {@code null}（REMOVE_MEMBERS 工单只需要 householdId + lotId + taken）；
+   *   <li><b>顺序</b>：候选按 household id 字符串升序 → lotId 字符串升序（{@code jurisdictionIndex} 恒为 0，仍走
+   *       {@link #CANDIDATE_ORDER}），与入参 Set 的迭代序无关；家户 id 在 Social 表里唯一 ⇒ 无并列歧义；
+   *   <li><b>不足整条拒</b>：合格份额总量 &lt; {@code requested} ⇒ 具名 {@link IllegalArgumentException}（带
+   *       requested / available / 缺口），不部分抽取、不截断。
+   * </ul>
+   *
+   * <p>★ {@code excludedHouseholds} 只把命中的家户从候选里剔除（不改变"集合里每个家户必须存在"的前置）；P2 战斗伤亡调用点传
+   * {@code Set.of()}。
+   *
+   * @param social 社会状态（只读）
+   * @param householdIds 指定来源家户 id 集合（非空；每个元素非 null 且必须已存在；允许 UNIT 位置的家户）
+   * @param requested 请求人数（&ge; 0；0 = 整段跳过，返回空 shares）
+   * @param clock 历法时钟（年龄档现算唯一拼写点；非空）
+   * @param tick 当前世界日（年龄现算的现在；&ge; 0）
+   * @param sexFilter 性别过滤（非空 Optional；空 = 不限）
+   * @param ageBracketFilter 年龄档过滤（非空 Optional；空 = 不限；档位由 {@link AgeBracket#of} 现算）
+   * @param excludedHouseholds 额外排除的家户 id 集合（非空；可为空集；不得含 null）
+   * @return 恰好选满 {@code requested} 人的不可变 {@link Allocation}；{@code requested == 0} 时为空结果
+   * @throws IllegalArgumentException 任一入参为 null、requested/tick 为负、集合含 null、家户不存在，或合格份额总量不足
+   * @throws IllegalStateException 候选家户的 lot 不在 {@code social.groups()}，或份额超过批次人数（SocialData 不变量已破坏）
+   */
+  static Allocation allocateFromHouseholds(
+      SocialData social,
+      Set<HouseholdId> householdIds,
+      long requested,
+      CalendarClock clock,
+      long tick,
+      Optional<Sex> sexFilter,
+      Optional<AgeBracket> ageBracketFilter,
+      Set<HouseholdId> excludedHouseholds) {
+    requireArg(social, "social");
+    requireArg(householdIds, "householdIds");
+    requireArg(clock, "clock");
+    requireArg(sexFilter, "sexFilter");
+    requireArg(ageBracketFilter, "ageBracketFilter");
+    requireArg(excludedHouseholds, "excludedHouseholds");
+    if (requested < 0L) {
+      throw new IllegalArgumentException("requested 不得为负: " + requested);
+    }
+    if (tick < 0L) {
+      throw new IllegalArgumentException("tick 不得为负: " + tick);
+    }
+    // ★ 先把指定集合收敛成"家户 id 升序"的确定序（同时检出 null）；顺序与入参 Set 的迭代序无关。
+    List<HouseholdId> named = new ArrayList<>(householdIds.size());
+    for (HouseholdId householdId : householdIds) {
+      if (householdId == null) {
+        throw new IllegalArgumentException("householdIds 不得含 null 元素");
+      }
+      named.add(householdId);
+    }
+    for (HouseholdId excluded : excludedHouseholds) {
+      if (excluded == null) {
+        throw new IllegalArgumentException("excludedHouseholds 不得含 null 元素");
+      }
+    }
+    named.sort(Comparator.comparing(HouseholdId::value));
+    // ★ 家户必须存在：缺一个就整条拒（不猜、不新建、不静默跳过）。存在性在 requested == 0 之前判，与单户入口同口径。
+    for (HouseholdId householdId : named) {
+      if (!social.households().containsKey(householdId)) {
+        throw new IllegalArgumentException(
+            "指定家户不存在: "
+                + householdId.value()
+                + "（allocateFromHouseholds 只从调用方点名的家户选人：先确认这些家户已在 Social 里，不猜、不新建）");
+      }
+    }
+    if (requested == 0L) {
+      return new Allocation(0L, 0L, List.of());
+    }
+    List<Candidate> candidates = new ArrayList<>();
+    for (HouseholdId householdId : named) {
+      if (excludedHouseholds.contains(householdId)) {
+        continue; // excluded 只剔除候选；"集合元素必须存在"的前置已单独判过。
+      }
+      Household household = social.households().get(householdId);
+      HexCoord hex = household.location() instanceof HouseholdLocation.Hex at ? at.hex() : null;
+      appendCandidates(social, household, hex, 0, clock, tick, sexFilter, ageBracketFilter, candidates);
+    }
+    return allocateFromCandidates(candidates, requested, "先向指定家户补人、放宽过滤或降低 requested");
   }
 
   /**
