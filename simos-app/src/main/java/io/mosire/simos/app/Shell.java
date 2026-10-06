@@ -71,6 +71,7 @@ import io.mosire.simos.economy.spi.EconomyGmAdjustHandler;
 import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
+import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
@@ -598,6 +599,10 @@ public final class Shell implements AutoCloseable {
                 //   身份由 govUnitId 派生（政府 = gov-unit-<id>、家户 = hh-gov-<id>），写
                 //   classes/classStandings/governments 三张表。★ GM-only（结构身份，非日常家户配置）。
                 new EconomyRegisterGovernmentHandler(),
+                // ── economy（P3 2026-10-12）：给任意 Social 家户补一条 HouseholdEconomy 经济行（0 人口登记行）。
+                //   新 UNIT 家户由 simos.unit.raiseUnit 在同批内登记；账户由同批 actor.EnsureHouseholdAccount 补。
+                //   ★ GM-only（经济身份结构写口）。
+                new EconomyRegisterHouseholdHandler(),
                 // ── economy（S3）：家户迁移的最小合法入口（只搬视图/份额，不生成人口；账 location 不搬）──
                 new EconomyMigrateHouseholdHandler(),
                 // ── economy（R4-B.3b）：GM/事件用的实物资产份额拆分/转移（确定性新 id、逐资产守恒）──

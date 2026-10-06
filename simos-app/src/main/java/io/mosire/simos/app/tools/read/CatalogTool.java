@@ -345,6 +345,14 @@ public final class CatalogTool implements AgentTool {
                   + "写 classes/classStandings/governments 三张表；缺省字段新建取 0/空集、重复登记逐值保留；"
                   + "要求 economy 已激活；GM-only；账户由同批 actor.EnsureHouseholdAccount 补）"),
           Map.entry(
+              "economy.RegisterHousehold",
+              "household(家户 id 文本), q, r(economy 落点视图 hex；必填), residence?(缺省 urban；大小写敏感),"
+                  + " stratum?(缺省 landless_laborer), participationPerMille?(缺省 0；行已存在时只按显式值更新),"
+                  + " reason?（★ P3：给任意 Social 家户补一条 HouseholdEconomy 经济行；行不存在 ⇒ 新建"
+                  + " 0 人口/0 劳动/0 钱/空债/空需求；行已存在 ⇒ q/r/residence/stratum 与既有 view 不一致即拒、"
+                  + "一致则幂等并只改显式参与率；不建 FlowRow/成员归属/政府/账户；GM-only；"
+                  + "账户由同批 actor.EnsureHouseholdAccount 补）"),
+          Map.entry(
               "economy.RegisterCandidate",
               "id, version?(缺省 1；修订须严格更大), name?, output, outputPerUnit{商品:>0 整数},"
                   + " inputPerUnit{商品:≥0 整数}?, requiredAssets{资产种类:≥0 整数}?, laborPerUnit?(缺省 0),"

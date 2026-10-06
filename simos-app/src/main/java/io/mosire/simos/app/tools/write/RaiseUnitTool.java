@@ -36,17 +36,17 @@ import java.util.UUID;
 
 /**
  * ★★ {@code simos.unit.raiseUnit}（辖区阶段 8 / 计划 §5）：<b>GM 组合工具</b>——从地方抽人力 + 抽粮/钱，
- * 组出一个新单位；命令按 S3b 批序<b>同批落一条 revision</b>。
+ * 组出一个新单位；命令按 P3 批序<b>同批落一条 revision</b>。
  *
- * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：新单位在 {@code unit} 切片、家户出账与国库入账在 {@code actor} 切片、人在 {@code
- * social} 切片、行动记录在 {@code sd} 切片——单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同
+ * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：新单位在 {@code unit} 切片、家户出账/账户与国库入账在 {@code actor} 切片、人在 {@code
+ * social} 切片、新家户经济行在 {@code economy} 切片、行动记录在 {@code sd} 切片——单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同
  * expectedRevision ⇒ 一批 = 一条 revision，原子）。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点是 {@link RaiseUnitPlan#plan}（不碰 {@link ToolContext} /
  * {@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。不许出现第二份推导，也不许出现第二份分摊
  * （人力 = {@link HouseholdManpowerAllocator} 的 share-aware 家户份额瀑布；粮/钱 = {@link RegionAllocations} 的家户账瀑布）。
  *
- * <p>★★ <b>批的命令（按此 P1.3 固定顺序，按需缺席）</b>：
+ * <p>★★ <b>批的命令（按此 P3 固定顺序，按需缺席）</b>：
  *
  * <ol>
  *   <li>{@code social.SubmitHouseholdWorkOrder}（恒有）：人口腿的<b>唯一</b>命令；{@code
@@ -57,6 +57,9 @@ import java.util.UUID;
  *   <li>{@code unit.CreateUnit}（恒有）：{@code
  *       id/name/position=at/households=[新人口家户]/equipment=[{type,amount}]/speed/mobilityPerMille/parent?}；{@code
  *       jurisdiction} 不进载荷 ——{@code CreateUnitHandler} 对新建单位一律取 {@code Optional.empty()}；
+ *   <li>{@code economy.RegisterHousehold}（恒有，P3）：给新人口家户补 {@code HouseholdEconomy} 行（0 人/0 劳动/0 钱；
+ *       {@code view=(at,residence,landless_laborer)}，{@code at} 是某城 {@code at} ⇒ urban 否则 rural）；
+ *   <li>{@code actor.EnsureHouseholdAccount}（恒有，P3）：给新人口家户补零余额账户（幂等；账户归 actor 切片）；
  *   <li>{@code actor.AdjustAccounts}（仅粮/钱任一 &gt; 0 时）：各来源家户账的<b>负增量</b>（粮与钱合并进同一 {@code (owner,格)}
  *       条目，避免同键重复）+ 新单位国库账户（{@code ActorRef(UNIT, newUnitId)} @ {@code at}）的 <b>正增量</b>；逐值相等（Σ 扣减
  *       == 入库）；
@@ -65,24 +68,26 @@ import java.util.UUID;
  *       note} = 人可读摘要，{@code tick} = 当前世界日。
  * </ol>
  *
- * <p>★★ <b>P1.3 口径</b>：{@code unit.CreateUnit} <b>不携带已退役的 {@code manpower}</b>；人员由
+ * <p>★★ <b>P1.3 / P3 口径</b>：{@code unit.CreateUnit} <b>不携带已退役的 {@code manpower}</b>；人员由
  * {@code households=[新人口家户]} 承载。人口腿不再逐条发 {@code social.CreateHousehold} /
  * {@code social.TransferHouseholdMembers}，收成上一条 {@code social.SubmitHouseholdWorkOrder}；旧
- * {@code social.SeedGroups} 批也已从本工具移除。
+ * {@code social.SeedGroups} 批也已从本工具移除。P3 起同批补齐新家户的 economy 行与 actor 账户，<b>次日
+ * advance</b> 不再在 {@code CLASSROW_POPULATION_PROJECTION_UNRESOLVED} 处 fail-closed。
  *
  * <p>★ <b>{@code tools} 本批不做</b>：actor 账只有商品 / 货币两维（工具形态不落 actor）⇒ 载荷出现 {@code tools} 键一律具名 {@link
  * IllegalArgumentException}（折 {@code BAD_REQUEST}），<b>不静默忽略</b>；装备只走 {@code equipment} 参数。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字也不是命令类型 ⇒ 不进 catalog / {@code
- * PAYLOAD_HINTS}。★ {@code actor.AdjustAccounts} 标了 {@code GmOnlyCommand}，令 / {@code RegisterEffect}
- * / 决策人 catalog 三条路径到不了那本裸账。
+ * PAYLOAD_HINTS}。★ {@code actor.AdjustAccounts} 与 {@code actor.EnsureHouseholdAccount}、
+ * {@code economy.RegisterHousehold} 都标了 {@code GmOnlyCommand}，令 / {@code RegisterEffect} / 决策人 catalog
+ * 三条路径到不了这些结构写口；本工具走 GM 授权上下文同批提交。
  *
- * <p>★ <b>资源声明</b>：只写 {@code unit}/{@code actor}/{@code social}/{@code sd} 四个命名空间（{@link
- * ResourcePolicy#UNRESTRICTED}，GM 侧四面 unlimited）；{@code requireAll(Operation.WRITE, …)} 与其余 GM
+ * <p>★ <b>资源声明</b>：只写 {@code economy}/{@code unit}/{@code actor}/{@code social}/{@code sd} 五个命名空间（{@link
+ * ResourcePolicy#UNRESTRICTED}，GM 侧五面 unlimited）；{@code requireAll(Operation.WRITE, …)} 与其余 GM
  * 窄写同制。
  *
  * <p>★ <b>工具结果（preview 与 apply 同形）</b>：{@code
- * preview/submitted/tick/unitId/name/regionId/at/parent/householdId/population/equipment[{type,amount}]/
+ * preview/submitted/tick/unitId/name/regionId/at/residence/parent/householdId/population/equipment[{type,amount}]/
  * speed/mobilityPerMille} + 逐维度 {@code grain}/{@code money} 各 {@code {requested, available,
  * sources[]}}（账来源带 owner + 格 + amount）+ {@code manpowerAllocation {requested, available,
  * sources[]}}（人力来源带 householdId + lotId + taken + hex）+ {@code commands}（将落的命令类型顺序）+ {@code
@@ -108,6 +113,12 @@ public final class RaiseUnitTool implements AgentTool {
   static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE =
       RaiseUnitPlan.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE;
 
+  /** P3：新人口家户的 economy 经济行登记命令（见 {@link #CREATE_UNIT_TYPE}）。 */
+  static final String REGISTER_HOUSEHOLD_TYPE = RaiseUnitPlan.REGISTER_HOUSEHOLD_TYPE;
+
+  /** P3：新人口家户的 actor 零余额账户命令（见 {@link #CREATE_UNIT_TYPE}）。 */
+  static final String ENSURE_HOUSEHOLD_ACCOUNT_TYPE = RaiseUnitPlan.ENSURE_HOUSEHOLD_ACCOUNT_TYPE;
+
   /** 见 {@link #CREATE_UNIT_TYPE}。 */
   static final String PUT_INFO_TYPE = RaiseUnitPlan.PUT_INFO_TYPE;
 
@@ -118,21 +129,23 @@ public final class RaiseUnitTool implements AgentTool {
   static final String TOOLS_REJECT_MESSAGE =
       "载荷不支持 tools 键：actor 账只有商品/货币两维；工具形态不落 actor；本批不做用具来源" + "（装备只走 equipment 参数，不从账本抽）";
 
-  /** 本工具只写 unit / actor / social / sd 四个命名空间（GM 侧四面 unlimited ⇒ 逐条判通过）。 */
+  /** 本工具写 economy / unit / actor / social / sd 五个命名空间（GM 侧五面 unlimited ⇒ 逐条判通过）。 */
   private static final ResourceManifest RAISE_UNIT_WRITE =
       ResourceManifest.of(
           Map.of(
+              ToolSupport.ECONOMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
-  /** 与 {@link #RAISE_UNIT_WRITE} 同源的逐命名空间粗断言（GM 四面 unlimited；顺序 = 批内命令的命名空间序）。 */
+  /** 与 {@link #RAISE_UNIT_WRITE} 同源的逐命名空间粗断言（GM 五面 unlimited；顺序 = 批内命令的命名空间序）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
       List.of(
-          ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"),
-          ResourceId.of(ToolSupport.ACTOR_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.ECONOMY_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.ACTOR_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
 
   private final CoreSimos core;
@@ -146,7 +159,7 @@ public final class RaiseUnitTool implements AgentTool {
    * @param core 唯一写入口（本工具走 {@code submitBatch}；preview=true 时一个字节都不写）
    * @param query 只读入口（读 branch/revision 的当前 {@link SimulationState}；preview 与同一份推导共用它）
    * @param initiator 落盘时的发起者（C21 的 {@code <kind>:<id>} 形态）
-   * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与 {@code LevyRegionTool} 同制；本工具资源 声明是四个命名空间的粗断言、单位地址按单位 id
+   * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与 {@code LevyRegionTool} 同制；本工具资源 声明是命名空间的粗断言、单位地址按单位 id
    *     定位，不当路径用）
    */
   // ★ 测试/旧路径：全缺省时钟，不读 store；生产 Shell 必须用带 CalendarService 的重载（CalendarService.load）。
@@ -179,8 +192,9 @@ public final class RaiseUnitTool implements AgentTool {
         + " 成年档；同一 lot 可被多户持有）、从 region 各 hex 的 HOUSEHOLD 账抽 grain/money；同批先用一张 "
         + "social.SubmitHouseholdWorkOrder（CREATE_HOUSEHOLD + 逐来源 TRANSFER_MEMBERS）把成员转进"
         + " location=UNIT(newUnitId) 的新人口家户，再建出新单位（unit.households = [该家户]，人口 = 转移人数）、"
-        + "把粮/钱落进新单位国库，并落一条 sd.PutInfo 行动记录（★ P1.3：不再写 unit.manpower 第二本 headcount，"
-        + "也不再逐条发 CreateHousehold/TransferHouseholdMembers）。"
+        + "补该家户的 economy 经济行与 actor 零余额账户、把粮/钱落进新单位国库，并落一条 sd.PutInfo 行动记录"
+        + "（★ P1.3：不再写 unit.manpower 第二本 headcount，也不再逐条发 CreateHousehold/TransferHouseholdMembers；"
+        + "★ P3：同批补齐 economy.RegisterHousehold + actor.EnsureHouseholdAccount，打通 raiseUnit 后的 advance）。"
         + "载荷 {newUnitId(必填), name(必填), regionId(必填), at{q,r}(必填, 必须在该 region 的 hex 集里), "
         + "manpower(必填 long, >=1；抽取人数), grain?(缺省 0), money?(缺省 0), speed(必填, >=1), "
         + "mobilityPerMille(必填, 1..1000), equipment?(缺省空表, 值 >=0；输入 map 按迭代序转成装备表), "
@@ -193,13 +207,16 @@ public final class RaiseUnitTool implements AgentTool {
         + "粮/钱来源 = region 各 hex 上 HOUSEHOLD 账的可支配量（余额−冻结，AvailableStock 唯一算法）；"
         + "总量不足 ⇒ 整条拒（不部分、不截断）；分摊 = 瀑布（人力 = HouseholdManpowerAllocator 的家户份额全序；"
         + "粮/钱 = 账可用量降序）。"
+        + "新家户 economy 行=0 人/0 劳动/0 钱、view=(at, residence, landless_laborer)、participationPerMille=0；"
+        + "residence 默认：at 是某座 Social 城的 at ⇒ urban，否则 rural。"
         + "apply 批（固定顺序）：social.SubmitHouseholdWorkOrder（orderId=raise-unit:<unitId>:<tick>:<manpower>，"
         + "target=hh-unit:<unitId>，plan=CREATE_HOUSEHOLD+逐来源 TRANSFER_MEMBERS）→ unit.CreateUnit"
-        + " → actor.AdjustAccounts（家户负增量 + 新单位国库正增量；仅粮/钱>0 时）"
+        + " → economy.RegisterHousehold（household=hh-unit:<unitId>）→ actor.EnsureHouseholdAccount"
+        + "（household=hh-unit:<unitId>）→ actor.AdjustAccounts（家户负增量 + 新单位国库正增量；仅粮/钱>0 时）"
         + " → sd.PutInfo（单位 canonical 地址、key="
         + INFO_KEY
         + "、value=JSON 字符串的行动记录）。"
-        + "返回 {preview, submitted, tick, unitId, name, regionId, at, parent, householdId, population, "
+        + "返回 {preview, submitted, tick, unitId, name, regionId, at, residence, parent, householdId, population, "
         + "equipment[{type,amount}], speed, mobilityPerMille, grain/money 各 {requested, available, sources[]}, "
         + "manpowerAllocation {requested, available, sources[]}, commands, infoText}；"
         + "apply 另加 submission。";
@@ -502,8 +519,9 @@ public final class RaiseUnitTool implements AgentTool {
   }
 
   /**
-   * 组批：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} → {@code actor.AdjustAccounts}?
-   * → {@code sd.PutInfo}（P1.3 固定顺序，可复现）。
+   * 组批：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} →
+   * {@code economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} → {@code actor.AdjustAccounts}? →
+   * {@code sd.PutInfo}（P3 固定顺序，可复现）。
    *
    * <p>★ 各条共享同一 {@code batchId}（correlationId）与同一 branch/expectedRevision ⇒ {@code submitBatch} 落一条
    * revision。
@@ -514,9 +532,10 @@ public final class RaiseUnitTool implements AgentTool {
       String reason,
       BranchId branch,
       RevisionId expectedRevision) {
-    List<CommandEnvelope> batch = new ArrayList<>(4);
-    // ★★ P1.3 批序：先落一张 Social 工单（建人口家户 + 把抽取份额转移进去），再建 unit 并带 households=[该家户]，
-    //   最后按需 actor 国库/行动记录。同批 = 一条 revision ⇒ Unit.households 与 Household.location 天然一致。
+    List<CommandEnvelope> batch = new ArrayList<>(6);
+    // ★★ P1.3 批序：先落一张 Social 工单（建人口家户 + 把抽取份额转移进去），再建 unit 并带 households=[该家户]。
+    // ★★ P3 批序：紧接同批给新家户补 economy 经济行与 actor 账户（后者恒有、幂等），再按需 actor 国库/行动记录。
+    //   同批 = 一条 revision ⇒ Unit.households 与 Household.location 天然一致；次日 advance 不再缺经济行。
     batch.add(
         envelope(
             batchId,
@@ -527,6 +546,20 @@ public final class RaiseUnitTool implements AgentTool {
     batch.add(
         envelope(
             batchId, branch, expectedRevision, CREATE_UNIT_TYPE, plan.createUnitPayloadJson()));
+    batch.add(
+        envelope(
+            batchId,
+            branch,
+            expectedRevision,
+            REGISTER_HOUSEHOLD_TYPE,
+            plan.registerHouseholdPayloadJson(reason)));
+    batch.add(
+        envelope(
+            batchId,
+            branch,
+            expectedRevision,
+            ENSURE_HOUSEHOLD_ACCOUNT_TYPE,
+            plan.ensureHouseholdAccountPayloadJson(reason)));
     if (plan.hasGrainOrMoney()) {
       batch.add(
           envelope(
@@ -588,6 +621,7 @@ public final class RaiseUnitTool implements AgentTool {
     view.put("name", plan.name());
     view.put("regionId", plan.regionId());
     view.put("at", ToolSupport.hexCoord(plan.at()));
+    view.put("residence", plan.residence().value());
     view.put("parent", plan.parent().orElse(null));
     view.put("householdId", plan.householdId());
     view.put("population", plan.manpowerCount());

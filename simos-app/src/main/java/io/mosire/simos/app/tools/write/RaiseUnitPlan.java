@@ -4,13 +4,17 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -38,8 +42,9 @@ import java.util.Set;
  * {@link Plan}——<b>不碰 {@link io.mosire.agentlib.tool.ToolContext}、不碰 {@code CoreSimos}</b>，preview
  * 与 apply 因此共用同一份语义（工具只负责读态、组批、折叠结局）。
  *
- * <p>★★ <b>它为什么不是一条命令</b>：组军同时动 {@code unit}（新单位）、{@code actor}（家户出粮/钱 + 新单位国库入账）、 {@code
- * social}（批次出人）、{@code sd}（行动记录）四片，单条命令只能落一个命名空间。本类只推导"现在能不能落、各项来源是谁"， 组批与提交在 {@link
+ * <p>★★ <b>它为什么不是一条命令</b>：组军同时动 {@code unit}（新单位）、{@code actor}（家户出粮/钱 + 新单位国库入账 +
+ * 新家户账户）、{@code social}（批次出人）、{@code economy}（新家户经济行登记）、{@code sd}（行动记录）五片，
+ * 单条命令只能落一个命名空间。本类只推导"现在能不能落、各项来源是谁"， 组批与提交在 {@link
  * RaiseUnitTool}。
  *
  * <p>★★ <b>共享同一份分摊</b>：人力的唯一选人层 = {@link HouseholdManpowerAllocator}（share-aware 的 Social
@@ -89,6 +94,12 @@ final class RaiseUnitPlan {
 
   /** P1.3：人口腿统一走 Social 家户工单（引用 social handler 常量，本类不另抄字面量）。 */
   static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE = SubmitHouseholdWorkOrderHandler.TYPE;
+
+  /** P3：给新人口家户补 economy 经济行（引用 economy handler 常量，本类不另抄字面量）。 */
+  static final String REGISTER_HOUSEHOLD_TYPE = EconomyRegisterHouseholdHandler.TYPE;
+
+  /** P3：给新人口家户补 actor 零余额账户（引用 actor handler 常量，本类不另抄字面量）。 */
+  static final String ENSURE_HOUSEHOLD_ACCOUNT_TYPE = EnsureHouseholdAccountHandler.TYPE;
 
   /** 行动记录的命令类型（{@code PutInfoHandler.type()}）。 */
   static final String PUT_INFO_TYPE = "sd.PutInfo";
@@ -241,11 +252,14 @@ final class RaiseUnitPlan {
             social, List.of(region.hexes()), manpower, clock, tick, Set.of());
     // ★★ P1.3：人口家户只建在工单里（CREATE_HOUSEHOLD + 逐来源 TRANSFER_MEMBERS），本类不再手工投影/转移；
     //   守恒由选人层与 Plan 构造期逐值互校（Σ share.taken == manpower）。
+    // ★★ P3：新家户的 economy 视图居住类型按落点判——at 是某座 SocialCity 的 at ⇒ urban，否则 rural。
+    ResidenceKind residence = residenceAt(social, at);
     return new Plan(
         newUnitId,
         name,
         regionId,
         at,
+        residence,
         tick,
         manpower,
         manpowerAllocation.available(),
@@ -257,6 +271,16 @@ final class RaiseUnitPlan {
         mobilityPerMille,
         ToolSupport.compositionEntries(equipment),
         parent);
+  }
+
+  /** P3：落点是否某座 Social 城 ⇒ 新家户 economy 视图取 {@link ResidenceKind#URBAN}，否则 {@link ResidenceKind#RURAL}。 */
+  private static ResidenceKind residenceAt(SocialData social, HexCoord at) {
+    for (var city : social.cities().values()) {
+      if (city.at().equals(at)) {
+        return ResidenceKind.URBAN;
+      }
+    }
+    return ResidenceKind.RURAL;
   }
 
   /** 新单位人口家户的稳定 id（唯一拼写点）：{@code hh-unit:<unitId>}；UnitState 的家户/单位撞名守卫同时成立。 */
@@ -340,7 +364,7 @@ final class RaiseUnitPlan {
     return Address.parse(ToolSupport.UNIT_NAMESPACE + ":" + unitId).canonical();
   }
 
-  // ── Plan：四片载荷与视图材料 ─────────────────────────────────────────────────────────
+  // ── Plan：五片载荷与视图材料 ─────────────────────────────────────────────────────────
 
   /**
    * 一份组军计划（全部字段是状态的纯函数）。
@@ -348,7 +372,8 @@ final class RaiseUnitPlan {
    * @param unitId 新单位 id
    * @param name 新单位名
    * @param regionId 来源区域
-   * @param at 新单位落点 = 国库落点
+   * @param at 新单位落点 = 国库落点 = 新家户 economy 行落点
+   * @param residence P3：新人口家户 economy 视图的居住类型（at 是某城 at ⇒ URBAN，否则 RURAL）
    * @param tick 推导时的世界日（行动记录与工单幂等键用）
    * @param manpowerCount 新单位实抽人数 = 新人口家户的成员之和（S3b 起不再落 unit.manpower）
    * @param available 全部合格家户份额合计（选人层读数；成功时 available ≥ manpowerCount）
@@ -366,6 +391,7 @@ final class RaiseUnitPlan {
       String name,
       String regionId,
       HexCoord at,
+      ResidenceKind residence,
       long tick,
       long manpowerCount,
       long available,
@@ -385,6 +411,7 @@ final class RaiseUnitPlan {
       if (at == null) {
         throw new IllegalArgumentException("at 不得为 null");
       }
+      Objects.requireNonNull(residence, "residence");
       if (tick < 0L) {
         throw new IllegalArgumentException("tick 不得为负: " + tick);
       }
@@ -470,6 +497,35 @@ final class RaiseUnitPlan {
       return ToolSupport.json(payload);
     }
 
+    /**
+     * ★★ P3：新人口家户的 economy 登记载荷（{@code economy.RegisterHousehold}）——落点 = {@code at}，居住类型 =
+     * {@link #residence()}，阶层 = {@code landless_laborer}（无资产的中性档），参与率 = 0（由 Social 逐户劳动预算在后续日循环注入，
+     * 不在登记时猜）。
+     */
+    String registerHouseholdPayloadJson(String reason) {
+      requireNonBlank(reason, "reason");
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("household", householdId);
+      payload.put("q", at.q());
+      payload.put("r", at.r());
+      payload.put("residence", residence.value());
+      payload.put("stratum", SocialClassId.LANDLESS_LABORER.value());
+      payload.put("participationPerMille", 0);
+      payload.put("reason", reason);
+      return ToolSupport.json(payload);
+    }
+
+    /**
+     * ★★ P3：新人口家户的零余额 actor 账户载荷（{@code actor.EnsureHouseholdAccount}，幂等；账户归 actor 切片）。
+     */
+    String ensureHouseholdAccountPayloadJson(String reason) {
+      requireNonBlank(reason, "reason");
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("household", householdId);
+      payload.put("reason", reason);
+      return ToolSupport.json(payload);
+    }
+
     /** 是否需要落 {@code actor.AdjustAccounts}（粮 / 钱任一 &gt; 0）。 */
     boolean hasGrainOrMoney() {
       return grain.requested() > 0L || money.requested() > 0L;
@@ -477,9 +533,11 @@ final class RaiseUnitPlan {
 
     /** 本工具提交的命令类型（按批内固定顺序；preview 视图与 apply 组批共用同一处）。 */
     List<String> commandTypes() {
-      List<String> types = new ArrayList<>(4);
+      List<String> types = new ArrayList<>(6);
       types.add(SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE);
       types.add(CREATE_UNIT_TYPE);
+      types.add(REGISTER_HOUSEHOLD_TYPE);
+      types.add(ENSURE_HOUSEHOLD_ACCOUNT_TYPE);
       if (hasGrainOrMoney()) {
         types.add(ADJUST_ACCOUNTS_TYPE);
       }
