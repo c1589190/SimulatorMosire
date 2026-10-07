@@ -48,7 +48,8 @@ run6 债务在 day240 起不再清零、day360 达 1.27 亿毫（run5 的 ~2 万
 
 - 省 `GOV_ADMIN_SALARY_DAY` **360/360 天**实付 粮 320+银 32（合计工资 115,200 毫）；`GOV_OFFICE_UPKEEP_EVALUATED`
   360/360 天粮 166 实付（合计 59,760 毫）。
-- 中央：工资/俸禄只付到 **day49**（之后 311 天全 0），原因见 §4-D1/D2。
+- 中央：粮腿只付到 **day49**（之后全 0）、银腿到 **day173/174**；`treasuryLimited` 到 **day175** 才真正见底
+  （day3 起的 475 条告警主要是"腿被预算桥裁掉/未达下限"，不是国库值见底）。根因见 §4-D1/D2（更正后）。
 - `PERIODIC_ADJUSTMENT_RULE` 539 条全部 `EXECUTED`，**`no-payable-leg` = 0**（run4 是 day2/122/242 全跳过）；
   但 day122 首都卫队粮腿 `paidGoods={}`（只付了银 30），属部分支付，见 §4-D4。
 - 360 天实付合计：工资 130,880 毫、行政俸禄 67,894 毫 —— 远小于税收 2.04B（国库只进不出，见 §4-D3）。
@@ -64,10 +65,13 @@ run6 债务在 day240 起不再清零、day360 达 1.27 亿毫（run5 的 ~2 万
 共 **173 天**（day1~173）——中央座位格在 `small-world` 省内，中央的 100 万毫国库粮被下级省按税率抽走，
 中央国库最终见底。需要裁定：政府家户免税、辖区互斥、或中央/省之间的显式拨款（不得默认"下级向上级征税"）。
 
-**D2（缺陷）预算 oracle 与实扣时序不一致**：中央 day49 停付，但 `jurisdiction_tax` 扣款持续到 day173；
-`ADMIN_BUDGET_SHORTFALL` 从 day3 起报"treasury-limited"。说明 `GovBudgetExecutionBridge.treasuryAvailable`
-（`AccountSession.householdAccount(treasury)`）与税收扣款/执行器落账的"可用账/冻结/最小保留"口径有偏差；
-`ADMIN_SALARY(requested=352, authorized=0)` 与实际仍有部分粮腿支付并存。需要一次定点排查（账户键/冻结/保留）。
+**D2（缺陷，根因已查明；原"账户键偏差"假设被推翻）**：`HouseholdAccountKey` 只含 HouseholdId、无 hex；
+税/预算/工资/军俸都解析同一个 `hh-gov-*`、`AvailableStock` 都是"余额−冻结"（账户键不是问题）。真正三条叠加：
+① D1 让省按日抽中央（2.5%/日、173 天）；② **国库家户被商品市场当成普通卖单**——`MarketSettlement.ordersFor`
+把 0 人口国库户的全部库存当 sellable，run6 day50（市场日）中央粮 271,393→0、tick60 账户粮={}、冻结=0；
+③ 预算桥 `capBudgetedRules` 先按逐腿授权裁剪、`cappedRule` 只写 >0 的腿，执行器只看到裁剪后规则 ⇒
+"EXECUTED + 空粮腿"、scalar `treasuryLimitedValue` 失真（day3 起是腿缺口，值见底在 day175）。
+修复方向：国库户退出市场订单生成（买卖都不生成）+ 逐腿授权/缺口分类 + 原始请求与授权账本一起交给执行器。
 
 **D3（裁定级）存量税 + 每日评估 = 指数式抽干**：税率 100‰×效率 25% → 每天抽走家户库存的一部分，
 国库 2.04B 只花 0.2B ⇒ 家户粮被持续抽进国库、关账日无力偿债、债转本。**债务累积达标**（用户要的形态），
