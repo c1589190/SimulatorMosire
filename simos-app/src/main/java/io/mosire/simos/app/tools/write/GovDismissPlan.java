@@ -89,11 +89,48 @@ final class GovDismissPlan {
       throw new IllegalArgumentException("GOV 单位不存在: " + unitId);
     }
     GovernmentFormation governmentFormation = requireGovernmentFormation(unit, unitId);
+    // ★★ Z4/C4：离编/退休的 legacy 工具只对 posts 为空的旧档口径成立；新世界 staff 是岗位家户投影，
+    //   人数只能通过 Social 家户人口/承诺改（岗位删改由 Z3 的岗位工具负责）。
+    if (governmentFormation.staffIsHouseholdProjection()) {
+      throw new IllegalArgumentException(
+          "单位 "
+              + unitId
+              + " 的 householdPosts 非空：staff 只是岗位家户人口/承诺的投影，legacy 的 "
+              + "simos.gov.dismiss 不能直改 staff（会制造第二本权威）。请改 Social 家户人口/承诺，"
+              + "或用 simos.gov.retireStaff / Z3 的岗位工具");
+    }
     long staffBefore = governmentFormation.staff().getOrDefault(role, 0L);
     if (staffBefore < count) {
       throw new IllegalArgumentException(
           "离编 " + role + " " + count + " 人超过现有在编: 现有 " + staffBefore + " < 请求 " + count);
     }
+    long tick = state.meta().timestamp().tick();
+    Payment payment = paymentFor(state, unit, governmentFormation, count);
+    return new Plan(
+        unitId,
+        role,
+        count,
+        tick,
+        staffBefore,
+        staffBefore - count,
+        payment.retirementPerStaff(),
+        payment.payment(),
+        payment.treasuryLocation(),
+        payment.availableSilver());
+  }
+
+  /**
+   * ★★ <b>Z4：退休待遇的一次性支付推导（{@link GovDismissPlan} 与 {@link GovRetireStaffPlan} 共用一处）</b>。
+   *
+   * <p>口径与旧实现逐值相同：{@code payment = policy.retirementPerStaff × count}（银）；{@code payment > 0} 时国库落点
+   * = 单位当刻有效位置，可支配银 = {@link AvailableStock#available}（余额 − 冻结，账户缺失 = 0）；不足 ⇒ 整条具名拒。 本方法**不看
+   * staff**（新世界的退休源是岗位家户人口），staff 前置由调用方各自判。
+   */
+  static Payment paymentFor(
+      SimulationState state, Unit unit, GovernmentFormation governmentFormation, long count) {
+    Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(unit, "unit");
+    Objects.requireNonNull(governmentFormation, "governmentFormation");
     long retirementPerStaff = governmentFormation.policy().retirementPerStaff();
     long payment;
     try {
@@ -107,22 +144,26 @@ final class GovDismissPlan {
               + "（先下调政策或减少 count）",
           e);
     }
-    long tick = state.meta().timestamp().tick();
     Optional<HexCoord> treasuryLocation = Optional.empty();
     long availableSilver = 0L;
     if (payment > 0L) {
       SimosTimestamp at = state.meta().timestamp();
+      UnitState units = ApiViews.unitState(state);
       treasuryLocation = units.effectivePosition(unit.id(), at);
       if (treasuryLocation.isEmpty()) {
         throw new IllegalArgumentException(
-            "单位 " + unitId + " 当刻没有有效位置，国库落点无法确定（待遇 " + payment + " 需要支付）；先 unit.PlaceAt");
+            "单位 "
+                + unit.id().value()
+                + " 当刻没有有效位置，国库落点无法确定（待遇 "
+                + payment
+                + " 需要支付）；先 unit.PlaceAt");
       }
       // ★★ P2-A §13.3：政府国库 = 政府家户账户 hh-gov-<unitId>；可支配银 = AvailableStock（余额 − 冻结）。
       //   账户缺失 = 0（与全仓口径一致），不猜、不新建。
       ActorData actors = ApiViews.actorData(state);
       availableSilver =
           AvailableStock.available(
-              actors, GovernmentHouseholds.of(unitId), MoneyVocabulary.SILVER_CURRENCY);
+              actors, GovernmentHouseholds.of(unit.id().value()), MoneyVocabulary.SILVER_CURRENCY);
       if (availableSilver < payment) {
         throw new IllegalArgumentException(
             "退休待遇支付不足：requested="
@@ -134,17 +175,26 @@ final class GovDismissPlan {
                 + "（国库银可支配 = 余额 − 冻结；先补款或下调政策）");
       }
     }
-    return new Plan(
-        unitId,
-        role,
-        count,
-        tick,
-        staffBefore,
-        staffBefore - count,
-        retirementPerStaff,
-        payment,
-        treasuryLocation,
-        availableSilver);
+    return new Payment(retirementPerStaff, payment, treasuryLocation, availableSilver);
+  }
+
+  /**
+   * ★ Z4：退休待遇支付推导的纯数据（{@link #paymentFor} 的返回值，两个工具共用）。
+   *
+   * @param retirementPerStaff 政策里的每人一次性退休待遇（银/人）
+   * @param payment = retirementPerStaff × count
+   * @param treasuryLocation 国库落点（payment=0 时空）
+   * @param availableSilver 国库可支配银（payment=0 时 0）
+   */
+  record Payment(
+      long retirementPerStaff,
+      long payment,
+      Optional<HexCoord> treasuryLocation,
+      long availableSilver) {
+
+    Payment {
+      Objects.requireNonNull(treasuryLocation, "treasuryLocation");
+    }
   }
 
   /** 角色词表：只认 SCRIBE|YAMEN|POST，别的词给具名拒（不静默当缺省）。 */

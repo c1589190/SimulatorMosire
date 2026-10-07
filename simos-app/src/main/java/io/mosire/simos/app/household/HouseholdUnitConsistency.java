@@ -2,10 +2,12 @@ package io.mosire.simos.app.household;
 
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.household.Household;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -204,9 +206,12 @@ public final class HouseholdUnitConsistency {
   }
 
   /**
-   * ★ <b>领导层 staff 与家户配置的只读投影读数</b>（S3b，兼容期）：某 GOV 的 {@code governmentPostsOfHousehold} 非空时，按角色聚合这些
-   * 家户的**人口**（人），作为 {@code staff} 的家户投影读数。★ 本方法**不判等、不写状态**：旧 {@code staff} 的数值口径 （在编人数 vs
-   * 全部家庭成员）尚未由用户裁定，强制相等会臆造规则；调用方只把它作为具名读数/告警。
+   * ★ <b>岗位家户 staff 投影读数（C4，Z4 收拢到 {@link GovernmentFormation#projectedStaff}）</b>：某 GOV 的 {@code
+   * governmentPostsOfHousehold} 非空时，按角色聚合这些家户的**人口**（人），作为 {@code staff} 的派生投影读数。
+   *
+   * <p>★ 本方法**只读、不写状态**：stored {@code staff} 是 legacy 缓存（Z4 起 posts 非空时所有直写口具名拒）；权威口径 = 岗位家户人口（Z3
+   * 接入 {@code GOV_SERVICE} 承诺后改喂承诺量，本方法签名不变）。返回键 = {@code <unitId>:<role>}，按 unit id 升序 +
+   * 角色首次出现序（确定性）。
    */
   public static Map<String, Long> staffHouseholdProjection(SocialData social, UnitState units) {
     Objects.requireNonNull(social, "social");
@@ -217,17 +222,71 @@ public final class HouseholdUnitConsistency {
           || governmentFormation.governmentPostsOfHousehold().isEmpty()) {
         continue;
       }
-      Map<String, Long> byRole = new LinkedHashMap<>();
-      for (io.mosire.simos.unit.GovernmentPostOfHousehold post :
-          governmentFormation.governmentPostsOfHousehold().values()) {
-        long population = social.householdPopulation(post.householdId());
-        byRole.merge(post.role().name(), population, Long::sum);
-      }
-      for (Map.Entry<String, Long> entry : byRole.entrySet()) {
-        projection.put(unit.id().value() + ":" + entry.getKey(), entry.getValue());
+      Map<StaffRole, Long> byRole =
+          governmentFormation.projectedStaff(household -> social.householdPopulation(household));
+      for (Map.Entry<StaffRole, Long> entry : byRole.entrySet()) {
+        projection.put(unit.id().value() + ":" + entry.getKey().name(), entry.getValue());
       }
     }
     return projection;
+  }
+
+  /**
+   * ★★ <b>C4 只读校核：posts 非空的 GOV，stored {@code staff} 与岗位家户投影不一致的具名清单</b>（不抛、不写）。
+   *
+   * <p>返回 "unit=… stored=… projected=…" 文本（按 unit id 稳定序）；空表 = 一致或无 posts GOV。这条在 app 组合根每轮推进前跑，
+   * 不一致发具名 WARN（Z4 的 staff 是 legacy 缓存 + 投影双读；Z3 接入承诺后由 bridge 以投影/承诺为唯一供给）。
+   */
+  public static List<String> staffProjectionMismatches(SocialData social, UnitState units) {
+    Objects.requireNonNull(social, "social");
+    Objects.requireNonNull(units, "units");
+    List<String> out = new ArrayList<>();
+    for (Unit unit : sortedUnits(units)) {
+      if (!(unit.module().orElse(null) instanceof GovernmentFormation formation)
+          || formation.governmentPostsOfHousehold().isEmpty()) {
+        continue;
+      }
+      Map<StaffRole, Long> projected =
+          formation.projectedStaff(household -> social.householdPopulation(household));
+      if (!formation.staff().equals(projected)) {
+        out.add(
+            "unit="
+                + unit.id().value()
+                + " stored="
+                + formation.staff()
+                + " projected="
+                + projected);
+      }
+    }
+    return List.copyOf(out);
+  }
+
+  /**
+   * ★★ <b>C1 旧档识别（只读，不迁移）：仍在财政家户 {@code hh-gov-<unitId>} 里住着人口的 GOV 清单</b>。
+   *
+   * <p>新世界官吏住 {@code hh-unit:<unitId>} 岗位户、{@code hh-gov} 保持 0 人口；旧档若把官吏留在 {@code
+   * hh-gov}，本方法把它**读回可识别**（返回 unitId → hh-gov 人口），由 app 组合根发具名 INFO/WARN——不静默丢、不做破坏性迁移。迁移方向见 Z4 台账。
+   */
+  public static Map<String, Long> legacyTreasuryHouseholdPopulation(
+      SocialData social, UnitState units) {
+    Objects.requireNonNull(social, "social");
+    Objects.requireNonNull(units, "units");
+    Map<String, Long> out = new LinkedHashMap<>();
+    for (Unit unit : sortedUnits(units)) {
+      if (!(unit.module().orElse(null) instanceof GovernmentFormation)) {
+        continue;
+      }
+      HouseholdId governmentHousehold = GovernmentHouseholds.of(unit.id().value());
+      if (!unit.households().contains(governmentHousehold)
+          || !social.households().containsKey(governmentHousehold)) {
+        continue;
+      }
+      long population = social.householdPopulation(governmentHousehold);
+      if (population > 0L) {
+        out.put(unit.id().value(), population);
+      }
+    }
+    return out;
   }
 
   /** 单位按 id 升序遍历（跨状态的输出顺序只依赖内容，不依赖 Map 迭代序）。 */

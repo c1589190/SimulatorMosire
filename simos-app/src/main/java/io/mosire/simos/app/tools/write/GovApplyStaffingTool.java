@@ -46,6 +46,11 @@ import java.util.UUID;
 /**
  * ★★ {@code simos.gov.applyStaffing}（R4 / R5 步骤 4）：<b>GM-only 组合工具</b>——逐 GOV 按辖区行政需求精确配满编。
  *
+ * <p>★★ <b>Z4 起明确标 legacy</b>：它直写 {@code GovernmentFormation.staff}——只对 <b>posts 为空</b>的旧档世界成立。一旦某
+ * GOV 的 {@code householdPosts} 非空，staff 只是岗位家户人口/承诺的投影（C4 一处真相）⇒ 本工具对这类 GOV <b>整条具名拒（REJECTED、零
+ * revision）</b>，不再有"绕过 requireStaffNotProjected"的口子；新世界请改 Social 家户人口/承诺 + Z3 的 {@code
+ * simos.gov.assignPosts}。
+ *
  * <p>★★ <b>需求的唯一来源是 {@link GovDemand}</b>：本工具只做"逐格需求求和 + 组批"，<b>不重写公式</b>—— {@code
  * GovDemand.of(GameMap, SocialData, Unit)} 的 {@link GovDemand.HexDemand#security()} / {@link
  * GovDemand.HexDemand#paperwork()} 逐格求和得 {@code securityDemand}/{@code paperworkDemand}。
@@ -201,6 +206,17 @@ public final class GovApplyStaffingTool implements AgentTool {
       SocialData social = ToolSupport.socialData(state);
       UnitState units = ToolSupport.unitState(state);
       List<GovAssessment> assessments = derive(map, social, units);
+      // ★★ Z4/C4：本工具是 legacy 的"按需求直写 staff"组合口；对 posts 非空的新世界整条具名拒（零 revision）。
+      //   岗位人数改由岗位家户人口/承诺派生（Z4 投影读口；Z3 承诺写者/供给桥）。
+      List<String> projectedGovs = projectedGovs(assessments);
+      if (!projectedGovs.isEmpty()) {
+        return ToolResult.error(
+            "REJECTED",
+            "simos.gov.applyStaffing 是 legacy staff 直写工具：以下 GOV 的 householdPosts 非空，staff 只是岗位家户投影，"
+                + "拒绝整批（零 revision）："
+                + projectedGovs
+                + "。请改 Social 家户人口/承诺，或用 Z3 的 simos.gov.assignPosts 调整岗位");
+      }
       if (preview) {
         return ToolSupport.ok(view(assessments, reason, true, false, null));
       }
@@ -288,6 +304,17 @@ public final class GovApplyStaffingTool implements AgentTool {
       }
     }
     return List.copyOf(changed);
+  }
+
+  /** ★ Z4/C4：posts 非空（staff 已是投影）的 GOV unitId 清单（保持 unitId 字典序）；非空 ⇒ 本 legacy 工具整条拒。 */
+  private static List<String> projectedGovs(List<GovAssessment> assessments) {
+    List<String> projected = new ArrayList<>();
+    for (GovAssessment assessment : assessments) {
+      if (assessment.formation().staffIsHouseholdProjection()) {
+        projected.add(assessment.unitId());
+      }
+    }
+    return List.copyOf(projected);
   }
 
   /**

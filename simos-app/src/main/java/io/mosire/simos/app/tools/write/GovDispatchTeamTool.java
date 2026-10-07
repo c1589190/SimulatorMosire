@@ -123,25 +123,25 @@ public final class GovDispatchTeamTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 从 GOV 编制派出调查组（组合工具，一批 = 一条 revision）：从政府家户 hh-gov:<unitId> 的成员份额抽 MALE+ADULT"
-        + "（share-aware，不足整条拒）落成新人口家户 hh-unit:<newUnitId>，同批建无标签纯人员单位（unit.households=[该家户]；"
-        + "★ P1.5：不再发 unit.CreateUnit(manpower=...)），补该家户的 economy 经济行与 actor 零余额账户，减 GOV 编制（unit.DismissStaff，"
-        + "不支付退休待遇、不经 simos.gov.dismiss），最后落 sd.PutInfo 行动记录。"
+    return "GM 从 GOV 派出调查组（组合工具，一批 = 一条 revision；Z4/C1 双模式）：从出人源家户（新世界岗位户"
+        + " hh-unit:<unitId>；旧档 hh-gov:<unitId>）的成员份额抽 MALE+ADULT（share-aware，不足整条拒）落成新人口家户"
+        + " hh-unit:<newUnitId>，同批建无标签纯人员单位（unit.households=[该家户]），补该家户的 economy 经济行与 actor 零余额账户；"
+        + "旧档模式另减 GOV 编制（unit.DismissStaff）；新世界模式不写 staff（staff 是岗位家户投影，C4）。"
         + "参数 {unitId(必填, 带 GovernmentFormation 的 GOV), count(必填 ≥ 1), role?(SCRIBE|YAMEN|POST，缺省 SCRIBE), "
         + "armed?(缺省 false；true = 同批加 ArmyFormation masterGov=unitId role=armed-team), newUnitId?(可选；"
         + "缺省确定性生成), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
-        + "校验：staff[role] ≥ count；政府家户必须同时在 Unit.households 与 Social；其 MALE+ADULT 份额不足 ⇒ 整条拒（不部分、不截断）。"
-        + "apply 批（固定顺序）：social.SubmitHouseholdWorkOrder（orderId=gov-dispatch-team:<batchId>:<newUnitId>，"
-        + "target=hh-unit:<newUnitId>，plan=CREATE_HOUSEHOLD + 逐来源 TRANSFER_MEMBERS）→ unit.CreateUnit"
-        + "（id/name/position/households=[新家户]/equipment=[]/speed=6/mobilityPerMille=900；无 manpower）→"
-        + "（armed）unit.SetArmyFormation → economy.RegisterHousehold → actor.EnsureHouseholdAccount →"
-        + " unit.DismissStaff → sd.PutInfo（key="
+        + "校验：旧档 staff[role] ≥ count；出人源家户必须同时在 Unit.households 与 Social；其 MALE+ADULT 份额不足 ⇒ 整条拒"
+        + "（不部分、不截断）。apply 批（固定顺序）：social.SubmitHouseholdWorkOrder（orderId="
+        + "gov-dispatch-team:<batchId>:<newUnitId>，target=hh-unit:<newUnitId>，plan=CREATE_HOUSEHOLD + 逐来源"
+        + " TRANSFER_MEMBERS）→ unit.CreateUnit →（armed）unit.SetArmyFormation → economy.RegisterHousehold →"
+        + " actor.EnsureHouseholdAccount → [旧档 unit.DismissStaff] → sd.PutInfo（key="
         + INFO_KEY
-        + "）。守恒：roster−count == 出人后 roster；Σ来源 share.taken == count == 新人口家户成员增量。"
-        + "返回 {preview, submitted, tick, unitId, newUnitId, householdId, population, residence, count, role, "
-        + "staffBefore, staffAfter, armed, at, available, sources, commands, infoText}；apply 另加 submission。";
+        + "）。守恒：Σ来源 share.taken == count == 新人口家户成员增量；旧档另加 roster−count == 出人后 roster。"
+        + "返回 {preview, submitted, mode, tick, unitId, newUnitId, householdId, sourceHouseholdId, population, "
+        + "residence, count, role, [旧档 staffBefore/After], armed, at, available, sources, commands, infoText}；"
+        + "apply 另加 submission。";
   }
 
   @Override
@@ -352,13 +352,15 @@ public final class GovDispatchTeamTool implements AgentTool {
             expectedRevision,
             GovDispatchTeamPlan.ENSURE_HOUSEHOLD_ACCOUNT_TYPE,
             plan.ensureHouseholdAccountPayloadJson(reason)));
-    batch.add(
-        envelope(
-            batchId,
-            branch,
-            expectedRevision,
-            GovDispatchTeamPlan.DISMISS_STAFF_TYPE,
-            plan.dismissStaffPayloadJson()));
+    if (!plan.postHouseholdMode()) {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              GovDispatchTeamPlan.DISMISS_STAFF_TYPE,
+              plan.dismissStaffPayloadJson()));
+    }
     batch.add(
         envelope(
             batchId,
@@ -403,17 +405,20 @@ public final class GovDispatchTeamTool implements AgentTool {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("preview", preview);
     view.put("submitted", submitted);
+    view.put("mode", plan.postHouseholdMode() ? "post-household" : "treasury-household-legacy");
     view.put("tick", plan.tick());
     view.put("unitId", plan.unitId());
     view.put("newUnitId", plan.newUnitId());
     view.put("householdId", plan.householdId());
-    view.put("governmentHouseholdId", plan.governmentHouseholdId().value());
+    view.put("sourceHouseholdId", plan.sourceHouseholdId().value());
     view.put("population", plan.count());
     view.put("residence", plan.residence().value());
     view.put("count", plan.count());
     view.put("role", plan.role().name());
-    view.put("staffBefore", plan.staffBefore());
-    view.put("staffAfter", plan.staffAfter());
+    if (!plan.postHouseholdMode()) {
+      view.put("staffBefore", plan.staffBefore());
+      view.put("staffAfter", plan.staffAfter());
+    }
     view.put("armed", plan.armed());
     view.put("at", ToolSupport.hexCoord(plan.at()));
     view.put("available", plan.available());

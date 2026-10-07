@@ -8,6 +8,8 @@ import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.household.GovernmentHouseholdWiring;
+import io.mosire.simos.app.household.GovernmentPostTierConsistency;
+import io.mosire.simos.app.household.GovernmentServiceUnitConsistency;
 import io.mosire.simos.app.household.HouseholdEconomyProjection;
 import io.mosire.simos.app.household.HouseholdPositionResolver;
 import io.mosire.simos.app.household.HouseholdUnitConsistency;
@@ -227,6 +229,42 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 "projection",
                 staffProjection));
       }
+      // ★★ Z4/C4：posts 非空的 GOV，stored staff 是 legacy 缓存；与岗位家户投影不一致是**预期过渡态**
+      //   （承诺权威/供给桥属 Z3），不是告警。按 AGENTS §一.9「既有 WARN 不降级、新增日志不滥发 WARN」：
+      //   这里每日聚合一条 INFO（保留事件名与 count/first），不用 WARN/DEBUG 淹没日志。
+      List<String> staffMismatches =
+          HouseholdUnitConsistency.staffProjectionMismatches(social, units);
+      if (!staffMismatches.isEmpty()) {
+        TIME.info(
+            LogEvent.of(
+                "GOV_STAFF_PROJECTION_MISMATCH",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                range.from().tick(),
+                "mapId",
+                mapId,
+                "count",
+                staffMismatches.size(),
+                "first",
+                staffMismatches.get(0)));
+      }
+      // ★★ Z4/C1 旧档只读识别：官吏仍住 hh-gov 财政户的世界记录下来（不做破坏性迁移；迁移策略见 Z4 台账）。
+      Map<String, Long> legacyTreasury =
+          HouseholdUnitConsistency.legacyTreasuryHouseholdPopulation(social, units);
+      if (!legacyTreasury.isEmpty()) {
+        TIME.info(
+            LogEvent.of(
+                "GOV_LEGACY_OFFICIALS_IN_TREASURY_HOUSEHOLD",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                range.from().tick(),
+                "mapId",
+                mapId,
+                "count",
+                legacyTreasury.size(),
+                "entries",
+                legacyTreasury));
+      }
     }
     EconomyData economyAligned = economyBase;
     if (units != null && !social.households().isEmpty()) {
@@ -283,6 +321,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               householdEconomyProjection.populationDelta()));
     }
     EconomyData economy = householdEconomyProjection.data();
+    // ★★ Z4/spec §18.3：gov service unit（operator = HOUSEHOLD:hh-gov-<govUnitId>）的 operator GOV 必须在
+    // unit
+    //   切片存在且带 GovernmentFormation——Z1c handler 编译期看不见 unit，app GM 窄工具做 preview/apply 预检，
+    //   但 GM 裸 simos.command.submit 可绕过；本组合根检查是最终具名拒（不静默继续）。unit 切片缺席 + 存在 service
+    //   unit 也是不一致。
+    GovernmentServiceUnitConsistency.requireConsistent(economy, units);
     // ★★ P2-C §13.7：经济已激活 + 存在 GOV 单位时，推进入口把"GovernmentFormation 政府家户 ↔ HouseholdEconomy ↔ 政府记录 ↔
     // 国库账户"
     //   这条闭环判死 —— 缺任何一边都具名失败，不把"没有政府记录"读成"没有政府"。
@@ -297,6 +341,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     GameMap map = mapOfOrNull(state);
     GovState bootstrappedGov =
         units == null ? govState : withBootstrapOffices(govState, units, range.from().tick());
+    // ★★ Z4/C4：岗位 tierId 必须指向该 GOV 的 GovAdministrationPlan.postTiers 目录（unit 看不见 gov 计划，
+    //   只有 app 同时看得见；裸命令提交的悬空 tierId 在这里具名 fail-closed，不静默带进日结算）。
+    if (units != null) {
+      GovernmentPostTierConsistency.requireConsistent(bootstrappedGov, units);
+    }
     boolean govActive = !bootstrappedGov.offices().isEmpty();
     if (govActive) {
       if (units == null) {

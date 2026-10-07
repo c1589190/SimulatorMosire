@@ -662,14 +662,16 @@ final class UnitPayloads {
   }
 
   /**
-   * ★★ <b>S3b：可选的领导层家户配置数组</b>（{@code unit.SetGovFormation.householdPosts}）：
+   * ★★ <b>S3b：可选的领导层/官吏家户配置数组</b>（{@code unit.SetGovFormation.householdPosts}；Z4 加 {@code tierId}）：
    *
    * <pre>{@code
-   * [{"household":"hh-1","role":"SCRIBE","level":"CENTRAL","head":true} …]
+   * [{"household":"hh-1","role":"SCRIBE","level":"CENTRAL","head":true,"tierId":"tier-2"} …]
    * }</pre>
    *
    * <p>★ 缺失或 {@code null} ⇒ 空 Optional（<b>未给 ⇒ 保持既有配置</b>）；给了（含空数组）⇒ 整体替换。{@code head} 可缺省（缺省
-   * false）。字段形状在这里把关；键 == 配置 id 等不变量由 {@link GovernmentFormation} / {@link UnitState} 判。
+   * false）；{@code tierId} 可缺省（缺省空串 = legacy/未指派档位，指向 {@code
+   * GovAdministrationPlan.postTiers}）。字段形状在这里把关；键 == 配置 id、{@code tierId} 是否存在于计划目录等不变量由 {@link
+   * GovernmentFormation} / app 组合根判。
    */
   static Optional<Map<HouseholdId, GovernmentPostOfHousehold>> optionalGovernmentPosts(
       JsonNode payload, String field) {
@@ -694,7 +696,8 @@ final class UnitPayloads {
       StaffRole role = requireStaffRole(element, "role");
       GovernmentLevel level = requireGovernmentLevel(element, "level");
       boolean head = optionalBoolean(element, "head").orElse(false);
-      posts.put(household, new GovernmentPostOfHousehold(household, role, level, head));
+      String tierId = optionalText(element, "tierId").orElse("");
+      posts.put(household, new GovernmentPostOfHousehold(household, role, level, head, tierId));
     }
     return Optional.of(posts);
   }

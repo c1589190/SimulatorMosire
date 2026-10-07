@@ -5087,6 +5087,8 @@ public final class ApiViews {
         row.put("role", post.role().name());
         row.put("level", post.level().name());
         row.put("head", post.headOfGovernment());
+        // ★ Z4：档位引用（空串 = legacy/未指派档位；权重在 GovAdministrationPlan.postTiers，不在这里复制）。
+        row.put("tierId", post.tierId());
         posts.add(row);
       }
       view.put("householdPosts", posts);

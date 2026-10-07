@@ -16,6 +16,7 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.spi.AssignGovPostHandler;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -64,8 +65,11 @@ final class GovAbsorbUnitPlan {
   /** 人口腿统一走 Social 家户工单（引用 social handler 常量，本类不另抄字面量）。 */
   static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE = SubmitHouseholdWorkOrderHandler.TYPE;
 
-  /** {@code unit.RecruitStaff} 的命令类型（与 {@code RecruitStaffHandler.type()} 同字面）。 */
+  /** {@code unit.RecruitStaff} 的命令类型（旧档财政户模式才落；与 {@code RecruitStaffHandler.type()} 同字面）。 */
   static final String RECRUIT_STAFF_TYPE = "unit.RecruitStaff";
+
+  /** {@code unit.AssignGovPost} 的命令类型（Z4 岗位户模式落点；只写 posts，绝不写 staff）。 */
+  static final String ASSIGN_GOV_POST_TYPE = AssignGovPostHandler.TYPE;
 
   /** {@code unit.DisbandUnit} 的命令类型（仅 disbandDispatched 时才落）。 */
   static final String DISBAND_UNIT_TYPE = "unit.DisbandUnit";
@@ -156,50 +160,80 @@ final class GovAbsorbUnitPlan {
               + "unit.SetUnitHouseholds / 合法组军路径补家户）");
     }
 
-    // ★ 政府家户必须同时在 Unit.households（GovernmentHouseholdResolver 解析）与 Social 里；缺一 ⇒ plan 级拒，不猜、不新建。
-    HouseholdId governmentHousehold =
-        GovernmentHouseholdResolver.requireGovernmentHousehold(govUnit, govUnitId);
-    SocialData social = ToolSupport.socialData(state);
-    if (!social.households().containsKey(governmentHousehold)) {
+    // ★★ Z4/C1：吸收目标家户选择（岗位户优先；没有岗位户且 posts 为空时维持旧档财政户口径）──────────────
+    HouseholdId postHousehold = HouseholdId.parse(RaiseUnitPlan.householdIdFor(govUnitId));
+    boolean postHouseholdMode = govUnit.households().contains(postHousehold);
+    if (!postHouseholdMode && governmentFormation.staffIsHouseholdProjection()) {
       throw new IllegalArgumentException(
-          "Social 里不存在政府家户 "
-              + governmentHousehold.value()
-              + "（GOV 单位 "
+          "GOV 单位 "
               + govUnitId
-              + " 的政府家户）：先补该家户（如 simos.gov.createOffice）再吸收（不猜、不新建第二户）");
+              + " 的 householdPosts 非空但没有岗位户 "
+              + postHousehold.value()
+              + "：岗位数据坏（posts 的键不可能 ⊆ Unit.households）；先补齐岗位户（Z3 simos.gov.expandHousehold / "
+              + "unit.SetUnitHouseholds）再吸收（不猜、不静默降级到财政户）");
+    }
+    SocialData social = ToolSupport.socialData(state);
+    HouseholdId targetHousehold;
+    if (postHouseholdMode) {
+      targetHousehold = postHousehold;
+      if (!social.households().containsKey(targetHousehold)) {
+        throw new IllegalArgumentException(
+            "Social 里不存在岗位户 "
+                + targetHousehold.value()
+                + "（GOV 单位 "
+                + govUnitId
+                + " 的吸收目标）：先由 Z3 simos.gov.expandHousehold / Z5 bootstrap 建户，或对齐 Unit.households"
+                + "（不猜、不静默降级到财政户）");
+      }
+    } else {
+      // ★ 旧档：政府家户必须同时在 Unit.households（GovernmentHouseholdResolver 解析）与 Social 里；缺一 ⇒ plan 级拒。
+      targetHousehold = GovernmentHouseholdResolver.requireGovernmentHousehold(govUnit, govUnitId);
+      if (!social.households().containsKey(targetHousehold)) {
+        throw new IllegalArgumentException(
+            "Social 里不存在政府家户 "
+                + targetHousehold.value()
+                + "（GOV 单位 "
+                + govUnitId
+                + " 的旧档吸收目标）：先补该家户（如 simos.gov.createOffice）再吸收（不猜、不新建第二户）");
+      }
     }
 
-    long staffBefore = governmentFormation.staff().getOrDefault(role, 0L);
-    if (staffBefore > Long.MAX_VALUE - count) {
-      throw new IllegalArgumentException(
-          "吸收后 " + role + " 在编人数溢出 long: 现有 " + staffBefore + " + 请求 " + count);
-    }
-    long staffAfter = staffBefore + count;
-    // ★ staffCap 校验照旧（GovRecruitPlan 的口径）：现有 + count > cap ⇒ 具名拒（带现有/上限/请求，不截断）。
-    Optional<Long> staffCap =
-        Optional.ofNullable(governmentFormation.policy().staffCap().get(role));
-    if (staffCap.isPresent() && staffBefore > staffCap.get() - count) {
-      throw new IllegalArgumentException(
-          "吸收 "
-              + role
-              + " "
-              + count
-              + " 人会超编制上限: 现有 "
-              + staffBefore
-              + " + 请求 "
-              + count
-              + " > staffCap "
-              + staffCap.get()
-              + "（不截断；先 unit.SetGovPolicy 提上限或减少 count）");
+    // ★ staff 只在旧档模式参与：新世界的 staff 是岗位户人口/承诺投影（C4），由 app 现算，不由本工具直写。
+    long staffBefore = -1L;
+    long staffAfter = -1L;
+    if (!postHouseholdMode) {
+      staffBefore = governmentFormation.staff().getOrDefault(role, 0L);
+      if (staffBefore > Long.MAX_VALUE - count) {
+        throw new IllegalArgumentException(
+            "吸收后 " + role + " 在编人数溢出 long: 现有 " + staffBefore + " + 请求 " + count);
+      }
+      staffAfter = staffBefore + count;
+      // ★ staffCap 校验照旧（GovRecruitPlan 的口径）：现有 + count > cap ⇒ 具名拒（不截断）。
+      Optional<Long> staffCap =
+          Optional.ofNullable(governmentFormation.policy().staffCap().get(role));
+      if (staffCap.isPresent() && staffBefore > staffCap.get() - count) {
+        throw new IllegalArgumentException(
+            "吸收 "
+                + role
+                + " "
+                + count
+                + " 人会超编制上限: 现有 "
+                + staffBefore
+                + " + 请求 "
+                + count
+                + " > staffCap "
+                + staffCap.get()
+                + "（不截断；先 unit.SetGovPolicy 提上限或减少 count）");
+      }
     }
 
     LinkedHashSet<HouseholdId> sourceHouseholds = new LinkedHashSet<>(sourceUnit.households());
-    if (sourceHouseholds.contains(governmentHousehold)) {
+    if (sourceHouseholds.contains(targetHousehold)) {
       throw new IllegalArgumentException(
           "源单位 "
               + sourceUnitId
-              + " 的 Unit.households 含目标政府家户 "
-              + governmentHousehold.value()
+              + " 的 Unit.households 含吸收目标家户 "
+              + targetHousehold.value()
               + "：把家户成员转移到它自己会被 HouseholdBook 拒（from == to）；先修正源家户列表或换源单位");
     }
 
@@ -290,8 +324,9 @@ final class GovAbsorbUnitPlan {
             : Optional.empty();
 
     return new Plan(
+        postHouseholdMode,
         govUnitId,
-        governmentHousehold,
+        targetHousehold,
         sourceUnitId,
         role,
         count,
@@ -420,15 +455,17 @@ final class GovAbsorbUnitPlan {
   /**
    * 一份吸收计划（全部字段是状态的纯函数；来源 shares 与逐户剩余人口在构造期冻结并互校）。
    *
+   * @param postHouseholdMode true = Z4 新世界岗位户模式（目标 = {@code hh-unit:<govUnitId>}，落 {@code
+   *     unit.AssignGovPost}）；false = 旧档财政户模式（保留 {@code unit.RecruitStaff} 旧行为）
    * @param govUnitId 吸收方 GOV
-   * @param governmentHouseholdId 吸收目标政府家户（{@code hh-gov-<govUnitId>}；构造期已由 plan 前置校验同时在 {@code
-   *     Unit.households()} 与 Social）
+   * @param targetHouseholdId 吸收目标家户（岗位户 {@code hh-unit:<govUnitId>} 或旧档政府家户 {@code
+   *     hh-gov-<govUnitId>}；构造期已由 plan 前置校验同时在 Unit.households 与 Social）
    * @param sourceUnitId 源纯人员单位
    * @param role 入编角色
-   * @param count 吸收人数（= Σ share.taken = roster 增量）
+   * @param count 吸收人数（= Σ share.taken；旧档另 = roster 增量）
    * @param tick 推导时的世界日
-   * @param staffBefore 该角色吸收前在编
-   * @param staffAfter 该角色吸收后在编（= staffBefore + count）
+   * @param staffBefore 旧档该角色吸收前在编；岗位户模式 = −1（staff 是投影，C4）
+   * @param staffAfter 旧档该角色吸收后在编（= staffBefore + count）；岗位户模式 = −1
    * @param sourcePopulationBefore 源单位全部家户迁移前人口合计（= Σ remainders.populationBefore）
    * @param sourcePopulationAfter 源单位全部家户迁移后人口合计（= before − count；世界 Social 总人口不变）
    * @param shares 逐来源份额（Σtaken == count；每条来源家户都在源单位 households 里）
@@ -440,8 +477,9 @@ final class GovAbsorbUnitPlan {
    * @param disbandSkippedReason 请求了但没落解散时的具名原因（其余 = empty）
    */
   record Plan(
+      boolean postHouseholdMode,
       String govUnitId,
-      HouseholdId governmentHouseholdId,
+      HouseholdId targetHouseholdId,
       String sourceUnitId,
       StaffRole role,
       long count,
@@ -459,7 +497,7 @@ final class GovAbsorbUnitPlan {
 
     Plan {
       requireNonBlank(govUnitId, "govUnitId");
-      Objects.requireNonNull(governmentHouseholdId, "governmentHouseholdId");
+      Objects.requireNonNull(targetHouseholdId, "targetHouseholdId");
       requireNonBlank(sourceUnitId, "sourceUnitId");
       Objects.requireNonNull(role, "role");
       if (count < 1L) {
@@ -471,12 +509,19 @@ final class GovAbsorbUnitPlan {
       if (govUnitId.equals(sourceUnitId)) {
         throw new IllegalArgumentException("内部分摊不自洽：源单位与吸收方相同 " + govUnitId);
       }
-      if (staffBefore < 0L) {
-        throw new IllegalArgumentException("staffBefore 不得为负: " + staffBefore);
-      }
-      if (staffAfter != staffBefore + count) {
-        throw new IllegalArgumentException(
-            "守恒破坏：roster " + staffBefore + " + count " + count + " != " + staffAfter);
+      if (postHouseholdMode) {
+        if (staffBefore != -1L || staffAfter != -1L) {
+          throw new IllegalArgumentException(
+              "内部分摊不自洽：岗位户模式不得带 legacy staff 数字（" + staffBefore + "→" + staffAfter + "）");
+        }
+      } else {
+        if (staffBefore < 0L) {
+          throw new IllegalArgumentException("staffBefore 不得为负: " + staffBefore);
+        }
+        if (staffAfter != staffBefore + count) {
+          throw new IllegalArgumentException(
+              "守恒破坏：roster " + staffBefore + " + count " + count + " != " + staffAfter);
+        }
       }
       if (sourcePopulationBefore < count
           || sourcePopulationAfter != sourcePopulationBefore - count) {
@@ -526,9 +571,9 @@ final class GovAbsorbUnitPlan {
           throw new IllegalArgumentException(
               "内部分摊不自洽：share 来源家户不在源单位 households 表里: " + share.householdId().value());
         }
-        if (share.householdId().equals(governmentHouseholdId)) {
+        if (share.householdId().equals(targetHouseholdId)) {
           throw new IllegalArgumentException(
-              "内部分摊不自洽：share 来源不得是目标政府家户 " + governmentHouseholdId.value() + "（自我转移会被域层拒）");
+              "内部分摊不自洽：share 来源不得是吸收目标家户 " + targetHouseholdId.value() + "（自我转移会被域层拒）");
         }
         takenByHousehold.merge(share.householdId(), share.taken(), Long::sum);
         shareTotal += share.taken();
@@ -581,7 +626,7 @@ final class GovAbsorbUnitPlan {
     List<String> commandTypes() {
       List<String> types = new ArrayList<>(4);
       types.add(SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE);
-      types.add(RECRUIT_STAFF_TYPE);
+      types.add(postHouseholdMode ? ASSIGN_GOV_POST_TYPE : RECRUIT_STAFF_TYPE);
       if (disbandDispatched) {
         types.add(DISBAND_UNIT_TYPE);
       }
@@ -599,8 +644,8 @@ final class GovAbsorbUnitPlan {
     }
 
     /**
-     * {@code social.SubmitHouseholdWorkOrder} 载荷：{@code target = hh-gov-<govUnitId>}；{@code plan}
-     * 先逐来源 {@code TRANSFER_MEMBERS(from=源家户, to=政府家户, lotId, count=taken)}；{@code
+     * {@code social.SubmitHouseholdWorkOrder} 载荷：{@code target = 吸收目标家户（岗位户或旧档财政户）}；{@code plan}
+     * 先逐来源 {@code TRANSFER_MEMBERS(from=源家户, to=目标家户, lotId, count=taken)}；{@code
      * disbandDispatched} 时再逐源家户 {@code SET_LOCATION(location = {type:"HEX", hex {q,r}} = GOV
      * 单位当刻有效位置)}。 {@code SET_LOCATION} 在同一工单里排在 {@code TRANSFER_MEMBERS} 之后、{@code
      * unit.DisbandUnit} 之前。
@@ -613,7 +658,7 @@ final class GovAbsorbUnitPlan {
         Map<String, Object> step = new LinkedHashMap<>();
         step.put("op", "TRANSFER_MEMBERS");
         step.put("from", share.householdId().value());
-        step.put("to", governmentHouseholdId.value());
+        step.put("to", targetHouseholdId.value());
         step.put("lotId", share.lotId().value());
         step.put("count", share.taken());
         steps.add(step);
@@ -635,7 +680,7 @@ final class GovAbsorbUnitPlan {
       }
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("orderId", orderId(batchId));
-      payload.put("target", governmentHouseholdId.value());
+      payload.put("target", targetHouseholdId.value());
       payload.put("reason", reason);
       payload.put("source", Map.of("module", SOURCE_MODULE));
       payload.put("plan", steps);
@@ -643,10 +688,29 @@ final class GovAbsorbUnitPlan {
     }
 
     /**
-     * {@code unit.RecruitStaff} 载荷：{@code {unitId, role, count, sources}}；{@code sources} = 逐来源
-     * {@code {kind:"household", id, lotId, count}}，与 {@link #shares} 逐值对应（命令本身只入编、不扣人；扣人在同批工单）。
+     * {@code unit.AssignGovPost} 载荷（仅岗位户模式合法）：{@code {unitId, household, role}}；只写 {@code
+     * householdPosts}，<b>绝不写 staff</b>（C4）。
+     */
+    String assignGovPostPayloadJson() {
+      if (!postHouseholdMode) {
+        throw new IllegalStateException("批不自洽：旧档财政户模式不得组装 unit.AssignGovPost 载荷");
+      }
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("unitId", govUnitId);
+      payload.put("household", targetHouseholdId.value());
+      payload.put("role", role.name());
+      return ToolSupport.json(payload);
+    }
+
+    /**
+     * {@code unit.RecruitStaff} 载荷（仅旧档财政户模式合法）：{@code {unitId, role, count, sources}}；{@code
+     * sources} = 逐来源 {@code {kind:"household", id, lotId, count}}，与 {@link #shares} 逐值对应（命令本身只入编、
+     * 不扣人；扣人在同批工单）。
      */
     String recruitStaffPayloadJson() {
+      if (postHouseholdMode) {
+        throw new IllegalStateException("批不自洽：岗位户模式（staff 是投影）不得组装 unit.RecruitStaff 载荷");
+      }
       List<Map<String, Object>> rows = new ArrayList<>(shares.size());
       for (HouseholdManpowerAllocator.ManpowerShare share : shares) {
         Map<String, Object> row = new LinkedHashMap<>();
@@ -716,14 +780,21 @@ final class GovAbsorbUnitPlan {
     String infoValueJson(String reason) {
       requireReason(reason);
       Map<String, Object> value = new LinkedHashMap<>();
+      value.put("mode", postHouseholdMode ? "post-household" : "treasury-household-legacy");
       value.put("govUnitId", govUnitId);
-      value.put("governmentHouseholdId", governmentHouseholdId.value());
+      value.put("targetHouseholdId", targetHouseholdId.value());
+      if (!postHouseholdMode) {
+        // ★ 旧档键名兼容：目标 = hh-gov-<govUnitId>。
+        value.put("governmentHouseholdId", targetHouseholdId.value());
+      }
       value.put("sourceUnitId", sourceUnitId);
       value.put("role", role.name());
       value.put("count", count);
       value.put("tick", tick);
-      value.put("staffBefore", staffBefore);
-      value.put("staffAfter", staffAfter);
+      if (!postHouseholdMode) {
+        value.put("staffBefore", staffBefore);
+        value.put("staffAfter", staffAfter);
+      }
       value.put("sourcePopulationBefore", sourcePopulationBefore);
       value.put("sourcePopulationAfter", sourcePopulationAfter);
       value.put("shares", sharesView());
@@ -749,14 +820,15 @@ final class GovAbsorbUnitPlan {
           + count
           + " 人（tick "
           + tick
+          + "，"
+          + (postHouseholdMode ? "岗位户" : "旧档财政户")
           + "）：源家户人口 "
           + sourcePopulationBefore
           + "→"
           + sourcePopulationAfter
-          + "，在编 "
-          + staffBefore
-          + "→"
-          + staffAfter
+          + (postHouseholdMode
+              ? "，落岗位指派（unit.AssignGovPost，不写 staff）"
+              : "，在编 " + staffBefore + "→" + staffAfter)
           + (disbandDispatched
               ? "；源已清空，同批 SET_LOCATION("
                   + (setLocationHexView() == null ? "(缺)" : setLocationHexView())

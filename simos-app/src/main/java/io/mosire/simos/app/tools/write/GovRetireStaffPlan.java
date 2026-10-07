@@ -2,6 +2,7 @@ package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -9,6 +10,8 @@ import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.spi.SubmitHouseholdWorkOrderHandler;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -22,42 +25,43 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ★★ {@code simos.gov.retireStaff} 的<b>纯推导</b>（阶段 13A 人员流转；P1.2 改走 Social 家户工单）：离编 + 按政策从国库一次性
- * 支付退休待遇（支付口径<b>复用 {@link GovDismissPlan}</b>，本批不改）+ 从政府编制家户 {@code hh-gov-<unitId>}
- * <b>转出真实成员</b>到明确目标家户 + 留行动记录。一批落一条 revision，<b>不碰</b> {@link
- * io.mosire.agentlib.tool.ToolContext}/{@code CoreSimos}。
+ * ★★ {@code simos.gov.retireStaff} 的<b>纯推导</b>（阶段 13A 人员流转；P1.2 家户工单；Z4/C1 双模式改向）：离编 + 按政策从国库一次性
+ * 支付退休待遇（支付口径复用 {@link GovDismissPlan#paymentFor}，一处推导）+ 从<b>官吏岗位户</b> <b>转出真实成员</b>到明确目标家户 +
+ * 留行动记录。一批落一条 revision，<b>不碰</b> {@link io.mosire.agentlib.tool.ToolContext}/{@code CoreSimos}。
  *
- * <p>★★ <b>待遇口径复用 {@link GovDismissPlan}</b>：本类不写第二份支付推导——离编/roster 校验、{@code
- * policy.retirementPerStaff × count}、国库位置与可支配不足整条拒（带 requested/available/缺口）都由 {@link
- * GovDismissPlan#plan} 一处给出；本类只在其上加“从政府家户转出真实成员到目标家户”那一段。
+ * <p>★★ <b>Z4/C1 双模式（过渡，非破坏性）</b>：
+ *
+ * <ol>
+ *   <li><b>岗位户模式（新世界）</b>：GOV 的 {@code Unit.households} 含 {@code hh-unit:<unitId>} ⇒ 退休源 =
+ *       该岗位户；人员从岗位户转出；<b>不写 unit.DismissStaff</b>（staff 是这些家户人口/承诺的投影，C4）；岗位条目保留 （空户 = 空缺岗位，承诺释放归
+ *       Z3）；
+ *   <li><b>财政户模式（旧档过渡）</b>：没有岗位户且 {@code householdPosts} 为空 ⇒ 退休源 = {@code hh-gov-<unitId>}
+ *       （旧行为逐值保留：roster 校验 + {@code unit.DismissStaff} 腿 + 待遇支付）；
+ *   <li>没有岗位户但 {@code householdPosts} 非空 ⇒ 数据坏，具名拒（不猜、不静默降级到财政户）。
+ * </ol>
  *
  * <p>★★ <b>目标家户必须明确（缺一 ⇒ plan 级具名拒，人不能凭空消失）</b>：
  *
  * <ol>
- *   <li>{@code toHouseholdId} 精确指定：必须存在于 {@code SocialData.households()}，且 ≠ 本次退休源政府家户 {@code
- *       hh-gov-<unitId>}；
+ *   <li>{@code toHouseholdId} 精确指定：必须存在于 {@code SocialData.households()}，且 ≠ 本次退休源家户；
  *   <li>未给 {@code toHouseholdId} 但给了 {@code reinsertQ}/{@code reinsertR}（必须成对）：在该 hex 的 {@code
  *       social.householdsAt(hex)} 里按 {@code HouseholdId.value()} 升序取<b>第一个有人口</b>的家户；没有 ⇒ 具名拒；
- *   <li>两者都没给 ⇒ <b>plan 级具名拒</b>（本工具不再允许"人不回写社会"；也不再用"并入最小 id 批次"的旧近似）。
+ *   <li>两者都没给 ⇒ <b>plan 级具名拒</b>（本工具不再允许"人不回写社会"）。
  * </ol>
  *
- * <p>★★ <b>政府家户前置（缺一 ⇒ plan 级具名拒，不猜、不新建第二户）</b>：退休源恒为 {@link GovernmentHouseholds#of(String)} =
- * {@code hh-gov-<unitId>}；必须<b>同时</b>出现在 {@code Unit.households()}（否则该 GOV 单位的家户关系数据坏）与 {@code
- * social.households()}（否则 Social 里没有可转人的源家户）；且政府家户人口必须 ≥ {@code count}（不足 ⇒ 具名拒，不发批、零 revision）。
- *
  * <p>★★ <b>选人唯一拼写点</b>：只调 {@link HouseholdManpowerAllocator#allocateFromHousehold}（家户份额瀑布；本类不另写
- * 排序/过滤/扣减），退休调用<b>不传过滤</b>（{@code Optional.empty()} / {@code Optional.empty()}）——政府编制家户里可能含
+ * 排序/过滤/扣减），退休调用<b>不传过滤</b>（{@code Optional.empty()} / {@code Optional.empty()}）——官吏户里可能含
  * 各年龄/性别的家属，过滤过窄会把真实人口误判为“不足”。守恒：{@code Σ take == count} 在 Plan 构造期逐值互校。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
  * orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户>} 确定性幂等键；target = 目标家户；逐来源 {@code
- * TRANSFER_MEMBERS(from=hh-gov-<unitId>, to=目标家户, lotId, count=taken)}）→ {@code
- * unit.DismissStaff}（形状不变） →（待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}（地址 = 单位
- * canonical，key={@code retireStaff}， value=JSON <b>字符串</b>，含目标家户/来源 shares，note=人可读摘要）。四条共享同一
- * batchId 与同一 branch/expectedRevision ⇒ 一条 revision。
+ * TRANSFER_MEMBERS(from=退休源, to=目标家户, lotId, count=taken)}）→ [旧档：{@code unit.DismissStaff}] → （待遇
+ * &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}（地址 = 单位 canonical，key={@code
+ * retireStaff}， value=JSON <b>字符串</b>，含目标家户/来源 shares，note=人可读摘要）。全部共享同一 batchId 与同一
+ * branch/expectedRevision ⇒ 一条 revision。
  *
- * <p>★★ <b>守恒</b>：GOV roster 前 − count == roster 后；待遇支付额 == {@code retirementPerStaff ×
- * count}；政府家户人口 前 − count == 后；目标家户人口 前 + count == 后；世界 Social 总人口不变（转移只改份额归属，不改批次人数）。Plan 构造期逐值互校。
+ * <p>★★ <b>守恒</b>：退休源家户人口 前 − count == 后；待遇支付额 == {@code retirementPerStaff × count}；目标家户人口 前 +
+ * count == 后；世界 Social 总人口不变；旧档模式另加 roster 前 − count == 后。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；来源表按 {@code
  * HouseholdManpowerAllocator} 的全序瀑布序，用 {@link List#copyOf} 冻结。
@@ -67,7 +71,7 @@ final class GovRetireStaffPlan {
   /** {@code social.SubmitHouseholdWorkOrder} 的命令类型（与 handler 的 {@code TYPE} 同源）。 */
   static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE = SubmitHouseholdWorkOrderHandler.TYPE;
 
-  /** {@code unit.DismissStaff} 的命令类型（与 {@code DismissStaffHandler.type()} 同字面）。 */
+  /** {@code unit.DismissStaff} 的命令类型（旧档财政户模式才落；与 {@code DismissStaffHandler.TYPE} 同字面）。 */
   static final String DISMISS_STAFF_TYPE = "unit.DismissStaff";
 
   /** {@code actor.AdjustAccounts} 的命令类型（仅待遇 &gt; 0 才落）。 */
@@ -82,13 +86,13 @@ final class GovRetireStaffPlan {
   private GovRetireStaffPlan() {}
 
   /**
-   * 纯推导入口（见类注的目标家户/政府家户前置、待遇口径与选人守恒）。
+   * 纯推导入口（见类注的双模式、目标家户前置、待遇口径与选人守恒）。
    *
    * @param state 读数所在的状态（preview / apply 都取<b>同一坐标</b>的状态）
    * @param unitId 离编主体（带 GovernmentFormation 的 GOV）
    * @param roleText 行政角色词表（SCRIBE|YAMEN|POST）
-   * @param count 离编人数（≥ 1，且不得超过现有在编）
-   * @param toHouseholdId 精确目标家户 id（可选；给了必须存在于 Social、且 ≠ 政府家户；与 reinsert 二选一）
+   * @param count 离编人数（≥ 1；新世界 ≤ 岗位户人口，旧档另 ≤ 现有在编）
+   * @param toHouseholdId 精确目标家户 id（可选；给了必须存在于 Social、且 ≠ 退休源；与 reinsert 二选一）
    * @param reinsertQ 回退目标格 q（可选；必须与 reinsertR 成对；按 hex 选第一个有人口的家户）
    * @param reinsertR 回退目标格 r（可选；必须与 reinsertQ 成对）
    * @throws IllegalArgumentException 任一具名前置不满足（工具折 {@code BAD_REQUEST}）
@@ -105,7 +109,13 @@ final class GovRetireStaffPlan {
     Objects.requireNonNull(toHouseholdId, "toHouseholdId");
     Objects.requireNonNull(reinsertQ, "reinsertQ");
     Objects.requireNonNull(reinsertR, "reinsertR");
-    GovDismissPlan.Plan dismissal = GovDismissPlan.plan(state, unitId, roleText, count);
+    if (unitId == null || unitId.isBlank()) {
+      throw new IllegalArgumentException("unitId 必须是非空文本");
+    }
+    StaffRole role = parseRole(roleText);
+    if (count < 1L) {
+      throw new IllegalArgumentException("离编人数 count 必须 ≥ 1: " + count);
+    }
     if (reinsertQ.isPresent() != reinsertR.isPresent()) {
       throw new IllegalArgumentException(
           "reinsertQ 与 reinsertR 必须成对给出（要么都给、要么都不给）: reinsertQ="
@@ -120,40 +130,77 @@ final class GovRetireStaffPlan {
     }
 
     UnitState units = ToolSupport.unitState(state);
-    Unit unit = units.units().get(UnitId.parse(dismissal.unitId()));
+    Unit unit = units.units().get(UnitId.parse(unitId));
     if (unit == null) {
-      throw new IllegalArgumentException("GOV 单位不存在: " + dismissal.unitId());
+      throw new IllegalArgumentException("GOV 单位不存在: " + unitId);
     }
+    GovernmentFormation governmentFormation = requireGovernmentFormation(unit, unitId);
     SocialData social = ToolSupport.socialData(state);
-    HouseholdId governmentHousehold = GovernmentHouseholds.of(dismissal.unitId());
-    if (!unit.households().contains(governmentHousehold)) {
-      throw new IllegalArgumentException(
-          "GOV 单位 "
-              + dismissal.unitId()
-              + " 的 Unit.households 不含政府家户 "
-              + governmentHousehold.value()
-              + "：单位家户关系数据坏，退休源不明确；先 unit.SetGovFormation / 修数"
-              + "（不猜、不新建第二户）");
+
+    // ── Z4/C1：退休源选择（岗位户优先；没有岗位户时按旧档口径回落到财政户）─────────────────────────
+    HouseholdId postHousehold = HouseholdId.parse(RaiseUnitPlan.householdIdFor(unitId));
+    boolean postHouseholdMode = unit.households().contains(postHousehold);
+    HouseholdId sourceHousehold;
+    long legacyStaffBefore = -1L;
+    long legacyStaffAfter = -1L;
+    if (postHouseholdMode) {
+      if (!social.households().containsKey(postHousehold)) {
+        throw new IllegalArgumentException(
+            "GOV 单位 "
+                + unitId
+                + " 的 Unit.households 含岗位户 "
+                + postHousehold.value()
+                + "，但 Social 里没有它（家户位置账不一致）：先补 Social 家户或修 unit.SetUnitHouseholds"
+                + "（不猜、不静默降级到财政户）");
+      }
+      sourceHousehold = postHousehold;
+    } else {
+      if (governmentFormation.staffIsHouseholdProjection()) {
+        throw new IllegalArgumentException(
+            "GOV 单位 "
+                + unitId
+                + " 的 householdPosts 非空但没有岗位户 "
+                + postHousehold.value()
+                + "：岗位数据坏（posts 的键不可能 ⊆ Unit.households）；先补齐岗位户再退休（不猜、不静默降级）");
+      }
+      HouseholdId treasuryHousehold = GovernmentHouseholds.of(unitId);
+      if (!unit.households().contains(treasuryHousehold)) {
+        throw new IllegalArgumentException(
+            "GOV 单位 "
+                + unitId
+                + " 的 Unit.households 不含政府家户 "
+                + treasuryHousehold.value()
+                + "：单位家户关系数据坏，退休源不明确；先 unit.SetGovFormation / 修数"
+                + "（不猜、不新建第二户）");
+      }
+      if (!social.households().containsKey(treasuryHousehold)) {
+        throw new IllegalArgumentException(
+            "Social 里不存在政府家户 "
+                + treasuryHousehold.value()
+                + "（GOV 单位 "
+                + unitId
+                + " 的旧档退休源）：先补该政府家户（如 simos.gov.createOffice 的 social.CreateHousehold）再退休"
+                + "（不猜、不新建第二户）");
+      }
+      sourceHousehold = treasuryHousehold;
+      legacyStaffBefore = governmentFormation.staff().getOrDefault(role, 0L);
+      if (legacyStaffBefore < count) {
+        throw new IllegalArgumentException(
+            "离编 " + role + " " + count + " 人超过现有在编: 现有 " + legacyStaffBefore + " < 请求 " + count);
+      }
+      legacyStaffAfter = legacyStaffBefore - count;
     }
-    if (!social.households().containsKey(governmentHousehold)) {
+
+    long sourcePopulationBefore = social.householdPopulation(sourceHousehold);
+    if (sourcePopulationBefore < count) {
       throw new IllegalArgumentException(
-          "Social 里不存在政府家户 "
-              + governmentHousehold.value()
-              + "（GOV 单位 "
-              + dismissal.unitId()
-              + " 的退休源）：先补该政府家户（如 simos.gov.createOffice 的 social.CreateHousehold）再退休"
-              + "（不猜、不新建第二户）");
-    }
-    long governmentPopulationBefore = social.householdPopulation(governmentHousehold);
-    if (governmentPopulationBefore < dismissal.count()) {
-      throw new IllegalArgumentException(
-          "政府家户 "
-              + governmentHousehold.value()
+          (postHouseholdMode ? "岗位户 " : "政府家户 ")
+              + sourceHousehold.value()
               + " 人口不足：现有 "
-              + governmentPopulationBefore
+              + sourcePopulationBefore
               + " < 退休请求 "
-              + dismissal.count()
-              + "（退休必须从政府家户转出真实成员；先 simos.gov.recruit 补人，或减少 count）");
+              + count
+              + "（退休必须从退休源转出真实成员；先 simos.gov.recruit 补人，或减少 count）");
     }
 
     // ── 目标家户解析（精确优先；未给则按 reinsert hex 取第一个有人口的家户）────────────────────────
@@ -166,9 +213,9 @@ final class GovRetireStaffPlan {
         throw new IllegalArgumentException(
             "toHouseholdId 指向的家户不存在: " + requested.value() + "（目标家户必须在 Social 里；本工具不猜、不新建第二户）");
       }
-      if (requested.equals(governmentHousehold)) {
+      if (requested.equals(sourceHousehold)) {
         throw new IllegalArgumentException(
-            "toHouseholdId 不得是退休源政府家户 " + governmentHousehold.value() + "（源与目标相同会被域层拒；人必须转到别的家户）");
+            "toHouseholdId 不得是退休源家户 " + sourceHousehold.value() + "（源与目标相同会被域层拒；人必须转到别的家户）");
       }
       targetHousehold = requested;
       if (target.location() instanceof HouseholdLocation.Hex at) {
@@ -179,12 +226,12 @@ final class GovRetireStaffPlan {
       int r = toInt(reinsertR.get(), "reinsertR");
       HexCoord hex = new HexCoord(q, r);
       targetHousehold = firstPopulatedHouseholdAt(social, hex);
-      if (targetHousehold.equals(governmentHousehold)) {
+      if (targetHousehold.equals(sourceHousehold)) {
         throw new IllegalArgumentException(
             "回写格 "
                 + hexText(hex)
-                + " 解析出的目标家户是退休源政府家户 "
-                + governmentHousehold.value()
+                + " 解析出的目标家户是退休源家户 "
+                + sourceHousehold.value()
                 + "：拒绝自我转移（请改正该格家户数据或改用 toHouseholdId）");
       }
       targetHex = Optional.of(hex);
@@ -192,23 +239,27 @@ final class GovRetireStaffPlan {
       throw new IllegalArgumentException(
           "退休必须给目标家户：给 toHouseholdId（精确指定）或 reinsertQ/reinsertR"
               + "（在该 hex 按 household id 升序取第一个有人口的家户）；两者都没给 ⇒ 拒绝"
-              + "（人不能凭空消失，也不会留在政府编制家户）");
+              + "（人不能凭空消失，也不会留在退休源家户）");
     }
 
     long targetPopulationBefore = social.householdPopulation(targetHousehold);
     long targetPopulationAfter;
     try {
-      targetPopulationAfter = Math.addExact(targetPopulationBefore, dismissal.count());
+      targetPopulationAfter = Math.addExact(targetPopulationBefore, count);
     } catch (ArithmeticException e) {
       throw new IllegalArgumentException(
           "目标家户 "
               + targetHousehold.value()
               + " 接收 "
-              + dismissal.count()
+              + count
               + " 人后人口溢出 long: 现有 "
               + targetPopulationBefore,
           e);
     }
+
+    long tick = state.meta().timestamp().tick();
+    GovDismissPlan.Payment payment =
+        GovDismissPlan.paymentFor(state, unit, governmentFormation, count);
 
     // ★ 选人唯一拼写点：指定家户入口（退休源是 UNIT 位置，不适用辖区 HEX 扫描），不传过滤。
     HouseholdManpowerAllocator.Allocation allocation;
@@ -216,29 +267,64 @@ final class GovRetireStaffPlan {
       allocation =
           HouseholdManpowerAllocator.allocateFromHousehold(
               social,
-              governmentHousehold,
-              dismissal.count(),
+              sourceHousehold,
+              count,
               CalendarClock.julianDefault(), // 无过滤 ⇒ 时钟不参与选人；保留参数只为未来显式过滤
-              dismissal.tick(),
+              tick,
               Optional.empty(),
               Optional.empty());
     } catch (IllegalArgumentException e) {
       if (e.getMessage() != null && e.getMessage().startsWith("人力总量不足")) {
         throw new IllegalArgumentException(
-            "政府家户 " + governmentHousehold.value() + " 可选人口不足：" + e.getMessage(), e);
+            (postHouseholdMode ? "岗位户 " : "政府家户 ")
+                + sourceHousehold.value()
+                + " 可选人口不足："
+                + e.getMessage(),
+            e);
       }
       throw e;
     }
     return new Plan(
-        dismissal,
-        governmentHousehold,
-        governmentPopulationBefore,
+        postHouseholdMode,
+        unitId,
+        role,
+        count,
+        tick,
+        legacyStaffBefore,
+        legacyStaffAfter,
+        payment.retirementPerStaff(),
+        payment.payment(),
+        payment.treasuryLocation(),
+        payment.availableSilver(),
+        sourceHousehold,
+        sourcePopulationBefore,
         targetHousehold,
         targetHex,
         targetPopulationBefore,
         targetPopulationAfter,
         allocation.available(),
         allocation.shares());
+  }
+
+  /** 角色词表：只认 SCRIBE|YAMEN|POST，别的词给具名拒（不静默当缺省）。 */
+  private static StaffRole parseRole(String roleText) {
+    if (roleText == null || roleText.isBlank()) {
+      throw new IllegalArgumentException("role 必须是非空文本（SCRIBE|YAMEN|POST）");
+    }
+    try {
+      return StaffRole.valueOf(roleText);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("role 不是合法角色（SCRIBE|YAMEN|POST）: " + roleText, e);
+    }
+  }
+
+  /** 单位必须带 {@link GovernmentFormation}（退休前置；消息给出下一步）。 */
+  private static GovernmentFormation requireGovernmentFormation(Unit unit, String unitId) {
+    if (unit.module().orElse(null) instanceof GovernmentFormation governmentFormation) {
+      return governmentFormation;
+    }
+    throw new IllegalArgumentException(
+        "单位 " + unitId + " 没有 GovernmentFormation：退休只对 GOV 单位；先 unit.SetGovFormation");
   }
 
   /** {@code reinsertQ}/{@code reinsertR} 解析出的 hex：按家户 id 升序取第一个有人口的家户；没有 ⇒ 具名拒。 */
@@ -290,22 +376,43 @@ final class GovRetireStaffPlan {
   }
 
   /**
-   * 一份退休计划（全部字段是状态的纯函数；{@code dismissal} 是共享支付推导的产物，来源 shares 在构造期冻结并互校）。
+   * 一份退休计划（全部字段是状态的纯函数；支付推导来自 {@link GovDismissPlan#paymentFor} 一处，来源 shares 在构造期冻结并互校）。
    *
-   * @param dismissal 离编 + 待遇支付那一半（见 {@link GovDismissPlan.Plan}）
-   * @param governmentHouseholdId 退休源政府家户（{@code hh-gov-<unitId>}；构造期已由 plan 前置校验存在）
-   * @param governmentPopulationBefore 退休前政府家户人口（≥ count）
-   * @param targetHouseholdId 目标家户（已存在于 Social；≠ 政府家户）
+   * @param postHouseholdMode true = 新世界岗位户模式（源 = {@code hh-unit:<unitId>}，无 DismissStaff 腿）；false =
+   *     旧档财政户模式
+   * @param unitId 离编主体
+   * @param role 行政角色
+   * @param count 离编人数
+   * @param tick 推导时的世界日
+   * @param legacyStaffBefore 旧档模式的该角色现有在编；岗位户模式 = −1
+   * @param legacyStaffAfter 旧档模式的离编后在编；岗位户模式 = −1
+   * @param retirementPerStaff 政策里的每人一次性退休待遇（银/人）
+   * @param payment = retirementPerStaff × count
+   * @param treasuryLocation 国库落点（payment=0 时空）
+   * @param availableSilver 国库可支配银（payment=0 时 0）
+   * @param sourceHouseholdId 退休源家户（岗位户或旧档财政户；≠ target）
+   * @param sourcePopulationBefore 退休前退休源人口（≥ count）
+   * @param targetHouseholdId 目标家户（已存在于 Social；≠ source）
    * @param targetHex 目标家户的格（HEX 位置）；{@code UNIT} 位置或无 reinsert 解析时为 empty
    * @param targetPopulationBefore 退休前目标家户人口
    * @param targetPopulationAfter 退休后目标家户人口（= before + count）
-   * @param available 政府家户全部合格份额合计（不足拒因用；成功时 = 政府家户人口）
-   * @param sources 逐 lot 转出份额（Σtaken == count；每条来源都是政府家户）
+   * @param available 退休源全部合格份额合计（成功时 = 退休源人口）
+   * @param sources 逐 lot 转出份额（Σtaken == count；每条来源都是退休源家户）
    */
   record Plan(
-      GovDismissPlan.Plan dismissal,
-      HouseholdId governmentHouseholdId,
-      long governmentPopulationBefore,
+      boolean postHouseholdMode,
+      String unitId,
+      StaffRole role,
+      long count,
+      long tick,
+      long legacyStaffBefore,
+      long legacyStaffAfter,
+      long retirementPerStaff,
+      long payment,
+      Optional<HexCoord> treasuryLocation,
+      long availableSilver,
+      HouseholdId sourceHouseholdId,
+      long sourcePopulationBefore,
       HouseholdId targetHouseholdId,
       Optional<HexCoord> targetHex,
       long targetPopulationBefore,
@@ -314,17 +421,65 @@ final class GovRetireStaffPlan {
       List<HouseholdManpowerAllocator.ManpowerShare> sources) {
 
     Plan {
-      Objects.requireNonNull(dismissal, "dismissal");
-      Objects.requireNonNull(governmentHouseholdId, "governmentHouseholdId");
+      if (unitId == null || unitId.isBlank()) {
+        throw new IllegalArgumentException("unitId 不得为空白");
+      }
+      Objects.requireNonNull(role, "role");
+      if (count < 1L) {
+        throw new IllegalArgumentException("count 必须 ≥ 1: " + count);
+      }
+      if (tick < 0L) {
+        throw new IllegalArgumentException("tick 不得为负: " + tick);
+      }
+      if (postHouseholdMode) {
+        if (legacyStaffBefore != -1L || legacyStaffAfter != -1L) {
+          throw new IllegalArgumentException(
+              "内部分摊不自洽：岗位户模式不得带 legacy staff 数字（"
+                  + legacyStaffBefore
+                  + "→"
+                  + legacyStaffAfter
+                  + "）");
+        }
+      } else if (legacyStaffBefore < count || legacyStaffAfter != legacyStaffBefore - count) {
+        throw new IllegalArgumentException(
+            "守恒破坏：legacy staffBefore="
+                + legacyStaffBefore
+                + " − count="
+                + count
+                + " != staffAfter="
+                + legacyStaffAfter);
+      }
+      if (retirementPerStaff < 0L || payment < 0L) {
+        throw new IllegalArgumentException(
+            "内部分摊不自洽：retirementPerStaff=" + retirementPerStaff + " payment=" + payment);
+      }
+      Objects.requireNonNull(treasuryLocation, "treasuryLocation");
+      if (payment == 0L) {
+        if (treasuryLocation.isPresent() || availableSilver != 0L) {
+          throw new IllegalArgumentException(
+              "内部分摊不自洽：payment=0 却带国库落点/可支配银（" + treasuryLocation + " / " + availableSilver + "）");
+        }
+      } else {
+        if (treasuryLocation.isEmpty() || availableSilver < payment) {
+          throw new IllegalArgumentException(
+              "内部分摊不自洽：payment="
+                  + payment
+                  + " 需要国库落点与足额可支配银（"
+                  + treasuryLocation
+                  + " / "
+                  + availableSilver
+                  + "）");
+        }
+      }
+      Objects.requireNonNull(sourceHouseholdId, "sourceHouseholdId");
       Objects.requireNonNull(targetHouseholdId, "targetHouseholdId");
       Objects.requireNonNull(targetHex, "targetHex");
-      if (governmentHouseholdId.equals(targetHouseholdId)) {
-        throw new IllegalArgumentException(
-            "内部分摊不自洽：退休源政府家户与目标家户相同 " + governmentHouseholdId.value());
+      if (sourceHouseholdId.equals(targetHouseholdId)) {
+        throw new IllegalArgumentException("内部分摊不自洽：退休源家户与目标家户相同 " + sourceHouseholdId.value());
       }
-      if (governmentPopulationBefore < dismissal.count()) {
+      if (sourcePopulationBefore < count) {
         throw new IllegalArgumentException(
-            "内部分摊不自洽：政府家户人口 " + governmentPopulationBefore + " < count=" + dismissal.count());
+            "内部分摊不自洽：退休源人口 " + sourcePopulationBefore + " < count=" + count);
       }
       if (targetPopulationBefore < 0L || targetPopulationAfter < targetPopulationBefore) {
         throw new IllegalArgumentException(
@@ -332,55 +487,57 @@ final class GovRetireStaffPlan {
       }
       long expectedTargetAfter;
       try {
-        expectedTargetAfter = Math.addExact(targetPopulationBefore, dismissal.count());
+        expectedTargetAfter = Math.addExact(targetPopulationBefore, count);
       } catch (ArithmeticException e) {
         throw new IllegalArgumentException(
-            "目标家户人口溢出 long: before=" + targetPopulationBefore + " + count=" + dismissal.count(), e);
+            "目标家户人口溢出 long: before=" + targetPopulationBefore + " + count=" + count, e);
       }
       if (targetPopulationAfter != expectedTargetAfter) {
         throw new IllegalArgumentException(
             "内部分摊不自洽：目标家户人口后 " + targetPopulationAfter + " != before+count=" + expectedTargetAfter);
       }
-      if (available < dismissal.count()) {
-        throw new IllegalArgumentException(
-            "内部分摊不自洽：available=" + available + " < count=" + dismissal.count());
+      if (available < count) {
+        throw new IllegalArgumentException("内部分摊不自洽：available=" + available + " < count=" + count);
       }
       sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
       long total = 0L;
       for (HouseholdManpowerAllocator.ManpowerShare share : sources) {
-        if (!share.householdId().equals(governmentHouseholdId)) {
+        if (!share.householdId().equals(sourceHouseholdId)) {
           throw new IllegalArgumentException(
-              "内部分摊不自洽：来源家户必须是政府家户 "
-                  + governmentHouseholdId.value()
+              "内部分摊不自洽：来源家户必须是退休源 "
+                  + sourceHouseholdId.value()
                   + "，实际 "
                   + share.householdId().value());
         }
         total = saturatedAdd(total, share.taken());
       }
-      if (total != dismissal.count()) {
+      if (total != count) {
         throw new IllegalArgumentException(
-            "守恒破坏：Σ来源 share.taken=" + total + " != count=" + dismissal.count() + "（批载荷必须逐值对应）");
+            "守恒破坏：Σ来源 share.taken=" + total + " != count=" + count + "（批载荷必须逐值对应）");
       }
     }
 
-    /** 政府家户退休后人口（= before − count；构造期已保证非负）。 */
-    long governmentPopulationAfter() {
-      return governmentPopulationBefore - dismissal.count();
+    /** 退休源家户退休后人口（= before − count；构造期已保证非负）。 */
+    long sourcePopulationAfter() {
+      return sourcePopulationBefore - count;
     }
 
     /** 是否要落 {@code actor.AdjustAccounts}（待遇 &gt; 0 才落）。 */
     boolean hasPayment() {
-      return dismissal.hasPayment();
+      return payment > 0L;
     }
 
     /**
      * 本工具将落的命令类型（批内固定顺序；preview 视图与 apply 组批共用这一处）： {@code social.SubmitHouseholdWorkOrder} →
-     * {@code unit.DismissStaff} → （待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}。
+     * [旧档：{@code unit.DismissStaff}] → （待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code
+     * sd.PutInfo}。
      */
     List<String> commandTypes() {
       List<String> types = new ArrayList<>(4);
       types.add(SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE);
-      types.add(DISMISS_STAFF_TYPE);
+      if (!postHouseholdMode) {
+        types.add(DISMISS_STAFF_TYPE);
+      }
       if (hasPayment()) {
         types.add(ADJUST_ACCOUNTS_TYPE);
       }
@@ -394,20 +551,20 @@ final class GovRetireStaffPlan {
      */
     String orderId() {
       return "gov-retire:"
-          + dismissal.unitId()
+          + unitId
           + ":"
-          + dismissal.role().name()
+          + role.name()
           + ":"
-          + dismissal.tick()
+          + tick
           + ":"
-          + dismissal.count()
+          + count
           + ":"
           + targetHouseholdId.value();
     }
 
     /**
      * {@code social.SubmitHouseholdWorkOrder} 载荷（Map 形态；preview 视图直接可用）： {@code orderId}/{@code
-     * target}/{@code reason}/{@code source.module="gov"} + 逐来源一条 {@code TRANSFER_MEMBERS(from=政府家户,
+     * target}/{@code reason}/{@code source.module="gov"} + 逐来源一条 {@code TRANSFER_MEMBERS(from=退休源,
      * to=目标家户, lotId, count=taken)}。
      */
     Map<String, Object> workOrderPayload(String reason) {
@@ -438,14 +595,34 @@ final class GovRetireStaffPlan {
       return ToolSupport.json(workOrderPayload(reason));
     }
 
-    /** {@code unit.DismissStaff} 载荷（复用共享推导的载荷；形状不变）。 */
+    /** {@code unit.DismissStaff} 载荷（只对旧档财政户模式合法）。 */
     String dismissStaffPayloadJson() {
-      return dismissal.dismissStaffPayloadJson();
+      if (postHouseholdMode) {
+        throw new IllegalStateException("批不自洽：岗位户模式（staff 是投影）不得组装 unit.DismissStaff 载荷");
+      }
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("unitId", unitId);
+      payload.put("role", role.name());
+      payload.put("count", count);
+      return ToolSupport.json(payload);
     }
 
-    /** {@code actor.AdjustAccounts} 载荷（复用共享推导的载荷；仅 {@link #hasPayment()} 时合法）。 */
+    /** {@code actor.AdjustAccounts} 载荷：国库银一条负增量（{@link #hasPayment()} 为真时才可调用）。 */
     String adjustAccountsPayloadJson() {
-      return dismissal.adjustAccountsPayloadJson();
+      if (!hasPayment()) {
+        throw new IllegalStateException("批不自洽：无待遇却要组装 actor.AdjustAccounts 载荷");
+      }
+      HexCoord at = treasuryLocation.get();
+      Map<String, Object> money = new LinkedHashMap<>();
+      money.put(MoneyVocabulary.SILVER_CURRENCY.toString(), -payment);
+      Map<String, Object> entry = new LinkedHashMap<>();
+      entry.put("household", GovernmentHouseholds.of(unitId).value());
+      entry.put("q", at.q());
+      entry.put("r", at.r());
+      entry.put("money", money);
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("entries", List.of(entry));
+      return ToolSupport.json(payload);
     }
 
     /** 逐来源视图（工具结果与 {@code sd.PutInfo.value.sources} 共用；{@code UNIT} 来源的 hex 为 null）。 */
@@ -474,24 +651,32 @@ final class GovRetireStaffPlan {
       return text.toString();
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON 字符串；含目标家户/来源 shares/待遇，不再有旧近似文案）。 */
+    /** {@code sd.PutInfo} 的 {@code value}（JSON 字符串；含模式/退休源/目标家户/来源 shares/待遇）。 */
     String infoValueJson(String reason) {
       requireReason(reason);
       Map<String, Object> value = new LinkedHashMap<>();
-      value.put("unitId", dismissal.unitId());
-      value.put("role", dismissal.role().name());
-      value.put("count", dismissal.count());
-      value.put("tick", dismissal.tick());
-      value.put("staffBefore", dismissal.staffBefore());
-      value.put("staffAfter", dismissal.staffAfter());
-      value.put("retirementPerStaff", dismissal.retirementPerStaff());
-      value.put("payment", dismissal.payment());
-      value.put(
-          "treasury", dismissal.treasuryLocation().map(GovDismissPlan::treasuryView).orElse(null));
-      value.put("availableSilver", dismissal.availableSilver());
-      value.put("governmentHouseholdId", governmentHouseholdId.value());
-      value.put("governmentPopulationBefore", governmentPopulationBefore);
-      value.put("governmentPopulationAfter", governmentPopulationAfter());
+      value.put("mode", postHouseholdMode ? "post-household" : "treasury-household-legacy");
+      value.put("unitId", unitId);
+      value.put("role", role.name());
+      value.put("count", count);
+      value.put("tick", tick);
+      if (!postHouseholdMode) {
+        value.put("staffBefore", legacyStaffBefore);
+        value.put("staffAfter", legacyStaffAfter);
+      }
+      value.put("retirementPerStaff", retirementPerStaff);
+      value.put("payment", payment);
+      value.put("treasury", treasuryLocation.map(GovDismissPlan::treasuryView).orElse(null));
+      value.put("availableSilver", availableSilver);
+      value.put("sourceHouseholdId", sourceHouseholdId.value());
+      value.put("sourcePopulationBefore", sourcePopulationBefore);
+      value.put("sourcePopulationAfter", sourcePopulationAfter());
+      if (!postHouseholdMode) {
+        // ★ 旧档键名兼容：源 = hh-gov-<unitId>。
+        value.put("governmentHouseholdId", sourceHouseholdId.value());
+        value.put("governmentPopulationBefore", sourcePopulationBefore);
+        value.put("governmentPopulationAfter", sourcePopulationAfter());
+      }
       value.put("targetHouseholdId", targetHouseholdId.value());
       value.put("targetHex", targetHex.map(GovRetireStaffPlan::hexView).orElse(null));
       value.put("targetPopulationBefore", targetPopulationBefore);
@@ -507,29 +692,27 @@ final class GovRetireStaffPlan {
     String infoNote(String reason) {
       requireReason(reason);
       return "退休离编 "
-          + dismissal.unitId()
+          + unitId
           + " 的 "
-          + dismissal.role()
+          + role
           + " "
-          + dismissal.count()
+          + count
           + " 人（tick "
-          + dismissal.tick()
-          + "）：在编 "
-          + dismissal.staffBefore()
-          + "→"
-          + dismissal.staffAfter()
-          + "，待遇 "
-          + dismissal.payment()
+          + tick
+          + "，"
+          + (postHouseholdMode ? "岗位户" : "旧档财政户")
+          + "）："
+          + (postHouseholdMode ? "" : "在编 " + legacyStaffBefore + "→" + legacyStaffAfter + "，")
+          + "待遇 "
+          + payment
           + " 银"
-          + (hasPayment()
-              ? "（国库 @ " + hexText(dismissal.treasuryLocation().get()) + "）"
-              : "（政策为 0，无支付命令）")
-          + "；社会转移：政府家户 "
-          + governmentHouseholdId.value()
+          + (hasPayment() ? "（国库 @ " + hexText(treasuryLocation.get()) + "）" : "（政策为 0，无支付命令）")
+          + "；社会转移：退休源 "
+          + sourceHouseholdId.value()
           + " "
-          + governmentPopulationBefore
+          + sourcePopulationBefore
           + "→"
-          + governmentPopulationAfter()
+          + sourcePopulationAfter()
           + " → 目标家户 "
           + targetHouseholdId.value()
           + (targetHex.isPresent() ? " @ " + hexText(targetHex.get()) : "")

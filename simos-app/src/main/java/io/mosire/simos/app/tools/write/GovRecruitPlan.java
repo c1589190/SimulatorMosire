@@ -16,6 +16,7 @@ import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.spi.AssignGovPostHandler;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -78,8 +79,11 @@ final class GovRecruitPlan {
   /** {@code social.SubmitHouseholdWorkOrder} 的命令类型（与 handler 的 {@code TYPE} 同源）。 */
   static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE = SubmitHouseholdWorkOrderHandler.TYPE;
 
-  /** {@code unit.RecruitStaff} 的命令类型（与 {@code RecruitStaffHandler.type()} 同字面）。 */
+  /** {@code unit.RecruitStaff} 的命令类型（与 {@code RecruitStaffHandler.type()} 同字面；旧档模式才落）。 */
   static final String RECRUIT_STAFF_TYPE = "unit.RecruitStaff";
+
+  /** {@code unit.AssignGovPost} 的命令类型（Z4 岗位户模式落点；只写 posts，绝不写 staff）。 */
+  static final String ASSIGN_GOV_POST_TYPE = AssignGovPostHandler.TYPE;
 
   /** {@code sd.PutInfo} 的命令类型（恒有，行动记录）。 */
   static final String PUT_INFO_TYPE = "sd.PutInfo";
@@ -87,7 +91,7 @@ final class GovRecruitPlan {
   private GovRecruitPlan() {}
 
   /**
-   * 纯推导入口（见类注的来源口径与校验清单）。
+   * 纯推导入口（见类注的来源口径与校验清单；Z4/C1 双模式）。
    *
    * @param state 读数所在的状态（preview / apply 都取<b>同一坐标</b>的状态）
    * @param unitId 招募主体（必须是带 {@link GovernmentFormation} 的单位）
@@ -122,27 +126,48 @@ final class GovRecruitPlan {
       throw new IllegalArgumentException("GOV 单位不存在: " + unitId);
     }
     GovernmentFormation governmentFormation = requireGovernmentFormation(unit, unitId);
-    long staffBefore = governmentFormation.staff().getOrDefault(role, 0L);
-    if (staffBefore > Long.MAX_VALUE - count) {
+
+    // ★★ Z4/C1：目标家户选择（岗位户优先；没有岗位户且 posts 为空时维持旧档财政户口径）──────────────
+    HouseholdId postHousehold = HouseholdId.parse(RaiseUnitPlan.householdIdFor(unitId));
+    boolean postHouseholdMode = unit.households().contains(postHousehold);
+    if (!postHouseholdMode && governmentFormation.staffIsHouseholdProjection()) {
       throw new IllegalArgumentException(
-          "招募后 " + role + " 在编人数溢出 long: 现有 " + staffBefore + " + 请求 " + count);
+          "GOV 单位 "
+              + unitId
+              + " 的 householdPosts 非空但没有岗位户 "
+              + postHousehold.value()
+              + "：岗位数据坏（posts 的键不可能 ⊆ Unit.households）；先补齐岗位户（Z3 simos.gov.expandHousehold / "
+              + "unit.SetUnitHouseholds）再招募（不猜、不静默降级到财政户）");
     }
-    long staffAfter = staffBefore + count;
-    Optional<Long> staffCap =
-        Optional.ofNullable(governmentFormation.policy().staffCap().get(role));
-    if (staffCap.isPresent() && staffBefore > staffCap.get() - count) {
-      throw new IllegalArgumentException(
-          "招募 "
-              + role
-              + " "
-              + count
-              + " 人会超编制上限: 现有 "
-              + staffBefore
-              + " + 请求 "
-              + count
-              + " > staffCap "
-              + staffCap.get()
-              + "（不截断；先 unit.SetGovPolicy 提上限或减少 count）");
+    HouseholdId targetHousehold =
+        postHouseholdMode ? postHousehold : GovernmentHouseholds.of(unitId);
+
+    // ★ staff 只在旧档模式参与：新世界的 staff 是岗位户人口/承诺投影（C4），由 app 现算，不由本工具直写。
+    long staffBefore = -1L;
+    long staffAfter = -1L;
+    Optional<Long> staffCap = Optional.empty();
+    if (!postHouseholdMode) {
+      staffBefore = governmentFormation.staff().getOrDefault(role, 0L);
+      if (staffBefore > Long.MAX_VALUE - count) {
+        throw new IllegalArgumentException(
+            "招募后 " + role + " 在编人数溢出 long: 现有 " + staffBefore + " + 请求 " + count);
+      }
+      staffAfter = staffBefore + count;
+      staffCap = Optional.ofNullable(governmentFormation.policy().staffCap().get(role));
+      if (staffCap.isPresent() && staffBefore > staffCap.get() - count) {
+        throw new IllegalArgumentException(
+            "招募 "
+                + role
+                + " "
+                + count
+                + " 人会超编制上限: 现有 "
+                + staffBefore
+                + " + 请求 "
+                + count
+                + " > staffCap "
+                + staffCap.get()
+                + "（不截断；先 unit.SetGovPolicy 提上限或减少 count）");
+      }
     }
     var jurisdiction =
         unit.jurisdiction()
@@ -155,22 +180,24 @@ final class GovRecruitPlan {
           "单位 " + unitId + " 的 jurisdiction 为空（无管辖区域）：没有可招募来源；先 unit.SetJurisdiction");
     }
     SocialData social = ToolSupport.socialData(state);
-    HouseholdId governmentHousehold = GovernmentHouseholds.of(unitId);
-    if (!unit.households().contains(governmentHousehold)) {
+    if (!unit.households().contains(targetHousehold)) {
       throw new IllegalArgumentException(
           "GOV 单位 "
               + unitId
-              + " 的 Unit.households 不含政府家户 "
-              + governmentHousehold.value()
-              + "：单位家户关系数据坏，招募目标不明确；先 unit.SetGovFormation / 修数（不猜、不新建第二户）");
+              + " 的 Unit.households 不含招募目标 "
+              + targetHousehold.value()
+              + (postHouseholdMode
+                  ? "（岗位户）：单位家户关系数据坏；先 unit.SetUnitHouseholds 把它编入（GOV 单位须保留政府家户）"
+                  : "（政府家户）：单位家户关系数据坏；先 unit.SetGovFormation / 修数（不猜、不新建第二户）"));
     }
-    if (!social.households().containsKey(governmentHousehold)) {
+    if (!social.households().containsKey(targetHousehold)) {
       throw new IllegalArgumentException(
-          "Social 里不存在政府家户 "
-              + governmentHousehold.value()
-              + "（GOV 单位 "
-              + unitId
-              + " 的招募目标）：先补该政府家户（如 simos.gov.createOffice 的 social.CreateHousehold）再招募（不猜、不新建第二户）");
+          "Social 里不存在招募目标家户 "
+              + targetHousehold.value()
+              + (postHouseholdMode
+                  ? "（岗位户；先由 Z3 simos.gov.expandHousehold / Z5 bootstrap 建户，或对齐 Unit.households）"
+                  : "（GOV 单位 " + unitId + " 的旧档政府家户；先补该政府家户再招募）")
+              + "（不猜、不新建第二户）");
     }
     GameMap map = ToolSupport.gameMap(state);
     long tick = state.meta().timestamp().tick();
@@ -189,10 +216,15 @@ final class GovRecruitPlan {
     }
     HouseholdManpowerAllocator.Allocation allocation;
     try {
-      // ★ 排除目标政府家户：本批把它当目标，不得再作为来源（from == to 会被 HouseholdBook 具名拒）。
+      // ★ 排除目标家户：本批把它当目标，不得再作为来源（from == to 会被 HouseholdBook 具名拒）。
+      //   岗位户模式下同时排除财政户 hh-gov（它已是 UNIT 位置、通常不在辖区 hex 上；显式排除防边界情形）。
+      Set<HouseholdId> excluded =
+          postHouseholdMode
+              ? Set.of(targetHousehold, GovernmentHouseholds.of(unitId))
+              : Set.of(targetHousehold);
       allocation =
           HouseholdManpowerAllocator.allocateMalesOfAdult(
-              social, jurisdictionHexesInOrder, count, clock, tick, Set.of(governmentHousehold));
+              social, jurisdictionHexesInOrder, count, clock, tick, excluded);
     } catch (IllegalArgumentException e) {
       if (e.getMessage() != null && e.getMessage().startsWith("人力总量不足")) {
         throw new IllegalArgumentException("招募来源不足：" + e.getMessage(), e);
@@ -200,6 +232,7 @@ final class GovRecruitPlan {
       throw e;
     }
     return new Plan(
+        postHouseholdMode,
         unitId,
         role,
         count,
@@ -208,7 +241,7 @@ final class GovRecruitPlan {
         staffAfter,
         staffCap,
         allocation.available(),
-        governmentHousehold,
+        targetHousehold,
         allocation.shares());
   }
 
@@ -241,18 +274,22 @@ final class GovRecruitPlan {
   /**
    * 一份招募计划（全部字段是状态的纯函数；来源表在构造期冻结）。
    *
+   * @param postHouseholdMode true = Z4 新世界岗位户模式（目标 = {@code hh-unit:<unitId>}，落 {@code
+   *     unit.AssignGovPost}）； false = 旧档财政户模式（目标 = {@code hh-gov-<unitId>}，保留 {@code
+   *     unit.RecruitStaff} 旧行为）
    * @param unitId 招募主体
    * @param role 行政角色
-   * @param count 招募人数（= roster 增量 = Σ来源 share.taken）
+   * @param count 招募人数（= Σ来源 share.taken；旧档另 = roster 增量）
    * @param tick 推导时的世界日（年龄现算、工单幂等键与行动记录用）
-   * @param staffBefore 该角色现有在编
-   * @param staffAfter 该角色招募后在编（= staffBefore + count）
-   * @param staffCap 该角色的编制上限（不存在 = 不设限）
+   * @param staffBefore 旧档该角色现有在编；岗位户模式 = −1（staff 是投影，C4）
+   * @param staffAfter 旧档该角色招募后在编（= staffBefore + count）；岗位户模式 = −1
+   * @param staffCap 旧档该角色的编制上限（不存在 = 不设限）；岗位户模式 = empty
    * @param available 全部辖区合格家户份额合计（不足拒因用；成功时也随视图返回）
-   * @param governmentHouseholdId 目标政府家户（{@code hh-gov-<unitId>}；构造期已由 plan 前置校验存在）
+   * @param targetHouseholdId 招募目标家户（岗位户 {@code hh-unit:<unitId>} 或旧档政府家户 {@code hh-gov-<unitId>}）
    * @param sources 逐来源家户份额（辖区顺序 + 家户全序瀑布序；Σtaken == count）
    */
   record Plan(
+      boolean postHouseholdMode,
       String unitId,
       StaffRole role,
       long count,
@@ -261,7 +298,7 @@ final class GovRecruitPlan {
       long staffAfter,
       Optional<Long> staffCap,
       long available,
-      HouseholdId governmentHouseholdId,
+      HouseholdId targetHouseholdId,
       List<HouseholdManpowerAllocator.ManpowerShare> sources) {
 
     Plan {
@@ -275,31 +312,47 @@ final class GovRecruitPlan {
       if (tick < 0L) {
         throw new IllegalArgumentException("tick 不得为负: " + tick);
       }
-      if (staffBefore < 0L) {
-        throw new IllegalArgumentException("staffBefore 不得为负: " + staffBefore);
-      }
-      if (staffAfter != staffBefore + count) {
-        throw new IllegalArgumentException(
-            "内部分摊不自洽：staffAfter=" + staffAfter + " != staffBefore+count=" + (staffBefore + count));
+      Objects.requireNonNull(staffCap, "staffCap");
+      if (postHouseholdMode) {
+        if (staffBefore != -1L || staffAfter != -1L || staffCap.isPresent()) {
+          throw new IllegalArgumentException(
+              "内部分摊不自洽：岗位户模式不得带 legacy staff 数字（"
+                  + staffBefore
+                  + "→"
+                  + staffAfter
+                  + " cap="
+                  + staffCap
+                  + "）");
+        }
+      } else {
+        if (staffBefore < 0L) {
+          throw new IllegalArgumentException("staffBefore 不得为负: " + staffBefore);
+        }
+        if (staffAfter != staffBefore + count) {
+          throw new IllegalArgumentException(
+              "内部分摊不自洽：staffAfter="
+                  + staffAfter
+                  + " != staffBefore+count="
+                  + (staffBefore + count));
+        }
+        staffCap.ifPresent(
+            cap -> {
+              if (cap < staffAfter) {
+                throw new IllegalArgumentException(
+                    "内部分摊不自洽：staffCap=" + cap + " < staffAfter=" + staffAfter);
+              }
+            });
       }
       if (available < 0L) {
         throw new IllegalArgumentException("available 不得为负: " + available);
       }
-      Objects.requireNonNull(staffCap, "staffCap");
-      staffCap.ifPresent(
-          cap -> {
-            if (cap < staffAfter) {
-              throw new IllegalArgumentException(
-                  "内部分摊不自洽：staffCap=" + cap + " < staffAfter=" + staffAfter);
-            }
-          });
-      Objects.requireNonNull(governmentHouseholdId, "governmentHouseholdId");
+      Objects.requireNonNull(targetHouseholdId, "targetHouseholdId");
       sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
       long total = 0L;
       for (HouseholdManpowerAllocator.ManpowerShare share : sources) {
-        if (share.householdId().equals(governmentHouseholdId)) {
+        if (share.householdId().equals(targetHouseholdId)) {
           throw new IllegalArgumentException(
-              "内部分摊不自洽：来源家户不得是目标政府家户 " + governmentHouseholdId.value() + "（自我转移会被域层拒）");
+              "内部分摊不自洽：来源家户不得是招募目标 " + targetHouseholdId.value() + "（自我转移会被域层拒）");
         }
         total = saturatedAdd(total, share.taken());
       }
@@ -315,20 +368,22 @@ final class GovRecruitPlan {
 
     /** 本工具将落的命令类型（批内固定顺序；preview 视图与 apply 组批共用这一处）。 */
     List<String> commandTypes() {
-      return List.of(SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE, RECRUIT_STAFF_TYPE, PUT_INFO_TYPE);
+      return postHouseholdMode
+          ? List.of(SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE, ASSIGN_GOV_POST_TYPE, PUT_INFO_TYPE)
+          : List.of(SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE, RECRUIT_STAFF_TYPE, PUT_INFO_TYPE);
     }
 
     /**
-     * 工单确定性幂等键：{@code gov-recruit:<unitId>:<role>:<tick>:<count>}。同一批参数在同一 tick 重放 ⇒
-     * 命中幂等键、整单具名拒，不重复改人口。
+     * 工单确定性幂等键：{@code gov-recruit:<unitId>:<role>:<tick>:<count>}（两模式同形；同一 GOV 同一 tick 只有一个模式）。
+     * 同一批参数在同一 tick 重放 ⇒ 命中幂等键、整单具名拒，不重复改人口。
      */
     String orderId() {
       return "gov-recruit:" + unitId + ":" + role.name() + ":" + tick + ":" + count;
     }
 
     /**
-     * {@code social.SubmitHouseholdWorkOrder} 载荷：target = 政府家户；逐来源一条 {@code
-     * TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId, count=taken)}；{@code orderId} = {@link
+     * {@code social.SubmitHouseholdWorkOrder} 载荷：target = 招募目标家户（岗位户或旧档财政户）；逐来源一条 {@code
+     * TRANSFER_MEMBERS(from=来源家户, to=目标, lotId, count=taken)}；{@code orderId} = {@link
      * #orderId()}，{@code source.module="gov"}，reason = 工具 reason。
      */
     String submitHouseholdWorkOrderPayloadJson(String reason) {
@@ -338,14 +393,14 @@ final class GovRecruitPlan {
         Map<String, Object> step = new LinkedHashMap<>();
         step.put("op", "TRANSFER_MEMBERS");
         step.put("from", share.householdId().value());
-        step.put("to", governmentHouseholdId.value());
+        step.put("to", targetHouseholdId.value());
         step.put("lotId", share.lotId().value());
         step.put("count", share.taken());
         steps.add(step);
       }
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("orderId", orderId());
-      payload.put("target", governmentHouseholdId.value());
+      payload.put("target", targetHouseholdId.value());
       payload.put("reason", reason);
       payload.put("source", Map.of("module", "gov"));
       payload.put("plan", steps);
@@ -353,11 +408,29 @@ final class GovRecruitPlan {
     }
 
     /**
-     * {@code unit.RecruitStaff} 载荷：{@code {unitId, role, count, sources}}；{@code sources} = 逐来源
-     * {@code {kind:"household", id:householdId, lotId, count:taken}}，与 {@link #sources}
-     * 逐值对应（命令本身只入编、 不扣人；扣人在同批 {@code social.SubmitHouseholdWorkOrder}）。
+     * {@code unit.AssignGovPost} 载荷（仅岗位户模式合法）：{@code {unitId, household, role}}；只写 {@code
+     * householdPosts}，<b>绝不写 staff</b>（C4）。
+     */
+    String assignGovPostPayloadJson() {
+      if (!postHouseholdMode) {
+        throw new IllegalStateException("批不自洽：旧档财政户模式不得组装 unit.AssignGovPost 载荷");
+      }
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("unitId", unitId);
+      payload.put("household", targetHouseholdId.value());
+      payload.put("role", role.name());
+      return ToolSupport.json(payload);
+    }
+
+    /**
+     * {@code unit.RecruitStaff} 载荷（仅旧档财政户模式合法）：{@code {unitId, role, count, sources}}；{@code
+     * sources} = 逐来源 {@code {kind:"household", id:householdId, lotId, count:taken}}，与 {@link
+     * #sources} 逐值对应（命令本身只入编、 不扣人；扣人在同批 {@code social.SubmitHouseholdWorkOrder}）。
      */
     String recruitStaffPayloadJson() {
+      if (postHouseholdMode) {
+        throw new IllegalStateException("批不自洽：岗位户模式（staff 是投影）不得组装 unit.RecruitStaff 载荷");
+      }
       List<Map<String, Object>> rows = new ArrayList<>(sources.size());
       for (HouseholdManpowerAllocator.ManpowerShare share : sources) {
         Map<String, Object> row = new LinkedHashMap<>();
@@ -377,17 +450,25 @@ final class GovRecruitPlan {
 
     /**
      * {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；含
-     * role/count/来源家户份额/reason/tick）。其余字段沿用旧口径， 仅 {@code sources} 行改成 householdId/lotId/taken/hex。
+     * mode/target/role/count/来源家户份额/reason/tick； 旧档另含 staff 前后）。
      */
     String infoValueJson(String reason) {
       requireReason(reason);
       Map<String, Object> value = new LinkedHashMap<>();
+      value.put("mode", postHouseholdMode ? "post-household" : "treasury-household-legacy");
       value.put("unitId", unitId);
       value.put("role", role.name());
       value.put("count", count);
       value.put("tick", tick);
-      value.put("staffBefore", staffBefore);
-      value.put("staffAfter", staffAfter);
+      if (!postHouseholdMode) {
+        value.put("staffBefore", staffBefore);
+        value.put("staffAfter", staffAfter);
+      }
+      value.put("targetHouseholdId", targetHouseholdId.value());
+      if (!postHouseholdMode) {
+        // ★ 旧档键名兼容：目标 = hh-gov-<unitId>。
+        value.put("governmentHouseholdId", targetHouseholdId.value());
+      }
       value.put("available", available);
       value.put("sourceCount", sources.size());
       value.put("sources", sourcesView());
@@ -406,15 +487,20 @@ final class GovRecruitPlan {
           + count
           + " 人（tick "
           + tick
+          + "，"
+          + (postHouseholdMode ? "岗位户" : "旧档财政户")
           + "）：来源家户份额 "
           + sources.size()
           + " 条（辖区顺序瀑布 → "
-          + governmentHouseholdId.value()
-          + "），在编 "
-          + staffBefore
-          + "→"
-          + staffAfter
-          + (staffCap.isPresent() ? "（上限 " + staffCap.get() + "）" : "")
+          + targetHouseholdId.value()
+          + "）"
+          + (postHouseholdMode
+              ? "，落岗位指派（unit.AssignGovPost，不写 staff）"
+              : "，在编 "
+                  + staffBefore
+                  + "→"
+                  + staffAfter
+                  + (staffCap.isPresent() ? "（上限 " + staffCap.get() + "）" : ""))
           + "；reason="
           + reason;
     }

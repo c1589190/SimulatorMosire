@@ -134,22 +134,23 @@ public final class GovRecruitTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 从辖区家户份额转移真实成员到政府家户并入编（组合工具，一批 = 一条 revision）：参数 {unitId(必填, 必须是带 GovernmentFormation"
-        + " 的 GOV), role(必填 SCRIBE|YAMEN|POST), count(必填 ≥ 1), reason(必填), preview?(缺省"
-        + " true=只算不写), branch?(缺省 "
+    return "GM 从辖区家户份额转移真实成员到招募目标家户（组合工具，一批 = 一条 revision；Z4/C1 双模式）：参数"
+        + " {unitId(必填, 必须是带 GovernmentFormation 的 GOV), role(必填 SCRIBE|YAMEN|POST), count(必填 ≥ 1),"
+        + " reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
-        + "), expectedRevision(preview=false 时必填)}。目标家户 = hh-gov-<unitId>，必须已同时在 Unit.households 与"
-        + " Social 里，否则具名拒（不猜、不新建第二户）。来源口径：按单位 jurisdiction 的 Region 顺序把各区 hex 集合交给"
-        + " HouseholdManpowerAllocator 的 MALE+ADULT 家户份额瀑布（排除目标政府家户）；总量不足 ⇒ 整条拒（带"
-        + " requested/available/缺口），不部分抽取。staffCap[role] 若存在且 现有+count>cap ⇒"
-        + " 具名拒。批：social.SubmitHouseholdWorkOrder（orderId=gov-recruit:<unitId>:<role>:<tick>:<count>"
-        + " 幂等键，target=政府家户，逐来源 TRANSFER_MEMBERS(from=来源家户,to=政府家户,lotId,count=taken)）→"
-        + " unit.RecruitStaff（sources=逐来源 {kind:\"household\",id,lotId,count}）→ sd.PutInfo（key="
+        + "), expectedRevision(preview=false 时必填)}。"
+        + "★ 目标家户选择：GOV 的 Unit.households 含岗位户 hh-unit:<unitId> ⇒ 新世界模式：目标 = 岗位户，批落"
+        + " unit.AssignGovPost（只写 householdPosts，绝不写 staff），不校验 staffCap；否则 householdPosts 必须为空（旧档）"
+        + " ⇒ 目标 = hh-gov-<unitId>，保留 unit.RecruitStaff 与 staffCap 旧行为。目标必须同时在 Unit.households 与 Social 里，"
+        + "否则具名拒（不猜、不静默降级）。来源口径：按单位 jurisdiction 的 Region 顺序把各区 hex 集合交给"
+        + " HouseholdManpowerAllocator 的 MALE+ADULT 家户份额瀑布（排除目标家户/财政户）；总量不足 ⇒ 整条拒（带"
+        + " requested/available/缺口），不部分抽取。批：social.SubmitHouseholdWorkOrder（orderId="
+        + "gov-recruit:<unitId>:<role>:<tick>:<count> 幂等键，target=目标家户，逐来源 TRANSFER_MEMBERS(from=来源家户,"
+        + "to=目标家户,lotId,count=taken)）→ [unit.AssignGovPost | unit.RecruitStaff] → sd.PutInfo（key="
         + INFO_KEY
-        + "）。守恒：Σ share.taken == count == roster 增量；批内不再有 social.SeedGroups。返回 {preview, submitted,"
-        + " tick, unitId, governmentHouseholdId, role, count, staffBefore, staffAfter, staffCap,"
-        + " available, sources[{householdId,lotId,taken,hex}], commands, infoText}；apply 另加"
-        + " submission。";
+        + "）。守恒：Σ share.taken == count（旧档另 == roster 增量）。返回 {preview, submitted, mode, tick, unitId,"
+        + " targetHouseholdId, role, count, [旧档 staffBefore/After/Cap], available,"
+        + " sources[{householdId,lotId,taken,hex}], commands, infoText}；apply 另加 submission。";
   }
 
   @Override
@@ -159,10 +160,11 @@ public final class GovRecruitTool implements AgentTool {
         "unitId",
         ToolSupport.prop(
             "string",
-            "招募主体：带 GovernmentFormation 的 GOV 单位 id（其政府家户 hh-gov-<unitId> 必须已同时在 Unit.households 与"
-                + " Social 里）"));
+            "招募主体：带 GovernmentFormation 的 GOV 单位 id（目标家户：有岗位户 hh-unit:<unitId> ⇒ 用它；否则旧档"
+                + "财政户 hh-gov-<unitId> 必须已同时在 Unit.households 与 Social 里）"));
     props.put("role", ToolSupport.prop("string", "行政角色：SCRIBE（书吏）|YAMEN（衙门）|POST（驿传）"));
-    props.put("count", ToolSupport.prop("integer", "招募人数（≥ 1；不得超过 staffCap[role] 的剩余额度）"));
+    props.put(
+        "count", ToolSupport.prop("integer", "招募人数（≥ 1；旧档另受 staffCap[role] 剩余额度约束，新世界落岗位指派）"));
     props.put(
         "reason",
         ToolSupport.prop("string", "招募原因（必填非空白；进 Social 工单 reason、sd.PutInfo 行动记录与工具结果）"));
@@ -170,7 +172,8 @@ public final class GovRecruitTool implements AgentTool {
         "preview",
         ToolSupport.prop(
             "boolean",
-            "true（缺省）= 只算不写；false = 提交同一批三条命令（SubmitHouseholdWorkOrder + RecruitStaff + PutInfo）"));
+            "true（缺省）= 只算不写；false = 提交同一批三条命令（SubmitHouseholdWorkOrder + [AssignGovPost|RecruitStaff]"
+                + " + PutInfo）"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
@@ -308,8 +311,8 @@ public final class GovRecruitTool implements AgentTool {
   }
 
   /**
-   * 组批：{@code social.SubmitHouseholdWorkOrder} → {@code unit.RecruitStaff} → {@code
-   * sd.PutInfo}（固定顺序）。
+   * 组批（固定顺序、按模式二选一）：{@code social.SubmitHouseholdWorkOrder} → [新世界 {@code unit.AssignGovPost} / 旧档
+   * {@code unit.RecruitStaff}] → {@code sd.PutInfo}。
    */
   private List<CommandEnvelope> buildBatch(
       String batchId,
@@ -325,13 +328,23 @@ public final class GovRecruitTool implements AgentTool {
             expectedRevision,
             GovRecruitPlan.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE,
             plan.submitHouseholdWorkOrderPayloadJson(reason)));
-    batch.add(
-        envelope(
-            batchId,
-            branch,
-            expectedRevision,
-            GovRecruitPlan.RECRUIT_STAFF_TYPE,
-            plan.recruitStaffPayloadJson()));
+    if (plan.postHouseholdMode()) {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              GovRecruitPlan.ASSIGN_GOV_POST_TYPE,
+              plan.assignGovPostPayloadJson()));
+    } else {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              GovRecruitPlan.RECRUIT_STAFF_TYPE,
+              plan.recruitStaffPayloadJson()));
+    }
     batch.add(
         envelope(
             batchId,
@@ -379,14 +392,19 @@ public final class GovRecruitTool implements AgentTool {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("preview", preview);
     view.put("submitted", submitted);
+    view.put("mode", plan.postHouseholdMode() ? "post-household" : "treasury-household-legacy");
     view.put("tick", plan.tick());
     view.put("unitId", plan.unitId());
-    view.put("governmentHouseholdId", plan.governmentHouseholdId().value());
+    view.put("targetHouseholdId", plan.targetHouseholdId().value());
     view.put("role", plan.role().name());
     view.put("count", plan.count());
-    view.put("staffBefore", plan.staffBefore());
-    view.put("staffAfter", plan.staffAfter());
-    view.put("staffCap", plan.staffCap().orElse(null));
+    if (!plan.postHouseholdMode()) {
+      // ★ 旧档键名兼容：目标 = hh-gov-<unitId>。
+      view.put("governmentHouseholdId", plan.targetHouseholdId().value());
+      view.put("staffBefore", plan.staffBefore());
+      view.put("staffAfter", plan.staffAfter());
+      view.put("staffCap", plan.staffCap().orElse(null));
+    }
     view.put("available", plan.available());
     view.put("sources", plan.sourcesView());
     view.put("commands", plan.commandTypes());

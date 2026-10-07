@@ -103,8 +103,47 @@ public record GovernmentFormation(
     }
   }
 
-  /** {@code staff} 是否已是“领导家户投影”的口径（{@code governmentPostsOfHousehold} 非空 = 由 app 侧按家户人口校核）。 */
+  /** {@code staff} 是否已是“岗位家户投影”的口径（{@code governmentPostsOfHousehold} 非空 = 由 app 侧按家户人口/承诺校核）。 */
   public boolean staffIsHouseholdProjection() {
     return !governmentPostsOfHousehold.isEmpty();
+  }
+
+  /**
+   * ★★ <b>Z4/C4：{@code staff} 的唯一派生口径</b>——按 {@link GovernmentPostOfHousehold#role()} 聚合这些岗位家户的
+   * 人数/承诺量。
+   *
+   * <p>★ <b>为什么入参是函数</b>：本 record 在 unit 切片，看不见 Social 家户人口，也看不见 economy 的 {@code
+   * HouseholdLaborCommitment}（模块边界）。调用方（app 组合根）提供"某家户对 GA 的贡献量"：Z4 用 Social 家户人口；Z3 接入承诺劳动后改用
+   * {@code GOV_SERVICE} 承诺的小时数/人数当量——公式只在这里一份。
+   *
+   * <p>★ <b>确定性/保序</b>：按 {@code governmentPostsOfHousehold()} 的插入序遍历，角色键沿用其首次出现的顺序；返回 {@code
+   * LinkedHashMap} + 赋值处冻结（不用 {@code Map.copyOf}）。求和溢出 ⇒ 具名 {@link IllegalArgumentException}。
+   *
+   * @param householdAmount 家户 → 贡献量（非负；调用方保证家户存在时的口径）
+   * @return 角色 → 投影量（只含被指派到的角色；空表 = 没有岗位家户）
+   */
+  public Map<StaffRole, Long> projectedStaff(
+      java.util.function.ToLongFunction<HouseholdId> householdAmount) {
+    java.util.Objects.requireNonNull(householdAmount, "householdAmount");
+    Map<StaffRole, Long> projection = new LinkedHashMap<>();
+    for (GovernmentPostOfHousehold post : governmentPostsOfHousehold.values()) {
+      long amount = householdAmount.applyAsLong(post.householdId());
+      if (amount < 0L) {
+        throw new IllegalArgumentException(
+            "projectedStaff 的 householdAmount 不得为负: " + post.householdId() + "=" + amount);
+      }
+      projection.merge(
+          post.role(),
+          amount,
+          (left, right) -> {
+            try {
+              return Math.addExact(left, right);
+            } catch (ArithmeticException e) {
+              throw new IllegalArgumentException(
+                  "projectedStaff 角色 " + post.role() + " 的投影量溢出 long", e);
+            }
+          });
+    }
+    return Collections.unmodifiableMap(projection); // ★ 冻在赋值处（保序不可变）
   }
 }

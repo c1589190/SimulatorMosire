@@ -134,22 +134,25 @@ public final class GovAbsorbUnitTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 吸收纯人员单位进 GOV 编制（组合工具，一批 = 一条 revision；人口走 Social 家户真转移）。"
+    return "GM 吸收纯人员单位进 GOV 编制（组合工具，一批 = 一条 revision；人口走 Social 家户真转移；Z4/C1 双模式）。"
         + "参数 {unitId(必填, 吸收方 GOV), role(必填 SCRIBE|YAMEN|POST), sourceUnitId(必填, 无 module 且"
         + " Unit.households 非空的纯人员单位), count(必填 ≥ 1), disbandSource?(缺省 false；迁移后所有源家户人口=0"
         + " 才同批 SET_LOCATION + unit.DisbandUnit), reason(必填), preview?(缺省 true), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
+        + "★ 吸收目标：GOV 的 Unit.households 含岗位户 hh-unit:<unitId> ⇒ 新世界模式：目标 = 岗位户，批落 "
+        + "unit.AssignGovPost（只写 householdPosts，绝不写 staff）；否则 householdPosts 必须为空（旧档）⇒ 目标 = "
+        + "hh-gov-<unitId>，保留 unit.RecruitStaff 与 roster 守恒旧行为。目标缺失/数据坏 ⇒ 具名拒（不静默降级）。"
         + "★ 来源 = 源单位 Unit.households() 的家户成员份额，用 HouseholdManpowerAllocator 抽 MALE+ADULT 恰好 count 人；"
         + "不足整条拒。★ 源带 ArmyFormation 或 GovernmentFormation ⇒ 具名拒（不是人口容器）。"
-        + "批：social.SubmitHouseholdWorkOrder（逐 share TRANSFER_MEMBERS 到 hh-gov-<unitId>；disband 时再逐源家户 "
-        + "SET_LOCATION=GOV 有效位置 HEX）→ unit.RecruitStaff（role += count）→（disband）unit.DisbandUnit → "
+        + "批：social.SubmitHouseholdWorkOrder（逐 share TRANSFER_MEMBERS 到吸收目标家户；disband 时再逐源家户 "
+        + "SET_LOCATION=GOV 有效位置 HEX）→ [unit.AssignGovPost | unit.RecruitStaff] →（disband）unit.DisbandUnit → "
         + "sd.PutInfo(key="
         + INFO_KEY
         + ")。不再发 unit.ApplyCasualties，也不写 Unit 第二本 headcount。守恒：Σshare.taken == count；"
-        + "源家户人口前−count == 后；staff 前+count == 后。"
-        + "返回 {preview, submitted, tick, unitId, governmentHouseholdId, sourceUnitId, role, count, "
-        + "staffBefore, staffAfter, sourcePopulationBefore, sourcePopulationAfter, shares, householdRemainders, "
+        + "源家户人口前−count == 后；旧档另加 staff 前+count == 后。"
+        + "返回 {preview, submitted, mode, tick, unitId, targetHouseholdId, sourceUnitId, role, count, "
+        + "[旧档 staffBefore/After], sourcePopulationBefore, sourcePopulationAfter, shares, householdRemainders, "
         + "disbandSource, disbanded, disbandSkippedReason, setLocationHex, commands, infoText}；apply 另加 submission。";
   }
 
@@ -314,8 +317,8 @@ public final class GovAbsorbUnitTool implements AgentTool {
       BranchId branch,
       RevisionId expectedRevision) {
     List<CommandEnvelope> batch = new ArrayList<>(4);
-    // ★★ 先落 Social 工单（逐 share TRANSFER_MEMBERS 到政府家户），再入编；disband 的 SET_LOCATION 也在这张工单里，
-    //   排在 unit.DisbandUnit 之前 ⇒ 不会留下孤儿 UNIT 位置。
+    // ★★ 先落 Social 工单（逐 share TRANSFER_MEMBERS 到吸收目标家户），再入编/落岗位；disband 的 SET_LOCATION
+    //   也在这张工单里，排在 unit.DisbandUnit 之前 ⇒ 不会留下孤儿 UNIT 位置。
     batch.add(
         envelope(
             batchId,
@@ -323,13 +326,23 @@ public final class GovAbsorbUnitTool implements AgentTool {
             expectedRevision,
             GovAbsorbUnitPlan.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE,
             plan.submitHouseholdWorkOrderPayloadJson(batchId, reason)));
-    batch.add(
-        envelope(
-            batchId,
-            branch,
-            expectedRevision,
-            GovAbsorbUnitPlan.RECRUIT_STAFF_TYPE,
-            plan.recruitStaffPayloadJson()));
+    if (plan.postHouseholdMode()) {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              GovAbsorbUnitPlan.ASSIGN_GOV_POST_TYPE,
+              plan.assignGovPostPayloadJson()));
+    } else {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              GovAbsorbUnitPlan.RECRUIT_STAFF_TYPE,
+              plan.recruitStaffPayloadJson()));
+    }
     if (plan.disbandDispatched()) {
       batch.add(
           envelope(
@@ -383,14 +396,19 @@ public final class GovAbsorbUnitTool implements AgentTool {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("preview", preview);
     view.put("submitted", submitted);
+    view.put("mode", plan.postHouseholdMode() ? "post-household" : "treasury-household-legacy");
     view.put("tick", plan.tick());
     view.put("unitId", plan.govUnitId());
-    view.put("governmentHouseholdId", plan.governmentHouseholdId().value());
+    view.put("targetHouseholdId", plan.targetHouseholdId().value());
     view.put("sourceUnitId", plan.sourceUnitId());
     view.put("role", plan.role().name());
     view.put("count", plan.count());
-    view.put("staffBefore", plan.staffBefore());
-    view.put("staffAfter", plan.staffAfter());
+    if (!plan.postHouseholdMode()) {
+      // ★ 旧档键名兼容：目标 = hh-gov-<govUnitId>。
+      view.put("governmentHouseholdId", plan.targetHouseholdId().value());
+      view.put("staffBefore", plan.staffBefore());
+      view.put("staffAfter", plan.staffAfter());
+    }
     view.put("sourcePopulationBefore", plan.sourcePopulationBefore());
     view.put("sourcePopulationAfter", plan.sourcePopulationAfter());
     view.put("shares", plan.sharesView());

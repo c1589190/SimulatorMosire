@@ -168,6 +168,7 @@ import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.unit.resolve.UnitResolver;
 import io.mosire.simos.unit.spi.AdjustCompositionHandler;
 import io.mosire.simos.unit.spi.ApplyCasualtiesHandler;
+import io.mosire.simos.unit.spi.AssignGovPostHandler;
 import io.mosire.simos.unit.spi.AttachUnitHandler;
 import io.mosire.simos.unit.spi.CancelRouteHandler;
 import io.mosire.simos.unit.spi.CreateCommandChainHandler;
@@ -576,6 +577,10 @@ public final class Shell implements AutoCloseable {
                 new SetGovSuperiorHandler(),
                 new RecruitStaffHandler(),
                 new DismissStaffHandler(),
+                // ── Z4（2026-10-23）：岗位指派窄写口（只写 GovernmentFormation.householdPosts，绝不碰
+                //   staff；C4 一处真相）。非 GmOnly ⇒ 与既有 unit 命令同待遇，Z3 的 simos.gov.assignPosts
+                //   工具/决策令批将复用它。──
+                new AssignGovPostHandler(),
                 // ── social（4 条既有）：逐格农村人口 + 城市节点 + **人口批次**（R1 的 T3：人口的唯一落盘入口）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）──
                 new SetPopulationHandler(),

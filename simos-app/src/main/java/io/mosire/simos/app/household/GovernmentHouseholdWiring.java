@@ -1,6 +1,8 @@
 package io.mosire.simos.app.household;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.GovernmentId;
@@ -15,6 +17,9 @@ import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -45,6 +50,9 @@ import java.util.Optional;
  * 对它们返回空）。
  */
 public final class GovernmentHouseholdWiring {
+
+  /** 契约故障日志通道：与推进入口同一 logger，来源 {@link AppLogSource#HOUSEHOLD_SYNC}。 */
+  private static final LogChannel CONSISTENCY = EventLog.channel(AppLog.time());
 
   private GovernmentHouseholdWiring() {}
 
@@ -207,10 +215,19 @@ public final class GovernmentHouseholdWiring {
     return List.copyOf(out);
   }
 
-  /** 校核 + 具名 fail-closed（不一致 ⇒ {@link IllegalStateException}，消息最多列 5 条）。 */
+  /** 校核 + 具名 fail-closed（不一致 ⇒ 先 ERROR 一行、再 {@link IllegalStateException}，消息最多列 5 条）。 */
   public static void requireConsistent(EconomyData economy, SocialData social, UnitState units) {
     List<Mismatch> mismatches = mismatches(economy, social, units);
     if (!mismatches.isEmpty()) {
+      // ★ AGENTS §一.9（2026-10-23）：契约/跨切片一致性故障 = ERROR 不降级；预存量缺口顺带补（Z4）。
+      CONSISTENCY.error(
+          LogEvent.of(
+              "GOV_HOUSEHOLD_WIRING_CONSISTENCY_FAULT",
+              AppLogSource.HOUSEHOLD_SYNC,
+              "count",
+              mismatches.size(),
+              "first",
+              mismatches.get(0)));
       throw new IllegalStateException(
           "GOV 家户 / 政府记录闭环不一致（P2-C §13.7）："
               + mismatches.size()

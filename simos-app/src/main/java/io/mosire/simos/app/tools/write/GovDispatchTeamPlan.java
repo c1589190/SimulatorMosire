@@ -157,10 +157,59 @@ final class GovDispatchTeamPlan {
       throw new IllegalArgumentException("来源 GOV 单位不存在: " + unitId);
     }
     GovernmentFormation governmentFormation = requireGovernmentFormation(source, unitId);
-    long staffBefore = governmentFormation.staff().getOrDefault(role, 0L);
-    if (staffBefore < count) {
+
+    // ★★ Z4/C1：出人源选择（岗位户优先；没有岗位户且 posts 为空时维持旧档财政户口径）──────────────
+    HouseholdId postHousehold = HouseholdId.parse(RaiseUnitPlan.householdIdFor(unitId));
+    boolean postHouseholdMode = source.households().contains(postHousehold);
+    if (!postHouseholdMode && governmentFormation.staffIsHouseholdProjection()) {
       throw new IllegalArgumentException(
-          "出人 " + role + " " + count + " 人超过现有在编: 现有 " + staffBefore + " < 请求 " + count);
+          "GOV 单位 "
+              + unitId
+              + " 的 householdPosts 非空但没有岗位户 "
+              + postHousehold.value()
+              + "：岗位数据坏（posts 的键不可能 ⊆ Unit.households）；先补齐岗位户（Z3 simos.gov.expandHousehold / "
+              + "unit.SetUnitHouseholds）再出人（不猜、不静默降级到财政户）");
+    }
+    long staffBefore = -1L;
+    long staffAfter = -1L;
+    SocialData social = ToolSupport.socialData(state);
+    HouseholdId sourceHousehold;
+    if (postHouseholdMode) {
+      sourceHousehold = postHousehold;
+      if (!social.households().containsKey(sourceHousehold)) {
+        throw new IllegalArgumentException(
+            "Social 里不存在岗位户 "
+                + sourceHousehold.value()
+                + "（GOV 单位 "
+                + unitId
+                + " 的出人源）：先由 Z3 simos.gov.expandHousehold / Z5 bootstrap 建户，或对齐 Unit.households"
+                + "（不猜、不静默降级到财政户）");
+      }
+    } else {
+      sourceHousehold = GovernmentHouseholds.of(unitId);
+      if (!source.households().contains(sourceHousehold)) {
+        throw new IllegalArgumentException(
+            "GOV 单位 "
+                + unitId
+                + " 的 Unit.households 不含政府家户 "
+                + sourceHousehold.value()
+                + "：单位家户关系数据坏，出人源不明确；先 unit.SetGovFormation / 修数（不猜、不新建第二户）");
+      }
+      if (!social.households().containsKey(sourceHousehold)) {
+        throw new IllegalArgumentException(
+            "Social 里不存在政府家户 "
+                + sourceHousehold.value()
+                + "（GOV 单位 "
+                + unitId
+                + " 的旧档出人源）：先补该政府家户（如 simos.gov.createOffice 的 social.CreateHousehold）再派调查组"
+                + "（不猜、不新建第二户）");
+      }
+      staffBefore = governmentFormation.staff().getOrDefault(role, 0L);
+      if (staffBefore < count) {
+        throw new IllegalArgumentException(
+            "出人 " + role + " " + count + " 人超过现有在编: 现有 " + staffBefore + " < 请求 " + count);
+      }
+      staffAfter = staffBefore - count;
     }
     Optional<HexCoord> at = units.effectivePosition(source.id(), timestamp);
     if (at.isEmpty()) {
@@ -169,25 +218,6 @@ final class GovDispatchTeamPlan {
     String newId =
         GovSelectExamineesPlan.resolveNewUnitId(
             units, newUnitId, "team-" + unitId + "-" + tick + "-" + count, "newUnitId");
-    SocialData social = ToolSupport.socialData(state);
-    HouseholdId governmentHousehold = GovernmentHouseholds.of(unitId);
-    if (!source.households().contains(governmentHousehold)) {
-      throw new IllegalArgumentException(
-          "GOV 单位 "
-              + unitId
-              + " 的 Unit.households 不含政府家户 "
-              + governmentHousehold.value()
-              + "：单位家户关系数据坏，出人源不明确；先 unit.SetGovFormation / 修数（不猜、不新建第二户）");
-    }
-    if (!social.households().containsKey(governmentHousehold)) {
-      throw new IllegalArgumentException(
-          "Social 里不存在政府家户 "
-              + governmentHousehold.value()
-              + "（GOV 单位 "
-              + unitId
-              + " 的出人源）：先补该政府家户（如 simos.gov.createOffice 的 social.CreateHousehold）再派调查组"
-              + "（不猜、不新建第二户）");
-    }
     String householdId = RaiseUnitPlan.householdIdFor(newId);
     if (social.households().containsKey(HouseholdId.parse(householdId))) {
       throw new IllegalArgumentException(
@@ -198,7 +228,7 @@ final class GovDispatchTeamPlan {
       allocation =
           HouseholdManpowerAllocator.allocateFromHousehold(
               social,
-              governmentHousehold,
+              sourceHousehold,
               count,
               clock,
               tick,
@@ -207,11 +237,16 @@ final class GovDispatchTeamPlan {
     } catch (IllegalArgumentException e) {
       if (e.getMessage() != null && e.getMessage().startsWith("人力总量不足")) {
         throw new IllegalArgumentException(
-            "政府家户 " + governmentHousehold.value() + " 可选 MALE+ADULT 人口不足：" + e.getMessage(), e);
+            (postHouseholdMode ? "岗位户 " : "政府家户 ")
+                + sourceHousehold.value()
+                + " 可选 MALE+ADULT 人口不足："
+                + e.getMessage(),
+            e);
       }
       throw e;
     }
     return new Plan(
+        postHouseholdMode,
         unitId,
         newId,
         "调查组 " + unitId,
@@ -221,11 +256,11 @@ final class GovDispatchTeamPlan {
         count,
         role,
         staffBefore,
-        staffBefore - count,
+        staffAfter,
         armed,
         allocation.available(),
         householdId,
-        governmentHousehold,
+        sourceHousehold,
         allocation.shares());
   }
 
@@ -267,23 +302,27 @@ final class GovDispatchTeamPlan {
   /**
    * 一份调查组出人计划（全部字段是状态的纯函数；来源表在构造期冻结）。
    *
+   * @param postHouseholdMode true = Z4 新世界岗位户模式（源 = {@code hh-unit:<unitId>}，无 DismissStaff
+   *     腿）；false = 旧档财政户模式（源 = {@code hh-gov-<unitId>}，保留 DismissStaff 旧行为）
    * @param unitId 来源 GOV 单位 id
    * @param newUnitId 新调查组单位 id（untagged；armed 时才有 ArmyFormation）
    * @param unitName 新单位名
    * @param at 新单位落点 = 来源 GOV 当刻有效位置
    * @param residence P1.5：新人口家户 economy 视图的居住类型（at 是某城 at ⇒ URBAN，否则 RURAL）
    * @param tick 推导时的世界日
-   * @param count 出人数量（= roster 减量 = Σ来源 share.taken = 新人口家户成员增量）
+   * @param count 出人数量（= Σ来源 share.taken = 新人口家户成员增量；旧档另 = roster 减量）
    * @param role 出人角色
-   * @param staffBefore 该角色出人前在编
-   * @param staffAfter 该角色出人后在编（= staffBefore − count）
+   * @param staffBefore 旧档该角色出人前在编；岗位户模式 = −1（staff 是投影，C4）
+   * @param staffAfter 旧档该角色出人后在编（= staffBefore − count）；岗位户模式 = −1
    * @param armed 是否同批加 ArmyFormation
-   * @param available 政府家户全部合格 MALE+ADULT 份额合计（成功时 ≥ count）
+   * @param available 出人源家户全部合格 MALE+ADULT 份额合计（成功时 ≥ count）
    * @param householdId 新单位人口家户 id（{@code hh-unit:<newUnitId>}；location = UNIT(newUnitId)）
-   * @param governmentHouseholdId 出人源政府家户（{@code hh-gov-<unitId>}；构造期已由 plan 前置校验存在）
+   * @param sourceHouseholdId 出人源家户（岗位户 {@code hh-unit:<unitId>} 或旧档政府家户 {@code
+   *     hh-gov-<unitId>}；构造期已由 plan 前置校验存在）
    * @param sources 逐来源家户份额（家户/lot 全序瀑布序；Σtaken == count）
    */
   record Plan(
+      boolean postHouseholdMode,
       String unitId,
       String newUnitId,
       String unitName,
@@ -297,7 +336,7 @@ final class GovDispatchTeamPlan {
       boolean armed,
       long available,
       String householdId,
-      HouseholdId governmentHouseholdId,
+      HouseholdId sourceHouseholdId,
       List<HouseholdManpowerAllocator.ManpowerShare> sources) {
 
     Plan {
@@ -313,7 +352,12 @@ final class GovDispatchTeamPlan {
         throw new IllegalArgumentException("count 必须 ≥ 1: " + count);
       }
       Objects.requireNonNull(role, "role");
-      if (staffBefore < count || staffAfter != staffBefore - count) {
+      if (postHouseholdMode) {
+        if (staffBefore != -1L || staffAfter != -1L) {
+          throw new IllegalArgumentException(
+              "内部分摊不自洽：岗位户模式不得带 legacy staff 数字（" + staffBefore + "→" + staffAfter + "）");
+        }
+      } else if (staffBefore < count || staffAfter != staffBefore - count) {
         throw new IllegalArgumentException(
             "守恒破坏：staffBefore="
                 + staffBefore
@@ -329,17 +373,17 @@ final class GovDispatchTeamPlan {
         throw new IllegalArgumentException("内部分摊不自洽：available=" + available + " < count=" + count);
       }
       requireNonBlank(householdId, "householdId");
-      Objects.requireNonNull(governmentHouseholdId, "governmentHouseholdId");
-      if (householdId.equals(governmentHouseholdId.value())) {
-        throw new IllegalArgumentException("内部分摊不自洽：新单位人口家户与政府家户相同 " + householdId);
+      Objects.requireNonNull(sourceHouseholdId, "sourceHouseholdId");
+      if (householdId.equals(sourceHouseholdId.value())) {
+        throw new IllegalArgumentException("内部分摊不自洽：新单位人口家户与出人源家户相同 " + householdId);
       }
       sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
       long total = 0L;
       for (HouseholdManpowerAllocator.ManpowerShare share : sources) {
-        if (!share.householdId().equals(governmentHouseholdId)) {
+        if (!share.householdId().equals(sourceHouseholdId)) {
           throw new IllegalArgumentException(
-              "内部分摊不自洽：来源家户必须是政府家户 "
-                  + governmentHouseholdId.value()
+              "内部分摊不自洽：来源家户必须是出人源 "
+                  + sourceHouseholdId.value()
                   + "，实际 "
                   + share.householdId().value());
         }
@@ -452,8 +496,11 @@ final class GovDispatchTeamPlan {
       return ToolSupport.json(payload);
     }
 
-    /** {@code unit.DismissStaff} 载荷：只减 roster、<b>不支付退休待遇、不回写社会</b>（人在同批工单里转出）。 */
+    /** {@code unit.DismissStaff} 载荷（仅旧档财政户模式合法）：只减 roster、不支付、不回写（人在同批工单里转出）。 */
     String dismissStaffPayloadJson() {
+      if (postHouseholdMode) {
+        throw new IllegalStateException("批不自洽：岗位户模式（staff 是投影）不得组装 unit.DismissStaff 载荷");
+      }
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("unitId", unitId);
       payload.put("role", role.name());
@@ -471,26 +518,32 @@ final class GovDispatchTeamPlan {
       }
       types.add(REGISTER_HOUSEHOLD_TYPE);
       types.add(ENSURE_HOUSEHOLD_ACCOUNT_TYPE);
-      types.add(DISMISS_STAFF_TYPE);
+      if (!postHouseholdMode) {
+        types.add(DISMISS_STAFF_TYPE);
+      }
       types.add(PUT_INFO_TYPE);
       return List.copyOf(types);
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON 字符串；含 role/count/armed/前后编制/新家户/来源 shares）。 */
+    /** {@code sd.PutInfo} 的 {@code value}（JSON 字符串；含 mode/role/count/armed/新家户/来源 shares）。 */
     String infoValueJson(String reason) {
       requireNonBlank(reason, "reason");
       Map<String, Object> value = new LinkedHashMap<>();
+      value.put("mode", postHouseholdMode ? "post-household" : "treasury-household-legacy");
       value.put("govUnitId", unitId);
       value.put("newUnitId", newUnitId);
       value.put("householdId", householdId);
+      value.put("sourceHouseholdId", sourceHouseholdId.value());
       value.put("role", role.name());
       value.put("count", count);
       value.put("armed", armed);
       value.put("tick", tick);
       value.put("at", ToolSupport.hexCoord(at));
       value.put("residence", residence.value());
-      value.put("staffBefore", staffBefore);
-      value.put("staffAfter", staffAfter);
+      if (!postHouseholdMode) {
+        value.put("staffBefore", staffBefore);
+        value.put("staffAfter", staffAfter);
+      }
       value.put("available", available);
       value.put("sourceCount", sources.size());
       value.put("sources", sourcesView());
@@ -515,12 +568,10 @@ final class GovDispatchTeamPlan {
           + tick
           + "）：来源 GOV "
           + unitId
-          + " 编制 "
-          + staffBefore
-          + "→"
-          + staffAfter
-          + "，政府家户 "
-          + governmentHouseholdId.value()
+          + (postHouseholdMode ? " 岗位户 " : " 编制 ")
+          + (postHouseholdMode ? "" : staffBefore + "→" + staffAfter + "，")
+          + "出人源家户 "
+          + sourceHouseholdId.value()
           + " 转出 "
           + count
           + " 人（来源份额 "

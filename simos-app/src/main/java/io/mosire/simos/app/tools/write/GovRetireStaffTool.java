@@ -95,25 +95,26 @@ public final class GovRetireStaffTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 退休离编 + 待遇校验/支付 + 从政府家户转出真实成员到目标家户（组合工具，一批 = 一条 revision）："
+    return "GM 退休离编 + 待遇校验/支付 + 从官吏岗位户（或旧档财政户）转出真实成员到目标家户（组合工具，一批 = 一条 revision）："
         + "参数 {unitId(必填, 带 GovernmentFormation 的 GOV), role(必填 SCRIBE|YAMEN|POST), count(必填 ≥ 1), "
-        + "toHouseholdId?(精确目标家户，必须存在于 Social 且 ≠ 政府家户；与 reinsertQ/reinsertR 二选一), "
+        + "toHouseholdId?(精确目标家户，必须存在于 Social 且 ≠ 退休源；与 reinsertQ/reinsertR 二选一), "
         + "reinsertQ?(回退目标格 q，必须与 reinsertR 成对；在该 hex 按 household id 升序取第一个有人口的家户), "
         + "reinsertR?(回退目标格 r), reason(必填), preview?(缺省 true), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
-        + "目标家户必须明确：toHouseholdId 与 reinsertQ/reinsertR 二选一；都没给 ⇒ 具名拒（人不能凭空消失，"
-        + "也不会留在政府编制家户）。退休源 = hh-gov-<unitId>，必须同时存在于 Unit.households 与 Social，"
-        + "且政府家户人口 ≥ count，否则具名拒。"
-        + "待遇 = policy.retirementPerStaff × count（银）；待遇>0 时国库 = ActorRef(UNIT, unitId) @ 单位当刻有效位置，"
-        + "可支配银不足 ⇒ 整条拒（带 requested/available/缺口）；待遇=0 ⇒ 批里无 actor 命令（本批支付口径未改）。"
-        + "批：social.SubmitHouseholdWorkOrder（orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户> 幂等键，"
-        + "target=目标家户，逐 lot TRANSFER_MEMBERS(from=hh-gov-<unitId>,to=目标家户,lotId,count=taken)）→ "
-        + "unit.DismissStaff → [actor.AdjustAccounts] → sd.PutInfo(key="
+        + "目标家户必须明确：toHouseholdId 与 reinsertQ/reinsertR 二选一；都没给 ⇒ 具名拒（人不能凭空消失）。"
+        + "★ Z4/C1 双模式：GOV 的 Unit.households 含岗位户 hh-unit:<unitId> ⇒ 退休源 = 该岗位户，人口 ≥ count，"
+        + "批里没有 unit.DismissStaff（staff 是岗位家户投影）；否则 householdPosts 必须为空（旧档）⇒ 退休源 = "
+        + "hh-gov-<unitId>，另校验现有在编并保留 unit.DismissStaff 腿。"
+        + "待遇 = policy.retirementPerStaff × count（银）；待遇>0 时国库 = 政府家户 hh-gov-<unitId> @ 单位当刻有效位置，"
+        + "可支配银不足 ⇒ 整条拒（带 requested/available/缺口）；待遇=0 ⇒ 批里无 actor 命令。"
+        + "批顺序：social.SubmitHouseholdWorkOrder（orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户> 幂等键，"
+        + "target=目标家户，逐 lot TRANSFER_MEMBERS(from=退休源,to=目标家户,lotId,count=taken)）→ "
+        + "[旧档 unit.DismissStaff] → [actor.AdjustAccounts] → sd.PutInfo(key="
         + INFO_KEY
         + ")。"
-        + "返回 {preview, submitted, tick, unitId, role, count, staffBefore, staffAfter, retirementPerStaff, "
-        + "payment, treasuryLocation, availableSilver, governmentHouseholdId, governmentPopulationBefore/After, "
+        + "返回 {preview, submitted, mode, tick, unitId, role, count, [旧档 staffBefore/After], retirementPerStaff, "
+        + "payment, treasuryLocation, availableSilver, sourceHouseholdId, sourcePopulationBefore/After, "
         + "targetHouseholdId, targetHex, targetPopulationBefore/After, available, "
         + "sources[{householdId,lotId,taken,hex}], workOrder, commands, infoText}；apply 另加 submission。";
   }
@@ -123,11 +124,10 @@ public final class GovRetireStaffTool implements AgentTool {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put("unitId", ToolSupport.prop("string", "离编主体：带 GovernmentFormation 的 GOV 单位 id"));
     props.put("role", ToolSupport.prop("string", "行政角色：SCRIBE（书吏）|YAMEN（衙门）|POST（驿传）"));
-    props.put("count", ToolSupport.prop("integer", "离编人数（≥ 1；不得超过该角色现有在编）"));
+    props.put("count", ToolSupport.prop("integer", "离编人数（≥ 1；新世界 ≤ 岗位户人口，旧档 ≤ 该角色现有在编）"));
     props.put(
         "toHouseholdId",
-        ToolSupport.prop(
-            "string", "精确目标家户 id（可选；必须存在于 Social 且 ≠ 政府家户；与 reinsertQ/reinsertR 二选一）"));
+        ToolSupport.prop("string", "精确目标家户 id（可选；必须存在于 Social 且 ≠ 退休源；与 reinsertQ/reinsertR 二选一）"));
     props.put(
         "reinsertQ",
         ToolSupport.prop(
@@ -279,8 +279,8 @@ public final class GovRetireStaffTool implements AgentTool {
   }
 
   /**
-   * 组批（固定顺序、按需缺席）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.DismissStaff} → （待遇 &gt;
-   * 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}。
+   * 组批（固定顺序、按需缺席）：{@code social.SubmitHouseholdWorkOrder} → [旧档 {@code unit.DismissStaff}] → （待遇
+   * &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}。
    */
   private List<CommandEnvelope> buildBatch(
       String batchId,
@@ -296,13 +296,15 @@ public final class GovRetireStaffTool implements AgentTool {
             expectedRevision,
             GovRetireStaffPlan.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE,
             plan.submitHouseholdWorkOrderPayloadJson(reason)));
-    batch.add(
-        envelope(
-            batchId,
-            branch,
-            expectedRevision,
-            GovRetireStaffPlan.DISMISS_STAFF_TYPE,
-            plan.dismissStaffPayloadJson()));
+    if (!plan.postHouseholdMode()) {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              GovRetireStaffPlan.DISMISS_STAFF_TYPE,
+              plan.dismissStaffPayloadJson()));
+    }
     if (plan.hasPayment()) {
       batch.add(
           envelope(
@@ -341,11 +343,11 @@ public final class GovRetireStaffTool implements AgentTool {
   /** {@code sd.PutInfo} 载荷：离编 GOV canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
   private static String infoPayload(GovRetireStaffPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("address", GovCreateOfficePlan.unitAddress(plan.dismissal().unitId()));
+    payload.put("address", GovCreateOfficePlan.unitAddress(plan.unitId()));
     payload.put("key", INFO_KEY);
     payload.put("value", plan.infoValueJson(reason));
     payload.put("note", plan.infoNote(reason));
-    payload.put("tick", plan.dismissal().tick());
+    payload.put("tick", plan.tick());
     return ToolSupport.json(payload);
   }
 
@@ -353,25 +355,32 @@ public final class GovRetireStaffTool implements AgentTool {
 
   private static Map<String, Object> planView(
       GovRetireStaffPlan.Plan plan, String reason, boolean preview, boolean submitted) {
-    GovDismissPlan.Plan dismissal = plan.dismissal();
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("preview", preview);
     view.put("submitted", submitted);
-    view.put("tick", dismissal.tick());
-    view.put("unitId", dismissal.unitId());
-    view.put("role", dismissal.role().name());
-    view.put("count", dismissal.count());
-    view.put("staffBefore", dismissal.staffBefore());
-    view.put("staffAfter", dismissal.staffAfter());
-    view.put("retirementPerStaff", dismissal.retirementPerStaff());
-    view.put("payment", dismissal.payment());
+    view.put("mode", plan.postHouseholdMode() ? "post-household" : "treasury-household-legacy");
+    view.put("tick", plan.tick());
+    view.put("unitId", plan.unitId());
+    view.put("role", plan.role().name());
+    view.put("count", plan.count());
+    if (!plan.postHouseholdMode()) {
+      view.put("staffBefore", plan.legacyStaffBefore());
+      view.put("staffAfter", plan.legacyStaffAfter());
+    }
+    view.put("retirementPerStaff", plan.retirementPerStaff());
+    view.put("payment", plan.payment());
     view.put(
-        "treasuryLocation",
-        dismissal.treasuryLocation().map(GovDismissPlan::treasuryView).orElse(null));
-    view.put("availableSilver", dismissal.availableSilver());
-    view.put("governmentHouseholdId", plan.governmentHouseholdId().value());
-    view.put("governmentPopulationBefore", plan.governmentPopulationBefore());
-    view.put("governmentPopulationAfter", plan.governmentPopulationAfter());
+        "treasuryLocation", plan.treasuryLocation().map(GovDismissPlan::treasuryView).orElse(null));
+    view.put("availableSilver", plan.availableSilver());
+    view.put("sourceHouseholdId", plan.sourceHouseholdId().value());
+    view.put("sourcePopulationBefore", plan.sourcePopulationBefore());
+    view.put("sourcePopulationAfter", plan.sourcePopulationAfter());
+    if (!plan.postHouseholdMode()) {
+      // ★ 旧档键名兼容：源 = hh-gov-<unitId>；旧视图的 governmentHouseholdId/Population* 逐值保留。
+      view.put("governmentHouseholdId", plan.sourceHouseholdId().value());
+      view.put("governmentPopulationBefore", plan.sourcePopulationBefore());
+      view.put("governmentPopulationAfter", plan.sourcePopulationAfter());
+    }
     view.put("targetHouseholdId", plan.targetHouseholdId().value());
     view.put("targetHex", plan.targetHex().map(GovRetireStaffPlan::hexView).orElse(null));
     view.put("targetPopulationBefore", plan.targetPopulationBefore());
