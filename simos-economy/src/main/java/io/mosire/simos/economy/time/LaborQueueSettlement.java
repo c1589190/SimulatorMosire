@@ -181,7 +181,8 @@ final class LaborQueueSettlement {
           laborCommitmentsByHousehold.getOrDefault(household, List.of());
       long budget = Math.max(0L, householdEconomy.laborMilli());
       // ★★ C7：GOV_SERVICE 承诺是**最高优先级、不可缩**。先按 activity 建索引（队列既不排队、也不覆盖它），
-      //   再整额校验"Σ GOV_SERVICE ≤ 家户 laborMilli"——越界是契约故障，具名 ERROR + fail-closed，绝不静默缩/丢。
+      //   再整额校验"Σ GOV_SERVICE ≤ 家户 laborMilli"——★ Z7d-1 起越界是**饥饿导致的 underfed 合法态**
+      //   （职位行保留；有效供给由 app 桥 cap），队列对本户整体跳过、不给 PRODUCTION 任何小时，绝不静默缩/丢 GOV_SERVICE。
       Set<String> govServiceActivities = new LinkedHashSet<>();
       long govServiceLaborMilli = 0L;
       for (HouseholdLaborCommitment laborCommitment : householdLaborCommitments) {
@@ -191,13 +192,27 @@ final class LaborQueueSettlement {
         }
       }
       if (govServiceLaborMilli > budget) {
-        throw laborCommitmentContractFault(
-            household,
-            day,
-            "GOV_SERVICE 承诺总额超过家户劳动预算（不可缩、不静默丢）: govServiceMilli="
-                + govServiceLaborMilli
-                + " budgetMilli="
-                + budget);
+        // ★★ Z7d-1：饥饿把家户时间预算饿到低于 GOV_SERVICE 职位总额 ⇒ **不是契约故障**（C7 要求职位行不缩/不删）。
+        //   本户预算已被政府承诺占满，队列不给 PRODUCTION 任何小时：跳过本户（活表由 applyLaborBudgetsInto 把
+        //   PRODUCTION 缩到 0；这里不再写回，避免覆盖/删除 GOV_SERVICE）。有效供给由 app 供给桥 cap 并记 underfed。
+        if (EconomyLog.population().isDebugEnabled()) {
+          EventLog.channel(EconomyLog.population())
+              .debug(
+                  LogEvent.of(
+                      "LABOR_QUEUE_GOV_SERVICE_UNDERFED",
+                      EconomyLogSource.ECONOMY_POPULATION,
+                      "day",
+                      day,
+                      "household",
+                      household.value(),
+                      "govServiceLaborMilli",
+                      govServiceLaborMilli,
+                      "budgetMilli",
+                      budget,
+                      "reason",
+                      "starvation-budget-below-gov-service-claims"));
+        }
+        continue;
       }
       Map<ProductionUnitId, ProductionProcess> candidateUnitsById = new LinkedHashMap<>();
       for (ProductionProcess unit : candidates) {

@@ -3702,6 +3702,10 @@ public final class EconomySettlement {
    * <p>★★ <b>为什么在这里缩</b>：预算每 tick 会随出生/死亡/成年变化；配额是周期粒度的。若只改行预算不缩配额， {@code EconomyData}
    * 的构造期不变量会在下一个 revision 边界当场拒。缩法是确定性的最大余数法 （同权重按 allocation id 升序），<b>不</b>做"缺口优先"的新分配 —— 那个排序属
    * P2-B 的利润率排队。
+   *
+   * <p>★★ <b>Z7d-1（饥饿折算）</b>：{@code GOV_SERVICE} 承诺是**职位/诉求**，预算被饿少后允许 `Σ GOV_SERVICE >
+   * budget`（不缩/不删，C7）；此时先把 GOV_SERVICE 整额留在活表里，PRODUCTION 可用量按 0 处理（只缩/删 PRODUCTION）。有效供给不足由 app
+   * 的供给桥按 `min(承诺, 实际劳动)` cap 并记录 underfed。
    */
   static void applyLaborBudgetsInto(
       EconomySession session, Map<HouseholdId, Long> budgetsByHousehold) {
@@ -3757,19 +3761,11 @@ public final class EconomySettlement {
       if (total <= budget || total <= 0L) {
         continue;
       }
-      if (govServiceSum > budget) {
-        throw laborCommitmentBudgetFault(
-            entry.getKey(),
-            govServiceSum,
-            total,
-            budget,
-            "GOV_SERVICE 承诺整额保留后超过家户时间预算（不可缩/不可删）",
-            EconomyLogSource.ECONOMY_POPULATION_WRITE,
-            -1L);
-      }
-      long availableForProduction = budget - govServiceSum;
+      // ★★ Z7d-1：GOV_SERVICE 是职位/诉求，允许饿少后的预算 `budget < Σ GOV_SERVICE`（C7 不缩/不删）；
+      //   此时 PRODUCTION 可用量 = 0（只缩/删 PRODUCTION，政府承诺行原样保留）。
+      long availableForProduction = Math.max(0L, budget - govServiceSum);
       if (productionSum <= availableForProduction || productionSum <= 0L) {
-        continue; // GOV_SERVICE 已整额装下；没有需要缩的 PRODUCTION（防御性 no-op）
+        continue; // GOV_SERVICE 已整额装下（或 over-budget 但没有可缩 PRODUCTION）：防御性 no-op
       }
       List<LaborAllocationId> productionIds = new ArrayList<>();
       long[] productionWeights = new long[ids.size()];
@@ -4391,12 +4387,13 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>Z3a/C7 的统一 fail-closed 校验：{@code GOV_SERVICE} 整额保留后必须仍落在预算内</b>。
+   * ★★ <b>C7 统一校验：政府承诺整额保留后，PRODUCTION 不得超过"政府预留后的可用时间"</b>（Z7d-1 放宽）。
    *
-   * <p>凡有 {@code GOV_SERVICE} 承诺的家户，逐户算 {@code Σ GOV_SERVICE} 与 {@code Σ 全部承诺}，任一超过 {@code
-   * HouseholdEconomy.laborMilli} ⇒ 发 {@code LABOR_COMMITMENT_CONTRACT} ERROR（与 Z1b 队列口径同事件名）并抛
-   * {@link IllegalStateException}（fail-closed，绝不静默缩/删政府承诺）。没有 {@code GOV_SERVICE} 的家户不检查 ⇒
-   * 既有路径逐值不变。
+   * <p>凡有 {@code GOV_SERVICE} 承诺的家户，逐户算 {@code Σ GOV_SERVICE}（职位/诉求）与 {@code Σ PRODUCTION}； Z7d-1 起
+   * {@code Σ GOV_SERVICE > HouseholdEconomy.laborMilli} 是**合法的 underfed 状态**（饥饿把预算饿少；承诺行
+   * 不缩/不删，有效供给由 app 供给桥 cap 到实际劳动）。真契约故障只剩一条：{@code Σ PRODUCTION > budget − min(Σ GOV_SERVICE,
+   * budget)} ⇒ 发 {@code LABOR_COMMITMENT_CONTRACT} ERROR 并抛 {@link
+   * IllegalStateException}（fail-closed，绝不静默缩/删政府承诺）。没有 {@code GOV_SERVICE} 的家户不检查 ⇒ 既有路径逐值不变。
    *
    * <p>★ <b>为什么放在整批缩放之后而不是缩放循环里</b>：同一家户可能同时供给多个 unit/批次，前面一次缩放看到的中途值可能被 后面的缩放继续缩小；只有在"这一轮所有 {@code
    * scaleLaborOf*} 都已跑完"的点上，越界判定才不是假阳性。
@@ -4411,23 +4408,18 @@ public final class EconomySettlement {
       EconomyLogSource source,
       long day) {
     Map<HouseholdId, Long> govServiceByHousehold = new LinkedHashMap<>();
+    Map<HouseholdId, Long> productionByHousehold = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
-      if (laborCommitment.kind() != LaborCommitmentKind.GOV_SERVICE) {
-        continue;
+      if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+        govServiceByHousehold.merge(
+            laborCommitment.household(), laborCommitment.laborMilli(), Math::addExact);
+      } else {
+        productionByHousehold.merge(
+            laborCommitment.household(), laborCommitment.laborMilli(), Math::addExact);
       }
-      govServiceByHousehold.merge(
-          laborCommitment.household(), laborCommitment.laborMilli(), Math::addExact);
     }
     if (govServiceByHousehold.isEmpty()) {
       return;
-    }
-    Map<HouseholdId, Long> totalByHousehold = new LinkedHashMap<>();
-    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
-      if (!govServiceByHousehold.containsKey(laborCommitment.household())) {
-        continue;
-      }
-      totalByHousehold.merge(
-          laborCommitment.household(), laborCommitment.laborMilli(), Math::addExact);
     }
     for (Map.Entry<HouseholdId, Long> entry : govServiceByHousehold.entrySet()) {
       HouseholdEconomy householdEconomy = householdEconomies.get(entry.getKey());
@@ -4435,25 +4427,19 @@ public final class EconomySettlement {
         continue; // 旧档迁移期占位行（运行期 GOV_SERVICE 写入者要求先有 classes 行）
       }
       long govServiceSum = entry.getValue();
-      long total = totalByHousehold.getOrDefault(entry.getKey(), govServiceSum);
+      long productionSum = productionByHousehold.getOrDefault(entry.getKey(), 0L);
       long budget = Math.max(0L, householdEconomy.laborMilli());
-      if (govServiceSum > budget) {
+      // ★★ Z7d-1：GOV_SERVICE 允许饿少后 over-budget（职位保留，C7 不缩/删）；只要求 PRODUCTION 不超过
+      //   "扣除政府承诺最高优先预留后的可用时间"。有效供给不足由 app 供给桥 cap 并记录 underfed。
+      long reservedGovService = Math.min(govServiceSum, budget);
+      long productionBudget = budget - reservedGovService;
+      if (productionSum > productionBudget) {
         throw laborCommitmentBudgetFault(
             entry.getKey(),
             govServiceSum,
-            total,
+            Math.addExact(govServiceSum, productionSum),
             budget,
-            "GOV_SERVICE 承诺整额保留后超过家户时间预算（不可缩/不可删）",
-            source,
-            day);
-      }
-      if (total > budget) {
-        throw laborCommitmentBudgetFault(
-            entry.getKey(),
-            govServiceSum,
-            total,
-            budget,
-            "GOV_SERVICE 整额保留后 Σ 全部承诺超过家户时间预算（只缩 PRODUCTION 仍不足）",
+            "GOV_SERVICE 最高优先预留后 PRODUCTION 超过可用时间预算（只缩 PRODUCTION 仍不足）",
             source,
             day);
       }
@@ -6952,19 +6938,10 @@ public final class EconomySettlement {
         if (sum <= budget || sum <= 0L) {
           continue;
         }
-        if (govServiceSum > budget) {
-          throw laborCommitmentBudgetFault(
-              household.getKey(),
-              govServiceSum,
-              sum,
-              budget,
-              "GOV_SERVICE 承诺整额保留后超过家户时间预算（不可缩/不可删）",
-              EconomyLogSource.ECONOMY_POPULATION_WRITE,
-              -1L);
-        }
-        long availableForProduction = budget - govServiceSum;
+        // ★★ Z7d-1：同 applyLaborBudgetsInto —— GOV_SERVICE 允许 over-budget（职位保留），PRODUCTION 可用量归 0。
+        long availableForProduction = Math.max(0L, budget - govServiceSum);
         if (productionSum <= availableForProduction || productionSum <= 0L) {
-          continue; // GOV_SERVICE 已整额装下；没有需要缩的 PRODUCTION（防御性 no-op）
+          continue; // GOV_SERVICE 已整额装下（或 over-budget 但没有可缩 PRODUCTION）：防御性 no-op
         }
         int productionCount = 0;
         for (int i = 0; i < householdAllocationIds.size(); i++) {

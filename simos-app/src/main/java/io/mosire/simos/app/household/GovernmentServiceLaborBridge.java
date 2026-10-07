@@ -8,6 +8,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.gov.GovAdministrationPlan;
 import io.mosire.simos.gov.GovPostTier;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -43,6 +44,11 @@ import java.util.Set;
  * 治安拆分 = ⌊L_h × w_sec ÷ (w_sec + w_pap)⌋；公文拆分 = L_h − 治安拆分（余数归公文，Σ 不丢）
  * </pre>
  *
+ * <p>★★ <b>Z7d-1 有效供给（设计书 Z7 冲突 1=A）</b>：{@code supply(...)} 的逐户输入从"承诺劳动 L_h"改为 {@code min(L_h,
+ * 该户当前实际劳动)}（实际劳动 = Economy 行 {@code laborMilli}，由 app 从 Social {@code householdLaborMilli}（基础劳动 ×
+ * satietyPerMille ÷ 1000）注入）——**承诺行保留为职位**（C7 不缩/删），欠俸/断顿 只让有效供给与效率如实下降；{@code
+ * committedLaborByHousehold} 仍返回原始承诺（工资/俸禄/人数当量读它）。
+ *
  * <p>★★ <b>为什么用归一化权重（÷ w_sec+w_pap）而不是逐维 ÷1000</b>：冻结口径要求"把该户承诺劳动<b>拆</b>到两维、Σ 不丢" ——两维权重的合计允许
  * ≠1000（{@link GovPostTier} 只判非负），归一化拆分对任意合法权重都是<b>划分</b>（两维之和逐值等于 L_h）， 且缩放不变；余数固定落在公文维。`w_sec +
  * w_pap == 0` ⇒ 该档位无法定向，具名契约 ERROR fail-closed（不静默丢劳动）。
@@ -61,16 +67,63 @@ public final class GovernmentServiceLaborBridge {
 
   private GovernmentServiceLaborBridge() {}
 
-  /** 一次两维供给拆分（毫小时/tick；两维都 ≥ 0，合计 = <b>挂岗位家户</b>的 GOV_SERVICE 承诺之和；未挂岗位的按设计书 §3 记 INFO 并排除）。 */
-  public record Supply(long securityLaborMilli, long paperworkLaborMilli) {
+  /**
+   * 一次两维供给拆分（毫小时/tick）。
+   *
+   * <p>★★ <b>Z7d-1 两个口径并存</b>：
+   *
+   * <ul>
+   *   <li>{@link #securityLaborMilli()} / {@link #paperworkLaborMilli()} = <b>有效供给</b>：逐户 {@code
+   *       min(该户 GOV_SERVICE 承诺, 该户当前实际劳动)} 后再按档位权重拆到两维；该户实际劳动 = Social 的 {@code
+   *       householdLaborMilli}（已含饱食度折算）被经济行 {@code laborMilli} 投影出来的值。
+   *   <li>{@link #committedSecurityLaborMilli()} / {@link #committedPaperworkLaborMilli()} =
+   *       <b>职位承诺</b>： 完全不 cap 的承诺拆分（C7 的职位口径；工资/俸禄/人数当量读它）。
+   *   <li>{@link #underfedHouseholds()} = 有效 &lt; 承诺（且已挂岗位）的家户数；只作具名读数，不自动缩承诺。
+   * </ul>
+   *
+   * <p>★ 2 参便利构造器（旧形状）把两个口径取同值、underfed=0，只服务既有测试/夹具的编译与"承诺=实际"的合成输入。
+   */
+  public record Supply(
+      long securityLaborMilli,
+      long paperworkLaborMilli,
+      long committedSecurityLaborMilli,
+      long committedPaperworkLaborMilli,
+      long underfedHouseholds) {
+
+    /** 旧 2 参形状：有效 = 承诺（调用方已保证没有饥饿缺口）。 */
+    public Supply(long securityLaborMilli, long paperworkLaborMilli) {
+      this(securityLaborMilli, paperworkLaborMilli, securityLaborMilli, paperworkLaborMilli, 0L);
+    }
 
     public Supply {
-      if (securityLaborMilli < 0L || paperworkLaborMilli < 0L) {
+      if (securityLaborMilli < 0L
+          || paperworkLaborMilli < 0L
+          || committedSecurityLaborMilli < 0L
+          || committedPaperworkLaborMilli < 0L
+          || underfedHouseholds < 0L) {
         throw new IllegalArgumentException(
-            "GovernmentServiceLaborBridge.Supply 两维劳动都必须 ≥ 0: "
+            "GovernmentServiceLaborBridge.Supply 各分量都必须 ≥ 0: "
                 + securityLaborMilli
                 + "/"
-                + paperworkLaborMilli);
+                + paperworkLaborMilli
+                + "/"
+                + committedSecurityLaborMilli
+                + "/"
+                + committedPaperworkLaborMilli
+                + "/"
+                + underfedHouseholds);
+      }
+      if (securityLaborMilli > committedSecurityLaborMilli
+          || paperworkLaborMilli > committedPaperworkLaborMilli) {
+        throw new IllegalArgumentException(
+            "GovernmentServiceLaborBridge.Supply 有效供给不得超过承诺（min 口径）: effective="
+                + securityLaborMilli
+                + "/"
+                + paperworkLaborMilli
+                + " committed="
+                + committedSecurityLaborMilli
+                + "/"
+                + committedPaperworkLaborMilli);
       }
     }
   }
@@ -130,6 +183,9 @@ public final class GovernmentServiceLaborBridge {
   /**
    * 该 GOV 的两维供给（毫小时/tick）：按岗位家户的档位权重拆分 {@link #committedLaborByHousehold} 的逐户承诺劳动。
    *
+   * <p>★ 旧签名（读口/旧夹具）：实际劳动取经济状态自身的 {@code classes[].laborMilli}。推进中的调用方应改用带 {@code
+   * currentHouseholdRows} 的重载——那里传入会话工作副本，才拿得到**当 tick** 的 budget。
+   *
    * @param economy 经济切片；不得为 null
    * @param govUnitId GOV 单位 id；不得为 null
    * @param formation 该 GOV 单位的编制（岗位目录 = 内部 {@code governmentPostsOfHousehold} + 外部 {@code
@@ -143,14 +199,44 @@ public final class GovernmentServiceLaborBridge {
       GovernmentFormation formation,
       GovAdministrationPlan plan,
       long day) {
+    Objects.requireNonNull(economy, "economy");
+    return supply(economy, economy.classes(), govUnitId, formation, plan, day);
+  }
+
+  /**
+   * ★★ <b>Z7d-1 有效供给</b>（设计书 Z7 冲突 1=A）：逐户 {@code 有效劳动 = min(GOV_SERVICE 承诺,
+   * 该户当前实际劳动)}，再按档位权重拆两维；承诺行保留为职位（C7）。
+   *
+   * <p>★ <b>实际劳动来源</b>：{@code currentHouseholdRows.get(household).laborMilli()} —— 它由 app 组合根从
+   * Social 的 {@code householdLaborMilli}（基础劳动 × satietyPerMille ÷ 1000）逐 tick 注入，是"饿过的劳动"在经济侧
+   * 的唯一投影。家户行暂缺（旧档迁移期占位）⇒ 不 cap（保持旧行为）。本方法<b>不</b>改任何承诺行。
+   *
+   * <p>★ 已知边界（Z7e）：同一家户若对多个 GOV 同时有承诺，两个 GOV 各自的 cap 都拿该户完整实际劳动，跨 GOV 之和可能 重复计算同一份小时。当前世界一个官吏户只服务一个
+   * GOV；跨 GOV 分摊属后续批次。
+   *
+   * @param currentHouseholdRows 推进中的家户行工作副本（{@code EconomyDayStepper.householdEconomies()}）；不得为
+   *     null，键集应与 economy.classes() 同键
+   */
+  public static Supply supply(
+      EconomyData economy,
+      Map<HouseholdId, HouseholdEconomy> currentHouseholdRows,
+      UnitId govUnitId,
+      GovernmentFormation formation,
+      GovAdministrationPlan plan,
+      long day) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(currentHouseholdRows, "currentHouseholdRows");
     Objects.requireNonNull(formation, "formation");
     Objects.requireNonNull(plan, "plan");
     Map<HouseholdId, Long> committed = committedLaborByHousehold(economy, govUnitId, day);
     if (committed.isEmpty()) {
-      return new Supply(0L, 0L);
+      return new Supply(0L, 0L, 0L, 0L, 0L);
     }
-    long security = 0L;
-    long paperwork = 0L;
+    long effectiveSecurity = 0L;
+    long effectivePaperwork = 0L;
+    long committedSecurity = 0L;
+    long committedPaperwork = 0L;
+    long underfedHouseholds = 0L;
     long withoutPost = 0L;
     String firstWithoutPost = "-";
     // ★ Z3d：内部 householdPosts 与外部 externalPosts 同权（两张表互斥，postOf 给出唯一岗位）。
@@ -158,16 +244,23 @@ public final class GovernmentServiceLaborBridge {
     try {
       for (Map.Entry<HouseholdId, Long> entry : committed.entrySet()) {
         HouseholdId household = entry.getKey();
-        long laborMilli = entry.getValue();
+        long committedLaborMilli = entry.getValue();
+        HouseholdEconomy row = currentHouseholdRows.get(household);
+        // ★ Z7d-1：实际劳动 = 该户 session 工作副本的时间预算（已含 satiety 折算；缺行 ⇒ 不 cap，保持旧档行为）。
+        long actualLaborMilli =
+            row == null ? committedLaborMilli : Math.min(committedLaborMilli, row.laborMilli());
         GovernmentPostOfHousehold post = posts.get(household);
         if (post == null) {
           // ★ 设计书 §3：没有挂岗位的家户 ⇒ 该户承诺进不了任何维（供给 0）。这不是静默——逐 GOV 一条具名 INFO；
           //   承诺行本身一字不动（C7），等 assignPosts 把它挂到档位后下一 tick 自然计入。
           withoutPost++;
           if (withoutPost == 1L) {
-            firstWithoutPost = household.value() + " laborMilli=" + laborMilli;
+            firstWithoutPost = household.value() + " laborMilli=" + committedLaborMilli;
           }
           continue;
+        }
+        if (actualLaborMilli < committedLaborMilli) {
+          underfedHouseholds++;
         }
         long[] weights = tierWeightsOf(post, plan, govUnitId, day);
         long weightSum = Math.addExact(weights[0], weights[1]);
@@ -178,9 +271,16 @@ public final class GovernmentServiceLaborBridge {
               govUnitId,
               "household=" + household.value() + " tierId=" + post.tierId());
         }
-        long securityShare = Math.floorDiv(Math.multiplyExact(laborMilli, weights[0]), weightSum);
-        security = Math.addExact(security, securityShare);
-        paperwork = Math.addExact(paperwork, laborMilli - securityShare);
+        long committedSecurityShare =
+            Math.floorDiv(Math.multiplyExact(committedLaborMilli, weights[0]), weightSum);
+        committedSecurity = Math.addExact(committedSecurity, committedSecurityShare);
+        committedPaperwork =
+            Math.addExact(committedPaperwork, committedLaborMilli - committedSecurityShare);
+        long effectiveSecurityShare =
+            Math.floorDiv(Math.multiplyExact(actualLaborMilli, weights[0]), weightSum);
+        effectiveSecurity = Math.addExact(effectiveSecurity, effectiveSecurityShare);
+        effectivePaperwork =
+            Math.addExact(effectivePaperwork, actualLaborMilli - effectiveSecurityShare);
       }
     } catch (ArithmeticException e) {
       throw contractFailure("arithmetic-overflow", day, govUnitId, e.getMessage());
@@ -201,7 +301,12 @@ public final class GovernmentServiceLaborBridge {
               "reason",
               "no-posted-household-commitment-not-dimensioned"));
     }
-    return new Supply(security, paperwork);
+    return new Supply(
+        effectiveSecurity,
+        effectivePaperwork,
+        committedSecurity,
+        committedPaperwork,
+        underfedHouseholds);
   }
 
   /**

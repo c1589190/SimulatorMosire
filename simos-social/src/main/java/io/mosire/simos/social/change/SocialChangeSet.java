@@ -24,8 +24,8 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * 社会状态的变更集。**组件与 {@link SocialData} 的 record 组件一一对应**（当前 8 个：populations / cities / groups /
- * households / populationEvents / provisioning / vitalRates / vitalRemainders）。
+ * 社会状态的变更集。**组件与 {@link SocialData} 的 record 组件一一对应**（当前 9 个：populations / cities / groups /
+ * households / populationEvents / provisioning / vitalRates / vitalRemainders / satietyPerMille）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 `SocialRoundTripTest` 的**反射枚举**把守——新增状态组件若不进变更集，那个测试自动红。
  *
@@ -33,7 +33,8 @@ import java.util.function.Function;
  * MapChangeSet} / {@code UnitChangeSet} 共用同一份）。
  *
  * <p>★ **S2 起新增两个键解析器**：{@code households} 的键是 {@link HouseholdId#parse}（裸值 + parse 三件套）， {@code
- * populationEvents} 的键是事件 id 的裸字符串（恒等还原）。
+ * populationEvents} 的键是事件 id 的裸字符串（恒等还原）。★ Z7d-1 的 {@code satietyPerMille} 同为 {@link HouseholdId} 键
+ * ⇒ 复用同一条解析器。
  *
  * <p>★★ <b>三个单值组件 {@code provisioning} / {@code vitalRates} / {@code vitalRemainders} 照 {@code
  * EconomyChangeSet.meta} 的"单键表"投影法</b>：它们各是一个<b>单值</b>组件（后两者本身是 record，不是 map）， 若为它们另写"单值差异"机制，就有了与
@@ -42,7 +43,8 @@ import java.util.function.Function;
  * 新值} = {@code Upsert}、{@code 不变} = {@code Unchanged}； 本项目不存在"把某个恒在组件删掉"的合法状态，故不产生 {@code Remove}。
  *
  * <p>★★ <b>旧档不兼容</b>（用户 2026-10-09 裁定"一切从新、旧档作废、不做迁移/双读"）：其余五个组件的旧档缺键仍按既有口径读成 {@code
- * Unchanged}（那是更早变更集的既有语义，本批不动），但第 6/7/8 三个组件缺键 ⇒ 构造期具名拒——旧变更集读不回是 可接受结果，不给它们补默认值。
+ * Unchanged}（那是更早变更集的既有语义，本批不动），第 6/7/8 三个组件缺键 ⇒ 构造期具名拒——旧变更集读不回是 可接受结果，不给它们补默认值。 ★ 第 9 个组件 {@code
+ * satietyPerMille}（Z7d-1）相反：缺键 ⇒ {@code Unchanged}（旧变更集没有饥饿回写这个事实）。
  */
 public record SocialChangeSet(
     FieldDelta<PopulationSeries> populations,
@@ -52,7 +54,8 @@ public record SocialChangeSet(
     FieldDelta<HouseholdPopulationEvent> populationEvents,
     FieldDelta<SocialProvisioning> provisioning,
     FieldDelta<SocialVitalRates> vitalRates,
-    FieldDelta<SocialVitalRemainders> vitalRemainders)
+    FieldDelta<SocialVitalRemainders> vitalRemainders,
+    FieldDelta<Long> satietyPerMille)
     implements ChangeSet {
 
   /** {@code provisioning} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -91,6 +94,10 @@ public record SocialChangeSet(
       rejectMissingComponent(
           "vitalRemainders", "SocialChangeSet.vitalRemainders 不得为 null（旧档缺此组件已作废，不做缺省兜底）");
     }
+    // ★★ Z7d-1 第 9 个组件是**追加式兼容**：旧变更集没有饥饿回写 ⇒ 缺键 = Unchanged（不是旧档作废）。
+    if (satietyPerMille == null) {
+      satietyPerMille = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -111,7 +118,8 @@ public record SocialChangeSet(
             singleValueTable(VITAL_RATES_KEY, target.vitalRates())),
         FieldDelta.diff(
             singleValueTable(VITAL_REMAINDERS_KEY, base.vitalRemainders()),
-            singleValueTable(VITAL_REMAINDERS_KEY, target.vitalRemainders())));
+            singleValueTable(VITAL_REMAINDERS_KEY, target.vitalRemainders())),
+        FieldDelta.diff(base.satietyPerMille(), target.satietyPerMille()));
   }
 
   /**
@@ -153,7 +161,8 @@ public record SocialChangeSet(
                 Function.identity()),
             VITAL_REMAINDERS_KEY,
             "vitalRemainders",
-            "SOCIAL_VITAL_REMAINDERS_REJECTED"));
+            "SOCIAL_VITAL_REMAINDERS_REJECTED"),
+        FieldDelta.rebuild(base.satietyPerMille(), cs.satietyPerMille(), HouseholdId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -165,7 +174,8 @@ public record SocialChangeSet(
         || populationEvents.changed()
         || provisioning.changed()
         || vitalRates.changed()
-        || vitalRemainders.changed());
+        || vitalRemainders.changed()
+        || satietyPerMille.changed());
   }
 
   /** 单值组件 → 恰一行的表（键固定为调用方给的组件名）。 */

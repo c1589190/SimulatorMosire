@@ -47,6 +47,10 @@ import java.util.function.Function;
  * 2026-10-09 裁定"一切从新、旧档作废"），本 codec **不做任何 null 兜底/default 回填**—— 读旧档时 {@link #readJson}
  * 会把构造期的具名原因原样包进 {@code IllegalStateException} 抛出。
  *
+ * <p>★ <b>Z7d-1 第 9 组件 {@code satietyPerMille} 例外</b>：缺键/null ⇒ 空表（每户 1000‰），由 {@code SocialData}
+ * canonical 归一；旧变更集缺该键 ⇒ {@code Unchanged}。理由：饥饿是追加式行为位，旧世界读回来必须逐值等于 旧行为（`householdLaborMilli`
+ * 饱和时恒等）。
+ *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
  * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link
@@ -230,10 +234,12 @@ public final class SocialCodec implements ModuleCodec, ModuleDiffer {
                 "populationEvents",
                 data.populationEvents().size(),
                 "vitalRemainders",
-                data.vitalRemainders().entries().size()));
+                data.vitalRemainders().entries().size(),
+                "satietyPerMille",
+                data.satietyPerMille().size()));
   }
 
-  /** 八个组件里 {@code changed()} 的个数（元信息；不改任何组件）。 */
+  /** 九个组件里 {@code changed()} 的个数（元信息；不改任何组件）。 */
   private static int changedComponentCount(SocialChangeSet changeSet) {
     int changed = 0;
     if (changeSet.populations().changed()) {
@@ -258,6 +264,9 @@ public final class SocialCodec implements ModuleCodec, ModuleDiffer {
       changed++;
     }
     if (changeSet.vitalRemainders().changed()) {
+      changed++;
+    }
+    if (changeSet.satietyPerMille().changed()) {
       changed++;
     }
     return changed;

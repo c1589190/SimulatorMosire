@@ -62,18 +62,22 @@ import java.util.Set;
  * <p>★ {@code populationEvents} 以 {@code event.id()} 为键（架构 §4.3：事件进持久表、可回放；重复 id 由 {@code
  * HouseholdBook.applyEvent} 拒绝）。
  *
- * <p>★ <b>八个组件都保序不可变</b>：{@code LinkedHashMap} + {@code unmodifiableMap}，**绝不用 {@code
+ * <p>★ <b>九个组件都保序不可变</b>：{@code LinkedHashMap} + {@code unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（M2 实测），字节级往返因此不成立。
  *
  * <ul>
  *   <li>第 6 个组件 {@link #provisioning()}：需求/劳动权威旁表（全局默认 + 逐户覆盖）；
  *   <li>第 7 个组件 {@link #vitalRates()}：每 tick 生死率<b>全局默认表</b>；家户覆盖复用 {@code
  *       Household.vitalRates}，查找走 {@link #findVitalRate(HouseholdId, AgeBracket, Sex)}；
- *   <li>第 8 个组件 {@link #vitalRemainders()}：每 tick 生死<b>余数累加器</b> （键 {@code (家户, 批次, BIRTH|DEATH)}）。
+ *   <li>第 8 个组件 {@link #vitalRemainders()}：每 tick 生死<b>余数累加器</b> （键 {@code (家户, 批次, BIRTH|DEATH)}）；
+ *   <li>第 9 个组件 {@link #satietyPerMille()}（Z7d-1）：每户饱食度（0..1000，按户；<b>缺键 = 1000</b>——
+ *       旧档没有这个组件时读作"全部吃饱"，行为与旧口径逐值一致）。
  * </ul>
  *
  * <p>★★ <b>旧档缺第 6/7/8 组件 = 不可读</b>（用户 2026-10-09 裁定"一切从新、旧档作废、不做迁移/双读"）： canonical 构造期具名拒；新档由 5
- * 参便捷构造器（委托默认 provisioning / vitalRates / 空余数）或 seeder 显式给值。
+ * 参便捷构造器（委托默认 provisioning / vitalRates / 空余数）或 seeder 显式给值。 ★ 第 9
+ * 个组件（satietyPerMille）是**追加式旧档兼容**：缺键/null ⇒ 空表 ⇒ 每户 1000（用户 2026-10-23： "Social 层面饥饿系数应当直接决定单 tick
+ * 家户能提供的劳动力"）。
  */
 public record SocialData(
     Map<HexCoord, PopulationSeries> populations,
@@ -83,7 +87,11 @@ public record SocialData(
     Map<String, HouseholdPopulationEvent> populationEvents,
     SocialProvisioning provisioning,
     SocialVitalRates vitalRates,
-    SocialVitalRemainders vitalRemainders) {
+    SocialVitalRemainders vitalRemainders,
+    Map<HouseholdId, Long> satietyPerMille) {
+
+  /** 饱食度上限/默认值（0..1000；缺键 = 1000 = 吃饱）。 */
+  public static final long SATIETY_FULL_PER_MILLE = 1_000L;
 
   public SocialData {
     if (populations == null) {
@@ -232,6 +240,24 @@ public record SocialData(
       eventsCopy.put(entry.getKey(), entry.getValue());
     }
     populationEvents = Collections.unmodifiableMap(eventsCopy);
+    // ★★ Z7d-1 第 9 个组件：缺键/null = 旧档/新世界未记录 ⇒ **空表 = 每户 1000‰**（不做缺省拒绝，与第 6/7/8 组件的
+    //   "旧档作废"口径相反：饥饿是追加式字段，旧世界读回来必须逐值等于旧行为）。值域 0..1000 由构造期 fail-closed。
+    if (satietyPerMille == null) {
+      satietyPerMille = Map.of();
+    }
+    Map<HouseholdId, Long> satietyCopy = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, Long> entry : satietyPerMille.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("satietyPerMille 的键与值都不得为 null: " + entry.getKey());
+      }
+      long value = entry.getValue();
+      if (value < 0L || value > SATIETY_FULL_PER_MILLE) {
+        throw new IllegalArgumentException(
+            "satietyPerMille 必须在 0..1000（毫，按户）: household=" + entry.getKey() + " value=" + value);
+      }
+      satietyCopy.put(entry.getKey(), value);
+    }
+    satietyPerMille = Collections.unmodifiableMap(satietyCopy);
   }
 
   /**
@@ -267,7 +293,37 @@ public record SocialData(
         populationEvents,
         SocialProvisioning.defaults(),
         SocialVitalRates.defaults(),
-        new SocialVitalRemainders(List.of()));
+        new SocialVitalRemainders(List.of()),
+        Map.of());
+  }
+
+  /**
+   * ★ <b>旧 8 参便捷构造器</b>（Z7d-1 之前的 canonical 签名）：第 9 个组件 satietyPerMille 缺省为空表（每户
+   * 1000‰）。只服务"还没接饥饿回写"的旧装配点与既有测试的编译兼容。
+   *
+   * <p>★★ <b>状态重建禁止走这里</b>：main 代码里真正重建状态的 5 处（{@code HouseholdBook} ×3、{@code
+   * CityOperations}、{@code ClearRegionHandler}/{@code SeedGroupsHandler}）必须显式带过第 9 参；否则每次重建都会把
+   * Z7d-1 的饥饿系数静默退回 1000。
+   */
+  public SocialData(
+      Map<HexCoord, PopulationSeries> populations,
+      Map<CityId, SocialCity> cities,
+      Map<PeopleLotId, PopulationGroup> groups,
+      Map<HouseholdId, Household> households,
+      Map<String, HouseholdPopulationEvent> populationEvents,
+      SocialProvisioning provisioning,
+      SocialVitalRates vitalRates,
+      SocialVitalRemainders vitalRemainders) {
+    this(
+        populations,
+        cities,
+        groups,
+        households,
+        populationEvents,
+        provisioning,
+        vitalRates,
+        vitalRemainders,
+        Map.of());
   }
 
   /** 往返用例的起点；需求/劳动、率表与余数表都走默认构造。 */
@@ -275,7 +331,7 @@ public record SocialData(
     return new SocialData(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
-  /** 一个组件一个 with（照 M2 的形制）；其余七个组件原样带过。 */
+  /** 一个组件一个 with（照 M2 的形制）；其余八个组件原样带过。 */
   public SocialData withPopulations(Map<HexCoord, PopulationSeries> value) {
     return new SocialData(
         value,
@@ -285,10 +341,11 @@ public record SocialData(
         populationEvents,
         provisioning,
         vitalRates,
-        vitalRemainders);
+        vitalRemainders,
+        satietyPerMille);
   }
 
-  /** 一个组件一个 with（照 M2 的形制）；其余七个组件原样带过。 */
+  /** 一个组件一个 with（照 M2 的形制）；其余八个组件原样带过。 */
   public SocialData withCities(Map<CityId, SocialCity> value) {
     return new SocialData(
         populations,
@@ -298,7 +355,8 @@ public record SocialData(
         populationEvents,
         provisioning,
         vitalRates,
-        vitalRemainders);
+        vitalRemainders,
+        satietyPerMille);
   }
 
   /**
@@ -314,7 +372,8 @@ public record SocialData(
         populationEvents,
         provisioning,
         vitalRates,
-        vitalRemainders);
+        vitalRemainders,
+        satietyPerMille);
   }
 
   /** 只换家户表（成员关系变了就要求 {@code groups} 同步：见 {@link #withGroupsAndHouseholds}）。 */
@@ -327,7 +386,8 @@ public record SocialData(
         populationEvents,
         provisioning,
         vitalRates,
-        vitalRemainders);
+        vitalRemainders,
+        satietyPerMille);
   }
 
   /** 批次与家户**一起**换（新增/删除成员、跨家户转移的唯一安全写口：中间态不经过构造期校验）。 */
@@ -341,13 +401,22 @@ public record SocialData(
         populationEvents,
         provisioning,
         vitalRates,
-        vitalRemainders);
+        vitalRemainders,
+        satietyPerMille);
   }
 
   /** 只换事件表。 */
   public SocialData withPopulationEvents(Map<String, HouseholdPopulationEvent> value) {
     return new SocialData(
-        populations, cities, groups, households, value, provisioning, vitalRates, vitalRemainders);
+        populations,
+        cities,
+        groups,
+        households,
+        value,
+        provisioning,
+        vitalRates,
+        vitalRemainders,
+        satietyPerMille);
   }
 
   /** ★★ 只换需求/劳动权威旁表（全局默认 + 逐户覆盖）：其余组件原样带过，是 GM 调参与创世装配的写口形制。 */
@@ -360,7 +429,8 @@ public record SocialData(
         populationEvents,
         value,
         vitalRates,
-        vitalRemainders);
+        vitalRemainders,
+        satietyPerMille);
   }
 
   /** ★★ 只换每 tick 生死率的<b>全局默认表</b>（家户覆盖不在本组件里）：其余组件原样带过。 */
@@ -373,13 +443,42 @@ public record SocialData(
         populationEvents,
         provisioning,
         value,
-        vitalRemainders);
+        vitalRemainders,
+        satietyPerMille);
   }
 
   /** ★★ 只换每 tick 生死<b>余数表</b>：其余组件原样带过，是每 tick 引擎的落账口。 */
   public SocialData withVitalRemainders(SocialVitalRemainders value) {
     return new SocialData(
-        populations, cities, groups, households, populationEvents, provisioning, vitalRates, value);
+        populations,
+        cities,
+        groups,
+        households,
+        populationEvents,
+        provisioning,
+        vitalRates,
+        value,
+        satietyPerMille);
+  }
+
+  /**
+   * ★★ <b>Z7d-1：只换逐户饱食度表</b>（0..1000‰，按户；键缺 = 1000）。其余八个组件原样带过——这是 economy→Social 断顿回写的唯一写口（app
+   * 组合根编排），Social 本身不依赖 economy/gov。
+   *
+   * <p>★ 写口语义是<b>整表替换</b>（不是按户累加）：回写方从 {@link #satietyPerMille()} 现表复制后逐户改，再整表交回；
+   * 这样"同日重放同结果"与保序都是调用方能看清的纯函数。空表 = 全部 1000。
+   */
+  public SocialData withSatietyPerMille(Map<HouseholdId, Long> value) {
+    return new SocialData(
+        populations,
+        cities,
+        groups,
+        households,
+        populationEvents,
+        provisioning,
+        vitalRates,
+        vitalRemainders,
+        value);
   }
 
   /**
@@ -537,18 +636,39 @@ public record SocialData(
     return total;
   }
 
+  /**
+   * ★★ <b>Z7d-1：某户当前饱食度（毫，0..1000）</b>：{@link #satietyPerMille()} 有该键 ⇒ 原值；缺键 ⇒ 1000（吃饱）。
+   *
+   * <p>★ 缺键 = 1000 是<b>语义默认</b>，不是为了兼容旧字节（旧字节缺该组件时 canonical 已归一成空表）；新户/未断顿户 因此不需要写一条 1000
+   * 的冗余记录。家户不存在 ⇒ 具名拒（不把坏 id 读成"吃饱"）。
+   */
+  public long satietyPerMille(HouseholdId householdId) {
+    if (householdId == null) {
+      throw new IllegalArgumentException("satietyPerMille：householdId 不得为 null");
+    }
+    if (!households.containsKey(householdId)) {
+      throw new IllegalArgumentException("satietyPerMille：家户不存在: " + householdId);
+    }
+    Long value = satietyPerMille.get(householdId);
+    return value == null ? SATIETY_FULL_PER_MILLE : value.longValue();
+  }
+
   // ── Batch 1：需求/劳动权威表的逐家户展开（★ 纯函数，不落盘）────────────────────────────
 
   /**
    * ★★ <b>家户当日劳动预算</b>（毫小时/tick）：
    *
    * <pre>
-   * Σ_{成员批次} 份额 × provisioning.findLabor(家户, AgeBracket.of(该批次在 day 的年龄), 性别)
+   * 基础劳动 = Σ_{成员批次} 份额 × provisioning.findLabor(家户, AgeBracket.of(该批次在 day 的年龄), 性别)
+   * 劳动预算 = ⌊基础劳动 × satietyPerMille(家户) ÷ 1000⌋          ← Z7d-1 的唯一饥饿折算点
    * </pre>
    *
-   * <p>★★ <b>逐成员整数乘加、无时间分数、不取整</b>（计划 §3.5 机制第 1/4 条）：份额与系数都是整数， {@code Math.multiplyExact}/{@code
-   * Math.addExact} 天然精确；不存在"逐成员除法丢残差"的问题。 年龄档一律由 {@link
+   * <p>★★ <b>逐成员整数乘加、无时间分数、最后一步向下取整</b>（计划 §3.5 机制第 1/4 条）：份额与系数都是整数， {@code
+   * Math.multiplyExact}/{@code Math.addExact} 天然精确；不存在"逐成员除法丢残差"的问题。 年龄档一律由 {@link
    * AgeBracket#of(io.mosire.simos.calendar.CalendarSystem, long, long)} 现算， 不读任何落盘的"当前档位"。
+   *
+   * <p>★★ <b>Z7d-1 饥饿口径（用户 2026-10-23 原话："Social 层面饥饿系数应当直接决定单 tick 家户能提供的劳动力"）</b>： 饱和缺键 = 1000 ⇒
+   * {@code 劳动预算 == 基础劳动}（旧口径逐值不变）；0 ⇒ 0。经济/GOV 等模块只消费本方法的输出， <b>不得再自算饥饿</b>；本方法是全仓唯一的饥饿折算点。
    *
    * <p>★★ <b>坏数据具名拒</b>：家户不存在 / 成员批次不在 {@code groups} / {@code day < 0} / {@code clock} 为 null /
    * 批次年龄为负 / 该 {@code (年龄档, 性别)} 在覆盖与默认表里都查不到，都当场抛 {@link IllegalArgumentException}（ERROR
@@ -562,7 +682,7 @@ public record SocialData(
   public long householdLaborMilli(HouseholdId householdId, long day, CalendarClock clock) {
     requireProvisioningArgs(householdId, day, clock, "householdLaborMilli");
     Household household = requireHouseholdForProvisioning(householdId, "householdLaborMilli");
-    long total = 0L;
+    long baseLaborMilli = 0L;
     for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
       long share = member.getValue();
       if (share == 0L) {
@@ -574,8 +694,12 @@ public record SocialData(
           bracketAtForProvisioning(
               group, day, clock, householdId, member.getKey(), "householdLaborMilli");
       LaborCoefficient coefficient = provisioning.findLabor(householdId, bracket, group.sex());
-      total = Math.addExact(total, Math.multiplyExact(share, coefficient.milliHoursPerTick()));
+      baseLaborMilli =
+          Math.addExact(baseLaborMilli, Math.multiplyExact(share, coefficient.milliHoursPerTick()));
     }
+    // ★★ Z7d-1 唯一折算点：基础劳动 × satiety ÷ 1000，整数向下取整（饱和 = 1000 ⇒ 逐值恒等）。
+    long satiety = satietyPerMille(householdId);
+    long laborMilli = Math.floorDiv(Math.multiplyExact(baseLaborMilli, satiety), 1_000L);
     long population = householdPopulation(householdId);
     if (SocialLog.provisioning().isDebugEnabled()) {
       EventLog.channel(SocialLog.provisioning())
@@ -589,10 +713,14 @@ public record SocialData(
                   day,
                   "population",
                   population,
+                  "baseLaborMilli",
+                  baseLaborMilli,
+                  "satietyPerMille",
+                  satiety,
                   "laborMilli",
-                  total));
+                  laborMilli));
     }
-    return total;
+    return laborMilli;
   }
 
   /**

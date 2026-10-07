@@ -395,16 +395,21 @@ public final class GovBudgetExecutionBridge {
               "政府服务流量为 0：该 GOV 没有任何 GOV_SERVICE 承诺劳动（只告警，不自动招募）"));
     }
     if (efficiency != null && supply != null) {
+      // ★★ Z7d-1：空缺判据用**承诺**（职位），不用有效供给 —— 饥饿 cap 出来的 0 不是"岗位空缺无法填"；
+      //   有效供给 vs 承诺的缺口另走 GOV_SERVICE_UNDERFED INFO + simos.gov.info 的 underfed 字段。
       boolean securityVacancy =
-          efficiency.securityDemandLaborMilli() > 0L && supply.securityLaborMilli() == 0L;
+          efficiency.securityDemandLaborMilli() > 0L && supply.committedSecurityLaborMilli() == 0L;
       boolean paperworkVacancy =
-          efficiency.paperworkDemandLaborMilli() > 0L && supply.paperworkLaborMilli() == 0L;
+          efficiency.paperworkDemandLaborMilli() > 0L
+              && supply.committedPaperworkLaborMilli() == 0L;
       if (securityVacancy || paperworkVacancy) {
         Map<String, Long> evidence = new LinkedHashMap<>();
         evidence.put("securityDemandLaborMilli", efficiency.securityDemandLaborMilli());
         evidence.put("securitySupplyLaborMilli", supply.securityLaborMilli());
+        evidence.put("securityCommittedLaborMilli", supply.committedSecurityLaborMilli());
         evidence.put("paperworkDemandLaborMilli", efficiency.paperworkDemandLaborMilli());
         evidence.put("paperworkSupplyLaborMilli", supply.paperworkLaborMilli());
+        evidence.put("paperworkCommittedLaborMilli", supply.committedPaperworkLaborMilli());
         evidence.put(
             "vacancyDimensions", (securityVacancy ? 1L : 0L) + (paperworkVacancy ? 1L : 0L));
         alerts.add(
@@ -413,7 +418,7 @@ public final class GovBudgetExecutionBridge {
                 GovDaily.KIND_ADMIN_VACANCY,
                 1L,
                 evidence,
-                "岗位空缺无法填：需求 > 0 的维度实际承诺供给 = 0（security="
+                "岗位空缺无法填：需求 > 0 的维度承诺供给 = 0（security="
                     + securityVacancy
                     + " paperwork="
                     + paperworkVacancy

@@ -155,7 +155,8 @@ public final class ClearRegionHandler implements CommandHandler, CommandTargets,
               base.populationEvents(),
               base.provisioning(),
               base.vitalRates(),
-              base.vitalRemainders());
+              base.vitalRemainders(),
+              base.satietyPerMille());
       EventLog.channel(SocialLog.command())
           .info(
               LogEvent.of(

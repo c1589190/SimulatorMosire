@@ -300,7 +300,7 @@ public final class GovInfoTool implements AgentTool {
     info.put("projectedStaff", projectedStaffView(economy, social, units, govId, tick));
     info.put("efficiency", efficiencyView(govState.offices().get(govId)));
     info.put("supply", supplyView(economy, govId, formation, plan, tick));
-    info.put("committedLabor", committedLaborView(economy, govId, formation, plan, tick));
+    info.put("committedLabor", committedLaborView(economy, social, govId, formation, plan, tick));
     info.put("budgetSettlement", budgetSettlementView(govState.offices().get(govId), policy));
     info.put("treasury", treasuryView(state, govId));
     info.put("alerts", alertsView(economy, map, unit, at));
@@ -446,7 +446,7 @@ public final class GovInfoTool implements AgentTool {
     return view;
   }
 
-  /** 实际供给（复用 Z3b 唯一桥；契约故障 ⇒ 具名 unavailable，不填 0）。 */
+  /** 实际供给（复用 Z3b 唯一桥；契约故障 ⇒ 具名 unavailable，不填 0）。★ Z7d-1 起同时给承诺/有效两套口径。 */
   private static Map<String, Object> supplyView(
       EconomyData economy,
       UnitId govId,
@@ -458,9 +458,19 @@ public final class GovInfoTool implements AgentTool {
       GovernmentServiceLaborBridge.Supply supply =
           GovernmentServiceLaborBridge.supply(economy, govId, formation, plan, tick);
       view.put("available", true);
+      // 旧字段名保留（有效供给），另给显式的 committed/effective 两套字段与 underfed 读数。
       view.put("securityLaborMilli", supply.securityLaborMilli());
       view.put("paperworkLaborMilli", supply.paperworkLaborMilli());
-      view.put("source", "GovernmentServiceLaborBridge（承诺→两维供给唯一桥）");
+      view.put("securityCommittedLaborMilli", supply.committedSecurityLaborMilli());
+      view.put("paperworkCommittedLaborMilli", supply.committedPaperworkLaborMilli());
+      view.put("securityEffectiveLaborMilli", supply.securityLaborMilli());
+      view.put("paperworkEffectiveLaborMilli", supply.paperworkLaborMilli());
+      view.put("underfedHouseholds", supply.underfedHouseholds());
+      view.put("underfed", supply.underfedHouseholds() > 0L);
+      view.put(
+          "source",
+          "GovernmentServiceLaborBridge（承诺→两维供给唯一桥；有效 = min(承诺, 该户 Economy 行 laborMilli)"
+              + "；laborMilli 由 app 从 Social householdLaborMilli（含 satiety 折算）注入）");
     } catch (RuntimeException e) {
       view.put("available", false);
       view.put("reason", e.getClass().getSimpleName() + ": " + e.getMessage());
@@ -468,9 +478,15 @@ public final class GovInfoTool implements AgentTool {
     return view;
   }
 
-  /** 承诺明细：逐户劳动 + 岗位/档位（有承诺无岗位照实发 hasPost=false；bridge 不计入供给）。 */
+  /**
+   * 承诺明细：逐户劳动 + 岗位/档位（有承诺无岗位照实发 hasPost=false；bridge 不计入供给）。
+   *
+   * <p>★ Z7d-1 起每行附 {@code satietyPerMille} / {@code actualLaborMilli}（Economy 行 laborMilli，含
+   * satiety 折算）/ {@code effectiveLaborMilli = min(承诺, 实际)} / {@code underfed}：读口直接回答"在编但供给不足"。
+   */
   private static Map<String, Object> committedLaborView(
       EconomyData economy,
+      SocialData social,
       UnitId govId,
       GovernmentFormation formation,
       GovAdministrationPlan plan,
@@ -488,23 +504,42 @@ public final class GovInfoTool implements AgentTool {
     Map<HouseholdId, GovernmentPostOfHousehold> postsOfGov = formation.allPosts(); // ★ Z3d：内外同权
     for (Map.Entry<HouseholdId, Long> entry : committed.entrySet()) {
       HouseholdId household = entry.getKey();
+      long committedLaborMilli = entry.getValue();
       GovernmentPostOfHousehold post = postsOfGov.get(household);
-      Map<String, Object> row = new LinkedHashMap<>();
-      row.put("householdId", household.value());
-      row.put("laborMilli", entry.getValue());
-      row.put("hasPost", post != null);
-      row.put(
+      var row = economy.classes().get(household);
+      long actualLaborMilli = row == null ? committedLaborMilli : row.laborMilli();
+      long effectiveLaborMilli = Math.min(committedLaborMilli, actualLaborMilli);
+      Map<String, Object> rowView = new LinkedHashMap<>();
+      rowView.put("householdId", household.value());
+      rowView.put("laborMilli", committedLaborMilli);
+      rowView.put("committedLaborMilli", committedLaborMilli);
+      rowView.put(
+          "satietyPerMille",
+          social.households().containsKey(household) ? social.satietyPerMille(household) : null);
+      rowView.put("actualLaborMilli", actualLaborMilli);
+      rowView.put("effectiveLaborMilli", effectiveLaborMilli);
+      rowView.put("underfed", effectiveLaborMilli < committedLaborMilli);
+      rowView.put(
+          "underfedReason",
+          effectiveLaborMilli < committedLaborMilli ? "starvation-reduced-actual-labor" : null);
+      rowView.put("hasPost", post != null);
+      rowView.put(
           "postScope",
           post == null
               ? null
               : (formation.externalPosts().containsKey(household) ? "external" : "internal"));
-      row.put("role", post == null ? null : post.role().name());
-      row.put("tierId", post == null || !post.hasTier() ? null : post.tierId());
-      row.put("tierKnown", post == null || !post.hasTier() ? null : tierKnown(plan, post.tierId()));
-      households.add(row);
+      rowView.put("role", post == null ? null : post.role().name());
+      rowView.put("tierId", post == null || !post.hasTier() ? null : post.tierId());
+      rowView.put(
+          "tierKnown", post == null || !post.hasTier() ? null : tierKnown(plan, post.tierId()));
+      households.add(rowView);
     }
     view.put("available", true);
     view.put("households", List.copyOf(households));
+    view.put(
+        "timing",
+        "satietyPerMille = 最近一次日结算后的值（决定下一 tick 的 householdLaborMilli）；"
+            + "actualLaborMilli = 本轮 Economy 行 laborMilli（当 tick 已消费的预算，二者相差一天是正常口径）");
     return view;
   }
 

@@ -13,6 +13,7 @@ import io.mosire.simos.app.household.GovernmentServiceLaborBridge;
 import io.mosire.simos.app.household.GovernmentServiceUnitConsistency;
 import io.mosire.simos.app.household.HouseholdEconomyProjection;
 import io.mosire.simos.app.household.HouseholdPositionResolver;
+import io.mosire.simos.app.household.HouseholdSatietyBridge;
 import io.mosire.simos.app.household.HouseholdUnitConsistency;
 import io.mosire.simos.app.household.MigrationSocialBridge;
 import io.mosire.simos.calendar.CalendarClock;
@@ -22,6 +23,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.AccountPartitionKey;
@@ -578,6 +580,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         stepper.updateMarketExcludedHouseholds(unitHouseholdExclusions(units));
         ActorData currentBooks = migratedBooks;
         SocialData currentSocial = social;
+        // ★★ Z7d-1：基态逐户粮缺口累计基线 —— {@link FlowRow#unmetNeed()} 是"本周期累计"，当日断顿要用
+        //   与前一日（或 revision 基态）的差分；周期第一天清零 ⇒ 差分 < 0 时读作"当日值"。
+        Map<HouseholdId, Long> previousCumulativeGrainUnmet =
+            cumulativeGrainUnmetOf(stepper.flows());
         // ★★ P2-D：gov 状态（每 tick 行政读数）+ 跨日累计读数（只进日志，不进状态）。
         GovState currentGov = bootstrappedGov;
         AdminTotals adminTotals = new AdminTotals();
@@ -591,7 +597,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           currentSocial = vital.data();
           stepper.updateComposition(compositionOf(currentSocial));
           stepper.recomputeLaborBudgets(laborBudgetsOf(currentSocial, day));
-          stepper.updateNaturalNeeds(naturalNeedsOf(currentSocial, day));
+          Map<HouseholdId, Map<CommodityId, Long>> dayNaturalNeeds =
+              naturalNeedsOf(currentSocial, day);
+          stepper.updateNaturalNeeds(dayNaturalNeeds);
           stepper.applyHouseholdPopulationDeltas(vital.populationDeltas());
           if (TIME.isDebugEnabled()) {
             long deltaNet = 0L;
@@ -620,6 +628,17 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           //   市场双方都必须是本轮参与者：落在账户上的那一份已由下面的会话副本绝对值落回覆盖，在途那一份由
           //   ShipmentBatch 承载；再折一遍会在异地键上造幽灵账。
           ProductionLedger ledger = stepper.step(day);
+          // ★★ Z7d-1：经济→Social 断顿回写（同一 revision；当日结算后立刻生效于下一 tick 的劳动预算）。
+          //   数据源 = 当日 FlowRow.unmetNeed[grain]（本周期累计，基线差分取当日量）与当日注入的粮自然需求；
+          //   规则（用户冻结）：有粮 unmet ⇒ 快降 −150‰/日 × min(1000, unmet×1000/need)；无粮 unmet ⇒ 慢升 +20‰；
+          //   布不足不降劳动。Social 不反向依赖 economy —— 本回写由 app 组合根编排、经 HouseholdSatietyBridge 纯函数。
+          currentSocial =
+              applyHouseholdSatietyWriteback(
+                  currentSocial,
+                  previousCumulativeGrainUnmet,
+                  stepper.flows(),
+                  dayNaturalNeeds,
+                  day);
           // ★★ P0（2026-10-10）：经济腿迁移 outbox → Social 工单 → 经济行人口回写。次序（缺一不可）：
           //   ① drain：ModeMigrationSettlement 已在 step 内按投影账把资产/钱/债/组织/劳动配额落好，
           //      只把"搬了多少人、从谁到谁"留在瞬态 outbox；
@@ -663,6 +682,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     "economyPopulationAfter",
                     totalEconomyPopulation(stepper.householdEconomies())));
           }
+          // ★★ Z7d-1：当日结算后的缺口累计基线（迁移可能新增目标行；基线随最新工作副本刷新，日序稳定）。
+          previousCumulativeGrainUnmet = cumulativeGrainUnmetOf(stepper.flows());
           // ★★ P2-D/Z3c：日结算之后的税 / 预算 / 行政俸禄 / 军俸 / 工资 —— **同一账户会话、同一个日循环**
           //   （不另起 participant，避免 gov/actor 同名模块冲突）。顺序：先税（收入侧）→ Z3c 预算规划
           //   （GovBudgetPolicy 类别顺序/min/cap）→ GovDaily 行政俸禄（预算 oracle）→ 军俸/工资（预算裁剪后执行）
@@ -680,6 +701,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     map,
                     currentSocial,
                     economy,
+                    stepper.householdEconomies(),
                     dayModifiers,
                     day,
                     missingAdminRegions);
@@ -1109,9 +1131,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    * 得建议需求（只进 日志/建议），按承诺→两维供给桥（{@link GovernmentServiceLaborBridge}）算两维供给，再按当 tick 注入的四项动态修正调 {@link
    * GovEfficiency#of} 得唯一一份结果；{@link GovServiceFlow} 从同一份结果派生。
    *
+   * <p>★★ <b>Z7d-1</b>：供给桥按**当 tick 家户行工作副本**（{@code currentHouseholdRows.laborMilli}，已含 satiety
+   * 折算）逐户 cap 到有效供给；cap 掉的部分只发一条具名 INFO {@code GOV_SERVICE_UNDERFED}（不 WARN、不自动缩承诺）。
+   *
    * <p>★ 检查该单位管辖的每个 Region 是否都在 map 里，缺的累积进 {@code missingRegions}（只累积、不抛；调用方整轮汇总成一条具名
    * WARN——这是预存量口径，不在 Z3b 改动）。
    *
+   * @param currentHouseholdRows 本 tick 经济结算工作副本的家户行（有效供给 cap 的实际劳动来源；不得为 null）
    * @param modifiers 本 tick 的动态修正注入集（已按当 tick 取走；缺项 = 四项 1000‰ 中性）
    * @param missingRegions 跨日累积的 {@code unit=…,region=…} 明细（调用方只在整轮结束时汇总 WARN 一次）
    */
@@ -1121,10 +1147,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       GameMap map,
       SocialData social,
       EconomyData economy,
+      Map<HouseholdId, HouseholdEconomy> currentHouseholdRows,
       Map<UnitId, GovEfficiencyModifier> modifiers,
       long day,
       Set<String> missingRegions) {
     Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(currentHouseholdRows, "currentHouseholdRows");
     Objects.requireNonNull(modifiers, "modifiers");
     Map<UnitId, GovEfficiency.Efficiency> byUnit = new LinkedHashMap<>();
     Map<UnitId, Long> efficiencyPerMilleByUnit = new LinkedHashMap<>();
@@ -1154,7 +1182,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       Map<HexCoord, GovDemand.HexDemand> suggestedDemand = GovDemand.of(map, social, unit);
       GovAdministrationPlan plan = govState.administrationPlanOrDefault(unitId);
       GovernmentServiceLaborBridge.Supply supply =
-          GovernmentServiceLaborBridge.supply(economy, unitId, formation, plan, day);
+          GovernmentServiceLaborBridge.supply(
+              economy, currentHouseholdRows, unitId, formation, plan, day);
       GovEfficiencyModifier modifier = modifiers.get(unitId);
       long securitySupplyModifier =
           modifier == null
@@ -1184,8 +1213,39 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               securityDemandModifier,
               paperworkDemandModifier,
               standardLaborMilliHoursPerTick);
+      if (supply.underfedHouseholds() > 0L) {
+        // ★★ Z7d-1：在编但供给不足 —— 承诺是职位（C7 不缩/删），实际劳动被饥饿折算 cap；
+        //   只给一条具名 INFO（不 WARN、不自动缩承诺/招募/注资），效率按同一份有效供给如实下降。
+        long committedLabor =
+            Math.addExact(
+                supply.committedSecurityLaborMilli(), supply.committedPaperworkLaborMilli());
+        long effectiveLabor =
+            Math.addExact(supply.securityLaborMilli(), supply.paperworkLaborMilli());
+        TIME.info(
+            LogEvent.of(
+                "GOV_SERVICE_UNDERFED",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                day,
+                "unit",
+                unitId.value(),
+                "underfedHouseholds",
+                supply.underfedHouseholds(),
+                "committedLaborMilli",
+                committedLabor,
+                "effectiveLaborMilli",
+                effectiveLabor,
+                "reason",
+                "starvation-reduced-household-labor-capped-effective-supply"));
+      }
       if (GovEfficiency.anySupplyZero(supply.securityLaborMilli(), supply.paperworkLaborMilli())) {
         // ★ §3：无挂岗位家户（无承诺）⇒ 该维供给 0、效率 0，具名 INFO（不是静默 0）。
+        // ★ Z7d-1：若承诺不为 0 而是被饥饿 cap 到 0，reason 具名为 committed-but-underfed（不冒充"无岗位"）。
+        String zeroSupplyReason =
+            supply.committedSecurityLaborMilli() == 0L
+                    && supply.committedPaperworkLaborMilli() == 0L
+                ? "no-posted-household-commitment"
+                : "committed-supply-underfed-to-zero";
         TIME.info(
             LogEvent.of(
                 "GOV_EFFICIENCY_ZERO_SUPPLY",
@@ -1199,7 +1259,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 "paperworkSupplyLaborMilli",
                 supply.paperworkLaborMilli(),
                 "reason",
-                "no-posted-household-commitment"));
+                zeroSupplyReason));
       }
       if (TIME.isDebugEnabled()) {
         TIME.debug(
@@ -1218,6 +1278,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 supply.securityLaborMilli(),
                 "paperworkSupplyLaborMilli",
                 supply.paperworkLaborMilli(),
+                "securityCommittedLaborMilli",
+                supply.committedSecurityLaborMilli(),
+                "paperworkCommittedLaborMilli",
+                supply.committedPaperworkLaborMilli(),
+                "underfedHouseholds",
+                supply.underfedHouseholds(),
                 "securityDemandLaborMilli",
                 efficiency.securityDemandLaborMilli(),
                 "paperworkDemandLaborMilli",
@@ -1237,7 +1303,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       flows.put(
           unitId,
           GovServiceFlow.of(
-              unitId, day, supply.securityLaborMilli(), supply.paperworkLaborMilli(), efficiency));
+              unitId,
+              day,
+              supply.committedSecurityLaborMilli(),
+              supply.committedPaperworkLaborMilli(),
+              efficiency));
     }
     return new GovEfficiencyDay(byUnit, efficiencyPerMilleByUnit, flows, supplyByUnit);
   }
@@ -1474,6 +1544,107 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       composition.put(entry.getKey(), entry.getValue().members());
     }
     return composition;
+  }
+
+  /** ★★ Z7d-1：经济侧逐户粮缺口累计（{@link FlowRow#unmetNeed()} 的粮维，本周期累计）→ household 表（保序只读）。 */
+  private static Map<HouseholdId, Long> cumulativeGrainUnmetOf(Map<HouseholdId, FlowRow> flows) {
+    Map<HouseholdId, Long> cumulative = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, FlowRow> entry : flows.entrySet()) {
+      cumulative.put(
+          entry.getKey(), entry.getValue().unmetNeed().getOrDefault(EconomySettlement.GRAIN, 0L));
+    }
+    return cumulative;
+  }
+
+  /**
+   * ★★ <b>Z7d-1 经济→Social 断顿回写（app 组合根编排的唯一落点）</b>：把"当日粮缺口 + 当日粮需求"经 {@link HouseholdSatietyBridge}
+   * 纯函数折成逐户 satietyPerMille，返回**新的** SocialData（同一 revision 内生效）。
+   *
+   * <pre>
+   * 当日缺口 = FlowRow.unmetNeed[grain]（本周期累计） − 前一日/基态累计
+   *            （累计 < 上一基线 ⇒ 周期第一天清零，当日缺口 = 当前累计）
+   * 有缺口   ⇒ satiety ← max(0, satiety − ⌊150 × min(1000, ⌊缺口×1000÷当日需求⌋) ÷ 1000⌋)
+   * 无缺口   ⇒ satiety ← min(1000, satiety + 20)
+   * 缺口为 0 且 satiety=1000 的户不写回（保持表稀疏；缺键语义 = 1000）
+   * </pre>
+   *
+   * <p>★ <b>布不足不在这里发生</b>：{@code unmetNeed[cloth]} 照旧只进经济读口/告警，不降劳动。
+   *
+   * @param social 当前 SocialData（含本日生死结算后的状态）
+   * @param previousCumulativeGrainUnmet 上一日（或 revision 基态）逐户粮缺口累计基线；不得为 null
+   * @param flows 当日结算后的经济流水（{@code stepper.flows()}）；不得为 null
+   * @param dayNaturalNeeds 当日注入的逐户自然需求（{@code naturalNeedsOf(currentSocial, day)}）；不得为 null
+   * @param day 世界日（只进日志）
+   */
+  private SocialData applyHouseholdSatietyWriteback(
+      SocialData social,
+      Map<HouseholdId, Long> previousCumulativeGrainUnmet,
+      Map<HouseholdId, FlowRow> flows,
+      Map<HouseholdId, Map<CommodityId, Long>> dayNaturalNeeds,
+      long day) {
+    Objects.requireNonNull(social, "social");
+    Objects.requireNonNull(previousCumulativeGrainUnmet, "previousCumulativeGrainUnmet");
+    Objects.requireNonNull(flows, "flows");
+    Objects.requireNonNull(dayNaturalNeeds, "dayNaturalNeeds");
+    List<HouseholdId> ordered = new ArrayList<>(social.households().keySet());
+    ordered.sort(Comparator.comparing(HouseholdId::value));
+    List<HouseholdSatietyBridge.DailyFeed> feeds = new ArrayList<>();
+    for (HouseholdId household : ordered) {
+      FlowRow flow = flows.get(household);
+      if (flow == null) {
+        continue; // 该 Social 户没有经济行（旧档/装配边界）：没有断顿证据，不回写、不造行
+      }
+      long cumulative = flow.unmetNeed().getOrDefault(EconomySettlement.GRAIN, 0L);
+      Long previous = previousCumulativeGrainUnmet.get(household);
+      long dailyGrainUnmetMilli;
+      if (previous == null || cumulative < previous.longValue()) {
+        // 周期第一天（FlowRow 清零）或首次观察：当前累计就是当日量。
+        dailyGrainUnmetMilli = cumulative;
+      } else {
+        dailyGrainUnmetMilli = Math.subtractExact(cumulative, previous.longValue());
+      }
+      long satiety = social.satietyPerMille(household);
+      if (dailyGrainUnmetMilli <= 0L && satiety >= SocialData.SATIETY_FULL_PER_MILLE) {
+        continue; // 吃饱且无新缺口：不写回（缺键 = 1000，保持表稀疏与逐字节稳定）
+      }
+      long grainNeedMilli =
+          dayNaturalNeeds
+              .getOrDefault(household, Map.of())
+              .getOrDefault(EconomySettlement.GRAIN, 0L);
+      feeds.add(
+          new HouseholdSatietyBridge.DailyFeed(household, dailyGrainUnmetMilli, grainNeedMilli));
+    }
+    HouseholdSatietyBridge.Report report = HouseholdSatietyBridge.apply(social, feeds);
+    if (TIME.isDebugEnabled()) {
+      long fastDrops = 0L;
+      long recoveries = 0L;
+      for (HouseholdSatietyBridge.Outcome outcome : report.outcomes()) {
+        if (outcome.grainUnmetMilli() > 0L) {
+          fastDrops++;
+        } else {
+          recoveries++;
+        }
+      }
+      TIME.debug(
+          LogEvent.of(
+              "POPULATION_SATIETY_WRITEBACK",
+              AppLogSource.DAILY_LOOP,
+              "day",
+              day,
+              "mapId",
+              mapId,
+              "feeds",
+              report.outcomes().size(),
+              "fastDrops",
+              fastDrops,
+              "recoveries",
+              recoveries,
+              "skippedUnknownHouseholds",
+              report.skippedUnknownHouseholds(),
+              "householdsWithSatietyEntry",
+              report.data().satietyPerMille().size()));
+    }
+    return report.data();
   }
 
   /**

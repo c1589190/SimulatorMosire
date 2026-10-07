@@ -30,6 +30,7 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -116,15 +117,20 @@ import java.util.Set;
  * flows} 的每个键必须等于其 {@link FlowRow#key()}；{@code laborSupply} / {@code allocations} 同理各自等于行内的 group
  * / id。 否则同一份身份就有两处可能不一致的记录。
  *
- * <p>★★ **R2：本阶段最重要的不变量在这里判死**（第三阶段设计稿 §四）：
+ * <p>★★ **R2：本阶段最重要的不变量在这里判死**（第三阶段设计稿 §四；★ Z7d-1 按 kind 分账）：
  *
  * <pre>
- * Σ_{a ∈ allocations(group)} a.laborMilli  ≤  availableLabor(supply(group))
+ * Σ_{PRODUCTION} laborMilli  ≤  laborMilli − min(Σ_{GOV_SERVICE} laborMilli, laborMilli)
  * </pre>
  *
  * 它**必须**在构造期判，而不是在结算里"顺手算对"：劳动是**可分配但不能凭空重复**的资源（本轮的目标原话），而"同一批人被两个产业各算一次满额" 正是设计稿 §一.2
- * 实测出的空洞。判在构造期 ⇒ 任何一条路径（命令、旧档读入、夹具、将来的协调器）都不可能造出"配额超过可支配劳动"的状态—— 那正是本仓栽过的同族教训（{@code progressDays
+ * 实测出的空洞。判在构造期 ⇒ 任何一条路径（命令、旧档读入、夹具、将来的协调器）都不可能造出"生产配额超过可支配劳动"的状态—— 那正是本仓栽过的同族教训（{@code progressDays
  * == cycleDays} 与 {@code WageFirst}：模型允许的状态，结算与用例都得处理）。
+ *
+ * <p>★★ <b>Z7d-1 的 underfed 口径</b>（用户 2026-10-23："Social 层面饥饿系数应当直接决定单 tick 家户能提供的劳动力"）： {@code
+ * GOV_SERVICE} 是**职位/诉求**，允许 `Σ GOV_SERVICE > 饿少后的 laborMilli`（C7 不静默缩/删）；此时上式让 PRODUCTION 可用量归
+ * 0。**有效供给 = min(该户承诺, 该户实际劳动)** 由 app 的 {@code GovernmentServiceLaborBridge} 逐户 cap —— 经济侧构造期不再对
+ * GOV_SERVICE 单独 fail-closed。
  *
  * <p>★ **两条配套的结构判据**（同上，都判在构造期）：
  *
@@ -801,7 +807,8 @@ public record EconomyData(
       unitsByValue.put(unit.id().value(), unit);
     }
     Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentsCopy = new LinkedHashMap<>();
-    Map<HouseholdId, Long> allocatedPerHousehold = new LinkedHashMap<>();
+    Map<HouseholdId, Long> productionPerHousehold = new LinkedHashMap<>();
+    Map<HouseholdId, Long> govServicePerHousehold = new LinkedHashMap<>();
     for (Map.Entry<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentEntry :
         allocations.entrySet()) {
       if (laborCommitmentEntry.getKey() == null || laborCommitmentEntry.getValue() == null) {
@@ -866,26 +873,44 @@ public record EconomyData(
       }
       // ★★ P2-A A4：配额上限改为**家户每 tick 时间预算**（{@code HouseholdEconomy.laborMilli}，毫小时）——
       //   不再有"每批次供给表"这第二权威（LaborSupply 已删除；预算每 tick 由 Social 人口组成重算）。
-      allocatedPerHousehold.merge(
-          laborCommitment.household(), laborCommitment.laborMilli(), Long::sum);
+      //   ★★ Z7d-1：按 kind 分账 —— GOV_SERVICE 是"职位/诉求"（允许超过饿少后的预算，有效供给由 app
+      //   供给桥 cap），PRODUCTION 才受"扣除政府承诺预留后的可用时间"约束。
+      if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+        govServicePerHousehold.merge(
+            laborCommitment.household(), laborCommitment.laborMilli(), Long::sum);
+      } else {
+        productionPerHousehold.merge(
+            laborCommitment.household(), laborCommitment.laborMilli(), Long::sum);
+      }
       laborCommitmentsCopy.put(laborCommitmentEntry.getKey(), laborCommitment);
     }
     allocations = Collections.unmodifiableMap(laborCommitmentsCopy); // ★ 冻在赋值处
-    // ③ ★★ **Σ allocated(household) ≤ household time budget**（本阶段最重要的不变量，见类注释）。
-    for (Map.Entry<HouseholdId, Long> entry : allocatedPerHousehold.entrySet()) {
+    // ③ ★★ **Σ PRODUCTION ≤ 时间预算 − min(Σ GOV_SERVICE, 时间预算)**（本阶段最重要的不变量，见类注释）。
+    //   ★★ Z7d-1 口径：GOV_SERVICE 承诺行保留为职位（C7 不静默缩/删），允许 `Σ GOV_SERVICE > laborMilli`
+    //   （饥饿把预算饿少后的具名 underfed 状态）；此时 PRODUCTION 可用量 = 0。有效供给 = min(承诺, 实际劳动)
+    //   由 app 的 GovernmentServiceLaborBridge 逐户 cap，不在这里改任何承诺行。
+    for (Map.Entry<HouseholdId, Long> entry : productionPerHousehold.entrySet()) {
       HouseholdEconomy householdEconomy = householdEconomiesCopy.get(entry.getKey());
       if (householdEconomy == null) {
         continue; // 旧档迁移期的 pending 家户：迁移器会换成真实家户（见 LegacyHouseholdMigration）
       }
-      if (entry.getValue() > householdEconomy.laborMilli()) {
+      long budget = householdEconomy.laborMilli();
+      long govService = govServicePerHousehold.getOrDefault(entry.getKey(), 0L);
+      long reservedGovService = Math.min(govService, budget);
+      long productionBudget = budget - reservedGovService;
+      if (entry.getValue() > productionBudget) {
         throw new IllegalArgumentException(
             "家户 "
                 + entry.getKey()
-                + " 的劳动配额之和 "
+                + " 的生产劳动配额之和 "
                 + entry.getValue()
                 + " 超过它的每 tick 时间预算 "
-                + householdEconomy.laborMilli()
-                + " 毫小时（同一份家户时间不得被多个生产活动各算一次满额，计划 §13.5）");
+                + budget
+                + " 中扣除 GOV_SERVICE 最高优先预留后的可用部分 "
+                + productionBudget
+                + "（GOV_SERVICE 承诺 "
+                + govService
+                + " 毫小时；同一份家户时间不得被多个生产活动各算一次满额，计划 §13.5）");
       }
     }
     // ── R3B.1 第 12 个组件：实物资产份额表 ──────────────────────────────────────────────
