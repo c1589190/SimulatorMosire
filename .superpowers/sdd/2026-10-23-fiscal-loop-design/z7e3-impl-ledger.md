@@ -96,6 +96,19 @@
 
 ---
 
+
+### 4.1 真服务探针（新 jar / 新库 / 端口 5921/5925/5923）
+
+`/home/cna/simos-runs/2026-10-23-sw19-z7e3-probe/`（`probe.txt` + `service.log`）：
+
+| 步 | 调用 | 结果 |
+|---|---|---|
+| 0 | `simos.gov.info gov-province` | 创世 5 类 + 10/1 + rate 0 |
+| 1 | preview 只传 `remittancePerMilleToSuperior:500` | `editMode=PATCH`、`budgetAfter` 5 类 + 10/1 + rate 500 |
+| 2 | apply（同载荷，rev1→2） | `submitted=true noop=false`；`gov.info` 复核 5 类 + 10/1 + rate 500 |
+| 3 | preview + 工具顶层 `mode:"REPLACE"` | `editMode=REPLACE`、`budgetAfter` 0 类 + 0/0（旧语义可达） |
+| 4 | payload 写 `mode:"REPLACE"` + 工具顶层 `mode:"PATCH"` | `editMode=PATCH`、5 类保留、rate 300（顶层覆盖 payload） |
+
 ## 5. 边界
 
 - **没做**：F3 中央铸币/发债；F4 全覆盖校准（spec §5）；`GovInfoTool` 读口不加 `mode`（`mode` 不是状态，读口无此字段是正确形态）。
