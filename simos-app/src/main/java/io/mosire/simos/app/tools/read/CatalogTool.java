@@ -305,6 +305,16 @@ public final class CatalogTool implements AgentTool {
                   + OPERATOR_HINT
                   + "）"),
           Map.entry(
+              "economy.UpsertIndustry",
+              "id(<kind>@<q>_<r>；新版本写进 kind 后缀：office_v2@0_0), name, regime, cycleDays(≥1),"
+                  + " capacityPerUnit(非空且逐值>0), dailyInputPerUnit?, dailyLaborPerUnit?(≥0),"
+                  + " laborPerUnit?(≥0), outputPerUnit?(空 map = 无商品产出), cycleInputPerUnit?,"
+                  + " slots[{id,name,laborParticipationPerMille}],"
+                  + " allocation(@class=split；两权重各≥0 且和=1000)"
+                  + "（★ Z1a：id 不存在 ⇒ 创建（格必须已有已激活经济状态；同格同 kind 版本不得倒退/撞号）；"
+                  + "id 已存在 ⇒ 仅当无 units/assetShares/relations 引用时原地全量替换，被引用 ⇒ 具名拒并指路"
+                  + "新版本 id；逐值相同的重放 = 幂等 no-op；老 unit 引用老 id 零影响；GM-only）"),
+          Map.entry(
               "economy.MigrateHousehold",
               "household(家户 id 文本), toHex(目标格 q_r 文本)"
                   + "（★ S3：只搬视图与份额，身份/人口不变，账 location 不搬；"

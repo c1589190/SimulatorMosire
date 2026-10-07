@@ -1410,6 +1410,16 @@ final class EconomyPayloads {
         rule);
   }
 
+  /**
+   * ★★ <b>Z1a：{@code economy.UpsertIndustry} 的产业节点解析唯一入口</b> —— 与 {@code economy.Seed} 的 {@code
+   * industries[]} 节点<b>同一份字段解析</b>（委托 {@link #industry(JsonNode)}）。命令 handler 不另写第二套字段读取；
+   * 构造期守卫（capacityPerUnit 非空且为正 / cycleDays / slots / 逐值非负 / allocation）仍由 {@link Industry} 与 上面的
+   * {@link #industry(JsonNode)} 判。
+   */
+  static Industry parseIndustryNode(JsonNode node) {
+    return industry(node);
+  }
+
   /** ★★ 旧载荷的 Industry 节点：模板 + 旧实例字段快照（合成默认 unit/份额用；新载荷 legacy=false）。 */
   private record IndustrySpec(
       Industry template,

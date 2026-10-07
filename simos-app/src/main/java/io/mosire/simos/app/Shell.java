@@ -82,6 +82,7 @@ import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
 import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
+import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
@@ -650,6 +651,11 @@ public final class Shell implements AutoCloseable {
                 //   照进 commandTargets；但排除出令白名单 / RegisterEffect / 决策人目录（见下方
                 //   catalogCommandTypes 与 directiveCommandTypes 的拆分）。──
                 new EconomyGmAdjustHandler(),
+                // ── economy（Z1a 2026-10-23）：创建/修改产业模板（新版本 = 新 kind 后缀 id；原地改仅限无
+                //   units/assetShares/relations 引用）。★ GM-only：标 GmOnlyCommand ⇒ 排除出令白名单 /
+                //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
+                //   simos.economy.upsertIndustry 照常可用。★ 不实现 CommandTargets（不进决策令桶）。──
+                new EconomyUpsertIndustryHandler(),
                 // ── P1b1（2026-10-01）：GM-only 区域经济数据清空（目标格 industries/markets + 可靠可定位的连带记录）。
                 //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new EconomyClearRegionHandler(),

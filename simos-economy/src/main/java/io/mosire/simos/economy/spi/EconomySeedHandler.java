@@ -241,8 +241,12 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 
-  /** 现有切片里**已被占用的格键**（{@code <q>_<r>}）：从产业 id 与**家户行的格**里认（{@link IndustryHexKeys} 是唯一拼写点）。 */
-  private static Set<String> occupiedHexKeys(EconomyData base) {
+  /**
+   * 现有切片里**已被占用的格键**（{@code <q>_<r>}）：从产业 id 与**家户行的格**里认（{@link IndustryHexKeys} 是唯一拼写点）。
+   *
+   * <p>★ Z1a：{@code economy.UpsertIndustry} 的"格必须有已激活经济状态"守卫复用本方法（同一判据，不在别处另写一份）。
+   */
+  static Set<String> occupiedHexKeys(EconomyData base) {
     Set<String> hexes = new LinkedHashSet<>();
     for (IndustryId id : base.industries().keySet()) {
       IndustryHexKeys.hexKeyOf(id).ifPresent(hexes::add);

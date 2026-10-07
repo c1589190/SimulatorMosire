@@ -58,6 +58,7 @@ import io.mosire.simos.app.tools.write.AssignArmyGovTool;
 import io.mosire.simos.app.tools.write.CalendarConfigureTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
+import io.mosire.simos.app.tools.write.EconomyUpsertIndustryTool;
 import io.mosire.simos.app.tools.write.ForkTool;
 import io.mosire.simos.app.tools.write.FormatUnitTool;
 import io.mosire.simos.app.tools.write.GmAdjustPopulationTool;
@@ -717,6 +718,11 @@ public final class SimosToolSource implements ToolSource {
     //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它，DecisionCallerFactory.WHITELIST 也没有它，
     //   且 economy.GmAdjust 本身标了 GmOnlyCommand（令/RegisterEffect/决策人 catalog 三条路径都排除）。
     built.add(new EconomyAdjustTool(core, query, initiator, mapId));
+    // ★★ Z1a（2026-10-23 政府专属生产方式设计 §5）：产业模板创建/修改（economy.UpsertIndustry 的窄封装：
+    //   payloadJson 与 economy.Seed 的 industries[] 节点同形 + preview / apply + expectedRevision）。
+    //   **只在 GM 桶**：决策人桶没有它，DecisionCallerFactory.WHITELIST 也不含它；命令本身标了 GmOnlyCommand
+    //   ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    built.add(new EconomyUpsertIndustryTool(core, query, initiator));
     // ★★ S3a（2026-10-09 Unit/Gov 家户容纳 §4.3）：家户/人口 GM 窄写六条。**只在 GM 桶**；
     //   工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。四条 social 工具：创建 / 移动（HEX↔UNIT，跨 unit 时
     //   同批改 unit.households）/ 成员增删转移 / 出生死亡率；两条组合工具：assignHousehold（social.SetHouseholdLocation
