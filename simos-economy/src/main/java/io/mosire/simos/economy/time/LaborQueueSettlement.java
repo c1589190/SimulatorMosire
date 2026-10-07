@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -49,6 +50,11 @@ import java.util.Set;
  * <p>★★ <b>哪些活动"被保留、不排队"</b>（既有配额原样保留并先占预算，见 {@link LaborQueueBook#isPreservedByQueue}）：{@code
  * laborPerUnit ≤ 0} 的非劳动活动、没有产出配方的承运/贸易、 产出一个价都没有的活动，以及 R4-E2b 当天刚进入的试产 unit。只有"确实定过价、且预期 ≤
  * 0"的活动会被判为空缺。
+ *
+ * <p>★★ <b>C7（Z1b）：{@code GOV_SERVICE} 承诺是最高优先级、不可缩</b>——不进队列、不被重算、不被按比例缩； {@code
+ * preserveIntoBudget} 先整额保留 GOV_SERVICE，只用剩余预算给 PRODUCTION 排队/缩。若某户 {@code Σ GOV_SERVICE > 家户
+ * laborMilli}（不变量本不该允许）⇒ 具名 {@code LABOR_COMMITMENT_CONTRACT} ERROR + fail-closed，绝不静默缩/丢；
+ * 队列也不得创建/覆盖 GOV_SERVICE（只允许政府工具写，Z3）。
  *
  * <p>★ <b>为什么按家户全局串行而不是按 hex 并行</b>：时间预算是**家户**的资源，可能有多条 unit（多生产方式）跨组织； 按 hex
  * 分区会让"保留配额"与"新分配"在合并后才对账。家户数 × unit 数是可控量级，串行保证 {@code Σallocations(household) ≤ laborMilli}
@@ -171,6 +177,28 @@ final class LaborQueueSettlement {
         }
         continue; // 没有可挂批次 ⇒ 不猜、不重排（既有配额原样保留；预算不变量不动）
       }
+      List<HouseholdLaborCommitment> householdLaborCommitments =
+          laborCommitmentsByHousehold.getOrDefault(household, List.of());
+      long budget = Math.max(0L, householdEconomy.laborMilli());
+      // ★★ C7：GOV_SERVICE 承诺是**最高优先级、不可缩**。先按 activity 建索引（队列既不排队、也不覆盖它），
+      //   再整额校验"Σ GOV_SERVICE ≤ 家户 laborMilli"——越界是契约故障，具名 ERROR + fail-closed，绝不静默缩/丢。
+      Set<String> govServiceActivities = new LinkedHashSet<>();
+      long govServiceLaborMilli = 0L;
+      for (HouseholdLaborCommitment laborCommitment : householdLaborCommitments) {
+        if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+          govServiceActivities.add(laborCommitment.activity());
+          govServiceLaborMilli = Math.addExact(govServiceLaborMilli, laborCommitment.laborMilli());
+        }
+      }
+      if (govServiceLaborMilli > budget) {
+        throw laborCommitmentContractFault(
+            household,
+            day,
+            "GOV_SERVICE 承诺总额超过家户劳动预算（不可缩、不静默丢）: govServiceMilli="
+                + govServiceLaborMilli
+                + " budgetMilli="
+                + budget);
+      }
       Map<ProductionUnitId, ProductionProcess> candidateUnitsById = new LinkedHashMap<>();
       for (ProductionProcess unit : candidates) {
         candidateUnitsById.put(unit.id(), unit);
@@ -179,6 +207,9 @@ final class LaborQueueSettlement {
       List<LaborQueueBook.Offer> offers = new ArrayList<>();
       Set<ProductionUnitId> queuedUnits = new LinkedHashSet<>();
       for (ProductionProcess unit : candidates) {
+        if (govServiceActivities.contains(unit.id().value())) {
+          continue; // ★ C7：该户在此 unit 上有 GOV_SERVICE 承诺 ⇒ 不进队列（队列不得创建/覆盖政府承诺）
+        }
         if (entryTrialUnits.contains(unit.id())
             && !unit.modeKey().startsWith(EconomyEnterpriseSettlement.MODE_KEY_PREFIX)) {
           continue; // ★ R4-E2b 试产 unit：本日保留试产配额（不放进队列 ⇒ 被算进 preserved）
@@ -198,19 +229,21 @@ final class LaborQueueSettlement {
         }
       }
 
-      long budget = Math.max(0L, householdEconomy.laborMilli());
-      List<HouseholdLaborCommitment> householdLaborCommitments =
-          laborCommitmentsByHousehold.getOrDefault(household, List.of());
-      long preserved = 0L;
+      // 保留量 = GOV_SERVICE 整额 + 不参与排队的 PRODUCTION 既有配额；GOV_SERVICE 绝不进比例缩。
+      long preserved = govServiceLaborMilli;
       for (HouseholdLaborCommitment laborCommitment : householdLaborCommitments) {
+        if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+          continue; // 已整额计入
+        }
         if (!queuedUnits.contains(new ProductionUnitId(laborCommitment.activity()))) {
-          preserved += laborCommitment.laborMilli();
+          preserved = Math.addExact(preserved, laborCommitment.laborMilli());
         }
       }
       if (preserved > budget) {
-        // 合法状态到不了这里（构造期守卫），但排队写回不得以坏状态为借口超预算：按既有量比例缩到预算以内。
+        // 合法状态到不了这里（构造期守卫；GOV_SERVICE 越界已在上面 fail-closed），但排队写回不得以坏状态为借口
+        // 超预算：先整额保 GOV_SERVICE，只对 PRODUCTION 既有保留量按比例缩到剩余预算以内。
         preserveIntoBudget(
-            laborCommitments, householdLaborCommitments, queuedUnits, budget, preserved);
+            laborCommitments, householdLaborCommitments, queuedUnits, budget, govServiceLaborMilli);
         preserved = budget;
       }
       LaborQueueBook.Plan desired = LaborQueueBook.plan(household, budget, preserved, offers);
@@ -319,7 +352,8 @@ final class LaborQueueSettlement {
           work.householdLaborCommitments(),
           plan,
           work.lot(),
-          work.candidateUnitsById());
+          work.candidateUnitsById(),
+          day);
       plans.add(plan);
 
       if (EconomyLog.enterprise().isDebugEnabled()) {
@@ -497,21 +531,39 @@ final class LaborQueueSettlement {
   // ── 写回 ────────────────────────────────────────────────────────────────────────────────
 
   /**
-   * 把最终排队结果写回配额工作副本：先删本户所有排队的旧行，再按决定写回（复用旧行的 id/group/actor/period； 没有旧行 ⇒ 用 unit.operator() /
-   * 选定批次新发一条）。保留活动的旧行一律不动。
+   * 把最终排队结果写回配额工作副本：只删/改本户**排队的 PRODUCTION 旧行**，再按决定写回（复用旧行的 id/group/actor/period/kind；没有旧行 ⇒ 用
+   * unit.operator() / 选定批次新发一条 PRODUCTION）。保留活动的旧行一律不动。
+   *
+   * <p>★★ C7：GOV_SERVICE 行**绝不**被队列删除/改写；若某个决定指向带 GOV_SERVICE 承诺的 activity ⇒ 具名契约 ERROR +
+   * fail-closed（防"队列覆盖政府承诺"这条纪律被绕开）。
    */
   private static void applyPlan(
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       List<HouseholdLaborCommitment> householdLaborCommitments,
       LaborQueueBook.Plan plan,
       PeopleLotId lot,
-      Map<ProductionUnitId, ProductionProcess> candidateUnitsById) {
+      Map<ProductionUnitId, ProductionProcess> candidateUnitsById,
+      long day) {
     Set<ProductionUnitId> queuedUnits = new LinkedHashSet<>();
     for (LaborQueueBook.Decision decision : plan.decisions()) {
       queuedUnits.add(decision.offer().unitId());
     }
+    // ★ C7 防御：正常路径上带 GOV_SERVICE 的 activity 已被挡在候选外；这里再判一次，任何"排队到政府承诺上"的
+    //   路径都 fail-closed（不静默覆盖/删除）。
+    for (HouseholdLaborCommitment laborCommitment : householdLaborCommitments) {
+      if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE
+          && queuedUnits.contains(new ProductionUnitId(laborCommitment.activity()))) {
+        throw laborCommitmentContractFault(
+            plan.household(),
+            day,
+            "队列试图排队/覆盖 GOV_SERVICE 承诺: activity=" + laborCommitment.activity());
+      }
+    }
     Map<ProductionUnitId, HouseholdLaborCommitment> templates = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : householdLaborCommitments) {
+      if (laborCommitment.kind() != LaborCommitmentKind.PRODUCTION) {
+        continue; // ★ C7：GOV_SERVICE 行原样留在活表里，不参与"删旧行/复用模板"
+      }
       ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
       if (queuedUnits.contains(unitId)) {
         templates.putIfAbsent(unitId, laborCommitment);
@@ -541,37 +593,58 @@ final class LaborQueueSettlement {
               unit.operator(),
               unitId.value(),
               decision.grantedLaborMilli(),
-              1L);
+              1L,
+              LaborCommitmentKind.PRODUCTION); // ★ C7：队列只发 PRODUCTION，绝不创建 GOV_SERVICE
       HouseholdLaborCommitment previousLaborCommitment =
           laborCommitments.putIfAbsent(id, freshLaborCommitment);
       if (previousLaborCommitment != null) {
+        if (previousLaborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+          throw laborCommitmentContractFault(
+              plan.household(), day, "队列新发 id 撞上既有 GOV_SERVICE 承诺（拒绝覆盖政府承诺）: id=" + id.value());
+        }
         laborCommitments.put(
             id, withLaborMilli(previousLaborCommitment, decision.grantedLaborMilli()));
       }
     }
   }
 
-  /** 按既有量比例把保留配额缩到预算以内（只在坏状态兜底）：0 ⇒ 删行、其余写回缩小值。 */
+  /**
+   * 把**超出预算的 PRODUCTION 既有保留量**按既有量比例缩到剩余预算以内（只在坏状态兜底）：0 ⇒ 删行、其余写回缩小值。
+   *
+   * <p>★★ C7：GOV_SERVICE 一律整额保留、不参与权重、不写回——调用方已先判"Σ GOV_SERVICE ≤ budget"；本方法的 可用量 = {@code budget
+   * - govServiceLaborMilli}。GOV_SERVICE 行在此**绝不**被删/缩。
+   */
   private static void preserveIntoBudget(
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       List<HouseholdLaborCommitment> householdLaborCommitments,
       Set<ProductionUnitId> queuedUnits,
       long budget,
-      long preserved) {
+      long govServiceLaborMilli) {
+    long availableForProduction = Math.max(0L, budget - govServiceLaborMilli);
     List<LaborAllocationId> ids = new ArrayList<>();
     List<Long> weights = new ArrayList<>();
+    long productionPreserved = 0L;
     for (HouseholdLaborCommitment laborCommitment : householdLaborCommitments) {
+      if (laborCommitment.kind() != LaborCommitmentKind.PRODUCTION) {
+        continue; // ★ C7：GOV_SERVICE 整额保留，绝不进入比例缩
+      }
       if (queuedUnits.contains(new ProductionUnitId(laborCommitment.activity()))) {
         continue;
       }
       ids.add(laborCommitment.id());
-      weights.add(Math.max(0L, laborCommitment.laborMilli()));
+      long weight = Math.max(0L, laborCommitment.laborMilli());
+      weights.add(weight);
+      productionPreserved = Math.addExact(productionPreserved, weight);
+    }
+    if (ids.isEmpty()) {
+      return; // 没有可缩的 PRODUCTION 保留量（防御性 no-op；超预算时理论上不可达）
     }
     long[] weightArray = new long[weights.size()];
     for (int i = 0; i < weights.size(); i++) {
       weightArray[i] = weights.get(i);
     }
-    long[] parts = ProportionalSplit.byDenominator(budget, weightArray, preserved);
+    long[] parts =
+        ProportionalSplit.byDenominator(availableForProduction, weightArray, productionPreserved);
     for (int i = 0; i < ids.size(); i++) {
       HouseholdLaborCommitment laborCommitment = laborCommitments.get(ids.get(i));
       if (laborCommitment == null) {
@@ -585,7 +658,7 @@ final class LaborQueueSettlement {
     }
   }
 
-  /** 换劳动量（其余字段原样带过）—— 与 {@code EconomySettlement.withLaborMilli} 同一形制。 */
+  /** 换劳动量（其余字段——含 {@code kind}——原样带过）—— 与 {@code EconomySettlement.withLaborMilli} 同一形制。 */
   private static HouseholdLaborCommitment withLaborMilli(
       HouseholdLaborCommitment laborCommitment, long laborMilli) {
     return new HouseholdLaborCommitment(
@@ -595,6 +668,27 @@ final class LaborQueueSettlement {
         laborCommitment.actor(),
         laborCommitment.activity(),
         laborMilli,
-        laborCommitment.period());
+        laborCommitment.period(),
+        laborCommitment.kind());
+  }
+
+  /**
+   * ★★ <b>C7 具名契约故障的唯一发射点</b>：先记 {@code LABOR_COMMITMENT_CONTRACT} ERROR（契约/一致性故障不降级）， 再返回 {@link
+   * IllegalStateException} 供调用方 fail-closed。{@code reason} 只含稳定 id / 数量，不含载荷明文。
+   */
+  private static IllegalStateException laborCommitmentContractFault(
+      HouseholdId household, long day, String reason) {
+    EventLog.channel(EconomyLog.population())
+        .error(
+            LogEvent.of(
+                "LABOR_COMMITMENT_CONTRACT",
+                EconomyLogSource.ECONOMY_POPULATION,
+                "day",
+                day,
+                "household",
+                household.value(),
+                "reason",
+                reason));
+    return new IllegalStateException("家庭劳动承诺契约违约：" + reason);
   }
 }

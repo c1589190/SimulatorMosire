@@ -320,6 +320,26 @@ public record SocialProvisioning(
     return Optional.ofNullable(findLaborIn(globalLaborDefaults, ageBracket, sex));
   }
 
+  /**
+   * ★★ <b>标准岗位劳动定额（C8，全仓唯一权威）</b>：返回<b>全局默认</b> {@code (ADULT, MALE)} 档的 {@code
+   * milliHoursPerTick}，单位 = 毫小时/人/tick。
+   *
+   * <p>★★ <b>谁是权威、谁不是</b>：本方法读的是社会侧当前状态的 {@code globalLaborDefaults}（可被 GM 全局改）， 不是 {@code
+   * HouseholdLaborTimeTable.DEFAULT} 那份 legacy economy-api 常量；家户覆盖也不参与（这是"标准岗位定额"这个
+   * 全局口径，不是某户的有效系数）。Z2 的 {@code GovDemand} 人数 → 劳动量换算引用本方法。
+   *
+   * <p>★ <b>缺失 = 具名拒</b>：全局默认里没有 {@code (ADULT, MALE)} 行 ⇒ {@link ProvisioningReject} 具名拒（ERROR +
+   * {@link IllegalArgumentException}）；不静默给 0（"这一档定额是 0"与"没有这一档口径"是两件事）。
+   */
+  public long standardLaborMilliHoursPerTick() {
+    LaborCoefficient standard = findLaborIn(globalLaborDefaults, AgeBracket.ADULT, Sex.MALE);
+    if (standard == null) {
+      throw ProvisioningReject.reject(
+          "标准岗位劳动定额缺全局默认劳动行: (" + AgeBracket.ADULT + ", " + Sex.MALE + ")");
+    }
+    return standard.milliHoursPerTick();
+  }
+
   /** ★ 查某家户自己的劳动覆盖行（不回落全局）：该户没有这条覆盖键 ⇒ 空。 */
   public Optional<LaborCoefficient> householdLaborOverride(
       HouseholdId householdId, AgeBracket ageBracket, Sex sex) {

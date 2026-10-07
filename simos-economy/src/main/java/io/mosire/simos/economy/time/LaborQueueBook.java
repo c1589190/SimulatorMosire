@@ -323,18 +323,33 @@ public final class LaborQueueBook {
   /**
    * ★★ <b>把一份家户的候选 offers 按利润率排队填满预算</b>（纯函数；不动状态）。
    *
+   * <p>★★ <b>C7 的分工</b>：本方法只看见聚合的 {@code preservedLaborMilli}，看不见承诺的 {@code kind}—— <b>GOV_SERVICE
+   * 的整额保护与 PRODUCTION 的比例缩在 {@code LaborQueueSettlement} 先做完</b>（先整额保 GOV_SERVICE，只对 PRODUCTION
+   * 缩），传到这里的 {@code preservedLaborMilli} 必须已经 ≤ {@code budgetMilli}。 本方法**不静默按预算缩 preserved**：超预算 ⇒
+   * 具名 {@link IllegalArgumentException}（调用方不许把"超预算" 当成"静默缩"）。GOV_SERVICE 越界另有具名契约 ERROR +
+   * fail-closed（在 {@code LaborQueueSettlement}）。
+   *
    * @param household 家户
    * @param budgetMilli 本 tick 时间预算（毫小时）
-   * @param preservedLaborMilli 不参与排队、原样保留的既有配额（如 laborPerUnit = 0 的非劳动活动；占用预算）
+   * @param preservedLaborMilli 不参与排队、原样保留的既有配额（GOV_SERVICE 整额 + 不排队的 PRODUCTION；必须 ≤ 预算）
    * @param offers 候选读数（本方法内部复制后排序，不改入参序）
    * @return 排队结果（逐条给出 granted / IDLE 理由）
+   * @throws IllegalArgumentException {@code preservedLaborMilli > budgetMilli}（调用方必须先完成保护/缩，不得静默缩）
    */
   public static Plan plan(
       HouseholdId household, long budgetMilli, long preservedLaborMilli, List<Offer> offers) {
     Objects.requireNonNull(household, "household");
     Objects.requireNonNull(offers, "offers");
     long budget = Math.max(0L, budgetMilli);
-    long preserved = Math.min(Math.max(0L, preservedLaborMilli), budget);
+    long preserved = Math.max(0L, preservedLaborMilli);
+    if (preserved > budget) {
+      throw new IllegalArgumentException(
+          "LaborQueueBook.plan 的 preservedLaborMilli 不得超过 budgetMilli（不静默缩；"
+              + "GOV_SERVICE 整额保护与 PRODUCTION 比例缩由调用方先完成）: preserved="
+              + preserved
+              + " budget="
+              + budget);
+    }
     long remaining = budget - preserved;
     List<Offer> sorted = new ArrayList<>(offers);
     sorted.sort(offerOrder());
@@ -517,6 +532,10 @@ public final class LaborQueueBook {
    * </ul>
    *
    * <p>三类都原样保留既有配额；只有"确实定过价、且预期 ≤ 0"的活动才会被排队判为空缺（IDLE_EXPECTED_NON_POSITIVE）。
+   *
+   * <p>★★ <b>C7 的边界</b>：本判据只看 unit 的 offer（是否缺价格/配方/劳动），**看不见承诺的 {@code kind}**。 {@code
+   * GOV_SERVICE} 承诺"不进队列、不可缩"的保护在 {@code LaborQueueSettlement} 按 {@code kind} 直接判定 （带 GOV_SERVICE
+   * 承诺的 activity 根本不进候选 / 不计入比例缩），不经过本方法。
    */
   public static boolean isPreservedByQueue(Offer offer) {
     return offer.reason().startsWith("LABOR_FREE")

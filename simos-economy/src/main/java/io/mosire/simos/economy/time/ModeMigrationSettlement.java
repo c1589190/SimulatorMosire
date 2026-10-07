@@ -453,7 +453,8 @@ public final class ModeMigrationSettlement {
                   laborCommitment.actor(),
                   laborCommitment.activity(),
                   laborCommitment.laborMilli() - take,
-                  laborCommitment.period()));
+                  laborCommitment.period(),
+                  laborCommitment.kind()));
         }
         if (!DefaultProductionModes.DISPLACED.equals(move.targetMode()) && targetUnit != null) {
           // ★★ P0：传投影行视图（带投影人口/劳动），只读参数；本方法只做存在性校验。
@@ -1071,7 +1072,8 @@ public final class ModeMigrationSettlement {
             activity,
             (existingLaborCommitment == null ? 0L : existingLaborCommitment.laborMilli())
                 + laborTake,
-            sourceLaborCommitment.period());
+            sourceLaborCommitment.period(),
+            sourceLaborCommitment.kind());
     laborCommitments.put(targetId, createdLaborCommitment);
     if (targetHouseholdEconomy == null) {
       throw new IllegalStateException("迁移目标行不存在（拒绝静默丢劳动）: " + target);

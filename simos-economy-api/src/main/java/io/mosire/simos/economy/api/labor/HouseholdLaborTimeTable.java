@@ -8,20 +8,25 @@ import java.util.Objects;
  * <b>毫小时</b>（{@code 1 小时 = 1000 毫小时}，定点整数、无浮点）。
  *
  * <pre>
- * 默认（本批控制方给定值，可调；后续调试校准）：
+ * 历史默认（已降为 legacy 留痕，供旧档/旧调用点读回；不是当前权威）：
  *   未成年（0-14）  4000 毫小时 = 4h
  *   成年男（15-59）16000 毫小时 = 16h
  *   成年女（15-59） 8000 毫小时 = 8h
- *   老年（60+）        0（待补；先确定口径，不等同于"永远不会配置"）
+ *   老年（60+）        0
  * </pre>
+ *
+ * <p>★★ <b>Z1b（C8）/ 2026-10-23：本类型是 legacy 兼容载体，不再是劳动系数的第二真相</b>。运行时家户劳动预算的权威链是 Social 侧的 {@code
+ * SocialProvisioning}（全局默认 + 家户覆盖，见 {@code SocialData#householdLaborMilli}）； "标准岗位劳动定额"的唯一权威是
+ * {@code SocialProvisioning#standardLaborMilliHoursPerTick()}。创世投影 （{@code
+ * EconomySeeder.HOUSEHOLD_LABOR_TIME_TABLE}）也从该权威派生，不再引用 {@link #DEFAULT}。本类型只作为
+ * **不可变值载体**保留（旧档/旧调用点读回）；<b>新代码不得把 {@link #DEFAULT} 或本表当权威标定源</b>。
  *
  * <p>★★ <b>口径</b>：{@link #perPersonMilliHours(int, Sex)} 是**每人每 tick** 的预算；家户预算 = Σ 成员 {@code count
  * × perPersonMilliHours}。它是**重算量**（每 tick 从 Social 的家户成员与年龄现算）， 不是经济状态里的第二权威 —— {@code
  * HouseholdEconomy.laborMilli} 只是它在本 tick 的投影。
  *
- * <p>★ <b>可编辑性</b>：默认值只有 {@link #DEFAULT} 一个拼写点；调用方（创世播种 / 协调器）可注入别的实例。 年龄档序号与 {@code
- * PopulationSeeder} 的 D4 三档同序：{@link #BRACKET_CHILD} / {@link #BRACKET_ADULT} / {@link
- * #BRACKET_ELDER}。
+ * <p>★ <b>年龄档序号</b>与 {@code PopulationSeeder} 的 D4 三档同序：{@link #BRACKET_CHILD} / {@link
+ * #BRACKET_ADULT} / {@link #BRACKET_ELDER}。
  *
  * @param childMilliHoursPerTick 未成年每人每 tick 毫小时；不得为负
  * @param adultMaleMilliHoursPerTick 成年男每人每 tick 毫小时；不得为负
@@ -43,7 +48,10 @@ public record HouseholdLaborTimeTable(
   /** 年龄档序号：老年（60+）。 */
   public static final int BRACKET_ELDER = 2;
 
-  /** 本批默认表（可调；见类注）。 */
+  /**
+   * ★★ <b>legacy 常量（非权威）</b>：仅供旧档/旧调用点读回，逐值与历史默认相同（4,000 / 16,000 / 8,000 / 0）。新代码
+   * **不得**把它当劳动系数或标准岗位定额的权威源——权威见类注（Social 侧 {@code SocialProvisioning}）；创世投影从那里派生。
+   */
   public static final HouseholdLaborTimeTable DEFAULT =
       new HouseholdLaborTimeTable(4_000L, 16_000L, 8_000L, 0L);
 

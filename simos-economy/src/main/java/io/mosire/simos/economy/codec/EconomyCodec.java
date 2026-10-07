@@ -48,6 +48,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -213,6 +214,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(CurrencyId.class, keyDeserializer(CurrencyId::parse));
     // ★ R2 起是两张新表的键：laborSupply（PeopleLotId → LaborSupply）与 allocations（LaborAllocationId
     //   → HouseholdLaborCommitment）。两者都重写了 toString()（= 裸值）并与各自的 parse 互为逆，故只需读侧。
+    //   ★ Z1b：allocations 的值新增 kind（PRODUCTION/GOV_SERVICE）；旧档缺该键由 compatModule 的
+    //   LegacyHouseholdLaborCommitmentDeserializer 与快照/变更集两条读侧整形统一补 PRODUCTION（闭枚举，未知值
+    // fail-closed）。
     module.addKeyDeserializer(PeopleLotId.class, keyDeserializer(PeopleLotId::parse));
     module.addKeyDeserializer(LaborAllocationId.class, keyDeserializer(LaborAllocationId::parse));
     // ★★ S1：assetShares 表的键（R3B.1 起 = AssetShareId；旧 use-… 串 opaque 可读）。
@@ -458,9 +462,13 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * ★★ S1：旧档 {@code HouseholdLaborCommitment} 的整形（缺 {@code household}）⇒ 造 {@link
-   * HouseholdIds#pendingLegacy} 占位；真正的家户归属由 {@code LegacyHouseholdMigration} 在 {@code EconomyData}
-   * 构造期按行人口拆出。
+   * ★★ S1/Z1b：旧档 {@code HouseholdLaborCommitment} 的整形（S1 缺 {@code household} ⇒ 造 {@link
+   * HouseholdIds#pendingLegacy} 占位；Z1b 缺 {@code kind} ⇒ 补 {@link
+   * LaborCommitmentKind#PRODUCTION}）。真正的家户归属由 {@code LegacyHouseholdMigration} 在 {@code
+   * EconomyData} 构造期按行人口拆出。
+   *
+   * <p>★ 缺 {@code kind} 是**旧档事实**（Z1b 之前没有这一维），不是坏数据；未知 {@code kind} 值仍交给 Jackson 的枚举绑定
+   * fail-closed（闭枚举，不猜）。
    */
   private static final class LegacyHouseholdLaborCommitmentDeserializer
       extends JsonDeserializer<HouseholdLaborCommitment> {
@@ -472,12 +480,17 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       if (!(raw instanceof ObjectNode node)) {
         throw new IllegalStateException("LaborAllocation 必须是 JSON 对象: " + raw);
       }
-      if (!node.hasNonNull("household")) {
-        if (!node.hasNonNull("id")) {
-          throw new IllegalStateException("LaborAllocation 缺 household 且没有旧键 id，无法定位占位: " + node);
-        }
+      if (!node.hasNonNull("household") || !node.hasNonNull("kind")) {
         node = node.deepCopy();
-        node.put("household", HouseholdIds.pendingLegacy(node.get("id").asText()).value());
+        if (!node.hasNonNull("household")) {
+          if (!node.hasNonNull("id")) {
+            throw new IllegalStateException("LaborAllocation 缺 household 且没有旧键 id，无法定位占位: " + node);
+          }
+          node.put("household", HouseholdIds.pendingLegacy(node.get("id").asText()).value());
+        }
+        if (!node.hasNonNull("kind")) {
+          node.put("kind", LaborCommitmentKind.PRODUCTION.name());
+        }
       }
       try {
         return PLAIN.treeToValue(node, HouseholdLaborCommitment.class);
@@ -606,6 +619,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       node = migrateLegacyOwnershipStakeComponent(node);
       node = migrateLegacyProductionComponents(node);
       node = migrateLegacyDebtSnapshotComponent(node);
+      // ★★ Z1b：旧档 allocations 缺 kind ⇒ 在交给 PLAIN 绑定前补 PRODUCTION（快照侧；变更集侧见 ChangeSet 反序列化器）。
+      //   放在这里而不是 migrateLegacyProductionComponents 内：那条路径在"没有 industries 键"时会提前返回，
+      //   而旧档只要有 allocations 就必须补。
+      defaultLaborCommitmentKindsInSnapshot(node.get("allocations"));
       EconomyData data;
       try {
         data = PLAIN.treeToValue(node, EconomyData.class);
@@ -706,6 +723,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       node = migrateLegacyOwnershipStakeComponent(node);
       node = migrateLegacyProductionChangeSetComponents(node);
       node = migrateLegacyDebtChangeSetComponent(node);
+      // ★★ Z1b：旧档 allocations 增量缺 kind ⇒ 在交给 PLAIN 绑定前补 PRODUCTION（快照侧同款，见 EconomyData 反序列化器）。
+      defaultLaborCommitmentKindsInDelta(node.get("allocations"));
       try {
         return PLAIN.treeToValue(node, EconomyChangeSet.class);
       } catch (JsonProcessingException e) {
@@ -1528,6 +1547,65 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       if (candidates.size() == 1) {
         allocation.put("activity", candidates.get(0).id());
       }
+    }
+  }
+
+  /**
+   * ★★ <b>Z1b：旧档缺 {@code kind} 的读侧整形</b>（快照侧）—— {@code allocations} 表的每个值节点若不是记录对象就交给 绑定
+   * fail-closed；是对象且缺 {@code kind} ⇒ 补 {@link LaborCommitmentKind#PRODUCTION}（Z1b 之前的档没有这一维）。
+   *
+   * <p>★ 新档 / 已有 {@code kind} 的档原样不动（幂等）；未知 {@code kind} 值不在这里兜底，由闭枚举绑定 fail-closed。
+   */
+  private static void defaultLaborCommitmentKindsInSnapshot(JsonNode allocations) {
+    if (!(allocations instanceof ObjectNode allocationsObject)) {
+      return;
+    }
+    for (Map.Entry<String, JsonNode> entry : iterableFields(allocationsObject)) {
+      if (entry.getValue() instanceof ObjectNode commitment) {
+        putDefaultLaborCommitmentKind(commitment);
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>Z1b：旧档缺 {@code kind} 的读侧整形</b>（变更集侧）—— {@code allocations} 是 {@link
+   * io.mosire.simos.util.state.FieldDelta} 的一个变体：{@code upsert.entries} 的值要补；{@code patch} 递归进
+   * {@code upserts}/{@code removals}；{@code unchanged}/{@code remove} 无值可补。
+   *
+   * <p>★ 只加"缺省值"，不改 {@code ChangeSet}/{@code FieldDelta} 形状（变体、键、entries/keys 结构一字不动）。
+   */
+  private static void defaultLaborCommitmentKindsInDelta(JsonNode delta) {
+    if (!(delta instanceof ObjectNode deltaObject)) {
+      return; // 坏形状交给后续绑定 fail-closed，不在 codec 里猜
+    }
+    switch (deltaObject.path("@class").asText("")) {
+      case "upsert" -> defaultLaborCommitmentKindsInEntries(objectField(deltaObject, "entries"));
+      case "patch" -> {
+        defaultLaborCommitmentKindsInDelta(deltaObject.get("upserts"));
+        defaultLaborCommitmentKindsInDelta(deltaObject.get("removals"));
+      }
+      default -> {
+        // unchanged / remove / 未知变体：没有记录值要补；未知变体交给 FieldDelta 绑定 fail-closed。
+      }
+    }
+  }
+
+  /** {@code upsert.entries} 的每个记录值缺 {@code kind} ⇒ 补 PRODUCTION；非对象值原样交给绑定。 */
+  private static void defaultLaborCommitmentKindsInEntries(ObjectNode entries) {
+    if (entries == null) {
+      return;
+    }
+    for (Map.Entry<String, JsonNode> entry : iterableFields(entries)) {
+      if (entry.getValue() instanceof ObjectNode commitment) {
+        putDefaultLaborCommitmentKind(commitment);
+      }
+    }
+  }
+
+  /** 记录节点缺 {@code kind} ⇒ 写 {@code PRODUCTION}；已有键（含未知值）原样留给闭枚举绑定 fail-closed。 */
+  private static void putDefaultLaborCommitmentKind(ObjectNode commitment) {
+    if (!commitment.hasNonNull("kind")) {
+      commitment.put("kind", LaborCommitmentKind.PRODUCTION.name());
     }
   }
 

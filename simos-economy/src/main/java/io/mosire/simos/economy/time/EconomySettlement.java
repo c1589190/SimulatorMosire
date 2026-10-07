@@ -3673,9 +3673,10 @@ public final class EconomySettlement {
    * @param changes 逐批次的出生/死亡（social 侧的月度结算产物；键 = 批次身份）
    */
   /**
-   * ★★ <b>P2-A §13.4：每个 tick 重算家户时间预算</b>（毫小时）—— 输入 = 协调器从 Social 人口组成 × {@code
-   * HouseholdLaborTimeTable} 现算的「household → 预算」；本方法把它写进 {@code HouseholdEconomy.laborMilli}
-   * （唯一投影），并把超预算的家户配额**按比例缩到预算内**（保持 {@code Σallocations ≤ budget} 不变量）。
+   * ★★ <b>P2-A §13.4：每个 tick 重算家户时间预算</b>（毫小时）—— 输入 = 协调器从 Social 人口组成 × {@code SocialProvisioning}
+   * 的劳动权威（C8；{@code HouseholdLaborTimeTable} 只是 legacy 值载体）现算的「household → 预算」；本方法把它写进 {@code
+   * HouseholdEconomy.laborMilli} （唯一投影），并把超预算的家户配额**按比例缩到预算内**（保持 {@code Σallocations ≤ budget}
+   * 不变量）。
    *
    * <p>★★ <b>为什么在这里缩</b>：预算每 tick 会随出生/死亡/成年变化；配额是周期粒度的。若只改行预算不缩配额， {@code EconomyData}
    * 的构造期不变量会在下一个 revision 边界当场拒。缩法是确定性的最大余数法 （同权重按 allocation id 升序），<b>不</b>做"缺口优先"的新分配 —— 那个排序属
@@ -4269,7 +4270,8 @@ public final class EconomySettlement {
               laborCommitment.actor(),
               laborCommitment.activity(),
               scaled,
-              laborCommitment.period()));
+              laborCommitment.period(),
+              laborCommitment.kind()));
     }
   }
 
@@ -4306,7 +4308,8 @@ public final class EconomySettlement {
               laborCommitment.actor(),
               laborCommitment.activity(),
               scaled,
-              laborCommitment.period()));
+              laborCommitment.period(),
+              laborCommitment.kind()));
     }
   }
 
@@ -6771,7 +6774,8 @@ public final class EconomySettlement {
         laborCommitment.actor(),
         laborCommitment.activity(),
         laborMilli,
-        laborCommitment.period());
+        laborCommitment.period(),
+        laborCommitment.kind());
   }
 
   /**

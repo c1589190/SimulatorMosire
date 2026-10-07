@@ -219,7 +219,8 @@ public final class LegacyHouseholdMigration {
                     laborCommitment.actor(),
                     laborCommitment.activity(),
                     parts[i],
-                    laborCommitment.period()))
+                    laborCommitment.period(),
+                    laborCommitment.kind()))
             != null) {
           throw new IllegalStateException("旧档迁移产生了重复的劳动配额 id: " + newId);
         }
@@ -396,7 +397,8 @@ public final class LegacyHouseholdMigration {
               unit == null ? laborCommitment.actor() : unit.operator(),
               resolved.value(),
               laborCommitment.laborMilli(),
-              laborCommitment.period()));
+              laborCommitment.period(),
+              laborCommitment.kind()));
     }
     return outLaborCommitments;
   }

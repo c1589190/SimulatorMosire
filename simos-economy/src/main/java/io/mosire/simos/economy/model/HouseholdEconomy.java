@@ -49,10 +49,10 @@ import java.util.Objects;
  * @param view 当前视图（格 + 居住类型 + 阶层）：可变，不再是身份
  * @param population 人口（人）；不得为负
  * @param laborMilli ★★ <b>本 tick 家户时间预算（毫小时）</b>（P2-A §13.4）——由 Social 的家户成员 × {@code
- *     HouseholdLaborTimeTable} 现算（每 tick 重算、创世由 {@code EconomySeeder} 算同一张表）；不得为负。 ★ 它是劳动配额的上限：不变量
- *     {@code Σ allocations(household).laborMilli ≤ laborMilli}（见 {@code EconomyData}）。 ★
- *     旧的"千分劳动/日"口径（{@code AGE_LABOR_COEF_BY_SEX} 折算量）已退役；{@code participationPerMille} 仍保留为
- *     分配权重（不再是硬上限）
+ *     SocialProvisioning} 的劳动权威（全局默认 + 家户覆盖，C8）现算（每 tick 重算、创世由 {@code EconomySeeder} 从同一权威
+ *     派生）；不得为负。 ★ 它是劳动配额的上限：不变量 {@code Σ allocations(household).laborMilli ≤ laborMilli}（见 {@code
+ *     EconomyData}）。 ★ 旧的"千分劳动/日"口径（{@code AGE_LABOR_COEF_BY_SEX} 折算量）已退役；{@code
+ *     participationPerMille} 仍保留为 分配权重（不再是硬上限）
  * @param participationPerMille 本期实际劳动投入率（≤ 该格各产业的槽位上限）；必须 ∈ [0, 1000]
  * @param money 货币（最小币值）；不得为负
  * @param debts 指向债务表的引用；可空、不得含 null
@@ -283,9 +283,9 @@ public record HouseholdEconomy(
    * 货币、债务引用、两类需求与周期累计自然需要全部原样保留。
    *
    * <p>★ <b>与每 tick 投影的关系（如实边界）</b>：{@code laborMilli} 的常规来源是 Social 成员 × {@code
-   * HouseholdLaborTimeTable} 的逐 tick 投影（P2-A §13.4）。本写口直接落一个显式配置值；下一次推进时若 Social 侧该户 成员组成存在，投影会按
-   * Social 重算并覆盖它 —— 要持久改变劳动时间，应同时编辑 Social 成员组成（那不在经济命令的边界里）。
-   * 这里不做"覆盖位"之类的第二权威：显式配置就是一次状态写入，读口读到的永远是当前状态。
+   * SocialProvisioning} 的劳动权威（C8；{@code HouseholdLaborTimeTable} 只是 legacy 值载体）的逐 tick 投影（P2-A
+   * §13.4）。本写口直接落一个显式配置值；下一次推进时若 Social 侧该户 成员组成存在，投影会按 Social 重算并覆盖它 —— 要持久改变劳动时间，应同时编辑 Social
+   * 成员组成（那不在经济命令的边界里）。 这里不做"覆盖位"之类的第二权威：显式配置就是一次状态写入，读口读到的永远是当前状态。
    */
   public HouseholdEconomy withLaborAndParticipation(
       long newLaborMilli, int newParticipationPerMille) {

@@ -24,9 +24,9 @@ import io.mosire.simos.social.api.id.PeopleLotId;
  *
  * <p>★★ <b>{@code laborMilli} 的口径（P2-A §13.4 起）</b>：它是**本家户这一 tick 分给该生产活动/unit 的时间**， 单位 =
  * <b>毫小时</b>（{@code 1 小时 = 1000 毫小时}，定点整数，无浮点）。它是 {@code HouseholdLaborCommitment} 唯一的量纲； 家户每 tick
- * 的总时间预算 = {@code HouseholdEconomy.laborMilli}（由 Social 人口组成 × {@code HouseholdLaborTimeTable} 每
- * tick 重算）， 不变量 = {@code Σ allocations(household).laborMilli ≤ HouseholdEconomy.laborMilli}。★ 第二权威
- * {@code LaborSupply} 已删除。
+ * 的总时间预算 = {@code HouseholdEconomy.laborMilli}（由 Social 人口组成 × {@code SocialProvisioning} 的劳动权威每
+ * tick 重算；C8 起标准系数权威在 Social，{@code HouseholdLaborTimeTable} 只是 legacy 载体）， 不变量 = {@code Σ
+ * allocations(household).laborMilli ≤ HouseholdEconomy.laborMilli}。★ 第二权威 {@code LaborSupply} 已删除。
  *
  * <p>★ **{@code period} = 发放周期**（世界周期序号，从 1 起）：本轮配额是**常设**的（跨周期不变，见 {@code 旧结算引擎（R3a 已删除）}
  * 的取用口径），故它现在由**构造期守卫**读（"该批次的供给记录必须与它同期"，见 {@code EconomyData}）；将来有了"按周期重发配额" 的命令，再按 {@code
@@ -44,6 +44,9 @@ import io.mosire.simos.social.api.id.PeopleLotId;
  *     LegacyHouseholdMigration} 在构造期对齐到 unit；对不上任何 unit 的配额**合法**（自由家户劳动，只进守恒与读口， 不喂任何生产）。
  * @param laborMilli 承诺投入的劳动（千分劳动·日）；不得为负
  * @param period 发放周期（世界周期序号）；不得为负
+ * @param kind ★★ <b>承诺种类</b>（Z1b，设计书 §4.2 / C7）：{@link LaborCommitmentKind#PRODUCTION} = 普通生产承诺
+ *     （进排队、可缩）；{@link LaborCommitmentKind#GOV_SERVICE} = 政府行政岗位承诺（不进队列、不可缩、最高优先级，只允许政府工具写
+ *     Z3）。旧档缺该字段由 {@code EconomyCodec} 读成 {@code PRODUCTION}；本类型构造期只判非 null。
  */
 public record HouseholdLaborCommitment(
     LaborAllocationId id,
@@ -52,7 +55,27 @@ public record HouseholdLaborCommitment(
     ActorRef actor,
     String activity,
     long laborMilli,
-    long period) {
+    long period,
+    LaborCommitmentKind kind) {
+
+  /**
+   * ★★ <b>旧 7 参便利构造器</b>（Z1b 兼容位）：{@code kind} 缺省 = {@link LaborCommitmentKind#PRODUCTION}。
+   *
+   * <p>★★ <b>拷贝纪律（最贵教训同款）</b>：本构造器只服务"新生产承诺 / 旧调用点"。<b>凡从一条既有承诺复制字段 （{@code
+   * with*}/缩放/迁移/拆分）一律必须显式带过 {@code kind}</b>——漏带 = {@code GOV_SERVICE} 被静默降级成 {@code
+   * PRODUCTION}，既丢优先级保护、又可能被队列按比例缩。Z1b 已审计的拷贝点见台账 {@code
+   * .superpowers/sdd/2026-10-23-gov-service-mode-design/z1b-impl-ledger.md}。
+   */
+  public HouseholdLaborCommitment(
+      LaborAllocationId id,
+      PeopleLotId group,
+      HouseholdId household,
+      ActorRef actor,
+      String activity,
+      long laborMilli,
+      long period) {
+    this(id, group, household, actor, activity, laborMilli, period, LaborCommitmentKind.PRODUCTION);
+  }
 
   public HouseholdLaborCommitment {
     if (id == null) {
@@ -77,6 +100,10 @@ public record HouseholdLaborCommitment(
     }
     if (period < 0L) {
       throw new IllegalArgumentException("LaborAllocation.period 不得为负: " + period);
+    }
+    if (kind == null) {
+      throw new IllegalArgumentException(
+          "LaborAllocation.kind 不得为 null（旧档缺省由 EconomyCodec 补 PRODUCTION）");
     }
   }
 

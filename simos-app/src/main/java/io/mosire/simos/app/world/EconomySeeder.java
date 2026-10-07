@@ -66,6 +66,7 @@ import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
+import io.mosire.simos.social.provisioning.SocialProvisioning;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
@@ -565,11 +566,57 @@ public final class EconomySeeder {
       Map.of(Sex.MALE, AGE_LABOR_COEF_PER_MILLE, Sex.FEMALE, AGE_LABOR_COEF_PER_MILLE);
 
   /**
-   * ★★ <b>P2-A §13.4：家户每 tick 劳动时间预算的系数表（可调参数）</b>：默认 = 未成年 4h / 成年男 16h / 成年女 8h / 老年
-   * 0。单位毫小时；{@code HouseholdEconomy.laborMilli} 是它在经济侧的投影（每 tick 重算）。
+   * ★★ <b>P2-A §13.4 / C8：家户每 tick 劳动时间预算的系数表</b>：默认 = 未成年 4h / 成年男 16h / 成年女 8h / 老年 0。
+   *
+   * <p>★★ <b>Z1b 收口</b>：本表**从社会侧唯一权威派生**（{@link SocialProvisioning#defaults()} 的全局劳动默认行 + {@link
+   * SocialProvisioning#standardLaborMilliHoursPerTick()}），不再把 {@code
+   * HouseholdLaborTimeTable.DEFAULT}（legacy economy-api 常量）当第二真相。逐值不变：CHILD 4,000 / ADULT_MALE
+   * 16,000 / ADULT_FEMALE 8,000 / ELDER 0（毫小时/人/tick）⇒ 创世逐值零影响。单位毫小时；{@code
+   * HouseholdEconomy.laborMilli} 是它在经济侧的投影（每 tick 重算）。
    */
   public static final HouseholdLaborTimeTable HOUSEHOLD_LABOR_TIME_TABLE =
-      HouseholdLaborTimeTable.DEFAULT;
+      authoritativeHouseholdLaborTimeTable();
+
+  /**
+   * ★★ <b>C8：从社会侧权威默认表派生</b>（Z1b）。四个值全部读 {@link SocialProvisioning#defaults()} 的**全局默认劳动行** —— 其中
+   * {@code ADULT/MALE} 走具名的 {@link SocialProvisioning#standardLaborMilliHoursPerTick()}（标准岗位劳动定额
+   * 的唯一权威），其余三档走同表公开读口。缺行 / 无性别档的 CHILD、ELDER 男女不一致 ⇒ 具名 fail-closed（不猜、不用 legacy 常量兜底）。
+   */
+  private static HouseholdLaborTimeTable authoritativeHouseholdLaborTimeTable() {
+    SocialProvisioning authority = SocialProvisioning.defaults();
+    long childMale = authoritativeLaborMilli(authority, AgeBracket.CHILD, Sex.MALE);
+    long childFemale = authoritativeLaborMilli(authority, AgeBracket.CHILD, Sex.FEMALE);
+    if (childMale != childFemale) {
+      throw new IllegalStateException(
+          "社会劳动权威默认表的 CHILD 男女系数不一致，无法派生无性别档的 HouseholdLaborTimeTable: "
+              + childMale
+              + " vs "
+              + childFemale);
+    }
+    long elderMale = authoritativeLaborMilli(authority, AgeBracket.ELDER, Sex.MALE);
+    long elderFemale = authoritativeLaborMilli(authority, AgeBracket.ELDER, Sex.FEMALE);
+    if (elderMale != elderFemale) {
+      throw new IllegalStateException(
+          "社会劳动权威默认表的 ELDER 男女系数不一致，无法派生无性别档的 HouseholdLaborTimeTable: "
+              + elderMale
+              + " vs "
+              + elderFemale);
+    }
+    return new HouseholdLaborTimeTable(
+        childMale,
+        authority.standardLaborMilliHoursPerTick(),
+        authoritativeLaborMilli(authority, AgeBracket.ADULT, Sex.FEMALE),
+        elderMale);
+  }
+
+  /** 权威默认表的全局劳动行（不回落家户覆盖）；缺行 ⇒ 具名 fail-closed（拒绝臆造）。 */
+  private static long authoritativeLaborMilli(
+      SocialProvisioning authority, AgeBracket bracket, Sex sex) {
+    return authority
+        .globalLabor(bracket, sex)
+        .orElseThrow(() -> new IllegalStateException("社会劳动权威默认表缺劳动行: " + bracket + "/" + sex))
+        .milliHoursPerTick();
+  }
 
   // ── 商品 id：唯一拼写点都在 {@link EconomyVocabulary}（v2 spec §六；R3 起商品不止粮）──────────
 

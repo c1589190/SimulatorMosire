@@ -1156,7 +1156,8 @@ final class EconomyPayloads {
               direct.operator(),
               laborCommitment.activity(),
               laborCommitment.laborMilli(),
-              laborCommitment.period());
+              laborCommitment.period(),
+              laborCommitment.kind());
     }
     if (laborCommitment.activity().startsWith("unit-")) {
       throw new IllegalArgumentException(
@@ -1179,7 +1180,8 @@ final class EconomyPayloads {
           resolved == null ? laborCommitment.actor() : resolved.operator(),
           candidates.get(0).value(),
           laborCommitment.laborMilli(),
-          laborCommitment.period());
+          laborCommitment.period(),
+          laborCommitment.kind());
     }
     if (candidates.size() > 1) {
       throw new IllegalArgumentException(

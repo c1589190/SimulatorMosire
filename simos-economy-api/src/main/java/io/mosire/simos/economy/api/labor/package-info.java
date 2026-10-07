@@ -1,9 +1,11 @@
 /**
  * 劳动的**关系层**（第三阶段设计稿 §二/§四；P2-A §13.4 起单位 = 毫小时）：{@link HouseholdLaborCommitment}
- * （这笔**家户时间**分给了哪个生产活动/unit）与 {@link HouseholdLaborTimeTable}（家户每 tick 时间预算的可调系数表）。
+ * （这笔**家户时间**分给了哪个生产活动/unit；Z1b 起带 {@code kind}）与 {@link HouseholdLaborTimeTable}（legacy 值载体；C8 起
+ * 不再是劳动系数权威，见该类 javadoc）。
  *
- * <p>★★ **本批删除 {@code LaborSupply}**：家户每 tick 的时间预算由 Social 人口组成 × {@code HouseholdLaborTimeTable}
- * 现算 （投影进 {@code HouseholdEconomy.laborMilli}），不再有"每批次供给容量"这第二权威。
+ * <p>★★ **本批删除 {@code LaborSupply}**：家户每 tick 的时间预算由 Social 人口组成 × {@code SocialProvisioning}
+ * 的劳动权威现算 （投影进 {@code HouseholdEconomy.laborMilli}），不再有"每批次供给容量"这第二权威；{@code
+ * HouseholdLaborTimeTable.DEFAULT} 只是旧档/旧调用点的兼容常量。
  *
  * <p>★★ **为什么住 {@code simos-economy-api}**（设计稿 §八.1）：文档**三处**明文把 {@code simos-social} 列为本模块的消费者
  * （{@code package-info} 的"五个经济切片…与 {@code simos-social} 可依赖本模块与 util/map"、根 {@code pom.xml}、 {@code
