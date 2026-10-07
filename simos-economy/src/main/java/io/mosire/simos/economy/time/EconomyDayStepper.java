@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /**
@@ -72,6 +73,13 @@ public final class EconomyDayStepper implements AutoCloseable {
 
   /** ★ M2.3/M2.4：最近一次 step 的区域市场报告（瞬态；L3 读数接它）。 */
   private MarketReport lastMarketReport;
+
+  /**
+   * ★★ <b>Z7c：最近一次 {@link #step(long)} 是否有关账的产业周期</b>（瞬态会话读数）：语义 = step 前后 {@code
+   * EconomyMeta.lastClosedCycle} 发生变化，与 {@code EconomySettlement} 内部的 {@code anyCycleClosed} 同一事实。
+   * app 组合根用它把 remittance 落在仓库既有的“关账日”上；本类只把既有事实开成只读读数，<b>不</b>改任何结算行为、不进状态/变更集。
+   */
+  private boolean lastCycleClosed;
 
   /** ★★ <b>组合根入口（区域拓扑版）</b>：账户会话由调用方载入；两个行为旋钮取出厂默认值。 */
   public EconomyDayStepper(EconomyData base, AccountSession accounts, MarketTopology topology) {
@@ -127,6 +135,7 @@ public final class EconomyDayStepper implements AutoCloseable {
       boolean plantingDrawsFirst,
       int famineMortalityPerMille,
       EconomyParallelism parallelism) {
+    this.lastCycleClosed = false;
     this.session = new EconomySession(Objects.requireNonNull(base, "base"));
     this.accounts = Objects.requireNonNull(accounts, "accounts（账户会话是会话状态，必须由调用方载入）");
     this.topology =
@@ -201,6 +210,11 @@ public final class EconomyDayStepper implements AutoCloseable {
   /** ★ Z7b：当前注入的单位户排除集（只读；政府国库户由日结算另并入）。 */
   public Set<HouseholdId> marketExcludedHouseholds() {
     return marketExcludedHouseholds;
+  }
+
+  /** ★★ <b>Z7c：最近一次 {@link #step(long)} 是否关账了至少一个产业周期</b>（只读；见字段注释）。默认 {@code false}。 */
+  public boolean lastCycleClosed() {
+    return lastCycleClosed;
   }
 
   /** ★★ 唯一账户会话（推进前载入、推进中就地更新、推进后整体落回 actor）。 */
@@ -321,6 +335,10 @@ public final class EconomyDayStepper implements AutoCloseable {
                 "nonNeutral",
                 nonNeutral));
     ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator(day);
+    // ★ Z7c：关账事实在 step 前抓一份、step 后再读一次（与 EconomySettlement 的 anyCycleClosed 同源：
+    //   有任一周期关账 ⇒ lastClosedCycle 从旧值/空变成 currentCycle）。只开读数，不改行为。
+    OptionalLong closedBefore =
+        session.sheet().meta().map(meta -> meta.lastClosedCycle()).orElseGet(OptionalLong::empty);
     EconomySettlement.settleOneDayInto(
         session,
         day,
@@ -333,6 +351,9 @@ public final class EconomyDayStepper implements AutoCloseable {
         profitCycle,
         composition,
         marketExcludedHouseholds);
+    OptionalLong closedAfter =
+        session.sheet().meta().map(meta -> meta.lastClosedCycle()).orElseGet(OptionalLong::empty);
+    this.lastCycleClosed = !closedBefore.equals(closedAfter);
     MarketReport report = ledger.marketReport();
     if (report != null) {
       lastMarketReport = report;

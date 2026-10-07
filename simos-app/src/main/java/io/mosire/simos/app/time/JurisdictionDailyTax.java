@@ -154,6 +154,9 @@ final class JurisdictionDailyTax {
     long unitsCharged = 0L;
     Set<HouseholdId> chargedHouseholds = new LinkedHashSet<>();
     Map<HouseholdId, Long> grainByHousehold = new LinkedHashMap<>();
+    // ★ Z7c：逐 unit 实收（只含 > 0 的维度；保序 = units 的 id 升序）——remittance 周期累计的唯一输入。
+    Map<UnitId, Long> grainCollectedByUnit = new LinkedHashMap<>();
+    Map<UnitId, Long> moneyCollectedByUnit = new LinkedHashMap<>();
     List<Gap> gaps = new ArrayList<>();
 
     for (Unit unit : orderedUnits) {
@@ -306,6 +309,8 @@ final class JurisdictionDailyTax {
       }
 
       boolean chargedThisUnit = false;
+      long unitGrainCollected = 0L;
+      long unitMoneyCollected = 0L;
       for (Map.Entry<RegionId, Long> regionEntry : existingRegions) {
         Region region = map.regions().get(regionEntry.getKey());
         long rate = regionEntry.getValue();
@@ -352,6 +357,8 @@ final class JurisdictionDailyTax {
             moneyCollected = saturatedAdd(moneyCollected, money.collected());
             moneyAdminShortfall = saturatedAddSigned(moneyAdminShortfall, money.adminShortfall());
             moneyStockShortfall = saturatedAddSigned(moneyStockShortfall, money.stockShortfall());
+            unitGrainCollected = saturatedAdd(unitGrainCollected, grain.collected());
+            unitMoneyCollected = saturatedAdd(unitMoneyCollected, money.collected());
             if (grain.collected() == 0L && money.collected() == 0L) {
               continue;
             }
@@ -418,6 +425,12 @@ final class JurisdictionDailyTax {
           }
         }
       }
+      if (unitGrainCollected > 0L) {
+        grainCollectedByUnit.put(unit.id(), unitGrainCollected);
+      }
+      if (unitMoneyCollected > 0L) {
+        moneyCollectedByUnit.put(unit.id(), unitMoneyCollected);
+      }
       if (chargedThisUnit) {
         unitsCharged++;
       }
@@ -430,6 +443,8 @@ final class JurisdictionDailyTax {
             unitsCharged,
             chargedHouseholds.size(),
             grainByHousehold,
+            grainCollectedByUnit,
+            moneyCollectedByUnit,
             gaps);
     EventLog.channel(LOG)
         .info(
@@ -591,34 +606,78 @@ final class JurisdictionDailyTax {
     }
   }
 
-  /** 本日税单（不可变读数；{@code grainByHousehold} 供调用方写 {@code FlowRow.taxPaid}）。 */
+  /**
+   * 本日税单（不可变读数；{@code grainByHousehold} 供调用方写 {@code FlowRow.taxPaid}；逐 unit 两张表供 Z7c 的 remittance
+   * 周期累计消费，只含 > 0 的维度、键序 = unit id 升序）。
+   */
   record Report(
       Dimension grain,
       Dimension money,
       long unitsCharged,
       long householdsCharged,
       Map<HouseholdId, Long> grainByHousehold,
+      Map<UnitId, Long> grainCollectedByUnit,
+      Map<UnitId, Long> moneyCollectedByUnit,
       List<Gap> gaps) {
 
     Report {
       Objects.requireNonNull(grain, "grain");
       Objects.requireNonNull(money, "money");
       Objects.requireNonNull(grainByHousehold, "grainByHousehold");
+      Objects.requireNonNull(grainCollectedByUnit, "grainCollectedByUnit");
+      Objects.requireNonNull(moneyCollectedByUnit, "moneyCollectedByUnit");
       Objects.requireNonNull(gaps, "gaps");
       if (unitsCharged < 0L || householdsCharged < 0L) {
         throw new IllegalArgumentException(
             "Report 的计数不得为负: units=" + unitsCharged + " households=" + householdsCharged);
       }
       grainByHousehold = Collections.unmodifiableMap(new LinkedHashMap<>(grainByHousehold));
+      grainCollectedByUnit = positiveByUnit(grainCollectedByUnit, "grainCollectedByUnit");
+      moneyCollectedByUnit = positiveByUnit(moneyCollectedByUnit, "moneyCollectedByUnit");
       gaps = List.copyOf(gaps);
     }
 
+    /** ★ 旧 6 参构造器（Z7c 之前的调用点/夹具）：逐 unit 表取空表（= 本日无实收读数）。 */
+    Report(
+        Dimension grain,
+        Dimension money,
+        long unitsCharged,
+        long householdsCharged,
+        Map<HouseholdId, Long> grainByHousehold,
+        List<Gap> gaps) {
+      this(
+          grain,
+          money,
+          unitsCharged,
+          householdsCharged,
+          grainByHousehold,
+          Map.of(),
+          Map.of(),
+          gaps);
+    }
+
     static Report empty() {
-      return new Report(Dimension.zero(), Dimension.zero(), 0L, 0L, Map.of(), List.of());
+      return new Report(
+          Dimension.zero(), Dimension.zero(), 0L, 0L, Map.of(), Map.of(), Map.of(), List.of());
     }
 
     boolean isEmpty() {
       return grain.isEmpty() && money.isEmpty() && gaps.isEmpty();
+    }
+
+    /** 逐 unit 表拷贝：键/值非 null、值 > 0（0 不是一条发生额，删键）、保序冻结（不用 Map.copyOf）。 */
+    private static Map<UnitId, Long> positiveByUnit(Map<UnitId, Long> values, String field) {
+      Map<UnitId, Long> copy = new LinkedHashMap<>();
+      for (Map.Entry<UnitId, Long> entry : values.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException(field + " 的键与值都不得为 null");
+        }
+        if (entry.getValue() <= 0L) {
+          throw new IllegalArgumentException(field + " 的值必须 > 0: " + entry.getKey());
+        }
+        copy.put(entry.getKey(), entry.getValue());
+      }
+      return Collections.unmodifiableMap(copy);
     }
   }
 

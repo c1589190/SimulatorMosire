@@ -120,7 +120,9 @@ final class GovPayloads {
         supernumerarySqrtCoefficient);
   }
 
-  /** 预算政策载荷：类别表缺省 = 空（不自动付）；工资规则缺省 = 0/0。 */
+  /**
+   * 预算政策载荷：类别表缺省 = 空（不自动付）；工资规则缺省 = 0/0；{@code remittancePerMilleToSuperior} 缺省 = 0（不上缴， 旧调用点语义不变）。
+   */
   static GovBudgetPolicy budgetPolicy(JsonNode payload) {
     List<GovBudgetLine> orderedCategories = new ArrayList<>();
     JsonNode categories = payload.get("orderedCategories");
@@ -139,7 +141,9 @@ final class GovPayloads {
       }
     }
     GovOfficialSalaryRule officialSalaryRule = optionalSalaryRule(payload);
-    return new GovBudgetPolicy(orderedCategories, officialSalaryRule);
+    // ★ Z7c：optional、缺省 0（= 不上缴）；范围 0..1000 由 GovBudgetPolicy 构造期判。
+    long remittancePerMilleToSuperior = optionalLong(payload, "remittancePerMilleToSuperior", 0L);
+    return new GovBudgetPolicy(orderedCategories, officialSalaryRule, remittancePerMilleToSuperior);
   }
 
   /** 必填字符串字段（非空白）。 */

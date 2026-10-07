@@ -44,9 +44,9 @@ import org.slf4j.Logger;
  *   <li><b>确定性</b>：offices 按 {@link UnitId#value()} 升序遍历；每 office 的资源顺序固定为 grain → cloth →
  *       money；信号顺序固定为 supply → security → paperwork；oracle 调用次序就是资源的评估顺序（0 需求不发、不跳号）。同一输入（oracle
  *       纯函数）⇒ 输出逐字段相等。
- *   <li><b>源状态拷贝纪律（Z2 设计书 §4.1）</b>：本结算只改 {@code offices}；新 {@link GovState} 必须原样带过 {@code
- *       administrationPlans}/{@code budgetPolicies}（照 economy {@code periodicAdjustments} 的拷贝纪律；漏带
- *       = 静默清空政府配置）。
+ *   <li><b>源状态拷贝纪律（Z2 设计书 §4.1；Z7c 起含 remittance）</b>：本结算只改 {@code offices}；新 {@link GovState}
+ *       必须原样带过 {@code administrationPlans}/{@code budgetPolicies}/{@code remittanceStates}（照
+ *       economy {@code periodicAdjustments} 的拷贝纪律；漏带 = 静默清空政府配置/周期税账）。
  * </ul>
  *
  * <p>★★ <b>状态损坏不静默</b>：office 的 {@code unitId} 在 {@code units} 里查无、该单位没有 {@link
@@ -101,6 +101,9 @@ public final class GovDaily {
 
   /** 国库预算不足的信号 kind（Z3c；按预算顺序/上限分配后仍有类别缺口；只发信号）。 */
   public static final String KIND_ADMIN_BUDGET_SHORTFALL = "ADMIN_BUDGET_SHORTFALL";
+
+  /** 上级上缴不足的信号 kind（Z7c；周期末 remittance 逐腿应缴 &gt; 国库可用 ⇒ 部分支付 + 具名缺口；只发信号）。 */
+  public static final String KIND_ADMIN_REMITTANCE_SHORTFALL = "ADMIN_REMITTANCE_SHORTFALL";
 
   /** 编制/预算计划未设或全 0 的信号 kind（Z3c；只发信号，不自动改计划）。 */
   public static final String KIND_ADMIN_PLAN_MISSING = "ADMIN_PLAN_MISSING";
@@ -397,8 +400,8 @@ public final class GovDaily {
               efficiency));
     }
 
-    GovState nextState =
-        new GovState(nextOffices, govState.administrationPlans(), govState.budgetPolicies());
+    // ★ Z7c：用 withOffices（保留三条源状态），比手抄三个组件更不容易漏带。
+    GovState nextState = govState.withOffices(nextOffices);
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

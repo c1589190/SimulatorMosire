@@ -73,7 +73,8 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
         + "{unitId(GM 必填；决策人可省=自己的 GOV，给出必须等于自己的 GOV), orderedCategories?"
         + "[{category(ADMIN_STIPEND|MILITARY_STIPEND|ADMIN_SALARY|DEBT_SERVICE|OTHER), minPerCycle?,"
         + "capPerCycle?}](顺序即预算优先级；缺省空表=不自动付), officialSalaryRule? "
-        + "{grainMilliPerCommittedHour?, silverMilliPerCommittedHour?}(缺省 0/0)}。"
+        + "{grainMilliPerCommittedHour?, silverMilliPerCommittedHour?}(缺省 0/0), "
+        + "remittancePerMilleToSuperior?(0..1000‰，缺省 0=不上缴/抗税；周期末按本周期实收税上缴 superiorGov 国库)}。"
         + "GM 调用需显式 unitId；决策人调用身份派生、只能自己的 GOV（越权 GOV 具名拒，且必须过 GM 审批）。"
         + "preview=true（缺省）只算前后差异、不写；preview=false 必须给 expectedRevision，逐值相同的重放 = noop。";
   }
@@ -87,7 +88,8 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
             "string",
             "预算政策 JSON 文本（逐字透传给 gov.SetBudgetPolicy）：{unitId,orderedCategories?["
                 + "{category,minPerCycle?,capPerCycle?}],officialSalaryRule?{grainMilliPerCommittedHour?,"
-                + "silverMilliPerCommittedHour?}}；类别表顺序 = 预算优先级，capPerCycle 缺省 = 不封顶"));
+                + "silverMilliPerCommittedHour?},remittancePerMilleToSuperior?(0..1000，缺省 0)}；"
+                + "类别表顺序 = 预算优先级，capPerCycle 缺省 = 不封顶；remittance 缺省 0 = 不上缴/抗税"));
     props.put(
         "preview",
         ToolSupport.prop("boolean", "true（缺省）= 只算前后差异、不写；false = 提交 gov.SetBudgetPolicy"));
@@ -206,6 +208,7 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
       categories.add(row);
     }
     view.put("orderedCategories", List.copyOf(categories));
+    view.put("remittancePerMilleToSuperior", policy.remittancePerMilleToSuperior());
     GovOfficialSalaryRule rule = policy.officialSalaryRule();
     Map<String, Object> salary = new LinkedHashMap<>();
     salary.put("grainMilliPerCommittedHour", rule.grainMilliPerCommittedHour());

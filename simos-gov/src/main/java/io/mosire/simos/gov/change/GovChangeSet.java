@@ -3,6 +3,7 @@ package io.mosire.simos.gov.change;
 import io.mosire.simos.gov.GovAdministrationPlan;
 import io.mosire.simos.gov.GovBudgetPolicy;
 import io.mosire.simos.gov.GovOfficeState;
+import io.mosire.simos.gov.GovRemittanceState;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.unit.UnitId;
@@ -13,8 +14,9 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * gov 切片的变更集（阶段 10a；Z2 扩为三组件，设计书 §4.1）。<b>组件与 {@link GovState} 的 record 组件一一对应</b>： {@code offices}
- * / {@code administrationPlans} / {@code budgetPolicies}。
+ * gov 切片的变更集（阶段 10a；Z2 扩为三组件、Z7c 扩为四组件，设计书 §4.1）。<b>组件与 {@link GovState} 的 record 组件一一对应</b>：
+ * {@code offices} / {@code administrationPlans} / {@code budgetPolicies} / {@code
+ * remittanceStates}。
  *
  * <p>★ 铁律 5：变更集从完整状态类型派生——{@link #between(GovState, GovState)} 是唯一生产者，差异/重建语义一律委托 {@link
  * FieldDelta#diff} / {@link FieldDelta#rebuild}（与 Map/Social/Unit/Sd/Economy/Actor 共用同一份机制，
@@ -30,7 +32,8 @@ import java.util.Objects;
 public record GovChangeSet(
     FieldDelta<GovOfficeState> offices,
     FieldDelta<GovAdministrationPlan> administrationPlans,
-    FieldDelta<GovBudgetPolicy> budgetPolicies)
+    FieldDelta<GovBudgetPolicy> budgetPolicies,
+    FieldDelta<GovRemittanceState> remittanceStates)
     implements ChangeSet {
 
   public GovChangeSet {
@@ -43,11 +46,26 @@ public record GovChangeSet(
     if (budgetPolicies == null) {
       budgetPolicies = new FieldDelta.Unchanged<>();
     }
+    if (remittanceStates == null) {
+      remittanceStates = new FieldDelta.Unchanged<>();
+    }
   }
 
-  /** 旧构造器兼容（Z2 加字段前的调用点/夹具）：两条源状态记“未动”。 */
+  /** 旧 1 参构造器（阶段 10a 的调用点/夹具）：三条源状态记“未动”。 */
   public GovChangeSet(FieldDelta<GovOfficeState> offices) {
-    this(offices, new FieldDelta.Unchanged<>(), new FieldDelta.Unchanged<>());
+    this(
+        offices,
+        new FieldDelta.Unchanged<>(),
+        new FieldDelta.Unchanged<>(),
+        new FieldDelta.Unchanged<>());
+  }
+
+  /** ★ 旧 3 参构造器（Z7c 之前的调用点/夹具）：remittance 周期账记“未动”。 */
+  public GovChangeSet(
+      FieldDelta<GovOfficeState> offices,
+      FieldDelta<GovAdministrationPlan> administrationPlans,
+      FieldDelta<GovBudgetPolicy> budgetPolicies) {
+    this(offices, administrationPlans, budgetPolicies, new FieldDelta.Unchanged<>());
   }
 
   /** 逐组件比较。全相等 ⇒ <b>全 Unchanged</b>（不是空对象）。 */
@@ -57,7 +75,8 @@ public record GovChangeSet(
     return new GovChangeSet(
         FieldDelta.diff(base.offices(), target.offices()),
         FieldDelta.diff(base.administrationPlans(), target.administrationPlans()),
-        FieldDelta.diff(base.budgetPolicies(), target.budgetPolicies()));
+        FieldDelta.diff(base.budgetPolicies(), target.budgetPolicies()),
+        FieldDelta.diff(base.remittanceStates(), target.remittanceStates()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -70,7 +89,9 @@ public record GovChangeSet(
         FieldDelta.rebuild(base.administrationPlans(), cs.administrationPlans(), UnitId::parse);
     Map<UnitId, GovBudgetPolicy> budgetPolicies =
         FieldDelta.rebuild(base.budgetPolicies(), cs.budgetPolicies(), UnitId::parse);
-    return new GovState(offices, administrationPlans, budgetPolicies);
+    Map<UnitId, GovRemittanceState> remittanceStates =
+        FieldDelta.rebuild(base.remittanceStates(), cs.remittanceStates(), UnitId::parse);
+    return new GovState(offices, administrationPlans, budgetPolicies, remittanceStates);
   }
 
   /**
@@ -85,6 +106,9 @@ public record GovChangeSet(
 
   /** 是否所有组件都未变。 */
   public boolean isEmpty() {
-    return !offices.changed() && !administrationPlans.changed() && !budgetPolicies.changed();
+    return !offices.changed()
+        && !administrationPlans.changed()
+        && !budgetPolicies.changed()
+        && !remittanceStates.changed();
   }
 }

@@ -708,6 +708,8 @@ public final class GovWorldBootstrap {
     payload.put("unitId", govId);
     payload.put("orderedCategories", categories);
     payload.put("officialSalaryRule", salaryRule);
+    // ★ Z7c：创世显式冻结 remittance 默认 0‰（省可改可抗税；中央不能自动强制）。
+    payload.put("remittancePerMilleToSuperior", 0L);
     return ToolSupport.json(payload);
   }
 

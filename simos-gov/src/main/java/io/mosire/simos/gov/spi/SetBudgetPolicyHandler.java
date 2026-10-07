@@ -30,12 +30,14 @@ import org.slf4j.Logger;
  *  "orderedCategories":[
  *    {"category":"ADMIN_STIPEND","minPerCycle":0,"capPerCycle":100000},
  *    {"category":"MILITARY_STIPEND","minPerCycle":0,"capPerCycle":50000},
- *    {"category":"ADMIN_SALARY","minPerCycle":0,"capPerCycle":30000}],
- *  "officialSalaryRule":{"grainMilliPerCommittedHour":10,"silverMilliPerCommittedHour":5}}
+ *  {"category":"ADMIN_SALARY","minPerCycle":0,"capPerCycle":30000}],
+ *  "officialSalaryRule":{"grainMilliPerCommittedHour":10,"silverMilliPerCommittedHour":5},
+ *  "remittancePerMilleToSuperior":500}
  * }</pre>
  *
  * <p>★ <b>载荷语义</b>：{@code unitId} 必填；{@code orderedCategories} 缺省 = 空表（= 不自动付，允许显式清空）； {@code
- * officialSalaryRule} 缺省 = 0/0（不发薪）。类别词表是 {@code GovBudgetCategory} 的常量名，未知类别具名拒。同类型重复设置 =
+ * officialSalaryRule} 缺省 = 0/0（不发薪）；{@code remittancePerMilleToSuperior} 缺省 = 0（不上缴/抗税，0..1000‰ 由
+ * {@link GovBudgetPolicy} 构造期判）。类别词表是 {@code GovBudgetCategory} 的常量名，未知类别具名拒。同类型重复设置 =
  * <b>整体替换</b>；载荷与既有政策逐值相同 ⇒ 空变更集（幂等 no-op，不落 revision）。
  *
  * <p>★ <b>守卫与拒因</b>：{@code unitId} 必须已存在且带 {@link GovernmentFormation}（GOV 编制单位）——否则具名 {@code
@@ -151,6 +153,8 @@ public final class SetBudgetPolicyHandler implements CommandHandler, GmOnlyComma
                 policy.officialSalaryRule().grainMilliPerCommittedHour(),
                 "silverMilliPerCommittedHour",
                 policy.officialSalaryRule().silverMilliPerCommittedHour(),
+                "remittancePerMilleToSuperior",
+                policy.remittancePerMilleToSuperior(),
                 "changed",
                 !changeSet.isEmpty()));
   }

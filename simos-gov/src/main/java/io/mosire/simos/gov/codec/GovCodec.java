@@ -31,8 +31,9 @@ import org.slf4j.Logger;
  * io.mosire.simos.gov.GovSnapshot#namespace()} <b>同字面</b>——{@code SimulationState} 构造期校验"modules 的键
  * == snapshot.namespace()"，写歪当场抛（装配期那处有牙）。改一处必须同时改另一处。
  *
- * <p>★ <b>树里的自定义键有三个</b>：{@code UnitId}（{@code offices} 的键）、{@code CommodityId} 与 {@code
- * CurrencyId}（{@link io.mosire.simos.gov.GovOfficeState} 六张读数表的键）。三者都在 <b>嵌套位置</b>或顶层表上；
+ * <p>★ <b>树里的自定义键有三个</b>：{@code UnitId}（{@code offices}/{@code administrationPlans}/{@code
+ * budgetPolicies}/{@code remittanceStates} 四个顶层表的键）、{@code CommodityId} 与 {@code CurrencyId}（{@link
+ * io.mosire.simos.gov.GovOfficeState} 六张读数表的键）。三者都在 <b>嵌套位置</b>或顶层表上；
  * 漏注册任一个，都会在<b>对应表非空</b>时于解码期炸（表空着时测不到——故往返夹具必须让读数表非空）。键反序列化器照裁定 16 在 <b>本模块</b>注册，不进共享基座。
  *
  * <p>★ <b>键的（反）序列化走各类型自带的"裸 {@code toString()} + 单参 {@code parse}"配对</b>（裁定 R-48-f）： 写侧 Jackson

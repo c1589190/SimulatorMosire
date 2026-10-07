@@ -28,6 +28,7 @@ import io.mosire.simos.gov.GovBudgetLine;
 import io.mosire.simos.gov.GovBudgetPolicy;
 import io.mosire.simos.gov.GovOfficeState;
 import io.mosire.simos.gov.GovPostTier;
+import io.mosire.simos.gov.GovRemittanceState;
 import io.mosire.simos.gov.GovServiceFlow;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
@@ -291,6 +292,7 @@ public final class GovInfoTool implements AgentTool {
         "budgetPolicySource",
         govState.budgetPolicies().containsKey(govId) ? "explicit" : "neutral-default");
     info.put("budgetPolicy", policyView(policy));
+    info.put("remittance", remittanceView(govState, govId, policy));
 
     info.put("posts", postsView(formation.governmentPostsOfHousehold()));
     // ★ Z3d：外部岗位单列（键不要求 ∈ Unit.households；外部户保留原单位/位置，只承接行政任务）。
@@ -340,12 +342,47 @@ public final class GovInfoTool implements AgentTool {
       categories.add(row);
     }
     view.put("orderedCategories", List.copyOf(categories));
+    view.put("remittancePerMilleToSuperior", policy.remittancePerMilleToSuperior());
     Map<String, Object> salary = new LinkedHashMap<>();
     salary.put(
         "grainMilliPerCommittedHour", policy.officialSalaryRule().grainMilliPerCommittedHour());
     salary.put(
         "silverMilliPerCommittedHour", policy.officialSalaryRule().silverMilliPerCommittedHour());
     view.put("officialSalaryRule", salary);
+    return view;
+  }
+
+  /**
+   * ★★ <b>Z7c remittance 读口</b>：rate + 本周期累计/应缴投影 + 最近一次关账的应缴/实缴/缺口（持久读数）。
+   *
+   * <p>"本周期应缴"是**当前 rate 的投影**（{@code floor(累计实收 × rate/1000)}，与执行桥同一条 {@link
+   * GovRemittanceState#applyPerMille}），不是承诺；关账后累计清零、投影也归 0，整周期的量保留在 {@code last*}/{@code
+   * lastCycleCloseDay} 里。
+   */
+  private static Map<String, Object> remittanceView(
+      GovState govState, UnitId govId, GovBudgetPolicy policy) {
+    GovRemittanceState state = govState.remittanceStateOrDefault(govId);
+    long rate = policy.remittancePerMilleToSuperior();
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("ratePerMilleToSuperior", rate);
+    view.put("cycleGrainCollectedMilli", state.cycleGrainCollectedMilli());
+    view.put("cycleSilverCollectedMilli", state.cycleSilverCollectedMilli());
+    view.put(
+        "cycleDueGrainMilli",
+        GovRemittanceState.applyPerMille(state.cycleGrainCollectedMilli(), rate));
+    view.put(
+        "cycleDueSilverMilli",
+        GovRemittanceState.applyPerMille(state.cycleSilverCollectedMilli(), rate));
+    view.put("lastCycleCloseDay", state.lastCycleCloseDay());
+    view.put("lastDueGrainMilli", state.lastDueGrainMilli());
+    view.put("lastPaidGrainMilli", state.lastPaidGrainMilli());
+    view.put("lastShortfallGrainMilli", state.lastShortfallGrainMilli());
+    view.put("lastDueSilverMilli", state.lastDueSilverMilli());
+    view.put("lastPaidSilverMilli", state.lastPaidSilverMilli());
+    view.put("lastShortfallSilverMilli", state.lastShortfallSilverMilli());
+    view.put(
+        "source",
+        "GovState.remittanceStates（周期累计由 JurisdictionDailyTax 逐 unit 实收累加；关账日由 GovRemittanceBridge 结算并清零）");
     return view;
   }
 

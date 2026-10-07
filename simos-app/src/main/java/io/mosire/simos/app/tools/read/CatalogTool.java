@@ -377,7 +377,9 @@ public final class CatalogTool implements AgentTool {
               "gov.SetBudgetPolicy",
               "unitId(必填), orderedCategories?[{category(ADMIN_STIPEND|MILITARY_STIPEND|ADMIN_SALARY|"
                   + "DEBT_SERVICE|OTHER),minPerCycle?,capPerCycle?}](顺序即预算优先级；缺省空表 = 不自动付),"
-                  + " officialSalaryRule?{grainMilliPerCommittedHour?,silverMilliPerCommittedHour?}(缺省 0/0)"
+                  + " officialSalaryRule?{grainMilliPerCommittedHour?,silverMilliPerCommittedHour?}(缺省 0/0),"
+                  + " remittancePerMilleToSuperior?(0..1000‰，缺省 0；Z7c：周期末按本周期实收税上缴"
+                  + " superiorGov 国库，0=抗税/不转移；不足只告警)"
                   + "（★ Z2：同 id 整体替换、逐值相同 = 幂等 no-op；capPerCycle 缺省 = 不封顶；"
                   + "★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog 三条路径，不拦命令总线 ——"
                   + "决策人窄工具 simos.gov.setBudgetPolicy 直接提交同一命令并另走审批链）"),

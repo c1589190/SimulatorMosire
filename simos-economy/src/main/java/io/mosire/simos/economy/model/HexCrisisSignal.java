@@ -86,6 +86,8 @@ public record HexCrisisSignal(
     ADMIN_SUPPLY,
     /** 国库预算不足（按 {@code GovBudgetPolicy.orderedCategories} 顺序分配后仍有类别缺口；Z3c，只发信号）。 */
     ADMIN_BUDGET_SHORTFALL,
+    /** 上级上缴不足（Z7c：周期末 remittance 逐腿应缴 &gt; 国库可用 ⇒ 部分支付 + 具名缺口；只发信号，不自动注资/调率）。 */
+    ADMIN_REMITTANCE_SHORTFALL,
     /** 编制/预算计划未设或全 0（Z3c，只发信号，不自动改计划）。 */
     ADMIN_PLAN_MISSING,
     /** 政府服务流量为 0（无 {@code GOV_SERVICE} 承诺劳动；Z3c，只发信号）。 */

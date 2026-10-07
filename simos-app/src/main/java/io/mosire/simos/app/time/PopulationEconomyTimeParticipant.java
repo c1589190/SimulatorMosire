@@ -667,6 +667,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           //   （不另起 participant，避免 gov/actor 同名模块冲突）。顺序：先税（收入侧）→ Z3c 预算规划
           //   （GovBudgetPolicy 类别顺序/min/cap）→ GovDaily 行政俸禄（预算 oracle）→ 军俸/工资（预算裁剪后执行）
           //   → 持久周期规则；全部写账户会话，由本日末尾的 landAccountSession 绝对值一次落回 actor。
+          //   ★ Z7c：remittance 插在"税之后、预算规划之前"（见下面 settle 调用）——于是上级国库的到账在同一 tick 的预算
+          //     oracle 里立即可见；rate/缺口读数进 gov 源状态（GovRemittanceState），读口见 simos.gov.info。
           //   信号折进 economy.crisisSignals（同 (hex,kind) 覆盖）。
           if (govActive) {
             // ★★ Z3b 单次计算：本 tick 的注入集先取走并清空，随后算**唯一一份**效率/流量结果；税与 GovDaily 都消费它。
@@ -708,7 +710,24 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               }
             }
             adminTotals.recordTax(tax);
-            // ★★ Z3c：税收入侧进来之后、任何支出之前，先按该 GOV 的 GovBudgetPolicy 做当日限额规划。
+            // ★★ Z7c remittance：把本日逐 unit 实收加进周期累计；若本日有产业周期关账（同一事实见
+            //   EconomyDayStepper.lastCycleClosed），在这一刻（税后、预算前、同一 AccountSession）执行上缴：
+            //   due = 周期实收 × rate/1000，逐腿 min(due, 国库可用)，省→superiorGov 原子转移。
+            //   不足只发 ADMIN_REMITTANCE_SHORTFALL 信号 + INFO（不自动注资/调率）；rate=0 不转移（抗税）。
+            GovRemittanceBridge.Outcome remittance =
+                GovRemittanceBridge.settle(
+                    currentGov,
+                    units,
+                    tax.grainCollectedByUnit(),
+                    tax.moneyCollectedByUnit(),
+                    stepper.accounts(),
+                    day,
+                    stepper.lastCycleClosed());
+            currentGov = remittance.nextGov();
+            for (GovDaily.SignalDraft draft : remittance.alerts()) {
+              stepper.putCrisisSignal(toCrisisSignal(draft, day));
+            }
+            // ★★ Z3c：税收入侧（税 + remittance）进来之后、任何支出之前，先按该 GOV 的 GovBudgetPolicy 做当日限额规划。
             //   行政俸禄（GovDaily）/军俸桥/官吏工资桥此后都只被授权到各自类别限额；本桥不注资、不改计划。
             long daysInYearAtSettlement = CalendarClock.julianDefault().daysInYearAtTick(day);
             GovBudgetExecutionBridge.DayBudget budget =
@@ -1273,6 +1292,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           case GovDaily.KIND_ADMIN_SECURITY -> HexCrisisSignal.Kind.ADMIN_SECURITY;
           case GovDaily.KIND_ADMIN_PAPERWORK -> HexCrisisSignal.Kind.ADMIN_PAPERWORK;
           case GovDaily.KIND_ADMIN_BUDGET_SHORTFALL -> HexCrisisSignal.Kind.ADMIN_BUDGET_SHORTFALL;
+          case GovDaily.KIND_ADMIN_REMITTANCE_SHORTFALL ->
+              HexCrisisSignal.Kind.ADMIN_REMITTANCE_SHORTFALL;
           case GovDaily.KIND_ADMIN_PLAN_MISSING -> HexCrisisSignal.Kind.ADMIN_PLAN_MISSING;
           case GovDaily.KIND_ADMIN_SERVICE_FLOW_ZERO ->
               HexCrisisSignal.Kind.ADMIN_SERVICE_FLOW_ZERO;
