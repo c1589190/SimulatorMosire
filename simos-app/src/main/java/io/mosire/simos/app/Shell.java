@@ -75,6 +75,7 @@ import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRemovePeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
+import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
@@ -672,6 +673,14 @@ public final class Shell implements AutoCloseable {
                 //   ★ economy 因模块边界看不见 unit；app 的 GM 工具在 preview/apply 前另做 unit +
                 //   GovernmentFormation 预检（控制方 2026-10-23 裁定 A）。──
                 new EconomyUpsertGovUnitHandler(),
+                // ── economy（Z3a 2026-10-23）：GOV 行政岗位承诺写口（写/改/清一条 kind=GOV_SERVICE 的
+                //   HouseholdLaborCommitment；laborMilli=0 = release；同 (household, activity) 的
+                // PRODUCTION
+                //   冲突 ⇒ 具名拒；Σ承诺 ≤ 家户 laborMilli 预检）。★ GM-only：标 GmOnlyCommand ⇒ 排除出令
+                //   白名单 / RegisterEffect / 决策人目录；GM 的 simos.command.submit 照常可用。★ 不实现
+                //   CommandTargets；决策人工具 + 审批链 + 窄工具归 Z3c。★ economy 因模块边界看不见 unit；
+                //   经济侧守卫 = GOV 登记信封 + classes + Social 家户表（§18 裁定 A 同源）。──
+                new EconomySetGovServiceCommitmentHandler(),
                 // ── P1b1（2026-10-01）：GM-only 区域经济数据清空（目标格 industries/markets + 可靠可定位的连带记录）。
                 //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new EconomyClearRegionHandler(),

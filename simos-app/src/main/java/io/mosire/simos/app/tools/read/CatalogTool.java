@@ -321,7 +321,7 @@ public final class CatalogTool implements AgentTool {
                   + " modeKey?(缺省 gov_service，稳定键), reason(必填)"
                   + "（★ Z1c：为 GOV 单位创建/补齐行政服务生产 unit——operator=HOUSEHOLD:hh-gov-<govUnitId>，"
                   + "unitId=ProductionUnitId.idOf(industryId, operator)；一次写 units(progress=0/cycle 空) + "
-                  + "assetShares(OWNED 补足 owner=operator) + relations(空规则/residualOwner=operator)；不写"
+                  + "assetShares(OWNED 补足 owner=operator) + relations(空规则/residualOwner=operator/laborSource=WAGE)；不写"
                   + " operatorConditions/ProductionEnterprise。同载荷重放 = 幂等 no-op（空变更集）；已存在 unit/关系/份额"
                   + "与载荷字段冲突（modeKey 不一致、既有可用资产超过载荷量、既有工资规则…）⇒ 具名拒，不静默覆盖。"
                   + "守卫：economy 已激活；GOV 已在 economy.RegisterGovernment 登记（经济侧 governments 派生存 + "
@@ -329,6 +329,20 @@ public final class CatalogTool implements AgentTool {
                   + "产业格已激活；assets 覆盖 capacityPerUnit 1 单位规模。★ economy handler 因模块边界看不见 unit，"
                   + "app 的 GM 工具 simos.economy.upsertGovUnit 在 preview/apply 另做 unit+GovernmentFormation 预检；"
                   + "GM-only，无 CommandTargets/决策人版）"),
+          Map.entry(
+              "economy.SetGovServiceCommitment",
+              "govUnitId(必填；家户 = hh-gov-<govUnitId>), householdId(必填；出劳动的家户，economy classes + "
+                  + "Social 家户表都要有), laborMilli(必填 ≥ 0；0 = release 删除该承诺), activity?(可选；缺省按 "
+                  + "operator=hh-gov-<id> 且 industry base kind=office 唯一解析该行政服务 unit；0/多个 ⇒ 具名拒并要求显式给), "
+                  + "reason(必填)"
+                  + "（★ Z3a：写/改/清一条 kind=GOV_SERVICE 的 HouseholdLaborCommitment；id 约定 "
+                  + "gov-service:<activity>:<household>；同 (household, activity) 同量重放 = 幂等 no-op（空变更集）；"
+                  + "已有 PRODUCTION 承诺的同 (household, activity) ⇒ upsert 具名冲突拒（先释放生产承诺，禁止静默改写 kind）；"
+                  + "写入后 Σ全部承诺 ≤ 家户 HouseholdEconomy.laborMilli 预检失败 ⇒ 具名拒。守卫：GOV 已在经济侧登记"
+                  + "（governments 派生存 treasury=hh-gov + hh-gov 的 classes 行 + Social 家户表）；activity 是该 GOV 的"
+                  + "office unit；承诺家户在 economy classes + Social 家户表；0 人口家户写非 0 ⇒ 拒（0 可用于释放）。"
+                  + "★ GM-only，无 CommandTargets；决策人工具/审批链/窄工具归 Z3c。★ GOV_SERVICE 不可缩、最高优先级"
+                  + "（不参与死亡/预算比例缩；越预算 ⇒ LABOR_COMMITMENT_CONTRACT ERROR fail-closed））"),
           Map.entry(
               "economy.MigrateHousehold",
               "household(家户 id 文本), toHex(目标格 q_r 文本)"

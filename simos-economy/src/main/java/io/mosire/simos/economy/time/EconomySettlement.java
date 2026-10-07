@@ -25,6 +25,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -2157,6 +2158,10 @@ public final class EconomySettlement {
             closing.unit(), populationBefore, populationAfter, laborCommitments, settlementIndex);
       }
     }
+    // ★★ Z3a/C7：全部关账 unit 的死亡缩放已跑完 —— 政府承诺整额保留后若越预算，这里统一具名 ERROR + fail-closed
+    //   （有 day 上下文 ⇒ 来源 TICK、事件带 day；与 Z1b 队列口径同事件名）。
+    requireGovServiceCommitmentsWithinBudgets(
+        laborCommitments, householdEconomies, EconomyLogSource.ECONOMY_POPULATION, day);
     long famineDeathsTotal = traceTotalLongs(deathsToday);
     if (famineDeathsTotal > 0L) {
       EventLog.channel(TRACE)
@@ -3715,20 +3720,59 @@ public final class EconomySettlement {
       }
       List<LaborAllocationId> ids = new ArrayList<>(entry.getValue());
       ids.sort(Comparator.comparing(LaborAllocationId::value));
-      long sum = 0L;
-      long[] weights = new long[ids.size()];
+      // ★★ Z3a/C7：先整额扣 GOV_SERVICE（不可缩/最高优先级），只对剩余预算里的 PRODUCTION 做比例缩；
+      //   Σ GOV_SERVICE > budget ⇒ 具名 LABOR_COMMITMENT_CONTRACT ERROR + fail-closed（绝不静默缩政府承诺）。
+      long govServiceSum = 0L;
+      long productionSum = 0L;
       for (int i = 0; i < ids.size(); i++) {
         HouseholdLaborCommitment laborCommitment = laborCommitments.get(ids.get(i));
-        weights[i] = laborCommitment == null ? 0L : Math.max(0L, laborCommitment.laborMilli());
-        sum = Math.addExact(sum, weights[i]);
+        if (laborCommitment == null) {
+          continue;
+        }
+        long amount = Math.max(0L, laborCommitment.laborMilli());
+        if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+          govServiceSum = Math.addExact(govServiceSum, amount);
+        } else {
+          productionSum = Math.addExact(productionSum, amount);
+        }
       }
+      long total = Math.addExact(govServiceSum, productionSum);
       long budget = Math.max(0L, householdEconomy.laborMilli());
-      if (sum <= budget || sum <= 0L) {
+      if (total <= budget || total <= 0L) {
         continue;
       }
-      long[] parts = ProportionalSplit.byDenominator(budget, weights, sum);
+      if (govServiceSum > budget) {
+        throw laborCommitmentBudgetFault(
+            entry.getKey(),
+            govServiceSum,
+            total,
+            budget,
+            "GOV_SERVICE 承诺整额保留后超过家户时间预算（不可缩/不可删）",
+            EconomyLogSource.ECONOMY_POPULATION_WRITE,
+            -1L);
+      }
+      long availableForProduction = budget - govServiceSum;
+      if (productionSum <= availableForProduction || productionSum <= 0L) {
+        continue; // GOV_SERVICE 已整额装下；没有需要缩的 PRODUCTION（防御性 no-op）
+      }
+      List<LaborAllocationId> productionIds = new ArrayList<>();
+      long[] productionWeights = new long[ids.size()];
+      int productionCount = 0;
       for (int i = 0; i < ids.size(); i++) {
-        LaborAllocationId id = ids.get(i);
+        HouseholdLaborCommitment laborCommitment = laborCommitments.get(ids.get(i));
+        if (laborCommitment == null || laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+          continue;
+        }
+        productionIds.add(ids.get(i));
+        productionWeights[productionCount] = Math.max(0L, laborCommitment.laborMilli());
+        productionCount++;
+      }
+      long[] weightArray = new long[productionCount];
+      System.arraycopy(productionWeights, 0, weightArray, 0, productionCount);
+      long[] parts =
+          ProportionalSplit.byDenominator(availableForProduction, weightArray, productionSum);
+      for (int i = 0; i < productionIds.size(); i++) {
+        LaborAllocationId id = productionIds.get(i);
         HouseholdLaborCommitment laborCommitment = laborCommitments.get(id);
         if (laborCommitment == null) {
           continue;
@@ -3932,6 +3976,10 @@ public final class EconomySettlement {
           index);
       // ★ P2-A A3：出生/死亡只改 HouseholdEconomy.population 与派生量（工时/配额/债务）；家户成员份额由 Social 权威维护。
     }
+    // ★★ Z3a/C7：全部批次人口缩放已跑完 —— 政府承诺整额保留后若越预算，统一具名 ERROR + fail-closed。
+    //   本方法签名无 day ⇒ 按日志纪律用 system 来源、事件不带 day。
+    requireGovServiceCommitmentsWithinBudgets(
+        laborCommitments, householdEconomies, EconomyLogSource.ECONOMY_POPULATION_WRITE, -1L);
     // ★ 工作表与流水都在 session 里就地更新；构造与全量守卫由 revision 边界（build）负责（P1.5a）。
   }
 
@@ -4243,6 +4291,10 @@ public final class EconomySettlement {
    *
    * <p>★ **它只覆盖"人死了"这一侧**：出生**不放大**配额（新生儿不干活，且"劳动力增长"要走发配额的命令层，不是结算顺手改）。
    *
+   * <p>★★ <b>Z3a/C7：{@code GOV_SERVICE} 行整额跳过</b>（政府行政岗位承诺不可缩；v1 spec §10 C7 / spec §17.2）—— 本方法只缩
+   * {@code PRODUCTION}；整批缩放完成后由 {@link #requireGovServiceCommitmentsWithinBudgets} 统一 fail-closed
+   * 校验政府承诺仍在预算内（越界 ⇒ 具名 {@code LABOR_COMMITMENT_CONTRACT} ERROR）。
+   *
    * @param before 饿死前该产业的行人口之和；必须 &gt; 0（为 0 时没有可缩的东西，调用方先挡）
    */
   private static void scaleLaborOfUnit(
@@ -4259,6 +4311,9 @@ public final class EconomySettlement {
       HouseholdLaborCommitment laborCommitment = laborCommitments.get(allocationId);
       if (laborCommitment == null) {
         continue; // 索引与活表同源；这里只防御中途被移除
+      }
+      if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+        continue; // ★ Z3a/C7：政府行政岗位承诺不参与死亡比例缩；越预算由批次末尾统一 fail-closed
       }
       long scaled = laborCommitment.laborMilli() * after / before;
       laborCommitments.put(
@@ -4281,6 +4336,9 @@ public final class EconomySettlement {
    *
    * <p>★ 人口真值源在 social ⇒ 本步的**唯一输入**是一份 {@code group → (出生, 死亡)} 的账（见 {@link
    * #applyPopulationChange}）： economy 不需要认识 {@code PopulationGroup}，只需要它的稳定身份。
+   *
+   * <p>★★ <b>Z3a/C7：{@code GOV_SERVICE} 行整额跳过</b>（同 {@link #scaleLaborOfUnit}）；批次缩放完成后由调用方统一 {@link
+   * #requireGovServiceCommitmentsWithinBudgets} fail-closed 校验。
    */
   private static void scaleLaborOfGroup(
       PeopleLotId group,
@@ -4298,6 +4356,9 @@ public final class EconomySettlement {
       if (laborCommitment == null) {
         continue; // 索引与活表同源；这里只防御中途被移除
       }
+      if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+        continue; // ★ Z3a/C7：政府行政岗位承诺不参与人口/死亡比例缩
+      }
       long scaled = laborCommitment.laborMilli() * after / before;
       laborCommitments.put(
           allocationId,
@@ -4311,6 +4372,138 @@ public final class EconomySettlement {
               laborCommitment.period(),
               laborCommitment.kind()));
     }
+  }
+
+  /**
+   * ★★ <b>Z3a/C7 的统一 fail-closed 校验：{@code GOV_SERVICE} 整额保留后必须仍落在预算内</b>。
+   *
+   * <p>凡有 {@code GOV_SERVICE} 承诺的家户，逐户算 {@code Σ GOV_SERVICE} 与 {@code Σ 全部承诺}，任一超过 {@code
+   * HouseholdEconomy.laborMilli} ⇒ 发 {@code LABOR_COMMITMENT_CONTRACT} ERROR（与 Z1b 队列口径同事件名）并抛
+   * {@link IllegalStateException}（fail-closed，绝不静默缩/删政府承诺）。没有 {@code GOV_SERVICE} 的家户不检查 ⇒
+   * 既有路径逐值不变。
+   *
+   * <p>★ <b>为什么放在整批缩放之后而不是缩放循环里</b>：同一家户可能同时供给多个 unit/批次，前面一次缩放看到的中途值可能被 后面的缩放继续缩小；只有在"这一轮所有 {@code
+   * scaleLaborOf*} 都已跑完"的点上，越界判定才不是假阳性。
+   *
+   * @param source 无 day 上下文的调用方按日志纪律用 {@link EconomyLogSource#ECONOMY_POPULATION_WRITE}（system 档）；
+   *     有 day 的调用方用 {@link EconomyLogSource#ECONOMY_POPULATION}
+   * @param day 调用方的日锚点；方法签名无 day 的路径传 {@code -1}（事件不带 {@code day} 字段）
+   */
+  private static void requireGovServiceCommitmentsWithinBudgets(
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      EconomyLogSource source,
+      long day) {
+    Map<HouseholdId, Long> govServiceByHousehold = new LinkedHashMap<>();
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      if (laborCommitment.kind() != LaborCommitmentKind.GOV_SERVICE) {
+        continue;
+      }
+      govServiceByHousehold.merge(
+          laborCommitment.household(), laborCommitment.laborMilli(), Math::addExact);
+    }
+    if (govServiceByHousehold.isEmpty()) {
+      return;
+    }
+    Map<HouseholdId, Long> totalByHousehold = new LinkedHashMap<>();
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      if (!govServiceByHousehold.containsKey(laborCommitment.household())) {
+        continue;
+      }
+      totalByHousehold.merge(
+          laborCommitment.household(), laborCommitment.laborMilli(), Math::addExact);
+    }
+    for (Map.Entry<HouseholdId, Long> entry : govServiceByHousehold.entrySet()) {
+      HouseholdEconomy householdEconomy = householdEconomies.get(entry.getKey());
+      if (householdEconomy == null) {
+        continue; // 旧档迁移期占位行（运行期 GOV_SERVICE 写入者要求先有 classes 行）
+      }
+      long govServiceSum = entry.getValue();
+      long total = totalByHousehold.getOrDefault(entry.getKey(), govServiceSum);
+      long budget = Math.max(0L, householdEconomy.laborMilli());
+      if (govServiceSum > budget) {
+        throw laborCommitmentBudgetFault(
+            entry.getKey(),
+            govServiceSum,
+            total,
+            budget,
+            "GOV_SERVICE 承诺整额保留后超过家户时间预算（不可缩/不可删）",
+            source,
+            day);
+      }
+      if (total > budget) {
+        throw laborCommitmentBudgetFault(
+            entry.getKey(),
+            govServiceSum,
+            total,
+            budget,
+            "GOV_SERVICE 整额保留后 Σ 全部承诺超过家户时间预算（只缩 PRODUCTION 仍不足）",
+            source,
+            day);
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>C7 具名契约故障出口</b>（与 Z1b {@code LaborQueueSettlement.laborCommitmentContractFault} 同事件名）： 先发
+   * {@code LABOR_COMMITMENT_CONTRACT} ERROR，再返回 {@link IllegalStateException} 供调用方 fail-closed。
+   * {@code day < 0} ⇒ 事件不带 {@code day}（调用方方法签名无日锚点，按日志纪律归 system 来源）。
+   */
+  private static IllegalStateException laborCommitmentBudgetFault(
+      HouseholdId household,
+      long govServiceLaborMilli,
+      long totalLaborMilli,
+      long budgetLaborMilli,
+      String reason,
+      EconomyLogSource source,
+      long day) {
+    if (day >= 0L) {
+      EventLog.channel(EconomyLog.population())
+          .error(
+              LogEvent.of(
+                  "LABOR_COMMITMENT_CONTRACT",
+                  source,
+                  "day",
+                  day,
+                  "household",
+                  household.value(),
+                  "govServiceLaborMilli",
+                  govServiceLaborMilli,
+                  "totalLaborMilli",
+                  totalLaborMilli,
+                  "budgetLaborMilli",
+                  budgetLaborMilli,
+                  "reason",
+                  reason));
+    } else {
+      EventLog.channel(EconomyLog.population())
+          .error(
+              LogEvent.of(
+                  "LABOR_COMMITMENT_CONTRACT",
+                  source,
+                  "household",
+                  household.value(),
+                  "govServiceLaborMilli",
+                  govServiceLaborMilli,
+                  "totalLaborMilli",
+                  totalLaborMilli,
+                  "budgetLaborMilli",
+                  budgetLaborMilli,
+                  "reason",
+                  reason));
+    }
+    return new IllegalStateException(
+        "家庭劳动承诺契约违约："
+            + reason
+            + "（household="
+            + household.value()
+            + "，GOV_SERVICE="
+            + govServiceLaborMilli
+            + "，总承诺="
+            + totalLaborMilli
+            + "，预算="
+            + budgetLaborMilli
+            + "）");
   }
 
   // ── 现扣周期投入（周期的第一天）────────────────────────────────────────────────────────
@@ -6675,12 +6868,25 @@ public final class EconomySettlement {
                 unit, industry, index, allocated.getOrDefault(id, 0L), operatorConditions.get(id)));
       }
       // ② 按 unit 的**最大可吸收劳动**修剪（这是 §13.5 的"本 tick 最大可吸收量"，不是按缺口抢）
+      //   ★★ Z3a/C7：GOV_SERVICE 先整额占住该 unit 的 room（最高优先级）且不参与修剪/删除；
+      //      PRODUCTION 只吃剩余 room（"先扣承诺再排生产"）。
       Map<ProductionUnitId, Long> kept = new LinkedHashMap<>();
+      for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+        ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
+        if (!need.containsKey(unitId)
+            || laborCommitment.kind() != LaborCommitmentKind.GOV_SERVICE) {
+          continue;
+        }
+        kept.merge(unitId, laborCommitment.laborMilli(), Long::sum);
+      }
       for (LaborAllocationId allocId : new ArrayList<>(laborCommitments.keySet())) {
         HouseholdLaborCommitment laborCommitment = laborCommitments.get(allocId);
         ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
         if (!need.containsKey(unitId)) {
           continue; // 不是本格的配额（另一格的 unit）
+        }
+        if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+          continue; // ★ Z3a/C7：政府行政岗位承诺不参与按最大可吸收量修剪
         }
         long room = Math.max(0L, need.get(unitId) - kept.getOrDefault(unitId, 0L));
         long keep = Math.min(laborCommitment.laborMilli(), room);
@@ -6711,21 +6917,67 @@ public final class EconomySettlement {
         }
         List<LaborAllocationId> householdAllocationIds = new ArrayList<>(household.getValue());
         householdAllocationIds.sort(Comparator.comparing(LaborAllocationId::value));
-        long sum = 0L;
-        long[] weights = new long[householdAllocationIds.size()];
+        // ★★ Z3a/C7：GOV_SERVICE 整额保留、不进比例权重；只对 PRODUCTION 按剩余预算缩。
+        long govServiceSum = 0L;
+        long productionSum = 0L;
         for (int i = 0; i < householdAllocationIds.size(); i++) {
           HouseholdLaborCommitment laborCommitment =
               laborCommitments.get(householdAllocationIds.get(i));
-          weights[i] = laborCommitment == null ? 0L : Math.max(0L, laborCommitment.laborMilli());
-          sum = Math.addExact(sum, weights[i]);
+          long amount = laborCommitment == null ? 0L : Math.max(0L, laborCommitment.laborMilli());
+          if (laborCommitment != null
+              && laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+            govServiceSum = Math.addExact(govServiceSum, amount);
+          } else {
+            productionSum = Math.addExact(productionSum, amount);
+          }
         }
+        long sum = Math.addExact(govServiceSum, productionSum);
         long budget = Math.max(0L, householdEconomy.laborMilli());
         if (sum <= budget || sum <= 0L) {
           continue;
         }
-        long[] parts = ProportionalSplit.byDenominator(budget, weights, sum);
+        if (govServiceSum > budget) {
+          throw laborCommitmentBudgetFault(
+              household.getKey(),
+              govServiceSum,
+              sum,
+              budget,
+              "GOV_SERVICE 承诺整额保留后超过家户时间预算（不可缩/不可删）",
+              EconomyLogSource.ECONOMY_POPULATION_WRITE,
+              -1L);
+        }
+        long availableForProduction = budget - govServiceSum;
+        if (productionSum <= availableForProduction || productionSum <= 0L) {
+          continue; // GOV_SERVICE 已整额装下；没有需要缩的 PRODUCTION（防御性 no-op）
+        }
+        int productionCount = 0;
+        for (int i = 0; i < householdAllocationIds.size(); i++) {
+          HouseholdLaborCommitment laborCommitment =
+              laborCommitments.get(householdAllocationIds.get(i));
+          if (laborCommitment != null
+              && laborCommitment.kind() != LaborCommitmentKind.GOV_SERVICE) {
+            productionCount++;
+          }
+        }
+        long[] productionWeights = new long[productionCount];
+        List<LaborAllocationId> productionIds = new ArrayList<>(productionCount);
+        int at = 0;
         for (int i = 0; i < householdAllocationIds.size(); i++) {
           LaborAllocationId allocationId = householdAllocationIds.get(i);
+          HouseholdLaborCommitment laborCommitment = laborCommitments.get(allocationId);
+          if (laborCommitment == null
+              || laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
+            continue;
+          }
+          productionIds.add(allocationId);
+          productionWeights[at] = Math.max(0L, laborCommitment.laborMilli());
+          at++;
+        }
+        long[] parts =
+            ProportionalSplit.byDenominator(
+                availableForProduction, productionWeights, productionSum);
+        for (int i = 0; i < productionIds.size(); i++) {
+          LaborAllocationId allocationId = productionIds.get(i);
           HouseholdLaborCommitment laborCommitment = laborCommitments.get(allocationId);
           if (laborCommitment == null) {
             continue;
@@ -6738,6 +6990,10 @@ public final class EconomySettlement {
         }
       }
     }
+    // ★★ Z3a/C7：本分区的修剪/预算缩放已跑完 —— 政府承诺整额保留后若越预算，统一具名 ERROR + fail-closed。
+    //   本方法签名无 day ⇒ system 来源、事件不带 day。
+    requireGovServiceCommitmentsWithinBudgets(
+        laborCommitments, householdEconomies, EconomyLogSource.ECONOMY_POPULATION_WRITE, -1L);
   }
 
   /**

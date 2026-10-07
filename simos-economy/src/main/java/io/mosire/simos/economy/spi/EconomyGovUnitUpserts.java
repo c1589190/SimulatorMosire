@@ -59,7 +59,7 @@ import java.util.Objects;
  *       载荷中不属于该 recipe {@code capacityPerUnit} 的资产 kind ⇒ 具名拒（避免“发了没生效”）。
  *   <li><b>relations</b>：缺键 ⇒ 新增 V1 空规则 {@link ProductionRules}（{@code rules=[]}、{@code
  *       residualOwner=operator}、 {@code inputSupplier=ToActor(operator)}、{@code
- *       laborSource=SELF}）——即“产出全留 operator”的既有等价路径（E9 先例）； 已有关系与这条 期望值逐字不同 ⇒ 具名拒（工资等规则归 Z3 的
+ *       laborSource=WAGE}）——即“产出全留 operator”的既有等价路径（E9 先例）； 已有关系与这条 期望值逐字不同 ⇒ 具名拒（工资等规则归 Z3 的
  *       {@code ADMIN_SALARY}，本区不发明也不覆盖）。
  *   <li><b>operatorConditions 不写</b>：既有语义把缺键读作 ACTIVE/中性 1000‰（{@code ProductionProcessBook} /
  *       {@code OperatorSettlement}），本区不造第二份状态；{@code ProductionEnterprise} 也不写（没有任何跨表不变量要求它； Z3/Z4
@@ -460,11 +460,17 @@ public final class EconomyGovUnitUpserts {
 
   /**
    * V1 关系的唯一拼写点：空规则 ⇒ 产出全留 {@code residualOwner=operator}（{@link ProductionRules} 类注的缺省等价路径，E9
-   * 先例）；投入供应者/劳动来源取构造期缺省值（{@code ToActor(operator)} / {@code SELF}）的显式写法。
+   * 先例）；投入供应者取构造期缺省值（{@code ToActor(operator)}）。
+   *
+   * <p>★★ <b>Z3a（spec §19 复核，2026-10-23）：{@code laborSource = WAGE}</b> —— 行政服务 unit 的 operator 是 0
+   * 人口国库家户 {@code hh-gov-<id>}，实际劳动由官吏户/外来户以承诺提供、按承诺小时领薪（§9 的 {@code
+   * ADMIN_SALARY}），语义是"雇工/工资劳动"；{@code SELF} 会被 {@code HouseholdCondition}/{@code
+   * HouseholdClassRule} 读成"operator 自营"，与"官吏领薪、外来家户受雇"矛盾。空规则 + 空产出下 WAGE 不参与任何 商品分配（{@code harvest}
+   * 对空产出早退），只把制度的劳动身份写对；具体工资不走 relation，走 Z3c 的 salary bridge。
    */
   private static ProductionRules expectedRelation(ProductionUnitId unitId, ActorRef operator) {
     return new ProductionRules(
-        unitId, operator, new Payee.ToActor(operator), List.of(), operator, LaborSource.SELF);
+        unitId, operator, new Payee.ToActor(operator), List.of(), operator, LaborSource.WAGE);
   }
 
   /** 单位/关系/份额三张表的顺序写回（`with*` 逐组件替换；每步都在 EconomyData 构造期过跨表守卫）。 */
