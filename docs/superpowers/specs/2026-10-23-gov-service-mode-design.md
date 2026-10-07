@@ -283,3 +283,17 @@
 3. **Z1b 拆分**：原 Z1b 拆为 **Z1b（承诺基础设施：kind/不可缩/标准系数）** 与 **Z1c（GOV 生产 unit+资产+关系）**，
    理由＝两类风险不同（承诺 record 改动触及 labor 不变量；unit 创建触及命令/状态/工具）。顺序：
    `Z1a → Z1b → Z2 → Z1c → Z4 → Z3 → Z5 → Z6`（Z1c 与 Z2 无代码依赖，但仍串行跑 Maven）。
+
+---
+
+## 17. 控制方裁定（Z1b 收尾边界，2026-10-23）
+
+1. **旧档兼容只要求 `EconomyCodec` 边界**：`decodeSnapshot`/`decodeChangeSet`（含 patch 变体）缺 `kind` ⇒ `PRODUCTION`、
+   新档往返逐字节稳定即可；**不要求** core `Timeline`/`Replay` 的 raw store 重放兼容（core 的 `WorldChangeSet`
+   不经过 EconomyCodec，pre-Z1b store 的 `changeset_json` 会当场失败——与 S1 加 household 同一条既有限制）。
+   **不**为此外开 core SPI、**不**给 economy-api 加 Jackson 注解（不触铁律 4 与"economy-api 零注解"纪律）。
+   Z6 测试范围**不含** raw store 重放；若以后要补，另开小批并先裁定。
+2. **C7 死亡缩放豁免记入 Z3 必做项**：Z1b 的 `GOV_SERVICE` 保护只落 `LaborQueueSettlement`；`EconomySettlement`
+   的死亡比例缩放（`scaleLaborOfUnit/Group`）与 modes 为空的旧 `reallocateLabor` 对 `GOV_SERVICE` 的豁免，
+   在 Z3 接入 gov 写者前必须处理，口径 = **死亡也不缩 `GOV_SERVICE`；超预算 ⇒ 具名 ERROR fail-closed**。
+   当前（Z1b 完成时）无写者能在 modes 为空世界产生 `GOV_SERVICE`，故不构成回归。
