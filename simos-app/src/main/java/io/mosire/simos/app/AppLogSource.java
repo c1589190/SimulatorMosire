@@ -32,6 +32,8 @@ public enum AppLogSource implements LogOrigin {
   DECISION_TURN("decision-turn", "LLM 决策回合、逐次工具调用与回合结算", LogOriginKind.INTERACTION),
   APPROVAL("approval", "审批链 pending/approved/denied/timeout", LogOriginKind.INTERACTION),
   DAILY_LOOP("daily-loop", "人口—经济—gov 日循环推进（算法执行）", LogOriginKind.TICK),
+  GOV_EFFICIENCY_INJECT(
+      "gov-efficiency-inject", "行政效率动态修正的进程内注入/拒绝（无 day 上下文；GM 不可达）", LogOriginKind.SYSTEM),
   HOUSEHOLD_SYNC("household-sync", "家户↔单位位置同步与经济行人口投影（算法执行）", LogOriginKind.TICK),
   LLM_CONFIG("llm-config", "LLM 路由/密钥引用的读取（只记元信息）", LogOriginKind.SYSTEM),
   LLM_CALL("llm-call", "LLM 调用的响应用量与模型元信息", LogOriginKind.INTERACTION),

@@ -3,9 +3,7 @@ package io.mosire.simos.gov;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.social.SocialData;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.Unit;
@@ -26,8 +24,13 @@ import java.util.Optional;
 import org.slf4j.Logger;
 
 /**
- * 每日行政结算纯函数（阶段 11a，计划 §2.2 / §3）：对一个 {@link GovState} 里的每个 GOV 编制算需求/效率、评估并支付当日行政定额、发出三类缺口信号， 返回新
- * {@link GovState} 与当日账（{@link UpkeepDue} / {@link SignalDraft}）。
+ * 每日行政结算纯函数（阶段 11a，计划 §2.2 / §3）：对一个 {@link GovState} 里的每个 GOV 编制<b>消费 app
+ * 算好的当日效率结果</b>、评估并支付当日行政定额、发出三类缺口信号， 返回新 {@link GovState} 与当日账（{@link UpkeepDue} / {@link
+ * SignalDraft}）。
+ *
+ * <p>★★ <b>Z3b 单次计算（设计书 §3/§10 C2）</b>：本类<b>不再自算效率</b>（旧 2 参桥已删）——{@code efficiencyByUnit} 由 app
+ * 组合根的承诺→两维供给桥算好，读数写入（两维满足率/两维最终效率/总效率、legacy {@code bonus=0}）与缺口信号 evidence
+ * 都取自这同一份结果；税收路径读的也是同一份（app 侧只算一次）。
  *
  * <p>★★ <b>边界与裁定</b>：
  *
@@ -46,8 +49,9 @@ import org.slf4j.Logger;
  *       = 静默清空政府配置）。
  * </ul>
  *
- * <p>★★ <b>状态损坏不静默</b>：office 的 {@code unitId} 在 {@code units} 里查无、或该单位没有 {@link
- * GovernmentFormation}，一律当场抛 {@link IllegalStateException}——这是装配/数据故障，不能"跳过这个 office"把损坏藏起来。
+ * <p>★★ <b>状态损坏不静默</b>：office 的 {@code unitId} 在 {@code units} 里查无、该单位没有 {@link
+ * GovernmentFormation}、或 {@code efficiencyByUnit} 缺该 office 的当日结果，一律当场抛 {@link
+ * IllegalStateException}——这是装配/数据故障，不能"跳过这个 office"把损坏藏起来。
  *
  * <p>★★ <b>无有效位置</b>（{@code units.effectivePosition(...)} 为空）：该 office 本日<b>跳过 upkeep 与全部信号</b>，只把
  * efficiency 六个 per-mille 读数（两维满足率 + 两维最终效率 + 总效率 + legacy bonus）与 {@code tick} 更新到新读数上；{@code
@@ -113,30 +117,29 @@ public final class GovDaily {
   private GovDaily() {}
 
   /**
-   * 结算一个 tick（日）。
+   * 结算一个 tick（日）。★★ <b>Z3b 起本类不再自算效率</b>：{@code efficiencyByUnit} 是 app 组合根用承诺→供给桥算好的当日唯一结果 （见设计书
+   * §3/§10 C2），本方法只消费它——读数写入与信号 evidence 都取自这一份，不在第二处重算。
    *
    * @param govState 行政读数状态（键 = 单位 id）；不得为 null
    * @param units 单位状态（读编制与有效位置）；不得为 null
-   * @param map 地图（{@link GovDemand} 查 Region）；不得为 null
-   * @param social 社会数据（人口/城市）；不得为 null
    * @param tick 本日 tick（≥ 0）；写进新读数
    * @param daysInYearAtSettlement 本日所在历法年的天数（只接受 365 或 366；调用方按 {@code
    *     CalendarClock.daysInYearAtTick(该日 tick)} 传入）
+   * @param efficiencyByUnit 当日效率表（键 = {@code govState.offices()} 的每个 GOV 单位；app 已算好）；不得为 null、 每个
+   *     office 必须有值（缺 = 契约故障 ERROR + {@link IllegalStateException}）
    * @param oracle 付款回调（{@code requested > 0} 才会被调）；不得为 null
    * @return 新状态 + 当日 dues/signals + {@code changed}（新状态是否与旧状态不等）
    */
   public static Outcome settle(
       GovState govState,
       UnitState units,
-      GameMap map,
-      SocialData social,
       long tick,
       long daysInYearAtSettlement,
+      Map<UnitId, GovEfficiency.Efficiency> efficiencyByUnit,
       PaymentOracle oracle) {
     requireNonNull(govState, "govState");
     requireNonNull(units, "units");
-    requireNonNull(map, "map");
-    requireNonNull(social, "social");
+    requireNonNull(efficiencyByUnit, "efficiencyByUnit");
     requireNonNull(oracle, "oracle");
     if (tick < 0L) {
       // ★ §4.2：请求不合规（tick 为负）= 业务拒绝 ⇒ INFO（用户 2026-10-23：「被拒绝肯定走 INFO」）。
@@ -224,8 +227,22 @@ public final class GovDaily {
         throw new IllegalStateException("gov offices 的单位缺少 GovernmentFormation（状态损坏）: " + unitId);
       }
 
-      Map<HexCoord, GovDemand.HexDemand> demand = GovDemand.of(map, social, unit);
-      GovEfficiency.Efficiency efficiency = GovEfficiency.of(governmentFormation, demand);
+      GovEfficiency.Efficiency efficiency = efficiencyByUnit.get(unitId);
+      if (efficiency == null) {
+        // ★ Z3b 单次计算契约：app 必须为每个 office 提供当日效率结果；缺项 = 装配/契约故障 ⇒ ERROR，不重算、不降级。
+        EventLog.channel(LOG)
+            .error(
+                LogEvent.of(
+                    "GOV_DAILY_EFFICIENCY_MISSING",
+                    GovLogSource.GOV_DAILY,
+                    "reason",
+                    "missing-efficiency",
+                    "day",
+                    tick,
+                    "unit",
+                    unitId.value()));
+        throw new IllegalStateException("gov offices 缺少 app 算好的效率读数（Z3b 单次计算契约故障）: " + unitId);
+      }
 
       Optional<HexCoord> seat = units.effectivePosition(unitId, SimosTimestamp.of(tick));
       if (seat.isEmpty()) {
@@ -317,10 +334,11 @@ public final class GovDaily {
                     moneyShortfall)));
       }
 
-      long securitySupply = GovEfficiency.securitySupply(governmentFormation);
-      long paperworkSupply = GovEfficiency.paperworkSupply(governmentFormation);
-      long securityDemand = GovEfficiency.securityDemand(demand);
-      long paperworkDemand = GovEfficiency.paperworkDemand(demand);
+      // ★ Z3b：供给/需求 evidence 全部取 app 算好的同一份 Efficiency（有效劳动/需求劳动），不再读 stored staff / 建议值。
+      long securitySupply = efficiency.securityEffectiveLaborMilli();
+      long paperworkSupply = efficiency.paperworkEffectiveLaborMilli();
+      long securityDemand = efficiency.securityDemandLaborMilli();
+      long paperworkDemand = efficiency.paperworkDemandLaborMilli();
       if (efficiency.securityCoveragePerMille() < GovRules.COVERAGE_FULL_PER_MILLE) {
         signals.add(
             new SignalDraft(

@@ -2,9 +2,13 @@ package io.mosire.simos.app.logging;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.gov.GovAdministrationPlan;
 import io.mosire.simos.gov.GovDaily;
+import io.mosire.simos.gov.GovDemand;
+import io.mosire.simos.gov.GovEfficiency;
 import io.mosire.simos.gov.GovLog;
 import io.mosire.simos.gov.GovOfficeState;
+import io.mosire.simos.gov.GovRules;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -22,12 +26,14 @@ import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -262,7 +268,7 @@ class GovLoggingTest {
 
   /** 空 offices：只发 START/END（INFO），oracle 一次都不会被调。 */
   private static GovDaily.Outcome settleEmptyGov(long tick) {
-    return GovDaily.settle(
+    return settleLegacy(
         GovState.empty(),
         UnitState.empty(),
         map(),
@@ -283,7 +289,7 @@ class GovLoggingTest {
             ordered(
                 govUnit(U1, gov(staff(1L, 0L, 0L), policy(10L, 0L, 0L, 0L)), Optional.of(H1)),
                 govUnit(U2, gov(staff(1L, 0L, 0L), policy(10L, 0L, 0L, 0L)), Optional.empty())));
-    return GovDaily.settle(
+    return settleLegacy(
         base,
         units,
         map(),
@@ -422,5 +428,71 @@ class GovLoggingTest {
     private void clear() {
       messages.clear();
     }
+  }
+
+  /**
+   * ★ Z3b 编译最小占位（Z6 统一重写测试）：新 {@code GovDaily.settle} 只消费 app 算好的效率表；这里临时复刻旧桥口径构造效率表，
+   * 让本类既有断言代码仍能编译（本类只验 gov 日志门面，不验效率数值）。
+   */
+  private static GovDaily.Outcome settleLegacy(
+      GovState govState,
+      UnitState units,
+      GameMap map,
+      SocialData social,
+      long tick,
+      long daysInYearAtSettlement,
+      GovDaily.PaymentOracle oracle) {
+    long quota =
+        io.mosire.simos.social.provisioning.SocialProvisioning.defaults()
+            .standardLaborMilliHoursPerTick();
+    Map<UnitId, GovEfficiency.Efficiency> byUnit = new LinkedHashMap<>();
+    List<UnitId> ordered = new ArrayList<>(govState.offices().keySet());
+    ordered.sort(Comparator.comparing(UnitId::value));
+    for (UnitId unitId : ordered) {
+      Unit unit = units.units().get(unitId);
+      if (unit == null) {
+        continue;
+      }
+      UnitModule module = unit.module().orElse(null);
+      if (!(module instanceof GovernmentFormation formation)) {
+        continue;
+      }
+      Map<HexCoord, GovDemand.HexDemand> demand = GovDemand.of(map, social, unit);
+      long securityDemand = 0L;
+      long paperworkDemand = 0L;
+      for (GovDemand.HexDemand hexDemand : demand.values()) {
+        securityDemand += hexDemand.security();
+        paperworkDemand += hexDemand.paperwork();
+      }
+      long securitySupply = formation.staff().getOrDefault(StaffRole.YAMEN, 0L) * quota;
+      long paperworkSupply =
+          (formation.staff().getOrDefault(StaffRole.SCRIBE, 0L)
+                  + formation.staff().getOrDefault(StaffRole.POST, 0L))
+              * quota;
+      GovAdministrationPlan plan =
+          new GovAdministrationPlan(
+              Math.multiplyExact(securityDemand, quota),
+              Math.multiplyExact(paperworkDemand, quota),
+              GovAdministrationPlan.DEFAULT_POST_TIERS,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovAdministrationPlan.DEFAULT_SUPERNUMERARY_SQRT_COEFFICIENT);
+      byUnit.put(
+          unitId,
+          GovEfficiency.of(
+              formation,
+              demand,
+              plan,
+              securitySupply,
+              paperworkSupply,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              quota));
+    }
+    return GovDaily.settle(govState, units, tick, daysInYearAtSettlement, byUnit, oracle);
   }
 }

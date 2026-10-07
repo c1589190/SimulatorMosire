@@ -9,6 +9,7 @@ import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.household.GovernmentHouseholdWiring;
 import io.mosire.simos.app.household.GovernmentPostTierConsistency;
+import io.mosire.simos.app.household.GovernmentServiceLaborBridge;
 import io.mosire.simos.app.household.GovernmentServiceUnitConsistency;
 import io.mosire.simos.app.household.HouseholdEconomyProjection;
 import io.mosire.simos.app.household.HouseholdPositionResolver;
@@ -31,10 +32,13 @@ import io.mosire.simos.economy.time.EconomyPopulationTransfer;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
+import io.mosire.simos.gov.GovAdministrationPlan;
 import io.mosire.simos.gov.GovDaily;
 import io.mosire.simos.gov.GovDemand;
 import io.mosire.simos.gov.GovEfficiency;
+import io.mosire.simos.gov.GovEfficiencyModifier;
 import io.mosire.simos.gov.GovOfficeState;
+import io.mosire.simos.gov.GovServiceFlow;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.change.GovChangeSet;
@@ -68,6 +72,7 @@ import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.time.TimeRange;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -153,6 +158,23 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    */
   private final int economyWorkerCount;
 
+  /**
+   * ★★ <b>Z3b：本 tick 的行政效率动态修正注入集</b>（瞬态；键 = GOV unit id，保序 = 注入列表序）。
+   *
+   * <p>与经济的 {@code ProductionEfficiencyModifier} 同形：{@code updateGovEfficiencyModifiers}
+   * <b>替换</b>本集合；日循环 消费一次后清空——机制要连续影响就必须逐 tick 再次注入。它不进 {@code GovState}/变更集/Codec（GM 不可达；无命令、无工具、
+   * 无审批链）。★ 单写者假设：与 {@code EconomySession} 同制，调用与推进由同一线程串行发生。
+   */
+  private final LinkedHashMap<UnitId, GovEfficiencyModifier> govEfficiencyModifiers =
+      new LinkedHashMap<>();
+
+  /**
+   * ★ 最近一次推进看到的 GOV 集合（{@code govState.offices()} 的键；只读快照）——注入时用它判"未知 GOV"；参与者从未推进过 GOV
+   * 世界时为空集（此时注入只做形状/重复校验，GOV 存在性由消费时按当 tick 的 office 集合再判一次，见 {@code
+   * reportUnknownGovEfficiencyModifiers}）。
+   */
+  private Set<UnitId> knownGovUnits = Collections.emptySet();
+
   /** 旧调用点（测试/夹具）兼容：并行度取缺省 {@link ShellConfig#DEFAULT_ECONOMY_WORKER_COUNT}（单线程退化路径）。 */
   public PopulationEconomyTimeParticipant(String mapId) {
     this(mapId, 1);
@@ -168,9 +190,68 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     this.economyWorkerCount = economyWorkerCount;
   }
 
+  /** ★ Z3b：把一份 gov 状态的 office 集合记为"已知 GOV"（排序只为本字段稳定，不影响调用次序）。 */
+  private void rememberKnownGovUnits(GovState govState) {
+    List<UnitId> ordered = new ArrayList<>(govState.offices().keySet());
+    ordered.sort(Comparator.comparing(UnitId::value));
+    this.knownGovUnits =
+        Collections.unmodifiableSet(new LinkedHashSet<>(ordered)); // ★ 冻在赋值处（保序不可变）
+  }
+
   /** ★ R2：本参与者配置的经济结算 worker 数（只读；服务装配日志/诊断）。 */
   public int economyWorkerCount() {
     return economyWorkerCount;
+  }
+
+  /**
+   * ★★ <b>Z3b：替换当日的行政效率动态修正注入集</b>（GM 不可达；无命令/无工具/审批链）。
+   *
+   * <p>具名拒绝（INFO + {@link IllegalArgumentException}，照经济 {@code updateProductionModifiers} 同形）：
+   *
+   * <ul>
+   *   <li>{@code modifiers == null} / 含 null 项 ⇒ 拒；
+   *   <li>同一 GOV 重复出现 ⇒ 拒 {@code duplicate-gov}；
+   *   <li>未知 GOV（上次推进的 office 集合不含它）⇒ 拒 {@code unknown-gov}；★ 参与者尚未推进过 GOV 世界（已知集合为空）时，
+   *       本方法只做形状/重复校验，GOV 存在性推迟到当日消费时按当 tick 的 office 集合判（同样 INFO 具名拒绝、不静默采用）。
+   * </ul>
+   *
+   * <p>四个 ‰ 值只判 {@code ≥ 0}（不封顶）由 {@link GovEfficiencyModifier} 构造期守卫；未注入的 GOV = 四项 1000‰ 中性。
+   * 消费（读走当 tick 用）后集合清空。
+   */
+  public void updateGovEfficiencyModifiers(List<GovEfficiencyModifier> modifiers) {
+    if (modifiers == null) {
+      logGovEfficiencyModifierInjectionRejected("null-modifier-list", null);
+      throw new IllegalArgumentException(
+          "updateGovEfficiencyModifiers 的 modifiers 不得为 null（没有注入用空列表）");
+    }
+    LinkedHashMap<UnitId, GovEfficiencyModifier> replacements = new LinkedHashMap<>();
+    for (GovEfficiencyModifier modifier : modifiers) {
+      if (modifier == null) {
+        logGovEfficiencyModifierInjectionRejected("null-modifier", null);
+        throw new IllegalArgumentException("updateGovEfficiencyModifiers 不得含 null 修正项");
+      }
+      UnitId gov = modifier.gov();
+      if (!knownGovUnits.isEmpty() && !knownGovUnits.contains(gov)) {
+        logGovEfficiencyModifierInjectionRejected("unknown-gov", gov);
+        throw new IllegalArgumentException(
+            "updateGovEfficiencyModifiers 指向未知 GOV（上次推进的 office 集合不含）: " + gov.value());
+      }
+      if (replacements.putIfAbsent(gov, modifier) != null) {
+        logGovEfficiencyModifierInjectionRejected("duplicate-gov", gov);
+        throw new IllegalArgumentException(
+            "updateGovEfficiencyModifiers 同一 GOV 重复注入: " + gov.value());
+      }
+    }
+    govEfficiencyModifiers.clear();
+    govEfficiencyModifiers.putAll(replacements);
+    if (TIME.isDebugEnabled()) {
+      TIME.debug(
+          LogEvent.of(
+              "GOV_EFFICIENCY_MODIFIERS_REPLACED",
+              AppLogSource.GOV_EFFICIENCY_INJECT,
+              "count",
+              replacements.size()));
+    }
   }
 
   @Override
@@ -214,7 +295,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       }
       HouseholdUnitConsistency.requireConsistent(social, units);
       Map<String, Long> staffProjection =
-          HouseholdUnitConsistency.staffHouseholdProjection(social, units);
+          HouseholdUnitConsistency.staffHouseholdProjection(
+              economyBase, social, units, range.from().tick());
       if (!staffProjection.isEmpty()) {
         TIME.info(
             LogEvent.of(
@@ -233,7 +315,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       //   （承诺权威/供给桥属 Z3），不是告警。按 AGENTS §一.9「既有 WARN 不降级、新增日志不滥发 WARN」：
       //   这里每日聚合一条 INFO（保留事件名与 count/first），不用 WARN/DEBUG 淹没日志。
       List<String> staffMismatches =
-          HouseholdUnitConsistency.staffProjectionMismatches(social, units);
+          HouseholdUnitConsistency.staffProjectionMismatches(
+              economyBase, social, units, range.from().tick());
       if (!staffMismatches.isEmpty()) {
         TIME.info(
             LogEvent.of(
@@ -347,6 +430,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       GovernmentPostTierConsistency.requireConsistent(bootstrappedGov, units);
     }
     boolean govActive = !bootstrappedGov.offices().isEmpty();
+    // ★ Z3b：把本轮基态的 office 集合记为"已知 GOV"（注入接口用它判未知 GOV；推进结束后会再刷成本轮结果）。
+    rememberKnownGovUnits(bootstrappedGov);
     if (govActive) {
       if (units == null) {
         throw new IllegalStateException("gov 片有行政读数但 state 里没有 unit 切片（装配故障：行政结算要求 GOV 编制在场）");
@@ -578,8 +663,21 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           //   顺序沿用阶段 11b：先税（收入侧）、后 GovDaily（支出侧）⇒ 当天税可先供当天俸禄；两者都写账户会话，
           //   由本日末尾的 landAccountSession 绝对值一次落回 actor。信号折进 economy.crisisSignals（同 (hex,kind) 覆盖）。
           if (govActive) {
-            Map<UnitId, Long> efficiencyPerMilleByUnit =
-                efficiencyTable(currentGov, units, map, currentSocial, missingAdminRegions);
+            // ★★ Z3b 单次计算：本 tick 的注入集先取走并清空，随后算**唯一一份**效率/流量结果；税与 GovDaily 都消费它。
+            Map<UnitId, GovEfficiencyModifier> dayModifiers = drainGovEfficiencyModifiers();
+            GovEfficiencyDay computed =
+                computeGovEfficiency(
+                    currentGov,
+                    units,
+                    map,
+                    currentSocial,
+                    economy,
+                    dayModifiers,
+                    day,
+                    missingAdminRegions);
+            reportUnknownGovEfficiencyModifiers(dayModifiers, computed.byUnit().keySet(), day);
+            // ★★ 服务流量：进程内投递（不落库、不进库存/市场/ledger）；读不到由读口具名 unavailable。
+            GovServiceFlowFeed.publish(mapId, computed.flows(), day);
             JurisdictionDailyTax.Report tax =
                 JurisdictionDailyTax.collect(
                     stepper.accounts(),
@@ -587,7 +685,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     units,
                     map,
                     day,
-                    efficiencyPerMilleByUnit);
+                    computed.efficiencyPerMilleByUnit());
             for (Map.Entry<HouseholdId, Long> entry : tax.grainByHousehold().entrySet()) {
               if (!stepper.recordTaxPaid(entry.getKey(), entry.getValue())) {
                 // ★ 税流账行缺失是账户面异常（非业务拒绝）：保留 WARN 档，只换新形态与来源字段。
@@ -609,16 +707,18 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 GovDaily.settle(
                     currentGov,
                     units,
-                    map,
-                    currentSocial,
                     day,
                     CalendarClock.julianDefault().daysInYearAtTick(day),
+                    computed.byUnit(),
                     oracle);
             currentGov = settled.next();
             adminTotals.recordGovDaily(settled);
             for (GovDaily.SignalDraft draft : settled.signals()) {
               stepper.putCrisisSignal(toCrisisSignal(draft, day));
             }
+          } else {
+            // 本日没有 GOV 读数：注入集既无法消费也无法验证，直接作废（机制要影响就必须逐 tick 重新注入）。
+            govEfficiencyModifiers.clear();
           }
           // ★★ P4a：通用周期家户库存扣增 —— 在日税的**收入侧**与 GovDaily 的**支出侧**之后、市场报告/日末之前执行。
           //   规则表来自本推进的只读基态（命令只写规则、不写账户）；执行器按绝对世界日无状态到期、逐腿部分支付，
@@ -723,6 +823,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           //   不能因为"它本来就是空的"被差分成 Unchanged 而丢掉（否则首建 GOV 永远不会激活结算）。
           moduleChanges.put(GOV, GovChangeSet.between(govState, currentGov));
         }
+        // ★ Z3b：推进结束后把"已知 GOV"刷成本轮结果——下一 tick 的注入与调用方看到的状态一致。
+        rememberKnownGovUnits(currentGov);
         return new WorldTimeProposal(NAMESPACE, moduleChanges, reads, writes);
       } finally {
         stepper.close();
@@ -887,22 +989,47 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     return base.withOffices(offices);
   }
 
+  /** ★★ Z3b 每 tick 唯一一份计算的完整产物：效率表（GovDaily 消费）+ ‰ 投影（税侧消费）+ 流量（进程内投递）。 */
+  private record GovEfficiencyDay(
+      Map<UnitId, GovEfficiency.Efficiency> byUnit,
+      Map<UnitId, Long> efficiencyPerMilleByUnit,
+      Map<UnitId, GovServiceFlow> flows) {
+
+    private GovEfficiencyDay {
+      byUnit = Collections.unmodifiableMap(new LinkedHashMap<>(byUnit)); // ★ 冻在构造处（保序）
+      efficiencyPerMilleByUnit =
+          Collections.unmodifiableMap(new LinkedHashMap<>(efficiencyPerMilleByUnit));
+      flows = Collections.unmodifiableMap(new LinkedHashMap<>(flows));
+    }
+  }
+
   /**
-   * ★★ <b>算当日 GOV 效率表</b>（单位 → efficiency‰），供辖区日税查表。
+   * ★★ <b>算当日 GOV 效率/流量（唯一供给权威，设计书 §3/§10 C2）</b>：{@code govState.offices()} 里每个 office 取单位上的
+   * {@link GovernmentFormation}（没有 ⇒ 不进表，由 {@link GovDaily#settle} 当场 ERROR），用 {@link GovDemand#of}
+   * 得建议需求（只进 日志/建议），按承诺→两维供给桥（{@link GovernmentServiceLaborBridge}）算两维供给，再按当 tick 注入的四项动态修正调 {@link
+   * GovEfficiency#of} 得唯一一份结果；{@link GovServiceFlow} 从同一份结果派生。
    *
-   * <p>口径：{@code govState.offices()} 里每个 office 先取单位上的 {@link GovernmentFormation}（没有 ⇒ 不进表 =
-   * 税侧整单位跳过）； 再用 {@link GovDemand#of} + {@link GovEfficiency#of} 现算。★ 检查该单位管辖的每个 Region 是否都在 map 里，
-   * 缺的累积进 {@code missingRegions}（只累积、不抛；调用方整轮汇总成一条具名 WARN）。
+   * <p>★ 检查该单位管辖的每个 Region 是否都在 map 里，缺的累积进 {@code missingRegions}（只累积、不抛；调用方整轮汇总成一条具名
+   * WARN——这是预存量口径，不在 Z3b 改动）。
    *
+   * @param modifiers 本 tick 的动态修正注入集（已按当 tick 取走；缺项 = 四项 1000‰ 中性）
    * @param missingRegions 跨日累积的 {@code unit=…,region=…} 明细（调用方只在整轮结束时汇总 WARN 一次）
    */
-  private static Map<UnitId, Long> efficiencyTable(
+  private static GovEfficiencyDay computeGovEfficiency(
       GovState govState,
       UnitState units,
       GameMap map,
       SocialData social,
+      EconomyData economy,
+      Map<UnitId, GovEfficiencyModifier> modifiers,
+      long day,
       Set<String> missingRegions) {
-    Map<UnitId, Long> table = new LinkedHashMap<>();
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(modifiers, "modifiers");
+    Map<UnitId, GovEfficiency.Efficiency> byUnit = new LinkedHashMap<>();
+    Map<UnitId, Long> efficiencyPerMilleByUnit = new LinkedHashMap<>();
+    Map<UnitId, GovServiceFlow> flows = new LinkedHashMap<>();
+    long standardLaborMilliHoursPerTick = social.provisioning().standardLaborMilliHoursPerTick();
     List<UnitId> ordered = new ArrayList<>(govState.offices().keySet());
     ordered.sort(Comparator.comparing(UnitId::value));
     for (UnitId unitId : ordered) {
@@ -912,7 +1039,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       }
       UnitModule module = unit.module().orElse(null);
       if (!(module instanceof GovernmentFormation formation)) {
-        continue; // 没有 GovernmentFormation ⇒ 不进效率表 ⇒ 税侧整单位跳过（无 GOV 不征）。
+        continue; // 没有 GovernmentFormation ⇒ 不进效率表，由 GovDaily.settle 当场 ERROR（无 GOV 不征）。
       }
       unit.jurisdiction()
           .ifPresent(
@@ -923,11 +1050,136 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                   }
                 }
               });
-      Map<HexCoord, GovDemand.HexDemand> demand = GovDemand.of(map, social, unit);
-      GovEfficiency.Efficiency efficiency = GovEfficiency.of(formation, demand);
-      table.put(unitId, efficiency.efficiencyPerMille());
+      Map<HexCoord, GovDemand.HexDemand> suggestedDemand = GovDemand.of(map, social, unit);
+      GovAdministrationPlan plan = govState.administrationPlanOrDefault(unitId);
+      GovernmentServiceLaborBridge.Supply supply =
+          GovernmentServiceLaborBridge.supply(economy, unitId, formation, plan, day);
+      GovEfficiencyModifier modifier = modifiers.get(unitId);
+      long securitySupplyModifier =
+          modifier == null
+              ? GovEfficiencyModifier.NEUTRAL_PER_MILLE
+              : modifier.securitySupplyPerMille();
+      long paperworkSupplyModifier =
+          modifier == null
+              ? GovEfficiencyModifier.NEUTRAL_PER_MILLE
+              : modifier.paperworkSupplyPerMille();
+      long securityDemandModifier =
+          modifier == null
+              ? GovEfficiencyModifier.NEUTRAL_PER_MILLE
+              : modifier.securityDemandPerMille();
+      long paperworkDemandModifier =
+          modifier == null
+              ? GovEfficiencyModifier.NEUTRAL_PER_MILLE
+              : modifier.paperworkDemandPerMille();
+      GovEfficiency.Efficiency efficiency =
+          GovEfficiency.of(
+              formation,
+              suggestedDemand,
+              plan,
+              supply.securityLaborMilli(),
+              supply.paperworkLaborMilli(),
+              securitySupplyModifier,
+              paperworkSupplyModifier,
+              securityDemandModifier,
+              paperworkDemandModifier,
+              standardLaborMilliHoursPerTick);
+      if (GovEfficiency.anySupplyZero(supply.securityLaborMilli(), supply.paperworkLaborMilli())) {
+        // ★ §3：无挂岗位家户（无承诺）⇒ 该维供给 0、效率 0，具名 INFO（不是静默 0）。
+        TIME.info(
+            LogEvent.of(
+                "GOV_EFFICIENCY_ZERO_SUPPLY",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                day,
+                "unit",
+                unitId.value(),
+                "securitySupplyLaborMilli",
+                supply.securityLaborMilli(),
+                "paperworkSupplyLaborMilli",
+                supply.paperworkLaborMilli(),
+                "reason",
+                "no-posted-household-commitment"));
+      }
+      if (TIME.isDebugEnabled()) {
+        TIME.debug(
+            LogEvent.of(
+                "GOV_SERVICE_SUPPLY_COMPUTED",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                day,
+                "unit",
+                unitId.value(),
+                "securityPlannedLaborMilli",
+                plan.securityPlannedLaborMilli(),
+                "paperworkPlannedLaborMilli",
+                plan.paperworkPlannedLaborMilli(),
+                "securitySupplyLaborMilli",
+                supply.securityLaborMilli(),
+                "paperworkSupplyLaborMilli",
+                supply.paperworkLaborMilli(),
+                "securityDemandLaborMilli",
+                efficiency.securityDemandLaborMilli(),
+                "paperworkDemandLaborMilli",
+                efficiency.paperworkDemandLaborMilli(),
+                "modifierSource",
+                modifier == null ? "-" : modifier.source(),
+                "securityCoveragePerMille",
+                efficiency.securityCoveragePerMille(),
+                "paperworkCoveragePerMille",
+                efficiency.paperworkCoveragePerMille(),
+                "efficiencyPerMille",
+                efficiency.efficiencyPerMille()));
+      }
+      byUnit.put(unitId, efficiency);
+      efficiencyPerMilleByUnit.put(unitId, efficiency.efficiencyPerMille());
+      flows.put(
+          unitId,
+          GovServiceFlow.of(
+              unitId, day, supply.securityLaborMilli(), supply.paperworkLaborMilli(), efficiency));
     }
-    return table;
+    return new GovEfficiencyDay(byUnit, efficiencyPerMilleByUnit, flows);
+  }
+
+  /** ★ 取走本 tick 的注入集并清空（"消费后清空"；未再注入的下一日回到 1000‰ 中性）。 */
+  private Map<UnitId, GovEfficiencyModifier> drainGovEfficiencyModifiers() {
+    if (govEfficiencyModifiers.isEmpty()) {
+      return Map.of();
+    }
+    LinkedHashMap<UnitId, GovEfficiencyModifier> drained =
+        new LinkedHashMap<>(govEfficiencyModifiers);
+    govEfficiencyModifiers.clear();
+    return Collections.unmodifiableMap(drained); // ★ 冻在返回处（保序）
+  }
+
+  /** ★ 注入集里指向"本 tick 无效率结果（非 office/无编制/单位不存在）"的 GOV ⇒ 具名 INFO 拒绝，不静默采用。 */
+  private static void reportUnknownGovEfficiencyModifiers(
+      Map<UnitId, GovEfficiencyModifier> modifiers, Set<UnitId> activeGovs, long day) {
+    for (UnitId gov : modifiers.keySet()) {
+      if (!activeGovs.contains(gov)) {
+        TIME.info(
+            LogEvent.of(
+                "GOV_EFFICIENCY_MODIFIER_REJECTED",
+                AppLogSource.DAILY_LOOP,
+                "reason",
+                "unknown-gov",
+                "day",
+                day,
+                "gov",
+                gov.value()));
+      }
+    }
+  }
+
+  /** ★ 注入接口的具名拒绝（无 day 上下文 ⇒ SYSTEM 来源 + INFO，不编造 tick）。 */
+  private static void logGovEfficiencyModifierInjectionRejected(String reason, UnitId gov) {
+    TIME.info(
+        LogEvent.of(
+            "GOV_EFFICIENCY_MODIFIER_REJECTED",
+            AppLogSource.GOV_EFFICIENCY_INJECT,
+            "reason",
+            reason,
+            "gov",
+            gov == null ? "-" : gov.value()));
   }
 
   /** ★ 把 {@link GovDaily.SignalDraft} 折成 {@link HexCrisisSignal}；kind 字符串 → 枚举的映射只此一处。 */

@@ -32,35 +32,39 @@ class GovEfficiencyTest {
 
   @Test
   void fullStaffGivesNoBonusAndEfficiencyOneThousand() {
-    GovEfficiency.Efficiency efficiency = GovEfficiency.of(gov(200L, 100L, 0L), demand(200L, 100L));
+    GovEfficiency.Efficiency efficiency =
+        legacyEfficiencyOf(gov(200L, 100L, 0L), demand(200L, 100L));
 
     assertThat(efficiency).isEqualTo(new GovEfficiency.Efficiency(1000L, 1000L, 0L, 1000L));
   }
 
   @Test
   void tenPercentOverstaffGivesFiftyPerMilleBonus() {
-    GovEfficiency.Efficiency efficiency = GovEfficiency.of(gov(220L, 110L, 0L), demand(200L, 100L));
+    GovEfficiency.Efficiency efficiency =
+        legacyEfficiencyOf(gov(220L, 110L, 0L), demand(200L, 100L));
 
     assertThat(efficiency).isEqualTo(new GovEfficiency.Efficiency(1000L, 1000L, 50L, 1050L));
   }
 
   @Test
   void twentyPercentOverstaffGivesSixtySixPerMilleBonus() {
-    GovEfficiency.Efficiency efficiency = GovEfficiency.of(gov(240L, 120L, 0L), demand(200L, 100L));
+    GovEfficiency.Efficiency efficiency =
+        legacyEfficiencyOf(gov(240L, 120L, 0L), demand(200L, 100L));
 
     assertThat(efficiency).isEqualTo(new GovEfficiency.Efficiency(1000L, 1000L, 66L, 1066L));
   }
 
   @Test
   void coveringOnlyOneDimensionLeavesEfficiencyAtCoverageMinimum() {
-    GovEfficiency.Efficiency efficiency = GovEfficiency.of(gov(150L, 100L, 0L), demand(200L, 100L));
+    GovEfficiency.Efficiency efficiency =
+        legacyEfficiencyOf(gov(150L, 100L, 0L), demand(200L, 100L));
 
     assertThat(efficiency).isEqualTo(new GovEfficiency.Efficiency(750L, 1000L, 0L, 750L));
   }
 
   @Test
   void emptyDemandIsFullCoverageWithNoBonus() {
-    GovEfficiency.Efficiency efficiency = GovEfficiency.of(gov(0L, 0L, 0L), Map.of());
+    GovEfficiency.Efficiency efficiency = legacyEfficiencyOf(gov(0L, 0L, 0L), Map.of());
 
     assertThat(efficiency).isEqualTo(new GovEfficiency.Efficiency(1000L, 1000L, 0L, 1000L));
   }
@@ -69,20 +73,22 @@ class GovEfficiencyTest {
   void asymmetricSurplusIsDemandWeighted() {
     // 治安：200/200 超 20；文书：100/100 超 30；总剩余 50 / 总需求 300 ⇒ s=floor(100×50/300)=16
     // ⇒ bonus=floor(100×16/(16+10))=61 ⇒ efficiency=floor(1000×1061/1000)=1061。
-    GovEfficiency.Efficiency efficiency = GovEfficiency.of(gov(220L, 90L, 40L), demand(200L, 100L));
+    GovEfficiency.Efficiency efficiency =
+        legacyEfficiencyOf(gov(220L, 90L, 40L), demand(200L, 100L));
 
     assertThat(efficiency).isEqualTo(new GovEfficiency.Efficiency(1000L, 1000L, 61L, 1061L));
   }
 
   @Test
   void paperworkSupplyIsScribePlusPost() {
-    GovEfficiency.Efficiency efficiency = GovEfficiency.of(gov(200L, 60L, 40L), demand(200L, 100L));
+    GovEfficiency.Efficiency efficiency =
+        legacyEfficiencyOf(gov(200L, 60L, 40L), demand(200L, 100L));
 
     assertThat(efficiency)
         .as("文书供给 = SCRIBE 60 + POST 40 = 100，正好满编")
         .isEqualTo(new GovEfficiency.Efficiency(1000L, 1000L, 0L, 1000L));
 
-    GovEfficiency.Efficiency missingRoles = GovEfficiency.of(gov(0L, 0L, 0L), demand(200L, 100L));
+    GovEfficiency.Efficiency missingRoles = legacyEfficiencyOf(gov(0L, 0L, 0L), demand(200L, 100L));
     assertThat(missingRoles)
         .as("缺角色 = 0 供给：治安覆盖 0、文书覆盖 0")
         .isEqualTo(new GovEfficiency.Efficiency(0L, 0L, 0L, 0L));
@@ -91,7 +97,8 @@ class GovEfficiencyTest {
   @Test
   void oneDimensionEmptySkipsItsSurplusInBonus() {
     // 治安有需求且供给 220（剩余 20）；文书需求 0、供给给 1000——需求 0 维的剩余不得算进加成。
-    GovEfficiency.Efficiency efficiency = GovEfficiency.of(gov(220L, 1000L, 0L), demand(200L, 0L));
+    GovEfficiency.Efficiency efficiency =
+        legacyEfficiencyOf(gov(220L, 1000L, 0L), demand(200L, 0L));
 
     assertThat(efficiency)
         .as("总需求 200、总剩余 20 ⇒ s=floor(100×20/200)=10 ⇒ bonus=50、效率 1050；文书空需求不计其剩余")
@@ -100,7 +107,8 @@ class GovEfficiencyTest {
 
   @Test
   void bonusIsZeroUnlessBothDimensionsAreFullyCovered() {
-    GovEfficiency.Efficiency efficiency = GovEfficiency.of(gov(150L, 130L, 0L), demand(200L, 100L));
+    GovEfficiency.Efficiency efficiency =
+        legacyEfficiencyOf(gov(150L, 130L, 0L), demand(200L, 100L));
 
     assertThat(efficiency.securityCoveragePerMille()).isEqualTo(750L);
     assertThat(efficiency.paperworkCoveragePerMille()).isEqualTo(1000L);
@@ -111,7 +119,7 @@ class GovEfficiencyTest {
   @Test
   void coverageIsCappedAtOneThousandEvenWhenSupplyExceedsDemand() {
     GovEfficiency.Efficiency efficiency =
-        GovEfficiency.of(gov(2000L, 1000L, 0L), demand(200L, 100L));
+        legacyEfficiencyOf(gov(2000L, 1000L, 0L), demand(200L, 100L));
 
     assertThat(efficiency.securityCoveragePerMille())
         .as("min(1000, supply×1000/demand)")
@@ -124,10 +132,10 @@ class GovEfficiencyTest {
 
   @Test
   void nullGovOrDemandThrows() {
-    assertThatThrownBy(() -> GovEfficiency.of(null, demand(200L, 100L)))
+    assertThatThrownBy(() -> legacyEfficiencyOf(null, demand(200L, 100L)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("governmentFormation 不得为 null");
-    assertThatThrownBy(() -> GovEfficiency.of(gov(1L, 1L, 0L), null))
+    assertThatThrownBy(() -> legacyEfficiencyOf(gov(1L, 1L, 0L), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("demand 不得为 null");
   }
@@ -176,5 +184,38 @@ class GovEfficiencyTest {
     Map<HexCoord, GovDemand.HexDemand> demand = new LinkedHashMap<>();
     demand.put(H1, new GovDemand.HexDemand(security, paperwork));
     return demand;
+  }
+
+  /**
+   * ★ Z3b 编译最小占位（Z6 统一重写测试）：旧 2 参桥 {@code GovEfficiency.of(formation, demand)} 已从生产代码删除，
+   * 这里在测试侧临时复刻它的旧口径（建议需求 × 标准定额当计划、stored staff × 标准定额当供给、四项修正 1000‰、k=1）， 让既有断言代码仍能编译；运行期期望值按 Z2
+   * 台账本来就需 Z6 重算。
+   */
+  private static GovEfficiency.Efficiency legacyEfficiencyOf(
+      GovernmentFormation formation, Map<HexCoord, GovDemand.HexDemand> demand) {
+    long quota =
+        io.mosire.simos.social.provisioning.SocialProvisioning.defaults()
+            .standardLaborMilliHoursPerTick();
+    GovAdministrationPlan plan =
+        new GovAdministrationPlan(
+            Math.multiplyExact(GovEfficiency.securityDemand(demand), quota),
+            Math.multiplyExact(GovEfficiency.paperworkDemand(demand), quota),
+            GovAdministrationPlan.DEFAULT_POST_TIERS,
+            GovRules.PER_MILLE,
+            GovRules.PER_MILLE,
+            GovRules.PER_MILLE,
+            GovRules.PER_MILLE,
+            GovAdministrationPlan.DEFAULT_SUPERNUMERARY_SQRT_COEFFICIENT);
+    return GovEfficiency.of(
+        formation,
+        demand,
+        plan,
+        Math.multiplyExact(GovEfficiency.securitySupply(formation), quota),
+        Math.multiplyExact(GovEfficiency.paperworkSupply(formation), quota),
+        GovRules.PER_MILLE,
+        GovRules.PER_MILLE,
+        GovRules.PER_MILLE,
+        GovRules.PER_MILLE,
+        quota);
   }
 }

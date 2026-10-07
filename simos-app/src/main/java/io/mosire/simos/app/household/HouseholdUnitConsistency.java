@@ -1,5 +1,6 @@
 package io.mosire.simos.app.household;
 
+import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -206,14 +207,23 @@ public final class HouseholdUnitConsistency {
   }
 
   /**
-   * ★ <b>岗位家户 staff 投影读数（C4，Z4 收拢到 {@link GovernmentFormation#projectedStaff}）</b>：某 GOV 的 {@code
-   * governmentPostsOfHousehold} 非空时，按角色聚合这些家户的**人口**（人），作为 {@code staff} 的派生投影读数。
+   * ★ <b>岗位家户 staff 投影读数（C4，Z4 收拢到 {@link GovernmentFormation#projectedStaff}；Z3b 改喂承诺）</b>：某 GOV 的
+   * {@code governmentPostsOfHousehold} 非空时，按角色聚合这些家户的 {@code GOV_SERVICE} 承诺劳动折成的**全职人数当量** （{@code
+   * ⌊承诺 ÷ 标准定额⌋}），作为 {@code staff} 的派生投影读数。
    *
-   * <p>★ 本方法**只读、不写状态**：stored {@code staff} 是 legacy 缓存（Z4 起 posts 非空时所有直写口具名拒）；权威口径 = 岗位家户人口（Z3
-   * 接入 {@code GOV_SERVICE} 承诺后改喂承诺量，本方法签名不变）。返回键 = {@code <unitId>:<role>}，按 unit id 升序 +
-   * 角色首次出现序（确定性）。
+   * <p>★★ <b>为什么改喂承诺而不是人口</b>：设计书 §4.3 要求 {@code staff} 由承诺/岗位户现算（C4 一处真相）；Z4 的临时口径是家户人口，承诺→供给桥落地
+   * （Z3b）后唯一权威是 {@code GOV_SERVICE} 承诺。折算走 C8 唯一权威 {@code SocialProvisioning}，不另造系数。
+   *
+   * <p>★ 本方法**只读、不写状态**：stored {@code staff} 是 legacy 缓存（Z4 起 posts 非空时所有直写口具名拒）。返回键 = {@code
+   * <unitId>:<role>}，按 unit id 升序 + 角色首次出现序（确定性）。
+   *
+   * @param economy 经济切片（读 {@code GOV_SERVICE} 承诺）；不得为 null
+   * @param social 社会数据（读 C8 标准定额）；不得为 null
+   * @param day 世界日（只进契约故障日志上下文）
    */
-  public static Map<String, Long> staffHouseholdProjection(SocialData social, UnitState units) {
+  public static Map<String, Long> staffHouseholdProjection(
+      EconomyData economy, SocialData social, UnitState units, long day) {
+    Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(units, "units");
     Map<String, Long> projection = new LinkedHashMap<>();
@@ -223,7 +233,7 @@ public final class HouseholdUnitConsistency {
         continue;
       }
       Map<StaffRole, Long> byRole =
-          governmentFormation.projectedStaff(household -> social.householdPopulation(household));
+          committedStaffProjection(economy, social, unit, governmentFormation, day);
       for (Map.Entry<StaffRole, Long> entry : byRole.entrySet()) {
         projection.put(unit.id().value() + ":" + entry.getKey().name(), entry.getValue());
       }
@@ -232,12 +242,14 @@ public final class HouseholdUnitConsistency {
   }
 
   /**
-   * ★★ <b>C4 只读校核：posts 非空的 GOV，stored {@code staff} 与岗位家户投影不一致的具名清单</b>（不抛、不写）。
+   * ★★ <b>C4 只读校核：posts 非空的 GOV，stored {@code staff} 与岗位家户的承诺投影不一致的具名清单</b>（不抛、不写）。
    *
    * <p>返回 "unit=… stored=… projected=…" 文本（按 unit id 稳定序）；空表 = 一致或无 posts GOV。这条在 app 组合根每轮推进前跑，
-   * 不一致发具名 WARN（Z4 的 staff 是 legacy 缓存 + 投影双读；Z3 接入承诺后由 bridge 以投影/承诺为唯一供给）。
+   * 不一致是**预期过渡态**（Z4 的 staff 是 legacy 缓存；Z3b 起权威是 {@code GOV_SERVICE} 承诺），调用方按 INFO 聚合记录、不告警。
    */
-  public static List<String> staffProjectionMismatches(SocialData social, UnitState units) {
+  public static List<String> staffProjectionMismatches(
+      EconomyData economy, SocialData social, UnitState units, long day) {
+    Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(units, "units");
     List<String> out = new ArrayList<>();
@@ -247,7 +259,7 @@ public final class HouseholdUnitConsistency {
         continue;
       }
       Map<StaffRole, Long> projected =
-          formation.projectedStaff(household -> social.householdPopulation(household));
+          committedStaffProjection(economy, social, unit, formation, day);
       if (!formation.staff().equals(projected)) {
         out.add(
             "unit="
@@ -259,6 +271,21 @@ public final class HouseholdUnitConsistency {
       }
     }
     return List.copyOf(out);
+  }
+
+  /**
+   * 一个 GOV 的岗位家户承诺投影：逐岗位家户把"该户对本 GOV 的 {@code GOV_SERVICE} 承诺劳动"折成全职人数当量，再按 role 聚合 （聚合公式唯一在 {@link
+   * GovernmentFormation#projectedStaff}）。
+   */
+  private static Map<StaffRole, Long> committedStaffProjection(
+      EconomyData economy, SocialData social, Unit unit, GovernmentFormation formation, long day) {
+    long standardLabor = social.provisioning().standardLaborMilliHoursPerTick();
+    Map<HouseholdId, Long> committed =
+        GovernmentServiceLaborBridge.committedLaborByHousehold(economy, unit.id(), day);
+    return formation.projectedStaff(
+        household ->
+            GovernmentServiceLaborBridge.personEquivalents(
+                committed.getOrDefault(household, 0L), standardLabor, unit.id(), day));
   }
 
   /**

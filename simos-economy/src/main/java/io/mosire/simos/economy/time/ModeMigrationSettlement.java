@@ -22,6 +22,7 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
@@ -274,6 +275,14 @@ public final class ModeMigrationSettlement {
     for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
       if (laborCommitment.household().equals(source) && laborCommitment.laborMilli() > 0L) {
         sourceLaborCommitments.put(laborCommitment.id(), laborCommitment);
+      }
+    }
+    // ★★ Z3b/C7：GOV_SERVICE 承诺不可缩、最高优先级 —— 迁移会按人口比例缩/搬动劳动配额，对 GOV_SERVICE 是静默契约破坏
+    //   （Z3a 遗留）。官吏户随 GOV 单位（unit.PlaceAt）而不是生产方式迁移；一旦计划要搬它，整次迁移具名 ERROR + fail-closed，
+    //   绝不缩小、绝不改 activity 到目标生产 unit。
+    for (HouseholdLaborCommitment govService : sourceLaborCommitments.values()) {
+      if (govService.kind() == LaborCommitmentKind.GOV_SERVICE) {
+        refuseGovServiceMigration(source, govService, day);
       }
     }
     List<LaborAllocationId> sourceAllocationIds = new ArrayList<>(sourceLaborCommitments.keySet());
@@ -1044,6 +1053,37 @@ public final class ModeMigrationSettlement {
             "");
     enterprises.put(organizationId, enterprise);
     return unitId;
+  }
+
+  /** ★ Z3b/C7：迁移计划要搬动 GOV_SERVICE 承诺家户 ⇒ 具名 ERROR（先落证据）再 fail-closed。 */
+  private static void refuseGovServiceMigration(
+      HouseholdId source, HouseholdLaborCommitment commitment, long day) {
+    EventLog.channel(EconomyLog.migration())
+        .error(
+            LogEvent.of(
+                "MIGRATION_GOV_SERVICE_COMMITMENT_REFUSED",
+                EconomyLogSource.ECONOMY_MIGRATION,
+                "reason",
+                "gov-service-commitment-cannot-migrate",
+                "day",
+                day,
+                "source",
+                source.value(),
+                "allocation",
+                commitment.id().value(),
+                "activity",
+                commitment.activity(),
+                "laborMilli",
+                commitment.laborMilli()));
+    throw new IllegalStateException(
+        "迁移不得搬动 GOV_SERVICE 承诺家户（C7：不可缩、最高优先级；官吏户随 GOV 单位而不是生产方式迁移）: source="
+            + source
+            + " allocation="
+            + commitment.id()
+            + " activity="
+            + commitment.activity()
+            + " laborMilli="
+            + commitment.laborMilli());
   }
 
   // ── 迁移原子 —— 劳动配额/货币/债务 ───────────────────────────────────────────────────────

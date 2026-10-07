@@ -1,7 +1,6 @@
 package io.mosire.simos.gov;
 
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.social.provisioning.SocialProvisioning;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.util.log.EventLog;
@@ -14,7 +13,8 @@ import org.slf4j.Logger;
  * 行政效率（阶段 11a；Z2 换冻结两维公式，设计书 §3）：由编制计划与两维承诺劳动算出<b>两维满足率 + 两维最终效率 + 总效率</b>。
  *
  * <p>★★ <b>Z2 冻结公式（逐项）</b>：每维 {@code d ∈ {治安, 公文}}，{@code P_d} = 编制计划需求量（毫小时/tick）、{@code S_d} =
- * 实际承诺劳动（毫小时/tick）、{@code 定额} = {@link SocialProvisioning#standardLaborMilliHoursPerTick()}（C8
+ * 实际承诺劳动（毫小时/tick）、{@code 定额} = {@link
+ * io.mosire.simos.social.provisioning.SocialProvisioning#standardLaborMilliHoursPerTick()}（C8
  * 唯一权威）、 {@code k} = {@link GovAdministrationPlan#supernumerarySqrtCoefficient()}：
  *
  * <pre>{@code
@@ -39,13 +39,15 @@ import org.slf4j.Logger;
  * </ul>
  *
  * <p>★★ <b>新签名（Z3 消费者用）</b>：{@link #of(GovernmentFormation, Map, GovAdministrationPlan, long, long,
- * long, long, long, long, long)}。入参 = 编制（身份/兼容用，公式不读 {@code staff}）、逐格需求（<b>供建议值/告警</b>，
+ * long, long, long, long, long)}。入参 = 编制（身份/兼容用，公式不读 {@code staff}）、逐格需求（<b>供建议值/日志</b>，
  * 公式按冻结口径只用计划 {@code P_d}）、编制计划、两维供给承诺劳动、两维动态修正（供给/需求各二，共 4 个）、标准劳动系数**值**（毫小时/tick；Z3 消费者从当前世界
  * {@code SocialData.provisioning()} 的 C8 唯一权威读出后传入——纯函数只拿值，不持有 provisioning 表）。
  *
- * <p>★★ <b>过渡桥（Z3 删除/改）</b>：{@link #of(GovernmentFormation, Map)} 旧签名保留给 {@link GovDaily} 与 app
- * 参与者现有调用点： plan 取 {@link GovDemand} 建议值 × 标准系数、供给取 {@code staff × 标准系数} 的旧投影、四个修正 1000‰、{@code
- * k=1}。数学上岗位 定额在桥里前后同乘 ⇒ 结果与所选定额无关；它只为“编译 + 承诺→供给桥接通前的过渡行为”，<b>Z3 切换到承诺劳动后删或改成只走新签名</b>。
+ * <p>★★ <b>Z3b 起没有旧 2 参桥</b>：旧 {@code of(formation, demand)} 过渡桥已删除；唯一供给权威是 app 的承诺→两维供给桥 （{@code
+ * GovServiceFlow}/效率表），{@link GovDaily} 只消费 app 算好的 {@link Efficiency} 结果、不再自己重算。
+ *
+ * <p>★ <b>返回值里的两维有效劳动/两维需求劳动</b>（Z3b 追加）：{@link Efficiency#securityEffectiveLaborMilli()} 等四个字段让
+ * {@link GovServiceFlow} 与 {@link GovDaily} 的信号 evidence 都从<b>同一份</b>计算结果读数，不在第二处重算。
  *
  * <p>★ <b>手算例（新公式，定额 16,000 毫小时/tick、k=1、四个修正 1000‰）</b>：计划 治安 200 人当量 = 3,200,000、公文 100 人当量 =
  * 1,600,000；供给 治安 220 人当量 = 3,520,000、公文 110 人当量 = 1,760,000。治安：超额 320,000 ÷ 16,000 = 20 ⇒ ⌊√20⌋ =
@@ -58,71 +60,13 @@ public final class GovEfficiency {
 
   private static final Logger LOG = GovLog.efficiency();
 
-  /**
-   * 过渡桥的定额值：旧 2 参签名没有 {@code SocialData}，只能取社会侧权威默认表（{@link SocialProvisioning#defaults()}）的 {@link
-   * SocialProvisioning#standardLaborMilliHoursPerTick()}。这里**只缓存一个 long 值**，不持有整张 provisioning 表
-   * （控制方 2026-10-23 裁定：纯函数只拿值）。
-   *
-   * <p>★ 为什么这样仍安全：桥把 plan 与 supply 都按同一 {@code 定额} 折算，公式里的比值与开方“岗位当量”都令定额相消 ⇒
-   * 桥的结果与选哪份定额无关；真正使用当前世界权威的是 Z3 的新签名调用点（由调用方传入该值）。
-   */
-  private static final long LEGACY_STANDARD_LABOR_MILLI_HOURS_PER_TICK =
-      SocialProvisioning.defaults().standardLaborMilliHoursPerTick();
-
   private GovEfficiency() {}
 
   /**
-   * ★★ <b>过渡桥（旧签名；Z3 切换到承诺劳动后删/改）</b>：给 {@link GovDaily} 与 app 参与者现有调用点保持编译与过渡行为。
-   *
-   * @param governmentFormation 编制（旧投影的供给来源：{@code staff × 标准系数}）；不得为 null
-   * @param demand 逐格需求（{@link GovDemand#of} 的输出；空表 = 无需求）；不得为 null、键值不得为 null
-   * @return 新公式读数（四个修正 1000‰、{@code k=1}；两维效率按新口径，不再有 min/旧超编加成）
-   */
-  public static Efficiency of(
-      GovernmentFormation governmentFormation, Map<HexCoord, GovDemand.HexDemand> demand) {
-    requireGovernmentFormation(governmentFormation);
-    requireDemand(demand);
-    try {
-      long standardLaborMilliHoursPerTick = LEGACY_STANDARD_LABOR_MILLI_HOURS_PER_TICK;
-      long securityPlanLaborMilli =
-          Math.multiplyExact(securityDemand(demand), standardLaborMilliHoursPerTick);
-      long paperworkPlanLaborMilli =
-          Math.multiplyExact(paperworkDemand(demand), standardLaborMilliHoursPerTick);
-      GovAdministrationPlan plan =
-          new GovAdministrationPlan(
-              securityPlanLaborMilli,
-              paperworkPlanLaborMilli,
-              GovAdministrationPlan.DEFAULT_POST_TIERS,
-              GovRules.PER_MILLE,
-              GovRules.PER_MILLE,
-              GovRules.PER_MILLE,
-              GovRules.PER_MILLE,
-              GovAdministrationPlan.DEFAULT_SUPERNUMERARY_SQRT_COEFFICIENT);
-      long securitySupplyLaborMilli =
-          Math.multiplyExact(securitySupply(governmentFormation), standardLaborMilliHoursPerTick);
-      long paperworkSupplyLaborMilli =
-          Math.multiplyExact(paperworkSupply(governmentFormation), standardLaborMilliHoursPerTick);
-      return of(
-          governmentFormation,
-          demand,
-          plan,
-          securitySupplyLaborMilli,
-          paperworkSupplyLaborMilli,
-          GovRules.PER_MILLE,
-          GovRules.PER_MILLE,
-          GovRules.PER_MILLE,
-          GovRules.PER_MILLE,
-          standardLaborMilliHoursPerTick);
-    } catch (ArithmeticException e) {
-      throw contractFailure("legacy-bridge-arithmetic-overflow", e);
-    }
-  }
-
-  /**
-   * ★★ <b>Z2 冻结的两维效率公式（纯函数）</b>。
+   * ★★ <b>Z2 冻结的两维效率公式（纯函数；Z3b 起返回值多带四个计算量）</b>。
    *
    * @param governmentFormation 编制（<b>身份/兼容用</b>：新公式不读 {@code staff}，它是 Z3 对齐调用方与旧口径的载体）；不得为 null
-   * @param suggestedDemand 逐格需求（{@link GovDemand#of} 的输出；<b>供 Z3 建议值/告警</b>，公式按冻结口径只用计划 {@code
+   * @param suggestedDemand 逐格需求（{@link GovDemand#of} 的输出；<b>供建议值/DEBUG 日志</b>，公式按冻结口径只用计划 {@code
    *     P_d}）；不得为 null、键值不得为 null
    * @param plan 行政编制计划（{@code P_d}/档位/四个静态修正/{@code k}）；不得为 null
    * @param securitySupplyLaborMilli 治安维实际承诺劳动（毫小时/tick；≥ 0）
@@ -132,9 +76,9 @@ public final class GovEfficiency {
    * @param securityDemandDynamicModifierPerMille 治安需求动态修正（‰；≥ 0）
    * @param paperworkDemandDynamicModifierPerMille 公文需求动态修正（‰；≥ 0）
    * @param standardLaborMilliHoursPerTick 标准劳动系数（岗位定额；毫小时/tick）。**值**必须来自当前世界 C8 唯一权威 {@link
-   *     SocialProvisioning#standardLaborMilliHoursPerTick()}（Z3 消费者从 {@code
-   *     SocialData.provisioning()} 读出后传入；本函数不持有 provisioning 表，控制方 2026-10-23 裁定）
-   * @return 两维满足率 + 两维最终效率 + 总效率（全部 ≥ 0、不封顶）
+   *     io.mosire.simos.social.provisioning.SocialProvisioning#standardLaborMilliHoursPerTick()}（Z3
+   *     消费者从 {@code SocialData.provisioning()} 读出后传入；本函数不持有 provisioning 表，控制方 2026-10-23 裁定）
+   * @return 两维满足率 + 两维最终效率 + 总效率 + 两维有效劳动 + 两维需求劳动（全部 ≥ 0、不封顶）
    * @throws IllegalArgumentException 入参为 null、逐格需求表形状坏（编程错误）
    * @throws IllegalStateException 供给/动态修正为负、标准系数非正、算术溢出等<b>契约故障</b>（已发具名 ERROR，fail-closed）
    */
@@ -250,7 +194,11 @@ public final class GovEfficiency {
         0L, // legacy：Z2 新状态恒 0
         efficiencyPerMille,
         securityEfficiencyPerMille,
-        paperworkEfficiencyPerMille);
+        paperworkEfficiencyPerMille,
+        securityEffectiveLaborMilli,
+        paperworkEffectiveLaborMilli,
+        securityDemandLaborMilli,
+        paperworkDemandLaborMilli);
   }
 
   /** 需求劳动 = {@code P × 需求静态‰/1000 × 需求动态‰/1000}（两次整数向下取整，照冻结公式的书写序）。 */
@@ -432,15 +380,21 @@ public final class GovEfficiency {
   }
 
   /**
-   * 行政效率读数（Z2）：<b>两维满足率 + 两维最终效率 + 总效率</b>，全部 per-mille、全部 ≥ 0、<b>全部不封顶</b>（C3）。
+   * 行政效率读数（Z2 六读数 + Z3b 四计算量）：<b>两维满足率 + 两维最终效率 + 总效率</b>，外加<b>两维有效劳动 + 两维需求劳动</b>； 全部 ≥ 0、
+   * <b>全部不封顶</b>（C3）。
    *
    * <p>★ <b>字段语义</b>：{@link #securityCoveragePerMille()} / {@link #paperworkCoveragePerMille()} =
    * 两维满足率（沿用旧 {@code coverage} 字段名）；{@link #securityEfficiencyPerMille()} / {@link
    * #paperworkEfficiencyPerMille()} = 两维最终效率； {@link #efficiencyPerMille()} = 总效率 = 两维最终效率相乘 ÷
    * 1000；{@link #bonusPerMille()} = <b>legacy</b>（Z2 新公式恒 0，仅为旧档/旧构造点保留）。
    *
-   * <p>★ <b>构造期校验</b>：六个字段都只要求 ≥ 0（Z2 拆掉 1000/1100/100 上界）；不静默钳制。旧 4 参构造器保留（两个新维效率取 0）， 免得 Z6
-   * 既有构造点全改；新调用点必须用 6 参 canonical 构造器。
+   * <p>★★ <b>Z3b 追加的四个字段</b>：{@link #securityEffectiveLaborMilli()} / {@link
+   * #paperworkEffectiveLaborMilli()} = 两维<b>有效劳动</b>（含超编开方；{@link GovServiceFlow} 的服务产出取它）； {@link
+   * #securityDemandLaborMilli()} / {@link #paperworkDemandLaborMilli()} = 两维<b>需求劳动</b>（计划 {@code
+   * P_d} × 需求静态/动态修正）。{@link GovServiceFlow} 与 {@link GovDaily} 的缺口信号 evidence 都从这同一份结果读数， 不在第二处重算。
+   *
+   * <p>★ <b>构造期校验</b>：十个字段都只要求 ≥ 0（Z2 拆掉 1000/1100/100 上界）；不静默钳制。旧 6 参/4 参构造器保留（Z3b 追加的四个字段取
+   * 0），免得既有编译点全改；新调用点应使用 10 参 canonical 构造器。
    *
    * @param securityCoveragePerMille 治安满足率（‰；≥ 0，不封顶）
    * @param paperworkCoveragePerMille 公文满足率（‰；≥ 0，不封顶）
@@ -448,6 +402,10 @@ public final class GovEfficiency {
    * @param efficiencyPerMille 总行政效率（‰；≥ 0，不封顶）
    * @param securityEfficiencyPerMille 治安最终效率（‰；≥ 0，不封顶）
    * @param paperworkEfficiencyPerMille 公文最终效率（‰；≥ 0，不封顶）
+   * @param securityEffectiveLaborMilli 治安有效劳动（毫小时/tick；≥ 0）
+   * @param paperworkEffectiveLaborMilli 公文有效劳动（毫小时/tick；≥ 0）
+   * @param securityDemandLaborMilli 治安需求劳动（毫小时/tick；≥ 0）
+   * @param paperworkDemandLaborMilli 公文需求劳动（毫小时/tick；≥ 0）
    */
   public record Efficiency(
       long securityCoveragePerMille,
@@ -455,7 +413,11 @@ public final class GovEfficiency {
       long bonusPerMille,
       long efficiencyPerMille,
       long securityEfficiencyPerMille,
-      long paperworkEfficiencyPerMille) {
+      long paperworkEfficiencyPerMille,
+      long securityEffectiveLaborMilli,
+      long paperworkEffectiveLaborMilli,
+      long securityDemandLaborMilli,
+      long paperworkDemandLaborMilli) {
 
     public Efficiency {
       requireNonNegative(securityCoveragePerMille, "securityCoveragePerMille");
@@ -464,9 +426,34 @@ public final class GovEfficiency {
       requireNonNegative(efficiencyPerMille, "efficiencyPerMille");
       requireNonNegative(securityEfficiencyPerMille, "securityEfficiencyPerMille");
       requireNonNegative(paperworkEfficiencyPerMille, "paperworkEfficiencyPerMille");
+      requireNonNegative(securityEffectiveLaborMilli, "securityEffectiveLaborMilli");
+      requireNonNegative(paperworkEffectiveLaborMilli, "paperworkEffectiveLaborMilli");
+      requireNonNegative(securityDemandLaborMilli, "securityDemandLaborMilli");
+      requireNonNegative(paperworkDemandLaborMilli, "paperworkDemandLaborMilli");
     }
 
-    /** 旧 4 参构造器（Z2 兼容）：两个新维效率取 0（旧口径没有分维效率读数）。 */
+    /** 旧 6 参构造器（Z2 兼容）：Z3b 追加的有效/需求劳动四项取 0（旧口径没有这四个读数）。 */
+    public Efficiency(
+        long securityCoveragePerMille,
+        long paperworkCoveragePerMille,
+        long bonusPerMille,
+        long efficiencyPerMille,
+        long securityEfficiencyPerMille,
+        long paperworkEfficiencyPerMille) {
+      this(
+          securityCoveragePerMille,
+          paperworkCoveragePerMille,
+          bonusPerMille,
+          efficiencyPerMille,
+          securityEfficiencyPerMille,
+          paperworkEfficiencyPerMille,
+          0L,
+          0L,
+          0L,
+          0L);
+    }
+
+    /** 旧 4 参构造器（Z2 兼容）：两个新维效率与 Z3b 的四个计算量都取 0（旧口径没有这些读数）。 */
     public Efficiency(
         long securityCoveragePerMille,
         long paperworkCoveragePerMille,

@@ -41,6 +41,7 @@ import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,7 +87,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        GovDaily.settle(base, units, map(), SocialData.empty(), 7L, 365L, oracle);
+        settleLegacy(base, units, map(), SocialData.empty(), 7L, 365L, oracle);
 
     // totalStaff=3 ⇒ grain 30；cloth = 3×floor(500/365)=3×1=3（若误写成 3×500/365 会是 4）；money 9。
     assertThat(oracle.calls())
@@ -135,7 +136,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        GovDaily.settle(
+        settleLegacy(
             state(GovOfficeState.empty(U1, 0L)),
             units,
             map(),
@@ -165,7 +166,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        GovDaily.settle(
+        settleLegacy(
             state(GovOfficeState.empty(U1, 0L)),
             units,
             map(),
@@ -201,7 +202,7 @@ class GovDailyTest {
                 });
 
     GovDaily.Outcome outcome =
-        GovDaily.settle(
+        settleLegacy(
             state(GovOfficeState.empty(U1, 0L)),
             units,
             map(),
@@ -241,7 +242,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> 0L);
 
     GovDaily.Outcome outcome =
-        GovDaily.settle(
+        settleLegacy(
             state(GovOfficeState.empty(U1, 0L)),
             units,
             map(),
@@ -276,7 +277,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        GovDaily.settle(
+        settleLegacy(
             state(GovOfficeState.empty(U1, 0L)),
             units,
             map(region(R1, H1)),
@@ -317,7 +318,7 @@ class GovDailyTest {
     // 治安满、文书 0 ⇒ 只发 ADMIN_PAPERWORK。
     GovernmentFormation paperworkShort = gov(staff(200L, 0L, 0L), policy(0L, 0L, 0L, 0L));
     GovDaily.Outcome onlyPaper =
-        GovDaily.settle(
+        settleLegacy(
             state(GovOfficeState.empty(U1, 0L)),
             units(govUnit(paperworkShort, Optional.of(H1), Optional.of(jurisdiction(R1)))),
             map(region(R1, H1)),
@@ -332,7 +333,7 @@ class GovDailyTest {
     // 治安 100（500‰）、文书 100（1000‰）⇒ 只发 ADMIN_SECURITY。
     GovernmentFormation securityShort = gov(staff(100L, 100L, 0L), policy(0L, 0L, 0L, 0L));
     GovDaily.Outcome onlySecurity =
-        GovDaily.settle(
+        settleLegacy(
             state(GovOfficeState.empty(U1, 0L)),
             units(govUnit(securityShort, Optional.of(H1), Optional.of(jurisdiction(R1)))),
             map(region(R1, H1)),
@@ -354,7 +355,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        GovDaily.settle(
+        settleLegacy(
             state(GovOfficeState.empty(U1, 0L)),
             units,
             map(region(R1, H1)),
@@ -390,7 +391,7 @@ class GovDailyTest {
 
     assertThatThrownBy(
             () ->
-                GovDaily.settle(
+                settleLegacy(
                     base,
                     emptyUnits,
                     map(),
@@ -410,7 +411,7 @@ class GovDailyTest {
 
     assertThatThrownBy(
             () ->
-                GovDaily.settle(
+                settleLegacy(
                     base,
                     units(plain),
                     map(),
@@ -429,7 +430,7 @@ class GovDailyTest {
             Optional.empty());
     assertThatThrownBy(
             () ->
-                GovDaily.settle(
+                settleLegacy(
                     base,
                     units(army),
                     map(),
@@ -448,7 +449,7 @@ class GovDailyTest {
 
     assertThatThrownBy(
             () ->
-                GovDaily.settle(
+                settleLegacy(
                     state(GovOfficeState.empty(U1, 0L)),
                     units,
                     map(),
@@ -469,7 +470,7 @@ class GovDailyTest {
 
     assertThatThrownBy(
             () ->
-                GovDaily.settle(
+                settleLegacy(
                     state(GovOfficeState.empty(U1, 0L)),
                     units,
                     map(),
@@ -495,9 +496,9 @@ class GovDailyTest {
         new RecordingOracle((resource, requested) -> Math.max(0L, requested - 1L));
 
     GovDaily.Outcome a =
-        GovDaily.settle(base, units(plain), map(), SocialData.empty(), 6L, 365L, first);
+        settleLegacy(base, units(plain), map(), SocialData.empty(), 6L, 365L, first);
     GovDaily.Outcome b =
-        GovDaily.settle(base, units(plain), map(), SocialData.empty(), 6L, 365L, second);
+        settleLegacy(base, units(plain), map(), SocialData.empty(), 6L, 365L, second);
 
     assertThat(b.next()).as("next 逐字段相等").isEqualTo(a.next());
     assertThat(b.dues()).as("dues 逐元素/逐值相等").isEqualTo(a.dues());
@@ -519,7 +520,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        GovDaily.settle(
+        settleLegacy(
             GovState.empty(),
             units(
                 govUnit(
@@ -548,7 +549,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        GovDaily.settle(
+        settleLegacy(
             state(GovOfficeState.empty(U1, 0L)),
             units,
             map(),
@@ -583,7 +584,7 @@ class GovDailyTest {
 
     RecordingOracle commonYearOracle = new RecordingOracle((resource, requested) -> requested);
     GovDaily.Outcome commonYear =
-        GovDaily.settle(base, units, map(), SocialData.empty(), 1L, 365L, commonYearOracle);
+        settleLegacy(base, units, map(), SocialData.empty(), 1L, 365L, commonYearOracle);
     assertThat(commonYearOracle.calls())
         .as("730/365 = 2 ⇒ 1 名编制的日需求 = 2")
         .containsExactly(new Call(U1, H1, "cloth", 2L));
@@ -595,7 +596,7 @@ class GovDailyTest {
 
     RecordingOracle leapYearOracle = new RecordingOracle((resource, requested) -> requested);
     GovDaily.Outcome leapYear =
-        GovDaily.settle(base, units, map(), SocialData.empty(), 1L, 366L, leapYearOracle);
+        settleLegacy(base, units, map(), SocialData.empty(), 1L, 366L, leapYearOracle);
     assertThat(leapYearOracle.calls())
         .as("730/366 = 1（floor）⇒ 1 名编制的日需求 = 1")
         .containsExactly(new Call(U1, H1, "cloth", 1L));
@@ -617,13 +618,13 @@ class GovDailyTest {
     GovState base = state(GovOfficeState.empty(U1, 0L));
 
     RecordingOracle commonYearOracle = new RecordingOracle((resource, requested) -> requested);
-    GovDaily.settle(base, units, map(), SocialData.empty(), 1L, 365L, commonYearOracle);
+    settleLegacy(base, units, map(), SocialData.empty(), 1L, 365L, commonYearOracle);
     assertThat(commonYearOracle.calls())
         .as("3×floor(730/365) = 6")
         .containsExactly(new Call(U1, H1, "cloth", 6L));
 
     RecordingOracle leapYearOracle = new RecordingOracle((resource, requested) -> requested);
-    GovDaily.settle(base, units, map(), SocialData.empty(), 1L, 366L, leapYearOracle);
+    settleLegacy(base, units, map(), SocialData.empty(), 1L, 366L, leapYearOracle);
     assertThat(leapYearOracle.calls())
         .as("3×floor(730/366) = 3；误写成 3×730/366 = 5 时本断言红")
         .containsExactly(new Call(U1, H1, "cloth", 3L));
@@ -638,7 +639,7 @@ class GovDailyTest {
 
     assertThatThrownBy(
             () ->
-                GovDaily.settle(
+                settleLegacy(
                     base,
                     units,
                     map(),
@@ -650,7 +651,7 @@ class GovDailyTest {
         .hasMessageContaining("365 或 366");
     assertThatThrownBy(
             () ->
-                GovDaily.settle(
+                settleLegacy(
                     base,
                     units,
                     map(),
@@ -808,5 +809,60 @@ class GovDailyTest {
             List.of()));
     return GovSocialDataFixture.withHouseholdsAt(
         populations, Map.of(), Map.of(lot, group), Map.of(lot, H1));
+  }
+
+  /**
+   * ★ Z3b 编译最小占位（Z6 统一重写测试）：新 {@code GovDaily.settle} 只消费 app 算好的效率表，旧 7 参签名已删除；
+   * 这里在测试侧临时复刻旧桥口径构造效率表，让既有断言代码仍能编译；运行期期望值按新公式本来就需 Z6 重算。
+   */
+  private static GovDaily.Outcome settleLegacy(
+      GovState govState,
+      UnitState units,
+      GameMap map,
+      SocialData social,
+      long tick,
+      long daysInYearAtSettlement,
+      GovDaily.PaymentOracle oracle) {
+    long quota =
+        io.mosire.simos.social.provisioning.SocialProvisioning.defaults()
+            .standardLaborMilliHoursPerTick();
+    Map<UnitId, GovEfficiency.Efficiency> byUnit = new LinkedHashMap<>();
+    List<UnitId> ordered = new ArrayList<>(govState.offices().keySet());
+    ordered.sort(Comparator.comparing(UnitId::value));
+    for (UnitId unitId : ordered) {
+      Unit unit = units.units().get(unitId);
+      if (unit == null) {
+        continue;
+      }
+      UnitModule module = unit.module().orElse(null);
+      if (!(module instanceof GovernmentFormation formation)) {
+        continue;
+      }
+      Map<HexCoord, GovDemand.HexDemand> demand = GovDemand.of(map, social, unit);
+      GovAdministrationPlan plan =
+          new GovAdministrationPlan(
+              Math.multiplyExact(GovEfficiency.securityDemand(demand), quota),
+              Math.multiplyExact(GovEfficiency.paperworkDemand(demand), quota),
+              GovAdministrationPlan.DEFAULT_POST_TIERS,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovAdministrationPlan.DEFAULT_SUPERNUMERARY_SQRT_COEFFICIENT);
+      byUnit.put(
+          unitId,
+          GovEfficiency.of(
+              formation,
+              demand,
+              plan,
+              Math.multiplyExact(GovEfficiency.securitySupply(formation), quota),
+              Math.multiplyExact(GovEfficiency.paperworkSupply(formation), quota),
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              quota));
+    }
+    return GovDaily.settle(govState, units, tick, daysInYearAtSettlement, byUnit, oracle);
   }
 }
