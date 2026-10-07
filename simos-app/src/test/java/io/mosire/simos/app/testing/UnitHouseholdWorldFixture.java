@@ -161,7 +161,8 @@ public final class UnitHouseholdWorldFixture {
                 posts,
                 OfficePolicy.defaults(),
                 superiorGov,
-                GovernmentLevel.CENTRAL)),
+                GovernmentLevel.CENTRAL,
+                Map.of())),
         Map.of(),
         households);
   }

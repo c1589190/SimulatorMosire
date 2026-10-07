@@ -21,7 +21,8 @@ import java.util.Set;
 
 /**
  * ★★ <b>Z4/C4 跨切片引物一致性：{@code GovernmentPostOfHousehold.tierId} 必须指向该 GOV 的 {@code
- * GovAdministrationPlan.postTiers()} 档位</b>。
+ * GovAdministrationPlan.postTiers()} 档位</b>（Z3d 起<b>内部 {@code householdPosts} 与外部 {@code
+ * externalPosts} 同权覆盖</b>；两表互斥，遍历 = 两表并入）。
  *
  * <pre>
  * post.tierId 非空  ⇒  tierId ∈ administrationPlanOrDefault(unitId).postTiers().map(GovPostTier::tierId)
@@ -65,14 +66,14 @@ public final class GovernmentPostTierConsistency {
     List<Mismatch> out = new ArrayList<>();
     for (Unit unit : ordered) {
       if (!(unit.module().orElse(null) instanceof GovernmentFormation formation)
-          || formation.governmentPostsOfHousehold().isEmpty()) {
+          || !formation.hasAnyPosts()) {
         continue;
       }
       Set<String> tierIds = new LinkedHashSet<>();
       for (GovPostTier tier : govState.administrationPlanOrDefault(unit.id()).postTiers()) {
         tierIds.add(tier.tierId());
       }
-      for (GovernmentPostOfHousehold post : formation.governmentPostsOfHousehold().values()) {
+      for (GovernmentPostOfHousehold post : formation.allPosts().values()) {
         if (!post.hasTier()) {
           continue; // ★ 空串 = legacy/未指派（旧档豁免）
         }

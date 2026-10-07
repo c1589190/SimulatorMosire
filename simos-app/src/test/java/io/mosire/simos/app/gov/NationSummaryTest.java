@@ -209,7 +209,8 @@ class NationSummaryTest {
         Unit.DEFAULT_VISION_RADIUS,
         Optional.of(jurisdiction(regions)),
         Optional.of(
-            new GovernmentFormation(Map.of(), Map.of(), OfficePolicy.defaults(), superior, level)),
+            new GovernmentFormation(
+                Map.of(), Map.of(), OfficePolicy.defaults(), superior, level, Map.of())),
         Map.of(),
         List.of(GovernmentHouseholds.of(id.value())));
   }

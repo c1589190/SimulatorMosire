@@ -207,9 +207,10 @@ public final class HouseholdUnitConsistency {
   }
 
   /**
-   * ★ <b>岗位家户 staff 投影读数（C4，Z4 收拢到 {@link GovernmentFormation#projectedStaff}；Z3b 改喂承诺）</b>：某 GOV 的
-   * {@code governmentPostsOfHousehold} 非空时，按角色聚合这些家户的 {@code GOV_SERVICE} 承诺劳动折成的**全职人数当量** （{@code
-   * ⌊承诺 ÷ 标准定额⌋}），作为 {@code staff} 的派生投影读数。
+   * ★ <b>岗位家户 staff 投影读数（C4，Z4 收拢到 {@link GovernmentFormation#projectedStaff}；Z3b 改喂承诺；Z3d
+   * 内部+外部岗位同权）</b>：某 GOV 的 {@code governmentPostsOfHousehold} 或 {@code externalPosts}
+   * 非空时，按角色聚合这些家户的 {@code GOV_SERVICE} 承诺劳动折成的**全职人数当量**（{@code ⌊承诺 ÷ 标准定额⌋}），作为 {@code staff}
+   * 的派生投影读数。
    *
    * <p>★★ <b>为什么改喂承诺而不是人口</b>：设计书 §4.3 要求 {@code staff} 由承诺/岗位户现算（C4 一处真相）；Z4 的临时口径是家户人口，承诺→供给桥落地
    * （Z3b）后唯一权威是 {@code GOV_SERVICE} 承诺。折算走 C8 唯一权威 {@code SocialProvisioning}，不另造系数。
@@ -229,7 +230,7 @@ public final class HouseholdUnitConsistency {
     Map<String, Long> projection = new LinkedHashMap<>();
     for (Unit unit : sortedUnits(units)) {
       if (!(unit.module().orElse(null) instanceof GovernmentFormation governmentFormation)
-          || governmentFormation.governmentPostsOfHousehold().isEmpty()) {
+          || !governmentFormation.hasAnyPosts()) {
         continue;
       }
       Map<StaffRole, Long> byRole =
@@ -242,7 +243,7 @@ public final class HouseholdUnitConsistency {
   }
 
   /**
-   * ★★ <b>C4 只读校核：posts 非空的 GOV，stored {@code staff} 与岗位家户的承诺投影不一致的具名清单</b>（不抛、不写）。
+   * ★★ <b>C4 只读校核：岗位表（内部或外部，Z3d 同权）非空的 GOV，stored {@code staff} 与岗位家户的承诺投影不一致的具名清单</b>（不抛、不写）。
    *
    * <p>返回 "unit=… stored=… projected=…" 文本（按 unit id 稳定序）；空表 = 一致或无 posts GOV。这条在 app 组合根每轮推进前跑，
    * 不一致是**预期过渡态**（Z4 的 staff 是 legacy 缓存；Z3b 起权威是 {@code GOV_SERVICE} 承诺），调用方按 INFO 聚合记录、不告警。
@@ -255,7 +256,7 @@ public final class HouseholdUnitConsistency {
     List<String> out = new ArrayList<>();
     for (Unit unit : sortedUnits(units)) {
       if (!(unit.module().orElse(null) instanceof GovernmentFormation formation)
-          || formation.governmentPostsOfHousehold().isEmpty()) {
+          || !formation.hasAnyPosts()) {
         continue;
       }
       Map<StaffRole, Long> projected =
@@ -274,8 +275,8 @@ public final class HouseholdUnitConsistency {
   }
 
   /**
-   * 一个 GOV 的岗位家户承诺投影：逐岗位家户把"该户对本 GOV 的 {@code GOV_SERVICE} 承诺劳动"折成全职人数当量，再按 role 聚合 （聚合公式唯一在 {@link
-   * GovernmentFormation#projectedStaff}）。
+   * 一个 GOV 的岗位家户承诺投影（Z3d 起内部 + 外部岗位同权）：逐岗位家户把"该户对本 GOV 的 {@code GOV_SERVICE} 承诺劳动"折成全职人数当量，再按 role
+   * 聚合（聚合公式唯一在 {@link GovernmentFormation#projectedStaff}）。
    */
   private static Map<StaffRole, Long> committedStaffProjection(
       EconomyData economy, SocialData social, Unit unit, GovernmentFormation formation, long day) {
@@ -323,7 +324,10 @@ public final class HouseholdUnitConsistency {
     return sorted;
   }
 
-  /** 编制配置键是否都在本单位 households 里的只读检查（{@link UnitState} 构造期已强判；这里供报告/诊断复用）。 */
+  /**
+   * 编制配置键的容纳关系只读检查（{@link UnitState} 构造期已强判；这里供报告/诊断复用）：内部岗位键必须在本单位 households
+   * 里；外部岗位键（Z3d）必须不在其中（外部户保留原单位/位置）。
+   */
   public static List<Mismatch> moduleConfigMismatches(UnitState units) {
     Objects.requireNonNull(units, "units");
     List<Mismatch> out = new ArrayList<>();
@@ -336,6 +340,18 @@ public final class HouseholdUnitConsistency {
                 new Mismatch(
                     "GOV_POST_HOUSEHOLD_NOT_CONTAINED",
                     "unit " + unit.id() + " 的 householdPosts 含未容纳家户 " + household));
+          }
+        }
+        for (HouseholdId household : governmentFormation.externalPosts().keySet()) {
+          if (contained.contains(household)) {
+            out.add(
+                new Mismatch(
+                    "GOV_EXTERNAL_POST_HOUSEHOLD_CONTAINED",
+                    "unit "
+                        + unit.id()
+                        + " 的 externalPosts 含已容纳家户 "
+                        + household
+                        + "（外部户应保留原单位/位置）"));
           }
         }
       } else if (unit.module().orElse(null) instanceof ArmyFormation army) {

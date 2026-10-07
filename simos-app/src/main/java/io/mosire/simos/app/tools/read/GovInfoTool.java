@@ -292,7 +292,9 @@ public final class GovInfoTool implements AgentTool {
         govState.budgetPolicies().containsKey(govId) ? "explicit" : "neutral-default");
     info.put("budgetPolicy", policyView(policy));
 
-    info.put("posts", postsView(formation));
+    info.put("posts", postsView(formation.governmentPostsOfHousehold()));
+    // ★ Z3d：外部岗位单列（键不要求 ∈ Unit.households；外部户保留原单位/位置，只承接行政任务）。
+    info.put("externalPosts", postsView(formation.externalPosts()));
     info.put("projectedStaff", projectedStaffView(economy, social, units, govId, tick));
     info.put("efficiency", efficiencyView(govState.offices().get(govId)));
     info.put("supply", supplyView(economy, govId, formation, plan, tick));
@@ -347,10 +349,11 @@ public final class GovInfoTool implements AgentTool {
     return view;
   }
 
-  /** 岗位视图（保序；tierId 空 = legacy/未指派）。 */
-  private static List<Map<String, Object>> postsView(GovernmentFormation formation) {
-    List<Map<String, Object>> rows = new ArrayList<>(formation.governmentPostsOfHousehold().size());
-    for (GovernmentPostOfHousehold post : formation.governmentPostsOfHousehold().values()) {
+  /** 岗位视图（保序；tierId 空 = legacy/未指派；Z3d 起内部与外部两张表共用本形状）。 */
+  private static List<Map<String, Object>> postsView(
+      Map<HouseholdId, GovernmentPostOfHousehold> posts) {
+    List<Map<String, Object>> rows = new ArrayList<>(posts.size());
+    for (GovernmentPostOfHousehold post : posts.values()) {
       Map<String, Object> row = new LinkedHashMap<>();
       row.put("householdId", post.householdId().value());
       row.put("role", post.role().name());
@@ -445,13 +448,19 @@ public final class GovInfoTool implements AgentTool {
       return view;
     }
     List<Map<String, Object>> households = new ArrayList<>(committed.size());
+    Map<HouseholdId, GovernmentPostOfHousehold> postsOfGov = formation.allPosts(); // ★ Z3d：内外同权
     for (Map.Entry<HouseholdId, Long> entry : committed.entrySet()) {
       HouseholdId household = entry.getKey();
-      GovernmentPostOfHousehold post = formation.governmentPostsOfHousehold().get(household);
+      GovernmentPostOfHousehold post = postsOfGov.get(household);
       Map<String, Object> row = new LinkedHashMap<>();
       row.put("householdId", household.value());
       row.put("laborMilli", entry.getValue());
       row.put("hasPost", post != null);
+      row.put(
+          "postScope",
+          post == null
+              ? null
+              : (formation.externalPosts().containsKey(household) ? "external" : "internal"));
       row.put("role", post == null ? null : post.role().name());
       row.put("tierId", post == null || !post.hasTier() ? null : post.tierId());
       row.put("tierKnown", post == null || !post.hasTier() ? null : tierKnown(plan, post.tierId()));

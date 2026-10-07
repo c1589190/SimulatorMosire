@@ -206,16 +206,16 @@ public final class GovApplyStaffingTool implements AgentTool {
       SocialData social = ToolSupport.socialData(state);
       UnitState units = ToolSupport.unitState(state);
       List<GovAssessment> assessments = derive(map, social, units);
-      // ★★ Z4/C4：本工具是 legacy 的"按需求直写 staff"组合口；对 posts 非空的新世界整条具名拒（零 revision）。
-      //   岗位人数改由岗位家户人口/承诺派生（Z4 投影读口；Z3 承诺写者/供给桥）。
+      // ★★ Z4/C4：本工具是 legacy 的"按需求直写 staff"组合口；对岗位表（householdPosts 或 Z3d 的
+      //   externalPosts）非空的新世界整条具名拒（零 revision）。岗位人数改由岗位家户承诺派生（Z4 投影读口；Z3 承诺写者/供给桥）。
       List<String> projectedGovs = projectedGovs(assessments);
       if (!projectedGovs.isEmpty()) {
         return ToolResult.error(
             "REJECTED",
-            "simos.gov.applyStaffing 是 legacy staff 直写工具：以下 GOV 的 householdPosts 非空，staff 只是岗位家户投影，"
+            "simos.gov.applyStaffing 是 legacy staff 直写工具：以下 GOV 的 householdPosts/externalPosts 非空，staff 只是岗位家户投影，"
                 + "拒绝整批（零 revision）："
                 + projectedGovs
-                + "。请改 Social 家户人口/承诺，或用 Z3 的 simos.gov.assignPosts 调整岗位");
+                + "。请改 Social 家户人口/承诺，或用 simos.gov.assignPosts（内部）/simos.gov.openPostsToMarket（外部）调整岗位");
       }
       if (preview) {
         return ToolSupport.ok(view(assessments, reason, true, false, null));

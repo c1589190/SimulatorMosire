@@ -37,7 +37,8 @@ import java.util.Optional;
  *
  * <p>★ <b>载荷语义</b>：{@code level} 必填词表（CENTRAL|PROVINCE）；{@code superiorGov} 可缺省（中央应为空）；{@code
  * staff} 缺省空表、{@code policy} 缺省 {@link OfficePolicy#defaults()}（也可给部分字段，缺省字段取 defaults）；{@code
- * householdPosts?} 是以 {@link HouseholdId} 为键的领导层家户配置，缺省 = 保持既有配置。
+ * householdPosts?} 是以 {@link HouseholdId} 为键的内部领导层家户配置，缺省 = 保持既有配置；{@code externalPosts?}
+ * 是外部岗位配置（键不要求 ∈ Unit.households、与 householdPosts 互斥），缺省 = 保持既有配置。
  *
  * <p>★★ <b>线格式已删键 {@code households}</b>（2026-10-09 唯一列表裁定）：编制里不再有家户列表；“谁在这个 Unit 里”的唯一实质列表是 {@code
  * Unit.households}，本命令不再接收、也不维护它。政府家户 {@code hh-gov-<unitId>} 由 {@link
@@ -89,8 +90,14 @@ public final class SetGovernmentFormationHandler implements CommandHandler, Comm
       Map<HouseholdId, GovernmentPostOfHousehold> governmentPostsOfHousehold =
           UnitPayloads.optionalGovernmentPosts(payload, "householdPosts")
               .orElseGet(() -> existingGovPosts(snapshot.state(), id));
+      // ★★ Z3d 同款兼容口径：externalPosts 缺席 ⇒ 保持既有外部岗位（不静默丢）；给了（含空数组）⇒ 整体替换。
+      //   两张表互斥由 GovernmentFormation 构造期判死。
+      Map<HouseholdId, GovernmentPostOfHousehold> externalPosts =
+          UnitPayloads.optionalGovernmentPosts(payload, "externalPosts")
+              .orElseGet(() -> existingGovExternalPosts(snapshot.state(), id));
       GovernmentFormation formation =
-          new GovernmentFormation(staff, governmentPostsOfHousehold, policy, superiorGov, level);
+          new GovernmentFormation(
+              staff, governmentPostsOfHousehold, policy, superiorGov, level, externalPosts);
       UnitState next = UnitOperations.setGovernmentFormation(snapshot.state(), id, formation);
       EventLog.channel(UnitLog.command())
           .info(
@@ -124,6 +131,16 @@ public final class SetGovernmentFormationHandler implements CommandHandler, Comm
     Unit unit = state.units().get(id);
     if (unit != null && unit.module().orElse(null) instanceof GovernmentFormation gov) {
       return gov.governmentPostsOfHousehold();
+    }
+    return Map.of();
+  }
+
+  /** 既有 GOV 的外部岗位配置（载荷未给 {@code externalPosts} 时的保持值）：不是 GOV ⇒ 空表。 */
+  private static Map<HouseholdId, GovernmentPostOfHousehold> existingGovExternalPosts(
+      UnitState state, UnitId id) {
+    Unit unit = state.units().get(id);
+    if (unit != null && unit.module().orElse(null) instanceof GovernmentFormation gov) {
+      return gov.externalPosts();
     }
     return Map.of();
   }

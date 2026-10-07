@@ -115,7 +115,8 @@ class UnitModuleOperationsTest {
               7L,
               orderedStaff(Map.entry(StaffRole.POST, 9L), Map.entry(StaffRole.SCRIBE, 6L))),
           Optional.of(U9),
-          GovernmentLevel.PROVINCE);
+          GovernmentLevel.PROVINCE,
+          Map.of());
 
   /** 非空 Army 编制：认领一个主子 + 非空 role。 */
   private static final UnitModule ARMY_MODULE = new ArmyFormation(Optional.of(U9), "garrison");
@@ -641,7 +642,12 @@ class UnitModuleOperationsTest {
     return unit(
         id,
         new GovernmentFormation(
-            Map.of(), Map.of(), OfficePolicy.defaults(), Optional.empty(), GovernmentLevel.CENTRAL),
+            Map.of(),
+            Map.of(),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            Map.of()),
         2);
   }
 

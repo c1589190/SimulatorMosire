@@ -821,9 +821,9 @@ public final class UnitOperations {
       throw new IllegalArgumentException(
           "单位 " + id + " 已带 ArmyFormation（一单位至多一个编制标签）：不能改挂 GovernmentFormation；本命令不做静默替换");
     }
-    // ★★ Z4/C4 一处真相：一旦目标编制带岗位家户（householdPosts 非空），staff 只是这些家户人口/承诺的投影，
-    //   任何"同批改 staff"都是第二本权威 ⇒ 具名拒。旧档（既有 posts 为空）维持旧行为；显式清空 posts
-    //   （incoming posts 为空）也回到旧行为——这条逃逸口与 requireStaffNotProjected 的提示一致。
+    // ★★ Z4/C4 一处真相（Z3d 起内部 + 外部岗位同权）：一旦目标编制带岗位（householdPosts 或
+    //   externalPosts 任一非空），staff 只是这些家户承诺的投影，任何"同批改 staff"都是第二本权威 ⇒
+    //   具名拒。旧档（两表都空）维持旧行为；显式清空两张表（incoming 两表都空）也回到旧行为。
     GovernmentFormation existingGovernment =
         unit.module().orElse(null) instanceof GovernmentFormation existing ? existing : null;
     if (formation.staffIsHouseholdProjection()) {
@@ -842,12 +842,12 @@ public final class UnitOperations {
         throw new IllegalArgumentException(
             "单位 "
                 + id
-                + " 的 householdPosts 非空：staff 只是这些岗位家户人口/承诺的投影，不能在 unit.SetGovFormation 里直接改"
+                + " 的 householdPosts/externalPosts 非空：staff 只是这些岗位家户人口/承诺的投影，不能在 unit.SetGovFormation 里直接改"
                 + "（existingStaff="
                 + existingStaff
                 + "，requestedStaff="
                 + formation.staff()
-                + "）。改人数请改 Social 家户人口/承诺（Z4 后的方向），或先用空 householdPosts 显式退出投影模式");
+                + "）。改人数请改 Social 家户人口/承诺（Z4 后的方向），或先用空 householdPosts/externalPosts 显式退出投影模式");
       }
     }
     formation
@@ -1185,6 +1185,74 @@ public final class UnitOperations {
   }
 
   /**
+   * ★★ <b>Z3d：把某外部家户指派/改派到本 GOV 外部岗位的窄写口</b>（{@code unit.AssignExternalGovPost} 的领域实现）——只写 {@link
+   * GovernmentFormation#externalPosts()} 一个组件，<b>绝不改</b> {@code Unit.households} / Social 位置 /
+   * staff。
+   *
+   * <p>★★ <b>与内部岗位的边界（互斥）</b>：
+   *
+   * <ul>
+   *   <li>家户在 {@code Unit.households} 里 ⇒ 具名拒，指路 {@link #assignGovernmentPost}（内部岗位/官吏户语义）；
+   *   <li>家户已在 {@code governmentPostsOfHousehold} 里 ⇒ 具名拒（同一户不得同时在内外两张表）；
+   *   <li>家户在**别的** unit 的 households 里 ⇒ <b>允许</b>：这正是"外部户保留原单位/位置、只承接行政任务"的语义。
+   * </ul>
+   *
+   * <p>★ <b>模块边界</b>：unit 模块看不见 Social/economy，因此"该家户是否存在（Social/economy 行）"由 app 工具预检（见 Z3d
+   * 台账的残余裸提交边界）；本方法只判结构合法（沿用 {@link GovernmentPostOfHousehold} 守卫）与内外互斥。
+   *
+   * <p>★ <b>幂等</b>：同键同值重放 = 空变更集；既有同键岗位 = 整条替换（{@code LinkedHashMap.put} 保留首次插入位置）； 新键追加在末尾。纯函数；结果走
+   * {@link #withModule} 的 canonical 拷贝，其余组件一个不丢。
+   */
+  public static UnitState assignExternalGovernmentPost(
+      UnitState state,
+      UnitId id,
+      HouseholdId household,
+      StaffRole role,
+      GovernmentLevel level,
+      boolean headOfGovernment,
+      String tierId) {
+    Objects.requireNonNull(household, "household");
+    Objects.requireNonNull(role, "role");
+    Objects.requireNonNull(level, "level");
+    Unit unit = require(state, id);
+    GovernmentFormation governmentFormation = requireGovernmentFormation(unit, id);
+    if (governmentFormation.governmentPostsOfHousehold().containsKey(household)) {
+      debugReject(
+          "assignExternalGovernmentPost", "家户已在本单位内部岗位表里", "unit", id, "household", household);
+      throw new IllegalArgumentException(
+          "家户 "
+              + household
+              + " 已在单位 "
+              + id
+              + " 的 householdPosts（内部岗位）里：同一家户不得同时在内部与外部岗位；内部岗位请用 unit.AssignGovPost（本外部命令不改内部表）");
+    }
+    if (unit.households().contains(household)) {
+      debugReject(
+          "assignExternalGovernmentPost",
+          "外部岗位家户已在 Unit.households 里",
+          "unit",
+          id,
+          "household",
+          household);
+      throw new IllegalArgumentException(
+          "家户 "
+              + household
+              + " 已在单位 "
+              + id
+              + " 的 Unit.households 里：这是内部官吏户语义，请用 unit.AssignGovPost（内部岗位）；"
+              + "外部岗位只挂不在本单位 households 的家户（保留其原单位/位置，只承接行政任务）");
+    }
+    Map<HouseholdId, GovernmentPostOfHousehold> externalPosts =
+        new LinkedHashMap<>(governmentFormation.externalPosts());
+    externalPosts.put(
+        household, new GovernmentPostOfHousehold(household, role, level, headOfGovernment, tierId));
+    return withUnit(
+        state,
+        withModule(
+            unit, Optional.of(withGovernmentExternalPosts(governmentFormation, externalPosts))));
+  }
+
+  /**
    * 阶段 10b-i 的四条 GOV 编辑命令共用守卫：单位存在且 {@code module} 必须是 {@link GovernmentFormation}。
    *
    * <p>★ 与 {@link #requireGovUnit} 的区别：那个是"认主子/上级"的引用校验（消息带字段名），本方法是"被编辑对象必须是 GOV"（消息给出下一步：先 {@code
@@ -1260,27 +1328,28 @@ public final class UnitOperations {
   }
 
   /**
-   * ★★ <b>S3b/Z4/C4：{@code governmentPostsOfHousehold} 非空 ⇒ staff 已是岗位家户投影，禁止再直改 staff</b>。
+   * ★★ <b>S3b/Z4/C4：岗位表非空 ⇒ staff 已是岗位家户投影，禁止再直改 staff</b>（Z3d 起内部 + 外部岗位同权）。
    *
-   * <p>{@code staff} 是兼容字段；一旦 GOV 用 {@link GovernmentPostOfHousehold} 把岗位家户配置起来，编制人数只能由这些家户的
-   * 人口/承诺现算（{@link GovernmentFormation#projectedStaff}，app 组合根接线）。直接加减 staff 会制造第二本权威 ⇒ 具名拒， 指路
-   * Social 家户命令（Z4 后的方向）或先显式清空 {@code householdPosts} 回到旧行为。
+   * <p>{@code staff} 是兼容字段；一旦 GOV 用 {@link GovernmentPostOfHousehold} 把岗位家户配置起来（{@code
+   * householdPosts} 或 {@code externalPosts} 任一非空），编制人数只能由这些家户的承诺现算（{@link
+   * GovernmentFormation#projectedStaff}，app 组合根接线）。直接加减 staff 会制造第二本权威 ⇒ 具名拒， 指路 Social 家户命令（Z4
+   * 后的方向）或先显式清空岗位表回到旧行为。
    */
   private static void requireStaffNotProjected(
       GovernmentFormation governmentFormation, UnitId id, String action) {
-    if (governmentFormation.governmentPostsOfHousehold().isEmpty()) {
+    if (!governmentFormation.hasAnyPosts()) {
       return;
     }
     debugReject("requireStaffNotProjected", "posts 非空，staff 是投影不能直改", "unit", id, "action", action);
     throw new IllegalArgumentException(
         "单位 "
             + id
-            + " 的 householdPosts 非空：staff 只是这些岗位家户人口/承诺的投影，不能直接"
+            + " 的 householdPosts/externalPosts 非空：staff 只是这些岗位家户人口/承诺的投影，不能直接"
             + action
-            + " staff（会制造第二本权威）。请改 Social 家户人口/承诺（Z4 后的方向），或先清空 householdPosts 显式退出投影模式");
+            + " staff（会制造第二本权威）。请改 Social 家户人口/承诺（Z4 后的方向），或先清空岗位表显式退出投影模式");
   }
 
-  /** 只换 {@link GovernmentFormation#policy()}，其余组件原样带过（阶段 10b-i；2026-10-09 起 households 已不在编制上）。 */
+  /** 只换 {@link GovernmentFormation#policy()}，其余组件（含两张岗位表）原样带过（阶段 10b-i；Z3d 起带 externalPosts）。 */
   private static GovernmentFormation withGovernmentPolicy(
       GovernmentFormation governmentFormation, OfficePolicy policy) {
     return new GovernmentFormation(
@@ -1288,10 +1357,11 @@ public final class UnitOperations {
         governmentFormation.governmentPostsOfHousehold(),
         policy,
         governmentFormation.superiorGov(),
-        governmentFormation.level());
+        governmentFormation.level(),
+        governmentFormation.externalPosts());
   }
 
-  /** 只换 {@link GovernmentFormation#superiorGov()}，其余组件原样带过（阶段 10b-i）。 */
+  /** 只换 {@link GovernmentFormation#superiorGov()}，其余组件（含两张岗位表）原样带过（阶段 10b-i）。 */
   private static GovernmentFormation withGovernmentSuperior(
       GovernmentFormation governmentFormation, Optional<UnitId> superiorGov) {
     return new GovernmentFormation(
@@ -1299,10 +1369,11 @@ public final class UnitOperations {
         governmentFormation.governmentPostsOfHousehold(),
         governmentFormation.policy(),
         superiorGov,
-        governmentFormation.level());
+        governmentFormation.level(),
+        governmentFormation.externalPosts());
   }
 
-  /** 只换 {@link GovernmentFormation#staff()}，其余组件原样带过（阶段 10b-i）。 */
+  /** 只换 {@link GovernmentFormation#staff()}，其余组件（含两张岗位表）原样带过（阶段 10b-i）。 */
   private static GovernmentFormation withGovernmentStaff(
       GovernmentFormation governmentFormation, Map<StaffRole, Long> staff) {
     return new GovernmentFormation(
@@ -1310,13 +1381,15 @@ public final class UnitOperations {
         governmentFormation.governmentPostsOfHousehold(),
         governmentFormation.policy(),
         governmentFormation.superiorGov(),
-        governmentFormation.level());
+        governmentFormation.level(),
+        governmentFormation.externalPosts());
   }
 
   /**
    * ★ Z4：只换 {@link
-   * GovernmentFormation#governmentPostsOfHousehold()}，其余组件（staff/policy/superiorGov/level）
-   * 原样带过——岗位写口 {@link #assignGovernmentPost} 的 canonical 拷贝点，<b>绝不改 staff</b>。
+   * GovernmentFormation#governmentPostsOfHousehold()}（内部表），其余组件（staff/policy/superiorGov/level 与
+   * {@code externalPosts}）原样带过——岗位写口 {@link #assignGovernmentPost} 的 canonical 拷贝点，<b>绝不改
+   * staff</b>。
    */
   private static GovernmentFormation withGovernmentPosts(
       GovernmentFormation governmentFormation, Map<HouseholdId, GovernmentPostOfHousehold> posts) {
@@ -1325,7 +1398,25 @@ public final class UnitOperations {
         posts,
         governmentFormation.policy(),
         governmentFormation.superiorGov(),
-        governmentFormation.level());
+        governmentFormation.level(),
+        governmentFormation.externalPosts());
+  }
+
+  /**
+   * ★ Z3d：只换 {@link GovernmentFormation#externalPosts()}（外部表），其余组件（staff/policy/superiorGov/level 与
+   * {@code governmentPostsOfHousehold}）原样带过——岗位写口 {@link #assignExternalGovernmentPost} 的 canonical
+   * 拷贝点，<b>绝不改 staff / Unit.households / Social 位置</b>。
+   */
+  private static GovernmentFormation withGovernmentExternalPosts(
+      GovernmentFormation governmentFormation,
+      Map<HouseholdId, GovernmentPostOfHousehold> externalPosts) {
+    return new GovernmentFormation(
+        governmentFormation.staff(),
+        governmentFormation.governmentPostsOfHousehold(),
+        governmentFormation.policy(),
+        governmentFormation.superiorGov(),
+        governmentFormation.level(),
+        externalPosts);
   }
 
   /**

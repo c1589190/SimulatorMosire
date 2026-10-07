@@ -251,7 +251,16 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
     }
   }
 
-  /** S3b：编制模块上的家户配置键 ⊆ 该单位的 {@code households()}（违者具名拒，不静默丢配置/家户）。 */
+  /**
+   * S3b/Z3d：编制模块上的家户配置键的容纳关系（违者具名拒，不静默丢配置/家户）：
+   *
+   * <ul>
+   *   <li>{@code GovernmentFormation.householdPosts}（内部岗位）的键必须 ⊆ 本单位的 {@code households()}；
+   *   <li>{@code GovernmentFormation.externalPosts}（外部岗位）的键必须 <b>不在</b> 本单位的 {@code households()}
+   *       里——外部户保留原单位/位置，只承接行政任务；若要把家户编入本单位做内部官吏户，请走 {@code unit.AssignGovPost}（键集互斥由 {@link
+   *       GovernmentFormation} 构造期再判一层）。
+   * </ul>
+   */
   private static void requireModuleConfigsBelongToUnit(Unit unit) {
     Set<HouseholdId> contained = new LinkedHashSet<>(unit.households());
     UnitModule module = unit.module().orElse(null);
@@ -264,6 +273,25 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
                   + " 的 households 列表里: "
                   + household
                   + "（先 unit.SetUnitHouseholds / social.SetHouseholdLocation 把家户编入本单位）");
+        }
+      }
+      // ★★ Z3d：外部岗位键不得在 Unit.households 里（同一家户不得既被单位容纳、又挂外部岗位）；两表互斥在
+      //   GovernmentFormation 构造期判，这里再给"指路内部指派"的具名拒，命令边界可读。
+      for (HouseholdId household : governmentFormation.externalPosts().keySet()) {
+        if (governmentFormation.governmentPostsOfHousehold().containsKey(household)) {
+          throw new IllegalArgumentException(
+              "GovernmentFormation 的家户 "
+                  + household
+                  + " 同时在 householdPosts（内部岗位）与 externalPosts（外部岗位）里");
+        }
+        if (contained.contains(household)) {
+          throw new IllegalArgumentException(
+              "GovernmentFormation.externalPosts 的家户 "
+                  + household
+                  + " 已在单位 "
+                  + unit.id()
+                  + " 的 households 列表里：外部岗位只挂不在本单位 households 的家户（保留其原单位/位置）；"
+                  + "若要把该户编入本单位做内部官吏户，请用 unit.AssignGovPost（内部岗位）");
         }
       }
       // ★★ P2-C §13.7 + 2026-10-09 唯一列表裁定：中央/地方 GOV 各恰一个政府家户，且身份必须是该 GOV 单位稳定

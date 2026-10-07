@@ -37,7 +37,8 @@ import java.util.Set;
  *                            operator = 政府家户；activity 与 unit 的指向由 EconomyData 守卫判死）
  * 逐户承诺劳动 L_h          = 该 GOV 全部 service unit 上、household == h 的 GOV_SERVICE 承诺之和（毫小时/tick）
  *                            （只对有岗位的家户计；没有岗位的家户不进任何维，逐 GOV 一条具名 INFO）
- * 档位权重 (w_sec, w_pap)   = h 在 GovernmentFormation.governmentPostsOfHousehold 的 tierId → plan.postTiers 权重；
+ * 档位权重 (w_sec, w_pap)   = h 在 GovernmentFormation 的 governmentPostsOfHousehold（内部）或 externalPosts（外部，
+ *                            Z3d）里的 tierId → plan.postTiers 权重；两表同权、互斥（同一户只能在一张表里）；
  *                            tierId 空（legacy/未指派）⇒ 按 role 的固有维度：YAMEN=(1000,0)，SCRIBE/POST=(0,1000)
  * 治安拆分 = ⌊L_h × w_sec ÷ (w_sec + w_pap)⌋；公文拆分 = L_h − 治安拆分（余数归公文，Σ 不丢）
  * </pre>
@@ -131,7 +132,8 @@ public final class GovernmentServiceLaborBridge {
    *
    * @param economy 经济切片；不得为 null
    * @param govUnitId GOV 单位 id；不得为 null
-   * @param formation 该 GOV 单位的编制（岗位目录 = {@code governmentPostsOfHousehold}）；不得为 null
+   * @param formation 该 GOV 单位的编制（岗位目录 = 内部 {@code governmentPostsOfHousehold} + 外部 {@code
+   *     externalPosts}，两张表同权）；不得为 null
    * @param plan 该 GOV 的编制计划（档位权重目录）；不得为 null
    * @param day 世界日（只进日志上下文）
    */
@@ -151,11 +153,13 @@ public final class GovernmentServiceLaborBridge {
     long paperwork = 0L;
     long withoutPost = 0L;
     String firstWithoutPost = "-";
+    // ★ Z3d：内部 householdPosts 与外部 externalPosts 同权（两张表互斥，postOf 给出唯一岗位）。
+    Map<HouseholdId, GovernmentPostOfHousehold> posts = formation.allPosts();
     try {
       for (Map.Entry<HouseholdId, Long> entry : committed.entrySet()) {
         HouseholdId household = entry.getKey();
         long laborMilli = entry.getValue();
-        GovernmentPostOfHousehold post = formation.governmentPostsOfHousehold().get(household);
+        GovernmentPostOfHousehold post = posts.get(household);
         if (post == null) {
           // ★ 设计书 §3：没有挂岗位的家户 ⇒ 该户承诺进不了任何维（供给 0）。这不是静默——逐 GOV 一条具名 INFO；
           //   承诺行本身一字不动（C7），等 assignPosts 把它挂到档位后下一 tick 自然计入。

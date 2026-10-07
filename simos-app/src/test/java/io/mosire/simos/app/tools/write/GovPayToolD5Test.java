@@ -423,7 +423,8 @@ class GovPayToolD5Test {
             new GovernmentPostOfHousehold(governmentHousehold, StaffRole.SCRIBE, level, true)),
         OfficePolicy.defaults(),
         superiorGov,
-        level);
+        level,
+        Map.of());
   }
 
   private static Unit unit(

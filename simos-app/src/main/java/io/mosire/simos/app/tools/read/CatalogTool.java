@@ -352,6 +352,18 @@ public final class CatalogTool implements AgentTool {
                   + "岗位户不在 Unit.households ⇒ 具名拒并指路 unit.SetUnitHouseholds；"
                   + "决策人窄工具 simos.gov.assignPosts 直接提交、另走审批链）"),
           Map.entry(
+              "unit.AssignExternalGovPost",
+              "govUnitId(必填), householdId(必填；不得在 Unit.households 里，也不得在内部 householdPosts 里),"
+                  + " role?(新建必填 SCRIBE|YAMEN|POST；改派既有外部岗位缺省沿用其角色),"
+                  + " tierId?(缺省=改派时沿用既有/新建时空串 legacy；非空必须命中 GovAdministrationPlan.postTiers，"
+                  + "跨切片校验在 app 侧), level?(缺省=改派时沿用既有/新建时该 GOV 编制层级 CENTRAL|PROVINCE),"
+                  + " headOfGovernment?(缺省=改派时沿用既有/新建时 false), reason(必填非空白)"
+                  + "（★ Z3d：只写 GovernmentFormation.externalPosts（同键整条替换）、绝不碰 Unit.households / Social"
+                  + " 位置 / staff；外部户保留原单位/位置，只承接行政任务。unit 模块看不见 Social/economy ⇒"
+                  + " \"家户存在（Social/economy 行）\"由 app 工具 simos.gov.openPostsToMarket 预检；GM 裸"
+                  + " simos.command.submit 可绕过该预检（已记录的残余边界）。内外岗位互斥；家户在 Unit.households ⇒"
+                  + " 具名拒并指路 unit.AssignGovPost。决策人窄工具 simos.gov.openPostsToMarket 直接提交、另走审批链）"),
+          Map.entry(
               "gov.SetAdministrationPlan",
               "unitId(必填；GOV 单位 id), securityPlannedLaborMilli?, paperworkPlannedLaborMilli?,"
                   + " postTiers?[{tierId,securityWeightPerMille,paperworkWeightPerMille}](恰 3 档),"

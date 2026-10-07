@@ -492,7 +492,8 @@ class UnitHouseholdContainmentTest {
       Map<HouseholdId, GovernmentPostOfHousehold> posts,
       Optional<UnitId> superior,
       GovernmentLevel level) {
-    return new GovernmentFormation(Map.of(), posts, OfficePolicy.defaults(), superior, level);
+    return new GovernmentFormation(
+        Map.of(), posts, OfficePolicy.defaults(), superior, level, Map.of());
   }
 
   @SafeVarargs

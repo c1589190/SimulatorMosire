@@ -39,6 +39,7 @@ import io.mosire.simos.app.tools.read.UnitGetTool;
 import io.mosire.simos.app.tools.read.UnitListTool;
 import io.mosire.simos.app.tools.write.GovAssignPostsTool;
 import io.mosire.simos.app.tools.write.GovExpandHouseholdTool;
+import io.mosire.simos.app.tools.write.GovOpenPostsToMarketTool;
 import io.mosire.simos.app.tools.write.GovPayTool;
 import io.mosire.simos.app.tools.write.GovSetBudgetPolicyTool;
 import io.mosire.simos.app.tools.write.GovSetEstablishmentTool;
@@ -162,6 +163,9 @@ public final class DecisionCallerFactory {
           GovSetBudgetPolicyTool.NAME,
           GovAssignPostsTool.NAME,
           GovExpandHouseholdTool.NAME,
+          // ★★ Z3d（2026-10-23）：外部岗位开放（B 路 V1=显式选户）——决策人只能自己的 GOV，走 GM 审批；
+          //   桶（SimosToolSource.addDecisionAgentWrites）与本白名单必须同源。
+          GovOpenPostsToMarketTool.NAME,
           GovInfoTool.NAME,
           // ★★ D2（2026-10-22 决策包计划）：决策包四件套（桶在 SimosToolSource.addDecisionAgentWrites）。
           ProposeCallTool.NAME,

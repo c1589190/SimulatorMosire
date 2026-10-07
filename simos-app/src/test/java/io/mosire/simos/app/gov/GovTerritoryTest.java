@@ -225,7 +225,8 @@ class GovTerritoryTest {
         id,
         position,
         Optional.of(
-            new GovernmentFormation(Map.of(), Map.of(), OfficePolicy.defaults(), superior, level)),
+            new GovernmentFormation(
+                Map.of(), Map.of(), OfficePolicy.defaults(), superior, level, Map.of())),
         Optional.of(jurisdiction(regions)),
         List.of(GovernmentHouseholds.of(id.value())));
   }

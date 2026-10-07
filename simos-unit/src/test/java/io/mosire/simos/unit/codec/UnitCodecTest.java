@@ -303,7 +303,8 @@ class UnitCodecTest {
                         HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false))),
             new OfficePolicy(111L, 222L, 3L, 7L, staffCap),
             Optional.of(new UnitId("g-9")),
-            GovernmentLevel.PROVINCE);
+            GovernmentLevel.PROVINCE,
+            Map.of());
     Jurisdiction jurisdiction =
         new Jurisdiction(orderedRates(new RegionId("r-1"), 100L), 1L, 2L, 3L, 4);
     UnitSnapshot snapshot =
@@ -434,7 +435,8 @@ class UnitCodecTest {
             Map.of(),
             OfficePolicy.defaults(),
             Optional.empty(),
-            GovernmentLevel.CENTRAL);
+            GovernmentLevel.CENTRAL,
+            Map.of());
     UnitSnapshot snapshot =
         snapshotOf(
             stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.of(gov))),
@@ -462,7 +464,12 @@ class UnitCodecTest {
     Map<StaffRole, Long> staff = orderedStaff(Map.entry(StaffRole.SCRIBE, 5L));
     GovernmentFormation gov =
         new GovernmentFormation(
-            staff, Map.of(), OfficePolicy.defaults(), Optional.empty(), GovernmentLevel.CENTRAL);
+            staff,
+            Map.of(),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            Map.of());
     Jurisdiction jurisdiction =
         new Jurisdiction(orderedRates(new RegionId("r-9"), 900L), 11L, 22L, 33L, 250);
     UnitSnapshot snapshot =
@@ -503,7 +510,8 @@ class UnitCodecTest {
                         HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false))),
             new OfficePolicy(7L, 8L, 9L, 10L, orderedStaff(Map.entry(StaffRole.SCRIBE, 40L))),
             Optional.of(new UnitId("g-central")),
-            GovernmentLevel.PROVINCE);
+            GovernmentLevel.PROVINCE,
+            Map.of());
     UnitState changed =
         stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.of(target)));
 

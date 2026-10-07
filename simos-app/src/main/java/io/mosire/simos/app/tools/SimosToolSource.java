@@ -79,6 +79,7 @@ import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
 import io.mosire.simos.app.tools.write.GovDismissTool;
 import io.mosire.simos.app.tools.write.GovDispatchTeamTool;
 import io.mosire.simos.app.tools.write.GovExpandHouseholdTool;
+import io.mosire.simos.app.tools.write.GovOpenPostsToMarketTool;
 import io.mosire.simos.app.tools.write.GovPayTool;
 import io.mosire.simos.app.tools.write.GovRecruitTool;
 import io.mosire.simos.app.tools.write.GovRemitTool;
@@ -664,6 +665,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new GovSetBudgetPolicyTool(core, query, initiator));
     built.add(new GovAssignPostsTool(core, query, calendarService, initiator));
     built.add(new GovExpandHouseholdTool(core, query, calendarService, initiator));
+    //   ★★ Z3d（2026-10-23）：外部户承接行政任务（B 路 V1=显式选户）——只写 externalPosts + GOV_SERVICE 承诺，
+    //     绝不改 Unit.households / Social 位置；GM 与决策人同名两处注册 + 审批链（同上面五条配置工具）。
+    built.add(new GovOpenPostsToMarketTool(core, query, calendarService, initiator));
     //   ★ 国库注资 / 政府间转账（F2 前置 G1）：只在 GM 桶；决策人路径走既有 simos.gov.pay。
     built.add(new GovTransferTreasuryTool(core, query, initiator));
     // ★★ R4 / R5 步骤 4（2026-10-01 行政区划修复计划）：GM 按辖区行政需求精确配满编组合工具——逐 GOV 调
@@ -827,6 +831,10 @@ public final class SimosToolSource implements ToolSource {
     built.add(new GovSetBudgetPolicyTool(core, query, initiator));
     built.add(new GovAssignPostsTool(core, query, calendarService, initiator));
     built.add(new GovExpandHouseholdTool(core, query, calendarService, initiator));
+    // ★★ Z3d（2026-10-23）：外部户承接行政任务（B 路 V1=显式选户）——与 GM 桶同名注册；只写 externalPosts +
+    //   GOV_SERVICE 承诺，不改归属/位置；敏感工具 ⇒ AutoApproveGate → ConfirmGate → PendingApprovals。
+    //   **桶**（本方法）与 **权限组白名单**（DecisionCallerFactory.WHITELIST）必须同源。
+    built.add(new GovOpenPostsToMarketTool(core, query, calendarService, initiator));
     // ★★ D2（2026-10-22 决策包计划）：决策包四件套——propose / submit / intent / my。
     //   **只在决策人桶**；白名单（DecisionCallerFactory.WHITELIST）必须同源。
     //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；submit/intent 走 own-packet 围栏。

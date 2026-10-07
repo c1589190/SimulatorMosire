@@ -301,7 +301,8 @@ class GovScopeTest {
                 Map.of(),
                 OfficePolicy.defaults(),
                 Optional.empty(),
-                level.orElse(GovernmentLevel.CENTRAL))));
+                level.orElse(GovernmentLevel.CENTRAL),
+                Map.of())));
   }
 
   private static Unit plainUnit(String id, HexCoord position) {

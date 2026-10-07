@@ -50,7 +50,8 @@ class UnitModuleTest {
                     Map.of(),
                     OfficePolicy.defaults(),
                     Optional.empty(),
-                    GovernmentLevel.CENTRAL))
+                    GovernmentLevel.CENTRAL,
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("staff 不得为 null（无人员用 Map.of()）");
   }
@@ -66,7 +67,8 @@ class UnitModuleTest {
                     Map.of(),
                     OfficePolicy.defaults(),
                     Optional.empty(),
-                    GovernmentLevel.CENTRAL))
+                    GovernmentLevel.CENTRAL,
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("staff 的键与值都不得为 null");
 
@@ -79,7 +81,8 @@ class UnitModuleTest {
                     Map.of(),
                     OfficePolicy.defaults(),
                     Optional.empty(),
-                    GovernmentLevel.CENTRAL))
+                    GovernmentLevel.CENTRAL,
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("staff 的键与值都不得为 null");
   }
@@ -93,7 +96,8 @@ class UnitModuleTest {
                     Map.of(),
                     OfficePolicy.defaults(),
                     Optional.empty(),
-                    GovernmentLevel.CENTRAL))
+                    GovernmentLevel.CENTRAL,
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("staff 的值必须 ≥ 0: YAMEN=-1");
   }
@@ -103,19 +107,24 @@ class UnitModuleTest {
     assertThatThrownBy(
             () ->
                 new GovernmentFormation(
-                    Map.of(), Map.of(), null, Optional.empty(), GovernmentLevel.CENTRAL))
+                    Map.of(), Map.of(), null, Optional.empty(), GovernmentLevel.CENTRAL, Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("policy 不得为 null");
     assertThatThrownBy(
             () ->
                 new GovernmentFormation(
-                    Map.of(), Map.of(), OfficePolicy.defaults(), null, GovernmentLevel.CENTRAL))
+                    Map.of(),
+                    Map.of(),
+                    OfficePolicy.defaults(),
+                    null,
+                    GovernmentLevel.CENTRAL,
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("superiorGov 不得为 null（无上级用 Optional.empty()）");
     assertThatThrownBy(
             () ->
                 new GovernmentFormation(
-                    Map.of(), Map.of(), OfficePolicy.defaults(), Optional.empty(), null))
+                    Map.of(), Map.of(), OfficePolicy.defaults(), Optional.empty(), null, Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("level 不得为 null");
   }
@@ -130,7 +139,12 @@ class UnitModuleTest {
 
     GovernmentFormation formation =
         new GovernmentFormation(
-            staff, Map.of(), OfficePolicy.defaults(), Optional.empty(), GovernmentLevel.CENTRAL);
+            staff,
+            Map.of(),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            Map.of());
 
     staff.put(StaffRole.YAMEN, 99L);
     staff.put(StaffRole.SCRIBE, 88L);
@@ -313,7 +327,8 @@ class UnitModuleTest {
                         Map.of(),
                         OfficePolicy.defaults(),
                         Optional.empty(),
-                        GovernmentLevel.CENTRAL)))
+                        GovernmentLevel.CENTRAL,
+                        Map.of())))
         .as("一单位至多一个编制标签：不静默替换")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("ArmyFormation")
@@ -334,7 +349,8 @@ class UnitModuleTest {
                 Map.of(),
                 OfficePolicy.defaults(),
                 Optional.empty(),
-                GovernmentLevel.CENTRAL));
+                GovernmentLevel.CENTRAL,
+                Map.of()));
 
     assertThatThrownBy(
             () ->

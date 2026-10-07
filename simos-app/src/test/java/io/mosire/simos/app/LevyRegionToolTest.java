@@ -1215,7 +1215,8 @@ class LevyRegionToolTest {
                           governmentHousehold, StaffRole.SCRIBE, GovernmentLevel.PROVINCE, true)),
                   OfficePolicy.defaults(),
                   Optional.empty(),
-                  GovernmentLevel.PROVINCE));
+                  GovernmentLevel.PROVINCE,
+                  Map.of()));
       households = List.of(governmentHousehold);
     }
     return new Unit(

@@ -148,7 +148,8 @@ class GovFormationCommandHandlersTest {
             Map.of(),
             new OfficePolicy(1L, 2L, 3L, 4L, orderedStaff(Map.entry(StaffRole.YAMEN, 7L))),
             Optional.of(GOV1),
-            GovernmentLevel.PROVINCE);
+            GovernmentLevel.PROVINCE,
+            Map.of());
     UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, old));
 
     UnitState target =
@@ -582,7 +583,8 @@ class GovFormationCommandHandlersTest {
                     Map.of(),
                     new OfficePolicy(0L, 0L, 0L, 0L, orderedStaff(Map.entry(StaffRole.SCRIBE, 5L))),
                     Optional.empty(),
-                    GovernmentLevel.CENTRAL)));
+                    GovernmentLevel.CENTRAL,
+                    Map.of())));
 
     UnitState target =
         applied(
@@ -652,7 +654,8 @@ class GovFormationCommandHandlersTest {
                     Map.of(),
                     new OfficePolicy(0L, 0L, 0L, 0L, orderedStaff(Map.entry(StaffRole.SCRIBE, 5L))),
                     Optional.empty(),
-                    GovernmentLevel.CENTRAL)));
+                    GovernmentLevel.CENTRAL,
+                    Map.of())));
 
     String reason =
         reason(RECRUIT, "g-1", world(base), "{\"unitId\":\"g-1\",\"role\":\"SCRIBE\",\"count\":3}");
@@ -732,7 +735,8 @@ class GovFormationCommandHandlersTest {
                     Map.of(),
                     OfficePolicy.defaults(),
                     Optional.empty(),
-                    GovernmentLevel.CENTRAL)));
+                    GovernmentLevel.CENTRAL,
+                    Map.of())));
 
     UnitState target =
         applied(DISMISS, "g-1", world(base), "{\"unitId\":\"g-1\",\"role\":\"YAMEN\",\"count\":3}");
@@ -867,12 +871,17 @@ class GovFormationCommandHandlersTest {
 
   private static GovernmentFormation central() {
     return new GovernmentFormation(
-        Map.of(), Map.of(), OfficePolicy.defaults(), Optional.empty(), GovernmentLevel.CENTRAL);
+        Map.of(),
+        Map.of(),
+        OfficePolicy.defaults(),
+        Optional.empty(),
+        GovernmentLevel.CENTRAL,
+        Map.of());
   }
 
   private static GovernmentFormation province(Optional<UnitId> superior) {
     return new GovernmentFormation(
-        Map.of(), Map.of(), OfficePolicy.defaults(), superior, GovernmentLevel.PROVINCE);
+        Map.of(), Map.of(), OfficePolicy.defaults(), superior, GovernmentLevel.PROVINCE, Map.of());
   }
 
   private static GovernmentFormation provinceWithStaff(long scribe) {
@@ -881,7 +890,8 @@ class GovFormationCommandHandlersTest {
         Map.of(),
         OfficePolicy.defaults(),
         Optional.empty(),
-        GovernmentLevel.PROVINCE);
+        GovernmentLevel.PROVINCE,
+        Map.of());
   }
 
   private static GovernmentFormation govWithPolicy() {
@@ -895,7 +905,8 @@ class GovFormationCommandHandlersTest {
             7L,
             orderedStaff(Map.entry(StaffRole.SCRIBE, 6L), Map.entry(StaffRole.YAMEN, 8L))),
         Optional.empty(),
-        GovernmentLevel.CENTRAL);
+        GovernmentLevel.CENTRAL,
+        Map.of());
   }
 
   /** 带领导家户配置的 GOV 编制（配置键会被 {@link #householdsFor} 编进 unit households）。 */
@@ -906,7 +917,8 @@ class GovFormationCommandHandlersTest {
         governmentPostsOfHousehold,
         OfficePolicy.defaults(),
         Optional.empty(),
-        GovernmentLevel.CENTRAL);
+        GovernmentLevel.CENTRAL,
+        Map.of());
   }
 
   private static Unit govUnit(UnitId id, GovernmentFormation gov) {
