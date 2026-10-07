@@ -344,6 +344,32 @@ public final class CatalogTool implements AgentTool {
                   + "★ GM-only，无 CommandTargets；决策人工具/审批链/窄工具归 Z3c。★ GOV_SERVICE 不可缩、最高优先级"
                   + "（不参与死亡/预算比例缩；越预算 ⇒ LABOR_COMMITMENT_CONTRACT ERROR fail-closed））"),
           Map.entry(
+              "unit.AssignGovPost",
+              "unitId(必填), household(必填；必须在 Unit.households 里), role(SCRIBE|YAMEN|POST),"
+                  + " tierId?(缺省空串 = legacy/未指派；非空必须命中 GovAdministrationPlan.postTiers，跨切片校验在 app 侧),"
+                  + " level?(缺省 = 该 GOV 编制自身层级 CENTRAL|PROVINCE), head?(缺省 false)"
+                  + "（★ Z4：只写 governmentPostsOfHousehold（同键整条替换）、绝不写 staff；"
+                  + "岗位户不在 Unit.households ⇒ 具名拒并指路 unit.SetUnitHouseholds；"
+                  + "决策人窄工具 simos.gov.assignPosts 直接提交、另走审批链）"),
+          Map.entry(
+              "gov.SetAdministrationPlan",
+              "unitId(必填；GOV 单位 id), securityPlannedLaborMilli?, paperworkPlannedLaborMilli?,"
+                  + " postTiers?[{tierId,securityWeightPerMille,paperworkWeightPerMille}](恰 3 档),"
+                  + " securitySupplyStaticModifierPerMille?, paperworkSupplyStaticModifierPerMille?,"
+                  + " securityDemandStaticModifierPerMille?, paperworkDemandStaticModifierPerMille?,"
+                  + " supernumerarySqrtCoefficient?(k；≥0)"
+                  + "（★ Z2：整体替换；缺省展开 计划0/默认3档/修正1000‰/k=1；单位必须存在且带 GovernmentFormation；"
+                  + "逐值相同 = 幂等 no-op；★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog 三条路径，不拦命令总线 ——"
+                  + "决策人窄工具 simos.gov.setEstablishment 直接提交同一命令并另走审批链）"),
+          Map.entry(
+              "gov.SetBudgetPolicy",
+              "unitId(必填), orderedCategories?[{category(ADMIN_STIPEND|MILITARY_STIPEND|ADMIN_SALARY|"
+                  + "DEBT_SERVICE|OTHER),minPerCycle?,capPerCycle?}](顺序即预算优先级；缺省空表 = 不自动付),"
+                  + " officialSalaryRule?{grainMilliPerCommittedHour?,silverMilliPerCommittedHour?}(缺省 0/0)"
+                  + "（★ Z2：同 id 整体替换、逐值相同 = 幂等 no-op；capPerCycle 缺省 = 不封顶；"
+                  + "★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog 三条路径，不拦命令总线 ——"
+                  + "决策人窄工具 simos.gov.setBudgetPolicy 直接提交同一命令并另走审批链）"),
+          Map.entry(
               "economy.MigrateHousehold",
               "household(家户 id 文本), toHex(目标格 q_r 文本)"
                   + "（★ S3：只搬视图与份额，身份/人口不变，账 location 不搬；"
