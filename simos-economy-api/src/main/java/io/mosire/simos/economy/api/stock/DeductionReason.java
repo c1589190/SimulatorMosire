@@ -14,11 +14,11 @@ import java.util.List;
  * <p>★★ <b>规范字面量 = {@link #value()} 的小写形式</b>（与 {@code TransferReason} / {@code PriceMode} 同制：规范串用
  * {@code value()}，{@link #parse} 只认它、<b>不做归一</b>）—— 归一是"猜"，写错一个档必须<b>当场炸</b>并看得见全部合法值。
  *
- * <p>★ <b>本批真正有写者的三档</b>：{@link #JURISDICTION_TAX}（{@code JurisdictionDailyTax} 走通用服务）、{@link
+ * <p>★ <b>本批真正有写者的四档</b>：{@link #JURISDICTION_TAX}（{@code JurisdictionDailyTax} 走通用服务）、{@link
  * #ADMIN_UPKEEP}（{@code GovernmentUpkeepOracle} / {@code GovDaily} 走通用服务）、{@link
- * #MILITARY_SALARY}（本批只有 <b>后端可使用路径</b>：{@code actor.DeductHouseholdStock} 命令 + 通用服务；"下一 tick
- * 扣除计划"的 sd/participant 调度是具名缺口，见关账报告）。 {@link #CORVEE} 是<b>留位</b>（如实记：今天没有生产写者；徭役人口口径随 {@code
- * Unit.manpower} 退役，抽人走社会工单路径）。
+ * #MILITARY_SALARY}（{@code MilitaryPayRuleBridge} → {@code PeriodicHouseholdAdjustmentExecutor}
+ * 的转移路径）、{@link #ADMIN_SALARY}（Z3c 的 {@code GovSalaryRuleBridge}，同样走 P4a 执行器的原子转移）。 {@link #CORVEE}
+ * 是<b>留位</b>（如实记： 今天没有生产写者；徭役人口口径随 {@code Unit.manpower} 退役，抽人走社会工单路径）。
  */
 public enum DeductionReason {
 
@@ -30,6 +30,12 @@ public enum DeductionReason {
 
   /** 行政俸禄 / 行政物资（{@code GovDaily} 的编制人员供给与俸禄，付款方 = 政府家户，当前无可信对端 ⇒ 明确 sink）。 */
   ADMIN_UPKEEP("admin_upkeep"),
+
+  /**
+   * 官吏工资（Z3c，设计书 §9）：{@code hh-gov-<govUnitId>} 国库 → 官吏户的转移，按 {@code GovOfficialSalaryRule}
+   * 的每承诺小时粮/银与 {@code GOV_SERVICE} 承诺劳动逐腿 min 支付；与 {@link #ADMIN_UPKEEP}（付给"整编"的 sink）语义分离。
+   */
+  ADMIN_SALARY("admin_salary"),
 
   /** 徭役折算（留位：今天没有生产写者；抽人走社会工单路径，不重现 {@code Unit.manpower}）。 */
   CORVEE("corvee");

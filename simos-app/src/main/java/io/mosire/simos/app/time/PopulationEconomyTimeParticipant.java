@@ -659,9 +659,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     "economyPopulationAfter",
                     totalEconomyPopulation(stepper.householdEconomies())));
           }
-          // ★★ P2-D：日结算之后的税 / 行政俸禄 —— **同一账户会话、同一个日循环**（不另起 participant，避免 gov/actor 同名模块冲突）。
-          //   顺序沿用阶段 11b：先税（收入侧）、后 GovDaily（支出侧）⇒ 当天税可先供当天俸禄；两者都写账户会话，
-          //   由本日末尾的 landAccountSession 绝对值一次落回 actor。信号折进 economy.crisisSignals（同 (hex,kind) 覆盖）。
+          // ★★ P2-D/Z3c：日结算之后的税 / 预算 / 行政俸禄 / 军俸 / 工资 —— **同一账户会话、同一个日循环**
+          //   （不另起 participant，避免 gov/actor 同名模块冲突）。顺序：先税（收入侧）→ Z3c 预算规划
+          //   （GovBudgetPolicy 类别顺序/min/cap）→ GovDaily 行政俸禄（预算 oracle）→ 军俸/工资（预算裁剪后执行）
+          //   → 持久周期规则；全部写账户会话，由本日末尾的 landAccountSession 绝对值一次落回 actor。
+          //   信号折进 economy.crisisSignals（同 (hex,kind) 覆盖）。
           if (govActive) {
             // ★★ Z3b 单次计算：本 tick 的注入集先取走并清空，随后算**唯一一份**效率/流量结果；税与 GovDaily 都消费它。
             Map<UnitId, GovEfficiencyModifier> dayModifiers = drainGovEfficiencyModifiers();
@@ -702,53 +704,102 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               }
             }
             adminTotals.recordTax(tax);
+            // ★★ Z3c：税收入侧进来之后、任何支出之前，先按该 GOV 的 GovBudgetPolicy 做当日限额规划。
+            //   行政俸禄（GovDaily）/军俸桥/官吏工资桥此后都只被授权到各自类别限额；本桥不注资、不改计划。
+            long daysInYearAtSettlement = CalendarClock.julianDefault().daysInYearAtTick(day);
+            GovBudgetExecutionBridge.DayBudget budget =
+                GovBudgetExecutionBridge.plan(
+                    currentGov,
+                    units,
+                    currentSocial,
+                    economy,
+                    stepper.accounts(),
+                    computed.byUnit(),
+                    computed.supplyByUnit(),
+                    day,
+                    daysInYearAtSettlement);
+            MilitaryPayRuleBridge.Report militaryPayReport = budget.militaryReport();
+            if (TIME.isDebugEnabled()) {
+              TIME.debug(
+                  LogEvent.of(
+                      "MILITARY_PAY_BRIDGE",
+                      AppLogSource.DAILY_LOOP,
+                      "day",
+                      day,
+                      "units",
+                      militaryPayReport.units(),
+                      "policies",
+                      militaryPayReport.policies(),
+                      "rules",
+                      militaryPayReport.rules().size(),
+                      "gaps",
+                      militaryPayReport.gaps().size()));
+            }
             GovernmentUpkeepOracle oracle = new GovernmentUpkeepOracle(stepper.accounts(), units);
             GovDaily.Outcome settled =
                 GovDaily.settle(
                     currentGov,
                     units,
                     day,
-                    CalendarClock.julianDefault().daysInYearAtTick(day),
+                    daysInYearAtSettlement,
                     computed.byUnit(),
-                    oracle);
+                    budget.upkeepOracle(oracle));
             currentGov = settled.next();
             adminTotals.recordGovDaily(settled);
             for (GovDaily.SignalDraft draft : settled.signals()) {
               stepper.putCrisisSignal(toCrisisSignal(draft, day));
             }
+            for (GovDaily.SignalDraft draft : budget.alerts()) {
+              stepper.putCrisisSignal(toCrisisSignal(draft, day));
+            }
+            adminTotals.recordExtraSignals(budget.alerts().size());
+            // ★★ Z3c：军俸/工资规则按类别限额裁剪后走既有 P4a 执行器（applyExplicit 不合并持久规则）；
+            //   持久规则紧接着在下面单独执行，不能先抢走预算类别预留的国库。
+            PeriodicHouseholdAdjustmentExecutor.Report budgetedReport =
+                PeriodicHouseholdAdjustmentExecutor.applyExplicit(
+                    budget.budgetedRules(), stepper.accounts(), day);
+            adminTotals.recordSalary(budget.logSalaryExecution(budgetedReport, day));
+            List<GovDaily.SignalDraft> executionAlerts =
+                budget.executionContractAlerts(budgetedReport, day);
+            for (GovDaily.SignalDraft draft : executionAlerts) {
+              stepper.putCrisisSignal(toCrisisSignal(draft, day));
+            }
+            adminTotals.recordExtraSignals(executionAlerts.size());
           } else {
             // 本日没有 GOV 读数：注入集既无法消费也无法验证，直接作废（机制要影响就必须逐 tick 重新注入）。
             govEfficiencyModifiers.clear();
           }
-          // ★★ P4a：通用周期家户库存扣增 —— 在日税的**收入侧**与 GovDaily 的**支出侧**之后、市场报告/日末之前执行。
-          //   规则表来自本推进的只读基态（命令只写规则、不写账户）；执行器按绝对世界日无状态到期、逐腿部分支付，
-          //   与 JurisdictionDailyTax/GovernmentUpkeepOracle 共用同一个 AccountSession 与 TAX_AND_UPKEEP
-          // 阶段。
-          //   ★ 没有到期规则时执行器完全 no-op（不打日志、不动账户）。
-          // ★★ P4b：军俸政策 → P4a 规则的每日派生（不把政策写进 EconomyData；政策是唯一权威，规则是当日现算的瞬态件）。
-          //   次序：日税（收入）→ GovDaily（支出）→ 军俸派生 + 持久/瞬态合并执行；执行器同一条部分支付路径，没有第二套扣账。
-          MilitaryPayRuleBridge.Report militaryPayReport =
-              units == null
-                  ? MilitaryPayRuleBridge.Report.empty()
-                  : MilitaryPayRuleBridge.deriveReport(units, currentSocial, economy, day);
-          if (TIME.isDebugEnabled()) {
-            TIME.debug(
-                LogEvent.of(
-                    "MILITARY_PAY_BRIDGE",
-                    AppLogSource.DAILY_LOOP,
-                    "day",
-                    day,
-                    "units",
-                    militaryPayReport.units(),
-                    "policies",
-                    militaryPayReport.policies(),
-                    "rules",
-                    militaryPayReport.rules().size(),
-                    "gaps",
-                    militaryPayReport.gaps().size()));
+          // ★★ P4a/P4b：通用周期家户库存扣增 —— 预算类别（GovDaily/军俸/工资）之后、市场报告/日末之前执行。
+          //   ★ 有 GOV 时：预算桥已用 applyExplicit 执行完类别内规则，这里只执行 EconomyData 的持久规则（extraRules 空表），
+          //     保证持久规则不会先到先得地抢走预算类别预留的国库；
+          //   ★ 无 GOV 时：沿用旧口径（军俸派生 + 持久/瞬态合并执行），但不进入任何预算类别。
+          if (govActive) {
+            PeriodicHouseholdAdjustmentExecutor.applyDue(
+                economy, List.of(), stepper.accounts(), day);
+          } else {
+            MilitaryPayRuleBridge.Report militaryPayReport =
+                units == null
+                    ? MilitaryPayRuleBridge.Report.empty()
+                    : MilitaryPayRuleBridge.deriveReport(units, currentSocial, economy, day);
+            if (TIME.isDebugEnabled()) {
+              TIME.debug(
+                  LogEvent.of(
+                      "MILITARY_PAY_BRIDGE",
+                      AppLogSource.DAILY_LOOP,
+                      "day",
+                      day,
+                      "units",
+                      militaryPayReport.units(),
+                      "policies",
+                      militaryPayReport.policies(),
+                      "rules",
+                      militaryPayReport.rules().size(),
+                      "gaps",
+                      militaryPayReport.gaps().size()));
+            }
+            PeriodicHouseholdAdjustmentExecutor.applyDue(
+                economy, militaryPayReport.rules(), stepper.accounts(), day);
           }
-          PeriodicHouseholdAdjustmentExecutor.applyDue(
-              economy, militaryPayReport.rules(), stepper.accounts(), day);
 
           // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
           MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
@@ -989,17 +1040,22 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     return base.withOffices(offices);
   }
 
-  /** ★★ Z3b 每 tick 唯一一份计算的完整产物：效率表（GovDaily 消费）+ ‰ 投影（税侧消费）+ 流量（进程内投递）。 */
+  /**
+   * ★★ Z3b 每 tick 唯一一份计算的完整产物：效率表（GovDaily 消费）+ ‰ 投影（税侧消费）+ 流量（进程内投递）+ 两维承诺供给 （Z3c
+   * 的空缺/服务零告警判据；与效率同源，防止第二处重算）。
+   */
   private record GovEfficiencyDay(
       Map<UnitId, GovEfficiency.Efficiency> byUnit,
       Map<UnitId, Long> efficiencyPerMilleByUnit,
-      Map<UnitId, GovServiceFlow> flows) {
+      Map<UnitId, GovServiceFlow> flows,
+      Map<UnitId, GovernmentServiceLaborBridge.Supply> supplyByUnit) {
 
     private GovEfficiencyDay {
       byUnit = Collections.unmodifiableMap(new LinkedHashMap<>(byUnit)); // ★ 冻在构造处（保序）
       efficiencyPerMilleByUnit =
           Collections.unmodifiableMap(new LinkedHashMap<>(efficiencyPerMilleByUnit));
       flows = Collections.unmodifiableMap(new LinkedHashMap<>(flows));
+      supplyByUnit = Collections.unmodifiableMap(new LinkedHashMap<>(supplyByUnit));
     }
   }
 
@@ -1029,6 +1085,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     Map<UnitId, GovEfficiency.Efficiency> byUnit = new LinkedHashMap<>();
     Map<UnitId, Long> efficiencyPerMilleByUnit = new LinkedHashMap<>();
     Map<UnitId, GovServiceFlow> flows = new LinkedHashMap<>();
+    Map<UnitId, GovernmentServiceLaborBridge.Supply> supplyByUnit = new LinkedHashMap<>();
     long standardLaborMilliHoursPerTick = social.provisioning().standardLaborMilliHoursPerTick();
     List<UnitId> ordered = new ArrayList<>(govState.offices().keySet());
     ordered.sort(Comparator.comparing(UnitId::value));
@@ -1132,12 +1189,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       }
       byUnit.put(unitId, efficiency);
       efficiencyPerMilleByUnit.put(unitId, efficiency.efficiencyPerMille());
+      supplyByUnit.put(unitId, supply);
       flows.put(
           unitId,
           GovServiceFlow.of(
               unitId, day, supply.securityLaborMilli(), supply.paperworkLaborMilli(), efficiency));
     }
-    return new GovEfficiencyDay(byUnit, efficiencyPerMilleByUnit, flows);
+    return new GovEfficiencyDay(byUnit, efficiencyPerMilleByUnit, flows, supplyByUnit);
   }
 
   /** ★ 取走本 tick 的注入集并清空（"消费后清空"；未再注入的下一日回到 1000‰ 中性）。 */
@@ -1189,6 +1247,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           case GovDaily.KIND_ADMIN_SUPPLY -> HexCrisisSignal.Kind.ADMIN_SUPPLY;
           case GovDaily.KIND_ADMIN_SECURITY -> HexCrisisSignal.Kind.ADMIN_SECURITY;
           case GovDaily.KIND_ADMIN_PAPERWORK -> HexCrisisSignal.Kind.ADMIN_PAPERWORK;
+          case GovDaily.KIND_ADMIN_BUDGET_SHORTFALL -> HexCrisisSignal.Kind.ADMIN_BUDGET_SHORTFALL;
+          case GovDaily.KIND_ADMIN_PLAN_MISSING -> HexCrisisSignal.Kind.ADMIN_PLAN_MISSING;
+          case GovDaily.KIND_ADMIN_SERVICE_FLOW_ZERO ->
+              HexCrisisSignal.Kind.ADMIN_SERVICE_FLOW_ZERO;
+          case GovDaily.KIND_ADMIN_VACANCY -> HexCrisisSignal.Kind.ADMIN_VACANCY;
+          case GovDaily.KIND_ADMIN_CONTRACT -> HexCrisisSignal.Kind.ADMIN_CONTRACT;
           default ->
               throw new IllegalStateException(
                   "未知的 GovDaily SignalDraft.kind（映射表只此一处）: " + draft.kind());
@@ -1221,6 +1285,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     private long upkeepPaidCloth;
     private long upkeepPaidMoney;
     private long upkeepShortfallTotal;
+    private long adminSalaryPaidGrain;
+    private long adminSalaryPaidSilver;
+    private long adminSalaryShortfallGrain;
+    private long adminSalaryShortfallSilver;
+    private long adminSalaryHouseholds;
+    private long adminSalaryNoPayHouseholds;
     private long signals;
 
     void recordTax(JurisdictionDailyTax.Report report) {
@@ -1228,6 +1298,22 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       taxGrainCollected = Math.addExact(taxGrainCollected, report.grain().collected());
       taxSilverAssessed = Math.addExact(taxSilverAssessed, report.money().assessed());
       taxSilverCollected = Math.addExact(taxSilverCollected, report.money().collected());
+    }
+
+    void recordSalary(GovBudgetExecutionBridge.SalaryTotals totals) {
+      adminSalaryPaidGrain = Math.addExact(adminSalaryPaidGrain, totals.paidGrainMilli());
+      adminSalaryPaidSilver = Math.addExact(adminSalaryPaidSilver, totals.paidSilverMilli());
+      adminSalaryShortfallGrain =
+          Math.addExact(adminSalaryShortfallGrain, totals.shortfallGrainMilli());
+      adminSalaryShortfallSilver =
+          Math.addExact(adminSalaryShortfallSilver, totals.shortfallSilverMilli());
+      adminSalaryHouseholds = Math.addExact(adminSalaryHouseholds, totals.households());
+      adminSalaryNoPayHouseholds =
+          Math.addExact(adminSalaryNoPayHouseholds, totals.noPayHouseholds());
+    }
+
+    void recordExtraSignals(int count) {
+      signals = Math.addExact(signals, count);
     }
 
     void recordGovDaily(GovDaily.Outcome outcome) {
@@ -1274,6 +1360,18 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               upkeepPaidMoney,
               "upkeepShortfallTotal",
               upkeepShortfallTotal,
+              "adminSalaryHouseholds",
+              adminSalaryHouseholds,
+              "adminSalaryPaidGrain",
+              adminSalaryPaidGrain,
+              "adminSalaryPaidSilver",
+              adminSalaryPaidSilver,
+              "adminSalaryShortfallGrain",
+              adminSalaryShortfallGrain,
+              "adminSalaryShortfallSilver",
+              adminSalaryShortfallSilver,
+              "adminSalaryNoPayHouseholds",
+              adminSalaryNoPayHouseholds,
               "signals",
               signals));
     }

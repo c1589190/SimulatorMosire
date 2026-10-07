@@ -83,7 +83,17 @@ public record HexCrisisSignal(
     /** 行政文书不足（GOV 辖区书吏+驿传覆盖率 &lt; 1000‰；阶段 11b，只发信号）。 */
     ADMIN_PAPERWORK,
     /** 行政物资/俸禄不足（当日 grain/cloth/silver 任一实付 &lt; 评估；阶段 11b，只发信号）。 */
-    ADMIN_SUPPLY
+    ADMIN_SUPPLY,
+    /** 国库预算不足（按 {@code GovBudgetPolicy.orderedCategories} 顺序分配后仍有类别缺口；Z3c，只发信号）。 */
+    ADMIN_BUDGET_SHORTFALL,
+    /** 编制/预算计划未设或全 0（Z3c，只发信号，不自动改计划）。 */
+    ADMIN_PLAN_MISSING,
+    /** 政府服务流量为 0（无 {@code GOV_SERVICE} 承诺劳动；Z3c，只发信号）。 */
+    ADMIN_SERVICE_FLOW_ZERO,
+    /** 岗位空缺无法填（计划需求 &gt; 0 且该维实际承诺供给 = 0；Z3c，只发信号，不自动招募）。 */
+    ADMIN_VACANCY,
+    /** 行政契约异常（预算/工资/军俸执行路径的跨切片不一致等；Z3c，ERROR + 信号，不自动修复）。 */
+    ADMIN_CONTRACT
   }
 
   public HexCrisisSignal {

@@ -99,6 +99,21 @@ public final class GovDaily {
   /** 文书覆盖不足的信号 kind（字符串；11b 按名折成 {@code HexCrisisSignal.Kind.ADMIN_PAPERWORK}）。 */
   public static final String KIND_ADMIN_PAPERWORK = "ADMIN_PAPERWORK";
 
+  /** 国库预算不足的信号 kind（Z3c；按预算顺序/上限分配后仍有类别缺口；只发信号）。 */
+  public static final String KIND_ADMIN_BUDGET_SHORTFALL = "ADMIN_BUDGET_SHORTFALL";
+
+  /** 编制/预算计划未设或全 0 的信号 kind（Z3c；只发信号，不自动改计划）。 */
+  public static final String KIND_ADMIN_PLAN_MISSING = "ADMIN_PLAN_MISSING";
+
+  /** 政府服务流量为 0（无 {@code GOV_SERVICE} 承诺劳动）的信号 kind（Z3c；只发信号）。 */
+  public static final String KIND_ADMIN_SERVICE_FLOW_ZERO = "ADMIN_SERVICE_FLOW_ZERO";
+
+  /** 岗位空缺无法填（计划需求 &gt; 0 且该维实际承诺供给 = 0）的信号 kind（Z3c；只发信号，不自动招募）。 */
+  public static final String KIND_ADMIN_VACANCY = "ADMIN_VACANCY";
+
+  /** 行政契约异常的信号 kind（Z3c；ERROR + 信号，不自动修复）。 */
+  public static final String KIND_ADMIN_CONTRACT = "ADMIN_CONTRACT";
+
   /** 商品侧两个稳定 id（唯一拼写点在 util 词表）。 */
   private static final CommodityId GRAIN = CommodityId.parse(EconomyVocabulary.GRAIN_COMMODITY_ID);
 
@@ -266,12 +281,11 @@ public final class GovDaily {
       HexCoord at = seat.get();
 
       // ---- 评估与支付（顺序固定 grain → cloth → money；0 需求不发）----
-      OfficePolicy policy = governmentFormation.policy();
-      long totalStaff = totalStaff(governmentFormation);
-      long grainNeed = totalStaff * policy.grainPerStaffPerTick();
-      long clothNeed =
-          totalStaff * Math.floorDiv(policy.clothPerStaffPerCycle(), daysInYearAtSettlement);
-      long moneyNeed = totalStaff * policy.moneyPerStaffPerTick();
+      UpkeepAssessment assessment = assessUpkeep(governmentFormation, daysInYearAtSettlement);
+      long totalStaff = assessment.totalStaff();
+      long grainNeed = assessment.grainMilli();
+      long clothNeed = assessment.clothMilli();
+      long moneyNeed = assessment.moneyMilli();
 
       long grainPaid = pay(oracle, unitId, at, GRAIN_RESOURCE, grainNeed, tick);
       long clothPaid = pay(oracle, unitId, at, CLOTH_RESOURCE, clothNeed, tick);
@@ -508,6 +522,54 @@ public final class GovDaily {
         efficiency.bonusPerMille(),
         efficiency.securityEfficiencyPerMille(),
         efficiency.paperworkEfficiencyPerMille());
+  }
+
+  /**
+   * ★★ <b>Z3c：当日行政定额评估的唯一算法</b>（{@link #settle} 与 app 预算执行器共用，避免第二处拼写）。
+   *
+   * <pre>
+   * totalStaff = Σ governmentFormation.staff().values()
+   * grain      = totalStaff × policy.grainPerStaffPerTick()
+   * cloth      = totalStaff × ⌊policy.clothPerStaffPerCycle() ÷ daysInYear⌋
+   * money      = totalStaff × policy.moneyPerStaffPerTick()
+   * </pre>
+   *
+   * <p>★ 量纲与逐值口径与 {@link #settle} 的既有实现逐字一致（cloth 的是"每人每历法年"折算到当日的 floor）。 只在 {@code daysInYear} 不是
+   * 365/366 时具名拒绝（调用方臆造年长）；其余字段的合法性由 {@link OfficePolicy}/ {@link GovernmentFormation} 构造期把守。
+   */
+  public static UpkeepAssessment assessUpkeep(
+      GovernmentFormation governmentFormation, long daysInYearAtSettlement) {
+    requireNonNull(governmentFormation, "governmentFormation");
+    if (daysInYearAtSettlement != 365L && daysInYearAtSettlement != 366L) {
+      throw new IllegalArgumentException(
+          "daysInYearAtSettlement 只接受 365 或 366（拒绝臆造年长）: " + daysInYearAtSettlement);
+    }
+    long totalStaff = totalStaff(governmentFormation);
+    OfficePolicy policy = governmentFormation.policy();
+    return new UpkeepAssessment(
+        totalStaff,
+        totalStaff * policy.grainPerStaffPerTick(),
+        totalStaff * Math.floorDiv(policy.clothPerStaffPerCycle(), daysInYearAtSettlement),
+        totalStaff * policy.moneyPerStaffPerTick());
+  }
+
+  /** 当日行政定额（总人数 + 三资源；Z3c {@link GovDaily#assessUpkeep} 的返回值；逐值 ≥ 0）。 */
+  public record UpkeepAssessment(
+      long totalStaff, long grainMilli, long clothMilli, long moneyMilli) {
+
+    public UpkeepAssessment {
+      if (totalStaff < 0L || grainMilli < 0L || clothMilli < 0L || moneyMilli < 0L) {
+        throw new IllegalArgumentException(
+            "UpkeepAssessment 四个字段都必须 ≥ 0: "
+                + totalStaff
+                + "/"
+                + grainMilli
+                + "/"
+                + clothMilli
+                + "/"
+                + moneyMilli);
+      }
+    }
   }
 
   /** 编制总人数（各角色求和；超编时这个数就是"超"的分子来源）。 */

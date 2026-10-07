@@ -126,6 +126,23 @@ public final class PeriodicHouseholdAdjustmentExecutor {
     return applyDueRules(merged.values(), accounts, day);
   }
 
+  /**
+   * ★★ <b>Z3c：只执行给定规则集合，不与 {@code EconomyData.periodicAdjustments} 合并</b> —— 预算执行器已按 {@code
+   * GovBudgetPolicy} 的类别顺序把军俸/工资规则限额算好，必须保证这些限额在落账前不被持久规则先到先得地抢走；持久规则由调用方在预算类别执行完之后 单独走 {@link
+   * #applyDue(EconomyData, Collection, AccountSession, long)}（{@code extraRules} 空表）执行。
+   *
+   * <p>到期判据、逐腿 min(可用,请求)、no-payable-leg、gap 语义全部复用唯一执行体 {@link #applyDueRules}，不复制第二套。
+   */
+  public static Report applyExplicit(
+      Collection<HouseholdPeriodicAdjustment> rules, AccountSession accounts, long day) {
+    Objects.requireNonNull(rules, "rules");
+    Objects.requireNonNull(accounts, "accounts");
+    for (HouseholdPeriodicAdjustment rule : rules) {
+      Objects.requireNonNull(rule, "rules 不得含 null");
+    }
+    return applyDueRules(rules, accounts, day);
+  }
+
   /** 唯一执行体：把给定规则集合里当天到期者按 id 升序执行。旧/新两个公开入口都委托到这里 ⇒ due、部分支付、shortfall、gap 语义只有一份实现（“其余语义逐字复用”）。 */
   private static Report applyDueRules(
       Collection<HouseholdPeriodicAdjustment> rules, AccountSession accounts, long day) {
