@@ -82,6 +82,7 @@ import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
 import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
+import io.mosire.simos.economy.spi.EconomyUpsertGovUnitHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
@@ -658,6 +659,14 @@ public final class Shell implements AutoCloseable {
                 //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
                 //   simos.economy.upsertIndustry 照常可用。★ 不实现 CommandTargets（不进决策令桶）。──
                 new EconomyUpsertIndustryHandler(),
+                // ── economy（Z1c 2026-10-23）：为 GOV 单位创建/补齐 office 行政服务生产 unit（units +
+                //   assetShares + relations；operator=hh-gov-<id>）。★ GM-only：标 GmOnlyCommand ⇒
+                // 排除出令白名单 /
+                //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
+                //   simos.economy.upsertGovUnit 照常可用。★ 不实现 CommandTargets（不进决策令桶）。
+                //   ★ economy 因模块边界看不见 unit；app 的 GM 工具在 preview/apply 前另做 unit +
+                //   GovernmentFormation 预检（控制方 2026-10-23 裁定 A）。──
+                new EconomyUpsertGovUnitHandler(),
                 // ── P1b1（2026-10-01）：GM-only 区域经济数据清空（目标格 industries/markets + 可靠可定位的连带记录）。
                 //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new EconomyClearRegionHandler(),

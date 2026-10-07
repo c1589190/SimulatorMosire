@@ -315,6 +315,21 @@ public final class CatalogTool implements AgentTool {
                   + "id 已存在 ⇒ 仅当无 units/assetShares/relations 引用时原地全量替换，被引用 ⇒ 具名拒并指路"
                   + "新版本 id；逐值相同的重放 = 幂等 no-op；老 unit 引用老 id 零影响；GM-only）"),
           Map.entry(
+              "economy.UpsertGovUnit",
+              "govUnitId(必填；家户 = hh-gov-<govUnitId>), industryId(必填；必须已存在且 base kind=office，"
+                  + "office/office_v2…), assets({AssetKind:数量}；逐值≥0，且逐 recipe capacityPerUnit kind 至少覆盖 1 单位规模),"
+                  + " modeKey?(缺省 gov_service，稳定键), reason(必填)"
+                  + "（★ Z1c：为 GOV 单位创建/补齐行政服务生产 unit——operator=HOUSEHOLD:hh-gov-<govUnitId>，"
+                  + "unitId=ProductionUnitId.idOf(industryId, operator)；一次写 units(progress=0/cycle 空) + "
+                  + "assetShares(OWNED 补足 owner=operator) + relations(空规则/residualOwner=operator)；不写"
+                  + " operatorConditions/ProductionEnterprise。同载荷重放 = 幂等 no-op（空变更集）；已存在 unit/关系/份额"
+                  + "与载荷字段冲突（modeKey 不一致、既有可用资产超过载荷量、既有工资规则…）⇒ 具名拒，不静默覆盖。"
+                  + "守卫：economy 已激活；GOV 已在 economy.RegisterGovernment 登记（经济侧 governments 派生存 + "
+                  + "classes 的 HouseholdEconomy 行）；hh-gov 在 Social 家户表；industry 存在且 base kind=office；"
+                  + "产业格已激活；assets 覆盖 capacityPerUnit 1 单位规模。★ economy handler 因模块边界看不见 unit，"
+                  + "app 的 GM 工具 simos.economy.upsertGovUnit 在 preview/apply 另做 unit+GovernmentFormation 预检；"
+                  + "GM-only，无 CommandTargets/决策人版）"),
+          Map.entry(
               "economy.MigrateHousehold",
               "household(家户 id 文本), toHex(目标格 q_r 文本)"
                   + "（★ S3：只搬视图与份额，身份/人口不变，账 location 不搬；"

@@ -329,6 +329,17 @@ public final class EconomyIndustryUpserts {
         + "）";
   }
 
+  /**
+   * 既有 {@code IndustryId} 的 <b>base kind</b>（版本后缀 {@code _v<N>} 剥掉；无后缀 = 整个 kind）。
+   *
+   * <p>★ 供 Z1c 的 GOV 生产 unit 守卫复用：判“该产业是不是 {@code office} 族（{@code office} / {@code office_v2}…）”。
+   * 读的是<b>既有状态里的 id</b>，故用 {@code strict=false} 的宽容拆解（旧档怪拼法按普通 kind 文本读，不把引用检查变成载荷错）。
+   */
+  static String baseKindOf(IndustryId id) {
+    Objects.requireNonNull(id, "id");
+    return kindVersion(id, false).baseKind();
+  }
+
   /** 版本 id 建议：{@code <base>_v<N>@<hex>}。 */
   private static String suggestedId(String baseKind, int version, String hexKey) {
     return baseKind + "_v" + version + "@" + hexKey;
