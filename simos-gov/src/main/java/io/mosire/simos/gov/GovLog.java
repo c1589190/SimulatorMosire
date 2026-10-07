@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
  *   <tr><th>取用方法</th><th>logger 名</th><th>记什么</th></tr>
  *   <tr><td>{@link #daily()}</td><td>{@code .daily}</td><td>GOV 日结算（供给/治安/文书/俸禄支付）</td></tr>
  *   <tr><td>{@link #demand()}</td><td>{@code .demand}</td><td>逐格行政需求与效率读数</td></tr>
+ *   <tr><td>{@link #efficiency()}</td><td>{@code .efficiency}</td><td>Z2 两维效率公式（契约故障 ERROR / 汇总 DEBUG）</td></tr>
+ *   <tr><td>{@link #command()}</td><td>{@code .command}</td><td>gov 配置命令 handler（成功/拒绝 INFO、契约 ERROR）</td></tr>
  *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>GovCodec 编解码/变更集施加</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐单位/逐格明细</b></td></tr>
  * </table>
@@ -47,10 +49,14 @@ public final class GovLog {
 
   public static final String DAILY_LOGGER_NAME = ROOT_LOGGER_NAME + ".daily";
   public static final String DEMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".demand";
+  public static final String EFFICIENCY_LOGGER_NAME = ROOT_LOGGER_NAME + ".efficiency";
+  public static final String COMMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".command";
   public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger DAILY = LoggerFactory.getLogger(DAILY_LOGGER_NAME);
   private static final Logger DEMAND = LoggerFactory.getLogger(DEMAND_LOGGER_NAME);
+  private static final Logger EFFICIENCY = LoggerFactory.getLogger(EFFICIENCY_LOGGER_NAME);
+  private static final Logger COMMAND = LoggerFactory.getLogger(COMMAND_LOGGER_NAME);
   private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
@@ -64,6 +70,16 @@ public final class GovLog {
   /** 逐格行政需求与效率读数。 */
   public static Logger demand() {
     return DEMAND;
+  }
+
+  /** Z2 两维效率公式（契约故障 ERROR / 汇总 DEBUG）。 */
+  public static Logger efficiency() {
+    return EFFICIENCY;
+  }
+
+  /** gov 配置命令 handler（成功/拒绝 INFO、契约 ERROR）。 */
+  public static Logger command() {
+    return COMMAND;
   }
 
   /** GovCodec 编解码与变更集施加。 */

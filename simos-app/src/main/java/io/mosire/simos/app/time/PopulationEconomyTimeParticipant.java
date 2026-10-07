@@ -834,7 +834,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     for (UnitId id : missing) {
       offices.put(id, GovOfficeState.empty(id, tick));
     }
-    return new GovState(offices);
+    // ★ Z2 拷贝纪律：只补 offices，两条源状态（administrationPlans/budgetPolicies）必须原样带过。
+    return base.withOffices(offices);
   }
 
   /**

@@ -1,98 +1,387 @@
 package io.mosire.simos.gov;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.provisioning.SocialProvisioning;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.StaffRole;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.Map;
+import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
- * 行政效率（阶段 11a，计划 §2.2 / §3）：由编制供给与辖区逐格需求算出**覆盖率 / 超编加成 / 行政效率**三个 per-mille 读数。
+ * 行政效率（阶段 11a；Z2 换冻结两维公式，设计书 §3）：由编制计划与两维承诺劳动算出<b>两维满足率 + 两维最终效率 + 总效率</b>。
  *
- * <p>★★ <b>这是全仓唯一的行政效率算法</b>（用户裁定 1/2：行政力与战斗力分开算，unit 侧不存任何力量数值；{@code unit} 只给编制与政策）。 算式里的每个常量都引用
- * {@link GovRules}。
+ * <p>★★ <b>Z2 冻结公式（逐项）</b>：每维 {@code d ∈ {治安, 公文}}，{@code P_d} = 编制计划需求量（毫小时/tick）、{@code S_d} =
+ * 实际承诺劳动（毫小时/tick）、{@code 定额} = {@link SocialProvisioning#standardLaborMilliHoursPerTick()}（C8
+ * 唯一权威）、 {@code k} = {@link GovAdministrationPlan#supernumerarySqrtCoefficient()}：
  *
- * <p>★★ <b>算法逐行</b>：
+ * <pre>{@code
+ * 需求劳动_d = P_d × 需求静态_d‰ / 1000 × 需求动态_d‰ / 1000
+ * 超额_d     = max(0, S_d − 需求劳动_d)
+ * 有效劳动_d = S_d                                                        , S_d ≤ 需求劳动_d
+ *            = 需求劳动_d + ⌊√(超额_d ÷ 定额 × k)⌋ × 定额                , S_d > 需求劳动_d
+ * 满足率_d   = 有效劳动_d × 1000 ÷ 需求劳动_d      （需求劳动_d = 0 ⇒ 1000‰）
+ * 效率_d‰    = 满足率_d × 供给静态_d‰ / 1000 × 供给动态_d‰ / 1000
+ * 总效率‰    = 效率_治安‰ × 效率_公文‰ ÷ 1000
+ * }</pre>
  *
- * <ul>
- *   <li><b>供给</b>：治安 ← {@code staff[YAMEN]}；文书 ← {@code staff[SCRIBE] + staff[POST]}（互不通用）；
- *   <li><b>汇总</b>：对 {@code demand} 的每格值求和，得到需求维度的 {@code supply / demand} 总量（同一套求和也供每日信号 evidence
- *       用）；
- *   <li><b>覆盖</b>：需求为 0 的维度记 {@link GovRules#COVERAGE_FULL_PER_MILLE}（无需求 = 全额覆盖）；有需求时 {@code
- *       coverage = min(COVERAGE_FULL_PER_MILLE, supply × COVERAGE_FULL_PER_MILLE /
- *       demand)}（整数、向下取整）；
- *   <li><b>加成</b>：<b>仅当两维 coverage 都 = 1000‰</b>。对每维算 {@code surplusFraction = (supply − demand) /
- *       demand}（需求 0 维 <b>skip</b>，不参与也不把它的供给算进超支），取<b>需求加权的平均超支</b>（权重 = 该维需求；两维需求都为 0 ⇒ 无加成）：
- *       {@code s = floor(100 × Σ剩余 / Σ需求)}；{@code bonus‰ = min(MAX_BONUS_PER_MILLE,
- *       MAX_BONUS_PER_MILLE × s / (s + BONUS_SATURATION))}（整数、向下取整）；
- *   <li><b>效率</b>：{@code coverageMin = min(securityCoverage, paperworkCoverage)}；{@code efficiency‰
- *       = min(COVERAGE_FULL_PER_MILLE + MAX_BONUS_PER_MILLE, coverageMin × (COVERAGE_FULL_PER_MILLE
- *       + bonus) / COVERAGE_FULL_PER_MILLE)}。
- * </ul>
- *
- * <p>★★ <b>10 万人口、非城市格的手算例</b>（与 {@link GovRules} 类注同源：{@code ceil(100000/500)=200} 名治安、 {@code
- * ceil(100000/1000)=100} 名文书；合计需求 300，其中治安 200、文书 100）：
+ * <p>★★ <b>三条硬口径</b>：
  *
  * <ul>
- *   <li><b>满编</b> {@code YAMEN=200, SCRIBE+POST=100}：两维 coverage 都是 1000‰ ⇒ 剩余 0 ⇒ {@code s=0} ⇒
- *       {@code bonus=0‰} ⇒ {@code efficiency = 1000×(1000+0)/1000 = 1000‰}；
- *   <li><b>超编 +10%</b> {@code YAMEN=220, SCRIBE+POST=110}：剩余 20+10=30，加权超支 {@code s =
- *       floor(100×30/300) = 10} ⇒ {@code bonus = floor(100×10/(10+10)) = 50‰} ⇒ {@code efficiency =
- *       1000×(1000+50)/1000 = 1050‰}；
- *   <li><b>超编 +20%</b> {@code YAMEN=240, SCRIBE+POST=120}：剩余 40+20=60 ⇒ {@code s =
- *       floor(100×60/300) = 20} ⇒ {@code bonus = floor(100×20/30) = 66‰}（精确 66.7‰，向下取整）⇒ {@code
- *       efficiency = 1000×1066/1000 = 1066‰}；
- *   <li><b>只覆盖一维</b> {@code YAMEN=150, SCRIBE+POST=100}：文书 coverage=1000、治安 {@code =
- *       floor(150×1000/200) = 750} ⇒ 两维不都满 ⇒ {@code bonus=0‰} ⇒ {@code efficiency = min(1100,
- *       750×(1000+0)/1000) = 750‰}。
+ *   <li><b>全不封顶</b>（用户 2026-10-23「都不封顶」）：所有乘法用 {@link Math#multiplyExact}、有效劳动相加用 {@link
+ *       Math#addExact}；溢出 ⇒ 具名 {@code GOV_EFFICIENCY_CONTRACT_VIOLATION} ERROR + {@link
+ *       IllegalStateException}，<b>绝不静默截断</b>；
+ *   <li><b>任一维供给 = 0 ⇒ 该维最终效率 0，总效率 0</b>（即便该维需求为 0，也不能白拿“无需求 = 全额”）；调用方用 {@link
+ *       #anySupplyZero(long, long)} 判据记具名 INFO（本类不自己发 INFO，保持纯函数）；
+ *   <li><b>需求 = 0 维记 1000‰</b>（无需求 = 全额），但供给 = 0 时按上一条压回 0。
  * </ul>
  *
- * <p>★ <b>空需求表</b>：两维需求都是 0 ⇒ 两维 coverage 都记 1000‰、bonus=0、efficiency=1000‰（"无需求 =
- * 全额覆盖"是公式值，不是"没有数据"； 无数据是 {@code GovOfficeState.empty} 的全 0 读数）。
+ * <p>★★ <b>新签名（Z3 消费者用）</b>：{@link #of(GovernmentFormation, Map, GovAdministrationPlan, long, long,
+ * long, long, long, long, long)}。入参 = 编制（身份/兼容用，公式不读 {@code staff}）、逐格需求（<b>供建议值/告警</b>，
+ * 公式按冻结口径只用计划 {@code P_d}）、编制计划、两维供给承诺劳动、两维动态修正（供给/需求各二，共 4 个）、标准劳动系数**值**（毫小时/tick；Z3 消费者从当前世界
+ * {@code SocialData.provisioning()} 的 C8 唯一权威读出后传入——纯函数只拿值，不持有 provisioning 表）。
  *
- * <p>★ <b>纯函数</b>：不写状态、不调命令；同一输入逐字段相同。
+ * <p>★★ <b>过渡桥（Z3 删除/改）</b>：{@link #of(GovernmentFormation, Map)} 旧签名保留给 {@link GovDaily} 与 app
+ * 参与者现有调用点： plan 取 {@link GovDemand} 建议值 × 标准系数、供给取 {@code staff × 标准系数} 的旧投影、四个修正 1000‰、{@code
+ * k=1}。数学上岗位 定额在桥里前后同乘 ⇒ 结果与所选定额无关；它只为“编译 + 承诺→供给桥接通前的过渡行为”，<b>Z3 切换到承诺劳动后删或改成只走新签名</b>。
+ *
+ * <p>★ <b>手算例（新公式，定额 16,000 毫小时/tick、k=1、四个修正 1000‰）</b>：计划 治安 200 人当量 = 3,200,000、公文 100 人当量 =
+ * 1,600,000；供给 治安 220 人当量 = 3,520,000、公文 110 人当量 = 1,760,000。治安：超额 320,000 ÷ 16,000 = 20 ⇒ ⌊√20⌋ =
+ * 4 ⇒ 有效 = 3,200,000 + 4×16,000 = 3,264,000 ⇒ 满足率 1,020‰；公文：超额 160,000 ÷ 16,000 = 10 ⇒ ⌊√10⌋ = 3 ⇒
+ * 有效 = 1,648,000 ⇒ 满足率 1,030‰；总效率 = 1,020 × 1,030 ÷ 1000 = 1,050（向下取整）。
+ *
+ * <p>★ <b>纯函数</b>：不写状态、不调命令；同一输入逐字段相同（唯一副作用是契约故障时的 ERROR 日志）。
  */
 public final class GovEfficiency {
+
+  private static final Logger LOG = GovLog.efficiency();
+
+  /**
+   * 过渡桥的定额值：旧 2 参签名没有 {@code SocialData}，只能取社会侧权威默认表（{@link SocialProvisioning#defaults()}）的 {@link
+   * SocialProvisioning#standardLaborMilliHoursPerTick()}。这里**只缓存一个 long 值**，不持有整张 provisioning 表
+   * （控制方 2026-10-23 裁定：纯函数只拿值）。
+   *
+   * <p>★ 为什么这样仍安全：桥把 plan 与 supply 都按同一 {@code 定额} 折算，公式里的比值与开方“岗位当量”都令定额相消 ⇒
+   * 桥的结果与选哪份定额无关；真正使用当前世界权威的是 Z3 的新签名调用点（由调用方传入该值）。
+   */
+  private static final long LEGACY_STANDARD_LABOR_MILLI_HOURS_PER_TICK =
+      SocialProvisioning.defaults().standardLaborMilliHoursPerTick();
 
   private GovEfficiency() {}
 
   /**
-   * 算一个 GOV 编制的行政效率读数。
+   * ★★ <b>过渡桥（旧签名；Z3 切换到承诺劳动后删/改）</b>：给 {@link GovDaily} 与 app 参与者现有调用点保持编译与过渡行为。
    *
-   * @param governmentFormation 编制（{@code staff} 提供供给、{@code policy} 不参与效率）；不得为 null
+   * @param governmentFormation 编制（旧投影的供给来源：{@code staff × 标准系数}）；不得为 null
    * @param demand 逐格需求（{@link GovDemand#of} 的输出；空表 = 无需求）；不得为 null、键值不得为 null
-   * @return 覆盖率 / 加成 / 效率读数（四个字段都做界校验）
+   * @return 新公式读数（四个修正 1000‰、{@code k=1}；两维效率按新口径，不再有 min/旧超编加成）
    */
   public static Efficiency of(
       GovernmentFormation governmentFormation, Map<HexCoord, GovDemand.HexDemand> demand) {
     requireGovernmentFormation(governmentFormation);
     requireDemand(demand);
-
-    long securitySupply = securitySupply(governmentFormation);
-    long paperworkSupply = paperworkSupply(governmentFormation);
-    long securityDemand = securityDemand(demand);
-    long paperworkDemand = paperworkDemand(demand);
-
-    long securityCoverage = coverage(securitySupply, securityDemand);
-    long paperworkCoverage = coverage(paperworkSupply, paperworkDemand);
-
-    long bonusPerMille = 0L;
-    if (securityCoverage == GovRules.COVERAGE_FULL_PER_MILLE
-        && paperworkCoverage == GovRules.COVERAGE_FULL_PER_MILLE) {
-      bonusPerMille = bonus(securitySupply, securityDemand, paperworkSupply, paperworkDemand);
+    try {
+      long standardLaborMilliHoursPerTick = LEGACY_STANDARD_LABOR_MILLI_HOURS_PER_TICK;
+      long securityPlanLaborMilli =
+          Math.multiplyExact(securityDemand(demand), standardLaborMilliHoursPerTick);
+      long paperworkPlanLaborMilli =
+          Math.multiplyExact(paperworkDemand(demand), standardLaborMilliHoursPerTick);
+      GovAdministrationPlan plan =
+          new GovAdministrationPlan(
+              securityPlanLaborMilli,
+              paperworkPlanLaborMilli,
+              GovAdministrationPlan.DEFAULT_POST_TIERS,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovRules.PER_MILLE,
+              GovAdministrationPlan.DEFAULT_SUPERNUMERARY_SQRT_COEFFICIENT);
+      long securitySupplyLaborMilli =
+          Math.multiplyExact(securitySupply(governmentFormation), standardLaborMilliHoursPerTick);
+      long paperworkSupplyLaborMilli =
+          Math.multiplyExact(paperworkSupply(governmentFormation), standardLaborMilliHoursPerTick);
+      return of(
+          governmentFormation,
+          demand,
+          plan,
+          securitySupplyLaborMilli,
+          paperworkSupplyLaborMilli,
+          GovRules.PER_MILLE,
+          GovRules.PER_MILLE,
+          GovRules.PER_MILLE,
+          GovRules.PER_MILLE,
+          standardLaborMilliHoursPerTick);
+    } catch (ArithmeticException e) {
+      throw contractFailure("legacy-bridge-arithmetic-overflow", e);
     }
-
-    long coverageMin = Math.min(securityCoverage, paperworkCoverage);
-    long efficiencyPerMille =
-        Math.min(
-            GovRules.COVERAGE_FULL_PER_MILLE + GovRules.MAX_BONUS_PER_MILLE,
-            Math.floorDiv(
-                coverageMin * (GovRules.COVERAGE_FULL_PER_MILLE + bonusPerMille),
-                GovRules.COVERAGE_FULL_PER_MILLE));
-
-    return new Efficiency(securityCoverage, paperworkCoverage, bonusPerMille, efficiencyPerMille);
   }
 
-  /** 治安供给：{@code YAMEN} 在编人数（缺角色 = 0）。package-private：每日结算的信号 evidence 与本方法共用同一份求和。 */
+  /**
+   * ★★ <b>Z2 冻结的两维效率公式（纯函数）</b>。
+   *
+   * @param governmentFormation 编制（<b>身份/兼容用</b>：新公式不读 {@code staff}，它是 Z3 对齐调用方与旧口径的载体）；不得为 null
+   * @param suggestedDemand 逐格需求（{@link GovDemand#of} 的输出；<b>供 Z3 建议值/告警</b>，公式按冻结口径只用计划 {@code
+   *     P_d}）；不得为 null、键值不得为 null
+   * @param plan 行政编制计划（{@code P_d}/档位/四个静态修正/{@code k}）；不得为 null
+   * @param securitySupplyLaborMilli 治安维实际承诺劳动（毫小时/tick；≥ 0）
+   * @param paperworkSupplyLaborMilli 公文维实际承诺劳动（毫小时/tick；≥ 0）
+   * @param securitySupplyDynamicModifierPerMille 治安供给动态修正（‰；≥ 0）
+   * @param paperworkSupplyDynamicModifierPerMille 公文供给动态修正（‰；≥ 0）
+   * @param securityDemandDynamicModifierPerMille 治安需求动态修正（‰；≥ 0）
+   * @param paperworkDemandDynamicModifierPerMille 公文需求动态修正（‰；≥ 0）
+   * @param standardLaborMilliHoursPerTick 标准劳动系数（岗位定额；毫小时/tick）。**值**必须来自当前世界 C8 唯一权威 {@link
+   *     SocialProvisioning#standardLaborMilliHoursPerTick()}（Z3 消费者从 {@code
+   *     SocialData.provisioning()} 读出后传入；本函数不持有 provisioning 表，控制方 2026-10-23 裁定）
+   * @return 两维满足率 + 两维最终效率 + 总效率（全部 ≥ 0、不封顶）
+   * @throws IllegalArgumentException 入参为 null、逐格需求表形状坏（编程错误）
+   * @throws IllegalStateException 供给/动态修正为负、标准系数非正、算术溢出等<b>契约故障</b>（已发具名 ERROR，fail-closed）
+   */
+  public static Efficiency of(
+      GovernmentFormation governmentFormation,
+      Map<HexCoord, GovDemand.HexDemand> suggestedDemand,
+      GovAdministrationPlan plan,
+      long securitySupplyLaborMilli,
+      long paperworkSupplyLaborMilli,
+      long securitySupplyDynamicModifierPerMille,
+      long paperworkSupplyDynamicModifierPerMille,
+      long securityDemandDynamicModifierPerMille,
+      long paperworkDemandDynamicModifierPerMille,
+      long standardLaborMilliHoursPerTick) {
+    requireGovernmentFormation(governmentFormation);
+    requireDemand(suggestedDemand);
+    Objects.requireNonNull(plan, "plan");
+    requireContractNonNegative(securitySupplyLaborMilli, "securitySupplyLaborMilli");
+    requireContractNonNegative(paperworkSupplyLaborMilli, "paperworkSupplyLaborMilli");
+    requireContractNonNegative(
+        securitySupplyDynamicModifierPerMille, "securitySupplyDynamicModifierPerMille");
+    requireContractNonNegative(
+        paperworkSupplyDynamicModifierPerMille, "paperworkSupplyDynamicModifierPerMille");
+    requireContractNonNegative(
+        securityDemandDynamicModifierPerMille, "securityDemandDynamicModifierPerMille");
+    requireContractNonNegative(
+        paperworkDemandDynamicModifierPerMille, "paperworkDemandDynamicModifierPerMille");
+    if (standardLaborMilliHoursPerTick <= 0L) {
+      throw contractFailure("standard-labor-coefficient-non-positive", null);
+    }
+
+    Efficiency efficiency;
+    try {
+      efficiency =
+          compute(
+              plan,
+              securitySupplyLaborMilli,
+              paperworkSupplyLaborMilli,
+              securitySupplyDynamicModifierPerMille,
+              paperworkSupplyDynamicModifierPerMille,
+              securityDemandDynamicModifierPerMille,
+              paperworkDemandDynamicModifierPerMille,
+              standardLaborMilliHoursPerTick);
+    } catch (ArithmeticException e) {
+      throw contractFailure("arithmetic-overflow", e);
+    }
+    logComputed(suggestedDemand, plan, efficiency);
+    return efficiency;
+  }
+
+  /** 逐项计算（可能抛 {@link ArithmeticException}，由公开入口统一折成具名契约 ERROR）。 */
+  private static Efficiency compute(
+      GovAdministrationPlan plan,
+      long securitySupplyLaborMilli,
+      long paperworkSupplyLaborMilli,
+      long securitySupplyDynamicModifierPerMille,
+      long paperworkSupplyDynamicModifierPerMille,
+      long securityDemandDynamicModifierPerMille,
+      long paperworkDemandDynamicModifierPerMille,
+      long standardLaborMilliHoursPerTick) {
+    long securityDemandLaborMilli =
+        demandLabor(
+            plan.securityPlannedLaborMilli(),
+            plan.securityDemandStaticModifierPerMille(),
+            securityDemandDynamicModifierPerMille);
+    long paperworkDemandLaborMilli =
+        demandLabor(
+            plan.paperworkPlannedLaborMilli(),
+            plan.paperworkDemandStaticModifierPerMille(),
+            paperworkDemandDynamicModifierPerMille);
+
+    long securityEffectiveLaborMilli =
+        effectiveLabor(
+            securitySupplyLaborMilli,
+            securityDemandLaborMilli,
+            plan.supernumerarySqrtCoefficient(),
+            standardLaborMilliHoursPerTick);
+    long paperworkEffectiveLaborMilli =
+        effectiveLabor(
+            paperworkSupplyLaborMilli,
+            paperworkDemandLaborMilli,
+            plan.supernumerarySqrtCoefficient(),
+            standardLaborMilliHoursPerTick);
+
+    long securitySatisfactionPerMille =
+        satisfaction(securityEffectiveLaborMilli, securityDemandLaborMilli);
+    long paperworkSatisfactionPerMille =
+        satisfaction(paperworkEffectiveLaborMilli, paperworkDemandLaborMilli);
+
+    // ★ 任一维供给 = 0 ⇒ 该维最终效率 0（需求为 0 的“1000‰ 全额”也不能绕过这条）。
+    long securityEfficiencyPerMille =
+        securitySupplyLaborMilli == 0L
+            ? 0L
+            : applyModifiers(
+                securitySatisfactionPerMille,
+                plan.securitySupplyStaticModifierPerMille(),
+                securitySupplyDynamicModifierPerMille);
+    long paperworkEfficiencyPerMille =
+        paperworkSupplyLaborMilli == 0L
+            ? 0L
+            : applyModifiers(
+                paperworkSatisfactionPerMille,
+                plan.paperworkSupplyStaticModifierPerMille(),
+                paperworkSupplyDynamicModifierPerMille);
+
+    long efficiencyPerMille =
+        Math.floorDiv(
+            Math.multiplyExact(securityEfficiencyPerMille, paperworkEfficiencyPerMille),
+            GovRules.PER_MILLE);
+    return new Efficiency(
+        securitySatisfactionPerMille,
+        paperworkSatisfactionPerMille,
+        0L, // legacy：Z2 新状态恒 0
+        efficiencyPerMille,
+        securityEfficiencyPerMille,
+        paperworkEfficiencyPerMille);
+  }
+
+  /** 需求劳动 = {@code P × 需求静态‰/1000 × 需求动态‰/1000}（两次整数向下取整，照冻结公式的书写序）。 */
+  private static long demandLabor(
+      long plannedLaborMilli, long staticModifier, long dynamicModifier) {
+    return perMille(perMille(plannedLaborMilli, staticModifier), dynamicModifier);
+  }
+
+  /** {@code value × factor‰ / 1000}（乘法 exact、除法向下取整）。 */
+  private static long perMille(long value, long factorPerMille) {
+    return Math.floorDiv(Math.multiplyExact(value, factorPerMille), GovRules.PER_MILLE);
+  }
+
+  /**
+   * 有效劳动：供给 ≤ 需求 ⇒ 供给；否则 {@code 需求 + ⌊√(超额 ÷ 定额 × k)⌋ × 定额}（开方在“岗位当量”上做）。
+   *
+   * <p>★ 整数口径：{@code ⌊√(超额×k÷定额)⌋} 先算 {@code ⌊超额×k ÷ 定额⌋}，再取整数平方根——对非负整数 {@code n}， {@code n ≤
+   * √(实数)} 等价于 {@code n² ≤ ⌊实数⌋}，故两步 floor 与“先实数除再开方”逐值相同。
+   */
+  private static long effectiveLabor(
+      long supplyLaborMilli, long demandLaborMilli, long coefficient, long quotaMilli) {
+    if (supplyLaborMilli <= demandLaborMilli) {
+      return supplyLaborMilli;
+    }
+    long excessLaborMilli = Math.subtractExact(supplyLaborMilli, demandLaborMilli);
+    long postEquivalents =
+        Math.floorDiv(Math.multiplyExact(excessLaborMilli, coefficient), quotaMilli);
+    long wholeExtraPosts = integerSqrt(postEquivalents);
+    return Math.addExact(demandLaborMilli, Math.multiplyExact(wholeExtraPosts, quotaMilli));
+  }
+
+  /** 满足率：需求 = 0 ⇒ 1000‰；否则 {@code 有效 × 1000 ÷ 需求}（向下取整，不封顶）。 */
+  private static long satisfaction(long effectiveLaborMilli, long demandLaborMilli) {
+    if (demandLaborMilli == 0L) {
+      return GovRules.PER_MILLE;
+    }
+    return Math.floorDiv(
+        Math.multiplyExact(effectiveLaborMilli, GovRules.PER_MILLE), demandLaborMilli);
+  }
+
+  /** 供给修正：{@code 满足率 × 供给静态‰/1000 × 供给动态‰/1000}（两次整数向下取整，照冻结公式的书写序）。 */
+  private static long applyModifiers(
+      long satisfactionPerMille, long staticModifier, long dynamicModifier) {
+    return perMille(perMille(satisfactionPerMille, staticModifier), dynamicModifier);
+  }
+
+  /**
+   * 整数平方根 {@code ⌊√value⌋}（{@code value ≥ 0}）。
+   *
+   * <p>★ 先用 {@link Math#sqrt(double)} 取近似根，再用<b>除法比较</b>（<b>不</b>用 {@code root*root}，避免根接近 {@code
+   * Long.MAX_VALUE} 时乘法溢出）校正到精确值。
+   */
+  static long integerSqrt(long value) {
+    if (value < 0L) {
+      throw new IllegalArgumentException("integerSqrt 的入参必须 ≥ 0: " + value);
+    }
+    if (value < 2L) {
+      return value;
+    }
+    long root = (long) Math.sqrt((double) value);
+    while (root > value / root) {
+      root--;
+    }
+    while (root + 1L <= value / (root + 1L)) {
+      root++;
+    }
+    return root;
+  }
+
+  /**
+   * ★ <b>零供给判据</b>（本区提供，调用方负责记具名 INFO）：任一维实际承诺劳动 = 0 ⇒ 该维最终效率被压成 0、总效率为 0。
+   *
+   * <p>为什么不让本函数自己发 INFO：它是纯函数，日志只是契约故障时的例外副作用；常态判据交给持有 {@code day}/{@code unit} 上下文的 调用方（Z3 app）。
+   */
+  public static boolean anySupplyZero(
+      long securitySupplyLaborMilli, long paperworkSupplyLaborMilli) {
+    return securitySupplyLaborMilli == 0L || paperworkSupplyLaborMilli == 0L;
+  }
+
+  /** DEBUG 汇总（默认关；不改变任何输出）。 */
+  private static void logComputed(
+      Map<HexCoord, GovDemand.HexDemand> suggestedDemand,
+      GovAdministrationPlan plan,
+      Efficiency efficiency) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "GOV_EFFICIENCY_COMPUTED",
+                GovLogSource.GOV_EFFICIENCY,
+                "suggestedHexes",
+                suggestedDemand.size(),
+                "securityPlannedLaborMilli",
+                plan.securityPlannedLaborMilli(),
+                "paperworkPlannedLaborMilli",
+                plan.paperworkPlannedLaborMilli(),
+                "securitySatisfactionPerMille",
+                efficiency.securityCoveragePerMille(),
+                "paperworkSatisfactionPerMille",
+                efficiency.paperworkCoveragePerMille(),
+                "securityEfficiencyPerMille",
+                efficiency.securityEfficiencyPerMille(),
+                "paperworkEfficiencyPerMille",
+                efficiency.paperworkEfficiencyPerMille(),
+                "efficiencyPerMille",
+                efficiency.efficiencyPerMille()));
+  }
+
+  /** 契约故障：具名 ERROR（不降级）+ {@link IllegalStateException}（fail-closed）。 */
+  private static IllegalStateException contractFailure(String reason, Throwable cause) {
+    EventLog.channel(LOG)
+        .error(
+            LogEvent.of(
+                "GOV_EFFICIENCY_CONTRACT_VIOLATION",
+                GovLogSource.GOV_EFFICIENCY,
+                "reason",
+                reason,
+                "failure",
+                cause == null ? "-" : cause.getClass().getSimpleName()));
+    return new IllegalStateException("gov 行政效率公式契约故障: " + reason, cause);
+  }
+
+  private static void requireContractNonNegative(long value, String field) {
+    if (value < 0L) {
+      throw contractFailure("negative-" + field, null);
+    }
+  }
+
+  /** 治安供给：{@code YAMEN} 在编人数（缺角色 = 0）。package-private：旧桥与每日结算的信号 evidence 共用同一份求和。 */
   static long securitySupply(GovernmentFormation governmentFormation) {
     requireGovernmentFormation(governmentFormation);
     return governmentFormation.staff().getOrDefault(StaffRole.YAMEN, 0L);
@@ -105,7 +394,7 @@ public final class GovEfficiency {
         + governmentFormation.staff().getOrDefault(StaffRole.POST, 0L);
   }
 
-  /** 治安需求汇总（逐格 {@code security} 求和）。 */
+  /** 治安需求汇总（逐格 {@code security} 求和）。旧桥与信号 evidence 共用。 */
   static long securityDemand(Map<HexCoord, GovDemand.HexDemand> demand) {
     requireDemand(demand);
     long total = 0L;
@@ -115,7 +404,7 @@ public final class GovEfficiency {
     return total;
   }
 
-  /** 文书需求汇总（逐格 {@code paperwork} 求和）。 */
+  /** 文书需求汇总（逐格 {@code paperwork} 求和）。旧桥与信号 evidence 共用。 */
   static long paperworkDemand(Map<HexCoord, GovDemand.HexDemand> demand) {
     requireDemand(demand);
     long total = 0L;
@@ -123,44 +412,6 @@ public final class GovEfficiency {
       total += hexDemand.paperwork();
     }
     return total;
-  }
-
-  /** 覆盖率：需求 0 ⇒ 满；否则 {@code min(满, supply×满/demand)}（整数、向下取整）。 */
-  private static long coverage(long supply, long demand) {
-    if (demand == 0L) {
-      return GovRules.COVERAGE_FULL_PER_MILLE;
-    }
-    return Math.min(
-        GovRules.COVERAGE_FULL_PER_MILLE,
-        Math.floorDiv(supply * GovRules.COVERAGE_FULL_PER_MILLE, demand));
-  }
-
-  /**
-   * 超编加成（只在两维覆盖率都满时调用）。
-   *
-   * <p>★ 需求 0 维 <b>skip</b>：它的"剩余供给"不算进分子、需求也不算进分母（否则一个没有文书需求的辖区会因为书吏多而虚增加成）。 两维需求都为 0 ⇒ 返回 0。★
-   * 只取需求 &gt; 0 的维度加权，权重 = 该维需求；因为 {@code surplusFraction_i × demand_i = supply_i −
-   * demand_i}，加权平均可精确化简为 {@code Σ剩余 / Σ需求}，不逐维取整、只在 {@code s} 与 {@code bonus} 两处向下取整。
-   */
-  private static long bonus(
-      long securitySupply, long securityDemand, long paperworkSupply, long paperworkDemand) {
-    long totalDemand = securityDemand + paperworkDemand;
-    if (totalDemand == 0L) {
-      return 0L;
-    }
-    long totalSurplus = 0L;
-    if (securityDemand > 0L) {
-      totalSurplus += securitySupply - securityDemand;
-    }
-    if (paperworkDemand > 0L) {
-      totalSurplus += paperworkSupply - paperworkDemand;
-    }
-    long surplusPercent = Math.floorDiv(GovRules.MAX_BONUS_PER_MILLE * totalSurplus, totalDemand);
-    return Math.min(
-        GovRules.MAX_BONUS_PER_MILLE,
-        Math.floorDiv(
-            GovRules.MAX_BONUS_PER_MILLE * surplusPercent,
-            surplusPercent + GovRules.BONUS_SATURATION));
   }
 
   private static void requireGovernmentFormation(GovernmentFormation governmentFormation) {
@@ -181,45 +432,58 @@ public final class GovEfficiency {
   }
 
   /**
-   * 行政效率读数（阶段 11a）：四个 per-mille 字段，界与 {@link GovOfficeState} 逐字段相同。
+   * 行政效率读数（Z2）：<b>两维满足率 + 两维最终效率 + 总效率</b>，全部 per-mille、全部 ≥ 0、<b>全部不封顶</b>（C3）。
    *
-   * <p>★ <b>构造期校验</b>：{@code securityCoveragePerMille}/{@code paperworkCoveragePerMille ∈
-   * [0,1000]}；{@code bonusPerMille ∈ [0,100]}；{@code efficiencyPerMille ∈ [0,1100]}（= 覆盖满 1000‰ ×
-   * 最高 +10% 加成）。越界当场抛 {@link IllegalArgumentException}，不静默钳制。
+   * <p>★ <b>字段语义</b>：{@link #securityCoveragePerMille()} / {@link #paperworkCoveragePerMille()} =
+   * 两维满足率（沿用旧 {@code coverage} 字段名）；{@link #securityEfficiencyPerMille()} / {@link
+   * #paperworkEfficiencyPerMille()} = 两维最终效率； {@link #efficiencyPerMille()} = 总效率 = 两维最终效率相乘 ÷
+   * 1000；{@link #bonusPerMille()} = <b>legacy</b>（Z2 新公式恒 0，仅为旧档/旧构造点保留）。
    *
-   * @param securityCoveragePerMille 治安覆盖率（‰；0..1000）
-   * @param paperworkCoveragePerMille 文书覆盖率（‰；0..1000）
-   * @param bonusPerMille 超编加成（‰；0..100，仅两维覆盖都满时可为正）
-   * @param efficiencyPerMille 行政效率（‰；coverageMin × (1 + bonus)，上限 1100）
+   * <p>★ <b>构造期校验</b>：六个字段都只要求 ≥ 0（Z2 拆掉 1000/1100/100 上界）；不静默钳制。旧 4 参构造器保留（两个新维效率取 0）， 免得 Z6
+   * 既有构造点全改；新调用点必须用 6 参 canonical 构造器。
+   *
+   * @param securityCoveragePerMille 治安满足率（‰；≥ 0，不封顶）
+   * @param paperworkCoveragePerMille 公文满足率（‰；≥ 0，不封顶）
+   * @param bonusPerMille 旧 11a 超编加成（legacy；Z2 新公式恒 0）
+   * @param efficiencyPerMille 总行政效率（‰；≥ 0，不封顶）
+   * @param securityEfficiencyPerMille 治安最终效率（‰；≥ 0，不封顶）
+   * @param paperworkEfficiencyPerMille 公文最终效率（‰；≥ 0，不封顶）
    */
   public record Efficiency(
       long securityCoveragePerMille,
       long paperworkCoveragePerMille,
       long bonusPerMille,
-      long efficiencyPerMille) {
+      long efficiencyPerMille,
+      long securityEfficiencyPerMille,
+      long paperworkEfficiencyPerMille) {
 
     public Efficiency {
-      requireRange(
-          securityCoveragePerMille,
-          0L,
-          GovRules.COVERAGE_FULL_PER_MILLE,
-          "securityCoveragePerMille");
-      requireRange(
-          paperworkCoveragePerMille,
-          0L,
-          GovRules.COVERAGE_FULL_PER_MILLE,
-          "paperworkCoveragePerMille");
-      requireRange(bonusPerMille, 0L, GovRules.MAX_BONUS_PER_MILLE, "bonusPerMille");
-      requireRange(
-          efficiencyPerMille,
-          0L,
-          GovRules.COVERAGE_FULL_PER_MILLE + GovRules.MAX_BONUS_PER_MILLE,
-          "efficiencyPerMille");
+      requireNonNegative(securityCoveragePerMille, "securityCoveragePerMille");
+      requireNonNegative(paperworkCoveragePerMille, "paperworkCoveragePerMille");
+      requireNonNegative(bonusPerMille, "bonusPerMille");
+      requireNonNegative(efficiencyPerMille, "efficiencyPerMille");
+      requireNonNegative(securityEfficiencyPerMille, "securityEfficiencyPerMille");
+      requireNonNegative(paperworkEfficiencyPerMille, "paperworkEfficiencyPerMille");
     }
 
-    private static void requireRange(long value, long min, long max, String field) {
-      if (value < min || value > max) {
-        throw new IllegalArgumentException(field + " 必须 ∈ [" + min + "," + max + "]: " + value);
+    /** 旧 4 参构造器（Z2 兼容）：两个新维效率取 0（旧口径没有分维效率读数）。 */
+    public Efficiency(
+        long securityCoveragePerMille,
+        long paperworkCoveragePerMille,
+        long bonusPerMille,
+        long efficiencyPerMille) {
+      this(
+          securityCoveragePerMille,
+          paperworkCoveragePerMille,
+          bonusPerMille,
+          efficiencyPerMille,
+          0L,
+          0L);
+    }
+
+    private static void requireNonNegative(long value, String field) {
+      if (value < 0L) {
+        throw new IllegalArgumentException(field + " 必须 ≥ 0（Z2 起不封顶）: " + value);
       }
     }
   }

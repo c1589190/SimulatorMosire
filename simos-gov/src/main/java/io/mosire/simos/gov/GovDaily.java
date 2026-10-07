@@ -41,15 +41,18 @@ import org.slf4j.Logger;
  *   <li><b>确定性</b>：offices 按 {@link UnitId#value()} 升序遍历；每 office 的资源顺序固定为 grain → cloth →
  *       money；信号顺序固定为 supply → security → paperwork；oracle 调用次序就是资源的评估顺序（0 需求不发、不跳号）。同一输入（oracle
  *       纯函数）⇒ 输出逐字段相等。
+ *   <li><b>源状态拷贝纪律（Z2 设计书 §4.1）</b>：本结算只改 {@code offices}；新 {@link GovState} 必须原样带过 {@code
+ *       administrationPlans}/{@code budgetPolicies}（照 economy {@code periodicAdjustments} 的拷贝纪律；漏带
+ *       = 静默清空政府配置）。
  * </ul>
  *
  * <p>★★ <b>状态损坏不静默</b>：office 的 {@code unitId} 在 {@code units} 里查无、或该单位没有 {@link
  * GovernmentFormation}，一律当场抛 {@link IllegalStateException}——这是装配/数据故障，不能"跳过这个 office"把损坏藏起来。
  *
  * <p>★★ <b>无有效位置</b>（{@code units.effectivePosition(...)} 为空）：该 office 本日<b>跳过 upkeep 与全部信号</b>，只把
- * efficiency 四个 per-mille 读数与 {@code tick} 更新到新读数上；{@code assessed/paid/shortfall} 六表清空（<b>空表不是"评估为
- * 0"</b>， 而是"本日没有结算事实"），{@code dues} 也为空。<b>本批不发明 {@code ADMIN_NO_SEAT} 之类的
- * kind</b>——"没有座位"由调用方读日志/证据裁定如何处理。
+ * efficiency 六个 per-mille 读数（两维满足率 + 两维最终效率 + 总效率 + legacy bonus）与 {@code tick} 更新到新读数上；{@code
+ * assessed/paid/shortfall} 六表清空（<b>空表不是"评估为 0"</b>， 而是"本日没有结算事实"），{@code dues} 也为空。<b>本批不发明 {@code
+ * ADMIN_NO_SEAT} 之类的 kind</b>——"没有座位"由调用方读日志/证据裁定如何处理。
  *
  * <p>★★ <b>布料折算口径</b>：{@code clothNeed = totalStaff × floor(policy.clothPerStaffPerCycle /
  * daysInYearAtSettlement)}。<b>不足一昼夜的余量不跨日累计</b>（本批口径；逐日 floor 的残差丢掉，不建"周期余额"账本）。年长由调用方按 {@code
@@ -344,7 +347,7 @@ public final class GovDaily {
                     paperworkDemand)));
       }
 
-      // ---- 新读数：六表用当日评估/实付/缺口逐值填；四个 per-mille 填 eff；tick 填入参 ----
+      // ---- 新读数：六表用当日评估/实付/缺口逐值填；六个 per-mille 填 eff；tick 填入参 ----
       nextOffices.put(
           unitId,
           officeState(
@@ -362,7 +365,8 @@ public final class GovDaily {
               efficiency));
     }
 
-    GovState nextState = new GovState(nextOffices);
+    GovState nextState =
+        new GovState(nextOffices, govState.administrationPlans(), govState.budgetPolicies());
     EventLog.channel(LOG)
         .info(
             LogEvent.of(
@@ -421,7 +425,7 @@ public final class GovDaily {
     return new Outcome(nextState, dues, signals, !nextState.equals(govState));
   }
 
-  /** 无有效位置：六表清空 + efficiency 四读数 + tick（类注具名说明；不产信号、不产 due）。 */
+  /** 无有效位置：六表清空 + efficiency 六读数 + tick（类注具名说明；不产信号、不产 due）。 */
   private static GovOfficeState noSeat(
       UnitId unitId, long tick, GovEfficiency.Efficiency efficiency) {
     return new GovOfficeState(
@@ -436,7 +440,9 @@ public final class GovDaily {
         efficiency.securityCoveragePerMille(),
         efficiency.paperworkCoveragePerMille(),
         efficiency.efficiencyPerMille(),
-        efficiency.bonusPerMille());
+        efficiency.bonusPerMille(),
+        efficiency.securityEfficiencyPerMille(),
+        efficiency.paperworkEfficiencyPerMille());
   }
 
   /** 有位置：六表逐值填（商品 grain→cloth，货币 silver；0 也保留为"评估事实"）。 */
@@ -481,7 +487,9 @@ public final class GovDaily {
         efficiency.securityCoveragePerMille(),
         efficiency.paperworkCoveragePerMille(),
         efficiency.efficiencyPerMille(),
-        efficiency.bonusPerMille());
+        efficiency.bonusPerMille(),
+        efficiency.securityEfficiencyPerMille(),
+        efficiency.paperworkEfficiencyPerMille());
   }
 
   /** 编制总人数（各角色求和；超编时这个数就是"超"的分子来源）。 */

@@ -1,0 +1,220 @@
+package io.mosire.simos.gov.spi;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.gov.GovAdministrationPlan;
+import io.mosire.simos.gov.GovBudgetCategory;
+import io.mosire.simos.gov.GovBudgetLine;
+import io.mosire.simos.gov.GovBudgetPolicy;
+import io.mosire.simos.gov.GovOfficialSalaryRule;
+import io.mosire.simos.gov.GovPostTier;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.util.json.SimosObjectMapper;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * gov 各命令 handler 共用的载荷解析助手（Z2，spec §5 / 设计书 §4.1）。
+ *
+ * <p>★ <b>坏载荷一律以 {@link IllegalArgumentException} 面世、带可读中文原因</b>；handler 在命令边界把它折成 {@code
+ * HandlerOutcome.Rejected}（理由进 {@code simos.command.rejected} 事件，拒绝不留 revision）。域规则违反由 {@link
+ * GovAdministrationPlan} / {@link GovBudgetPolicy} 构造期抛出的同类异常沿用同一条路径——折算只发生在命令边界这一层。
+ *
+ * <p>★ <b>本类只管形状与类型</b>（字段在不在、类型对不对、缺省值）；数值范围（≥0、恰 3 档、类别不重复、min ≤ cap）留给领域 record， 两处不重复实现。
+ *
+ * <p>★ <b>缺省口径</b>：编制计划除 {@code unitId} 外全部可缺省（计划量 0、默认 3 档、修正 1000‰、{@code k=1}）； 预算政策的类别表可缺省为空（=
+ * 不自动付）、工资规则可缺省为 0/0。<b>缺省值只在这里展开一次</b>，领域 record 不猜。
+ *
+ * <p>★ <b>{@code unitId} 是“要写给哪个 GOV”</b>：它是 {@code GovState} 两条源状态表的键，不属于计划/政策 record 的内容（设计书 §4.1
+ * 的键）。
+ */
+final class GovPayloads {
+
+  /** 本类唯一的一台 mapper：共享基座出厂配置，不认识任何领域类型（载荷是扁平 JSON）。 */
+  private static final ObjectMapper MAPPER = SimosObjectMapper.create();
+
+  private GovPayloads() {}
+
+  /**
+   * ★ <b>日志安全的拒绝理由</b>：校验消息为方便调用方排查会回显字段值/整段载荷，但日志纪律禁止载荷明文与 JSON 原文。这里只保留可读前缀 ——截到第一个 JSON
+   * 起始符/换行；{@code payload ...} 这一类原始文本消息再截到冒号。截断只影响日志文本，不影响异常本身，也不改 {@code Rejected} 的理由。
+   */
+  static String logReason(String message) {
+    if (message == null || message.isBlank()) {
+      return "unknown";
+    }
+    String text = message.strip();
+    int cut = text.length();
+    for (char marker : new char[] {'{', '[', '\n', '\r'}) {
+      int at = text.indexOf(marker);
+      if (at >= 0 && at < cut) {
+        cut = at;
+      }
+    }
+    if (text.startsWith("payload ")) {
+      int colon = text.indexOf(':');
+      if (colon >= 0 && colon < cut) {
+        cut = colon;
+      }
+    }
+    String reason = text.substring(0, cut).strip();
+    return reason.isEmpty() ? "unknown" : reason;
+  }
+
+  /** 解析载荷文本：非 JSON、或不是 JSON 对象 ⇒ 抛。 */
+  static JsonNode parse(String payloadJson) {
+    Objects.requireNonNull(payloadJson, "payloadJson");
+    JsonNode payload;
+    try {
+      payload = MAPPER.readTree(payloadJson);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("payload 不是合法 JSON: " + e.getOriginalMessage(), e);
+    }
+    if (payload == null || !payload.isObject()) {
+      throw new IllegalArgumentException("payload 必须是 JSON 对象");
+    }
+    return payload;
+  }
+
+  /** 两维编制计划载荷：{@code unitId} 单独由 handler 取；其余字段可缺省（见类注）。 */
+  static GovAdministrationPlan administrationPlan(JsonNode payload) {
+    long securityPlannedLaborMilli = optionalLong(payload, "securityPlannedLaborMilli", 0L);
+    long paperworkPlannedLaborMilli = optionalLong(payload, "paperworkPlannedLaborMilli", 0L);
+    List<GovPostTier> postTiers =
+        optionalPostTiers(payload).orElse(GovAdministrationPlan.DEFAULT_POST_TIERS);
+    long securitySupplyStatic =
+        optionalLong(
+            payload,
+            "securitySupplyStaticModifierPerMille",
+            GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
+    long paperworkSupplyStatic =
+        optionalLong(
+            payload,
+            "paperworkSupplyStaticModifierPerMille",
+            GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
+    long securityDemandStatic =
+        optionalLong(
+            payload,
+            "securityDemandStaticModifierPerMille",
+            GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
+    long paperworkDemandStatic =
+        optionalLong(
+            payload,
+            "paperworkDemandStaticModifierPerMille",
+            GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
+    long supernumerarySqrtCoefficient =
+        optionalLong(
+            payload,
+            "supernumerarySqrtCoefficient",
+            GovAdministrationPlan.DEFAULT_SUPERNUMERARY_SQRT_COEFFICIENT);
+    return new GovAdministrationPlan(
+        securityPlannedLaborMilli,
+        paperworkPlannedLaborMilli,
+        postTiers,
+        securitySupplyStatic,
+        paperworkSupplyStatic,
+        securityDemandStatic,
+        paperworkDemandStatic,
+        supernumerarySqrtCoefficient);
+  }
+
+  /** 预算政策载荷：类别表缺省 = 空（不自动付）；工资规则缺省 = 0/0。 */
+  static GovBudgetPolicy budgetPolicy(JsonNode payload) {
+    List<GovBudgetLine> orderedCategories = new ArrayList<>();
+    JsonNode categories = payload.get("orderedCategories");
+    if (categories != null && !categories.isNull()) {
+      if (!categories.isArray()) {
+        throw new IllegalArgumentException("字段 orderedCategories 必须是数组");
+      }
+      for (JsonNode element : categories) {
+        if (!element.isObject()) {
+          throw new IllegalArgumentException("orderedCategories 的每一项必须是对象");
+        }
+        GovBudgetCategory category = requireCategory(requireText(element, "category"));
+        long minPerCycle = optionalLong(element, "minPerCycle", 0L);
+        long capPerCycle = optionalLong(element, "capPerCycle", Long.MAX_VALUE);
+        orderedCategories.add(new GovBudgetLine(category, minPerCycle, capPerCycle));
+      }
+    }
+    GovOfficialSalaryRule officialSalaryRule = optionalSalaryRule(payload);
+    return new GovBudgetPolicy(orderedCategories, officialSalaryRule);
+  }
+
+  /** 必填字符串字段（非空白）。 */
+  static String requireText(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || !value.isTextual() || value.asText().isBlank()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是非空白字符串");
+    }
+    return value.asText();
+  }
+
+  /** {@code unitId} 字段（要写给哪个 GOV）；非空白、{@link UnitId#parse} 能解。 */
+  static UnitId requireUnitId(JsonNode payload) {
+    return UnitId.parse(requireText(payload, "unitId"));
+  }
+
+  /** 可选整数字段：缺失/{@code null} ⇒ 缺省值；非整数或超出 long ⇒ 拒（不静默截断）。 */
+  static long optionalLong(JsonNode payload, String field, long defaultValue) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    if (!value.isIntegralNumber() || !value.canConvertToLong()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是可表示 long 的整数");
+    }
+    return value.longValue();
+  }
+
+  /** 可选 3 档目录：缺失/{@code null} ⇒ 空 Optional（调用方取默认目录）。 */
+  private static java.util.Optional<List<GovPostTier>> optionalPostTiers(JsonNode payload) {
+    JsonNode node = payload.get("postTiers");
+    if (node == null || node.isNull()) {
+      return java.util.Optional.empty();
+    }
+    if (!node.isArray()) {
+      throw new IllegalArgumentException("字段 postTiers 必须是数组");
+    }
+    List<GovPostTier> tiers = new ArrayList<>();
+    for (JsonNode element : node) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("postTiers 的每一项必须是对象");
+      }
+      tiers.add(
+          new GovPostTier(
+              requireText(element, "tierId"),
+              optionalLong(element, "securityWeightPerMille", 0L),
+              optionalLong(element, "paperworkWeightPerMille", 0L)));
+    }
+    return java.util.Optional.of(tiers);
+  }
+
+  /** 可选工资规则：缺失/{@code null} ⇒ 0/0（不发薪）。 */
+  private static GovOfficialSalaryRule optionalSalaryRule(JsonNode payload) {
+    JsonNode node = payload.get("officialSalaryRule");
+    if (node == null || node.isNull()) {
+      return GovOfficialSalaryRule.zero();
+    }
+    if (!node.isObject()) {
+      throw new IllegalArgumentException("字段 officialSalaryRule 必须是对象");
+    }
+    return new GovOfficialSalaryRule(
+        optionalLong(node, "grainMilliPerCommittedHour", 0L),
+        optionalLong(node, "silverMilliPerCommittedHour", 0L));
+  }
+
+  /** 类别词表严格解析（常量名；未知文本具名拒，不做模糊匹配）。 */
+  private static GovBudgetCategory requireCategory(String text) {
+    try {
+      return GovBudgetCategory.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "未知预算类别: "
+              + text
+              + "（词表: ADMIN_STIPEND/MILITARY_STIPEND/ADMIN_SALARY/DEBT_SERVICE/OTHER）",
+          e);
+    }
+  }
+}

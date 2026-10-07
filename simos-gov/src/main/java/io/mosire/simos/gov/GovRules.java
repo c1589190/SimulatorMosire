@@ -1,20 +1,23 @@
 package io.mosire.simos.gov;
 
 /**
- * 行政公式的**唯一常量拼写点**（阶段 10a 的四需求常量；阶段 11a 补覆盖率/加成三常量；计划 §2.2 / §3）：治安/文书需求、 覆盖率上限与超编加成公式里出现的常量只此一处；阶段
- * 11 的 {@code GovDemand}/{@code GovEfficiency}/{@code GovDaily} **只引用这里**，不在别处手抄数字。
+ * 行政公式的**唯一常量拼写点**（阶段 10a 的四需求常量；阶段 11a 补覆盖率/加成三常量；Z2 补千分制换算点；计划 §2.2 / §3）：治安/文书需求、
+ * 覆盖率上限与超编加成公式里出现的常量只此一处；阶段 11 的 {@code GovDemand}/{@code GovEfficiency}/{@code GovDaily}
+ * **只引用这里**，不在别处手抄数字。
  *
- * <p>★ <b>三组常量的分工</b>：
+ * <p>★ <b>四组常量的分工</b>：
  *
  * <ul>
  *   <li><b>需求</b>（{@link #SECURITY_PER_OFFICER} / {@link #PAPERWORK_PER_SCRIBE} / {@link
  *       #CITY_SECURITY_WEIGHT} / {@link #CITY_PAPERWORK_WEIGHT}）：逐格 {@code ceil(population / PER) +
  *       cityWeight}；
- *   <li><b>覆盖</b>（{@link #COVERAGE_FULL_PER_MILLE} = 1000‰）：需求 0 维记全额，有需求维取 {@code min(1000,
- *       supply×1000/demand)}；
- *   <li><b>加成</b>（{@link #BONUS_SATURATION} = 10、{@link #MAX_BONUS_PER_MILLE} = 100）：仅两维覆盖都满时，
- *       {@code bonus‰ = 100·s/(s+10)}（{@code s} = 超支百分数，整数向下取整）。{@code s=10}（超编 +10%）⇒ 50‰；{@code
- *       s=20} ⇒ 66‰（精确值 66.7‰，向下取整）；{@code s→∞} 渐近 100‰。
+ *   <li><b>千分制换算</b>（{@link #PER_MILLE} = 1000‰ = 1.0）：Z2 冻结的两维公式里所有 {@code ×修正‰ / 1000} 与总效率
+ *       {@code ÷ 1000} 的唯一换算点；{@link #COVERAGE_FULL_PER_MILLE} 是它的同值别名（旧语义的“覆盖率满值”）；
+ *   <li><b>旧覆盖率/加成</b>（{@link #BONUS_SATURATION} = 10、{@link #MAX_BONUS_PER_MILLE} =
+ *       100）：<b>legacy</b> ——旧 11a 的 {@code min} 合成与超编加成公式已按设计书 §3
+ *       删除，这两个常量不再被新公式使用；保留只为旧档/旧引用可读，删除随 Z3/Z6 收口；
+ *   <li><b>旧需求零覆盖口径</b>（{@link #COVERAGE_FULL_PER_MILLE} = 1000‰）：{@code GovDaily} 的信号判据仍用它（满足率
+ *       &lt; 1000‰ = 有缺口）。
  * </ul>
  *
  * <p>★★ <b>默认值来源（四个需求常量都是"暂定值"）</b>：本仓此前没有任何"每人配多少治安/书吏"的常量可复用（既有的 {@code
@@ -75,28 +78,34 @@ public final class GovRules {
   public static final long CITY_PAPERWORK_WEIGHT = 60L;
 
   /**
-   * 覆盖率/行政效率的<b>满值</b>：<b>1000‰</b>（= 1.0）。
+   * <b>千分制换算点</b>：<b>1000‰ = 1.0</b>。
    *
-   * <p>★ <b>两个用途</b>：① 需求为 0 的维度记 {@code coverage = 本常量}（"无需求 = 全额覆盖"）； ② {@code bonus‰ =
-   * 100·s/(s+10)} 的分母 1000 来自 {@code coverage × (1000 + bonus) / 本常量}——它是 per-mille 与"1 倍"之间的
-   * 唯一换算点。★ <b>不是暂定值</b>：千分制本身是计划 §3 钉死的口径。
+   * <p>★ <b>为什么是共享常量</b>：Z2 冻结的两维效率公式里 {@code 需求劳动 = P × 需求静态‰/1000 × 需求动态‰/1000}、{@code 效率 = 满足率 ×
+   * 供给静态‰/1000 × 供给动态‰/1000}、 {@code 总效率 = 治安效率 × 公文效率 ÷ 1000} 都靠它换算；<b>不是暂定值</b>：千分制本身是设计书 §3
+   * 钉死的口径。
    */
-  public static final long COVERAGE_FULL_PER_MILLE = 1000L;
+  public static final long PER_MILLE = 1000L;
 
   /**
-   * 超编加成的<b>饱和参数</b>：公式分母里的 <b>10</b>（即 {@code bonus‰ = 100·s/(s+10)}）。
+   * 覆盖率/行政效率的<b>满值</b>：<b>1000‰</b>（= 1.0，{@link #PER_MILLE} 的同值别名）。
    *
-   * <p>★ <b>量纲</b>：与 {@code s} 同维（{@code s} = 超支百分数，如 +10% ⇒ s=10）。{@code s = 本常量} 时加成恰为
-   * 上限的一半（50‰），随后边际递减。★ <b>不是暂定值</b>：计划 §3 的精确拟合（+10%→50‰、+20%→66.7‰）由它决定。
+   * <p>★ <b>两个用途</b>：① {@code GovDaily} 的缺口信号判据（满足率 &lt; 本常量 ⇒ 发信号）； ② legacy 11a 公式里的“需求 0
+   * 维记全额”常量。Z2 的新公式用 {@link #PER_MILLE}，本常量保留为同值别名。★ <b>不是暂定值</b>：千分制本身是设计书 §3 钉死的口径。
+   */
+  public static final long COVERAGE_FULL_PER_MILLE = PER_MILLE;
+
+  /**
+   * 旧 11a 超编加成公式的<b>饱和参数</b>：{@code bonus‰ = 100·s/(s+10)}。
+   *
+   * <p>★ <b>legacy</b>：Z2 按设计书 §3 删除旧 {@code min} 合成与超编加成后，本常量<b>不再被新公式使用</b>；保留只为旧档/旧引用可读 （删除随
+   * Z3/Z6 收口）。
    */
   public static final long BONUS_SATURATION = 10L;
 
   /**
-   * 超编加成的<b>上限</b>：<b>100‰</b>（= +10%）。
+   * 旧 11a 超编加成的<b>上限</b>：<b>100‰</b>。
    *
-   * <p>★ <b>两个用途</b>：① 公式分子 {@code 100·s}；② 行政效率上限 {@code 1000 + 100 = 1100‰}。★ 对有限的 {@code s}，
-   * {@code floor(100·s/(s+10))} 实际取不到 100（只在 {@code s→∞} 渐近），本常量仍是写下来的硬上限（防未来改公式/改类型时越界）。 ★
-   * <b>不是暂定值</b>：上限 +10% 是计划 §3 的裁定。
+   * <p>★ <b>legacy</b>：同 {@link #BONUS_SATURATION}——旧公式的上限，Z2 已拆掉全部上限（C3），本常量不再被新公式使用。
    */
   public static final long MAX_BONUS_PER_MILLE = 100L;
 }

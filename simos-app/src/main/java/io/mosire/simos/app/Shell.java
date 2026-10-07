@@ -87,6 +87,8 @@ import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
 import io.mosire.simos.gov.codec.GovCodec;
+import io.mosire.simos.gov.spi.SetAdministrationPlanHandler;
+import io.mosire.simos.gov.spi.SetBudgetPolicyHandler;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
@@ -659,6 +661,13 @@ public final class Shell implements AutoCloseable {
                 // ── P1b1（2026-10-01）：GM-only 区域经济数据清空（目标格 industries/markets + 可靠可定位的连带记录）。
                 //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new EconomyClearRegionHandler(),
+                // ── gov（Z2 2026-10-23，gov 首个 command handler 批）：行政编制计划 / 国库预算政策整体设置。
+                //   ★ GM-only（V1 冻结）：标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
+                //     GM 的 simos.command.submit 照常可用。Z3 接决策人工具 + 审批链时再按需打开。
+                //   ★ 不实现 CommandTargets：当前不在决策令路径，目标声明与工具面一并归 Z3（照 Z1a 先例）。
+                //   两者只写 gov 命名空间（GovState 两条源状态），变更集由 GovChangeSet.between 派生。──
+                new SetAdministrationPlanHandler(),
+                new SetBudgetPolicyHandler(),
                 // ── P2-D：单位向放贷方借/还的债务腿两条（GM-only；放贷方 = 家户/政府家户）。
                 //   资金腿由组合根用 actor.TransferAccounts 与它们同批提交（单条命令只能落一个命名空间）；
                 //   见两个 handler 的类注与 P2-D 报告。──
