@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# P1.4 小世界（small-world）真实运行脚本 —— 建 DB（空库才 bootstrap）→ 初始化 15 hex 小世界 →
+# P1.4 小世界（small-world）真实运行脚本 —— 建 DB（空库才 bootstrap）→ 初始化 19 hex 小世界（含中央/省两级 GOV 行政链）→
 # 起 Shell → 浏览器打开 WebUI。
 #
 # 口径（用户 2026-10-08/09）：
@@ -89,7 +89,7 @@ fi
 if [ -e "${STORE}/simos.db" ]; then
   echo "[run-small-world] 注意：${STORE} 已有库 ⇒ 直接打开已有世界，绝不覆盖（--world=${WORLD} 只在空库生效）。" >&2
 else
-  echo "[run-small-world] 空库 ⇒ 将以 --world=${WORLD} bootstrap 小世界（15 hex / 1 Region / 首都+镇 / 4,000 人）。"
+  echo "[run-small-world] 空库 ⇒ 将以 --world=${WORLD} bootstrap 小世界（19 hex / 1 Region / 首都+镇 / 4,800 人 / 两级 GOV 行政链内置）。"
 fi
 
 echo "[run-small-world] jar      : ${JAR}"

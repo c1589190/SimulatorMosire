@@ -5,6 +5,7 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.tools.write.GovWorldBootstrap;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.economy.EconomyData;
@@ -29,9 +30,12 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.gen.PlannedCity;
 import io.mosire.simos.social.gen.SettlementPlan;
+import io.mosire.simos.social.population.AgeBracket;
+import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.spi.CreateCityHandler;
 import io.mosire.simos.social.spi.SeedGroupsHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
@@ -90,6 +94,7 @@ import java.util.Set;
  * → social.SeedGroups（同一份批次/家户，PopulationSeeder）
  * → economy.Seed（EconomySeeder.plan 的 production-runtime 载荷：产业/阶层/劳动/资产/市场 + world-silver 政府家户/国库/周期铸币政策）
  * → actor.Seed（HouseholdSeeder 载荷：与 economy.Seed 同一次 plan 的家户/经营者 actor + 账本 + 创世货币）
+ * → GovWorldBootstrap（Z5：中央/省 GOV + office unit + 官吏户/岗位/GOV_SERVICE 承诺 + 编制计划/预算 + 国库注资）
  * </pre>
  *
  * <p>★★ <b>为什么可以先造空切片、再逐条 apply handler</b>：创世本来就发生在"命令面存在之前"——{@code CoreSimos#bootstrapGenesis}
@@ -103,8 +108,9 @@ import java.util.Set;
  * {@code HouseholdSeeder} 的确定序。★ 不承诺内部 {@code Set}/{@code Map} 的 {@code toString()} 迭代序——那是 util
  * 既有实现（{@code Set.copyOf}/{@code Map.copyOf} 的迭代序不是内容的纯函数），各世界一致。
  *
- * <p>★ <b>它当前不带 army / unit</b>：八个命名空间的切片都在场（命令总线要求），unit/army/sd/gov 为空片。{@code sd}/{@code unit}
- * 命令要 "有切片才不响亮失败"，空片正是它们的合法起点。
+ * <p>★ <b>它当前不带 army / sd</b>：八个命名空间的切片都在场（命令总线要求），{@code unit}/{@code gov} 已由 {@link
+ * GovWorldBootstrap} 在创世批里种出（2 个 GOV 单位 + 官署 office unit + 官吏户/岗位/承诺/2 份编制计划与预算 + 2 份国库注资），{@code
+ * army}/{@code sd} 仍为空片。{@code unit}/{@code sd} 命令要 "有切片才不响亮失败"，空片正是它们的合法起点。
  *
  * <p>★ {@code mapId} 与非空白校验口径同 {@link CorridorWorld}：{@code GameMap} 本身没有 id，状态里无处存它；它进 {@code
  * EconomyMeta} / {@code ActorMeta} 的载荷（由 seeders 透传）。
@@ -272,7 +278,45 @@ public final class SmallWorld {
                 economy.householdStocks(),
                 economy.householdMoney(),
                 economy.operators()));
-    return state;
+    // ★★ 2026-10-23 Z5：19 hex 世界的政府行政链（中央/省 GOV + office unit + 官吏户/岗位/承诺 +
+    //   编制计划/预算 + 国库注资）同一批创世落成——沿用同一条 handler → codec.apply 语义，
+    //   整份状态仍由 ShellMain.seedGenesisIfEmpty → bootstrapGenesis 写成一条 (main, 1) revision。
+    return GovWorldBootstrap.apply(
+        state, SmallWorld::applyCommand, map, REGION_ID, officialManpowerSources(seeding));
+  }
+
+  /**
+   * 官吏来源选人（唯一判据，确定性）：在 {@link PopulationSeeder} 的批次序列里按声明序取**前两个**「成年男性、人数 ≥ {@link
+   * GovWorldBootstrap#OFFICIAL_MEMBERS_PER_GOV}」的批次，分别供中央/省官吏户转移。
+   *
+   * <p>★ 成年档判定走 {@link EconomySeeder#ageBracketOf(long)}（与创世劳动折算同一个 social 权威，不另写 365 天边界）；
+   * 不取政府家户（它 0 人口、无批次天然不在表里）。
+   */
+  private static List<GovWorldBootstrap.ManpowerSource> officialManpowerSources(
+      PopulationSeeder.Seeding seeding) {
+    List<GovWorldBootstrap.ManpowerSource> picks = new ArrayList<>(2);
+    for (PopulationGroup group : seeding.groups()) {
+      if (group.sex() != Sex.MALE
+          || EconomySeeder.ageBracketOf(group.ageAtAnchorDays()) != AgeBracket.ADULT.ordinal()
+          || group.count() < GovWorldBootstrap.OFFICIAL_MEMBERS_PER_GOV) {
+        continue;
+      }
+      picks.add(
+          new GovWorldBootstrap.ManpowerSource(
+              group.id().value(), seeding.householdOf(group.id()).value()));
+      if (picks.size() == 2) {
+        break;
+      }
+    }
+    if (picks.size() < 2) {
+      throw new IllegalStateException(
+          "小世界创世装配故障：找不到两个≥"
+              + GovWorldBootstrap.OFFICIAL_MEMBERS_PER_GOV
+              + " 人的成年男性批次供官吏户转移（实际 "
+              + picks.size()
+              + " 个）");
+    }
+    return List.copyOf(picks);
   }
 
   /**
