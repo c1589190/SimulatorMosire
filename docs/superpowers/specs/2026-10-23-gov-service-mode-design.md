@@ -314,3 +314,14 @@
 3. **已知边界**：GM 裸 `simos.command.submit` 可绕过 app 工具的 unit 切片预检，只过 (1)。接受为边界；
    **Z4 必做**：app 组合根跨切片一致性检查（gov service unit 的 operator GOV 缺 `GovernmentFormation`
    ⇒ 具名拒/告警）；**Z6 必做**：对应负向测试。
+
+---
+
+## 19. 控制方裁定（Z1c 收尾，2026-10-23）
+
+1. Z1c 的 `ProductionRules.laborSource = SELF` 按"最小落地"接受：空规则 + 空产出下它不参与任何分布；
+   **Z3 必做**：接入 `GOV_SERVICE` 承诺与 `ADMIN_SALARY` 时复核 `SELF` vs `WAGE`，并核
+   `ProductionEnterprise.laborSources`（自家户 / 外来户两类来源）的语义，不得让该字段与"官吏领薪、外来家户受雇"矛盾。
+2. §18 的 Z4/Z6 必做项维持：组合根跨切片一致性检查（gov service unit 的 operator GOV 缺
+   `GovernmentFormation` ⇒ 具名拒/告警）+ 对应负向测试。
+3. Z1c 的其余口径（payload、守卫、四表最小写入集）按台账冻结，不再改。
