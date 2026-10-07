@@ -163,13 +163,14 @@
 - 影响：省/中央决策人（走决策人桶 + GM 审批）在改上缴率或调薪资规则时，若不回填其余字段，会静默清空预算 → 下次日结停俸 → 逃亡。**这是可用性缺陷，不是机制设计缺陷**。
 - 本轮规避：setup 与抗税脚本均用**完整载荷**（`setup_tick0.py` / `run_refusal.py` 已固化该写法，并带 preview 断言"预算未丢"）。
 
-### 4.4 修复候选（**未动手，待裁定**）
+### 4.4 修复：A+B 同时应用（**用户 2026-10-23 已裁定并落地**）
 
-| 方案 | 内容 | 代价/风险 |
-|---|---|---|
-| **A（推荐）** | `GovPayloads.budgetPolicy` 改 patch 语义：缺省字段保留现值；另加显式 `clearOrderedCategories:true`（或 `orderedCategories:[]` 明示）才清空 | 需要区分"缺省=保留"与"显式空=清空"，JSON 里 `[]` vs 缺省可区分；要改 round-trip 测试 |
-| B | 工具层加 `mode:"patch"|"replace"`（缺省 replace，保持兼容） | 语义显式，但调用方仍会忘 |
-| C | 语义不动，工具在缺字段时把"现政策"回填进 preview 展示（"将保留 N 类"） | 最保守，但真正写库的仍可能是被清空的载荷 |
+用户裁定原文："AB同时应用吧"。冻结语义与实现见 `docs/superpowers/specs/2026-10-23-fiscal-loop-design.md` §10（Z7e-3）：
+
+- **A（payload 级）**：`mode` 缺省 = `PATCH` —— 缺省字段保留现值；清空类别表要显式 `orderedCategories:[]`；工资规则给出时逐内层字段合并。
+- **B（开关）**：显式 `mode:"PATCH"|"REPLACE"`；`REPLACE` = 本报告 §4.2 的旧整表替换语义（向后兼容可达）。
+- 三面同源：命令载荷 `mode` / 工具顶层 `mode` 参数（覆盖 payloadJson）/ catalog `payloadHints`；preview 视图带 `editMode`。
+- 回归测试直接钉住本报告 §4 的污染场景（只传 remittance 改 0 不再清预算）；变异自证见 Z7e-3 台账。
 
 ---
 

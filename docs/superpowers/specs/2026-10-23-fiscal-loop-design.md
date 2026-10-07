@@ -22,6 +22,8 @@
 
 > AAA，肯定按户啊，按照你说的去向做
 
+> AB同时应用吧
+
 ## 1. 范围与责任区
 
 | 区 | 目标 | 依赖 |
@@ -119,3 +121,28 @@
 | 去向排序 | 产能余量×预期利润 → 人均财富 → id |
 | remittance | 默认 0‰，周期末，省决策人可改（含 0） |
 | 中央 district 税率 | 初始 0‰（中央自定/后续工具） |
+
+## 10. Z7e-3：`gov.SetBudgetPolicy` 双模（PATCH 缺省 + REPLACE 开关）
+
+**用户裁定（原文）**："AB同时应用吧"（2026-10-23）——A = payload 级 patch 语义（缺省字段保留现值），B = 显式
+`mode:"PATCH"|"REPLACE"` 开关。**动因**：run7 首跑污染（`docs/superpowers/reports/2026-10-23-fiscal-loop-run7-vs-run6.md`
+§4）——省决策人只传 `remittancePerMilleToSuperior` 改 0 抗税，整表替换把 `orderedCategories` + `officialSalaryRule`
+清空 ⇒ 次日 `ADMIN_PLAN_MISSING` ⇒ 停俸 ⇒ 官吏逃亡。
+
+**冻结语义（命令载荷 `gov.SetBudgetPolicy`）**：
+
+| 载荷 | PATCH（`mode` 缺省） | REPLACE（`mode:"REPLACE"`，旧语义） |
+|---|---|---|
+| `orderedCategories` 缺失/null | 保留现值（键不存在 = 空表） | 空表（不自动付） |
+| `orderedCategories` 给出（含 `[]`） | 整表替换（`[]` = 显式清空） | 同左 |
+| `officialSalaryRule` 缺失/null | 保留现值（键不存在 = 0/0） | 0/0（不发薪） |
+| `officialSalaryRule` 给出 | 对象内缺省字段逐项保留现值 | 对象内缺省字段 = 0 |
+| `remittancePerMilleToSuperior` 缺失/null | 保留现值（键不存在 = 0） | 0（不上缴） |
+| `remittancePerMilleToSuperior` 给出 | 覆盖（0..1000‰ 构造期判） | 同左 |
+
+- `mode` **只影响本次解析、不落状态**（`GovBudgetPolicy` 值对象不加字段，幂等判定仍是逐值 `equals`）；词表大小写不敏感、词表外具名拒。
+- 首次写入（键不存在）无"现值"可保留 ⇒ PATCH 等价中性默认（空表 + 0/0 + 0）。
+- **三面同源**：命令载荷 `mode` 字段（`GovPayloads.editMode` / `GovBudgetPolicyEditMode`）、工具 `simos.gov.setBudgetPolicy`
+  的顶层 `mode` 参数（给出即覆盖 payloadJson 的 mode）、catalog `payloadHints` 同一条词表；preview 视图带 `editMode`。
+- 回归判据：`GovCommandHandlersTest`（PATCH 保留/显式清空/逐层合并/REPLACE 旧语义/首次写入/词表）、`GovToolsZ6Test`
+  （工具面 + 目录 + preview 的 `editMode` + 只传 remittance 不清预算 + 顶层 mode 覆盖）。

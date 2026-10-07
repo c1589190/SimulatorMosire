@@ -54,6 +54,8 @@ import org.junit.jupiter.api.Test;
  *   <li>{@code gov.SetAdministrationPlan} / {@code gov.SetBudgetPolicy}：合法载荷 ⇒ {@code Applied}
  *       且变更集重建逐值目标；
  *   <li>除 {@code unitId} 外全缺省 ⇒ 中性默认（计划 0/默认 3 档/修正 1000‰/k=1；预算空/0 工资）；
+ *   <li>★ Z7e-3 双模：{@code mode} 缺省 = {@code PATCH}（缺省字段保留现值，只改上缴率不清预算；{@code orderedCategories:[]}
+ *       才清空），{@code mode:"REPLACE"} = 旧整表替换；词表大小写不敏感、词表外具名拒；
  *   <li>幂等重放（载荷与既有配置逐值相同）⇒ 空变更集、<b>不落 revision</b>（spec §16.1）；
  *   <li>GOV 单位不存在 / 单位缺 {@code GovernmentFormation} / 坏载荷 ⇒ 具名 {@code Rejected}，零变更；
  *   <li>切片装配故障（缺 gov/unit 切片）⇒ {@code IllegalStateException}（ERROR 不降级），不是 Rejected；
@@ -300,6 +302,149 @@ class GovCommandHandlersTest {
                             + "\"grainMilliPerCommittedHour\":-1}}"))
                 .reason())
         .contains("grainMilliPerCommittedHour");
+  }
+
+  // ── ★ Z7e-3：PATCH/REPLACE 双模（控制方裁定 A+B）────────────────────────────────────
+
+  @Test
+  void setBudgetPolicyPatchKeepsOmittedFieldsRun7Regression() {
+    SetBudgetPolicyHandler handler = new SetBudgetPolicyHandler();
+    SimulationState created = state(GovState.empty(), Map.of(GOV_ID, govUnit(GOV_ID)));
+    GovState seeded =
+        govState((HandlerOutcome.Applied) handler.handle(created, BUDGET_POLICY_PAYLOAD), created);
+    SimulationState seededState = state(seeded, Map.of(GOV_ID, govUnit(GOV_ID)));
+    GovState withRate =
+        govState(
+            (HandlerOutcome.Applied)
+                handler.handle(
+                    seededState, "{\"unitId\":\"gov-1\",\"remittancePerMilleToSuperior\":500}"),
+            seededState);
+    SimulationState withRateState = state(withRate, Map.of(GOV_ID, govUnit(GOV_ID)));
+
+    // run7 首跑污染同形：上缴 500→0（抗税）只传 remittance，PATCH 不得清空类别表/工资规则。
+    HandlerOutcome.Applied patched =
+        (HandlerOutcome.Applied)
+            handler.handle(
+                withRateState, "{\"unitId\":\"gov-1\",\"remittancePerMilleToSuperior\":0}");
+
+    GovBudgetPolicy policy = govState(patched, withRateState).budgetPolicies().get(GOV_ID);
+    assertThat(policy.orderedCategories())
+        .as("PATCH：缺省字段保留现值（类别表不被清空）")
+        .isEqualTo(EXPECTED_POLICY.orderedCategories());
+    assertThat(policy.officialSalaryRule())
+        .as("PATCH：工资规则逐值保留")
+        .isEqualTo(EXPECTED_POLICY.officialSalaryRule());
+    assertThat(policy.remittancePerMilleToSuperior()).isZero();
+    assertThat(changeSet(patched).isEmpty()).isFalse();
+  }
+
+  @Test
+  void setBudgetPolicyPatchClearsCategoriesOnlyWhenExplicitlyEmpty() {
+    SetBudgetPolicyHandler handler = new SetBudgetPolicyHandler();
+    SimulationState created = state(GovState.empty(), Map.of(GOV_ID, govUnit(GOV_ID)));
+    GovState seeded =
+        govState((HandlerOutcome.Applied) handler.handle(created, BUDGET_POLICY_PAYLOAD), created);
+    SimulationState seededState = state(seeded, Map.of(GOV_ID, govUnit(GOV_ID)));
+
+    HandlerOutcome.Applied cleared =
+        (HandlerOutcome.Applied)
+            handler.handle(seededState, "{\"unitId\":\"gov-1\",\"orderedCategories\":[]}");
+
+    GovBudgetPolicy policy = govState(cleared, seededState).budgetPolicies().get(GOV_ID);
+    assertThat(policy.orderedCategories()).as("显式 [] = 清空").isEmpty();
+    assertThat(policy.officialSalaryRule())
+        .as("同一载荷里的缺省字段仍保留")
+        .isEqualTo(EXPECTED_POLICY.officialSalaryRule());
+  }
+
+  @Test
+  void setBudgetPolicyPatchMergesSalaryRuleInnerFields() {
+    SetBudgetPolicyHandler handler = new SetBudgetPolicyHandler();
+    SimulationState created = state(GovState.empty(), Map.of(GOV_ID, govUnit(GOV_ID)));
+    GovState seeded =
+        govState((HandlerOutcome.Applied) handler.handle(created, BUDGET_POLICY_PAYLOAD), created);
+    SimulationState seededState = state(seeded, Map.of(GOV_ID, govUnit(GOV_ID)));
+
+    HandlerOutcome.Applied patched =
+        (HandlerOutcome.Applied)
+            handler.handle(
+                seededState,
+                "{\"unitId\":\"gov-1\",\"officialSalaryRule\":{"
+                    + "\"silverMilliPerCommittedHour\":7}}");
+
+    GovBudgetPolicy policy = govState(patched, seededState).budgetPolicies().get(GOV_ID);
+    assertThat(policy.officialSalaryRule())
+        .as("对象内缺省字段保留现值（10 保留、5→7）")
+        .isEqualTo(new GovOfficialSalaryRule(10L, 7L));
+    assertThat(policy.orderedCategories()).isEqualTo(EXPECTED_POLICY.orderedCategories());
+  }
+
+  @Test
+  void setBudgetPolicyReplaceModeKeepsLegacyWholePayloadSemantics() {
+    SetBudgetPolicyHandler handler = new SetBudgetPolicyHandler();
+    SimulationState created = state(GovState.empty(), Map.of(GOV_ID, govUnit(GOV_ID)));
+    GovState seeded =
+        govState((HandlerOutcome.Applied) handler.handle(created, BUDGET_POLICY_PAYLOAD), created);
+    SimulationState seededState = state(seeded, Map.of(GOV_ID, govUnit(GOV_ID)));
+
+    HandlerOutcome.Applied replaced =
+        (HandlerOutcome.Applied)
+            handler.handle(
+                seededState,
+                "{\"unitId\":\"gov-1\",\"mode\":\"REPLACE\","
+                    + "\"remittancePerMilleToSuperior\":500}");
+
+    GovBudgetPolicy policy = govState(replaced, seededState).budgetPolicies().get(GOV_ID);
+    assertThat(policy.orderedCategories()).as("REPLACE：缺省字段 = 空表（旧语义）").isEmpty();
+    assertThat(policy.officialSalaryRule()).isEqualTo(GovOfficialSalaryRule.zero());
+    assertThat(policy.remittancePerMilleToSuperior()).isEqualTo(500L);
+  }
+
+  @Test
+  void setBudgetPolicyPatchOnFirstWriteFillsNeutralDefaults() {
+    SetBudgetPolicyHandler handler = new SetBudgetPolicyHandler();
+    SimulationState fresh = state(GovState.empty(), Map.of(GOV_ID, govUnit(GOV_ID)));
+
+    HandlerOutcome.Applied applied =
+        (HandlerOutcome.Applied)
+            handler.handle(fresh, "{\"unitId\":\"gov-1\",\"remittancePerMilleToSuperior\":500}");
+
+    GovBudgetPolicy policy = govState(applied, fresh).budgetPolicies().get(GOV_ID);
+    assertThat(policy.orderedCategories()).as("无现值可保留 ⇒ 等价中性默认").isEmpty();
+    assertThat(policy.officialSalaryRule()).isEqualTo(GovOfficialSalaryRule.zero());
+    assertThat(policy.remittancePerMilleToSuperior()).isEqualTo(500L);
+  }
+
+  @Test
+  void setBudgetPolicyModeIsCaseInsensitiveAndRejectsUnknownVocabulary() {
+    SetBudgetPolicyHandler handler = new SetBudgetPolicyHandler();
+    SimulationState created = state(GovState.empty(), Map.of(GOV_ID, govUnit(GOV_ID)));
+    GovState seeded =
+        govState((HandlerOutcome.Applied) handler.handle(created, BUDGET_POLICY_PAYLOAD), created);
+    SimulationState seededState = state(seeded, Map.of(GOV_ID, govUnit(GOV_ID)));
+
+    HandlerOutcome lower =
+        handler.handle(
+            seededState,
+            "{\"unitId\":\"gov-1\",\"mode\":\"patch\"," + "\"remittancePerMilleToSuperior\":250}");
+    assertThat(lower).isInstanceOf(HandlerOutcome.Applied.class);
+    GovBudgetPolicy patched =
+        govState((HandlerOutcome.Applied) lower, seededState).budgetPolicies().get(GOV_ID);
+    assertThat(patched.orderedCategories()).as("小写 patch 同样可识别").hasSize(3);
+    assertThat(patched.remittancePerMilleToSuperior()).isEqualTo(250L);
+
+    HandlerOutcome upper =
+        handler.handle(seededState, "{\"unitId\":\"gov-1\",\"mode\":\"replace\"}");
+    assertThat(govState((HandlerOutcome.Applied) upper, seededState).budgetPolicies().get(GOV_ID))
+        .as("小写 replace 同样可识别")
+        .isEqualTo(GovBudgetPolicy.neutral());
+
+    assertThat(
+            ((HandlerOutcome.Rejected)
+                    handler.handle(seededState, "{\"unitId\":\"gov-1\",\"mode\":\"MERGE\"}"))
+                .reason())
+        .contains("mode")
+        .contains("PATCH|REPLACE");
   }
 
   // ── GM-only / 切片装配故障 ────────────────────────────────────────────────────────

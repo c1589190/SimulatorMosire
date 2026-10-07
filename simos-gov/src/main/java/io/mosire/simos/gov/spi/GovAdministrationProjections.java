@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.gov.GovAdministrationPlan;
 import io.mosire.simos.gov.GovBudgetPolicy;
+import io.mosire.simos.gov.GovBudgetPolicyEditMode;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
@@ -27,8 +28,9 @@ import java.util.Objects;
  * <p>★ <b>命令边界的语义仍只有一份</b>：本类的投影只决定 preview 视图（before/after/noop）；真正提交仍走同一条 {@code
  * core.submit(CommandEnvelope)} → handler，守卫/幂等/拒绝语义不因工具而改变。
  *
- * <p>★ <b>{@link #withUnitId} 是唯一的重写点</b>：决策人版工具用身份派生的 GOV 覆盖载荷里的 {@code unitId}（GM 版则要求载荷显式带
- * {@code unitId}）；重写后仍交给同一解析器，缺省展开/范围校验一字不动。
+ * <p>★ <b>{@link #withUnitId} / {@link #withMode} 是仅有的两个重写点（共用私有的 {@code
+ * withField}）</b>：决策人版工具用身份派生的 GOV 覆盖载荷里的 {@code unitId}（GM 版则要求载荷显式带 {@code unitId}），工具 {@code
+ * mode} 参数覆盖载荷的编辑模式（★ Z7e-3）；重写后仍交给同一解析器， 缺省展开/范围校验一字不动。
  */
 public final class GovAdministrationProjections {
 
@@ -52,18 +54,20 @@ public final class GovAdministrationProjections {
     }
   }
 
-  /** 预算政策投影：口径同 {@link PlanProjection}。 */
+  /** 预算政策投影：口径同 {@link PlanProjection}；{@code requestedMode} = 载荷声明的编辑模式（PATCH/REPLACE，★ Z7e-3）。 */
   public record BudgetProjection(
       UnitId unitId,
       GovBudgetPolicy previous,
       GovBudgetPolicy next,
       boolean keyExisted,
-      boolean noop) {
+      boolean noop,
+      GovBudgetPolicyEditMode requestedMode) {
 
     public BudgetProjection {
       Objects.requireNonNull(unitId, "unitId");
       Objects.requireNonNull(previous, "previous");
       Objects.requireNonNull(next, "next");
+      Objects.requireNonNull(requestedMode, "requestedMode");
     }
   }
 
@@ -94,12 +98,28 @@ public final class GovAdministrationProjections {
       throw new IllegalArgumentException("覆盖用的 unitId 不得为空白");
     }
     UnitId.parse(unitId); // 坏 id 在命令边界前折成 BAD_REQUEST（与 handler 同一条拼写）
+    return withField(payloadJson, "unitId", unitId);
+  }
+
+  /**
+   * 把载荷里的 {@code mode} <b>整体覆盖</b>成工具参数指定的编辑模式（其余字段逐字保留），返回新的载荷 JSON 文本（★ Z7e-3）。
+   *
+   * <p>★ 这是工具 {@code mode} 参数的唯一落点：给出即覆盖 payloadJson 里的 {@code mode}（覆盖后仍由 {@link GovPayloads}
+   * 解析校验，不存在"覆盖即绕过词表"）。工具不传 {@code mode} 时载荷逐字透传、缺省 = PATCH。
+   */
+  public static String withMode(String payloadJson, GovBudgetPolicyEditMode mode) {
+    Objects.requireNonNull(mode, "mode");
+    return withField(payloadJson, "mode", mode.name());
+  }
+
+  /** 载荷字段覆盖的<b>唯一实现点</b>（{@code withUnitId} / {@code withMode} 共用；深拷贝后覆盖再序列化）。 */
+  private static String withField(String payloadJson, String field, String value) {
     JsonNode parsed = GovPayloads.parse(payloadJson);
     if (!(parsed instanceof ObjectNode object)) {
       throw new IllegalArgumentException("payload 必须是 JSON 对象");
     }
     ObjectNode copy = object.deepCopy();
-    copy.put("unitId", unitId);
+    copy.put(field, value);
     try {
       return MAPPER.writeValueAsString(copy);
     } catch (JsonProcessingException e) {
@@ -122,19 +142,20 @@ public final class GovAdministrationProjections {
         unitId, previous, next, keyExisted, keyExisted && previous.equals(next));
   }
 
-  /** 预算政策投影（见类注；GOV 单位守卫与 handler 同源）。 */
+  /** 预算政策投影（见类注；GOV 单位守卫与 handler 同源；PATCH 的合并基准 = 现值政策）。 */
   public static BudgetProjection budgetPolicy(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     JsonNode payload = GovPayloads.parse(payloadJson);
     UnitId unitId = GovPayloads.requireUnitId(payload);
     requireGovernmentUnit(state, unitId);
     GovState govState = govState(state);
-    GovBudgetPolicy next = GovPayloads.budgetPolicy(payload);
+    GovBudgetPolicyEditMode requestedMode = GovPayloads.editMode(payload);
     boolean keyExisted = govState.budgetPolicies().containsKey(unitId);
     GovBudgetPolicy previous =
         keyExisted ? govState.budgetPolicies().get(unitId) : GovBudgetPolicy.neutral();
+    GovBudgetPolicy next = GovPayloads.budgetPolicy(payload, keyExisted ? previous : null);
     return new BudgetProjection(
-        unitId, previous, next, keyExisted, keyExisted && previous.equals(next));
+        unitId, previous, next, keyExisted, keyExisted && previous.equals(next), requestedMode);
   }
 
   /** gov 切片提取：缺切片/类型不符 = 装配故障（ERROR 不降级，同 handler）。 */

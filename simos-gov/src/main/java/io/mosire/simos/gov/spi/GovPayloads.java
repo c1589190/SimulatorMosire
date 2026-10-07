@@ -7,6 +7,7 @@ import io.mosire.simos.gov.GovAdministrationPlan;
 import io.mosire.simos.gov.GovBudgetCategory;
 import io.mosire.simos.gov.GovBudgetLine;
 import io.mosire.simos.gov.GovBudgetPolicy;
+import io.mosire.simos.gov.GovBudgetPolicyEditMode;
 import io.mosire.simos.gov.GovOfficialSalaryRule;
 import io.mosire.simos.gov.GovPostTier;
 import io.mosire.simos.unit.UnitId;
@@ -24,8 +25,9 @@ import java.util.Objects;
  *
  * <p>★ <b>本类只管形状与类型</b>（字段在不在、类型对不对、缺省值）；数值范围（≥0、恰 3 档、类别不重复、min ≤ cap）留给领域 record， 两处不重复实现。
  *
- * <p>★ <b>缺省口径</b>：编制计划除 {@code unitId} 外全部可缺省（计划量 0、默认 3 档、修正 1000‰、{@code k=1}）； 预算政策的类别表可缺省为空（=
- * 不自动付）、工资规则可缺省为 0/0。<b>缺省值只在这里展开一次</b>，领域 record 不猜。
+ * <p>★ <b>缺省口径</b>：编制计划除 {@code unitId} 外全部可缺省（计划量 0、默认 3 档、修正 1000‰、{@code k=1}）； 预算政策分两模（★
+ * Z7e-3）：{@link GovBudgetPolicyEditMode#PATCH}（缺省）的缺省字段 = <b>保留现值</b>（键不存在时 = 空表 / 0/0 / 0），{@link
+ * GovBudgetPolicyEditMode#REPLACE} 的缺省字段 = 空表 / 0/0 / 0（旧整表替换）。<b>缺省值只在这里展开一次</b>，领域 record 不猜。
  *
  * <p>★ <b>{@code unitId} 是“要写给哪个 GOV”</b>：它是 {@code GovState} 两条源状态表的键，不属于计划/政策 record 的内容（设计书 §4.1
  * 的键）。
@@ -121,29 +123,71 @@ final class GovPayloads {
   }
 
   /**
-   * 预算政策载荷：类别表缺省 = 空（不自动付）；工资规则缺省 = 0/0；{@code remittancePerMilleToSuperior} 缺省 = 0（不上缴， 旧调用点语义不变）。
+   * 预算政策载荷（★ Z7e-3 双模，控制方 2026-10-23 裁定 A+B："AB同时应用吧"）：
+   *
+   * <ul>
+   *   <li>{@link GovBudgetPolicyEditMode#PATCH}（{@code mode} 缺省）：<b>缺省字段保留现值</b>——{@code
+   *       orderedCategories} 缺失/{@code null} ⇒ 保留 {@code current} 的表（{@code current=null} ⇒
+   *       空表）；显式给出（含 {@code []} = 清空）⇒ 整表替换；{@code officialSalaryRule} 给出 ⇒ 对象内缺省字段逐项保留现值；{@code
+   *       remittancePerMilleToSuperior} 给出才覆盖。
+   *   <li>{@link GovBudgetPolicyEditMode#REPLACE}：旧整表替换语义——类别表缺省 = 空（不自动付）、工资规则缺省 = 0/0、 上缴比例缺省 =
+   *       0。
+   * </ul>
+   *
+   * <p>★ {@code mode} 只影响本次解析、不落状态；数值范围（min ≤ cap、类别不重复、比例 0..1000‰）仍由 {@link GovBudgetPolicy}
+   * 构造期一条口径判。
+   *
+   * @param current 该 GOV 的现值政策；{@code null} = 键不存在（PATCH 无"现值"可保留 ⇒ 等价于中性默认）
    */
-  static GovBudgetPolicy budgetPolicy(JsonNode payload) {
-    List<GovBudgetLine> orderedCategories = new ArrayList<>();
+  static GovBudgetPolicy budgetPolicy(JsonNode payload, GovBudgetPolicy current) {
+    GovBudgetPolicyEditMode mode = editMode(payload);
+    GovBudgetPolicy base =
+        mode == GovBudgetPolicyEditMode.PATCH && current != null
+            ? current
+            : GovBudgetPolicy.neutral();
     JsonNode categories = payload.get("orderedCategories");
-    if (categories != null && !categories.isNull()) {
-      if (!categories.isArray()) {
-        throw new IllegalArgumentException("字段 orderedCategories 必须是数组");
-      }
-      for (JsonNode element : categories) {
-        if (!element.isObject()) {
-          throw new IllegalArgumentException("orderedCategories 的每一项必须是对象");
-        }
-        GovBudgetCategory category = requireCategory(requireText(element, "category"));
-        long minPerCycle = optionalLong(element, "minPerCycle", 0L);
-        long capPerCycle = optionalLong(element, "capPerCycle", Long.MAX_VALUE);
-        orderedCategories.add(new GovBudgetLine(category, minPerCycle, capPerCycle));
-      }
-    }
-    GovOfficialSalaryRule officialSalaryRule = optionalSalaryRule(payload);
-    // ★ Z7c：optional、缺省 0（= 不上缴）；范围 0..1000 由 GovBudgetPolicy 构造期判。
-    long remittancePerMilleToSuperior = optionalLong(payload, "remittancePerMilleToSuperior", 0L);
+    List<GovBudgetLine> orderedCategories =
+        categories == null || categories.isNull()
+            ? base.orderedCategories()
+            : categoriesOf(categories);
+    GovOfficialSalaryRule officialSalaryRule = salaryRule(payload, base.officialSalaryRule());
+    // ★ Z7c：范围 0..1000 由 GovBudgetPolicy 构造期判；REPLACE 的缺省 = 0（= 不上缴）。
+    long remittancePerMilleToSuperior =
+        optionalLong(payload, "remittancePerMilleToSuperior", base.remittancePerMilleToSuperior());
     return new GovBudgetPolicy(orderedCategories, officialSalaryRule, remittancePerMilleToSuperior);
+  }
+
+  /**
+   * 载荷声明的编辑模式：{@code mode} 缺失/{@code null} ⇒ {@link GovBudgetPolicyEditMode#PATCH}（新缺省）； 非文本/空白/词表外
+   * ⇒ 具名拒。
+   */
+  static GovBudgetPolicyEditMode editMode(JsonNode payload) {
+    JsonNode node = payload.get("mode");
+    if (node == null || node.isNull()) {
+      return GovBudgetPolicyEditMode.PATCH;
+    }
+    if (!node.isTextual() || node.asText().isBlank()) {
+      throw new IllegalArgumentException("字段 mode 必须是 PATCH|REPLACE 文本");
+    }
+    return GovBudgetPolicyEditMode.parse(node.asText());
+  }
+
+  /** 类别表整表解析（保序；min/cap 缺省展开一次）。 */
+  private static List<GovBudgetLine> categoriesOf(JsonNode categories) {
+    if (!categories.isArray()) {
+      throw new IllegalArgumentException("字段 orderedCategories 必须是数组");
+    }
+    List<GovBudgetLine> orderedCategories = new ArrayList<>();
+    for (JsonNode element : categories) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("orderedCategories 的每一项必须是对象");
+      }
+      GovBudgetCategory category = requireCategory(requireText(element, "category"));
+      long minPerCycle = optionalLong(element, "minPerCycle", 0L);
+      long capPerCycle = optionalLong(element, "capPerCycle", Long.MAX_VALUE);
+      orderedCategories.add(new GovBudgetLine(category, minPerCycle, capPerCycle));
+    }
+    return orderedCategories;
   }
 
   /** 必填字符串字段（非空白）。 */
@@ -195,18 +239,22 @@ final class GovPayloads {
     return java.util.Optional.of(tiers);
   }
 
-  /** 可选工资规则：缺失/{@code null} ⇒ 0/0（不发薪）。 */
-  private static GovOfficialSalaryRule optionalSalaryRule(JsonNode payload) {
+  /**
+   * 工资规则：节点缺失/{@code null} ⇒ {@code fallback}（PATCH = 现值、REPLACE = 0/0）；给出 ⇒ 对象内缺省字段取 {@code
+   * fallback} 的同项（PATCH 逐项保留、REPLACE = 0）。
+   */
+  private static GovOfficialSalaryRule salaryRule(
+      JsonNode payload, GovOfficialSalaryRule fallback) {
     JsonNode node = payload.get("officialSalaryRule");
     if (node == null || node.isNull()) {
-      return GovOfficialSalaryRule.zero();
+      return fallback;
     }
     if (!node.isObject()) {
       throw new IllegalArgumentException("字段 officialSalaryRule 必须是对象");
     }
     return new GovOfficialSalaryRule(
-        optionalLong(node, "grainMilliPerCommittedHour", 0L),
-        optionalLong(node, "silverMilliPerCommittedHour", 0L));
+        optionalLong(node, "grainMilliPerCommittedHour", fallback.grainMilliPerCommittedHour()),
+        optionalLong(node, "silverMilliPerCommittedHour", fallback.silverMilliPerCommittedHour()));
   }
 
   /** 类别词表严格解析（常量名；未知文本具名拒，不做模糊匹配）。 */

@@ -15,6 +15,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.gov.GovBudgetLine;
 import io.mosire.simos.gov.GovBudgetPolicy;
+import io.mosire.simos.gov.GovBudgetPolicyEditMode;
 import io.mosire.simos.gov.GovOfficialSalaryRule;
 import io.mosire.simos.gov.spi.GovAdministrationProjections;
 import io.mosire.simos.gov.spi.SetBudgetPolicyHandler;
@@ -72,9 +73,11 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
     return "设置一个 GOV 的国库预算政策（gov.SetBudgetPolicy 窄封装）。payloadJson："
         + "{unitId(GM 必填；决策人可省=自己的 GOV，给出必须等于自己的 GOV), orderedCategories?"
         + "[{category(ADMIN_STIPEND|MILITARY_STIPEND|ADMIN_SALARY|DEBT_SERVICE|OTHER), minPerCycle?,"
-        + "capPerCycle?}](顺序即预算优先级；缺省空表=不自动付), officialSalaryRule? "
-        + "{grainMilliPerCommittedHour?, silverMilliPerCommittedHour?}(缺省 0/0), "
-        + "remittancePerMilleToSuperior?(0..1000‰，缺省 0=不上缴/抗税；周期末按本周期实收税上缴 superiorGov 国库)}。"
+        + "capPerCycle?}](顺序即预算优先级), officialSalaryRule? "
+        + "{grainMilliPerCommittedHour?, silverMilliPerCommittedHour?}, "
+        + "remittancePerMilleToSuperior?(0..1000‰；周期末按本周期实收税上缴 superiorGov 国库)，"
+        + "mode?(PATCH|REPLACE，缺省 PATCH)}。★ PATCH（缺省）：缺省字段保留现值——只改 remittance 不会清空类别表/工资规则，"
+        + "要清空类别表须显式 orderedCategories:[]；REPLACE = 旧整表替换（缺省=空表/0/0/0）。工具另可传顶层 mode 参数覆盖 payloadJson 里的 mode。"
         + "GM 调用需显式 unitId；决策人调用身份派生、只能自己的 GOV（越权 GOV 具名拒，且必须过 GM 审批）。"
         + "preview=true（缺省）只算前后差异、不写；preview=false 必须给 expectedRevision，逐值相同的重放 = noop。";
   }
@@ -88,8 +91,13 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
             "string",
             "预算政策 JSON 文本（逐字透传给 gov.SetBudgetPolicy）：{unitId,orderedCategories?["
                 + "{category,minPerCycle?,capPerCycle?}],officialSalaryRule?{grainMilliPerCommittedHour?,"
-                + "silverMilliPerCommittedHour?},remittancePerMilleToSuperior?(0..1000，缺省 0)}；"
-                + "类别表顺序 = 预算优先级，capPerCycle 缺省 = 不封顶；remittance 缺省 0 = 不上缴/抗税"));
+                + "silverMilliPerCommittedHour?},remittancePerMilleToSuperior?(0..1000)，mode?(PATCH|REPLACE，缺省 PATCH)}；"
+                + "★ PATCH：缺省字段保留现值（orderedCategories:[] 才清空类别表；工资规则逐内层字段合并）；"
+                + "REPLACE：旧整表替换（缺省 = 空表/0/0/0）。类别表顺序 = 预算优先级，capPerCycle 缺省 = 不封顶。"));
+    props.put(
+        "mode",
+        ToolSupport.prop(
+            "string", "PATCH|REPLACE（缺省随 payloadJson；给出则覆盖 payloadJson 的 mode）。PATCH = 缺省字段保留现值"));
     props.put(
         "preview",
         ToolSupport.prop("boolean", "true（缺省）= 只算前后差异、不写；false = 提交 gov.SetBudgetPolicy"));
@@ -118,6 +126,8 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
         name(),
         "设置国库预算政策 preview="
             + args.getOrDefault("preview", true)
+            + " mode="
+            + args.getOrDefault("mode", "payload")
             + " branch="
             + args.getOrDefault("branch", ToolSupport.DEFAULT_BRANCH)
             + "（决策人只能自己的 GOV，需 GM 审批）",
@@ -133,6 +143,9 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSupport.optionalLong(args, "expectedRevision");
+      String modeArg = ToolSupport.optionalText(args, "mode", null);
+      GovBudgetPolicyEditMode toolMode =
+          modeArg == null ? null : GovBudgetPolicyEditMode.parse(modeArg);
       SimulationState state = GovToolSupport.stateAt(query, preview, expectedRevisionArg, branch);
       long expectedRevision = expectedRevisionArg == null ? -1L : expectedRevisionArg;
       String declaredUnitId = GovAdministrationProjections.declaredUnitId(payloadJson);
@@ -140,6 +153,9 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
       GovToolSupport.requireGovWrite(context, target);
       String effectivePayload =
           GovAdministrationProjections.withUnitId(payloadJson, target.govId().value());
+      if (toolMode != null) {
+        effectivePayload = GovAdministrationProjections.withMode(effectivePayload, toolMode);
+      }
       GovAdministrationProjections.BudgetProjection projection =
           GovAdministrationProjections.budgetPolicy(state, effectivePayload);
       Map<String, Object> view = projectionView(projection, effectivePayload, preview, target);
@@ -186,6 +202,7 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
     view.put("govDerivedFromIdentity", target.decisionMaker());
     view.put("keyExisted", projection.keyExisted());
     view.put("noop", projection.noop());
+    view.put("editMode", projection.requestedMode().name());
     view.put("budgetBefore", policyView(projection.previous()));
     view.put("budgetAfter", policyView(projection.next()));
     view.put("at", target.at().map(ToolSupport::hexCoord).orElse(null));

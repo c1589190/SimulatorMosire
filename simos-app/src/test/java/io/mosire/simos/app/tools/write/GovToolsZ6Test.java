@@ -46,6 +46,8 @@ import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.gov.GovAdministrationPlan;
 import io.mosire.simos.gov.GovBudgetCategory;
+import io.mosire.simos.gov.GovBudgetPolicy;
+import io.mosire.simos.gov.GovOfficialSalaryRule;
 import io.mosire.simos.gov.GovPostTier;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.spi.SetAdministrationPlanHandler;
@@ -765,6 +767,10 @@ class GovToolsZ6Test {
         start(tempDir.resolve("budget-remittance-surface"), "budget-remittance-surface")) {
       AgentTool tool = gmTool(world.shell(), GovSetBudgetPolicyTool.NAME);
       assertThat(tool.description()).contains("remittancePerMilleToSuperior");
+      assertThat(tool.description())
+          .as("★ Z7e-3：写口必须暴露 PATCH/REPLACE 双模")
+          .contains("PATCH")
+          .contains("REPLACE");
 
       @SuppressWarnings("unchecked")
       Map<String, Object> schema = tool.jsonSchema();
@@ -775,7 +781,10 @@ class GovToolsZ6Test {
       assertThat(payloadDescription)
           .as("jsonSchema 的 payloadJson 说明必须点名字段")
           .contains("remittancePerMilleToSuperior")
-          .contains("0..1000");
+          .contains("0..1000")
+          .contains("PATCH")
+          .contains("REPLACE");
+      assertThat(properties).as("工具顶层 mode 参数（覆盖 payloadJson）").containsKey("mode");
 
       AgentTool catalog = gmTool(world.shell(), CatalogTool.NAME);
       JsonNode hints =
@@ -785,7 +794,81 @@ class GovToolsZ6Test {
       assertThat(hints).as("catalog 必须给 gov.SetBudgetPolicy 提示").isNotNull();
       assertThat(hints.asText())
           .as("catalog 提示必须含新字段（读写目录同源）")
-          .contains("remittancePerMilleToSuperior");
+          .contains("remittancePerMilleToSuperior")
+          .contains("PATCH")
+          .contains("REPLACE");
+    }
+  }
+
+  /**
+   * ★★ Z7e-3（控制方裁定 A+B："AB同时应用吧"）：{@code mode} 缺省 = PATCH —— 只传 {@code
+   * remittancePerMilleToSuperior} 必须保留创世的 5 类预算与 10/1 工资规则（run7 首跑污染同形）；工具顶层 {@code mode} 参数覆盖
+   * payloadJson，{@code REPLACE} 仍可达旧整表替换语义。
+   */
+  @Test
+  void setBudgetPolicyPatchKeepsOmittedFieldsAndReplaceModeStillWipes() throws Exception {
+    try (World world = start(tempDir.resolve("budget-patch"), "budget-patch")) {
+      AgentTool tool = gmTool(world.shell(), GovSetBudgetPolicyTool.NAME);
+      GovBudgetPolicy before =
+          GovZ6WorldFixture.govSlice(world.state()).budgetPolicies().get(CENTRAL);
+      assertThat(before).as("创世必须已有中央预算政策").isNotNull();
+      assertThat(before.orderedCategories()).hasSize(5);
+
+      String onlyRemittance = "{\"unitId\":\"gov-central\",\"remittancePerMilleToSuperior\":500}";
+
+      // ① preview 先看：PATCH 只覆盖上缴率，5 类/10/1 全保留
+      ToolResult preview = gmExecute(tool, Map.of("payloadJson", onlyRemittance, "preview", true));
+      assertThat(preview.success()).as(preview.message()).isTrue();
+      JsonNode view = JSON.readTree(preview.message());
+      assertThat(view.get("editMode").asText()).as("缺省模式 = PATCH").isEqualTo("PATCH");
+      assertThat(view.get("budgetAfter").get("orderedCategories")).hasSize(5);
+      assertThat(
+              view.get("budgetAfter")
+                  .get("officialSalaryRule")
+                  .get("grainMilliPerCommittedHour")
+                  .asLong())
+          .isEqualTo(10L);
+      assertThat(view.get("budgetAfter").get("remittancePerMilleToSuperior").asLong())
+          .isEqualTo(500L);
+
+      // ② apply 后源状态同判
+      ToolResult applied =
+          gmExecute(
+              tool,
+              Map.of(
+                  "payloadJson",
+                  onlyRemittance,
+                  "preview",
+                  false,
+                  "expectedRevision",
+                  world.head()));
+      assertThat(applied.success()).as(applied.message()).isTrue();
+      GovBudgetPolicy after =
+          GovZ6WorldFixture.govSlice(world.state()).budgetPolicies().get(CENTRAL);
+      assertThat(after.orderedCategories()).as("PATCH 不清预算（run7 回归）").hasSize(5);
+      assertThat(after.officialSalaryRule().grainMilliPerCommittedHour()).isEqualTo(10L);
+      assertThat(after.officialSalaryRule().silverMilliPerCommittedHour()).isEqualTo(1L);
+      assertThat(after.remittancePerMilleToSuperior()).isEqualTo(500L);
+
+      // ③ 工具顶层 mode 覆盖载荷：同一"只传上缴率"载荷在 REPLACE 下按旧语义清空
+      ToolResult wiped =
+          gmExecute(
+              tool,
+              Map.of(
+                  "payloadJson",
+                  "{\"unitId\":\"gov-central\",\"remittancePerMilleToSuperior\":0}",
+                  "mode",
+                  "REPLACE",
+                  "preview",
+                  false,
+                  "expectedRevision",
+                  world.head()));
+      assertThat(wiped.success()).as(wiped.message()).isTrue();
+      GovBudgetPolicy wipedPolicy =
+          GovZ6WorldFixture.govSlice(world.state()).budgetPolicies().get(CENTRAL);
+      assertThat(wipedPolicy.orderedCategories()).as("REPLACE：缺省 = 空表（旧语义）").isEmpty();
+      assertThat(wipedPolicy.officialSalaryRule()).isEqualTo(GovOfficialSalaryRule.zero());
+      assertThat(wipedPolicy.remittancePerMilleToSuperior()).isZero();
     }
   }
 

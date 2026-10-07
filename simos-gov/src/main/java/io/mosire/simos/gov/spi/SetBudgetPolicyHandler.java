@@ -2,6 +2,7 @@ package io.mosire.simos.gov.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.gov.GovBudgetPolicy;
+import io.mosire.simos.gov.GovBudgetPolicyEditMode;
 import io.mosire.simos.gov.GovLog;
 import io.mosire.simos.gov.GovLogSource;
 import io.mosire.simos.gov.GovSnapshot;
@@ -31,14 +32,17 @@ import org.slf4j.Logger;
  *    {"category":"ADMIN_STIPEND","minPerCycle":0,"capPerCycle":100000},
  *    {"category":"MILITARY_STIPEND","minPerCycle":0,"capPerCycle":50000},
  *  {"category":"ADMIN_SALARY","minPerCycle":0,"capPerCycle":30000}],
- *  "officialSalaryRule":{"grainMilliPerCommittedHour":10,"silverMilliPerCommittedHour":5},
- *  "remittancePerMilleToSuperior":500}
+ *  *  "officialSalaryRule":{"grainMilliPerCommittedHour":10,"silverMilliPerCommittedHour":5},
+ *  "remittancePerMilleToSuperior":500,
+ *  "mode":"PATCH"}
  * }</pre>
  *
- * <p>★ <b>载荷语义</b>：{@code unitId} 必填；{@code orderedCategories} 缺省 = 空表（= 不自动付，允许显式清空）； {@code
- * officialSalaryRule} 缺省 = 0/0（不发薪）；{@code remittancePerMilleToSuperior} 缺省 = 0（不上缴/抗税，0..1000‰ 由
- * {@link GovBudgetPolicy} 构造期判）。类别词表是 {@code GovBudgetCategory} 的常量名，未知类别具名拒。同类型重复设置 =
- * <b>整体替换</b>；载荷与既有政策逐值相同 ⇒ 空变更集（幂等 no-op，不落 revision）。
+ * <p>★ <b>载荷语义（Z7e-3 双模，控制方 2026-10-23 裁定 A+B："AB同时应用吧"）</b>：{@code unitId} 必填；{@code mode} 缺省 =
+ * {@link GovBudgetPolicyEditMode#PATCH}（缺省字段<b>保留现值</b>：只改 {@code remittancePerMilleToSuperior}
+ * 不会顺手 清空类别表/工资规则；清空类别表要显式 {@code "orderedCategories":[]}），{@code mode:"REPLACE"} = 旧整表替换（类别表缺省 =
+ * 空、工资规则缺省 = 0/0、上缴比例缺省 = 0）。{@code remittancePerMilleToSuperior} 0..1000‰ 由 {@link
+ * GovBudgetPolicy} 构造期判。类别词表是 {@code GovBudgetCategory} 的常量名，未知类别具名拒。载荷与既有政策逐值相同 ⇒ 空变更集（幂等 no-op，不落
+ * revision）。
  *
  * <p>★ <b>守卫与拒因</b>：{@code unitId} 必须已存在且带 {@link GovernmentFormation}（GOV 编制单位）——否则具名 {@code
  * Rejected}，零 revision；坏 JSON/坏字段/负值/min &gt; cap/类别重复等全部由 {@link GovPayloads} 与 {@link
@@ -81,11 +85,13 @@ public final class SetBudgetPolicyHandler implements CommandHandler, GmOnlyComma
       UnitId unitId = GovPayloads.requireUnitId(payload);
       unitForLog = unitId.value();
       requireGovernmentUnit(state, unitId);
-      GovBudgetPolicy policy = GovPayloads.budgetPolicy(payload);
+      GovBudgetPolicy current = snapshot.state().budgetPolicy(unitId).orElse(null);
+      GovBudgetPolicyEditMode requestedMode = GovPayloads.editMode(payload);
+      GovBudgetPolicy policy = GovPayloads.budgetPolicy(payload, current);
       boolean existed = snapshot.state().budgetPolicies().containsKey(unitId);
       GovState next = snapshot.state().withBudgetPolicy(unitId, policy);
       GovChangeSet changeSet = GovChangeSet.between(snapshot.state(), next);
-      logApplied(unitId, policy, existed, changeSet);
+      logApplied(unitId, policy, existed, requestedMode, changeSet);
       return new HandlerOutcome.Applied(changeSet);
     } catch (IllegalStateException e) {
       logContract("handle", e);
@@ -137,7 +143,11 @@ public final class SetBudgetPolicyHandler implements CommandHandler, GmOnlyComma
   }
 
   private static void logApplied(
-      UnitId unitId, GovBudgetPolicy policy, boolean existed, GovChangeSet changeSet) {
+      UnitId unitId,
+      GovBudgetPolicy policy,
+      boolean existed,
+      GovBudgetPolicyEditMode requestedMode,
+      GovChangeSet changeSet) {
     EventLog.channel(LOG)
         .info(
             LogEvent.of(
@@ -146,7 +156,15 @@ public final class SetBudgetPolicyHandler implements CommandHandler, GmOnlyComma
                 "unit",
                 unitId.value(),
                 "mode",
-                changeSet.isEmpty() ? "noop" : (existed ? "replaced" : "created"),
+                changeSet.isEmpty()
+                    ? "noop"
+                    : (!existed
+                        ? "created"
+                        : (requestedMode == GovBudgetPolicyEditMode.PATCH
+                            ? "patched"
+                            : "replaced")),
+                "requestMode",
+                requestedMode.name(),
                 "categories",
                 policy.orderedCategories().size(),
                 "grainMilliPerCommittedHour",
