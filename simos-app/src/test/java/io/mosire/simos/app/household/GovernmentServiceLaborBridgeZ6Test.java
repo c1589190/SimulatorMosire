@@ -138,6 +138,46 @@ class GovernmentServiceLaborBridgeZ6Test {
         .isEqualTo(16001L);
   }
 
+  /**
+   * ★★ Z7d-1：effective = {@code min(承诺, 该户当前实际劳动)}。旧 5 参入口读 {@code economy.classes()}（基态）；推进入口读
+   * {@code currentHouseholdRows}（会话工作副本）——两处都必须按户 cap，且 committed 两维仍是不 cap 的职位口径。
+   */
+  @Test
+  void supplyCapsEffectiveLaborByHouseholdRowAndKeepsCommittedUncapped() {
+    EconomyData economy =
+        economyWithHouseholdLabor(
+            List.of(serviceUnit("u1")), List.of(commitment("alloc-1", H1, 16_001L)), 10_000L);
+
+    GovernmentServiceLaborBridge.Supply fromBase =
+        GovernmentServiceLaborBridge.supply(
+            economy,
+            GOV,
+            formation(Map.of(H1, post(H1, "t1")), Map.of()),
+            plan(tiers(tier("t1", 500, 500))),
+            DAY);
+    assertThat(fromBase.securityLaborMilli()).as("10000 × 500/1000").isEqualTo(5_000L);
+    assertThat(fromBase.paperworkLaborMilli()).isEqualTo(5_000L);
+    assertThat(fromBase.committedSecurityLaborMilli()).as("16001 × 500/1000").isEqualTo(8_000L);
+    assertThat(fromBase.committedPaperworkLaborMilli()).as("余数归公文").isEqualTo(8_001L);
+    assertThat(fromBase.underfedHouseholds()).isEqualTo(1L);
+
+    // 推进中的 6 参重载：实际劳动来自当 tick 的会话工作副本（可低于基态行）。
+    HouseholdId govHousehold = GovernmentHouseholds.of(GOV.value());
+    GovernmentServiceLaborBridge.Supply fromWorkingCopy =
+        GovernmentServiceLaborBridge.supply(
+            economy,
+            Map.of(H1, householdRow(H1, 8_000L), govHousehold, householdRow(govHousehold)),
+            GOV,
+            formation(Map.of(H1, post(H1, "t1")), Map.of()),
+            plan(tiers(tier("t1", 500, 500))),
+            DAY);
+    assertThat(fromWorkingCopy.securityLaborMilli()).as("8000 × 500/1000").isEqualTo(4_000L);
+    assertThat(fromWorkingCopy.paperworkLaborMilli()).isEqualTo(4_000L);
+    assertThat(fromWorkingCopy.committedSecurityLaborMilli()).as("职位口径不 cap").isEqualTo(8_000L);
+    assertThat(fromWorkingCopy.committedPaperworkLaborMilli()).isEqualTo(8_001L);
+    assertThat(fromWorkingCopy.underfedHouseholds()).isEqualTo(1L);
+  }
+
   @Test
   void legacyEmptyTierFallsBackToRoleDimension() {
     // 空 tierId（旧档/未指派）：YAMEN → 治安；SCRIBE/POST → 公文（GovEfficiency 旧桥口径）。
@@ -604,6 +644,14 @@ class GovernmentServiceLaborBridgeZ6Test {
 
   private static EconomyData economy(
       List<ProductionProcess> units, List<HouseholdLaborCommitment> commitments) {
+    return economyWithHouseholdLabor(units, commitments, 100_000L);
+  }
+
+  /** 同 {@link #economy}，但把目标家户 H1 的 Economy 行 laborMilli 显式设为给定值（cap 判别力）。 */
+  private static EconomyData economyWithHouseholdLabor(
+      List<ProductionProcess> units,
+      List<HouseholdLaborCommitment> commitments,
+      long householdLabor) {
     Map<ProductionUnitId, ProductionProcess> unitMap = new LinkedHashMap<>();
     for (ProductionProcess unit : units) {
       unitMap.put(unit.id(), unit);
@@ -617,7 +665,7 @@ class GovernmentServiceLaborBridgeZ6Test {
         .withIndustries(Map.of(OFFICE, officeIndustry()))
         .withHouseholdEconomies(
             Map.of(
-                H1, householdRow(H1),
+                H1, householdRow(H1, householdLabor),
                 governmentHousehold, householdRow(governmentHousehold)))
         .withProcesses(unitMap)
         .withLaborCommitments(allocationMap);
@@ -677,6 +725,11 @@ class GovernmentServiceLaborBridgeZ6Test {
   }
 
   private static io.mosire.simos.economy.model.HouseholdEconomy householdRow(HouseholdId id) {
+    return householdRow(id, 100_000L);
+  }
+
+  private static io.mosire.simos.economy.model.HouseholdEconomy householdRow(
+      HouseholdId id, long laborMilli) {
     return new io.mosire.simos.economy.model.HouseholdEconomy(
         id,
         new io.mosire.simos.economy.api.cohort.CohortKey(
@@ -684,7 +737,7 @@ class GovernmentServiceLaborBridgeZ6Test {
             io.mosire.simos.economy.api.cohort.ResidenceKind.RURAL,
             io.mosire.simos.economy.api.id.SocialClassId.POOR_PEASANT),
         0L,
-        100_000L,
+        laborMilli,
         1000,
         0L,
         List.of(),

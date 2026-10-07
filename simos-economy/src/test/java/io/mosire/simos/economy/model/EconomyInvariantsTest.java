@@ -21,6 +21,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -1020,6 +1021,58 @@ class EconomyInvariantsTest {
                         ALLOC_B,
                         allocation(ALLOC_B, LOT, FARM.value(), ActorKind.ORGANIZATION, 60_000L))))
         .as("Σ 配额超过家户时间预算必须构造期拒（计划 §13.5 的那条不变量）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("超过它的每 tick 时间预算");
+  }
+
+  /**
+   * ★★ <b>Z7d-1（C7 放宽）：{@code GOV_SERVICE} 是职位/诉求，允许 {@code ΣGOV_SERVICE > laborMilli}</b> ——
+   * 饥饿把预算饿少后 承诺行必须原样保留（有效供给由 app 供给桥 cap），构造期不得拒。 这是"GOV_SERVICE 越预算 ⇒ fail-closed"改判 underfed
+   * 合法的构造期钉子。
+   */
+  @Test
+  void acceptsGovServiceCommitmentsOverTheHouseholdsTimeBudget() {
+    HouseholdLaborCommitment govService =
+        new HouseholdLaborCommitment(
+            ALLOC_A,
+            LOT,
+            PEASANT_HOUSE,
+            new ActorRef(ActorKind.ORGANIZATION, FARM.value()),
+            "farm",
+            120_000L,
+            1L,
+            LaborCommitmentKind.GOV_SERVICE);
+
+    EconomyData data = economyWith(100_000L, Map.of(ALLOC_A, govService));
+
+    assertThat(data.allocations().get(ALLOC_A).kind()).isEqualTo(LaborCommitmentKind.GOV_SERVICE);
+    assertThat(data.allocations().get(ALLOC_A).laborMilli())
+        .as("GOV_SERVICE 承诺整额保留（underfed 合法）")
+        .isEqualTo(120_000L);
+  }
+
+  /**
+   * ★ 负向对照：underfed 合法 ≠ PRODUCTION 可以越界 —— {@code ΣGOV > budget} 时 PRODUCTION 可用量 = 0， 任何 > 0 的
+   * PRODUCTION 仍必须在构造期 fail-closed（与上一条只差一条 PRODUCTION 行）。
+   */
+  @Test
+  void rejectsProductionThatWouldUseTimeReservedForOverBudgetGovService() {
+    HouseholdLaborCommitment govService =
+        new HouseholdLaborCommitment(
+            ALLOC_A,
+            LOT,
+            PEASANT_HOUSE,
+            new ActorRef(ActorKind.ORGANIZATION, FARM.value()),
+            "farm",
+            120_000L,
+            1L,
+            LaborCommitmentKind.GOV_SERVICE);
+    HouseholdLaborCommitment production =
+        allocation(ALLOC_B, LOT, FARM.value(), ActorKind.ORGANIZATION, 1L);
+
+    assertThatThrownBy(
+            () -> economyWith(100_000L, Map.of(ALLOC_A, govService, ALLOC_B, production)))
+        .as("GOV_SERVICE 最高优先预留后 PRODUCTION 可用量 = 0 ⇒ 仍拒（不是把 GOV 缩掉）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("超过它的每 tick 时间预算");
   }

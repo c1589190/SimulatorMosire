@@ -28,10 +28,13 @@ import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.TransportTariff;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>D-027 区内市场/单 hex 贸易成本的最小真实夹具</b>（测试专用，不是生产 API）。
@@ -254,6 +257,16 @@ final class MarketSettlementFixtures {
       World world, MarketSettlement.MarketRound round, ProductionLedger.Accumulator ledger) {}
 
   static Round round(World world, MarketRegulation regulation) {
+    return round(world, regulation, Set.of());
+  }
+
+  /**
+   * ★ Z7b：带"退出商品市场"家户集合的轮（生产路径的 22 参构造器）。旧无参重载 = {@code Set.of()}，与改动前逐值同行为；
+   * 本重载只服务"国库/单位户买卖都不生成"的判别力用例。
+   */
+  static Round round(
+      World world, MarketRegulation regulation, Set<HouseholdId> marketExcludedHouseholds) {
+    Objects.requireNonNull(marketExcludedHouseholds, "marketExcludedHouseholds");
     SettlementIndex index =
         SettlementIndex.build(
             world.units(),
@@ -284,7 +297,10 @@ final class MarketSettlementFixtures {
             world.operatorConditions(),
             index,
             Map.of(),
-            regulation);
+            regulation,
+            null,
+            null,
+            Collections.unmodifiableSet(new LinkedHashSet<>(marketExcludedHouseholds)));
     return new Round(world, round, ledger);
   }
 

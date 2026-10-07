@@ -706,8 +706,8 @@ class EconomyCodecTest {
   // ── Z3c：告警 kind / 工资 reason 过线 ───────────────────────────────────────────────
 
   /**
-   * ★★ <b>z3c1 §9.7：Z3c 新增五个告警 kind 经 {@code EconomyCodec} 往返</b>，且 {@code (hex, kind)} 身份覆盖 —— 同一
-   * hex 上五个 kind 各一条（键 = {@code crisis-<q>_<r>-<KIND>}），另一格放一条旧 kind 作对照。
+   * ★★ <b>z3c1 §9.7 + Z7c/Z7d-2：行政告警 kind 经 {@code EconomyCodec} 往返</b>，且 {@code (hex, kind)} 身份覆盖
+   * —— 同一 hex 上各 kind 一条（键 = {@code crisis-<q>_<r>-<KIND>}），另一格放一条旧 kind 作对照。
    */
   @Test
   void z3cCrisisSignalKindsRoundTripWithHexKindCoverage() {
@@ -719,7 +719,10 @@ class EconomyCodecTest {
             HexCrisisSignal.Kind.ADMIN_PLAN_MISSING,
             HexCrisisSignal.Kind.ADMIN_SERVICE_FLOW_ZERO,
             HexCrisisSignal.Kind.ADMIN_VACANCY,
-            HexCrisisSignal.Kind.ADMIN_CONTRACT);
+            HexCrisisSignal.Kind.ADMIN_CONTRACT,
+            // ★ Z7c/Z7d-2：上缴缺口与官吏逃亡各一条独立 kind。
+            HexCrisisSignal.Kind.ADMIN_REMITTANCE_SHORTFALL,
+            HexCrisisSignal.Kind.GOV_SERVICE_DESERTION);
     Map<CrisisSignalId, HexCrisisSignal> signals = new LinkedHashMap<>();
     for (HexCrisisSignal.Kind kind : newKinds) {
       CrisisSignalId id = CrisisSignalId.idOf(hex, kind.name());
@@ -734,7 +737,7 @@ class EconomyCodecTest {
                 CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshotOf(data, SimosTimestamp.of(10)))))
             .data();
 
-    assertThat(back.crisisSignals()).as("五个新 kind + 一条旧 kind 全部逐值往返").isEqualTo(signals);
+    assertThat(back.crisisSignals()).as("全部新 kind + 一条旧 kind 逐值往返").isEqualTo(signals);
     for (HexCrisisSignal.Kind kind : newKinds) {
       CrisisSignalId id = CrisisSignalId.idOf(hex, kind.name());
       assertThat(back.crisisSignals()).containsKey(id);
@@ -742,6 +745,37 @@ class EconomyCodecTest {
       assertThat(back.crisisSignals().get(id).idMatchesIdentity()).isTrue();
     }
     assertThat(back.crisisSignals().get(legacyFood).kind()).isEqualTo(HexCrisisSignal.Kind.FOOD);
+  }
+
+  /**
+   * ★★ <b>Z7c/Z7d-2：告警 kind 全集登记钉子</b> —— 枚举集合必须显式包含上缴缺口与官吏逃亡两个新档；旧档一个不丢。 这条按<b>名</b>钉住（{@code
+   * valueOf}），避免"名字被悄悄改掉但测试还按自己的常量比"。
+   */
+  @Test
+  void z7CrisisSignalKindsAreRegisteredByName() {
+    assertThat(HexCrisisSignal.Kind.values())
+        .as("新增两个 kind 必须在枚举全集里")
+        .contains(
+            HexCrisisSignal.Kind.ADMIN_REMITTANCE_SHORTFALL,
+            HexCrisisSignal.Kind.GOV_SERVICE_DESERTION);
+    assertThat(HexCrisisSignal.Kind.valueOf("ADMIN_REMITTANCE_SHORTFALL"))
+        .isEqualTo(HexCrisisSignal.Kind.ADMIN_REMITTANCE_SHORTFALL);
+    assertThat(HexCrisisSignal.Kind.valueOf("GOV_SERVICE_DESERTION"))
+        .isEqualTo(HexCrisisSignal.Kind.GOV_SERVICE_DESERTION);
+    assertThat(HexCrisisSignal.Kind.values())
+        .as("旧 kind 一个不丢")
+        .contains(
+            HexCrisisSignal.Kind.FOOD,
+            HexCrisisSignal.Kind.CLOTH,
+            HexCrisisSignal.Kind.MORTALITY,
+            HexCrisisSignal.Kind.ADMIN_SECURITY,
+            HexCrisisSignal.Kind.ADMIN_PAPERWORK,
+            HexCrisisSignal.Kind.ADMIN_SUPPLY,
+            HexCrisisSignal.Kind.ADMIN_BUDGET_SHORTFALL,
+            HexCrisisSignal.Kind.ADMIN_PLAN_MISSING,
+            HexCrisisSignal.Kind.ADMIN_SERVICE_FLOW_ZERO,
+            HexCrisisSignal.Kind.ADMIN_VACANCY,
+            HexCrisisSignal.Kind.ADMIN_CONTRACT);
   }
 
   /**

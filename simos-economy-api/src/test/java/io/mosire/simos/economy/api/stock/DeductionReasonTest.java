@@ -31,6 +31,16 @@ class DeductionReasonTest {
     assertThat(DeductionReason.ADMIN_SALARY.name()).isEqualTo("ADMIN_SALARY");
   }
 
+  /** ★ Z7c 新增档：{@code gov_remittance} —— 省政府上缴中央的转账腿；旧档四档一个不丢。 */
+  @Test
+  void govRemittanceIsRegisteredWithCanonicalValue() {
+    assertThat(DeductionReason.GOV_REMITTANCE.value()).isEqualTo("gov_remittance");
+    assertThat(DeductionReason.parse("gov_remittance")).isEqualTo(DeductionReason.GOV_REMITTANCE);
+    assertThat(DeductionReason.GOV_REMITTANCE.name()).isEqualTo("GOV_REMITTANCE");
+    assertThat(DeductionReason.all()).contains(DeductionReason.GOV_REMITTANCE);
+    assertThat(DeductionReason.all()).containsAll(LEGACY_REASONS);
+  }
+
   /** 旧四档读回不变：{@code value()} 仍是原字面量，{@code parse(value())} 仍是原常量（新增档不得改写旧档）。 */
   @Test
   void legacyReasonsParseBackToTheSameConstants() {

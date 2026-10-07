@@ -6,6 +6,7 @@ import io.mosire.simos.app.GovGenesisSeedAccess;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
+import io.mosire.simos.app.time.PopulationUnitTimeParticipant;
 import io.mosire.simos.app.world.SmallWorld;
 import io.mosire.simos.app.world.WorldRegistry;
 import io.mosire.simos.core.CoreSimos;
@@ -151,18 +152,22 @@ public final class GovZ6WorldFixture {
   // ── 状态级推进器（不落盘；测试要注入动态修正/扭曲切片时用）────────────────────────────
 
   /**
-   * 直接对一份 {@link SimulationState} 跑真 {@link PopulationEconomyTimeParticipant} 并把四片变更集应用回状态。
+   * 直接对一份 {@link SimulationState} 跑真 {@link PopulationUnitTimeParticipant}（population + unit
+   * 组合，Z7d-2） 并把全部变更集应用回状态。
    *
    * <p>★ 与 {@link World#advance} 的差别只有一个：这里不落 core revision，便于"改一片状态再推进"的判别力用例；推进本身仍是同一条 参与者/变更集路径。
+   *
+   * <p>★★ Z7d-2 迁移：旧实现只跑 {@link PopulationEconomyTimeParticipant} ⇒ **不会应用 unit 侧逃亡摘除**；改用组合参与者后，
+   * 户空的"摘岗位 / 摘 {@code Unit.households}"也在这条路径上落进 unit 切片。
    */
   public static final class StateRunner {
 
-    private final PopulationEconomyTimeParticipant participant;
+    private final PopulationUnitTimeParticipant participant;
     private final StateRef ref;
     private SimulationState state;
 
     public StateRunner(String mapId, SimulationState initial) {
-      this.participant = new PopulationEconomyTimeParticipant(mapId);
+      this.participant = new PopulationUnitTimeParticipant(mapId);
       this.ref = ref(initial.meta().ref().revision().value());
       this.state = initial;
     }
@@ -171,12 +176,13 @@ public final class GovZ6WorldFixture {
       return state;
     }
 
+    /** 内部人口—经济参与者（动态修正注入等旧调用点）。 */
     public PopulationEconomyTimeParticipant participant() {
-      return participant;
+      return participant.populationParticipant();
     }
 
     public void inject(List<GovEfficiencyModifier> modifiers) {
-      participant.updateGovEfficiencyModifiers(modifiers);
+      participant.populationParticipant().updateGovEfficiencyModifiers(modifiers);
     }
 
     /** 从 {@code fromTick} 推进到 {@code toTick}（含）并把四片写回。 */
@@ -234,6 +240,14 @@ public final class GovZ6WorldFixture {
               io.mosire.simos.gov.change.GovChangeSet.apply(
                   (io.mosire.simos.gov.change.GovChangeSet) changeSet,
                   ((GovSnapshot) base).state()));
+      // ★ Z7d-2：组合参与者的 unit 变更集（移动 + 逃亡摘除合并）也必须应用，否则户空摘除不落状态。
+      case "unit" ->
+          new UnitSnapshot(
+              ref(base),
+              at,
+              io.mosire.simos.unit.change.UnitChangeSet.apply(
+                  (io.mosire.simos.unit.change.UnitChangeSet) changeSet,
+                  ((UnitSnapshot) base).state()));
       default -> null;
     };
   }

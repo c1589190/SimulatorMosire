@@ -16,6 +16,7 @@ import io.mosire.simos.social.api.population.PopulationEventType;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.household.Household;
+import io.mosire.simos.social.household.HouseholdFleeState;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
@@ -72,8 +73,8 @@ class SocialRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlyEightComponents() {
-    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(8);
+  void changeSetHasExactlyTenComponents() {
+    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(10);
     assertThat(componentNames(SocialChangeSet.class))
         .as("变更集的每个组件都必须在 SocialData 里有同名的 record 组件")
         .isSubsetOf(componentNames(SocialData.class));
@@ -122,6 +123,13 @@ class SocialRoundTripTest {
                           PopulationLots.rural(H00, Sex.MALE, "1"),
                           VitalKind.DEATH,
                           7L))));
+      // ★ Z7d-1/Z7d-2 第 9/10 组件：按户 satiety 与逃亡状态（单值/整表写口，独立于 households 存在性）。
+      case "satietyPerMille" -> base.withSatietyPerMille(Map.of(HOUSEHOLD, 500L));
+      case "fleeStates" ->
+          base.withFleeStates(
+              Map.of(
+                  HOUSEHOLD,
+                  new HouseholdFleeState(150L, 250L, 3L, 1L, "underpaid", 3L, "underpaid")));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -136,6 +144,8 @@ class SocialRoundTripTest {
       case "provisioning" -> cs.provisioning().changed();
       case "vitalRates" -> cs.vitalRates().changed();
       case "vitalRemainders" -> cs.vitalRemainders().changed();
+      case "satietyPerMille" -> cs.satietyPerMille().changed();
+      case "fleeStates" -> cs.fleeStates().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

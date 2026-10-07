@@ -389,10 +389,11 @@ class GovAdminSalaryBudgetZ6Test {
                   "shortfallSilver=0"))
           .as("工资日 INFO 与 RuleReadout 逐值对账；实得 %s", salaryLines(log))
           .isTrue();
-      // 国库/收款户终值：1000 − 官俸 166 − 工资 160 = 674 粮；银 1000 − 16 = 984；收款户 +160/+16。
+      // 国库/收款户终值（Z7b 俸禄转官吏户后）：国库 1000 − 官俸 166 − 工资 160 = 674 粮；银 1000 − 16 = 984；
+      // 官吏户 = 俸禄 166 + 工资 160 = 326 粮、+16 银（旧口径俸禄进 sink，官吏户只 +160）。
       assertThat(run.accounts().householdAccount(HH_GOV).goods().get(GRAIN)).isEqualTo(674L);
       assertThat(run.accounts().householdAccount(HH_GOV).money().get(SILVER)).isEqualTo(984L);
-      assertThat(run.accounts().householdAccount(HH_UNIT).goods().get(GRAIN)).isEqualTo(160L);
+      assertThat(run.accounts().householdAccount(HH_UNIT).goods().get(GRAIN)).isEqualTo(326L);
       assertThat(run.accounts().householdAccount(HH_UNIT).money().get(SILVER)).isEqualTo(16L);
     }
   }

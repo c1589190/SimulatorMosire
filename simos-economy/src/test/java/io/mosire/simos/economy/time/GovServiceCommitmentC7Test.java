@@ -50,8 +50,8 @@ import org.junit.jupiter.api.Test;
  * <ol>
  *   <li>{@link LaborQueueSettlement}：带 {@code GOV_SERVICE} 的 activity 不进队列、行逐值不变；队列只写 {@code
  *       PRODUCTION}；确定性 id 撞上 GOV 行 ⇒ 契约 ISE（不覆盖）；
- *   <li>{@link EconomySettlement#applyLaborBudgetsInto}：GOV 整额保留、只缩 PRODUCTION；ΣGOV &gt; 预算 ⇒
- *       {@code LABOR_COMMITMENT_CONTRACT} 语义（具名 ISE + 不缩不删）；
+ *   <li>{@link EconomySettlement#applyLaborBudgetsInto}：GOV 整额保留、只缩/删 PRODUCTION；ΣGOV &gt; 预算 = 合法
+ *       underfed 态（Z7d-1：不抛、不缩、不删 GOV_SERVICE；PRODUCTION 可用量归 0）；
  *   <li>{@link EconomySettlement#applyPopulationChange} 的批次缩放（{@code scaleLaborOfGroup}）同上；
  *   <li>饥荒路径的 {@code scaleLaborOfUnit} 同上；
  *   <li>旧档 {@code reallocateLabor} 的 pass②（按 unit 最大可吸收量修剪）与 pass③（按家户预算封顶）同上。
@@ -169,26 +169,26 @@ class GovServiceCommitmentC7Test {
     assertThat(session.sheet().householdEconomies().get(H).laborMilli()).isEqualTo(8_000L);
   }
 
-  /** ΣGOV &gt; 预算：具名契约错误 + 不缩不删（GOV 与 PRODUCTION 都保持原值）。 */
+  /**
+   * ★★ Z7d-1：ΣGOV &gt; 预算（饥饿把预算饿少）是**合法 underfed 态** —— GOV_SERVICE 是职位/诉求，不缩不删； PRODUCTION 的可用量 =
+   * budget − min(ΣGOV, budget) = 0 ⇒ 整条删掉。不抛异常。
+   */
   @Test
-  void applyLaborBudgetsIntoFailsClosedWhenGovServiceExceedsBudget() {
+  void applyLaborBudgetsIntoAllowsGovServiceOverBudgetAndRemovesOnlyProduction() {
     Map<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
     commitments.put(PRODUCTION_1, commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 1_000L));
     EconomySession session = new EconomySession(world(10_000L, commitments));
-    Map<LaborAllocationId, HouseholdLaborCommitment> before =
-        new LinkedHashMap<>(session.sheet().laborCommitments());
 
-    assertThatThrownBy(() -> EconomySettlement.applyLaborBudgetsInto(session, Map.of(H, 3_000L)))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("家庭劳动承诺契约违约")
-        .hasMessageContaining("household=" + H.value())
-        .hasMessageContaining("GOV_SERVICE=4000")
-        .hasMessageContaining("总承诺=5000")
-        .hasMessageContaining("预算=3000")
-        .hasMessageContaining("不可缩");
+    EconomySettlement.applyLaborBudgetsInto(session, Map.of(H, 3_000L));
 
-    assertThat(session.sheet().laborCommitments()).as("越界是契约故障：不缩、不删、不静默丢").isEqualTo(before);
+    Map<LaborAllocationId, HouseholdLaborCommitment> after = session.sheet().laborCommitments();
+    assertThat(after.get(GOV).kind()).isEqualTo(LaborCommitmentKind.GOV_SERVICE);
+    assertThat(after.get(GOV).laborMilli()).as("GOV 承诺整额保留（underfed 合法）").isEqualTo(4_000L);
+    assertThat(after)
+        .as("PRODUCTION 可用量 = max(0, 3000 − 4000) = 0 ⇒ 整条删掉，不缩 GOV")
+        .doesNotContainKey(PRODUCTION_1);
+    assertThat(session.sheet().householdEconomies().get(H).laborMilli()).isEqualTo(3_000L);
   }
 
   // ── ③ 出生/死亡：applyPopulationChange 的批次缩放 scaleLaborOfGroup ─────────────────────
@@ -214,32 +214,25 @@ class GovServiceCommitmentC7Test {
         .isEqualTo(7_920L);
   }
 
-  /** 死亡把家户预算缩到 GOV 以下：GOV 仍不缩，统一校验具名 ERROR + fail-closed，PRODUCTION 只被正常缩。 */
+  /**
+   * ★★ Z7d-1：死亡把家户预算缩到 GOV 以下 —— GOV_SERVICE 是职位/诉求，不参与死亡比例缩（承诺 4000 &gt; 新预算 2000 合法）； 没有
+   * PRODUCTION 行时统一校验放行（PRODUCTION 可用量为 0，本就没有可越界的东西）。
+   */
   @Test
-  void applyPopulationChangeFailsClosedWhenGovServiceWouldExceedShrunkBudget() {
+  void applyPopulationChangeAllowsGovServiceOverShrunkBudgetWithoutProduction() {
     Map<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
-    commitments.put(PRODUCTION_1, commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 1_000L));
     EconomySession session = new EconomySession(world(20_000L, commitments));
 
-    assertThatThrownBy(
-            () ->
-                EconomySettlement.applyPopulationChangeInto(
-                    session, List.of(new LotChange(LOT, HEX, 0L, 80L))))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("household=" + H.value())
-        .hasMessageContaining("GOV_SERVICE=4000")
-        .hasMessageContaining("总承诺=4200")
-        .hasMessageContaining("预算=4000")
-        .hasMessageContaining("只缩 PRODUCTION 仍不足");
+    EconomySettlement.applyPopulationChangeInto(session, List.of(new LotChange(LOT, HEX, 0L, 90L)));
 
+    assertThat(session.sheet().householdEconomies().get(H).population()).isEqualTo(10L);
+    assertThat(session.sheet().householdEconomies().get(H).laborMilli())
+        .as("劳动预算按存活比例缩：20000 × 10/100 = 2000")
+        .isEqualTo(2_000L);
     assertThat(session.sheet().laborCommitments().get(GOV).laborMilli())
-        .as("GOV_SERVICE 绝不参与死亡比例缩")
+        .as("GOV_SERVICE 绝不参与死亡比例缩（预算 2000 < 承诺 4000 = 合法 underfed）")
         .isEqualTo(4_000L);
-    assertThat(session.sheet().laborCommitments().get(PRODUCTION_1).laborMilli())
-        .as("PRODUCTION 仍按存活比例缩：1000 × 20/100 = 200")
-        .isEqualTo(200L);
-    assertThat(session.sheet().householdEconomies().get(H).laborMilli()).isEqualTo(4_000L);
   }
 
   // ── ④ 饥荒路径的 private scaleLaborOfUnit ─────────────────────────────────────────────
@@ -261,31 +254,30 @@ class GovServiceCommitmentC7Test {
     assertThat(commitments.get(PRODUCTION_1).laborMilli()).isEqualTo(7_200L);
   }
 
-  /** 饥荒把预算缩到 GOV 以下：GOV 不被缩；批次末尾统一校验具名 ERROR + fail-closed。 */
+  /**
+   * ★★ Z7d-1：饥荒把预算缩到 GOV 以下 —— GOV 行不被缩（underfed 合法）；PRODUCTION 按存活比例缩到 0 后，统一校验 只盯"PRODUCTION
+   * 是否越政府预留后可用量"（此处 0 ≤ 0）⇒ 放行、GOV 4000 整额保留。
+   */
   @Test
-  void famineUnitScaleFailsClosedWhenGovServiceWouldExceedBudget() {
+  void famineUnitScaleAllowsGovServiceOverBudgetOnceProductionIsScaledToZero() {
     LinkedHashMap<ProductionUnitId, ProductionProcess> units = unitsMap();
     Map<IndustryId, Industry> industries = industries();
-    LinkedHashMap<HouseholdId, HouseholdEconomy> households = householdsMap(4_000L);
+    LinkedHashMap<HouseholdId, HouseholdEconomy> households = householdsMap(2_000L);
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
     commitments.put(PRODUCTION_1, commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 1_000L));
     SettlementIndex index = indexOfMaps(units, industries, commitments, households, 1L);
 
-    invokeScaleLaborOfUnit(UNIT, 100L, 20L, commitments, index);
+    invokeScaleLaborOfUnit(UNIT, 100L, 0L, commitments, index);
 
-    assertThat(commitments.get(GOV).laborMilli()).as("GOV 不被缩").isEqualTo(4_000L);
-    assertThat(commitments.get(PRODUCTION_1).laborMilli()).as("只缩 PRODUCTION").isEqualTo(200L);
-    assertThatThrownBy(
-            () ->
-                invokeRequireGovServiceCommitmentsWithinBudgets(
-                    commitments, households, EconomyLogSource.ECONOMY_POPULATION_WRITE, -1L))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("household=" + H.value())
-        .hasMessageContaining("GOV_SERVICE=4000")
-        .hasMessageContaining("总承诺=4200")
-        .hasMessageContaining("预算=4000")
-        .hasMessageContaining("只缩 PRODUCTION 仍不足");
+    assertThat(commitments.get(GOV).laborMilli())
+        .as("GOV 不被缩（预算 2000 < 承诺 4000）")
+        .isEqualTo(4_000L);
+    assertThat(commitments.get(PRODUCTION_1).laborMilli()).as("PRODUCTION 按存活比例缩到 0").isZero();
+    invokeRequireGovServiceCommitmentsWithinBudgets(
+        commitments, households, EconomyLogSource.ECONOMY_POPULATION_WRITE, -1L);
+    // 不抛 = underfed 合法（PRODUCTION 已归 0，GOV 行整额保留）。
+    assertThat(commitments.get(GOV).laborMilli()).isEqualTo(4_000L);
   }
 
   // ── ⑤ 旧档 reallocateLabor pass②（最大可吸收量）与 pass③（家户预算）───────────────────
@@ -334,9 +326,12 @@ class GovServiceCommitmentC7Test {
         .isEqualTo(10_000L);
   }
 
-  /** pass③ 越界：ΣGOV &gt; 预算 ⇒ 具名 ERROR + fail-closed；GOV 与 PRODUCTION 都不动。 */
+  /**
+   * ★★ Z7d-1：pass③ ΣGOV &gt; 预算（underfed 合法）⇒ GOV 12000 整额保留；PRODUCTION 可用量 = max(0, 10000 − 12000)
+   * = 0 ⇒ 整条修剪。不抛异常、不缩 GOV。
+   */
   @Test
-  void legacyReallocateLaborFailsClosedWhenGovServiceExceedsBudget() {
+  void legacyReallocateLaborAllowsGovServiceOverBudgetAndDropsProduction() {
     LinkedHashMap<ProductionUnitId, ProductionProcess> units = unitsMap();
     Map<IndustryId, Industry> industries = industries();
     LinkedHashMap<HouseholdId, HouseholdEconomy> households = householdsMap(10_000L);
@@ -344,18 +339,13 @@ class GovServiceCommitmentC7Test {
     commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 12_000L));
     commitments.put(PRODUCTION_1, commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 1_000L));
     SettlementIndex index = indexOfMaps(units, industries, commitments, households, 100L);
-    Map<LaborAllocationId, HouseholdLaborCommitment> before = new LinkedHashMap<>(commitments);
 
-    assertThatThrownBy(
-            () -> invokeReallocateLabor(units, industries, households, commitments, index))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("household=" + H.value())
-        .hasMessageContaining("GOV_SERVICE=12000")
-        .hasMessageContaining("总承诺=13000")
-        .hasMessageContaining("预算=10000")
-        .hasMessageContaining("不可缩");
+    invokeReallocateLabor(units, industries, households, commitments, index);
 
-    assertThat(commitments).as("fail-closed：不缩、不删").isEqualTo(before);
+    assertThat(commitments.get(GOV).laborMilli())
+        .as("GOV 不进比例权重、整额保留（预算 10000 < 承诺 12000 = 合法 underfed）")
+        .isEqualTo(12_000L);
+    assertThat(commitments).as("PRODUCTION 可用量归 0 ⇒ 整条修剪，绝不缩 GOV").doesNotContainKey(PRODUCTION_1);
   }
 
   // ── 夹具 ──

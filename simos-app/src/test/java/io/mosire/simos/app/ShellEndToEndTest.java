@@ -254,8 +254,10 @@ class ShellEndToEndTest {
       List<String> participants = new ArrayList<>();
       started.get("participants").forEach(node -> participants.add(node.asText()));
       assertThat(participants)
-          .as("推进日志的参与者清单（R4 起 economy 与 social 合为一个参与者，见 PopulationEconomyTimeParticipant）")
-          .containsExactlyInAnyOrder("unit", "sd", "population");
+          .as(
+              "推进日志的参与者清单（Z7d-2 起 unit 与 population 合成一个组合参与者"
+                  + " PopulationUnitTimeParticipant；unit 只作为模块键出现）")
+          .containsExactlyInAnyOrder("sd", "population");
 
       JsonNode changeset = JSON.readTree(advanceRow.changesetJson());
       List<String> moduleKeys = new ArrayList<>();

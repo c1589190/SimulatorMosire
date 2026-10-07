@@ -755,6 +755,40 @@ class GovToolsZ6Test {
     }
   }
 
+  /**
+   * ★★ Z7c：{@code remittancePerMilleToSuperior} 必须同时出现在 tool description / jsonSchema 与 catalog
+   * hint 三面（写口/读口/目录同源）；缺一面 = 目录与实际政策漂移。字段仍是同一 {@code gov.SetBudgetPolicy} 载荷，不改形状。
+   */
+  @Test
+  void setBudgetPolicyToolAndCatalogHintExposeRemittanceRate() throws Exception {
+    try (World world =
+        start(tempDir.resolve("budget-remittance-surface"), "budget-remittance-surface")) {
+      AgentTool tool = gmTool(world.shell(), GovSetBudgetPolicyTool.NAME);
+      assertThat(tool.description()).contains("remittancePerMilleToSuperior");
+
+      @SuppressWarnings("unchecked")
+      Map<String, Object> schema = tool.jsonSchema();
+      @SuppressWarnings("unchecked")
+      Map<String, Object> properties = (Map<String, Object>) schema.get("properties");
+      String payloadDescription =
+          String.valueOf(((Map<String, Object>) properties.get("payloadJson")).get("description"));
+      assertThat(payloadDescription)
+          .as("jsonSchema 的 payloadJson 说明必须点名字段")
+          .contains("remittancePerMilleToSuperior")
+          .contains("0..1000");
+
+      AgentTool catalog = gmTool(world.shell(), CatalogTool.NAME);
+      JsonNode hints =
+          JSON.readTree(gmExecute(catalog, Map.of()).message())
+              .get("payloadHints")
+              .get(SetBudgetPolicyHandler.TYPE);
+      assertThat(hints).as("catalog 必须给 gov.SetBudgetPolicy 提示").isNotNull();
+      assertThat(hints.asText())
+          .as("catalog 提示必须含新字段（读写目录同源）")
+          .contains("remittancePerMilleToSuperior");
+    }
+  }
+
   // ── P2-10：transferTreasury 源二选一/金额/同名账户/余额（z3c2 §8-19~21）──────────────
 
   @Test
@@ -1018,6 +1052,98 @@ class GovToolsZ6Test {
           .isEqualTo("gov-service-flow-unavailable-for-tick");
       assertThat(central.get("committedLabor").get("available").asBoolean()).isTrue();
       assertThat(central.get("committedLabor").get("households").size()).isEqualTo(1);
+
+      // ★★ Z7d-1/Z7d-2：读口的键集合/取值口径 —— supply 两套口径 + underfed；committedLabor 逐户 satiety/
+      //    effective/flee 字段；新增 desertion 块；remittance 块 rate=0/无周期读数。缺一个键 = 红（不是静默 0）。
+      JsonNode supply = central.get("supply");
+      assertThat(supply.get("available").asBoolean()).isTrue();
+      assertThat(fieldNames(supply))
+          .as("supply 必须同时给承诺与有效两套口径 + underfed")
+          .contains(
+              "securityLaborMilli",
+              "paperworkLaborMilli",
+              "securityCommittedLaborMilli",
+              "paperworkCommittedLaborMilli",
+              "securityEffectiveLaborMilli",
+              "paperworkEffectiveLaborMilli",
+              "underfedHouseholds",
+              "underfed",
+              "source");
+      assertThat(supply.get("securityLaborMilli").asLong())
+          .as("tick0 无饥饿 ⇒ 有效 = 承诺（16000）")
+          .isEqualTo(16_000L);
+      assertThat(supply.get("securityCommittedLaborMilli").asLong()).isEqualTo(16_000L);
+      assertThat(supply.get("securityEffectiveLaborMilli").asLong()).isEqualTo(16_000L);
+      assertThat(supply.get("underfed").asBoolean()).isFalse();
+
+      JsonNode commRow = central.get("committedLabor").get("households").get(0);
+      assertThat(fieldNames(commRow))
+          .as("逐户行必须给 satiety/actual/effective/flee 全景（Z7d-1/Z7d-2）")
+          .contains(
+              "householdId",
+              "laborMilli",
+              "committedLaborMilli",
+              "satietyPerMille",
+              "actualLaborMilli",
+              "effectiveLaborMilli",
+              "underfed",
+              "underfedReason",
+              "fleeRatePerMille",
+              "fleeRemainderMilli",
+              "fleeRateTier",
+              "lastFleeDay",
+              "lastFleeCount",
+              "lastFleeReason",
+              "lastDriverDay",
+              "lastDriverReason",
+              "hasPost",
+              "postScope",
+              "role",
+              "tierId",
+              "tierKnown");
+      assertThat(commRow.get("satietyPerMille").asLong())
+          .as("tick0 吃饱 = 1000（缺键语义）")
+          .isEqualTo(1000L);
+      assertThat(commRow.get("fleeRatePerMille").asLong()).isZero();
+      assertThat(commRow.get("underfed").asBoolean()).isFalse();
+      assertThat(central.get("committedLabor").get("timing").asText()).contains("satietyPerMille");
+
+      JsonNode desertion = central.get("desertion");
+      assertThat(desertion.get("available").asBoolean()).isTrue();
+      assertThat(fieldNames(desertion))
+          .as("desertion 块字段齐全")
+          .contains(
+              "households",
+              "maxFleeRatePerMille",
+              "householdsWithFleeRate",
+              "totalRemainderMilli",
+              "lastFleeDay",
+              "source");
+      assertThat(desertion.get("maxFleeRatePerMille").asLong()).isZero();
+      assertThat(desertion.get("householdsWithFleeRate").asLong()).isZero();
+      assertThat(fieldNames(desertion.get("households").get(0)))
+          .as("逐户 flee 行字段齐全")
+          .contains(
+              "householdId",
+              "available",
+              "fleeRatePerMille",
+              "fleeRateTier",
+              "fleeRemainderMilli",
+              "lastDriverDay",
+              "lastDriverReason",
+              "lastFleeDay",
+              "lastFleeCount",
+              "lastFleeReason",
+              "satietyPerMille");
+
+      JsonNode remittance = central.get("remittance");
+      assertThat(remittance.get("ratePerMilleToSuperior").asLong()).isZero();
+      assertThat(remittance.get("cycleGrainCollectedMilli").asLong()).isZero();
+      assertThat(remittance.get("cycleSilverCollectedMilli").asLong()).isZero();
+      assertThat(remittance.get("lastCycleCloseDay").asLong()).isZero();
+      assertThat(remittance.get("lastPaidGrainMilli").asLong()).isZero();
+      assertThat(remittance.get("lastPaidSilverMilli").asLong()).isZero();
+      assertThat(central.get("budgetPolicy").get("remittancePerMilleToSuperior").asLong()).isZero();
 
       ToolResult self =
           info.execute(
@@ -1423,6 +1549,13 @@ class GovToolsZ6Test {
 
   private static AgentTool gmTool(Shell shell, String name) {
     return shell.toolRegistry().find(name).orElseThrow();
+  }
+
+  /** JSON 对象的键集合（保插入序）—— 键集合断言用，避免每处手抄三行。 */
+  private static List<String> fieldNames(JsonNode node) {
+    List<String> names = new ArrayList<>();
+    node.fieldNames().forEachRemaining(names::add);
+    return names;
   }
 
   private static AgentTool dmTool(Shell shell, String name) {
