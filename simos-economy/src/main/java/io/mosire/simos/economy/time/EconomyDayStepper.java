@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ <b>逐日结算的会话</b>（R4；给 {@code simos-app} 的人口—经济协调器用）：把"一次推 N 天"的内部日循环开放给 <b>唯一同时看得见多个切片的调用方</b>。
@@ -53,6 +54,12 @@ public final class EconomyDayStepper implements AutoCloseable {
 
   /** 「家户 → (lot → count)」只读投影（P2-A A3；由调用方从 Social 注入，不进任何 Economy 状态）。 */
   private Map<HouseholdId, Map<PeopleLotId, Long>> composition = Map.of();
+
+  /**
+   * ★★ <b>Z7b：退出商品市场的单位户集合</b>（由 app 组合根从 {@code Unit.households()} 现算后注入；economy 侧在日结算里再并入 {@code
+   * EconomyData.governments()} 的国库户）。缺省空集 = 只排政府国库户；不进任何 Economy 状态、不进变更集。
+   */
+  private Set<HouseholdId> marketExcludedHouseholds = Set.of();
 
   /** ★★ R2：本会话的并行度（默认单线程退化路径；{@link #finish()} 关掉自建的池）。 */
   private final EconomyParallelism parallelism;
@@ -170,6 +177,30 @@ public final class EconomyDayStepper implements AutoCloseable {
           java.util.Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
     }
     this.composition = java.util.Collections.unmodifiableMap(frozen);
+  }
+
+  /**
+   * ★★ <b>Z7b：替换本轮“退出商品市场”的单位户集合</b>（app 组合根在推进前从 {@code Unit.households()} 现算注入；与 {@link
+   * #updateComposition(Map)} 同一条“只读投影、不进状态”的纪律）。
+   *
+   * <p>★ 语义是<b>替换</b>：单位/家户在 revision 边界才可能变，本轮推进内不变；政府国库户由 economy 在每个日结算里从 {@code
+   * base.governments()} 自行并入，本方法只负责 economy 编译期看不见的 unit 切片。
+   */
+  public void updateMarketExcludedHouseholds(Set<HouseholdId> next) {
+    Objects.requireNonNull(next, "next");
+    java.util.LinkedHashSet<HouseholdId> frozen = new java.util.LinkedHashSet<>();
+    for (HouseholdId household : next) {
+      if (household == null) {
+        throw new IllegalArgumentException("marketExcludedHouseholds 不得含 null");
+      }
+      frozen.add(household);
+    }
+    this.marketExcludedHouseholds = java.util.Collections.unmodifiableSet(frozen);
+  }
+
+  /** ★ Z7b：当前注入的单位户排除集（只读；政府国库户由日结算另并入）。 */
+  public Set<HouseholdId> marketExcludedHouseholds() {
+    return marketExcludedHouseholds;
   }
 
   /** ★★ 唯一账户会话（推进前载入、推进中就地更新、推进后整体落回 actor）。 */
@@ -300,7 +331,8 @@ public final class EconomyDayStepper implements AutoCloseable {
         ledger,
         parallelism,
         profitCycle,
-        composition);
+        composition,
+        marketExcludedHouseholds);
     MarketReport report = ledger.marketReport();
     if (report != null) {
       lastMarketReport = report;

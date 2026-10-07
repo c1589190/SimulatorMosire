@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
@@ -67,6 +68,7 @@ import io.mosire.simos.util.economy.ProportionalSplit;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -732,12 +734,17 @@ public final class EconomySettlement {
         ledger,
         parallelism,
         null,
-        composition);
+        composition,
+        Set.of());
   }
 
   /**
    * ★★ <b>P10.2：带周期利润累加器的入口</b>（{@code profitCycle == null} 时与上一个重载逐值相同）—— 关账日在本方法末尾按 ⑦真实利润汇总 →
    * ⑧迁移计划 → ⑨迁移执行 接线；保证在<b>下一周期投入开扣之前</b>完成（下一次 {@code step()} 才开扣）。
+   *
+   * <p>★★ <b>Z7b：{@code marketExcludedHouseholds} 是国库/单位户退出商品市场的组合根入参</b>（单位户 economy 看不见， 由 app 从
+   * {@code Unit.households()} 算好；政府国库户本方法再从 {@code base.governments()} 并入，任何调用方都不会漏掉）。
+   * 它只影响市场订单/参与者生成，不改账户、冻结、税/预算/转移语义。
    */
   static void settleOneDayInto(
       EconomySession session,
@@ -749,12 +756,17 @@ public final class EconomySettlement {
       ProductionLedger.Accumulator ledger,
       EconomyParallelism parallelism,
       EnterpriseProfitBook.CycleAccumulator profitCycle,
-      Map<HouseholdId, Map<PeopleLotId, Long>> composition) {
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
+      Set<HouseholdId> marketExcludedHouseholds) {
     Objects.requireNonNull(session, "session（S1：revision 级会话持有可变工作表）");
     Objects.requireNonNull(accounts, "accounts（S1：账户会话是会话状态，必须由调用方载入）");
     Objects.requireNonNull(topology, "topology（M2.3：区域拓扑是只读输入；单格世界用 MarketTopology.singleHex）");
     Objects.requireNonNull(parallelism, "parallelism（R2：并行度配置）");
+    Objects.requireNonNull(marketExcludedHouseholds, "marketExcludedHouseholds（无排除给空集，不得为 null）");
     EconomyData base = session.base();
+    // ★★ Z7b：有效排除集 = 调用方传入的单位户 ∪ 本状态里所有政府国库户（economy 自己看得见的既有权威）。
+    Set<HouseholdId> effectiveMarketExcludedHouseholds =
+        mergeMarketExclusions(marketExcludedHouseholds, base.governments());
     // ★★ E3：发行主体的权威答案是当前世界状态（governments），不是进程里的旧登记。
     //   日结算开始按 base 重建登记表：旧世界/旧档 governments 为空 ⇒ 清空登记 ⇒ requireIssuerOf 逐字保留旧 fail-closed 行为。
     MoneyIssuance.syncAuthorities(base.governments().values());
@@ -1649,7 +1661,11 @@ public final class EconomySettlement {
             base.demands(),
             // ★★ D-027：生产路径默认 regulation（单区锚格 = markets 规范序第一个 hex；空表/open=true/无税费
             //   ⇒ 逐值现状）。跨市场区/自定义制度由后续批次经 GM 命令面注入同一入口。
-            MarketRegulation.defaultsFor(markets));
+            MarketRegulation.defaultsFor(markets),
+            // ★★ Z7b：本入口不预置信用（开市判定后由 withCredit 补）；排除集 = 组合根单位户 ∪ 本状态政府国库户。
+            null,
+            null,
+            effectiveMarketExcludedHouseholds);
     // ★★ P10.2：有 merchantFirms 时由 MerchantSettlement 逐 lane 选商号/收费；没有时 Map.of() 退回旧承运路径。
     Map<ProductionOrganizationId, MerchantFirm> marketMerchants =
         base.merchantFirms().isEmpty() ? Map.of() : session.sheet().merchantFirms();
@@ -8407,6 +8423,46 @@ public final class EconomySettlement {
       sorted.put(hexKey, members);
     }
     return sorted;
+  }
+
+  // ── Z7b：国库/单位户退出商品市场的排除集 ──────────────────────────────────────────
+
+  /**
+   * ★★ <b>政府国库户集合</b>（Z7b）：{@code base.governments()} 里国库 actor 是 HOUSEHOLD 的那些稳定家户身份。★ 权威来自经济状态自己的
+   * {@code Government.treasury}，不按 {@code hh-gov-} 前缀猜（前缀只是身份拼法，见 {@code
+   * GovernmentHouseholds}）；非家户国库（{@code GOVERNMENT} actor）本来就不在市场参与者行里。
+   */
+  static Set<HouseholdId> governmentTreasuryHouseholds(Map<GovernmentId, Government> governments) {
+    Objects.requireNonNull(governments, "governments");
+    LinkedHashSet<HouseholdId> households = new LinkedHashSet<>();
+    for (Map.Entry<GovernmentId, Government> entry : governments.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("governments 的键/值不得为 null");
+      }
+      Government government = entry.getValue();
+      if (government.treasury().kind() == ActorKind.HOUSEHOLD) {
+        households.add(HouseholdActors.householdOf(government.treasury()));
+      }
+    }
+    return Collections.unmodifiableSet(households);
+  }
+
+  /**
+   * ★★ <b>有效排除集 = 组合根传入的单位户 ∪ 经济状态里的政府国库户</b>（Z7b）：两处来源都不能漏 —— 单位户只有 app 看得见 （economy 编译期不认识 unit
+   * 切片），政府国库户则由本状态自己看得见、任何调用方都不该也不必重复传。保序不可变，绝不用 {@code Set.copyOf}（不承诺保序）。
+   */
+  static Set<HouseholdId> mergeMarketExclusions(
+      Set<HouseholdId> callerProvided, Map<GovernmentId, Government> governments) {
+    Objects.requireNonNull(callerProvided, "callerProvided");
+    LinkedHashSet<HouseholdId> merged =
+        new LinkedHashSet<>(governmentTreasuryHouseholds(governments));
+    for (HouseholdId household : callerProvided) {
+      if (household == null) {
+        throw new IllegalArgumentException("marketExcludedHouseholds 不得含 null");
+      }
+      merged.add(household);
+    }
+    return Collections.unmodifiableSet(merged);
   }
 
   // ── 家户账（会话工作副本）的读写助手 ────────────────────────────────────────────────

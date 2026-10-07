@@ -52,10 +52,14 @@ import org.slf4j.Logger;
  * <ul>
  *   <li><b>行政俸禄</b>：{@link GovDaily#settle} 的 {@code PaymentOracle} 换成 {@link #upkeepOracle}（逐资源上限
  *       = 本桥算出的 ADMIN_STIPEND 限额）；
- *   <li><b>军俸 / 行政工资</b>：{@link MilitaryPayRuleBridge} 与 {@link GovSalaryRuleBridge} 的当日规则先按类别限额
- *       裁剪（逐腿 {@code min(请求, 剩余限额)}），再交给 {@link PeriodicHouseholdAdjustmentExecutor#applyExplicit}
- *       执行；持久规则（{@code EconomyData.periodicAdjustments}）不在预算类别内，由调用方在预算类别之后单独执行。
+ *   <li><b>军俸 / 行政工资</b>：{@link MilitaryPayRuleBridge} 与 {@link GovSalaryRuleBridge} 的当日规则按类别限额算出
+ *       <b>逐腿授权</b>（{@code min(请求, 剩余限额)}），与<b>原始请求</b>一起装进 {@code BudgetedRule} 交给 {@link
+ *       PeriodicHouseholdAdjustmentExecutor#applyBudgeted}；持久规则（{@code
+ *       EconomyData.periodicAdjustments}）不在预算 类别内，由调用方在预算类别之后单独执行。
  * </ul>
+ *
+ * <p>★★ <b>Z7b：原始请求不得在桥里丢失</b> —— 零授权腿/全零授权规则也照常进 {@code applyBudgeted}（执行器记 PARTIAL 或 {@code
+ * SKIPPED budget-authorized-zero}），避免 run6 day122“军俸粮腿从未到达执行器、状态误报 EXECUTED”的 D4 形态。
  *
  * <p>★★ <b>预算周期冻结 = 1 tick（每日）</b>（与工资 {@code periodDays=1}、{@code GovDaily} 日结算对齐）；{@code
  * minPerCycle}/{@code capPerCycle} 是"每日"口径。设计书未冻结更细的周期，本区在台账里记明。
@@ -229,6 +233,7 @@ public final class GovBudgetExecutionBridge {
     return new DayBudget(
         plans,
         capped.rules(),
+        capped.budgetedLedgerRules(),
         alerts,
         seatByGov,
         salaryBook,
@@ -544,6 +549,7 @@ public final class GovBudgetExecutionBridge {
       remaining.put(plan.gov(), perCategory);
     }
     List<HouseholdPeriodicAdjustment> cappedRules = new ArrayList<>();
+    List<PeriodicHouseholdAdjustmentExecutor.BudgetedRule> budgetedLedgerRules = new ArrayList<>();
     Map<String, UnitId> ruleGovById = new LinkedHashMap<>();
     for (RuleRef ref : refs) {
       UnitId gov = govOfPayer(ref.rule().payer());
@@ -592,11 +598,38 @@ public final class GovBudgetExecutionBridge {
           book.authorized = taken;
         }
       }
+      // ★★ Z7b：逐腿账本对**每一条到期规则**都建（含全零授权）——原始请求不再被提前丢掉；执行器据此判
+      //   EXECUTED/PARTIAL/SKIPPED 与逐腿 requested/authorized/paid/shortfall。
+      budgetedLedgerRules.add(
+          new PeriodicHouseholdAdjustmentExecutor.BudgetedRule(
+              ref.rule(), authorizedGoodsOf(taken), authorizedMoneyOf(taken)));
+      // ★ 兼容读口/旧调用方：保留“裁剪后、零腿不落”的旧形状；生产执行路径已改用上面的逐腿账本。
       if (!taken.isEmpty()) {
         cappedRules.add(cappedRule(ref.rule(), taken));
       }
     }
-    return new CapResult(cappedRules, ruleGovById);
+    return new CapResult(cappedRules, budgetedLedgerRules, ruleGovById);
+  }
+
+  /** 授权向量的商品腿 → 只含 &gt; 0 腿的保序表（与 {@link #cappedRule} 同一口径）。 */
+  private static Map<CommodityId, Long> authorizedGoodsOf(ResourceVector taken) {
+    Map<CommodityId, Long> goods = new LinkedHashMap<>();
+    if (taken.grainMilli() > 0L) {
+      goods.put(GRAIN, taken.grainMilli());
+    }
+    if (taken.clothMilli() > 0L) {
+      goods.put(CLOTH, taken.clothMilli());
+    }
+    return goods;
+  }
+
+  /** 授权向量的货币腿 → 只含 &gt; 0 腿的保序表。 */
+  private static Map<CurrencyId, Long> authorizedMoneyOf(ResourceVector taken) {
+    Map<CurrencyId, Long> money = new LinkedHashMap<>();
+    if (taken.silverMilli() > 0L) {
+      money.put(SILVER, taken.silverMilli());
+    }
+    return money;
   }
 
   /** 用限额向量重建一条规则（id/周期/reason/policySource 逐值保留，只改两条腿）。 */
@@ -636,6 +669,7 @@ public final class GovBudgetExecutionBridge {
 
     private final Map<UnitId, GovBudgetPlan> plans;
     private final List<HouseholdPeriodicAdjustment> budgetedRules;
+    private final List<PeriodicHouseholdAdjustmentExecutor.BudgetedRule> budgetedLedgerRules;
     private final List<GovDaily.SignalDraft> alerts;
     private final Map<UnitId, HexCoord> seatByGov;
     private final Map<String, SalaryBook> salaryBook;
@@ -646,6 +680,7 @@ public final class GovBudgetExecutionBridge {
     private DayBudget(
         Map<UnitId, GovBudgetPlan> plans,
         List<HouseholdPeriodicAdjustment> budgetedRules,
+        List<PeriodicHouseholdAdjustmentExecutor.BudgetedRule> budgetedLedgerRules,
         List<GovDaily.SignalDraft> alerts,
         Map<UnitId, HexCoord> seatByGov,
         Map<String, SalaryBook> salaryBook,
@@ -654,6 +689,7 @@ public final class GovBudgetExecutionBridge {
         GovSalaryRuleBridge.Report salaryReport) {
       this.plans = Collections.unmodifiableMap(new LinkedHashMap<>(plans));
       this.budgetedRules = Collections.unmodifiableList(new ArrayList<>(budgetedRules));
+      this.budgetedLedgerRules = Collections.unmodifiableList(new ArrayList<>(budgetedLedgerRules));
       this.alerts = Collections.unmodifiableList(new ArrayList<>(alerts));
       this.seatByGov = Collections.unmodifiableMap(new LinkedHashMap<>(seatByGov));
       this.salaryBook = Collections.unmodifiableMap(new LinkedHashMap<>(salaryBook));
@@ -667,9 +703,20 @@ public final class GovBudgetExecutionBridge {
       return new BudgetedUpkeepOracle(plans, delegate);
     }
 
-    /** 已按预算限额裁剪的军俸 + 工资规则（交给 {@link PeriodicHouseholdAdjustmentExecutor#applyExplicit}）。 */
+    /**
+     * <b>旧兼容读口</b>：已按预算限额裁剪、零腿不落的规则表（旧调用方/既有测试用）。★ <b>生产执行不要再用它</b>——它丢了 原始请求与逐腿授权（D4 根因）；执行请走
+     * {@link #budgetedLedgerRules()} + {@code applyBudgeted}。
+     */
     public List<HouseholdPeriodicAdjustment> budgetedRules() {
       return budgetedRules;
+    }
+
+    /**
+     * ★★ <b>Z7b 逐腿账本</b>：当日军俸 + 工资的<b>每一条到期规则</b>（含全零授权）都带着原始请求与逐腿授权交给执行器。交给 {@link
+     * PeriodicHouseholdAdjustmentExecutor#applyBudgeted}；执行器不再只吃裁剪后的规则。
+     */
+    public List<PeriodicHouseholdAdjustmentExecutor.BudgetedRule> budgetedLedgerRules() {
+      return budgetedLedgerRules;
     }
 
     /** 规划期告警（计划未设/服务零/空缺/预算缺口/工资桥结构缺口）。 */
@@ -692,13 +739,13 @@ public final class GovBudgetExecutionBridge {
 
     /**
      * 执行后由调用方折 1~N 条 {@code ADMIN_CONTRACT} 信号：只把账户缺失/服务拒绝这类<b>契约异常</b>入信号； {@code
-     * no-payable-leg}（国库不足）不算契约异常（已由预算缺口/工资缺口读数承接）。
+     * no-payable-leg}（国库不足）与 {@code budget-authorized-zero}（预算逐腿裁到 0）都不算契约异常（已由预算缺口/工资缺口读数承接）。
      */
     public List<GovDaily.SignalDraft> executionContractAlerts(
         PeriodicHouseholdAdjustmentExecutor.Report report, long day) {
       Map<UnitId, List<String>> byGov = new LinkedHashMap<>();
       for (String gap : report.gaps()) {
-        if (gap.contains("no-payable-leg")) {
+        if (gap.contains("no-payable-leg") || gap.contains("budget-authorized-zero")) {
           continue;
         }
         int separator = gap.indexOf(": ");
@@ -1124,7 +1171,9 @@ public final class GovBudgetExecutionBridge {
   private record RuleRef(HouseholdPeriodicAdjustment rule, GovBudgetCategory category) {}
 
   private record CapResult(
-      List<HouseholdPeriodicAdjustment> rules, Map<String, UnitId> ruleGovById) {}
+      List<HouseholdPeriodicAdjustment> rules,
+      List<PeriodicHouseholdAdjustmentExecutor.BudgetedRule> budgetedLedgerRules,
+      Map<String, UnitId> ruleGovById) {}
 
   /** 每 GOV 的工资汇总（logSalaryExecution 内部用）。 */
   private static final class SalaryGovTotals {

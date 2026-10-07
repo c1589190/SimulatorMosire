@@ -65,7 +65,7 @@ public final class PeriodicHouseholdAdjustmentExecutor {
 
   /**
    * 旧签名（兼容，P4a 调用点/夹具照旧）：只执行 {@code EconomyData.periodicAdjustments} 持久规则表；语义逐字保留，
-   * 现委托给“无额外瞬态规则”的内部同一实现。
+   * 现委托给“无额外瞬态规则”的内部同一实现。★ Z7b 起旧调用方没有预算账本 ⇒ 按“原始请求 = 逐腿授权”执行，逐腿缺口与 PARTIAL 读数照常报出。
    *
    * @param rules 规则表（{@code EconomyData.periodicAdjustments()}；键 == 值内 id 已由状态构造期把守）
    * @param accounts 唯一账户会话（协调器线程；本方法就地调 {@link StockDeductionService#deduct}）
@@ -78,7 +78,7 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       long day) {
     Objects.requireNonNull(rules, "rules");
     Objects.requireNonNull(accounts, "accounts");
-    return applyDueRules(rules.values(), accounts, day);
+    return applyLedgerRules(fullAuthorization(rules.values()), accounts, day);
   }
 
   /**
@@ -123,15 +123,12 @@ public final class PeriodicHouseholdAdjustmentExecutor {
         merged.put(extra.id(), extra);
       }
     }
-    return applyDueRules(merged.values(), accounts, day);
+    return applyLedgerRules(fullAuthorization(merged.values()), accounts, day);
   }
 
   /**
-   * ★★ <b>Z3c：只执行给定规则集合，不与 {@code EconomyData.periodicAdjustments} 合并</b> —— 预算执行器已按 {@code
-   * GovBudgetPolicy} 的类别顺序把军俸/工资规则限额算好，必须保证这些限额在落账前不被持久规则先到先得地抢走；持久规则由调用方在预算类别执行完之后 单独走 {@link
-   * #applyDue(EconomyData, Collection, AccountSession, long)}（{@code extraRules} 空表）执行。
-   *
-   * <p>到期判据、逐腿 min(可用,请求)、no-payable-leg、gap 语义全部复用唯一执行体 {@link #applyDueRules}，不复制第二套。
+   * ★★ <b>Z3c 旧兼容入口：只执行给定规则集合</b>（不与 {@code EconomyData.periodicAdjustments} 合并）——没有预算授权
+   * 账本的调用方按“原始请求 = 逐腿授权”执行。<b>预算路径请走 {@link #applyBudgeted}</b>：它把“原始请求 + 逐腿授权”一起带进执行器。
    */
   public static Report applyExplicit(
       Collection<HouseholdPeriodicAdjustment> rules, AccountSession accounts, long day) {
@@ -140,15 +137,47 @@ public final class PeriodicHouseholdAdjustmentExecutor {
     for (HouseholdPeriodicAdjustment rule : rules) {
       Objects.requireNonNull(rule, "rules 不得含 null");
     }
-    return applyDueRules(rules, accounts, day);
+    return applyLedgerRules(fullAuthorization(rules), accounts, day);
   }
 
-  /** 唯一执行体：把给定规则集合里当天到期者按 id 升序执行。旧/新两个公开入口都委托到这里 ⇒ due、部分支付、shortfall、gap 语义只有一份实现（“其余语义逐字复用”）。 */
-  private static Report applyDueRules(
-      Collection<HouseholdPeriodicAdjustment> rules, AccountSession accounts, long day) {
-    List<HouseholdPeriodicAdjustment> due = new ArrayList<>();
+  /**
+   * ★★ <b>Z7b：预算逐腿账本入口</b> —— 每条 {@link BudgetedRule} 带着<b>原始请求</b>（rule 的两张腿表）与<b>逐腿授权</b>
+   * （authorizedGoods/authorizedMoney）一起交给执行器；到期判据、逐腿 {@code min(授权, 可用)}、PARTIAL/SKIPPED 与 gap
+   * 语义全部复用唯一执行体，不复制第二套。
+   *
+   * <p>★ 被预算裁到全 0 授权的规则也<b>照常进入本入口</b>（记 {@code SKIPPED budget-authorized-zero} 或 PARTIAL），不再在
+   * 预算桥里提前消失 —— D4“原始请求丢失”的修复落点。
+   */
+  public static Report applyBudgeted(
+      Collection<BudgetedRule> rules, AccountSession accounts, long day) {
+    Objects.requireNonNull(rules, "rules");
+    Objects.requireNonNull(accounts, "accounts");
+    for (BudgetedRule rule : rules) {
+      Objects.requireNonNull(rule, "rules 不得含 null");
+    }
+    return applyLedgerRules(rules, accounts, day);
+  }
+
+  /** 旧入口的缺省授权：没有预算账本时“逐腿授权 = 原始请求”（仍然只有一条逐腿执行体）。 */
+  private static List<BudgetedRule> fullAuthorization(
+      Collection<HouseholdPeriodicAdjustment> rules) {
+    List<BudgetedRule> authorized = new ArrayList<>(rules.size());
     for (HouseholdPeriodicAdjustment rule : rules) {
-      if (rule != null && isDue(rule, day)) {
+      if (rule != null) {
+        authorized.add(BudgetedRule.full(rule));
+      }
+    }
+    return authorized;
+  }
+
+  /**
+   * 唯一执行体：把给定逐腿账本里当天到期者按 id 升序执行。所有公开入口都委托到这里 ⇒ due、逐腿 min(授权,可用)、 PARTIAL、shortfall、gap 语义只有一份实现。
+   */
+  private static Report applyLedgerRules(
+      Collection<BudgetedRule> rules, AccountSession accounts, long day) {
+    List<BudgetedRule> due = new ArrayList<>();
+    for (BudgetedRule rule : rules) {
+      if (rule != null && isDue(rule.rule(), day)) {
         due.add(rule);
       }
     }
@@ -156,7 +185,7 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       return Report.empty(day);
     }
     // ★ 一天内多规则按 id.value() 升序执行；顺序是内容的纯函数，1/N 两条推进路径完全一致。
-    due.sort(Comparator.comparing(rule -> rule.id().value()));
+    due.sort(Comparator.comparing(entry -> entry.rule().id().value()));
 
     Map<CommodityId, Long> paidGoods = new LinkedHashMap<>();
     Map<CurrencyId, Long> paidMoney = new LinkedHashMap<>();
@@ -165,8 +194,9 @@ public final class PeriodicHouseholdAdjustmentExecutor {
     List<RuleReadout> readouts = new ArrayList<>(due.size());
     List<String> gaps = new ArrayList<>();
     int executed = 0;
-    for (HouseholdPeriodicAdjustment rule : due) {
-      RuleReadout readout = executeOne(accounts, rule, day);
+    int partial = 0;
+    for (BudgetedRule entry : due) {
+      RuleReadout readout = executeOne(accounts, entry, day);
       readouts.add(readout);
       mergeAdd(shortfallGoods, readout.shortfallGoods());
       mergeAdd(shortfallMoney, readout.shortfallMoney());
@@ -174,11 +204,16 @@ public final class PeriodicHouseholdAdjustmentExecutor {
         executed++;
         mergeAdd(paidGoods, readout.paidGoods());
         mergeAdd(paidMoney, readout.paidMoney());
+      } else if (readout.status() == RuleReadout.Status.PARTIAL) {
+        partial++;
+        // ★ PARTIAL 的实付同样进当日汇总（旧实现只在 EXECUTED 时汇总，会把部分支付从读账里漏掉）。
+        mergeAdd(paidGoods, readout.paidGoods());
+        mergeAdd(paidMoney, readout.paidMoney());
       } else {
-        gaps.add(rule.id().value() + ": " + readout.gap());
+        gaps.add(entry.rule().id().value() + ": " + readout.gap());
       }
     }
-    int skipped = due.size() - executed;
+    int skipped = due.size() - executed - partial;
     EventLog.channel(LOG)
         .info(
             LogEvent.of(
@@ -190,6 +225,8 @@ public final class PeriodicHouseholdAdjustmentExecutor {
                 due.size(),
                 "executed",
                 executed,
+                "partial",
+                partial,
                 "skipped",
                 skipped,
                 "paidGoods",
@@ -204,6 +241,7 @@ public final class PeriodicHouseholdAdjustmentExecutor {
         day,
         due.size(),
         executed,
+        partial,
         skipped,
         paidGoods,
         paidMoney,
@@ -225,23 +263,25 @@ public final class PeriodicHouseholdAdjustmentExecutor {
     return (day - rule.startsOnDay()) % rule.periodDays() == rule.phaseDay();
   }
 
-  /** 单条规则：账户存在性 → 逐腿可用量 → 构造 deduction → 调服务；返回本规则读数（并完成日志）。 */
-  private static RuleReadout executeOne(
-      AccountSession accounts, HouseholdPeriodicAdjustment rule, long day) {
+  /** 单条规则：账户存在性 → 逐腿授权/可用量 → 构造 deduction → 调服务；返回本规则读数（并完成日志）。 */
+  private static RuleReadout executeOne(AccountSession accounts, BudgetedRule budgeted, long day) {
+    HouseholdPeriodicAdjustment rule = budgeted.rule();
+    Map<CommodityId, Long> requestedGoods = rule.goodsPerCycle();
+    Map<CurrencyId, Long> requestedMoney = rule.moneyPerCycle();
     HouseholdId payer = rule.payer();
     if (accounts.householdKeyOf(payer) == null || accounts.householdAccount(payer) == null) {
-      return skip(rule, "payer-account-missing", rule.goodsPerCycle(), rule.moneyPerCycle(), day);
+      return skip(budgeted, "payer-account-missing", requestedGoods, requestedMoney, day);
     }
     Optional<HouseholdId> payee = rule.payee();
     if (payee.isPresent()
         && (accounts.householdKeyOf(payee.get()) == null
             || accounts.householdAccount(payee.get()) == null)) {
-      return skip(rule, "payee-account-missing", rule.goodsPerCycle(), rule.moneyPerCycle(), day);
+      return skip(budgeted, "payee-account-missing", requestedGoods, requestedMoney, day);
     }
 
     AccountSession.ActorAccount payerAccount = accounts.householdAccount(payer);
     if (payerAccount == null) {
-      return skip(rule, "payer-account-missing", rule.goodsPerCycle(), rule.moneyPerCycle(), day);
+      return skip(budgeted, "payer-account-missing", requestedGoods, requestedMoney, day);
     }
     HouseholdInventory inventory =
         new HouseholdInventory(
@@ -251,12 +291,14 @@ public final class PeriodicHouseholdAdjustmentExecutor {
             payerAccount.frozenGoods(),
             payerAccount.frozenMoney());
 
+    Map<CommodityId, Long> authorizedGoods = budgeted.authorizedGoods();
     Map<CommodityId, Long> paidGoods = new LinkedHashMap<>();
     Map<CommodityId, Long> shortfallGoods = new LinkedHashMap<>();
-    for (Map.Entry<CommodityId, Long> leg : rule.goodsPerCycle().entrySet()) {
+    for (Map.Entry<CommodityId, Long> leg : requestedGoods.entrySet()) {
       long requested = leg.getValue();
+      long authorized = authorizedGoods.getOrDefault(leg.getKey(), 0L);
       long available = AvailableStock.available(inventory, leg.getKey());
-      long paid = Math.min(requested, available);
+      long paid = Math.min(authorized, available);
       if (paid > 0L) {
         paidGoods.put(leg.getKey(), paid);
       }
@@ -265,14 +307,16 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       if (shortfall > 0L) {
         shortfallGoods.put(leg.getKey(), shortfall);
       }
-      traceLeg(day, rule, "goods", leg.getKey(), requested, available, paid, shortfall);
+      traceLeg(day, rule, "goods", leg.getKey(), requested, authorized, available, paid, shortfall);
     }
+    Map<CurrencyId, Long> authorizedMoney = budgeted.authorizedMoney();
     Map<CurrencyId, Long> paidMoney = new LinkedHashMap<>();
     Map<CurrencyId, Long> shortfallMoney = new LinkedHashMap<>();
-    for (Map.Entry<CurrencyId, Long> leg : rule.moneyPerCycle().entrySet()) {
+    for (Map.Entry<CurrencyId, Long> leg : requestedMoney.entrySet()) {
       long requested = leg.getValue();
+      long authorized = authorizedMoney.getOrDefault(leg.getKey(), 0L);
       long available = AvailableStock.available(inventory, leg.getKey());
-      long paid = Math.min(requested, available);
+      long paid = Math.min(authorized, available);
       if (paid > 0L) {
         paidMoney.put(leg.getKey(), paid);
       }
@@ -280,11 +324,14 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       if (shortfall > 0L) {
         shortfallMoney.put(leg.getKey(), shortfall);
       }
-      traceLeg(day, rule, "money", leg.getKey(), requested, available, paid, shortfall);
+      traceLeg(day, rule, "money", leg.getKey(), requested, authorized, available, paid, shortfall);
     }
 
     if (paidGoods.isEmpty() && paidMoney.isEmpty()) {
-      return skip(rule, "no-payable-leg", shortfallGoods, shortfallMoney, day);
+      // ★★ Z7b：全零授权与"国库无可用腿"要具名分开 —— 前者是预算裁掉（budget-authorized-zero），
+      //   后者才是 no-payable-leg；两者都不算契约异常（由预算缺口/国库缺口读数承接）。
+      String gap = budgeted.lacksAllAuthorization() ? "budget-authorized-zero" : "no-payable-leg";
+      return skip(budgeted, gap, shortfallGoods, shortfallMoney, day);
     }
 
     String detail = rule.policySource() + ":" + rule.id().value();
@@ -299,13 +346,75 @@ public final class PeriodicHouseholdAdjustmentExecutor {
     } catch (IllegalArgumentException defensiveReject) {
       // ★ 前置检查已保证账户存在且各腿 ≤ 可用量；服务仍拒（理论上不可达的状态损坏/新守卫）⇒ 记 gap、继续。
       return skip(
-          rule,
+          budgeted,
           "service-rejected: " + defensiveReject.getMessage(),
-          rule.goodsPerCycle(),
-          rule.moneyPerCycle(),
+          requestedGoods,
+          requestedMoney,
           day);
     }
 
+    boolean partial = !shortfallGoods.isEmpty() || !shortfallMoney.isEmpty();
+    RuleReadout.Status status = partial ? RuleReadout.Status.PARTIAL : RuleReadout.Status.EXECUTED;
+    String gap = partial ? "partial-payment" : "";
+    logRule(budgeted, status, gap, paidGoods, paidMoney, shortfallGoods, shortfallMoney, day);
+    return new RuleReadout(
+        rule.id(),
+        status,
+        gap,
+        requestedGoods,
+        requestedMoney,
+        authorizedGoods,
+        authorizedMoney,
+        paidGoods,
+        paidMoney,
+        shortfallGoods,
+        shortfallMoney);
+  }
+
+  /**
+   * 跳过一条规则：缺额读数按“原始请求全额未付”记（账户缺失时无法知道可用量，这是唯一不猜的记法）。★ requested/authorized
+   * 两组字段照常带出，读口能看见“缺口相对哪份原始请求、被授权了多少”。
+   */
+  private static RuleReadout skip(
+      BudgetedRule budgeted,
+      String gap,
+      Map<CommodityId, Long> shortfallGoods,
+      Map<CurrencyId, Long> shortfallMoney,
+      long day) {
+    logRule(
+        budgeted,
+        RuleReadout.Status.SKIPPED,
+        gap,
+        Map.of(),
+        Map.of(),
+        shortfallGoods,
+        shortfallMoney,
+        day);
+    return new RuleReadout(
+        budgeted.rule().id(),
+        RuleReadout.Status.SKIPPED,
+        gap,
+        budgeted.rule().goodsPerCycle(),
+        budgeted.rule().moneyPerCycle(),
+        budgeted.authorizedGoods(),
+        budgeted.authorizedMoney(),
+        Map.of(),
+        Map.of(),
+        shortfallGoods,
+        shortfallMoney);
+  }
+
+  /** 一条规则的统一日志（EXECUTED/PARTIAL/SKIPPED 同一形状：业务拒绝 = INFO，见 AGENTS §一.9）。 */
+  private static void logRule(
+      BudgetedRule budgeted,
+      RuleReadout.Status status,
+      String gap,
+      Map<CommodityId, Long> paidGoods,
+      Map<CurrencyId, Long> paidMoney,
+      Map<CommodityId, Long> shortfallGoods,
+      Map<CurrencyId, Long> shortfallMoney,
+      long day) {
+    HouseholdPeriodicAdjustment rule = budgeted.rule();
     EventLog.channel(LOG)
         .info(
             LogEvent.of(
@@ -316,13 +425,23 @@ public final class PeriodicHouseholdAdjustmentExecutor {
                 "rule",
                 rule.id().value(),
                 "status",
-                "EXECUTED",
+                status.name(),
+                "gap",
+                gap == null ? "" : gap,
                 "payer",
-                payer.value(),
+                rule.payer().value(),
                 "payee",
-                payee.map(HouseholdId::value).orElse("<sink>"),
+                rule.payee().map(HouseholdId::value).orElse("<sink>"),
                 "reason",
                 rule.reason().value(),
+                "requestedGoods",
+                rule.goodsPerCycle(),
+                "requestedMoney",
+                rule.moneyPerCycle(),
+                "authorizedGoods",
+                budgeted.authorizedGoods(),
+                "authorizedMoney",
+                budgeted.authorizedMoney(),
                 "paidGoods",
                 paidGoods,
                 "paidMoney",
@@ -331,67 +450,16 @@ public final class PeriodicHouseholdAdjustmentExecutor {
                 shortfallGoods,
                 "shortfallMoney",
                 shortfallMoney));
-    return new RuleReadout(
-        rule.id(),
-        RuleReadout.Status.EXECUTED,
-        "",
-        paidGoods,
-        paidMoney,
-        shortfallGoods,
-        shortfallMoney);
   }
 
-  /** 跳过一条规则：缺额读数按“请求全额未付”记（账户缺失时无法知道可用量，这是唯一不猜的记法）。 */
-  private static RuleReadout skip(
-      HouseholdPeriodicAdjustment rule,
-      String gap,
-      Map<CommodityId, Long> shortfallGoods,
-      Map<CurrencyId, Long> shortfallMoney,
-      long day) {
-    EventLog.channel(LOG)
-        .info(
-            LogEvent.of(
-                "PERIODIC_ADJUSTMENT_RULE",
-                AppLogSource.DAILY_LOOP,
-                "day",
-                day,
-                "rule",
-                rule.id().value(),
-                "status",
-                "SKIPPED",
-                "gap",
-                gap,
-                "payer",
-                rule.payer().value(),
-                "payee",
-                rule.payee().map(HouseholdId::value).orElse("<sink>"),
-                "reason",
-                rule.reason().value(),
-                "paidGoods",
-                Map.of(),
-                "paidMoney",
-                Map.of(),
-                "shortfallGoods",
-                shortfallGoods,
-                "shortfallMoney",
-                shortfallMoney));
-    return new RuleReadout(
-        rule.id(),
-        RuleReadout.Status.SKIPPED,
-        gap,
-        Map.of(),
-        Map.of(),
-        shortfallGoods,
-        shortfallMoney);
-  }
-
-  /** 逐腿 TRACE（默认关闭；打开后逐腿对账 requested/available/paid/shortfall）。 */
+  /** 逐腿 TRACE（默认关闭；打开后逐腿对账 requested/authorized/available/paid/shortfall）。 */
   private static void traceLeg(
       long day,
       HouseholdPeriodicAdjustment rule,
       String dimension,
       Object asset,
       long requested,
+      long authorized,
       long available,
       long paid,
       long shortfall) {
@@ -413,6 +481,8 @@ public final class PeriodicHouseholdAdjustmentExecutor {
                 asset,
                 "requested",
                 requested,
+                "authorized",
+                authorized,
                 "available",
                 available,
                 "paid",
@@ -428,7 +498,114 @@ public final class PeriodicHouseholdAdjustmentExecutor {
     }
   }
 
-  /** 一条规则的执行读数。 */
+  /**
+   * ★★ <b>Z7b：一条“原始请求 + 逐腿授权”的预算执行账本</b>。{@code rule} 是原始请求（两条腿表逐值保留）， {@code
+   * authorizedGoods/authorizedMoney} 是预算桥按类别顺序/上限算出的逐腿授权（只含 &gt; 0 腿，逐值 ≤ 原始请求）。
+   */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "compact constructor 经 authorizeGoods/authorizeMoney 逐表拷贝并冻结（Collections.unmodifiableMap）；SpotBugs 不跨辅助方法识别")
+  public record BudgetedRule(
+      HouseholdPeriodicAdjustment rule,
+      Map<CommodityId, Long> authorizedGoods,
+      Map<CurrencyId, Long> authorizedMoney) {
+
+    public BudgetedRule {
+      Objects.requireNonNull(rule, "rule");
+      authorizedGoods = authorizeGoods(rule, authorizedGoods);
+      authorizedMoney = authorizeMoney(rule, authorizedMoney);
+    }
+
+    /** 旧入口（无预算账本）的缺省授权：逐腿授权 = 原始请求。 */
+    static BudgetedRule full(HouseholdPeriodicAdjustment rule) {
+      Objects.requireNonNull(rule, "rule");
+      return new BudgetedRule(rule, rule.goodsPerCycle(), rule.moneyPerCycle());
+    }
+
+    /** 原始请求的每一条腿授权都为 0（用于把 SKIPPED 具名成 {@code budget-authorized-zero}）。 */
+    public boolean lacksAllAuthorization() {
+      for (CommodityId leg : rule.goodsPerCycle().keySet()) {
+        if (authorizedGoods.getOrDefault(leg, 0L) > 0L) {
+          return false;
+        }
+      }
+      for (CurrencyId leg : rule.moneyPerCycle().keySet()) {
+        if (authorizedMoney.getOrDefault(leg, 0L) > 0L) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    /** 授权商品腿：只认原始请求里有的腿、逐值 ∈ [0, requested]、只留 &gt; 0（坏数据 fail-closed）。 */
+    private static Map<CommodityId, Long> authorizeGoods(
+        HouseholdPeriodicAdjustment rule, Map<CommodityId, Long> authorized) {
+      Objects.requireNonNull(authorized, "authorizedGoods（无授权给空表）");
+      Map<CommodityId, Long> copy = new LinkedHashMap<>();
+      for (Map.Entry<CommodityId, Long> entry : authorized.entrySet()) {
+        CommodityId leg = entry.getKey();
+        Long value = entry.getValue();
+        if (leg == null || value == null) {
+          throw new IllegalArgumentException("authorizedGoods 不得含 null 键/值");
+        }
+        Long requested = rule.goodsPerCycle().get(leg);
+        if (requested == null) {
+          throw new IllegalArgumentException("authorizedGoods 的腿不在原始请求里: " + leg);
+        }
+        if (value < 0L || value > requested) {
+          throw new IllegalArgumentException(
+              "authorizedGoods 必须 ∈ [0, requested]（逐腿）: "
+                  + leg
+                  + "="
+                  + value
+                  + " requested="
+                  + requested);
+        }
+        if (value > 0L) {
+          copy.put(leg, value);
+        }
+      }
+      return Collections.unmodifiableMap(copy);
+    }
+
+    /** 授权货币腿：同 {@link #authorizeGoods} 的逐值口径。 */
+    private static Map<CurrencyId, Long> authorizeMoney(
+        HouseholdPeriodicAdjustment rule, Map<CurrencyId, Long> authorized) {
+      Objects.requireNonNull(authorized, "authorizedMoney（无授权给空表）");
+      Map<CurrencyId, Long> copy = new LinkedHashMap<>();
+      for (Map.Entry<CurrencyId, Long> entry : authorized.entrySet()) {
+        CurrencyId leg = entry.getKey();
+        Long value = entry.getValue();
+        if (leg == null || value == null) {
+          throw new IllegalArgumentException("authorizedMoney 不得含 null 键/值");
+        }
+        Long requested = rule.moneyPerCycle().get(leg);
+        if (requested == null) {
+          throw new IllegalArgumentException("authorizedMoney 的腿不在原始请求里: " + leg);
+        }
+        if (value < 0L || value > requested) {
+          throw new IllegalArgumentException(
+              "authorizedMoney 必须 ∈ [0, requested]（逐腿）: "
+                  + leg
+                  + "="
+                  + value
+                  + " requested="
+                  + requested);
+        }
+        if (value > 0L) {
+          copy.put(leg, value);
+        }
+      }
+      return Collections.unmodifiableMap(copy);
+    }
+  }
+
+  /**
+   * 一条规则的执行读数。★★ <b>逐腿四组读数</b>：{@code requestedGoods/requestedMoney}（原始请求）、 {@code
+   * authorizedGoods/authorizedMoney}（预算逐腿授权）、{@code paid*}（实际落账）、{@code shortfall*}（缺额 = 原始请求 −
+   * 实付；只记 &gt; 0 腿）。
+   */
   @SuppressFBWarnings(
       value = "EI_EXPOSE_REP",
       justification =
@@ -437,6 +614,10 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       PeriodicHouseholdAdjustmentId ruleId,
       Status status,
       String gap,
+      Map<CommodityId, Long> requestedGoods,
+      Map<CurrencyId, Long> requestedMoney,
+      Map<CommodityId, Long> authorizedGoods,
+      Map<CurrencyId, Long> authorizedMoney,
       Map<CommodityId, Long> paidGoods,
       Map<CurrencyId, Long> paidMoney,
       Map<CommodityId, Long> shortfallGoods,
@@ -446,20 +627,39 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       Objects.requireNonNull(ruleId, "ruleId");
       Objects.requireNonNull(status, "status");
       gap = gap == null ? "" : gap;
+      requestedGoods = freezeGoods(requestedGoods);
+      requestedMoney = freezeMoney(requestedMoney);
+      authorizedGoods = freezeGoods(authorizedGoods);
+      authorizedMoney = freezeMoney(authorizedMoney);
       paidGoods = freezeGoods(paidGoods);
       paidMoney = freezeMoney(paidMoney);
       shortfallGoods = freezeGoods(shortfallGoods);
       shortfallMoney = freezeMoney(shortfallMoney);
     }
 
-    /** 执行状态：EXECUTED = 至少一腿实际落账；SKIPPED = 未调服务或服务防御性拒绝。 */
+    /**
+     * 执行状态（Z7b 冻结语义）：
+     *
+     * <ul>
+     *   <li>{@code EXECUTED} = 原始请求的每条腿都足额落账；
+     *   <li>{@code PARTIAL} = 至少一腿 {@code paid > 0}，且至少一条原始腿有缺口（含 {@code no-payable-leg} 的部分支付）；
+     *   <li>{@code SKIPPED} = 没有任何腿落账（含 {@code no-payable-leg} 与 {@code budget-authorized-zero}，gap
+     *       逐条具名）。
+     * </ul>
+     */
     public enum Status {
       EXECUTED,
+      PARTIAL,
       SKIPPED
     }
 
     public boolean executed() {
       return status == Status.EXECUTED;
+    }
+
+    /** 有腿付、有原始腿缺。 */
+    public boolean partiallyExecuted() {
+      return status == Status.PARTIAL;
     }
   }
 
@@ -472,6 +672,7 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       long day,
       int due,
       int executed,
+      int partial,
       int skipped,
       Map<CommodityId, Long> paidGoods,
       Map<CurrencyId, Long> paidMoney,
@@ -481,9 +682,20 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       List<String> gaps) {
 
     public Report {
-      if (due < 0 || executed < 0 || skipped < 0 || executed + skipped != due) {
+      if (due < 0
+          || executed < 0
+          || partial < 0
+          || skipped < 0
+          || executed + partial + skipped != due) {
         throw new IllegalArgumentException(
-            "Report 计数不自洽: due=" + due + " executed=" + executed + " skipped=" + skipped);
+            "Report 计数不自洽: due="
+                + due
+                + " executed="
+                + executed
+                + " partial="
+                + partial
+                + " skipped="
+                + skipped);
       }
       paidGoods = freezeGoods(paidGoods);
       paidMoney = freezeMoney(paidMoney);
@@ -494,7 +706,8 @@ public final class PeriodicHouseholdAdjustmentExecutor {
     }
 
     public static Report empty(long day) {
-      return new Report(day, 0, 0, 0, Map.of(), Map.of(), Map.of(), Map.of(), List.of(), List.of());
+      return new Report(
+          day, 0, 0, 0, 0, Map.of(), Map.of(), Map.of(), Map.of(), List.of(), List.of());
     }
   }
 

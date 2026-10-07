@@ -315,6 +315,17 @@ final class MarketSettlement {
     private final Map<DebtContractId, DebtContract> debts;
 
     /**
+     * ★★ <b>Z7b：本轮的“退出商品市场”家户集合</b>（保序不可变；判定只用 {@code contains}）——政府国库户（由 {@code EconomySettlement}
+     * 从 {@code EconomyData.governments()} 并入，economy 自己看得见）与单位户（由 {@code simos-app} 组合根从 {@code
+     * Unit.households()} 算好传入，economy 看不见 unit 切片）。
+     *
+     * <p>★★ <b>口径（用户 2026-10-23 税制/财政闭环设计书 §3.1）</b>：这些家户<b>买卖都不生成</b> —— 0 人口国库户不得被当卖家 清仓（run6
+     * day50 中央粮 271,393→0 的根因），官吏户/军户的实物供给也不得被市场当余量卖掉。★ 本集合只排除<b>市场订单/参与</b>：
+     * 税、预算、转移照常动账，账户与冻结语义一个字不改。
+     */
+    private final Set<HouseholdId> marketExcludedHouseholds;
+
+    /**
      * ★★ <b>D-031：市场信用的一轮入参</b>（借款人侧不再有额度；唯一上限 = 放贷人实际可借头寸）。
      *
      * @param dueCycle 新合同的到期周期（本批 = 当前周期 + 1；与 {@code lendDeficitsInHex} 同源）
@@ -367,7 +378,8 @@ final class MarketSettlement {
           householdDemands,
           MarketRegulation.none(),
           null,
-          null);
+          null,
+          Set.of());
     }
 
     /**
@@ -417,14 +429,11 @@ final class MarketSettlement {
           householdDemands,
           regulation,
           null,
-          null);
+          null,
+          Set.of());
     }
 
-    /**
-     * ★★ <b>D-030：带市场信用的完整构造器</b>（{@code MarketRound.withCredit} 的唯一出口）。
-     *
-     * <p>★ {@code debts} 是<b>引用</b>：市场信用经 {@link DebtContractBook#upsert} 就地累加，不复制成第二份债务表。
-     */
+    /** ★★ <b>D-030：带市场信用的完整构造器（旧签名兼容）</b>：不含 Z7b 排除集 ⇒ 与改动前逐值同行为；生产、 只读计划轮与读口都走带排除集的下一支。 */
     MarketRound(
         long day,
         Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -447,6 +456,62 @@ final class MarketSettlement {
         MarketRegulation regulation,
         CreditConfig creditConfig,
         Map<DebtContractId, DebtContract> debts) {
+      this(
+          day,
+          householdEconomies,
+          householdGoods,
+          householdMoney,
+          householdFrozenGoods,
+          householdFrozenMoney,
+          unmetToday,
+          householdOfActor,
+          industries,
+          units,
+          assetShares,
+          relations,
+          laborCommitments,
+          shipments,
+          ledger,
+          operatorConditions,
+          index,
+          householdDemands,
+          regulation,
+          creditConfig,
+          debts,
+          Set.of());
+    }
+
+    /**
+     * ★★ <b>Z7b：带市场排除集的完整构造器</b>（生产/只读计划轮/读口的唯一入口；旧构造器委托 {@code Set.of()}）。
+     *
+     * <p>★ {@code debts} 是<b>引用</b>：市场信用经 {@link DebtContractBook#upsert} 就地累加，不复制成第二份债务表。
+     *
+     * @param marketExcludedHouseholds 本轮不生成任何买单/卖单的家户（非 null、不得含 null）；由 {@code EconomySettlement}
+     *     把 {@code governments} 国库户并入调用方传入的单位户集合
+     */
+    MarketRound(
+        long day,
+        Map<HouseholdId, HouseholdEconomy> householdEconomies,
+        Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+        Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+        Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
+        Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
+        Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
+        Map<ActorRef, HouseholdId> householdOfActor,
+        Map<IndustryId, Industry> industries,
+        Map<ProductionUnitId, ProductionProcess> units,
+        Map<AssetShareId, OwnershipStake> assetShares,
+        Map<ProductionUnitId, ProductionRules> relations,
+        Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+        Map<ShipmentId, ShipmentBatch> shipments,
+        ProductionLedger.Accumulator ledger,
+        Map<ProductionUnitId, OperatorCondition> operatorConditions,
+        SettlementIndex index,
+        Map<DemandId, HouseholdDemand> householdDemands,
+        MarketRegulation regulation,
+        CreditConfig creditConfig,
+        Map<DebtContractId, DebtContract> debts,
+        Set<HouseholdId> marketExcludedHouseholds) {
       this.day = day;
       this.householdEconomies = Objects.requireNonNull(householdEconomies, "rows");
       this.householdGoods = Objects.requireNonNull(householdGoods, "householdGoods");
@@ -471,6 +536,7 @@ final class MarketSettlement {
       this.regulation = regulation == null ? MarketRegulation.none() : regulation;
       this.creditConfig = creditConfig;
       this.debts = debts;
+      this.marketExcludedHouseholds = freezeExcludedHouseholds(marketExcludedHouseholds);
     }
 
     /** ★★ D-030：本入口有没有市场信用能力（缺一即关闭；旧构造器因此逐值退回现金市场）。 */
@@ -486,6 +552,24 @@ final class MarketSettlement {
     /** ★ D-030：债务工作表引用（信用关闭时为 {@code null}；市场不复制、不另建第二份）。 */
     Map<DebtContractId, DebtContract> debts() {
       return debts;
+    }
+
+    /** ★★ Z7b：本轮退出商品市场的家户集合（只读；只用于订单/参与生成处的 {@code contains}）。 */
+    Set<HouseholdId> marketExcludedHouseholds() {
+      return marketExcludedHouseholds;
+    }
+
+    /** ★ 排除集是身份集合：逐元素查 null、保序冻结（绝不用 {@code Set.copyOf}——不承诺保序）。 */
+    private static Set<HouseholdId> freezeExcludedHouseholds(Set<HouseholdId> excluded) {
+      Objects.requireNonNull(excluded, "marketExcludedHouseholds 不得为 null（无排除给空集）");
+      LinkedHashSet<HouseholdId> copy = new LinkedHashSet<>();
+      for (HouseholdId household : excluded) {
+        if (household == null) {
+          throw new IllegalArgumentException("marketExcludedHouseholds 不得含 null");
+        }
+        copy.add(household);
+      }
+      return Collections.unmodifiableSet(copy);
     }
 
     /**
@@ -515,7 +599,8 @@ final class MarketSettlement {
           householdDemands,
           regulation,
           new CreditConfig(dueCycle),
-          debts);
+          debts,
+          marketExcludedHouseholds);
     }
 
     /** ★ R4-E2：需求账本（只读；空表 = 没有 GM 需求，订单退回旧基线）。 */
@@ -1217,6 +1302,12 @@ final class MarketSettlement {
     List<SellOrder> sells = new ArrayList<>();
     long deadline = round.day + MARKET_BUY_DEADLINE_DAYS;
     for (Participant participant : plan.participants) {
+      // ★★ Z7b：国库/单位户退出商品市场 —— participantsFor 已排除；这里再守一道，保证即使上游计划里混入
+      //   排除户也绝不生成买单/卖单（两层防线都指向同一集合，判定无条件）。
+      if (participant.household != null
+          && round.marketExcludedHouseholds().contains(participant.household)) {
+        continue;
+      }
       long necessary =
           plan.necessaryInputs
               .getOrDefault(participant.actor, Map.of())
@@ -2786,7 +2877,8 @@ final class MarketSettlement {
         // ★ 与旧短构造器逐值同源：worker 的订单生成由调用方显式传 regionRegulation，不读这里的默认值。
         MarketRegulation.none(),
         round.creditConfig,
-        round.debts);
+        round.debts,
+        round.marketExcludedHouseholds);
   }
 
   /** ★ 区内一笔成交的不可变意向：worker 产出，协调器按区序/成交序回放（索引 = ctx.buys/ctx.sells 的全局下标）。 */
@@ -4562,6 +4654,25 @@ final class MarketSettlement {
     }
     LinkedHashMap<ActorRef, Participant> byActor = new LinkedHashMap<>();
     for (HouseholdId key : keys) {
+      // ★★ Z7b：国库/单位户不生成任何订单 ⇒ 直接从参与者集合里排除（不买、不卖、不挂信用）。
+      if (round.marketExcludedHouseholds().contains(key)) {
+        if (MARKET.isTraceEnabled()) {
+          EventLog.channel(MARKET)
+              .trace(
+                  LogEvent.of(
+                      "MARKET_HOUSEHOLD_EXCLUDED",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      round.day,
+                      "household",
+                      key.value(),
+                      "hex",
+                      hex,
+                      "reason",
+                      "treasury-or-unit-household"));
+        }
+        continue;
+      }
       ActorRef actor = HouseholdActors.of(key);
       List<ProductionUnitId> units = unitsByOperator.remove(actor);
       if (units != null) {
@@ -4644,6 +4755,25 @@ final class MarketSettlement {
           continue;
         }
         HouseholdId household = single.get();
+        // ★★ Z7b：unit 的经营者解析到国库/单位户 ⇒ 这个 unit 也不入市（其库存随单位户一起退出）。
+        if (round.marketExcludedHouseholds().contains(household)) {
+          if (MARKET.isTraceEnabled()) {
+            EventLog.channel(MARKET)
+                .trace(
+                    LogEvent.of(
+                        "MARKET_HOUSEHOLD_EXCLUDED",
+                        EconomyLogSource.ECONOMY_MARKET,
+                        "day",
+                        round.day,
+                        "household",
+                        household.value(),
+                        "unit",
+                        unitId.value(),
+                        "reason",
+                        "operator-is-treasury-or-unit-household"));
+          }
+          continue;
+        }
         HouseholdEconomy householdEconomy = round.householdEconomies.get(household);
         if (householdEconomy == null) {
           throw new IllegalStateException(

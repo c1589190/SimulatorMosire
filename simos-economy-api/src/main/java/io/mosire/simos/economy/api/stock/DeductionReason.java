@@ -28,7 +28,11 @@ public enum DeductionReason {
   /** 辖区日税（税率/税基/辖区/效率是政策层的事，本档只记"这一笔是税"）。 */
   JURISDICTION_TAX("jurisdiction_tax"),
 
-  /** 行政俸禄 / 行政物资（{@code GovDaily} 的编制人员供给与俸禄，付款方 = 政府家户，当前无可信对端 ⇒ 明确 sink）。 */
+  /**
+   * 行政俸禄 / 行政物资（{@code GovDaily} 的编制人员供给与俸禄，付款方 = 政府家户）。★ Z7b 起<b>粮/布腿转给本 GOV 的官吏户</b> （{@code
+   * GovernmentUpkeepOracle} 按 {@code GOV_SERVICE} 承诺份额分摊）；<b>银腿仍走
+   * sink</b>（非家户的衙门开销），不存在“同一份俸禄再付一次”。
+   */
   ADMIN_UPKEEP("admin_upkeep"),
 
   /**

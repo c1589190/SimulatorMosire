@@ -572,6 +572,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         //   不进变更集）。日循环里每 tick 在生死结算后再用新 Social 刷新一次。
         stepper.updateComposition(compositionOf(social));
         stepper.recomputeLaborBudgets(laborBudgetsOf(social, range.from().tick()));
+        // ★★ Z7b：国库/单位户退出商品市场 —— economy 编译期看不见 unit 切片，组合根在这里把
+        //   Unit.households() 的唯一投影注入（政府国库户由 economy 自己从 governments 并入；两来源在
+        //   MarketRound 合成有效排除集）。单位列表在 revision 内不变，推进前注入一次即可。
+        stepper.updateMarketExcludedHouseholds(unitHouseholdExclusions(units));
         ActorData currentBooks = migratedBooks;
         SocialData currentSocial = social;
         // ★★ P2-D：gov 状态（每 tick 行政读数）+ 跨日累计读数（只进日志，不进状态）。
@@ -735,7 +739,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                       "gaps",
                       militaryPayReport.gaps().size()));
             }
-            GovernmentUpkeepOracle oracle = new GovernmentUpkeepOracle(stepper.accounts(), units);
+            // ★★ Z7b：俸禄（ADMIN_STIPEND）的粮/布腿由 oracle 转给官吏户（按 GOV_SERVICE 承诺份额分摊）；
+            //   传入 economy 是为了读承诺份额的唯一权威（GovernmentServiceLaborBridge），不写任何状态。
+            GovernmentUpkeepOracle oracle =
+                new GovernmentUpkeepOracle(stepper.accounts(), units, economy);
             GovDaily.Outcome settled =
                 GovDaily.settle(
                     currentGov,
@@ -753,11 +760,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               stepper.putCrisisSignal(toCrisisSignal(draft, day));
             }
             adminTotals.recordExtraSignals(budget.alerts().size());
-            // ★★ Z3c：军俸/工资规则按类别限额裁剪后走既有 P4a 执行器（applyExplicit 不合并持久规则）；
-            //   持久规则紧接着在下面单独执行，不能先抢走预算类别预留的国库。
+            // ★★ Z3c/Z7b：军俸/工资规则带着**原始请求 + 逐腿授权**整条交给执行器（applyBudgeted 不与持久规则合并），
+            //   零授权腿不再被提前丢掉，由执行器记 PARTIAL/具名缺口；持久规则紧接着在下面单独执行，不能先抢走预算类别预留的国库。
             PeriodicHouseholdAdjustmentExecutor.Report budgetedReport =
-                PeriodicHouseholdAdjustmentExecutor.applyExplicit(
-                    budget.budgetedRules(), stepper.accounts(), day);
+                PeriodicHouseholdAdjustmentExecutor.applyBudgeted(
+                    budget.budgetedLedgerRules(), stepper.accounts(), day);
             adminTotals.recordSalary(budget.logSalaryExecution(budgetedReport, day));
             List<GovDaily.SignalDraft> executionAlerts =
                 budget.executionContractAlerts(budgetedReport, day);
@@ -770,7 +777,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             govEfficiencyModifiers.clear();
           }
           // ★★ P4a/P4b：通用周期家户库存扣增 —— 预算类别（GovDaily/军俸/工资）之后、市场报告/日末之前执行。
-          //   ★ 有 GOV 时：预算桥已用 applyExplicit 执行完类别内规则，这里只执行 EconomyData 的持久规则（extraRules 空表），
+          //   ★ 有 GOV 时：预算桥已用 applyBudgeted 执行完类别内规则，这里只执行 EconomyData 的持久规则（extraRules 空表），
           //     保证持久规则不会先到先得地抢走预算类别预留的国库；
           //   ★ 无 GOV 时：沿用旧口径（军俸派生 + 持久/瞬态合并执行），但不进入任何预算类别。
           if (govActive) {
@@ -902,6 +909,24 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           "state 的 unit 切片不是 UnitSnapshot: " + snapshot.getClass().getName());
     }
     return unitSnapshot.state();
+  }
+
+  /**
+   * ★★ <b>Z7b：退出商品市场的单位户集合</b>（组合根唯一同时看得见 unit 与经济的地方）——{@code Σ Unit.households()}。★ government
+   * 国库户不在这里重复算：{@code EconomySettlement} 从 {@code EconomyData.governments()} 并入 （economy
+   * 自己的权威），两来源在日结算里合成有效排除集。★ 缺 unit 切片（旧档/纯经济夹具）⇒ 空集。
+   */
+  private static Set<HouseholdId> unitHouseholdExclusions(UnitState units) {
+    if (units == null) {
+      return Set.of();
+    }
+    LinkedHashSet<HouseholdId> excluded = new LinkedHashSet<>();
+    for (Unit unit : units.units().values()) {
+      for (HouseholdId household : unit.households()) {
+        excluded.add(household);
+      }
+    }
+    return Collections.unmodifiableSet(excluded);
   }
 
   private static EconomyData economyOf(SimulationState state) {
