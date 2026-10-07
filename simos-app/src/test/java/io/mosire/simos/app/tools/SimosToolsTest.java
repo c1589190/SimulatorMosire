@@ -98,6 +98,9 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.spi.EconomyGmAdjustments;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -186,7 +189,7 @@ class SimosToolsTest {
   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
   private static final String TEST_INITIATOR = "agent:t5-test";
 
-  /** 读工具名单（32 条）：读闸**按名字选**，不用索引切片。 */
+  /** 读工具名单（37 条）：读闸**按名字选**，不用索引切片。 */
   private static final List<String> READ_TOOL_NAMES =
       List.of(
           "simos.army.combat",
@@ -199,6 +202,7 @@ class SimosToolsTest {
           "simos.gm.packet",
           "simos.gm.packets",
           "simos.gm.tool-usage",
+          "simos.gov.info",
           "simos.llm.providers",
           "simos.map.block",
           "simos.map.hex",
@@ -245,7 +249,7 @@ class SimosToolsTest {
           "simos.sd.verdicts");
 
   /**
-   * 非窄写写工具（40 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
+   * 非窄写写工具（56 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
    *
    * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
    * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 40 条从差集里扣掉。
@@ -263,6 +267,8 @@ class SimosToolsTest {
           "simos.calendar.configure",
           "simos.command.submit",
           "simos.economy.adjust",
+          "simos.economy.upsertGovUnit",
+          "simos.economy.upsertIndustry",
           "simos.fork",
           "simos.gm.adjustPopulation",
           "simos.gm.approve",
@@ -275,13 +281,19 @@ class SimosToolsTest {
           "simos.gm.vitalRates",
           "simos.gov.absorbUnit",
           "simos.gov.applyStaffing",
+          "simos.gov.assignPosts",
           "simos.gov.createOffice",
           "simos.gov.dismiss",
           "simos.gov.dispatchTeam",
+          "simos.gov.expandHousehold",
+          "simos.gov.openPostsToMarket",
           "simos.gov.recruit",
           "simos.gov.remit",
           "simos.gov.retireStaff",
           "simos.gov.selectExaminees",
+          "simos.gov.setBudgetPolicy",
+          "simos.gov.setEstablishment",
+          "simos.gov.transferTreasury",
           "simos.province.apply",
           "simos.province.assignCities",
           "simos.region.clearData",
@@ -437,14 +449,14 @@ class SimosToolsTest {
               "social.UpdateCity",
               "actor.AdjustAccounts"));
 
-  /** 写工具全集（100 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
+  /** 写工具全集（116 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
   private static final List<String> WRITE_TOOL_NAMES =
       concat(NON_NARROW_WRITE_NAMES, NARROW_WRITE_NAMES);
 
-  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 32 读 + 100 写 = 132（**40 非窄写** + **60 窄写**）。 */
+  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 37 读 + 116 写 = 153（**56 非窄写** + **60 窄写**）。 */
   private static final List<String> GM_TOOL_NAMES = concat(READ_TOOL_NAMES, WRITE_TOOL_NAMES);
 
-  /** catalog 预期的 93 个已注册命令类型（与 Shell 注册的 handler 同源）。 */
+  /** catalog 预期的 128 个已注册命令类型（与 Shell 注册的 handler 同源）。 */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
           "actor.AdjustAccounts",
@@ -472,11 +484,16 @@ class SimosToolsTest {
           "economy.SetHouseholdParticipation",
           "economy.SetMarketPrice",
           "economy.SwitchMode",
+          "economy.SetGovServiceCommitment",
           "economy.TransferAssetShare",
           "economy.UnitBorrow",
           "economy.UnitRepay",
           "economy.UpdateDemand",
+          "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
+          "economy.UpsertIndustry",
+          "gov.SetAdministrationPlan",
+          "gov.SetBudgetPolicy",
           "map.CreateRegion",
           "map.DeleteRegion",
           "map.MergeRegions",
@@ -537,6 +554,8 @@ class SimosToolsTest {
           "social.UpdateCity",
           "unit.AdjustComposition",
           "unit.ApplyCasualties",
+          "unit.AssignExternalGovPost",
+          "unit.AssignGovPost",
           "unit.AttachUnit",
           "unit.CancelRoute",
           "unit.CreateCommandChain",
@@ -838,10 +857,10 @@ class SimosToolsTest {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
         .as(
-            "扫描必须恰为 121 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
+            "扫描必须恰为 128 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
                 + "P1b1/P3/R3a 的区域清空与国库上缴，辖区阶段 5–12，D1/D3a/D4/D5 的 unit/sd/army 新命令，"
-                + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds）")
-        .hasSize(121);
+                + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds；Z6 起纳入 simos-gov 的 2 条 handler）")
+        .hasSize(128);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -877,8 +896,8 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .as("★ D0–D4 后：GM 桶 = 36 读 + 108 写 = 144（48 非窄写 + 60 窄写）")
-        .hasSize(144);
+        .as("★ Z6 后：GM 桶 = 37 读 + 116 写 = 153（56 非窄写 + 60 窄写）")
+        .hasSize(153);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -900,8 +919,8 @@ class SimosToolsTest {
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
         .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
         .doesNotContainAnyElementsOf(GM_ONLY_READ_NAMES)
-        .as("★ D0–D4 后：决策人桶 = 22 共享读 + 2 决策只读 + 10 写（决策行为/外交/GM pack/report）= 34")
-        .hasSize(34);
+        .as("★ Z6 后：决策人桶 = 30 共享读 + 10 写（含 Z2/Z3 双桶 gov 工具）= 40")
+        .hasSize(40);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -1107,6 +1126,8 @@ class SimosToolsTest {
                 "simos.map.render",
                 Map.of("q", 1L, "r", 1L, "radius", 1L, "format", "text"),
                 "summary"),
+            // ★ Z3c-2（2026-10-23）：政府读口最小形状（GM 省略 govUnitId ⇒ 全部 GOV 按 id 序）。
+            new Case("simos.gov.info", Map.of(), "governments"),
             new Case("simos.skill", Map.of(), "skills"));
     List<String> covered = new ArrayList<>();
     for (Case c : cases) {
@@ -1621,8 +1642,8 @@ class SimosToolsTest {
   void everyToolClassOnDiskIsRegisteredInSomeBucket() throws Exception {
     Set<String> onDisk = toolNamesFromSources();
     assertThat(onDisk)
-        .as("扫描必须恰为 144 个 *Tool.java 的 NAME（GM 桶 144 条 + 只进决策人桶的条目；扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(154);
+        .as("扫描必须恰为 163 个 *Tool.java 的 NAME（GM 桶 153 条 + 只进决策人桶的 10 条；扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(163);
 
     List<String> union =
         Stream.concat(
@@ -1699,7 +1720,8 @@ class SimosToolsTest {
         Paths.get("..", "simos-sd", "src", "main", "java"),
         Paths.get("..", "simos-economy", "src", "main", "java"),
         Paths.get("..", "simos-actor", "src", "main", "java"),
-        Paths.get("..", "simos-army", "src", "main", "java"));
+        Paths.get("..", "simos-army", "src", "main", "java"),
+        Paths.get("..", "simos-gov", "src", "main", "java"));
   }
 
   /** 夹具里那个 hex 的规范地址（{@code resolve}/{@code facets} 用）。 */
@@ -2593,6 +2615,9 @@ class SimosToolsTest {
                 // ★ D1/D4：army 切片在场（读取口 simos.army.combats/combat 与交战目标检查都需要它；
                 //   本夹具为空表 ⇒ 读口给空数组 / 单条详情给 NOT_FOUND）。
                 "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty()),
+                // ★ Z3c-2（Z6a）：gov 切片必须在场（simos.gov.info 即使 GM 省略 govUnitId 也要先取 gov 片；
+                //   本夹具为空表 ⇒ governmentCount=0/governments=[]，键仍在）。
+                "gov", new GovSnapshot(ref("main", 1), T7, GovState.empty()),
                 // ★ R2a：经济切片在场（本夹具未激活 ⇒ simos.economy.hex 应给 activated=false、空 industries）。
                 "economy",
                     new EconomySnapshot(
@@ -2613,7 +2638,8 @@ class SimosToolsTest {
                     new SdCodec(),
                     new EconomyCodec(),
                     new ActorCodec(),
-                    new ArmyCodec())));
+                    new ArmyCodec(),
+                    new GovCodec())));
   }
 
   private static Unit unit() {

@@ -543,10 +543,10 @@ class AdjudicateTickToolTest {
             "economy.TransferAssetShare");
     assertThat(tool.allowedCommandTypes())
         .as(
-            "白名单 = 注册面（121）− GmOnly（15）− sd 自指（42）= 64（D0–D4 新增 7 条有目标声明的命令："
+            "白名单 = 注册面（128）− GmOnly（15）− sd 自指（42）= 66（D0–D4 新增 7 条有目标声明的命令："
                 + "economy 家户劳动/参与/阶层/需求 4 条 + social.SubmitHouseholdWorkOrder + "
-                + "unit.SetVisionRadius / unit.SetArmyPayPolicy）")
-        .hasSize(64);
+                + "unit.SetVisionRadius / unit.SetArmyPayPolicy；Z4/Z3d 再 +unit.AssignGovPost +unit.AssignExternalGovPost）")
+        .hasSize(66);
 
     // ② 其余 47 条白名单类型 + 10 条 GM-only（实现 CommandTargets 的）= 57 条样本：逐条给真载荷、钉死输出路径。
     //   ★ 10 条 GM-only 里 4 条经济命令（SwitchMode/GmAdjust/UnitBorrow/UnitRepay）与三条区域清空
@@ -609,6 +609,18 @@ class AdjudicateTickToolTest {
     samples.put(
         "unit.SetGovPolicy", List.of("{\"unitId\":\"u-1\",\"moneyPerStaffPerTick\":1}", "u-1"));
     samples.put("unit.SetGovSuperior", List.of("{\"unitId\":\"u-1\",\"superiorGov\":null}", "u-1"));
+    samples.put(
+        "unit.AssignGovPost",
+        List.of(
+            "{\"unitId\":\"u-1\",\"household\":\"hh-x\",\"role\":\"POST\",\"tierId\":\"tier-1\","
+                + "\"level\":1,\"head\":false}",
+            "u-1"));
+    samples.put(
+        "unit.AssignExternalGovPost",
+        List.of(
+            "{\"govUnitId\":\"u-1\",\"household\":\"hh-x\",\"role\":\"POST\",\"tierId\":\"tier-1\","
+                + "\"level\":1,\"head\":false}",
+            "u-1"));
     samples.put(
         "unit.RecruitStaff",
         List.of("{\"unitId\":\"u-1\",\"role\":\"SCRIBE\",\"count\":1}", "u-1"));
@@ -856,8 +868,8 @@ class AdjudicateTickToolTest {
           .containsExactlyInAnyOrderElementsOf(expected.subList(1, expected.size()));
     }
     assertThat(samples.keySet())
-        .as("85 条样本一条不漏（75 条有目标声明 + 10 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）")
-        .hasSize(85);
+        .as("87 条样本一条不漏（77 条有目标声明 + 10 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）")
+        .hasSize(87);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

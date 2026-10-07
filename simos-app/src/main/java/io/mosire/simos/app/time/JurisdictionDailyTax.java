@@ -60,9 +60,9 @@ import org.slf4j.Logger;
  *       hh-gov-&lt;unitId&gt;}， 资金先入它的账户，俸禄再从同一账户支出）；无有效位置 ⇒ 具名 {@link GapKind#NO_POSITION} 并跳过该单位
  *       （沿用旧合约：无座位 = 无行政，不征）；
  *   <li><b>算式</b>：{@code assessed = floor(balance × rate‰)}； {@code attainable = floor(assessed ×
- *       efficiency‰)}（效率 ∈ [0,1100]，&gt;1000 = 超编加成带来的超收能力）； {@code collected = min(attainable,
- *       available)}，{@code available} 走 {@link AvailableStock}（余额 − 冻结，
- *       仓储唯一算法）；粮、银两个维度<b>各按同一本税前账算足</b>；
+ *       efficiency‰)}（效率 ≥ 0、<b>不封顶</b>（C3；&gt;1000 = 超编加成带来的超收能力，溢出饱和到 {@code Long.MAX_VALUE}））；
+ *       {@code collected = min(attainable, available)}，{@code available} 走 {@link
+ *       AvailableStock}（余额 − 冻结， 仓储唯一算法）；粮、银两个维度<b>各按同一本税前账算足</b>；
  *   <li><b>落账</b>：{@code collected > 0} 才构造一条 {@link HouseholdStockDeduction#transfer 原子转移扣除}
  *       （reason = {@link DeductionReason#JURISDICTION_TAX}，收款方 = 政府家户）并调 {@link
  *       StockDeductionService} —— 税侧<b>不再</b>自己拼负增量、不再直接碰 {@code AccountSession.commit}（2026-10-09
@@ -162,9 +162,15 @@ final class JurisdictionDailyTax {
         continue; // ★ 无 GOV 读数 ⇒ 整单位跳过、不征（不读退役字段、不补 0、不记缺口）。
       }
       long efficiency = efficiencyPerMille;
-      if (efficiency < 0L || efficiency > 1100L) {
+      // ★★ Z6a/BLOCKED-1 修复（控制方 2026-10-23 授权）：行政效率全不封顶（spec §3/§10 C3、Z2 C3、用户
+      //   「都不封顶」）——旧 [0,1100] 闸会把合法的超编效率（如动态修正 2000/3000 推出的 6000‰）当契约违规拒。
+      //   只保留 ≥ 0 的形状校验；上限不再存在（溢出保护见 scalePerMille）。
+      if (efficiency < 0L) {
         throw new IllegalArgumentException(
-            "GOV 效率必须 ∈ [0,1100]: unit=" + unit.id().value() + " efficiency‰=" + efficiency);
+            "GOV 效率必须 ≥ 0（C3：不再有 1100 上界）: unit="
+                + unit.id().value()
+                + " efficiency‰="
+                + efficiency);
       }
       Jurisdiction jurisdiction = unit.jurisdiction().orElse(null);
       if (jurisdiction == null) {
@@ -484,29 +490,28 @@ final class JurisdictionDailyTax {
   }
 
   /**
-   * ★ <b>溢出安全的 {@code floor(value × perMille / 1000)}</b>（{@code value ≥ 0}、{@code perMille ∈
-   * [0,1100]}）， 口径与旧 {@code JurisdictionDailyTax} 逐字相同，避免溢出被静默截断。
+   * ★ <b>溢出安全的 {@code floor(value × perMille / 1000)}</b>（{@code value ≥ 0}、{@code perMille ≥ 0}，
+   * 不设 1100 上界——C3 全不封顶）；结果超过 {@link Long#MAX_VALUE} 时饱和到 {@code Long.MAX_VALUE}，绝不静默回绕。
    */
   private static long scalePerMille(long value, long perMille) {
-    if (value < 0L || perMille < 0L || perMille > 1100L) {
+    if (value < 0L || perMille < 0L) {
       throw new IllegalArgumentException(
-          "scalePerMille 的 value 必须 ≥ 0、perMille 必须 ∈ [0,1100]: value="
-              + value
-              + " perMille="
-              + perMille);
+          "scalePerMille 的 value/perMille 必须 ≥ 0: value=" + value + " perMille=" + perMille);
     }
     long whole = value / 1000L;
     long remainder = value % 1000L;
-    long bonus = perMille - 1000L;
-    if (bonus <= 0L) {
-      return whole * perMille + remainder * perMille / 1000L;
-    }
-    long base = value;
-    long extra = whole * bonus + remainder * bonus / 1000L;
-    if (extra > Long.MAX_VALUE - base) {
+    long wholePart = saturatedMultiply(whole, perMille);
+    long remainderPart = saturatedMultiply(remainder, perMille) / 1000L;
+    return saturatedAdd(wholePart, remainderPart);
+  }
+
+  /** 饱和乘法：溢出 ⇒ {@link Long#MAX_VALUE}（两因子都 ≥ 0，与 scalePerMille 的饱和语义同向）。 */
+  private static long saturatedMultiply(long left, long right) {
+    try {
+      return Math.multiplyExact(left, right);
+    } catch (ArithmeticException overflow) {
       return Long.MAX_VALUE;
     }
-    return base + extra;
   }
 
   /** 账户会话活账 → 只读 {@link HouseholdInventory} 视图（只为复用 {@link AvailableStock} 的唯一减法）。 */

@@ -67,6 +67,11 @@ class UnitCodecTest {
 
   private static final HouseholdId HH_B = HouseholdId.parse("hh-b");
 
+  /** Z3d 的外部岗位家户（`GovernmentFormation.externalPosts` 的键；不要求在 Unit.households 里）。 */
+  private static final HouseholdId HH_EXT_A = HouseholdId.parse("hh-ext-a");
+
+  private static final HouseholdId HH_EXT_B = HouseholdId.parse("hh-ext-b");
+
   private static final UnitCodec CODEC = new UnitCodec();
 
   @Test
@@ -289,6 +294,12 @@ class UnitCodecTest {
             Map.entry(StaffRole.SCRIBE, 5L));
     Map<StaffRole, Long> staffCap =
         orderedStaff(Map.entry(StaffRole.POST, 9L), Map.entry(StaffRole.SCRIBE, 6L));
+    GovernmentPostOfHousehold externalA =
+        new GovernmentPostOfHousehold(
+            HH_EXT_A, StaffRole.POST, GovernmentLevel.CENTRAL, false, "tier-1");
+    GovernmentPostOfHousehold externalB =
+        new GovernmentPostOfHousehold(
+            HH_EXT_B, StaffRole.YAMEN, GovernmentLevel.PROVINCE, true, "");
     GovernmentFormation gov =
         new GovernmentFormation(
             staff,
@@ -296,7 +307,7 @@ class UnitCodecTest {
                 Map.entry(
                     HH_B,
                     new GovernmentPostOfHousehold(
-                        HH_B, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true)),
+                        HH_B, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true, "tier-2")),
                 Map.entry(
                     HH_A,
                     new GovernmentPostOfHousehold(
@@ -304,7 +315,7 @@ class UnitCodecTest {
             new OfficePolicy(111L, 222L, 3L, 7L, staffCap),
             Optional.of(new UnitId("g-9")),
             GovernmentLevel.PROVINCE,
-            Map.of());
+            orderedPosts(Map.entry(HH_EXT_A, externalA), Map.entry(HH_EXT_B, externalB)));
     Jurisdiction jurisdiction =
         new Jurisdiction(orderedRates(new RegionId("r-1"), 100L), 1L, 2L, 3L, 4);
     UnitSnapshot snapshot =
@@ -315,6 +326,7 @@ class UnitCodecTest {
     String json = CODEC.encodeSnapshot(snapshot);
     assertThat(json).as("子类型信息钉在类型上：@class=gov").contains("\"@class\":\"gov\"");
     assertThat(json).as("staff 的值逐字在线").contains("\"SCRIBE\":5");
+    assertThat(json).as("Z3d 外部岗位用 externalPosts 键落盘").contains("\"externalPosts\"");
 
     UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(json);
 
@@ -352,16 +364,75 @@ class UnitCodecTest {
             Map.entry(
                 HH_B,
                 new GovernmentPostOfHousehold(
-                    HH_B, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true)),
+                    HH_B, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true, "tier-2")),
             Map.entry(
                 HH_A,
                 new GovernmentPostOfHousehold(
                     HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false)));
+    assertThat(new ArrayList<>(decoded.externalPosts().keySet()))
+        .as("★ externalPosts 跨线格式保序：插入序 HH_EXT_A→HH_EXT_B 不能被哈希序替换")
+        .containsExactly(HH_EXT_A, HH_EXT_B);
+    assertThat(decoded.externalPosts())
+        .as("externalPosts 逐值往返（含 tierId 与空串 legacy）")
+        .containsExactly(Map.entry(HH_EXT_A, externalA), Map.entry(HH_EXT_B, externalB));
     assertThat(unit.households())
         .as("GOV 单位必须带自己的政府家户，且领导配置家户也在列表里")
         .contains(GovernmentHouseholds.of("u-1"), HH_B, HH_A);
+    assertThat(unit.households())
+        .as("外部岗位家户保留原单位/位置：不得被编进 Unit.households")
+        .doesNotContain(HH_EXT_A, HH_EXT_B);
     assertThat(unit.jurisdiction()).as("module 往返不得顺手吞掉 jurisdiction").contains(jurisdiction);
     assertThat(unit.visionRadius()).as("非缺省视野半径也要活着").isEqualTo(3);
+  }
+
+  /**
+   * ★ Z3d 旧档兼容：把新形状快照里的 {@code externalPosts} 键删掉 ⇒ 读回**空表**（不是 null、不抛）， 且内部岗位/staff/households
+   * 逐值活着。
+   */
+  @Test
+  void legacySnapshotWithoutExternalPostsKeyDecodesToEmptyMap() throws Exception {
+    GovernmentPostOfHousehold external =
+        new GovernmentPostOfHousehold(
+            HH_EXT_A, StaffRole.POST, GovernmentLevel.CENTRAL, false, "tier-1");
+    GovernmentFormation gov =
+        new GovernmentFormation(
+            orderedStaff(Map.entry(StaffRole.SCRIBE, 2L)),
+            orderedPosts(
+                Map.entry(
+                    HH_A,
+                    new GovernmentPostOfHousehold(
+                        HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false))),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.PROVINCE,
+            orderedPosts(Map.entry(HH_EXT_A, external)));
+    UnitSnapshot snapshot =
+        snapshotOf(
+            stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.of(gov))),
+            SimosTimestamp.of(18));
+
+    ObjectMapper treeMapper = new ObjectMapper();
+    ObjectNode root = (ObjectNode) treeMapper.readTree(CODEC.encodeSnapshot(snapshot));
+    ObjectNode moduleNode = (ObjectNode) root.get("state").get("units").get("u-1").get("module");
+    assertThat(moduleNode.has("externalPosts")).as("前置：新形状确实写了该键（否则删键用例是恒真）").isTrue();
+    moduleNode.remove("externalPosts");
+
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(root.toString());
+    GovernmentFormation decoded =
+        (GovernmentFormation) back.state().units().get(new UnitId("u-1")).module().orElseThrow();
+
+    assertThat(decoded.externalPosts()).as("旧档缺键 ⇒ 空表（不是 null、不抛）").isEmpty();
+    assertThat(decoded.hasAnyPosts()).as("内部岗位仍在 ⇒ 旧档不是‘无岗位’").isTrue();
+    assertThat(decoded.governmentPostsOfHousehold())
+        .containsExactly(
+            Map.entry(
+                HH_A,
+                new GovernmentPostOfHousehold(
+                    HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false)));
+    assertThat(decoded.staff()).containsExactly(Map.entry(StaffRole.SCRIBE, 2L));
+    assertThat(back.state().units().get(new UnitId("u-1")).households())
+        .as("旧档读回不得动 households")
+        .containsExactly(GovernmentHouseholds.of("u-1"), HH_A);
   }
 
   /** ★★ **Army 编制的线格式往返**：{@code "@class":"army"} + present/empty 两侧的 {@code masterGov} + role。 */
@@ -496,10 +567,13 @@ class UnitCodecTest {
     assertThat(unit.position().valueAt(T0)).contains(H11);
   }
 
-  /** 变更集也带得动编制：{@code between} ⇒ 编码 ⇒ 解码 ⇒ {@code apply} 逐值重建目标。 */
+  /** 变更集也带得动编制（含 Z3d 的 externalPosts）：{@code between} ⇒ 编码 ⇒ 解码 ⇒ {@code apply} 逐值重建目标。 */
   @Test
   void changeSetRoundTripsAGovModuleChange() {
     UnitState base = stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.empty()));
+    GovernmentPostOfHousehold external =
+        new GovernmentPostOfHousehold(
+            HH_EXT_A, StaffRole.POST, GovernmentLevel.CENTRAL, false, "tier-2");
     GovernmentFormation target =
         new GovernmentFormation(
             orderedStaff(Map.entry(StaffRole.YAMEN, 2L), Map.entry(StaffRole.SCRIBE, 5L)),
@@ -507,11 +581,11 @@ class UnitCodecTest {
                 Map.entry(
                     HH_A,
                     new GovernmentPostOfHousehold(
-                        HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false))),
+                        HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false, "tier-1"))),
             new OfficePolicy(7L, 8L, 9L, 10L, orderedStaff(Map.entry(StaffRole.SCRIBE, 40L))),
             Optional.of(new UnitId("g-central")),
             GovernmentLevel.PROVINCE,
-            Map.of());
+            orderedPosts(Map.entry(HH_EXT_A, external)));
     UnitState changed =
         stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.of(target)));
 
@@ -519,10 +593,17 @@ class UnitCodecTest {
         (UnitChangeSet)
             CODEC.decodeChangeSet(CODEC.encodeChangeSet(UnitChangeSet.between(base, changed)));
 
-    assertThat(UnitChangeSet.apply(encoded, base)).as("编制变更也必须过线并逐值重建（铁律 5）").isEqualTo(changed);
-    assertThat(UnitChangeSet.apply(encoded, base).units().get(new UnitId("u-1")).households())
-        .as("households 也随变更集过线（GOV 家户 + 领导配置家户）")
-        .contains(GovernmentHouseholds.of("u-1"), HH_A);
+    UnitState applied = UnitChangeSet.apply(encoded, base);
+    assertThat(applied).as("编制变更也必须过线并逐值重建（铁律 5）").isEqualTo(changed);
+    GovernmentFormation decoded =
+        (GovernmentFormation) applied.units().get(new UnitId("u-1")).module().orElseThrow();
+    assertThat(decoded.externalPosts())
+        .as("externalPosts 随变更集逐值过线（不是只在快照路径）")
+        .containsExactly(Map.entry(HH_EXT_A, external));
+    assertThat(applied.units().get(new UnitId("u-1")).households())
+        .as("households 也随变更集过线（GOV 家户 + 领导配置家户；外部户不得入列）")
+        .contains(GovernmentHouseholds.of("u-1"), HH_A)
+        .doesNotContain(HH_EXT_A);
   }
 
   /** 变更集往返：四条变体各造一条（Unchanged / Upsert / Remove / Patch），逐条过线。 */

@@ -54,6 +54,7 @@ class McpPortTopologyTest {
           "simos.gm.packet",
           "simos.gm.packets",
           "simos.gm.tool-usage",
+          "simos.gov.info",
           "simos.llm.providers",
           "simos.map.block",
           "simos.map.hex",
@@ -95,6 +96,8 @@ class McpPortTopologyTest {
           "simos.calendar.configure",
           "simos.command.submit",
           "simos.economy.adjust",
+          "simos.economy.upsertGovUnit",
+          "simos.economy.upsertIndustry",
           "simos.fork",
           "simos.gm.adjustPopulation",
           "simos.gm.approve",
@@ -107,13 +110,19 @@ class McpPortTopologyTest {
           "simos.gm.vitalRates",
           "simos.gov.absorbUnit",
           "simos.gov.applyStaffing",
+          "simos.gov.assignPosts",
           "simos.gov.createOffice",
           "simos.gov.dismiss",
           "simos.gov.dispatchTeam",
+          "simos.gov.expandHousehold",
+          "simos.gov.openPostsToMarket",
           "simos.gov.recruit",
           "simos.gov.remit",
           "simos.gov.retireStaff",
           "simos.gov.selectExaminees",
+          "simos.gov.setBudgetPolicy",
+          "simos.gov.setEstablishment",
+          "simos.gov.transferTreasury",
           "simos.province.apply",
           "simos.province.assignCities",
           "simos.region.clearData",
@@ -228,7 +237,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 32 + 非窄写 40 + 窄写 60 = 132）。 */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 37 + 非窄写 56 + 窄写 60 = 153）。 */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -236,7 +245,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（32 读 + 40 非窄写 + 60 窄写 = 132）")
+          .as("J1：唯一口 = GM 组（37 读 + 56 非窄写 + 60 窄写 = 153）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

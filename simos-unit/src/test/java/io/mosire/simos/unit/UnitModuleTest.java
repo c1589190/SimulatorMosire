@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.time.Segment;
@@ -38,6 +39,10 @@ class UnitModuleTest {
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final HexCoord H11 = new HexCoord(1, 1);
   private static final UnitId U1 = new UnitId("u-1");
+  private static final HouseholdId HH_A = HouseholdId.parse("hh-a");
+  private static final HouseholdId HH_B = HouseholdId.parse("hh-b");
+  private static final HouseholdId HH_EXT_A = HouseholdId.parse("hh-ext-a");
+  private static final HouseholdId HH_EXT_B = HouseholdId.parse("hh-ext-b");
 
   // ── GovernmentFormation：构造期不变量 ─────────────────────────────────
 
@@ -160,6 +165,271 @@ class UnitModuleTest {
             Map.entry(StaffRole.SCRIBE, 5L));
     assertThatThrownBy(() -> formation.staff().put(StaffRole.YAMEN, 100L))
         .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  // ── GovernmentFormation：externalPosts（Z3d）契约 ───────────────
+
+  /** ★ Z3d：{@code externalPosts} 缺失/null ⇒ 空表（旧档兼容），且不得影响内部表/投影判定。 */
+  @Test
+  void govFormationNormalizesMissingExternalPostsToEmptyMap() {
+    GovernmentFormation noExternal =
+        new GovernmentFormation(
+            Map.of(),
+            Map.of(),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            null);
+    assertThat(noExternal.externalPosts()).as("null ⇒ 空表（不是 null）").isEmpty();
+    assertThat(noExternal.hasAnyPosts()).as("两张表都空 ⇒ 无岗位").isFalse();
+    assertThat(noExternal.staffIsHouseholdProjection()).as("无岗位 ⇒ staff 仍是旧口径权威").isFalse();
+    assertThat(noExternal.allPosts()).isEmpty();
+
+    GovernmentPostOfHousehold internal = post(HH_A, StaffRole.SCRIBE, "tier-1");
+    GovernmentFormation internalOnly =
+        new GovernmentFormation(
+            Map.of(),
+            orderedPosts(Map.entry(HH_A, internal)),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            null);
+    assertThat(internalOnly.externalPosts()).as("内表非空时 externalPosts 仍归一为空表").isEmpty();
+    assertThat(internalOnly.hasAnyPosts()).isTrue();
+    assertThat(internalOnly.staffIsHouseholdProjection()).isTrue();
+    assertThat(internalOnly.allPosts())
+        .as("externalPosts 空 ⇒ allPosts 退化为内部表")
+        .containsExactly(Map.entry(HH_A, internal));
+  }
+
+  /** ★ Z3d：{@code externalPosts} 的键与值非 null、键 == value.householdId()，违者具名 IAE。 */
+  @Test
+  void govFormationRejectsExternalPostsWithMismatchedKeyNullKeyAndNullValue() {
+    GovernmentPostOfHousehold mismatched = post(HH_A, StaffRole.SCRIBE, "tier-1");
+    assertThatThrownBy(
+            () ->
+                new GovernmentFormation(
+                    Map.of(),
+                    Map.of(),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.CENTRAL,
+                    Map.of(HH_EXT_A, mismatched)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("externalPosts")
+        .hasMessageContaining("必须等于")
+        .hasMessageContaining(HH_EXT_A.value())
+        .hasMessageContaining(HH_A.value());
+
+    Map<HouseholdId, GovernmentPostOfHousehold> nullKey = new LinkedHashMap<>();
+    nullKey.put(null, post(HH_A, StaffRole.SCRIBE, "tier-1"));
+    assertThatThrownBy(
+            () ->
+                new GovernmentFormation(
+                    Map.of(),
+                    Map.of(),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.CENTRAL,
+                    nullKey))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("externalPosts 的键与值都不得为 null");
+
+    Map<HouseholdId, GovernmentPostOfHousehold> nullValue = new LinkedHashMap<>();
+    nullValue.put(HH_EXT_A, null);
+    assertThatThrownBy(
+            () ->
+                new GovernmentFormation(
+                    Map.of(),
+                    Map.of(),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.CENTRAL,
+                    nullValue))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("externalPosts 的键与值都不得为 null");
+  }
+
+  /** ★ Z3d：同一家户不得同时在内部 {@code householdPosts} 与外部 {@code externalPosts}（两表互斥）。 */
+  @Test
+  void govFormationRejectsSameHouseholdInInternalAndExternalTables() {
+    GovernmentPostOfHousehold internal = post(HH_A, StaffRole.SCRIBE, "tier-1");
+    GovernmentPostOfHousehold external = post(HH_A, StaffRole.YAMEN, "tier-2");
+
+    assertThatThrownBy(
+            () ->
+                new GovernmentFormation(
+                    Map.of(),
+                    orderedPosts(Map.entry(HH_A, internal)),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.CENTRAL,
+                    orderedPosts(Map.entry(HH_A, external))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("同一家户不得同时在")
+        .hasMessageContaining("householdPosts")
+        .hasMessageContaining("externalPosts")
+        .hasMessageContaining(HH_A.value());
+  }
+
+  /** ★ Z3d：{@code allPosts()} 内部插入序在前、外部插入序在后；{@code postOf} 两表都查得到且保序冻结。 */
+  @Test
+  void allPostsOrdersInternalBeforeExternalAndPostOfFindsBoth() {
+    GovernmentPostOfHousehold internalA = post(HH_A, StaffRole.YAMEN, "tier-1");
+    GovernmentPostOfHousehold internalB = post(HH_B, StaffRole.POST, "tier-2");
+    GovernmentPostOfHousehold externalA = post(HH_EXT_A, StaffRole.SCRIBE, "tier-3");
+    GovernmentPostOfHousehold externalB = post(HH_EXT_B, StaffRole.SCRIBE, "");
+    GovernmentFormation formation =
+        new GovernmentFormation(
+            Map.of(),
+            orderedPosts(Map.entry(HH_B, internalB), Map.entry(HH_A, internalA)),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            orderedPosts(Map.entry(HH_EXT_A, externalA), Map.entry(HH_EXT_B, externalB)));
+
+    assertThat(new ArrayList<>(formation.allPosts().keySet()))
+        .as("内部表插入序 U+外部表插入序（不是哈希序、不是 externals 插到前面）")
+        .containsExactly(HH_B, HH_A, HH_EXT_A, HH_EXT_B);
+    assertThat(formation.postOf(HH_A)).contains(internalA);
+    assertThat(formation.postOf(HH_B)).contains(internalB);
+    assertThat(formation.postOf(HH_EXT_A)).contains(externalA);
+    assertThat(formation.postOf(HH_EXT_B)).contains(externalB);
+    assertThat(formation.postOf(HouseholdId.parse("hh-none"))).isEmpty();
+    assertThat(formation.staffIsHouseholdProjection()).as("外部岗位非空同样让 staff 降为投影（Z3d 同权）").isTrue();
+    assertThatThrownBy(() -> formation.allPosts().clear())
+        .as("合并视图必须冻结")
+        .isInstanceOf(UnsupportedOperationException.class);
+
+    GovernmentFormation internalOnly =
+        new GovernmentFormation(
+            Map.of(),
+            orderedPosts(Map.entry(HH_A, internalA)),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            Map.of());
+    assertThat(internalOnly.allPosts())
+        .as("外部表为空 ⇒ 零拷贝返回内部表（旧世界行为不变）")
+        .isSameAs(internalOnly.governmentPostsOfHousehold());
+  }
+
+  /** ★ Z4/C4 + Z3d：{@code projectedStaff} 聚合内外部岗位，角色键沿用首次出现序。 */
+  @Test
+  void projectedStaffAggregatesInternalAndExternalPostsInFirstOccurrenceOrder() {
+    GovernmentPostOfHousehold externalScribe = post(HH_EXT_A, StaffRole.SCRIBE, "tier-1");
+    GovernmentFormation formation =
+        new GovernmentFormation(
+            Map.of(),
+            orderedPosts(
+                Map.entry(HH_B, post(HH_B, StaffRole.YAMEN, "tier-2")),
+                Map.entry(HH_A, post(HH_A, StaffRole.SCRIBE, "tier-1"))),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            orderedPosts(Map.entry(HH_EXT_A, externalScribe)));
+
+    Map<StaffRole, Long> projection =
+        formation.projectedStaff(
+            household -> {
+              if (household.equals(HH_A)) {
+                return 5L;
+              }
+              if (household.equals(HH_B)) {
+                return 4L;
+              }
+              return 2L; // HH_EXT_A
+            });
+
+    assertThat(new ArrayList<>(projection.keySet()))
+        .as("角色首次出现序 = 全岗位表遍历序（YAMEN 在 SCRIBE 前，但外部 SCRIBE 并入既有 SCRIBE）")
+        .containsExactly(StaffRole.YAMEN, StaffRole.SCRIBE);
+    assertThat(projection)
+        .as("SCRIBE = 内部 5 + 外部 2（两张表同权聚合）")
+        .containsExactly(Map.entry(StaffRole.YAMEN, 4L), Map.entry(StaffRole.SCRIBE, 7L));
+  }
+
+  /** ★ Z4：{@code projectedStaff} 的负贡献量与求和溢出都具名拒（不静默钳 0 / 不 wrap）。 */
+  @Test
+  void projectedStaffRejectsNegativeContributionAndOverflow() {
+    GovernmentFormation twoScribes =
+        new GovernmentFormation(
+            Map.of(),
+            orderedPosts(
+                Map.entry(HH_A, post(HH_A, StaffRole.SCRIBE, "tier-1")),
+                Map.entry(HH_B, post(HH_B, StaffRole.SCRIBE, "tier-1"))),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            Map.of());
+
+    assertThatThrownBy(() -> twoScribes.projectedStaff(household -> -1L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不得为负")
+        .hasMessageContaining(HH_A.value());
+
+    assertThatThrownBy(() -> twoScribes.projectedStaff(household -> Long.MAX_VALUE))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("溢出")
+        .hasMessageContaining("SCRIBE");
+  }
+
+  /**
+   * ★★ Z4 #13 的 unit 侧钩子：{@code postTiers} 权重目录住在 gov 计划表，岗位只存不透明 {@code tierId}—— {@link
+   * GovernmentPostOfHousehold} 恰五个分量、没有任何权重快照；改计划表权重不可能让本 record 的逐值变。
+   */
+  @Test
+  void governmentPostStoresOnlyTheOpaqueTierReferenceAndNoPlanWeights() {
+    List<String> components =
+        Arrays.stream(GovernmentPostOfHousehold.class.getRecordComponents())
+            .map(RecordComponent::getName)
+            .toList();
+    assertThat(components)
+        .as("岗位 record 恰这五个分量：多一个权重字段 = 把计划目录复制进 posts（引用完整性第二本账）")
+        .containsExactly("householdId", "role", "level", "headOfGovernment", "tierId");
+
+    GovernmentPostOfHousehold tiered = post(HH_EXT_A, StaffRole.SCRIBE, "tier-2");
+    assertThat(tiered)
+        .as("tierId 只是不透明字符串：逐值相等即可（权重目录不在 unit 模块）")
+        .isEqualTo(post(HH_EXT_A, StaffRole.SCRIBE, "tier-2"));
+    assertThat(tiered.tierId()).isEqualTo("tier-2");
+    assertThat(tiered.hasTier()).isTrue();
+  }
+
+  /** ★ Z4/Z3d：{@code tierId} 缺省（4 参/显式 null）⇒ 空串 legacy；空串 = 未指派档位。 */
+  @Test
+  void governmentPostLegacyTierDefaultsToEmptyString() {
+    GovernmentPostOfHousehold oldFourArg =
+        new GovernmentPostOfHousehold(HH_A, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true);
+    assertThat(oldFourArg.tierId()).as("旧 4 参构造器 ⇒ legacy 空串").isEmpty();
+    assertThat(oldFourArg.hasTier()).isFalse();
+
+    GovernmentPostOfHousehold nullTier =
+        new GovernmentPostOfHousehold(HH_A, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true, null);
+    assertThat(nullTier.tierId()).as("显式 null 归一为空串（旧 JSON 缺字段同语义）").isEmpty();
+    assertThat(nullTier.hasTier()).isFalse();
+
+    GovernmentPostOfHousehold emptyTier = post(HH_A, StaffRole.SCRIBE, "");
+    assertThat(emptyTier.tierId()).isEmpty();
+    assertThat(emptyTier.hasTier()).isFalse();
+  }
+
+  /** ★ Z4：岗位配置的必填身份字段（家户/角色/层级）null ⇒ 当场 IAE，不静默。 */
+  @Test
+  void governmentPostRejectsNullHouseholdRoleAndLevel() {
+    assertThatThrownBy(
+            () ->
+                new GovernmentPostOfHousehold(
+                    null, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, false))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("householdId");
+    assertThatThrownBy(
+            () -> new GovernmentPostOfHousehold(HH_A, null, GovernmentLevel.CENTRAL, false))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("role");
+    assertThatThrownBy(() -> new GovernmentPostOfHousehold(HH_A, StaffRole.SCRIBE, null, false))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("level");
   }
 
   // ── ArmyFormation：构造期不变量 ─────────────────────────────────
@@ -366,6 +636,23 @@ class UnitModuleTest {
   }
 
   // ── 夹具 ───────────────────────────────────────────────────────
+
+  /** Z4/Z3d 岗位配置夹具：键 == householdId，tierId 逐值给（空串 = legacy）。 */
+  private static GovernmentPostOfHousehold post(
+      HouseholdId household, StaffRole role, String tierId) {
+    return new GovernmentPostOfHousehold(household, role, GovernmentLevel.CENTRAL, false, tierId);
+  }
+
+  /** 保序岗位表（顺序是内容的一部分；逐位断言用）。 */
+  @SafeVarargs
+  private static Map<HouseholdId, GovernmentPostOfHousehold> orderedPosts(
+      Map.Entry<HouseholdId, GovernmentPostOfHousehold>... entries) {
+    Map<HouseholdId, GovernmentPostOfHousehold> posts = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, GovernmentPostOfHousehold> entry : entries) {
+      posts.put(entry.getKey(), entry.getValue());
+    }
+    return posts;
+  }
 
   private static UnitState stateOf(Unit unit) {
     return new UnitState(Map.of(unit.id(), unit));

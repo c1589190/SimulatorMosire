@@ -57,12 +57,22 @@ class GovFormationCommandHandlersTest {
   private static final SetGovSuperiorHandler SET_SUPERIOR = new SetGovSuperiorHandler();
   private static final RecruitStaffHandler RECRUIT = new RecruitStaffHandler();
   private static final DismissStaffHandler DISMISS = new DismissStaffHandler();
+  private static final AssignGovPostHandler ASSIGN_POST = new AssignGovPostHandler();
+  private static final AssignExternalGovPostHandler ASSIGN_EXTERNAL =
+      new AssignExternalGovPostHandler();
   private static final UnitCodec CODEC = new UnitCodec();
 
   private static final UnitId GOV1 = new UnitId("g-1");
   private static final UnitId GOV2 = new UnitId("g-2");
   private static final UnitId ARMY = new UnitId("a-1");
   private static final UnitId PLAIN = new UnitId("u-plain");
+
+  /** Z3d 外部岗位键（不要求 ∈ Unit.households）；Z4 内部岗位键（必须 ∈ Unit.households）。 */
+  private static final HouseholdId HH_A = HouseholdId.parse("hh-a");
+
+  private static final HouseholdId HH_B = HouseholdId.parse("hh-b");
+  private static final HouseholdId HH_EXT_A = HouseholdId.parse("hh-ext-a");
+  private static final HouseholdId HH_EXT_B = HouseholdId.parse("hh-ext-b");
 
   // ── type() / targetPaths() ─────────────────────────────────────
 
@@ -74,6 +84,37 @@ class GovFormationCommandHandlersTest {
     assertThat(SET_SUPERIOR.type()).isEqualTo("unit.SetGovSuperior");
     assertThat(RECRUIT.type()).isEqualTo("unit.RecruitStaff");
     assertThat(DISMISS.type()).isEqualTo("unit.DismissStaff");
+    assertThat(ASSIGN_POST.type()).isEqualTo("unit.AssignGovPost");
+    assertThat(ASSIGN_EXTERNAL.type()).isEqualTo("unit.AssignExternalGovPost");
+  }
+
+  /**
+   * ★ Z4/Z3d 两条岗位窄写命令都只声明**载荷点名的 GOV unit**：{@code AssignGovPost.unitId} / {@code
+   * AssignExternalGovPost.govUnitId}，命名空间内路径、不含命名空间名。
+   */
+  @Test
+  void targetPathsOfTheTwoPostCommandsNameThePayloadGovUnit() {
+    assertThat(ASSIGN_POST).isInstanceOf(CommandTargets.class);
+    assertThat(ASSIGN_EXTERNAL).isInstanceOf(CommandTargets.class);
+    assertThat(
+            ((CommandTargets) ASSIGN_POST).targetPaths(SpiFixture.MAP_ID, "{\"unitId\":\"g-9\"}"))
+        .containsExactly("g-9");
+    assertThat(
+            ((CommandTargets) ASSIGN_EXTERNAL)
+                .targetPaths(SpiFixture.MAP_ID, "{\"govUnitId\":\"g-9\"}"))
+        .containsExactly("g-9");
+    assertThatThrownBy(
+            () ->
+                ((CommandTargets) ASSIGN_POST)
+                    .targetPaths(SpiFixture.MAP_ID, "{\"role\":\"SCRIBE\"}"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("unitId");
+    assertThatThrownBy(
+            () ->
+                ((CommandTargets) ASSIGN_EXTERNAL)
+                    .targetPaths(SpiFixture.MAP_ID, "{\"role\":\"SCRIBE\"}"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("govUnitId");
   }
 
   /** ★ 每条命令都只声明**载荷点名的 unitId**（命名空间内路径，不含命名空间名）。 */
@@ -220,13 +261,17 @@ class GovFormationCommandHandlersTest {
                 + "[{\"household\":\"hh-ghost\",\"role\":\"SCRIBE\",\"level\":\"CENTRAL\"}]}");
 
     assertThat(reason)
-        .as("拒因必须点名配置键与所在列表")
+        .as("拒因必须点名配置键、所在列表与下一步命令")
         .contains("householdPosts")
         .contains("households")
-        .contains("hh-ghost");
+        .contains("hh-ghost")
+        .contains("unit.SetUnitHouseholds");
   }
 
-  /** ★ S3b 兼容口径：载荷缺 {@code householdPosts} ⇒ 保持既有领导配置（不是清空）。 */
+  /**
+   * ★ S3b/Z3d 兼容口径：载荷缺 {@code householdPosts} ⇒ 保持既有领导配置（不是清空）。★ Z4/Z3d 新语义：只要岗位表非空， {@code staff}
+   * 就是投影——本用例让 staff 与既有逐值相同（都空），只改 level，证明“缺省=保持岗位表”这条口径在 staff 冻结之后仍然成立。
+   */
   @Test
   void setGovFormationWithoutHouseholdPostsKeepsExistingPosts() {
     HouseholdId postHousehold = HouseholdId.parse("hh-a");
@@ -238,16 +283,139 @@ class GovFormationCommandHandlersTest {
             govUnit(GOV1, central()), govUnit(GOV2, govWithPosts(Map.of(postHousehold, post))));
 
     UnitState target =
-        applied(
-            SET_GOV,
-            "g-2",
-            world(base),
-            "{\"unitId\":\"g-2\",\"level\":\"CENTRAL\",\"staff\":{\"POST\":1}}");
+        applied(SET_GOV, "g-2", world(base), "{\"unitId\":\"g-2\",\"level\":\"PROVINCE\"}");
 
     GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV2).module().orElseThrow();
     assertThat(gov.governmentPostsOfHousehold())
         .as("缺 householdPosts ⇒ 保持既有配置")
         .containsExactly(Map.entry(postHousehold, post));
+    assertThat(gov.externalPosts()).as("缺 externalPosts 同样保持（本夹具两张表都空）").isEmpty();
+    assertThat(gov.staff()).as("staff 与既有逐值相同 ⇒ 不算直改投影").isEmpty();
+    assertThat(gov.level())
+        .as("只给 level ⇒ 真的换了这个组件（不是整条 no-op）")
+        .isEqualTo(GovernmentLevel.PROVINCE);
+  }
+
+  /**
+   * ★★ Z4/C4 新语义（Z3d 同权）：岗位表非空时 {@code staff} 只是岗位家户承诺的投影，{@code unit.SetGovFormation} 同批直改 staff ⇒
+   * 具名 Rejected（不是静默覆盖），且原状态一字不动。
+   */
+  @Test
+  void setGovFormationRejectsStaffChangeWhenPostsMakeStaffAProjection() {
+    HouseholdId postHousehold = HouseholdId.parse("hh-a");
+    GovernmentPostOfHousehold post =
+        new GovernmentPostOfHousehold(
+            postHousehold, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true);
+    UnitState base =
+        stateWith(
+            govUnit(GOV1, central()), govUnit(GOV2, govWithPosts(Map.of(postHousehold, post))));
+
+    String reason =
+        reason(
+            SET_GOV,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"level\":\"CENTRAL\"," + "\"staff\":{\"POST\":1}}");
+
+    assertThat(reason)
+        .as("拒因必须点名投影口径与两条岗位表，并给出下一步")
+        .contains("householdPosts")
+        .contains("externalPosts")
+        .contains("投影")
+        .contains("staff")
+        .contains("POST")
+        .contains("1");
+    GovernmentFormation unchanged = (GovernmentFormation) unitOf(base, GOV2).module().orElseThrow();
+    assertThat(unchanged.staff()).as("拒绝 ⇒ 原 staff 一字不动").isEmpty();
+    assertThat(unchanged.governmentPostsOfHousehold())
+        .as("拒绝 ⇒ 原岗位表一字不动")
+        .containsExactly(Map.entry(postHousehold, post));
+  }
+
+  /**
+   * ★★ Z4/C4 的退出路径：显式给空的两张岗位表（{@code householdPosts: [], externalPosts: []}）即退出投影模式， {@code
+   * unit.SetGovFormation} 的旧行为（同批直改 staff）恢复。
+   */
+  @Test
+  void setGovFormationExplicitlyClearingPostsRestoresLegacyStaffEdits() {
+    HouseholdId postHousehold = HouseholdId.parse("hh-a");
+    GovernmentPostOfHousehold post =
+        new GovernmentPostOfHousehold(
+            postHousehold, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true);
+    UnitState base =
+        stateWith(
+            govUnit(GOV1, central()), govUnit(GOV2, govWithPosts(Map.of(postHousehold, post))));
+
+    UnitState cleared =
+        applied(
+            SET_GOV,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"level\":\"CENTRAL\",\"staff\":{\"POST\":2},"
+                + "\"householdPosts\":[],\"externalPosts\":[]}");
+
+    GovernmentFormation gov =
+        (GovernmentFormation) cleared.units().get(GOV2).module().orElseThrow();
+    assertThat(gov.governmentPostsOfHousehold()).as("显式空数组 = 清空内部岗位").isEmpty();
+    assertThat(gov.externalPosts()).as("显式空数组 = 清空外部岗位").isEmpty();
+    assertThat(gov.staff())
+        .as("两表都空 ⇒ staff 直改恢复旧行为")
+        .containsExactly(Map.entry(StaffRole.POST, 2L));
+
+    UnitState recruited =
+        applied(
+            RECRUIT, "g-2", world(cleared), "{\"unitId\":\"g-2\",\"role\":\"POST\",\"count\":1}");
+    assertThat(staffOf(recruited, GOV2))
+        .as("清空岗位后 unit.RecruitStaff 也可直改 staff（旧行为恢复）")
+        .containsEntry(StaffRole.POST, 3L);
+  }
+
+  /**
+   * ★★ Z4 #7：“同 staff 的 SetGovFormation（改 posts/policy）⇒ 允许”。以非空 stored staff（冻结的 legacy
+   * 缓存）为前置，载荷逐值重复 staff、只追加一条岗位并改 policy——若实现把“任何带 staff 的 SetGovFormation”一刀切拒， 本用例会红。
+   */
+  @Test
+  void setGovFormationWithIdenticalStaffAllowsPostAndPolicyEdits() {
+    HouseholdId existingPostHousehold = HouseholdId.parse("hh-a");
+    HouseholdId newPostHousehold = HouseholdId.parse("hh-b");
+    GovernmentFormation baseGov =
+        new GovernmentFormation(
+            orderedStaff(Map.entry(StaffRole.SCRIBE, 7L)),
+            orderedPosts(
+                Map.entry(
+                    existingPostHousehold,
+                    new GovernmentPostOfHousehold(
+                        existingPostHousehold, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true))),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            Map.of());
+    UnitState base =
+        UnitOperations.setUnitHouseholds(
+            stateWith(govUnit(GOV1, central()), govUnit(GOV2, baseGov)),
+            GOV2,
+            List.of(
+                GovernmentHouseholds.of(GOV2.value()), existingPostHousehold, newPostHousehold));
+
+    UnitState target =
+        applied(
+            SET_GOV,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"level\":\"CENTRAL\",\"staff\":{\"SCRIBE\":7},"
+                + "\"policy\":{\"moneyPerStaffPerTick\":9},"
+                + "\"householdPosts\":["
+                + "{\"household\":\"hh-b\",\"role\":\"YAMEN\",\"level\":\"CENTRAL\"},"
+                + "{\"household\":\"hh-a\",\"role\":\"SCRIBE\",\"level\":\"CENTRAL\",\"head\":true}]}");
+
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV2).module().orElseThrow();
+    assertThat(gov.staff())
+        .as("同 staff ⇒ 允许（staff 不算被直改）")
+        .containsExactly(Map.entry(StaffRole.SCRIBE, 7L));
+    assertThat(gov.policy().moneyPerStaffPerTick()).as("policy 编辑生效").isEqualTo(9L);
+    assertThat(new ArrayList<>(gov.governmentPostsOfHousehold().keySet()))
+        .as("岗位表整体替换且保序")
+        .containsExactly(newPostHousehold, existingPostHousehold);
   }
 
   /** ★ 2026-10-09 唯一列表裁定：旧线格式键 {@code households} 必须具名拒（不是静默忽略）。 */
@@ -321,6 +489,501 @@ class GovFormationCommandHandlersTest {
         .as("staff 词表外的角色具名拒，不静默丢条目")
         .contains("CLERK")
         .contains("SCRIBE / YAMEN / POST");
+  }
+
+  // ── unit.AssignGovPost（Z4 岗位窄写口） ─────────────────────────
+
+  /**
+   * ★★ Z4：成功只写内部岗位表（{@code householdPosts}）——staff/policy/superiorGov/level 与 {@code externalPosts}
+   * 全部逐值保留（拷贝纪律：{@code withGovernmentPosts} 不得漏带 externalPosts）。
+   */
+  @Test
+  void assignGovPostOnlyChangesPostsAndKeepsEverythingElse() {
+    GovernmentPostOfHousehold internalPost =
+        post(HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false, "tier-1");
+    GovernmentPostOfHousehold externalPost =
+        post(HH_EXT_A, StaffRole.POST, GovernmentLevel.PROVINCE, false, "tier-2");
+    GovernmentFormation baseGov =
+        formation(
+            orderedStaff(Map.entry(StaffRole.SCRIBE, 2L)),
+            orderedPosts(Map.entry(HH_A, internalPost)),
+            new OfficePolicy(11L, 22L, 33L, 44L, orderedStaff(Map.entry(StaffRole.POST, 5L))),
+            Optional.of(GOV1),
+            GovernmentLevel.PROVINCE,
+            orderedPosts(Map.entry(HH_EXT_A, externalPost)));
+    UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, baseGov));
+
+    UnitState target =
+        applied(
+            ASSIGN_POST,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"household\":\"hh-a\",\"role\":\"SCRIBE\","
+                + "\"tierId\":\"tier-3\",\"level\":\"CENTRAL\",\"head\":true}");
+
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV2).module().orElseThrow();
+    assertThat(gov.governmentPostsOfHousehold())
+        .as("目标家户的岗位整条替换（role/tier/level/head 都落上）")
+        .containsExactly(
+            Map.entry(HH_A, post(HH_A, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true, "tier-3")));
+    assertThat(gov.staff()).as("岗位写口绝不改 staff").isEqualTo(baseGov.staff());
+    assertThat(gov.policy()).as("岗位写口绝不改 policy").isEqualTo(baseGov.policy());
+    assertThat(gov.superiorGov()).as("岗位写口绝不改 superiorGov").isEqualTo(baseGov.superiorGov());
+    assertThat(gov.level()).as("岗位写口绝不改编制层级").isEqualTo(baseGov.level());
+    assertThat(gov.externalPosts())
+        .as("只改内部表 ⇒ 外部岗位逐值保留（含顺序）")
+        .containsExactly(Map.entry(HH_EXT_A, externalPost));
+    assertThat(target.units().get(GOV2).households())
+        .as("岗位写口不碰 Unit.households")
+        .isEqualTo(base.units().get(GOV2).households());
+  }
+
+  /** ★ Z4：岗位家户不在 {@code Unit.households} ⇒ 具名拒并指路 {@code unit.SetUnitHouseholds}。 */
+  @Test
+  void assignGovPostRejectsHouseholdOutsideUnitHouseholds() {
+    UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, province(Optional.empty())));
+
+    String reason =
+        reason(
+            ASSIGN_POST,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"household\":\"hh-ghost\",\"role\":\"SCRIBE\"}");
+
+    assertThat(reason)
+        .as("拒因点名家户 / 所在列表 / 下一步命令")
+        .contains("hh-ghost")
+        .contains("Unit.households")
+        .contains("unit.SetUnitHouseholds");
+    assertThat(
+            ((GovernmentFormation) unitOf(base, GOV2).module().orElseThrow())
+                .governmentPostsOfHousehold())
+        .as("拒绝 ⇒ 世界零变化")
+        .isEmpty();
+  }
+
+  /** ★ Z4：载荷缺 {@code level} ⇒ 缺省取该 GOV 编制自身层级（不是既有岗位层级、不是词表猜值）。 */
+  @Test
+  void assignGovPostDefaultsLevelToTheFormationLevel() {
+    GovernmentFormation baseGov =
+        formation(
+            Map.of(),
+            orderedPosts(
+                Map.entry(
+                    HH_A, post(HH_A, StaffRole.YAMEN, GovernmentLevel.CENTRAL, false, "tier-1"))),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.PROVINCE,
+            Map.of());
+    UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, baseGov));
+
+    UnitState target =
+        applied(
+            ASSIGN_POST,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"household\":\"hh-a\",\"role\":\"SCRIBE\"}");
+
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV2).module().orElseThrow();
+    assertThat(gov.governmentPostsOfHousehold().get(HH_A).level())
+        .as("缺省层级 = 编制层级 PROVINCE（不是旧岗位的 CENTRAL）")
+        .isEqualTo(GovernmentLevel.PROVINCE);
+  }
+
+  /** ★ Z4：同键改派 = 整条替换，但 {@code LinkedHashMap.put} 保留首次插入位置（岗位表保序）。 */
+  @Test
+  void assignGovPostKeepsInsertionOrderWhenReassigningSameHousehold() {
+    GovernmentPostOfHousehold first =
+        post(HH_A, StaffRole.YAMEN, GovernmentLevel.CENTRAL, false, "tier-1");
+    GovernmentPostOfHousehold second =
+        post(HH_B, StaffRole.POST, GovernmentLevel.CENTRAL, false, "tier-2");
+    GovernmentFormation baseGov =
+        formation(
+            Map.of(),
+            orderedPosts(Map.entry(HH_A, first), Map.entry(HH_B, second)),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            Map.of());
+    UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, baseGov));
+
+    UnitState target =
+        applied(
+            ASSIGN_POST,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"household\":\"hh-a\",\"role\":\"SCRIBE\",\"tierId\":\"tier-9\"}");
+
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV2).module().orElseThrow();
+    assertThat(new ArrayList<>(gov.governmentPostsOfHousehold().keySet()))
+        .as("改派既有键不得把它挪到表尾（保序是内容的一部分）")
+        .containsExactly(HH_A, HH_B);
+    assertThat(gov.governmentPostsOfHousehold())
+        .containsExactly(
+            Map.entry(HH_A, post(HH_A, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, false, "tier-9")),
+            Map.entry(HH_B, second));
+  }
+
+  /** ★ Z4：{@code tierId} 缺省或空串 = legacy/未指派档位（空串，不是 null、不是臆造档位）。 */
+  @Test
+  void assignGovPostWithoutTierLeavesLegacyEmptyTierId() {
+    GovernmentPostOfHousehold existing =
+        post(HH_A, StaffRole.YAMEN, GovernmentLevel.CENTRAL, false, "tier-1");
+    GovernmentFormation baseGov =
+        formation(
+            Map.of(),
+            orderedPosts(Map.entry(HH_A, existing)),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            Map.of());
+    UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, baseGov));
+
+    UnitState missingTier =
+        applied(
+            ASSIGN_POST,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"household\":\"hh-a\",\"role\":\"SCRIBE\"}");
+    GovernmentPostOfHousehold noTier =
+        ((GovernmentFormation) missingTier.units().get(GOV2).module().orElseThrow())
+            .governmentPostsOfHousehold()
+            .get(HH_A);
+    assertThat(noTier.tierId()).as("缺省 ⇒ legacy 空串").isEmpty();
+    assertThat(noTier.hasTier()).as("空串 = 未指派档位").isFalse();
+
+    UnitState emptyTier =
+        applied(
+            ASSIGN_POST,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"household\":\"hh-a\",\"role\":\"SCRIBE\",\"tierId\":\"\"}");
+    GovernmentPostOfHousehold explicitEmpty =
+        ((GovernmentFormation) emptyTier.units().get(GOV2).module().orElseThrow())
+            .governmentPostsOfHousehold()
+            .get(HH_A);
+    assertThat(explicitEmpty.tierId()).as("显式空串与缺省同义").isEmpty();
+    assertThat(explicitEmpty.hasTier()).isFalse();
+  }
+
+  // ── unit.AssignExternalGovPost（Z3d 外部岗位窄写口） ─────────────
+
+  /**
+   * ★★ Z3d：成功只写 {@code externalPosts}——内部岗位表/staff/policy/superiorGov/level/{@code Unit.households}
+   * 全部逐值不变；既有外部岗位条目也逐值保留（含插入序）。
+   */
+  @Test
+  void assignExternalGovPostOnlyChangesExternalPosts() {
+    GovernmentPostOfHousehold internalPost =
+        post(HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false, "tier-1");
+    GovernmentPostOfHousehold existingExternal =
+        post(HH_EXT_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false, "tier-1");
+    GovernmentFormation baseGov =
+        formation(
+            orderedStaff(Map.entry(StaffRole.SCRIBE, 2L)),
+            orderedPosts(Map.entry(HH_A, internalPost)),
+            new OfficePolicy(11L, 22L, 33L, 44L, Map.of()),
+            Optional.of(GOV1),
+            GovernmentLevel.PROVINCE,
+            orderedPosts(Map.entry(HH_EXT_A, existingExternal)));
+    UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, baseGov));
+
+    UnitState target =
+        applied(
+            ASSIGN_EXTERNAL,
+            "g-2",
+            world(base),
+            "{\"govUnitId\":\"g-2\",\"householdId\":\"hh-ext-b\",\"role\":\"POST\","
+                + "\"tierId\":\"tier-2\",\"level\":\"CENTRAL\",\"headOfGovernment\":true,"
+                + "\"reason\":\"open-posts-v1\"}");
+
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV2).module().orElseThrow();
+    assertThat(new ArrayList<>(gov.externalPosts().keySet()))
+        .as("新外部岗位追加在既有条目之后（插入序）")
+        .containsExactly(HH_EXT_A, HH_EXT_B);
+    assertThat(gov.externalPosts())
+        .containsExactly(
+            Map.entry(HH_EXT_A, existingExternal),
+            Map.entry(
+                HH_EXT_B, post(HH_EXT_B, StaffRole.POST, GovernmentLevel.CENTRAL, true, "tier-2")));
+    assertThat(gov.governmentPostsOfHousehold())
+        .as("外部岗位写口绝不改内部表")
+        .containsExactly(Map.entry(HH_A, internalPost));
+    assertThat(gov.staff()).as("外部岗位写口绝不改 staff").isEqualTo(baseGov.staff());
+    assertThat(gov.policy()).as("外部岗位写口绝不改 policy").isEqualTo(baseGov.policy());
+    assertThat(gov.superiorGov()).as("外部岗位写口绝不改 superiorGov").isEqualTo(baseGov.superiorGov());
+    assertThat(gov.level()).as("外部岗位写口绝不改编制层级").isEqualTo(baseGov.level());
+    assertThat(target.units().get(GOV2).households())
+        .as("外部户保留原单位/位置：Unit.households 一位都不加")
+        .isEqualTo(base.units().get(GOV2).households())
+        .doesNotContain(HH_EXT_B);
+  }
+
+  /** ★ Z3d：同键同值重放 ⇒ {@code Applied} + **空变更集**（不落空 revision）。 */
+  @Test
+  void assignExternalGovPostSameValueReplayIsAnEmptyChangeSet() {
+    GovernmentPostOfHousehold existing =
+        post(HH_EXT_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, true, "tier-1");
+    UnitState base =
+        stateWith(
+            govUnit(GOV1, central()),
+            govUnit(
+                GOV2,
+                formation(
+                    Map.of(),
+                    Map.of(),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.PROVINCE,
+                    orderedPosts(Map.entry(HH_EXT_A, existing)))));
+
+    HandlerOutcome outcome =
+        ASSIGN_EXTERNAL.handle(
+            world(base),
+            "{\"govUnitId\":\"g-2\",\"householdId\":\"hh-ext-a\",\"role\":\"YAMEN\","
+                + "\"tierId\":\"tier-1\",\"level\":\"PROVINCE\",\"headOfGovernment\":true,"
+                + "\"reason\":\"replay\"}");
+
+    assertThat(outcome).as("同值重放不是拒绝").isInstanceOf(HandlerOutcome.Applied.class);
+    UnitChangeSet changeSet = (UnitChangeSet) ((HandlerOutcome.Applied) outcome).changeSet();
+    assertThat(changeSet.isEmpty()).as("同值重放 ⇒ 空变更集（handler 边界不造 revision）").isTrue();
+    assertThat(UnitChangeSet.apply(changeSet, base)).as("空变更集 apply = 原状态").isEqualTo(base);
+  }
+
+  /** ★ Z3d：新建外部岗位缺 role ⇒ 具名拒（不臆造默认角色）。 */
+  @Test
+  void assignExternalGovPostRejectsNewPostWithoutRole() {
+    UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, province(Optional.empty())));
+
+    String reason =
+        reason(
+            ASSIGN_EXTERNAL,
+            "g-2",
+            world(base),
+            "{\"govUnitId\":\"g-2\",\"householdId\":\"hh-ext-new\",\"reason\":\"x\"}");
+
+    assertThat(reason)
+        .as("拒因点名 role 必填、新建语义与合法词表")
+        .contains("role 必填")
+        .contains("新建外部岗位")
+        .contains("SCRIBE|YAMEN|POST");
+  }
+
+  /** ★ Z3d：改派既有外部岗位时缺省 role/tierId/level/headOfGovernment ⇒ 逐字段沿用既有值（不臆造、不清零）。 */
+  @Test
+  void assignExternalGovPostReassignmentInheritsRoleTierLevelAndHead() {
+    GovernmentPostOfHousehold existing =
+        post(HH_EXT_A, StaffRole.YAMEN, GovernmentLevel.CENTRAL, true, "tier-1");
+    UnitState base =
+        stateWith(
+            govUnit(GOV1, central()),
+            govUnit(
+                GOV2,
+                formation(
+                    Map.of(),
+                    Map.of(),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.PROVINCE,
+                    orderedPosts(Map.entry(HH_EXT_A, existing)))));
+
+    UnitState target =
+        applied(
+            ASSIGN_EXTERNAL,
+            "g-2",
+            world(base),
+            "{\"govUnitId\":\"g-2\",\"householdId\":\"hh-ext-a\",\"reason\":\"keep-existing\"}");
+
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV2).module().orElseThrow();
+    assertThat(gov.externalPosts()).containsExactly(Map.entry(HH_EXT_A, existing));
+  }
+
+  /** ★ Z3d：家户已在 {@code Unit.households}（内部官吏户语义）⇒ 具名拒并指路 {@code unit.AssignGovPost}。 */
+  @Test
+  void assignExternalGovPostRejectsHouseholdContainedInTheUnit() {
+    UnitState base =
+        UnitOperations.setUnitHouseholds(
+            stateWith(govUnit(GOV1, central()), govUnit(GOV2, province(Optional.empty()))),
+            GOV2,
+            List.of(GovernmentHouseholds.of(GOV2.value()), HH_A));
+
+    String reason =
+        reason(
+            ASSIGN_EXTERNAL,
+            "g-2",
+            world(base),
+            "{\"govUnitId\":\"g-2\",\"householdId\":\"hh-a\",\"role\":\"SCRIBE\","
+                + "\"reason\":\"x\"}");
+
+    assertThat(reason)
+        .as("拒因点名 Unit.households 与内部岗位命令")
+        .contains("hh-a")
+        .contains("Unit.households")
+        .contains("unit.AssignGovPost");
+    assertThat(((GovernmentFormation) unitOf(base, GOV2).module().orElseThrow()).externalPosts())
+        .as("拒绝 ⇒ 外部表零变化")
+        .isEmpty();
+  }
+
+  /** ★ Z3d：家户已在内部 {@code householdPosts} ⇒ 内外互斥具名拒（内部优先判，指路内部命令）。 */
+  @Test
+  void assignExternalGovPostRejectsHouseholdAlreadyInInternalPosts() {
+    GovernmentPostOfHousehold internal =
+        post(HH_A, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, false, "tier-1");
+    UnitState base =
+        stateWith(
+            govUnit(GOV1, central()),
+            govUnit(
+                GOV2,
+                formation(
+                    Map.of(),
+                    orderedPosts(Map.entry(HH_A, internal)),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.CENTRAL,
+                    Map.of())));
+
+    String reason =
+        reason(
+            ASSIGN_EXTERNAL,
+            "g-2",
+            world(base),
+            "{\"govUnitId\":\"g-2\",\"householdId\":\"hh-a\",\"role\":\"SCRIBE\","
+                + "\"reason\":\"x\"}");
+
+    assertThat(reason)
+        .as("拒因点名内部岗位表与互斥")
+        .contains("hh-a")
+        .contains("householdPosts")
+        .contains("unit.AssignGovPost");
+  }
+
+  /** ★ Z3d：{@code reason} 必填（审计载荷守卫；不进状态）。 */
+  @Test
+  void assignExternalGovPostRequiresReason() {
+    UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, province(Optional.empty())));
+
+    String reason =
+        reason(
+            ASSIGN_EXTERNAL,
+            "g-2",
+            world(base),
+            "{\"govUnitId\":\"g-2\",\"householdId\":\"hh-ext-new\",\"role\":\"SCRIBE\"}");
+
+    assertThat(reason).contains("reason").contains("必须是字符串");
+  }
+
+  /**
+   * ★★ Z3d 拷贝纪律的第二入口：{@code unit.SetGovFormation} 载荷缺 {@code externalPosts} ⇒ **保持**既有外部岗位； 给了空数组 ⇒
+   * 整体替换成空表；两种情况下 {@code Unit.households} 都不动。
+   */
+  @Test
+  void setGovFormationKeepsExternalPostsWhenKeyIsAbsentAndClearsWhenExplicitlyEmpty() {
+    GovernmentPostOfHousehold external =
+        post(HH_EXT_A, StaffRole.YAMEN, GovernmentLevel.CENTRAL, false, "tier-1");
+    UnitState base =
+        stateWith(
+            govUnit(GOV1, central()),
+            govUnit(
+                GOV2,
+                formation(
+                    Map.of(),
+                    Map.of(),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.CENTRAL,
+                    orderedPosts(Map.entry(HH_EXT_A, external)))));
+
+    UnitState kept =
+        applied(SET_GOV, "g-2", world(base), "{\"unitId\":\"g-2\",\"level\":\"PROVINCE\"}");
+    GovernmentFormation keptGov =
+        (GovernmentFormation) kept.units().get(GOV2).module().orElseThrow();
+    assertThat(keptGov.externalPosts())
+        .as("缺 externalPosts ⇒ 保持既有外部岗位（不静默丢）")
+        .containsExactly(Map.entry(HH_EXT_A, external));
+
+    UnitState nullKept =
+        applied(
+            SET_GOV,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"level\":\"PROVINCE\",\"externalPosts\":null}");
+    assertThat(
+            ((GovernmentFormation) nullKept.units().get(GOV2).module().orElseThrow())
+                .externalPosts())
+        .as("null 与缺省同义的“保持”口径")
+        .containsExactly(Map.entry(HH_EXT_A, external));
+
+    UnitState cleared =
+        applied(
+            SET_GOV,
+            "g-2",
+            world(kept),
+            "{\"unitId\":\"g-2\",\"level\":\"PROVINCE\",\"externalPosts\":[]}");
+    GovernmentFormation clearedGov =
+        (GovernmentFormation) cleared.units().get(GOV2).module().orElseThrow();
+    assertThat(clearedGov.externalPosts()).as("显式空数组 ⇒ 清空（整体替换）").isEmpty();
+    assertThat(cleared.units().get(GOV2).households())
+        .as("外部岗位进出都不得动 Unit.households")
+        .isEqualTo(base.units().get(GOV2).households())
+        .doesNotContain(HH_EXT_A);
+  }
+
+  /** ★ Z3d：载荷把同一家户同时放进内部与外部数组 ⇒ 构造期互斥具名拒（不是后者覆盖前者）。 */
+  @Test
+  void setGovFormationRejectsSameHouseholdInBothPostTables() {
+    UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, province(Optional.empty())));
+
+    String reason =
+        reason(
+            SET_GOV,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"level\":\"CENTRAL\",\"householdPosts\":["
+                + "{\"household\":\"hh-both\",\"role\":\"SCRIBE\",\"level\":\"CENTRAL\"}],"
+                + "\"externalPosts\":["
+                + "{\"household\":\"hh-both\",\"role\":\"YAMEN\",\"level\":\"CENTRAL\"}]}");
+
+    assertThat(reason)
+        .as("拒因点名内部/外部互斥与冲突家户")
+        .contains("同一家户不得同时")
+        .contains("externalPosts")
+        .contains("hh-both");
+  }
+
+  // ── staff 冻结（Z4 #7）与 Z3d 同权 ─────────────────────────────
+
+  /** ★★ Z4 #7 + Z3d：外部岗位非空同样让 staff 成为投影，RecruitStaff/DismissStaff 具名拒。 */
+  @Test
+  void recruitAndDismissStaffAreRejectedWhenExternalPostsProjectStaff() {
+    GovernmentFormation baseGov =
+        formation(
+            Map.of(),
+            Map.of(),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL,
+            orderedPosts(
+                Map.entry(
+                    HH_EXT_A,
+                    post(HH_EXT_A, StaffRole.YAMEN, GovernmentLevel.CENTRAL, false, "tier-1"))));
+    UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, baseGov));
+
+    assertThat(
+            reason(
+                RECRUIT,
+                "g-2",
+                world(base),
+                "{\"unitId\":\"g-2\",\"role\":\"SCRIBE\",\"count\":1}"))
+        .as("外部岗位非空 ⇒ 招募直改 staff 被拒，拒因点名 externalPosts")
+        .contains("externalPosts")
+        .contains("投影");
+    assertThat(
+            reason(
+                DISMISS, "g-2", world(base), "{\"unitId\":\"g-2\",\"role\":\"YAMEN\",\"count\":1}"))
+        .as("外部岗位非空 ⇒ 离编直改 staff 被拒")
+        .contains("externalPosts")
+        .contains("投影");
   }
 
   // ── unit.SetArmyFormation ──────────────────────────────────────
@@ -912,13 +1575,46 @@ class GovFormationCommandHandlersTest {
   /** 带领导家户配置的 GOV 编制（配置键会被 {@link #householdsFor} 编进 unit households）。 */
   private static GovernmentFormation govWithPosts(
       Map<HouseholdId, GovernmentPostOfHousehold> governmentPostsOfHousehold) {
-    return new GovernmentFormation(
+    return formation(
         Map.of(),
         governmentPostsOfHousehold,
         OfficePolicy.defaults(),
         Optional.empty(),
         GovernmentLevel.CENTRAL,
         Map.of());
+  }
+
+  /** Z4/Z3d 编制全字段夹具：内部/外部岗位表都逐值给，便于拷贝纪律用例同时钉两张表。 */
+  private static GovernmentFormation formation(
+      Map<StaffRole, Long> staff,
+      Map<HouseholdId, GovernmentPostOfHousehold> governmentPostsOfHousehold,
+      OfficePolicy policy,
+      Optional<UnitId> superiorGov,
+      GovernmentLevel level,
+      Map<HouseholdId, GovernmentPostOfHousehold> externalPosts) {
+    return new GovernmentFormation(
+        staff, governmentPostsOfHousehold, policy, superiorGov, level, externalPosts);
+  }
+
+  /** 岗位配置：键 == householdId，tierId 逐值给（空串 = legacy）。 */
+  private static GovernmentPostOfHousehold post(
+      HouseholdId household,
+      StaffRole role,
+      GovernmentLevel level,
+      boolean headOfGovernment,
+      String tierId) {
+    return new GovernmentPostOfHousehold(household, role, level, headOfGovernment, tierId);
+  }
+
+  /** 保序岗位表（内部/外部共用；顺序是内容的一部分，用例逐位钉）。 */
+  @SafeVarargs
+  private static Map<HouseholdId, GovernmentPostOfHousehold> orderedPosts(
+      Map.Entry<HouseholdId, GovernmentPostOfHousehold>... entries) {
+    Map<HouseholdId, GovernmentPostOfHousehold> posts = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, GovernmentPostOfHousehold> entry : entries) {
+      posts.put(entry.getKey(), entry.getValue());
+    }
+    return posts;
   }
 
   private static Unit govUnit(UnitId id, GovernmentFormation gov) {

@@ -19,6 +19,7 @@ import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.GovernmentLevel;
+import io.mosire.simos.unit.GovernmentPostOfHousehold;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.OfficePolicy;
@@ -92,6 +93,14 @@ class UnitModuleOperationsTest {
   private static final UnitId U1 = new UnitId("u-1");
   private static final UnitId U2 = new UnitId("u-2");
   private static final UnitId U9 = new UnitId("u-9");
+
+  /** Z3d 拷贝纪律夹具家户：内部键必须 ∈ Unit.households，外部键必须 ∉。 */
+  private static final HouseholdId INTERNAL_HH = HouseholdId.parse("hh-post-a");
+
+  private static final HouseholdId INTERNAL_HH_B = HouseholdId.parse("hh-post-b");
+  private static final HouseholdId EXTERNAL_HH = HouseholdId.parse("hh-ext-a");
+  private static final HouseholdId EXTERNAL_HH_B = HouseholdId.parse("hh-ext-b");
+  private static final HouseholdId EXTERNAL_HH_C = HouseholdId.parse("hh-ext-c");
   private static final String MAP_ID = "Map1";
   private static final StateRef REF = new StateRef(new BranchId("main"), new RevisionId(1));
 
@@ -502,6 +511,222 @@ class UnitModuleOperationsTest {
     assertChangedExactly(before, after, "dismissStaff：只换 module（staff 在 module 内）", "module");
   }
 
+  // ── Z3d 拷贝纪律：五个 withGovernment* 重建点都不得漏带 externalPosts ──
+
+  /** {@code withGovernmentPolicy}（经 {@code setGovPolicy}）：只换 policy，externalPosts 逐值保留。 */
+  @Test
+  void setGovPolicyPreservesExternalPosts() {
+    GovernmentFormation beforeGov = govWithBothPostTables();
+    Unit before = unit(U1, beforeGov);
+    UnitState base = stateOf(before);
+    UnitState next =
+        UnitOperations.setGovPolicy(
+            base,
+            U1,
+            Optional.of(999L),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty());
+
+    Unit after = next.units().get(U1);
+    GovernmentFormation afterGov = (GovernmentFormation) after.module().orElseThrow();
+    assertThat(afterGov.policy().grainPerStaffPerTick()).as("前置：policy 真的改了").isEqualTo(999L);
+    assertThat(afterGov.externalPosts())
+        .as("withGovernmentPolicy 漏带 externalPosts ⇒ 当场红")
+        .containsExactly(
+            Map.entry(EXTERNAL_HH, externalPost()), Map.entry(EXTERNAL_HH_C, externalPostC()));
+    assertThat(afterGov.governmentPostsOfHousehold())
+        .as("内部岗位表逐值保留")
+        .containsExactly(
+            Map.entry(INTERNAL_HH, internalPost()), Map.entry(INTERNAL_HH_B, internalPostB()));
+    assertChangedExactly(before, after, "setGovPolicy 的 withGovernmentPolicy", "module");
+  }
+
+  /** {@code withGovernmentSuperior}（经 {@code setGovSuperior}）：只换 superior，externalPosts 逐值保留。 */
+  @Test
+  void setGovSuperiorPreservesExternalPosts() {
+    GovernmentFormation beforeGov = govWithBothPostTables();
+    Unit before = unit(U1, beforeGov);
+    UnitState base = stateOf(before);
+    UnitState next = UnitOperations.setGovSuperior(base, U1, Optional.empty());
+
+    Unit after = next.units().get(U1);
+    GovernmentFormation afterGov = (GovernmentFormation) after.module().orElseThrow();
+    assertThat(afterGov.superiorGov()).as("前置：superior 真的改了").isEmpty();
+    assertThat(afterGov.externalPosts())
+        .as("withGovernmentSuperior 漏带 externalPosts ⇒ 当场红")
+        .containsExactly(
+            Map.entry(EXTERNAL_HH, externalPost()), Map.entry(EXTERNAL_HH_C, externalPostC()));
+    assertChangedExactly(before, after, "setGovSuperior 的 withGovernmentSuperior", "module");
+  }
+
+  /** {@code withGovernmentPosts}（经 {@code assignGovernmentPost}）：只换内部岗位表，externalPosts 逐值保留。 */
+  @Test
+  void assignGovernmentPostPreservesExternalPosts() {
+    GovernmentFormation beforeGov = govWithBothPostTables();
+    Unit before = unit(U1, beforeGov);
+    UnitState base = stateOf(before);
+    UnitState next =
+        UnitOperations.assignGovernmentPost(
+            base, U1, INTERNAL_HH, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true, "tier-3");
+
+    Unit after = next.units().get(U1);
+    GovernmentFormation afterGov = (GovernmentFormation) after.module().orElseThrow();
+    assertThat(afterGov.governmentPostsOfHousehold().get(INTERNAL_HH).role())
+        .as("前置：目标岗位真的改了")
+        .isEqualTo(StaffRole.SCRIBE);
+    assertThat(afterGov.externalPosts())
+        .as("withGovernmentPosts 漏带 externalPosts ⇒ 当场红")
+        .containsExactly(
+            Map.entry(EXTERNAL_HH, externalPost()), Map.entry(EXTERNAL_HH_C, externalPostC()));
+    assertThat(afterGov.staff()).as("岗位写口不得动 staff").isEqualTo(beforeGov.staff());
+    assertThat(afterGov.policy()).as("岗位写口不得动 policy").isEqualTo(beforeGov.policy());
+    assertThat(afterGov.superiorGov()).as("岗位写口不得动 superiorGov").isEqualTo(beforeGov.superiorGov());
+    assertThat(afterGov.level()).as("岗位写口不得动 level").isEqualTo(beforeGov.level());
+    assertChangedExactly(before, after, "assignGovernmentPost 的 withGovernmentPosts", "module");
+  }
+
+  /**
+   * {@code withGovernmentExternalPosts}（经 {@code assignExternalGovernmentPost}）：只换外部表，内部表/staff/
+   * policy/superior/level/{@code Unit.households} 全部逐值保留；既有外部条目除被改派者外也逐值保留。
+   */
+  @Test
+  void assignExternalGovernmentPostPreservesEverythingElse() {
+    GovernmentFormation beforeGov = govWithBothPostTables();
+    Unit before = unit(U1, beforeGov);
+    UnitState base = stateOf(before);
+    GovernmentPostOfHousehold added =
+        new GovernmentPostOfHousehold(
+            EXTERNAL_HH_B, StaffRole.POST, GovernmentLevel.CENTRAL, true, "tier-2");
+    UnitState next =
+        UnitOperations.assignExternalGovernmentPost(
+            base, U1, EXTERNAL_HH_B, StaffRole.POST, GovernmentLevel.CENTRAL, true, "tier-2");
+
+    Unit after = next.units().get(U1);
+    GovernmentFormation afterGov = (GovernmentFormation) after.module().orElseThrow();
+    assertThat(afterGov.externalPosts())
+        .as("只追加外部条目、既有外部条目逐值保留（含插入序）")
+        .containsExactly(
+            Map.entry(EXTERNAL_HH, externalPost()),
+            Map.entry(EXTERNAL_HH_C, externalPostC()),
+            Map.entry(EXTERNAL_HH_B, added));
+    assertThat(afterGov.governmentPostsOfHousehold())
+        .as("withGovernmentExternalPosts 漏带内部表 ⇒ 当场红")
+        .containsExactly(
+            Map.entry(INTERNAL_HH, internalPost()), Map.entry(INTERNAL_HH_B, internalPostB()));
+    assertThat(afterGov.staff()).isEqualTo(beforeGov.staff());
+    assertThat(afterGov.policy()).isEqualTo(beforeGov.policy());
+    assertThat(afterGov.superiorGov()).isEqualTo(beforeGov.superiorGov());
+    assertThat(afterGov.level()).isEqualTo(beforeGov.level());
+    assertThat(after.households())
+        .as("外部岗位写口不得把外部户编进 Unit.households")
+        .isEqualTo(before.households())
+        .doesNotContain(EXTERNAL_HH_B);
+    assertChangedExactly(
+        before, after, "assignExternalGovernmentPost 的 withGovernmentExternalPosts", "module");
+  }
+
+  /**
+   * ★★ {@code withGovernmentStaff} 是五个重建点中唯一在岗位非空时被公开写口（Recruit/Dismiss）按设计挡住的 （staff
+   * 冻结，Z4/C4）：这里用反射直接对拷贝点判“externalPosts 逐值带过”。若把该重建点末参改成 {@code Map.of()} ⇒ 本用例当场红——这正是 Z3d §3.1
+   * 要的编译期/测试期判别力。
+   */
+  @Test
+  void withGovernmentStaffPrivateRebuildPreservesExternalPosts() throws Exception {
+    GovernmentFormation before = govWithBothPostTables();
+    Method rebuild =
+        UnitOperations.class.getDeclaredMethod(
+            "withGovernmentStaff", GovernmentFormation.class, Map.class);
+    rebuild.setAccessible(true);
+
+    GovernmentFormation after =
+        (GovernmentFormation)
+            rebuild.invoke(
+                null,
+                before,
+                orderedStaff(Map.entry(StaffRole.YAMEN, 9L), Map.entry(StaffRole.POST, 4L)));
+
+    assertThat(after.staff())
+        .as("前置：staff 真的换了")
+        .containsExactly(Map.entry(StaffRole.YAMEN, 9L), Map.entry(StaffRole.POST, 4L));
+    assertThat(after.externalPosts())
+        .as("withGovernmentStaff 漏带 externalPosts ⇒ 当场红")
+        .containsExactly(
+            Map.entry(EXTERNAL_HH, externalPost()), Map.entry(EXTERNAL_HH_C, externalPostC()));
+    assertThat(after.governmentPostsOfHousehold())
+        .as("内部岗位表逐值保留")
+        .containsExactly(
+            Map.entry(INTERNAL_HH, internalPost()), Map.entry(INTERNAL_HH_B, internalPostB()));
+    assertThat(after.policy()).isEqualTo(before.policy());
+    assertThat(after.superiorGov()).isEqualTo(before.superiorGov());
+    assertThat(after.level()).isEqualTo(before.level());
+  }
+
+  /**
+   * ★★ {@code UnitChangeSet.between} 的实体粒度往返：只改一个组件（policy）时，外部岗位表必须逐值活着 （把 {@code
+   * GovernmentFormation} 换成别的实例时漏带 externalPosts ⇒ 本用例红）。
+   */
+  @Test
+  void changeSetBetweenRoundTripPreservesExternalPosts() {
+    GovernmentFormation beforeGov = govWithBothPostTables();
+    Unit before = unit(U1, beforeGov);
+    UnitState base = stateOf(before);
+    GovernmentFormation afterGov =
+        new GovernmentFormation(
+            beforeGov.staff(),
+            beforeGov.governmentPostsOfHousehold(),
+            new OfficePolicy(7L, 8L, 9L, 10L, Map.of()),
+            beforeGov.superiorGov(),
+            beforeGov.level(),
+            beforeGov.externalPosts());
+    UnitState target = stateOf(unit(U1, afterGov));
+
+    UnitChangeSet between = UnitChangeSet.between(base, target);
+    UnitState rebuilt = UnitChangeSet.apply(between, base);
+
+    assertThat(rebuilt).as("铁律 5：apply(between, base) == target").isEqualTo(target);
+    GovernmentFormation rebuiltGov =
+        (GovernmentFormation) rebuilt.units().get(U1).module().orElseThrow();
+    assertThat(rebuiltGov.externalPosts())
+        .as("只改 policy 的 between 往返不得丢外部岗位")
+        .containsExactly(
+            Map.entry(EXTERNAL_HH, externalPost()), Map.entry(EXTERNAL_HH_C, externalPostC()));
+  }
+
+  /** Z3d 全字段 GOV 编制夹具：内部 + 外部岗位表都非空（外部户不编进 households）。 */
+  private static GovernmentFormation govWithBothPostTables() {
+    return new GovernmentFormation(
+        orderedStaff(Map.entry(StaffRole.YAMEN, 2L), Map.entry(StaffRole.SCRIBE, 5L)),
+        orderedPosts(
+            Map.entry(INTERNAL_HH, internalPost()), Map.entry(INTERNAL_HH_B, internalPostB())),
+        new OfficePolicy(111L, 222L, 3L, 7L, orderedStaff(Map.entry(StaffRole.POST, 9L))),
+        Optional.of(U9),
+        GovernmentLevel.PROVINCE,
+        orderedPosts(
+            Map.entry(EXTERNAL_HH, externalPost()), Map.entry(EXTERNAL_HH_C, externalPostC())));
+  }
+
+  private static GovernmentPostOfHousehold internalPost() {
+    return new GovernmentPostOfHousehold(
+        INTERNAL_HH, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false, "tier-1");
+  }
+
+  private static GovernmentPostOfHousehold internalPostB() {
+    return new GovernmentPostOfHousehold(
+        INTERNAL_HH_B, StaffRole.POST, GovernmentLevel.PROVINCE, false, "tier-2");
+  }
+
+  private static GovernmentPostOfHousehold externalPost() {
+    return new GovernmentPostOfHousehold(
+        EXTERNAL_HH, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, false, "tier-3");
+  }
+
+  private static GovernmentPostOfHousehold externalPostC() {
+    return new GovernmentPostOfHousehold(
+        EXTERNAL_HH_C, StaffRole.POST, GovernmentLevel.CENTRAL, false, "tier-4");
+  }
+
   // ── UnitMoves 冻结视图 + UnitTimeParticipant 两处 ──────────────
 
   @Test
@@ -623,6 +848,16 @@ class UnitModuleOperationsTest {
       staff.put(entry.getKey(), entry.getValue());
     }
     return staff;
+  }
+
+  @SafeVarargs
+  private static Map<HouseholdId, GovernmentPostOfHousehold> orderedPosts(
+      Map.Entry<HouseholdId, GovernmentPostOfHousehold>... entries) {
+    Map<HouseholdId, GovernmentPostOfHousehold> posts = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, GovernmentPostOfHousehold> entry : entries) {
+      posts.put(entry.getKey(), entry.getValue());
+    }
+    return posts;
   }
 
   private static UnitState stateOf(Unit... units) {

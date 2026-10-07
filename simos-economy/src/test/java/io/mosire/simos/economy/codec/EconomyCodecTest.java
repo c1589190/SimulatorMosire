@@ -16,6 +16,7 @@ import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -24,18 +25,23 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
+import io.mosire.simos.economy.api.stock.DeductionReason;
+import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
+import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -118,6 +124,10 @@ class EconomyCodecTest {
 
   private static final LaborAllocationId ALLOCATION =
       new LaborAllocationId("alloc-farm-rural:0_0:MALE:1");
+
+  /** ★ P4a/Z3c 工资链的夹具身份：只用来量 reason 过线与读回，不参与经济公式。 */
+  private static final PeriodicHouseholdAdjustmentId PERIODIC_ADJUSTMENT =
+      new PeriodicHouseholdAdjustmentId("periodic-codec-test");
 
   /**
    * ★★ **非派生**经营主体（S1 阶段 3 的 D9 纪律）：{@code tenant} 的推导值是 {@code HOUSEHOLD:farm}，这里显式给 {@code
@@ -574,6 +584,221 @@ class EconomyCodecTest {
         .hasMessageContaining("商品不在配方产出键里");
   }
 
+  // ── Z1b：劳动承诺 kind 的旧档缺省 / 显式往返 / 坏值 fail-closed ─────────────────────────────
+
+  /**
+   * ★★ <b>Z1b §10.1：旧档快照的 allocation 缺 {@code kind} ⇒ 读成 {@code PRODUCTION}</b>。
+   *
+   * <p>判别力：字节里真的**没有** {@code kind} 键（先断言再删）；解码后整份 {@link EconomyData} 必须等于"显式 PRODUCTION 的原状态"（只把
+   * kind 变回 PRODUCTION 不够 —— 缺省不得改写任何别的字段）。
+   */
+  @Test
+  void legacySnapshotLaborCommitmentWithoutKindDefaultsToProduction() {
+    EconomyData data = fullData();
+    String encoded = CODEC.encodeSnapshot(snapshotOf(data, SimosTimestamp.of(10)));
+    String legacy = stripLaborCommitmentKind(encoded, LaborCommitmentKind.PRODUCTION);
+    assertThat(legacy).doesNotContain("\"kind\":\"PRODUCTION\"");
+
+    EconomySnapshot back = (EconomySnapshot) CODEC.decodeSnapshot(legacy);
+
+    assertThat(back.data().allocations()).containsOnlyKeys(ALLOCATION);
+    assertThat(back.data().allocations().get(ALLOCATION).kind())
+        .as("旧档缺 kind ⇒ PRODUCTION（不是 null，也不是静默丢行）")
+        .isEqualTo(LaborCommitmentKind.PRODUCTION);
+    assertThat(back.data()).as("除了补上的 kind，其余字段逐值等于原状态").isEqualTo(data);
+  }
+
+  /** ★★ <b>Z1b §10.1：旧档变更集 {@code upsert.entries} 缺 {@code kind} ⇒ PRODUCTION</b>。 */
+  @Test
+  void legacyChangeSetUpsertLaborCommitmentWithoutKindDefaultsToProduction() {
+    EconomyChangeSet changeSet = EconomyChangeSet.between(EconomyData.empty(), fullData());
+    String encoded = CODEC.encodeChangeSet(changeSet);
+    String legacy = stripLaborCommitmentKind(encoded, LaborCommitmentKind.PRODUCTION);
+
+    EconomyChangeSet back = (EconomyChangeSet) CODEC.decodeChangeSet(legacy);
+
+    FieldDelta.Upsert<HouseholdLaborCommitment> upsert =
+        (FieldDelta.Upsert<HouseholdLaborCommitment>) back.allocations();
+    assertThat(upsert.entries().get(ALLOCATION.value()).kind())
+        .as("upsert 路径的缺省")
+        .isEqualTo(LaborCommitmentKind.PRODUCTION);
+    assertThat(back).as("补上 kind 后整份变更集逐值等于原变更集").isEqualTo(changeSet);
+  }
+
+  /** ★★ <b>Z1b §10.1：旧档变更集 {@code patch.upserts} 缺 {@code kind} ⇒ PRODUCTION</b>。 */
+  @Test
+  void legacyChangeSetPatchLaborCommitmentWithoutKindDefaultsToProduction() {
+    // Patch 需要"同键改值 + 另一个键删除"两侧同时出现：base 两条（合计用满 60000 预算），target 只留改值后的那一条。
+    LaborAllocationId removed = new LaborAllocationId("alloc-farm-second");
+    EconomyData base =
+        fullData()
+            .withLaborCommitments(
+                Map.of(
+                    ALLOCATION,
+                        laborCommitment(ALLOCATION, LaborCommitmentKind.PRODUCTION, 55_000L),
+                    removed, laborCommitment(removed, LaborCommitmentKind.PRODUCTION, 5_000L)));
+    EconomyData target =
+        base.withLaborCommitments(
+            Map.of(
+                ALLOCATION, laborCommitment(ALLOCATION, LaborCommitmentKind.PRODUCTION, 57_000L)));
+    EconomyChangeSet changeSet = EconomyChangeSet.between(base, target);
+    assertThat(changeSet.allocations()).isInstanceOf(FieldDelta.Patch.class);
+
+    String legacy =
+        stripLaborCommitmentKind(CODEC.encodeChangeSet(changeSet), LaborCommitmentKind.PRODUCTION);
+    EconomyChangeSet back = (EconomyChangeSet) CODEC.decodeChangeSet(legacy);
+
+    FieldDelta.Patch<HouseholdLaborCommitment> patch =
+        (FieldDelta.Patch<HouseholdLaborCommitment>) back.allocations();
+    assertThat(patch.upserts().entries().get(ALLOCATION.value()).kind())
+        .as("patch.upserts 路径的缺省")
+        .isEqualTo(LaborCommitmentKind.PRODUCTION);
+    assertThat(back).isEqualTo(changeSet);
+  }
+
+  /**
+   * ★★ <b>Z1b §10.1：显式 {@code GOV_SERVICE} 往返稳定 + 逐字节稳定</b>（快照与变更集两条线）。
+   *
+   * <p>判别力：线格式里必须真的出现 {@code "kind":"GOV_SERVICE"}（若某处只写枚举名却读回 PRODUCTION，值断言与字节稳定断言都会红）。
+   */
+  @Test
+  void explicitGovServiceKindRoundTripsAndIsByteStable() {
+    EconomyData data =
+        fullData()
+            .withLaborCommitments(
+                Map.of(ALLOCATION, laborCommitment(LaborCommitmentKind.GOV_SERVICE, 58_000L)));
+    String snapshotOnce = CODEC.encodeSnapshot(snapshotOf(data, SimosTimestamp.of(10)));
+    assertThat(snapshotOnce).contains("\"kind\":\"GOV_SERVICE\"");
+
+    EconomySnapshot snapshotBack = (EconomySnapshot) CODEC.decodeSnapshot(snapshotOnce);
+    assertThat(snapshotBack.data()).isEqualTo(data);
+    assertThat(snapshotBack.data().allocations().get(ALLOCATION).kind())
+        .isEqualTo(LaborCommitmentKind.GOV_SERVICE);
+    assertThat(CODEC.encodeSnapshot(snapshotBack)).as("快照逐字节稳定").isEqualTo(snapshotOnce);
+
+    EconomyChangeSet changeSet = EconomyChangeSet.between(EconomyData.empty(), data);
+    String changeOnce = CODEC.encodeChangeSet(changeSet);
+    assertThat(changeOnce).contains("\"kind\":\"GOV_SERVICE\"");
+    EconomyChangeSet changeBack = (EconomyChangeSet) CODEC.decodeChangeSet(changeOnce);
+    assertThat(changeBack).isEqualTo(changeSet);
+    assertThat(CODEC.encodeChangeSet(changeBack)).as("变更集逐字节稳定").isEqualTo(changeOnce);
+    assertThat(
+            ((FieldDelta.Upsert<HouseholdLaborCommitment>) changeBack.allocations())
+                .entries()
+                .get(ALLOCATION.value())
+                .kind())
+        .isEqualTo(LaborCommitmentKind.GOV_SERVICE);
+  }
+
+  /** ★ 未知 {@code kind} 文本 ⇒ 闭枚举绑定 fail-closed（不得静默回落 PRODUCTION）。 */
+  @Test
+  void unknownLaborCommitmentKindTextFailsClosedOnLoad() {
+    String encoded = CODEC.encodeSnapshot(snapshotOf(fullData(), SimosTimestamp.of(10)));
+    String bogus = encoded.replace("\"kind\":\"PRODUCTION\"", "\"kind\":\"SUPERVISOR\"");
+
+    assertThatThrownBy(() -> CODEC.decodeSnapshot(bogus))
+        .as("未知 kind 是坏档，不得兜底成 PRODUCTION")
+        .isInstanceOf(IllegalStateException.class)
+        .hasStackTraceContaining("SUPERVISOR")
+        .hasStackTraceContaining("EconomyData 解码失败");
+  }
+
+  // ── Z3c：告警 kind / 工资 reason 过线 ───────────────────────────────────────────────
+
+  /**
+   * ★★ <b>z3c1 §9.7：Z3c 新增五个告警 kind 经 {@code EconomyCodec} 往返</b>，且 {@code (hex, kind)} 身份覆盖 —— 同一
+   * hex 上五个 kind 各一条（键 = {@code crisis-<q>_<r>-<KIND>}），另一格放一条旧 kind 作对照。
+   */
+  @Test
+  void z3cCrisisSignalKindsRoundTripWithHexKindCoverage() {
+    HexCoord hex = new HexCoord(0, 0);
+    HexCoord otherHex = new HexCoord(1, 0);
+    List<HexCrisisSignal.Kind> newKinds =
+        List.of(
+            HexCrisisSignal.Kind.ADMIN_BUDGET_SHORTFALL,
+            HexCrisisSignal.Kind.ADMIN_PLAN_MISSING,
+            HexCrisisSignal.Kind.ADMIN_SERVICE_FLOW_ZERO,
+            HexCrisisSignal.Kind.ADMIN_VACANCY,
+            HexCrisisSignal.Kind.ADMIN_CONTRACT);
+    Map<CrisisSignalId, HexCrisisSignal> signals = new LinkedHashMap<>();
+    for (HexCrisisSignal.Kind kind : newKinds) {
+      CrisisSignalId id = CrisisSignalId.idOf(hex, kind.name());
+      signals.put(id, crisisSignal(id, hex, kind, "new-" + kind.name()));
+    }
+    CrisisSignalId legacyFood = CrisisSignalId.idOf(otherHex, HexCrisisSignal.Kind.FOOD.name());
+    signals.put(legacyFood, crisisSignal(legacyFood, otherHex, HexCrisisSignal.Kind.FOOD, "food"));
+
+    EconomyData data = EconomyData.empty().withCrisisSignals(signals);
+    EconomyData back =
+        ((EconomySnapshot)
+                CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshotOf(data, SimosTimestamp.of(10)))))
+            .data();
+
+    assertThat(back.crisisSignals()).as("五个新 kind + 一条旧 kind 全部逐值往返").isEqualTo(signals);
+    for (HexCrisisSignal.Kind kind : newKinds) {
+      CrisisSignalId id = CrisisSignalId.idOf(hex, kind.name());
+      assertThat(back.crisisSignals()).containsKey(id);
+      assertThat(back.crisisSignals().get(id).kind()).isEqualTo(kind);
+      assertThat(back.crisisSignals().get(id).idMatchesIdentity()).isTrue();
+    }
+    assertThat(back.crisisSignals().get(legacyFood).kind()).isEqualTo(HexCrisisSignal.Kind.FOOD);
+  }
+
+  /**
+   * ★★ <b>z3c1 §9.7：旧档只含旧三 kind（FOOD/CLOTH/MORTALITY）仍可读</b> —— 手写旧形状 JSON（不引用被测 codec 自产字节，
+   * 防"自己写自己读"的自证），解码后三个 kind 逐值可读。
+   */
+  @Test
+  void legacyCrisisSignalsWithOnlyOriginalKindsStillDecode() {
+    EconomySnapshot back =
+        (EconomySnapshot) CODEC.decodeSnapshot(legacyCrisisSignalsSnapshotJson());
+
+    assertThat(back.data().crisisSignals()).hasSize(3);
+    assertThat(back.data().crisisSignals().get(new CrisisSignalId("crisis-0_0-FOOD")).kind())
+        .isEqualTo(HexCrisisSignal.Kind.FOOD);
+    assertThat(back.data().crisisSignals().get(new CrisisSignalId("crisis-1_0-CLOTH")).kind())
+        .isEqualTo(HexCrisisSignal.Kind.CLOTH);
+    assertThat(back.data().crisisSignals().get(new CrisisSignalId("crisis-0_0-MORTALITY")).kind())
+        .isEqualTo(HexCrisisSignal.Kind.MORTALITY);
+  }
+
+  /**
+   * ★★ <b>z3c1 §9.8：{@code DeductionReason.ADMIN_SALARY} 经 codec 往返</b>；旧档 {@code MILITARY_SALARY}
+   * 读回不变（新增档不得改写旧档的线格式）。
+   */
+  @Test
+  void adminSalaryAndLegacyDeductionReasonsSurviveCodecRoundTrip() {
+    for (DeductionReason reason :
+        List.of(DeductionReason.MILITARY_SALARY, DeductionReason.ADMIN_SALARY)) {
+      HouseholdPeriodicAdjustment rule =
+          new HouseholdPeriodicAdjustment(
+              PERIODIC_ADJUSTMENT,
+              FARM_HH,
+              Optional.empty(),
+              Map.of(GRAIN, 5L),
+              Map.of(),
+              reason,
+              30L,
+              0L,
+              0L,
+              OptionalLong.empty(),
+              "gm:test");
+      EconomyData data =
+          EconomyData.empty().withPeriodicAdjustments(Map.of(PERIODIC_ADJUSTMENT, rule));
+
+      EconomyData back =
+          ((EconomySnapshot)
+                  CODEC.decodeSnapshot(
+                      CODEC.encodeSnapshot(snapshotOf(data, SimosTimestamp.of(10)))))
+              .data();
+
+      assertThat(back).as("%s 的整份状态往返", reason).isEqualTo(data);
+      assertThat(back.periodicAdjustments().get(PERIODIC_ADJUSTMENT).reason())
+          .as("%s 读回不变", reason)
+          .isEqualTo(reason);
+    }
+  }
+
   /** 别的模块的切片：本测试只借它的**类型**，不借语义。 */
   private record ForeignSlice(StateRef ref, SimosTimestamp timestamp) implements Snapshot {
 
@@ -668,6 +893,69 @@ class EconomyCodecTest {
   private static EconomySnapshot snapshotOf(EconomyData data, SimosTimestamp timestamp) {
     return new EconomySnapshot(
         new StateRef(new BranchId("main"), new RevisionId(3)), timestamp, data);
+  }
+
+  // ── Z1b/Z3c 新用例的夹具助手 ───────────────────────────────────────────────────────────
+
+  /** 与 {@link #fullData()} 同键同批次的劳动承诺，仅 kind / 劳动量可换。 */
+  private static HouseholdLaborCommitment laborCommitment(
+      LaborCommitmentKind kind, long laborMilli) {
+    return laborCommitment(ALLOCATION, kind, laborMilli);
+  }
+
+  private static HouseholdLaborCommitment laborCommitment(
+      LaborAllocationId id, LaborCommitmentKind kind, long laborMilli) {
+    return new HouseholdLaborCommitment(
+        id, LOT, FARM_HH, FARM_OPERATOR, FARM_UNIT.value(), laborMilli, 1L, kind);
+  }
+
+  /**
+   * 从已编码 JSON 里删掉**劳动承诺**的 {@code kind} 字段（模拟 Z1b 之前的旧档字节）：record 组件序里 {@code kind} 恒为最后一维，故删
+   * {@code ,"kind":"<name>"} 即"缺键"。先断言夹具真的带该字段，防夹具漂移后用例静默测不到。
+   */
+  private static String stripLaborCommitmentKind(String json, LaborCommitmentKind kind) {
+    String needle = ",\"kind\":\"" + kind.name() + "\"";
+    assertThat(json).as("夹具必须真的带 %s 的 kind 字段（否则本用例测的是空气）", kind).contains(needle);
+    return json.replace(needle, "");
+  }
+
+  /** 一条可自洽的告警信号（id 由 (hex, kind) 派生；evidence 带一个非零原始量）。 */
+  private static HexCrisisSignal crisisSignal(
+      CrisisSignalId id, HexCoord hex, HexCrisisSignal.Kind kind, String metric) {
+    return new HexCrisisSignal(
+        id, hex, kind, 1, 0L, Map.of(metric, 1L), List.of(), List.of(), "fixture");
+  }
+
+  /**
+   * 旧档（Z3c 之前）的手写快照 JSON：只含旧三 kind FOOD/CLOTH/MORTALITY。刻意不引用被测 codec 的自产字节 —— 若用 encode 再
+   * decode，就只是在测"新 codec 读自己写的新形状"，读不出"旧名字仍可读"这条判据。
+   */
+  private static String legacyCrisisSignalsSnapshotJson() {
+    return "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},"
+        + "\"timestamp\":{\"tick\":0,\"calendarLabel\":null},"
+        + "\"data\":{\"crisisSignals\":{"
+        + legacySignalJson("crisis-0_0-FOOD", 0, 0, "FOOD", 1)
+        + ","
+        + legacySignalJson("crisis-1_0-CLOTH", 1, 0, "CLOTH", 2)
+        + ","
+        + legacySignalJson("crisis-0_0-MORTALITY", 0, 0, "MORTALITY", 3)
+        + "}}}";
+  }
+
+  private static String legacySignalJson(String id, int q, int r, String kind, int metricValue) {
+    return "\""
+        + id
+        + "\":{\"id\":{\"value\":\""
+        + id
+        + "\"},\"hex\":{\"q\":"
+        + q
+        + ",\"r\":"
+        + r
+        + "},\"kind\":\""
+        + kind
+        + "\",\"severity\":1,\"day\":0,\"evidence\":{\"metric\":"
+        + metricValue
+        + "},\"households\":[],\"classes\":[],\"reason\":\"legacy\"}";
   }
 
   private static EconomyMeta meta() {

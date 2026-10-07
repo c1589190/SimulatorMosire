@@ -7,23 +7,9 @@ import static org.assertj.core.api.Assertions.entry;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.map.GameMap;
-import io.mosire.simos.map.HexCell;
-import io.mosire.simos.map.block.TerrainBlocks;
-import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.map.region.Region;
-import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.map.region.RegionMeta;
-import io.mosire.simos.map.terrain.TerrainCatalog;
-import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.social.api.id.PeopleLotId;
-import io.mosire.simos.social.api.population.Sex;
-import io.mosire.simos.social.population.PopulationGroup;
-import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.GovernmentLevel;
@@ -41,38 +27,39 @@ import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link GovDaily#settle} 的逐值判据（阶段 11a，计划 §2.2 / §3）：
+ * {@link GovDaily#settle} 的逐值判据（阶段 11a + Z3b 单次计算）：
  *
  * <ul>
  *   <li>资源顺序固定 grain → cloth → money（oracle 调用序 = 评估序，0 需求不发）；
  *   <li>全额/部分/零支付 ⇒ dues 的 assessed/paid/shortfall 逐值；缺口 ⇒ 每 office 至多一条 ADMIN_SUPPLY，evidence =
  *       三资源合计；
+ *   <li><b>Z3b 单次计算</b>：效率表由 app 算好传入；六个 per-mille 读数与覆盖缺口 evidence 都取自这一份（不按 staff 重算）；缺该 office
+ *       的当日结果 ⇒ 具名 {@code IllegalStateException}；状态损坏（缺单位/缺 GovernmentFormation） 的检查在效率查表<b>之前</b>；
  *   <li>覆盖率不足 ⇒ ADMIN_SECURITY / ADMIN_PAPERWORK 各自独立，evidence 带 coverage/supply/demand；
- *   <li>无位置 ⇒ dues/signals 空、六表空、efficiency/tick 仍更新；状态损坏（缺单位/缺 GovernmentFormation）⇒
- *       IllegalStateException；oracle 越界 ⇒ IllegalArgumentException；
+ *   <li>无位置 ⇒ dues/signals 空、六表空、六个 per-mille 与 tick 仍更新；
+ *   <li>源状态拷贝纪律：结算只改 offices，{@code administrationPlans}/{@code budgetPolicies} 原样带过；
  *   <li>确定性：同输入两次 Outcome 逐字段相等；{@link GovState#empty()} ⇒ changed=false；
  *   <li>布料折日：{@code clothNeed = totalStaff ×
  *       floor(clothPerStaffPerCycle/daysInYearAtSettlement)}（365/366 必须显式传参），逐值钉 floor。
  * </ul>
  *
- * <p>★ 判别力：每个用例都断到具体数字/键序/调用序；不用“非 null、不抛”代替语义断言。
+ * <p>★ 旧测试侧 {@code settleLegacy} helper 已删除：新签名只消费当日 {@code Map<UnitId, Efficiency>}，不再在 gov
+ * 侧重算效率（z3b §10.2）。
  */
 class GovDailyTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0L);
   private static final HexCoord H1 = new HexCoord(1, 1);
-  private static final HexCoord H2 = new HexCoord(2, 2);
   private static final UnitId U1 = new UnitId("gov-1");
-  private static final RegionId R1 = new RegionId("r-1");
+  private static final io.mosire.simos.map.region.RegionId R1 =
+      new io.mosire.simos.map.region.RegionId("r-1");
   private static final CommodityId GRAIN = CommodityId.parse(EconomyVocabulary.GRAIN_COMMODITY_ID);
   private static final CommodityId CLOTH = CommodityId.parse(EconomyVocabulary.CLOTH_COMMODITY_ID);
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
@@ -86,8 +73,7 @@ class GovDailyTest {
     GovState base = state(GovOfficeState.empty(U1, 0L));
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
-    GovDaily.Outcome outcome =
-        settleLegacy(base, units, map(), SocialData.empty(), 7L, 365L, oracle);
+    GovDaily.Outcome outcome = settle(base, units, 7L, 365L, fullCoverage(), oracle);
 
     // totalStaff=3 ⇒ grain 30；cloth = 3×floor(500/365)=3×1=3（若误写成 3×500/365 会是 4）；money 9。
     assertThat(oracle.calls())
@@ -118,9 +104,11 @@ class GovDailyTest {
     assertThat(office.lastAssessedMoney()).containsExactly(entry(SILVER, 9L));
     assertThat(office.lastPaidMoney()).containsExactly(entry(SILVER, 9L));
     assertThat(office.lastShortfallMoney()).containsExactly(entry(SILVER, 0L));
-    assertThat(office.securityCoveragePerMille()).as("无管辖 ⇒ 无需求 ⇒ 全覆盖").isEqualTo(1000L);
-    assertThat(office.paperworkCoveragePerMille()).isEqualTo(1000L);
-    assertThat(office.efficiencyPerMille()).isEqualTo(1000L);
+    assertThat(office.securityCoveragePerMille()).as("六读数取自 app 传入的 Efficiency").isEqualTo(1_000L);
+    assertThat(office.paperworkCoveragePerMille()).isEqualTo(1_000L);
+    assertThat(office.securityEfficiencyPerMille()).isEqualTo(1_000L);
+    assertThat(office.paperworkEfficiencyPerMille()).isEqualTo(1_000L);
+    assertThat(office.efficiencyPerMille()).isEqualTo(1_000L);
     assertThat(office.bonusPerMille()).isZero();
   }
 
@@ -136,14 +124,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        settleLegacy(
-            state(GovOfficeState.empty(U1, 0L)),
-            units,
-            map(),
-            SocialData.empty(),
-            1L,
-            365L,
-            oracle);
+        settle(state(GovOfficeState.empty(U1, 0L)), units, 1L, 365L, fullCoverage(), oracle);
 
     assertThat(oracle.calls())
         .as("默认政策 + 1 名编制：当日粮需求 = 83 毫粮（120 天常量 10000 ⇒ 本断言红）")
@@ -166,14 +147,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        settleLegacy(
-            state(GovOfficeState.empty(U1, 0L)),
-            units,
-            map(),
-            SocialData.empty(),
-            1L,
-            365L,
-            oracle);
+        settle(state(GovOfficeState.empty(U1, 0L)), units, 1L, 365L, fullCoverage(), oracle);
 
     assertThat(oracle.calls())
         .as("0 需求不发、不跳号：只有 grain 一次调用")
@@ -202,14 +176,7 @@ class GovDailyTest {
                 });
 
     GovDaily.Outcome outcome =
-        settleLegacy(
-            state(GovOfficeState.empty(U1, 0L)),
-            units,
-            map(),
-            SocialData.empty(),
-            3L,
-            365L,
-            oracle);
+        settle(state(GovOfficeState.empty(U1, 0L)), units, 3L, 365L, fullCoverage(), oracle);
 
     assertThat(outcome.dues())
         .as("dues 的 paid/shortfall 逐资源对账（assessed = paid + shortfall）")
@@ -242,14 +209,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> 0L);
 
     GovDaily.Outcome outcome =
-        settleLegacy(
-            state(GovOfficeState.empty(U1, 0L)),
-            units,
-            map(),
-            SocialData.empty(),
-            2L,
-            365L,
-            oracle);
+        settle(state(GovOfficeState.empty(U1, 0L)), units, 2L, 365L, fullCoverage(), oracle);
 
     assertThat(outcome.dues())
         .as("零支付：每资源 paid=0、shortfall=assessed")
@@ -267,24 +227,20 @@ class GovDailyTest {
         .containsExactly(entry(GRAIN, 0L), entry(CLOTH, 0L));
   }
 
-  // ── 覆盖率不足：两类信号各自独立 ────────────────────────────────────────────────────
+  // ── 覆盖率不足：两类信号各自独立（evidence 取传入 Efficiency 的计算量）────────────────
 
   @Test
   void securityAndPaperworkShortfallsEmitIndependentSignalsWithCoverageEvidence() {
-    // 人口 100000、非城市 ⇒ 需求 (200,100)；staff YAMEN=100、SCRIBE=POST=0 ⇒ coverage 500/0。
+    // 关键判别力：staff 是 100/0，但传入 Efficiency 的供给/需求是 111/222 与 0/333——
+    // 若 GovDaily 仍从 staff 重算（旧桥口径 100/200），evidence 会当场不对。
     GovernmentFormation gov = gov(staff(100L, 0L, 0L), policy(0L, 0L, 0L, 0L));
-    UnitState units = units(govUnit(gov, Optional.of(H1), Optional.of(jurisdiction(R1))));
+    UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
+    GovEfficiency.Efficiency efficiency =
+        new GovEfficiency.Efficiency(500L, 0L, 0L, 0L, 500L, 0L, 111L, 0L, 222L, 333L);
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        settleLegacy(
-            state(GovOfficeState.empty(U1, 0L)),
-            units,
-            map(region(R1, H1)),
-            socialWithPopulation(100_000L),
-            4L,
-            365L,
-            oracle);
+        settle(state(GovOfficeState.empty(U1, 0L)), units, 4L, 365L, efficiency, oracle);
 
     assertThat(oracle.calls()).as("policy 全 0 ⇒ 不发付款调用").isEmpty();
     assertThat(outcome.signals())
@@ -296,50 +252,58 @@ class GovDailyTest {
     assertThat(security.hex()).isEqualTo(H1);
     assertThat(security.severity()).isEqualTo(1L);
     assertThat(security.evidence())
-        .as("治安 evidence：coverage=floor(100×1000/200)=500、supply=100、demand=200")
+        .as("evidence 逐值取自传入 Efficiency：coverage=500、supply=111、demand=222")
         .containsExactly(
-            entry("coveragePerMille", 500L), entry("supply", 100L), entry("demand", 200L));
-    assertThat(security.reason()).contains("治安覆盖率 500‰");
+            entry("coveragePerMille", 500L), entry("supply", 111L), entry("demand", 222L));
+    assertThat(security.reason()).contains("治安覆盖率 500‰").contains("供给 111、需求 222");
 
     GovDaily.SignalDraft paperwork = outcome.signals().get(1);
     assertThat(paperwork.evidence())
-        .as("文书 evidence：coverage=0、supply=0、demand=100")
-        .containsExactly(entry("coveragePerMille", 0L), entry("supply", 0L), entry("demand", 100L));
-    assertThat(paperwork.reason()).contains("文书覆盖率 0‰");
+        .as("文书 evidence：coverage=0、supply=0、demand=333（与 staff=0 的重算恰好无关）")
+        .containsExactly(entry("coveragePerMille", 0L), entry("supply", 0L), entry("demand", 333L));
+    assertThat(paperwork.reason()).contains("文书覆盖率 0‰").contains("供给 0、需求 333");
 
     GovOfficeState office = outcome.next().offices().get(U1);
     assertThat(office.securityCoveragePerMille()).isEqualTo(500L);
     assertThat(office.paperworkCoveragePerMille()).isZero();
-    assertThat(office.efficiencyPerMille()).as("coverageMin=0 ⇒ 效率 0").isZero();
+    assertThat(office.securityEfficiencyPerMille()).isEqualTo(500L);
+    assertThat(office.paperworkEfficiencyPerMille()).isZero();
+    assertThat(office.efficiencyPerMille()).as("两维效率相乘 500×0 ⇒ 0").isZero();
   }
 
   @Test
   void oneSidedCoverageShortfallEmitsOnlyItsOwnSignal() {
-    // 治安满、文书 0 ⇒ 只发 ADMIN_PAPERWORK。
-    GovernmentFormation paperworkShort = gov(staff(200L, 0L, 0L), policy(0L, 0L, 0L, 0L));
+    GovEfficiency.Efficiency paperShort =
+        new GovEfficiency.Efficiency(1_000L, 0L, 0L, 0L, 1_000L, 0L, 100L, 0L, 100L, 100L);
     GovDaily.Outcome onlyPaper =
-        settleLegacy(
+        settle(
             state(GovOfficeState.empty(U1, 0L)),
-            units(govUnit(paperworkShort, Optional.of(H1), Optional.of(jurisdiction(R1)))),
-            map(region(R1, H1)),
-            socialWithPopulation(100_000L),
+            units(
+                govUnit(
+                    gov(staff(1L, 0L, 0L), policy(0L, 0L, 0L, 0L)),
+                    Optional.of(H1),
+                    Optional.empty())),
             1L,
             365L,
+            paperShort,
             new RecordingOracle((resource, requested) -> requested));
     assertThat(onlyPaper.signals())
         .extracting(GovDaily.SignalDraft::kind)
         .containsExactly(GovDaily.KIND_ADMIN_PAPERWORK);
 
-    // 治安 100（500‰）、文书 100（1000‰）⇒ 只发 ADMIN_SECURITY。
-    GovernmentFormation securityShort = gov(staff(100L, 100L, 0L), policy(0L, 0L, 0L, 0L));
+    GovEfficiency.Efficiency securityShort =
+        new GovEfficiency.Efficiency(500L, 1_000L, 0L, 500L, 500L, 1_000L, 55L, 100L, 110L, 100L);
     GovDaily.Outcome onlySecurity =
-        settleLegacy(
+        settle(
             state(GovOfficeState.empty(U1, 0L)),
-            units(govUnit(securityShort, Optional.of(H1), Optional.of(jurisdiction(R1)))),
-            map(region(R1, H1)),
-            socialWithPopulation(100_000L),
+            units(
+                govUnit(
+                    gov(staff(1L, 0L, 0L), policy(0L, 0L, 0L, 0L)),
+                    Optional.of(H1),
+                    Optional.empty())),
             1L,
             365L,
+            securityShort,
             new RecordingOracle((resource, requested) -> requested));
     assertThat(onlySecurity.signals())
         .extracting(GovDaily.SignalDraft::kind)
@@ -350,30 +314,29 @@ class GovDailyTest {
 
   @Test
   void noSeatSkipsDuesAndSignalsButStillUpdatesEfficiencyAndTick() {
-    GovernmentFormation gov = gov(staff(0L, 0L, 0L), policy(100L, 365L, 100L, 0L));
+    GovernmentFormation gov = gov(staff(1L, 0L, 0L), policy(100L, 365L, 100L, 0L));
     UnitState units = units(govUnit(gov, Optional.empty(), Optional.of(jurisdiction(R1))));
+    GovEfficiency.Efficiency efficiency =
+        new GovEfficiency.Efficiency(
+            500L, 700L, 0L, 3_960L, 1_800L, 2_200L, 555L, 777L, 1_110L, 1_110L);
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        settleLegacy(
-            state(GovOfficeState.empty(U1, 0L)),
-            units,
-            map(region(R1, H1)),
-            socialWithPopulation(100_000L),
-            5L,
-            365L,
-            oracle);
+        settle(state(GovOfficeState.empty(U1, 0L)), units, 5L, 365L, efficiency, oracle);
 
     assertThat(oracle.calls()).as("无位置不评估、不付款").isEmpty();
     assertThat(outcome.dues()).isEmpty();
-    assertThat(outcome.signals()).as("无位置不发明 ADMIN_NO_SEAT 之类 kind").isEmpty();
+    assertThat(outcome.signals()).as("无位置不发明 ADMIN_NO_SEAT 之类 kind；覆盖 500/700 也不发覆盖信号").isEmpty();
     assertThat(outcome.changed()).isTrue();
 
     GovOfficeState office = outcome.next().offices().get(U1);
     assertThat(office.tick()).as("efficiency 与 tick 仍更新").isEqualTo(5L);
-    assertThat(office.securityCoveragePerMille()).isZero();
-    assertThat(office.paperworkCoveragePerMille()).isZero();
-    assertThat(office.efficiencyPerMille()).isZero();
+    assertThat(office.securityCoveragePerMille()).isEqualTo(500L);
+    assertThat(office.paperworkCoveragePerMille()).isEqualTo(700L);
+    assertThat(office.securityEfficiencyPerMille()).as(">1000 的维效率原样写入（C3 不封顶）").isEqualTo(1_800L);
+    assertThat(office.paperworkEfficiencyPerMille()).isEqualTo(2_200L);
+    assertThat(office.efficiencyPerMille()).isEqualTo(3_960L);
+    assertThat(office.bonusPerMille()).isZero();
     assertThat(office.lastAssessedGoods()).as("六表清空 = 本日没有结算事实").isEmpty();
     assertThat(office.lastPaidGoods()).isEmpty();
     assertThat(office.lastShortfallGoods()).isEmpty();
@@ -382,23 +345,23 @@ class GovDailyTest {
     assertThat(office.lastShortfallMoney()).isEmpty();
   }
 
-  // ── 状态损坏 / oracle 契约 ─────────────────────────────────────────────────────────
+  // ── 状态损坏 / 单次计算契约 / oracle 契约 ─────────────────────────────────────────
 
   @Test
-  void officeReferencingMissingUnitThrowsIllegalState() {
+  void officeReferencingMissingUnitThrowsIllegalStateBeforeEfficiencyLookup() {
     GovState base = state(GovOfficeState.empty(U1, 0L));
     UnitState emptyUnits = UnitState.empty();
 
     assertThatThrownBy(
             () ->
-                settleLegacy(
+                GovDaily.settle(
                     base,
                     emptyUnits,
-                    map(),
-                    SocialData.empty(),
                     0L,
                     365L,
+                    Map.of(),
                     new RecordingOracle((resource, requested) -> requested)))
+        .as("传空效率表也必须先报单位缺失（检查序在 efficiency 查表之前）")
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("不存在的单位")
         .hasMessageContaining("gov-1");
@@ -411,13 +374,12 @@ class GovDailyTest {
 
     assertThatThrownBy(
             () ->
-                settleLegacy(
+                GovDaily.settle(
                     base,
                     units(plain),
-                    map(),
-                    SocialData.empty(),
                     0L,
                     365L,
+                    Map.of(),
                     new RecordingOracle((resource, requested) -> requested)))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("缺少 GovernmentFormation")
@@ -430,16 +392,45 @@ class GovDailyTest {
             Optional.empty());
     assertThatThrownBy(
             () ->
-                settleLegacy(
+                GovDaily.settle(
                     base,
                     units(army),
-                    map(),
-                    SocialData.empty(),
                     0L,
                     365L,
+                    Map.of(),
                     new RecordingOracle((resource, requested) -> requested)))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("缺少 GovernmentFormation");
+  }
+
+  @Test
+  void missingEfficiencyForKnownUnitThrowsIllegalState() {
+    GovernmentFormation gov = gov(staff(1L, 0L, 0L), policy(0L, 0L, 0L, 0L));
+    UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
+    GovState base = state(GovOfficeState.empty(U1, 0L));
+    RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
+
+    assertThatThrownBy(() -> GovDaily.settle(base, units, 3L, 365L, Map.of(), oracle))
+        .as("Z3b 单次计算契约：app 必须给每个 office 当日结果；缺项不重算、不降级")
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("缺少 app 算好的效率读数")
+        .hasMessageContaining("Z3b 单次计算契约故障");
+    assertThat(oracle.calls()).isEmpty();
+  }
+
+  @Test
+  void settleRejectsNegativeTickBeforeAnyWork() {
+    GovernmentFormation gov = gov(staff(1L, 0L, 0L), policy(1L, 0L, 0L, 0L));
+    UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
+    RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
+
+    assertThatThrownBy(
+            () ->
+                settle(
+                    state(GovOfficeState.empty(U1, 0L)), units, -1L, 365L, fullCoverage(), oracle))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("tick 必须 ≥ 0");
+    assertThat(oracle.calls()).isEmpty();
   }
 
   @Test
@@ -449,13 +440,12 @@ class GovDailyTest {
 
     assertThatThrownBy(
             () ->
-                settleLegacy(
+                settle(
                     state(GovOfficeState.empty(U1, 0L)),
                     units,
-                    map(),
-                    SocialData.empty(),
                     0L,
                     365L,
+                    fullCoverage(),
                     new RecordingOracle((resource, requested) -> requested + 1L)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("PaymentOracle 违反契约")
@@ -470,35 +460,35 @@ class GovDailyTest {
 
     assertThatThrownBy(
             () ->
-                settleLegacy(
+                settle(
                     state(GovOfficeState.empty(U1, 0L)),
                     units,
-                    map(),
-                    SocialData.empty(),
                     0L,
                     365L,
+                    fullCoverage(),
                     new RecordingOracle((resource, requested) -> -1L)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("PaymentOracle 违反契约")
         .hasMessageContaining("实付=-1");
   }
 
-  // ── 确定性 / 空状态 / cloth 折日 ───────────────────────────────────────────────────
+  // ── 确定性 / 空状态 / 源状态拷贝纪律 / cloth 折日 ───────────────────────────────────
 
   @Test
   void sameInputTwoOutcomesAreEqualFieldByField() {
     GovernmentFormation gov = gov(staff(2L, 1L, 1L), policy(10L, 365L, 2L, 0L));
     Unit plain = govUnit(gov, Optional.of(H1), Optional.empty());
     GovState base = state(GovOfficeState.empty(U1, 0L));
+    GovEfficiency.Efficiency efficiency =
+        new GovEfficiency.Efficiency(
+            1_200L, 900L, 0L, 1_080L, 1_200L, 900L, 16_000L, 15_000L, 13_333L, 16_666L);
     RecordingOracle first =
         new RecordingOracle((resource, requested) -> Math.max(0L, requested - 1L));
     RecordingOracle second =
         new RecordingOracle((resource, requested) -> Math.max(0L, requested - 1L));
 
-    GovDaily.Outcome a =
-        settleLegacy(base, units(plain), map(), SocialData.empty(), 6L, 365L, first);
-    GovDaily.Outcome b =
-        settleLegacy(base, units(plain), map(), SocialData.empty(), 6L, 365L, second);
+    GovDaily.Outcome a = settle(base, units(plain), 6L, 365L, efficiency, first);
+    GovDaily.Outcome b = settle(base, units(plain), 6L, 365L, efficiency, second);
 
     assertThat(b.next()).as("next 逐字段相等").isEqualTo(a.next());
     assertThat(b.dues()).as("dues 逐元素/逐值相等").isEqualTo(a.dues());
@@ -513,6 +503,8 @@ class GovDailyTest {
     assertThat(officeB.lastPaidGoods()).isEqualTo(officeA.lastPaidGoods());
     assertThat(officeB.lastShortfallGoods()).isEqualTo(officeA.lastShortfallGoods());
     assertThat(officeB.efficiencyPerMille()).isEqualTo(officeA.efficiencyPerMille());
+    assertThat(officeB.securityEfficiencyPerMille())
+        .isEqualTo(officeA.securityEfficiencyPerMille());
   }
 
   @Test
@@ -520,17 +512,16 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        settleLegacy(
+        GovDaily.settle(
             GovState.empty(),
             units(
                 govUnit(
                     gov(staff(1L, 0L, 0L), policy(1L, 0L, 0L, 0L)),
                     Optional.of(H1),
                     Optional.empty())),
-            map(),
-            SocialData.empty(),
             0L,
             365L,
+            Map.of(),
             oracle);
 
     assertThat(outcome.next()).isEqualTo(GovState.empty());
@@ -538,6 +529,38 @@ class GovDailyTest {
     assertThat(outcome.signals()).isEmpty();
     assertThat(outcome.changed()).as("GovState.empty() ⇒ 无变化").isFalse();
     assertThat(oracle.calls()).isEmpty();
+  }
+
+  @Test
+  void settlePreservesAdministrationPlansAndBudgetPoliciesCopyDiscipline() {
+    GovernmentFormation gov = gov(staff(1L, 0L, 0L), policy(0L, 0L, 0L, 0L));
+    UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
+    GovAdministrationPlan plan =
+        new GovAdministrationPlan(
+            1_600_000L,
+            800_000L,
+            GovAdministrationPlan.DEFAULT_POST_TIERS,
+            1_000L,
+            1_000L,
+            1_000L,
+            1_000L,
+            1L);
+    GovBudgetPolicy policy =
+        new GovBudgetPolicy(
+            List.of(new GovBudgetLine(GovBudgetCategory.ADMIN_STIPEND, 0L, Long.MAX_VALUE)),
+            new GovOfficialSalaryRule(1L, 2L));
+    GovState base =
+        new GovState(
+            Map.of(U1, GovOfficeState.empty(U1, 0L)), Map.of(U1, plan), Map.of(U1, policy));
+    RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
+
+    GovDaily.Outcome outcome = settle(base, units, 1L, 365L, fullCoverage(), oracle);
+
+    assertThat(outcome.next().administrationPlans())
+        .as("§4.1 拷贝纪律：结算只改 offices，两条源状态必须原样带过（漏带 = 静默清空配置）")
+        .containsExactly(entry(U1, plan));
+    assertThat(outcome.next().budgetPolicies()).containsExactly(entry(U1, policy));
+    assertThat(outcome.next().offices().get(U1).tick()).isEqualTo(1L);
   }
 
   @Test
@@ -549,14 +572,7 @@ class GovDailyTest {
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
     GovDaily.Outcome outcome =
-        settleLegacy(
-            state(GovOfficeState.empty(U1, 0L)),
-            units,
-            map(),
-            SocialData.empty(),
-            2L,
-            365L,
-            oracle);
+        settle(state(GovOfficeState.empty(U1, 0L)), units, 2L, 365L, fullCoverage(), oracle);
 
     assertThat(oracle.calls())
         .as("只有 cloth 一次调用，请求量 = 3（floor 口径）")
@@ -583,8 +599,7 @@ class GovDailyTest {
     GovState base = state(GovOfficeState.empty(U1, 0L));
 
     RecordingOracle commonYearOracle = new RecordingOracle((resource, requested) -> requested);
-    GovDaily.Outcome commonYear =
-        settleLegacy(base, units, map(), SocialData.empty(), 1L, 365L, commonYearOracle);
+    GovDaily.Outcome commonYear = settle(base, units, 1L, 365L, fullCoverage(), commonYearOracle);
     assertThat(commonYearOracle.calls())
         .as("730/365 = 2 ⇒ 1 名编制的日需求 = 2")
         .containsExactly(new Call(U1, H1, "cloth", 2L));
@@ -595,8 +610,7 @@ class GovDailyTest {
             new GovDaily.UpkeepDue(U1, H1, new GovDaily.Money(SILVER), 0L, 0L, 0L));
 
     RecordingOracle leapYearOracle = new RecordingOracle((resource, requested) -> requested);
-    GovDaily.Outcome leapYear =
-        settleLegacy(base, units, map(), SocialData.empty(), 1L, 366L, leapYearOracle);
+    GovDaily.Outcome leapYear = settle(base, units, 1L, 366L, fullCoverage(), leapYearOracle);
     assertThat(leapYearOracle.calls())
         .as("730/366 = 1（floor）⇒ 1 名编制的日需求 = 1")
         .containsExactly(new Call(U1, H1, "cloth", 1L));
@@ -618,13 +632,13 @@ class GovDailyTest {
     GovState base = state(GovOfficeState.empty(U1, 0L));
 
     RecordingOracle commonYearOracle = new RecordingOracle((resource, requested) -> requested);
-    settleLegacy(base, units, map(), SocialData.empty(), 1L, 365L, commonYearOracle);
+    settle(base, units, 1L, 365L, fullCoverage(), commonYearOracle);
     assertThat(commonYearOracle.calls())
         .as("3×floor(730/365) = 6")
         .containsExactly(new Call(U1, H1, "cloth", 6L));
 
     RecordingOracle leapYearOracle = new RecordingOracle((resource, requested) -> requested);
-    settleLegacy(base, units, map(), SocialData.empty(), 1L, 366L, leapYearOracle);
+    settle(base, units, 1L, 366L, fullCoverage(), leapYearOracle);
     assertThat(leapYearOracle.calls())
         .as("3×floor(730/366) = 3；误写成 3×730/366 = 5 时本断言红")
         .containsExactly(new Call(U1, H1, "cloth", 3L));
@@ -639,25 +653,23 @@ class GovDailyTest {
 
     assertThatThrownBy(
             () ->
-                settleLegacy(
+                settle(
                     base,
                     units,
-                    map(),
-                    SocialData.empty(),
                     0L,
                     364L,
+                    fullCoverage(),
                     new RecordingOracle((resource, requested) -> requested)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("365 或 366");
     assertThatThrownBy(
             () ->
-                settleLegacy(
+                settle(
                     base,
                     units,
-                    map(),
-                    SocialData.empty(),
                     0L,
                     0L,
+                    fullCoverage(),
                     new RecordingOracle((resource, requested) -> requested)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("365 或 366");
@@ -700,6 +712,24 @@ class GovDailyTest {
       days.add(day);
       return outcome.pay(resource, requested);
     }
+  }
+
+  /** 结算入口：当日效率表只有本夹具里的 U1。 */
+  private static GovDaily.Outcome settle(
+      GovState govState,
+      UnitState units,
+      long tick,
+      long daysInYearAtSettlement,
+      GovEfficiency.Efficiency efficiency,
+      GovDaily.PaymentOracle oracle) {
+    return GovDaily.settle(
+        govState, units, tick, daysInYearAtSettlement, Map.of(U1, efficiency), oracle);
+  }
+
+  /** 两维满覆盖（coverage 1000/1000、维效率 1000/1000、总 1000），供与覆盖缺口无关的用例使用。 */
+  private static GovEfficiency.Efficiency fullCoverage() {
+    return new GovEfficiency.Efficiency(
+        1_000L, 1_000L, 0L, 1_000L, 1_000L, 1_000L, 100L, 100L, 100L, 100L);
   }
 
   private static GovState state(GovOfficeState office) {
@@ -764,105 +794,9 @@ class GovDailyTest {
     return new OfficePolicy(grain, clothCycle, money, retirement, Map.of());
   }
 
-  private static Jurisdiction jurisdiction(RegionId region) {
-    Map<RegionId, Long> rates = new LinkedHashMap<>();
+  private static Jurisdiction jurisdiction(io.mosire.simos.map.region.RegionId region) {
+    Map<io.mosire.simos.map.region.RegionId, Long> rates = new LinkedHashMap<>();
     rates.put(region, 100L);
     return new Jurisdiction(rates, 0L, 0L, 0L, 0L);
-  }
-
-  private static Region region(RegionId id, HexCoord hex) {
-    return Region.of(id, id.value(), Set.of(hex), RegionMeta.empty());
-  }
-
-  private static GameMap map(Region... regions) {
-    Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
-    hexes.put(H1, new HexCell(0.5));
-    hexes.put(H2, new HexCell(0.5));
-    Map<RegionId, Region> regionMap = new LinkedHashMap<>();
-    for (Region region : regions) {
-      regionMap.put(region.id(), region);
-    }
-    TerrainType desert = TerrainCatalog.of("desert");
-    Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
-    terrainTypes.put(desert.key(), desert);
-    return new GameMap(
-        hexes,
-        TerrainBlocks.uniform(hexes.keySet(), desert.key()),
-        regionMap,
-        Map.of(),
-        terrainTypes,
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        GenerationSpec.defaults(0L));
-  }
-
-  private static SocialData socialWithPopulation(long count) {
-    PeopleLotId lot = new PeopleLotId("lot-1");
-    PopulationGroup group = new PopulationGroup(lot, Sex.MALE, count, 20L * 365L, 0L);
-    Map<HexCoord, PopulationSeries> populations = new LinkedHashMap<>();
-    populations.put(
-        H1,
-        new PopulationSeries(
-            new Segment<>(T0, 1000L),
-            new SegmentedSeries<>(List.of(new Segment<>(T0, 0.0)), List.of(), null),
-            List.of()));
-    return GovSocialDataFixture.withHouseholdsAt(
-        populations, Map.of(), Map.of(lot, group), Map.of(lot, H1));
-  }
-
-  /**
-   * ★ Z3b 编译最小占位（Z6 统一重写测试）：新 {@code GovDaily.settle} 只消费 app 算好的效率表，旧 7 参签名已删除；
-   * 这里在测试侧临时复刻旧桥口径构造效率表，让既有断言代码仍能编译；运行期期望值按新公式本来就需 Z6 重算。
-   */
-  private static GovDaily.Outcome settleLegacy(
-      GovState govState,
-      UnitState units,
-      GameMap map,
-      SocialData social,
-      long tick,
-      long daysInYearAtSettlement,
-      GovDaily.PaymentOracle oracle) {
-    long quota =
-        io.mosire.simos.social.provisioning.SocialProvisioning.defaults()
-            .standardLaborMilliHoursPerTick();
-    Map<UnitId, GovEfficiency.Efficiency> byUnit = new LinkedHashMap<>();
-    List<UnitId> ordered = new ArrayList<>(govState.offices().keySet());
-    ordered.sort(Comparator.comparing(UnitId::value));
-    for (UnitId unitId : ordered) {
-      Unit unit = units.units().get(unitId);
-      if (unit == null) {
-        continue;
-      }
-      UnitModule module = unit.module().orElse(null);
-      if (!(module instanceof GovernmentFormation formation)) {
-        continue;
-      }
-      Map<HexCoord, GovDemand.HexDemand> demand = GovDemand.of(map, social, unit);
-      GovAdministrationPlan plan =
-          new GovAdministrationPlan(
-              Math.multiplyExact(GovEfficiency.securityDemand(demand), quota),
-              Math.multiplyExact(GovEfficiency.paperworkDemand(demand), quota),
-              GovAdministrationPlan.DEFAULT_POST_TIERS,
-              GovRules.PER_MILLE,
-              GovRules.PER_MILLE,
-              GovRules.PER_MILLE,
-              GovRules.PER_MILLE,
-              GovAdministrationPlan.DEFAULT_SUPERNUMERARY_SQRT_COEFFICIENT);
-      byUnit.put(
-          unitId,
-          GovEfficiency.of(
-              formation,
-              demand,
-              plan,
-              Math.multiplyExact(GovEfficiency.securitySupply(formation), quota),
-              Math.multiplyExact(GovEfficiency.paperworkSupply(formation), quota),
-              GovRules.PER_MILLE,
-              GovRules.PER_MILLE,
-              GovRules.PER_MILLE,
-              GovRules.PER_MILLE,
-              quota));
-    }
-    return GovDaily.settle(govState, units, tick, daysInYearAtSettlement, byUnit, oracle);
   }
 }

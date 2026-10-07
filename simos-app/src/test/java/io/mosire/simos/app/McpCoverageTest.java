@@ -127,7 +127,7 @@ class McpCoverageTest {
    * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46， social
    * 起 46 → 49，economy/actor 全族补齐后 50 → 60，辖区阶段 5–8 起 60 → 65，阶段 9–12 起 65 → 71，P1b1/P1b2/P3/R3a 与
    * D1/D3a/D4/D5 起 71 → 85，S3a 的家户/人口 8 条起 85 → 93；P0.1 删除 economy.UnitBorrow/UnitRepay 两个 handler
-   * ⇒ 91）。
+   * ⇒ 91；Z1a/Z1c/Z2/Z3a/Z3d 再 +7 条 ⇒ 128（与 SimosToolsTest 同源）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -156,11 +156,16 @@ class McpCoverageTest {
           "economy.SetHouseholdParticipation",
           "economy.SetMarketPrice",
           "economy.SwitchMode",
+          "economy.SetGovServiceCommitment",
           "economy.TransferAssetShare",
           "economy.UnitBorrow",
           "economy.UnitRepay",
           "economy.UpdateDemand",
+          "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
+          "economy.UpsertIndustry",
+          "gov.SetAdministrationPlan",
+          "gov.SetBudgetPolicy",
           "map.CreateRegion",
           "map.DeleteRegion",
           "map.MergeRegions",
@@ -221,6 +226,8 @@ class McpCoverageTest {
           "social.UpdateCity",
           "unit.AdjustComposition",
           "unit.ApplyCasualties",
+          "unit.AssignExternalGovPost",
+          "unit.AssignGovPost",
           "unit.AttachUnit",
           "unit.CancelRoute",
           "unit.CreateCommandChain",
@@ -303,6 +310,13 @@ class McpCoverageTest {
           "social.SeedGroups",
           "social.SetHouseholdLocation",
           "social.TransferHouseholdMembers",
+          "economy.SetGovServiceCommitment",
+          "economy.UpsertGovUnit",
+          "economy.UpsertIndustry",
+          "gov.SetAdministrationPlan",
+          "gov.SetBudgetPolicy",
+          "unit.AssignExternalGovPost",
+          "unit.AssignGovPost",
           "unit.SetUnitHouseholds",
           "unit.SetArmyPayPolicy",
           "unit.SetVisionRadius");
@@ -404,7 +418,20 @@ class McpCoverageTest {
               "unit.SetUnitHouseholds",
               "{\"unitId\": \"u-missing\", \"households\": [], \"reason\": \"coverage\"}"),
           Map.entry("unit.SetArmyPayPolicy", "{\"unitId\": \"u-missing\"}"),
-          Map.entry("unit.SetVisionRadius", "{\"id\": \"u-missing\", \"visionRadius\": 2}"));
+          Map.entry("unit.SetVisionRadius", "{\"id\": \"u-missing\", \"visionRadius\": 2}"),
+          // ★ Z1a/Z1c/Z2/Z3a/Z3d 新命令：本夹具是旧 12 hex 世界（没有 GOV 编制/office 产业登记/官吏户），
+          //   形状合法的载荷在这里都必然具名拒（缺前置），零 revision；成功路径由 Z6 各责任区新用例覆盖。
+          Map.entry("economy.UpsertIndustry", "{\"id\": \"office_missing@0_0\"}"),
+          Map.entry("economy.UpsertGovUnit", "{\"govUnitId\": \"g-missing\"}"),
+          Map.entry("economy.SetGovServiceCommitment", "{\"govUnitId\": \"g-missing\"}"),
+          Map.entry("gov.SetAdministrationPlan", "{\"unitId\": \"u-1\"}"),
+          Map.entry("gov.SetBudgetPolicy", "{\"unitId\": \"u-1\"}"),
+          Map.entry(
+              "unit.AssignGovPost",
+              "{\"unitId\": \"u-1\", \"household\": \"hh-missing\", \"role\": \"POST\"}"),
+          Map.entry(
+              "unit.AssignExternalGovPost",
+              "{\"govUnitId\": \"u-1\", \"household\": \"hh-missing\", \"role\": \"POST\"}"));
 
   /** 真实播种归一化出的农地份额身份（{@code (farm@1_1, LAND, ESTATE:farm@1_1, OWNED, 0)}）。 */
   private static final AssetShareId SEEDED_LAND_SHARE =

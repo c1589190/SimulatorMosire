@@ -11,9 +11,15 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.ops.UnitOperations;
+import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
+import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
+import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
@@ -220,7 +226,87 @@ class UnitHouseholdContainmentTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("householdPosts")
         .hasMessageContaining("households")
-        .hasMessageContaining(outsider.value());
+        .hasMessageContaining(outsider.value())
+        .hasMessageContaining("unit.SetUnitHouseholds");
+  }
+
+  /**
+   * ★★ Z3d：外部岗位键必须 **∉** 本单位的 {@code Unit.households}（键 ∈ ⇒ 具名拒并指路内部岗位命令 {@code
+   * unit.AssignGovPost}）；反过来，外部户在**别的** unit 的 households 里是 B 路语义，必须放行（外部户保留原单位/位置）。
+   */
+  @Test
+  void externalPostsKeysMustNotBelongToUnitHouseholdsAndForeignContainmentIsAllowed() {
+    GovernmentPostOfHousehold external =
+        new GovernmentPostOfHousehold(
+            HH_A, StaffRole.YAMEN, GovernmentLevel.CENTRAL, false, "tier-1");
+    GovernmentFormation gov =
+        govWithExternal(
+            Map.of(),
+            orderedPosts(Map.entry(HH_A, external)),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL);
+
+    Unit containedInOwnUnit = unit(U1, List.of(govHouseholdOf(U1), HH_A), Optional.of(gov));
+    assertThatThrownBy(() -> new UnitState(Map.of(U1, containedInOwnUnit)))
+        .as("外部岗位键 ∈ 本单位 households ⇒ 指路内部岗位命令")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("externalPosts")
+        .hasMessageContaining("已在单位")
+        .hasMessageContaining("unit.AssignGovPost")
+        .hasMessageContaining(HH_A.value());
+
+    // B 路：HH_A 已被 U2 容纳，仍可作为 U1 的外部岗位（保留 U2 归属/位置）。
+    Unit govUnit = unit(U1, List.of(govHouseholdOf(U1)), Optional.of(gov));
+    Unit foreignHolder = unit(U2, List.of(HH_A), Optional.empty());
+    UnitState state = new UnitState(new LinkedHashMap<>(Map.of(U1, govUnit, U2, foreignHolder)));
+
+    GovernmentFormation kept = (GovernmentFormation) state.units().get(U1).module().orElseThrow();
+    assertThat(kept.externalPosts())
+        .as("外部户在别的 unit 的 households 里完全合法——这正是 B 路定义")
+        .containsExactly(Map.entry(HH_A, external));
+    assertThat(state.units().get(U2).households()).containsExactly(HH_A);
+  }
+
+  /**
+   * ★★ Z3d fail-closed：{@code unit.SetUnitHouseholds} 把已挂外部岗位的家户编入 GOV 单位时，{@link UnitState}
+   * 构造期守卫当场拒——handler 折 {@code Rejected}（无变更集）、ops 直接抛，原状态一字不动。
+   */
+  @Test
+  void setUnitHouseholdsCannotAbsorbAnExternalPostHousehold() {
+    GovernmentPostOfHousehold external =
+        new GovernmentPostOfHousehold(
+            HH_A, StaffRole.YAMEN, GovernmentLevel.CENTRAL, false, "tier-1");
+    GovernmentFormation gov =
+        govWithExternal(
+            Map.of(),
+            orderedPosts(Map.entry(HH_A, external)),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL);
+    UnitState base =
+        new UnitState(Map.of(U1, unit(U1, List.of(govHouseholdOf(U1)), Optional.of(gov))));
+
+    assertThatThrownBy(
+            () -> UnitOperations.setUnitHouseholds(base, U1, List.of(govHouseholdOf(U1), HH_A)))
+        .as("ops：把外部户编入 GOV units.households ⇒ 当场 IAE（指路内部岗位命令）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("externalPosts")
+        .hasMessageContaining("unit.AssignGovPost");
+
+    HandlerOutcome outcome =
+        new SetUnitHouseholdsHandler()
+            .handle(
+                world(base),
+                "{\"unitId\":\"u-1\",\"households\":[\"hh-gov-u-1\",\"hh-a\"],"
+                    + "\"reason\":\"absorb-external\"}");
+    assertThat(outcome)
+        .as("handler：fail-closed 折 Rejected（没有 Applied 变更集可提交）")
+        .isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason())
+        .contains("externalPosts")
+        .contains("unit.AssignGovPost");
+    assertThat(base.units().get(U1).households())
+        .as("拒绝 ⇒ base 状态零变化（零 revision 的 unit 侧等价断言）")
+        .containsExactly(govHouseholdOf(U1));
   }
 
   /** 领导配置与 households 一起过 JSON 快照 / 变更集往返，且 {@code householdPosts} 用旧线格式键落盘。 */
@@ -487,13 +573,35 @@ class UnitHouseholdContainmentTest {
         Map.of("回合", "map:Map1"));
   }
 
-  /** GOV 编制：{@code staff} 空、policy 取缺省；领导配置与层级逐值给。 */
+  /** GOV 编制：{@code staff} 空、policy 取缺省；领导配置与层级逐值给（外部岗位表空）。 */
   private static GovernmentFormation gov(
       Map<HouseholdId, GovernmentPostOfHousehold> posts,
       Optional<UnitId> superior,
       GovernmentLevel level) {
+    return govWithExternal(posts, Map.of(), superior, level);
+  }
+
+  /** GOV 编制（Z3d）：内部/外部岗位表都逐值给；staff 空、policy 取缺省。 */
+  private static GovernmentFormation govWithExternal(
+      Map<HouseholdId, GovernmentPostOfHousehold> governmentPostsOfHousehold,
+      Map<HouseholdId, GovernmentPostOfHousehold> externalPosts,
+      Optional<UnitId> superior,
+      GovernmentLevel level) {
     return new GovernmentFormation(
-        Map.of(), posts, OfficePolicy.defaults(), superior, level, Map.of());
+        Map.of(),
+        governmentPostsOfHousehold,
+        OfficePolicy.defaults(),
+        superior,
+        level,
+        externalPosts);
+  }
+
+  /** 只装 unit 切片的 SimulationState（handler 级用例；与 SpiFixture 同形但本包不可见它）。 */
+  private static SimulationState world(UnitState state) {
+    return new SimulationState(
+        new StateMeta(REF, T0),
+        Map.<String, Snapshot>of("unit", new UnitSnapshot(REF, T0, state)),
+        InMemoryInfoSystem.empty());
   }
 
   @SafeVarargs
