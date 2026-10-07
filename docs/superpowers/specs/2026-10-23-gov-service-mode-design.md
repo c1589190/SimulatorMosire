@@ -123,6 +123,9 @@
 - **承诺是权威（C）**：`GovernmentFormation.staff` 与 `governmentPostsOfHousehold` 都降为**派生投影**（由承诺/岗位户现算）。
 - 官吏住 `hh-unit:<有单位 id>` 岗位户（不是 `hh-gov-*`）；`Unit.households` ↔ Social 位置由 `HouseholdUnitConsistency` 同步。
 - 3 档岗位：档位目录在 `GovAdministrationPlan`；岗位指派（家户→档位/维度）写 `governmentPostsOfHousehold`（扩展字段或按档位表映射）。
+- **外部岗位（用户 2026-10-23 裁定，Z3d）**：`GovernmentFormation` 新增 `externalPosts`（键 = HouseholdId，
+  **不要求 ∈ `Unit.households`**；与内部 `governmentPostsOfHousehold` 互斥）；外部户**保留** Social 位置与单位归属，
+  只承接行政任务；供给桥 / tier 一致性 / `openPostsToMarket` 工具都覆盖它。
 - 要求：任何 `withGovernment*` 重建点不得漏带 posts/源状态（既有"最贵教训"纪律）。
 
 ---
@@ -223,10 +226,11 @@
 | **Z2** | gov 源状态 `GovAdministrationPlan`/`GovBudgetPolicy` + gov 首个 handler + 效率公式（两维、开方、修正、不封顶、溢出 ERROR）+ `GovOfficeState` 去上限 | gov（+app 工具后续 Z3） | Z1b（承诺契约冻结即可开工，接口以本文为准） |
 | **Z4** | unit/social 一处真相：3 档岗位目录与指派、官吏户 `hh-unit`、staff 派生、recruit/retire/absorb 改向（C1）、`withGovernment*` 拷贝纪律 | unit、social（如需）、app | Z0；与 Z2 的 role 契约对齐 |
 | **Z3** | app 编排：`GovServiceFlow`、承诺→供给桥、`ADMIN_SALARY` + salary bridge、预算优先级执行、告警、决策人/GM 工具 + 审批链、`simos.gov.info` 读工具 | app、economy-api（reason）、economy（若按劳动量工资） | Z1b+Z2+Z4 |
+| **Z3d** | 外部岗位表示（`GovernmentFormation.externalPosts`）+ 供给桥/一致性纳入 + `openPostsToMarket` GM/决策人工具（外部户保留归属） | unit、gov、app | Z3c-2（Z3 app 部分） |
 | **Z5** | 19 hex bootstrap：GOV/官吏户/office 资产/承诺/注资/计划（复用 G1/G2） | app | Z1b~Z4 |
 | **Z6** | 统一测试与真档证据：往返/边界/负向/守恒、全仓 `clean verify`、360 tick 对照 | tests | 全部 |
 
-顺序：**Z0 → Z1a → Z1b → Z2 → Z4 → Z3 → Z5 → Z6**（一次一个写代码代理；Maven 统一 `tools/mvn-lock.sh`）。
+顺序：**Z0 → Z1a → Z1b → Z2 → Z1c → Z4 → Z3a → Z3b → Z3c-1 → Z3c-2 → Z3d → Z5 → Z6**（一次一个写代码代理；Maven 统一 `tools/mvn-lock.sh`）。
 
 ---
 
@@ -340,3 +344,19 @@
 4. **中性空预算 = 不自动付 + `ADMIN_PLAN_MISSING`**：接受（§4.1 明文）；旧世界行为变化由 Z5 bootstrap 与 Z6 迁移覆盖。
 
 另：`ADMIN_UPKEEP` sink 与 `ADMIN_SALARY` transfer 并存（类别/reason 分离），接受。
+
+---
+
+## 21. 控制方裁定（外部岗位，2026-10-23，用户已选）
+
+B 路"允许外来家户承担行政任务"采用**新建外部岗位表示、保留外部归属**：
+
+1. `GovernmentFormation` 新增 `externalPosts`（`Map<HouseholdId, GovernmentPostOfHousehold>` 或等价；键**不要求**
+   ∈ `Unit.households`，与内部 `governmentPostsOfHousehold` **互斥**；household 必须在 Social/economy 存在）。
+2. 新命令只写 `externalPosts`，**不改** `Unit.households` / Social 位置（建议 `unit.AssignExternalGovPost`，或扩展
+   `unit.AssignGovPost` 带内外模式；Z3d 冻结）。
+3. Z3b 供给桥纳入 `externalPosts`（tierId → `GovAdministrationPlan.postTiers` 同一套权重）与对应 `GOV_SERVICE` 承诺；
+   `GovernmentPostTierConsistency` 覆盖 `externalPosts`。
+4. `simos.gov.openPostsToMarket` 随 Z3d 一起做：V1 = 显式选户 + 挂外部岗位 + 承诺（GM + 决策人审批链）；
+   队列/应募自动化留 V2/V3。
+5. 责任区 **Z3d** 插在 Z3c-2 之后、Z5 之前；Z3c-2 不实现 `openPostsToMarket`、不自行造 externalPosts。
