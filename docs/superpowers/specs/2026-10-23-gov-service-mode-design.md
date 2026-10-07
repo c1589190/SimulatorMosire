@@ -297,3 +297,20 @@
    的死亡比例缩放（`scaleLaborOfUnit/Group`）与 modes 为空的旧 `reallocateLabor` 对 `GOV_SERVICE` 的豁免，
    在 Z3 接入 gov 写者前必须处理，口径 = **死亡也不缩 `GOV_SERVICE`；超预算 ⇒ 具名 ERROR fail-closed**。
    当前（Z1b 完成时）无写者能在 modes 为空世界产生 `GOV_SERVICE`，故不构成回归。
+
+---
+
+## 18. 控制方裁定（Z1c 模块边界，2026-10-23）
+
+`simos-economy` 的 enforcer 禁依赖 `simos-unit` ⇒ economy handler 编译期看不见 `Unit`/`GovernmentFormation`。
+裁定 **A**（不改模块边界、不把 handler 移 app、不新增跨模块 accessor）：
+
+1. **economy handler 的守卫**只用经济侧可见面：`economy.governments` 有 `gov-unit-<id>` 且 treasury =
+   `HOUSEHOLD:hh-gov-<id>`（现世界"走过 unit.CreateUnit+SetGovFormation+RegisterGovernment"的经济侧证据）+
+   `classes` 有 `hh-gov` 行 + Social 家户表有 `hh-gov` + `industry` base kind=`office`/格已激活/assets
+   覆盖 `capacityPerUnit` 1 单位规模；全部 fail-closed、具名拒。
+2. **app GM 工具 `simos.economy.upsertGovUnit`** 在 **preview 与 apply 两条路径都**做 unit 切片预检
+   （unit 存在 + `module()` 是 `GovernmentFormation`），不满足 ⇒ 工具折 BAD_REQUEST/Rejected，不提交。
+3. **已知边界**：GM 裸 `simos.command.submit` 可绕过 app 工具的 unit 切片预检，只过 (1)。接受为边界；
+   **Z4 必做**：app 组合根跨切片一致性检查（gov service unit 的 operator GOV 缺 `GovernmentFormation`
+   ⇒ 具名拒/告警）；**Z6 必做**：对应负向测试。
