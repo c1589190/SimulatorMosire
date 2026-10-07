@@ -218,8 +218,9 @@
 | 区 | 目标（可独立编译验收） | 模块 | 依赖 |
 |---|---|---|---|
 | **Z1a** | `economy.upsertIndustry`：创建/修改产业模板（新版本=新 id；原地改仅限无引用；守卫/负向）+ GM 工具 + catalog | economy、economy-api、app | Z0 |
-| **Z1b** | GOV 生产 unit 基础设施：创建/更新 `office` 产业的 gov unit + assetShares + relations（operator=hh-gov）；承诺 `kind` 与不可缩优先级；标准劳动系数收口 | economy、economy-api、app | Z1a |
-| **Z2** | gov 源状态 `GovAdministrationPlan`/`GovBudgetPolicy` + gov 首个 handler + 效率公式（两维、开方、修正、不封顶、溢出 ERROR）+ `GovOfficeState` 去上限 | gov（+app 工具后续 Z3） | Z1b（承诺契约冻结即可并行，接口以本文为准） |
+| **Z1b** | 承诺基础设施：`HouseholdLaborCommitment.kind`（`PRODUCTION`/`GOV_SERVICE`，旧档缺省 `PRODUCTION`）+ `GOV_SERVICE` 不可缩/最高优先级（C7）+ 标准劳动系数收口（`SocialProvisioning` 为唯一权威，C8） | economy-api、economy、social、app | Z1a |
+| **Z1c** | GOV 生产 unit：创建/更新 `office` 产业的 gov unit + assetShares + relations（operator=hh-gov） | economy、economy-api、app | Z1a、Z1b |
+| **Z2** | gov 源状态 `GovAdministrationPlan`/`GovBudgetPolicy` + gov 首个 handler + 效率公式（两维、开方、修正、不封顶、溢出 ERROR）+ `GovOfficeState` 去上限 | gov（+app 工具后续 Z3） | Z1b（承诺契约冻结即可开工，接口以本文为准） |
 | **Z4** | unit/social 一处真相：3 档岗位目录与指派、官吏户 `hh-unit`、staff 派生、recruit/retire/absorb 改向（C1）、`withGovernment*` 拷贝纪律 | unit、social（如需）、app | Z0；与 Z2 的 role 契约对齐 |
 | **Z3** | app 编排：`GovServiceFlow`、承诺→供给桥、`ADMIN_SALARY` + salary bridge、预算优先级执行、告警、决策人/GM 工具 + 审批链、`simos.gov.info` 读工具 | app、economy-api（reason）、economy（若按劳动量工资） | Z1b+Z2+Z4 |
 | **Z5** | 19 hex bootstrap：GOV/官吏户/office 资产/承诺/注资/计划（复用 G1/G2） | app | Z1b~Z4 |
@@ -269,3 +270,16 @@
 - gov 税/国库排查：`docs/superpowers/reports/2026-10-23-gov-tax-treasury-investigation.md`（F1~F4、G1~G7）
 - 经济可编辑性/效率调查：`docs/superpowers/reports/2026-10-23-editability-and-efficiency-investigation.md`
 - 日志纪律：`AGENTS.md` §一.9；责任区委派：§一.5/§一.8/§一.10；用户原话附录要求：§一.8.1
+
+---
+
+## 16. 控制方收尾裁定（Z1a 实际落地，2026-10-23）
+
+1. **幂等重放 = no-op**：载荷与既有模板逐值相同 ⇒ 返回空变更集、不落 revision，**即使该 id 被 unit/份额/关系引用也不拒**
+   （照 `upsertProductionMode` 先例）。"被引用 + 任何实际值变化 ⇒ 具名拒"这条危险路径未被放松。接受。
+2. **版本口径**（Z1a 新增约定，正式冻结）：同格同 base kind 按**最大版本**比较；倒退、同版本撞号 ⇒ 具名拒；
+   允许跳版本；**新载荷**的 `_v0`/`_v01` 等非规范版本拼写严格拒，旧档既有 id 宽容解析（不得把旧档读成载荷错）。
+   新版本 = 新 kind 后缀 id（如 `office_v2@0_0`）；`Industry` record/Codec/ChangeSet 形状不变，老 unit 零影响。
+3. **Z1b 拆分**：原 Z1b 拆为 **Z1b（承诺基础设施：kind/不可缩/标准系数）** 与 **Z1c（GOV 生产 unit+资产+关系）**，
+   理由＝两类风险不同（承诺 record 改动触及 labor 不变量；unit 创建触及命令/状态/工具）。顺序：
+   `Z1a → Z1b → Z2 → Z1c → Z4 → Z3 → Z5 → Z6`（Z1c 与 Z2 无代码依赖，但仍串行跑 Maven）。
