@@ -62,12 +62,14 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * ★★ <b>小世界（P1.4，2026-10-23 扩到 19 格）</b>：一个<b>程序化、确定性、可直接 bootstrap 的 19 格世界</b>——1 个 {@link
- * Region}、1 座首都 + 1 座镇、4,800 人（3,800 农村 + 1,000 城镇），经济地基走<b>唯一路线 production-runtime</b>（政府内置）。
+ * ★★ <b>小世界（P1.4，2026-10-23 扩到 19 格；Z7a 拆省级辖区）</b>：一个<b>程序化、确定性、可直接 bootstrap 的 19 格世界</b>——<b>2
+ * 个互斥的省级 {@link Region}</b>（{@link #REGION_ID} 18 格 + {@link #CAPITAL_PROVINCE_ID} 1 格）、1 座首都 + 1
+ * 座镇、4,800 人（3,800 农村 + 1,000 城镇），经济地基走<b>唯一路线 production-runtime</b>（政府内置）。
  *
  * <p>★ <b>扩格依据</b>：{@code
  * docs/superpowers/specs/2026-10-23-smallworld-19hex-and-economy-360tick-design.md} §4（19 格六邻连通 / 1
- * Region / 人口公式不变 / 地形只用 plains·low_hills / 世界 id 与地形两城口径不变）。
+ * Region / 人口公式不变 / 地形只用 plains·low_hills / 世界 id 与地形两城口径不变）。 ★ 其中"1 Region"已被 Z7a 的"2
+ * 个省级辖区（small-world + capital-province）"取代；旧文按留痕纪律不回头改。
  *
  * <p>★★ <b>它解决哪件事</b>：{@code v17levant}（{@link RichWorld}）是 59,223 格的复刻真档，起一次要读大资源、跑一次要等很久； {@code
  * corridor}（{@link CorridorWorld}）只有 3 格且没有真实经济。<b>两者之间缺一个"浏览器能打开、经济有政府家户/国库、又足够小"的真实世界</b>——
@@ -77,11 +79,15 @@ import java.util.Set;
  *
  * <ul>
  *   <li><b>19 hex</b>（{@value #HEX_COUNT}）：中心 + 完整第一环（6 格）+ 完整第二环（12 格）= 半径 2 的完整六边形，六邻域连通；
- *   <li><b>1 个 Region</b>（{@link #REGION_ID}，名字 {@value #REGION_NAME}）：全部 19 格都归属它；
+ *   <li><b>2 个省级 Region（互斥、不重叠）</b>：{@link #REGION_ID}（名字 {@value #REGION_NAME}）只留其余 18 格；{@link
+ *       #CAPITAL_PROVINCE_ID}（名字 {@value #CAPITAL_PROVINCE_NAME}）恰含首都格 {@link #CAPITAL_AT}
+ *       ——按"首都城/中央座位落在哪几格"取证：两者都是单格 {@link #CAPITAL_AT}（见 {@code PlannedCity} / {@code SocialCity}
+ *       的 {@code at}），故首都省 = {(0,0)}、其余 18 格归 small-world；
  *   <li><b>1 座首都</b>（{@value #CAPITAL_ID}，{@value #CAPITAL_URBAN_POPULATION} 城镇人口）+ <b>1
  *       座镇</b>（{@value #TOWN_ID}，{@value #TOWN_URBAN_POPULATION} 城镇人口）；
  *   <li><b>人口 4,800</b>：19 格 × {@value #RURAL_POPULATION_PER_HEX} 农村人口 = 3,800，加城镇
- *       1,000；人口最多的是首都格（200 + 700 = 900）⇒ 世界级政府家户 {@code hh-gov-world-silver} 落在首都；
+ *       1,000；人口最多的是首都格（200 + 700 = 900）⇒ 世界级政府家户 {@code hh-gov-world-silver} 落在首都 （Z7a 后该格归
+ *       capital-province，不再被省征税）；
  *   <li><b>地形</b>：平原 15 格（原 11 + 新增 4）+ 低丘 4 格（城市两格取平原，故土地的"满可耕/低丘"两档都真的被 economic 播种读到）。
  * </ul>
  *
@@ -122,11 +128,21 @@ public final class SmallWorld {
    */
   public static final String MAP_ID = "small-world";
 
-  /** 唯一 Region 的稳定 id。 */
+  /** `small-world` 省级 Region 的稳定 id（Z7a 后与 {@link #CAPITAL_PROVINCE_ID} 平级、互斥）。 */
   public static final String REGION_ID = "small-world";
 
-  /** 唯一 Region 的显示名。 */
+  /** `small-world` 省级 Region 的显示名。 */
   public static final String REGION_NAME = "小世界";
+
+  /**
+   * Z7a：首都省（与 {@link #REGION_ID} <b>平级的省级辖区</b>）的稳定 id —— 中央 GOV 直辖该省，省辖区只留其余 18 格。
+   *
+   * <p>用户口径（2026-10-23）："中央辖区本身也是一个省……直辖市、直辖区就是独立的省份"，故这里不是"直辖区"第三形态。
+   */
+  public static final String CAPITAL_PROVINCE_ID = "capital-province";
+
+  /** 首都省的显示名。 */
+  public static final String CAPITAL_PROVINCE_NAME = "首都省";
 
   /** 格数：19（半径 2 的完整六边形 = 中心 1 + 第一环 6 + 第二环 12；世界形状见类注）。 */
   public static final int HEX_COUNT = 19;
@@ -198,6 +214,22 @@ public final class SmallWorld {
           new HexCoord(-2, 1),
           new HexCoord(-1, 2));
 
+  /**
+   * {@link #REGION_ID} 的格集：{@link #HEXES} 去掉首都格 {@link #CAPITAL_AT}（18 格）。
+   *
+   * <p>与 {@link #CAPITAL_PROVINCE_HEXES} 互斥、并集 = {@link #HEXES}；这份拆分是 Z7a 的"省级辖区互斥"事实来源。
+   */
+  private static final List<HexCoord> SMALL_WORLD_HEXES =
+      HEXES.stream().filter(hex -> !hex.equals(CAPITAL_AT)).toList();
+
+  /**
+   * {@link #CAPITAL_PROVINCE_ID} 的格集：恰含首都格 {@link #CAPITAL_AT}。
+   *
+   * <p>取证：首都城（{@code PlannedCity.at()}）与中央 GOV 座位都是<b>单格</b> {@link #CAPITAL_AT}（见类注），
+   * 没有任何城市/座位落在首都邻格 ⇒ 首都省不扩邻格。
+   */
+  private static final List<HexCoord> CAPITAL_PROVINCE_HEXES = List.of(CAPITAL_AT);
+
   /** 低丘 4 格（保持 P1.4 原有清单不动；新增的 4 格取平原，城市两格也刻意取平原：首都/镇的经济播种不受地形系数干扰）。 */
   private static final Set<HexCoord> LOW_HILLS_HEXES =
       Set.of(new HexCoord(2, 0), new HexCoord(2, -1), new HexCoord(0, -2), new HexCoord(-2, 0));
@@ -221,9 +253,11 @@ public final class SmallWorld {
     }
 
     GameMap map = map();
-    Region region = map.regions().get(new RegionId(REGION_ID));
-    if (region == null) {
-      throw new IllegalStateException("小世界装配故障：地图里没有 Region " + REGION_ID);
+    Region provinceRegion = map.regions().get(new RegionId(REGION_ID));
+    Region capitalRegion = map.regions().get(new RegionId(CAPITAL_PROVINCE_ID));
+    if (provinceRegion == null || capitalRegion == null) {
+      throw new IllegalStateException(
+          "小世界装配故障：地图里缺 Region（" + REGION_ID + " / " + CAPITAL_PROVINCE_ID + "）");
     }
     SettlementPlan plan = settlementPlan();
     // ★★ P2-C §13.7：小世界 demo 的政府是**世界级** world-silver（不是 GOV 单位）⇒ 显式把它的稳定 id 作为
@@ -250,7 +284,7 @@ public final class SmallWorld {
               "social.CreateCity",
               new CreateCityHandler(),
               new SocialCodec(),
-              createCityPayload(region.id(), city));
+              createCityPayload(regionIdForCity(city), city));
     }
     state =
         applyCommand(
@@ -282,7 +316,17 @@ public final class SmallWorld {
     //   编制计划/预算 + 国库注资）同一批创世落成——沿用同一条 handler → codec.apply 语义，
     //   整份状态仍由 ShellMain.seedGenesisIfEmpty → bootstrapGenesis 写成一条 (main, 1) revision。
     return GovWorldBootstrap.apply(
-        state, SmallWorld::applyCommand, map, REGION_ID, officialManpowerSources(seeding));
+        state,
+        SmallWorld::applyCommand,
+        map,
+        provinceRegion.id().value(),
+        capitalRegion.id().value(),
+        officialManpowerSources(seeding));
+  }
+
+  /** 城的 Region 归属：首都城（落点 = {@link #CAPITAL_AT}）归 capital-province，镇归 small-world（Z7a）。 */
+  private static RegionId regionIdForCity(PlannedCity city) {
+    return new RegionId(city.at().equals(CAPITAL_AT) ? CAPITAL_PROVINCE_ID : REGION_ID);
   }
 
   /**
@@ -371,7 +415,10 @@ public final class SmallWorld {
     };
   }
 
-  /** 19 格地图：唯一 Region（含全部格）+ 平原/低丘两档地形（块由 {@link TerrainBlocks#split} 切，分割不变式随构造校验）。 */
+  /**
+   * 19 格地图：<b>两个互斥的省级 Region</b>（small-world 18 格 + capital-province 1 格，并集 = 全部 19 格）+
+   * 平原/低丘两档地形（块由 {@link TerrainBlocks#split} 切，分割不变式随构造校验）。
+   */
   private static GameMap map() {
     Map<HexCoord, String> terrainByHex = new LinkedHashMap<>();
     for (HexCoord hex : HEXES) {
@@ -387,14 +434,25 @@ public final class SmallWorld {
     terrainTypes.put(plains.key(), plains);
     terrainTypes.put(lowHills.key(), lowHills);
 
+    // ★ Z7a：省级辖区互斥（首都格只归 capital-province，其余 18 格只归 small-world）；插入序 small-world 在前，
+    //   与 P1.4 的既有 region 表序一致（capital-province 是新增条目，不动旧条目的位置）。
     Map<RegionId, Region> regions = new LinkedHashMap<>();
     regions.put(
         new RegionId(REGION_ID),
         Region.of(
             new RegionId(REGION_ID),
             REGION_NAME,
-            new LinkedHashSet<>(HEXES),
-            new RegionMeta("#7ba05b", null, "P1.4 小世界：" + HEX_COUNT + " hex / 1 区域", null)));
+            new LinkedHashSet<>(SMALL_WORLD_HEXES),
+            new RegionMeta(
+                "#7ba05b", null, "P1.4 小世界：18 hex / 省级辖区（首都格归 capital-province）", null)));
+    regions.put(
+        new RegionId(CAPITAL_PROVINCE_ID),
+        Region.of(
+            new RegionId(CAPITAL_PROVINCE_ID),
+            CAPITAL_PROVINCE_NAME,
+            new LinkedHashSet<>(CAPITAL_PROVINCE_HEXES),
+            new RegionMeta(
+                "#c0392b", null, "首都省：与 small-world 平级的省级辖区（含中央座位与首都城 " + CAPITAL_AT + "）", null)));
     return new GameMap(
         hexes,
         TerrainBlocks.split(terrainByHex),

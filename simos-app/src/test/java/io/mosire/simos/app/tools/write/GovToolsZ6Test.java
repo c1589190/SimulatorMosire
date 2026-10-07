@@ -944,6 +944,21 @@ class GovToolsZ6Test {
   @Test
   void expandHouseholdRejectsBadCountBadRoleAndGovWithoutJurisdiction() {
     try (World world = start(tempDir.resolve("expand-guards"), "expand-guards")) {
+      // ★ Z7a：创世给 gov-central 也挂了省级辖区 capital-province（rate=0）⇒ 本用例要的"无辖区 GOV"
+      //   必须显式清空（regions=[]），不再能默认依赖 bootstrap 状态。清空走真 GM 窄工具（命令形状未变）。
+      ToolResult cleared =
+          gmExecute(
+              gmTool(world.shell(), UnitSetJurisdictionTool.NAME),
+              Map.of(
+                  "payloadJson",
+                  ToolSupport.json(Map.of("unitId", "gov-central", "regions", List.of())),
+                  "branch",
+                  "main",
+                  "expectedRevision",
+                  1L));
+      assertThat(cleared.success()).as(cleared.message()).isTrue();
+      assertThat(world.head()).as("清空中央辖区 = 恰一条 revision").isEqualTo(2L);
+
       AgentTool tool = gmTool(world.shell(), GovExpandHouseholdTool.NAME);
 
       ToolResult badCount = gmExecute(tool, expandArgs("gov-province", "SCRIBE", 0L, null, true));
@@ -958,9 +973,9 @@ class GovToolsZ6Test {
           gmExecute(tool, expandArgs("gov-central", "SCRIBE", 1L, null, true));
       assertThat(noJurisdiction.code()).isEqualTo("BAD_REQUEST");
       assertThat(noJurisdiction.message())
-          .as("gov-central 无辖区 ⇒ 无招募来源，具名拒（不部分抽取、零 revision）")
+          .as("清空后 gov-central 无辖区 ⇒ 无招募来源，具名拒（不部分抽取、零 revision）")
           .contains("jurisdiction");
-      assertThat(world.head()).as("expand 全部负向 ⇒ 零 revision").isEqualTo(1L);
+      assertThat(world.head()).as("expand 全部负向 ⇒ 零 revision（清空辖区那条除外）").isEqualTo(2L);
     }
   }
 

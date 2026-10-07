@@ -89,7 +89,7 @@ fi
 if [ -e "${STORE}/simos.db" ]; then
   echo "[run-small-world] 注意：${STORE} 已有库 ⇒ 直接打开已有世界，绝不覆盖（--world=${WORLD} 只在空库生效）。" >&2
 else
-  echo "[run-small-world] 空库 ⇒ 将以 --world=${WORLD} bootstrap 小世界（19 hex / 1 Region / 首都+镇 / 4,800 人 / 两级 GOV 行政链内置）。"
+  echo "[run-small-world] 空库 ⇒ 将以 --world=${WORLD} bootstrap 小世界（19 hex / 2 个省级辖区（small-world + capital-province）/ 首都+镇 / 4,800 人 / 两级 GOV 行政链内置）。"
 fi
 
 echo "[run-small-world] jar      : ${JAR}"

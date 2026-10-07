@@ -25,6 +25,7 @@ import io.mosire.simos.gov.spi.SetAdministrationPlanHandler;
 import io.mosire.simos.gov.spi.SetBudgetPolicyHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
@@ -47,6 +48,7 @@ import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,7 +83,8 @@ import java.util.Optional;
  * → unit.CreateUnit → social.CreateHousehold(hh-gov-<id>, UNIT) → actor.EnsureHouseholdAccount
  * → unit.SetGovFormation（staff={POST:2}、OfficePolicy 默认）
  * → economy.RegisterGovernment
- * → [省] unit.SetJurisdiction(region) → [省] unit.SetTaxRate(100‰)
+ * → unit.SetJurisdiction（本级省级辖区：中央=capital-province / 省=small-world）
+ * → [省] unit.SetTaxRate(100‰)（中央不发：新 region 从 0 起 ⇒ 初始 0‰，要不要征由中央自定/后续工具改）
  * → economy.UpsertGovUnit（office unit + TOOL 份额 + 空规则关系）
  * → social.CreateHousehold(hh-unit:<id>, UNIT) → social.TransferHouseholdMembers（2 名成年男性）
  * → unit.SetUnitHouseholds（hh-gov + hh-unit）→ economy.RegisterHousehold → actor.EnsureHouseholdAccount
@@ -111,10 +114,10 @@ public final class GovWorldBootstrap {
   /** 省 GOV 的稳定 id（与 run setup 的 {@code gov-province} 同字面）。 */
   public static final String PROVINCE_GOV_ID = "gov-province";
 
-  /** 中央 GOV 座位格（首都）。 */
+  /** 中央 GOV 座位格（首都；Z7a 后它所在格只属 capital-province）。 */
   public static final HexCoord CENTRAL_AT = new HexCoord(0, 0);
 
-  /** 省 GOV 座位格（run setup 口径：{@code (0,1)}）。 */
+  /** 省 GOV 座位格（run setup 口径：{@code (0,1)}；属 small-world）。 */
   public static final HexCoord PROVINCE_AT = new HexCoord(0, 1);
 
   /** 每个官吏户配的成年男性人数（2 名 = 全职基层班子的最小可运行规模）。 */
@@ -147,7 +150,7 @@ public final class GovWorldBootstrap {
   /** office 产业模板的产能锚（1 件 TOOL / 单位规模）；{@code economy.UpsertGovUnit} 的 assets 必须逐 kind 覆盖它。 */
   public static final long OFFICE_ASSET_PER_UNIT = 1L;
 
-  /** 省对唯一 Region 的长期税率（‰；run setup 口径）。 */
+  /** 省对 {@code small-world}（18 格省级辖区）的长期税率（‰；run setup 口径）。中央初始 0‰，不用本常量。 */
   public static final long PROVINCE_TAX_RATE_PER_MILLE = 100L;
 
   /** office@hex 的 kind 前缀（id 形状 = {@code <kind>@<q>_<r>}；Z1a 版本约定）。 */
@@ -190,8 +193,9 @@ public final class GovWorldBootstrap {
    *
    * @param state 创世候选状态（必须已有 map/social/unit/economy/actor/gov 切片；由 {@code SmallWorld} 保证）
    * @param applier 命令执行口（见 {@link CommandApplier}）
-   * @param map 真地图（校验两个座位格与目标 Region 存在；不读别的）
-   * @param regionId 省 GOV 管辖的唯一 Region id
+   * @param map 真地图（校验两个座位格与两个省级 Region 存在；不读别的）
+   * @param provinceRegionId 省 GOV（gov-province）管辖的省级 Region id（Z7a = small-world，18 格）
+   * @param capitalRegionId 中央 GOV（gov-central）直辖的省级 Region id（Z7a = capital-province，含首都座位）
    * @param manpowerSources 两名官吏的来源批次，顺序 = {@code [中央, 省]}
    * @return 追加行政链后的状态；任一步被拒 ⇒ 当场抛（整次创世失败，不落半截世界）
    */
@@ -199,12 +203,14 @@ public final class GovWorldBootstrap {
       SimulationState state,
       CommandApplier applier,
       GameMap map,
-      String regionId,
+      String provinceRegionId,
+      String capitalRegionId,
       List<ManpowerSource> manpowerSources) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(applier, "applier");
     Objects.requireNonNull(map, "map");
-    requireNonBlank(regionId, "regionId");
+    requireNonBlank(provinceRegionId, "provinceRegionId");
+    requireNonBlank(capitalRegionId, "capitalRegionId");
     Objects.requireNonNull(manpowerSources, "manpowerSources");
     List<ManpowerSource> sources = List.copyOf(manpowerSources);
     if (sources.size() != 2) {
@@ -213,9 +219,29 @@ public final class GovWorldBootstrap {
     }
     requireSeat(map, CENTRAL_AT, "CENTRAL_AT");
     requireSeat(map, PROVINCE_AT, "PROVINCE_AT");
-    if (!map.regions().containsKey(new RegionId(regionId))) {
+    Region provinceRegion = map.regions().get(new RegionId(provinceRegionId));
+    Region capitalRegion = map.regions().get(new RegionId(capitalRegionId));
+    if (provinceRegion == null || capitalRegion == null) {
       throw new IllegalArgumentException(
-          "regionId 指向的 Region 不在当前地图里: " + regionId + "（无法给省 GOV 落管辖/税率）");
+          "省级 Region 不在当前地图里: provinceRegionId="
+              + provinceRegionId
+              + ", capitalRegionId="
+              + capitalRegionId
+              + "（无法给两级 GOV 落管辖/税率）");
+    }
+    // ★ Z7a 互斥/归属 fail-closed：两个省级辖区必须不重叠、各自含本级 GOV 座位。世界若装配成重叠/座位在外，
+    //   省份税会再次抽中央国库或抽空税基——这类世界宁可不 bootstrap，也不静默落盘。
+    if (!Collections.disjoint(provinceRegion.hexes(), capitalRegion.hexes())) {
+      throw new IllegalStateException(
+          "Z7a 要求两级省级辖区互斥，但 " + provinceRegionId + " 与 " + capitalRegionId + " 存在重叠 hex");
+    }
+    if (!provinceRegion.contains(PROVINCE_AT)) {
+      throw new IllegalStateException(
+          "省 GOV 座位 " + PROVINCE_AT + " 不在其辖区 " + provinceRegionId + " 内（装配故障）");
+    }
+    if (!capitalRegion.contains(CENTRAL_AT)) {
+      throw new IllegalStateException(
+          "中央 GOV 座位 " + CENTRAL_AT + " 不在其辖区 " + capitalRegionId + " 内（装配故障）");
     }
 
     SocialData social = requireSocial(state);
@@ -237,7 +263,7 @@ public final class GovWorldBootstrap {
                 CENTRAL_AT,
                 GovernmentLevel.CENTRAL,
                 Optional.empty(),
-                regionId,
+                capitalRegionId,
                 standardLaborMilli,
                 standardLaborMilli,
                 officialLaborMilli,
@@ -253,7 +279,7 @@ public final class GovWorldBootstrap {
                 PROVINCE_AT,
                 GovernmentLevel.PROVINCE,
                 Optional.of(CENTRAL_GOV_ID),
-                regionId,
+                provinceRegionId,
                 Math.multiplyExact(standardLaborMilli, 2L),
                 Math.multiplyExact(standardLaborMilli, 2L),
                 officialLaborMilli,
@@ -274,7 +300,7 @@ public final class GovWorldBootstrap {
       HexCoord at,
       GovernmentLevel level,
       Optional<String> superiorGov,
-      String regionId,
+      String jurisdictionRegionId,
       long securityPlannedLaborMilli,
       long paperworkPlannedLaborMilli,
       long officialLaborMilli,
@@ -333,14 +359,17 @@ public final class GovWorldBootstrap {
             new EconomyRegisterGovernmentHandler(),
             new EconomyCodec(),
             registerGovernmentPayload(spec, reason));
+    // ★ Z7a：两级 GOV 都落本级省级辖区（中央 capital-province / 省 small-world），二者互斥。
+    //   中央不发 SetTaxRate：SetJurisdiction 对本 GOV 的新 region 从 0 起 ⇒ 初始税率 0‰（设计书 §2/§9）；
+    //   要不要征税由中央自定，后续走既有 simos.unit.setTaxRate（命令形状不变）。
+    next =
+        applier.apply(
+            next,
+            GovCreateOfficePlan.SET_JURISDICTION_TYPE,
+            new SetJurisdictionHandler(),
+            new UnitCodec(),
+            setJurisdictionPayload(spec));
     if (spec.level() == GovernmentLevel.PROVINCE) {
-      next =
-          applier.apply(
-              next,
-              GovCreateOfficePlan.SET_JURISDICTION_TYPE,
-              new SetJurisdictionHandler(),
-              new UnitCodec(),
-              setJurisdictionPayload(spec));
       next =
           applier.apply(
               next,
@@ -545,14 +574,14 @@ public final class GovWorldBootstrap {
   private static String setJurisdictionPayload(GovSpec spec) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("unitId", spec.govId());
-    payload.put("regions", List.of(spec.regionId()));
+    payload.put("regions", List.of(spec.jurisdictionRegionId()));
     return ToolSupport.json(payload);
   }
 
   private static String setTaxRatePayload(GovSpec spec) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("unitId", spec.govId());
-    payload.put("regionId", spec.regionId());
+    payload.put("regionId", spec.jurisdictionRegionId());
     payload.put("ratePerMille", PROVINCE_TAX_RATE_PER_MILLE);
     return ToolSupport.json(payload);
   }

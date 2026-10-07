@@ -27,8 +27,9 @@ import java.util.Set;
  * <ul>
  *   <li>{@value #V17LEVANT} → {@link RichWorld}：当前唯一经济世界的复刻富世界，也是**内置**缺省世界（{@link
  *       io.mosire.simos.app.ShellConfig#DEFAULT_WORLD_ID}）；
- *   <li>{@value #SMALL_WORLD} → {@link SmallWorld}：P1.4 的 19 格真实小世界（1 Region / 首都+镇 / 4,800 人 /
- *       production-runtime 经济与两级 GOV 行政链内置），供 {@code run-small-world.sh} 与 WebUI 演示走真路径；
+ *   <li>{@value #SMALL_WORLD} → {@link SmallWorld}：P1.4 的 19 格真实小世界（2 个省级辖区 small-world +
+ *       capital-province / 首都+镇 / 4,800 人 / production-runtime 经济与两级 GOV 行政链内置），供 {@code
+ *       run-small-world.sh} 与 WebUI 演示走真路径；
  *   <li>{@value #CORRIDOR} → {@link CorridorWorld}：三格走廊夹具世界，供确定性用例复用（**不是**缺省）。
  * </ul>
  *
@@ -41,8 +42,8 @@ public final class WorldRegistry {
   public static final String V17LEVANT = "v17levant";
 
   /**
-   * ★ P1.4 的 19 格真实小世界（{@link SmallWorld}）的登记 id：1 Region / 首都+镇 / 4,800 人 / production-runtime
-   * 经济与两级 GOV 行政链内置。
+   * ★ P1.4 的 19 格真实小世界（{@link SmallWorld}）的登记 id：19 hex / 2 个省级辖区（small-world + capital-province）/
+   * 首都+镇 / 4,800 人 / production-runtime 经济与两级 GOV 行政链内置。
    */
   public static final String SMALL_WORLD = "small-world";
 
@@ -129,7 +130,7 @@ public final class WorldRegistry {
         entries,
         new Entry(
             SMALL_WORLD,
-            "P1.4 小世界（19 hex / 1 区域 / 首都+镇 / 4,800 人；production-runtime 经济与两级 GOV 行政链内置）",
+            "P1.4 小世界（19 hex / 2 个省级辖区（small-world + capital-province）/ 首都+镇 / 4,800 人；production-runtime 经济与两级 GOV 行政链内置）",
             SmallWorld::state));
     register(
         entries,
