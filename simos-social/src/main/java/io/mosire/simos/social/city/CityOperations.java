@@ -127,7 +127,8 @@ public final class CityOperations {
         base.provisioning(),
         base.vitalRates(),
         base.vitalRemainders(),
-        base.satietyPerMille());
+        base.satietyPerMille(),
+        base.fleeStates());
   }
 
   /** 该城名下的全部批次（按 {@code groups} 的插入序；前缀判法走 {@link PopulationLots#urbanPrefix} 的唯一拼写点）。 */

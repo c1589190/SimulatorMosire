@@ -10,6 +10,7 @@ import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.HouseholdPopulationEvent;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.household.Household;
+import io.mosire.simos.social.household.HouseholdFleeState;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.SocialVitalRates;
@@ -24,8 +25,9 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * 社会状态的变更集。**组件与 {@link SocialData} 的 record 组件一一对应**（当前 9 个：populations / cities / groups /
- * households / populationEvents / provisioning / vitalRates / vitalRemainders / satietyPerMille）。
+ * 社会状态的变更集。**组件与 {@link SocialData} 的 record 组件一一对应**（当前 10 个：populations / cities / groups /
+ * households / populationEvents / provisioning / vitalRates / vitalRemainders / satietyPerMille /
+ * fleeStates）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 `SocialRoundTripTest` 的**反射枚举**把守——新增状态组件若不进变更集，那个测试自动红。
  *
@@ -55,7 +57,8 @@ public record SocialChangeSet(
     FieldDelta<SocialProvisioning> provisioning,
     FieldDelta<SocialVitalRates> vitalRates,
     FieldDelta<SocialVitalRemainders> vitalRemainders,
-    FieldDelta<Long> satietyPerMille)
+    FieldDelta<Long> satietyPerMille,
+    FieldDelta<HouseholdFleeState> fleeStates)
     implements ChangeSet {
 
   /** {@code provisioning} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -98,6 +101,37 @@ public record SocialChangeSet(
     if (satietyPerMille == null) {
       satietyPerMille = new FieldDelta.Unchanged<>();
     }
+    // ★★ Z7d-2 第 10 个组件同为**追加式兼容**：旧变更集没有逃亡事实 ⇒ 缺键 = Unchanged。
+    if (fleeStates == null) {
+      fleeStates = new FieldDelta.Unchanged<>();
+    }
+  }
+
+  /**
+   * ★ <b>Z7d-2 的 9 组件兼容构造器</b>（Z7d-1 canonical 形）：第 10 个组件缺省 = {@code Unchanged}（旧变更集没有逃亡事实）。
+   * 只服务既有调用点/测试的编译兼容；生产 between/apply 一律走 10 组件 canonical 形。
+   */
+  public SocialChangeSet(
+      FieldDelta<PopulationSeries> populations,
+      FieldDelta<SocialCity> cities,
+      FieldDelta<PopulationGroup> groups,
+      FieldDelta<Household> households,
+      FieldDelta<HouseholdPopulationEvent> populationEvents,
+      FieldDelta<SocialProvisioning> provisioning,
+      FieldDelta<SocialVitalRates> vitalRates,
+      FieldDelta<SocialVitalRemainders> vitalRemainders,
+      FieldDelta<Long> satietyPerMille) {
+    this(
+        populations,
+        cities,
+        groups,
+        households,
+        populationEvents,
+        provisioning,
+        vitalRates,
+        vitalRemainders,
+        satietyPerMille,
+        new FieldDelta.Unchanged<>());
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -119,7 +153,8 @@ public record SocialChangeSet(
         FieldDelta.diff(
             singleValueTable(VITAL_REMAINDERS_KEY, base.vitalRemainders()),
             singleValueTable(VITAL_REMAINDERS_KEY, target.vitalRemainders())),
-        FieldDelta.diff(base.satietyPerMille(), target.satietyPerMille()));
+        FieldDelta.diff(base.satietyPerMille(), target.satietyPerMille()),
+        FieldDelta.diff(base.fleeStates(), target.fleeStates()));
   }
 
   /**
@@ -162,7 +197,8 @@ public record SocialChangeSet(
             VITAL_REMAINDERS_KEY,
             "vitalRemainders",
             "SOCIAL_VITAL_REMAINDERS_REJECTED"),
-        FieldDelta.rebuild(base.satietyPerMille(), cs.satietyPerMille(), HouseholdId::parse));
+        FieldDelta.rebuild(base.satietyPerMille(), cs.satietyPerMille(), HouseholdId::parse),
+        FieldDelta.rebuild(base.fleeStates(), cs.fleeStates(), HouseholdId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -175,7 +211,8 @@ public record SocialChangeSet(
         || provisioning.changed()
         || vitalRates.changed()
         || vitalRemainders.changed()
-        || satietyPerMille.changed());
+        || satietyPerMille.changed()
+        || fleeStates.changed());
   }
 
   /** 单值组件 → 恰一行的表（键固定为调用方给的组件名）。 */

@@ -213,7 +213,8 @@ public final class HouseholdBook {
             base.provisioning(),
             base.vitalRates(),
             base.vitalRemainders(),
-            base.satietyPerMille());
+            base.satietyPerMille(),
+            base.fleeStates());
     EventLog.channel(SocialLog.command())
         .info(
             LogEvent.of(
@@ -397,7 +398,8 @@ public final class HouseholdBook {
             base.provisioning(),
             base.vitalRates(),
             base.vitalRemainders(),
-            base.satietyPerMille());
+            base.satietyPerMille(),
+            base.fleeStates());
     EventLog.channel(SocialLog.command())
         .info(
             LogEvent.of(
@@ -656,7 +658,8 @@ public final class HouseholdBook {
             base.provisioning(),
             base.vitalRates(),
             base.vitalRemainders(),
-            base.satietyPerMille());
+            base.satietyPerMille(),
+            base.fleeStates());
     for (HouseholdPopulationEvent event : applied) {
       EventLog.channel(SocialLog.event())
           .debug(

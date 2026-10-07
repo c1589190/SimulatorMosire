@@ -5,7 +5,10 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.api.production.ProductionEfficiencyModifier;
@@ -16,6 +19,8 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -546,6 +551,85 @@ public final class EconomyDayStepper implements AutoCloseable {
    */
   public List<EconomyPopulationTransfer> drainPendingPopulationTransfers() {
     return session.drainPendingPopulationTransfers();
+  }
+
+  /**
+   * ★★ <b>Z7d-2：按 id 显式缩减/释放 {@code GOV_SERVICE} 承诺</b>（逃亡执行的唯一经济侧写口）。
+   *
+   * <p>★★ <b>为什么是独立窄口而不是通用承诺写口</b>：本方法只服务"逃亡/解职这类显式动作已经算好每一条要变成多少"的场景—— 只允许 <b>GOV_SERVICE
+   * 行</b>、<b>只允许减（或释放）</b>、<b>id 必须已存在</b>。它<b>不</b>创建新行、不把 PRODUCTION 改成 GOV_SERVICE、不静默改
+   * kind；任何越界（未知 id / kind 不符 / 增量 / 负数）都具名 {@link IllegalArgumentException}。 写出的 {@code 0} =
+   * release（删该行）；其余值保留原有 group/actor/activity/period/kind 逐值不变。
+   *
+   * <p>★ 本方法只改会话工作表；最终状态仍由 {@link #finish()} → {@code EconomyData} 构造期全量守卫把关 （{@code Σ PRODUCTION ≤
+   * budget − min(Σ GOV_SERVICE, budget)} 等）。
+   *
+   * @param newLaborMilliByCommitmentId 每条 GOV_SERVICE 承诺的新量（0 = 释放；0..旧值）；不得为 null/含 null
+   */
+  public void applyGovServiceCommitmentReductions(
+      Map<LaborAllocationId, Long> newLaborMilliByCommitmentId) {
+    Objects.requireNonNull(newLaborMilliByCommitmentId, "newLaborMilliByCommitmentId（没有缩减用空表）");
+    if (newLaborMilliByCommitmentId.isEmpty()) {
+      return;
+    }
+    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> commitments =
+        session.sheet().laborCommitments();
+    List<LaborAllocationId> ids = new ArrayList<>(newLaborMilliByCommitmentId.size());
+    for (Map.Entry<LaborAllocationId, Long> entry : newLaborMilliByCommitmentId.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("GOV_SERVICE 缩减表的键与值都不得为 null: " + entry.getKey());
+      }
+      ids.add(entry.getKey());
+    }
+    ids.sort(Comparator.comparing(LaborAllocationId::value));
+    for (LaborAllocationId id : ids) {
+      Long requested = newLaborMilliByCommitmentId.get(id);
+      HouseholdLaborCommitment current = commitments.get(id);
+      if (current == null) {
+        throw new IllegalArgumentException("GOV_SERVICE 缩减指向不存在的承诺行: " + id.value());
+      }
+      if (current.kind() != LaborCommitmentKind.GOV_SERVICE) {
+        throw new IllegalArgumentException(
+            "GOV_SERVICE 缩减只能作用于 GOV_SERVICE 行（不是 PRODUCTION）: "
+                + id.value()
+                + " kind="
+                + current.kind());
+      }
+      long next = requested.longValue();
+      if (next < 0L || next > current.laborMilli()) {
+        throw new IllegalArgumentException(
+            "GOV_SERVICE 缩减必须 ∈ [0, 旧值]（逃亡只减不增）: id="
+                + id.value()
+                + " old="
+                + current.laborMilli()
+                + " new="
+                + next);
+      }
+      if (next == 0L) {
+        commitments.remove(id);
+      } else if (next < current.laborMilli()) {
+        commitments.put(
+            id,
+            new HouseholdLaborCommitment(
+                id,
+                current.group(),
+                current.household(),
+                current.actor(),
+                current.activity(),
+                next,
+                current.period(),
+                current.kind()));
+      }
+    }
+    if (LOG.isDebugEnabled()) {
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "ECONOMY_GOV_SERVICE_COMMITMENT_REDUCED",
+                  EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                  "rows",
+                  newLaborMilliByCommitmentId.size()));
+    }
   }
 
   /** 收尾：把累加器挂上，交出可以进变更集的最终状态（账户在 {@link #accounts()} 里，不在这个状态里）。 */

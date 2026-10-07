@@ -1253,6 +1253,85 @@ public final class UnitOperations {
   }
 
   /**
+   * ★★ <b>Z7d-2：把某个已空官吏户从 GOV 编制里摘出</b>（逃亡执行的 unit 侧唯一窄写口）——同一方法内原子完成三件事：
+   *
+   * <ol>
+   *   <li>从 {@link GovernmentFormation#governmentPostsOfHousehold()} / {@link
+   *       GovernmentFormation#externalPosts()} 的相应侧删除该户岗位（若存在）；
+   *   <li>从 {@link Unit#households()} 删除该户（若存在）；
+   *   <li>其余 {@code staff/policy/superiorGov/level} 逐值保留（{@code staff} 是 legacy 缓存，派生读数走 {@code
+   *       GovernmentFormation#projectedStaff}；本方法不改它，避免在没有承诺权威的 unit 模块里伪造第二本账）。
+   * </ol>
+   *
+   * <p>★★ <b>拒因</b>：单位不存在/不是 GOV；目标是国库户 {@code hh-gov-<unitId>}（GOV 不变量要求它恒在 households， 不得摘）；目标既不在
+   * {@code Unit.households} 也没有任何岗位行（无法具名"摘什么"）。家户在别处是否还有人员/承诺由 app 组合根负责（unit 看不见 Social/economy）。
+   *
+   * <p>★ 纯函数；结果走 canonical 拷贝，其余组件一个不丢；变更集仍由 {@link UnitChangeSet#between} 派生。
+   */
+  public static UnitState evictGovernmentHousehold(
+      UnitState state, UnitId id, HouseholdId household) {
+    Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(id, "id");
+    Objects.requireNonNull(household, "household");
+    Unit unit = require(state, id);
+    GovernmentFormation governmentFormation = requireGovernmentFormation(unit, id);
+    HouseholdId treasury = GovernmentHouseholds.of(id.value());
+    if (treasury.equals(household)) {
+      debugReject(
+          "evictGovernmentHousehold", "国库户不得从 GOV 家户列表摘出", "unit", id, "household", household);
+      throw new IllegalArgumentException(
+          "国库户 " + household + " 是 GOV " + id + " 的财政家户，始终必须留在 Unit.households（GOV 不变量）；不得摘出");
+    }
+    Map<HouseholdId, GovernmentPostOfHousehold> internalPosts =
+        new LinkedHashMap<>(governmentFormation.governmentPostsOfHousehold());
+    Map<HouseholdId, GovernmentPostOfHousehold> externalPosts =
+        new LinkedHashMap<>(governmentFormation.externalPosts());
+    boolean hadInternalPost = internalPosts.remove(household) != null;
+    boolean hadExternalPost = externalPosts.remove(household) != null;
+    List<HouseholdId> households = new ArrayList<>(unit.households());
+    boolean wasContained = households.remove(household);
+    if (!hadInternalPost && !hadExternalPost && !wasContained) {
+      debugReject(
+          "evictGovernmentHousehold",
+          "家户既不在 households 也没有岗位行",
+          "unit",
+          id,
+          "household",
+          household);
+      throw new IllegalArgumentException(
+          "家户 " + household + " 既不在单位 " + id + " 的 Unit.households，也没有任何内部/外部岗位行——没有可摘出的编制事实");
+    }
+    GovernmentFormation nextFormation =
+        new GovernmentFormation(
+            governmentFormation.staff(),
+            internalPosts,
+            governmentFormation.policy(),
+            governmentFormation.superiorGov(),
+            governmentFormation.level(),
+            externalPosts);
+    Unit nextUnit = withModule(unit, Optional.of(nextFormation));
+    if (!households.equals(unit.households())) {
+      nextUnit = withHouseholds(nextUnit, households);
+    }
+    EventLog.channel(UnitLog.command())
+        .info(
+            LogEvent.of(
+                "UNIT_GOV_HOUSEHOLD_EVICTED",
+                UnitLogSource.UNIT_COMMAND,
+                "unit",
+                id.value(),
+                "household",
+                household.value(),
+                "internalPost",
+                hadInternalPost,
+                "externalPost",
+                hadExternalPost,
+                "removedFromHouseholds",
+                wasContained));
+    return withUnit(state, nextUnit);
+  }
+
+  /**
    * 阶段 10b-i 的四条 GOV 编辑命令共用守卫：单位存在且 {@code module} 必须是 {@link GovernmentFormation}。
    *
    * <p>★ 与 {@link #requireGovUnit} 的区别：那个是"认主子/上级"的引用校验（消息带字段名），本方法是"被编辑对象必须是 GOV"（消息给出下一步：先 {@code

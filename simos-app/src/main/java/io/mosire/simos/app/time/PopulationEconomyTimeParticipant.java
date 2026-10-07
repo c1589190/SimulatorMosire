@@ -32,6 +32,7 @@ import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.EconomyParallelism;
 import io.mosire.simos.economy.time.EconomyPopulationTransfer;
 import io.mosire.simos.economy.time.EconomySettlement;
+import io.mosire.simos.economy.time.MarketTopology;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
 import io.mosire.simos.gov.GovAdministrationPlan;
@@ -177,6 +178,16 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    */
   private Set<UnitId> knownGovUnits = Collections.emptySet();
 
+  /**
+   * ★★ <b>Z7d-2：本 tick 产生的 unit 侧逃亡摘除请求</b>（瞬态；由 app 组合根的新组合参与者 {@code
+   * PopulationUnitTimeParticipant} 在同一 revision 的 unit 变更集里消费）。
+   *
+   * <p>与 {@code govEfficiencyModifiers} 同制：不进状态/变更集/Codec；只在"population 参与者先跑、unit 参与者后跑" 的既有
+   * namespace 字典序（population &lt; unit）下被消费一次。
+   */
+  private final List<GovernmentServiceDesertionBridge.Eviction> pendingFlightEvictions =
+      new ArrayList<>();
+
   /** 旧调用点（测试/夹具）兼容：并行度取缺省 {@link ShellConfig#DEFAULT_ECONOMY_WORKER_COUNT}（单线程退化路径）。 */
   public PopulationEconomyTimeParticipant(String mapId) {
     this(mapId, 1);
@@ -265,6 +276,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   public WorldTimeProposal simulateWorld(SimulationState state, TimeRange range) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(range, "range");
+    // ★ Z7d-2：新一次提案从零开始记逃亡摘除（旧提案被拒/重放都不会把请求带进下一次）。
+    pendingFlightEvictions.clear();
     EconomyData economyBase = economyOf(state);
     SocialData socialBase = socialOf(state);
     // ★★ S1 阶段 4+5 Task 5：**第三片 actor** —— 产权落账只可能发生在同时看得见 economy 与 actor 的地方。
@@ -546,12 +559,14 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     //   池的生命周期：finish()/close() 关闭；下面的 try/finally 保证日循环抛异常也不泄漏结算线程池。
     EconomyParallelism parallelism = EconomyParallelism.of(economyWorkerCount);
     try {
+      // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
+      //   ★ Z7d-2：同一份拓扑也喂逃亡去向排序（ExpectedProfitBook 的入参）。
+      MarketTopology flightTopology = MarketTopologyBook.from(state);
       EconomyDayStepper stepper =
           new EconomyDayStepper(
               economy,
               session,
-              // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
-              MarketTopologyBook.from(state),
+              flightTopology,
               EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
               EconomySettlement.FAMINE_MORTALITY_PER_MILLE,
               parallelism);
@@ -813,6 +828,82 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               stepper.putCrisisSignal(toCrisisSignal(draft, day));
             }
             adminTotals.recordExtraSignals(executionAlerts.size());
+            // ★★ Z7d-2 逃亡：日结 + 预算执行之后，用**当日真实逐户缺口**（ADMIN_SALARY 逐户 requested−paid；
+            //   ADMIN_STIPEND 粮/布腿逐 GOV shortfall）驱动 fleeRate，再按确定性去向执行成员转移。
+            //   同一 revision：Social 成员/位置 + Economy 人口/劳动/承诺 + Unit 摘除请求（由组合参与者落 unit 变更集）。
+            Map<HouseholdId, Long> salaryShortfallsByHousehold = new LinkedHashMap<>();
+            for (Map.Entry<HouseholdId, GovBudgetExecutionBridge.ResourceVector> entry :
+                budget.salaryShortfallByHousehold(budgetedReport).entrySet()) {
+              long value = entry.getValue().value();
+              if (value > 0L) {
+                salaryShortfallsByHousehold.put(entry.getKey(), value);
+              }
+            }
+            Map<UnitId, Long> stipendShortfallsByUnit = new LinkedHashMap<>();
+            for (GovDaily.UpkeepDue due : settled.dues()) {
+              if (due.resource() instanceof GovDaily.Commodity && due.shortfall() > 0L) {
+                stipendShortfallsByUnit.merge(due.unitId(), due.shortfall(), Math::addExact);
+              }
+            }
+            GovernmentServiceDesertionBridge.Outcome flight =
+                GovernmentServiceDesertionBridge.execute(
+                    currentSocial,
+                    economy,
+                    stepper::data,
+                    units,
+                    salaryShortfallsByHousehold,
+                    stipendShortfallsByUnit,
+                    stepper.accounts(),
+                    flightTopology,
+                    stepper.lastMarketReport().map(List::of).orElse(List.of()),
+                    day);
+            currentSocial = flight.social();
+            stepper.applyGovServiceCommitmentReductions(flight.commitmentReductions());
+            if (!flight.populationDeltas().isEmpty()) {
+              stepper.applyHouseholdPopulationDeltas(flight.populationDeltas());
+            }
+            // ★ 户空被删的源户也要显式把劳动预算归 0（recompute 只写传入键，不清理缺键行）。
+            Map<HouseholdId, Long> flightLaborBudgets =
+                new LinkedHashMap<>(laborBudgetsOf(currentSocial, day));
+            for (HouseholdId emptied : flight.emptiedHouseholds()) {
+              flightLaborBudgets.put(emptied, 0L);
+            }
+            stepper.updateComposition(compositionOf(currentSocial));
+            stepper.recomputeLaborBudgets(flightLaborBudgets);
+            stepper.updateNaturalNeeds(naturalNeedsOf(currentSocial, day));
+            pendingFlightEvictions.addAll(flight.evictions());
+            for (HexCrisisSignal signal : flight.signals()) {
+              stepper.putCrisisSignal(signal);
+            }
+            if (TIME.isDebugEnabled()) {
+              GovernmentServiceDesertionBridge.Report flightReport = flight.report();
+              TIME.debug(
+                  LogEvent.of(
+                      "GOV_SERVICE_DESERTION_DAY",
+                      AppLogSource.DAILY_LOOP,
+                      "day",
+                      day,
+                      "mapId",
+                      mapId,
+                      "govUnits",
+                      flightReport.govUnits(),
+                      "householdsEvaluated",
+                      flightReport.householdsEvaluated(),
+                      "rises",
+                      flightReport.rises(),
+                      "falls",
+                      flightReport.falls(),
+                      "tierCrossings",
+                      flightReport.tierCrossings(),
+                      "flights",
+                      flightReport.flights(),
+                      "fledPopulation",
+                      flightReport.fledPopulation(),
+                      "emptiedHouseholds",
+                      flightReport.emptiedHouseholds(),
+                      "noDestinationSkips",
+                      flightReport.noDestinationSkips()));
+            }
           } else {
             // 本日没有 GOV 读数：注入集既无法消费也无法验证，直接作废（机制要影响就必须逐 tick 重新注入）。
             govEfficiencyModifiers.clear();
@@ -933,6 +1024,19 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       parallelism.close();
       throw failure;
     }
+  }
+
+  /**
+   * ★★ <b>Z7d-2：取走本 tick 的 unit 摘除请求</b>（由组合参与者 {@code PopulationUnitTimeParticipant} 在 unit
+   * 变更集里执行）。 取走后本参与者记录清零；空表共享单例。
+   */
+  public List<GovernmentServiceDesertionBridge.Eviction> drainFlightEvictions() {
+    if (pendingFlightEvictions.isEmpty()) {
+      return List.of();
+    }
+    List<GovernmentServiceDesertionBridge.Eviction> drained = List.copyOf(pendingFlightEvictions);
+    pendingFlightEvictions.clear();
+    return drained;
   }
 
   // ── 切片读取与地址 ────────────────────────────────────────────────────────────────────

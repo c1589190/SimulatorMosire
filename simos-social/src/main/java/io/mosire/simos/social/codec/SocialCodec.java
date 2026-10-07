@@ -236,10 +236,12 @@ public final class SocialCodec implements ModuleCodec, ModuleDiffer {
                 "vitalRemainders",
                 data.vitalRemainders().entries().size(),
                 "satietyPerMille",
-                data.satietyPerMille().size()));
+                data.satietyPerMille().size(),
+                "fleeStates",
+                data.fleeStates().size()));
   }
 
-  /** 九个组件里 {@code changed()} 的个数（元信息；不改任何组件）。 */
+  /** 十个组件里 {@code changed()} 的个数（元信息；不改任何组件）。 */
   private static int changedComponentCount(SocialChangeSet changeSet) {
     int changed = 0;
     if (changeSet.populations().changed()) {
@@ -267,6 +269,9 @@ public final class SocialCodec implements ModuleCodec, ModuleDiffer {
       changed++;
     }
     if (changeSet.satietyPerMille().changed()) {
+      changed++;
+    }
+    if (changeSet.fleeStates().changed()) {
       changed++;
     }
     return changed;

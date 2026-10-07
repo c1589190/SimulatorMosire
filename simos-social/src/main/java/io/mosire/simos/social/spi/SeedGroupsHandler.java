@@ -198,7 +198,8 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
               base.provisioning(),
               base.vitalRates(),
               base.vitalRemainders(),
-              base.satietyPerMille());
+              base.satietyPerMille(),
+              base.fleeStates());
       EventLog.channel(SocialLog.command())
           .info(
               LogEvent.of(

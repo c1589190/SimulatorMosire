@@ -95,7 +95,9 @@ public record HexCrisisSignal(
     /** 岗位空缺无法填（计划需求 &gt; 0 且该维实际承诺供给 = 0；Z3c，只发信号，不自动招募）。 */
     ADMIN_VACANCY,
     /** 行政契约异常（预算/工资/军俸执行路径的跨切片不一致等；Z3c，ERROR + 信号，不自动修复）。 */
-    ADMIN_CONTRACT
+    ADMIN_CONTRACT,
+    /** 官吏户逃亡（Z7d-2：欠俸/饥饿驱动逃亡率上升，或真的走人；只发信号，不自动补俸/招人）。 */
+    GOV_SERVICE_DESERTION
   }
 
   public HexCrisisSignal {

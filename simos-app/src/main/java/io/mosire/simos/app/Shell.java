@@ -51,7 +51,7 @@ import io.mosire.simos.app.sd.channel.GuiDecisionChannel;
 import io.mosire.simos.app.sd.channel.HttpDecisionChannel;
 import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.time.CalendarService;
-import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
+import io.mosire.simos.app.time.PopulationUnitTimeParticipant;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.codec.ArmyCodec;
@@ -201,7 +201,6 @@ import io.mosire.simos.unit.spi.SetTaxRateHandler;
 import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
 import io.mosire.simos.unit.spi.SetVisionRadiusHandler;
 import io.mosire.simos.unit.spi.SplitFormationHandler;
-import io.mosire.simos.unit.spi.UnitTimeParticipant;
 import io.mosire.simos.unit.spi.UpdateCommandChainHandler;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -837,11 +836,11 @@ public final class Shell implements AutoCloseable {
     //   ★ 旧注释（R4 为何 economy 与 social 合为一个参与者）仍成立：出生/死亡要同时看两侧，且"同一模块只能有一个写者"。
     List<TimeParticipant> participants =
         List.of(
-            new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()),
-            new SdTimeParticipant(config.mapId()),
-            // ★ 唯一的经济—人口协调器 = production-runtime 单日入口（缺省单线程退化路径）。
-            // ★ C5：历法与人口/经济同取一份 CalendarService 快照（生产路径必须由 CalendarService.load 注入）。
-            new PopulationEconomyTimeParticipant(config.mapId()));
+            // ★ Z7d-2：unit 移动 + 人口—经济日结 + 逃亡摘除必须落在同一条 revision（写-写判定按模块键拒绝两个 unit 写者）
+            //   ⇒ 组合参与者把 UnitTimeParticipant 与 PopulationEconomyTimeParticipant 合成一份提案；
+            //   内部次序固定：population（含逃亡 outbox）→ unit 移动 → unit 摘除。
+            new PopulationUnitTimeParticipant(config.mapId()),
+            new SdTimeParticipant(config.mapId()));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }

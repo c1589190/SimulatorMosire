@@ -1376,7 +1376,7 @@ public final class ModeMigrationPolicy {
    * ★★ <b>兼容重载：只算"被既有组织引用"这一格</b>，等价于 {@code claimedOwnershipStakes(enterprises, Map.of(),
    * Map.of())}。测试/旧调用点可继续用；生产路径 （{@link #plan} 与 {@code
    * ModeMigrationSettlement.createEnterpriseAndProcess}）一律走三参版本，把当天工作副本 {@code units}/{@code
-   * assetShares} 一并传入。两参/三参共用下面同一个谓词，不存在第二套拼写。
+   * assetShares} 一并传入。两参/三参共用下面同一个谓词，不存在第二套拼写。★ Z7d-2：三参版本公开给 app 组合根的逃亡去向排序复用（不复制谓词）。
    */
   static Set<AssetShareId> claimedOwnershipStakes(
       Map<ProductionOrganizationId, ProductionEnterprise> enterprises) {
@@ -1401,7 +1401,7 @@ public final class ModeMigrationPolicy {
    * ModeMigrationSettlement#createEnterpriseAndProcess} 从同一份当天工作副本再构建一次。集合只用于 {@link #isIdleShare}
    * 的包含判断，不参与排序，故迭代序不影响计划确定性。
    */
-  static Set<AssetShareId> claimedOwnershipStakes(
+  public static Set<AssetShareId> claimedOwnershipStakes(
       Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<AssetShareId, OwnershipStake> assetShares) {

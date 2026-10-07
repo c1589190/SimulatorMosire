@@ -16,6 +16,7 @@ import io.mosire.simos.app.household.HouseholdUnitConsistency;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.time.GovServiceFlowFeed;
+import io.mosire.simos.app.time.GovernmentServiceDesertionBridge;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -41,6 +42,7 @@ import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.household.HouseholdFleeState;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.GovernmentPostOfHousehold;
 import io.mosire.simos.unit.Unit;
@@ -301,6 +303,7 @@ public final class GovInfoTool implements AgentTool {
     info.put("efficiency", efficiencyView(govState.offices().get(govId)));
     info.put("supply", supplyView(economy, govId, formation, plan, tick));
     info.put("committedLabor", committedLaborView(economy, social, govId, formation, plan, tick));
+    info.put("desertion", desertionView(social, economy, govId, formation, tick));
     info.put("budgetSettlement", budgetSettlementView(govState.offices().get(govId), policy));
     info.put("treasury", treasuryView(state, govId));
     info.put("alerts", alertsView(economy, map, unit, at));
@@ -522,6 +525,27 @@ public final class GovInfoTool implements AgentTool {
       rowView.put(
           "underfedReason",
           effectiveLaborMilli < committedLaborMilli ? "starvation-reduced-actual-labor" : null);
+      if (social.households().containsKey(household)) {
+        HouseholdFleeState flee = social.fleeState(household);
+        rowView.put("fleeRatePerMille", flee.fleeRatePerMille());
+        rowView.put("fleeRemainderMilli", flee.remainderMilli());
+        rowView.put(
+            "fleeRateTier", GovernmentServiceDesertionBridge.rateTier(flee.fleeRatePerMille()));
+        rowView.put("lastFleeDay", flee.lastFleeDay());
+        rowView.put("lastFleeCount", flee.lastFleeCount());
+        rowView.put("lastFleeReason", flee.lastFleeReason());
+        rowView.put("lastDriverDay", flee.lastDriverDay());
+        rowView.put("lastDriverReason", flee.lastDriverReason());
+      } else {
+        rowView.put("fleeRatePerMille", null);
+        rowView.put("fleeRemainderMilli", null);
+        rowView.put("fleeRateTier", null);
+        rowView.put("lastFleeDay", null);
+        rowView.put("lastFleeCount", null);
+        rowView.put("lastFleeReason", null);
+        rowView.put("lastDriverDay", null);
+        rowView.put("lastDriverReason", null);
+      }
       rowView.put("hasPost", post != null);
       rowView.put(
           "postScope",
@@ -540,6 +564,86 @@ public final class GovInfoTool implements AgentTool {
         "timing",
         "satietyPerMille = 最近一次日结算后的值（决定下一 tick 的 householdLaborMilli）；"
             + "actualLaborMilli = 本轮 Economy 行 laborMilli（当 tick 已消费的预算，二者相差一天是正常口径）");
+    return view;
+  }
+
+  /**
+   * ★★ <b>Z7d-2：逃亡读数</b>——逐官吏户的 {@code fleeRatePerMille} + 驱动（最近一次 underpaid/hunger/satisfied）+
+   * 最近一次真走人（日/人数/原因）。只读 Social 的 {@code fleeStates} 与 {@code committedLabor} 的岗位户集合，不写不猜。
+   */
+  private static Map<String, Object> desertionView(
+      SocialData social,
+      EconomyData economy,
+      UnitId govId,
+      GovernmentFormation formation,
+      long tick) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    Map<HouseholdId, Long> committed;
+    try {
+      committed = GovernmentServiceLaborBridge.committedLaborByHousehold(economy, govId, tick);
+    } catch (RuntimeException e) {
+      view.put("available", false);
+      view.put("reason", e.getClass().getSimpleName() + ": " + e.getMessage());
+      return view;
+    }
+    List<HouseholdId> households = new ArrayList<>(committed.keySet());
+    for (HouseholdId household : formation.governmentPostsOfHousehold().keySet()) {
+      if (!households.contains(household)) {
+        households.add(household);
+      }
+    }
+    // ★ Z7d-2：户空后岗位/承诺已释放，但 Social 壳户仍保留"最近一次逃亡"历史 ⇒ 按
+    //   hh-unit:<govId> 的历史户命名补进读口（否则"最近逃亡"会在清户当天从视图里消失）。
+    String historicPrefix = "hh-unit:" + govId.value();
+    for (HouseholdId household : social.fleeStates().keySet()) {
+      if (!households.contains(household) && household.value().startsWith(historicPrefix)) {
+        households.add(household);
+      }
+    }
+    households.sort(java.util.Comparator.comparing(HouseholdId::value));
+    long maxRate = 0L;
+    long totalRemainder = 0L;
+    long lastFleeDay = 0L;
+    long householdsWithRate = 0L;
+    List<Map<String, Object>> rows = new ArrayList<>(households.size());
+    for (HouseholdId household : households) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("householdId", household.value());
+      if (!social.households().containsKey(household)) {
+        row.put("available", false);
+        row.put("reason", "social-household-missing");
+        rows.add(row);
+        continue;
+      }
+      HouseholdFleeState flee = social.fleeState(household);
+      row.put("available", true);
+      row.put("fleeRatePerMille", flee.fleeRatePerMille());
+      row.put("fleeRateTier", GovernmentServiceDesertionBridge.rateTier(flee.fleeRatePerMille()));
+      row.put("fleeRemainderMilli", flee.remainderMilli());
+      row.put("lastDriverDay", flee.lastDriverDay());
+      row.put("lastDriverReason", flee.lastDriverReason());
+      row.put("lastFleeDay", flee.lastFleeDay());
+      row.put("lastFleeCount", flee.lastFleeCount());
+      row.put("lastFleeReason", flee.lastFleeReason());
+      row.put("satietyPerMille", social.satietyPerMille(household));
+      rows.add(row);
+      maxRate = Math.max(maxRate, flee.fleeRatePerMille());
+      totalRemainder = Math.addExact(totalRemainder, flee.remainderMilli());
+      lastFleeDay = Math.max(lastFleeDay, flee.lastFleeDay());
+      if (flee.fleeRatePerMille() > 0L) {
+        householdsWithRate++;
+      }
+    }
+    view.put("available", true);
+    view.put("households", List.copyOf(rows));
+    view.put("maxFleeRatePerMille", maxRate);
+    view.put("householdsWithFleeRate", householdsWithRate);
+    view.put("totalRemainderMilli", totalRemainder);
+    view.put("lastFleeDay", lastFleeDay);
+    view.put(
+        "source",
+        "Social fleeStates（Z7d-2 每日驱动/执行后的持久读数）；lastDriverReason ∈ "
+            + "{underpaid, hunger, underpaid+hunger, satisfied}；不在本读口自动补俸/招人");
     return view;
   }
 

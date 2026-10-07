@@ -913,6 +913,49 @@ public final class GovBudgetExecutionBridge {
       return totals;
     }
 
+    /**
+     * ★★ <b>Z7d-2：逐户 ADMIN_SALARY 缺口读数</b>（逃亡驱动的唯一输入之一）——按 {@code SalaryBook} 的 {@code requested −
+     * paid} 逐腿算缺口，按家户 id 升序合并（同一户多条规则 ⇒ 逐腿相加）。只含缺口 > 0 的家户； 返回值不是"第二个工资账"，只是当日执行读数的逐户切片。
+     *
+     * <p>★ 与 {@link #logSalaryExecution} 共用同一份 {@code salaryBook} 与 {@link
+     * PeriodicHouseholdAdjustmentExecutor.Report}，不重算请求/授权/实付。
+     */
+    public Map<HouseholdId, ResourceVector> salaryShortfallByHousehold(
+        PeriodicHouseholdAdjustmentExecutor.Report report) {
+      Objects.requireNonNull(report, "report（工资执行报告；没有执行也要显式给空报告）");
+      Map<String, PeriodicHouseholdAdjustmentExecutor.RuleReadout> readouts = new LinkedHashMap<>();
+      for (PeriodicHouseholdAdjustmentExecutor.RuleReadout readout : report.rules()) {
+        readouts.put(readout.ruleId().value(), readout);
+      }
+      List<Map.Entry<String, SalaryBook>> entries = new ArrayList<>(salaryBook.entrySet());
+      entries.sort(Comparator.comparing(entry -> entry.getValue().household.value()));
+      Map<HouseholdId, ResourceVector> merged = new LinkedHashMap<>();
+      for (Map.Entry<String, SalaryBook> entry : entries) {
+        SalaryBook book = entry.getValue();
+        PeriodicHouseholdAdjustmentExecutor.RuleReadout readout = readouts.get(entry.getKey());
+        ResourceVector paid =
+            readout == null
+                ? ResourceVector.EMPTY
+                : resourceVectorOf(readout.paidGoods(), readout.paidMoney());
+        ResourceVector shortfall = book.requested.minus(paid);
+        if (shortfall.isEmpty()) {
+          continue;
+        }
+        ResourceVector previous = merged.get(book.household);
+        if (previous == null) {
+          merged.put(book.household, shortfall);
+        } else {
+          merged.put(
+              book.household,
+              new ResourceVector(
+                  Math.addExact(previous.grainMilli(), shortfall.grainMilli()),
+                  Math.addExact(previous.clothMilli(), shortfall.clothMilli()),
+                  Math.addExact(previous.silverMilli(), shortfall.silverMilli())));
+        }
+      }
+      return Collections.unmodifiableMap(merged);
+    }
+
     /** 工资缺口的具名原因（账户缺失/服务拒绝/预算限额/国库可用不足/已付）。 */
     private static String salaryGapReason(
         SalaryBook book,
