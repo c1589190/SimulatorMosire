@@ -325,3 +325,18 @@
 2. §18 的 Z4/Z6 必做项维持：组合根跨切片一致性检查（gov service unit 的 operator GOV 缺
    `GovernmentFormation` ⇒ 具名拒/告警）+ 对应负向测试。
 3. Z1c 的其余口径（payload、守卫、四表最小写入集）按台账冻结，不再改。
+
+---
+
+## 20. 控制方裁定（Z3c-1 收尾，2026-10-23）
+
+四条 V1 偏差**接受**：
+
+1. **预算 min/cap 到腿语义** = 每日预算周期 + 1:1 毫价值 + 固定腿序 grain→cloth→silver + 低优先级 min 预留；
+   V1 冻结。若要"每腿独立 cap / 比例分配"，另开批次。
+2. **告警 1/2 的 V1 代理判据**：供给<计划按维覆盖率；岗位空缺按 `demandLabor>0 && supply=0`。
+   按档需求/招募状态就绪后再细化（Z5/Z6 或后续批次）。
+3. **致命契约异常仍 ERROR+ISE、无持久信号**（整次不落 revision）：接受，与既有 fail-closed 口径一致。
+4. **中性空预算 = 不自动付 + `ADMIN_PLAN_MISSING`**：接受（§4.1 明文）；旧世界行为变化由 Z5 bootstrap 与 Z6 迁移覆盖。
+
+另：`ADMIN_UPKEEP` sink 与 `ADMIN_SALARY` transfer 并存（类别/reason 分离），接受。
