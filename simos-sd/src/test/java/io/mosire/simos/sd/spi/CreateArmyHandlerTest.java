@@ -143,7 +143,8 @@ class CreateArmyHandlerTest {
             Map.of(),
             OfficePolicy.defaults(),
             Optional.empty(),
-            GovernmentLevel.CENTRAL));
+            GovernmentLevel.CENTRAL,
+            Map.of()));
   }
 
   private static SdState applied(SdState base, SimulationState world, String payload) {

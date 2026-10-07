@@ -749,7 +749,7 @@ class GovDailyTest {
 
   private static GovernmentFormation gov(Map<StaffRole, Long> staff, OfficePolicy policy) {
     return new GovernmentFormation(
-        staff, Map.of(), policy, Optional.empty(), GovernmentLevel.CENTRAL);
+        staff, Map.of(), policy, Optional.empty(), GovernmentLevel.CENTRAL, Map.of());
   }
 
   private static Map<StaffRole, Long> staff(long yamen, long scribe, long post) {

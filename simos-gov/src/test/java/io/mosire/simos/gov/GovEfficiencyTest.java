@@ -177,7 +177,8 @@ class GovEfficiencyTest {
         Map.of(),
         new OfficePolicy(0L, 0L, 0L, 0L, Map.of()),
         Optional.empty(),
-        GovernmentLevel.CENTRAL);
+        GovernmentLevel.CENTRAL,
+        Map.of());
   }
 
   private static Map<HexCoord, GovDemand.HexDemand> demand(long security, long paperwork) {
