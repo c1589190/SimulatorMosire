@@ -78,9 +78,15 @@ public final class EconomyUpsertIndustryHandler implements CommandHandler, GmOnl
     try {
       base = EconomySnapshots.of(state).data();
     } catch (RuntimeException e) {
-      // ★ 装配故障不是载荷错：ERROR 不降级，原样抛（不折 Rejected）。
+      // ★ 装配故障不是载荷错：ERROR 不降级，抛**新实例**（不写 `throw e` —— SpotBugs
+      //   THROWS_METHOD_THROWS_RUNTIMEEXCEPTION 只放行"抛新实例"，与 SqliteStore / gov 两 handler 的门禁口径一致）；
+      //   ISE 的原 message 逐字保留、原异常挂 cause 不丢。
       logContract("state-assembly", e);
-      throw e;
+      if (e instanceof IllegalStateException illegalState) {
+        throw new IllegalStateException(illegalState.getMessage(), illegalState);
+      }
+      throw new IllegalStateException(
+          "economy.UpsertIndustry 装配故障（state 缺 economy 切片或类型不符）: " + e.getMessage(), e);
     }
     try {
       EconomyIndustryUpserts.Projection projection =
@@ -88,9 +94,9 @@ public final class EconomyUpsertIndustryHandler implements CommandHandler, GmOnl
       logApplied(projection);
       return new HandlerOutcome.Applied(projection.changeSet());
     } catch (IllegalStateException e) {
-      // ★ 跨表一致性契约故障（EconomyData 写出后校验等）：ERROR 不降级、原样抛。
+      // ★ 跨表一致性契约故障：ERROR 不降级；抛新实例保留原 message（不写 `throw e`，同上）。
       logContract("project", e);
-      throw e;
+      throw new IllegalStateException(e.getMessage(), e);
     } catch (IllegalArgumentException e) {
       // ★ 载荷形状/构造期守卫/业务规则（被引用/版本倒退/空白格）都折成具名 Rejected，一律 INFO。
       String reason = EconomyCommandPayloads.logReason(e.getMessage());
@@ -100,8 +106,13 @@ public final class EconomyUpsertIndustryHandler implements CommandHandler, GmOnl
                   "INDUSTRY_UPSERT_REJECTED", EconomyLogSource.ECONOMY_COMMAND, "reason", reason));
       return new HandlerOutcome.Rejected(e.getMessage());
     } catch (RuntimeException e) {
+      // ★ 其它运行时契约故障（非 ISE、非载荷错）：ERROR + 抛新实例挂 cause，不写 `throw e`。
       logContract("project", e);
-      throw e;
+      throw new IllegalStateException(
+          "economy.UpsertIndustry 处理契约故障（非载荷问题）: "
+              + e.getClass().getSimpleName()
+              + (e.getMessage() == null ? "" : ": " + e.getMessage()),
+          e);
     }
   }
 
