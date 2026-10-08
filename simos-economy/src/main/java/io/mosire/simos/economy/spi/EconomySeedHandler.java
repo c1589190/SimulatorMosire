@@ -221,7 +221,11 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             //   合并已有状态：漏了它 = 后续按格补种会把这个世界已经定义过的币种/工具静默抹回出厂值。
             //   ★ first-seed 路径的 seeded 两表 = 旧世界默认（silver/silver-specie），与 base 的同一份 ⇒ 逐值不变。
             merge(base.currencies(), seeded.currencies()),
-            merge(base.moneyInstruments(), seeded.moneyInstruments()));
+            merge(base.moneyInstruments(), seeded.moneyInstruments()),
+            // ★★ B2：seed 载荷不声明市场区 ⇒ 原样带过已有状态（漏了它 = 后续按格补种会把这个世界已经定义过的
+            //   市场区静默抹掉、市场区悄悄退回"城市 + tier 半径"派生值；区表与格的重叠/发行权守卫也会在构造期
+            //   把整批种子拒掉）。★ first-seed 路径的 seeded 区表 = 空 ⇒ 逐值不变。
+            base.marketZones());
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

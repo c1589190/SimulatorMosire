@@ -387,6 +387,10 @@ public final class EconomyStateBuilder {
         // ★★ A1：货币词表不参与日结算写回（写入口只有创世/命令）⇒ 原样带过 base 的两张表；
         //   漏了它 = 任意一次 advance 都会把世界词表打回出厂值（账面上看不出是谁弄丢的）。
         base.currencies(),
-        base.moneyInstruments());
+        base.moneyInstruments(),
+        // ★★ B2：市场区表不参与日结算写回（写入口只有三条区命令）⇒ 原样带过 base 的表；
+        //   漏了它 = 任意一次 advance 都会把世界的市场区抹掉、市场区悄悄退回"城市 + tier 半径"派生值
+        //   （账面上看不出是谁弄丢的，而那正是本批要终结的"两个权威"）。
+        base.marketZones());
   }
 }

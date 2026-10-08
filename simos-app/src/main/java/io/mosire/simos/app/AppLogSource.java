@@ -37,7 +37,16 @@ public enum AppLogSource implements LogOrigin {
   HOUSEHOLD_SYNC("household-sync", "家户↔单位位置同步与经济行人口投影（算法执行）", LogOriginKind.TICK),
   LLM_CONFIG("llm-config", "LLM 路由/密钥引用的读取（只记元信息）", LogOriginKind.SYSTEM),
   LLM_CALL("llm-call", "LLM 调用的响应用量与模型元信息", LogOriginKind.INTERACTION),
-  GUI_REQUEST("gui-request", "GUI HTTP 访问与请求处理（人工交互）", LogOriginKind.INTERACTION);
+  GUI_REQUEST("gui-request", "GUI HTTP 访问与请求处理（人工交互）", LogOriginKind.INTERACTION),
+  /**
+   * ★★ <b>B2（2026-10-08）：市场区拓扑的装配</b>——"这一轮用的是持久区还是派生区"以及逐格归属/币种漂移的只读诊断。
+   *
+   * <p>★ 装配发生在市场轮（tick 算法）与读数路径上 ⇒ 归 {@link LogOriginKind#TICK}；只落 DEBUG（默认关闭，不刷日志）。
+   */
+  APP_MARKET_TOPOLOGY(
+      "market-topology",
+      "市场区拓扑装配：持久区 vs 派生区、锚格缺市场与逐格币种漂移（算法执行）",
+      LogOriginKind.TICK);
 
   private final String id;
   private final String description;

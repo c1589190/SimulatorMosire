@@ -1,14 +1,19 @@
 package io.mosire.simos.app.time;
 
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.market.MarketNode;
+import io.mosire.simos.economy.api.market.MarketRegion;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.money.MoneyInstrument;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.TransportTariff;
 import io.mosire.simos.economy.time.MarketTopology;
 import io.mosire.simos.map.City;
@@ -16,6 +21,8 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.city.SocialCity;
@@ -38,6 +45,10 @@ import java.util.function.ToLongBiFunction;
  * <p>★★ <b>为什么住 {@code simos-app}</b>（铁律 3/4）：城市与 tier 住在 social/map，市场价格住在 economy —— economy
  * **不许**反查 social（模块边界），Core 也看不见领域类型。⇒ "谁同时看得见地图与城市"的地方只有组合根。 economy 侧只收一个<b>只读拓扑对象</b>（{@code
  * MarketTopology}），不持有任何对 {@code GameMap} 的全局引用。
+ *
+ * <p>★★ <b>B2（2026-10-08 阶段 2-B）：持久区优先</b>（约束设计书 §4.2 / 不变量 I22）—— {@code EconomyData.marketZones}
+ * <b>非空</b> ⇒ 成员格由持久状态唯一给定（{@link #byPersistentZones}，{@code MarketTopology.ofZones}）；<b>空表</b> ⇒ 逐字走下面
+ * 的派生路径（旧世界逐值不变）。★ 两条路径**不同时**生效：只有一个权威说了算，否则"这一格属于谁"会有两份互相矛盾的答案。
  *
  * <p>★★ <b>节点来源的优先级</b>：
  *
@@ -137,6 +148,17 @@ final class MarketTopologyBook {
     }
     GameMap gameMap = map.map();
     SocialData social = socialOrNull(state);
+    // ★★ B2（阶段 2-B；I22）：**持久区优先**。区表非空 ⇒ 成员格由市场区**唯一给定**（单一权威），
+    //   不再现算"城市 + tier 半径"；空表 ⇒ 逐字走既有派生路径（旧世界逐值不变，B1 的 three-powers 也照旧）。
+    List<MarketZone> persistentZones = MarketZoneBook.zones(economy);
+    if (!persistentZones.isEmpty()) {
+      return byPersistentZones(
+          economy,
+          gameMap,
+          persistentZones,
+          cityDiscountPerMilleBetween,
+          ruralPenaltyPerMilleBetween);
+    }
     boolean cityAuthority = social != null && !social.cities().isEmpty();
     boolean sameNumeraire = sameNumeraire(economy.markets());
     // ★★ D-027：同币即同区。城市权威缺席（单模块夹具/只有 craft@ 格）时也走此路径？不 ——
@@ -153,6 +175,83 @@ final class MarketTopologyBook {
     }
     return byCityRadius(
         economy, gameMap, social, cityDiscountPerMilleBetween, ruralPenaltyPerMilleBetween);
+  }
+
+  /**
+   * ★★ <b>B2（2026-10-08 阶段 2-B）：持久区的装配路径</b>（约束设计书 §4.2 / 不变量 I22）—— 成员格来自
+   * {@code EconomyData.marketZones}，本方法只做三件事：
+   *
+   * <ol>
+   *   <li>逐区建 {@link MarketNode}：{@code nodeId = zoneId}、{@code anchor = zone.anchor()}、{@code radiusHex =
+   *       zone.radiusHex()}（声明值，只影响 {@code adjacent} 的可达判据）、{@code numeraire = legalTender}、
+   *       {@code receiveWith = 该币种在世界状态里的工具 id}（{@link #receiveInstrumentOf} 的既有口径）；
+   *   <li>把 {@code zone.hexes()} 原样当成员格（**不**按半径重算 —— 那正是"两个权威"的来源）；
+   *   <li>装配地形/道路/费率：与派生路径逐字同源（地形索引一次构建、道路子图、节点锚集的最小距离）。
+   * </ol>
+   *
+   * <p>★★ <b>为什么读口也跟着变</b>：{@link MarketZoneReadout} 走本方法 ⇒ 区表非空时它报的就是持久区（同一个权威），
+   * 不再有"结算用持久区、读数用派生区"的两份答案。
+   *
+   * <p>★ <b>两处不静默</b>（都落 DEBUG，不改变任何数值行为）：锚格没有市场（说不出本区按什么钱报价）、成员格的市场计价币与本区
+   * 法定币漂开（写入侧守卫本该挡住；这里报出来是为了让"漂了但没人知道"不可能发生）。
+   */
+  private static MarketTopology byPersistentZones(
+      EconomyData economy,
+      GameMap gameMap,
+      List<MarketZone> zones,
+      ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
+      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween) {
+    List<MarketRegion> regions = new ArrayList<>(zones.size());
+    List<HexCoord> nodeAnchors = new ArrayList<>(zones.size());
+    int anchorWithoutMarket = 0;
+    int numeraireDriftHexes = 0;
+    for (MarketZone zone : zones) {
+      if (economy.markets().get(zone.anchor()) == null) {
+        anchorWithoutMarket++;
+      }
+      for (HexCoord hex : zone.hexes()) {
+        Market market = economy.markets().get(hex);
+        if (market != null && !market.numeraire().equals(zone.legalTender())) {
+          numeraireDriftHexes++;
+        }
+      }
+      MarketNode node =
+          new MarketNode(
+              zone.zoneId().value(),
+              zone.anchor(),
+              zone.radiusHex(),
+              zone.legalTender(),
+              receiveInstrumentOf(economy, zone.legalTender()));
+      regions.add(new MarketRegion(node, new LinkedHashSet<>(zone.hexes())));
+      nodeAnchors.add(zone.anchor());
+    }
+    EventLog.channel(AppLog.time())
+        .debug(
+            LogEvent.of(
+                "MARKET_TOPOLOGY_FROM_PERSISTENT_ZONES",
+                AppLogSource.APP_MARKET_TOPOLOGY,
+                "source",
+                "persistent",
+                "zones",
+                regions.size(),
+                "marketHexes",
+                economy.markets().size(),
+                "anchorWithoutMarket",
+                anchorWithoutMarket,
+                "numeraireDriftHexes",
+                numeraireDriftHexes));
+    Map<HexCoord, Integer> terrainCost = terrainCostIndex(gameMap);
+    RoadNetwork roadNetwork = RoadNetwork.from(gameMap);
+    return MarketTopology.ofZones(
+        regions,
+        economy.markets(),
+        economy.markets().keySet(),
+        hex -> terrainCostOf(terrainCost, hex),
+        roadNetwork::roadBottleneckBetween,
+        hex -> nearestAnchorDistance(nodeAnchors, hex),
+        TransportTariff.probeDefaults(),
+        cityDiscountPerMilleBetween,
+        ruralPenaltyPerMilleBetween);
   }
 
   /**
@@ -293,7 +392,7 @@ final class MarketTopologyBook {
    *
    * <p>★ 没有该币种的工具 ⇒ 退回 {@link MoneyVocabulary#SILVER_SPECIE}（见 {@link #addNode} 的注：该字段零读取者）。
    */
-  private static InstrumentId receiveInstrumentOf(EconomyData economy, CurrencyId currency) {
+  static InstrumentId receiveInstrumentOf(EconomyData economy, CurrencyId currency) {
     for (MoneyInstrument instrument : economy.moneyInstruments().values()) {
       if (instrument.currency().equals(currency)) {
         return instrument.id();

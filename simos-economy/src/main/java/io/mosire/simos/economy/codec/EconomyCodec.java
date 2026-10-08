@@ -41,6 +41,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -124,6 +125,10 @@ import org.slf4j.Logger;
  * ProductionUnitId}（已注册），值 {@link io.mosire.simos.economy.model.ProductionEfficiencyState} 走 record
  * 绑定（五个 long 的 {@code ≥ 0} 由记录构造期判）。 旧档缺这两个节点 ⇒ 空表/中性，见 {@code EconomyData}/{@code
  * EconomyChangeSet} 构造器兜底。
+ *
+ * <p>★★ <b>B2（2026-10-08）追加 {@code marketZones}</b>（第 36 个组件；约束设计书 §4.2）：键 = {@code MarketZoneId}
+ * （已注册），值 = {@code MarketZone}（区 id + 锚格 + 半径 + 成员格 + 法定币 + 发行政府 + 区级官方汇率覆盖）走 record
+ * 绑定；旧档缺该节点 ⇒ {@code EconomyData} 构造期归一成空表（市场区退回"城市 + tier 半径"派生 ⇒ 既有世界逐值不变）。
  *
  * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code capacity}）走 Jackson **默认的枚举键** 绑定（按
  * {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆，故只需读侧。
@@ -268,6 +273,11 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     //   归一到旧世界默认词表（silver / silver-specie），读出来与 A1 之前逐值相同。
     module.addKeyDeserializer(CurrencyId.class, keyDeserializer(CurrencyId::parse));
     module.addKeyDeserializer(InstrumentId.class, keyDeserializer(InstrumentId::parse));
+    // ★★ B2（2026-10-08）marketZones（第 36 个组件）的键（opaque 裸值，与 parse 互为逆，只需读侧）。
+    //   值 MarketZone 走 Jackson 的 record 绑定；成员格集合是 Set<HexCoord> ⇒ 值侧走 HexCoord 的 record 绑定
+    //   （q/r 两个 int），迭代序由 MarketZone 构造期的规范序（(q,r) 升序）保证 ⇒ 字节级往返稳定。
+    //   旧档缺该组件键 ⇒ EconomyData 构造期归一成空表（市场区退回派生路径，既有世界逐值不变）。
+    module.addKeyDeserializer(MarketZoneId.class, keyDeserializer(MarketZoneId::parse));
     return module;
   }
 

@@ -576,7 +576,41 @@ public final class CatalogTool implements AgentTool {
                   + "base == quote ⇒ same-currency；币种不在世界词表 ⇒ currency-not-defined；"
                   + "逐字相同 ⇒ rate-unchanged（不做静默幂等）。★ 定下它就激活该币对的外汇市场：政府外汇窗口"
                   + "bidP=buyPerMille / askP=sellPerMille，储备上限 = 该 GOV 对该币种累计发行量的 500‰；"
-                  + "没定过汇率的世界没有任何外汇面）"),
+                  + "没定过汇率的世界没有任何外汇面）"
+                  + "（★★ B2 2026-10-08 扩展：再给一个可选 marketZoneId —— 给了它就写**该市场区的官方汇率覆盖**"
+                  + "（随 marketZones 进 ChangeSet/Codec），GOV 级报价一字不动；此时 govUnitId 可选，给了必须等于"
+                  + "该区的发行 GOV 单位（否则 gov-mismatch），区不存在 ⇒ zone-not-found；"
+                  + "读取口径 = 区级优先、回落该区发行 GOV 的 GOV 级报价。★ 老载荷（无 marketZoneId）逐字走老路径 ——"
+                  + "向后兼容是硬要求）"),
+          // ★★ B2（2026-10-08 阶段 2-B §4.2）：市场区持久状态的三条命令 —— 新命令类型 ⇒ 本表必须同批登记
+          //   （构造成员守卫逐条比对注册面，缺项当场抛 ⇒ Shell.start 起不来，且编译期看不见）。
+          Map.entry(
+              "economy.DefineMarketZone",
+              "zoneId, anchor{q,r}, hexes[{q,r}…], legalTender, govUnitId, radiusHex?(≥0，缺省 0), reason?"
+                  + "（★ GM-only：把\"市场区\"落成**持久状态**（EconomyData.marketZones，第 36 个组件）——"
+                  + "成员格由它唯一给定（I22 单一权威），既有\"城市 + tier 半径\"派生退化为**空表时**的默认值；"
+                  + "radiusHex 只是声明值（供邻接判据与读数），**不**参与成员格派生。"
+                  + "具名拒：zone-already-defined；hex-in-other-zone（一个 hex 至多属于一个区）；anchor-not-in-hexes；"
+                  + "anchor-missing-market（锚格必须已有市场行）；currency-not-defined；gov-not-registered；"
+                  + "currency-not-issuable（该 GOV 的 issuable 必须含法定币）；"
+                  + "numeraire-mismatch（本区**已有市场行**的成员格计价币必须 = 法定币，先 economy.SetMarketNumeraire）。"
+                  + "★ 区表是半世界级：跨格但没有单格资源目标 ⇒ targetPaths 恒空、不进决策令桶）"),
+          Map.entry(
+              "economy.ReassignZoneHexes",
+              "fromZoneId, toZoneId, hexes[{q,r}…], reason?"
+                  + "（★ GM-only：退让 / 覆盖 —— 这些格从源区划到目标区（源区少格 = 退让、目标区收格 = 覆盖）。"
+                  + "具名拒：zone-not-found；same-zone；hex-not-in-from-zone；"
+                  + "from-zone-would-be-empty（区的格会被全部划走；要撤区走 economy.MergeMarketZones）；"
+                  + "from-zone-anchor-would-move（锚格是取价点，必须留下）；"
+                  + "numeraire-mismatch（被划格的计价币必须 = 目标区法定币）。"
+                  + "★ 半径不参与归属：本命令不改任何区的 radiusHex）"),
+          Map.entry(
+              "economy.MergeMarketZones",
+              "sourceZoneId, targetZoneId, reason?"
+                  + "（★ GM-only：源区成员格与区级官方汇率覆盖并入目标区，**源区随之撤销**（\"撤区\"的唯一路径）。"
+                  + "具名拒：zone-not-found；same-zone；numeraire-mismatch（被并入的格计价币必须 = 目标区法定币 —— 先 economy.SetMarketNumeraire，合并不做静默换汇，I17/I24）；"
+                  + "official-rate-conflict（同币对两个不同政策价不能同时成立）。"
+                  + "★ 合并后：锚格 / 法定币 / 发行者取目标区，声明半径取两区较大者，区级汇率取并集）"),
           Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"

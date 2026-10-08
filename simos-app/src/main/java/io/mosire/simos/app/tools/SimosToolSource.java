@@ -59,6 +59,9 @@ import io.mosire.simos.app.tools.write.AssignArmyGovTool;
 import io.mosire.simos.app.tools.write.CalendarConfigureTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
+import io.mosire.simos.app.tools.write.EconomyDefineMarketZoneTool;
+import io.mosire.simos.app.tools.write.EconomyMergeMarketZonesTool;
+import io.mosire.simos.app.tools.write.EconomyReassignZoneHexesTool;
 import io.mosire.simos.app.tools.write.EconomyUpsertGovUnitTool;
 import io.mosire.simos.app.tools.write.EconomyUpsertIndustryTool;
 import io.mosire.simos.app.tools.write.ForkTool;
@@ -767,6 +770,14 @@ public final class SimosToolSource implements ToolSource {
     //   决策人 catalog 三条路径同样排除。★ app 侧预检 unit 存在 + module() 是 GovernmentFormation
     //   （preview/apply 两条路径；控制方 2026-10-23 裁定 A）。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new EconomyUpsertGovUnitTool(core, query, initiator));
+    // ★★ B2（2026-10-08 阶段 2-B；约束设计书 §4.2 / 用户 §1.2「退让市场区、覆盖范围、合并」）：市场区持久状态的三条
+    //   GM 窄写（定义 / 逐格改划 / 合并）。**只在 GM 桶**：决策人桶没有它们，DecisionCallerFactory.WHITELIST 也不含；
+    //   三条命令本身都标了 GmOnlyCommand ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。
+    //   ★ 三条工具都只透传 payloadJson（载荷形状的唯一权威 = handler 类注 + catalog 载荷提示）；
+    //     工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
+    built.add(new EconomyDefineMarketZoneTool(core, initiator, mapId));
+    built.add(new EconomyReassignZoneHexesTool(core, initiator, mapId));
+    built.add(new EconomyMergeMarketZonesTool(core, initiator, mapId));
     // ★★ S3a（2026-10-09 Unit/Gov 家户容纳 §4.3）：家户/人口 GM 窄写六条。**只在 GM 桶**；
     //   工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。四条 social 工具：创建 / 移动（HEX↔UNIT，跨 unit 时
     //   同批改 unit.households）/ 成员增删转移 / 出生死亡率；两条组合工具：assignHousehold（social.SetHouseholdLocation

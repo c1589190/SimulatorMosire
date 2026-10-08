@@ -390,7 +390,7 @@ public final class EconomyClearRegionHandler
             .withIndustries(industries);
 
     // ⑥ classes 与 memberships **同一次规范构造**：先删任一侧的中间态都非法（另一侧悬空或 Σ 守恒失衡）。
-    //    其余 28 个组件取 staged 的逐 with* 结果 ⇒ 等价于"30 个组件的同时复合"。
+    //    其余 28 个组件取 staged 的逐 with* 结果 ⇒ 等价于"32 个组件的同时复合"。
     return new EconomyData(
         staged.meta(),
         staged.industries(),
@@ -427,7 +427,10 @@ public final class EconomyClearRegionHandler
         productionEfficiency,
         // ★★ A1：货币词表是**世界级**的（不按格），清区域一字不动，原样带过 staged 的两张表。
         staged.currencies(),
-        staged.moneyInstruments());
+        staged.moneyInstruments(),
+        // ★★ B2：市场区表同样是**世界级**的（区不等于行政区，清区域不按格摘区），原样带过 staged 的表 ——
+        //   漏了它 = 一次清区域把世界的市场区静默抹掉、市场区悄悄退回派生值。
+        staged.marketZones());
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

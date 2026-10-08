@@ -62,7 +62,17 @@ public enum EconomyLogSource implements LogOrigin {
    * 裁定：业务拒绝 = INFO）—— 外汇是"政策价 vs 市场价"的现场，拒绝一条都不能静默。
    */
   ECONOMY_FX(
-      "economy-fx", "外汇面：FX 撮合/官方与实际汇率读数/政府外汇窗口报价与具名拒/异币支付具名拒（tick 算法，必带 day）", LogOriginKind.TICK);
+      "economy-fx", "外汇面：FX 撮合/官方与实际汇率读数/政府外汇窗口报价与具名拒/异币支付具名拒（tick 算法，必带 day）", LogOriginKind.TICK),
+  /**
+   * ★★ <b>B2（2026-10-08）：市场区的持久状态与命令面</b>—— 区定义 / 逐格改划（退让·覆盖） / 合并 / 区内官方汇率覆盖，以及它们的具名拒。
+   *
+   * <p>★ 命令面事件全部是 {@code SYSTEM}（方法签名无 day 上下文）；区定义/改划/合并各 INFO 一条"发生了什么 + 具名计数"，
+   * 拒绝路径 INFO（业务拒绝 = INFO，用户 2026-10-23 裁定）+ DEBUG 一条"为什么"（§一.9）。
+   */
+  ECONOMY_MARKET_ZONE(
+      "economy-market-zone",
+      "市场区持久状态与命令面：区定义/逐格改划/合并/区内官方汇率覆盖及其具名拒（命令面）",
+      LogOriginKind.SYSTEM);
 
   private final String id;
   private final String description;

@@ -12,8 +12,10 @@ import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -150,6 +152,34 @@ final class EconomyCommandPayloads {
       return Optional.empty();
     }
     return Optional.of(decodeHex(command, field, node));
+  }
+
+  /**
+   * ★★ <b>B2：必填格数组</b>（{@code [{q,r}, …]} 或 {@code ["q_r", …]}）—— 市场区的成员格/改划格集用它。
+   *
+   * <p>★ 三条 fail-closed：字段缺失或不是数组 ⇒ 抛；数组为空 ⇒ 抛（"一个成员格都没有的区"没有意义，{@code MarketZone} 的构造期
+   * 守卫同样拒）；数组内含重复格 ⇒ <b>去重保序</b>（同一格写两遍不是两个成员；重复不该让整条命令失败，但它也绝不产生第二份记录）。
+   */
+  static List<HexCoord> requireHexArray(String command, JsonNode payload, String field) {
+    JsonNode node = payload.get(field);
+    if (node == null || node.isNull()) {
+      throw new IllegalArgumentException(command + " 缺少格数组字段: " + field);
+    }
+    if (!node.isArray()) {
+      throw new IllegalArgumentException(command + " 的字段 " + field + " 必须是格数组: " + node);
+    }
+    if (node.isEmpty()) {
+      throw new IllegalArgumentException(command + " 的字段 " + field + " 不得为空数组");
+    }
+    List<HexCoord> hexes = new ArrayList<>(node.size());
+    Set<HexCoord> seen = new LinkedHashSet<>();
+    for (int i = 0; i < node.size(); i++) {
+      HexCoord hex = decodeHex(command, field + "[" + i + "]", node.get(i));
+      if (seen.add(hex)) {
+        hexes.add(hex);
+      }
+    }
+    return hexes;
   }
 
   private static HexCoord decodeHex(String command, String field, JsonNode node) {

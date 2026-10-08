@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.market.MarketNode;
+import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -437,6 +438,93 @@ public final class MarketTopology {
         cityDiscountPerMilleBetween,
         ruralPenaltyPerMilleBetween,
         regional && !byId.isEmpty() && built.size() > 1);
+  }
+
+  /**
+   * ★★ <b>B2（2026-10-08）：显式成员的拓扑</b>（约束设计书 §4.2；不变量 I22）—— 区的成员格<b>不再由半径现算</b>，而是由调用方
+   * （组合根从持久状态 {@code EconomyData.marketZones} 装配）逐区给定。
+   *
+   * <p>★★ <b>它和 {@link #of(List, Map, Set, ToIntFunction, ToIntBiFunction, ToIntFunction,
+   * TransportTariff, ToLongBiFunction, ToLongBiFunction)} 的区别只有一处</b>：那个入口把"哪个 hex 归哪个区"算成
+   * "半径内最近节点（同距按 nodeId 字典序）"，本入口直接<b>采信</b> {@code zones} 的成员表。两条路径**不同时**生效：组合根在区表非空时
+   * 走本入口，空表时走派生入口（单一权威 —— 两个权威会让"这一格属于谁"有两份互相矛盾的答案）。
+   *
+   * <p>★ <b>三条口径</b>：
+   *
+   * <ol>
+   *   <li><b>成员格按给定采信</b>（含没有市场表条目的格：它只是"在这个区里"，结算对它没有价格可用 —— {@code MarketRegion}
+   *       的既有口径）；
+   *   <li><b>未覆盖的市场格 ⇒ 退化成单格区</b>（与派生入口的兜底逐字相同）：不留"没有归属的市场格"，否则
+   *       {@code regionOf} 会在很远的结算路径上抛；
+   *   <li><b>重叠成员格 ⇒ 先到者胜 + 不抛</b>：状态层的 {@code EconomyData} 构造期守卫已把"一个 hex 属于两个区"判成非法
+   *       （fail-closed 在写入侧），这里只保证"即使拿到坏输入也不产生两处互相矛盾的归属"。
+   * </ol>
+   *
+   * <p>★ {@code regional}（跨区候选）与本入口的"没有显式区"退化一致：{@code zones} 非空且最终建成 > 1 个区才为真 —— 与派生入口
+   * 的 {@code regional && !byId.isEmpty() && built.size() > 1} 同口径。
+   */
+  public static MarketTopology ofZones(
+      List<MarketRegion> zones,
+      Map<HexCoord, Market> markets,
+      Set<HexCoord> hexes,
+      ToIntFunction<HexCoord> moveCostAt,
+      ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
+      ToIntFunction<HexCoord> nearestNodeDistance,
+      TransportTariff tariff,
+      ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
+      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween) {
+    Objects.requireNonNull(zones, "zones");
+    Objects.requireNonNull(markets, "markets");
+    Objects.requireNonNull(hexes, "hexes");
+    Objects.requireNonNull(moveCostAt, "moveCostAt");
+    Objects.requireNonNull(roadBottleneckBetween, "roadBottleneckBetween");
+    Objects.requireNonNull(nearestNodeDistance, "nearestNodeDistance");
+    Objects.requireNonNull(tariff, "tariff");
+    Objects.requireNonNull(cityDiscountPerMilleBetween, "cityDiscountPerMilleBetween");
+    Objects.requireNonNull(ruralPenaltyPerMilleBetween, "ruralPenaltyPerMilleBetween");
+    Map<String, MarketRegion> byId = new LinkedHashMap<>();
+    for (MarketRegion zone : zones) {
+      if (zone == null) {
+        throw new IllegalArgumentException("MarketTopology.ofZones 的 zones 不得含 null");
+      }
+      byId.putIfAbsent(zone.node().nodeId(), zone);
+    }
+    List<MarketRegion> built = new ArrayList<>(byId.size());
+    Map<HexCoord, MarketRegion> byHex = new LinkedHashMap<>();
+    for (MarketRegion zone : byId.values()) {
+      built.add(zone);
+      for (HexCoord member : zone.members()) {
+        byHex.putIfAbsent(member, zone);
+      }
+    }
+    // ★ 未被任何持久区覆盖的市场格 ⇒ 退化成单格区（与派生入口的兜底逐字相同）。
+    for (Map.Entry<HexCoord, Market> entry : markets.entrySet()) {
+      HexCoord hex = entry.getKey();
+      if (byHex.containsKey(hex)) {
+        continue;
+      }
+      Market market = entry.getValue();
+      MarketNode node =
+          new MarketNode(
+              "hex:" + IndustryHexKeys.hexKey(hex.q(), hex.r()),
+              hex,
+              0,
+              market.numeraire(),
+              MoneyVocabulary.SILVER_SPECIE.id());
+      MarketRegion region = new MarketRegion(node, Set.of(hex));
+      built.add(region);
+      byHex.put(hex, region);
+    }
+    return new MarketTopology(
+        built,
+        byHex,
+        moveCostAt,
+        roadBottleneckBetween,
+        nearestNodeDistance,
+        tariff,
+        cityDiscountPerMilleBetween,
+        ruralPenaltyPerMilleBetween,
+        !byId.isEmpty() && built.size() > 1);
   }
 
   /** 全部区（保序：节点声明序；退化单格区接在其后）。 */

@@ -70,6 +70,7 @@ import io.mosire.simos.economy.spi.EconomyAddDemandHandler;
 import io.mosire.simos.economy.spi.EconomyCancelDemandHandler;
 import io.mosire.simos.economy.spi.EconomyClearRegionHandler;
 import io.mosire.simos.economy.spi.EconomyDefineCurrencyHandler;
+import io.mosire.simos.economy.spi.EconomyDefineMarketZoneHandler;
 import io.mosire.simos.economy.spi.EconomyGmAdjustHandler;
 import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRecordMoneyIssuanceHandler;
@@ -83,6 +84,8 @@ import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
+import io.mosire.simos.economy.spi.EconomyMergeMarketZonesHandler;
+import io.mosire.simos.economy.spi.EconomyReassignZoneHexesHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketNumeraireHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
 import io.mosire.simos.economy.spi.EconomySetOfficialRateHandler;
@@ -708,6 +711,13 @@ public final class Shell implements AutoCloseable {
                 new EconomyDefineCurrencyHandler(),
                 new EconomyRenameCurrencyHandler(),
                 // ★★ A2a（阶段 2 §3.3）：设/改官方汇率（官方汇率是状态；实际汇率永远是读数）。
+                // ★★ B2（2026-10-08 阶段 2-B；约束设计书 §4.2 / I22）：市场区的持久状态与划界命令面三条
+                //   —— 定义区 / 逐格改划（退让·覆盖）/ 合并（撤源区）。★ 三条都标 GmOnlyCommand ⇒ 排除出令
+                //   白名单 / RegisterEffect / 决策人命令目录；GM 的 simos.command.submit 与三条薄工具照常可用。
+                //   ★ 区表是**世界级**表（一份区表横跨多个格，"区"本身不是格资源）⇒ targetPaths 恒空、不进决策令桶。
+                new EconomyDefineMarketZoneHandler(),
+                new EconomyReassignZoneHexesHandler(),
+                new EconomyMergeMarketZonesHandler(),
                 new EconomySetOfficialRateHandler(),
                 new EconomyRecordMoneyIssuanceHandler(),
                 // ── gov（Z2 2026-10-23，gov 首个 command handler 批）：行政编制计划 / 国库预算政策整体设置。

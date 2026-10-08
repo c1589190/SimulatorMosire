@@ -1,10 +1,17 @@
 package io.mosire.simos.app.gov;
 
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,6 +44,69 @@ import java.util.Set;
 public final class GovTerritory {
 
   private GovTerritory() {}
+
+  /**
+   * ★★ <b>B2（2026-10-08）：GOV 总疆域 → 全部 hex</b>（约束设计书 §4.3 / 判据 G4）—— {@link #nominalRegions} 的逐 hex 展开。
+   *
+   * <pre>
+   * 中央 GOV：本 GOV 子树（下属各级行政区的 jurisdiction 并集 + 本级直辖区）
+   * 省级 GOV：本区（自己的 jurisdiction 里的 Region）
+   * </pre>
+   *
+   * <p>★★ <b>它为什么必须存在</b>：{@link #nominalRegions} 只给 {@link RegionId}（"名义区域的集合"正是裁定 4 的显示语义），而
+   * G4 的判据是"中央的总疆域 hex 集 = 下属行政区 + 直辖区（<b>逐 hex</b> 断言）"。此前全仓没有这个函数：{@code NationSummary}
+   * 内部算过一次就丢，而 {@code GovTerritory} 明令不得进授权 —— 于是"逐 hex 的疆域"只能靠外部自己拼（每个拼法都是第二份真相）。
+   *
+   * <p>★ <b>口径</b>：
+   *
+   * <ol>
+   *   <li>区域 → hex 走 {@code map.regions()}（{@link Region#hexes()} 是行政区格的唯一权威）；
+   *   <li>Region 查无（悬空引用）⇒ <b>跳过该区</b>，不因一个坏引用让整份疆域作废（与 {@code NationSummary} 的降级口径同源）；
+   *   <li>返回<b>保插入序</b>的不可变 hex 集（Region 的顺序 = {@code nominalRegions} 的 BFS 序 ⇒ 结果是内容的纯函数）；
+   *   <li>★ 起点的直辖区含在内（{@code nominalRegions} 的既有口径："以给定 GOV 为根的名义全境"含它自己）。
+   * </ol>
+   *
+   * <p>★★ <b>仍然不得进授权判定</b>（用户原话见类注）：本方法与 {@link #nominalRegions} 同属显示/读数派生面。
+   *
+   * @param units unit 切片（编制/管辖的唯一真值来源）
+   * @param map 地图切片（Region → hex 的唯一权威）
+   * @param rootGovId 根 GOV 单位 id（查无或不是 GOV ⇒ 空集）
+   */
+  public static Set<HexCoord> nominalHexes(UnitState units, GameMap map, UnitId rootGovId) {
+    Objects.requireNonNull(map, "map");
+    Set<RegionId> regions = nominalRegions(units, rootGovId);
+    Set<HexCoord> hexes = new LinkedHashSet<>();
+    for (RegionId regionId : regions) {
+      Region region = map.regions().get(regionId);
+      if (region == null) {
+        continue; // 悬空 Region ⇒ 跳过（不因一个坏引用让整份疆域作废）
+      }
+      hexes.addAll(region.hexes());
+    }
+    return Collections.unmodifiableSet(hexes); // ★ 冻在赋值处
+  }
+
+  /**
+   * ★★ <b>{@link SimulationState} 入口</b>（同一个函数的便利重载）：从状态里取 unit 切片与地图切片。
+   *
+   * @throws IllegalArgumentException 状态里没有 unit / map 切片，或切片类型不符（装配故障，不静默返回空集）
+   */
+  public static Set<HexCoord> nominalHexes(SimulationState state, UnitId rootGovId) {
+    Objects.requireNonNull(state, "state");
+    Snapshot unitSnapshot =
+        state.module("unit").orElseThrow(() -> new IllegalArgumentException("状态里没有 unit 模块切片——装配故障"));
+    if (!(unitSnapshot instanceof UnitSnapshot unitState)) {
+      throw new IllegalArgumentException(
+          "unit 模块切片不是 UnitSnapshot：" + unitSnapshot.getClass().getName());
+    }
+    Snapshot mapSnapshot =
+        state.module("map").orElseThrow(() -> new IllegalArgumentException("状态里没有 map 模块切片——装配故障"));
+    if (!(mapSnapshot instanceof MapSnapshot mapState)) {
+      throw new IllegalArgumentException(
+          "map 模块切片不是 MapSnapshot：" + mapSnapshot.getClass().getName());
+    }
+    return nominalHexes(unitState.state(), mapState.map(), rootGovId);
+  }
 
   /**
    * 以 {@code rootGovId} 为根，收集整棵 GOV 子树的管辖 Region 并集。

@@ -19,6 +19,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -26,6 +27,7 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.CurrencyDef;
 import io.mosire.simos.economy.api.money.MoneyInstrument;
@@ -78,7 +80,7 @@ import java.util.function.Function;
  * + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code liquidationPolicies} / {@code
  * crisisSignals} + E6a 的 {@code modeTransitions} / {@code classShares} + P10.1 的 {@code
  * merchantFirms} + P4a 的 {@code periodicAdjustments} + Z1 的 {@code outputQuantityOverrides} /
- * {@code productionEfficiency} + A1 的 {@code currencies} / {@code moneyInstruments}）。
+ * {@code productionEfficiency} + A1 的 {@code currencies} / {@code moneyInstruments} + B2 的 {@code marketZones}）。
  *
  * <p>★★ <b>A1（2026-10-08）追加两张货币词表</b>：{@code currencies}（键 = {@link CurrencyId}，值 = {@link
  * CurrencyDef}）与 {@code moneyInstruments}（键 = {@link InstrumentId}，值 = {@link MoneyInstrument}）。 ★
@@ -149,7 +151,9 @@ public record EconomyChangeSet(
     FieldDelta<ProductionEfficiencyState> productionEfficiency,
     // ── A1（2026-10-08）货币词表的两张表（与 EconomyData 的两个新组件一一对应，铁律 5）──
     FieldDelta<CurrencyDef> currencies,
-    FieldDelta<MoneyInstrument> moneyInstruments)
+    FieldDelta<MoneyInstrument> moneyInstruments,
+    // ── B2（2026-10-08）市场区的持久状态（与 EconomyData 的第 36 个组件一一对应，铁律 5）──
+    FieldDelta<MarketZone> marketZones)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -276,6 +280,11 @@ public record EconomyChangeSet(
     if (moneyInstruments == null) {
       moneyInstruments = new FieldDelta.Unchanged<>();
     }
+    // ★★ B2 第 36 个组件（市场区表）：旧变更集没提该组件，就是没动它
+    //   （旧档读到 null ⇒ Unchanged；旧世界区表照旧为空 ⇒ 市场区走派生路径）。
+    if (marketZones == null) {
+      marketZones = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -315,7 +324,8 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.outputQuantityOverrides(), target.outputQuantityOverrides()),
         FieldDelta.diff(base.productionEfficiency(), target.productionEfficiency()),
         FieldDelta.diff(base.currencies(), target.currencies()),
-        FieldDelta.diff(base.moneyInstruments(), target.moneyInstruments()));
+        FieldDelta.diff(base.moneyInstruments(), target.moneyInstruments()),
+        FieldDelta.diff(base.marketZones(), target.marketZones()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -370,7 +380,9 @@ public record EconomyChangeSet(
             base.productionEfficiency(), cs.productionEfficiency(), ProductionUnitId::parse),
         // ★★ A1：货币词表的两张表（键 = 币种身份 / 工具身份）。
         FieldDelta.rebuild(base.currencies(), cs.currencies(), CurrencyId::parse),
-        FieldDelta.rebuild(base.moneyInstruments(), cs.moneyInstruments(), InstrumentId::parse));
+        FieldDelta.rebuild(base.moneyInstruments(), cs.moneyInstruments(), InstrumentId::parse),
+        // ★★ B2：市场区表（键 = 区身份；成员格/法定币/发行者/区级汇率都在值里）。
+        FieldDelta.rebuild(base.marketZones(), cs.marketZones(), MarketZoneId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -407,7 +419,8 @@ public record EconomyChangeSet(
         || outputQuantityOverrides.changed()
         || productionEfficiency.changed()
         || currencies.changed()
-        || moneyInstruments.changed());
+        || moneyInstruments.changed()
+        || marketZones.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */
