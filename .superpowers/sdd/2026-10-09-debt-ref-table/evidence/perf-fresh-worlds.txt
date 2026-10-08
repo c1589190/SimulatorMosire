@@ -1,0 +1,35 @@
+# 探针自建世界（WorldRegistry.THREE_POWERS 真创世 + ShellMain.seedGenesisIfEmpty）
+# 先分段热身 w 天（跳过创世稀薄期），再量接下来 30 天。改前/改后用同一份探针字节。
+
+### BEFORE single w30
+   [时间] 墙钟=11157 ms，30 天 ⇒ 371.9 ms/天（kind=single）
+   [变更集] AdvanceTime revision=30，平均 918 KB/天；economy.classes 平均 425 KB/天；economy.householdDebtRefs 平均 0 KB/天
+### AFTER  single w30
+   [时间] 墙钟=9883 ms，30 天 ⇒ 329.4 ms/天（kind=single）
+   [变更集] AdvanceTime revision=30，平均 549 KB/天；economy.classes 平均 55 KB/天；economy.householdDebtRefs 平均 0 KB/天
+### BEFORE single w150
+   [时间] 墙钟=18974 ms，30 天 ⇒ 632.5 ms/天（kind=single）
+   [变更集] AdvanceTime revision=30，平均 1034 KB/天；economy.classes 平均 524 KB/天；economy.householdDebtRefs 平均 0 KB/天
+### AFTER  single w150
+   [时间] 墙钟=15485 ms，30 天 ⇒ 516.2 ms/天（kind=single）
+   [变更集] AdvanceTime revision=30，平均 566 KB/天；economy.classes 平均 55 KB/天；economy.householdDebtRefs 平均 0 KB/天
+### BEFORE segment w30
+   [时间] 墙钟=1470 ms，30 天 ⇒ 49.0 ms/天（kind=segment）
+   [变更集] AdvanceTime revision=1，平均 2297 KB/天；economy.classes 平均 422 KB/天；economy.householdDebtRefs 平均 0 KB/天
+### AFTER  segment w30
+   [时间] 墙钟=1443 ms，30 天 ⇒ 48.1 ms/天（kind=segment）
+   [变更集] AdvanceTime revision=1，平均 1936 KB/天；economy.classes 平均 53 KB/天；economy.householdDebtRefs 平均 8 KB/天
+### BEFORE segment w150
+   [时间] 墙钟=1400 ms，30 天 ⇒ 46.7 ms/天（kind=segment）
+   [变更集] AdvanceTime revision=1，平均 1772 KB/天；economy.classes 平均 520 KB/天；economy.householdDebtRefs 平均 0 KB/天
+### AFTER  segment w150
+   [时间] 墙钟=1208 ms，30 天 ⇒ 40.3 ms/天（kind=segment）
+   [变更集] AdvanceTime revision=1，平均 1306 KB/天；economy.classes 平均 53 KB/天；economy.householdDebtRefs 平均 1 KB/天
+
+### 逐模块组成（w150 single，30 天平均）
+== BEFORE w150 single: n=30 平均总=1034 KB/天
+   economy    755.0 KB/天 ( 73.0%)   social 228.2 (22.1%)   actor 48.8 (4.7%)   gov 1.6   sd 0.6   unit 0.1
+   economy 逐组件: classes 523.7 / units 86.3 / flows 60.0 / debtContracts 37.0 / operatorConditions 35.3 / allocations 4.8 / pledges 2.6 / classStandings 2.2 / crisisSignals 1.6 / markets 0.4
+== AFTER  w150 single: n=30 平均总=566 KB/天
+   economy    286.5 KB/天 ( 50.6%)   social 228.2 (40.3%)   actor 48.8 (8.6%)   gov 1.6   sd 0.6   unit 0.1
+   economy 逐组件: units 86.3 / flows 60.0 / classes 55.1 / debtContracts 37.0 / operatorConditions 35.3 / allocations 4.8 / pledges 2.6 / classStandings 2.2 / crisisSignals 1.6 / markets 0.4

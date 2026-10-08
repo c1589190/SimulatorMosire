@@ -44,6 +44,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
@@ -154,7 +155,11 @@ public record EconomyChangeSet(
     FieldDelta<CurrencyDef> currencies,
     FieldDelta<MoneyInstrument> moneyInstruments,
     // ── B2（2026-10-08）市场区的持久状态（与 EconomyData 的第 36 个组件一一对应，铁律 5）──
-    FieldDelta<MarketZone> marketZones)
+    FieldDelta<MarketZone> marketZones,
+    // ── 2026-10-09 选项 A：家户债务引用派生索引（与 EconomyData 的第 37 个组件一一对应，铁律 5）──
+    //   键 = HouseholdDebtReference（家户@合同）的规范串，值 = 标记位 TRUE。★ 拆表的目的就是让这里每天只出现
+    //   **真正变化的引用对**（改前那 3.7KB/户的引用列表是随 classes 的整行 Upsert 一起被重写的）。
+    FieldDelta<Boolean> householdDebtRefs)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -286,6 +291,11 @@ public record EconomyChangeSet(
     if (marketZones == null) {
       marketZones = new FieldDelta.Unchanged<>();
     }
+    // ★★ 2026-10-09 选项 A 第 37 个组件（家户债务引用派生索引）：旧变更集没提该组件，就是没动它
+    //   （旧档读到 null ⇒ Unchanged；引用表由构造期对账从合同表重建，不依赖变更集携带它）。
+    if (householdDebtRefs == null) {
+      householdDebtRefs = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -326,7 +336,8 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.productionEfficiency(), target.productionEfficiency()),
         FieldDelta.diff(base.currencies(), target.currencies()),
         FieldDelta.diff(base.moneyInstruments(), target.moneyInstruments()),
-        FieldDelta.diff(base.marketZones(), target.marketZones()));
+        FieldDelta.diff(base.marketZones(), target.marketZones()),
+        FieldDelta.diff(base.householdDebtRefs(), target.householdDebtRefs()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -383,7 +394,10 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.currencies(), cs.currencies(), CurrencyId::parse),
         FieldDelta.rebuild(base.moneyInstruments(), cs.moneyInstruments(), InstrumentId::parse),
         // ★★ B2：市场区表（键 = 区身份；成员格/法定币/发行者/区级汇率都在值里）。
-        FieldDelta.rebuild(base.marketZones(), cs.marketZones(), MarketZoneId::parse));
+        FieldDelta.rebuild(base.marketZones(), cs.marketZones(), MarketZoneId::parse),
+        // ★★ 2026-10-09 选项 A：引用表的键解析器 = HouseholdDebtReference::parse（与 toString 互逆）。
+        FieldDelta.rebuild(
+            base.householdDebtRefs(), cs.householdDebtRefs(), HouseholdDebtReference::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -421,7 +435,8 @@ public record EconomyChangeSet(
         || productionEfficiency.changed()
         || currencies.changed()
         || moneyInstruments.changed()
-        || marketZones.changed());
+        || marketZones.changed()
+        || householdDebtRefs.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

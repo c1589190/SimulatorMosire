@@ -391,6 +391,10 @@ public final class EconomyStateBuilder {
         // ★★ B2：市场区表不参与日结算写回（写入口只有三条区命令）⇒ 原样带过 base 的表；
         //   漏了它 = 任意一次 advance 都会把世界的市场区抹掉、市场区悄悄退回"城市 + tier 半径"派生值
         //   （账面上看不出是谁弄丢的，而那正是本批要终结的"两个权威"）。
-        base.marketZones());
+        base.marketZones(),
+        // ★★ 2026-10-09 选项 A：家户债务引用派生索引同样**不需要**会话工作副本 —— 它是合同表的派生索引，
+        //   本方法构造 EconomyData 时由 DebtReferenceReconciler 按（可能已被本会话改过的）债务工作表**整表重建**。
+        //   改前这里也没有引用表（当时引用住在每一行里、由相同的对账重建）⇒ 语义逐条不变。
+        base.householdDebtRefs());
   }
 }

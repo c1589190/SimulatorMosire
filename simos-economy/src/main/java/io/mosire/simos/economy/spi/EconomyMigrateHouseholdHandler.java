@@ -139,7 +139,6 @@ public final class EconomyMigrateHouseholdHandler implements CommandHandler {
               householdEconomy.laborMilli(),
               householdEconomy.participationPerMille(),
               householdEconomy.money(),
-              householdEconomy.debts(),
               householdEconomy.naturalNeeds(),
               householdEconomy.effectiveDemand(),
               householdEconomy.cycleNaturalNeedMilli());

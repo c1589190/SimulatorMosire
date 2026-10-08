@@ -1,0 +1,23 @@
+# ★ 本轮发现并修掉的真实回归：把退役字段的处理只放在 codec 整形层里 ⇒ 重放路径当场死
+# （改动前 code 写出的 store，用改动后 code 读：Replay → Timeline.readChangeSet → Core 的第四台 mapper）
+
+Exception in thread "main" java.lang.IllegalArgumentException: 变更集 JSON 非法或缺类型信息（@class）
+	at io.mosire.simos.core.timeline.Timeline.readChangeSet(Timeline.java:389)
+	at io.mosire.simos.core.store.Replay.replay(Replay.java:196)
+	at io.mosire.simos.core.CoreSimos.replay(CoreSimos.java:252)
+Caused by: com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException: Unrecognized field "debts"
+ (class io.mosire.simos.economy.model.HouseholdEconomy), not marked as ignorable
+ (9 known properties: "money", "effectiveDemand", "naturalNeeds", "view", "id", "population",
+  "cycleNaturalNeedMilli", "laborMilli", "participationPerMille")
+ (through reference chain: io.mosire.simos.core.state.WorldChangeSet["modules"]
+   ->java.util.LinkedHashMap["economy"]->io.mosire.simos.economy.change.EconomyChangeSet["classes"]
+   ->io.mosire.simos.util.state.FieldDelta$Upsert["entries"]
+   ->java.util.LinkedHashMap["hh--3_0-rural-poor_peasant"]
+   ->io.mosire.simos.economy.model.HouseholdEconomy["debts"])
+
+# 修法：HouseholdEconomy 上 @JsonIgnoreProperties("debts")（类型级、只忽略这一个名字、其余未知字段照旧 fail-closed）
+# 修后同一命令输出：
+   [读取] store 已到 tick=180（head=36）⇒ 只读回放，不推进
+   [读数] label=after-archive tick=180 head=36
+   [读数] 家户=342 合同=636 有引用的家户=342 引用对=636
+   [摘要] a70caf84b2c36609a2049d4bcc91aa0be5c558db4faa37b8998b55bb5082413c

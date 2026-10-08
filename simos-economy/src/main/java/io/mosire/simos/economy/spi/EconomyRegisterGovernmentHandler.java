@@ -140,7 +140,6 @@ public final class EconomyRegisterGovernmentHandler
                 registration.laborMilli(),
                 registration.participationPerMille(),
                 0L,
-                List.of(),
                 Map.of(),
                 Map.of(),
                 0L);
@@ -237,7 +236,6 @@ public final class EconomyRegisterGovernmentHandler
                 laborMilli,
                 participation,
                 existingHouseholdEconomy.money(),
-                existingHouseholdEconomy.debts(),
                 existingHouseholdEconomy.naturalNeeds(),
                 existingHouseholdEconomy.effectiveDemand(),
                 existingHouseholdEconomy.cycleNaturalNeedMilli());

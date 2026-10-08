@@ -430,7 +430,11 @@ public final class EconomyClearRegionHandler
         staged.moneyInstruments(),
         // ★★ B2：市场区表同样是**世界级**的（区不等于行政区，清区域不按格摘区），原样带过 staged 的表 ——
         //   漏了它 = 一次清区域把世界的市场区静默抹掉、市场区悄悄退回派生值。
-        staged.marketZones());
+        staged.marketZones(),
+        // ★★ 2026-10-09 选项 A：引用表也是**派生索引**（唯一权威 = 上面刚摘过的 debtContracts）——
+        //   本构造期对账会按新合同表重建它（清掉的格里的合同/家户一起消失 ⇒ 引用随之消失）。
+        //   原样带过 staged 的表即可，重建结果与"引用住在行里"时逐值相同。
+        staged.householdDebtRefs());
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

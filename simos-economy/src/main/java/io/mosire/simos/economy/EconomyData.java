@@ -57,6 +57,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
@@ -85,6 +86,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -236,6 +238,17 @@ import java.util.Set;
  * 区级官方汇率覆盖）。 ★★ <b>它是"市场区的单一权威"</b>：空表 = 旧世界形态（市场区仍按"城市 + tier 半径"派生，既有世界逐值不变）；非空 = 一个 hex
  * 属于哪个区<b>由本表给定</b>，派生路径只服务空表。★ 五条 fail-closed 守卫（键 == 值内 zoneId、一个 hex 至多一个区、法定币与区级汇率
  * 币对必须在币种表里、发行政府必须登记且 {@code issuable} 必须含法定币）见 compact 构造器里那一段。
+ *
+ * <p>★★ <b>2026-10-09 选项 A 追加第 37 个组件 {@code householdDebtRefs}</b>（用户批准的"先用上选项 A，验证效率提升"）： 键 =
+ * {@link HouseholdDebtReference}（{@code 家户@合同}），值 = 标记位 {@code Boolean.TRUE}。<b>它是"某家户是某合同的债务人"这一条
+ * 派生索引</b>，唯一权威仍是 {@link #debtContracts()}；旧档缺该键 ⇒ 空表，构造期由 {@code DebtReferenceReconciler}
+ * 按合同表<b>整表重建</b> ⇒ 旧世界逐值不变（等于改前那份逐行 {@code HouseholdEconomy.debts} 的重建结果）。
+ *
+ * <p>★★ <b>为什么必须拆出来</b>：改前那份引用列表住在每一行里（实测 ~3.7KB/户 ≈ 50 条合同 id），而 {@code FieldDelta.diff}
+ * 是<b>行级</b>差异 —— 行里任何一个字段变（每天 203/203 户都变的 {@code cycleNaturalNeedMilli} 只有 6
+ * 字节）就会把<b>整行</b>（含那一大坨不变的引用）序列化进 Upsert，占总变更集的 ~62%。 拆成"一户一债一对"的行之后，每个 tick
+ * 只落盘<b>真正变化的引用对</b>（现实中每天最多几对）。 ★ 对账/守卫的语义逐条不变（见 {@code
+ * DebtReferenceReconciler}）：合同表是权威、引用表被重建、悬空引用仍然具名抛。
  */
 // ★ 豁免 EI_EXPOSE_REP（R4a，canonical verify 实测 28 条）：本 record 的每张表都在 compact 构造器里逐键复制 +
 //   Collections.unmodifiableMap（见下方各 *Copy 段），访问器返回的是冻结副本、调用方改不动。SpotBugs 对
@@ -243,7 +256,7 @@ import java.util.Set;
 @SuppressFBWarnings(
     value = "EI_EXPOSE_REP",
     justification =
-        "30 张 Map 组件（含 P4a periodicAdjustments 与 Z1 的 outputQuantityOverrides/productionEfficiency）均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
+        "全部 Map 组件（含 P4a periodicAdjustments、Z1 的 outputQuantityOverrides/productionEfficiency 与 2026-10-09 选项 A 的 householdDebtRefs）均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
 public record EconomyData(
     Optional<EconomyMeta> meta,
     Map<IndustryId, Industry> industries,
@@ -282,7 +295,13 @@ public record EconomyData(
     // ── B2（2026-10-08）市场区的持久状态（约束设计书 §4.2 / 不变量 I22）────────────────────────
     //   第 36 个组件。★ 空表 = 旧世界形态：市场区仍按"城市 + tier 半径"派生（MarketTopologyBook），
     //   既有 small-world / corridor / v17levant 逐值不变；非空 = 成员格由本表**唯一给定**（单一权威）。
-    Map<MarketZoneId, MarketZone> marketZones) {
+    Map<MarketZoneId, MarketZone> marketZones,
+    // ── 2026-10-09 选项 A：家户债务引用派生索引（第 37 个组件）──────────────────────────────
+    //   键 = HouseholdDebtReference（家户@合同），值 = 标记位（Boolean.TRUE）。
+    //   ★ 空表 = "这个档还没有引用表"（旧档缺键）⇒ 构造期由 DebtReferenceReconciler 从 debtContracts 重建，
+    //     逐值等于改前 HouseholdEconomy.debts 的逐行重建结果（旧世界逐值不变）。
+    //   ★ 它**不是**第二本债务账：合同表 debtContracts 是唯一权威，本表只是"该户是某合同的债务人"的派生索引。
+    Map<HouseholdDebtReference, Boolean> householdDebtRefs) {
 
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
   public static final long MAX_OUTPUT_QUANTITY = 1_000_000L;
@@ -370,6 +389,9 @@ public record EconomyData(
    * ★★ <b>B2 旧组件面的便捷构造器</b>（B2 之前的 35 参 canonical 形状）：新组件 {@code marketZones} 取空表 ⇒ <b>市场区仍按"城市 +
    * tier 半径"派生</b>（{@code MarketTopologyBook}），于是"没有声明过市场区"的世界读出来与 B2 之前逐值相同。
    *
+   * <p>★ 2026-10-09 选项 A 的 {@code householdDebtRefs}（第 37 个组件）同款：本构造器给它空表 ⇒ 构造期由 {@code
+   * DebtReferenceReconciler} 从合同表重建（空表 = "还没有引用表"，不是"没有债"）。
+   *
    * <p>★★ <b>它不是状态迁移路径</b>：真正的状态迁移（{@code with*} / changeset / codec）<b>必须显式携带</b>这个组件 —— 漏带 =
    * 一次无关的写入把世界的市场区表抹掉、市场区悄悄退回派生值（本仓最贵的那类静默丢字段）。故本构造器与每个 {@code with*} 的注释都把这件事写死。
    */
@@ -441,6 +463,7 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
+        Map.of(),
         Map.of());
   }
 
@@ -448,6 +471,9 @@ public record EconomyData(
    * ★★ <b>A1 旧组件面的便捷构造器</b>（A1 之前的 31 参 canonical 形状）：两个新组件 {@code currencies} / {@code
    * moneyInstruments} 取空表 ⇒ 构造期归一到<b>旧世界默认词表</b>（{@code silver} + {@code silver-specie}），
    * 于是"没有声明过词表的世界"读出来与 A1 之前逐值相同。
+   *
+   * <p>★ 2026-10-09 选项 A 的 {@code householdDebtRefs} 与 ★ B2 的 {@code marketZones} 同款：本构造器给它空表 ⇒
+   * 构造期由 {@code DebtReferenceReconciler} 从合同表重建（见上方 B2 构造器的同一条说明）。
    *
    * <p>★★ <b>它不是状态迁移路径</b>：真正的状态迁移（{@code with*} / changeset / codec）<b>必须显式携带</b>这两个组件 —— 漏带 =
    * 一次无关的写入把世界的词表打回出厂值（本仓最贵的那类静默丢字段）。故本构造器的注释与 {@code with*} 的注释都把这件事写死。
@@ -516,6 +542,7 @@ public record EconomyData(
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of());
@@ -637,6 +664,13 @@ public record EconomyData(
     }
     if (debtContracts == null) {
       debtContracts = Map.of();
+    }
+    // ★★ 2026-10-09 选项 A 第 37 个组件（家户债务引用派生索引 householdDebtRefs）：旧档缺键 ⇒ 空表 ——
+    //    ★ 空表**不是**"这个档没有债"，而是"这个档还没有引用表"：后面 classes/debtContracts 那一段会用
+    //    DebtReferenceReconciler 按合同表**整表重建**它 ⇒ 旧档读回后逐值等于改前 HouseholdEconomy.debts
+    //    的逐行重建结果（旧世界逐值不变）。
+    if (householdDebtRefs == null) {
+      householdDebtRefs = Map.of();
     }
     if (flows == null) {
       flows = Map.of();
@@ -919,16 +953,32 @@ public record EconomyData(
       debtContractsCopy.put(entry.getKey(), contract);
     }
     debtContracts = Collections.unmodifiableMap(debtContractsCopy); // ★ 冻在赋值处
-    // ★★ B.3b（R3 决策单 §0.3）：孤儿债对账 —— 以 debtContracts 表为唯一权威，按 debtor 分组、
-    //   DebtContractId canonical 升序重建每个 HouseholdEconomy.debts 引用。★ 必须在**跨表守卫之前**：
-    //   守卫要求“引用的合同存在”，而孤儿债是“合同存在、引用缺失”；对账不碰合同表本身
+    // ★★ 2026-10-09 选项 A（第 37 个组件）：引用表的形状守卫 + 冻结。缺键已在前面归一成空表。
+    //   ★ 值只允许标记位 Boolean.TRUE：一个"引用对"要么在表里、要么不在 —— 让 false 也能存会立刻造出
+    //     "同一条引用两种拼法"的第二真相（变更集的 diff 会把它当两次变化），故当场拒。
+    Map<HouseholdDebtReference, Boolean> householdDebtRefsCopy = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdDebtReference, Boolean> entry : householdDebtRefs.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("householdDebtRefs 的键与值都不得为 null: " + entry.getKey());
+      }
+      if (!Boolean.TRUE.equals(entry.getValue())) {
+        throw new IllegalArgumentException(
+            "householdDebtRefs 的值只允许标记位 TRUE（存在即引用）: " + entry.getKey() + " = " + entry.getValue());
+      }
+      householdDebtRefsCopy.put(entry.getKey(), Boolean.TRUE);
+    }
+    householdDebtRefs = Collections.unmodifiableMap(householdDebtRefsCopy); // ★ 冻在赋值处
+    // ★★ B.3b（R3 决策单 §0.3）+ 2026-10-09 选项 A：孤儿债对账 —— 以 debtContracts 表为唯一权威，按 debtor 分组、
+    //   DebtContractId canonical 升序重建**引用表**（改前是重建每一行的 debts 列表；结论逐字不变）。
+    //   ★ 必须在**跨表守卫之前**：守卫要求“引用的合同存在”，而孤儿债是“合同存在、引用缺失”；对账不碰合同表本身
     //   （principal/status 守恒），只在 debtor/creditor 家户行缺失时 fail-closed 具名抛。
-    householdEconomiesCopy =
-        DebtReferenceReconciler.reconcile(debtContractsCopy, householdEconomiesCopy);
-    classes = Collections.unmodifiableMap(householdEconomiesCopy); // ★ 冻在赋值处（可能与上面同一实例）
+    householdDebtRefs =
+        DebtReferenceReconciler.reconcile(
+            debtContractsCopy, householdEconomiesCopy, householdDebtRefs);
+    householdDebtRefs = Collections.unmodifiableMap(householdDebtRefs); // ★ 冻在赋值处（可能是同一实例）
     // ★ v2 spec §八.2：两张表的**交叉引用完整性**。★ 必须等两张表都建完再判 ——
     //   在任一段内查对方会陷入循环依赖（debtContracts 要查 classes、classes 要查 debtContracts），故不能靠调顺序解决。
-    //   ★ B.3b 起 classes 侧的引用已由上面的 DebtReferenceReconciler 重建过，本循环是对账后的兜底断言。
+    //   ★ B.3b 起引用侧已由上面的 DebtReferenceReconciler 重建过，本循环是对账后的兜底断言。
     for (Map.Entry<DebtContractId, DebtContract> entry : debtContractsCopy.entrySet()) {
       DebtContract contract = entry.getValue();
       if (!householdEconomiesCopy.containsKey(contract.debtor())
@@ -942,18 +992,10 @@ public record EconomyData(
                 + contract.creditor());
       }
     }
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
-        householdEconomiesCopy.entrySet()) {
-      for (DebtContractId contractId : householdEconomyEntry.getValue().debts()) {
-        if (!debtContractsCopy.containsKey(contractId)) {
-          throw new IllegalArgumentException(
-              "ClassRow.debts 引用了不存在的债务合同（v2 spec §八.2）："
-                  + householdEconomyEntry.getKey()
-                  + " → "
-                  + contractId);
-        }
-      }
-    }
+    // ★ 改前这里逐行扫 ClassRow.debts；拆表后同一判据收成一个具名方法（引用表 ⊆ 合同表 + 挂对债务人 + 家户行存在）。
+    //   ⇒ 悬空引用仍然具名抛，不因拆表而放松；且它可被单独调用（自证探针就是这么打这句话的）。
+    DebtReferenceReconciler.requireReferencesResolvable(
+        debtContractsCopy, householdEconomiesCopy, householdDebtRefs);
     Map<HouseholdId, FlowRow> flowsCopy = new LinkedHashMap<>();
     for (Map.Entry<HouseholdId, FlowRow> entry : flows.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
@@ -2246,6 +2288,29 @@ public record EconomyData(
         what + " 引用了不存在的产业（该格上没有登记任何产业）: " + hexKey + "（键=" + key + "）");
   }
 
+  /**
+   * ★★ <b>2026-10-09 选项 A 的读口：一个家户作为债务人的全部合同 id（规范序 = {@link DebtContractId} 规范串升序）</b>。
+   *
+   * <p>★★ <b>它逐值等于改前 {@code HouseholdEconomy.debts()} 的返回值</b>（同一份合同表 + 同一套对账规则）：引用表按 {@code
+   * classes} 键序、一户之内按合同 id 升序建立，故本方法按下标顺序收集即可，不需要再排序。
+   *
+   * <p>★ <b>为什么是一个方法而不是让调用方自己扫表</b>：引用表的键是复合键（{@code 家户@合同}），"取某户的引用"是它唯一的读法；
+   * 散在各处的过滤会把"键的形状"变成多处拼写点（下一个改键的人会漏改其中一处）。读口不抛：该户没有引用 ⇒ 空表（与改前"行里没有 debts ⇒ 空 list"逐值相同）。
+   *
+   * @param household 家户稳定身份；不得为 null
+   * @return 保序不可变清单（可能为空；绝不返回 null）
+   */
+  public List<DebtContractId> debtsOf(HouseholdId household) {
+    Objects.requireNonNull(household, "household 不得为 null");
+    List<DebtContractId> ids = new ArrayList<>();
+    for (HouseholdDebtReference reference : householdDebtRefs.keySet()) {
+      if (reference.household().equals(household)) {
+        ids.add(reference.contract());
+      }
+    }
+    return Collections.unmodifiableList(ids);
+  }
+
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
   public EconomyData withMeta(Optional<EconomyMeta> value) {
     return new EconomyData(
@@ -2282,7 +2347,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2321,7 +2387,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2360,7 +2427,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -2402,7 +2470,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2441,7 +2510,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   public EconomyData withLaborCommitments(
@@ -2480,7 +2550,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2519,7 +2590,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -2563,7 +2635,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -2606,7 +2679,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -2644,7 +2718,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2683,7 +2758,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2722,7 +2798,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2761,7 +2838,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2800,7 +2878,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2839,7 +2918,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2878,7 +2958,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2917,7 +2998,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -2966,7 +3048,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3006,7 +3089,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3046,7 +3130,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3085,7 +3170,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3124,7 +3210,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3163,7 +3250,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3206,7 +3294,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3250,7 +3339,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3294,7 +3384,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3338,7 +3429,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3382,7 +3474,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3427,7 +3520,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3472,7 +3566,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3517,7 +3612,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3562,7 +3658,8 @@ public record EconomyData(
         value,
         currencies,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /** {@link ProductionUnitId#idOf} 的固定前缀（唯一拼写点；用来识别"这看起来是一个 unit id"）。 */
@@ -3634,7 +3731,8 @@ public record EconomyData(
         productionEfficiency,
         value,
         moneyInstruments,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3678,7 +3776,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         value,
-        marketZones);
+        marketZones,
+        householdDebtRefs);
   }
 
   /**
@@ -3725,7 +3824,8 @@ public record EconomyData(
         productionEfficiency,
         currencies,
         moneyInstruments,
-        value);
+        value,
+        householdDebtRefs);
   }
 
   /** 币种表里全部 id 的可读清单（拒因/诊断用；保序）。 */

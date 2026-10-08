@@ -33,6 +33,15 @@ public enum EconomyLogSource implements LogOrigin {
       "economy-population-write", "人口/自然需求回写原语（方法签名无 day 上下文，按纪律归 system）", LogOriginKind.SYSTEM),
   ECONOMY_DEBT_STATE(
       "economy-debt-state", "债务减本/状态迁移/减免/逐笔偿还裁决（方法签名无 day 上下文，按纪律归 system）", LogOriginKind.SYSTEM),
+  /**
+   * ★★ <b>2026-10-09 选项 A：债务引用派生索引（{@code householdDebtRefs}）</b>—— 引用从 {@code HouseholdEconomy}
+   * 行内拆成独立表后，由 {@code DebtReferenceReconciler} 在 {@code EconomyData} 构造期按合同表重建（无 day 上下文，按纪律归
+   * system）。
+   */
+  ECONOMY_DEBT_REFERENCE(
+      "economy-debt-reference",
+      "债务引用派生索引（家户@合同）：按合同表重建/对账（构造期，无 day 上下文，按纪律归 system）",
+      LogOriginKind.SYSTEM),
   ECONOMY_OPERATOR_STATE(
       "economy-operator-state",
       "经营者关账状态迁移（advance 方法签名无 day 上下文，按纪律归 system）",

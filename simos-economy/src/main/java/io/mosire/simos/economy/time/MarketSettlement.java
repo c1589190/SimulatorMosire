@@ -2200,7 +2200,10 @@ final class MarketSettlement {
             payment,
             round.day,
             OptionalLong.of(ctx.creditConfig.dueCycle()));
-    addDebtReference(round, buy.buyer.household, contract.id());
+    // ★★ 2026-10-09 选项 A：这里改前会把新合同的派生引用补进债务人**行**（顺带 fail-closed 地断言该行在场）；
+    //   拆表后引用表由 EconomyData 构造期的 DebtReferenceReconciler 按 ctx.debts 整表重建，故补引用这一步消失，
+    //   但**那条具名断言逐字保留**（拆表不许放松守卫）：债务人的家户行必须在本轮工作副本里。
+    requireHouseholdRowInRound(round, buy.buyer.household);
     ctx.creditFills.add(
         new MarketReport.CreditFill(
             sell.hex,
@@ -2276,7 +2279,10 @@ final class MarketSettlement {
             quantity,
             round.day,
             OptionalLong.of(ctx.creditConfig.dueCycle()));
-    addDebtReference(round, buy.buyer.household, contract.id());
+    // ★★ 2026-10-09 选项 A：这里改前会把新合同的派生引用补进债务人**行**（顺带 fail-closed 地断言该行在场）；
+    //   拆表后引用表由 EconomyData 构造期的 DebtReferenceReconciler 按 ctx.debts 整表重建，故补引用这一步消失，
+    //   但**那条具名断言逐字保留**（拆表不许放松守卫）：债务人的家户行必须在本轮工作副本里。
+    requireHouseholdRowInRound(round, buy.buyer.household);
     ctx.creditFills.add(
         new MarketReport.CreditFill(
             sell.hex,
@@ -2346,6 +2352,16 @@ final class MarketSettlement {
     return ctx.topology.contains(hex) ? ctx.markets.get(ctx.topology.regionOf(hex).anchor()) : null;
   }
 
+  /**
+   * ★★ <b>2026-10-09 选项 A 后剩下的具名断言</b>（改前住在 {@code addDebtReference} 里）：信用成交的债务人行必须在本轮 市场工作副本里 ——
+   * 行不在 = 状态漂开，fail-closed 具名抛（不静默当作"没有这一户"）。
+   */
+  private static void requireHouseholdRowInRound(MarketRound round, HouseholdId debtor) {
+    if (!round.householdEconomies.containsKey(debtor)) {
+      throw new IllegalStateException("信用成交的债务人行不在市场轮里（状态漂开）: " + debtor);
+    }
+  }
+
   /** 市场信用的转移腿：唯一 applier = {@code EconomySettlement.applyTransfer}（带冻结表的 10 参入口）。 */
   private static void applyMarketLeg(MatchContext ctx, Transfer transfer) {
     MarketRound round = ctx.round;
@@ -2356,15 +2372,6 @@ final class MarketSettlement {
         round.householdFrozenMoney,
         round.householdOfActor,
         transfer);
-  }
-
-  /** 把新合同的派生引用补进债务人行（幂等；权威重建仍在 {@code DebtReferenceReconciler}）。 */
-  private static void addDebtReference(MarketRound round, HouseholdId debtor, DebtContractId id) {
-    HouseholdEconomy householdEconomy = round.householdEconomies.get(debtor);
-    if (householdEconomy == null) {
-      throw new IllegalStateException("信用成交的债务人行不在市场轮里（状态漂开）: " + debtor);
-    }
-    round.householdEconomies.put(debtor, DebtContractBook.withDebtReference(householdEconomy, id));
   }
 
   /**

@@ -154,10 +154,9 @@ final class GovernmentDebtIssuance {
                 take,
                 day,
                 OptionalLong.of(currentCycle + 1L));
-        householdEconomies.put(
-            governmentHousehold,
-            DebtContractBook.withDebtReference(governmentHouseholdEconomy, contract.id()));
-        governmentHouseholdEconomy = householdEconomies.get(governmentHousehold);
+        // ★★ 2026-10-09 选项 A：改前这里把新合同的派生引用补进政府家户**行**；拆表后引用表由
+        //   EconomyData 构造期的 DebtReferenceReconciler 按（本会话刚写过的）债务工作表整表重建
+        //   ⇒ 会话内不必再补引用。★ 那一行本身不因本次发债而变（合同表才是被改的那张）。
         remaining = Math.subtractExact(remaining, take);
         borrowed = Math.addExact(borrowed, take);
         lenderCount++;

@@ -60,6 +60,7 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdDebtReference;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -173,7 +174,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
    * ★ 把 {@code EconomyChangeSet.isEmpty()} 摘出 JSON 形态（与 {@code LedgerCodec} 同制）：Jackson 会把 {@code
    * isEmpty()} 当成属性 {@code "empty"} 写进字节，而严格读入随即炸掉。 {@code isEmpty} 是派生判断不是状态，**不进线格式**；mixin
    * 放本类（mapper 与 mixin 同处一地、谁也丢不了），领域类型保持零 Jackson 注解（{@code AllocationRule} 的 sealed
-   * 多态注解除外——那是往返的硬前提）。
+   * 多态注解除外——那是往返的硬前提；★ 2026-10-09 选项 A 追加第二个例外：{@code HouseholdEconomy} 上的
+   * {@code @JsonIgnoreProperties("debts")} —— 退役字段的具名兼容必须落在**类型**上，因为重放走 Core 的第四台 mapper、
+   * 不经过本层，见那个注解的注释）。
    */
   private static ObjectMapper withEconomyMixins(ObjectMapper mapper) {
     mapper.addMixIn(EconomyChangeSet.class, EconomyChangeSetMixin.class);
@@ -278,6 +281,14 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     //   （q/r 两个 int），迭代序由 MarketZone 构造期的规范序（(q,r) 升序）保证 ⇒ 字节级往返稳定。
     //   旧档缺该组件键 ⇒ EconomyData 构造期归一成空表（市场区退回派生路径，既有世界逐值不变）。
     module.addKeyDeserializer(MarketZoneId.class, keyDeserializer(MarketZoneId::parse));
+    // ★★ 2026-10-09 选项 A：householdDebtRefs（第 37 个组件）的键 = HouseholdDebtReference（{@code 家户@合同}
+    //   复合键，toString/parse 互逆）。值 = 标记位 Boolean，走 Jackson 的原生布尔绑定。
+    //   旧档缺该组件键 ⇒ EconomyData 构造期归一成空表，再由 DebtReferenceReconciler 从 debtContracts 重建
+    //   （旧世界逐值不变）；旧档行内那份 {@code classes[].debts} 由 {@code HouseholdEconomy} 上的
+    //   具名 {@code @JsonIgnoreProperties("debts")} 吞掉（★ 必须落在类型上：重放走 Core 的第四台 mapper，
+    //   不经过本 codec 的整形层 —— 见那个注解的注释）。
+    module.addKeyDeserializer(
+        HouseholdDebtReference.class, keyDeserializer(HouseholdDebtReference::parse));
     return module;
   }
 
@@ -785,23 +796,19 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     ObjectNode newTable = JsonNodeFactory.instance.objectNode();
     node.set("debtContracts", newTable);
     if (legacy == null || legacy.isNull()) {
-      rewriteLegacyHouseholdEconomyDebtReferences(node, Map.of());
       return node;
     }
     if (!(legacy instanceof ObjectNode oldTable)) {
       throw new IllegalStateException("旧 debts 必须是 {旧债务id: Debt} 对象: " + legacy);
     }
     Map<String, DebtContract> merged = new LinkedHashMap<>();
-    Map<String, String> oldToNew = new LinkedHashMap<>();
     for (Map.Entry<String, JsonNode> entry : iterableFields(oldTable)) {
       DebtContract contract = legacyDebtContract(entry.getKey(), entry.getValue());
-      oldToNew.put(entry.getKey(), contract.id().value());
       merged.merge(contract.id().value(), contract, EconomyCodec::mergeDebtContracts);
     }
     for (Map.Entry<String, DebtContract> entry : merged.entrySet()) {
       newTable.set(entry.getKey(), MAPPER.valueToTree(entry.getValue()));
     }
-    rewriteLegacyHouseholdEconomyDebtReferences(node, oldToNew);
     return node;
   }
 
@@ -1019,43 +1026,6 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       return first;
     }
     return OptionalLong.of(Math.max(first.getAsLong(), second.getAsLong()));
-  }
-
-  /** 把旧 {@code HouseholdEconomy.debts} 数组里的旧债务 id 换成迁移后的新合同 id（去重、保序）。 */
-  private static void rewriteLegacyHouseholdEconomyDebtReferences(
-      ObjectNode node, Map<String, String> oldToNew) {
-    ObjectNode classes = objectField(node, "classes");
-    if (classes == null) {
-      return;
-    }
-    for (Map.Entry<String, JsonNode> entry : iterableFields(classes)) {
-      if (!(entry.getValue() instanceof ObjectNode row)) {
-        continue;
-      }
-      JsonNode refs = row.get("debts");
-      if (refs == null || refs.isNull()) {
-        continue;
-      }
-      if (!refs.isArray()) {
-        throw new IllegalStateException("ClassRow.debts 必须是数组: " + row);
-      }
-      var rewritten = JsonNodeFactory.instance.arrayNode();
-      Set<String> seen = new LinkedHashSet<>();
-      for (JsonNode ref : refs) {
-        String oldId = textOfId(ref);
-        if (oldId == null) {
-          throw new IllegalStateException("ClassRow.debts 的元素必须是旧债务 id: " + ref);
-        }
-        String newId = oldToNew.get(oldId);
-        if (newId == null) {
-          throw new IllegalStateException("ClassRow.debts 引用了旧 debts 表里不存在的债务: " + oldId);
-        }
-        if (seen.add(newId)) {
-          rewritten.add(newId);
-        }
-      }
-      row.set("debts", rewritten);
-    }
   }
 
   /**

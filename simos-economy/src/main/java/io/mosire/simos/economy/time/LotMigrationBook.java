@@ -296,15 +296,12 @@ public final class LotMigrationBook {
       DebtContractId targetContractId =
           DebtContractId.idOf(
               targetHousehold, contract.creditor(), contract.unit(), contract.terms());
-      HouseholdEconomy targetHouseholdEconomy = householdEconomies.get(targetHousehold);
-      if (targetHouseholdEconomy == null) {
+      if (householdEconomies.get(targetHousehold) == null) {
         throw new IllegalStateException(
             "债务随行的目标家户行不存在（拒绝静默丢债）：" + targetHousehold + " ← " + sourceHousehold);
       }
-      // ★ 会话内也把目标行的派生引用补上（权威仍是合同表；build() 的 DebtReferenceReconciler 会再对一次）。
-      householdEconomies.put(
-          targetHousehold,
-          DebtContractBook.withDebtReference(targetHouseholdEconomy, targetContractId));
+      // ★★ 2026-10-09 选项 A：改前这里把目标行的派生引用补上；拆表后引用表由 EconomyData 构造期的
+      //   DebtReferenceReconciler 按合同工作表整表重建 ⇒ 会话内不必再补（权威仍是合同表）。
       List<DebtContractId> targetContracts =
           debtsByDebtor.computeIfAbsent(targetHousehold, ignored -> new ArrayList<>());
       if (!targetContracts.contains(targetContractId)) {
@@ -350,16 +347,7 @@ public final class LotMigrationBook {
     }
     HouseholdEconomy createdHouseholdEconomy =
         new HouseholdEconomy(
-            created,
-            targetView,
-            0L,
-            0L,
-            participationPerMille,
-            0L,
-            List.of(),
-            Map.of(),
-            Map.of(),
-            0L);
+            created, targetView, 0L, 0L, participationPerMille, 0L, Map.of(), Map.of(), 0L);
     householdEconomies.put(created, createdHouseholdEconomy);
     householdByView.put(targetView, created);
     return created;

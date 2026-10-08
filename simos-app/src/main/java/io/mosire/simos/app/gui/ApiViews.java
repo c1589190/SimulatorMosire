@@ -1305,8 +1305,9 @@ public final class ApiViews {
       participationAdjustedLaborMilli += householdEconomy.participationAdjustedLaborMilli();
       grainDailyConsumption += householdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L);
       cycleNaturalNeedMilli += householdEconomy.cycleNaturalNeedMilli();
-      // 债务人侧：仍按行里的引用清点（它是放贷时写下的权威清单）。
-      for (DebtContractId debtId : householdEconomy.debts()) {
+      // 债务人侧：按引用表清点（★ 2026-10-09 选项 A：引用已从行内拆成独立表 householdDebtRefs；
+      //   data.debtsOf 是它唯一的读口，逐值等于改前的 HouseholdEconomy.debts()）。
+      for (DebtContractId debtId : data.debtsOf(key)) {
         DebtContract debt = data.debtContracts().get(debtId);
         if (debt != null) {
           debtCount++;
@@ -1324,7 +1325,14 @@ public final class ApiViews {
       }
       Map<String, Object> classView =
           householdEconomyView(
-              key, householdEconomy, data.flows().get(key), actors, credits, data.debtContracts());
+              key,
+              householdEconomy,
+              data.flows().get(key),
+              actors,
+              credits,
+              data.debtContracts(),
+              // ★ 2026-10-09 选项 A：债务人侧引用来自独立表（唯一读口 debtsOf；逐值等于改前的行内列表）。
+              data.debtsOf(key));
       // ★★ E5a：该户的阶层归属读数（含 consecutiveDebtStressCycles）。没有 HouseholdClassMembership ⇒ null + 具名原因，
       //   不伪造一个默认归属、也不填 0 冒充（旧路径以 HouseholdEconomy.view 为准；E5a 不产生任何阶层变动）。
       HouseholdClassMembership classMembership = data.classStandings().get(key);
@@ -2119,7 +2127,7 @@ public final class ApiViews {
       }
       Map<String, UnitDebtAggregate> byUnit = new TreeMap<>();
       int dangling = 0;
-      for (DebtContractId debtId : new LinkedHashSet<>(householdEconomy.debts())) {
+      for (DebtContractId debtId : new LinkedHashSet<>(data.debtsOf(key))) {
         DebtContract debt = data.debtContracts().get(debtId);
         if (debt == null) {
           dangling++;
@@ -3709,6 +3717,8 @@ public final class ApiViews {
    *
    * @param credits 该行的债权人侧 {@link DebtContractId}（由 {@link DebtIndex#byCreditor} 一次派生、整格复用；可为空表）
    * @param debtBook 该切片的债务表（{@code EconomyData.debtContracts()}；只读，不在本层改）
+   * @param debtRefs ★ 该行的债务人侧引用（{@code EconomyData.debtsOf(key)}；2026-10-09 选项 A 起引用是独立表， 本层不再从行里读
+   *     —— 形状与逐值都等于改前的 {@code HouseholdEconomy.debts()}）
    */
   private static Map<String, Object> householdEconomyView(
       HouseholdId key,
@@ -3716,7 +3726,8 @@ public final class ApiViews {
       FlowRow flow,
       ActorData actors,
       List<DebtContractId> credits,
-      Map<DebtContractId, DebtContract> debtBook) {
+      Map<DebtContractId, DebtContract> debtBook,
+      List<DebtContractId> debtRefs) {
     Map<String, Object> view = new LinkedHashMap<>();
     // ★★ H0.2：**居住类型随行一起发出来**（农村贫农与城镇贫农是两本账，读口必须分得开）；
     //   ★ 字面量取自契约的 {@code ResidenceKind#value()} 的产物（{@code key.toString()} 的那一段），本层不写第二份词表。
@@ -3744,8 +3755,8 @@ public final class ApiViews {
     view.put("actorMoney", sortedCurrencies(inventory == null ? Map.of() : inventory.money()));
     view.put("money", householdEconomy.money());
     // 债务人方向：旧形状保持不变（id 字符串数组），另在 debtDetails 里补明细。
-    List<String> debts = new ArrayList<>(householdEconomy.debts().size());
-    for (DebtContractId debt : householdEconomy.debts()) {
+    List<String> debts = new ArrayList<>(debtRefs.size());
+    for (DebtContractId debt : debtRefs) {
       debts.add(debt.value());
     }
     view.put("debts", debts);
@@ -3756,9 +3767,8 @@ public final class ApiViews {
     }
     view.put("credits", creditsView);
     // ★★ M1.5：同一批债务的明细（两个方向同源；dueCycle 由此接入读口，它此前零 reader）。
-    List<Map<String, Object>> debtDetails =
-        new ArrayList<>(householdEconomy.debts().size() + credits.size());
-    for (DebtContractId debtId : householdEconomy.debts()) {
+    List<Map<String, Object>> debtDetails = new ArrayList<>(debtRefs.size() + credits.size());
+    for (DebtContractId debtId : debtRefs) {
       DebtContract debt = debtBook.get(debtId);
       if (debt != null) {
         debtDetails.add(debtDetailView(debt, false));

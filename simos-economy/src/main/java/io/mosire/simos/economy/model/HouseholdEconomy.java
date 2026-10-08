@@ -1,19 +1,17 @@
 package io.mosire.simos.economy.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.social.api.id.HouseholdId;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /**
  * ★★ <b>家户行</b>（新经济设计 §3.2；<b>2026-09-27 H0 起行就是家户</b>，裁定 K2；<b>H1 起行里没有商品库存</b>，裁定 D3-C/K1）： 人口 /
- * 劳动 / 参与率 / 债务引用 / 两类需求 —— **同一批人的视图**。
+ * 劳动 / 参与率 / 两类需求 —— **同一批人的视图**（★ 债务引用自 2026-10-09 起是独立表，见下）。
  *
  * <p>★★ <b>键 = {@link CohortKey}（格 + 居住类型 + 阶层），不再是"产业 + 槽位"</b>（裁定 K2 / D3-C）：家户是**持有商品与货币的经济主体**，
  * 而人口数、劳动、需求、压力、生死是**同一批人的视图** —— 就是本记录。一个家户给多个产业出劳动（农村家庭既种地又织布）⇒ <b>仍然只有一份账</b>（V9 /
@@ -31,7 +29,14 @@ import java.util.Objects;
  * 已删除）.rowSharesOf}（★ H3 已删），真档数值因此**允许变**。
  *
  * <p>★ **它是存量**（§3.3 末条"存量/流量分离"）：本期的发生额在 {@link FlowRow} 里、**结算后清零**；绝不用"生产成本"或"资产减少"
- * 冒充负债——债务只能由借入/赊购产生，引用 {@link #debts} 指向债务表。
+ * 冒充负债——债务只能由借入/赊购产生。
+ *
+ * <p>★★ <b>为什么没有 {@code debts}（2026-10-09 选项 A）</b>：债务引用已拆成独立表 {@link
+ * HouseholdDebtReference}（{@code EconomyData.householdDebtRefs}，键 = {@code (家户, 合同)}）。
+ * 原因是<b>落盘成本</b>：{@code FieldDelta.diff} 是行级差异，本行里那份 ~3.7KB 的引用列表（≈50 条合同 id，实测 0/203 户每天变化）会被
+ * {@code cycleNaturalNeedMilli} 这类日变动拖着<b>每天整行重写</b>（占变更集 ~62%）。拆表后每天 只落盘真正变化的引用对。★ 权威方向不变：合同表
+ * {@code debtContracts} 是唯一权威，引用表是它的派生索引，由 {@code DebtReferenceReconciler} 在 {@code EconomyData}
+ * 构造期重建。
  *
  * <p>★ **量纲**（§7；P2-A §13.4 起）：{@code population} 人；{@code laborMilli} = **每 tick
  * 家户时间预算（毫小时）**；{@code naturalNeeds}/{@code effectiveDemand} 按最小计量单位；{@code money} 最小币值；{@code
@@ -55,7 +60,6 @@ import java.util.Objects;
  *     participationPerMille} 仍保留为 分配权重（不再是硬上限）
  * @param participationPerMille 本期实际劳动投入率（≤ 该格各产业的槽位上限）；必须 ∈ [0, 1000]
  * @param money 货币（最小币值）；不得为负
- * @param debts 指向债务表的引用；可空、不得含 null
  * @param naturalNeeds ★★ 本期自然需求（生存/再生产；v1 只做前两档）；键值非空、逐值 ≥ 0。**2026-10-09 起它是 app 逐户从 Social
  *     成员结构展开并注入的当日物化读模型**（{@code EconomySettlement.applyNaturalNeedsInto} 是唯一写入点）；经济侧不再按 {@code
  *     population} 反推 —— 无需求用空 map。
@@ -66,6 +70,14 @@ import java.util.Objects;
  *     整周期配额"不得再与它并排当同一分母（丙条）。 旧档（M2.7 之前）缺本键 ⇒ 0（fail-closed 的"还没开始累计"），由 {@code
  *     EconomyPayloads.householdEconomy} 与 Jackson 的记录绑定分别兜底。 不得为负
  */
+// ★★ 退役字段的**具名**兼容（2026-10-09 选项 A）：{@code debts} 已不是本行的组件（引用搬进
+//   EconomyData.householdDebtRefs），而改前写出的存档与改前 revision 的行值里都带着它。
+//   ★ 为什么必须是类型级注解、而不是 codec 里的节点整形：**重放走的是 Core 的第四台 mapper**
+//   （Timeline.readChangeSet → CHANGESET_MAPPER，见 simos-core/timeline/Timeline.java:115），它不经过
+//   EconomyCodec 的整形层 ⇒ 只在 codec 里摘键的话，"读自己的存档"会在重放路径上当场死在
+//   UnrecognizedPropertyException（探针实测复现）。类型级注解对四台 mapper 一致生效，且**只忽略这一个名字**：
+//   {@code @JsonIgnoreProperties} 不等于 {@code ignoreUnknown=true}，其余未知字段照旧 fail-closed（漂移信号不丢）。
+@JsonIgnoreProperties("debts")
 public record HouseholdEconomy(
     HouseholdId id,
     CohortKey view,
@@ -73,7 +85,6 @@ public record HouseholdEconomy(
     long laborMilli,
     int participationPerMille,
     long money,
-    List<DebtContractId> debts,
     Map<CommodityId, Long> naturalNeeds,
     Map<CommodityId, Long> effectiveDemand,
     long cycleNaturalNeedMilli) {
@@ -108,9 +119,6 @@ public record HouseholdEconomy(
     if (effectiveDemand == null) {
       throw new IllegalArgumentException("ClassRow.effectiveDemand 不得为 null（无需求用空 map）");
     }
-    if (debts == null) {
-      throw new IllegalArgumentException("ClassRow.debts 不得为 null（无债务用空 list）");
-    }
     Map<CommodityId, Long> needsCopy = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : naturalNeeds.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
@@ -137,14 +145,6 @@ public record HouseholdEconomy(
       demandCopy.put(entry.getKey(), entry.getValue());
     }
     effectiveDemand = Collections.unmodifiableMap(demandCopy); // ★ 冻在赋值处
-    List<DebtContractId> debtsCopy = new ArrayList<>();
-    for (DebtContractId debt : debts) {
-      if (debt == null) {
-        throw new IllegalArgumentException("ClassRow.debts 不得含 null");
-      }
-      debtsCopy.add(debt);
-    }
-    debts = Collections.unmodifiableList(debtsCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -157,7 +157,8 @@ public record HouseholdEconomy(
   }
 
   /**
-   * ★★ <b>S3 阶层写回：只换当前视图，别的字段一字不动</b>—— 身份（{@link #id()}）、人口、劳动、参与率、货币、债务引用、 两类需求与周期累计自然需要全部原样保留。
+   * ★★ <b>S3 阶层写回：只换当前视图，别的字段一字不动</b>—— 身份（{@link
+   * #id()}）、人口、劳动、参与率、货币、两类需求与周期累计自然需要全部原样保留（债务引用已不在本行，见类注）。
    *
    * <p>★★ <b>为什么必须是一个方法而不是调用方逐字段抄</b>：写回路径（{@code 旧结算引擎（R3a 已删除）} 的关账日阶层分类）若在调用点 手抄字段，任何一次 {@code
    * HouseholdEconomy} 加字段都会把写回路径变成"静默丢字段"的第二处拼写点；本方法把"只改 view"的承诺钉在类型内部， 将来加字段时这段也只会编译失败一次（不会静默漏）。★
@@ -174,14 +175,14 @@ public record HouseholdEconomy(
         laborMilli,
         participationPerMille,
         money,
-        debts,
         naturalNeeds,
         effectiveDemand,
         cycleNaturalNeedMilli);
   }
 
   /**
-   * ★★ <b>2026-10-09 家户结构修复：只换当日自然需求，别的字段一字不动</b>——身份、视图、人口、劳动、参与率、货币、债务引用、 有效需求与周期累计自然需要全部原样保留。
+   * ★★ <b>2026-10-09
+   * 家户结构修复：只换当日自然需求，别的字段一字不动</b>——身份、视图、人口、劳动、参与率、货币、有效需求与周期累计自然需要全部原样保留（债务引用已不在本行，见类注）。
    *
    * <p>★★ <b>与 {@link #withView}/{@link #withPopulationAndLabor} 同族的理由</b>：需求表的写入点必须只有一处（app 注入 →
    * {@code EconomySettlement.applyNaturalNeedsInto}），若调用点逐字段手抄，任何一次 {@code HouseholdEconomy} 加字段都会让
@@ -195,7 +196,6 @@ public record HouseholdEconomy(
         laborMilli,
         participationPerMille,
         money,
-        debts,
         newNaturalNeeds,
         effectiveDemand,
         cycleNaturalNeedMilli);
@@ -252,14 +252,13 @@ public record HouseholdEconomy(
         laborMilli,
         participationPerMille,
         money,
-        debts,
         newNaturalNeeds,
         effectiveDemand,
         newCycleNaturalNeedMilli);
   }
 
   /**
-   * ★★ <b>P8 迁移：只换人口与劳动，别的字段一字不动</b>——身份、视图、参与率、货币、债务引用、两类需求与周期累计自然需要 全部原样保留。
+   * ★★ <b>P8 迁移：只换人口与劳动，别的字段一字不动</b>——身份、视图、参与率、货币、两类需求与周期累计自然需要全部原样保留（债务引用已不在本行，见类注）。
    *
    * <p>★★ <b>与 {@link #withView} 同族的理由</b>：迁移的源/目标行都要改人口与劳动（劳动按迁出人数比例缩/增）， 若调用点逐字段手抄，任何一次 {@code
    * HouseholdEconomy} 加字段都会让迁移写口静默丢字段；本方法把“只改这两个字段”的承诺 钉在类型内部。人口/劳动为负由规范构造器当场拒（迁移不得把行抽到负数）。
@@ -272,7 +271,6 @@ public record HouseholdEconomy(
         newLaborMilli,
         participationPerMille,
         money,
-        debts,
         naturalNeeds,
         effectiveDemand,
         cycleNaturalNeedMilli);
@@ -280,7 +278,7 @@ public record HouseholdEconomy(
 
   /**
    * ★★ <b>P2-B：后端命令配置家户劳动时间/参与率</b>（{@code economy.SetHouseholdLabor}）——只换这两个字段，身份、视图、
-   * 货币、债务引用、两类需求与周期累计自然需要全部原样保留。
+   * 货币、两类需求与周期累计自然需要全部原样保留（债务引用已不在本行，见类注）。
    *
    * <p>★ <b>与每 tick 投影的关系（如实边界）</b>：{@code laborMilli} 的常规来源是 Social 成员 × {@code
    * SocialProvisioning} 的劳动权威（C8；{@code HouseholdLaborTimeTable} 只是 legacy 值载体）的逐 tick 投影（P2-A
@@ -296,7 +294,6 @@ public record HouseholdEconomy(
         newLaborMilli,
         newParticipationPerMille,
         money,
-        debts,
         naturalNeeds,
         effectiveDemand,
         cycleNaturalNeedMilli);

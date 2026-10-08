@@ -1,0 +1,33 @@
+# 自证探针（/tmp/debtref，源码见 ../probes/）；运行：
+#   ./run-after.sh io.mosire.simos.app.SelfProbe rt|guard|legacy
+# 结果：三个 mode 各「失败 0 项」。
+
+## SelfProbe rt（往返 + 编码幂等）
+✓ toString / parse(toString) == 原键
+✓ classes 非 Unchanged（日变动那一维在变更集里）   ✓ householdDebtRefs 变了（新增一对）   ✓ 引用差恰一对
+✓ 往返：apply(between,base).equals(target)          ✓ target 的引用表 = 合同表派生（1 对）
+✓ 引用组件 Unchanged（0 字节引用陪跑）               ✓ 日变更集往返
+✓ 快照 decode(encode(x)) 逐值相等                    ✓ 快照二次编码字节相同（len=4111）
+✓ 快照里出现新组件键                                 ✓ 变更集 decode(encode(x)) 可施加且相等
+✓ 变更集二次编码字节相同（len=4314）                 ✓ 键数 = 3
+✓ 键序 = classes 键序 × 合同 id 升序                  ✓ 同一份状态两次构造逐值相等（可重放）
+== SelfProbe mode=rt 失败 0 项 ==
+
+## SelfProbe guard（守卫不许因拆表放松）
+✓ 具名抛: householdDebtRefs 引用了不存在的债务合同（v2 spec §八.2）：hh-0_0-rural-poor_peasant → debtc-deadbeef
+         （fail-closed：不静默核销、不放行悬空引用）
+✓ 消息具名（含悬空引用两侧）
+✓ 具名抛: 债务引用对账失败：合同 debtc-…-68682d67686f7374-… 的债务人 hh-ghost 在 classes 里不存在
+         （fail-closed：不静默核销、不转第三人、不删合同）
+✓ 具名抛: householdDebtRefs 的值只允许标记位 TRUE（存在即引用）: hh-…@debtc-… = false
+✓ 消息具名（含键与值）
+✓ 合法状态构造成功且引用保留（1 对）—— 排除「一律拒」
+✓ 合同表为空 ⇒ 陈旧引用被对账清掉（不再抛）—— 与改前逐条相同
+== SelfProbe mode=guard 失败 0 项 ==
+
+## SelfProbe legacy（旧字节：整段删掉新组件键）
+✓ 旧变更集确实不含该组件键（len=3493）     ✓ 缺键 ⇒ Unchanged（不是抛、也不是 NPE）
+✓ apply 后引用表由合同表重建（1 对）        ✓ 旧快照确实不含该组件键（len=3320）
+✓ 旧快照读回 ⇒ 引用表被重建（1 对）        ✓ 旧快照读回 ⇒ 逐值等于新档
+✓ 夹具确实注入了旧键 debts                 ✓ 旧键被摘掉后仍能读回，且引用表不变
+== SelfProbe mode=legacy 失败 0 项 ==

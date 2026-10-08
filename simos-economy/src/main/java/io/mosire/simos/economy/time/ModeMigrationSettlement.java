@@ -788,7 +788,6 @@ public final class ModeMigrationSettlement {
             0L,
             sourceHouseholdEconomy.participationPerMille(),
             0L,
-            List.of(),
             Map.of(),
             Map.of(),
             0L);

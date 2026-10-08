@@ -5731,12 +5731,8 @@ public final class EconomySettlement {
                   lent,
                   day,
                   OptionalLong.of(dueCycle));
-          HouseholdEconomy currentHouseholdEconomy =
-              householdEconomyUpdates.getOrDefault(debtor, householdEconomies.get(debtor));
-          householdEconomyUpdates.put(
-              debtor,
-              DebtContractBook.withDebtReference(
-                  currentHouseholdEconomy, contract.id())); // 派生引用只加一次（幂等）
+          // ★★ 2026-10-09 选项 A：改前这里把新合同的派生引用补进债务人行（householdEconomyUpdates）；
+          //   拆表后引用表由 EconomyData 构造期的 DebtReferenceReconciler 按 debts 工作表整表重建 ⇒ 不必再补。
           // ★ 借到的粮当日吃掉 ⇒ 已在上面（转移之后）计入当日消费 —— 那里是**唯一**写这一笔的地方。
           borrowing.merge(debtor, lent, Long::sum);
           remaining -= lent;
@@ -6349,9 +6345,8 @@ public final class EconomySettlement {
           throw new IllegalStateException(
               "资本化解出的债权人不在 rows 里（DebtPartyResolver 与 rows 漂开）: " + amount.creditor());
         }
-        householdEconomies.put(
-            amount.debtor(),
-            DebtContractBook.withDebtReference(debtorHouseholdEconomy, contract.id()));
+        // ★★ 2026-10-09 选项 A：改前这里把资本化新合同的派生引用补进债务人行；拆表后引用表由构造期对账
+        //   按 debts 工作表整表重建 ⇒ 不必再补（端点存在性校验照旧保留在上面）。
         ledger.addDebtCapitalization(
             new ProductionLedger.DebtCapitalization(
                 sample.payer(),
@@ -8953,7 +8948,6 @@ public final class EconomySettlement {
         laborMilli,
         householdEconomy.participationPerMille(),
         householdEconomy.money(),
-        householdEconomy.debts(),
         householdEconomy.naturalNeeds(),
         householdEconomy.effectiveDemand(),
         householdEconomy.cycleNaturalNeedMilli());
@@ -8974,7 +8968,6 @@ public final class EconomySettlement {
         householdEconomy.laborMilli(),
         householdEconomy.participationPerMille(),
         householdEconomy.money(),
-        householdEconomy.debts(),
         householdEconomy.naturalNeeds(),
         householdEconomy.effectiveDemand(),
         cycleNaturalNeedMilli);

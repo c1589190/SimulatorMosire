@@ -1,0 +1,70 @@
+# 控制方那份 240 天真实世界（/tmp/s2-probe-A-after18183786513952532793 的两份副本）
+# 单步：每天一条 core.AdvanceTime；分段：30 天一条。改前 = git HEAD 359098e3 现编 class 树。
+
+###### 第一对（tick 240→270，30 天）
+== PERFSTORE kind=single label=w240-before store=/tmp/debtref-w240-before startTick=240 days=30
+   [时间] 墙钟=47819 ms，30 天 ⇒ 1594.0 ms/天（kind=single，tick 240→270）
+   [变更集] 新增 AdvanceTime revision=30，平均 1290 KB/天；economy.classes 平均 757 KB/天；economy.householdDebtRefs 平均 0 KB/天
+
+== PERFSTORE kind=single label=w240-after store=/tmp/debtref-w240-after startTick=240 days=30
+   [时间] 墙钟=63395 ms，30 天 ⇒ 2113.2 ms/天（kind=single，tick 240→270）
+   [变更集] 新增 AdvanceTime revision=30，平均 589 KB/天；economy.classes 平均 55 KB/天；economy.householdDebtRefs 平均 1 KB/天
+# ★ 这一对的墙钟不可比（首跑/页缓存顺序效应，同一份字节重复跑的离散度可达 40%）⇒ 见下面 ABBA 配对。
+
+###### ABBA 配对（同世界，短窗，交替顺序）
+b1  2160.1 ms/天   a1  2058.7 ms/天   (-4.7%)     # 20 天
+b2  1549.4 ms/天   a2  1454.2 ms/天   (-6.1%)     # 20 天
+a3  2055.1 ms/天   b3  2181.5 ms/天   (-5.8%)     # 15 天，反序
+a4  1422.5 ms/天   b4  2118.7 ms/天   (-32.9%)    # 15 天，反序
+# 四组配对：改后每一组都更快。
+
+###### 分段（tick 240→270，30 天一条）
+BEFORE  墙钟=4034 ms，30 天 ⇒ 134.5 ms/天；变更集 1967 KB/天；economy.classes 741 KB/天；refs 0 KB/天
+AFTER   墙钟=3881 ms，30 天 ⇒ 129.4 ms/天；变更集 1318 KB/天；economy.classes  52 KB/天；refs 40 KB/天
+
+###### 组成（30 天平均，python 逐 revision 解析 changeset_json）
+== 240世界 BEFORE（single 30 天）: n=30 平均总=1290 KB/天
+   economy    983.3 KB/天 ( 76.2%)
+   social     254.9 KB/天 ( 19.8%)
+   actor       49.2 KB/天 (  3.8%)
+   gov          1.6 KB/天 (  0.1%)
+   sd           0.6 KB/天 (  0.0%)
+   unit         0.1 KB/天 (  0.0%)
+   economy 逐组件（KB/天）:
+      classes                      756.9
+      units                         86.3
+      flows                         58.2
+      operatorConditions            41.1
+      debtContracts                 30.4
+      allocations                    4.5
+      classStandings                 2.2
+      crisisSignals                  1.1
+      productionEfficiency           0.6
+
+== 240世界 AFTER（single 30 天）: n=30 平均总=589 KB/天
+   economy    282.7 KB/天 ( 48.0%)
+   social     254.9 KB/天 ( 43.3%)
+   actor       49.2 KB/天 (  8.3%)
+   gov          1.6 KB/天 (  0.3%)
+   sd           0.6 KB/天 (  0.1%)
+   unit         0.1 KB/天 (  0.0%)
+   economy 逐组件（KB/天）:
+      units                         86.3
+      flows                         58.2
+      classes                       54.9
+      operatorConditions            41.1
+      debtContracts                 30.4
+      allocations                    4.5
+      classStandings                 2.2
+      householdDebtRefs              1.4
+      crisisSignals                  1.1
+
+###### 单行实据（同一份变更集里的首行 hh--3_0-rural-poor_peasant）
+== BEFORE w150: classes 变体=upsert 行数=203
+   首行 key='hh--3_0-rural-poor_peasant' 长度=3298
+   字段长度: {'id': 39, 'view': 25, 'population': 2, 'laborMilli': 6, 'participationPerMille': 3, 'money': 1, 'debts': 3020, 'naturalNeeds': 29, 'effectiveDemand': 2, 'cycleNaturalNeedMilli': 6}
+   键序: ['id', 'view', 'population', 'laborMilli', 'participationPerMille', 'money', 'debts', 'naturalNeeds', 'effectiveDemand', 'cycleNaturalNeedMilli']
+== AFTER w150: classes 变体=upsert 行数=203
+   首行 key='hh--3_0-rural-poor_peasant' 长度=267
+   字段长度: {'id': 39, 'view': 25, 'population': 2, 'laborMilli': 6, 'participationPerMille': 3, 'money': 1, 'naturalNeeds': 29, 'effectiveDemand': 2, 'cycleNaturalNeedMilli': 6}
+   键序: ['id', 'view', 'population', 'laborMilli', 'participationPerMille', 'money', 'naturalNeeds', 'effectiveDemand', 'cycleNaturalNeedMilli']

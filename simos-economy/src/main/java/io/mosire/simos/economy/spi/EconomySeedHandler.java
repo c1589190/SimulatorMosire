@@ -225,7 +225,11 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★ B2：seed 载荷不声明市场区 ⇒ 原样带过已有状态（漏了它 = 后续按格补种会把这个世界已经定义过的
             //   市场区静默抹掉、市场区悄悄退回"城市 + tier 半径"派生值；区表与格的重叠/发行权守卫也会在构造期
             //   把整批种子拒掉）。★ first-seed 路径的 seeded 区表 = 空 ⇒ 逐值不变。
-            base.marketZones());
+            base.marketZones(),
+            // ★★ 2026-10-09 选项 A：引用表是**派生索引**（唯一权威 = 上面 merge 过的 debtContracts）——
+            //   原样带过 base 的表，构造期对账按合并后的合同表重建（新播格的家户引用由此自动出现，
+            //   与改前"对账重建每一行的 debts"逐值相同）。
+            base.householdDebtRefs());
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

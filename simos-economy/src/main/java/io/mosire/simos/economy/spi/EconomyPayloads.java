@@ -1561,14 +1561,15 @@ final class EconomyPayloads {
     }
     long money = optionalLong(node, "money", 0L);
     long cycleNaturalNeedMilli = optionalLong(node, "cycleNaturalNeedMilli", 0L);
-    List<DebtContractId> debts = new ArrayList<>();
     for (JsonNode debt : optionalArray(node, "debts")) {
       if (!debt.isTextual() || debt.asText().isBlank()) {
         throw new IllegalArgumentException("classes[].debts 的每项必须是非空 DebtContractId 字符串: " + debt);
       }
-      // ★★ E4c：允许非空引用；它是**派生索引**（进入 EconomyData 后由 DebtReferenceReconciler 以合同表为权威重建）。
-      //   指不到合同/端点不存在仍会在构造期具名抛，不会留下悬空引用。
-      debts.add(DebtContractId.parse(debt.asText()));
+      // ★★ 2026-10-09 选项 A：载荷里的 {@code debts} 键**仍然校验形状、但不再进状态** —— 引用已拆成独立表
+      //   {@code householdDebtRefs}，唯一权威是 {@code debtContracts} 表（构造期由 DebtReferenceReconciler 重建）。
+      //   改前那份同名字段也只是派生索引（同一段对账会把它整份覆盖）⇒ 载荷里写什么从来不影响终态；
+      //   保留校验只为"坏载荷照旧具名拒"，不是为了留下第二个引用真源。
+      DebtContractId.parse(debt.asText());
     }
     Map<CommodityId, Long> needs =
         commodityMap(optionalObject(node, "naturalNeeds"), "naturalNeeds");
@@ -1587,7 +1588,6 @@ final class EconomyPayloads {
         laborMilli,
         participation,
         money,
-        debts,
         needs,
         demand,
         cycleNaturalNeedMilli);
