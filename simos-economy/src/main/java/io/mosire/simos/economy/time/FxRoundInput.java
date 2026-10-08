@@ -2,7 +2,6 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.fx.OfficialRate;
-import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketZone;
@@ -11,7 +10,6 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -57,7 +55,9 @@ public record FxRoundInput(List<Window> windows) {
    * @param governmentId 窗口属主（= 这条报价所属的 GOV：GOV 级报价就是它自己；★ B4 起<b>区级覆盖</b>的属主 = 该区发行 GOV）
    * @param treasury 国库 actor（两侧都要能在 {@code householdOfActor} 里解析到家户，才可能真的动账）
    * @param rate 官方汇率（报价的唯一来源）
-   * @param reserveCapBaseMilli 储备上限 {@code R_max}（base 最小单位；≥ 0）
+   * @param reserveCapBaseMilli 储备上限 {@code R_max} 的读数（base 最小单位；≥ 0）。★ 2026-10-09 起生产装配恒传 {@link
+   *     GovFxWindow#UNBOUNDED_RESERVE_CAP_BASE_MILLI}（该政策线已取消，<b>不封顶买入</b>）；旧构造点传有限值 ⇒
+   *     只作读数留痕，不再封顶（退化语义见该常量的注）
    */
   public record Window(
       GovernmentId governmentId, ActorRef treasury, OfficialRate rate, long reserveCapBaseMilli) {
@@ -78,32 +78,32 @@ public record FxRoundInput(List<Window> windows) {
    *
    * <pre>
    * 逐 GOV：对它的每一条官方汇率 (base, quote)
-   *   R_max(base) = 该 GOV 对该币种的<b>累计发行量</b> × DEFAULT_RESERVE_CAP_PER_MILLE/1000
+   *   R_max(base) = UNBOUNDED（★ 2026-10-09：该政策线已取消，买入侧不再有储备上限）
    * </pre>
    *
-   * <p>★ <b>为什么上限挂在"累计发行量"上</b>：政府的外汇储备上限若与它发出去的钱毫无关系，就只是一个孤立的数字；挂在发行量上 ⇒
-   * "我不打算把超过我发行量一半的外币囤回库"是可解释的政策线，且换世界/换精度都不用改一个字（见 {@link
-   * GovFxWindow#DEFAULT_RESERVE_CAP_PER_MILLE}）。
+   * <p>★★ <b>为什么这里不再有算式</b>：旧口径是"累计发行量 × 500‰"，实测（three-powers 0→360，见 {@code
+   * docs/superpowers/specs/2026-10-08-currency-exchange-stage2-design.md} 的 §11）该上限
+   * （50,000）小于国库实有（100,000 copper）⇒ 窗口自第一轮起买入侧就被封顶，家户侧的外币只有单向流出。 用户 2026-10-08 裁定取消这条政策线 ⇒ 本方法只填
+   * {@link GovFxWindow#UNBOUNDED_RESERVE_CAP_BASE_MILLI}； 发行量索引与算式一并退役（不留"算了却被忽略"的死算式）。
    *
-   * <p>★ 本签名与语义<b>逐字保留</b>（旧调用方/旧夹具仍在用）：区表非空的装配走 {@link #of(Map, Map, Map)}， 后者在"区表为空"时就退回本方法。
+   * <p>★ 本签名<b>逐字保留</b>（旧调用方/旧夹具仍在用）：区表非空的装配走 {@link #of(Map, Map, Map)}， 后者在"区表为空"时就退回本方法。
    *
    * @param governments 政府表（{@code EconomyData.governments()}）
-   * @param moneyIssuances 发行审计表（{@code EconomyData.moneyIssuances()}；累计发行量的唯一来源）
+   * @param moneyIssuances 发行审计表（{@code EconomyData.moneyIssuances()}）。★ <b>保留形参</b>：上限取消后它
+   *     <b>不再参与</b>窗口容量（发行量不再有任何读者；签名冻结以免旧载荷/旧夹具失配）
    */
   public static FxRoundInput of(
       Map<GovernmentId, Government> governments, Map<?, MoneyIssuanceRecord> moneyIssuances) {
     if (governments == null || governments.isEmpty()) {
       return none();
     }
-    Map<String, Long> issuanceByGovCurrency = issuanceByGovernmentCurrency(moneyIssuances);
     List<Window> windows = new ArrayList<>();
     for (GovernmentId governmentId : sortedGovernmentIds(governments)) {
       Government government = governments.get(governmentId);
       if (government == null || government.officialRates().isEmpty()) {
         continue;
       }
-      addWindows(
-          windows, governmentId, government, government.officialRates(), issuanceByGovCurrency);
+      addWindows(windows, governmentId, government, government.officialRates());
     }
     return new FxRoundInput(windows);
   }
@@ -144,7 +144,6 @@ public record FxRoundInput(List<Window> windows) {
       // ★★ 旧世界（区表为空）⇒ 逐字走 GOV 级老路径：A2 的 F2/F3/F4 与 small-world 一个数都不动。
       return of(governments, moneyIssuances);
     }
-    Map<String, Long> issuanceByGovCurrency = issuanceByGovernmentCurrency(moneyIssuances);
     List<Window> windows = new ArrayList<>();
     for (GovernmentId governmentId : sortedGovernmentIds(governments)) {
       Government government = governments.get(governmentId);
@@ -156,7 +155,7 @@ public record FxRoundInput(List<Window> windows) {
       if (effectiveRates.isEmpty()) {
         continue;
       }
-      addWindows(windows, governmentId, government, effectiveRates, issuanceByGovCurrency);
+      addWindows(windows, governmentId, government, effectiveRates);
     }
     return new FxRoundInput(windows);
   }
@@ -173,55 +172,22 @@ public record FxRoundInput(List<Window> windows) {
     return govIds;
   }
 
-  /**
-   * 累计发行量索引（键 = {@code gov|currency}）：<b>确定性顺序</b>（不依赖 map 迭代序）—— 按 {@code (gov, 币种, day, id)}
-   * 升序求和；回笼不抬上限（它把钱收回来，不是放出去）。
-   */
-  private static Map<String, Long> issuanceByGovernmentCurrency(
-      Map<?, MoneyIssuanceRecord> moneyIssuances) {
-    Map<String, Long> issuanceByGovCurrency = new LinkedHashMap<>();
-    if (moneyIssuances != null) {
-      List<MoneyIssuanceRecord> records = new ArrayList<>();
-      for (MoneyIssuanceRecord record : moneyIssuances.values()) {
-        if (record != null) {
-          records.add(record);
-        }
-      }
-      records.sort(
-          Comparator.comparing((MoneyIssuanceRecord r) -> r.governmentId().value())
-              .thenComparing(r -> r.currency().value())
-              .thenComparingLong(MoneyIssuanceRecord::day)
-              .thenComparing(r -> r.id().value()));
-      for (MoneyIssuanceRecord record : records) {
-        if (!record.kind().issuance()) {
-          continue; // 回笼不抬上限（它把钱收回来，不是放出去）
-        }
-        issuanceByGovCurrency.merge(
-            issuanceKey(record.governmentId(), record.currency()), record.amount(), Long::sum);
-      }
-    }
-    return issuanceByGovCurrency;
-  }
-
-  /** 逐条报价追加窗口（币对升序；{@code R_max} = 该 GOV 对该 base 币的累计发行量 × 上限千分比）。 */
+  /** 逐条报价追加窗口（币对升序；{@code R_max} 恒为 {@link GovFxWindow#UNBOUNDED_RESERVE_CAP_BASE_MILLI}）。 */
   private static void addWindows(
       List<Window> windows,
       GovernmentId governmentId,
       Government government,
-      Map<String, OfficialRate> rates,
-      Map<String, Long> issuanceByGovernmentCurrency) {
+      Map<String, OfficialRate> rates) {
     List<OfficialRate> sorted = new ArrayList<>(rates.values());
     sorted.sort(RATE_ORDER);
     for (OfficialRate rate : sorted) {
-      long issuance =
-          issuanceByGovernmentCurrency.getOrDefault(issuanceKey(governmentId, rate.base()), 0L);
-      long cap =
-          GovFxWindow.mulDivFloor(issuance, GovFxWindow.DEFAULT_RESERVE_CAP_PER_MILLE, 1000L);
-      windows.add(new Window(governmentId, government.treasury(), rate, cap));
+      // ★ 2026-10-09：R_max 恒为"无上限"（该政策线已取消）—— 不再有发行量索引、不再有千分比算式。
+      windows.add(
+          new Window(
+              governmentId,
+              government.treasury(),
+              rate,
+              GovFxWindow.UNBOUNDED_RESERVE_CAP_BASE_MILLI));
     }
-  }
-
-  private static String issuanceKey(GovernmentId governmentId, CurrencyId currency) {
-    return governmentId.value() + "|" + currency.value();
   }
 }

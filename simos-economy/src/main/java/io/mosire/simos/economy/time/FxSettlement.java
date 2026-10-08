@@ -142,7 +142,7 @@ final class FxSettlement {
             "reserve="
                 + reserve
                 + " cap="
-                + spec.reserveCapBaseMilli()
+                + GovFxWindow.reserveCapLabel(spec.reserveCapBaseMilli())
                 + " spendableQuote="
                 + quoteSpendable);
         rejectOnce(
@@ -158,7 +158,7 @@ final class FxSettlement {
                 "政府买入侧停做（储备 "
                     + reserve
                     + " / 上限 "
-                    + spec.reserveCapBaseMilli()
+                    + GovFxWindow.reserveCapLabel(spec.reserveCapBaseMilli())
                     + " / 可付 "
                     + quoteSpendable
                     + "）"));

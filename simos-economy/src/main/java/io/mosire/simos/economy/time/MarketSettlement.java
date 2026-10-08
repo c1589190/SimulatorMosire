@@ -2080,6 +2080,11 @@ final class MarketSettlement {
    * ★★ <b>D-030/D-031 ②b：借实物</b>。从卖单剩余（卖家须是家户，才能成为 {@link DebtContract} 的债权人）按"可借数量 降序 → 商品 id 升序 →
    * 卖家 actor id 升序"取；量 = min(缺口, 卖单剩余, 配额剩余)，货腿 卖家 → 买方 （{@code LOAN_PRINCIPAL}），无货币腿、也不写普通 sale
    * fill。★ D-031：借款人侧不再设额度上限。
+   *
+   * <p>★★ <b>2026-10-09（I19 收口）：借实物同样受币种一致性约束</b> —— 改动前这条腿<b>完全不经货币</b>（既不铸钱腿，也不比币种），
+   * 于是"持异币的家户"照样能从"只收本币的卖方"手里借到货：钱的两条腿（现金 {@code executeTrade}、货币信用 {@code
+   * moneyCreditForBuy}）都堵了异币，这条腿原样可跨币拿货。现在它走<b>同一个拼写点</b> {@link #rejectCurrencyMismatch}（{@code
+   * leg=goods-credit}），判据与那两条腿逐字同一口径。
    */
   private static void goodsCreditForBuy(
       MatchContext ctx, BuySlot buy, long price, CreditPools pools) {
@@ -2108,6 +2113,20 @@ final class MarketSettlement {
       quantity = Math.min(quantity, quotaLeft);
       if (quantity <= 0L) {
         skippedForThisBuyer.add(sell); // 配额已空；换个卖家也没用，但保持保守
+        continue;
+      }
+      // ★★ 2026-10-09（I19 / 用户 2026-10-08 原话「商品信用通道不受货币种类限制，那就加默认限制啊？」）：
+      //   买方所在格的法定币（= buy.currency）≠ 卖方收款币（sell.receiveCurrency）⇒ **具名拒该笔商品信用**。
+      //   ★ 校验抽成与现金腿/货币信用腿**同一个拼写点** rejectCurrencyMismatch（不许另写第二套比较，
+      //     否则就是"堵一条漏一条"—— 本批之前正是这样漏掉了借实物这条腿）。
+      //   ★★ 处置与那两条腿**不同**（有意为之，理由写在 rejectCurrencyMismatch 的注与账本里）：这里
+      //     **跳过这一家卖方**、继续找同币的候选，而不是 break —— 商品信用的候选卖方是按"可借量降序"
+      //     排的一串，若一个异币候选就把本买方的整条实物信用关死，那超出"默认限制"的判据：
+      //     同 hex 的同币卖方本来完全可以放贷（实测：break 形态下这些买方能否借到货取决于排序运气）。
+      //   ★ 本笔一个数都不动：不扣配额、不减剩余、不铸货腿、不建债务合同（rejectCurrencyMismatch 已落
+      //     买卖两侧的具名 reason + 一条 INFO）。
+      if (rejectCurrencyMismatch(ctx, buy, sell, quantity, "goods-credit")) {
+        skippedForThisBuyer.add(sell);
         continue;
       }
       executeGoodsCredit(ctx, buy, sell, quantity, pools);
@@ -3797,22 +3816,27 @@ final class MarketSettlement {
   /**
    * ★★ <b>A2a/A2b 的唯一拼写点：买方支付币种 ≠ 卖方收款币种 ⇒ 具名拒</b>（§3.5 / I19 / F5 / M1 / M7-①）。
    *
-   * <p>★★ <b>为什么必须共用一处</b>：商品面上"钱从买方到卖方"有<b>两条</b>腿 ——
+   * <p>★★ <b>为什么必须共用一处</b>：商品面上"钱从买方到卖方"有<b>三条</b>腿 ——
    *
    * <pre>
    * ① 现金成交腿 executeTrade          ：payment 按 buy.currency 铸（A2a 已堵）
    * ② 信用成交腿 moneyCreditForBuy     ：借来的钱同样按 buy.currency 付给卖方（★ A2a 只堵了 ① ⇒ 这一条原样可异币 1:1）
+   * ③ 借实物腿   goodsCreditForBuy     ：货腿不经货币 ⇒ 连"付什么钱"都没有（★ 2026-10-09 补堵：本批之前它绕过 I19）
    * </pre>
    *
-   * 两条腿用的是同一个 `buy.currency`，而"卖方要收哪种钱"只有 {@code sell.receiveCurrency} 一个来源 ⇒ 校验必须是同一个
-   * 拼写点，否则"堵一条漏一条"（本批正是这样发现的）。
+   * 三条腿用的是同一个 `buy.currency`（= 买方所在格的法定币），而"卖方要收哪种钱"只有 {@code sell.receiveCurrency} 一个来源 ⇒
+   * 校验必须是同一个拼写点，否则"堵一条漏一条"（本批正是这样发现的，而且发现了<b>两次</b>：A2b 补 ②、2026-10-09 补 ③）。
    *
    * <p>★ 语义：不等 ⇒ 买卖两侧各留 {@link MarketUnfilledReason#CURRENCY_MISMATCH}（不被 OUTCOMPETED 等市场性归因掩盖） +
-   * 一条 INFO {@code MARKET_CURRENCY_MISMATCH_REJECTED}（带 {@code leg} 区分现金/信用），并返回 true ⇒
+   * 一条 INFO {@code MARKET_CURRENCY_MISMATCH_REJECTED}（带 {@code leg} 区分现金/货币信用/商品信用），并返回 true ⇒
    * <b>调用方必须不落任何账</b>（成交量 0、账户一字未动）。家户要用异币买东西 ⇒ 先兑换（市场 FX 或政府外汇窗口）。
    *
+   * <p>★★ <b>调用方的处置（停止 / 跳过这一家）不由本方法规定</b>：现金腿与货币信用腿是 {@code break}（那一轮为这个买方
+   * 定下的唯一卖方就是它）；借实物腿是<b>跳过该卖方、继续找同币候选</b>（候选是一串，见 {@code goodsCreditForBuy} 的注）。
+   * 三条腿共享的是<b>判据与日志形态</b>，不是"之后怎么走"。
+   *
    * @param quantity 本次尝试的数量（只进日志；0/负值照记）
-   * @param leg 哪条腿（{@code cash} / {@code money-credit}）
+   * @param leg 哪条腿（{@code cash} / {@code money-credit} / {@code goods-credit}）
    * @return true = 异币，已具名拒；调用方不得落账
    */
   private static boolean rejectCurrencyMismatch(
@@ -3849,6 +3873,36 @@ final class MarketSettlement {
                 sell.seller.actor,
                 "quantity",
                 quantity));
+    if (MARKET.isDebugEnabled()) {
+      // ★ 为什么"这一笔"在制度上就不成立（§一.9：业务拒绝 = INFO 具名，DEBUG 写"为什么"）。
+      //   三条腿共用这一条 why，只有 leg 段的措辞不同：钱腿是"付的币不是卖方要的币"，实物腿是
+      //   "这条腿根本不铸钱腿 ⇒ 不校验的话买方拿货而卖方从未收到它要的钱"。
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "MARKET_CURRENCY_MISMATCH_REJECTED_WHY",
+                  EconomyLogSource.ECONOMY_FX,
+                  "day",
+                  ctx.round.day,
+                  "leg",
+                  leg,
+                  "buyerHex",
+                  buy.hex,
+                  "sellerHex",
+                  sell.hex,
+                  "requestedQuantityMilli",
+                  quantity,
+                  "buyRemainingMilli",
+                  buy.remaining,
+                  "sellRemainingMilli",
+                  sell.remaining,
+                  "why",
+                  "goods-credit".equals(leg)
+                      ? "in-kind-credit-mints-no-money-leg: without this gate the buyer takes goods"
+                          + " and the seller never receives the currency it quotes in (I19 bypass)"
+                      : "the-only-settlement-currency-of-this-leg-is-buy.currency: paying in"
+                          + " another would be a silent 1:1 (I19)"));
+    }
     return true;
   }
 

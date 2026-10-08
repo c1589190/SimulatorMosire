@@ -12,8 +12,9 @@ import java.util.Objects;
  * <pre>
  * 报价：bidP = officialBuy    // 政府买入 base（外币）付 quote（本币）
  *       askP = officialSell   // 政府卖出 base 收 quote
- * 三项约束（缺一不可）：
- *   ① 储备上限 R_max：政府该币种库存 ≥ R_max ⇒ 停止买入（只卖不买）
+ * 三项约束（2026-10-09 起是两项）：
+ *   ① 储备上限 R_max：★ 已取消（用户 2026-10-08 原话「什么叫有仓库上限值，取消掉」）——
+ *                      买入侧不再被上限封顶，只由"国库当刻可付的 quote"封顶（INSUFFICIENT_FUNDS）
  *   ② 储备下限 0    ：库存 = 0 ⇒ 只买不卖（<b>不许卖空</b> = 不许凭空造外币）
  *   ③ 政府不许凭空持币：每一笔都有对手方（家户）；无对手方 ⇒ 拒
  * </pre>
@@ -33,13 +34,39 @@ import java.util.Objects;
 public final class GovFxWindow {
 
   /**
-   * ★★ <b>储备上限 {@code R_max} 的出厂口径</b>（千分比）：{@code R_max = 该 GOV 对该币种的累计发行量 × 500‰}。
+   * ★★ <b>{@code R_max} 的"取消"形态</b>（2026-10-09；用户 2026-10-08 原话「什么叫有仓库上限值，取消掉」）。
    *
-   * <p>★ <b>为什么是"发行量的一个分数"而不是一个绝对数</b>：<b>绝对数</b>换个世界/换个精度就没有意义（本仓的
-   * "没人写下来的量纲"教训）；而"政府不打算把超过自己发行量一半的外币囤回库里"是一条与规模无关、且<b>能被触到</b>的政策线 —— 阶段 2 的判据 F3 要求"库存触顶 ⇒
-   * 停止买入（具名）"必须真的可达。★ 它是 <b>GM 可调默认值</b>（参数目录落地后迁入），不是物理常数。
+   * <p>本批起<b>买入侧不再有储备上限</b>：窗口的买入容量只由"国库当刻可付的计价币"封顶（{@link
+   * FxRejectReason#INSUFFICIENT_FUNDS}），不再由"该币种累计发行量 × 某个千分比"封顶。★ <b>保留的两条底线一字不动</b>： 储备为 0 ⇒
+   * 停卖（{@link FxRejectReason#RESERVE_EXHAUSTED}，不许卖空 = 不许凭空造外币）、 每笔买入必须有对手方（{@link
+   * FxRejectReason#NO_COUNTERPARTY}）。
+   *
+   * <p>★ <b>为什么是一个具名常量，而不是把这个维删掉</b>：{@code Window.reserveCapBaseMilli} 是既有的载荷/读数位
+   * （旧构造点/旧夹具仍在传它），删维会让旧载荷失去语义落点；取成 {@code Long.MAX_VALUE} 让"无上限"只有<b>一个拼写点</b>， 判定它也只有 {@link
+   * #isReserveCapUnbounded(long)} 一个入口。
+   *
+   * <p>★★ <b>旧构造点传有限值的语义退化（如实记）</b>：该值此后<b>只作读数留痕，不再封顶买入容量</b> ——
+   * 一条"库存触顶就停买"的自定上限在窗口上不再有强制力（该政策线已由用户裁定取消；要重新限流请走吞吐/额度那条政策通道， 不是本常量）。★ 旧的 {@code
+   * DEFAULT_RESERVE_CAP_PER_MILLE = 500‰} 已随之删除：留一个"还被传、却被忽略"的千分比 常量正是本条要消灭的形态。
    */
-  public static final long DEFAULT_RESERVE_CAP_PER_MILLE = 500L;
+  public static final long UNBOUNDED_RESERVE_CAP_BASE_MILLI = Long.MAX_VALUE;
+
+  /** 该 {@code R_max} 读数是不是"无上限"（{@link #UNBOUNDED_RESERVE_CAP_BASE_MILLI}）—— 判定它的唯一入口。 */
+  public static boolean isReserveCapUnbounded(long reserveCapBaseMilli) {
+    return reserveCapBaseMilli == UNBOUNDED_RESERVE_CAP_BASE_MILLI;
+  }
+
+  /**
+   * {@code R_max} 的人类可读标签（日志/明细串用）：无上限 ⇒ {@code unbounded}，有限值 ⇒ 十进制。
+   *
+   * <p>★ 为什么不直接打印 {@code Long.MAX_VALUE}：日志里那一串 19 位数字会被读成"一个巨大的上限"， 而事实是这条政策线已经取消 ——
+   * 标签把这个区别写在字面上（§一.9：拒绝/停做的原因要具名）。
+   */
+  public static String reserveCapLabel(long reserveCapBaseMilli) {
+    return isReserveCapUnbounded(reserveCapBaseMilli)
+        ? "unbounded"
+        : Long.toString(reserveCapBaseMilli);
+  }
 
   private GovFxWindow() {}
 
@@ -52,7 +79,8 @@ public final class GovFxWindow {
    * @param bidPerMille 政府买入 base 的报价（per-mille）
    * @param askPerMille 政府卖出 base 的报价（per-mille）
    * @param reserveBaseMilli 窗口当刻的该币种储备（= 国库可花余额；最小单位）
-   * @param reserveCapBaseMilli 储备上限 {@code R_max}（最小单位）
+   * @param reserveCapBaseMilli 储备上限 {@code R_max} 的<b>读数</b>（最小单位；生产路径恒为 {@link
+   *     #UNBOUNDED_RESERVE_CAP_BASE_MILLI}）。★ 本批起它<b>不参与容量</b>：有限值只作留痕（见该常量的注）。
    * @param buyCapacityBaseMilli 本轮还能买多少 base（≥ 0）
    * @param sellCapacityBaseMilli 本轮还能卖多少 base（≥ 0；恒 ≤ 储备 ⇒ 结构上不可能卖空）
    * @param buyBlocked 买入侧停做的具名原因（{@code null} = 照常）
@@ -117,7 +145,8 @@ public final class GovFxWindow {
    * @param governmentId 窗口属主（= 定这条官方汇率的 GOV）
    * @param rate 官方汇率（{@code bidP = buyPerMille}、{@code askP = sellPerMille}）
    * @param reserveBaseMilli 窗口当刻的该币种储备（国库可花余额；≥ 0）
-   * @param reserveCapBaseMilli 储备上限 {@code R_max}（≥ 0）
+   * @param reserveCapBaseMilli 储备上限 {@code R_max} 的读数（≥ 0；生产路径恒为 {@link
+   *     #UNBOUNDED_RESERVE_CAP_BASE_MILLI}）。★ 本批起<b>不封顶买入</b>（用户 2026-10-08 裁定取消该政策线）
    * @param treasuryQuoteSpendableMilli 国库当刻可花的计价币（买 base 要付它；≥ 0）
    */
   public static Quote quote(
@@ -154,17 +183,10 @@ public final class GovFxWindow {
           FxRejectReason.INVERTED_QUOTE,
           FxRejectReason.INVERTED_QUOTE);
     }
-    // ① 储备上限 ⇒ 停止买入
-    long buyCapacity = Math.max(0L, reserveCapBaseMilli - reserveBaseMilli);
-    FxRejectReason buyBlocked = buyCapacity <= 0L ? FxRejectReason.RESERVE_CAP : null;
-    // 买得起多少 base：quote 可花额 ÷ bidP（floor）—— 挂出买不起的量会在成交时才炸（见类注）。
-    long affordableBase = mulDivFloor(treasuryQuoteSpendableMilli, 1000L, bidPerMille);
-    if (buyCapacity > affordableBase) {
-      buyCapacity = affordableBase;
-      if (buyCapacity <= 0L) {
-        buyBlocked = FxRejectReason.INSUFFICIENT_FUNDS;
-      }
-    }
+    // ① 储备上限已取消（2026-10-09）⇒ 买入容量**不再**被 R_max 封顶，只由"买得起多少 base"决定
+    //    （quote 可花额 ÷ bidP，floor）—— 挂出买不起的量会在成交时才炸（见类注）。
+    long buyCapacity = mulDivFloor(treasuryQuoteSpendableMilli, 1000L, bidPerMille);
+    FxRejectReason buyBlocked = buyCapacity <= 0L ? FxRejectReason.INSUFFICIENT_FUNDS : null;
     // ② 储备下限 0 ⇒ 只买不卖；不许卖空（容量恒 ≤ 储备）
     long sellCapacity = reserveBaseMilli;
     FxRejectReason sellBlocked = sellCapacity <= 0L ? FxRejectReason.RESERVE_EXHAUSTED : null;
@@ -202,7 +224,9 @@ public final class GovFxWindow {
       return Fill.rejected(quote.buyBlocked(), quote.bidPerMille());
     }
     if (requestedBaseMilli > quote.buyCapacityBaseMilli()) {
-      return Fill.rejected(FxRejectReason.RESERVE_CAP, quote.bidPerMille());
+      // ★ 2026-10-09：上限取消后，买入容量的唯一封顶是"国库可付的 quote" ⇒ 超容量就是钱不够，
+      //   不再有 RESERVE_CAP 这条生产路径（那条政策线已由用户裁定取消；枚举值留作历史线上契约）。
+      return Fill.rejected(FxRejectReason.INSUFFICIENT_FUNDS, quote.bidPerMille());
     }
     return new Fill(
         true,
