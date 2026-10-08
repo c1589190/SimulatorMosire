@@ -383,6 +383,10 @@ public final class EconomyStateBuilder {
         // ★★ Z1：产品产出数量覆盖表不参与日结算写回（写入口只有 GM 命令）⇒ 原样带过 base 的表；
         //   生产效率表是结算工作副本（逐 tick 汇总、周期末写回余数）⇒ 未物化时原样复用 base。
         base.outputQuantityOverrides(),
-        productionEfficiency == null ? base.productionEfficiency() : productionEfficiency);
+        productionEfficiency == null ? base.productionEfficiency() : productionEfficiency,
+        // ★★ A1：货币词表不参与日结算写回（写入口只有创世/命令）⇒ 原样带过 base 的两张表；
+        //   漏了它 = 任意一次 advance 都会把世界词表打回出厂值（账面上看不出是谁弄丢的）。
+        base.currencies(),
+        base.moneyInstruments());
   }
 }

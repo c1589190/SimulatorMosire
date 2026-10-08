@@ -38,6 +38,7 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
@@ -262,6 +263,11 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     //   旧档缺该组件键 ⇒ EconomyData 构造期归一成空表。
     module.addKeyDeserializer(
         PeriodicHouseholdAdjustmentId.class, keyDeserializer(PeriodicHouseholdAdjustmentId::parse));
+    // ★★ A1：currencies / moneyInstruments 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
+    //   值 CurrencyDef / MoneyInstrument 走 Jackson 的 record 绑定；旧档缺这两个组件键 ⇒ EconomyData 构造期
+    //   归一到旧世界默认词表（silver / silver-specie），读出来与 A1 之前逐值相同。
+    module.addKeyDeserializer(CurrencyId.class, keyDeserializer(CurrencyId::parse));
+    module.addKeyDeserializer(InstrumentId.class, keyDeserializer(InstrumentId::parse));
     return module;
   }
 
@@ -1894,7 +1900,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
 
   @Override
   public Snapshot decodeSnapshot(String json) {
-    return readJson(json, EconomySnapshot.class);
+    EconomySnapshot snapshot = readJson(json, EconomySnapshot.class);
+    // ★★ A1：读回快照 = 状态物化的第二条路径 ⇒ 同一处装词表（否则新进程读旧盘会读回出厂词表）。
+    installVocabulary(snapshot.data());
+    return snapshot;
   }
 
   @Override
@@ -1910,7 +1919,21 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     // ★★ Z1（§3.1）：重放/落盘同样过一遍载入守卫 —— 变更集可能把覆盖表写成悬空引用；违反 ⇒ 契约 ERROR +
     //   fail-closed（构造期已判值域/结构，这里判跨表引用）。
     requireOutputQuantityOverridesValid(next);
+    installVocabulary(next);
     return new EconomySnapshot(newMeta.ref(), newMeta.timestamp(), next);
+  }
+
+  /**
+   * ★★ <b>A1：把世界词表装进 {@code MoneyVocabulary} 的门面</b>（唯一同步点的两处调用之一，另一处是 {@link #decodeSnapshot}）。
+   *
+   * <p>★★ <b>为什么在 codec 边界而不是别处</b>：状态树<b>只有两条</b>物化路径 —— ① {@code Command → ChangeSet →
+   * Revision}（本 {@link #apply}）；② 从盘上读回快照（{@link #decodeSnapshot}，含 checkpoint 与重放）。 两处都过 ⇒
+   * "状态每变一次，门面就跟着变一次"；漏掉任何一处都会出现"世界里有 copper、读口却只有 silver"的静默死分支 （阶段 1 的教训：探针必须打在边界**之后**那一侧）。
+   *
+   * <p>★ 代价如实记：门面是进程级的（最后物化的那个状态说了算），见 {@link MoneyVocabulary} 的类注。
+   */
+  private static void installVocabulary(EconomyData data) {
+    MoneyVocabulary.install(data.currencies().values(), data.moneyInstruments().values());
   }
 
   /** 从两个切片派生变更集（{@link ModuleDiffer}，铁律 5）：语义委托 {@link EconomyChangeSet#between}。 */

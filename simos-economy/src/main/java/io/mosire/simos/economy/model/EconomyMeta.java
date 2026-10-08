@@ -86,6 +86,21 @@ public record EconomyMeta(
     return RUNTIME_VERSION_SEVEN_HEX_V2.equals(rulesVersion);
   }
 
+  /**
+   * ★★ <b>A1：当前产业周期序号</b>（{@code ≥ 1}）—— 最后一个已关账周期 + 1；没关过账 ⇒ 1（世界刚激活，正在第 1 个周期里）。
+   *
+   * <p>★ 它存在的唯一理由是 {@code MoneyIssuanceRecord.period}（"这条发行发生在第几个产业周期"）必须 ≥ 1， 而命令面拿不到日结算上下文里的
+   * {@code currentCycle} ⇒ 从权威的 {@code lastClosedCycle} 现算，不另存一份 （两份真相会漂）。
+   *
+   * <p>★★ <b>线格式契约</b>：这是派生判据、不是状态组件 ⇒ 必须 {@link JsonIgnore}（理由同 {@link
+   * #isCurrentRuntimeVersion()}：Core 时间线的裸 mapper 看不见模块 mixin，不摘掉会让改过 {@code economy.meta} 的
+   * revision 在 replay 时因未知键 fail-closed）。
+   */
+  @JsonIgnore
+  public long currentCycleNumber() {
+    return lastClosedCycle.orElse(0L) + 1L;
+  }
+
   /** 上一条的字符串形态（给"还没有 EconomyMeta"或缺版本位的最小检查口用）：{@code null}/空白/不等 ⇒ false。 */
   public static boolean isCurrentRuntimeVersion(String rulesVersion) {
     return RUNTIME_VERSION_SEVEN_HEX_V2.equals(rulesVersion);

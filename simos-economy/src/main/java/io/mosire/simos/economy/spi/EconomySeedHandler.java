@@ -216,7 +216,12 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★ Z1：seed 载荷不声明产品产出数量覆盖表 / 生产效率表 ⇒ 原样带过已有状态（同 periodicAdjustments 口径；
             //   first-seed 路径的 seeded 两表为空 ⇒ 首次播种后保持空表）。
             base.outputQuantityOverrides(),
-            base.productionEfficiency());
+            base.productionEfficiency(),
+            // ★★ A1：seed 载荷不声明货币词表（币种由创世/命令 economy.DefineCurrency 决定）⇒ 按 append 口径
+            //   合并已有状态：漏了它 = 后续按格补种会把这个世界已经定义过的币种/工具静默抹回出厂值。
+            //   ★ first-seed 路径的 seeded 两表 = 旧世界默认（silver/silver-specie），与 base 的同一份 ⇒ 逐值不变。
+            merge(base.currencies(), seeded.currencies()),
+            merge(base.moneyInstruments(), seeded.moneyInstruments()));
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

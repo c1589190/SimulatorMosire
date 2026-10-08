@@ -76,13 +76,16 @@ import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.app.tools.write.GovApplyStaffingTool;
 import io.mosire.simos.app.tools.write.GovAssignPostsTool;
 import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
+import io.mosire.simos.app.tools.write.GovDefineCurrencyTool;
 import io.mosire.simos.app.tools.write.GovDismissTool;
 import io.mosire.simos.app.tools.write.GovDispatchTeamTool;
 import io.mosire.simos.app.tools.write.GovExpandHouseholdTool;
+import io.mosire.simos.app.tools.write.GovIssueMoneyTool;
 import io.mosire.simos.app.tools.write.GovOpenPostsToMarketTool;
 import io.mosire.simos.app.tools.write.GovPayTool;
 import io.mosire.simos.app.tools.write.GovRecruitTool;
 import io.mosire.simos.app.tools.write.GovRemitTool;
+import io.mosire.simos.app.tools.write.GovRenameCurrencyTool;
 import io.mosire.simos.app.tools.write.GovRetireStaffTool;
 import io.mosire.simos.app.tools.write.GovSelectExamineesTool;
 import io.mosire.simos.app.tools.write.GovSetBudgetPolicyTool;
@@ -670,6 +673,14 @@ public final class SimosToolSource implements ToolSource {
     built.add(new GovOpenPostsToMarketTool(core, query, calendarService, initiator));
     //   ★ 国库注资 / 政府间转账（F2 前置 G1）：只在 GM 桶；决策人路径走既有 simos.gov.pay。
     built.add(new GovTransferTreasuryTool(core, query, initiator));
+    //   ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套（定义币种 / 改名 / DM 发行）——**GM 桶 + 决策人桶
+    //     同名两处注册**（决策人侧另加白名单与审批链，见 addDecisionAgentWrites 与 DecisionCallerFactory.WHITELIST）。
+    //     GM 侧走 GmAutoApproveGate 且必须显式给 govUnitId；决策人侧身份派生、只能自己的 GOV（越权 ⇒ 具名 REJECTED）。
+    //     ★ 三条命令（economy.DefineCurrency / RenameCurrency / RecordMoneyIssuance）标 GmOnlyCommand ⇒
+    //       令 / RegisterEffect / 决策人命令目录三条路径不放大；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    built.add(new GovDefineCurrencyTool(core, query, initiator));
+    built.add(new GovRenameCurrencyTool(core, query, initiator));
+    built.add(new GovIssueMoneyTool(core, query, initiator));
     // ★★ R4 / R5 步骤 4（2026-10-01 行政区划修复计划）：GM 按辖区行政需求精确配满编组合工具——逐 GOV 调
     //   GovDemand.of 求 security/paperwork 总量，目标 staff{YAMEN=security, SCRIBE=paperwork}，每个要改的 GOV
     //   一条 unit.SetGovFormation（policy 五字段原样带全），一批共享 batchId ⇒ 恰一条 revision。
@@ -835,6 +846,14 @@ public final class SimosToolSource implements ToolSource {
     //   GOV_SERVICE 承诺，不改归属/位置；敏感工具 ⇒ AutoApproveGate → ConfirmGate → PendingApprovals。
     //   **桶**（本方法）与 **权限组白名单**（DecisionCallerFactory.WHITELIST）必须同源。
     built.add(new GovOpenPostsToMarketTool(core, query, calendarService, initiator));
+    // ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套的**决策人侧注册面**——与 GM 桶同名注册（同一份实现按身份
+    //   派生：GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 具名 REJECTED）。三条都是敏感工具 ⇒
+    //   AutoApproveGate → ConfirmGate → PendingApprovals（需 GM 在审批面点头）。
+    //   ★★ **桶（本方法）与权限组白名单（DecisionCallerFactory.WHITELIST）必须同源**——本批只落成本方法这一半，
+    //      白名单那三行归 app/access 的 owner（A1 的文件所有权不含它；缺了它决策人侧会停在权限组，见账本）。
+    built.add(new GovDefineCurrencyTool(core, query, initiator));
+    built.add(new GovRenameCurrencyTool(core, query, initiator));
+    built.add(new GovIssueMoneyTool(core, query, initiator));
     // ★★ D2（2026-10-22 决策包计划）：决策包四件套——propose / submit / intent / my。
     //   **只在决策人桶**；白名单（DecisionCallerFactory.WHITELIST）必须同源。
     //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；submit/intent 走 own-packet 围栏。

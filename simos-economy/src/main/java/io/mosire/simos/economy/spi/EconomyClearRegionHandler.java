@@ -417,7 +417,10 @@ public final class EconomyClearRegionHandler
         staged.periodicAdjustments(),
         // ★★ Z1：两个新组件按格键删除（先摘引用方、被引用的 industry/unit 同一次构造里一起摘）。
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        // ★★ A1：货币词表是**世界级**的（不按格），清区域一字不动，原样带过 staged 的两张表。
+        staged.currencies(),
+        staged.moneyInstruments());
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

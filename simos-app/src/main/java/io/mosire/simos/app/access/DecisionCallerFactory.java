@@ -38,9 +38,12 @@ import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
 import io.mosire.simos.app.tools.read.UnitGetTool;
 import io.mosire.simos.app.tools.read.UnitListTool;
 import io.mosire.simos.app.tools.write.GovAssignPostsTool;
+import io.mosire.simos.app.tools.write.GovDefineCurrencyTool;
 import io.mosire.simos.app.tools.write.GovExpandHouseholdTool;
+import io.mosire.simos.app.tools.write.GovIssueMoneyTool;
 import io.mosire.simos.app.tools.write.GovOpenPostsToMarketTool;
 import io.mosire.simos.app.tools.write.GovPayTool;
+import io.mosire.simos.app.tools.write.GovRenameCurrencyTool;
 import io.mosire.simos.app.tools.write.GovSetBudgetPolicyTool;
 import io.mosire.simos.app.tools.write.GovSetEstablishmentTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
@@ -175,7 +178,15 @@ public final class DecisionCallerFactory {
           // ★★ D4（2026-10-22）：跨区上报写 + 共享读（桶在 SimosToolSource.addDecisionAgentWrites 与
           //   readTools，两处必须同源）。simos.sd.reports 是决策人与 GM 共用读口（不标 GmOnlyRead）。
           SimosSdReportTool.NAME,
-          SimosSdReportsTool.NAME);
+          SimosSdReportsTool.NAME,
+          // ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套的**决策人侧窄写**（定义币种 / 改显示名 /
+          //   发行审计）——桶在 SimosToolSource.addDecisionAgentWrites，与这里必须同源（缺了它决策人侧会停在
+          //   权限组：REJECTED 的工具名不在 allowed-tools 白名单内）。三条都是敏感工具 ⇒
+          //   AutoApproveGate → ConfirmGate → PendingApprovals（需 GM 在审批面点头）；作用域由身份派生
+          //   （只能自己的 GOV、越权 ⇒ 具名 REJECTED），不因为进了白名单而放大权限。
+          GovDefineCurrencyTool.NAME,
+          GovRenameCurrencyTool.NAME,
+          GovIssueMoneyTool.NAME);
 
   /** 决策人身份的实例 id 前缀（与将来的会话 id 同源：按决策人派生，不隐式取全局状态）。 */
   public static final String INSTANCE_ID_PREFIX = "decision-maker:";

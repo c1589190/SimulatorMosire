@@ -11,6 +11,8 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.spi.EconomyDefineCurrencyHandler;
+import io.mosire.simos.economy.spi.EconomyRecordMoneyIssuanceHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
@@ -92,7 +94,10 @@ import java.util.Optional;
  * → economy.SetHouseholdLabor（= Social 投影劳动）→ economy.SetGovServiceCommitment（GOV_SERVICE 全职）
  * → gov.SetAdministrationPlan（两维计划、默认 3 档、静态修正 1000‰、k=1）
  * → gov.SetBudgetPolicy（默认五类顺序 + 官吏工资规则 粮 10/银 1 毫·承诺小时）
- * …两级之后：actor.AdjustAccounts（一次给两国库注入初始 粮/布/银）
+ * …两级之后（A1 追加，顺序不可换）：
+ * economy.DefineCurrency（中央 GOV 定义第二币种 copper，scale 3、SPECIE、发行权归中央）
+ * → actor.AdjustAccounts（一次给两国库注入初始 粮/布/银 + 给中央国库注入铜）
+ * → economy.RecordMoneyIssuance（那笔铜的 INITIAL_ENDOWMENT 审计）
  * </pre>
  *
  * <p>★★ <b>官吏规模口径（部分配员，目标 vs 实际）</b>：每 GOV 恰一个官吏户 {@code hh-unit:<govId>}，2 名成年男性（劳动 = 2 ×
@@ -131,6 +136,15 @@ public final class GovWorldBootstrap {
 
   /** 国库初始银（毫银 / GOV）：约 3000 天的官吏工资需求。 */
   public static final long TREASURY_SILVER_MILLI_PER_GOV = 100_000L;
+
+  /**
+   * ★★ <b>A1：中央国库的初始铜（毫铜）</b>——第二币种的创世禀赋（{@code INITIAL_ENDOWMENT} 审计，见 {@link
+   * #copperEndowmentPayload()}）。
+   *
+   * <p>★ 量取与银同阶（100,000 毫 = 100 铜）：A 阶段政府要能"持两种货币"（设计书 §3），数额本身不是判据 ——
+   * 判据是"国库真的持有一笔铜，且那一笔在发行审计里对得上"。★ <b>只给中央</b>（省 GOV 不发行铜 ⇒ 也不持铜）。
+   */
+  public static final long TREASURY_COPPER_MILLI_PER_GOV = 100_000L;
 
   /** 官吏工资规则：每承诺小时粮（毫粮）。与 Z3c-1 探针口径同值。 */
   public static final long SALARY_GRAIN_MILLI_PER_COMMITTED_HOUR = 10L;
@@ -285,12 +299,57 @@ public final class GovWorldBootstrap {
                 officialLaborMilli,
                 personEquivalents,
                 sources.get(1)));
+    // ★★ A1（2026-10-08 约束设计书 §3.1-2/§3.1-3）：**第二币种 copper 的创世注入**——顺序不可换：
+    //   ① economy.DefineCurrency（币种进词表 + 工具进工具表 + 中央 GOV 成为它的发行人）；
+    //   ② actor.AdjustAccounts（国库余额 +copper，与粮/布/银同一笔注资）；
+    //   ③ economy.RecordMoneyIssuance（这一笔记资的 INITIAL_ENDOWMENT 审计，量 = ②的铜量）。
+    //   ★ 顺序不可换的理由：①要求政府已登记（两个 bootstrapGov 已完成）②③的可审计性都建立在"币种已定义、发行人已登记"上。
+    //   ★ 这不是铸币生产方式（用户 §1.1「铸币暂缓」仍有效）：它是一次性的创世禀赋 + 审计，不走产业产出。
+    next =
+        applier.apply(
+            next,
+            EconomyDefineCurrencyHandler.TYPE,
+            new EconomyDefineCurrencyHandler(),
+            new EconomyCodec(),
+            defineCopperPayload());
+    next =
+        applier.apply(
+            next,
+            ActorAdjustAccountsTool.NAME,
+            new AdjustAccountsHandler(),
+            new ActorCodec(),
+            treasuryInjectionPayload());
     return applier.apply(
         next,
-        ActorAdjustAccountsTool.NAME,
-        new AdjustAccountsHandler(),
-        new ActorCodec(),
-        treasuryInjectionPayload());
+        EconomyRecordMoneyIssuanceHandler.TYPE,
+        new EconomyRecordMoneyIssuanceHandler(),
+        new EconomyCodec(),
+        copperEndowmentPayload());
+  }
+
+  /**
+   * {@code economy.DefineCurrency} 的载荷：小世界第二币种 = 铜（scale/显示名/币种 id 都取 {@code MoneyVocabulary}
+   * 的拼写点）。
+   */
+  private static String defineCopperPayload() {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("govUnitId", CENTRAL_GOV_ID);
+    payload.put("currencyId", MoneyVocabulary.COPPER_CURRENCY_ID);
+    payload.put("scale", MoneyVocabulary.COPPER_SCALE);
+    payload.put("displayName", MoneyVocabulary.COPPER_DISPLAY_NAME);
+    payload.put("reason", "small-world 创世：中央 GOV 定义第二币种（A1；非铸币生产方式）");
+    return ToolSupport.json(payload);
+  }
+
+  /** {@code economy.RecordMoneyIssuance} 的载荷：中央国库那笔铜的 {@code INITIAL_ENDOWMENT} 审计。 */
+  private static String copperEndowmentPayload() {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("govUnitId", CENTRAL_GOV_ID);
+    payload.put("currency", MoneyVocabulary.COPPER_CURRENCY_ID);
+    payload.put("amountMilli", TREASURY_COPPER_MILLI_PER_GOV);
+    payload.put("kind", "INITIAL_ENDOWMENT");
+    payload.put("reason", "small-world 创世：中央国库第二币种初始禀赋（A1 INITIAL_ENDOWMENT）");
+    return ToolSupport.json(payload);
   }
 
   /** 一个 GOV 的 bootstrap 事实（全部由调用方一次算清，链内不重算、不发明）。 */
@@ -713,22 +772,31 @@ public final class GovWorldBootstrap {
     return ToolSupport.json(payload);
   }
 
-  /** 一次给两国库注入初始 粮/布/银（`actor.AdjustAccounts` 的纯正增量；缺账由该命令建账）。 */
+  /**
+   * 一次给两国库注入初始 粮/布/银（`actor.AdjustAccounts` 的纯正增量；缺账由该命令建账）。
+   *
+   * <p>★★ <b>A1 追加</b>：<b>中央</b>国库再多一笔<b>铜</b>（第二币种）—— 它与同批的 {@code
+   * economy.RecordMoneyIssuance}（{@code INITIAL_ENDOWMENT}）成对：余额腿在这里，审计腿在那条命令。 省 GOV 不发行铜（它不是
+   * copper 的发行人）⇒ 不给它注铜。
+   */
   private static String treasuryInjectionPayload() {
     List<Map<String, Object>> entries = new ArrayList<>(2);
-    entries.add(treasuryEntry(CENTRAL_GOV_ID));
-    entries.add(treasuryEntry(PROVINCE_GOV_ID));
+    entries.add(treasuryEntry(CENTRAL_GOV_ID, TREASURY_COPPER_MILLI_PER_GOV));
+    entries.add(treasuryEntry(PROVINCE_GOV_ID, 0L));
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("entries", entries);
     return ToolSupport.json(payload);
   }
 
-  private static Map<String, Object> treasuryEntry(String govId) {
+  private static Map<String, Object> treasuryEntry(String govId, long copperMilli) {
     Map<String, Object> goods = new LinkedHashMap<>();
     goods.put(EconomyCommodities.GRAIN.value(), TREASURY_GRAIN_MILLI_PER_GOV);
     goods.put(EconomyCommodities.CLOTH.value(), TREASURY_CLOTH_MILLI_PER_GOV);
     Map<String, Object> money = new LinkedHashMap<>();
     money.put(MoneyVocabulary.SILVER_CURRENCY.value(), TREASURY_SILVER_MILLI_PER_GOV);
+    if (copperMilli > 0L) {
+      money.put(MoneyVocabulary.COPPER_CURRENCY.value(), copperMilli);
+    }
     Map<String, Object> entry = new LinkedHashMap<>();
     entry.put("household", GovernmentHouseholds.of(govId).value());
     entry.put("goods", goods);

@@ -11,10 +11,12 @@ import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
@@ -25,6 +27,8 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
+import io.mosire.simos.economy.api.money.CurrencyDef;
+import io.mosire.simos.economy.api.money.MoneyInstrument;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
@@ -74,7 +78,12 @@ import java.util.function.Function;
  * + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code liquidationPolicies} / {@code
  * crisisSignals} + E6a 的 {@code modeTransitions} / {@code classShares} + P10.1 的 {@code
  * merchantFirms} + P4a 的 {@code periodicAdjustments} + Z1 的 {@code outputQuantityOverrides} /
- * {@code productionEfficiency}）。
+ * {@code productionEfficiency} + A1 的 {@code currencies} / {@code moneyInstruments}）。
+ *
+ * <p>★★ <b>A1（2026-10-08）追加两张货币词表</b>：{@code currencies}（键 = {@link CurrencyId}，值 = {@link
+ * CurrencyDef}）与 {@code moneyInstruments}（键 = {@link InstrumentId}，值 = {@link MoneyInstrument}）。 ★
+ * <b>改名（只换 displayName）也走 {@code currencies} 这一条 Upsert</b>——它是"I16 改名不动身份"在变更集层的形态： 键（{@code
+ * CurrencyId}）逐字不变，只有值里的显示名变，因而任何余额/流水/债务/市场键都不可能被改名碰到。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code EconomyRoundTripTest} 的**反射枚举**把守——新增状态组件若不进 变更集，那个测试自动红。
  *
@@ -137,7 +146,10 @@ public record EconomyChangeSet(
     FieldDelta<MerchantFirm> merchantFirms,
     FieldDelta<HouseholdPeriodicAdjustment> periodicAdjustments,
     FieldDelta<Map<CommodityId, Long>> outputQuantityOverrides,
-    FieldDelta<ProductionEfficiencyState> productionEfficiency)
+    FieldDelta<ProductionEfficiencyState> productionEfficiency,
+    // ── A1（2026-10-08）货币词表的两张表（与 EconomyData 的两个新组件一一对应，铁律 5）──
+    FieldDelta<CurrencyDef> currencies,
+    FieldDelta<MoneyInstrument> moneyInstruments)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -256,6 +268,14 @@ public record EconomyChangeSet(
     if (productionEfficiency == null) {
       productionEfficiency = new FieldDelta.Unchanged<>();
     }
+    // ★★ A1 的第 34/35 个组件（货币词表两张表）：旧变更集没提该组件，就是没动它
+    //   （旧档读到 null ⇒ Unchanged，旧世界词表照旧走 EconomyData 的旧世界默认归一）。
+    if (currencies == null) {
+      currencies = new FieldDelta.Unchanged<>();
+    }
+    if (moneyInstruments == null) {
+      moneyInstruments = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -293,7 +313,9 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.merchantFirms(), target.merchantFirms()),
         FieldDelta.diff(base.periodicAdjustments(), target.periodicAdjustments()),
         FieldDelta.diff(base.outputQuantityOverrides(), target.outputQuantityOverrides()),
-        FieldDelta.diff(base.productionEfficiency(), target.productionEfficiency()));
+        FieldDelta.diff(base.productionEfficiency(), target.productionEfficiency()),
+        FieldDelta.diff(base.currencies(), target.currencies()),
+        FieldDelta.diff(base.moneyInstruments(), target.moneyInstruments()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -345,7 +367,10 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(
             base.outputQuantityOverrides(), cs.outputQuantityOverrides(), IndustryId::parse),
         FieldDelta.rebuild(
-            base.productionEfficiency(), cs.productionEfficiency(), ProductionUnitId::parse));
+            base.productionEfficiency(), cs.productionEfficiency(), ProductionUnitId::parse),
+        // ★★ A1：货币词表的两张表（键 = 币种身份 / 工具身份）。
+        FieldDelta.rebuild(base.currencies(), cs.currencies(), CurrencyId::parse),
+        FieldDelta.rebuild(base.moneyInstruments(), cs.moneyInstruments(), InstrumentId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -380,7 +405,9 @@ public record EconomyChangeSet(
         || merchantFirms.changed()
         || periodicAdjustments.changed()
         || outputQuantityOverrides.changed()
-        || productionEfficiency.changed());
+        || productionEfficiency.changed()
+        || currencies.changed()
+        || moneyInstruments.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

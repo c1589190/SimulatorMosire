@@ -68,12 +68,15 @@ import io.mosire.simos.economy.resolve.EconomyResolver;
 import io.mosire.simos.economy.spi.EconomyAddDemandHandler;
 import io.mosire.simos.economy.spi.EconomyCancelDemandHandler;
 import io.mosire.simos.economy.spi.EconomyClearRegionHandler;
+import io.mosire.simos.economy.spi.EconomyDefineCurrencyHandler;
 import io.mosire.simos.economy.spi.EconomyGmAdjustHandler;
 import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
+import io.mosire.simos.economy.spi.EconomyRecordMoneyIssuanceHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRemovePeriodicAdjustmentHandler;
+import io.mosire.simos.economy.spi.EconomyRenameCurrencyHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
@@ -688,6 +691,16 @@ public final class Shell implements AutoCloseable {
                 // ── P1b1（2026-10-01）：GM-only 区域经济数据清空（目标格 industries/markets + 可靠可定位的连带记录）。
                 //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new EconomyClearRegionHandler(),
+                // ── economy（A1 2026-10-08，汇率阶段 2 §3.1-3）：货币身份三件套 —— 定义币种（币种进
+                //   词表 + 工具进工具表 + 该 GOV 成为发行人）/ 只改显示名 / 发行审计。★ 三条都标
+                //   GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人命令目录；GM 的
+                //   simos.command.submit 与窄工具（simos.gov.defineCurrency / renameCurrency /
+                //   issueMoney）照常可用；决策人侧走同一批窄工具（身份派生 + GM 审批链，见
+                //   DecisionCallerFactory.WHITELIST 那三行）。★ 词表与发行是世界级事实 ⇒ 无格资源
+                //   （targetPaths 恒空）、不进决策令桶。──
+                new EconomyDefineCurrencyHandler(),
+                new EconomyRenameCurrencyHandler(),
+                new EconomyRecordMoneyIssuanceHandler(),
                 // ── gov（Z2 2026-10-23，gov 首个 command handler 批）：行政编制计划 / 国库预算政策整体设置。
                 //   ★ GM-only（V1 冻结）：标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
                 //     GM 的 simos.command.submit 照常可用。Z3 接决策人工具 + 审批链时再按需打开。

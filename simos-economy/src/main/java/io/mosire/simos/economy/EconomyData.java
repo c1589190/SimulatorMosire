@@ -21,6 +21,7 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
@@ -32,7 +33,10 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
+import io.mosire.simos.economy.api.money.CurrencyDef;
+import io.mosire.simos.economy.api.money.MoneyInstrument;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
+import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
@@ -261,7 +265,10 @@ public record EconomyData(
     Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
     Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments,
     Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides,
-    Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency) {
+    Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency,
+    // ── A1（2026-10-08）货币身份的两个新组件：词表入世界状态（约束设计书 §3.1-2）────────────────
+    Map<CurrencyId, CurrencyDef> currencies,
+    Map<InstrumentId, MoneyInstrument> moneyInstruments) {
 
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
   public static final long MAX_OUTPUT_QUANTITY = 1_000_000L;
@@ -346,6 +353,82 @@ public record EconomyData(
   }
 
   /**
+   * ★★ <b>A1 旧组件面的便捷构造器</b>（A1 之前的 31 参 canonical 形状）：两个新组件 {@code currencies} / {@code
+   * moneyInstruments} 取空表 ⇒ 构造期归一到<b>旧世界默认词表</b>（{@code silver} + {@code silver-specie}），
+   * 于是"没有声明过词表的世界"读出来与 A1 之前逐值相同。
+   *
+   * <p>★★ <b>它不是状态迁移路径</b>：真正的状态迁移（{@code with*} / changeset / codec）<b>必须显式携带</b>这两个组件 —— 漏带 =
+   * 一次无关的写入把世界的词表打回出厂值（本仓最贵的那类静默丢字段）。故本构造器的注释与 {@code with*} 的注释都把这件事写死。
+   */
+  public EconomyData(
+      Optional<EconomyMeta> meta,
+      Map<IndustryId, Industry> industries,
+      Map<HouseholdId, HouseholdEconomy> classes,
+      Map<DebtContractId, DebtContract> debtContracts,
+      Map<HouseholdId, FlowRow> flows,
+      Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<HexCoord, Market> markets,
+      Map<ShipmentId, ShipmentBatch> shipments,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionUnitId, OperatorCondition> operatorConditions,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<DemandId, HouseholdDemand> demands,
+      Map<CandidateId, ProductionCandidate> candidates,
+      Map<ProductionModeId, ProductionMode> modes,
+      Map<ClassStructureId, ClassStructure> classStructures,
+      Map<ClassPositionId, ProductionRole> classPositions,
+      Map<HouseholdId, HouseholdClassMembership> classStandings,
+      Map<ProductionOrganizationId, ProductionEnterprise> productionOrganizations,
+      Map<AssetRuleId, AssetRule> assetRules,
+      Map<GovernmentId, Government> governments,
+      Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances,
+      Map<PledgeId, Pledge> pledges,
+      Map<AssetRuleId, LiquidationPolicy> liquidationPolicies,
+      Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
+      Map<ModeTransitionId, ModeTransition> modeTransitions,
+      Map<ClassShareId, ClassShare> classShares,
+      Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
+      Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments,
+      Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides,
+      Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency) {
+    this(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        merchantFirms,
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency,
+        Map.of(),
+        Map.of());
+  }
+
+  /**
    * ★ P4a 旧组件面的便捷构造器（原 28 参 canonical 形状）：{@code periodicAdjustments} 取空表；★ Z1 起两个新组件（{@code
    * outputQuantityOverrides} / {@code productionEfficiency}）同样取空表，让既有调用点无需为了新增组件逐个改动；所有 {@code
    * with*} 与 codec/changeset 路径都必须显式携带这些组件。
@@ -415,6 +498,8 @@ public record EconomyData(
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -1496,6 +1581,81 @@ public record EconomyData(
       issuancesCopy.put(entry.getKey(), record);
     }
     moneyIssuances = Collections.unmodifiableMap(issuancesCopy); // ★ 冻在赋值处
+    // ── A1（2026-10-08）货币词表的两个新组件：币种表 + 工具表 ─────────────────────────────────
+    //   ★★ 归一方向（旧档兼容）：**整个词表缺席（空表）⇒ 旧世界默认**（silver + silver-specie），
+    //      于是"没有声明过词表的世界"读出来与 A1 之前逐值相同（旧 dump 的 currencyDefs=[{silver,3}] 不变）。
+    //      但**只给币种不给工具**是合法的显式状态（工具表空 = 这个世界只有计价单位、还没有具体的钱），
+    //      此时不补 silver-specie —— 那会成为一张"币种不在表里的工具"。
+    boolean legacyVocabulary = currencies == null || currencies.isEmpty();
+    Map<CurrencyId, CurrencyDef> currenciesCopy = new LinkedHashMap<>();
+    if (legacyVocabulary) {
+      for (CurrencyDef def : MoneyVocabulary.legacyCurrencyDefs()) {
+        currenciesCopy.put(def.currencyId(), def);
+      }
+    } else {
+      for (Map.Entry<CurrencyId, CurrencyDef> entry : currencies.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException("currencies 的键与值都不得为 null: " + entry.getKey());
+        }
+        if (!entry.getKey().equals(entry.getValue().currencyId())) {
+          throw new IllegalArgumentException(
+              "currencies 的键必须与 CurrencyDef.currencyId() 一致（键 = 身份，不许两处拼币种名）：键="
+                  + entry.getKey()
+                  + "，行内 id="
+                  + entry.getValue().id());
+        }
+        currenciesCopy.put(entry.getKey(), entry.getValue());
+      }
+    }
+    // ★★ 跨表守卫：政府声称能发行的币种必须在币种表里有定义（说不出"这是什么钱"就不许发行它）。
+    //   与上面"发行记录的 governmentId 必须已存在"同一条口径（引用完整性 fail-closed）。
+    for (Government government : governmentsCopy.values()) {
+      for (CurrencyId currency : government.issuable()) {
+        if (!currenciesCopy.containsKey(currency)) {
+          throw new IllegalArgumentException(
+              "政府 "
+                  + government.id()
+                  + " 声称发行的币种在币种表里没有定义："
+                  + currency
+                  + "（币种表="
+                  + currencyIdsOf(currenciesCopy)
+                  + "；先 economy.DefineCurrency 或把该币种写进创世词表）");
+        }
+      }
+    }
+    currencies = Collections.unmodifiableMap(currenciesCopy); // ★ 冻在赋值处
+    Map<InstrumentId, MoneyInstrument> instrumentsCopy = new LinkedHashMap<>();
+    boolean legacyInstruments = moneyInstruments == null || moneyInstruments.isEmpty();
+    if (legacyInstruments && legacyVocabulary) {
+      for (MoneyInstrument instrument : MoneyVocabulary.legacyInstruments()) {
+        instrumentsCopy.put(instrument.id(), instrument);
+      }
+    } else if (!legacyInstruments) {
+      for (Map.Entry<InstrumentId, MoneyInstrument> entry : moneyInstruments.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException("moneyInstruments 的键与值都不得为 null: " + entry.getKey());
+        }
+        if (!entry.getKey().equals(entry.getValue().id())) {
+          throw new IllegalArgumentException(
+              "moneyInstruments 的键必须与 MoneyInstrument.id() 一致：键="
+                  + entry.getKey()
+                  + "，行内 id="
+                  + entry.getValue().id());
+        }
+        if (!currenciesCopy.containsKey(entry.getValue().currency())) {
+          throw new IllegalArgumentException(
+              "货币工具 "
+                  + entry.getKey().value()
+                  + " 的币种在币种表里没有定义："
+                  + entry.getValue().currency()
+                  + "（币种表="
+                  + currencyIdsOf(currenciesCopy)
+                  + "）");
+        }
+        instrumentsCopy.put(entry.getKey(), entry.getValue());
+      }
+    }
+    moneyInstruments = Collections.unmodifiableMap(instrumentsCopy); // ★ 冻在赋值处
     // ── E4a 第 25 个组件：质押（Pledge）基础形状 ─────────────────────────────────────────────
     //   ★ 旧档缺键 ⇒ 空表（上面已归一）；空表整体 no-op。
     //   ★ 守卫按“对侧已提供”分段生效（与 E1/E2 的引用完整性同款）：合同表/资产份额表为空 = 该侧尚未提供
@@ -1925,7 +2085,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1961,7 +2123,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1997,7 +2161,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -2036,7 +2202,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2072,7 +2240,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   public EconomyData withLaborCommitments(
@@ -2108,7 +2278,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2144,7 +2316,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -2185,7 +2359,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -2225,7 +2401,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -2260,7 +2438,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2296,7 +2476,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2332,7 +2514,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2368,7 +2552,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2404,7 +2590,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2440,7 +2628,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2476,7 +2666,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2512,7 +2704,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -2558,7 +2752,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2595,7 +2791,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2632,7 +2830,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2668,7 +2868,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2704,7 +2906,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2740,7 +2944,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -2780,7 +2986,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -2821,7 +3029,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -2862,7 +3072,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -2903,7 +3115,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -2944,7 +3158,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -2986,7 +3202,9 @@ public record EconomyData(
         value,
         periodicAdjustments,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -3028,7 +3246,9 @@ public record EconomyData(
         merchantFirms,
         value,
         outputQuantityOverrides,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -3070,7 +3290,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         value,
-        productionEfficiency);
+        productionEfficiency,
+        currencies,
+        moneyInstruments);
   }
 
   /**
@@ -3112,7 +3334,9 @@ public record EconomyData(
         merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
-        value);
+        value,
+        currencies,
+        moneyInstruments);
   }
 
   /** {@link ProductionUnitId#idOf} 的固定前缀（唯一拼写点；用来识别"这看起来是一个 unit id"）。 */
@@ -3141,6 +3365,101 @@ public record EconomyData(
         || industry.cycleLaborMilli() > 0L
         || !industry.capacity().isEmpty()
         || !industry.cycleInputUsedMilli().isEmpty();
+  }
+
+  /**
+   * ★★ <b>A1：币种表</b>（货币词表的身份一半）；其余组件原样带过。
+   *
+   * <p>键 = {@link CurrencyId}，且必须等于值内 {@link CurrencyDef#currencyId()}（键即身份，不许两处拼币种名）。 空表 ⇒
+   * 构造期归一到旧世界默认（{@code silver}）——见类注；改名（只换 {@code displayName}）走它，<b>不动任何账</b>（I16）。
+   */
+  public EconomyData withCurrencies(Map<CurrencyId, CurrencyDef> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        merchantFirms,
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency,
+        value,
+        moneyInstruments);
+  }
+
+  /**
+   * ★★ <b>A1：货币工具表</b>（货币词表的工具一半）；其余组件原样带过。
+   *
+   * <p>键 = {@link InstrumentId}，且必须等于值内 {@link MoneyInstrument#id()}；每张工具的币种必须在 {@code currencies}
+   * 里有定义（跨表守卫在构造期判）。空表 ⇒ 只在"整个词表缺席"时归一到 {@code silver-specie}。
+   */
+  public EconomyData withMoneyInstruments(Map<InstrumentId, MoneyInstrument> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        merchantFirms,
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency,
+        currencies,
+        value);
+  }
+
+  /** 币种表里全部 id 的可读清单（拒因/诊断用；保序）。 */
+  private static List<String> currencyIdsOf(Map<CurrencyId, CurrencyDef> table) {
+    List<String> ids = new ArrayList<>(table.size());
+    for (CurrencyId currency : table.keySet()) {
+      ids.add(currency.value());
+    }
+    return ids;
   }
 
   /**

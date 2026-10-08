@@ -536,6 +536,29 @@ public final class CatalogTool implements AgentTool {
                   + "clearOutputQuantity={industryId,commodityId}"
                   + "（industryId 须已存在；commodityId 须在配方产出键里；无既有覆盖 ⇒ NO_OVERRIDE_TO_CLEAR，"
                   + "不做静默幂等；回落配方默认））"),
+          // ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套 —— 注册面新增三个 type ⇒ 本表必须同批
+          //   登记（构造成员守卫会逐条比对注册面，缺项当场抛）。三条都标 GmOnlyCommand：GM 的
+          //   simos.command.submit 与窄工具照常可用，令 / RegisterEffect / 决策人命令目录三条路不放大。
+          Map.entry(
+              "economy.DefineCurrency",
+              "govUnitId, currencyId, scale(≥0 最小单位精度), displayName(非空白), reason?"
+                  + "（★ GM-only：一次写三处 —— 币种进 currencies、工具 <currencyId>-specie 进"
+                  + " moneyInstruments、该 GOV 的 issuable 加它；币种 id 已存在 ⇒ currency-already-defined，"
+                  + "已被别的政府发行 ⇒ currency-already-issued；币种 id 一经建立不可改（改名走"
+                  + " economy.RenameCurrency）；同一条命令不能改别人已发行的币种（一币一发行人））"),
+          Map.entry(
+              "economy.RenameCurrency",
+              "govUnitId, currencyId, displayName(非空白), reason?"
+                  + "（★ GM-only：只改 currencies 里的显示名 —— 币种 id / 精度 / 工具表 / 任何余额、流水、"
+                  + "债务、市场键都不动（不变量 I16）；不是该币种的发行政府 ⇒ not-issuer 具名拒；"
+                  + "新显示名与现值逐字相同 ⇒ 拒，不做静默幂等）"),
+          Map.entry(
+              "economy.RecordMoneyIssuance",
+              "govUnitId, currency, amountMilli(>0), kind?(缺省 FISCAL_ISSUE；创世给 INITIAL_ENDOWMENT), reason?"
+                  + "（★ GM-only 裸审计原语：只写 moneyIssuances 一张表、**不动任何余额** —— 「国库余额增加」"
+                  + "是 actor.AdjustAccounts 的活，两者必须同批提交（一批 = 一条 revision）；"
+                  + "currency 不在该 GOV 的 issuable 里 ⇒ currency-not-issuable 具名拒；"
+                  + "记录 id 是确定性派生 gov-issue-<政府>-<日>-<币种>-<序号>，不用随机 UUID）"),
           Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"

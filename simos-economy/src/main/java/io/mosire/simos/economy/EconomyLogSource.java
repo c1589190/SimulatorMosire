@@ -51,7 +51,9 @@ public enum EconomyLogSource implements LogOrigin {
       "单 tick 单产业生产框架：修正注入、有效规模、产出数量公式（tick 算法，必带 day）",
       LogOriginKind.TICK),
   ECONOMY_ARBITRAGE(
-      "economy-arbitrage", "家户套利活动：保留价派生、收益率排序、买卖意向与拒绝理由（tick 算法，必带 day）", LogOriginKind.TICK);
+      "economy-arbitrage", "家户套利活动：保留价派生、收益率排序、买卖意向与拒绝理由（tick 算法，必带 day）", LogOriginKind.TICK),
+  ECONOMY_MONEY(
+      "economy-money", "货币身份与发行命令：定义币种/改名/发行审计记录（命令面；改名不动账，发行只记审计）", LogOriginKind.SYSTEM);
 
   private final String id;
   private final String description;
