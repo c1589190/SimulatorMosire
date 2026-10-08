@@ -1596,6 +1596,11 @@ final class MarketSettlement {
             round.arbitrage().instructionFor(participant.household, commodity).orElse(null);
         if (instruction != null && instruction.direction() == HouseholdActivity.Direction.BUY) {
           long arbitrageQuantity = instruction.quantityMilli();
+          // ★★ 2026-10-08 自配对（fix-ledger ①）：这一行**不**与上面的 `sellable` 对账 —— 卖单余量已经把
+          //   生活保留(35 天)与需求目标扣掉，而套利买盘按 30 天目标的**劳动阶段**快照加量，两者在同一轮里
+          //   可以同时为正（当日收获/产出落在两个阶段之间）⇒ 同一户在同一市场上既卖又买**同一商品**。
+          //   ★ 本批不去改这一行的量（会改变未崩溃世界的数值），而是在撮合与信用两处加"同户配对跳过"守卫
+          //     （pairUp / moneyCreditForBuy，形制照 FxSettlement.matchBook）；根因与后果见账本。
           quantity = Math.addExact(quantity, arbitrageQuantity);
           if (EconomyLog.market().isTraceEnabled()) {
             EventLog.channel(EconomyLog.market())
@@ -1964,10 +1969,55 @@ final class MarketSettlement {
     List<MoneyLendOrder> lenders = pools.moneyLenders(regionId);
     int cursor = pools.moneyCursor(regionId);
     int index = cursor;
+    // ★★ 2026-10-08 自配对守卫（与 pairUp 的同一条；形制照 goodsCreditForBuy 的 skippedForThisBuyer）：
+    //   借款人本人名下的卖单不得成为"借来的钱要买的那批货"的卖方 —— 否则 executeMoneyCredit 的三条腿里有
+    //   两条的两端相等（买方→卖方 的货款腿、卖方→买方 的货腿），`Transfer` 当场 fail-closed（整轮 400）。
+    //   ★ 为什么这条腿以前没人堵：goodsCreditForBuy 一开始就按 household 排除了自己，货币腿这条路径没有。
+    Set<SellSlot> skippedSelfSellers = new LinkedHashSet<>();
     while (buy.remaining > 0L) {
-      SellSlot sell = pools.bestCashSeller(regionId, buy.order.commodity());
+      SellSlot sell = pools.bestCashSeller(regionId, buy.order.commodity(), skippedSelfSellers);
       if (sell == null) {
         break; // 没有可买货物 ⇒ 不放贷（原子绑定）
+      }
+      if (sell.seller.actor.equals(buy.buyer.actor)) {
+        // ★ 记录（§一.9）：业务拒绝 = INFO（具名），理由 = DEBUG；然后换下一个卖方，没有下一个就停在
+        //   "没有可买货物"这一档（本买方这一轮不走货币信用，绝不铸自转移）。
+        skippedSelfSellers.add(sell);
+        EventLog.channel(MARKET)
+            .info(
+                LogEvent.of(
+                    "MARKET_CREDIT_SELF_MATCH_SKIPPED",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    ctx.round.day,
+                    "household",
+                    buy.buyer.actor.id(),
+                    "commodity",
+                    buy.order.commodity().value(),
+                    "hex",
+                    sell.hex,
+                    "skippedSellRemainingMilli",
+                    sell.remaining,
+                    "reason",
+                    "borrower-is-also-the-seller-of-the-same-commodity"));
+        if (MARKET.isDebugEnabled()) {
+          EventLog.channel(MARKET)
+              .debug(
+                  LogEvent.of(
+                      "MARKET_CREDIT_SELF_MATCH_SKIPPED_WHY",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      ctx.round.day,
+                      "household",
+                      buy.buyer.actor.id(),
+                      "commodity",
+                      buy.order.commodity().value(),
+                      "buyRemainingMilli",
+                      buy.remaining,
+                      "reason",
+                      "money-credit-legs-would-have-equal-ends-loan-principal-still-from-others"));
+        }
+        continue;
       }
       // ★★ A2b（I19 / M7-①）：信用腿同样按 `buy.currency` 付给卖方 ⇒ 异币必须具名拒。A2a 只堵了现金腿
       //   （executeTrade），这条**借来的钱**的腿原样 1:1。fail-closed：本买方这一轮不再走信用（不许把铜当银付出去）。
@@ -2507,7 +2557,8 @@ final class MarketSettlement {
       moneyCursorByRegion.put(regionId, cursor);
     }
 
-    SellSlot bestCashSeller(String regionId, CommodityId commodity) {
+    SellSlot bestCashSeller(
+        String regionId, CommodityId commodity, Set<SellSlot> skippedForThisBuyer) {
       TreeSet<SellSlot> pool = cashPool(regionId, commodity);
       if (pool == null) {
         return null;
@@ -2515,7 +2566,12 @@ final class MarketSettlement {
       while (!pool.isEmpty() && pool.first().remaining <= 0L) {
         pool.pollFirst();
       }
-      return pool.isEmpty() ? null : pool.first();
+      for (SellSlot sell : pool) {
+        if (sell.remaining > 0L && !skippedForThisBuyer.contains(sell)) {
+          return sell;
+        }
+      }
+      return null;
     }
 
     SellSlot bestGoodsSeller(
@@ -3626,6 +3682,69 @@ final class MarketSettlement {
           return executedTotal;
         }
         SellSlot sell = sellers.get(sellerIndex);
+        if (sell.seller.actor.equals(buy.buyer.actor)) {
+          // ★★ 2026-10-08 自配对守卫（形制照 FxSettlement.matchBook 的 `bid.owner.equals(ask.owner)` 跳过）：
+          //   同一个主体既在卖方槽又在买方槽时，撮合会把它配给自己 —— 那不是一笔发生额，`Transfer` 的两端
+          //   不得相等（fail-closed 契约，本处**不放宽**，只是不再去撞它）。
+          //   ★ 为什么会同户双挂（机制结论见 .superpowers/sdd/2026-10-08-stage2-selfmatch-fix/fix-ledger.md）：
+          //     ① 卖单余量 = 库存 − 冻结 − 必要投入 − 生活保留(35 天) − 需求目标（ordersFor）；
+          //     ② 买单量 = 目标缺口（家户的 baseTarget = 生活保留）**加**套利买盘（本文件 ordersFor 的
+          //        `quantity = addExact(quantity, arbitrageQuantity)`），而套利决定来自**劳动阶段**的当日
+          //        快照（LaborQueueSettlement.buildArbitrageSnapshots），当日收获/产出落在这两个阶段之间 ⇒
+          //        同一户可以"劳动时缺布（保留价 ≥ 市价 1.1 倍 ⇒ 挂套利买盘）"而"开市时布有余量（⇒ 挂卖单）"；
+          //        目标缺口那一项此时恒为 0（卖单余量 > 0 ⇒ 可用 > 生活保留），故同户的买腿只可能来自套利买盘。
+          //   ★ 取舍 = **跳过**（不是把槽位打成 blocked）：本笔不成交、市场继续 —— 本买方改从**下一个卖方**
+          //     取货；`sellerIndex` 只前进不回退 ⇒ 被跳过的这一份卖单余量在**本轮的现金撮合里**不再被取用
+          //     （随后的信用轮仍可能把它卖给别的主体 —— 那里另有同户守卫）。该卖槽若最终没卖完，
+          //     `remaining > 0` ⇒ 落进未成交读数（collectUnfilled 按既有档位归因）。后果：这一份供给本轮
+          //     可能卖不掉，但既不铸自转移，也不会让整轮 400。★ 不置 noMoney/blocked：钱与需求都没问题，
+          //     下一轮照常挂单。
+          //   ★ 记录（§一.9）：业务拒绝 = INFO（具名：家户 / 商品 / 两格 / 量）；理由 = DEBUG。
+          long skipped = Math.min(need, sellLeft);
+          EventLog.channel(MARKET)
+              .info(
+                  LogEvent.of(
+                      "MARKET_SELF_MATCH_SKIPPED",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      ctx.round.day,
+                      "household",
+                      buy.buyer.actor.id(),
+                      "commodity",
+                      buy.order.commodity().value(),
+                      "buyerHex",
+                      buy.hex,
+                      "sellerHex",
+                      sell.hex,
+                      "skippedQuantityMilli",
+                      skipped,
+                      "reason",
+                      "same-owner-buy-and-sell-in-one-round"));
+          if (MARKET.isDebugEnabled()) {
+            EventLog.channel(MARKET)
+                .debug(
+                    LogEvent.of(
+                        "MARKET_SELF_MATCH_SKIPPED_WHY",
+                        EconomyLogSource.ECONOMY_MARKET,
+                        "day",
+                        ctx.round.day,
+                        "household",
+                        buy.buyer.actor.id(),
+                        "commodity",
+                        buy.order.commodity().value(),
+                        "buyRemainingMilli",
+                        buy.remaining,
+                        "sellRemainingMilli",
+                        sell.remaining,
+                        "sellAllocatedMilli",
+                        sellLeft,
+                        "reason",
+                        "sellable-residual-plus-buy-leg-demand-gap-zero-arbitrage-overlay"));
+          }
+          sellerIndex++;
+          sellLeft = sellerIndex < sellers.size() ? sellParts[sellerIndex] : 0L;
+          continue;
+        }
         long quantity = Math.min(need, sellLeft);
         // ★★ 2026-10-09：同市场区、不同 hex 的成交也由商号承运（有 merchantFirms 时）⇒ 合成一条"即时但有运费"的
         //   路线；同 hex 仍走零运费即时成交（route == null）。
