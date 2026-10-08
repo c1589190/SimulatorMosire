@@ -28,6 +28,7 @@ import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
+import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -435,7 +436,6 @@ class EconomyInvariantsTest {
             60000L,
             participationPerMille,
             50L,
-            List.of(),
             Map.of(GRAIN, 40L),
             Map.of(GRAIN, 30L),
             0L);
@@ -465,22 +465,36 @@ class EconomyInvariantsTest {
   }
 
   /**
-   * ★★ B.3b 起契约改写（原 {@code classRowDebtRefsMustExistInDebts}）：{@code HouseholdEconomy.debts}
-   * 是**派生索引**， 以 债务合同表为唯一权威逐行重建（陈旧引用被清掉、缺失引用被补上），不再逐条"悬空即抛"。
+   * ★★ B.3b 起契约改写（原 {@code classRowDebtRefsMustExistInDebts}）：债务引用是**派生索引**，
+   * 以债务合同表为唯一权威逐户重建（陈旧引用被清掉、缺失引用被补上），不再逐条"悬空即抛"。
    *
    * <p>见 {@code DebtReferenceReconciler}（唯一实现；调用点 = {@code EconomyData} 构造期，R4-B.3b）。 判别力：① 合同表为空 ⇒
-   * 行内陈旧的 D1 被删除；② 表里两条合同（故意反序放入）⇒ 行内引用被补全为 {@link DebtContractId} 规范串升序。 ★ E4a 语义变化：同一四元组只有一条连续合同
-   * ⇒ 第二条合同必须用**不同 terms**（D2）才存在。
+   * 陈旧的 D1 引用被删除；② 表里两条合同（故意反序放入）⇒ 引用被补全为 {@link DebtContractId} 规范串升序。 ★ E4a 语义变化：同一四元组只有一条连续合同 ⇒
+   * 第二条合同必须用**不同 terms**（D2）才存在。
+   *
+   * <p>★★ <b>2026-10-09 选项 A 的迁移（如实记）</b>：引用已从 {@code HouseholdEconomy.debts}（行内）搬成独立表 {@code
+   * EconomyData.householdDebtRefs}，而该表是**派生索引**、没有对外注入口（{@code EconomyData} 没有 {@code
+   * withHouseholdDebtRefs}）。⇒ ① 的"陈旧引用栽进去再被清掉"直接打在 {@link
+   * DebtReferenceReconciler#reconcile}（构造期调用的就是这一个方法，公开可独立调用）上，并补一条端到端对照（构造期走同一段对账 ⇒ 读口也读不到）；②
+   * 的读口换成 {@code EconomyData.debtsOf(household)}。<b>断言强度不变</b>（同一条对账规则、同一个输入语义、同一个规范序），只是载体换了。
    */
   @Test
   void classRowDebtRefsAreReconciledFromTheDebtContractsTable() {
+    HouseholdEconomy peasantRow = classRowWithoutDebts(PEASANT_HOUSE, PEASANT_KEY);
+    // ★ 陈旧引用现在只能从**引用表**一侧栽进去（行里已没有 debts 字段）
+    Map<HouseholdDebtReference, Boolean> staleTable =
+        Map.of(new HouseholdDebtReference(PEASANT_HOUSE, D1), Boolean.TRUE);
+    assertThat(
+            DebtReferenceReconciler.reconcile(
+                Map.of(), Map.of(PEASANT_HOUSE, peasantRow), staleTable))
+        .as("合同表为空 ⇒ 陈旧的 D1 引用被对账清掉（不再抛）")
+        .isEmpty();
+    // ★ 端到端对照：构造期走同一段对账 ⇒ 读口对同一份状态也读不到陈旧引用
     EconomyData staleRefs =
         EconomyData.empty()
             .withMeta(Optional.of(meta()))
-            .withHouseholdEconomies(Map.of(PEASANT_HOUSE, classRowWithDebtRef(D1)));
-    assertThat(staleRefs.classes().get(PEASANT_HOUSE).debts())
-        .as("合同表为空 ⇒ 行内陈旧的 D1 引用被对账清掉（不再抛）")
-        .isEmpty();
+            .withHouseholdEconomies(Map.of(PEASANT_HOUSE, peasantRow));
+    assertThat(staleRefs.debtsOf(PEASANT_HOUSE)).as("合同表为空 ⇒ 读口读不到任何引用").isEmpty();
 
     DebtContract debt1 = grainContract(D1, GRAIN_TERMS, 100L);
     DebtContract debt2 = grainContract(D2, GRAIN_SECOND_TERMS, 50L);
@@ -496,7 +510,7 @@ class EconomyInvariantsTest {
                     LANDLORD_HOUSE, classRowWithoutDebts(LANDLORD_HOUSE, LANDLORD_KEY)))
             .withDebtContracts(debts);
 
-    assertThat(rebuilt.classes().get(PEASANT_HOUSE).debts())
+    assertThat(rebuilt.debtsOf(PEASANT_HOUSE))
         .as("合同表是权威 ⇒ 缺失的引用被补上，且按 DebtContractId 规范串升序")
         .containsExactlyInAnyOrder(D1, D2)
         .isSortedAccordingTo(Comparator.comparing(DebtContractId::value));
@@ -511,14 +525,73 @@ class EconomyInvariantsTest {
             .withMeta(Optional.of(meta()))
             .withHouseholdEconomies(
                 Map.of(
-                    PEASANT_HOUSE, classRowWithDebtRef(D1),
+                    PEASANT_HOUSE, classRowWithoutDebts(PEASANT_HOUSE, PEASANT_KEY),
                     LANDLORD_HOUSE, classRowWithoutDebts(LANDLORD_HOUSE, LANDLORD_KEY)))
             .withDebtContracts(Map.of(D1, debt));
 
     assertThat(data.debtContracts()).as("两端都在的合同必须放行").hasSize(1);
-    assertThat(data.classes().get(PEASANT_HOUSE).debts())
-        .as("行的债务引用由合同表重建（逐值）")
+    assertThat(data.debtsOf(PEASANT_HOUSE))
+        .as("引用表由合同表重建（逐值）：行里已无 debts 字段，能读到 D1 只可能来自对账")
         .containsExactly(D1);
+  }
+
+  /**
+   * ★★ <b>2026-10-09 选项 A 补的负向用例</b>：引用表是派生索引，但"引用必须指向存在的合同、且挂对债务人"这条判定<b>不因拆表而放松</b> ——它被收成具名方法
+   * {@link DebtReferenceReconciler#requireReferencesResolvable}（{@code EconomyData} 构造期在 {@code
+   * reconcile} 之后调用它兜底）。本用例直接对那个方法打三条悬空形态 ⇒ 必须具名抛。
+   *
+   * <p>★ 为什么单独打它：对账（{@code reconcile}）会把悬空引用<b>清掉</b>，故经由 {@code EconomyData} 公开构造路径
+   * **造不出**悬空引用（这是设计使然，不是漏洞）——旧用例 {@code classRowDebtRefsMustExistInDebts} 的"悬空即抛"
+   * 判据如今只在这个兜底守卫上还能被观测。删掉该守卫 ⇒ 本条当场红。
+   */
+  @Test
+  void danglingDebtReferencesAreRejectedByTheNamedGuard() {
+    HouseholdEconomy peasantRow = classRowWithoutDebts(PEASANT_HOUSE, PEASANT_KEY);
+    HouseholdEconomy landlordRow = classRowWithoutDebts(LANDLORD_HOUSE, LANDLORD_KEY);
+    Map<HouseholdId, HouseholdEconomy> rows =
+        Map.of(PEASANT_HOUSE, peasantRow, LANDLORD_HOUSE, landlordRow);
+    DebtContract contract = grainContract(D1, GRAIN_TERMS, 100L);
+
+    // ① 引用指向不存在的合同
+    assertThatThrownBy(
+            () ->
+                DebtReferenceReconciler.requireReferencesResolvable(
+                    Map.of(),
+                    rows,
+                    Map.of(new HouseholdDebtReference(PEASANT_HOUSE, D1), Boolean.TRUE)))
+        .as("悬空引用必须具名抛，不得静默核销")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不存在的债务合同");
+
+    // ② 引用挂错了债务人（键里的家户 ≠ 合同的 debtor）
+    assertThatThrownBy(
+            () ->
+                DebtReferenceReconciler.requireReferencesResolvable(
+                    Map.of(D1, contract),
+                    rows,
+                    Map.of(new HouseholdDebtReference(LANDLORD_HOUSE, D1), Boolean.TRUE)))
+        .as("引用挂错债务人必须具名抛")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("挂错了债务人");
+
+    // ③ 引用指向不存在的家户行：★ 守卫是按 ①合同存在 → ②挂对债务人 → ③家户行存在 的次序判的，
+    //   故要打到第③条，键里的家户必须**等于合同的债务人**（PEASANT_HOUSE）而 classes 里恰好缺它
+    //   （只给 LANDLORD_HOUSE）—— 否则先撞上第②条，"家户行不存在"这句话就永远测不到。
+    assertThatThrownBy(
+            () ->
+                DebtReferenceReconciler.requireReferencesResolvable(
+                    Map.of(D1, contract),
+                    Map.of(LANDLORD_HOUSE, landlordRow),
+                    Map.of(new HouseholdDebtReference(PEASANT_HOUSE, D1), Boolean.TRUE)))
+        .as("引用指向不存在的家户行必须具名抛")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("不存在的家户行");
+
+    // 对照：三条都合法 ⇒ 放行（否则上面三条可能只是"一律拒"）
+    DebtReferenceReconciler.requireReferencesResolvable(
+        Map.of(D1, contract),
+        rows,
+        Map.of(new HouseholdDebtReference(PEASANT_HOUSE, D1), Boolean.TRUE));
   }
 
   // ── 经营主体 operator（R4：从 Industry 模板搬到 ProductionProcess）────────────────────
@@ -854,25 +927,10 @@ class EconomyInvariantsTest {
         new AllocationRule.Split(700, 300));
   }
 
-  /** 无债务的阶层行（参与率 800）；`id` 必须与它在 `classes` 里的键一致。 */
+  /** 无债务引用的阶层行（参与率 800）；`id` 必须与它在 `classes` 里的键一致。 */
   private static HouseholdEconomy classRowWithoutDebts(HouseholdId id, CohortKey view) {
     return new HouseholdEconomy(
-        id, view, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
-  }
-
-  /** 行内引用一份债务（其两端由调用方保证）。 */
-  private static HouseholdEconomy classRowWithDebtRef(DebtContractId debtId) {
-    return new HouseholdEconomy(
-        PEASANT_HOUSE,
-        PEASANT_KEY,
-        120L,
-        60000L,
-        800,
-        50L,
-        List.of(debtId),
-        Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L),
-        0L);
+        id, view, 120L, 60000L, 800, 50L, Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   // ── 夹具 ──
@@ -914,7 +972,7 @@ class EconomyInvariantsTest {
 
   private static HouseholdEconomy classRow(HouseholdId id, CohortKey view) {
     return new HouseholdEconomy(
-        id, view, 120L, 60000L, 800, 50L, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
+        id, view, 120L, 60000L, 800, 50L, Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   private static HouseholdEconomy classRowWithParticipation(int participationPerMille) {
@@ -925,7 +983,6 @@ class EconomyInvariantsTest {
         60000L,
         participationPerMille,
         50L,
-        List.of(D1),
         Map.of(GRAIN, 40L),
         Map.of(GRAIN, 30L),
         0L);
@@ -939,7 +996,6 @@ class EconomyInvariantsTest {
         60000L,
         800,
         50L,
-        List.of(D1),
         Map.of(GRAIN, 40L),
         Map.of(GRAIN, 30L),
         0L);
@@ -953,7 +1009,6 @@ class EconomyInvariantsTest {
         laborMilli,
         800,
         50L,
-        List.of(D1),
         Map.of(GRAIN, 40L),
         Map.of(GRAIN, 30L),
         0L);
@@ -967,7 +1022,6 @@ class EconomyInvariantsTest {
         60000L,
         800,
         money,
-        List.of(D1),
         Map.of(GRAIN, 40L),
         Map.of(GRAIN, 30L),
         0L);
@@ -1206,16 +1260,7 @@ class EconomyInvariantsTest {
   private static HouseholdEconomy classRowWithLabor(
       HouseholdId id, CohortKey view, long laborMilli) {
     return new HouseholdEconomy(
-        id,
-        view,
-        120L,
-        laborMilli,
-        800,
-        50L,
-        List.of(),
-        Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L),
-        0L);
+        id, view, 120L, laborMilli, 800, 50L, Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   /** 一条配额（第 1 周期、家户 = 本夹具的 {@code PEASANT_HOUSE}、活动名 {@code farm}）。 */

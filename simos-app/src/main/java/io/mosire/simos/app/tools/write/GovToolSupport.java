@@ -131,20 +131,25 @@ final class GovToolSupport {
   }
 
   /**
-   * GOV 单位解析（单位存在 + {@link GovernmentFormation} + 国库家户 + 当刻有效位置）。
+   * GOV <b>单位</b>解析（单位存在 + {@link GovernmentFormation} + 国库家户 + 当刻有效位置）。
+   *
+   * <p>★ <b>参数名是 {@code govUnitId}（GOV 单位的 {@link UnitId}），不是 {@code GovernmentId}</b>： 两者是不同的稳定身份
+   * ——政府记录的身份由 {@code GovernmentIds.ofUnit(govUnitId)} 派生（{@code gov-unit-<govUnitId>}）， 要在 {@code
+   * EconomyData.governments()} 里查政府必须**先派生**（见 {@code GovRenameCurrencyTool} 的同一手法）。 这里收的是**单位**
+   * id， 查的是单位表与单位编制，全方法没有一处按政府 id 查表。
    *
    * @param decisionMaker true = 决策人路径：单位缺失/不是 GOV 折 {@link GovRejectedException}
    */
   private static GovTarget target(
       SimulationState state,
-      UnitId govId,
+      UnitId govUnitId,
       boolean decisionMaker,
       String decisionMakerId,
       String fieldLabel) {
     UnitState units = ToolSupport.unitState(state);
-    Unit unit = units.units().get(govId);
+    Unit unit = units.units().get(govUnitId);
     if (unit == null) {
-      String message = "GOV 单位不存在: " + govId.value();
+      String message = "GOV 单位不存在: " + govUnitId.value();
       if (decisionMaker) {
         throw new GovRejectedException("调用者所属 " + message);
       }
@@ -152,7 +157,7 @@ final class GovToolSupport {
           (fieldLabel == null ? "" : "参数 " + fieldLabel + " ") + message);
     }
     if (!(unit.module().orElse(null) instanceof GovernmentFormation formation)) {
-      String message = "单位 " + govId.value() + " 没有 GovernmentFormation，不是 GOV 编制单位";
+      String message = "单位 " + govUnitId.value() + " 没有 GovernmentFormation，不是 GOV 编制单位";
       if (decisionMaker) {
         throw new GovRejectedException("调用者所属 " + message);
       }
@@ -160,10 +165,10 @@ final class GovToolSupport {
           (fieldLabel == null ? "" : "参数 " + fieldLabel + " ") + message);
     }
     HouseholdId governmentHousehold =
-        GovernmentHouseholdResolver.requireGovernmentHousehold(unit, govId.value());
-    Optional<HexCoord> at = units.effectivePosition(govId, state.meta().timestamp());
+        GovernmentHouseholdResolver.requireGovernmentHousehold(unit, govUnitId.value());
+    Optional<HexCoord> at = units.effectivePosition(govUnitId, state.meta().timestamp());
     return new GovTarget(
-        govId, unit, formation, governmentHousehold, at, decisionMaker, decisionMakerId);
+        govUnitId, unit, formation, governmentHousehold, at, decisionMaker, decisionMakerId);
   }
 
   /** 资源断言：只锚定自己/点名 GOV 的 unit 路径（GovScope 对决策人只授自己单位；GM unit 面 unlimited）。 */

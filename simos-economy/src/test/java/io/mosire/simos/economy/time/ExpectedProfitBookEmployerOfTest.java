@@ -166,7 +166,6 @@ class ExpectedProfitBookEmployerOfTest {
             10_000L,
             1000,
             0L,
-            List.of(),
             Map.of(GRAIN, 100L),
             Map.of(),
             0L);

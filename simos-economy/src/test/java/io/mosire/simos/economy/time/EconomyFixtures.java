@@ -253,14 +253,18 @@ final class EconomyFixtures {
         cycleInputUsedMilli);
   }
 
-  /** ★ 旧 9 参 ClassRow（无稳定 id）→ 当前 10 参；身份取 {@code HouseholdIds.ofLegacy(view)}。 */
+  /**
+   * ★ 旧 9 参 ClassRow（无稳定 id）→ 当前 9 参；身份取 {@code HouseholdIds.ofLegacy(view)}。
+   *
+   * <p>★★ 2026-10-09 选项 A：旧形状的第 7 个参数 {@code List<DebtContractId> debts} 已随该组件一起删除 —— 债务引用住在 {@code
+   * EconomyData.householdDebtRefs}（派生索引，构造期由合同表重建）⇒ 夹具不再接受这个参数（给了也无处安放）。
+   */
   static HouseholdEconomy classRow(
       CohortKey view,
       long population,
       long laborMilli,
       int participationPerMille,
       long money,
-      List<DebtContractId> debts,
       Map<CommodityId, Long> naturalNeeds,
       Map<CommodityId, Long> effectiveDemand,
       long cycleNaturalNeedMilli) {
@@ -271,7 +275,6 @@ final class EconomyFixtures {
         laborMilli,
         participationPerMille,
         money,
-        debts,
         naturalNeeds,
         effectiveDemand,
         cycleNaturalNeedMilli);
@@ -315,7 +318,6 @@ final class EconomyFixtures {
                   row.laborMilli(),
                   row.participationPerMille(),
                   row.money(),
-                  row.debts(),
                   row.naturalNeeds(),
                   row.effectiveDemand(),
                   row.cycleNaturalNeedMilli());

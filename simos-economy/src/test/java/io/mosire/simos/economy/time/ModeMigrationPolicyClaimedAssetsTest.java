@@ -173,7 +173,6 @@ class ModeMigrationPolicyClaimedAssetsTest {
             10_000L,
             1000,
             0L,
-            List.of(),
             Map.of(CLOTH, 100L),
             Map.of(),
             0L);

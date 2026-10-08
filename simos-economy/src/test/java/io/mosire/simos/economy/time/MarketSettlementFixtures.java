@@ -92,7 +92,6 @@ final class MarketSettlementFixtures {
         0L,
         0,
         0L,
-        List.of(),
         // ★ 2026-10-09：运行时需求不再由 population 折算 ⇒ 夹具必须显式注入当日自然需求，
         //   否则撮合看到的保留额/缺口恒 0（这正是本夹具旧口径失效的根因）。
         Map.of(GRAIN, dailyRationGrain(population)),

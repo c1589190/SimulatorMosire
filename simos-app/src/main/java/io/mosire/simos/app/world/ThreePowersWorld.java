@@ -532,9 +532,16 @@ public final class ThreePowersWorld {
     return currencyOfZone(zoneOf(hex));
   }
 
-  /** 全部 37 格（保序不可变；(q,r) 升序）。 */
+  /**
+   * 全部 37 格（保序：(q,r) 升序）。
+   *
+   * <p>★ <b>返回防御性不可变副本</b>（{@code List.copyOf}；修 SpotBugs {@code MS_EXPOSE_REP} —— 改前把私有静态 {@code
+   * HEXES} 直接交出去）。★★ 格序是语义的一部分（创世插入序 = {@code GameMap.hexes()} 的插入序 = 人口序列落盘序 ⇒ 确定性）⇒ 只许 {@code
+   * List.copyOf}（保序、去重语义对身份元素无影响），不许任何重排。★ <b>不缓存快照</b>：{@code HEXES} 由 {@code hexagon()} 以 {@code
+   * List.copyOf} 产出 ⇒ 命中 JDK "已是不可变列表则原样返回"快路径，**零拷贝零分配**， 本方法在主路径按需调用即可。
+   */
   public static List<HexCoord> hexes() {
-    return HEXES;
+    return List.copyOf(HEXES);
   }
 
   /** 某个区的全部格（保序：{@link #HEXES} 序）。 */

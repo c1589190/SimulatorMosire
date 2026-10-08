@@ -3,6 +3,9 @@ package io.mosire.simos.economy.codec;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
@@ -500,7 +503,55 @@ class EconomyCodecTest {
   }
 
   /**
-   * ★★ <b>§3.1/§11.2：悬空产出数量覆盖 ⇒ 载入契约 ERROR + fail-closed</b>。两个方向各一例： 产业不存在 / 商品不在该产业 {@code
+   * ★★ <b>2026-10-09 选项 A 的旧档兼容</b>（此前只有实现方的一次性探针、没有任何测试守着）：改前写出的家户行里带着已退役的 {@code debts} 键（引用列表现住在
+   * {@code EconomyData.householdDebtRefs}）⇒ 读回来必须**不抛**，且引用由合同表重建。
+   *
+   * <p>判别力两条缺一不可：① 带 {@code debts} 的旧行 ⇒ 解码成功、读口给出的引用 == {@code D1}；② <b>别的未知键仍 fail-closed</b>
+   * ——这一条钉住"兼容恰恰是 {@code @JsonIgnoreProperties("debts")} 这**一个名字**，不是 {@code ignoreUnknown=true}"。
+   * 删掉注解 ⇒ ①当场红；把注解换成宽放（或给 mapper 开 ignore-unknown）⇒ ②当场红。
+   *
+   * <p>★ 为什么必须由测试守而不是探针：重放路径（{@code Replay → Timeline.readChangeSet}）走的是 Core 的**第四台 mapper**、 不过本
+   * codec 的整形层 ⇒ "只在 codec 里摘键"救不了它；而这条兼容一旦丢失，表现是**改前的存档打不开**。
+   */
+  @Test
+  void legacyHouseholdRowWithTheRetiredDebtsKeyStillDecodes() throws Exception {
+    String encoded = CODEC.encodeSnapshot(snapshotOf(fullData(), SimosTimestamp.of(10)));
+
+    // ① 改前的形状：行内带 debts 引用列表（值的形状不重要 —— 该属性整体被忽略）
+    EconomySnapshot back =
+        (EconomySnapshot)
+            CODEC.decodeSnapshot(addKeyToEveryHouseholdRow(encoded, "debts", List.of(D1)));
+    assertThat(back.data().debtsOf(FARM_HH))
+        .as("退役的 debts 键被忽略；引用由合同表（唯一权威）重建")
+        .containsExactly(D1);
+
+    // ② 对照：同一位置换一个**没退役**的未知键 ⇒ 仍然 fail-closed（漂移信号不丢）。
+    //   ★ 钉根因而不是外层包装消息：codec 把 Jackson 的异常包成"IllegalStateException: economy 侧 JSON 解码失败"，
+    //     真正的判据在 cause 链里（"Unrecognized field \"bogusKey\" ... not marked as ignorable"）。
+    assertThatThrownBy(
+            () ->
+                CODEC.decodeSnapshot(addKeyToEveryHouseholdRow(encoded, "bogusKey", List.of("x"))))
+        .as("兼容只对 debts 这一个名字；未知键照旧 fail-closed")
+        .isInstanceOf(IllegalStateException.class)
+        .hasRootCauseInstanceOf(UnrecognizedPropertyException.class)
+        .hasStackTraceContaining("bogusKey");
+  }
+
+  /** 在快照 JSON 的**每个家户行**里加一个键（旧档形状的复原装置）；返回新的 JSON 文本。 */
+  private static String addKeyToEveryHouseholdRow(String snapshotJson, String key, Object value)
+      throws Exception {
+    ObjectMapper mapper = new ObjectMapper();
+    ObjectNode root = (ObjectNode) mapper.readTree(snapshotJson);
+    ObjectNode classes = (ObjectNode) root.path("data").path("classes");
+    classes
+        .fields()
+        .forEachRemaining(
+            entry -> ((ObjectNode) entry.getValue()).set(key, mapper.valueToTree(value)));
+    return mapper.writeValueAsString(root);
+  }
+
+  /**
+   * ★★ **§3.1/§11.2：悬空产出数量覆盖 ⇒ 载入契约 ERROR + fail-closed**。两个方向各一例： 产业不存在 / 商品不在该产业 {@code
    * recipe().outputPerUnit()} 产出键里 —— 都不许静默丢弃或放行（构造期只判值域，跨表引用由载入边界判）。
    */
   @Test
@@ -1118,16 +1169,7 @@ class EconomyCodecTest {
     // ★★ H1（K1）：行里没有 goods 了（家户的商品库存住在 actor 切片的 HouseholdInventory / 经济侧的会话工作副本里）。
     // ★ S1：键 = 家户稳定身份，视图住在 view；id 与 view 是两件事（本夹具按旧视图造 id）。
     return new HouseholdEconomy(
-        id,
-        view,
-        population,
-        60000L,
-        800,
-        50L,
-        List.of(D1),
-        Map.of(GRAIN, 40L),
-        Map.of(GRAIN, 30L),
-        0L);
+        id, view, population, 60000L, 800, 50L, Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   private static DebtContract grainDebt() {

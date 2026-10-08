@@ -99,9 +99,10 @@ class McpServerTest {
    * H0.6 的 simos.economy.ownership）。
    */
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 37 读 + 116 写 = 153 条（spec §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与
-   * P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐，以及用户 2026-10-02 的 {@code simos.map.overlaps}；S3a 再 +6 条
-   * 家户/人口 GM 窄写；Z6 起含 Z1a/Z1c/Z2/Z3c/Z3d 的 9 条 gov/economy 新口）。
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 37 读 + 123 写 = 160 条（2026-10-09 按实测补入 A1/A2a/B2 的 4 条货币 + 3
+   * 条市场区工具）（spec §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与 P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐，以及用户
+   * 2026-10-02 的 {@code simos.map.overlaps}；S3a 再 +6 条 家户/人口 GM 窄写；Z6 起含 Z1a/Z1c/Z2/Z3c/Z3d 的 9 条
+   * gov/economy 新口）。
    */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
@@ -151,6 +152,9 @@ class McpServerTest {
           "simos.economy.adjust",
           "simos.economy.upsertGovUnit",
           "simos.economy.upsertIndustry",
+          "simos.economy.defineMarketZone",
+          "simos.economy.mergeMarketZones",
+          "simos.economy.reassignZoneHexes",
           "simos.economy.hex",
           "simos.economy.ownership",
           "simos.fork",
@@ -171,16 +175,20 @@ class McpServerTest {
           "simos.gov.applyStaffing",
           "simos.gov.assignPosts",
           "simos.gov.createOffice",
+          "simos.gov.defineCurrency",
           "simos.gov.dismiss",
           "simos.gov.dispatchTeam",
           "simos.gov.expandHousehold",
+          "simos.gov.issueMoney",
           "simos.gov.openPostsToMarket",
           "simos.gov.recruit",
           "simos.gov.remit",
+          "simos.gov.renameCurrency",
           "simos.gov.retireStaff",
           "simos.gov.selectExaminees",
           "simos.gov.setBudgetPolicy",
           "simos.gov.setEstablishment",
+          "simos.gov.setFxRate",
           "simos.gov.transferTreasury",
           "simos.gov.info",
           "simos.llm.providers",
@@ -312,7 +320,8 @@ class McpServerTest {
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
-        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 153 条（37 读 + 116 写；D1–D5 + C5b + S3a + Z6 后逐条同源）")
+        .as(
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 160 条（37 读 + 123 写；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

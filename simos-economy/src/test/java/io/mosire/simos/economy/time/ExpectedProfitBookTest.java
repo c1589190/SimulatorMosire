@@ -123,7 +123,6 @@ class ExpectedProfitBookTest {
         laborMilli,
         1000,
         0L,
-        List.of(),
         naturalNeeds,
         Map.of(),
         0L);
@@ -511,7 +510,6 @@ class ExpectedProfitBookTest {
             10_000L,
             1000,
             0L,
-            List.of(),
             Map.of(CLOTH, 100L),
             Map.of(),
             0L);

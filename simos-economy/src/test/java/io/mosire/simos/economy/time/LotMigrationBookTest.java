@@ -98,8 +98,10 @@ class LotMigrationBookTest {
     assertThat(DebtStock.totalPrincipal(after.debtContracts()))
         .as("本金总量守恒（200,000 + 800,000 = 1,000,000）")
         .isEqualTo(SOURCE_PRINCIPAL);
-    assertThat(sourceRow.debts()).as("源行派生引用仍在").contains(SOURCE_DEBT);
-    assertThat(targetRow.debts()).as("目标行派生引用已补上").contains(targetDebt);
+    // ★ 2026-10-09 选项 A：引用已搬进独立表 ⇒ 读口换成 EconomyData.debtsOf(...)（语义不变：
+    //   "迁移后源行仍挂着源合同、目标行挂上了新建的目标合同"）。
+    assertThat(after.debtsOf(SOURCE)).as("源行派生引用仍在").contains(SOURCE_DEBT);
+    assertThat(after.debtsOf(target)).as("目标行派生引用已补上").contains(targetDebt);
   }
 
   @Test
@@ -114,7 +116,6 @@ class LotMigrationBookTest {
             3_500L,
             700,
             0L,
-            List.of(),
             Map.of(),
             Map.of(),
             0L);
@@ -173,7 +174,6 @@ class LotMigrationBookTest {
             3_500L,
             700,
             0L,
-            List.of(),
             Map.of(),
             Map.of(),
             0L);
@@ -200,7 +200,6 @@ class LotMigrationBookTest {
             SOURCE_LABOR,
             700,
             500L,
-            List.of(SOURCE_DEBT),
             Map.of(),
             Map.of(),
             0L);
@@ -212,7 +211,6 @@ class LotMigrationBookTest {
             0L,
             0,
             0L,
-            List.of(),
             Map.of(),
             Map.of(),
             0L);

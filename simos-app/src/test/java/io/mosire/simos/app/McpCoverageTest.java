@@ -127,7 +127,8 @@ class McpCoverageTest {
    * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46， social
    * 起 46 → 49，economy/actor 全族补齐后 50 → 60，辖区阶段 5–8 起 60 → 65，阶段 9–12 起 65 → 71，P1b1/P1b2/P3/R3a 与
    * D1/D3a/D4/D5 起 71 → 85，S3a 的家户/人口 8 条起 85 → 93；P0.1 删除 economy.UnitBorrow/UnitRepay 两个 handler
-   * ⇒ 91；Z1a/Z1c/Z2/Z3a/Z3d 再 +7 条 ⇒ 128（与 SimosToolsTest 同源）。
+   * ⇒ 91；Z1a/Z1c/Z2/Z3a/Z3d 再 +7 条 ⇒ 128；★★ 2026-10-09 按实测补入 A1/A2a/B2（2026-10-08 货币词表 + 官方汇率 +
+   * 市场区）的 8 条 ⇒ 136（与 SimosToolsTest 同源；那 8 条当时漏回填，本条与下面那句计数一起红了）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -144,17 +145,27 @@ class McpCoverageTest {
           "economy.AddDemand",
           "economy.CancelDemand",
           "economy.ClearRegion",
+          // ★★ A1：币种词表（定义 / 改名）
+          "economy.DefineCurrency",
+          // ★★ B2：市场区（定义 / 重挂格 / 合并）+ A2a：市场格计价币
+          "economy.DefineMarketZone",
           "economy.GmAdjust",
+          "economy.MergeMarketZones",
           "economy.MigrateHousehold",
+          "economy.ReassignZoneHexes",
+          "economy.RecordMoneyIssuance",
           "economy.RegisterCandidate",
           "economy.RegisterGovernment",
           "economy.RegisterHousehold",
           "economy.RemoveHouseholdPeriodicAdjustment",
+          "economy.RenameCurrency",
           "economy.Seed",
           "economy.SetHouseholdClass",
           "economy.SetHouseholdLabor",
           "economy.SetHouseholdParticipation",
+          "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
+          "economy.SetOfficialRate",
           "economy.SwitchMode",
           "economy.SetGovServiceCommitment",
           "economy.TransferAssetShare",
@@ -281,6 +292,16 @@ class McpCoverageTest {
           "economy.SwitchMode",
           "economy.GmAdjust",
           "economy.MigrateHousehold",
+          // ★★ A1/A2a/B2（2026-10-08）：词表 / 汇率 / 市场区这 8 条要的 GOV 单位、区表、币种都不在本夹具世界里
+          //   （载荷形状合法 ⇒ 走具名拒路径）。2026-10-09 按实测补入 —— 当时漏了它们，本条与 EXPECTED_COMMAND_TYPES 一起红。
+          "economy.DefineCurrency",
+          "economy.RenameCurrency",
+          "economy.RecordMoneyIssuance",
+          "economy.SetOfficialRate",
+          "economy.DefineMarketZone",
+          "economy.ReassignZoneHexes",
+          "economy.MergeMarketZones",
+          "economy.SetMarketNumeraire",
           "actor.RemitGovTreasury",
           "unit.SetFormationOffset",
           "sd.DeleteDecisionMaker",
@@ -332,6 +353,32 @@ class McpCoverageTest {
               "{\"adjustment\":\"forgiveDebt\",\"parameters\":{\"debtContractId\":\"missing-debt\"},\"reason\":\"coverage\"}"),
           Map.entry(
               "economy.MigrateHousehold", "{\"household\": \"hh-missing\", \"toHex\": \"1_1\"}"),
+          // ★★ A1/A2a/B2（2026-10-08）的 8 条：载荷形状逐字段合法（含必填字段），但点名的 GOV 单位 / 区 / 币种
+          //   在本夹具世界里不存在 ⇒ 必须具名拒、且不推 revision（见 PRECONDITION_REJECT_TYPES 的同批注释）。
+          Map.entry(
+              "economy.DefineCurrency",
+              "{\"govUnitId\": \"gov-missing\", \"currencyId\": \"gold\", \"scale\": 3, \"displayName\": \"金\", \"reason\": \"coverage\"}"),
+          Map.entry(
+              "economy.RenameCurrency",
+              "{\"govUnitId\": \"gov-missing\", \"currencyId\": \"silver\", \"displayName\": \"银两\", \"reason\": \"coverage\"}"),
+          Map.entry(
+              "economy.RecordMoneyIssuance",
+              "{\"govUnitId\": \"gov-missing\", \"currency\": \"silver\", \"amountMilli\": 1000, \"kind\": \"FISCAL_ISSUE\", \"reason\": \"coverage\"}"),
+          Map.entry(
+              "economy.SetOfficialRate",
+              "{\"marketZoneId\": \"zone-missing\", \"base\": \"silver\", \"quote\": \"copper\", \"buyPerMille\": 1000, \"sellPerMille\": 1000, \"reason\": \"coverage\"}"),
+          Map.entry(
+              "economy.DefineMarketZone",
+              "{\"zoneId\": \"zone-missing\", \"anchor\": {\"q\": 0, \"r\": 0}, \"hexes\": [{\"q\": 0, \"r\": 0}], \"legalTender\": \"silver\", \"govUnitId\": \"gov-missing\", \"radiusHex\": 0, \"reason\": \"coverage\"}"),
+          Map.entry(
+              "economy.ReassignZoneHexes",
+              "{\"fromZoneId\": \"zone-missing\", \"toZoneId\": \"zone-missing-2\", \"hexes\": [{\"q\": 0, \"r\": 0}], \"reason\": \"coverage\"}"),
+          Map.entry(
+              "economy.MergeMarketZones",
+              "{\"sourceZoneId\": \"zone-missing\", \"targetZoneId\": \"zone-missing-2\", \"reason\": \"coverage\"}"),
+          Map.entry(
+              "economy.SetMarketNumeraire",
+              "{\"q\": 0, \"r\": 0, \"numeraire\": \"copper\", \"reason\": \"coverage\"}"),
           Map.entry(
               "actor.RemitGovTreasury",
               "{\"household\":\"hh-missing\",\"fromHousehold\":\"hh-missing\",\"toHousehold\":\"hh-missing2\",\"grain\":1}"),
@@ -831,7 +878,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 91 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay）")
+            "catalog 列出的 type 与 Shell 注册的 136 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);
@@ -867,9 +914,11 @@ class McpCoverageTest {
         .as("每条可提交命令各推一格；需前置状态 / 已退役的 5 条留在下一段验证具名拒绝")
         .isEqualTo(1L + MINIMAL_PAYLOADS.size());
 
-    // 2b. 需前置状态 / 已退役的 5 条（economy.SwitchMode / economy.GmAdjust 缺组织/债务合同；
-    //     actor.RemitGovTreasury 缺 GOV 国库账；unit.SetFormationOffset 已退役；sd.DeleteDecisionMaker 被
-    // Directive 引用）
+    // 2b. 需前置状态 / 已退役的那一批（旧注释里的"5 条"早已过期，现为 PRECONDITION_REJECT_TYPES.size() 条：
+    //     economy.SwitchMode / economy.GmAdjust 缺组织 / 债务合同；actor.RemitGovTreasury 缺 GOV 国库账；
+    //     unit.SetFormationOffset 已退役；sd.DeleteDecisionMaker 被 Directive 引用；
+    //     ★★ 2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令 —— 载荷形状合法，
+    //     但夹具世界没有对应 GOV 单位 / 区表 / 币种 ⇒ 走**具名拒**路径，不推 revision）
     //     ⇒ 必须经 MCP 可提交但被
     //     **具名拒绝**，且不推 revision。
     for (String rejectType : PRECONDITION_REJECT_TYPES) {

@@ -5721,16 +5721,18 @@ public final class EconomySettlement {
           // ★★ E4a 连续身份：id 是 (债务人, 债权人, unit, terms) 的**纯函数** ⇒ 同一对主体跨周期命中同一条，
           //   本金递增；terms 不同（利率/规则/期限维）必然分开，不允许静默合并。
           // ★★ E4c：唯一写口 —— 新条/续借/再借激活/到期覆盖全部在 DebtContractBook.upsert 里；本方法不再碰债务表。
-          DebtContract contract =
-              DebtContractBook.upsert(
-                  debts,
-                  debtor,
-                  lender,
-                  DebtUnit.commodity(GRAIN),
-                  DebtTerms.legacyDefault(BORROW_RATE_PER_MILLE_PER_CYCLE),
-                  lent,
-                  day,
-                  OptionalLong.of(dueCycle));
+          // ★ 返回值（新/合并后的 DebtContract）**刻意不接**：拆表后债务行的派生引用由 EconomyData 构造期的
+          //   DebtReferenceReconciler 整表重建（见下面一段），本方法拿不到也不需要那条合同的句柄
+          //   —— 接了就只是 DLS_DEAD_LOCAL_STORE（SpotBugs）。调用本身（写入副作用）原样保留。
+          DebtContractBook.upsert(
+              debts,
+              debtor,
+              lender,
+              DebtUnit.commodity(GRAIN),
+              DebtTerms.legacyDefault(BORROW_RATE_PER_MILLE_PER_CYCLE),
+              lent,
+              day,
+              OptionalLong.of(dueCycle));
           // ★★ 2026-10-09 选项 A：改前这里把新合同的派生引用补进债务人行（householdEconomyUpdates）；
           //   拆表后引用表由 EconomyData 构造期的 DebtReferenceReconciler 按 debts 工作表整表重建 ⇒ 不必再补。
           // ★ 借到的粮当日吃掉 ⇒ 已在上面（转移之后）计入当日消费 —— 那里是**唯一**写这一笔的地方。

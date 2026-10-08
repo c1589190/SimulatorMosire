@@ -203,8 +203,7 @@ class ProductionEfficiencySettlementTest {
     ProductionProcess unit =
         new ProductionProcess(UNIT, FARM, OPERATOR, FARM.value(), 0L, 0L, Map.of());
     HouseholdEconomy row =
-        new HouseholdEconomy(
-            HOUSEHOLD, VIEW, 100L, 100_000L, 1000, 0L, List.of(), Map.of(), Map.of(), 0L);
+        new HouseholdEconomy(HOUSEHOLD, VIEW, 100L, 100_000L, 1000, 0L, Map.of(), Map.of(), 0L);
     OwnershipStake cattle =
         new OwnershipStake(
             OwnershipStake.idOf(

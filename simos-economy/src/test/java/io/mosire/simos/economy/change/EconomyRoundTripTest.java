@@ -26,7 +26,9 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -38,11 +40,16 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.LossBearer;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.market.TradeRoute;
+import io.mosire.simos.economy.api.money.CurrencyDef;
+import io.mosire.simos.economy.api.money.InstrumentKind;
+import io.mosire.simos.economy.api.money.MoneyInstrument;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
+import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Payee;
@@ -92,6 +99,7 @@ import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.lang.reflect.RecordComponent;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -172,6 +180,26 @@ class EconomyRoundTripTest {
   /** ★ P4a：周期家户扣增规则夹具身份（键 == 值内 id）。 */
   private static final PeriodicHouseholdAdjustmentId PERIODIC_ADJUSTMENT =
       new PeriodicHouseholdAdjustmentId("adjustment-1");
+
+  /**
+   * ★★ A1（2026-10-08）的第 32/33 个组件夹具：默认词表只有 {@code silver} + {@code silver-specie} ⇒
+   * 要看见差异就必须给一个**非默认**币种与一张非默认工具（空表会被构造期归一成 legacy 词表，"没进变更集"与"没加币"在值层面就不可区分了）。
+   */
+  private static final CurrencyDef GOLD = new CurrencyDef("gold", 3, "金");
+
+  /** 金的金币（金属币：价值来自金属本身 ⇒ 没有发行人）。 */
+  private static final MoneyInstrument GOLD_SPECIE =
+      new MoneyInstrument(
+          new InstrumentId("gold-specie"),
+          GOLD.currencyId(),
+          InstrumentKind.SPECIE,
+          Optional.empty(),
+          Optional.empty());
+
+  /** ★ B2（2026-10-08）的第 34 个组件夹具：一个区 + 它的发行政府（区的法定币必须在该政府的 {@code issuable} 里）。 */
+  private static final MarketZoneId ZONE = new MarketZoneId("zone-1");
+
+  private static final GovernmentId ZONE_GOV = new GovernmentId("zone-government-1");
 
   /**
    * ★★ T2/D9 的 operator 夹具：**非派生值**（`HOUSEHOLD:house-7`；本文件 `industry` 的 regime 是 `tenant`， 推导值 =
@@ -286,14 +314,19 @@ class EconomyRoundTripTest {
    * {@code operatorConditions} / {@code units} / {@code demands} / {@code candidates} / E1 的四个 / E2
    * 的两个 / E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个 / P10.1 的 {@code merchantFirms} / P4a 的
    * {@code periodicAdjustments} / Z1 的 {@code outputQuantityOverrides} 与 {@code
-   * productionEfficiency}。
+   * productionEfficiency} / A1（2026-10-08）的 {@code currencies} 与 {@code moneyInstruments} /
+   * B2（2026-10-08）的 {@code marketZones} / 2026-10-09 选项 A 的 {@code householdDebtRefs}。
    *
-   * <p>★ 这个名字里的数字**故意写死**（R4 16 → … → P2-A 28 → P4a 29 → Z1
-   * 31）：它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒** ——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
+   * <p>★ 这个名字里的数字**故意写死**（R4 16 → … → P4a 29 → Z1 31 → A1 33 → B2 34 → 选项 A
+   * 35）：它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒** ——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
+   *
+   * <p>★★ <b>本条的欠账如实记（2026-10-09 选项 A 迁移时实测发现）</b>：这个数字自 A1/B2 起就**已经过期**（那两批各加了组件却 没改这里：31 →
+   * 34），也就是说在本轮拆表<b>之前</b>它就已经是红的 —— 不是本次结构改动弄红的。本次按**实测**改成 35（ {@code EconomyChangeSet} 与 {@code
+   * EconomyData} 两侧同为 35，上面两条子集断言现在两边同名同数）。
    */
   @Test
-  void changeSetHasExactlyThirtyOneComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(31);
+  void changeSetHasExactlyThirtyFiveComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(35);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -362,11 +395,8 @@ class EconomyRoundTripTest {
           // ★ E4a：债务的两端必须在 classes 里（v2 spec §八.2）⇒ 这个变异体必须**自带支撑的 classes**：
           //   从 EconomyData.empty() 只改债务表的旧形态在新不变量下无法自洽（本用例只断言
           //   "目标组件进了变更集 + 往返相等"，多带支撑组件不破坏任何断言）。
-          base.withMeta(Optional.of(meta()))
-              .withIndustries(Map.of(FARM, industry(FARM)))
-              .withHouseholdEconomies(
-                  Map.of(KEY_HH, classRow(KEY_HH, KEY), OTHER_HH, classRow(OTHER_HH, OTHER_KEY)))
-              .withDebtContracts(Map.of(D1, debt()));
+          //   ★ 2026-10-09 选项 A：同一组支撑也是 householdDebtRefs 那一维的唯一造法（引用表是对账的产物）。
+          oneDebtContractTarget(base);
       case "flows" ->
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
@@ -449,8 +479,47 @@ class EconomyRoundTripTest {
           base.withIndustries(Map.of(FARM, industry(FARM)))
               .withProcesses(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
               .withProductionEfficiency(Map.of(FARM_UNIT, efficiencyState()));
+      // ★★ A1（2026-10-08）的第 32 个组件：默认词表只有 silver ⇒ 加一个**非默认**币种再落回（连带保住 silver，
+      //   否则既有的 silver-specie 工具会因"币种不在词表里"被构造期拒）。
+      case "currencies" -> {
+        Map<CurrencyId, CurrencyDef> currencies = new LinkedHashMap<>(base.currencies());
+        currencies.put(GOLD.currencyId(), GOLD);
+        yield base.withCurrencies(currencies);
+      }
+      // ★★ A1 的第 33 个组件：新工具的币种必须已在词表里 ⇒ 与上一个 case 同源，连带把 gold 币种一起落上。
+      case "moneyInstruments" -> {
+        Map<CurrencyId, CurrencyDef> currencies = new LinkedHashMap<>(base.currencies());
+        currencies.put(GOLD.currencyId(), GOLD);
+        Map<InstrumentId, MoneyInstrument> instruments =
+            new LinkedHashMap<>(base.moneyInstruments());
+        instruments.put(GOLD_SPECIE.id(), GOLD_SPECIE);
+        yield base.withCurrencies(currencies).withMoneyInstruments(instruments);
+      }
+      // ★★ B2（2026-10-08）的第 34 个组件：区表非空 ⇒ 必须自带"发行政府 + 它的 issuable 含该区法定币"
+      //   （说不出谁发行法定币的区不许存在，fail-closed）⇒ 变异体自带一个 silver 发行政府。★ 法定币取 silver
+      //   （默认词表里已有）⇒ 不必为了造一个区再去改词表，判别力仍落在 marketZones 这一维上。
+      case "marketZones" ->
+          base.withGovernments(Map.of(ZONE_GOV, silverIssuingGovernment()))
+              .withMarketZones(Map.of(ZONE, zone()));
+      // ★★ 2026-10-09 选项 A 的第 35 个组件（家户债务引用**派生索引**）：它是构造期由合同表重建的产物 ⇒
+      //   目标只能靠"合同 + 两端家户行"造出来；空表与"字段没进变更集"在值层面不可区分 ⇒ 判别力要求引用表非空。
+      case "householdDebtRefs" -> oneDebtContractTarget(base);
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
+  }
+
+  /**
+   * ★ 2026-10-09 选项 A：{@code debtContracts} 与 {@code householdDebtRefs} 两个组件共用的支撑 —— 两端都在 {@code
+   * classes} 里的一条粮债。构造期 {@code DebtReferenceReconciler} 据此重建引用表 ⇒ 同一份 target 同时让这两个组件非 Unchanged。
+   *
+   * <p>★ 为什么必须是同一组支撑：引用表是**派生**的，没有"只改引用表"这种目标（构造期会被对账覆盖回去）。
+   */
+  private static EconomyData oneDebtContractTarget(EconomyData base) {
+    return base.withMeta(Optional.of(meta()))
+        .withIndustries(Map.of(FARM, industry(FARM)))
+        .withHouseholdEconomies(
+            Map.of(KEY_HH, classRow(KEY_HH, KEY), OTHER_HH, classRow(OTHER_HH, OTHER_KEY)))
+        .withDebtContracts(Map.of(D1, debt()));
   }
 
   private static boolean changedOf(EconomyChangeSet cs, String name) {
@@ -486,6 +555,11 @@ class EconomyRoundTripTest {
       case "periodicAdjustments" -> cs.periodicAdjustments().changed();
       case "outputQuantityOverrides" -> cs.outputQuantityOverrides().changed();
       case "productionEfficiency" -> cs.productionEfficiency().changed();
+      // ★ A1 / B2 / 选项 A 的四个组件（见 mutate 的同名 case）
+      case "currencies" -> cs.currencies().changed();
+      case "moneyInstruments" -> cs.moneyInstruments().changed();
+      case "marketZones" -> cs.marketZones().changed();
+      case "householdDebtRefs" -> cs.householdDebtRefs().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -553,7 +627,7 @@ class EconomyRoundTripTest {
   static HouseholdEconomy classRow(HouseholdId id, CohortKey view) {
     // ★★ H1（K1）：行里没有 goods 了（家户的商品库存住在 actor 切片的 HouseholdInventory / 经济侧的会话工作副本里）。
     return new HouseholdEconomy(
-        id, view, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
+        id, view, 120L, 60000L, 800, 50L, Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   static DebtContract debt() {
@@ -763,6 +837,24 @@ class EconomyRoundTripTest {
   static Government government() {
     return new Government(
         GOVERNMENT, "world", new ActorRef(ActorKind.GOVERNMENT, "treasury"), Set.of());
+  }
+
+  /**
+   * ★ B2：{@code marketZones} 那一维的发行政府 —— 它的 {@code issuable} 必须含该区法定币（{@code silver}）， 否则构造期的第 ⑤
+   * 条守卫当场拒（说不出谁发行法定币的区不许存在）。
+   */
+  private static Government silverIssuingGovernment() {
+    return new Government(
+        ZONE_GOV,
+        "zone-world",
+        new ActorRef(ActorKind.GOVERNMENT, "zone-treasury"),
+        Set.of(MoneyVocabulary.SILVER_CURRENCY));
+  }
+
+  /** ★ B2：最小自洽的市场区（半径 0 ⇒ 成员只有锚格；法定币 = 默认词表里的 silver）。 */
+  private static MarketZone zone() {
+    return new MarketZone(
+        ZONE, KEY.hex(), 0, Set.of(KEY.hex()), MoneyVocabulary.SILVER_CURRENCY, ZONE_GOV, Map.of());
   }
 
   static MoneyIssuanceRecord moneyIssuance() {

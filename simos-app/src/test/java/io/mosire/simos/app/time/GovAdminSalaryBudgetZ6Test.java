@@ -1117,7 +1117,6 @@ class GovAdminSalaryBudgetZ6Test {
         laborMilli,
         1000,
         0L,
-        List.of(),
         Map.of(),
         Map.of(),
         0L);

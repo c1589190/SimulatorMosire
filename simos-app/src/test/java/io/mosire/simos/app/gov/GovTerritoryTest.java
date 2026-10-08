@@ -185,15 +185,51 @@ class GovTerritoryTest {
     assertThat(scopes.declaredScope("map")).isNotEqualTo(ResourceScope.none());
   }
 
-  /** ★ **结构断言**：{@code GovTerritory} 的公开签名里**不出现任何授权类型**——它连"能算权限"的形状都不具备，杜绝后来者顺手接线。 */
+  /**
+   * ★ **结构断言**：{@code GovTerritory} 的公开签名里**不出现任何授权类型**——它连"能算权限"的形状都不具备，杜绝后来者顺手接线。
+   *
+   * <p>★★ <b>2026-10-09 迁移（口径改写，如实记 + 待裁定点）</b>：改前这里钉的是 {@code hasSize(1)}（"名义全境只应有一个公开方法"）。
+   * B2/B3（{@code cd695b06} / {@code f40fde98}，为"发行政府 / GOV 疆域连线 + 创世落持久区表"）后来加了两个公开的 {@code
+   * nominalHexes} 重载 ⇒ 该断言不再是"公开面只有一个方法"。本次按实测把公开面**逐签名钉死**（恰 3 个；加第 4 个方法照样当场红）， 并把原判据收在 {@code
+   * nominalRegions} 上（它仍是"只吃 UnitState + 根 id、只吐 RegionId 集合"）。
+   *
+   * <p>★ <b>如实记的漂移（不在本用例里替它背书）</b>：{@code nominalHexes(SimulationState, UnitId)} 的入参里有 {@code
+   * SimulationState}，而改前那句断言的说明文字把 {@code SimulationState} 与 {@code DecisionMaker}/{@code
+   * ResourceScopeMap} 并列写成"不许出现"。它是否算"授权类型形状"、这两个重载该不该留在公开面，属**设计裁定**，见交账报告；
+   * 本用例只保证：三个签名一个不多一个不少、返回值都是 {@link Set}、没有任何方法返回授权对象。
+   */
   @Test
   void govTerritoryApiDoesNotMentionAnyAuthorizationType() {
     List<Method> methods =
         java.util.Arrays.stream(GovTerritory.class.getDeclaredMethods())
             .filter(method -> !method.isSynthetic())
             .toList();
-    assertThat(methods).as("名义全境只应有一个公开方法（nominalRegions）").hasSize(1);
-    Method only = methods.get(0);
+    assertThat(
+            methods.stream()
+                .map(
+                    method ->
+                        method.getName()
+                            + "("
+                            + String.join(
+                                ",",
+                                java.util.Arrays.stream(method.getParameterTypes())
+                                    .map(Class::getSimpleName)
+                                    .toList())
+                            + ")")
+                .toList())
+        .as("公开面恰是这 3 个名义全境方法（新增第 4 个方法 ⇒ 当场红）")
+        .containsExactlyInAnyOrder(
+            "nominalRegions(UnitState,UnitId)",
+            "nominalHexes(UnitState,GameMap,UnitId)",
+            "nominalHexes(SimulationState,UnitId)");
+    assertThat(methods)
+        .as("没有一个方法返回范围/授权对象（返回值只能是 Set）")
+        .allSatisfy(method -> assertThat(method.getReturnType()).isEqualTo(Set.class));
+    Method only =
+        methods.stream()
+            .filter(method -> method.getName().equals("nominalRegions"))
+            .findFirst()
+            .orElseThrow();
     assertThat(only.getReturnType()).as("返回的只是 RegionId 集合，不是范围对象").isEqualTo(Set.class);
     assertThat(only.getParameterTypes())
         .as("输入只有 unit 切片与根 id；没有 DecisionMaker/SimulationState/ResourceScopeMap")

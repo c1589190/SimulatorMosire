@@ -414,18 +414,19 @@ class EconomySeedHandlerTest {
     //   ★ 同一件事的**新落点**不在本模块的载荷里：库存的播种归 app 的 HouseholdSeeder（H1.5），
     //     它的验证在 simos-app 的播种用例里（`WorldgenInitializeToolTest` 那一族）。
     assertThat(row.money()).isZero();
-    assertThat(row.debts()).as("本轮无债务").isEmpty();
+    assertThat(after.debtsOf(PEASANT_HOUSEHOLD)).as("本轮无债务引用").isEmpty();
     assertThat(row.naturalNeeds()).containsEntry(new CommodityId("grain"), 37_350L);
     assertThat(row.effectiveDemand()).isEmpty();
     assertThat(after.debtContracts()).as("债务合同表本轮恒空").isEmpty();
     assertThat(after.flows()).as("周期流水留待 R3a").isEmpty();
-    // 缺省字段（地主行没给 debts/naturalNeeds/effectiveDemand/money）⇒ 空表 / 0，不是 null。
+    // 缺省字段（地主行没给 naturalNeeds/effectiveDemand/money）⇒ 空表 / 0，不是 null。
+    // ★ 2026-10-09 选项 A：载荷里的 debts 键不再进状态（引用是派生表，读口 = debtsOf）⇒ 这里改读读口。
     HouseholdEconomy landlord = after.classes().get(LANDLORD_HOUSEHOLD);
     assertThat(landlord).isNotNull();
     assertThat(landlord.id()).isEqualTo(LANDLORD_HOUSEHOLD);
     assertThat(landlord.view().stratum()).isEqualTo(SocialClassId.LANDLORD);
     assertThat(landlord.money()).isZero();
-    assertThat(landlord.debts()).isEmpty();
+    assertThat(after.debtsOf(LANDLORD_HOUSEHOLD)).isEmpty();
     assertThat(landlord.naturalNeeds()).isEmpty();
     assertThat(landlord.effectiveDemand()).isEmpty();
   }
@@ -550,6 +551,11 @@ class EconomySeedHandlerTest {
   /**
    * 类行 {@code debts} 是**派生引用**：E4 起合同表是唯一权威，构造期 {@code DebtReferenceReconciler} 从合同表重建引用 ⇒
    * 指向不存在合同的旧引用会被重建成空表（不是命令拒绝，也不再留下悬空引用）。
+   *
+   * <p>★★ <b>2026-10-09 选项 A 的迁移（如实记）</b>：{@code HouseholdEconomy.debts} 这个组件已删，引用住在独立表 {@code
+   * EconomyData.householdDebtRefs} 上，唯一读口是 {@code EconomyData.debtsOf(...)} ⇒ 断言的主语从"行的字段"换成"读口"。 ★
+   * 载荷里的 {@code debts} 键**仍被形状校验**（{@code EconomyPayloads} 逐项要求非空字符串）但**不进状态**（ 引用只能由合同表派生）⇒
+   * 本用例的输入替换仍有意义：它在量"载荷里塞了引用也不会留在状态里"。
    */
   @Test
   void classRowDebtRefsAreRebuiltFromContractTable() {
@@ -558,9 +564,9 @@ class EconomySeedHandlerTest {
     EconomyData after = apply(payload, EconomyData.empty(), T7);
 
     assertThat(after.debtContracts()).as("载荷没有合同 ⇒ 合同表为空").isEmpty();
-    assertThat(after.classes().values())
+    assertThat(after.classes().keySet())
         .as("旧类行引用只是派生索引：悬空引用被合同表权威重建为空")
-        .allSatisfy(row -> assertThat(row.debts()).isEmpty());
+        .allSatisfy(household -> assertThat(after.debtsOf(household)).isEmpty());
   }
 
   /** 环载荷（不是 JSON / 不是对象）⇒ 拒，不抛到命令边界之外。 */

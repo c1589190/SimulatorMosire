@@ -464,7 +464,6 @@ public final class EconomyTestWorld {
         0L,
         EconomySeeder.CLASS_LABOR_PER_MILLE[index],
         0L,
-        List.of(),
         Map.of(GRAIN, EconomyVocabulary.dailyRationMilli(0L, 1L)),
         Map.of(),
         0L);
@@ -717,7 +716,6 @@ public final class EconomyTestWorld {
             EconomySeeder.laborMilli(population),
             EconomySeeder.CLASS_LABOR_PER_MILLE[index],
             0L,
-            List.of(),
             Map.of(GRAIN, firstDayNeed),
             Map.of(),
             0L));

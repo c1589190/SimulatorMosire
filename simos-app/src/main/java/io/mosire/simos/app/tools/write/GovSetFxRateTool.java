@@ -198,7 +198,13 @@ public final class GovSetFxRateTool implements AgentTool {
       if (!data.currencies().containsKey(currencyQuote)) {
         throw new IllegalArgumentException("quote 币种未在世界词表里定义: " + quote);
       }
-      Government government = data.governments().get(target.govId());
+      // ★★ 政府身份必须**从 GOV 单位 id 派生**（{@link GovernmentIds#ofUnit}；与 {@code GovRenameCurrencyTool} /
+      //   {@code GovIssueMoneyTool} 同一手法）：{@code governments} 的键是 {@link GovernmentId}，而
+      //   {@code target.govId()} 是 {@code UnitId}（GOV **单位**的稳定 id）—— 两者是互不相等的两种记录类型，
+      //   直接 get 恒返回 null ⇒ 改前 {@code previousBuy/SellPerMille} 两栏**永远是 null**（币对现值丢读）。
+      //   SpotBugs GC_UNRELATED_TYPES（govSetFxRate 那条）报的正是这里：**真类型混淆，不是参数命名问题**。
+      GovernmentId governmentId = GovernmentIds.ofUnit(target.govId().value());
+      Government government = data.governments().get(governmentId);
       OfficialRate existing =
           government == null
               ? null

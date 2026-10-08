@@ -859,6 +859,46 @@ class AdjudicateTickToolTest {
         List.of(
             "{\"ageBracket\":\"0-14\",\"sex\":\"MALE\",\"milliHoursPerTick\":1,"
                 + "\"reason\":\"x\"}"));
+    // ★★ 2026-10-09 按实测补入 A1/A2a/B2（2026-10-08 货币词表 + 官方汇率 + 市场区）的 7 条 GM-only 命令：
+    //   它们都实现 CommandTargets 但**恒返回空表**（词表/汇率/区表都是世界级事实，没有单格资源目标）⇒
+    //   样本只有载荷一项，与上面那批"GM-only 空目标"同形。当时漏了回填 ⇒ 本用例的
+    //   "表里不该有白名单外的类型"当场红（实测 targets.keySet() 94 vs samples 87）。
+    samples.put(
+        "economy.DefineCurrency",
+        List.of(
+            "{\"govUnitId\":\"gov-1\",\"currencyId\":\"gold\",\"scale\":3,"
+                + "\"displayName\":\"金\",\"reason\":\"coverage\"}"));
+    samples.put(
+        "economy.RenameCurrency",
+        List.of(
+            "{\"govUnitId\":\"gov-1\",\"currencyId\":\"silver\",\"displayName\":\"银两\","
+                + "\"reason\":\"coverage\"}"));
+    samples.put(
+        "economy.RecordMoneyIssuance",
+        List.of(
+            "{\"govUnitId\":\"gov-1\",\"currency\":\"silver\",\"amountMilli\":1000,"
+                + "\"kind\":\"FISCAL_ISSUE\",\"reason\":\"coverage\"}"));
+    samples.put(
+        "economy.SetOfficialRate",
+        List.of(
+            "{\"marketZoneId\":\"zone-x\",\"base\":\"silver\",\"quote\":\"copper\","
+                + "\"buyPerMille\":1000,\"sellPerMille\":1000,\"reason\":\"coverage\"}"));
+    samples.put(
+        "economy.DefineMarketZone",
+        List.of(
+            "{\"zoneId\":\"zone-x\",\"anchor\":{\"q\":0,\"r\":0},\"hexes\":[{\"q\":0,\"r\":0}],"
+                + "\"legalTender\":\"silver\",\"govUnitId\":\"gov-1\",\"radiusHex\":0,"
+                + "\"reason\":\"coverage\"}"));
+    samples.put(
+        "economy.ReassignZoneHexes",
+        List.of(
+            "{\"fromZoneId\":\"zone-x\",\"toZoneId\":\"zone-y\","
+                + "\"hexes\":[{\"q\":1,\"r\":1}],\"reason\":\"coverage\"}"));
+    samples.put(
+        "economy.MergeMarketZones",
+        List.of(
+            "{\"sourceZoneId\":\"zone-x\",\"targetZoneId\":\"zone-y\","
+                + "\"reason\":\"coverage\"}"));
     for (Map.Entry<String, List<String>> sample : samples.entrySet()) {
       List<String> expected = sample.getValue();
       String type = sample.getKey();
@@ -868,8 +908,8 @@ class AdjudicateTickToolTest {
           .containsExactlyInAnyOrderElementsOf(expected.subList(1, expected.size()));
     }
     assertThat(samples.keySet())
-        .as("87 条样本一条不漏（77 条有目标声明 + 10 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）")
-        .hasSize(87);
+        .as("94 条样本一条不漏（77 条有目标声明 + 17 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）")
+        .hasSize(94);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

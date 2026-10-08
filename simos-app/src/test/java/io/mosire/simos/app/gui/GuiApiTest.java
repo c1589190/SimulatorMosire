@@ -833,7 +833,6 @@ class GuiApiTest {
             915_000L,
             950,
             12L,
-            List.of(),
             Map.of(new CommodityId("grain"), 8_300L),
             Map.of(),
             0L);
@@ -848,7 +847,6 @@ class GuiApiTest {
             91_500L,
             0,
             0L,
-            List.of(),
             Map.of(),
             Map.of(),
             0L);

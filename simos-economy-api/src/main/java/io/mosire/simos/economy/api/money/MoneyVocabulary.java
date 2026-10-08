@@ -194,10 +194,15 @@ public final class MoneyVocabulary {
    * CurrencyDef#displayName()} ⇒ 单看这一栏就知道 "1 银是 1000 还是 100 毫"以及"它叫什么"。
    *
    * <p>★★ <b>权威是世界状态</b>（{@code EconomyData.currencies()}）：本读口是"当前世界表"的门面，见类注的代价说明。
+   *
+   * <p>★★ <b>返回防御性不可变副本</b>（{@code List.copyOf}；修 SpotBugs {@code MS_EXPOSE_REP}：改前直接返回 {@code
+   * installedDefs}，内部表被交到调用方手里）。★ <b>没有调用方依赖"活视图"</b>：{@link #install} 是<b>整表换引用</b>（不就地改
+   * 列表），故副本与内部表在语义上逐值相同、保序相同；而 {@code installedDefs} 本来就只由 {@code List.copyOf} 产出（见 {@link
+   * #normalizeDefs}） ⇒ {@code List.copyOf} 命中 JDK 的"已是不可变列表则原样返回"快路径，**零拷贝零分配**。
    */
   public static List<CurrencyDef> allCurrencyDefs() {
     synchronized (LOCK) {
-      return installedDefs;
+      return List.copyOf(installedDefs);
     }
   }
 
@@ -205,10 +210,13 @@ public final class MoneyVocabulary {
    * ★★ <b>全部货币工具</b>（保序：声明序 = 词表序）—— 读口把它发成 {@code moneyInstruments}。
    *
    * <p>★ 逐工具的守恒（M1.6）要读的就是这一栏：币种总量恒定<b>不等于</b>逐工具恒定（同一币种下，银币与银票的增删是两件事）。
+   *
+   * <p>★★ <b>返回防御性不可变副本</b>（{@code List.copyOf}；同 {@link #allCurrencyDefs()} 的 {@code
+   * MS_EXPOSE_REP} 修法与理由，含"无活视图调用方"与"零分配快路径"两条）。
    */
   public static List<MoneyInstrument> allInstruments() {
     synchronized (LOCK) {
-      return installedInstruments;
+      return List.copyOf(installedInstruments);
     }
   }
 

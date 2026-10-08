@@ -82,7 +82,10 @@ class McpPortTopologyTest {
           "simos.unit.get",
           "simos.unit.list");
 
-  /** **非窄写**的写工具（40 条）：3 条通用写 + D1–P7 的组合/编排写 + S3a 的 6 条家户/人口组合写（都不继承 AbstractNarrowWriteTool）。 */
+  /**
+   * **非窄写**的写工具（44 条）：3 条通用写 + D1–P7 的组合/编排写 + S3a 的 6 条家户/人口组合写 + 2026-10-09 按实测补入 A1/A2a 的 4 条
+   * {@code simos.gov.*} 货币工具（都不继承 AbstractNarrowWriteTool）。
+   */
   private static final List<String> NON_NARROW_WRITES =
       List.of(
           "sd.AdjudicateTick",
@@ -112,16 +115,20 @@ class McpPortTopologyTest {
           "simos.gov.applyStaffing",
           "simos.gov.assignPosts",
           "simos.gov.createOffice",
+          "simos.gov.defineCurrency",
           "simos.gov.dismiss",
           "simos.gov.dispatchTeam",
           "simos.gov.expandHousehold",
+          "simos.gov.issueMoney",
           "simos.gov.openPostsToMarket",
           "simos.gov.recruit",
           "simos.gov.remit",
+          "simos.gov.renameCurrency",
           "simos.gov.retireStaff",
           "simos.gov.selectExaminees",
           "simos.gov.setBudgetPolicy",
           "simos.gov.setEstablishment",
+          "simos.gov.setFxRate",
           "simos.gov.transferTreasury",
           "simos.province.apply",
           "simos.province.assignCities",
@@ -215,9 +222,22 @@ class McpPortTopologyTest {
   private static final List<String> OTHER_NARROW_WRITES =
       List.of("simos.army.recordCombat", "social.UpdateCity", "actor.AdjustAccounts");
 
-  /** GM 组的 60 条窄写：21 sd + 8 map + 28 unit + 3 其他；**都不是**通用写。 */
+  /**
+   * ★★ <b>B2（2026-10-08）市场区的 3 条窄写工具名</b>（都继承 {@code AbstractNarrowWriteTool}；工具名 ≠ 命令类型）。
+   *
+   * <p>2026-10-09 按实测补入：这三条当时没进任何名单 ⇒ GM 桶与 {@code GM_NARROW_WRITES} 对不上而红。
+   */
+  private static final List<String> ECONOMY_ZONE_WRITES =
+      List.of(
+          "simos.economy.defineMarketZone",
+          "simos.economy.reassignZoneHexes",
+          "simos.economy.mergeMarketZones");
+
+  /** GM 组的 63 条窄写：21 sd + 8 map + 3 economy zone + 28 unit + 3 其他；**都不是**通用写。 */
   private static final List<String> GM_NARROW_WRITES =
-      concat(SD_NARROW_WRITES, MAP_WRITES, UNIT_WRITES, OTHER_NARROW_WRITES);
+      concat(
+          concat(SD_NARROW_WRITES, MAP_WRITES),
+          concat(ECONOMY_ZONE_WRITES, concat(UNIT_WRITES, OTHER_NARROW_WRITES)));
 
   private static final Duration PORT_RELEASE_WAIT = Duration.ofSeconds(5);
 
@@ -237,7 +257,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 37 + 非窄写 56 + 窄写 60 = 153）。 */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 37 + 非窄写 60 + 窄写 63 = 160；2026-10-09 按实测补入 A1/A2a/B2 的 7 条）。 */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -245,7 +265,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（37 读 + 56 非窄写 + 60 窄写 = 153）")
+          .as("J1：唯一口 = GM 组（37 读 + 60 非窄写 + 63 窄写 = 160）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

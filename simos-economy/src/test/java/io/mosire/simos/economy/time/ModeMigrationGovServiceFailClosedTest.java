@@ -269,7 +269,6 @@ class ModeMigrationGovServiceFailClosedTest {
         laborMilli,
         1_000,
         0L,
-        List.of(),
         Map.of(),
         Map.of(),
         0L);

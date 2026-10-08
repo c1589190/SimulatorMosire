@@ -83,7 +83,18 @@ class GovServiceCommitmentC7Test {
 
   // ── ① 队列：GOV 不进队列 / 只改写 PRODUCTION / id 撞车 fail-closed ─────────────────────
 
-  /** 带 GOV_SERVICE 的 activity 不进队列：行逐值不变；计划里既没有它的决定，也没有新发的 PRODUCTION 行。 */
+  /**
+   * 带 GOV_SERVICE 的 activity 不进队列：行逐值不变；计划里没有**落在它自己的 unit 上**的决定，也没有新发的 PRODUCTION 行。
+   *
+   * <p>★★ <b>2026-10-09 迁移（口径改写，如实记 + 实测依据）</b>：改前这里是 {@code plan.decisions()).isEmpty()} —— 在
+   * {@code 1e5707b7}（家户统一活动选择器 + 保留价/市价套利）之前，它的确等价于"GOV_SERVICE 的 unit 不进队列"（队列里当时只可能 有生产 unit
+   * 的决定）。套利活动上线后，同一户还会为 {@code activity:arbitrage:<户>} 发一条决定（本夹具里 {@code maxAbsorbableLaborMilli=0}
+   * / {@code ARBITRAGE_NO_NEED}，不产生任何劳动承诺）⇒ **"一条决定都没有"不再是本用例的原意**。 断言因此收成"没有任何决定落在 GOV_SERVICE 自己的
+   * unit 上"：<b>判别力不变</b>（坏实现把 GOV 的 unit 排进队列 ⇒ 该 unitId 出现 ⇒ 当场红）。
+   *
+   * <p>★ 本条<b>不是</b>本次"债引用拆表"引入的：在 {@code b89efb02} 的父提交 {@code a2ae3a04} 上跑同一套测试，本用例就已经红在同一条
+   * arbitrage 决定上（实测，见交账报告）。行不变性那三条断言（{@code containsOnlyKeys(GOV)} 等）原样保留、一字未放松。
+   */
   @Test
   void laborQueueSkipsGovServiceActivityAndKeepsTheRowWhole() {
     HouseholdLaborCommitment govService = commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L);
@@ -98,7 +109,9 @@ class GovServiceCommitmentC7Test {
         .containsOnlyKeys(GOV);
     assertThat(session.sheet().laborCommitments().get(GOV)).isEqualTo(govService);
     LaborQueueBook.Plan plan = report.planOf(H).orElseThrow();
-    assertThat(plan.decisions()).as("GOV_SERVICE 的 unit 不进队列（没有任何决定）").isEmpty();
+    assertThat(plan.decisions())
+        .as("GOV_SERVICE 的 unit 不进队列（没有任何决定落在它身上）")
+        .noneMatch(decision -> decision.offer().unitId().equals(UNIT));
     assertThat(plan.preservedLaborMilli()).as("整额保留").isEqualTo(4_000L);
     assertThat(plan.allocatedLaborMilli()).isEqualTo(4_000L);
   }
@@ -363,7 +376,6 @@ class GovServiceCommitmentC7Test {
         laborMilli,
         1_000,
         0L,
-        List.of(),
         Map.of(),
         Map.of(),
         0L);

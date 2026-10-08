@@ -67,6 +67,15 @@ class MarketTopologyBookSingleRegionTest {
     assertThat(topology.regionOf(H2)).isSameAs(region);
   }
 
+  /**
+   * ★★ <b>币种不一致 ⇒ 不合并成单区，退回旧"城市节点 + tier 半径"路径</b>。
+   *
+   * <p>★★ <b>2026-10-09 迁移（口径改写，如实记 + 实测依据）</b>：改前这里写的是 {@code hasSize(1)}，与**本用例自己的名字与意图矛盾**
+   * ——"退回旧城市节点路径"在旧口径里就是**每个城市各一个区**（{@code MarketTopologyBook} 类注：币种不一致时才退回"城市节点 + tier
+   * 半径"路径），两个不同币种的城市 ⇒ 两个区。<b>实测</b>（本条在 {@code b89efb02} 的父提交 {@code a2ae3a04} 上就已经红在这句 {@code
+   * hasSize(1)} 上）拿到的是两个区、各自带自己城市的 tier 半径 ⇒ 断言按实测收成 {@code hasSize(2)} 并**加强**：两区各自的 nodeId /
+   * radiusHex / numeraire / 成员格逐条钉死（"不合并"因此比原来更难被绕过 —— 原来只要有一个区就能过）。
+   */
   @Test
   void differentNumeraireFallsBackToLegacyCityRadiusPath() {
     LinkedHashMap<HexCoord, Market> markets = new LinkedHashMap<>();
@@ -76,14 +85,20 @@ class MarketTopologyBookSingleRegionTest {
 
     MarketTopology topology = MarketTopologyBook.from(state(markets, social));
 
-    assertThat(topology.regions()).as("不同币种不合并成单区").hasSize(1);
-    assertThat(topology.regions().get(0).node().nodeId())
-        .as("★ 退回旧城市节点路径（非 single-region）")
-        .isNotEqualTo("single-region");
-    assertThat(topology.regions().get(0).node().radiusHex())
-        .as("旧路径保留城市的 tier 半径（MarketTown = 2）")
-        .isEqualTo(2);
-    assertThat(topology.regions().get(0).node().radiusHex()).isNotZero();
+    assertThat(topology.regions()).as("不同币种不合并成单区：旧路径 = 每个城市各一个区（city-a 银 / city-b 铜）").hasSize(2);
+    assertThat(topology.regions().stream().map(region -> region.node().nodeId()).toList())
+        .as("两区都是旧城市节点，没有任何 single-region")
+        .containsExactlyInAnyOrder("city-a", "city-b");
+    MarketRegion regionA = topology.regionOf(H1);
+    MarketRegion regionB = topology.regionOf(H2);
+    assertThat(regionA.node().radiusHex()).as("旧路径保留城市的 tier 半径（MarketTown = 2）").isEqualTo(2);
+    assertThat(regionB.node().radiusHex()).as("旧路径保留城市的 tier 半径（Town = 4）").isEqualTo(4);
+    assertThat(regionA.node().numeraire())
+        .as("各区法定币 = 该格计价币，不做静默换汇")
+        .isEqualTo(MoneyVocabulary.SILVER_CURRENCY);
+    assertThat(regionB.node().numeraire()).isEqualTo(new CurrencyId("copper"));
+    assertThat(regionA.members()).as("每区只含自己城市的格").containsExactly(H1);
+    assertThat(regionB.members()).containsExactly(H2);
   }
 
   @Test

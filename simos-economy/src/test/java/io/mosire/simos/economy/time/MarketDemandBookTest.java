@@ -66,7 +66,6 @@ class MarketDemandBookTest {
         laborMilli,
         1000,
         0L,
-        List.of(),
         needs,
         Map.of(),
         0L);

@@ -144,16 +144,18 @@ final class GovernmentDebtIssuance {
         treasuryMoney.put(currency, Math.addExact(treasuryBefore, take));
         treasury.replaceMoney(treasuryMoney);
         // ③ 同一条债务写口（与市场信用共用 DebtContractBook）
-        DebtContract contract =
-            DebtContractBook.upsert(
-                debts,
-                governmentHousehold,
-                lender,
-                new DebtUnit.Money(currency),
-                DebtTerms.legacyDefault(),
-                take,
-                day,
-                OptionalLong.of(currentCycle + 1L));
+        // ★ 返回值（新/合并后的 DebtContract）**刻意不接**：引用表由 EconomyData 构造期整表重建（见下），
+        //   本方法拿不到也不需要那条合同的句柄 —— 接了就只是 DLS_DEAD_LOCAL_STORE（SpotBugs）。
+        //   调用本身（写入副作用）原样保留。
+        DebtContractBook.upsert(
+            debts,
+            governmentHousehold,
+            lender,
+            new DebtUnit.Money(currency),
+            DebtTerms.legacyDefault(),
+            take,
+            day,
+            OptionalLong.of(currentCycle + 1L));
         // ★★ 2026-10-09 选项 A：改前这里把新合同的派生引用补进政府家户**行**；拆表后引用表由
         //   EconomyData 构造期的 DebtReferenceReconciler 按（本会话刚写过的）债务工作表整表重建
         //   ⇒ 会话内不必再补引用。★ 那一行本身不因本次发债而变（合同表才是被改的那张）。

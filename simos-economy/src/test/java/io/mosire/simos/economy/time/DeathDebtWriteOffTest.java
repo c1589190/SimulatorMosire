@@ -169,7 +169,6 @@ class DeathDebtWriteOffTest {
             population * 700L,
             700,
             0L,
-            List.of(DEBT),
             Map.of(),
             Map.of(),
             0L);
@@ -181,7 +180,6 @@ class DeathDebtWriteOffTest {
             0L,
             0,
             0L,
-            List.of(),
             Map.of(),
             Map.of(),
             0L);
