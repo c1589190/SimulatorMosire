@@ -402,6 +402,13 @@ public final class CatalogTool implements AgentTool {
               "q, r, commodity, price(> 0)（★ 该格无市场 ⇒ 用 Silver 计价创建空市场；有市场 ⇒ 只 upsert 该商品价；"
                   + "只写 markets，不造商品/货币）"),
           Map.entry(
+              "economy.SetMarketNumeraire",
+              "q, r, numeraire(币种 id，须在世界词表里)（★ GM-only：把**某一格市场**的计价币改成另一种币；"
+                  + "该格必须已有市场行，否则拒 market-missing；币种不在词表 ⇒ 拒 unknown-currency；"
+                  + "与现值相同 ⇒ 拒 numeraire-unchanged；★ 只写 markets 一格，价格表逐值保留、"
+                  + "**不折算任何余额与价格**（世界无汇率）；改后该世界出现两种计价币 ⇒ 买方支付币 ≠ 卖方收款币的"
+                  + "成交尝试一律具名拒 currency_mismatch（I19））"),
+          Map.entry(
               "economy.AddDemand",
               "scope(HOUSEHOLD|HEX), household(scope=HOUSEHOLD 必填), hex{q,r}?(scope=HEX 必填),"
                   + " commodity, kind(RECURRING|ONE_OFF), unit(TOTAL|PER_CAPITA), quantityPerCycle(> 0),"
@@ -559,6 +566,17 @@ public final class CatalogTool implements AgentTool {
                   + "是 actor.AdjustAccounts 的活，两者必须同批提交（一批 = 一条 revision）；"
                   + "currency 不在该 GOV 的 issuable 里 ⇒ currency-not-issuable 具名拒；"
                   + "记录 id 是确定性派生 gov-issue-<政府>-<日>-<币种>-<序号>，不用随机 UUID）"),
+          // ★★ A2a（2026-10-08 汇率阶段 2 §3.3）：官方汇率 —— 新命令类型 ⇒ 本表必须同批登记
+          //   （构造成员守卫逐条比对注册面，缺项当场抛 ⇒ Shell.start 起不来，且编译期看不见）。
+          Map.entry(
+              "economy.SetOfficialRate",
+              "govUnitId, base, quote, buyPerMille(>0, per-mille), sellPerMille(>0, per-mille), reason?"
+                  + "（★ GM-only：只写该 GOV 的 officialRates 一条（币对键 base|quote）—— 官方汇率是**状态**"
+                  + "（随 governments 进 ChangeSet/Codec），实际汇率永远是**读数**（成交的加权均价，不落盘）；"
+                  + "base == quote ⇒ same-currency；币种不在世界词表 ⇒ currency-not-defined；"
+                  + "逐字相同 ⇒ rate-unchanged（不做静默幂等）。★ 定下它就激活该币对的外汇市场：政府外汇窗口"
+                  + "bidP=buyPerMille / askP=sellPerMille，储备上限 = 该 GOV 对该币种累计发行量的 500‰；"
+                  + "没定过汇率的世界没有任何外汇面）"),
           Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"

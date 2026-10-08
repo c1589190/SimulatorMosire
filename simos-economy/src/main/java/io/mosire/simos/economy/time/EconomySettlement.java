@@ -1709,6 +1709,22 @@ public final class EconomySettlement {
       MarketArbitragePlan arbitragePlan = arbitrageCollector.toPlan();
       marketRound = marketRound.withArbitrage(arbitragePlan);
       logArbitrageRound(day, arbitragePlan);
+      // ★★ A2a（阶段 2）：把"这个世界有哪些政府外汇窗口、储备上限多少"带进本轮 ——
+      //   唯一来源 = EconomyData.governments()（官方汇率是状态）+ moneyIssuances（累计发行量 ⇒ 储备上限）。
+      //   ★ 没有任何官方汇率 ⇒ FxRoundInput.none() ⇒ 本轮整段没有外汇面（旧世界逐值不变）。
+      FxRoundInput fxInput = FxRoundInput.of(base.governments(), base.moneyIssuances());
+      marketRound = marketRound.withFx(fxInput);
+      if (fxInput.isActive() && TRACE.isDebugEnabled()) {
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "MARKET_FX_WINDOWS",
+                    EconomyLogSource.ECONOMY_FX,
+                    "day",
+                    day,
+                    "windows",
+                    fxInput.windows().size()));
+      }
       MarketSettlement.MarketOutcome outcome =
           MarketSettlement.clearOncePerCycle(
               markets,

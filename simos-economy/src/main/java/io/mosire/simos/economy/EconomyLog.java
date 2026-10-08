@@ -57,6 +57,14 @@ public final class EconomyLog {
   public static final String ENTRY_LOGGER_NAME = ROOT_LOGGER_NAME + ".entry";
   public static final String POPULATION_LOGGER_NAME = ROOT_LOGGER_NAME + ".population";
   public static final String COMMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".command";
+
+  /**
+   * ★★ <b>A2a（2026-10-08）：外汇面</b>—— FX 撮合、官方/实际汇率读数、政府外汇窗口报价与具名拒、异币支付具名拒。
+   *
+   * <p>★ 单开一档的理由：外汇是"政策价 vs 市场价"的现场，排查时必须能把这一面单独升到 DEBUG/TRACE， 而不把整个市场面的逐笔明细一起打开。
+   */
+  public static final String FX_LOGGER_NAME = ROOT_LOGGER_NAME + ".fx";
+
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
 
   private static final Logger SETTLEMENT = LoggerFactory.getLogger(SETTLEMENT_LOGGER_NAME);
@@ -68,6 +76,7 @@ public final class EconomyLog {
   private static final Logger POPULATION = LoggerFactory.getLogger(POPULATION_LOGGER_NAME);
   private static final Logger COMMAND = LoggerFactory.getLogger(COMMAND_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
+  private static final Logger FX = LoggerFactory.getLogger(FX_LOGGER_NAME);
 
   private EconomyLog() {}
 
@@ -114,6 +123,11 @@ public final class EconomyLog {
   /** 逐笔原始事件（转移/成交槽/债务变动/迁移 move）。 */
   public static Logger trace() {
     return TRACE;
+  }
+
+  /** 外汇面：FX 撮合/官方与实际汇率读数/政府外汇窗口报价与具名拒（A2a）。 */
+  public static Logger fx() {
+    return FX;
   }
 
   /**

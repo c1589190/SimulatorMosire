@@ -46,6 +46,7 @@ import io.mosire.simos.app.tools.write.GovPayTool;
 import io.mosire.simos.app.tools.write.GovRenameCurrencyTool;
 import io.mosire.simos.app.tools.write.GovSetBudgetPolicyTool;
 import io.mosire.simos.app.tools.write.GovSetEstablishmentTool;
+import io.mosire.simos.app.tools.write.GovSetFxRateTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.MyPacketTool;
 import io.mosire.simos.app.tools.write.PacketIntentTool;
@@ -186,7 +187,9 @@ public final class DecisionCallerFactory {
           //   （只能自己的 GOV、越权 ⇒ 具名 REJECTED），不因为进了白名单而放大权限。
           GovDefineCurrencyTool.NAME,
           GovRenameCurrencyTool.NAME,
-          GovIssueMoneyTool.NAME);
+          GovIssueMoneyTool.NAME,
+          // ★★ A2a（阶段 2 §3.3）：官方汇率是政府的政策价 ⇒ 决策人经审批链可定，但只能作用于自己的 GOV。
+          GovSetFxRateTool.NAME);
 
   /** 决策人身份的实例 id 前缀（与将来的会话 id 同源：按决策人派生，不隐式取全局状态）。 */
   public static final String INSTANCE_ID_PREFIX = "decision-maker:";

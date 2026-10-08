@@ -251,11 +251,14 @@ final class OperatorSettlement {
                   + debt.principal() * debt.terms().interestRatePerMillePerCycle() / 1_000L;
           debtPrincipal += debt.principal();
           debtServiceDue += due;
+          // ★★ A2b（I24 / M7-③）：**逐币种分别算** —— 实物债看该商品的库存、货币债看**该债币种**的现金。
+          //   改前是 `case DebtUnit.Money ignored -> cashOf(household, householdMoney)`：把该户**全部币种**的余额
+          //   1:1 加总当作"能还这笔钱的钱" ⇒ 一户只有铜也能被读成"银债还得起"。现在"能还多少"只由**债的那一种钱**回答。
           long available =
               switch (debt.unit()) {
                 case DebtUnit.Commodity commodity ->
                     stockOf(household, commodity.commodity(), householdGoods);
-                case DebtUnit.Money ignored -> cashOf(household, householdMoney);
+                case DebtUnit.Money money -> cashOf(household, money.currency(), householdMoney);
               };
           if (due > available) {
             debtStress = true;
@@ -269,7 +272,17 @@ final class OperatorSettlement {
       String reason = prev.lastReason();
       // ★★ E1：自用维生硬门（唯一判据在 canSelfProvision）—— 提前算好，下面四条新路径都读同一个答案。
       long selfUsable = selfUsableOf(household, unit, industry, index, householdGoods);
-      long cash = cashOf(household, householdMoney);
+      // ★★ A2b（I24 / M7-③）：{@code cash} 的**口径 = 本币**（该 unit 所在格市场的计价币）余额 ——
+      //   改前它是"该户全部币种 1:1 求和"。它只被用作 `cash > 0` 的"有没有钱"判据（下面两条恢复路径），
+      //   而"有钱"这件事必须按本币问：外币不能垫本币的下一周期投入（世界没有汇率 ⇒ 不能折算）。
+      //   ★ 说不出本币（该 unit 的 hex 解析不出/该格没有市场）⇒ 记 0 并具名 DEBUG，**不**跨币种求和兜底。
+      HexCoord hex = IndustryHexKeys.hexKeyOf(industry.id()).map(HexCoord::parse).orElse(null);
+      Market bookMarket = hex == null ? null : markets.get(hex);
+      CurrencyId bookCurrency = bookMarket == null ? null : bookMarket.numeraire();
+      long cash = cashOf(household, bookCurrency, householdMoney);
+      if (household != null) {
+        logForeignCurrenciesExcluded(household, bookCurrency, householdMoney, id, industry.id());
+      }
       boolean canSelfProvision =
           canSelfProvision(unit, household, industry, index, householdEconomies, householdGoods);
       switch (status) {
@@ -381,11 +394,10 @@ final class OperatorSettlement {
       }
       long plannedScale = ProductionProcessBook.plannedCapacityScaleOf(unit, industry, index, prev);
       long costEstimate = 0L;
-      HexCoord hex = IndustryHexKeys.hexKeyOf(industry.id()).map(HexCoord::parse).orElse(null);
+      // ★ hex/bookMarket 已在上面（cash 口径处）算过，这里复用同一个答案（唯一拼写点，不重算）。
       if (hex != null) {
-        Market market = markets.get(hex);
         ProducerCostBook.Estimate estimate =
-            ProducerCostBook.estimate(unit, industry, index, market, relations.get(id));
+            ProducerCostBook.estimate(unit, industry, index, bookMarket, relations.get(id));
         costEstimate = estimate.unitCostEstimateMilli() * plannedScale / 1_000L;
       }
       // ★ 无市场轮 ⇒ 没有新证据：lastCycle* 与滞销读数保持上一周期原值，不用 0 覆盖。
@@ -494,17 +506,68 @@ final class OperatorSettlement {
         0L);
   }
 
+  /**
+   * ★★ <b>A2b（I24 / M7-③）：该户在**某一种币**上的现金余额</b>（唯一算式；不跨币种求和）。
+   *
+   * <p>★★ <b>为什么签名里必须有 {@link CurrencyId}</b>：改前是 {@code cashOf(household, householdMoney)} —— 把该户
+   * <b>全部币种</b>的余额按 1:1 加总。那个数对"能不能还一笔<b>银</b>债 / 能不能垫下一周期投入"这两个问题都是错的： 世界没有汇率（I17），铜与银既不能相加也不能折算。⇒
+   * 读现金一律"按币种问"，问不出币种（该 unit 没有本地市场 ⇒ {@code bookCurrency == null}）就返回 0（fail-closed），<b>不</b>退回求和。
+   *
+   * <p>★ 解析不到家户、或没有该币种的条目 ⇒ 0（照 P2-A §13.3：账户主体只有家户，不伪造经营者钱包）。
+   */
   private static long cashOf(
-      HouseholdId household, Map<HouseholdId, Map<CurrencyId, Long>> householdMoney) {
-    // ★★ P2-A §13.3：账户主体只有家户 —— 解析不到家户就没有可读的现金（不伪造经营者钱包）。
-    if (household == null) {
+      HouseholdId household,
+      CurrencyId currency,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney) {
+    if (household == null || currency == null) {
       return 0L;
     }
-    long sum = 0L;
-    for (long value : householdMoney.getOrDefault(household, Map.of()).values()) {
-      sum += value;
+    return householdMoney.getOrDefault(household, Map.of()).getOrDefault(currency, 0L);
+  }
+
+  /**
+   * ★★ <b>A2b（I24 / M7-③）：本币口径下"被排除掉的币种"逐币种具名记一条 DEBUG</b>（不写任何状态）。
+   *
+   * <p>★ 只发<b>确实持有</b>的非本币币种；本币与零额条目不发。说不出本币（{@code bookCurrency == null}）时也发一条具名读数 —— 那是"本币现金记
+   * 0"的原因，必须与"真的没钱"分得开。
+   */
+  private static void logForeignCurrenciesExcluded(
+      HouseholdId household,
+      CurrencyId bookCurrency,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+      ProductionUnitId unitId,
+      IndustryId industryId) {
+    if (!LOG.isDebugEnabled()) {
+      return;
     }
-    return sum;
+    Map<CurrencyId, Long> wallet = householdMoney.getOrDefault(household, Map.of());
+    Map<String, Long> excluded = new java.util.TreeMap<>();
+    for (Map.Entry<CurrencyId, Long> entry : wallet.entrySet()) {
+      if ((bookCurrency == null || !entry.getKey().equals(bookCurrency))
+          && entry.getValue() != 0L) {
+        excluded.merge(entry.getKey().value(), entry.getValue(), Long::sum);
+      }
+    }
+    if (excluded.isEmpty() && bookCurrency != null) {
+      return;
+    }
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "OPERATOR_FOREIGN_CURRENCY_EXCLUDED",
+                EconomyLogSource.ECONOMY_OPERATOR_STATE,
+                "household",
+                household.value(),
+                "unit",
+                unitId.value(),
+                "industry",
+                industryId.value(),
+                "bookCurrency",
+                bookCurrency == null ? "(说不出：该 unit 没有本地市场)" : bookCurrency.value(),
+                "excluded",
+                excluded,
+                "note",
+                "本币现金 = 单一币种口径：其他币种既不相加也不折算（世界无汇率）"));
   }
 
   private static long stockOf(

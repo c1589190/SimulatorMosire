@@ -370,6 +370,13 @@ public final class EconomyClearRegionHandler
             .withPledges(pledges)
             .withClassShares(classShares)
             .withModeTransitions(modeTransitions)
+            // ★★ 2026-10-08（A2a 实测修复）：**商号必须先于组织摘**。守卫只判"商号 → 组织"这一个方向
+            //   （EconomyData 第 30 组件：组织表非空时每个商号必须指名一个现存组织），而每个 with* 都会
+            //   重跑一次构造期守卫 ⇒ 先摘组织、商号还留着的那一链会当场 fail-closed
+            //   （实测：`economy.ClearRegion` 对两个行政区都报"商号指名的生产组织不存在"）。
+            //   先摘商号（此时组织还在，合法中间态）再摘组织 ⇒ 两处都清爽，语义与类注的"商号随它指名的
+            //   组织一起移除"逐字相同。
+            .withMerchantFirms(merchantFirms)
             .withProductionEnterprises(enterprises)
             .withLaborCommitments(laborCommitments)
             .withFlows(flows)

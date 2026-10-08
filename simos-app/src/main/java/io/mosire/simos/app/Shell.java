@@ -82,7 +82,9 @@ import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
+import io.mosire.simos.economy.spi.EconomySetMarketNumeraireHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
+import io.mosire.simos.economy.spi.EconomySetOfficialRateHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
 import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
@@ -647,6 +649,10 @@ public final class Shell implements AutoCloseable {
                 // ── economy（R4-E2a）：价格 / 需求账本 / 候选预设 —— GM simos.command.submit 路径可用；
                 //   进入采用算法（E2b）不在本片。──
                 new EconomySetMarketPriceHandler(),
+                // ── economy（A2b）：把某一格市场的计价币改成词表里的另一种币（GmOnly）。这是 A2a 账本 BLOCKED-1
+                //   的最小前置命令面（否则"买持铜/卖只收银"的多计价币世界造不出来），也是 B2「市场区法定币」要面对的那一维。
+                //   只写 markets 一格；**不折算**任何余额与价格（世界无汇率）。──
+                new EconomySetMarketNumeraireHandler(),
                 new EconomyAddDemandHandler(),
                 new EconomyCancelDemandHandler(),
                 new EconomyRegisterCandidateHandler(),
@@ -700,6 +706,8 @@ public final class Shell implements AutoCloseable {
                 //   （targetPaths 恒空）、不进决策令桶。──
                 new EconomyDefineCurrencyHandler(),
                 new EconomyRenameCurrencyHandler(),
+                // ★★ A2a（阶段 2 §3.3）：设/改官方汇率（官方汇率是状态；实际汇率永远是读数）。
+                new EconomySetOfficialRateHandler(),
                 new EconomyRecordMoneyIssuanceHandler(),
                 // ── gov（Z2 2026-10-23，gov 首个 command handler 批）：行政编制计划 / 国库预算政策整体设置。
                 //   ★ GM-only（V1 冻结）：标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；

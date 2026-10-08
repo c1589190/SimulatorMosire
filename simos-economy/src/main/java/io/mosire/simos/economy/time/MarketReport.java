@@ -73,7 +73,8 @@ public record MarketReport(
     List<PriceUpdate> priceUpdates,
     List<SellerOutcome> sellerOutcomes,
     List<BuyerOutcome> buyerOutcomes,
-    List<CreditFill> creditFills) {
+    List<CreditFill> creditFills,
+    FxRoundResult fx) {
 
   /**
    * ★★ <b>跨区结算暂设即时</b>（M2.0 #4 的具名标记）：货款与运费在发运日结清，货在 ETA 之后到。 ★ L3 的读数契约接这一位；本批不做"到货付款"。★
@@ -91,6 +92,48 @@ public record MarketReport(
   private static final Map<Object, Map<Fill, Long>> REGULATED_TARIFF_BY_REPORT =
       java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
+  /**
+   * ★★ <b>旧形状兼容构造器（A2a）</b>：没有外汇读数的报告（{@link FxRoundResult#none()}）。
+   *
+   * <p>★ 它保住的正是"既有构造点/既有夹具一字不改仍编译"这一条：{@code fx} 是 A2a 新增的第 17 个组件。
+   */
+  public MarketReport(
+      long day,
+      MarketTrigger trigger,
+      boolean carrierPresent,
+      List<Fill> fills,
+      List<Unfilled> unfilled,
+      List<RouteUsage> routes,
+      long freightPaidMilli,
+      long freightUncollectedMilli,
+      long scheduledLossMilli,
+      long immediateFills,
+      long crossRegionFills,
+      PriceMode priceMode,
+      List<PriceUpdate> priceUpdates,
+      List<SellerOutcome> sellerOutcomes,
+      List<BuyerOutcome> buyerOutcomes,
+      List<CreditFill> creditFills) {
+    this(
+        day,
+        trigger,
+        carrierPresent,
+        fills,
+        unfilled,
+        routes,
+        freightPaidMilli,
+        freightUncollectedMilli,
+        scheduledLossMilli,
+        immediateFills,
+        crossRegionFills,
+        priceMode,
+        priceUpdates,
+        sellerOutcomes,
+        buyerOutcomes,
+        creditFills,
+        FxRoundResult.none());
+  }
+
   public MarketReport {
     Objects.requireNonNull(trigger, "trigger");
     Objects.requireNonNull(priceMode, "priceMode");
@@ -101,6 +144,7 @@ public record MarketReport(
     sellerOutcomes = sellerOutcomes == null ? List.of() : List.copyOf(sellerOutcomes);
     buyerOutcomes = buyerOutcomes == null ? List.of() : List.copyOf(buyerOutcomes);
     creditFills = creditFills == null ? List.of() : List.copyOf(creditFills);
+    fx = fx == null ? FxRoundResult.none() : fx;
   }
 
   /** 只按<b>引用身份</b>相等的外部键（见 {@link #REGULATED_TARIFF_BY_REPORT}）。 */
@@ -150,6 +194,51 @@ public record MarketReport(
       List<BuyerOutcome> buyerOutcomes,
       List<CreditFill> creditFills,
       Map<Fill, Long> tariffByFill) {
+    return withRegulatedTariff(
+        day,
+        trigger,
+        carrierPresent,
+        fills,
+        unfilled,
+        routes,
+        freightPaidMilli,
+        freightUncollectedMilli,
+        scheduledLossMilli,
+        immediateFills,
+        crossRegionFills,
+        priceMode,
+        priceUpdates,
+        sellerOutcomes,
+        buyerOutcomes,
+        creditFills,
+        tariffByFill,
+        FxRoundResult.none());
+  }
+
+  /**
+   * ★★ <b>A2a：带本轮外汇读数的报告工厂</b>（区间税费那套逻辑一个字不改，只是把 {@code fx} 一起带进 record）。
+   *
+   * <p>★ 旧签名保留并委托到本方法（{@code fx = none()}）⇒ 既有调用点/夹具零串改。
+   */
+  public static MarketReport withRegulatedTariff(
+      long day,
+      MarketTrigger trigger,
+      boolean carrierPresent,
+      List<Fill> fills,
+      List<Unfilled> unfilled,
+      List<RouteUsage> routes,
+      long freightPaidMilli,
+      long freightUncollectedMilli,
+      long scheduledLossMilli,
+      long immediateFills,
+      long crossRegionFills,
+      PriceMode priceMode,
+      List<PriceUpdate> priceUpdates,
+      List<SellerOutcome> sellerOutcomes,
+      List<BuyerOutcome> buyerOutcomes,
+      List<CreditFill> creditFills,
+      Map<Fill, Long> tariffByFill,
+      FxRoundResult fx) {
     MarketReport report =
         new MarketReport(
             day,
@@ -167,7 +256,8 @@ public record MarketReport(
             priceUpdates,
             sellerOutcomes,
             buyerOutcomes,
-            creditFills);
+            creditFills,
+            fx);
     if (tariffByFill == null || tariffByFill.isEmpty() || report.fills.isEmpty()) {
       return report;
     }
@@ -188,6 +278,11 @@ public record MarketReport(
       REGULATED_TARIFF_BY_REPORT.put(new IdentityKey(report), byFill);
     }
     return report;
+  }
+
+  /** ★★ A2a：本轮的外汇读数（没有 ⇒ {@link FxRoundResult#none()}，不是 null；构造期已归一）。 */
+  public FxRoundResult fx() {
+    return fx;
   }
 
   /** ★★ <b>D-027：单 hex 即时成交笔数</b>（{@code immediate && !from.equals(to)}）—— 同一格不跨 hex，不计。 */

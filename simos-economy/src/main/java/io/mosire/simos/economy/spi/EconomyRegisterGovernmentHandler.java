@@ -351,6 +351,7 @@ public final class EconomyRegisterGovernmentHandler
                   + " 的国库；同一家户不能同时是两届政府的国库");
         }
       }
+      Government previous = base.governments().get(governmentId);
       Government government =
           new Government(
               governmentId,
@@ -358,7 +359,10 @@ public final class EconomyRegisterGovernmentHandler
               HouseholdActors.of(registration.household()),
               issuable,
               seignioragePerCycle,
-              debtIssuePerCycle);
+              debtIssuePerCycle,
+              // ★★ A2a：重复登记是同键 upsert（幂等，见 EconomySeedHandler 的注释）—— 已登记的政府若
+              //   定过官方汇率，重登记必须原样带过（否则一次"补登记"会把政策价静默清零）。
+              previous == null ? java.util.Map.of() : previous.officialRates());
       Map<GovernmentId, Government> governments = new LinkedHashMap<>(base.governments());
       governments.put(governmentId, government);
 

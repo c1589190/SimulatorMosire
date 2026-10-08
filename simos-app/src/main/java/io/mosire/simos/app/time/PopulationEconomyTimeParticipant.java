@@ -834,7 +834,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             Map<HouseholdId, Long> salaryShortfallsByHousehold = new LinkedHashMap<>();
             for (Map.Entry<HouseholdId, GovBudgetExecutionBridge.ResourceVector> entry :
                 budget.salaryShortfallByHousehold(budgetedReport).entrySet()) {
-              long value = entry.getValue().value();
+              long value = entry.getValue().valueInBookCurrency();
               if (value > 0L) {
                 salaryShortfallsByHousehold.put(entry.getKey(), value);
               }

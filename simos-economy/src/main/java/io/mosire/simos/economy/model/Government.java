@@ -2,12 +2,16 @@ package io.mosire.simos.economy.model;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.money.MoneyAuthority;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -35,7 +39,8 @@ public record Government(
     ActorRef treasury,
     Set<CurrencyId> issuable,
     long seignioragePerCycle,
-    long debtIssuePerCycle)
+    long debtIssuePerCycle,
+    Map<String, OfficialRate> officialRates)
     implements MoneyAuthority {
 
   /**
@@ -45,7 +50,23 @@ public record Government(
    */
   public Government(
       GovernmentId id, String nationRef, ActorRef treasury, Set<CurrencyId> issuable) {
-    this(id, nationRef, treasury, issuable, 0L, 0L);
+    this(id, nationRef, treasury, issuable, 0L, 0L, Map.of());
+  }
+
+  /**
+   * ★★ <b>A2a 兼容构造器：没有官方汇率的形状</b>（官方汇率表 = 空）。
+   *
+   * <p>★ 它保住的正是"旧夹具/旧载荷/旧档一字不改仍编译、仍逐值可用"这一条：{@code officialRates} 是 A2a 新增的第 7 个组件， 旧的 6 参调用点（含
+   * {@code src/test} 里的既有夹具）不必串改 —— 语义 = 这个政府<b>还没有定过任何官方汇率</b> （于是它的外汇窗口不存在，逐值退回 A2a 之前的行为）。
+   */
+  public Government(
+      GovernmentId id,
+      String nationRef,
+      ActorRef treasury,
+      Set<CurrencyId> issuable,
+      long seignioragePerCycle,
+      long debtIssuePerCycle) {
+    this(id, nationRef, treasury, issuable, seignioragePerCycle, debtIssuePerCycle, Map.of());
   }
 
   /** ★ 只给铸币、不发债的形状（2026-10-07 首批 GOV 试点调用点兼容）。 */
@@ -88,6 +109,74 @@ public record Government(
       copy.add(currency);
     }
     issuable = Collections.unmodifiableSet(copy); // ★ 冻在赋值处（SpotBugs 只认它看得见的包装）
+    // ★★ A2a：官方汇率表（键 == 值内币对）—— 跨表守卫与"政府声称发行词表里没有的钱"同族：
+    //   键与值漂开 = 有一处代码在按另一个键查它，那种失败会在很远的读口才现形。
+    if (officialRates == null) {
+      officialRates = Map.of();
+    }
+    LinkedHashMap<String, OfficialRate> rates = new LinkedHashMap<>();
+    for (Map.Entry<String, OfficialRate> entry : officialRates.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("Government.officialRates 的键/值不得为 null");
+      }
+      if (!entry.getKey().equals(entry.getValue().key())) {
+        throw new IllegalArgumentException(
+            "Government.officialRates 的键必须等于值内币对（"
+                + OfficialRate.keyOf(entry.getValue().base(), entry.getValue().quote())
+                + "）: "
+                + entry.getKey());
+      }
+      rates.put(entry.getKey(), entry.getValue());
+    }
+    officialRates = Collections.unmodifiableMap(rates);
+  }
+
+  /** ★★ <b>A2a：一个币对的官方汇率</b>（缺 ⇒ 空；"这个币对没有官方汇率"是合法状态，不是故障）。 */
+  public Optional<OfficialRate> officialRate(CurrencyId base, CurrencyId quote) {
+    return OfficialRate.find(officialRates, base, quote);
+  }
+
+  /**
+   * ★★ <b>A2a：设置/覆盖一个币对的官方汇率</b>（只换这一条；发行权、财政旋钮、其它币对的报价逐值不变）。
+   *
+   * <p>★ 它是官方汇率的<b>唯一写入形态</b>：调用方拿不到"顺手把 issuable 也改了"的口子（同类改名的 {@code
+   * CurrencyDef.withDisplayName}）。
+   */
+  public Government withOfficialRate(OfficialRate rate) {
+    Objects.requireNonNull(rate, "rate");
+    LinkedHashMap<String, OfficialRate> rates = new LinkedHashMap<>(officialRates);
+    rates.put(rate.key(), rate);
+    return new Government(
+        id, nationRef, treasury, issuable, seignioragePerCycle, debtIssuePerCycle, rates);
+  }
+
+  /**
+   * ★★ <b>只换发行权集合</b>（其它字段原样带过）：{@code DefineCurrency} 一类"给这个 GOV 加一种钱"的命令必须走它 —— 手写 {@code new
+   * Government(...)} 会在下一次新增组件时静默丢掉那个组件（本仓最贵的那类 bug）。
+   */
+  public Government withIssuable(Set<CurrencyId> nextIssuable) {
+    Objects.requireNonNull(nextIssuable, "nextIssuable");
+    return new Government(
+        id,
+        nationRef,
+        treasury,
+        nextIssuable,
+        seignioragePerCycle,
+        debtIssuePerCycle,
+        officialRates);
+  }
+
+  /** ★★ <b>只换国库 actor</b>（其它字段原样带过；官方汇率与发行权都不动）。 */
+  public Government withTreasury(ActorRef nextTreasury) {
+    Objects.requireNonNull(nextTreasury, "nextTreasury");
+    return new Government(
+        id,
+        nationRef,
+        nextTreasury,
+        issuable,
+        seignioragePerCycle,
+        debtIssuePerCycle,
+        officialRates);
   }
 
   /** ★★ 发行源：{@code issuable} 内含 {@code currency} ⇒ 返回国库 actor；否则当场抛（说不出"谁发的"）。 */

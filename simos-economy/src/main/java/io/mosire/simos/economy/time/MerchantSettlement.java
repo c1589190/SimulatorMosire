@@ -337,9 +337,25 @@ public final class MerchantSettlement {
     }
   }
 
-  /** 本周期某商号的运费实收（只从本周期真实 CARRIER_FEE 转移读数取；`to` = principal actor）。 */
+  /**
+   * ★★ <b>本周期某商号的运费实收</b>（只从本周期真实 {@code CARRIER_FEE} 转移读数取；{@code to} = principal actor）。
+   *
+   * <p>★★ <b>A2b（I24 / M7-④）：单一币种口径</b> —— 只有 {@code bookCurrency} 那一种钱的腿计入收入；其他币种的运费腿 <b>既不相加（改前的
+   * 1:1 求和）也不折算（世界无汇率）</b>，逐笔走 <b>DEBUG {@code MERCHANT_FEE_FOREIGN_CURRENCY_EXCLUDED}</b> 具名排除。
+   *
+   * <p>★ 为什么 must 有 {@code bookCurrency}：商号的"收入/成本/利润"是**一个标量**（写回 {@code MerchantFirm}），
+   * 而一个标量只能有一种币的口径 ⇒ 口径必须由调用方给出并被本方法执行。调用方给 {@code homeHex} 市场计价币 （说不出时才退回"规范串最小的实收币种"，确定性）。
+   *
+   * @param cycle 本周期累计器
+   * @param principalActor 商号的收款主体
+   * @param bookCurrency 本商号的本币（{@code null} ⇒ 退回"规范串最小的实收币种"，并记一条具名 DEBUG）
+   */
   public static long feeRevenueOf(
-      EnterpriseProfitBook.CycleAccumulator cycle, ActorRef principalActor) {
+      EnterpriseProfitBook.CycleAccumulator cycle,
+      ActorRef principalActor,
+      CurrencyId bookCurrency) {
+    CurrencyId book =
+        bookCurrency == null ? canonicalFeeCurrency(cycle, principalActor) : bookCurrency;
     long revenue = 0L;
     for (ProductionLedger ledger : cycle.ledgers()) {
       for (io.mosire.simos.economy.api.transfer.Transfer transfer : ledger.transfers()) {
@@ -349,17 +365,69 @@ public final class MerchantSettlement {
         if (!transfer.to().equals(principalActor)) {
           continue;
         }
-        for (long amount : transfer.money().values()) {
-          revenue = Math.addExact(revenue, amount);
+        for (Map.Entry<CurrencyId, Long> leg : transfer.money().entrySet()) {
+          if (book != null && leg.getKey().equals(book)) {
+            revenue = Math.addExact(revenue, leg.getValue());
+          } else {
+            logFeeCurrencyExcluded(principalActor, book, leg.getKey(), leg.getValue());
+          }
         }
       }
     }
     return revenue;
   }
 
+  /** 说不出本币时的确定性退回：本周期该商号**实收运费里规范串最小的币种**（保序扫描 ⇒ 同输入同答案）。 */
+  private static CurrencyId canonicalFeeCurrency(
+      EnterpriseProfitBook.CycleAccumulator cycle, ActorRef principalActor) {
+    CurrencyId best = null;
+    for (ProductionLedger ledger : cycle.ledgers()) {
+      for (io.mosire.simos.economy.api.transfer.Transfer transfer : ledger.transfers()) {
+        if (transfer.reason() != io.mosire.simos.economy.api.transfer.TransferReason.CARRIER_FEE
+            || !transfer.to().equals(principalActor)) {
+          continue;
+        }
+        for (CurrencyId currency : transfer.money().keySet()) {
+          if (best == null || currency.value().compareTo(best.value()) < 0) {
+            best = currency;
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  /** 被单一币种口径排除掉的一条运费腿（DEBUG；不写状态、不改任何算式）。 */
+  private static void logFeeCurrencyExcluded(
+      ActorRef principalActor, CurrencyId bookCurrency, CurrencyId excluded, long amount) {
+    if (!LOG.isDebugEnabled() || amount == 0L) {
+      return;
+    }
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "MERCHANT_FEE_FOREIGN_CURRENCY_EXCLUDED",
+                EconomyLogSource.ECONOMY_ORGANIZATION,
+                "principal",
+                principalActor,
+                "bookCurrency",
+                bookCurrency == null ? "(说不出)" : bookCurrency.value(),
+                "excludedCurrency",
+                excluded.value(),
+                "amount",
+                amount,
+                "note",
+                "运费实收 = 单一币种口径：其他币种既不相加也不折算（世界无汇率）"));
+  }
+
   /**
    * ★★ <b>周期末商号结算</b>：收入 = 本周期 CARRIER_FEE 实收；成本 = porter 工资实付 + upkeep 计提；付不出的工资走 {@link
    * DebtContractBook#upsert} 资本化；盈利/亏损与农村惩罚写回 {@code merchantFirms}。
+   *
+   * <p>★★ <b>A2b（I24 / M7-④）：收入与成本是同一个**单一币种**口径</b>（本商号的本币 = {@code homeHex} 市场计价币；
+   * 说不出时退回"规范串最小的实收币种"）—— 运费实收按 {@link #feeRevenueOf} 逐币种过滤并具名排除其他币种， 工资只从**该币种**的账户余额付（{@code
+   * accountMoney(accounts, household, numeraire)}）， 于是 {@code profit = revenue − costPaid} 不是"两种钱按
+   * 1:1 相减"。其他币种的运费腿进 DEBUG {@code MERCHANT_FEE_FOREIGN_CURRENCY_EXCLUDED}。
    */
   public static void settleCycle(
       EnterpriseProfitBook.CycleAccumulator cycle,
@@ -409,7 +477,13 @@ public final class MerchantSettlement {
         throw new IllegalStateException(
             "商号 principal 不是已登记家户（说不出收款人，拒绝静默丢钱）: " + organizationId + " actor=" + principalActor);
       }
-      long revenue = feeRevenueOf(cycle, principalActor);
+      // ★★ A2b（I24 / M7-④）：本商号的**本币**先定下来（= homeHex 市场计价币；该格没有市场 ⇒ 退回该户持有/实收的
+      //   规范串最小币种，见 firstCurrency / feeRevenueOf 的 null 分支）—— 运费实收、工资、upkeep 三者的币种口径
+      //   必须是**同一个**，否则"收入 − 成本"就是把两种钱按 1:1 相减。
+      Market market = markets.get(firm.homeHex());
+      CurrencyId numeraire =
+          market != null ? market.numeraire() : firstCurrency(accounts, principalHousehold);
+      long revenue = feeRevenueOf(cycle, principalActor, numeraire);
       List<Porter> porters =
           portersOf(enterprise, principalHousehold, laborCommitments, householdEconomies);
       List<Long> porterWeights = new ArrayList<>(porters.size());
@@ -424,9 +498,6 @@ public final class MerchantSettlement {
       }
       ProductionRules relation =
           enterprise.unitId().isPresent() ? relations.get(enterprise.unitId().get()) : null;
-      Market market = markets.get(firm.homeHex());
-      CurrencyId numeraire =
-          market != null ? market.numeraire() : firstCurrency(accounts, principalHousehold);
       long wagesDueMoney = dueMoneyWages(relation);
       long wagesPaidMoney = 0L;
       long arrearsMoney = 0L;

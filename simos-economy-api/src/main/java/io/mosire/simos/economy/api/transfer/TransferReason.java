@@ -51,7 +51,22 @@ public enum TransferReason {
    * <p>★ <b>为什么单独一档</b>：运费不是"货款的一部分"——它是运输这件事的对价，收款方是承运人而不是卖方。混进 {@code MARKET_TRADE}
    * 会让读账时分不出"货卖了多少钱"与"路花了多少钱"（M2.4 的判据要求运费总额可读）。★ <b>世界里没有承运 actor 时不铸这条腿</b>（没有收款方就不收，禁钱凭空消失）。
    */
-  CARRIER_FEE("carrier_fee");
+  CARRIER_FEE("carrier_fee"),
+
+  /**
+   * ★★ <b>阶段 2-A2a：家户 ↔ 家户的外汇成交腿</b>（约束设计书 §3.2）—— 一笔 FX 成交 = <b>两条</b> {@code FX_TRADE}：base 腿（卖方
+   * → 买方）与 quote 腿（买方 → 卖方）。
+   *
+   * <p>★ <b>为什么不复用 {@code MARKET_TRADE}</b>：读账时"这笔钱是买货付的还是换汇付的"必须分得开（I20 的逐币种守恒按腿核）。
+   */
+  FX_TRADE("fx_trade"),
+
+  /**
+   * ★★ <b>阶段 2-A2a：政府外汇窗口的成交腿</b>（约束设计书 §3.4）—— 与 {@link #FX_TRADE} 同形（两条腿），只是其中一端是政府国库。
+   *
+   * <p>★ 单列一档是为了让"官方汇率拉动了多少量"这条读数可核（§4.5：官方汇率只在窗口有量时才拉动市场价）。
+   */
+  GOV_FX_WINDOW("gov_fx_window");
 
   private final String value;
 

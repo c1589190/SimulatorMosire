@@ -1363,7 +1363,7 @@ public final class ApiViews {
     view.put("actorMoneyTotal", actorMoneyTotal);
     // ★★ M1.6：**逐工具守恒的三个分栏**（私人流通 / 全部基础货币 /（将来）银行存款）—— 纯派生自上面那一趟
     //   同源遍历，不在视图层再扫一账；逐条口径见 {@link #moneyLayers}。
-    view.put("moneyLayers", moneyLayers(actorMoneyTotal));
+    view.put("moneyLayers", moneyLayers(data, actorMoneyTotal));
     // ★★ E3：发行/回笼/流通量与 actor kind / 家户阶层聚合（世界级时点口径；见方法注释）。
     view.put("moneyIssuance", moneyIssuanceView(data, moneyTotals(actors)));
     // ★★ E6c：这两栏同时进 dashboard.stocks ⇒ 只调用一次 E3 的唯一聚合算法，两处共用同一份。
@@ -1411,8 +1411,8 @@ public final class ApiViews {
     //   ★ `moneyInstruments` 逐条给 {id, currency, kind, issuer, redeemer}：issuer/redeemer 为 null =
     // **没有**
     //     （金属币没有发行人；兑现属 M4+，`redeemer` 是具名留位）—— 不是"读不到"。逐条口径见 MoneyVocabulary 的类注。
-    view.put("currencyDefs", currencyDefViews());
-    view.put("moneyInstruments", moneyInstrumentViews());
+    view.put("currencyDefs", currencyDefViews(data));
+    view.put("moneyInstruments", moneyInstrumentViews(data));
     view.put("classes", classes);
     view.put("industries", industries);
     // ★★ S3：逐家户的状态读数与阶层分化（派生；来源与边界见 HouseholdCondition / HouseholdClassRule 的类注）。
@@ -1586,9 +1586,9 @@ public final class ApiViews {
     view.put("moneyIssuance", moneyIssuanceView(data, circulation));
     view.put("moneyByActorKind", moneyByActorKind(actors));
     view.put("moneyByHouseholdClass", moneyByHouseholdClass(data, actors));
-    view.put("moneyLayers", moneyLayers(circulation));
-    view.put("currencyDefs", currencyDefViews());
-    view.put("moneyInstruments", moneyInstrumentViews());
+    view.put("moneyLayers", moneyLayers(data, circulation));
+    view.put("currencyDefs", currencyDefViews(data));
+    view.put("moneyInstruments", moneyInstrumentViews(data));
     return view;
   }
 
@@ -3458,7 +3458,7 @@ public final class ApiViews {
     view.put("actorGoodsTotal", actorGoodsTotal);
     view.put("actorMoneyTotal", actorMoneyTotal);
     // ★★ M1.6：与 {@link #economyHex} **同一份**分栏（同一趟遍历的派生量；两处不许各算一套）。
-    view.put("moneyLayers", moneyLayers(actorMoneyTotal));
+    view.put("moneyLayers", moneyLayers(economy, actorMoneyTotal));
     // ★★ E3：发行/回笼/流通量与 actor kind / 家户阶层聚合（世界级时点口径；见方法注释）。
     view.put("moneyIssuance", moneyIssuanceView(economy, moneyTotals(actors)));
     Map<String, Map<String, Long>> moneyByKind = moneyByActorKind(actors);
@@ -4112,10 +4112,14 @@ public final class ApiViews {
    * 多种工具时，账户层<b>分不出</b>"这张钱是哪种工具"。本栏不假装能分：既含基础档又含存款档的币种落进 {@code
    * unclassifiedCurrencies}，让读的人看见"这里读不出来"，而不是看到一个编出来的 0 或半数。 今天 {@code silver} 只有 {@code SPECIE}
    * 一种工具 ⇒ {@code baseMoney} 与 {@code privateCirculation} 逐值相同。
+   *
+   * <p>★ A2b：工具表改读 {@code EconomyData.moneyInstruments()}（与 {@link #moneyInstrumentViews} 同一条权威）——
+   * 否则同一份响应里"哪张工具认领哪个币种"会与 {@code moneyInstruments} 栏可能来自不同的世界（静态门面是进程级的）。
    */
-  private static Map<String, Object> moneyLayers(Map<String, Long> actorMoneyTotal) {
+  private static Map<String, Object> moneyLayers(
+      EconomyData data, Map<String, Long> actorMoneyTotal) {
     Map<String, Set<InstrumentKind>> kindsByCurrency = new LinkedHashMap<>();
-    for (MoneyInstrument instrument : MoneyVocabulary.allInstruments()) {
+    for (MoneyInstrument instrument : data.moneyInstruments().values()) {
       kindsByCurrency
           .computeIfAbsent(instrument.currency().value(), ignored -> new LinkedHashSet<>())
           .add(instrument.kind());
@@ -4277,32 +4281,49 @@ public final class ApiViews {
   }
 
   /**
-   * ★★ <b>币种定义的读侧形</b>（M1.1）：{@code [{id:"silver", scale:3}]} —— **保序**（词表序）、只读不重算。
+   * ★★ <b>币种定义的读侧形</b>（M1.1；A2b 补 {@code displayName} + 改读**世界状态**）： {@code [{id:"silver", scale:3,
+   * displayName:"银"}]} —— **保序**（状态声明的词表序）、只读不重算。
    *
-   * <p>★ 唯一来源是 {@link MoneyVocabulary#allCurrencyDefs()}（世界级货币词表的唯一拼写点）—— 本层**不**自己拼币种名、 也不自己定精度。★
-   * {@code scale} 是"1 个币种单位 = 10^scale 个最小单位"（毫银 ⇒ 3）。
+   * <p>★★ <b>A2b（2026-10-08）：两处修正</b>——
+   *
+   * <ol>
+   *   <li><b>补 {@code displayName}</b>（A1 给 {@link CurrencyDef} 加了显示名，但读口一直只发 id/scale ⇒ 改名（{@code
+   *       gov.renameCurrency} / {@code economy.RenameCurrency}）在 GUI/MCP 上都**看不见**；I16 的"改名不动账"
+   *       因此少了一半证据面：账不动，名字也没人读得到）；
+   *   <li><b>来源改为世界状态</b>（{@code EconomyData.currencies()}）：A1 的偏离记录（其账本 §4-1）明写"静态门面是**进程级**的 ——
+   *       最后物化的那个世界/revision 说了算"⇒ 多世界/分支并发读会互相污染。本层签名里就有 {@link EconomyData}，直接读权威 即可（{@code
+   *       MoneyVocabulary.allCurrencyDefs()} 仍是别处调用点的门面，本层不再依赖它）。
+   * </ol>
+   *
+   * <p>★ {@code scale} 是"1 个币种单位 = 10^scale 个最小单位"（毫银 ⇒ 3）；{@code displayName} 只给人看，**不是键**
+   * （两个币种同显名合法，身份仍靠 {@code id}）。
    */
-  private static List<Map<String, Object>> currencyDefViews() {
+  private static List<Map<String, Object>> currencyDefViews(EconomyData data) {
     List<Map<String, Object>> defs = new ArrayList<>();
-    for (CurrencyDef def : MoneyVocabulary.allCurrencyDefs()) {
+    for (CurrencyDef def : data.currencies().values()) {
       Map<String, Object> item = new LinkedHashMap<>();
       item.put("id", def.id());
       item.put("scale", def.scale());
+      item.put("displayName", def.displayName());
       defs.add(item);
     }
     return defs;
   }
 
   /**
-   * ★★ <b>货币工具的读侧形</b>（M1.1）：{@code [{id, currency, kind, issuer, redeemer}]} —— **保序**（词表序）。
+   * ★★ <b>货币工具的读侧形</b>（M1.1；A2b 改读**世界状态**）：{@code [{id, currency, kind, issuer, redeemer}]} ——
+   * **保序**（状态声明的词表序）。
    *
    * <p>★★ <b>{@code issuer / redeemer} 为 {@code null} = 这张工具**没有**发行人/兑现人</b>（金属币没有发行人，兑现属 M4+）——
    * 不是"读不到"。★ 形状照本仓读口对主体的口径：{@code {kind, id}}（**不**折算成 {@code ActorRef.toString()} 的规范串 ——
-   * R6：那是**键**的形制，不是读口的形制）。★ 唯一来源是 {@link MoneyVocabulary#allInstruments()}。
+   * R6：那是**键**的形制，不是读口的形制）。
+   *
+   * <p>★ A2b：来源改为 {@code EconomyData.moneyInstruments()}（与 {@link #currencyDefViews} 同一条理由：状态是权威，
+   * 静态门面是进程级的）。
    */
-  private static List<Map<String, Object>> moneyInstrumentViews() {
+  private static List<Map<String, Object>> moneyInstrumentViews(EconomyData data) {
     List<Map<String, Object>> instruments = new ArrayList<>();
-    for (MoneyInstrument instrument : MoneyVocabulary.allInstruments()) {
+    for (MoneyInstrument instrument : data.moneyInstruments().values()) {
       Map<String, Object> item = new LinkedHashMap<>();
       item.put("id", instrument.id().value());
       item.put("currency", instrument.currency().value());

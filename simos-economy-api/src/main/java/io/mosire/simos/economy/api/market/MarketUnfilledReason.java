@@ -113,7 +113,17 @@ public enum MarketUnfilledReason {
    * ★★ <b>D-030 市场信用：商品可借池为空</b>—— 现金成交后该商品的卖单剩余里没有**可成为债权人的卖家**（本批 = 家户
    * 卖家）的可借头寸，或压根没有剩余；货币借贷必须绑定"买得到这批货"，无货可买 ⇒ 不放贷。
    */
-  NO_LENDABLE_GOODS("no_lendable_goods");
+  NO_LENDABLE_GOODS("no_lendable_goods"),
+
+  /**
+   * ★★ <b>阶段 2-A2a：异币支付具名拒绝</b>（约束设计书 §3.5 / I19 / F5 / M1）—— 买方支付的币种 ≠ 卖方要收的币种 （卖方的法定收款币 = 它的市场格的
+   * {@code Market.numeraire()}）。
+   *
+   * <p>★★ <b>这一档是"从静默错账变具名拒绝"的落点</b>：本批之前成交路径<b>没有任何币种相等校验</b>，异币场景按 {@code Map.of(buy.currency,
+   * payment)} 直接落账 ⇒ <b>静默 1:1</b>（一毫铜当一毫银付）。现在：<b>拒</b>，且拒因进 读数与日志；家户要用异币买东西必须<b>先兑换</b>（走市场 FX
+   * 或政府外汇窗口）。
+   */
+  CURRENCY_MISMATCH("currency_mismatch");
 
   private final String value;
 

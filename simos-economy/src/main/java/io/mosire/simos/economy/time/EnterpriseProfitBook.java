@@ -1,6 +1,8 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -19,6 +21,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * ★★ <b>P10.2 周期真实利润汇总簿（架构 §4.2 / §5.2 的 ⑦）</b>：只从本周期真实发生额汇总，<b>不引入任何外生 π</b>。
@@ -49,10 +54,21 @@ import java.util.Optional;
  * {@link ProductionLedger#losses()} / {@link ProductionLedger#ruleSettlements()}（逐日累加）+ 关账 unit
  * 的周期劳动/投入快照。 MarketReport 只作旁证，不作为金额来源（逐 unit 成交归属不足时宁缺勿造，见收口报告）。
  *
- * <p>★★ <b>货币口径</b>：每个组织按它所在格市场的 {@link Market#numeraire()} 计价；该格没有市场时只累计运费/货款腿里
- * <b>出现的币种</b>（混合币种不求和，取份额最大的？不 —— 本实现取 <b>规范串最小的币种</b>，确定性；缺口写入报告）。
+ * <p>★★ <b>货币口径（A2b 2026-10-08 收口；I24 / M7-⑤）</b>：每个组织<b>只有一个本币</b>，收入/成本都只按那一种钱计 ——
+ *
+ * <pre>
+ * 本币 = 该组织所在格市场的 Market.numeraire()（权威、状态里可读）
+ *      说不出（该格没有市场）⇒ 取本周期**该组织**出现过的货币腿里规范串最小的币种（一次性预扫、确定性的）
+ * 其他币种的腿 ⇒ **既不相加（改前的 Σ全部币种 = 跨币种 1:1）也不折算（世界无汇率）**，
+ *                 逐笔走 DEBUG ECONOMY_ENTERPRISE_FOREIGN_CURRENCY_EXCLUDED 具名排除
+ * </pre>
+ *
+ * ★ 改前 {@code addRevenue}/{@code addCost} 拿到 {@code numeraire} 却**没用**它（原样把 money 表里每个币种加总），
+ * 本方法签名里那一句"取规范串最小的币种"因此只是注释里的承诺、不是代码的行为。本批把它变成行为。
  */
 public final class EnterpriseProfitBook {
+
+  private static final Logger LOG = EconomyLog.enterprise();
 
   private EnterpriseProfitBook() {}
 
@@ -473,6 +489,11 @@ public final class EnterpriseProfitBook {
       enterprise.unitId().ifPresent(unitId -> unitOfOrg.put(orgId, unitId));
     }
 
+    // ── A2b（I24 / M7-⑤）：先逐组织定下**唯一本币**（唯一权威 = 该组织所在格市场计价币；说不出 ⇒ 预扫该组织的
+    //   货币腿取规范串最小者，确定性）。下面 addRevenue/addCost 只认这一种钱，其余币种具名排除。
+    Map<ProductionOrganizationId, CurrencyId> bookCurrencyOfOrg =
+        bookCurrenciesOf(cycle, householdByActor, orgByHousehold, hexOfOrg, markets);
+
     // ── 收入/成本：逐日转移腿 + 实物投入/损耗 + 欠款读数 ─────────────────────────────
     for (ProductionLedger ledger : cycle.ledgers()) {
       for (Transfer transfer : ledger.transfers()) {
@@ -484,16 +505,11 @@ public final class EnterpriseProfitBook {
         if (transfer.reason() == TransferReason.MARKET_TRADE
             || transfer.reason() == TransferReason.CARRIER_FEE) {
           if (toOrg != null) {
-            addRevenue(
-                acc, toOrg.id(), transfer.money(), currencyOf(hexOfOrg.get(toOrg.id()), markets));
+            addRevenue(acc, toOrg.id(), transfer.money(), bookCurrencyOfOrg.get(toOrg.id()));
           }
         } else if (transfer.reason() == TransferReason.RELATION_PAYMENT) {
           if (fromOrg != null) {
-            addCost(
-                acc,
-                fromOrg.id(),
-                transfer.money(),
-                currencyOf(hexOfOrg.get(fromOrg.id()), markets));
+            addCost(acc, fromOrg.id(), transfer.money(), bookCurrencyOfOrg.get(fromOrg.id()));
             addCostGoods(acc, fromOrg.id(), transfer.goods(), hexOfOrg.get(fromOrg.id()), markets);
           }
         }
@@ -659,18 +675,74 @@ public final class EnterpriseProfitBook {
     return keys;
   }
 
+  /**
+   * ★★ <b>A2b（I24 / M7-⑤）：逐组织定下唯一本币</b>（一次预扫，确定性；见类注的货币口径）。
+   *
+   * <pre>
+   * ① 该组织所在格有市场 ⇒ 本币 = Market.numeraire()（状态权威；本组织所有腿都用它）
+   * ② 该格没有市场 ⇒ 本币 = 本周期该组织出现过的货币腿里**规范串最小**的币种（没有货币腿 ⇒ 无本币）
+   * </pre>
+   *
+   * ★ 为什么必须**先**扫一遍、而不是"每条腿各挑各的"：逐腿各挑会在同一组织身上混出两种钱的读数（"一半银一半铜"加成一个数）， 而那正是本批要收口的错。
+   */
+  private static Map<ProductionOrganizationId, CurrencyId> bookCurrenciesOf(
+      CycleAccumulator cycle,
+      Map<ActorRef, HouseholdId> householdByActor,
+      Map<HouseholdId, ProductionEnterprise> orgByHousehold,
+      Map<ProductionOrganizationId, HexCoord> hexOfOrg,
+      Map<HexCoord, Market> markets) {
+    Map<ProductionOrganizationId, CurrencyId> chosen = new LinkedHashMap<>();
+    Map<ProductionOrganizationId, CurrencyId> canonical = new LinkedHashMap<>();
+    for (ProductionLedger ledger : cycle.ledgers()) {
+      for (Transfer transfer : ledger.transfers()) {
+        TransferReason reason = transfer.reason();
+        boolean inflow =
+            reason == TransferReason.MARKET_TRADE || reason == TransferReason.CARRIER_FEE;
+        boolean outflow = reason == TransferReason.RELATION_PAYMENT;
+        if (!inflow && !outflow) {
+          continue;
+        }
+        ActorRef actor = inflow ? transfer.to() : transfer.from();
+        HouseholdId household = householdByActor.get(actor);
+        ProductionEnterprise org = household == null ? null : orgByHousehold.get(household);
+        if (org == null) {
+          continue;
+        }
+        CurrencyId local = currencyOf(hexOfOrg.get(org.id()), markets);
+        if (local != null) {
+          chosen.putIfAbsent(org.id(), local);
+          continue;
+        }
+        for (CurrencyId currency : transfer.money().keySet()) {
+          CurrencyId best = canonical.get(org.id());
+          if (best == null || currency.value().compareTo(best.value()) < 0) {
+            canonical.put(org.id(), currency);
+          }
+        }
+      }
+    }
+    for (Map.Entry<ProductionOrganizationId, CurrencyId> entry : canonical.entrySet()) {
+      chosen.putIfAbsent(entry.getKey(), entry.getValue());
+    }
+    return chosen;
+  }
+
   private static void addRevenue(
       Map<ProductionOrganizationId, long[]> acc,
       ProductionOrganizationId orgId,
       Map<CurrencyId, Long> money,
-      CurrencyId numeraire) {
+      CurrencyId bookCurrency) {
     long[] row = acc.get(orgId);
     if (row == null || money.isEmpty()) {
       return;
     }
-    // 逐币种读取、全部计入（跨区成交的计价币可能不是卖方本格 numeraire；跨币种求和的量纲缺口见收口报告）。
-    for (long amount : money.values()) {
-      row[0] = Math.addExact(row[0], amount);
+    // ★★ A2b（I24 / M7-⑤）：**只认本币**；其他币种既不相加（改前是 Σ全部币种）也不折算（世界无汇率）⇒ 具名 DEBUG。
+    for (Map.Entry<CurrencyId, Long> leg : money.entrySet()) {
+      if (bookCurrency != null && leg.getKey().equals(bookCurrency)) {
+        row[0] = Math.addExact(row[0], leg.getValue());
+      } else {
+        logLegExcluded("revenue", orgId, bookCurrency, leg.getKey(), leg.getValue());
+      }
     }
   }
 
@@ -678,14 +750,48 @@ public final class EnterpriseProfitBook {
       Map<ProductionOrganizationId, long[]> acc,
       ProductionOrganizationId orgId,
       Map<CurrencyId, Long> money,
-      CurrencyId numeraire) {
+      CurrencyId bookCurrency) {
     long[] row = acc.get(orgId);
     if (row == null || money.isEmpty()) {
       return;
     }
-    for (long amount : money.values()) {
-      row[1] = Math.addExact(row[1], amount);
+    // ★★ A2b（I24 / M7-⑤）：与 addRevenue 同一条口径（收入与成本必须是同一种钱，否则相减是把两种钱当一种）。
+    for (Map.Entry<CurrencyId, Long> leg : money.entrySet()) {
+      if (bookCurrency != null && leg.getKey().equals(bookCurrency)) {
+        row[1] = Math.addExact(row[1], leg.getValue());
+      } else {
+        logLegExcluded("cost", orgId, bookCurrency, leg.getKey(), leg.getValue());
+      }
     }
+  }
+
+  /** 被单一币种口径排除掉的一条货币腿（DEBUG；不写状态、不改任何数）。 */
+  private static void logLegExcluded(
+      String ledger,
+      ProductionOrganizationId orgId,
+      CurrencyId bookCurrency,
+      CurrencyId excluded,
+      long amount) {
+    if (!LOG.isDebugEnabled() || amount == 0L) {
+      return;
+    }
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "ECONOMY_ENTERPRISE_FOREIGN_CURRENCY_EXCLUDED",
+                EconomyLogSource.ECONOMY_ORGANIZATION,
+                "ledger",
+                ledger,
+                "organization",
+                orgId.value(),
+                "bookCurrency",
+                bookCurrency == null ? "(说不出：该组织没有本地市场与货币腿)" : bookCurrency.value(),
+                "excludedCurrency",
+                excluded.value(),
+                "amount",
+                amount,
+                "note",
+                "利润账 = 单一币种口径：其他币种既不相加也不折算（世界无汇率）"));
   }
 
   private static void addCostGoods(

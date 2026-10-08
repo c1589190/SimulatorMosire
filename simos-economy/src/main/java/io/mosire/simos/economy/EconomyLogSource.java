@@ -53,7 +53,16 @@ public enum EconomyLogSource implements LogOrigin {
   ECONOMY_ARBITRAGE(
       "economy-arbitrage", "家户套利活动：保留价派生、收益率排序、买卖意向与拒绝理由（tick 算法，必带 day）", LogOriginKind.TICK),
   ECONOMY_MONEY(
-      "economy-money", "货币身份与发行命令：定义币种/改名/发行审计记录（命令面；改名不动账，发行只记审计）", LogOriginKind.SYSTEM);
+      "economy-money", "货币身份与发行命令：定义币种/改名/发行审计记录（命令面；改名不动账，发行只记审计）", LogOriginKind.SYSTEM),
+  /**
+   * ★★ <b>A2a（2026-10-08）：外汇面</b>—— 市场轮里的 FX 撮合、官方/实际汇率读数、政府外汇窗口的报价与具名拒、 异币支付的具名拒（{@code
+   * MarketUnfilledReason.CURRENCY_MISMATCH}），以及设置官方汇率的命令。
+   *
+   * <p>★ 逐笔成交/逐笔拒在 TRACE（{@code simos.economy.traceLevel} 单独开），窗口触顶/见底/无对手方在 INFO（用户 2026-10-23
+   * 裁定：业务拒绝 = INFO）—— 外汇是"政策价 vs 市场价"的现场，拒绝一条都不能静默。
+   */
+  ECONOMY_FX(
+      "economy-fx", "外汇面：FX 撮合/官方与实际汇率读数/政府外汇窗口报价与具名拒/异币支付具名拒（tick 算法，必带 day）", LogOriginKind.TICK);
 
   private final String id;
   private final String description;

@@ -143,15 +143,9 @@ public final class EconomyDefineCurrencyHandler
       Map<GovernmentId, Government> governments = new LinkedHashMap<>(base.governments());
       Set<CurrencyId> issuable = new LinkedHashSet<>(government.issuable());
       issuable.add(currencyId);
-      governments.put(
-          governmentId,
-          new Government(
-              government.id(),
-              government.nationRef(),
-              government.treasury(),
-              issuable,
-              government.seignioragePerCycle(),
-              government.debtIssuePerCycle()));
+      // ★★ A2a：只换发行权集合 —— 走 withIssuable 而不是手抄 6 个字段：后者在政府新增组件（本批的
+      //   officialRates）时会把那个组件静默抹掉，而"定义币种"与"官方汇率"看起来毫无关系（本仓最贵的那类 bug）。
+      governments.put(governmentId, government.withIssuable(issuable));
 
       EconomyData projected =
           base.withCurrencies(currencies)

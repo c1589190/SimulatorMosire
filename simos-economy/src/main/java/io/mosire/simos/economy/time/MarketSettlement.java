@@ -336,6 +336,15 @@ final class MarketSettlement {
     private MarketArbitragePlan arbitrage = MarketArbitragePlan.empty();
 
     /**
+     * ★★ <b>2026-10-08（阶段 2-A2a）：本轮的外汇入参</b>（官方汇率 + 窗口储备上限；由 {@code EconomySettlement} 从 {@code
+     * EconomyData.governments()} 装配后经 {@link #withFx} 注入）。 默认 {@link FxRoundInput#none()} ⇒
+     * <b>本轮没有外汇面，逐值退回 A2a 之前</b> （没有官方汇率的旧世界因此一个数都不动）。
+     *
+     * <p>★ 逐轮瞬态：不进 {@code EconomyData}、不进变更集、不落盘（I17：汇率不进状态）。
+     */
+    private FxRoundInput fx = FxRoundInput.none();
+
+    /**
      * ★★ <b>D-031：市场信用的一轮入参</b>（借款人侧不再有额度；唯一上限 = 放贷人实际可借头寸）。
      *
      * @param dueCycle 新合同的到期周期（本批 = 当前周期 + 1；与 {@code lendDeficitsInHex} 同源）
@@ -603,7 +612,49 @@ final class MarketSettlement {
               debts,
               marketExcludedHouseholds);
       next.arbitrage = plan;
+      next.fx = fx; // ★ A2a：同一处"替换式构造"必须逐字段带过（克隆丢字段是本类踩过的坑）
       return next;
+    }
+
+    /**
+     * ★★ <b>A2a：注入本轮的外汇入参</b>（返回一个新的 {@link MarketRound}；原对象不动）。
+     *
+     * <p>★ 形制与 {@link #withArbitrage} 逐字相同：不新增构造器签名，旧调用方自然拿到 {@link FxRoundInput#none()}（= 没有外汇面）。
+     */
+    MarketRound withFx(FxRoundInput input) {
+      Objects.requireNonNull(input, "withFx 的外汇入参不得为 null（没有就给 FxRoundInput.none()）");
+      MarketRound next =
+          new MarketRound(
+              day,
+              householdEconomies,
+              householdGoods,
+              householdMoney,
+              householdFrozenGoods,
+              householdFrozenMoney,
+              unmetToday,
+              householdOfActor,
+              industries,
+              units,
+              assetShares,
+              relations,
+              laborCommitments,
+              shipments,
+              ledger,
+              operatorConditions,
+              index,
+              householdDemands,
+              regulation,
+              creditConfig,
+              debts,
+              marketExcludedHouseholds);
+      next.arbitrage = arbitrage;
+      next.fx = input;
+      return next;
+    }
+
+    /** ★★ A2a：本轮的外汇入参（缺省 {@link FxRoundInput#none()} ⇒ 没有外汇面）。 */
+    FxRoundInput fx() {
+      return fx;
     }
 
     /** ★★ 2026-10-08（阶段 1）：本轮的套利决定（缺省空 ⇒ 订单生成逐值退回改前口径）。 */
@@ -662,6 +713,7 @@ final class MarketSettlement {
               debts,
               marketExcludedHouseholds);
       next.arbitrage = arbitrage; // ★ 新字段在这里被带过 —— 这正是"手抄 22 个参数"漏掉的那一行
+      next.fx = fx; // ★ A2a：同一个坑的第二个字段（克隆轮丢 fx = 外汇面整段不生效且毫无报错）
       return next;
     }
 
@@ -684,29 +736,33 @@ final class MarketSettlement {
      */
     MarketRound withCredit(long dueCycle, Map<DebtContractId, DebtContract> debts) {
       Objects.requireNonNull(debts, "debts");
-      return new MarketRound(
-          day,
-          householdEconomies,
-          householdGoods,
-          householdMoney,
-          householdFrozenGoods,
-          householdFrozenMoney,
-          unmetToday,
-          householdOfActor,
-          industries,
-          units,
-          assetShares,
-          relations,
-          laborCommitments,
-          shipments,
-          ledger,
-          operatorConditions,
-          index,
-          householdDemands,
-          regulation,
-          new CreditConfig(dueCycle),
-          debts,
-          marketExcludedHouseholds);
+      MarketRound next =
+          new MarketRound(
+              day,
+              householdEconomies,
+              householdGoods,
+              householdMoney,
+              householdFrozenGoods,
+              householdFrozenMoney,
+              unmetToday,
+              householdOfActor,
+              industries,
+              units,
+              assetShares,
+              relations,
+              laborCommitments,
+              shipments,
+              ledger,
+              operatorConditions,
+              index,
+              householdDemands,
+              regulation,
+              new CreditConfig(dueCycle),
+              debts,
+              marketExcludedHouseholds);
+      next.arbitrage = arbitrage;
+      next.fx = fx;
+      return next;
     }
 
     /** ★ R4-E2：需求账本（只读；空表 = 没有 GM 需求，订单退回旧基线）。 */
@@ -722,6 +778,40 @@ final class MarketSettlement {
     /** 本轮世界日（与字段同源，不另设第二个日号）。 */
     long day() {
       return day;
+    }
+
+    /*
+     * ★★ A2a：外汇面（{@code FxSettlement}）与本类同包但不同顶层类 ⇒ 它读不到 MarketRound 的私有字段。
+     * 这里给出**只读访问器**（不复制表、不暴露 setter）：FX 撮合与商品撮合同住一轮，必须用同一份账户表与同一个
+     * 账本累加器 —— 第二份副本就会变成"两本账"。
+     */
+
+    Map<HouseholdId, Map<CommodityId, Long>> householdGoods() {
+      return householdGoods;
+    }
+
+    Map<HouseholdId, Map<CurrencyId, Long>> householdMoney() {
+      return householdMoney;
+    }
+
+    Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods() {
+      return householdFrozenGoods;
+    }
+
+    Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney() {
+      return householdFrozenMoney;
+    }
+
+    Map<ActorRef, HouseholdId> householdOfActor() {
+      return householdOfActor;
+    }
+
+    Map<HouseholdId, HouseholdEconomy> householdEconomies() {
+      return householdEconomies;
+    }
+
+    ProductionLedger.Accumulator ledger() {
+      return ledger;
     }
   }
 
@@ -1163,6 +1253,11 @@ final class MarketSettlement {
     //   ★ 顺序：按"买方稳定序"逐户处理；每个买方先货币（钱优先），货币借不到/不够才用商品卖单剩余借实物。
     creditRound(ctx, indexes);
 
+    // ── 4c. ★★ A2a：外汇撮合（与商品撮合同一处落账口；本轮没有官方汇率 ⇒ 整段跳过，逐值退回改前）──
+    //   ★ 位置：商品撮合 + 信用之后、未成交归因之前 —— 家户能花的钱是"商品买卖之后"的余额；FX 的两条腿同样会
+    //     改变余额，必须先落完再判商品的未成交档（否则那份归因读的是"还没花出去"的旧数）。
+    FxRoundResult fx = FxSettlement.match(round, markets, topology);
+
     // ── 5. 未成交原因（不聚合丢失；买卖两侧分开）────────────────────────────────────────
     collectUnfilled(ctx, indexes);
 
@@ -1202,7 +1297,8 @@ final class MarketSettlement {
             ctx.sellerOutcomes,
             ctx.buyerOutcomes,
             ctx.creditFills,
-            ctx.tariffByFill),
+            ctx.tariffByFill,
+            fx),
         adapted.markets());
   }
 
@@ -1873,6 +1969,11 @@ final class MarketSettlement {
       if (sell == null) {
         break; // 没有可买货物 ⇒ 不放贷（原子绑定）
       }
+      // ★★ A2b（I19 / M7-①）：信用腿同样按 `buy.currency` 付给卖方 ⇒ 异币必须具名拒。A2a 只堵了现金腿
+      //   （executeTrade），这条**借来的钱**的腿原样 1:1。fail-closed：本买方这一轮不再走信用（不许把铜当银付出去）。
+      if (rejectCurrencyMismatch(ctx, buy, sell, buy.remaining, "money-credit")) {
+        break;
+      }
       while (index < lenders.size()) {
         MoneyLendOrder candidate = lenders.get(index);
         if (candidate.remaining <= 0L
@@ -2158,35 +2259,8 @@ final class MarketSettlement {
    * ⇒ {@link Long#MAX_VALUE}（fail-closed：不把"读不到"当"不用留"）。
    */
   private static long moneyReserveOf(MatchContext ctx, Participant participant, Market market) {
-    HouseholdEconomy householdEconomy = ctx.round.householdEconomies.get(participant.household);
-    if (householdEconomy == null || market == null) {
-      return Long.MAX_VALUE;
-    }
-    long reserve = 0L;
-    for (Map.Entry<CommodityId, Long> need : householdEconomy.naturalNeeds().entrySet()) {
-      if (need.getValue() <= 0L) {
-        continue;
-      }
-      long available =
-          Math.max(
-              0L,
-              stockOf(ctx.round, participant, need.getKey())
-                  - frozenGoodsOf(ctx.round, participant, need.getKey()));
-      long uncovered = Math.max(0L, need.getValue() - available);
-      if (uncovered <= 0L) {
-        continue;
-      }
-      long price = market.priceOf(need.getKey());
-      if (price <= 0L) {
-        continue; // 缺价不硬折：该商品需要不能折成保留额（交付报告具名）
-      }
-      reserve = safeAdd(reserve, safeMulDiv(uncovered, price, EconomySettlement.MILLI_PER_GRAIN));
-    }
-    reserve =
-        safeAdd(
-            reserve,
-            safeMulDiv(householdEconomy.population(), LENDER_MONEY_BUFFER_PER_CAPITA_MILLI, 1L));
-    return reserve;
+    // ★★ A2a：委托到家户版（同一份算式；两处各写一遍 = 下一个改口径的人只会改一处）。
+    return moneyReserveOfHousehold(ctx.round, participant.household, market);
   }
 
   /** 参与者所在格市场（缺则回落所在区锚格；参与者必在某个市场格里）。 */
@@ -3601,6 +3675,64 @@ final class MarketSettlement {
   // ── 一笔成交（区内即时 / 跨区在途）────────────────────────────────────────────────
 
   /**
+   * ★★ <b>A2a/A2b 的唯一拼写点：买方支付币种 ≠ 卖方收款币种 ⇒ 具名拒</b>（§3.5 / I19 / F5 / M1 / M7-①）。
+   *
+   * <p>★★ <b>为什么必须共用一处</b>：商品面上"钱从买方到卖方"有<b>两条</b>腿 ——
+   *
+   * <pre>
+   * ① 现金成交腿 executeTrade          ：payment 按 buy.currency 铸（A2a 已堵）
+   * ② 信用成交腿 moneyCreditForBuy     ：借来的钱同样按 buy.currency 付给卖方（★ A2a 只堵了 ① ⇒ 这一条原样可异币 1:1）
+   * </pre>
+   *
+   * 两条腿用的是同一个 `buy.currency`，而"卖方要收哪种钱"只有 {@code sell.receiveCurrency} 一个来源 ⇒ 校验必须是同一个
+   * 拼写点，否则"堵一条漏一条"（本批正是这样发现的）。
+   *
+   * <p>★ 语义：不等 ⇒ 买卖两侧各留 {@link MarketUnfilledReason#CURRENCY_MISMATCH}（不被 OUTCOMPETED 等市场性归因掩盖） +
+   * 一条 INFO {@code MARKET_CURRENCY_MISMATCH_REJECTED}（带 {@code leg} 区分现金/信用），并返回 true ⇒
+   * <b>调用方必须不落任何账</b>（成交量 0、账户一字未动）。家户要用异币买东西 ⇒ 先兑换（市场 FX 或政府外汇窗口）。
+   *
+   * @param quantity 本次尝试的数量（只进日志；0/负值照记）
+   * @param leg 哪条腿（{@code cash} / {@code money-credit}）
+   * @return true = 异币，已具名拒；调用方不得落账
+   */
+  private static boolean rejectCurrencyMismatch(
+      MatchContext ctx, BuySlot buy, SellSlot sell, long quantity, String leg) {
+    if (sell.receiveCurrency == null || sell.receiveCurrency.equals(buy.currency)) {
+      return false;
+    }
+    if (sell.blocked == null) {
+      sell.blocked = MarketUnfilledReason.CURRENCY_MISMATCH;
+    }
+    if (buy.blocked == null) {
+      buy.blocked = MarketUnfilledReason.CURRENCY_MISMATCH;
+    }
+    EventLog.channel(MARKET)
+        .info(
+            LogEvent.of(
+                "MARKET_CURRENCY_MISMATCH_REJECTED",
+                EconomyLogSource.ECONOMY_FX,
+                "day",
+                ctx.round.day,
+                "leg",
+                leg,
+                "reason",
+                MarketUnfilledReason.CURRENCY_MISMATCH.value(),
+                "commodity",
+                buy.order.commodity().value(),
+                "buyerPays",
+                buy.currency.value(),
+                "sellerReceives",
+                sell.receiveCurrency.value(),
+                "buyer",
+                buy.buyer.actor,
+                "seller",
+                sell.seller.actor,
+                "quantity",
+                quantity));
+    return true;
+  }
+
+  /**
    * ★★ <b>落一笔成交</b>（区内即时 / 跨区在途）。
    *
    * <p>★★ <b>2026-10-09 承运硬约束</b>：跨区成交<b>先选承运、再落账</b>；商号/路线可承运量不足 ⇒ 成交数量收缩到实际可承运量 （{@code
@@ -3621,6 +3753,16 @@ final class MarketSettlement {
       RouteContext route) {
     MarketRound round = ctx.round;
     CommodityId commodity = buy.order.commodity();
+    // ★★ A2a（§3.5 / I19 / F5 / M1）：**买方支付币种必须等于卖方收款币种** —— 这是本方法的第一件事。
+    //   不等 ⇒ 具名拒（买卖两侧都留 CURRENCY_MISMATCH，并各记一条 INFO 日志），成交量 0、账户一字未动。
+    //   ★ 本批之前这里没有校验：payment 直接按 buy.currency 铸腿 ⇒ 异币**静默 1:1**（一毫铜当一毫银付）。
+    //   ★ 家户要用异币买东西 ⇒ 先兑换（市场 FX 或政府外汇窗口），不许直接异币支付。
+    //   ★★ A2b：校验抽成**唯一拼写点** {@link #rejectCurrencyMismatch}，并同时用于**信用腿**
+    //      （{@code moneyCreditForBuy} 借来的钱同样按 {@code buy.currency} 付给卖方 —— A2a 只堵了现金腿，
+    //      信用腿原样可异币静默 1:1；见本类 {@code currencyMismatch} 的类注）。
+    if (rejectCurrencyMismatch(ctx, buy, sell, quantity, "cash")) {
+      return 0L;
+    }
     // ★ 2026-10-09：route 非 null 且 immediate = 区内跨格（有商号承运，货款/运费当日结清、没有 ShipmentBatch）；
     //   route 非 null 且 !immediate = 跨区在途；route == null = 同 hex 即时（零运费）。
     boolean inTransit = route != null && !route.immediate;
@@ -4343,6 +4485,10 @@ final class MarketSettlement {
     //    不让它掉进 OUTCOMPETED/ALGORITHM_UNCOVERED 掩盖过去。
     if (sell.capacityBlocked) {
       return MarketUnfilledReason.LOGISTICS_CAPACITY;
+    }
+    // ★★ A2a：异币拒是**制度原因**（I19），优先于"被谁挤掉/价格不合"这些市场原因 —— 不许被别的档掩盖。
+    if (sell.blocked == MarketUnfilledReason.CURRENCY_MISMATCH) {
+      return MarketUnfilledReason.CURRENCY_MISMATCH;
     }
     if (sellerSelfUsable(ctx, sell)) {
       return MarketUnfilledReason.UNSOLD_SELF_USABLE;
@@ -5235,8 +5381,64 @@ final class MarketSettlement {
 
   private static long spendableMoneyOf(
       MarketRound round, Participant participant, CurrencyId currency) {
-    return Math.max(
-        0L, moneyOf(round, participant, currency) - frozenMoneyOf(round, participant, currency));
+    return spendableMoneyOf(round, participant.household, currency);
+  }
+
+  /**
+   * ★★ <b>A2a：家户（而不是参与者）为键的可花额</b> —— 外汇面按"逐格逐户"扫描（政府国库户不在参与者表里，但它 的外汇窗口必须读得到自己的储备）。
+   *
+   * <p>★ 与上面那个 Participant 版<b>逐值同源</b>（后者直接委托本方法）：同一件事不许有两套算式。
+   */
+  static long spendableMoneyOf(MarketRound round, HouseholdId household, CurrencyId currency) {
+    long balance =
+        round.householdMoney.getOrDefault(household, Map.of()).getOrDefault(currency, 0L);
+    long frozen =
+        round.householdFrozenMoney.getOrDefault(household, Map.of()).getOrDefault(currency, 0L);
+    return Math.max(0L, balance - frozen);
+  }
+
+  /** ★ A2a：家户为键的实物可花额（外汇规则只读它判"生活保留"，与商品面同源）。 */
+  static long spendableGoodsOf(MarketRound round, HouseholdId household, CommodityId commodity) {
+    long balance =
+        round.householdGoods.getOrDefault(household, Map.of()).getOrDefault(commodity, 0L);
+    long frozen =
+        round.householdFrozenGoods.getOrDefault(household, Map.of()).getOrDefault(commodity, 0L);
+    return Math.max(0L, balance - frozen);
+  }
+
+  /**
+   * ★★ <b>A2a：家户为键的货币保留额</b>（{@link #moneyReserveOf(MatchContext, Participant, Market)} 的家户版，
+   * 逐值同源）：外汇面用它算"这笔钱是不是余钱"（余钱才拿去换外币）。
+   *
+   * <p>★ 口径原样不动：未覆盖的日自然需求按本格市价折算 + 人均货币缓冲；缺价不入保留额、人口/行读不到 ⇒ {@code
+   * Long.MAX_VALUE}（fail-closed：读不到不等于不用留）。
+   */
+  static long moneyReserveOfHousehold(MarketRound round, HouseholdId household, Market market) {
+    HouseholdEconomy householdEconomy = round.householdEconomies.get(household);
+    if (householdEconomy == null || market == null) {
+      return Long.MAX_VALUE;
+    }
+    long reserve = 0L;
+    for (Map.Entry<CommodityId, Long> need : householdEconomy.naturalNeeds().entrySet()) {
+      if (need.getValue() <= 0L) {
+        continue;
+      }
+      long available = spendableGoodsOf(round, household, need.getKey());
+      long uncovered = Math.max(0L, need.getValue() - available);
+      if (uncovered <= 0L) {
+        continue;
+      }
+      long price = market.priceOf(need.getKey());
+      if (price <= 0L) {
+        continue;
+      }
+      reserve = safeAdd(reserve, safeMulDiv(uncovered, price, EconomySettlement.MILLI_PER_GRAIN));
+    }
+    reserve =
+        safeAdd(
+            reserve,
+            safeMulDiv(householdEconomy.population(), LENDER_MONEY_BUFFER_PER_CAPITA_MILLI, 1L));
+    return reserve;
   }
 
   private static long ceilDiv(long numerator, long denominator) {
@@ -5358,6 +5560,15 @@ final class MarketSettlement {
     final MarketRegion region;
 
     /**
+     * ★★ <b>A2a（§3.5 / I19）：卖方法定收款币种</b> —— 取卖方所在格市场的 {@code numeraire}。
+     *
+     * <p>★★ <b>它是"从静默错账变具名拒绝"的那一维</b>：本批之前成交路径<b>零币种相等校验</b>，异币按 {@code Map.of(buy.currency,
+     * payment)} 直接落账（= 静默 1:1）。现在 {@code executeTrade} 第一件事就是 比 {@code buy.currency} 与它，不等 ⇒
+     * 具名拒（{@link MarketUnfilledReason#CURRENCY_MISMATCH}）。
+     */
+    final CurrencyId receiveCurrency;
+
+    /**
      * ★★ <b>D-027：本槽所属区的规范 id</b>（= {@code region.node().nodeId()}）—— 有效参考价按它查区级调控 （单区里就是 {@code
      * "single-region"}）。★ 它只用于价格口径，不改槽位的其他语义。
      */
@@ -5384,6 +5595,13 @@ final class MarketSettlement {
     /** ★★ 2026-10-09：本槽剩余是否卡在"承运运力不足"（路线窗口/商号每周期运力）。 */
     boolean capacityBlocked;
 
+    /**
+     * ★★ <b>A2a：制度性拒因（目前只有 {@link MarketUnfilledReason#CURRENCY_MISMATCH}）</b>—— 与 {@link
+     * BuySlot#blocked} 对称：它记的是"制度上一笔都不许成交"的原因，优先级高于市场性归因 （见 {@link #sellerReason}）。{@code null} =
+     * 没有制度性拒因。
+     */
+    MarketUnfilledReason blocked;
+
     SellSlot(
         SellOrder order,
         Participant seller,
@@ -5397,6 +5615,7 @@ final class MarketSettlement {
       this.market = market;
       this.region = region;
       this.regionId = region.node().nodeId();
+      this.receiveCurrency = market.numeraire();
       this.remaining = order.sellable();
       this.costEstimate = costEstimateOf(round, market, seller, order.commodity());
       this.costTieBreak = ProducerCostBook.canonicalKey(hex, seller.actor);
@@ -5410,6 +5629,8 @@ final class MarketSettlement {
       this.market = other.market;
       this.region = other.region;
       this.regionId = other.regionId;
+      this.receiveCurrency = other.receiveCurrency;
+      this.blocked = other.blocked;
       this.costEstimate = other.costEstimate;
       this.costTieBreak = other.costTieBreak;
       this.orderIndex = other.orderIndex;

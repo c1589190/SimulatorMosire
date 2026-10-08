@@ -90,6 +90,7 @@ import io.mosire.simos.app.tools.write.GovRetireStaffTool;
 import io.mosire.simos.app.tools.write.GovSelectExamineesTool;
 import io.mosire.simos.app.tools.write.GovSetBudgetPolicyTool;
 import io.mosire.simos.app.tools.write.GovSetEstablishmentTool;
+import io.mosire.simos.app.tools.write.GovSetFxRateTool;
 import io.mosire.simos.app.tools.write.GovTransferTreasuryTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.LevyRegionTool;
@@ -681,6 +682,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new GovDefineCurrencyTool(core, query, initiator));
     built.add(new GovRenameCurrencyTool(core, query, initiator));
     built.add(new GovIssueMoneyTool(core, query, initiator));
+    //   ★★ A2a（2026-10-08 汇率阶段 2 §3.3）：官方汇率 —— 同一形制（GM 桶 + 决策人桶同名两处注册 +
+    //     决策人侧白名单/审批链）。★ 定下它就是"激活这个币对的外汇市场"（没定过 ⇒ 没有外汇面，逐值退回）。
+    built.add(new GovSetFxRateTool(core, query, initiator));
     // ★★ R4 / R5 步骤 4（2026-10-01 行政区划修复计划）：GM 按辖区行政需求精确配满编组合工具——逐 GOV 调
     //   GovDemand.of 求 security/paperwork 总量，目标 staff{YAMEN=security, SCRIBE=paperwork}，每个要改的 GOV
     //   一条 unit.SetGovFormation（policy 五字段原样带全），一批共享 batchId ⇒ 恰一条 revision。
@@ -854,6 +858,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new GovDefineCurrencyTool(core, query, initiator));
     built.add(new GovRenameCurrencyTool(core, query, initiator));
     built.add(new GovIssueMoneyTool(core, query, initiator));
+    //   ★★ A2a（2026-10-08 汇率阶段 2 §3.3）：官方汇率 —— 同一形制（GM 桶 + 决策人桶同名两处注册 +
+    //     决策人侧白名单/审批链）。★ 定下它就是"激活这个币对的外汇市场"（没定过 ⇒ 没有外汇面，逐值退回）。
+    built.add(new GovSetFxRateTool(core, query, initiator));
     // ★★ D2（2026-10-22 决策包计划）：决策包四件套——propose / submit / intent / my。
     //   **只在决策人桶**；白名单（DecisionCallerFactory.WHITELIST）必须同源。
     //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；submit/intent 走 own-packet 围栏。

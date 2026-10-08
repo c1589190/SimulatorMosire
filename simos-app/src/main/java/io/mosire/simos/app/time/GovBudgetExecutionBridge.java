@@ -67,8 +67,17 @@ import org.slf4j.Logger;
  * <p>★★ <b>min/cap 到具体腿的口径（冻结）</b>：
  *
  * <ol>
- *   <li>三条资源腿（grain/cloth/silver）都按"毫"1:1 计入同一"价值"（世界没有汇率/价格表，{@link GovBudgetLine} 的 javadoc
- *       把量纲定为"与国库计价单位一致"，本区就取最保守的 1:1；不引入伪价格）；
+ *   <li>★★ <b>A2b（2026-10-08；不变量 I24 / 负向用例 M7）：三条资源腿的价格口径 = 单一币种（本币 = {@code silver}）</b> ——
+ *       货币腿<b>只有</b> {@link #BOOK_CURRENCY} 这一种，算式具名为 {@link ResourceVector#valueInBookCurrency()}
+ *       （改前叫无名 {@code value()}，读的人看不出"哪个币种的口径"）。★ <b>商品腿（grain/cloth）仍按"毫"1:1 计入</b>：
+ *       世界没有价格表（{@link GovBudgetLine} 的 javadoc 把量纲定为"与国库计价单位一致"），本区取最保守的 1:1、不引入伪价格 ——
+ *       这条是**商品↔货币**的既有口径，与"跨币种"是两件事；<b>跨币种既不相加也不折算</b> （I17：世界上没有汇率，故"能分别算就分别算、不能分别算就不算"）；
+ *   <li>★★ <b>国库里的其他币种一律不进本算式</b>（既不按 1:1 加进来，也不折算）：{@link #treasuryAvailable} 逐币种列出被排除的 币种与金额并发
+ *       <b>DEBUG 日志 {@code GOV_BUDGET_FOREIGN_CURRENCY_EXCLUDED}</b>（"显式声明单一币种口径"必须能被读到，
+ *       §3.6）；该口径的直接后果是 <b>fail-closed</b> 的：国库只有铜、没有银 ⇒ 本币可用 = 0 ⇒ 类别拿不到额度 （{@code
+ *       treasury-available-zero}），本桥<b>不</b>拿铜当银花；
+ *   <li>★★ <b>请求侧若出现非本币的货币腿 ⇒ 具名拒收</b>（{@code unknown-currency}，见 {@link
+ *       #resourceVectorOf(HouseholdPeriodicAdjustment, long, UnitId)}）—— 不静默丢腿、不按 1:1 折进本币帽；
  *   <li>{@code capPerCycle} = 本类别每日"价值"上限；{@code minPerCycle} = 本类别每日"至少留"的保障额（下限）：
  *       先为<b>所有更低优先级类别</b>预留 {@code min(该类 min, 该类请求值, 该类 cap)}，剩余才轮到当前类别；
  *   <li>每类按固定腿序 grain → cloth → silver 分配限额（与 {@code GovDaily} 的资源序一致）；
@@ -92,7 +101,12 @@ public final class GovBudgetExecutionBridge {
 
   private static final CommodityId CLOTH = EconomyCommodities.CLOTH;
 
-  private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
+  /**
+   * ★★ <b>本桥"价值"口径的唯一币种（本币 = 银）</b>（A2b / I24 / M7）—— 预算帽的货币腿<b>只</b>认它： 国库里的其他币种既不按 1:1
+   * 加进来、也不折算（世界没有汇率），只逐币种具名列进 {@code GOV_BUDGET_FOREIGN_CURRENCY_EXCLUDED} 日志。★ 它是 {@link
+   * MoneyVocabulary} 的 {@code SILVER_CURRENCY}（不是就地拼的字符串）。
+   */
+  private static final CurrencyId BOOK_CURRENCY = MoneyVocabulary.SILVER_CURRENCY;
 
   private static final Logger LOG = AppLog.time();
 
@@ -257,7 +271,7 @@ public final class GovBudgetExecutionBridge {
     for (int index = 0; index < lines.size(); index++) {
       GovBudgetLine line = lines.get(index);
       ResourceVector requested = demands.getOrDefault(line.category(), ResourceVector.EMPTY);
-      long requestedValue = requested.value();
+      long requestedValue = requested.valueInBookCurrency();
       long capEffective =
           line.capPerCycle() == Long.MAX_VALUE
               ? requestedValue
@@ -268,7 +282,7 @@ public final class GovBudgetExecutionBridge {
         GovBudgetLine later = lines.get(lower);
         ResourceVector laterRequested =
             demands.getOrDefault(later.category(), ResourceVector.EMPTY);
-        long laterRequestedValue = laterRequested.value();
+        long laterRequestedValue = laterRequested.valueInBookCurrency();
         long laterCapEffective =
             later.capPerCycle() == Long.MAX_VALUE
                 ? laterRequestedValue
@@ -276,7 +290,7 @@ public final class GovBudgetExecutionBridge {
         lowerReserve =
             Math.addExact(lowerReserve, Math.min(later.minPerCycle(), laterCapEffective));
       }
-      long spendable = Math.max(0L, remaining.value() - lowerReserve);
+      long spendable = Math.max(0L, remaining.valueInBookCurrency() - lowerReserve);
       long authorizedValue = Math.min(capEffective, spendable);
       ResourceVector authorized = takeLegs(requested, remaining, authorizedValue);
       remaining = remaining.minus(authorized);
@@ -435,17 +449,18 @@ public final class GovBudgetExecutionBridge {
       if (!allocation.shortfall()) {
         continue;
       }
-      requestedTotal = Math.addExact(requestedTotal, allocation.requested().value());
-      authorizedTotal = Math.addExact(authorizedTotal, allocation.authorized().value());
+      requestedTotal = Math.addExact(requestedTotal, allocation.requested().valueInBookCurrency());
+      authorizedTotal =
+          Math.addExact(authorizedTotal, allocation.authorized().valueInBookCurrency());
       capLimitedTotal = Math.addExact(capLimitedTotal, allocation.capLimitedValue());
       treasuryLimitedTotal = Math.addExact(treasuryLimitedTotal, allocation.treasuryLimitedValue());
       floorUnmetTotal = Math.addExact(floorUnmetTotal, allocation.floorUnmetValue());
       shortfallCategories.add(
           allocation.category()
               + "(requested="
-              + allocation.requested().value()
+              + allocation.requested().valueInBookCurrency()
               + ",authorized="
-              + allocation.authorized().value()
+              + allocation.authorized().valueInBookCurrency()
               + ",cap="
               + allocation.capPerCycle()
               + ",min="
@@ -632,7 +647,7 @@ public final class GovBudgetExecutionBridge {
   private static Map<CurrencyId, Long> authorizedMoneyOf(ResourceVector taken) {
     Map<CurrencyId, Long> money = new LinkedHashMap<>();
     if (taken.silverMilli() > 0L) {
-      money.put(SILVER, taken.silverMilli());
+      money.put(BOOK_CURRENCY, taken.silverMilli());
     }
     return money;
   }
@@ -649,7 +664,7 @@ public final class GovBudgetExecutionBridge {
     }
     Map<CurrencyId, Long> money = new LinkedHashMap<>();
     if (taken.silverMilli() > 0L) {
-      money.put(SILVER, taken.silverMilli());
+      money.put(BOOK_CURRENCY, taken.silverMilli());
     }
     return new HouseholdPeriodicAdjustment(
         rule.id(),
@@ -979,8 +994,8 @@ public final class GovBudgetExecutionBridge {
       if (paid.isEmpty() && !book.requested.isEmpty()) {
         return book.authorized.isEmpty() ? "budget-authorized-zero" : "treasury-available-zero";
       }
-      if (paid.value() < book.requested.value()) {
-        return book.authorized.value() < book.requested.value()
+      if (paid.valueInBookCurrency() < book.requested.valueInBookCurrency()) {
+        return book.authorized.valueInBookCurrency() < book.requested.valueInBookCurrency()
             ? "budget-or-treasury-limited"
             : "treasury-drained-before-execution";
       }
@@ -992,7 +1007,12 @@ public final class GovBudgetExecutionBridge {
   // 值类型与工具
   // ---------------------------------------------------------------------------------------------
 
-  /** 三资源腿的"毫"向量（grain/cloth/silver；1:1 计价值，见类注）。 */
+  /**
+   * 三资源腿的"毫"向量（grain/cloth/本币；价值口径见类注与 {@link #valueInBookCurrency()}）。
+   *
+   * <p>★ 货币腿<b>只有一种币</b>（{@link #BOOK_CURRENCY}）：{@code silverMilli} 这个名字是既有的线格式字段名，语义 = "本币腿"。
+   * 国库里的其他币种<b>不进</b>本向量（{@link #treasuryAvailable} 会逐币种具名列出来）。
+   */
   public record ResourceVector(long grainMilli, long clothMilli, long silverMilli) {
 
     public static final ResourceVector EMPTY = new ResourceVector(0L, 0L, 0L);
@@ -1004,9 +1024,24 @@ public final class GovBudgetExecutionBridge {
       }
     }
 
-    /** 三腿的"价值"合计（毫；1:1）；溢出 ⇒ ArithmeticException（调用方折契约 ERROR）。 */
-    public long value() {
+    /**
+     * ★★ <b>"价值"合计（毫；A2b 具名为单一币种口径，I24 / M7）</b>：{@code 商品腿(grain+cloth) + 货币腿(本币)}，三腿都是"毫"。
+     *
+     * <p>★★ <b>为什么名字里必须有币种</b>：改前它叫无名 {@code value()}，读的人<b>看不出</b>这是"哪个币种的口径" —— 而这条算式正是 M7
+     * 点名的求和点之一（"跨币种直接相加"）。现在：① 货币腿只可能是 {@link #BOOK_CURRENCY}（{@link #bookCurrency()} 当场可读， {@link
+     * #treasuryAvailable} 只往这一腿装本币）；② 商品腿按类注的"无价格表 ⇒ 毫 1:1"口径，与币种无关；③ 任何<b>其他</b>币种的
+     * 余额/请求都<b>不进</b>这条算式（请求侧非本币 ⇒ 具名拒 {@code unknown-currency}；国库侧非本币 ⇒ 具名排除日志）。 ⇒ 这不再是"默认 1:1
+     * 相加"，而是**写明的单一币种口径**。
+     *
+     * <p>★ 溢出 ⇒ {@code ArithmeticException}（调用方折契约 ERROR）。
+     */
+    public long valueInBookCurrency() {
       return Math.addExact(Math.addExact(grainMilli, clothMilli), silverMilli);
+    }
+
+    /** 本向量的货币腿是哪一种币（{@code valueInBookCurrency()} 的口径；只有一个答案 ⇒ 不是"默认 1:1"）。 */
+    public CurrencyId bookCurrency() {
+      return BOOK_CURRENCY;
     }
 
     public boolean isEmpty() {
@@ -1168,7 +1203,7 @@ public final class GovBudgetExecutionBridge {
           resources.put(new GovDaily.Commodity(CLOTH), authorized.clothMilli());
         }
         if (authorized.silverMilli() > 0L) {
-          resources.put(new GovDaily.Money(SILVER), authorized.silverMilli());
+          resources.put(new GovDaily.Money(BOOK_CURRENCY), authorized.silverMilli());
         }
         if (!resources.isEmpty()) {
           remaining.put(plan.gov(), resources);
@@ -1250,7 +1285,7 @@ public final class GovBudgetExecutionBridge {
       }
     }
     for (CurrencyId currency : rule.moneyPerCycle().keySet()) {
-      if (!currency.equals(SILVER)) {
+      if (!currency.equals(BOOK_CURRENCY)) {
         throw contractFailure(
             "unknown-currency", day, gov, "rule=" + rule.id().value() + " currency=" + currency);
       }
@@ -1258,7 +1293,7 @@ public final class GovBudgetExecutionBridge {
     return new ResourceVector(
         rule.goodsPerCycle().getOrDefault(GRAIN, 0L),
         rule.goodsPerCycle().getOrDefault(CLOTH, 0L),
-        rule.moneyPerCycle().getOrDefault(SILVER, 0L));
+        rule.moneyPerCycle().getOrDefault(BOOK_CURRENCY, 0L));
   }
 
   /** 执行读数（已落账的腿）→ 三腿向量。 */
@@ -1267,10 +1302,22 @@ public final class GovBudgetExecutionBridge {
     return new ResourceVector(
         paidGoods.getOrDefault(GRAIN, 0L),
         paidGoods.getOrDefault(CLOTH, 0L),
-        paidMoney.getOrDefault(SILVER, 0L));
+        paidMoney.getOrDefault(BOOK_CURRENCY, 0L));
   }
 
-  /** 国库可用量（余额 − 冻结；唯一算法 {@link AvailableStock}）；缺账/解析不出政府家户 ⇒ 契约 ERROR fail-closed。 */
+  /**
+   * 国库可用量（余额 − 冻结；唯一算法 {@link AvailableStock}）；缺账/解析不出政府家户 ⇒ 契约 ERROR fail-closed。
+   *
+   * <p>★★ <b>A2b（I24 / M7）：本币口径 = {@link #BOOK_CURRENCY} 单一币种</b> ——
+   *
+   * <ul>
+   *   <li>货币腿<b>只装</b>本币（{@code AvailableStock.available(view, BOOK_CURRENCY)}）；国库里<b>其他任何币种</b>
+   *       既不按 1:1 加进来、也不折算（世界没有汇率）⇒ 逐币种具名列进 <b>DEBUG {@code
+   *       GOV_BUDGET_FOREIGN_CURRENCY_EXCLUDED}</b>（"显式声明单一币种口径"必须能被读到，设计书 §3.6）；
+   *   <li>后果是 fail-closed 的：国库只有外币 ⇒ 本币可用 = 0 ⇒ 类别拿不到额度（{@code treasury-available-zero}），
+   *       <b>不</b>拿外币当本币花。
+   * </ul>
+   */
   private static ResourceVector treasuryAvailable(
       AccountSession accounts, Unit unit, UnitId gov, long day) {
     HouseholdId treasury;
@@ -1290,10 +1337,48 @@ public final class GovBudgetExecutionBridge {
             account.money(),
             account.frozenGoods(),
             account.frozenMoney());
+    logForeignCurrenciesExcluded(view, gov, day);
     return new ResourceVector(
         AvailableStock.available(view, GRAIN),
         AvailableStock.available(view, CLOTH),
-        AvailableStock.available(view, SILVER));
+        AvailableStock.available(view, BOOK_CURRENCY));
+  }
+
+  /**
+   * ★★ <b>A2b（I24 / M7）：把"国库里被本币口径排除掉的币种"逐币种具名记下来</b>（DEBUG，不写任何状态）。
+   *
+   * <p>★ 只发"确实持有"的币种（缺币种 ≠ 余额 0 的条目一律不发，避免日日刷屏）；本币不在排除表里。 ★ 一条都不持有时也发一条 {@code excluded=[]}
+   * 的读数？<b>不发</b>：那会让"没有外币"与"没跑过本方法"在日志里长得一样 —— 需要知道本方法跑过的调用点看同一轮的计划日志。
+   */
+  private static void logForeignCurrenciesExcluded(HouseholdInventory view, UnitId gov, long day) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    Map<String, Long> excluded = new java.util.TreeMap<>();
+    for (Map.Entry<CurrencyId, Long> entry : view.money().entrySet()) {
+      long amount = entry.getValue() + view.frozenMoney().getOrDefault(entry.getKey(), 0L);
+      if (!entry.getKey().equals(BOOK_CURRENCY) && amount != 0L) {
+        excluded.merge(entry.getKey().value(), amount, Long::sum);
+      }
+    }
+    if (excluded.isEmpty()) {
+      return;
+    }
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "GOV_BUDGET_FOREIGN_CURRENCY_EXCLUDED",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                day,
+                "gov",
+                gov.value(),
+                "bookCurrency",
+                BOOK_CURRENCY.value(),
+                "excluded",
+                excluded,
+                "note",
+                "预算帽 = 单一币种口径：其他币种既不相加也不折算（世界无汇率）"));
   }
 
   /** 按 GOV 累加需求向量（键序 = 首次出现序）。 */
@@ -1335,8 +1420,8 @@ public final class GovBudgetExecutionBridge {
     Map<String, Long> requested = new LinkedHashMap<>();
     Map<String, Long> authorized = new LinkedHashMap<>();
     for (Map.Entry<GovBudgetCategory, CategoryAllocation> entry : allocations.entrySet()) {
-      requested.put(entry.getKey().name(), entry.getValue().requested().value());
-      authorized.put(entry.getKey().name(), entry.getValue().authorized().value());
+      requested.put(entry.getKey().name(), entry.getValue().requested().valueInBookCurrency());
+      authorized.put(entry.getKey().name(), entry.getValue().authorized().valueInBookCurrency());
     }
     EventLog.channel(LOG)
         .debug(
