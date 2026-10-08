@@ -337,8 +337,9 @@ final class MarketSettlement {
 
     /**
      * ★★ <b>2026-10-08（阶段 2-A2a）：本轮的外汇入参</b>（官方汇率 + 窗口储备上限；由 {@code EconomySettlement} 从 {@code
-     * EconomyData.governments()} 装配后经 {@link #withFx} 注入）。 默认 {@link FxRoundInput#none()} ⇒
-     * <b>本轮没有外汇面，逐值退回 A2a 之前</b> （没有官方汇率的旧世界因此一个数都不动）。
+     * EconomyData.governments()} 装配后经 {@link #withFx} 注入；★ B4 起再加上 {@code
+     * EconomyData.marketZones()} 的区级覆盖 —— 口径 = 区级优先、按币对回落该区发行 GOV 的 GOV 级报价）。 默认 {@link
+     * FxRoundInput#none()} ⇒ <b>本轮没有外汇面，逐值退回 A2a 之前</b> （没有官方汇率的旧世界因此一个数都不动）。
      *
      * <p>★ 逐轮瞬态：不进 {@code EconomyData}、不进变更集、不落盘（I17：汇率不进状态）。
      */

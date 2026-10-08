@@ -102,6 +102,13 @@ import java.util.Set;
  * 三个区的划分函数（{@link #zoneOf}） 与市场拓扑的"半径内最近节点、同距按 nodeId 字典序"是<b>同一条规则</b>（城市 id 序 = 区序）⇒
  * 行政区与市场区**逐格重合**， 这让"每区法定币"这句话在任何一侧读都自洽。
  *
+ * <p>★★ <b>B3（2026-10-08 阶段 2-B 第三批）：这 3 个区在创世期就落成<b>持久状态</b></b>——{@code
+ * ThreePowersMarketZones#define} 为每个行政区发一条 {@code economy.DefineMarketZone}（成员格 = 该辖区全部格、锚格 = 城市格、
+ * 法定币 = 该 GOV 发行的币、发行 GOV = 该 {@code gov-unit-…}），随后跑七条具名自检（见 {@code ThreePowersGovBootstrap} 的类注）。
+ * ⇒ {@code EconomyData.marketZones} <b>非空</b> ⇒ {@code MarketTopologyBook} 走<b>持久区</b>路径（I22
+ * 的单一权威在这个世界上真正生效）， 上面那段"派生路径"因此退化为<b>同一形状的默认值</b>（区 id / 锚格 / 半径 / 成员格与派生基线逐值相同 —— 只换权威，不改读数）。 ★
+ * 官方汇率仍<b>不设</b>（留给验收时用 GM 命令设，便于观察"设汇率前外汇面沉默"）。
+ *
  * <p>★★ <b>辖区互斥（I23）的三重保证</b>（用户第 8 轮裁定「重叠辖区是不被允许的」）：① 行政区由 {@link #zoneOf} 的**划分** 构造（并集 =
  * 全域、两两不相交，构造性成立）；② 创世链入口 {@code ThreePowersGovBootstrap.apply} 逐 hex 自检并具名抛； ③ 运行期由组合根的 {@code
  * GovJurisdictionGuard}（{@code MutationGuard}）拦截"两个 GOV 授同一 hex"的写命令。
@@ -111,12 +118,13 @@ import java.util.Set;
  * 每次调用产出逐字段相等的状态。
  *
  * <p>★ <b>日志</b>（AGENTS §一.9）：创世末尾按四件事各发 INFO —— 几个市场区 / 几个 GOV / 几种货币 / 每区法定币（逐区一条）， 另加一条 I23 逐
- * hex 断言结果。事件名见 {@link #EVENT_ZONES} / {@link #EVENT_GOVS} / {@link #EVENT_CURRENCIES} / {@link
- * #EVENT_ZONE_NUMERAIRE} / {@link #EVENT_EXCLUSIVITY}。
+ * hex 断言结果；★ 逐区"持久区已落"与一条汇总由 {@code ThreePowersMarketZones} 发（区 id / 格数 / 法定币 / 发行 GOV）。事件名见 {@link
+ * #EVENT_ZONES} / {@link #EVENT_GOVS} / {@link #EVENT_CURRENCIES} / {@link #EVENT_ZONE_NUMERAIRE} /
+ * {@link #EVENT_EXCLUSIVITY} 与 {@code ThreePowersMarketZones#EVENT_ZONE_PERSISTED}。
  *
- * <p>★ <b>不做</b>（留给 B2 及之后，见账本）：市场区**持久状态组件**（{@code EconomyData} 新组件 + Codec + 往返不变式）、
- * "退让/覆盖/合并"命令面、发行政府 ↔ GOV 连线的完整查询面、GOV 总疆域 → hex 的公开函数、跨区汇率套利、口岸/关税、
- * 商品采购窗口、铸币。本世界的市场区仍是**派生件**（I22 的持久化是 B2）。
+ * <p>★ <b>不做</b>（见 B3 账本）：官方汇率（留给控制方验收）、FX 窗口按区收窄、口岸/关税、跨区套利的新机制、铸币生产方式、 "退让/覆盖/合并"的 DM 面。★ B2
+ * 已交付的区命令面（{@code DefineMarketZone}/{@code ReassignZoneHexes}/{@code MergeMarketZones}/{@code
+ * SetOfficialRate} 的区级扩展）在本世界上从此有对象可作用。
  */
 public final class ThreePowersWorld {
 
@@ -394,7 +402,9 @@ public final class ThreePowersWorld {
             //   故"谁是银的发行主体"只能在 RegisterGovernment 的 issuable 里声明（不声明 ⇒ 国库那笔银发不出发行审计）。
             Set.of(MoneyVocabulary.SILVER_CURRENCY),
             Optional.empty(),
-            sources.get(SILVER_CITY_ID)),
+            sources.get(SILVER_CITY_ID),
+            // ★ B3：本 GOV 辖区对应的持久市场区 id = 本区城市 id（与派生路径的节点 id 同字面 ⇒ 换权威不改读数）。
+            SILVER_CITY_ID),
         new ThreePowersGovBootstrap.GovSpec(
             COPPER_GOV_ID,
             "铜省政府",
@@ -407,7 +417,8 @@ public final class ThreePowersWorld {
             Optional.of(
                 new ThreePowersGovBootstrap.NewCurrency(
                     COPPER.currencyId().value(), COPPER.scale(), COPPER.displayName())),
-            sources.get(COPPER_CITY_ID)),
+            sources.get(COPPER_CITY_ID),
+            COPPER_CITY_ID),
         new ThreePowersGovBootstrap.GovSpec(
             GOLD_GOV_ID,
             "金省政府",
@@ -420,7 +431,8 @@ public final class ThreePowersWorld {
             Optional.of(
                 new ThreePowersGovBootstrap.NewCurrency(
                     GOLD.currencyId().value(), GOLD.scale(), GOLD.displayName())),
-            sources.get(GOLD_CITY_ID)));
+            sources.get(GOLD_CITY_ID),
+            GOLD_CITY_ID));
   }
 
   /** 国库货币表（银工作余额 + 本区法定币；两者同币时**合并**成一笔，不写两条同键）。 */

@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.debt.InterestTiming;
 import io.mosire.simos.economy.api.debt.RepaymentRule;
+import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -28,6 +29,7 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuance;
@@ -52,6 +54,7 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -462,6 +465,9 @@ public final class EconomySettlement {
 
   /** 逐笔原始事件日志：trace 分类（每笔转移/成交槽/债务变动）。 */
   private static final Logger RAW = EconomyLog.trace();
+
+  /** B4：外汇窗口装配（fx 分类 —— 与 {@code FxSettlement} 的 {@code FX_ROUND} 同一个 logger，便于一处看全外汇面）。 */
+  private static final Logger FX = EconomyLog.fx();
 
   private EconomySettlement() {}
 
@@ -1709,11 +1715,14 @@ public final class EconomySettlement {
       MarketArbitragePlan arbitragePlan = arbitrageCollector.toPlan();
       marketRound = marketRound.withArbitrage(arbitragePlan);
       logArbitrageRound(day, arbitragePlan);
-      // ★★ A2a（阶段 2）：把"这个世界有哪些政府外汇窗口、储备上限多少"带进本轮 ——
-      //   唯一来源 = EconomyData.governments()（官方汇率是状态）+ moneyIssuances（累计发行量 ⇒ 储备上限）。
-      //   ★ 没有任何官方汇率 ⇒ FxRoundInput.none() ⇒ 本轮整段没有外汇面（旧世界逐值不变）。
-      FxRoundInput fxInput = FxRoundInput.of(base.governments(), base.moneyIssuances());
+      // ★★ A2a（阶段 2）+ B4（2026-10-08）：把"这个世界有哪些政府外汇窗口、储备上限多少"带进本轮 ——
+      //   唯一来源 = EconomyData.governments()（GOV 级报价是状态）+ marketZones（B2 的区级覆盖）+ moneyIssuances
+      //   （累计发行量 ⇒ 储备上限）。★ B4 起报价口径 = 区级优先、按币对回落该区发行 GOV 的 GOV 级报价。
+      //   ★ 一条生效报价都没有 ⇒ FxRoundInput.none() ⇒ 本轮整段没有外汇面（旧世界逐值不变）。
+      FxRoundInput fxInput =
+          FxRoundInput.of(base.governments(), base.moneyIssuances(), base.marketZones());
       marketRound = marketRound.withFx(fxInput);
+      logFxWindows(day, base, fxInput);
       if (fxInput.isActive() && TRACE.isDebugEnabled()) {
         EventLog.channel(TRACE)
             .debug(
@@ -7807,6 +7816,148 @@ public final class EconomySettlement {
                     instruction.laborMilli()));
       }
     }
+  }
+
+  /**
+   * ★★ <b>B4（2026-10-08）：本轮外汇窗口装配的日志</b>（§一.9）—— 新接线（区级汇率参与报价）必须能从日志看出来：
+   *
+   * <ul>
+   *   <li><b>INFO</b>（有窗口时一条 {@code FX_WINDOWS_ASSEMBLED}）：这一轮发生了什么 —— 几个窗口、区表几条、
+   *       其中几个区带区级覆盖、政府表几个（"有窗口"是生命周期事件；"没有窗口"不刷 INFO，与 {@code logArbitrageRound} 同款）；
+   *   <li><b>DEBUG</b>（无论有没有窗口都一条 {@code FX_WINDOWS_ASSEMBLED_DETAIL}）：为什么 —— 没有窗口时写明"没有任何生效报价 ⇒
+   *       fail-closed 不开张"，逐窗口一条 {@code FX_WINDOW_ASSEMBLED} 记属主/币对/买价/卖价/储备上限，以及
+   *       <b>这个价来自区级覆盖（哪个区）还是 GOV 级</b>（区级优先回落的现场判据）。
+   * </ul>
+   *
+   * <p>★ 日志只读状态：不写状态、不改公式、失败不影响结算（{@code EventLog} 的口径）。
+   */
+  private static void logFxWindows(long day, EconomyData base, FxRoundInput fxInput) {
+    List<MarketZone> zones = MarketZoneBook.zones(base.marketZones());
+    int zonesWithRates = 0;
+    for (MarketZone zone : zones) {
+      if (!zone.officialRates().isEmpty()) {
+        zonesWithRates++;
+      }
+    }
+    if (fxInput.isActive()) {
+      EventLog.channel(FX)
+          .info(
+              LogEvent.of(
+                  "FX_WINDOWS_ASSEMBLED",
+                  EconomyLogSource.ECONOMY_FX,
+                  "day",
+                  day,
+                  "windows",
+                  fxInput.windows().size(),
+                  "zones",
+                  zones.size(),
+                  "zonesWithOfficialRates",
+                  zonesWithRates,
+                  "governments",
+                  base.governments().size()));
+    }
+    if (!FX.isDebugEnabled()) {
+      return;
+    }
+    int governmentsWithRates = 0;
+    for (Government government : base.governments().values()) {
+      if (!government.officialRates().isEmpty()) {
+        governmentsWithRates++;
+      }
+    }
+    EventLog.channel(FX)
+        .debug(
+            LogEvent.of(
+                "FX_WINDOWS_ASSEMBLED_DETAIL",
+                EconomyLogSource.ECONOMY_FX,
+                "day",
+                day,
+                "windows",
+                fxInput.windows().size(),
+                "zones",
+                zones.size(),
+                "zonesWithOfficialRates",
+                zonesWithRates,
+                "governmentsWithRates",
+                governmentsWithRates,
+                "reason",
+                fxInput.isActive()
+                    ? "有生效报价（区级优先、按币对回落 GOV 级）"
+                    : "没有任何生效报价 ⇒ 本轮没有外汇窗口（fail-closed：没有政策价可锚）"));
+    for (FxRoundInput.Window window : fxInput.windows()) {
+      OfficialRate rate = window.rate();
+      List<MarketZone> covering =
+          MarketZoneBook.zonesCovering(
+              base.marketZones(), window.governmentId(), rate.base(), rate.quote());
+      EventLog.channel(FX)
+          .debug(
+              LogEvent.of(
+                  "FX_WINDOW_ASSEMBLED",
+                  EconomyLogSource.ECONOMY_FX,
+                  "day",
+                  day,
+                  "government",
+                  window.governmentId().value(),
+                  "base",
+                  rate.base().value(),
+                  "quote",
+                  rate.quote().value(),
+                  "buyPerMille",
+                  rate.buyPerMille(),
+                  "sellPerMille",
+                  rate.sellPerMille(),
+                  "reserveCapBaseMilli",
+                  window.reserveCapBaseMilli(),
+                  "rateSource",
+                  covering.isEmpty()
+                      ? "government"
+                      : "market-zone:" + covering.get(0).zoneId().value()));
+      if (covering.size() > 1) {
+        // ★ 一个 GOV 下辖多个区、同币对给了不同报价 ⇒ 规范序第一个区胜出，其余被覆盖：
+        //   被丢掉的那几条政策价必须具名出现在日志里（不许静默吞掉另一条政府报价）。
+        EventLog.channel(FX)
+            .debug(
+                LogEvent.of(
+                    "FX_ZONE_RATE_CONFLICT",
+                    EconomyLogSource.ECONOMY_FX,
+                    "day",
+                    day,
+                    "government",
+                    window.governmentId().value(),
+                    "base",
+                    rate.base().value(),
+                    "quote",
+                    rate.quote().value(),
+                    "chosenZone",
+                    covering.get(0).zoneId().value(),
+                    "chosenBuyPerMille",
+                    rate.buyPerMille(),
+                    "chosenSellPerMille",
+                    rate.sellPerMille(),
+                    "droppedZoneRates",
+                    droppedZoneRates(covering, rate.base(), rate.quote()),
+                    "rule",
+                    "MarketZoneBook#zoneCovering：规范序第一个覆盖该币对的区胜出"));
+      }
+    }
+  }
+
+  /** 冲突里被覆盖掉的区级报价（{@code zone=buy/sell,…}；只用于 DEBUG 日志，不改任何判定）。 */
+  private static String droppedZoneRates(
+      List<MarketZone> covering, CurrencyId base, CurrencyId quote) {
+    StringBuilder text = new StringBuilder();
+    for (MarketZone zone : covering.subList(1, covering.size())) {
+      if (text.length() > 0) {
+        text.append(',');
+      }
+      text.append(zone.zoneId().value())
+          .append('=')
+          .append(
+              zone.officialRate(base, quote)
+                  .map(rate -> rate.buyPerMille() + "/" + rate.sellPerMille())
+                  .orElse("?"));
+    }
+    return text.toString();
   }
 
   // ── 转移的落账（H2：唯一写会话副本的地方）────────────────────────────────────────────

@@ -26,8 +26,8 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * ★★ {@code economy.MergeMarketZones}（阶段 2-B2，2026-10-08；约束设计书 §4.2 / 用户 §1.2「合并」）：<b>把源区并入目标区</b> ——
- * 源区的成员格与区级官方汇率覆盖一并并进目标区，<b>源区随之撤销</b>；一条命令 = 一条 revision（铁律 2）。
+ * ★★ {@code economy.MergeMarketZones}（阶段 2-B2，2026-10-08；约束设计书 §4.2 / 用户 §1.2「合并」）：<b>把源区并入目标区</b>
+ * —— 源区的成员格与区级官方汇率覆盖一并并进目标区，<b>源区随之撤销</b>；一条命令 = 一条 revision（铁律 2）。
  *
  * <pre>{@code
  * {"sourceZoneId":"c-tp-gold",     // 必填：被并入并撤销的区
@@ -36,8 +36,7 @@ import java.util.Set;
  * }</pre>
  *
  * <p>★★ <b>"撤区"只有这一条路</b>：{@code ReassignZoneHexes} 明令拒"把源区的格全部划走"（那会留下一个没有成员格的空壳区），
- * 于是"这个区不要了"必须表达成"并进哪个区" —— 合并是一条<b>有明确归属去向</b>的动作，"删掉"不是（用户 §1.2 的原话是"合并"，
- * 本批照它做，不另造一条 delete 命令）。
+ * 于是"这个区不要了"必须表达成"并进哪个区" —— 合并是一条<b>有明确归属去向</b>的动作，"删掉"不是（用户 §1.2 的原话是"合并"， 本批照它做，不另造一条 delete 命令）。
  *
  * <p>★★ <b>五条具名拒（fail-closed）</b>：
  *
@@ -49,16 +48,14 @@ import java.util.Set;
  *   <li>{@code numeraire-mismatch}：被并入的某个格（凡有市场行者）的计价币 ≠ 目标区法定币（先 {@code
  *       economy.SetMarketNumeraire} 显式改成目标币；合并**不做**静默换汇 —— I17/I24。跨币合并在三步之内可达，
  *       而"两区法定币必须相同"那种更强的守卫会把合并在这个批次的 three-powers 世界里彻底堵死）；
- *   <li>{@code official-rate-conflict}：两区对<b>同一币对</b>都有区级覆盖且数值不同（两个政策价不能同时成立；先统一其中一个，
- *       相同值则自然合并）。
+ *   <li>{@code official-rate-conflict}：两区对<b>同一币对</b>都有区级覆盖且数值不同（两个政策价不能同时成立；先统一其中一个， 相同值则自然合并）。
  * </ol>
  *
  * <p>★ <b>合并后的形状</b>：目标区 = 目标区原有格 ∪ 源区格（<b>规范序</b>由 {@code MarketZone} 构造期保证），锚格与法定币/发行者取
- * 目标区（**目标区的钱成为合并区的法定币**），声明半径 = 两区半径的较大者（不因合并而缩小可达判据），区级汇率覆盖 = 两区的并集
- * （冲突已在上面拒掉）。
+ * 目标区（**目标区的钱成为合并区的法定币**），声明半径 = 两区半径的较大者（不因合并而缩小可达判据），区级汇率覆盖 = 两区的并集 （冲突已在上面拒掉）。
  *
- * <p>★ <b>GM-only</b>：同 {@code economy.DefineMarketZone}（世界级区表没有单格资源目标 ⇒ {@link CommandTargets#targetPaths}
- * 恒空）。
+ * <p>★ <b>GM-only</b>：同 {@code economy.DefineMarketZone}（世界级区表没有单格资源目标 ⇒ {@link
+ * CommandTargets#targetPaths} 恒空）。
  */
 public final class EconomyMergeMarketZonesHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
@@ -90,12 +87,7 @@ public final class EconomyMergeMarketZonesHandler
       definition = parse(payloadJson);
     } catch (IllegalArgumentException e) {
       return rejected(
-          "bad-payload",
-          null,
-          null,
-          null,
-          EconomyCommandPayloads.logReason(e.getMessage()),
-          base);
+          "bad-payload", null, null, null, EconomyCommandPayloads.logReason(e.getMessage()), base);
     }
     try {
       if (base.meta().isEmpty()) {
@@ -110,8 +102,7 @@ public final class EconomyMergeMarketZonesHandler
       MarketZoneId sourceId = new MarketZoneId(definition.sourceZoneId());
       MarketZoneId targetId = new MarketZoneId(definition.targetZoneId());
       if (sourceId.equals(targetId)) {
-        return rejected(
-            "same-zone", definition, null, null, "源区与目标区相同: " + sourceId.value(), base);
+        return rejected("same-zone", definition, null, null, "源区与目标区相同: " + sourceId.value(), base);
       }
       MarketZone source = base.marketZones().get(sourceId);
       if (source == null) {

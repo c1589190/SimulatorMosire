@@ -52,8 +52,8 @@ public final class MarketZoneReadout {
    * @param numeraire <b>本区法定币</b>（区内价格都按它计）
    * @param receiveWith 本区卖方接收的货币工具 id（见 {@code MarketTopologyBook#addNode} 的注：该字段全仓零读取者）
    * @param members 成员格（保序不可变；含锚格）
-   * @param authority {@code "persistent"}（成员格由 {@code EconomyData.marketZones} 给定，I22）或 {@code "derived"}
-   *     （空区表 ⇒ "城市 + tier 半径"派生，本批之前的既有形态）
+   * @param authority {@code "persistent"}（成员格由 {@code EconomyData.marketZones} 给定，I22）或 {@code
+   *     "derived"} （空区表 ⇒ "城市 + tier 半径"派生，本批之前的既有形态）
    * @param officialRates 本区**区级**官方汇率覆盖（{@code base|quote} → 报价；派生区 / 无覆盖 ⇒ 空表）
    * @param issuingGov 本区法定币的发行政府 id（持久区 = {@code GovernmentId} 裸值；派生区 ⇒ null —— 派生件说不出"谁发行"）
    * @param issuingGovUnit 发行政府对应的 GOV 单位 id（世界级主体 / 派生区 ⇒ 空）
@@ -98,8 +98,7 @@ public final class MarketZoneReadout {
    * ★★ <b>B2：持久区（{@code EconomyData.marketZones}）的只读投影</b>（不经过拓扑）—— 供命令面/探针/日志读"状态里到底有哪些区"。
    *
    * <p>★ 与 {@link #zones(SimulationState)} 的区别：那个读的是**拓扑**（含派生兜底单格区、成员格经装配），本方法读的是
-   * <b>状态</b>（唯一权威本身）。两者在区表非空时逐值一致（拓扑按持久区装配）；区表为空时本方法返回空表而拓扑仍会给出派生区 ——
-   * 这正是"空表 = 派生默认值"的形态。
+   * <b>状态</b>（唯一权威本身）。两者在区表非空时逐值一致（拓扑按持久区装配）；区表为空时本方法返回空表而拓扑仍会给出派生区 —— 这正是"空表 = 派生默认值"的形态。
    */
   public static List<Zone> persistentZones(SimulationState state) {
     Objects.requireNonNull(state, "state");
@@ -188,8 +187,8 @@ public final class MarketZoneReadout {
   }
 
   /**
-   * ★★ <b>某个市场区上某币对的官方汇率读数</b>（区级覆盖优先、回落该区发行 GOV 的 GOV 级报价；见
-   * {@code MarketZoneBook.officialRateFor}）：读的是**状态**，不是撮合结果（I18：官方汇率是政策价，不是成交价）。
+   * ★★ <b>某个市场区上某币对的官方汇率读数</b>（区级覆盖优先、回落该区发行 GOV 的 GOV 级报价；见 {@code
+   * MarketZoneBook.officialRateFor}）：读的是**状态**，不是撮合结果（I18：官方汇率是政策价，不是成交价）。
    */
   public static Optional<OfficialRate> officialRateFor(
       SimulationState state, HexCoord hex, CurrencyId base, CurrencyId quote) {
@@ -218,8 +217,8 @@ public final class MarketZoneReadout {
   /**
    * 逐区一行的人类可读摘要（保序；供日志与探针直读）：{@code "<zoneId>@<anchor>[<n>格]=<币种>"}。
    *
-   * <p>★ 只输出稳定 id 与数量，不输出任何载荷/密钥（§一.9 的日志纪律）。★★ B2 起本行的**格式不变**（见方法内注释）：
-   * 权威来源与发行者/区级汇率走 {@code GovCurrencyLinks.describe} 与 {@link Zone} 的字段。
+   * <p>★ 只输出稳定 id 与数量，不输出任何载荷/密钥（§一.9 的日志纪律）。★★ B2 起本行的**格式不变**（见方法内注释）： 权威来源与发行者/区级汇率走 {@code
+   * GovCurrencyLinks.describe} 与 {@link Zone} 的字段。
    */
   public static List<String> describe(SimulationState state) {
     List<String> lines = new ArrayList<>();

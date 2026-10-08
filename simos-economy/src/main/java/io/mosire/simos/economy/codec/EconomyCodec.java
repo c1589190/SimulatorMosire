@@ -40,8 +40,8 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -127,8 +127,8 @@ import org.slf4j.Logger;
  * EconomyChangeSet} 构造器兜底。
  *
  * <p>★★ <b>B2（2026-10-08）追加 {@code marketZones}</b>（第 36 个组件；约束设计书 §4.2）：键 = {@code MarketZoneId}
- * （已注册），值 = {@code MarketZone}（区 id + 锚格 + 半径 + 成员格 + 法定币 + 发行政府 + 区级官方汇率覆盖）走 record
- * 绑定；旧档缺该节点 ⇒ {@code EconomyData} 构造期归一成空表（市场区退回"城市 + tier 半径"派生 ⇒ 既有世界逐值不变）。
+ * （已注册），值 = {@code MarketZone}（区 id + 锚格 + 半径 + 成员格 + 法定币 + 发行政府 + 区级官方汇率覆盖）走 record 绑定；旧档缺该节点 ⇒
+ * {@code EconomyData} 构造期归一成空表（市场区退回"城市 + tier 半径"派生 ⇒ 既有世界逐值不变）。
  *
  * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code capacity}）走 Jackson **默认的枚举键** 绑定（按
  * {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆，故只需读侧。

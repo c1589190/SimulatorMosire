@@ -14,11 +14,10 @@ import java.util.Map;
  * ★★ {@code simos.economy.reassignZoneHexes}（阶段 2-B2，2026-10-08；约束设计书 §4.2 / 用户 §1.2「退让市场区、覆盖范围」）：
  * <b>逐格改划</b>的 GM 窄写面 —— {@link EconomyReassignZoneHexesHandler} 的薄封装（固定命令类型 + 载荷 JSON + 乐观并发）。
  *
- * <p>★ <b>薄工具而不是带参数的工具</b>：载荷形状的唯一权威是 handler 的类注与 catalog 的载荷提示；把字段逐个搬进工具参数等于把
- * 契约复制一份（两处拼写、两处会漂）。
+ * <p>★ <b>薄工具而不是带参数的工具</b>：载荷形状的唯一权威是 handler 的类注与 catalog 的载荷提示；把字段逐个搬进工具参数等于把 契约复制一份（两处拼写、两处会漂）。
  *
- * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}；命令本身标 {@code GmOnlyCommand}
- * ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；{@code DecisionCallerFactory.WHITELIST} 也不含本工具。
+ * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}；命令本身标 {@code GmOnlyCommand} ⇒
+ * 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；{@code DecisionCallerFactory.WHITELIST} 也不含本工具。
  *
  * <p>★ <b>写面只声明 economy 命名空间</b>：handler 只产 {@code EconomyChangeSet}（区表是经济切片的组件）。
  */
@@ -47,10 +46,7 @@ public final class EconomyReassignZoneHexesTool extends AbstractNarrowWriteTool 
 
   @Override
   protected String summary(Map<String, Object> args) {
-    return "市场区改划（退让/覆盖）branch="
-        + args.get("branch")
-        + " expected="
-        + args.get("expectedRevision");
+    return "市场区改划（退让/覆盖）branch=" + args.get("branch") + " expected=" + args.get("expectedRevision");
   }
 
   @Override

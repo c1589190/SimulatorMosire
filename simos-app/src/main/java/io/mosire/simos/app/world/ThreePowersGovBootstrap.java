@@ -90,9 +90,18 @@ import java.util.Set;
  * → gov.SetAdministrationPlan（两维计划、默认 3 档、静态修正 1000‰、k=1）
  * → gov.SetBudgetPolicy（默认五类顺序 + 官吏工资规则 粮 10/银 1 毫·承诺小时）
  * …全部 GOV 之后（顺序不可换）：
- * actor.AdjustAccounts（逐 GOV 国库注入 粮/布/银 + 本区法定币）
+ * ★ economy.DefineMarketZone × N（B3：逐 GOV 一区 —— 见下"落点"）
+ * → actor.AdjustAccounts（逐 GOV 国库注入 粮/布/银 + 本区法定币）
  * → economy.RecordMoneyIssuance（逐 GOV × 逐币种一条 INITIAL_ENDOWMENT 审计）
  * </pre>
+ *
+ * <p>★★ <b>B3（2026-10-08 阶段 2-B 第三批）：持久市场区的落点与理由</b>。三个行政区的市场区由 {@code
+ * ThreePowersMarketZones#define} 在<b>全部 GOV 的 per-GOV 命令序之后、{@code actor.AdjustAccounts} 之前</b>落成
+ * （见 {@link #apply}）。依赖逐条回代码核过（file:line 见 B3 账本 §1）：{@code economy.DefineMarketZone} 要求 <b>币种已在词表
+ * + 政府已注册 + 该政府的 {@code issuable} 含该币 + 锚格有市场行 + 成员格计价币 = 法定币</b> ⇒ 硬依赖是"最后一个 GOV 的 {@code
+ * economy.DefineCurrency} 之后"；{@code unit.SetJurisdiction} <b>不被该 handler 读</b> （区成员格取自 {@code
+ * map.regions()}），但"区 = 辖区"在语义上成对，且任务书要求落在所有 SetJurisdiction 之后 ⇒ 取整个 per-GOV 循环之后。★ 放在 {@code
+ * AdjustAccounts} 之前的好处：区表自检失败时<b>铸币/发行审计都还没发生</b>，创世整次失败 （不落半截世界）。
  *
  * <p>★★ <b>创世期的 I23（行政区互斥）自检</b>（{@link #apply} 入口）：三个辖区两两不相交、每级 GOV 的座位落在自己的辖区内 ——
  * 违反则<b>整次创世具名抛</b>（不落半截世界）。★ 这是必要的第二道：创世路径**绕过命令总线** （见 {@code CoreSimos#bootstrapGenesis}），组合根的
@@ -222,6 +231,9 @@ public final class ThreePowersGovBootstrap {
    *     （{@code economy.RecordMoneyIssuance} 会以 {@code currency-not-issuable} 具名拒 —— 本批实测踩到的那条）。
    * @param newCurrency 本 GOV 在创世期新定义的币种（无 ⇒ 空）
    * @param manpowerSource 官吏来源（2 名成年男性）
+   * @param marketZoneId ★ B3：本 GOV 辖区对应的<b>市场区 id</b>（= 本区城市 id，`ThreePowersWorld#ZONE_IDS` 的一个）；
+   *     持久区的成员格 = 本辖区全部格、锚格 = {@code seat}、法定币 = 本 GOV 发行的币（见 {@code ThreePowersMarketZones}）。★
+   *     放在参数表<b>末尾</b>：位置参数调用者不会被静默错位（少给一个 = 编译错，不是"两个 String 相互顶替"）
    */
   public record GovSpec(
       String govId,
@@ -233,7 +245,8 @@ public final class ThreePowersGovBootstrap {
       Map<CurrencyId, Long> treasuryMoney,
       Set<CurrencyId> declaredIssuable,
       Optional<NewCurrency> newCurrency,
-      ManpowerSource manpowerSource) {
+      ManpowerSource manpowerSource,
+      String marketZoneId) {
 
     public GovSpec {
       requireNonBlank(govId, "govId");
@@ -260,6 +273,7 @@ public final class ThreePowersGovBootstrap {
       }
       newCurrency = Objects.requireNonNull(newCurrency, "newCurrency");
       Objects.requireNonNull(manpowerSource, "manpowerSource");
+      requireNonBlank(marketZoneId, "marketZoneId");
       if (newCurrency.isPresent()
           && declaredIssuable.contains(new CurrencyId(newCurrency.get().currencyId()))) {
         throw new IllegalArgumentException(
@@ -314,6 +328,11 @@ public final class ThreePowersGovBootstrap {
     for (GovSpec spec : ordered) {
       next = bootstrapGov(next, applier, spec);
     }
+    // ★★ B3：3 个持久市场区（I22 单一权威）。落点 = 全部 GOV 的 per-GOV 命令序之后（含全部 SetJurisdiction 与
+    //   DefineCurrency）、国库注资之前；依赖与理由见类注。★ 自检不过 ⇒ 在铸币/审计之前整次创世失败。
+    next =
+        ThreePowersMarketZones.define(
+            next, applier, map, ThreePowersMarketZones.zoneSpecsOf(ordered));
     // ★★ 国库注资：逐 GOV 一次纯正增量（缺账由该命令建账；政府家户已在链内 EnsureHouseholdAccount）。
     next =
         applier.apply(

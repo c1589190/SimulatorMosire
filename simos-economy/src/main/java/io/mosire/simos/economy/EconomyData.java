@@ -24,8 +24,8 @@ import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -232,8 +232,8 @@ import java.util.Set;
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
  *
  * <p>★★ <b>B2 追加第 36 个组件 {@code marketZones}</b>（阶段 2-B2，2026-10-08；约束设计书 §4.2/§4.3；不变量 I22）：键 =
- * {@link MarketZoneId}，值 = {@link MarketZone}（区 id + 锚格 + 声明半径 + <b>成员格</b> + 法定币 + 发行政府 + 区级官方汇率覆盖）。
- * ★★ <b>它是"市场区的单一权威"</b>：空表 = 旧世界形态（市场区仍按"城市 + tier 半径"派生，既有世界逐值不变）；非空 = 一个 hex
+ * {@link MarketZoneId}，值 = {@link MarketZone}（区 id + 锚格 + 声明半径 + <b>成员格</b> + 法定币 + 发行政府 +
+ * 区级官方汇率覆盖）。 ★★ <b>它是"市场区的单一权威"</b>：空表 = 旧世界形态（市场区仍按"城市 + tier 半径"派生，既有世界逐值不变）；非空 = 一个 hex
  * 属于哪个区<b>由本表给定</b>，派生路径只服务空表。★ 五条 fail-closed 守卫（键 == 值内 zoneId、一个 hex 至多一个区、法定币与区级汇率
  * 币对必须在币种表里、发行政府必须登记且 {@code issuable} 必须含法定币）见 compact 构造器里那一段。
  */
@@ -367,8 +367,8 @@ public record EconomyData(
   }
 
   /**
-   * ★★ <b>B2 旧组件面的便捷构造器</b>（B2 之前的 35 参 canonical 形状）：新组件 {@code marketZones} 取空表 ⇒
-   * <b>市场区仍按"城市 + tier 半径"派生</b>（{@code MarketTopologyBook}），于是"没有声明过市场区"的世界读出来与 B2 之前逐值相同。
+   * ★★ <b>B2 旧组件面的便捷构造器</b>（B2 之前的 35 参 canonical 形状）：新组件 {@code marketZones} 取空表 ⇒ <b>市场区仍按"城市 +
+   * tier 半径"派生</b>（{@code MarketTopologyBook}），于是"没有声明过市场区"的世界读出来与 B2 之前逐值相同。
    *
    * <p>★★ <b>它不是状态迁移路径</b>：真正的状态迁移（{@code with*} / changeset / codec）<b>必须显式携带</b>这个组件 —— 漏带 =
    * 一次无关的写入把世界的市场区表抹掉、市场区悄悄退回派生值（本仓最贵的那类静默丢字段）。故本构造器与每个 {@code with*} 的注释都把这件事写死。
@@ -3687,9 +3687,8 @@ public record EconomyData(
    * <p>键 = {@link MarketZoneId}，且必须等于值内 {@link MarketZone#zoneId()}（键即身份，不许两处拼区名）。<b>空表</b> ⇒
    * 市场区退回"城市 + tier 半径"派生（既有世界的默认值，逐值不变）；<b>非空</b> ⇒ 成员格由本表唯一给定。
    *
-   * <p>★★ <b>它是"划界/退让/覆盖/合并"的唯一写入形态</b>：手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个
-   * 组件（本仓最贵的那类 bug）；三个区命令都走它。跨表守卫（hex 不重叠、法定币在词表里、发行政府登记且 issuable 含法定币）
-   * 由构造期判，命令层只是把它们提前成具名拒因。
+   * <p>★★ <b>它是"划界/退让/覆盖/合并"的唯一写入形态</b>：手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个 组件（本仓最贵的那类
+   * bug）；三个区命令都走它。跨表守卫（hex 不重叠、法定币在词表里、发行政府登记且 issuable 含法定币） 由构造期判，命令层只是把它们提前成具名拒因。
    */
   public EconomyData withMarketZones(Map<MarketZoneId, MarketZone> value) {
     return new EconomyData(

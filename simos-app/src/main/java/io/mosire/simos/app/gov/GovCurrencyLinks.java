@@ -21,10 +21,10 @@ import java.util.Set;
  * <p>★★ <b>它回答四个问题</b>（都是 B2 的交付面，此前全仓没有稳定的查询点）：
  *
  * <ol>
- *   <li><b>某个 GOV 单位发行哪些币</b>（{@link #currenciesIssuedBy}）：{@code gov-unit-<govUnitId>} 查政府表 ⇒ {@code
- *       issuable}；
- *   <li><b>某种币由哪些 GOV 单位发行</b>（{@link #govUnitIdsIssuing}）：扫政府表的 {@code issuable} ⇒ 政府身份 → GOV
- *       单位 id（{@code GovernmentIds.unitRefOf}；世界级主体不在其中）；
+ *   <li><b>某个 GOV 单位发行哪些币</b>（{@link #currenciesIssuedBy}）：{@code gov-unit-<govUnitId>} 查政府表 ⇒
+ *       {@code issuable}；
+ *   <li><b>某种币由哪些 GOV 单位发行</b>（{@link #govUnitIdsIssuing}）：扫政府表的 {@code issuable} ⇒ 政府身份 → GOV 单位
+ *       id（{@code GovernmentIds.unitRefOf}；世界级主体不在其中）；
  *   <li><b>某个市场区的发行 GOV 单位是谁</b>（{@link #issuingGovUnitOfZone}）与<b>某个 hex 属于哪个区</b>（{@link
  *       #zoneOfHex}）；
  *   <li><b>某个 hex 上的官方汇率</b>（{@link #officialRateFor}）：区级覆盖优先、回落该区发行 GOV 的 GOV 级报价。
@@ -58,7 +58,8 @@ public final class GovCurrencyLinks {
   /**
    * ★★ <b>某个 GOV 单位发行哪些币</b>（§4.3 查询面）：政府未登记 ⇒ <b>空集</b>（"这个单位不是发行人"是合法答案，不是故障）。
    *
-   * @throws IllegalArgumentException govUnitId 为空白 / 含分段符 / 已带 {@code gov-unit-} 前缀（{@code GovernmentIds} 的口径）
+   * @throws IllegalArgumentException govUnitId 为空白 / 含分段符 / 已带 {@code gov-unit-} 前缀（{@code
+   *     GovernmentIds} 的口径）
    */
   public static Set<CurrencyId> currenciesIssuedBy(SimulationState state, String govUnitId) {
     return MarketZoneBook.currenciesIssuedBy(economyOf(state), govUnitId);
@@ -90,8 +91,8 @@ public final class GovCurrencyLinks {
   }
 
   /**
-   * 逐区一行人类可读摘要（保序；供日志/工具/探针直读）：{@code <zoneId>@<anchor>[<n>格]=<法定币>/<发行GOV单位|(world-level)>}。
-   * ★ 只输出稳定 id 与数量（§一.9 的日志纪律）。
+   * 逐区一行人类可读摘要（保序；供日志/工具/探针直读）：{@code <zoneId>@<anchor>[<n>格]=<法定币>/<发行GOV单位|(world-level)>}。 ★
+   * 只输出稳定 id 与数量（§一.9 的日志纪律）。
    */
   public static List<String> describe(SimulationState state) {
     EconomyData economy = economyOf(state);

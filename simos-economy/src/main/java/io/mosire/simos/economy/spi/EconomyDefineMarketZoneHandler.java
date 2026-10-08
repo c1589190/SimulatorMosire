@@ -44,8 +44,8 @@ import java.util.Set;
  *  "reason":"…"}                    // 可选：审计文本（只进日志，不进状态）
  * }</pre>
  *
- * <p>★★ <b>它是"市场区成为持久状态"的入口</b>：B2 之前市场区是纯派生件（城市 + tier 半径每轮现算），"这个 hex 属于哪个区"每次现算
- * ⇒ 划界/退让/覆盖/合并都没有可写的对象。本命令把"成员格"落成状态；非空区表之后，{@code MarketTopologyBook} 的成员格<b>由它给定</b>
+ * <p>★★ <b>它是"市场区成为持久状态"的入口</b>：B2 之前市场区是纯派生件（城市 + tier 半径每轮现算），"这个 hex 属于哪个区"每次现算 ⇒
+ * 划界/退让/覆盖/合并都没有可写的对象。本命令把"成员格"落成状态；非空区表之后，{@code MarketTopologyBook} 的成员格<b>由它给定</b>
  * （单一权威，I22），派生路径退化为空表时的默认值。
  *
  * <p>★★ <b>八条具名拒（全部 fail-closed，一条都不许静默）</b>：
@@ -53,24 +53,25 @@ import java.util.Set;
  * <ol>
  *   <li>{@code bad-payload}：载荷形状/边界（空 hexes、缺字段、非法格）；
  *   <li>{@code economy-not-activated}：经济切片未激活；
- *   <li>{@code zone-already-defined}：区 id 已存在（改成员走 {@code ReassignZoneHexes} / {@code MergeMarketZones}）；
+ *   <li>{@code zone-already-defined}：区 id 已存在（改成员走 {@code ReassignZoneHexes} / {@code
+ *       MergeMarketZones}）；
  *   <li>{@code anchor-not-in-hexes}：锚格不在成员格里（{@code MarketZone} 的构造期守卫同款，此处提前成具名拒）；
  *   <li>{@code anchor-missing-market}：锚格没有市场行（"这一格按什么钱报价"说不出来；先 {@code economy.SetMarketPrice}）；
  *   <li>{@code currency-not-defined}：法定币不在世界词表里；
- *   <li>{@code gov-not-registered} / {@code currency-not-issuable}：发行 GOV 未登记，或它的 {@code issuable} 不含该法定币
- *       （"谁发行的"不许在两处漂开）；
- *   <li>{@code hex-in-other-zone}：某个成员格已经在别的区里（I22：一个 hex 至多属于一个区；先把它从那个区划出去）——
- *       ★ 排在"这个区本身长什么样"的四条判据之后：先问"你立的是什么区"，再问"这些格腾出来了吗"；
+ *   <li>{@code gov-not-registered} / {@code currency-not-issuable}：发行 GOV 未登记，或它的 {@code issuable}
+ *       不含该法定币 （"谁发行的"不许在两处漂开）；
+ *   <li>{@code hex-in-other-zone}：某个成员格已经在别的区里（I22：一个 hex 至多属于一个区；先把它从那个区划出去）—— ★
+ *       排在"这个区本身长什么样"的四条判据之后：先问"你立的是什么区"，再问"这些格腾出来了吗"；
  *   <li>{@code numeraire-mismatch}：某个**已有市场行**的成员格的计价币 ≠ 本区法定币（同一格上的两种"这格用什么钱"不能并存；
  *       先把该格改成法定币：{@code economy.SetMarketNumeraire}）。
  * </ol>
  *
- * <p>★★ <b>GM-only</b>：本命令标 {@link GmOnlyCommand}（照 {@code economy.SetOfficialRate} / {@code economy.DefineCurrency}）
- * —— 划界是货币制度面的事实，不进决策人令 / {@code RegisterEffect} / 决策人命令目录。★ 决策人侧的"管理本国市场区"（用户 §1.2 的
- * 口岸政策语境）需要身份派生的作用域，与口岸/管制一起做（阶段 3），本批**不**给决策人桶开这条口子（权限不得因为新增命令而放大）。
+ * <p>★★ <b>GM-only</b>：本命令标 {@link GmOnlyCommand}（照 {@code economy.SetOfficialRate} / {@code
+ * economy.DefineCurrency}） —— 划界是货币制度面的事实，不进决策人令 / {@code RegisterEffect} / 决策人命令目录。★
+ * 决策人侧的"管理本国市场区"（用户 §1.2 的 口岸政策语境）需要身份派生的作用域，与口岸/管制一起做（阶段 3），本批**不**给决策人桶开这条口子（权限不得因为新增命令而放大）。
  *
- * <p>★ <b>不实现 {@link CommandTargets}</b>：区表是<b>世界级</b>表（一份区表横跨多个格，但"区"本身不是格资源），且本命令
- * GM-only ⇒ 不进决策令桶（与 {@code SetOfficialRate} / {@code DefineCurrency} 同款，{@code targetPaths} 恒空）。
+ * <p>★ <b>不实现 {@link CommandTargets}</b>：区表是<b>世界级</b>表（一份区表横跨多个格，但"区"本身不是格资源），且本命令 GM-only ⇒
+ * 不进决策令桶（与 {@code SetOfficialRate} / {@code DefineCurrency} 同款，{@code targetPaths} 恒空）。
  */
 public final class EconomyDefineMarketZoneHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
@@ -107,11 +108,7 @@ public final class EconomyDefineMarketZoneHandler
     try {
       if (base.meta().isEmpty()) {
         return rejected(
-            "economy-not-activated",
-            definition,
-            null,
-            "economy 切片尚未激活（先 economy.Seed 播种）",
-            base);
+            "economy-not-activated", definition, null, "economy 切片尚未激活（先 economy.Seed 播种）", base);
       }
       MarketZoneId zoneId = new MarketZoneId(definition.zoneId());
       if (base.marketZones().containsKey(zoneId)) {
@@ -136,8 +133,7 @@ public final class EconomyDefineMarketZoneHandler
             "anchor-missing-market",
             definition,
             definition.anchor(),
-            "锚格没有市场行（说不出本区按什么钱报价；先 economy.SetMarketPrice 在该格建市场）: "
-                + definition.anchor(),
+            "锚格没有市场行（说不出本区按什么钱报价；先 economy.SetMarketPrice 在该格建市场）: " + definition.anchor(),
             base);
       }
       CurrencyId legalTender = new CurrencyId(definition.legalTender());
@@ -146,11 +142,7 @@ public final class EconomyDefineMarketZoneHandler
             "currency-not-defined",
             definition,
             null,
-            "法定币不在世界词表里: "
-                + definition.legalTender()
-                + "（词表="
-                + base.currencies().keySet()
-                + "）",
+            "法定币不在世界词表里: " + definition.legalTender() + "（词表=" + base.currencies().keySet() + "）",
             base);
       }
       GovernmentId governmentId = GovernmentIds.ofUnit(definition.govUnitId());

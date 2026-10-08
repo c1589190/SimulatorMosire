@@ -30,14 +30,14 @@ import java.util.Set;
  *   officialRates 本区官方汇率覆盖（币对键 {@code base|quote}；空 = 本区没有覆盖，仍可回落到 GOV 级报价）
  * </pre>
  *
- * <p>★★ <b>它是持久状态</b>（{@code EconomyData.marketZones}，进 ChangeSet/Codec/往返不变式）：B2 之前市场区是纯派生件
- * （"城市 + tier 半径"每轮现算），于是"这个 hex 属于哪个区"没有任何可写的对象，划界/退让/覆盖/合并这类治理动作无处落笔。
+ * <p>★★ <b>它是持久状态</b>（{@code EconomyData.marketZones}，进 ChangeSet/Codec/往返不变式）：B2 之前市场区是纯派生件 （"城市 +
+ * tier 半径"每轮现算），于是"这个 hex 属于哪个区"没有任何可写的对象，划界/退让/覆盖/合并这类治理动作无处落笔。
  * 落成状态之后<b>成员格由本记录给定</b>，派生路径退化为<b>空表时的默认值</b>（单一权威；见 {@code MarketTopologyBook}）。
  *
- * <p>★★ <b>{@code radiusHex} 为什么在、以及它不做什么</b>：成员格是显式的，半径<b>不</b>参与归属计算 —— 它只服务两件事：
- * ① {@code MarketTopology.adjacent} 的"跨区可达"判据（两个集散点的距离 ≤ 两区半径之和 + 间隙）；② 读数与日志里的人可读半径。
- * 把它写清楚是为了堵住"两套逻辑同时说了算"：{@code hexes} 说了算，半径说了不算。★ 想让某个区的成员格变化，只能走
- * {@code economy.ReassignZoneHexes}（改 hexes），**没有**"改半径顺带改归属"这条路。
+ * <p>★★ <b>{@code radiusHex} 为什么在、以及它不做什么</b>：成员格是显式的，半径<b>不</b>参与归属计算 —— 它只服务两件事： ① {@code
+ * MarketTopology.adjacent} 的"跨区可达"判据（两个集散点的距离 ≤ 两区半径之和 + 间隙）；② 读数与日志里的人可读半径。
+ * 把它写清楚是为了堵住"两套逻辑同时说了算"：{@code hexes} 说了算，半径说了不算。★ 想让某个区的成员格变化，只能走 {@code
+ * economy.ReassignZoneHexes}（改 hexes），**没有**"改半径顺带改归属"这条路。
  *
  * <p>★★ <b>不变量在这里判死（fail-closed）</b>：
  *
@@ -46,12 +46,12 @@ import java.util.Set;
  *       逐格结算/读数的顺序才可复现（{@code MarketRegion.members} 的既有口径）；
  *   <li>{@code anchor ∈ hexes}：锚格是"区内参考价"的取价点，不在成员里就不是这个区的锚；
  *   <li>{@code radiusHex ≥ 0}；
- *   <li>官方汇率表的键必须等于值内币对（{@link OfficialRate#key()}）—— 键与值漂开 = 有一处代码在按另一个键查它，
- *       那种失败会在很远的读口才现形（{@code Government.officialRates} 的同一条守卫）。
+ *   <li>官方汇率表的键必须等于值内币对（{@link OfficialRate#key()}）—— 键与值漂开 = 有一处代码在按另一个键查它， 那种失败会在很远的读口才现形（{@code
+ *       Government.officialRates} 的同一条守卫）。
  * </ol>
  *
- * <p>★ <b>跨表守卫不在这里</b>（"发行 GOV 必须登记、法定币必须在该 GOV 的 issuable 里、法定币必须在世界词表里、成员格不得同时在两个区"）
- * —— 那几条要同时看 {@code governments} / {@code currencies} 与整张区表，落在 {@code EconomyData} 的构造期（那才是"完整状态"
+ * <p>★ <b>跨表守卫不在这里</b>（"发行 GOV 必须登记、法定币必须在该 GOV 的 issuable 里、法定币必须在世界词表里、成员格不得同时在两个区"） —— 那几条要同时看
+ * {@code governments} / {@code currencies} 与整张区表，落在 {@code EconomyData} 的构造期（那才是"完整状态"
  * 的边界），此处只判本记录自身的形状。
  *
  * @param zoneId 区的稳定身份；不得为 null（键 == 值内 zoneId 由 {@code EconomyData} 判）
@@ -80,8 +80,7 @@ public record MarketZone(
       throw new IllegalArgumentException("MarketZone.radiusHex 不得为负: " + radiusHex);
     }
     if (hexes == null || hexes.isEmpty()) {
-      throw new IllegalArgumentException(
-          "MarketZone.hexes 不得为空（一个区至少含锚格）: " + zoneId.value());
+      throw new IllegalArgumentException("MarketZone.hexes 不得为空（一个区至少含锚格）: " + zoneId.value());
     }
     List<HexCoord> sorted = new ArrayList<>(hexes.size());
     for (HexCoord hex : hexes) {
@@ -141,8 +140,8 @@ public record MarketZone(
   /**
    * ★★ <b>只换成员格与锚</b>（其余字段原样带过）：划界/退让/覆盖/合并的唯一写入形态。
    *
-   * <p>★ 为什么必须有它：手写 {@code new MarketZone(...)} 会在下一次新增组件时静默丢掉那个组件（本仓最贵的那类 bug）。
-   * ★ 半径不在此列：成员格变了之后半径仍由命令显式给（{@link #withHexes(Set, HexCoord, int)}）。
+   * <p>★ 为什么必须有它：手写 {@code new MarketZone(...)} 会在下一次新增组件时静默丢掉那个组件（本仓最贵的那类 bug）。 ★
+   * 半径不在此列：成员格变了之后半径仍由命令显式给（{@link #withHexes(Set, HexCoord, int)}）。
    */
   public MarketZone withHexes(Set<HexCoord> nextHexes, HexCoord nextAnchor, int nextRadiusHex) {
     return new MarketZone(
@@ -158,20 +157,17 @@ public record MarketZone(
     Objects.requireNonNull(rate, "rate");
     LinkedHashMap<String, OfficialRate> rates = new LinkedHashMap<>(officialRates);
     rates.put(rate.key(), rate);
-    return new MarketZone(
-        zoneId, anchor, radiusHex, hexes, legalTender, issuingGov, rates);
+    return new MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, issuingGov, rates);
   }
 
   /**
    * ★★ <b>只换整张区级官方汇率表</b>（成员格、法定币、发行者逐值不变）。
    *
    * <p>★ 合并两区（{@code economy.MergeMarketZones}）要的正是"整张表取并集"这一个动作；逐条 {@link #withOfficialRate} 拼
-   * 也可以，但那样"并集"这件事就散落在命令层（两处拼写 = 两处会漂）。冲突（同币对不同价）由**调用方**在合并之前判掉，
-   * 本方法只做形状守卫（键 == 值内币对）。
+   * 也可以，但那样"并集"这件事就散落在命令层（两处拼写 = 两处会漂）。冲突（同币对不同价）由**调用方**在合并之前判掉， 本方法只做形状守卫（键 == 值内币对）。
    */
   public MarketZone withOfficialRates(Map<String, OfficialRate> nextRates) {
-    return new MarketZone(
-        zoneId, anchor, radiusHex, hexes, legalTender, issuingGov, nextRates);
+    return new MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, issuingGov, nextRates);
   }
 
   /** 本区一行人类可读摘要（日志/探针用；只输出稳定 id 与数量，§一.9 的日志纪律）。 */

@@ -28,8 +28,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ★★ {@code economy.SetOfficialRate}（A2a 2026-10-08；约束设计书 §3.3/§3.4；★ B2 2026-10-08 扩展）：<b>给一个 GOV 定某个币对的
- * 官方汇率</b>，★ 或（B2 起）<b>给一个市场区定它自己的官方汇率覆盖</b> —— 只写一条，一条命令 = 一条 revision（铁律 2）。
+ * ★★ {@code economy.SetOfficialRate}（A2a 2026-10-08；约束设计书 §3.3/§3.4；★ B2 2026-10-08 扩展）：<b>给一个 GOV
+ * 定某个币对的 官方汇率</b>，★ 或（B2 起）<b>给一个市场区定它自己的官方汇率覆盖</b> —— 只写一条，一条命令 = 一条 revision（铁律 2）。
  *
  * <pre>{@code
  * {"govUnitId":"gov-central",   // 必填（B2 前）：报价的 GOV 单位（决策人侧由身份派生，GM 侧显式给）
@@ -50,22 +50,23 @@ import java.util.Optional;
  * 政府挂牌的报价，成交价由撮合给出（{@code FxPricing}），窗口没量时市场价由家户自己定（§4.5）。
  *
  * <p>★★ <b>B2 的区级覆盖（§4.3"官方汇率在此迁到市场区"）</b>：给了 {@code marketZoneId} ⇒ 写该区的 {@code officialRates}
- * 一条（币对键 {@code base|quote}），<b>不动</b>任何 GOV 级报价；读取口径是"区级优先、回落该区发行 GOV 的 GOV 级报价"
- * （{@link MarketZoneBook#officialRateFor}）。★ 本批的边界（如实记）：{@code FxRoundInput} 的政府外汇窗口仍按 GOV 级报价装配
- * （世界级匹配域），区级覆盖在本批落"状态 + 命令面 + 读数 + 解析函数"；把窗口按区收窄会改 A2 的撮合语义与 F2/F3/F4 的读数，
- * 留给阶段 3（口岸/管制）。
+ * 一条（币对键 {@code base|quote}），<b>不动</b>任何 GOV 级报价；读取口径是"区级优先、回落该区发行 GOV 的 GOV 级报价" （{@link
+ * MarketZoneBook#officialRateFor}）。★★ <b>B4（2026-10-08）接线更新</b>：区级覆盖自 B4 起<b>参与外汇窗口的装配</b>（口径 =
+ * {@link MarketZoneBook#effectiveRatesOf}：区级优先、按币对回落该区发行 GOV 的 GOV 级报价）—— B2 落地时窗口仍只按 GOV
+ * 级装配，于是"给区级设了汇率却不开张"（three-powers 实测缺陷）。★ <b>仍未收窄的</b>：窗口是<b>世界级</b>的（撮合域不按区隔离），把匹配域限定在本区会改 A2
+ * 的撮合语义与 F2/F3/F4 的读数，留给阶段 3（口岸/管制）。
  *
  * <p>★★ <b>为什么两个报价都必须 &gt; 0，且 {@code base != quote}</b>：0 报价不是"免费"而是"说不出价"（停做一侧是窗口的
  * <b>容量</b>约束，不是报价）；同币对没有汇率可言。两条都在构造期与命令期各判一次（fail-closed）。
  *
- * <p>★★ <b>写这条命令的代价（如实记）</b>：GOV 级那条它<b>激活</b>这个币对的外汇市场 —— 有官方汇率，家户的 FX 挂单规则才有锚
- * （{@code FxSettlement} 的类注写了为什么锚必须是政策价）。也就是说<b>没定过汇率的世界一个数都不动</b>，定了才开始有外汇面。
+ * <p>★★ <b>写这条命令的代价（如实记）</b>：GOV 级那条它<b>激活</b>这个币对的外汇市场 —— 有官方汇率，家户的 FX 挂单规则才有锚 （{@code
+ * FxSettlement} 的类注写了为什么锚必须是政策价）。也就是说<b>没定过汇率的世界一个数都不动</b>，定了才开始有外汇面。
  *
  * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand}（排除出令白名单 / {@code RegisterEffect} / 决策人命令目录三条路；
- * 命令总线本身仍可被窄工具提交）。决策人侧的受控入口是窄工具 {@code simos.gov.setFxRate}（身份派生 + 只能自己的 GOV + GM 审批链），
- * 与 {@code gov.defineCurrency} 的既有形制同源；★ <b>B2 的区级分支不给决策人桶开</b>（决策人窄工具不暴露 marketZoneId）——
- * 区级报价的作用域（"本行政区下辖的本国市场区部分"）要按身份派生，与口岸政策一起做（阶段 3），权限不得因为参数新增而放大。
- * ★ 不声明格资源（政府表/区表都没有单格路径）⇒ {@link CommandTargets#targetPaths} 恒空。
+ * 命令总线本身仍可被窄工具提交）。决策人侧的受控入口是窄工具 {@code simos.gov.setFxRate}（身份派生 + 只能自己的 GOV + GM 审批链）， 与 {@code
+ * gov.defineCurrency} 的既有形制同源；★ <b>B2 的区级分支不给决策人桶开</b>（决策人窄工具不暴露 marketZoneId）——
+ * 区级报价的作用域（"本行政区下辖的本国市场区部分"）要按身份派生，与口岸政策一起做（阶段 3），权限不得因为参数新增而放大。 ★ 不声明格资源（政府表/区表都没有单格路径）⇒ {@link
+ * CommandTargets#targetPaths} 恒空。
  */
 public final class EconomySetOfficialRateHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
@@ -198,8 +199,8 @@ public final class EconomySetOfficialRateHandler
    * ★★ <b>B2 新区路径（区级覆盖）</b>：只写目标区的 {@code officialRates} 一条；GOV 级报价一字不动。
    *
    * <p>★ 四条具名拒：{@code zone-not-found}（区不存在）、{@code gov-mismatch}（给了 govUnitId 却不等于本区发行 GOV 单位）、
-   * {@code zone-issuer-not-a-gov-unit}（本区发行政府是世界级主体，没有 GOV 单位可指 —— 那时只能省略 govUnitId）、
-   * {@code rate-unchanged}（逐字相同 ⇒ 拒）。
+   * {@code zone-issuer-not-a-gov-unit}（本区发行政府是世界级主体，没有 GOV 单位可指 —— 那时只能省略 govUnitId）、 {@code
+   * rate-unchanged}（逐字相同 ⇒ 拒）。
    */
   private static HandlerOutcome handleZoneOverride(
       EconomyData base, Definition definition, OfficialRate rate) {
@@ -298,8 +299,7 @@ public final class EconomySetOfficialRateHandler
   }
 
   /** 具名拒（业务拒绝 = INFO 一条"发生了什么 + 具名原因"，字段级细节 = DEBUG 一条"为什么"；AGENTS §一.9）。 */
-  private static HandlerOutcome rejected(
-      String reason, Definition definition, String message) {
+  private static HandlerOutcome rejected(String reason, Definition definition, String message) {
     LOG.info(
         LogEvent.of(
             "OFFICIAL_RATE_REJECTED",
@@ -311,7 +311,9 @@ public final class EconomySetOfficialRateHandler
             "govUnit",
             definition == null ? "" : definition.govUnitId(),
             "zone",
-            definition == null || definition.marketZoneId() == null ? "" : definition.marketZoneId(),
+            definition == null || definition.marketZoneId() == null
+                ? ""
+                : definition.marketZoneId(),
             "base",
             definition == null ? "" : definition.base(),
             "quote",
@@ -339,9 +341,10 @@ public final class EconomySetOfficialRateHandler
             ? EconomyCommandPayloads.requireText(TYPE, payload, "marketZoneId")
             : null;
     // ★ 向后兼容：老载荷（无 marketZoneId）时 govUnitId 仍是必填；区级分支里它可选（缺省 = 由该区发行 GOV 反查）。
-    String govUnitId = payload.hasNonNull("govUnitId")
-        ? EconomyCommandPayloads.requireText(TYPE, payload, "govUnitId")
-        : null;
+    String govUnitId =
+        payload.hasNonNull("govUnitId")
+            ? EconomyCommandPayloads.requireText(TYPE, payload, "govUnitId")
+            : null;
     if (marketZoneId == null && govUnitId == null) {
       throw new IllegalArgumentException(TYPE + " 缺少字段: govUnitId（不给 marketZoneId 时必填）");
     }
@@ -353,13 +356,12 @@ public final class EconomySetOfficialRateHandler
         payload.hasNonNull("reason")
             ? EconomyCommandPayloads.requireText(TYPE, payload, "reason")
             : null;
-    return new Definition(
-        govUnitId, marketZoneId, base, quote, buyPerMille, sellPerMille, reason);
+    return new Definition(govUnitId, marketZoneId, base, quote, buyPerMille, sellPerMille, reason);
   }
 
   /**
-   * 一条报价：{@code govUnitId}（GOV 级必填；区级可省略）+ 可选 {@code marketZoneId} + 币对 + 两个报价 + 可选审计文本
-   * （构造期判完边界 —— 与 {@link OfficialRate} 的守卫同一口径）。
+   * 一条报价：{@code govUnitId}（GOV 级必填；区级可省略）+ 可选 {@code marketZoneId} + 币对 + 两个报价 + 可选审计文本 （构造期判完边界 ——
+   * 与 {@link OfficialRate} 的守卫同一口径）。
    */
   private record Definition(
       String govUnitId,

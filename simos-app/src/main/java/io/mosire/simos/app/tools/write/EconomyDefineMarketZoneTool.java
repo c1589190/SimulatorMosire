@@ -14,12 +14,12 @@ import java.util.Map;
  * ★★ {@code simos.economy.defineMarketZone}（阶段 2-B2，2026-10-08；约束设计书 §4.2）：<b>定义市场区</b>的 GM 窄写面 ——
  * {@link EconomyDefineMarketZoneHandler} 的薄封装（固定命令类型 + 载荷 JSON + 乐观并发）。
  *
- * <p>★★ <b>为什么是薄工具而不是带参数的工具</b>：区定义一次要给的字段有七个（区 id / 锚格 / 成员格集 / 法定币 / 发行 GOV /
- * 半径 / 原因），逐个列成工具参数只会把命令载荷契约复制一份到工具面（两处拼写、两处会漂）；本工具只透传 {@code payloadJson}，
- * 载荷形状的唯一权威是 handler 的类注与 catalog 的载荷提示。
+ * <p>★★ <b>为什么是薄工具而不是带参数的工具</b>：区定义一次要给的字段有七个（区 id / 锚格 / 成员格集 / 法定币 / 发行 GOV / 半径 /
+ * 原因），逐个列成工具参数只会把命令载荷契约复制一份到工具面（两处拼写、两处会漂）；本工具只透传 {@code payloadJson}， 载荷形状的唯一权威是 handler 的类注与
+ * catalog 的载荷提示。
  *
- * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}；命令本身标 {@code GmOnlyCommand}
- * ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；{@code DecisionCallerFactory.WHITELIST} 也不含本工具。★ 决策人侧的
+ * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}；命令本身标 {@code GmOnlyCommand} ⇒
+ * 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；{@code DecisionCallerFactory.WHITELIST} 也不含本工具。★ 决策人侧的
  * "管理本国市场区"（用户 §1.2 的口岸政策语境）需要身份派生的作用域，与口岸/管制一起做（阶段 3）——本批不给决策人桶开这条口子。
  *
  * <p>★ <b>写面只声明 economy 命名空间</b>：handler 只产 {@code EconomyChangeSet}（区表是经济切片的组件）。

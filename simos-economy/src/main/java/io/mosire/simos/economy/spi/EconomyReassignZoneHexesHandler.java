@@ -26,8 +26,7 @@ import java.util.Set;
 
 /**
  * ★★ {@code economy.ReassignZoneHexes}（阶段 2-B2，2026-10-08；约束设计书 §4.2 / 用户 §1.2「退让市场区、覆盖范围」）：
- * <b>把一个格的归属从一个区划到另一个区</b> —— 一次写 {@code marketZones} 两条（源区少一格、目标区多一格），一条命令 = 一条
- * revision（铁律 2）。
+ * <b>把一个格的归属从一个区划到另一个区</b> —— 一次写 {@code marketZones} 两条（源区少一格、目标区多一格），一条命令 = 一条 revision（铁律 2）。
  *
  * <pre>{@code
  * {"fromZoneId":"c-tp-silver",     // 必填：退让方（该格当前必须属于它）
@@ -37,8 +36,8 @@ import java.util.Set;
  * }</pre>
  *
  * <p>★★ <b>"退让"与"覆盖"是同一条命令的两面</b>（用户原话"退让市场区、覆盖范围"）：源区少掉这些格 = 退让；目标区收进这些格 =
- * 覆盖。本批不做"只退让不覆盖"的形态（那会留下不属于任何区的格 —— 未覆盖的市场格仍会退回单格区，等于把一个治理动作变成一次
- * 静默降级）；要删区走 {@code economy.MergeMarketZones}（合并即撤源区）。
+ * 覆盖。本批不做"只退让不覆盖"的形态（那会留下不属于任何区的格 —— 未覆盖的市场格仍会退回单格区，等于把一个治理动作变成一次 静默降级）；要删区走 {@code
+ * economy.MergeMarketZones}（合并即撤源区）。
  *
  * <p>★★ <b>六条具名拒（fail-closed）</b>：
  *
@@ -52,15 +51,15 @@ import java.util.Set;
  *       那是一条有明确归属去向的动作，不是把区留成空壳）；
  *   <li>{@code from-zone-anchor-would-move}：源区的<b>锚格</b>在被划走的格里（锚格是取价点，划走它等于让本区说不出"按哪一格的价"；
  *       先把锚格留下，或用 MergeMarketZones 撤掉这个区）；
- *   <li>{@code numeraire-mismatch}：被划的格里有市场行、而它的计价币 ≠ 目标区法定币（同一格上不许有两种"这格用什么钱"；
- *       先 {@code economy.SetMarketNumeraire} 把它改成目标区法定币）。
+ *   <li>{@code numeraire-mismatch}：被划的格里有市场行、而它的计价币 ≠ 目标区法定币（同一格上不许有两种"这格用什么钱"； 先 {@code
+ *       economy.SetMarketNumeraire} 把它改成目标区法定币）。
  * </ol>
  *
  * <p>★ <b>半径不参与归属</b>（{@code MarketZone.radiusHex} 只是声明值，供邻接判据与读数）：本命令<b>不</b>改半径 ——
  * 成员格变了而半径照旧，是刻意留白（"改半径顺带改归属"这条路被堵死，两套逻辑不同时说了算）。
  *
- * <p>★ <b>GM-only</b>：同 {@code economy.DefineMarketZone}（世界级区表没有单格资源目标 ⇒ {@link CommandTargets#targetPaths}
- * 恒空）。
+ * <p>★ <b>GM-only</b>：同 {@code economy.DefineMarketZone}（世界级区表没有单格资源目标 ⇒ {@link
+ * CommandTargets#targetPaths} 恒空）。
  */
 public final class EconomyReassignZoneHexesHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
@@ -101,8 +100,7 @@ public final class EconomyReassignZoneHexesHandler
       MarketZoneId fromId = new MarketZoneId(definition.fromZoneId());
       MarketZoneId toId = new MarketZoneId(definition.toZoneId());
       if (fromId.equals(toId)) {
-        return rejected(
-            "same-zone", definition, null, "源区与目标区相同（不是划界，是 no-op）: " + fromId.value());
+        return rejected("same-zone", definition, null, "源区与目标区相同（不是划界，是 no-op）: " + fromId.value());
       }
       MarketZone from = base.marketZones().get(fromId);
       if (from == null) {
@@ -128,9 +126,7 @@ public final class EconomyReassignZoneHexesHandler
             "from-zone-would-be-empty",
             definition,
             from.anchor(),
-            "源区 "
-                + fromId.value()
-                + " 的格会被全部划走（区必须至少含锚格；要撤区请走 economy.MergeMarketZones）");
+            "源区 " + fromId.value() + " 的格会被全部划走（区必须至少含锚格；要撤区请走 economy.MergeMarketZones）");
       }
       if (moving.contains(from.anchor())) {
         return rejected(
@@ -169,7 +165,8 @@ public final class EconomyReassignZoneHexesHandler
       zones.put(fromId, from.withHexes(fromHexes, from.anchor(), from.radiusHex()));
       zones.put(toId, to.withHexes(toHexes, to.anchor(), to.radiusHex()));
       EconomyData projected = base.withMarketZones(zones);
-      logReassigned(from, to, moving, projected.marketZones().get(fromId), projected.marketZones().get(toId));
+      logReassigned(
+          from, to, moving, projected.marketZones().get(fromId), projected.marketZones().get(toId));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
       return rejected(
@@ -179,7 +176,11 @@ public final class EconomyReassignZoneHexesHandler
 
   /** 改划 INFO 一条"发生了什么 + 具名计数"（§一.9）：源/目标区、格数、逐区前后规模。 */
   private static void logReassigned(
-      MarketZone from, MarketZone to, Set<HexCoord> moving, MarketZone fromAfter, MarketZone toAfter) {
+      MarketZone from,
+      MarketZone to,
+      Set<HexCoord> moving,
+      MarketZone fromAfter,
+      MarketZone toAfter) {
     LOG.info(
         LogEvent.of(
             "MARKET_ZONE_HEXES_REASSIGNED",
@@ -258,7 +259,8 @@ public final class EconomyReassignZoneHexesHandler
   }
 
   /** 一次改划（两个区 id + 格集 + 可选审计文本）。 */
-  private record Definition(String fromZoneId, String toZoneId, List<HexCoord> hexes, String reason) {
+  private record Definition(
+      String fromZoneId, String toZoneId, List<HexCoord> hexes, String reason) {
 
     Definition {
       Objects.requireNonNull(fromZoneId, "fromZoneId");

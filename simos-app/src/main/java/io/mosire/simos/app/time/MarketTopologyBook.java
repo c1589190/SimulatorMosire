@@ -21,11 +21,11 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.util.log.EventLog;
-import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.city.SocialCity;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.ArrayList;
@@ -47,8 +47,8 @@ import java.util.function.ToLongBiFunction;
  * MarketTopology}），不持有任何对 {@code GameMap} 的全局引用。
  *
  * <p>★★ <b>B2（2026-10-08 阶段 2-B）：持久区优先</b>（约束设计书 §4.2 / 不变量 I22）—— {@code EconomyData.marketZones}
- * <b>非空</b> ⇒ 成员格由持久状态唯一给定（{@link #byPersistentZones}，{@code MarketTopology.ofZones}）；<b>空表</b> ⇒ 逐字走下面
- * 的派生路径（旧世界逐值不变）。★ 两条路径**不同时**生效：只有一个权威说了算，否则"这一格属于谁"会有两份互相矛盾的答案。
+ * <b>非空</b> ⇒ 成员格由持久状态唯一给定（{@link #byPersistentZones}，{@code MarketTopology.ofZones}）；<b>空表</b> ⇒
+ * 逐字走下面 的派生路径（旧世界逐值不变）。★ 两条路径**不同时**生效：只有一个权威说了算，否则"这一格属于谁"会有两份互相矛盾的答案。
  *
  * <p>★★ <b>节点来源的优先级</b>：
  *
@@ -178,13 +178,13 @@ final class MarketTopologyBook {
   }
 
   /**
-   * ★★ <b>B2（2026-10-08 阶段 2-B）：持久区的装配路径</b>（约束设计书 §4.2 / 不变量 I22）—— 成员格来自
-   * {@code EconomyData.marketZones}，本方法只做三件事：
+   * ★★ <b>B2（2026-10-08 阶段 2-B）：持久区的装配路径</b>（约束设计书 §4.2 / 不变量 I22）—— 成员格来自 {@code
+   * EconomyData.marketZones}，本方法只做三件事：
    *
    * <ol>
-   *   <li>逐区建 {@link MarketNode}：{@code nodeId = zoneId}、{@code anchor = zone.anchor()}、{@code radiusHex =
-   *       zone.radiusHex()}（声明值，只影响 {@code adjacent} 的可达判据）、{@code numeraire = legalTender}、
-   *       {@code receiveWith = 该币种在世界状态里的工具 id}（{@link #receiveInstrumentOf} 的既有口径）；
+   *   <li>逐区建 {@link MarketNode}：{@code nodeId = zoneId}、{@code anchor = zone.anchor()}、{@code
+   *       radiusHex = zone.radiusHex()}（声明值，只影响 {@code adjacent} 的可达判据）、{@code numeraire =
+   *       legalTender}、 {@code receiveWith = 该币种在世界状态里的工具 id}（{@link #receiveInstrumentOf} 的既有口径）；
    *   <li>把 {@code zone.hexes()} 原样当成员格（**不**按半径重算 —— 那正是"两个权威"的来源）；
    *   <li>装配地形/道路/费率：与派生路径逐字同源（地形索引一次构建、道路子图、节点锚集的最小距离）。
    * </ol>

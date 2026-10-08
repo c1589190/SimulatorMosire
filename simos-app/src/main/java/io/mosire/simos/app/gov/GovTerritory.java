@@ -46,16 +46,17 @@ public final class GovTerritory {
   private GovTerritory() {}
 
   /**
-   * ★★ <b>B2（2026-10-08）：GOV 总疆域 → 全部 hex</b>（约束设计书 §4.3 / 判据 G4）—— {@link #nominalRegions} 的逐 hex 展开。
+   * ★★ <b>B2（2026-10-08）：GOV 总疆域 → 全部 hex</b>（约束设计书 §4.3 / 判据 G4）—— {@link #nominalRegions} 的逐 hex
+   * 展开。
    *
    * <pre>
    * 中央 GOV：本 GOV 子树（下属各级行政区的 jurisdiction 并集 + 本级直辖区）
    * 省级 GOV：本区（自己的 jurisdiction 里的 Region）
    * </pre>
    *
-   * <p>★★ <b>它为什么必须存在</b>：{@link #nominalRegions} 只给 {@link RegionId}（"名义区域的集合"正是裁定 4 的显示语义），而
-   * G4 的判据是"中央的总疆域 hex 集 = 下属行政区 + 直辖区（<b>逐 hex</b> 断言）"。此前全仓没有这个函数：{@code NationSummary}
-   * 内部算过一次就丢，而 {@code GovTerritory} 明令不得进授权 —— 于是"逐 hex 的疆域"只能靠外部自己拼（每个拼法都是第二份真相）。
+   * <p>★★ <b>它为什么必须存在</b>：{@link #nominalRegions} 只给 {@link RegionId}（"名义区域的集合"正是裁定 4 的显示语义），而 G4
+   * 的判据是"中央的总疆域 hex 集 = 下属行政区 + 直辖区（<b>逐 hex</b> 断言）"。此前全仓没有这个函数：{@code NationSummary} 内部算过一次就丢，而
+   * {@code GovTerritory} 明令不得进授权 —— 于是"逐 hex 的疆域"只能靠外部自己拼（每个拼法都是第二份真相）。
    *
    * <p>★ <b>口径</b>：
    *
@@ -94,7 +95,9 @@ public final class GovTerritory {
   public static Set<HexCoord> nominalHexes(SimulationState state, UnitId rootGovId) {
     Objects.requireNonNull(state, "state");
     Snapshot unitSnapshot =
-        state.module("unit").orElseThrow(() -> new IllegalArgumentException("状态里没有 unit 模块切片——装配故障"));
+        state
+            .module("unit")
+            .orElseThrow(() -> new IllegalArgumentException("状态里没有 unit 模块切片——装配故障"));
     if (!(unitSnapshot instanceof UnitSnapshot unitState)) {
       throw new IllegalArgumentException(
           "unit 模块切片不是 UnitSnapshot：" + unitSnapshot.getClass().getName());

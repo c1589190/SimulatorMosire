@@ -18,8 +18,8 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -80,7 +80,8 @@ import java.util.function.Function;
  * + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code liquidationPolicies} / {@code
  * crisisSignals} + E6a 的 {@code modeTransitions} / {@code classShares} + P10.1 的 {@code
  * merchantFirms} + P4a 的 {@code periodicAdjustments} + Z1 的 {@code outputQuantityOverrides} /
- * {@code productionEfficiency} + A1 的 {@code currencies} / {@code moneyInstruments} + B2 的 {@code marketZones}）。
+ * {@code productionEfficiency} + A1 的 {@code currencies} / {@code moneyInstruments} + B2 的 {@code
+ * marketZones}）。
  *
  * <p>★★ <b>A1（2026-10-08）追加两张货币词表</b>：{@code currencies}（键 = {@link CurrencyId}，值 = {@link
  * CurrencyDef}）与 {@code moneyInstruments}（键 = {@link InstrumentId}，值 = {@link MoneyInstrument}）。 ★

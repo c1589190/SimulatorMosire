@@ -44,9 +44,7 @@ public enum AppLogSource implements LogOrigin {
    * <p>★ 装配发生在市场轮（tick 算法）与读数路径上 ⇒ 归 {@link LogOriginKind#TICK}；只落 DEBUG（默认关闭，不刷日志）。
    */
   APP_MARKET_TOPOLOGY(
-      "market-topology",
-      "市场区拓扑装配：持久区 vs 派生区、锚格缺市场与逐格币种漂移（算法执行）",
-      LogOriginKind.TICK);
+      "market-topology", "市场区拓扑装配：持久区 vs 派生区、锚格缺市场与逐格币种漂移（算法执行）", LogOriginKind.TICK);
 
   private final String id;
   private final String description;

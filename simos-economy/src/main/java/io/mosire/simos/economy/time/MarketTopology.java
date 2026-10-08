@@ -1,8 +1,8 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.market.MarketNode;
-import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.market.MarketRegion;
+import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.TransportTariff;
@@ -441,8 +441,8 @@ public final class MarketTopology {
   }
 
   /**
-   * ★★ <b>B2（2026-10-08）：显式成员的拓扑</b>（约束设计书 §4.2；不变量 I22）—— 区的成员格<b>不再由半径现算</b>，而是由调用方
-   * （组合根从持久状态 {@code EconomyData.marketZones} 装配）逐区给定。
+   * ★★ <b>B2（2026-10-08）：显式成员的拓扑</b>（约束设计书 §4.2；不变量 I22）—— 区的成员格<b>不再由半径现算</b>，而是由调用方 （组合根从持久状态
+   * {@code EconomyData.marketZones} 装配）逐区给定。
    *
    * <p>★★ <b>它和 {@link #of(List, Map, Set, ToIntFunction, ToIntBiFunction, ToIntFunction,
    * TransportTariff, ToLongBiFunction, ToLongBiFunction)} 的区别只有一处</b>：那个入口把"哪个 hex 归哪个区"算成
@@ -452,16 +452,14 @@ public final class MarketTopology {
    * <p>★ <b>三条口径</b>：
    *
    * <ol>
-   *   <li><b>成员格按给定采信</b>（含没有市场表条目的格：它只是"在这个区里"，结算对它没有价格可用 —— {@code MarketRegion}
-   *       的既有口径）；
-   *   <li><b>未覆盖的市场格 ⇒ 退化成单格区</b>（与派生入口的兜底逐字相同）：不留"没有归属的市场格"，否则
-   *       {@code regionOf} 会在很远的结算路径上抛；
-   *   <li><b>重叠成员格 ⇒ 先到者胜 + 不抛</b>：状态层的 {@code EconomyData} 构造期守卫已把"一个 hex 属于两个区"判成非法
-   *       （fail-closed 在写入侧），这里只保证"即使拿到坏输入也不产生两处互相矛盾的归属"。
+   *   <li><b>成员格按给定采信</b>（含没有市场表条目的格：它只是"在这个区里"，结算对它没有价格可用 —— {@code MarketRegion} 的既有口径）；
+   *   <li><b>未覆盖的市场格 ⇒ 退化成单格区</b>（与派生入口的兜底逐字相同）：不留"没有归属的市场格"，否则 {@code regionOf} 会在很远的结算路径上抛；
+   *   <li><b>重叠成员格 ⇒ 先到者胜 + 不抛</b>：状态层的 {@code EconomyData} 构造期守卫已把"一个 hex 属于两个区"判成非法 （fail-closed
+   *       在写入侧），这里只保证"即使拿到坏输入也不产生两处互相矛盾的归属"。
    * </ol>
    *
-   * <p>★ {@code regional}（跨区候选）与本入口的"没有显式区"退化一致：{@code zones} 非空且最终建成 > 1 个区才为真 —— 与派生入口
-   * 的 {@code regional && !byId.isEmpty() && built.size() > 1} 同口径。
+   * <p>★ {@code regional}（跨区候选）与本入口的"没有显式区"退化一致：{@code zones} 非空且最终建成 > 1 个区才为真 —— 与派生入口 的 {@code
+   * regional && !byId.isEmpty() && built.size() > 1} 同口径。
    */
   public static MarketTopology ofZones(
       List<MarketRegion> zones,
