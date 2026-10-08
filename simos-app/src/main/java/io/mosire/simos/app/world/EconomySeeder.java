@@ -714,8 +714,25 @@ public final class EconomySeeder {
    * ★★ <b>出厂市场</b>（每格同一个：单一计价货币 {@link #MARKET_NUMERAIRE} + 同一张出厂价表）。
    *
    * <p>★ 本批**逐格价格没有差异**（地力/距离进价格是后续轮次的事）⇒ 一个不可变实例被所有格共享（不逐格新建 799 份 逐字相同的对象）。
+   *
+   * <p>★★ <b>B1（2026-10-08 阶段 2-B）追加：逐格计价货币的入口</b> —— 多币种世界（{@code three-powers}）的每个市场区有自己的 **法定币**
+   * ⇒ 该区每一格的 {@code Market.numeraire} 与家户/经营者的**创世钱包币种**由同一个"逐格计价币"函数给出（见 {@link
+   * #marketFor(CurrencyId)} 与 {@code plan(..., java.util.function.Function)}）。★
+   * <b>不传那个函数的老入口逐值不变</b>： 缺省函数恒回 {@link #MARKET_NUMERAIRE} ⇒ 载荷逐字节相同（既有世界与既有对照卷因此仍然有效）。
    */
   public static final Market MARKET_FACTORY = new Market(MARKET_NUMERAIRE, MARKET_PRICES_FACTORY);
+
+  /**
+   * ★★ <b>B1：给定计价币的一格市场</b>（价格表恒为 {@link #MARKET_PRICES_FACTORY}，只有计价币换）。
+   *
+   * <p>★ 它<b>不折算任何价格</b>：价格是"每商品单位的毫计价货币"，换了计价币就按新币读同一个数 —— 世界上没有汇率（I17），播种器也不许替 GM 换汇。★
+   * 与老入口的关系：{@code marketFor(MARKET_NUMERAIRE)} 与 {@link #MARKET_FACTORY} <b>逐值相等</b>（record
+   * 相等；载荷字节也相同，因为 {@link #marketNode(Market)} 只读 numeraire/prices 两个值）。
+   */
+  public static Market marketFor(CurrencyId numeraire) {
+    Objects.requireNonNull(numeraire, "numeraire");
+    return new Market(numeraire, MARKET_PRICES_FACTORY);
+  }
 
   /**
    * ★★ <b>创世货币禀赋的缓冲系数（‰）</b>：{@code 1200} —— 每人 <b>1.2 个周期</b>的口粮等价。
@@ -1074,6 +1091,64 @@ public final class EconomySeeder {
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile) {
     return plan(mapId, seeding, map, genesisMoneyMilliPerCapita, profile, TestConditions.EMPTY);
+  }
+
+  /**
+   * ★★ <b>B1（阶段 2-B）：真地图 + <b>逐格计价币函数</b>（多币种世界的创世入口）</b>。
+   *
+   * <p>★★ <b>它改什么、不改什么</b>：{@code numeraireOf} 同时决定<b>两件事</b>，而这两件事必须同源（"这格按什么钱报价" 与"这格的家户手里是什么钱"漂开
+   * = 本地市场对该格家户直接关门）：
+   *
+   * <ol>
+   *   <li>该格 {@code Market.numeraire}（{@link #marketFor(CurrencyId)}）；
+   *   <li>该格家户（含流民户）与作坊主**工资周转金**的创世钱包币种（{@link #genesisMoney(long, long, CurrencyId)}）。
+   * </ol>
+   *
+   * <p>★ <b>其余一切逐值不变</b>：价格表、人口、库存、劳动、配额、资产、关系、审计记录的口径一字不动；商品/劳动/资产与币种无关。
+   *
+   * <p>★ <b>缺省（老入口）</b>：{@code at -> MARKET_NUMERAIRE} ⇒ 与不传函数的入口<b>逐字节同载荷</b>。
+   *
+   * @param numeraireOf 逐格计价币函数；返回 {@code null} ⇒ 当场抛（不静默落到银：那会把"没给币种"变成"偷偷按银算"）
+   */
+  public static Seed plan(
+      String mapId,
+      PopulationSeeder.Seeding seeding,
+      GameMap map,
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile,
+      TestConditions conditions,
+      Function<HexCoord, CurrencyId> numeraireOf) {
+    Map<HexCoord, String> terrain = map.terrainIndex();
+    return plan(
+        mapId,
+        seeding,
+        at -> {
+          String key = terrain.get(at);
+          if (key == null) {
+            throw new IllegalStateException("格 " + at + " 不在 terrainIndex 里（地图分割不变式被破坏）");
+          }
+          return key;
+        },
+        genesisMoneyMilliPerCapita,
+        profile,
+        conditions,
+        numeraireOf);
+  }
+
+  /** ★★ <b>B1：逐格计价币 + 出厂禀赋/profile</b>（条件取空；逐值等于带 {@code TestConditions.EMPTY} 的重载）。 */
+  public static Seed plan(
+      String mapId,
+      PopulationSeeder.Seeding seeding,
+      GameMap map,
+      Function<HexCoord, CurrencyId> numeraireOf) {
+    return plan(
+        mapId,
+        seeding,
+        map,
+        genesisMoneyMilliPerCapita(),
+        FoundationProfile.PRODUCTION_RUNTIME,
+        TestConditions.EMPTY,
+        numeraireOf);
   }
 
   /** ★★ P3：真地图 + profile + 测试条件（初始禀赋取默认值）—— 载荷便捷入口。 */
@@ -1594,19 +1669,51 @@ public final class EconomySeeder {
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile,
       TestConditions conditions) {
+    return plan(
+        mapId,
+        seeding,
+        terrainOf,
+        genesisMoneyMilliPerCapita,
+        profile,
+        conditions,
+        DEFAULT_NUMERAIRE_OF);
+  }
+
+  /**
+   * ★★ <b>B1：纯函数主入口 + 逐格计价币</b>（阶段 2-B 的多币种创世入口；口径见真地图重载的注）。
+   *
+   * <p>★ 老入口逐值不变：它们传 {@link #DEFAULT_NUMERAIRE_OF}（恒 {@link #MARKET_NUMERAIRE}）。
+   */
+  static Seed plan(
+      String mapId,
+      PopulationSeeder.Seeding seeding,
+      Function<HexCoord, String> terrainOf,
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile,
+      TestConditions conditions,
+      Function<HexCoord, CurrencyId> numeraireOf) {
     if (genesisMoneyMilliPerCapita < 0L) {
       throw new IllegalArgumentException("初始禀赋（毫/人）不得为负: " + genesisMoneyMilliPerCapita);
     }
     if (profile == null) {
       throw new IllegalArgumentException("profile 不得为 null");
     }
+    Objects.requireNonNull(numeraireOf, "numeraireOf");
     // ★ P3：缺省/空 conditions = P1 路径（不新增任何键、不碰任何账）。
     conditions = conditions == null ? TestConditions.EMPTY : conditions;
     // ★★ 2026-10-09：唯一路线 = production-runtime（完整生产 entries + 默认生产方式目录/资产规则；
     //   政府家户/政府记录只在 seeding.governmentHousehold() 非空时内置，见 planProductionRuntime/jsonOf）。
     return planProductionRuntime(
-        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
+        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, profile, conditions, numeraireOf);
   }
+
+  /**
+   * ★★ <b>B1：老入口的逐格计价币缺省函数</b>（恒 {@link #MARKET_NUMERAIRE}）。
+   *
+   * <p>★ 它是"不传函数的入口逐值不变"这条承诺的落点：同一个函数实例被所有老入口共用，载荷因此逐字节相同。
+   */
+  private static final Function<HexCoord, CurrencyId> DEFAULT_NUMERAIRE_OF =
+      hex -> MARKET_NUMERAIRE;
 
   // ── H4：出厂价表与创世货币禀赋（纯函数）──────────────────────────────────────────────
 
@@ -1668,6 +1775,21 @@ public final class EconomySeeder {
   /** ★★ E3：一个家户的创世钱包（毫计价货币），每人金额可注入。金额 &lt; 0 或乘法溢出 ⇒ 当场抛； 金额 0 ⇒ 空钱包（与旧"只落正的量"逐值相同）。 */
   public static Map<CurrencyId, Long> genesisMoney(
       long population, long genesisMoneyMilliPerCapita) {
+    return genesisMoney(population, genesisMoneyMilliPerCapita, MARKET_NUMERAIRE);
+  }
+
+  /**
+   * ★★ <b>B1：一个家户的创世钱包，币种可注入</b>（多币种世界：本区法定币）。
+   *
+   * <p>★ <b>为什么币种必须与同格的 {@code Market.numeraire} 同源</b>：家户要在**本地市场**买口粮 —— 若它的钱包是银、
+   * 而本格市场按铜报价，则每一次买盘都会撞上 I19 的异币具名拒（{@code currency_mismatch}），
+   * 这个家户在本地市场上等于没有购买力。故两者由**同一个**逐格函数给出（见 {@code plan(..., numeraireOf)}）。
+   *
+   * <p>★ 金额口径与老入口逐值相同（{@code 人口 × 每人毫数}）；2 参入口等价于本方法传 {@link #MARKET_NUMERAIRE}。
+   */
+  public static Map<CurrencyId, Long> genesisMoney(
+      long population, long genesisMoneyMilliPerCapita, CurrencyId numeraire) {
+    Objects.requireNonNull(numeraire, "numeraire");
     if (population < 0L) {
       throw new IllegalArgumentException("population 不得为负: " + population);
     }
@@ -1678,7 +1800,7 @@ public final class EconomySeeder {
     Map<CurrencyId, Long> wallet = new LinkedHashMap<>();
     long amount = Math.multiplyExact(population, genesisMoneyMilliPerCapita);
     if (amount > 0L) {
-      wallet.put(MARKET_NUMERAIRE, amount);
+      wallet.put(numeraire, amount);
     }
     return wallet;
   }
@@ -1868,7 +1990,8 @@ public final class EconomySeeder {
       Map<HouseholdId, Map<CommodityId, Long>> stocks,
       Map<HouseholdId, Map<CurrencyId, Long>> money,
       long genesisMoneyMilliPerCapita,
-      PoolCohorts cohorts) {
+      PoolCohorts cohorts,
+      CurrencyId numeraire) {
     Map<String, long[]> goods = new LinkedHashMap<>();
     goods.put(COMMODITY_FIBER, splitByShares(fiberStockMilli(landMilliMu), CLASS_SHARE_PER_MILLE));
     return cohortGroup(
@@ -1881,7 +2004,8 @@ public final class EconomySeeder {
         stocks,
         money,
         genesisMoneyMilliPerCapita,
-        cohorts);
+        cohorts,
+        numeraire);
   }
 
   /**
@@ -1910,7 +2034,8 @@ public final class EconomySeeder {
       Map<HouseholdId, Map<CommodityId, Long>> stocks,
       Map<HouseholdId, Map<CurrencyId, Long>> money,
       long genesisMoneyMilliPerCapita,
-      PoolCohorts cohorts) {
+      PoolCohorts cohorts,
+      CurrencyId numeraire) {
     long[] shopByClass = splitByShares(workshops, CLASS_SHARE_PER_MILLE);
     long[] fiber = new long[CLASS_IDS.length];
     long[] iron = new long[CLASS_IDS.length];
@@ -1932,7 +2057,8 @@ public final class EconomySeeder {
         stocks,
         money,
         genesisMoneyMilliPerCapita,
-        cohorts);
+        cohorts,
+        numeraire);
   }
 
   /**
@@ -2021,7 +2147,8 @@ public final class EconomySeeder {
       Map<HouseholdId, Map<CommodityId, Long>> stocks,
       Map<HouseholdId, Map<CurrencyId, Long>> money,
       long genesisMoneyMilliPerCapita,
-      PoolCohorts cohorts) {
+      PoolCohorts cohorts,
+      CurrencyId numeraire) {
     long[] people = cohorts.classPopulations();
     long displacedPopulation = cohorts.displacedPopulation();
     List<Map<String, Object>> rows =
@@ -2035,7 +2162,7 @@ public final class EconomySeeder {
       stocks.put(key, openingStock(people[i], CLASS_IDS[i], goodsByClass, i));
       // ★★ H4：创世货币禀赋走**同一本账**（actor 侧的同一个 {@code HouseholdInventory}）—— 见 {@link
       // #genesisMoneyMilliPerCapita}。
-      money.put(key, genesisMoney(people[i], genesisMoneyMilliPerCapita));
+      money.put(key, genesisMoney(people[i], genesisMoneyMilliPerCapita, numeraire));
       rows.add(
           cohortRow(
               key,
@@ -2052,7 +2179,8 @@ public final class EconomySeeder {
       stocks.put(
           displacedKey,
           openingStock(displacedPopulation, initialRationDays(CLASS_IDS[0]), Map.of(), 0));
-      money.put(displacedKey, genesisMoney(displacedPopulation, genesisMoneyMilliPerCapita));
+      money.put(
+          displacedKey, genesisMoney(displacedPopulation, genesisMoneyMilliPerCapita, numeraire));
       rows.add(
           cohortRow(
               displacedKey,
@@ -3061,7 +3189,9 @@ public final class EconomySeeder {
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile,
-      TestConditions conditions) {
+      TestConditions conditions,
+      Function<HexCoord, CurrencyId> numeraireOf) {
+    Objects.requireNonNull(numeraireOf, "numeraireOf");
     Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
     Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
     for (PopulationGroup group : seeding.groups()) {
@@ -3115,6 +3245,15 @@ public final class EconomySeeder {
       long workshops = urbanPopulation / URBAN_CAPITA_PER_WORKSHOP;
       boolean hasRural = populationOf(ruralAll) > 0L;
       boolean hasCraft = urbanPopulation > 0L;
+      // ★★ B1：**本格的计价币**（多币种世界 = 本格所属市场区的法定币）。它在**同一处**同时喂给两件事：
+      //   ① 本格市场的 numeraire（见下面 markets.put）② 本格家户/经营者钱包的币种（见 cohort 调用与作坊主工资周转金）。
+      //   ★ 两件事必须同源：钱包币种 ≠ 本格市场币种 ⇒ 该格家户的每一次买盘都撞 I19 的异币具名拒（本地市场对它关门）。
+      //   ★ 缺省函数（老入口）恒回银 ⇒ 老世界逐值不变。
+      CurrencyId numeraire = numeraireOf.apply(hex);
+      if (numeraire == null) {
+        throw new IllegalStateException(
+            "逐格计价币函数对格 " + hex + " 回了 null（说不出这格按什么钱报价 ⇒ 播种器 fail-closed，不静默落到银）");
+      }
       // ★★ P11.7/D-024：城市格的商号本金主 = 该格城镇 landlord 家户（位置 = merchant.principal）。它的身份从
       //   Social 侧的 PoolCohorts 读入（P2-A：不再另拼 ofSeed），actor 拼写点走 HouseholdActors。
       HouseholdId merchantPrincipalHousehold =
@@ -3311,7 +3450,8 @@ public final class EconomySeeder {
               householdStocks,
               householdMoney,
               genesisMoneyMilliPerCapita,
-              ruralCohorts));
+              ruralCohorts,
+              numeraire));
       classes.addAll(
           urbanCohort(
               hex,
@@ -3322,7 +3462,8 @@ public final class EconomySeeder {
               householdStocks,
               householdMoney,
               genesisMoneyMilliPerCapita,
-              urbanCohorts));
+              urbanCohorts,
+              numeraire));
       if (hasCraft) {
         // ★★ P2-A §13.3：作坊主家户承接原"作坊经营者账"的周转料与工资周转金（同一格、同一户，账只有一本）。
         HouseholdId workshopOwner = urbanCohorts.classHouseholds().get(WORKSHOP_OWNER_SLOT_INDEX);
@@ -3339,7 +3480,7 @@ public final class EconomySeeder {
         if (wageReserve > 0L) {
           Map<CurrencyId, Long> wallet =
               new LinkedHashMap<>(householdMoney.getOrDefault(workshopOwner, Map.of()));
-          wallet.merge(MARKET_NUMERAIRE, wageReserve, Math::addExact);
+          wallet.merge(numeraire, wageReserve, Math::addExact);
           householdMoney.put(workshopOwner, wallet);
         }
       }
@@ -3355,7 +3496,9 @@ public final class EconomySeeder {
       entries.add(entry);
       // ★★ H4：本格的市场（M1-A：每格一个计价货币 + 一张价表）。★ **有 entry 才有市场** ——
       //   "这一格没有市场"（格不在本表的键集里）是合法状态，不是缺数据。
-      markets.put(hex, MARKET_FACTORY);
+      //   ★★ B1：计价币取**本格的** {@code numeraire}（多币种世界 = 本区法定币）；老入口缺省恒回银 ⇒ 与
+      //   {@link #MARKET_FACTORY} 逐值相等、载荷逐字节相同。
+      markets.put(hex, marketFor(numeraire));
     }
     // ★★ P2-C §13.7：政府家户**按调用方给出的政府引用稳定建户**（Social 侧已建好，经济侧只读）。
     //   给了引用（世界级 demo / GOV 单位）⇒ 追加该家户的空行+空账；没给（多国/多省的普通 seed）⇒

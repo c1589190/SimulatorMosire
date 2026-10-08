@@ -3,7 +3,9 @@ package io.mosire.simos.app.time;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.market.MarketNode;
+import io.mosire.simos.economy.api.money.MoneyInstrument;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -103,6 +105,20 @@ final class MarketTopologyBook {
    * Market.numeraire} 相同</b> ⇒ 直接返回 {@link MarketTopology#singleRegion}（全部有市场的 hex 归一个区， 锚格 =
    * 规范序第一个 hex、{@code nodeId = "single-region"}）；币种不一致时才退回既有的"城市节点 + tier 半径"路径
    * （D-027：跨市场区本批暂缓，不新增跨区撮合）。地形索引/道路/费率的装配方式逐字不变。
+   *
+   * <p>★★ <b>B1（阶段 2-B）："几个市场区"由两处决定</b>（多币种世界的区数判据；逐条 file:line 见 {@code
+   * .superpowers/sdd/2026-10-08-stage2-three-powers/b1-impl-ledger.md}）：
+   *
+   * <ol>
+   *   <li>{@link #sameNumeraire(Map)} 为真（所有市场同币）⇒ 走 {@link MarketTopology#singleRegion} ⇒ <b>恰好 1
+   *       个区</b>；
+   *   <li>币种不一致 ⇒ 走 {@link #byCityRadius}：**每个"锚格有市场"的城市**成一个节点（{@link #addNode}），逐格按"半径内最近节点"
+   *       归属（同距按 {@code nodeId} 字典序），都没落在任何半径内的市场格退化成单格区 ⇒ <b>区数 = 节点数 + 兜底单格区数</b>。
+   * </ol>
+   *
+   * ⇒ "每区法定币不同"的世界要落成<b>恰好 3 个区</b>，两个条件缺一不可：① 每座城的锚格**有市场**、且其计价币就是本区法定币； ②
+   * 每座城的半径**覆盖本区全部有市场的格**（否则多出兜底单格区）。{@code three-powers} 世界按这两条构造：3 座 {@code City}（半径 8）+ 半径 3 的
+   * 37 格六边形 ⇒ 全域被 3 个节点覆盖，既无多余兜底区，也无覆盖不到的格。
    */
   static MarketTopology from(
       SimulationState state,
@@ -236,22 +252,54 @@ final class MarketTopologyBook {
     return best == Integer.MAX_VALUE ? 0 : best;
   }
 
-  /** 一个节点：锚格必须有市场（否则没有报价币种可用）；非 silver 市场本批跳过（单一货币工具）。 */
+  /**
+   * ★★ <b>一个城市节点</b>：锚格必须有市场（否则"这一格按什么钱报价"说不出来）。
+   *
+   * <p>★★ <b>B1（2026-10-08 阶段 2-B）改了这里的一行</b>：旧实现<b>显式跳过非 silver 锚</b>（"本批只有 silver 一种货币工具， M2.0
+   * #2"）⇒ 在多币种世界里，除银区外的每一座城都<b>成不了节点</b>，它的腹地只能退化成"逐格单格区"（{@link MarketTopology#of}
+   * 的兜底分支），"几个市场区"就变成"1 个城域区 + N 个单格区"这种既非 1 也非 3 的形态。 现在改成本格市场**自己的**计价币：节点币种 = {@code
+   * market.numeraire()}（每区法定币不同的世界因此真的落成 3 个区）。
+   *
+   * <p>★ <b>为什么对既有世界逐值不变</b>：所有既有世界（{@code v17levant} / {@code small-world} / {@code
+   * corridor}）逐格市场都是银 ⇒ {@code sameNumeraire} 为真 ⇒ 走 {@link MarketTopology#singleRegion} 快路
+   * （**根本不会调到本方法**）；本方法只在"计价币不一致"时被调，而那正是本批新增的世界形态。
+   *
+   * <p>★ <b>{@code receiveWith} 的口径</b>：取该币种在**世界状态**（{@code EconomyData.moneyInstruments}）里的工具 id
+   * —— 币种词表 A1 起是逐世界的，硬写 {@code silver-specie} 会在铜/金区写出"收银"的谎。★ 若该币种在世界状态里没有工具 （旧档/单模块夹具），退回 {@link
+   * MoneyVocabulary#SILVER_SPECIE} 这一既有占位：该字段**全仓零读取者**（见 {@code MarketNode} 的类注与阶段 1 报告
+   * §2.2），故它不改变任何结算行为，只影响这一栏读数的自洽性。
+   */
   private static void addNode(
       List<MarketNode> nodes, String nodeId, HexCoord at, String tier, EconomyData economy) {
     Market market = economy.markets().get(at);
     if (market == null) {
       return;
     }
-    if (!MoneyVocabulary.SILVER_CURRENCY.equals(market.numeraire())) {
-      return; // 本批只有 silver 一种工具（M2.0 #2）；其他币种的区域等货币工具落地后再说
-    }
     int radius =
         tier == null
             ? DEFAULT_CITY_RADIUS_HEX
             : TIER_RADIUS_HEX.getOrDefault(tier, DEFAULT_CITY_RADIUS_HEX);
     nodes.add(
-        new MarketNode(nodeId, at, radius, market.numeraire(), MoneyVocabulary.SILVER_SPECIE.id()));
+        new MarketNode(
+            nodeId,
+            at,
+            radius,
+            market.numeraire(),
+            receiveInstrumentOf(economy, market.numeraire())));
+  }
+
+  /**
+   * 某币种在世界状态里的**唯一一个**工具 id（保序第一个；{@code EconomyData.moneyInstruments} 是保序表）。
+   *
+   * <p>★ 没有该币种的工具 ⇒ 退回 {@link MoneyVocabulary#SILVER_SPECIE}（见 {@link #addNode} 的注：该字段零读取者）。
+   */
+  private static InstrumentId receiveInstrumentOf(EconomyData economy, CurrencyId currency) {
+    for (MoneyInstrument instrument : economy.moneyInstruments().values()) {
+      if (instrument.currency().equals(currency)) {
+        return instrument.id();
+      }
+    }
+    return MoneyVocabulary.SILVER_SPECIE.id();
   }
 
   /** props 里的 tier（空白/非文本 ⇒ null，不猜）。 */

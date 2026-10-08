@@ -30,7 +30,9 @@ import java.util.Set;
  *   <li>{@value #SMALL_WORLD} → {@link SmallWorld}：P1.4 的 19 格真实小世界（2 个省级辖区 small-world +
  *       capital-province / 首都+镇 / 4,800 人 / production-runtime 经济与两级 GOV 行政链内置），供 {@code
  *       run-small-world.sh} 与 WebUI 演示走真路径；
- *   <li>{@value #CORRIDOR} → {@link CorridorWorld}：三格走廊夹具世界，供确定性用例复用（**不是**缺省）。
+ *   <li>{@value #CORRIDOR} → {@link CorridorWorld}：三格走廊夹具世界，供确定性用例复用（**不是**缺省）；
+ *   <li>{@value #THREE_POWERS} → {@link ThreePowersWorld}：B1（阶段 2-B）的 3 市场区 / 3 GOV / 3 货币世界（37 hex
+ *       / 三区三城三币 / 行政区两两不相交），供阶段 2 判据 G1 的验收与 {@code --world=three-powers} 起真实实例。
  * </ul>
  *
  * <p>★ **未知 id 一律 fail-closed**：{@link #require(String)} 具名抛出并列出已登记 id，绝不"落到某个默认世界"——那会让 拼错的 {@code
@@ -49,6 +51,13 @@ public final class WorldRegistry {
 
   /** 三格走廊夹具世界（{@link CorridorWorld}）的登记 id。 */
   public static final String CORRIDOR = "corridor";
+
+  /**
+   * ★★ <b>B1（2026-10-08 阶段 2-B）：3 个市场区 / 3 个 GOV / 3 种货币的测试世界</b>（{@link ThreePowersWorld}）的登记 id
+   * —— 用户第 19 轮原话「测试世界扩大，B 阶段做三个市场区、三个政府，其他按你说的做，先 A 后 B」的落点，也是阶段 2 判据 G1 的验收世界（37 hex / 三区三城三币三
+   * GOV / 辖区两两不相交）。
+   */
+  public static final String THREE_POWERS = "three-powers";
 
   /** 创世生成器：把 {@code mapId} 解析成一个可被 {@code bootstrapGenesis} 落盘的创世状态。 */
   @FunctionalInterface
@@ -135,6 +144,12 @@ public final class WorldRegistry {
     register(
         entries,
         new Entry(CORRIDOR, "三格沙漠走廊夹具世界（3 hex / 1 单位 / 1 条人口序列；供小世界与用例复用）", CorridorWorld::state));
+    register(
+        entries,
+        new Entry(
+            THREE_POWERS,
+            "B1：3 个市场区 / 3 个 GOV / 3 种货币的测试世界（37 hex / 三区三城三币 / 行政区两两不相交（I23）/ 每区法定币不同）",
+            ThreePowersWorld::state));
     return Collections.unmodifiableMap(entries);
   }
 

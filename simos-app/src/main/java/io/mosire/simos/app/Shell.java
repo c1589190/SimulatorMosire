@@ -54,6 +54,7 @@ import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.time.PopulationUnitTimeParticipant;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.world.GovJurisdictionGuard;
 import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.army.resolve.ArmyResolver;
 import io.mosire.simos.army.spi.AppendCombatStageHandler;
@@ -868,6 +869,10 @@ public final class Shell implements AutoCloseable {
 
     // 写前跨模块守卫（A6，spec §九）：带国家 tag 的区域不可删。
     coreSimos.register(new RegionDeleteGuard());
+    // ★★ B1（阶段 2-B，2026-10-08 用户第 8 轮裁定「重叠辖区是不被允许的」/ I23）：一个 hex 至多属一个 GOV 的辖区。
+    //   它必须住在**组合根**：判据要同时看 map 的 Region→hexes 与 unit 的 Unit.jurisdiction()，
+    //   而 simos-map 永远不知道 GOV 存在（铁律 3），simos-gov 也看不见区表（见类注）。
+    coreSimos.register(new GovJurisdictionGuard());
 
     ResolverRegistry resolverRegistry = new ResolverRegistry();
     resolverRegistry.register(new MapResolver());
