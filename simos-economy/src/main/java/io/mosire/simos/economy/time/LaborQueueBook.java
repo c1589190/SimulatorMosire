@@ -351,8 +351,9 @@ public final class LaborQueueBook {
               + budget);
     }
     long remaining = budget - preserved;
-    List<Offer> sorted = new ArrayList<>(offers);
-    sorted.sort(offerOrder());
+    // ★★ §4.3.4：排序走**唯一排序器** {@link ActivitySelector}（收益率 desc → activityId asc → unitId asc）。
+    //   它不改入参序、每个 offer 只投影一次键 ⇒ 同一份输入必然给出同一个队列（不变量 I7/E6）。
+    List<Offer> sorted = ActivitySelector.rank(new ArrayList<>(offers), LaborQueueBook::rankKeyOf);
     List<Decision> decisions = new ArrayList<>();
     int rank = 0;
     for (Offer offer : sorted) {
@@ -376,12 +377,25 @@ public final class LaborQueueBook {
     return new Plan(household, budget, preserved, allocated, remaining, decisions);
   }
 
-  /** ★★ <b>并列 tie-break</b>：排序键（预期单位劳动净收益）降序 → mode 键字典序 → unit id 字典序（计划 §13.5）。 */
+  /**
+   * ★★ <b>并列 tie-break</b>：排序键（预期单位劳动净收益）降序 → mode 键字典序 → unit id 字典序（计划 §13.5）。
+   *
+   * <p>★★ <b>2026-10-08（阶段 1 统一活动选择器）</b>：本比较器<b>不再是第二个排序口径</b> —— 它只把生产 offer 投影成 {@link
+   * ActivitySelector.RankKey}（{@code netPerLaborScaled / rankModeKey / unitId}）后<b>委托</b>给 {@link
+   * ActivitySelector#compareKeys}。套利活动（{@link TradeArbitrageActivity}）走同一个比较式 ⇒ "生产与套利共用一个排序器"（设计书
+   * §4.3.4）在结构上成立，而不是靠两处各写一遍。
+   *
+   * <p>★ 排序键的<b>刻度</b>是 {@link ActivitySelector#PER_LABOR_SCALE}（与 {@link #PER_LABOR_SCALE} 同值）：
+   * 两把尺不同，"最划算的先做"就会变成"谁的刻度大谁先做"。
+   */
   public static Comparator<Offer> offerOrder() {
-    return Comparator.comparingLong(Offer::netPerLaborScaled)
-        .reversed()
-        .thenComparing(Offer::rankModeKey)
-        .thenComparing(offer -> offer.unitId().value());
+    return (left, right) -> ActivitySelector.compareKeys(rankKeyOf(left), rankKeyOf(right));
+  }
+
+  /** 把一条生产 offer 投影成唯一排序器的键（唯一投影点；套利活动自带自己的键）。 */
+  static ActivitySelector.RankKey rankKeyOf(Offer offer) {
+    return new ActivitySelector.RankKey(
+        offer.netPerLaborScaled(), offer.rankModeKey(), offer.unitId().value());
   }
 
   // ── ③ 最大可吸收劳动的唯一算式 ─────────────────────────────────────────────────────────────

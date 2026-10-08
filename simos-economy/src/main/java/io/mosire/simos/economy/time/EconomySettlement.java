@@ -1265,6 +1265,9 @@ public final class EconomySettlement {
                   shipments.size()));
     }
 
+    // ★★ 2026-10-08（阶段 1）：本日套利决定的收集器 —— 排序阶段（LaborQueueSettlement）往里放，
+    //   市场阶段（MarketSettlement）取走。逐日瞬态、不进状态（§4.3.5 的快照纪律）。
+    MarketArbitragePlan.Collector arbitrageCollector = new MarketArbitragePlan.Collector();
     if (plantingDrawsFirst) {
       drawCycleInputsPartitioned(
           session,
@@ -1282,7 +1285,10 @@ public final class EconomySettlement {
         // ★★ R4-E2b：今天刚进入的 unit 不触发"本周期是第一天"的重排判定（它今天确实是 0，但它不属于既有周期的重排对象）。
         reallocateLaborPartitioned(session, parallelism, settlementIndex, enteredToday);
       } else {
-        LaborQueueSettlement.apply(session, settlementIndex, day, composition, enteredToday);
+        // ★★ §4.3.1：劳动分配、库存分配、投入扣减是**同一次遍历**的三个动作 —— 本调用点在投入扣减**之后**
+        //   （PLANTING_DRAWS_BEFORE_CONSUMPTION = true）⇒ 套利快照里的库存已是扣完料的余额（I14 由此结构性成立）。
+        LaborQueueSettlement.apply(
+            session, settlementIndex, day, composition, enteredToday, accounts, arbitrageCollector);
       }
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图，后续（unit 家户归属/市场参与者/人口回写）继续 O(1) 查表。
       settlementIndex = settlementIndex.withLabor(units, householdEconomies, laborCommitments);
@@ -1315,7 +1321,9 @@ public final class EconomySettlement {
         reallocateLaborPartitioned(session, parallelism, settlementIndex, enteredToday);
       } else {
         // ★★ P2-B §13.4：每 tick 重算 —— 不在生产周期开始时锁死；投入已扣（本支在消费后），判定有据。
-        LaborQueueSettlement.apply(session, settlementIndex, day, composition, enteredToday);
+        // ★★ 2026-10-08（阶段 1）：套利活动与生产进同一个排序器；快照 = 本刻（消费后、投入已扣）的可动余额。
+        LaborQueueSettlement.apply(
+            session, settlementIndex, day, composition, enteredToday, accounts, arbitrageCollector);
       }
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图（与 plantingDrawsFirst 分支同一条阶段边界）。
       settlementIndex = settlementIndex.withLabor(units, householdEconomies, laborCommitments);
@@ -1695,6 +1703,12 @@ public final class EconomySettlement {
       // ★★ D-031：借款人侧不再有信用额度上限 —— 市场信用只带到期周期与当日债务工作副本；唯一上限 = 放贷人
       //   实际可借的货币/卖单剩余。`DebtCapacity` 不再是任何借出路径的门。
       marketRound = marketRound.withCredit(dueCycle, debts);
+      // ★★ 2026-10-08（阶段 1）：把排序产出的套利决定注入本轮市场（订单生成的输入；不进状态）。
+      //   ★ 位置 = 市场轮之前（设计书 §9 的冻结落点）：它必须在撮合之前（它的输出就是订单），且依赖"到货已结算"
+      //     （:1240 的 deliverShipments 先于它）。
+      MarketArbitragePlan arbitragePlan = arbitrageCollector.toPlan();
+      marketRound = marketRound.withArbitrage(arbitragePlan);
+      logArbitrageRound(day, arbitragePlan);
       MarketSettlement.MarketOutcome outcome =
           MarketSettlement.clearOncePerCycle(
               markets,
@@ -7666,6 +7680,116 @@ public final class EconomySettlement {
                   evaluation.scale(),
                   "modifierEffective",
                   evaluation.modifierEffective()));
+    }
+  }
+
+  // ── 套利活动的日志（AGENTS §一.9：新阶段必须有 INFO/DEBUG/TRACE 三级）──────────────────────
+
+  /**
+   * ★★ <b>本轮套利决定的 INFO 汇总</b>（谁、哪个方向、多少量 —— "这一轮发生了什么"）。
+   *
+   * <p>★ <b>只看 INFO 的人能回答</b>：本日有几户在套利、共要买多少货、为此花了多少劳动、预期净收益多少。 逐户理由在 {@code LaborQueueSettlement}
+   * 的 DEBUG（{@code ARBITRAGE_OPPORTUNITY} / {@code ARBITRAGE_GRANTED}）， 逐笔订单在 {@code
+   * MarketSettlement} 的 TRACE（{@code ARBITRAGE_BUY_ORDER}）。
+   */
+  private static void logArbitrageRound(long day, MarketArbitragePlan plan) {
+    if (plan.isEmpty()) {
+      if (TRACE.isDebugEnabled()) {
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "ARBITRAGE_ROUND",
+                    EconomyLogSource.ECONOMY_ARBITRAGE,
+                    "day",
+                    day,
+                    "households",
+                    0,
+                    "buys",
+                    0,
+                    "totalQuantityMilli",
+                    0,
+                    "totalLaborMilli",
+                    0,
+                    "reason",
+                    "no-opportunity-or-no-market"));
+      }
+      return; // 没有套利：不刷 INFO（"今天没有套利"不是生命周期事件）
+    }
+    long buys = 0L;
+    long holds = 0L;
+    long totalQuantity = 0L;
+    long totalLabor = 0L;
+    long totalNetMicro = 0L;
+    java.util.TreeSet<String> commodities = new java.util.TreeSet<>();
+    for (MarketArbitragePlan.Instruction instruction : plan.instructions()) {
+      if (instruction.direction() == HouseholdActivity.Direction.BUY) {
+        buys++;
+      } else {
+        holds++;
+      }
+      totalQuantity = Math.addExact(totalQuantity, instruction.quantityMilli());
+      totalLabor = Math.addExact(totalLabor, instruction.laborMilli());
+      // ★★ 量纲（2026-10-08 诊断缺陷修复；改前这里是"毫商品 × 毫/单位 = 毫²"却叫 Micro）：
+      //     量（毫商品）× 单位价差（**微** numeraire / **商品单位**）÷ 1000（毫商品/商品单位）
+      //     = **微 numeraire**  ⇒ 变量名 totalNetMicro 与算式从此同名同尺。
+      totalNetMicro =
+          Math.addExact(
+              totalNetMicro,
+              Math.multiplyExact(instruction.quantityMilli(), instruction.edgeMicro())
+                  / MILLI_PER_GRAIN);
+      commodities.add(instruction.commodity().value());
+    }
+    EventLog.channel(TRACE)
+        .info(
+            LogEvent.of(
+                "ARBITRAGE_ROUND",
+                EconomyLogSource.ECONOMY_ARBITRAGE,
+                "day",
+                day,
+                "households",
+                plan.size(),
+                "buys",
+                buys,
+                "holds",
+                holds,
+                "totalQuantityMilli",
+                totalQuantity,
+                "totalLaborMilli",
+                totalLabor,
+                // 预期净收益（**毫** numeraire）= 微 numeraire ÷ 1000（微/毫是价格刻度，与"毫商品/商品单位"无关，
+                // 故这里用的是 TradeArbitrageActivity.MICRO_PER_MILLI 而不是 MILLI_PER_GRAIN —— 两者数值同为 1000，
+                // 量纲完全不同，混用正是本次修的缺陷类型）。
+                "totalExpectedNetMilli",
+                totalNetMicro / TradeArbitrageActivity.MICRO_PER_MILLI,
+                "commodities",
+                String.join(",", commodities)));
+    if (TRACE.isDebugEnabled()) {
+      for (MarketArbitragePlan.Instruction instruction : plan.instructions()) {
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "ARBITRAGE_INSTRUCTION",
+                    EconomyLogSource.ECONOMY_ARBITRAGE,
+                    "day",
+                    day,
+                    "household",
+                    instruction.household().value(),
+                    "direction",
+                    instruction.direction(),
+                    "commodity",
+                    instruction.commodity().value(),
+                    "quantityMilli",
+                    instruction.quantityMilli(),
+                    // ★ 2026-10-08 诊断缺陷修复：字段名 = 真实量纲（微 numeraire / 商品单位）
+                    "reservationMicro",
+                    instruction.reservationMicro(),
+                    "marketMicro",
+                    instruction.marketMicro(),
+                    "edgeMicro",
+                    instruction.edgeMicro(),
+                    "laborMilli",
+                    instruction.laborMilli()));
+      }
     }
   }
 

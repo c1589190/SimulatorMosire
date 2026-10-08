@@ -326,6 +326,16 @@ final class MarketSettlement {
     private final Set<HouseholdId> marketExcludedHouseholds;
 
     /**
+     * ★★ <b>2026-10-08（阶段 1）：本轮的套利决定</b>（§4.3.4/§4.3.5；由 {@code LaborQueueSettlement} 排序产出、 经
+     * {@link #withArbitrage} 注入）。默认 {@link MarketArbitragePlan#empty()} ⇒ <b>逐值退回改前行为</b>
+     * （旧构造器、只读计划轮与读口都不注入它）。
+     *
+     * <p>★ 它是<b>逐轮瞬态</b>：不进 {@code EconomyData}、不进变更集、不落盘；订单仍由 {@code ordersFor} 生成、 仍由 {@code
+     * clearOncePerCycle} 撮合、仍由唯一写口落账（本字段只回答"这个家户这一轮想额外吃多少货"）。
+     */
+    private MarketArbitragePlan arbitrage = MarketArbitragePlan.empty();
+
+    /**
      * ★★ <b>D-031：市场信用的一轮入参</b>（借款人侧不再有额度；唯一上限 = 放贷人实际可借头寸）。
      *
      * @param dueCycle 新合同的到期周期（本批 = 当前周期 + 1；与 {@code lendDeficitsInHex} 同源）
@@ -557,6 +567,102 @@ final class MarketSettlement {
     /** ★★ Z7b：本轮退出商品市场的家户集合（只读；只用于订单/参与生成处的 {@code contains}）。 */
     Set<HouseholdId> marketExcludedHouseholds() {
       return marketExcludedHouseholds;
+    }
+
+    /**
+     * ★★ <b>2026-10-08（阶段 1）：注入本轮的套利决定</b>（返回一个新的 {@link MarketRound}；原对象不动）。
+     *
+     * <p>★ 沿用 {@code withCredit} 的形制：先用既有唯一完整构造器造一份新实例，再把套利计划挂上 ——
+     * <b>不改任何构造器签名</b>（既有调用方/测试因此逐字不动，旧路径自然拿到 {@link
+     * MarketArbitragePlan#empty()}）。挂载发生在对象发布之前（同一天结算内的协调器线程），因此不存在 数据竞争。
+     */
+    MarketRound withArbitrage(MarketArbitragePlan plan) {
+      Objects.requireNonNull(plan, "withArbitrage 的套利计划不得为 null（没有就给 MarketArbitragePlan.empty()）");
+      MarketRound next =
+          new MarketRound(
+              day,
+              householdEconomies,
+              householdGoods,
+              householdMoney,
+              householdFrozenGoods,
+              householdFrozenMoney,
+              unmetToday,
+              householdOfActor,
+              industries,
+              units,
+              assetShares,
+              relations,
+              laborCommitments,
+              shipments,
+              ledger,
+              operatorConditions,
+              index,
+              householdDemands,
+              regulation,
+              creditConfig,
+              debts,
+              marketExcludedHouseholds);
+      next.arbitrage = plan;
+      return next;
+    }
+
+    /** ★★ 2026-10-08（阶段 1）：本轮的套利决定（缺省空 ⇒ 订单生成逐值退回改前口径）。 */
+    MarketArbitragePlan arbitrage() {
+      return arbitrage;
+    }
+
+    /**
+     * ★★ <b>克隆的唯一拼写点</b>（2026-10-08 修复"克隆静默丢字段"这一类 bug）。
+     *
+     * <p>★★ <b>为什么必须有它</b>：并行 worker 用的两条克隆路径（{@code MarketSettlement.readOnlyPlanningRound} 与区副本的
+     * local round）此前各自<b>手抄一遍 22 个构造参数</b>；{@code MarketRound} 一加字段 （本轮 = {@code
+     * arbitrage}），克隆就会把它悄悄丢掉，而克隆出的那个轮<b>才是在下订单的那一份</b> ⇒ 整套套利一次都不生效、且没有任何报错（实测：360 tick 与基线逐值相同，计划
+     * 83 户但 {@code ARBITRAGE_BUY_ORDER} = 0 条）。
+     *
+     * <p>★★ <b>语义</b>：<b>逐字段原样带过本轮的其余全部输入</b>（含 {@code regulation} / {@code creditConfig} / {@code
+     * debts} / {@code marketExcludedHouseholds} / {@code index} / {@code arbitrage}），
+     * 只替换调用方<b>显式点名</b>的六样：四张账户表、未满足表、账本累加器 —— 这六样正是两条克隆路径真正不同的部分。 因此"将来再加一个 {@code MarketRound}
+     * 字段"不再需要改克隆点。
+     *
+     * <p>★ <b>与改前的逐值差异（已审计）</b>：旧克隆把 {@code regulation} 写死成 {@link MarketRegulation#none()}、 区副本还把
+     * {@code creditConfig}/{@code debts}/{@code marketExcludedHouseholds} 留成缺省。三者在本轮**都没有
+     * 读取点**：克隆轮只进 {@code planFor}/{@code ordersFor}（由调用方显式传 {@code regionRegulation}）与 {@code
+     * matchGroup}（区副本，信用撮合 {@code creditRound}/{@code collectUnfilled}/{@code creditUnfilledReason}
+     * 全部只在协调器的真实 {@code ctx} 上跑）⇒ 本方法把它们原样带过是**行为等价**的，只是不再有"字段悄悄变缺省"。
+     */
+    MarketRound copyForWorker(
+        Map<HouseholdId, Map<CommodityId, Long>> householdGoodsCopy,
+        Map<HouseholdId, Map<CurrencyId, Long>> householdMoneyCopy,
+        Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoodsCopy,
+        Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoneyCopy,
+        Map<HouseholdId, Map<CommodityId, Long>> unmetTodayCopy,
+        ProductionLedger.Accumulator workerLedger) {
+      MarketRound next =
+          new MarketRound(
+              day,
+              householdEconomies,
+              householdGoodsCopy,
+              householdMoneyCopy,
+              householdFrozenGoodsCopy,
+              householdFrozenMoneyCopy,
+              unmetTodayCopy,
+              householdOfActor,
+              industries,
+              units,
+              assetShares,
+              relations,
+              laborCommitments,
+              shipments,
+              workerLedger,
+              operatorConditions,
+              index,
+              householdDemands,
+              regulation,
+              creditConfig,
+              debts,
+              marketExcludedHouseholds);
+      next.arbitrage = arbitrage; // ★ 新字段在这里被带过 —— 这正是"手抄 22 个参数"漏掉的那一行
+      return next;
     }
 
     /** ★ 排除集是身份集合：逐元素查 null、保序冻结（绝不用 {@code Set.copyOf}——不承诺保序）。 */
@@ -921,6 +1027,27 @@ final class MarketSettlement {
     Map<String, List<HouseholdId>> rowsByHex =
         EconomySettlement.rowsByHex(round.householdEconomies);
     MarketRound planningRound = readOnlyPlanningRound(round);
+    // ★★ 2026-10-08 防复发守卫：**克隆轮必须与母轮携带同一份套利决定**。
+    //   下一段真正下单用的是 planningRound（不是 round）⇒ 克隆一旦丢字段，套利就会"计划满格、订单为零"且毫无报错
+    //   （2026-10-08 实测踩到：360 tick 与基线逐值相同、ARBITRAGE_ROUND 83 户而 ARBITRAGE_BUY_ORDER = 0 条）。
+    //   ⇒ 这是**契约/一致性故障**（AGENTS §一.9：不降级），具名 ERROR + fail-closed；正常路径上恒不触发
+    //     （{@link MarketRound#copyForWorker} 是克隆的唯一拼写点，已逐字段带过）。
+    if (!planningRound.arbitrage().instructions().equals(round.arbitrage().instructions())) {
+      throw arbitragePlanLostByClone(round.arbitrage().size(), planningRound.arbitrage().size());
+    }
+    if (!round.arbitrage().isEmpty() && MARKET.isDebugEnabled()) {
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "MARKET_ARBITRAGE_PLAN_ATTACHED",
+                  EconomyLogSource.ECONOMY_ARBITRAGE,
+                  "day",
+                  round.day,
+                  "households",
+                  round.arbitrage().size(),
+                  "planningRoundHouseholds",
+                  planningRound.arbitrage().size()));
+    }
     TreeMap<String, List<HexCoord>> hexesByRegion = new TreeMap<>();
     for (HexCoord hex : markets.keySet()) {
       hexesByRegion
@@ -1361,6 +1488,51 @@ final class MarketSettlement {
           creditDemand
               ? desiredQuantity(baseTarget, demandParts, available, incoming)
               : allocateQuantity(baseTarget, demandParts, available, incoming, cashAffordable);
+      // ── ★★ 2026-10-08（阶段 1，§4.3.1 第 ④ 步）：家户套利买盘 ────────────────────────────────
+      //   ★ 它是"在既有买目标**之上**加量"（I15：生活保留/需求目标一份都不减），量已在排序阶段按
+      //     "机会上限（30 天目标保有量的 25%）+ 可动现金的两成 + 价格冲击"封死（见 TradeArbitrageActivity）。
+      //   ★★ **刻意不在订单层再按"计划量占用的现金"二次封顶**：credit 世界里既有买盘的最后一段本来就是信用
+      //     （`creditRound`）结的，按 notional 现金再封一道会让套利在"现金相对货值极贫瘠"的真档世界里恒为 0
+      //     （= 静默死分支，正是本仓最反对的形态）。"自有资源"约束因此落在**计划那一侧**（可动现金 ×
+      //     MONEY_CAP_PER_MILLE‰），而不是订单侧；这条取舍与其数值后果已记进实现账本。
+      if (participant.household != null) {
+        MarketArbitragePlan.Instruction instruction =
+            round.arbitrage().instructionFor(participant.household, commodity).orElse(null);
+        if (instruction != null && instruction.direction() == HouseholdActivity.Direction.BUY) {
+          long arbitrageQuantity = instruction.quantityMilli();
+          quantity = Math.addExact(quantity, arbitrageQuantity);
+          if (EconomyLog.market().isTraceEnabled()) {
+            EventLog.channel(EconomyLog.market())
+                .trace(
+                    LogEvent.of(
+                        "ARBITRAGE_BUY_ORDER",
+                        EconomyLogSource.ECONOMY_ARBITRAGE,
+                        "day",
+                        round.day,
+                        "household",
+                        participant.household.value(),
+                        "commodity",
+                        commodity.value(),
+                        "hex",
+                        hex.toString(),
+                        "orderQuantityMilli",
+                        quantity,
+                        "arbitrageQuantityMilli",
+                        arbitrageQuantity,
+                        // ★ 2026-10-08 诊断缺陷修复：字段名 = 真实量纲（微 numeraire / 商品单位；1 毫 = 1000 微）
+                        "reservationMicro",
+                        instruction.reservationMicro(),
+                        "marketMicro",
+                        instruction.marketMicro(),
+                        "edgeMicro",
+                        instruction.edgeMicro(),
+                        "referenceMilli",
+                        reference,
+                        "cashAffordableMilli",
+                        cashAffordable == Long.MAX_VALUE ? -1L : cashAffordable));
+          }
+        }
+      }
       if (quantity <= 0L) {
         continue; // 没缺口 / 没钱的缺口不是有效需求（经营者仍按现金封顶；家户的缺口由信用补）
       }
@@ -2619,27 +2791,16 @@ final class MarketSettlement {
         unmetToday.put(household, new LinkedHashMap<>(recorded));
       }
     }
+    // ★★ 2026-10-08：改走克隆的唯一拼写点（旧版在这里手抄 20 个构造参数 ⇒ 同样会静默丢掉后来新增的字段）。
+    //   ★ 本地账本：worker 铸造的转移只服务于本地 applyTransfer，交回后丢弃；协调器回放时在全局累加器上重铸。
     MarketRound localRound =
-        new MarketRound(
-            ctx.round.day,
-            ctx.round.householdEconomies,
+        ctx.round.copyForWorker(
             householdGoods,
             householdMoney,
             householdFrozenGoods,
             householdFrozenMoney,
             unmetToday,
-            ctx.round.householdOfActor,
-            ctx.round.industries,
-            ctx.round.units,
-            ctx.round.assetShares,
-            ctx.round.relations,
-            ctx.round.laborCommitments,
-            ctx.round.shipments,
-            // ★ 本地账本：worker 铸造的转移只服务于本地 applyTransfer，交回后丢弃；协调器回放时在全局累加器上重铸。
-            new ProductionLedger.Accumulator(ctx.round.day),
-            ctx.round.operatorConditions,
-            ctx.round.index,
-            ctx.round.householdDemands);
+            new ProductionLedger.Accumulator(ctx.round.day));
     MatchContext local =
         new MatchContext(
             localRound,
@@ -2849,36 +3010,52 @@ final class MarketSettlement {
   }
 
   /**
+   * ★★ <b>2026-10-08：克隆丢字段的具名契约故障</b>（防复发守卫的唯一发射点）。
+   *
+   * <p>先记 {@code MARKET_ARBITRAGE_PLAN_LOST} ERROR（契约/跨切片一致性故障不降级），再返回 {@link
+   * IllegalStateException} 供调用方 fail-closed。{@code reason} 只含数量，不含载荷明文。
+   */
+  private static IllegalStateException arbitragePlanLostByClone(
+      int motherHouseholds, int cloneHouseholds) {
+    EventLog.channel(MARKET)
+        .error(
+            LogEvent.of(
+                "MARKET_ARBITRAGE_PLAN_LOST",
+                EconomyLogSource.ECONOMY_ARBITRAGE,
+                "motherHouseholds",
+                motherHouseholds,
+                "cloneHouseholds",
+                cloneHouseholds,
+                "reason",
+                "planning-round-clone-dropped-arbitrage-plan"));
+    return new IllegalStateException(
+        "市场轮的克隆丢了套利计划（母轮 "
+            + motherHouseholds
+            + " 户 / 克隆轮 "
+            + cloneHouseholds
+            + " 户）：订单生成用的是克隆轮，丢字段会让整个套利静默不生效。"
+            + "克隆必须走 MarketRound.copyForWorker 这个唯一拼写点。");
+  }
+
+  /**
    * ★★ <b>给并行 worker 用的只读市场轮</b>：八张账户表浅拷成普通 {@code LinkedHashMap}（内层表只读共享）， 避开 {@link
    * AccountSession} 活视图的 owner 守卫；账本换成本地空累加器（订单生成不铸转移）。
    *
    * <p>★ 只允许在<b>协调器线程</b>调用（读活视图本身要过 owner 守卫），产物在并行阶段只读。
+   *
+   * <p>★★ <b>2026-10-08：改走克隆的唯一拼写点 {@link MarketRound#copyForWorker}</b>（旧版在这里手抄 22 个构造参数 ⇒ {@code
+   * MarketRound} 新增的 {@code arbitrage} 字段被静默丢掉，而<b>这个克隆轮才是真正在下订单的那一份</b> ⇒
+   * 套利一次都不生效且无任何报错）。语义与旧版唯一差异：{@code regulation} 由写死的 {@code none()} 改为<b>原样带过</b> ——
+   * 逐调用点审计过，该值在克隆轮上没有读取点（worker 的订单生成由调用方显式传 {@code regionRegulation}）。
    */
   private static MarketRound readOnlyPlanningRound(MarketRound round) {
-    return new MarketRound(
-        round.day,
-        round.householdEconomies,
+    return round.copyForWorker(
         new LinkedHashMap<>(round.householdGoods),
         new LinkedHashMap<>(round.householdMoney),
         new LinkedHashMap<>(round.householdFrozenGoods),
         new LinkedHashMap<>(round.householdFrozenMoney),
         new LinkedHashMap<>(round.unmetToday),
-        round.householdOfActor,
-        round.industries,
-        round.units,
-        round.assetShares,
-        round.relations,
-        round.laborCommitments,
-        round.shipments,
-        new ProductionLedger.Accumulator(round.day),
-        round.operatorConditions,
-        round.index,
-        round.householdDemands,
-        // ★ 与旧短构造器逐值同源：worker 的订单生成由调用方显式传 regionRegulation，不读这里的默认值。
-        MarketRegulation.none(),
-        round.creditConfig,
-        round.debts,
-        round.marketExcludedHouseholds);
+        new ProductionLedger.Accumulator(round.day));
   }
 
   /** ★ 区内一笔成交的不可变意向：worker 产出，协调器按区序/成交序回放（索引 = ctx.buys/ctx.sells 的全局下标）。 */
