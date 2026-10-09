@@ -279,19 +279,39 @@ final class CurrencyValuation {
    * 从根做一次确定序搜索（邻接按币种 id 升序）：首次访问即定值（先到先得 ⇒ 多份冲突报价下确定）
    * </pre>
    *
-   * <p>★ <b>多份冲突报价</b>：本批取"确定序搜索首次访问"的那一份（同一份输入恒同结果）。按区/按 GOV 的报价冲突 具名记录是 A 批的事（上位文档
-   * §4.4），本批不新增第二套口径。
+   * <p>★★ <b>多份冲突报价（2026-10-09 A 批落点）</b>：先按 §4.4 的<b>唯一口径</b>把同一币对的多份报价合并成"最优一份" （{@code bid} =
+   * 最高买价、{@code ask} = 最低卖价），再取其中价 —— 与 {@code FxSettlement} 的家户挂单价同口径， <b>不新增第二套口径</b>。★
+   * 改前这里是"确定序第一条先到先得"（F9 的同族缺陷：被压过的那条报价静默不进行情）； 逐条冲突的<b>具名记录</b>在 {@code FxSettlement} 的 {@code
+   * FX_PAIR_MULTIPLE_QUOTES}（一处发，不重复刷）。 ★ <b>单份报价的世界逐值不变</b>：合并结果就是那一条。
    */
   private static Map<CurrencyId, Long> quotedValues(FxRoundInput fx) {
     Map<CurrencyId, Map<CurrencyId, Long>> edges = new TreeMap<>(CurrencyIdOrder.INSTANCE);
+    Map<String, OfficialRate> bestByPair = new TreeMap<>();
     for (FxRoundInput.Window window : fx.windows()) {
       OfficialRate rate = window.rate();
-      long midPerMille = Math.max(1L, (rate.buyPerMille() + rate.sellPerMille()) / 2L);
-      edges.computeIfAbsent(rate.base(), ignored -> new TreeMap<>(CurrencyIdOrder.INSTANCE));
-      edges.computeIfAbsent(rate.quote(), ignored -> new TreeMap<>(CurrencyIdOrder.INSTANCE));
-      // 同一币对多份报价：只留确定序第一条（先到先得；不静默取平均）。
-      edges.get(rate.base()).putIfAbsent(rate.quote(), midPerMille);
-      edges.get(rate.quote()).putIfAbsent(rate.base(), -midPerMille);
+      bestByPair.merge(
+          OfficialRate.keyOf(rate.base(), rate.quote()),
+          rate,
+          (left, right) ->
+              new OfficialRate(
+                  left.base(),
+                  left.quote(),
+                  Math.max(left.buyPerMille(), right.buyPerMille()),
+                  Math.min(left.sellPerMille(), right.sellPerMille())));
+    }
+    Set<String> emitted = new LinkedHashSet<>();
+    for (FxRoundInput.Window window : fx.windows()) {
+      OfficialRate rate = window.rate();
+      String key = OfficialRate.keyOf(rate.base(), rate.quote());
+      if (!emitted.add(key)) {
+        continue; // 同一币对只在它第一次出现的位置投一条（值 = 该币对的最优摘要）
+      }
+      OfficialRate best = bestByPair.get(key);
+      long midPerMille = Math.max(1L, (best.buyPerMille() + best.sellPerMille()) / 2L);
+      edges.computeIfAbsent(best.base(), ignored -> new TreeMap<>(CurrencyIdOrder.INSTANCE));
+      edges.computeIfAbsent(best.quote(), ignored -> new TreeMap<>(CurrencyIdOrder.INSTANCE));
+      edges.get(best.base()).putIfAbsent(best.quote(), midPerMille);
+      edges.get(best.quote()).putIfAbsent(best.base(), -midPerMille);
     }
     if (edges.isEmpty()) {
       return Map.of();

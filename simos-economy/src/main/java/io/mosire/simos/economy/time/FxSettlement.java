@@ -12,6 +12,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
@@ -21,8 +22,10 @@ import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -42,6 +45,13 @@ import java.util.TreeMap;
  *
  * <p>★★ <b>本类不是第二个 applier</b>：它只算"谁给谁多少"，动账一律 {@code applyTransfer}；因此逐币种守恒（I20）不是
  * 本类的性质，而是"只有一条写路径"的性质 —— 本类一个账户 {@code put} 都不写。
+ *
+ * <p>★★ <b>同币对多份报价（2026-10-09 A 批；设计书 §4.4 / G3）</b>：同一币对的生效报价可以有多条（多个 GOV 各挂各的价）， <b>全部并存</b> ——
+ * 每个窗口各进簿一张单，按 {@code limitPerMille} 价格优先撮合（{@link #matchBook}）。家户挂单价的锚取该 币对的<b>最优摘要</b>：{@code
+ * bid} = 所有窗口买价中的<b>最高</b>、{@code ask} = 所有窗口卖价中的<b>最低</b> （"对手方最划算的那份"）⇒ 家户买单限价 =
+ * 最便宜的卖价，最优窗口自然先被吃（"货比三家"的落点）。多份【不同】报价按 {@code FX_PAIR_MULTIPLE_QUOTES}
+ * 具名记录（INFO，永不静默）；多份【相同】报价不刷日志（§一.9）。★ <b>不得按区收窄撮合域</b>： 家户自己看价、直接买，不存在"只能跟本区成交"（该问法已作废，设计书
+ * §1.3/§2.2）。
  *
  * <p>★★ <b>为什么放在市场轮里、而不是另开一条日结算支</b>：① 家户能花的钱是"商品市场撮合之后"的余额（同一份账户表）； ② 冻结/信用/未成交归因都在这一轮里；③
  * 官方汇率与实际汇率的对照必须落在同一个世界日上（F4）。
@@ -96,11 +106,20 @@ final class FxSettlement {
     List<FxRoundResult.NamedRejection> rejections = new ArrayList<>();
     List<WindowState> windows = new ArrayList<>();
     Map<String, PairRates> pairs = new TreeMap<>();
+    // ★★ §4.4（G3）：同一币对的<b>多份报价全部并存</b>——不再 putIfAbsent"先到先得"。
+    //   两个用途各一张表：① pairs = 该币对的<b>最优摘要</b>（家户挂单价的锚）；② quotesByPair = 逐条留名（冲突日志用）。
+    //   ★ 逐条报价属于哪个窗口/窗口单怎么进簿，一字未动（见下面的建簿段）。
+    Map<String, List<PairQuote>> quotesByPair = new TreeMap<>();
     for (FxRoundInput.Window spec : input.windows()) {
       OfficialRate rate = spec.rate();
-      pairs.putIfAbsent(
-          pairKey(rate.base(), rate.quote()),
-          new PairRates(rate.base(), rate.quote(), rate.buyPerMille(), rate.sellPerMille()));
+      String key = pairKey(rate.base(), rate.quote());
+      quotesByPair
+          .computeIfAbsent(key, ignored -> new ArrayList<>())
+          .add(new PairQuote(spec.governmentId(), rate));
+      pairs.merge(
+          key,
+          new PairRates(rate.base(), rate.quote(), rate.buyPerMille(), rate.sellPerMille()),
+          PairRates::best);
       HouseholdId treasury = round.householdOfActor().get(spec.treasury());
       if (treasury == null) {
         // 国库 actor 不是已登记家户 ⇒ 做不到"政府不许凭空持币"（账户主体只有家户）⇒ 窗口整段不参与，具名。
@@ -130,7 +149,7 @@ final class FxSettlement {
       GovFxWindow.Quote quote =
           GovFxWindow.quote(
               spec.governmentId(), rate, reserve, spec.reserveCapBaseMilli(), quoteSpendable);
-      windows.add(new WindowState(spec, treasury, quote));
+      windows.add(new WindowState(spec, treasury, quote, treasuryHex(round, treasury)));
       if (quote.buyBlocked() != null) {
         logWindowEvent(
             round.day(),
@@ -186,6 +205,10 @@ final class FxSettlement {
       }
     }
 
+    // ── ①.5 报价冲突（★ §4.4 / §一.9）：同一币对多份【不同】报价 ⇒ INFO 具名（谁/各什么价/谁最优）；
+    //         多份【相同】报价 ⇒ 不刷日志（否则噪声）。永不静默（这是 F9"静默丢弃"的正面替代）。
+    logMultipleQuotes(round.day(), quotesByPair, pairs);
+
     // ── ② 建簿：每个"有官方汇率的币对"一本（窗口停做不影响市场的存在）────────────────────────
     Map<String, List<Order>> books = new LinkedHashMap<>();
     for (Map.Entry<String, PairRates> entry : pairs.entrySet()) {
@@ -197,12 +220,20 @@ final class FxSettlement {
       if (window.quote.canBuy()) {
         book.add(
             Order.window(
-                window, true, window.quote.bidPerMille(), window.quote.buyCapacityBaseMilli()));
+                window,
+                true,
+                window.quote.bidPerMille(),
+                window.quote.buyCapacityBaseMilli(),
+                window.hex));
       }
       if (window.quote.canSell()) {
         book.add(
             Order.window(
-                window, false, window.quote.askPerMille(), window.quote.sellCapacityBaseMilli()));
+                window,
+                false,
+                window.quote.askPerMille(),
+                window.quote.sellCapacityBaseMilli(),
+                window.hex));
       }
     }
     planHouseholdOrders(round, markets, topology, pairs, books);
@@ -411,7 +442,12 @@ final class FxSettlement {
       boolean windowInvolved = bid.window || ask.window;
       TransferReason legReason =
           windowInvolved ? TransferReason.GOV_FX_WINDOW : TransferReason.FX_TRADE;
-      HexCoord location = ask.hex != null ? ask.hex : bid.hex;
+      // ★ 有家户参与时逐字保持旧口径（家户那一侧的格优先）⇒ 既有世界的 location 一个数都不动；
+      //   ★ 同币对多窗口（G3）下**两条窗口单之间**也可能交叉（GOV-A 的买价 ≥ GOV-B 的卖价）——
+      //     此时两侧没有家户格 ⇒ 取卖方（窗口）的格 = 其国库户所在格（见 Order.window 的 hex）。
+      //     （改前这里恒取 `ask.hex != null ? ask.hex : bid.hex` ⇒ 两侧都是窗口时 location = null，
+      //      applyTransfer 当场抛「Transfer.location 不得为 null」，整轮日结算被炸掉。）
+      HexCoord location = ask.window ? bid.hex : ask.hex;
       // base 腿：卖方 → 买方；quote 腿：买方 → 卖方。两条腿都走唯一写口（铁律 2）。
       applyLeg(
           round,
@@ -693,13 +729,118 @@ final class FxSettlement {
   }
 
   /** 一个币对的官方报价（家户规则的锚；与窗口当轮容量无关，见类注）。 */
-  private record PairRates(CurrencyId base, CurrencyId quote, long bidPerMille, long askPerMille) {}
+  private record PairRates(CurrencyId base, CurrencyId quote, long bidPerMille, long askPerMille) {
+
+    /**
+     * ★★ §4.4：同一币对多份报价的<b>合并口径</b>（唯一拼写点）：{@code bid} 取<b>最高</b>买价、{@code ask} 取<b>最低</b>卖价 ——
+     * "对手方最划算的那份"。
+     *
+     * <p>★ 家户"货比三家"的落点：它的买单限价 = 最便宜的卖价、卖单底价 = 最高买价再折价；撮合按价格优先 ⇒ 最优窗口先被吃。
+     */
+    PairRates best(PairRates other) {
+      return new PairRates(
+          base,
+          quote,
+          Math.max(bidPerMille, other.bidPerMille),
+          Math.min(askPerMille, other.askPerMille));
+    }
+  }
+
+  /** 同币对的一份报价 + 它的具名属主（冲突日志用；逐轮瞬态，不进任何状态）。 */
+  private record PairQuote(GovernmentId governmentId, OfficialRate rate) {}
+
+  /**
+   * ★★ <b>§4.4 / §一.9：同一币对多份报价的具名记录</b>。
+   *
+   * <pre>
+   * 多份【不同】报价 ⇒ 一条 INFO FX_PAIR_MULTIPLE_QUOTES：pair / 各是谁什么价（规范序）/ 谁最优 / 摘要取值
+   * 多份【相同】报价 ⇒ 一条都不发（否则多政府同价这种常态会把日志刷成噪声）
+   * 单份报价        ⇒ 一条都不发（没有"冲突"可言）
+   * </pre>
+   *
+   * <p>★ <b>为什么"谁最优"必须具名</b>：这正是 F9"后到者被静默丢弃"的正面替代 —— 一个政府把价挂低了却没起作用时， 只看日志就能回答"是不是被谁的更优价压过了"。
+   *
+   * <p>★ <b>报的是谁</b>：报价的属主 GOV（窗口的身份）。区级覆盖在本仓是"投到该区法定币发行者窗口上"的一条生效报价 （{@code
+   * MarketZoneBook.effectiveRatesOf}），{@code FxRoundInput.Window} 不携带区身份 ⇒ 这里只点 GOV 的名。
+   */
+  private static void logMultipleQuotes(
+      long day, Map<String, List<PairQuote>> quotesByPair, Map<String, PairRates> pairs) {
+    for (Map.Entry<String, List<PairQuote>> entry : quotesByPair.entrySet()) {
+      List<PairQuote> quotes = entry.getValue();
+      if (quotes.size() < 2) {
+        continue;
+      }
+      Set<String> distinct = new LinkedHashSet<>();
+      for (PairQuote quote : quotes) {
+        distinct.add(quote.rate().buyPerMille() + "/" + quote.rate().sellPerMille());
+      }
+      if (distinct.size() < 2) {
+        continue; // 多份相同报价 ⇒ 不刷日志（§4.4）
+      }
+      PairRates summary = pairs.get(entry.getKey());
+      List<String> named = new ArrayList<>();
+      PairQuote bestBid = quotes.get(0);
+      PairQuote bestAsk = quotes.get(0);
+      for (PairQuote quote : quotes) {
+        named.add(
+            quote.governmentId().value()
+                + ":"
+                + quote.rate().buyPerMille()
+                + "/"
+                + quote.rate().sellPerMille());
+        if (quote.rate().buyPerMille() > bestBid.rate().buyPerMille()) {
+          bestBid = quote;
+        }
+        if (quote.rate().sellPerMille() < bestAsk.rate().sellPerMille()) {
+          bestAsk = quote;
+        }
+      }
+      EventLog.channel(FX)
+          .info(
+              LogEvent.of(
+                  "FX_PAIR_MULTIPLE_QUOTES",
+                  EconomyLogSource.ECONOMY_FX,
+                  "day",
+                  day,
+                  "pair",
+                  entry.getKey(),
+                  "quotes",
+                  quotes.size(),
+                  "distinctQuotes",
+                  distinct.size(),
+                  "detail",
+                  String.join(", ", named),
+                  "bestBid",
+                  bestBid.governmentId().value() + "=" + bestBid.rate().buyPerMille(),
+                  "bestAsk",
+                  bestAsk.governmentId().value() + "=" + bestAsk.rate().sellPerMille(),
+                  "summaryBidPerMille",
+                  summary == null ? 0L : summary.bidPerMille(),
+                  "summaryAskPerMille",
+                  summary == null ? 0L : summary.askPerMille()));
+    }
+  }
+
+  /** 窗口的格 = 其国库户所在格（家户行的当前格；没有该行 ⇒ {@code null}，见 Order.window 的注）。 */
+  private static HexCoord treasuryHex(MarketSettlement.MarketRound round, HouseholdId treasury) {
+    HouseholdEconomy row = round.householdEconomies().get(treasury);
+    return row == null ? null : row.view().hex();
+  }
 
   /** 窗口的当轮状态（可变计数器：本轮成交/未成交；不进状态）。 */
   private static final class WindowState {
     final FxRoundInput.Window spec;
     final HouseholdId treasury;
     final GovFxWindow.Quote quote;
+
+    /**
+     * ★ 窗口的格 = 其国库户所在格（{@code null} = 该国库户没有经济行）。
+     *
+     * <p>★ <b>它只服务"两侧都不是家户"的那一种成交</b>（同币对多窗口下两条窗口单互相交叉）：{@code Transfer} 的契约要求 {@code location}
+     * 非空，两条窗口单之间没有任何家户格可借 ⇒ 用卖方窗口的国库户格。窗口单的 {@code regionId} 仍是空串（读数字段一字未动）。
+     */
+    final HexCoord hex;
+
     long buyFilledBase;
     long sellFilledBase;
     long buyQuotePaid;
@@ -707,10 +848,12 @@ final class FxSettlement {
     long unfilledBuyBase;
     long unfilledSellBase;
 
-    WindowState(FxRoundInput.Window spec, HouseholdId treasury, GovFxWindow.Quote quote) {
+    WindowState(
+        FxRoundInput.Window spec, HouseholdId treasury, GovFxWindow.Quote quote, HexCoord hex) {
       this.spec = spec;
       this.treasury = treasury;
       this.quote = quote;
+      this.hex = hex;
     }
   }
 
@@ -764,11 +907,12 @@ final class FxSettlement {
       this.windowState = windowState;
     }
 
-    static Order window(WindowState state, boolean buy, long limitPerMille, long quantity) {
+    static Order window(
+        WindowState state, boolean buy, long limitPerMille, long quantity, HexCoord hex) {
       return new Order(
           state.spec.treasury(),
           state.treasury,
-          null,
+          hex,
           "",
           buy,
           state.quote.base(),
