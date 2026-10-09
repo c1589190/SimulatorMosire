@@ -258,11 +258,15 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "social.SetDemandCoefficient",
               "householdId?, ageBracket(0-14|15-59|60+), sex(MALE|FEMALE), commodity(如"
-                  + " grain|cloth), amountMilli?, period?(PER_CYCLE_DAYS|PER_CALENDAR_YEAR),"
+                  + " grain|cloth|tool), amountMilli?, period?(PER_CYCLE_DAYS|PER_CALENDAR_YEAR),"
                   + " cycleDays?, reason（★ GM-only：householdId"
                   + " 缺席=改全局默认、给了=改家户覆盖（家户必须存在）；amountMilli 给了=upsert、缺席=删除该家户覆盖键（全局默认不允许删键 ⇒"
                   + " 拒）；period/cycleDays 同时缺席则按该商品全局口径推断（找不到 ⇒ 拒），家户覆盖显式口径必须与全局一致；结果经"
-                  + " SocialData.withProvisioning 写回）"),
+                  + " SocialData.withProvisioning 写回）"
+                  + " ★ 批量形状（与上面单条字段互斥）：reason +"
+                  + " entries:[{householdId?, ageBracket, sex, commodity, amountMilli?, period?, cycleDays?,"
+                  + " reason?}…] —— 一次改多条 = 一条 revision，任一条不合法整批拒且零 revision；"
+                  + "批内同一 (家户, 年龄档, 性别, 商品) 不得重复；单条老载荷逐字仍走老路径"),
           Map.entry(
               "social.SetLaborCoefficient",
               "householdId?, ageBracket(0-14|15-59|60+), sex(MALE|FEMALE), milliHoursPerTick?,"

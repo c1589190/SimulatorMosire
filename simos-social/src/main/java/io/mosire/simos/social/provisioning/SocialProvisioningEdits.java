@@ -5,7 +5,10 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.AgeBracket;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ <b>Social 需求/劳动系数表的 GM 编辑纯推导</b>（2026-10-09 家户结构修复计划 Batch 4）： {@code
@@ -40,6 +43,134 @@ import java.util.Optional;
 public final class SocialProvisioningEdits {
 
   private SocialProvisioningEdits() {}
+
+  /**
+   * ★★ <b>一批需求编辑的条数上限</b>（条）：超限 ⇒ 具名拒（fail-closed）——批载荷是"一次改多条"的便捷面，不是无界导入口； 1024 条足以覆盖"6 档 × 6 商品
+   * × 多户"的调参场景，又不给一条命令留下无界的载荷面。
+   */
+  public static final int MAX_BATCH_EDITS = 1_024;
+
+  /**
+   * ★★ <b>一条需求编辑</b>（D 批 2026-10-09 的 GM 批量加减需求）：与单条命令载荷**同形**——{@code amountMilli} 给了 = upsert、 缺席
+   * = 删除该家户覆盖键；{@code householdId} 缺席 = 改全局默认。
+   *
+   * <p>它只是"载荷 → 纯推导"的中间值：不带 JSON、不带命令信封、不认识 revision（那些是 {@code spi} 与 {@code app} 的私事）。
+   * 三个引用字段（年龄档/性别/商品）在构造期非 null 校验；{@code householdId} / {@code amountMilli} / {@code period} /
+   * {@code cycleDays} 的缺席各有独立语义（见 {@link #editDemands}）。
+   *
+   * @param householdId 家户 id；{@code null} = 全局默认
+   * @param ageBracket 年龄档；不得为 null
+   * @param sex 性别；不得为 null
+   * @param commodity 商品 id；不得为 null
+   * @param amountMilli 每人每个时间口径的最小计量单位数；{@code null} = 删除该家户覆盖键
+   * @param period 时间口径；{@code null} = 与 {@code cycleDays} 一并从全局口径推断
+   * @param cycleDays {@code PER_CYCLE_DAYS} 的周期天数；{@code null} = 与 {@code period} 一并推断
+   */
+  public record DemandEdit(
+      HouseholdId householdId,
+      AgeBracket ageBracket,
+      Sex sex,
+      CommodityId commodity,
+      Long amountMilli,
+      DemandPeriod period,
+      Long cycleDays) {
+
+    public DemandEdit {
+      requireArg(ageBracket, "DemandEdit.ageBracket");
+      requireArg(sex, "DemandEdit.sex");
+      requireArg(commodity, "DemandEdit.commodity");
+    }
+  }
+
+  /**
+   * ★★ <b>一次应用一批需求编辑（全有或全无）</b>——D 批的 GM 批量加减需求：批内任一条不合法 ⇒ 整批具名拒， 调用方拿不到任何新状态（⇒ 零 revision、head
+   * 不动）；全部合法 ⇒ 返回**一份**新 {@link SocialData}， 由命令层落成**一条** {@code SocialChangeSet}（一条命令 = 一条
+   * revision）。
+   *
+   * <p>★★ <b>原子性从哪来</b>：本方法是纯函数，逐条顺序调用 {@link #setDemand} / {@link #clearDemand}（同一条
+   * 语义、同一份不变量校验），只把结果串在当前值上；任何一条抛 ⇒ 整个方法抛，已算出的中间 {@link SocialData} 全部作废 （它是不可变值，没有"写了一半"的形态）。
+   *
+   * <p>★★ <b>批内不变量</b>：
+   *
+   * <ul>
+   *   <li>至少 1 条（空批 ⇒ 具名拒：不落一条什么都不改的假成功 revision）；
+   *   <li>至多 {@link #MAX_BATCH_EDITS} 条；
+   *   <li><b>目标键不得重复</b>：同一个 {@code (家户, 年龄档, 性别, 商品)} 在批内出现两次 ⇒ 具名拒（否则结果取决于
+   *       载荷内部次序，"后写的悄悄赢"是本仓最反对的静默形态）；
+   *   <li>{@code amountMilli} 缺席（= 删除）时不得给 {@code period}/{@code cycleDays}（与单条命令同一条拒绝口径）。
+   * </ul>
+   *
+   * <p>★ 拒绝消息一律带**第几条**与目标键，让 GM 一眼看出是哪一行错——整批被拒时那是唯一的线索。
+   *
+   * @param base 当前社会状态（第 6 组件必须是新档 provisioning）；不得为 null
+   * @param edits 有序编辑批；不得为 null、不得为空、不得超过 {@link #MAX_BATCH_EDITS}
+   * @throws IllegalArgumentException 见上（任一条不合法都整批拒）
+   */
+  public static SocialData editDemands(SocialData base, List<DemandEdit> edits) {
+    requireBase(base);
+    requireArg(edits, "SocialProvisioningEdits.edits");
+    if (edits.isEmpty()) {
+      throw ProvisioningReject.reject("批量需求编辑至少要有 1 条（空批不落 revision）");
+    }
+    if (edits.size() > MAX_BATCH_EDITS) {
+      throw ProvisioningReject.reject(
+          "批量需求编辑最多 " + MAX_BATCH_EDITS + " 条（本批 " + edits.size() + " 条）");
+    }
+    Set<BatchKey> seen = new LinkedHashSet<>();
+    SocialData current = base;
+    for (int index = 0; index < edits.size(); index++) {
+      DemandEdit edit = edits.get(index);
+      if (edit == null) {
+        throw ProvisioningReject.reject("批量需求编辑第 " + index + " 条不得为 null");
+      }
+      BatchKey key =
+          new BatchKey(edit.householdId(), edit.ageBracket(), edit.sex(), edit.commodity());
+      if (!seen.add(key)) {
+        throw ProvisioningReject.reject(
+            "批量需求编辑第 " + index + " 条与前面的条目目标键重复（同一个 (家户, 年龄档, 性别, 商品) 在批内只允许一次）: " + key.text());
+      }
+      if (edit.amountMilli() == null && (edit.period() != null || edit.cycleDays() != null)) {
+        throw ProvisioningReject.reject(
+            "批量需求编辑第 " + index + " 条：删除家户覆盖键时不接受 period/cycleDays（没有系数可构造）: " + key.text());
+      }
+      try {
+        current =
+            edit.amountMilli() == null
+                ? clearDemand(
+                    current, edit.householdId(), edit.ageBracket(), edit.sex(), edit.commodity())
+                : setDemand(
+                    current,
+                    edit.householdId(),
+                    edit.ageBracket(),
+                    edit.sex(),
+                    edit.commodity(),
+                    edit.amountMilli(),
+                    edit.period(),
+                    edit.cycleDays());
+      } catch (IllegalArgumentException e) {
+        // ★ 具名拒 + 指明第几条（整批作废）：内层原因原样带上，不吞、不改写。
+        throw ProvisioningReject.reject(
+            "批量需求编辑第 " + index + " 条不合法（整批拒绝，零 revision）: " + key.text() + " ⇒ " + e.getMessage());
+      }
+    }
+    return current;
+  }
+
+  /** 批内目标键 {@code (家户, 年龄档, 性别, 商品)}：{@code householdId == null} 表示全局默认。 */
+  private record BatchKey(
+      HouseholdId householdId, AgeBracket ageBracket, Sex sex, CommodityId commodity) {
+
+    String text() {
+      return "household="
+          + (householdId == null ? "global" : householdId.value())
+          + " ageBracket="
+          + ageBracket.key()
+          + " sex="
+          + sex
+          + " commodity="
+          + commodity.value();
+    }
+  }
 
   /**
    * ★★ <b>upsert 一条需求系数</b>：{@code householdId == null} 改全局默认，否则改该家户覆盖。

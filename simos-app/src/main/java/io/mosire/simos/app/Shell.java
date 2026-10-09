@@ -622,7 +622,9 @@ public final class Shell implements AutoCloseable {
                 // ── Batch 4（2026-10-09 家户结构修复计划）：Social 需求/劳动系数两条 GM 命令——全局默认 + 单家户
                 //   覆盖的 upsert/清除（只写 SocialData 第 6 组件 provisioning，结果经 withProvisioning 写回）。
                 //   两条都标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交与
-                //   simos.social.demand / simos.social.labor 两条窄工具照常可用。──
+                //   simos.social.demand / simos.social.labor 两条窄工具照常可用。★ 2026-10-09 D 批：
+                //   social.SetDemandCoefficient 的**载荷**新增可选 entries（批量改多条 = 一条 revision，整批原子），
+                //   单条老载荷逐字走老路径；命令类型名、注册面、工具面与写资源一概未变（权限单调性）。──
                 new SetDemandCoefficientHandler(),
                 new SetLaborCoefficientHandler(),
                 // ── S3b（2026-10-09 用户裁定）：**唯一家户人口变更受理口**——工单（target + 有序 plan + reason +

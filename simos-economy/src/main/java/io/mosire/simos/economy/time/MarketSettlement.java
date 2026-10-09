@@ -1192,6 +1192,7 @@ final class MarketSettlement {
                   List<HouseholdId> keys =
                       rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of());
                   HexPlan hexPlan = planFor(planningRound, hex, keys);
+                  logLifeReserves(planningRound, hex, hexPlan);
                   if (hexPlan.participants.isEmpty()) {
                     continue;
                   }
@@ -5830,15 +5831,17 @@ final class MarketSettlement {
     Map<CommodityId, Long> life = new LinkedHashMap<>();
     // ★★ 2026-10-09 Batch 3：保留额 = 本户当前注入 naturalNeeds 在补货窗口上的前瞻（逐户读取），
     //    不再按 population × 人均定额现算。
-    long grain =
-        householdEconomy.expectedNeedMilli(EconomySettlement.GRAIN, MARKET_LIFE_RESERVE_DAYS);
-    if (grain > 0L) {
-      life.put(EconomySettlement.GRAIN, grain);
-    }
-    long cloth =
-        householdEconomy.expectedNeedMilli(EconomySettlement.CLOTH, MARKET_LIFE_RESERVE_DAYS);
-    if (cloth > 0L) {
-      life.put(EconomySettlement.CLOTH, cloth);
+    // ★★ D2（2026-10-09 口径修正）：键集 = **本户当前注入的 naturalNeeds 全部键**，不再由本方法写死粮/布两行。
+    //    写死会让"新增的生活必需商品"永远进不了买目标：Social 侧把它算进了 naturalNeeds，而这里 life 恒空 ⇒
+    //    baseTarget 恒 0（见 ordersFor 的 `baseTarget = life`）⇒ desiredQuantity 恒 0 ⇒ 零买单、永不产生有效需求。
+    //    ★ 权威方向不变：需求仍是 Social 唯一权威，本方法只按**状态里已有的键**做多日前瞻（不自己造需求、不加默认表）。
+    //    ★ 保序：naturalNeeds 本身是保序不可变 LinkedHashMap（键序 = app 注入序）⇒ 照它的键序展开；
+    //      值为 0 的键当场跳过（expectedNeedMilli 对 0 份额返回 0，等价于"没有这一行需要"）。
+    for (CommodityId commodity : householdEconomy.naturalNeeds().keySet()) {
+      long need = householdEconomy.expectedNeedMilli(commodity, MARKET_LIFE_RESERVE_DAYS);
+      if (need > 0L) {
+        life.put(commodity, need);
+      }
     }
     return life;
   }
@@ -5860,32 +5863,26 @@ final class MarketSettlement {
           && !relation.operator().equals(participant.actor)) {
         continue;
       }
-      long grain = 0L;
-      long cloth = 0L;
       // ★ R4-B.3a-perf：家户行由入口索引给（旧实现每个 unit 现扫全量配额）。
       // ★★ 2026-10-09 Batch 3：逐户用 expectedNeedMilli 求补货窗口保留额再求和，
       //    不再先把人头相加、再乘全局人均定额。
+      // ★★ D2（2026-10-09 口径修正）：逐户按**该户注入的 naturalNeeds 全部键**求和（与 householdLifeReserveOf 同一口径），
+      //    不再写死粮/布两行。★ 现状如实记：参与者恒为家户（P2-A §13.3 —— participantsFor 的三处构造都带 household）
+      //    ⇒ 本方法当前**不可达**；改它是为了"经营者角色重新入市"时这里不再留一处写死的商品表（同一族口径只留一份）。
+      //    ★ retentionOf 只在"该关系承诺了给养"的商品上有键（承诺额由 relation.rules() 派生）⇒ 请求键集扩大
+      //      不会凭空产生保留额。
+      Map<CommodityId, Long> requested = new LinkedHashMap<>();
       for (HouseholdId key : round.index.householdsOf(id)) {
         HouseholdEconomy householdEconomy = round.householdEconomies.get(key);
-        if (householdEconomy != null) {
-          grain =
-              Math.addExact(
-                  grain,
-                  householdEconomy.expectedNeedMilli(
-                      EconomySettlement.GRAIN, MARKET_LIFE_RESERVE_DAYS));
-          cloth =
-              Math.addExact(
-                  cloth,
-                  householdEconomy.expectedNeedMilli(
-                      EconomySettlement.CLOTH, MARKET_LIFE_RESERVE_DAYS));
+        if (householdEconomy == null) {
+          continue;
         }
-      }
-      Map<CommodityId, Long> requested = new LinkedHashMap<>();
-      if (grain > 0L) {
-        requested.put(EconomySettlement.GRAIN, grain);
-      }
-      if (cloth > 0L) {
-        requested.put(EconomySettlement.CLOTH, cloth);
+        for (CommodityId commodity : householdEconomy.naturalNeeds().keySet()) {
+          long need = householdEconomy.expectedNeedMilli(commodity, MARKET_LIFE_RESERVE_DAYS);
+          if (need > 0L) {
+            requested.merge(commodity, need, Math::addExact);
+          }
+        }
       }
       Map<CommodityId, Long> one =
           SubsistenceObligation.retentionOf(
@@ -5897,6 +5894,71 @@ final class MarketSettlement {
       }
     }
     return retained;
+  }
+
+  /**
+   * ★★ <b>§一.9（DEBUG）：本格"生活保留额现在含哪些商品"的读数</b>——生活保留口径由"硬编码粮/布两行"改成"遍历本户注入的 {@code naturalNeeds}
+   * 全部键"之后，这一行是"某个商品为什么有/没有买目标"的第一现场（{@code life} 为空 ⇒ {@code baseTarget} 恒 0 ⇒ 该商品零买单、永不产生有效需求）。
+   *
+   * <p>★ <b>位置与粒度</b>：一条 / 格 / 轮（不是一条 / 户）——保留额逐户算，但按格汇总后既不随家户数放大，又能一眼看出商品集； 也刻意<b>不放进</b> {@link
+   * #planFor}：读口 {@code planOrders} 会逐商品调 {@code planFor}，记在那里会按商品数放大日志。 家户与经营者两侧分列（经营者侧当前不可达，见
+   * {@link #operatorLifeRetentionOf}）。
+   */
+  private static void logLifeReserves(MarketRound round, HexCoord hex, HexPlan plan) {
+    if (!MARKET.isDebugEnabled() || plan.participants.isEmpty()) {
+      return;
+    }
+    Map<CommodityId, Long> householdReserve =
+        new TreeMap<>(Comparator.comparing(CommodityId::value));
+    Map<CommodityId, Long> operatorReserve =
+        new TreeMap<>(Comparator.comparing(CommodityId::value));
+    int households = 0;
+    int operators = 0;
+    for (Participant participant : plan.participants) {
+      boolean household = participant.household != null;
+      Map<CommodityId, Long> totals = household ? householdReserve : operatorReserve;
+      if (household) {
+        households++;
+      } else {
+        operators++;
+      }
+      for (Map.Entry<CommodityId, Long> entry :
+          plan.lifeReserves.getOrDefault(participant.actor, Map.of()).entrySet()) {
+        totals.merge(entry.getKey(), entry.getValue(), Long::sum);
+      }
+    }
+    EventLog.channel(MARKET)
+        .debug(
+            LogEvent.of(
+                "MARKET_LIFE_RESERVE",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                round.day,
+                "hex",
+                hex.toString(),
+                "households",
+                households,
+                "householdReserve",
+                reserveSummary(householdReserve),
+                "operators",
+                operators,
+                "operatorReserve",
+                reserveSummary(operatorReserve)));
+  }
+
+  /** 逐商品保留额的规范串（商品 id 升序的 {@code [commodity=milli,...]}；空表 ⇒ {@code []}）。 */
+  private static String reserveSummary(Map<CommodityId, Long> reserve) {
+    if (reserve.isEmpty()) {
+      return "[]";
+    }
+    StringBuilder text = new StringBuilder("[");
+    for (Map.Entry<CommodityId, Long> entry : reserve.entrySet()) {
+      if (text.length() > 1) {
+        text.append(',');
+      }
+      text.append(entry.getKey().value()).append('=').append(entry.getValue());
+    }
+    return text.append(']').toString();
   }
 
   private static boolean supplies(Participant participant, Payee supplier) {

@@ -36,28 +36,34 @@ import java.util.Set;
  * 商品)} 没有家户覆盖时**逐键回落**全局默认；两边都没有 ⇒ {@link IllegalArgumentException} 具名拒（不静默给 0——"这一档需求是
  * 0"与"没有这一档的口径"是两件事）。
  *
- * <p>★★ <b>默认值 = 计划 §3.5 的六档表</b>（{@link #defaults()}，全仓唯一拼写点）：
+ * <p>★★ <b>默认值 = 计划 §3.5 的六档表 + 2026-10-09 D 批的「工具」列</b>（{@link #defaults()}，全仓唯一拼写点）：
  *
  * <table border="1">
- *   <caption>全局默认（粮 = 毫粮/人/120 天；布 = 毫布/人/历年；劳动 = 毫小时/人/tick）</caption>
- *   <tr><th>年龄档</th><th>性别</th><th>粮</th><th>布</th><th>劳动</th></tr>
- *   <tr><td>0-14</td><td>MALE</td><td>6,000</td><td>600</td><td>4,000</td></tr>
- *   <tr><td>0-14</td><td>FEMALE</td><td>6,000</td><td>600</td><td>4,000</td></tr>
- *   <tr><td>15-59</td><td>MALE</td><td>10,000</td><td>1,000</td><td>16,000</td></tr>
- *   <tr><td>15-59</td><td>FEMALE</td><td>9,000</td><td>1,200</td><td>8,000</td></tr>
- *   <tr><td>60+</td><td>MALE</td><td>7,000</td><td>800</td><td>0</td></tr>
- *   <tr><td>60+</td><td>FEMALE</td><td>7,000</td><td>900</td><td>0</td></tr>
+ *   <caption>全局默认（粮 = 毫粮/人/120 天；布 = 毫布/人/历年；工具 = 毫工具/人/历年；劳动 = 毫小时/人/tick）</caption>
+ *   <tr><th>年龄档</th><th>性别</th><th>粮</th><th>布</th><th>工具</th><th>劳动</th></tr>
+ *   <tr><td>0-14</td><td>MALE</td><td>6,000</td><td>600</td><td>100</td><td>4,000</td></tr>
+ *   <tr><td>0-14</td><td>FEMALE</td><td>6,000</td><td>600</td><td>100</td><td>4,000</td></tr>
+ *   <tr><td>15-59</td><td>MALE</td><td>10,000</td><td>1,000</td><td>200</td><td>16,000</td></tr>
+ *   <tr><td>15-59</td><td>FEMALE</td><td>9,000</td><td>1,200</td><td>200</td><td>8,000</td></tr>
+ *   <tr><td>60+</td><td>MALE</td><td>7,000</td><td>800</td><td>150</td><td>0</td></tr>
+ *   <tr><td>60+</td><td>FEMALE</td><td>7,000</td><td>900</td><td>150</td><td>0</td></tr>
  * </table>
  *
- * <p>★ 粮的 {@code period = PER_CYCLE_DAYS}、{@code cycleDays = 120}（周期残差必须留到逐日差分，不许先化成日均）； 布的 {@code
- * period = PER_CALENDAR_YEAR}、{@code cycleDays = 0}（年长由历法时钟给）；劳动本身无时间分数。 数值是初值、可 GM
+ * <p>★ 粮的 {@code period = PER_CYCLE_DAYS}、{@code cycleDays = 120}（周期残差必须留到逐日差分，不许先化成日均）； 布与工具的
+ * {@code period = PER_CALENDAR_YEAR}、{@code cycleDays = 0}（年长由历法时钟给）；劳动本身无时间分数。 数值是初值、可 GM
  * 调；机制（逐成员求和、家户层一次取整、覆盖回落）才是本表要钉死的东西。
+ *
+ * <p>★★ <b>工具为什么进自然需求、取值依据</b>（2026-10-09 约束设计书 §4.2 / 用户原话「算布匹+工具」）： 「工坊制品 = 布 +
+ * 工具」两件都要有需求侧；工具与布同走**历法年**轴（两者都是耐用品/年耗品，不与粮的 120 天业务周期混轴）， 但**量级更小**——布是"一年添一身衣裳"（成人 1,000 毫 = 1
+ * 匹/人·年，{@link EconomyVocabulary#CLOTH_MILLI_PER_PERSON}）， 工具是"几年换一件器具"（成人 200 毫 = 0.2 件/人·年 ⇒ 5
+ * 人年一件）。三档口径：成年 200、未成年**减半** （器具随户不随人）、老年按布表同一条"老年 ≈ 成年 3/4"降档（150），**不按性别分**（工具是户级生产资料，
+ * 没有衣着那种稳定的性别差异 ⇒ 不凑差异）。★ 这组值是**新增标定值**，属"会改变数值行为"（工具开始有 需求侧）——见 D 批账本的改变清单。
  *
  * <p>★★ <b>保序不可变 + 表内唯一键</b>（构造期判、坏数据当场抛）：四张表都做防御性拷贝并冻结 （{@code LinkedHashMap} / {@code ArrayList}
  * + {@code unmodifiable*}，**不用** {@code Map.copyOf}——迭代序 不是内容的纯函数）；每个列表内 {@code (年龄档, 性别, 商品)} /
  * {@code (年龄档, 性别)} 不得重复， 家户覆盖表的键与值不得为 null。
  *
- * <p>★ <b>{@link #defaults()} 只覆盖粮/布两商品</b>（计划 §3.5 的六档表）；本类不硬编码其它商品， 其它商品要进需求表必须由
+ * <p>★ <b>{@link #defaults()} 覆盖粮/布/工具三商品</b>（计划 §3.5 的六档表 + D 批的工具列）；本类不硬编码其它商品， 其它商品要进需求表必须由
  * GM/工单显式写入行。{@link #globalDemandBases()} 是"某商品已知默认口径"的只读视图， 供后续展开与调参读口使用；同一商品在默认表里出现互相矛盾的口径 ⇒ 具名拒。
  *
  * <p>★ 本类型零 Jackson 注解：线格式由 {@code SocialCodec} 负责；{@code HouseholdId} 作 map 键的 反序列化器已在那个 mapper
@@ -86,6 +92,27 @@ public record SocialProvisioning(
   /** 布的商品 id：同上，字面量唯一拼写点是 {@link EconomyVocabulary#CLOTH_COMMODITY_ID}。 */
   private static final CommodityId CLOTH = new CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID);
 
+  /**
+   * 工具的商品 id：字面量唯一拼写点是 {@link EconomyVocabulary#TOOL_COMMODITY_ID}（D 批 2026-10-09； ★ 用户原话「算布匹+工具」
+   * ——工坊制品就这两件，**不新增商品种类**）。
+   */
+  private static final CommodityId TOOL = new CommodityId(EconomyVocabulary.TOOL_COMMODITY_ID);
+
+  /**
+   * ★★ <b>工具系数的唯一标定值</b>（毫工具/人·**历年**；D 批新增，属"会改变数值行为"）：未成年 100 / 成年 200 / 老年 150。
+   *
+   * <p>依据（与布同量纲、更小）：布 600/1,000/1,200 毫匹/人·年 = "一年添一身衣裳"；工具是耐用品， 成年 200 毫 = 0.2 件/人·年 ≈ **5
+   * 人年一件器具**。未成年减半（器具随户不随人）；老年取成年 3/4（照布表 同一条"老年 ≈ 成年 3/4"降档）；**不按性别分**（户级生产资料，无衣着那种稳定性别差异）。★
+   * 与布走同一条 {@link DemandPeriod#PER_CALENDAR_YEAR} 轴（{@code cycleDays = 0}），不与粮的 120 天业务周期混轴。
+   */
+  private static final long TOOL_MILLI_PER_CHILD_PER_YEAR = 100L;
+
+  /** 工具系数（成年）：见 {@link #TOOL_MILLI_PER_CHILD_PER_YEAR} 的依据。 */
+  private static final long TOOL_MILLI_PER_ADULT_PER_YEAR = 200L;
+
+  /** 工具系数（老年）：见 {@link #TOOL_MILLI_PER_CHILD_PER_YEAR} 的依据。 */
+  private static final long TOOL_MILLI_PER_ELDER_PER_YEAR = 150L;
+
   public SocialProvisioning {
     globalDemandDefaults = freezeDemandList(globalDemandDefaults, "globalDemandDefaults");
     globalLaborDefaults = freezeLaborList(globalLaborDefaults, "globalLaborDefaults");
@@ -100,7 +127,7 @@ public record SocialProvisioning(
    *
    * <p>调用即构造一份新的保序不可变实例（record 本身不可变，调用方拿不到可变别名），并按 INFO 记一条 {@code
    * event=SOCIAL_PROVISIONING_DEFAULTS_SEEDED}（含需求/劳动行数与商品清单）；DEBUG 另记逐行明细。 默认表按"未成年 → 成年 → 老年"、每档
-   * MALE → FEMALE、每格粮 → 布的顺序写入；劳动表同序。
+   * MALE → FEMALE、每格粮 → 布 → 工具的顺序写入；劳动表同序。
    */
   public static SocialProvisioning defaults() {
     long grainCycleDays = EconomyVocabulary.RATION_CYCLE_DAYS;
@@ -117,6 +144,13 @@ public record SocialProvisioning(
                 AgeBracket.CHILD, Sex.MALE, CLOTH, 600L, DemandPeriod.PER_CALENDAR_YEAR, 0L),
             new DemandCoefficient(
                 AgeBracket.CHILD,
+                Sex.MALE,
+                TOOL,
+                TOOL_MILLI_PER_CHILD_PER_YEAR,
+                DemandPeriod.PER_CALENDAR_YEAR,
+                0L),
+            new DemandCoefficient(
+                AgeBracket.CHILD,
                 Sex.FEMALE,
                 GRAIN,
                 6_000L,
@@ -124,6 +158,13 @@ public record SocialProvisioning(
                 grainCycleDays),
             new DemandCoefficient(
                 AgeBracket.CHILD, Sex.FEMALE, CLOTH, 600L, DemandPeriod.PER_CALENDAR_YEAR, 0L),
+            new DemandCoefficient(
+                AgeBracket.CHILD,
+                Sex.FEMALE,
+                TOOL,
+                TOOL_MILLI_PER_CHILD_PER_YEAR,
+                DemandPeriod.PER_CALENDAR_YEAR,
+                0L),
             new DemandCoefficient(
                 AgeBracket.ADULT,
                 Sex.MALE,
@@ -135,6 +176,13 @@ public record SocialProvisioning(
                 AgeBracket.ADULT, Sex.MALE, CLOTH, 1_000L, DemandPeriod.PER_CALENDAR_YEAR, 0L),
             new DemandCoefficient(
                 AgeBracket.ADULT,
+                Sex.MALE,
+                TOOL,
+                TOOL_MILLI_PER_ADULT_PER_YEAR,
+                DemandPeriod.PER_CALENDAR_YEAR,
+                0L),
+            new DemandCoefficient(
+                AgeBracket.ADULT,
                 Sex.FEMALE,
                 GRAIN,
                 9_000L,
@@ -142,6 +190,13 @@ public record SocialProvisioning(
                 grainCycleDays),
             new DemandCoefficient(
                 AgeBracket.ADULT, Sex.FEMALE, CLOTH, 1_200L, DemandPeriod.PER_CALENDAR_YEAR, 0L),
+            new DemandCoefficient(
+                AgeBracket.ADULT,
+                Sex.FEMALE,
+                TOOL,
+                TOOL_MILLI_PER_ADULT_PER_YEAR,
+                DemandPeriod.PER_CALENDAR_YEAR,
+                0L),
             new DemandCoefficient(
                 AgeBracket.ELDER,
                 Sex.MALE,
@@ -153,13 +208,27 @@ public record SocialProvisioning(
                 AgeBracket.ELDER, Sex.MALE, CLOTH, 800L, DemandPeriod.PER_CALENDAR_YEAR, 0L),
             new DemandCoefficient(
                 AgeBracket.ELDER,
+                Sex.MALE,
+                TOOL,
+                TOOL_MILLI_PER_ELDER_PER_YEAR,
+                DemandPeriod.PER_CALENDAR_YEAR,
+                0L),
+            new DemandCoefficient(
+                AgeBracket.ELDER,
                 Sex.FEMALE,
                 GRAIN,
                 7_000L,
                 DemandPeriod.PER_CYCLE_DAYS,
                 grainCycleDays),
             new DemandCoefficient(
-                AgeBracket.ELDER, Sex.FEMALE, CLOTH, 900L, DemandPeriod.PER_CALENDAR_YEAR, 0L));
+                AgeBracket.ELDER, Sex.FEMALE, CLOTH, 900L, DemandPeriod.PER_CALENDAR_YEAR, 0L),
+            new DemandCoefficient(
+                AgeBracket.ELDER,
+                Sex.FEMALE,
+                TOOL,
+                TOOL_MILLI_PER_ELDER_PER_YEAR,
+                DemandPeriod.PER_CALENDAR_YEAR,
+                0L));
     List<LaborCoefficient> labor =
         List.of(
             new LaborCoefficient(AgeBracket.CHILD, Sex.MALE, 4_000L),
