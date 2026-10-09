@@ -236,15 +236,9 @@ public record MarketReadout(
           if (memberMarket == null || !memberMarket.hasPrice(commodity)) {
             continue; // 该成员格从未定价 ⇒ 不生成订单（明确 0 价仍要进订单/读数）
           }
+          // ★★ P-T1c：订单生成的定价只看逐格价表 ⇒ 不再传区 id 与调控（区级参考价覆盖已删，设计书 §16）。
           MarketSettlement.PlannedOrders orders =
-              MarketSettlement.planOrders(
-                  round,
-                  member,
-                  memberMarket,
-                  commodity,
-                  rowsByHex,
-                  region.node().nodeId(),
-                  round.regulation());
+              MarketSettlement.planOrders(round, member, memberMarket, commodity, rowsByHex);
           for (SellOrder sell : orders.sells()) {
             supply += sell.sellable();
           }

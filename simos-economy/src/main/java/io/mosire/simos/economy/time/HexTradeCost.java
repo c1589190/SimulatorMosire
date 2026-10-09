@@ -13,8 +13,8 @@ import java.util.Objects;
  *   <li><b>单 hex 贸易成本</b>（本类）—— 货物在区内从一个 hex 到另一个 hex 的物流/通行成本（地形、道路、距离），
  *       逐格计量；本批第一版只表达为<b>实物损耗</b>（{@link #lossPerMilleBetween}）， {@link #costMilliPerUnit} <b>恒
  *       0</b>（单区内不产生货币运费/CARRIER_FEE；"钱付给谁"是后续批次的事）。
- *   <li><b>市场总调控</b>（{@link MarketRegulation}）—— 市场区这一层的聚合规则（参考价/限价、配额、开闭市、税费），
- *       按区施加一次。两层不得互相顶替：本类不承担价格/配额职能，{@code MarketRegulation} 也不进这条逐格算式。
+ *   <li><b>区内市场规则</b>（{@link MarketRegulation}）—— 市场区这一层的聚合规则（P-T1c 起只剩区内税费），
+ *       按区施加一次。两层不得互相顶替：本类不承担价格/税费职能，{@code MarketRegulation} 也不进这条逐格算式。
  * </ul>
  *
  * <p>★★ <b>公式（唯一拼写点）</b>：

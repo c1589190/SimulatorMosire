@@ -5,7 +5,6 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.market.PortContactSurface;
 import io.mosire.simos.economy.api.market.PortDirection;
 import io.mosire.simos.economy.api.market.ZonePortRegime;
-import io.mosire.simos.economy.model.CommodityFreightBase;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -42,24 +41,13 @@ import java.util.Objects;
  *
  * <p>★ <b>纯函数 + 确定性</b>：不写状态、不用随机数、不读时钟；同一输入逐值相同（{@link PortContactSurface} 列表顺序即输出顺序）。
  *
- * <p>★★ <b>"走私"那一档已判死（设计书 §11：没管住就是流入，按正常供给算）</b>：{@link #split} / {@link SmugglingSplit} / {@link
- * #SEIZURE_BASELINE_MILLI} <b>已无任何读者</b>，删除留给 P-T1c；<b>P-T1a 不许再引用它们</b> （节流走 {@link
- * PortThrottle}）。
+ * <p>★★ <b>"走私"那一档已判死并已删净（设计书 §11：没管住就是流入，按正常供给算；P-T1c 落删）</b>：不记走私量、不算走私成本、不开走私账，
+ * 成本楔子<b>不进任何算式</b>。本类现在只剩"总效率（加权平均）+ 规则 OR"这一件事；节流走 {@link PortThrottle}。
  */
 public final class PortRegimeAggregation {
 
   /** 千分制：{@code 1000‰ = 1.0}（与 {@code GovRules.PER_MILLE} 同值；本模块不依赖 gov，故就地声明）。 */
   public static final long PER_MILLE = 1000L;
-
-  /**
-   * ★ <b>罚没基准（毫计价货币 / 商品单位）：9</b> = {@code 3 × CommodityFreightBase.TOOL_MILLI}。
-   *
-   * <p>★ <b>理由（供控制方按"与运费可比"审）</b>：本仓商品基础运费表是 <b>1–3 毫/单位/程</b>（粮 1 / 纤维 1 / 布 2 / 工具 3；见 {@link
-   * CommodityFreightBase}），最重一档 = 工具 3。罚没基准取"<b>最重一档的三程运费</b>" ⇒ 被查获一次的期望损失约等于"把同一批货合法运三程"，
-   * 与运费<b>同量纲、同量级</b>（都是毫/单位），于是成本楔子 {@code (1−E) × 9‰} 在 {@code E→0} 时才与运价可比，而任何 {@code E > 0}
-   * 的通道都不会被判成"不如走私"。★ 它与 {@code CommodityFreightBase} 的耦合是刻意的：运费表若调档，罚没基准跟着走（单一来源）。
-   */
-  public static final long SEIZURE_BASELINE_MILLI = 3L * CommodityFreightBase.TOOL_MILLI;
 
   private PortRegimeAggregation() {}
 
@@ -130,60 +118,5 @@ public final class PortRegimeAggregation {
       List<PortContactSurface> surfaces) {
     Objects.requireNonNull(currency, "currency");
     return aggregate(zoneId, currency.value(), direction, surfaces);
-  }
-
-  /**
-   * ★★ <b>走私 = 规模现象（设计书 §4.4）</b>：把"想过境的总量"按总效率 {@code E} 分成"可正常进出"与"走私"两份，并给出成本楔子。
-   *
-   * <p>★ <b>不新增走私者实体、不用随机数</b>（I-P7）：走私量是"没被管住的那一份流量"，由 {@code 1−E} 与过境能力直接相乘得出。 ★ <b>Σ
-   * 守恒</b>：{@code 正常 + 走私 == 总过境能力}（走私取余数，不两次 floor）。
-   *
-   * @param efficiencyPerMille 该区该类的总效率 {@code E}（‰；{@code [0,1000]}，由 {@link #aggregate} 给出）
-   * @param transitCapacityMilli 该类想过境的总量（毫商品；≥ 0）
-   */
-  public static SmugglingSplit split(long efficiencyPerMille, long transitCapacityMilli) {
-    if (efficiencyPerMille < 0L || efficiencyPerMille > PER_MILLE) {
-      throw new IllegalArgumentException(
-          "PortRegimeAggregation.split 的 E 必须落在 [0,1000]（‰）: " + efficiencyPerMille);
-    }
-    if (transitCapacityMilli < 0L) {
-      throw new IllegalArgumentException(
-          "PortRegimeAggregation.split 的过境能力必须 ≥ 0: " + transitCapacityMilli);
-    }
-    long normal =
-        Math.floorDiv(Math.multiplyExact(transitCapacityMilli, efficiencyPerMille), PER_MILLE);
-    long smuggled = transitCapacityMilli - normal;
-    long wedge =
-        Math.floorDiv(
-            Math.multiplyExact(PER_MILLE - efficiencyPerMille, SEIZURE_BASELINE_MILLI), PER_MILLE);
-    return new SmugglingSplit(normal, smuggled, wedge);
-  }
-
-  /**
-   * 一次走私拆分读数（毫商品 / 毫计价货币）。
-   *
-   * @param normalMilli 可正常进出的量（毫商品；{@code ∝ E × 过境能力}）
-   * @param smuggledMilli 走私的量（毫商品；{@code ∝ (1−E) × 过境能力}；与 {@link #normalMilli()} 之和 = 过境能力）
-   * @param costWedgeMilli 走私的成本楔子（毫计价货币/商品单位；{@code ∝ (1−E) × 罚没基准}；{@code E=1000 ⇒ 0}）
-   */
-  public record SmugglingSplit(long normalMilli, long smuggledMilli, long costWedgeMilli) {
-
-    public SmugglingSplit {
-      if (normalMilli < 0L || smuggledMilli < 0L || costWedgeMilli < 0L) {
-        throw new IllegalArgumentException(
-            "SmugglingSplit 的三个分量都必须 ≥ 0: "
-                + normalMilli
-                + "/"
-                + smuggledMilli
-                + "/"
-                + costWedgeMilli);
-      }
-    }
-
-    /** 走私占比（‰；过境能力为 0 ⇒ 0，不造 NaN）。 */
-    public long smuggledSharePerMille() {
-      long total = normalMilli + smuggledMilli;
-      return total == 0L ? 0L : Math.floorDiv(smuggledMilli * PER_MILLE, total);
-    }
   }
 }

@@ -1752,8 +1752,8 @@ public final class EconomySettlement {
             settlementIndex,
             // ★★ R4-E2：当日有效需求来自状态组件的只读账本（订单路径据此把"生活保留基线 + 需求目标"合成买卖目标）。
             base.demands(),
-            // ★★ D-027：生产路径默认 regulation（单区锚格 = markets 规范序第一个 hex；空表/open=true/无税费
-            //   ⇒ 逐值现状）。跨市场区/自定义制度由后续批次经 GM 命令面注入同一入口。
+            // ★★ P-T1c：生产路径默认区内市场规则（单区锚格 = markets 规范序第一个 hex；无税费 ⇒ 逐值现状）。
+            //   跨市场区/自定义税费由后续批次经 GM 命令面注入同一入口。
             MarketRegulation.defaultsFor(markets),
             // ★★ R1：本入口不预置信用（开市判定后由 withCredit 补）；排除集 = **只有**组合根传入的单位户
             //   （国库户不再并入：它现在是"只按授权下单"的市场参与者）。

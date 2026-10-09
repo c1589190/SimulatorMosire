@@ -93,13 +93,6 @@ public enum MarketUnfilledReason {
   ALGORITHM_UNCOVERED("algorithm_uncovered"),
 
   /**
-   * ★ <b>D-027：市场总调控配额用尽</b>—— 本轮该区该商品的卖方成交量已达 {@code MarketRegulation.quotaPerWindow}
-   * 的上限，超出的买方需求因此没成交。★ 它是<b>区级制度原因</b>，与逐 hex 的物流成本（{@code HexTradeCost} 的实物损耗）
-   * 是两层：这一档不得被用来表达"路远/运力不足"。
-   */
-  REGULATION_QUOTA("regulation_quota"),
-
-  /**
    * ★★ <b>D-030/D-031 市场信用：可借头寸凑不成正交易</b>—— 两个可借池都还有剩余，但剩余头寸不足以形成一笔正金额的 贷款/实物借出；或现金与信用都无法覆盖该买方剩余。★
    * D-031 起它<b>不再表示"借款人额度为 0"</b>（借款人侧已经没有 额度上限；不存在 headroom 这一道门）。
    */

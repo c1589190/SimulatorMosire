@@ -301,8 +301,8 @@ final class MarketSettlement {
     private final Map<DemandId, HouseholdDemand> householdDemands;
 
     /**
-     * ★★ <b>D-027：本轮区级市场总调控</b>（逐轮瞬态，不落盘）—— {@link MarketRegulation#anchor()} 所在的区按它施加
-     * 参考价/限价/配额/开闭市/税费；其余区不受影响（单区世界里就是全区）。★ 旧调用点不给 ⇒ 语义为 {@link MarketRegulation#none()}（逐值现状）。
+     * ★★ <b>本轮区内市场规则</b>（逐轮瞬态，不落盘）—— P-T1c 起只剩"区内税"：{@link MarketRegulation#anchor()} 所在的区按它
+     * 施加税费；其余区不受影响（单区世界里就是全区）。★ 不给 ⇒ 语义为 {@link MarketRegulation#none()}（无税费，逐值现状）。
      */
     private final MarketRegulation regulation;
 
@@ -431,10 +431,10 @@ final class MarketSettlement {
     }
 
     /**
-     * ★★ <b>D-027：带区级调控的完整构造器</b>（生产路径用；旧构造器委托 {@link MarketRegulation#none()}）。
+     * ★★ <b>带区内市场规则的完整构造器</b>（生产路径用；旧构造器委托 {@link MarketRegulation#none()}）。
      *
-     * <p>★ 旧构造器<b>保留且行为不变</b>：{@code regulation = none()} ⇒ 参考价/限价/配额/税费退回原常量与各 hex {@code
-     * Market.prices}；{@code creditConfig}/{@code debts} 为 {@code null} ⇒ 信用关闭、逐值退回现金市场。
+     * <p>★ 旧构造器<b>保留且行为不变</b>：{@code regulation = none()} ⇒ 无税费；{@code creditConfig}/{@code debts}
+     * 为 {@code null} ⇒ 信用关闭、逐值退回现金市场。
      */
     MarketRound(
         long day,
@@ -801,7 +801,7 @@ final class MarketSettlement {
      *
      * <p>★ <b>与改前的逐值差异（已审计）</b>：旧克隆把 {@code regulation} 写死成 {@link MarketRegulation#none()}、 区副本还把
      * {@code creditConfig}/{@code debts}/{@code marketExcludedHouseholds} 留成缺省。三者在本轮**都没有
-     * 读取点**：克隆轮只进 {@code planFor}/{@code ordersFor}（由调用方显式传 {@code regionRegulation}）与 {@code
+     * 读取点**：克隆轮只进 {@code planFor}/{@code ordersFor}（P-T1c 起订单生成只读逐格价表，不再读调控）与 {@code
      * matchGroup}（区副本，信用撮合 {@code creditRound}/{@code collectUnfilled}/{@code creditUnfilledReason}
      * 全部只在协调器的真实 {@code ctx} 上跑）⇒ 本方法把它们原样带过是**行为等价**的，只是不再有"字段悄悄变缺省"。
      */
@@ -1103,39 +1103,18 @@ final class MarketSettlement {
       CommodityId commodity,
       Map<String, List<HouseholdId>> rowsByHex) {
     Objects.requireNonNull(round, "round");
-    MarketRegulation regulation = round.regulation();
-    return planOrders(
-        round, hex, market, commodity, rowsByHex, regulation.anchor().toString(), regulation);
-  }
-
-  /**
-   * ★★ <b>D-027：带区级调控的纯订单生成</b>（读口与结算共用同一条路径）：参考价/限价按 {@code regulation} 的 {@link
-   * MarketRegulation#anchor()} 所在区覆盖；旧重载委托 {@code round.regulation()} ⇒ 默认实例逐值现状。
-   */
-  static PlannedOrders planOrders(
-      MarketRound round,
-      HexCoord hex,
-      Market market,
-      CommodityId commodity,
-      Map<String, List<HouseholdId>> rowsByHex,
-      String regionId,
-      MarketRegulation regulation) {
-    Objects.requireNonNull(round, "round");
     Objects.requireNonNull(hex, "hex");
     Objects.requireNonNull(market, "market");
     Objects.requireNonNull(commodity, "commodity");
     Objects.requireNonNull(rowsByHex, "rowsByHex");
-    Objects.requireNonNull(regionId, "regionId");
-    Objects.requireNonNull(regulation, "regulation");
-    boolean regulated = regulation.defined() && regulation.anchor().toString().equals(regionId);
     // ★★ 2026-10-09：有定价行（含明确 0 价）都进订单生成；"从未定价"才不交易。
-    if (!(regulated ? regulation : MarketRegulation.none()).hasPrice(market, commodity)) {
+    //   ★★ 2026-10-10 P-T1c：定价只看**逐格**价表（{@link Market#hasPrice}）—— 区级参考价覆盖已删（设计书 §16）。
+    if (!market.hasPrice(commodity)) {
       return new PlannedOrders(List.of(), List.of()); // 没定价的商品不交易（同 Market 的口径）
     }
     List<HouseholdId> keys =
         rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of());
-    return ordersFor(
-        round, planFor(round, hex, keys), hex, market, commodity, regulation, regulated);
+    return ordersFor(round, planFor(round, hex, keys), hex, market, commodity);
   }
 
   /**
@@ -1271,11 +1250,6 @@ final class MarketSettlement {
       return new MarketOutcome(
           MarketReport.empty(round.day, trigger, carrierPresent(ctx)), markets);
     }
-    // ★★ D-027：闭市 = 该区本轮不撮合（返回空报告；trigger 不变、不抛）。排在冻结之前 ⇒ 不产生任何冻结/成交。
-    if (!ctx.regulation.open()) {
-      return new MarketOutcome(
-          MarketReport.empty(round.day, trigger, carrierPresent(ctx)), markets);
-    }
 
     // ── 1. 逐格建计划与订单；参与表按 actor 去重（订单生成与撮合的唯一来源）──────────────────────
     //   ★★ R2：按市场区并行构建，再按 hex (q,r) 序拼回 —— 与原串行序逐字相同（见方法注释）。
@@ -1362,16 +1336,9 @@ final class MarketSettlement {
                     CommodityId commodity = priced.getKey();
                     // ★★ 2026-10-09：有这一行就是"已定价"—— 值为 0 = 明确免费交易，不能再按 <=0 当缺价跳过。
                     //    "从未定价"的商品根本不在 market.prices() 里，这个循环天然不会碰它。
-                    MarketRegulation regionRegulation = ctx.regulationFor(region.node().nodeId());
+                    //    ★★ 2026-10-10 P-T1c：区级参考价覆盖已删 ⇒ 不再查"这一格属不属于调控锚区"。
                     PlannedOrders orders =
-                        ordersFor(
-                            planningRound,
-                            hexPlan,
-                            hex,
-                            market,
-                            commodity,
-                            regionRegulation,
-                            regionRegulation.defined());
+                        ordersFor(planningRound, hexPlan, hex, market, commodity);
                     for (BuyOrder order : orders.buys()) {
                       Participant buyer = byActor.get(order.requester());
                       if (buyer == null) {
@@ -1686,7 +1653,7 @@ final class MarketSettlement {
         buyMarket = ctx.markets.get(buy.region.anchor());
       }
       if (buyMarket != null) {
-        long reference = ctx.referencePriceOf(buy.regionId, buyMarket, commodity);
+        long reference = buyMarket.priceOf(commodity);
         if (reference > 0L) {
           long affordable =
               safeMulDiv(payableMoneyOf(ctx, buy), EconomySettlement.MILLI_PER_GRAIN, reference);
@@ -1795,8 +1762,8 @@ final class MarketSettlement {
   // ── 订单生成 ───────────────────────────────────────────────────────────────────────
 
   /**
-   * ★★ <b>D-027：一个 hex 所属区的规范 id</b>（与 {@link MarketRegion#node()}{@code .nodeId()} 同源；不在任何区 ⇒
-   * null，不抛）。调控的区级归属判定 = {@code regionIdAt(hex).equals(regulation.anchor().toString())}。
+   * ★★ <b>一个 hex 所属区的规范 id</b>（与 {@link MarketRegion#node()}{@code .nodeId()} 同源；不在任何区 ⇒ null，不抛）。★
+   * P-T1c 起它只用于"区内税费归属哪个区"（{@link MatchContext#regulationByRegionId}）。
    */
   private static String regionIdAt(MarketTopology topology, HexCoord hex) {
     if (topology == null || hex == null || !topology.contains(hex)) {
@@ -1805,54 +1772,24 @@ final class MarketSettlement {
     return topology.regionOf(hex).node().nodeId();
   }
 
-  /** 有效参考价：调控覆盖优先，未覆盖 ⇒ {@link Market#priceOf}（唯一拼写点）。 */
-  private static long regulatedReference(
-      Market market, CommodityId commodity, MarketRegulation regulation) {
-    return regulation.referencePriceOf(market, commodity);
-  }
-
-  /** 有效卖方底价：调控覆盖优先，未覆盖 ⇒ {@link Market#bidPriceOf}（唯一拼写点）。 */
-  private static long regulatedBid(
-      Market market, CommodityId commodity, MarketRegulation regulation) {
-    return regulation.defined()
-        ? regulation.bidPriceOf(market, commodity)
-        : market.bidPriceOf(commodity);
-  }
-
-  /** 有效买方限价：调控覆盖优先，未覆盖 ⇒ {@link Market#askPriceOf}（唯一拼写点）。 */
-  private static long regulatedAsk(
-      Market market, CommodityId commodity, MarketRegulation regulation) {
-    return regulation.defined()
-        ? regulation.askPriceOf(market, commodity)
-        : market.askPriceOf(commodity);
-  }
-
   /**
-   * ★★ <b>D-027：带区级调控的订单生成</b>：{@code regulated == true} 时参考价/限价按 {@code regulation} 覆盖 （{@link
-   * MarketRegulation#referencePriceOf}/{@link MarketRegulation#bidPriceOf}/{@link
-   * MarketRegulation#askPriceOf} 是唯一拼写点）；成交仍按参考价（区内）/ 卖方格参考价（跨区）—— 调控<b>不</b>改 逐 hex 物流成本，单 hex
-   * 损耗也<b>不</b>承担价格职能。
+   * ★★ <b>订单生成</b>：参考价/限价一律取自<b>本格价表</b>（{@link Market#priceOf}/{@link Market#bidPriceOf}/{@link
+   * Market#askPriceOf} 是唯一拼写点）—— 区级参考价/限价覆盖已于 P-T1c 删除（设计书 §16：定价只有逐格一层）。
+   *
+   * <p>成交仍按参考价（区内）/ 卖方格参考价（跨区）—— 逐 hex 物流成本另由 {@link HexTradeCost} 承担，单 hex 损耗<b>不</b>承担价格职能。
    */
   private static PlannedOrders ordersFor(
-      MarketRound round,
-      HexPlan plan,
-      HexCoord hex,
-      Market market,
-      CommodityId commodity,
-      MarketRegulation regulation,
-      boolean regulated) {
+      MarketRound round, HexPlan plan, HexCoord hex, Market market, CommodityId commodity) {
     // ★★ M2.6：参考价 = 本格价表里的固定报价；两个限价由 Market 的两个**各自独立**的常量现算
     //   （bid = 卖方底价、ask = 买方限价），订单按它们过滤；成交仍按参考价（区内）/ 卖方格参考价（跨区）。
-    // ★★ D-027：调控覆盖只对"这一格所属区的锚格 == regulation.anchor()"生效；未覆盖时逐值退回上面的口径。
-    MarketRegulation effective = regulated ? regulation : MarketRegulation.none();
     // ★★ 2026-10-09：先区分"从未定价"（不交易）与"明确 0 价"（免费交易）。有定价行 ⇒ 可挂单；值为 0 ⇒ 货款腿 0，
     //    买方只承担运费（运费与价格解耦，见 freightUnitMilli）。
-    if (!effective.hasPrice(market, commodity)) {
+    if (!market.hasPrice(commodity)) {
       return new PlannedOrders(List.of(), List.of()); // 没定价的商品不交易（不凭空造一行）
     }
-    long reference = regulatedReference(market, commodity, effective);
-    long bid = regulatedBid(market, commodity, effective);
-    long ask = regulatedAsk(market, commodity, effective);
+    long reference = market.priceOf(commodity);
+    long bid = market.bidPriceOf(commodity);
+    long ask = market.askPriceOf(commodity);
     List<BuyOrder> buys = new ArrayList<>();
     List<SellOrder> sells = new ArrayList<>();
     long deadline = round.day + MARKET_BUY_DEADLINE_DAYS;
@@ -2530,7 +2467,7 @@ final class MarketSettlement {
         if (slots.isEmpty()) {
           continue;
         }
-        long price = ctx.referencePriceOf(regionId, anchor, commodity);
+        long price = anchor.priceOf(commodity);
         if (!anchor.hasPrice(commodity)) {
           continue; // 从未定价 ⇒ 不交易，也谈不上信用
         }
@@ -2668,14 +2605,6 @@ final class MarketSettlement {
         }
         break;
       }
-      long quotaLeft = ctx.quotaRemaining(sell.region, buy.order.commodity());
-      if (quotaLeft <= 0L) {
-        ctx.markQuotaExhausted(sell.region, buy.order.commodity());
-        break;
-      }
-      if (quantity > quotaLeft) {
-        quantity = quotaLeft;
-      }
       long payment = paymentForQuantity(quantity, buyerUnitPrice);
       if (payment <= 0L || payment > amount) {
         break; // 理论到不了；到得了就是算法漂开，停在本档不超借
@@ -2720,20 +2649,14 @@ final class MarketSettlement {
         continue;
       }
       long quantity = Math.min(buy.remaining, sell.remaining);
-      long quotaLeft = ctx.quotaRemaining(sell.region, commodity);
-      if (quotaLeft <= 0L) {
-        ctx.markQuotaExhausted(sell.region, commodity);
-        break;
-      }
-      quantity = Math.min(quantity, quotaLeft);
       if (quantity <= 0L) {
-        skippedForThisBuyer.add(sell); // 配额已空；换个卖家也没用，但保持保守
+        skippedForThisBuyer.add(sell);
         continue;
       }
       // ★★ E（2026-10-09 裁定 R1/R2）：借实物这条腿**不经货币**（债务单位 = 商品，见 {@code DebtUnit.Commodity}），
       //   故"币种不符"不再构成拒因 —— 但三条腿仍走**同一个拼写点** {@link #settlementUnitPrice}（{@code leg =
       //   goods-credit}）：它统一回答"这条腿要不要看币种"（答案：不看，币种维为空）。不许在这里另写第二套比较。
-      //   ★ 本笔一个数都不动：不扣配额、不减剩余、不铸货腿、不建债务合同。
+      //   ★ 本笔一个数都不动：不减剩余、不铸货腿、不建债务合同。
       settlementUnitPrice(ctx, buy, sell, quantity, 0L, LEG_GOODS_CREDIT, true);
       executeGoodsCredit(ctx, buy, sell, quantity, pools);
     }
@@ -2752,11 +2675,6 @@ final class MarketSettlement {
       CreditPools pools) {
     MarketRound round = ctx.round;
     CommodityId commodity = buy.order.commodity();
-    long quota = ctx.quotaRemaining(sell.region, commodity);
-    if (quantity > quota) {
-      throw new IllegalStateException("信用成交越过区级配额（调用方应先封顶）：" + quantity + " > " + quota);
-    }
-    ctx.consumeQuota(sell.region, commodity, quantity);
     // ① 出借人 → 买方：本金腿（LOAN_PRINCIPAL）。
     applyMarketLeg(
         ctx,
@@ -2862,11 +2780,6 @@ final class MarketSettlement {
       MatchContext ctx, BuySlot buy, SellSlot sell, long quantity, CreditPools pools) {
     MarketRound round = ctx.round;
     CommodityId commodity = buy.order.commodity();
-    long quota = ctx.quotaRemaining(sell.region, commodity);
-    if (quantity > quota) {
-      throw new IllegalStateException("借实物越过区级配额（调用方应先封顶）：" + quantity + " > " + quota);
-    }
-    ctx.consumeQuota(sell.region, commodity, quantity);
     applyMarketLeg(
         ctx,
         round.ledger.mint(
@@ -3138,7 +3051,7 @@ final class MarketSettlement {
         Map<CommodityId, List<SellSlot>> byCommodity =
             indexes.sellsByRegionCommodity.getOrDefault(regionId, Map.of());
         for (CommodityId commodity : indexes.commodities) {
-          long price = ctx.referencePriceOf(regionId, anchor, commodity);
+          long price = anchor.priceOf(commodity);
           if (!anchor.hasPrice(commodity)) {
             continue; // 从未定价 ⇒ 不交易
           }
@@ -3460,13 +3373,8 @@ final class MarketSettlement {
       RegionOutcome outcome = outcomesByRegion.get(region.node().nodeId());
       if (outcome != null) {
         replayRegionOutcome(ctx, outcome);
-        // ★★ D-027：把 worker 本区副本的配额余量与"用尽"标记并回协调器（跨区撮合继续用同一张表；
-        //   同区只被一个 worker 触碰 ⇒ 合并无竞争、逐值确定）。
-        RegionClone clone = clonesById.get(outcome.regionId());
-        if (clone != null) {
-          ctx.absorbQuotas(clone.local);
-          ctx.regulationQuotaExhausted.addAll(clone.local.regulationQuotaExhausted);
-        }
+        // ★★ P-T1c：区级配额已删（设计书 §16）⇒ 不再有"worker 配额余量并回协调器"这一步；
+        //   区内撮合按账号因果链回放，不需要额外的跨 worker 共享预算表。
       }
     }
   }
@@ -3489,10 +3397,10 @@ final class MarketSettlement {
       Map<CommodityId, List<SellSlot>> sellsByCommodity =
           indexes.sellsByRegionCommodity.getOrDefault(regionId, Map.of());
       for (CommodityId commodity : indexes.commodities) {
-        if (!ctx.hasPrice(regionId, anchorMarket, commodity)) {
+        if (!anchorMarket.hasPrice(commodity)) {
           continue;
         }
-        long price = ctx.referencePriceOf(regionId, anchorMarket, commodity);
+        long price = anchorMarket.priceOf(commodity);
         List<BuySlot> buys = activeBuys(buysByCommodity.get(commodity), price, ctx.round.day);
         if (buys.isEmpty()) {
           continue;
@@ -3652,12 +3560,12 @@ final class MarketSettlement {
     RegionOutcome run(MarketIndexes indexes) {
       if (anchorMarket != null) {
         for (CommodityId commodity : indexes.commodities) {
-          // ★★ D-027：区内参考价 = 卖方格价 + 该区区级调控覆盖（与 ordersFor 同一条口径）。
+          // ★★ P-T1c：区内参考价 = 卖方格价表的固定报价（与 ordersFor 同一条口径）—— 区级覆盖已删。
           //    ★ 2026-10-09：有定价行（含明确 0 价免费）都进撮合；只有"从未定价"才跳过。
-          if (!local.hasPrice(regionId, anchorMarket, commodity)) {
+          if (!anchorMarket.hasPrice(commodity)) {
             continue;
           }
-          long price = local.referencePriceOf(regionId, anchorMarket, commodity);
+          long price = anchorMarket.priceOf(commodity);
           List<BuySlot> buys = activeBuys(buysByCommodity.get(commodity), price, day);
           if (buys.isEmpty()) {
             continue;
@@ -3936,7 +3844,7 @@ final class MarketSettlement {
    * <p>★★ <b>2026-10-08：改走克隆的唯一拼写点 {@link MarketRound#copyForWorker}</b>（旧版在这里手抄 22 个构造参数 ⇒ {@code
    * MarketRound} 新增的 {@code arbitrage} 字段被静默丢掉，而<b>这个克隆轮才是真正在下订单的那一份</b> ⇒
    * 套利一次都不生效且无任何报错）。语义与旧版唯一差异：{@code regulation} 由写死的 {@code none()} 改为<b>原样带过</b> ——
-   * 逐调用点审计过，该值在克隆轮上没有读取点（worker 的订单生成由调用方显式传 {@code regionRegulation}）。
+   * 逐调用点审计过，该值在克隆轮上没有读取点（P-T1c 起订单生成只读逐格价表，完全不读调控）。
    */
   private static MarketRound readOnlyPlanningRound(MarketRound round) {
     return round.copyForWorker(
@@ -4033,15 +3941,7 @@ final class MarketSettlement {
       if (demand <= 0L) {
         return; // 没有可付需求 ⇒ 后面的层也卖不动（成本排序不改变这一事实）
       }
-      // ★★ D-027：区级配额 = 本轮该（区, 商品）卖方成交量的上限（毫商品）。它只压"能成交多少"，
-      //   不改参考价/成本排序/限价；超出部分在 collectUnfilled 里落成 REGULATION_QUOTA。
-      CommodityId commodity = commodityOf(buys, sells);
-      MarketRegion region = sells.get(0).region;
-      long quotaLeft = ctx.quotaRemaining(region, commodity);
-      long matched = Math.min(demand, Math.min(supply, quotaLeft));
-      if (quotaLeft <= 0L) {
-        ctx.markQuotaExhausted(region, commodity);
-      }
+      long matched = Math.min(demand, supply);
       if (matched > 0L) {
         long[] sellWeights = new long[tier.size()];
         for (int i = 0; i < tier.size(); i++) {
@@ -4049,20 +3949,10 @@ final class MarketSettlement {
         }
         long[] buyParts = ProportionalSplit.byDenominator(matched, weights, demand);
         long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, supply);
-        // ★ 配额按**真正落账**的量逐笔扣（唯一扣减点 = executeTrade），这里不再预扣：pairUp 会按预算
-        //   缩量，预扣会高估用量。matched 已按剩余配额封顶 ⇒ 逐笔累计不会越过配额。
         pairUp(ctx, buys, buyParts, tier, sellParts, price, route);
       }
       tierStart = tierEnd;
     }
-  }
-
-  /** 一组买卖单的商品（同一分组内必相同；给配额键用；空组 ⇒ null）。 */
-  private static CommodityId commodityOf(List<BuySlot> buys, List<SellSlot> sells) {
-    if (!buys.isEmpty()) {
-      return buys.get(0).order.commodity();
-    }
-    return sells.isEmpty() ? null : sells.get(0).order.commodity();
   }
 
   /** 卖方成本排序（{@code unitCostEstimate + freightPerUnit} 升序；同成本按 canonical key 升序）。 */
@@ -4102,7 +3992,7 @@ final class MarketSettlement {
    *
    * <p>★★ <b>为什么是"逐区对共享预算"而不是"逐格对各自乘一遍"</b>：闸管的是<b>一条边界上的流量</b>（"一批货要过境， 两边都要过"，§12.2）。若按 (买方格,
    * 卖方格) 各自乘一遍，同一批货会被同一道闸按剩余量<b>重复打折</b> （A 有 100、B 两个买方格各要 100、两侧各 500‰ ⇒ 逐格 50+25=75 过闸，而正确是
-   * 100×50%=50）—— 这正是本仓"区级配额"（{@code MatchContext.quotas}，D-027）的同一条形制：<b>区对级共享预算 + 逐笔按真正落账的量扣</b>。
+   * 100×50%=50）—— 同一条形制是<b>区对级共享预算 + 逐笔按真正落账的量扣</b>（本轮的口岸闸预算表就是它的唯一实例）。
    *
    * <p>★★ <b>三条边界（设计书 §10/§11/§12，逐条）</b>：
    *
@@ -4658,17 +4548,8 @@ final class MarketSettlement {
         if (tierDemand <= 0L) {
           break;
         }
-        // ★★ D-027：跨区（多区世界）同样受卖方区的区级配额约束；单区世界走不到这里（adjacent 恒 false）。
-        //   区级调控只压"能成交多少"，不改运力/费率/损耗（两层不互相顶替）。
-        MarketRegion sellerRegion = sells.get(0).region;
-        long quotaLeft = ctx.quotaRemaining(sellerRegion, commodity);
-        long matched =
-            Math.min(
-                tierDemand,
-                Math.min(tierSupply, Math.min(capacityLeft, Math.min(quotaLeft, portLeft))));
-        if (quotaLeft <= 0L) {
-          ctx.markQuotaExhausted(sellerRegion, commodity);
-        }
+        // ★★ P-T1c：区级配额已删（设计书 §16）⇒ 跨区撮合只受运力（{@code capacityLeft}）与口岸闸（{@code portLeft}）约束。
+        long matched = Math.min(tierDemand, Math.min(tierSupply, Math.min(capacityLeft, portLeft)));
         if (matched > 0L) {
           long[] sellWeights = new long[tier.size()];
           for (int i = 0; i < tier.size(); i++) {
@@ -5330,9 +5211,6 @@ final class MarketSettlement {
       logForeignCurrencyFill(
           ctx, buy, sell, commodity, executed, unitPrice, buyerUnitPrice, payment);
     }
-    // ★★ D-027：区级配额按**真正落账**的毛量逐笔扣（唯一扣减点；worker 扣本区副本、协调器回放时扣共享表
-    //   ⇒ 跨区撮合看到的是剩余额度）。配额只压成交上限，不改价、不承担物流成本。
-    ctx.consumeQuota(sell.region, commodity, executed);
     // ★★ D-027：单 hex 贸易成本只在**同一市场区**的区内即时成交上逐笔计量（跨区在途走 route.lossPerMille，
     //   口径不变）。第一版只表达为实物损耗：同格 = 0、跨格 = HexTradeCost 的具名公式并夹在 quantity 内。
     long lossMilli =
@@ -5690,14 +5568,14 @@ final class MarketSettlement {
    * 同一对 (sellerHex,buyerHex) 上的成交单价：取卖方**格价表里的参考价**的上界（M2.6：成交仍按参考价，买卖双方各自比自己的 bid/ask
    * 限价占优；多价表时宁高不低，不让卖家亏本）。★ 限价过滤在 {@link #matchRoute} 里逐买方判，不走这里。
    *
-   * <p>★★ D-027：参考价走 {@link MatchContext#referencePriceOf}（卖方格所属区的调控覆盖优先）—— 与 {@link #ordersFor}
+   * <p>★★ P-T1c：参考价一律取卖方格价表（{@link Market#priceOf}）—— 区级参考价覆盖已删（设计书 §16）， 与 {@link #ordersFor}
    * 同一条口径，区内/跨区不漂开。
    */
   private static long unitPriceOf(MatchContext ctx, List<SellSlot> sells, CommodityId commodity) {
     long price = 0L;
     for (SellSlot sell : sells) {
       if (sell.order.commodity().equals(commodity)) {
-        price = Math.max(price, ctx.referencePriceOf(sell.regionId, sell.market, commodity));
+        price = Math.max(price, sell.market.priceOf(commodity));
       }
     }
     return price;
@@ -5931,10 +5809,6 @@ final class MarketSettlement {
       // ★★ D-030：信用可能覆盖"没钱"这一档 ⇒ NO_BUDGET 先让位给信用归因，最后仍没信用再落回 NO_BUDGET。
       if (reason == MarketUnfilledReason.NO_BUDGET) {
         reason = null;
-      }
-      if (reason == null && ctx.quotaExhausted(buy.region, buy.order.commodity())) {
-        // ★★ D-027：区级配额已经用尽 ⇒ 买方剩余是制度原因（不是没钱/没货/路不通），具名 REGULATION_QUOTA。
-        reason = MarketUnfilledReason.REGULATION_QUOTA;
       }
       if (reason == null) {
         MarketUnfilledReason creditReason = creditUnfilledReason(ctx, buy);
@@ -7359,8 +7233,8 @@ final class MarketSettlement {
     final MarketTopology topology;
 
     /**
-     * ★★ <b>D-027：本轮区级市场总调控</b>（{@link MarketRound#regulation()} 的唯一读取点；逐轮瞬态、不落盘）。 只有 {@link
-     * MarketRegulation#anchor()} 所在的区受它约束；未锚定的区走默认路径。
+     * ★★ <b>本轮区内市场规则</b>（{@link MarketRound#regulation()} 的唯一读取点；逐轮瞬态、不落盘）。P-T1c 起它只剩"区内税"一类条目 ⇒ 只有
+     * {@link MarketRegulation#anchor()} 所在的区受它约束；未锚定的区走默认路径（无税）。
      */
     final MarketRegulation regulation;
 
@@ -7373,20 +7247,7 @@ final class MarketSettlement {
      */
     final Map<MarketReport.Fill, Long> tariffByFill = new LinkedHashMap<>();
 
-    /**
-     * ★★ <b>D-027：本轮各（商品 × 区）剩余配额</b>（毫商品；{@code null}/{@code Long.MAX_VALUE} = 无配额）。 区内撮合在 worker
-     * 的本区副本上扣它，协调器回放后把本区已用量并回；跨区撮合（协调器单线程）继续用同一张表。 它是<b>逐轮瞬态</b>：每轮从 {@link
-     * MarketRegulation#quotaPerWindow()} 重建，不落盘。
-     */
-    final Map<CommodityId, Map<String, Long>> quotas = new LinkedHashMap<>();
-
-    /**
-     * ★★ <b>D-027：本轮"配额真的用尽"的（区, 商品）键集</b>（见 {@link #markQuotaExhausted}）—— {@link
-     * #collectUnfilled} 用它把买方剩余落成 {@link MarketUnfilledReason#REGULATION_QUOTA}。 只记本轮的制度事实，不落盘。
-     */
-    final Set<String> regulationQuotaExhausted = new LinkedHashSet<>();
-
-    /** ★★ D-027：区 id → 该区适用的调控（每轮按区只读一次；未锚定/未定义 ⇒ 空表）。 */
+    /** ★★ P-T1c：区 id → 该区适用的区内市场规则（每轮按区只读一次；未锚定/未定义 ⇒ 空表）。 */
     final Map<String, MarketRegulation> regulationByRegionId;
 
     /**
@@ -7477,25 +7338,11 @@ final class MarketSettlement {
               : null;
       this.regulationByRegionId =
           anchorRegionId == null ? Map.of() : Map.of(anchorRegionId, this.regulation);
-      configureQuotas();
     }
 
     /** ★★ E：本轮的"钱的价"（只读）。 */
     CurrencyValuation currencyValuation() {
       return currencyValuation;
-    }
-
-    /** 逐轮从调控重建配额表（空表 ⇒ 无配额；{@code Long.MAX_VALUE} = 无上限）。 */
-    private void configureQuotas() {
-      if (regulation.quotaPerWindow().isEmpty() || regulationByRegionId.isEmpty()) {
-        return;
-      }
-      String anchorId = regulationByRegionId.keySet().iterator().next();
-      for (Map.Entry<CommodityId, Long> entry : regulation.quotaPerWindow().entrySet()) {
-        Map<String, Long> byRegion = new LinkedHashMap<>();
-        byRegion.put(anchorId, Math.max(0L, entry.getValue()));
-        quotas.put(entry.getKey(), byRegion);
-      }
     }
 
     /** ★★ D-030：本入口有没有市场信用能力（{@code creditConfig} 与债务表必须同时在场；旧构造器 = 关闭）。 */
@@ -7510,109 +7357,19 @@ final class MarketSettlement {
           .getOrDefault(commodity, 0L);
     }
 
-    /**
-     * ★★ <b>区 id → 该区适用的调控</b>（{@link MarketRegulation#anchor()} 所在区；不在任何区 ⇒ 空表）。
-     * 它是"每轮按区只读一次调控"的落点：区内撮合/跨区撮合/回放都查这一张表，不各自重算归属。
-     */
-    Map<String, MarketRegulation> regulationByRegionId() {
-      return regulationByRegionId;
-    }
-
-    /** 本区适用调控（没有 ⇒ {@link MarketRegulation#none()}）。 */
+    /** 本区适用区内市场规则（没有 ⇒ {@link MarketRegulation#none()}）。 */
     MarketRegulation regulationFor(String regionId) {
       MarketRegulation effective = regulationByRegionId.get(regionId);
       return effective == null ? MarketRegulation.none() : effective;
     }
 
-    /** 本区有效参考价：有调控 ⇒ 覆盖价；没有 ⇒ {@link Market#priceOf}（唯一拼写点）。 */
-    long referencePriceOf(String regionId, Market market, CommodityId commodity) {
-      MarketRegulation effective = regulationFor(regionId);
-      return effective.defined()
-          ? effective.referencePriceOf(market, commodity)
-          : market.priceOf(commodity);
-    }
-
-    /** ★★ 本区该商品有没有有效定价（区级覆盖优先；<b>值为 0 也算定价</b> = 明确免费交易）。 它是"未定价 ⇒ 不交易"与"0 价 ⇒ 免费交易"的唯一分辨点。 */
-    boolean hasPrice(String regionId, Market market, CommodityId commodity) {
-      return regulationFor(regionId).hasPrice(market, commodity);
-    }
-
-    /** 本区该商品的单位税费（毫计价货币/商品单位）；没有调控/缺项/0 ⇒ 0（只记读数，不搬钱）。 */
+    /** 本区该商品的单位税费（毫计价货币/商品单位）；没有规则/缺项/0 ⇒ 0（只记读数，不搬钱）。 */
     long tariffPerUnitOf(String regionId, CommodityId commodity) {
       MarketRegulation effective = regulationFor(regionId);
       if (!effective.defined()) {
         return 0L;
       }
       return effective.tariffPerUnit().getOrDefault(commodity, 0L);
-    }
-
-    /** 本（区, 商品）剩余配额（毫商品）；{@code Long.MAX_VALUE} = 无配额。 */
-    long quotaRemaining(MarketRegion region, CommodityId commodity) {
-      return quotaRemaining(region.node().nodeId(), commodity);
-    }
-
-    /** 本（区, 商品）剩余配额（毫商品）；{@code Long.MAX_VALUE} = 无配额。 */
-    long quotaRemaining(String regionId, CommodityId commodity) {
-      Map<String, Long> byRegion = quotas.get(commodity);
-      if (byRegion == null) {
-        return Long.MAX_VALUE;
-      }
-      Long remaining = byRegion.get(regionId);
-      return remaining == null ? Long.MAX_VALUE : remaining;
-    }
-
-    /** 从剩余配额里扣掉本笔已用量（毫商品；无配额 ⇒ 不记）。 */
-    void consumeQuota(MarketRegion region, CommodityId commodity, long quantity) {
-      if (quantity <= 0L) {
-        return;
-      }
-      Map<String, Long> byRegion = quotas.get(commodity);
-      if (byRegion == null) {
-        return;
-      }
-      String regionId = region.node().nodeId();
-      Long remaining = byRegion.get(regionId);
-      if (remaining == null) {
-        return;
-      }
-      byRegion.put(regionId, Math.max(0L, remaining - quantity));
-    }
-
-    /**
-     * ★★ <b>D-027：标记本（区, 商品）配额已用尽</b>——{@link #collectUnfilled} 读它把"因配额没成交"的买方剩余落成 {@link
-     * MarketUnfilledReason#REGULATION_QUOTA}。★ 只记"真的用尽"（配额表里有这一项且剩余 ≤ 0）， 没有配额的区/商品不受影响。
-     */
-    void markQuotaExhausted(MarketRegion region, CommodityId commodity) {
-      if (!quotaConfigured(region, commodity)) {
-        return;
-      }
-      regulationQuotaExhausted.add(quotaKey(region, commodity));
-    }
-
-    /** 本（区, 商品）有没有配置配额（与 {@link #markQuotaExhausted} 同源，只查表不扣减）。 */
-    boolean quotaConfigured(MarketRegion region, CommodityId commodity) {
-      Map<String, Long> byRegion = quotas.get(commodity);
-      return byRegion != null && byRegion.containsKey(region.node().nodeId());
-    }
-
-    /** 本（区, 商品）是否已配额用尽（collectUnfilled 的只读判据）。 */
-    boolean quotaExhausted(MarketRegion region, CommodityId commodity) {
-      return regulationQuotaExhausted.contains(quotaKey(region, commodity));
-    }
-
-    private static String quotaKey(MarketRegion region, CommodityId commodity) {
-      return region.node().nodeId() + "#" + commodity.value();
-    }
-
-    /** 把 worker 本区副本的配额用量并回本 ctx（同区只被一个 worker 触碰；无配额 ⇒ 空表）。 */
-    void absorbQuotas(MatchContext worker) {
-      for (Map.Entry<CommodityId, Map<String, Long>> entry : worker.quotas.entrySet()) {
-        Map<String, Long> target =
-            quotas.computeIfAbsent(entry.getKey(), ignored -> new LinkedHashMap<>());
-        for (Map.Entry<String, Long> usage : entry.getValue().entrySet()) {
-          target.put(usage.getKey(), usage.getValue());
-        }
-      }
     }
   }
 }
