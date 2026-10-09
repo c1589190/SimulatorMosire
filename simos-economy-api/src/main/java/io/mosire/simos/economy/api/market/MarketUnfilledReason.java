@@ -120,8 +120,11 @@ public enum MarketUnfilledReason {
    * {@code Market.numeraire()}）。
    *
    * <p>★★ <b>这一档是"从静默错账变具名拒绝"的落点</b>：本批之前成交路径<b>没有任何币种相等校验</b>，异币场景按 {@code Map.of(buy.currency,
-   * payment)} 直接落账 ⇒ <b>静默 1:1</b>（一毫铜当一毫银付）。现在：<b>拒</b>，且拒因进 读数与日志；家户要用异币买东西必须<b>先兑换</b>（走市场 FX
-   * 或政府外汇窗口）。
+   * payment)} 直接落账 ⇒ <b>静默 1:1</b>（一毫铜当一毫银付）。
+   *
+   * <p>★★ <b>已被 E 批（2026-10-09 裁定 R1）退役：本结算不再产生它</b> —— 家户"什么都愿意收"，异币成交改按 <b>卖方对该币的估值</b>判划算与否（估算不足
+   * ⇒ 归因走市场性理由 {@link #PRICE_LIMIT}）。★ 常量<b>保留</b>是留痕与旧档/旧读数的兼容： 历史 revision 的未成交档里仍有这个字面量，{@link
+   * #parse} 也必须继续认它。
    */
   CURRENCY_MISMATCH("currency_mismatch");
 

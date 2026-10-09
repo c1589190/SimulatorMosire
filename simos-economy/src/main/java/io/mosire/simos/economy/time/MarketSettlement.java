@@ -1100,8 +1100,38 @@ final class MarketSettlement {
     }
     boolean merchantWorld = !merchantFirms.isEmpty();
     Optional<ActorRef> carrier = merchantWorld ? Optional.empty() : carrierOf(round);
+    // ★★ E（2026-10-09）：本轮"钱的价"（世界行情 + 当地实际流通的币种）只装配一次 —— 它依赖本轮**全部**家户的
+    //   货币账户，故必须由协调器算好、与各区 worker 副本共用同一份实例（各自现算会在"认不认得出某种钱"上漂开）。
+    Map<String, List<HouseholdId>> rowsByHex =
+        EconomySettlement.rowsByHex(round.householdEconomies);
+    CurrencyValuation currencyValuation =
+        CurrencyValuation.of(
+            round.fx(),
+            CurrencyValuation.circulationByRegion(topology, rowsByHex, round.householdMoney()));
     MatchContext ctx =
-        new MatchContext(round, markets, topology, carrier, merchantFirms, carrierPool);
+        new MatchContext(
+            round,
+            markets,
+            topology,
+            carrier,
+            merchantFirms,
+            carrierPool,
+            round.regulation(),
+            currencyValuation);
+    if (MARKET.isDebugEnabled()) {
+      // ★★ E（§一.9：DEBUG 写"为什么"）：本轮"钱的价"认得出哪些币 —— "某笔异币为什么没成交"的第一现场。
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "MARKET_CURRENCY_VALUATION",
+                  EconomyLogSource.ECONOMY_FX,
+                  "day",
+                  round.day,
+                  "quotedCurrencies",
+                  currencyValuation.quotedCurrencies().size(),
+                  "circulation",
+                  currencyValuation.circulationSummary()));
+    }
     if (markets.isEmpty() || trigger == MarketTrigger.NONE) {
       return new MarketOutcome(
           MarketReport.empty(round.day, trigger, carrierPresent(ctx)), markets);
@@ -1115,10 +1145,9 @@ final class MarketSettlement {
     // ── 1. 逐格建计划与订单；参与表按 actor 去重（订单生成与撮合的唯一来源）──────────────────────
     //   ★★ R2：按市场区并行构建，再按 hex (q,r) 序拼回 —— 与原串行序逐字相同（见方法注释）。
     //   ★★ C4：rowsByHex 只在这里建一次（旧 R2 让每个分区 worker 各自重建一次），只读传给 worker。
+    //      ★ E 起它更靠前一步建（"钱的价"的当地流通集合要用它），本段只沿用同一个变量。
     //   ★★ 并行安全：worker 读的必须是**普通只读表**，不能是 AccountSession 的活视图（owner 守卫在 worker 线程
     //     第一次 get 就抛）⇒ 协调器先把八张账户表浅拷成 planningRound，worker 只读它。
-    Map<String, List<HouseholdId>> rowsByHex =
-        EconomySettlement.rowsByHex(round.householdEconomies);
     MarketRound planningRound = readOnlyPlanningRound(round);
     // ★★ 2026-10-08 防复发守卫：**克隆轮必须与母轮携带同一份套利决定**。
     //   下一段真正下单用的是 planningRound（不是 round）⇒ 克隆一旦丢字段，套利就会"计划满格、订单为零"且毫无报错
@@ -2022,9 +2051,11 @@ final class MarketSettlement {
         }
         continue;
       }
-      // ★★ A2b（I19 / M7-①）：信用腿同样按 `buy.currency` 付给卖方 ⇒ 异币必须具名拒。A2a 只堵了现金腿
-      //   （executeTrade），这条**借来的钱**的腿原样 1:1。fail-closed：本买方这一轮不再走信用（不许把铜当银付出去）。
-      if (rejectCurrencyMismatch(ctx, buy, sell, buy.remaining, "money-credit")) {
+      // ★★ E（§3.1）：信用腿同样走**唯一拼写点** —— 借来的钱按 buy.currency 付给卖方，故判据与现金腿逐字同一口径
+      //   （估价不足/说不出价 ⇒ 不划算，市场性理由）。fail-closed：本买方这一轮不再走信用，绝不按 1:1 静默付出去。
+      long buyerUnitPrice =
+          settlementUnitPrice(ctx, buy, sell, buy.remaining, price, LEG_MONEY_CREDIT, true);
+      if (buyerUnitPrice < 0L) {
         break;
       }
       while (index < lenders.size()) {
@@ -2041,13 +2072,14 @@ final class MarketSettlement {
         break;
       }
       MoneyLendOrder lender = lenders.get(index);
-      long gapPayment = paymentForQuantity(buy.remaining, price);
+      long gapPayment = paymentForQuantity(buy.remaining, buyerUnitPrice);
       long amount = Math.min(gapPayment, lender.remaining);
       if (amount <= 0L) {
         break;
       }
       long quantity =
-          Math.min(buy.remaining, Math.min(sell.remaining, maxQuantityForMoney(amount, price)));
+          Math.min(
+              buy.remaining, Math.min(sell.remaining, maxQuantityForMoney(amount, buyerUnitPrice)));
       if (quantity <= 0L) {
         if (amount == lender.remaining) {
           index++; // 这个出借人太小，买不起一个最小交易单位；看下一个
@@ -2063,11 +2095,11 @@ final class MarketSettlement {
       if (quantity > quotaLeft) {
         quantity = quotaLeft;
       }
-      long payment = paymentForQuantity(quantity, price);
+      long payment = paymentForQuantity(quantity, buyerUnitPrice);
       if (payment <= 0L || payment > amount) {
         break; // 理论到不了；到得了就是算法漂开，停在本档不超借
       }
-      executeMoneyCredit(ctx, buy, sell, lender, payment, quantity, price, pools);
+      executeMoneyCredit(ctx, buy, sell, lender, payment, quantity, price, buyerUnitPrice, pools);
       while (cursor < lenders.size() && lenders.get(cursor).remaining <= 0L) {
         cursor++;
       }
@@ -2083,10 +2115,10 @@ final class MarketSettlement {
    * 卖家 actor id 升序"取；量 = min(缺口, 卖单剩余, 配额剩余)，货腿 卖家 → 买方 （{@code LOAN_PRINCIPAL}），无货币腿、也不写普通 sale
    * fill。★ D-031：借款人侧不再设额度上限。
    *
-   * <p>★★ <b>2026-10-09（I19 收口）：借实物同样受币种一致性约束</b> —— 改动前这条腿<b>完全不经货币</b>（既不铸钱腿，也不比币种），
-   * 于是"持异币的家户"照样能从"只收本币的卖方"手里借到货：钱的两条腿（现金 {@code executeTrade}、货币信用 {@code
-   * moneyCreditForBuy}）都堵了异币，这条腿原样可跨币拿货。现在它走<b>同一个拼写点</b> {@link #rejectCurrencyMismatch}（{@code
-   * leg=goods-credit}），判据与那两条腿逐字同一口径。
+   * <p>★★ <b>E（2026-10-09 裁定 R1/R2）：本腿不再看币种</b> —— 借实物不经货币（债务单位 = 商品），A2b 那条 "异币 ⇒
+   * 具名拒"的判据随之退役；本腿仍然走过<b>同一个拼写点</b> {@link #settlementUnitPrice}（{@code leg =
+   * goods-credit}），由它统一回答"这条腿要不要看币种"（答案：不看）。A2b 当年是在"三条腿只有它漏堵"的背景下加的门， 而 E
+   * 批把三条腿的<b>判据</b>换成了"按钱的价判划算与否"——对不铸钱腿的这条腿，那个判据没有对象。
    */
   private static void goodsCreditForBuy(
       MatchContext ctx, BuySlot buy, long price, CreditPools pools) {
@@ -2117,20 +2149,11 @@ final class MarketSettlement {
         skippedForThisBuyer.add(sell); // 配额已空；换个卖家也没用，但保持保守
         continue;
       }
-      // ★★ 2026-10-09（I19 / 用户 2026-10-08 原话「商品信用通道不受货币种类限制，那就加默认限制啊？」）：
-      //   买方所在格的法定币（= buy.currency）≠ 卖方收款币（sell.receiveCurrency）⇒ **具名拒该笔商品信用**。
-      //   ★ 校验抽成与现金腿/货币信用腿**同一个拼写点** rejectCurrencyMismatch（不许另写第二套比较，
-      //     否则就是"堵一条漏一条"—— 本批之前正是这样漏掉了借实物这条腿）。
-      //   ★★ 处置与那两条腿**不同**（有意为之，理由写在 rejectCurrencyMismatch 的注与账本里）：这里
-      //     **跳过这一家卖方**、继续找同币的候选，而不是 break —— 商品信用的候选卖方是按"可借量降序"
-      //     排的一串，若一个异币候选就把本买方的整条实物信用关死，那超出"默认限制"的判据：
-      //     同 hex 的同币卖方本来完全可以放贷（实测：break 形态下这些买方能否借到货取决于排序运气）。
-      //   ★ 本笔一个数都不动：不扣配额、不减剩余、不铸货腿、不建债务合同（rejectCurrencyMismatch 已落
-      //     买卖两侧的具名 reason + 一条 INFO）。
-      if (rejectCurrencyMismatch(ctx, buy, sell, quantity, "goods-credit")) {
-        skippedForThisBuyer.add(sell);
-        continue;
-      }
+      // ★★ E（2026-10-09 裁定 R1/R2）：借实物这条腿**不经货币**（债务单位 = 商品，见 {@code DebtUnit.Commodity}），
+      //   故"币种不符"不再构成拒因 —— 但三条腿仍走**同一个拼写点** {@link #settlementUnitPrice}（{@code leg =
+      //   goods-credit}）：它统一回答"这条腿要不要看币种"（答案：不看，币种维为空）。不许在这里另写第二套比较。
+      //   ★ 本笔一个数都不动：不扣配额、不减剩余、不铸货腿、不建债务合同。
+      settlementUnitPrice(ctx, buy, sell, quantity, 0L, LEG_GOODS_CREDIT, true);
       executeGoodsCredit(ctx, buy, sell, quantity, pools);
     }
   }
@@ -2143,7 +2166,8 @@ final class MarketSettlement {
       MoneyLendOrder lender,
       long payment,
       long quantity,
-      long price,
+      long sellerUnitPrice,
+      long buyerUnitPrice,
       CreditPools pools) {
     MarketRound round = ctx.round;
     CommodityId commodity = buy.order.commodity();
@@ -2225,7 +2249,7 @@ final class MarketSettlement {
             sell.seller.actor,
             buy.buyer.actor,
             quantity,
-            price,
+            sellerUnitPrice,
             0L,
             payment,
             0L,
@@ -2234,6 +2258,11 @@ final class MarketSettlement {
             "",
             loss);
     ctx.fills.add(fill);
+    if (!buy.currency.equals(sell.market.numeraire()) && payment > 0L) {
+      // ★★ E（§3.1 日志）：信用腿的异币成交同样具名记录（哪两户、什么币、估值多少、成交比价）。
+      logForeignCurrencyFill(
+          ctx, buy, sell, commodity, quantity, sellerUnitPrice, buyerUnitPrice, payment);
+    }
     long tariffPerUnit = ctx.tariffPerUnitOf(sell.regionId, commodity);
     if (tariffPerUnit > 0L) {
       ctx.tariffByFill.put(fill, tariffPerUnit);
@@ -2969,7 +2998,10 @@ final class MarketSettlement {
             ctx.merchantFirms,
             MerchantSettlement.CarrierPool.empty(),
             // ★★ D-027：worker 只读本区适用的调控（配额在本区副本上扣，回放后并回协调器）。
-            ctx.regulationFor(regionId));
+            ctx.regulationFor(regionId),
+            // ★★ E：**协调器那一份**"钱的价"（含全部家户的流通币种）—— 副本自己现算会漂开，
+            //   而"认不认得出某种钱"必须两边同一个答案（否则回放对不上，具名抛）。
+            ctx.currencyValuation());
     local.buys.addAll(localBuys);
     local.sells.addAll(localSells);
     local.recordFillIntents = true;
@@ -3060,7 +3092,8 @@ final class MarketSettlement {
       }
       List<SellSlotState> sellStates = new ArrayList<>(allSells.size());
       for (SellSlot sell : allSells) {
-        sellStates.add(new SellSlotState(sell.orderIndex, sell.remaining, sell.frozenRemaining));
+        sellStates.add(
+            new SellSlotState(sell.orderIndex, sell.remaining, sell.frozenRemaining, sell.blocked));
       }
       return new RegionOutcome(
           regionId, List.copyOf(local.fillIntents), buyStates, sellStates, local.round.unmetToday);
@@ -3144,6 +3177,9 @@ final class MarketSettlement {
         throw new IllegalStateException(
             "区内市场回放与 worker 分区计算漂开（拒绝按到达序静默兜底）：卖槽=" + state.orderIndex());
       }
+      // ★★ E：拒因（市场性理由）也是槽位状态的一部分 —— 不带回来，读数会把"卖方说不出这个价"误报成
+      //   NO_BUYER/OUTCOMPETED（归因失真，N1 的判据就看不见了）。
+      sell.blocked = state.blocked();
     }
     ctx.round.unmetToday.putAll(copyUnmet(outcome.unmetToday()));
   }
@@ -3343,7 +3379,8 @@ final class MarketSettlement {
       MarketUnfilledReason blocked) {}
 
   /** worker 交回的卖槽终态。 */
-  private record SellSlotState(int orderIndex, long remaining, long frozenRemaining) {}
+  private record SellSlotState(
+      int orderIndex, long remaining, long frozenRemaining, MarketUnfilledReason blocked) {}
 
   /** 一个区的 worker 产物（回放序 = 协调器遍历 topology.regions() 的区序；区与区之间的账户不重叠）。 */
   private record RegionOutcome(
@@ -3652,6 +3689,8 @@ final class MarketSettlement {
       long[] weights = new long[buys.size()];
       long demand = 0L;
       long supply = 0L;
+      // ★★ E：本条路线的"钱的价"参照卖方（同一路线的卖方同格/同区 ⇒ 计价币一致；异币时按它的计价币折算买方限价）。
+      SellSlot priceReference = sells.get(0);
       for (int i = 0; i < buys.size(); i++) {
         BuySlot buy = buys.get(i);
         if (buy.order.latestArrivalTick() < arrivalTick) {
@@ -3661,14 +3700,16 @@ final class MarketSettlement {
           weights[i] = 0L;
           continue;
         }
-        if (buy.order.maxLandedPrice() < unitPrice) {
+        long buyerUnitPrice = convertedBuyerUnitPrice(ctx, buy, priceReference, unitPrice);
+        if (buyerUnitPrice < 0L || buy.order.maxLandedPrice() < buyerUnitPrice) {
+          // ★ E：限价用**买方支付币**的口径比（说不出这种钱的价 ⇒ 也算限价不过）；归因是市场性理由。
           if (buy.blocked == null) {
             buy.blocked = MarketUnfilledReason.PRICE_LIMIT;
           }
           weights[i] = 0L;
           continue;
         }
-        long affordable = affordableQuantity(ctx, buy, unitPrice, route);
+        long affordable = affordableQuantity(ctx, buy, buyerUnitPrice, route);
         weights[i] = Math.min(buy.remaining, affordable);
         demand += weights[i];
       }
@@ -3704,7 +3745,13 @@ final class MarketSettlement {
         long[] tierBuyWeights = new long[buys.size()];
         long tierDemand = 0L;
         for (int i = 0; i < buys.size(); i++) {
-          long affordable = affordableQuantity(ctx, buys.get(i), unitPrice, route);
+          // ★★ E：可负担量同样按**买方支付币**的单价折算（与上面的首轮 weights 同一口径）。
+          long tierBuyerPrice =
+              convertedBuyerUnitPrice(ctx, buys.get(i), priceReference, unitPrice);
+          long affordable =
+              tierBuyerPrice < 0L
+                  ? 0L
+                  : affordableQuantity(ctx, buys.get(i), tierBuyerPrice, route);
           tierBuyWeights[i] = Math.min(buys.get(i).remaining, affordable);
           tierDemand += tierBuyWeights[i];
         }
@@ -3750,6 +3797,34 @@ final class MarketSettlement {
           }
         }
       }
+    }
+    if (MARKET.isDebugEnabled()) {
+      // ★★ E：跨区路线的逐条读数（"异币为什么没成交"的第二现场：这条路线上到底有没有量）。
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "MARKET_CROSS_REGION_ROUTE",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  ctx.round.day,
+                  "commodity",
+                  commodity.value(),
+                  "sellerHex",
+                  sellerHex,
+                  "buyerHex",
+                  buyerHex,
+                  "buys",
+                  rawBuys.size(),
+                  "sells",
+                  rawSells.size(),
+                  "used",
+                  acc.used,
+                  "demand",
+                  acc.demandMilli,
+                  "supply",
+                  acc.supplyMilli,
+                  "bottleneck",
+                  acc.bottleneck));
     }
   }
 
@@ -3880,6 +3955,17 @@ final class MarketSettlement {
           continue;
         }
         long quantity = Math.min(need, sellLeft);
+        // ★★ E（§3.1）：本笔在**买方支付币**下的单价 —— 异币要按"钱的价"折算（同币 ⇒ 原价）。
+        //   ★ 为什么必须在配给之前算：可负担量与"N 笔各 ceil 一毫"的封顶都按它折算；用卖方币价预判会在异币
+        //     成交上高估可买量、进而算出买方付不起的货款（负余额）。
+        //   ★ 不划算（说不出这种钱的价 / 折回本币不够保留价）⇒ **跳过这一家卖方**看下一家（不是打死整个买方）：
+        //     同 hex 的别家卖方可能收的是他能付的钱。归因由 executeTrade 侧的同一拼写点落账。
+        long buyerUnitPrice = settlementUnitPrice(ctx, buy, sell, quantity, price, LEG_CASH, true);
+        if (buyerUnitPrice < 0L) {
+          sellerIndex++;
+          sellLeft = sellerIndex < sellers.size() ? sellParts[sellerIndex] : 0L;
+          continue;
+        }
         // ★★ 2026-10-09：同市场区、不同 hex 的成交也由商号承运（有 merchantFirms 时）⇒ 合成一条"即时但有运费"的
         //   路线；同 hex 仍走零运费即时成交（route == null）。
         RouteContext effectiveRoute = route;
@@ -3891,12 +3977,12 @@ final class MarketSettlement {
         // ★ 递归约束：上一笔实际付款（含各自 ceil 的货款与运费）已经写进 spentMilli 与余额/冻结表，
         //   这里按**当前**剩余可付重算上限，堵住 N 笔各 ceil 一毫的累计越界。先取原口径的保守配给量，
         //   再用逐笔实际算式精确封顶（跨区运费 floor + 两处 ceil 的累计误差都在这里削平）。
-        long affordable = affordableQuantity(ctx, buy, price, effectiveRoute);
+        long affordable = affordableQuantity(ctx, buy, buyerUnitPrice, effectiveRoute);
         if (quantity > affordable) {
           quantity = affordable;
         }
         long payable = payableMoneyOf(ctx, buy);
-        quantity = exactAffordableUpTo(quantity, payable, price, effectiveRoute);
+        quantity = exactAffordableUpTo(quantity, payable, buyerUnitPrice, effectiveRoute);
         if (quantity <= 0L) {
           // 钱包/预算在账面上已经归零（不是"这个价买不起"）⇒ 这个买方在**任何**正价格上都再无成交可能：
           // 置 noMoney 让后续跨区路线直接跳过它（否则它会以 remaining>0 的身份把每条路线都试一遍）。
@@ -3928,96 +4014,299 @@ final class MarketSettlement {
   // ── 一笔成交（区内即时 / 跨区在途）────────────────────────────────────────────────
 
   /**
-   * ★★ <b>A2a/A2b 的唯一拼写点：买方支付币种 ≠ 卖方收款币种 ⇒ 具名拒</b>（§3.5 / I19 / F5 / M1 / M7-①）。
+   * ★★ <b>E（2026-10-09 裁定 R1/R2/R3/R4/R6）：唯一拼写点 —— 本笔"收什么钱、按什么价收"的裁决</b>。
    *
    * <p>★★ <b>为什么必须共用一处</b>：商品面上"钱从买方到卖方"有<b>三条</b>腿 ——
    *
    * <pre>
-   * ① 现金成交腿 executeTrade          ：payment 按 buy.currency 铸（A2a 已堵）
-   * ② 信用成交腿 moneyCreditForBuy     ：借来的钱同样按 buy.currency 付给卖方（★ A2a 只堵了 ① ⇒ 这一条原样可异币 1:1）
-   * ③ 借实物腿   goodsCreditForBuy     ：货腿不经货币 ⇒ 连"付什么钱"都没有（★ 2026-10-09 补堵：本批之前它绕过 I19）
+   * ① 现金成交腿 executeTrade          ：payment 按 buy.currency 铸
+   * ② 信用成交腿 moneyCreditForBuy     ：借来的钱同样按 buy.currency 付给卖方
+   * ③ 借实物腿   goodsCreditForBuy     ：货腿不经货币（债务单位 = 商品）⇒ 币种维为空
    * </pre>
    *
-   * 三条腿用的是同一个 `buy.currency`（= 买方所在格的法定币），而"卖方要收哪种钱"只有 {@code sell.receiveCurrency} 一个来源 ⇒
-   * 校验必须是同一个拼写点，否则"堵一条漏一条"（本批正是这样发现的，而且发现了<b>两次</b>：A2b 补 ②、2026-10-09 补 ③）。
+   * <p>★★ <b>判据（逐字 = 文档 §3.1）</b>：
    *
-   * <p>★ 语义：不等 ⇒ 买卖两侧各留 {@link MarketUnfilledReason#CURRENCY_MISMATCH}（不被 OUTCOMPETED 等市场性归因掩盖） +
-   * 一条 INFO {@code MARKET_CURRENCY_MISMATCH_REJECTED}（带 {@code leg} 区分现金/货币信用/商品信用），并返回 true ⇒
-   * <b>调用方必须不落任何账</b>（成交量 0、账户一字未动）。家户要用异币买东西 ⇒ 先兑换（市场 FX 或政府外汇窗口）。
+   * <pre>
+   * 买方付出金额 × 我对该币的估值 ≥ 我的保留价 × 数量   ⇒ 成交；否则"不划算"（不落任何账）
+   * </pre>
    *
-   * <p>★★ <b>调用方的处置（停止 / 跳过这一家）不由本方法规定</b>：现金腿与货币信用腿是 {@code break}（那一轮为这个买方
-   * 定下的唯一卖方就是它）；借实物腿是<b>跳过该卖方、继续找同币候选</b>（候选是一串，见 {@code goodsCreditForBuy} 的注）。
-   * 三条腿共享的是<b>判据与日志形态</b>，不是"之后怎么走"。
+   * 三处的量纲与取法（全部同微刻度，见 {@link HouseholdValuationBook#MICRO_PER_MILLI}）：
    *
-   * @param quantity 本次尝试的数量（只进日志；0/负值照记）
+   * <ul>
+   *   <li>"买方付出金额" = 本笔在<b>买方支付币</b>下的货款（毫），单价由"钱的价"换算： {@code 买方币单价 = ⌈卖方币单价 × 1000 ÷ 我对该币的估值⌉} ⇒
+   *       估值越低、要的该币越多（E2）；
+   *   <li>"我对该币的估值" = {@link CurrencyValuation#valuationMicro}（本币 1:1 / 世界行情 / 当地实际流通 ⇒ 面值 / 三者都不是
+   *       ⇒ 说不出价）；
+   *   <li>"我的保留价" = 卖方槽位建槽时冻结的 {@link SellSlot#reservationMicro}（与套利用的保留价同一个算式）。
+   * </ul>
+   *
+   * <p>★★ <b>同币成交不做任何事</b>（{@code buy.currency == sell.receiveCurrency} ⇒ 直接返回原单价）：本币对自己 = 面值
+   * 1:1（R3 的锚），判据恒成立 ⇒ 同币路径<b>逐值退回改前</b>（E3 / N2 是结构性保证，不是"实测碰巧一样"）。
+   *
+   * <p>★★ <b>删掉了什么</b>：A2a/A2b 的"币种不等 ⇒ 具名拒"（{@link MarketUnfilledReason#CURRENCY_MISMATCH}）整条语义。
+   * 不划算一律走<b>既有市场性理由</b>（本批取 {@link MarketUnfilledReason#PRICE_LIMIT}：说不出这个价 / 折回本币不够
+   * 保留价），<b>不新增"币种不符"语义</b>（N1/N3）。47.9 万条 {@code MARKET_CURRENCY_MISMATCH_REJECTED} 的噪声随之消失，
+   * 取而代之的是逐笔 DEBUG 的"为什么"（{@code MARKET_CURRENCY_VALUE_REFUSED}）。
+   *
+   * <p>★★ <b>调用方的处置（停止 / 跳过这一家）不由本方法规定</b>：现金腿是<b>跳过这一家卖方、看下一家</b>；货币信用腿是 {@code
+   * break}（那一轮为这个买方定下的唯一借款链就是它）；借实物腿币种维为空（不拒）。三条腿共享的是<b>判据与日志形态</b>。
+   *
+   * @param quantity 本次尝试的数量（毫商品；判据按它折算"付出金额"）
+   * @param unitPrice 本笔的<b>卖方币</b>单价（毫卖方币 / 商品单位）
    * @param leg 哪条腿（{@code cash} / {@code money-credit} / {@code goods-credit}）
-   * @return true = 异币，已具名拒；调用方不得落账
+   * @param bookRefusal true = 真的落账（置买卖两侧的市场性理由 + DEBUG why）；false = 只做纸面裁决（配对前的
+   *     可负担性/限价预判，不改任何状态、不写日志）
+   * @return {@code >= 0} = 以买方支付币计价的单价（{@code 0} = 合法的 0 价/免费）；{@code -1} = 不划算 （调用方不得落账）
    */
-  private static boolean rejectCurrencyMismatch(
-      MatchContext ctx, BuySlot buy, SellSlot sell, long quantity, String leg) {
-    if (sell.receiveCurrency == null || sell.receiveCurrency.equals(buy.currency)) {
-      return false;
+  private static long settlementUnitPrice(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      long quantity,
+      long unitPrice,
+      String leg,
+      boolean bookRefusal) {
+    if (LEG_GOODS_CREDIT.equals(leg)) {
+      // ★ 借实物腿不经货币（债务单位 = 商品）：币种维为空 ⇒ 判据落在既有的"可借余量"上，本方法不新增门槛。
+      return unitPrice;
     }
+    if (buy.currency.equals(sell.market.numeraire())) {
+      // ★ 同币：本币 1:1 ⇒ 判据恒成立 ⇒ 逐值退回改前（E3/N2 的结构性保证）。
+      return unitPrice;
+    }
+    CurrencySettlement terms = currencySettlement(ctx, buy, sell, unitPrice);
+    if (terms == null) {
+      if (bookRefusal) {
+        refuseUnprofitableCurrency(
+            ctx,
+            buy,
+            sell,
+            quantity,
+            unitPrice,
+            0L,
+            leg,
+            "currency-has-no-quotation-and-does-not-circulate-locally",
+            -1L);
+      }
+      return UNPROFITABLE_CURRENCY;
+    }
+    long payment = paymentForQuantity(quantity, terms.buyerUnitPrice());
+    long offeredMicro = multiplyOrFail(payment, terms.valueMicro(), "买方付出金额 × 我对该币的估值");
+    long requiredMicro =
+        ceilDivPositive(
+            multiplyOrFail(sell.reservationMicro, quantity, "我的保留价 × 数量"),
+            HouseholdValuationBook.MICRO_PER_MILLI);
+    if (offeredMicro < requiredMicro) {
+      if (bookRefusal) {
+        refuseUnprofitableCurrency(
+            ctx,
+            buy,
+            sell,
+            quantity,
+            unitPrice,
+            terms.valueMicro(),
+            leg,
+            "value-of-payment-below-my-reservation",
+            requiredMicro);
+      }
+      return UNPROFITABLE_CURRENCY;
+    }
+    return terms.buyerUnitPrice();
+  }
+
+  /**
+   * ★★ <b>E：不划算的哨兵</b>（{@code -1}）—— 与"合法的 0 价/免费"（{@code 0}）严格区分： 单价是毫整数、恒 {@code >= 0}，故 {@code
+   * -1} 不可能是一个真价格。
+   */
+  private static final long UNPROFITABLE_CURRENCY = -1L;
+
+  /** 三条腿的名字（唯一拼写点；进日志的 {@code leg} 段）。 */
+  private static final String LEG_CASH = "cash";
+
+  private static final String LEG_MONEY_CREDIT = "money-credit";
+
+  private static final String LEG_GOODS_CREDIT = "goods-credit";
+
+  /** ★★ E：本笔的收款裁决 —— 买方支付币单价 + 该币在卖方眼里的估值（微本币/毫买币）。 */
+  private record CurrencySettlement(long buyerUnitPrice, long valueMicro, boolean sameCurrency) {}
+
+  /**
+   * ★★ <b>E：本笔的收款裁决</b>（纯函数）：同币 ⇒ 原价 + 面值；异币 ⇒ 查行情/当地流通的估值并折算买方币单价。
+   *
+   * @return {@code null} = 说不出这种钱的价（调用方按"不划算"落市场性理由，绝不静默按 1:1）
+   */
+  private static CurrencySettlement currencySettlement(
+      MatchContext ctx, BuySlot buy, SellSlot sell, long unitPrice) {
+    if (buy.currency.equals(sell.market.numeraire())) {
+      return new CurrencySettlement(unitPrice, CurrencyValuation.faceValueMicro(), true);
+    }
+    long valueMicro =
+        ctx.currencyValuation()
+            .valuationMicro(sell.market.numeraire(), buy.currency, sell.region.node().nodeId());
+    if (valueMicro <= 0L) {
+      return null;
+    }
+    return new CurrencySettlement(buyerUnitPriceFor(unitPrice, valueMicro), valueMicro, false);
+  }
+
+  /**
+   * ★★ <b>E：以买方支付币计价的单价</b> {@code ⌈卖方币单价 × 1000 ÷ 我对该币的估值⌉}（毫买币 / 商品单位）： 估值越低 ⇒ 要的该币越多（E2）；估值 =
+   * 1000（面值 1:1）⇒ 逐值等于原单价。
+   */
+  private static long buyerUnitPriceFor(long unitPrice, long valueMicro) {
+    if (unitPrice <= 0L) {
+      return 0L; // 0 价（免费）：换算后仍是 0，判据由调用方按"付出 0"判
+    }
+    if (valueMicro <= 0L) {
+      throw new IllegalArgumentException("E 的买方币单价要求估值 > 0: " + valueMicro);
+    }
+    return ceilDivPositive(
+        multiplyOrFail(unitPrice, HouseholdValuationBook.MICRO_PER_MILLI, "卖方币单价 × 1000"),
+        valueMicro);
+  }
+
+  /**
+   * ★★ <b>E：以买方支付币计价的单价（纯函数）</b>——限价过滤与可负担量预判用；不落账、不写日志。
+   *
+   * <p>★ {@code 0} = 说不出这种钱的价（调用方按"不划算"处理）；同币 ⇒ 原价原样返回。
+   */
+  private static long convertedBuyerUnitPrice(
+      MatchContext ctx, BuySlot buy, SellSlot sell, long unitPrice) {
+    CurrencySettlement terms = currencySettlement(ctx, buy, sell, unitPrice);
+    return terms == null ? UNPROFITABLE_CURRENCY : terms.buyerUnitPrice();
+  }
+
+  /**
+   * ★★ <b>E：不划算的落点（三条腿共用）</b>——买卖两侧各留<b>市场性理由</b>（{@link MarketUnfilledReason#PRICE_LIMIT}）+ 一条
+   * DEBUG "为什么"。
+   *
+   * <p>★ <b>为什么是 DEBUG 不是 INFO</b>（§一.9 的取舍，理由记在这里）：异币配对数远多于成交数，逐对 INFO 就是上一批 47.9
+   * 万条噪声的翻版；"这一轮发生了什么"由成交侧的 INFO 与轮汇总承担，"为什么没成"按纪律归 DEBUG。
+   *
+   * @param valueMicro 该币在卖方眼里的估值（{@code 0} = 说不出价）；{@code requiredMicro} 只进日志（{@code -1} = 不适用）
+   */
+  private static void refuseUnprofitableCurrency(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      long quantity,
+      long unitPrice,
+      long valueMicro,
+      String leg,
+      String why,
+      long requiredMicro) {
     if (sell.blocked == null) {
-      sell.blocked = MarketUnfilledReason.CURRENCY_MISMATCH;
+      sell.blocked = MarketUnfilledReason.PRICE_LIMIT;
     }
     if (buy.blocked == null) {
-      buy.blocked = MarketUnfilledReason.CURRENCY_MISMATCH;
+      buy.blocked = MarketUnfilledReason.PRICE_LIMIT;
+    }
+    if (!MARKET.isDebugEnabled()) {
+      return; // 日志失败/关闭不得影响结算，也不做无谓的字段拼装
     }
     EventLog.channel(MARKET)
-        .info(
+        .debug(
             LogEvent.of(
-                "MARKET_CURRENCY_MISMATCH_REJECTED",
+                "MARKET_CURRENCY_VALUE_REFUSED",
                 EconomyLogSource.ECONOMY_FX,
                 "day",
                 ctx.round.day,
                 "leg",
                 leg,
                 "reason",
-                MarketUnfilledReason.CURRENCY_MISMATCH.value(),
+                MarketUnfilledReason.PRICE_LIMIT.value(),
                 "commodity",
                 buy.order.commodity().value(),
-                "buyerPays",
-                buy.currency.value(),
-                "sellerReceives",
-                sell.receiveCurrency.value(),
                 "buyer",
                 buy.buyer.actor,
                 "seller",
                 sell.seller.actor,
-                "quantity",
-                quantity));
-    if (MARKET.isDebugEnabled()) {
-      // ★ 为什么"这一笔"在制度上就不成立（§一.9：业务拒绝 = INFO 具名，DEBUG 写"为什么"）。
-      //   三条腿共用这一条 why，只有 leg 段的措辞不同：钱腿是"付的币不是卖方要的币"，实物腿是
-      //   "这条腿根本不铸钱腿 ⇒ 不校验的话买方拿货而卖方从未收到它要的钱"。
-      EventLog.channel(MARKET)
-          .debug(
-              LogEvent.of(
-                  "MARKET_CURRENCY_MISMATCH_REJECTED_WHY",
-                  EconomyLogSource.ECONOMY_FX,
-                  "day",
-                  ctx.round.day,
-                  "leg",
-                  leg,
-                  "buyerHex",
-                  buy.hex,
-                  "sellerHex",
-                  sell.hex,
-                  "requestedQuantityMilli",
-                  quantity,
-                  "buyRemainingMilli",
-                  buy.remaining,
-                  "sellRemainingMilli",
-                  sell.remaining,
-                  "why",
-                  "goods-credit".equals(leg)
-                      ? "in-kind-credit-mints-no-money-leg: without this gate the buyer takes goods"
-                          + " and the seller never receives the currency it quotes in (I19 bypass)"
-                      : "the-only-settlement-currency-of-this-leg-is-buy.currency: paying in"
-                          + " another would be a silent 1:1 (I19)"));
+                "buyerPays",
+                buy.currency.value(),
+                "sellerOwn",
+                sell.market.numeraire().value(),
+                "valueMicro",
+                valueMicro,
+                "sellerUnitPriceMilli",
+                unitPrice,
+                "requestedQuantityMilli",
+                quantity,
+                "reservationMicro",
+                sell.reservationMicro,
+                "requiredMicro",
+                requiredMicro,
+                "why",
+                why));
+  }
+
+  /** 整数乘法：溢出 ⇒ 具名失败（与既有的"估价一律不静默回退到 double"同口径）。 */
+  private static long multiplyOrFail(long left, long right, String what) {
+    try {
+      return Math.multiplyExact(left, right);
+    } catch (ArithmeticException overflow) {
+      throw new IllegalStateException(
+          "E 的估值算式整数溢出（拒绝回退到 double）: " + what + " left=" + left + " right=" + right, overflow);
     }
-    return true;
+  }
+
+  /**
+   * ★★ <b>E：（§一.9 + 文档 §3.1）一笔异币成交的 INFO —— 哪两户、什么币、估值多少、成交比价</b>。
+   *
+   * <pre>
+   * impliedPerMille = 买方币单价 × 1000 ÷ 卖方币单价   // "1 毫卖方币要多少毫买方币"（‰）
+   * </pre>
+   *
+   * <p>★ 只在<b>真的成交</b>且付款为正时调用（拒绝路径见 {@link #refuseUnprofitableCurrency} 的 DEBUG）；
+   * 同币成交不进这里（那是改前的既有行为，没有新信息，也不该刷日志）。
+   */
+  private static void logForeignCurrencyFill(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long quantity,
+      long sellerUnitPrice,
+      long buyerUnitPrice,
+      long payment) {
+    CurrencySettlement terms = currencySettlement(ctx, buy, sell, sellerUnitPrice);
+    long valueMicro = terms == null ? 0L : terms.valueMicro();
+    long impliedPerMille =
+        sellerUnitPrice > 0L
+            ? multiplyOrFail(buyerUnitPrice, 1000L, "买方币单价 × 1000") / sellerUnitPrice
+            : 0L;
+    EventLog.channel(MARKET)
+        .info(
+            LogEvent.of(
+                "MARKET_FOREIGN_CURRENCY_FILL",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.round.day,
+                "commodity",
+                commodity.value(),
+                "buyer",
+                buy.buyer.actor,
+                "seller",
+                sell.seller.actor,
+                "buyerHex",
+                buy.hex,
+                "sellerHex",
+                sell.hex,
+                "buyerPays",
+                buy.currency.value(),
+                "sellerOwn",
+                sell.market.numeraire().value(),
+                "valueMicroPerMilli",
+                valueMicro,
+                "sellerUnitPriceMilli",
+                sellerUnitPrice,
+                "buyerUnitPriceMilli",
+                buyerUnitPrice,
+                "impliedPerMille",
+                impliedPerMille,
+                "quantityMilli",
+                quantity,
+                "paymentMilli",
+                payment));
   }
 
   /**
@@ -4041,14 +4330,12 @@ final class MarketSettlement {
       RouteContext route) {
     MarketRound round = ctx.round;
     CommodityId commodity = buy.order.commodity();
-    // ★★ A2a（§3.5 / I19 / F5 / M1）：**买方支付币种必须等于卖方收款币种** —— 这是本方法的第一件事。
-    //   不等 ⇒ 具名拒（买卖两侧都留 CURRENCY_MISMATCH，并各记一条 INFO 日志），成交量 0、账户一字未动。
-    //   ★ 本批之前这里没有校验：payment 直接按 buy.currency 铸腿 ⇒ 异币**静默 1:1**（一毫铜当一毫银付）。
-    //   ★ 家户要用异币买东西 ⇒ 先兑换（市场 FX 或政府外汇窗口），不许直接异币支付。
-    //   ★★ A2b：校验抽成**唯一拼写点** {@link #rejectCurrencyMismatch}，并同时用于**信用腿**
-    //      （{@code moneyCreditForBuy} 借来的钱同样按 {@code buy.currency} 付给卖方 —— A2a 只堵了现金腿，
-    //      信用腿原样可异币静默 1:1；见本类 {@code currencyMismatch} 的类注）。
-    if (rejectCurrencyMismatch(ctx, buy, sell, quantity, "cash")) {
+    // ★★ E（§3.1）：**本笔收什么钱、按什么价** —— 唯一拼写点 {@link #settlementUnitPrice}（三条腿共用）。
+    //   同币 ⇒ 返回原单价（判据恒成立 ⇒ 逐值退回改前）；异币 ⇒ 按"钱的价"折算买方币单价并复核判据
+    //   （买方付出金额 × 我对该币的估值 ≥ 我的保留价 × 数量）；不划算 ⇒ 返回 0、账户一字未动，
+    //   归因走既有的市场性理由（不是"币种不符"）。
+    long buyerUnitPrice = settlementUnitPrice(ctx, buy, sell, quantity, unitPrice, LEG_CASH, true);
+    if (buyerUnitPrice < 0L) {
       return 0L;
     }
     // ★ 2026-10-09：route 非 null 且 immediate = 区内跨格（有商号承运，货款/运费当日结清、没有 ShipmentBatch）；
@@ -4096,7 +4383,11 @@ final class MarketSettlement {
     }
 
     long payment =
-        ceilDiv(Math.multiplyExact(executed, unitPrice), EconomySettlement.MILLI_PER_GRAIN);
+        ceilDiv(Math.multiplyExact(executed, buyerUnitPrice), EconomySettlement.MILLI_PER_GRAIN);
+    if (!buy.currency.equals(sell.market.numeraire()) && payment > 0L) {
+      logForeignCurrencyFill(
+          ctx, buy, sell, commodity, executed, unitPrice, buyerUnitPrice, payment);
+    }
     // ★★ D-027：区级配额按**真正落账**的毛量逐笔扣（唯一扣减点；worker 扣本区副本、协调器回放时扣共享表
     //   ⇒ 跨区撮合看到的是剩余额度）。配额只压成交上限，不改价、不承担物流成本。
     ctx.consumeQuota(sell.region, commodity, executed);
@@ -4774,9 +5065,11 @@ final class MarketSettlement {
     if (sell.capacityBlocked) {
       return MarketUnfilledReason.LOGISTICS_CAPACITY;
     }
-    // ★★ A2a：异币拒是**制度原因**（I19），优先于"被谁挤掉/价格不合"这些市场原因 —— 不许被别的档掩盖。
-    if (sell.blocked == MarketUnfilledReason.CURRENCY_MISMATCH) {
-      return MarketUnfilledReason.CURRENCY_MISMATCH;
+    // ★★ E（§3.1）：成交时的"钱的价"裁决（说不出这种钱的价 / 折回本币不够保留价）给卖方留的是**市场性理由**
+    //   （{@link MarketUnfilledReason#PRICE_LIMIT}）—— 它优先于"被谁挤掉"这类泛化归因，否则 N1 的归因会被
+    //   OUTCOMPETED 掩盖。★ A2a 的 CURRENCY_MISMATCH 硬拒已退役，本档不再由本结算产生。
+    if (sell.blocked != null) {
+      return sell.blocked;
     }
     if (sellerSelfUsable(ctx, sell)) {
       return MarketUnfilledReason.UNSOLD_SELF_USABLE;
@@ -5843,13 +6136,31 @@ final class MarketSettlement {
     final MarketRegion region;
 
     /**
-     * ★★ <b>A2a（§3.5 / I19）：卖方法定收款币种</b> —— 取卖方所在格市场的 {@code numeraire}。
+     * ★★ <b>E（2026-10-09 裁定 R1/R6）：本格的"默认收款币"——不再是唯一可收</b>。
      *
-     * <p>★★ <b>它是"从静默错账变具名拒绝"的那一维</b>：本批之前成交路径<b>零币种相等校验</b>，异币按 {@code Map.of(buy.currency,
-     * payment)} 直接落账（= 静默 1:1）。现在 {@code executeTrade} 第一件事就是 比 {@code buy.currency} 与它，不等 ⇒
-     * 具名拒（{@link MarketUnfilledReason#CURRENCY_MISMATCH}）。
+     * <p>★★ <b>语义变更</b>：A2a 时代它是"卖方只收这一种钱"（不等 ⇒ 具名拒 {@link
+     * MarketUnfilledReason#CURRENCY_MISMATCH}）。E 批之后它只是<b>本格默认</b>（= 本格价表的计价币，卖方"自己的钱"）：
+     * 实际收款币由成交时的<b>估值比较</b>决定（{@link #settlementUnitPrice} 的唯一拼写点）——买方付什么币，
+     * 卖方就按<b>自己对该币的估值</b>判划不划算。三不管格没有默认（R6：任意货币流通），其"任意"落成 {@link CurrencyValuation}
+     * 的<b>当地实际流通币种集合</b>（不是世界全部币种，见那里的算力护栏）。
+     *
+     * <p>★ 唯一的<b>结构性</b>用途：{@code buy.currency == 本币} ⇒ 同币成交，判据恒成立 ⇒ 逐值退回改前行为 （E3/N2 的保证）。
      */
     final CurrencyId receiveCurrency;
+
+    /**
+     * ★★ <b>E：卖方对本次出售的那件商品的保留价</b>（微本格计价币 / 商品单位；与 {@link HouseholdValuationBook#MICRO_PER_MILLI}
+     * 同微刻度）。
+     *
+     * <p>★ <b>为什么在<b>建槽位时</b>算一次并冻结</b>：成交判据（买方付出金额 × 我对该币的估值 ≥ 我的保留价 × 数量）必须在<b>worker
+     * 的区内副本</b>与<b>协调器回放</b>上给出同一个答案（{@code replayRegionOutcome} 会复算 {@code
+     * executeTrade}，槽位状态漂开就具名抛）——若在撮合中途读库存现算，两边的库存副本已经不同。 故它取自<b>本轮计划快照</b>（{@code ordersFor}
+     * 用的同一份），随槽位（含副本）一起走。
+     *
+     * <p>★ {@code 0} = 没有保留价（经营者没有家户行 / 没有价表 / 未定价 / 明确 0 价）⇒ 判据不新增门槛。 ★
+     * 算式与套利用的保留价<b>同一个拼写点</b>（{@link HouseholdValuationBook#reservationMicro}）。
+     */
+    final long reservationMicro;
 
     /**
      * ★★ <b>D-027：本槽所属区的规范 id</b>（= {@code region.node().nodeId()}）—— 有效参考价按它查区级调控 （单区里就是 {@code
@@ -5879,9 +6190,11 @@ final class MarketSettlement {
     boolean capacityBlocked;
 
     /**
-     * ★★ <b>A2a：制度性拒因（目前只有 {@link MarketUnfilledReason#CURRENCY_MISMATCH}）</b>—— 与 {@link
-     * BuySlot#blocked} 对称：它记的是"制度上一笔都不许成交"的原因，优先级高于市场性归因 （见 {@link #sellerReason}）。{@code null} =
-     * 没有制度性拒因。
+     * ★★ <b>卖方槽位的具名拒因</b>—— 与 {@link BuySlot#blocked} 对称：优先级高于"被谁挤掉"这类泛化归因 （见 {@link
+     * #sellerReason}）。{@code null} = 没有具名拒因。
+     *
+     * <p>★ <b>E（2026-10-09）起它装的是市场性理由</b>（{@link MarketUnfilledReason#PRICE_LIMIT}：说不出这个价 /
+     * 折回本币不够保留价），不再装 A2a 的制度性 {@link MarketUnfilledReason#CURRENCY_MISMATCH} （该档已退役，不再由本结算产生）。
      */
     MarketUnfilledReason blocked;
 
@@ -5899,6 +6212,7 @@ final class MarketSettlement {
       this.region = region;
       this.regionId = region.node().nodeId();
       this.receiveCurrency = market.numeraire();
+      this.reservationMicro = reservationMicroOf(round, seller, market, order.commodity());
       this.remaining = order.sellable();
       this.costEstimate = costEstimateOf(round, market, seller, order.commodity());
       this.costTieBreak = ProducerCostBook.canonicalKey(hex, seller.actor);
@@ -5913,6 +6227,7 @@ final class MarketSettlement {
       this.region = other.region;
       this.regionId = other.regionId;
       this.receiveCurrency = other.receiveCurrency;
+      this.reservationMicro = other.reservationMicro; // ★ E：保留价是槽位的冻结事实（副本逐值照抄）
       this.blocked = other.blocked;
       this.costEstimate = other.costEstimate;
       this.costTieBreak = other.costTieBreak;
@@ -5921,6 +6236,29 @@ final class MarketSettlement {
       this.frozenRemaining = other.frozenRemaining;
       this.baseFrozenGoods = other.baseFrozenGoods;
     }
+  }
+
+  /**
+   * ★★ <b>E：卖方槽位的保留价（微本格计价币 / 商品单位）</b>——建槽位时从本轮计划快照算一次（{@link SellSlot#reservationMicro}
+   * 的注写了为什么必须冻结）。
+   *
+   * <p>★ 可动库存 = 持有 − 已冻结（与 {@code ordersFor} 的可卖余量同源），<b>不是</b>卖单余量：判据问的是"这批货 对我值多少"，不是"我挂了多少"。★
+   * 经营者（{@code household == null}）没有为它记价的账 ⇒ 返回 0（不新增门槛）。
+   */
+  private static long reservationMicroOf(
+      MarketRound round, Participant seller, Market market, CommodityId commodity) {
+    if (seller.household == null) {
+      return 0L;
+    }
+    long movable =
+        Math.max(0L, stockOf(round, seller, commodity) - frozenGoodsOf(round, seller, commodity));
+    return HouseholdValuationBook.reservationMicro(
+        market,
+        commodity,
+        seller.household,
+        round.householdEconomies.get(seller.household),
+        movable,
+        HouseholdValuationBook.NO_TRADE_HISTORY);
   }
 
   /**
@@ -6023,6 +6361,15 @@ final class MarketSettlement {
     /** ★★ D-027：区 id → 该区适用的调控（每轮按区只读一次；未锚定/未定义 ⇒ 空表）。 */
     final Map<String, MarketRegulation> regulationByRegionId;
 
+    /**
+     * ★★ <b>E（2026-10-09）：本轮"钱的价格"</b>（世界行情 + 当地实际流通的币种）—— 成交判据（{@link
+     * #settlementUnitPrice}）的唯一取价处。★ 逐轮瞬态：不进 {@code EconomyData}、不进变更集、不落盘（I17）。
+     *
+     * <p>★ <b>为什么由协调器统一装配并传给 worker 副本</b>：它含"哪些钱在当地流通"（依赖本轮<b>全部</b>家户的 货币账户），而 worker 的区副本只带走本区家户
+     * ⇒ 各自现算会漂开，进而在"认不认得出这种钱"上给出不同答案 （回放对不上就具名抛）。故一份实例贯穿本轮。
+     */
+    final CurrencyValuation currencyValuation;
+
     final Optional<ActorRef> carrier;
     final Map<ProductionOrganizationId, MerchantFirm> merchantFirms;
     final MerchantSettlement.CarrierPool carrierPool;
@@ -6064,16 +6411,7 @@ final class MarketSettlement {
     long crossRegionFills;
     long shipmentSequence;
 
-    MatchContext(
-        MarketRound round,
-        Map<HexCoord, Market> markets,
-        MarketTopology topology,
-        Optional<ActorRef> carrier,
-        Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
-        MerchantSettlement.CarrierPool carrierPool) {
-      this(round, markets, topology, carrier, merchantFirms, carrierPool, round.regulation());
-    }
-
+    /** ★★ <b>E：带"钱的价"的完整构造器</b>（协调器与区副本都用它 —— 副本传入<b>协调器那一份</b>实例， 保证"认不认得出某种钱"两边同一个答案）。 */
     MatchContext(
         MarketRound round,
         Map<HexCoord, Market> markets,
@@ -6081,7 +6419,8 @@ final class MarketSettlement {
         Optional<ActorRef> carrier,
         Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
         MerchantSettlement.CarrierPool carrierPool,
-        MarketRegulation regulation) {
+        MarketRegulation regulation,
+        CurrencyValuation currencyValuation) {
       this.round = round;
       this.markets = markets;
       this.topology = topology;
@@ -6089,6 +6428,8 @@ final class MarketSettlement {
       this.creditConfig = round.creditConfig();
       this.debts = round.debts();
       this.hexTradeCost = new HexTradeCost(topology);
+      this.currencyValuation =
+          Objects.requireNonNull(currencyValuation, "MatchContext 的\"钱的价\"不得为 null（没有就给 none()）");
       this.carrier = carrier;
       this.merchantFirms = merchantFirms;
       this.carrierPool = carrierPool;
@@ -6099,6 +6440,11 @@ final class MarketSettlement {
       this.regulationByRegionId =
           anchorRegionId == null ? Map.of() : Map.of(anchorRegionId, this.regulation);
       configureQuotas();
+    }
+
+    /** ★★ E：本轮的"钱的价"（只读）。 */
+    CurrencyValuation currencyValuation() {
+      return currencyValuation;
     }
 
     /** 逐轮从调控重建配额表（空表 ⇒ 无配额；{@code Long.MAX_VALUE} = 无上限）。 */

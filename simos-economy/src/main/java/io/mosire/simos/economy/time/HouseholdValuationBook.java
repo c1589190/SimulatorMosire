@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -100,8 +101,22 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
   private final CurrencyId numeraire;
   private final Map<HouseholdId, Map<CommodityId, Long>> reservationsMicro;
 
+  /**
+   * ★★ <b>E（2026-10-09 裁定 R1/R3）：家户对每种钱的估值</b>（微 numeraire / 毫币；与 {@link #reservationsMicro}
+   * 同一微刻度，见 {@link #MICRO_PER_MILLI}）。
+   *
+   * <p>★ <b>本币对自己 = 面值 1:1</b>（{@code 1000} 微/毫）—— 这就是 R3「没做口岸 ⇒ 事实上的同一个市场区 ⇒ 自然统一汇率」的锚：两张表都从同一个
+   * {@link CurrencyValuation} 现算，故任意两币的估值比在各地一致。
+   *
+   * <p>★ <b>键集是有界的</b>（R6 的算力护栏）：本币 + 本户实际持有的币 + 世界有报价的币 —— <b>不是</b>世界全部币种； 缺键 =
+   * 本表说不出这个价（调用方按"不可判"处理，绝不静默当 1:1）。
+   */
+  private final Map<HouseholdId, Map<CurrencyId, Long>> currencyValueMicro;
+
   private HouseholdValuationBook(
-      CurrencyId numeraire, Map<HouseholdId, Map<CommodityId, Long>> reservations) {
+      CurrencyId numeraire,
+      Map<HouseholdId, Map<CommodityId, Long>> reservations,
+      Map<HouseholdId, Map<CurrencyId, Long>> currencyValues) {
     this.numeraire = Objects.requireNonNull(numeraire, "家户价目表 numeraire 不得为 null");
     LinkedHashMap<HouseholdId, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
     for (Map.Entry<HouseholdId, Map<CommodityId, Long>> entry : reservations.entrySet()) {
@@ -116,6 +131,19 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
       copy.put(entry.getKey(), Collections.unmodifiableMap(prices));
     }
     this.reservationsMicro = Collections.unmodifiableMap(copy); // ★ 保序冻结（不用 Map.copyOf：迭代序不是纯函数）
+    LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> currencyCopy = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, Map<CurrencyId, Long>> entry : currencyValues.entrySet()) {
+      Objects.requireNonNull(entry.getKey(), "家户货币估值表的家户键不得为 null");
+      LinkedHashMap<CurrencyId, Long> values = new LinkedHashMap<>();
+      for (Map.Entry<CurrencyId, Long> value : entry.getValue().entrySet()) {
+        if (value.getKey() == null || value.getValue() == null || value.getValue() <= 0L) {
+          throw new IllegalArgumentException("家户货币估值表的键/值必须非 null 且为正: " + value.getKey());
+        }
+        values.put(value.getKey(), value.getValue());
+      }
+      currencyCopy.put(entry.getKey(), Collections.unmodifiableMap(values));
+    }
+    this.currencyValueMicro = Collections.unmodifiableMap(currencyCopy); // ★ 同上：保序冻结
   }
 
   @Override
@@ -146,6 +174,20 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
     Objects.requireNonNull(commodity, "HouseholdValuationBook.reservationMicroOf 的商品不得为 null");
     Map<CommodityId, Long> prices = reservationsMicro.get(household);
     return prices == null ? 0L : prices.getOrDefault(commodity, 0L);
+  }
+
+  /**
+   * ★★ <b>该户对某种钱的估值（微 numeraire / 毫币）</b>——与 {@link #reservationsMicro} 同一微刻度；本币对自己 恒 {@link
+   * #MICRO_PER_MILLI}（面值 1:1）。
+   *
+   * <p>★ {@code <= 0} = <b>本表说不出这个价</b>（该币既没有世界行情，也不在本户手里）⇒ 调用方按"不可判"处理， <b>不得</b>当 1:1 静默放行。★
+   * 与结算侧的 {@link CurrencyValuation#valuationMicro} 同源（同一份行情表）， 不是第二把尺。
+   */
+  long currencyValueMicroOf(HouseholdId household, CurrencyId currency) {
+    Objects.requireNonNull(household, "HouseholdValuationBook.currencyValueMicroOf 的家户不得为 null");
+    Objects.requireNonNull(currency, "HouseholdValuationBook.currencyValueMicroOf 的币种不得为 null");
+    Map<CurrencyId, Long> values = currencyValueMicro.get(household);
+    return values == null ? 0L : values.getOrDefault(currency, 0L);
   }
 
   /**
@@ -180,19 +222,37 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
       Map<HouseholdId, HouseholdEconomy> households,
       Map<HouseholdId, HouseholdResourceSnapshot> snapshots,
       TradeHistory tradeHistory) {
+    return derive(households, snapshots, tradeHistory, CurrencyValuation.none());
+  }
+
+  /**
+   * ★★ <b>逐 tick 派生一份家户价目表（带"钱的价格"这一维）</b>——形制与三参入口逐字相同，只多一份世界行情： 每户的 {@link #currencyValueMicro} =
+   * {本币, 本户持有的币, 世界有报价的币} 三者的并集（<b>有界</b>，R6 护栏）， 值一律由 {@link CurrencyValuation#valuationMicro}
+   * 现算（本币 1:1 / 世界行情 / 当地持有 ⇒ 面值 / 否则说不出价）。
+   *
+   * @param valuations 本轮世界行情（没有就给 {@link CurrencyValuation#none()} ⇒ 只有本币 1:1 与面值）
+   */
+  static HouseholdValuationBook derive(
+      Map<HouseholdId, HouseholdEconomy> households,
+      Map<HouseholdId, HouseholdResourceSnapshot> snapshots,
+      TradeHistory tradeHistory,
+      CurrencyValuation valuations) {
+    Objects.requireNonNull(tradeHistory, "derive 的成交史查询口不得为 null（没有就给 NO_TRADE_HISTORY）");
+    Objects.requireNonNull(valuations, "derive 的行情表不得为 null（没有就给 CurrencyValuation.none()）");
     Objects.requireNonNull(households, "derive 的家户行表不得为 null");
     Objects.requireNonNull(snapshots, "derive 的资源快照表不得为 null");
-    Objects.requireNonNull(tradeHistory, "derive 的成交史查询口不得为 null（没有就给 NO_TRADE_HISTORY）");
     List<HouseholdId> ordered = new ArrayList<>(households.keySet());
     ordered.sort(Comparator.comparing(HouseholdId::value));
     CurrencyId numeraire = null;
     LinkedHashMap<HouseholdId, Map<CommodityId, Long>> derived = new LinkedHashMap<>();
+    LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> currencyValues = new LinkedHashMap<>();
     for (HouseholdId household : ordered) {
       HouseholdEconomy row = households.get(household);
       HouseholdResourceSnapshot snapshot = snapshots.get(household);
       if (row == null || snapshot == null || snapshot.market() == null) {
         // ★ 没有行/没有快照/没有市场 ⇒ 该户整户不给价（= 逐项回 0 = 回落市场默认；负向用例 N7 由此成立）
         derived.put(household, Map.of());
+        currencyValues.put(household, Map.of());
         continue;
       }
       Market market = snapshot.market();
@@ -201,37 +261,98 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
       }
       LinkedHashMap<CommodityId, Long> prices = new LinkedHashMap<>();
       for (CommodityId commodity : snapshot.pricedCommodities()) {
-        if (!market.hasPrice(commodity)) {
-          continue; // "从未定价"与"明确 0 价"是两件事（Market 的口径）；这里只在有定价行时给保留价
+        long reservationMicro =
+            reservationMicro(
+                market, commodity, household, row, snapshot.goodsOf(commodity), tradeHistory);
+        if (reservationMicro > 0L) {
+          prices.put(commodity, reservationMicro);
         }
-        long base = market.priceOf(commodity);
-        if (base <= 0L) {
-          continue; // 明确 0 价（免费）：保留价算式无意义（会在套利里变成无限收益）⇒ 不给价，调用方具名跳过
-        }
-        long baseMicro = Math.multiplyExact(base, MICRO_PER_MILLI);
-        long target = row.expectedNeedMilli(commodity, HOLD_DAYS);
-        long stock = snapshot.goodsOf(commodity);
-        long shortfall = perMilleOf(target, target - stock);
-        long saturation =
-            target > 0L ? perMilleOf(target, stock - target) : (stock > 0L ? 1000L : 0L);
-        long pressure =
-            Math.addExact(
-                Math.multiplyExact(NECESSITY_PREMIUM_PER_MILLE, shortfall) / 1000L,
-                -Math.multiplyExact(SATURATION_DISCOUNT_PER_MILLE, saturation) / 1000L);
-        long reservationMicro = applyPressure(baseMicro, pressure);
-        long history = tradeHistory.lastTradePriceOf(household, commodity);
-        if (history > 0L) {
-          reservationMicro = blend(reservationMicro, Math.multiplyExact(history, MICRO_PER_MILLI));
-        }
-        prices.put(commodity, reservationMicro);
       }
       derived.put(household, prices.isEmpty() ? Map.of() : Collections.unmodifiableMap(prices));
+      currencyValues.put(household, deriveCurrencyValues(market, snapshot, valuations));
     }
     return new HouseholdValuationBook(
         numeraire == null
             ? io.mosire.simos.economy.api.money.MoneyVocabulary.SILVER_CURRENCY
             : numeraire,
-        derived);
+        derived,
+        currencyValues);
+  }
+
+  /**
+   * ★★ <b>逐户"钱的价格"表</b>：本币（面值 1:1）+ 本户实际持有的币（当地实际存在 ⇒ 没行情也按面值） + 世界有报价的币（有行情 ⇒ 按行情）。键集按币种 id
+   * 升序冻结（内容的纯函数）。
+   *
+   * <p>★ 说不出价的币（既没行情、本户也没持有）<b>不进表</b> —— 缺键就是"说不出这个价"（调用方按不可判处理）。
+   */
+  private static Map<CurrencyId, Long> deriveCurrencyValues(
+      Market market, HouseholdResourceSnapshot snapshot, CurrencyValuation valuations) {
+    LinkedHashSet<CurrencyId> candidates = new LinkedHashSet<>();
+    candidates.add(market.numeraire());
+    List<CurrencyId> held = new ArrayList<>(snapshot.money().keySet());
+    held.sort(Comparator.comparing(CurrencyId::value));
+    candidates.addAll(held);
+    List<CurrencyId> quoted = new ArrayList<>(valuations.quotedCurrencies());
+    quoted.sort(Comparator.comparing(CurrencyId::value));
+    candidates.addAll(quoted);
+    LinkedHashMap<CurrencyId, Long> values = new LinkedHashMap<>();
+    for (CurrencyId currency : candidates) {
+      boolean heldLocally = snapshot.moneyOf(currency) > 0L || currency.equals(market.numeraire());
+      long valueMicro = valuations.valuationMicro(market.numeraire(), currency, heldLocally);
+      if (valueMicro > 0L) {
+        values.put(currency, valueMicro);
+      }
+    }
+    return values.isEmpty() ? Map.of() : Collections.unmodifiableMap(values);
+  }
+
+  /**
+   * ★★ <b>保留价算式（微 numeraire / 商品单位）——唯一拼写点</b>：{@link #derive} 与市场卖方槽位 （{@code
+   * MarketSettlement.SellSlot}）都调它，于是"市场认为卖方的保留价是多少"与"套利看到的保留价"同源。
+   *
+   * <pre>
+   * base      = market.priceOf(commodity)                     // 区价
+   * target    = row.expectedNeedMilli(commodity, HOLD_DAYS)   // Social 权威的当日物化视图 × 天数
+   * pressure  = NECESSITY_PREMIUM × shortfall‰ − SATURATION_DISCOUNT × saturation‰
+   * derived   = max(1, baseMicro + baseMicro × pressure ÷ 1000)
+   * history   > 0 ⇒ 与自有成交史加权
+   * </pre>
+   *
+   * @param movableStock 该商品的可动库存（已扣冻结；≥ 0）
+   * @return {@code <= 0} = 本户对该商品没有保留价（没有价表 / 从未定价 / 明确 0 价）
+   */
+  static long reservationMicro(
+      Market market,
+      CommodityId commodity,
+      HouseholdId household,
+      HouseholdEconomy row,
+      long movableStock,
+      TradeHistory tradeHistory) {
+    Objects.requireNonNull(commodity, "reservationMicro 的商品不得为 null");
+    Objects.requireNonNull(household, "reservationMicro 的家户不得为 null");
+    Objects.requireNonNull(tradeHistory, "reservationMicro 的成交史查询口不得为 null");
+    if (market == null || row == null || !market.hasPrice(commodity)) {
+      return 0L; // "从未定价"与"明确 0 价"是两件事（Market 的口径）；这里只在有定价行时给保留价
+    }
+    long base = market.priceOf(commodity);
+    if (base <= 0L) {
+      return 0L; // 明确 0 价（免费）：保留价算式无意义（会在套利里变成无限收益）⇒ 不给价
+    }
+    long baseMicro = Math.multiplyExact(base, MICRO_PER_MILLI);
+    long target = row.expectedNeedMilli(commodity, HOLD_DAYS);
+    long stock = Math.max(0L, movableStock);
+    long shortfall = perMilleOf(target, target - stock);
+    long saturation = target > 0L ? perMilleOf(target, stock - target) : (stock > 0L ? 1000L : 0L);
+    long pressure =
+        Math.addExact(
+            Math.multiplyExact(NECESSITY_PREMIUM_PER_MILLE, shortfall) / 1000L,
+            -Math.multiplyExact(SATURATION_DISCOUNT_PER_MILLE, saturation) / 1000L);
+    long reservationMicro = applyPressure(baseMicro, pressure);
+    long history = tradeHistory.lastTradePriceOf(household, commodity);
+    if (history > 0L) {
+      reservationMicro = blend(reservationMicro, Math.multiplyExact(history, MICRO_PER_MILLI));
+    }
+    return reservationMicro;
   }
 
   /** {@code share × 1000 ÷ total}，夹在 {@code [0, 1000]}（{@code total <= 0} ⇒ 0）。 */

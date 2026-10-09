@@ -55,8 +55,11 @@ import org.slf4j.Logger;
  * 载荷）。
  *
  * <p>★ <b>已知后果（写在命令面上，不是缺陷）</b>：改了某一格的计价币后，世界里出现**两种计价币** ⇒ {@code MarketTopologyBook.from}
- * 的"同币即同区"判据（D-027）不再成立，市场拓扑退回"城市节点 + tier 半径"装配； 且**任何**买方支付币 ≠ 卖方收款币的成交尝试一律具名拒（I19）——
- * 家户要用异币买东西必须先走外汇（市场 FX 或政府窗口）。
+ * 的"同币即同区"判据（D-027）不再成立，市场拓扑退回"城市节点 + tier 半径"装配。
+ *
+ * <p>★★ <b>E（2026-10-09）之后"异币"不再是拒因</b>：买方支付币 ≠ 卖方本格计价币时，卖方按**自己对那种钱的估值**判断划算与否 （{@link
+ * io.mosire.simos.economy.time.MarketSettlement} 的唯一拼写点；估值 = 世界汇率行情 / 当地实际流通 ⇒ 面值）。 本命令正是 E
+ * 判据的现场制造器（"买方持铜 / 卖方按银报价收银"：把某一格计价币改成银即可），不再需要"先走外汇"。
  */
 public final class EconomySetMarketNumeraireHandler implements CommandHandler, GmOnlyCommand {
 
@@ -121,7 +124,8 @@ public final class EconomySetMarketNumeraireHandler implements CommandHandler, G
                   "worldNumeraires",
                   distinct,
                   "note",
-                  "不折算任何余额与价格（世界无汇率）；异币成交将具名拒 currency_mismatch"));
+                  "不折算任何余额与价格（世界无汇率）—— 本格此后按新币报价；买方付什么币、卖方按自己对那种钱的估值"
+                      + "判划不划算（E：MarketSettlement.settlementUnitPrice）"));
       if (LOG.isDebugEnabled()) {
         EventLog.channel(LOG)
             .debug(
