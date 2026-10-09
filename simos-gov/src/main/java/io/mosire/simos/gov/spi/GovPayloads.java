@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.market.MarketOrderKind;
 import io.mosire.simos.economy.api.market.PortRule;
 import io.mosire.simos.economy.api.market.PortTaxMode;
 import io.mosire.simos.economy.api.market.PortTaxRule;
@@ -157,8 +158,16 @@ final class GovPayloads {
    *             "entryTax":{"mode":"per_unit_milli","amount":5},
    *             "exitTax":{"mode":"ad_valorem_per_mille","amount":100}},
    *    "cloth":{"exitRestrictionPerMille":0}},
-   *  "currencyRules":{"silver":{"entryRestrictionPerMille":1000}}}
+   *  "currencyRules":{
+   *    "silver":{"lending":{"entryRestrictionPerMille":1000},
+   *              "commodity":{"exitRestrictionPerMille":250,
+   *                           "exitTax":{"mode":"ad_valorem_per_mille","amount":50}}}}}
    * }</pre>
+   *
+   * <p>★★ <b>币种表多一层"挂单类型"键</b>（P-T1e；设计书 §14.3-4）：{@code currencyRules} 的值是 {@code {挂单类型字面量 →
+   * 规则对象}}（词表 = {@code exchange|commodity|lending}，见 {@link
+   * io.mosire.simos.economy.api.market.MarketOrderKind}）—— 只有一个"币种 → 规则"的键<b>表达不出</b>用户给的规则
+   * "禁止本市场区货币被外国借贷"（借贷走的也是市场挂单）。<b>类型键不认识/值不是对象 ⇒ 具名拒</b>（不静默当"该类没规则"）。
    *
    * <p>★ <b>每类四个数</b>（2026-10-10 冻结口径 T-5）：入口限制‰ / 出口限制‰ / 入口税 / 出口税 —— 四个字段<b>各自可缺省</b> （缺省 ⇒ 0 =
    * 不限制 / 不收税 = {@link PortRule#unrestricted()}，I-P1）；显式 0 与未设逐值同义。
@@ -168,8 +177,9 @@ final class GovPayloads {
    * mode} 决定（毫/单位 或 货值‰），<b>缺省 {@code {"mode":"none"}}</b> = 不收税。
    *
    * <p>★ <b>fail-closed 的拒因</b>：非对象 / 类不是对象 / 字段名不认识（<b>拼错一个字段名 = 具名拒</b>，不静默当 0）/ 非整数 / 键空白 /
-   * 键词法非法 / 负限制 / 负税 / {@code mode} 非法 / {@code none} 带非 0 数额 —— 全部在这里拒（N1 负向判据： <b>非法政策
-   * fail-closed 具名拒，不静默忽略</b>）。"这个商品/币种在世界里存在吗"由组合根判（gov 看不见经济词表）。
+   * 键词法非法 / 负限制 / 负税 / {@code mode} 非法 / {@code none} 带非 0 数额 / <b>未登记的挂单类型</b> —— 全部在这里拒（N1 负向判据：
+   * <b>非法政策 fail-closed 具名拒，不静默忽略</b>）。"这个商品/币种在世界里存在吗"由组合根判（gov 看不见经济词表）； 挂单类型是 gov 编译期看得见的受控词表 ⇒
+   * 在这里判。
    *
    * <p>★ <b>未知的顶层字段不在这里拒</b>（与 {@link #administrationPlan} 等载荷同一条既有口径：额外字段留给将来的扩展）；
    * 但<b>规则对象内部</b>的字段名必须逐个认识（那是"一条规则的完整拼法"，少一个字母就是另一条规则）。
@@ -177,8 +187,94 @@ final class GovPayloads {
   static GovPortPolicy portPolicy(JsonNode payload) {
     Map<CommodityId, PortRule> commodities =
         ruleTable(payload, "commodityRules", CommodityId::parse);
-    Map<CurrencyId, PortRule> currencies = ruleTable(payload, "currencyRules", CurrencyId::parse);
+    Map<CurrencyId, Map<MarketOrderKind, PortRule>> currencies = currencyRuleTable(payload);
     return new GovPortPolicy(commodities, currencies);
+  }
+
+  /**
+   * ★★ <b>币种规则表（两层：币种 → 挂单类型 → 四元组）</b>：缺失/{@code null} ⇒ 空；非对象 / 币种键空白 / 币种键词法非法 / 内层不是对象 /
+   * <b>未登记的挂单类型</b> / 类型下的值不是对象 ⇒ 具名拒。内外两层都保序。
+   *
+   * <p>★ 内层<b>空对象</b>（{@code {"silver":{}}}）= 这种钱一个类型都没设规则 = 与不写这条同义（不拒：它只是"没规则"的另一种拼法）。
+   */
+  private static Map<CurrencyId, Map<MarketOrderKind, PortRule>> currencyRuleTable(
+      JsonNode payload) {
+    String field = "currencyRules";
+    JsonNode node = payload.get(field);
+    if (node == null || node.isNull()) {
+      return Map.of();
+    }
+    if (!node.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是对象（币种 → 挂单类型 → 规则对象）");
+    }
+    Map<CurrencyId, Map<MarketOrderKind, PortRule>> table = new LinkedHashMap<>();
+    node.fields()
+        .forEachRemaining(
+            entry -> {
+              String key = entry.getKey();
+              if (key == null || key.isBlank()) {
+                throw new IllegalArgumentException("字段 " + field + " 的键不得为空白");
+              }
+              if (!entry.getValue().isObject()) {
+                throw new IllegalArgumentException(
+                    "字段 " + field + "[" + key + "] 必须是对象（" + legalOrderKinds() + " → 规则对象）");
+              }
+              CurrencyId currency;
+              try {
+                currency = CurrencyId.parse(key);
+              } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("字段 " + field + " 的键不是合法稳定 id: " + key, e);
+              }
+              Map<MarketOrderKind, PortRule> byKind = new LinkedHashMap<>();
+              entry
+                  .getValue()
+                  .fields()
+                  .forEachRemaining(
+                      kindEntry -> {
+                        String kindKey = kindEntry.getKey();
+                        MarketOrderKind orderKind;
+                        try {
+                          orderKind = MarketOrderKind.parse(kindKey);
+                        } catch (IllegalArgumentException e) {
+                          throw new IllegalArgumentException(
+                              "字段 "
+                                  + field
+                                  + "["
+                                  + key
+                                  + "] 的挂单类型非法: "
+                                  + kindKey
+                                  + "（合法值: "
+                                  + legalOrderKinds()
+                                  + "）",
+                              e);
+                        }
+                        if (!kindEntry.getValue().isObject()) {
+                          throw new IllegalArgumentException(
+                              "字段 "
+                                  + field
+                                  + "["
+                                  + key
+                                  + "]["
+                                  + kindKey
+                                  + "] 必须是对象（入口/出口限制 + 入口/出口税）");
+                        }
+                        byKind.put(
+                            orderKind,
+                            portRule(
+                                kindEntry.getValue(), field + "[" + key + "][" + kindKey + "]"));
+                      });
+              table.put(currency, byKind);
+            });
+    return table;
+  }
+
+  /** 合法的挂单类型字面量（拒绝消息里列出全部，便于一次改对）。 */
+  private static String legalOrderKinds() {
+    List<String> kinds = new ArrayList<>();
+    for (MarketOrderKind kind : MarketOrderKind.all()) {
+      kinds.add(kind.value());
+    }
+    return String.join("|", kinds);
   }
 
   /**

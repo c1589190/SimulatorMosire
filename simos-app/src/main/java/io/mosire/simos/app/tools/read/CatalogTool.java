@@ -368,16 +368,22 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "gov.SetPortPolicy",
               "unitId(必填；GOV 单位 id 且带 GovernmentFormation),"
-                  + " commodityRules?{商品→规则对象}, currencyRules?{币种→规则对象}"
+                  + " commodityRules?{商品→规则对象},"
+                  + " currencyRules?{币种→{挂单类型→规则对象}}"
                   + "（★ P-T1a 四元组：每类四个数 entryRestrictionPerMille(入口限制‰) /"
                   + " exitRestrictionPerMille(出口限制‰) / entryTax / exitTax，四个字段各自可缺省"
                   + "（缺省 = 0 = 不限制/不收税）；税从量从价都行：entryTax/exitTax ="
                   + " {mode:\"none|per_unit_milli|ad_valorem_per_mille\", amount:N}（从量 = 毫/单位，"
-                  + "从价 = 货值‰），省略 = 不收税；规则对象里拼错字段名 ⇒ 具名拒（不静默当 0）；两张表可缺省；"
+                  + "从价 = 货值‰），省略 = 不收税；规则对象里拼错字段名 ⇒ 具名拒（不静默当 0）；"
+                  + " ★★ P-T1e：挂单类型 = exchange(币↔币兑换)|commodity(货↔钱)|lending(借贷)，"
+                  + "未登记的类型 ⇒ 具名拒；规则按 (币种, 挂单类型, 方向) 禁止某一类挂单进出**市场区**"
+                  + "（用户例：禁止本市场区货币被外国借贷；两侧都要过：入口按目的区、出口按源区；"
+                  + "只作用在跨区流动上 —— 同区不受口岸管，也不是\"本币不得在境外使用\"）；"
+                  + "币种手续费本批**只落形状+读数**（没有收款面，不搬钱）；两张表可缺省；"
                   + "缺省/显式空对象 = 空表 = 该类**不限制**（I-P1 用户「肯定0啊」）；同类型重复设置 = **整表替换**；"
                   + "与既有政策逐值相同 ⇒ 幂等 no-op 不落 revision；负限制/负税/未知类/坏 JSON/未知单位 ⇒"
                   + " 具名 Rejected 零 revision；★ 跨区过境按 entry/exit **两侧相乘**节流"
-                  + "（E_源出口 × E_目的入口）；过境税本批只落形状（真收款 = P-T1b）；★ GmOnly 标记只挡住令/"
+                  + "（E_源出口 × E_目的入口）；商品过境税已真收（P-T1b）；★ GmOnly 标记只挡住令/"
                   + "RegisterEffect/决策人 catalog 三条路径，不拦命令总线）"),
           Map.entry(
               "gov.SetAdministrationPlan",

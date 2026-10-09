@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.market.MarketOrderKind;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.PortContactSurface;
 import io.mosire.simos.economy.api.market.PortDirection;
@@ -52,8 +53,9 @@ import java.util.Set;
  *             e_k = 该政府的口岸效率（{@link GovEfficiency.Efficiency#portEfficiencyPerMille()} 第三维）
  *             enforcement_k = ⌊s_k × e_k ÷ 1000⌋                       ← 逐政府执行，不合并成"区的一个效率"（I-P5）
  * ③ 市场区 Z 对类 c 的<b>每个方向</b>：规则 = OR（∃k: s_k = 0）；总效率 E = 按 w_k 加权平均（{@link PortRegimeAggregation}）
+ *    ★ P-T1e：币种维的"类" = <b>（币种 × 挂单类型）</b>（{@link MarketOrderKind}）—— 同一个币上"兑换/货↔钱/借贷"各自一套 E
  * ④ 注入经济侧：逐区逐类<b>两个方向</b>的"实际抓得多严" = 1000 − E（‰），进 {@link PortEnforcementInput}
- *    —— 出口侧供"跨区两道闸"（E_源），入口侧供币种估值减项与（P-T1b 的）税
+ *    —— 商品维供"跨区两道闸"（E_源）、币种维供"币种挂单闸"（入口/出口各一，按挂单类型分列）与（既有）估值减项
  * </pre>
  *
  * <p>★★ <b>为什么折算只能在组合根</b>：{@code simos-gov} 的 enforcer 禁 {@code simos-economy}（gov 算不了区与暴露边），
@@ -102,13 +104,15 @@ public final class PortRegimeBridge {
   /**
    * 一次折算的完整产物。
    *
-   * @param input 注入经济侧的逐区逐类实际管制力（逐方向 {@code 1000 − E}；空 ⇒ 没有口岸面）
+   * @param input 注入经济侧的逐区逐类实际管制力（逐方向 {@code 1000 − E}；币种表再按挂单类型分列；空 ⇒ 没有口岸面）
    * @param taxInput ★ P-T1b：注入经济侧的<b>三层税税率与收税政府</b>（空 ⇒ 一分不收，逐值退回改前）
-   * @param regimes 逐区逐类<b>逐方向</b>的总效率读数（保序：区序 → 类序 → 入口/出口；供日志/读数/探针）
+   * @param regimes 逐区逐类<b>逐方向</b>的总效率读数（保序：区序 → 类序 → 入口/出口；币种维按"币种#挂单类型"分条； 供日志/读数/探针）
    * @param exposedEdges 全部接触面的暴露边合计（读数）
    * @param contacts 接触面条数（读数）
-   * @param restrictedClasses 设过<b>非空</b>规则的类数（读数；0 ⇒ 没有口岸面）
-   * @param taxedClasses 设过<b>真会收</b>的税的类数（读数；商品维 + 币种维）
+   * @param restrictedClasses 设过<b>非空</b>规则的条数（读数；商品类 + （币种 × 挂单类型）；0 ⇒ 没有口岸面）
+   * @param taxedClasses 设过<b>真会收</b>的税/手续费的条数（读数；商品维 + 币种维）
+   * @param currencyFeeClasses ★ P-T1e：设了币种手续费（真会收）的（币种 × 挂单类型）条数（读数；本批<b>只落形状 + 读数 + 具名
+   *     INFO</b>，没有收款面 ⇒ 一个数都不搬）
    */
   public record PortRegimeDay(
       PortEnforcementInput input,
@@ -117,7 +121,8 @@ public final class PortRegimeBridge {
       long exposedEdges,
       int contacts,
       int restrictedClasses,
-      int taxedClasses) {
+      int taxedClasses,
+      int currencyFeeClasses) {
 
     public PortRegimeDay {
       Objects.requireNonNull(input, "input");
@@ -178,7 +183,7 @@ public final class PortRegimeBridge {
     List<PortExposureEdges.Contact> contacts = PortExposureEdges.contacts(economy, map, units);
     if (contacts.isEmpty()) {
       return new PortRegimeDay(
-          PortEnforcementInput.none(), PortTaxInput.none(), List.of(), 0L, 0, 0, 0);
+          PortEnforcementInput.none(), PortTaxInput.none(), List.of(), 0L, 0, 0, 0, 0);
     }
     // ── 逐区 × 逐归属：暴露边权重（w_k）────────────────────────────────────────────────
     Map<String, Map<String, Long>> weightsByZone = new LinkedHashMap<>();
@@ -190,16 +195,19 @@ public final class PortRegimeBridge {
     // ── 逐区：① 类的定义域（显式设过且非空的类）② 区级税率（两个分量各自按 w_k 加权平均）
     //          ③ 收税政府（国库是家户的那些；权威 = Government.treasury()）────────────────────
     Map<String, Set<String>> restrictedCommoditiesByZone = new LinkedHashMap<>();
-    Map<String, Set<String>> restrictedCurrenciesByZone = new LinkedHashMap<>();
+    // ★★ P-T1e：币种维的定义域 = （币种 × 挂单类型）—— 同一个币上"兑换/货↔钱/借贷"是三条独立规则。
+    Map<String, Map<String, Set<MarketOrderKind>>> restrictedCurrenciesByZone =
+        new LinkedHashMap<>();
     Map<String, Map<CommodityId, ZoneTaxAccumulator>> taxAccumulatorsByZone = new LinkedHashMap<>();
     Map<String, List<PortTaxInput.GovernmentShare>> governmentsByZone = new LinkedHashMap<>();
     Map<String, CurrencyId> legalTenderByZone = new LinkedHashMap<>();
     int restrictedClasses = 0;
     int taxedClasses = 0;
+    int currencyFeeClasses = 0;
     for (Map.Entry<String, Map<String, Long>> zoneEntry : weightsByZone.entrySet()) {
       String zoneId = zoneEntry.getKey();
       Set<String> commodities = new LinkedHashSet<>();
-      Set<String> currencies = new LinkedHashSet<>();
+      Map<String, Set<MarketOrderKind>> currencies = new LinkedHashMap<>();
       Map<CommodityId, ZoneTaxAccumulator> taxAccumulators = new LinkedHashMap<>();
       List<PortTaxInput.GovernmentShare> governments = new ArrayList<>();
       // ★ 加权平均的分母 = 该区**全部**暴露边（含三不管那一份）：没有政府的那一侧交 0，
@@ -224,15 +232,21 @@ public final class PortRegimeBridge {
             accumulateTax(taxAccumulators, rule.getKey(), rule.getValue(), weight);
           }
         }
-        for (Map.Entry<CurrencyId, PortRule> rule : policy.currencyRules().entrySet()) {
-          if (rule.getValue().allDefault()) {
-            continue;
-          }
-          currencies.add(rule.getKey().value());
-          if (rule.getValue().hasEffectiveTax()) {
-            // ★ 币种维的税**不进**商品税表：币种手续费是 P-T5 的机制（挂单禁入/禁出 + 手续费），
-            //   它的税基不是"货值" ⇒ 本表只统计可读性，不参与任何金额计算（不替 P-T5 定口径）。
-            taxedClasses++;
+        for (Map.Entry<CurrencyId, Map<MarketOrderKind, PortRule>> currencyRule :
+            policy.currencyRules().entrySet()) {
+          for (Map.Entry<MarketOrderKind, PortRule> byKind : currencyRule.getValue().entrySet()) {
+            if (byKind.getValue().allDefault()) {
+              continue; // ★ 同上：显式 0 与未设同义（"这条类型我没设规则"）
+            }
+            currencies
+                .computeIfAbsent(currencyRule.getKey().value(), ignored -> new LinkedHashSet<>())
+                .add(byKind.getKey());
+            if (byKind.getValue().hasEffectiveTax()) {
+              // ★ 币种维的手续费**不进**商品税表：它的税基不是"货值" ⇒ 本表只统计可读性，
+              //   不参与任何金额计算（没有收款面 ⇒ 一个数都不搬；具名 INFO 见 logCurrencyFeeShapedOnly）。
+              taxedClasses++;
+              currencyFeeClasses++;
+            }
           }
         }
         PortTaxInput.GovernmentShare share = governmentShareOf(economy, ownerKey, weight, day);
@@ -240,7 +254,7 @@ public final class PortRegimeBridge {
           governments.add(share);
         }
       }
-      restrictedClasses += commodities.size() + currencies.size();
+      restrictedClasses += commodities.size() + currencyKindCount(currencies);
       restrictedCommoditiesByZone.put(zoneId, commodities);
       restrictedCurrenciesByZone.put(zoneId, currencies);
       if (!governments.isEmpty()) {
@@ -266,51 +280,69 @@ public final class PortRegimeBridge {
           PortExposureEdges.totalEdges(contacts),
           contacts.size(),
           0,
+          0,
           0);
     }
     // ── 逐区逐类逐方向：接触面 → 总效率（唯一算式在 economy 的 PortRegimeAggregation）──────────
     List<ZonePortRegime> regimes = new ArrayList<>();
-    Map<String, Map<CurrencyId, PortEnforcementInput.Directional>> currencyEnforcementByZone =
-        new LinkedHashMap<>();
+    Map<String, Map<CurrencyId, PortEnforcementInput.CurrencyEnforcement>>
+        currencyEnforcementByZone = new LinkedHashMap<>();
     Map<String, Map<CommodityId, PortEnforcementInput.Directional>> commodityEnforcementByZone =
         new LinkedHashMap<>();
     for (Map.Entry<String, Map<String, Long>> zoneEntry : weightsByZone.entrySet()) {
       String zoneId = zoneEntry.getKey();
       List<String> ownerKeys = new ArrayList<>(zoneEntry.getValue().keySet());
       ownerKeys.sort(Comparator.naturalOrder());
-      for (String classKey : sorted(restrictedCurrenciesByZone.get(zoneId))) {
-        ZonePortRegime entry =
-            aggregateCurrency(
-                day,
-                zoneId,
-                classKey,
-                ownerKeys,
-                zoneEntry.getValue(),
-                govState,
-                units,
-                efficiencyByUnit,
-                PortDirection.ENTRY);
-        ZonePortRegime exit =
-            aggregateCurrency(
-                day,
-                zoneId,
-                classKey,
-                ownerKeys,
-                zoneEntry.getValue(),
-                govState,
-                units,
-                efficiencyByUnit,
-                PortDirection.EXIT);
-        regimes.add(entry);
-        regimes.add(exit);
-        PortEnforcementInput.Directional directional =
-            new PortEnforcementInput.Directional(
-                entry.enforcementPerMille(), exit.enforcementPerMille());
-        if (!directional.zero()) {
-          // ★ 零值条目不进表（0 与"缺键"读法同义；表更小、注入差异更干净）。
+      for (Map.Entry<String, Set<MarketOrderKind>> currencyEntry :
+          restrictedCurrenciesByZone.get(zoneId).entrySet()) {
+        String classKey = currencyEntry.getKey();
+        CurrencyId currency = new CurrencyId(classKey);
+        Map<MarketOrderKind, PortEnforcementInput.Directional> byKind = new LinkedHashMap<>();
+        for (MarketOrderKind orderKind : sortedKinds(currencyEntry.getValue())) {
+          // ★ 读数键带上挂单类型（{@code 币种#类型}）：同一个币的"兑换/货↔钱/借贷"三条规则各有各的 E，
+          //   只写币种会让日志里的两条读数无法分辨（ZonePortRegime.classKey 是**读数键**，不是稳定 id）。
+          String readingKey = currencyReadingKey(classKey, orderKind);
+          ZonePortRegime entry =
+              aggregateCurrency(
+                  day,
+                  zoneId,
+                  readingKey,
+                  currency,
+                  orderKind,
+                  ownerKeys,
+                  zoneEntry.getValue(),
+                  govState,
+                  units,
+                  efficiencyByUnit,
+                  PortDirection.ENTRY);
+          ZonePortRegime exit =
+              aggregateCurrency(
+                  day,
+                  zoneId,
+                  readingKey,
+                  currency,
+                  orderKind,
+                  ownerKeys,
+                  zoneEntry.getValue(),
+                  govState,
+                  units,
+                  efficiencyByUnit,
+                  PortDirection.EXIT);
+          regimes.add(entry);
+          regimes.add(exit);
+          PortEnforcementInput.Directional directional =
+              new PortEnforcementInput.Directional(
+                  entry.enforcementPerMille(), exit.enforcementPerMille());
+          if (!directional.zero()) {
+            // ★ 零值条目不进表（0 与"缺键"读法同义；表更小、注入差异更干净）。
+            byKind.put(orderKind, directional);
+          }
+          logCurrencyFeeShapedOnly(day, zoneId, classKey, orderKind, govState, units, ownerKeys);
+        }
+        if (!byKind.isEmpty()) {
           currencyEnforcementByZone
               .computeIfAbsent(zoneId, ignored -> new LinkedHashMap<>())
-              .put(new CurrencyId(classKey), directional);
+              .put(currency, new PortEnforcementInput.CurrencyEnforcement(byKind));
         }
       }
       for (String classKey : sorted(restrictedCommoditiesByZone.get(zoneId))) {
@@ -357,7 +389,38 @@ public final class PortRegimeBridge {
         PortExposureEdges.totalEdges(contacts),
         contacts.size(),
         restrictedClasses,
-        taxedClasses);
+        taxedClasses,
+        currencyFeeClasses);
+  }
+
+  /** 币种维的（币种 × 挂单类型）条数（读数的分母；`Map<币种, Set<类型>>` 的总项数）。 */
+  private static int currencyKindCount(Map<String, Set<MarketOrderKind>> currencies) {
+    int count = 0;
+    for (Set<MarketOrderKind> kinds : currencies.values()) {
+      count += kinds.size();
+    }
+    return count;
+  }
+
+  /** 挂单类型的规范遍历序（声明序；I7 —— 不用 {@code Set} 迭代序当序）。 */
+  private static List<MarketOrderKind> sortedKinds(Set<MarketOrderKind> kinds) {
+    List<MarketOrderKind> ordered = new ArrayList<>();
+    for (MarketOrderKind kind : MarketOrderKind.all()) {
+      if (kinds.contains(kind)) {
+        ordered.add(kind);
+      }
+    }
+    return ordered;
+  }
+
+  /**
+   * ★ 读数键：{@code 币种#挂单类型}（{@link ZonePortRegime#classKey()} 是<b>读数键</b>，不是稳定 id）。
+   *
+   * <p>★ <b>为什么不用 {@code Map} 或新类型</b>：读数列表是扁平的一条条 {@link ZonePortRegime}（经济侧的契约类型不改），
+   * 而唯一的区分解就是那个字符串键 —— 拼在一个地方（本方法），日志与读数同源。
+   */
+  private static String currencyReadingKey(String classKey, MarketOrderKind orderKind) {
+    return classKey + "#" + orderKind.value();
   }
 
   // ── P-T1b：区级税率（从量/从价两个分量各自按暴露边权重加权平均）+ 收税政府 ────────────────────
@@ -552,31 +615,43 @@ public final class PortRegimeBridge {
       UnitState units,
       Map<UnitId, GovEfficiency.Efficiency> efficiencyByUnit,
       PortDirection direction) {
+    CommodityId commodity = new CommodityId(classKey);
     ZonePortRegime regime =
         PortRegimeAggregation.aggregateCommodity(
             zoneId,
-            new CommodityId(classKey),
+            commodity,
             direction,
             surfaces(
                 day,
                 zoneId,
                 classKey,
+                "commodity",
+                null,
                 direction,
                 ownerKeys,
                 weights,
-                false,
+                policy -> policy.ruleOfCommodity(commodity),
                 govState,
                 units,
                 efficiencyByUnit));
-    logRegime(day, regime);
+    logRegime(day, regime, null);
     return regime;
   }
 
-  /** 币种类：同 {@link #aggregateCommodity}（类键换成币种）。 */
+  /**
+   * 币种类：同 {@link #aggregateCommodity}，类键换成<b>（币种 × 挂单类型）</b>（P-T1e）。
+   *
+   * @param classKey <b>读数键</b>（{@code 币种#类型}，见 {@link #currencyReadingKey}）；稳定 id 在 {@code
+   *     currency}
+   * @param currency 币种稳定 id（接触面的规则按它取）
+   * @param orderKind 挂单类型（同一个币上"兑换/货↔钱/借贷"是三条独立规则）
+   */
   private static ZonePortRegime aggregateCurrency(
       long day,
       String zoneId,
       String classKey,
+      CurrencyId currency,
+      MarketOrderKind orderKind,
       List<String> ownerKeys,
       Map<String, Long> weights,
       GovState govState,
@@ -586,37 +661,54 @@ public final class PortRegimeBridge {
     ZonePortRegime regime =
         PortRegimeAggregation.aggregateCurrency(
             zoneId,
-            new CurrencyId(classKey),
+            currency,
             direction,
             surfaces(
                 day,
                 zoneId,
                 classKey,
+                "currency",
+                orderKind,
                 direction,
                 ownerKeys,
                 weights,
-                true,
+                policy -> policy.ruleOfCurrency(currency, orderKind),
                 govState,
                 units,
                 efficiencyByUnit));
-    logRegime(day, regime);
+    logRegime(day, regime, orderKind);
     return regime;
   }
 
   /**
-   * 逐接触面：{@code s} = 该归属政府的政策值<b>（本方向）</b>（三不管/无政策 ⇒ 0）；{@code e} = 该政府的口岸效率（无 ⇒ 0）。
+   * 某个政府在"该方向该（币种 × 挂单类型）"上的规则取法（商品/币种两族共用 {@link #surfaces} 的唯一差别）。
+   *
+   * <p>★ 用函数式入参而不是再写一遍循环：接触面的组装（权重、效率、三不管、日志）逐字只有一份。
+   */
+  @FunctionalInterface
+  private interface RuleLookup {
+
+    /** 该政策对这一类这一方向的规则（缺键由 {@code GovPortPolicy} 给 {@link PortRule#unrestricted()}）。 */
+    PortRule ruleOf(GovPortPolicy policy);
+  }
+
+  /**
+   * 逐接触面：{@code s} = 该归属政府的政策值<b>（本方向、本挂单类型）</b>（三不管/无政策 ⇒ 0）；{@code e} = 该政府的口岸效率（无 ⇒ 0）。
    *
    * <p>★ 税（{@link PortTaxRule}）<b>不进接触面契约</b>（它只装限制强度与效率），本方法顺带 TRACE 记一条 {@code
-   * PORT_SURFACE_TAX}——本批起这些税**真的收**（区级税率与收税政府见 {@link #compute} 的税表折算）。
+   * PORT_SURFACE_TAX}——商品那份自 P-T1b 起**真的收**；币种那份（手续费）本批<b>只落形状</b>（见 {@link
+   * #logCurrencyFeeShapedOnly}）。
    */
   private static List<PortContactSurface> surfaces(
       long day,
       String zoneId,
       String classKey,
+      String classKind,
+      MarketOrderKind orderKind,
       PortDirection direction,
       List<String> ownerKeys,
       Map<String, Long> weights,
-      boolean currency,
+      RuleLookup ruleLookup,
       GovState govState,
       UnitState units,
       Map<UnitId, GovEfficiency.Efficiency> efficiencyByUnit) {
@@ -624,18 +716,15 @@ public final class PortRegimeBridge {
     for (String ownerKey : ownerKeys) {
       UnitId owner = ownerUnitOf(units, ownerKey);
       GovPortPolicy policy = policyOf(govState, units, ownerKey);
-      PortRule rule =
-          owner == null
-              ? PortRule.unrestricted() // 三不管：没有政府 ⇒ 无从设限（s = 0）
-              : currency
-                  ? policy.ruleOfCurrency(new CurrencyId(classKey))
-                  : policy.ruleOfCommodity(new CommodityId(classKey));
+      // 三不管：没有政府 ⇒ 无从设限（s = 0；policy 也是 empty ⇒ 查表结果同样是 unrestricted）。
+      PortRule rule = ruleLookup.ruleOf(policy);
       long restriction = rule.restriction(direction);
       long efficiency = 0L;
       if (owner != null) {
         efficiency = efficiencyOf(efficiencyByUnit, owner);
       }
-      logSurfaceTax(day, zoneId, classKey, direction, ownerKey, currency, rule.tax(direction));
+      logSurfaceTax(
+          day, zoneId, classKey, classKind, orderKind, direction, ownerKey, rule.tax(direction));
       surfaces.add(
           new PortContactSurface(ownerKey, weights.get(ownerKey), restriction, efficiency));
     }
@@ -717,8 +806,12 @@ public final class PortRegimeBridge {
             + "）——fail-closed，不静默忽略");
   }
 
-  /** DEBUG 一条（每个 zone×class×<b>方向</b>的逐段读数在 TRACE；本方法默认关，不改变任何输出）。 */
-  private static void logRegime(long day, ZonePortRegime regime) {
+  /**
+   * DEBUG 一条（每个 zone×class×<b>方向</b>的逐段读数在 TRACE；本方法默认关，不改变任何输出）。
+   *
+   * @param orderKind 币种维的挂单类型（商品维传 {@code null} ⇒ 日志里写 {@code -}）
+   */
+  private static void logRegime(long day, ZonePortRegime regime, MarketOrderKind orderKind) {
     if (!LOG.isDebugEnabled()) {
       return;
     }
@@ -732,6 +825,8 @@ public final class PortRegimeBridge {
             regime.zoneId(),
             "classKey",
             regime.classKey(),
+            "orderKind",
+            orderKind == null ? "-" : orderKind.value(),
             "direction",
             regime.direction().value(),
             "allowedByRule",
@@ -777,14 +872,15 @@ public final class PortRegimeBridge {
     }
   }
 
-  /** TRACE 一条：一个接触面上这一方向的税规则（{@code none} 不记，噪声少；P-T1a 只落形状 + 可见性，真收款是 P-T1b）。 */
+  /** TRACE 一条：一个接触面上这一方向的税/手续费规则（{@code none} 不记，噪声少）。 */
   private static void logSurfaceTax(
       long day,
       String zoneId,
       String classKey,
+      String classKind,
+      MarketOrderKind orderKind,
       PortDirection direction,
       String ownerKey,
-      boolean currency,
       PortTaxRule tax) {
     if (tax.taxFree() || !LOG.isTraceEnabled()) {
       return;
@@ -798,9 +894,11 @@ public final class PortRegimeBridge {
             "zone",
             zoneId,
             "kind",
-            currency ? "currency" : "commodity",
+            classKind,
             "classKey",
             classKey,
+            "orderKind",
+            orderKind == null ? "-" : orderKind.value(),
             "direction",
             direction.value(),
             "owner",
@@ -810,9 +908,67 @@ public final class PortRegimeBridge {
             "taxAmount",
             tax.amount(),
             "collected",
-            tax.leviesTax(),
+            "commodity".equals(classKind) && tax.leviesTax(),
             "reason",
-            "p-t1b-collects-this-tax-at-settlement-through-port-tax-input"));
+            "commodity-port-tax-collected-at-settlement-p-t1b-currency-handling-fee-shaped-only-p-t1e"));
+  }
+
+  /**
+   * ★★ <b>P-T1e：币种手续费"只落形状、不搬钱"的具名 INFO</b>（每个（区 × 币种 × 挂单类型）一条，任一侧设了真会收的费才发）。
+   *
+   * <p>★★ <b>为什么要有它</b>（派单冻结口径"不做：手续费的真收钱；若规则里含费率而当前无收款面，只落形状 + 读数 + 具名 INFO"）：
+   * 用户「异种货币自然按手续费/规则来算」已经把"收手续费"写进了规则形状（{@link PortRule} 的入口/出口税，从量从价都行），
+   * 但今天的钱腿恒铸<b>买方支付币</b>、货↔钱成交<b>没有</b>"兑换手续费"的收款面 ⇒ 若只静默存下这条规则，设规则的人会以为在收钱。 本条 INFO
+   * 就是那句"配置被记下了，但本批不收"（§一.9：INFO = 规则设置/这一轮发生了什么）。
+   *
+   * <p>★ 只读：翻一遍该区各归属政府的政策取两个方向的费规则（纯读、不写状态、不改任何金额）。
+   */
+  private static void logCurrencyFeeShapedOnly(
+      long day,
+      String zoneId,
+      String classKey,
+      MarketOrderKind orderKind,
+      GovState govState,
+      UnitState units,
+      List<String> ownerKeys) {
+    if (!LOG.isInfoEnabled()) {
+      return;
+    }
+    String entryFee = null;
+    String exitFee = null;
+    CurrencyId currency = new CurrencyId(classKey);
+    for (String ownerKey : ownerKeys) {
+      PortRule rule = policyOf(govState, units, ownerKey).ruleOfCurrency(currency, orderKind);
+      if (rule.entryTax().leviesTax()) {
+        entryFee = rule.entryTax().toString();
+      }
+      if (rule.exitTax().leviesTax()) {
+        exitFee = rule.exitTax().toString();
+      }
+    }
+    if (entryFee == null && exitFee == null) {
+      return;
+    }
+    LOG.info(
+        LogEvent.of(
+            "GOV_PORT_CURRENCY_FEE_SHAPED_ONLY",
+            AppLogSource.DAILY_LOOP,
+            "day",
+            day,
+            "zone",
+            zoneId,
+            "currency",
+            classKey,
+            "orderKind",
+            orderKind.value(),
+            "entryFee",
+            entryFee == null ? "none" : entryFee,
+            "exitFee",
+            exitFee == null ? "none" : exitFee,
+            "collected",
+            false,
+            "reason",
+            "currency-handling-fee-has-no-collection-surface-in-this-batch"));
   }
 
   private static List<String> sorted(Set<String> values) {

@@ -755,6 +755,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                       portRegime.restrictedClasses(),
                       "taxedClasses",
                       portRegime.taxedClasses(),
+                      "currencyFeeClasses",
+                      portRegime.currencyFeeClasses(),
                       "zones",
                       portRegime.input().zoneCount(),
                       "classes",

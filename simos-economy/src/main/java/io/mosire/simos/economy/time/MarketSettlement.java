@@ -24,6 +24,7 @@ import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
 import io.mosire.simos.economy.api.market.LossBearer;
 import io.mosire.simos.economy.api.market.MarketMandateId;
+import io.mosire.simos.economy.api.market.MarketOrderKind;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketTaxLayer;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
@@ -1526,6 +1527,23 @@ final class MarketSettlement {
                     "reason",
                     "two-sided-port-gate-e-source-times-e-destination"));
       }
+      // ── 4a1. ★★ P-T1e：币种挂单闸的轮级汇总（INFO：发生了什么 + 具名计数；逐笔在 DEBUG）────────────
+      //   ★ 与上一条并列：只报"被挡下多少"这一件事。被挡下的候选不进候选集、不落状态、不进账本（§14.3），所以它是日志事实，不是账。
+      if (ctx.currencyGateBlocked > 0 && MARKET.isInfoEnabled()) {
+        EventLog.channel(MARKET)
+            .info(
+                LogEvent.of(
+                    "MARKET_CURRENCY_GATE_BLOCKED",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    round.day,
+                    "blockedAttempts",
+                    ctx.currencyGateBlocked,
+                    "blockedQuantityMilli",
+                    ctx.currencyGateBlockedMilli,
+                    "reason",
+                    "currency-order-kind-blocked-by-two-sided-port-rules"));
+      }
     } finally {
       releaseAllFreezes(ctx);
     }
@@ -2103,9 +2121,9 @@ final class MarketSettlement {
    * 选出来了                  ⇒ 那种币（家户即使在本格市场也用它付 —— 这正是 §20.4 要闭合的前置依赖）
    * </pre>
    *
-   * <p>★ <b>买卖两侧共用它（"卖方侧本批不分道"）</b>：买方的 {@code payWith} 与卖方的 {@code receiveWith} 在缺省上是同一个口径。★
-   * 卖方侧本批<b>不做</b>币种挂单过滤（{@link #acceptsCurrency} 恒真），而结算的钱腿永远铸 <b>买方支付币</b>（{@code executeTrade}）⇒
-   * "收货币 = 买方的支付币" 这条现状一个字不改。
+   * <p>★ <b>买卖两侧共用它（"卖方侧不分道"）</b>：买方的 {@code payWith} 与卖方的 {@code receiveWith} 在缺省上是同一个口径。★
+   * 卖方侧<b>不按自己的收款币过滤候选</b>（{@link #acceptsCurrency} 只看口岸规则，P-T1e），而结算的钱腿永远铸 <b>买方支付币</b>（{@code
+   * executeTrade}）⇒ "收货币 = 买方的支付币" 这条现状一个字不改；{@link SellSlot#receiveCurrency} 只进日志/读数。
    *
    * <p>★ <b>不许在别处再拼一次"本格计价币"</b>：订单币只有这一个产生点，槽位/预算/冻结/结算此后一律读订单。
    */
@@ -5255,12 +5273,12 @@ final class MarketSettlement {
       // ★ 借实物腿不经货币（债务单位 = 商品）：币种维为空 ⇒ 判据落在既有的"可借余量"上，本方法不新增门槛。
       return unitPrice;
     }
-    // ★★ 3c（V-1）：候选成立条件的第一项 —— **买方支付币 ∈ 卖方接受的币集合**。空集 ⇒ 候选不成立：
-    //   具名归因（CURRENCY_NOT_ACCEPTED）、DEBUG 一条"为什么"、返回"不划算"哨兵 ⇒ 三条腿都**不落任何账**
+    // ★★ 3c（V-1）+ P-T1e：候选成立条件的第一项 —— **买方支付币过得了"币种挂单闸"**（卖方接受集 ∩ 两侧口岸规则）。
+    //   不给过 ⇒ 候选不成立：具名归因（CURRENCY_NOT_ACCEPTED）、DEBUG 一条"为什么"、返回"不划算"哨兵 ⇒ 三条腿都**不落任何账**
     //   （现金腿由调用方换下一家卖方、信用腿 break；见各自的处置注）。
-    //   ★ 本批 acceptsCurrency 恒真 ⇒ 这一段一次都不触发 ⇒ 逐值等于改前（I-C2）；P-T1e 把判定填实后，
-    //     归因/日志/不落账全部由这里自动生效（判定内容只改 acceptsCurrency 一处）。
-    if (!acceptsCurrency(sell, buy.currency)) {
+    //   ★ 判定内容<b>只</b>在 acceptsCurrency / currencyGateBlock 一处拼写；归因、日志、不落账由这里自动生效。
+    //   ★ 缺省中性（I-C2）：一条币种规则都没设 ⇒ 闸恒放行 ⇒ 逐值等于改前。
+    if (!acceptsCurrency(ctx, buy, sell, buy.currency, orderKindOfLeg(leg))) {
       if (bookRefusal) {
         refuseUnacceptedCurrency(ctx, buy, sell, quantity, unitPrice, leg);
       }
@@ -5410,29 +5428,116 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>3c：卖方是否接受这种支付币 —— "币种挂单过滤"的唯一拼写点</b>（计划 §2.1 的候选成立条件 / §5.2 V-1）。
+   * ★★ <b>3c + P-T1e：币种挂单闸 —— "这条挂单能不能用这种钱成交"的唯一拼写点</b>（计划 §2.1 的候选成立条件 / §5.2 V-1；口岸设计书 §14.3）。
    *
-   * <p>★★ <b>本批口径（冻结）：卖方的接受集 = 全部币种 ⇒ 恒真</b>。理由：币种挂单过滤（= 后续批 P-T1e，用户 2026-10-10
-   * 裁定"异种货币自然按手续费/规则来算，有一方不给过就不过，给这个挂单禁止进入市场、出市场"）<b>不做</b>； 本批只做"订单可选币"的机制与缺省中性 ⇒
-   * 这一处必须恒真，否则就在给旧世界加新限制（违反 I-C2）。
+   * <p>★★ <b>判定内容（P-T1e 冻结口径，用户 2026-10-10）</b>：规则可以按 <b>(币种, 挂单类型, 方向)</b>
+   * 禁止某一类挂单进/出<b>市场区</b>；一票要过境必须<b>两侧都过</b>（§12 的两道闸对币种同样成立）：
    *
-   * <p>★★ <b>P-T1e 接进来时只改这一处</b>：把 {@code return true} 换成"该挂单声明的币种是否过得了挂单级禁入/禁出 （带上挂单类型：兑换 / 借贷 /
-   * 商品）"。调用点（{@link #settlementUnitPrice} 一处）与落账/归因/日志 （{@link #refuseUnacceptedCurrency}）都不用动 ——
-   * 判定内容与判定后果是分开写的。
+   * <pre>
+   * 钱从买方区（源区）流向卖方区（目的区）——
+   *   出口闸 = 源区（买方所在区）对 (币, 类型, EXIT) 的开放度
+   *   入口闸 = 目的区（卖方所在区）对 (币, 类型, ENTRY) 的开放度
+   * 任一侧开放度 = 0（该侧全禁）⇒ 不给过 ⇒ 本候选不成立（具名 CURRENCY_NOT_ACCEPTED）
+   * </pre>
    *
-   * <p>★ <b>为什么入参是"槽位 + 币"而不是"币对"</b>：接受集是<b>挂单的属性</b>（谁挂的单、挂在哪个市场区），
-   * 与"买方是谁"无关；买方那一半（持有/可花）由预算、冻结与信用的既有路径回答（见 {@link MarketUnfilledReason#CURRENCY_NOT_ACCEPTED}）。
+   * <p>★★ <b>三条边界（刻意的，逐条有依据，别照"看起来更严"改）</b>：
+   *
+   * <ol>
+   *   <li><b>只作用在跨区流动上</b>：源区 == 目的区（钱没跨边界）⇒ <b>恒放行</b>。依据：设计书 §10.3「口岸限制的是市场选择…
+   *       过滤要作用在<b>跨区候选</b>上：本区自产的货没跨边界，不受口岸影响（否则等于"区内禁售"，那是市场管制、不是口岸）」， 以及 §15
+   *       的两层分工「口岸层跨区、市场层区内」。⇒ 同区内的借贷/买卖<b>不受</b>任何口岸币种规则影响
+   *       （这也正是"本国货币对本国居民来说只能借贷"能成立的前提：本币在本区内的借贷不会被自家的口岸规则掐死）。
+   *   <li><b>两侧都要过，且只有"全禁"才算不给过</b>：开放度 = 1000 − 管制力（管制力 = 按暴露边加权平均的 {@code ⌊s×e÷1000⌋}） ⇒ {@code s
+   *       = 1000} 且口岸效率 &gt; 0 才是"这一侧真的一分都不放"；部分强度是"抓不严"的比例量，不构成禁令 （挂单闸是禁入/禁出，不是节流；强度进读数与日志）。★
+   *       与商品维一致：{@code s = 1000} 但 {@code e = 0}（没有口岸编制） ⇒ 管不住 ⇒ 不拦（P-T1a 已裁的同一条口径："没人管也管不住"）。
+   *   <li><b>读的是"参与交易的市场区"的规则，不是"币种法定区"的规则</b>（设计书 §14.3-3 的红线）：一枚币在 两个都与它无关的区之间流动时，它的法定区规则管不着 ⇒
+   *       <b>不是</b>"本币不得在境外使用／不得被外国人持有"。
+   * </ol>
+   *
+   * <p>★ <b>挂单类型从"腿"来</b>（{@link #orderKindOfLeg}）：现金成交腿 = 货↔钱（{@link MarketOrderKind#COMMODITY}）、
+   * 货币信用腿 = 借贷（{@link MarketOrderKind#LENDING}）；借实物腿不经货币（本方法根本不被它调用）。
+   *
+   * <p>★ <b>接受集是"规则允许的币"</b>，不是"卖方声明的收款币"：{@link SellSlot#receiveCurrency}（挂单声明的收款币）
+   * 今天只进日志/读数（P-T5b 起它是"卖方自己的最强持有币"）——把它当过滤器等于给<b>未设政策</b>的世界加新限制（违反 I-C2），
+   * 而且"卖家只收自己最强的那种钱"这条语义从未被裁定。⇒ 本批：<b>缺口 = 政策规则</b>，声明照旧只作读数（记在账本"关键判断"）。
+   *
+   * <p>★ <b>缺省语义中性（I-C2）</b>：{@code portEnforcement.currencyRegimeActive() == false}（一条币种规则都没设 /
+   * 未注入） ⇒ 恒真 ⇒ 旧世界逐值不变；即使表非空，缺键也读作"管制力 0 ⇒ 开放度 1000 ⇒ 放行"。
    */
-  private static boolean acceptsCurrency(SellSlot sell, CurrencyId payment) {
-    return true;
+  private static boolean acceptsCurrency(
+      MatchContext ctx, BuySlot buy, SellSlot sell, CurrencyId payment, MarketOrderKind orderKind) {
+    return currencyGateBlock(ctx, buy, sell, payment, orderKind) == null;
   }
 
   /**
-   * ★★ <b>3c：买方支付币不在卖方接受集里的具名落点</b>（与 {@link #refuseUnprofitableCurrency} 同形： 市场性归因 + DEBUG
-   * "为什么"，绝不静默丢）。
+   * ★★ <b>P-T1e：币种挂单闸的判据本体</b>（{@link #acceptsCurrency} 与 {@link #refuseUnacceptedCurrency} 共用 ——
+   * 判定<b>只在这里拼写一次</b>，日志那条不另算一遍）。
    *
-   * <p>★ <b>两侧都记</b>：卖方是"我声明了收什么钱"、买方是"我拿什么钱来买"，缺一边就读不出是"挂单不接受"还是"没人接受这种钱"。 ★ 本批不可达（{@link
-   * #acceptsCurrency} 恒真）；P-T1e 落地后它就是 {@code CURRENCY_NOT_ACCEPTED} 的唯一产生点。
+   * @return {@code null} = 两侧都给过；非 null = 具名拒因（哪一侧、哪个方向、管制力多少）
+   */
+  private static CurrencyGateBlock currencyGateBlock(
+      MatchContext ctx, BuySlot buy, SellSlot sell, CurrencyId payment, MarketOrderKind orderKind) {
+    PortEnforcementInput port = ctx.round.portEnforcement();
+    if (port == null || !port.currencyRegimeActive()) {
+      return null; // 一条币种规则都没有 ⇒ 全币接受（缺省中性，I-C2）
+    }
+    String sourceZone = buy.regionId; // 钱的来源区 = 买方所在区
+    String destinationZone = sell.regionId; // 钱的目的区 = 卖方所在区
+    if (sourceZone.equals(destinationZone)) {
+      return null; // 口岸是边界闸：同区流动不受口岸影响（§10.3/§15）
+    }
+    long exitOpenness =
+        port.currencyOpennessPerMille(sourceZone, payment, orderKind, PortDirection.EXIT);
+    if (exitOpenness <= 0L) {
+      return new CurrencyGateBlock(
+          "source-zone-exit-closed", PortDirection.EXIT, sourceZone, exitOpenness);
+    }
+    long entryOpenness =
+        port.currencyOpennessPerMille(destinationZone, payment, orderKind, PortDirection.ENTRY);
+    if (entryOpenness <= 0L) {
+      return new CurrencyGateBlock(
+          "destination-zone-entry-closed", PortDirection.ENTRY, destinationZone, entryOpenness);
+    }
+    return null;
+  }
+
+  /**
+   * ★ <b>一次币种挂单闸拒因</b>（日志 payload 用；判据与 {@link #currencyGateBlock} 逐字同源）。
+   *
+   * @param why 规范拒因字面量（{@code source-zone-exit-closed} / {@code destination-zone-entry-closed}）
+   * @param direction 被挡住的那一侧的方向
+   * @param zoneId 被挡住的那一侧的市场区（注入表的区键）
+   * @param opennessPerMille 该侧开放度（判据里必为 0；记下来是为了让"为什么"可核）
+   */
+  private record CurrencyGateBlock(
+      String why, PortDirection direction, String zoneId, long opennessPerMille) {}
+
+  /**
+   * ★ <b>挂单类型（{@link MarketOrderKind}）与"腿"的唯一映射点</b>（{@link #settlementUnitPrice} 的三条腿）。
+   *
+   * <p>★ 未登记的腿 ⇒ <b>fail-closed 抛出</b>（不是静默当成某一种）：腿只有三条，多一条就说明调用点与判定点漂开了。
+   */
+  private static MarketOrderKind orderKindOfLeg(String leg) {
+    if (LEG_CASH.equals(leg)) {
+      return MarketOrderKind.COMMODITY; // 货 ↔ 钱
+    }
+    if (LEG_MONEY_CREDIT.equals(leg)) {
+      return MarketOrderKind.LENDING; // 借来的钱买货（借贷也是市场挂单）
+    }
+    throw new IllegalStateException("未登记的成交腿（币种挂单闸无从判定挂单类型）: " + leg);
+  }
+
+  /**
+   * ★★ <b>3c + P-T1e：挂单被币种闸挡下的具名落点</b>（与 {@link #refuseUnprofitableCurrency} 同形： 市场性归因 + DEBUG
+   * "为什么" + 轮级 INFO 汇总，绝不静默丢）。
+   *
+   * <p>★ <b>两侧都记</b>：卖方是"我的挂单在哪个区、声明收什么钱"、买方是"我拿什么钱来买、从哪个区来"，缺一边就读不出是"目的区不让进" 还是"源区不让出"。
+   *
+   * <p>★ <b>判据不在这里重算</b>：{@link #currencyGateBlock} 是唯一拼写点，本方法只在 DEBUG 打开时问它一次"是哪一侧挡的"
+   * （纯函数、逐值可复现）；日志关闭时连这一次询问都不做（热路径上只留两个计数）。
+   *
+   * <p>★ <b>为什么逐笔是 DEBUG 不是 INFO</b>（§一.9 的取舍）：跨区候选逐笔尝试，逐笔 INFO 就是上一批 47.9 万条噪声的翻版 ——
+   * "这一轮被挡住了多少"由轮级 INFO {@code MARKET_CURRENCY_GATE_BLOCKED} 与成交侧 INFO 承担，"哪一笔被哪条规则挡住"归 DEBUG。
    */
   private static void refuseUnacceptedCurrency(
       MatchContext ctx, BuySlot buy, SellSlot sell, long quantity, long unitPrice, String leg) {
@@ -5443,9 +5548,13 @@ final class MarketSettlement {
     if (buy.blocked == null) {
       buy.blocked = reason;
     }
+    ctx.currencyGateBlocked++;
+    ctx.currencyGateBlockedMilli = Math.addExact(ctx.currencyGateBlockedMilli, quantity);
     if (!MARKET.isDebugEnabled()) {
       return; // 日志失败/关闭不得影响结算，也不做无谓的字段拼装
     }
+    MarketOrderKind orderKind = orderKindOfLeg(leg);
+    CurrencyGateBlock block = currencyGateBlock(ctx, buy, sell, buy.currency, orderKind);
     EventLog.channel(MARKET)
         .debug(
             LogEvent.of(
@@ -5455,6 +5564,8 @@ final class MarketSettlement {
                 ctx.round.day,
                 "leg",
                 leg,
+                "orderKind",
+                orderKind.value(),
                 "reason",
                 reason.value(),
                 "commodity",
@@ -5469,12 +5580,22 @@ final class MarketSettlement {
                 sell.receiveCurrency.value(),
                 "sellerOwn",
                 sell.market.numeraire().value(),
+                "sourceZone",
+                buy.regionId,
+                "destinationZone",
+                sell.regionId,
+                "blockedSide",
+                block == null ? "-" : block.direction().value(),
+                "blockedZone",
+                block == null ? "-" : block.zoneId(),
+                "blockedZoneOpennessPerMille",
+                block == null ? -1L : block.opennessPerMille(),
                 "sellerUnitPriceMilli",
                 unitPrice,
                 "requestedQuantityMilli",
                 quantity,
                 "why",
-                "payment-currency-not-in-sellers-accepted-set"));
+                block == null ? "payment-currency-blocked-by-port-rule" : block.why()));
   }
 
   /**
@@ -8423,16 +8544,17 @@ final class MarketSettlement {
     final MarketRegion region;
 
     /**
-     * ★★ <b>3c：本槽"接受哪种币" = {@link SellOrder#receiveWith()}（唯一真值在订单，构造期赋值一次）</b>。
+     * ★★ <b>3c：本槽<b>声明</b>"收哪种币" = {@link SellOrder#receiveWith()}（唯一真值在订单，构造期赋值一次）</b>。
      *
      * <p>★★ <b>语义（改前 → 改后）</b>：A2a 时代它是"卖方只收这一种钱"（不等 ⇒ 具名拒 {@link
-     * MarketUnfilledReason#CURRENCY_MISMATCH}）；E 批之后它降为"本格默认收款币 = 本格价表的计价币"；<b>3c 起它由订单给出</b> ——
-     * 卖方在挂单时声明自己接受哪种币，接受集是<b>挂单级</b>的（币种挂单过滤 P-T1e 将决定它能填哪些值）。
+     * MarketUnfilledReason#CURRENCY_MISMATCH}）；E 批之后它降为"本格默认收款币 = 本格价表的计价币"；<b>3c 起它由订单给出</b>；P-T5b
+     * 起它带的是"卖方自己的最强持有币"。
      *
-     * <p>★★ <b>它回答的是"收不收"，不是"按什么价收"</b>：钱腿永远铸<b>买方支付币</b>（{@code executeTrade}）， 所以"买方付的币 ∈
-     * 本槽接受集"必须成立才是合法候选（判定唯一拼写点 = {@link #acceptsCurrency}）。 ★ 卖方对这些币"值多少"的判断锚在<b>本格计价币</b>（{@link
-     * #market}{@code .numeraire()} = 卖方自己的钱、 保留价 {@link #reservationMicro} 的量纲、E 批 R1/R3
-     * 的"家户按自己的货币估值"）；价格尺度也不动 （计划 §2.1：一格一张价表、一个尺度）—— 本字段只决定<b>接受集</b>，不参与估值折算。
+     * <p>★★ <b>P-T1e 裁定：它是<b>声明/读数</b>，不是过滤器</b>——"买方付的币能不能成交"由<b>口岸的币种挂单闸</b>回答（判定唯一拼写点 = {@link
+     * #acceptsCurrency}，规则键 =（币种, 挂单类型, 方向））。把它当接受集会等于给<b>未设政策</b>的世界加新限制（违反 I-C2），
+     * 且"卖家只收自己最强的那种钱"这条语义从未被裁定。★ 钱腿永远铸<b>买方支付币</b>（{@code executeTrade}）⇒ 本字段只进日志/读数。★
+     * 卖方对钱"值多少"的判断锚在<b>本格计价币</b>（{@link #market}{@code .numeraire()} = 卖方自己的钱、 保留价 {@link
+     * #reservationMicro} 的量纲、E 批 R1/R3 的"家户按自己的货币估值"）；价格尺度也不动 （计划 §2.1：一格一张价表、一个尺度）—— 本字段不参与估值折算。
      */
     final CurrencyId receiveCurrency;
 
@@ -8754,6 +8876,15 @@ final class MarketSettlement {
 
     /** 见 {@link #portGatedPairs}（各<b>区对</b> {@code transit − 可通过量} 之和）。 */
     long portBlockedMilli;
+
+    /**
+     * ★★ <b>P-T1e：本轮被币种挂单闸挡下的候选笔数与被请求的货物量</b>（毫商品；只作日志/读数 —— 被挡下的候选<b>不成交、不落状态、不进账本</b>， 设计书
+     * §14.3）。
+     */
+    int currencyGateBlocked;
+
+    /** 见 {@link #currencyGateBlocked}（各笔"被挡下的请求量"之和）。 */
+    long currencyGateBlockedMilli;
 
     /** ★★ <b>E：带"钱的价"的完整构造器</b>（协调器与区副本都用它 —— 副本传入<b>协调器那一份</b>实例， 保证"认不认得出某种钱"两边同一个答案）。 */
     MatchContext(

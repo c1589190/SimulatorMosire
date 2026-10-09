@@ -31,8 +31,9 @@ import io.mosire.simos.map.hex.HexCoord;
  * <ul>
  *   <li><b>它是"收/付哪种钱"的唯一真值</b>：撮合槽位、预算、冻结、限额折算、钱腿铸币都读它，格子的 {@code Market.numeraire}
  *       只在<b>订单生成</b>时充当缺省值（计划 §2.1 冻结：订单不带币 ⇒ 本格计价币 ⇒ 旧世界逐值不变，I-C2）；
- *   <li><b>候选成立条件（V-1）</b>：{@code payWith ∈ 卖方接受的币集合 ∩ 买方持有（可花）币集合}；空集 ⇒ 候选不成立 + 具名归因 （卖方一侧见 {@code
- *       MarketSettlement#acceptsCurrency}）；
+ *   <li><b>候选成立条件（V-1）</b>：{@code payWith ∈ 口岸币种规则允许的币 ∩ 买方持有（可花）币集合}；空集 ⇒ 候选不成立 + 具名归因 （口岸那一侧见
+ *       {@code MarketSettlement#acceptsCurrency}，P-T1e：规则键 =（币种, 挂单类型, 方向），两侧都要过； 持有那一侧见 {@code
+ *       MarketUnfilledReason#NO_BUDGET}）；
  *   <li><b>价格尺度不动</b>：{@link #maxLandedPrice()} 的量纲仍是<b>本格价表的计价币</b>（一格一张价表、一个尺度），
  *       订单选币改的是"付哪种钱"，不是"价格写在哪张表上"。
  * </ul>

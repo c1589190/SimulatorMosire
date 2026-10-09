@@ -1,12 +1,16 @@
 package io.mosire.simos.gov.codec;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.market.MarketOrderKind;
 import io.mosire.simos.gov.GovLog;
 import io.mosire.simos.gov.GovLogSource;
 import io.mosire.simos.gov.GovSnapshot;
@@ -34,7 +38,11 @@ import org.slf4j.Logger;
  * <p>★ <b>树里的自定义键有三个</b>：{@code UnitId}（{@code offices}/{@code administrationPlans}/{@code
  * budgetPolicies}/{@code remittanceStates} 四个顶层表的键）、{@code CommodityId} 与 {@code CurrencyId}（{@link
  * io.mosire.simos.gov.GovOfficeState} 六张读数表的键）。三者都在 <b>嵌套位置</b>或顶层表上；
- * 漏注册任一个，都会在<b>对应表非空</b>时于解码期炸（表空着时测不到——故往返夹具必须让读数表非空）。键反序列化器照裁定 16 在 <b>本模块</b>注册，不进共享基座。
+ * 漏注册任一个，都会在<b>对应表非空</b>时于解码期炸（表空着时测不到——故往返夹具必须让读数表非空）。键反序列化器照裁定 16 在 <b>本模块</b>注册，不进共享基座。 ★★
+ * <b>P-T1e 追加第四个：{@link MarketOrderKind}</b>（{@code GovPortPolicy.currencyRules} 的<b>内层键</b>， "币种 →
+ * 挂单类型 → 规则"）—— 它是<b>枚举</b>，Jackson 对枚举键的默认读写都走 {@code name()}（{@code LENDING}），
+ * 而本仓的规范字面量是小写下划线（{@code lending}，与载荷/读数同字面）⇒ 这里<b>读写两侧都注册</b>（写侧 {@code value()} / 读侧 {@link
+ * MarketOrderKind#parse}），让线格式与载荷逐字一致、写出来的档自己读得回。
  *
  * <p>★ <b>键的（反）序列化走各类型自带的"裸 {@code toString()} + 单参 {@code parse}"配对</b>（裁定 R-48-f）： 写侧 Jackson
  * 的默认键序列化器调 {@code toString()} 恰好就对了，故<b>只注册读侧</b>（与 {@code ActorCodec} 同口径）。
@@ -73,13 +81,30 @@ public final class GovCodec implements ModuleCodec, ModuleDiffer {
     abstract boolean isEmpty();
   }
 
-  /** 三路键反序列化器：{@code UnitId} + 两张嵌套读数表的键 {@code CommodityId} / {@code CurrencyId}。 */
+  /**
+   * 键（反）序列化器：{@code UnitId} + 两张嵌套读数表的键 {@code CommodityId} / {@code CurrencyId} + ★ P-T1e
+   * 的口岸币种规则内层键 {@link MarketOrderKind}（读写两侧都注册：枚举键默认走 {@code name()}）。
+   */
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("gov-json-keys");
     module.addKeyDeserializer(UnitId.class, keyDeserializer(UnitId::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
     module.addKeyDeserializer(CurrencyId.class, keyDeserializer(CurrencyId::parse));
+    module.addKeyDeserializer(MarketOrderKind.class, keyDeserializer(MarketOrderKind::parse));
+    module.addKeySerializer(MarketOrderKind.class, orderKindKeySerializer());
     return module;
+  }
+
+  /** 写侧：枚举键按规范字面量（{@code lending}）而不是 {@code name()}（{@code LENDING}）落线格式。 */
+  private static JsonSerializer<MarketOrderKind> orderKindKeySerializer() {
+    return new JsonSerializer<>() {
+      @Override
+      public void serialize(
+          MarketOrderKind value, JsonGenerator generator, SerializerProvider serializers)
+          throws java.io.IOException {
+        generator.writeFieldName(value.value());
+      }
+    };
   }
 
   private static <K> KeyDeserializer keyDeserializer(Function<String, K> parse) {

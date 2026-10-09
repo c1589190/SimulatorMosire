@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.market.MarketOrderKind;
 import io.mosire.simos.gov.spi.SetPortPolicyHandler;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -28,9 +29,13 @@ import java.util.Set;
  * HandlerOutcome.Rejected} 落账，<b>不留 revision</b>。它只读状态、不写状态。
  *
  * <p>★ <b>它拦什么</b>：只拦 {@code gov.SetPortPolicy}；两张规则表的<b>类键</b>分别对 {@link
- * EconomyVocabulary#allCommodityIds()}（商品词表）与 {@link EconomyData#currencies()}（币种词表，世界状态权威）。
+ * EconomyVocabulary#allCommodityIds()}（商品词表）与 {@link EconomyData#currencies()}（币种词表，世界状态权威）。 ★★
+ * <b>P-T1e 起多拦一层</b>：币种规则表的<b>内层挂单类型键</b>对 {@link MarketOrderKind} 的受控词表 （{@code
+ * exchange|commodity|lending}）。类型键不是"世界词表"（{@code simos-gov} 编译期就看得见它，{@code GovPayloads}
+ * 已在命令边界具名拒），这里再拦一道的理由与类键同源：<b>非法政策不许先落进状态</b>——守卫在 {@code handler.handle} <b>之前</b>跑，载荷解析在 handler
+ * <b>之内</b>，两处的零 revision 出口不同。两处判的是同一份词表 （{@link MarketOrderKind#all()}），不存在第二套真值。
  * 键的<b>词法</b>、规则对象的<b>字段名与形状</b>（四个数、税从量从价）与值域（≥ 0）仍由 {@code GovPayloads}/{@code GovPortPolicy}
- * 在命令边界判 —— 两处不重复实现。
+ * 在命令边界判 —— 那几项不在这里重复实现。
  *
  * <p>★ <b>fail-closed 方向</b>：economy 切片缺失/类型不符 ⇒ <b>拒</b>（装配故障不能放坏政策进状态），理由具名。
  */
@@ -74,7 +79,51 @@ public final class GovPortPolicyGuard implements MutationGuard {
     if (unknownCommodity.isPresent()) {
       return unknownCommodity;
     }
-    return unknownKey(payload.get("currencyRules"), knownCurrencies, "币种");
+    Optional<String> unknownCurrency =
+        unknownKey(payload.get("currencyRules"), knownCurrencies, "币种");
+    if (unknownCurrency.isPresent()) {
+      return unknownCurrency;
+    }
+    return unknownOrderKind(payload.get("currencyRules"));
+  }
+
+  /**
+   * ★★ <b>P-T1e：币种规则表的内层键必须是受控词表里的挂单类型</b>（{@code exchange|commodity|lending}）。
+   *
+   * <p>★ <b>只查"键认不认识"，不查内层值</b>（值不是对象/规则字段拼错 ⇒ 交给 {@code GovPayloads} 的具名拒）； 内层空对象 =
+   * 这种钱一个类型都没设规则（合法，与不写同义）。
+   */
+  private static Optional<String> unknownOrderKind(JsonNode currencyRules) {
+    if (currencyRules == null || currencyRules.isNull() || !currencyRules.isObject()) {
+      return Optional.empty();
+    }
+    java.util.List<String> legal = new java.util.ArrayList<>();
+    for (MarketOrderKind kind : MarketOrderKind.all()) {
+      legal.add(kind.value());
+    }
+    var currencies = currencyRules.fieldNames();
+    while (currencies.hasNext()) {
+      String currency = currencies.next();
+      JsonNode byKind = currencyRules.get(currency);
+      if (byKind == null || !byKind.isObject()) {
+        continue;
+      }
+      var kinds = byKind.fieldNames();
+      while (kinds.hasNext()) {
+        String kind = kinds.next();
+        if (!legal.contains(kind)) {
+          return Optional.of(
+              "口岸政策非法：币种 "
+                  + currency
+                  + " 的挂单类型未登记: "
+                  + kind
+                  + "（合法值: "
+                  + legal
+                  + "；fail-closed 拒，不静默忽略）");
+        }
+      }
+    }
+    return Optional.empty();
   }
 
   /** 一张规则表里有没有词表外的类键；有 ⇒ 具名理由（点名第一个未知键，便于排查）。 */
