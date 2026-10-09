@@ -44,7 +44,7 @@ import java.util.OptionalLong;
  * <pre>
  * 市场阶段：按 lane 服务半径 + 剩余运力，把一条 lane 的需求按"有效到货费率升序 → organizationId 升序"依次分给多家商号，
  *           每家吃满 capacityPerRound 余量（P11.3 多承运商分摊）；买方 CARRIER_FEE 按承运量比例分别付给 merchant principal
- *           家户；总运力仍不足的部分才 ⇒ freightUncollectedMilli（钱不凭空消失）
+ *           家户；总运力仍不足的部分才 ⇒ freightUncollectedByCurrency（钱不凭空消失）
  * 周期末  ：运费实收 − porter 工资实付 − upkeep = lastProfit；盈利 capacityPerRound+5（上限 100000）、
  *           亏损 −5（下限 5）；农村商号每活跃轮 +2‰（封顶 100）；结果经 withTradeResult 写回 merchantFirms
  * </pre>
@@ -137,7 +137,7 @@ public final class MerchantSettlement {
    *
    * <p>★★ <b>不变量</b>：{@code Σ choices.quantityMilli + unallocatedMilli == requestedMilli}；{@code
    * unallocatedMilli} 必须由调用方显式处理（{@code MarketSettlement} 记 {@code
-   * freightUncollectedMilli}），本类不静默丢。
+   * freightUncollectedByCurrency}），本类不静默丢。
    *
    * @param choices 已分配条目（按有效到货费率升序 → organizationId 升序）
    * @param requestedMilli 本次请求分配的承运量

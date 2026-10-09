@@ -896,7 +896,7 @@ final class EconomyEntrySettlement {
             0L,
             0L,
             0L,
-            0L,
+            Map.of(), // ★★ P-T4：上一周期收入按币分列（新入场 ⇒ 空表）
             0L,
             0L,
             0L,
@@ -908,7 +908,7 @@ final class EconomyEntrySettlement {
             0L,
             0L,
             0L,
-            0L,
+            Map.of(), // ★★ P-T4：本周期累计货款按币分列（新入场 ⇒ 空表）
             0L,
             0L,
             0L,

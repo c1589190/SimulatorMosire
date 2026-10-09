@@ -382,8 +382,14 @@ public record MarketReadout(
       CommodityId commodity,
       Map<HexCoord, MarketRegion> regionByHex) {
     long traded = 0L;
-    BigInteger landedNumerator = BigInteger.ZERO;
-    long freight = 0L;
+    // ★★ P-T4：撮合读数里的每一项钱都**按币分列**（禁跨币相加）。
+    //   ★ 到货价 = Σ 数量 × (单价 + 单位运费) ÷ Σ 数量 —— 这个和只在**单价币 == 运费币**时有定义：
+    //     单价是卖方币、单位运费是买方币，异币成交两栏是两种钱。⇒ 逐币各算一份；异币成交**具名排除**
+    //     （计入 landedPriceExcludedFills，不参与任何币的到货价），照 EnterpriseProfitBook 的先例。
+    Map<CurrencyId, BigInteger> landedNumeratorByCurrency = new LinkedHashMap<>();
+    Map<CurrencyId, Long> landedQuantityByCurrency = new LinkedHashMap<>();
+    long landedPriceExcludedFills = 0L;
+    Map<CurrencyId, Long> freightByCurrency = new LinkedHashMap<>();
     long loss = 0L;
     long unusedCapacity = 0L;
     boolean bottleneck = false;
@@ -400,12 +406,18 @@ public record MarketReadout(
         continue;
       }
       traded += fill.quantity();
-      landedNumerator =
-          landedNumerator.add(
-              BigInteger.valueOf(fill.quantity())
-                  .multiply(
-                      BigInteger.valueOf(fill.unitPriceMilli() + fill.freightPerUnitMilli())));
-      freight += fill.freightMilli();
+      OptionalLong landed = fill.landedUnitPriceMilli();
+      if (landed.isPresent()) {
+        CurrencyId currency = fill.unitCurrency();
+        landedNumeratorByCurrency.merge(
+            currency,
+            BigInteger.valueOf(fill.quantity()).multiply(BigInteger.valueOf(landed.getAsLong())),
+            BigInteger::add);
+        landedQuantityByCurrency.merge(currency, fill.quantity(), Long::sum);
+      } else {
+        landedPriceExcludedFills++;
+      }
+      freightByCurrency.merge(fill.freightCurrency(), fill.freightMilli(), Long::sum);
       loss += fill.lossMilli();
     }
     for (MarketReport.Unfilled unfilled : report.unfilled()) {
@@ -436,10 +448,15 @@ public record MarketReadout(
       unusedCapacity += Math.max(0L, capacity - route.used());
       bottleneck |= route.bottleneck();
     }
-    OptionalLong landedPrice =
-        traded > 0L
-            ? OptionalLong.of(landedNumerator.divide(BigInteger.valueOf(traded)).longValueExact())
-            : OptionalLong.empty();
+    Map<CurrencyId, Long> landedPriceByCurrency = new LinkedHashMap<>();
+    for (Map.Entry<CurrencyId, Long> entry : landedQuantityByCurrency.entrySet()) {
+      landedPriceByCurrency.put(
+          entry.getKey(),
+          landedNumeratorByCurrency
+              .get(entry.getKey())
+              .divide(BigInteger.valueOf(entry.getValue()))
+              .longValueExact());
+    }
     // ★★ S3：逐槽位结果的**聚合**（MarketReport 里有逐条，这里按区×商品折成可读的计数/极值；
     //   "缺价/未知成本"与"库存已足"因此不会消失在总数里）。
     long sellerOutcomeCount = 0L;
@@ -506,8 +523,9 @@ public record MarketReadout(
             : OptionalLong.of(dearestSellerCost);
     return new CommodityMatchReadout(
         traded,
-        landedPrice,
-        freight,
+        landedPriceByCurrency,
+        landedPriceExcludedFills,
+        freightByCurrency,
         loss,
         unusedCapacity,
         bottleneck,
@@ -629,18 +647,26 @@ public record MarketReadout(
   /**
    * ★★ <b>撮合结果读数（进程内报告派生）</b>：成交量、成交加权到货价、运费、损耗、未成交原因分布、未利用运力。
    *
+   * <p>★★ <b>P-T4：钱一律按币分列</b>（I-C10 读口不混币）：
+   *
    * <ul>
-   *   <li>{@code landedPriceMilli} = {@code Σ 数量 × (成交单价 + 单位运费) ÷ Σ 数量}（向下取整）；<b>没有成交 ⇒ {@link
-   *       OptionalLong#empty()}，不是 0</b>；
-   *   <li>{@code unusedCapacityMilli} = 每条路线的 {@code max(0, 每窗运力 × 最大轮数 − 已用)} 之和；
+   *   <li>{@code landedPriceByCurrency} = 逐币 {@code Σ 数量 × (成交单价 + 单位运费) ÷ Σ 数量}（向下取整）；<b>没有成交 ⇒
+   *       空表，不是 0</b>；★ 单价是卖方币、单位运费是买方币 ⇒ 异币成交的"单价 + 单位运费"没有定义，那些成交被 <b>具名排除</b>（见 {@code
+   *       landedPriceExcludedFills}），绝不相加；
+   *   <li>{@code freightByCurrency} = 逐币实付运费（键 = 该笔的运费币 = 买方支付币）；
+   *   <li>{@code unusedCapacityMilli} = 每条路线的 {@code max(0, 每窗运力 × 最大轮数 − 已用)} 之和（量，不是钱）；
    *   <li>{@code unfilled*Counts} / {@code unfilled*Quantities}：买方/卖方两侧分开、逐原因档——"有货卖不掉"与
    *       "买不起"因此不会合成一个数。
    * </ul>
+   *
+   * @param landedPriceExcludedFills 因<b>单价币 ≠ 运费币</b>而未计入任何币到货价的成交笔数（0 = 本区本商品全是同币成交；
+   *     它是"排除了多少"的具名读数，不是错误）
    */
   public record CommodityMatchReadout(
       long tradedMilli,
-      OptionalLong landedPriceMilli,
-      long freightMilli,
+      Map<CurrencyId, Long> landedPriceByCurrency,
+      long landedPriceExcludedFills,
+      Map<CurrencyId, Long> freightByCurrency,
       long lossMilli,
       long unusedCapacityMilli,
       boolean capacityBottleneck,
@@ -661,10 +687,12 @@ public record MarketReadout(
       Map<MarketUnfilledReason, Long> unfilledSellQuantities) {
 
     public CommodityMatchReadout {
-      Objects.requireNonNull(landedPriceMilli, "landedPriceMilli");
+      Objects.requireNonNull(landedPriceByCurrency, "landedPriceByCurrency");
+      Objects.requireNonNull(freightByCurrency, "freightByCurrency");
       Objects.requireNonNull(cheapestSellerUnitCostMilli, "cheapestSellerUnitCostMilli");
       Objects.requireNonNull(dearestSellerUnitCostMilli, "dearestSellerUnitCostMilli");
-      if (sellerOutcomeCount < 0L
+      if (landedPriceExcludedFills < 0L
+          || sellerOutcomeCount < 0L
           || sellerSelfUsableQtyMilli < 0L
           || sellerOutcompetedCount < 0L
           || sellerOutcompetedQtyMilli < 0L
@@ -675,10 +703,30 @@ public record MarketReadout(
           || buyerGapMilli < 0L) {
         throw new IllegalArgumentException("CommodityMatchReadout 的 S3 计数/数量不得为负");
       }
+      landedPriceByCurrency = Collections.unmodifiableMap(copyMoney(landedPriceByCurrency));
+      freightByCurrency = Collections.unmodifiableMap(copyMoney(freightByCurrency));
       unfilledBuyCounts = Collections.unmodifiableMap(copyCounts(unfilledBuyCounts));
       unfilledSellCounts = Collections.unmodifiableMap(copyCounts(unfilledSellCounts));
       unfilledBuyQuantities = Collections.unmodifiableMap(copyCounts(unfilledBuyQuantities));
       unfilledSellQuantities = Collections.unmodifiableMap(copyCounts(unfilledSellQuantities));
+    }
+
+    /**
+     * ★★ P-T4：逐币金额表的**构造期防御性拷贝**（保序 + 不可变）。★ I7：用 {@code LinkedHashMap} + {@code
+     * Collections.unmodifiableMap}，<b>不用</b> {@code Map.copyOf}（迭代序不是内容的纯函数）。
+     */
+    private static Map<CurrencyId, Long> copyMoney(Map<CurrencyId, Long> amounts) {
+      Map<CurrencyId, Long> copy = new LinkedHashMap<>();
+      if (amounts == null) {
+        return copy;
+      }
+      for (Map.Entry<CurrencyId, Long> entry : amounts.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null || entry.getValue() < 0L) {
+          throw new IllegalArgumentException("交易读数的逐币金额不得含 null 键/值或负额: " + entry);
+        }
+        copy.put(entry.getKey(), entry.getValue());
+      }
+      return copy;
     }
 
     /** 原因分布的**构造期防御性拷贝**；不可变包装写在赋值处（SpotBugs 只认那里）。 */

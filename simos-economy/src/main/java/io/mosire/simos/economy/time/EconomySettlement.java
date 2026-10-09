@@ -507,15 +507,38 @@ public final class EconomySettlement {
     return total;
   }
 
-  /** 追踪日志辅助：家户 → 币种 → 余额的两层表求和（只在 DEBUG 打开时调用）。 */
-  private static long traceTotalMoney(Map<HouseholdId, Map<CurrencyId, Long>> table) {
-    long total = 0L;
+  /**
+   * 追踪日志辅助：家户 → 币种 → 余额的两层表**按币分列**求和（只在 DEBUG/TRACE 打开时调用）。
+   *
+   * <p>★★ <b>P-T4：不再跨币相加</b>（改前是把所有币种 1:1 加成一个 {@code long}）。键按币种 id 升序 = 内容的纯函数 （不用 map
+   * 迭代序）。零额条目不发（"没有这种钱"与"这种钱动了 0"分得开）。
+   */
+  private static Map<String, Long> traceMoneyByCurrency(
+      Map<HouseholdId, Map<CurrencyId, Long>> table) {
+    Map<String, Long> totals = new TreeMap<>();
     for (Map<CurrencyId, Long> money : table.values()) {
-      for (long quantity : money.values()) {
-        total += quantity;
+      for (Map.Entry<CurrencyId, Long> entry : money.entrySet()) {
+        if (entry.getValue() != 0L) {
+          totals.merge(entry.getKey().value(), entry.getValue(), Long::sum);
+        }
       }
     }
-    return total;
+    return totals;
+  }
+
+  /**
+   * 追踪日志辅助：这两层表里有没有**正**额（= 改前"全部币 1:1 标量和 &gt; 0"那个门槛的等价形态）。 ★ 等价性：还款腿只累加正额 ⇒ "有一笔正的" 与 "标量和 &gt;
+   * 0" 同真同假。
+   */
+  private static boolean anyPositiveMoney(Map<HouseholdId, Map<CurrencyId, Long>> table) {
+    for (Map<CurrencyId, Long> money : table.values()) {
+      for (long quantity : money.values()) {
+        if (quantity > 0L) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -1878,8 +1901,13 @@ public final class EconomySettlement {
                   creditMoney,
                   "creditGoods",
                   creditGoods,
-                  "regulatedTariffMilli",
-                  report.regulatedTariffMilli()));
+                  "regulatedTariffByCurrency",
+                  report.regulatedTariffByCurrency(),
+                  // ★★ P-T4：运费读数按币分列（禁跨币相加）—— 一并进"这一轮发生了什么"。
+                  "freightPaidByCurrency",
+                  report.freightPaidByCurrency(),
+                  "freightUncollectedByCurrency",
+                  report.freightUncollectedByCurrency()));
       if (RAW.isTraceEnabled()) {
         for (MarketReport.Fill fill : report.fills()) {
           EventLog.channel(RAW)
@@ -1901,8 +1929,19 @@ public final class EconomySettlement {
                       fill.buyer().id(),
                       "quantity",
                       fill.quantity(),
+                      // ★★ P-T4：每一栏钱都带币种（读口不混币）—— 异币成交时"单价"与"实付"是两种钱。
+                      "unitCurrency",
+                      fill.unitCurrency().value(),
                       "unitPriceMilli",
                       fill.unitPriceMilli(),
+                      "paymentCurrency",
+                      fill.paymentCurrency().value(),
+                      "goodsPaymentMilli",
+                      fill.goodsPaymentMilli(),
+                      "freightCurrency",
+                      fill.freightCurrency().value(),
+                      "freightPerUnitMilli",
+                      fill.freightPerUnitMilli(),
                       "freightMilli",
                       fill.freightMilli(),
                       "immediate",
@@ -2067,8 +2106,12 @@ public final class EconomySettlement {
                     creditMoney,
                     "creditGoods",
                     creditGoods,
-                    "regulatedTariffMilli",
-                    report.regulatedTariffMilli()));
+                    "regulatedTariffByCurrency",
+                    report.regulatedTariffByCurrency(),
+                    "freightPaidByCurrency",
+                    report.freightPaidByCurrency(),
+                    "freightUncollectedByCurrency",
+                    report.freightUncollectedByCurrency()));
       }
       // ★★ S3 修复：把本轮的逐卖方证据累加进经营者条件的"本周期累计"字段。一个周期有多轮市场，关账日那轮
       //   很可能已经看不到更早轮里的滞销/被挤出 ⇒ 不在这里累加，状态机的连续计数就永远不涨。
@@ -2200,9 +2243,10 @@ public final class EconomySettlement {
           ledger,
           issuanceJournal);
       long repaidGrainTotal = traceTotalLongs(repaidToday);
-      long repaidMoneyTotal = traceTotalMoney(repaidMoneyToday);
+      // ★★ P-T4：还款读数**按币分列**（禁跨币相加）—— 门槛仍与改前同真同假（还款腿只累加正额）。
+      Map<String, Long> repaidMoneyByCurrency = traceMoneyByCurrency(repaidMoneyToday);
       int repaymentSkips = ledger.toLedger().debtRepaymentSkips().size();
-      if (repaidGrainTotal > 0L || repaidMoneyTotal > 0L || repaymentSkips > 0) {
+      if (repaidGrainTotal > 0L || anyPositiveMoney(repaidMoneyToday) || repaymentSkips > 0) {
         EventLog.channel(TRACE)
             .info(
                 LogEvent.of(
@@ -2214,8 +2258,8 @@ public final class EconomySettlement {
                     repaidToday.size(),
                     "repaidGrainMilli",
                     repaidGrainTotal,
-                    "repaidMoneyMilli",
-                    repaidMoneyTotal,
+                    "repaidMoneyByCurrency",
+                    repaidMoneyByCurrency,
                     "skippedMediums",
                     repaymentSkips,
                     "debtContracts",
@@ -2233,8 +2277,8 @@ public final class EconomySettlement {
                     repaidToday.size(),
                     "repaidGrainMilli",
                     repaidGrainTotal,
-                    "repaidMoneyMilli",
-                    repaidMoneyTotal,
+                    "repaidMoneyByCurrency",
+                    repaidMoneyByCurrency,
                     "skippedMediums",
                     repaymentSkips,
                     "debtContracts",
@@ -2905,8 +2949,8 @@ public final class EconomySettlement {
                 traceTotalLongs(borrowing),
                 "repaidGrainMilli",
                 traceTotalLongs(repaidToday),
-                "repaidMoneyMilli",
-                traceTotalMoney(repaidMoneyToday),
+                "repaidMoneyByCurrency",
+                traceMoneyByCurrency(repaidMoneyToday),
                 "debtContracts",
                 debts.size(),
                 "transfers",

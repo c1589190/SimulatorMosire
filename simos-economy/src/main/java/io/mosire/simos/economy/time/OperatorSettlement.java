@@ -23,6 +23,7 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -108,7 +109,7 @@ final class OperatorSettlement {
       }
       unitsByOperator.computeIfAbsent(unit.operator(), ignored -> new ArrayList<>()).add(unit.id());
     }
-    Map<ProductionUnitId, long[]> byUnit = new LinkedHashMap<>();
+    Map<ProductionUnitId, EvidenceAccumulator> byUnit = new LinkedHashMap<>();
     for (MarketReport.SellerOutcome outcome : report.sellerOutcomes()) {
       List<ProductionUnitId> candidates = unitsByOperator.get(outcome.actor());
       if (candidates == null) {
@@ -120,13 +121,14 @@ final class OperatorSettlement {
         if (unit == null || industry == null || !belongsTo(outcome, unit, industry)) {
           continue;
         }
-        long[] evidence = byUnit.computeIfAbsent(id, ignored -> new long[6]);
-        evidence[0] += outcome.offeredQty();
-        evidence[1] += outcome.filledQty();
-        evidence[2] += outcome.unfilledQty();
+        EvidenceAccumulator evidence =
+            byUnit.computeIfAbsent(id, ignored -> new EvidenceAccumulator());
+        evidence.offered += outcome.offeredQty();
+        evidence.filled += outcome.filledQty();
+        evidence.unfilled += outcome.unfilledQty();
         if (outcome.unfilledReason().orElse(null) == MarketUnfilledReason.OUTCOMPETED) {
-          evidence[4] += outcome.outcompetedByActorCount();
-          evidence[5] += outcome.outcompetedQty();
+          evidence.outcompetedActors += outcome.outcompetedByActorCount();
+          evidence.outcompetedQty += outcome.outcompetedQty();
         }
       }
     }
@@ -143,8 +145,15 @@ final class OperatorSettlement {
             || !industry.outputPerUnit().containsKey(fill.commodity())) {
           continue;
         }
-        long[] evidence = byUnit.computeIfAbsent(id, ignored -> new long[6]);
-        evidence[3] += fill.goodsPaymentMilli();
+        // ★★ P-T4：货款按**实付币**分别累加（改前是一个 long，把各种钱 1:1 加总）—— 零额腿不落键，
+        //   故"本轮有没有收入"的判据与改前逐值相同。
+        long leg = fill.goodsPaymentMilli();
+        if (leg > 0L) {
+          byUnit
+              .computeIfAbsent(id, ignored -> new EvidenceAccumulator())
+              .revenueByCurrency
+              .merge(fill.paymentCurrency(), leg, Long::sum);
+        }
       }
     }
     for (ProductionUnitId id : new ArrayList<>(units.keySet())) {
@@ -156,21 +165,23 @@ final class OperatorSettlement {
       if (industry == null) {
         continue;
       }
-      long[] accumulated = byUnit.get(id);
-      long offered = accumulated == null ? 0L : accumulated[0];
-      long filled = accumulated == null ? 0L : accumulated[1];
-      long unfilled = accumulated == null ? 0L : accumulated[2];
-      long revenue = accumulated == null ? 0L : accumulated[3];
-      long outcompetedActors = accumulated == null ? 0L : accumulated[4];
-      long outcompetedQty = accumulated == null ? 0L : accumulated[5];
+      EvidenceAccumulator accumulated = byUnit.get(id);
       MarketEvidence evidence =
-          new MarketEvidence(offered, filled, unfilled, revenue, outcompetedActors, outcompetedQty);
+          accumulated == null
+              ? new MarketEvidence(0L, 0L, 0L, Map.of(), 0L, 0L)
+              : new MarketEvidence(
+                  accumulated.offered,
+                  accumulated.filled,
+                  accumulated.unfilled,
+                  accumulated.revenueByCurrency,
+                  accumulated.outcompetedActors,
+                  accumulated.outcompetedQty);
       OperatorCondition prev = conditions.get(id);
       boolean observed =
           evidence.offered > 0L
               || evidence.filled > 0L
               || evidence.unfilled > 0L
-              || evidence.revenue > 0L
+              || !evidence.revenueByCurrency.isEmpty()
               || evidence.outcompetedActors > 0L
               || evidence.outcompetedQty > 0L;
       if (prev == null && !observed) {
@@ -185,7 +196,7 @@ final class OperatorSettlement {
               evidence.offered,
               evidence.filled,
               evidence.unfilled,
-              evidence.revenue,
+              evidence.revenueByCurrency,
               evidence.outcompetedActors,
               evidence.outcompetedQty));
     }
@@ -401,9 +412,23 @@ final class OperatorSettlement {
         costEstimate = estimate.unitCostEstimateMilli() * plannedScale / 1_000L;
       }
       // ★ 无市场轮 ⇒ 没有新证据：lastCycle* 与滞销读数保持上一周期原值，不用 0 覆盖。
-      long lastCycleRevenue = hadMarket ? prev.cycleRevenueMilli() : prev.lastCycleRevenueMilli();
+      // ★★ P-T4：收入**按币结转**（关账消费后清零）。净额只对**本币**算 —— 成本估计（{@code ProducerCostBook}）
+      //   是单一计价口径，把外币也算进"收入 − 成本"就是拿两种钱相减。说不出本币（该 unit 的格没有市场 / 旧档）⇒
+      //   按 {@link #canonicalCurrencyOf} 的确定性兜底挑一种钱（照 {@code EnterpriseProfitBook.bookCurrenciesOf}
+      //   的先例：局部市场币优先，说不出本地币就取货币腿里规范串最小者）—— 单币世界因此仍逐值不变；
+      //   **绝不**退回"全部币 1:1 加总"。
+      Map<CurrencyId, Long> lastCycleRevenue =
+          hadMarket ? prev.cycleRevenueByCurrency() : prev.lastCycleRevenueByCurrency();
       long lastCycleCost = hadMarket ? costEstimate : prev.lastCycleCostMilli();
-      long lastCycleNet = hadMarket ? lastCycleRevenue - lastCycleCost : prev.lastCycleNetMilli();
+      long lastCycleNet;
+      if (hadMarket) {
+        CurrencyId bookUsed =
+            bookCurrency != null ? bookCurrency : canonicalCurrencyOf(lastCycleRevenue);
+        logForeignRevenueExcluded(id, industry.id(), bookCurrency, bookUsed, lastCycleRevenue);
+        lastCycleNet = moneyOf(lastCycleRevenue, bookUsed) - lastCycleCost;
+      } else {
+        lastCycleNet = prev.lastCycleNetMilli();
+      }
       long unsoldStock = hadMarket ? prev.cycleUnfilledQty() : prev.unsoldStockMilli();
       conditions.put(
           id,
@@ -427,7 +452,7 @@ final class OperatorSettlement {
               0L, // cycleOfferedQty：关账消费后清零，新周期重新累计
               0L, // cycleFilledQty
               0L, // cycleUnfilledQty
-              0L, // cycleRevenueMilli
+              Map.of(), // cycleRevenueByCurrency ★★ P-T4：关账消费后清零（按币分列，没有收入就是空表）
               0L, // cycleOutcompetedActors
               0L, // cycleOutcompetedQty
               0L, // cycleMarketRounds
@@ -453,14 +478,42 @@ final class OperatorSettlement {
     return exits;
   }
 
-  /** 一个 unit 在最近一轮市场里的可观察证据（由 {@link MarketReport.SellerOutcome} 聚合）。 */
+  /**
+   * 一个 unit 在最近一轮市场里的可观察证据（由 {@link MarketReport.SellerOutcome} 与逐笔成交聚合）。
+   *
+   * <p>★★ P-T4：货款<b>按币分列</b>（键 = 买方实付币）—— 改前是一个 long 的"全部币 1:1 加总"。
+   */
   private record MarketEvidence(
       long offered,
       long filled,
       long unfilled,
-      long revenue,
+      Map<CurrencyId, Long> revenueByCurrency,
       long outcompetedActors,
-      long outcompetedQty) {}
+      long outcompetedQty) {
+
+    MarketEvidence {
+      // ★ 冻结写在**赋值处**（照 FieldDelta/MarketReadout 的成例：SpotBugs 只认它自己看得见的
+      //   Collections.unmodifiable*）；null ⇒ 空表（"没有收入"）。
+      revenueByCurrency =
+          revenueByCurrency == null
+              ? Map.of()
+              : Collections.unmodifiableMap(new LinkedHashMap<>(revenueByCurrency));
+    }
+  }
+
+  /**
+   * ★★ <b>P-T4：一次市场证据累加的可变累加器</b>（只活在 {@link #accumulateMarketEvidence} 的一次调用里）。
+   *
+   * <p>★ 为什么不是一个 {@code long[]}：货款要按币分列，而"币"是键 —— 数组装不下；其余五个量保持逐值累加语义。
+   */
+  private static final class EvidenceAccumulator {
+    long offered;
+    long filled;
+    long unfilled;
+    long outcompetedActors;
+    long outcompetedQty;
+    final Map<CurrencyId, Long> revenueByCurrency = new LinkedHashMap<>();
+  }
 
   /**
    * 一条卖方槽是不是本 unit 的：优先认 {@code SellerOutcome.unitId}（市场侧已经认出来的 unit）， 认不出来时回退到 {@code actor +
@@ -487,7 +540,7 @@ final class OperatorSettlement {
         0L,
         0L,
         0L,
-        0L,
+        Map.of(), // ★★ P-T4：上一周期收入按币分列（中性 = 没有收入）
         0L,
         0L,
         0L,
@@ -499,7 +552,7 @@ final class OperatorSettlement {
         0L,
         0L,
         0L,
-        0L,
+        Map.of(), // ★★ P-T4：本周期累计货款按币分列（中性 = 没有收入）
         0L,
         0L,
         0L,
@@ -568,6 +621,85 @@ final class OperatorSettlement {
                 excluded,
                 "note",
                 "本币现金 = 单一币种口径：其他币种既不相加也不折算（世界无汇率）"));
+  }
+
+  /**
+   * ★★ <b>P-T4：按币取一笔逐币金额</b>（唯一算式）。说不出币种（{@code currency == null} = 该 unit 没有本地市场）⇒
+   * 0（fail-closed），<b>不</b>退回"全部币 1:1 加总"。
+   */
+  private static long moneyOf(Map<CurrencyId, Long> amounts, CurrencyId currency) {
+    if (currency == null || amounts == null) {
+      return 0L;
+    }
+    return amounts.getOrDefault(currency, 0L);
+  }
+
+  /**
+   * ★★ <b>P-T4：说不出本币时的确定性兜底</b> —— 取逐币金额里<b>规范串最小</b>的那种钱（空表 ⇒ {@code null}）。
+   *
+   * <p>★ 与 {@code EnterpriseProfitBook.bookCurrenciesOf} 同一条口径（局部市场币优先，说不出本地币就取货币腿里规范串最小者）。
+   * 它<b>不是</b>"跨币求和"，而是"在无法确定本币时按内容的纯函数挑一种钱"（I7：选择也是内容的纯函数）。 ★ 单币世界恒挑到那唯一的币 ⇒ 净额与改前逐值相同。
+   */
+  private static CurrencyId canonicalCurrencyOf(Map<CurrencyId, Long> amounts) {
+    CurrencyId best = null;
+    for (CurrencyId currency : amounts.keySet()) {
+      if (best == null || currency.value().compareTo(best.value()) < 0) {
+        best = currency;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * ★★ <b>P-T4：净额口径下"被排除掉的逐币收入"具名记一条 DEBUG</b>（不写任何状态、不改任何数）。
+   *
+   * <p>★ 只发<b>确实收到</b>的非净额币收入；净额币与零额条目不发。说不出本币（{@code bookCurrency == null}）时也发一条具名读数 ——
+   * 那是"净额按哪种钱算"的依据，必须一眼可辨。
+   *
+   * @param bookCurrency 局部市场给出的本币（{@code null} = 说不出）
+   * @param bookCurrencyUsed 实际用于算净额的那种钱（本币，或 {@link #canonicalCurrencyOf} 兜底挑出的规范串最小者； {@code null}
+   *     = 本轮没有收入）
+   */
+  private static void logForeignRevenueExcluded(
+      ProductionUnitId unitId,
+      IndustryId industryId,
+      CurrencyId bookCurrency,
+      CurrencyId bookCurrencyUsed,
+      Map<CurrencyId, Long> revenueByCurrency) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    Map<String, Long> excluded = new TreeMap<>();
+    for (Map.Entry<CurrencyId, Long> entry : revenueByCurrency.entrySet()) {
+      if ((bookCurrencyUsed == null || !entry.getKey().equals(bookCurrencyUsed))
+          && entry.getValue() != 0L) {
+        excluded.merge(entry.getKey().value(), entry.getValue(), Long::sum);
+      }
+    }
+    if (excluded.isEmpty() && bookCurrencyUsed != null) {
+      return;
+    }
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "OPERATOR_FOREIGN_REVENUE_EXCLUDED",
+                EconomyLogSource.ECONOMY_OPERATOR_STATE,
+                "unit",
+                unitId.value(),
+                "industry",
+                industryId.value(),
+                "bookCurrency",
+                bookCurrency == null ? "(说不出：该 unit 没有本地市场)" : bookCurrency.value(),
+                "bookCurrencyUsed",
+                bookCurrencyUsed == null ? "(说不出：本轮也没有收入)" : bookCurrencyUsed.value(),
+                "bookCurrencySource",
+                bookCurrency != null
+                    ? "local-market"
+                    : (bookCurrencyUsed != null ? "canonical-of-revenue-legs" : "none"),
+                "excludedRevenueByCurrency",
+                excluded,
+                "note",
+                "净额 = 该币收入 − 成本：其他币种既不相加也不折算（世界无汇率）；逐币收入仍全额留在 lastCycleRevenueByCurrency"));
   }
 
   private static long stockOf(

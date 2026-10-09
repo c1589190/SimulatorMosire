@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
@@ -10,6 +11,7 @@ import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,8 +32,8 @@ import java.util.OptionalLong;
  *   <li>{@link #fills()}：每一笔成交（含区内即时与跨区在途）—— 发货格/收货格/买卖双方/量/单价/运费/ETA/在途批次 id/逐票预排损耗；
  *   <li>{@link #unfilled()}：每一笔未成交剩余与**原因档** + **所在格**（{@link MarketUnfilledReason}；买/卖两侧分开）；
  *   <li>{@link #routes()}：每条路线的运力、用量、瓶颈标志 —— ★ "有货、有路、运力不足 ⇒ 城市仍可能缺粮，系统报物流瓶颈"的落点；
- *   <li>{@link #freightPaidMilli()} / {@link #freightUncollectedMilli()} / {@link
- *       #scheduledLossMilli()}： 运费实收、无承运人时未收的运费、按批次损耗率预排的在途损耗（实际损耗在到货日进 ledger）。
+ *   <li>{@link #freightPaidByCurrency()} / {@link #freightUncollectedByCurrency()} / {@link
+ *       #scheduledLossMilli()}： 运费实收、无承运人时未收的运费（★ 前两项按币分列）、按批次损耗率预排的在途损耗（实际损耗在到货日进 ledger）。
  * </ul>
  *
  * <p>★★ <b>跨区结算暂设即时</b>（M2.0 #4 的读数契约标注）：{@link #CROSS_REGION_SETTLEMENT_IMMEDIATE} 恒为 {@code true}
@@ -45,8 +47,9 @@ import java.util.OptionalLong;
  * @param fills 逐笔成交（保序）
  * @param unfilled 逐笔未成交剩余（保序）
  * @param routes 逐路线运力用量（保序）
- * @param freightPaidMilli 本轮实收运费（毫计价货币）
- * @param freightUncollectedMilli 因无承运人而未收的运费（毫计价货币；读数看得见，不静默）
+ * @param freightPaidByCurrency ★★ P-T4：本轮实收运费<b>按币分列</b>（键 = 铸这条 {@code CARRIER_FEE}
+ *     腿用的钱，即该笔买方的支付币； 毫；保序 + 不可变）。禁跨币相加 ⇒ 单币世界恒只有一项，值与本批之前逐值相同
+ * @param freightUncollectedByCurrency ★★ P-T4：因无承运人/运力不足而未收的运费<b>按币分列</b>（键 = 该笔买方的支付币；读数看得见，不静默）
  * @param scheduledLossMilli 按批次损耗率预排的在途损耗（毫商品；到货日才真的从在途量里扣）
  * @param immediateFills 区内即时成交笔数
  * @param crossRegionFills 跨区在途成交笔数
@@ -64,8 +67,8 @@ public record MarketReport(
     List<Fill> fills,
     List<Unfilled> unfilled,
     List<RouteUsage> routes,
-    long freightPaidMilli,
-    long freightUncollectedMilli,
+    Map<CurrencyId, Long> freightPaidByCurrency,
+    Map<CurrencyId, Long> freightUncollectedByCurrency,
     long scheduledLossMilli,
     long immediateFills,
     long crossRegionFills,
@@ -104,8 +107,8 @@ public record MarketReport(
       List<Fill> fills,
       List<Unfilled> unfilled,
       List<RouteUsage> routes,
-      long freightPaidMilli,
-      long freightUncollectedMilli,
+      Map<CurrencyId, Long> freightPaidByCurrency,
+      Map<CurrencyId, Long> freightUncollectedByCurrency,
       long scheduledLossMilli,
       long immediateFills,
       long crossRegionFills,
@@ -121,8 +124,8 @@ public record MarketReport(
         fills,
         unfilled,
         routes,
-        freightPaidMilli,
-        freightUncollectedMilli,
+        freightPaidByCurrency,
+        freightUncollectedByCurrency,
         scheduledLossMilli,
         immediateFills,
         crossRegionFills,
@@ -140,11 +143,37 @@ public record MarketReport(
     fills = fills == null ? List.of() : List.copyOf(fills);
     unfilled = unfilled == null ? List.of() : List.copyOf(unfilled);
     routes = routes == null ? List.of() : List.copyOf(routes);
+    // ★ 冻结写在**赋值处**（照 MarketReadout/FieldDelta 的成例：SpotBugs 只认它自己看得见的
+    //   Collections.unmodifiable*），helper 只负责"拷一份 + 校验"。
+    freightPaidByCurrency =
+        Collections.unmodifiableMap(copyMoney(freightPaidByCurrency, "freightPaidByCurrency"));
+    freightUncollectedByCurrency =
+        Collections.unmodifiableMap(
+            copyMoney(freightUncollectedByCurrency, "freightUncollectedByCurrency"));
     priceUpdates = priceUpdates == null ? List.of() : List.copyOf(priceUpdates);
     sellerOutcomes = sellerOutcomes == null ? List.of() : List.copyOf(sellerOutcomes);
     buyerOutcomes = buyerOutcomes == null ? List.of() : List.copyOf(buyerOutcomes);
     creditFills = creditFills == null ? List.of() : List.copyOf(creditFills);
     fx = fx == null ? FxRoundResult.none() : fx;
+  }
+
+  /**
+   * ★★ <b>P-T4：逐币金额表的构造期防御性拷贝</b>（保序）。★ I7：用 {@code LinkedHashMap} 保序，<b>不用</b> {@code
+   * Map.copyOf}（后者的迭代序不是内容的纯函数）；不可变包装写在赋值处（见构造器）。
+   *
+   * <p>★ 拒绝 null 键/值与负额：读数的"没有"必须是空表（= 没有这种币的金额），不是 0、更不是负。
+   */
+  private static Map<CurrencyId, Long> copyMoney(Map<CurrencyId, Long> amounts, String what) {
+    Map<CurrencyId, Long> copy = new LinkedHashMap<>();
+    if (amounts != null) {
+      for (Map.Entry<CurrencyId, Long> entry : amounts.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null || entry.getValue() < 0L) {
+          throw new IllegalArgumentException("MarketReport." + what + " 不得含 null 键/值或负额: " + entry);
+        }
+        copy.put(entry.getKey(), entry.getValue());
+      }
+    }
+    return copy;
   }
 
   /** 只按<b>引用身份</b>相等的外部键（见 {@link #REGULATED_TARIFF_BY_REPORT}）。 */
@@ -167,13 +196,16 @@ public record MarketReport(
   }
 
   /**
-   * ★★ <b>D-027：带区级税费读数的报告工厂</b>（唯一会填 {@link #regulatedTariffMilli()} 的入口）。
+   * ★★ <b>D-027：带区级税费读数的报告工厂</b>（唯一会填 {@link #regulatedTariffByCurrency()} 的入口）。
    *
    * <p>★ 为什么税费不落成 {@link Fill} 字段：本批税费<b>只记读数、不搬钱</b>（收款方未定），把它塞进成交形状会诱导
    * 读口把它加进到货价；放在这里则"谁要是真收了"这件事一眼可辨。{@code tariffPerUnit} 里非 0 的项才产生读数； 税费按<b>成交毛量</b>折算（{@code ⌊量 ×
    * 单价税 ÷ 1000⌋}，向下取整）。
    *
-   * @param tariffByFill 逐票单位税费（毫计价货币/商品单位；空/缺项/≤0 = 该票不记税费）—— 税费按<b>成交毛量</b>折算 （{@code ⌊量 × 单价税 ÷
+   * <p>★★ P-T4：税费的<b>币种不另开一列</b>——它就是<b>卖方格计价币</b>，而那个事实的唯一拼写点是 {@link
+   * Fill#unitCurrency()}（费率本身出自卖方所在区的调控）。逐票总额按它分组进 {@link #regulatedTariffByCurrency()}。
+   *
+   * @param tariffByFill 逐票单位税费（毫卖方计价币/商品单位；空/缺项/≤0 = 该票不记税费）—— 税费按<b>成交毛量</b>折算 （{@code ⌊量 × 单价税 ÷
    *     1000⌋}，向下取整）
    */
   public static MarketReport withRegulatedTariff(
@@ -183,8 +215,8 @@ public record MarketReport(
       List<Fill> fills,
       List<Unfilled> unfilled,
       List<RouteUsage> routes,
-      long freightPaidMilli,
-      long freightUncollectedMilli,
+      Map<CurrencyId, Long> freightPaidByCurrency,
+      Map<CurrencyId, Long> freightUncollectedByCurrency,
       long scheduledLossMilli,
       long immediateFills,
       long crossRegionFills,
@@ -201,8 +233,8 @@ public record MarketReport(
         fills,
         unfilled,
         routes,
-        freightPaidMilli,
-        freightUncollectedMilli,
+        freightPaidByCurrency,
+        freightUncollectedByCurrency,
         scheduledLossMilli,
         immediateFills,
         crossRegionFills,
@@ -227,8 +259,8 @@ public record MarketReport(
       List<Fill> fills,
       List<Unfilled> unfilled,
       List<RouteUsage> routes,
-      long freightPaidMilli,
-      long freightUncollectedMilli,
+      Map<CurrencyId, Long> freightPaidByCurrency,
+      Map<CurrencyId, Long> freightUncollectedByCurrency,
       long scheduledLossMilli,
       long immediateFills,
       long crossRegionFills,
@@ -247,8 +279,8 @@ public record MarketReport(
             fills,
             unfilled,
             routes,
-            freightPaidMilli,
-            freightUncollectedMilli,
+            freightPaidByCurrency,
+            freightUncollectedByCurrency,
             scheduledLossMilli,
             immediateFills,
             crossRegionFills,
@@ -310,17 +342,22 @@ public record MarketReport(
     return sum;
   }
 
-  /** ★★ <b>D-027：区级税费读数合计</b>（毫计价货币）—— 本批<b>只记读数，不搬钱</b>（收款方未定）。没有调控/没有成交 ⇒ 0。 */
-  public long regulatedTariffMilli() {
+  /**
+   * ★★ <b>D-027：区级税费读数合计</b>（<b>按币分列</b>）—— 本批<b>只记读数，不搬钱</b>（收款方未定，P-T1 才定国库）。
+   *
+   * <p>★★ <b>P-T4：为什么是逐币表而不是一个 long</b>：税费按<b>卖方格计价币</b>（= 该笔成交的 {@link
+   * Fill#unitCurrency()}）计价，多币世界里把不同币的税费加起来就是把两种钱当一种。⇒ 本读数回答"这笔货被抽了多少税、<b>什么币</b>"； "进哪个国库"是 P-T1
+   * 的事。没有调控/没有成交 ⇒ <b>空表</b>（不是 0）。
+   */
+  public Map<CurrencyId, Long> regulatedTariffByCurrency() {
     Map<Fill, Long> byFill = REGULATED_TARIFF_BY_REPORT.get(new IdentityKey(this));
-    if (byFill == null) {
-      return 0L;
+    Map<CurrencyId, Long> totals = new LinkedHashMap<>();
+    if (byFill != null) {
+      for (Map.Entry<Fill, Long> entry : byFill.entrySet()) {
+        totals.merge(entry.getKey().unitCurrency(), entry.getValue(), Math::addExact);
+      }
     }
-    long sum = 0L;
-    for (long amount : byFill.values()) {
-      sum += amount;
-    }
-    return sum;
+    return Collections.unmodifiableMap(totals);
   }
 
   /** 没有任何市场活动的空报告。 */
@@ -332,8 +369,8 @@ public record MarketReport(
         List.of(),
         List.of(),
         List.of(),
-        0L,
-        0L,
+        Map.of(),
+        Map.of(),
         0L,
         0L,
         0L,
@@ -375,10 +412,28 @@ public record MarketReport(
    * ★ 一笔成交。{@code immediate == true} 时 {@code shipmentId} 为空串（区内即时，没有在途批次）； 否则 {@code shipmentId} 是
    * {@code EconomyData.shipments} 里的键。
    *
-   * @param unitPriceMilli 成交单价（毫计价货币 / 商品单位；跨区时 = 卖方格参考价，**不含**运费）
-   * @param freightPerUnitMilli 单位运费（毫计价货币 / 商品单位；无承运人时为 0）
-   * @param goodsPaymentMilli 货款（毫计价货币）
-   * @param freightMilli 运费（毫计价货币；无承运人时为 0）
+   * <p>★★ <b>P-T4：每一栏钱都带币种列</b>（I-C10 读口不混币）—— 异币成交时"单价"与"实付"是<b>两种钱</b>，
+   * 读口必须能分别回答"单价是哪一币、实付是哪一币、运费是哪一币"，且<b>永远不把两栏相加</b>：
+   *
+   * <ul>
+   *   <li>{@link #unitCurrency()}：{@link #unitPriceMilli()} 的币 = <b>卖方格计价币</b>（{@code
+   *       sell.market.numeraire()}；卖方那个市场的计价币，不是买方的）；
+   *   <li>{@link #paymentCurrency()}：{@link #goodsPaymentMilli()} 的币 = <b>买方支付币</b>（{@code
+   *       buy.currency}）—— 货款的钱腿就铸在这种钱上；
+   *   <li>{@link #freightCurrency()}：{@link #freightPerUnitMilli()} / {@link #freightMilli()} 的币 ——
+   *       <b>恒等于 {@link #paymentCurrency()}</b>（运费腿同样铸在买方支付币上，唯一拼写点 {@code
+   *       MarketSettlement.executeTrade}）。★ 它是一条<b>具名派生列</b>，不是第二个真值：写成"运费币"是为了让读口能直接回答"运费是哪一币"，
+   *       而不必去猜。
+   * </ul>
+   *
+   * <p>★ 相加的唯一合法形态见 {@link #landedUnitPriceMilli()}：<b>只有单价币 == 运费币时</b>"单价 + 单位运费"才有定义。
+   *
+   * @param unitCurrency 单价币（卖方格计价币）
+   * @param unitPriceMilli 成交单价（毫单价币 / 商品单位；跨区时 = 卖方格参考价，**不含**运费）
+   * @param paymentCurrency 实付币（买方支付币）
+   * @param goodsPaymentMilli 货款（毫实付币）
+   * @param freightPerUnitMilli 单位运费（毫运费币 / 商品单位；无承运人时为 0）
+   * @param freightMilli 运费（毫运费币；无承运人时为 0）
    * @param arrivalTick 到货世界日（区内即时 = 成交日）
    * @param lossMilli ★ M2.7：本票按路线损耗率**预排**的在途损耗（毫商品；公式与到货日的扣减逐字同源）；区内即时 = 0
    */
@@ -389,9 +444,11 @@ public record MarketReport(
       ActorRef seller,
       ActorRef buyer,
       long quantity,
+      CurrencyId unitCurrency,
       long unitPriceMilli,
-      long freightPerUnitMilli,
+      CurrencyId paymentCurrency,
       long goodsPaymentMilli,
+      long freightPerUnitMilli,
       long freightMilli,
       long arrivalTick,
       boolean immediate,
@@ -404,7 +461,28 @@ public record MarketReport(
       Objects.requireNonNull(commodity, "commodity");
       Objects.requireNonNull(seller, "seller");
       Objects.requireNonNull(buyer, "buyer");
+      Objects.requireNonNull(unitCurrency, "unitCurrency");
+      Objects.requireNonNull(paymentCurrency, "paymentCurrency");
       Objects.requireNonNull(shipmentId, "shipmentId");
+    }
+
+    /** ★★ P-T4：运费币 = {@link #paymentCurrency()}（运费腿铸在买方支付币上；见 record 注）。 */
+    public CurrencyId freightCurrency() {
+      return paymentCurrency;
+    }
+
+    /**
+     * ★★ P-T4：本笔的"单价 + 单位运费"（毫/商品单位）—— <b>只在 {@link #unitCurrency()} == {@link #freightCurrency()}
+     * 时有定义</b>（同一种钱相加）。
+     *
+     * <p>★ 异币成交（卖方币 ≠ 买方币）时两栏是<b>两种钱</b>：本方法返回 {@link OptionalLong#empty()}， 调用方必须<b>具名排除</b>（照
+     * {@code EnterpriseProfitBook.addRevenue} 的先例），<b>不得</b>自己相加。 单币世界两栏恒相同 ⇒ 返回值与本批之前逐值相同。
+     */
+    public OptionalLong landedUnitPriceMilli() {
+      if (!unitCurrency.equals(paymentCurrency)) {
+        return OptionalLong.empty();
+      }
+      return OptionalLong.of(unitPriceMilli + freightPerUnitMilli);
     }
   }
 

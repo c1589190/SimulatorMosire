@@ -97,7 +97,7 @@ import java.util.TreeSet;
  * LossBearer#BUYER}），到货时从在途量里扣并记进 {@code ProductionLedger} 的损耗账户。
  *
  * <p>★★ <b>运费必须有收款方</b>：承运主体 = {@code ActorKind.ORGANIZATION} 且会话里有货币账。世界里没有承运 actor
- * 时<b>不收运费</b>（{@link MarketReport#freightUncollectedMilli()} 记下应收而未收的读数），禁钱凭空消失。
+ * 时<b>不收运费</b>（{@link MarketReport#freightUncollectedByCurrency()} 记下应收而未收的读数），禁钱凭空消失。
  *
  * <p>★★ <b>跨区结算暂设即时</b>：{@code MARKET_CROSS_REGION_SETTLEMENT_IMMEDIATE = true} —— 货款与运费在**发运日**
  * 结清，货却在 ETA 之后才到；这是设计允许的简化，L3 的读数契约必须原样标注（M2.0 #4）。
@@ -1475,8 +1475,8 @@ final class MarketSettlement {
             ctx.fills,
             ctx.unfilled,
             routeUsages,
-            ctx.freightPaidMilli,
-            ctx.freightUncollectedMilli,
+            ctx.freightPaidByCurrency,
+            ctx.freightUncollectedByCurrency,
             ctx.scheduledLossMilli,
             ctx.immediateFills,
             ctx.crossRegionFills,
@@ -2812,9 +2812,12 @@ final class MarketSettlement {
             sell.seller.actor,
             buy.buyer.actor,
             quantity,
+            // ★★ P-T4：单价币 = 卖方格计价币；实付币 = 买方支付币（钱腿就铸在它上面）。
+            sell.market.numeraire(),
             sellerUnitPrice,
-            0L,
+            buy.currency,
             payment,
+            0L,
             0L,
             round.day,
             true,
@@ -5051,7 +5054,7 @@ final class MarketSettlement {
           round.householdOfActor,
           moneyLeg);
     }
-    // ★ P11.3：逐条实际承运条目分别铸 CARRIER_FEE；freightPaidMilli 只累加真实铸出的金额（Σ = 实际可收运费，
+    // ★ P11.3：逐条实际承运条目分别铸 CARRIER_FEE；freightPaidByCurrency 只累加真实铸出的金额（Σ = 实际可收运费，
     //   自承运条目已在 carrierChargeSplit 里剔除，因此不会出现"买方 → 买方"的自转移）。
     for (FreightCharge charge : freightCharges) {
       Transfer freightLeg =
@@ -5069,9 +5072,14 @@ final class MarketSettlement {
           round.householdFrozenMoney,
           round.householdOfActor,
           freightLeg);
-      ctx.freightPaidMilli += charge.amountMilli();
+      //   ★★ P-T4：逐条按**它的币**记账（运费腿就铸在 buy.currency 上）—— 禁跨币相加。
+      ctx.freightPaidByCurrency.merge(buy.currency, charge.amountMilli(), Math::addExact);
     }
-    ctx.freightUncollectedMilli += uncollectedFreight;
+    //   ★★ P-T4：未收运费同样按币分列（键 = 本笔买方的支付币：名义运费就按这种钱的量纲算出来）。
+    //   ★ 0 不落键（"没有未收"与"未收 0"分得开；否则每笔成交都会给它的币插一条 0）。
+    if (uncollectedFreight > 0L) {
+      ctx.freightUncollectedByCurrency.merge(buy.currency, uncollectedFreight, Math::addExact);
+    }
     buy.spentMilli += total;
     if (ctx.recordFillIntents) {
       // ★ worker 的区内意向：全局槽位下标 + 唯一标识（区/商品/买卖方 canonical 串），协调器按区序回放。
@@ -5103,9 +5111,12 @@ final class MarketSettlement {
               sell.seller.actor,
               buy.buyer.actor,
               executed,
+              // ★★ P-T4：单价币 = 卖方格计价币；实付币 = 买方支付币（货款与运费两条钱腿都铸在它上面）。
+              sell.market.numeraire(),
               unitPrice,
-              route == null ? 0L : route.freightPerUnit,
+              buy.currency,
               payment,
+              route == null ? 0L : route.freightPerUnit,
               freight,
               round.day,
               true,
@@ -5156,9 +5167,12 @@ final class MarketSettlement {
             sell.seller.actor,
             buy.buyer.actor,
             executed,
+            // ★★ P-T4：单价币 = 卖方格计价币；实付币 = 买方支付币（货款与运费两条钱腿都铸在它上面）。
+            sell.market.numeraire(),
             unitPrice,
-            reportedFreightPerUnit,
+            buy.currency,
             payment,
+            reportedFreightPerUnit,
             freight,
             route.arrivalTick,
             false,
@@ -5889,7 +5903,13 @@ final class MarketSettlement {
     return ranks;
   }
 
-  /** 本卖方的商品成交里最低的一笔到货价（单价 + 单位运费；无成交 ⇒ empty）。 */
+  /**
+   * 本卖方的商品成交里最低的一笔到货价（单价 + 单位运费；无成交 ⇒ empty）。
+   *
+   * <p>★★ <b>P-T4：不把两种钱相加</b> —— 单价是<b>卖方币</b>、单位运费是<b>买方币</b>，异币成交时"单价 + 单位运费" 没有定义；{@link
+   * MarketReport.Fill#landedUnitPriceMilli()} 返回 empty 的成交（单价币 ≠ 运费币）<b>具名排除</b>、 不参与最低价。单币世界两栏恒同币
+   * ⇒ 逐值不变。
+   */
   private static OptionalLong bestAcceptedLandedPrice(MatchContext ctx, SellSlot sell) {
     long best = Long.MAX_VALUE;
     for (MarketReport.Fill fill : ctx.fills) {
@@ -5897,9 +5917,9 @@ final class MarketSettlement {
           || !fill.seller().equals(sell.seller.actor())) {
         continue;
       }
-      long landed = fill.unitPriceMilli() + fill.freightPerUnitMilli();
-      if (landed < best) {
-        best = landed;
+      OptionalLong landed = fill.landedUnitPriceMilli();
+      if (landed.isPresent() && landed.getAsLong() < best) {
+        best = landed.getAsLong();
       }
     }
     return best == Long.MAX_VALUE ? OptionalLong.empty() : OptionalLong.of(best);
@@ -6685,7 +6705,7 @@ final class MarketSettlement {
    * 世界里唯一在用的承运主体：{@code ORGANIZATION} 且**会话里有货币账**；多个时按 id 字典序取第一个（可复现）。
    *
    * <p>★ <b>必须要求货币账</b>：只有商品账的组织收不了运费 —— 若把它当承运人，买方的运费腿会"记了但没人收" （钱凭空消失）。没有可收款的主体就**不收运费**（{@link
-   * MarketReport#freightUncollectedMilli()} 如实记下）。
+   * MarketReport#freightUncollectedByCurrency()} 如实记下）。
    */
   private static boolean carrierPresent(MatchContext ctx) {
     return ctx.carrier.isPresent() || !ctx.merchantFirms.isEmpty();
@@ -6693,7 +6713,8 @@ final class MarketSettlement {
 
   /**
    * ★★ P2-A §13.3：旧路径的"第一个有货币账的 ORGANIZATION"承运人不复存在（组织不持账）。 没有商号（{@code merchantFirms}
-   * 为空）的世界因此没有可收款承运人 —— 名义运费如实记进 {@code MarketReport.freightUncollectedMilli()}（具名缺口，不把钱凭空塞给某个家户）。
+   * 为空）的世界因此没有可收款承运人 —— 名义运费如实记进 {@code
+   * MarketReport.freightUncollectedByCurrency()}（具名缺口，不把钱凭空塞给某个家户）。
    */
   private static Optional<ActorRef> carrierOf(MarketRound round) {
     return Optional.empty();
@@ -7044,8 +7065,9 @@ final class MarketSettlement {
     // ★ P1.3：冻结轴累计值（key 见 sellFrozenAxis/buyFrozenAxis）；commitFreezes/executeTrade 增量维护。
     final Map<String, Long> sellFrozenSums = new LinkedHashMap<>();
     final Map<String, Long> buyFrozenSums = new LinkedHashMap<>();
-    long freightPaidMilli;
-    long freightUncollectedMilli;
+    // ★★ P-T4：运费读数**按币分列**（键 = 铸这条腿用的钱 = 该笔买方的支付币）—— 禁跨币相加。
+    final Map<CurrencyId, Long> freightPaidByCurrency = new LinkedHashMap<>();
+    final Map<CurrencyId, Long> freightUncollectedByCurrency = new LinkedHashMap<>();
     long scheduledLossMilli;
     long immediateFills;
     long crossRegionFills;

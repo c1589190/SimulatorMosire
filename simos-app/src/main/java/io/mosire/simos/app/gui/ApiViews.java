@@ -2653,28 +2653,36 @@ public final class ApiViews {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("window", "最近一轮市场开市（进程内 MarketReport；不落盘、重启即失；不是本周期累计）");
     if (report.isEmpty()) {
-      view.put("hexTurnoverMilli", null);
-      view.put("worldTurnoverMilli", null);
+      view.put("hexTurnoverByCurrency", null);
+      view.put("worldTurnoverByCurrency", null);
       view.put("unavailable", DASHBOARD_MARKET_REPORT_UNAVAILABLE);
       return view;
     }
     MarketReport marketReport = report.orElseThrow();
-    long hexTurnover = 0L;
+    // ★★ P-T4：成交额**按币分列**（键 = 买方实付币、值 = 货款毫额）—— 改前是"全部币 1:1 加总成一个
+    //   hexTurnover/worldTurnover"。世界没有汇率（I17），不同币的货款相加就是把两种钱当一种。
+    //   ★ 单币世界只有一项，值与本批之前逐字相同；零额（0 价免费成交）不落键（"没有金额"与"金额 0"分得开，
+    //     而它本来也不改变任何合计）。
+    Map<CurrencyId, Long> hexTurnover = new LinkedHashMap<>();
+    Map<CurrencyId, Long> worldTurnover = new LinkedHashMap<>();
     long hexFills = 0L;
-    long worldTurnover = 0L;
     for (MarketReport.Fill fill : marketReport.fills()) {
-      worldTurnover += fill.goodsPaymentMilli();
+      if (fill.goodsPaymentMilli() > 0L) {
+        worldTurnover.merge(fill.paymentCurrency(), fill.goodsPaymentMilli(), Long::sum);
+      }
       if (fill.from().equals(coord) || fill.to().equals(coord)) {
-        hexTurnover += fill.goodsPaymentMilli();
+        if (fill.goodsPaymentMilli() > 0L) {
+          hexTurnover.merge(fill.paymentCurrency(), fill.goodsPaymentMilli(), Long::sum);
+        }
         hexFills++;
       }
     }
-    view.put("hexTurnoverMilli", hexTurnover);
+    view.put("hexTurnoverByCurrency", sortedCurrencies(hexTurnover));
     view.put("hexFillCount", hexFills);
-    view.put("worldTurnoverMilli", worldTurnover);
+    view.put("worldTurnoverByCurrency", sortedCurrencies(worldTurnover));
     view.put("worldFillCount", marketReport.fills().size());
     view.put("unavailable", null);
-    view.put("note", "只作参考：money 债务/产出不拿它当分母（单轮成交 ≠ 本周期货币产出；禁止混窗口比较）");
+    view.put("note", "只作参考：money 债务/产出不拿它当分母（单轮成交 ≠ 本周期货币产出；禁止混窗口比较）；逐币分列（禁跨币相加）");
     return view;
   }
 
@@ -3074,7 +3082,10 @@ public final class ApiViews {
     view.put("cashReserveMilli", condition.cashReserveMilli());
     view.put("debtPrincipalMilli", condition.debtPrincipalMilli());
     view.put("debtServiceDueMilli", condition.debtServiceDueMilli());
-    view.put("lastCycleRevenueMilli", condition.lastCycleRevenueMilli());
+    // ★★ P-T4：收入**按币分列**（键 = 收到的那种钱）—— 改前 `lastCycleRevenueMilli` 是"全部币 1:1 加总"。
+    //   `lastCycleNetMilli` 仍是单一读数：它只对**本币**收入减成本（世界无汇率 ⇒ 外币既不相加也不折算）。
+    view.put(
+        "lastCycleRevenueByCurrency", sortedCurrencies(condition.lastCycleRevenueByCurrency()));
     view.put("lastCycleCostMilli", condition.lastCycleCostMilli());
     view.put("lastCycleNetMilli", condition.lastCycleNetMilli());
     view.put("unsoldStockMilli", condition.unsoldStockMilli());
@@ -3088,7 +3099,8 @@ public final class ApiViews {
     view.put("cycleOfferedQty", condition.cycleOfferedQty());
     view.put("cycleFilledQty", condition.cycleFilledQty());
     view.put("cycleUnfilledQty", condition.cycleUnfilledQty());
-    view.put("cycleRevenueMilli", condition.cycleRevenueMilli());
+    // ★★ P-T4：本周期累计货款**按币分列**（键 = 买方实付币）—— 禁跨币相加。
+    view.put("cycleRevenueByCurrency", sortedCurrencies(condition.cycleRevenueByCurrency()));
     view.put("cycleOutcompetedActors", condition.cycleOutcompetedActors());
     view.put("cycleOutcompetedQty", condition.cycleOutcompetedQty());
     view.put("cycleMarketRounds", condition.cycleMarketRounds());
