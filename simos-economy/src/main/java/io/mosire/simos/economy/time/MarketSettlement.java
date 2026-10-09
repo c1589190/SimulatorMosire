@@ -1251,14 +1251,19 @@ final class MarketSettlement {
       MarketTopology topology,
       EconomyParallelism parallelism) {
     // ★ M-A1：没有运力池的世界（没有"选了跑商的家户"）⇒ 跨格货走不动；同格成交逐值不变。
+    // ★ M-C：没有纯商号集合（夹具 / 纯状态读者）⇒ 谁都不豁免运费 ⇒ 逐值退回 M-A2（缺省语义中性，I-C2）。
     return clearOncePerCycle(
-        markets, round, trigger, topology, parallelism, MerchantCapacityPool.empty());
+        markets, round, trigger, topology, parallelism, MerchantCapacityPool.empty(), Set.of());
   }
 
   /**
    * ★★ <b>M-A1 承运入口</b>：每条跨格 lane 的运力由 {@link MerchantCapacityPool} 按<b>发货格</b>的逐 hex 运力池
    * 现算（提供方市场议价权序），买方 CARRIER_FEE 直接付给<b>提供运力的家户</b>。池空 ⇒ 该格没有"选了跑商的家户" ⇒ 跨格路线根本不建（具名 {@code
    * LOGISTICS_CAPACITY}）；<b>不再有</b>"没有承运人也照发货、运费记未收"的旧兜底。
+   *
+   * @param pureMerchantHouseholds ★★ <b>M-C：本轮的纯商号家户集合</b>（H-2；由 {@code EconomySettlement} 从 同一份
+   *     {@code classMemberships × classPositions} 现算，判据的唯一拼写点是 {@code MerchantIdentity}）。
+   *     <b>自运自货</b>（承运方与货主都是纯商号）⇒ 免运费（H-A/H-G）；空集 ⇒ 谁都不豁免 ⇒ 逐值退回 M-A2（缺省中性）。
    */
   static MarketOutcome clearOncePerCycle(
       Map<HexCoord, Market> markets,
@@ -1266,7 +1271,8 @@ final class MarketSettlement {
       MarketTrigger trigger,
       MarketTopology topology,
       EconomyParallelism parallelism,
-      MerchantCapacityPool carrierPool) {
+      MerchantCapacityPool carrierPool,
+      Set<HouseholdId> pureMerchantHouseholds) {
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(round, "round");
     Objects.requireNonNull(trigger, "trigger");
@@ -1309,6 +1315,8 @@ final class MarketSettlement {
     MatchContext ctx =
         new MatchContext(
             round, markets, topology, carrierPool, round.regulation(), currencyValuation);
+    // ★★ M-C：本轮的纯商号集合（免运费判据的范围）—— 从调用方给的集合原样带入（装配点在 EconomySettlement）。
+    ctx.pureMerchantHouseholds = pureMerchantHouseholds;
     if (MARKET.isDebugEnabled()) {
       // ★★ E（§一.9：DEBUG 写"为什么"）：本轮"钱的价"认得出哪些币 —— "某笔异币为什么没成交"的第一现场。
       EventLog.channel(MARKET)
@@ -1497,6 +1505,10 @@ final class MarketSettlement {
       //   ★ 需求簿只累加读数：不写状态、不铸转移、不改任何判据（守恒与铁律 2 不受影响）；"被运力截断的货物量"
       //     读买槽的既有 V-20 读数（那部分不成交、不成债、不计价 —— K-4/Q-27）。
       ctx.capacityDemands.logRoundSummary(round.day, ctx.carrierPool, goodsBlockedByCapacity(ctx));
+      // ── 4a0c. ★★ M-C：本轮商号利润读数汇总（每轮算出来的读数、不落状态；§一.9 INFO = 门槛与利润汇总）──
+      //   ★ 位置与上面两条并列：撮合已做完 ⇒ 差价/运费/税/损耗/劳动/工具都是本轮的事实。
+      //   ★ 没有跑商家户 / 没有跨格运力 ⇒ 读数簿是空的 ⇒ 一行不打（缺省语义中性，I-C2）。
+      ctx.merchantProfits.logRoundSummary(round.day, ctx.carrierPool.householdIds());
       // ── 4a. ★★ P-T1a：口岸节流的轮级汇总（INFO：发生了什么 + 具名计数；逐区对在 DEBUG/TRACE）──────
       //   ★ 只报"被拦下多少"这一件事（计数口径 = 源区→目的区 的<b>区对</b>）：被拦下的量不进候选集、不落状态、不进账本（§11），所以它是日志事实，不是账。
       if (ctx.portGatedPairs > 0 && MARKET.isInfoEnabled()) {
@@ -3754,6 +3766,8 @@ final class MarketSettlement {
             // ★★ E：**协调器那一份**"钱的价"（含全部家户的流通币种）—— 副本自己现算会漂开，
             //   而"认不认得出某种钱"必须两边同一个答案（否则回放对不上，具名抛）。
             ctx.currencyValuation());
+    // ★★ M-C：worker 副本照抄同一份纯商号集合（它只跑 route == null 的区内同格意向 ⇒ 判据不可达，但两份上下文保持一致）。
+    local.pureMerchantHouseholds = ctx.pureMerchantHouseholds;
     local.buys.addAll(localBuys);
     local.sells.addAll(localSells);
     local.recordFillIntents = true;
@@ -5905,6 +5919,8 @@ final class MarketSettlement {
     List<FreightCharge> freightCharges = new ArrayList<>();
     long freight = 0L;
     long uncollectedFreight = 0L;
+    // ★★ M-C：本笔的承运分配（route != null 才有）—— 工具消耗 / 劳动成本 / 免运费读数的唯一凭据。
+    MerchantCapacityPool.CarrierAllocation allocation = null;
     // ★★ P-T5b：本笔的**单位运费（毫买方支付币 / 商品单位）**—— 全方法（以及 Fill 的读数）共用这一个折算值。
     long unitFreight = route == null ? 0L : buy.payAmountOf(route.freightPerUnit);
     if (route != null) {
@@ -5923,11 +5939,11 @@ final class MarketSettlement {
       long workPerGoodPerMille =
           ctx.carrierPool.workPerGoodPerMilleOf(
               commodityFreightBaseMilli(ctx.topology, route.commodity), route.freightRatePerMille);
-      // ★★ M-A1/M-A2：跨格承运的唯一判据 —— 按**发货格**的逐 hex 运力池分配（报价口径 = 从最低限价起买；
+      // ★★ M-A1/M-A2/M-C：跨格承运的唯一判据 —— 按**发货格**的逐 hex 运力池分配（报价口径 = 从最低限价起买；
       //   缺省口径 = 提供方市场议价权序）；分配多少才走多少，一点运力都没有 ⇒ 本笔不成交（绝不发"免费"的跨格货）。
-      //   CARRIER_FEE 收款人 = 提供运力的**家户**。
-      MerchantCapacityPool.CarrierAllocation allocation =
-          ctx.carrierPool.select(route.from, route.to, quantity, workPerGoodPerMille);
+      //   ★ M-C：**缺工具 ⇒ 该次跑商不成立**（H-5）也落在 select 里（具名 tool-short），因此"分不到"同样收缩成交。
+      //   CARRIER_FEE 收款人 = 提供运力的**家户**（纯商号免运费，见 carrierChargeSplit）。
+      allocation = ctx.carrierPool.select(route.from, route.to, quantity, workPerGoodPerMille);
       long allocated = allocation.allocatedMilli();
       if (allocated <= 0L) {
         // ★★ M-A2：全被拦下的那部分同样是"这一份需求要运力但没买到" ⇒ 记进需求簿（供 K-4 的缺口归因）。
@@ -5961,7 +5977,12 @@ final class MarketSettlement {
       }
       freightCharges =
           carrierChargeSplit(
-              allocation, buy, route, commodityFreightBaseMilli(ctx.topology, route.commodity));
+              allocation,
+              buy,
+              route,
+              commodityFreightBaseMilli(ctx.topology, route.commodity),
+              // ★★ M-C：货主是不是纯商号（H-A/H-G 的另一半：自运自货）—— 判据的唯一拼写点在 MerchantIdentity。
+              ctx.pureMerchantHouseholds.contains(buy.buyer.household));
       for (FreightCharge charge : freightCharges) {
         freight = Math.addExact(freight, charge.amountMilli());
       }
@@ -5981,6 +6002,15 @@ final class MarketSettlement {
     for (MarketTaxBook.Charge charge : taxCharges) {
       taxTotal = Math.addExact(taxTotal, charge.amountMilli());
     }
+    // ★★ M-C：利润读数的**差价收入**腿与**三层税**腿（只读；不改任何余额、不影响任何判据）——
+    //   同一笔成交的两端各记一次（卖方 + 货款实收 / 买方 − 货款实付），币 = 买方支付币（钱腿就铸在它上面）。
+    //   ★ 税按**层**分开记（I-C3/I-C10：层与币都不合并；读口逐层列）。
+    ctx.merchantProfits.recordPurchase(buy.buyer.household, buy.currency, payment);
+    ctx.merchantProfits.recordSale(sell.seller.household, buy.currency, payment);
+    for (MarketTaxBook.Charge charge : taxCharges) {
+      ctx.merchantProfits.recordTax(
+          buy.buyer.household, charge.layer(), charge.currency(), charge.amountMilli());
+    }
     // ★★ D-027：单 hex 贸易成本只在**同一市场区**的区内即时成交上逐笔计量（跨区在途走 route.lossPerMille，
     //   口径不变）。第一版只表达为实物损耗：同格 = 0、跨格 = HexTradeCost 的具名公式并夹在 quantity 内。
     long lossMilli =
@@ -5991,6 +6021,15 @@ final class MarketSettlement {
                         executed, ctx.hexTradeCost.lossPerMilleBetween(sell.hex, buy.hex))
                     / 1000L)
             : 0L;
+    // ★★ M-C：利润读数的**损耗**腿 = 本笔实际计量的实物损耗 × 该笔买方单价（毫买方支付币）。
+    //   ★ 跨区在途的损耗不在这里（它在到货日由 deliverShipments 结算，市场轮只读本轮实际计量值）。
+    if (lossMilli > 0L) {
+      ctx.merchantProfits.recordLoss(
+          buy.buyer.household,
+          buy.currency,
+          ceilDiv(
+              Math.multiplyExact(lossMilli, buyerUnitPrice), EconomySettlement.MILLI_PER_GRAIN));
+    }
 
     // ② 卖方把已冻结的那一份放出来，再走唯一 applier（货腿：卖方 → 买方）。
     long sellRelease = Math.min(executed, sell.frozenRemaining);
@@ -6038,6 +6077,10 @@ final class MarketSettlement {
     //   ★★ P-T1b：`total` 含税 ⇒ 冻结的释放量与可负担判据（{@link #totalCostAtMost}）同口径；**卖方那一腿
     //     （payment）一个字不改** ⇒ "买方多付、卖方仍收原价" 是结构性的，不是两处对齐出来的。
     long total = Math.addExact(Math.addExact(payment, freight), taxTotal);
+    // ★★ M-C：利润读数的**本钱占用**腿 = 本笔支出在**在途天数**上的机会成本（按既有市场利率折算；微毫）。
+    //   ★ 即时成交（0 天）⇒ 0；世界利率 20‰/周期 ⇒ 本腿在毫级通常为 0（读数按微毫列出，不静默丢）。
+    ctx.merchantProfits.recordCapitalOccupancy(
+        buy.buyer.household, buy.currency, capitalOccupancyMicro(ctx, route, total, inTransit));
     long buyRelease = Math.min(total, buy.frozenRemaining);
     buy.frozenRemaining -= buyRelease;
     releaseBuyFrozenSum(ctx, buy, buyRelease);
@@ -6081,6 +6124,11 @@ final class MarketSettlement {
       ctx.freightPaidByCurrency.merge(buy.currency, charge.amountMilli(), Math::addExact);
       // ★★ M-A1：提供者侧的运费实收读数（每轮算、不落状态；冻结项 4「收款方 = 提供运力的家户」的可核证据）。
       ctx.carrierPool.recordFee(charge.household(), buy.currency, charge.amountMilli());
+      // ★★ M-C：利润读数的两条运费腿 —— 买方**运费支出**（逐币）与承运方**运费收入**（逐币；只对顺便跑商计入利润）。
+      ctx.merchantProfits.recordFreightPaid(
+          buy.buyer.household, buy.currency, charge.amountMilli());
+      ctx.merchantProfits.recordFreightEarned(
+          charge.household(), buy.currency, charge.amountMilli());
       // ★★ M-A1（§一.9：TRACE = 逐笔运费）：付款人 → 提供运力的家户、金额、币种、lane。
       if (EconomyLog.trace().isTraceEnabled()) {
         EventLog.channel(EconomyLog.trace())
@@ -6112,6 +6160,13 @@ final class MarketSettlement {
     //   ★ 0 不落键（"没有未收"与"未收 0"分得开；否则每笔成交都会给它的币插一条 0）。
     if (uncollectedFreight > 0L) {
       ctx.freightUncollectedByCurrency.merge(buy.currency, uncollectedFreight, Math::addExact);
+    }
+    // ★★ M-C：把本笔**每一条跑商**落地 —— ① 一次性烧掉工具（H-1：从商品账扣 + 记损耗账）② 记劳动成本、
+    //   工具消耗、（纯商号条目的）被免运费与逐条 TRACE（H-A/H-F 的可见证据）。**只读 + 商品账扣减**：
+    //   它不铸钱腿、不改撮合判据，守恒式仍由"账户减 + 损耗加"两条腿守住。
+    if (allocation != null) {
+      settleHaulRuns(
+          ctx, buy, route, allocation, ctx.pureMerchantHouseholds.contains(buy.buyer.household));
     }
     // ★★ P-T1b：三层税的**钱腿**（逐层逐收款政府一条；钱铸在买方支付币上）—— 唯一写口 {@code applyTransfer}。
     //   ★ 层的顺序 = 调用方给的规范序（出口 → 进口 / 区内一条）⇒ 逐值可复现（I7）；0 额条目根本不在表里。
@@ -6180,7 +6235,10 @@ final class MarketSettlement {
               buy.currency,
               payment,
               // ★★ P-T5b：单位运费按**买方支付币**报（与 freightCurrency ≡ paymentCurrency 同币；换算见上）。
-              unitFreight,
+              //   ★★ M-C：**实收为 0 时报 0**（免运费 H-A / 没有可收条目）—— 与下面在途路径的
+              //   `reportedFreightPerUnit`（由实收额反解）同一个口径：这一列是"实收运费"的读数，
+              //   不是"计划运费"。不改它 ⇒ 免运费条目的 landedUnitPriceMilli 会把没付的运费算进去。
+              freight > 0L ? unitFreight : 0L,
               freight,
               round.day,
               true,
@@ -6356,9 +6414,13 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>M-A1/M-A2：把一票跨格运费分摊成逐提供者（家户）的 CARRIER_FEE 金额</b>。
+   * ★★ <b>M-A1/M-A2/M-C：把一票跨格运费分摊成逐提供者（家户）的 CARRIER_FEE 金额</b>。
    *
    * <pre>
+   * ⓪ 【M-C】**自运自货**（承运方是纯商号 ∧ 货主是纯商号）⇒ **整条豁免**（H-A/H-G："商号自己买东西不计运费"、
+   *    "只有纯商号能免运费拿货"），该条的运费既不进实收、也不进未收；它按"成本直接按劳动力计"落进利润读数的
+   *    劳动力成本腿（见 {@link #settleHaulRuns}）。★ 免掉的金额本身作为**具名读数**记录，不铸任何钱腿；
+   *    ★ 其余情形（含 H-F 的"顺便跑商"承担的运力）⇒ 运费**独立计算**，算式一字不改。
    * ① 自承运条目（carrier == 买方 actor）整条跳过：不铸自转移、不计实收、不记未收（P10.9 口径保留）；
    * ② 逐条按**该提供者的限价**算单位运费 = 商品基础费 × (1000 + 路线费率‰) × (1000 + 限价‰)（算式一字不改；
    *    缺省口径下限价 == 派生承运成本 ⇒ 与 M-A1 逐值相同）；
@@ -6380,7 +6442,8 @@ final class MarketSettlement {
       MerchantCapacityPool.CarrierAllocation allocation,
       BuySlot buy,
       RouteContext route,
-      long commodityBaseMilli) {
+      long commodityBaseMilli,
+      boolean buyerIsPureMerchant) {
     List<MerchantCapacityPool.CarrierChoice> choices = allocation.choices();
     long chargeableQuantity = 0L;
     long effectiveFreightSum = 0L;
@@ -6390,6 +6453,10 @@ final class MarketSettlement {
       MerchantCapacityPool.CarrierChoice choice = choices.get(i);
       if (choice.carrier().equals(buy.buyer.actor)) {
         continue; // 自承运：该条的运费不进入实收，也不进入未收
+      }
+      if (choice.pureMerchant() && buyerIsPureMerchant) {
+        continue; // ★★ M-C（H-A/H-G）：**自运自货**（承运方与货主都是纯商号）⇒ 免运费；
+        //   免掉的金额与劳动成本在 settleHaulRuns 里记读数（H-F：非纯商号承担的运力照收，一条不改）
       }
       lastChargeable = i;
       chargeableQuantity = Math.addExact(chargeableQuantity, choice.quantityMilli());
@@ -6424,7 +6491,12 @@ final class MarketSettlement {
         }
         MerchantCapacityPool.CarrierChoice choice = choices.get(i);
         charges.add(
-            new FreightCharge(choice.carrier(), ownFreight[i], choice.household(), choice.hex()));
+            new FreightCharge(
+                choice.carrier(),
+                ownFreight[i],
+                choice.household(),
+                choice.hex(),
+                choice.pureMerchant()));
       }
       return List.copyOf(charges);
     }
@@ -6434,6 +6506,9 @@ final class MarketSettlement {
       if (choice.carrier().equals(buy.buyer.actor)) {
         continue;
       }
+      if (choice.pureMerchant() && buyerIsPureMerchant) {
+        continue; // ★★ M-C：免运费条目在**两条分摊分支**里都要跳过（与走哪一支无关）
+      }
       long amount;
       if (i == lastChargeable) {
         amount = collectible - assigned; // 余数全部给顺序里最后一条实际承运条目
@@ -6442,7 +6517,9 @@ final class MarketSettlement {
         assigned = Math.addExact(assigned, amount);
       }
       if (amount > 0L) {
-        charges.add(new FreightCharge(choice.carrier(), amount, choice.household(), choice.hex()));
+        charges.add(
+            new FreightCharge(
+                choice.carrier(), amount, choice.household(), choice.hex(), choice.pureMerchant()));
       }
     }
     return List.copyOf(charges);
@@ -6450,7 +6527,11 @@ final class MarketSettlement {
 
   /** 一条实际要铸的 CARRIER_FEE 腿（M-A1）：收款**家户** actor + 金额 + 归属（家户/发货格，日志用）。 */
   private record FreightCharge(
-      ActorRef carrierActor, long amountMilli, HouseholdId household, HexCoord hex) {
+      ActorRef carrierActor,
+      long amountMilli,
+      HouseholdId household,
+      HexCoord hex,
+      boolean pureMerchant) {
     private FreightCharge {
       Objects.requireNonNull(carrierActor, "carrierActor");
       Objects.requireNonNull(household, "household");
@@ -6459,6 +6540,189 @@ final class MarketSettlement {
         throw new IllegalArgumentException("FreightCharge 金额必须为正: " + amountMilli);
       }
     }
+  }
+
+  // ── ★★ M-C：跑商门槛（工具消耗）与利润读数的落点 ──────────────────────────────────────────
+
+  /**
+   * ★★ <b>M-C：把一笔成交里的每一条跑商落地</b>（H-1 的工具一次性消耗 + 利润读数的运行腿 + 免运费读数）。
+   *
+   * <pre>
+   * ① 工具：从承运家户的 {@code tool} **商品账**扣 {@link MerchantHaul#TOOL_MILLI_PER_HAUL}，
+   *    并记进 {@link MerchantHaul#TOOL_BURN_ACCOUNT} 损耗账 ⇒ 守恒式（Σ余额 + losses）不变；
+   *    ★ 同轮里该户的工具若已被本轮的卖单卖掉一部分（装配时点存量 > 成交时点存量），实扣取**现货**上限，
+   *      差额具名记一条（绝不扣成负余额、也不静默当"没消耗"）；
+   * ② 免运费读数（H-A/H-G）：**自运自货**（承运方 ∧ 货主都是纯商号）⇒ 该条运费不铸，改记"本应付多少"
+   *    （同一张 {@link #freightUnitMilli} 算式 + 该户限价）⇒ 与利润读数的劳动力成本腿同一笔事实的两个面；
+   * ③ 劳动成本腿：{@code 耗用运力 × 该户劳动 ÷ 该户运力}（{@code MerchantCapacityPool.laborHoursOf}）。
+   * </pre>
+   *
+   * <p>★ 只在**协调器**路径被调用（{@code allocation != null} ⇒ {@code route != null} ⇒ 串行撮合）， 与 {@code
+   * taxItems}/{@code merchantProfits} 同一条纪律：worker 副本上的累加在交回时丢弃。
+   */
+  private static void settleHaulRuns(
+      MatchContext ctx,
+      BuySlot buy,
+      RouteContext route,
+      MerchantCapacityPool.CarrierAllocation allocation,
+      boolean buyerIsPureMerchant) {
+    MarketRound round = ctx.round;
+    long baseMilli = commodityFreightBaseMilli(ctx.topology, route.commodity);
+    for (MerchantCapacityPool.CarrierChoice choice : allocation.choices()) {
+      // ① 一次性消耗工具（H-1：计成本、不返还；V-22：商品账，不动 AssetKind.TOOL 产权份额）
+      long cost = choice.toolMilli();
+      long stock =
+          householdStockOf(round.householdGoods, choice.household(), MerchantHaul.TOOL_COMMODITY);
+      long consumed = Math.min(stock, cost);
+      if (consumed > 0L) {
+        setHouseholdStock(
+            round.householdGoods,
+            choice.household(),
+            MerchantHaul.TOOL_COMMODITY,
+            stock - consumed);
+        // ★ 守恒：账户减、损耗账加（唯一的"货物离开账户但未换手"落点，与 TRANSPORT_LOSS_ACCOUNT 同款）
+        round.ledger.addLoss(MerchantHaul.TOOL_BURN_ACCOUNT, MerchantHaul.TOOL_COMMODITY, consumed);
+        // ★★ 「计成本」（H-D）：烧掉的工具按**该户所在格的牌价**折成钱，进利润读数的**损耗腿**
+        //   —— 读数的损耗口径与账本一致（账上它就在损耗账里）。★ 该格没有该商品的价 ⇒ 只记实物量、
+        //   金额记 0 并具名（绝不按 1:1 或别的格的价猜）。
+        recordToolBurnValue(ctx, choice, consumed);
+      }
+      if (consumed < cost) {
+        if (MARKET.isDebugEnabled()) {
+          EventLog.channel(MARKET)
+              .debug(
+                  LogEvent.of(
+                      "MERCHANT_HAUL_TOOL_SHORT_AT_COMMIT",
+                      EconomyLogSource.ECONOMY_ORGANIZATION,
+                      "day",
+                      round.day,
+                      "household",
+                      choice.household().value(),
+                      "neededMilli",
+                      cost,
+                      "burnedMilli",
+                      consumed,
+                      "stockMilli",
+                      stock,
+                      "reason",
+                      "tool-sold-out-same-round"));
+        }
+      }
+      // ② 免运费读数（只对**自运自货**：承运方 ∧ 货主都是纯商号；"本应付多少"用同一个单位运费算式 + 该户限价）
+      long waived = 0L;
+      if (choice.pureMerchant() && buyerIsPureMerchant) {
+        long unitFreight =
+            buy.payAmountOf(
+                freightUnitMilli(baseMilli, route.freightRatePerMille, choice.askPerMille()));
+        if (unitFreight > 0L) {
+          waived = freightOf(choice.quantityMilli(), unitFreight);
+        }
+      }
+      // ③ 运行腿（劳动小时 + 工具 + 被免运费）进利润读数
+      long laborHoursMilli =
+          ctx.carrierPool.laborHoursOf(choice.household(), choice.consumedWorkMilli());
+      ctx.merchantProfits.recordRun(
+          choice.household(),
+          choice.pureMerchant(),
+          buy.currency,
+          laborHoursMilli,
+          consumed,
+          waived);
+      if (EconomyLog.trace().isTraceEnabled()) {
+        EventLog.channel(EconomyLog.trace())
+            .trace(
+                LogEvent.of(
+                    "MERCHANT_HAUL_RUN",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    round.day,
+                    "household",
+                    choice.household().value(),
+                    "pureMerchant",
+                    choice.pureMerchant(),
+                    "commodity",
+                    route.commodity.value(),
+                    "from",
+                    route.from,
+                    "to",
+                    route.to,
+                    "quantityMilli",
+                    choice.quantityMilli(),
+                    "toolBurnedMilli",
+                    consumed,
+                    "laborHoursMilli",
+                    laborHoursMilli,
+                    "waivedFreightMilli",
+                    waived,
+                    "currency",
+                    buy.currency.value()));
+      }
+    }
+  }
+
+  /**
+   * ★ <b>M-C：把烧掉的工具按承运方所在格的牌价折成钱</b>（利润读数的**损耗腿**；§12 H-D「计成本」）。
+   *
+   * <p>★ 取值口径：{@code 该格市场的 tool 牌价}（毫计价货币 / 商品单位）× 实物量 ÷ 1000，币 = 该格计价币。 ★ 该格没有市场 / 该商品**从未定价** ⇒
+   * 金额记 0 并具名（{@code MERCHANT_HAUL_TOOL_UNPRICED}）—— 实物量仍在读数里（{@code toolBurnMilli}），绝不按 1:1
+   * 或别格的价猜。
+   */
+  private static void recordToolBurnValue(
+      MatchContext ctx, MerchantCapacityPool.CarrierChoice choice, long consumed) {
+    Market market = ctx.markets.get(choice.hex());
+    Long price = market == null ? null : market.prices().get(MerchantHaul.TOOL_COMMODITY);
+    if (price == null) {
+      if (MARKET.isDebugEnabled()) {
+        EventLog.channel(MARKET)
+            .debug(
+                LogEvent.of(
+                    "MERCHANT_HAUL_TOOL_UNPRICED",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    ctx.round.day,
+                    "household",
+                    choice.household().value(),
+                    "hex",
+                    choice.hex(),
+                    "toolBurnMilli",
+                    consumed,
+                    "reason",
+                    market == null ? "no-market-at-carrier-hex" : "tool-never-priced"));
+      }
+      return;
+    }
+    long valueMilli =
+        ceilDiv(
+            Math.multiplyExact(consumed, Math.max(0L, price)), EconomySettlement.MILLI_PER_GRAIN);
+    if (valueMilli > 0L) {
+      ctx.merchantProfits.recordLoss(choice.household(), market.numeraire(), valueMilli);
+    }
+  }
+
+  /**
+   * ★★ <b>M-C：本钱占用（微毫）</b>—— 本笔支出在**在途天数**上的机会成本 = {@code 支出 × 天数 × 既有市场利率 ÷ (1000 ×
+   * 周期天数)}，按微毫表达（毫级以下的量级要看得见）。
+   *
+   * <p>★ 口径：只算**在途占款**（即时成交 0 天 ⇒ 0）；利率取既有的 {@link
+   * DebtTerms#LEGACY_INTEREST_RATE_PER_MILLE_PER_CYCLE}（单一拼写点）、周期天数取 {@link
+   * ExpectedProfitBook#DEFAULT_MERCHANT_CYCLE_DAYS}。★ 跨轮持有的库存占用**不在**本读数里（那需要跨轮状态， Q-23 明写"不落状态"）——
+   * 具名边界，见实现账本。
+   */
+  private static long capitalOccupancyMicro(
+      MatchContext ctx, RouteContext route, long spentMilli, boolean inTransit) {
+    if (!inTransit || route == null || spentMilli <= 0L) {
+      return 0L;
+    }
+    long days = Math.max(0L, route.arrivalTick - ctx.round.day);
+    if (days <= 0L) {
+      return 0L;
+    }
+    long numerator =
+        Math.multiplyExact(
+            Math.multiplyExact(spentMilli, days),
+            DebtTerms.LEGACY_INTEREST_RATE_PER_MILLE_PER_CYCLE);
+    return Math.multiplyExact(numerator, MerchantProfitBook.MICRO_PER_MILLI)
+        / (MarketTaxBook.PER_MILLE * ExpectedProfitBook.DEFAULT_MERCHANT_CYCLE_DAYS);
   }
 
   /** 把刚记到买方名下的量移出会话余额（在途资产的装载；到货日反向落回）。 */
@@ -8425,6 +8689,23 @@ final class MarketSettlement {
      * 本地副本上的累加在交回时丢弃，只从协调器那一份出日志/读数。
      */
     final CapacityDemandBook capacityDemands = new CapacityDemandBook();
+
+    /**
+     * ★★ <b>M-C：本轮商号利润读数</b>（逐户逐腿，**每轮算出来的读数、不落状态**；见 {@link MerchantProfitBook}）。
+     *
+     * <p>★ 与 {@code taxItems}/{@code capacityDemands} 同一条纪律：只在**协调器**路径上写（worker 本地副本上的 累加在交回时丢弃）⇒
+     * 读数只可能来自协调器那一份。★ 它<b>不改任何余额、不铸转移、不影响任何判据</b>； 没有跑商家户 / 没有跨格运力 ⇒ 它是空的 ⇒ 一行日志都不打（缺省语义中性，I-C2）。
+     */
+    final MerchantProfitBook merchantProfits = new MerchantProfitBook();
+
+    /**
+     * ★★ <b>M-C：本轮的纯商号家户集合</b>（H-2；免运费判据 H-A/H-G 的**范围**）。
+     *
+     * <p>★ 由 {@code EconomySettlement} 从 {@code classMemberships × classPositions} 现算（判据唯一拼写点 =
+     * {@code MerchantIdentity}）；{@code Set.of()} = 没有纯商号 ⇒ 谁都不豁免 ⇒ 逐值退回 M-A2（缺省中性）。 ★ 与 {@code
+     * recordFillIntents} 同款：构造后由入口赋值（worker 副本照抄），不改构造器签名。
+     */
+    Set<HouseholdId> pureMerchantHouseholds = Set.of();
 
     final List<BuySlot> buys = new ArrayList<>();
     final List<SellSlot> sells = new ArrayList<>();

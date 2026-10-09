@@ -52,6 +52,7 @@ import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.model.RentRule;
+import io.mosire.simos.economy.time.MerchantHaul;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
@@ -363,6 +364,24 @@ public final class EconomySeeder {
    * 作坊不再吃工具（工具只增不减）；取 ≥ 4,850 ⇒ 净产出为负（工具存量**净消耗** ⇒ 又变回"用完停工"， 只是把铁换成了工具）。
    */
   public static final long TOOL_MILLI_PER_WORKSHOP_CYCLE = 2_000L;
+
+  /**
+   * ★★ <b>M-C：跑商家户的创世启动工具（毫工具 / 户）：12 × 一次跑商的消耗</b>。
+   *
+   * <p>★★ <b>为什么创世必须给这一份</b>（用户 2026-10-10 裁定：「跑商这个产业的准入门槛要高，单次跑商需要花费大量 tool」；设计书 §12 H-D/H-5）：门槛 =
+   * **缺工具 ⇒ 该次跑商不成立**（fail-closed）。而创世把工具只给**作坊主** 家户（见 {@link
+   * #toolPerWorkshopMilli()}），"选了跑商"的家户（城镇 {@code rich_peasant} → {@code
+   * merchant.self_employed}、{@code landlord} → {@code merchant.principal}）手里**一件工具都没有** ⇒
+   * 不补这一份，跨格贸易从第 1 天起就整体走不动（那不是"门槛高"，是"门槛封死"）。
+   *
+   * <p>★ <b>为什么是 12 趟</b>：一个市场月（每 5 天一轮 × 12 ≈ 60 天）的量级 —— 够观察到 "跑商要烧工具、烧完就得再买"这条链路，同时明确它是**外生初值**。
+   *
+   * <p>★★ <b>如实记的断点（不在本批）</b>：本批**没有**"跑商家户补货工具"的路径（家户的购买需求来自自然需求与 生产投入，而 {@code trade} 产业两者都没有）⇒ 这
+   * 12 趟烧完后，该户的跑商停到它再次获得工具为止。 补货路径（跑商家户的工具需求 / {@code trade} 产业的工具投入）属后续批次；本常量只保证门槛机制**可观测**，
+   * 不假装它已经闭环。
+   */
+  public static final long MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI =
+      12L * MerchantHaul.TOOL_MILLI_PER_HAUL;
 
   /** 织造的产业活动标签（{@code HouseholdLaborCommitment.activity}）。 */
   public static final String ACTIVITY_WEAVE = WEAVE;
@@ -1419,6 +1438,25 @@ public final class EconomySeeder {
     throw new IllegalStateException("PRODUCTION_RUNTIME 未裁决的社会阶层槽位（拒绝臆造映射）: " + slot);
   }
 
+  /**
+   * ★★ <b>M-C：这个（居住类型, 阶层槽位）的家户是不是"选了跑商"的</b>（= 它的出厂位置属于 {@code merchant} 生产方式）—— 创世启动工具的判据。
+   *
+   * <p>★ 走**位置目录**而不是写死槽位号：阶层 → 位置的映射在 {@link #productionRuntimePositionId} 一处， 这里只问它的 {@code
+   * modeId} ⇒ 改映射不会漏改本判据（也不会多出第二处真相）。
+   */
+  private static boolean isMerchantClassSlot(ResidenceKind residence, String slot) {
+    ProductionRole position =
+        DefaultProductionModes.position(productionRuntimePositionId(residence, slot))
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "默认生产方式目录缺少位置（catalog 与 seeder 漂开）：residence="
+                            + residence
+                            + " slot="
+                            + slot));
+    return DefaultProductionModes.MERCHANT.equals(position.modeId());
+  }
+
   /** ★ 默认目录必须给得出这个位置；给不出 = 目录与 seeder 漂开，具名抛（不猜另一个位置）。 */
   private static ClassPositionId requiredDefaultPosition(ProductionModeId modeId, String role) {
     return DefaultProductionModes.positionId(modeId, role)
@@ -1988,6 +2026,17 @@ public final class EconomySeeder {
     Map<String, long[]> goods = new LinkedHashMap<>();
     goods.put(COMMODITY_FIBER, fiber);
     goods.put(COMMODITY_IRON, iron);
+    // ★★ M-C：跑商门槛 = 工具（H-D）⇒ 创世给"选了跑商"的城镇家户一份启动工具（理由/断点见
+    //   {@link #MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI}）。★ 判据不写死槽位号：走**位置目录**
+    //   （{@link #productionRuntimePositionId} → {@code DefaultProductionModes}）⇒ 阶层↔位置的映射只有一处真相。
+    long[] tool = new long[CLASS_IDS.length];
+    for (int i = 0; i < CLASS_IDS.length; i++) {
+      tool[i] =
+          isMerchantClassSlot(ResidenceKind.URBAN, CLASS_IDS[i])
+              ? MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI
+              : 0L;
+    }
+    goods.put(COMMODITY_TOOL, tool);
     return cohortGroup(
         hex,
         ResidenceKind.URBAN,

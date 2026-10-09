@@ -7,14 +7,12 @@ import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
@@ -67,9 +65,8 @@ public final class MerchantCapacityPool {
   /** 运力池日志（market 分类：它的生命周期就是市场轮）。 */
   private static final org.slf4j.Logger LOG = EconomyLog.market();
 
-  /** 工具商品（V-22：跑商消耗走**商品账**，不动 {@code AssetKind.TOOL} 产权份额）。 */
-  public static final CommodityId TOOL_COMMODITY =
-      new CommodityId(EconomyVocabulary.TOOL_COMMODITY_ID);
+  /** 工具商品（V-22：跑商消耗走**商品账**，不动 {@code AssetKind.TOOL} 产权份额）—— 唯一拼写点。 */
+  public static final CommodityId TOOL_COMMODITY = MerchantHaul.TOOL_COMMODITY;
 
   /** 空池（没有跑商家户的世界 / worker 本地副本）。 */
   private static final MerchantCapacityPool EMPTY =
@@ -165,7 +162,8 @@ public final class MerchantCapacityPool {
     long maxAsk = 0L;
     for (HouseholdId household : households) {
       HouseholdEconomy row = rows.get(household);
-      if (row == null || !selectsMerchant(classStandings.get(household), classPositions)) {
+      HouseholdClassMembership standing = classStandings.get(household);
+      if (row == null || !MerchantIdentity.selectsMerchant(standing, classPositions)) {
         continue;
       }
       long toolMilli = goods.getOrDefault(household, Map.of()).getOrDefault(TOOL_COMMODITY, 0L);
@@ -178,7 +176,12 @@ public final class MerchantCapacityPool {
       long askPerMille = quotes.askPerMilleOf(capacity);
       maxAsk = Math.max(maxAsk, askPerMille);
       HexCoord hex = capacity.hex();
-      pool.computeIfAbsent(hex, ignored -> new ArrayList<>()).add(new Entry(capacity, askPerMille));
+      // ★★ M-C：纯商号（H-2：**主业** ∈ merchant.*）/ 顺便跑商（merchant 只在副业）—— 免运费与利润算式的分流依据；
+      //   判据的唯一拼写点在 {@link MerchantIdentity}。★ 工具预算（H-5 的门槛维）= 装配时点该户的 tool 商品存量，
+      //   每次跑商扣 {@link MerchantHaul#TOOL_MILLI_PER_HAUL}（一次性消耗、不返还）。
+      boolean pureMerchant = MerchantIdentity.isPureMerchant(standing, classPositions);
+      pool.computeIfAbsent(hex, ignored -> new ArrayList<>())
+          .add(new Entry(capacity, askPerMille, pureMerchant));
       totals.merge(hex, capacity.capacityMilli(), Math::addExact);
       counted++;
     }
@@ -246,6 +249,12 @@ public final class MerchantCapacityPool {
                       item.askPerMille,
                       "posted",
                       quotes.hasPosted(item.capacity.household()),
+                      "pureMerchant",
+                      item.pureMerchant,
+                      "toolRemainingMilli",
+                      item.remainingToolMilli,
+                      "runsAffordable",
+                      MerchantHaul.runsAffordable(item.remainingToolMilli),
                       "priced",
                       built.priced));
         }
@@ -264,25 +273,10 @@ public final class MerchantCapacityPool {
       if (row == null || !row.view().hex().equals(hex)) {
         continue;
       }
-      if (!selectsMerchant(entry.getValue(), base.classPositions())) {
+      if (!MerchantIdentity.selectsMerchant(entry.getValue(), base.classPositions())) {
         continue;
       }
       if (MerchantCapacity.laborCapacityMilli(row.participationAdjustedLaborMilli()) > 0L) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /** 家户是否"选了跑商"（主业或副业含 merchant 生产方式的位置）。 */
-  private static boolean selectsMerchant(
-      HouseholdClassMembership standing, Map<ClassPositionId, ProductionRole> positions) {
-    if (standing == null || positions == null) {
-      return false;
-    }
-    for (ClassPositionId positionId : standing.effectivePositionIds()) {
-      ProductionRole position = positions.get(positionId);
-      if (position != null && DefaultProductionModes.MERCHANT.equals(position.modeId())) {
         return true;
       }
     }
@@ -293,19 +287,31 @@ public final class MerchantCapacityPool {
   private static final class Entry {
     private final MerchantCapacity capacity;
     private final long askPerMille;
+    private final boolean pureMerchant;
     private long remainingWorkMilli;
     private long allocatedGoodsMilli;
     private long allocatedWorkMilli;
     private long allocationCount;
     private long sharePerMille;
 
+    /**
+     * ★★ M-C：本轮的**工具预算**（毫工具；装配时点该户 {@code tool} 商品存量）—— 每次跑商扣 {@link
+     * MerchantHaul#TOOL_MILLI_PER_HAUL}（一次性消耗、不返还，H-1），不足 ⇒ 该次跑商不成立（H-5，具名归因）。
+     */
+    private long remainingToolMilli;
+
+    /** 本轮因**缺工具**未成立的跑商次数（具名归因的计数；读数/日志用）。 */
+    private long toolBlockedRuns;
+
     /** ★ 本轮的运费实收（按币分列）—— **每轮算出的读数**，只进日志/读口，不落状态（冻结项 6 的"不落状态"）。 */
     private final Map<CurrencyId, Long> earnedByCurrency = new LinkedHashMap<>();
 
-    private Entry(MerchantCapacity capacity, long askPerMille) {
+    private Entry(MerchantCapacity capacity, long askPerMille, boolean pureMerchant) {
       this.capacity = capacity;
       this.askPerMille = askPerMille;
+      this.pureMerchant = pureMerchant;
       this.remainingWorkMilli = capacity.capacityMilli();
+      this.remainingToolMilli = capacity.toolMilli();
     }
   }
 
@@ -350,6 +356,16 @@ public final class MerchantCapacityPool {
   /** 有运力的家户数（INFO 汇总用）。 */
   public long householdCount() {
     return householdCount;
+  }
+
+  /**
+   * ★★ <b>M-C：本轮的**跑商家户**（= 池成员，判据 {@link MerchantIdentity#selectsMerchant}）</b>——
+   * 商号利润读数的**范围**（没有跑商家户 ⇒ 空集 ⇒ 读数不产出，缺省语义中性 I-C2）。
+   *
+   * <p>★ 返回的是 {@link #byHousehold} 的键集（构造期已冻结、不可改）；顺序由调用方自己规范（本仓 I7）。
+   */
+  public java.util.Set<HouseholdId> householdIds() {
+    return byHousehold.keySet();
   }
 
   /** 有运力的格数（INFO 汇总用）。 */
@@ -420,6 +436,7 @@ public final class MerchantCapacityPool {
     long demandLeft = quantityMilli;
     long unreachableWork = 0L;
     long subUnitWork = 0L;
+    long toolBlockedRuns = 0L;
     for (Entry item : pool) {
       if (demandLeft <= 0L) {
         break;
@@ -429,6 +446,14 @@ public final class MerchantCapacityPool {
         continue;
       }
       if (item.remainingWorkMilli <= 0L) {
+        continue;
+      }
+      // ★★ M-C：跑商门槛 = 工具（H-D/H-5）。手里的工具不够一趟 ⇒ **该次跑商不成立**（具名归因，绝不静默跳过）：
+      //   该条承运不产生，需求转成"运力未获服务"（K-4/Q-27：不成交、不成债、不计价）。
+      //   ★ 判据只看**工具预算够不够一趟**，与 lane 长短/批量无关 —— 它是**门槛**，不是按量计的费。
+      if (!MerchantHaul.affordsRun(item.remainingToolMilli)) {
+        item.toolBlockedRuns++;
+        toolBlockedRuns++;
         continue;
       }
       long maxGoods = CapacityDemand.maxGoodsFor(item.remainingWorkMilli, workPerGoodPerMille);
@@ -441,6 +466,7 @@ public final class MerchantCapacityPool {
       long take = Math.min(demandLeft, maxGoods);
       long consumed = CapacityDemand.workConsumedBy(take, workPerGoodPerMille);
       item.remainingWorkMilli -= consumed;
+      item.remainingToolMilli -= MerchantHaul.TOOL_MILLI_PER_HAUL; // 一次性消耗（H-1）
       item.allocatedGoodsMilli = Math.addExact(item.allocatedGoodsMilli, take);
       item.allocatedWorkMilli = Math.addExact(item.allocatedWorkMilli, consumed);
       item.allocationCount++;
@@ -452,6 +478,8 @@ public final class MerchantCapacityPool {
               item.capacity.hex(),
               item.capacity.tier(),
               item.askPerMille,
+              item.pureMerchant,
+              MerchantHaul.TOOL_MILLI_PER_HAUL,
               take,
               consumed));
     }
@@ -484,14 +512,73 @@ public final class MerchantCapacityPool {
                   unreachableWork,
                   "subUnitResidualWorkMilli",
                   subUnitWork,
+                  "toolBlockedRuns",
+                  toolBlockedRuns,
+                  "toolMilliPerHaul",
+                  MerchantHaul.TOOL_MILLI_PER_HAUL,
                   "priced",
                   priced,
                   "reason",
-                  pool.isEmpty()
-                      ? "no-merchant-household-in-shipping-hex"
-                      : "capacity-exhausted-or-out-of-derived-radius"));
+                  laneBlockedReason(pool, unreachableWork, subUnitWork, toolBlockedRuns)));
     }
     return new CarrierAllocation(choices, quantityMilli, demandLeft, priced);
+  }
+
+  /**
+   * ★ <b>这一笔为什么没走完</b>（具名归因，按固定次序拼接：缺工具 / 半径外 / 亚单位残余 / 运力耗尽 / 本格没有跑商家户）—— 只在 DEBUG
+   * 行里出现，判据本身不改任何行为。★ 多个原因同时成立时**全部列出**（不挑一个代表性说法）。
+   */
+  private static String laneBlockedReason(
+      List<Entry> pool, long unreachableWork, long subUnitWork, long toolBlockedRuns) {
+    if (pool.isEmpty()) {
+      return "no-merchant-household-in-shipping-hex";
+    }
+    List<String> reasons = new ArrayList<>(3);
+    if (toolBlockedRuns > 0L) {
+      reasons.add("tool-short");
+    }
+    if (unreachableWork > 0L) {
+      reasons.add("out-of-derived-radius");
+    }
+    if (subUnitWork > 0L) {
+      reasons.add("sub-unit-residual");
+    }
+    if (reasons.isEmpty()) {
+      reasons.add("capacity-exhausted");
+    }
+    return String.join("+", reasons);
+  }
+
+  /**
+   * ★★ <b>M-C：把一条承运条目的耗用折算成承运家户的**劳动投入**（毫小时）</b>—— 利润读数的"劳动力成本"维。
+   *
+   * <p>运力 = 劳动项 + 工具项（{@link MerchantCapacity}）⇒ 本条的劳动份额 = {@code 耗用 × 劳动 ÷ 运力}
+   * （向上取整：宁可多算一分劳动成本，不静默少算）。查不到该户 ⇒ 0（不猜）。
+   */
+  public long laborHoursOf(HouseholdId household, long consumedWorkMilli) {
+    Entry entry = byHousehold.get(household);
+    if (entry == null || consumedWorkMilli <= 0L || entry.capacity.capacityMilli() <= 0L) {
+      return 0L;
+    }
+    long product = Math.multiplyExact(consumedWorkMilli, entry.capacity.laborMilli());
+    return (product + entry.capacity.capacityMilli() - 1L) / entry.capacity.capacityMilli();
+  }
+
+  /** 该户本轮的工具预算还剩多少（毫工具；读数/日志用；不在池里 ⇒ 0）。 */
+  public long remainingToolMilliOf(HouseholdId household) {
+    Entry entry = byHousehold.get(household);
+    return entry == null ? 0L : entry.remainingToolMilli;
+  }
+
+  /** 本轮因缺工具未成立的跑商次数（全部家户之和；INFO 汇总用）。 */
+  public long toolBlockedRuns() {
+    long total = 0L;
+    for (List<Entry> entries : byHex.values()) {
+      for (Entry item : entries) {
+        total = Math.addExact(total, item.toolBlockedRuns);
+      }
+    }
+    return total;
   }
 
   /**
@@ -516,6 +603,8 @@ public final class MerchantCapacityPool {
     long usedGoodsTotal = 0L;
     long usedWorkTotal = 0L;
     long allocationsTotal = 0L;
+    long toolBlockedTotal = 0L;
+    long remainingToolTotal = 0L;
     for (Map.Entry<HexCoord, List<Entry>> entry : byHex.entrySet()) {
       long usedGoods = 0L;
       long usedWork = 0L;
@@ -536,6 +625,10 @@ public final class MerchantCapacityPool {
       usedGoodsTotal = Math.addExact(usedGoodsTotal, usedGoods);
       usedWorkTotal = Math.addExact(usedWorkTotal, usedWork);
       allocationsTotal = Math.addExact(allocationsTotal, allocations);
+      for (Entry item : entry.getValue()) {
+        toolBlockedTotal = Math.addExact(toolBlockedTotal, item.toolBlockedRuns);
+        remainingToolTotal = Math.addExact(remainingToolTotal, item.remainingToolMilli);
+      }
       EventLog.channel(LOG)
           .info(
               LogEvent.of(
@@ -584,12 +677,21 @@ public final class MerchantCapacityPool {
                 "priced",
                 priced,
                 "maxAskPerMille",
-                maxAskPerMille));
+                maxAskPerMille,
+                // ★★ M-C（§一.9：INFO = 门槛与利润汇总的门槛面）：本轮因缺工具未成立的跑商次数 + 池里剩余工具。
+                "toolBlockedRuns",
+                toolBlockedTotal,
+                "toolMilliRemaining",
+                remainingToolTotal,
+                "toolMilliPerHaul",
+                MerchantHaul.TOOL_MILLI_PER_HAUL));
   }
 
   /**
-   * ★ <b>一条分配结果（承运条目）</b>。
+   * ★ <b>一条分配结果（承运条目 = 一次跑商）</b>。
    *
+   * @param pureMerchant 该提供者是不是**纯商号**（H-2：主业 ∈ merchant.*）—— 免运费（H-A）与利润算式的分流依据
+   * @param toolMilli 本次跑商**要烧掉**的工具（毫工具；H-D/H-1 的一次性消耗，成交时从商品账扣）
    * @param askPerMille 该提供者的成交限价（‰；报价口径 = 自报价 + 上门附加费；缺省口径 = M-A1 派生承运成本）
    * @param quantityMilli 本条实际承运的商品量（毫商品）
    * @param consumedWorkMilli 本条的运力耗用（毫商品·程＝报价口径 / 毫商品＝缺省口径）
@@ -600,6 +702,8 @@ public final class MerchantCapacityPool {
       HexCoord hex,
       MerchantPolicy.MerchantTier tier,
       long askPerMille,
+      boolean pureMerchant,
+      long toolMilli,
       long quantityMilli,
       long consumedWorkMilli) {
 
@@ -610,6 +714,9 @@ public final class MerchantCapacityPool {
       Objects.requireNonNull(tier, "tier");
       if (askPerMille < 0L) {
         throw new IllegalArgumentException("CarrierChoice.askPerMille 不得为负: " + askPerMille);
+      }
+      if (toolMilli < 0L) {
+        throw new IllegalArgumentException("CarrierChoice.toolMilli 不得为负: " + toolMilli);
       }
       if (quantityMilli <= 0L) {
         throw new IllegalArgumentException("CarrierChoice.quantityMilli 必须为正: " + quantityMilli);

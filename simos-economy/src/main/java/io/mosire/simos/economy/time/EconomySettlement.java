@@ -1936,9 +1936,19 @@ public final class EconomySettlement {
                     marketRound.govMandates().authorizationOnlyHouseholds()));
         throw new IllegalStateException("政府市场授权计划在本轮装配里被丢掉了（国库户会退回自动下单，契约故障）: day=" + day);
       }
+      // ★★ M-C：本轮的纯商号集合（H-2；免运费判据 H-A/H-G 的**范围**）—— 判据的唯一拼写点是
+      //   {@code MerchantIdentity}，这里只把它从同一份 classMemberships × classPositions 现算一次。
+      Set<HouseholdId> pureMerchantHouseholds =
+          MerchantIdentity.pureMerchants(session.sheet().classMemberships(), base.classPositions());
       MarketSettlement.MarketOutcome outcome =
           MarketSettlement.clearOncePerCycle(
-              markets, marketRound, marketTrigger, topology, parallelism, carrierPool);
+              markets,
+              marketRound,
+              marketTrigger,
+              topology,
+              parallelism,
+              carrierPool,
+              pureMerchantHouseholds);
       // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
       ledger.recordMarketReport(outcome.report());
       govMandateFills = outcome.mandateFills();
