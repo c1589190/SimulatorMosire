@@ -382,10 +382,26 @@ class EconomyCodecTest {
   }
 
   /**
-   * ★ **字节级往返**：编码 → 解码 → **再编码**，两次编码**逐字节相等**——它能抓住"解码时把有序容器换成 {@code
-   * Map.copyOf}"/"键序漂移"这类内容相等而迭代序漂移的退化。
+   * ★ <b>同进程字节级往返</b>：编码 → 解码 → <b>再编码</b>，两次编码<b>逐字节相等</b>——钉的是"<b>解码</b>把有序容器 换成 {@code
+   * Map.copyOf}/别的序"这类"内容相等而往返序漂移"的退化。
    *
-   * <p>★ 同时钉住"派生判断 {@code empty} **不进线格式**"（{@code isEmpty()} 不是状态；写进去会让严格读入当场炸）。
+   * <p>★ <b>它的判别力当场量过，不是"看起来能抓"</b>：把 {@code EconomyCodec#decodeSnapshot} 的 {@code industries}
+   * 临时候改成"反转序重建" ⇒ 本用例<b>当场红</b>（红点＝本用例里那句 {@code
+   * assertThat(snapshotTwice)…isEqualTo(snapshotOnce)}，报错是 {@code
+   * "industries":{"farm":…,"workshop":…}} vs {@code {"workshop":…,"farm":…}}，逐值全同）。
+   *
+   * <p>★★ <b>它抓不到什么（2026-10-10"跨进程确定性"批如实更正——旧注的范围写错了，断言本身没错）</b>：本用例 <b>只在同一个 JVM 内</b>编码两次，而
+   * {@code Map.of}（≥2 键）= {@code ImmutableCollections.MapN}、{@code Set.copyOf} = {@code SetN} 的槽位取自
+   * <b>JVM 启动时的 {@code nanoTime} 盐</b> ⇒ <b>同进程的两次编码用的是同一个 盐</b>，本断言对跨进程抖动<b>恒真</b>。实测：把 {@code
+   * EconomySeeder.orderedTable} 改回 {@code Map.of}（= {@code b4bfe988} 修掉的那个真缺陷）后，本用例仍 <b>1/1
+   * 绿</b>、且同一棵树上 4 个子 JVM 的同进程往返读数全是 {@code true}，而跨进程 digest 已经分裂成
+   * <b>3/4</b>。故旧注"能抓住键序漂移"必须收窄成"<b>同进程</b>往返序漂移"。
+   *
+   * <p>★ <b>跨进程的 per-JVM 盐抖动由另一条护栏负责</b>：{@code
+   * simos-app/src/test/.../app/determinism/CrossProcessDeterminismTest}（真起 ≥3 个独立 JVM、各自构造同一份数据
+   * 并比字节 digest，覆盖 economy 快照/变更集与 map 快照）。两条覆盖面<b>不重叠</b>、都要在——本条管"往返丢序"， 那条管"同一份内容在不同 JVM 上字节不同"。
+   *
+   * <p>★ 同时钉住"派生判断 {@code empty} <b>不进线格式</b>"（{@code isEmpty()} 不是状态；写进去会让严格读入当场炸）。
    */
   @Test
   void encodingIsByteLevelStableForEconomyData() {

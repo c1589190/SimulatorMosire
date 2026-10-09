@@ -1,0 +1,35 @@
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.app.determinism.CrossProcessDeterminismTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 7.247 s <<< FAILURE! -- in io.mosire.simos.app.determinism.CrossProcessDeterminismTest
+io.mosire.simos.app.determinism.CrossProcessDeterminismTest.genesisBytesAreIdenticalAcrossIndependentJvms -- Time elapsed: 7.141 s <<< FAILURE!
+java.lang.AssertionError: 
+[★ 跨进程字节抖动：以下字节流在 4 个独立 JVM 上不唯一——“同一状态 ⇒ 同一份字节”跨进程不成立（per-JVM 盐进了落盘字节）。
+★ economy 得到 3/4 个不同 digest（逐路径定位见下）
+  子 JVM #0 digest=bd0900381ce0e48982bed66c3b42831538a09feb98b391b85c389e3d236964a5 盐读数=pid=259279|mapOf2=a,b -> [b, a]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [meansWeightPerMille, laborWeightPerMille]|setCopyOf5=a..e -> [a, b, c, d, e]
+  子 JVM #1 digest=24299044ba96ec9e200789c8e32c3800b686a3ee7aebb667b5c97825804730aa 盐读数=pid=259310|mapOf2=a,b -> [a, b]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [laborWeightPerMille, meansWeightPerMille]|setCopyOf5=a..e -> [b, c, d, e, a]
+  子 JVM #2 digest=c797240a977e23dde4503dfe3d1e8a85e4f5e9ed32c876923a89a52b9a4fade5 盐读数=pid=259341|mapOf2=a,b -> [b, a]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [meansWeightPerMille, laborWeightPerMille]|setCopyOf5=a..e -> [c, b, a, e, d]
+  子 JVM #3 digest=c797240a977e23dde4503dfe3d1e8a85e4f5e9ed32c876923a89a52b9a4fade5 盐读数=pid=259375|mapOf2=a,b -> [a, b]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [meansWeightPerMille, laborWeightPerMille]|setCopyOf5=a..e -> [a, b, c, d, e]
+  #0 vs #1：$.data.industries.craft@-3_3.outputPerUnit **键序/键集不同** A=[cloth, tool] B=[tool, cloth]；忽略键序后相等=true
+  #0 vs #2：$.data.industries.craft@-3_3.cycleInputPerUnit.WORKSHOP **键序/键集不同** A=[fiber, tool] B=[tool, fiber]；忽略键序后相等=true
+  #0 vs #3：$.data.industries.craft@-3_3.cycleInputPerUnit.WORKSHOP **键序/键集不同** A=[fiber, tool] B=[tool, fiber]；忽略键序后相等=true
+★ economy.seed-changeset 得到 3/4 个不同 digest（逐路径定位见下）
+  子 JVM #0 digest=f143e5d7c8a471bbc9687be106c59fec43ac826a22473aff2656afdfd02003f0 盐读数=pid=259279|mapOf2=a,b -> [b, a]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [meansWeightPerMille, laborWeightPerMille]|setCopyOf5=a..e -> [a, b, c, d, e]
+  子 JVM #1 digest=41accd133c7ba9cc2e818cd022418b51a8ba4c23b8124fd58fc91a24991ba390 盐读数=pid=259310|mapOf2=a,b -> [a, b]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [laborWeightPerMille, meansWeightPerMille]|setCopyOf5=a..e -> [b, c, d, e, a]
+  子 JVM #2 digest=4e0487ac1a78496de2707c51cc7f60a81ec71e3bd6a7e724e80124913f5f0ead 盐读数=pid=259341|mapOf2=a,b -> [b, a]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [meansWeightPerMille, laborWeightPerMille]|setCopyOf5=a..e -> [c, b, a, e, d]
+  子 JVM #3 digest=4e0487ac1a78496de2707c51cc7f60a81ec71e3bd6a7e724e80124913f5f0ead 盐读数=pid=259375|mapOf2=a,b -> [a, b]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [meansWeightPerMille, laborWeightPerMille]|setCopyOf5=a..e -> [a, b, c, d, e]
+  #0 vs #1：$.industries.entries.craft@-3_3.outputPerUnit **键序/键集不同** A=[cloth, tool] B=[tool, cloth]；忽略键序后相等=true
+  #0 vs #2：$.industries.entries.craft@-3_3.cycleInputPerUnit.WORKSHOP **键序/键集不同** A=[fiber, tool] B=[tool, fiber]；忽略键序后相等=true
+  #0 vs #3：$.industries.entries.craft@-3_3.cycleInputPerUnit.WORKSHOP **键序/键集不同** A=[fiber, tool] B=[tool, fiber]；忽略键序后相等=true
+★ checkpoint 得到 3/4 个不同 digest（逐路径定位见下）
+  子 JVM #0 digest=600d2e544df2dfc20e96ff51c8133802b666203902789f14f517a1f36d603279 盐读数=pid=259279|mapOf2=a,b -> [b, a]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [meansWeightPerMille, laborWeightPerMille]|setCopyOf5=a..e -> [a, b, c, d, e]
+  子 JVM #1 digest=e30ead02577c1c2af73a7057240c55a08ecb050195ca77637af9f4db9529121a 盐读数=pid=259310|mapOf2=a,b -> [a, b]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [laborWeightPerMille, meansWeightPerMille]|setCopyOf5=a..e -> [b, c, d, e, a]
+  子 JVM #2 digest=d6fe10cfe77ff369553444dbdc0219968839ccb61b1a8b193196a94a93266bdb 盐读数=pid=259341|mapOf2=a,b -> [b, a]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [meansWeightPerMille, laborWeightPerMille]|setCopyOf5=a..e -> [c, b, a, e, d]
+  子 JVM #3 digest=d6fe10cfe77ff369553444dbdc0219968839ccb61b1a8b193196a94a93266bdb 盐读数=pid=259375|mapOf2=a,b -> [a, b]|mapOf2b=fiber,grain -> [grain, fiber]|mapOf2c=meansWeightPerMille,laborWeightPerMille -> [meansWeightPerMille, laborWeightPerMille]|setCopyOf5=a..e -> [a, b, c, d, e]
+  #0 vs #1：$.modules.economy 值不同 A="{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"v… B="{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"v…；忽略键序后相等=false
+  #0 vs #2：$.modules.economy 值不同 A="{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"v… B="{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"v…；忽略键序后相等=false
+  #0 vs #3：$.modules.economy 值不同 A="{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"v… B="{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"v…；忽略键序后相等=false
+] 
+Expecting empty but was: ["economy", "economy.seed-changeset", "checkpoint"]
+	at io.mosire.simos.app.determinism.CrossProcessDeterminismTest.genesisBytesAreIdenticalAcrossIndependentJvms(CrossProcessDeterminismTest.java:186)
+
