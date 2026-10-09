@@ -35,6 +35,9 @@ R2 落点（实测）：`simos-gov/.../GovPortPolicy.java`、`GovEfficiency.java
 1. **商品维无消费者**：`PortEnforcementInput.commodityEnforcementPerMilleByZone` 已算、已注入，
    但全仓唯一读 `portEnforcement` 的是 `CurrencyValuation:292`，读的是**币种维**
    ⇒ **商品类管制（禁运）今天不影响实际货流**，是纯读口。
+   ★ **v3：用户 2026-10-10 已裁定其作用形态** —— 口岸限制的是**市场选择**（受管制的货**不进候选集**，
+   家户与商户都选不上），走私算在**供给层**；落点 = `MarketSettlement.matchAcrossRegions`（`:4072`）的
+   跨区候选配对处（**不许删卖单本身**）。见口岸设计书 §10、复核报告 §10。
 2. **走私算式零调用者**：`PortRegimeAggregation.split(...)`（返回 `SmugglingSplit`）无人调用
    ⇒ "走私 = 规模现象"只落了算式，**没进撮合**（正常/走私两份的分流没发生）。
    ★ **v2 更正**：v1 把该方法误写成 `smuggle(...)`；实际方法名是 **`split`**（`PortRegimeAggregation:130`）。
@@ -47,7 +50,7 @@ R2 落点（实测）：`simos-gov/.../GovPortPolicy.java`、`GovEfficiency.java
 
 | 子批 | 内容 | 判据要点 |
 |---|---|---|
-| **P-T1** | **商品维真正拦截货流**：禁运/管制要挡住跨区货（含负向用例：管制=0 时逐值退回改前行为） | 需要一个"被挡住"的具名归因 + 读口能看到 |
+| **P-T1** | **商品维真正咬人 = 选择集过滤**（用户 2026-10-10 裁定）：受管制商品在**跨区候选配对**处不进候选集（家户与商户都选不上）+ 具名归因 | 跨区候选处过滤、不删卖单；`s=0` ⇒ 候选集逐值不变 |
 | **P-T2** | **走私分流进撮合**：把 `smuggle()` 的结果接进市场结算（正常 + 走私 = 总过境，Σ 守恒） | 两份之和逐值等于总过境能力 |
 | **P-T3** | **G3 复测**：新口径下的跨区贸易与汇率 | 真实 world 跑 + 读日志 |
 
@@ -160,3 +163,5 @@ R2 落点（实测）：`simos-gov/.../GovPortPolicy.java`、`GovEfficiency.java
   24 条待办总表；恢复顺序。
 - v2（2026-10-10）：更正 §1.2 的方法名（`smuggle` → **`split`**，`PortRegimeAggregation:130`；结论不变）；
   补指针到口岸×商户体系复核报告。
+- v3（2026-10-10）：按用户裁定更新 §1.2-1 与 §1.3 的 P-T1 —— 口岸限制的是**市场选择**（选择集过滤，落点
+  `MarketSettlement.matchAcrossRegions:4072`），走私算在**供给层**；指针到口岸设计书 §10 / 复核报告 §10。
