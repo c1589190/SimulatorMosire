@@ -278,6 +278,7 @@ class SimosToolsTest {
           "simos.gm.adjustPopulation",
           "simos.gm.approve",
           "simos.gm.armyPayPolicy",
+          "simos.gm.govMarketMandate",
           "simos.gm.mergedPlan.apply",
           "simos.gm.mergedPlan.upsert",
           "simos.gm.packet.decide",
@@ -537,6 +538,8 @@ class SimosToolsTest {
           "economy.SetHouseholdClass",
           "economy.SetHouseholdLabor",
           "economy.SetHouseholdParticipation",
+          "economy.AuthorizeGovernmentMarketOrder",
+          "economy.CancelGovernmentMarketOrder",
           "economy.SetCommodityFreight",
           "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
@@ -915,10 +918,10 @@ class SimosToolsTest {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
         .as(
-            "扫描必须恰为 137 个 *Handler.java 的 type()（128 → 136：A1/A2a/B2 的 8 条货币/市场区命令按实测补入本表）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
+            "扫描必须恰为 139 个 *Handler.java 的 type()（128 → 136：A1/A2a/B2 的 8 条货币/市场区命令按实测补入本表）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
                 + "P1b1/P3/R3a 的区域清空与国库上缴，辖区阶段 5–12，D1/D3a/D4/D5 的 unit/sd/army 新命令，"
                 + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds；Z6 起纳入 simos-gov 的 2 条 handler；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）")
-        .hasSize(137);
+        .hasSize(139);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -956,7 +959,7 @@ class SimosToolsTest {
         .containsAll(UNIT_WRITE_NAMES)
         .as(
             "★ Z6 后：GM 桶 = 37 读 + 123 写 = 160（60 非窄写 + 63 窄写；2026-10-09 按实测补入 A1/A2a/B2 的 4 条货币 + 3 条市场区工具）")
-        .hasSize(161);
+        .hasSize(162);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1704,8 +1707,8 @@ class SimosToolsTest {
   void everyToolClassOnDiskIsRegisteredInSomeBucket() throws Exception {
     Set<String> onDisk = toolNamesFromSources();
     assertThat(onDisk)
-        .as("扫描必须恰为 170 个 *Tool.java 的 NAME（GM 桶 160 条 + 只进决策人桶的 10 条；扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(171);
+        .as("扫描必须恰为 172 个 *Tool.java 的 NAME（2026-10-09 按实测更新；扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(172);
 
     List<String> union =
         Stream.concat(

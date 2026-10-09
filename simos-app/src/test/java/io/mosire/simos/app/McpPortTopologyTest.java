@@ -232,7 +232,8 @@ class McpPortTopologyTest {
           "simos.economy.defineMarketZone",
           "simos.economy.reassignZoneHexes",
           "simos.economy.mergeMarketZones",
-          "simos.economy.setCommodityFreight");
+          "simos.economy.setCommodityFreight",
+          "simos.gm.govMarketMandate");
 
   /** GM 组的 63 条窄写：21 sd + 8 map + 3 economy zone + 28 unit + 3 其他；**都不是**通用写。 */
   private static final List<String> GM_NARROW_WRITES =

@@ -482,6 +482,27 @@ public final class CatalogTool implements AgentTool {
               "economy.RemoveHouseholdPeriodicAdjustment",
               "id, reason?（★ P4a：按 id 删除；不存在 ⇒ 具名拒，不静默成功；GM-only）"),
           Map.entry(
+              "economy.AuthorizeGovernmentMarketOrder",
+              "id(授权 id), government(已登记政府 id), commodity(必须在国库户所在格已定价),"
+                  + " side(BUY|SELL), quantityMilli(>0), limitPriceMilli(≥1), expiresOnDay(≥当天),"
+                  + " source(非空白审计串)"
+                  + "（★ R1 2026-10-09：给某政府的国库家户一条**明确授权下单** —— 政府经济行为 = 行政家户挂单，"
+                  + "不加政策层（设计书 §4.5 G8 / 不变量 I-P6）。★ BUY 限价 = 价格上限、SELL 限价 = 价格下限；"
+                  + "实际限价还受市场自身限价约束（取更严者）⇒ **不改价、不改成本、不豁免撮合规则**；"
+                  + "★ 成交价仍由市场按参考价裁定；★ 买盘不走信用（授权 ≠ 加杠杆）；"
+                  + "★ 到期/量耗尽由日结算清除（不许留永久挂单）；★ 同 id 同形状重复注入 ⇒ 具名拒（幂等，不双倍下单），"
+                  + "改形状须先 Cancel；★ 同政府同商品同方向至多一条生效授权；"
+                  + "★ 具名拒（各自零 revision、head 不动）：unknown-government / treasury-not-household /"
+                  + " treasury-household-has-no-economy-row / treasury-hex-has-no-market /"
+                  + " unknown-or-unpriced-commodity / expires-on-day-already-past /"
+                  + " idempotent-duplicate-authorization / authorization-shape-change /"
+                  + " duplicate-open-authorization；★ GM-only：不进令/RegisterEffect/决策人目录，"
+                  + "GM 的 simos.command.submit 与窄工具 simos.gm.govMarketMandate 可用）"),
+          Map.entry(
+              "economy.CancelGovernmentMarketOrder",
+              "id, reason?（★ R1：撤销一条政府市场授权；不存在/已耗尽到期清除 ⇒ 具名拒 unknown-authorization，"
+                  + "不静默成功；★ 只删状态行，不回滚任何已成交的货/钱；GM-only）"),
+          Map.entry(
               "economy.RegisterCandidate",
               "id, version?(缺省 1；修订须严格更大), name?, output, outputPerUnit{商品:>0 整数},"
                   + " inputPerUnit{商品:≥0 整数}?, requiredAssets{资产种类:≥0 整数}?, laborPerUnit?(缺省 0),"

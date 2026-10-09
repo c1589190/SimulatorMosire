@@ -71,6 +71,7 @@ import io.mosire.simos.app.tools.write.GmAdjustPopulationTool;
 import io.mosire.simos.app.tools.write.GmApproveTool;
 import io.mosire.simos.app.tools.write.GmArmyPayPolicyTool;
 import io.mosire.simos.app.tools.write.GmDecidePacketTool;
+import io.mosire.simos.app.tools.write.GmGovMarketMandateTool;
 import io.mosire.simos.app.tools.write.GmMergedPlanApplyTool;
 import io.mosire.simos.app.tools.write.GmMergedPlanUpsertTool;
 import io.mosire.simos.app.tools.write.GmPacketExecuteTool;
@@ -807,6 +808,9 @@ public final class SimosToolSource implements ToolSource {
     //   social.SetHouseholdVitalRates）、家户人口直调（逐字转发 simos.social.household.members）。
     //   四条都是 preview 缺省 true、apply 才落一条 revision 的窄写口径。
     built.add(new GmPeriodicAdjustmentTool(core, query, initiator));
+    // ★★ R1（2026-10-09）：政府市场授权（行政家户挂单）的 GM 窄工具 —— 只写一张授权表，订单仍由日结算的
+    //   家户→订单→撮合→结算 生成（用户 §1.3：不加政策层）。
+    built.add(new GmGovMarketMandateTool(core, query, initiator));
     built.add(new GmArmyPayPolicyTool(core, query, initiator));
     built.add(new GmVitalRatesTool(core, query, initiator));
     built.add(new GmAdjustPopulationTool(core, query, initiator));

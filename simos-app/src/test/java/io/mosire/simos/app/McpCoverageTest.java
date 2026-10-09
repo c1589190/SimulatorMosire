@@ -163,6 +163,8 @@ class McpCoverageTest {
           "economy.SetHouseholdClass",
           "economy.SetHouseholdLabor",
           "economy.SetHouseholdParticipation",
+          "economy.AuthorizeGovernmentMarketOrder",
+          "economy.CancelGovernmentMarketOrder",
           "economy.SetCommodityFreight",
           "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
@@ -303,6 +305,9 @@ class McpCoverageTest {
           "economy.ReassignZoneHexes",
           "economy.MergeMarketZones",
           "economy.SetMarketNumeraire",
+          // ★ R1（2026-10-09）：政府市场授权要"已登记政府 + 其国库是家户"（本夹具没有）⇒ 走具名拒路径。
+          "economy.AuthorizeGovernmentMarketOrder",
+          "economy.CancelGovernmentMarketOrder",
           "actor.RemitGovTreasury",
           "unit.SetFormationOffset",
           "sd.DeleteDecisionMaker",
@@ -354,6 +359,12 @@ class McpCoverageTest {
               "{\"adjustment\":\"forgiveDebt\",\"parameters\":{\"debtContractId\":\"missing-debt\"},\"reason\":\"coverage\"}"),
           Map.entry(
               "economy.MigrateHousehold", "{\"household\": \"hh-missing\", \"toHex\": \"1_1\"}"),
+          Map.entry(
+              "economy.AuthorizeGovernmentMarketOrder",
+              "{\"id\": \"gm:missing\", \"government\": \"gov-missing\", \"commodity\": \"grain\", \"side\": \"BUY\", \"quantityMilli\": 1000, \"limitPriceMilli\": 2, \"expiresOnDay\": 60, \"source\": \"coverage\"}"),
+          Map.entry(
+              "economy.CancelGovernmentMarketOrder",
+              "{\"id\": \"gm:missing\", \"reason\": \"coverage\"}"),
           // ★★ A1/A2a/B2（2026-10-08）的 8 条：载荷形状逐字段合法（含必填字段），但点名的 GOV 单位 / 区 / 币种
           //   在本夹具世界里不存在 ⇒ 必须具名拒、且不推 revision（见 PRECONDITION_REJECT_TYPES 的同批注释）。
           Map.entry(

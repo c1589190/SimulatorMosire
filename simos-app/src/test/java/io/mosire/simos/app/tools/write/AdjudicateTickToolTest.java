@@ -878,6 +878,16 @@ class AdjudicateTickToolTest {
         List.of(
             "{\"govUnitId\":\"gov-1\",\"currency\":\"silver\",\"amountMilli\":1000,"
                 + "\"kind\":\"FISCAL_ISSUE\",\"reason\":\"coverage\"}"));
+    // ★ R1（2026-10-09）：政府市场授权两条新命令（GM-only ⇒ 空目标声明，但仍实现 CommandTargets ⇒ 必须在册）
+    samples.put(
+        "economy.AuthorizeGovernmentMarketOrder",
+        List.of(
+            "{\"id\":\"gm:cov\",\"government\":\"gov-unit-gov-1\",\"commodity\":\"grain\","
+                + "\"side\":\"BUY\",\"quantityMilli\":1000,\"limitPriceMilli\":2,"
+                + "\"expiresOnDay\":60,\"source\":\"coverage\"}"));
+    samples.put(
+        "economy.CancelGovernmentMarketOrder",
+        List.of("{\"id\":\"gm:cov\",\"reason\":\"coverage\"}"));
     samples.put(
         "economy.SetOfficialRate",
         List.of(
@@ -908,8 +918,8 @@ class AdjudicateTickToolTest {
           .containsExactlyInAnyOrderElementsOf(expected.subList(1, expected.size()));
     }
     assertThat(samples.keySet())
-        .as("94 条样本一条不漏（77 条有目标声明 + 17 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）")
-        .hasSize(94);
+        .as("96 条样本一条不漏（77 条有目标声明 + 19 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）")
+        .hasSize(96);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

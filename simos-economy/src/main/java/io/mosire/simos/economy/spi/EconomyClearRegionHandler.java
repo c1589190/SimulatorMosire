@@ -437,7 +437,9 @@ public final class EconomyClearRegionHandler
         staged.householdDebtRefs(),
         // ★★ 第 38 个组件（商品基础运费表）：它是**世界级**的（不按格），清区域一字不动，
         //   原样带过 staged 的表 —— 漏了它 = 一次清区域把 GM 设过的基础运费静默抹掉。
-        staged.commodityFreightBaseMilli());
+        staged.commodityFreightBaseMilli(),
+        // ★★ R1（第 39 个组件）：政府市场授权表原样带过（清区不动授权；授权由 GM 命令撤销）。
+        staged.govMarketMandates());
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

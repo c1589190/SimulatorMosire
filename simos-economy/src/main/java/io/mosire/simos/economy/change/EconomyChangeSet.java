@@ -28,6 +28,8 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
+import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.CurrencyDef;
@@ -179,7 +181,11 @@ public record EconomyChangeSet(
     //   ★★ 值类型是 **Long 而不是 Map**：表本身就住在 EconomyData 里，这里只需逐商品的 Upsert ⇒ 线格式的键仍是 String
     //   （HouseholdDebtReference 同款），于是**第四台 mapper（Timeline.readChangeSet）不需要任何 CommodityId 键
     //   反序列化器**就能读回重放（debts/issuingGov 两次的教训：类型侧注解缺一不可，而"根本不引入领域键类型"比"补注册"更稳）。
-    FieldDelta<Long> commodityFreightBaseMilli)
+    FieldDelta<Long> commodityFreightBaseMilli,
+    // ── R1（第 39 个组件）：政府市场授权表（与 EconomyData 的第 39 个组件一一对应，铁律 5）────────────
+    //   键 = MarketMandateId 的裸值（toString），值 = 授权行（含累计成交 filledMilli）。
+    //   ★ 日结算会写它（成交累加 + 耗尽/到期清除）⇒ 每 tick 只落**真正变化的那几行**（Upsert/Remove）。
+    FieldDelta<GovernmentMarketMandate> govMarketMandates)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -291,6 +297,10 @@ public record EconomyChangeSet(
     if (periodicAdjustments == null) {
       periodicAdjustments = new FieldDelta.Unchanged<>();
     }
+    // ★★ R1 第 39 个组件（政府市场授权表）：旧变更集没提该组件，就是没动它。
+    if (govMarketMandates == null) {
+      govMarketMandates = new FieldDelta.Unchanged<>();
+    }
     // ★★ Z1 第 32/33 个组件（产品产出数量覆盖表 / 生产效率累计与余数表）：旧变更集没提该组件，就是没动它。
     if (outputQuantityOverrides == null) {
       outputQuantityOverrides = new FieldDelta.Unchanged<>();
@@ -364,7 +374,9 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.marketZones(), target.marketZones()),
         FieldDelta.diff(base.householdDebtRefs(), target.householdDebtRefs()),
         // ★★ 第 38 个组件：商品基础运费表（键 = CommodityId 裸值；值 = 基础运费，毫/单位/程）。
-        FieldDelta.diff(base.commodityFreightBaseMilli(), target.commodityFreightBaseMilli()));
+        FieldDelta.diff(base.commodityFreightBaseMilli(), target.commodityFreightBaseMilli()),
+        // ★★ R1（第 39 个组件）：政府市场授权表（成交累加与耗尽/到期清除写它，铁律 5 的一一对应）。
+        FieldDelta.diff(base.govMarketMandates(), target.govMarketMandates()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -427,7 +439,9 @@ public record EconomyChangeSet(
             base.householdDebtRefs(), cs.householdDebtRefs(), HouseholdDebtReference::parse),
         // ★★ 第 38 个组件：商品基础运费表（键解析器 = CommodityId::parse，与 toString 互逆；值 = Long 直读）。
         FieldDelta.rebuild(
-            base.commodityFreightBaseMilli(), cs.commodityFreightBaseMilli(), CommodityId::parse));
+            base.commodityFreightBaseMilli(), cs.commodityFreightBaseMilli(), CommodityId::parse),
+        FieldDelta.rebuild(
+            base.govMarketMandates(), cs.govMarketMandates(), MarketMandateId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -467,7 +481,8 @@ public record EconomyChangeSet(
         || moneyInstruments.changed()
         || marketZones.changed()
         || householdDebtRefs.changed()
-        || commodityFreightBaseMilli.changed());
+        || commodityFreightBaseMilli.changed()
+        || govMarketMandates.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

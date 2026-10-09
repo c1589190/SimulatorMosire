@@ -270,7 +270,12 @@ final class FxSettlement {
           rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of());
       String regionId = topology.contains(hex) ? topology.regionOf(hex).node().nodeId() : "";
       for (HouseholdId household : rows) {
-        if (household == null || round.marketExcludedHouseholds().contains(household)) {
+        if (household == null
+            || round.marketExcludedHouseholds().contains(household)
+            // ★★ R1：国库户也不生成**家户外汇单** —— 改前它在 Z7b 排除集里（同一个集合兼着这两件事），
+            //   本轮把"商品市场参与"与"自动下单"拆开后，这里必须显式保住原来那一半：国库户的外汇行为
+            //   只走 GOV 外汇窗口（FxRoundInput 的 window），不额外挂家户单。
+            || round.govMandates().isAuthorizationOnly(household)) {
           continue;
         }
         long reserveMoney = MarketSettlement.moneyReserveOfHousehold(round, household, market);

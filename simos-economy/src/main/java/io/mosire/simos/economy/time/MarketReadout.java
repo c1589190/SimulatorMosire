@@ -159,33 +159,38 @@ public record MarketReadout(
             data.classes(),
             data.debtContracts(),
             data.relations());
+    // ★★ R1：读口与结算**同源**注入政府市场授权计划（同一 {MarketMandatePlan.of}）—— 否则读口会显示
+    //   一套订单、日结算下另一套（"看到的订单 == 会下的订单"）。
+    GovernmentMarketMandatePlan govMandatePlan =
+        GovernmentMarketMandatePlan.of(data.govMarketMandates(), data.governments(), tick);
     MarketSettlement.MarketRound round =
         new MarketSettlement.MarketRound(
-            tick,
-            data.classes(),
-            accounts.householdGoods(),
-            accounts.householdMoney(),
-            accounts.householdFrozenGoods(),
-            accounts.householdFrozenMoney(),
-            Map.of(),
-            Map.of(),
-            data.industries(),
-            data.units(),
-            data.assetShares(),
-            data.relations(),
-            data.allocations(),
-            data.shipments(),
-            new ProductionLedger.Accumulator(tick),
-            data.operatorConditions(),
-            index,
-            // ★★ R4-E2：读口与结算走同一条 planOrders ⇒ 需求目标必须同源传入，否则读到的订单会与真实下单漂开。
-            data.demands(),
-            // ★★ Z7b：读口至少与结算同源排除政府国库户（economy 自己看得见 governments）；unit 户集合只有 app
-            //   组合根看得见，读口不带 unit 切片 ⇒ 读口的 unit 户口径是本批的已知边界（记在 Z7e 清单）。
-            MarketRegulation.none(),
-            null,
-            null,
-            EconomySettlement.governmentTreasuryHouseholds(data.governments()));
+                tick,
+                data.classes(),
+                accounts.householdGoods(),
+                accounts.householdMoney(),
+                accounts.householdFrozenGoods(),
+                accounts.householdFrozenMoney(),
+                Map.of(),
+                Map.of(),
+                data.industries(),
+                data.units(),
+                data.assetShares(),
+                data.relations(),
+                data.allocations(),
+                data.shipments(),
+                new ProductionLedger.Accumulator(tick),
+                data.operatorConditions(),
+                index,
+                // ★★ R4-E2：读口与结算走同一条 planOrders ⇒ 需求目标必须同源传入，否则读到的订单会与真实下单漂开。
+                data.demands(),
+                // ★★ R1：**国库户不再排除**（它回到市场，只是"只按授权下单"）。★ unit 户集合只有 app 组合根
+                //   看得见，读口不带 unit 切片 ⇒ 读口的 unit 户口径是本批的已知边界（记在 Z7e 清单）。
+                MarketRegulation.none(),
+                null,
+                null,
+                Set.of())
+            .withGovMandates(govMandatePlan);
     Map<HexCoord, MarketRegion> regionByHex = new LinkedHashMap<>();
     List<MarketRegion> regions = new ArrayList<>();
     for (MarketRegion region : topology.regions()) {

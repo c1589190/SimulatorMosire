@@ -62,7 +62,8 @@ public final class EconomyDayStepper implements AutoCloseable {
   private Map<HouseholdId, Map<PeopleLotId, Long>> composition = Map.of();
 
   /**
-   * ★★ <b>Z7b：退出商品市场的单位户集合</b>（由 app 组合根从 {@code Unit.households()} 现算后注入；economy 侧在日结算里再并入 {@code
+   * ★★ <b>退出商品市场的单位户集合</b>（由 app 组合根从 {@code Unit.households()} 现算后注入；R1 起**只**含单位户 —— 政府国库户
+   * 回到市场且只按授权下单，见 {@code GovernmentMarketMandatePlan}；economy 侧在日结算里并入 {@code
    * EconomyData.governments()} 的国库户）。缺省空集 = 只排政府国库户；不进任何 Economy 状态、不进变更集。
    */
   private Set<HouseholdId> marketExcludedHouseholds = Set.of();

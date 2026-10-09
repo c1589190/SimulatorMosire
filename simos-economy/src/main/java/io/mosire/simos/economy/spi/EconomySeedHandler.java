@@ -232,7 +232,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             base.householdDebtRefs(),
             // ★★ 第 38 个组件（商品基础运费表）：seed 载荷不声明该表 ⇒ **原样带过**已有状态 ——
             //   漏了它 = 后续按格补种会把 GM 设过的基础运费静默抹掉（运费悄悄退回硬编码分档，账面上看不出是谁弄丢的）。
-            base.commodityFreightBaseMilli());
+            base.commodityFreightBaseMilli(),
+            // ★★ R1（第 39 个组件）：政府市场授权表原样带过 —— 漏了它 = 一次按格追加播种会把已授权
+            //   的政府挂单静默抹掉（账面上看不出是谁弄丢的）。
+            base.govMarketMandates());
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

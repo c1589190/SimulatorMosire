@@ -35,6 +35,8 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
+import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.CurrencyDef;
@@ -118,6 +120,10 @@ import java.util.Set;
  *   <li>P10.1（第 30 个，1 个）：{@code merchantFirms}（商号表，见 {@link MerchantFirm}；键 = 值内 organizationId）。
  *   <li>P4a（第 31 个，1 个）：{@code periodicAdjustments}（周期家户库存扣增规则表，见 {@link
  *       HouseholdPeriodicAdjustment}； 键 = 值内 id；P4a 只落规则与无状态到期执行，单位政策留 P4b）。
+ *   <li>★ <b>R1（第 39 个，1 个）：{@code govMarketMandates}</b>（政府市场授权表 = 行政家户挂单的授权凭据，见 {@link
+ *       GovernmentMarketMandate}；键 = {@link MarketMandateId}）。★ 它是"政府只按明确授权下单"的落点： 国库户（{@code
+ *       hh-gov-*}）回到商品市场后<b>不生成任何自动订单</b>，其订单全部来自本表；空表 ⇒ 零订单。 本组件不改价格/成本、不豁免市场规则（用户 2026-10-09 §1.3
+ *       禁止"额外再加一个调整机制"，不变量 I-P6）。
  * </ul>
  *
  * E6b（GM 经济调整命令与预览审计）与 E6c（统一 dashboard 读口）都只读/写既有组件，**不追加新状态组件**， 故本记录的全表组件数在 E6 之后仍为 **29 个组件**；★
@@ -273,8 +279,8 @@ import java.util.Set;
 @SuppressFBWarnings(
     value = "EI_EXPOSE_REP",
     justification =
-        "全部 Map 组件（含 P4a periodicAdjustments、Z1 的 outputQuantityOverrides/productionEfficiency 与"
-            + " 2026-10-09 选项 A 的 householdDebtRefs）均在 compact 构造器内逐键复制并"
+        "全部 Map 组件（含 P4a periodicAdjustments、Z1 的 outputQuantityOverrides/productionEfficiency、"
+            + " 2026-10-09 选项 A 的 householdDebtRefs 与 R1 的 govMarketMandates）均在 compact 构造器内逐键复制并"
             + " Collections.unmodifiableMap；访问器返回冻结副本")
 // ★★ 退役组件的**具名**兼容（2026-10-09 纠正批）：F 批（f3366545）的组件 {@code commodityFreightPerMille}
 //   （商品运费**系数**，乘在整条费率上）已随用户裁定「甲」撤销；本类型现在叫
@@ -340,7 +346,15 @@ public record EconomyData(
     //     ⇒ 空表（旧档缺键 / 新世界创世 / 夹具）= 现行行为，逐值不变（I-F1）。
     //   ★ 值域 ≥ 0（0 = 明确的"该商品免基础费"；负值 ⇒ 构造期具名抛）；
     //   ★ 商品维**只**活在这一处：TransportTariff 已回到纯距离/辐射/道路/城乡维（不许两个商品维）。
-    Map<CommodityId, Long> commodityFreightBaseMilli) {
+    Map<CommodityId, Long> commodityFreightBaseMilli,
+    // ── 第 39 个组件（R1，2026-10-09 口岸/效率约束设计书 §4.5 G8/I-P6）：**政府市场授权表** ─────────────
+    //   键 = MarketMandateId，值 = 一次「明确授权下单」（谁/商品/方向/量/限价/到期）。
+    //   ★★ 它是"政府只按明确授权下单"的落点：国库户（hh-gov-*）回到商品市场后**不生成任何自动订单**
+    //     （见 MarketSettlement 的 z7b 守卫），能出现的政府订单**全部**来自本表。
+    //   ★ 空表 = 旧世界形态（没有任何授权 ⇒ 国库户在市场上零订单 ⇒ 与 Z7b 逐值同行为，I-P8）。
+    //   ★ 它不是政策层/补贴层（用户 §1.3 明确禁止）：不改价格、不改成本、不豁免任何市场规则，
+    //     订单仍走既有的 家户→订单→撮合→结算 全链路。
+    Map<MarketMandateId, GovernmentMarketMandate> govMarketMandates) {
 
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
   public static final long MAX_OUTPUT_QUANTITY = 1_000_000L;
@@ -526,6 +540,7 @@ public record EconomyData(
         moneyInstruments,
         Map.of(),
         Map.of(),
+        Map.of(),
         Map.of());
   }
 
@@ -604,6 +619,7 @@ public record EconomyData(
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -740,6 +756,11 @@ public record EconomyData(
     //    ⇒ 未设表的世界逐值等于改动前（I-F1），见 commodityFreightBaseMilliOf。
     if (commodityFreightBaseMilli == null) {
       commodityFreightBaseMilli = Map.of();
+    }
+    // ★★ R1 的第 39 个组件（政府市场授权表）：旧档缺键 ⇒ 空表（同上面每一条的口径）。
+    //   空表 = 没有任何授权 ⇒ 国库户在商品市场上零订单（与 Z7b 的"退出商品市场"在行为上逐值相同）。
+    if (govMarketMandates == null) {
+      govMarketMandates = Map.of();
     }
     if (flows == null) {
       flows = Map.of();
@@ -1967,6 +1988,48 @@ public record EconomyData(
       commodityFreightCopy.put(commodity, baseMilli);
     }
     commodityFreightBaseMilli = Collections.unmodifiableMap(commodityFreightCopy); // ★ 冻在赋值处
+
+    // ── R1（第 39 个组件）：**政府市场授权表**的形状守卫 + 冻结（约束设计书 §4.5 G8 / 不变量 I-P6）────────
+    //   ★ 三条守卫（全部 fail-closed，不静默归一）：
+    //     ① 键 == 值内 id、键与值都不得为 null（与其余 Map 组件同款）；
+    //     ② 授权主体政府必须已登记 —— 否则这条授权没有可执行的主体，"留一条永不生效的行"正是本仓最反对的形态；
+    //     ③ 该政府的国库必须是**家户**（账户主体只有家户：挂单账户恒是 hh-gov-<govUnitId>）。
+    //   ★ 值域（量 > 0 / 限价 ≥ 1 / 到期 ≥ 起始 / 成交量 ∈ [0, 量]）由 GovernmentMarketMandate 构造期判死。
+    //   ★ 逐键复制 + 冻在赋值处：与其余 Map 组件同款（访问器返回冻结副本，调用方改不动）。
+    Map<MarketMandateId, GovernmentMarketMandate> govMarketMandatesCopy = new LinkedHashMap<>();
+    for (Map.Entry<MarketMandateId, GovernmentMarketMandate> entry : govMarketMandates.entrySet()) {
+      MarketMandateId mandateId = entry.getKey();
+      GovernmentMarketMandate mandate = entry.getValue();
+      if (mandateId == null || mandate == null) {
+        throw new IllegalArgumentException("govMarketMandates 的键与值都不得为 null: " + mandateId);
+      }
+      if (!mandateId.equals(mandate.id())) {
+        throw new IllegalArgumentException(
+            "govMarketMandates 的键必须与 GovernmentMarketMandate.id 一致：键="
+                + mandateId
+                + "，行内 id="
+                + mandate.id());
+      }
+      Government government = governmentsCopy.get(mandate.government());
+      if (government == null) {
+        throw new IllegalArgumentException(
+            "govMarketMandates 的授权主体政府未登记（授权没有可执行的主体）: "
+                + mandateId
+                + " government="
+                + mandate.government().value());
+      }
+      if (government.treasury().kind() != ActorKind.HOUSEHOLD) {
+        throw new IllegalArgumentException(
+            "govMarketMandates 的授权主体国库必须是家户（账户主体只有家户）: "
+                + mandateId
+                + " government="
+                + mandate.government().value()
+                + " treasury="
+                + government.treasury());
+      }
+      govMarketMandatesCopy.put(mandateId, mandate);
+    }
+    govMarketMandates = Collections.unmodifiableMap(govMarketMandatesCopy); // ★ 冻在赋值处
     // ── E4a 第 25 个组件：质押（Pledge）基础形状 ─────────────────────────────────────────────
     //   ★ 旧档缺键 ⇒ 空表（上面已归一）；空表整体 no-op。
     //   ★ 守卫按“对侧已提供”分段生效（与 E1/E2 的引用完整性同款）：合同表/资产份额表为空 = 该侧尚未提供
@@ -2424,7 +2487,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2465,7 +2529,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2506,7 +2571,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -2550,7 +2616,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2591,7 +2658,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   public EconomyData withLaborCommitments(
@@ -2632,7 +2700,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2673,7 +2742,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -2719,7 +2789,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -2764,7 +2835,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -2804,7 +2876,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2845,7 +2918,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2886,7 +2960,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2927,7 +3002,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2968,7 +3044,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3009,7 +3086,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3050,7 +3128,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3091,7 +3170,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3142,7 +3222,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3184,7 +3265,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3226,7 +3308,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3267,7 +3350,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3308,7 +3392,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3349,7 +3434,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3394,7 +3480,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3440,7 +3527,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3486,7 +3574,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3532,7 +3621,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3578,7 +3668,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3625,7 +3716,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3672,7 +3764,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3719,7 +3812,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3766,7 +3860,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /** {@link ProductionUnitId#idOf} 的固定前缀（唯一拼写点；用来识别"这看起来是一个 unit id"）。 */
@@ -3840,7 +3935,8 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3886,7 +3982,8 @@ public record EconomyData(
         value,
         marketZones,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3935,7 +4032,8 @@ public record EconomyData(
         moneyInstruments,
         value,
         householdDebtRefs,
-        commodityFreightBaseMilli);
+        commodityFreightBaseMilli,
+        govMarketMandates);
   }
 
   /**
@@ -3985,6 +4083,59 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
+        value,
+        govMarketMandates);
+  }
+
+  /**
+   * ★★ <b>R1（第 39 个组件）：政府市场授权表</b>（约束设计书 §4.5 G8 / 不变量 I-P6）；其余组件原样带过。
+   *
+   * <p>键 = {@link MarketMandateId}（必须等于值内 {@link GovernmentMarketMandate#id()}），值 = 一次「明确授权下单」
+   * （谁/商品/方向/量/限价/到期）。<b>空表</b> ⇒ 国库户在商品市场上零订单（与 Z7b 的"退出商品市场"在行为上逐值相同）； 授权主体必须是已登记的政府、且其国库必须是家户 ——
+   * 由 compact 构造器具名判死。
+   *
+   * <p>★★ <b>它是本组件的唯一写入形态</b>：手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug）；两条 GM
+   * 命令（{@code economy.AuthorizeGovernmentMarketOrder} / {@code
+   * economy.CancelGovernmentMarketOrder}）与日结算的成交回写走它。
+   */
+  public EconomyData withGovMarketMandates(Map<MarketMandateId, GovernmentMarketMandate> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        merchantFirms,
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency,
+        currencies,
+        moneyInstruments,
+        marketZones,
+        householdDebtRefs,
+        commodityFreightBaseMilli,
         value);
   }
 

@@ -17,6 +17,8 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
+import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRules;
@@ -105,6 +107,12 @@ public final class EconomyStateBuilder {
    * cycleModifierSumPerMille}、周期末写回四个余数并清零；未物化时 {@link #build} 原样复用 base 的不可变表（空表基线零拷贝）。
    */
   private LinkedHashMap<ProductionUnitId, ProductionEfficiencyState> productionEfficiency;
+
+  /**
+   * ★★ <b>R1（第 39 个组件）：政府市场授权表工作副本</b> —— 日结算把当日**成交**累加进 {@code filledMilli}、并清除耗尽/到期的行； 未物化时
+   * {@link #build} 原样复用 base 的不可变表（无授权世界零拷贝）。
+   */
+  private LinkedHashMap<MarketMandateId, GovernmentMarketMandate> govMarketMandates;
 
   private Optional<EconomyMeta> meta;
 
@@ -327,6 +335,25 @@ public final class EconomyStateBuilder {
     return classShares;
   }
 
+  /**
+   * ★★ <b>R1：政府市场授权表的只读选择</b>：已物化工作副本则读它，否则读 base 的表。
+   *
+   * <p>★★ <b>为什么必须有它</b>：一次 {@code advance} 的**多日**都落在同一个会话工作副本上（一整段只落一条 revision），
+   * 而"授权在本段内被耗尽/到期清除"是**当日就生效**的事实 ⇒ 后续各日的"当日生效授权计划"必须读**工作副本**， 读 base 会把已经清掉的行再挂一遍（实测：day5
+   * 成交量满后被清除，day10 又从 base 挂出同一张单， 成交回落时找不到状态行 ⇒ fail-closed 抛）。它同时避免"只读一次也materialize 一份拷贝"。
+   */
+  public Map<MarketMandateId, GovernmentMarketMandate> govMarketMandatesOrBase() {
+    return govMarketMandates == null ? base.govMarketMandates() : govMarketMandates;
+  }
+
+  /** ★★ <b>R1：政府市场授权表工作副本</b>（见类字段注释）；未物化 ⇒ 原样复用 base 的不可变表。 */
+  public LinkedHashMap<MarketMandateId, GovernmentMarketMandate> govMarketMandates() {
+    if (govMarketMandates == null) {
+      govMarketMandates = new LinkedHashMap<>(base.govMarketMandates());
+    }
+    return govMarketMandates;
+  }
+
   /** 元信息（未写 ⇒ base 的原值）。 */
   public Optional<EconomyMeta> meta() {
     return meta == null ? base.meta() : meta;
@@ -399,6 +426,11 @@ public final class EconomyStateBuilder {
         // ★★ 第 38 个组件（商品基础运费表）：它不参与日结算写回（写入口只有 GM 命令）
         //   ⇒ 原样带过 base 的表。★ 漏了它 = **任意一次 advance 都会把 GM 设过的基础运费静默抹掉**
         //   （账面上看不出是谁弄丢的，那正是本批要防的那类静默丢字段）。
-        base.commodityFreightBaseMilli());
+        base.commodityFreightBaseMilli(),
+        // ★★ R1（第 39 个组件）：政府市场授权表**不是**会话工作副本 —— 它的写入口只有两条 GM 命令；
+        //   但日结算会把**当日成交**累加进 {@code filledMilli} 并清除耗尽/到期的行（见
+        //   EconomySettlement 的市场段）⇒ 走下面的显式工作副本，漏了它 = 任意一次 advance
+        //   都会把 GM 授权过的挂单静默抹掉（账面上看不出是谁弄丢的）。
+        govMarketMandates == null ? base.govMarketMandates() : govMarketMandates);
   }
 }

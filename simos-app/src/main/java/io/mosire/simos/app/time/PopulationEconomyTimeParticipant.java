@@ -1065,9 +1065,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   }
 
   /**
-   * ★★ <b>Z7b：退出商品市场的单位户集合</b>（组合根唯一同时看得见 unit 与经济的地方）——{@code Σ Unit.households()}。★ government
-   * 国库户不在这里重复算：{@code EconomySettlement} 从 {@code EconomyData.governments()} 并入 （economy
-   * 自己的权威），两来源在日结算里合成有效排除集。★ 缺 unit 切片（旧档/纯经济夹具）⇒ 空集。
+   * ★★ <b>退出商品市场的单位户集合</b>（组合根唯一同时看得见 unit 与经济的地方）——{@code Σ Unit.households()}。★ 政府国库户
+   * <b>不</b>在这里（R1 起它回到商品市场，只按 {@code EconomyData.govMarketMandates()} 的明确授权下单；名单由 economy 自己的
+   * {@code governments()} 派生，见 {@code GovernmentMarketMandatePlan}）。★ 缺 unit 切片（旧档/纯经济夹具）⇒ 空集。
    */
   private static Set<HouseholdId> unitHouseholdExclusions(UnitState units) {
     if (units == null) {

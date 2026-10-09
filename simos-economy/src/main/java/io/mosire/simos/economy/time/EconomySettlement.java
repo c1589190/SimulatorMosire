@@ -28,6 +28,8 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
+import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
@@ -469,6 +471,9 @@ public final class EconomySettlement {
   /** B4：外汇窗口装配（fx 分类 —— 与 {@code FxSettlement} 的 {@code FX_ROUND} 同一个 logger，便于一处看全外汇面）。 */
   private static final Logger FX = EconomyLog.fx();
 
+  /** ★★ R1：政府市场授权的生命周期（market 分类 —— 与 {@code MarketSettlement} 的挂单/成交事件同一个 logger）。 */
+  private static final Logger MANDATE = EconomyLog.market();
+
   private EconomySettlement() {}
 
   /** 追踪日志辅助：家户 → 商品 → 数量的两层表求和（只在 DEBUG 打开时调用）。 */
@@ -770,9 +775,23 @@ public final class EconomySettlement {
     Objects.requireNonNull(parallelism, "parallelism（R2：并行度配置）");
     Objects.requireNonNull(marketExcludedHouseholds, "marketExcludedHouseholds（无排除给空集，不得为 null）");
     EconomyData base = session.base();
-    // ★★ Z7b：有效排除集 = 调用方传入的单位户 ∪ 本状态里所有政府国库户（economy 自己看得见的既有权威）。
+    // ★★ R1（2026-10-09，约束设计书 §4.5 G8 / 不变量 I-P6）：**撤销 Z7b 对"国库户"的那一半** ——
+    //   有效排除集回到"组合根传入的单位户**减** 已登记政府国库户"（单位户那一半的实质一个字不改：官吏户/军户的
+    //   实物供给不得被市场当余量卖掉；被摘出来的只有"是政府国库户"的那些单位户，见下面 C9 那一段）。
+    //   ★ 国库户（hh-gov-*）从此**回到商品市场**：它是参与者、能挂单、能被撮合；但它**不生成任何自动订单**
+    //     （需求/库存差异一概不产生买卖），能出现的订单全部来自明确授权 —— 见下面 marketRound 的
+    //     withGovMandates 与 MarketSettlement 的"只按授权下单"分支。
+    //   ★★ 但**组合根注入的单位户集合里本来就含政府国库户**：GOV 单位的 {@code Unit.households()} 把它的国库家户
+    //     也列了进去（官吏户 + 国库户；small-world 实测：{@code hh-gov-gov-central} / {@code hh-gov-gov-province}
+    //     都在里面）⇒ 若原样照收，本轮撤销就被单位户那一半**悄悄抵消**（两个主政府的国库户仍不进市场，
+    //     R1 的"行政家户回到市场"对它们落空）。故这里按**身份**重新分类：
+    //       单位户 ∩ 已登记政府国库户  ⇒ 走国库户口径（回市场、只按授权下单）
+    //       其余单位户（官吏户/军户…）  ⇒ 照旧排除（这一半一个字不改）
+    //   ★ 这么做不改单位那一半的实质：国库户参与后**不生成任何自动订单**（含它的 GOV unit 经营者解析出来的
+    //     必要投入/卖单），公家库存不会被自动清仓；FX 与市场信用同样不放行（见 MarketSettlement 的两处守卫）。
     Set<HouseholdId> effectiveMarketExcludedHouseholds =
-        mergeMarketExclusions(marketExcludedHouseholds, base.governments());
+        unitExclusionsMinusGovernmentTreasuries(marketExcludedHouseholds, base.governments());
+    Objects.requireNonNull(effectiveMarketExcludedHouseholds, "marketExcludedHouseholds");
     // ★★ E3：发行主体的权威答案是当前世界状态（governments），不是进程里的旧登记。
     //   日结算开始按 base 重建登记表：旧世界/旧档 governments 为空 ⇒ 清空登记 ⇒ requireIssuerOf 逐字保留旧 fail-closed 行为。
     MoneyIssuance.syncAuthorities(base.governments().values());
@@ -1676,7 +1695,8 @@ public final class EconomySettlement {
             // ★★ D-027：生产路径默认 regulation（单区锚格 = markets 规范序第一个 hex；空表/open=true/无税费
             //   ⇒ 逐值现状）。跨市场区/自定义制度由后续批次经 GM 命令面注入同一入口。
             MarketRegulation.defaultsFor(markets),
-            // ★★ Z7b：本入口不预置信用（开市判定后由 withCredit 补）；排除集 = 组合根单位户 ∪ 本状态政府国库户。
+            // ★★ R1：本入口不预置信用（开市判定后由 withCredit 补）；排除集 = **只有**组合根传入的单位户
+            //   （国库户不再并入：它现在是"只按授权下单"的市场参与者）。
             null,
             null,
             effectiveMarketExcludedHouseholds);
@@ -1705,6 +1725,8 @@ public final class EconomySettlement {
                   "markets",
                   markets.size()));
     }
+    // ★★ R1：本轮政府授权挂单的成交累计（市场未触发 ⇒ 空表）；只用于把 filledMilli 累加回授权行。
+    Map<MarketMandateId, Long> govMandateFills = Map.of();
     if (marketTrigger != MarketTrigger.NONE) {
       // ★★ D-031：借款人侧不再有信用额度上限 —— 市场信用只带到期周期与当日债务工作副本；唯一上限 = 放贷人
       //   实际可借的货币/卖单剩余。`DebtCapacity` 不再是任何借出路径的门。
@@ -1723,6 +1745,17 @@ public final class EconomySettlement {
           FxRoundInput.of(base.governments(), base.moneyIssuances(), base.marketZones());
       marketRound = marketRound.withFx(fxInput);
       logFxWindows(day, base, fxInput);
+      // ★★ R1（2026-10-09）：政府市场授权计划 = 本日生效的"明确挂单"（逐轮瞬态，不落盘）。
+      //   ★ 它必须**最后**注入：withCredit/withArbitrage/withFx 三处各自逐字段带过它（克隆丢字段是本类踩过的坑），
+      //     而这里注入之后不再有别的 withX。
+      //   ★★ 名单上**所有**政府的国库户都在里面（哪怕今天没有授权）：它们是"只按授权下单"的家户，
+      //     自动买卖单、市场信用放贷、家户外汇单全部不生成。
+      //   ★★ 读**会话工作副本**（不是 base）：一次 advance 的多日共用同一个会话，授权在本段内被耗尽/清除必须
+      //     当日就对后续各日生效（读 base 会把已清掉的行再挂一遍 —— 探针实测踩到并已修）。
+      GovernmentMarketMandatePlan govMandatePlan =
+          GovernmentMarketMandatePlan.of(
+              session.sheet().govMarketMandatesOrBase(), base.governments(), day);
+      marketRound = marketRound.withGovMandates(govMandatePlan);
       if (fxInput.isActive() && TRACE.isDebugEnabled()) {
         EventLog.channel(TRACE)
             .debug(
@@ -1733,6 +1766,25 @@ public final class EconomySettlement {
                     day,
                     "windows",
                     fxInput.windows().size()));
+      }
+      // ★★ R1 防复发守卫：**本轮注入的授权计划必须真的在 round 上**。withCredit/withArbitrage/withFx 三处各自
+      //   逐字段带过它（"克隆丢字段"是本类与 MarketRound 都踩过的坑：丢了它 = 国库户当场退回"自动清仓"且毫无报错）。
+      //   ★ 契约/一致性故障 ⇒ ERROR + fail-closed（§一.9：不降级）；正常路径上恒不触发。
+      if (!marketRound.govMandates().equals(govMandatePlan)) {
+        EventLog.channel(MANDATE)
+            .error(
+                LogEvent.of(
+                    "GOV_MARKET_MANDATE_CONTRACT",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    day,
+                    "reason",
+                    "authorization-plan-lost-by-with-chain",
+                    "expectedHouseholds",
+                    govMandatePlan.authorizationOnlyHouseholds(),
+                    "actualHouseholds",
+                    marketRound.govMandates().authorizationOnlyHouseholds()));
+        throw new IllegalStateException("政府市场授权计划在本轮装配里被丢掉了（国库户会退回自动下单，契约故障）: day=" + day);
       }
       MarketSettlement.MarketOutcome outcome =
           MarketSettlement.clearOncePerCycle(
@@ -1745,6 +1797,7 @@ public final class EconomySettlement {
               merchantCarrierPool);
       // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
       ledger.recordMarketReport(outcome.report());
+      govMandateFills = outcome.mandateFills();
       MarketReport report = outcome.report();
       long creditMoney = 0L;
       long creditGoods = 0L;
@@ -1992,6 +2045,11 @@ public final class EconomySettlement {
         markets.putAll(updatedMarkets);
       }
     }
+
+    // ── ★★ R1：政府市场授权的生命周期（成交累加 + 耗尽/到期清除）────────────────────────────────
+    //   ★ 无条件调用（不只在开市日）：到期是**日历事实**，闭市/没有市场也不能让一条授权永远挂在表里。
+    //   ★ 位置：市场之后（成交已落账）、债务/预算之前 —— 它只动授权表本身，不参与任何货/钱转移。
+    applyGovMarketMandateLifecycle(session, day, govMandateFills);
 
     // ★★ D-030 §3.4/§3.5：本日起所有“债务折价/还款折算”共用同一份家户价目表索引 ——
     //   有本格市场用本格，否则回落该格所在市场区的锚格默认价目表（单区 = 该区默认价）。
@@ -8689,13 +8747,192 @@ public final class EconomySettlement {
     return sorted;
   }
 
+  /**
+   * ★★ <b>R1：政府市场授权的生命周期</b>（成交累加 → 耗尽/到期清除）—— 每个世界日**无条件**跑一次。
+   *
+   * <p>★★ <b>它做什么</b>：
+   *
+   * <ol>
+   *   <li><b>成交累加</b>：把本轮（可能多轮）撮合里该授权的成交毫商品累加进 {@code filledMilli}；
+   *   <li><b>耗尽清除</b>：{@code filledMilli ≥ quantityMilli} ⇒ <b>删除该行</b>（"量用完就撤单"）；
+   *   <li><b>到期清除</b>：{@code day > expiresOnDay} ⇒ <b>删除该行</b>（不许留永久挂单）。
+   * </ol>
+   *
+   * <p>★ <b>为什么是无条件调用</b>：到期是日历事实 —— 闭市日、没有市场的格、没有对手方，都不能让一条授权永远挂在状态里。
+   *
+   * <p>★ 每一次清除都记 INFO（谁/商品/方向/量/成交量/为何清除，§一.9 的"新状态写口至少一条具名 INFO"）； 一条都没有 ⇒ 整段
+   * no-op（不产生任何状态差异，也不刷日志）。
+   *
+   * @param fills 本日成交累计（{@code mandateId → 毫商品}；市场未触发 / 无授权 ⇒ 空表）
+   */
+  private static void applyGovMarketMandateLifecycle(
+      EconomySession session, long day, Map<MarketMandateId, Long> fills) {
+    Objects.requireNonNull(session, "session");
+    Objects.requireNonNull(fills, "fills（没有成交给空表）");
+    Map<MarketMandateId, GovernmentMarketMandate> base = session.sheet().govMarketMandatesOrBase();
+    boolean anyFill = fills.values().stream().anyMatch(value -> value != null && value > 0L);
+    boolean anyExpiry = false;
+    for (GovernmentMarketMandate mandate : base.values()) {
+      if (mandate.expiredOn(day) || mandate.exhausted()) {
+        anyExpiry = true;
+        break;
+      }
+    }
+    if (!anyFill && !anyExpiry) {
+      return; // 没有成交、也没有要清的 ⇒ 不物化工作副本（无授权世界零拷贝）
+    }
+    LinkedHashMap<MarketMandateId, GovernmentMarketMandate> mandates =
+        session.sheet().govMarketMandates();
+    long filledRows = 0L;
+    long exhaustedRows = 0L;
+    long expiredRows = 0L;
+    for (Map.Entry<MarketMandateId, Long> entry : fills.entrySet()) {
+      if (entry.getValue() == null || entry.getValue() <= 0L) {
+        continue;
+      }
+      GovernmentMarketMandate mandate = mandates.get(entry.getKey());
+      if (mandate == null) {
+        // 市场报告里出现了状态里没有的授权 ⇒ 契约故障（不静默丢成交量，也不凭空建一行）。
+        EventLog.channel(MANDATE)
+            .error(
+                LogEvent.of(
+                    "GOV_MARKET_MANDATE_CONTRACT",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    day,
+                    "mandate",
+                    entry.getKey().value(),
+                    "reason",
+                    "filled-authorization-not-in-state",
+                    "filledMilli",
+                    entry.getValue()));
+        throw new IllegalStateException("政府授权成交找不到状态行（契约故障）: " + entry.getKey().value());
+      }
+      GovernmentMarketMandate updated = mandate.withFill(entry.getValue());
+      mandates.put(entry.getKey(), updated);
+      filledRows++;
+      if (TRACE.isTraceEnabled()) {
+        EventLog.channel(TRACE)
+            .trace(
+                LogEvent.of(
+                    "GOV_MARKET_MANDATE_FILLED",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    day,
+                    "mandate",
+                    updated.id().value(),
+                    "government",
+                    updated.government().value(),
+                    "side",
+                    updated.side().name(),
+                    "commodity",
+                    updated.commodity().value(),
+                    "filledDelta",
+                    entry.getValue(),
+                    "filledMilli",
+                    updated.filledMilli(),
+                    "quantityMilli",
+                    updated.quantityMilli(),
+                    "remainingMilli",
+                    updated.remainingMilli()));
+      }
+    }
+    // 清除：耗尽优先判（"量用完了"比"到期了"更能解释这条行为什么消失）。
+    for (GovernmentMarketMandate mandate : new ArrayList<>(mandates.values())) {
+      String reason = null;
+      if (mandate.exhausted()) {
+        reason = "exhausted";
+        exhaustedRows++;
+      } else if (mandate.expiredOn(day)) {
+        reason = "expired";
+        expiredRows++;
+      }
+      if (reason == null) {
+        continue;
+      }
+      mandates.remove(mandate.id());
+      EventLog.channel(MANDATE)
+          .info(
+              LogEvent.of(
+                  "GOV_MARKET_MANDATE_CLEARED",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  day,
+                  "mandate",
+                  mandate.id().value(),
+                  "government",
+                  mandate.government().value(),
+                  "side",
+                  mandate.side().name(),
+                  "commodity",
+                  mandate.commodity().value(),
+                  "quantityMilli",
+                  mandate.quantityMilli(),
+                  "filledMilli",
+                  mandate.filledMilli(),
+                  "expiresOnDay",
+                  mandate.expiresOnDay(),
+                  "reason",
+                  reason));
+    }
+    if (MANDATE.isDebugEnabled()) {
+      EventLog.channel(MANDATE)
+          .debug(
+              LogEvent.of(
+                  "GOV_MARKET_MANDATE_LIFECYCLE",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  day,
+                  "filledRows",
+                  filledRows,
+                  "exhaustedCleared",
+                  exhaustedRows,
+                  "expiredCleared",
+                  expiredRows,
+                  "remaining",
+                  mandates.size()));
+    }
+  }
+
   // ── Z7b：国库/单位户退出商品市场的排除集 ──────────────────────────────────────────
 
   /**
-   * ★★ <b>政府国库户集合</b>（Z7b）：{@code base.governments()} 里国库 actor 是 HOUSEHOLD 的那些稳定家户身份。★ 权威来自经济状态自己的
-   * {@code Government.treasury}，不按 {@code hh-gov-} 前缀猜（前缀只是身份拼法，见 {@code
+   * ★★ <b>政府国库户集合</b>（R1 起 = "只按授权下单"的名单来源）：{@code base.governments()} 里国库 actor 是 HOUSEHOLD 的那些
+   * 稳定家户身份。★ 权威来自经济状态自己的 {@code Government.treasury}，不按 {@code hh-gov-} 前缀猜（前缀只是身份拼法，见 {@code
    * GovernmentHouseholds}）；非家户国库（{@code GOVERNMENT} actor）本来就不在市场参与者行里。
+   *
+   * <p>★★ <b>R1 的语义变更</b>：本集合原来被并进"退出商品市场"的排除集（Z7b）。现在它<b>不再是排除集</b>：这些家户回到商品市场， 但只按 {@code
+   * EconomyData.govMarketMandates()} 的明确授权下单（自动买卖/放贷/家户外汇单全部不生成）—— 名单的实际消费点是 {@link
+   * GovernmentMarketMandatePlan}。
    */
+  /**
+   * ★★ <b>R1：单位户排除集 − 已登记政府国库户</b>（保序、不可变）—— 把"是政府国库户"的单位户从排除集里摘出来。
+   *
+   * <p>★★ <b>为什么需要它</b>：GOV 单位的 {@code Unit.households()} 同时列出**官吏户与国库户**（国库是 GOV 单位的
+   * 账房），而组合根注入的"退出商品市场的单位户集合" = {@code Σ Unit.households()} ⇒ 若不摘，Z7b 的"国库户退出" 会从单位户那一半**原路回来**：R1
+   * 撤销了 economy 侧的并入，却仍被单位侧挡住（small-world 实测：{@code hh-gov-gov-central} 与 {@code
+   * hh-gov-gov-province} 都在 {@code Unit.households()} 里，只有 {@code hh-gov-world-silver} 不在 ⇒
+   * 撤销只对后者生效）。
+   *
+   * <p>★ <b>摘出来不等于放开</b>：摘出的家户改走"只按授权下单"（{@link GovernmentMarketMandatePlan}）—— 不生成任何自动订单、
+   * 不放贷、不挂家户外汇单，公家库存与单位库存都不会被自动清仓。其余单位户（官吏户/军户…）**逐值不动**。
+   */
+  static Set<HouseholdId> unitExclusionsMinusGovernmentTreasuries(
+      Set<HouseholdId> unitHouseholds, Map<GovernmentId, Government> governments) {
+    Objects.requireNonNull(unitHouseholds, "unitHouseholds");
+    Set<HouseholdId> treasuries = governmentTreasuryHouseholds(governments);
+    LinkedHashSet<HouseholdId> remaining = new LinkedHashSet<>();
+    for (HouseholdId household : unitHouseholds) {
+      if (household == null) {
+        throw new IllegalArgumentException("marketExcludedHouseholds 不得含 null");
+      }
+      if (!treasuries.contains(household)) {
+        remaining.add(household);
+      }
+    }
+    return Collections.unmodifiableSet(remaining);
+  }
+
   static Set<HouseholdId> governmentTreasuryHouseholds(Map<GovernmentId, Government> governments) {
     Objects.requireNonNull(governments, "governments");
     LinkedHashSet<HouseholdId> households = new LinkedHashSet<>();
@@ -8711,23 +8948,10 @@ public final class EconomySettlement {
     return Collections.unmodifiableSet(households);
   }
 
-  /**
-   * ★★ <b>有效排除集 = 组合根传入的单位户 ∪ 经济状态里的政府国库户</b>（Z7b）：两处来源都不能漏 —— 单位户只有 app 看得见 （economy 编译期不认识 unit
-   * 切片），政府国库户则由本状态自己看得见、任何调用方都不该也不必重复传。保序不可变，绝不用 {@code Set.copyOf}（不承诺保序）。
-   */
-  static Set<HouseholdId> mergeMarketExclusions(
-      Set<HouseholdId> callerProvided, Map<GovernmentId, Government> governments) {
-    Objects.requireNonNull(callerProvided, "callerProvided");
-    LinkedHashSet<HouseholdId> merged =
-        new LinkedHashSet<>(governmentTreasuryHouseholds(governments));
-    for (HouseholdId household : callerProvided) {
-      if (household == null) {
-        throw new IllegalArgumentException("marketExcludedHouseholds 不得含 null");
-      }
-      merged.add(household);
-    }
-    return Collections.unmodifiableSet(merged);
-  }
+  // ★★ R1（2026-10-09）：{@code mergeMarketExclusions}（"单位户 ∪ 政府国库户"的有效排除集）**已删除** ——
+  //   本批撤销的正是"国库户退出商品市场"那一半。国库户现在的身份是"只按授权下单的市场参与者"（见
+  //   GovernmentMarketMandatePlan 与 MarketSettlement 的同名分支），不再是排除集的一员；单位户那一半由组合根
+  //   经 marketExcludedHouseholds 照旧传入。★ 删掉它而不是留着：多一份"谁退出商品市场"的拼法就是第二个权威。
 
   // ── 家户账（会话工作副本）的读写助手 ────────────────────────────────────────────────
   //

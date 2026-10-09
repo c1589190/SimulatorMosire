@@ -67,7 +67,9 @@ import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.resolve.EconomyResolver;
 import io.mosire.simos.economy.spi.EconomyAddDemandHandler;
+import io.mosire.simos.economy.spi.EconomyAuthorizeGovMarketOrderHandler;
 import io.mosire.simos.economy.spi.EconomyCancelDemandHandler;
+import io.mosire.simos.economy.spi.EconomyCancelGovMarketOrderHandler;
 import io.mosire.simos.economy.spi.EconomyClearRegionHandler;
 import io.mosire.simos.economy.spi.EconomyDefineCurrencyHandler;
 import io.mosire.simos.economy.spi.EconomyDefineMarketZoneHandler;
@@ -649,6 +651,13 @@ public final class Shell implements AutoCloseable {
                 //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与 P4b 的窄工具面可用。
                 new EconomyUpsertPeriodicAdjustmentHandler(),
                 new EconomyRemovePeriodicAdjustmentHandler(),
+                // ── economy（R1 2026-10-09，约束设计书 §4.5 G8 / 不变量 I-P6）：政府国库户回到商品市场后
+                //   **只按明确授权下单**的两条 GM 写口 —— 授权（谁/商品/方向/量/限价/到期）与撤销。
+                //   两者都标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
+                //   GM 的 simos.command.submit 与窄工具 simos.gm.govMarketMandate 照常可用。
+                //   ★ 它们只写一张授权表：不改价格、不改成本、不豁免任何市场规则（那不是"政策层"）。
+                new EconomyAuthorizeGovMarketOrderHandler(),
+                new EconomyCancelGovMarketOrderHandler(),
                 // ── economy（S3）：家户迁移的最小合法入口（只搬视图/份额，不生成人口；账 location 不搬）──
                 new EconomyMigrateHouseholdHandler(),
                 // ── economy（R4-B.3b）：GM/事件用的实物资产份额拆分/转移（确定性新 id、逐资产守恒）──

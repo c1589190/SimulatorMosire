@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.debt.DebtStatus;
@@ -39,7 +40,9 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
 import io.mosire.simos.economy.api.market.LossBearer;
+import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -170,6 +173,10 @@ class EconomyRoundTripTest {
       new ProductionOrganizationId("organization-merchant-1");
   private static final AssetRuleId ASSET_RULE = AssetRuleId.idOf(MODE, AssetKind.CATTLE);
   private static final GovernmentId GOVERNMENT = new GovernmentId("government-1");
+
+  /** ★★ R1（2026-10-09）：政府市场授权表的键。 */
+  private static final MarketMandateId MANDATE = new MarketMandateId("mandate-1");
+
   private static final MoneyIssuanceId ISSUANCE = new MoneyIssuanceId("issuance-1");
   private static final PledgeId PLEDGE = new PledgeId("pledge-1");
   private static final CrisisSignalId CRISIS = CrisisSignalId.idOf(KEY.hex(), "FOOD");
@@ -328,8 +335,8 @@ class EconomyRoundTripTest {
    * 现行硬编码分档；★ 2026-10-09 用户裁定「甲」后由"费率乘数"纠正为"基础费"）。
    */
   @Test
-  void changeSetHasExactlyThirtySixComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(36);
+  void changeSetHasExactlyThirtySevenComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(37);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -512,6 +519,24 @@ class EconomyRoundTripTest {
       //   （tool 现状缺省 = 3 毫 ⇒ 用 5 造一个明确偏离默认的行）。
       case "commodityFreightBaseMilli" ->
           base.withCommodityFreightBaseMilli(Map.of(new CommodityId("tool"), 5L));
+      // ★★ R1（2026-10-09）的第 37 个组件（政府市场授权表）：**空表与"字段没进变更集"在值层面不可区分**
+      //   ⇒ 判别力要求表非空；授权体自带**已登记**政府（ZONE_GOV，构造期守卫要求）与商品（GRAIN），过期日晚于生效日。
+      case "govMarketMandates" ->
+          base.withGovernments(Map.of(ZONE_GOV, householdTreasuryGovernment()))
+              .withGovMarketMandates(
+                  Map.of(
+                      MANDATE,
+                      new GovernmentMarketMandate(
+                          MANDATE,
+                          ZONE_GOV,
+                          GRAIN,
+                          GovernmentMarketMandate.Side.BUY,
+                          1_000L,
+                          5L,
+                          1L,
+                          30L,
+                          0L,
+                          "round-trip-fixture")));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -570,6 +595,8 @@ class EconomyRoundTripTest {
       case "householdDebtRefs" -> cs.householdDebtRefs().changed();
       // ★ F（2026-10-09）的第 36 个组件（见 mutate 的同名 case）
       case "commodityFreightBaseMilli" -> cs.commodityFreightBaseMilli().changed();
+      // ★★ R1（2026-10-09）的第 37 个组件（见 mutate 的同名 case）
+      case "govMarketMandates" -> cs.govMarketMandates().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -847,6 +874,18 @@ class EconomyRoundTripTest {
   static Government government() {
     return new Government(
         GOVERNMENT, "world", new ActorRef(ActorKind.GOVERNMENT, "treasury"), Set.of());
+  }
+
+  /**
+   * ★★ R1（2026-10-09）：{@code govMarketMandates} 那一维的政府行 —— 构造期守卫要求 <b>授权主体国库必须是家户</b>（账户主体只有家户）⇒
+   * 本夹具的 treasury 是 HOUSEHOLD actor。
+   */
+  private static Government householdTreasuryGovernment() {
+    return new Government(
+        ZONE_GOV,
+        "zone-world",
+        HouseholdActors.of(KEY_HH),
+        Set.of(MoneyVocabulary.SILVER_CURRENCY));
   }
 
   /**

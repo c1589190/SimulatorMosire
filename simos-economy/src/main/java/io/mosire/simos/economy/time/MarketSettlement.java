@@ -23,7 +23,9 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.Budget;
 import io.mosire.simos.economy.api.market.BuyOrder;
+import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
 import io.mosire.simos.economy.api.market.LossBearer;
+import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.PriceMode;
@@ -316,9 +318,9 @@ final class MarketSettlement {
     private final Map<DebtContractId, DebtContract> debts;
 
     /**
-     * ★★ <b>Z7b：本轮的“退出商品市场”家户集合</b>（保序不可变；判定只用 {@code contains}）——政府国库户（由 {@code EconomySettlement}
-     * 从 {@code EconomyData.governments()} 并入，economy 自己看得见）与单位户（由 {@code simos-app} 组合根从 {@code
-     * Unit.households()} 算好传入，economy 看不见 unit 切片）。
+     * ★★ <b>本轮的“退出商品市场”家户集合</b>（保序不可变；判定只用 {@code contains}）——R1 起**只含单位户**（由 {@code simos-app}
+     * 组合根从 {@code Unit.households()} 算好传入，economy 看不见 unit 切片）。★ 政府国库户<b>不再</b>由 {@code
+     * EconomySettlement} 并入：它回到市场，但只按授权下单（见 {@link #govMandates()}）。
      *
      * <p>★★ <b>口径（用户 2026-10-23 税制/财政闭环设计书 §3.1）</b>：这些家户<b>买卖都不生成</b> —— 0 人口国库户不得被当卖家 清仓（run6
      * day50 中央粮 271,393→0 的根因），官吏户/军户的实物供给也不得被市场当余量卖掉。★ 本集合只排除<b>市场订单/参与</b>：
@@ -335,6 +337,20 @@ final class MarketSettlement {
      * clearOncePerCycle} 撮合、仍由唯一写口落账（本字段只回答"这个家户这一轮想额外吃多少货"）。
      */
     private MarketArbitragePlan arbitrage = MarketArbitragePlan.empty();
+
+    /**
+     * ★★ <b>R1（2026-10-09）：本日的政府市场授权计划</b>（由 {@code EconomySettlement}/{@code MarketReadout} 从
+     * {@code EconomyData.govMarketMandates()} + {@code governments()} 现算后经 {@link #withGovMandates}
+     * 注入）。
+     *
+     * <p>★★ <b>它做了两件事</b>：① 点名单上的国库户（{@code hh-gov-*}）是"<b>只按授权下单</b>"—— 自动买卖单、市场信用放贷、
+     * 家户外汇单<b>全部不生成</b>（国库户持有税收实收的粮/银且 0 人口 ⇒ 自动卖单会把它清仓，这正是 Z7b 的根因）； ②
+     * 给出它们今天真正生效的挂单（谁/商品/方向/量/限价）。
+     *
+     * <p>★ 默认 {@link GovernmentMarketMandatePlan#empty()} ⇒ <b>逐值退回改前行为</b>（没有政府的世界、旧构造器与不走 {@code
+     * withGovMandates} 的调用点都不受影响）。
+     */
+    private GovernmentMarketMandatePlan govMandates = GovernmentMarketMandatePlan.empty();
 
     /**
      * ★★ <b>2026-10-08（阶段 2-A2a）：本轮的外汇入参</b>（官方汇率 + 窗口储备上限；由 {@code EconomySettlement} 从 {@code
@@ -615,6 +631,7 @@ final class MarketSettlement {
               marketExcludedHouseholds);
       next.arbitrage = plan;
       next.fx = fx; // ★ A2a：同一处"替换式构造"必须逐字段带过（克隆丢字段是本类踩过的坑）
+      next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段
       return next;
     }
 
@@ -651,6 +668,7 @@ final class MarketSettlement {
               marketExcludedHouseholds);
       next.arbitrage = arbitrage;
       next.fx = input;
+      next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段
       return next;
     }
 
@@ -662,6 +680,51 @@ final class MarketSettlement {
     /** ★★ 2026-10-08（阶段 1）：本轮的套利决定（缺省空 ⇒ 订单生成逐值退回改前口径）。 */
     MarketArbitragePlan arbitrage() {
       return arbitrage;
+    }
+
+    /** ★★ R1：本日的政府市场授权计划（缺省空 ⇒ 没有"只按授权下单"的家户，逐值退回改前行为）。 */
+    GovernmentMarketMandatePlan govMandates() {
+      return govMandates;
+    }
+
+    /**
+     * ★★ <b>R1：注入本日的政府市场授权计划</b>（返回一个新的 {@link MarketRound}；原对象不动）。
+     *
+     * <p>★ 形制与 {@link #withArbitrage} 逐字相同：不新增构造器签名，既有调用方自然拿到 {@link
+     * GovernmentMarketMandatePlan#empty()}。★ 它必须**最后**注入（或由各个 {@code withX} 逐字段带过），否则会被后续的 {@code
+     * withCredit}/{@code withArbitrage}/{@code withFx} 静默丢掉 —— 那正是本类踩过的"克隆丢字段"坑。
+     */
+    MarketRound withGovMandates(GovernmentMarketMandatePlan plan) {
+      Objects.requireNonNull(
+          plan, "withGovMandates 的计划不得为 null（没有就给 GovernmentMarketMandatePlan.empty()）");
+      MarketRound next =
+          new MarketRound(
+              day,
+              householdEconomies,
+              householdGoods,
+              householdMoney,
+              householdFrozenGoods,
+              householdFrozenMoney,
+              unmetToday,
+              householdOfActor,
+              industries,
+              units,
+              assetShares,
+              relations,
+              laborCommitments,
+              shipments,
+              ledger,
+              operatorConditions,
+              index,
+              householdDemands,
+              regulation,
+              creditConfig,
+              debts,
+              marketExcludedHouseholds);
+      next.arbitrage = arbitrage;
+      next.fx = fx;
+      next.govMandates = plan;
+      return next;
     }
 
     /**
@@ -716,6 +779,7 @@ final class MarketSettlement {
               marketExcludedHouseholds);
       next.arbitrage = arbitrage; // ★ 新字段在这里被带过 —— 这正是"手抄 22 个参数"漏掉的那一行
       next.fx = fx; // ★ A2a：同一个坑的第二个字段（克隆轮丢 fx = 外汇面整段不生效且毫无报错）
+      next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段（丢了它 = 国库户自动订单守卫整段失效）
       return next;
     }
 
@@ -764,6 +828,7 @@ final class MarketSettlement {
               marketExcludedHouseholds);
       next.arbitrage = arbitrage;
       next.fx = fx;
+      next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段（丢了它 = 授权整段静默失效）
       return next;
     }
 
@@ -853,12 +918,21 @@ final class MarketSettlement {
    * <p>★ 价格表<b>只经这里</b>离开本类 → {@code EconomySettlement} 把它放进交出的 {@code EconomyData} → {@code
    * markets} 作为既有 {@code FieldDelta} 组件进变更集。没有第二条改价路径。
    */
-  record MarketOutcome(MarketReport report, Map<HexCoord, Market> markets) {
+  record MarketOutcome(
+      MarketReport report, Map<HexCoord, Market> markets, Map<MarketMandateId, Long> mandateFills) {
+
     MarketOutcome {
       Objects.requireNonNull(report, "report");
       Objects.requireNonNull(markets, "markets");
-      // ★ 保序不可变（不用 Map.copyOf：迭代序不是内容的纯函数）；值是不可变 record。
+      Objects.requireNonNull(mandateFills, "mandateFills（没有授权成交给空表）");
+      // ★ 保序不可变（不用 Map.copyOf：迭代序不是内容的纯函数）；值是不可变 record / Long。
       markets = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(markets));
+      mandateFills = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(mandateFills));
+    }
+
+    /** ★ R1 的旧形状（没有政府授权成交）：{@code mandateFills} 取空表。 */
+    MarketOutcome(MarketReport report, Map<HexCoord, Market> markets) {
+      this(report, markets, Map.of());
     }
   }
 
@@ -1156,6 +1230,25 @@ final class MarketSettlement {
     if (!planningRound.arbitrage().instructions().equals(round.arbitrage().instructions())) {
       throw arbitragePlanLostByClone(round.arbitrage().size(), planningRound.arbitrage().size());
     }
+    // ★★ R1 防复发守卫（与上面同一条坑）：**计划轮必须携带同一份政府市场授权计划**。
+    //   它丢了 ⇒ 国库户在下单的那一份轮里不再是"只按授权下单"的家户 ⇒ 当场退回自动清仓（Z7b 的根因），
+    //   而且没有任何报错。契约/一致性故障 ⇒ ERROR + fail-closed（§一.9：不降级）。
+    if (!planningRound.govMandates().equals(round.govMandates())) {
+      EventLog.channel(MARKET)
+          .error(
+              LogEvent.of(
+                  "GOV_MARKET_MANDATE_CONTRACT",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  round.day,
+                  "reason",
+                  "authorization-plan-lost-by-planning-clone",
+                  "expectedHouseholds",
+                  round.govMandates().authorizationOnlyHouseholds(),
+                  "actualHouseholds",
+                  planningRound.govMandates().authorizationOnlyHouseholds()));
+      throw new IllegalStateException("政府市场授权计划被计划轮克隆丢掉（国库户会退回自动下单，契约故障）: day=" + round.day);
+    }
     if (!round.arbitrage().isEmpty() && MARKET.isDebugEnabled()) {
       EventLog.channel(MARKET)
           .debug(
@@ -1311,6 +1404,8 @@ final class MarketSettlement {
     //   在撮合之后改下一轮的参考价。★ 开关判据收在 adaptPrices 内部、这里**无条件调用** ——
     //   ★ 开关判据收在 adaptPrices 内部、这里**无条件调用**；即使将来把常量改回 false，也能保证方法在字节码里存在。
     AdaptivePrices adapted = adaptPrices(markets, ctx);
+    // ★★ R1：本轮的政府授权成交（用于把 filledMilli 累加回授权行、并清除耗尽/到期行）。
+    Map<MarketMandateId, Long> mandateFills = collectGovMandateFills(round, ctx);
     return new MarketOutcome(
         MarketReport.withRegulatedTariff(
             round.day,
@@ -1331,7 +1426,133 @@ final class MarketSettlement {
             ctx.creditFills,
             ctx.tariffByFill,
             fx),
-        adapted.markets());
+        adapted.markets(),
+        mandateFills);
+  }
+
+  /**
+   * ★★ <b>R1：本轮"政府授权挂单"的成交累计</b>（{@code mandateId → 毫商品}）。
+   *
+   * <p>★★ <b>归属为什么无歧义</b>：国库户是"只按授权下单"的家户 ⇒ 它在本轮的**全部**订单都来自授权表；
+   * 而"同一政府同一商品同一方向至多一条生效授权"由命令边界（{@code economy.AuthorizeGovernmentMarketOrder}）与 {@link
+   * GovernmentMarketMandatePlan#of} 的 fail-closed 守卫共同保证 ⇒ 一笔成交只可能属于那一条授权。★ 这里仍按 {@code (household,
+   * commodity, side)} 解析而不是按槽位标记： 订单记录形状（{@code BuyOrder}/{@code SellOrder}）是本批**不动**的既有契约。
+   */
+  private static Map<MarketMandateId, Long> collectGovMandateFills(
+      MarketRound round, MatchContext ctx) {
+    Map<MarketMandateId, Long> fills = new LinkedHashMap<>();
+    for (BuySlot buy : ctx.buys) {
+      if (buy.buyer.household == null
+          || !round.govMandates().isAuthorizationOnly(buy.buyer.household)) {
+        continue;
+      }
+      long filled = Math.max(0L, buy.order.quantity() - buy.remaining);
+      if (filled <= 0L) {
+        continue;
+      }
+      accumulateMandateFill(
+          round,
+          fills,
+          buy.buyer.household,
+          buy.order.commodity(),
+          GovernmentMarketMandate.Side.BUY,
+          filled);
+    }
+    for (SellSlot sell : ctx.sells) {
+      if (sell.seller.household == null
+          || !round.govMandates().isAuthorizationOnly(sell.seller.household)) {
+        continue;
+      }
+      long filled = Math.max(0L, sell.order.sellable() - sell.remaining);
+      if (filled <= 0L) {
+        continue;
+      }
+      accumulateMandateFill(
+          round,
+          fills,
+          sell.seller.household,
+          sell.order.commodity(),
+          GovernmentMarketMandate.Side.SELL,
+          filled);
+    }
+    return fills;
+  }
+
+  /** 把一笔成交记到那条唯一的生效授权上；一条以上 / 一条都没有 ⇒ 契约故障（fail-closed，绝不静默记到错的那条）。 */
+  private static void accumulateMandateFill(
+      MarketRound round,
+      Map<MarketMandateId, Long> fills,
+      HouseholdId household,
+      CommodityId commodity,
+      GovernmentMarketMandate.Side side,
+      long filled) {
+    GovernmentMarketMandate target = null;
+    for (GovernmentMarketMandate mandate : round.govMandates().liveFor(household, commodity)) {
+      if (mandate.side() != side) {
+        continue;
+      }
+      if (target != null) {
+        EventLog.channel(MARKET)
+            .error(
+                LogEvent.of(
+                    "GOV_MARKET_MANDATE_CONTRACT",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    round.day,
+                    "household",
+                    household.value(),
+                    "commodity",
+                    commodity.value(),
+                    "side",
+                    side.name(),
+                    "reason",
+                    "more-than-one-live-authorization-for-same-commodity-and-side",
+                    "first",
+                    target.id().value(),
+                    "second",
+                    mandate.id().value()));
+        throw new IllegalStateException(
+            "同一国库户同一商品同一方向存在多条生效授权（成交量无法归属，契约故障）: household="
+                + household.value()
+                + " commodity="
+                + commodity.value()
+                + " side="
+                + side
+                + " first="
+                + target.id().value()
+                + " second="
+                + mandate.id().value());
+      }
+      target = mandate;
+    }
+    if (target == null) {
+      // 有订单却没有生效授权 ⇒ 计划与订单漂开了（契约故障，不静默吞掉成交量）。
+      EventLog.channel(MARKET)
+          .error(
+              LogEvent.of(
+                  "GOV_MARKET_MANDATE_CONTRACT",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  round.day,
+                  "household",
+                  household.value(),
+                  "commodity",
+                  commodity.value(),
+                  "side",
+                  side.name(),
+                  "reason",
+                  "filled-order-without-live-authorization",
+                  "filledMilli",
+                  filled));
+      throw new IllegalStateException(
+          "政府授权成交找不到对应授权（计划与订单漂开）: household="
+              + household.value()
+              + " commodity="
+              + commodity.value()
+              + " side="
+              + side);
+    }
+    fills.merge(target.id(), filled, Math::addExact);
   }
 
   /** 本进程当前的报价模式（M2.6 的开关只有一个：2026-10-07 起默认自适应）。 */
@@ -1557,10 +1778,35 @@ final class MarketSettlement {
     List<SellOrder> sells = new ArrayList<>();
     long deadline = round.day + MARKET_BUY_DEADLINE_DAYS;
     for (Participant participant : plan.participants) {
-      // ★★ Z7b：国库/单位户退出商品市场 —— participantsFor 已排除；这里再守一道，保证即使上游计划里混入
+      // ★★ Z7b：单位户退出商品市场 —— participantsFor 已排除；这里再守一道，保证即使上游计划里混入
       //   排除户也绝不生成买单/卖单（两层防线都指向同一集合，判定无条件）。
+      //   ★ R1（2026-10-09）：本集合**不再并入政府国库户**（那是本轮撤销的那一半）；国库户改走下面的
+      //   "只按授权下单"分支。单位户那一半一个字不改。
       if (participant.household != null
           && round.marketExcludedHouseholds().contains(participant.household)) {
+        continue;
+      }
+      // ── ★★ R1：政府国库户 = "只按授权下单"：**不生成任何自动订单**（需求/库存差异一概不产生买卖）──────
+      //   它今天能出现在市场上的订单**全部**来自 EconomyData.govMarketMandates() 的明确授权
+      //   （用户 2026-10-09 §1.3：政府经济行为 = 行政家户挂单，不加政策层）。
+      //   ★ 为什么必须显式挡在这里、而不是"反正它没有需求"：国库户持有税收实收的粮/银，而下面的卖单判据是
+      //     max(0, 持有 − 冻结 − 必要投入 − 生活保留 − 需求目标)，0 人口的国库户后四项全是 0 ⇒
+      //     它会被当成卖家**清仓**（Z7b 的根因：run6 day50 中央粮 271,393 → 0）。
+      if (participant.household != null
+          && round.govMandates().isAuthorizationOnly(participant.household)) {
+        planGovMandateOrders(
+            round,
+            plan,
+            participant,
+            hex,
+            market,
+            commodity,
+            reference,
+            bid,
+            ask,
+            deadline,
+            buys,
+            sells);
         continue;
       }
       long necessary =
@@ -1685,6 +1931,256 @@ final class MarketSettlement {
               SILVER_SPECIE));
     }
     return new PlannedOrders(buys, sells);
+  }
+
+  /**
+   * ★★ <b>R1：政府国库户的"只按授权下单"分支</b>（约束设计书 §4.5 G8 / 不变量 I-P6）。
+   *
+   * <p>它<b>不</b>执行自动订单算式，只把 {@link GovernmentMarketMandatePlan} 里当天生效的授权折成订单：
+   *
+   * <ul>
+   *   <li>{@code BUY}（收购/压价）：量 = {@code min(剩余授权量, 按参考价买得起的量)}，限价 = {@code min(授权限价, 市场买方限价)} ——
+   *       授权只能比市场更严，<b>不能</b>突破市场自身的价格纪律；★ 买盘<b>不走信用</b>（授权 ≠ 加杠杆，见 {@code creditRound} 的 auth-only
+   *       守卫）；
+   *   <li>{@code SELL}（抛售）：量 = {@code min(剩余授权量, 可卖余量)}，底价 = {@code max(授权限价, 市场卖方底价)}。
+   * </ul>
+   *
+   * <p>★★ <b>成交价仍由市场按参考价裁定</b>（区内 = 本格参考价 / 跨区 = 卖方格参考价）：授权<b>不改价</b>、 不改成本、不豁免任何撮合规则 ——
+   * 它是"挂单"，不是"政策"。
+   *
+   * <p>★★ <b>同时记一条 DEBUG：被压住的自动订单量</b>（{@code wouldBeBuyMilli}/{@code wouldBeSellMilli}）。
+   * 这是"政府不是无意识买家/卖家"这条判据的现场证据：0 人口的国库户持有税收实收的粮，按自动算式 {@code wouldBeSellMilli > 0} ⇒
+   * 若没有本分支，它会当场清仓（Z7b 的根因）。★ 这里的复算只服务日志，<b>不</b>参与任何写路径。
+   */
+  private static void planGovMandateOrders(
+      MarketRound round,
+      HexPlan plan,
+      Participant participant,
+      HexCoord hex,
+      Market market,
+      CommodityId commodity,
+      long reference,
+      long bid,
+      long ask,
+      long deadline,
+      List<BuyOrder> buys,
+      List<SellOrder> sells) {
+    HouseholdId household = participant.household;
+    long stock = stockOf(round, participant, commodity);
+    long frozen = frozenGoodsOf(round, participant, commodity);
+    long available = Math.max(0L, stock - frozen);
+    long budget = spendableMoneyOf(round, participant, market.numeraire());
+    long cashAffordable =
+        reference == 0L ? Long.MAX_VALUE : budget * EconomySettlement.MILLI_PER_GRAIN / reference;
+    int mandateBuys = 0;
+    int mandateSells = 0;
+    for (GovernmentMarketMandate mandate : round.govMandates().liveFor(household, commodity)) {
+      if (mandate.side() == GovernmentMarketMandate.Side.BUY) {
+        long quantity = Math.min(mandate.remainingMilli(), cashAffordable);
+        if (quantity <= 0L) {
+          // ★ 业务拒绝（授权买不起）⇒ DEBUG 具名（§一.9：关键判据写"为什么"）。
+          EventLog.channel(MARKET)
+              .debug(
+                  LogEvent.of(
+                      "GOV_MARKET_MANDATE_ORDER_SKIPPED",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      round.day,
+                      "household",
+                      household.value(),
+                      "mandate",
+                      mandate.id().value(),
+                      "side",
+                      "BUY",
+                      "commodity",
+                      commodity.value(),
+                      "reason",
+                      "no-spendable-money",
+                      "remainingMilli",
+                      mandate.remainingMilli(),
+                      "spendableMilli",
+                      budget));
+          continue;
+        }
+        long limit = Math.min(mandate.limitPriceMilli(), ask);
+        buys.add(
+            new BuyOrder(
+                participant.actor,
+                hex,
+                commodity,
+                quantity,
+                limit,
+                deadline,
+                new Budget(budget, SILVER_SPECIE),
+                SILVER_SPECIE));
+        mandateBuys++;
+        if (MARKET.isTraceEnabled()) {
+          EventLog.channel(MARKET)
+              .trace(
+                  LogEvent.of(
+                      "GOV_MARKET_MANDATE_BUY_ORDER",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      round.day,
+                      "household",
+                      household.value(),
+                      "mandate",
+                      mandate.id().value(),
+                      "government",
+                      mandate.government().value(),
+                      "commodity",
+                      commodity.value(),
+                      "quantityMilli",
+                      quantity,
+                      "limitPriceMilli",
+                      limit,
+                      "mandateLimitPriceMilli",
+                      mandate.limitPriceMilli(),
+                      "marketAskMilli",
+                      ask,
+                      "remainingMilli",
+                      mandate.remainingMilli(),
+                      "spendableMilli",
+                      budget,
+                      "hex",
+                      hex.toString()));
+        }
+      } else {
+        long sellable = Math.min(mandate.remainingMilli(), available);
+        if (sellable <= 0L) {
+          EventLog.channel(MARKET)
+              .debug(
+                  LogEvent.of(
+                      "GOV_MARKET_MANDATE_ORDER_SKIPPED",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      round.day,
+                      "household",
+                      household.value(),
+                      "mandate",
+                      mandate.id().value(),
+                      "side",
+                      "SELL",
+                      "commodity",
+                      commodity.value(),
+                      "reason",
+                      "no-sellable-stock",
+                      "remainingMilli",
+                      mandate.remainingMilli(),
+                      "availableMilli",
+                      available));
+          continue;
+        }
+        long floor = Math.max(mandate.limitPriceMilli(), bid);
+        sells.add(
+            new SellOrder(
+                participant.actor, hex, commodity, sellable, floor, round.day, SILVER_SPECIE));
+        mandateSells++;
+        if (MARKET.isTraceEnabled()) {
+          EventLog.channel(MARKET)
+              .trace(
+                  LogEvent.of(
+                      "GOV_MARKET_MANDATE_SELL_ORDER",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      round.day,
+                      "household",
+                      household.value(),
+                      "mandate",
+                      mandate.id().value(),
+                      "government",
+                      mandate.government().value(),
+                      "commodity",
+                      commodity.value(),
+                      "quantityMilli",
+                      sellable,
+                      "limitPriceMilli",
+                      floor,
+                      "mandateLimitPriceMilli",
+                      mandate.limitPriceMilli(),
+                      "marketBidMilli",
+                      bid,
+                      "remainingMilli",
+                      mandate.remainingMilli(),
+                      "availableMilli",
+                      available,
+                      "hex",
+                      hex.toString()));
+        }
+      }
+    }
+    if (MARKET.isDebugEnabled()) {
+      // ★★ 被压住的自动订单（同一算式的复算；只为证据，不参与写路径）。
+      long necessary =
+          plan.necessaryInputs
+              .getOrDefault(participant.actor, Map.of())
+              .getOrDefault(commodity, 0L);
+      long life =
+          plan.lifeReserves.getOrDefault(participant.actor, Map.of()).getOrDefault(commodity, 0L);
+      long demandTarget = 0L;
+      for (long part :
+          plan.demandParts
+              .getOrDefault(participant.actor, Map.of())
+              .getOrDefault(commodity, List.of())) {
+        demandTarget = Math.addExact(demandTarget, part);
+      }
+      long retention = Math.addExact(life, demandTarget);
+      long wouldBeSell = Math.max(0L, stock - frozen - necessary - retention);
+      long incoming = confirmedIncoming(round, participant.actor, commodity, deadline);
+      long baseTarget = life;
+      long wouldBeBuy =
+          round.creditEnabled()
+              ? desiredQuantity(
+                  baseTarget,
+                  plan.demandParts
+                      .getOrDefault(participant.actor, Map.of())
+                      .getOrDefault(commodity, List.of()),
+                  available,
+                  incoming)
+              : allocateQuantity(
+                  baseTarget,
+                  plan.demandParts
+                      .getOrDefault(participant.actor, Map.of())
+                      .getOrDefault(commodity, List.of()),
+                  available,
+                  incoming,
+                  cashAffordable);
+      long arbitrageQuantity = 0L;
+      MarketArbitragePlan.Instruction instruction =
+          round.arbitrage().instructionFor(household, commodity).orElse(null);
+      if (instruction != null && instruction.direction() == HouseholdActivity.Direction.BUY) {
+        arbitrageQuantity = instruction.quantityMilli();
+      }
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "GOV_MARKET_AUTO_ORDERS_SUPPRESSED",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  round.day,
+                  "household",
+                  household.value(),
+                  "commodity",
+                  commodity.value(),
+                  "hex",
+                  hex.toString(),
+                  "authorizationOnly",
+                  true,
+                  "autoBuyOrders",
+                  0,
+                  "autoSellOrders",
+                  0,
+                  "mandateBuyOrders",
+                  mandateBuys,
+                  "mandateSellOrders",
+                  mandateSells,
+                  "wouldBeBuyMilli",
+                  wouldBeBuy,
+                  "wouldBeSellMilli",
+                  wouldBeSell,
+                  "arbitrageBuyMilli",
+                  arbitrageQuantity));
+    }
   }
 
   /**
@@ -1964,6 +2460,12 @@ final class MarketSettlement {
         }
         for (BuySlot buy : slots) {
           if (buy.remaining <= 0L || buy.buyer.household == null) {
+            continue;
+          }
+          // ★★ R1：**明确授权 ≠ 加杠杆** —— 国库户的授权买盘只花它自己的钱（不借货币、不借实物）。
+          //   授权表只授权"买多少、什么价"，没有授权"借多少钱来买"；把它挂出来的量按现金封顶（见
+          //   planGovMandateOrders），这里再守一道，保证它永远进不了信用撮合。
+          if (round.govMandates().isAuthorizationOnly(buy.buyer.household)) {
             continue;
           }
           if (buy.order.latestArrivalTick() < round.day || buy.order.maxLandedPrice() < price) {
@@ -2505,6 +3007,12 @@ final class MarketSettlement {
       if (MONEY_LENDING_AUTO_LIST) {
         for (Participant participant : ctx.participants.values()) {
           if (participant.household == null) {
+            continue;
+          }
+          // ★★ R1：国库户（"只按授权下单"）**不放贷** —— 自动放贷也是"没被授权的经济行为"。
+          //   ★ 改前国库户不在参与者表里（Z7b 排除集）⇒ 它本来就不是放贷人；本守卫保住那一半语义，
+          //     否则"回市场"会顺手把它变成市场信用的自动放贷人（普通家户的借贷结果随之改变）。
+          if (ctx.round.govMandates().isAuthorizationOnly(participant.household)) {
             continue;
           }
           Market market = marketForParticipant(ctx, participant);
@@ -5582,7 +6090,8 @@ final class MarketSettlement {
                       "hex",
                       hex,
                       "reason",
-                      "treasury-or-unit-household"));
+                      // ★ R1：本集合现在**只含单位户**（国库户回市场、只按授权下单）。
+                      "unit-household"));
         }
         continue;
       }
@@ -5678,7 +6187,7 @@ final class MarketSettlement {
                         "unit",
                         unitId.value(),
                         "reason",
-                        "operator-is-treasury-or-unit-household"));
+                        "operator-is-unit-household"));
           }
           continue;
         }

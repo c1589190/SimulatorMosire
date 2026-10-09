@@ -51,6 +51,7 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -289,6 +290,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     //   不经过本 codec 的整形层 —— 见那个注解的注释）。
     module.addKeyDeserializer(
         HouseholdDebtReference.class, keyDeserializer(HouseholdDebtReference::parse));
+    // ★★ R1（2026-10-09）govMarketMandates（第 39 个组件）的键 = MarketMandateId（opaque 裸值，与 parse 互逆，
+    //   只需读侧）。值 GovernmentMarketMandate 走 Jackson 的 record 字段显式绑定；旧档缺该组件键 ⇒ EconomyData
+    //   构造期归一成空表（= 没有任何授权 ⇒ 国库户在商品市场上零订单，既有世界逐值不变）。
+    module.addKeyDeserializer(MarketMandateId.class, keyDeserializer(MarketMandateId::parse));
     return module;
   }
 
