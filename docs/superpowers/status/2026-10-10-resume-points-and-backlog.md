@@ -242,3 +242,10 @@ R2 落点（实测）：`simos-gov/.../GovPortPolicy.java`、`GovEfficiency.java
   ⇒ 要改的现状三处：`MerchantFirm.capacityPerRound` 的 ±5 自增长**作废**（改为每轮按劳动+工具算）、
   创世初值 100,000（=上限）要重标、`CARRIER_FEE`（唯一进项）对纯商号取消。
   计划 v4 已同步（M0b 行、M1/M3 改写、V-21/V-22、Q-13 已答 + Q-14..Q-17）。
+- v18（2026-10-10）：**追加裁定 3**（商户设计书 §13）——**主业 = 生产方式排序表第 1 项、副业 = 其余项**；
+  选择输入 = **市场议价权 + 库存**；副业足够赚钱 ⇒ 既有 A 规则**加速流向** ⇒ 主业随之改变
+  （"主业副业这不就判断出来了"）；**第一项是跑商 ⇒ 主业为商户**；其余 H-1..H-5 用户"没意见"⇒ 按默认冻结。
+  ★ **不需要新增状态**：`HouseholdClassMembership` 早已有 `currentPositionId`（主业）/
+  `participatingPositionIds`（副业）/ `effectivePositionIds()`。⇒ M5 落地方式改变（不要新活动种类），
+  但"加入 merchant 位置不建商号行 ⇒ 有主业无运力"这一缺口仍在。
+  计划 v5 已同步（M5 改写、V-23、Q-18..Q-20）。
