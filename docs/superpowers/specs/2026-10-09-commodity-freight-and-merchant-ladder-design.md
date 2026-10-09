@@ -464,3 +464,50 @@ effectivePositionIds()       = current ∪ participating（规范化结果）
 | **I-2** | **"市场议价权"**在排序里用什么量？ | 与 §11.4 G-1 **同一口径**（本格运力占比‰ 一族），**同一拼写点**，不得两套 |
 | **I-3** | 排序**破平**规则 | 收益率同值 ⇒ 按**位置 id 升序**（canonical 序，I7） |
 | **I-4** | 主业改变是否要写 `reason`（既有字段） | 要：模式变迁一律写具名 `reason`（既有口径，不新增） |
+
+---
+
+## 14. ★ 追加裁定 4（2026-10-10）：**运力 = 派生量**；`MerchantFirm`（商号行）**退役**
+
+### 14.1 用户原话（**逐字照录**）
+
+> 商号行是啥？选择跑商那就算提供运力了，直接分配就完了，为啥要额外搞商号行进行运力选择
+
+### 14.2 先回答"商号行是啥"（控制方，据代码实测）
+
+**"商号行" = `MerchantFirm`，是 `EconomyData` 的**第 30 个持久组件**（键 = `ProductionOrganizationId`）**，
+11 个标量字段：`capacityPerRound` / `capacityUsedThisRound` / `tier` / `serviceRadiusHex` /
+`lastFeeEarnedMilli` / `lastUpkeepMilli` / `lastProfitMilli` / 农村惩罚 / 等（`MerchantFirm.java:50-61`）。
+它是**旧设计的遗留**：那时把商号当**独立主体**，所以要一行"商号的运力与账"。
+
+### 14.3 本条冻结：**运力是派生量，不落状态**
+
+| # | 口径 |
+|---|---|
+| **J-A** | **"选择跑商"本身就是提供运力** —— 家户只要（主/副业）选了跑商，就进该 hex 的运力池 |
+| **J-B** | **运力每轮算出来**：`运力 = f(劳动投入, 工具消耗)`（§12 H-D/H-E、§12.4 H-5），**计算后在生产环节统一兑现、收益自动算** |
+| **J-C** | **运力池 = 逐 hex 汇总该格"选了跑商"的家户的计算结果**；分配直接按§11 的议价权序 —— **不需要任何"运力选择"对象** |
+| **J-D** | **`merchantFirms` 组件（第 30 个）退役**：不再作为运力权威；`tier`/`serviceRadiusHex` 降为**派生读数**；`last*` 三项降为**每轮算出的读数**（进报告/日志，不落状态） |
+| **J-E** | **V-15 的"加入时要建商号行"缺口随之消失**（不再需要建行） |
+
+### 14.4 代价与兼容（★ 必读：这是本链第一条"删持久组件"的裁定）
+
+- 触碰**铁律 5 的护栏面**（方向是**删**）：`EconomyCodec`、`EconomyChangeSet`（`:166/:293`）、
+  **往返不变式测试**、（若读数要保留）`MarketReport`；
+- **旧档含该键** ⇒ 需要一条兼容口径：**读入时忽略该键、不迁移**（运力是派生量，没有可迁移的"存量"）；
+  控制方建议照"缺键 ⇒ 中性值"的既有惯例反向写：**有键 ⇒ 忽略并具名记一条 INFO**；
+- **8 处读者要迁**（实测 `src/main`）：`MerchantSettlement`（结算与承运选择）、`MarketSettlement`（`CARRIER_FEE`/承运选择）、
+  `ExpectedProfitBook`（迁移前瞻里读商号运力）、`ModeMigrationPolicy.hasMerchantCapacityAt`、
+  `ModeMigrationSettlement`（退役删除点）、`EconomySettlement`、`EconomyStateBuilder`、`EconomyClearRegionHandler`；
+  另加创世侧 `EconomySeeder`/`EconomyPayloads`/`EconomySeedHandler`。
+- ★ **备选（控制方不建议）**：保留组件但降级为"只读读数" —— 会留下"看起来在记、其实不被读"的状态，
+  与本仓明文纪律冲突（§〇 的"孤儿字面量"一族）。
+
+### 14.5 待钉死（新增）
+
+| # | 问题 | 控制方默认（可被推翻） |
+|---|---|---|
+| **J-1** | `tier`（脚夫/个体户/老板）退役后还要不要？ | **降为派生读数**（按运力规模分档，仅用于日志/读口） |
+| **J-2** | `serviceRadiusHex` 怎么派生？ | 由**规模**（运力 + 本钱 + 雇工）派生（§4.4 原口径不变） |
+| **J-3** | 每轮算出的利润读数放哪？ | 进**报告/日志**（不落状态）；要落盘则另开一批并走铁律 5 |
+| **J-4** | 旧档 `merchantFirms` 键的处置 | **忽略 + 具名 INFO**；不迁移、不报错 |
