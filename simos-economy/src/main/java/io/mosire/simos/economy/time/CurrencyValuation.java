@@ -282,6 +282,11 @@ final class CurrencyValuation {
    * enforcement = 该区该币种的实际管制力（‰；缺区/缺币 ⇒ 0）
    * </pre>
    *
+   * <p>★★ <b>P-T1a 起"实际管制力"分方向</b>（{@code PortEnforcementInput.Directional}）：本条是<b>感知量</b>（"这种钱在这个区
+   * 有多不受待见"），<b>不是</b>过境流量 ⇒ 取<b>两个方向里更严的那一侧</b> （{@code
+   * PortEnforcementInput.currencyEnforcementPerMille(zone, currency)} 的口径；账本 §关键判断记了这条判断）。
+   * 只有一侧设限时它与"就取那一侧"逐值相同；两侧都没设 ⇒ 0 ⇒ 逐值退回改前。
+   *
    * <p>★ <b>兑现用户 2026-10-08 原话</b>：「如果这个效率高，那么单个家户就更不倾向于用这种货币付款，因为如果付了要被抓」—— 管制力高 ⇒ 这种钱在这户眼里更不值钱 ⇒
    * 卖方更不愿意收它（汇率判据自动跟着走）。<b>没有另写"家户不敢用"的逻辑</b>。
    *

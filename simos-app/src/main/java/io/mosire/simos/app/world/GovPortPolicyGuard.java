@@ -27,9 +27,10 @@ import java.util.Set;
  * RegionDeleteGuard} 同一形制、同一注册点）：命令在 {@code handler.handle} <b>之前</b>被拦，返回具名理由 ⇒ Core 照 {@code
  * HandlerOutcome.Rejected} 落账，<b>不留 revision</b>。它只读状态、不写状态。
  *
- * <p>★ <b>它拦什么</b>：只拦 {@code gov.SetPortPolicy}；两条表的<b>键</b>分别对 {@link
+ * <p>★ <b>它拦什么</b>：只拦 {@code gov.SetPortPolicy}；两张规则表的<b>类键</b>分别对 {@link
  * EconomyVocabulary#allCommodityIds()}（商品词表）与 {@link EconomyData#currencies()}（币种词表，世界状态权威）。
- * 键的<b>词法</b>与值的<b>值域</b>（≥ 0）仍由 {@code GovPayloads}/{@code GovPortPolicy} 在命令边界判 —— 两处不重复实现。
+ * 键的<b>词法</b>、规则对象的<b>字段名与形状</b>（四个数、税从量从价）与值域（≥ 0）仍由 {@code GovPayloads}/{@code GovPortPolicy}
+ * 在命令边界判 —— 两处不重复实现。
  *
  * <p>★ <b>fail-closed 方向</b>：economy 切片缺失/类型不符 ⇒ <b>拒</b>（装配故障不能放坏政策进状态），理由具名。
  */
@@ -69,15 +70,14 @@ public final class GovPortPolicyGuard implements MutationGuard {
       knownCurrencies.add(currency.value());
     }
     Optional<String> unknownCommodity =
-        unknownKey(
-            payload.get("commodityRestrictionPerMille"), EconomyVocabulary.allCommodityIds(), "商品");
+        unknownKey(payload.get("commodityRules"), EconomyVocabulary.allCommodityIds(), "商品");
     if (unknownCommodity.isPresent()) {
       return unknownCommodity;
     }
-    return unknownKey(payload.get("currencyRestrictionPerMille"), knownCurrencies, "币种");
+    return unknownKey(payload.get("currencyRules"), knownCurrencies, "币种");
   }
 
-  /** 一张表里有没有词表外的键；有 ⇒ 具名理由（点名第一个未知键，便于排查）。 */
+  /** 一张规则表里有没有词表外的类键；有 ⇒ 具名理由（点名第一个未知键，便于排查）。 */
   private static Optional<String> unknownKey(JsonNode table, Iterable<String> known, String kind) {
     if (table == null || table.isNull() || !table.isObject()) {
       return Optional.empty(); // 缺省/形状坏 ⇒ 交给 handler 的解析器（具名拒）

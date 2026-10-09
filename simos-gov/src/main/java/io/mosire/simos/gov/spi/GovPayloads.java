@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.market.PortRule;
+import io.mosire.simos.economy.api.market.PortTaxMode;
+import io.mosire.simos.economy.api.market.PortTaxRule;
 import io.mosire.simos.gov.GovAdministrationPlan;
 import io.mosire.simos.gov.GovBudgetCategory;
 import io.mosire.simos.gov.GovBudgetLine;
@@ -144,43 +147,57 @@ final class GovPayloads {
   }
 
   /**
-   * ★★ <b>R2：口岸管制政策载荷</b>（{@code gov.SetPortPolicy}）——<b>整表替换</b>（照 {@code SetAdministrationPlan}
-   * 的形制：同类型重复设置 = 整体替换；与既有政策逐值相同 ⇒ 空变更集）。
+   * ★★ <b>P-T1a：口岸管制政策载荷</b>（{@code gov.SetPortPolicy}）——<b>整表替换</b>（照 {@code
+   * SetAdministrationPlan} 的形制：同类型重复设置 = 整体替换；与既有政策逐值相同 ⇒ 空变更集）。
    *
    * <pre>{@code
    * {"unitId":"gov-1",
-   *  "commodityRestrictionPerMille":{"grain":1000,"cloth":250},
-   *  "currencyRestrictionPerMille":{"silver":1000}}
+   *  "commodityRules":{
+   *    "grain":{"entryRestrictionPerMille":1000,"exitRestrictionPerMille":250,
+   *             "entryTax":{"mode":"per_unit_milli","amount":5},
+   *             "exitTax":{"mode":"ad_valorem_per_mille","amount":100}},
+   *    "cloth":{"exitRestrictionPerMille":0}},
+   *  "currencyRules":{"silver":{"entryRestrictionPerMille":1000}}}
    * }</pre>
    *
-   * <p>★ 两个表都可缺省：缺省/<b>显式空对象</b> ⇒ 空表 = 该类一律<b>不限制</b>（I-P1「未设限制 = 不限制」）。★ <b>值域只判形状</b> （整数、可表
-   * long），≥ 0 与"键非 null"由 {@link GovPortPolicy} 构造期判；"这个商品/币种在世界里存在吗"由组合根判（gov 看不见经济词表）。
+   * <p>★ <b>每类四个数</b>（2026-10-10 冻结口径 T-5）：入口限制‰ / 出口限制‰ / 入口税 / 出口税 —— 四个字段<b>各自可缺省</b> （缺省 ⇒ 0 =
+   * 不限制 / 不收税 = {@link PortRule#unrestricted()}，I-P1）；显式 0 与未设逐值同义。
+   *
+   * <p>★ <b>税从量从价都行</b>（用户「规则可以灵活，从量从价都行」）：{@code entryTax}/{@code exitTax} 是 {@code
+   * {"mode":"none|per_unit_milli|ad_valorem_per_mille","amount":N}}；{@code amount} 的量纲由 {@code
+   * mode} 决定（毫/单位 或 货值‰），<b>缺省 {@code {"mode":"none"}}</b> = 不收税。
+   *
+   * <p>★ <b>fail-closed 的拒因</b>：非对象 / 类不是对象 / 字段名不认识（<b>拼错一个字段名 = 具名拒</b>，不静默当 0）/ 非整数 / 键空白 /
+   * 键词法非法 / 负限制 / 负税 / {@code mode} 非法 / {@code none} 带非 0 数额 —— 全部在这里拒（N1 负向判据： <b>非法政策
+   * fail-closed 具名拒，不静默忽略</b>）。"这个商品/币种在世界里存在吗"由组合根判（gov 看不见经济词表）。
+   *
+   * <p>★ <b>未知的顶层字段不在这里拒</b>（与 {@link #administrationPlan} 等载荷同一条既有口径：额外字段留给将来的扩展）；
+   * 但<b>规则对象内部</b>的字段名必须逐个认识（那是"一条规则的完整拼法"，少一个字母就是另一条规则）。
    */
   static GovPortPolicy portPolicy(JsonNode payload) {
-    Map<CommodityId, Long> commodities =
-        restrictionTable(payload, "commodityRestrictionPerMille", CommodityId::parse);
-    Map<CurrencyId, Long> currencies =
-        restrictionTable(payload, "currencyRestrictionPerMille", CurrencyId::parse);
+    Map<CommodityId, PortRule> commodities =
+        ruleTable(payload, "commodityRules", CommodityId::parse);
+    Map<CurrencyId, PortRule> currencies = ruleTable(payload, "currencyRules", CurrencyId::parse);
     return new GovPortPolicy(commodities, currencies);
   }
 
   /**
-   * 一张 {@code 稳定 id → 强度‰} 表：缺失/{@code null} ⇒ 空；非对象/项非整数/键空白/键词法非法 ⇒ 具名拒。保序。
+   * 一张 {@code 稳定 id → 四元组规则} 表：缺失/{@code null} ⇒ 空；非对象/项非对象/键空白/键词法非法 ⇒ 具名拒。保序。
    *
    * <p>★ {@code parse} 由调用方给（{@code CommodityId::parse} / {@code
    * CurrencyId::parse}）：<b>词法</b>非法在这里拒（具名）， <b>词表</b>里有没有这个类不在这里判（gov 看不见经济词表；由组合根 fail-closed
    * 具名拒，N1）。
    */
-  private static <K> Map<K, Long> restrictionTable(
+  private static <K> Map<K, PortRule> ruleTable(
       JsonNode payload, String field, java.util.function.Function<String, K> parse) {
     JsonNode node = payload.get(field);
     if (node == null || node.isNull()) {
       return Map.of();
     }
     if (!node.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是对象（id → 强度‰）");
+      throw new IllegalArgumentException("字段 " + field + " 必须是对象（id → 规则对象）");
     }
-    Map<K, Long> table = new LinkedHashMap<>();
+    Map<K, PortRule> table = new LinkedHashMap<>();
     node.fields()
         .forEachRemaining(
             entry -> {
@@ -188,8 +205,9 @@ final class GovPayloads {
               if (key == null || key.isBlank()) {
                 throw new IllegalArgumentException("字段 " + field + " 的键不得为空白");
               }
-              if (!entry.getValue().isIntegralNumber() || !entry.getValue().canConvertToLong()) {
-                throw new IllegalArgumentException("字段 " + field + "[" + key + "] 必须是可表示 long 的整数");
+              if (!entry.getValue().isObject()) {
+                throw new IllegalArgumentException(
+                    "字段 " + field + "[" + key + "] 必须是对象（入口/出口限制 + 入口/出口税）");
               }
               K parsed;
               try {
@@ -197,9 +215,77 @@ final class GovPayloads {
               } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("字段 " + field + " 的键不是合法稳定 id: " + key, e);
               }
-              table.put(parsed, entry.getValue().longValue());
+              table.put(parsed, portRule(entry.getValue(), field + "[" + key + "]"));
             });
     return table;
+  }
+
+  /** 一条四元组规则：四个字段各自可缺省（缺省 = 0 / 不收税）；<b>不认识的字段名 ⇒ 具名拒</b>。 */
+  private static PortRule portRule(JsonNode node, String where) {
+    requireOnlyFields(node, where, PORT_RULE_FIELDS);
+    return new PortRule(
+        optionalLong(node, "entryRestrictionPerMille", PortRule.RESTRICTION_NONE_PER_MILLE),
+        optionalLong(node, "exitRestrictionPerMille", PortRule.RESTRICTION_NONE_PER_MILLE),
+        portTax(node.get("entryTax"), where + ".entryTax"),
+        portTax(node.get("exitTax"), where + ".exitTax"));
+  }
+
+  /**
+   * 一条税规则：缺失/{@code null} ⇒ {@link PortTaxRule#none()}（不收税）；{@code mode} 必填且必须在词表里， {@code amount}
+   * 缺省 0；<b>不认识的字段名 ⇒ 具名拒</b>。
+   */
+  private static PortTaxRule portTax(JsonNode node, String where) {
+    if (node == null || node.isNull()) {
+      return PortTaxRule.none();
+    }
+    if (!node.isObject()) {
+      throw new IllegalArgumentException(where + " 必须是对象（{mode, amount}）或省略（= 不收税）");
+    }
+    requireOnlyFields(node, where, PORT_TAX_FIELDS);
+    JsonNode modeNode = node.get("mode");
+    if (modeNode == null || modeNode.isNull()) {
+      throw new IllegalArgumentException(
+          where + ".mode 必填（" + legalModes() + "）；不收税就省略整个 " + where);
+    }
+    if (!modeNode.isTextual()) {
+      throw new IllegalArgumentException(where + ".mode 必须是字符串（" + legalModes() + "）");
+    }
+    PortTaxMode mode;
+    try {
+      mode = PortTaxMode.parse(modeNode.asText());
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(where + " 的税计量方式非法: " + modeNode.asText(), e);
+    }
+    return new PortTaxRule(mode, optionalLong(node, "amount", 0L));
+  }
+
+  /** 一条规则里允许出现的字段名（多一个/少一个都拒：拼错一个字母就是另一条规则）。 */
+  private static final java.util.Set<String> PORT_RULE_FIELDS =
+      java.util.Set.of(
+          "entryRestrictionPerMille", "exitRestrictionPerMille", "entryTax", "exitTax");
+
+  /** 一条税规则里允许出现的字段名。 */
+  private static final java.util.Set<String> PORT_TAX_FIELDS = java.util.Set.of("mode", "amount");
+
+  /** 不认识的字段名 ⇒ 具名拒（不静默当缺省：那会让"税率拼错"变成"没设税"）。 */
+  private static void requireOnlyFields(JsonNode node, String where, java.util.Set<String> known) {
+    var fields = node.fieldNames();
+    while (fields.hasNext()) {
+      String name = fields.next();
+      if (!known.contains(name)) {
+        throw new IllegalArgumentException(
+            "字段 " + where + " 里不认识的键: " + name + "（合法键: " + new java.util.TreeSet<>(known) + "）");
+      }
+    }
+  }
+
+  /** 合法的计量方式字面量（拒绝消息里列出全部，便于一次改对）。 */
+  private static String legalModes() {
+    List<String> modes = new ArrayList<>();
+    for (PortTaxMode mode : PortTaxMode.all()) {
+      modes.add(mode.value());
+    }
+    return String.join("|", modes);
   }
 
   /**

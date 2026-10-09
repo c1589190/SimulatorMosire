@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.market.PortContactSurface;
+import io.mosire.simos.economy.api.market.PortDirection;
 import io.mosire.simos.economy.api.market.ZonePortRegime;
 import io.mosire.simos.economy.model.CommodityFreightBase;
 import java.util.ArrayList;
@@ -10,22 +11,21 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * ★★ <b>市场区口岸执行规律（2026-10-09 口岸设计书 §4.3/§4.4）：总效率（加权平均）+ 规则 OR + 走私 = 规模现象</b> ——
+ * ★★ <b>市场区口岸执行规律（2026-10-09 口岸设计书 §4.3；2026-10-10 §12 加方向维）：总效率（加权平均）+ 规则 OR</b> ——
  * 全仓<b>唯一拼写点</b>（契约是 {@code economy-api} 的 {@link ZonePortRegime} / {@link
  * PortContactSurface}，本类只放公式）。
  *
  * <pre>
  * 逐接触面 k：enforcement_k = ⌊s_k × e_k ÷ 1000⌋            （‰；不封顶）
  *             openness_k    = clamp(1000 − enforcement_k, 0, 1000)   （‰）
- * 市场区 Z 对类 c：
+ * 市场区 Z 对类 c 的<b>某一方向 d</b>（{@link PortDirection}；s_k 取该方向的入口/出口限制，§12.2）：
  *   【规则】允许 ⇔ ∃k: s_k = 0            ← OR，不是 min
- *   【总效率】E_Z(c) = ⌊Σ(w_k × openness_k) ÷ Σ(w_k)⌋   ← 按能力（暴露边条数）加权平均
+ *   【总效率】E_Z(c, d) = ⌊Σ(w_k × openness_k) ÷ Σ(w_k)⌋   ← 按能力（暴露边条数）加权平均
  *   Σ(w_k) = 0（无接触面）⇒ E = 1000 且 noContactSurface = true（"没有邻居 ⇒ 没有可管的口岸"）
- * 走私（规模现象；无个体、无随机数，I-P7）：
- *   可正常进出量 = ⌊总过境能力 × E ÷ 1000⌋
- *   走私量       = 总过境能力 − 可正常进出量          （Σ 守恒：两份之和逐值等于总过境能力）
- *   成本楔子     = ⌊(1000 − E) × 罚没基准 ÷ 1000⌋      （毫计价货币 / 商品单位）
  * </pre>
+ *
+ * <p>★★ <b>跨区过境的"两道闸"不在这里</b>：本类只算<b>一侧</b>的 E；一票货要过境必须 {@code E_源(EXIT) × E_目的(ENTRY) ÷ 1e6}
+ * 两道闸依次都过 ⇒ 唯一拼写点是 {@link PortThrottle}（§12.2/§12.3）。
  *
  * <p>★★ <b>两个刻意的判断（都写在账本"关键判断"里）</b>：
  *
@@ -41,6 +41,10 @@ import java.util.Objects;
  * 条全禁 ⇒ {@code E = 1000/9 ≈ 111‰}（不是 0、也不是 1000）；每条半开 ⇒ {@code E = 500‰}。
  *
  * <p>★ <b>纯函数 + 确定性</b>：不写状态、不用随机数、不读时钟；同一输入逐值相同（{@link PortContactSurface} 列表顺序即输出顺序）。
+ *
+ * <p>★★ <b>"走私"那一档已判死（设计书 §11：没管住就是流入，按正常供给算）</b>：{@link #split} / {@link SmugglingSplit} / {@link
+ * #SEIZURE_BASELINE_MILLI} <b>已无任何读者</b>，删除留给 P-T1c；<b>P-T1a 不许再引用它们</b> （节流走 {@link
+ * PortThrottle}）。
  */
 public final class PortRegimeAggregation {
 
@@ -60,16 +64,20 @@ public final class PortRegimeAggregation {
   private PortRegimeAggregation() {}
 
   /**
-   * ★★ <b>算一个市场区对一类的执行规律</b>（唯一算式）。
+   * ★★ <b>算一个市场区对一类在<b>某一方向</b>上的执行规律</b>（唯一算式）。
    *
    * @param zoneId 市场区身份裸值；不得为空白
    * @param classKey 类身份裸值（商品或币种）；不得为空白
-   * @param surfaces 该区对这一类的接触面（每个管辖政府一段；三不管那批边归一个具名 key）；不得为 null、不得含 null
+   * @param direction 方向（{@link PortDirection#ENTRY}：本区是目的地，用入口规则；{@link PortDirection#EXIT}：本区是
+   *     来源地，用出口规则）；不得为 null
+   * @param surfaces 该区对这一类的接触面（每个管辖政府一段；三不管那批边归一个具名 key； <b>已按 {@code direction} 取好该方向的限制强度
+   *     s</b>）；不得为 null、不得含 null
    * @throws IllegalArgumentException 入参形状坏（编程错误）
    * @throws ArithmeticException 权重/乘积溢出（调用方折成具名契约 ERROR，不静默截断）
    */
   public static ZonePortRegime aggregate(
-      String zoneId, String classKey, List<PortContactSurface> surfaces) {
+      String zoneId, String classKey, PortDirection direction, List<PortContactSurface> surfaces) {
+    Objects.requireNonNull(direction, "direction（入口/出口各算一份读数，不给合并读数）");
     Objects.requireNonNull(surfaces, "surfaces（没有接触面给 List.of()）");
     List<ZonePortRegime.SurfaceReading> readings = new ArrayList<>(surfaces.size());
     long totalWeight = 0L;
@@ -97,25 +105,31 @@ public final class PortRegimeAggregation {
     }
     if (totalWeight == 0L) {
       // ★ 具名口径：没有邻居 ⇒ 没有可管的口岸 ⇒ 全开（设计书 §4.3）。
-      return new ZonePortRegime(zoneId, classKey, true, PER_MILLE, 0L, true, readings);
+      return new ZonePortRegime(zoneId, classKey, direction, true, PER_MILLE, 0L, true, readings);
     }
     long efficiency = Math.floorDiv(weightedOpenness, totalWeight);
     return new ZonePortRegime(
-        zoneId, classKey, anyUnrestricted, efficiency, totalWeight, false, readings);
+        zoneId, classKey, direction, anyUnrestricted, efficiency, totalWeight, false, readings);
   }
 
-  /** 商品类的便利入口（类键 = {@link CommodityId} 裸值）。 */
+  /** 商品类的便利入口（类键 = {@link CommodityId} 裸值；方向见 {@link PortDirection}）。 */
   public static ZonePortRegime aggregateCommodity(
-      String zoneId, CommodityId commodity, List<PortContactSurface> surfaces) {
+      String zoneId,
+      CommodityId commodity,
+      PortDirection direction,
+      List<PortContactSurface> surfaces) {
     Objects.requireNonNull(commodity, "commodity");
-    return aggregate(zoneId, commodity.value(), surfaces);
+    return aggregate(zoneId, commodity.value(), direction, surfaces);
   }
 
-  /** 币种类的便利入口（类键 = {@link CurrencyId} 裸值）。 */
+  /** 币种类的便利入口（类键 = {@link CurrencyId} 裸值；方向见 {@link PortDirection}）。 */
   public static ZonePortRegime aggregateCurrency(
-      String zoneId, CurrencyId currency, List<PortContactSurface> surfaces) {
+      String zoneId,
+      CurrencyId currency,
+      PortDirection direction,
+      List<PortContactSurface> surfaces) {
     Objects.requireNonNull(currency, "currency");
-    return aggregate(zoneId, currency.value(), surfaces);
+    return aggregate(zoneId, currency.value(), direction, surfaces);
   }
 
   /**

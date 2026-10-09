@@ -753,8 +753,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                       portRegime.exposedEdges(),
                       "restrictedClasses",
                       portRegime.restrictedClasses(),
+                      "taxedClasses",
+                      portRegime.taxedClasses(),
                       "zones",
                       portRegime.input().zoneCount(),
+                      "classes",
+                      portRegime.input().classCount(),
                       "reason",
                       "port-policy-times-port-efficiency-folded-by-exposed-edges"));
             }

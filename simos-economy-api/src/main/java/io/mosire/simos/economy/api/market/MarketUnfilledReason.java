@@ -28,7 +28,9 @@ import java.util.List;
  *   <li>{@link #ALGORITHM_UNCOVERED} —— 以上都不成立（留给"算法没覆盖到"的兜底，不静默当成成交）。
  * </ul>
  *
- * <p>★ 另有 {@link #NO_BUYER}（卖方视角：有货但全市场没有人买得起/需要）单独一档，避免把"卖方的剩余"硬塞进买方的档位。
+ * <p>★ 另有 {@link #NO_BUYER}（卖方视角：有货但全市场没有人买得起/需要）单独一档，避免把"卖方的剩余"硬塞进买方的档位。 ★
+ * <b>P-T1a（2026-10-10）再加一档</b>{@link #PORT_THROTTLED}（跨区口岸节流）——它是<b>法律规定层</b>的原因，
+ * 与物流/市场/信用三类都不同（见该常量的注）。
  */
 public enum MarketUnfilledReason {
 
@@ -126,7 +128,18 @@ public enum MarketUnfilledReason {
    * ⇒ 归因走市场性理由 {@link #PRICE_LIMIT}）。★ 常量<b>保留</b>是留痕与旧档/旧读数的兼容： 历史 revision 的未成交档里仍有这个字面量，{@link
    * #parse} 也必须继续认它。
    */
-  CURRENCY_MISMATCH("currency_mismatch");
+  CURRENCY_MISMATCH("currency_mismatch"),
+
+  /**
+   * ★★ <b>P-T1a（2026-10-10）：跨区口岸节流</b>—— 这一笔（或这一批货）本来可以跨区配对，但<b>两侧口岸的两道闸</b> 把它拦下/节流了：可通过比例 =
+   * {@code E_源(出口) × E_目的(入口) ÷ 1e6}（设计书 §11/§12；用户原话「出入都设规则拦…… 都需要两边都过才能跨区」）。
+   *
+   * <p>★★ <b>为什么单独一档、不并进 {@link #LOGISTICS_CAPACITY}</b>：被口岸拦下<b>不是</b>物流问题（有货、有路、有运力），
+   * 而是<b>法律规定层</b>的制度问题（设计书 §4.5：口岸/禁运属法律规定层，G9）—— 两者的处置完全不同：物流瓶颈要加运力， 口岸管制要改政策。★
+   * 被拦下的量<b>不进候选集</b>（"压根就不应该被市场区内的家户选上"，§10），也<b>不额外记账</b> （"没管住就是流入市场了，凭啥还要额外记录"，§11）⇒
+   * 本档只是<b>具名归因与诊断读数</b>，不落状态、不进账本。
+   */
+  PORT_THROTTLED("port_throttled");
 
   private final String value;
 
