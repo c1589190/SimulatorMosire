@@ -4001,6 +4001,29 @@ public final class EconomySeeder {
   }
 
   /**
+   * ★★ <b>保序的两键表</b>（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**不用 {@code
+   * Map.of}**）。
+   *
+   * <p>★★ <b>为什么这条不是洁癖</b>（2026-10-10 K 批实测，装置与全部 digest 见 {@code
+   * .superpowers/sdd/2026-10-10-key-order-determinism/fix-ledger.md}）：{@code Map.of} 的 <b>≥2
+   * 键</b>形态是 {@code ImmutableCollections.MapN}，槽位 = {@code floorMod(键.hashCode() ^ SALT, 表长)}，而
+   * {@code SALT} 取自 <b>JVM 启动时的 nanoTime</b> ⇒ <b>同一份内容在不同 JVM 上迭代序可以不同</b>（1 键形态是 {@code
+   * Map1}，恒稳定，故 上面那些单键 {@code Map.of} 无此问题）。这些表经 {@code economy.Seed} 载荷进 {@code Industry}，而 {@code
+   * Industry} 的冻结口径是"<b>按入参迭代序</b>拷进 {@code LinkedHashMap}" ⇒ 迭代序原样进状态树 ⇒ 快照字节不是内容的纯函数 （实测：同一棵树 6 个
+   * JVM 得 <b>4 个不同 digest</b>，而键集与值逐项相同、顺序无关 digest 唯一）。
+   *
+   * <p>★ 与 {@link #factoryPrices()} 是<b>同一条纪律</b>（那里早已写着"为什么不直接 {@code Map.of}"），本方法是它在<b>配方表</b>上的
+   * 拼写点。★ 只吃两个键：本目录里三个真的会抖的表恰好都是两键；多于两键的表请照 {@link #factoryPrices()} 逐条 {@code put}。
+   */
+  private static Map<String, Object> orderedTable(
+      String firstKey, Object firstValue, String secondKey, Object secondValue) {
+    Map<String, Object> table = new LinkedHashMap<>();
+    table.put(firstKey, firstValue);
+    table.put(secondKey, secondValue);
+    return Collections.unmodifiableMap(table);
+  }
+
+  /**
    * 农业（**恒有**，§十）：制度 = **领主自营庄园**（{@link #REGIME_FEUDAL}）；★★ **H0.3 起产能 = 本格可耕地**， 不再按人口切进四行。
    *
    * <p>★ 本注原写"制度 = 封建租佃" —— 那是**同词两义**：租佃（佃农家户）是另立的 {@code tenant} 档，而本方法写进载荷的是 {@link
@@ -4021,14 +4044,14 @@ public final class EconomySeeder {
         //   而"地归谁"由产权读口回答，不再与经济结算抢同一个字段。
         //   ★ 值**允许 0**（沙漠/山地/海洋格：可耕地 0）—— 0 是合法产能（"这格没有地"），不是缺键。
         Map.of("LAND", landMilliMu),
-        Map.of("meansWeightPerMille", 700, "laborWeightPerMille", 300),
+        orderedTable("meansWeightPerMille", 700, "laborWeightPerMille", 300),
         // ★★ **V7 配方**：规模单位 = **亩**（每 1 亩要 1,000 千分亩，故 {@code 规模 == 产能的亩数}）；
         //   每一亩需要 {@link #LABOR_MILLI_PER_MU} 千分劳动；每亩产 {@link #GRAIN_OUTPUT_PER_MU} 粮 + {@link
         // #FIBER_OUTPUT_PER_MU} 单位纤维
         //   （**田里同时出粮与纤维** —— 纤维是副产物，故不需要新的种植流程）；每亩下种 8 粮。
         Map.of("LAND", MILLI_MU_PER_MU),
         LABOR_MILLI_PER_MU,
-        Map.of(COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU, COMMODITY_FIBER, FIBER_OUTPUT_PER_MU),
+        orderedTable(COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU, COMMODITY_FIBER, FIBER_OUTPUT_PER_MU),
         Map.of("LAND", Map.of(COMMODITY_GRAIN, SEED_MILLI_PER_MU)));
   }
 
@@ -4065,7 +4088,7 @@ public final class EconomySeeder {
         // ★★ 产能 = 本格**织机总数**（旧版四行各一份、Σ 才是总数）。★ 值允许 0（农村人口 < 20 的格一台也没有）。
         Map.of("TOOL", looms),
         // 分配：家户自给 ⇒ 劳动权重为主（没有土地可摊；织机按户头摊）。
-        Map.of("meansWeightPerMille", 300, "laborWeightPerMille", 700),
+        orderedTable("meansWeightPerMille", 300, "laborWeightPerMille", 700),
         Map.of("TOOL", 1L),
         LABOR_MILLI_PER_LOOM,
         Map.of(COMMODITY_CLOTH, CLOTH_PER_LOOM_PER_CYCLE),
@@ -4099,10 +4122,10 @@ public final class EconomySeeder {
         REGIME_HANDICRAFT,
         // ★★ 产能 = 本格**作坊总座数**（旧版四行各一份、Σ 才是总数）。★ 值允许 0。
         Map.of("WORKSHOP", workshops),
-        Map.of("meansWeightPerMille", 400, "laborWeightPerMille", 600),
+        orderedTable("meansWeightPerMille", 400, "laborWeightPerMille", 600),
         Map.of("WORKSHOP", 1L),
         LABOR_MILLI_PER_WORKSHOP,
-        Map.of(
+        orderedTable(
             COMMODITY_CLOTH,
             CLOTH_PER_WORKSHOP_PER_CYCLE,
             COMMODITY_TOOL,
@@ -4112,7 +4135,7 @@ public final class EconomySeeder {
         //   {@link #TOOL_MILLI_PER_WORKSHOP_CYCLE}。
         Map.of(
             "WORKSHOP",
-            Map.of(
+            orderedTable(
                 COMMODITY_FIBER, fiberPerWorkshopMilli(),
                 COMMODITY_TOOL, toolPerWorkshopMilli())));
   }
@@ -4143,7 +4166,7 @@ public final class EconomySeeder {
             RegimeOperators.MERCHANT,
             Map.of(AssetKind.CATTLE.name(), MERCHANT_CATTLE_PER_CITY),
             // 分配模板（旧形状的 split 规则）：承运以运力资产为主；trade 不发劳动配额，labor 权重只是模板占位。
-            Map.of("meansWeightPerMille", 1000, "laborWeightPerMille", 0),
+            orderedTable("meansWeightPerMille", 1000, "laborWeightPerMille", 0),
             Map.of(AssetKind.CATTLE.name(), 1L),
             LABOR_MILLI_PER_TRADE_UNIT,
             Map.of(),
