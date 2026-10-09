@@ -84,6 +84,14 @@ public final class EconomyDayStepper implements AutoCloseable {
    */
   private PortTaxInput portTax = PortTaxInput.none();
 
+  /**
+   * ★★ <b>P-T1d：本轮的政府采购优先级（谁要求管控市场 + 各自的行政力池）</b>（app 组合根从 gov 政策与本政府的编制劳动力折算后注入； 逐轮瞬态、只读投影、不进状态）。
+   *
+   * <p>★ 与 {@link #portEnforcement} / {@link #portTax} 同一条纪律：经济侧只做"按余量给置顶排序 + 见底硬停"，池子怎么来由组合根决定； 缺省
+   * {@link ProcurementPriorityInput#none()} ⇒ 没有政府要求管控市场 ⇒ 无置顶、无消耗 ⇒ 旧世界逐值不变（I-C2）。
+   */
+  private ProcurementPriorityInput procurementPriority = ProcurementPriorityInput.none();
+
   /** ★★ R2：本会话的并行度（默认单线程退化路径；{@link #finish()} 关掉自建的池）。 */
   private final EconomyParallelism parallelism;
 
@@ -268,6 +276,23 @@ public final class EconomyDayStepper implements AutoCloseable {
     return portTax;
   }
 
+  /**
+   * ★★ <b>P-T1d：替换本轮的政府采购优先级</b>（app 组合根从"该政府要求管控市场的政策 × 本政府编制劳动力折成的行政力池"注入； 与 {@link
+   * #updatePortTax(PortTaxInput)} 同一条"只读投影、不进状态"的纪律）。
+   *
+   * <p>★ <b>时序</b>与口岸管制力/税相同：折算读的是当日结算之后的编制劳动力，故注入值作用于<b>下一次</b>市场轮（一 tick 滞后）。
+   */
+  public void updateProcurementPriority(ProcurementPriorityInput next) {
+    Objects.requireNonNull(
+        next, "procurementPriority 不得为 null（没有政府管控就给 ProcurementPriorityInput.none()）");
+    this.procurementPriority = next;
+  }
+
+  /** ★ P-T1d：本条会话当前的政府采购优先级（只读；缺省 none = 没有政府要求管控市场）。 */
+  public ProcurementPriorityInput procurementPriority() {
+    return procurementPriority;
+  }
+
   /** ★★ <b>Z7c：最近一次 {@link #step(long)} 是否关账了至少一个产业周期</b>（只读；见字段注释）。默认 {@code false}。 */
   public boolean lastCycleClosed() {
     return lastCycleClosed;
@@ -408,7 +433,8 @@ public final class EconomyDayStepper implements AutoCloseable {
         composition,
         marketExcludedHouseholds,
         portEnforcement,
-        portTax);
+        portTax,
+        procurementPriority);
     OptionalLong closedAfter =
         session.sheet().meta().map(meta -> meta.lastClosedCycle()).orElseGet(OptionalLong::empty);
     this.lastCycleClosed = !closedBefore.equals(closedAfter);

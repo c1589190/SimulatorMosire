@@ -862,9 +862,52 @@ public final class EconomySettlement {
       Set<HouseholdId> marketExcludedHouseholds,
       PortEnforcementInput portEnforcement,
       PortTaxInput portTax) {
+    settleOneDayInto(
+        session,
+        day,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        famineMortalityPerMille,
+        ledger,
+        parallelism,
+        profitCycle,
+        composition,
+        marketExcludedHouseholds,
+        portEnforcement,
+        portTax,
+        ProcurementPriorityInput.none());
+  }
+
+  /**
+   * ★★ <b>P-T1d：带政府采购优先级的日结算入口</b>（唯一生产者 = {@code EconomyDayStepper.step}，其值由 app 组合根从 gov
+   * 政策与本政府编制劳动力折算后注入）。
+   *
+   * <p>★ {@code procurementPriority} 只影响<b>市场轮的撮合顺序</b>（要求管控市场的政府，其国库户挂单在行政力池余量内强制置顶；
+   * 只改顺序、不改价格与量规则，见 {@code ProcurementPriorityOrder}）；缺省 {@link ProcurementPriorityInput#none()} ⇒
+   * 无置顶、无消耗 ⇒ 逐值退回改前行为（I-C2）。
+   */
+  static void settleOneDayInto(
+      EconomySession session,
+      long day,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      int famineMortalityPerMille,
+      ProductionLedger.Accumulator ledger,
+      EconomyParallelism parallelism,
+      EnterpriseProfitBook.CycleAccumulator profitCycle,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
+      Set<HouseholdId> marketExcludedHouseholds,
+      PortEnforcementInput portEnforcement,
+      PortTaxInput portTax,
+      ProcurementPriorityInput procurementPriority) {
     Objects.requireNonNull(
         portEnforcement, "portEnforcement（没有口岸面给 PortEnforcementInput.none()，不得为 null）");
     Objects.requireNonNull(portTax, "portTax（没有税给 PortTaxInput.none()，不得为 null）");
+    Objects.requireNonNull(
+        procurementPriority,
+        "procurementPriority（没有政府管控给 ProcurementPriorityInput.none()，不得为 null）");
     Objects.requireNonNull(session, "session（S1：revision 级会话持有可变工作表）");
     Objects.requireNonNull(accounts, "accounts（S1：账户会话是会话状态，必须由调用方载入）");
     Objects.requireNonNull(topology, "topology（M2.3：区域拓扑是只读输入；单格世界用 MarketTopology.singleHex）");
@@ -1887,7 +1930,29 @@ public final class EconomySettlement {
           marketRound
               .withGovMandates(govMandatePlan)
               .withPortEnforcement(portEnforcement)
-              .withPortTax(portTax);
+              .withPortTax(portTax)
+              // ★★ P-T1d：政府采购优先级（谁要求管控市场 + 各自的行政力池）随授权计划一起注入 ——
+              //   `withProcurementPriority` 逐字段带过前五个字段（丢了它 = 置顶整段不生效且毫无报错）。
+              .withProcurementPriority(procurementPriority);
+      // ★★ P-T1d 防复发守卫：与 govMandates / portTax 同一条（丢了它 = 政府要求管控却一户也置不了顶，契约故障）。
+      //   契约/一致性故障 ⇒ ERROR + fail-closed（§一.9：不降级）；正常路径上恒不触发。
+      if (procurementPriority.isActive()
+          && marketRound.procurementPriority() != procurementPriority) {
+        EventLog.channel(MANDATE)
+            .error(
+                LogEvent.of(
+                    "MARKET_PROCUREMENT_PRIORITY_CONTRACT",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    day,
+                    "reason",
+                    "procurement-priority-input-lost-by-with-chain",
+                    "expectedGovernments",
+                    procurementPriority.governmentCount(),
+                    "actualGovernments",
+                    marketRound.procurementPriority().governmentCount()));
+        throw new IllegalStateException("政府采购优先级的注入表在本轮装配里被丢掉了（置顶不会生效，契约故障）: day=" + day);
+      }
       // ★★ P-T1b 防复发守卫：与 govMandates 同一条（丢了税 = 三层税一分不收且毫无报错）。
       //   契约/一致性故障 ⇒ ERROR + fail-closed（§一.9：不降级）；正常路径上恒不触发。
       if (portTax.isActive() && marketRound.portTax() != portTax) {

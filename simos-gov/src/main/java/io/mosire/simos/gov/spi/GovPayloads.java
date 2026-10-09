@@ -161,8 +161,13 @@ final class GovPayloads {
    *  "currencyRules":{
    *    "silver":{"lending":{"entryRestrictionPerMille":1000},
    *              "commodity":{"exitRestrictionPerMille":250,
-   *                           "exitTax":{"mode":"ad_valorem_per_mille","amount":50}}}}}
+   *                           "exitTax":{"mode":"ad_valorem_per_mille","amount":50}}}}},
+   *  "marketControl":true}
    * }</pre>
+   *
+   * <p>★★ <b>P-T1d：{@code marketControl}</b>（可缺省，缺省 {@code false}）—— "政府要求管控市场"：打开后该政府的国库户（{@code
+   * hh-gov-<govUnitId>}）挂单在<b>行政力池余量内</b>强制置顶（最先卖 / 最先买），每超越一户消耗一份行政力，见底硬停（设计书 §16.3/§17）。
+   * 它<b>不是</b>规则表，形状是布尔 ⇒ 这里按"缺失 = false、非布尔 = 具名拒"解析（见 {@link #marketControl(JsonNode)}）。
    *
    * <p>★★ <b>币种表多一层"挂单类型"键</b>（P-T1e；设计书 §14.3-4）：{@code currencyRules} 的值是 {@code {挂单类型字面量 →
    * 规则对象}}（词表 = {@code exchange|commodity|lending}，见 {@link
@@ -188,7 +193,24 @@ final class GovPayloads {
     Map<CommodityId, PortRule> commodities =
         ruleTable(payload, "commodityRules", CommodityId::parse);
     Map<CurrencyId, Map<MarketOrderKind, PortRule>> currencies = currencyRuleTable(payload);
-    return new GovPortPolicy(commodities, currencies);
+    return new GovPortPolicy(commodities, currencies, marketControl(payload));
+  }
+
+  /**
+   * ★★ <b>P-T1d：{@code marketControl}（政府要求管控市场）的解析</b>：缺失/{@code null} ⇒ {@code false}（缺省 = 不要求管控 ⇒
+   * 无置顶、无行政力消耗 ⇒ 逐值不变，I-C2）；必须是<b>JSON 布尔</b>（字符串 {@code "true"} / 数字 {@code 1} 一律具名拒 ——
+   * 静默当布尔会让"到底开没开管控"变成猜，那正是本仓最忌的一族）。
+   */
+  private static boolean marketControl(JsonNode payload) {
+    JsonNode node = payload.get("marketControl");
+    if (node == null || node.isNull()) {
+      return false;
+    }
+    if (!node.isBoolean()) {
+      throw new IllegalArgumentException(
+          "字段 marketControl 必须是布尔（true = 政府要求管控市场；不要求就省略或写 false）: " + node);
+    }
+    return node.booleanValue();
   }
 
   /**

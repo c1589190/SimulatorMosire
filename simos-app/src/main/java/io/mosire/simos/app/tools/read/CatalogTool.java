@@ -383,7 +383,10 @@ public final class CatalogTool implements AgentTool {
                   + "缺省/显式空对象 = 空表 = 该类**不限制**（I-P1 用户「肯定0啊」）；同类型重复设置 = **整表替换**；"
                   + "与既有政策逐值相同 ⇒ 幂等 no-op 不落 revision；负限制/负税/未知类/坏 JSON/未知单位 ⇒"
                   + " 具名 Rejected 零 revision；★ 跨区过境按 entry/exit **两侧相乘**节流"
-                  + "（E_源出口 × E_目的入口）；商品过境税已真收（P-T1b）；★ GmOnly 标记只挡住令/"
+                  + "（E_源出口 × E_目的入口）；商品过境税已真收（P-T1b）；★★ P-T1d："
+                  + " marketControl?(布尔，缺省 false = 不要求管控；true = 政府要求管控市场 ⇒ 该政府国库户"
+                  + "「hh-gov-<unitId>」的挂单在**行政力池余量内**强制置顶（最先卖/最先买），每超越一户消耗"
+                  + " 一份行政力、见底硬停；只改撮合顺序、不改价格；非布尔值 ⇒ 具名拒)；★ GmOnly 标记只挡住令/"
                   + "RegisterEffect/决策人 catalog 三条路径，不拦命令总线）"),
           Map.entry(
               "gov.SetAdministrationPlan",

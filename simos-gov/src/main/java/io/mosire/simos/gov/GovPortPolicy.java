@@ -19,7 +19,8 @@ import java.util.Set;
  *
  * <pre>
  * GovPortPolicy(commodityRules: Map&lt;CommodityId, PortRule&gt;,
- *               currencyRules:  Map&lt;CurrencyId, Map&lt;MarketOrderKind, PortRule&gt;&gt;)
+ *               currencyRules:  Map&lt;CurrencyId, Map&lt;MarketOrderKind, PortRule&gt;&gt;,
+ *               marketControl:  boolean)                    ← ★ P-T1d："政府要求管控市场"
  *
  * PortRule = 入口限制‰ / 出口限制‰ / 入口税 / 出口税        （见 economy-api 的 {@link PortRule}）
  * </pre>
@@ -59,12 +60,26 @@ import java.util.Set;
  * fail-closed），不静默忽略。★ <b>挂单类型</b>相反：它是 {@code economy-api} 的受控词表（gov 编译期看得见）， 故在载荷解析处具名拒（{@link
  * MarketOrderKind#parse}），不必等组合根。
  *
+ * <p>★★ <b>P-T1d：第三个字段 {@code marketControl}（"政府要求管控市场"）</b>（2026-10-10 口岸设计书 §16.3/§17；用户原话
+ * 「如果政府要求管控市场，视为政府强制把自己的账户在市场交易里强制到最开始卖、最开始买」）：它是<b>开关</b>（不是强度）—— 打开后该政府的国库户（{@code
+ * hh-gov-&lt;govUnitId&gt;}）挂单在<b>行政力池余量内</b>强制置顶（最先卖/最先买），每超越一户消耗一份行政力，见底硬停。
+ *
+ * <ul>
+ *   <li><b>为什么放在本类而不是新开一条政策/命令</b>：本类就是"政府对本市场区的法律规定层"的既有载体（设计书 §4.5 G9）， {@code gov.SetPortPolicy}
+ *       也已经是 {@code GmOnly} 的既有命令面 ⇒ 不新增权限面、不新增命令类型（派单冻结口径 §1）；
+ *   <li><b>缺省 false = 缺省语义中性</b>（I-C2）：没要求管控的世界既没有置顶也没有行政力消耗 ⇒ 逐值不变；
+ *   <li><b>它不是"规则表"，但也是"设过的政策"</b>：{@link #noRules()} 因此把本开关算进去（开了管控的政策不是"空政策"）。
+ * </ul>
+ *
  * @param commodityRules 商品 → 四元组规则（缺键 = 不限制/不收税；保序不可变）
  * @param currencyRules 币种 → 挂单类型 → 四元组规则（缺键 = 不限制/不收税；内外两层都保序不可变）
+ * @param marketControl ★ P-T1d：政府是否<b>要求管控市场</b>（{@code true} = 该政府国库户的挂单按行政力池余量置顶；缺省 {@code false}
+ *     = 不要求，逐值不变）
  */
 public record GovPortPolicy(
     Map<CommodityId, PortRule> commodityRules,
-    Map<CurrencyId, Map<MarketOrderKind, PortRule>> currencyRules) {
+    Map<CurrencyId, Map<MarketOrderKind, PortRule>> currencyRules,
+    boolean marketControl) {
 
   /**
    * ★★ <b>返回防御性副本</b>（修 SpotBugs {@code EI_EXPOSE_REP}）：record 的自动访问器会把内部表直接交出去。 ★ <b>逐层 {@code
@@ -90,9 +105,19 @@ public record GovPortPolicy(
     currencyRules = freezeCurrencies(currencyRules, "currencyRules");
   }
 
-  /** 空政策 = 什么都不限制、什么都不收（缺键 GOV 的默认；缺该组件键时的读法）。 */
+  /** 空政策 = 什么都不限制、什么都不收、不要求管控（缺键 GOV 的默认；缺该组件键时的读法）。 */
   public static GovPortPolicy empty() {
-    return new GovPortPolicy(Map.of(), Map.of());
+    return new GovPortPolicy(Map.of(), Map.of(), false);
+  }
+
+  /**
+   * ★★ <b>P-T1d：该政府要不要管控市场</b>（= {@link #marketControl}；唯一读法）。
+   *
+   * <p>★ 名字刻意不用 getter 形态：本类型是<b>持久状态</b>（{@code GovState.portPolicies} ⇒ 快照/变更集 JSON）， getter
+   * 形态的方法名会被 Jackson 内省成属性写进线格式（见 {@link #noRules()} 的注）⇒ 谓词一律用非 getter 名。
+   */
+  public boolean controlsMarket() {
+    return marketControl;
   }
 
   /** 该 GOV 对某商品的规则；缺键 ⇒ {@link PortRule#unrestricted()}（不限制、不收税）。 */
@@ -171,14 +196,16 @@ public record GovPortPolicy(
   }
 
   /**
-   * 是否一条规则都没设（两表全空 ⇒ {@code true}）。
+   * 是否一条规则都没设、也没要求管控（两表全空 <b>且</b> {@link #marketControl} = false ⇒ {@code true}）。
+   *
+   * <p>★ <b>P-T1d 起把管控开关算进来</b>：一个"只开管控、不设限制/税"的政策是<b>有内容的政策</b>（它会产生置顶与行政力消耗）， 不能再被读成"空"。
    *
    * <p>★ <b>名字刻意不用 {@code isEmpty()}</b>：本类型是<b>持久状态</b>（{@code GovState.portPolicies} ⇒ 快照/变更集
    * JSON）， getter 形态的方法名会被 Jackson 内省成属性 {@code "empty"} 写进线格式，而读侧 {@code
    * FAIL_ON_UNKNOWN_PROPERTIES} 严格 ⇒ 写出来的档自己读不回（手工往返实测复现）。旧形状的 {@code isEmpty()} 是同一颗地雷，本批顺手拆掉。
    */
   public boolean noRules() {
-    return commodityRules.isEmpty() && currencyRules.isEmpty();
+    return commodityRules.isEmpty() && currencyRules.isEmpty() && !marketControl;
   }
 
   /** 币种表里设过规则的（币种 × 类型）条数（只进日志/读数）。 */

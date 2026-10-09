@@ -165,6 +165,14 @@ final class MarketSettlement {
   /** ★ 运力随距离衰减的参考距离（hex）：{@code capacity = 出厂值 × 参考 / max(1, distance)}（R8 满额、R16 半额）。 */
   static final long MARKET_ROUTE_CAPACITY_REFERENCE_DISTANCE_HEX = 8L;
 
+  /**
+   * ★★ <b>P-T1d：槽位"没有置顶名次"的哨兵</b>（本轮没有政府要求管控市场 ⇒ 置顶 pass 根本没跑 ⇒ 撮合按既有顺序：卖侧成本序、买侧列表序）。
+   *
+   * <p>★ 为什么要一个哨兵而不是 {@code 0}：{@code 0} 是**合法名次**（簿首）。名次只在 {@code
+   * ctx.round.procurementPriority().isActive()} 为真时才被读，两件事（"跑没跑"与"名次是几"）分开写、分开读。
+   */
+  static final long PROCUREMENT_RANK_ABSENT = -1L;
+
   /*
    * ★★ P4/P6：运费的千分费率不再出自本类的"每 hex 10‰"常量，而是唯一来自
    * {@link MarketTopology#freightPerMilleBetween(HexCoord, HexCoord)}（基础距离费 + 离城辐射 − 道路瓶颈折扣 −
@@ -372,6 +380,20 @@ final class MarketSettlement {
      * portEnforcement} 同一条"克隆必须逐字段带过"的纪律（本类踩过三次的那个坑）。
      */
     private PortTaxInput portTax = PortTaxInput.none();
+
+    /**
+     * ★★ <b>P-T1d（2026-10-10 口岸设计书 §16.3/§17）：本轮的政府采购优先级</b>（谁要求管控市场 + 各自的行政力池；组合根折算后经 {@link
+     * #withProcurementPriority} 注入）。
+     *
+     * <p>★ 它只在<b>市场轮的撮合顺序</b>上兑现：要求管控市场的政府（表里有它的国库户 {@code hh-gov-<govUnitId>}），
+     * 其挂单在行政力池余量内被移到挂单簿<b>最前</b>（最先卖 / 最先买），每超越一户扣一份、见底硬停；<b>只改顺序、不改价格与量规则</b> （唯一拼写点 = {@code
+     * ProcurementPriorityOrder}）。
+     *
+     * <p>★ 默认 {@link ProcurementPriorityInput#none()} ⇒ <b>逐值退回改前行为</b>（没有政府要求管控 ⇒ 一个数都不动，I-C2）。 ★
+     * 逐轮瞬态：不进 {@code EconomyData}、不进变更集、不落盘。★ 与 {@code arbitrage}/{@code fx}/{@code
+     * govMandates}/{@code portEnforcement}/{@code portTax} 同一条"克隆必须逐字段带过"的纪律（本类踩过三次的那个坑）。
+     */
+    private ProcurementPriorityInput procurementPriority = ProcurementPriorityInput.none();
 
     /**
      * ★★ <b>2026-10-08（阶段 2-A2a）：本轮的外汇入参</b>（官方汇率 + 窗口储备上限；由 {@code EconomySettlement} 从 {@code
@@ -667,6 +689,7 @@ final class MarketSettlement {
       next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段
       next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
+      next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
       return next;
     }
 
@@ -707,6 +730,7 @@ final class MarketSettlement {
       next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段
       next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
+      next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
       return next;
     }
 
@@ -733,6 +757,59 @@ final class MarketSettlement {
     /** ★★ P-T1b：本轮逐区的税率与收税政府（缺省 {@link PortTaxInput#none()} ⇒ 三层税都不收）。 */
     PortTaxInput portTax() {
       return portTax;
+    }
+
+    /**
+     * ★★ <b>P-T1d：注入本轮的政府采购优先级（谁要求管控市场 + 各自的行政力池）</b>（返回一个新的 {@link MarketRound}；原对象不动）。
+     *
+     * <p>★ 形制与 {@link #withPortTax} 逐字相同：不新增构造器签名，既有调用方自然拿到 {@link
+     * ProcurementPriorityInput#none()}（= 没有政府要求管控，逐值退回改前）。★ 它必须与其余五个 {@code withX} 互相带过（见各方法里的
+     * {@code next.xxx = xxx} 几行）——丢字段是本类踩过三次的坑。
+     */
+    MarketRound withProcurementPriority(ProcurementPriorityInput input) {
+      Objects.requireNonNull(
+          input, "withProcurementPriority 的入参不得为 null（没有政府管控就给 ProcurementPriorityInput.none()）");
+      MarketRound next =
+          new MarketRound(
+              day,
+              householdEconomies,
+              householdGoods,
+              householdMoney,
+              householdFrozenGoods,
+              householdFrozenMoney,
+              unmetToday,
+              householdOfActor,
+              industries,
+              units,
+              assetShares,
+              relations,
+              laborCommitments,
+              shipments,
+              ledger,
+              operatorConditions,
+              index,
+              householdDemands,
+              regulation,
+              creditConfig,
+              debts,
+              marketExcludedHouseholds);
+      next.arbitrage = arbitrage;
+      next.fx = fx;
+      next.govMandates = govMandates;
+      next.portEnforcement = portEnforcement;
+      next.portTax = portTax;
+      next.procurementPriority = input;
+      return next;
+    }
+
+    /**
+     * ★★ <b>P-T1d：本轮的政府采购优先级</b>（缺省 {@link ProcurementPriorityInput#none()} ⇒ 没有政府要求管控市场）。
+     *
+     * <p>★ 读者只有两处：撮合前的置顶排序（{@link #applyProcurementPriority}）与撮合里"按哪一套顺序"的判据 ——
+     * 它<b>不</b>参与订单生成、不参与结算、不改任何价格/量算式。
+     */
+    ProcurementPriorityInput procurementPriority() {
+      return procurementPriority;
     }
 
     /**
@@ -772,6 +849,7 @@ final class MarketSettlement {
       next.govMandates = govMandates;
       next.portEnforcement = portEnforcement;
       next.portTax = input;
+      next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
       return next;
     }
 
@@ -813,6 +891,7 @@ final class MarketSettlement {
       next.govMandates = govMandates;
       next.portEnforcement = input;
       next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段
+      next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
       return next;
     }
 
@@ -855,6 +934,7 @@ final class MarketSettlement {
       next.govMandates = plan;
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段
       next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
+      next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
       return next;
     }
 
@@ -913,6 +993,7 @@ final class MarketSettlement {
       next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段（丢了它 = 国库户自动订单守卫整段失效）
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段（丢了它 = 口岸管制整段不生效）
       next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
+      next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
       return next;
     }
 
@@ -1491,6 +1572,12 @@ final class MarketSettlement {
 
     // ── 1b. P1.2：每轮只建一次的只读索引（区内/跨区/邻接/商品序）—— worker 只读，不持有可写状态 ─────
     MarketIndexes indexes = MarketIndexes.build(ctx);
+
+    // ── 1c. ★★ P-T1d：政府采购优先级（§2.6 第 5 步：置顶在"商户决策步"之后、"撮合"之前）──────────
+    //   ★ 只写槽位的两个顺序字段（名次 + 是否真被推进）；不碰订单、不碰价格、不碰任何量算式。
+    //   ★ 缺省（没有政府要求管控市场）⇒ 本调用一行不跑 ⇒ 名次保持 PROCUREMENT_RANK_ABSENT ⇒ 逐值不变（I-C2）。
+    //   ★ 位置必须在 MarketIndexes 之后（簿 = 索引的 (区 × 商品) 桶）且在撮合之前（顺序是撮合的输入）。
+    applyProcurementPriority(ctx, indexes);
 
     // ── 2. 冻结（M1.2 的写者接上）：挂单即占用；成交/发运/轮末释放 ────────────────────────
     commitFreezes(ctx);
@@ -3589,6 +3676,121 @@ final class MarketSettlement {
     return IndustryHexKeys.hexKey(hex.q(), hex.r());
   }
 
+  // ── ★★ P-T1d：政府采购优先级（置顶 pass；**只改顺序、不改价格/量**）──────────────────────
+
+  /**
+   * ★★ <b>P-T1d：把"要求管控市场"的政府的挂单在行政力池余量内推到挂单簿最前</b>（设计书 §16.3/§17；用户原话
+   * 「视为政府强制把自己的账户在市场交易里强制到最开始卖、最开始买，这时候前方要超越多少家户，政府就需要付多少额外行政劳动力」「如果行政力见底了那就不允许继续超越了」）。
+   *
+   * <pre>
+   * 前置：本轮注入表里**有**该政府的国库户（hh-gov-&lt;govUnitId&gt;）= "政府要求管控市场"（缺省空表 ⇒ 本 pass 直接返回）
+   * 簿   ：一张"挂单簿" = (市场区 × 商品 × 买/卖侧)；买侧的服务序 = 槽位列表序，卖侧 = 成本序
+   *        （成本序与车道无关：{@link ProducerCostBook#landedCostMilli} 对单位成本只是"加运费常数"）
+   * 推进 ：逐簿、逐政府（国库户 id 升序）、逐该政府的槽位（服务序）——
+   *        从"本政府已放置块之后"起逐只**向前**越过，**每越过一户扣一份行政力**；
+   *        付得起就继续、付不起（池 = 0）就地停住（fail-closed：**不许先超后欠**）
+   * 产出 ：每只槽位一个**全序名次**（该簿置顶后的位次）+"是否真的越过 ≥ 1 户"；
+   *        撮合按名次走（卖侧取代成本序、买侧取代列表序），价格与量算式一个字不改
+   * </pre>
+   *
+   * <p>★★ <b>算法本体在 {@link ProcurementPriorityOrder#advance}</b>（买/卖两侧唯一的实现；本方法只负责"逐簿喂进去"）。
+   *
+   * <p>★★ <b>三条冻结口径（逐条对上派单 §4）</b>：
+   *
+   * <ol>
+   *   <li><b>只改顺序</b>：本 pass 只写 {@code procurementRank}/{@code procurementOvertook} 两个槽位字段，
+   *       <b>不动</b>订单、不动价格、不动限价、不动任何量算式；撮合侧只把"按成本序/列表序"换成"按名次"；
+   *   <li><b>全序</b>：同一张簿里名次两两不同（= 置顶后的位次）；政府单在最先、<b>同政府多单保持 canonical 序</b>；
+   *   <li><b>越一户一份 + 见底硬停</b>：行政力池单位 = 家户（§17.4 N-1）；同一张簿里同一户只付一次；池 = 0 时不再越过。
+   * </ol>
+   *
+   * <p>★★ <b>簿的遍历序（确定性 I7）</b>：先买侧簿、后卖侧簿，各自按 {@code MarketIndexes} 的建表序（= 槽位插入序， 内容的纯函数）；簿内政府的处理序 =
+   * 国库户 id 升序（见 {@link ProcurementPriorityOrder}）。<b>池子是跨簿共享的</b> （"每 tick
+   * 一份编制劳动力"），所以"先买后卖"这条遍历序也是池子耗尽顺序的一部分 —— 它必须固定，故写在这里。
+   *
+   * <p>★★ <b>缺省语义中性（I-C2）</b>：{@code !input.isActive()} ⇒ <b>本方法一行不跑</b>（名次保持 {@link
+   * #PROCUREMENT_RANK_ABSENT}）⇒ 撮合仍走既有顺序 ⇒ 没有任何政府要求管控的世界逐值不变。
+   */
+  private static void applyProcurementPriority(MatchContext ctx, MarketIndexes indexes) {
+    ProcurementPriorityInput input = ctx.round.procurementPriority();
+    if (!input.isActive()) {
+      return; // ★ 缺省语义中性：一个字段都不写、一只槽位都不动（I-C2）
+    }
+    Map<HouseholdId, Long> poolLeft = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, Long> entry : input.overtakeUnitsByTreasury().entrySet()) {
+      poolLeft.put(entry.getKey(), entry.getValue());
+    }
+    ProcurementPriorityOrder.BookResult tally = ProcurementPriorityOrder.BookResult.ZERO;
+    // ① 买侧簿（区 × 商品）② 卖侧簿（区 × 商品）—— 顺序固定：先买后卖，各自按索引建表序。
+    for (Map.Entry<String, Map<CommodityId, List<BuySlot>>> byRegion :
+        indexes.buysByRegionCommodity.entrySet()) {
+      for (Map.Entry<CommodityId, List<BuySlot>> book : byRegion.getValue().entrySet()) {
+        tally =
+            tally.plus(
+                ProcurementPriorityOrder.advance(
+                    book.getValue(),
+                    slot -> slot.buyer.household,
+                    (slot, rank) -> slot.procurementRank = rank,
+                    (slot, overtook) -> slot.procurementOvertook = overtook,
+                    input,
+                    poolLeft,
+                    ctx.round.day));
+      }
+    }
+    for (Map.Entry<String, Map<CommodityId, List<SellSlot>>> byRegion :
+        indexes.sellsByRegionCommodity.entrySet()) {
+      for (Map.Entry<CommodityId, List<SellSlot>> book : byRegion.getValue().entrySet()) {
+        tally =
+            tally.plus(
+                ProcurementPriorityOrder.advance(
+                    book.getValue(),
+                    slot -> slot.seller.household,
+                    (slot, rank) -> slot.procurementRank = rank,
+                    (slot, overtook) -> slot.procurementOvertook = overtook,
+                    input,
+                    poolLeft,
+                    ctx.round.day));
+      }
+    }
+    logProcurementPriority(ctx.round.day, input, poolLeft, tally);
+  }
+
+  /** ★ P-T1d 轮级 INFO：管控开启 / 本轮置顶数与消耗（§一.9：INFO = 这一轮发生了什么 + 具名计数）。 */
+  private static void logProcurementPriority(
+      long day,
+      ProcurementPriorityInput input,
+      Map<HouseholdId, Long> poolLeft,
+      ProcurementPriorityOrder.BookResult tally) {
+    if (!MARKET.isInfoEnabled()) {
+      return;
+    }
+    long remaining = 0L;
+    for (Long left : poolLeft.values()) {
+      remaining = Math.addExact(remaining, left);
+    }
+    EventLog.channel(MARKET)
+        .info(
+            LogEvent.of(
+                "MARKET_PROCUREMENT_PRIORITY_APPLIED",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                day,
+                "governments",
+                input.governmentCount(),
+                "poolUnits",
+                input.totalUnits(),
+                "overtakesConsumed",
+                tally.consumed(),
+                "poolUnitsLeft",
+                remaining,
+                "promotedSlots",
+                tally.promoted(),
+                "hardStops",
+                tally.hardStops(),
+                "reason",
+                "market-control-demanded-orders-promoted-within-administrative-pool"));
+  }
+
   // ── 区内撮合（按市场区并行算意向；协调器按拓扑区序回放）────────────────────────────────
 
   /**
@@ -4210,58 +4412,118 @@ final class MarketSettlement {
    * {@code ProportionalSplit}）。
    *
    * <p>★ <b>成本只改"谁先被选"</b>：{@code price} 一路不变，成交单价与限价过滤都不看成本（计划明文）。
+   *
+   * <p>★★ <b>P-T1d：顺序来自"服务序"（卖侧 = 成本序或置顶名次，买侧 = 列表序或置顶名次）</b>， 而"档"=
+   * <b>相邻且同成本、同置顶状态</b>的连续段；买侧按"档"（相邻同置顶状态的连续段）逐段配给。 <b>没有</b>政府要求管控的世界：卖侧服务序 == 成本序、买侧只有一段 ==
+   * 改前的唯一一组 ⇒ 逐值不变（I-C2）。
    */
   private static void matchGroup(
       MatchContext ctx, List<BuySlot> buys, List<SellSlot> sells, long price, RouteContext route) {
     if (buys.isEmpty() || sells.isEmpty()) {
       return;
     }
+    List<BuySlot> orderedBuys = procurementOrderedBuys(ctx, buys);
+    List<List<BuySlot>> buyRuns = procurementBuyRuns(orderedBuys);
     List<SellSlot> ordered = new ArrayList<>(sells);
-    ordered.sort(costOrder(route));
+    ordered.sort(servingOrder(ctx, route));
     int tierStart = 0;
     while (tierStart < ordered.size()) {
       long tierCost = landedCostOf(ordered.get(tierStart), route);
+      boolean tierOvertook = ordered.get(tierStart).procurementOvertook;
       int tierEnd = tierStart + 1;
-      while (tierEnd < ordered.size() && landedCostOf(ordered.get(tierEnd), route) == tierCost) {
+      while (tierEnd < ordered.size()
+          && landedCostOf(ordered.get(tierEnd), route) == tierCost
+          && ordered.get(tierEnd).procurementOvertook == tierOvertook) {
         tierEnd++;
       }
       List<SellSlot> tier = new ArrayList<>(tierEnd - tierStart);
-      long supply = 0L;
       for (int i = tierStart; i < tierEnd; i++) {
         SellSlot sell = ordered.get(i);
         if (sell.remaining > 0L) {
           tier.add(sell);
-          supply += sell.remaining;
         }
       }
       // ★ 需求按**当前剩余**重算：上一层吃掉的量不再计入（"最低成本层优先"因此是逐层的，不是一次性预分配）。
-      long[] weights = new long[buys.size()];
-      long demand = 0L;
-      for (int i = 0; i < buys.size(); i++) {
-        // ★★ P-T5b：本档的价格 `price` 是**本格计价币**的参考价，而 affordableQuantity 收的是**买方支付币**单价
-        //   （3c 起其余三处调用点传的都是折过的单价）⇒ 这里补上同一次折算（同币 ⇒ 原样，逐值不变）。
-        //   ★ 说不出这种钱的价（-1）⇒ 本档买不起（不得让它落进"完全免费"那条分支）。
-        long buyerPrice = buys.get(i).payAmountOf(price);
-        long affordable =
-            buyerPrice < 0L ? 0L : affordableQuantity(ctx, buys.get(i), buyerPrice, route);
-        weights[i] = Math.min(buys.get(i).remaining, affordable);
-        demand += weights[i];
-      }
-      if (demand <= 0L) {
-        return; // 没有可付需求 ⇒ 后面的层也卖不动（成本排序不改变这一事实）
-      }
-      long matched = Math.min(demand, supply);
-      if (matched > 0L) {
+      //   ★ P-T1d：逐"买档"再重算一次（缺省只有一段 ⇒ 与改前逐值相同）。
+      for (List<BuySlot> run : buyRuns) {
+        long[] weights = new long[run.size()];
+        long demand = 0L;
+        for (int i = 0; i < run.size(); i++) {
+          // ★★ P-T5b：本档的价格 `price` 是**本格计价币**的参考价，而 affordableQuantity 收的是**买方支付币**单价
+          //   （3c 起其余三处调用点传的都是折过的单价）⇒ 这里补上同一次折算（同币 ⇒ 原样，逐值不变）。
+          //   ★ 说不出这种钱的价（-1）⇒ 本档买不起（不得让它落进"完全免费"那条分支）。
+          long buyerPrice = run.get(i).payAmountOf(price);
+          long affordable =
+              buyerPrice < 0L ? 0L : affordableQuantity(ctx, run.get(i), buyerPrice, route);
+          weights[i] = Math.min(run.get(i).remaining, affordable);
+          demand += weights[i];
+        }
+        if (demand <= 0L) {
+          continue; // 这一段没有可付需求 ⇒ 看下一段（缺省只有一段 ⇒ 与改前的"直接返回"逐值等价：后面的层也不再成交）
+        }
+        long supply = 0L;
         long[] sellWeights = new long[tier.size()];
         for (int i = 0; i < tier.size(); i++) {
           sellWeights[i] = tier.get(i).remaining;
+          supply += sellWeights[i];
         }
-        long[] buyParts = ProportionalSplit.byDenominator(matched, weights, demand);
-        long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, supply);
-        pairUp(ctx, buys, buyParts, tier, sellParts, price, route);
+        if (supply <= 0L) {
+          break; // 这一档已被前面的买段吃光 ⇒ 后面的买段也卖不动
+        }
+        long matched = Math.min(demand, supply);
+        if (matched > 0L) {
+          long[] buyParts = ProportionalSplit.byDenominator(matched, weights, demand);
+          long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, supply);
+          pairUp(ctx, run, buyParts, tier, sellParts, price, route);
+        }
       }
       tierStart = tierEnd;
     }
+  }
+
+  /**
+   * ★ P-T1d：<b>卖侧服务序</b>—— 没有政府要求管控市场时 = 既有 {@link #costOrder(RouteContext)}（逐值不变）； 有管控时 = 置顶 pass
+   * 写定的全序名次（成本序 + 政府单的推进）。
+   */
+  private static Comparator<SellSlot> servingOrder(MatchContext ctx, RouteContext route) {
+    if (!ctx.round.procurementPriority().isActive()) {
+      return costOrder(route);
+    }
+    return Comparator.comparingLong(sell -> sell.procurementRank);
+  }
+
+  /**
+   * ★ P-T1d：<b>买侧服务序</b>—— 没有政府要求管控市场时<b>原样返回同一张表</b>（不复制、不排序 ⇒ 逐值不变）； 有管控时按置顶名次稳定排序（名次是全序 ⇒ 结果唯一）。
+   */
+  private static List<BuySlot> procurementOrderedBuys(MatchContext ctx, List<BuySlot> buys) {
+    if (!ctx.round.procurementPriority().isActive()) {
+      return buys;
+    }
+    List<BuySlot> ordered = new ArrayList<>(buys);
+    ordered.sort(Comparator.comparingLong(buy -> buy.procurementRank));
+    return ordered;
+  }
+
+  /**
+   * ★ P-T1d：<b>买侧"档"</b> = 相邻且 {@link BuySlot#procurementOvertook} 相同的连续段。
+   *
+   * <p>★ 为什么需要它：需求侧原本是**唯一一组**按权重比例分配（{@link ProportionalSplit}），"排在前面"只有在
+   * <b>分组</b>上才看得见（同一组内人人按比例拿，与次序无关）⇒ 被置顶的政府单自成一段、先配给，剩下才是众家户那一组。 ★ 缺省（没有管控）⇒ 全部 {@code false} ⇒
+   * 恰好一段 ⇒ 与改前**逐值相同**。
+   */
+  private static List<List<BuySlot>> procurementBuyRuns(List<BuySlot> orderedBuys) {
+    List<List<BuySlot>> runs = new ArrayList<>();
+    int start = 0;
+    while (start < orderedBuys.size()) {
+      boolean overtook = orderedBuys.get(start).procurementOvertook;
+      int end = start + 1;
+      while (end < orderedBuys.size() && orderedBuys.get(end).procurementOvertook == overtook) {
+        end++;
+      }
+      runs.add(new ArrayList<>(orderedBuys.subList(start, end)));
+      start = end;
+    }
+    return runs;
   }
 
   /** 卖方成本排序（{@code unitCostEstimate + freightPerUnit} 升序；同成本按 canonical key 升序）。 */
@@ -4866,25 +5128,29 @@ final class MarketSettlement {
         break;
       }
       // ★★ S3：本路线按 unitCostEstimate + freightPerUnit 升序分档；每档在剩余运力内按同一条 ProportionalSplit 配给。
+      //   ★★ P-T1d：服务序与"档"的切法见 matchGroup 的同款注释（缺省 ⇒ 与改前逐值相同）。
+      List<BuySlot> matchBuys = procurementOrderedBuys(ctx, buys);
+      List<List<BuySlot>> buyRuns = procurementBuyRuns(matchBuys);
       List<SellSlot> ordered = new ArrayList<>(sells);
-      ordered.sort(costOrder(route));
+      ordered.sort(servingOrder(ctx, route));
       long capacityLeft = capacityPerWindow;
       int tierStart = 0;
       // ★★ P-T1a：口岸闸（portLeft）是除运力（capacityLeft）之外的第二个量上限 —— 两者取小者；
       //   portLeft = 0 时这一轮一笔都不配（"被拦下的量不进候选集"），但槽位与后续轮的判断不变。
       while (tierStart < ordered.size() && capacityLeft > 0L && portLeft > 0L) {
         long tierCost = landedCostOf(ordered.get(tierStart), route);
+        boolean tierOvertook = ordered.get(tierStart).procurementOvertook;
         int tierEnd = tierStart + 1;
-        while (tierEnd < ordered.size() && landedCostOf(ordered.get(tierEnd), route) == tierCost) {
+        while (tierEnd < ordered.size()
+            && landedCostOf(ordered.get(tierEnd), route) == tierCost
+            && ordered.get(tierEnd).procurementOvertook == tierOvertook) {
           tierEnd++;
         }
         List<SellSlot> tier = new ArrayList<>(tierEnd - tierStart);
-        long tierSupply = 0L;
         for (int i = tierStart; i < tierEnd; i++) {
           SellSlot sell = ordered.get(i);
           if (sell.remaining > 0L) {
             tier.add(sell);
-            tierSupply += sell.remaining;
           }
         }
         // ★ 空档防御：本档没有任何**还有剩余**的卖方（理论上不可达：ordered 只装本轮开始时 remaining>0 的槽位，
@@ -4895,37 +5161,49 @@ final class MarketSettlement {
           continue;
         }
         // 需求按**当前剩余**重算（前一层已成交的不再计入；与 matchGroup 的逐层语义同源）。
-        long[] tierBuyWeights = new long[buys.size()];
-        long tierDemand = 0L;
-        for (int i = 0; i < buys.size(); i++) {
-          // ★★ 3c：可负担量同样按**买方支付币**的单价折算（同一口径；逐卖方槽位读出单价所属币）。
-          long tierBuyerPrice = worstBuyerUnitPrice(ctx, buys.get(i), tier, unitPrice);
-          long affordable =
-              tierBuyerPrice < 0L
-                  ? 0L
-                  : affordableQuantity(ctx, buys.get(i), tierBuyerPrice, route);
-          tierBuyWeights[i] = Math.min(buys.get(i).remaining, affordable);
-          tierDemand += tierBuyWeights[i];
-        }
-        if (tierDemand <= 0L) {
-          break;
-        }
-        // ★★ P-T1c：区级配额已删（设计书 §16）⇒ 跨区撮合只受运力（{@code capacityLeft}）与口岸闸（{@code portLeft}）约束。
-        long matched = Math.min(tierDemand, Math.min(tierSupply, Math.min(capacityLeft, portLeft)));
-        if (matched > 0L) {
+        //   ★ P-T1d：逐"买档"再重算一次并逐段配给（缺省只有一段 ⇒ 与改前逐值相同）。
+        for (List<BuySlot> run : buyRuns) {
+          long[] tierBuyWeights = new long[run.size()];
+          long tierDemand = 0L;
+          for (int i = 0; i < run.size(); i++) {
+            // ★★ 3c：可负担量同样按**买方支付币**的单价折算（同一口径；逐卖方槽位读出单价所属币）。
+            long tierBuyerPrice = worstBuyerUnitPrice(ctx, run.get(i), tier, unitPrice);
+            long affordable =
+                tierBuyerPrice < 0L
+                    ? 0L
+                    : affordableQuantity(ctx, run.get(i), tierBuyerPrice, route);
+            tierBuyWeights[i] = Math.min(run.get(i).remaining, affordable);
+            tierDemand += tierBuyWeights[i];
+          }
+          if (tierDemand <= 0L) {
+            continue; // 这一段没有可付需求 ⇒ 看下一段（缺省只有一段 ⇒ 与改前的"直接 break"逐值等价）
+          }
+          long tierSupply = 0L;
           long[] sellWeights = new long[tier.size()];
           for (int i = 0; i < tier.size(); i++) {
             sellWeights[i] = tier.get(i).remaining;
+            tierSupply += sellWeights[i];
           }
-          long[] buyParts = ProportionalSplit.byDenominator(matched, tierBuyWeights, tierDemand);
-          long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, tierSupply);
-          // ★★ 2026-10-09：路线窗口容量按**真正落账**的量扣 —— 承运商每周期运力不足时 pairUp 只会
-          //   成交可承运的部分，若这里仍按 matched 扣，窗口容量会被高估、后续买方被误判"没运力"。
-          //   ★ 配额同样按真正落账的量逐笔扣（唯一扣减点 = executeTrade）。
-          long executed = pairUp(ctx, buys, buyParts, tier, sellParts, unitPrice, route);
-          acc.used = Math.addExact(acc.used, executed);
-          capacityLeft -= executed;
-          portLeft -= executed; // ★ P-T1a：口岸闸按真正落账的量扣（与运力同一口径）
+          if (tierSupply <= 0L) {
+            break; // 这一档已被前面的买段吃光 ⇒ 后面的买段也卖不动
+          }
+          // ★★ P-T1c：区级配额已删（设计书 §16）⇒ 跨区撮合只受运力（{@code capacityLeft}）与口岸闸（{@code portLeft}）约束。
+          long matched =
+              Math.min(tierDemand, Math.min(tierSupply, Math.min(capacityLeft, portLeft)));
+          if (matched > 0L) {
+            long[] buyParts = ProportionalSplit.byDenominator(matched, tierBuyWeights, tierDemand);
+            long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, tierSupply);
+            // ★★ 2026-10-09：路线窗口容量按**真正落账**的量扣 —— 承运商每周期运力不足时 pairUp 只会
+            //   成交可承运的部分，若这里仍按 matched 扣，窗口容量会被高估、后续买方被误判"没运力"。
+            //   ★ 配额同样按真正落账的量逐笔扣（唯一扣减点 = executeTrade）。
+            long executed = pairUp(ctx, run, buyParts, tier, sellParts, unitPrice, route);
+            acc.used = Math.addExact(acc.used, executed);
+            capacityLeft -= executed;
+            portLeft -= executed; // ★ P-T1a：口岸闸按真正落账的量扣（与运力同一口径）
+          }
+          if (capacityLeft <= 0L || portLeft <= 0L) {
+            break; // 预算用尽 ⇒ 本档后面的买段也配不出量
+          }
         }
         tierStart = tierEnd;
       }
@@ -8466,6 +8744,23 @@ final class MarketSettlement {
      */
     long capacityTruncatedMilli;
 
+    /**
+     * ★★ <b>P-T1d：本槽在它那张挂单簿（市场区 × 商品 × 买侧）里的<b>撮合名次</b></b>（0 起，越小越先）。
+     *
+     * <p>★ 由撮合前的置顶 pass（{@code applyProcurementPriority}）一次写定：<b>没有</b>政府要求管控时它恒为 {@link
+     * #PROCUREMENT_RANK_ABSENT}（不排序 ⇒ 逐值退回改前的列表序）；有管控时 = 该簿"置顶后"的位次（政府单被移到最前， 同政府多单保持 canonical
+     * 序）。★ <b>全序</b>：同簿内两两不同（I7：排序键是内容的纯函数，不是迭代序）。
+     */
+    long procurementRank = PROCUREMENT_RANK_ABSENT;
+
+    /**
+     * ★★ <b>P-T1d：本槽这一轮是否<b>真的</b>被置顶过</b>（超越 ≥ 1 户 ⇒ {@code true}）。
+     *
+     * <p>★ 缺口径 = "剩余挂单按正常次序参加撮合"（设计书 §17.3-④）：行政力见底后没被推进的政府单保持 {@code false}，
+     * 它既不带自己的档、也不该因"属于受管控政府"而白拿优先。★ 由置顶 pass 写、只读；撮合只用它切"档"（不改任何价格/量算式）。
+     */
+    boolean procurementOvertook;
+
     BuySlot(
         BuyOrder order,
         Participant buyer,
@@ -8532,6 +8827,9 @@ final class MarketSettlement {
       this.noMoney = other.noMoney;
       this.blocked = other.blocked;
       this.capacityTruncatedMilli = other.capacityTruncatedMilli;
+      // ★★ P-T1d：置顶名次与"是否真被推进"逐值照抄（worker 副本与协调器必须用同一套顺序，否则回放对不上）。
+      this.procurementRank = other.procurementRank;
+      this.procurementOvertook = other.procurementOvertook;
     }
   }
 
@@ -8624,6 +8922,24 @@ final class MarketSettlement {
      */
     MarketUnfilledReason blocked;
 
+    /**
+     * ★★ <b>P-T1d：本槽在它那张挂单簿（市场区 × 商品 × 卖侧）里的<b>撮合名次</b></b>（0 起，越小越先）。
+     *
+     * <p>★ 由撮合前的置顶 pass 一次写定；<b>没有</b>政府要求管控时恒为 {@link #PROCUREMENT_RANK_ABSENT}（不排序 ⇒ 撮合仍走既有
+     * {@code costOrder}）⇒ 逐值不变。有管控时 = "成本序 + 置顶推进"后的位次（政府单被推到最前、同政府多单保持 canonical 序）。
+     *
+     * <p>★ 为什么卖侧的名次能替代 {@code costOrder(route)}：{@link ProducerCostBook#landedCostMilli} 对单位成本是
+     * <b>加常数（运费×1000）</b>⇒ 同一条路线上按到货成本排序 ≡ 按单位成本估计排序 ⇒ 成本序与车道无关， 名次可以在一张簿上算一次、所有车道/分层共用（详见 {@code
+     * applyProcurementPriority} 的注）。
+     */
+    long procurementRank = PROCUREMENT_RANK_ABSENT;
+
+    /**
+     * ★★ <b>P-T1d：本槽这一轮是否<b>真的</b>被置顶过</b>（超越 ≥ 1 户 ⇒ {@code true}；口径见 {@link
+     * BuySlot#procurementOvertook}）。
+     */
+    boolean procurementOvertook;
+
     SellSlot(
         SellOrder order,
         Participant seller,
@@ -8662,6 +8978,9 @@ final class MarketSettlement {
       this.remaining = other.remaining;
       this.frozenRemaining = other.frozenRemaining;
       this.baseFrozenGoods = other.baseFrozenGoods;
+      // ★★ P-T1d：置顶名次与"是否真被推进"逐值照抄（worker 副本与协调器必须用同一套顺序，否则回放对不上）。
+      this.procurementRank = other.procurementRank;
+      this.procurementOvertook = other.procurementOvertook;
     }
   }
 

@@ -34,13 +34,18 @@ import org.slf4j.Logger;
  *             "exitTax":{"mode":"ad_valorem_per_mille","amount":100}}},
  *  "currencyRules":{
  *    "silver":{"lending":{"entryRestrictionPerMille":1000},
- *              "commodity":{"exitRestrictionPerMille":250}}}}
+ *              "commodity":{"exitRestrictionPerMille":250}}},
+ *  "marketControl":true}
  * }</pre>
  *
  * <p>★ <b>载荷语义</b>：{@code unitId} 必填；两张表可缺省（缺省/<b>显式空对象</b> = 空表 = 该类<b>不限制、不收税</b>，I-P1
  * 用户「肯定0啊」）。<b>每类四个数</b>（入口限制‰ / 出口限制‰ / 入口税 / 出口税）各自可缺省（缺省 = 0 / 不收税）； 税从量与从价都支持（{@code mode}
  * 各自指定，见 {@link GovPayloads#portPolicy}）。 同类型重复设置 = <b>整表替换</b>；与既有政策逐值相同 ⇒ 空变更集（幂等 no-op，不落
  * revision）。
+ *
+ * <p>★★ <b>P-T1d：{@code marketControl}（可选布尔，缺省 {@code false}）</b> —— "政府要求管控市场"（设计书 §16.3/§17；用户原话
+ * 「如果政府要求管控市场，视为政府强制把自己的账户在市场交易里强制到最开始卖、最开始买」）：打开后该政府国库户的挂单在<b>行政力池余量内</b>
+ * 强制置顶，每超越一户消耗一份行政力，见底硬停。它<b>沿用本命令、本权限面</b>（{@code GmOnly}，不新增命令类型/授权面）。
  *
  * <p>★★ <b>P-T1e：币种表多一层挂单类型键</b>（{@code exchange|commodity|lending}）：规则可以按"币种 × 挂单类型 × 方向"
  * 禁止某一类挂单进/出市场（设计书 §14.3；用户原话"禁止本市场区货币被外国借贷"，"借贷走的也是市场挂单"）。 <b>币种手续费</b>（{@link
@@ -174,6 +179,9 @@ public final class SetPortPolicyHandler implements CommandHandler, GmOnlyCommand
                 policy.taxedClassCount(),
                 "currencyFeeRules",
                 policy.currencyFeeKindCount(),
+                // ★ P-T1d：管控开关（一个布尔，不是条数）—— 它决定该政府国库户的挂单要不要置顶、要不要吃行政力池。
+                "marketControl",
+                policy.controlsMarket(),
                 "changed",
                 !changeSet.isEmpty()));
   }

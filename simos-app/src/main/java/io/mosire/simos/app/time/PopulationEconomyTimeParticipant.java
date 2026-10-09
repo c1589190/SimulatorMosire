@@ -787,6 +787,34 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                       "reason",
                       "zone-level-rates-weighted-by-exposed-edges-and-collecting-governments"));
             }
+            // ★★ P-T1d（2026-10-10 口岸设计书 §16.3/§17）：政府采购优先级 = 逐政府「要求管控市场」× 该政府的
+            //   编制劳动力折成的**行政力池**（单位 = 家户）。经济侧只做"按余量给置顶排序 + 见底硬停"。
+            //   ★ 时序与口岸管制力/税相同：读的是当日结算之后的编制供给 ⇒ 作用于**下一次**市场轮（一 tick 滞后）。
+            //   ★ I-C2：没有任何政府要求管控 ⇒ 空表 ⇒ 不注入 ⇒ 无置顶、无消耗 ⇒ 旧世界逐值不变。
+            ProcurementPriorityBridge.ProcurementPriorityDay procurement =
+                ProcurementPriorityBridge.compute(
+                    currentGov,
+                    computed.supplyByUnit(),
+                    economy,
+                    currentSocial.provisioning().standardLaborMilliHoursPerTick(),
+                    day);
+            if (procurement.active()) {
+              stepper.updateProcurementPriority(procurement.input());
+              TIME.info(
+                  LogEvent.of(
+                      "PROCUREMENT_PRIORITY_REGIME_INJECTED",
+                      AppLogSource.DAILY_LOOP,
+                      "day",
+                      day,
+                      "governments",
+                      procurement.controllingGovernments(),
+                      "poolUnits",
+                      procurement.poolUnits(),
+                      "zeroPoolGovernments",
+                      procurement.zeroPoolGovernments(),
+                      "reason",
+                      "market-control-times-establishment-labor-divided-by-standard-post-quota"));
+            }
             // ★★ 服务流量：进程内投递（不落库、不进库存/市场/ledger）；读不到由读口具名 unavailable。
             GovServiceFlowFeed.publish(mapId, computed.flows(), day);
             JurisdictionDailyTax.Report tax =
