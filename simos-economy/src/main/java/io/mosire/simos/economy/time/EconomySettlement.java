@@ -1837,7 +1837,8 @@ public final class EconomySettlement {
       // ★★ A2a（阶段 2）+ B4（2026-10-08）：把"这个世界有哪些政府外汇窗口、储备上限多少"带进本轮 ——
       //   唯一来源 = EconomyData.governments()（GOV 级报价是状态）+ marketZones（B2 的区级覆盖）+ moneyIssuances
       //   （累计发行量 ⇒ 储备上限）。★ B4 起报价口径 = 区级优先、按币对回落该区发行 GOV 的 GOV 级报价。
-      //   ★ 一条生效报价都没有 ⇒ FxRoundInput.none() ⇒ 本轮整段没有外汇面（旧世界逐值不变）。
+      //   ★ 一条生效报价都没有 ⇒ FxRoundInput.none() ⇒ 只有"没有政府窗口"这一件事；★ P-T5 起家户民间簿不依赖它
+      //     （逐格逐户按 F-1 购买力自报价），本段仍会跑 —— 缺省中性（单币世界 / 无价可比）由 FxSettlement 自己守。
       FxRoundInput fxInput =
           FxRoundInput.of(base.governments(), base.moneyIssuances(), base.marketZones());
       marketRound = marketRound.withFx(fxInput);

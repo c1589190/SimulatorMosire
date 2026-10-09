@@ -378,7 +378,8 @@ final class MarketSettlement {
      * ★★ <b>2026-10-08（阶段 2-A2a）：本轮的外汇入参</b>（官方汇率 + 窗口储备上限；由 {@code EconomySettlement} 从 {@code
      * EconomyData.governments()} 装配后经 {@link #withFx} 注入；★ B4 起再加上 {@code
      * EconomyData.marketZones()} 的区级覆盖 —— 口径 = 区级优先、按币对回落该区发行 GOV 的 GOV 级报价）。 默认 {@link
-     * FxRoundInput#none()} ⇒ <b>本轮没有外汇面，逐值退回 A2a 之前</b> （没有官方汇率的旧世界因此一个数都不动）。
+     * FxRoundInput#none()} ⇒ <b>本轮没有政府窗口</b>（★ P-T5 起<b>不再</b>等于"没有外汇面"：家户的民间簿不依赖窗口， 逐格逐户按 F-1
+     * 购买力自报价；见 {@code FxSettlement#planHouseholdOrders}）。★ 单币世界 / 无价可比 ⇒ 不挂单 ⇒ 逐值退回 A2a 之前（I-C2）。
      *
      * <p>★ 逐轮瞬态：不进 {@code EconomyData}、不进变更集、不落盘（I17：汇率不进状态）。
      */
@@ -619,6 +620,17 @@ final class MarketSettlement {
     }
 
     /**
+     * ★★ <b>P-T5：某户的持币表</b>（币种 → 余额，毫；只读）。
+     *
+     * <p>★ <b>为什么必须有这个读口</b>：民间簿要回答"这户手里有哪几种币"（F-1 的比较集），而"我有多钱"的唯一口径是 {@link
+     * MarketSettlement#spendableMoneyOf}（余额 − 冻结）—— 持币表在 {@code MarketRound} 里是私有字段，FX 段（另一个类） 拿不到
+     * ⇒ 给它一个<b>窄入口</b>，而不是在那边另拼一份"我有多钱"。缺行 ⇒ 空表（不是 null）。
+     */
+    Map<CurrencyId, Long> moneyOf(HouseholdId household) {
+      return household == null ? Map.of() : householdMoney.getOrDefault(household, Map.of());
+    }
+
+    /**
      * ★★ <b>2026-10-08（阶段 1）：注入本轮的套利决定</b>（返回一个新的 {@link MarketRound}；原对象不动）。
      *
      * <p>★ 沿用 {@code withCredit} 的形制：先用既有唯一完整构造器造一份新实例，再把套利计划挂上 ——
@@ -662,7 +674,8 @@ final class MarketSettlement {
     /**
      * ★★ <b>A2a：注入本轮的外汇入参</b>（返回一个新的 {@link MarketRound}；原对象不动）。
      *
-     * <p>★ 形制与 {@link #withArbitrage} 逐字相同：不新增构造器签名，旧调用方自然拿到 {@link FxRoundInput#none()}（= 没有外汇面）。
+     * <p>★ 形制与 {@link #withArbitrage} 逐字相同：不新增构造器签名，旧调用方自然拿到 {@link FxRoundInput#none()}（= 没有政府窗口；
+     * ★ P-T5 起它<b>不</b>等于"没有外汇面"）。
      */
     MarketRound withFx(FxRoundInput input) {
       Objects.requireNonNull(input, "withFx 的外汇入参不得为 null（没有就给 FxRoundInput.none()）");
@@ -698,7 +711,7 @@ final class MarketSettlement {
       return next;
     }
 
-    /** ★★ A2a：本轮的外汇入参（缺省 {@link FxRoundInput#none()} ⇒ 没有外汇面）。 */
+    /** ★★ A2a：本轮的外汇入参（缺省 {@link FxRoundInput#none()} ⇒ 没有政府窗口；P-T5 起家户民间簿不依赖它）。 */
     FxRoundInput fx() {
       return fx;
     }
@@ -1492,9 +1505,11 @@ final class MarketSettlement {
     //   ★ 顺序：按"买方稳定序"逐户处理；每个买方先货币（钱优先），货币借不到/不够才用商品卖单剩余借实物。
     creditRound(ctx, indexes);
 
-    // ── 4c. ★★ A2a：外汇撮合（与商品撮合同一处落账口；本轮没有官方汇率 ⇒ 整段跳过，逐值退回改前）──
-    //   ★ 位置：商品撮合 + 信用之后、未成交归因之前 —— 家户能花的钱是"商品买卖之后"的余额；FX 的两条腿同样会
-    //     改变余额，必须先落完再判商品的未成交档（否则那份归因读的是"还没花出去"的旧数）。
+    // ── 4c. ★★ A2a + P-T5：外汇撮合（与商品撮合同一处落账口）──────────────────────────────
+    //   ★ 位置：商品撮合 + 信用之后、未成交归因之前 —— 家户能花的钱是"商品买卖之后"的余额（= 用户"挂完生产需求后"的
+    //     时点，F-5）；FX 的两条腿同样会改变余额，必须先落完再判商品的未成交档（否则那份归因读的是"还没花出去"的旧数）。
+    //   ★★ P-T5 起本段<b>不再</b>要求"有官方汇率"：政府窗口照旧进簿，家户侧另有<b>民间簿</b>（自报价，缺省中性见
+    //     {@code FxSettlement#match} 的注）。
     FxRoundResult fx = FxSettlement.match(round, markets, topology);
 
     // ── 5. 未成交原因（不聚合丢失；买卖两侧分开）────────────────────────────────────────
@@ -7464,7 +7479,7 @@ final class MarketSettlement {
     return Math.max(0L, balance - frozen);
   }
 
-  /** ★ A2a：家户为键的实物可花额（外汇规则只读它判"生活保留"，与商品面同源）。 */
+  /** ★ A2a：家户为键的实物可花额（实物保留/信用口径读它；★ P-T5 起外汇面<b>不再</b>读它 —— F-3 是"挂单全部"，不扣任何储备）。 */
   static long spendableGoodsOf(MarketRound round, HouseholdId household, CommodityId commodity) {
     long balance =
         round.householdGoods.getOrDefault(household, Map.of()).getOrDefault(commodity, 0L);
@@ -7475,7 +7490,10 @@ final class MarketSettlement {
 
   /**
    * ★★ <b>A2a：家户为键的货币保留额</b>（{@link #moneyReserveOf(MatchContext, Participant, Market)} 的家户版，
-   * 逐值同源）：外汇面用它算"这笔钱是不是余钱"（余钱才拿去换外币）。
+   * 逐值同源）：出借人可借头寸用它算"这笔钱是不是余钱"。
+   *
+   * <p>★★ <b>P-T5 起外汇面不再用它</b>：用户 2026-10-10 的 F-3 是"挂单全部（不扣生活/生产储备）"，家户 FX 单的量 = 该币
+   * <b>全部可花额</b>（{@code FxSettlement#placeHouseholdOrder}）—— 旧口径"余钱才拿去换外币"已随旧规则退役。
    *
    * <p>★ 口径原样不动：未覆盖的日自然需求按本格市价折算 + 人均货币缓冲；缺价不入保留额、人口/行读不到 ⇒ {@code
    * Long.MAX_VALUE}（fail-closed：读不到不等于不用留）。

@@ -44,7 +44,12 @@ public record FxRoundInput(List<Window> windows) {
     return new FxRoundInput(List.of());
   }
 
-  /** 有没有窗口（空 ⇒ {@code MarketSettlement} 的 FX 段整段跳过）。 */
+  /**
+   * 有没有窗口。
+   *
+   * <p>★★ <b>P-T5 起它不再是"有没有外汇面"</b>：没有窗口只说明"政府这一轮没开通道"，家户侧的<b>民间簿</b>（自报价） 仍会逐格逐户按购买力挂单（口岸设计书 §18.3
+   * C-1 / §19.3）。本方法因此只用于"窗口侧的读数与归因"。
+   */
   public boolean isActive() {
     return !windows.isEmpty();
   }

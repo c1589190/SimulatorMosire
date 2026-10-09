@@ -67,11 +67,16 @@ public enum EconomyLogSource implements LogOrigin {
    * ★★ <b>A2a（2026-10-08）：外汇面</b>—— 市场轮里的 FX 撮合、官方/实际汇率读数、政府外汇窗口的报价与具名拒、 异币支付的具名拒（{@code
    * MarketUnfilledReason.CURRENCY_MISMATCH}），以及设置官方汇率的命令。
    *
+   * <p>★★ <b>P-T5（2026-10-10）：家户民间簿</b>—— 家户按购买力自报价换汇（{@code FX_HOUSEHOLD_POWER} 判据 DEBUG、 {@code
+   * FX_HOUSEHOLD_ORDER}/{@code FX_HOUSEHOLD_UNFILLED} 逐笔 TRACE、{@code FX_ROUND} 本轮汇总 INFO）。
+   *
    * <p>★ 逐笔成交/逐笔拒在 TRACE（{@code simos.economy.traceLevel} 单独开），窗口触顶/见底/无对手方在 INFO（用户 2026-10-23
    * 裁定：业务拒绝 = INFO）—— 外汇是"政策价 vs 市场价"的现场，拒绝一条都不能静默。
    */
   ECONOMY_FX(
-      "economy-fx", "外汇面：FX 撮合/官方与实际汇率读数/政府外汇窗口报价与具名拒/异币支付具名拒（tick 算法，必带 day）", LogOriginKind.TICK),
+      "economy-fx",
+      "外汇面：FX 撮合/官方与实际汇率读数/政府外汇窗口报价与具名拒/家户民间簿（购买力自报价、弱换强）/异币支付具名拒（tick 算法，必带 day）",
+      LogOriginKind.TICK),
   /**
    * ★★ <b>B2（2026-10-08）：市场区的持久状态与命令面</b>—— 区定义 / 逐格改划（退让·覆盖） / 合并 / 区内官方汇率覆盖，以及它们的具名拒。
    *
