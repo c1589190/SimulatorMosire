@@ -1493,6 +1493,10 @@ final class MarketSettlement {
       // ── 4a0. ★★ M-A1：逐格运力池与本轮分配汇总（INFO = 每格运力池与分配汇总；§一.9）────────────
       //   ★ 位置：区内 + 跨区撮合都做完之后（此时"谁用了多少运力"才是本轮的事实）。
       ctx.carrierPool.logRoundSummary(round.day);
+      // ── 4a0b. ★★ M-A2：本轮运力需求与供需缺口汇总（K-A/K-B/K-5；INFO/DEBUG/TRACE，§一.9）──────
+      //   ★ 需求簿只累加读数：不写状态、不铸转移、不改任何判据（守恒与铁律 2 不受影响）；"被运力截断的货物量"
+      //     读买槽的既有 V-20 读数（那部分不成交、不成债、不计价 —— K-4/Q-27）。
+      ctx.capacityDemands.logRoundSummary(round.day, ctx.carrierPool, goodsBlockedByCapacity(ctx));
       // ── 4a. ★★ P-T1a：口岸节流的轮级汇总（INFO：发生了什么 + 具名计数；逐区对在 DEBUG/TRACE）──────
       //   ★ 只报"被拦下多少"这一件事（计数口径 = 源区→目的区 的<b>区对</b>）：被拦下的量不进候选集、不落状态、不进账本（§11），所以它是日志事实，不是账。
       if (ctx.portGatedPairs > 0 && MARKET.isInfoEnabled()) {
@@ -5913,16 +5917,42 @@ final class MarketSettlement {
         return 0L;
       }
       long nominalFreight = freightOf(quantity, unitFreight);
-      // ★★ M-A1：跨格承运的唯一判据 —— 按**发货格**的逐 hex 运力池（提供方市场议价权序）分配；分配多少才走多少，
-      //   一点运力都没有 ⇒ 本笔不成交（绝不发"免费"的跨格货）。CARRIER_FEE 收款人 = 提供运力的**家户**。
+      // ★★ M-A2：本 lane 的**运力需求口径**（数量 × 距离，沿用既有运费算式；承运成本项取 0）——报价口径下
+      //   按它扣提供者的运力预算，也按它把"该家户这一份需求要多少运力"记进本轮需求簿（K-A/K-B/K-5）。
+      //   缺省口径（无报价）⇒ 1:1（M-A1 的毫商品口径）⇒ 逐值不变。
+      long workPerGoodPerMille =
+          ctx.carrierPool.workPerGoodPerMilleOf(
+              commodityFreightBaseMilli(ctx.topology, route.commodity), route.freightRatePerMille);
+      // ★★ M-A1/M-A2：跨格承运的唯一判据 —— 按**发货格**的逐 hex 运力池分配（报价口径 = 从最低限价起买；
+      //   缺省口径 = 提供方市场议价权序）；分配多少才走多少，一点运力都没有 ⇒ 本笔不成交（绝不发"免费"的跨格货）。
+      //   CARRIER_FEE 收款人 = 提供运力的**家户**。
       MerchantCapacityPool.CarrierAllocation allocation =
-          ctx.carrierPool.select(route.from, route.to, quantity);
+          ctx.carrierPool.select(route.from, route.to, quantity, workPerGoodPerMille);
       long allocated = allocation.allocatedMilli();
       if (allocated <= 0L) {
+        // ★★ M-A2：全被拦下的那部分同样是"这一份需求要运力但没买到" ⇒ 记进需求簿（供 K-4 的缺口归因）。
+        ctx.capacityDemands.record(
+            buy.buyer.household,
+            buy.hex,
+            buy.regionId,
+            route.commodity,
+            route.from,
+            quantity,
+            0L,
+            workPerGoodPerMille);
         markCapacityBlocked(ctx, buy, sell, route.from, route.to, route.commodity, quantity);
         return 0L;
       }
       executed = Math.min(quantity, allocated);
+      ctx.capacityDemands.record(
+          buy.buyer.household,
+          buy.hex,
+          buy.regionId,
+          route.commodity,
+          route.from,
+          quantity,
+          executed,
+          workPerGoodPerMille);
       if (executed < quantity) {
         markCapacityBlocked(
             ctx, buy, sell, route.from, route.to, route.commodity, quantity - executed);
@@ -6311,18 +6341,36 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>M-A1：把一票跨格运费分摊成逐提供者（家户）的 CARRIER_FEE 金额</b>。
+   * ★★ <b>M-A2：本轮因运力未获服务的货物量（毫商品）</b>—— 各买槽 {@code capacityTruncatedMilli}（M-A1 的 V-20 既有读数） 之和。
+   *
+   * <p>★ 口径：那部分货<b>不成交、不成债、不计价</b>（K-4 / Q-27）—— 它在撮合里被收缩掉，这里只是把同一个事实 读数化进需求簿的轮总（不重复记账、不写状态）。
+   */
+  private static long goodsBlockedByCapacity(MatchContext ctx) {
+    long blocked = 0L;
+    for (BuySlot buy : ctx.buys) {
+      if (buy.capacityTruncatedMilli > 0L) {
+        blocked = Math.addExact(blocked, buy.capacityTruncatedMilli);
+      }
+    }
+    return blocked;
+  }
+
+  /**
+   * ★★ <b>M-A1/M-A2：把一票跨格运费分摊成逐提供者（家户）的 CARRIER_FEE 金额</b>。
    *
    * <pre>
    * ① 自承运条目（carrier == 买方 actor）整条跳过：不铸自转移、不计实收、不记未收（P10.9 口径保留）；
-   * ② 逐条按**该提供者的派生承运成本**算单位运费 = 商品基础费 × (1000 + 路线费率‰) × (1000 + 承运成本‰)（算式一字不改）；
-   * ③ 实际可收运费 = min(非自承运部分的名义运费上限, Σ 各条按自身成本的运费)；
-   * ④ 其余条目按承运量占非自承运总量的比例 floor 分摊，顺序里**最后一条实际承运条目拿余数**
-   *    ⇒ Σ各条金额 == 实际可收运费，且 ≤ 该票 nominal freight；
+   * ② 逐条按**该提供者的限价**算单位运费 = 商品基础费 × (1000 + 路线费率‰) × (1000 + 限价‰)（算式一字不改；
+   *    缺省口径下限价 == 派生承运成本 ⇒ 与 M-A1 逐值相同）；
+   * ③ 实际可收运费 = min(非自承运部分的名义运费上限, Σ 各条按自身限价的运费)；
+   * ④ 【报价口径】名义上限没被顶到 ⇒ 逐条按自己的限价收（M-A2：这才是"按提供者的报价买运力"）；
+   *    【缺省口径 / 上限被顶到】⇒ 按承运量占非自承运总量的比例 floor 分摊，顺序里**最后一条实际承运条目拿余数**
+   *    ⇒ Σ各条金额 == 实际可收运费，且 ≤ 该票 nominal freight（M-A1 原样，逐值不变）；
    * ⑤ 金额为 0 的条目不产生转移（仍保持守恒）。
    * </pre>
    *
-   * <p>★ 分摊顺序 = select 返回顺序（议价权降序 → 家户 id 升序），不读时钟/随机 ⇒ 同输入逐值确定（I7）。
+   * <p>★ 分摊顺序 = select 返回顺序（报价口径：限价升序 → 议价权降序 → 家户 id 升序；缺省口径：议价权降序 → 家户 id 升序）， 不读时钟/随机 ⇒
+   * 同输入逐值确定（I7）。
    *
    * <p>★★ <b>P-T5b：全部分摊都在<b>买方支付币</b>上做</b>（运费腿铸在 {@code buy.currency} 上）—— 逐条的单位运费经 {@link
    * BuySlot#payAmountOf} 折一次（同币 ⇒ 原样），说不出价的条目不参与（整票退回空表，fail-closed）。 自承运判据因此从"买方 actor"改为直接读
@@ -6337,6 +6385,7 @@ final class MarketSettlement {
     long chargeableQuantity = 0L;
     long effectiveFreightSum = 0L;
     int lastChargeable = -1;
+    long[] ownFreight = new long[choices.size()];
     for (int i = 0; i < choices.size(); i++) {
       MerchantCapacityPool.CarrierChoice choice = choices.get(i);
       if (choice.carrier().equals(buy.buyer.actor)) {
@@ -6346,17 +6395,17 @@ final class MarketSettlement {
       chargeableQuantity = Math.addExact(chargeableQuantity, choice.quantityMilli());
       // ★★ P-T5b：逐条的单位运费同样折成**买方支付币**（腿铸在 buy.currency 上）；说不出价 ⇒ 整票不收运费腿
       //   （fail-closed：与 totalCostAtMost / executeTrade 的判据同口径，绝不按 1:1 顶上）。
+      //   ★★ M-A2：承运成本项改用**该提供者自己的限价**（`choice.askPerMille()`）——缺省口径下它就等于
+      //   `carrierCostPerMille(tier)`（逐值不变），报价口径下它就是"从最低价起买"的成交价。
       long unitFreight =
           buy.payAmountOf(
               freightUnitMilli(
-                  commodityBaseMilli,
-                  route.freightRatePerMille,
-                  carrierCostPerMille(choice.tier())));
+                  commodityBaseMilli, route.freightRatePerMille, choice.askPerMille()));
       if (unitFreight < 0L) {
         return List.of();
       }
-      effectiveFreightSum =
-          Math.addExact(effectiveFreightSum, freightOf(choice.quantityMilli(), unitFreight));
+      ownFreight[i] = freightOf(choice.quantityMilli(), unitFreight);
+      effectiveFreightSum = Math.addExact(effectiveFreightSum, ownFreight[i]);
     }
     if (chargeableQuantity <= 0L) {
       return List.of();
@@ -6364,6 +6413,21 @@ final class MarketSettlement {
     long nominalCap = freightOf(chargeableQuantity, buy.payAmountOf(route.freightPerUnit));
     long collectible = Math.min(nominalCap, effectiveFreightSum);
     List<FreightCharge> charges = new ArrayList<>();
+    if (allocation.priced() && collectible == effectiveFreightSum) {
+      // ★★ M-A2 报价口径：名义上限没被顶到 ⇒ **逐条按各自的限价收**（这才是"按提供者的报价买运力"；
+      //   Σ == effectiveFreightSum == collectible ⇒ 守恒与 M-A1 同一式子）。任何一条说不出价都不会走到这里
+      //   （上面已 fail-closed 退空表）。★ 缺省口径不进这一支：那样才能保证"无报价 ⇒ 逐值不变"是结构性成立，
+      //   而不是"算出来恰好相等"。
+      for (int i = 0; i < choices.size(); i++) {
+        if (ownFreight[i] <= 0L) {
+          continue;
+        }
+        MerchantCapacityPool.CarrierChoice choice = choices.get(i);
+        charges.add(
+            new FreightCharge(choice.carrier(), ownFreight[i], choice.household(), choice.hex()));
+      }
+      return List.copyOf(charges);
+    }
     long assigned = 0L;
     for (int i = 0; i < choices.size(); i++) {
       MerchantCapacityPool.CarrierChoice choice = choices.get(i);
@@ -6510,12 +6574,25 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>撮合前可负担性预判用的承运成本（‰）</b>：有运力池时取最高档 tier 的成本上界（BOSS=4×25=100‰）， 保证 {@code pairUp} 按它规划的钱 ≤
+   * ★★ <b>撮合前可负担性预判用的承运成本（‰）</b>：有运力池时取<b>上界</b>，保证 {@code pairUp} 按它规划的钱 ≤
    * 实际逐提供者收费；没有跑商家户（池空）沿用小默认值。
+   *
+   * <pre>
+   * 池空（没有跑商家户）           ⇒ 小默认值 25‰（逐值不变）
+   * 池非空 + 缺省口径（无报价）    ⇒ 最高档 tier 的成本上界（BOSS = 4 × 25 = 100‰；逐字等于 M-A1）
+   * 池非空 + 报价口径（M-A2）      ⇒ 本轮所有提供者的**最高限价**（= max(自报价 + 上门附加费)）
+   * </pre>
+   *
+   * <p>★ 报价口径为什么取"最高限价"而不是"最高档 tier 成本"：限价可能高于 BOSS 档成本（含上门附加费），也可能被逐户
+   * 覆写拉高；取实际最高限价才是真正的上界。它同时是"买方名义运费上限"的口径来源（{@code carrierChargeSplit}），
+   * 因此买方永远不会因报价而被收超过计划的钱（fail-closed，I-C1 守恒不变）。
    */
   static long plannedCarrierCostPerMille(MatchContext ctx) {
     if (ctx.carrierPool.isEmpty()) {
       return MARKET_FREIGHT_DEFAULT_CARRIER_COST_PER_MILLE;
+    }
+    if (ctx.carrierPool.isPriced()) {
+      return ctx.carrierPool.maxAskPerMille();
     }
     return Math.multiplyExact(
         (long) MerchantPolicy.MerchantTier.BOSS.districtUse(),
@@ -8339,6 +8416,15 @@ final class MarketSettlement {
      * 世界里没有"选了跑商的家户" ⇒ 跨格货走不动；同格成交不受影响。
      */
     final MerchantCapacityPool carrierPool;
+
+    /**
+     * ★★ <b>M-A2：本轮运力需求簿</b>（逐份需求 + 逐 hex / 逐区汇总 + 缺口；见 {@link CapacityDemandBook}）。
+     *
+     * <p>★ 只在协调器单线程路径上写（唯一写入点是 {@code executeTrade} 的跨格分支，而它只在"有运力池 ⇒ 协调器串行 撮合"时到达；worker 的 {@code
+     * executeTrade} 恒传 {@code route == null}）⇒ 与 {@code taxItems}/{@code fills} 同一条纪律：worker
+     * 本地副本上的累加在交回时丢弃，只从协调器那一份出日志/读数。
+     */
+    final CapacityDemandBook capacityDemands = new CapacityDemandBook();
 
     final List<BuySlot> buys = new ArrayList<>();
     final List<SellSlot> sells = new ArrayList<>();
