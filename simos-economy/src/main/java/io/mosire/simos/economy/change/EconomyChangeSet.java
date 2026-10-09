@@ -53,7 +53,6 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -82,10 +81,9 @@ import java.util.function.Function;
  * / {@code classStructures} / {@code classPositions} / {@code classStandings} / {@code
  * productionOrganizations} / {@code assetRules} + E3 的 {@code governments} / {@code moneyIssuances}
  * + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code liquidationPolicies} / {@code
- * crisisSignals} + E6a 的 {@code modeTransitions} / {@code classShares} + P10.1 的 {@code
- * merchantFirms} + P4a 的 {@code periodicAdjustments} + Z1 的 {@code outputQuantityOverrides} /
- * {@code productionEfficiency} + A1 的 {@code currencies} / {@code moneyInstruments} + B2 的 {@code
- * marketZones}）。
+ * crisisSignals} + E6a 的 {@code modeTransitions} / {@code classShares} + P4a 的 {@code
+ * periodicAdjustments} + Z1 的 {@code outputQuantityOverrides} / {@code productionEfficiency} + A1 的
+ * {@code currencies} / {@code moneyInstruments} + B2 的 {@code marketZones}）。
  *
  * <p>★★ <b>A1（2026-10-08）追加两张货币词表</b>：{@code currencies}（键 = {@link CurrencyId}，值 = {@link
  * CurrencyDef}）与 {@code moneyInstruments}（键 = {@link InstrumentId}，值 = {@link MoneyInstrument}）。 ★
@@ -99,8 +97,9 @@ import java.util.function.Function;
  * productionOrganizations/assetRules}；E3 {@code governments/moneyIssuances}；E4 {@code
  * debtContracts} （替换旧 {@code debts} 槽）/{@code pledges}；E5 {@code
  * liquidationPolicies/crisisSignals}；E6 {@code modeTransitions/classShares}。E6b（GM 经济调整命令）与 E6c（统一
- * dashboard 读口）都只读写既有组件， **零新状态组件**；P10.1 追加 {@code merchantFirms}、P4a 追加 {@code
- * periodicAdjustments} 后，本变更集与 {@link EconomyData} 的组件面逐条对应（上面那份逐条清单就是全表）。
+ * dashboard 读口）都只读写既有组件， **零新状态组件**；P10.1 的 {@code merchantFirms}（商号表）已于 2026-10-10 M-A1
+ * **退役**（运力改派生量，用户裁定"旧设计和数据类型直接重建不用留"）；P4a 追加 {@code periodicAdjustments} 后，本变更集与 {@link
+ * EconomyData} 的组件面逐条对应（上面那份逐条清单就是全表）。
  *
  * <p>★ **差异与重建的语义不在这里**：一律委托 {@link FieldDelta#diff} / {@link FieldDelta#rebuild}（与 {@code
  * MapChangeSet} / {@code SocialChangeSet} / {@code UnitChangeSet} / {@code SdChangeSet} / {@code
@@ -163,7 +162,6 @@ public record EconomyChangeSet(
     FieldDelta<HexCrisisSignal> crisisSignals,
     FieldDelta<ModeTransition> modeTransitions,
     FieldDelta<ClassShare> classShares,
-    FieldDelta<MerchantFirm> merchantFirms,
     FieldDelta<HouseholdPeriodicAdjustment> periodicAdjustments,
     FieldDelta<Map<CommodityId, Long>> outputQuantityOverrides,
     FieldDelta<ProductionEfficiencyState> productionEfficiency,
@@ -289,10 +287,6 @@ public record EconomyChangeSet(
     if (classShares == null) {
       classShares = new FieldDelta.Unchanged<>();
     }
-    // ★★ P10.1 第 30 个组件（商号表）：旧变更集没提该组件，就是没动它。
-    if (merchantFirms == null) {
-      merchantFirms = new FieldDelta.Unchanged<>();
-    }
     // ★★ P4a 第 31 个组件（周期家户扣增规则表）：旧变更集没提该组件，就是没动它。
     if (periodicAdjustments == null) {
       periodicAdjustments = new FieldDelta.Unchanged<>();
@@ -365,7 +359,6 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.crisisSignals(), target.crisisSignals()),
         FieldDelta.diff(base.modeTransitions(), target.modeTransitions()),
         FieldDelta.diff(base.classShares(), target.classShares()),
-        FieldDelta.diff(base.merchantFirms(), target.merchantFirms()),
         FieldDelta.diff(base.periodicAdjustments(), target.periodicAdjustments()),
         FieldDelta.diff(base.outputQuantityOverrides(), target.outputQuantityOverrides()),
         FieldDelta.diff(base.productionEfficiency(), target.productionEfficiency()),
@@ -417,8 +410,6 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.crisisSignals(), cs.crisisSignals(), CrisisSignalId::parse),
         FieldDelta.rebuild(base.modeTransitions(), cs.modeTransitions(), ModeTransitionId::parse),
         FieldDelta.rebuild(base.classShares(), cs.classShares(), ClassShareId::parse),
-        FieldDelta.rebuild(
-            base.merchantFirms(), cs.merchantFirms(), ProductionOrganizationId::parse),
         FieldDelta.rebuild(
             base.periodicAdjustments(),
             cs.periodicAdjustments(),
@@ -473,7 +464,6 @@ public record EconomyChangeSet(
         || crisisSignals.changed()
         || modeTransitions.changed()
         || classShares.changed()
-        || merchantFirms.changed()
         || periodicAdjustments.changed()
         || outputQuantityOverrides.changed()
         || productionEfficiency.changed()

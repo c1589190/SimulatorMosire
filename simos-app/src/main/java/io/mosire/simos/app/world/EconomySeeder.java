@@ -23,7 +23,6 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
-import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -45,7 +44,6 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
@@ -187,13 +185,6 @@ public final class EconomySeeder {
 
   /** ★★ <b>城市贸易/承运产业标签</b>（P11.7/D-024；每个有城镇人口的格一个）：制度 = {@link RegimeOperators#MERCHANT}。 */
   public static final String TRADE = "trade";
-
-  /**
-   * ★★ <b>每个城市格播种的商号运力（毫单位 / 周期）</b>：{@code 100_000} = {@link
-   * MerchantPolicy#CITY_CAPACITY_CEILING}（GM 默认；{@code MerchantFirm.capacityPerRound} 构造期要求 &gt;
-   * 0）。
-   */
-  public static final long MERCHANT_CAPACITY_PER_CITY = 100_000L;
 
   /**
    * ★★ <b>每个城市格给 {@code trade} 播种的 CATTLE 运力资产数量</b>：{@code 100}（GM 默认）。
@@ -831,9 +822,7 @@ public final class EconomySeeder {
       List<Map<String, Object>> debtContracts,
       List<Map<String, Object>> pledges,
       List<Map<String, Object>> extraMoneyIssuances,
-      TestConditions.Report conditionReport,
-      // ★★ P11.7/D-024：PRODUCTION_RUNTIME 的商号表（键 = 生产组织 id；空表时不发顶层键）。
-      Map<ProductionOrganizationId, MerchantFirm> merchantFirms) {
+      TestConditions.Report conditionReport) {
 
     /**
      * ★★ <b>四张表在赋值处冻结</b>（照 {@code Industry.outputPerUnit} / {@code Facts} 的先例）： SpotBugs 的 {@code
@@ -920,25 +909,14 @@ public final class EconomySeeder {
       }
       extraMoneyIssuances = Collections.unmodifiableList(extraMoneyIssuancesCopy);
       conditionReport = conditionReport == null ? TestConditions.Report.EMPTY : conditionReport;
-      // ★★ P11.7/D-024：商号表在赋值处冻结（同上方四张表）；null ⇒ 空表。
-      Map<ProductionOrganizationId, MerchantFirm> merchantFirmsCopy = new LinkedHashMap<>();
-      Map<ProductionOrganizationId, MerchantFirm> firms =
-          merchantFirms == null ? Map.of() : merchantFirms;
-      for (Map.Entry<ProductionOrganizationId, MerchantFirm> entry : firms.entrySet()) {
-        if (entry.getKey() == null || entry.getValue() == null) {
-          throw new IllegalArgumentException("Seed.merchantFirms 的键与值都不得为 null: " + entry.getKey());
-        }
-        merchantFirmsCopy.put(entry.getKey(), entry.getValue());
-      }
-      merchantFirms = Collections.unmodifiableMap(merchantFirmsCopy);
     }
 
     /**
      * {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} / {@code entries} / {@code
      * markets} 都在顶层）。production-runtime 的 entries 是完整生产结构，并在其后<b>追加</b> {@code modes} / {@code
      * classStructures} / {@code classPositions} / {@code classStandings} / {@code assetRules} /
-     * {@code liquidationPolicies} 六个键 + 非空时一个可选 {@code merchantFirms} 数组（见 {@link #jsonOf}）。★ P3：无
-     * conditions 时 {@code debtContracts}/{@code pledges} 仍是空表、也不出现 {@code testConditions} 键。
+     * {@code liquidationPolicies} 六个键（{@code merchantFirms} 已于 M-A1 退役 ⇒ 不再发）。★ P3：无 conditions 时
+     * {@code debtContracts}/{@code pledges} 仍是空表、也不出现 {@code testConditions} 键。
      */
     public String economyPayload() {
       return jsonOf(
@@ -951,8 +929,7 @@ public final class EconomySeeder {
           debtContracts,
           pledges,
           extraMoneyIssuances,
-          conditionReport,
-          merchantFirms);
+          conditionReport);
     }
   }
 
@@ -1203,8 +1180,7 @@ public final class EconomySeeder {
       List<Map<String, Object>> debtContracts,
       List<Map<String, Object>> pledges,
       List<Map<String, Object>> extraMoneyIssuances,
-      TestConditions.Report conditionReport,
-      Map<ProductionOrganizationId, MerchantFirm> merchantFirms) {
+      TestConditions.Report conditionReport) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("mapId", mapId);
     // ★★ P10.1：新档写当前 7 hex 运行时版本（唯一拼写点在 {@code EconomyMeta}）。
@@ -1242,43 +1218,8 @@ public final class EconomySeeder {
     payload.put("classStandings", productionRuntimeClassMemberships(entries));
     payload.put("assetRules", productionRuntimeAssetRuleNodes());
     payload.put("liquidationPolicies", productionRuntimeLiquidationPolicyNodes());
-    // ★★ P11.7/D-024：可选顶层 merchantFirms（仅非空时发）。
-    //   节点字段与 EconomyPayloads.parseMerchantFirms 的读取名逐字一致（唯一拼写点仍是各自读取处，不在这里
-    //   发明第二套字段名）。
-    if (merchantFirms != null && !merchantFirms.isEmpty()) {
-      payload.put("merchantFirms", merchantFirmNodes(merchantFirms));
-    }
+    // ★★ M-A1：商号行（merchantFirms）已退役 —— 运力是派生量（MerchantCapacityPool），创世不再发这个顶层键。
     return ToolSupport.json(payload);
-  }
-
-  /**
-   * ★★ <b>商号表 → 顶层 {@code merchantFirms[]} 节点</b>（键序 = 值的稳定对象序 = {@code LinkedHashMap} 插入序；逐条字段与
-   * {@code EconomyPayloads.parseMerchantFirms} 的读取名逐字一致）：
-   *
-   * <pre>
-   * {organizationId, tier, homeHex, homeIsCity, capacityPerRound, capacityUsedThisRound,
-   *  serviceRadiusHex, ruralTradeCostPenaltyPerMille, lastFeeEarnedMilli, lastUpkeepMilli, lastProfitMilli}
-   * </pre>
-   */
-  private static List<Map<String, Object>> merchantFirmNodes(
-      Map<ProductionOrganizationId, MerchantFirm> merchantFirms) {
-    List<Map<String, Object>> nodes = new ArrayList<>(merchantFirms.size());
-    for (MerchantFirm firm : merchantFirms.values()) {
-      Map<String, Object> node = new LinkedHashMap<>();
-      node.put("organizationId", firm.organizationId().value());
-      node.put("tier", firm.tier().name());
-      node.put("homeHex", firm.homeHex().toString());
-      node.put("homeIsCity", firm.homeIsCity());
-      node.put("capacityPerRound", firm.capacityPerRound());
-      node.put("capacityUsedThisRound", firm.capacityUsedThisRound());
-      node.put("serviceRadiusHex", firm.serviceRadiusHex());
-      node.put("ruralTradeCostPenaltyPerMille", firm.ruralTradeCostPenaltyPerMille());
-      node.put("lastFeeEarnedMilli", firm.lastFeeEarnedMilli());
-      node.put("lastUpkeepMilli", firm.lastUpkeepMilli());
-      node.put("lastProfitMilli", firm.lastProfitMilli());
-      nodes.add(node);
-    }
-    return nodes;
   }
 
   /**
@@ -3219,8 +3160,6 @@ public final class EconomySeeder {
     Map<HexCoord, Market> markets = new LinkedHashMap<>();
     // ★★ H5：逐格逐产业的**经营主体开缸账**（键序 = 产业生成序 = farm → weave → craft ⇒ 内容的纯函数）。
     List<OperatorSeed> operators = new ArrayList<>();
-    // ★★ P11.7/D-024：逐城市格的商号表（键 = 组织 id；插入序 = hex 序 ⇒ 载荷逐值确定）。
-    Map<ProductionOrganizationId, MerchantFirm> merchantFirms = new LinkedHashMap<>();
     // 商号本金主的位置是 merchant.principal（(residence=urban, slot=landlord) 的唯一裁决），全局只需算一次。
     ClassPositionId merchantPrincipalPosition =
         productionRuntimePositionId(ResidenceKind.URBAN, CLASS_IDS[LANDLORD_SLOT_INDEX]);
@@ -3416,19 +3355,10 @@ public final class EconomySeeder {
         }
       }
       allocations.addAll(splitAllocations);
-      // ★★ P11.7/D-024：城市格恰一条商号 —— 组织 id 必须与 EconomyEnterpriseSettlement 自动组织将创建的
-      //   ProductionOrganizationId 逐字一致（同走 ProductionOrganizationId.idOf(merchant,
-      // principalPosition,
-      //   merchantPrincipalHousehold, hexKey)）；tier/capacity 都是具名 GM 默认。
-      if (hasCraft) {
-        ProductionOrganizationId merchantOrgId =
-            ProductionOrganizationId.idOf(
-                DefaultProductionModes.MERCHANT,
-                merchantPrincipalPosition,
-                merchantPrincipalHousehold,
-                IndustryHexKeys.hexKey(hex.q(), hex.r()));
-        merchantFirms.put(merchantOrgId, merchantFirm(hex, merchantOrgId));
-      }
+      // ★★ M-A1：商号行（merchantFirms）已退役 —— 创世不再为城市格播商号状态。运力改由**派生量**给出
+      //   （MerchantCapacityPool：该格"选了跑商"的家户的劳动投入 + 工具可投入量）。
+      //   ★ 保留：本格的 trade 产业（{@link #TRADE}）与它的 CATTLE 份额 —— 那是 merchant 生产方式的产业落点、
+      //     也是迁移前瞻的产业模板（M5/M-D 的"主业副业排序"要用它），与商号行是两件事。
       // ★★ **H0.2：本格的阶层行 = 两组四行（家户）** —— 行的身份是 {@code (格, 居住类型, 阶层)}，
       //   **不再挂在任何产业下**（产业只留"制度 + 配方 + 产能"）。这与"行 = 家户、产业 = 生产活动"的分工一一对应：
       //   一格的农村四行是**同一批农村人**，他们既供给农业（900‰）、也供给家庭纺织（100‰）；城镇四行同理只供给作坊。
@@ -3553,8 +3483,6 @@ public final class EconomySeeder {
                   applied.pledges().size(),
                   "extraMoneyIssuances",
                   applied.extraMoneyIssuances().size(),
-                  "merchantFirms",
-                  merchantFirms.size(),
                   "genesisEndowment",
                   genesisEndowment));
     }
@@ -3573,8 +3501,7 @@ public final class EconomySeeder {
         applied.debtContracts(),
         applied.pledges(),
         applied.extraMoneyIssuances(),
-        applied.report(),
-        merchantFirms);
+        applied.report());
   }
 
   // ── 2026-10-07 GOV 非生产家户试点：种子形状 ───────────────────────────────────────────────
@@ -3585,10 +3512,9 @@ public final class EconomySeeder {
    * householdMoney} 三张表里给它一本空账。
    *
    * <p>★★ <b>P2-A：身份/落点由 Social 的 {@link PopulationSeeder.Seeding#governmentHousehold()}
-   * 给出</b>（经济侧只读， 不再自己挑格、另拼 id）。它<b>不</b>进
-   * laborSupply/allocations/memberships/units/assetShares/merchantFirms —— 不生产、不出劳动、不持资产。 没有
-   * HouseholdClassMembership（{@code productionRuntimeClassMemberships} 对 official 槽位显式跳过）：关账日
-   * HouseholdClassRule 在无可观察证据时保留当前 view。
+   * 给出</b>（经济侧只读， 不再自己挑格、另拼 id）。它<b>不</b>进 laborSupply/allocations/memberships/units/assetShares ——
+   * 不生产、不出劳动、不持资产。 没有 HouseholdClassMembership（{@code productionRuntimeClassMemberships} 对 official
+   * 槽位显式跳过）：关账日 HouseholdClassRule 在无可观察证据时保留当前 view。
    */
   private static HouseholdId seedGovernmentHousehold(
       List<Map<String, Object>> entries,
@@ -4204,25 +4130,6 @@ public final class EconomySeeder {
         List.of(),
         operator,
         LaborSource.SELF);
-  }
-
-  /**
-   * ★★ <b>一条城市商号</b>：id 由调用方按与 {@code EconomyEnterpriseSettlement} 相同的四元组公式给出；tier/capacity 都是具名 GM
-   * 默认，三个金额读数从 0 起（本批只落形状）。
-   */
-  private static MerchantFirm merchantFirm(HexCoord hex, ProductionOrganizationId organizationId) {
-    return new MerchantFirm(
-        organizationId,
-        MERCHANT_TIER,
-        hex,
-        true,
-        MERCHANT_CAPACITY_PER_CITY,
-        0L,
-        MerchantFirm.defaultServiceRadiusHex(MERCHANT_TIER),
-        0L,
-        0L,
-        0L,
-        0L);
   }
 
   /**

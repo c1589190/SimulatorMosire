@@ -55,7 +55,6 @@ import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.CommodityFreightBase;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
@@ -68,7 +67,6 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -117,7 +115,8 @@ import java.util.Set;
  *   <li>E4（第 25 个，另替换第 4 个组件的旧 {@code debts} 槽为 {@code debtContracts}）：{@code pledges}；
  *   <li>E5（第 26–27 个，2 个）：{@code liquidationPolicies} / {@code crisisSignals}；
  *   <li>E6（第 28–29 个，2 个）：{@code modeTransitions} / {@code classShares}；
- *   <li>P10.1（第 30 个，1 个）：{@code merchantFirms}（商号表，见 {@link MerchantFirm}；键 = 值内 organizationId）。
+ *   <li>★ <b>P10.1 的第 30 个组件 {@code merchantFirms}（商号表）已于 2026-10-10 M-A1 退役</b>（用户裁定："旧设计和数据类型
+ *       直接重建不用留"）—— 运力改为**派生量**（{@code MerchantCapacityPool}），不再有任何持久组件承接它。组件号沿用 历史编号，不作重排。
  *   <li>P4a（第 31 个，1 个）：{@code periodicAdjustments}（周期家户库存扣增规则表，见 {@link
  *       HouseholdPeriodicAdjustment}； 键 = 值内 id；P4a 只落规则与无状态到期执行，单位政策留 P4b）。
  *   <li>★ <b>R1（第 39 个，1 个）：{@code govMarketMandates}</b>（政府市场授权表 = 行政家户挂单的授权凭据，见 {@link
@@ -127,9 +126,9 @@ import java.util.Set;
  * </ul>
  *
  * E6b（GM 经济调整命令与预览审计）与 E6c（统一 dashboard 读口）都只读/写既有组件，**不追加新状态组件**， 故本记录的全表组件数在 E6 之后仍为 **29 个组件**；★
- * <b>P10.1 追加第 30 个组件 {@code merchantFirms}</b>（商号表，见 {@link MerchantFirm}）；★ <b>P4a 追加 {@code
+ * <b>P10.1 的第 30 个组件 {@code merchantFirms} 已退役（2026-10-10 M-A1）</b>；★ <b>P4a 追加 {@code
  * periodicAdjustments}</b>（周期家户库存扣增规则表，见 {@link HouseholdPeriodicAdjustment}）。逐条对应关系以 {@link
- * EconomyChangeSet} 的组件列为准。
+ * EconomyChangeSet} 的组件列为准（组件数：M-A1 起比 P10.1 时期少 1）。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link HouseholdEconomy#key()}；{@code
  * flows} 的每个键必须等于其 {@link FlowRow#key()}；{@code laborSupply} / {@code allocations} 同理各自等于行内的 group
@@ -323,7 +322,6 @@ public record EconomyData(
     Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
     Map<ModeTransitionId, ModeTransition> modeTransitions,
     Map<ClassShareId, ClassShare> classShares,
-    Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
     Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments,
     Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides,
     Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency,
@@ -424,7 +422,6 @@ public record EconomyData(
       Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
       Map<ModeTransitionId, ModeTransition> modeTransitions,
       Map<ClassShareId, ClassShare> classShares,
-      Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
       Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments) {
     this(
         meta,
@@ -454,7 +451,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         Map.of(),
         Map.of());
@@ -498,7 +494,6 @@ public record EconomyData(
       Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
       Map<ModeTransitionId, ModeTransition> modeTransitions,
       Map<ClassShareId, ClassShare> classShares,
-      Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
       Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments,
       Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides,
       Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency,
@@ -532,7 +527,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -583,7 +577,6 @@ public record EconomyData(
       Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
       Map<ModeTransitionId, ModeTransition> modeTransitions,
       Map<ClassShareId, ClassShare> classShares,
-      Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
       Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments,
       Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides,
       Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency) {
@@ -615,7 +608,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -660,8 +652,7 @@ public record EconomyData(
       Map<AssetRuleId, LiquidationPolicy> liquidationPolicies,
       Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
       Map<ModeTransitionId, ModeTransition> modeTransitions,
-      Map<ClassShareId, ClassShare> classShares,
-      Map<ProductionOrganizationId, MerchantFirm> merchantFirms) {
+      Map<ClassShareId, ClassShare> classShares) {
     this(
         meta,
         industries,
@@ -690,7 +681,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         Map.of());
   }
 
@@ -698,7 +688,6 @@ public record EconomyData(
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
-        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -838,11 +827,6 @@ public record EconomyData(
     }
     if (classShares == null) {
       classShares = Map.of();
-    }
-    // ★★ P10.1 第 30 个组件（商号表）：旧档缺键 ⇒ 空表（同上面每一条的口径）。真正的旧档由版本门在激活前拒绝，
-    //   这里的空表兜底只服务 with* 逐组件构造与"对侧尚未提供"的中间态。
-    if (merchantFirms == null) {
-      merchantFirms = Map.of();
     }
     // ★★ P4a 的第 31 个组件（周期家户扣增规则）：旧档缺键 ⇒ 空表（同上面每一条的口径）。
     if (periodicAdjustments == null) {
@@ -2251,41 +2235,6 @@ public record EconomyData(
       }
     }
     classShares = Collections.unmodifiableMap(classSharesCopy); // ★ 冻在赋值处
-    // ── P10.1 第 30 个组件：商号（键 == 值内 organizationId；引用完整性按“对侧已提供”分段）──────────────
-    //   ★ productionOrganizations 为空 = 组织侧尚未提供 ⇒ 只判键身份与值形状（tier/容量/金额已由 MerchantFirm 构造期判）。
-    //   ★ 组织侧非空 ⇒ fail-closed：每个商号必须指名一个已存在的生产组织，且该组织的 modeId 必须是 merchant
-    //     （商号只能挂在商人 mode 的组织上；mode 不符 = 同一件事两处拼写不一致）。
-    Map<ProductionOrganizationId, MerchantFirm> merchantFirmsCopy = new LinkedHashMap<>();
-    for (Map.Entry<ProductionOrganizationId, MerchantFirm> entry : merchantFirms.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("merchantFirms 的键与值都不得为 null: " + entry.getKey());
-      }
-      MerchantFirm firm = entry.getValue();
-      if (!entry.getKey().equals(firm.organizationId())) {
-        throw new IllegalArgumentException(
-            "merchantFirms 的键必须与 MerchantFirm.organizationId 一致：键="
-                + entry.getKey()
-                + "，行内 organizationId="
-                + firm.organizationId());
-      }
-      if (!productionOrganizations.isEmpty()) {
-        ProductionEnterprise enterprise = productionOrganizations.get(entry.getKey());
-        if (enterprise == null) {
-          throw new IllegalArgumentException(
-              "商号指名的生产组织不存在（组织表已提供 ⇒ fail-closed）：商号=" + entry.getKey());
-        }
-        if (!DefaultProductionModes.MERCHANT.equals(enterprise.modeId())) {
-          throw new IllegalArgumentException(
-              "商号对应的生产组织 modeId 必须是 merchant（同一件事不许两处拼写）：商号="
-                  + entry.getKey()
-                  + "，组织 modeId="
-                  + enterprise.modeId());
-        }
-      }
-      merchantFirmsCopy.put(entry.getKey(), firm);
-    }
-    merchantFirms = Collections.unmodifiableMap(merchantFirmsCopy); // ★ 冻在赋值处
-
     // ── P4a 第 31 个组件：周期家户扣增规则（键 == 值内 id；规则自身构造期已判字段不变量）──────────
     //   ★ 空表 = 还没有任何显式规则 ⇒ 日循环到此完全 no-op，旧档逐值行为不变。
     Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustmentsCopy =
@@ -2479,7 +2428,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2521,7 +2469,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2563,7 +2510,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2608,7 +2554,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2650,7 +2595,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2692,7 +2636,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2734,7 +2677,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2781,7 +2723,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2827,7 +2768,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2868,7 +2808,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2910,7 +2849,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2952,7 +2890,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -2994,7 +2931,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3036,7 +2972,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3078,7 +3013,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3120,7 +3054,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3162,7 +3095,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3214,7 +3146,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3257,7 +3188,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3300,7 +3230,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3342,7 +3271,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3384,7 +3312,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3426,7 +3353,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3472,7 +3398,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3519,7 +3444,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3566,7 +3490,6 @@ public record EconomyData(
         value,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3613,7 +3536,6 @@ public record EconomyData(
         crisisSignals,
         value,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3659,55 +3581,6 @@ public record EconomyData(
         liquidationPolicies,
         crisisSignals,
         modeTransitions,
-        value,
-        merchantFirms,
-        periodicAdjustments,
-        outputQuantityOverrides,
-        productionEfficiency,
-        currencies,
-        moneyInstruments,
-        marketZones,
-        householdDebtRefs,
-        commodityFreightBaseMilli,
-        govMarketMandates);
-  }
-
-  /**
-   * ★★ P10.1：商号表（第 30 个组件，追加在末尾）；其余 29 个组件原样带过（全表共 30 个组件）。
-   *
-   * <p>键 = {@link ProductionOrganizationId}，且必须等于值内 {@link MerchantFirm#organizationId()}。本批只落持久形状与
-   * 构造期引用守卫（组织表已提供时，商号必须挂在 {@code modeId = merchant} 的现存组织上）；运力增减 / 农村惩罚 / 承运选择等结算行为留给
-   * P10.2+，本方法不产生任何数值行为。
-   */
-  public EconomyData withMerchantFirms(Map<ProductionOrganizationId, MerchantFirm> value) {
-    return new EconomyData(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        allocations,
-        relations,
-        markets,
-        shipments,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
         value,
         periodicAdjustments,
         outputQuantityOverrides,
@@ -3756,7 +3629,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         value,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3804,7 +3676,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         value,
         productionEfficiency,
@@ -3852,7 +3723,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         value,
@@ -3927,7 +3797,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -3974,7 +3843,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -4024,7 +3892,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -4075,7 +3942,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,
@@ -4127,7 +3993,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms,
         periodicAdjustments,
         outputQuantityOverrides,
         productionEfficiency,

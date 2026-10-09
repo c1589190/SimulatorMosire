@@ -64,8 +64,6 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.MerchantFirm;
-import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
@@ -237,8 +235,8 @@ import java.util.Set;
  * <p>★ <b>E5a：创世载荷可解析可选初始清算政策/危机信号</b>：顶层 {@code liquidationPolicies} / {@code crisisSignals}
  * 键可缺席（= 空表）；结构与取值范围在载荷层判，键身份/规则与家户引用完整性在 {@link EconomyData} 构造期判。两者为空时旧载荷逐值不变；E5a 不产生任何信号。
  *
- * <p>★ <b>P10.1：创世载荷可解析可选 {@code merchantFirms} 数组</b>（缺键 ⇒ 空表）：每项与 {@link MerchantFirm}
- * 字段对齐，{@code tier}/格走现有词表/格串解析器，数值范围交给 {@code MerchantFirm} 构造期守卫。既有 30 个顶层键的语义一字不动。
+ * <p>★ <b>P10.1 的顶层可选 {@code merchantFirms} 数组已于 2026-10-10 M-A1 退役</b>（用户裁定："旧设计和数据类型直接
+ * 重建不用留"）：运力改为派生量（{@code MerchantCapacityPool}），创世不再声明任何商号行。既有顶层键的语义一字不动。
  */
 final class EconomyPayloads {
 
@@ -532,9 +530,6 @@ final class EconomyPayloads {
     // ★★ E6a：可选初始模式变迁 / 阶层保留份额（缺键 ⇒ 空表；id 确定性派生、分组 Σ=1000 与引用完整性走构造期守卫）。
     Map<ModeTransitionId, ModeTransition> modeTransitions = modeTransitions(payload);
     Map<ClassShareId, ClassShare> classShares = classShares(payload);
-    // ★★ P10.1：顶层可选 merchantFirms 数组（缺键 ⇒ 空表；组织侧不由本载荷声明 ⇒ 构造期只判键身份，
-    //   引用完整性留给组织侧真正提供时的下一次构造）。
-    Map<ProductionOrganizationId, MerchantFirm> merchantFirms = parseMerchantFirms(payload);
     return new EconomyData(
         Optional.of(meta),
         industries,
@@ -572,8 +567,7 @@ final class EconomyPayloads {
         crisisSignals,
         // ★★ E6a：模式变迁 / 阶层保留份额（可选；id 派生、分组 Σ=1000 与引用完整性由构造期守卫判）。
         modeTransitions,
-        classShares,
-        merchantFirms);
+        classShares);
   }
 
   /**
@@ -2294,55 +2288,6 @@ final class EconomyPayloads {
       throw new IllegalArgumentException("字段 " + field + " 必须是数组: " + node);
     }
     return value;
-  }
-
-  /**
-   * ★★ P10.1：顶层可选 {@code merchantFirms} 数组（缺键 ⇒ 空表）。
-   *
-   * <pre>
-   * "merchantFirms":[{"organizationId":"org-…","tier":"PORTER","homeHex":"0_0",
-   *                   "capacityPerRound":100,"capacityUsedThisRound":0,"serviceRadiusHex":2,
-   *                   "ruralTradeCostPenaltyPerMille":0,"lastFeeEarnedMilli":0,
-   *                   "lastUpkeepMilli":0,"lastProfitMilli":0}]
-   * </pre>
-   *
-   * <p>★ 每项字段与 {@link MerchantFirm} 逐一对齐；{@code tier} 走枚举词表、{@code homeHex} 走 {@link
-   * HexCoord#parse}。{@code serviceRadiusHex} 缺键 ⇒ 按 tier 的具名默认（2/4/8；架构 §3.2 "具名默认，GM 可调"），
-   * 显式给了就以显式值为准。{@code homeIsCity} 是 §3.2 的字段但不在 P10.1 载荷必填清单里：缺键 = {@code true} （"true
-   * 暂定只允许城市商号"），显式给了就按布尔值收（坏类型具名抛）。数值范围（容量 &gt; 0、used ≥ 0、penalty ∈ [0,100]、金额非负）由 {@link
-   * MerchantFirm} 构造期守卫 fail-closed；同 {@code organizationId} 重复 ⇒ 抛。
-   */
-  private static Map<ProductionOrganizationId, MerchantFirm> parseMerchantFirms(JsonNode payload) {
-    Map<ProductionOrganizationId, MerchantFirm> firms = new LinkedHashMap<>();
-    for (JsonNode node : optionalArray(payload, "merchantFirms")) {
-      if (!node.isObject()) {
-        throw new IllegalArgumentException("merchantFirms 的每项必须是对象: " + node);
-      }
-      ProductionOrganizationId organizationId =
-          ProductionOrganizationId.parse(requireText(node, "organizationId"));
-      MerchantPolicy.MerchantTier tier =
-          enumValue(
-              MerchantPolicy.MerchantTier.class, requireText(node, "tier"), "merchantFirms[].tier");
-      HexCoord homeHex = HexCoord.parse(requireText(node, "homeHex"));
-      boolean homeIsCity = optionalBoolean(node, "homeIsCity", true);
-      MerchantFirm firm =
-          new MerchantFirm(
-              organizationId,
-              tier,
-              homeHex,
-              homeIsCity,
-              requireLong(node, "capacityPerRound"),
-              requireLong(node, "capacityUsedThisRound"),
-              optionalLong(node, "serviceRadiusHex", MerchantFirm.defaultServiceRadiusHex(tier)),
-              requireLong(node, "ruralTradeCostPenaltyPerMille"),
-              requireLong(node, "lastFeeEarnedMilli"),
-              requireLong(node, "lastUpkeepMilli"),
-              requireLong(node, "lastProfitMilli"));
-      if (firms.putIfAbsent(organizationId, firm) != null) {
-        throw new IllegalArgumentException("同一份载荷里商号 organizationId 重复: " + organizationId);
-      }
-    }
-    return firms;
   }
 
   private static JsonNode optionalObject(JsonNode node, String field) {

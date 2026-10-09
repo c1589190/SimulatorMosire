@@ -109,9 +109,9 @@ import org.slf4j.Logger;
  * HouseholdClassMembership.retainedShares} 三个嵌套键表）；{@code classStandings} 的键仍是上面已注册的 {@code
  * HouseholdId}。 旧档缺这四个键 ⇒ 快照侧收成空表、变更集侧收成 {@code Unchanged}，见各自的构造器兜底。
  *
- * <p>★ <b>P10.1</b>：{@code merchantFirms}（第 30 个组件）的键复用已注册的 {@code ProductionOrganizationId}；值
- * {@link io.mosire.simos.economy.model.MerchantFirm} 按 record 组件字段显式绑定， 缺键 ⇒ 空表（{@code EconomyData}
- * 构造期归一），写侧按构造期 {@code LinkedHashMap} 的插入序保序。
+ * <p>★ <b>P10.1</b>：{@code merchantFirms}（第 30 个组件）已于 2026-10-10 M-A1 **退役**（运力改派生量）⇒ 本 codec 不再有
+ * 它的读写面（用户裁定"旧设计和数据类型直接重建不用留"⇒ 不写旧键忽略/归一代码，旧档按重建处理）。它的键类型 {@code ProductionOrganizationId} 仍由
+ * {@code productionOrganizations}（E2）使用，故那个键反序列化器保留。
  *
  * <p>★ <b>P4a</b>：{@code periodicAdjustments}（第 31 个组件）的键复用 {@code PeriodicHouseholdAdjustmentId} 的
  * {@code toString()/parse} 配对；规则值 {@link
@@ -252,9 +252,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(ClassStructureId.class, keyDeserializer(ClassStructureId::parse));
     module.addKeyDeserializer(ClassPositionId.class, keyDeserializer(ClassPositionId::parse));
     // ★★ E2：productionOrganizations / assetRules 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
-    //   ★ P10.1：merchantFirms（第 30 个组件）的键 = ProductionOrganizationId，复用下面这一个注册点；
-    //     值 MerchantFirm 走 Jackson 的 record 字段显式绑定（无自定义 compatibility 层），缺键 ⇒ EconomyData
-    //     构造期归一成空表，写侧按构造期 LinkedHashMap 的插入序保序。
+    //   ★ E2 的 productionOrganizations 与 P10.1 的 merchantFirms 曾共用本注册点；merchantFirms 已于 M-A1 退役
+    //     ⇒ 现在只有 productionOrganizations 用它（键注册点保留，不是"没人用的注册"）。
     module.addKeyDeserializer(
         ProductionOrganizationId.class, keyDeserializer(ProductionOrganizationId::parse));
     module.addKeyDeserializer(AssetRuleId.class, keyDeserializer(AssetRuleId::parse));

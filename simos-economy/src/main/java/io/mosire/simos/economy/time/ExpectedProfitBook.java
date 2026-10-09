@@ -25,7 +25,6 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
@@ -94,12 +93,12 @@ import java.util.Set;
  * != 本户"找雇主，规模 = {@code ProductionProcessBook.capacityScaleOf}；不再读 {@code
  * base.productionOrganizations()} 的 {@code enterprise.modeId}（那是周期开始时的过期快照）。
  *
- * <p>★★ <b>仍保留的具名近似（如实记）</b>：merchant 分支的商号/组织查找仍读 {@code base.merchantFirms()} 与 {@code
- * base.productionOrganizations()}（签名拿不到当天工作副本 enterprises）；当天自动组织阶段刚新建的组织可能不在 base 里，会让 merchant
- * 候选的"现有商号"侧略偏乐观；真正落地由 {@code ModeMigrationPolicy} 的预留账本与 {@code ModeMigrationSettlement}
- * 的逐笔拆份额复核（计划可新建 ⇔ 执行可拆到）。merchant 分支的"路线需求"用 {@link
- * MarketDemandBook.Book#externalDemandTotal}/{@code unfilledBuyerTotal}（Book 里保留的读数），因为签名同样拿不到 原始
- * {@code MarketReport} 列表。
+ * <p>★★ <b>仍保留的具名近似（如实记）</b>：merchant 分支的组织查找仍读 {@code base.productionOrganizations()} （签名拿不到当天工作副本
+ * enterprises）；当天自动组织阶段刚新建的组织可能不在 base 里，会让 merchant 候选的"现有组织"侧略偏乐观； 真正落地由 {@code
+ * ModeMigrationPolicy} 的预留账本与 {@code ModeMigrationSettlement} 的逐笔拆份额复核（计划可新建 ⇔ 执行可拆到）。 merchant
+ * 分支的<b>运力</b>是 M-A1 的派生量（{@link MerchantCapacity}：劳动投入 + 工具可投入量；纯状态路径读不到商品账 ⇒ 工具项取 0 =
+ * 下界）。merchant 分支的"路线需求"用 {@link MarketDemandBook.Book#externalDemandTotal}/{@code
+ * unfilledBuyerTotal}（Book 里保留的读数），因为签名同样拿不到 原始 {@code MarketReport} 列表。
  *
  * <p>★ <b>确定性</b>：全部遍历按 id / (q,r) 规范序；无随机、无时钟、无 UUID；同输入同输出。
  */
@@ -113,9 +112,13 @@ public final class ExpectedProfitBook {
   /** merchant 分支没有产业模板时的视界兜底（天）：本轮真实世界产业周期都是 120。 */
   public static final long DEFAULT_MERCHANT_CYCLE_DAYS = 120L;
 
-  /** 没有 MerchantFirm 时从闲置 CATTLE/SHIP 资产推导 tier 的具名默认值（最低档，避免高估运价）。 */
-  public static final MerchantPolicy.MerchantTier DEFAULT_MERCHANT_TIER =
-      MerchantPolicy.MerchantTier.PORTER;
+  /**
+   * ★ 船/畜维护单价（毫/单位；旧 {@code MerchantSettlement.SHIP_CATTLE_UPKEEP_PER_UNIT_MILLI}，逐值不变）。
+   *
+   * <p>★ 迁移说明（M-A1）：它的旧宿主 {@code MerchantSettlement} 已随商号行整体退役；本常量现在只被 merchant 前瞻的
+   * "资产维护成本"一项读取，故就地落在唯一使用处，数值与口径一字不改（10 毫/单位·周期，GM 可改）。
+   */
+  public static final long SHIP_CATTLE_UPKEEP_PER_UNIT_MILLI = 10L;
 
   /** 一个（家户 × 候选 mode × hex）的预期读数（不可变；数量单位见类注）。 */
   public record Prospect(
@@ -169,7 +172,7 @@ public final class ExpectedProfitBook {
    * relationToMeans/surplusRole、再 id 升序的第一个可生产位置）——本类不另立一套"选位置"规则。
    *
    * @param base
-   *     结算前状态（只读：modes/classStructures/classPositions/classStandings/industries/merchantFirms）
+   *     结算前状态（只读：modes/classStructures/classPositions/classStandings/industries/productionOrganizations）
    * @param household 被评估的家户
    * @param modeId 候选生产方式
    * @param hex 候选格
@@ -644,48 +647,20 @@ public final class ExpectedProfitBook {
           relations);
     }
     ActorRef actor = HouseholdActors.of(household);
-    MerchantFirm firm = null;
-    ProductionEnterprise firmEnterprise = null;
-    for (ProductionOrganizationId organizationId : sortedEnterpriseIds(base)) {
-      MerchantFirm candidate = base.merchantFirms().get(organizationId);
-      if (candidate == null || !candidate.homeHex().equals(hex)) {
-        continue;
-      }
-      // ★ 仍读 base.productionOrganizations() 过期快照（D-024 修复 1b 只修 employer/claimed，merchant 分支留下一轮）：
-      //   当天自动组织阶段新建的组织不在 base 里，会让"现有商号"侧偏乐观；下一轮应传入当天工作副本 enterprises。
-      ProductionEnterprise enterprise = base.productionOrganizations().get(organizationId);
-      if (enterprise != null && enterprise.organizer().equals(actor)) {
-        firm = candidate;
-        firmEnterprise = enterprise;
-        break;
-      }
-    }
-    long capacity;
-    MerchantPolicy.MerchantTier tier;
-    ProductionUnitId unitId;
-    long assetUpkeep;
-    boolean derivedCapacity = false;
-    if (firm != null) {
-      capacity = Math.max(0L, firm.capacityPerRound() - firm.capacityUsedThisRound());
-      tier = firm.tier();
-      unitId =
-          firmEnterprise != null && firmEnterprise.unitId().isPresent()
-              ? firmEnterprise.unitId().get()
-              : ProductionUnitId.idOf(trade.id(), actor);
-      assetUpkeep =
-          shipCattleUpkeepOf(
-              firmEnterprise == null ? List.of() : firmEnterprise.assetSources(), shares);
-    } else {
-      Map<AssetKind, Long> assets = merchantAssetsOf(hex, actor, shares, claimedByEnterprises);
-      long cattle = assets.getOrDefault(AssetKind.CATTLE, 0L);
-      long ships = assets.getOrDefault(AssetKind.SHIP, 0L);
-      capacity = Math.addExact(cattle, ships);
-      tier = DEFAULT_MERCHANT_TIER; // 无商号 ⇒ 用具名最低档，避免高估 tier 折扣/城区当量
-      unitId = ProductionUnitId.idOf(trade.id(), actor);
-      assetUpkeep =
-          Math.multiplyExact(capacity, MerchantSettlement.SHIP_CATTLE_UPKEEP_PER_UNIT_MILLI);
-      derivedCapacity = true;
-    }
+    // ★★ M-A1：运力是**派生量** —— 由该家户的劳动投入现算（{@link MerchantCapacity}）；商号行（MerchantFirm）与
+    //   "退回 CATTLE/SHIP 资产当运力"的旧支路都已随 merchantFirms 退役。
+    //   ★ 工具维在这条纯状态路径上读不到（商品账只在会话里）⇒ 传 0 = **运力下界**（工具项只增不减，见 MerchantCapacity 的 J-2）。
+    ProductionEnterprise firmEnterprise = merchantEnterpriseOf(base, actor);
+    long capacity =
+        MerchantCapacity.laborCapacityMilli(householdEconomy.participationAdjustedLaborMilli());
+    MerchantPolicy.MerchantTier tier = MerchantCapacity.tierOf(capacity);
+    ProductionUnitId unitId =
+        firmEnterprise != null && firmEnterprise.unitId().isPresent()
+            ? firmEnterprise.unitId().get()
+            : ProductionUnitId.idOf(trade.id(), actor);
+    long assetUpkeep =
+        shipCattleUpkeepOf(
+            firmEnterprise == null ? List.of() : firmEnterprise.assetSources(), shares);
     if (capacity <= 0L) {
       return infeasible(
           household, modeId, position.id(), hex, trade.id(), "NO_MERCHANT_CAPACITY:no-capacity");
@@ -714,9 +689,8 @@ public final class ExpectedProfitBook {
     }
     ProductionRules relation =
         relationFor(relations, unitId, modeId, trade, householdEconomy, actor);
-    if (derivedCapacity) {
-      notes.add("DERIVED_MERCHANT_CAPACITY");
-    }
+    // ★ M-A1：运力恒为派生量（旧"有商号行 ⇒ 存量运力"的支路已退役）。
+    notes.add("DERIVED_MERCHANT_CAPACITY");
     if (hasInKindPerLaborRule(relation)) {
       // ★ 具名缺口：porter 劳动量拿不到（签名没有 HouseholdLaborCommitment）⇒ 按劳动计的 porter 工资记 0，不静默。
       notes.add("PORTER_LABOR_UNKNOWN");
@@ -804,30 +778,6 @@ public final class ExpectedProfitBook {
     return scale == Long.MAX_VALUE ? 0L : scale;
   }
 
-  /** merchant 运力资产（同格 trade 产业下的 CATTLE/SHIP；自有自营或可租闲置；claimed 由调用方传入）。 */
-  private static Map<AssetKind, Long> merchantAssetsOf(
-      HexCoord hex,
-      ActorRef actor,
-      Map<AssetShareId, OwnershipStake> shares,
-      Set<AssetShareId> claimedByEnterprises) {
-    Map<AssetKind, Long> available = new LinkedHashMap<>();
-    for (OwnershipStake share : shares.values()) {
-      if (share.asset() != AssetKind.CATTLE && share.asset() != AssetKind.SHIP) {
-        continue;
-      }
-      if (share.quantity() <= 0L || !hex.equals(industryHex(share.industry()))) {
-        continue;
-      }
-      boolean own = share.operator().equals(actor);
-      boolean idle = ModeMigrationPolicy.isIdleShare(share, claimedByEnterprises);
-      if (!own && !idle) {
-        continue;
-      }
-      available.merge(share.asset(), share.quantity(), Math::addExact);
-    }
-    return available;
-  }
-
   private static long shipCattleUpkeepOf(
       List<AssetShareId> assetSources, Map<AssetShareId, OwnershipStake> shares) {
     long upkeep = 0L;
@@ -839,9 +789,7 @@ public final class ExpectedProfitBook {
       if (share.asset() == AssetKind.CATTLE || share.asset() == AssetKind.SHIP) {
         upkeep =
             Math.addExact(
-                upkeep,
-                Math.multiplyExact(
-                    share.quantity(), MerchantSettlement.SHIP_CATTLE_UPKEEP_PER_UNIT_MILLI));
+                upkeep, Math.multiplyExact(share.quantity(), SHIP_CATTLE_UPKEEP_PER_UNIT_MILLI));
       }
     }
     return upkeep;
@@ -1393,14 +1341,23 @@ public final class ExpectedProfitBook {
   }
 
   /**
-   * ★★ <b>仍读过期快照（D-024 修复 1b 未改的 merchant 分支专用）</b>：只服务 {@code merchantProspect} 的商号/组织查找， 键集仍读
-   * {@code base.productionOrganizations()}——周期关账时 base 是本周期开始时的 revision，当天自动组织阶段刚新建的 组织不在其中。下一轮若修
-   * merchant 分支，应把当天工作副本 {@code enterprises} 作为入参传进来，而不是改这里去猜。
+   * ★★ <b>M-A1：该家户在同格 merchant 生产方式下的生产组织</b>（有则用于取 unit/资产维护来源，没有 ⇒ 空）。
+   *
+   * <p>★ 仍读 {@code base.productionOrganizations()} 快照（D-024 修复 1b 未改的 merchant 分支专用）：周期关账时 base 是
+   * 本周期开始时的 revision，当天自动组织阶段刚新建的组织不在其中。键集按 {@link ProductionOrganizationId#value()} 升序 ⇒ 同输入同答案。
    */
-  private static List<ProductionOrganizationId> sortedEnterpriseIds(EconomyData base) {
+  private static ProductionEnterprise merchantEnterpriseOf(EconomyData base, ActorRef actor) {
     List<ProductionOrganizationId> ids = new ArrayList<>(base.productionOrganizations().keySet());
     ids.sort(Comparator.comparing(ProductionOrganizationId::value));
-    return ids;
+    for (ProductionOrganizationId organizationId : ids) {
+      ProductionEnterprise enterprise = base.productionOrganizations().get(organizationId);
+      if (enterprise != null
+          && enterprise.organizer().equals(actor)
+          && DefaultProductionModes.MERCHANT.equals(enterprise.modeId())) {
+        return enterprise;
+      }
+    }
+    return null;
   }
 
   @SafeVarargs

@@ -16,7 +16,6 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
@@ -45,7 +44,6 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -1252,21 +1250,15 @@ final class MarketSettlement {
       MarketTrigger trigger,
       MarketTopology topology,
       EconomyParallelism parallelism) {
-    // ★ P10.2 兼容入口：没有 merchantFirms 的世界走旧承运路径（逐值不变）。
+    // ★ M-A1：没有运力池的世界（没有"选了跑商的家户"）⇒ 跨格货走不动；同格成交逐值不变。
     return clearOncePerCycle(
-        markets,
-        round,
-        trigger,
-        topology,
-        parallelism,
-        Map.of(),
-        MerchantSettlement.CarrierPool.empty());
+        markets, round, trigger, topology, parallelism, MerchantCapacityPool.empty());
   }
 
   /**
-   * ★★ <b>P10.2 承运商入口</b>：{@code merchantFirms} 非空时每条跨区 lane 由 {@link
-   * MerchantSettlement.CarrierPool} 现选商号（服务半径/剩余运力/到货费率序），买方 CARRIER_FEE 直接付给 principal 家户；为空时退回旧
-   * {@link #carrierOf}。
+   * ★★ <b>M-A1 承运入口</b>：每条跨格 lane 的运力由 {@link MerchantCapacityPool} 按<b>发货格</b>的逐 hex 运力池
+   * 现算（提供方市场议价权序），买方 CARRIER_FEE 直接付给<b>提供运力的家户</b>。池空 ⇒ 该格没有"选了跑商的家户" ⇒ 跨格路线根本不建（具名 {@code
+   * LOGISTICS_CAPACITY}）；<b>不再有</b>"没有承运人也照发货、运费记未收"的旧兜底。
    */
   static MarketOutcome clearOncePerCycle(
       Map<HexCoord, Market> markets,
@@ -1274,14 +1266,12 @@ final class MarketSettlement {
       MarketTrigger trigger,
       MarketTopology topology,
       EconomyParallelism parallelism,
-      Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
-      MerchantSettlement.CarrierPool carrierPool) {
+      MerchantCapacityPool carrierPool) {
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(round, "round");
     Objects.requireNonNull(trigger, "trigger");
     Objects.requireNonNull(topology, "topology");
     Objects.requireNonNull(parallelism, "parallelism");
-    Objects.requireNonNull(merchantFirms, "merchantFirms");
     Objects.requireNonNull(carrierPool, "carrierPool");
     if (MARKET.isDebugEnabled()) {
       EventLog.channel(MARKET)
@@ -1297,15 +1287,15 @@ final class MarketSettlement {
                   markets.size(),
                   "regions",
                   topology.regions().size(),
-                  "merchantFirms",
-                  merchantFirms.size(),
+                  "capacityHouseholds",
+                  carrierPool.householdCount(),
+                  "capacityHexes",
+                  carrierPool.hexCount(),
                   "rows",
                   round.householdEconomies.size(),
                   "creditEnabled",
                   round.creditEnabled()));
     }
-    boolean merchantWorld = !merchantFirms.isEmpty();
-    Optional<ActorRef> carrier = merchantWorld ? Optional.empty() : carrierOf(round);
     // ★★ E（2026-10-09）：本轮"钱的价"（世界行情 + 当地实际流通的币种）只装配一次 —— 它依赖本轮**全部**家户的
     //   货币账户，故必须由协调器算好、与各区 worker 副本共用同一份实例（各自现算会在"认不认得出某种钱"上漂开）。
     Map<String, List<HouseholdId>> rowsByHex =
@@ -1318,14 +1308,7 @@ final class MarketSettlement {
             round.portEnforcement());
     MatchContext ctx =
         new MatchContext(
-            round,
-            markets,
-            topology,
-            carrier,
-            merchantFirms,
-            carrierPool,
-            round.regulation(),
-            currencyValuation);
+            round, markets, topology, carrierPool, round.regulation(), currencyValuation);
     if (MARKET.isDebugEnabled()) {
       // ★★ E（§一.9：DEBUG 写"为什么"）：本轮"钱的价"认得出哪些币 —— "某笔异币为什么没成交"的第一现场。
       EventLog.channel(MARKET)
@@ -1507,6 +1490,9 @@ final class MarketSettlement {
       matchWithinRegions(ctx, parallelism, indexes);
       // ── 4. 跨区候选（第一版只考直接邻接供应区；P1.2 索引去掉全表扫描，协调器单线程）──────────────
       matchAcrossRegions(ctx, indexes);
+      // ── 4a0. ★★ M-A1：逐格运力池与本轮分配汇总（INFO = 每格运力池与分配汇总；§一.9）────────────
+      //   ★ 位置：区内 + 跨区撮合都做完之后（此时"谁用了多少运力"才是本轮的事实）。
+      ctx.carrierPool.logRoundSummary(round.day);
       // ── 4a. ★★ P-T1a：口岸节流的轮级汇总（INFO：发生了什么 + 具名计数；逐区对在 DEBUG/TRACE）──────
       //   ★ 只报"被拦下多少"这一件事（计数口径 = 源区→目的区 的<b>区对</b>）：被拦下的量不进候选集、不落状态、不进账本（§11），所以它是日志事实，不是账。
       if (ctx.portGatedPairs > 0 && MARKET.isInfoEnabled()) {
@@ -1745,6 +1731,11 @@ final class MarketSettlement {
    * 买得起"两重过滤）之和；{@code supply} = 卖订单的 {@code sellable} 之和。★ 只按绝对供需，不看本轮成交结果 ——
    * 成交已受运力/运费/时限约束，那些属物流读数，不是价格信号。
    *
+   * <p>★★ <b>M-A1（V-20）：被运力截断的部分不提价、不压价（两侧都剔）</b> —— 每个槽位先扣掉 {@code
+   * capacityTruncatedMilli}（本轮真正因运力未获服务的量），再进上面的汇总。用户的裁定是"多出来的不计入当前 hex
+   * 的家户商品价格表"：不可服务的跨格买卖不许把本格价格推上去（需求侧）或压下来（供给侧）。 ★ 扣除量按该槽本轮的统计量封顶（{@code min(统计量,
+   * 截断量)}），跨车道累加也不会扣成负数。
+   *
    * <p>★★ <b>区价 = 集散节点价，成员格同改</b>：新价对**该区所有"已经给这个商品定价"的成员格**生效（缺价的格不凭空造一行）——
    * 这就是"每区每商品一个报价"的落点，也避免成员价格各自漂开后"区价"这个词失去意义。
    */
@@ -1776,12 +1767,15 @@ final class MarketSettlement {
       }
       byRegion.computeIfAbsent(buy.region, ignored -> new LinkedHashMap<>())
               .computeIfAbsent(commodity, ignored -> new long[2])[0] +=
-          quantity;
+          // ★★ M-A1（V-20）：先剔掉"因运力未获服务"的那一份（上限 = 上面的有效需求量）。
+          quantity - Math.min(quantity, buy.capacityTruncatedMilli);
     }
     for (SellSlot sell : ctx.sells) {
+      long sellable = sell.order.sellable();
       byRegion.computeIfAbsent(sell.region, ignored -> new LinkedHashMap<>())
               .computeIfAbsent(sell.order.commodity(), ignored -> new long[2])[1] +=
-          sell.order.sellable();
+          // ★★ M-A1（V-20）：供给侧同样剔除被运力截断的部分（上限 = 该槽可售量）。
+          sellable - Math.min(sellable, sell.capacityTruncatedMilli);
     }
     LinkedHashMap<HexCoord, Market> updated = new LinkedHashMap<>(markets);
     List<MarketReport.PriceUpdate> updates = new ArrayList<>();
@@ -3589,10 +3583,12 @@ final class MarketSettlement {
     if (regions.isEmpty()) {
       return;
     }
-    // ★★ 2026-10-09：有商号（merchantFirms 非空）时区内跨格也要由商号承运 —— 承运容量是**全商号每周期一份**
-    //   的全局硬约束，分散在并行 worker 里各自持副本会超发。⇒ 商号世界改成协调器单线程按拓扑区序直接撮合
-    //   （与 RegionClone.run 的区内序逐字同源），跨区/区内共用一个真实 CarrierPool。
-    if (!ctx.merchantFirms.isEmpty()) {
+    // ★★ M-A1：有运力池（= 有"选了跑商的家户"）时区内跨格也要由它们承运 —— 运力是**逐 hex 每轮一份**的硬约束，
+    //   分散在并行 worker 里各自持副本会超发。⇒ 有运力池的世界改成协调器单线程按拓扑区序直接撮合
+    //   （与 RegionClone.run 的区内序逐字同源），跨格/区内共用一个真实运力池。
+    //   ★ 池空的世界继续走并行：那里**没有任何格有运力** ⇒ 跨格路线在候选生成处就不建（pairUp 的具名拦下），
+    //     worker 与协调器看到的是同一个"全空"事实 ⇒ 1/4/8 线程逐值相同（I7/N7）。
+    if (!ctx.carrierPool.isEmpty()) {
       matchWithinRegionsSerial(ctx, regions, indexes);
       return;
     }
@@ -3634,9 +3630,9 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>商号世界的区内串行撮合</b>（2026-10-09）：与 {@code RegionClone.run} 同一区内顺序 （拓扑区序 × 商品序 × 槽位插入序），但直接在协调器
-   * {@code ctx} 上成交 —— 区内跨格运费因此与跨区运费共用同一个 {@link MerchantSettlement.CarrierPool}，商号每周期运力不会被各 worker
-   * 副本重复发放。
+   * ★★ <b>有运力池时的区内串行撮合</b>（2026-10-09 立、2026-10-10 M-A1 改绑）：与 {@code RegionClone.run} 同一区内顺序 （拓扑区序
+   * × 商品序 × 槽位插入序），但直接在协调器 {@code ctx} 上成交 —— 区内跨格运费因此与跨区运费共用同一个 {@link MerchantCapacityPool}，逐 hex
+   * 运力不会被各 worker 副本重复发放。
    */
   private static void matchWithinRegionsSerial(
       MatchContext ctx, List<MarketRegion> regions, MarketIndexes indexes) {
@@ -3746,9 +3742,9 @@ final class MarketSettlement {
             localRound,
             ctx.markets,
             ctx.topology,
-            ctx.carrier,
-            ctx.merchantFirms,
-            MerchantSettlement.CarrierPool.empty(),
+            // ★★ M-A1：worker 副本不持真实运力池（它是逐笔扣减的可变对象、只允许协调器单线程触碰）。
+            //   ★ 为什么是安全的：只有池**空**的世界才走并行路径 ⇒ 协调器与 worker 看到的是同一个"全空"事实。
+            MerchantCapacityPool.empty(),
             // ★★ D-027：worker 只读本区适用的调控（配额在本区副本上扣，回放后并回协调器）。
             ctx.regulationFor(regionId),
             // ★★ E：**协调器那一份**"钱的价"（含全部家户的流通币种）—— 副本自己现算会漂开，
@@ -3840,12 +3836,19 @@ final class MarketSettlement {
                 buy.frozenRemaining,
                 buy.spentMilli,
                 buy.noMoney,
-                buy.blocked));
+                buy.blocked,
+                buy.capacityTruncatedMilli));
       }
       List<SellSlotState> sellStates = new ArrayList<>(allSells.size());
       for (SellSlot sell : allSells) {
         sellStates.add(
-            new SellSlotState(sell.orderIndex, sell.remaining, sell.frozenRemaining, sell.blocked));
+            new SellSlotState(
+                sell.orderIndex,
+                sell.remaining,
+                sell.frozenRemaining,
+                sell.blocked,
+                sell.capacityBlocked,
+                sell.capacityTruncatedMilli));
       }
       return new RegionOutcome(
           regionId, List.copyOf(local.fillIntents), buyStates, sellStates, local.round.unmetToday);
@@ -3922,6 +3925,7 @@ final class MarketSettlement {
       }
       buy.noMoney = state.noMoney();
       buy.blocked = state.blocked();
+      buy.capacityTruncatedMilli = state.capacityTruncatedMilli();
     }
     for (SellSlotState state : outcome.sellStates()) {
       SellSlot sell = ctx.sells.get(state.orderIndex());
@@ -3932,6 +3936,9 @@ final class MarketSettlement {
       // ★★ E：拒因（市场性理由）也是槽位状态的一部分 —— 不带回来，读数会把"卖方说不出这个价"误报成
       //   NO_BUYER/OUTCOMPETED（归因失真，N1 的判据就看不见了）。
       sell.blocked = state.blocked();
+      // ★★ M-A1：被运力截断量同样带回（V-20 的并行路径落点）。
+      sell.capacityBlocked = state.capacityBlocked();
+      sell.capacityTruncatedMilli = state.capacityTruncatedMilli();
     }
     ctx.round.unmetToday.putAll(copyUnmet(outcome.unmetToday()));
   }
@@ -4128,11 +4135,18 @@ final class MarketSettlement {
       long frozenRemaining,
       long spentMilli,
       boolean noMoney,
-      MarketUnfilledReason blocked) {}
+      MarketUnfilledReason blocked,
+      // ★★ M-A1：被运力截断量必须随状态带回协调器（否则并行路径下 V-20 静默失效：协调器侧恒 0）。
+      long capacityTruncatedMilli) {}
 
   /** worker 交回的卖槽终态。 */
   private record SellSlotState(
-      int orderIndex, long remaining, long frozenRemaining, MarketUnfilledReason blocked) {}
+      int orderIndex,
+      long remaining,
+      long frozenRemaining,
+      MarketUnfilledReason blocked,
+      boolean capacityBlocked,
+      long capacityTruncatedMilli) {}
 
   /** 一个区的 worker 产物（回放序 = 协调器遍历 topology.regions() 的区序；区与区之间的账户不重叠）。 */
   private record RegionOutcome(
@@ -4315,6 +4329,12 @@ final class MarketSettlement {
           }
           List<SellSlot> sells = activeSellsAtHex(indexes, sellerHex, commodity);
           if (sells.isEmpty()) {
+            continue;
+          }
+          // ★★ M-A1：跨区车道的运力 = **发货格**（sellerHex）的逐 hex 运力池。该格没有"选了跑商的家户" ⇒ 这条
+          //   车道根本不建（货走不动，具名 LOGISTICS_CAPACITY）；被截断量记进两个槽位（V-20）。
+          if (!ctx.carrierPool.hasCapacityAt(sellerHex)) {
+            blockLaneWithoutCapacity(ctx, buys, sells, sellerHex, buyerHex, commodity);
             continue;
           }
           String budgetKey =
@@ -4900,11 +4920,17 @@ final class MarketSettlement {
           if (buy.remaining > 0L && buy.blocked == null) {
             buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
           }
+          // ★★ M-A1（V-20）：本车道路线窗口容量用尽 ⇒ 未服务的余量记成"被运力截断"，不进自适应定价的统计。
+          if (buy.remaining > 0L) {
+            buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, buy.remaining);
+          }
         }
         // ★★ 2026-10-09：卖方剩余同样具名（路线每窗口运力用尽）—— 不让它落进 OUTCOMPETED 的误档。
         for (SellSlot sell : sells) {
           if (sell.remaining > 0L) {
             sell.capacityBlocked = true;
+            sell.capacityTruncatedMilli =
+                Math.addExact(sell.capacityTruncatedMilli, sell.remaining);
           }
         }
       }
@@ -4947,12 +4973,12 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>2026-10-09：区内跨格（同市场区、不同 hex）也走商人的运输职能</b> —— 构造一条"即时结算、但要付运费"的 合成路线：{@code immediate =
-   * true}（不走 ShipmentBatch/在途），货款与运费仍在成交日结清。
+   * ★★ <b>区内跨格（同市场区、不同 hex）也走运输职能</b>（2026-10-09 立、2026-10-10 M-A1 改绑）—— 构造一条"即时结算、但要付运费"的
+   * 合成路线：{@code immediate = true}（不走 ShipmentBatch/在途），货款与运费仍在成交日结清。
    *
-   * <p>★ 保留旧世界行为：只有 {@code merchantFirms} 非空（有商号）才启用；没有商号的旧档/旧测试仍不产生区内货币运费。 费率与跨区同源（{@link
-   * MarketTopology#freightPerMilleBetween} + {@link #freightUnitMilli}），路线窗口容量取出厂值
-   * （真正的硬约束是商号的每周期运力，由 {@link MerchantSettlement.CarrierPool} 扣）。
+   * <p>★ M-A1：与跨区**同一条**判据 —— 发货格（{@code sell.hex}）必须有运力（该格有"选了跑商的家户"）； 没有 ⇒ 本方法根本不被调用（调用点具名拦下
+   * {@code LOGISTICS_CAPACITY}）。费率与跨区同源（{@link MarketTopology#freightPerMilleBetween} + {@link
+   * #freightUnitMilli}），路线窗口容量取出厂值 （真正的硬约束是逐 hex 运力池，由 {@link MerchantCapacityPool#select} 扣）。
    */
   private static RouteContext intraRegionFreightRoute(
       MatchContext ctx, BuySlot buy, SellSlot sell, long unitPrice) {
@@ -5090,10 +5116,18 @@ final class MarketSettlement {
           sellLeft = sellerIndex < sellers.size() ? sellParts[sellerIndex] : 0L;
           continue;
         }
-        // ★★ 2026-10-09：同市场区、不同 hex 的成交也由商号承运（有 merchantFirms 时）⇒ 合成一条"即时但有运费"的
-        //   路线；同 hex 仍走零运费即时成交（route == null）。
+        // ★★ M-A1：跨格（同市场区、不同 hex）的成交必须由**发货格**的运力池承运 ⇒ 合成一条"即时但有运费"的路线；
+        //   同 hex 仍走零运费即时成交（route == null，不受运力影响）。
+        //   ★ 发货格**没有**运力（没有"选了跑商的家户"）⇒ 这条路线根本不建：本笔具名拦下（LOGISTICS_CAPACITY），
+        //     货不走、"被截断量"记进两个槽位（V-20）。把判据放在候选生成处（而不是只靠 executeTrade）是**必需**的：
+        //     并行回放路径不认 executed=0（见 RegionClone/prepareRegion 的注释）。
         RouteContext effectiveRoute = route;
-        if (route == null && !ctx.merchantFirms.isEmpty() && !buy.hex.equals(sell.hex)) {
+        if (route == null && !buy.hex.equals(sell.hex)) {
+          if (!ctx.carrierPool.hasCapacityAt(sell.hex)) {
+            blockLaneWithoutCapacity(
+                ctx, List.of(buy), List.of(sell), sell.hex, buy.hex, buy.order.commodity());
+            break;
+          }
           effectiveRoute = intraRegionFreightRoute(ctx, buy, sell, price);
         }
         boolean freeTicket =
@@ -5879,37 +5913,27 @@ final class MarketSettlement {
         return 0L;
       }
       long nominalFreight = freightOf(quantity, unitFreight);
-      if (!ctx.merchantFirms.isEmpty()) {
-        MerchantSettlement.CarrierAllocation allocation =
-            ctx.carrierPool.select(route.from, route.to, quantity, route.freightRatePerMille);
-        long allocated = allocation.allocatedMilli();
-        if (allocated <= 0L) {
-          markCapacityBlocked(ctx, buy, sell, route);
-          return 0L; // 一点承运运力都没有 ⇒ 不成交（绝不发"免费"的跨区货）
-        }
-        executed = Math.min(quantity, allocated);
-        if (executed < quantity) {
-          markCapacityBlocked(ctx, buy, sell, route);
-          // 应收而未收的名义运费：承运池算不出这部分的收款人，读数具名、不静默变 0。
-          uncollectedFreight = freightOf(quantity - executed, unitFreight);
-        }
-        freightCharges =
-            carrierChargeSplit(
-                allocation, buy, route, commodityFreightBaseMilli(ctx.topology, route.commodity));
-        for (FreightCharge charge : freightCharges) {
-          freight = Math.addExact(freight, charge.amountMilli());
-        }
-      } else if (ctx.carrier.isPresent()) {
-        // 旧路径（merchantFirms 为空）：第一个有货币账的 ORGANIZATION 承运整票；自承运同样不收运费。
-        // 名义费率为 0 时不出零额腿，也不记未收（旧口径 freight > 0 才铸）。
-        ActorRef legacyCarrier = ctx.carrier.get();
-        if (!legacyCarrier.equals(buy.buyer.actor) && nominalFreight > 0L) {
-          freightCharges = List.of(new FreightCharge(legacyCarrier, nominalFreight));
-          freight = nominalFreight;
-        }
-      } else {
-        // 没有商号服务 / 没有可用承运人：整票名义运费记未收（旧行为），钱不凭空消失。
-        uncollectedFreight = nominalFreight;
+      // ★★ M-A1：跨格承运的唯一判据 —— 按**发货格**的逐 hex 运力池（提供方市场议价权序）分配；分配多少才走多少，
+      //   一点运力都没有 ⇒ 本笔不成交（绝不发"免费"的跨格货）。CARRIER_FEE 收款人 = 提供运力的**家户**。
+      MerchantCapacityPool.CarrierAllocation allocation =
+          ctx.carrierPool.select(route.from, route.to, quantity);
+      long allocated = allocation.allocatedMilli();
+      if (allocated <= 0L) {
+        markCapacityBlocked(ctx, buy, sell, route.from, route.to, route.commodity, quantity);
+        return 0L;
+      }
+      executed = Math.min(quantity, allocated);
+      if (executed < quantity) {
+        markCapacityBlocked(
+            ctx, buy, sell, route.from, route.to, route.commodity, quantity - executed);
+        // 应收而未收的名义运费：被运力截断的那部分没有收款人，读数具名、不静默变 0。
+        uncollectedFreight = freightOf(quantity - executed, unitFreight);
+      }
+      freightCharges =
+          carrierChargeSplit(
+              allocation, buy, route, commodityFreightBaseMilli(ctx.topology, route.commodity));
+      for (FreightCharge charge : freightCharges) {
+        freight = Math.addExact(freight, charge.amountMilli());
       }
     }
 
@@ -6025,6 +6049,34 @@ final class MarketSettlement {
           freightLeg);
       //   ★★ P-T4：逐条按**它的币**记账（运费腿就铸在 buy.currency 上）—— 禁跨币相加。
       ctx.freightPaidByCurrency.merge(buy.currency, charge.amountMilli(), Math::addExact);
+      // ★★ M-A1：提供者侧的运费实收读数（每轮算、不落状态；冻结项 4「收款方 = 提供运力的家户」的可核证据）。
+      ctx.carrierPool.recordFee(charge.household(), buy.currency, charge.amountMilli());
+      // ★★ M-A1（§一.9：TRACE = 逐笔运费）：付款人 → 提供运力的家户、金额、币种、lane。
+      if (EconomyLog.trace().isTraceEnabled()) {
+        EventLog.channel(EconomyLog.trace())
+            .trace(
+                LogEvent.of(
+                    "CARRIER_FEE_PAID",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    round.day,
+                    "commodity",
+                    commodity.value(),
+                    "from",
+                    buy.buyer.actor.id(),
+                    "toHousehold",
+                    charge.household().value(),
+                    "carrierHex",
+                    charge.hex(),
+                    "fromHex",
+                    route.from,
+                    "toHex",
+                    route.to,
+                    "amountMilli",
+                    charge.amountMilli(),
+                    "currency",
+                    buy.currency.value()));
+      }
     }
     //   ★★ P-T4：未收运费同样按币分列（键 = 本笔买方的支付币：名义运费就按这种钱的量纲算出来）。
     //   ★ 0 不落键（"没有未收"与"未收 0"分得开；否则每笔成交都会给它的币插一条 0）。
@@ -6166,49 +6218,128 @@ final class MarketSettlement {
     return executed;
   }
 
-  /** ★★ 承运容量不足的具名落点：买方槽 blocked、卖方槽 capacityBlocked、路线 bottleneck，三处都读得到。 */
+  /**
+   * ★★ <b>承运运力不足的具名落点</b>：买方槽 blocked、卖方槽 capacityBlocked、路线 bottleneck（有这条车道时），三处都
+   * 读得到；并把<b>被运力截断的量</b>累加到两个槽位（V-20：截断部分不许进自适应定价的 demand/supply 统计）。
+   *
+   * <p>★ M-A1 起参数改用 {@code (from, to, commodity)} 而不是 {@code RouteContext}：有一条"发货格没有运力"的拦下发生在
+   * **路线根本不建**的那一刻（那时没有 RouteContext）。
+   *
+   * @param truncatedMilli 本笔因运力未获服务的量（毫商品；&gt; 0）
+   */
   private static void markCapacityBlocked(
-      MatchContext ctx, BuySlot buy, SellSlot sell, RouteContext route) {
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      HexCoord from,
+      HexCoord to,
+      CommodityId commodity,
+      long truncatedMilli) {
     if (buy.blocked == null) {
       buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
     }
     sell.capacityBlocked = true;
-    RouteAccumulator acc =
-        ctx.routes.get(route.from + "->" + route.to + "#" + route.commodity.value());
+    if (truncatedMilli > 0L) {
+      buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, truncatedMilli);
+      sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, truncatedMilli);
+    }
+    RouteAccumulator acc = ctx.routes.get(from + "->" + to + "#" + commodity.value());
     if (acc != null) {
       acc.bottleneck = true;
     }
   }
 
   /**
-   * ★★ <b>P11.3：把一票跨区运费分摊成逐商号的 CARRIER_FEE 金额</b>。
+   * ★★ <b>M-A1：发货格没有运力 ⇒ 这条车道整条拦下</b>（具名 {@code LOGISTICS_CAPACITY}）—— 买卖两侧的余量都记成
+   * "被运力截断"（V-20：截断部分不进自适应定价的 demand/supply 统计），并各留一条 DEBUG 的"为什么"。
+   *
+   * <p>★ 两侧的截断量各自按对侧余量封顶（{@code min(本侧余量, 对侧余量)}）：一个买方要 100、卖方只剩 30 ⇒ 双方各记 30。
+   */
+  private static void blockLaneWithoutCapacity(
+      MatchContext ctx,
+      List<BuySlot> buys,
+      List<SellSlot> sells,
+      HexCoord sellerHex,
+      HexCoord buyerHex,
+      CommodityId commodity) {
+    long buyTotal = 0L;
+    for (BuySlot buy : buys) {
+      if (buy.remaining > 0L) {
+        buyTotal = Math.addExact(buyTotal, buy.remaining);
+      }
+    }
+    long sellTotal = 0L;
+    for (SellSlot sell : sells) {
+      if (sell.remaining > 0L) {
+        sellTotal = Math.addExact(sellTotal, sell.remaining);
+      }
+    }
+    long blocked = Math.min(buyTotal, sellTotal);
+    for (BuySlot buy : buys) {
+      if (buy.remaining > 0L) {
+        buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, sellTotal);
+        if (buy.blocked == null) {
+          buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
+        }
+      }
+    }
+    for (SellSlot sell : sells) {
+      if (sell.remaining > 0L) {
+        sell.capacityBlocked = true;
+        sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, buyTotal);
+      }
+    }
+    if (MARKET.isDebugEnabled() && blocked > 0L) {
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "MERCHANT_CAPACITY_LANE_BLOCKED",
+                  EconomyLogSource.ECONOMY_ORGANIZATION,
+                  "day",
+                  ctx.round.day,
+                  "commodity",
+                  commodity.value(),
+                  "sellerHex",
+                  sellerHex,
+                  "buyerHex",
+                  buyerHex,
+                  "truncatedMilli",
+                  blocked,
+                  "reason",
+                  "shipping-hex-has-no-merchant-household"));
+    }
+  }
+
+  /**
+   * ★★ <b>M-A1：把一票跨格运费分摊成逐提供者（家户）的 CARRIER_FEE 金额</b>。
    *
    * <pre>
-   * ① 自承运条目（principalActor == 买方 actor）整条跳过：不铸自转移、不计实收、不记未收（P10.9 口径）；
-   * ② 实际可收运费 = min(非自承运部分的名义运费上限, Σ 各条按自身有效到货费率的运费)；
-   * ③ 其余条目按承运量占非自承运总量的比例 floor 分摊，顺序里**最后一条实际承运条目拿余数**
+   * ① 自承运条目（carrier == 买方 actor）整条跳过：不铸自转移、不计实收、不记未收（P10.9 口径保留）；
+   * ② 逐条按**该提供者的派生承运成本**算单位运费 = 商品基础费 × (1000 + 路线费率‰) × (1000 + 承运成本‰)（算式一字不改）；
+   * ③ 实际可收运费 = min(非自承运部分的名义运费上限, Σ 各条按自身成本的运费)；
+   * ④ 其余条目按承运量占非自承运总量的比例 floor 分摊，顺序里**最后一条实际承运条目拿余数**
    *    ⇒ Σ各条金额 == 实际可收运费，且 ≤ 该票 nominal freight；
-   * ④ 金额为 0 的条目不产生转移（仍保持守恒）。
+   * ⑤ 金额为 0 的条目不产生转移（仍保持守恒）。
    * </pre>
    *
-   * <p>★ 分摊顺序 = select 返回顺序（有效费率升序 → organizationId 升序），不读时钟/随机 ⇒ 同输入逐值确定。
+   * <p>★ 分摊顺序 = select 返回顺序（议价权降序 → 家户 id 升序），不读时钟/随机 ⇒ 同输入逐值确定（I7）。
    *
    * <p>★★ <b>P-T5b：全部分摊都在<b>买方支付币</b>上做</b>（运费腿铸在 {@code buy.currency} 上）—— 逐条的单位运费经 {@link
    * BuySlot#payAmountOf} 折一次（同币 ⇒ 原样），说不出价的条目不参与（整票退回空表，fail-closed）。 自承运判据因此从"买方 actor"改为直接读
    * {@code buy.buyer.actor}（同一事实，不再多传一个入参）。
    */
   private static List<FreightCharge> carrierChargeSplit(
-      MerchantSettlement.CarrierAllocation allocation,
+      MerchantCapacityPool.CarrierAllocation allocation,
       BuySlot buy,
       RouteContext route,
       long commodityBaseMilli) {
-    List<MerchantSettlement.CarrierChoice> choices = allocation.choices();
+    List<MerchantCapacityPool.CarrierChoice> choices = allocation.choices();
     long chargeableQuantity = 0L;
     long effectiveFreightSum = 0L;
     int lastChargeable = -1;
     for (int i = 0; i < choices.size(); i++) {
-      MerchantSettlement.CarrierChoice choice = choices.get(i);
-      if (choice.principalActor().equals(buy.buyer.actor)) {
+      MerchantCapacityPool.CarrierChoice choice = choices.get(i);
+      if (choice.carrier().equals(buy.buyer.actor)) {
         continue; // 自承运：该条的运费不进入实收，也不进入未收
       }
       lastChargeable = i;
@@ -6219,8 +6350,8 @@ final class MarketSettlement {
           buy.payAmountOf(
               freightUnitMilli(
                   commodityBaseMilli,
-                  choice.effectiveRatePerMille(route.freightRatePerMille),
-                  carrierCostPerMille(choice.firm())));
+                  route.freightRatePerMille,
+                  carrierCostPerMille(choice.tier())));
       if (unitFreight < 0L) {
         return List.of();
       }
@@ -6235,8 +6366,8 @@ final class MarketSettlement {
     List<FreightCharge> charges = new ArrayList<>();
     long assigned = 0L;
     for (int i = 0; i < choices.size(); i++) {
-      MerchantSettlement.CarrierChoice choice = choices.get(i);
-      if (choice.principalActor().equals(buy.buyer.actor)) {
+      MerchantCapacityPool.CarrierChoice choice = choices.get(i);
+      if (choice.carrier().equals(buy.buyer.actor)) {
         continue;
       }
       long amount;
@@ -6247,16 +6378,19 @@ final class MarketSettlement {
         assigned = Math.addExact(assigned, amount);
       }
       if (amount > 0L) {
-        charges.add(new FreightCharge(choice.principalActor(), amount));
+        charges.add(new FreightCharge(choice.carrier(), amount, choice.household(), choice.hex()));
       }
     }
     return List.copyOf(charges);
   }
 
-  /** 一条实际要铸的 CARRIER_FEE 腿（P11.3）：收款 principal + 金额（毫计价货币）。 */
-  private record FreightCharge(ActorRef carrierActor, long amountMilli) {
+  /** 一条实际要铸的 CARRIER_FEE 腿（M-A1）：收款**家户** actor + 金额 + 归属（家户/发货格，日志用）。 */
+  private record FreightCharge(
+      ActorRef carrierActor, long amountMilli, HouseholdId household, HexCoord hex) {
     private FreightCharge {
       Objects.requireNonNull(carrierActor, "carrierActor");
+      Objects.requireNonNull(household, "household");
+      Objects.requireNonNull(hex, "hex");
       if (amountMilli <= 0L) {
         throw new IllegalArgumentException("FreightCharge 金额必须为正: " + amountMilli);
       }
@@ -6360,22 +6494,27 @@ final class MarketSettlement {
    */
   static final long MARKET_FREIGHT_CARRIER_COST_PER_MILLE_PER_TIER_STEP = 25L;
 
-  /** 没有商号（旧 {@code carrierOf} 路径）时的默认承运成本（‰）；也用于撮合前的可负担量预判。 */
+  /** 没有运力池（没有"选了跑商的家户"）时的默认承运成本（‰）；也用于撮合前的可负担量预判。 */
   static final long MARKET_FREIGHT_DEFAULT_CARRIER_COST_PER_MILLE = 25L;
 
-  /** 某商号的承运成本（‰）：tier 城区当量 × {@link #MARKET_FREIGHT_CARRIER_COST_PER_MILLE_PER_TIER_STEP}。 */
-  static long carrierCostPerMille(MerchantFirm firm) {
-    Objects.requireNonNull(firm, "firm");
+  /**
+   * ★★ <b>某提供者的承运成本（‰）= 派生 tier 城区当量 × 每档步长</b>。
+   *
+   * <p>★ M-A1：tier 不再是持久状态（{@code MerchantFirm} 已退役）—— 它由运力规模<b>派生</b> （{@link
+   * MerchantCapacity#tierOf(long)}），本条算式因此只剩"派生读数 → 成本"这一步，算式本身逐字保留。
+   */
+  static long carrierCostPerMille(MerchantPolicy.MerchantTier tier) {
+    Objects.requireNonNull(tier, "tier");
     return Math.multiplyExact(
-        (long) firm.tier().districtUse(), MARKET_FREIGHT_CARRIER_COST_PER_MILLE_PER_TIER_STEP);
+        (long) tier.districtUse(), MARKET_FREIGHT_CARRIER_COST_PER_MILLE_PER_TIER_STEP);
   }
 
   /**
-   * ★★ <b>撮合前可负担性预判用的承运成本（‰）</b>：有商号时取最高档 tier 的成本上界（BOSS=4×25=100‰）， 保证 {@code pairUp} 按它规划的钱 ≤
-   * 实际逐商号收费；没有商号（旧路径）沿用小默认值。
+   * ★★ <b>撮合前可负担性预判用的承运成本（‰）</b>：有运力池时取最高档 tier 的成本上界（BOSS=4×25=100‰）， 保证 {@code pairUp} 按它规划的钱 ≤
+   * 实际逐提供者收费；没有跑商家户（池空）沿用小默认值。
    */
   static long plannedCarrierCostPerMille(MatchContext ctx) {
-    if (ctx.merchantFirms.isEmpty()) {
+    if (ctx.carrierPool.isEmpty()) {
       return MARKET_FREIGHT_DEFAULT_CARRIER_COST_PER_MILLE;
     }
     return Math.multiplyExact(
@@ -7775,22 +7914,13 @@ final class MarketSettlement {
   }
 
   /**
-   * 世界里唯一在用的承运主体：{@code ORGANIZATION} 且**会话里有货币账**；多个时按 id 字典序取第一个（可复现）。
+   * ★★ <b>本世界有没有可收款承运人 = 有没有运力池</b>（M-A1：运力提供者 = 选了跑商的家户，CARRIER_FEE 收款人 = 它的家户账）。
    *
-   * <p>★ <b>必须要求货币账</b>：只有商品账的组织收不了运费 —— 若把它当承运人，买方的运费腿会"记了但没人收" （钱凭空消失）。没有可收款的主体就**不收运费**（{@link
-   * MarketReport#freightUncollectedByCurrency()} 如实记下）。
+   * <p>★ 旧路径的"第一个有货币账的 ORGANIZATION"承运人**不复存在**（组织不持账）；没有运力池的世界 ⇒ 没有可收款承运人， 跨格路线在候选生成处就不建（具名 {@code
+   * LOGISTICS_CAPACITY}），不再有"货照走、运费记未收"的兜底。
    */
   private static boolean carrierPresent(MatchContext ctx) {
-    return ctx.carrier.isPresent() || !ctx.merchantFirms.isEmpty();
-  }
-
-  /**
-   * ★★ P2-A §13.3：旧路径的"第一个有货币账的 ORGANIZATION"承运人不复存在（组织不持账）。 没有商号（{@code merchantFirms}
-   * 为空）的世界因此没有可收款承运人 —— 名义运费如实记进 {@code
-   * MarketReport.freightUncollectedByCurrency()}（具名缺口，不把钱凭空塞给某个家户）。
-   */
-  private static Optional<ActorRef> carrierOf(MarketRound round) {
-    return Optional.empty();
+    return !ctx.carrierPool.isEmpty();
   }
 
   /** 本轮市场里出现过的全部商品（按 id 字典序；撮合顺序因此是内容的纯函数）。 */
@@ -7868,6 +7998,12 @@ final class MarketSettlement {
     boolean noMoney;
     MarketUnfilledReason blocked;
 
+    /**
+     * ★★ <b>M-A1（V-20）：本槽被运力截断的量</b>（毫商品）—— 与 {@link SellSlot#capacityTruncatedMilli} 对称：
+     * 本轮因运力未获服务的量不进喂给自适应定价的 demand 统计（被截断的部分不提价；两侧都剔）。
+     */
+    long capacityTruncatedMilli;
+
     BuySlot(
         BuyOrder order,
         Participant buyer,
@@ -7933,6 +8069,7 @@ final class MarketSettlement {
       this.spentMilli = other.spentMilli;
       this.noMoney = other.noMoney;
       this.blocked = other.blocked;
+      this.capacityTruncatedMilli = other.capacityTruncatedMilli;
     }
   }
 
@@ -7996,8 +8133,17 @@ final class MarketSettlement {
     long frozenRemaining;
     long baseFrozenGoods;
 
-    /** ★★ 2026-10-09：本槽剩余是否卡在"承运运力不足"（路线窗口/商号每周期运力）。 */
+    /** ★★ 2026-10-09：本槽剩余是否卡在"承运运力不足"（路线窗口/逐 hex 运力池）。 */
     boolean capacityBlocked;
+
+    /**
+     * ★★ <b>M-A1（V-20）：本槽被运力截断的量</b>（毫商品）—— 它在**真正因运力拦下**的三处累加（发货格无运力 / 分配不足 / 路线窗口容量用尽），由 {@code
+     * adaptPrices} 从喂给自适应定价的 demand/supply 里逐槽位扣除： <b>被截断的部分不提价、不压价</b>（两侧都剔，用户 2026-10-10 裁定 + 计划
+     * V-20）。
+     *
+     * <p>★ 它<b>不是</b>状态：只在本轮内存里累加、只服务本轮定价统计，不落盘、不进报告金额。
+     */
+    long capacityTruncatedMilli;
 
     /**
      * ★★ <b>P-T1a：本槽剩余是否卡在"跨区口岸闸"</b>（两侧两道闸的可通过量用尽；见 {@link PortThrottle}）—— 与 {@link
@@ -8188,9 +8334,12 @@ final class MarketSettlement {
      */
     final CurrencyValuation currencyValuation;
 
-    final Optional<ActorRef> carrier;
-    final Map<ProductionOrganizationId, MerchantFirm> merchantFirms;
-    final MerchantSettlement.CarrierPool carrierPool;
+    /**
+     * ★★ <b>M-A1：本轮逐 hex 运力池</b>（派生量，见 {@link MerchantCapacityPool}）—— 承运选择的唯一权威。 ★ 池空 =
+     * 世界里没有"选了跑商的家户" ⇒ 跨格货走不动；同格成交不受影响。
+     */
+    final MerchantCapacityPool carrierPool;
+
     final List<BuySlot> buys = new ArrayList<>();
     final List<SellSlot> sells = new ArrayList<>();
     final Map<ActorRef, Participant> participants = new LinkedHashMap<>();
@@ -8244,9 +8393,7 @@ final class MarketSettlement {
         MarketRound round,
         Map<HexCoord, Market> markets,
         MarketTopology topology,
-        Optional<ActorRef> carrier,
-        Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
-        MerchantSettlement.CarrierPool carrierPool,
+        MerchantCapacityPool carrierPool,
         MarketRegulation regulation,
         CurrencyValuation currencyValuation) {
       this.round = round;
@@ -8258,8 +8405,6 @@ final class MarketSettlement {
       this.hexTradeCost = new HexTradeCost(topology);
       this.currencyValuation =
           Objects.requireNonNull(currencyValuation, "MatchContext 的\"钱的价\"不得为 null（没有就给 none()）");
-      this.carrier = carrier;
-      this.merchantFirms = merchantFirms;
       this.carrierPool = carrierPool;
       String anchorRegionId =
           this.regulation.defined() && topology.contains(this.regulation.anchor())

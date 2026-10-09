@@ -44,7 +44,8 @@ import org.slf4j.Logger;
  * 成本 costPaid = 投入实扣（ledger.inputs 按 industry → 经营组织，用本地 ref 价折毫）
  *             + 生产损耗/维护（ledger.losses 同路，折旧与饲料的实物损耗按本地 ref 价折毫）
  *             + 关系实付租/工资（RELATION_PAYMENT 转移腿；货币按计价币、实物按本地 ref 价折毫）
- *             + 商人 upkeep（MerchantSettlement 显式记录）
+ *             + 商人 upkeep（★ M-A1：其唯一写入点 MerchantSettlement.settleCycle 已随商号行退役 ⇒ 本周期读数为 0，
+ *               利润算式与写入点属 M-C）
  *             + 利息实付（本批恒 0：利息并入本金，没有"付息"这条腿；见收口报告）
  * 欠款 arrears = 本周期 RuleSettlement.owed() 中归属于本组织 unit 的部分（单列，不混进成本）
  * 劳动 labor   = 本周期实际投入劳动（关账 unit 的 cycleLaborMilli，关账日结算前抓取）
@@ -368,7 +369,12 @@ public final class EnterpriseProfitBook {
       }
     }
 
-    /** 商人结算后写入：本周期 upkeep（毫计价货币；本批是非现金成本计提，见 MerchantSettlement）。 */
+    /**
+     * 商人结算后写入：本周期 upkeep（毫计价货币；旧口径是非现金成本计提）。
+     *
+     * <p>★ M-A1：写入点 {@code MerchantSettlement.settleCycle} 已随商号行（merchantFirms）整体退役 ⇒ 本批该读数恒 0；
+     * 累加器与读口保留给 **M-C** 的利润算式（本批不发明公式）。
+     */
     public void recordMerchantUpkeep(ProductionOrganizationId organizationId, long upkeepMilli) {
       if (upkeepMilli != 0L) {
         merchantUpkeep.merge(requireOrg(organizationId), upkeepMilli, Math::addExact);

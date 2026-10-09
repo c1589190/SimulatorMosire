@@ -34,7 +34,6 @@ import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
@@ -75,7 +74,7 @@ import java.util.Set;
  *   ⑤ 资产随迁（D-023）：源户自有资产按**逐笔迁移人口比例**随迁 —— 可移动资产（TOOL/SHIP/CATTLE/MACHINE）
  *      同 hex 同产业直接拆份额、跨 hex 在目标产业的同 AssetKind 下重建；不可移动资产（LAND/WORKSHOP）同 hex 可换主人，
  *      跨 hex 留原户并记具名读数。绝不再走"整户消亡时把资产全给最后目标"的旧路
- *   ⑥ 源户**计划**人口归零：钱/债必须为 0；组织/unit/关系/劳动配额/商号照旧退役；**始终保留 0 人口壳行**
+ *   ⑥ 源户**计划**人口归零：钱/债必须为 0；组织/unit/关系/劳动配额照旧退役；**始终保留 0 人口壳行**
  *      （HouseholdEconomy + HouseholdClassMembership + FlowRow，不删行/不删 FlowRow/不摘 crisisSignal 引用），
  *      实际行 population 由 App 按 outbox delta 回写为 0
  * </pre>
@@ -578,7 +577,7 @@ public final class ModeMigrationSettlement {
   }
 
   /**
-   * 源户计划人口清零后的清点与退役：钱/债必须为 0；组织/unit/关系/劳动配额/商号照旧退役。
+   * 源户计划人口清零后的清点与退役：钱/债必须为 0；组织/unit/关系/劳动配额照旧退役（商号行已随 M-A1 退役）。
    *
    * <p>★★ <b>P0（2026-10-10）：始终保留 0 人口壳行</b> —— {@code HouseholdEconomy} + {@code FlowRow} + {@code
    * HouseholdClassMembership} 一律不删（不再区分"有无资产/合同残留"），不摘 crisisSignal 引用；实际行的 {@code population} 由
@@ -748,15 +747,6 @@ public final class ModeMigrationSettlement {
         enterprises.remove(enterprise.id());
       }
     }
-    // ★ 跨表键检查：merchantFirms 以 organizationId 为键；组织行已删，商号行不得残留
-    //   （EconomyData 的「商号指名的生产组织不存在」守卫会在同一 revision 的 build 里 fail-closed）。
-    if (!removedEnterprises.isEmpty()) {
-      LinkedHashMap<ProductionOrganizationId, MerchantFirm> merchantFirms =
-          session.sheet().merchantFirms();
-      for (ProductionOrganizationId removed : removedEnterprises) {
-        merchantFirms.remove(removed);
-      }
-    }
     for (ProductionUnitId unitId : removedUnits) {
       units.remove(unitId);
       relations.remove(unitId);
@@ -770,7 +760,7 @@ public final class ModeMigrationSettlement {
     }
     // ★★ P0：不再区分"整户移除 / 留壳户"——人口归零后**始终保留** 0 人口壳行
     //    （HouseholdEconomy + HouseholdClassMembership + FlowRow），不删行/不删 FlowRow/不摘 crisisSignal 引用；
-    //    组织/unit/关系/劳动配额/商号已在上方照旧退役。这样 App 的 outbox delta（源户 -pop）总有落点，
+    //    组织/unit/关系/劳动配额已在上方照旧退役。这样 App 的 outbox delta（源户 -pop）总有落点，
     //    也与 Social 侧"迁移后留下 0 成员家户"同形。实际行 population 由 App 同 revision 回写为 0。
     Long plannedSourcePopulation = plannedPopulation.get(source);
     if (plannedSourcePopulation == null || plannedSourcePopulation != 0L) {

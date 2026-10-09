@@ -33,7 +33,6 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -95,12 +94,6 @@ public final class EconomyStateBuilder {
 
   /** ★★ E6a：阶层保留份额表工作副本（日结算 apply 时按变迁/家户写出）。 */
   private LinkedHashMap<ClassShareId, ClassShare> classShares;
-
-  /**
-   * ★★ <b>P10.2：商号表工作副本（第 30 个组件）</b> —— 承运选择扣本周期运力、周期末结算写 lastFee/upkeep/profit/容量； 未物化时 {@link
-   * #build} 原样复用 base 的不可变表（无商号世界零拷贝）。
-   */
-  private LinkedHashMap<ProductionOrganizationId, MerchantFirm> merchantFirms;
 
   /**
    * ★★ <b>Z1：生产效率累计与余数表工作副本（第 33 个组件）</b> —— Z2 的结算按 tick 累加 {@code
@@ -221,17 +214,6 @@ public final class EconomyStateBuilder {
       productionOrganizations = new LinkedHashMap<>(base.productionOrganizations());
     }
     return productionOrganizations;
-  }
-
-  /**
-   * ★★ <b>P10.2：商号表工作副本</b>（键 = 值内 organizationId）。本批的写口：{@link MerchantSettlement} 的承运扣量 与周期末
-   * {@code withTradeResult/withCapacityDelta}。
-   */
-  public LinkedHashMap<ProductionOrganizationId, MerchantFirm> merchantFirms() {
-    if (merchantFirms == null) {
-      merchantFirms = new LinkedHashMap<>(base.merchantFirms());
-    }
-    return merchantFirms;
   }
 
   /**
@@ -402,8 +384,6 @@ public final class EconomyStateBuilder {
         // ★★ E6a：命令登记 PENDING、日结算执行终态 —— 显式工作副本；未物化 ⇒ 原样复用 base。
         modeTransitions == null ? base.modeTransitions() : modeTransitions,
         classShares == null ? base.classShares() : classShares,
-        // ★★ P10.2：商号表是结算工作副本（承运扣量、周期末贸易结果写回）；未物化 ⇒ 原样复用 base。
-        merchantFirms == null ? base.merchantFirms() : merchantFirms,
         // ★★ P4a：规则表不参与旧日结算写回，原样带过 base 的表 —— 漏了它 = 任意一次 advance
         //   都会把已注册的周期规则静默抹掉（账面上看不出是谁弄丢的）。
         base.periodicAdjustments(),

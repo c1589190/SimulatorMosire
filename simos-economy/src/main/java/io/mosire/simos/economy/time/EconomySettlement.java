@@ -57,7 +57,6 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MarketZoneBook;
-import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -1797,14 +1796,16 @@ public final class EconomySettlement {
             null,
             null,
             effectiveMarketExcludedHouseholds);
-    // ★★ P10.2：有 merchantFirms 时由 MerchantSettlement 逐 lane 选商号/收费；没有时 Map.of() 退回旧承运路径。
-    Map<ProductionOrganizationId, MerchantFirm> marketMerchants =
-        base.merchantFirms().isEmpty() ? Map.of() : session.sheet().merchantFirms();
-    MerchantSettlement.CarrierPool merchantCarrierPool =
-        marketMerchants.isEmpty()
-            ? MerchantSettlement.CarrierPool.empty()
-            : new MerchantSettlement.CarrierPool(
-                marketMerchants, session.sheet().productionOrganizations());
+    // ★★ M-A1：逐 hex 运力池（派生量，一轮一份、不落状态）—— 成员 = 该格"选了跑商"的家户（主业或副业含 merchant
+    //   生产方式的位置，J-A）；运力 = f(劳动投入, 工具可投入量)（见 MerchantCapacity）。
+    //   ★ 位置 = 生产/欠租阶段之后、市场装配之前：它必须在撮合时可用，且必须读**当刻**的劳动与商品账（每轮重算、不累积）。
+    //   ★ 工具维读会话商品账（tool 商品；V-22：不动 AssetKind.TOOL 产权份额）。
+    MerchantCapacityPool carrierPool =
+        MerchantCapacityPool.of(
+            session.sheet().classMemberships(),
+            base.classPositions(),
+            householdEconomies,
+            householdGoods);
     MarketTrigger marketTrigger =
         MarketSettlement.triggerFor(day, anyCycleClosed, markets, marketRound);
     if (TRACE.isDebugEnabled()) {
@@ -1911,13 +1912,7 @@ public final class EconomySettlement {
       }
       MarketSettlement.MarketOutcome outcome =
           MarketSettlement.clearOncePerCycle(
-              markets,
-              marketRound,
-              marketTrigger,
-              topology,
-              parallelism,
-              marketMerchants,
-              merchantCarrierPool);
+              markets, marketRound, marketTrigger, topology, parallelism, carrierPool);
       // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
       ledger.recordMarketReport(outcome.report());
       govMandateFills = outcome.mandateFills();
@@ -2855,20 +2850,10 @@ public final class EconomySettlement {
     }
     if (profitCycle != null && anyCycleClosed && !base.modes().isEmpty()) {
       profitCycle.recordCloseFacts(day, closedFacts);
-      // ⑦a 商人周期结算（运费实收/porter 工资/upkeep/运力）；结果进 profitCycle 的商人读数。
-      MerchantSettlement.settleCycle(
-          profitCycle,
-          session.sheet().merchantFirms(),
-          session.sheet().productionOrganizations(),
-          units,
-          session.sheet().relations(),
-          laborCommitments,
-          assetShares,
-          householdEconomies,
-          accounts,
-          markets,
-          session.sheet().debtContracts(),
-          day);
+      // ⑦a ★★ M-A1：商号周期结算（运费实收/porter 工资/upkeep/运力写回）**已整体退役** —— 它依赖的商号行
+      //   （merchantFirms）与 merchant 载体都不存在了：运力改为每轮派生（MerchantCapacityPool），运费在成交当时
+      //   直接付给提供运力的家户。★ 「纯商号/顺便分流 + 利润算式（含三层税）」属 **M-C**，本批不发明公式
+      //   （见实现账本 D-3）；因此这里不再有任何"周期末把利润写回状态"的动作。
       // ⑦b 真实利润汇总（只读本周期真实账）。
       EnterpriseProfitBook.Book profitBook =
           EnterpriseProfitBook.collect(

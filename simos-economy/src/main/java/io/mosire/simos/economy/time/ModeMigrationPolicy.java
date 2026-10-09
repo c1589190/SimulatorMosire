@@ -24,7 +24,6 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
@@ -1104,14 +1103,16 @@ public final class ModeMigrationPolicy {
     return null;
   }
 
-  /** merchant 允许条件用：该格有没有仍在运力的商号（运力 0 不算）。 */
+  /**
+   * ★★ <b>M-A1：merchant 允许条件用 —— 该格有没有"选了跑商且有运力"的家户</b>（运力 0 不算）。
+   *
+   * <p>运力是派生量（{@link MerchantCapacity}）：成员判据 = {@code classStandings} 的 {@code
+   * effectivePositionIds()} 含 merchant 生产方式的位置；本查询走纯状态口径（工具维取 0 = 运力下界，见 {@link
+   * MerchantCapacityPool#hasCapacityAt(EconomyData, HexCoord)}）。旧"查商号行"的实现已随 {@code merchantFirms}
+   * 退役。
+   */
   private static boolean hasMerchantCapacityAt(EconomyData base, HexCoord hex) {
-    for (MerchantFirm firm : base.merchantFirms().values()) {
-      if (firm != null && firm.homeHex().equals(hex) && firm.capacityPerRound() > 0L) {
-        return true;
-      }
-    }
-    return false;
+    return MerchantCapacityPool.hasCapacityAt(base, hex);
   }
 
   /**

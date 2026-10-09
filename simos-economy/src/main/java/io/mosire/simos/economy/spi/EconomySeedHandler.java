@@ -208,8 +208,6 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             //   国家 seed 时静默消失（新播的 seed 载荷通常为空表，逐值带过已有状态）。
             merge(base.modeTransitions(), seeded.modeTransitions()),
             merge(base.classShares(), seeded.classShares()),
-            // ★★ P10.1 第 30 个组件：商号表按同一套 append 口径合并（空表播种 ⇒ 逐值带过已有状态）。
-            merge(base.merchantFirms(), seeded.merchantFirms()),
             // ★★ P4a：seed 载荷不声明周期规则 ⇒ 原样带过已有规则（漏了它 = 后续按格补种
             //   会让所有已注册规则静默消失）。
             base.periodicAdjustments(),

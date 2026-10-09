@@ -30,7 +30,6 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -317,10 +316,6 @@ public final class EconomyClearRegionHandler
             });
     Set<ProductionOrganizationId> removedEnterprises =
         keysRemoved(base.productionOrganizations(), enterprises);
-    // ★★ P10.1：商号表随它指名的组织一起移除 —— 否则新状态会出现"商号指向已删组织"的悬空引用，
-    //    EconomyData 构造期守卫会当场 fail-closed（宁可同步摘掉，不把区域清空卡死）。空表时逐值 no-op。
-    Map<ProductionOrganizationId, MerchantFirm> merchantFirms =
-        withoutKeys(base.merchantFirms(), removedEnterprises);
     Map<ModeTransitionId, ModeTransition> modeTransitions =
         new LinkedHashMap<>(base.modeTransitions());
     modeTransitions
@@ -370,13 +365,8 @@ public final class EconomyClearRegionHandler
             .withPledges(pledges)
             .withClassShares(classShares)
             .withModeTransitions(modeTransitions)
-            // ★★ 2026-10-08（A2a 实测修复）：**商号必须先于组织摘**。守卫只判"商号 → 组织"这一个方向
-            //   （EconomyData 第 30 组件：组织表非空时每个商号必须指名一个现存组织），而每个 with* 都会
-            //   重跑一次构造期守卫 ⇒ 先摘组织、商号还留着的那一链会当场 fail-closed
-            //   （实测：`economy.ClearRegion` 对两个行政区都报"商号指名的生产组织不存在"）。
-            //   先摘商号（此时组织还在，合法中间态）再摘组织 ⇒ 两处都清爽，语义与类注的"商号随它指名的
-            //   组织一起移除"逐字相同。
-            .withMerchantFirms(merchantFirms)
+            // ★ M-A1：商号表（merchantFirms）已退役 ⇒ 不再有"商号 → 组织"的摘除次序约束；组织表
+            //   直接按 removedEnterprises 摘（模式变迁表仍先摘，它引用 organizationId）。
             .withProductionEnterprises(enterprises)
             .withLaborCommitments(laborCommitments)
             .withFlows(flows)
@@ -419,7 +409,6 @@ public final class EconomyClearRegionHandler
         staged.crisisSignals(),
         staged.modeTransitions(),
         staged.classShares(),
-        merchantFirms,
         // ★★ P4a：清区域不碰周期规则，原样带过 staged 的表。
         staged.periodicAdjustments(),
         // ★★ Z1：两个新组件按格键删除（先摘引用方、被引用的 industry/unit 同一次构造里一起摘）。
