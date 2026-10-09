@@ -4,7 +4,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.map.hex.HexCoord;
@@ -23,11 +23,10 @@ import java.util.Set;
  * <ol>
  *   <li><b>某个 GOV 单位发行哪些币</b>（{@link #currenciesIssuedBy}）：{@code gov-unit-<govUnitId>} 查政府表 ⇒
  *       {@code issuable}；
- *   <li><b>某种币由哪些 GOV 单位发行</b>（{@link #govUnitIdsIssuing}）：扫政府表的 {@code issuable} ⇒ 政府身份 → GOV 单位
- *       id（{@code GovernmentIds.unitRefOf}；世界级主体不在其中）；
- *   <li><b>某个市场区的发行 GOV 单位是谁</b>（{@link #issuingGovUnitOfZone}）与<b>某个 hex 属于哪个区</b>（{@link
- *       #zoneOfHex}）；
- *   <li><b>某个 hex 上的官方汇率</b>（{@link #officialRateFor}）：区级覆盖优先、回落该区发行 GOV 的 GOV 级报价。
+ *   <li><b>某种币由哪些政府发行</b>（{@link #possibleIssuersOf}）：扫政府表的 {@code issuable}（<b>可多值</b>、规范序； ★
+ *       2026-10-09 C 批起这就是"谁管这种钱"的唯一答案，区里不再记发行政府）+ 它的 GOV 单位投影（{@link #govUnitIdsIssuing}）；
+ *   <li><b>某个 hex 属于哪个区</b>（{@link #zoneOfHex}）；
+ *   <li><b>某个 hex 上的官方汇率</b>（{@link #officialRateFor}）：区级覆盖优先、回落本区法定币发行者的 GOV 级报价。
  * </ol>
  *
  * <p>★ <b>为什么住 app</b>：区表与政府表住在 economy，而"GOV 单位"是 string 级引用（app 同时看得见 unit/economy 的接线）。
@@ -66,6 +65,14 @@ public final class GovCurrencyLinks {
   }
 
   /**
+   * ★★ <b>某种币由哪些政府发行</b>（§4.3 查询面；★ 2026-10-09 C 批起这是"谁管这种钱"的唯一答案）：扫政府表的 {@code issuable} ⇒
+   * <b>全部</b>声称能发行该币的政府身份（{@code GovernmentId}，<b>可多值</b>、规范序）。★ 不替调用方挑一个（挑一个 = 把"谁发的"藏进任意 choice）。
+   */
+  public static List<GovernmentId> possibleIssuersOf(SimulationState state, CurrencyId currency) {
+    return MarketZoneBook.possibleIssuersOf(economyOf(state), currency);
+  }
+
+  /**
    * ★★ <b>某种币由哪些 GOV 单位发行</b>（§4.3 查询面）：只列**GOV 单位**政府（世界级主体如 {@code world-silver} 不在其中 ——
    * 它没有单位可指，那是"不猜"而不是"漏报"）。★ 结果按单位 id 升序（可复现）。
    */
@@ -73,26 +80,20 @@ public final class GovCurrencyLinks {
     return MarketZoneBook.govUnitIdsIssuing(economyOf(state), currency);
   }
 
-  /** 某个市场区（持久区）的发行 GOV 单位 id；区不是 GOV 单位政府（世界级）⇒ 空。 */
-  public static Optional<String> issuingGovUnitOfZone(SimulationState state, MarketZoneId zoneId) {
-    MarketZone zone = economyOf(state).marketZones().get(Objects.requireNonNull(zoneId, "zoneId"));
-    return zone == null ? Optional.empty() : MarketZoneBook.issuingGovUnitOf(zone);
-  }
-
   /** 某个 hex 所属的持久市场区（不属于任何区 ⇒ 空）。 */
   public static Optional<MarketZone> zoneOfHex(SimulationState state, HexCoord hex) {
     return MarketZoneBook.zoneOfHex(economyOf(state), hex);
   }
 
-  /** 某个 hex 上某币对的官方汇率（区级覆盖优先 ⇒ 该区发行 GOV 的 GOV 级报价 ⇒ 空；不回落成"随便哪个 GOV 的价"）。 */
+  /** 某个 hex 上某币对的官方汇率（区级覆盖优先 ⇒ 本区法定币发行者的 GOV 级报价 ⇒ 空；不回落成"随便哪个 GOV 的价"）。 */
   public static Optional<OfficialRate> officialRateFor(
       SimulationState state, HexCoord hex, CurrencyId base, CurrencyId quote) {
     return MarketZoneBook.officialRateFor(economyOf(state), hex, base, quote);
   }
 
   /**
-   * 逐区一行人类可读摘要（保序；供日志/工具/探针直读）：{@code <zoneId>@<anchor>[<n>格]=<法定币>/<发行GOV单位|(world-level)>}。 ★
-   * 只输出稳定 id 与数量（§一.9 的日志纪律）。
+   * 逐区一行人类可读摘要（保序；供日志/工具/探针直读）：{@code <zoneId>@<anchor>[<n>格]=<法定币>}。 ★ 只输出稳定 id 与数量（§一.9 的日志纪律）。★
+   * 2026-10-09 C 批：不再输出"发行 GOV 单位"那一栏（区里已无发行者；谁管这种钱见 {@link #possibleIssuersOf}）。
    */
   public static List<String> describe(SimulationState state) {
     EconomyData economy = economyOf(state);
@@ -106,8 +107,6 @@ public final class GovCurrencyLinks {
               + zone.hexCount()
               + "格]="
               + zone.legalTender().value()
-              + "/"
-              + MarketZoneBook.issuingGovUnitOf(zone).orElse("(world-level)")
               + (zone.officialRates().isEmpty() ? "" : " rates=" + zone.officialRates().size()));
     }
     return List.copyOf(lines);

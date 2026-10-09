@@ -5,12 +5,9 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.map.hex.HexCoord;
@@ -38,33 +35,39 @@ import java.util.Set;
  * {"zoneId":"c-tp-copper",          // 必填：区的稳定身份（建立之后只能用 Reassign/Merge 改成员，不改身份 —— 铁律 1）
  *  "anchor":{"q":-2,"r":0},         // 必填：集散节点格；必须 ∈ hexes 且**该格已有市场行**（区按它的币报价）
  *  "hexes":[{"q":-2,"r":0},…],      // 必填非空：成员格（唯一权威 —— 一个 hex 属于哪个区由它给定，I22）
- *  "legalTender":"copper",          // 必填：本区法定币（必须在世界词表里）
- *  "govUnitId":"gov-tp-copper",     // 必填：发行它的 GOV 单位（身份 = gov-unit-<govUnitId>；必须已登记为政府且发行该币）
+ *  "legalTender":"copper",          // 必填：本区法定币（必须在世界词表里）—— ★ 区的唯一货币事实
  *  "radiusHex":8,                   // 可选（缺省 0）：声明半径（只用于邻接判据与读数，**不**参与成员格派生）
  *  "reason":"…"}                    // 可选：审计文本（只进日志，不进状态）
  * }</pre>
+ *
+ * <p>★★ <b>2026-10-09 C 批：不再点名"发行 GOV"</b>（用户原话「法定货币发行者也丢掉」；设计书 §4.1/G1）：载荷没有 {@code govUnitId}，
+ * 区里也不存发行者 —— "谁管这种钱"由 {@code Government.issuable} <b>反查</b>回答（{@code
+ * MarketZoneBook.possibleIssuersOf}）。 ★ 载荷若仍带 {@code govUnitId} ⇒ <b>具名拒 {@code
+ * bad-payload}</b>（fail-closed 的退役键处理：绝不"算了却被忽略"）。
  *
  * <p>★★ <b>它是"市场区成为持久状态"的入口</b>：B2 之前市场区是纯派生件（城市 + tier 半径每轮现算），"这个 hex 属于哪个区"每次现算 ⇒
  * 划界/退让/覆盖/合并都没有可写的对象。本命令把"成员格"落成状态；非空区表之后，{@code MarketTopologyBook} 的成员格<b>由它给定</b>
  * （单一权威，I22），派生路径退化为空表时的默认值。
  *
- * <p>★★ <b>八条具名拒（全部 fail-closed，一条都不许静默）</b>：
+ * <p>★★ <b>六条具名拒（全部 fail-closed，一条都不许静默）</b>：
  *
  * <ol>
- *   <li>{@code bad-payload}：载荷形状/边界（空 hexes、缺字段、非法格）；
+ *   <li>{@code bad-payload}：载荷形状/边界（空 hexes、缺字段、非法格；★ 含"仍带退役的 {@code govUnitId}"）；
  *   <li>{@code economy-not-activated}：经济切片未激活；
  *   <li>{@code zone-already-defined}：区 id 已存在（改成员走 {@code ReassignZoneHexes} / {@code
  *       MergeMarketZones}）；
  *   <li>{@code anchor-not-in-hexes}：锚格不在成员格里（{@code MarketZone} 的构造期守卫同款，此处提前成具名拒）；
  *   <li>{@code anchor-missing-market}：锚格没有市场行（"这一格按什么钱报价"说不出来；先 {@code economy.SetMarketPrice}）；
  *   <li>{@code currency-not-defined}：法定币不在世界词表里；
- *   <li>{@code gov-not-registered} / {@code currency-not-issuable}：发行 GOV 未登记，或它的 {@code issuable}
- *       不含该法定币 （"谁发行的"不许在两处漂开）；
  *   <li>{@code hex-in-other-zone}：某个成员格已经在别的区里（I22：一个 hex 至多属于一个区；先把它从那个区划出去）—— ★
  *       排在"这个区本身长什么样"的四条判据之后：先问"你立的是什么区"，再问"这些格腾出来了吗"；
  *   <li>{@code numeraire-mismatch}：某个**已有市场行**的成员格的计价币 ≠ 本区法定币（同一格上的两种"这格用什么钱"不能并存；
  *       先把该格改成法定币：{@code economy.SetMarketNumeraire}）。
  * </ol>
+ *
+ * <p>★★ <b>2026-10-09 C 批删掉的两条</b>（用户 §1.6「肯定不管」；设计书 §4.3）：{@code gov-not-registered} 与 {@code
+ * currency-not-issuable} —— 立区<b>不管"谁发得出"</b>：区只是法律事实（G4），发不出就没人能换、后果自负。 ★
+ * <b>不新增</b>"至少有一个政府能发行该法定币"之类的校验（§4.3 明文）。
  *
  * <p>★★ <b>GM-only</b>：本命令标 {@link GmOnlyCommand}（照 {@code economy.SetOfficialRate} / {@code
  * economy.DefineCurrency}） —— 划界是货币制度面的事实，不进决策人令 / {@code RegisterEffect} / 决策人命令目录。★
@@ -145,29 +148,6 @@ public final class EconomyDefineMarketZoneHandler
             "法定币不在世界词表里: " + definition.legalTender() + "（词表=" + base.currencies().keySet() + "）",
             base);
       }
-      GovernmentId governmentId = GovernmentIds.ofUnit(definition.govUnitId());
-      Government government = base.governments().get(governmentId);
-      if (government == null) {
-        return rejected(
-            "gov-not-registered",
-            definition,
-            null,
-            "发行 GOV 未登记为政府（先 economy.RegisterGovernment）: " + governmentId.value(),
-            base);
-      }
-      if (!government.issuable().contains(legalTender)) {
-        return rejected(
-            "currency-not-issuable",
-            definition,
-            null,
-            "该 GOV 不发行这种钱（谁发行的不许在两处漂开）: gov="
-                + governmentId.value()
-                + " 法定币="
-                + legalTender.value()
-                + " issuable="
-                + government.issuable(),
-            base);
-      }
       for (HexCoord hex : definition.hexes()) {
         Optional<MarketZone> owner = MarketZoneBook.zoneOfHex(base, hex);
         if (owner.isPresent()) {
@@ -207,7 +187,6 @@ public final class EconomyDefineMarketZoneHandler
               definition.radiusHex(),
               new LinkedHashSet<>(definition.hexes()),
               legalTender,
-              governmentId,
               Map.of());
       Map<MarketZoneId, MarketZone> zones = new LinkedHashMap<>(base.marketZones());
       zones.put(zoneId, zone);
@@ -224,7 +203,7 @@ public final class EconomyDefineMarketZoneHandler
     }
   }
 
-  /** 区定义 INFO 一条"发生了什么 + 具名计数"（§一.9）：区 id/锚格/格数/法定币/发行 GOV/半径/区表规模。 */
+  /** 区定义 INFO 一条"发生了什么 + 具名计数"（§一.9）：区 id/锚格/格数/法定币/半径/区表规模。 */
   private static void logDefined(MarketZone zone, int zonesBefore, int zonesAfter) {
     LOG.info(
         LogEvent.of(
@@ -238,10 +217,6 @@ public final class EconomyDefineMarketZoneHandler
             zone.hexCount(),
             "legalTender",
             zone.legalTender().value(),
-            "issuingGov",
-            zone.issuingGov().value(),
-            "issuingGovUnit",
-            MarketZoneBook.issuingGovUnitOf(zone).orElse("(world-level)"),
             "radiusHex",
             zone.radiusHex(),
             "zonesBefore",
@@ -287,8 +262,6 @@ public final class EconomyDefineMarketZoneHandler
             definition == null ? -1 : definition.hexes().size(),
             "legalTender",
             definition == null ? "" : definition.legalTender(),
-            "govUnit",
-            definition == null ? "" : definition.govUnitId(),
             "zonesInWorld",
             base == null ? -1 : base.marketZones().size(),
             "message",
@@ -311,17 +284,22 @@ public final class EconomyDefineMarketZoneHandler
   /** 形状/边界解析（{@code targetPaths} 与 {@code handle} 共用；错 ⇒ 抛具名载荷错）。 */
   private static Definition parse(String payloadJson) {
     JsonNode payload = EconomyCommandPayloads.parseObject(TYPE, payloadJson);
+    // ★★ C 批退役键的 fail-closed 处理：区不再记发行政府（用户「法定货币发行者也丢掉」；设计书 §4.1/G1）。
+    //   旧载荷若仍带 govUnitId ⇒ 具名拒（绝不静默忽略一个"以为还算数"的字段）。谁管这种钱由 issuable 反查回答。
+    if (payload.hasNonNull("govUnitId")) {
+      throw new IllegalArgumentException(
+          TYPE + " 的 govUnitId 已退役（区不再记发行政府：谁管这种钱由 Government.issuable 反查）");
+    }
     String zoneId = EconomyCommandPayloads.requireText(TYPE, payload, "zoneId");
     HexCoord anchor = EconomyCommandPayloads.requireHex(TYPE, payload, "anchor");
     List<HexCoord> hexes = EconomyCommandPayloads.requireHexArray(TYPE, payload, "hexes");
     String legalTender = EconomyCommandPayloads.requireText(TYPE, payload, "legalTender");
-    String govUnitId = EconomyCommandPayloads.requireText(TYPE, payload, "govUnitId");
     int radiusHex = EconomyCommandPayloads.optionalInt(TYPE, payload, "radiusHex", 0);
     String reason =
         payload.hasNonNull("reason")
             ? EconomyCommandPayloads.requireText(TYPE, payload, "reason")
             : null;
-    return new Definition(zoneId, anchor, hexes, legalTender, govUnitId, radiusHex, reason);
+    return new Definition(zoneId, anchor, hexes, legalTender, radiusHex, reason);
   }
 
   /** 一条区定义（三个业务字段 + 格集 + 可选半径/审计文本；边界在构造期判完，与 {@code MarketZone} 的守卫同一口径）。 */
@@ -330,7 +308,6 @@ public final class EconomyDefineMarketZoneHandler
       HexCoord anchor,
       List<HexCoord> hexes,
       String legalTender,
-      String govUnitId,
       int radiusHex,
       String reason) {
 
@@ -339,7 +316,6 @@ public final class EconomyDefineMarketZoneHandler
       Objects.requireNonNull(anchor, "anchor");
       Objects.requireNonNull(hexes, "hexes");
       Objects.requireNonNull(legalTender, "legalTender");
-      Objects.requireNonNull(govUnitId, "govUnitId");
       if (zoneId.isBlank()) {
         throw new IllegalArgumentException("zoneId 不得为空白");
       }
@@ -348,9 +324,6 @@ public final class EconomyDefineMarketZoneHandler
       }
       if (legalTender.isBlank()) {
         throw new IllegalArgumentException("legalTender 不得为空白");
-      }
-      if (govUnitId.isBlank()) {
-        throw new IllegalArgumentException("govUnitId 不得为空白");
       }
       if (radiusHex < 0) {
         throw new IllegalArgumentException("radiusHex 不得为负: " + radiusHex);

@@ -887,7 +887,7 @@ class AdjudicateTickToolTest {
         "economy.DefineMarketZone",
         List.of(
             "{\"zoneId\":\"zone-x\",\"anchor\":{\"q\":0,\"r\":0},\"hexes\":[{\"q\":0,\"r\":0}],"
-                + "\"legalTender\":\"silver\",\"govUnitId\":\"gov-1\",\"radiusHex\":0,"
+                + "\"legalTender\":\"silver\",\"radiusHex\":0,"
                 + "\"reason\":\"coverage\"}"));
     samples.put(
         "economy.ReassignZoneHexes",

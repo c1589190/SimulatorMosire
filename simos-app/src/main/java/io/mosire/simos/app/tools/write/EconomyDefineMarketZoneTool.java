@@ -54,14 +54,15 @@ public final class EconomyDefineMarketZoneTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "定义市场区（GM-only；固定命令 economy.DefineMarketZone，载荷 JSON）："
-        + "{zoneId, anchor{q,r}, hexes[{q,r}…], legalTender, govUnitId, radiusHex?, reason?}。"
-        + "★ 成员格就此成为**持久状态**（I22：一个 hex 属于哪个区由它给定，不再每轮现算城市+半径）；"
-        + "★ 具名拒：zone-already-defined / hex-in-other-zone（一个 hex 至多属于一个区）/ anchor-not-in-hexes /"
-        + " anchor-missing-market / currency-not-defined / gov-not-registered / currency-not-issuable"
-        + "（发行 GOV 的 issuable 必须含法定币）/ numeraire-mismatch（本区已有市场的格计价币必须 = 法定币）。"
-        + "参数 {payloadJson(必填), branch(必填), expectedRevision(必填；乐观并发)}。"
-        + "★ preview 不在这里：本工具一次提交一条命令（要预览请先用 simos.state.resolve / simos.economy.hex 读现状）。";
+    return "定义市场区（GM-only；固定命令 economy.DefineMarketZone，载荷 JSON）：{zoneId, anchor{q,r},"
+        + " hexes[{q,r}…], legalTender, radiusHex?, reason?}。★ 成员格就此成为**持久状态**（I22：一个 hex"
+        + " 属于哪个区由它给定，不再每轮现算城市+半径）；★ 具名拒：zone-already-defined / hex-in-other-zone（一个 hex"
+        + " 至多属于一个区）/ anchor-not-in-hexes / anchor-missing-market / currency-not-defined /"
+        + " numeraire-mismatch（本区已有市场的格计价币必须 = 法定币）。★★ 2026-10-09 C 批：载荷**没有"
+        + " govUnitId**（区不再记发行政府 —— 谁管这种钱由 Government.issuable 反查；仍带 govUnitId ⇒"
+        + " bad-payload）；立区也不看\"谁发得出\"（gov-not-registered / currency-not-issuable 已退役）。参数"
+        + " {payloadJson(必填), branch(必填), expectedRevision(必填；乐观并发)}。★ preview"
+        + " 不在这里：本工具一次提交一条命令（要预览请先用 simos.state.resolve / simos.economy.hex 读现状）。";
   }
 
   @Override

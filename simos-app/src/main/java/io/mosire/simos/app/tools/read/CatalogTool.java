@@ -128,39 +128,35 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "unit.SetGovFormation",
               "unitId, level(CENTRAL|PROVINCE), superiorGov?,"
-                  + " householdPosts?[{household,role,level,head?}],"
-                  + " staff?{SCRIBE|YAMEN|POST:整数}, policy?{grainPerStaffPerTick?,"
-                  + " clothPerStaffPerCycle?, moneyPerStaffPerTick?, retirementPerStaff?,"
-                  + " staffCap?{SCRIBE|YAMEN|POST:整数}}"
-                  + "（★ staff 缺省空表、policy 缺省 OfficePolicy.defaults() 且可给部分字段；"
-                  + "★ 2026-10-09 唯一列表裁定：载荷不再有 households 键——域层立编制时把政府家户 "
-                  + "hh-gov-<unitId> 编入 Unit.households，其余家户先走 unit.SetUnitHouseholds（GOV 单位须保留该政府家户）；"
-                  + "householdPosts 缺省 = 保持既有领导配置；S3b 起 householdPosts 是以 HouseholdId 为键的"
-                  + "领导层家户具名配置（键必须在本单位 households 里；非空时 staff 只是家户人口投影、"
-                  + "unit.RecruitStaff/DismissStaff 具名拒）；"
-                  + "既有 ArmyFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
-                  + "superiorGov 必须存在且带 GovernmentFormation、不得指向自身；同类型重复设置 = 整体替换）"),
+                  + " householdPosts?[{household,role,level,head?}], staff?{SCRIBE|YAMEN|POST:整数},"
+                  + " policy?{grainPerStaffPerTick?, clothPerStaffPerCycle?, moneyPerStaffPerTick?,"
+                  + " retirementPerStaff?, staffCap?{SCRIBE|YAMEN|POST:整数}}（★ staff 缺省空表、policy 缺省"
+                  + " OfficePolicy.defaults() 且可给部分字段；★ 2026-10-09 唯一列表裁定：载荷不再有 households"
+                  + " 键——域层立编制时把政府家户 hh-gov-<unitId> 编入 Unit.households，其余家户先走"
+                  + " unit.SetUnitHouseholds（GOV 单位须保留该政府家户）；householdPosts 缺省 = 保持既有领导配置；S3b 起"
+                  + " householdPosts 是以 HouseholdId 为键的领导层家户具名配置（键必须在本单位 households 里；非空时 staff"
+                  + " 只是家户人口投影、unit.RecruitStaff/DismissStaff 具名拒）；既有 ArmyFormation ⇒"
+                  + " 具名拒，一单位至多一个编制标签、不静默替换；superiorGov 必须存在且带 GovernmentFormation、不得指向自身；同类型重复设置 ="
+                  + " 整体替换）"),
           Map.entry(
               "unit.SetArmyFormation",
               "unitId, masterGov?, role,"
                   + " householdDuties?[{household,kind(SOLDIER|NCO|OFFICER|COMMANDER),appointment,commandOf?}],"
                   + " militaryPayPolicy?{periodDays,phaseDay,startsOnDay,expiresOnDay?,"
-                  + "grainPerHouseholdPerCycle?{家户:整数},clothPerHouseholdPerCycle?,moneyPerHouseholdPerCycle?,enabled?}"
-                  + "（★ S3b：householdDuties 是以 HouseholdId 为键的军官/军职家户具名配置"
-                  + "（键必须在本单位 households 里）；缺省 = 保持既有配置；"
-                  + "★ P4b：militaryPayPolicy 缺省 = 保持既有军俸政策、给了 = 整体替换同一个组件；"
-                  + "role 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；"
-                  + "既有 GovernmentFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
-                  + "同类型重复设置 = 整体替换（未提及的 householdDuties/militaryPayPolicy 保持原值））"),
+                  + "grainPerHouseholdPerCycle?{家户:整数},clothPerHouseholdPerCycle?,moneyPerHouseholdPerCycle?,enabled?}（★"
+                  + " S3b：householdDuties 是以 HouseholdId 为键的军官/军职家户具名配置（键必须在本单位 households 里）；缺省 ="
+                  + " 保持既有配置；★ P4b：militaryPayPolicy 缺省 = 保持既有军俸政策、给了 = 整体替换同一个组件；role"
+                  + " 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；既有 GovernmentFormation"
+                  + " ⇒ 具名拒，一单位至多一个编制标签、不静默替换；同类型重复设置 = 整体替换（未提及的 householdDuties/militaryPayPolicy"
+                  + " 保持原值））"),
           Map.entry(
               "unit.SetArmyPayPolicy",
-              "unitId, periodDays(>0), phaseDay([0,periodDays)), startsOnDay(≥0), expiresOnDay?(null=永久),"
-                  + " grainPerHouseholdPerCycle?{家户 id:整数}, clothPerHouseholdPerCycle?,"
-                  + " moneyPerHouseholdPerCycle?, enabled?"
-                  + "（★ P4b：三张逐家户表缺省 = 空表；三表全空 = disabled()（允许，表示停发；"
-                  + "此时排期字段可整组省略，最短停发载荷只给 unitId）；逐值必须 > 0、"
-                  + "列出的家户必须在 Unit.households 里，否则域层具名拒；"
-                  + "可选 enabled=true + 三表全空 ⇒ 具名拒；单位必须存在且带 ArmyFormation）"),
+              "unitId, periodDays(>0), phaseDay([0,periodDays)), startsOnDay(≥0),"
+                  + " expiresOnDay?(null=永久), grainPerHouseholdPerCycle?{家户 id:整数},"
+                  + " clothPerHouseholdPerCycle?, moneyPerHouseholdPerCycle?, enabled?（★"
+                  + " P4b：三张逐家户表缺省 = 空表；三表全空 = disabled()（允许，表示停发；此时排期字段可整组省略，最短停发载荷只给 unitId）；逐值必须"
+                  + " > 0、列出的家户必须在 Unit.households 里，否则域层具名拒；可选 enabled=true + 三表全空 ⇒ 具名拒；单位必须存在且带"
+                  + " ArmyFormation）"),
           Map.entry(
               "unit.SetGovPolicy",
               "unitId, grainPerStaffPerTick?, clothPerStaffPerCycle?, moneyPerStaffPerTick?,"
@@ -224,18 +220,19 @@ public final class CatalogTool implements AgentTool {
           // ── S3a（2026-10-09）：家户生命周期七条命令的载荷提示（本表构造期要求覆盖全注册面）。──
           Map.entry(
               "social.CreateHousehold",
-              "householdId, location{type:HEX|UNIT, hex{q,r}|unitId}, profile{name, description?, metadata?},"
-                  + " vitalRates?[{bracketId, sex(MALE|FEMALE), birthRatePerMillionPerTick?,"
-                  + " deathRatePerMillionPerTick?}], reason"
-                  + "（★ 新建家户成员表为空；id 已存在 ⇒ 拒；vitalRates 缺省空表；UNIT 的 unit 侧同步由 app 组合工具同批保证）"),
+              "householdId, location{type:HEX|UNIT, hex{q,r}|unitId}, profile{name, description?,"
+                  + " metadata?}, vitalRates?[{bracketId, sex(MALE|FEMALE),"
+                  + " birthRatePerMillionPerTick?, deathRatePerMillionPerTick?}], reason（★"
+                  + " 新建家户成员表为空；id 已存在 ⇒ 拒；vitalRates 缺省空表；UNIT 的 unit 侧同步由 app 组合工具同批保证）"),
           Map.entry(
               "social.SetHouseholdLocation",
               "householdId, location{type:HEX|UNIT, hex{q,r}|unitId}, reason"
                   + "（★ 只动 Social 位置；HEX↔UNIT 都合法；UNIT 的 unit 侧同步由 app 组合工具同批保证）"),
           Map.entry(
               "social.AddHouseholdMembers",
-              "householdId, lotId?, sex(MALE|FEMALE), count(>0), ageAtAnchorDays?, anchorTick?, reason"
-                  + "（★ lotId 缺省确定性生成 gm-add:<householdId>；批次 id 已存在 ⇒ 拒；anchorTick 缺省=世界当前 tick）"),
+              "householdId, lotId?, sex(MALE|FEMALE), count(>0), ageAtAnchorDays?, anchorTick?,"
+                  + " reason（★ lotId 缺省确定性生成 gm-add:<householdId>；批次 id 已存在 ⇒ 拒；anchorTick 缺省=世界当前"
+                  + " tick）"),
           Map.entry(
               "social.RemoveHouseholdMembers",
               "householdId, lotId, count(>0), reason" + "（★ 批次必须属于该家户；扣到 0 删批次；超量 ⇒ 具名拒）"),
@@ -260,48 +257,49 @@ public final class CatalogTool implements AgentTool {
                   + "（★ GM 直调；负不得使人数 < 0；未知年龄档 id ⇒ 拒）"),
           Map.entry(
               "social.SetDemandCoefficient",
-              "householdId?, ageBracket(0-14|15-59|60+), sex(MALE|FEMALE), commodity(如 grain|cloth),"
-                  + " amountMilli?, period?(PER_CYCLE_DAYS|PER_CALENDAR_YEAR), cycleDays?, reason"
-                  + "（★ GM-only：householdId 缺席=改全局默认、给了=改家户覆盖（家户必须存在）；amountMilli 给了=upsert、"
-                  + "缺席=删除该家户覆盖键（全局默认不允许删键 ⇒ 拒）；period/cycleDays 同时缺席则按该商品全局口径推断"
-                  + "（找不到 ⇒ 拒），家户覆盖显式口径必须与全局一致；结果经 SocialData.withProvisioning 写回）"),
+              "householdId?, ageBracket(0-14|15-59|60+), sex(MALE|FEMALE), commodity(如"
+                  + " grain|cloth), amountMilli?, period?(PER_CYCLE_DAYS|PER_CALENDAR_YEAR),"
+                  + " cycleDays?, reason（★ GM-only：householdId"
+                  + " 缺席=改全局默认、给了=改家户覆盖（家户必须存在）；amountMilli 给了=upsert、缺席=删除该家户覆盖键（全局默认不允许删键 ⇒"
+                  + " 拒）；period/cycleDays 同时缺席则按该商品全局口径推断（找不到 ⇒ 拒），家户覆盖显式口径必须与全局一致；结果经"
+                  + " SocialData.withProvisioning 写回）"),
           Map.entry(
               "social.SetLaborCoefficient",
-              "householdId?, ageBracket(0-14|15-59|60+), sex(MALE|FEMALE), milliHoursPerTick?, reason"
-                  + "（★ GM-only：householdId 缺席=改全局默认、给了=改家户覆盖（家户必须存在）；milliHoursPerTick 给了=upsert、"
-                  + "缺席=删除该家户覆盖键（全局默认不允许删键 ⇒ 拒）；结果经 SocialData.withProvisioning 写回）"),
+              "householdId?, ageBracket(0-14|15-59|60+), sex(MALE|FEMALE), milliHoursPerTick?,"
+                  + " reason（★ GM-only：householdId 缺席=改全局默认、给了=改家户覆盖（家户必须存在）；milliHoursPerTick"
+                  + " 给了=upsert、缺席=删除该家户覆盖键（全局默认不允许删键 ⇒ 拒）；结果经 SocialData.withProvisioning 写回）"),
           Map.entry(
               "social.SubmitHouseholdWorkOrder",
               "orderId?, target(家户 id), reason(必填非空白), source{module, commandId?, actorId?},"
                   + " dryRun?(缺省 false；true ⇒ 具名拒),"
-                  + " plan[{op:CREATE_HOUSEHOLD|SET_LOCATION|ADD_MEMBERS|REMOVE_MEMBERS|TRANSFER_MEMBERS|"
-                  + "ADJUST_POPULATION|SET_VITAL_RATES, household|householdId?, from|to?, lotId?, count?,"
-                  + " location?, profile?, vitalRates|rates?, sex?, ageAtAnchorDays?, anchorTick?, ageBracketId?, delta?}...]"
-                  + "（★ 唯一家户人口变更受理口：从 base 顺序应用为一个工作副本，任一步失败 ⇒ 整单具名拒、不部分生效；"
-                  + "成功 ⇒ SocialChangeSet.between 一条 revision；target 必须被 plan 引用；"
-                  + "orderId 给定时为幂等键（重复提交 ⇒ 具名拒，标记事件 id=work-order:<orderId>）；"
-                  + "ADD_MEMBERS 缺 lotId 时用 orderId 确定性派生 work-order:<orderId>:add:<序号>，两者都缺 ⇒ 拒；"
-                  + "旧逐操作 social.* 命令保留并存）"),
+                  + " plan[{op:CREATE_HOUSEHOLD|SET_LOCATION|ADD_MEMBERS|REMOVE_MEMBERS|TRANSFER_MEMBERS|ADJUST_POPULATION|SET_VITAL_RATES,"
+                  + " household|householdId?, from|to?, lotId?, count?, location?, profile?,"
+                  + " vitalRates|rates?, sex?, ageAtAnchorDays?, anchorTick?, ageBracketId?,"
+                  + " delta?}...]（★ 唯一家户人口变更受理口：从 base 顺序应用为一个工作副本，任一步失败 ⇒ 整单具名拒、不部分生效；成功 ⇒"
+                  + " SocialChangeSet.between 一条 revision；target 必须被 plan 引用；orderId 给定时为幂等键（重复提交 ⇒"
+                  + " 具名拒，标记事件 id=work-order:<orderId>）；ADD_MEMBERS 缺 lotId 时用 orderId 确定性派生"
+                  + " work-order:<orderId>:add:<序号>，两者都缺 ⇒ 拒；旧逐操作 social.* 命令保留并存）"),
           Map.entry(
               "economy.Seed",
-              "mapId, rulesVersion, entries[{q,r,"
-                  + "industries[{id,name,regime,cycleDays,"
-                  + "capacityPerUnit(每 1 单位规模要多少生产资料;必填),"
+              "mapId, rulesVersion,"
+                  + " entries[{q,r,industries[{id,name,regime,cycleDays,capacityPerUnit(每 1"
+                  + " 单位规模要多少生产资料;必填),"
                   + "dailyInputPerUnit?,dailyLaborPerUnit?,outputPerUnit?,cycleInputPerUnit?(键=生产资料种类),"
-                  + "allocation(@class=split|wage_first),slots[{id,name,laborParticipationPerMille}]}]"
-                  + "(★ R3B.2 起 Industry 只留模板：operator/capacity/progress/cycle 改由 units 与 assetShares 承担),"
+                  + "allocation(@class=split|wage_first),slots[{id,name,laborParticipationPerMille}]}](★"
+                  + " R3B.2 起 Industry 只留模板：operator/capacity/progress/cycle 改由 units 与 assetShares"
+                  + " 承担),"
                   + "units[{id?,industry,operator?{kind,id},modeKey?,progressDays?,cycleLaborMilli?,cycleInputUsedMilli?}],"
-                  + "classes[{residence(rural|urban),slot,population,laborMilli,participationPerMille,goods?,"
-                  + "money?,naturalNeeds?,effectiveDemand?}],debtContracts?(E4a 只接受空数组),pledges?(同上),"
-                  + "allocations[{id,group,household?,actor{kind,id},activity(= unit id),laborMilli,period}],"
-                  + "assetShares[{industry,owner{kind,id},operator{kind,id},asset,quantity,kind}]?}]"
-                  + "（★ 旧形状 industry 的 operator/capacity/progressDays/cycleLaborMilli/cycleInputUsedMilli 仍可读："
-                  + "先合成一条默认 unit + 整额 OWNED 份额；旧 allocations[].activity 活动标签按 actor.id() 产业串对齐到 unit）"
-                  + "（★ 旧档 useRights[{activity,holder,...}] 也接受，按 owner=operator=holder、activity=industry "
-                  + "一对一翻译；assetShares 与 useRights 同时出现 ⇒ 拒）"
-                  + "（★ 一次种一格或多格；meta 空 = 首次播种并打标；meta 非空 = 按格追加，"
-                  + "若某格已有产业/阶层行则拒并点名该格坐标）"
-                  + "（★ operator 缺省 ⇒ 按 regime 推导："
+                  + "classes[{residence(rural|urban),slot,population,laborMilli,participationPerMille,goods?,money?,naturalNeeds?,effectiveDemand?}],debtContracts?(E4a"
+                  + " 只接受空数组),pledges?(同上),allocations[{id,group,household?,actor{kind,id},activity(="
+                  + " unit id),laborMilli,period}],"
+                  + "assetShares[{industry,owner{kind,id},operator{kind,id},asset,quantity,kind}]?}]（★"
+                  + " 旧形状 industry 的"
+                  + " operator/capacity/progressDays/cycleLaborMilli/cycleInputUsedMilli"
+                  + " 仍可读：先合成一条默认 unit + 整额 OWNED 份额；旧 allocations[].activity 活动标签按 actor.id()"
+                  + " 产业串对齐到 unit）（★ 旧档 useRights[{activity,holder,...}] 也接受，按"
+                  + " owner=operator=holder、activity=industry 一对一翻译；assetShares 与 useRights 同时出现 ⇒"
+                  + " 拒）（★ 一次种一格或多格；meta 空 = 首次播种并打标；meta 非空 = 按格追加，若某格已有产业/阶层行则拒并点名该格坐标）（★"
+                  + " operator 缺省 ⇒ 按 regime 推导："
                   + OPERATOR_HINT
                   + "）"),
           Map.entry(
@@ -316,75 +314,75 @@ public final class CatalogTool implements AgentTool {
                   + "新版本 id；逐值相同的重放 = 幂等 no-op；老 unit 引用老 id 零影响；GM-only）"),
           Map.entry(
               "economy.UpsertGovUnit",
-              "govUnitId(必填；家户 = hh-gov-<govUnitId>), industryId(必填；必须已存在且 base kind=office，"
-                  + "office/office_v2…), assets({AssetKind:数量}；逐值≥0，且逐 recipe capacityPerUnit kind 至少覆盖 1 单位规模),"
-                  + " modeKey?(缺省 gov_service，稳定键), reason(必填)"
-                  + "（★ Z1c：为 GOV 单位创建/补齐行政服务生产 unit——operator=HOUSEHOLD:hh-gov-<govUnitId>，"
-                  + "unitId=ProductionUnitId.idOf(industryId, operator)；一次写 units(progress=0/cycle 空) + "
-                  + "assetShares(OWNED 补足 owner=operator) + relations(空规则/residualOwner=operator/laborSource=WAGE)；不写"
-                  + " operatorConditions/ProductionEnterprise。同载荷重放 = 幂等 no-op（空变更集）；已存在 unit/关系/份额"
-                  + "与载荷字段冲突（modeKey 不一致、既有可用资产超过载荷量、既有工资规则…）⇒ 具名拒，不静默覆盖。"
-                  + "守卫：economy 已激活；GOV 已在 economy.RegisterGovernment 登记（经济侧 governments 派生存 + "
-                  + "classes 的 HouseholdEconomy 行）；hh-gov 在 Social 家户表；industry 存在且 base kind=office；"
-                  + "产业格已激活；assets 覆盖 capacityPerUnit 1 单位规模。★ economy handler 因模块边界看不见 unit，"
-                  + "app 的 GM 工具 simos.economy.upsertGovUnit 在 preview/apply 另做 unit+GovernmentFormation 预检；"
-                  + "GM-only，无 CommandTargets/决策人版）"),
+              "govUnitId(必填；家户 = hh-gov-<govUnitId>), industryId(必填；必须已存在且 base"
+                  + " kind=office，office/office_v2…), assets({AssetKind:数量}；逐值≥0，且逐 recipe"
+                  + " capacityPerUnit kind 至少覆盖 1 单位规模), modeKey?(缺省 gov_service，稳定键), reason(必填)（★"
+                  + " Z1c：为 GOV 单位创建/补齐行政服务生产"
+                  + " unit——operator=HOUSEHOLD:hh-gov-<govUnitId>，unitId=ProductionUnitId.idOf(industryId,"
+                  + " operator)；一次写 units(progress=0/cycle 空) + assetShares(OWNED 补足"
+                  + " owner=operator) + relations(空规则/residualOwner=operator/laborSource=WAGE)；不写"
+                  + " operatorConditions/ProductionEnterprise。同载荷重放 = 幂等 no-op（空变更集）；已存在"
+                  + " unit/关系/份额与载荷字段冲突（modeKey 不一致、既有可用资产超过载荷量、既有工资规则…）⇒ 具名拒，不静默覆盖。守卫：economy"
+                  + " 已激活；GOV 已在 economy.RegisterGovernment 登记（经济侧 governments 派生存 + classes 的"
+                  + " HouseholdEconomy 行）；hh-gov 在 Social 家户表；industry 存在且 base"
+                  + " kind=office；产业格已激活；assets 覆盖 capacityPerUnit 1 单位规模。★ economy handler"
+                  + " 因模块边界看不见 unit，app 的 GM 工具 simos.economy.upsertGovUnit 在 preview/apply 另做"
+                  + " unit+GovernmentFormation 预检；GM-only，无 CommandTargets/决策人版）"),
           Map.entry(
               "economy.SetGovServiceCommitment",
-              "govUnitId(必填；家户 = hh-gov-<govUnitId>), householdId(必填；出劳动的家户，economy classes + "
-                  + "Social 家户表都要有), laborMilli(必填 ≥ 0；0 = release 删除该承诺), activity?(可选；缺省按 "
-                  + "operator=hh-gov-<id> 且 industry base kind=office 唯一解析该行政服务 unit；0/多个 ⇒ 具名拒并要求显式给), "
-                  + "reason(必填)"
-                  + "（★ Z3a：写/改/清一条 kind=GOV_SERVICE 的 HouseholdLaborCommitment；id 约定 "
-                  + "gov-service:<activity>:<household>；同 (household, activity) 同量重放 = 幂等 no-op（空变更集）；"
-                  + "已有 PRODUCTION 承诺的同 (household, activity) ⇒ upsert 具名冲突拒（先释放生产承诺，禁止静默改写 kind）；"
-                  + "写入后 Σ全部承诺 ≤ 家户 HouseholdEconomy.laborMilli 预检失败 ⇒ 具名拒。守卫：GOV 已在经济侧登记"
-                  + "（governments 派生存 treasury=hh-gov + hh-gov 的 classes 行 + Social 家户表）；activity 是该 GOV 的"
-                  + "office unit；承诺家户在 economy classes + Social 家户表；0 人口家户写非 0 ⇒ 拒（0 可用于释放）。"
-                  + "★ GM-only，无 CommandTargets；决策人工具/审批链/窄工具归 Z3c。★ GOV_SERVICE 不可缩、最高优先级"
-                  + "（不参与死亡/预算比例缩；越预算 ⇒ LABOR_COMMITMENT_CONTRACT ERROR fail-closed））"),
+              "govUnitId(必填；家户 = hh-gov-<govUnitId>), householdId(必填；出劳动的家户，economy classes +"
+                  + " Social 家户表都要有), laborMilli(必填 ≥ 0；0 = release 删除该承诺), activity?(可选；缺省按"
+                  + " operator=hh-gov-<id> 且 industry base kind=office 唯一解析该行政服务 unit；0/多个 ⇒"
+                  + " 具名拒并要求显式给), reason(必填)（★ Z3a：写/改/清一条 kind=GOV_SERVICE 的"
+                  + " HouseholdLaborCommitment；id 约定 gov-service:<activity>:<household>；同"
+                  + " (household, activity) 同量重放 = 幂等 no-op（空变更集）；已有 PRODUCTION 承诺的同 (household,"
+                  + " activity) ⇒ upsert 具名冲突拒（先释放生产承诺，禁止静默改写 kind）；写入后 Σ全部承诺 ≤ 家户"
+                  + " HouseholdEconomy.laborMilli 预检失败 ⇒ 具名拒。守卫：GOV 已在经济侧登记（governments 派生存"
+                  + " treasury=hh-gov + hh-gov 的 classes 行 + Social 家户表）；activity 是该 GOV 的office"
+                  + " unit；承诺家户在 economy classes + Social 家户表；0 人口家户写非 0 ⇒ 拒（0 可用于释放）。★ GM-only，无"
+                  + " CommandTargets；决策人工具/审批链/窄工具归 Z3c。★ GOV_SERVICE 不可缩、最高优先级（不参与死亡/预算比例缩；越预算 ⇒"
+                  + " LABOR_COMMITMENT_CONTRACT ERROR fail-closed））"),
           Map.entry(
               "unit.AssignGovPost",
               "unitId(必填), household(必填；必须在 Unit.households 里), role(SCRIBE|YAMEN|POST),"
-                  + " tierId?(缺省空串 = legacy/未指派；非空必须命中 GovAdministrationPlan.postTiers，跨切片校验在 app 侧),"
-                  + " level?(缺省 = 该 GOV 编制自身层级 CENTRAL|PROVINCE), head?(缺省 false)"
-                  + "（★ Z4：只写 governmentPostsOfHousehold（同键整条替换）、绝不写 staff；"
-                  + "岗位户不在 Unit.households ⇒ 具名拒并指路 unit.SetUnitHouseholds；"
-                  + "决策人窄工具 simos.gov.assignPosts 直接提交、另走审批链）"),
+                  + " tierId?(缺省空串 = legacy/未指派；非空必须命中 GovAdministrationPlan.postTiers，跨切片校验在 app"
+                  + " 侧), level?(缺省 = 该 GOV 编制自身层级 CENTRAL|PROVINCE), head?(缺省 false)（★ Z4：只写"
+                  + " governmentPostsOfHousehold（同键整条替换）、绝不写 staff；岗位户不在 Unit.households ⇒ 具名拒并指路"
+                  + " unit.SetUnitHouseholds；决策人窄工具 simos.gov.assignPosts 直接提交、另走审批链）"),
           Map.entry(
               "unit.AssignExternalGovPost",
               "govUnitId(必填), householdId(必填；不得在 Unit.households 里，也不得在内部 householdPosts 里),"
-                  + " role?(新建必填 SCRIBE|YAMEN|POST；改派既有外部岗位缺省沿用其角色),"
-                  + " tierId?(缺省=改派时沿用既有/新建时空串 legacy；非空必须命中 GovAdministrationPlan.postTiers，"
-                  + "跨切片校验在 app 侧), level?(缺省=改派时沿用既有/新建时该 GOV 编制层级 CENTRAL|PROVINCE),"
-                  + " headOfGovernment?(缺省=改派时沿用既有/新建时 false), reason(必填非空白)"
-                  + "（★ Z3d：只写 GovernmentFormation.externalPosts（同键整条替换）、绝不碰 Unit.households / Social"
-                  + " 位置 / staff；外部户保留原单位/位置，只承接行政任务。unit 模块看不见 Social/economy ⇒"
-                  + " \"家户存在（Social/economy 行）\"由 app 工具 simos.gov.openPostsToMarket 预检；GM 裸"
-                  + " simos.command.submit 可绕过该预检（已记录的残余边界）。内外岗位互斥；家户在 Unit.households ⇒"
-                  + " 具名拒并指路 unit.AssignGovPost。决策人窄工具 simos.gov.openPostsToMarket 直接提交、另走审批链）"),
+                  + " role?(新建必填 SCRIBE|YAMEN|POST；改派既有外部岗位缺省沿用其角色), tierId?(缺省=改派时沿用既有/新建时空串"
+                  + " legacy；非空必须命中 GovAdministrationPlan.postTiers，跨切片校验在 app 侧),"
+                  + " level?(缺省=改派时沿用既有/新建时该 GOV 编制层级 CENTRAL|PROVINCE),"
+                  + " headOfGovernment?(缺省=改派时沿用既有/新建时 false), reason(必填非空白)（★ Z3d：只写"
+                  + " GovernmentFormation.externalPosts（同键整条替换）、绝不碰 Unit.households / Social 位置 /"
+                  + " staff；外部户保留原单位/位置，只承接行政任务。unit 模块看不见 Social/economy ⇒ \"家户存在（Social/economy"
+                  + " 行）\"由 app 工具 simos.gov.openPostsToMarket 预检；GM 裸 simos.command.submit"
+                  + " 可绕过该预检（已记录的残余边界）。内外岗位互斥；家户在 Unit.households ⇒ 具名拒并指路"
+                  + " unit.AssignGovPost。决策人窄工具 simos.gov.openPostsToMarket 直接提交、另走审批链）"),
           Map.entry(
               "gov.SetAdministrationPlan",
               "unitId(必填；GOV 单位 id), securityPlannedLaborMilli?, paperworkPlannedLaborMilli?,"
                   + " postTiers?[{tierId,securityWeightPerMille,paperworkWeightPerMille}](恰 3 档),"
-                  + " securitySupplyStaticModifierPerMille?, paperworkSupplyStaticModifierPerMille?,"
-                  + " securityDemandStaticModifierPerMille?, paperworkDemandStaticModifierPerMille?,"
-                  + " supernumerarySqrtCoefficient?(k；≥0)"
-                  + "（★ Z2：整体替换；缺省展开 计划0/默认3档/修正1000‰/k=1；单位必须存在且带 GovernmentFormation；"
-                  + "逐值相同 = 幂等 no-op；★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog 三条路径，不拦命令总线 ——"
-                  + "决策人窄工具 simos.gov.setEstablishment 直接提交同一命令并另走审批链）"),
+                  + " securitySupplyStaticModifierPerMille?,"
+                  + " paperworkSupplyStaticModifierPerMille?,"
+                  + " securityDemandStaticModifierPerMille?,"
+                  + " paperworkDemandStaticModifierPerMille?, supernumerarySqrtCoefficient?(k；≥0)（★"
+                  + " Z2：整体替换；缺省展开 计划0/默认3档/修正1000‰/k=1；单位必须存在且带 GovernmentFormation；逐值相同 = 幂等"
+                  + " no-op；★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog 三条路径，不拦命令总线 ——决策人窄工具"
+                  + " simos.gov.setEstablishment 直接提交同一命令并另走审批链）"),
           Map.entry(
               "gov.SetBudgetPolicy",
-              "unitId(必填), orderedCategories?[{category(ADMIN_STIPEND|MILITARY_STIPEND|ADMIN_SALARY|"
+              "unitId(必填),"
+                  + " orderedCategories?[{category(ADMIN_STIPEND|MILITARY_STIPEND|ADMIN_SALARY|"
                   + "DEBT_SERVICE|OTHER),minPerCycle?,capPerCycle?}](顺序即预算优先级),"
                   + " officialSalaryRule?{grainMilliPerCommittedHour?,silverMilliPerCommittedHour?},"
-                  + " remittancePerMilleToSuperior?(0..1000‰；Z7c：周期末按本周期实收税上缴"
-                  + " superiorGov 国库，0=抗税/不转移；不足只告警),"
-                  + " mode?(PATCH|REPLACE，缺省 PATCH：缺省字段保留现值——只改 remittance 不清预算，orderedCategories:[] 才清空；"
-                  + "REPLACE=旧整表替换：缺省 = 空表/0/0/0)"
-                  + "（★ Z7e-3：双模；逐值相同 = 幂等 no-op；capPerCycle 缺省 = 不封顶；"
-                  + "★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog 三条路径，不拦命令总线 ——"
-                  + "决策人窄工具 simos.gov.setBudgetPolicy 直接提交同一命令并另走审批链）"),
+                  + " remittancePerMilleToSuperior?(0..1000‰；Z7c：周期末按本周期实收税上缴 superiorGov"
+                  + " 国库，0=抗税/不转移；不足只告警), mode?(PATCH|REPLACE，缺省 PATCH：缺省字段保留现值——只改 remittance"
+                  + " 不清预算，orderedCategories:[] 才清空；REPLACE=旧整表替换：缺省 = 空表/0/0/0)（★ Z7e-3：双模；逐值相同 ="
+                  + " 幂等 no-op；capPerCycle 缺省 = 不封顶；★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog"
+                  + " 三条路径，不拦命令总线 ——决策人窄工具 simos.gov.setBudgetPolicy 直接提交同一命令并另走审批链）"),
           Map.entry(
               "economy.MigrateHousehold",
               "household(家户 id 文本), toHex(目标格 q_r 文本)"
@@ -392,11 +390,10 @@ public final class CatalogTool implements AgentTool {
                   + "家户不存在 / 目标格不在图上 / 目标格=原格 ⇒ 拒）"),
           Map.entry(
               "economy.TransferAssetShare",
-              "share(原份额 id 文本), quantity?(缺省=原全部；须 ∈ (0,原 quantity]),"
-                  + " toOwner{kind,id}?, toOperator{kind,id}?, kind(OWNED|TENANCY|COMMUNAL)?, reason?"
-                  + "（★ 三者至少一项与现值不同；quantity=原值 ⇒ 整条换 id，<原值 ⇒ 拆成两行；"
-                  + "份额总量逐 (industry,asset) 守恒；不动商品/货币/债务/劳动；"
-                  + "同形现有份额尾段序号最大值+1 生成新 id，尾段不可解析 ⇒ 拒）"),
+              "share(原份额 id 文本), quantity?(缺省=原全部；须 ∈ (0,原 quantity]), toOwner{kind,id}?,"
+                  + " toOperator{kind,id}?, kind(OWNED|TENANCY|COMMUNAL)?, reason?（★"
+                  + " 三者至少一项与现值不同；quantity=原值 ⇒ 整条换 id，<原值 ⇒ 拆成两行；份额总量逐 (industry,asset)"
+                  + " 守恒；不动商品/货币/债务/劳动；同形现有份额尾段序号最大值+1 生成新 id，尾段不可解析 ⇒ 拒）"),
           Map.entry(
               "economy.SetMarketPrice",
               "q, r, commodity, price(> 0)（★ 该格无市场 ⇒ 用 Silver 计价创建空市场；有市场 ⇒ 只 upsert 该商品价；"
@@ -411,23 +408,23 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "economy.AddDemand",
               "scope(HOUSEHOLD|HEX), household(scope=HOUSEHOLD 必填), hex{q,r}?(scope=HEX 必填),"
-                  + " commodity, kind(RECURRING|ONE_OFF), unit(TOTAL|PER_CAPITA), quantityPerCycle(> 0),"
-                  + " createdDay?(缺省 0), expiresDay?(缺省 -1=永久), priority?(缺省 0), source?(缺省 gm), id?(缺省自动生成)"
-                  + "（★ 商品在该需求范围对应的市场必须有价，否则拒并指名 economy.SetMarketPrice；"
-                  + "只写 demands）"),
+                  + " commodity, kind(RECURRING|ONE_OFF), unit(TOTAL|PER_CAPITA),"
+                  + " quantityPerCycle(> 0), createdDay?(缺省 0), expiresDay?(缺省 -1=永久), priority?(缺省"
+                  + " 0), source?(缺省 gm), id?(缺省自动生成)（★ 商品在该需求范围对应的市场必须有价，否则拒并指名"
+                  + " economy.SetMarketPrice；只写 demands）"),
           Map.entry("economy.CancelDemand", "demand(需求 id 文本)（★ 不存在 ⇒ 拒；只写 demands）"),
           Map.entry(
               "economy.SetHouseholdClass",
-              "household(家户 id), position(已存在的 ClassPositionId), originalPosition?, reason?, day?(≥0),"
-                  + " at{q,r}?（★ P2-B：只改 classStandings 的当前职业；position 必须已在 classPositions；"
-                  + "家户没有 standing ⇒ 新建（original=current=position）；追加参与集合走 "
-                  + "economy.SetHouseholdParticipation；at 给了必须等于家户当刻居住格）"),
+              "household(家户 id), position(已存在的 ClassPositionId), originalPosition?, reason?,"
+                  + " day?(≥0), at{q,r}?（★ P2-B：只改 classStandings 的当前职业；position 必须已在"
+                  + " classPositions；家户没有 standing ⇒ 新建（original=current=position）；追加参与集合走"
+                  + " economy.SetHouseholdParticipation；at 给了必须等于家户当刻居住格）"),
           Map.entry(
               "economy.SetHouseholdParticipation",
-              "household, positions[ClassPositionId]?, modes[ProductionModeId]?, reason?, day?(≥0), at{q,r}?"
-                  + "（★ P2-B：至少给 positions 或 modes；两者取并集，空数组 = 清空追加集合；"
-                  + "位置与所属 mode 都必须已存在；当前位置自动并入、不能借本命令改当前职业；"
-                  + "家户没有 standing ⇒ 先按旧 stratum 播种；at 给了必须等于家户当刻居住格）"),
+              "household, positions[ClassPositionId]?, modes[ProductionModeId]?, reason?, day?(≥0),"
+                  + " at{q,r}?（★ P2-B：至少给 positions 或 modes；两者取并集，空数组 = 清空追加集合；位置与所属 mode"
+                  + " 都必须已存在；当前位置自动并入、不能借本命令改当前职业；家户没有 standing ⇒ 先按旧 stratum 播种；at"
+                  + " 给了必须等于家户当刻居住格）"),
           Map.entry(
               "economy.SetHouseholdLabor",
               "household, laborMilli?(≥0，毫小时/ tick), participationPerMille?(0..1000), at{q,r}?"
@@ -436,20 +433,21 @@ public final class CatalogTool implements AgentTool {
                   + "要持久改劳动时间需同时编辑 Social 成员；at 给了必须等于家户当刻居住格）"),
           Map.entry(
               "economy.UpdateDemand",
-              "demand(需求 id), scope(HOUSEHOLD|HEX)?, household?, hex{q,r}?, commodity?, kind(RECURRING|ONE_OFF)?,"
-                  + " unit(TOTAL|PER_CAPITA)?, quantityPerCycle?(>0), createdDay?(≥0), expiresDay?, priority?(≥0),"
-                  + " source?, at{q,r}?（★ P2-B：部分更新，缺省字段逐值沿用；scope 换档必须给新档属主、"
-                  + "不得同时给另一档；更新后属主格必须有该商品市价，否则拒并指名 economy.SetMarketPrice；"
-                  + "只写 demands）"),
+              "demand(需求 id), scope(HOUSEHOLD|HEX)?, household?, hex{q,r}?, commodity?,"
+                  + " kind(RECURRING|ONE_OFF)?, unit(TOTAL|PER_CAPITA)?, quantityPerCycle?(>0),"
+                  + " createdDay?(≥0), expiresDay?, priority?(≥0), source?, at{q,r}?（★"
+                  + " P2-B：部分更新，缺省字段逐值沿用；scope 换档必须给新档属主、不得同时给另一档；更新后属主格必须有该商品市价，否则拒并指名"
+                  + " economy.SetMarketPrice；只写 demands）"),
           Map.entry(
               "economy.RegisterGovernment",
-              "govUnitId(必填), governmentId?(须逐字等于 gov-unit-<govUnitId>), household?(须逐字等于 hh-gov-<govUnitId>),"
-                  + " nationRef(必填非空白), q, r(economy 落点), residence?(缺省 urban；大小写敏感；既有行缺席=保持), stratum?(缺省 official；既有行缺席=保持),"
-                  + " population?/laborMilli?/participationPerMille?, classPosition?(须已存在), issuable?[币种],"
-                  + " seignioragePerCycle?(≥0), debtIssuePerCycle?(≥0), reason?"
-                  + "（★ P2-C：一个 GOV 单位恰一份政府 + 恰一个政府家户；身份由 govUnitId 派生；"
-                  + "写 classes/classStandings/governments 三张表；缺省字段新建取 0/空集、重复登记逐值保留；"
-                  + "要求 economy 已激活；GM-only；账户由同批 actor.EnsureHouseholdAccount 补）"),
+              "govUnitId(必填), governmentId?(须逐字等于 gov-unit-<govUnitId>), household?(须逐字等于"
+                  + " hh-gov-<govUnitId>), nationRef(必填非空白), q, r(economy 落点), residence?(缺省"
+                  + " urban；大小写敏感；既有行缺席=保持), stratum?(缺省 official；既有行缺席=保持),"
+                  + " population?/laborMilli?/participationPerMille?, classPosition?(须已存在),"
+                  + " issuable?[币种], seignioragePerCycle?(≥0), debtIssuePerCycle?(≥0), reason?（★"
+                  + " P2-C：一个 GOV 单位恰一份政府 + 恰一个政府家户；身份由 govUnitId 派生；写"
+                  + " classes/classStandings/governments 三张表；缺省字段新建取 0/空集、重复登记逐值保留；要求 economy"
+                  + " 已激活；GM-only；账户由同批 actor.EnsureHouseholdAccount 补）"),
           Map.entry(
               "economy.RegisterHousehold",
               "household(家户 id 文本), q, r(economy 落点视图 hex；必填), residence?(缺省 urban；大小写敏感),"
@@ -484,8 +482,8 @@ public final class CatalogTool implements AgentTool {
                   + "普通决策人令 / RegisterEffect 不可嵌入它）"),
           Map.entry(
               "economy.ClearRegion",
-              "regionId（必填；必须在当前 map.regions() 里）"
-                  + "（★ GM-only 区域经济数据清空：目标 Region 格集内 industries/markets 及可靠可定位的连带记录"
+              "regionId（必填；必须在当前 map.regions() 里）（★ GM-only 区域经济数据清空：目标 Region 格集内"
+                  + " industries/markets 及可靠可定位的连带记录"
                   + "（units/relations/operatorConditions/assetShares/classes/flows/memberships/allocations/"
                   + "debtContracts/pledges/productionOrganizations/modeTransitions/classShares/classStandings/demands/"
                   + "crisisSignals）整条删除；世界级发行审计/在途货物/laborSupply/制度定义不动）"),
@@ -500,49 +498,45 @@ public final class CatalogTool implements AgentTool {
                   + " DebtTerms.dueDay（合同身份/审计维），本批无到期催收）"),
           Map.entry(
               "economy.UnitRepay",
-              "unitId, borrowerHousehold, lenderHousehold, unit(money|grain), amount(≥1), debtId?, reason?"
-                  + "（★ P2-D / GM-only：单位向放贷方偿还的**债务腿**；同 (借款人,放贷方,unit) 有多条未结清"
-                  + "合同时必须用 debtId 指明；amount ≤ 未结清本金、不超付。资金腿必须同批提"
-                  + " actor.TransferAccounts {from:{household:borrowerHousehold},"
-                  + " to:{household:lenderHousehold}}）"),
+              "unitId, borrowerHousehold, lenderHousehold, unit(money|grain), amount(≥1), debtId?,"
+                  + " reason?（★ P2-D / GM-only：单位向放贷方偿还的**债务腿**；同 (借款人,放贷方,unit) 有多条未结清合同时必须用"
+                  + " debtId 指明；amount ≤ 未结清本金、不超付。资金腿必须同批提 actor.TransferAccounts"
+                  + " {from:{household:borrowerHousehold}, to:{household:lenderHousehold}}）"),
           Map.entry(
               "economy.GmAdjust",
               "adjustment(forgiveDebt|setLiquidationPolicy"
                   + "|upsertProductionMode|deactivateProductionMode|upsertClassStructure|upsertClassPosition"
-                  + "|upsertProductionRelation|upsertAssetRule|upsertProductionOrganization|upsertCandidate"
-                  + "|setOutputQuantity|clearOutputQuantity),"
-                  + " parameters(JSON 对象), reason(必填非空白)"
-                  + "（★ GM-only、只改源状态：白名单外/派生读数 ⇒ 拒；"
-                  + "旧表两：forgiveDebt: debtContractId, amount?(缺省=全额本金，须 ≤ 本金)；"
-                  + "setLiquidationPolicy: assetRuleId, maxLiquidatePerMille(0..1000), protectedReserve(≥0),"
-                  + " priceSource(MARKET|AGREED|POLICY), policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
-                  + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)；引用不存在的 AssetRule ⇒ 拒；"
-                  + "P7 生产方式编辑八 kind："
-                  + "upsertProductionMode={id,name,version?,classStructureId}（version 必须推进；classStructureId 须已存在）；"
-                  + "deactivateProductionMode={id}（被 classStructures/classPositions/productionOrganizations/"
-                  + "assetRules/modeTransitions/pledges 任一引用 ⇒ 具名拒绝）；"
-                  + "upsertClassStructure={id,modeId,positions?,defaultSharesPerMille?}（至少一项；位置 upsert 并同步全局 "
-                  + "classPositions 与所有结构副本；份额给到即整体替换；新建必须给非空 positions）；"
-                  + "upsertClassPosition={id,modeId,name?,relationToMeans?,laborRole?,surplusRole?,ruleExtensions?,"
-                  + "classStructureId?}（位置不属于任何结构时必须给 classStructureId；既有位置的 modeId 不可改）；"
-                  + "upsertProductionRelation={activity,operator?,inputSupplier?,rules?,residualOwner?,laborSource?}"
-                  + "（activity 必须对应已存在 unit；operator 必须与 unit.operator 一致）；"
-                  + "upsertAssetRule={modeId,assetKind,id?,isCoreMeans?,pledgeable?,liquidationPriority?,rentRule?,"
-                  + "transferRule?}（id 须与 AssetRuleId.idOf 派生值一致；新建后四字段必填）；"
+                  + "|upsertProductionRelation|upsertAssetRule|upsertProductionOrganization|upsertCandidate|setOutputQuantity|clearOutputQuantity),"
+                  + " parameters(JSON 对象), reason(必填非空白)（★ GM-only、只改源状态：白名单外/派生读数 ⇒"
+                  + " 拒；旧表两：forgiveDebt: debtContractId, amount?(缺省=全额本金，须 ≤"
+                  + " 本金)；setLiquidationPolicy: assetRuleId, maxLiquidatePerMille(0..1000),"
+                  + " protectedReserve(≥0), priceSource(MARKET|AGREED|POLICY),"
+                  + " policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
+                  + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)；引用不存在的 AssetRule ⇒ 拒；P7 生产方式编辑八"
+                  + " kind：upsertProductionMode={id,name,version?,classStructureId}（version"
+                  + " 必须推进；classStructureId 须已存在）；deactivateProductionMode={id}（被"
+                  + " classStructures/classPositions/productionOrganizations/assetRules/modeTransitions/pledges"
+                  + " 任一引用 ⇒"
+                  + " 具名拒绝）；upsertClassStructure={id,modeId,positions?,defaultSharesPerMille?}（至少一项；位置"
+                  + " upsert 并同步全局 classPositions 与所有结构副本；份额给到即整体替换；新建必须给非空 positions）；"
+                  + "upsertClassPosition={id,modeId,name?,relationToMeans?,laborRole?,surplusRole?,ruleExtensions?,classStructureId?}（位置不属于任何结构时必须给"
+                  + " classStructureId；既有位置的 modeId 不可改）；"
+                  + "upsertProductionRelation={activity,operator?,inputSupplier?,rules?,residualOwner?,laborSource?}（activity"
+                  + " 必须对应已存在 unit；operator 必须与 unit.operator 一致）；"
+                  + "upsertAssetRule={modeId,assetKind,id?,isCoreMeans?,pledgeable?,liquidationPriority?,rentRule?,transferRule?}（id"
+                  + " 须与 AssetRuleId.idOf 派生值一致；新建后四字段必填）；"
                   + "upsertProductionOrganization={id?,modeId,classPositionId,unitId?,organizer,laborSources?,"
-                  + "assetSources?,inputSources?,outputOwnership,relationTemplateRef?,status,statusReason?}"
-                  + "（ACTIVE/EXITING 必须有 unitId；SHORTAGE 必须具名 reason；引用 fail-closed）；"
+                  + "assetSources?,inputSources?,outputOwnership,relationTemplateRef?,status,statusReason?}（ACTIVE/EXITING"
+                  + " 必须有 unitId；SHORTAGE 必须具名 reason；引用 fail-closed）；"
                   + "upsertCandidate={id,version?,output?,outputPerUnit?,inputPerUnit?,requiredAssets?,laborPerUnit?,"
-                  + "buildDays?,cycleDays?,regime?,laborSource?,acceptedRightKinds?,assetSource?,name?}"
-                  + "（新建 output/outputPerUnit/cycleDays/regime 必填；修订须推进 version；"
-                  + "★ ProductionCandidate 没有 modeId 字段，显式 modeId ⇒ 具名拒绝）；"
-                  + "Z1 产品产出数量覆盖两 kind（只写 outputQuantityOverrides）："
-                  + "setOutputQuantity={industryId,commodityId,quantity(0..1000000 整数；值=商品数量/单位规模)}"
-                  + "（industryId 须已存在；commodityId 须在该产业 recipe().outputPerUnit() 产出键里、不开新商品；"
-                  + "quantity 缺失/非整数/越界 ⇒ QUANTITY_OUT_OF_RANGE；缺省覆盖=配方默认）；"
-                  + "clearOutputQuantity={industryId,commodityId}"
-                  + "（industryId 须已存在；commodityId 须在配方产出键里；无既有覆盖 ⇒ NO_OVERRIDE_TO_CLEAR，"
-                  + "不做静默幂等；回落配方默认））"),
+                  + "buildDays?,cycleDays?,regime?,laborSource?,acceptedRightKinds?,assetSource?,name?}（新建"
+                  + " output/outputPerUnit/cycleDays/regime 必填；修订须推进 version；★ ProductionCandidate"
+                  + " 没有 modeId 字段，显式 modeId ⇒ 具名拒绝）；Z1 产品产出数量覆盖两 kind（只写"
+                  + " outputQuantityOverrides）：setOutputQuantity={industryId,commodityId,quantity(0..1000000"
+                  + " 整数；值=商品数量/单位规模)}（industryId 须已存在；commodityId 须在该产业 recipe().outputPerUnit()"
+                  + " 产出键里、不开新商品；quantity 缺失/非整数/越界 ⇒"
+                  + " QUANTITY_OUT_OF_RANGE；缺省覆盖=配方默认）；clearOutputQuantity={industryId,commodityId}（industryId"
+                  + " 须已存在；commodityId 须在配方产出键里；无既有覆盖 ⇒ NO_OVERRIDE_TO_CLEAR，不做静默幂等；回落配方默认））"),
           // ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套 —— 注册面新增三个 type ⇒ 本表必须同批
           //   登记（构造成员守卫会逐条比对注册面，缺项当场抛）。三条都标 GmOnlyCommand：GM 的
           //   simos.command.submit 与窄工具照常可用，令 / RegisterEffect / 决策人命令目录三条路不放大。
@@ -561,40 +555,39 @@ public final class CatalogTool implements AgentTool {
                   + "新显示名与现值逐字相同 ⇒ 拒，不做静默幂等）"),
           Map.entry(
               "economy.RecordMoneyIssuance",
-              "govUnitId, currency, amountMilli(>0), kind?(缺省 FISCAL_ISSUE；创世给 INITIAL_ENDOWMENT), reason?"
-                  + "（★ GM-only 裸审计原语：只写 moneyIssuances 一张表、**不动任何余额** —— 「国库余额增加」"
-                  + "是 actor.AdjustAccounts 的活，两者必须同批提交（一批 = 一条 revision）；"
-                  + "currency 不在该 GOV 的 issuable 里 ⇒ currency-not-issuable 具名拒；"
-                  + "记录 id 是确定性派生 gov-issue-<政府>-<日>-<币种>-<序号>，不用随机 UUID）"),
+              "govUnitId, currency, amountMilli(>0), kind?(缺省 FISCAL_ISSUE；创世给 INITIAL_ENDOWMENT),"
+                  + " reason?（★ GM-only 裸审计原语：只写 moneyIssuances 一张表、**不动任何余额** —— 「国库余额增加」是"
+                  + " actor.AdjustAccounts 的活，两者必须同批提交（一批 = 一条 revision）；currency 不在该 GOV 的"
+                  + " issuable 里 ⇒ currency-not-issuable 具名拒；记录 id 是确定性派生"
+                  + " gov-issue-<政府>-<日>-<币种>-<序号>，不用随机 UUID）"),
           // ★★ A2a（2026-10-08 汇率阶段 2 §3.3）：官方汇率 —— 新命令类型 ⇒ 本表必须同批登记
           //   （构造成员守卫逐条比对注册面，缺项当场抛 ⇒ Shell.start 起不来，且编译期看不见）。
           Map.entry(
               "economy.SetOfficialRate",
-              "govUnitId, base, quote, buyPerMille(>0, per-mille), sellPerMille(>0, per-mille), reason?"
-                  + "（★ GM-only：只写该 GOV 的 officialRates 一条（币对键 base|quote）—— 官方汇率是**状态**"
-                  + "（随 governments 进 ChangeSet/Codec），实际汇率永远是**读数**（成交的加权均价，不落盘）；"
-                  + "base == quote ⇒ same-currency；币种不在世界词表 ⇒ currency-not-defined；"
-                  + "逐字相同 ⇒ rate-unchanged（不做静默幂等）。★ 定下它就激活该币对的外汇市场：政府外汇窗口"
-                  + "bidP=buyPerMille / askP=sellPerMille，储备上限 = 该 GOV 对该币种累计发行量的 500‰；"
-                  + "没定过汇率的世界没有任何外汇面）"
-                  + "（★★ B2 2026-10-08 扩展：再给一个可选 marketZoneId —— 给了它就写**该市场区的官方汇率覆盖**"
-                  + "（随 marketZones 进 ChangeSet/Codec），GOV 级报价一字不动；此时 govUnitId 可选，给了必须等于"
-                  + "该区的发行 GOV 单位（否则 gov-mismatch），区不存在 ⇒ zone-not-found；"
-                  + "读取口径 = 区级优先、回落该区发行 GOV 的 GOV 级报价。★ 老载荷（无 marketZoneId）逐字走老路径 ——"
-                  + "向后兼容是硬要求）"),
+              "govUnitId, base, quote, buyPerMille(>0, per-mille), sellPerMille(>0, per-mille),"
+                  + " reason?（★ GM-only：只写该 GOV 的 officialRates 一条（币对键 base|quote）—— 官方汇率是**状态**（随"
+                  + " governments 进 ChangeSet/Codec），实际汇率永远是**读数**（成交的加权均价，不落盘）；base == quote ⇒"
+                  + " same-currency；币种不在世界词表 ⇒ currency-not-defined；逐字相同 ⇒ rate-unchanged（不做静默幂等）。★"
+                  + " 定下它就激活该币对的外汇市场：政府外汇窗口bidP=buyPerMille / askP=sellPerMille，储备上限 = 该 GOV"
+                  + " 对该币种累计发行量的 500‰；没定过汇率的世界没有任何外汇面）（★★ B2 2026-10-08 扩展：再给一个可选 marketZoneId ——"
+                  + " 给了它就写**该市场区的官方汇率覆盖**（随 marketZones 进 ChangeSet/Codec），GOV 级报价一字不动；★"
+                  + " 2026-10-09 C 批：区级分支**不点名政府**（带 govUnitId ⇒ bad-payload；承挂者 = 本区法定币的发行者，由"
+                  + " Government.issuable 反查，可多值 ⇒同一个区里可以有多个政府挂价），区不存在 ⇒ zone-not-found；读取口径 ="
+                  + " 区级优先、回落本区法定币发行者的 GOV 级报价。★ 老载荷（无 marketZoneId）逐字走老路径 ——向后兼容是硬要求）"),
           // ★★ B2（2026-10-08 阶段 2-B §4.2）：市场区持久状态的三条命令 —— 新命令类型 ⇒ 本表必须同批登记
           //   （构造成员守卫逐条比对注册面，缺项当场抛 ⇒ Shell.start 起不来，且编译期看不见）。
           Map.entry(
               "economy.DefineMarketZone",
-              "zoneId, anchor{q,r}, hexes[{q,r}…], legalTender, govUnitId, radiusHex?(≥0，缺省 0), reason?"
-                  + "（★ GM-only：把\"市场区\"落成**持久状态**（EconomyData.marketZones，第 36 个组件）——"
-                  + "成员格由它唯一给定（I22 单一权威），既有\"城市 + tier 半径\"派生退化为**空表时**的默认值；"
-                  + "radiusHex 只是声明值（供邻接判据与读数），**不**参与成员格派生。"
-                  + "具名拒：zone-already-defined；hex-in-other-zone（一个 hex 至多属于一个区）；anchor-not-in-hexes；"
-                  + "anchor-missing-market（锚格必须已有市场行）；currency-not-defined；gov-not-registered；"
-                  + "currency-not-issuable（该 GOV 的 issuable 必须含法定币）；"
-                  + "numeraire-mismatch（本区**已有市场行**的成员格计价币必须 = 法定币，先 economy.SetMarketNumeraire）。"
-                  + "★ 区表是半世界级：跨格但没有单格资源目标 ⇒ targetPaths 恒空、不进决策令桶）"),
+              "zoneId, anchor{q,r}, hexes[{q,r}…], legalTender, radiusHex?(≥0，缺省 0), reason?（★"
+                  + " GM-only：把\"市场区\"落成**持久状态**（EconomyData.marketZones，第 36 个组件）——成员格由它唯一给定（I22"
+                  + " 单一权威），既有\"城市 + tier 半径\"派生退化为**空表时**的默认值；radiusHex"
+                  + " 只是声明值（供邻接判据与读数），**不**参与成员格派生。具名拒：zone-already-defined；hex-in-other-zone（一个"
+                  + " hex 至多属于一个区）；anchor-not-in-hexes；"
+                  + "anchor-missing-market（锚格必须已有市场行）；currency-not-defined；numeraire-mismatch（本区**已有市场行**的成员格计价币必须"
+                  + " = 法定币，先 economy.SetMarketNumeraire）。★★ 2026-10-09 C 批：载荷**没有"
+                  + " govUnitId**（区不记发行政府；仍带 ⇒ bad-payload）；立区不看\"谁发得出\"（gov-not-registered /"
+                  + " currency-not-issuable 已退役 —— 用户「肯定不管」）。★ 区表是半世界级：跨格但没有单格资源目标 ⇒ targetPaths"
+                  + " 恒空、不进决策令桶）"),
           Map.entry(
               "economy.ReassignZoneHexes",
               "fromZoneId, toZoneId, hexes[{q,r}…], reason?"
@@ -606,18 +599,17 @@ public final class CatalogTool implements AgentTool {
                   + "★ 半径不参与归属：本命令不改任何区的 radiusHex）"),
           Map.entry(
               "economy.MergeMarketZones",
-              "sourceZoneId, targetZoneId, reason?"
-                  + "（★ GM-only：源区成员格与区级官方汇率覆盖并入目标区，**源区随之撤销**（\"撤区\"的唯一路径）。"
-                  + "具名拒：zone-not-found；same-zone；numeraire-mismatch（被并入的格计价币必须 = 目标区法定币 —— 先 economy.SetMarketNumeraire，合并不做静默换汇，I17/I24）；"
-                  + "official-rate-conflict（同币对两个不同政策价不能同时成立）。"
-                  + "★ 合并后：锚格 / 法定币 / 发行者取目标区，声明半径取两区较大者，区级汇率取并集）"),
+              "sourceZoneId, targetZoneId, reason?（★"
+                  + " GM-only：源区成员格与区级官方汇率覆盖并入目标区，**源区随之撤销**（\"撤区\"的唯一路径）。具名拒：zone-not-found；same-zone；numeraire-mismatch（被并入的格计价币必须"
+                  + " = 目标区法定币 —— 先"
+                  + " economy.SetMarketNumeraire，合并不做静默换汇，I17/I24）；official-rate-conflict（同币对两个不同政策价不能同时成立）。★"
+                  + " 合并后：锚格 / 法定币取目标区（★ C 批起区里没有\"发行者\"一栏），声明半径取两区较大者，区级汇率取并集）"),
           Map.entry(
               "actor.Seed",
-              "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
-                  + "goods[{household, balances{键:整数}, money?, frozenBalances?, frozenMoney?}...]}...]"
-                  + "（★ P2-A §13.3：账户主体只有家户、一本账——goods 行的 household 必须是载荷/现有家户集里的家户，"
-                  + "悬空家户拒；位置从 Household.location 派生，不再写 location；"
-                  + "旧 (owner,location) 键的账户随旧世界报废，不做迁移）"),
+              "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],goods[{household,"
+                  + " balances{键:整数}, money?, frozenBalances?, frozenMoney?}...]}...]（★ P2-A"
+                  + " §13.3：账户主体只有家户、一本账——goods 行的 household 必须是载荷/现有家户集里的家户，悬空家户拒；位置从"
+                  + " Household.location 派生，不再写 location；旧 (owner,location) 键的账户随旧世界报废，不做迁移）"),
           Map.entry(
               "actor.AdjustAccounts",
               "entries[{household, goods{商品:有符号净增量}?, money{币种:有符号净增量}?}...]"
@@ -643,9 +635,9 @@ public final class CatalogTool implements AgentTool {
                   + "且双方位置须在出令决策人 actor 可达面内；GM 工具（simos.gov.remit/pay）不受层级限制）"),
           Map.entry(
               "actor.EnsureHouseholdAccount",
-              "household(家户 id 文本), reason?"
-                  + "（★ P2-C：给家户补一本零余额账户，幂等；只动 actor.accounts，不碰 actors/meta/余额；"
-                  + "GM-only；供 GOV 组合工具在 social.CreateHousehold + economy.RegisterGovernment 之后开户）"),
+              "household(家户 id 文本), reason?（★ P2-C：给家户补一本零余额账户，幂等；只动 actor.accounts，不碰"
+                  + " actors/meta/余额；GM-only；供 GOV 组合工具在 social.CreateHousehold +"
+                  + " economy.RegisterGovernment 之后开户）"),
           Map.entry(
               "actor.ClearRegion",
               "regionId（必填；必须在当前 map.regions() 里）"
@@ -697,15 +689,17 @@ public final class CatalogTool implements AgentTool {
           Map.entry("sd.CommitCombatOutcome", "combatId, stageId, selectedOutcomeId"),
           Map.entry(
               "sd.RecordCasualties",
-              "combatId, stageId, deltas[{unit,personnel,equipment,lossClass(PERMANENT|RECOVERABLE)}]"),
+              "combatId, stageId,"
+                  + " deltas[{unit,personnel,equipment,lossClass(PERMANENT|RECOVERABLE)}]"),
           Map.entry(
               "sd.RegisterEffect",
-              "effectId, kind(SCHEDULED|ON_CALL|BE_PREPARED|BRANCH|SEQUEL), trigger, action, createdTick?"),
+              "effectId, kind(SCHEDULED|ON_CALL|BE_PREPARED|BRANCH|SEQUEL), trigger, action,"
+                  + " createdTick?"),
           Map.entry("sd.CancelEffect", "effectId"),
           Map.entry(
               "sd.IssueDirective",
-              "directiveId, decisionMakerId, tick, target?, intentInfo, commands[{type,payloadJson}],"
-                  + " effects[字符串...]?"),
+              "directiveId, decisionMakerId, tick, target?, intentInfo,"
+                  + " commands[{type,payloadJson}], effects[字符串...]?"),
           Map.entry(
               "sd.SubmitVerdict",
               "verdictId, breakpoint(D1|D3|D6), subject(sd:combat.*), payload(JSON 文本),"
@@ -723,26 +717,27 @@ public final class CatalogTool implements AgentTool {
           Map.entry("sd.SetDecisionMakerProvider", "decisionMakerId, providerId"),
           Map.entry(
               "sd.UpsertDecisionPacket",
-              "id, branch, tick, proposerId, status(DRAFT|PENDING|APPROVED|REJECTED|MERGED|PARTIALLY_APPROVED),"
-                  + " intent?, createdAtRevision, decidedBy?, decidedAtRevision?, reasonInfoId?, decisionNote?,"
-                  + " calls[{callIndex, toolName, argsJson, targets[{namespace,path}], previewJson, draftChecks[],"
-                  + " status(PENDING|APPROVED|REJECTED|MERGED), mergedPlanId?, outcomeJson?}]"
-                  + "（★ D2/D3：整包 upsert；同 id 幂等替换；不对外窄工具，由 simos.sd.propose / intent /"
-                  + " 决策效果执行器内部提交）"),
+              "id, branch, tick, proposerId,"
+                  + " status(DRAFT|PENDING|APPROVED|REJECTED|MERGED|PARTIALLY_APPROVED), intent?,"
+                  + " createdAtRevision, decidedBy?, decidedAtRevision?, reasonInfoId?,"
+                  + " decisionNote?, calls[{callIndex, toolName, argsJson,"
+                  + " targets[{namespace,path}], previewJson, draftChecks[],"
+                  + " status(PENDING|APPROVED|REJECTED|MERGED), mergedPlanId?, outcomeJson?}]（★"
+                  + " D2/D3：整包 upsert；同 id 幂等替换；不对外窄工具，由 simos.sd.propose / intent / 决策效果执行器内部提交）"),
           Map.entry(
               "sd.SubmitDecisionPacket",
               "id, proposerId（★ D2：DRAFT → PENDING；只被 simos.sd.packet.submit 调用）"),
           Map.entry(
               "sd.DecideDecisionPacket",
-              "id, decision(APPROVE|DENY|MERGE), decidedBy, note?, callIndexes[]?, mergedPlanId?"
-                  + "（★ D2/D3：GM 整包/逐 call true-positive 裁决；decidedBy 由 simos.gm.packet.decide 从身份派生；"
-                  + "MERGE 必带 mergedPlanId 且目标 plan 必须已存在，callIndexes 与 MERGE 互斥）"),
+              "id, decision(APPROVE|DENY|MERGE), decidedBy, note?, callIndexes[]?, mergedPlanId?（★"
+                  + " D2/D3：GM 整包/逐 call true-positive 裁决；decidedBy 由 simos.gm.packet.decide"
+                  + " 从身份派生；MERGE 必带 mergedPlanId 且目标 plan 必须已存在，callIndexes 与 MERGE 互斥）"),
           Map.entry(
               "sd.UpsertMergedEffectPlan",
-              "id, tick, participantIds[决策人 id…]?, orderedEffects[{toolName, argsJson, sourceCallRefs[]?}…],"
-                  + " sources[字符串…]?, reasonInfoId?, outcome?"
-                  + "（★ D3：合并效果计划整包 upsert，同 id 幂等替换；不对外窄工具，由 simos.gm.mergedPlan.upsert /"
-                  + " 决策效果执行器 outcome 回写内部提交）"),
+              "id, tick, participantIds[决策人 id…]?, orderedEffects[{toolName, argsJson,"
+                  + " sourceCallRefs[]?}…], sources[字符串…]?, reasonInfoId?, outcome?（★ D3：合并效果计划整包"
+                  + " upsert，同 id 幂等替换；不对外窄工具，由 simos.gm.mergedPlan.upsert / 决策效果执行器 outcome"
+                  + " 回写内部提交）"),
           Map.entry(
               "sd.SetDirectiveStatus",
               "directiveId, status(EXECUTED|CANCELLED)（★ 只允许 ISSUED → 二者之一，只由"
@@ -793,15 +788,15 @@ public final class CatalogTool implements AgentTool {
                   + "但决策人与 map tag 仍须先清；GM-only）"),
           Map.entry(
               "army.RecordCombat",
-              "id, kind（自定义交战状态自由文本，如野战/轰城）, tick?, hex{q,r}, participants[unitId...]"
-                  + "（至少一个、不重复）, text（自然语言过程，非空白）,"
+              "id, kind（自定义交战状态自由文本，如野战/轰城）, tick?, hex{q,r}, participants[unitId...]（至少一个、不重复）,"
+                  + " text（自然语言过程，非空白）,"
                   + " initialStage?{id,name,participants?,text,outcomes?[{id,label,weight,losses?["
-                  + "{unit,manpower?[{type,amount(有符号)}],equipment?[{type,amount(有符号)}]}]}]}}"
-                  + "（★ 阶段 D4 / D-009 补裁 + D-010：单 tick 单场交战记录 + 初始阶段；initialStage 缺省 ="
-                  + " handler 合成 id=start/name=初始阶段/participants=记录级/text=记录级/outcomes 空表；"
-                  + "tick 缺省 = 当前 tick、不得记在未来；同 id 已存在 ⇒ 具名拒（记录 id 是一次性身份，阶段演进走"
-                  + " army.AppendCombatStage / army.ResolveCombatStage）；weight 必须 > 0、阶段/结局 id 不得重复；"
-                  + "参与者不查 unit 切片是否存在；★ GmOnly：决策人不得凭空写战果）"),
+                  + "{unit,manpower?[{type,amount(有符号)}],equipment?[{type,amount(有符号)}]}]}]}}（★ 阶段"
+                  + " D4 / D-009 补裁 + D-010：单 tick 单场交战记录 + 初始阶段；initialStage 缺省 = handler 合成"
+                  + " id=start/name=初始阶段/participants=记录级/text=记录级/outcomes 空表；tick 缺省 = 当前"
+                  + " tick、不得记在未来；同 id 已存在 ⇒ 具名拒（记录 id 是一次性身份，阶段演进走 army.AppendCombatStage /"
+                  + " army.ResolveCombatStage）；weight 必须 > 0、阶段/结局 id 不得重复；参与者不查 unit 切片是否存在；★"
+                  + " GmOnly：决策人不得凭空写战果）"),
           Map.entry(
               "army.AppendCombatStage",
               "combatId, stage{id,name,participants?,text,outcomes?[{id,label,weight,losses?["

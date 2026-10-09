@@ -1,8 +1,8 @@
 package io.mosire.simos.economy.api.market;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
@@ -19,16 +19,23 @@ import java.util.Set;
  * ★★ <b>一个市场区</b>（阶段 2-B2，2026-10-08；约束设计书 §4.2 / §4.3 / 不变量 I22）。
  *
  * <pre>
- * MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, issuingGov, officialRates)
+ * MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, officialRates)
  *   zoneId        区的稳定身份（命令面点名它；改 hexes 不改身份 —— 铁律 1）
  *   anchor        集散节点格（区内参考价取这一格的市场；必须在 hexes 里）
  *   radiusHex     区的<b>声明半径</b>（hex；只用于邻接判据与读数，<b>绝不</b>用它派生成员格）
  *   hexes         成员格（<b>唯一权威</b>：一个 hex 属于哪个区由它给定，I22）
- *   legalTender   本区法定币（区内价格按它计）
- *   issuingGov    本区法定币的发行政府（{@code economy} 侧的 {@link GovernmentId}；
- *                 GOV 单位 id 由 {@code GovernmentIds.unitRefOf} 反查，见 §4.3 的连线）
- *   officialRates 本区官方汇率覆盖（币对键 {@code base|quote}；空 = 本区没有覆盖，仍可回落到 GOV 级报价）
+ *   legalTender   本区法定币（区内价格按它计）—— ★ 区的<b>唯一货币事实</b>
+ *   officialRates 本区官方汇率覆盖（币对键 {@code base|quote}；空 = 本区没有覆盖）
  * </pre>
+ *
+ * <p>★★ <b>2026-10-09 C 批：{@code issuingGov} 退役</b>（用户原话「法定货币发行者也丢掉」；约束设计书 §4.1/G1）。区只记"这一片用哪种钱"，
+ * <b>不记"谁发行这种钱"</b>：同一个市场区里可以有多个政府（G2），而"谁管这种钱"由 {@code Government.issuable} <b>反查</b>回答 （{@code
+ * MarketZoneBook.possibleIssuersOf}，I-M8：`issuable` 是发行关系的唯一权威，不新增第二张表）。
+ *
+ * <p>★★ <b>旧档兼容</b>：类型级 {@code @JsonIgnoreProperties("issuingGov")} —— 旧档（快照与变更集）里那一栏被<b>具名</b>忽略，
+ * 其余未知字段照旧 fail-closed（漂移信号不丢）。★ 必须落在<b>类型</b>上：重放路径（{@code Replay → Timeline.readChangeSet}）走的是
+ * Core 的第四台 mapper、<b>不过</b> {@code EconomyCodec} 的整形层（与 {@code HouseholdEconomy} 退役 {@code debts}
+ * 时同一处踩坑）。
  *
  * <p>★★ <b>它是持久状态</b>（{@code EconomyData.marketZones}，进 ChangeSet/Codec/往返不变式）：B2 之前市场区是纯派生件 （"城市 +
  * tier 半径"每轮现算），于是"这个 hex 属于哪个区"没有任何可写的对象，划界/退让/覆盖/合并这类治理动作无处落笔。
@@ -50,32 +57,32 @@ import java.util.Set;
  *       Government.officialRates} 的同一条守卫）。
  * </ol>
  *
- * <p>★ <b>跨表守卫不在这里</b>（"发行 GOV 必须登记、法定币必须在该 GOV 的 issuable 里、法定币必须在世界词表里、成员格不得同时在两个区"） —— 那几条要同时看
- * {@code governments} / {@code currencies} 与整张区表，落在 {@code EconomyData} 的构造期（那才是"完整状态"
- * 的边界），此处只判本记录自身的形状。
+ * <p>★ <b>跨表守卫不在这里</b>（"法定币必须在世界词表里、成员格不得同时在两个区"） —— 那几条要同时看 {@code currencies} 与整张区表，落在 {@code
+ * EconomyData} 的构造期（那才是"完整状态" 的边界），此处只判本记录自身的形状。
  *
  * @param zoneId 区的稳定身份；不得为 null（键 == 值内 zoneId 由 {@code EconomyData} 判）
  * @param anchor 集散节点格；不得为 null，且必须 ∈ {@code hexes}
  * @param radiusHex 声明半径（hex；≥ 0；不参与成员格派生）
  * @param hexes 成员格（非空、规范序、不可变）
  * @param legalTender 本区法定币；不得为 null
- * @param issuingGov 本区法定币的发行政府（{@code economy} 侧政府身份）；不得为 null
  * @param officialRates 本区官方汇率覆盖（键 = {@link OfficialRate#key()}；空 = 无覆盖）
  */
+// ★★ 旧档兼容（具名、只忽略这一个退役键）：issuingGov 于 2026-10-09 C 批退役（约束设计书 §4.1）。
+//   必须落在**类型**上——重放路径（Replay → Timeline.readChangeSet）走 Core 的第四台 mapper、不过 codec 整形层。
+//   `@JsonIgnoreProperties` 不等于 `ignoreUnknown=true`：其余未知字段照旧 fail-closed（漂移信号不丢）。
+@JsonIgnoreProperties("issuingGov")
 public record MarketZone(
     MarketZoneId zoneId,
     HexCoord anchor,
     int radiusHex,
     Set<HexCoord> hexes,
     CurrencyId legalTender,
-    GovernmentId issuingGov,
     Map<String, OfficialRate> officialRates) {
 
   public MarketZone {
     Objects.requireNonNull(zoneId, "MarketZone.zoneId 不得为 null");
     Objects.requireNonNull(anchor, "MarketZone.anchor 不得为 null");
     Objects.requireNonNull(legalTender, "MarketZone.legalTender 不得为 null");
-    Objects.requireNonNull(issuingGov, "MarketZone.issuingGov 不得为 null");
     if (radiusHex < 0) {
       throw new IllegalArgumentException("MarketZone.radiusHex 不得为负: " + radiusHex);
     }
@@ -144,12 +151,11 @@ public record MarketZone(
    * 半径不在此列：成员格变了之后半径仍由命令显式给（{@link #withHexes(Set, HexCoord, int)}）。
    */
   public MarketZone withHexes(Set<HexCoord> nextHexes, HexCoord nextAnchor, int nextRadiusHex) {
-    return new MarketZone(
-        zoneId, nextAnchor, nextRadiusHex, nextHexes, legalTender, issuingGov, officialRates);
+    return new MarketZone(zoneId, nextAnchor, nextRadiusHex, nextHexes, legalTender, officialRates);
   }
 
   /**
-   * ★★ <b>只换官方汇率覆盖里的一条</b>（法定币、发行者、成员格逐值不变）。
+   * ★★ <b>只换官方汇率覆盖里的一条</b>（法定币、成员格逐值不变）。
    *
    * <p>★ 它是"本区官方汇率"的唯一写入形态 —— 调用方拿不到"顺手把法定币也改了"的口子（{@code Government.withOfficialRate} 的同款）。
    */
@@ -157,17 +163,17 @@ public record MarketZone(
     Objects.requireNonNull(rate, "rate");
     LinkedHashMap<String, OfficialRate> rates = new LinkedHashMap<>(officialRates);
     rates.put(rate.key(), rate);
-    return new MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, issuingGov, rates);
+    return new MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, rates);
   }
 
   /**
-   * ★★ <b>只换整张区级官方汇率表</b>（成员格、法定币、发行者逐值不变）。
+   * ★★ <b>只换整张区级官方汇率表</b>（成员格、法定币逐值不变）。
    *
    * <p>★ 合并两区（{@code economy.MergeMarketZones}）要的正是"整张表取并集"这一个动作；逐条 {@link #withOfficialRate} 拼
    * 也可以，但那样"并集"这件事就散落在命令层（两处拼写 = 两处会漂）。冲突（同币对不同价）由**调用方**在合并之前判掉， 本方法只做形状守卫（键 == 值内币对）。
    */
   public MarketZone withOfficialRates(Map<String, OfficialRate> nextRates) {
-    return new MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, issuingGov, nextRates);
+    return new MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, nextRates);
   }
 
   /** 本区一行人类可读摘要（日志/探针用；只输出稳定 id 与数量，§一.9 的日志纪律）。 */
@@ -181,8 +187,6 @@ public record MarketZone(
         + radiusHex
         + "]="
         + legalTender.value()
-        + "/"
-        + issuingGov.value()
         + (officialRates.isEmpty() ? "" : " rates=" + officialRates.size());
   }
 }

@@ -52,7 +52,8 @@ public record FxRoundInput(List<Window> windows) {
   /**
    * <b>一个窗口</b>：属主 GOV + 国库 actor + 官方汇率 + 该币种的储备上限 {@code R_max}。
    *
-   * @param governmentId 窗口属主（= 这条报价所属的 GOV：GOV 级报价就是它自己；★ B4 起<b>区级覆盖</b>的属主 = 该区发行 GOV）
+   * @param governmentId 窗口属主（= 这条报价所属的 GOV：GOV 级报价就是它自己；★ B4 起<b>区级覆盖</b>的属主 = 该区法定币的发行者， ★ C 批起由
+   *     {@code Government.issuable} 反查回答、可多值）
    * @param treasury 国库 actor（两侧都要能在 {@code householdOfActor} 里解析到家户，才可能真的动账）
    * @param rate 官方汇率（报价的唯一来源）
    * @param reserveCapBaseMilli 储备上限 {@code R_max} 的读数（base 最小单位；≥ 0）。★ 2026-10-09 起生产装配恒传 {@link
@@ -114,16 +115,21 @@ public record FxRoundInput(List<Window> windows) {
    * <pre>
    * 区表为空（旧世界 / 旧调用方） ⇒ 逐字走 {@link #of(Map, Map)}（只读 GOV 级的老路径）
    * 区表非空                     ⇒ 逐 GOV × 每一条<b>生效报价</b>：
-   *                                生效报价 = 区级覆盖优先、按币对回落本 GOV 的 GOV 级报价
+   *                                生效报价 = 区级覆盖（★ 该 GOV 能发行那个区的法定币时）优先、按币对回落本 GOV 的 GOV 级报价
    *                                           （唯一口径：{@link MarketZoneBook#effectiveRatesOf}）
    *                                两者都没有 ⇒ 这个 GOV 没有窗口（fail-closed：没报价就没有政策价可锚）
    * </pre>
    *
+   * <p>★★ <b>2026-10-09 C 批：区不再记"发行政府"</b>（{@code MarketZone.issuingGov} 退役；用户「法定货币发行者也丢掉」， 设计书
+   * §4.1/G1）。"区级报价投到谁的窗口上"改由 <b>{@code Government.issuable} 反查</b>回答：能发行本区法定币的政府 （{@code
+   * MarketZoneBook.possibleIssuersOf}；可多值）各投一条窗口 ⇒ 同一个区里可以有多个政府挂价（G2）。 ★ 与 GOV
+   * 级那条并列且一字未改：任何政府都能给自己持有的任意货币挂 GOV 级价（§4.2），窗口的属主/国库/储备上限口径不动。
+   *
    * <p>★★ <b>为什么逐 GOV 而不是逐区</b>：窗口的<b>身份</b>是"哪个政府开的"——属主 GOV / 国库 actor / 储备上限三项都挂在 GOV 上（{@link
-   * Window}），而区级覆盖说的是"这个区的报价"。于是把区级报价<b>投到该区发行 GOV 的窗口</b>上：一个 GOV 一个币对<b>恰一个</b>窗口。逐区各发一条会让同一个 GOV
+   * Window}），而区级覆盖说的是"这个区的报价"。于是把区级报价<b>投到该区法定币的发行者窗口</b>上：一个 GOV 一个币对<b>恰一个</b>窗口。逐区各发一条会让同一个 GOV
    * 的同一个币对重复投放容量（撮合簿里就是两张同价同量的窗口单 = 静默的数值放大），所以不那样做。
    *
-   * <p>★ <b>一个 GOV 下辖多个区、且同币对报价冲突时</b>：取<b>规范序第一个区</b>（与 {@link MarketZoneBook#zoneCovering}
+   * <p>★ <b>一个 GOV 被多个区的区级报价覆盖、且同币对报价冲突时</b>：取<b>规范序第一个区</b>（与 {@link MarketZoneBook#zoneCovering}
    * 同一口径）——"哪个区的人跟哪个窗口成交"是<b>待裁定的开放点</b>（把撮合域按区收窄不在本批）， 装订点（{@code
    * EconomySettlement#logFxWindows}）会把被覆盖的那条报价按 DEBUG 具名记下来，不由本方法静默吞掉。
    *

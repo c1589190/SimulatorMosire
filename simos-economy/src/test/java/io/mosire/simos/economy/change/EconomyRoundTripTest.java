@@ -840,8 +840,10 @@ class EconomyRoundTripTest {
   }
 
   /**
-   * ★ B2：{@code marketZones} 那一维的发行政府 —— 它的 {@code issuable} 必须含该区法定币（{@code silver}）， 否则构造期的第 ⑤
-   * 条守卫当场拒（说不出谁发行法定币的区不许存在）。
+   * ★ B2：{@code marketZones} 那一维的政府行 —— {@code issuable} 含 {@code silver}。
+   *
+   * <p>★★ C 批（2026-10-09，用户裁定「法定货币发行者也丢掉」）：市场区**不再记发行政府**，构造期那条 "发行政府必须 issuable 含法定币"的跨表守卫**已退役**
+   * ⇒ 本夹具不再与 {@link #zone()} 绑定，只作政府表的一行存在。
    */
   private static Government silverIssuingGovernment() {
     return new Government(
@@ -854,7 +856,7 @@ class EconomyRoundTripTest {
   /** ★ B2：最小自洽的市场区（半径 0 ⇒ 成员只有锚格；法定币 = 默认词表里的 silver）。 */
   private static MarketZone zone() {
     return new MarketZone(
-        ZONE, KEY.hex(), 0, Set.of(KEY.hex()), MoneyVocabulary.SILVER_CURRENCY, ZONE_GOV, Map.of());
+        ZONE, KEY.hex(), 0, Set.of(KEY.hex()), MoneyVocabulary.SILVER_CURRENCY, Map.of());
   }
 
   static MoneyIssuanceRecord moneyIssuance() {

@@ -234,10 +234,13 @@ import java.util.Set;
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
  *
  * <p>★★ <b>B2 追加第 36 个组件 {@code marketZones}</b>（阶段 2-B2，2026-10-08；约束设计书 §4.2/§4.3；不变量 I22）：键 =
- * {@link MarketZoneId}，值 = {@link MarketZone}（区 id + 锚格 + 声明半径 + <b>成员格</b> + 法定币 + 发行政府 +
- * 区级官方汇率覆盖）。 ★★ <b>它是"市场区的单一权威"</b>：空表 = 旧世界形态（市场区仍按"城市 + tier 半径"派生，既有世界逐值不变）；非空 = 一个 hex
- * 属于哪个区<b>由本表给定</b>，派生路径只服务空表。★ 五条 fail-closed 守卫（键 == 值内 zoneId、一个 hex 至多一个区、法定币与区级汇率
- * 币对必须在币种表里、发行政府必须登记且 {@code issuable} 必须含法定币）见 compact 构造器里那一段。
+ * {@link MarketZoneId}，值 = {@link MarketZone}（区 id + 锚格 + 声明半径 + <b>成员格</b> + 法定币 + 区级官方汇率覆盖）。 ★★
+ * <b>它是"市场区的单一权威"</b>：空表 = 旧世界形态（市场区仍按"城市 + tier 半径"派生，既有世界逐值不变）；非空 = 一个 hex
+ * 属于哪个区<b>由本表给定</b>，派生路径只服务空表。★ 四条 fail-closed 守卫（键 == 值内 zoneId、一个 hex 至多一个区、法定币与区级汇率 币对必须在币种表里）见
+ * compact 构造器里那一段。★★ <b>2026-10-09 C 批：{@code issuingGov} 退役</b>（用户「法定货币发行者也丢掉」； 设计书 §4.1）——
+ * 区只记"这一片用哪种钱"，"谁管这种钱"由 {@code Government.issuable} <b>反查</b>回答 （{@code
+ * MarketZoneBook.possibleIssuersOf}，I-M8），故原来那条"发行政府必须登记且 {@code issuable} 必须含法定币"的跨表守卫一并删除
+ * （§4.3：立区不管"谁发得出"）。
  *
  * <p>★★ <b>2026-10-09 选项 A 追加第 37 个组件 {@code householdDebtRefs}</b>（用户批准的"先用上选项 A，验证效率提升"）： 键 =
  * {@link HouseholdDebtReference}（{@code 家户@合同}），值 = 标记位 {@code Boolean.TRUE}。<b>它是"某家户是某合同的债务人"这一条
@@ -256,7 +259,9 @@ import java.util.Set;
 @SuppressFBWarnings(
     value = "EI_EXPOSE_REP",
     justification =
-        "全部 Map 组件（含 P4a periodicAdjustments、Z1 的 outputQuantityOverrides/productionEfficiency 与 2026-10-09 选项 A 的 householdDebtRefs）均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
+        "全部 Map 组件（含 P4a periodicAdjustments、Z1 的 outputQuantityOverrides/productionEfficiency 与"
+            + " 2026-10-09 选项 A 的 householdDebtRefs）均在 compact 构造器内逐键复制并"
+            + " Collections.unmodifiableMap；访问器返回冻结副本")
 public record EconomyData(
     Optional<EconomyMeta> meta,
     Map<IndustryId, Industry> industries,
@@ -1795,15 +1800,18 @@ public record EconomyData(
     // ── B2（2026-10-08）市场区的持久状态（约束设计书 §4.2/§4.3；不变量 I22）──────────────────────
     //   ★★ 归一方向（旧档兼容）：**旧档缺该组件键 ⇒ 空表**（上面已归一），空表 = 沿用现行"城市 + tier 半径"派生
     //      ⇒ small-world / corridor / v17levant 逐值不变（市场区表非空才改走持久区）。
-    //   ★★ 五条守卫（全部 fail-closed；前四条判本表自身，后两条判跨表引用）：
+    //   ★★ 四条守卫（全部 fail-closed；前三条判本表自身，第四条判跨表引用）：
     //      ① 键 == 值内 zoneId（键即身份，不许两处拼区名）；
     //      ② 一个 hex 至多属于一个区（I22 的"单一权威"在**状态层**判死：重叠的区表会让"这一格按谁的钱报价"
     //         有两处互相矛盾的记录，任何读口都无法判谁对）；
     //      ③ 法定币必须已在世界词表里（说不出"这是什么钱"就不许把它定成某区法定币）；
-    //      ④ 区级官方汇率的 base/quote 必须已在世界词表里（同 A2a 的 currency-not-defined 口径）；
-    //      ⑤ 发行政府必须是已登记的政府，且**它的 issuable 必须含该区法定币**（"谁发行的"不能在两处漂开）；
-    //         政府表为空（对侧尚未提供）⇒ 只判形状、跳过 ⑤b 的发行权判据？不 —— 区表非空而政府表为空本身就是
-    //         坏状态：说不出谁发行法定币的区不许存在（fail-closed，命令层会给出具名拒因）。
+    //      ④ 区级官方汇率的 base/quote 必须已在世界词表里（同 A2a 的 currency-not-defined 口径）。
+    //   ★★ 2026-10-09 C 批删掉的第五条（用户 §1.6「肯定不管」；设计书 §4.3）：原第 ⑤ 条要求"发行政府必须已登记、
+    //      且它的 issuable 必须含该区法定币"。区只记"这一片用哪种钱"，**不记**"谁发得出"（G1/G4）：立区是**法律事实**，
+    //      发不出就没人能换、后果自负。⇒ 本条与命令面的 gov-not-registered / currency-not-issuable 一并退役。
+    //      ★ "谁管这种钱"改由 `Government.issuable` **反查**回答（{@code
+    // MarketZoneBook.possibleIssuersOf}，I-M8），
+    //      不在这里再存一份发行关系（第二张表 = 第二权威）。
     //   ★ 成员格不得同时在两个区（②）用**规范序**（zoneId 升序）遍历，保证"哪一个区先声明"这个报错文本可复现。
     if (marketZones == null) {
       marketZones = Map.of(); // 旧档缺该键 ⇒ 空表（见上面的归一方向）
@@ -1869,25 +1877,6 @@ public record EconomyData(
                   + currencyIdsOf(currenciesCopy)
                   + "）");
         }
-      }
-      Government issuingGov = governmentsCopy.get(zone.issuingGov());
-      if (issuingGov == null) {
-        throw new IllegalArgumentException(
-            "市场区 "
-                + zoneId.value()
-                + " 的发行政府未登记为政府（先 economy.RegisterGovernment）: "
-                + zone.issuingGov().value());
-      }
-      if (!issuingGov.issuable().contains(zone.legalTender())) {
-        throw new IllegalArgumentException(
-            "市场区 "
-                + zoneId.value()
-                + " 的法定币不在该发行政府的 issuable 里（谁发行的不许在两处漂开）：gov="
-                + zone.issuingGov().value()
-                + " 法定币="
-                + zone.legalTender().value()
-                + " issuable="
-                + issuingGov.issuable());
       }
       marketZonesCopy.put(zoneId, zone);
     }

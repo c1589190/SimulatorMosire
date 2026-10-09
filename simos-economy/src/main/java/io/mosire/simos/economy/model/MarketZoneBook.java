@@ -22,9 +22,17 @@ import java.util.Set;
  * ★★ <b>市场区与"发行政府 ↔ GOV 连线"的只读查询面</b>（阶段 2-B2，2026-10-08；约束设计书 §4.2/§4.3；不变量 I22）。
  *
  * <p>★★ <b>它解决什么问题</b>：{@code EconomyData.marketZones} 是一张 {@code Map<MarketZoneId,
- * MarketZone>}，而调用方真正要问的是 ① "这个 hex 属于哪个区"（结算/读数/命令守卫都要）、② "某个 GOV 发行哪些币" / "某种币由哪个 GOV 发行"（§4.3
- * 的连线，用户 2026-10-08 裁定"一个 GOV 拥有发行货币的权利"）、③ "本区官方汇率是多少，没有区级覆盖时回落到谁"。把这三件事的拼写点收在这里，
- * 别处不许再遍历表自己拼（同一件事两处拼写 ⇒ 两处会漂）。
+ * MarketZone>}，而调用方真正要问的是 ① "这个 hex 属于哪个区"（结算/读数/命令守卫都要）、② "某个 GOV 发行哪些币" / "某种币由哪些 GOV 发行"（§4.3
+ * 的连线，用户 2026-10-08 裁定"一个 GOV 拥有发行货币的权利"）、③ "本区官方汇率是多少"。
+ *
+ * <p>★★ <b>2026-10-09 C 批：区不再记"谁发行这种钱"</b>（用户原话「法定货币发行者也丢掉」；设计书 §4.1/G1）。于是"谁管这种钱" 一律由 {@code
+ * governments} 的 {@code issuable} <b>反查</b>回答（{@link #possibleIssuersOf}：<b>可多值</b>、规范序） ——★
+ * <b>不新增第二张"发行关系表"</b>：那会与 {@code issuable} 形成第二权威（I-M8）。
+ *
+ * <p>★★ <b>区级报价的承挂者（本批的口径，唯一拼写点）</b>：一个区级报价由"<b>本区法定币的发行者</b>"承载 （{@code Government.issuable} ∋ 本区
+ * {@code legalTender}）—— 区级报价是"这一片用这种钱的人们挂的价"， 而"谁发行/管这种钱"正是 {@code issuable} 的反查答案。★
+ * 与此并列、且一字未改的一条：<b>任何</b>政府都能给自己 <b>持有的</b>任意货币挂 GOV 级报价（§4.2；GOV 级路径本来就不看 {@code issuable}）⇒
+ * "一个区里多个政府都能挂价"（G2） 由这两条一起给出：区级报价投到本区货币的各个发行者窗口上，GOV 级报价各归各的属主。
  *
  * <p>★★ <b>权威口径（I22）</b>：一个 hex 属于哪个区<b>只看</b> {@code marketZones} 的成员格；本类<b>不</b>做任何"半径推算"或
  * "最近锚格"的兜底 —— 那是派生路径（空表时的默认值，见 {@code MarketTopologyBook}）的事。空区表 ⇒ 本类全部查询给出"没有区" 的答案，而不是自己造一个。
@@ -92,32 +100,39 @@ public final class MarketZoneBook {
   }
 
   /**
-   * ★★ <b>§4.3 的连线：这个区的发行政府对应哪个 GOV 单位</b>（{@code gov-unit-<govUnitId>} 的反查）。
+   * ★★ <b>2026-10-09 C 批：{@code issuingGov} 退役后，"谁管这种钱"的唯一答案</b>（设计书 §4.1/G1；I-M8）： 扫 {@code
+   * governments} 的 {@code issuable}，列出<b>全部</b>声称能发行该币种的政府身份（<b>规范序</b>：{@link GovernmentId} 裸值升序）。
    *
-   * <p>★ 区挂的是<b>世界级政府身份</b>（{@code gov-unit-…}），而"GOV 单位"住在 unit 切片 ⇒ 连线靠 {@link
-   * GovernmentIds#unitRefOf} 把身份翻译成单位 id。世界级政府（{@code world-silver} 一类，不是任何 GOV 单位）⇒ 空 （不猜，{@code
-   * GovernmentIds} 的既有口径）。
+   * <p>★★ <b>可多值，且不替调用方挑一个</b>：一个币种落在多个 GOV 的 {@code issuable} 里是**状态里的事实**
+   * （现行写入侧守卫"一币一发行人"把它限成一个；放宽那条守卫 = 交给第二个政府<b>透支/发行</b>的权力，属货币层，不在本批）， 本方法照实列出全部而不替调用方挑一个 ——
+   * 挑一个就等于把"谁发的"这件事藏进一个任意的 choice。
+   *
+   * <p>★★ <b>它是查询、不是状态</b>：不落盘、不进变更集、不建表 —— 一份"发行关系表"会与 {@code issuable} 形成第二权威。
+   * 空答案（没有任何政府能发行该币）是<b>合法</b>状态（用户 §1.6「肯定不管」：立区不看谁发得出），不是故障。
    */
-  public static Optional<String> issuingGovUnitOf(MarketZone zone) {
-    Objects.requireNonNull(zone, "zone");
-    return GovernmentIds.unitRefOf(zone.issuingGov());
+  public static List<GovernmentId> possibleIssuersOf(EconomyData data, CurrencyId currency) {
+    Objects.requireNonNull(data, "data");
+    Objects.requireNonNull(currency, "currency");
+    List<GovernmentId> issuers = new ArrayList<>();
+    for (Government government : data.governments().values()) {
+      if (government.issuable().contains(currency)) {
+        issuers.add(government.id());
+      }
+    }
+    issuers.sort(Comparator.comparing(GovernmentId::value));
+    return List.copyOf(issuers);
   }
 
   /**
-   * ★★ <b>"某种币由哪些 GOV 单位发行"</b>（§4.3 的查询面）：扫 {@code governments} 的 {@code issuable}，把命中的政府身份翻译成 GOV
-   * 单位 id（规范序；世界级政府 / 未登记的政府不计入）。
+   * ★★ <b>"某种币由哪些 GOV 单位发行"</b>（§4.3 的查询面）：{@link #possibleIssuersOf} 里那些**有 GOV 单位**的政府 （世界级主体如
+   * {@code world-silver} 没有单位可指 ⇒ 不猜、不计入），翻译成 GOV 单位 id（规范序）。
    *
-   * <p>★ 一个币种落在多个 GOV 的 {@code issuable} 里是**状态里的事实**（本仓"一币一发行人"由 9 处守卫在写入侧拒），本方法 照实列出全部而不替调用方挑一个
-   * —— 挑一个就等于把"谁发的"这件事藏进一个任意的 choice。
+   * <p>★ 唯一拼写点：本方法是 {@link #possibleIssuersOf} 的投影，不另扫一遍 {@code issuable}（同一件事两处拼写 ⇒ 两处会漂）。
    */
   public static Set<String> govUnitIdsIssuing(EconomyData data, CurrencyId currency) {
-    Objects.requireNonNull(data, "data");
-    Objects.requireNonNull(currency, "currency");
     List<String> units = new ArrayList<>();
-    for (Government government : data.governments().values()) {
-      if (government.issuable().contains(currency)) {
-        GovernmentIds.unitRefOf(government.id()).ifPresent(units::add);
-      }
+    for (GovernmentId issuer : possibleIssuersOf(data, currency)) {
+      GovernmentIds.unitRefOf(issuer).ifPresent(units::add);
     }
     units.sort(Comparator.naturalOrder());
     return java.util.Collections.unmodifiableSet(new LinkedHashSet<>(units));
@@ -173,8 +188,20 @@ public final class MarketZoneBook {
     if (zoneRate.isPresent()) {
       return zoneRate;
     }
-    Government government = data.governments().get(zone.get().issuingGov());
-    return government == null ? Optional.empty() : government.officialRate(base, quote);
+    // ★★ C 批（2026-10-09）：区不再说"谁是发行者" ⇒ 回落目标由 **issuable 反查**给出（{@link #possibleIssuersOf}，规范序）。
+    //   多个发行者都能发这种钱时取规范序第一个**给了该币对 GOV 级报价**的政府（确定序；冲突本身不在这里吞掉 —— 唯一拼写点
+    //   只在区块级口径，本方法只服务逐 hex 读数）。
+    for (GovernmentId issuer : possibleIssuersOf(data, zone.get().legalTender())) {
+      Government government = data.governments().get(issuer);
+      if (government == null) {
+        continue;
+      }
+      Optional<OfficialRate> rate = government.officialRate(base, quote);
+      if (rate.isPresent()) {
+        return rate;
+      }
+    }
+    return Optional.empty();
   }
 
   /** 逐区一行人类可读摘要（保序；供日志与探针直读）。 */
@@ -191,21 +218,28 @@ public final class MarketZoneBook {
   /**
    * ★★ <b>B4：覆盖某 GOV 某币对的<b>全部</b>区</b>（规范序；空 = 没有区级覆盖 ⇒ 回落到 GOV 级）。
    *
+   * <p>★★ <b>C 批（2026-10-09）口径更新</b>："这个 GOV 被哪个区的区级报价覆盖"不再看 {@code zone.issuingGov}（该组件已退役），
+   * 而看<b>本 GOV 能不能发行该区的法定币</b>（{@code government.issuable()} ∋ {@code zone.legalTender()}）——
+   * 「谁管这种钱」的权威是 {@code issuable}（I-M8），这正是 {@link #possibleIssuersOf} 的逐 GOV 形式。
+   *
    * <p>★ 两个用途：① 取生效价 = 第一个（{@link #zoneCovering}）；② 把"冲突时被覆盖的那几条报价"<b>具名</b>列出来 （装订点的 {@code
    * FX_ZONE_RATE_CONFLICT}，诊断"我设的价为什么没用"）—— 一条被静默丢掉的政府报价正是本仓最忌讳的那类事。
    */
   public static List<MarketZone> zonesCovering(
+      Government government,
       Map<MarketZoneId, MarketZone> marketZones,
-      GovernmentId governmentId,
       CurrencyId base,
       CurrencyId quote) {
-    Objects.requireNonNull(marketZones, "marketZones");
-    Objects.requireNonNull(governmentId, "governmentId");
+    Objects.requireNonNull(government, "government");
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(quote, "quote");
     List<MarketZone> covering = new ArrayList<>();
+    if (marketZones == null) {
+      return List.of();
+    }
     for (MarketZone zone : zones(marketZones)) {
-      if (zone.issuingGov().equals(governmentId) && zone.officialRate(base, quote).isPresent()) {
+      if (government.issuable().contains(zone.legalTender())
+          && zone.officialRate(base, quote).isPresent()) {
         covering.add(zone);
       }
     }
@@ -213,18 +247,34 @@ public final class MarketZoneBook {
   }
 
   /**
-   * ★★ <b>B4：某个 GOV 的某个币对由哪个区级覆盖给出</b>（规范序<b>第一个</b>覆盖它的本 GOV 所辖区；没有覆盖 ⇒ 空）。
+   * ★★ <b>B4：按政府身份取"覆盖某币对的全部区"</b>（装订点日志用；政府未登记 ⇒ 空表 —— 说不出"谁被覆盖"就不猜）。
    *
-   * <p>★ <b>为什么"第一个"要具名</b>：一个 GOV 下辖两个区、两区对同一币对给了不同报价时，"用哪条"必须有一个可复现的口径 （{@link #zones(Map)}
-   * 的规范序），否则窗口价会随区表的写入史漂开。★ 冲突本身不由本方法吞掉：装订点 （{@code EconomySettlement#logFxWindows}）把被覆盖的那几条按 DEBUG
-   * 具名记下来（见 {@link #zonesCovering}）。
+   * <p>★ 与 {@link #zonesCovering(Government, Map, CurrencyId, CurrencyId)} 同一拼写点：本重载只做"身份 → 政府"的翻译。
+   */
+  public static List<MarketZone> zonesCovering(
+      EconomyData data, GovernmentId governmentId, CurrencyId base, CurrencyId quote) {
+    Objects.requireNonNull(data, "data");
+    Objects.requireNonNull(governmentId, "governmentId");
+    Government government = data.governments().get(governmentId);
+    if (government == null) {
+      return List.of();
+    }
+    return zonesCovering(government, data.marketZones(), base, quote);
+  }
+
+  /**
+   * ★★ <b>B4：某个 GOV 的某个币对由哪个区级覆盖给出</b>（规范序<b>第一个</b>覆盖它的区；没有覆盖 ⇒ 空）。
+   *
+   * <p>★ <b>为什么"第一个"要具名</b>：一个 GOV 能被多个区级报价覆盖（它能发行多个区的法定币）、且那些区对同一币对给了不同报价时，
+   * "用哪条"必须有一个可复现的口径（{@link #zones(Map)} 的规范序），否则窗口价会随区表的写入史漂开。★ 冲突本身不由本方法吞掉：装订点 （{@code
+   * EconomySettlement#logFxWindows}）把被覆盖的那几条按 DEBUG 具名记下来（见 {@link #zonesCovering}）。
    */
   public static Optional<MarketZone> zoneCovering(
+      Government government,
       Map<MarketZoneId, MarketZone> marketZones,
-      GovernmentId governmentId,
       CurrencyId base,
       CurrencyId quote) {
-    List<MarketZone> covering = zonesCovering(marketZones, governmentId, base, quote);
+    List<MarketZone> covering = zonesCovering(government, marketZones, base, quote);
     return covering.isEmpty() ? Optional.empty() : Optional.of(covering.get(0));
   }
 
@@ -232,11 +282,11 @@ public final class MarketZoneBook {
    * ★★ <b>B4：一个 GOV 对某个币对的生效报价</b>（{@code FxRoundInput} 的窗口价唯一来源）：
    *
    * <pre>
-   * 本 GOV 所辖区里有区级覆盖 ⇒ 该区级报价（规范序第一个覆盖者，见 {@link #zoneCovering}）
-   * 没有区级覆盖             ⇒ 本 GOV 的 GOV 级报价（回落；缺 ⇒ 空）
+   * 本 GOV 能发行某区区法定币、且该区对该币对有覆盖 ⇒ 该区级报价（规范序第一个覆盖者，见 {@link #zoneCovering}）
+   * 否则                                            ⇒ 本 GOV 的 GOV 级报价（回落；缺 ⇒ 空）
    * </pre>
    *
-   * <p>★ 回落<b>按币对</b>判（不是"这个区有区级表就整体回落"）：区级覆盖的语义是"覆盖某几个币对"，某区只覆盖了 A/B 时，该区发行 GOV 的 C/D 报价仍然有效 —— 与
+   * <p>★ 回落<b>按币对</b>判（不是"这个区有区级表就整体回落"）：区级覆盖的语义是"覆盖某几个币对"，某区只覆盖了 A/B 时， 该 GOV 的 C/D 报价仍然有效 —— 与
    * {@link #officialRateFor} 的逐 hex/逐币对口径一致。
    */
   public static Optional<OfficialRate> effectiveRateOf(
@@ -248,9 +298,7 @@ public final class MarketZoneBook {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(quote, "quote");
     Optional<MarketZone> covering =
-        marketZones == null
-            ? Optional.empty()
-            : zoneCovering(marketZones, government.id(), base, quote);
+        marketZones == null ? Optional.empty() : zoneCovering(government, marketZones, base, quote);
     if (covering.isPresent()) {
       Optional<OfficialRate> zoneRate = covering.get().officialRate(base, quote);
       if (zoneRate.isPresent()) {
@@ -264,8 +312,8 @@ public final class MarketZoneBook {
    * ★★ <b>B4：一个 GOV 的整张生效报价表</b>（键 = {@code OfficialRate.key()}；<b>币对升序</b>， 与 A2a 的窗口序同口径 ⇒
    * 窗口序不依赖区表/报价表的写入史）。空表 = 这个 GOV 没有任何生效报价（没有外汇窗口）。
    *
-   * <p>币对的全集 = "本 GOV 所辖区的区级覆盖" ∪ "本 GOV 的 GOV 级报价"；每条取值一律经 {@link #effectiveRateOf} （优先级只有一处拼写）。★
-   * 区级覆盖在这里只是"投到发行 GOV 的窗口上"，不复制窗口（一个 GOV × 一个币对恰一条）。
+   * <p>币对的全集 = "本 GOV 被覆盖的区级报价" ∪ "本 GOV 的 GOV 级报价"；每条取值一律经 {@link #effectiveRateOf} （优先级只有一处拼写）。★
+   * 区级覆盖在这里只是"投到该币种发行者的窗口上"，不复制窗口（一个 GOV × 一个币对恰一条）。
    */
   public static Map<String, OfficialRate> effectiveRatesOf(
       Government government, Map<MarketZoneId, MarketZone> marketZones) {
@@ -273,7 +321,7 @@ public final class MarketZoneBook {
     Map<String, OfficialRate> candidates = new LinkedHashMap<>();
     if (marketZones != null) {
       for (MarketZone zone : zones(marketZones)) {
-        if (!zone.issuingGov().equals(government.id())) {
+        if (!government.issuable().contains(zone.legalTender())) {
           continue;
         }
         for (OfficialRate rate : sortedRates(zone.officialRates())) {

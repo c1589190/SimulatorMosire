@@ -51,8 +51,9 @@ import java.util.Set;
  *   <li>{@code official-rate-conflict}：两区对<b>同一币对</b>都有区级覆盖且数值不同（两个政策价不能同时成立；先统一其中一个， 相同值则自然合并）。
  * </ol>
  *
- * <p>★ <b>合并后的形状</b>：目标区 = 目标区原有格 ∪ 源区格（<b>规范序</b>由 {@code MarketZone} 构造期保证），锚格与法定币/发行者取
- * 目标区（**目标区的钱成为合并区的法定币**），声明半径 = 两区半径的较大者（不因合并而缩小可达判据），区级汇率覆盖 = 两区的并集 （冲突已在上面拒掉）。
+ * <p>★ <b>合并后的形状</b>：目标区 = 目标区原有格 ∪ 源区格（<b>规范序</b>由 {@code MarketZone} 构造期保证），锚格与法定币取
+ * 目标区（**目标区的钱成为合并区的法定币**；★ 2026-10-09 C 批起区里不再有"发行者"一栏 —— 谁管这种钱由 {@code Government.issuable}
+ * 反查回答），声明半径 = 两区半径的较大者（不因合并而缩小可达判据），区级汇率覆盖 = 两区的并集 （冲突已在上面拒掉）。
  *
  * <p>★ <b>GM-only</b>：同 {@code economy.DefineMarketZone}（世界级区表没有单格资源目标 ⇒ {@link
  * CommandTargets#targetPaths} 恒空）。
@@ -172,7 +173,6 @@ public final class EconomyMergeMarketZonesHandler
                   mergedRadius,
                   mergedHexes,
                   target.legalTender(),
-                  target.issuingGov(),
                   Map.of())
               .withOfficialRates(mergedRates);
       Map<MarketZoneId, MarketZone> zones = new LinkedHashMap<>(base.marketZones());

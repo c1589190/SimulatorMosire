@@ -34,7 +34,7 @@ import java.util.Optional;
  * 的构造性可复现）。
  *
  * <p>★ <b>法定币 = 该区节点（集散城市）那格的 {@code Market.numeraire}</b>：区内逐格价格都按它计（D-027 的同币口径）， 故它是这一维的唯一读数口径。★
- * 本批**没有**"区 → 法定币"的持久字段（那是 B2 的 {@code zoneId/hexes/法定币/发行政府}）。
+ * 本批**没有**"区 → 法定币"的持久字段（那是 B2 的 {@code zoneId/hexes/法定币}；★ 2026-10-09 C 批起区里连"发行政府"也没有了）。
  *
  * <p>★ <b>区数怎么来的</b>（判据与坑都在 {@link MarketTopologyBook#from(SimulationState)} 的类注里）：同币 ⇒ 恰恰 1 个区；异币
  * ⇒ 每个"锚格有市场"的城市一个节点 + 每个覆盖不到的市场格一个兜底单格区。
@@ -55,9 +55,10 @@ public final class MarketZoneReadout {
    * @param authority {@code "persistent"}（成员格由 {@code EconomyData.marketZones} 给定，I22）或 {@code
    *     "derived"} （空区表 ⇒ "城市 + tier 半径"派生，本批之前的既有形态）
    * @param officialRates 本区**区级**官方汇率覆盖（{@code base|quote} → 报价；派生区 / 无覆盖 ⇒ 空表）
-   * @param issuingGov 本区法定币的发行政府 id（持久区 = {@code GovernmentId} 裸值；派生区 ⇒ null —— 派生件说不出"谁发行"）
-   * @param issuingGovUnit 发行政府对应的 GOV 单位 id（世界级主体 / 派生区 ⇒ 空）
    */
+  // ★★ 2026-10-09 C 批：{@code issuingGov} / {@code issuingGovUnit} 两栏退役（用户「法定货币发行者也丢掉」；设计书 §4.1/G1、
+  //   §6.3「读数里 issuingGov 两栏消失（预期变化）」）。"谁管这种钱"改由 `Government.issuable` 反查回答
+  //   （{@link MarketZoneBook#possibleIssuersOf}，可多值）—— 一个区里可以有多个政府，读数里塞一个"发行者"就是错的。
   public record Zone(
       String zoneId,
       HexCoord anchor,
@@ -66,9 +67,7 @@ public final class MarketZoneReadout {
       InstrumentId receiveWith,
       List<HexCoord> members,
       String authority,
-      Map<String, OfficialRate> officialRates,
-      String issuingGov,
-      Optional<String> issuingGovUnit) {
+      Map<String, OfficialRate> officialRates) {
 
     public Zone {
       Objects.requireNonNull(zoneId, "zoneId");
@@ -80,7 +79,6 @@ public final class MarketZoneReadout {
       officialRates = Map.copyOf(Objects.requireNonNull(officialRates, "officialRates"));
       // ★ officialRates 是**只读读数**（不参与任何等式判定），Map.copyOf 的迭代序不承诺是内容的纯函数也不影响结论；
       //   要保序读的调用方按 key 排序自己排（Zone.officialRates() 的规模是币对数，数量级个位数）。
-      Objects.requireNonNull(issuingGovUnit, "issuingGovUnit");
     }
 
     /** 成员格数。 */
@@ -116,9 +114,7 @@ public final class MarketZoneReadout {
               MarketTopologyBook.receiveInstrumentOf(economy, zone.legalTender()),
               members,
               "persistent",
-              preserveOrder(zone.officialRates()),
-              zone.issuingGov().value(),
-              MarketZoneBook.issuingGovUnitOf(zone)));
+              preserveOrder(zone.officialRates())));
     }
     return List.copyOf(zones);
   }
@@ -179,9 +175,7 @@ public final class MarketZoneReadout {
               region.receiveWith(),
               members,
               zone == null ? "derived" : "persistent",
-              zone == null ? Map.of() : preserveOrder(zone.officialRates()),
-              zone == null ? null : zone.issuingGov().value(),
-              zone == null ? Optional.empty() : MarketZoneBook.issuingGovUnitOf(zone)));
+              zone == null ? Map.of() : preserveOrder(zone.officialRates())));
     }
     return List.copyOf(zones);
   }

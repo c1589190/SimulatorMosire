@@ -25,7 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * ★★ {@code economy.SetOfficialRate}（A2a 2026-10-08；约束设计书 §3.3/§3.4；★ B2 2026-10-08 扩展）：<b>给一个 GOV
@@ -41,9 +40,16 @@ import java.util.Optional;
  *
  * // ── B2 扩展：区级覆盖（★ 载荷向后兼容：老载荷（无 marketZoneId）逐字走老路径）──
  * {"marketZoneId":"c-tp-copper",// 必填（给了它就写"本区官方汇率覆盖"）
- *  "govUnitId"?:"gov-tp-copper", // 可选：给了就必须等于该区的发行 GOV 单位（不然说不出"谁报的价"）
  *  "base":"copper","quote":"silver","buyPerMille":1000,"sellPerMille":1050}
  * }</pre>
+ *
+ * <p>★★ <b>2026-10-09 C 批：区级报价不再点名政府</b>（用户「法定货币发行者也丢掉」/「凭什么只有一个区允许给货币挂价」； 设计书
+ * §4.1/§4.2）：区级覆盖是"<b>这个区挂的价</b>"，写它不需要"你是这个区的发行者" —— 原来那两条 （{@code gov-mismatch} / {@code
+ * zone-issuer-not-a-gov-unit}）随 {@code MarketZone.issuingGov} 一并退役。 ★ 那条覆盖由谁承载：由
+ * <b>本区法定币的发行者</b>（{@code MarketZoneBook.effectiveRatesOf}：{@code Government.issuable} ∋ 本区 {@code
+ * legalTender}）各投一条窗口；<b>任何</b>政府另可给自己持有的任意货币挂 GOV 级价（GOV 级路径本来就不看 {@code
+ * issuable}）⇒「一个区里多个政府都能挂价」（G2）由这两条一起给出。 ★ 载荷若在区级分支里仍带 {@code govUnitId} ⇒ <b>具名拒 {@code
+ * bad-payload}</b>（fail-closed 的退役键处理：区级报价不点名政府）。
  *
  * <p>★★ <b>它是"官方汇率"的唯一写入口</b>：官方汇率是<b>状态</b>（GOV 级随 {@code governments}、区级随 {@code marketZones} 进
  * ChangeSet/Codec；可持久、可回放、可分支），而<b>实际汇率永远是读数</b>（不落盘，I17）。两者<b>不相等是常态</b>：官方汇率是
@@ -198,9 +204,9 @@ public final class EconomySetOfficialRateHandler
   /**
    * ★★ <b>B2 新区路径（区级覆盖）</b>：只写目标区的 {@code officialRates} 一条；GOV 级报价一字不动。
    *
-   * <p>★ 四条具名拒：{@code zone-not-found}（区不存在）、{@code gov-mismatch}（给了 govUnitId 却不等于本区发行 GOV 单位）、
-   * {@code zone-issuer-not-a-gov-unit}（本区发行政府是世界级主体，没有 GOV 单位可指 —— 那时只能省略 govUnitId）、 {@code
-   * rate-unchanged}（逐字相同 ⇒ 拒）。
+   * <p>★ 两条具名拒：{@code zone-not-found}（区不存在）、{@code rate-unchanged}（逐字相同 ⇒ 拒）。 ★★ C 批退役的两条（随 {@code
+   * MarketZone.issuingGov}）：{@code gov-mismatch}（给了 govUnitId 却不等于本区发行 GOV 单位）、 {@code
+   * zone-issuer-not-a-gov-unit}（本区发行政府是世界级主体、没有 GOV 单位可指）—— 区级报价不点名政府。
    */
   private static HandlerOutcome handleZoneOverride(
       EconomyData base, Definition definition, OfficialRate rate) {
@@ -211,30 +217,6 @@ public final class EconomySetOfficialRateHandler
           "zone-not-found",
           definition,
           "市场区不存在: " + zoneId.value() + "（先 economy.DefineMarketZone 建区）");
-    }
-    Optional<String> issuerUnit = MarketZoneBook.issuingGovUnitOf(zone);
-    if (definition.govUnitId() != null) {
-      if (issuerUnit.isEmpty()) {
-        return rejected(
-            "zone-issuer-not-a-gov-unit",
-            definition,
-            "本区发行政府是世界级主体（不是任何 GOV 单位），给 govUnitId 说不出\"谁报的价\"：zone="
-                + zoneId.value()
-                + " issuingGov="
-                + zone.issuingGov().value());
-      }
-      if (!issuerUnit.get().equals(definition.govUnitId())) {
-        return rejected(
-            "gov-mismatch",
-            definition,
-            "给的 govUnitId 不是本区发行 GOV 单位：给了="
-                + definition.govUnitId()
-                + "，本区发行 GOV="
-                + issuerUnit.get()
-                + "（zone="
-                + zoneId.value()
-                + "）");
-      }
     }
     OfficialRate existing = zone.officialRates().get(rate.key());
     if (existing != null && existing.equals(rate)) {
@@ -259,8 +241,6 @@ public final class EconomySetOfficialRateHandler
             "market-zone",
             "zone",
             zoneId.value(),
-            "issuingGov",
-            zone.issuingGov().value(),
             "base",
             rate.base().value(),
             "quote",
@@ -293,8 +273,10 @@ public final class EconomySetOfficialRateHandler
             zone.hexCount(),
             "legalTender",
             zone.legalTender().value(),
+            "carriers",
+            MarketZoneBook.possibleIssuersOf(base, zone.legalTender()).size(),
             "note",
-            "区级覆盖不改 GOV 级报价；读取口径 = 区级优先、回落该区发行 GOV 的 GOV 级报价"));
+            "区级覆盖不改 GOV 级报价；承挂者 = 本区法定币的发行者（Government.issuable 反查）"));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
   }
 
@@ -340,13 +322,18 @@ public final class EconomySetOfficialRateHandler
         payload.hasNonNull("marketZoneId")
             ? EconomyCommandPayloads.requireText(TYPE, payload, "marketZoneId")
             : null;
-    // ★ 向后兼容：老载荷（无 marketZoneId）时 govUnitId 仍是必填；区级分支里它可选（缺省 = 由该区发行 GOV 反查）。
+    // ★ 向后兼容：老载荷（无 marketZoneId）= GOV 级报价，govUnitId 必填；区级分支里它已退役（区不点名政府）。
     String govUnitId =
         payload.hasNonNull("govUnitId")
             ? EconomyCommandPayloads.requireText(TYPE, payload, "govUnitId")
             : null;
     if (marketZoneId == null && govUnitId == null) {
       throw new IllegalArgumentException(TYPE + " 缺少字段: govUnitId（不给 marketZoneId 时必填）");
+    }
+    if (marketZoneId != null && govUnitId != null) {
+      // ★★ C 批退役键的 fail-closed 处理（区级报价不点名政府）：绝不静默忽略"以为还算数"的字段。
+      throw new IllegalArgumentException(
+          TYPE + " 的区级分支不接受 govUnitId（已退役：区级报价是「这个区挂的价」，承挂者由 Government.issuable 反查）");
     }
     String base = EconomyCommandPayloads.requireText(TYPE, payload, "base");
     String quote = EconomyCommandPayloads.requireText(TYPE, payload, "quote");

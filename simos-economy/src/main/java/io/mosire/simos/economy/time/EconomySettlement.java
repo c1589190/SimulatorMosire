@@ -7884,8 +7884,7 @@ public final class EconomySettlement {
     for (FxRoundInput.Window window : fxInput.windows()) {
       OfficialRate rate = window.rate();
       List<MarketZone> covering =
-          MarketZoneBook.zonesCovering(
-              base.marketZones(), window.governmentId(), rate.base(), rate.quote());
+          MarketZoneBook.zonesCovering(base, window.governmentId(), rate.base(), rate.quote());
       EventLog.channel(FX)
           .debug(
               LogEvent.of(
@@ -7910,8 +7909,8 @@ public final class EconomySettlement {
                       ? "government"
                       : "market-zone:" + covering.get(0).zoneId().value()));
       if (covering.size() > 1) {
-        // ★ 一个 GOV 下辖多个区、同币对给了不同报价 ⇒ 规范序第一个区胜出，其余被覆盖：
-        //   被丢掉的那几条政策价必须具名出现在日志里（不许静默吞掉另一条政府报价）。
+        // ★ 一个 GOV 能被多个区的区级报价覆盖（它能发行多个区的法定币）、同币对给了不同报价 ⇒ 规范序第一个区胜出，
+        //   其余被覆盖：被丢掉的那几条政策价必须具名出现在日志里（不许静默吞掉另一条政府报价）。
         EventLog.channel(FX)
             .debug(
                 LogEvent.of(

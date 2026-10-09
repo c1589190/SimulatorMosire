@@ -45,16 +45,14 @@ import java.util.Set;
  *
  * <pre>
  * ① 法定币 ∈ 世界词表         ⇒ 逐 GOV 的 economy.DefineCurrency 必须已跑（铜/金）
- * ② 发行 GOV 已登记           ⇒ 逐 GOV 的 economy.RegisterGovernment 必须已跑
- * ③ 该 GOV 的 issuable 含该币 ⇒ ②（银：RegisterGovernment 的 issuable）+ ①（铜/金：DefineCurrency 的发行人登记）
- * ④ 锚格有市场行 / 成员格的计价币 = 法定币 ⇒ economy.Seed（本世界第一条经济命令，远早于此处）
- * ⑤ 该格不属于别的区          ⇒ 本批三条命令各定义一区，区两两不相交
+ * ② 锚格有市场行 / 成员格的计价币 = 法定币 ⇒ economy.Seed（本世界第一条经济命令，远早于此处）
+ * ③ 该格不属于别的区          ⇒ 本批三条命令各定义一区，区两两不相交
  * </pre>
  *
- * ★ 所以<b>最早可行点</b>是"最后一个 GOV 的 {@code economy.DefineCurrency} 之后"；实际落点取<b>整个 per-GOV 循环之后</b> ——
- * 它同时满足"所有 {@code unit.SetJurisdiction} 之后"（区 = 辖区这件事在语义上成对），并把区表自检放在国库注资之前 ⇒
- * <b>坏区表在铸币/审计发生之前就中止创世</b>（{@code CoreSimos#bootstrapGenesis} 只在最后写一条 revision/checkpoint ⇒
- * 创世期任何一步抛 = 一个字节都不落盘）。
+ * ★★ 2026-10-09 C 批更新：原依赖 ②③（"发行 GOV 已登记"、"该 GOV 的 issuable 含该币"）随 {@code MarketZone.issuingGov}
+ * 一并退役（用户「法定货币发行者也丢掉」；设计书 §4.1/G1、§4.3/G4：立区不管"谁发得出"）。⇒ 现在<b>最早可行点</b>是"最后一个 GOV 的 {@code
+ * economy.DefineCurrency} 之后"（币种进词表）；实际落点仍取<b>整个 per-GOV 循环之后</b>（同时满足"所有 {@code
+ * unit.SetJurisdiction} 之后"），并把区表自检放在国库注资之前 ⇒ <b>坏区表在铸币/审计发生之前就中止创世</b>。
  *
  * <p>★★ <b>五条创世期自检（全部 fail-closed，任一不成立 ⇒ 具名抛，绝不落半套）</b>（{@link #requireZones}，与 B1 的 I23 自检 {@code
  * ThreePowersGovBootstrap#requireDisjointJurisdictions} 同风格）：
@@ -63,8 +61,8 @@ import java.util.Set;
  *   <li>{@code zone-count}：状态里的区数 = 本次创世声明的区数（3）；
  *   <li>{@code zone-hexes-vs-region}：每区的 {@code hexes} <b>恰等于</b>对应行政区的 hex 集（逐 hex 相等，不是比个数）；
  *   <li>{@code zone-tender-distinct}：三区法定币两两不同（"每区法定币不同"是 G1 的一半）；
- *   <li>{@code zone-issuing-gov}：每区的发行 GOV 已登记为政府、<b>且</b>它的 {@code issuable} 确实含该区法定币
- *       （"谁发行的"不许在两处漂开）；
+ *   <li>{@code zone-issuing-gov}：本区的 GOV 已登记为政府、<b>且</b>它的 {@code issuable} 确实含该区法定币
+ *       （"谁发行的"不许在两处漂开）—— ★ C 批起这条改读<b>政府表</b>（区里已无 {@code issuingGov}；见 {@link #requireZones} ④）。
  *   <li>{@code zone-union-vs-jurisdiction} / {@code zone-union-vs-map}：三区并集 = 各辖区并集 <b>且</b> = 全图
  *       hex 集， 逐格归属恰一个区（I23 的市场区侧）。
  * </ol>
@@ -90,7 +88,7 @@ final class ThreePowersMarketZones {
    */
   static final int ZONE_RADIUS_HEX = 8;
 
-  /** 创世 INFO（逐区一条）：区 id / 格数 / 法定币 / 发行 GOV（§一.9 的"新状态写口至少一条 INFO"）。 */
+  /** 创世 INFO（逐区一条）：区 id / 格数 / 法定币 / 锚格（★ C 批起不再记"发行 GOV"——区里已无该栏）。 */
   static final String EVENT_ZONE_PERSISTED = "THREE_POWERS_GENESIS_MARKET_ZONE_PERSISTED";
 
   /** 创世 INFO（一条汇总）：几个区、覆盖几格、权威 = persistent、设计要求自检全过。 */
@@ -123,8 +121,9 @@ final class ThreePowersMarketZones {
    * @param zoneId 区稳定身份（= 本区城市 id；与派生路径的节点 id 同字面 ⇒ 换权威不改读数）
    * @param anchor 集散节点格（= 该 GOV 的座位格 = 该区城市格；必须 ∈ 辖区）
    * @param jurisdictionRegionId 该 GOV 的行政区 id（区成员格 = 它的 hex 集）
-   * @param govUnitId 发行 GOV 单位 id（{@code GovernmentIds.ofUnit} 反查政府身份）
-   * @param legalTender 本区法定币（= 该 GOV 发行的币）
+   * @param govUnitId 本区 GOV 单位 id（{@code GovernmentIds.ofUnit} 反查政府身份）—— ★ C 批起它<b>不再进区记录</b>
+   *     （{@code MarketZone.issuingGov} 已退役），只服务创世自检 ④ 与日志/载荷的"这个世界里区 = 谁的辖区"这一句陈述
+   * @param legalTender 本区法定币（★ C 批起区记录里它是区自己的事实；本世界里仍取该 GOV 发行的币）
    */
   record ZoneSpec(
       String zoneId,
@@ -299,17 +298,15 @@ final class ThreePowersMarketZones {
                 + " ≠ 声明 "
                 + spec.legalTender().value());
       }
-      // ④ 发行 GOV 已登记 + 确实发行该币（"谁发行的"不许在两处漂开）
+      // ④ 本区法定币由本区 GOV 声明发行（"谁发行的"不许在两处漂开）——
+      //   ★★ 2026-10-09 C 批：这条改读**政府表**（`government.issuable()`），不再读 `zone.issuingGov()`（该组件已退役，
+      //   用户「法定货币发行者也丢掉」）。区里没有发行者，但**这个世界**声明的事实仍然可以是"本区 GOV 发行本区的钱"，
+      //   自检因此一字不松（它验的是世界形态，不是区的准入规则；立区早已不看"谁发得出"，见设计书 §4.3/G4）。
       GovernmentId govId = GovernmentIds.ofUnit(spec.govUnitId());
       Government government = economy.governments().get(govId);
       if (government == null) {
         throw fail(
             "zone-issuing-gov", "区 " + spec.zoneId() + " 的发行 GOV " + govId.value() + " 未登记为政府");
-      }
-      if (!zone.issuingGov().equals(govId)) {
-        throw fail(
-            "zone-issuing-gov",
-            "区 " + spec.zoneId() + " 的发行者 " + zone.issuingGov().value() + " ≠ 声明 " + govId.value());
       }
       if (!government.issuable().contains(spec.legalTender())) {
         throw fail(
@@ -427,7 +424,6 @@ final class ThreePowersMarketZones {
     payload.put("anchor", ToolSupport.hexCoord(zone.anchor()));
     payload.put("hexes", rows);
     payload.put("legalTender", zone.legalTender().value());
-    payload.put("govUnitId", zone.govUnitId());
     payload.put("radiusHex", ZONE_RADIUS_HEX);
     payload.put(
         "reason",
@@ -439,7 +435,7 @@ final class ThreePowersMarketZones {
     return ToolSupport.json(payload);
   }
 
-  /** 逐区一条 INFO（区 id / 格数 / 法定币 / 发行 GOV / 锚格）+ 一条汇总 INFO（§一.9：新状态写口至少一条 INFO）。 */
+  /** 逐区一条 INFO（区 id / 格数 / 法定币 / 锚格）+ 一条汇总 INFO（§一.9：新状态写口至少一条 INFO）。 */
   private static void logZones(SimulationState state, List<ZoneSpec> zones) {
     EconomyData economy = requireEconomy(state);
     int hexes = 0;
@@ -466,10 +462,6 @@ final class ThreePowersMarketZones {
                   zone.hexCount(),
                   "legalTender",
                   zone.legalTender().value(),
-                  "issuingGov",
-                  zone.issuingGov().value(),
-                  "issuingGovUnit",
-                  MarketZoneBook.issuingGovUnitOf(zone).orElse("(world-level)"),
                   "radiusHex",
                   zone.radiusHex()));
     }
