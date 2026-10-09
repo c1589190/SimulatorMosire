@@ -1169,6 +1169,9 @@ final class MarketSettlement {
   /**
    * ★ <b>纯订单生成的"已建索引"重载</b>（M2.7 读口用）：{@code rowsByHex} 由调用方一次建好 —— 逐区读数会对同一个 {@code rows}
    * 调它几十次，每次重扫全部行是纯浪费；两条重载走的是同一条 {@code ordersFor}。
+   *
+   * <p>★ <b>P-T5b：不注入币种面 ⇒ 订单币恒 = 本格计价币</b>（与改前逐值相同）。要按"该户最强持有币"下单的调用方走下面那条带 {@code payChoice}
+   * 的重载（{@code clearOncePerCycle} 与读口都走它）。
    */
   static PlannedOrders planOrders(
       MarketRound round,
@@ -1176,11 +1179,28 @@ final class MarketSettlement {
       Market market,
       CommodityId commodity,
       Map<String, List<HouseholdId>> rowsByHex) {
+    return planOrders(round, hex, market, commodity, rowsByHex, MarketPayChoice.none());
+  }
+
+  /**
+   * ★★ <b>P-T5b：带"该户本轮支付币"的纯订单生成</b>（{@code payChoice} 的唯一消费点之一）。
+   *
+   * <p>★ <b>为什么读口必须走带 {@code payChoice} 的重载</b>：读口与结算用的是同一条 {@code ordersFor} —— 若读口按本格计价币生成订单、
+   * 结算按"最强持有币"生成，多币世界里"看到的订单"与"会下的订单"就会在<b>买单数量</b>上漂开（{@code MarketReadout} 的供给/有效需求正是从这里来的）。
+   */
+  static PlannedOrders planOrders(
+      MarketRound round,
+      HexCoord hex,
+      Market market,
+      CommodityId commodity,
+      Map<String, List<HouseholdId>> rowsByHex,
+      MarketPayChoice payChoice) {
     Objects.requireNonNull(round, "round");
     Objects.requireNonNull(hex, "hex");
     Objects.requireNonNull(market, "market");
     Objects.requireNonNull(commodity, "commodity");
     Objects.requireNonNull(rowsByHex, "rowsByHex");
+    Objects.requireNonNull(payChoice, "payChoice");
     // ★★ 2026-10-09：有定价行（含明确 0 价）都进订单生成；"从未定价"才不交易。
     //   ★★ 2026-10-10 P-T1c：定价只看**逐格**价表（{@link Market#hasPrice}）—— 区级参考价覆盖已删（设计书 §16）。
     if (!market.hasPrice(commodity)) {
@@ -1188,7 +1208,7 @@ final class MarketSettlement {
     }
     List<HouseholdId> keys =
         rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of());
-    return ordersFor(round, planFor(round, hex, keys), hex, market, commodity);
+    return ordersFor(round, planFor(round, hex, keys), hex, market, commodity, payChoice);
   }
 
   /**
@@ -1329,6 +1349,12 @@ final class MarketSettlement {
     if (round.portTax().isActive()) {
       requirePortTaxZoneKeysAligned(ctx);
     }
+    // ★★ P-T5b：逐户"本轮用哪种币付"（F-1 的"最强持有币"）—— **必须在并行下单段之前单线程算好**
+    //   （worker 只读它；在并行段里现算 = 共享可变缓存 = 数据竞争），且必须用**上面那一份** currencyValuation
+    //   （禁两套估值漂开：订单侧的折算与撮合的折算必须是同一个实例）。
+    //   ★ 它放在"本轮不开市"的早退之后：不开市的日子不发"这一轮谁用外币付"的 INFO，也不白算一遍。
+    MarketPayChoice payChoice =
+        MarketPayChoice.of(round, markets, topology, rowsByHex, currencyValuation, true);
 
     // ── 1. 逐格建计划与订单；参与表按 actor 去重（订单生成与撮合的唯一来源）──────────────────────
     //   ★★ R2：按市场区并行构建，再按 hex (q,r) 序拼回 —— 与原串行序逐字相同（见方法注释）。
@@ -1417,7 +1443,7 @@ final class MarketSettlement {
                     //    "从未定价"的商品根本不在 market.prices() 里，这个循环天然不会碰它。
                     //    ★★ 2026-10-10 P-T1c：区级参考价覆盖已删 ⇒ 不再查"这一格属不属于调控锚区"。
                     PlannedOrders orders =
-                        ordersFor(planningRound, hexPlan, hex, market, commodity);
+                        ordersFor(planningRound, hexPlan, hex, market, commodity, payChoice);
                     for (BuyOrder order : orders.buys()) {
                       Participant buyer = byActor.get(order.requester());
                       if (buyer == null) {
@@ -1426,7 +1452,10 @@ final class MarketSettlement {
                       }
                       // ★★ 3c：槽位不再从本格计价币取币 —— 支付币由**订单**给（BuySlot 构造期读 order.payWith()，
                       //   "缺省 = 本格计价币"落在订单生成那一侧的 orderCurrencyFor）。
-                      buys.add(new BuySlot(order, buyer, hex, region));
+                      //   ★★ P-T5b：槽位在这里把"本格计价币 ↔ 支付币"的价**冻结一次**（payValueMicro /
+                      //     limitInPayCurrency）—— 限价口径比较、冻结额、运费腿此后都读这两个冻结值，
+                      //     不在撮合中途反复折算（禁两次折算），worker 副本逐值照抄。
+                      buys.add(new BuySlot(order, buyer, hex, region, market, payChoice));
                     }
                     for (SellOrder order : orders.sells()) {
                       Participant seller = byActor.get(order.supplier());
@@ -1864,7 +1893,12 @@ final class MarketSettlement {
    * <p>成交仍按参考价（区内）/ 卖方格参考价（跨区）—— 逐 hex 物流成本另由 {@link HexTradeCost} 承担，单 hex 损耗<b>不</b>承担价格职能。
    */
   private static PlannedOrders ordersFor(
-      MarketRound round, HexPlan plan, HexCoord hex, Market market, CommodityId commodity) {
+      MarketRound round,
+      HexPlan plan,
+      HexCoord hex,
+      Market market,
+      CommodityId commodity,
+      MarketPayChoice payChoice) {
     // ★★ M2.6：参考价 = 本格价表里的固定报价；两个限价由 Market 的两个**各自独立**的常量现算
     //   （bid = 卖方底价、ask = 买方限价），订单按它们过滤；成交仍按参考价（区内）/ 卖方格参考价（跨区）。
     // ★★ 2026-10-09：先区分"从未定价"（不交易）与"明确 0 价"（免费交易）。有定价行 ⇒ 可挂单；值为 0 ⇒ 货款腿 0，
@@ -1907,7 +1941,8 @@ final class MarketSettlement {
             ask,
             deadline,
             buys,
-            sells);
+            sells,
+            payChoice);
         continue;
       }
       long necessary =
@@ -1932,8 +1967,10 @@ final class MarketSettlement {
       long available = Math.max(0L, stock - frozen);
       // ★★ 3c：**本单的币**（唯一缺省拼写点 = orderCurrencyFor）—— 买方的支付币与卖方的收款币由订单携带；
       //   订单生成这一层把"缺省 = 本格计价币"填进去，槽位/预算/冻结/限价折算此后一律读订单。
-      //   ⇒ 旧世界（谁也没指定币）逐值不变（I-C2）；P-T5 的自动选币策略只改 orderCurrencyFor 一处。
-      CurrencyId orderCurrency = orderCurrencyFor(market);
+      //   ⇒ 旧世界（谁也没指定币）逐值不变（I-C2）。
+      //   ★★ P-T5b：选币策略**只改 orderCurrencyFor 一处**（它读 MarketPayChoice 的"该户最强持有币"）——
+      //     预算/可负担量/冻结/运费折算都跟着这个币走，见下面各处的"按买方支付币折算"。
+      CurrencyId orderCurrency = orderCurrencyFor(payChoice, participant, market);
       // ── 卖：可卖 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留基线 − 有效需求目标) ─────
       //   ★★ 需求目标同时进"不卖"一侧：要买的粮/布（或任何新商品）不许在同一轮又被当余量卖掉。
       long retention = Math.addExact(life, demandTarget);
@@ -1949,12 +1986,23 @@ final class MarketSettlement {
       //     DemandId）逐个扣"按参考价折算的买得起量"；下层需求拿上一层剩下的额度。
       long baseTarget = participant.household != null ? life : necessary;
       long incoming = confirmedIncoming(round, participant.actor, commodity, deadline);
-      // ★★ 3c：预算/可负担量按**买方支付币**折算（不再把本格币的可花额当买方币）——缺省同币 ⇒ 逐值不变。
+      // ★★ 3c：预算按**买方支付币**读（不再把本格币的可花额当买方币）——缺省同币 ⇒ 逐值不变。
       long budget = spendableMoneyOf(round, participant, orderCurrency);
+      // ★★ P-T5b：可负担量按**买方支付币**折算 —— 本格价表的限价/参考价是"毫本格计价币"，买方钱包是"毫支付币" ⇒
+      //   经**同一份** CurrencyValuation 折一次（唯一拼写点 amountInPayCurrency；同币 ⇒ 原样，逐值不变）。
+      //   ★ 说不出价（该币在本格既无报价、当地也不流通）⇒ **具名归因、本单不生成**：不静默按 1:1、也不静默退回本格计价币。
+      long referenceInPay = amountInPayCurrency(payChoice, market, hex, orderCurrency, reference);
+      if (referenceInPay < 0L) {
+        logPayCurrencyUnvalued(
+            round, participant, hex, market, commodity, orderCurrency, reference);
+        continue; // 卖单不受影响（它只声明接受哪种币，不折算金额）—— 只有这张买单没有了
+      }
       // ★★ 0 价免费交易：货款腿为 0 ⇒ 数量不受"货款买得起"约束（只受缺口约束）；运费仍由撮合阶段按
       //    route.freightPerUnit 逐笔复核（家户与经营者同口径）。未定价的商品已在方法开头整行返回。
       long cashAffordable =
-          reference == 0L ? Long.MAX_VALUE : budget * EconomySettlement.MILLI_PER_GRAIN / reference;
+          referenceInPay == 0L
+              ? Long.MAX_VALUE
+              : budget * EconomySettlement.MILLI_PER_GRAIN / referenceInPay;
       // ★★ D-031：借款人侧不再有额度上限。家户把"目标缺口 + 需求缺口"整笔挂出来（现金撮合仍只按真实预算付，
       //    剩余由信用撮合按放贷人实际可借头寸补）；经营者不参与信用 ⇒ 仍按现金买得起量封顶。
       boolean creditDemand = participant.household != null && round.creditEnabled();
@@ -2034,21 +2082,103 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>3c：订单币的缺省（唯一拼写点）——"订单不带币 ⇒ 本格计价币"</b>（计划 §2.1 冻结口径）。
+   * ★★ <b>订单币的唯一产生点（"用哪种钱付/收"只在这里决定一次）</b>。
    *
-   * <p>★★ <b>它为什么必须是一个方法而不是四处 {@code market.numeraire()}</b>：订单生成是本批唯一"决定用哪种钱"的地方 ——
-   * 把缺省收口在这里，才谈得上"收/付哪种钱由<b>订单</b>决定"（槽位、预算、冻结、结算此后一律读订单，不再回读本格计价币）。 ★ 本批（机制 + 缺省中性）恒返回 {@link
-   * Market#numeraire()} ⇒ <b>旧世界逐值不变（I-C2）</b>。
+   * <p>★★ <b>P-T5b 口径（冻结）</b>：家户买单的支付币 = <b>该户当轮选定的"最强持有币"</b> （{@link MarketPayChoice}：F-1
+   * 购买力强度序的首项，口径见 {@link HouseholdPurchasingPower}）。
    *
-   * <p>★★ <b>P-T5（民间 FX 簿 + 自动换汇）接进来的唯一改动点</b>：那时按"家户手里哪种币购买力最强"给这条订单选币 （口径见计划 §2.3 F-1：按价格 +
-   * 生活消费品需求算"付清需求要付多少"），签名届时会带上 {@code round}/{@code participant} 以便读持币与估值 —— 调用点（自动单 /
-   * 授权单两处）一个字不改。
+   * <pre>
+   * 缺省（没有币种面）        ⇒ 本格计价币（I-C2 的缺省语义中性，不是兼容位）
+   * 单一币 / 不可比 / 无需求  ⇒ 本格计价币（MarketPayChoice 里没有这一户 ⇒ getOrDefault 回落）
+   * 选出来了                  ⇒ 那种币（家户即使在本格市场也用它付 —— 这正是 §20.4 要闭合的前置依赖）
+   * </pre>
    *
-   * <p>★ <b>买卖两侧共用它</b>：本批买方的支付币与卖方的收款币在缺省上是同一个口径（都是本格计价币）。若将来两侧要分道
-   * （例如卖方按本区法定币、买方按持币结构），在这一处拆成两个方法即可 —— <b>不许</b>在别处再拼一次"本格计价币"。
+   * <p>★ <b>买卖两侧共用它（"卖方侧本批不分道"）</b>：买方的 {@code payWith} 与卖方的 {@code receiveWith} 在缺省上是同一个口径。★
+   * 卖方侧本批<b>不做</b>币种挂单过滤（{@link #acceptsCurrency} 恒真），而结算的钱腿永远铸 <b>买方支付币</b>（{@code executeTrade}）⇒
+   * "收货币 = 买方的支付币" 这条现状一个字不改。
+   *
+   * <p>★ <b>不许在别处再拼一次"本格计价币"</b>：订单币只有这一个产生点，槽位/预算/冻结/结算此后一律读订单。
    */
-  private static CurrencyId orderCurrencyFor(Market market) {
-    return market.numeraire();
+  private static CurrencyId orderCurrencyFor(
+      MarketPayChoice payChoice, Participant participant, Market market) {
+    return payChoice.payCurrencyFor(participant.household, market);
+  }
+
+  /**
+   * ★★ <b>P-T5b：本格计价币金额 → 买方支付币金额（唯一拼写点）</b>。
+   *
+   * <pre>
+   * 金额(毫支付币) = ⌈金额(毫本格计价币) × 1000 ÷ 该币的价(微本格计价币/毫该币)⌉   // P-T5b
+   * 同币 ⇒ 原样（不看任何表；1:1 是结构性事实，不是查到 1000 才恰好相等）
+   * </pre>
+   *
+   * <p>★ <b>为什么向上取整</b>：与 {@code buyerUnitPriceFor}（结算侧"买方币单价"）逐字同源 —— 宁可多留一点预算， 不可少留（少留 =
+   * 冻结不足，得靠余额兜底）。★ 同币时 {@code ⌈x×1000÷1000⌉ = x} 精确成立 ⇒ <b>旧世界逐值不变</b>。
+   *
+   * <p>★ <b>说不出价 ⇒ {@code -1}</b>（fail-closed 哨兵）：调用方必须<b>具名归因</b>，禁按 1:1 顶上。
+   *
+   * <p>★★ <b>折算锚是"买方自己的钱"</b>（本格价表的计价币 ↔ 买方支付币，区取该 hex 所属区）：订单侧问的是 "我这点钱买得起多少"，预算与限价都在这个尺度上。★
+   * 结算侧（{@code settlementUnitPrice}）仍按<b>卖方</b>的尺度折算单价 —— 那是"这笔货按什么价成交"（3c 的口径，本批不改）。
+   */
+  private static long amountInPayCurrency(
+      MarketPayChoice payChoice,
+      Market market,
+      HexCoord hex,
+      CurrencyId payCurrency,
+      long numeraireMilli) {
+    if (numeraireMilli <= 0L) {
+      return 0L; // 0 价（免费）与 0 金额：换算后仍是 0，不需要任何价
+    }
+    if (payCurrency.equals(market.numeraire())) {
+      return numeraireMilli; // 同币：本币对自己 = 面值 1:1（结构性，逐值不变）
+    }
+    long valueMicro = payChoice.valueMicroOf(market, payCurrency, hex);
+    if (valueMicro <= 0L) {
+      return -1L; // 说不出这种钱的价 ⇒ 调用方具名拒（绝不静默 1:1）
+    }
+    return buyerUnitPriceFor(numeraireMilli, valueMicro);
+  }
+
+  /**
+   * ★ <b>P-T5b：买方选定的支付币在本格市场说不出价 ⇒ 具名归因（DEBUG，不静默）</b>。
+   *
+   * <p>★ <b>为什么是 DEBUG 而不是 INFO</b>：它是"这一张订单为什么不生成"的判据（§一.9：理由归 DEBUG）， 与既有的 {@code
+   * GOV_MARKET_MANDATE_ORDER_SKIPPED} 同一档；轮级的"这一轮多少人用外币付"由 {@code MarketPayChoice.of} 的 INFO 承担。
+   */
+  private static void logPayCurrencyUnvalued(
+      MarketRound round,
+      Participant participant,
+      HexCoord hex,
+      Market market,
+      CommodityId commodity,
+      CurrencyId payCurrency,
+      long referenceMilli) {
+    if (!MARKET.isDebugEnabled()) {
+      return; // 日志失败/关闭不得影响订单生成
+    }
+    EventLog.channel(MARKET)
+        .debug(
+            LogEvent.of(
+                "MARKET_PAY_CURRENCY_UNVALUED",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                round.day,
+                "household",
+                participant.household == null ? "" : participant.household.value(),
+                "hex",
+                hex.toString(),
+                "commodity",
+                commodity.value(),
+                "payCurrency",
+                payCurrency.value(),
+                "marketNumeraire",
+                market.numeraire().value(),
+                "referenceMilli",
+                referenceMilli,
+                "ordersPlanned",
+                false,
+                "why",
+                "pay-currency-has-no-quotation-and-does-not-circulate-locally"));
   }
 
   /**
@@ -2082,16 +2212,27 @@ final class MarketSettlement {
       long ask,
       long deadline,
       List<BuyOrder> buys,
-      List<SellOrder> sells) {
+      List<SellOrder> sells,
+      MarketPayChoice payChoice) {
     HouseholdId household = participant.household;
     long stock = stockOf(round, participant, commodity);
     long frozen = frozenGoodsOf(round, participant, commodity);
     long available = Math.max(0L, stock - frozen);
-    // ★★ 3c：授权单与自动单走**同一条缺省口径**（本格计价币；见 orderCurrencyFor 的注）。
-    CurrencyId orderCurrency = orderCurrencyFor(market);
+    // ★★ 3c：授权单与自动单走**同一条缺省口径**（见 orderCurrencyFor 的注）。
+    //   ★★ P-T5b：国库户**不进**币种选择面（{@link MarketPayChoice} 与 FX 段同一条排除口径）⇒ 它的授权单仍按
+    //     本格计价币（逐值不变）；这里仍走同一条"按买方支付币折算"的算式，保持全仓只有一个拼写点。
+    CurrencyId orderCurrency = orderCurrencyFor(payChoice, participant, market);
     long budget = spendableMoneyOf(round, participant, orderCurrency);
+    // ★★ P-T5b：可负担量同样按买方支付币折算（说不出价 ⇒ 具名 + 本户今日的授权单整段不生成）。
+    long referenceInPay = amountInPayCurrency(payChoice, market, hex, orderCurrency, reference);
+    if (referenceInPay < 0L) {
+      logPayCurrencyUnvalued(round, participant, hex, market, commodity, orderCurrency, reference);
+      return;
+    }
     long cashAffordable =
-        reference == 0L ? Long.MAX_VALUE : budget * EconomySettlement.MILLI_PER_GRAIN / reference;
+        referenceInPay == 0L
+            ? Long.MAX_VALUE
+            : budget * EconomySettlement.MILLI_PER_GRAIN / referenceInPay;
     int mandateBuys = 0;
     int mandateSells = 0;
     for (GovernmentMarketMandate mandate : round.govMandates().liveFor(household, commodity)) {
@@ -2443,11 +2584,20 @@ final class MarketSettlement {
     }
   }
 
-  /** 一条买单选多最多会花掉的钱：{@code min(预算, ⌈数量 × 限价 ÷ 1000⌉)}（限价 = 货款上限，运费另计）。 */
+  /**
+   * 一条买单选多最多会花掉的钱：{@code min(预算, ⌈数量 × 限价 ÷ 1000⌉)}（限价 = 货款上限，运费另计）。
+   *
+   * <p>★★ <b>P-T5b：整个算式在<b>买方支付币</b>上做</b> —— 冻结轴是 {@code (buyer, buy.currency)}，预算也是那个币的可花额 ⇒
+   * 限价必须先折成同一个币（{@link BuySlot#limitInPayCurrency}，建槽位时已折一次）。★ 同币时它与 {@link
+   * BuyOrder#maxLandedPrice()} 逐值相同 ⇒ 旧世界逐值不变（I-C2）。 ★ 限价折不出来（{@code -1}）⇒ 本单选不出可冻结额，按 0
+   * 处理（订单生成侧本就不会产出这种单）。
+   */
   private static long requestedMoneyOf(BuySlot buy) {
+    if (buy.limitInPayCurrency < 0L) {
+      return 0L;
+    }
     long goods =
-        ceilDiv(
-            buy.order.quantity() * buy.order.maxLandedPrice(), EconomySettlement.MILLI_PER_GRAIN);
+        ceilDiv(buy.order.quantity() * buy.limitInPayCurrency, EconomySettlement.MILLI_PER_GRAIN);
     return Math.min(buy.order.budget().amountMilli(), goods);
   }
 
@@ -4038,7 +4188,12 @@ final class MarketSettlement {
       long[] weights = new long[buys.size()];
       long demand = 0L;
       for (int i = 0; i < buys.size(); i++) {
-        long affordable = affordableQuantity(ctx, buys.get(i), price, route);
+        // ★★ P-T5b：本档的价格 `price` 是**本格计价币**的参考价，而 affordableQuantity 收的是**买方支付币**单价
+        //   （3c 起其余三处调用点传的都是折过的单价）⇒ 这里补上同一次折算（同币 ⇒ 原样，逐值不变）。
+        //   ★ 说不出这种钱的价（-1）⇒ 本档买不起（不得让它落进"完全免费"那条分支）。
+        long buyerPrice = buys.get(i).payAmountOf(price);
+        long affordable =
+            buyerPrice < 0L ? 0L : affordableQuantity(ctx, buys.get(i), buyerPrice, route);
         weights[i] = Math.min(buys.get(i).remaining, affordable);
         demand += weights[i];
       }
@@ -4632,8 +4787,10 @@ final class MarketSettlement {
           continue;
         }
         long buyerUnitPrice = worstBuyerUnitPrice(ctx, buy, sells, unitPrice);
-        if (buyerUnitPrice < 0L || buy.order.maxLandedPrice() < buyerUnitPrice) {
+        if (buyerUnitPrice < 0L || buy.limitInPayCurrency < buyerUnitPrice) {
           // ★ E：限价用**买方支付币**的口径比（说不出这种钱的价 ⇒ 也算限价不过）；归因是市场性理由。
+          //   ★★ P-T5b：右式是**买方支付币**的单价（3c 的折算结果），故左边的限价也必须折成同一个币
+          //     （BuySlot.limitInPayCurrency；同币时与 order.maxLandedPrice() 逐值相同 ⇒ 旧世界逐值不变）。
           if (buy.blocked == null) {
             buy.blocked = MarketUnfilledReason.PRICE_LIMIT;
           }
@@ -5635,6 +5792,43 @@ final class MarketSettlement {
   }
 
   /**
+   * ★ <b>P-T5b：买方支付币说不出价、连运费都算不出来 ⇒ 本笔不成交 + 具名归因（DEBUG）</b>。
+   *
+   * <p>★ 正常路径上不可达（{@code totalCostAtMost} 已先按同一个 {@link BuySlot#payAmountOf} 把这种路线判成"付不起"）；
+   * 它在这里是<b>第二道 fail-closed</b>：万一预判被绕过，也绝不把本格计价币的运费当成支付币的运费去铸腿。
+   */
+  private static void logFreightCurrencyUnvalued(
+      MatchContext ctx, BuySlot buy, SellSlot sell, RouteContext route) {
+    if (buy.blocked == null) {
+      buy.blocked = MarketUnfilledReason.PRICE_LIMIT;
+    }
+    if (!MARKET.isDebugEnabled()) {
+      return; // 日志失败/关闭不得影响结算
+    }
+    EventLog.channel(MARKET)
+        .debug(
+            LogEvent.of(
+                "MARKET_FREIGHT_CURRENCY_UNVALUED",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.round.day,
+                "buyer",
+                buy.buyer.actor,
+                "seller",
+                sell.seller.actor,
+                "commodity",
+                buy.order.commodity().value(),
+                "buyerPays",
+                buy.currency.value(),
+                "lane",
+                route.from + "->" + route.to,
+                "freightPerUnitMilli",
+                route.freightPerUnit,
+                "reason",
+                "pay-currency-has-no-quotation-and-does-not-circulate-locally"));
+  }
+
+  /**
    * ★★ <b>落一笔成交</b>（区内即时 / 跨区在途）。
    *
    * <p>★★ <b>2026-10-09 承运硬约束</b>：跨区成交<b>先选承运、再落账</b>；商号/路线可承运量不足 ⇒ 成交数量收缩到实际可承运量 （{@code
@@ -5673,8 +5867,18 @@ final class MarketSettlement {
     List<FreightCharge> freightCharges = new ArrayList<>();
     long freight = 0L;
     long uncollectedFreight = 0L;
+    // ★★ P-T5b：本笔的**单位运费（毫买方支付币 / 商品单位）**—— 全方法（以及 Fill 的读数）共用这一个折算值。
+    long unitFreight = route == null ? 0L : buy.payAmountOf(route.freightPerUnit);
     if (route != null) {
-      long nominalFreight = freightOf(quantity, route.freightPerUnit);
+      // ★★ P-T5b：单位运费从**本格计价币**折成**买方支付币**（运费腿铸在 buy.currency 上，见 P-T4 的
+      //   Fill.freightCurrency ≡ paymentCurrency）—— 与 totalCostAtMost 走同一个 payAmountOf（唯一拼写点）
+      //   ⇒ "判得起"与"真的扣"不可能漂开。
+      //   ★ 说不出这种钱的价（-1）⇒ 本笔不成交（不铸腿、不动账）：绝不把本格计价币的运费当支付币的运费。
+      if (unitFreight < 0L) {
+        logFreightCurrencyUnvalued(ctx, buy, sell, route);
+        return 0L;
+      }
+      long nominalFreight = freightOf(quantity, unitFreight);
       if (!ctx.merchantFirms.isEmpty()) {
         MerchantSettlement.CarrierAllocation allocation =
             ctx.carrierPool.select(route.from, route.to, quantity, route.freightRatePerMille);
@@ -5687,14 +5891,11 @@ final class MarketSettlement {
         if (executed < quantity) {
           markCapacityBlocked(ctx, buy, sell, route);
           // 应收而未收的名义运费：承运池算不出这部分的收款人，读数具名、不静默变 0。
-          uncollectedFreight = freightOf(quantity - executed, route.freightPerUnit);
+          uncollectedFreight = freightOf(quantity - executed, unitFreight);
         }
         freightCharges =
             carrierChargeSplit(
-                allocation,
-                buy.buyer.actor,
-                route,
-                commodityFreightBaseMilli(ctx.topology, route.commodity));
+                allocation, buy, route, commodityFreightBaseMilli(ctx.topology, route.commodity));
         for (FreightCharge charge : freightCharges) {
           freight = Math.addExact(freight, charge.amountMilli());
         }
@@ -5896,7 +6097,8 @@ final class MarketSettlement {
               unitPrice,
               buy.currency,
               payment,
-              route == null ? 0L : route.freightPerUnit,
+              // ★★ P-T5b：单位运费按**买方支付币**报（与 freightCurrency ≡ paymentCurrency 同币；换算见上）。
+              unitFreight,
               freight,
               round.day,
               true,
@@ -5990,10 +6192,14 @@ final class MarketSettlement {
    * </pre>
    *
    * <p>★ 分摊顺序 = select 返回顺序（有效费率升序 → organizationId 升序），不读时钟/随机 ⇒ 同输入逐值确定。
+   *
+   * <p>★★ <b>P-T5b：全部分摊都在<b>买方支付币</b>上做</b>（运费腿铸在 {@code buy.currency} 上）—— 逐条的单位运费经 {@link
+   * BuySlot#payAmountOf} 折一次（同币 ⇒ 原样），说不出价的条目不参与（整票退回空表，fail-closed）。 自承运判据因此从"买方 actor"改为直接读
+   * {@code buy.buyer.actor}（同一事实，不再多传一个入参）。
    */
   private static List<FreightCharge> carrierChargeSplit(
       MerchantSettlement.CarrierAllocation allocation,
-      ActorRef buyerActor,
+      BuySlot buy,
       RouteContext route,
       long commodityBaseMilli) {
     List<MerchantSettlement.CarrierChoice> choices = allocation.choices();
@@ -6002,31 +6208,35 @@ final class MarketSettlement {
     int lastChargeable = -1;
     for (int i = 0; i < choices.size(); i++) {
       MerchantSettlement.CarrierChoice choice = choices.get(i);
-      if (choice.principalActor().equals(buyerActor)) {
+      if (choice.principalActor().equals(buy.buyer.actor)) {
         continue; // 自承运：该条的运费不进入实收，也不进入未收
       }
       lastChargeable = i;
       chargeableQuantity = Math.addExact(chargeableQuantity, choice.quantityMilli());
+      // ★★ P-T5b：逐条的单位运费同样折成**买方支付币**（腿铸在 buy.currency 上）；说不出价 ⇒ 整票不收运费腿
+      //   （fail-closed：与 totalCostAtMost / executeTrade 的判据同口径，绝不按 1:1 顶上）。
+      long unitFreight =
+          buy.payAmountOf(
+              freightUnitMilli(
+                  commodityBaseMilli,
+                  choice.effectiveRatePerMille(route.freightRatePerMille),
+                  carrierCostPerMille(choice.firm())));
+      if (unitFreight < 0L) {
+        return List.of();
+      }
       effectiveFreightSum =
-          Math.addExact(
-              effectiveFreightSum,
-              freightOf(
-                  choice.quantityMilli(),
-                  freightUnitMilli(
-                      commodityBaseMilli,
-                      choice.effectiveRatePerMille(route.freightRatePerMille),
-                      carrierCostPerMille(choice.firm()))));
+          Math.addExact(effectiveFreightSum, freightOf(choice.quantityMilli(), unitFreight));
     }
     if (chargeableQuantity <= 0L) {
       return List.of();
     }
-    long nominalCap = freightOf(chargeableQuantity, route.freightPerUnit);
+    long nominalCap = freightOf(chargeableQuantity, buy.payAmountOf(route.freightPerUnit));
     long collectible = Math.min(nominalCap, effectiveFreightSum);
     List<FreightCharge> charges = new ArrayList<>();
     long assigned = 0L;
     for (int i = 0; i < choices.size(); i++) {
       MerchantSettlement.CarrierChoice choice = choices.get(i);
-      if (choice.principalActor().equals(buyerActor)) {
+      if (choice.principalActor().equals(buy.buyer.actor)) {
         continue;
       }
       long amount;
@@ -6228,7 +6438,14 @@ final class MarketSettlement {
    */
   private static long affordableQuantity(
       MatchContext ctx, BuySlot buy, long unitPrice, RouteContext route) {
-    long unitCost = unitPrice + (route == null ? 0L : route.freightPerUnit);
+    // ★★ P-T5b：运费腿按**买方支付币**折算 —— unitPrice 已是支付币的单价（3c 的折算结果），而
+    //   route.freightPerUnit 是**本格计价币**的单位运费 ⇒ 必须折成同一个币才能相加（禁把两种钱直接相加）。
+    //   ★ 说不出这种钱的价 ⇒ 0（买不起）：与结算侧的具名拒（MARKET_CURRENCY_VALUE_REFUSED / 限价不过）同口径。
+    long unitFreight = route == null ? 0L : buy.payAmountOf(route.freightPerUnit);
+    if (unitFreight < 0L) {
+      return 0L;
+    }
+    long unitCost = unitPrice + unitFreight;
     if (unitCost <= 0L) {
       // ★★ 完全免费（0 价 + 0 运费，典型 = 区内即时免费拿）：钱不是约束，数量由需求/供给决定。
       //    ★ 跨区 0 价仍要付运费（route.freightPerUnit > 0）⇒ 走下面的按钱折算分支。
@@ -6280,10 +6497,17 @@ final class MarketSettlement {
       return false;
     }
     long outlay = payment;
-    if (route != null && route.freightPerUnit > 0L) {
+    // ★★ P-T5b：运费腿按**买方支付币**折算（route.freightPerUnit 是本格计价币的单位运费，而 payment / money 都是
+    //   支付币）—— 与 executeTrade 走**同一个** payAmountOf（唯一拼写点）⇒ "判得起"与"真的扣"不可能漂开。
+    //   ★ 说不出这种钱的价 ⇒ 付不起（false），绝不按 1:1 顶上。
+    long unitFreight = route == null ? 0L : buy.payAmountOf(route.freightPerUnit);
+    if (unitFreight < 0L) {
+      return false;
+    }
+    if (unitFreight > 0L) {
       long freight;
       try {
-        freight = ceilDivPositive(Math.multiplyExact(quantity, route.freightPerUnit), 1000L);
+        freight = ceilDivPositive(Math.multiplyExact(quantity, unitFreight), 1000L);
       } catch (ArithmeticException overflow) {
         return false;
       }
@@ -7601,6 +7825,33 @@ final class MarketSettlement {
     final CurrencyId currency;
 
     /**
+     * ★★ <b>P-T5b：本槽的"钱的价"—— 微本格计价币 / 毫支付币</b>（建槽位时冻结一次，此后只读；worker 副本逐值照抄）。
+     *
+     * <pre>
+     * 支付币 == 本格价表的计价币 ⇒ 1000（面值 1:1，R3 的锚；结构性，不查任何表）
+     * 否则                      ⇒ CurrencyValuation.valuationMicro(本格计价币, 支付币, 本格所在区)
+     *                              （世界报价 / 当地实际流通 ⇒ 面值；两者都不是 ⇒ 0 = 说不出价）
+     * </pre>
+     *
+     * <p>★★ <b>为什么冻结在槽位上而不是每次现算</b>：撮合是并行 worker 与协调器回放<b>跑同一套算式</b>的两条路径， 凡是判据里用到的价都必须是槽位的冻结事实（与
+     * {@link SellSlot#reservationMicro} 同一条纪律）；且它一经确定就不该在 一轮撮合中途变化。★ {@code 0} = 说不出价 ⇒ {@link
+     * #payAmountOf} 返回 {@code -1}，调用方 fail-closed（禁 1:1）。
+     */
+    final long payValueMicro;
+
+    /**
+     * ★★ <b>P-T5b：本槽限价的"买方支付币"口径</b>（毫支付币 / 商品单位）：{@code ⌈限价 × 1000 ÷ payValueMicro⌉}。
+     *
+     * <p>★ <b>为什么需要它</b>：{@link BuyOrder#maxLandedPrice()} 的量纲仍是<b>本格价表的计价币</b>（计划 §2.1 冻结：
+     * 一格一张价表、一个尺度），而撮合里与它比较的 {@code buyerUnitPrice} 是<b>买方支付币</b>的单价（3c 的 {@code
+     * settlementUnitPrice}）—— 异币时两者不能直接比大小。故建槽位时折一次、只存这一个口径。
+     *
+     * <p>★ 同币时它与 {@code maxLandedPrice} <b>逐值相同</b>（{@code ⌈x×1000÷1000⌉ = x}）⇒ 旧世界逐值不变。 ★ {@code
+     * -1} = 说不出价（哨兵：任何 ≥ 0 的真价格都比它大 ⇒ 限价不过；正常路径上不可达，因为订单生成侧已先拒）。
+     */
+    final long limitInPayCurrency;
+
+    /**
      * ★★ <b>D-027：本槽所属区的规范 id</b>（= {@code region.node().nodeId()}）—— 有效参考价/区级调控按它查 （单区里就是 {@code
      * "single-region"}）。★ 它只用于价格口径，不改槽位的其他语义。
      */
@@ -7617,7 +7868,13 @@ final class MarketSettlement {
     boolean noMoney;
     MarketUnfilledReason blocked;
 
-    BuySlot(BuyOrder order, Participant buyer, HexCoord hex, MarketRegion region) {
+    BuySlot(
+        BuyOrder order,
+        Participant buyer,
+        HexCoord hex,
+        MarketRegion region,
+        Market market,
+        MarketPayChoice payChoice) {
       this.order = order;
       this.buyer = buyer;
       this.hex = hex;
@@ -7625,6 +7882,36 @@ final class MarketSettlement {
       this.currency = order.payWith();
       this.regionId = region.node().nodeId();
       this.remaining = order.quantity();
+      // ★★ P-T5b：本槽的两个折算冻结值（同一份 CurrencyValuation、各折**一次**；见字段注）。
+      this.payValueMicro = payChoice.valueMicroOf(market, this.currency, hex);
+      //   ★ 面值（同币 / 当地流通 ⇒ 1:1）⇒ 限价原样：不做乘除 ⇒ 旧世界逐值不变是"一条都不算"。
+      this.limitInPayCurrency =
+          this.payValueMicro == CurrencyValuation.faceValueMicro()
+              ? order.maxLandedPrice()
+              : (this.payValueMicro <= 0L
+                  ? -1L
+                  : buyerUnitPriceFor(order.maxLandedPrice(), this.payValueMicro));
+    }
+
+    /**
+     * ★★ <b>P-T5b：毫本格计价币 → 毫本买方支付币</b>（{@link #payValueMicro} 的消费口；同币 ⇒ 原样）。
+     *
+     * <p>★ <b>"面值"直接原样返回（不做乘除）</b>：{@code payValueMicro == 1000} 时 {@code ⌈x×1000÷1000⌉ = x} 是恒等式，
+     * 提前返回既省掉一次乘除、也让<b>旧世界逐值不变</b>成为"一条都不算"而不是"算出来恰好相等"（同币/当地流通 ⇒ 面值）。
+     *
+     * @return {@code >= 0} = 折算后的支付币金额；{@code -1} = 说不出这种钱的价（调用方 fail-closed，禁按 1:1 顶上）
+     */
+    long payAmountOf(long numeraireMilli) {
+      if (numeraireMilli <= 0L) {
+        return 0L;
+      }
+      if (payValueMicro == CurrencyValuation.faceValueMicro()) {
+        return numeraireMilli; // 面值 1:1（同币 / 当地流通）⇒ 原样
+      }
+      if (payValueMicro <= 0L) {
+        return -1L;
+      }
+      return buyerUnitPriceFor(numeraireMilli, payValueMicro);
     }
 
     /** ★ worker 的本区副本：状态照抄，后续只改副本（不触共享槽位）。 */
@@ -7635,6 +7922,9 @@ final class MarketSettlement {
       this.region = other.region;
       this.currency = other.currency;
       this.regionId = other.regionId;
+      // ★★ P-T5b：两个折算冻结值逐值照抄（worker 与协调器必须给出同一个价，否则回放对不上）。
+      this.payValueMicro = other.payValueMicro;
+      this.limitInPayCurrency = other.limitInPayCurrency;
       this.orderIndex = other.orderIndex;
       this.remaining = other.remaining;
       this.frozenRemaining = other.frozenRemaining;

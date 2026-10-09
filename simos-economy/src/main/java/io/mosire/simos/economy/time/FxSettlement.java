@@ -389,13 +389,9 @@ final class FxSettlement {
           continue;
         }
         // ② 最强 = 强度全序首项（cost 升序、币种 id 升序）—— 同强度时 id 小的更强（确定性 I7）。
-        Comparator<CurrencyId> strength = HouseholdPurchasingPower.strengthOrder(power);
-        CurrencyId target = null;
-        for (CurrencyId currency : power.keySet()) {
-          if (target == null || strength.compare(currency, target) < 0) {
-            target = currency;
-          }
-        }
+        //   ★ P-T5b：与订单侧的支付币选择（{@code MarketPayChoice}）共用<b>同一个</b>拼写点
+        //     （{@code HouseholdPurchasingPower.strongest}）—— "换成哪种币"与"用哪种币付"必须是同一个答案。
+        CurrencyId target = HouseholdPurchasingPower.strongest(power);
         // ③ 其余币（都不是最强的）→ 逐个换成最强币；顺序 = 最弱先换、同强度按币种 id 升序（F-2）。
         List<CurrencyId> weaker = new ArrayList<>(power.keySet());
         weaker.remove(target);
@@ -465,8 +461,11 @@ final class FxSettlement {
    * ★ <b>本户"手里有哪几种币"（F-1 的比较集）</b>：可花额 &gt; 0 的币种，按币种 id 升序（canonical 序，I7）。
    *
    * <p>★ 口径写清楚：冻结中的钱在本段<b>不</b>算（FX 在信用之后、商品冻结已释放，正常路径下二者相等；但读"可花额"与全仓 商品面的口径逐字同源，不另造第二种"我有多钱"）。
+   *
+   * <p>★ <b>P-T5b：包内可见（去掉 {@code private}）</b> —— 订单侧的支付币选择（{@code MarketPayChoice}）必须用<b>同一条</b>
+   * "我手里有哪几种币"的口径，否则"换成最强币"的输入集与"用最强币付"的输入集会在冻结/余额边界上漂开。
    */
-  private static List<CurrencyId> heldCurrencies(
+  static List<CurrencyId> heldCurrencies(
       MarketSettlement.MarketRound round, HouseholdId household) {
     List<CurrencyId> held = new ArrayList<>();
     for (CurrencyId currency : round.moneyOf(household).keySet()) {
@@ -635,8 +634,11 @@ final class FxSettlement {
    * ★ <b>世界这一轮是不是"不止一种币"</b>（计划前的廉价早退门）：市场计价币 ∪ 逐户持币里出现第二种就为真。
    *
    * <p>★ 单币世界 ⇒ 本段<b>一个数都不动</b>（连价表都不建）：这是 I-C2"缺省中性"与"不为此多花算力"的同一条落地。
+   *
+   * <p>★ <b>P-T5b：包内可见（去掉 {@code private}）</b> —— 订单侧的支付币选择（{@code MarketPayChoice}）用<b>同一条</b>
+   * 早退门：单币世界里连"最强币"都不必问（结构性的逐值不变，而不是"算出来恰好相等"）。
    */
-  private static boolean hasMultipleCurrencies(
+  static boolean hasMultipleCurrencies(
       MarketSettlement.MarketRound round, Map<HexCoord, Market> markets) {
     CurrencyId first = null;
     for (Market market : markets.values()) {

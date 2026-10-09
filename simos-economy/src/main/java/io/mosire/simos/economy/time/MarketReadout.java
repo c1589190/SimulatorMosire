@@ -215,6 +215,18 @@ public record MarketReadout(
     }
     // ★ 一次建好"格 → 行"索引：逐区逐商品调 planOrders 时不再每次重扫全部行。
     Map<String, List<HouseholdId>> rowsByHex = EconomySettlement.rowsByHex(data.classes());
+    // ★★ P-T5b：读口与结算**同源**选币（"该户最强持有币"）—— 否则多币世界里读到的买单数量会与实际下的单漂开。
+    //   ★ 选币本身只依赖"家户行 + 持币 + 各币法定区价表"，与估值无关 ⇒ 两侧选出的币恒相同；折算用的估值用**同一条**
+    //     装配式（官方窗口 = {@code FxRoundInput.of(...)}，与 EconomySettlement 逐字同源）+ 同一份当地流通集合。
+    //   ★ 读口仍有的众所周知边界（本批不扩大它）：不注入口岸管制力（{@code portEnforcement}）⇒ 那种"减项"折不出来时
+    //     按当地流通的面值算；unit 户排除集只有组合根看得见（Z7e 清单同条）。
+    CurrencyValuation readoutValuation =
+        CurrencyValuation.of(
+            FxRoundInput.of(data.governments(), data.moneyIssuances(), data.marketZones()),
+            CurrencyValuation.circulationByRegion(topology, rowsByHex, round.householdMoney()),
+            round.portEnforcement());
+    MarketPayChoice payChoice =
+        MarketPayChoice.of(round, data.markets(), topology, rowsByHex, readoutValuation, false);
     List<RegionReadout> regionReadouts = new ArrayList<>(regions.size());
     for (MarketRegion region : regions) {
       Market anchorMarket = data.markets().get(region.anchor());
@@ -238,7 +250,8 @@ public record MarketReadout(
           }
           // ★★ P-T1c：订单生成的定价只看逐格价表 ⇒ 不再传区 id 与调控（区级参考价覆盖已删，设计书 §16）。
           MarketSettlement.PlannedOrders orders =
-              MarketSettlement.planOrders(round, member, memberMarket, commodity, rowsByHex);
+              MarketSettlement.planOrders(
+                  round, member, memberMarket, commodity, rowsByHex, payChoice);
           for (SellOrder sell : orders.sells()) {
             supply += sell.sellable();
           }

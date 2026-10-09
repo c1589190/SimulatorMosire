@@ -165,6 +165,27 @@ final class HouseholdPurchasingPower {
   }
 
   /**
+   * ★★ <b>最强持有币 = 强度全序首项（F-1/F-2 的<b>唯一</b>拼写点）</b>：{@code cost} 最小者；同 cost 按币种 id 升序取小。
+   *
+   * <p>★ <b>它是"换成哪种币"（P-T5 的 FX 定向）与"用哪种币付"（P-T5b 的订单支付币）共用的同一个答案</b> ——
+   * 两处若各写一遍"谁最强"，换汇换出来的那种币与买单付出去的那种币就可能在破平处漂开（同一份世界状态给出两种答案）。
+   *
+   * @param costMilli 币种 → 付清本户需求要付多少毫该币（{@link #needCostMilli} 的产出；缺读数的币不该进表）
+   * @return 最强币；{@code costMilli} 为空 ⇒ {@code null}（调用方不得在空表上问"谁最强"）
+   */
+  static CurrencyId strongest(Map<CurrencyId, Long> costMilli) {
+    Objects.requireNonNull(costMilli, "strongest 的 costMilli 不得为 null");
+    Comparator<CurrencyId> order = strengthOrder(costMilli);
+    CurrencyId best = null;
+    for (CurrencyId currency : costMilli.keySet()) {
+      if (best == null || order.compare(currency, best) < 0) {
+        best = currency;
+      }
+    }
+    return best;
+  }
+
+  /**
    * ★★ <b>F-2 的换汇顺序（唯一拼写点）：最弱先换 —— cost 降序；同强度按币种 id 升序</b>。
    *
    * <p>★ 与 {@link #strengthOrder} 的关系：那个是"谁最强"（首项 = 最强），这个是"先挂谁的单"（首项 = 最弱）。 <b>破平方向刻意不同</b>：强度相同时
