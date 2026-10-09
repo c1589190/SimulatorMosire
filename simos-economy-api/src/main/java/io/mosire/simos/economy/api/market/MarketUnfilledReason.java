@@ -132,7 +132,25 @@ public enum MarketUnfilledReason {
    * 被拦下的量<b>不进候选集</b>（"压根就不应该被市场区内的家户选上"，§10），也<b>不额外记账</b> （"没管住就是流入市场了，凭啥还要额外记录"，§11）⇒
    * 本档只是<b>具名归因与诊断读数</b>，不落状态、不进账本。
    */
-  PORT_THROTTLED("port_throttled");
+  PORT_THROTTLED("port_throttled"),
+
+  /**
+   * ★★ <b>3c（2026-10-10 订单可选币 / 计划 §2.1 + §5.2 V-1）：买方支付币不在卖方的接受集里</b>—— 候选成立条件 {@code 买方支付币 ∈
+   * 卖方接受的币集合 ∩ 买方持有（可花）币集合} 的第二项为空集。
+   *
+   * <p>★★ <b>与 {@link #CURRENCY_MISMATCH} 的区别（两档不许混）</b>：{@code CURRENCY_MISMATCH} 是 A2a 时代"买方币 ≠
+   * 卖方格的 {@code numeraire} ⇒ 一刀切拒"的<b>制度性硬拒</b>（已退役，只在历史 revision
+   * 的读数里）；本档是"<b>这张挂单声明的接受集</b>里没有买方要付的那种钱" —— 它是<b>挂单级</b>的（买方币与卖方格的计价币相同也可能落在集合外，反之亦然）。
+   *
+   * <p>★★ <b>本批（3c）不产生它，这是刻意的</b>：币种挂单过滤是后续批 P-T1e（用户 2026-10-10 裁定"异种货币自然按手续费/规则来算，
+   * 有一方不给过就不过"），本批冻结的"卖方接受的币集合" = <b>全部币</b> ⇒ 判定入口 {@code MarketSettlement#acceptsCurrency} 恒真 ⇒
+   * 逐值等于改前（I-C2）。P-T1e 把那处判定填实之后，本档就会由 <b>同一个落点</b>具名产生（{@code
+   * MarketSettlement#refuseUnacceptedCurrency}），不需要再动撮合代码。
+   *
+   * <p>★ <b>另一半（买方持有）不新造档</b>：买方不含可花余额 ⇒ 预算/冻结/信用的既有路径已按 {@link #NO_BUDGET} / {@link
+   * #NO_LENDABLE_MONEY} 具名归因（"没钱的缺口不是有效需求"），不在这里重复一档。
+   */
+  CURRENCY_NOT_ACCEPTED("currency_not_accepted");
 
   private final String value;
 

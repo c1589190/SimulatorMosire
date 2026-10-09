@@ -2,7 +2,7 @@ package io.mosire.simos.economy.api.market;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.InstrumentId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.map.hex.HexCoord;
 
 /**
@@ -16,15 +16,26 @@ import io.mosire.simos.map.hex.HexCoord;
  * maxLandedPrice   愿意接受的最高价格（毫计价货币 / 商品单位；≥ 0，0 = 明确免费交易）
  * latestArrivalTick 最迟到货的世界日（本层无运输 ⇒ 与下单同一天）
  * budget           独立预算（见 {@link Budget}）；不得为 null
- * payWith          用哪种货币工具支付；必须与 {@code budget.instrument()} 逐值相同
+ * payWith          用哪种**币种**支付；必须与 {@code budget.currency()} 逐值相同
  * </pre>
  *
  * <p>★★ <b>为什么这几个字段都在</b>：{@code requester} 与 {@code deliverTo} 缺一不可 —— 身份决定"这是谁的订单"，地点决定"货送到哪本账"
  * （同一 actor 在两地的账是两本）；{@code latestArrivalTick} 是"到货时限"这一维的落点，本层区内即时 ⇒ 取 {@link
  * #latestArrivalTick()} = 下单日， L2 的跨区运输才会真的产生大于下单日的值。
  *
- * <p>★ <b>预算与数量分开</b>：见 {@link Budget} 的类注 —— 本类型的构造期只校验两者各自合法、以及支付工具一致，<b>不</b>把数量折成金额
+ * <p>★ <b>预算与数量分开</b>：见 {@link Budget} 的类注 —— 本类型的构造期只校验两者各自合法、以及支付币一致，<b>不</b>把数量折成金额
  * （那是撮合的实现口径，不是订单形状）。
+ *
+ * <p>★★ <b>3c（2026-10-10 订单可选币）：支付币由订单决定，缺省 = 本格计价币</b> ——
+ *
+ * <ul>
+ *   <li><b>它是"收/付哪种钱"的唯一真值</b>：撮合槽位、预算、冻结、限额折算、钱腿铸币都读它，格子的 {@code Market.numeraire}
+ *       只在<b>订单生成</b>时充当缺省值（计划 §2.1 冻结：订单不带币 ⇒ 本格计价币 ⇒ 旧世界逐值不变，I-C2）；
+ *   <li><b>候选成立条件（V-1）</b>：{@code payWith ∈ 卖方接受的币集合 ∩ 买方持有（可花）币集合}；空集 ⇒ 候选不成立 + 具名归因 （卖方一侧见 {@code
+ *       MarketSettlement#acceptsCurrency}）；
+ *   <li><b>价格尺度不动</b>：{@link #maxLandedPrice()} 的量纲仍是<b>本格价表的计价币</b>（一格一张价表、一个尺度），
+ *       订单选币改的是"付哪种钱"，不是"价格写在哪张表上"。
+ * </ul>
  *
  * @param requester 买方主体；不得为 null
  * @param deliverTo 交割格；不得为 null
@@ -32,8 +43,8 @@ import io.mosire.simos.map.hex.HexCoord;
  * @param quantity 数量（毫商品）；必须 &gt; 0（0 不是一条订单）
  * @param maxLandedPrice 最高价（毫计价货币 / 商品单位）；必须 ≥ 0（0 = 明确免费交易，货款腿为 0、运费另计）
  * @param latestArrivalTick 最迟到货世界日；不得为负
- * @param budget 独立预算；不得为 null，且其工具必须与 {@code payWith} 逐值相同
- * @param payWith 支付工具；不得为 null，且必须与 {@code budget.instrument()} 逐值相同
+ * @param budget 独立预算；不得为 null，且其币种必须与 {@code payWith} 逐值相同
+ * @param payWith 支付币种；不得为 null，且必须与 {@code budget.currency()} 逐值相同
  */
 public record BuyOrder(
     ActorRef requester,
@@ -43,7 +54,7 @@ public record BuyOrder(
     long maxLandedPrice,
     long latestArrivalTick,
     Budget budget,
-    InstrumentId payWith) {
+    CurrencyId payWith) {
 
   public BuyOrder {
     if (requester == null) {
@@ -72,12 +83,12 @@ public record BuyOrder(
     if (payWith == null) {
       throw new IllegalArgumentException("BuyOrder.payWith 不得为 null");
     }
-    if (!budget.instrument().equals(payWith)) {
+    if (!budget.currency().equals(payWith)) {
       throw new IllegalArgumentException(
-          "BuyOrder.payWith 必须与 budget.instrument() 逐值相同（同一件事不许两处拼写）："
+          "BuyOrder.payWith 必须与 budget.currency() 逐值相同（同一件事不许两处拼写）："
               + payWith
               + " vs "
-              + budget.instrument());
+              + budget.currency());
     }
   }
 }
