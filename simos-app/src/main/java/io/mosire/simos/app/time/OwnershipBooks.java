@@ -5,6 +5,8 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -19,6 +21,8 @@ import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,6 +50,9 @@ import java.util.Set;
  * </ol>
  */
 public final class OwnershipBooks {
+
+  /** ★★ D3：负余额具名失败里保留的逐笔成因**条数上界**（诊断读数，不是状态；见 {@link #apply}）。 */
+  private static final int CAUSES_KEPT = 16;
 
   private OwnershipBooks() {}
 
@@ -114,11 +121,18 @@ public final class OwnershipBooks {
     Objects.requireNonNull(alreadyMaterialized, "alreadyMaterialized");
     Map<HouseholdAccountKey, Map<CommodityId, Long>> deltas = new LinkedHashMap<>();
     Map<HouseholdAccountKey, Map<CommodityId, Long>> prefix = new LinkedHashMap<>();
+    // ★★ 2026-10-09 D3：负余额具名失败的**成因清单**（只在该账户真的翻负时才被读；诊断用，不进状态）。
+    //   逐账户**有界**留样（{@value #CAUSES_KEPT} 条）—— 真档一天的条目可达数万条，无界留样会白白放大内存。
+    Map<HouseholdAccountKey, List<ActorEntry>> seen = new LinkedHashMap<>();
     for (ActorEntry entry : entries) {
       // ★★ P2-A §13.3：产权条目必须已经解析到家户（economy 的结算侧负责解析；这里不再有"非家户静默跳过"）。
       HouseholdAccountKey key = requireHouseholdKey(entry.actor());
       if (alreadyMaterialized.contains(new AccountPartitionKey(key.household()))) {
         continue; // ★ 会话负责：终值由 landAccountSession 的绝对值覆盖，这里不再叠一遍。
+      }
+      List<ActorEntry> kept = seen.computeIfAbsent(key, ignored -> new ArrayList<>());
+      if (kept.size() < CAUSES_KEPT) {
+        kept.add(entry);
       }
       deltas
           .computeIfAbsent(key, ignored -> new LinkedHashMap<>())
@@ -146,6 +160,38 @@ public final class OwnershipBooks {
             overflow);
       }
       if (after < 0L) {
+        // ★★ 2026-10-09 D3：只在真翻负时组装成因清单（有界，见 CAUSES_KEPT），并先落 ERROR 再抛 —— 旧实现只抛一句话，
+        //   长跑现场看不到"这 -7952 是哪几条条目凑出来的"（三区世界 day=330 实测）。
+        List<String> causes = new ArrayList<>();
+        for (ActorEntry same : seen.getOrDefault(key, List.of())) {
+          if (!same.commodity().equals(entry.commodity())) {
+            continue;
+          }
+          if (causes.size() < CAUSES_KEPT) {
+            causes.add(same.delta() + "@" + same.location());
+          }
+        }
+        EventLog.channel(AppLog.time())
+            .error(
+                LogEvent.of(
+                    "OWNERSHIP_NEGATIVE_BALANCE_REFUSED",
+                    AppLogSource.DAILY_LOOP,
+                    "actor",
+                    entry.actor(),
+                    "location",
+                    entry.location(),
+                    "commodity",
+                    entry.commodity(),
+                    "baseline",
+                    baseline,
+                    "folded",
+                    running,
+                    "after",
+                    after,
+                    "accountMaterialized",
+                    alreadyMaterialized.contains(new AccountPartitionKey(key.household())),
+                    "causes",
+                    causes));
         throw new IllegalStateException(
             "产权账余额不得为负（透支是信用，不是库存）：actor="
                 + entry.actor()
@@ -158,7 +204,9 @@ public final class OwnershipBooks {
                 + " + 本轮累计 "
                 + running
                 + " = "
-                + after);
+                + after
+                + " 逐笔="
+                + causes);
       }
     }
     if (deltas.isEmpty()) {

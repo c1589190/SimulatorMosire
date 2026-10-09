@@ -69,7 +69,9 @@ import java.util.Set;
  *      ★★ P0 起不写 householdEconomies 行的 population/laborMilli；每笔成功落账后追加 outbox（EconomyPopulationTransfer），
  *      由 App 在同一 revision 内翻译成 Social 工单并把 Social 真值 delta 回写经济行
  *   ③ 货币按**全部币种**逐项移动（D-023：逐币种按人口比例 floor，余数留源/迁空随最后一笔；不做 FX；只搬余额，不新造）
- *   ④ 债务逐合同走 DebtContractBook.reduce/upsert（唯一写口）；计划金额全部分摊，绝不静默丢债
+ *   ④ 债务逐合同走 DebtContractBook.reduce/upsert（唯一写口）；计划金额全部分摊，绝不静默丢债。
+ *      ★★ D3：**债权人恰是迁入目标**的那部分 ⇒ 按自债显式净额（同 {@code DebtPartyResolver} 口径），
+ *      不落合同、不留在源户；INFO 事件 + 当天 ledger 具名读数，净值不变、金额可见
  *   ⑤ 资产随迁（D-023）：源户自有资产按**逐笔迁移人口比例**随迁 —— 可移动资产（TOOL/SHIP/CATTLE/MACHINE）
  *      同 hex 同产业直接拆份额、跨 hex 在目标产业的同 AssetKind 下重建；不可移动资产（LAND/WORKSHOP）同 hex 可换主人，
  *      跨 hex 留原户并记具名读数。绝不再走"整户消亡时把资产全给最后目标"的旧路
@@ -493,7 +495,7 @@ public final class ModeMigrationSettlement {
 
       // ④ 债务（计划金额分摊到源户合同；目标不新建组织）
       if (move.debtMilli() > 0L) {
-        moveDebt(move, debts, day);
+        moveDebt(move, debts, day, auditLedger);
       }
 
       // ★★ P0：本笔 move 校验/落账全部成功后追加 outbox（人口事实），由 App 在同一 revision 内
@@ -606,19 +608,50 @@ public final class ModeMigrationSettlement {
       residualMoney = Math.addExact(residualMoney, amount);
     }
     long residualDebt = 0L;
+    List<String> residualContracts = new ArrayList<>();
     for (DebtContract contract : debts.values()) {
       if (contract.debtor().equals(source) && contract.principal() > 0L) {
         residualDebt = Math.addExact(residualDebt, contract.principal());
+        if (residualContracts.size() < 8) {
+          residualContracts.add(
+              contract.id().value()
+                  + "->creditor:"
+                  + contract.creditor().value()
+                  + ":"
+                  + contract.principal());
+        }
       }
     }
     if (residualMoney != 0L || residualDebt != 0L) {
+      // ★★ 2026-10-09 D3：具名 ERROR 必须带"残留在哪几笔合同、债权人是谁、金额多少"——只报总额时，
+      //   长跑现场无法判断是哪条迁移路径把债留在了源户（控制方 2026-10-09 复现时正只有一句
+      //   `error=IllegalStateException`，正文被 GUI 截掉）。
+      EventLog.channel(EconomyLog.migration())
+          .error(
+              LogEvent.of(
+                  "MIGRATION_SOURCE_RESIDUAL_REFUSED",
+                  EconomyLogSource.ECONOMY_MIGRATION,
+                  "day",
+                  day,
+                  "source",
+                  source.value(),
+                  "money",
+                  residualMoney,
+                  "debt",
+                  residualDebt,
+                  "contracts",
+                  residualContracts,
+                  "reason",
+                  "empty-source-still-holds-money-or-debt"));
       throw new IllegalStateException(
           "迁移后源户人口为 0 但仍有货币/债务残留（拒绝消亡丢账）: source="
               + source
               + " money="
               + residualMoney
               + " debt="
-              + residualDebt);
+              + residualDebt
+              + " contracts="
+              + residualContracts);
     }
     // ★★ 同键残留检查（债务侧）：源户作为债务人的合同，本步已由 moveDebt 按 §5.3 把本金迁到目标户；
     //   仍有正本金 ⇒ 上面已具名抛。剩下的 0 本金行只是"本金已迁走"的空壳容器，不是债；
@@ -1184,10 +1217,23 @@ public final class ModeMigrationSettlement {
     }
   }
 
+  /**
+   * ★★ <b>把一笔 move 的债务份额从源户搬到目标户</b>（逐合同，金额按计划分摊）。
+   *
+   * <p>★★ <b>D3（2026-10-09）：目标恰是债权人的那部分 ⇒ 自债净额，不落合同</b>。旧实现把它 upsert 回 <b>源户</b>
+   * （注释直言"人口清零时会因残留债具名抛"）—— 于是"源户人口归零"与"这笔债的债权人正是迁入目标"同时成立时， {@code retireSource} 的"拒绝消亡丢账"守卫当场
+   * ERROR 500（三区世界 day=270 实测：source={@code hh--3_3-urban-middle_peasant}，target=creditor={@code
+   * hh--3_3-rural-poor_peasant}，grain=323）。
+   *
+   * <p>净额口径取自全仓唯一实现 {@link DebtPartyResolver}：「自债（debtor == creditor）显式净额、不落合同 ——
+   * 同户对自己的债权无经济意义，且还款会铸出'两端相等'的非法转移」。债务本金按人口比例随迁，这笔份额对应的人已经并入 债权人户 ⇒
+   * 债权与负债落在同一个家户里互相抵消，两边同时减少、净值不变。**不静默**：INFO 事件 + 当天 ledger 的具名读数。
+   */
   private static void moveDebt(
       ModeMigrationPolicy.MigrationMove move,
       LinkedHashMap<DebtContractId, DebtContract> debts,
-      long day) {
+      long day,
+      ProductionLedger.Accumulator auditLedger) {
     List<DebtContract> contracts = new ArrayList<>();
     long totalPrincipal = 0L;
     for (DebtContract contract : debts.values()) {
@@ -1197,19 +1243,16 @@ public final class ModeMigrationSettlement {
       }
     }
     contracts.sort(Comparator.comparing(contract -> contract.id().value()));
-    long remaining = move.debtMilli();
+    long[] takes = distributeDebt(move, contracts, totalPrincipal);
+    long selfNetted = 0L;
+    long moved = 0L;
     for (int i = 0; i < contracts.size(); i++) {
       DebtContract contract = contracts.get(i);
-      long take =
-          i == contracts.size() - 1
-              ? Math.min(remaining, contract.principal())
-              : Math.min(
-                  contract.principal(),
-                  Math.multiplyExact(move.debtMilli(), contract.principal()) / totalPrincipal);
+      long take = takes[i];
       if (take <= 0L) {
         continue;
       }
-      remaining -= take;
+      moved = Math.addExact(moved, take);
       DebtContractBook.reduce(debts, contract.id(), take);
       if (!move.target().equals(contract.creditor())) {
         DebtContractBook.upsert(
@@ -1222,22 +1265,132 @@ public final class ModeMigrationSettlement {
             day,
             contract.dueCycle());
       } else {
-        // 目标恰是债权人：这部分留在源户（人口清零时会因残留债具名抛，绝不静默消灭债权）。
-        DebtContractBook.upsert(
-            debts,
-            move.source(),
-            contract.creditor(),
-            contract.unit(),
-            contract.terms(),
-            take,
-            day,
-            contract.dueCycle());
+        // 目标恰是债权人 ⇒ 自债净额（见方法注）：本笔份额不落任何合同，两边同时减少。
+        selfNetted = Math.addExact(selfNetted, take);
+        EventLog.channel(EconomyLog.migration())
+            .info(
+                LogEvent.of(
+                    "MIGRATION_DEBT_SELF_NETTED",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "source",
+                    move.source().value(),
+                    "target",
+                    move.target().value(),
+                    "contract",
+                    contract.id().value(),
+                    "principalBefore",
+                    contract.principal(),
+                    "netted",
+                    take,
+                    "reason",
+                    "creditor-is-migration-target-self-debt-netted"));
+        if (auditLedger != null) {
+          auditLedger.addLiquidationAudit(
+              new ProductionLedger.LiquidationAudit(
+                  day,
+                  "migration-netted-self-debt",
+                  Optional.of(move.source()),
+                  Optional.of(contract.id()),
+                  Optional.empty(),
+                  Optional.empty(),
+                  Optional.empty(),
+                  take,
+                  0L,
+                  take,
+                  contract.principal() - take,
+                  0L,
+                  "creditor-is-migration-target",
+                  Map.of("nettedPrincipal", take)));
+        }
       }
+    }
+    if (moved != move.debtMilli()) {
+      // distributeDebt 已保证分摊总额 == 计划额；这条例行守卫挡住"未来有人改分摊口径"。
+      throw new IllegalStateException(
+          "债务迁移金额没有全部分摊（拒绝静默丢债）: move="
+              + move
+              + " planDebtMilli="
+              + move.debtMilli()
+              + " moved="
+              + moved);
+    }
+    long sourceResidualAfter = 0L;
+    for (DebtContract contract : debts.values()) {
+      if (contract.debtor().equals(move.source()) && contract.principal() > 0L) {
+        sourceResidualAfter = Math.addExact(sourceResidualAfter, contract.principal());
+      }
+    }
+    if (EconomyLog.migration().isDebugEnabled()) {
+      EventLog.channel(EconomyLog.migration())
+          .debug(
+              LogEvent.of(
+                  "MIGRATION_DEBT_MOVED",
+                  EconomyLogSource.ECONOMY_MIGRATION,
+                  "day",
+                  day,
+                  "source",
+                  move.source().value(),
+                  "target",
+                  move.target().value(),
+                  "planDebtMilli",
+                  move.debtMilli(),
+                  "principalBefore",
+                  totalPrincipal,
+                  "contracts",
+                  contracts.size(),
+                  "selfNetted",
+                  selfNetted,
+                  "sourceResidualAfter",
+                  sourceResidualAfter));
+    }
+  }
+
+  /**
+   * ★★ <b>D3：把一笔 move 的计划债务额分摊到源户的各笔合同上（总额恒等于计划额，逐笔确定性）</b>。
+   *
+   * <p>口径：逐合同按**剩余本金比例**取份额（{@code ⌊计划额 × 本合同剩余本金 ÷ 源户剩余本金总额⌋}）；逐笔 floor 会产生不到"合同数"的余数，**按合同 id 的
+   * canonical 序补给仍有本金余额的合同**（绝不丢、绝不静默）。
+   *
+   * <p>★★ <b>旧实现为什么会在长跑里炸</b>：它只让**最后一笔**吃余数（{@code min(remaining, 本金)}）—— 最后一笔本金不够时 {@code
+   * remaining != 0}，当场具名抛"债务迁移金额没有全部分摊"。三区世界 300 天一次推进实测：day=33x {@code
+   * source=hh-0_-3-urban-middle_peasant} 计划 19,454,004、最后一笔吃不下余下的 5 ⇒ 整次 advance 500。 余数存在性只取决于
+   * floor 与合同数，与金额大小无关 ⇒ 只要长跑够久就会撞上。
+   *
+   * @param move 本笔迁移（{@code debtMilli()} = 计划分摊额）
+   * @param contracts 源户作为债务人的合同（须已按 id 升序；本金 > 0）
+   * @param totalPrincipal 上述合同的本金合计（> 0）
+   * @return 逐合同取额（与 {@code contracts} 同序；Σ == {@code move.debtMilli()}）
+   */
+  private static long[] distributeDebt(
+      ModeMigrationPolicy.MigrationMove move, List<DebtContract> contracts, long totalPrincipal) {
+    long[] takes = new long[contracts.size()];
+    long remaining = move.debtMilli();
+    for (int i = 0; i < contracts.size(); i++) {
+      long principal = contracts.get(i).principal();
+      long share = Math.multiplyExact(move.debtMilli(), principal) / totalPrincipal;
+      takes[i] = Math.min(principal, Math.min(share, remaining));
+      remaining = Math.subtractExact(remaining, takes[i]);
+    }
+    // 第二趟：逐笔 floor 的余数（严格小于合同数）按 canonical 序补给仍有本金余额的合同。
+    //   余数 ≤ Σ(本金 − 已取) 由"计划额 ≤ 剩余本金总额"保证（计划额超出本金总额 ⇒ 走下面的具名抛）。
+    for (int i = 0; i < contracts.size() && remaining > 0L; i++) {
+      long headroom = contracts.get(i).principal() - takes[i];
+      long add = Math.min(headroom, remaining);
+      takes[i] = Math.addExact(takes[i], add);
+      remaining = Math.subtractExact(remaining, add);
     }
     if (remaining != 0L) {
       throw new IllegalStateException(
-          "债务迁移金额没有全部分摊（拒绝静默丢债）: move=" + move + " remaining=" + remaining);
+          "债务迁移计划额超过源户剩余本金（拒绝静默丢债）: move="
+              + move
+              + " totalPrincipal="
+              + totalPrincipal
+              + " remaining="
+              + remaining);
     }
+    return takes;
   }
 
   // ── D-023 资产随迁（migrateAssetsForMove 及配套）─────────────────────────────────────────────

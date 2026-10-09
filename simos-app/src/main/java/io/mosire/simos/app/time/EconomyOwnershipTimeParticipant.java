@@ -10,7 +10,6 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.ProductionLedger;
@@ -32,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import org.slf4j.Logger;
 
 /**
@@ -184,7 +182,9 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     }
     AccountSession session = OwnershipBooks.loadAccountSession(economy, migratedBooks);
     // ★★ S3 缺陷修复：会话负责的账户由绝对值落回收尾，ledger 条目不再对 actor 基准叠一遍（同 PopulationEconomyTimeParticipant）。
-    Set<AccountPartitionKey> sessionAccounts = new LinkedHashSet<>(session.accounts().keySet());
+    // ★★ D3（2026-10-09）：过滤集取**活会话**的键集（见日循环），不用 advance 起点的快照 —— 迁移会在中途
+    //   `AccountSession.registerHousehold` 新建家户，快照漏掉它 ⇒ 它的当日条目被折到 actor 基准上而终值又被
+    //   绝对值覆盖 ⇒ 前缀校验拿非权威基准判负（同款 500，见 PopulationEconomyTimeParticipant 的同类注释）。
     EconomyDayStepper stepper =
         new EconomyDayStepper(
             economy,
@@ -203,7 +203,7 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       //   {@link OwnershipBooks#REASONS_NOT_FOLDED}）。
       List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
       if (!entries.isEmpty()) {
-        books = OwnershipBooks.apply(books, entries, sessionAccounts);
+        books = OwnershipBooks.apply(books, entries, stepper.accounts().accounts().keySet());
         for (HouseholdAccountKey key : books.accounts().keySet()) {
           writes.add(accountAddress(key));
         }

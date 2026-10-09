@@ -1,6 +1,8 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
@@ -3167,6 +3169,111 @@ final class MarketSettlement {
   }
 
   /**
+   * ★★ <b>2026-10-09 D3：市场参与者解析失败（有正资产却既无关联家户、也无劳动家户）的具名诊断</b>。
+   *
+   * <p>先记 {@code MARKET_SUBJECT_UNRESOLVED_UNIT} ERROR（契约/跨切片一致性故障不降级），再返回 {@link
+   * IllegalStateException} 供调用方 fail-closed。旧实现只抛一句话（日志里只剩 {@code
+   * error=IllegalStateException}），长跑现场完全看不出是哪个 unit / 哪个 operator / 它挂在哪一格 —— 本方法把"谁、在哪、为什么"
+   * 一次性写进日志与异常正文。字段一律是身份与计数，不含载荷明文。
+   */
+  private static IllegalStateException unresolvedMarketSubject(
+      MarketRound round, ProductionUnitId unitId, ActorRef operator, Map<AssetKind, Long> usable) {
+    ProductionProcess unit = round.units.get(unitId);
+    ProductionRules relation = round.relations.get(unitId);
+    List<String> shareOwners = new ArrayList<>();
+    List<String> shareOperators = new ArrayList<>();
+    for (AssetShareId shareId : round.index.ownershipStakeIdsOfProcess(unitId)) {
+      OwnershipStake share = round.assetShares.get(shareId);
+      if (share == null) {
+        continue;
+      }
+      if (shareOwners.size() < 8) {
+        shareOwners.add(share.owner().toString());
+      }
+      if (shareOperators.size() < 8) {
+        shareOperators.add(share.operator().toString());
+      }
+    }
+    // operator 若本身就是家户 actor，则把它的家户身份与"经济行是否还在"一并记出来 —— 这两者一起才能回答
+    // "是家户行被删了（坏数据）"还是"operator 从来就不是家户（聚合主体，需靠 relation/份额解析）"。
+    HouseholdId operatorHousehold = null;
+    boolean operatorIsHousehold = operator.kind() == ActorKind.HOUSEHOLD;
+    if (operatorIsHousehold) {
+      operatorHousehold = HouseholdActors.householdOf(operator);
+    }
+    EventLog.channel(MARKET)
+        .error(
+            LogEvent.of(
+                "MARKET_SUBJECT_UNRESOLVED_UNIT",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                round.day,
+                "unit",
+                unitId.value(),
+                "operator",
+                operator,
+                "operatorKind",
+                operator.kind(),
+                "operatorHousehold",
+                operatorHousehold == null ? "none" : operatorHousehold.value(),
+                "operatorHouseholdRow",
+                operatorHousehold != null
+                    && round.householdEconomies.containsKey(operatorHousehold),
+                "hex",
+                round.index.hexOf(unitId) == null ? "none" : round.index.hexOf(unitId),
+                "industry",
+                unit == null ? "none" : unit.industry(),
+                "modeKey",
+                unit == null ? "none" : unit.modeKey(),
+                "usableAssets",
+                usable,
+                "shareOwners",
+                shareOwners,
+                "shareOperators",
+                shareOperators,
+                "relationResidualOwner",
+                relation == null ? "none" : relation.residualOwner().toString(),
+                "relationInputSupplier",
+                relation == null ? "none" : relation.inputSupplier().toString(),
+                "laborAllocations",
+                round.index.allocationsOfUnit(unitId).size(),
+                "reason",
+                "positive-asset-but-no-economic-household-and-no-labor-household"));
+    return new IllegalStateException(
+        "市场参与者无法解析到任何家户（账户主体只有家户；聚合主体必须能解析到组织者/经营者家户）："
+            + "day="
+            + round.day
+            + " unit="
+            + unitId.value()
+            + " operator="
+            + operator
+            + " operatorKind="
+            + operator.kind()
+            + " operatorHousehold="
+            + (operatorHousehold == null ? "none" : operatorHousehold.value())
+            + " operatorHouseholdRow="
+            + (operatorHousehold != null && round.householdEconomies.containsKey(operatorHousehold))
+            + " hex="
+            + round.index.hexOf(unitId)
+            + " industry="
+            + (unit == null ? "none" : unit.industry())
+            + " modeKey="
+            + (unit == null ? "none" : unit.modeKey())
+            + " usableAssets="
+            + usable
+            + " shareOwners="
+            + shareOwners
+            + " shareOperators="
+            + shareOperators
+            + " relationResidualOwner="
+            + (relation == null ? "none" : relation.residualOwner())
+            + " relationInputSupplier="
+            + (relation == null ? "none" : relation.inputSupplier())
+            + " laborAllocations="
+            + round.index.allocationsOfUnit(unitId).size());
+  }
+
+  /**
    * ★★ <b>2026-10-08：克隆丢字段的具名契约故障</b>（防复发守卫的唯一发射点）。
    *
    * <p>先记 {@code MARKET_ARBITRAGE_PLAN_LOST} ERROR（契约/跨切片一致性故障不降级），再返回 {@link
@@ -5210,9 +5317,9 @@ final class MarketSettlement {
             //   "有经营者、无资产、不生产"是合法状态，资产可以被全部转走；0 产能的份额也走这里）。
             //   它没有库存可卖、没有产能可买投入，因此不生成任何订单 —— 具名跳过，不静默当成
             //   "零库存参与者"，也不把它当坏数据。有正资产或有劳动却解析不到家户 ⇒ 仍走下面的具名抛。
+            Map<AssetKind, Long> usable = round.index.usableAssetsOf(unitId);
             boolean hasCapacity =
-                round.index.usableAssetsOf(unitId).values().stream()
-                    .anyMatch(quantity -> quantity != null && quantity > 0L);
+                usable.values().stream().anyMatch(quantity -> quantity != null && quantity > 0L);
             if (!hasCapacity) {
               EventLog.channel(MARKET)
                   .warn(
@@ -5229,12 +5336,7 @@ final class MarketSettlement {
                           "no-positive-asset-and-no-labor-allocation"));
               continue;
             }
-            throw new IllegalStateException(
-                "市场参与者无法解析到任何家户（账户主体只有家户；聚合主体必须能解析到组织者/经营者家户）："
-                    + "unit="
-                    + unitId.value()
-                    + " operator="
-                    + entry.getKey());
+            throw unresolvedMarketSubject(round, unitId, entry.getKey(), usable);
           }
           // ② 集体经营（如家户纺织主 unit）：**by design 不是市场主体**（2026-10-23 裁定 B）—— 该聚合
           //    unit 的产出/库存已按劳动落各成员家户账，成员家户各自入市；这里静默跳过，只留一条默认

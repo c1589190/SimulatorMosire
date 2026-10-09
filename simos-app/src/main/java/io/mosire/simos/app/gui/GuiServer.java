@@ -620,6 +620,10 @@ public final class GuiServer implements AutoCloseable {
     } catch (IllegalArgumentException e) {
       safeError(exchange, 400, e.getMessage());
     } catch (Exception e) {
+      // ★★ 2026-10-09 D3：**正文必须进日志**。旧实现只记异常类名，长跑现场（`/api/advance` 抛具名
+      //   IllegalStateException）在日志里只剩 `error=IllegalStateException` —— 排障当场断线（控制方
+      //   2026-10-09 复现时正是如此）。此处补 message（WARN，恒开）与栈（DEBUG，按需开），
+      //   二者都只记异常自身的文本，不含业务载荷。
       GUI.warn(
           LogEvent.of(
               "GUI_REQUEST_FAILED",
@@ -631,7 +635,13 @@ public final class GuiServer implements AutoCloseable {
               "caller",
               remoteHostOf(exchange),
               "error",
-              e.getClass().getSimpleName()));
+              e.getClass().getSimpleName(),
+              "message",
+              e.getMessage() == null ? "none" : e.getMessage()));
+      if (AppLog.gui().isDebugEnabled()) {
+        AppLog.gui()
+            .debug("event=GUI_REQUEST_FAILED_STACK path=" + exchange.getRequestURI().getPath(), e);
+      }
       safeError(exchange, 500, "internal error");
     } finally {
       logAccess(exchange, startedNanos);

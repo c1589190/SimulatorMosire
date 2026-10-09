@@ -26,7 +26,6 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.EconomyParallelism;
@@ -554,7 +553,14 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     // ★★ S3 缺陷修复：会话登记过的账户当天终值由 landAccountSession 的**绝对值**落回覆盖；
     //   这些账户上的 ledger 条目不能再对 actor 基准叠一遍（否则跨区到货等"只写会话"的当天流入会让付方被误判透支）。
     //   非会话账户（承运人、未播种经营者等）仍按 ledger 条目逐笔折入 actor 账。
-    Set<AccountPartitionKey> sessionAccounts = new LinkedHashSet<>(session.accounts().keySet());
+    // ★★ D3（2026-10-09）：这张"会话登记集"**必须当天现读**（日循环里现取
+    //   {@code stepper.accounts().accounts().keySet()}），不能在 advance 起点拍快照 —— 迁移会在本次 advance 中途
+    //   新建家户并 `AccountSession.registerHousehold`（{@code
+    // ModeMigrationSettlement.createNewHousehold}），
+    //   快照漏掉它 ⇒ 它当天的条目被折到 actor 基准上，而它的终值随后又由 landAccountSession 的绝对值覆盖 ⇒
+    //   前缀校验拿一个"当天并非权威"的基准判负（三区世界 day=330 实测：会话里的迁移户
+    //   `hh-mig-3_0-wage_farm-hh-3_0-urban-middle_peasant-0` 基准 7218 + 当日 -7952 = -734 ⇒ 整次 advance
+    // 500）。
     // ★★ R2：并行度进构造器；workerCount == 1 时 EconomyParallelism.of 走单线程退化路径（不建池）。
     //   池的生命周期：finish()/close() 关闭；下面的 try/finally 保证日循环抛异常也不泄漏结算线程池。
     EconomyParallelism parallelism = EconomyParallelism.of(economyWorkerCount);
@@ -946,7 +952,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           EconomyDayFeed.publish(mapId, Optional.of(ledger), day);
           List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
           if (!entries.isEmpty()) {
-            currentBooks = OwnershipBooks.apply(currentBooks, entries, sessionAccounts);
+            // ★★ D3：过滤集取**活会话**的键集（不是 advance 起点的快照）—— 与下面 landAccountSession 的落回集合逐字同源。
+            currentBooks =
+                OwnershipBooks.apply(currentBooks, entries, stepper.accounts().accounts().keySet());
             for (HouseholdAccountKey key : currentBooks.accounts().keySet()) {
               writes.add(accountAddress(key));
             }
