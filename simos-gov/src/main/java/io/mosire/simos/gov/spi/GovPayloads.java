@@ -3,17 +3,22 @@ package io.mosire.simos.gov.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.gov.GovAdministrationPlan;
 import io.mosire.simos.gov.GovBudgetCategory;
 import io.mosire.simos.gov.GovBudgetLine;
 import io.mosire.simos.gov.GovBudgetPolicy;
 import io.mosire.simos.gov.GovBudgetPolicyEditMode;
 import io.mosire.simos.gov.GovOfficialSalaryRule;
+import io.mosire.simos.gov.GovPortPolicy;
 import io.mosire.simos.gov.GovPostTier;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -80,10 +85,12 @@ final class GovPayloads {
     return payload;
   }
 
-  /** 两维编制计划载荷：{@code unitId} 单独由 handler 取；其余字段可缺省（见类注）。 */
+  /** 三维编制计划载荷：{@code unitId} 单独由 handler 取；其余字段可缺省（见类注）。★ R2 起多口岸一维。 */
   static GovAdministrationPlan administrationPlan(JsonNode payload) {
     long securityPlannedLaborMilli = optionalLong(payload, "securityPlannedLaborMilli", 0L);
     long paperworkPlannedLaborMilli = optionalLong(payload, "paperworkPlannedLaborMilli", 0L);
+    // ★ R2：口岸维计划量缺省 0（= 没设口岸编制；旧载荷逐字不动即得旧语义）。
+    long portPlannedLaborMilli = optionalLong(payload, "portPlannedLaborMilli", 0L);
     List<GovPostTier> postTiers =
         optionalPostTiers(payload).orElse(GovAdministrationPlan.DEFAULT_POST_TIERS);
     long securitySupplyStatic =
@@ -106,6 +113,17 @@ final class GovPayloads {
             payload,
             "paperworkDemandStaticModifierPerMille",
             GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
+    // ★ R2：口岸维两个静态修正的缺省 = 中性 1000‰（照另两维形制）。
+    long portSupplyStatic =
+        optionalLong(
+            payload,
+            "portSupplyStaticModifierPerMille",
+            GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
+    long portDemandStatic =
+        optionalLong(
+            payload,
+            "portDemandStaticModifierPerMille",
+            GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
     long supernumerarySqrtCoefficient =
         optionalLong(
             payload,
@@ -114,12 +132,74 @@ final class GovPayloads {
     return new GovAdministrationPlan(
         securityPlannedLaborMilli,
         paperworkPlannedLaborMilli,
+        portPlannedLaborMilli,
         postTiers,
         securitySupplyStatic,
         paperworkSupplyStatic,
+        portSupplyStatic,
         securityDemandStatic,
         paperworkDemandStatic,
+        portDemandStatic,
         supernumerarySqrtCoefficient);
+  }
+
+  /**
+   * ★★ <b>R2：口岸管制政策载荷</b>（{@code gov.SetPortPolicy}）——<b>整表替换</b>（照 {@code SetAdministrationPlan}
+   * 的形制：同类型重复设置 = 整体替换；与既有政策逐值相同 ⇒ 空变更集）。
+   *
+   * <pre>{@code
+   * {"unitId":"gov-1",
+   *  "commodityRestrictionPerMille":{"grain":1000,"cloth":250},
+   *  "currencyRestrictionPerMille":{"silver":1000}}
+   * }</pre>
+   *
+   * <p>★ 两个表都可缺省：缺省/<b>显式空对象</b> ⇒ 空表 = 该类一律<b>不限制</b>（I-P1「未设限制 = 不限制」）。★ <b>值域只判形状</b> （整数、可表
+   * long），≥ 0 与"键非 null"由 {@link GovPortPolicy} 构造期判；"这个商品/币种在世界里存在吗"由组合根判（gov 看不见经济词表）。
+   */
+  static GovPortPolicy portPolicy(JsonNode payload) {
+    Map<CommodityId, Long> commodities =
+        restrictionTable(payload, "commodityRestrictionPerMille", CommodityId::parse);
+    Map<CurrencyId, Long> currencies =
+        restrictionTable(payload, "currencyRestrictionPerMille", CurrencyId::parse);
+    return new GovPortPolicy(commodities, currencies);
+  }
+
+  /**
+   * 一张 {@code 稳定 id → 强度‰} 表：缺失/{@code null} ⇒ 空；非对象/项非整数/键空白/键词法非法 ⇒ 具名拒。保序。
+   *
+   * <p>★ {@code parse} 由调用方给（{@code CommodityId::parse} / {@code
+   * CurrencyId::parse}）：<b>词法</b>非法在这里拒（具名）， <b>词表</b>里有没有这个类不在这里判（gov 看不见经济词表；由组合根 fail-closed
+   * 具名拒，N1）。
+   */
+  private static <K> Map<K, Long> restrictionTable(
+      JsonNode payload, String field, java.util.function.Function<String, K> parse) {
+    JsonNode node = payload.get(field);
+    if (node == null || node.isNull()) {
+      return Map.of();
+    }
+    if (!node.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是对象（id → 强度‰）");
+    }
+    Map<K, Long> table = new LinkedHashMap<>();
+    node.fields()
+        .forEachRemaining(
+            entry -> {
+              String key = entry.getKey();
+              if (key == null || key.isBlank()) {
+                throw new IllegalArgumentException("字段 " + field + " 的键不得为空白");
+              }
+              if (!entry.getValue().isIntegralNumber() || !entry.getValue().canConvertToLong()) {
+                throw new IllegalArgumentException("字段 " + field + "[" + key + "] 必须是可表示 long 的整数");
+              }
+              K parsed;
+              try {
+                parsed = parse.apply(key);
+              } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("字段 " + field + " 的键不是合法稳定 id: " + key, e);
+              }
+              table.put(parsed, entry.getValue().longValue());
+            });
+    return table;
   }
 
   /**
@@ -234,7 +314,9 @@ final class GovPayloads {
           new GovPostTier(
               requireText(element, "tierId"),
               optionalLong(element, "securityWeightPerMille", 0L),
-              optionalLong(element, "paperworkWeightPerMille", 0L)));
+              optionalLong(element, "paperworkWeightPerMille", 0L),
+              // ★ R2：口岸维权重缺省 0（= 该档位不产出口岸编制；旧载荷逐字不动）。
+              optionalLong(element, "portWeightPerMille", 0L)));
     }
     return java.util.Optional.of(tiers);
   }

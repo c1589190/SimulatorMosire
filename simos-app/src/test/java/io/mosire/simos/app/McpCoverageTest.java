@@ -178,6 +178,7 @@ class McpCoverageTest {
           "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
           "economy.UpsertIndustry",
+          "gov.SetPortPolicy",
           "gov.SetAdministrationPlan",
           "gov.SetBudgetPolicy",
           "map.CreateRegion",
@@ -340,6 +341,7 @@ class McpCoverageTest {
           "economy.SetGovServiceCommitment",
           "economy.UpsertGovUnit",
           "economy.UpsertIndustry",
+          "gov.SetPortPolicy",
           "gov.SetAdministrationPlan",
           "gov.SetBudgetPolicy",
           "unit.AssignExternalGovPost",
@@ -483,6 +485,9 @@ class McpCoverageTest {
           Map.entry("economy.UpsertIndustry", "{\"id\": \"office_missing@0_0\"}"),
           Map.entry("economy.UpsertGovUnit", "{\"govUnitId\": \"g-missing\"}"),
           Map.entry("economy.SetGovServiceCommitment", "{\"govUnitId\": \"g-missing\"}"),
+          Map.entry(
+              "gov.SetPortPolicy",
+              "{\"unitId\": \"u-1\", \"commodityRestrictionPerMille\": {}, \"currencyRestrictionPerMille\": {}}"),
           Map.entry("gov.SetAdministrationPlan", "{\"unitId\": \"u-1\"}"),
           Map.entry("gov.SetBudgetPolicy", "{\"unitId\": \"u-1\"}"),
           Map.entry(

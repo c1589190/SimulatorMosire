@@ -27,6 +27,9 @@ import org.slf4j.Logger;
  * 总效率‰    = 效率_治安‰ × 效率_公文‰ ÷ 1000
  * }</pre>
  *
+ * <p>★★ <b>R2（2026-10-09 口岸设计书 §4.2）：口岸 = 第三维，公式逐字同上</b>（{@code d ∈ {治安, 公文, 口岸}}），但 <b>总效率只乘治安 ×
+ * 公文</b>（口岸维不进总效率，理由逐条见三维 {@code of} 的类注）。
+ *
  * <p>★★ <b>三条硬口径</b>：
  *
  * <ul>
@@ -93,19 +96,72 @@ public final class GovEfficiency {
       long securityDemandDynamicModifierPerMille,
       long paperworkDemandDynamicModifierPerMille,
       long standardLaborMilliHoursPerTick) {
+    // ★ R2 兼容：旧 10 参形状 = 口岸维供给 0、口岸维动态修正中性 1000‰ ⇒ 口岸效率 0（"没有口岸编制"），
+    //   另两维与总效率逐值等于改前。旧调用点/旧夹具一字不改。
+    return of(
+        governmentFormation,
+        suggestedDemand,
+        plan,
+        securitySupplyLaborMilli,
+        paperworkSupplyLaborMilli,
+        0L,
+        securitySupplyDynamicModifierPerMille,
+        paperworkSupplyDynamicModifierPerMille,
+        GovEfficiencyModifier.NEUTRAL_PER_MILLE,
+        securityDemandDynamicModifierPerMille,
+        paperworkDemandDynamicModifierPerMille,
+        GovEfficiencyModifier.NEUTRAL_PER_MILLE,
+        standardLaborMilliHoursPerTick);
+  }
+
+  /**
+   * ★★ <b>R2 三维效率公式（纯函数；口岸维 = 第三维）</b>：治安/公文/口岸各算一次 {@code 需求劳动 → 有效劳动 → 满足率 → 最终效率}，口径逐字同 Z2
+   * 冻结算式（设计书 §4.2「沿用既有 GoVEfficiency 的口岸维」）。
+   *
+   * <p>★★ <b>总效率仍然只乘治安 × 公文</b>（{@code efficiencyPerMille}）——<b>口岸维不进总行政效率</b>：
+   *
+   * <ul>
+   *   <li>I-P8 是第一判据：把口岸乘进总效率，任何"没有口岸编制的 GOV"总行政效率当场归零（税收/服务随之中断），旧世界<b>不再</b>逐值不变；
+   *   <li>语义上口岸效率是"口岸这一维办公室的办事能力"，不是政府整体行政能力的一个乘数（上位文档 §5.1 里它甚至是<b>以行政效率为输入</b>派生的）；
+   *   <li>它的消费方是口岸管制折算（app 组合根：{@code enforcement = s × 口岸效率 ÷ 1000}），与税收/服务的消费方不同。
+   * </ul>
+   *
+   * @param portSupplyLaborMilli 口岸维实际承诺劳动（毫小时/tick；≥ 0）
+   * @param portSupplyDynamicModifierPerMille 口岸供给动态修正（‰；≥ 0）
+   * @param portDemandDynamicModifierPerMille 口岸需求动态修正（‰；≥ 0）
+   */
+  public static Efficiency of(
+      GovernmentFormation governmentFormation,
+      Map<HexCoord, GovDemand.HexDemand> suggestedDemand,
+      GovAdministrationPlan plan,
+      long securitySupplyLaborMilli,
+      long paperworkSupplyLaborMilli,
+      long portSupplyLaborMilli,
+      long securitySupplyDynamicModifierPerMille,
+      long paperworkSupplyDynamicModifierPerMille,
+      long portSupplyDynamicModifierPerMille,
+      long securityDemandDynamicModifierPerMille,
+      long paperworkDemandDynamicModifierPerMille,
+      long portDemandDynamicModifierPerMille,
+      long standardLaborMilliHoursPerTick) {
     requireGovernmentFormation(governmentFormation);
     requireDemand(suggestedDemand);
     Objects.requireNonNull(plan, "plan");
     requireContractNonNegative(securitySupplyLaborMilli, "securitySupplyLaborMilli");
     requireContractNonNegative(paperworkSupplyLaborMilli, "paperworkSupplyLaborMilli");
+    requireContractNonNegative(portSupplyLaborMilli, "portSupplyLaborMilli");
     requireContractNonNegative(
         securitySupplyDynamicModifierPerMille, "securitySupplyDynamicModifierPerMille");
     requireContractNonNegative(
         paperworkSupplyDynamicModifierPerMille, "paperworkSupplyDynamicModifierPerMille");
     requireContractNonNegative(
+        portSupplyDynamicModifierPerMille, "portSupplyDynamicModifierPerMille");
+    requireContractNonNegative(
         securityDemandDynamicModifierPerMille, "securityDemandDynamicModifierPerMille");
     requireContractNonNegative(
         paperworkDemandDynamicModifierPerMille, "paperworkDemandDynamicModifierPerMille");
+    requireContractNonNegative(
+        portDemandDynamicModifierPerMille, "portDemandDynamicModifierPerMille");
     if (standardLaborMilliHoursPerTick <= 0L) {
       throw contractFailure("standard-labor-coefficient-non-positive", null);
     }
@@ -117,10 +173,13 @@ public final class GovEfficiency {
               plan,
               securitySupplyLaborMilli,
               paperworkSupplyLaborMilli,
+              portSupplyLaborMilli,
               securitySupplyDynamicModifierPerMille,
               paperworkSupplyDynamicModifierPerMille,
+              portSupplyDynamicModifierPerMille,
               securityDemandDynamicModifierPerMille,
               paperworkDemandDynamicModifierPerMille,
+              portDemandDynamicModifierPerMille,
               standardLaborMilliHoursPerTick);
     } catch (ArithmeticException e) {
       throw contractFailure("arithmetic-overflow", e);
@@ -134,10 +193,13 @@ public final class GovEfficiency {
       GovAdministrationPlan plan,
       long securitySupplyLaborMilli,
       long paperworkSupplyLaborMilli,
+      long portSupplyLaborMilli,
       long securitySupplyDynamicModifierPerMille,
       long paperworkSupplyDynamicModifierPerMille,
+      long portSupplyDynamicModifierPerMille,
       long securityDemandDynamicModifierPerMille,
       long paperworkDemandDynamicModifierPerMille,
+      long portDemandDynamicModifierPerMille,
       long standardLaborMilliHoursPerTick) {
     long securityDemandLaborMilli =
         demandLabor(
@@ -149,6 +211,11 @@ public final class GovEfficiency {
             plan.paperworkPlannedLaborMilli(),
             plan.paperworkDemandStaticModifierPerMille(),
             paperworkDemandDynamicModifierPerMille);
+    long portDemandLaborMilli =
+        demandLabor(
+            plan.portPlannedLaborMilli(),
+            plan.portDemandStaticModifierPerMille(),
+            portDemandDynamicModifierPerMille);
 
     long securityEffectiveLaborMilli =
         effectiveLabor(
@@ -162,11 +229,18 @@ public final class GovEfficiency {
             paperworkDemandLaborMilli,
             plan.supernumerarySqrtCoefficient(),
             standardLaborMilliHoursPerTick);
+    long portEffectiveLaborMilli =
+        effectiveLabor(
+            portSupplyLaborMilli,
+            portDemandLaborMilli,
+            plan.supernumerarySqrtCoefficient(),
+            standardLaborMilliHoursPerTick);
 
     long securitySatisfactionPerMille =
         satisfaction(securityEffectiveLaborMilli, securityDemandLaborMilli);
     long paperworkSatisfactionPerMille =
         satisfaction(paperworkEffectiveLaborMilli, paperworkDemandLaborMilli);
+    long portSatisfactionPerMille = satisfaction(portEffectiveLaborMilli, portDemandLaborMilli);
 
     // ★ 任一维供给 = 0 ⇒ 该维最终效率 0（需求为 0 的“1000‰ 全额”也不能绕过这条）。
     long securityEfficiencyPerMille =
@@ -183,6 +257,13 @@ public final class GovEfficiency {
                 paperworkSatisfactionPerMille,
                 plan.paperworkSupplyStaticModifierPerMille(),
                 paperworkSupplyDynamicModifierPerMille);
+    long portEfficiencyPerMille =
+        portSupplyLaborMilli == 0L
+            ? 0L
+            : applyModifiers(
+                portSatisfactionPerMille,
+                plan.portSupplyStaticModifierPerMille(),
+                portSupplyDynamicModifierPerMille);
 
     long efficiencyPerMille =
         Math.floorDiv(
@@ -198,7 +279,11 @@ public final class GovEfficiency {
         securityEffectiveLaborMilli,
         paperworkEffectiveLaborMilli,
         securityDemandLaborMilli,
-        paperworkDemandLaborMilli);
+        paperworkDemandLaborMilli,
+        portSatisfactionPerMille,
+        portEfficiencyPerMille,
+        portEffectiveLaborMilli,
+        portDemandLaborMilli);
   }
 
   /** 需求劳动 = {@code P × 需求静态‰/1000 × 需求动态‰/1000}（两次整数向下取整，照冻结公式的书写序）。 */
@@ -278,6 +363,17 @@ public final class GovEfficiency {
     return securitySupplyLaborMilli == 0L || paperworkSupplyLaborMilli == 0L;
   }
 
+  /**
+   * ★ <b>R2 三维零供给判据</b>：任<b>三</b>维实际承诺劳动 = 0 ⇒ 该维最终效率被压成 0。★ 口岸维为 0 不压总效率（见 {@link
+   * #of(GovernmentFormation, Map, GovAdministrationPlan, long, long, long, long, long, long, long,
+   * long, long, long)} 的类注），它的后果是"没有管制力 ⇒ 全部放行"。
+   */
+  public static boolean anySupplyZero(
+      long securitySupplyLaborMilli, long paperworkSupplyLaborMilli, long portSupplyLaborMilli) {
+    return anySupplyZero(securitySupplyLaborMilli, paperworkSupplyLaborMilli)
+        || portSupplyLaborMilli == 0L;
+  }
+
   /** DEBUG 汇总（默认关；不改变任何输出）。 */
   private static void logComputed(
       Map<HexCoord, GovDemand.HexDemand> suggestedDemand,
@@ -297,14 +393,20 @@ public final class GovEfficiency {
                 plan.securityPlannedLaborMilli(),
                 "paperworkPlannedLaborMilli",
                 plan.paperworkPlannedLaborMilli(),
+                "portPlannedLaborMilli",
+                plan.portPlannedLaborMilli(),
                 "securitySatisfactionPerMille",
                 efficiency.securityCoveragePerMille(),
                 "paperworkSatisfactionPerMille",
                 efficiency.paperworkCoveragePerMille(),
+                "portSatisfactionPerMille",
+                efficiency.portCoveragePerMille(),
                 "securityEfficiencyPerMille",
                 efficiency.securityEfficiencyPerMille(),
                 "paperworkEfficiencyPerMille",
                 efficiency.paperworkEfficiencyPerMille(),
+                "portEfficiencyPerMille",
+                efficiency.portEfficiencyPerMille(),
                 "efficiencyPerMille",
                 efficiency.efficiencyPerMille()));
   }
@@ -406,6 +508,11 @@ public final class GovEfficiency {
    * @param paperworkEffectiveLaborMilli 公文有效劳动（毫小时/tick；≥ 0）
    * @param securityDemandLaborMilli 治安需求劳动（毫小时/tick；≥ 0）
    * @param paperworkDemandLaborMilli 公文需求劳动（毫小时/tick；≥ 0）
+   * @param portCoveragePerMille ★ R2：口岸满足率（‰；≥ 0，不封顶）
+   * @param portEfficiencyPerMille ★ R2：口岸最终效率（‰；≥ 0，不封顶）——<b>实际管制力的乘数</b>（{@code enforcement = s ×
+   *     本值 ÷ 1000}）；<b>不进</b> {@link #efficiencyPerMille()}（见三维 {@code of} 的类注）
+   * @param portEffectiveLaborMilli ★ R2：口岸有效劳动（毫小时/tick；≥ 0）
+   * @param portDemandLaborMilli ★ R2：口岸需求劳动（毫小时/tick；≥ 0）
    */
   public record Efficiency(
       long securityCoveragePerMille,
@@ -417,7 +524,11 @@ public final class GovEfficiency {
       long securityEffectiveLaborMilli,
       long paperworkEffectiveLaborMilli,
       long securityDemandLaborMilli,
-      long paperworkDemandLaborMilli) {
+      long paperworkDemandLaborMilli,
+      long portCoveragePerMille,
+      long portEfficiencyPerMille,
+      long portEffectiveLaborMilli,
+      long portDemandLaborMilli) {
 
     public Efficiency {
       requireNonNegative(securityCoveragePerMille, "securityCoveragePerMille");
@@ -430,9 +541,84 @@ public final class GovEfficiency {
       requireNonNegative(paperworkEffectiveLaborMilli, "paperworkEffectiveLaborMilli");
       requireNonNegative(securityDemandLaborMilli, "securityDemandLaborMilli");
       requireNonNegative(paperworkDemandLaborMilli, "paperworkDemandLaborMilli");
+      requireNonNegative(portCoveragePerMille, "portCoveragePerMille");
+      requireNonNegative(portEfficiencyPerMille, "portEfficiencyPerMille");
+      requireNonNegative(portEffectiveLaborMilli, "portEffectiveLaborMilli");
+      requireNonNegative(portDemandLaborMilli, "portDemandLaborMilli");
     }
 
-    /** 旧 6 参构造器（Z2 兼容）：Z3b 追加的有效/需求劳动四项取 0（旧口径没有这四个读数）。 */
+    /**
+     * ★ R2：只给既有两维、口岸维按"**没有口岸编制**"口径补齐的便捷构造器。
+     *
+     * <p>★★ <b>口岸维取值的口径必须与生产路径一致</b>：生产路径的三维满足率都走唯一的 {@link #satisfaction(long, long)} ⇒ <b>需求 = 0
+     * ⇒ 满足率 1000‰</b>（"没人管也不用管"）。 故本构造器的 {@code portCoveragePerMille} 必须是 {@link
+     * GovRules#PER_MILLE}（1000）， <b>不是 0</b>；{@code portEfficiencyPerMille} 仍是 0（供给 0 ⇒ 效率
+     * 0，照同一条公式）。
+     */
+    public static Efficiency ofDimensions(
+        long securityCoveragePerMille,
+        long paperworkCoveragePerMille,
+        long bonusPerMille,
+        long efficiencyPerMille,
+        long securityEfficiencyPerMille,
+        long paperworkEfficiencyPerMille,
+        long securityEffectiveLaborMilli,
+        long paperworkEffectiveLaborMilli,
+        long securityDemandLaborMilli,
+        long paperworkDemandLaborMilli) {
+      return new Efficiency(
+          securityCoveragePerMille,
+          paperworkCoveragePerMille,
+          bonusPerMille,
+          efficiencyPerMille,
+          securityEfficiencyPerMille,
+          paperworkEfficiencyPerMille,
+          securityEffectiveLaborMilli,
+          paperworkEffectiveLaborMilli,
+          securityDemandLaborMilli,
+          paperworkDemandLaborMilli,
+          GovRules.PER_MILLE,
+          0L,
+          0L,
+          0L);
+    }
+
+    /**
+     * ★ <b>旧 10 参构造器（R2 兼容）</b>：只给既有两维，口岸维按"<b>没有口岸编制</b>"口径补齐。
+     *
+     * <p>★★ 口径必须与生产路径的 {@link #satisfaction(long, long)} 一致：<b>需求 = 0 ⇒ 满足率 1000‰</b>。 故 {@code
+     * portCoveragePerMille = }{@link GovRules#PER_MILLE}（<b>不是 0</b>）； {@code
+     * portEfficiencyPerMille} 仍为 0（供给 0 ⇒ 效率 0）。
+     */
+    public Efficiency(
+        long securityCoveragePerMille,
+        long paperworkCoveragePerMille,
+        long bonusPerMille,
+        long efficiencyPerMille,
+        long securityEfficiencyPerMille,
+        long paperworkEfficiencyPerMille,
+        long securityEffectiveLaborMilli,
+        long paperworkEffectiveLaborMilli,
+        long securityDemandLaborMilli,
+        long paperworkDemandLaborMilli) {
+      this(
+          securityCoveragePerMille,
+          paperworkCoveragePerMille,
+          bonusPerMille,
+          efficiencyPerMille,
+          securityEfficiencyPerMille,
+          paperworkEfficiencyPerMille,
+          securityEffectiveLaborMilli,
+          paperworkEffectiveLaborMilli,
+          securityDemandLaborMilli,
+          paperworkDemandLaborMilli,
+          GovRules.PER_MILLE,
+          0L,
+          0L,
+          0L);
+    }
+
+    /** 旧 6 参构造器（Z2 兼容）：Z3b 追加的有效/需求劳动四项与 R2 的口岸四项都取 0。 */
     public Efficiency(
         long securityCoveragePerMille,
         long paperworkCoveragePerMille,

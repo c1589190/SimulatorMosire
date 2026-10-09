@@ -30,19 +30,25 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * ★★ <b>承诺→两维供给桥（Z3b，设计书 §3/§4.2/§10 C2；唯一供给权威）</b>：把某 GOV 的行政服务 unit 上全部 {@link
- * LaborCommitmentKind#GOV_SERVICE} 承诺，按岗位家户的档位权重拆到治安/公文两维。
+ * ★★ <b>承诺→三维供给桥（Z3b 两维；R2 补口岸 = 第三维，2026-10-09 口岸设计书 §4.2；唯一供给权威）</b>：把某 GOV 的行政服务 unit 上全部 {@link
+ * LaborCommitmentKind#GOV_SERVICE} 承诺，按岗位家户的档位权重拆到治安/公文/<b>口岸</b>三维。
  *
  * <pre>
  * GOV 的 service unit      = economy.units 里 operator == HOUSEHOLD:hh-gov-&lt;govUnitId&gt; 的 unit（Z1c 身份：
  *                            operator = 政府家户；activity 与 unit 的指向由 EconomyData 守卫判死）
  * 逐户承诺劳动 L_h          = 该 GOV 全部 service unit 上、household == h 的 GOV_SERVICE 承诺之和（毫小时/tick）
  *                            （只对有岗位的家户计；没有岗位的家户不进任何维，逐 GOV 一条具名 INFO）
- * 档位权重 (w_sec, w_pap)   = h 在 GovernmentFormation 的 governmentPostsOfHousehold（内部）或 externalPosts（外部，
- *                            Z3d）里的 tierId → plan.postTiers 权重；两表同权、互斥（同一户只能在一张表里）；
- *                            tierId 空（legacy/未指派）⇒ 按 role 的固有维度：YAMEN=(1000,0)，SCRIBE/POST=(0,1000)
- * 治安拆分 = ⌊L_h × w_sec ÷ (w_sec + w_pap)⌋；公文拆分 = L_h − 治安拆分（余数归公文，Σ 不丢）
+ * 档位权重 (w_sec,w_pap,w_port) = h 在 GovernmentFormation 的 governmentPostsOfHousehold（内部）或 externalPosts
+ *                            （外部，Z3d）里的 tierId → plan.postTiers 权重；两表同权、互斥（同一户只能在一张表里）；
+ *                            tierId 空（legacy/未指派）⇒ 按 role 的固有维度：YAMEN=(1000,0,0)，SCRIBE/POST=(0,1000,0)
+ * W = w_sec + w_pap + w_port
+ * 治安拆分 = ⌊L_h × w_sec ÷ W⌋；口岸拆分 = ⌊L_h × w_port ÷ W⌋；公文拆分 = L_h − 治安 − 口岸（余数归公文，Σ 不丢）
  * </pre>
+ *
+ * <p>★★ <b>R2 的拆分口径为什么把余数留给公文、而不是给口岸</b>：这是 I-P8（"无口岸政策/无接触面 ⇒ 旧世界逐值不变"）的<b>唯一 可行写法</b>——{@code
+ * w_port = 0} 时 {@code W = w_sec + w_pap}、口岸拆分恒 0、公文拆分 = {@code L − ⌊L×w_sec÷W⌋}，与 Z3b
+ * 的两维算式<b>逐值相同</b>。若把余数给口岸（{@code 公文 = ⌊L×w_pap÷W⌋}），默认档 3（500/500）下 L 为奇数时公文会少 1 毫小时 ⇒
+ * 旧世界的行政供给当场变值，I-P8 不成立。
  *
  * <p>★★ <b>Z7d-1 有效供给（设计书 Z7 冲突 1=A）</b>：{@code supply(...)} 的逐户输入从"承诺劳动 L_h"改为 {@code min(L_h,
  * 该户当前实际劳动)}（实际劳动 = Economy 行 {@code laborMilli}，由 app 从 Social {@code householdLaborMilli}（基础劳动 ×
@@ -86,11 +92,30 @@ public final class GovernmentServiceLaborBridge {
   public record Supply(
       long securityLaborMilli,
       long paperworkLaborMilli,
+      long portLaborMilli,
       long committedSecurityLaborMilli,
       long committedPaperworkLaborMilli,
+      long committedPortLaborMilli,
       long underfedHouseholds) {
 
-    /** 旧 2 参形状：有效 = 承诺（调用方已保证没有饥饿缺口）。 */
+    /** ★ R2 旧 5 参形状（Z3b 调用点/夹具）：口岸两维取 0（= 没有口岸编制 ⇒ 口岸效率 0 ⇒ 不限制）。 */
+    public Supply(
+        long securityLaborMilli,
+        long paperworkLaborMilli,
+        long committedSecurityLaborMilli,
+        long committedPaperworkLaborMilli,
+        long underfedHouseholds) {
+      this(
+          securityLaborMilli,
+          paperworkLaborMilli,
+          0L,
+          committedSecurityLaborMilli,
+          committedPaperworkLaborMilli,
+          0L,
+          underfedHouseholds);
+    }
+
+    /** 旧 2 参形状：有效 = 承诺（调用方已保证没有饥饿缺口），口岸维取 0。 */
     public Supply(long securityLaborMilli, long paperworkLaborMilli) {
       this(securityLaborMilli, paperworkLaborMilli, securityLaborMilli, paperworkLaborMilli, 0L);
     }
@@ -98,8 +123,10 @@ public final class GovernmentServiceLaborBridge {
     public Supply {
       if (securityLaborMilli < 0L
           || paperworkLaborMilli < 0L
+          || portLaborMilli < 0L
           || committedSecurityLaborMilli < 0L
           || committedPaperworkLaborMilli < 0L
+          || committedPortLaborMilli < 0L
           || underfedHouseholds < 0L) {
         throw new IllegalArgumentException(
             "GovernmentServiceLaborBridge.Supply 各分量都必须 ≥ 0: "
@@ -107,23 +134,32 @@ public final class GovernmentServiceLaborBridge {
                 + "/"
                 + paperworkLaborMilli
                 + "/"
+                + portLaborMilli
+                + "/"
                 + committedSecurityLaborMilli
                 + "/"
                 + committedPaperworkLaborMilli
                 + "/"
+                + committedPortLaborMilli
+                + "/"
                 + underfedHouseholds);
       }
       if (securityLaborMilli > committedSecurityLaborMilli
-          || paperworkLaborMilli > committedPaperworkLaborMilli) {
+          || paperworkLaborMilli > committedPaperworkLaborMilli
+          || portLaborMilli > committedPortLaborMilli) {
         throw new IllegalArgumentException(
             "GovernmentServiceLaborBridge.Supply 有效供给不得超过承诺（min 口径）: effective="
                 + securityLaborMilli
                 + "/"
                 + paperworkLaborMilli
+                + "/"
+                + portLaborMilli
                 + " committed="
                 + committedSecurityLaborMilli
                 + "/"
-                + committedPaperworkLaborMilli);
+                + committedPaperworkLaborMilli
+                + "/"
+                + committedPortLaborMilli);
       }
     }
   }
@@ -230,12 +266,14 @@ public final class GovernmentServiceLaborBridge {
     Objects.requireNonNull(plan, "plan");
     Map<HouseholdId, Long> committed = committedLaborByHousehold(economy, govUnitId, day);
     if (committed.isEmpty()) {
-      return new Supply(0L, 0L, 0L, 0L, 0L);
+      return new Supply(0L, 0L, 0L, 0L, 0L, 0L, 0L);
     }
     long effectiveSecurity = 0L;
     long effectivePaperwork = 0L;
+    long effectivePort = 0L;
     long committedSecurity = 0L;
     long committedPaperwork = 0L;
+    long committedPort = 0L;
     long underfedHouseholds = 0L;
     long withoutPost = 0L;
     String firstWithoutPost = "-";
@@ -263,7 +301,7 @@ public final class GovernmentServiceLaborBridge {
           underfedHouseholds++;
         }
         long[] weights = tierWeightsOf(post, plan, govUnitId, day);
-        long weightSum = Math.addExact(weights[0], weights[1]);
+        long weightSum = Math.addExact(Math.addExact(weights[0], weights[1]), weights[2]);
         if (weightSum == 0L) {
           throw contractFailure(
               "tier-zero-weight",
@@ -271,16 +309,31 @@ public final class GovernmentServiceLaborBridge {
               govUnitId,
               "household=" + household.value() + " tierId=" + post.tierId());
         }
+        // ★ R2 三维拆分（余数归公文，w_port=0 ⇒ 逐值退化为旧两维算式；理由见类注）。
         long committedSecurityShare =
             Math.floorDiv(Math.multiplyExact(committedLaborMilli, weights[0]), weightSum);
+        long committedPortShare =
+            Math.floorDiv(Math.multiplyExact(committedLaborMilli, weights[2]), weightSum);
         committedSecurity = Math.addExact(committedSecurity, committedSecurityShare);
+        committedPort = Math.addExact(committedPort, committedPortShare);
         committedPaperwork =
-            Math.addExact(committedPaperwork, committedLaborMilli - committedSecurityShare);
+            Math.addExact(
+                committedPaperwork,
+                Math.subtractExact(
+                    Math.subtractExact(committedLaborMilli, committedSecurityShare),
+                    committedPortShare));
         long effectiveSecurityShare =
             Math.floorDiv(Math.multiplyExact(actualLaborMilli, weights[0]), weightSum);
+        long effectivePortShare =
+            Math.floorDiv(Math.multiplyExact(actualLaborMilli, weights[2]), weightSum);
         effectiveSecurity = Math.addExact(effectiveSecurity, effectiveSecurityShare);
+        effectivePort = Math.addExact(effectivePort, effectivePortShare);
         effectivePaperwork =
-            Math.addExact(effectivePaperwork, actualLaborMilli - effectiveSecurityShare);
+            Math.addExact(
+                effectivePaperwork,
+                Math.subtractExact(
+                    Math.subtractExact(actualLaborMilli, effectiveSecurityShare),
+                    effectivePortShare));
       }
     } catch (ArithmeticException e) {
       throw contractFailure("arithmetic-overflow", day, govUnitId, e.getMessage());
@@ -304,8 +357,10 @@ public final class GovernmentServiceLaborBridge {
     return new Supply(
         effectiveSecurity,
         effectivePaperwork,
+        effectivePort,
         committedSecurity,
         committedPaperwork,
+        committedPort,
         underfedHouseholds);
   }
 
@@ -346,13 +401,20 @@ public final class GovernmentServiceLaborBridge {
     return ids;
   }
 
-  /** 档位权重：非空 tierId 必须命中计划目录；空 tierId（legacy/未指派）按 role 的固有维度回退。 */
+  /**
+   * 档位权重（三维）：非空 tierId 必须命中计划目录；空 tierId（legacy/未指派）按 role 的固有维度回退。
+   *
+   * <p>★ R2：第三项 = 口岸维权重。legacy（未指派档位）的 role 回退<b>不给口岸权重</b>——旧世界的"挂了岗位但没有档位"家户一律 按旧口径进治安/公文，口岸维保持 0
+   * ⇒ 逐值不变（I-P8）；要口岸编制就显式建一个 {@code portWeightPerMille > 0} 的档位并指派。
+   */
   private static long[] tierWeightsOf(
       GovernmentPostOfHousehold post, GovAdministrationPlan plan, UnitId govUnitId, long day) {
     if (post.hasTier()) {
       for (GovPostTier tier : plan.postTiers()) {
         if (tier.tierId().equals(post.tierId())) {
-          return new long[] {tier.securityWeightPerMille(), tier.paperworkWeightPerMille()};
+          return new long[] {
+            tier.securityWeightPerMille(), tier.paperworkWeightPerMille(), tier.portWeightPerMille()
+          };
         }
       }
       throw contractFailure(
@@ -361,10 +423,10 @@ public final class GovernmentServiceLaborBridge {
           govUnitId,
           "household=" + post.householdId().value() + " tierId=" + post.tierId());
     }
-    // ★ legacy（空 tierId）：沿用 GovEfficiency 旧桥的 role→维口径（YAMEN=治安；SCRIBE/POST=公文）。
+    // ★ legacy（空 tierId）：沿用 GovEfficiency 旧桥的 role→维口径（YAMEN=治安；SCRIBE/POST=公文；口岸=0）。
     return switch (post.role()) {
-      case YAMEN -> new long[] {GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE, 0L};
-      case SCRIBE, POST -> new long[] {0L, GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE};
+      case YAMEN -> new long[] {GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE, 0L, 0L};
+      case SCRIBE, POST -> new long[] {0L, GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE, 0L};
     };
   }
 

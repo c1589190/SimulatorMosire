@@ -553,6 +553,7 @@ class SimosToolsTest {
           "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
           "economy.UpsertIndustry",
+          "gov.SetPortPolicy",
           "gov.SetAdministrationPlan",
           "gov.SetBudgetPolicy",
           "map.CreateRegion",
@@ -918,10 +919,10 @@ class SimosToolsTest {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
         .as(
-            "扫描必须恰为 139 个 *Handler.java 的 type()（128 → 136：A1/A2a/B2 的 8 条货币/市场区命令按实测补入本表）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
+            "扫描必须恰为 140 个 *Handler.java 的 type()（128 → 136：A1/A2a/B2 的 8 条货币/市场区命令按实测补入本表）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
                 + "P1b1/P3/R3a 的区域清空与国库上缴，辖区阶段 5–12，D1/D3a/D4/D5 的 unit/sd/army 新命令，"
                 + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds；Z6 起纳入 simos-gov 的 2 条 handler；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）")
-        .hasSize(139);
+        .hasSize(140);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();

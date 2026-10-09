@@ -727,6 +727,37 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     day,
                     missingAdminRegions);
             reportUnknownGovEfficiencyModifiers(dayModifiers, computed.byUnit().keySet(), day);
+            // ★★ R2（2026-10-09 口岸设计书 §4.2/§4.3/§4.4；G9"口岸/禁运 = 法律规定层"）：
+            //   把"逐政府的口岸政策 s × 该政府的口岸效率 e（第三维）"按**暴露边**折算成市场区逐类的实际执行规律，
+            //   再注入经济会话 —— 它被 CurrencyValuation 当作"家户对外币估值的减项"（用户 2026-10-08 原话
+            //   「如果这个效率高，那么单个家户就更不倾向于用这种货币付款，因为如果付了要被抓」）。
+            //   ★ 时序：本折算读的是**当日结算之后**算出的口岸效率，而市场轮在 step(day) 之内已经跑完 ⇒
+            //     注入值作用于**下一次**市场轮（一 tick 滞后；与 GovEfficiencyModifier 的"逐 tick 注入、当场消费"同族）。
+            //   ★ I-P8：一条限制都没有 ⇒ portRegime.active() == false ⇒ **不注入**（会话保持
+            // PortEnforcementInput.none()
+            //     ⇒ 家户估值不减项 ⇒ 旧世界逐值不变）。
+            //   ★ N1：政策里的未知商品/未知币种 ⇒ 本调用内具名 ERROR + fail-closed 抛出（不静默忽略）。
+            PortRegimeBridge.PortRegimeDay portRegime =
+                PortRegimeBridge.compute(currentGov, units, map, economy, computed.byUnit(), day);
+            if (portRegime.active()) {
+              stepper.updatePortEnforcement(portRegime.input());
+              TIME.info(
+                  LogEvent.of(
+                      "PORT_REGIME_INJECTED",
+                      AppLogSource.DAILY_LOOP,
+                      "day",
+                      day,
+                      "contacts",
+                      portRegime.contacts(),
+                      "exposedEdges",
+                      portRegime.exposedEdges(),
+                      "restrictedClasses",
+                      portRegime.restrictedClasses(),
+                      "zones",
+                      portRegime.input().zoneCount(),
+                      "reason",
+                      "port-policy-times-port-efficiency-folded-by-exposed-edges"));
+            }
             // ★★ 服务流量：进程内投递（不落库、不进库存/市场/ledger）；读不到由读口具名 unavailable。
             GovServiceFlowFeed.publish(mapId, computed.flows(), day);
             JurisdictionDailyTax.Report tax =
@@ -1313,6 +1344,15 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           modifier == null
               ? GovEfficiencyModifier.NEUTRAL_PER_MILLE
               : modifier.paperworkDemandPerMille();
+      // ★ R2：口岸维（第三维）的供给与两个动态修正 —— 与另两维同源、同一次计算。
+      long portSupplyModifier =
+          modifier == null
+              ? GovEfficiencyModifier.NEUTRAL_PER_MILLE
+              : modifier.portSupplyPerMille();
+      long portDemandModifier =
+          modifier == null
+              ? GovEfficiencyModifier.NEUTRAL_PER_MILLE
+              : modifier.portDemandPerMille();
       GovEfficiency.Efficiency efficiency =
           GovEfficiency.of(
               formation,
@@ -1320,10 +1360,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               plan,
               supply.securityLaborMilli(),
               supply.paperworkLaborMilli(),
+              supply.portLaborMilli(),
               securitySupplyModifier,
               paperworkSupplyModifier,
+              portSupplyModifier,
               securityDemandModifier,
               paperworkDemandModifier,
+              portDemandModifier,
               standardLaborMilliHoursPerTick);
       if (supply.underfedHouseholds() > 0L) {
         // ★★ Z7d-1：在编但供给不足 —— 承诺是职位（C7 不缩/删），实际劳动被饥饿折算 cap；
@@ -1350,7 +1393,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 "reason",
                 "starvation-reduced-household-labor-capped-effective-supply"));
       }
-      if (GovEfficiency.anySupplyZero(supply.securityLaborMilli(), supply.paperworkLaborMilli())) {
+      if (GovEfficiency.anySupplyZero(
+          supply.securityLaborMilli(), supply.paperworkLaborMilli(), supply.portLaborMilli())) {
         // ★ §3：无挂岗位家户（无承诺）⇒ 该维供给 0、效率 0，具名 INFO（不是静默 0）。
         // ★ Z7d-1：若承诺不为 0 而是被饥饿 cap 到 0，reason 具名为 committed-but-underfed（不冒充"无岗位"）。
         String zeroSupplyReason =
@@ -1370,6 +1414,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 supply.securityLaborMilli(),
                 "paperworkSupplyLaborMilli",
                 supply.paperworkLaborMilli(),
+                "portSupplyLaborMilli",
+                supply.portLaborMilli(),
                 "reason",
                 zeroSupplyReason));
       }
@@ -1386,14 +1432,20 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 plan.securityPlannedLaborMilli(),
                 "paperworkPlannedLaborMilli",
                 plan.paperworkPlannedLaborMilli(),
+                "portPlannedLaborMilli",
+                plan.portPlannedLaborMilli(),
                 "securitySupplyLaborMilli",
                 supply.securityLaborMilli(),
                 "paperworkSupplyLaborMilli",
                 supply.paperworkLaborMilli(),
+                "portSupplyLaborMilli",
+                supply.portLaborMilli(),
                 "securityCommittedLaborMilli",
                 supply.committedSecurityLaborMilli(),
                 "paperworkCommittedLaborMilli",
                 supply.committedPaperworkLaborMilli(),
+                "portCommittedLaborMilli",
+                supply.committedPortLaborMilli(),
                 "underfedHouseholds",
                 supply.underfedHouseholds(),
                 "securityDemandLaborMilli",

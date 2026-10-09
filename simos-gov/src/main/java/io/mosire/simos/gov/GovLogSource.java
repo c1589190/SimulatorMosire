@@ -26,6 +26,8 @@ public enum GovLogSource implements LogOrigin {
       "gov-efficiency", "Z2 两维效率公式（纯函数，无 day/unit 上下文，按纪律归 system）", LogOriginKind.SYSTEM),
   GOV_COMMAND(
       "gov-command", "gov 配置命令 handler（编制计划/预算政策，无 day 上下文，按纪律归 system）", LogOriginKind.SYSTEM),
+  GOV_PORT(
+      "gov-port", "R2 口岸管制：政策命令 + 逐政府实际管制力/市场区总效率折算（无 day 上下文，按纪律归 system）", LogOriginKind.SYSTEM),
   GOV_CODEC("gov-codec", "GovCodec 编解码与变更集施加", LogOriginKind.SYSTEM);
 
   private final String id;

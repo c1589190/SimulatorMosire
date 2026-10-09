@@ -51,11 +51,15 @@ final class CurrencyValuation {
   /** 面值（1:1）：1 毫钱 = {@value #FACE_VALUE_MICRO} 微计价物（与保留价同微刻度）。 */
   static final long FACE_VALUE_MICRO = HouseholdValuationBook.MICRO_PER_MILLI;
 
+  /** 千分制换算点（{@code 1000‰ = 1.0}）——★ R2 的管制力减项用它；与面值同值但语义不同，不互相引用。 */
+  private static final long PER_MILLE = 1000L;
+
   /** 根币对自己（= 面值 1:1）；{@code V(c)} 的单位就是它。 */
   private static final long ROOT_VALUE_MICRO = FACE_VALUE_MICRO;
 
   /** 没有外汇面 / 没有报价的世界：行情表为空（一切按面值或"不可判"处理）。 */
-  private static final CurrencyValuation NONE = new CurrencyValuation(Map.of(), Set.of(), Map.of());
+  private static final CurrencyValuation NONE =
+      new CurrencyValuation(Map.of(), Set.of(), Map.of(), PortEnforcementInput.none());
 
   /** {@code V(c)}：微根币 / 毫 c（只含被报价图连通的币种；缺键 = 没有报价）。 */
   private final Map<CurrencyId, Long> quotedMicroPerMilli;
@@ -66,15 +70,29 @@ final class CurrencyValuation {
   /** 区 id → 当地实际流通的币种（该区成员格与直接邻接区里家户实际持有的币；有界集合）。 */
   private final Map<String, Set<CurrencyId>> circulationByRegion;
 
+  /**
+   * ★★ <b>R2：本轮逐区逐币种的实际管制力（‰）</b>——组合根注入的逐轮瞬态；缺省 {@link PortEnforcementInput#none()} ⇒
+   * 逐值退回改前行为（没有政策的世界里一个数都不动，I-P8）。
+   *
+   * <p>★ <b>它在这里干什么</b>：兑现用户 2026-10-08 原话「如果这个效率高，那么单个家户就更不倾向于用这种货币付款，因为如果付了要被抓」 ——
+   * 管制力作为<b>家户对外币估值的减项</b>（{@link #valuationMicro(CurrencyId, CurrencyId, String)}），
+   * <b>不另写"家户不敢用"的独立逻辑</b>（设计书 §4.4）。
+   */
+  private final PortEnforcementInput portEnforcement;
+
   private CurrencyValuation(
       Map<CurrencyId, Long> quotedMicroPerMilli,
       Set<CurrencyId> quoted,
-      Map<String, Set<CurrencyId>> circulationByRegion) {
+      Map<String, Set<CurrencyId>> circulationByRegion,
+      PortEnforcementInput portEnforcement) {
     this.quotedMicroPerMilli =
         Collections.unmodifiableMap(new LinkedHashMap<>(quotedMicroPerMilli));
     this.quoted = Collections.unmodifiableSet(new LinkedHashSet<>(quoted));
     this.circulationByRegion =
         Collections.unmodifiableMap(new LinkedHashMap<>(circulationByRegion));
+    this.portEnforcement =
+        Objects.requireNonNull(
+            portEnforcement, "portEnforcement（没有就给 PortEnforcementInput.none()）");
   }
 
   /** 没有报价、也没有当地流通信息（旧调用方/单币世界）—— 一切按面值或"不可判"。 */
@@ -89,11 +107,26 @@ final class CurrencyValuation {
    * @param circulationByRegion 区 id → 当地实际流通的币种（{@link #circulationByRegion} 产出；不得为 null）
    */
   static CurrencyValuation of(FxRoundInput fx, Map<String, Set<CurrencyId>> circulationByRegion) {
+    // ★ R2 兼容：旧 2 参入口 = 没有口岸管制 ⇒ 逐值退回改前行为。
+    return of(fx, circulationByRegion, PortEnforcementInput.none());
+  }
+
+  /**
+   * ★★ <b>R2：装配本轮行情 + 逐区逐币种的实际管制力</b>（设计书 §4.4：效率进家户对外币估值的减项）。
+   *
+   * @param portEnforcement 本轮口岸管制力（组合根注入；没有就给 {@link PortEnforcementInput#none()}）
+   */
+  static CurrencyValuation of(
+      FxRoundInput fx,
+      Map<String, Set<CurrencyId>> circulationByRegion,
+      PortEnforcementInput portEnforcement) {
     Objects.requireNonNull(fx, "CurrencyValuation.of 的 fx 不得为 null（没有就给 FxRoundInput.none()）");
     Objects.requireNonNull(circulationByRegion, "CurrencyValuation.of 的当地流通表不得为 null");
+    Objects.requireNonNull(
+        portEnforcement, "CurrencyValuation.of 的 portEnforcement 不得为 null（没有就给 none()）");
     Map<CurrencyId, Long> values = quotedValues(fx);
     Set<CurrencyId> quotedCurrencies = new LinkedHashSet<>(values.keySet());
-    return new CurrencyValuation(values, quotedCurrencies, circulationByRegion);
+    return new CurrencyValuation(values, quotedCurrencies, circulationByRegion, portEnforcement);
   }
 
   /**
@@ -234,7 +267,36 @@ final class CurrencyValuation {
    * @return {@code > 0} = 微 numeraire / 毫 currency；{@code 0} = 说不出价（调用方按不划算处理）
    */
   long valuationMicro(CurrencyId numeraire, CurrencyId currency, String regionId) {
-    return valuationMicro(numeraire, currency, recognises(regionId, currency));
+    long base = valuationMicro(numeraire, currency, recognises(regionId, currency));
+    if (base <= 0L) {
+      return base;
+    }
+    return applyPortEnforcement(base, regionId, currency);
+  }
+
+  /**
+   * ★★ <b>R2 减项（唯一拼写点）：口岸实际管制力压低家户对这种钱的估值</b>。
+   *
+   * <pre>
+   * V' = max(1, ⌊V × (1000 − enforcement) ÷ 1000⌋)      （微 numeraire / 毫 currency）
+   * enforcement = 该区该币种的实际管制力（‰；缺区/缺币 ⇒ 0）
+   * </pre>
+   *
+   * <p>★ <b>兑现用户 2026-10-08 原话</b>：「如果这个效率高，那么单个家户就更不倾向于用这种货币付款，因为如果付了要被抓」—— 管制力高 ⇒ 这种钱在这户眼里更不值钱 ⇒
+   * 卖方更不愿意收它（汇率判据自动跟着走）。<b>没有另写"家户不敢用"的逻辑</b>。
+   *
+   * <p>★ <b>逐值不变（I-P8）</b>：{@code enforcement = 0}（没有政策 / 没有政府限制）⇒ {@code V×1000÷1000 = V}，
+   * 整数下逐值相同（不是"近似不变"）；下界 1 与 {@link #valueMicro} 的 {@code max(1,…)} 同口径（说不出 0 价）。
+   */
+  private long applyPortEnforcement(long valueMicro, String regionId, CurrencyId currency) {
+    long enforcement = portEnforcement.currencyEnforcementPerMille(regionId, currency);
+    if (enforcement == 0L) {
+      return valueMicro;
+    }
+    // ★ 折扣上限 = 1000‰（管制力超过 1000‰ 时估值只剩下限 1；"比全没收还多"没有意义）。
+    long discount = Math.min(PER_MILLE, enforcement);
+    return Math.max(
+        1L, Math.floorDiv(Math.multiplyExact(valueMicro, PER_MILLE - discount), PER_MILLE));
   }
 
   /** ★★ 本币对自己 = 面值 1:1（{@link #FACE_VALUE_MICRO}）；★ 这是 R3「自然统一汇率」的锚。 */

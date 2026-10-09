@@ -366,6 +366,14 @@ public final class CatalogTool implements AgentTool {
                   + " 可绕过该预检（已记录的残余边界）。内外岗位互斥；家户在 Unit.households ⇒ 具名拒并指路"
                   + " unit.AssignGovPost。决策人窄工具 simos.gov.openPostsToMarket 直接提交、另走审批链）"),
           Map.entry(
+              "gov.SetPortPolicy",
+              "unitId(必填；GOV 单位 id 且带 GovernmentFormation),"
+                  + " commodityRestrictionPerMille?{商品→‰}, currencyRestrictionPerMille?{币种→‰}"
+                  + "（★ R2：两张表可缺省；缺省/显式空对象 = 空表 = 该类**不限制**（I-P1 用户「肯定0啊」）；"
+                  + "同类型重复设置 = **整表替换**；与既有政策逐值相同 ⇒ 幂等 no-op 不落 revision；"
+                  + "负强度/坏 JSON/未知单位 ⇒ 具名 Rejected 零 revision；★ GmOnly 标记只挡住令/RegisterEffect/"
+                  + "决策人 catalog 三条路径，不拦命令总线）"),
+          Map.entry(
               "gov.SetAdministrationPlan",
               "unitId(必填；GOV 单位 id), securityPlannedLaborMilli?, paperworkPlannedLaborMilli?,"
                   + " postTiers?[{tierId,securityWeightPerMille,paperworkWeightPerMille}](恰 3 档),"

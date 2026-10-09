@@ -769,6 +769,43 @@ public final class EconomySettlement {
       EnterpriseProfitBook.CycleAccumulator profitCycle,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Set<HouseholdId> marketExcludedHouseholds) {
+    // ★ R2 兼容：没有口岸面的旧入口 ⇒ PortEnforcementInput.none()（逐值退回改前行为）。
+    settleOneDayInto(
+        session,
+        day,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        famineMortalityPerMille,
+        ledger,
+        parallelism,
+        profitCycle,
+        composition,
+        marketExcludedHouseholds,
+        PortEnforcementInput.none());
+  }
+
+  /**
+   * ★★ <b>R2：带口岸实际管制力的日结算入口</b>（唯一生产者 = {@code EconomyDayStepper.step}，其值由 app 组合根注入）。
+   *
+   * <p>★ {@code portEnforcement} 只影响<b>市场轮</b>（{@code CurrencyValuation} 的家户外币估值减项），不改账户/冻结/税/预算语义；
+   * 缺省 {@link PortEnforcementInput#none()} ⇒ 逐值退回改前行为（I-P8）。
+   */
+  static void settleOneDayInto(
+      EconomySession session,
+      long day,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      int famineMortalityPerMille,
+      ProductionLedger.Accumulator ledger,
+      EconomyParallelism parallelism,
+      EnterpriseProfitBook.CycleAccumulator profitCycle,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
+      Set<HouseholdId> marketExcludedHouseholds,
+      PortEnforcementInput portEnforcement) {
+    Objects.requireNonNull(
+        portEnforcement, "portEnforcement（没有口岸面给 PortEnforcementInput.none()，不得为 null）");
     Objects.requireNonNull(session, "session（S1：revision 级会话持有可变工作表）");
     Objects.requireNonNull(accounts, "accounts（S1：账户会话是会话状态，必须由调用方载入）");
     Objects.requireNonNull(topology, "topology（M2.3：区域拓扑是只读输入；单格世界用 MarketTopology.singleHex）");
@@ -1755,7 +1792,9 @@ public final class EconomySettlement {
       GovernmentMarketMandatePlan govMandatePlan =
           GovernmentMarketMandatePlan.of(
               session.sheet().govMarketMandatesOrBase(), base.governments(), day);
-      marketRound = marketRound.withGovMandates(govMandatePlan);
+      // ★★ R2：口岸实际管制力随授权计划一起注入（各自逐字段带过 ⇒ 两个字段都在；withPortEnforcement 不覆盖 govMandates）。
+      marketRound =
+          marketRound.withGovMandates(govMandatePlan).withPortEnforcement(portEnforcement);
       if (fxInput.isActive() && TRACE.isDebugEnabled()) {
         EventLog.channel(TRACE)
             .debug(

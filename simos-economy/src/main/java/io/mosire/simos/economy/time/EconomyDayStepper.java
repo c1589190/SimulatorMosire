@@ -68,6 +68,14 @@ public final class EconomyDayStepper implements AutoCloseable {
    */
   private Set<HouseholdId> marketExcludedHouseholds = Set.of();
 
+  /**
+   * ★★ <b>R2：本轮口岸实际管制力</b>（app 组合根在推进前折算后注入；逐轮瞬态、只读投影、不进状态）。
+   *
+   * <p>★ 与 {@link #updateMarketExcludedHouseholds(Set)} / {@link #updateComposition(Map)}
+   * 同一条纪律：本类只持有 组合根给的<b>只读投影</b>，不落盘、不进变更集；缺省 {@link PortEnforcementInput#none()} ⇒ 逐值退回改前行为（I-P8）。
+   */
+  private PortEnforcementInput portEnforcement = PortEnforcementInput.none();
+
   /** ★★ R2：本会话的并行度（默认单线程退化路径；{@link #finish()} 关掉自建的池）。 */
   private final EconomyParallelism parallelism;
 
@@ -218,6 +226,24 @@ public final class EconomyDayStepper implements AutoCloseable {
     return marketExcludedHouseholds;
   }
 
+  /**
+   * ★★ <b>R2：替换本轮的口岸实际管制力</b>（app 组合根在推进前从"管辖政府的口岸政策 × 口岸效率 × 暴露边"折算后注入； 与 {@link
+   * #updateComposition(Map)} 同一条"只读投影、不进状态"的纪律）。
+   *
+   * <p>★ <b>时序（本批的冻结口径）</b>：gov 效率在<b>当日经济结算之后</b>才算（它要读当日结算后的家户劳动），而市场轮在 {@link #step(long)}
+   * <b>之内</b> ⇒ 本批注入的口岸管制作用于<b>下一次</b>市场轮（一 tick 滞后）。这与既有 {@code GovEfficiencyModifier} 的"逐 tick
+   * 注入、当场消费"同族；账本 §关键判断记了这条与理由。
+   */
+  public void updatePortEnforcement(PortEnforcementInput next) {
+    Objects.requireNonNull(next, "portEnforcement 不得为 null（没有口岸面就给 PortEnforcementInput.none()）");
+    this.portEnforcement = next;
+  }
+
+  /** ★ R2：本条会话当前的口岸实际管制力（只读；缺省 none）。 */
+  public PortEnforcementInput portEnforcement() {
+    return portEnforcement;
+  }
+
   /** ★★ <b>Z7c：最近一次 {@link #step(long)} 是否关账了至少一个产业周期</b>（只读；见字段注释）。默认 {@code false}。 */
   public boolean lastCycleClosed() {
     return lastCycleClosed;
@@ -356,7 +382,8 @@ public final class EconomyDayStepper implements AutoCloseable {
         parallelism,
         profitCycle,
         composition,
-        marketExcludedHouseholds);
+        marketExcludedHouseholds,
+        portEnforcement);
     OptionalLong closedAfter =
         session.sheet().meta().map(meta -> meta.lastClosedCycle()).orElseGet(OptionalLong::empty);
     this.lastCycleClosed = !closedBefore.equals(closedAfter);
