@@ -203,7 +203,7 @@ public final class RegionOperations {
       merged.addAll(source.hexes());
     }
     Map<RegionId, Region> next = new LinkedHashMap<>(base.regions());
-    next.put(target, targetRegion.withHexes(Set.copyOf(merged)));
+    next.put(target, targetRegion.withHexes(merged));
     for (RegionId sourceId : sources) {
       next.remove(sourceId);
     }
@@ -289,7 +289,7 @@ public final class RegionOperations {
             "map.SplitRegion 且 keepSource=true 时剩余为空；请用 keepSource=false 让源区域被 parts 取代");
       }
       Map<RegionId, Region> next = new LinkedHashMap<>(base.regions());
-      next.put(sourceId, source.withHexes(Set.copyOf(residual)));
+      next.put(sourceId, source.withHexes(residual));
       for (RegionPart part : parts) {
         next.put(part.id(), Region.of(part.id(), part.name(), part.hexes(), part.meta()));
       }
@@ -410,12 +410,12 @@ public final class RegionOperations {
                 + " 会被 map.ReassignHexes 划空；请改用 map.MergeRegions / map.SplitRegion / map.DeleteRegion");
       }
       if (remaining.size() != source.hexes().size()) {
-        next.put(sourceId, source.withHexes(Set.copyOf(remaining)));
+        next.put(sourceId, source.withHexes(remaining));
       }
     }
     LinkedHashSet<HexCoord> targetHexes = new LinkedHashSet<>(targetRegion.hexes());
     targetHexes.addAll(hexes);
-    next.put(target, targetRegion.withHexes(Set.copyOf(targetHexes)));
+    next.put(target, targetRegion.withHexes(targetHexes));
     EventLog.channel(LOG)
         .info(
             LogEvent.of(
@@ -448,7 +448,8 @@ public final class RegionOperations {
   /**
    * 一个拆分出去的新区域（{@code map.SplitRegion} 的 part 形状）。
    *
-   * <p>构造期冻结 hexes（保序 {@link LinkedHashSet} + 不可变包装），与 {@link Region} 的落盘序口径一致。
+   * <p>构造期冻结 hexes（保序 {@link LinkedHashSet} + 不可变包装）：本类型的迭代序 = **载荷数组序**（输入字节的纯函数），
+   * 只影响校验报错次序与命令目标清单的次序。**落盘序不由它决定**——进 {@link Region} 后一律被规范化成自然序（见 {@link Region} 的类注）。
    */
   public record RegionPart(RegionId id, String name, Set<HexCoord> hexes, RegionMeta meta) {
 

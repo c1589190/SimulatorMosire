@@ -22,10 +22,10 @@ import java.util.Set;
  * <p>★ **每条环不重复首顶点**（存 6 个点，不是 7 个）：GSimulator 的注释写"closed polygon (first == last)"，那是渲染侧的 canvas
  * 约定；此处存的是**闭环的顶点序**，消费端要闭合只需在末尾补回首顶点。**这是一处有意的形态偏离**，改用它对表时别以为丢了东西。
  *
- * <p>★ **规范性**：{@link #of} 的结果必须**只由集合内容决定**，与入参 Set 的迭代序无关。 {@code Region.hexes} 是 {@code
- * Set.copyOf}（不保序），而 {@code Region.equals} 逐组件比较 —— 若本类型顺着迭代序走，两个内容相同的 Region 会得到不同的 {@code
- * boundary}，于是 {@code equals} 为假，**而它们本该相等**。规范化全部落在紧凑构造器里（幂等）：先按 {@link HexVertex#compareTo}
- * 定序，再定环的起点与绕行方向，二者都取规范值。
+ * <p>★ **规范性**：{@link #of} 的结果必须**只由集合内容决定**，与入参 Set 的迭代序无关。 {@code Region.hexes} 虽是
+ * 内容派生的规范序（自然序），本方法的入参却是**任意** {@code Set} —— {@code TerrainBlock.of}、反序列化、测试都直接 调它 —— 而 {@code
+ * Region.equals} 逐组件比较：若本类型顺着入参迭代序走，两个内容相同的集合就会得到不同的 {@code boundary}，于是 {@code equals}
+ * 为假，**而它们本该相等**。规范化全部落在紧凑构造器里（幂等）：先按 {@link HexVertex#compareTo} 定序，再定环的起点与绕行方向，二者都取规范值。
  *
  * @param rings 每一条闭环。外环 + 可能的内环（洞），**环表本身也按规范序**（各自的首顶点字典序）。
  */

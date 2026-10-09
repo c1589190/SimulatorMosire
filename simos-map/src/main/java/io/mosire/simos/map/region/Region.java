@@ -1,6 +1,11 @@
 package io.mosire.simos.map.region;
 
 import io.mosire.simos.map.hex.HexCoord;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -11,9 +16,21 @@ import java.util.Set;
  *
  * <p>★ GSimulator 的 {@code Province} 既无 name 字段（名字是 map 的键）也无边界字段，此处都补上。
  *
- * <p>★ {@code hexes} 用 {@link Set#copyOf}（**不保序**）是有意的：它是**集合语义**，迭代序不该被依赖。需要保序的只有 {@code
- * TerrainCatalog}（落盘的是它），两处的理由不同，**不要统一**。这条在 U2 之后多了一层后果：{@code Region.equals} 逐组件比较，故 {@link
- * RegionBoundary#of} 必须是 {@code hexes} 的**纯函数**（与迭代序无关），否则内容相同的两个 Region 会不相等。
+ * <p>★★ <b>{@code hexes} 的迭代序 = 内容的纯函数（自然序：q 升、r 升）</b>，由紧凑构造器冻结成 {@link LinkedHashSet} + {@link
+ * Collections#unmodifiableSet} —— <b>不用 {@link Set#copyOf}</b>：后者的槽位取自 JVM
+ * 启动盐，同一份内容在不同进程里迭代序可以不同。形制与 {@link io.mosire.simos.map.block.TerrainBlock} 一致（两处都是"hex 集合 + 同一个
+ * {@link RegionBoundary} 组件"）。
+ *
+ * <p>★ <b>为什么非要有这一条</b>：{@code MapCodec} 把这个 {@code Set} 序列化成 <b>JSON 数组</b> ⇒
+ * <b>迭代序直接进落盘字节</b>（快照、变更集、checkpoint 信封）。散列槽位序会让"同一状态 ⇒ 同一份字节"跨进程不成立。 旧注写"不保序是有意的…需要保序的只有 {@code
+ * TerrainCatalog}"——那句的前提（"本字段的序不进字节"）与事实相反， <b>本轮（2026-10-10 map 序确定性批）更正</b>。
+ *
+ * <p>★ <b>集合语义一字未动</b>：对外仍是 {@code Set}，{@code contains} 与 {@code equals}（逐元素判等、与序无关） 照旧，代码逻辑依然
+ * <b>不得依赖迭代序</b>——"迭代序不该被依赖"约束的是读者，"迭代序必须唯一"约束的是字节，两者不矛盾。 {@code TerrainCatalog} 的序是
+ * <b>声明序</b>（语义），与此处的 <b>内容派生序</b> 不是一回事，<b>两处仍然不要统一</b>。
+ *
+ * <p>★ 这条在 U2 之后多了一层后果：{@code Region.equals} 逐组件比较，故 {@link RegionBoundary#of} 必须是 {@code hexes} 的
+ * <b>纯函数</b>（与迭代序无关），否则内容相同的两个 Region 会不相等。
  */
 public record Region(
     RegionId id, String name, Set<HexCoord> hexes, RegionBoundary boundary, RegionMeta meta) {
@@ -25,7 +42,10 @@ public record Region(
     if (name == null || name.isBlank()) {
       throw new IllegalArgumentException("name 不得为空白");
     }
-    hexes = Set.copyOf(hexes);
+    // ★ 自然序 + LinkedHashSet：迭代序（因而落盘字节）只由集合内容决定，跨 JVM 稳（与 TerrainBlock 同形制）。
+    List<HexCoord> sorted = new ArrayList<>(hexes);
+    sorted.sort(Comparator.naturalOrder());
+    hexes = Collections.unmodifiableSet(new LinkedHashSet<>(sorted));
     if (boundary == null) {
       throw new IllegalArgumentException("boundary 不得为 null");
     }
