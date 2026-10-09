@@ -494,8 +494,9 @@ effectivePositionIds()       = current ∪ participating（规范化结果）
 
 - 触碰**铁律 5 的护栏面**（方向是**删**）：`EconomyCodec`、`EconomyChangeSet`（`:166/:293`）、
   **往返不变式测试**、（若读数要保留）`MarketReport`；
-- **旧档含该键** ⇒ 需要一条兼容口径：**读入时忽略该键、不迁移**（运力是派生量，没有可迁移的"存量"）；
-  控制方建议照"缺键 ⇒ 中性值"的既有惯例反向写：**有键 ⇒ 忽略并具名记一条 INFO**；
+- ★★ **旧档不兼容**（AGENTS §一.11，用户 2026-10-10 裁定："旧设计和数据类型直接重建不用留，删就删了"）：
+  **不写**"忽略旧键 / 归一 / 兼容位 / 具名 INFO"这类代码 —— 该组件**直接删**，旧档按**重建**处理
+  （重新播种 / 跑新世界）。★ 注意与"未设 ⇒ 逐值不变"区分：后者是**缺省语义中性**，仍然有效（§一.11 的表）。
 - **8 处读者要迁**（实测 `src/main`）：`MerchantSettlement`（结算与承运选择）、`MarketSettlement`（`CARRIER_FEE`/承运选择）、
   `ExpectedProfitBook`（迁移前瞻里读商号运力）、`ModeMigrationPolicy.hasMerchantCapacityAt`、
   `ModeMigrationSettlement`（退役删除点）、`EconomySettlement`、`EconomyStateBuilder`、`EconomyClearRegionHandler`；
@@ -510,7 +511,7 @@ effectivePositionIds()       = current ∪ participating（规范化结果）
 | **J-1** | `tier`（脚夫/个体户/老板）退役后还要不要？ | **降为派生读数**（按运力规模分档，仅用于日志/读口） |
 | **J-2** | `serviceRadiusHex` 怎么派生？ | 由**规模**（运力 + 本钱 + 雇工）派生（§4.4 原口径不变） |
 | **J-3** | 每轮算出的利润读数放哪？ | 进**报告/日志**（不落状态）；要落盘则另开一批并走铁律 5 |
-| **J-4** | 旧档 `merchantFirms` 键的处置 | **忽略 + 具名 INFO**；不迁移、不报错 |
+| **J-4** | 旧档 `merchantFirms` 键的处置 | ★ **已作废**（AGENTS §一.11）：**不兼容** —— 组件**直接删**、旧档**重建**；不写忽略/归一代码 |
 
 ---
 
