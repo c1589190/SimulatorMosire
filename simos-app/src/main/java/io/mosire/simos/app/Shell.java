@@ -658,8 +658,10 @@ public final class Shell implements AutoCloseable {
                 //   的最小前置命令面（否则"买持铜/卖只收银"的多计价币世界造不出来），也是 B2「市场区法定币」要面对的那一维。
                 //   只写 markets 一格；**不折算**任何余额与价格（世界无汇率）。──
                 new EconomySetMarketNumeraireHandler(),
-                // ── economy（F 批 2026-10-09；约束设计书 §4.1「甲方案」）：GM 设置某商品的**全局运费系数**（‰，
-                //   乘在整条运费上；缺键 ⇒ 1000 = 现状）。★ GM-only（标 GmOnlyCommand）⇒ 排除出令白名单 /
+                // ── economy（2026-10-09 用户裁定「甲」后的纠正版；约束设计书 §4.1 修正版）：GM 设置某商品的**基础运费**
+                //   （毫计价货币 / 商品单位 / 程；载荷字段 baseMilli，值域 ≥ 0）。★ 商品维管**整条单位运费**
+                //   （`freightUnitMilli` 的唯一算式），不再是费率乘数；缺键 ⇒ 现行硬编码分档（粮1/纤维1/布2/工具3）
+                //   = 未设表的世界逐值不变。★ GM-only（标 GmOnlyCommand）⇒ 排除出令白名单 /
                 //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
                 //   simos.economy.setCommodityFreight 照常可用。★ 不实现 CommandTargets（不进决策令桶，
                 //   与 SetMarketPrice/SetMarketNumeraire 同款）。──

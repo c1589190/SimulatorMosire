@@ -81,14 +81,15 @@ public enum EconomyLogSource implements LogOrigin {
   ECONOMY_MARKET_ZONE(
       "economy-market-zone", "市场区持久状态与命令面：区定义/逐格改划/合并/区内官方汇率覆盖及其具名拒（命令面）", LogOriginKind.SYSTEM),
   /**
-   * ★★ <b>F 批（2026-10-09）：全局商品运费系数表</b>（约束设计书 §4.1「甲方案」）—— GM 设置某商品的运费系数 （命令面：设置成功 INFO
-   * 带旧值/新值/原因；三条具名拒 INFO + DEBUG 原因）、以及载入边界对该表值域（{@code > 0}）的契约违约 ERROR。
+   * ★★ <b>商品基础运费表</b>（约束设计书 §4.1 修正版；2026-10-09 用户裁定「甲」后的纠正）—— GM 设置某商品的基础运费 （命令面：设置成功 INFO
+   * 带旧值/新值/原因；三条具名拒 INFO + DEBUG 原因）、载入边界对该表值域（{@code ≥ 0}）的契约违约 ERROR、以及旧档里已撤销的 {@code
+   * commodityFreightPerMille} 组件被摘掉时的 INFO。
    *
    * <p>★ 命令面事件全部是 {@code SYSTEM}（方法签名无 day 上下文）；契约违约不降级（用户 2026-10-23 裁定：跨切片一致性故障 = ERROR）。
    */
   ECONOMY_COMMODITY_FREIGHT(
       "economy-commodity-freight",
-      "全局商品运费系数表：GM 设置商品运费系数及其具名拒（命令面）+ 载入边界值域契约违约",
+      "商品基础运费表：GM 设置商品基础运费及其具名拒（命令面）+ 载入边界值域契约违约 + 旧档撤销维摘除",
       LogOriginKind.SYSTEM);
 
   private final String id;

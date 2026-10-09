@@ -689,7 +689,7 @@ class McpCoverageTest {
     // ★ F（2026-10-09）：商品运费系数表（GM-only；夹具世界词表里有 grain ⇒ 形状合法 ⇒ 真提交成功）。
     MINIMAL_PAYLOADS.put(
         "economy.SetCommodityFreight",
-        "{\"commodityId\":\"grain\",\"perMille\":1500,\"reason\":\"coverage\"}");
+        "{\"commodityId\":\"grain\",\"baseMilli\":2,\"reason\":\"coverage\"}");
     MINIMAL_PAYLOADS.put(
         "economy.AddDemand",
         "{\"id\":\"demand-coverage\",\"scope\":\"HEX\",\"hex\":{\"q\":1,\"r\":2},"

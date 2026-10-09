@@ -396,9 +396,9 @@ public final class EconomyStateBuilder {
         //   本方法构造 EconomyData 时由 DebtReferenceReconciler 按（可能已被本会话改过的）债务工作表**整表重建**。
         //   改前这里也没有引用表（当时引用住在每一行里、由相同的对账重建）⇒ 语义逐条不变。
         base.householdDebtRefs(),
-        // ★★ F 批（2026-10-09 第 38 个组件）：商品运费系数表不参与日结算写回（写入口只有 GM 命令）
-        //   ⇒ 原样带过 base 的表。★ 漏了它 = **任意一次 advance 都会把 GM 设过的运费系数静默抹掉**
+        // ★★ 第 38 个组件（商品基础运费表）：它不参与日结算写回（写入口只有 GM 命令）
+        //   ⇒ 原样带过 base 的表。★ 漏了它 = **任意一次 advance 都会把 GM 设过的基础运费静默抹掉**
         //   （账面上看不出是谁弄丢的，那正是本批要防的那类静默丢字段）。
-        base.commodityFreightPerMille());
+        base.commodityFreightBaseMilli());
   }
 }

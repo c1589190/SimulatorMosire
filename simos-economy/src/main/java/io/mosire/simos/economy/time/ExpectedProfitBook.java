@@ -1255,9 +1255,9 @@ public final class ExpectedProfitBook {
   /**
    * ★ 本格所在区到邻接区的最大路线费率（‰）；退化拓扑/无邻区 ⇒ 0。
    *
-   * <p>★★ <b>F 批（2026-10-09）：商品维怎么处置</b>——商号收入估算手上没有"具体运哪种商品"（外部需求是逐商品汇总的）， 而商品系数乘在整条费率上 ⇒
-   * 本处取<b>全表最大有效系数</b>（{@link MarketTopology#maxCommodityFreightPerMille()}，缺键的 1000 也参与取最大）
-   * 作为<b>不低估</b>的上界。★ 空表 ⇒ 恒 1000 ⇒ 与本批改动前逐值相同。
+   * <p>★ <b>商品维不参与这个上界</b>（2026-10-09 纠正）：费率只由距离/辐射/道路/城乡决定；商品差异是<b>面值维</b> （基础费，{@code
+   * MarketSettlement.freightUnitMilli}），不是费率的乘数 —— 所以这里回到与本批改动前逐字相同的形状 （F
+   * 批曾在这里取"全表最大系数"作为费率放大，那条路已撤销）。
    */
   private static long maxAdjacentLaneRate(MarketTopology topology, HexCoord hex) {
     if (topology == null || !topology.regional()) {
@@ -1267,15 +1267,12 @@ public final class ExpectedProfitBook {
     if (home == null) {
       return 0L;
     }
-    long maxCoefficient = topology.maxCommodityFreightPerMille();
     long max = 0L;
     for (MarketRegion other : topology.regions()) {
       if (!topology.adjacent(home, other)) {
         continue;
       }
-      max =
-          Math.max(
-              max, topology.freightPerMilleBetween(home.anchor(), other.anchor(), maxCoefficient));
+      max = Math.max(max, topology.freightPerMilleBetween(home.anchor(), other.anchor()));
     }
     return max;
   }

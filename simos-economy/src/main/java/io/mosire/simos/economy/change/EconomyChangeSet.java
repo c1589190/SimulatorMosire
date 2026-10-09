@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.change;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
@@ -119,6 +120,19 @@ import java.util.function.Function;
  * {@link ProductionRules}（**深层**带一个 sealed 多态类型 {@code Payee} ⇒ 它的 线格式由类型上的 Jackson
  * 注解把守，见那个接口的类注；此处无须有任何分支）。
  */
+// ★★ 退役组件的**具名**兼容（2026-10-09 纠正批）：F 批（f3366545）的组件 {@code commodityFreightPerMille}
+//   （商品运费**系数**，乘在整条费率上）已随用户裁定「甲」撤销；本类型现在叫
+//   {@code commodityFreightBaseMilli}（商品**基础运费**表）。
+//   ★ 为什么必须是**类型级**注解、而不是只在 codec 里摘键：**重放走的是 Core 的第四台 mapper**
+//   （{@code Timeline.readChangeSet} → CHANGESET_MAPPER，见
+// simos-core/timeline/Timeline.java:115），它不经过
+//   EconomyCodec 的整形层 ⇒ 只在 codec 里摘键的话，"打开自己刚写的档"会在重放路径上当场死在
+//   UnrecognizedPropertyException（本批探针实测复现：新码读 F 批写的 store 时 readChangeSet 抛）。
+//   类型级注解对四台 mapper 一致生效，且**只忽略这一个名字**：{@code @JsonIgnoreProperties} 不等于
+//   {@code ignoreUnknown=true}，其余未知字段照旧 fail-closed（漂移信号不丢）。
+//   ★ 被忽略 ⇒ 该组件读成 {@code Unchanged} ⇒ apply 保留 base 的表：旧 revision 行里的那一维**整体作废**，
+//   基础费回落到现行硬编码分档（与 EconomyCodec 的具名摘除+INFO 同一条语义）。
+@JsonIgnoreProperties("commodityFreightPerMille")
 public record EconomyChangeSet(
     FieldDelta<EconomyMeta> meta,
     FieldDelta<Industry> industries,
@@ -160,12 +174,12 @@ public record EconomyChangeSet(
     //   键 = HouseholdDebtReference（家户@合同）的规范串，值 = 标记位 TRUE。★ 拆表的目的就是让这里每天只出现
     //   **真正变化的引用对**（改前那 3.7KB/户的引用列表是随 classes 的整行 Upsert 一起被重写的）。
     FieldDelta<Boolean> householdDebtRefs,
-    // ── F 批（2026-10-09）商品运费系数表（与 EconomyData 的第 38 个组件一一对应，铁律 5）──────────────
-    //   键 = CommodityId 的裸值（toString），值 = 该商品的系数（‰）。★★ 值类型是 **Long 而不是 Map**：
-    //   表本身就住在 EconomyData 里，这里只需逐商品的 Upsert ⇒ 线格式的键仍是 String（HouseholdDebtReference 同款），
-    //   于是**第四台 mapper（Timeline.readChangeSet）不需要任何 CommodityId 键反序列化器**就能读回重放
-    //   （debts/issuingGov 两次的教训：类型侧注解缺一不可，而"根本不引入领域键类型"比"补注册"更稳）。
-    FieldDelta<Long> commodityFreightPerMille)
+    // ── 第 38 个组件：商品**基础运费**表（与 EconomyData 的第 38 个组件一一对应，铁律 5）──────────────
+    //   键 = CommodityId 的裸值（toString），值 = 该商品的**基础运费**（毫计价货币/商品单位/程，值域 ≥ 0）。
+    //   ★★ 值类型是 **Long 而不是 Map**：表本身就住在 EconomyData 里，这里只需逐商品的 Upsert ⇒ 线格式的键仍是 String
+    //   （HouseholdDebtReference 同款），于是**第四台 mapper（Timeline.readChangeSet）不需要任何 CommodityId 键
+    //   反序列化器**就能读回重放（debts/issuingGov 两次的教训：类型侧注解缺一不可，而"根本不引入领域键类型"比"补注册"更稳）。
+    FieldDelta<Long> commodityFreightBaseMilli)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -302,10 +316,10 @@ public record EconomyChangeSet(
     if (householdDebtRefs == null) {
       householdDebtRefs = new FieldDelta.Unchanged<>();
     }
-    // ★★ F 批第 38 个组件（商品运费系数表）：旧变更集没提该组件，就是没动它
+    // ★★ 第 38 个组件（商品基础运费表）：旧变更集没提该组件，就是没动它
     //   （旧档读到 null ⇒ Unchanged；旧世界表为空 ⇒ 运费逐值不变）。
-    if (commodityFreightPerMille == null) {
-      commodityFreightPerMille = new FieldDelta.Unchanged<>();
+    if (commodityFreightBaseMilli == null) {
+      commodityFreightBaseMilli = new FieldDelta.Unchanged<>();
     }
   }
 
@@ -349,8 +363,8 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.moneyInstruments(), target.moneyInstruments()),
         FieldDelta.diff(base.marketZones(), target.marketZones()),
         FieldDelta.diff(base.householdDebtRefs(), target.householdDebtRefs()),
-        // ★★ F 批：商品运费系数表（键 = CommodityId 裸值；值 = 系数）。
-        FieldDelta.diff(base.commodityFreightPerMille(), target.commodityFreightPerMille()));
+        // ★★ 第 38 个组件：商品基础运费表（键 = CommodityId 裸值；值 = 基础运费，毫/单位/程）。
+        FieldDelta.diff(base.commodityFreightBaseMilli(), target.commodityFreightBaseMilli()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -411,9 +425,9 @@ public record EconomyChangeSet(
         // ★★ 2026-10-09 选项 A：引用表的键解析器 = HouseholdDebtReference::parse（与 toString 互逆）。
         FieldDelta.rebuild(
             base.householdDebtRefs(), cs.householdDebtRefs(), HouseholdDebtReference::parse),
-        // ★★ F 批：商品运费系数表（键解析器 = CommodityId::parse，与 toString 互逆；值 = Long 直读）。
+        // ★★ 第 38 个组件：商品基础运费表（键解析器 = CommodityId::parse，与 toString 互逆；值 = Long 直读）。
         FieldDelta.rebuild(
-            base.commodityFreightPerMille(), cs.commodityFreightPerMille(), CommodityId::parse));
+            base.commodityFreightBaseMilli(), cs.commodityFreightBaseMilli(), CommodityId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -453,7 +467,7 @@ public record EconomyChangeSet(
         || moneyInstruments.changed()
         || marketZones.changed()
         || householdDebtRefs.changed()
-        || commodityFreightPerMille.changed());
+        || commodityFreightBaseMilli.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

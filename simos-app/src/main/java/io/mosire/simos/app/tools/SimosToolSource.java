@@ -779,7 +779,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new EconomyDefineMarketZoneTool(core, initiator, mapId));
     built.add(new EconomyReassignZoneHexesTool(core, initiator, mapId));
     built.add(new EconomyMergeMarketZonesTool(core, initiator, mapId));
-    // ★★ F 批（2026-10-09；约束设计书 §4.1「甲方案」）：全局商品运费系数的 GM 窄写（economy.SetCommodityFreight 的
+    // ★★ 商品基础运费表的 GM 窄写（2026-10-09 裁定「甲」后的纠正版；economy.SetCommodityFreight 的
     //   薄封装：payloadJson + branch + expectedRevision）。**只在 GM 桶**：决策人桶没有它，
     //   DecisionCallerFactory.WHITELIST 也不含；命令本身标了 GmOnlyCommand ⇒ 令 / RegisterEffect /
     //   决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；

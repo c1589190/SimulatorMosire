@@ -1,5 +1,6 @@
 package io.mosire.simos.economy;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
@@ -50,6 +51,7 @@ import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassStructure;
+import io.mosire.simos.economy.model.CommodityFreightBase;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -76,7 +78,6 @@ import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
-import io.mosire.simos.economy.model.TransportTariff;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -254,14 +255,17 @@ import java.util.Set;
  * 只落盘<b>真正变化的引用对</b>（现实中每天最多几对）。 ★ 对账/守卫的语义逐条不变（见 {@code
  * DebtReferenceReconciler}）：合同表是权威、引用表被重建、悬空引用仍然具名抛。
  *
- * <p>★★ <b>F 批（2026-10-09）追加第 38 个组件 {@code commodityFreightPerMille}</b>（约束设计书 §4.1「甲方案」；用户 §1.4
- * 原话「肯定甲啊」）：键 = {@link CommodityId}，值 = 该商品的<b>运费系数（‰）</b>，<b>乘在整条运费上</b> （唯一算式 {@code
- * TransportTariff.perMille} 的第 6 个入参）。 ★ <b>缺键 ⇒ 1000</b> （{@link
- * io.mosire.simos.economy.model.TransportTariff#DEFAULT_COMMODITY_FREIGHT_PER_MILLE} ＝"现状、逐值不变"，不变量
- * I-F1；读取一律走 {@link #commodityFreightPerMilleOf(CommodityId)}）。 ★ <b>值域 &gt; 0</b>：{@code 0}/负在
- * compact 构造器里具名判死（"免费运输"不是"说不出价"）；★ 键域（必须是词表里的商品）在 GM 命令边界判（见 {@code
- * economy.SetCommodityFreight}），状态层不反查词表 —— 于是旧档/夹具能带任意商品键而不炸。 ★ <b>空表 = 旧世界形态</b>：旧档缺该键 ⇒ 空表 ⇒
- * 每个商品都取缺键值 1000 ⇒ 既有世界（{@code small-world}/{@code corridor}/ {@code three-powers}）逐值不变。
+ * <p>★★ <b>第 38 个组件 {@code commodityFreightBaseMilli}</b>（2026-10-09 用户裁定「甲」后的<b>纠正版</b>；约束设计书 §4.1
+ * 修正版）：键 = {@link CommodityId}，值 = 该商品的<b>基础运费</b>（毫计价货币 / 商品单位 / <b>程</b>）—— <b>与商品价格无关</b>，
+ * 只由商品种类决定（用户 2026-10-09 原话口径「运费只和商品种类有关」）。 ★ <b>值域 ≥ 0</b>：{@code 0} 是<b>明确的</b>"该商品免基础费" （单位运费仍被
+ * {@code max(1, …)} 抬到 1 毫），负值在 compact 构造器里具名判死。 ★ <b>缺键 ⇒ 取具名缺省</b> = {@link
+ * CommodityFreightBase#legacyMilli(CommodityId)}（= 现行硬编码分档：粮 1 / 纤维 1 / 布 2 / 工具 3；未登记商品 ⇒ 1）；读取一律走
+ * {@link #commodityFreightBaseMilliOf(CommodityId)}，唯一算式在 {@code
+ * MarketSettlement.freightUnitMilli}。 ★ <b>空表 = 旧世界形态</b>：旧档缺该组件键 ⇒ 空表 ⇒ 每个商品都落到现行硬编码分档 ⇒
+ * 既有世界（{@code small-world}/{@code corridor}/{@code three-powers}）<b>逐值不变</b>（不变量 I-F1）。 ★
+ * <b>键域</b>（必须是词表里的商品）在 GM 命令边界判（见 {@code economy.SetCommodityFreight}），状态层不反查词表 ——
+ * 于是旧档/夹具能带任意商品键而不炸。 ★ 历史留痕：F 批（{@code f3366545}）曾用同一个组件名装"运费<b>系数</b>（‰，乘在整条费率上）"， 那是被撤销的方向（费率乘数维
+ * + 面值维 = 两个商品维相乘）；本组件现在是<b>面值维的唯一权威</b>。
  */
 // ★ 豁免 EI_EXPOSE_REP（R4a，canonical verify 实测 28 条）：本 record 的每张表都在 compact 构造器里逐键复制 +
 //   Collections.unmodifiableMap（见下方各 *Copy 段），访问器返回的是冻结副本、调用方改不动。SpotBugs 对
@@ -272,6 +276,19 @@ import java.util.Set;
         "全部 Map 组件（含 P4a periodicAdjustments、Z1 的 outputQuantityOverrides/productionEfficiency 与"
             + " 2026-10-09 选项 A 的 householdDebtRefs）均在 compact 构造器内逐键复制并"
             + " Collections.unmodifiableMap；访问器返回冻结副本")
+// ★★ 退役组件的**具名**兼容（2026-10-09 纠正批）：F 批（f3366545）的组件 {@code commodityFreightPerMille}
+//   （商品运费**系数**，乘在整条费率上）已随用户裁定「甲」撤销；本类型现在叫
+//   {@code commodityFreightBaseMilli}（商品**基础运费**表）。
+//   ★ 为什么必须是**类型级**注解、而不是只在 codec 里摘键：**重放走的是 Core 的第四台 mapper**
+//   （{@code Timeline.readChangeSet} → CHANGESET_MAPPER，见
+// simos-core/timeline/Timeline.java:115），它不经过
+//   EconomyCodec 的整形层 ⇒ 只在 codec 里摘键的话，"打开自己刚写的档"会在重放路径上当场死在
+//   UnrecognizedPropertyException（本批探针实测复现：新码读 F 批写的 store 时 readChangeSet 抛）。
+//   类型级注解对四台 mapper 一致生效，且**只忽略这一个名字**：{@code @JsonIgnoreProperties} 不等于
+//   {@code ignoreUnknown=true}，其余未知字段照旧 fail-closed（漂移信号不丢）。
+//   ★ 被忽略 ⇒ 该组件读成 {@code Unchanged} ⇒ apply 保留 base 的表：旧 revision 行里的那一维**整体作废**，
+//   基础费回落到现行硬编码分档（与 EconomyCodec 的具名摘除+INFO 同一条语义）。
+@JsonIgnoreProperties("commodityFreightPerMille")
 public record EconomyData(
     Optional<EconomyMeta> meta,
     Map<IndustryId, Industry> industries,
@@ -317,11 +334,13 @@ public record EconomyData(
     //     逐值等于改前 HouseholdEconomy.debts 的逐行重建结果（旧世界逐值不变）。
     //   ★ 它**不是**第二本债务账：合同表 debtContracts 是唯一权威，本表只是"该户是某合同的债务人"的派生索引。
     Map<HouseholdDebtReference, Boolean> householdDebtRefs,
-    // ── F 批（2026-10-09）商品运费系数表（第 38 个组件；约束设计书 §4.1「甲方案」）──────────────────
-    //   键 = CommodityId，值 = 该商品的运费系数（‰），**乘在整条运费上**（TransportTariff.perMille 第 6 个入参）。
-    //   ★ 缺键 ⇒ 1000 = 现状、逐值不变（I-F1）；★ 值域 > 0（0/负 ⇒ 构造期具名抛）；
-    //   ★ 空表 = 旧世界形态（旧档缺该组件键 ⇒ 归一成空表，见 compact 构造器）。
-    Map<CommodityId, Long> commodityFreightPerMille) {
+    // ── 第 38 个组件（2026-10-09 纠正版）：商品**基础运费**表（约束设计书 §4.1 修正版）────────────────────
+    //   键 = CommodityId，值 = 该商品的基础运费（毫计价货币 / 商品单位 / 程）—— 与商品价格无关。
+    //   ★ 缺键 ⇒ 具名缺省 CommodityFreightBase.legacyMilli（现行硬编码分档：粮1/纤维1/布2/工具3；未登记 ⇒ 1）
+    //     ⇒ 空表（旧档缺键 / 新世界创世 / 夹具）= 现行行为，逐值不变（I-F1）。
+    //   ★ 值域 ≥ 0（0 = 明确的"该商品免基础费"；负值 ⇒ 构造期具名抛）；
+    //   ★ 商品维**只**活在这一处：TransportTariff 已回到纯距离/辐射/道路/城乡维（不许两个商品维）。
+    Map<CommodityId, Long> commodityFreightBaseMilli) {
 
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
   public static final long MAX_OUTPUT_QUANTITY = 1_000_000L;
@@ -337,24 +356,25 @@ public record EconomyData(
       "outputQuantityOverrides 契约违约：";
 
   /**
-   * ★★ <b>F 批（2026-10-09）：{@code commodityFreightPerMille} 构造期违约的稳定前缀</b>（约束设计书 §4.1）。
+   * ★★ <b>{@code commodityFreightBaseMilli} 构造期违约的稳定前缀</b>（约束设计书 §4.1 修正版）。
    *
-   * <p>该组件的值域守卫（{@code > 0}）在 {@link #EconomyData} 构造期内 fail-closed；留给 {@code EconomyCodec} 按本前缀把
+   * <p>该组件的值域守卫（{@code ≥ 0}）在 {@link #EconomyData} 构造期内 fail-closed；留给 {@code EconomyCodec} 按本前缀把
    * Jackson 包装后的原因识别成可读的契约违约（与 Z1 的 {@link #OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX}
    * 同款：跨类契约、不能改成自由文案）。
    */
-  public static final String COMMODITY_FREIGHT_CONTRACT_PREFIX = "commodityFreightPerMille 契约违约：";
+  public static final String COMMODITY_FREIGHT_CONTRACT_PREFIX = "commodityFreightBaseMilli 契约违约：";
 
   /**
-   * ★★ <b>F 批：某个商品的运费系数（‰）—— "缺键 ⇒ 1000" 的读取唯一拼写点</b>（不变量 I-F1）。
+   * ★★ <b>某个商品的<b>基础运费</b>（毫计价货币 / 商品单位 / 程）—— "缺键 ⇒ 具名缺省" 的读取唯一拼写点</b>。
    *
-   * <p>未设过该商品 ⇒ {@link TransportTariff#DEFAULT_COMMODITY_FREIGHT_PER_MILLE}（= 1000 ⇒ 整条运费逐值不变）。 ★
-   * 表里存的永远是**已设过**的值（命令层拒绝"与现值逐字相同" ⇒ 表里不会出现等于 1000 的冗余行；但夹具/旧档若真带了 1000， 读出来也是 1000，语义等价）。
+   * <p>表里有该商品的键 ⇒ <b>状态值唯一权威</b>（GM 设过就照它，{@code 0} = 免基础费）；表里没有 ⇒ {@link
+   * CommodityFreightBase#legacyMilli(CommodityId)}（= 现行硬编码分档：粮 1 / 纤维 1 / 布 2 / 工具 3；未登记商品 ⇒ 1） ⇒
+   * <b>未设表的世界逐值等于改动前</b>（I-F1）。★ 表里不会有"等于现行缺省"的冗余行（命令层拒绝"与现值逐字相同"）。
    */
-  public long commodityFreightPerMilleOf(CommodityId commodity) {
+  public long commodityFreightBaseMilliOf(CommodityId commodity) {
     Objects.requireNonNull(commodity, "commodity");
-    Long configured = commodityFreightPerMille.get(commodity);
-    return configured == null ? TransportTariff.DEFAULT_COMMODITY_FREIGHT_PER_MILLE : configured;
+    Long configured = commodityFreightBaseMilli.get(commodity);
+    return configured == null ? CommodityFreightBase.legacyMilli(commodity) : configured;
   }
 
   /**
@@ -715,10 +735,11 @@ public record EconomyData(
     if (householdDebtRefs == null) {
       householdDebtRefs = Map.of();
     }
-    // ★★ F 批第 38 个组件（商品运费系数表）：旧档缺键 ⇒ 空表 —— 空表**不是**"运费为 0"，而是"这个档还没设过运费系数"：
-    //    缺键一律取 1000（= 现状、逐值不变，I-F1），见 commodityFreightPerMilleOf。
-    if (commodityFreightPerMille == null) {
-      commodityFreightPerMille = Map.of();
+    // ★★ 第 38 个组件（商品基础运费表）：旧档缺键 ⇒ 空表 —— 空表**不是**"运费为 0"，而是"这个档还没设过基础费"：
+    //    缺键一律落到 CommodityFreightBase.legacyMilli（= 现行硬编码分档：粮1/纤维1/布2/工具3；未登记 ⇒ 1）
+    //    ⇒ 未设表的世界逐值等于改动前（I-F1），见 commodityFreightBaseMilliOf。
+    if (commodityFreightBaseMilli == null) {
+      commodityFreightBaseMilli = Map.of();
     }
     if (flows == null) {
       flows = Map.of();
@@ -1924,28 +1945,28 @@ public record EconomyData(
       marketZonesCopy.put(zoneId, zone);
     }
     marketZones = Collections.unmodifiableMap(marketZonesCopy); // ★ 冻在赋值处
-    // ── F 批第 38 个组件：商品运费系数表（约束设计书 §4.1；不变量 I-F1/I-F3）────────────────────────
-    //   ★ 守卫只有一条：**值域 > 0**（"免费运输"不是"说不出价"）。键域（必须是词表里的商品）在 GM 命令边界判
-    //     —— 状态层不反查词表，旧档/夹具因此能带任意商品键而不炸（也避免 economy 状态层依赖词表的读口）。
+    // ── 第 38 个组件：商品基础运费表（约束设计书 §4.1 修正版；不变量 I-F1/I-F3）──────────────────────
+    //   ★ 守卫只有一条：**值域 ≥ 0**（0 = 明确的"该商品免基础费"，不是"说不出价"；单位运费仍被 max(1,…) 抬到 1）。
+    //     键域（必须是词表里的商品）在 GM 命令边界判 —— 状态层不反查词表，旧档/夹具因此能带任意商品键而不炸。
     //   ★ 逐键复制 + 冻在赋值处：与其余 Map 组件同款（访问器返回冻结副本，调用方改不动）。
     Map<CommodityId, Long> commodityFreightCopy = new LinkedHashMap<>();
-    for (Map.Entry<CommodityId, Long> entry : commodityFreightPerMille.entrySet()) {
+    for (Map.Entry<CommodityId, Long> entry : commodityFreightBaseMilli.entrySet()) {
       CommodityId commodity = entry.getKey();
-      Long coefficient = entry.getValue();
-      if (commodity == null || coefficient == null) {
-        throw new IllegalArgumentException("commodityFreightPerMille 的键与值都不得为 null: " + commodity);
+      Long baseMilli = entry.getValue();
+      if (commodity == null || baseMilli == null) {
+        throw new IllegalArgumentException("commodityFreightBaseMilli 的键与值都不得为 null: " + commodity);
       }
-      if (coefficient <= 0L) {
+      if (baseMilli < 0L) {
         throw new IllegalArgumentException(
             COMMODITY_FREIGHT_CONTRACT_PREFIX
-                + "系数必须 > 0（0/负 = 非法：'免费运输'不是'说不出价'）: 商品="
+                + "基础运费必须 ≥ 0（0 = 明确的'该商品免基础费'，不是'说不出价'）: 商品="
                 + commodity.value()
-                + "，系数="
-                + coefficient);
+                + "，基础运费="
+                + baseMilli);
       }
-      commodityFreightCopy.put(commodity, coefficient);
+      commodityFreightCopy.put(commodity, baseMilli);
     }
-    commodityFreightPerMille = Collections.unmodifiableMap(commodityFreightCopy); // ★ 冻在赋值处
+    commodityFreightBaseMilli = Collections.unmodifiableMap(commodityFreightCopy); // ★ 冻在赋值处
     // ── E4a 第 25 个组件：质押（Pledge）基础形状 ─────────────────────────────────────────────
     //   ★ 旧档缺键 ⇒ 空表（上面已归一）；空表整体 no-op。
     //   ★ 守卫按“对侧已提供”分段生效（与 E1/E2 的引用完整性同款）：合同表/资产份额表为空 = 该侧尚未提供
@@ -2403,7 +2424,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2444,7 +2465,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2485,7 +2506,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -2529,7 +2550,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2570,7 +2591,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   public EconomyData withLaborCommitments(
@@ -2611,7 +2632,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2652,7 +2673,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -2698,7 +2719,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -2743,7 +2764,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -2783,7 +2804,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2824,7 +2845,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2865,7 +2886,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2906,7 +2927,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2947,7 +2968,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2988,7 +3009,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3029,7 +3050,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3070,7 +3091,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3121,7 +3142,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3163,7 +3184,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3205,7 +3226,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3246,7 +3267,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3287,7 +3308,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3328,7 +3349,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3373,7 +3394,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3419,7 +3440,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3465,7 +3486,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3511,7 +3532,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3557,7 +3578,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3604,7 +3625,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3651,7 +3672,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3698,7 +3719,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3745,7 +3766,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /** {@link ProductionUnitId#idOf} 的固定前缀（唯一拼写点；用来识别"这看起来是一个 unit id"）。 */
@@ -3819,7 +3840,7 @@ public record EconomyData(
         moneyInstruments,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3865,7 +3886,7 @@ public record EconomyData(
         value,
         marketZones,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
@@ -3914,20 +3935,20 @@ public record EconomyData(
         moneyInstruments,
         value,
         householdDebtRefs,
-        commodityFreightPerMille);
+        commodityFreightBaseMilli);
   }
 
   /**
-   * ★★ <b>F 批（2026-10-09）第 38 个组件：商品运费系数表</b>（约束设计书 §4.1「甲方案」）；其余组件原样带过。
+   * ★★ <b>第 38 个组件：商品基础运费表</b>（约束设计书 §4.1 修正版）；其余组件原样带过。
    *
-   * <p>键 = {@link CommodityId}，值 = 该商品的运费系数（‰），<b>乘在整条运费上</b>（唯一算式 {@link
-   * TransportTariff#perMille(long, long, long, long, long, long)} 的第 6 个入参）。<b>空表</b> ⇒ 每个商品取缺键值
-   * 1000（= 现状、逐值不变）；<b>键缺</b> ⇒ 同样 1000（{@link #commodityFreightPerMilleOf}）。
+   * <p>键 = {@link CommodityId}，值 = 该商品的<b>基础运费</b>（毫计价货币 / 商品单位 / 程）。<b>空表</b> ⇒ 每个商品落到 {@link
+   * CommodityFreightBase#legacyMilli(CommodityId)}（现行硬编码分档 ⇒ 未设表的世界逐值不变）；<b>键缺</b> ⇒ 同上（{@link
+   * #commodityFreightBaseMilliOf}）。
    *
    * <p>★★ <b>它是本组件的唯一写入形态</b>：手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug）；GM 命令
-   * {@code economy.SetCommodityFreight} 走它。★ 值域（{@code > 0}）由构造期具名判死；键域（必须是词表里的商品） 由命令层判。
+   * {@code economy.SetCommodityFreight} 走它。★ 值域（{@code ≥ 0}）由构造期具名判死；键域（必须是词表里的商品） 由命令层判。
    */
-  public EconomyData withCommodityFreightPerMille(Map<CommodityId, Long> value) {
+  public EconomyData withCommodityFreightBaseMilli(Map<CommodityId, Long> value) {
     return new EconomyData(
         meta,
         industries,

@@ -51,7 +51,6 @@ import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -3639,16 +3638,12 @@ final class MarketSettlement {
     //   注意费率与上面的 costPerUnit（距离 × moveCost）是两个独立的数。
     long cityDiscountPerMille = ctx.topology.cityDiscountPerMilleBetween(sellerHex, buyerHex);
     long ruralPenaltyPerMille = ctx.topology.ruralPenaltyPerMilleBetween(sellerHex, buyerHex);
-    // ★★ F 批（2026-10-09 §4.1 甲方案）：商品运费系数**从拓扑（= 当刻状态的快照）读**，缺键 ⇒ 1000
-    //   ⇒ 未设表的世界逐值等于改动前（I-F1）。费率是"货款价值的千分比"，商品系数乘在**整条**费率上。
-    long commodityFreightPerMille = ctx.topology.commodityFreightPerMilleOf(commodity);
+    // ★★ 2026-10-09 纠正：**费率里没有商品维**（F 批那个"商品系数乘整条费率"的入参已撤销）—— 商品维只出现在
+    //   下面的基础费（读当刻状态表，GM 可改；缺键 ⇒ 现行硬编码分档 ⇒ 未设表的世界逐值等于改动前，I-F1）。
+    long commodityBaseMilli = commodityFreightBaseMilli(ctx.topology, commodity);
     long freightRatePerMille =
         ctx.topology.freightPerMilleBetween(
-            sellerHex,
-            buyerHex,
-            cityDiscountPerMille,
-            ruralPenaltyPerMille,
-            commodityFreightPerMille);
+            sellerHex, buyerHex, cityDiscountPerMille, ruralPenaltyPerMille);
     String routeKey = sellerHex + "->" + buyerHex + "#" + commodity.value();
     RouteAccumulator acc =
         ctx.routes.computeIfAbsent(
@@ -3678,7 +3673,8 @@ final class MarketSettlement {
       // ★★ 2026-10-09：单位运费与货款价格解耦（商品种类 × 路线费率 × 默认承运成本）；撮合前的可负担量按它预判，
       //    真正的逐商号承运成本差异在 executeTrade/carrierChargeSplit 里按选中商号现算。
       long freightPerUnit =
-          freightUnitMilli(commodity, freightRatePerMille, plannedCarrierCostPerMille(ctx));
+          freightUnitMilli(
+              commodityBaseMilli, freightRatePerMille, plannedCarrierCostPerMille(ctx));
       RouteContext route =
           new RouteContext(
               sellerHex,
@@ -3848,10 +3844,14 @@ final class MarketSettlement {
     CommodityId commodity = buy.order.commodity();
     long distance = Math.max(1L, ctx.topology.travelTicks(sell.hex, buy.hex));
     long moveCost = Math.max(1L, moveCostOf(ctx, buy.hex));
-    // ★★ F 批：区内跨格线路同样带商品维（缺键 ⇒ 1000 ⇒ 逐值不变）——"区内不用付商品系数"没有道理：
-    //   费率口径与跨区同源，区别只在 immediate=true（不走在途）。
-    long rate = ctx.topology.freightPerMilleBetween(sell.hex, buy.hex, commodity);
-    long freightPerUnit = freightUnitMilli(commodity, rate, plannedCarrierCostPerMille(ctx));
+    // ★★ 区内跨格与跨区**同源**：费率不带商品维（距离/辐射/道路），商品维只走基础费（读同一张状态表，
+    //   缺键 ⇒ 现行硬编码分档 ⇒ 逐值不变）；区别只在 immediate=true（不走在途）。
+    long rate = ctx.topology.freightPerMilleBetween(sell.hex, buy.hex);
+    long freightPerUnit =
+        freightUnitMilli(
+            commodityFreightBaseMilli(ctx.topology, commodity),
+            rate,
+            plannedCarrierCostPerMille(ctx));
     return new RouteContext(
         sell.hex,
         buy.hex,
@@ -4373,7 +4373,12 @@ final class MarketSettlement {
           // 应收而未收的名义运费：承运池算不出这部分的收款人，读数具名、不静默变 0。
           uncollectedFreight = freightOf(quantity - executed, route.freightPerUnit);
         }
-        freightCharges = carrierChargeSplit(allocation, buy.buyer.actor, route);
+        freightCharges =
+            carrierChargeSplit(
+                allocation,
+                buy.buyer.actor,
+                route,
+                commodityFreightBaseMilli(ctx.topology, route.commodity));
         for (FreightCharge charge : freightCharges) {
           freight = Math.addExact(freight, charge.amountMilli());
         }
@@ -4621,7 +4626,10 @@ final class MarketSettlement {
    * <p>★ 分摊顺序 = select 返回顺序（有效费率升序 → organizationId 升序），不读时钟/随机 ⇒ 同输入逐值确定。
    */
   private static List<FreightCharge> carrierChargeSplit(
-      MerchantSettlement.CarrierAllocation allocation, ActorRef buyerActor, RouteContext route) {
+      MerchantSettlement.CarrierAllocation allocation,
+      ActorRef buyerActor,
+      RouteContext route,
+      long commodityBaseMilli) {
     List<MerchantSettlement.CarrierChoice> choices = allocation.choices();
     long chargeableQuantity = 0L;
     long effectiveFreightSum = 0L;
@@ -4639,7 +4647,7 @@ final class MarketSettlement {
               freightOf(
                   choice.quantityMilli(),
                   freightUnitMilli(
-                      route.commodity,
+                      commodityBaseMilli,
                       choice.effectiveRatePerMille(route.freightRatePerMille),
                       carrierCostPerMille(choice.firm()))));
     }
@@ -4757,16 +4765,18 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>商品种类的基础运费（毫计价货币 / 商品单位 / 程）</b>：只由商品种类决定，<b>与商品价格无关</b> （2026-10-09
-   * 用户口径："运费只和商品种类有关"）。粮/纤维轻而贱、布/工具更重更占运力，故基础费分档； 未登记的商品取 {@link
-   * #MARKET_FREIGHT_BASE_PER_UNIT_DEFAULT_MILLI}（粗估，不静默给 0）。
+   * ★★ <b>商品基础运费（毫计价货币 / 商品单位 / 程）的唯一读取口</b> —— 读<b>当刻状态表</b>（{@link MarketTopology} 携带的 {@code
+   * EconomyData.commodityFreightBaseMilli} 快照；GM 可改）。
+   *
+   * <p>★★ <b>它从硬编码 dispatch 改成读状态（2026-10-09 用户裁定「甲」后的纠正）</b>：改前粮 1 / 纤维 1 / 布 2 / 工具 3
+   * 是写死在这里的常量（源自 {@code d7604ea5}），GM 改不了、且与 F 批后加的"费率乘数维"构成<b>两个商品维相乘</b>。
+   * 现在这组分档降级为"表里没有该商品"时的<b>具名缺省</b>（{@link CommodityFreightBase#legacyMilli(CommodityId)}，
+   * 全仓唯一拼写点）⇒ 空表（旧档 / 新世界 / 夹具）逐值等于改动前（不变量 I-F1）。
    */
-  static final long MARKET_FREIGHT_BASE_PER_UNIT_GRAIN_MILLI = 1L;
-
-  static final long MARKET_FREIGHT_BASE_PER_UNIT_FIBER_MILLI = 1L;
-  static final long MARKET_FREIGHT_BASE_PER_UNIT_CLOTH_MILLI = 2L;
-  static final long MARKET_FREIGHT_BASE_PER_UNIT_TOOL_MILLI = 3L;
-  static final long MARKET_FREIGHT_BASE_PER_UNIT_DEFAULT_MILLI = 1L;
+  static long commodityFreightBaseMilli(MarketTopology topology, CommodityId commodity) {
+    Objects.requireNonNull(topology, "topology");
+    return topology.commodityFreightBaseMilliOf(commodity);
+  }
 
   /**
    * ★★ <b>承运方运营成本加价（‰ / 每档 tier 城区当量）</b>：脚夫与商人"要吃饭"的粗估表示 —— 承运不是免费的 公共服务，运费里必须含这笔成本。PORTER 25‰ /
@@ -4776,25 +4786,6 @@ final class MarketSettlement {
 
   /** 没有商号（旧 {@code carrierOf} 路径）时的默认承运成本（‰）；也用于撮合前的可负担量预判。 */
   static final long MARKET_FREIGHT_DEFAULT_CARRIER_COST_PER_MILLE = 25L;
-
-  /** 商品种类基础运费（按 {@code EconomyVocabulary} 的稳定 id 分档；只此一处拼写）。 */
-  static long commodityFreightBaseMilli(CommodityId commodity) {
-    Objects.requireNonNull(commodity, "commodity");
-    String value = commodity.value();
-    if (EconomyVocabulary.GRAIN_COMMODITY_ID.equals(value)) {
-      return MARKET_FREIGHT_BASE_PER_UNIT_GRAIN_MILLI;
-    }
-    if (EconomyVocabulary.FIBER_COMMODITY_ID.equals(value)) {
-      return MARKET_FREIGHT_BASE_PER_UNIT_FIBER_MILLI;
-    }
-    if (EconomyVocabulary.CLOTH_COMMODITY_ID.equals(value)) {
-      return MARKET_FREIGHT_BASE_PER_UNIT_CLOTH_MILLI;
-    }
-    if (EconomyVocabulary.TOOL_COMMODITY_ID.equals(value)) {
-      return MARKET_FREIGHT_BASE_PER_UNIT_TOOL_MILLI;
-    }
-    return MARKET_FREIGHT_BASE_PER_UNIT_DEFAULT_MILLI;
-  }
 
   /** 某商号的承运成本（‰）：tier 城区当量 × {@link #MARKET_FREIGHT_CARRIER_COST_PER_MILLE_PER_TIER_STEP}。 */
   static long carrierCostPerMille(MerchantFirm firm) {
@@ -4817,17 +4808,26 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>单位运费（毫计价货币 / 商品单位）的唯一算式</b>（2026-10-09 与货款价格解耦）：
+   * ★★ <b>单位运费（毫计价货币 / 商品单位）的唯一算式</b>（2026-10-09 与货款价格解耦；算式逐字保留）：
    *
    * <pre>
-   * unit = max(1, ⌈ 商品种类基础费 × (1000 + 路线费率‰) × (1000 + 承运成本‰) ÷ 1,000,000 ⌉ )
+   * unit = max(1, ⌈ 商品基础费 × (1000 + 路线费率‰) × (1000 + 承运成本‰) ÷ 1,000,000 ⌉ )
    * </pre>
    *
-   * <p>三项来源：① 商品种类（{@link #commodityFreightBaseMilli}）；② 路线费率（{@link
-   * MarketTopology#freightPerMilleBetween} 的里程/辐射/道路）；③ 承运成本（{@link #carrierCostPerMille}，
-   * 脚夫/商号要吃饭的粗估）。<b>不含</b> {@code unitPrice} —— 0 价免费商品仍产生正运费。
+   * <p>三项来源：① <b>商品基础费</b>（{@link #commodityFreightBaseMilli}：读当刻状态表 {@code
+   * EconomyData.commodityFreightBaseMilli}，GM 可改；缺键 ⇒ 现行硬编码分档）；② 路线费率（{@link
+   * MarketTopology#freightPerMilleBetween} 的里程/辐射/道路 —— <b>没有</b>商品维）；③ 承运成本（{@link
+   * #carrierCostPerMille}，脚夫/商号要吃饭的粗估）。<b>不含</b> {@code unitPrice} —— 0 价免费商品仍产生正运费。
+   *
+   * <p>★★ <b>{@code 0} 基础费仍收 1 毫</b>：末尾的 {@code max(1, …)} 把"该商品免基础费"抬到 1 毫 —— 这是既有语义
+   * （本批**不改**）：{@code baseMilli = 0} 是"免基础费"的明确表达，不是"免费运输"。
    */
-  static long freightUnitMilli(CommodityId commodity, long ratePerMille, long carrierCostPerMille) {
+  static long freightUnitMilli(
+      long commodityBaseMilli, long ratePerMille, long carrierCostPerMille) {
+    if (commodityBaseMilli < 0L) {
+      throw new IllegalArgumentException(
+          "commodityBaseMilli 不得为负（0 = 该商品免基础费）: " + commodityBaseMilli);
+    }
     if (ratePerMille < 0L) {
       throw new IllegalArgumentException("ratePerMille 不得为负: " + ratePerMille);
     }
@@ -4837,8 +4837,7 @@ final class MarketSettlement {
     long routeFactor = Math.addExact(1000L, ratePerMille);
     long carrierFactor = Math.addExact(1000L, carrierCostPerMille);
     long product =
-        Math.multiplyExact(
-            Math.multiplyExact(commodityFreightBaseMilli(commodity), routeFactor), carrierFactor);
+        Math.multiplyExact(Math.multiplyExact(commodityBaseMilli, routeFactor), carrierFactor);
     return Math.max(1L, ceilDiv(product, 1_000_000L));
   }
 

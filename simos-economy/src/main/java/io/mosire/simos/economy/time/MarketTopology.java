@@ -4,6 +4,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.market.MarketNode;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.model.CommodityFreightBase;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.TransportTariff;
@@ -107,14 +108,18 @@ public final class MarketTopology {
   private final ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween;
 
   /**
-   * ★★ <b>F 批（2026-10-09）：全局商品运费系数表（‰）的快照</b>（键 = 商品，值 = 系数；<b>缺键 ⇒ 1000</b>）。
+   * ★★ <b>商品<b>基础运费</b>表的快照</b>（毫计价货币 / 商品单位 / 程；键 = 商品）—— 商品维的**唯一**落点。
    *
    * <p>★★ <b>它为什么在这里、而不是烘进 {@link TransportTariff}</b>：{@code TransportTariff} 是构造期常量（{@code
-   * probeDefaults()} 在组合根装配），而系数是**状态**（{@code EconomyData.commodityFreightPerMille}，GM 可改）⇒
+   * probeDefaults()} 在组合根装配），而基础费是**状态**（{@code EconomyData.commodityFreightBaseMilli}，GM 可改）⇒
    * 只能由组合根每次从状态现读后交进来 （{@link io.mosire.simos.app.time.MarketTopologyBook} 的 {@code from(state)}
-   * 是唯一装配点， 每次结算/读数都按当刻状态重建拓扑）。★ 空表 = 旧世界形态（每个商品取缺键值 1000，逐值不变）。
+   * 是唯一装配点， 每次结算/读数都按当刻状态重建拓扑）。★ <b>空表 = 旧世界形态</b>：每个商品落到 {@link
+   * CommodityFreightBase#legacyMilli(CommodityId)}（现行硬编码分档）⇒ 逐值不变（I-F1）。
+   *
+   * <p>★ <b>费率维没有第二个商品维</b>：{@link #freightPerMilleBetween} 只算距离 / 辐射 / 道路 / 城乡；F 批（{@code
+   * f3366545}）曾加过的"商品系数"入口已撤销。
    */
-  private final Map<CommodityId, Long> commodityFreightPerMille;
+  private final Map<CommodityId, Long> commodityFreightBaseMilli;
 
   private final boolean regional;
 
@@ -138,7 +143,7 @@ public final class MarketTopology {
         cityDiscountPerMilleBetween,
         ruralPenaltyPerMilleBetween,
         regional,
-        // ★ 旧入口（没有商品维的那几个工厂）默认空表 = 每个商品缺键 ⇒ 1000 ⇒ 逐值等于本批改动前。
+        // ★ 旧入口（没有传表的工厂/夹具）默认空表 = 每个商品落到现行硬编码分档 ⇒ 逐值等于本批改动前。
         Map.of());
   }
 
@@ -152,7 +157,7 @@ public final class MarketTopology {
       ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
       ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween,
       boolean regional,
-      Map<CommodityId, Long> commodityFreightPerMille) {
+      Map<CommodityId, Long> commodityFreightBaseMilli) {
     this.regions = Collections.unmodifiableList(new ArrayList<>(regions));
     this.regionByHex = Collections.unmodifiableMap(new LinkedHashMap<>(regionByHex));
     this.moveCostAt = Objects.requireNonNull(moveCostAt, "moveCostAt");
@@ -165,17 +170,25 @@ public final class MarketTopology {
     this.ruralPenaltyPerMilleBetween =
         Objects.requireNonNull(ruralPenaltyPerMilleBetween, "ruralPenaltyPerMilleBetween");
     this.regional = regional;
-    // ★★ F 批：商品运费系数表的快照（逐键复制 + 冻结；缺键 ⇒ 1000 的解析在 commodityFreightPerMilleOf）。
+    // ★★ 商品基础运费表的快照（逐键复制 + 冻结；"缺键 ⇒ 具名缺省"的解析在 commodityFreightBaseMilliOf）。
+    //   ★ 守卫：键/值非 null、值 ≥ 0（0 = 明确的"该商品免基础费"；负值 = 契约违约，与状态层同一条口径）。
     Map<CommodityId, Long> freightCopy = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry :
-        Objects.requireNonNull(commodityFreightPerMille, "commodityFreightPerMille").entrySet()) {
+        Objects.requireNonNull(commodityFreightBaseMilli, "commodityFreightBaseMilli").entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException(
-            "MarketTopology.commodityFreightPerMille 的键与值都不得为 null: " + entry.getKey());
+            "MarketTopology.commodityFreightBaseMilli 的键与值都不得为 null: " + entry.getKey());
+      }
+      if (entry.getValue() < 0L) {
+        throw new IllegalArgumentException(
+            "MarketTopology.commodityFreightBaseMilli 不得为负: "
+                + entry.getKey().value()
+                + "="
+                + entry.getValue());
       }
       freightCopy.put(entry.getKey(), entry.getValue());
     }
-    this.commodityFreightPerMille = Collections.unmodifiableMap(freightCopy);
+    this.commodityFreightBaseMilli = Collections.unmodifiableMap(freightCopy);
   }
 
   /**
@@ -707,105 +720,29 @@ public final class MarketTopology {
   }
 
   /**
-   * ★★ <b>F 批：逐商品的费率查询</b>（{@link #freightPerMilleBetween(HexCoord, HexCoord)} 的商品维）：城市折扣/农村惩罚
-   * 仍从构造期注入的函数取（与 2 参入口逐字同源），商品系数取 {@link #commodityFreightPerMilleOf(CommodityId)}。
+   * ★★ <b>某个商品的<b>基础运费</b>（毫计价货币 / 商品单位 / 程）—— "缺键 ⇒ 具名缺省"的读取唯一拼写点</b>。
    *
-   * <p>★ 缺键（没 GM 设过该商品）⇒ 1000 ⇒ 与 2 参入口<b>逐值相同</b>（I-F1）。同格/缺图 ⇒ 0（与既有入口同口径）。
-   */
-  public long freightPerMilleBetween(HexCoord from, HexCoord to, CommodityId commodity) {
-    if (from == null || to == null || from.equals(to)) {
-      return 0L;
-    }
-    if (!regionByHex.containsKey(from) || !regionByHex.containsKey(to)) {
-      return 0L;
-    }
-    return freightPerMilleBetween(
-        from,
-        to,
-        cityDiscountPerMilleBetween.applyAsLong(from, to),
-        ruralPenaltyPerMilleBetween.applyAsLong(from, to),
-        commodityFreightPerMilleOf(commodity));
-  }
-
-  /**
-   * ★ <b>F 批：带显式商品系数的费率查询</b>（不查本拓扑的商品表）—— 给"手上只有一个费率上界/已解析好的系数"的调用点 （{@code ExpectedProfitBook}
-   * 的邻区最大路线费率上界）。
+   * <p>表里有该商品的键 ⇒ <b>状态值唯一权威</b>（GM 设过就照它，{@code 0} = 免基础费）；表里没有 ⇒ {@link
+   * CommodityFreightBase#legacyMilli(CommodityId)}（= 现行硬编码分档：粮 1 / 纤维 1 / 布 2 / 工具 3；未登记商品 ⇒ 1） ⇒
+   * <b>未设表的世界逐值等于改动前</b>（不变量 I-F1）。
    *
-   * <p>★ 其余口径与 2 参入口逐字一致（两个商人调整量仍从构造期函数取）。
+   * <p>★ <b>商品维只在这里</b>：费率入口 {@link #freightPerMilleBetween(HexCoord, HexCoord)} 不带商品参数 —— F
+   * 批（{@code f3366545}）那条"商品系数乘整条费率"的路已撤销（它会与面值维相乘、方向相反）。
    */
-  public long freightPerMilleBetween(HexCoord from, HexCoord to, long commodityFreightPerMille) {
-    if (from == null || to == null || from.equals(to)) {
-      return 0L;
-    }
-    if (!regionByHex.containsKey(from) || !regionByHex.containsKey(to)) {
-      return 0L;
-    }
-    return freightPerMilleBetween(
-        from,
-        to,
-        cityDiscountPerMilleBetween.applyAsLong(from, to),
-        ruralPenaltyPerMilleBetween.applyAsLong(from, to),
-        commodityFreightPerMille);
-  }
-
-  /**
-   * ★★ <b>F 批：某个商品的运费系数（‰）</b> —— <b>缺键 ⇒ 1000</b>（{@link
-   * TransportTariff#DEFAULT_COMMODITY_FREIGHT_PER_MILLE}，不变量 I-F1）。
-   */
-  public long commodityFreightPerMilleOf(CommodityId commodity) {
+  public long commodityFreightBaseMilliOf(CommodityId commodity) {
     Objects.requireNonNull(commodity, "commodity");
-    Long configured = commodityFreightPerMille.get(commodity);
-    return configured == null ? TransportTariff.DEFAULT_COMMODITY_FREIGHT_PER_MILLE : configured;
+    Long configured = commodityFreightBaseMilli.get(commodity);
+    return configured == null ? CommodityFreightBase.legacyMilli(commodity) : configured;
   }
 
   /**
-   * ★ <b>F 批：本拓扑里最大的有效商品运费系数（‰）</b>（缺键的 1000 也参与取最大 ⇒ 空表恒 1000）——
-   * 给"手上没有具体商品、但需要一个不低估的上界"的估计口径（{@code ExpectedProfitBook} 的商号收入估算）。
-   */
-  public long maxCommodityFreightPerMille() {
-    long max = TransportTariff.DEFAULT_COMMODITY_FREIGHT_PER_MILLE;
-    for (long coefficient : commodityFreightPerMille.values()) {
-      max = Math.max(max, coefficient);
-    }
-    return max;
-  }
-
-  /**
-   * ★★ <b>F 批：带显式商品系数的费率入口</b>（与上方 4 参入口同一条 {@link TransportTariff#perMille} 公式/守卫，
-   * 只多一个商品系数）。{@code MarketSettlement} 的承运路线构建用它把商品维显式交给费率公式。
-   */
-  public long freightPerMilleBetween(
-      HexCoord from,
-      HexCoord to,
-      long cityDiscountPerMille,
-      long ruralPenaltyPerMille,
-      long commodityFreightPerMille) {
-    if (from == null || to == null || from.equals(to)) {
-      return 0L;
-    }
-    if (!regionByHex.containsKey(from) || !regionByHex.containsKey(to)) {
-      return 0L;
-    }
-    long distance = from.distanceTo(to);
-    long radialDistance = Math.min(nearestNodeDistance(from), nearestNodeDistance(to));
-    long roadLevel = roadBottleneckBetween(from, to);
-    return tariff.perMille(
-        distance,
-        radialDistance,
-        roadLevel,
-        cityDiscountPerMille,
-        ruralPenaltyPerMille,
-        commodityFreightPerMille);
-  }
-
-  /**
-   * ★★ <b>F 批：换一份商品运费系数表（返回新拓扑）</b> —— 组合根装配时的唯一注入点 （{@code MarketTopologyBook.from(state)} 从
-   * {@code EconomyData.commodityFreightPerMille()} 现读）。
+   * ★★ <b>换一份商品基础运费表（返回新拓扑）</b> —— 组合根装配时的唯一注入点（{@code MarketTopologyBook.from(state)} 从 {@code
+   * EconomyData.commodityFreightBaseMilli()} 现读）。
    *
    * <p>★ 为什么不进构造器参数表：现有四个工厂（{@code singleHex}/{@code singleRegion}/{@code of}/{@code
-   * ofZones}）的签名是既有调用面（含大量夹具），加参数等于逐处改；本方法只多一处拷贝，且"没有传 ⇒ 空表 ⇒ 缺键 1000 ⇒ 逐值不变"这条默认语义**写在一个地方**。
+   * ofZones}）的签名是既有调用面（含大量夹具），加参数等于逐处改；本方法只多一处拷贝，且"没有传 ⇒ 空表 ⇒ 现行硬编码分档 ⇒ 逐值不变"这条默认语义**写在一个地方**。
    */
-  public MarketTopology withCommodityFreight(Map<CommodityId, Long> table) {
+  public MarketTopology withCommodityFreightBase(Map<CommodityId, Long> table) {
     return new MarketTopology(
         regions,
         regionByHex,
@@ -829,12 +766,16 @@ public final class MarketTopology {
    */
   public long freightPerMilleBetween(
       HexCoord from, HexCoord to, long cityDiscountPerMille, long ruralPenaltyPerMille) {
-    // ★★ F 批：旧 4 参入口 = 商品系数恒 1000（缺键语义）⇒ 逐值等于本批改动前；商品维走 5 参入口。
-    return freightPerMilleBetween(
-        from,
-        to,
-        cityDiscountPerMille,
-        ruralPenaltyPerMille,
-        TransportTariff.DEFAULT_COMMODITY_FREIGHT_PER_MILLE);
+    if (from == null || to == null || from.equals(to)) {
+      return 0L;
+    }
+    if (!regionByHex.containsKey(from) || !regionByHex.containsKey(to)) {
+      return 0L;
+    }
+    long distance = from.distanceTo(to);
+    long radialDistance = Math.min(nearestNodeDistance(from), nearestNodeDistance(to));
+    long roadLevel = roadBottleneckBetween(from, to);
+    return tariff.perMille(
+        distance, radialDistance, roadLevel, cityDiscountPerMille, ruralPenaltyPerMille);
   }
 }

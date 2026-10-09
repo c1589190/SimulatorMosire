@@ -559,6 +559,69 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     return node;
   }
 
+  /**
+   * ★★ <b>撤销维度的旧档读侧兼容：F 批（{@code f3366545}）的 {@code commodityFreightPerMille}（商品运费<b>系数</b>，
+   * ‰，乘在整条费率上）</b>。
+   *
+   * <p>★★ <b>为什么不翻译、直接摘掉</b>：那个维度的量纲是"费率的千分乘数"，与纠正后的"每件每程的基础运费（毫）"不同量纲、 也不同方向（费率维 tool &lt;
+   * grain，面值维 tool &gt; grain），**没有一对一的迁移**（硬凑 1500 ⇒ 基础费 1500 毫/单位 会凭空把运费放大三个量级）。用户 2026-10-09
+   * 裁定「甲」= 撤销该维、把基础费搬进状态表 ⇒ 旧档里那一维<b>整体作废</b>： 摘掉它、记 INFO（"谁的值被丢了、为什么"），基础费回落到现行硬编码分档（⇒ 该商品的运费逐值回到
+   * F 批之前的读数）。
+   *
+   * <p>★ <b>不炸</b>：{@code EconomyData} 的严格绑定（{@code FAIL_ON_UNKNOWN_PROPERTIES} 保持开启，见 {@link
+   * #migrateLegacyOwnershipStakeComponent} 的口径）会在看到未知组件时 fail-closed —— 所以旧名必须在这里被**具名**摘掉，
+   * 而不是靠关掉严格绑定把真实漂移一起吞掉。
+   *
+   * <p>★ <b>fail-closed</b>：同一对象同时出现旧键与新键 {@code commodityFreightBaseMilli} ⇒ 抛（同一件事两处拼写， 没有哪一处能判谁对
+   * —— 与 {@code useRights}/{@code assetShares} 同款）。★ 幂等：新形状再跑一遍没有旧键 ⇒ 原样返回。
+   */
+  private static ObjectNode dropRevokedCommodityFreightPerMilleComponent(
+      ObjectNode node, String what) {
+    boolean hasRevoked = node.has("commodityFreightPerMille");
+    if (!hasRevoked) {
+      return node;
+    }
+    if (node.has("commodityFreightBaseMilli")) {
+      throw new IllegalStateException(
+          what
+              + " 不得同时给 commodityFreightPerMille（已撤销的费率乘数维，F 批 f3366545）与"
+              + " commodityFreightBaseMilli（基础费表）：同一件事两处拼写，无法判谁对");
+    }
+    JsonNode revoked = node.remove("commodityFreightPerMille");
+    // ★ 被摘掉的那一维到底带没带数据：快照形态 = 表的行数；变更集形态 = {@code upsert.entries} 的行数。
+    //   ★ 级别按"有没有东西被丢"分：**有数据被作废 ⇒ INFO**（操作者必须看得见 GM 设过的值没了）；
+    //   **空表/Unchanged ⇒ DEBUG**（什么都没丢，不必刷屏 —— 旧 revision 行会被逐行重放，每条都 INFO 会淹掉日志）。
+    long droppedRows = 0L;
+    if (revoked instanceof ObjectNode revokedObject) {
+      if (revokedObject.has("@class")) {
+        JsonNode entries = revokedObject.get("entries");
+        droppedRows = entries instanceof ObjectNode entriesObject ? entriesObject.size() : 0L;
+      } else {
+        droppedRows = revokedObject.size();
+      }
+    }
+    LogEvent event =
+        LogEvent.of(
+            "ECONOMY_LEGACY_COMMODITY_FREIGHT_PER_MILLE_DROPPED",
+            EconomyLogSource.ECONOMY_COMMODITY_FREIGHT,
+            "where",
+            what,
+            "revokedComponent",
+            "commodityFreightPerMille",
+            "keptComponent",
+            "commodityFreightBaseMilli",
+            "note",
+            "F 批的费率乘数维已撤销（用户 2026-10-09 裁定甲）：旧值不翻译（量纲不同），" + "该商品基础费回落现行硬编码分档",
+            "revokedRows",
+            droppedRows);
+    if (droppedRows > 0L) {
+      EventLog.channel(LOG).info(event);
+    } else {
+      EventLog.channel(LOG).debug(event);
+    }
+    return node;
+  }
+
   /** 递归整形一整个 {@code assetShares} / {@code useRights} 子树里的旧值节点（只认具名旧字段，其余原样）。 */
   private static void reshapeLegacyOwnershipStakeNodes(JsonNode node) {
     if (node == null || node.isNull()) {
@@ -646,6 +709,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       node = migrateLegacyOwnershipStakeComponent(node);
       node = migrateLegacyProductionComponents(node);
       node = migrateLegacyDebtSnapshotComponent(node);
+      node = dropRevokedCommodityFreightPerMilleComponent(node, "EconomyData");
       // ★★ Z1b：旧档 allocations 缺 kind ⇒ 在交给 PLAIN 绑定前补 PRODUCTION（快照侧；变更集侧见 ChangeSet 反序列化器）。
       //   放在这里而不是 migrateLegacyProductionComponents 内：那条路径在"没有 industries 键"时会提前返回，
       //   而旧档只要有 allocations 就必须补。
@@ -660,7 +724,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         if (contractViolation != null) {
           throw outputQuantityContractError(contractViolation, "outputQuantityOverrides 构造期守卫");
         }
-        // ★★ F 批（§4.1）：商品运费系数表的值域守卫（> 0）同样在构造期 fail-closed —— 载入边界记契约 ERROR，
+        // ★★ 商品基础运费表的值域守卫（≥ 0）同样在构造期 fail-closed —— 载入边界记契约 ERROR，
         //   不降级、不静默丢弃这一行（缺该组件键的旧档走的是"空表"路径，与这里无关）。
         String freightViolation = commodityFreightContractViolation(e);
         if (freightViolation != null) {
@@ -751,7 +815,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * ★★ F 批契约故障的唯一发射点（照 Z1 {@code outputQuantityContractError}）：先记 {@code
+   * ★★ 商品基础运费契约故障的唯一发射点（照 Z1 {@code outputQuantityContractError}）：先记 {@code
    * ECONOMY_COMMODITY_FREIGHT_CONTRACT} ERROR（契约故障不降级），再返回 {@link IllegalStateException} 供调用方
    * fail-closed。{@code reason} 只含稳定 id/数量，不含载荷明文。
    */
@@ -762,7 +826,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
                 "ECONOMY_COMMODITY_FREIGHT_CONTRACT",
                 EconomyLogSource.ECONOMY_COMMODITY_FREIGHT,
                 "where",
-                "commodityFreightPerMille 构造期守卫",
+                "commodityFreightBaseMilli 构造期守卫（值域 ≥ 0）",
                 "reason",
                 reason));
     return new IllegalStateException(EconomyData.COMMODITY_FREIGHT_CONTRACT_PREFIX + reason);
@@ -789,6 +853,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       node = migrateLegacyOwnershipStakeComponent(node);
       node = migrateLegacyProductionChangeSetComponents(node);
       node = migrateLegacyDebtChangeSetComponent(node);
+      node = dropRevokedCommodityFreightPerMilleComponent(node, "EconomyChangeSet");
       // ★★ Z1b：旧档 allocations 增量缺 kind ⇒ 在交给 PLAIN 绑定前补 PRODUCTION（快照侧同款，见 EconomyData 反序列化器）。
       defaultLaborCommitmentKindsInDelta(node.get("allocations"));
       try {

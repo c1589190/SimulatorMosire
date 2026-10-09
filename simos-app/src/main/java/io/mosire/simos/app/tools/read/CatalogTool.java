@@ -400,11 +400,13 @@ public final class CatalogTool implements AgentTool {
                   + "只写 markets，不造商品/货币）"),
           Map.entry(
               "economy.SetCommodityFreight",
-              "commodityId(必填；必须是词表里的商品 grain/cloth/fiber/tool/iron/wood), perMille(必填；> 0，"
-                  + "千分系数), reason?(可选审计文本，只进日志)（★ F 批 2026-10-09 设计书 §4.1「甲方案」：设置某商品的"
-                  + "**全局运费系数**，**乘在整条运费上**（1500 ⇒ 同一 lane 上该商品运费是未设时的 1.5 倍）；★ 缺键 ⇒"
-                  + " 1000 = 现状、逐值不变；★ 只写 commodityFreightPerMille 一行，不动价格/库存/账户/商号；★ 三条具名拒"
-                  + "（各自零 revision、head 不动）：unknown-commodity（不在词表）/ non-positive-freight（perMille ≤ 0）/"
+              "commodityId(必填；必须是词表里的商品 grain/cloth/fiber/tool/iron/wood), baseMilli(必填；≥ 0，"
+                  + "毫计价货币/商品单位/程), reason?(可选审计文本，只进日志)（★ 2026-10-09 设计书 §4.1 修正版：设置某商品的"
+                  + "**基础运费** —— 单位运费 = max(1, ⌈基础费 ×(1000+路线费率)×(1000+承运成本)÷1e6⌉)，"
+                  + "⇒ 商品维管**整条运费**（短途长途都管）；★ 缺键 ⇒ 现行硬编码分档（粮1/纤维1/布2/工具3；未登记 ⇒ 1）"
+                  + "= 现状、未设表的世界逐值不变；★ baseMilli = 0 是合法的 = 免基础费（仍被 max(1,…) 抬到 1 毫）；"
+                  + "★ 只写 commodityFreightBaseMilli 一行，不动价格/库存/账户/商号；★ 三条具名拒"
+                  + "（各自零 revision、head 不动）：unknown-commodity（不在词表）/ negative-freight（baseMilli < 0）/"
                   + " freight-unchanged（与现值逐字相同，不做静默幂等）；★ GM-only：不进令/RegisterEffect/决策人目录，"
                   + "GM 的 simos.command.submit 与窄工具 simos.economy.setCommodityFreight 可用）"),
           Map.entry(
