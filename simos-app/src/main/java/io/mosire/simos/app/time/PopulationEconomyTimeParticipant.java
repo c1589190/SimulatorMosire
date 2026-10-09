@@ -762,6 +762,29 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                       "reason",
                       "port-policy-times-port-efficiency-folded-by-exposed-edges"));
             }
+            // ★★ P-T1b（口岸设计书 §13）：三层税的税率与收税政府同样注入 —— 闸（E）与税（税率）是两个量，
+            //   缺省各管各的：**只设税率而两侧全开**的世界"能过但要多付钱"，所以这条注入**不**挂在
+            //   portRegime.active()（管制力表）上。真收的钱在成交处搬：买方多付、差额进对应政府国库户。
+            //   ★ I-C2：没有税制（无政府/未设税）⇒ taxActive() == false ⇒ 不注入 ⇒ 旧世界逐值不变。
+            if (portRegime.taxActive()) {
+              stepper.updatePortTax(portRegime.taxInput());
+            }
+            if (portRegime.taxedSides() > 0) {
+              TIME.info(
+                  LogEvent.of(
+                      "PORT_TAX_REGIME_INJECTED",
+                      AppLogSource.DAILY_LOOP,
+                      "day",
+                      day,
+                      "zones",
+                      portRegime.taxInput().zoneCount(),
+                      "taxedSides",
+                      portRegime.taxedSides(),
+                      "taxedClasses",
+                      portRegime.taxedClasses(),
+                      "reason",
+                      "zone-level-rates-weighted-by-exposed-edges-and-collecting-governments"));
+            }
             // ★★ 服务流量：进程内投递（不落库、不进库存/市场/ledger）；读不到由读口具名 unavailable。
             GovServiceFlowFeed.publish(mapId, computed.flows(), day);
             JurisdictionDailyTax.Report tax =

@@ -6,6 +6,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.market.MarketTaxLayer;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.map.hex.HexCoord;
@@ -94,6 +95,52 @@ public record MarketReport(
    */
   private static final Map<Object, Map<Fill, Long>> REGULATED_TARIFF_BY_REPORT =
       java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+  /**
+   * ★★ <b>P-T1b：逐层税项的只读快照</b>（identity 键 → 税项列表；形制与 {@link #REGULATED_TARIFF_BY_REPORT} 逐字相同）。
+   *
+   * <p>★★ <b>它回答什么</b>（计划 §2.5 的读口判据）："这笔货被抽了哪些税、各多少、<b>进哪个国库</b>、什么币" —— 层（{@link
+   * MarketTaxLayer}）/ 金额 / 币种 / 收款政府<b>逐项列出</b>，且这些项的总额<b>就是买方多付的那一部分</b> （买方实付 = 货款 + 运费 +
+   * 税项之和；卖方仍收原价、承运方收运费 ⇒ 差额只可能进国库，货币守恒 I-C1）。
+   *
+   * <p>★ <b>按币分列（I-C10）</b>：金额只以<b>该笔的买方支付币</b>表达，求和一律按币分组（{@link #taxByCurrency()}）， 禁跨币相加。
+   */
+  private static final Map<Object, List<TaxItem>> TAX_ITEMS_BY_REPORT =
+      java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+  /**
+   * ★★ <b>P-T1b：一条税项</b>（读口形状 = 层 / 金额 / 币种 / 收款政府；另带商品与区，便于逐项追溯）。
+   *
+   * @param layer 层（出口税 / 进口税 / 区内市场税）
+   * @param government 收款政府（政府身份串；多政府共管一个区时，<b>一层会有多条</b>——每政府一条）
+   * @param currency 币种（= 该笔的买方支付币；钱腿就铸在它上面）
+   * @param amountMilli 金额（毫；恒 &gt; 0 —— 0 额不进表）
+   * @param commodity 商品
+   * @param zone 收税那一侧的区（出口税 = 源区 / 进口税 = 目的区 / 区内税 = 本区）
+   */
+  public record TaxItem(
+      MarketTaxLayer layer,
+      String government,
+      CurrencyId currency,
+      long amountMilli,
+      CommodityId commodity,
+      String zone) {
+
+    public TaxItem {
+      Objects.requireNonNull(layer, "TaxItem.layer 不得为 null");
+      if (government == null || government.isBlank()) {
+        throw new IllegalArgumentException("TaxItem.government 不得为空白");
+      }
+      Objects.requireNonNull(currency, "TaxItem.currency 不得为 null");
+      if (amountMilli <= 0L) {
+        throw new IllegalArgumentException("TaxItem.amountMilli 必须 > 0（0 额不记）: " + amountMilli);
+      }
+      Objects.requireNonNull(commodity, "TaxItem.commodity 不得为 null");
+      if (zone == null || zone.isBlank()) {
+        throw new IllegalArgumentException("TaxItem.zone 不得为空白");
+      }
+    }
+  }
 
   /**
    * ★★ <b>旧形状兼容构造器（A2a）</b>：没有外汇读数的报告（{@link FxRoundResult#none()}）。
@@ -271,6 +318,59 @@ public record MarketReport(
       List<CreditFill> creditFills,
       Map<Fill, Long> tariffByFill,
       FxRoundResult fx) {
+    return withRegulatedTariff(
+        day,
+        trigger,
+        carrierPresent,
+        fills,
+        unfilled,
+        routes,
+        freightPaidByCurrency,
+        freightUncollectedByCurrency,
+        scheduledLossMilli,
+        immediateFills,
+        crossRegionFills,
+        priceMode,
+        priceUpdates,
+        sellerOutcomes,
+        buyerOutcomes,
+        creditFills,
+        tariffByFill,
+        fx,
+        List.of());
+  }
+
+  /**
+   * ★★ <b>P-T1b：带三轮税项读数的报告工厂</b>（唯一会填 {@link #taxItems()} / {@link #taxByCurrency()} 的入口）。
+   *
+   * <p>★★ <b>与 {@code tariffByFill} 的关系</b>：{@code tariffByFill} 是 D-027 的<b>逐票单位税费读数</b> （毫卖方计价币 /
+   * 商品单位；P-T4 起按卖方计价币分组进 {@link #regulatedTariffByCurrency()}）—— 它<b>照旧保留</b> （既有读口一字不改）；本参数是
+   * P-T1b"<b>真收款</b>"之后的<b>逐层真实税项</b>（金额、币种、收款政府）， 两者是同一件事的"费率读数 / 真收账目"两面。
+   *
+   * <p>★ 旧签名保留并委托到本方法（{@code taxItems = List.of()}）⇒ 既有调用点/夹具零串改。
+   *
+   * @param taxItems 逐层税项（金额已经是该笔的买方支付币；空 = 本轮没有收税 ⇒ 读口空表）
+   */
+  public static MarketReport withRegulatedTariff(
+      long day,
+      MarketTrigger trigger,
+      boolean carrierPresent,
+      List<Fill> fills,
+      List<Unfilled> unfilled,
+      List<RouteUsage> routes,
+      Map<CurrencyId, Long> freightPaidByCurrency,
+      Map<CurrencyId, Long> freightUncollectedByCurrency,
+      long scheduledLossMilli,
+      long immediateFills,
+      long crossRegionFills,
+      PriceMode priceMode,
+      List<PriceUpdate> priceUpdates,
+      List<SellerOutcome> sellerOutcomes,
+      List<BuyerOutcome> buyerOutcomes,
+      List<CreditFill> creditFills,
+      Map<Fill, Long> tariffByFill,
+      FxRoundResult fx,
+      List<TaxItem> taxItems) {
     MarketReport report =
         new MarketReport(
             day,
@@ -290,6 +390,14 @@ public record MarketReport(
             buyerOutcomes,
             creditFills,
             fx);
+    if (taxItems != null && !taxItems.isEmpty()) {
+      // ★ 保序冻结（逐票顺序 → 逐层顺序 → 逐政府规范序），且逐条判非 null：读数里不许出现"半个税项"。
+      List<TaxItem> copy = new java.util.ArrayList<>(taxItems.size());
+      for (TaxItem item : taxItems) {
+        copy.add(Objects.requireNonNull(item, "taxItems 不得含 null"));
+      }
+      TAX_ITEMS_BY_REPORT.put(new IdentityKey(report), Collections.unmodifiableList(copy));
+    }
     if (tariffByFill == null || tariffByFill.isEmpty() || report.fills.isEmpty()) {
       return report;
     }
@@ -310,6 +418,67 @@ public record MarketReport(
       REGULATED_TARIFF_BY_REPORT.put(new IdentityKey(report), byFill);
     }
     return report;
+  }
+
+  /**
+   * ★★ <b>P-T1b：本轮逐层税项</b>（保序：逐票顺序 → 逐层顺序 → 逐政府规范序；没有收税 ⇒ 空表）。
+   *
+   * <p>★ 读口形状 = <b>层 / 金额 / 币种 / 收款政府</b>（另带商品与区）；这些项的总额就是"买方多付的部分"。
+   */
+  public List<TaxItem> taxItems() {
+    List<TaxItem> items = TAX_ITEMS_BY_REPORT.get(new IdentityKey(this));
+    return items == null ? List.of() : items;
+  }
+
+  /**
+   * ★★ <b>P-T1b：税项总额（<b>按币分列</b>）</b>—— 就是"买方多付的那一部分"，也就是真进国库的总额。
+   *
+   * <pre>
+   * 买方实付 = 货款 + 运费 + Σ税项      （货款仍全部进卖方、运费进承运方 ⇒ 差额只可能进国库，I-C1）
+   * </pre>
+   *
+   * <p>★★ <b>为什么是逐币表</b>（I-C10）：多币世界里把不同币的税加起来就是把两种钱当一种（P-T4 的负向守卫 N5）。
+   */
+  public Map<CurrencyId, Long> taxByCurrency() {
+    List<TaxItem> items = TAX_ITEMS_BY_REPORT.get(new IdentityKey(this));
+    Map<CurrencyId, Long> totals = new LinkedHashMap<>();
+    if (items != null) {
+      for (TaxItem item : items) {
+        totals.merge(item.currency(), item.amountMilli(), Math::addExact);
+      }
+    }
+    return Collections.unmodifiableMap(totals);
+  }
+
+  /**
+   * ★★ <b>P-T1b：逐（层 × 收款政府 × 币种）的税项汇总</b>（保序 = 首次出现序）—— §一.9 的"当日分层的税汇总"用它。
+   *
+   * <p>★ 键是 {@code (层, 政府, 币种)} 三元组：任一项不同就是不同的钱（禁跨币相加、禁把两个政府的税合成一条）。 ★ 空表 = 本轮没有收税（不是 0）。
+   */
+  public Map<TaxKey, Long> taxByLayerGovernmentCurrency() {
+    List<TaxItem> items = TAX_ITEMS_BY_REPORT.get(new IdentityKey(this));
+    Map<TaxKey, Long> totals = new LinkedHashMap<>();
+    if (items != null) {
+      for (TaxItem item : items) {
+        totals.merge(
+            new TaxKey(item.layer(), item.government(), item.currency()),
+            item.amountMilli(),
+            Math::addExact);
+      }
+    }
+    return Collections.unmodifiableMap(totals);
+  }
+
+  /** ★★ <b>P-T1b：税项汇总的键</b>（层 × 收款政府 × 币种；三段都不同才是不同的钱）。 */
+  public record TaxKey(MarketTaxLayer layer, String government, CurrencyId currency) {
+
+    public TaxKey {
+      Objects.requireNonNull(layer, "TaxKey.layer 不得为 null");
+      if (government == null || government.isBlank()) {
+        throw new IllegalArgumentException("TaxKey.government 不得为空白");
+      }
+      Objects.requireNonNull(currency, "TaxKey.currency 不得为 null");
+    }
   }
 
   /** ★★ A2a：本轮的外汇读数（没有 ⇒ {@link FxRoundResult#none()}，不是 null；构造期已归一）。 */

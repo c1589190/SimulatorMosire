@@ -827,8 +827,45 @@ public final class EconomySettlement {
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Set<HouseholdId> marketExcludedHouseholds,
       PortEnforcementInput portEnforcement) {
+    settleOneDayInto(
+        session,
+        day,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        famineMortalityPerMille,
+        ledger,
+        parallelism,
+        profitCycle,
+        composition,
+        marketExcludedHouseholds,
+        portEnforcement,
+        PortTaxInput.none());
+  }
+
+  /**
+   * ★★ <b>P-T1b：带三层税税率的日结算入口</b>（唯一生产者 = {@code EconomyDayStepper.step}，其值由 app 组合根按口岸政策折算后注入）。
+   *
+   * <p>★ {@code portTax} 只影响<b>市场轮的成交结算</b>（三层税真收款：出口税 / 进口税 / 区内市场税 ⇒ 买方多付、国库到账）； 缺省 {@link
+   * PortTaxInput#none()} ⇒ 三层税一分不收 ⇒ 逐值退回改前行为（I-C2）。
+   */
+  static void settleOneDayInto(
+      EconomySession session,
+      long day,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      int famineMortalityPerMille,
+      ProductionLedger.Accumulator ledger,
+      EconomyParallelism parallelism,
+      EnterpriseProfitBook.CycleAccumulator profitCycle,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
+      Set<HouseholdId> marketExcludedHouseholds,
+      PortEnforcementInput portEnforcement,
+      PortTaxInput portTax) {
     Objects.requireNonNull(
         portEnforcement, "portEnforcement（没有口岸面给 PortEnforcementInput.none()，不得为 null）");
+    Objects.requireNonNull(portTax, "portTax（没有税给 PortTaxInput.none()，不得为 null）");
     Objects.requireNonNull(session, "session（S1：revision 级会话持有可变工作表）");
     Objects.requireNonNull(accounts, "accounts（S1：账户会话是会话状态，必须由调用方载入）");
     Objects.requireNonNull(topology, "topology（M2.3：区域拓扑是只读输入；单格世界用 MarketTopology.singleHex）");
@@ -1816,8 +1853,31 @@ public final class EconomySettlement {
           GovernmentMarketMandatePlan.of(
               session.sheet().govMarketMandatesOrBase(), base.governments(), day);
       // ★★ R2：口岸实际管制力随授权计划一起注入（各自逐字段带过 ⇒ 两个字段都在；withPortEnforcement 不覆盖 govMandates）。
+      //   ★★ P-T1b：三层税的税率与收税政府同样在这里注入（`withPortTax` 逐字段带过前四个字段）——
+      //     闸（E）与税（税率）是两个量，缺省各管各的，合成一个字段会让"只设了税"静默丢掉。
       marketRound =
-          marketRound.withGovMandates(govMandatePlan).withPortEnforcement(portEnforcement);
+          marketRound
+              .withGovMandates(govMandatePlan)
+              .withPortEnforcement(portEnforcement)
+              .withPortTax(portTax);
+      // ★★ P-T1b 防复发守卫：与 govMandates 同一条（丢了税 = 三层税一分不收且毫无报错）。
+      //   契约/一致性故障 ⇒ ERROR + fail-closed（§一.9：不降级）；正常路径上恒不触发。
+      if (portTax.isActive() && marketRound.portTax() != portTax) {
+        EventLog.channel(MANDATE)
+            .error(
+                LogEvent.of(
+                    "MARKET_PORT_TAX_CONTRACT",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    day,
+                    "reason",
+                    "port-tax-input-lost-by-with-chain",
+                    "expectedZones",
+                    portTax.zoneCount(),
+                    "actualZones",
+                    marketRound.portTax().zoneCount()));
+        throw new IllegalStateException("三层税的注入表在本轮装配里被丢掉了（税会一分不收，契约故障）: day=" + day);
+      }
       if (fxInput.isActive() && TRACE.isDebugEnabled()) {
         EventLog.channel(TRACE)
             .debug(
@@ -1907,7 +1967,13 @@ public final class EconomySettlement {
                   "freightPaidByCurrency",
                   report.freightPaidByCurrency(),
                   "freightUncollectedByCurrency",
-                  report.freightUncollectedByCurrency()));
+                  report.freightUncollectedByCurrency(),
+                  // ★★ P-T1b：三层税的真收总额（按币分列；= 买方多付的那一部分）。
+                  "taxByCurrency",
+                  report.taxByCurrency()));
+      // ★★ P-T1b（§一.9 的 INFO 档）：**当日分层的税汇总** —— 每一行 = 一个（层 × 收款政府 × 币种）的实收金额。
+      //   ★ 只在真的收了税时发（缺省 0 ⇒ 一行都不发，旧世界日志逐字不变）；禁跨币求和（I-C10）由键的第三段保证。
+      logTaxCollected(day, report);
       if (RAW.isTraceEnabled()) {
         for (MarketReport.Fill fill : report.fills()) {
           EventLog.channel(RAW)
@@ -8974,6 +9040,61 @@ public final class EconomySettlement {
                   expiredRows,
                   "remaining",
                   mandates.size()));
+    }
+  }
+
+  // ── P-T1b：三层税的当日汇总日志（§一.9 的 INFO 档）────────────────────────────────────
+
+  /**
+   * ★★ <b>P-T1b：当日分层的税汇总</b>（§一.9：INFO = "这一轮发生了什么"）—— <b>一行 = 一个（层 × 收款政府 × 币种）</b>
+   * 的实收金额（毫），外加一行按币分列的总额（= 买方多付的那一部分）。
+   *
+   * <p>★★ <b>为什么要这样分组</b>：读日志的人要能直接回答三个问题 —— ① 收的是哪一层（出口/进口/区内）； ② <b>进了哪个国库</b>；③
+   * 什么币、多少。跨币求和会把这三种钱当一种（I-C10 / N5），所以币种进键。
+   *
+   * <p>★ <b>缺省不发</b>：没有税（或本轮没有成交）⇒ {@code taxItems} 为空 ⇒ 一行都不发，旧世界的日志逐字不变。
+   */
+  private static void logTaxCollected(long day, MarketReport report) {
+    Map<MarketReport.TaxKey, Long> byLayer = report.taxByLayerGovernmentCurrency();
+    if (byLayer.isEmpty()) {
+      return;
+    }
+    for (Map.Entry<MarketReport.TaxKey, Long> entry : byLayer.entrySet()) {
+      MarketReport.TaxKey key = entry.getKey();
+      EventLog.channel(MANDATE)
+          .info(
+              LogEvent.of(
+                  "MARKET_TAX_COLLECTED",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  day,
+                  "layer",
+                  key.layer().value(),
+                  "government",
+                  key.government(),
+                  "currency",
+                  key.currency().value(),
+                  "amountMilli",
+                  entry.getValue(),
+                  "reason",
+                  "three-layer-tax-transferred-to-treasury"));
+    }
+    for (Map.Entry<CurrencyId, Long> entry : report.taxByCurrency().entrySet()) {
+      EventLog.channel(MANDATE)
+          .info(
+              LogEvent.of(
+                  "MARKET_TAX_COLLECTED_TOTAL",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  day,
+                  "currency",
+                  entry.getKey().value(),
+                  "amountMilli",
+                  entry.getValue(),
+                  "reason",
+                  "buyer-paid-above-goods-price",
+                  "items",
+                  report.taxItems().size()));
     }
   }
 

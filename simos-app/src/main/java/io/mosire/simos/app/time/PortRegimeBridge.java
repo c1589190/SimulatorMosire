@@ -1,17 +1,26 @@
 package io.mosire.simos.app.time;
 
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.GovernmentIds;
+import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.PortContactSurface;
 import io.mosire.simos.economy.api.market.PortDirection;
 import io.mosire.simos.economy.api.market.PortRule;
+import io.mosire.simos.economy.api.market.PortTaxMode;
 import io.mosire.simos.economy.api.market.PortTaxRule;
 import io.mosire.simos.economy.api.market.ZonePortRegime;
+import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.time.PortEnforcementInput;
 import io.mosire.simos.economy.time.PortRegimeAggregation;
+import io.mosire.simos.economy.time.PortTaxInput;
 import io.mosire.simos.gov.GovEfficiency;
 import io.mosire.simos.gov.GovPortPolicy;
 import io.mosire.simos.gov.GovState;
@@ -67,9 +76,18 @@ import java.util.Set;
  * PortTaxRule} 构造期拒（命令面 {@code Rejected}，零 revision）；"未知商品/未知币种"的判据在这里（gov 模块编译期看不见经济词表）：具名 ERROR
  * {@code GOV_PORT_POLICY_UNKNOWN_CLASS} + {@link IllegalStateException}， <b>当场停</b>（不是"忽略这一条继续跑"）。
  *
- * <p>★★ <b>税（P-T1a 的边界）</b>：本类<b>只校验 + 记日志</b>（{@code PORT_SURFACE_TAX}，TRACE），<b>不折算、不注入</b> ——
- * "税额怎么算、按谁的规则算、进哪个国库"是 <b>P-T1b（过境税真收款）</b>的裁定面（多政府共管一个区时"哪一家的税说了算"在 设计书里还没钉死，实现里不许替它定）。四个数字段本身由
- * {@link GovPortPolicy} 持久化 ⇒ 不会丢。
+ * <p>★★ <b>税（P-T1b 起真收）</b>：本类把四个数字段里的<b>税</b>折成"区级税率 + 收税政府"，经 {@link PortTaxInput} 注入经济侧（真收款 =
+ * 买方多付、差额进对应政府国库户，落在市场结算的成交处）：
+ *
+ * <pre>
+ * 区级税率（两个分量各自按暴露边权重加权平均，分母 = 该区全部暴露边含三不管那一份）：
+ *   perUnitMilli      = ⌊Σ(w_k × 该政府从量额) ÷ Σw⌋        （只有设了从量规则的政府进分子）
+ *   adValoremPerMille = ⌊Σ(w_k × 该政府从价额) ÷ Σw⌋        （只有设了从价规则的政府进分子）
+ * 收税政府 = 该区暴露边归属里"国库是家户"的那些政府（权威 = Government.treasury()；按权重分摊税额）
+ * </pre>
+ *
+ * ★ <b>无政府的一侧 ⇒ 该侧税 = 0</b>（三不管那一份交 0、也不进收税政府表；与"无政府 ⇒ 开放度 1000"同源）。 ★
+ * <b>只设税不设限</b>的世界：闸不动、税照收（两个注入表各管各的）。★ 四个数字段本身由 {@link GovPortPolicy} 持久化 ⇒ 不会丢。
  *
  * <p>★ <b>时序（本批冻结）</b>：本折算读当日结算后的口岸效率（{@code GovEfficiency} 在同一日循环的 gov 阶段算）， 注入给 {@code stepper}
  * 后被<b>下一次</b>市场轮消费（一 tick 滞后）；理由与影响记账本 §关键判断。
@@ -85,14 +103,16 @@ public final class PortRegimeBridge {
    * 一次折算的完整产物。
    *
    * @param input 注入经济侧的逐区逐类实际管制力（逐方向 {@code 1000 − E}；空 ⇒ 没有口岸面）
+   * @param taxInput ★ P-T1b：注入经济侧的<b>三层税税率与收税政府</b>（空 ⇒ 一分不收，逐值退回改前）
    * @param regimes 逐区逐类<b>逐方向</b>的总效率读数（保序：区序 → 类序 → 入口/出口；供日志/读数/探针）
    * @param exposedEdges 全部接触面的暴露边合计（读数）
    * @param contacts 接触面条数（读数）
    * @param restrictedClasses 设过<b>非空</b>规则的类数（读数；0 ⇒ 没有口岸面）
-   * @param taxedClasses 设过<b>真会收</b>的税的类数（读数；P-T1a 只进日志，真收款是 P-T1b）
+   * @param taxedClasses 设过<b>真会收</b>的税的类数（读数；商品维 + 币种维）
    */
   public record PortRegimeDay(
       PortEnforcementInput input,
+      PortTaxInput taxInput,
       List<ZonePortRegime> regimes,
       long exposedEdges,
       int contacts,
@@ -101,6 +121,7 @@ public final class PortRegimeBridge {
 
     public PortRegimeDay {
       Objects.requireNonNull(input, "input");
+      Objects.requireNonNull(taxInput, "taxInput（没有税就给 PortTaxInput.none()）");
       regimes = Collections.unmodifiableList(new ArrayList<>(regimes)); // ★ 保序冻结
     }
 
@@ -108,10 +129,25 @@ public final class PortRegimeBridge {
      * 本轮有没有口岸面（有实际管制力才注入 ⇒ false ⇒ 逐值不变）。
      *
      * <p>★ 判据是 {@link PortEnforcementInput#isActive()}（表非空 = 至少一个区一个类真的抓得住）而不是"设过几条规则"： 一条规则设成全
-     * 0、或只设了税（P-T1a 不收款）⇒ 本批一个数都不该动 ⇒ 不注入。
+     * 0、或只设了税 ⇒ 闸一个数都不动 ⇒ 不注入管制力（税走 {@link #taxActive()} 那条路，两者各管各的）。
      */
     public boolean active() {
       return input.isActive();
+    }
+
+    /**
+     * ★★ <b>P-T1b：本轮有没有税制可注入</b>（至少一个区有"能收钱的政府"）—— 真收不收得看税率与成交，这里只回答 "要不要把表交给经济会话"。
+     *
+     * <p>★ <b>为什么与 {@link #active()} 分开</b>：只设税率而两侧全开的世界"能过但要多付钱"；只设限制而不设税的世界
+     * "过不去但不加价"。合成一个判据会让其中一半静默失效。
+     */
+    public boolean taxActive() {
+      return taxInput.isActive();
+    }
+
+    /** 本轮真的有非 0 税率的（区 × 商品 × 方向）条数（读数/日志用；0 ⇒ 收了也是 0）。 */
+    public int taxedSides() {
+      return taxInput.taxedSides();
     }
   }
 
@@ -141,7 +177,8 @@ public final class PortRegimeBridge {
 
     List<PortExposureEdges.Contact> contacts = PortExposureEdges.contacts(economy, map, units);
     if (contacts.isEmpty()) {
-      return new PortRegimeDay(PortEnforcementInput.none(), List.of(), 0L, 0, 0, 0);
+      return new PortRegimeDay(
+          PortEnforcementInput.none(), PortTaxInput.none(), List.of(), 0L, 0, 0, 0);
     }
     // ── 逐区 × 逐归属：暴露边权重（w_k）────────────────────────────────────────────────
     Map<String, Map<String, Long>> weightsByZone = new LinkedHashMap<>();
@@ -150,17 +187,33 @@ public final class PortRegimeBridge {
           .computeIfAbsent(contact.zoneId(), ignored -> new LinkedHashMap<>())
           .put(contact.ownerKey(), contact.exposedEdgeCount());
     }
-    // ── 逐区：类的定义域 = 该区各归属政府政策里显式设过**且非空**的类（一条政策都没有 ⇒ 空）──────
+    // ── 逐区：① 类的定义域（显式设过且非空的类）② 区级税率（两个分量各自按 w_k 加权平均）
+    //          ③ 收税政府（国库是家户的那些；权威 = Government.treasury()）────────────────────
     Map<String, Set<String>> restrictedCommoditiesByZone = new LinkedHashMap<>();
     Map<String, Set<String>> restrictedCurrenciesByZone = new LinkedHashMap<>();
+    Map<String, Map<CommodityId, ZoneTaxAccumulator>> taxAccumulatorsByZone = new LinkedHashMap<>();
+    Map<String, List<PortTaxInput.GovernmentShare>> governmentsByZone = new LinkedHashMap<>();
+    Map<String, CurrencyId> legalTenderByZone = new LinkedHashMap<>();
     int restrictedClasses = 0;
     int taxedClasses = 0;
     for (Map.Entry<String, Map<String, Long>> zoneEntry : weightsByZone.entrySet()) {
+      String zoneId = zoneEntry.getKey();
       Set<String> commodities = new LinkedHashSet<>();
       Set<String> currencies = new LinkedHashSet<>();
-      for (String ownerKey : zoneEntry.getValue().keySet()) {
+      Map<CommodityId, ZoneTaxAccumulator> taxAccumulators = new LinkedHashMap<>();
+      List<PortTaxInput.GovernmentShare> governments = new ArrayList<>();
+      // ★ 加权平均的分母 = 该区**全部**暴露边（含三不管那一份）：没有政府的那一侧交 0，
+      //   于是"整区都没政府 ⇒ 税率 0"是这条算式的自然结果（§13.2-3），不是另一条特判。
+      long weightSum = 0L;
+      for (long weight : zoneEntry.getValue().values()) {
+        weightSum = Math.addExact(weightSum, weight);
+      }
+      List<String> ownerKeys = new ArrayList<>(zoneEntry.getValue().keySet());
+      ownerKeys.sort(Comparator.naturalOrder());
+      for (String ownerKey : ownerKeys) {
         GovPortPolicy policy = policyOf(govState, units, ownerKey);
         checkKnownClasses(policy, economy, ownerKey, day);
+        long weight = zoneEntry.getValue().get(ownerKey);
         for (Map.Entry<CommodityId, PortRule> rule : policy.commodityRules().entrySet()) {
           if (rule.getValue().allDefault()) {
             continue; // ★ I-P1：四个数全 0/无税 = 等于没设（显式 0 与未设同义）
@@ -168,6 +221,7 @@ public final class PortRegimeBridge {
           commodities.add(rule.getKey().value());
           if (rule.getValue().hasEffectiveTax()) {
             taxedClasses++;
+            accumulateTax(taxAccumulators, rule.getKey(), rule.getValue(), weight);
           }
         }
         for (Map.Entry<CurrencyId, PortRule> rule : policy.currencyRules().entrySet()) {
@@ -176,18 +230,38 @@ public final class PortRegimeBridge {
           }
           currencies.add(rule.getKey().value());
           if (rule.getValue().hasEffectiveTax()) {
+            // ★ 币种维的税**不进**商品税表：币种手续费是 P-T5 的机制（挂单禁入/禁出 + 手续费），
+            //   它的税基不是"货值" ⇒ 本表只统计可读性，不参与任何金额计算（不替 P-T5 定口径）。
             taxedClasses++;
           }
         }
+        PortTaxInput.GovernmentShare share = governmentShareOf(economy, ownerKey, weight, day);
+        if (share != null) {
+          governments.add(share);
+        }
       }
       restrictedClasses += commodities.size() + currencies.size();
-      restrictedCommoditiesByZone.put(zoneEntry.getKey(), commodities);
-      restrictedCurrenciesByZone.put(zoneEntry.getKey(), currencies);
+      restrictedCommoditiesByZone.put(zoneId, commodities);
+      restrictedCurrenciesByZone.put(zoneId, currencies);
+      if (!governments.isEmpty()) {
+        CurrencyId legalTender = legalTenderOf(economy, zoneId, day);
+        if (legalTender != null) {
+          governmentsByZone.put(zoneId, governments);
+          legalTenderByZone.put(zoneId, legalTender);
+          taxAccumulatorsByZone.put(zoneId, taxAccumulators);
+        }
+      }
     }
+    // ★★ P-T1b：三层税的注入表（区级税率 + 收税政府）。它**不**依赖"有没有口岸限制"：
+    //   区内市场税（MarketRegulation.tariffPerUnit）的税率在经济侧，收税政府必须照样注入，否则那一层永远收不到钱。
+    PortTaxInput taxInput =
+        buildPortTaxInput(
+            weightsByZone, taxAccumulatorsByZone, governmentsByZone, legalTenderByZone);
     if (restrictedClasses == 0) {
-      // ★ I-P8：一条有效规则都没有 ⇒ 没有口岸面（既不聚合、也不注入；与"没注入"逐值同义）。
+      // ★ I-P8：一条有效规则都没有 ⇒ 没有口岸面（既不聚合、也不注入管制力；与"没注入"逐值同义）。
       return new PortRegimeDay(
           PortEnforcementInput.none(),
+          taxInput,
           List.of(),
           PortExposureEdges.totalEdges(contacts),
           contacts.size(),
@@ -278,11 +352,193 @@ public final class PortRegimeBridge {
         new PortEnforcementInput(currencyEnforcementByZone, commodityEnforcementByZone);
     return new PortRegimeDay(
         input,
+        taxInput,
         regimes,
         PortExposureEdges.totalEdges(contacts),
         contacts.size(),
         restrictedClasses,
         taxedClasses);
+  }
+
+  // ── P-T1b：区级税率（从量/从价两个分量各自按暴露边权重加权平均）+ 收税政府 ────────────────────
+
+  /** 逐区逐商品的税率分子累加器（权重 × 数额；四个分量各一格）。 */
+  private static final class ZoneTaxAccumulator {
+    long exitPerUnitWeighted;
+    long exitAdValoremWeighted;
+    long entryPerUnitWeighted;
+    long entryAdValoremWeighted;
+  }
+
+  /** 把一个政府的这条商品规则按它的权重累加进分子（从量/从价各归各的格子；溢出 fail-closed）。 */
+  private static void accumulateTax(
+      Map<CommodityId, ZoneTaxAccumulator> accumulators,
+      CommodityId commodity,
+      PortRule rule,
+      long weight) {
+    if (weight <= 0L) {
+      return;
+    }
+    ZoneTaxAccumulator accumulator =
+        accumulators.computeIfAbsent(commodity, ignored -> new ZoneTaxAccumulator());
+    PortTaxRule exit = rule.exitTax();
+    if (exit.leviesTax()) {
+      long weighted = Math.multiplyExact(weight, exit.amount());
+      if (exit.mode() == PortTaxMode.PER_UNIT_MILLI) {
+        accumulator.exitPerUnitWeighted = Math.addExact(accumulator.exitPerUnitWeighted, weighted);
+      } else {
+        accumulator.exitAdValoremWeighted =
+            Math.addExact(accumulator.exitAdValoremWeighted, weighted);
+      }
+    }
+    PortTaxRule entry = rule.entryTax();
+    if (entry.leviesTax()) {
+      long weighted = Math.multiplyExact(weight, entry.amount());
+      if (entry.mode() == PortTaxMode.PER_UNIT_MILLI) {
+        accumulator.entryPerUnitWeighted =
+            Math.addExact(accumulator.entryPerUnitWeighted, weighted);
+      } else {
+        accumulator.entryAdValoremWeighted =
+            Math.addExact(accumulator.entryAdValoremWeighted, weighted);
+      }
+    }
+  }
+
+  /** 分子 ÷ 分母（加权平均，向下取整）；没有非 0 分子 ⇒ 该类不进表（= 不收）。 */
+  private static Map<CommodityId, PortTaxInput.CommodityTaxRates> zoneRates(
+      Map<CommodityId, ZoneTaxAccumulator> accumulators, long weightSum) {
+    Map<CommodityId, PortTaxInput.CommodityTaxRates> rates = new LinkedHashMap<>();
+    if (weightSum <= 0L) {
+      return rates;
+    }
+    for (Map.Entry<CommodityId, ZoneTaxAccumulator> entry : accumulators.entrySet()) {
+      ZoneTaxAccumulator accumulator = entry.getValue();
+      PortTaxInput.CommodityTaxRates rate =
+          new PortTaxInput.CommodityTaxRates(
+              accumulator.exitPerUnitWeighted / weightSum,
+              accumulator.exitAdValoremWeighted / weightSum,
+              accumulator.entryPerUnitWeighted / weightSum,
+              accumulator.entryAdValoremWeighted / weightSum);
+      if (!rate.zero()) {
+        rates.put(entry.getKey(), rate);
+      }
+    }
+    return rates;
+  }
+
+  /** 组装注入表（区序 = 接触面表序；类序 = 政策的规范序 ⇒ 逐值可复现）。 */
+  private static PortTaxInput buildPortTaxInput(
+      Map<String, Map<String, Long>> weightsByZone,
+      Map<String, Map<CommodityId, ZoneTaxAccumulator>> taxAccumulatorsByZone,
+      Map<String, List<PortTaxInput.GovernmentShare>> governmentsByZone,
+      Map<String, CurrencyId> legalTenderByZone) {
+    Map<String, PortTaxInput.ZoneTaxTable> tables = new LinkedHashMap<>();
+    for (String zoneId : weightsByZone.keySet()) {
+      List<PortTaxInput.GovernmentShare> governments = governmentsByZone.get(zoneId);
+      CurrencyId legalTender = legalTenderByZone.get(zoneId);
+      if (governments == null || legalTender == null) {
+        continue;
+      }
+      long weightSum = 0L;
+      for (long weight : weightsByZone.get(zoneId).values()) {
+        weightSum = Math.addExact(weightSum, weight);
+      }
+      tables.put(
+          zoneId,
+          new PortTaxInput.ZoneTaxTable(
+              legalTender,
+              governments,
+              zoneRates(taxAccumulatorsByZone.getOrDefault(zoneId, Map.of()), weightSum)));
+    }
+    return new PortTaxInput(tables);
+  }
+
+  /**
+   * ★★ <b>一个归属键 → 收税政府份额</b>（{@code null} = 这一份收不了钱，不进税表）。
+   *
+   * <p>★★ <b>权威来自 {@code Government.treasury()}，不按 {@code hh-gov-} 前缀猜</b>：政府身份由 GOV 单位 id 派生
+   * （{@code GovernmentIds.ofUnit}），国库 actor 从政府记录上取。★ 只有 {@code ActorKind.HOUSEHOLD} 的国库进得来 ——
+   * 账户主体只有家户（{@code applyTransfer} 的 fail-closed 契约），{@code GOVERNMENT} actor 国库收不了税： 那种情况<b>具名记一条
+   * INFO</b> 并把它排除（不静默按前缀造一个家户）。
+   */
+  private static PortTaxInput.GovernmentShare governmentShareOf(
+      EconomyData economy, String ownerKey, long weight, long day) {
+    if (PortExposureEdges.UNGOVERNED_OWNER_KEY.equals(ownerKey)) {
+      return null; // 三不管：没有政府可收（那一份交 0）
+    }
+    GovernmentId governmentId;
+    try {
+      governmentId = GovernmentIds.ofUnit(ownerKey);
+    } catch (IllegalArgumentException bad) {
+      LOG.info(
+          LogEvent.of(
+              "GOV_PORT_TAX_OWNER_KEY_ILLEGAL",
+              AppLogSource.DAILY_LOOP,
+              "day",
+              day,
+              "owner",
+              ownerKey,
+              "reason",
+              "government-unit-id-cannot-be-derived-into-a-government-id"));
+      return null;
+    }
+    Government government = economy.governments().get(governmentId);
+    if (government == null) {
+      LOG.info(
+          LogEvent.of(
+              "GOV_PORT_TAX_NO_GOVERNMENT_RECORD",
+              AppLogSource.DAILY_LOOP,
+              "day",
+              day,
+              "owner",
+              ownerKey,
+              "government",
+              governmentId.value(),
+              "reason",
+              "exposure-edge-owner-has-no-government-record-so-it-cannot-collect"));
+      return null;
+    }
+    if (government.treasury().kind() != ActorKind.HOUSEHOLD) {
+      LOG.info(
+          LogEvent.of(
+              "GOV_PORT_TAX_TREASURY_NOT_HOUSEHOLD",
+              AppLogSource.DAILY_LOOP,
+              "day",
+              day,
+              "owner",
+              ownerKey,
+              "government",
+              governmentId.value(),
+              "treasuryKind",
+              government.treasury().kind().name(),
+              "reason",
+              "only-household-treasuries-can-receive-transfers"));
+      return null;
+    }
+    return new PortTaxInput.GovernmentShare(governmentId.value(), government.treasury(), weight);
+  }
+
+  /**
+   * ★★ <b>区的法定币</b>（{@code MarketZone.legalTender} —— 区的<b>唯一货币事实</b>）：税率的量纲与折算的起点都是它。
+   *
+   * <p>★ 查无这个区（不可能：接触面就是从区表建出来的）⇒ {@code null} 并具名记一条 DEBUG，本区不进税表（收 0）。
+   */
+  private static CurrencyId legalTenderOf(EconomyData economy, String zoneId, long day) {
+    MarketZone zone = MarketZoneBook.zone(economy, new MarketZoneId(zoneId)).orElse(null);
+    if (zone == null) {
+      LOG.debug(
+          LogEvent.of(
+              "GOV_PORT_TAX_ZONE_NOT_FOUND",
+              AppLogSource.DAILY_LOOP,
+              "day",
+              day,
+              "zone",
+              zoneId,
+              "reason",
+              "market-zone-not-found-so-no-legal-tender-so-no-tax"));
+      return null;
+    }
+    return zone.legalTender();
   }
 
   /** 商品类：建该方向的接触面 → 聚合 → DEBUG/TRACE 一条（两个方向的算式逐字相同，只有 s 的来源不同）。 */
@@ -351,7 +607,7 @@ public final class PortRegimeBridge {
    * 逐接触面：{@code s} = 该归属政府的政策值<b>（本方向）</b>（三不管/无政策 ⇒ 0）；{@code e} = 该政府的口岸效率（无 ⇒ 0）。
    *
    * <p>★ 税（{@link PortTaxRule}）<b>不进接触面契约</b>（它只装限制强度与效率），本方法顺带 TRACE 记一条 {@code
-   * PORT_SURFACE_TAX}——P-T1a 只落形状，真收款是 P-T1b。
+   * PORT_SURFACE_TAX}——本批起这些税**真的收**（区级税率与收税政府见 {@link #compute} 的税表折算）。
    */
   private static List<PortContactSurface> surfaces(
       long day,
@@ -554,9 +810,9 @@ public final class PortRegimeBridge {
             "taxAmount",
             tax.amount(),
             "collected",
-            false,
+            tax.leviesTax(),
             "reason",
-            "p-t1a-records-shape-only-collection-is-p-t1b"));
+            "p-t1b-collects-this-tax-at-settlement-through-port-tax-input"));
   }
 
   private static List<String> sorted(Set<String> values) {

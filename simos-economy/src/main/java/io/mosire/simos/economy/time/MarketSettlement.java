@@ -27,6 +27,7 @@ import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
 import io.mosire.simos.economy.api.market.LossBearer;
 import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.api.market.MarketRegion;
+import io.mosire.simos.economy.api.market.MarketTaxLayer;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.PortDirection;
 import io.mosire.simos.economy.api.market.PriceMode;
@@ -364,6 +365,20 @@ final class MarketSettlement {
     private PortEnforcementInput portEnforcement = PortEnforcementInput.none();
 
     /**
+     * ★★ <b>P-T1b（2026-10-10 口岸设计书 §13）：本轮逐区的<b>税率</b>与收税政府</b>（组合根折算后经 {@link #withPortTax} 注入）——
+     * 出口税（源区）/ 进口税（目的区）/ 区内市场税（本区）三层真收款的<b>税率来源</b>。
+     *
+     * <p>★★ <b>与 {@link #portEnforcement} 分开的原因</b>：闸（E，能不能过）与税（收多少）是两个量，缺省也各管各的 ——
+     * 只设税率而两侧全开的世界<b>能过但要多付钱</b>；只设限制而不设税的世界<b>过不去但不加价</b>。合成一个字段会让 "只设了税"（管制力全 0 ⇒
+     * 那个字段看上去是缺省）静默丢掉税。
+     *
+     * <p>★ 默认 {@link PortTaxInput#none()} ⇒ <b>逐值退回改前行为</b>（未设税 ⇒ 一个数都不动，I-C2）。 ★ 逐轮瞬态：不进 {@code
+     * EconomyData}、不进变更集、不落盘。★ 与 {@code arbitrage}/{@code fx}/{@code govMandates}/{@code
+     * portEnforcement} 同一条"克隆必须逐字段带过"的纪律（本类踩过三次的那个坑）。
+     */
+    private PortTaxInput portTax = PortTaxInput.none();
+
+    /**
      * ★★ <b>2026-10-08（阶段 2-A2a）：本轮的外汇入参</b>（官方汇率 + 窗口储备上限；由 {@code EconomySettlement} 从 {@code
      * EconomyData.governments()} 装配后经 {@link #withFx} 注入；★ B4 起再加上 {@code
      * EconomyData.marketZones()} 的区级覆盖 —— 口径 = 区级优先、按币对回落该区发行 GOV 的 GOV 级报价）。 默认 {@link
@@ -644,6 +659,7 @@ final class MarketSettlement {
       next.fx = fx; // ★ A2a：同一处"替换式构造"必须逐字段带过（克隆丢字段是本类踩过的坑）
       next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段
+      next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
       return next;
     }
 
@@ -682,6 +698,7 @@ final class MarketSettlement {
       next.fx = input;
       next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段
+      next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
       return next;
     }
 
@@ -703,6 +720,51 @@ final class MarketSettlement {
     /** ★★ R2：本轮逐区逐币种/逐商品的实际管制力（缺省 {@link PortEnforcementInput#none()} ⇒ 没有口岸面）。 */
     PortEnforcementInput portEnforcement() {
       return portEnforcement;
+    }
+
+    /** ★★ P-T1b：本轮逐区的税率与收税政府（缺省 {@link PortTaxInput#none()} ⇒ 三层税都不收）。 */
+    PortTaxInput portTax() {
+      return portTax;
+    }
+
+    /**
+     * ★★ <b>P-T1b：注入本轮的三层税税率（区级 + 收税政府）</b>（返回一个新的 {@link MarketRound}；原对象不动）。
+     *
+     * <p>★ 形制与 {@link #withPortEnforcement} 逐字相同：不新增构造器签名，既有调用方自然拿到 {@link PortTaxInput#none()}（=
+     * 不收税，逐值退回改前）。★ 它必须与其余四个 {@code withX} 互相带过（见各方法里的 {@code next.xxx = xxx} 几行）——丢字段是本类踩过三次的坑。
+     */
+    MarketRound withPortTax(PortTaxInput input) {
+      Objects.requireNonNull(input, "withPortTax 的入参不得为 null（没有税就给 PortTaxInput.none()）");
+      MarketRound next =
+          new MarketRound(
+              day,
+              householdEconomies,
+              householdGoods,
+              householdMoney,
+              householdFrozenGoods,
+              householdFrozenMoney,
+              unmetToday,
+              householdOfActor,
+              industries,
+              units,
+              assetShares,
+              relations,
+              laborCommitments,
+              shipments,
+              ledger,
+              operatorConditions,
+              index,
+              householdDemands,
+              regulation,
+              creditConfig,
+              debts,
+              marketExcludedHouseholds);
+      next.arbitrage = arbitrage;
+      next.fx = fx;
+      next.govMandates = govMandates;
+      next.portEnforcement = portEnforcement;
+      next.portTax = input;
+      return next;
     }
 
     /**
@@ -742,6 +804,7 @@ final class MarketSettlement {
       next.fx = fx;
       next.govMandates = govMandates;
       next.portEnforcement = input;
+      next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段
       return next;
     }
 
@@ -783,6 +846,7 @@ final class MarketSettlement {
       next.fx = fx;
       next.govMandates = plan;
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段
+      next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
       return next;
     }
 
@@ -840,6 +904,7 @@ final class MarketSettlement {
       next.fx = fx; // ★ A2a：同一个坑的第二个字段（克隆轮丢 fx = 外汇面整段不生效且毫无报错）
       next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段（丢了它 = 国库户自动订单守卫整段失效）
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段（丢了它 = 口岸管制整段不生效）
+      next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
       return next;
     }
 
@@ -1250,6 +1315,11 @@ final class MarketSettlement {
       return new MarketOutcome(
           MarketReport.empty(round.day, trigger, carrierPresent(ctx)), markets);
     }
+    // ★★ P-T1b：税表的区键口径核对（与口岸闸同一条 fail-closed 契约，见 {@link #requirePortZoneKeysAligned}）——
+    //   税表非空却一个区键都命中不了本轮拓扑的区 id ⇒ 三层税会**静默一分不收**，那正是本仓最贵的一类故障。
+    if (round.portTax().isActive()) {
+      requirePortTaxZoneKeysAligned(ctx);
+    }
 
     // ── 1. 逐格建计划与订单；参与表按 actor 去重（订单生成与撮合的唯一来源）──────────────────────
     //   ★★ R2：按市场区并行构建，再按 hex (q,r) 序拼回 —— 与原串行序逐字相同（见方法注释）。
@@ -1471,7 +1541,9 @@ final class MarketSettlement {
             ctx.buyerOutcomes,
             ctx.creditFills,
             ctx.tariffByFill,
-            fx),
+            fx,
+            // ★★ P-T1b：三层税的逐项账目（层/金额/币种/收款政府）—— 读口 taxItems()/taxByCurrency() 的唯一来源。
+            ctx.taxItems),
         adapted.markets(),
         mandateFills);
   }
@@ -4211,6 +4283,44 @@ final class MarketSettlement {
             + ctx.topology.regions().size());
   }
 
+  /**
+   * ★★ <b>P-T1b 税表区键口径核对（fail-closed）</b>：{@link #requirePortZoneKeysAligned} 的同一条契约 —— 税表非空
+   * 却一个区键都命中不了本轮拓扑的区 id ⇒ 三层税<b>静默一分不收</b>（政策设了却毫无作用），必须当场炸。
+   *
+   * <p>★ 为什么"至少命中一个"就够：税表的区键来自组合根的 {@code MarketZoneBook.zones(economy)}，与本轮拓扑同源； 命中 0
+   * 个只可能是两处键分叉（或注入值来自另一个 revision）。
+   */
+  private static void requirePortTaxZoneKeysAligned(MatchContext ctx) {
+    Set<String> taxZones = ctx.round.portTax().zoneIds();
+    for (MarketRegion region : ctx.topology.regions()) {
+      if (taxZones.contains(region.node().nodeId())) {
+        return;
+      }
+    }
+    EventLog.channel(MARKET)
+        .error(
+            LogEvent.of(
+                "MARKET_PORT_TAX_ZONE_KEY_CONTRACT",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.round.day,
+                "reason",
+                "port-tax-zone-keys-match-no-market-region",
+                "taxZones",
+                taxZones.size(),
+                "firstTaxZone",
+                taxZones.isEmpty() ? "-" : taxZones.iterator().next(),
+                "marketRegions",
+                ctx.topology.regions().size(),
+                "firstMarketRegion",
+                ctx.topology.regions().get(0).node().nodeId()));
+    throw new IllegalStateException(
+        "三层税注入表的区键与本轮市场拓扑的区 id 不是同一套键（fail-closed：税会静默一分不收）: taxZones="
+            + taxZones.size()
+            + " / marketRegions="
+            + ctx.topology.regions().size());
+  }
+
   /** DEBUG 一条：这条车道被口岸闸节流了（判据 = 可通过量 < 想跨区的量；含两道闸的逐侧读数）。 */
   private static void logPortLaneGated(
       MatchContext ctx,
@@ -4800,7 +4910,16 @@ final class MarketSettlement {
           quantity = affordable;
         }
         long payable = payableMoneyOf(ctx, buy);
-        quantity = exactAffordableUpTo(quantity, payable, buyerUnitPrice, effectiveRoute);
+        quantity =
+            exactAffordableUpTo(
+                ctx,
+                buy,
+                sell,
+                buy.order.commodity(),
+                quantity,
+                payable,
+                buyerUnitPrice,
+                effectiveRoute);
         if (quantity <= 0L) {
           // 钱包/预算在账面上已经归零（不是"这个价买不起"）⇒ 这个买方在**任何**正价格上都再无成交可能：
           // 置 noMoney 让后续跨区路线直接跳过它（否则它会以 remaining>0 的身份把每条路线都试一遍）。
@@ -5127,6 +5246,232 @@ final class MarketSettlement {
                 payment));
   }
 
+  // ── P-T1b：三层税（真收款）────────────────────────────────────────────────────────────
+
+  /**
+   * ★★ <b>P-T1b：本笔成交的三层税（唯一计税点）</b>—— 出口税（源区）/ 进口税（目的区）/ 区内市场税（本区）； 每层<b>只算一次</b>（I-C3），金额毫、币种 =
+   * 买方支付币。
+   *
+   * <pre>
+   * 跨区在途（inTransit） ：出口税 = 源区该商品 EXIT 税率；进口税 = 目的区该商品 ENTRY 税率
+   * 区内即时/区内跨格     ：区内市场税 = 卖方的区级 MarketRegulation.tariffPerUnit（**既有钩子**，P-T1b 起真收）
+   * </pre>
+   *
+   * <p>★★ <b>三层各自的收款方</b>：出口税进源区管辖政府国库、进口税进目的区管辖政府国库、区内税进本区管辖政府国库 （多政府共管一个区时按暴露边权重分摊，见 {@link
+   * MarketTaxBook}）。
+   *
+   * <p>★★ <b>缺省语义中性（I-C2）</b>：未注入税表 / 该层税率为 0 / 该区没有政府 ⇒ 本方法返回空表 ⇒ {@code total = payment +
+   * freight} 逐值等于改前。
+   *
+   * <p>★ 调用点<b>只有两处</b>：{@link #executeTrade}（真收）与 {@link #totalCostAtMost}（可负担的精确封顶）——
+   * 同一个方法保证"判得起"与"真的扣"不可能漂开（那正是负余额/静默少买这类故障的来源）。
+   */
+  private static List<MarketTaxBook.Charge> taxesFor(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long quantity,
+      long buyerUnitPrice,
+      boolean inTransit,
+      boolean logUnvalued) {
+    PortTaxInput tax = ctx.round.portTax();
+    if (!tax.isActive() || quantity <= 0L) {
+      return List.of();
+    }
+    long payment = paymentForQuantity(quantity, buyerUnitPrice);
+    List<MarketTaxBook.Charge> charges = new ArrayList<>(2);
+    if (inTransit) {
+      // ① 出口税：源区（卖方所在区）管辖政府收；② 进口税：目的区（买方所在区）管辖政府收。
+      collectPortLayer(
+          ctx,
+          charges,
+          buy,
+          commodity,
+          sell.regionId,
+          PortDirection.EXIT,
+          MarketTaxLayer.PORT_EXIT,
+          quantity,
+          payment,
+          logUnvalued);
+      collectPortLayer(
+          ctx,
+          charges,
+          buy,
+          commodity,
+          buy.regionId,
+          PortDirection.ENTRY,
+          MarketTaxLayer.PORT_ENTRY,
+          quantity,
+          payment,
+          logUnvalued);
+      return charges;
+    }
+    // ③ 区内市场税：既有 MarketRegulation.tariffPerUnit（毫该区法定币 / 商品单位）—— 照旧只按卖方所在区取；
+    //    收款方 = 该区的管辖政府（没有政府 ⇒ 收 0；与"无政府 ⇒ 该侧税 = 0"同源）。
+    long inZonePerUnit = ctx.tariffPerUnitOf(sell.regionId, commodity);
+    if (inZonePerUnit <= 0L) {
+      return charges;
+    }
+    collectLayer(
+        ctx,
+        charges,
+        buy,
+        commodity,
+        sell.regionId,
+        MarketTaxLayer.IN_ZONE_MARKET,
+        inZonePerUnit,
+        0L,
+        quantity,
+        payment,
+        logUnvalued);
+    return charges;
+  }
+
+  /** 口岸某一侧的税（税率从注入表按 (区 × 商品 × 方向) 取）。 */
+  private static void collectPortLayer(
+      MatchContext ctx,
+      List<MarketTaxBook.Charge> charges,
+      BuySlot buy,
+      CommodityId commodity,
+      String zoneId,
+      PortDirection direction,
+      MarketTaxLayer layer,
+      long quantity,
+      long payment,
+      boolean logUnvalued) {
+    PortTaxInput tax = ctx.round.portTax();
+    collectLayer(
+        ctx,
+        charges,
+        buy,
+        commodity,
+        zoneId,
+        layer,
+        tax.perUnitMilli(zoneId, commodity, direction),
+        tax.adValoremPerMille(zoneId, commodity, direction),
+        quantity,
+        payment,
+        logUnvalued);
+  }
+
+  /** 计一层税并把结果并进 {@code charges}（说不出法定币的价 ⇒ 本层不收 + 具名记录，绝不静默按 1:1 猜）。 */
+  private static void collectLayer(
+      MatchContext ctx,
+      List<MarketTaxBook.Charge> charges,
+      BuySlot buy,
+      CommodityId commodity,
+      String zoneId,
+      MarketTaxLayer layer,
+      long perUnitMilli,
+      long adValoremPerMille,
+      long quantity,
+      long payment,
+      boolean logUnvalued) {
+    if (perUnitMilli == 0L && adValoremPerMille == 0L) {
+      return;
+    }
+    MarketTaxBook.Assessment assessment =
+        MarketTaxBook.assess(
+            layer,
+            ctx.round.portTax().tableOf(zoneId),
+            ctx.currencyValuation(),
+            buy.currency,
+            buy.regionId,
+            buy.buyer.actor,
+            quantity,
+            payment,
+            perUnitMilli,
+            adValoremPerMille,
+            zoneId);
+    if (assessment.unvalued()) {
+      // ★ 业务路径上的具名缺口（INFO，不降级为静默 0）：法定币在买方这一侧既无报价也不流通 ⇒ 说不出价。
+      //   ★ `logUnvalued == false` = 可负担预判那条路（{@link #totalCostAtMost} 的二分里会被问很多次）⇒
+      //     只算不记：日志只由**真的落账**那一处（{@link #executeTrade}）发一条，不刷屏、也不重复。
+      if (!logUnvalued) {
+        return;
+      }
+      //   ★ 为什么不是 fail-closed 拒绝成交：设计书 §13.2-4 明写"税不影响能不能过"（那是闸的事）。
+      EventLog.channel(MARKET)
+          .info(
+              LogEvent.of(
+                  "MARKET_TAX_UNVALUED",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  ctx.round.day,
+                  "layer",
+                  layer.value(),
+                  "zone",
+                  zoneId,
+                  "commodity",
+                  commodity.value(),
+                  "buyerPays",
+                  buy.currency.value(),
+                  "ratePerUnitMilli",
+                  perUnitMilli,
+                  "rateAdValoremPerMille",
+                  adValoremPerMille,
+                  "collected",
+                  false,
+                  "reason",
+                  "legal-tender-has-no-quotation-and-does-not-circulate-locally"));
+      return;
+    }
+    charges.addAll(assessment.charges());
+  }
+
+  /** 层 → 转移原因（唯一拼写点；三档各自具名，读账时分得出被抽的是哪一层）。 */
+  private static TransferReason taxReasonOf(MarketTaxLayer layer) {
+    return switch (layer) {
+      case PORT_EXIT -> TransferReason.PORT_TAX_EXIT;
+      case PORT_ENTRY -> TransferReason.PORT_TAX_ENTRY;
+      case IN_ZONE_MARKET -> TransferReason.MARKET_TAX_IN_ZONE;
+    };
+  }
+
+  /** TRACE 一条：逐笔逐层的税额与币种（§一.9 的逐笔档；默认关，排查"这笔怎么被抽了这么多"用它）。 */
+  private static void logTaxCharged(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      MarketTaxBook.Charge charge,
+      long quantity,
+      long payment) {
+    if (!MARKET.isTraceEnabled()) {
+      return;
+    }
+    EventLog.channel(MARKET)
+        .trace(
+            LogEvent.of(
+                "MARKET_TAX_LAYER_CHARGED",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.round.day,
+                "layer",
+                charge.layer().value(),
+                "zone",
+                charge.zone(),
+                "government",
+                charge.governmentId(),
+                "treasury",
+                charge.treasury().id(),
+                "currency",
+                charge.currency().value(),
+                "amountMilli",
+                charge.amountMilli(),
+                "commodity",
+                commodity.value(),
+                "quantityMilli",
+                quantity,
+                "paymentMilli",
+                payment,
+                "buyer",
+                buy.buyer.actor.id(),
+                "seller",
+                sell.seller.actor.id()));
+  }
+
   /**
    * ★★ <b>落一笔成交</b>（区内即时 / 跨区在途）。
    *
@@ -5211,6 +5556,14 @@ final class MarketSettlement {
       logForeignCurrencyFill(
           ctx, buy, sell, commodity, executed, unitPrice, buyerUnitPrice, payment);
     }
+    // ★★ P-T1b：三层税（出口税 / 进口税 / 区内市场税）—— **唯一**的计税点（可负担预判走同一个方法 ⇒
+    //   两处不可能漂开）。税基 = 本笔货款（只对货值，运费不计）；买方多付，卖方仍收原价（下面 payment 腿一字不改）。
+    List<MarketTaxBook.Charge> taxCharges =
+        taxesFor(ctx, buy, sell, commodity, executed, buyerUnitPrice, inTransit, true);
+    long taxTotal = 0L;
+    for (MarketTaxBook.Charge charge : taxCharges) {
+      taxTotal = Math.addExact(taxTotal, charge.amountMilli());
+    }
     // ★★ D-027：单 hex 贸易成本只在**同一市场区**的区内即时成交上逐笔计量（跨区在途走 route.lossPerMille，
     //   口径不变）。第一版只表达为实物损耗：同格 = 0、跨格 = HexTradeCost 的具名公式并夹在 quantity 内。
     long lossMilli =
@@ -5264,8 +5617,10 @@ final class MarketSettlement {
       loadInTransit(ctx, buy, executed);
     }
 
-    // ③ 买方把冻结的货款（+运费）放出来，再货款 → 卖方、运费 → 承运人。
-    long total = payment + freight;
+    // ③ 买方把冻结的货款（+运费 +税）放出来，再货款 → 卖方、运费 → 承运人、三层税 → 各政府国库。
+    //   ★★ P-T1b：`total` 含税 ⇒ 冻结的释放量与可负担判据（{@link #totalCostAtMost}）同口径；**卖方那一腿
+    //     （payment）一个字不改** ⇒ "买方多付、卖方仍收原价" 是结构性的，不是两处对齐出来的。
+    long total = Math.addExact(Math.addExact(payment, freight), taxTotal);
     long buyRelease = Math.min(total, buy.frozenRemaining);
     buy.frozenRemaining -= buyRelease;
     releaseBuyFrozenSum(ctx, buy, buyRelease);
@@ -5313,6 +5668,36 @@ final class MarketSettlement {
     if (uncollectedFreight > 0L) {
       ctx.freightUncollectedByCurrency.merge(buy.currency, uncollectedFreight, Math::addExact);
     }
+    // ★★ P-T1b：三层税的**钱腿**（逐层逐收款政府一条；钱铸在买方支付币上）—— 唯一写口 {@code applyTransfer}。
+    //   ★ 层的顺序 = 调用方给的规范序（出口 → 进口 / 区内一条）⇒ 逐值可复现（I7）；0 额条目根本不在表里。
+    //   ★ 买方 = 国库本身时那一份已在 {@link MarketTaxBook#assess} 里剔除（自转移不是发生额）。
+    for (MarketTaxBook.Charge charge : taxCharges) {
+      Transfer taxLeg =
+          round.ledger.mint(
+              buy.buyer.actor,
+              charge.treasury(),
+              location,
+              Map.of(),
+              Map.of(charge.currency(), charge.amountMilli()),
+              taxReasonOf(charge.layer()));
+      EconomySettlement.applyTransfer(
+          round.householdGoods,
+          round.householdMoney,
+          round.householdFrozenGoods,
+          round.householdFrozenMoney,
+          round.householdOfActor,
+          taxLeg);
+      //   ★★ 读口（P-T4 形状 + I-C10）：层 / 金额 / 币种 / 收款政府逐项列出，并按币分列（禁跨币求和）。
+      ctx.taxItems.add(
+          new MarketReport.TaxItem(
+              charge.layer(),
+              charge.governmentId(),
+              charge.currency(),
+              charge.amountMilli(),
+              commodity,
+              charge.zone()));
+      logTaxCharged(ctx, buy, sell, commodity, charge, executed, payment);
+    }
     buy.spentMilli += total;
     if (ctx.recordFillIntents) {
       // ★ worker 的区内意向：全局槽位下标 + 唯一标识（区/商品/买卖方 canonical 串），协调器按区序回放。
@@ -5357,7 +5742,9 @@ final class MarketSettlement {
               lossMilli);
       ctx.fills.add(fill);
       if (tariffPerUnit > 0L) {
-        // ★★ D-027：区级税费**只累计读数**（毫计价货币；本批不搬钱、不铸币、不落债务），收款方后续批次再定。
+        // ★★ D-027 的**读数**照旧（毫卖方计价币 / 商品单位 → `MarketReport.regulatedTariffByCurrency()`）；
+        //   P-T1b 起同一笔的"真收"另在 {@link #executeTrade} 的税腿处落账（层/金额/币种/收款政府，
+        //   见 {@code ctx.taxItems}）—— 两者是同一件事的"费率读数 / 真收账目"两面，读账以 taxItems 为准。
         ctx.tariffByFill.put(fill, tariffPerUnit);
       }
       return executed;
@@ -5706,55 +6093,92 @@ final class MarketSettlement {
   }
 
   /**
-   * 这一笔数量按**与 {@link #executeTrade} 同一算式**算出的总价（货款 + 运费）是否 ≤ {@code money}。运费与货款解耦 （{@link
-   * #freightUnitMilli}），0 价商品仍计运费。全程 {@code long}；乘法真的会溢出 ⇒ 这个数量在 {@code executeTrade}
-   * 里同样不可付，按"付不起"处理。
+   * 这一笔数量按**与 {@link #executeTrade} 同一算式**算出的总价（货款 + 运费 + <b>P-T1b 的三层税</b>）是否 ≤ {@code money}。
+   * 运费与货款解耦（{@link #freightUnitMilli}），0 价商品仍计运费；税由 {@link #taxesFor} 逐层算（同一个方法 ⇒
+   * "判得起"与"真的扣"不可能漂开）。全程 {@code long}；乘法真的会溢出 ⇒ 这个数量在 {@code executeTrade} 里同样不可付，按"付不起"处理。
    */
   private static boolean totalCostAtMost(
-      long quantity, long money, long unitPrice, RouteContext route) {
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long quantity,
+      long money,
+      long buyerUnitPrice,
+      RouteContext route) {
     long payment;
     try {
       payment =
           ceilDivPositive(
-              Math.multiplyExact(quantity, unitPrice), EconomySettlement.MILLI_PER_GRAIN);
+              Math.multiplyExact(quantity, buyerUnitPrice), EconomySettlement.MILLI_PER_GRAIN);
     } catch (ArithmeticException overflow) {
       return false;
     }
     if (payment > money) {
       return false;
     }
-    if (route == null || route.freightPerUnit <= 0L) {
-      return true;
+    long outlay = payment;
+    if (route != null && route.freightPerUnit > 0L) {
+      long freight;
+      try {
+        freight = ceilDivPositive(Math.multiplyExact(quantity, route.freightPerUnit), 1000L);
+      } catch (ArithmeticException overflow) {
+        return false;
+      }
+      try {
+        outlay = Math.addExact(outlay, freight);
+      } catch (ArithmeticException overflow) {
+        return false;
+      }
     }
-    long freight;
+    // ★★ P-T1b：税是买方总支出的一部分（"买方多付"）⇒ 可负担的判据必须含它，否则会在成交那一步把
+    //   家户账扣成负数（那是 fail-closed 的 400，不是"少买一点"）。
     try {
-      freight = ceilDivPositive(Math.multiplyExact(quantity, route.freightPerUnit), 1000L);
+      for (MarketTaxBook.Charge charge :
+          taxesFor(ctx, buy, sell, commodity, quantity, buyerUnitPrice, inTransit(route), false)) {
+        outlay = Math.addExact(outlay, charge.amountMilli());
+      }
     } catch (ArithmeticException overflow) {
       return false;
     }
-    return freight <= money - payment;
+    return outlay <= money;
+  }
+
+  /** 跨区在途判据（{@link #executeTrade} 与可负担判据的唯一拼写点）。 */
+  private static boolean inTransit(RouteContext route) {
+    return route != null && !route.immediate;
   }
 
   /**
-   * 把预分配/计划量按**当前剩余可付**精确封顶：最大 {@code q ≤ upper} 使 {@code q} 这一笔的总价（货款 + 名义运费）≤ {@code payable}。
+   * 把预分配/计划量按**当前剩余可付**精确封顶：最大 {@code q ≤ upper} 使 {@code q} 这一笔的总价（货款 + 名义运费 + 三层税）≤ {@code
+   * payable}。
    *
-   * <p>★ 这是缺陷 A 的安全点：{@link #affordableQuantity} 的边距只负责"保守少买"，跨区运费与两处 ceil 造成 的累计越界在这里被逐笔按实际账削平 ⇒
-   * 任何成交序列下付款 ≤ 可支配（冻结 + 可花）。★ 0 价 + 0 运费的完全免费交易 在 {@code payable == 0} 时也应放行，故这里不再用 {@code payable
-   * <= 0} 提前判死（由 {@link #totalCostAtMost} 按真实总价回答）。
+   * <p>★ 这是缺陷 A 的安全点：{@link #affordableQuantity} 的边距只负责"保守少买"，跨区运费、三层税与两处 ceil 造成 的累计越界在这里被逐笔按实际账削平
+   * ⇒ 任何成交序列下付款 ≤ 可支配（冻结 + 可花）。★ 0 价 + 0 运费的完全免费交易 在 {@code payable == 0} 时也应放行，故这里不再用 {@code
+   * payable <= 0} 提前判死（由 {@link #totalCostAtMost} 按真实总价回答）。
+   *
+   * <p>★ <b>单调性</b>（二分的前提）：货款、运费、从量税、从价税都是数量 q 的非降函数 ⇒ {@code totalCostAtMost} 关于 q 单调。
    */
   private static long exactAffordableUpTo(
-      long upper, long payable, long unitPrice, RouteContext route) {
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long upper,
+      long payable,
+      long unitPrice,
+      RouteContext route) {
     if (upper <= 0L) {
       return 0L;
     }
-    if (totalCostAtMost(upper, payable, unitPrice, route)) {
+    if (totalCostAtMost(ctx, buy, sell, commodity, upper, payable, unitPrice, route)) {
       return upper;
     }
     long low = 0L;
     long high = upper;
     while (low < high) {
       long mid = low + (high - low + 1L) / 2L;
-      if (totalCostAtMost(mid, payable, unitPrice, route)) {
+      if (totalCostAtMost(ctx, buy, sell, commodity, mid, payable, unitPrice, route)) {
         low = mid;
       } else {
         high = mid - 1L;
@@ -7243,9 +7667,22 @@ final class MarketSettlement {
 
     /**
      * ★★ <b>D-027：逐票区级税费读数</b>（fill → 单位税费，毫计价货币/商品单位；只服务 {@link MarketReport#withRegulatedTariff}
-     * 的只读聚合）。★ 它不参与任何账务：本批税费<b>只记读数、不搬钱</b>。
+     * 的只读聚合）。★ P-T1b 起它<b>同时</b>是"区内市场税"真收款的税率来源（{@link #tariffPerUnitOf}）；读数照旧累加
+     * （读口一字不改），此外每一笔真收的钱另进 {@link #taxItems}。
      */
     final Map<MarketReport.Fill, Long> tariffByFill = new LinkedHashMap<>();
+
+    /**
+     * ★★ <b>P-T1b：本轮逐层税项（真收的账目）</b>—— 层 / 收款政府 / 币种 / 金额，逐笔按层序累加（保序）。
+     *
+     * <p>★★ <b>它与 {@link #tariffByFill} 的分工</b>：{@code tariffByFill} 是"费率 × 量"的<b>读数</b>（P-T4 口径，
+     * 卖方计价币）；{@code taxItems} 是"<b>真的从买方账上搬进国库</b>"的逐项账目（买方支付币）。两者数额在"同币 + 单一政府"时一致，在多币/多政府下会不同 ——
+     * 读账以本表为准（{@code MarketReport.taxByCurrency()}）。
+     *
+     * <p>★ 分区分并行的语义：worker 的本地 ctx 也会累加（它跑的是同一条 {@code executeTrade}），但**交回时丢弃** （与 {@code
+     * fills}/{@code ledger} 同一条纪律）—— 协调器回放时在全局 ctx 上重铸，读数只可能来自协调器那一份。
+     */
+    final List<MarketReport.TaxItem> taxItems = new ArrayList<>();
 
     /** ★★ P-T1c：区 id → 该区适用的区内市场规则（每轮按区只读一次；未锚定/未定义 ⇒ 空表）。 */
     final Map<String, MarketRegulation> regulationByRegionId;
@@ -7363,7 +7800,7 @@ final class MarketSettlement {
       return effective == null ? MarketRegulation.none() : effective;
     }
 
-    /** 本区该商品的单位税费（毫计价货币/商品单位）；没有规则/缺项/0 ⇒ 0（只记读数，不搬钱）。 */
+    /** 本区该商品的单位税费（毫该区法定币 / 商品单位）；没有规则/缺项/0 ⇒ 0（P-T1b 起它是"区内市场税"真收款的税率来源）。 */
     long tariffPerUnitOf(String regionId, CommodityId commodity) {
       MarketRegulation effective = regulationFor(regionId);
       if (!effective.defined()) {

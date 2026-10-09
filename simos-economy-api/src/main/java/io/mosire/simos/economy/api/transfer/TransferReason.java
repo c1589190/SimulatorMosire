@@ -66,7 +66,37 @@ public enum TransferReason {
    *
    * <p>★ 单列一档是为了让"官方汇率拉动了多少量"这条读数可核（§4.5：官方汇率只在窗口有量时才拉动市场价）。
    */
-  GOV_FX_WINDOW("gov_fx_window");
+  GOV_FX_WINDOW("gov_fx_window"),
+
+  /**
+   * ★★ <b>P-T1b：跨区过境的<b>出口税</b></b>（口岸设计书 §13；全链计划 §2.2）—— 买方 → <b>源区</b>管辖政府的国库户。
+   *
+   * <p>★★ <b>为什么单列一档</b>：读账时必须分得开"货卖了多少钱"（{@link #MARKET_TRADE}）、"路花了多少钱" （{@link
+   * #CARRIER_FEE}）、"被抽了哪一层税"（本档 / {@link #PORT_TAX_ENTRY} / {@link #MARKET_TAX_IN_ZONE}）——
+   * 三层税的收款方各不相同（源区 / 目的区 / 本区），混进货款会让"这笔货被抽了多少"再也读不出来。
+   *
+   * <p>★ <b>不是发行</b>：买方多付、卖方仍收原价，差额<b>转移</b>进国库 ⇒ 货币守恒（不销毁、不铸币）。
+   */
+  PORT_TAX_EXIT("port_tax_exit"),
+
+  /**
+   * ★★ <b>P-T1b：跨区过境的<b>进口税</b></b>（口岸设计书 §13）—— 买方 → <b>目的区</b>管辖政府的国库户。
+   *
+   * <p>★ 与 {@link #PORT_TAX_EXIT} 分开的理由同它：同一票货的两道税进的是<b>两个不同政府</b>的国库。
+   */
+  PORT_TAX_ENTRY("port_tax_entry"),
+
+  /**
+   * ★★ <b>P-T1b：<b>区内市场税</b></b>（全链计划 §2.2 的第三层；既有 {@code MarketRegulation.tariffPerUnit}） —— 买方 →
+   * <b>该区</b>管辖政府的国库户。
+   *
+   * <p>★ <b>与口岸税的区别</b>：口岸税是"跨过区界"这件事的对价（源区 + 目的区各一道）；本档是"在这个区的市场上成交"
+   * 这件事的对价（该区一道）。跨区成交不再叠加本档（三层各收一次，不重复收）。
+   *
+   * <p>★ <b>P-T1b 之前的语义</b>：这条税<b>只累计读数、不搬钱</b>（{@code MarketReport.regulatedTariffByCurrency()}）；
+   * 本档是它"真收款"之后的具名原因。
+   */
+  MARKET_TAX_IN_ZONE("market_tax_in_zone");
 
   private final String value;
 

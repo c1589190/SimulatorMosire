@@ -76,6 +76,14 @@ public final class EconomyDayStepper implements AutoCloseable {
    */
   private PortEnforcementInput portEnforcement = PortEnforcementInput.none();
 
+  /**
+   * ★★ <b>P-T1b：本轮三层税的税率与收税政府</b>（app 组合根按口岸政策 × 暴露边权重折算后注入；逐轮瞬态、只读投影、不进状态）。
+   *
+   * <p>★ 与 {@link #portEnforcement} 分开：闸（能不能过）与税（收多少）是两个量，缺省各管各的；缺省 {@link PortTaxInput#none()} ⇒
+   * 出口税/进口税/区内税<b>一分不收</b> ⇒ 旧世界逐值不变（I-C2）。
+   */
+  private PortTaxInput portTax = PortTaxInput.none();
+
   /** ★★ R2：本会话的并行度（默认单线程退化路径；{@link #finish()} 关掉自建的池）。 */
   private final EconomyParallelism parallelism;
 
@@ -244,6 +252,22 @@ public final class EconomyDayStepper implements AutoCloseable {
     return portEnforcement;
   }
 
+  /**
+   * ★★ <b>P-T1b：替换本轮的三层税税率与收税政府</b>（app 组合根按口岸政策 × 暴露边权重折算后注入；与 {@link
+   * #updatePortEnforcement(PortEnforcementInput)} 同一条"只读投影、不进状态"的纪律）。
+   *
+   * <p>★ <b>时序</b>与口岸管制力相同：折算读的是当日结算之后的政府效率，故注入值作用于<b>下一次</b>市场轮（一 tick 滞后）。
+   */
+  public void updatePortTax(PortTaxInput next) {
+    Objects.requireNonNull(next, "portTax 不得为 null（没有税就给 PortTaxInput.none()）");
+    this.portTax = next;
+  }
+
+  /** ★ P-T1b：本条会话当前的三层税税率（只读；缺省 none = 一分不收）。 */
+  public PortTaxInput portTax() {
+    return portTax;
+  }
+
   /** ★★ <b>Z7c：最近一次 {@link #step(long)} 是否关账了至少一个产业周期</b>（只读；见字段注释）。默认 {@code false}。 */
   public boolean lastCycleClosed() {
     return lastCycleClosed;
@@ -383,7 +407,8 @@ public final class EconomyDayStepper implements AutoCloseable {
         profitCycle,
         composition,
         marketExcludedHouseholds,
-        portEnforcement);
+        portEnforcement,
+        portTax);
     OptionalLong closedAfter =
         session.sheet().meta().map(meta -> meta.lastClosedCycle()).orElseGet(OptionalLong::empty);
     this.lastCycleClosed = !closedBefore.equals(closedAfter);
