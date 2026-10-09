@@ -35,8 +35,11 @@ R2 落点（实测）：`simos-gov/.../GovPortPolicy.java`、`GovEfficiency.java
 1. **商品维无消费者**：`PortEnforcementInput.commodityEnforcementPerMilleByZone` 已算、已注入，
    但全仓唯一读 `portEnforcement` 的是 `CurrencyValuation:292`，读的是**币种维**
    ⇒ **商品类管制（禁运）今天不影响实际货流**，是纯读口。
-2. **走私算式零调用者**：`PortRegimeAggregation.smuggle(...)` 无人调用
+2. **走私算式零调用者**：`PortRegimeAggregation.split(...)`（返回 `SmugglingSplit`）无人调用
    ⇒ "走私 = 规模现象"只落了算式，**没进撮合**（正常/走私两份的分流没发生）。
+   ★ **v2 更正**：v1 把该方法误写成 `smuggle(...)`；实际方法名是 **`split`**（`PortRegimeAggregation:130`）。
+   结论不变（实测零调用者）。口岸×商户的体系复核见
+   `docs/superpowers/reports/2026-10-10-port-merchant-consistency-check.md`。
 3. 设计书 §9 的开放点仍在：O1 口岸第三维影响面、O2 罚没基准标定、O3"委托指定家户"的合同形态、
    **O4 政策命令面留 GOV 优化**（用户裁定，本批不做）。
 
@@ -155,3 +158,5 @@ R2 落点（实测）：`simos-gov/.../GovPortPolicy.java`、`GovEfficiency.java
 
 - v1（2026-10-10）：首版。口岸 R1/R2 现状 + 三处实测缺口；商户现状与 M1–M5；城市化/矿业状态；
   24 条待办总表；恢复顺序。
+- v2（2026-10-10）：更正 §1.2 的方法名（`smuggle` → **`split`**，`PortRegimeAggregation:130`；结论不变）；
+  补指针到口岸×商户体系复核报告。
