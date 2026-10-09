@@ -163,6 +163,7 @@ class McpCoverageTest {
           "economy.SetHouseholdClass",
           "economy.SetHouseholdLabor",
           "economy.SetHouseholdParticipation",
+          "economy.SetCommodityFreight",
           "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
           "economy.SetOfficialRate",
@@ -685,6 +686,10 @@ class McpCoverageTest {
     // ── E1–E6 的 economy 窄命令：追加在最后（不移动既有 revision 号）；每条都备最小合法载荷。──
     MINIMAL_PAYLOADS.put(
         "economy.SetMarketPrice", "{\"q\":1,\"r\":2,\"commodity\":\"grain\",\"price\":2}");
+    // ★ F（2026-10-09）：商品运费系数表（GM-only；夹具世界词表里有 grain ⇒ 形状合法 ⇒ 真提交成功）。
+    MINIMAL_PAYLOADS.put(
+        "economy.SetCommodityFreight",
+        "{\"commodityId\":\"grain\",\"perMille\":1500,\"reason\":\"coverage\"}");
     MINIMAL_PAYLOADS.put(
         "economy.AddDemand",
         "{\"id\":\"demand-coverage\",\"scope\":\"HEX\",\"hex\":{\"q\":1,\"r\":2},"

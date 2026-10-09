@@ -323,10 +323,12 @@ class EconomyRoundTripTest {
    * <p>★★ <b>本条的欠账如实记（2026-10-09 选项 A 迁移时实测发现）</b>：这个数字自 A1/B2 起就**已经过期**（那两批各加了组件却 没改这里：31 →
    * 34），也就是说在本轮拆表<b>之前</b>它就已经是红的 —— 不是本次结构改动弄红的。本次按**实测**改成 35（ {@code EconomyChangeSet} 与 {@code
    * EconomyData} 两侧同为 35，上面两条子集断言现在两边同名同数）。
+   *
+   * <p>★★ <b>F 批（2026-10-09）再 +1 ⇒ 36</b>：{@code commodityFreightPerMille}（商品运费系数表，缺键 ⇒ 1000）。
    */
   @Test
-  void changeSetHasExactlyThirtyFiveComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(35);
+  void changeSetHasExactlyThirtySixComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(36);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -504,6 +506,10 @@ class EconomyRoundTripTest {
       // ★★ 2026-10-09 选项 A 的第 35 个组件（家户债务引用**派生索引**）：它是构造期由合同表重建的产物 ⇒
       //   目标只能靠"合同 + 两端家户行"造出来；空表与"字段没进变更集"在值层面不可区分 ⇒ 判别力要求引用表非空。
       case "householdDebtRefs" -> oneDebtContractTarget(base);
+      // ★★ F（2026-10-09）的第 36 个组件（商品运费系数表，缺键 ⇒ 1000）：**缺键与"字段没进变更集"在值层面
+      //   不可区分** ⇒ 判别力要求表**非空**且系数**不是缺省值**（用 tool = 600 造一个明确偏离 1000 的行）。
+      case "commodityFreightPerMille" ->
+          base.withCommodityFreightPerMille(Map.of(new CommodityId("tool"), 600L));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -560,6 +566,8 @@ class EconomyRoundTripTest {
       case "moneyInstruments" -> cs.moneyInstruments().changed();
       case "marketZones" -> cs.marketZones().changed();
       case "householdDebtRefs" -> cs.householdDebtRefs().changed();
+      // ★ F（2026-10-09）的第 36 个组件（见 mutate 的同名 case）
+      case "commodityFreightPerMille" -> cs.commodityFreightPerMille().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

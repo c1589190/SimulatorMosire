@@ -155,6 +155,7 @@ class McpServerTest {
           "simos.economy.defineMarketZone",
           "simos.economy.mergeMarketZones",
           "simos.economy.reassignZoneHexes",
+          "simos.economy.setCommodityFreight",
           "simos.economy.hex",
           "simos.economy.ownership",
           "simos.fork",

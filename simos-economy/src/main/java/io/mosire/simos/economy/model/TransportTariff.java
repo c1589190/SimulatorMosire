@@ -6,14 +6,25 @@ package io.mosire.simos.economy.model;
  * <p>公式（千分口径，{@code ‰} 的分子）：
  *
  * <pre>
- * rate = max(0,
+ * route = max(0,
  *            basePerMille
  *          + perHexPerMille × distanceHex
  *          + {@link #RADIAL_COST_PER_HEX_PER_MILLE} × radialDistanceHex
  *          − {@link #ROAD_DISCOUNT_PER_LEVEL_PER_MILLE} × roadBottleneckLevel
  *          − cityDiscountPerMille
  *          + ruralPenaltyPerMille)
+ * rate  = route × commodityFreightPerMille ÷ 1000      // ★ 第 6 个入参：整条运费乘商品系数（截断）
  * </pre>
+ *
+ * <p>★★ <b>F 批（2026-10-09）追加第 6 个入参 {@code commodityFreightPerMille}</b>（设计书 §4.1「甲方案」；用户 §1.4
+ * 原话「肯定甲啊」）：<b>商品运费系数乘在整条运费上</b>——先按上面五项算出路线费率，再整体乘该商品在 {@code
+ * EconomyData.commodityFreightPerMille} 里的系数（‰）。★ <b>缺键 ⇒ 1000</b> （{@link
+ * #DEFAULT_COMMODITY_FREIGHT_PER_MILLE}）⇒ 未设表的世界 {@code rate} 逐值等于改动前（乘 1000 再整除 1000 是恒等）。★
+ * 除法的<b>取整方向 = 截断（向下）</b>：费率是"货款价值的千分比"， 截断不给世界凭空加价；同一入参必然同一结果（无时钟/随机）。★ 系数 {@code ≤ 0} ⇒ 具名 {@link
+ * IllegalArgumentException}（"免费运输"不是"说不出价"，与状态层构造期守卫同一条口径）。
+ *
+ * <p>★ <b>旧 5 参入口保留</b>（{@link #perMille(long, long, long, long, long)} = 第 6 个入参恒 {@link
+ * #DEFAULT_COMMODITY_FREIGHT_PER_MILLE}）：本批只加维度、不动公式，既有 5 参调用点（用例/对拍）逐值不变。
  *
  * <p>★★ <b>逐项对照探针</b>（{@code ProbeEconomy.transportPerMille}）：
  *
@@ -48,6 +59,13 @@ public record TransportTariff(long basePerMille, long perHexPerMille) {
   /** 道路折扣：路径瓶颈每 1 级，费率降低 50‰（与探针 {@code ROAD_DISCOUNT_PER_LEVEL_PER_MILLE} 逐值一致）。 */
   public static final long ROAD_DISCOUNT_PER_LEVEL_PER_MILLE = 50L;
 
+  /**
+   * ★★ <b>商品运费系数的缺键值（‰）</b>：未在该商品上设过系数的世界一律按 1000 计 —— {@code route × 1000 ÷ 1000} 是恒等，
+   * 因此<b>未设表的世界逐值等于本批改动前</b>（不变量 I-F1）。★ 这是"缺键 ⇒ 1000"在全仓的**唯一拼写点** （状态侧 {@code
+   * EconomyData.commodityFreightPerMilleOf} 与拓扑侧解析都取它）。
+   */
+  public static final long DEFAULT_COMMODITY_FREIGHT_PER_MILLE = 1000L;
+
   /** 7HEX2 城市探针的基础费率（‰）：{@code baseTransportPerMille = 5}。 */
   private static final long PROBE_BASE_PER_MILLE = 5L;
 
@@ -74,16 +92,8 @@ public record TransportTariff(long basePerMille, long perHexPerMille) {
   }
 
   /**
-   * 算一条运输 lane 的费率（‰）：见类注公式与逐项对照。
-   *
-   * @param distanceHex 两格之间的运输距离（hex）；必须 ≥ 0
-   * @param radialDistanceHex 两端到最近城市距离的较小者（hex）；必须 ≥ 0（没有城市节点按 0）
-   * @param roadBottleneckLevel from→to 道路路径的瓶颈等级；必须 ≥ 0（没有可达道路按 0）
-   * @param cityDiscountPerMille 城市商人折价（‰）；P4 传 0，P6 接入
-   * @param ruralPenaltyPerMille 农村商人累积成本（‰）；P4 传 0，P6 接入
-   * @return 非负费率（‰）
-   * @throws IllegalArgumentException 距离/辐射距离/道路等级出现负数时
-   * @throws ArithmeticException 中间量超出 {@code long} 时（不静默回绕）
+   * ★ <b>旧 5 参入口</b>（F 批之前唯一的拼写点等价入口）：商品运费系数恒 {@link #DEFAULT_COMMODITY_FREIGHT_PER_MILLE}（= 1000 ⇒
+   * 逐值等于本批改动前）。 新调用点请走 {@link #perMille(long, long, long, long, long, long)} 并把商品系数一路传进来。
    */
   public long perMille(
       long distanceHex,
@@ -91,6 +101,36 @@ public record TransportTariff(long basePerMille, long perHexPerMille) {
       long roadBottleneckLevel,
       long cityDiscountPerMille,
       long ruralPenaltyPerMille) {
+    return perMille(
+        distanceHex,
+        radialDistanceHex,
+        roadBottleneckLevel,
+        cityDiscountPerMille,
+        ruralPenaltyPerMille,
+        DEFAULT_COMMODITY_FREIGHT_PER_MILLE);
+  }
+
+  /**
+   * 算一条运输 lane 的费率（‰）：见类注公式与逐项对照。
+   *
+   * @param distanceHex 两格之间的运输距离（hex）；必须 ≥ 0
+   * @param radialDistanceHex 两端到最近城市距离的较小者（hex）；必须 ≥ 0（没有城市节点按 0）
+   * @param roadBottleneckLevel from→to 道路路径的瓶颈等级；必须 ≥ 0（没有可达道路按 0）
+   * @param cityDiscountPerMille 城市商人折价（‰）；P4 传 0，P6 接入
+   * @param ruralPenaltyPerMille 农村商人累积成本（‰）；P4 传 0，P6 接入
+   * @param commodityFreightPerMille ★★ 本商品的运费系数（‰），<b>乘在整条运费上</b>；必须 &gt; 0。缺键（没设过）⇒ 调用方传 {@link
+   *     #DEFAULT_COMMODITY_FREIGHT_PER_MILLE}（= 1000 ⇒ 逐值等于改动前）
+   * @return 非负费率（‰；= 路线费率 × 商品系数 ÷ 1000，截断）
+   * @throws IllegalArgumentException 距离/辐射距离/道路等级出现负数、或商品系数 ≤ 0 时
+   * @throws ArithmeticException 中间量超出 {@code long} 时（不静默回绕）
+   */
+  public long perMille(
+      long distanceHex,
+      long radialDistanceHex,
+      long roadBottleneckLevel,
+      long cityDiscountPerMille,
+      long ruralPenaltyPerMille,
+      long commodityFreightPerMille) {
     if (distanceHex < 0L) {
       throw new IllegalArgumentException("TransportTariff.distanceHex 不得为负: " + distanceHex);
     }
@@ -101,6 +141,15 @@ public record TransportTariff(long basePerMille, long perHexPerMille) {
     if (roadBottleneckLevel < 0L) {
       throw new IllegalArgumentException(
           "TransportTariff.roadBottleneckLevel 不得为负: " + roadBottleneckLevel);
+    }
+    if (commodityFreightPerMille <= 0L) {
+      // ★ "免费运输"不是"说不出价"：0/负系数在状态层就被构造期守卫判死，这里再判一次（纯函数自守，
+      //   不依赖调用方先验过状态）。
+      throw new IllegalArgumentException(
+          "TransportTariff.commodityFreightPerMille 必须 > 0（缺键请显式传 "
+              + DEFAULT_COMMODITY_FREIGHT_PER_MILLE
+              + "）: "
+              + commodityFreightPerMille);
     }
     // cityDiscount/ruralPenalty 是 P6 才接入的读数参数：P4 一律传 0。探针公式不对它们加守卫，
     // 这里同样只逐值复刻公式（对这两个参数不额外判负）。
@@ -113,6 +162,10 @@ public record TransportTariff(long basePerMille, long perHexPerMille) {
             rate, Math.multiplyExact(ROAD_DISCOUNT_PER_LEVEL_PER_MILLE, roadBottleneckLevel));
     rate = Math.subtractExact(rate, cityDiscountPerMille);
     rate = Math.addExact(rate, ruralPenaltyPerMille);
-    return Math.max(0L, rate);
+    long route = Math.max(0L, rate);
+    // ★★ F 批（§4.1 甲方案）：商品系数乘在**整条**运费上。先 clamp 后乘（系数 > 0 ⇒ 与先乘后 clamp 等价），
+    //   整除方向 = 截断；系数 = 1000 时逐值恒等（I-F1）。
+    return Math.multiplyExact(route, commodityFreightPerMille)
+        / DEFAULT_COMMODITY_FREIGHT_PER_MILLE;
   }
 }

@@ -159,7 +159,13 @@ public record EconomyChangeSet(
     // ── 2026-10-09 选项 A：家户债务引用派生索引（与 EconomyData 的第 37 个组件一一对应，铁律 5）──
     //   键 = HouseholdDebtReference（家户@合同）的规范串，值 = 标记位 TRUE。★ 拆表的目的就是让这里每天只出现
     //   **真正变化的引用对**（改前那 3.7KB/户的引用列表是随 classes 的整行 Upsert 一起被重写的）。
-    FieldDelta<Boolean> householdDebtRefs)
+    FieldDelta<Boolean> householdDebtRefs,
+    // ── F 批（2026-10-09）商品运费系数表（与 EconomyData 的第 38 个组件一一对应，铁律 5）──────────────
+    //   键 = CommodityId 的裸值（toString），值 = 该商品的系数（‰）。★★ 值类型是 **Long 而不是 Map**：
+    //   表本身就住在 EconomyData 里，这里只需逐商品的 Upsert ⇒ 线格式的键仍是 String（HouseholdDebtReference 同款），
+    //   于是**第四台 mapper（Timeline.readChangeSet）不需要任何 CommodityId 键反序列化器**就能读回重放
+    //   （debts/issuingGov 两次的教训：类型侧注解缺一不可，而"根本不引入领域键类型"比"补注册"更稳）。
+    FieldDelta<Long> commodityFreightPerMille)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -296,6 +302,11 @@ public record EconomyChangeSet(
     if (householdDebtRefs == null) {
       householdDebtRefs = new FieldDelta.Unchanged<>();
     }
+    // ★★ F 批第 38 个组件（商品运费系数表）：旧变更集没提该组件，就是没动它
+    //   （旧档读到 null ⇒ Unchanged；旧世界表为空 ⇒ 运费逐值不变）。
+    if (commodityFreightPerMille == null) {
+      commodityFreightPerMille = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -337,7 +348,9 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.currencies(), target.currencies()),
         FieldDelta.diff(base.moneyInstruments(), target.moneyInstruments()),
         FieldDelta.diff(base.marketZones(), target.marketZones()),
-        FieldDelta.diff(base.householdDebtRefs(), target.householdDebtRefs()));
+        FieldDelta.diff(base.householdDebtRefs(), target.householdDebtRefs()),
+        // ★★ F 批：商品运费系数表（键 = CommodityId 裸值；值 = 系数）。
+        FieldDelta.diff(base.commodityFreightPerMille(), target.commodityFreightPerMille()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -397,7 +410,10 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.marketZones(), cs.marketZones(), MarketZoneId::parse),
         // ★★ 2026-10-09 选项 A：引用表的键解析器 = HouseholdDebtReference::parse（与 toString 互逆）。
         FieldDelta.rebuild(
-            base.householdDebtRefs(), cs.householdDebtRefs(), HouseholdDebtReference::parse));
+            base.householdDebtRefs(), cs.householdDebtRefs(), HouseholdDebtReference::parse),
+        // ★★ F 批：商品运费系数表（键解析器 = CommodityId::parse，与 toString 互逆；值 = Long 直读）。
+        FieldDelta.rebuild(
+            base.commodityFreightPerMille(), cs.commodityFreightPerMille(), CommodityId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -436,7 +452,8 @@ public record EconomyChangeSet(
         || currencies.changed()
         || moneyInstruments.changed()
         || marketZones.changed()
-        || householdDebtRefs.changed());
+        || householdDebtRefs.changed()
+        || commodityFreightPerMille.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

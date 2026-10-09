@@ -3639,9 +3639,16 @@ final class MarketSettlement {
     //   注意费率与上面的 costPerUnit（距离 × moveCost）是两个独立的数。
     long cityDiscountPerMille = ctx.topology.cityDiscountPerMilleBetween(sellerHex, buyerHex);
     long ruralPenaltyPerMille = ctx.topology.ruralPenaltyPerMilleBetween(sellerHex, buyerHex);
+    // ★★ F 批（2026-10-09 §4.1 甲方案）：商品运费系数**从拓扑（= 当刻状态的快照）读**，缺键 ⇒ 1000
+    //   ⇒ 未设表的世界逐值等于改动前（I-F1）。费率是"货款价值的千分比"，商品系数乘在**整条**费率上。
+    long commodityFreightPerMille = ctx.topology.commodityFreightPerMilleOf(commodity);
     long freightRatePerMille =
         ctx.topology.freightPerMilleBetween(
-            sellerHex, buyerHex, cityDiscountPerMille, ruralPenaltyPerMille);
+            sellerHex,
+            buyerHex,
+            cityDiscountPerMille,
+            ruralPenaltyPerMille,
+            commodityFreightPerMille);
     String routeKey = sellerHex + "->" + buyerHex + "#" + commodity.value();
     RouteAccumulator acc =
         ctx.routes.computeIfAbsent(
@@ -3841,7 +3848,9 @@ final class MarketSettlement {
     CommodityId commodity = buy.order.commodity();
     long distance = Math.max(1L, ctx.topology.travelTicks(sell.hex, buy.hex));
     long moveCost = Math.max(1L, moveCostOf(ctx, buy.hex));
-    long rate = ctx.topology.freightPerMilleBetween(sell.hex, buy.hex);
+    // ★★ F 批：区内跨格线路同样带商品维（缺键 ⇒ 1000 ⇒ 逐值不变）——"区内不用付商品系数"没有道理：
+    //   费率口径与跨区同源，区别只在 immediate=true（不走在途）。
+    long rate = ctx.topology.freightPerMilleBetween(sell.hex, buy.hex, commodity);
     long freightPerUnit = freightUnitMilli(commodity, rate, plannedCarrierCostPerMille(ctx));
     return new RouteContext(
         sell.hex,

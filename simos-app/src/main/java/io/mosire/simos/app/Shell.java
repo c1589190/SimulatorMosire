@@ -82,6 +82,7 @@ import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRemovePeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.EconomyRenameCurrencyHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
+import io.mosire.simos.economy.spi.EconomySetCommodityFreightHandler;
 import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
@@ -657,6 +658,12 @@ public final class Shell implements AutoCloseable {
                 //   的最小前置命令面（否则"买持铜/卖只收银"的多计价币世界造不出来），也是 B2「市场区法定币」要面对的那一维。
                 //   只写 markets 一格；**不折算**任何余额与价格（世界无汇率）。──
                 new EconomySetMarketNumeraireHandler(),
+                // ── economy（F 批 2026-10-09；约束设计书 §4.1「甲方案」）：GM 设置某商品的**全局运费系数**（‰，
+                //   乘在整条运费上；缺键 ⇒ 1000 = 现状）。★ GM-only（标 GmOnlyCommand）⇒ 排除出令白名单 /
+                //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
+                //   simos.economy.setCommodityFreight 照常可用。★ 不实现 CommandTargets（不进决策令桶，
+                //   与 SetMarketPrice/SetMarketNumeraire 同款）。──
+                new EconomySetCommodityFreightHandler(),
                 new EconomyAddDemandHandler(),
                 new EconomyCancelDemandHandler(),
                 new EconomyRegisterCandidateHandler(),

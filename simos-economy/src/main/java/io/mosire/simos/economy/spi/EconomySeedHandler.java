@@ -229,7 +229,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★ 2026-10-09 选项 A：引用表是**派生索引**（唯一权威 = 上面 merge 过的 debtContracts）——
             //   原样带过 base 的表，构造期对账按合并后的合同表重建（新播格的家户引用由此自动出现，
             //   与改前"对账重建每一行的 debts"逐值相同）。
-            base.householdDebtRefs());
+            base.householdDebtRefs(),
+            // ★★ F 批（2026-10-09 第 38 个组件）：seed 载荷不声明商品运费系数表 ⇒ **原样带过**已有状态 ——
+            //   漏了它 = 后续按格补种会把 GM 设过的运费系数静默抹掉（运费悄悄退回 1000‰，账面上看不出是谁弄丢的）。
+            base.commodityFreightPerMille());
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

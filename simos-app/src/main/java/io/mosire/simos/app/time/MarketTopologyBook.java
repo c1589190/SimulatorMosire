@@ -139,6 +139,23 @@ final class MarketTopologyBook {
     Objects.requireNonNull(cityDiscountPerMilleBetween, "cityDiscountPerMilleBetween");
     Objects.requireNonNull(ruralPenaltyPerMilleBetween, "ruralPenaltyPerMilleBetween");
     EconomyData economy = economyOf(state);
+    // ★★ F 批（2026-10-09）：商品运费系数表**从状态现读**（不是构造期常量）—— 本条是本类唯一的装配点，
+    //   四条返回路径（缺 map 切片 / 空 markets / 持久区 / 单区 / 城市半径）一次全覆盖。
+    //   ★ 空表 ⇒ 每个商品缺键 ⇒ 1000 ⇒ 既有世界逐值不变（I-F1）；表非空 ⇒ 费率逐商品乘系数（§4.1 甲方案）。
+    return build(state, cityDiscountPerMilleBetween, ruralPenaltyPerMilleBetween)
+        .withCommodityFreight(economy.commodityFreightPerMille());
+  }
+
+  /**
+   * ★★ <b>{@link #from(SimulationState, ToLongBiFunction, ToLongBiFunction)} 的装配本体</b>（F 批拆出）——
+   * 不注入商品运费系数表（拓扑构造期的默认 = 空表 = 缺键 1000）。真装配请走 {@code from(...)}：它在本方法的返回值上 {@code
+   * withCommodityFreight(economy.commodityFreightPerMille())}。
+   */
+  private static MarketTopology build(
+      SimulationState state,
+      ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
+      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween) {
+    EconomyData economy = economyOf(state);
     Snapshot mapSnapshot = state.module("map").orElse(null);
     if (!(mapSnapshot instanceof MapSnapshot map)) {
       return MarketTopology.singleHex(economy.markets());

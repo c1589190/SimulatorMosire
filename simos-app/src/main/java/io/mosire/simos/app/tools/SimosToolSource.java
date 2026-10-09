@@ -62,6 +62,7 @@ import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.EconomyDefineMarketZoneTool;
 import io.mosire.simos.app.tools.write.EconomyMergeMarketZonesTool;
 import io.mosire.simos.app.tools.write.EconomyReassignZoneHexesTool;
+import io.mosire.simos.app.tools.write.EconomySetCommodityFreightTool;
 import io.mosire.simos.app.tools.write.EconomyUpsertGovUnitTool;
 import io.mosire.simos.app.tools.write.EconomyUpsertIndustryTool;
 import io.mosire.simos.app.tools.write.ForkTool;
@@ -778,6 +779,12 @@ public final class SimosToolSource implements ToolSource {
     built.add(new EconomyDefineMarketZoneTool(core, initiator, mapId));
     built.add(new EconomyReassignZoneHexesTool(core, initiator, mapId));
     built.add(new EconomyMergeMarketZonesTool(core, initiator, mapId));
+    // ★★ F 批（2026-10-09；约束设计书 §4.1「甲方案」）：全局商品运费系数的 GM 窄写（economy.SetCommodityFreight 的
+    //   薄封装：payloadJson + branch + expectedRevision）。**只在 GM 桶**：决策人桶没有它，
+    //   DecisionCallerFactory.WHITELIST 也不含；命令本身标了 GmOnlyCommand ⇒ 令 / RegisterEffect /
+    //   决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；
+    //   写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。──
+    built.add(new EconomySetCommodityFreightTool(core, initiator, mapId));
     // ★★ S3a（2026-10-09 Unit/Gov 家户容纳 §4.3）：家户/人口 GM 窄写六条。**只在 GM 桶**；
     //   工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。四条 social 工具：创建 / 移动（HEX↔UNIT，跨 unit 时
     //   同批改 unit.households）/ 成员增删转移 / 出生死亡率；两条组合工具：assignHousehold（social.SetHouseholdLocation

@@ -660,6 +660,12 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         if (contractViolation != null) {
           throw outputQuantityContractError(contractViolation, "outputQuantityOverrides 构造期守卫");
         }
+        // ★★ F 批（§4.1）：商品运费系数表的值域守卫（> 0）同样在构造期 fail-closed —— 载入边界记契约 ERROR，
+        //   不降级、不静默丢弃这一行（缺该组件键的旧档走的是"空表"路径，与这里无关）。
+        String freightViolation = commodityFreightContractViolation(e);
+        if (freightViolation != null) {
+          throw commodityFreightContractError(freightViolation);
+        }
         throw new IllegalStateException("EconomyData 解码失败: " + node, e);
       }
       // ★★ Z1（§3.1）：载入边界的跨表守卫 —— 产业必须存在、商品必须是该产业 recipe().outputPerUnit() 的键；
@@ -727,6 +733,39 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       }
     }
     return null;
+  }
+
+  /**
+   * 在 Jackson 的 cause 链里找 {@link EconomyData#COMMODITY_FREIGHT_CONTRACT_PREFIX} 标记的构造期违约； 找到 ⇒
+   * 返回可读原因（调用方记 ERROR + fail-closed），否则 null（走通用解码失败路径）。
+   */
+  private static String commodityFreightContractViolation(Throwable error) {
+    for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+      if (cause instanceof IllegalArgumentException
+          && cause.getMessage() != null
+          && cause.getMessage().startsWith(EconomyData.COMMODITY_FREIGHT_CONTRACT_PREFIX)) {
+        return cause.getMessage().substring(EconomyData.COMMODITY_FREIGHT_CONTRACT_PREFIX.length());
+      }
+    }
+    return null;
+  }
+
+  /**
+   * ★★ F 批契约故障的唯一发射点（照 Z1 {@code outputQuantityContractError}）：先记 {@code
+   * ECONOMY_COMMODITY_FREIGHT_CONTRACT} ERROR（契约故障不降级），再返回 {@link IllegalStateException} 供调用方
+   * fail-closed。{@code reason} 只含稳定 id/数量，不含载荷明文。
+   */
+  private static IllegalStateException commodityFreightContractError(String reason) {
+    EventLog.channel(LOG)
+        .error(
+            LogEvent.of(
+                "ECONOMY_COMMODITY_FREIGHT_CONTRACT",
+                EconomyLogSource.ECONOMY_COMMODITY_FREIGHT,
+                "where",
+                "commodityFreightPerMille 构造期守卫",
+                "reason",
+                reason));
+    return new IllegalStateException(EconomyData.COMMODITY_FREIGHT_CONTRACT_PREFIX + reason);
   }
 
   /**
