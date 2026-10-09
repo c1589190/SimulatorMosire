@@ -796,8 +796,18 @@ public final class ModeMigrationSettlement {
     if (householdEconomies.containsKey(target)) {
       throw new IllegalStateException("新建目标家户 id 已存在（拒绝覆盖）: " + target);
     }
+    // ★★ M-D（设计书 §13 I-A/I-D、I-3）：**排序表第 1 项的落点** —— 计划带的 primaryPositionId 若属于目标生产方式，
+    //   它就是新建户的 currentPositionId（主业）；不属于/缺失 ⇒ 退回既有 pickTargetPosition（旧调用方/夹具逐值不变）。
+    //   ★ "主业 = 排序表第 1 项"的**落点仍在本类**（既有模式变迁路径），排列表本身不写状态（{@code PrimaryModeRanking}）。
+    ClassPositionId plannedPrimary = move.primaryPositionId();
+    ProductionRole plannedPrimaryRole =
+        plannedPrimary == null ? null : base.classPositions().get(plannedPrimary);
+    boolean usesPlannedPrimary =
+        plannedPrimaryRole != null && plannedPrimaryRole.modeId().equals(move.targetMode());
     ClassPositionId positionId =
-        pickTargetPosition(base, move.targetMode(), sourceHouseholdEconomy);
+        usesPlannedPrimary
+            ? plannedPrimary
+            : pickTargetPosition(base, move.targetMode(), sourceHouseholdEconomy);
     CohortKey view =
         new CohortKey(
             move.targetHex(),
@@ -826,7 +836,9 @@ public final class ModeMigrationSettlement {
             Map.of(),
             0L,
             day,
-            "AUTO_MIGRATION:" + move.reason()));
+            usesPlannedPrimary
+                ? "AUTO_MIGRATION:" + move.reason() + ":PRIMARY_MODE_RANKING"
+                : "AUTO_MIGRATION:" + move.reason()));
     accounts.registerHousehold(target, move.targetHex(), Map.of(), Map.of(), Map.of(), Map.of());
     return positionId;
   }

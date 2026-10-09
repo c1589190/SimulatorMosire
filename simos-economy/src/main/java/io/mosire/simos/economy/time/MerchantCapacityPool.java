@@ -265,22 +265,96 @@ public final class MerchantCapacityPool {
 
   /** 纯状态派生查询（工具维取 0 ⇒ 运力下界，J-2）：该格有没有"选了跑商且有运力"的家户。 */
   public static boolean hasCapacityAt(EconomyData base, HexCoord hex) {
+    return hexCapacityMilli(base, hex, Map.of()) > 0L;
+  }
+
+  /**
+   * ★★ <b>M-D：该格运力总量（纯函数；与 {@link #of} 装配同一条算式）</b>—— 逐户 {@link MerchantCapacity#of}（劳动投入 +
+   * 工具存量）后求和。
+   *
+   * @param goods 会话商品账（读 {@code tool} 存量）；没有商品账 ⇒ 传空表（工具项 = 0 ⇒ **运力下界**，J-2）
+   */
+  public static long hexCapacityMilli(
+      EconomyData base, HexCoord hex, Map<HouseholdId, Map<CommodityId, Long>> goods) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(hex, "hex");
-    for (Map.Entry<HouseholdId, HouseholdClassMembership> entry :
-        base.classStandings().entrySet()) {
-      HouseholdEconomy row = base.classes().get(entry.getKey());
-      if (row == null || !row.view().hex().equals(hex)) {
-        continue;
-      }
-      if (!MerchantIdentity.selectsMerchant(entry.getValue(), base.classPositions())) {
-        continue;
-      }
-      if (MerchantCapacity.laborCapacityMilli(row.participationAdjustedLaborMilli()) > 0L) {
-        return true;
-      }
+    Objects.requireNonNull(goods, "goods");
+    long total = 0L;
+    List<HouseholdId> households = new ArrayList<>(base.classStandings().keySet());
+    households.sort(Comparator.comparing(HouseholdId::value));
+    for (HouseholdId household : households) {
+      long capacity = memberCapacityMilli(base, household, hex, goods);
+      total = Math.addExact(total, capacity);
     }
-    return false;
+    return total;
+  }
+
+  /**
+   * ★★ <b>M-D：一个家户在本格的运力（纯函数；不是池成员 ⇒ 0）</b>—— 成员判据与装配同源（{@link
+   * MerchantIdentity#selectsMerchant}），算式同源（{@link MerchantCapacity#of}）。
+   */
+  private static long memberCapacityMilli(
+      EconomyData base,
+      HouseholdId household,
+      HexCoord hex,
+      Map<HouseholdId, Map<CommodityId, Long>> goods) {
+    HouseholdClassMembership standing = base.classStandings().get(household);
+    if (!MerchantIdentity.selectsMerchant(standing, base.classPositions())) {
+      return 0L;
+    }
+    HouseholdEconomy row = base.classes().get(household);
+    if (row == null || !row.view().hex().equals(hex)) {
+      return 0L;
+    }
+    long toolMilli = goods.getOrDefault(household, Map.of()).getOrDefault(TOOL_COMMODITY, 0L);
+    return MerchantCapacity.of(household, hex, row.participationAdjustedLaborMilli(), toolMilli)
+        .capacityMilli();
+  }
+
+  /**
+   * ★★ <b>M-D / §11.4 G-1：一个家户在该格作为运力提供者的**市场议价权**（占比‰）</b>—— 排序输入之一（计划 §7 Q-19： 与 {@code
+   * MerchantCapacityPool} 的分配序**同一口径、同一拼写点**，不得两套）。
+   *
+   * <pre>
+   * 该户**就住在本格且已是池成员**（{@code selectsMerchant}）⇒ share = 该户运力 × 1000 ÷ 本格运力总量
+   * 其余（本格候选新进入者 / 邻格准备迁入的候选）        ⇒ share = 该户运力 × 1000 ÷ (本格运力总量 + 该户运力)
+   * </pre>
+   *
+   * <p>★★ <b>为什么邻格候选不返回 0</b>：运力池挂在**发货格**（G-2）且成员判据是"住在那格"；一个住在 A 格、 考虑把跑商当主业并**迁到** B 格的家户，迁到 B
+   * 之后就在 B 的池里 —— 因此 B 格的议价权必须按"**新进入者**" 算（分母加上它自己），不能用"它现在不在 B"判成 0（那会把跨格进入跑商的路整条堵死）。
+   *
+   * <p>★ 除法与占比口径的唯一拼写点 = {@link MerchantCapacity#sharePerMilleOf}（本方法只负责"分母是哪一个"）。 ★ 纯状态读者（没有商品账）传
+   * {@code Map.of()} ⇒ 工具项 0 ⇒ 占比是**下界**（J-2 的具名偏差，方向 fail-closed）。
+   */
+  public static long sharePerMilleAsProviderAt(
+      EconomyData base,
+      HouseholdId household,
+      HexCoord hex,
+      Map<HouseholdId, Map<CommodityId, Long>> goods) {
+    Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(household, "household");
+    Objects.requireNonNull(hex, "hex");
+    Objects.requireNonNull(goods, "goods");
+    HouseholdEconomy row = base.classes().get(household);
+    if (row == null) {
+      return 0L;
+    }
+    long toolMilli = goods.getOrDefault(household, Map.of()).getOrDefault(TOOL_COMMODITY, 0L);
+    MerchantCapacity capacity =
+        MerchantCapacity.of(household, hex, row.participationAdjustedLaborMilli(), toolMilli);
+    if (capacity.capacityMilli() <= 0L) {
+      return 0L; // 劳动 + 工具都是 0 ⇒ 没有运力可提供（占比 0，不猜）
+    }
+    boolean residentMember =
+        row.view().hex().equals(hex)
+            && MerchantIdentity.selectsMerchant(
+                base.classStandings().get(household), base.classPositions());
+    long total = hexCapacityMilli(base, hex, goods);
+    if (!residentMember) {
+      // 本格候选新进入者 / 邻格准备迁入的候选：把自己算进分母（"我进去之后占多少"）
+      total = Math.addExact(total, capacity.capacityMilli());
+    }
+    return capacity.sharePerMilleOf(total);
   }
 
   /** 池里一条家户运力（可变剩余量；只允许协调器单线程触碰）。 */

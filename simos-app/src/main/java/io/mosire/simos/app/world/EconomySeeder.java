@@ -198,6 +198,33 @@ public final class EconomySeeder {
   /** ★★ 每 1 单位贸易规模的劳动（千分劳动/日）：{@code 1000} = 1 个标准劳动（与作坊口径同量级）。 */
   public static final long LABOR_MILLI_PER_TRADE_UNIT = 1_000L;
 
+  /**
+   * ★★ <b>M-D 附修：每 1 单位贸易规模每周期消耗的工具（毫工具 / 规模·周期）：{@code 100}</b>—— 跑商家户的 <b>工具补货路径</b>（M-C 账本 §6
+   * 的"工具补货路径缺失"缺口）。
+   *
+   * <pre>
+   * 为什么要给 trade 加这一条**周期投入**：
+   *   M-C 冻结「单次跑商烧 1,000 毫工具」（{@code MerchantHaul.TOOL_MILLI_PER_HAUL}）；而家户的购买需求只有两条来源
+   *   —— ① Social 的自然需求（{@code naturalNeeds}，只含口粮一类生活消费品）② **生产投入**（{@code
+   *   Industry.cycleInputPerUnit}）。{@code trade} 改前两者都没有 ⇒ 跑商家户**不会自发买工具** ⇒ 创世那 12 趟烧完即停。
+   *   ★ 本常量让工具需求走**既有生产投入需求路径**（{@code MarketDemandBook} 汇总 → 家户挂买单 → 成交补货），
+   *   **不改 Social 的自然需求权威（I-C6）、不给家户造第二本需求**。
+   *
+   * 量级理由（具名标定，不是拍数；★ {@code cycleInputPerUnit} 的值侧是"**每 1 单位规模**每周期"，实际需求 = 值 × 规模，
+   * 与手工业 {@code fiberPerWorkshopMilli()} 同口径）：
+   *   一座城市格 {@code trade} 的规模 = {@code capacityPerUnit{CATTLE:1}} 与播种的
+   *   {@code MERCHANT_CATTLE_PER_CITY}(100) ⇒ **100 单位** ⇒ 该格每周期工具投入 = 100 × 本值(100) =
+   *   **10,000 毫工具 = 10 商品单位 = 10 次跑商的工具量**（1 商品单位 = 1,000 毫 = 1 趟）；与 M-C 账本 D-3 的
+   *   "12,000 毫 ≈ 12 趟"**同量级**，且低于手工业的工具产出量级（一座作坊 5 件/周期 = 5,000 毫 × 作坊数）⇒
+   *   不会把工具市场抽干、也不与作坊自己的工具投入打架。
+   * </pre>
+   *
+   * <p>★ 已知覆盖边界（如实记，见 M-D 账本 §6）：{@code trade} 的经营者只有**一个**家户（该格 merchant principal）⇒ 补货路径只覆盖"经营
+   * trade 的家户"；同格其它跑商家户（如 {@code merchant.self_employed}）没有 trade unit ⇒ 它们的工具补给要靠排序表把它们选去当 trade
+   * 经营者、或另开"跑商家户按剩余运力生成工具购买意图"那一档。
+   */
+  public static final long TOOL_MILLI_PER_TRADE_UNIT_CYCLE = 100L;
+
   /** ★★ 创世商号的层级（GM 默认）：{@link MerchantPolicy.MerchantTier#PORTER}（三档里最小的一档）。 */
   public static final MerchantPolicy.MerchantTier MERCHANT_TIER =
       MerchantPolicy.MerchantTier.PORTER;
@@ -4123,7 +4150,7 @@ public final class EconomySeeder {
    * capacity        = {CATTLE: MERCHANT_CATTLE_PER_CITY}      // 具名 GM 默认（100）
    * capacityPerUnit = {CATTLE: 1}                             // 1 头畜力 / 1 单位运力
    * outputPerUnit   = {}                                      // 贸易没有商品产出（收入走承运运费）
-   * cycleInputPerUnit = {}                                    // 没有周期投入
+   * cycleInputPerUnit = {CATTLE: {tool: TOOL_MILLI_PER_TRADE_UNIT_CYCLE}}  // ★ M-D 附修：工具补货路径
    * laborPerUnit    = LABOR_MILLI_PER_TRADE_UNIT（1000）
    * cycleDays       = CYCLE_DAYS
    * 经营者           = 该格 merchant principal 家户 actor
@@ -4145,7 +4172,15 @@ public final class EconomySeeder {
             Map.of(AssetKind.CATTLE.name(), 1L),
             LABOR_MILLI_PER_TRADE_UNIT,
             Map.of(),
-            Map.of(),
+            // ★★ M-D 附修：**周期投入 = 工具**（改前是空表 ⇒ 跑商家户不会自发买工具 ⇒ 12 趟后停）。
+            //   具名常量与量级理由见 {@link #TOOL_MILLI_PER_TRADE_UNIT_CYCLE}；键取运力资产（CATTLE）那一层，
+            //   与手工业 {@code cycleInputPerUnit = {WORKSHOP: {...}}} 同形（{@code
+            // Industry.inputPerUnit()} = 各层之和，
+            //   全仓没有按资产分支读它的现扣/收获路径 ⇒ 挂哪一层的值侧都逐值进同一个读口）。
+            //   ★ 值侧口径 = "毫工具 / 规模单位·周期"（与手工业同口径）；表只有一项 ⇒ 用单键 {@code Map.of}
+            //     不存在迭代序抖动（本仓"保序"纪律针对多项表）。
+            Map.of(
+                AssetKind.CATTLE.name(), Map.of(COMMODITY_TOOL, TOOL_MILLI_PER_TRADE_UNIT_CYCLE)),
             merchantPrincipal);
     // ★★ <b>兼容读口必须的两个键（如实记，见实现报告）</b>：{@code EconomyPayloads.industrySpec} 对**每个**
     //   industry 节点都会先算 {@code legacyOperator}（无 operator 键 ⇒ 调 {@code

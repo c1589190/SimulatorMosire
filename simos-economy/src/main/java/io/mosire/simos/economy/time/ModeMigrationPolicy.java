@@ -6,7 +6,6 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
-import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -32,7 +31,6 @@ import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -122,6 +120,14 @@ public final class ModeMigrationPolicy {
    * <p>★★ <b>D-023：货币随迁按全部币种</b> —— 权威口径是 {@link #moneyByCurrency()}（逐币种按人口比例
    * floor；源户迁空时该币种余数随最后一笔走；<b>不做 FX</b>）。{@link #moneyMilli()} 只保留为旧读口（计划的主币种 份额），执行器以 {@code
    * moneyByCurrency} 为准；空 map = 旧/手工计划 ⇒ 执行器就地按人口比例补算全部币种。
+   *
+   * <p>★★ <b>M-D 追加 {@code primaryPositionId}：主业落点</b>（设计书 §13 I-A/I-D、I-3）—— 该笔 move
+   * 的**生产方式排序表**里， 与 {@code (targetMode, targetHex)} 相符的那一项的**位置 id**；它就是新建目标家户 {@code
+   * currentPositionId} 的落点 （"排序表第 1 项 ⇒ 主业"，落点仍走既有模式变迁路径 {@code ModeMigrationSettlement}）。★ {@code
+   * null} = 没有排序表落点 （旧调用方/夹具）⇒ 执行器退回既有的 {@code pickTargetPosition}（按 relationToMeans+surplusRole
+   * 匹配、再位置 id 升序）—— **逐值不变**。
+   *
+   * @param primaryPositionId 排序表第 1 项的落点位置（可 {@code null} = 按既有口径选位置）
    */
   public record MigrationMove(
       HouseholdId source,
@@ -133,13 +139,40 @@ public final class ModeMigrationPolicy {
       long moneyMilli,
       long debtMilli,
       String reason,
-      Map<CurrencyId, Long> moneyByCurrency) {
+      Map<CurrencyId, Long> moneyByCurrency,
+      ClassPositionId primaryPositionId) {
 
     /** 迁移原因词表（规范串）。 */
     public static final String REASON_PROFIT_WEIGHTED = "PROFIT_WEIGHTED";
 
     public static final String REASON_A_RULE_MAX_SPEED = "A_RULE_MAX_SPEED";
     public static final String REASON_DISPLACED_ABSORBED = "DISPLACED_ABSORBED";
+
+    /** 旧读口的 10 参构造（没有排序表落点 ⇒ {@code primaryPositionId = null}，执行器按既有口径选位置）。 */
+    public MigrationMove(
+        HouseholdId source,
+        HouseholdId target,
+        HexCoord targetHex,
+        ProductionModeId targetMode,
+        long transferSpeedPerMille,
+        long population,
+        long moneyMilli,
+        long debtMilli,
+        String reason,
+        Map<CurrencyId, Long> moneyByCurrency) {
+      this(
+          source,
+          target,
+          targetHex,
+          targetMode,
+          transferSpeedPerMille,
+          population,
+          moneyMilli,
+          debtMilli,
+          reason,
+          moneyByCurrency,
+          null);
+    }
 
     /** 旧读口的 9 参构造（全币种 map 为空 ⇒ 执行器就地按人口比例补算，不静默丢任何币种）。 */
     public MigrationMove(
@@ -162,7 +195,8 @@ public final class ModeMigrationPolicy {
           moneyMilli,
           debtMilli,
           reason,
-          Map.of());
+          Map.of(),
+          null);
     }
 
     public MigrationMove {
@@ -402,7 +436,8 @@ public final class ModeMigrationPolicy {
                 legacyMoneyMilli,
                 debtShares[i],
                 draft.reason,
-                moneyByCurrency));
+                moneyByCurrency,
+                draft.primaryPositionId));
       }
     }
     return new MigrationPlan(moves);
@@ -450,6 +485,8 @@ public final class ModeMigrationPolicy {
             topology,
             day);
     long currentPerLabor = currentProspect.netPerLaborScaled();
+    // ★★ M-D：被排序输入挡下的跑商候选（具名；进排序表的 excluded 与 DEBUG 日志）。
+    List<PrimaryModeRanking.Excluded> excluded = new ArrayList<>();
     List<Target> targets =
         buildTargets(
             base,
@@ -457,6 +494,7 @@ public final class ModeMigrationPolicy {
             sourceHouseholdEconomy,
             current,
             currentPerLabor,
+            excluded,
             hexes,
             modes,
             producingPositions,
@@ -471,6 +509,16 @@ public final class ModeMigrationPolicy {
             demandBook,
             topology,
             day);
+    // ★★ M-D（设计书 §13 I-A/I-B）：**生产方式排序表** —— 当前项（主业）+ 全部成立候选，
+    //   排序输入 = 市场议价权（本格运力占比‰，G-1 同一拼写点）+ 库存（货币余额 + 商品库存折价 + 生产资料份额）；
+    //   破平 = 位置 id 升序（I-3）。★ 纯读数：本表不写任何状态，落点仍走既有模式变迁路径。
+    PrimaryModeRanking.Table table =
+        rankingTable(
+            base, source, current, currentProspect, targets, excluded, accounts, markets, topology);
+    PrimaryModeRanking.logTable(day, table);
+    // ★★ M-D（I-C）：排序表第 1 项 = **加速流向的那一项目标** —— 只把该目标提到候选序最前
+    //   （权重、承载约束、门槛一字不改；"副业足够赚钱"就体现在它排到了第 1 项）。
+    List<Target> ranked = primaryFirst(targets, table);
     ExpectedProfit expected =
         expectedProfit(
             currentProspect, liquidityMilli(accounts, markets, topology, source, current.hex));
@@ -478,23 +526,24 @@ public final class ModeMigrationPolicy {
         expected.expectedNetMilli() < 0L
             && expected.liquidityMilli() < expected.nextCycleInputNeedMilli();
 
+    List<MoveDraft> drafts;
     if (aRule) {
-      List<Target> higher = targets.stream().filter(target -> target.weight > 0L).toList();
+      List<Target> higher = ranked.stream().filter(target -> target.weight > 0L).toList();
       if (!higher.isEmpty()) {
-        return allocate(
-            source,
-            sourceHouseholdEconomy.population(),
-            sourceHouseholdEconomy.population(),
-            A_RULE_TRANSFER_SPEED_PER_MILLE,
-            MigrationMove.REASON_A_RULE_MAX_SPEED,
-            higher,
-            base,
-            sourceHouseholdEconomy,
-            assetShares,
-            reservedIdle,
-            claimedByEnterprises);
-      }
-      if (!expected.canSustainProduction()) {
+        drafts =
+            allocate(
+                source,
+                sourceHouseholdEconomy.population(),
+                sourceHouseholdEconomy.population(),
+                A_RULE_TRANSFER_SPEED_PER_MILLE,
+                MigrationMove.REASON_A_RULE_MAX_SPEED,
+                higher,
+                base,
+                sourceHouseholdEconomy,
+                assetShares,
+                reservedIdle,
+                claimedByEnterprises);
+      } else if (!expected.canSustainProduction()) {
         List<Target> displaced =
             buildDisplacedTargets(
                 source,
@@ -504,48 +553,173 @@ public final class ModeMigrationPolicy {
                 producingPositions,
                 modeByHousehold,
                 householdEconomies);
-        if (!displaced.isEmpty()) {
-          return allocate(
-              source,
-              sourceHouseholdEconomy.population(),
-              sourceHouseholdEconomy.population(),
-              A_RULE_TRANSFER_SPEED_PER_MILLE,
-              MigrationMove.REASON_DISPLACED_ABSORBED,
-              displaced,
-              base,
-              sourceHouseholdEconomy,
-              assetShares,
-              reservedIdle,
-              claimedByEnterprises);
-        }
+        drafts =
+            displaced.isEmpty()
+                ? List.of()
+                : allocate(
+                    source,
+                    sourceHouseholdEconomy.population(),
+                    sourceHouseholdEconomy.population(),
+                    A_RULE_TRANSFER_SPEED_PER_MILLE,
+                    MigrationMove.REASON_DISPLACED_ABSORBED,
+                    displaced,
+                    base,
+                    sourceHouseholdEconomy,
+                    assetShares,
+                    reservedIdle,
+                    claimedByEnterprises);
+      } else {
+        // 当前户已是最优（或没有可承载目标）：不转移，债务按现有路径继续增长。
+        drafts = List.of();
       }
-      // 当前户已是最优（或没有可承载目标）：不转移，债务按现有路径继续增长。
-      return List.of();
+    } else {
+      List<Target> positive = ranked.stream().filter(target -> target.weight > 0L).toList();
+      long moveable =
+          Math.min(
+              sourceHouseholdEconomy.population(),
+              Math.max(1L, sourceHouseholdEconomy.population() * MIGRATION_PER_MILLE / 1000L));
+      drafts =
+          positive.isEmpty() || moveable <= 0L
+              ? List.of()
+              : allocate(
+                  source,
+                  sourceHouseholdEconomy.population(),
+                  moveable,
+                  MIGRATION_PER_MILLE,
+                  MigrationMove.REASON_PROFIT_WEIGHTED,
+                  positive,
+                  base,
+                  sourceHouseholdEconomy,
+                  assetShares,
+                  reservedIdle,
+                  claimedByEnterprises);
     }
+    // ★★ M-D（冻结项 7）：INFO = **主业变更**（谁、从哪到哪、为什么）—— 只在真的产生了迁移、且排序表第 1 项
+    //   换了生产方式时打点；表本身与判据在 DEBUG（{@link PrimaryModeRanking#logTable}）。
+    maybeLogPrimaryChange(day, source, current, currentPerLabor, table, drafts);
+    return drafts;
+  }
 
-    List<Target> positive = targets.stream().filter(target -> target.weight > 0L).toList();
-    if (positive.isEmpty()) {
-      return List.of();
+  // ── M-D：生产方式排序表（§13 I-A..I-E；唯一拼写点在本节）───────────────────────────────────
+
+  /**
+   * ★★ <b>把"当前项 + 全部成立候选"排成一张表</b>（I-A/I-B）—— <b>纯读数</b>，不写任何状态。
+   *
+   * <p>★ 当前项用该户**真实的 {@code currentPositionId}**（"从哪"要准确），收益率用同一个 {@link
+   * ExpectedProfitBook.Prospect}（与候选同一把尺，A 规则与排序表不可能漂开）。DISPLACED 一类没有位置的候选不进表。
+   */
+  private static PrimaryModeRanking.Table rankingTable(
+      EconomyData base,
+      HouseholdId source,
+      HouseholdMode current,
+      ExpectedProfitBook.Prospect currentProspect,
+      List<Target> targets,
+      List<PrimaryModeRanking.Excluded> excluded,
+      AccountSession accounts,
+      Map<HexCoord, Market> markets,
+      MarketTopology topology) {
+    List<PrimaryModeRanking.Row> rows = new ArrayList<>();
+    String currentGate =
+        DefaultProductionModes.MERCHANT.equals(current.modeId)
+            ? PrimaryModeRanking.merchantGateReason(
+                base, source, current.hex, accounts.householdGoods())
+            : null;
+    if (currentGate == null) {
+      rows.add(
+          new PrimaryModeRanking.Row(
+              current.positionId,
+              current.modeId,
+              current.hex,
+              currentProspect.netPerLaborScaled(),
+              bargainingPowerPerMille(base, source, current.modeId, current.hex, accounts),
+              PrimaryModeRanking.inventoryMilli(accounts, markets, topology, source, current.hex),
+              currentProspect.reason()));
+    } else {
+      // ★ 当前主业就是跑商、但**工具不够一趟**（§12 H-D/H-5）：库存是排序输入之一 ⇒ 它进不了"第 1 项"
+      //   （跑商在决策层不成立；它在市场轮的既有 M-C 门槛另有具名 tool-short）。★ 只影响**本表的读数**，
+      //   A 规则读的 expectedNet 一字不改（冻结项 5）。
+      excluded.add(new PrimaryModeRanking.Excluded(current.modeId, current.hex, currentGate));
     }
-    long moveable =
-        Math.min(
-            sourceHouseholdEconomy.population(),
-            Math.max(1L, sourceHouseholdEconomy.population() * MIGRATION_PER_MILLE / 1000L));
-    if (moveable <= 0L) {
-      return List.of();
+    for (Target target : targets) {
+      if (target.positionId == null) {
+        continue; // 没有位置的目标（DISPLACED）：排序表只排"生产方式位置"，它不进表
+      }
+      rows.add(
+          new PrimaryModeRanking.Row(
+              target.positionId,
+              target.mode,
+              target.hex,
+              target.yieldPerLaborScaled,
+              bargainingPowerPerMille(base, source, target.mode, target.hex, accounts),
+              PrimaryModeRanking.inventoryMilli(accounts, markets, topology, source, target.hex),
+              target.prospectReason));
     }
-    return allocate(
-        source,
-        sourceHouseholdEconomy.population(),
-        moveable,
-        MIGRATION_PER_MILLE,
-        MigrationMove.REASON_PROFIT_WEIGHTED,
-        positive,
-        base,
-        sourceHouseholdEconomy,
-        assetShares,
-        reservedIdle,
-        claimedByEnterprises);
+    return PrimaryModeRanking.rank(source, rows, excluded);
+  }
+
+  /**
+   * ★★ <b>排序输入①：市场议价权（占比‰）</b>—— 只有跑商行非零（议价权是**运力**概念；§11.4 G-1 的唯一口径， 经 {@link
+   * MerchantCapacityPool#sharePerMilleAsProviderAt}）。
+   */
+  private static long bargainingPowerPerMille(
+      EconomyData base,
+      HouseholdId source,
+      ProductionModeId mode,
+      HexCoord hex,
+      AccountSession accounts) {
+    if (!DefaultProductionModes.MERCHANT.equals(mode)) {
+      return 0L;
+    }
+    return MerchantCapacityPool.sharePerMilleAsProviderAt(
+        base, source, hex, accounts.householdGoods());
+  }
+
+  /**
+   * ★★ <b>I-C：把排序表第 1 项对应的目标提到候选序最前</b>（"副业足够赚钱 ⇒ 既有 A 规则加速流向它"）。
+   *
+   * <p>★ 只改**次序**：权重比例、承载约束、新建可行性、门槛一律不动 ⇒ 与改前逐值可比。 ★ 第 1 项就是当前项（主业没变）或候选里没有它的 (mode, hex) ⇒
+   * 原序返回（一字不改）。
+   */
+  private static List<Target> primaryFirst(List<Target> targets, PrimaryModeRanking.Table table) {
+    PrimaryModeRanking.Row primary = table.primary();
+    if (primary == null || targets.size() <= 1) {
+      return targets;
+    }
+    Target first = null;
+    List<Target> rest = new ArrayList<>(targets.size());
+    for (Target target : targets) {
+      if (first == null
+          && target.mode.equals(primary.modeId())
+          && target.hex.equals(primary.hex())) {
+        first = target;
+      } else {
+        rest.add(target);
+      }
+    }
+    if (first == null) {
+      return targets;
+    }
+    List<Target> ordered = new ArrayList<>(targets.size());
+    ordered.add(first);
+    ordered.addAll(rest);
+    return ordered;
+  }
+
+  /** ★★ <b>INFO：主业变更</b>（谁、从哪到哪、为什么）—— 排序表第 1 项的生产方式与该户当前主业不同、且本轮确实产生了 迁移时才打点（否则只是读数，进 DEBUG）。 */
+  private static void maybeLogPrimaryChange(
+      long day,
+      HouseholdId source,
+      HouseholdMode current,
+      long currentYield,
+      PrimaryModeRanking.Table table,
+      List<MoveDraft> drafts) {
+    PrimaryModeRanking.Row primary = table.primary();
+    if (primary == null || drafts.isEmpty() || primary.modeId().equals(current.modeId)) {
+      return;
+    }
+    // "从哪"的收益率取**该户当前项那一次的 prospect 读数**（与本方法无关的 A 规则同源），不依赖当前行是否在表里。
+    PrimaryModeRanking.logPrimaryChange(
+        day, source, current.positionId, current.modeId, primary, currentYield);
   }
 
   /**
@@ -565,6 +739,7 @@ public final class ModeMigrationPolicy {
       HouseholdEconomy sourceHouseholdEconomy,
       HouseholdMode current,
       long currentPerLabor,
+      List<PrimaryModeRanking.Excluded> excluded,
       List<HexCoord> hexes,
       List<ProductionMode> modes,
       Map<ProductionModeId, List<ProductionRole>> producingPositions,
@@ -622,6 +797,17 @@ public final class ModeMigrationPolicy {
         if (!prospect.feasible() || prospect.feasibleScale() <= 0L) {
           continue; // 不可行/规模 0：不凭空造目标（理由在 prospect 里具名）
         }
+        // ★★ M-D：排序输入在**跑商候选**上的门槛（Q-18 库存 = tool 不够一趟；Q-19 议价权占比‰ = 0）。
+        //   不成立 ⇒ 该候选不进排序表、也不成目标（缺工具的"预期收益" = 0，§12 H-D/H-5 在决策层的同一条门槛）；
+        //   被挡下的行**具名**进排序表的 excluded（DEBUG 打印，不静默）。
+        if (DefaultProductionModes.MERCHANT.equals(mode.id())) {
+          String gate =
+              PrimaryModeRanking.merchantGateReason(base, source, hex, accounts.householdGoods());
+          if (gate != null) {
+            excluded.add(new PrimaryModeRanking.Excluded(mode.id(), hex, gate));
+            continue;
+          }
+        }
         long weight =
             Math.max(0L, Math.subtractExact(prospect.netPerLaborScaled(), currentPerLabor));
         if (weight <= 0L) {
@@ -643,7 +829,10 @@ public final class ModeMigrationPolicy {
                 distance,
                 true,
                 room,
-                canonicalKey(hex, mode.id())));
+                canonicalKey(hex, mode.id()),
+                prospect.positionId(),
+                prospect.netPerLaborScaled(),
+                prospect.reason()));
       }
     }
     targets.sort(
@@ -700,7 +889,10 @@ public final class ModeMigrationPolicy {
                 distance,
                 true,
                 MAX_HOUSEHOLD_POPULATION,
-                canonicalKey(hex, displaced.id())));
+                canonicalKey(hex, displaced.id()),
+                null,
+                0L,
+                "DISPLACED"));
       } else if (room > 0L) {
         targets.add(
             new Target(
@@ -711,7 +903,10 @@ public final class ModeMigrationPolicy {
                 distance,
                 false,
                 room,
-                canonicalKey(hex, displaced.id())));
+                canonicalKey(hex, displaced.id()),
+                null,
+                0L,
+                "DISPLACED"));
       }
     }
     targets.sort(
@@ -823,7 +1018,14 @@ public final class ModeMigrationPolicy {
     if (target.existing != null && target.existingRoom > 0L) {
       long take = Math.min(allow, target.existingRoom);
       drafts.add(
-          new MoveDraft(target.existing, target.hex, target.mode, speedPerMille, take, reason));
+          new MoveDraft(
+              target.existing,
+              target.hex,
+              target.mode,
+              speedPerMille,
+              take,
+              reason,
+              target.positionId));
       placed += take;
     }
     if (placed >= allow || !target.newFeasible) {
@@ -849,7 +1051,8 @@ public final class ModeMigrationPolicy {
               target.mode,
               speedPerMille,
               take,
-              reason));
+              reason,
+              target.positionId));
       placed += take;
     }
     return placed;
@@ -1038,69 +1241,25 @@ public final class ModeMigrationPolicy {
     return null;
   }
 
-  /** 流动性（毫计价货币）= 本格计价币现金 + 库存按参考价折算（与旧 A 规则同一口径）。 */
+  /**
+   * 流动性（毫计价货币）= 本格计价币现金 + 库存按参考价折算（与旧 A 规则同一口径）。
+   *
+   * <p>★★ <b>M-D：算式的唯一拼写点搬进 {@link PrimaryModeRanking#inventoryMilli}</b>（"库存"是排序表与 A 规则共用的
+   * 同一个输入，Q-18）——本方法只做委托，**不保留第二份算式**（含 2026-10-09 的溢出饱和修复）。
+   */
   private static long liquidityMilli(
       AccountSession accounts,
       Map<HexCoord, Market> markets,
       MarketTopology topology,
       HouseholdId household,
       HexCoord hex) {
-    Market market = marketOf(markets, topology, hex);
-    Map<CommodityId, Long> stock = accounts.householdGoods().getOrDefault(household, Map.of());
-    Map<CurrencyId, Long> wallet = accounts.householdMoney().getOrDefault(household, Map.of());
-    long cash = market == null ? 0L : wallet.getOrDefault(market.numeraire(), 0L);
-    long sellable = 0L;
-    if (market != null) {
-      for (Map.Entry<CommodityId, Long> good : stock.entrySet()) {
-        long price = market.priceOf(good.getKey());
-        if (price > 0L) {
-          // ★★ 2026-10-09 红字修复：这里原来是裸 `value * price`，库存量级一大就静默回绕成负数
-          //   （实测 hh-nat-r2-tenant 的 liquidity 变成 −6.6e15，触发 ExpectedProfit 守卫）。
-          //   改为精确乘法 + 饱和加法：溢出时按"极富流动性"饱和到 Long.MAX_VALUE，绝不静默出负读数。
-          long value =
-              saturatedMulDiv(good.getValue(), price, EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
-          sellable = saturatedAdd(sellable, value);
-        }
-      }
-    }
-    return saturatedAdd(cash, sellable);
-  }
-
-  /** 精确 {@code value × multiplier ÷ divisor}；乘法溢出 ⇒ 饱和到 {@link Long#MAX_VALUE}（不静默回绕）。 */
-  private static long saturatedMulDiv(long value, long multiplier, long divisor) {
-    if (value <= 0L || multiplier <= 0L || divisor <= 0L) {
-      return 0L;
-    }
-    try {
-      return Math.multiplyExact(value, multiplier) / divisor;
-    } catch (ArithmeticException overflow) {
-      return Long.MAX_VALUE;
-    }
-  }
-
-  /** 饱和加法：真的越过 {@link Long#MAX_VALUE} ⇒ 饱和（不静默回绕）。 */
-  private static long saturatedAdd(long left, long right) {
-    if (left < 0L || right < 0L) {
-      throw new IllegalArgumentException("饱和加法的入参不得为负: " + left + " + " + right);
-    }
-    return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
+    return PrimaryModeRanking.inventoryMilli(accounts, markets, topology, household, hex);
   }
 
   /** 本格价表：优先本格市场；无则退到该格所在区的集散节点市场（区内同价）；都没有 ⇒ null。 */
   private static Market marketOf(
       Map<HexCoord, Market> markets, MarketTopology topology, HexCoord hex) {
-    Market direct = markets.get(hex);
-    if (direct != null) {
-      return direct;
-    }
-    if (topology != null) {
-      try {
-        return markets.get(topology.regionOf(hex).anchor());
-      } catch (IllegalArgumentException ignored) {
-        // 该格不在拓扑里（没有市场）⇒ 没有价
-      }
-    }
-    return null;
+    return PrimaryModeRanking.marketOf(markets, topology, hex);
   }
 
   /**
@@ -1520,7 +1679,14 @@ public final class ModeMigrationPolicy {
     }
   }
 
-  /** 目标候选（existingRoom 为已有户剩余容量；newFeasible 为同 (hex, mode) 是否能新建）。 */
+  /**
+   * 目标候选（existingRoom 为已有户剩余容量；newFeasible 为同 (hex, mode) 是否能新建）。
+   *
+   * <p>★★ <b>M-D 追加 {@code positionId} / {@code yieldPerLaborScaled}</b>：目标那一项的**位置 id**（= 该 (hex,
+   * mode) 的 {@code ExpectedProfitBook.Prospect.positionId()}，排序表第 1
+   * 项的落点候选）与该行的**收益率读数**（同尺，进排序表与日志）。 ★ {@code positionId} 可 {@code null}（DISPLACED 目标等没有 prospect
+   * 的场合）。
+   */
   private record Target(
       HexCoord hex,
       ProductionModeId mode,
@@ -1529,7 +1695,10 @@ public final class ModeMigrationPolicy {
       int distance,
       boolean newFeasible,
       long existingRoom,
-      String canonical) {
+      String canonical,
+      ClassPositionId positionId,
+      long yieldPerLaborScaled,
+      String prospectReason) {
     Target {
       Objects.requireNonNull(hex, "hex");
       Objects.requireNonNull(mode, "mode");
@@ -1537,7 +1706,12 @@ public final class ModeMigrationPolicy {
     }
   }
 
-  /** 施工坞（人口切分与目标确认完成后才冻成 {@link MigrationMove}）。 */
+  /**
+   * 施工坞（人口切分与目标确认完成后才冻成 {@link MigrationMove}）。
+   *
+   * <p>★ M-D：{@code primaryPositionId} = 该目标那一项在**生产方式排序表**里的位置（= {@code current} 的落点）； 可 {@code
+   * null}（DISPLACED 等没有 prospect 的目标）。
+   */
   private static final class MoveDraft {
     final HouseholdId target;
     final HexCoord targetHex;
@@ -1545,6 +1719,7 @@ public final class ModeMigrationPolicy {
     final long transferSpeedPerMille;
     final long population;
     final String reason;
+    final ClassPositionId primaryPositionId;
 
     MoveDraft(
         HouseholdId target,
@@ -1552,13 +1727,15 @@ public final class ModeMigrationPolicy {
         ProductionModeId targetMode,
         long transferSpeedPerMille,
         long population,
-        String reason) {
+        String reason,
+        ClassPositionId primaryPositionId) {
       this.target = target;
       this.targetHex = targetHex;
       this.targetMode = targetMode;
       this.transferSpeedPerMille = transferSpeedPerMille;
       this.population = population;
       this.reason = reason;
+      this.primaryPositionId = primaryPositionId;
     }
   }
 }
