@@ -91,22 +91,40 @@
 
 ## 4. 契约形状（冻结）
 
-### 4.1 商品运费系数表（G1，甲方案）
+### 4.1 商品运费表（G1；★ 2026-10-09 用户裁定「甲」后**修正**）
+
+> ★★ **修正记录（控制方）**：本节原写"商品运费**系数**（‰，乘在整条运费上）"，并据此让实现方在
+> `TransportTariff.perMille` 加了第 6 个入参。**该方向是错的**——它撞上了早已存在的
+> `MarketSettlement.commodityFreightBaseMilli`（`d7604ea5`，**非本批引入**）：那组常量**本来就是**
+> "每件每程的基础运费"（粮/纤维 1、布 2、工具 3 毫），其注释原文即用户 2026-10-09 的口径
+> 「**运费只和商品种类有关**」。⇒ 真相不是"缺商品维"，而是"**这张表被切成两半、一半锁在代码里**"。
+> 用户 2026-10-09 裁定 **甲**：把它搬进状态表，GM 可改。
+
+**目标形状**：
 
 ```
-EconomyData 第 38 组件：commodityFreightPerMille : Map<CommodityId, Long>
-  · 语义：该商品的运费系数（‰），乘在整条运费上
-  · 缺键 ⇒ 1000（= 现状，逐值不变）★ 这是旧世界不动的保证
-  · 值域：> 0（0 或负 ⇒ 非法：“免费运输”不是“说不出价”）
+EconomyData 第 36 组件：commodityFreightBaseMilli : Map<CommodityId, Long>
+  · 语义：该商品的**基础运费**（毫计价货币 / 商品单位 / 程）—— 与商品价格无关
+  · 缺键 ⇒ 取具名缺省（见下）；值域 ≥ 0（0 = 该商品免基础费，是**明确**的，不是"说不出价"）
+  · ★ 旧档缺该组件键 ⇒ **归一到"现行硬编码分档"**（粮1/纤维1/布2/工具3；未登记商品 ⇒ 1）
+    ⇒ **旧世界逐值不变**（I-F1）
 ```
 
-- **唯一拼写点**：`TransportTariff.perMille(distance, radial, road, cityDiscount, ruralPenalty, commodityFreightPerMille)`
-  —— 新增第 6 个入参（**整条 rate 乘该系数**）；
-- `MarketTopology.freightPerMilleBetween(...)` 加商品入参（或用"逐商品查询"重载）；
-- 形制照 `currencies`：`EconomyChangeSet` FieldDelta + `EconomyCodec` 键反序列化 + **往返不变式** + 旧档归一成空表；
-- **GM 命令** `economy.SetCommodityFreight`（照 `SetMarketPrice` 形制：GM-only、具名拒、日志）：
-  载荷 `{"commodityId":"grain","perMille":1500,"reason":"…"}`；
-  拒绝：未知商品 / `perMille ≤ 0` / 与现值逐字相同（`freight-unchanged`）⇒ 具名拒且零 revision。
+**公式（唯一拼写点，`MarketSettlement.freightUnitMilli`，逐字保留）**：
+
+```
+单位运费 = max(1, ⌈ 基础费(商品) × (1000 + 路线费率‰) × (1000 + 承运成本‰) ÷ 1,000,000 ⌉)
+             ↑ 从状态表读（GM 可改）        ↑ 距离/地形           ↑ 商号档位
+```
+
+- ★ **撤销** F 批加在 `TransportTariff.perMille` 上的"商品系数"第 6 入参（那一维是方向错的产物）；
+  `TransportTariff` 回到纯"距离/辐射/道路/城乡"维；
+- `commodityFreightBaseMilli(商品)` 由**硬编码 dispatch** 改为**读状态表**（缺键 ⇒ 具名缺省 = 1）；
+- **GM 命令** `economy.SetCommodityFreight`（形制照 `SetMarketPrice`：GM-only、具名拒、日志）：
+  载荷 `{"commodityId":"grain","baseMilli":2,"reason":"…"}`；
+  拒绝：未知商品 / `baseMilli < 0` / 与现值逐字相同（`freight-unchanged`）⇒ 具名拒且零 revision。
+
+★ **后续（丙）**：将来要调"工具在长途中该不该更便宜"，用同一张表改数字即可——甲让这条路是通的。
 
 ### 4.2 工坊制品自然需求（G2）
 
