@@ -66,6 +66,14 @@ import java.util.Set;
  * 两者都清零的条件是当个周期既无债务压力、下一轮投入又可覆盖。★ 把第三条下滑判据（{@code F} 持续不足）的"持续"持久化在同一个计数器里， 是 E5b
  * 明确允许的<b>等价持久判据</b>（不新增状态组件、不加第二份真值）；没有这个计数器时，{@code DEFAULTED} 只能靠合同状态持久、 而 {@code F} 缺口跨重启就丢了。
  *
+ * <p>★★ <b>计数器的读/写权威（2026-10-10 路径无关修复）</b>：{@code consecutiveDebtStressCycles} 的<b>增量基准 =
+ * 当刻工作副本</b> （{@link EconomyStateBuilder#classMembershipsOrBase()}），<b>不是</b> {@code
+ * context.base()} —— 后者 = 本次 {@code advance} 的 {@code range.from} 快照（{@code
+ * EconomySession.base()}）。一次 {@code advance(from, from+N)} 内部逐日推进、 连跑多次关账（small-world 实测
+ * 30/60/…/360 各一次），读基态会把"关账周期数"偷换成"advance 调用次数" ⇒ 计数器上限 = 段数、 阈值在单段推进下不可达（违反 {@code
+ * TimeAdvance.java:71-77} 的"一次 N 天 == N 次单日"终态等价判据）。同一条纪律适用于本类 所有"<b>当前</b>归属/当前位置"的读取点（见 {@link
+ * #selectRulePolicy}）。
+ *
  * <p>★★ <b>清算只换生产资料所有权，不搬粮/钱</b>：apply 里只有三条写口 —— {@link OwnershipStakeBook#apply}（资产份额）、 {@link
  * DebtContractBook#reduce}/{@code markStatus}（债务本金/状态）、{@code EconomyStateBuilder.classStandings()}
  * / {@code crisisSignals()}（阶层与信号）。<b>不调用 applyTransfer、不碰账户</b>（§5.4"处置必须与债务本金扣减、资产份额转移、
@@ -192,6 +200,10 @@ public final class EconomyLiquidationSettlement {
                   EconomyLogSource.ECONOMY_SETTLEMENT,
                   "day",
                   day,
+                  // ★ 2026-10-10：带上是**第几个关账周期**——计数器口径 = 关账周期数（与 advance 分段无关），
+                  //   排查"路径效应"时要能与逐户 DEBT_STRESS_THRESHOLD_FIRED 的 cycle 对齐。
+                  "cycle",
+                  currentCycle,
                   "stressUpdates",
                   plan.stressUpdates().size(),
                   "debtReductions",
@@ -349,7 +361,18 @@ public final class EconomyLiquidationSettlement {
 
   private static Plan plan(Context context) {
     EconomyData base = context.base();
-    Map<HouseholdId, HouseholdClassMembership> baseClassMemberships = base.classStandings();
+    // ★★ 2026-10-10 路径无关修复（E5b 计数器）：阶层归属是**当刻工作副本**，不是本次 advance 的基态快照。
+    //   ★ 为什么必须是工作副本：`consecutiveDebtStressCycles` 的定义域是**世界的关账周期数**（类注、:64-67/:88），
+    //     而一次 `advance(from, from+N)` 内部会逐日推进、连跑多次关账（small-world 实测 30/60/…/360 各一次）。
+    //     读 `base`（= `range.from` 那份快照，`EconomySession.base()`）⇒ `previous` 恒为"本次调用开始时的值"，
+    //     `next` 恒等于 `previous + 1` ⇒ 计数器上限 = **advance 调用次数**，把"关账周期数"偷换成"调用次数"：
+    //     1 段推进下阈值 2 不可达 ⇒ "连续压力 ⇒ 触发清算/阶层下滑"整条支路永不开火（实测 s1 取值上限 = 1）。
+    //   ★ 工作副本 ⊇ 基态（`EconomyStateBuilder.classMemberships()` 首次物化时从 `base.classStandings()` 拷贝），
+    //     且 E5b 自己、E6a 变迁、迁移新建户都会在同一段内写它 ⇒ 读它才看得见"本段内已经发生过的关账"。
+    //   ★ 口子是既有的 `classMembershipsOrBase()`（`EconomyStateBuilder.java:294`），不新增状态、不新增写口。
+    //   ★ `classPositions` 是静态模板（位置定义不随日改变）⇒ 照旧读 base。
+    Map<HouseholdId, HouseholdClassMembership> classMemberships =
+        context.session().sheet().classMembershipsOrBase();
     Map<ClassPositionId, ProductionRole> positions = base.classPositions();
     List<AuditEntry> audits = new ArrayList<>();
 
@@ -424,11 +447,12 @@ public final class EconomyLiquidationSettlement {
       boolean inputShortfall = capacity != null && nextRoundInputNotFunded(capacity);
       boolean counterStress = anyStress || inputShortfall;
       Optional<ClassPositionId> resolvable =
-          resolvablePosition(context, household, baseClassMemberships, positions);
+          resolvablePosition(context, household, classMemberships, positions);
+      // ★ 增量基准 = **当刻工作副本**里上一关账周期落下的值（同一段内第 n 次关账能看到第 n-1 次的值）。
       long previous =
-          baseClassMemberships.get(household) == null
+          classMemberships.get(household) == null
               ? 0L
-              : baseClassMemberships.get(household).consecutiveDebtStressCycles();
+              : classMemberships.get(household).consecutiveDebtStressCycles();
       long incremented = previous == Long.MAX_VALUE ? Long.MAX_VALUE : previous + 1L;
       long next =
           counterStress && resolvable.isPresent() ? incremented : (counterStress ? previous : 0L);
@@ -555,7 +579,7 @@ public final class EconomyLiquidationSettlement {
         continue;
       }
       Optional<ClassPositionId> current =
-          resolvablePosition(context, household, baseClassMemberships, positions);
+          resolvablePosition(context, household, classMemberships, positions);
       ClassPositionId target = null;
       String reason;
       boolean migrated = false;
@@ -699,8 +723,111 @@ public final class EconomyLiquidationSettlement {
               evidence));
     }
 
+    if (LOG.isDebugEnabled() || LOG.isInfoEnabled()) {
+      logStressThresholdFired(
+          context, households, nextCounts, stressedContractsByHousehold, triggered, declines);
+    }
+
     return new Plan(
         stressUpdates, reductions, pledgeUpdates, audits, declines, explosions, autoDefaults);
+  }
+
+  /**
+   * ★★ <b>§一.9：E5b"连续压力 ⇒ 触发清算 / 阶层下滑"支路开火时的具名读数</b>（只读快照，不写任何状态、不改公式）。
+   *
+   * <p>说清三件事：<b>第几个关账周期</b>（{@code cycle} = 世界的关账周期序号，不是 advance 调用序号）、 <b>压力累计到几</b>（{@code
+   * stressCycles} / {@code threshold}）、<b>触发了什么</b>（{@code thresholdLiquidations} 条
+   * 受压合同被选路处置、阶层下滑是否发生与去向）。
+   *
+   * <p>两级：<b>INFO</b> = 本关账日整段的"这条支路真的开火了"（一行/关账日，只在有户达阈值时打印）； <b>DEBUG</b> = 逐户一行（稳定 {@link
+   * HouseholdId} 序，含未下滑但已到阈值的户 —— 这是"计数器可达"的直接读数）。
+   */
+  private static void logStressThresholdFired(
+      Context context,
+      List<HouseholdId> households,
+      Map<HouseholdId, Long> nextCounts,
+      Map<HouseholdId, Set<DebtContractId>> stressedContractsByHousehold,
+      List<DebtContract> triggered,
+      List<ClassDeclinePlan> declines) {
+    Map<HouseholdId, ClassDeclinePlan> declineByHousehold = new LinkedHashMap<>();
+    for (ClassDeclinePlan decline : declines) {
+      declineByHousehold.put(decline.household(), decline);
+    }
+    // 达阈值户名下、**本期受压**的合同（= 只可能因达阈值才被选路处置的那一批；已违约合同不在此计）。
+    Map<HouseholdId, Long> thresholdLiquidations = new LinkedHashMap<>();
+    for (DebtContract debt : triggered) {
+      Set<DebtContractId> stressed =
+          stressedContractsByHousehold.getOrDefault(debt.debtor(), Set.of());
+      if (stressed.contains(debt.id())) {
+        thresholdLiquidations.merge(debt.debtor(), 1L, Long::sum);
+      }
+    }
+    long householdsAtThreshold = 0L;
+    long liquidationsTotal = 0L;
+    long declinesTotal = 0L;
+    long declineMigrations = 0L;
+    for (HouseholdId household : households) {
+      long stressCycles = nextCounts.getOrDefault(household, 0L);
+      if (stressCycles < DEBT_STRESS_CYCLES_THRESHOLD) {
+        continue;
+      }
+      householdsAtThreshold++;
+      long liquidations = thresholdLiquidations.getOrDefault(household, 0L);
+      liquidationsTotal += liquidations;
+      ClassDeclinePlan decline = declineByHousehold.get(household);
+      if (decline != null) {
+        declinesTotal++;
+        if (decline.migrated()) {
+          declineMigrations++;
+        }
+      }
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "DEBT_STRESS_THRESHOLD_FIRED",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    context.day(),
+                    "cycle",
+                    context.currentCycle,
+                    "household",
+                    household.value(),
+                    "stressCycles",
+                    stressCycles,
+                    "threshold",
+                    DEBT_STRESS_CYCLES_THRESHOLD,
+                    "thresholdLiquidations",
+                    liquidations,
+                    "classDecline",
+                    decline == null ? 0L : 1L,
+                    "classDeclineMigrated",
+                    decline != null && decline.migrated() ? 1L : 0L,
+                    "classDeclineReason",
+                    decline == null ? "none" : decline.reason()));
+      }
+    }
+    if (householdsAtThreshold > 0L) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "DEBT_STRESS_BRANCH_FIRED",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "day",
+                  context.day(),
+                  "cycle",
+                  context.currentCycle,
+                  "householdsAtThreshold",
+                  householdsAtThreshold,
+                  "threshold",
+                  DEBT_STRESS_CYCLES_THRESHOLD,
+                  "thresholdLiquidations",
+                  liquidationsTotal,
+                  "classDeclines",
+                  declinesTotal,
+                  "classDeclineMigrations",
+                  declineMigrations));
+    }
   }
 
   // ── 逐合同选路 ───────────────────────────────────────────────────────────────────────────
@@ -954,8 +1081,17 @@ public final class EconomyLiquidationSettlement {
   private static RulePolicySelection selectRulePolicy(
       Context context, DebtContract debt, Pledge pledge, OwnershipStake share) {
     EconomyData base = context.base();
+    // ★ 2026-10-10 同族修复：这里的语义是"债务人**当前**位置的 mode"（方法名/注释都写"当前位置"）⇒ 与
+    //   `plan()` 的计数器读同一份**工作副本**：一段 advance 内 E5b 自身的阶层下滑 / E6a 变迁 / 迁移会把
+    //   `currentPositionId` 改掉，读基态会让同一段里靠后的关账日按**段首**位置选规则/政策（选错规则 ⇒
+    //   具名 degraded 退化或选到不该用的政策）。`classPositions` 仍是静态模板，照旧读 base。
     ProductionModeId preferredMode =
-        preferredMode(context, debt, pledge, base.classStandings(), base.classPositions());
+        preferredMode(
+            context,
+            debt,
+            pledge,
+            context.session().sheet().classMembershipsOrBase(),
+            base.classPositions());
     AssetRule preferredRule =
         preferredMode == null
             ? null
@@ -1134,14 +1270,16 @@ public final class EconomyLiquidationSettlement {
     LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships =
         context.session().sheet().classMemberships();
     Map<ClassPositionId, ProductionRole> positions = context.base().classPositions();
-    Map<HouseholdId, HouseholdClassMembership> baseClassMemberships =
-        context.base().classStandings();
+    // ★ 2026-10-10 同族修复：播种回退（写口缺该户时的位置解析）以前读 `context.base().classStandings()` ——
+    //   那是**本次 advance 起点**的副本，而这里正要写入的是**当刻工作副本**。指向两处会让同一次写入
+    //   "按段首归属播种、按当刻值写回"（两条真值）。工作副本 ⊇ 基态（首次物化即从基态拷贝、之后只增不减），
+    //   故对"工作副本里没有该户"的判定逐值等价 —— 这里改成用即将写入的同一份表，只留一条真值。
 
     for (StressUpdate update : plan.stressUpdates()) {
       HouseholdClassMembership existingClassMembership = classMemberships.get(update.household());
       if (existingClassMembership == null) {
         Optional<ClassPositionId> position =
-            resolvablePosition(context, update.household(), baseClassMemberships, positions);
+            resolvablePosition(context, update.household(), classMemberships, positions);
         if (position.isEmpty()) {
           continue; // planner 已写具名审计：不伪造位置
         }
@@ -1165,7 +1303,7 @@ public final class EconomyLiquidationSettlement {
       HouseholdClassMembership existingClassMembership = classMemberships.get(decline.household());
       if (existingClassMembership == null) {
         Optional<ClassPositionId> position =
-            resolvablePosition(context, decline.household(), baseClassMemberships, positions);
+            resolvablePosition(context, decline.household(), classMemberships, positions);
         if (position.isEmpty()) {
           continue; // 无位置可写：信号与审计仍保留，但不伪造归属
         }

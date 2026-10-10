@@ -805,7 +805,7 @@ public final class ModeMigrationSettlement {
     ClassPositionId positionId =
         usesPlannedPrimary
             ? plannedPrimary
-            : pickTargetPosition(base, move.targetMode(), sourceHouseholdEconomy);
+            : pickTargetPosition(base, move.targetMode(), sourceHouseholdEconomy, classMemberships);
     CohortKey view =
         new CohortKey(
             move.targetHex(),
@@ -843,7 +843,10 @@ public final class ModeMigrationSettlement {
 
   /** 目标 mode 的位置选择：优先同 relationToMeans+surplusRole，其次第一个可生产位置（id 升序）。 */
   private static ClassPositionId pickTargetPosition(
-      EconomyData base, ProductionModeId modeId, HouseholdEconomy sourceHouseholdEconomy) {
+      EconomyData base,
+      ProductionModeId modeId,
+      HouseholdEconomy sourceHouseholdEconomy,
+      Map<HouseholdId, HouseholdClassMembership> classMemberships) {
     ProductionMode mode = base.modes().get(modeId);
     if (mode == null) {
       throw new IllegalStateException("计划的目标 mode 不在目录里（拒绝凭空造 mode）: " + modeId);
@@ -854,7 +857,12 @@ public final class ModeMigrationSettlement {
     }
     ProductionRole sourcePosition = null;
     HouseholdClassMembership sourceClassMembership = null;
-    for (HouseholdClassMembership classMembership : base.classStandings().values()) {
+    // ★ 2026-10-10 路径无关修复（同族直读基态点）：源户的"当前位置"必须读**当刻工作副本**，不是本次 advance 的基态。
+    //   `classStandings` 在一段 advance 内会被 E5b 阶层下滑 / E6a 模式变迁 / 本类新建目标户改写；读 base（= range.from
+    //   快照）会让同段内靠后的迁移按**段首**位置选目标位置（选错 relationToMeans/surplusRole 的一档），
+    //   与 `ModeMigrationPolicy.plan` 拿到的 `session.sheet().classMemberships()`（工作副本）也不是同一条真值。
+    //   `modes/classStructures/classPositions` 仍是静态模板，照旧读 base。
+    for (HouseholdClassMembership classMembership : classMemberships.values()) {
       if (classMembership.householdId().equals(sourceHouseholdEconomy.id())) {
         sourceClassMembership = classMembership;
         break;
