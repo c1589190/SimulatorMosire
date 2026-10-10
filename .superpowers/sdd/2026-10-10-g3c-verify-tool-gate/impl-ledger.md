@@ -163,3 +163,13 @@ grep -m1 'MERCHANT_HAUL_TOOL_BLOCKED_AT_SELECT .*day=3 household=hh--1_-1-urban-
 **产物清单**：日志 `/tmp/g3c-runB.log`、`/tmp/g3c-runA.log`（+ 重启 dump 用的 `g3c-runB2.log`）；
 读数 `/tmp/g3c-state-{a,b}.json`；推进结果 `/tmp/g3c-adv{B,A-*}.txt`；脚本 `/tmp/g3c-run{B,A}.sh`、`/tmp/g3c-dumpB.sh`、
 `/tmp/g3c-count.py`、`/tmp/g3c-setup{1,2}.py`；store `/tmp/simos-g3c-store-{a,b}`（9.7M / 5.5M，已停进程）。
+
+---
+
+## ★ 2026-10-10 追加更正（留痕，不改上文）
+
+**§6-3 的"`LOGISTICS_CAPACITY` 严重低估运力不足"应改写为"单位不同 + 混档"。**
+只读诊断结论：它是**逐槽位 / 日终残余**归因（产生点 `EconomySettlement.java:2133-2151`，
+源 `MarketSettlement.java:7540-7606`），而"4,102"是**池内条目 × select 调用**（单条 `(day,户)` 可 55 次），
+两者量纲不同；且**缺工具与缺运力被记为同一档**（flag 三落点 `MarketSettlement:6773-6786/6820-6827/5290-5298`）——
+不是漏算一半。B 的 Σquantity 反而 **−10.8%**。详见诊断账本 §Q3。
