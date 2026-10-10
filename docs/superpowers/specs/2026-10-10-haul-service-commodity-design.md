@@ -81,8 +81,10 @@ capacity         = { CATTLE: 份额 }    // 保留（畜力/运力载体）
 
 `MerchantCapacityPool`（运力池/门槛/烧工具）、`CapacityQuote`/`CapacityQuoteBook`、
 `CapacityDemand`/`CapacityDemandBook`、`MerchantHaul`（趟耗与理由）、`MerchantProfitBook`（平行利润读数）、
-`LaneUnservedBook`/`LaneUnservedObservationBook`（为私有门槛服务的读数）、市场轮里的"趟"结算与
+`LaneUnservedObservationBook`（为私有门槛服务的读数）、市场轮里的"趟"结算与
 `CARRIER_FEE` 私有腿 —— **逐项要么删、要么降级为读数**；由实现方在账本列"删/留/降级"三分类及理由。
+★★ **v1.3 更正**：`LaneUnservedBook` **不在退役清单** —— 它是 `capacityTruncatedMilli` → V-20 截断剔除的
+**价格统计输入**（判据面），A3 按 §四"回代码核"后保留；原清单把它误列进来。
 ★ **CARRIER_FEE 的去向**：运输服务变成商品后，运费应以**服务商品的成交**表达；若为兼容读数保留，
 必须**只作读数**、不得与商品成交**双记**。
 
@@ -154,6 +156,10 @@ capacity         = { CATTLE: 份额 }    // 保留（畜力/运力载体）
 
 ## 9. 修订记录
 
+- v1.3（2026-10-10 下午）：**A3 落地后的更正** —— `LaneUnservedBook` 从退役清单移出（它是 V-20 价格统计的输入，
+  不是门槛家族的读数）；记录 A3 的三分类（删 `MerchantHaul`/`MerchantProfitBook`/`CapacityQuote*`；
+  降级 `MerchantCapacityPool`/`CapacityDemandBook`/`LaneUnservedObservationBook` 为只读；留 `CapacityDemand`/`LaneUnservedBook`）
+  与工具单套化算式（`HAUL_TOOL_PER_MILLE_OF_SERVICE = 100`，与旧趟耗逐值可对上）。
 - v1.2（2026-10-10 下午）：**I-H3 修正**（无跑商家户/模式未选中 ⇒ 逐值不变；跑商按预期收益自主投劳、不由当期需求门控
   —— A2 上报的 blocker 由此关闭，不需新状态、不触铁律 5）；§3.1"可储存"改为**成交即消耗**（依用户原话）；
   记录 A2 的三处偏离与牌价取 4 的理由；`outputPerUnit` 形状按代码更正（扁平 `Map<CommodityId,Long>`、值侧=商品单位）。

@@ -52,7 +52,6 @@ import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.model.RentRule;
-import io.mosire.simos.economy.time.MerchantHaul;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
@@ -199,33 +198,6 @@ public final class EconomySeeder {
   public static final long LABOR_MILLI_PER_TRADE_UNIT = 1_000L;
 
   /**
-   * ★★ <b>M-D 附修：每 1 单位贸易规模每周期消耗的工具（毫工具 / 规模·周期）：{@code 100}</b>—— 跑商家户的 <b>工具补货路径</b>（M-C 账本 §6
-   * 的"工具补货路径缺失"缺口）。
-   *
-   * <pre>
-   * 为什么要给 trade 加这一条**周期投入**：
-   *   M-C 冻结「单次跑商烧 1,000 毫工具」（{@code MerchantHaul.TOOL_MILLI_PER_HAUL}）；而家户的购买需求只有两条来源
-   *   —— ① Social 的自然需求（{@code naturalNeeds}，只含口粮一类生活消费品）② **生产投入**（{@code
-   *   Industry.cycleInputPerUnit}）。{@code trade} 改前两者都没有 ⇒ 跑商家户**不会自发买工具** ⇒ 创世那 12 趟烧完即停。
-   *   ★ 本常量让工具需求走**既有生产投入需求路径**（{@code MarketDemandBook} 汇总 → 家户挂买单 → 成交补货），
-   *   **不改 Social 的自然需求权威（I-C6）、不给家户造第二本需求**。
-   *
-   * 量级理由（具名标定，不是拍数；★ {@code cycleInputPerUnit} 的值侧是"**每 1 单位规模**每周期"，实际需求 = 值 × 规模，
-   * 与手工业 {@code fiberPerWorkshopMilli()} 同口径）：
-   *   一座城市格 {@code trade} 的规模 = {@code capacityPerUnit{CATTLE:1}} 与播种的
-   *   {@code MERCHANT_CATTLE_PER_CITY}(100) ⇒ **100 单位** ⇒ 该格每周期工具投入 = 100 × 本值(100) =
-   *   **10,000 毫工具 = 10 商品单位 = 10 次跑商的工具量**（1 商品单位 = 1,000 毫 = 1 趟）；与 M-C 账本 D-3 的
-   *   "12,000 毫 ≈ 12 趟"**同量级**，且低于手工业的工具产出量级（一座作坊 5 件/周期 = 5,000 毫 × 作坊数）⇒
-   *   不会把工具市场抽干、也不与作坊自己的工具投入打架。
-   * </pre>
-   *
-   * <p>★ 已知覆盖边界（如实记，见 M-D 账本 §6）：{@code trade} 的经营者只有**一个**家户（该格 merchant principal）⇒ 补货路径只覆盖"经营
-   * trade 的家户"；同格其它跑商家户（如 {@code merchant.self_employed}）没有 trade unit ⇒ 它们的工具补给要靠排序表把它们选去当 trade
-   * 经营者、或另开"跑商家户按剩余运力生成工具购买意图"那一档。
-   */
-  public static final long TOOL_MILLI_PER_TRADE_UNIT_CYCLE = 100L;
-
-  /**
    * ★★ <b>A1（2026-10-10）：每 1 单位贸易规模每周期产出的**运输服务**（商品单位 / 规模·周期）：{@code 1}</b> —— {@code trade@hex}
    * 的 {@code outputPerUnit = {haul: 本值}}（设计书 §3.2）。
    *
@@ -242,21 +214,83 @@ public final class EconomySeeder {
    *    = MerchantPolicy.CITY_CAPACITY_CEILING（= 旧创世常量 MERCHANT_CAPACITY_PER_CITY = 100,000，M-A1 类注引的同一个数）
    *    ⇒ 产出量级与改前"每城每轮能承接 10 万毫商品"同量级。
    * ② 与**本产业自己已声明的工具投入配套**：cycleInputPerUnit = 100 毫工具/规模·周期 ⇒ 100 规模 × 100 = 10,000 毫工具/周期；
-   *    MerchantHaul.TOOL_MILLI_PER_HAUL = 1,000 毫工具/趟 ⇒ 该投入 = **10 趟/周期**
+   *    ★★ A3 起该工具量**只由产业投入这一套**表达（{@link #HAUL_TOOL_PER_MILLE_OF_SERVICE} = 100‰ = 每 1,000 毫服务
+   *    耗 100 毫工具）⇒ 它等价于旧口径的 **10 趟/周期**（10 趟 × 一趟 1,000 毫工具）
    *    ⇒ 10 趟 × (一趟承运 10 商品单位 = 10,000 毫商品) = **100,000 毫运输服务/周期**（与①逐值相同）。
    * </pre>
    *
-   * <p>★ <b>为什么一趟按 10 商品单位算</b>：{@code MerchantHaul} 类注的既有标定——"一趟的规模锚 = 承运 10 商品单位 （10,000 毫商品 =
-   * 一个人一个周期的口粮量）"；而 {@code CapacityDemand} 的**缺省耗用**是 1 毫商品 = 1 运力单位（1000‰） ⇒ 一趟的服务量 = 10,000
-   * 毫商品·程。两条既有标定在这里恰好闭合，故本常量不是新拍的数。
+   * <p>★ <b>为什么一趟按 10 商品单位算</b>：旧 {@code MerchantHaul} 类注的既有标定（现由 {@link #GOODS_UNITS_PER_HAUL} =
+   * 10 承载）——"一趟的规模锚 = 承运 10 商品单位 （10,000 毫商品 = 一个人一个周期的口粮量）"；而 {@code CapacityDemand} 的**缺省耗用**是 1
+   * 毫商品 = 1 运力单位（1000‰） ⇒ 一趟的服务量 = 10,000 毫商品·程。两条既有标定在这里恰好闭合，故本常量不是新拍的数。
    *
    * <p>★ <b>毛产与净产</b>：本值是**毛产**；入账前的 3% 损耗走既有口径 （{@code EconomySettlement.FEED_PER_MILLE} = 0 +
    * {@code DEPRECIATION_PER_MILLE} = 30）⇒ 家户账实收 = 97%。
    *
-   * <p>★ <b>本批不做的事</b>：工具消耗**单套化**（{@code cycleInputPerUnit} 的 100/规模·周期 与 {@code
-   * MerchantHaul.TOOL_MILLI_PER_HAUL} 的 1,000/趟 两套并存）属 **A3** —— A1 若同时扣会**双扣**（设计书 §3.2 批次边界）。
+   * <p>★★ <b>A3 已做（2026-10-10）：工具消耗单套化</b>——{@code cycleInputPerUnit} 的 100/规模·周期 与旧 {@code
+   * MerchantHaul.TOOL_MILLI_PER_HAUL} 的 1,000/趟**两套并存**已收敛为一套（前者），详见 {@link
+   * #HAUL_TOOL_PER_MILLE_OF_SERVICE}。
    */
   public static final long HAUL_PER_TRADE_UNIT_CYCLE = 1L;
+
+  /**
+   * ★★★ <b>A3（2026-10-10）：跑商的工具消耗 —— <b>全仓唯一一套口径</b>：每 1 毫运输服务消耗 {@code 100} 毫工具（‰）</b>。
+   *
+   * <p>★★ <b>用户原话（2026-10-10，逐字，设计书 §1）</b>：「运力作为特殊商品不可储存转卖，只能计算后在生产环节统一兑现、
+   * 自动算收益」／「跑商不是生产方式吗？难到家户不会给预估生产方式预留生产资料吗？」
+   *
+   * <p>★★ <b>为什么是这一套（设计书 §3.2 的冻结契约）</b>：A1/A2 期间跑商的工具消耗**并存两套**—— ① 产业周期投入 {@code
+   * cycleInputPerUnit = {CATTLE:{tool:100}}}（= 每 1 规模单位·周期 100 毫工具， 见 {@link
+   * #TOOL_MILLI_PER_TRADE_UNIT_CYCLE}）；② 市场轮里"每趟跑商烧 1,000 毫工具" （旧 {@code
+   * MerchantHaul.TOOL_MILLI_PER_HAUL}）。两套同时扣工具就是**双扣**（设计书 v1.1 的批次边界因此把 "单套化"归 A3）。A3 按设计书 §3.2
+   * 取<b>产业投入</b>那一套：它走**标准生产管线**（ {@code Industry.cycleInputPerUnit} → {@code
+   * Industry.inputPerUnit()} → 现扣 + 挂单保留 + 补货需求， 与农业留种、作坊吃工具**同一条路**）⇒
+   * 工具不再是跑商私有的市场轮门槛，而是普通的生产资料（I-H6）。
+   *
+   * <p>★★ <b>本值不是新拍的数（与旧趟耗逐值可对上）</b>：
+   *
+   * <pre>
+   * 一趟的既有规模锚 = 承运 10 商品单位 = 10,000 毫商品 = 10,000 毫服务（{@code CapacityDemand} 缺省耗用 1 毫商品 = 1 毫服务）
+   * 旧趟耗          = 1,000 毫工具 / 趟
+   * ⇒ 工具占服务 = 1,000 ÷ 10,000 = **100‰**（= 本常量）
+   * ⇒ 每 1 规模单位·周期产出 HAUL_PER_TRADE_UNIT_CYCLE(1 商品单位 = 1,000 毫服务) ⇒ 工具投入 = 1,000 × 100‰ = 100 毫工具
+   * 两条既有标定在这里**恰好闭合**（A1 已把这条闭合写进 HAUL_PER_TRADE_UNIT_CYCLE 的类注）⇒ 单套化**不改**任何标定值。
+   * </pre>
+   *
+   * <p>★ 它是"工具维"的**唯一**拼写点：{@link #TOOL_MILLI_PER_TRADE_UNIT_CYCLE} 与 {@link
+   * #MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI} 都由它派生（改它 = 改整个跑商的工具强度）。
+   */
+  public static final long HAUL_TOOL_PER_MILLE_OF_SERVICE = 100L;
+
+  /**
+   * ★★ <b>每 1 单位贸易规模每周期消耗的工具（毫工具 / 规模·周期）：{@code 100}</b>—— 跑商家户的 <b>工具补货路径</b>，也是 A3
+   * 起跑商工具消耗的**唯一**落点（产业周期投入）。
+   *
+   * <pre>
+   * 为什么工具需求必须走这一条**周期投入**：
+   *   家户的购买需求只有两条来源 —— ① Social 的自然需求（{@code naturalNeeds}，只含口粮一类生活消费品）
+   *   ② **生产投入**（{@code Industry.cycleInputPerUnit}）。{@code trade} 改前两者都没有 ⇒ 跑商家户**不会自发买工具**
+   *   ⇒ 创世那 12 趟烧完即停。★ 本常量让工具需求走**既有生产投入需求路径**（{@code MarketDemandBook} 汇总 →
+   *   家户挂买单 → 成交补货），**不改 Social 的自然需求权威（I-C6）、不给家户造第二本需求**。
+   *
+   * ★★ A3 起它由 {@link #HAUL_TOOL_PER_MILLE_OF_SERVICE} 派生（**不是**第二个手写的数）：
+   *   本值 = HAUL_PER_TRADE_UNIT_CYCLE（1 商品单位 = MILLI_PER_COMMODITY_UNIT 毫服务/规模·周期）
+   *        × HAUL_TOOL_PER_MILLE_OF_SERVICE ÷ 1000 = 1 × 1,000 × 100 ÷ 1000 = **100 毫工具/规模·周期**。
+   *
+   * 量级（供核对；{@code cycleInputPerUnit} 的值侧是"每 1 单位规模"每周期，实际需求 = 值 × 规模）：
+   *   一座城市格 {@code trade} 的规模 = {@code capacityPerUnit{CATTLE:1}} 与播种的
+   *   {@code MERCHANT_CATTLE_PER_CITY}(100) ⇒ **100 单位** ⇒ 该格每周期工具投入 = 100 × 100 =
+   *   **10,000 毫工具 = 10 商品单位**，与手工业工具产出量级相当 ⇒ 不把工具市场抽干、也不与作坊自己的工具投入打架。
+   * </pre>
+   *
+   * <p>★ <b>A3 起"每周期"如何落到"每次承运"（口径说明，不是第二套数）</b>：产业按规模投入工具、按规模产出运输服务； 服务卖出多少由市场决定（不可储存、成交即消耗 —— 见
+   * {@code HaulService} 类注）。因此工具消耗**不再按趟计**， 而是与产出同口径地按规模·周期计 ——
+   * 这正是"跑商是一种生产方式"的字面含义（投入在产业侧，收益在市场侧）。
+   */
+  public static final long TOOL_MILLI_PER_TRADE_UNIT_CYCLE =
+      HAUL_PER_TRADE_UNIT_CYCLE
+          * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
+          * HAUL_TOOL_PER_MILLE_OF_SERVICE
+          / 1_000L;
 
   /**
    * ★★ <b>A1：{@code trade@hex} 分配模板里**生产资料**那一侧的权重（‰）</b>：{@code 700}。
@@ -452,22 +486,41 @@ public final class EconomySeeder {
   public static final long TOOL_MILLI_PER_WORKSHOP_CYCLE = 2_000L;
 
   /**
-   * ★★ <b>M-C：跑商家户的创世启动工具（毫工具 / 户）：12 × 一次跑商的消耗</b>。
+   * ★ <b>一趟跑商的既有规模锚（商品单位 / 趟）：{@code 10}</b> —— 只作上面两个具名常量的推导因子与文档口径， **不再有任何运行期判据读它**（A3
+   * 起"趟"不是计价/门槛单位：工具按产业周期投入、服务按商品成交）。
    *
-   * <p>★★ <b>为什么创世必须给这一份</b>（用户 2026-10-10 裁定：「跑商这个产业的准入门槛要高，单次跑商需要花费大量 tool」；设计书 §12 H-D/H-5）：门槛 =
-   * **缺工具 ⇒ 该次跑商不成立**（fail-closed）。而创世把工具只给**作坊主** 家户（见 {@link
-   * #toolPerWorkshopMilli()}），"选了跑商"的家户（城镇 {@code rich_peasant} → {@code
-   * merchant.self_employed}、{@code landlord} → {@code merchant.principal}）手里**一件工具都没有** ⇒
-   * 不补这一份，跨格贸易从第 1 天起就整体走不动（那不是"门槛高"，是"门槛封死"）。
+   * <p>★ 由来（旧 {@code MerchantHaul} 类注的标定，逐字保留）：一趟承运 10 商品单位 = 10,000 毫商品 = 一个人一个周期的口粮量。
+   */
+  public static final long GOODS_UNITS_PER_HAUL = 10L;
+
+  /**
+   * ★★ <b>M-C：跑商家户的创世启动工具（毫工具 / 户）：12 × 一趟跑商的工具量</b>。
+   *
+   * <p>★★ <b>为什么创世必须给这一份</b>（用户 2026-10-10 裁定：「跑商这个产业的准入门槛要高，单次跑商需要花费大量 tool」；设计书 §12
+   * H-D/H-5）：而创世把工具只给**作坊主** 家户（见 {@link #toolPerWorkshopMilli()}），"选了跑商"的家户（城镇 {@code
+   * rich_peasant} → {@code merchant.self_employed}、{@code landlord} → {@code
+   * merchant.principal}）手里**一件工具都没有** ⇒ 不补这一份，跨格贸易从第 1 天起就整体走不动（那不是"门槛高"，是"门槛封死"）。
+   *
+   * <p>★★ <b>A3（2026-10-10）：改成由 {@link #HAUL_TOOL_PER_MILLE_OF_SERVICE} 这一套派生</b>（旧写法是 {@code 12L *
+   * MerchantHaul.TOOL_MILLI_PER_HAUL}，而那套"趟耗"已按设计书 §3.2 删除）。逐值**不变**（仍是 12,000 毫工具 = 12 商品单位）：
+   *
+   * <pre>
+   * 12 趟 × 一趟 10 商品单位 × 1,000 毫服务/商品单位 × 100‰（HAUL_TOOL_PER_MILLE_OF_SERVICE）÷ 1000 = 12,000 毫工具
+   * </pre>
    *
    * <p>★ <b>为什么是 12 趟</b>：一个市场月（每 5 天一轮 × 12 ≈ 60 天）的量级 —— 够观察到 "跑商要烧工具、烧完就得再买"这条链路，同时明确它是**外生初值**。
    *
-   * <p>★★ <b>如实记的断点（不在本批）</b>：本批**没有**"跑商家户补货工具"的路径（家户的购买需求来自自然需求与 生产投入，而 {@code trade} 产业两者都没有）⇒ 这
-   * 12 趟烧完后，该户的跑商停到它再次获得工具为止。 补货路径（跑商家户的工具需求 / {@code trade} 产业的工具投入）属后续批次；本常量只保证门槛机制**可观测**，
-   * 不假装它已经闭环。
+   * <p>★★ <b>已知边界（如实记）</b>：工具补货路径 = 该格 {@code trade} 产业的周期投入（{@link
+   * #TOOL_MILLI_PER_TRADE_UNIT_CYCLE}），经营者恰是**一个**家户（该格 merchant principal）⇒ 补货只覆盖"经营 trade
+   * 的家户"；同格其它跑商家户（如 {@code merchant.self_employed}）没有 trade unit ⇒ 它们的工具补给要靠排序表把它们选去当 trade
+   * 经营者，或另开"跑商家户按剩余运力生成工具购买意图"那一档（A3 未做，见实现账本"未完成项"）。
    */
   public static final long MERCHANT_GENESIS_TOOL_PER_HOUSEHOLD_MILLI =
-      12L * MerchantHaul.TOOL_MILLI_PER_HAUL;
+      12L
+          * GOODS_UNITS_PER_HAUL
+          * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
+          * HAUL_TOOL_PER_MILLE_OF_SERVICE
+          / 1_000L;
 
   /** 织造的产业活动标签（{@code HouseholdLaborCommitment.activity}）。 */
   public static final String ACTIVITY_WEAVE = WEAVE;
@@ -4243,7 +4296,7 @@ public final class EconomySeeder {
    * capacity        = {CATTLE: MERCHANT_CATTLE_PER_CITY}      // 具名 GM 默认（100）
    * capacityPerUnit = {CATTLE: 1}                             // 1 头畜力 / 1 单位运力
    * outputPerUnit   = {haul: HAUL_PER_TRADE_UNIT_CYCLE}       // ★ A1：产出**运输服务**（改前是空表 ⇒ 收获当场 return）
-   * cycleInputPerUnit = {CATTLE: {tool: TOOL_MILLI_PER_TRADE_UNIT_CYCLE}}  // ★ M-D 附修：工具补货路径（两套并存属 A3）
+   * cycleInputPerUnit = {CATTLE: {tool: TOOL_MILLI_PER_TRADE_UNIT_CYCLE}}  // ★ A3：跑商工具消耗的**唯一**一套（产业周期投入）
    * laborPerUnit    = LABOR_MILLI_PER_TRADE_UNIT（1000）      // 劳动约束（LaborQueueBook 读它）
    * 分配模板         = meansWeightPerMille = TRADE_SPLIT_MEANS_PER_MILLE(700) / laborWeightPerMille = 300
    * cycleDays       = CYCLE_DAYS
@@ -4283,11 +4336,16 @@ public final class EconomySeeder {
             // ★★ A1：**产出 = 运输服务**（商品单位/规模·周期；具名常量与两条独立标定见 HAUL_PER_TRADE_UNIT_CYCLE）。
             //   表只有一项 ⇒ 单键 Map.of 不存在迭代序抖动（本仓"保序"纪律针对多项表；与下面工具投入表同款）。
             Map.of(COMMODITY_HAUL, HAUL_PER_TRADE_UNIT_CYCLE),
-            // ★★ M-D 附修：**周期投入 = 工具**（改前是空表 ⇒ 跑商家户不会自发买工具 ⇒ 12 趟后停）。
-            //   具名常量与量级理由见 {@link #TOOL_MILLI_PER_TRADE_UNIT_CYCLE}；键取运力资产（CATTLE）那一层，
-            //   与手工业 {@code cycleInputPerUnit = {WORKSHOP: {...}}} 同形（{@code
-            // Industry.inputPerUnit()} = 各层之和，
-            //   全仓没有按资产分支读它的现扣/收获路径 ⇒ 挂哪一层的值侧都逐值进同一个读口）。
+            // ★★ M-D 附修 + **A3 单套化**：**周期投入 = 工具**（改前是空表 ⇒ 跑商家户不会自发买工具）。
+            //   ★★ A3（设计书 §3.2）：这是跑商工具消耗的**唯一**一套口径 —— 市场轮里"每趟烧 1,000 毫工具"
+            //   （旧 MerchantHaul.TOOL_MILLI_PER_HAUL）已删；工具改由本条产业投入经**标准生产管线**现扣
+            //   （{@code drawCycleInputs}）、并经**标准挂单保留**预留（{@code necessaryInputsOf} 的
+            //   {@code industry.inputPerUnit()} 循环，I-H6）⇒ 跑商与农业/手工业同一条路。
+            //   具名常量与"为什么是 100"见 {@link #TOOL_MILLI_PER_TRADE_UNIT_CYCLE}（由
+            //   {@link #HAUL_TOOL_PER_MILLE_OF_SERVICE} 派生，与旧趟耗逐值可对上）。
+            //   键取运力资产（CATTLE）那一层，与手工业 {@code cycleInputPerUnit = {WORKSHOP: {...}}} 同形
+            //   （{@code Industry.inputPerUnit()} = 各层之和，全仓没有按资产分支读它的现扣/收获路径 ⇒ 挂哪一层的
+            //   值侧都逐值进同一个读口）。
             //   ★ 值侧口径 = "毫工具 / 规模单位·周期"（与手工业同口径）；表只有一项 ⇒ 用单键 {@code Map.of}
             //     不存在迭代序抖动（本仓"保序"纪律针对多项表）。
             Map.of(

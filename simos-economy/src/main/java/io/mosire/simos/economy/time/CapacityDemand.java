@@ -30,6 +30,17 @@ package io.mosire.simos.economy.time;
  *
  * <p>★★ <b>缺省口径 {@link #GOODS_ONLY_WORK_PER_GOOD_PER_MILLE}（= 1000‰，即 1:1）</b>：无报价的世界沿用 M-A1 的
  * 消耗口径（1 毫商品 = 1 个运力单位，距离只经派生半径判触达）。这不是"兼容位"，而是<b>缺省语义中性</b>： 没有运力单 ⇒ 没有"买运力"这件事 ⇒ 逐值等于 M-A1（I-C2）。
+ *
+ * <p>★★ <b>A3（2026-10-10）分类：<b>留</b></b>（设计书 §3.4 把它列进退役清单，但**代码事实**是 A2 已把它变成 <b>活的唯一算式</b>，不是被 A2
+ * 取代的旧机器 —— §四「台账/计划 vs 代码：机制性描述一律回代码核」）：
+ *
+ * <pre>
+ * 谁在读它：{@code HaulService}（派生需求量的唯一算式，{@code :28-31}）、
+ *          {@code CapacityDemandBook.record}（{@code :108-109} 的 demandWork/servedWork）、
+ *          {@code MerchantCapacityPool.select}（{@code workConsumedBy} 扣减预算 —— 这个才是**判据**）
+ * ⇒ 删了它 = 跨格货运的运力扣减没有算式 ⇒ 本类**不能删**。
+ * ★ 它已无任何"门槛 / 私有定价 / 利润"成分：只有两个换算（工作量 ↔ 商品量，向上/向下取整配对）。
+ * </pre>
  */
 public final class CapacityDemand {
 
@@ -41,7 +52,9 @@ public final class CapacityDemand {
   /**
    * ★ <b>缺省口径的运力耗用（‰）</b>：<b>1000</b> ⇒ 1 毫商品 = 1 运力单位（M-A1 的既有消耗口径）。
    *
-   * <p>只在<b>无报价</b>（{@link CapacityQuoteBook#empty()}）时使用 ⇒ 缺省世界逐值等于 M-A1。
+   * <p>只在<b>缺省口径</b>（{@code MerchantCapacityPool.of(..., priced = false)}：夹具 / 纯状态读者）时使用 ⇒ 缺省世界逐值等于
+   * M-A1。★ A3（2026-10-10）：原来写的是"无报价（{@code CapacityQuoteBook.empty()}）"—— 自报价簿已整族退役，口径开关改成池的 {@code
+   * priced} 入参。
    */
   public static final long GOODS_ONLY_WORK_PER_GOOD_PER_MILLE = PER_MILLE;
 

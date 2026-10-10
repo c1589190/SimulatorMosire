@@ -40,6 +40,18 @@ import java.util.Set;
  *
  * <p>★ 日志（§一.9）：INFO = 本轮供需与成交汇总（逐发货格 / 逐需求格 / 逐区 / 轮总）；DEBUG = 判据（缺口为什么存在）； TRACE = 逐份需求。全部带
  * {@code day}（tick 算法）。
+ *
+ * <p>★★ <b>A3（2026-10-10）分类：<b>降级为只读</b>（保持）</b>—— 设计书 §3.4 列它为"为私有门槛服务的读数"；
+ * <b>代码事实</b>（§四）是：它<b>本来就只是读数</b>，A3 之后<b>仍然只是读数</b>：
+ *
+ * <pre>
+ * 判据面  它**不参与任何判据**：唯一调用点是 {@code executeTrade} 里的 {@code ctx.capacityDemands.record(...)}
+ *         （受理量/获承运量/work 系数三个读数），返回值无人使用；不写状态、不铸转移、不影响守恒（本类 :31-32 原文）。
+ * 读口    {@code logRoundSummary} 的 INFO/DEBUG/TRACE 三档（§一.9）。
+ * ⇒ 删它只会损失"运力需求与缺口"的读数，不会改变一个数 ⇒ **保留为只读**，并把"只是读数"写在类注里（本节）。
+ * ★ 唯一需要留意的词：类名里的 "capacity" 现在指**服务量**（毫服务 = 毫商品·程），不是"运力池配额"——
+ *   A2 起运力的权威是"手上的服务货"（{@code MerchantCapacityPool} 的服务口径 / I-H2）。
+ * </pre>
  */
 final class CapacityDemandBook {
 

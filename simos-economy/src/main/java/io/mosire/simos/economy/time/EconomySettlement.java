@@ -1995,10 +1995,10 @@ public final class EconomySettlement {
     //   生产方式的位置，J-A）；运力 = f(劳动投入, 工具可投入量)（见 MerchantCapacity）。
     //   ★ 位置 = 生产/欠租阶段之后、市场装配之前：它必须在撮合时可用，且必须读**当刻**的劳动与商品账（每轮重算、不累积）。
     //   ★ 工具维读会话商品账（tool 商品；V-22：不动 AssetKind.TOOL 产权份额）。
-    // ★★ M-A2：报价表（逐轮瞬态）= **跑商家户按其成本与规模自报价**（限价 = 派生承运成本 + 具名固定"上门"附加费，
-    //   见 {@link CapacityQuote}）⇒ 买方按最低限价买运力（K-C）。报价每轮现算、跨轮不保留（与 FX 民间簿同形；
-    //   运力不可储存不可转卖 ⇒ 运力单也不许跨轮存活）。传 CapacityQuoteBook.empty() 的调用方（夹具 / 纯状态读者）
-    //   ⇒ 无报价 ⇒ 逐值退回 M-A1（I-C2 缺省语义中性）。
+    // ★★★ A3（2026-10-10）：原来的"运力报价表"（{@code CapacityQuote}/{@code CapacityQuoteBook}，逐户自报价簿）
+    //   **已整族退役** —— 限价改为**纯派生量**（{@code MerchantCapacityPool.askPerMilleOf}：派生承运成本 × 规模档
+    //   + 具名固定"上门"附加费），服务成市 lane 上的钱由**市场牌价**定（{@code Market.prices[haul]}，见 A2）。
+    //   ⇒ 生产路径传 {@code priced = true}（第 6 参）；夹具 / 纯状态读者传 {@code false} ⇒ 逐值退回 M-A1（I-C2）。
     //   ★★ 2026-10-10 G3-fix-1 + G3-fix-2：工具维必须读**可用量**（现货 − 冻结），且必须在**承运选择点**现读 ——
     //     与提交侧的实扣判据（{@link #consumeForLoss}：可用量 < 一趟 ⇒ 一点也不烧）同口径、同活表。
     //     ★★ 时点（这里曾被写错、并因此让修复空转了一整轮）：本处装配在市场轮**之前**，而本轮的卖单冻结由
@@ -2016,37 +2016,43 @@ public final class EconomySettlement {
             householdEconomies,
             householdGoods,
             householdFrozenGoods,
-            CapacityQuoteBook.selfQuoted(),
+            true,
             // ★★ A2（2026-10-10）：**服务成市的格**（本格市场给 haul 定过价；唯一判据 = HaulService.pricedAt）。
             //   这些格的运力预算改成"该户手上的运输服务货"（服务商品账，I-H2）；其余格一个判据都不变（I-H3）。
             //   ★ 逐轮现算（价格是 GM 数据，可随时改）：不落任何状态、不进任何组件。
             haulServiceHexes(base));
     // ★★ G3-leftovers（2026-10-10）：逐户装配读数（DEBUG；事件 MERCHANT_CAPACITY_HOUSEHOLD）。★ 位置与下面那条
-    //   CAPACITY_QUOTE_BOOK 同因：池本身不知道世界日（`of` 的入参里没有 tick），而该事件必须带 `day` 才能与同日的
-    //   MARKET_* / MERCHANT_HAUL_TOOL_BLOCKED_AT_SELECT 逐户按日对齐 ⇒ 由 tick 面的本处发。★ 发射时点与改前
-    //   **逐值一致**：仍是"装配完立刻发"（早于市场轮）⇒ 那两栏读数（toolRemainingMilli / runsAffordable）仍是
-    //   装配时点的镜像，不是轮末残余（改前它就在这个时点发，只是没有 day）。
+    //   CAPACITY_PRICING_ASSEMBLY 同因：池本身不知道世界日（`of` 的入参里没有 tick），而该事件必须带 `day` 才能与
+    //   同日的 MARKET_* 逐户按日对齐 ⇒ 由 tick 面的本处发。
     carrierPool.logHouseholdAssembly(day);
-    // ★★ M-A2（§一.9：DEBUG = 每阶段池子/汇总）：本轮运力报价表与运力预算的装配读数（带 day —— 它是 tick 面的
-    //   装配，落在这里而不是池内，是为了让 TICK 来源的事件都带 day）。分类 logger = market（与池内运力事件同一门面）。
+    // ★★★ A3（2026-10-10）：原来这条 DEBUG 叫 {@code CAPACITY_QUOTE_BOOK}（报"报价表挂了多少户"）——
+    //   自报价簿已整族退役（{@code CapacityQuote}/{@code CapacityQuoteBook}）⇒ 改名
+    //   {@code CAPACITY_PRICING_ASSEMBLY}，报"限价是怎么派生的"（不再有逐户挂单这回事），并带上退役族/取代者的
+    //   具名行（§一.9 的 INFO/DEBUG 口径）。分类 logger = market（与池内运力事件同一门面）。
     if (MANDATE.isDebugEnabled()) {
       EventLog.channel(MANDATE)
           .debug(
               LogEvent.of(
-                  "CAPACITY_QUOTE_BOOK",
+                  "CAPACITY_PRICING_ASSEMBLY",
                   EconomyLogSource.ECONOMY_ORGANIZATION,
                   "day",
                   day,
                   "priced",
                   carrierPool.isPriced(),
-                  "quotingHouseholds",
+                  "households",
                   carrierPool.householdCount(),
                   "maxAskPerMille",
                   carrierPool.maxAskPerMille(),
                   "getReadySurchargePerMille",
-                  CapacityQuote.GET_READY_SURCHARGE_PER_MILLE,
+                  MerchantCapacityPool.GET_READY_SURCHARGE_PER_MILLE,
+                  "pricing",
+                  "derived-carrier-cost-per-tier+flat-get-ready",
                   "capacityBudgetMilli",
-                  carrierPool.totalCapacityMilli()));
+                  carrierPool.totalCapacityMilli(),
+                  "retiredFamilies",
+                  MerchantCapacityPool.RETIRED_PARALLEL_MACHINE_FAMILIES,
+                  "replacedBy",
+                  MerchantCapacityPool.RETIRED_PARALLEL_MACHINE_REPLACEMENTS));
     }
     MarketTrigger marketTrigger =
         MarketSettlement.triggerFor(day, anyCycleClosed, markets, marketRound);
@@ -2086,15 +2092,11 @@ public final class EconomySettlement {
           FxRoundInput.of(base.governments(), base.moneyIssuances(), base.marketZones());
       marketRound = marketRound.withFx(fxInput);
       logFxWindows(day, base, fxInput);
-      // ★★ §16.4 ①（2026-10-10 用户裁定 6）：本轮的**跑商家户**集合 —— 挂单保留"工具至少一趟"的**范围**。
-      //   ★ 判据的唯一拼写点是 {@code MerchantIdentity.selectsMerchant}（有效位置 = 主业 ∪ 副业含 {@code merchant.*}）；
-      //     这里只把它从**同一份** classMemberships × classPositions 现算一次。
-      //   ★★ 范围为什么不是 carrierPool 的成员表：池成员多一道"运力 > 0"的过滤，会漏掉"选了跑商但没有运力"的家户，
-      //     而 §16.4 ① 要覆盖**所有**跑商家户（与有没有 trade unit / 有没有运力无关）。
-      //   ★ 缺省中性：这一项没有 ⇒ necessary 里不追加任何键 ⇒ 逐值退回改前（I-C2）。
-      Set<HouseholdId> merchantHouseholds =
-          MerchantIdentity.merchants(session.sheet().classMemberships(), base.classPositions());
-      marketRound = marketRound.withMerchantHouseholds(merchantHouseholds);
+      // ★★★ A3（2026-10-10）：此处原有"注入本轮跑商家户集合"（§16.4 ①，提交 b22da5b7，
+      //   {@code marketRound.withMerchantHouseholds(MerchantIdentity.merchants(...))}）—— **已随
+      //   {@code MarketRound.merchantHouseholds} 字段一并撤回**：它只服务 {@code necessaryInputsOf} 里
+      //   "给跑商家户下夹一趟工具"那段特例，而该特例已删（预留改由产业声明的投入经标准循环覆盖，I-H6）。
+      //   ★ 撤回理由与三支直证见 {@code MarketSettlement.necessaryInputsOf} 尾部的注（不再需要"范围"这个概念）。
       // ★★ R1（2026-10-09）：政府市场授权计划 = 本日生效的"明确挂单"（逐轮瞬态，不落盘）。
       //   ★ 它必须**最后**注入：withCredit/withArbitrage/withFx 三处各自逐字段带过它（克隆丢字段是本类踩过的坑），
       //     而这里注入之后不再有别的 withX。

@@ -53,9 +53,9 @@ import java.util.Objects;
  * <ul>
  *   <li><b>库存</b>（I-1）＝ ① 商品库存 + ② 货币余额 折成的"家户流动性"（{@link #inventoryMilli}：本格计价币余额 + 商品库存按本格牌价折算；★
  *       该算式**搬自** {@code ModeMigrationPolicy.liquidityMilli}，全仓只此一处）＋ ③ 可用生产资料份额（由 {@link
- *       ExpectedProfitBook} 的 {@code assetScaleOf} 读，**不在此处重算**）。 ★ 商品库存在**跑商行**上是**硬门槛**：{@code
- *       tool} 不够一趟 ⇒ 该行不成立（{@link #merchantGateReason}， 与 M-C 的 §12 H-D/H-5 同一门槛常量 {@link
- *       MerchantHaul#TOOL_MILLI_PER_HAUL}）。
+ *       ExpectedProfitBook} 的 {@code assetScaleOf} 读，**不在此处重算**）。 ★★ A3（2026-10-10）：{@code tool}
+ *       存量**不再是**跑商行的硬门槛（"每趟烧 1,000 毫工具"那一族已退役，见 {@link #merchantGateReason}）—— 跑商的生产资料 由 {@code
+ *       trade} 产业的周期投入经标准管线预留与现扣（I-H6）。
  *   <li><b>市场议价权</b>（I-2）＝ **该家户在本格运力总量中的占比‰**，与 {@code MerchantCapacityPool} 的分配序
  *       **同一个拼写点**（{@code MerchantCapacity.sharePerMilleOf}，经 {@link
  *       MerchantCapacityPool#sharePerMilleAsProviderAt} 暴露）。它在本表里是**跑商行的可行性门槛**（占比‰ 向下取整为 0 ⇒
@@ -130,7 +130,7 @@ public final class PrimaryModeRanking {
   /**
    * 被排序输入挡下的一行（**不静默**：进 DEBUG 日志与 {@link Table#excluded()}）。
    *
-   * @param reason 具名原因（{@code tool-stock-zero} / {@code no-bargaining-power}）
+   * @param reason 具名原因（A3 起只剩 {@code no-bargaining-power}；{@code tool-stock-zero} 已随工具门槛退役）
    */
   public record Excluded(ProductionModeId modeId, HexCoord hex, String reason) {
 
@@ -264,35 +264,25 @@ public final class PrimaryModeRanking {
     return saturatedAdd(cash, sellable);
   }
 
-  /** 该户的 {@code tool} 商品存量（毫商品；读不到 = 0 ⇒ 下界，不猜）。 */
-  public static long toolStockMilli(
-      Map<HouseholdId, Map<CommodityId, Long>> goods, HouseholdId household) {
-    if (goods == null || household == null) {
-      return 0L;
-    }
-    return goods.getOrDefault(household, Map.of()).getOrDefault(MerchantHaul.TOOL_COMMODITY, 0L);
-  }
-
   /**
    * ★★ <b>排序输入在"跑商行"上的门槛</b>（Q-18 库存 + Q-19 议价权）：成立 ⇒ {@code null}；否则返回**具名原因**。
    *
    * <pre>
-   * tool-stock-zero      该户在本格的 tool 存量不够一趟跑商（{@link MerchantHaul#affordsRun}）⇒ 预期收益 = 0
-   *                      （§12 H-D/H-5：「缺工具 ⇒ 该次跑商不成立」在**决策层**的同一条门槛）
    * no-bargaining-power  该户在本格作为运力提供者的议价权占比‰ = 0（§11.4 G-1 口径）⇒ 本格按议价权序分不到运力
    * </pre>
    *
-   * <p>★ 两类行都判（候选行 + 当前主业行）：库存是排序输入之一，"跑商能不能当主业"两处必须同一判据。★ 它只影响**排序表 的读数与候选集**；A 规则读的 {@code
-   * expectedNet} 一字不改（冻结项 5），且"缺工具 ⇒ 该次跑商不成立"在市场轮的既有 M-C 门槛里另有具名（{@code tool-short}）—— 两处各管一层，互不冒充。
+   * <p>★★ <b>A3（2026-10-10）：原来的 {@code tool-stock-zero} 门槛（"tool 不够一趟 ⇒ 跑商行不成立"）已删</b> —— 它与市场轮的
+   * {@code tool-short}/{@code tool-frozen} 是同一个"每趟烧 1,000 毫工具"门槛的两个面（{@code MerchantHaul}），
+   * 该族已整体退役：跑商的工具消耗由 {@code trade} 产业声明的**周期投入**经标准生产管线消耗（现扣 + 挂单保留）， 与农业/手工业同口径（设计书 §3.2 / I-H6）。⇒
+   * 决策层不再用"手上有多少工具"否决一个生产方式 —— 生产资料由产业投入表达，这正是用户原话「难到家户不会给预估生产方式预留生产资料吗？」指的那条路。
+   *
+   * <p>★ 两类行都判（候选行 + 当前主业行）。★ 它只影响**排序表的读数与候选集**；A 规则读的 {@code expectedNet} 一字不改（冻结项 5）。
    */
   public static String merchantGateReason(
       EconomyData base,
       HouseholdId household,
       HexCoord hex,
       Map<HouseholdId, Map<CommodityId, Long>> goods) {
-    if (!MerchantHaul.affordsRun(toolStockMilli(goods, household))) {
-      return "tool-stock-zero";
-    }
     if (MerchantCapacityPool.sharePerMilleAsProviderAt(base, household, hex, goods) <= 0L) {
       return "no-bargaining-power";
     }

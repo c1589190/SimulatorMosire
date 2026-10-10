@@ -42,6 +42,19 @@ import java.util.Map;
  *
  * <p>★ <b>确定性（I7）</b>：只有"按键取值 + 按键写值 + 计数"，不迭代 Map、不读时钟/随机/哈希序 ⇒ 值与写入次序无关。 ★
  * <b>线程</b>：生产路径只由协调器单线程触碰（有运力池 ⇒ 区内撮合退回串行）；无请求身份的 4/5 参旧路径（夹具 / 纯状态读者） 只动计数、不写 Map。
+ *
+ * <p>★★ <b>A3（2026-10-10）分类：<b>降级为只读</b>（保持；它本来就只是读数）</b>—— 设计书 §3.4 列它为
+ * "为私有门槛服务的读数"。<b>代码事实</b>（§四）：
+ *
+ * <pre>
+ * 读它的人 {@code MerchantCapacityPool.select} 的三个 DEBUG 字段（netMilli / observationIndex / requestKeyTracked）
+ *          + {@code logRoundSummary} 的 INFO 四栏（raw / net / observations / requests / maxObservations）
+ * 判据面   **零**：本类 :40-41 原文"不影响结算：只在 demandLeft > 0 时被写、结果只被日志读"；
+ *          A3 复核（grep）确认没有任何 return/if 读它的值。
+ * </pre>
+ *
+ * <p>★ 它解决的是"同一份未服务量被反复观察 ⇒ 逐行相加放大 3.0~3.45 倍"这个**读日志的坑**（类注 :10-16）。 A3
+ * 保留它的理由：日志面是用户排查的唯一手段（§一.9），删掉它只会让 {@code MERCHANT_CAPACITY_LANE_TRUNCATED} 的净额读数消失；它**不改一个数值**。
  */
 final class LaneUnservedObservationBook {
 

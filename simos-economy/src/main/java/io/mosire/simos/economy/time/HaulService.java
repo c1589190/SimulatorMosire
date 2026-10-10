@@ -54,9 +54,12 @@ public final class HaulService {
   /**
    * ★★ <b>服务被消耗后记进哪个损耗账</b>（{@code ProductionLedger.Accumulator.addLoss} 的键）。
    *
-   * <p>★ 与既有三条分开，读数不混：{@code MarketSettlement.TRANSPORT_LOSS_ACCOUNT}（{@code market-transport} =
-   * 货损）、{@code MerchantHaul.TOOL_BURN_ACCOUNT}（{@code market-merchant-haul} = 工具磨损）、本项（{@code
-   * market-haul-service} = 运输服务被消耗掉）。★ 守恒式不变：账户余额减、损耗账加 ⇒ Σ余额 + losses 逐值守恒（I-H2）。
+   * <p>★ 与既有两条分开，读数不混：{@code MarketSettlement.TRANSPORT_LOSS_ACCOUNT}（{@code market-transport} =
+   * 货损）、本项（{@code market-haul-service} = 运输服务被消耗掉）。★ 守恒式不变：账户余额减、损耗账加 ⇒ Σ余额 + losses 逐值守恒（I-H2）。
+   *
+   * <p>★★ <b>A3（2026-10-10）</b>：原来还有第三条 {@code MerchantHaul.TOOL_BURN_ACCOUNT}（{@code
+   * market-merchant-haul} = 跑商"每趟烧 1,000 毫工具"的磨损账）—— 该族已退役：工具消耗单套化到 {@code trade} 产业的 周期投入（{@code
+   * cycleInputPerUnit}），它走既有生产投入的现扣与损耗落点，不再有跑商私有的损耗账。
    */
   public static final IndustryId SERVICE_CONSUMED_ACCOUNT = new IndustryId("market-haul-service");
 

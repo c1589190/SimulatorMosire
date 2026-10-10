@@ -105,32 +105,8 @@ final class MerchantIdentity {
     return Collections.unmodifiableSet(out);
   }
 
-  /**
-   * ★★ <b>本轮"跑商家户"集合（J-A：{@link #selectsMerchant} 的<b>范围</b>）</b>—— §16.4 ① 挂单保留"工具至少一趟"的**范围**。
-   *
-   * <p>★★ <b>为什么需要它（而不是拿 {@code MerchantCapacityPool} 的成员表当范围）</b>：池成员 = "选了跑商 <b>∧</b> 运力 &gt; 0"，
-   * 而 §16.4 ① 要覆盖的是"有效位置含 {@code merchant.*}"的<b>所有</b>家户——与有没有 {@code trade} unit、有没有运力
-   * <b>都无关</b>。漏掉的那些户（同格里没有 trade unit 的跑商家户）{@code necessary(tool) = 0}，它们挂出的 tool 卖单会在 {@code
-   * commitFreezes} 里被<b>全额</b>冻结 ⇒ 该户跑商当刻可用量 = 0（这正是 3,589 趟被拦的机制面）。 ★ 判据仍是 {@link
-   * #selectsMerchant}（本方法只是它的范围化，与 {@link #pureMerchants} 同形），<b>不另造第二份判据</b>。
-   *
-   * <p>★ 保序不可变、按家户 id 升序（I7：内容的纯函数）；{@code standings}/{@code positions} 为 {@code null} ⇒ 空集 （⇒
-   * 一个追加保留都没有 ⇒ 逐值退回改前）。
-   */
-  static Set<HouseholdId> merchants(
-      Map<HouseholdId, HouseholdClassMembership> standings,
-      Map<ClassPositionId, ProductionRole> positions) {
-    Set<HouseholdId> out = new LinkedHashSet<>();
-    if (standings == null || positions == null) {
-      return Collections.unmodifiableSet(out);
-    }
-    List<HouseholdId> households = new ArrayList<>(standings.keySet());
-    households.sort(Comparator.comparing(HouseholdId::value));
-    for (HouseholdId household : households) {
-      if (selectsMerchant(standings.get(household), positions)) {
-        out.add(household);
-      }
-    }
-    return Collections.unmodifiableSet(out);
-  }
+  // ★★★ A3（2026-10-10）：此处原有 {@code merchants(standings, positions)} —— §16.4 ①（提交 b22da5b7）
+  //   为"给跑商家户下夹一趟工具"这一段挂单保留而加的**范围化判据**。该保留已撤回（{@link MarketSettlement}
+  //   的 necessaryInputsOf 尾部有逐条理由），本方法随之删除 ⇒ 本类只剩 {@link #selectsMerchant} 这一个判据拼写点
+  //   与 {@link #pureMerchants} 这一个范围查询。
 }

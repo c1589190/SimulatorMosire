@@ -190,13 +190,11 @@ public record MarketReadout(
                 null,
                 null,
                 Set.of())
-            .withGovMandates(govMandatePlan)
-            // ★★ §16.4 ①（2026-10-10 用户裁定 6）：**读口与结算同源**注入"跑商家户"集合 —— 它决定 necessary 里
-            //   "工具至少一趟"这项挂单保留（判据的唯一拼写点 = MerchantIdentity.selectsMerchant）。不同源会让读口
-            //   读到的 tool 可卖量比真实下单多出每户 1,000（"看到的订单 == 会下的订单"这条不变量当场破）。
-            //   ★ 缺省中性：没有 classStandings/classPositions 的世界（空表）⇒ 空集 ⇒ 逐值退回改前。
-            .withMerchantHouseholds(
-                MerchantIdentity.merchants(data.classStandings(), data.classPositions()));
+            .withGovMandates(govMandatePlan);
+    // ★★★ A3（2026-10-10）：此处原有"读口与结算同源注入跑商家户集合"（§16.4 ① 的
+    //   {@code withMerchantHouseholds(MerchantIdentity.merchants(...))}）—— **已随该字段一并撤回**：
+    //   它只服务 {@code necessaryInputsOf} 里"给跑商家户下夹一趟工具"那段特例，而该特例已删
+    //   （预留改由产业声明的投入经标准循环覆盖，I-H6）⇒ 读口与结算的 necessary 仍然同源（都不追加那一项）。
     Map<HexCoord, MarketRegion> regionByHex = new LinkedHashMap<>();
     List<MarketRegion> regions = new ArrayList<>();
     for (MarketRegion region : topology.regions()) {

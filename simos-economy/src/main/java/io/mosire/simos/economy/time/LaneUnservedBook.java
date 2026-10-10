@@ -41,6 +41,20 @@ import java.util.Map;
  * <p>★ <b>确定性（I7）</b>：只有"按键取值 + 按键写值"，值与写入次序无关（{@code LinkedHashMap} 保序，本类不迭代它）； 不读时钟 / 随机 / 哈希序。★
  * <b>线程</b>：只由<b>协调器单线程</b>路径触碰（有运力池 ⇒ {@code matchWithinRegionsSerial}）； worker 副本各持一份全新的空簿（它只走
  * {@code route == null} 的同格意向 ⇒ 到不了运力截断），交回的是槽位终态而不是本簿。
+ *
+ * <p>★★ <b>A3（2026-10-10）分类：<b>留</b>（★ 设计书 §3.4 对它的定性有误，按 §四 回代码核）</b>——
+ * 设计书把它写成"为私有门槛服务的读数"，但<b>代码事实</b>是：它是**价格统计的输入**，属判据面，删不得：
+ *
+ * <pre>
+ * 落点 {@code MarketSettlement.markCapacityBlocked}:7095 / {@code blockLaneWithoutCapacity}:7140
+ *      → {@code claimPair}/{@code claimLane} 的返回值（**净额增量**）
+ *      → {@code BuySlot/SellSlot.capacityTruncatedMilli}
+ *      → **V-20 的截断剔除**：被运力截断的量不进自适应定价的 demand/supply 统计（否则 demand 被剔光、价格信号消失，
+ *        本类 :14-19 记着两例实测）。
+ * ⇒ 它改的是**价格输入**（不是"门槛的读数"）。A3 删掉的是跑商私有的**工具门槛**（{@code MerchantHaul}），
+ *   而"运力不足 ⇒ 这笔没运走多少"这件事在服务市场下依然发生 ⇒ 本类保留，且与门槛退役无关。
+ * ★ 它只被协调器单线程触碰（有运力池 ⇒ 区内撮合串行），逐轮瞬态、不落盘。
+ * </pre>
  */
 final class LaneUnservedBook {
 
