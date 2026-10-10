@@ -1152,6 +1152,13 @@ public final class ApiViews {
    * <p>★★ <b>M2.7 追加</b>：本视图新增 {@code tick} / {@code lastSettledDay} / {@code
    * cycleNaturalNeedMilli}（丙条累加器合计）与 {@code marketReadout}（焦点区逐商品读数；进程内报告派生部分见其类注）。 不传状态的 3
    * 参重载仍保留（没有 tick / 没有进程内报告 ⇒ 那一栏具名 unavailable，不填 0）。
+   *
+   * <p>★★ <b>G3-leftovers 追加（2026-10-10）：顶层债务本金标量加注 + 逐 unit 分列</b>—— 顶层的 {@code debtPrincipal} /
+   * {@code creditPrincipal} 把粮与银<b>直接相加</b>（跨 unit 混算）⇒ <b>保留但标注为不可用于比较</b> （{@code
+   * debtPrincipalNote}/{@code creditPrincipalNote} = {@link #DEBT_PRINCIPAL_NOT_COMPARABLE}）；可用的那一份
+   * = 同视图的 {@code debtPrincipalByUnit}/{@code creditPrincipalByUnit}（键 = {@code DebtUnit.key()}，Σ
+   * 逐值等于标量）， 与 dashboard 侧既有的"本金不跨 unit 合计"（{@code stocks.debtPrincipal.byUnit}）同键域。★
+   * 只改读口：不动任何债务状态、 不动任何算式、不删既有键（GUI 面板与既有用例仍在读标量）。
    */
   public static Map<String, Object> economyHex(HexCoord coord, EconomyData data, ActorData actors) {
     return economyHex(
@@ -1202,9 +1209,16 @@ public final class ApiViews {
     long landMilliMu = 0L;
     long debtPrincipal = 0L;
     long debtCount = 0L;
+    // ★★ G3-leftovers（2026-10-10）：上面那个标量是**跨 unit 混算**（粮的"毫粮"与银的"毫银"直接相加）⇒ 不可比、不可跨
+    //   版本/跨世界比较（真值可能是"个别敞开式 in-kind 粮债主导"）。按单位分列是**可加的那一份**：逐 unit 本金各自计量，
+    //   Σ 逐值等于上面的标量（同一趟遍历、同一批合同 ⇒ 两个读数不会漂）。键 = {@code DebtUnit.key()}（唯一拼写点；
+    //   与 dashboard 的 {@code stocks.debtPrincipal.byUnit} 同键域）。★ 本视图只读：不改任何债务状态。
+    Map<String, Long> debtPrincipalByUnit = new TreeMap<>();
     // ★★ M1.5：债权人侧合计（今天这两栏不存在 ⇒ 读口只能看见"谁欠着"这一半）。
     long creditPrincipal = 0L;
     long creditCount = 0L;
+    // ★★ G3-leftovers：债权人侧的标量**同病**（同一条事实的另一半，见 §1.4 的"两侧 Σ 逐值相等"）⇒ 同样给分列。
+    Map<String, Long> creditPrincipalByUnit = new TreeMap<>();
     long grainDailyConsumption = 0L;
     // ★★ M2.7 丙条仪器：该格 Σ 各行的**本周期累计自然口粮需要**（毫粮；人口逐日变时唯一与
     //   "本周期累计未满足需求"同窗口的分母）。★ 不再用"某一天人口 × 整周期配额"并排冒充它。
@@ -1312,6 +1326,8 @@ public final class ApiViews {
         if (debt != null) {
           debtCount++;
           debtPrincipal += debt.principal();
+          // ★★ G3-leftovers：同一趟遍历里按 unit 分列（键 = DebtUnit.key()，唯一拼写点）。
+          debtPrincipalByUnit.merge(debt.unit().key(), debt.principal(), Long::sum);
         }
       }
       // ★★ M1.5：债权人侧——"这一格的家户应收多少"以前完全读不到；逐条走同一张债务表（方向只是挂给谁）。
@@ -1321,6 +1337,8 @@ public final class ApiViews {
         if (debt != null) {
           creditCount++;
           creditPrincipal += debt.principal();
+          // ★★ G3-leftovers：与债务人侧同口径的分列（两侧本金逐值相等 ⇒ 两个 Σ 与两个分列同时守住）。
+          creditPrincipalByUnit.merge(debt.unit().key(), debt.principal(), Long::sum);
         }
       }
       Map<String, Object> classView =
@@ -1403,10 +1421,19 @@ public final class ApiViews {
     //   份额的 owner/operator 是"谁拥有/谁经营"的唯一实物总账，进入动作的拆分必须在这里逐条可见（守恒靠它核对）。
     view.put("assetShares", ownershipStakeViews(data, coord));
     view.put("debtCount", debtCount);
+    // ★★ G3-leftovers：顶层标量**保留但标注为不可用于跨 unit 比较**（不删：GUI 的面板读数（{@code panels.js} 的
+    //   debtText）与既有用例（{@code GuiApiTest}）都在读这个键 ⇒ 删键 = 静默改契约）。可用的那一份 = 按 unit 分列：
+    //   {@code debtPrincipalByUnit}（Σ 逐值等于本标量）；逐 unit 的条数/违约数/状态分布见
+    //   {@code dashboard.stocks.debtPrincipal.byUnit}（同一键域、更细的形状）。
     view.put("debtPrincipal", debtPrincipal);
+    view.put("debtPrincipalByUnit", debtPrincipalByUnit);
+    view.put("debtPrincipalNote", DEBT_PRINCIPAL_NOT_COMPARABLE);
     // ★★ M1.5：同一条事实的另一半（债权人侧）。两个方向来自同一张债务表 ⇒ 逐条本金一致。
     view.put("creditCount", creditCount);
     view.put("creditPrincipal", creditPrincipal);
+    // ★★ G3-leftovers：债权人侧标量同病同注（两侧逐值相等 ⇒ 混算问题不因换方向而消失）。
+    view.put("creditPrincipalByUnit", creditPrincipalByUnit);
+    view.put("creditPrincipalNote", DEBT_PRINCIPAL_NOT_COMPARABLE);
     // ★★ H5 ④：**商品词表（含留位）** —— 世界级常量，与格无关；放在这里是因为这是 economy 切片唯一的读口。
     //   ★ 为什么必须有：H5 起 IRON 不再进任何配方（作坊的投入由铁改成工具）⇒ 若读口不列"世界有哪些商品"，
     //     "铁"就退化成没人读得到的孤字面量（本仓禁"看起来在记、其实永远不被读"）。逐条口径见
@@ -1953,6 +1980,21 @@ public final class ApiViews {
   private static final String DASHBOARD_DEBT_REF_DANGLING =
       "ClassRow.debts 引用的 DebtContractId 不在 debtContracts 表中（状态不完整）⇒ 这些合同未计入"
           + "逐户/合计本金与条数；缺失不是 0，不用别的债顶替";
+
+  /**
+   * ★★ <b>G3-leftovers（2026-10-10）：顶层债务本金标量"不可跨 unit 比较"的具名说明</b>（唯一拼写点；债务人侧与债权人侧 共用）。
+   *
+   * <p>它标注的是 {@code economyHex} 顶层的 {@code debtPrincipal} / {@code creditPrincipal} 两个标量：它们把 {@code
+   * commodity:grain} 的毫粮与 {@code money:silver} 的毫银<b>直接相加</b> ⇒ 那个数不是任何可比量（真值可能 由个别敞开式 in-kind
+   * 粮债主导）。可用读数 = 同视图的 {@code *ByUnit}（键 = {@code DebtUnit.key()}，Σ 逐值等于标量） 与 {@code
+   * dashboard.stocks.debtPrincipal.byUnit}（逐 unit 条数/违约数/状态分布）。
+   *
+   * <p>★ 与 {@code dashboard} 侧既有口径一致（那里明文"本金不跨 unit 合计（粮与钱不硬折）"）；本说明只补读数标注， <b>不改任何债务状态、不改任何算式</b>。
+   */
+  private static final String DEBT_PRINCIPAL_NOT_COMPARABLE =
+      "顶层 debtPrincipal/creditPrincipal 是**跨 unit 混算**的标量（粮的毫粮与银的毫银直接相加）⇒ 不可比、"
+          + "不可跨版本/跨世界比较；按单位分列见 debtPrincipalByUnit/creditPrincipalByUnit"
+          + "（键 = DebtUnit.key()，各自 Σ 逐值等于对应标量），逐 unit 条数/违约数见 dashboard.stocks.debtPrincipal.byUnit";
 
   /** ★★ E6c：进程内 MarketReport 不可得时的具名原因（唯一拼写点）。 */
   private static final String DASHBOARD_MARKET_REPORT_UNAVAILABLE =

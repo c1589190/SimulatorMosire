@@ -1855,7 +1855,8 @@ public final class EconomySettlement {
     //       ⇒ 口径落在 {@link MerchantCapacityPool#select}：它拿到的 goods/frozenGoods 是**活视图**
     //         （{@code accounts.householdGoods()/householdFrozenGoods()}，与市场轮写的是同一张表），
     //         在每条承运被判定的那一刻现读 {@code max(0, 现货 − 冻结)}。
-    //     ★ 本处仍把活视图传进池（第 4/5 参 = 活视图的来源），并在装配点写一条逐户读数（toolMilli = 装配时的可用量）。
+    //     ★ 本处仍把活视图传进池（第 4/5 参 = 活视图的来源）；逐户装配读数（{@code MERCHANT_CAPACITY_HOUSEHOLD}，
+    //       toolMilli = 装配时的可用量）由紧接着的那一行发出（见下）。
     MerchantCapacityPool carrierPool =
         MerchantCapacityPool.of(
             session.sheet().classMemberships(),
@@ -1864,6 +1865,12 @@ public final class EconomySettlement {
             householdGoods,
             householdFrozenGoods,
             CapacityQuoteBook.selfQuoted());
+    // ★★ G3-leftovers（2026-10-10）：逐户装配读数（DEBUG；事件 MERCHANT_CAPACITY_HOUSEHOLD）。★ 位置与下面那条
+    //   CAPACITY_QUOTE_BOOK 同因：池本身不知道世界日（`of` 的入参里没有 tick），而该事件必须带 `day` 才能与同日的
+    //   MARKET_* / MERCHANT_HAUL_TOOL_BLOCKED_AT_SELECT 逐户按日对齐 ⇒ 由 tick 面的本处发。★ 发射时点与改前
+    //   **逐值一致**：仍是"装配完立刻发"（早于市场轮）⇒ 那两栏读数（toolRemainingMilli / runsAffordable）仍是
+    //   装配时点的镜像，不是轮末残余（改前它就在这个时点发，只是没有 day）。
+    carrierPool.logHouseholdAssembly(day);
     // ★★ M-A2（§一.9：DEBUG = 每阶段池子/汇总）：本轮运力报价表与运力预算的装配读数（带 day —— 它是 tick 面的
     //   装配，落在这里而不是池内，是为了让 TICK 来源的事件都带 day）。分类 logger = market（与池内运力事件同一门面）。
     if (MANDATE.isDebugEnabled()) {
