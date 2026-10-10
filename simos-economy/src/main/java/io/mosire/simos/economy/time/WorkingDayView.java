@@ -1,6 +1,5 @@
 package io.mosire.simos.economy.time;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -53,9 +52,6 @@ import java.util.Objects;
  * <p>★ <b>不落盘、不进状态</b>：本类不 import 任何 codec/changeSet/revision 类型，也不调用任何 save/checkpoint/persist ——
  * 它只是把"哪一份表算当刻"这件事收敛到一处。
  */
-@SuppressFBWarnings(
-    value = {"EI_EXPOSE_REP", "EI_EXPOSE_REP2"},
-    justification = "本类就是会话工作表的只读门面（类注：解析器而非快照）：持有并转交工作表/表的引用即设计语义，拷贝会破坏'当刻值'语义")
 final class WorkingDayView implements EconomyDayView {
 
   private final EconomyStateBuilder sheet;
