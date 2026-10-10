@@ -1,0 +1,22 @@
+[
+ {
+  "path": "/removedNewComponents",
+  "post": "len=1",
+  "pre": "len=0",
+  "why": "list-length"
+ },
+ {
+  "path": "/shape/source",
+  "post": "marketTables(per-zone)",
+  "pre": "markets(per-hex)",
+  "why": "value"
+ },
+ {
+  "path": "/shape/tableIds",
+  "post": [
+   "single-region"
+  ],
+  "pre": null,
+  "why": "post-only"
+ }
+]

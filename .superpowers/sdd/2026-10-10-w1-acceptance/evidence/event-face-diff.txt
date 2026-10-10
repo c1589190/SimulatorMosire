@@ -1,0 +1,6 @@
+# 事件面全量对拍（pre-c1 vs post-c1，372654 / 372815 种事件行）
+事件名集合差：pre-only=[] post-only=['MARKET_ROUND_STATS_DETAIL', 'MARKET_ROUND_STATS_RECORDED']
+同名事件计数不同：{}
+归一化（store/path/port/市场计数口径/Market.prices→MarketTable.prices）后独有行：pre 1 / post 1
+  [pre x1] INFO  io.mosire.simos.core.advance - event=ADVANCE_END origin=tick-advance originKind=tick day=360 commandId=d0722edf-0ffc-43e6-bee4-885917d11ce5 correlationId=d0722edf-0ffc-43e6-bee4-885917d11ce5 bra
+  [post x1] INFO  io.mosire.simos.core.advance - event=ADVANCE_END origin=tick-advance originKind=tick day=360 commandId=f2c6b25b-3a85-49e6-b524-756860918fb9 correlationId=f2c6b25b-3a85-49e6-b524-756860918fb9 bra

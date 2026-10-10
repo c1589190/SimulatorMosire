@@ -145,6 +145,13 @@ class EconomyRoundTripTest {
   /** ★ R3：第二种商品（"所得逐商品"的那一维在往返里要真的被带上，只有一个商品的夹具挡不住"退回标量"）。 */
   private static final CommodityId CLOTH = new CommodityId("cloth");
 
+  /**
+   * ★★ W1 收尾批（2026-10-11）：<b>明确 0 价</b>那一行的商品 —— {@code prices} 里**有这一行且值为 0** = 明确免费交易， **没有这一行**
+   * = 不交易；两种状态是两件事（{@link MarketTable#hasPrice} / {@link MarketTable#isFree}）， 往返夹具必须在值层面把"0
+   * 价那一行"与"没这一行"分开（{@link MarketTable#describe} 与逐字段相等的断言都看得见它）。
+   */
+  private static final CommodityId TOOL = new CommodityId("tool");
+
   /** ★ R2：劳动供给与配额的夹具身份（一格一批人 ⇒ 供给一条、配额一条）。 */
   private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
 
@@ -211,6 +218,15 @@ class EconomyRoundTripTest {
   private static final MarketZoneId ZONE = new MarketZoneId("zone-1");
 
   private static final GovernmentId ZONE_GOV = new GovernmentId("zone-government-1");
+
+  /**
+   * ★★ <b>W1 收尾批（2026-10-11）：<b>持久形态</b>价表那一维的区</b> —— 它的锚格/成员格**刻意不等于** {@link #KEY} 的格：派生市场
+   * {@link #MARKET} 的成员格就是那一格，而构造期守卫②（"价表的成员格不得已被某个区覆盖"） 不许两者重叠。计价币 = 默认词表里的 {@code
+   * silver}（区法定币必须在币种表里）。
+   */
+  private static final MarketZoneId ZONE_EAST = new MarketZoneId("zone-east");
+
+  private static final HexCoord ZONE_EAST_HEX = new HexCoord(2, 0);
 
   /**
    * ★★ T2/D9 的 operator 夹具：**非派生值**（`HOUSEHOLD:house-7`；本文件 `industry` 的 regime 是 `tenant`， 推导值 =
@@ -318,6 +334,79 @@ class EconomyRoundTripTest {
   }
 
   /**
+   * ★★ <b>W1 收尾批（2026-10-11）：两种价表形态 + 多区三段统计窗口，一次过变更集</b>（铁律 5 的**真往返**）。
+   *
+   * <p>★★ <b>为什么上面那条逐组件用例不够</b>：它按组件逐个变异、每个夹具只要"最小可用"即可 ⇒ 三种形状长期没进过往返： ① 只有**派生形态**价表（持久形态的"成员格为空 +
+   * 计价币 == 该区法定币"从未被重建过）；② 价格表只有正价（ <b>明确 0 价</b>那一行从未被带上）；③
+   * 统计簿只有**一个区**、每段只有一个商品（三段窗口之间的串味、多区只按第一个键成账， 都看不出来）。★ 本用例把这三种形状放进**同一份
+   * target**，判据与既有断言面一致：{@code apply(changeSet, base)} **逐字段重建** target。
+   *
+   * <p>★ <b>判别力（改坏 ⇒ 红）</b>：把 {@code EconomyChangeSet.between} 里 {@code marketTables} 或 {@code
+   * marketRoundStats} 的差异改成恒 {@code Unchanged}，本用例的 {@code changed()} 断言当场红；把 {@code apply}
+   * 里这两个分量的重建写漏，逐字段那几句当场红。
+   */
+  @Test
+  void bothMarketTableFormsAndTheWholeStatsWindowSurviveTheChangeSet() {
+    EconomyData base = EconomyData.empty();
+    Map<MarketZoneId, MarketTable> tables = Map.of(MARKET, market(), ZONE_EAST, zoneMarket());
+    Map<MarketZoneId, MarketRoundStats> stats = statsBook();
+    EconomyData target =
+        base.withMarketZones(Map.of(ZONE_EAST, zoneEast()))
+            .withMarketTables(tables)
+            .withMarketRoundStats(stats);
+
+    // ── 前置：夹具自身的判别力（不引用被测物）—— 两形态真的同时在、0 价行真的存在、三段窗口真的非空 ──
+    assertThat(tables.get(MARKET).hexes()).as("派生形态：成员格非空").isNotEmpty();
+    assertThat(tables.get(MARKET).hasPrice(TOOL)).as("夹具必须含**明确 0 价**那一行").isTrue();
+    assertThat(tables.get(MARKET).isFree(TOOL)).isTrue();
+    assertThat(tables.get(ZONE_EAST).hexes()).as("持久形态：成员格必须为空").isEmpty();
+    assertThat(tables.get(ZONE_EAST).numeraire())
+        .as("持久形态：计价币 == 该区法定币")
+        .isEqualTo(zoneEast().legalTender());
+    assertThat(stats).as("多区统计簿").hasSize(2);
+    for (Map.Entry<MarketZoneId, MarketRoundStats> entry : stats.entrySet()) {
+      assertThat(entry.getValue().lastRound()).as("%s 的本轮明细非空", entry.getKey().value()).hasSize(2);
+      assertThat(entry.getValue().cycleToDate())
+          .as("%s 的本周期累计非空", entry.getKey().value())
+          .hasSize(2);
+      assertThat(entry.getValue().previousCycle())
+          .as("%s 的上周期累计非空", entry.getKey().value())
+          .hasSize(2);
+    }
+    assertThat(stats.get(MARKET)).as("两区不是同一份值").isNotEqualTo(stats.get(ZONE_EAST));
+
+    EconomyChangeSet cs = EconomyChangeSet.between(base, target);
+
+    assertThat(cs.marketZones().changed()).as("区表必须进变更集").isTrue();
+    assertThat(cs.marketTables().changed()).as("价表必须进变更集").isTrue();
+    assertThat(cs.marketRoundStats().changed()).as("统计簿必须进变更集").isTrue();
+
+    EconomyData back = EconomyChangeSet.apply(cs, base);
+
+    assertThat(back).as("整份状态逐字段重建 == target").isEqualTo(target);
+    assertThat(back.marketZones()).as("区表逐键重建").containsOnlyKeys(ZONE_EAST);
+    assertThat(back.marketTables()).as("两个市场都在").containsOnlyKeys(MARKET, ZONE_EAST);
+    assertThat(back.marketTables().get(MARKET)).as("派生形态价表逐字段重建").isEqualTo(market());
+    assertThat(back.marketTables().get(MARKET).prices()).as("三个商品价格都带上").hasSize(3);
+    assertThat(back.marketTables().get(MARKET).hasPrice(TOOL)).as("明确 0 价那一行必须还在").isTrue();
+    assertThat(back.marketTables().get(MARKET).priceOf(TOOL)).isZero();
+    assertThat(back.marketTables().get(MARKET).isFree(TOOL)).isTrue();
+    assertThat(back.marketTables().get(ZONE_EAST)).as("持久形态价表逐字段重建").isEqualTo(zoneMarket());
+    assertThat(back.marketTables().get(ZONE_EAST).hexes()).isEmpty();
+    assertThat(back.marketTables().get(ZONE_EAST).numeraire()).isEqualTo(zoneEast().legalTender());
+    assertThat(back.marketRoundStats()).as("统计簿逐键重建").isEqualTo(stats);
+    for (MarketZoneId marketId : List.of(MARKET, ZONE_EAST)) {
+      MarketRoundStats readBack = back.marketRoundStats().get(marketId);
+      assertThat(readBack.lastRound()).as("%s 的本轮明细", marketId.value()).hasSize(2);
+      assertThat(readBack.cycleToDate()).as("%s 的本周期累计", marketId.value()).hasSize(2);
+      assertThat(readBack.previousCycle()).as("%s 的上周期累计", marketId.value()).hasSize(2);
+    }
+    assertThat(back.marketRoundStats().get(MARKET))
+        .as("两区统计不是同一份值（否则「只按第一个键成账」也能过）")
+        .isNotEqualTo(back.marketRoundStats().get(ZONE_EAST));
+  }
+
+  /**
    * ★★ <b>组件计数（R4 16 → E3 24 → E4 25 → E5 27 → E6 29 → P10.1 30 → P2-A 删 laborSupply / memberships
    * ⇒ 28 → P4a {@code periodicAdjustments} ⇒ 29 → Z1 追加两组件 ⇒ 31；classFirst 已删）</b>： {@code meta} /
    * {@code industries} / {@code classes} / {@code debtContracts} / {@code flows} / {@code
@@ -346,7 +435,9 @@ class EconomyRoundTripTest {
    * <p>★★ <b>W1（2026-10-10）+1：36 → 37</b>：第 9 个组件**改名** {@code markets → marketTables}（形状级改造：键从格改成
    * 市场 id，组件数不变）+ 新增第 40 个组件 {@code marketRoundStats}（市场轮统计簿：逐市场 D/S/成交量/均价/未满足量 + 成交额的三段固定窗口）。⇒
    * 本数字按**实测**改成 37，{@code mutate}/{@code changedOf} 两个 switch 里同步给 {@code marketTables} 与 {@code
-   * marketRoundStats} 各一条**非空**夹具（空表与"字段没进变更集"在值层面不可区分）。
+   * marketRoundStats} 各一条**非空**夹具（空表与"字段没进变更集"在值层面不可区分）。★★ W1 收尾批：这两个夹具再加强为 <b>两种价表形态</b>（派生 + 持久）与
+   * <b>多区、每段两商品且三段互不相同</b>的统计簿 —— 单形态/单区/单商品的"最小可用" 夹具挡不住形状错误（见 {@link
+   * #bothMarketTableFormsAndTheWholeStatsWindowSurviveTheChangeSet}）。
    */
   @Test
   void changeSetHasExactlyThirtySevenComponents() {
@@ -427,13 +518,17 @@ class EconomyRoundTripTest {
               .withIndustries(Map.of(FARM, industry(FARM)))
               .withProcesses(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
               .withRelations(Map.of(FARM_UNIT, relation(FARM_UNIT, NON_DEFAULT_OPERATOR)));
-      // ★★ W1 的第 9 个组件（**每区一张**：键从格改成市场 id）：**自带支撑的成员格**（价表条目的 hexes = {@link #KEY}
-      //   所在那一格）。★ 价表**非空**：空价表与"字段没进变更集"在值层面不可区分（同上面 outputPerUnit 那条理由），
-      //   而"这个市场什么价都没挂"恰恰是 H4 最想让人看得见的一种状态。
-      case "marketTables" -> base.withMarketTables(Map.of(MARKET, market()));
+      // ★★ W1 的第 9 个组件（**每区一张**：键从格改成市场 id）：**两种形态各一张**（★ W1 收尾批补持久形态）——
+      //   ① 派生形态（键不在区表里、成员格 = {@link #KEY} 那一格、三个商品含一行**明确 0 价**）；
+      //   ② 持久形态（键 = 区 {@link #ZONE_EAST}、成员格**为空**、计价币 == 该区法定币 silver）。
+      //   ★ 两形态一次落地（{@code withZoneAndItsTable} = "区 + 它的价表"的原子写法；★ W1d 起"缺表的区"其实也
+      //     合法 —— 那条守卫已删，见该帮手方法的注 —— 这里仍走原子写法，免得夹具依赖"中间态碰巧合法"）。
+      case "marketTables" ->
+          withZoneAndItsTable(base, zoneEast(), zoneMarket())
+              .withMarketTables(Map.of(MARKET, market(), ZONE_EAST, zoneMarket()));
       // ★★ W1 的第 40 个组件（市场轮统计簿）：**空表与"字段没进变更集"在值层面不可区分** ⇒ 判别力要求读数非空
-      //   （三段窗口里本轮明细 + 成交额都取非零/非默认值）。
-      case "marketRoundStats" -> base.withMarketRoundStats(Map.of(MARKET, roundStats()));
+      //   （★ W1 收尾批：**多区** + 三段窗口各两个商品、三段取互不相同的读数，见 {@link #statsBook()}）。
+      case "marketRoundStats" -> base.withMarketRoundStats(statsBook());
       // ★ M2.4 的第 10 个组件：**自带支撑的票**（在途批次没有跨表守卫，但仍要有真实的路线与至少一票，
       //   否则构造期就会拦下"在途必须能追到票"）。
       case "shipments" -> base.withShipments(Map.of(SHIPMENT, shipment()));
@@ -779,19 +874,66 @@ class EconomyRoundTripTest {
    *
    * <p>★★ <b>W1：成员格住在价表条目里</b>（{@link MarketTable#hexes()}）—— 改动前"市场在哪一格"由键回答（键 = 格），
    * 现在由价表条目的成员格回答（键 = 市场 id）。
+   *
+   * <p>★★ <b>W1 收尾批（2026-10-11）：三个商品、其中 {@link #TOOL} 是<b>明确 0 价</b></b> —— 单商品/全正价的夹具 分不开"0
+   * 价那一行"与"缺这一行"（{@code hasPrice}/{@code isFree} 两条判据），也挡不住"价格表退回标量/只带第一个商品" 这类形状错误。★
+   * 本夹具是**派生形态**（{@code marketZones} 为空 ⇒ 成员格非空是它的合法形态）。
    */
   static MarketTable market() {
-    return new MarketTable(SILVER, Set.of(KEY.hex()), Map.of(GRAIN, 3L, CLOTH, 5L));
+    return new MarketTable(SILVER, Set.of(KEY.hex()), Map.of(GRAIN, 3L, CLOTH, 5L, TOOL, 0L));
   }
 
   /**
    * ★★ <b>W1：市场轮统计簿夹具</b>（{@code EconomyData} 的第 40 个组件 {@code marketRoundStats}）：一个市场的三段窗口，
    * 本轮明细与本/上周期读数**都非空**（判别力要求：空窗口与"字段没进变更集"在值层面不可区分）。
+   *
+   * <p>★★ <b>W1 收尾批（2026-10-11）：三段窗口各带<b>两个商品</b>、且三段取**互不相同**的读数</b> —— 三段是三个独立的
+   * Map，单商品/三段同值的夹具下"把其中一段写成另一段 / 把三段都写成 lastRound"这类形状错误仍会假绿（ {@code withRound} 的关账轮转语义正是"本周期 →
+   * 上周期"这一维）。逐量量纲见 {@link CommodityRound}。
+   *
+   * @param day 最近一轮的绝对日
+   * @param lastRoundTurnoverMilli 本轮成交额（毫）
+   * @param cycleTurnoverMilli 本周期累计成交额（毫）
+   * @param previousCycleTurnoverMilli 上周期累计成交额（毫）
    */
-  static MarketRoundStats roundStats() {
-    CommodityRound round = new CommodityRound(1_000L, 900L, 800L, 4L, 100L);
+  static MarketRoundStats roundStats(
+      long day,
+      long lastRoundTurnoverMilli,
+      long cycleTurnoverMilli,
+      long previousCycleTurnoverMilli) {
     return new MarketRoundStats(
-        5L, Map.of(GRAIN, round), 3_200L, Map.of(GRAIN, round), 3_200L, Map.of(CLOTH, round), 5L);
+        day,
+        Map.of(GRAIN, round(1_000L, 900L, 800L, 4L, 100L), CLOTH, round(500L, 480L, 470L, 5L, 30L)),
+        lastRoundTurnoverMilli,
+        Map.of(
+            GRAIN, round(2_000L, 1_800L, 1_600L, 4L, 200L),
+            CLOTH, round(900L, 880L, 860L, 6L, 40L)),
+        cycleTurnoverMilli,
+        Map.of(
+            GRAIN, round(3_000L, 2_800L, 2_700L, 5L, 150L),
+            CLOTH, round(700L, 690L, 680L, 5L, 20L)),
+        previousCycleTurnoverMilli);
+  }
+
+  /**
+   * ★★ <b>W1 收尾批：<b>多区</b>统计簿</b> —— 两个市场（派生形态的 {@link #MARKET} 与持久形态的 {@link #ZONE_EAST}）
+   * 各自成账，日号与三段成交额**逐区不同**。★ 单区夹具下"统计簿只按第一个键成账 / 两个键指向同一份值"这类错误看不出来。 ★ 构造期**不要求**统计簿的键在 {@code
+   * marketTables} 里（撤市之后统计仍可读，见 {@code EconomyData} 的口径注）， 故本夹具可单独使用。
+   */
+  static Map<MarketZoneId, MarketRoundStats> statsBook() {
+    return Map.of(
+        MARKET, roundStats(5L, 3_200L, 6_400L, 5_601L),
+        ZONE_EAST, roundStats(7L, 900L, 1_800L, 1_200L));
+  }
+
+  /** ★ W1：一行供需读数（D / S / 成交 / 均价 / 未满足；逐值 ≥ 0 由 {@link CommodityRound} 构造期判死）。 */
+  private static CommodityRound round(
+      long demandMilli,
+      long supplyMilli,
+      long tradedMilli,
+      long averagePriceMilli,
+      long unmetMilli) {
+    return new CommodityRound(demandMilli, supplyMilli, tradedMilli, averagePriceMilli, unmetMilli);
   }
 
   /**
@@ -941,6 +1083,20 @@ class EconomyRoundTripTest {
   }
 
   /**
+   * ★★ <b>W1 收尾批：持久形态价表的区</b>（{@link #ZONE_EAST}）—— 与 {@link #zone()} 同形，锚格换到 {@link
+   * #ZONE_EAST_HEX}：它的成员格不能与派生形态价表 {@link #market()} 的成员格（{@link #KEY} 那一格）重叠。
+   */
+  static MarketZone zoneEast() {
+    return new MarketZone(
+        ZONE_EAST,
+        ZONE_EAST_HEX,
+        0,
+        Set.of(ZONE_EAST_HEX),
+        MoneyVocabulary.SILVER_CURRENCY,
+        Map.of());
+  }
+
+  /**
    * ★★ <b>W1c：{@link #zone()} 那一份价表</b>（持久形态：**成员格为空** —— 持久区的成员格权威 = {@code
    * MarketZone.hexes}，I22；计价币 = 该区法定币 {@code silver}）。
    *
@@ -961,6 +1117,11 @@ class EconomyRoundTripTest {
    *
    * <p>★ <b>代价与护栏</b>：这里显式列出全部 37 个组件 ⇒ 将来新增组件时本调用**编译不过**（不是静默丢字段）， 且本文件的 {@code
    * changeSetHasExactlyThirtySevenComponents} 把两侧组件数钉住 —— 两处一起构成提醒。
+   *
+   * <p>★★ <b>2026-10-11 W1d 更正（W1 收尾批核对代码时发现，本注原先已过期）</b>：上面"两个单组件 wither 之间没有合法 中间态"这条理由**已不成立**
+   * —— {@code EconomyData} 构造期那条"每个持久区必须有价表条目"的守卫已按设计书 §4.2 N-4 **删除**（"缺表 =
+   * 该区不交易任何商品"）。保留本帮手方法是因为它仍是"区 + 它的价表一次落地"的原子写法（{@code withMarketZonesAndTables}
+   * 的同款先例），**不是**因为中间态非法。
    */
   private static EconomyData withZoneAndItsTable(
       EconomyData base, MarketZone zone, MarketTable table) {

@@ -1,0 +1,5 @@
+# 统计簿 × 逐笔成交 交叉核对（同一 world：post-c1，day=360 轮）
+逐笔日志（MARKET_FILL, day=360）：{'cloth': 4730, 'grain': 446286}  笔数={'cloth': 51, 'grain': 39}
+持久统计簿 lastRound.tradedMilli：{'cloth': 4730, 'fiber': 0, 'grain': 446286, 'iron': 0, 'tool': 0}
+逐商品相等且 Σ 相等：True（Σ=451016）
+INFO MARKET_ROUND_STATS_RECORDED 行 tradedMilli=451016（= Σ lastRound.tradedMilli）

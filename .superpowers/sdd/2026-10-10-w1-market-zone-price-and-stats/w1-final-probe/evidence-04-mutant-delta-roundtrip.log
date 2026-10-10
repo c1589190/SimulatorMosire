@@ -1,0 +1,14 @@
+GREEN 派生形态 hexes 非空
+GREEN 派生形态含明确 0 价那一行 hasPrice(tool)
+GREEN 派生形态 isFree(tool)
+GREEN 派生形态 prices 三个商品
+GREEN 持久形态 hexes 为空
+GREEN 持久形态 numeraire == 该区法定币
+GREEN 多区统计簿 size==2
+GREEN 每区三段窗口各两个商品
+GREEN 两区统计不是同一份值
+GREEN cs.marketZones.changed
+GREEN cs.marketTables.changed
+**RED** cs.marketRoundStats.changed
+**RED** apply(cs,base).equals(target)
+GREEN back.marketZones onlyKeys ZONE_EAST

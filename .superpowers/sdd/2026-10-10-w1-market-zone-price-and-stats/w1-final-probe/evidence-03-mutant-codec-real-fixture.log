@@ -1,0 +1,1 @@
+Caused by: com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException: Unrecognized field "empty" (class io.mosire.simos.economy.model.MarketTable), not marked as ignorable (3 known properties: "hexes", "prices", "numeraire")

@@ -2824,7 +2824,15 @@ public final class EconomySettlement {
                     "window",
                     "last-round+cycle-to-date+previous-cycle"));
         if (MANDATE.isDebugEnabled()) {
+          // ★★ W1 收尾批（2026-10-11）：这一行打印的必须是**刚落盘的那份统计**（上文 `statsByMarket` 里
+          //   `current.withRound(...)` 的返回值），**不是**本轮入参 `outcome.roundStats()` —— 入参只带本轮读数
+          //   （`lastRound`），它的 `cycleToDate` / `previousCycle` 必然为空 ⇒ 旧写法让 `describe()` 的
+          //   "本周期/上周期"两栏**恒 0**，与同 tick 落盘的 `marketRoundStats` 直接矛盾（验收报告 §7.2：
+          //   day=360 的 DETAIL 写 `上周期商品=0`，而同 tick 的落盘原文里 `previousCycle` 有 5 商品、
+          //   `previousCycleTurnoverMilli=5601`）—— 那是"字段名与所指对象不一致"的误导，读者会以为窗口是空的。
+          //   ★ 只改**打印对象**：状态、公式、写口一字未动，级别仍是 DEBUG。
           for (Map.Entry<MarketZoneId, MarketRoundStats> entry : outcome.roundStats().entrySet()) {
+            MarketRoundStats stored = statsByMarket.get(entry.getKey());
             EventLog.channel(MANDATE)
                 .debug(
                     LogEvent.of(
@@ -2835,7 +2843,9 @@ public final class EconomySettlement {
                         "marketId",
                         entry.getKey().value(),
                         "stats",
-                        entry.getValue().describe()));
+                        // 写入就在上面同一个块里完成 ⇒ 正常情况下恒非空；真取不到也只如实写"未写入"，
+                        // 不回落到本轮入参（那正是这条日志原先会误导人的地方）。
+                        stored == null ? "未写入" : stored.describe()));
           }
         }
       }

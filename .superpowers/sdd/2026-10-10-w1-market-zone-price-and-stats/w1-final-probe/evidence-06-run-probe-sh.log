@@ -1,0 +1,90 @@
+### 0. 编译探针（classpath = 测试类 + 主类 + shade 依赖）
+### 1. 干净世界（期望：45 GREEN / 0 RED）
+[codec] A 无市场载荷（旧夹具形态） | snapshot keys marketTables=true marketRoundStats=true | contains "empty"=false | decode=ok
+[codec] B 有市场载荷（新夹具形态） | snapshot keys marketTables=true marketRoundStats=true | contains "empty"=false | decode=ok
+[changeset] changed: marketZones=true marketTables=true marketRoundStats=true | cs.isEmpty=false
+[changeset] changeSet 线格式 keys marketTables=true marketRoundStats=true contains "empty"=false-check=false
+[changeset] apply(cs, base).equals(target)=true
+[changeset] 逐字段: tables.keys=[probe-derived-market, probe-zone] stats.keys=[probe-derived-market, probe-zone] derived.prices=3 derived.isFree(tool)=true persistent.hexes=0 stats.last/cycle/prev=2/2/2
+GREEN 派生形态 hexes 非空
+GREEN 派生形态含明确 0 价那一行 hasPrice(tool)
+GREEN 派生形态 isFree(tool)
+GREEN 派生形态 prices 三个商品
+GREEN 持久形态 hexes 为空
+GREEN 持久形态 numeraire == 该区法定币
+GREEN 多区统计簿 size==2
+GREEN 每区三段窗口各两个商品
+GREEN 两区统计不是同一份值
+GREEN cs.marketZones.changed
+GREEN cs.marketTables.changed
+GREEN cs.marketRoundStats.changed
+GREEN apply(cs,base).equals(target)
+GREEN back.marketZones onlyKeys ZONE_EAST
+GREEN back.marketTables onlyKeys MARKET,ZONE_EAST
+GREEN back MARKET 表 == market()
+GREEN back MARKET prices==3
+GREEN back MARKET hasPrice/isFree(tool)
+GREEN back ZONE_EAST 表 == zoneMarket()
+GREEN back 统计簿 == statsBook()
+GREEN back 每区三段各两个商品
+GREEN back 两区统计不同值
+GREEN [case marketTables] changed
+GREEN [case marketTables] 往返相等
+GREEN [case marketRoundStats] changed
+GREEN [case marketRoundStats] 往返相等
+GREEN [case demands] 构造不抛 + 需求非空
+=== 全部为 true ⇒ 新增断言面在原件上全绿 ===
+02:24:10.559 INFO  io.mosire.simos.economy.debt - event=DEBT_REFERENCES_REBUILT origin=economy-debt-reference originKind=system households=2 added=2 removed=0 total=2
+GREEN fullData() 构造不抛（跨表守卫全过）
+GREEN marketTables hasSize 2
+GREEN MARKET 表 hexes 非空（派生形态）
+GREEN MARKET 表 hasPrice(tool)
+GREEN MARKET 表 isFree(tool)
+GREEN MARKET 表 prices 3
+GREEN ZONE 表 hexes 为空（持久形态）
+GREEN ZONE 表 numeraire == 区法定币
+GREEN marketRoundStats hasSize 2
+GREEN 每区三段窗口各两个商品
+GREEN 快照字节级往返
+GREEN 变更集字节级往返
+GREEN 快照线格式含 marketTables/marketRoundStats
+GREEN 变更集线格式含 marketTables/marketRoundStats
+GREEN 快照含派生市场 id 字面量
+GREEN 变更集含派生市场 id 字面量
+GREEN 快照不含 "empty"
+GREEN 变更集不含 "empty"
+=== 全部为 true ⇒ codec 测试新增断言面在原件上全绿 ===
+[旧] MARKET_ROUND_STATS_DETAIL stats=day=360 本轮商品=5 本轮成交额=521 本周期商品=0 本周期成交额=0 上周期商品=0 上周期成交额=0
+[新] MARKET_ROUND_STATS_DETAIL stats=day=360 本轮商品=5 本轮成交额=521 本周期商品=0 本周期成交额=0 上周期商品=5 上周期成交额=5601
+[核对] 新打印的上周期成交额 == 落盘 previousCycleTurnoverMilli: 5601 == 5601 ; 上周期商品数 == 5
+### 2. 变异体 M-codec（摘掉 MarketTable.isEmpty() 上的 @JsonIgnore）
+  已改坏： /tmp/w1-final-probe/src/MarketTable.java
+  -- 同一变异体 × 无市场载荷（旧夹具形态）⇒ 期望恒绿；× 有市场载荷（新夹具形态）⇒ 期望露 empty
+[codec] A 无市场载荷（旧夹具形态） | snapshot keys marketTables=true marketRoundStats=true | contains "empty"=false | decode=ok
+[codec] B 有市场载荷（新夹具形态） | snapshot keys marketTables=true marketRoundStats=true | contains "empty"=true | decode=IllegalStateException: economy 侧 JSON 解码失败: EconomySnapshot
+### 3. 变异体 M-delta（统计簿 diff 恒 Unchanged + apply 漏掉 marketTables 重建）
+  已改坏： /tmp/w1-final-probe/src/EconomyChangeSet.java
+  -- 期望：cs.marketRoundStats.changed / 往返相等 当场 RED
+GREEN 派生形态 hexes 非空
+GREEN 派生形态含明确 0 价那一行 hasPrice(tool)
+GREEN 派生形态 isFree(tool)
+GREEN 派生形态 prices 三个商品
+GREEN 持久形态 hexes 为空
+GREEN 持久形态 numeraire == 该区法定币
+GREEN 多区统计簿 size==2
+GREEN 每区三段窗口各两个商品
+GREEN 两区统计不是同一份值
+GREEN cs.marketZones.changed
+GREEN cs.marketTables.changed
+**RED** cs.marketRoundStats.changed
+**RED** apply(cs,base).equals(target)
+GREEN back.marketZones onlyKeys ZONE_EAST
+**RED** back.marketTables onlyKeys MARKET,ZONE_EAST
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke "io.mosire.simos.economy.model.MarketTable.equals(Object)" because the return value of "java.util.Map.get(Object)" is null
+	at io.mosire.simos.economy.change.W1FixtureProbe.main(W1FixtureProbe.java:52)
+### 4. 工作树自证：这两个文件必须与 pristine 逐字节相同（md5 见账本 §五-3）
+8ec2d99b3d6144751f1f6b180e8ac663  /home/cna/SimulatorMosire/simos-economy/src/main/java/io/mosire/simos/economy/model/MarketTable.java
+c9573f7ca999f574e9cad9c86663ee3a  /home/cna/SimulatorMosire/simos-economy/src/main/java/io/mosire/simos/economy/change/EconomyChangeSet.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/EconomySettlement.java
+ M simos-economy/src/test/java/io/mosire/simos/economy/change/EconomyRoundTripTest.java
+ M simos-economy/src/test/java/io/mosire/simos/economy/codec/EconomyCodecTest.java

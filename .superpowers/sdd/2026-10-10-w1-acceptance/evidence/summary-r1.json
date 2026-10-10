@@ -1,0 +1,3787 @@
+{
+ "equal": {
+  "classes": true,
+  "debt": true,
+  "flows": true,
+  "goods": true,
+  "money": true,
+  "population": true,
+  "prices": true,
+  "wholeState": true
+ },
+ "post": {
+  "classes": {
+   "md5Standings": "74cbc86d57cb59048b14d2f4f96d1016",
+   "md5Views": "705f4e3b851e3e8979683ef8e90a0a0f",
+   "nStandings": 210,
+   "stratumCounts": {
+    "artisan": 2,
+    "landless_laborer": 23,
+    "landlord": 52,
+    "middle_peasant": 38,
+    "official": 1,
+    "poor_peasant": 38,
+    "rich_peasant": 61
+   }
+  },
+  "debt": {
+   "byStatus": {
+    "DEFAULTED": 152,
+    "NORMAL": 136,
+    "SETTLED": 713
+   },
+   "count": 1001,
+   "md5": "8812bd5c734eb1df75f9ed01b7741323",
+   "md5DebtRefs": "0d869112d0594839db04e2a7b736decb",
+   "nDebtRefs": 1001,
+   "sumPrincipalByUnit": {
+    "{\"@class\":\"commodity\",\"commodity\":{\"value\":\"fiber\"}}": 0,
+    "{\"@class\":\"commodity\",\"commodity\":{\"value\":\"grain\"}}": 105558159,
+    "{\"@class\":\"commodity\",\"commodity\":{\"value\":\"tool\"}}": 0,
+    "{\"@class\":\"money\",\"currency\":{\"value\":\"silver\"}}": 24488
+   }
+  },
+  "flows": {
+   "md5": "5806f3772b46c068a378a4f6d084f3da",
+   "nHouseholds": 191,
+   "worldTotals": {
+    "consumed": {
+     "cloth": 1380736,
+     "fiber": 6300000,
+     "grain": 423177558,
+     "tool": 50000
+    },
+    "income": {
+     "cloth": 190657,
+     "fiber": 101704500,
+     "grain": 432444884
+    },
+    "interestDue": 4741872,
+    "netSurplus": -1123570048,
+    "newBorrowing": 226127,
+    "repaid": 216778969,
+    "taxPaid": 1128095502,
+    "unmetNeed": {
+     "cloth": 16346
+    }
+   }
+  },
+  "goods": {
+   "allCommodityTotals": {
+    "cloth": 15838080,
+    "fiber": 1042998120,
+    "grain": 3278080223,
+    "haul": 192805,
+    "iron": 200000,
+    "tool": 554697
+   },
+   "byHex": {
+    "-1_-1": {
+     "cloth": 286153,
+     "fiber": 63762249,
+     "grain": 100693621,
+     "iron": 10889,
+     "tool": 31217
+    },
+    "-1_0": {
+     "cloth": 429174,
+     "fiber": 52335162,
+     "grain": 39527856,
+     "tool": 23965
+    },
+    "-1_1": {
+     "cloth": 710521,
+     "fiber": 52295373,
+     "grain": 39954366,
+     "tool": 22460
+    },
+    "-1_2": {
+     "cloth": 818807,
+     "fiber": 63542105,
+     "grain": 101697772,
+     "haul": 72999,
+     "tool": 32611
+    },
+    "-2_0": {
+     "cloth": 769797,
+     "fiber": 45009593,
+     "grain": 68170194,
+     "tool": 23230
+    },
+    "-2_1": {
+     "cloth": 707321,
+     "fiber": 63644414,
+     "grain": 102638262,
+     "tool": 23545
+    },
+    "-2_2": {
+     "cloth": 708856,
+     "fiber": 63503502,
+     "grain": 102759095,
+     "tool": 24245
+    },
+    "0_-1": {
+     "cloth": 710651,
+     "fiber": 52227026,
+     "grain": 40490997,
+     "tool": 23475
+    },
+    "0_-2": {
+     "cloth": 765494,
+     "fiber": 44909539,
+     "grain": 68265330,
+     "tool": 23790
+    },
+    "0_0": {
+     "cloth": 3299480,
+     "fiber": 75385603,
+     "grain": 140247925,
+     "haul": 119806,
+     "iron": 189111,
+     "tool": 139683
+    },
+    "0_1": {
+     "cloth": 809063,
+     "fiber": 52258270,
+     "grain": 1999596016,
+     "tool": 23195
+    },
+    "0_2": {
+     "cloth": 739899,
+     "fiber": 40147146,
+     "grain": 11828265,
+     "tool": 2905
+    },
+    "1_-1": {
+     "cloth": 711350,
+     "fiber": 52295688,
+     "grain": 40042068,
+     "tool": 23510
+    },
+    "1_-2": {
+     "cloth": 706844,
+     "fiber": 63637752,
+     "grain": 102777705,
+     "tool": 22677
+    },
+    "1_0": {
+     "cloth": 712280,
+     "fiber": 52260525,
+     "grain": 40050023,
+     "tool": 22355
+    },
+    "1_1": {
+     "cloth": 712006,
+     "fiber": 52279937,
+     "grain": 40051444,
+     "tool": 23747
+    },
+    "2_-1": {
+     "cloth": 765101,
+     "fiber": 44920886,
+     "grain": 68266364,
+     "tool": 24168
+    },
+    "2_-2": {
+     "cloth": 707605,
+     "fiber": 63643256,
+     "grain": 102743727,
+     "tool": 22775
+    },
+    "2_0": {
+     "cloth": 767678,
+     "fiber": 44940094,
+     "grain": 68279193,
+     "tool": 21144
+    }
+   },
+   "byHousehold": {
+    "hh--1_-1-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh--1_-1-rural-landlord": {
+     "cloth": 14447,
+     "fiber": 862576,
+     "grain": 30613472,
+     "iron": 10889,
+     "tool": 8687
+    },
+    "hh--1_-1-rural-middle_peasant": {
+     "cloth": 132366,
+     "fiber": 10834525,
+     "grain": 26644612,
+     "tool": 1050
+    },
+    "hh--1_-1-rural-poor_peasant": {
+     "cloth": 136996,
+     "fiber": 47464379,
+     "grain": 26289848,
+     "tool": 1260
+    },
+    "hh--1_-1-rural-rich_peasant": {
+     "cloth": 2344,
+     "fiber": 4599597,
+     "grain": 17144982,
+     "tool": 455
+    },
+    "hh--1_-1-urban-landlord": {
+     "tool": 10190
+    },
+    "hh--1_-1-urban-middle_peasant": {},
+    "hh--1_-1-urban-poor_peasant": {},
+    "hh--1_-1-urban-rich_peasant": {
+     "fiber": 1172,
+     "tool": 9575
+    },
+    "hh--1_0-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh--1_0-rural-landlord": {
+     "cloth": 80,
+     "fiber": 861706,
+     "grain": 12438026,
+     "tool": 140
+    },
+    "hh--1_0-rural-middle_peasant": {
+     "cloth": 136169,
+     "fiber": 10817514,
+     "grain": 7885410,
+     "tool": 1085
+    },
+    "hh--1_0-rural-poor_peasant": {
+     "cloth": 210163,
+     "fiber": 36063697,
+     "grain": 15650686,
+     "tool": 1260
+    },
+    "hh--1_0-rural-rich_peasant": {
+     "cloth": 82762,
+     "fiber": 4588776,
+     "grain": 3553027,
+     "tool": 455
+    },
+    "hh--1_0-urban-landlord": {
+     "fiber": 1419,
+     "tool": 10390
+    },
+    "hh--1_0-urban-middle_peasant": {},
+    "hh--1_0-urban-poor_peasant": {},
+    "hh--1_0-urban-rich_peasant": {
+     "fiber": 2050,
+     "tool": 10635
+    },
+    "hh--1_1-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh--1_1-rural-landlord": {
+     "cloth": 80,
+     "fiber": 861706,
+     "grain": 12854700,
+     "tool": 140
+    },
+    "hh--1_1-rural-middle_peasant": {
+     "cloth": 317573,
+     "fiber": 10832281,
+     "grain": 7889625,
+     "tool": 1050
+    },
+    "hh--1_1-rural-poor_peasant": {
+     "cloth": 310676,
+     "fiber": 36030898,
+     "grain": 15656223,
+     "tool": 1260
+    },
+    "hh--1_1-rural-rich_peasant": {
+     "cloth": 82192,
+     "fiber": 4567809,
+     "grain": 3553111,
+     "tool": 455
+    },
+    "hh--1_1-urban-landlord": {
+     "fiber": 1254,
+     "tool": 9935
+    },
+    "hh--1_1-urban-middle_peasant": {},
+    "hh--1_1-urban-poor_peasant": {},
+    "hh--1_1-urban-rich_peasant": {
+     "fiber": 1425,
+     "tool": 9620
+    },
+    "hh--1_2-rural-landless_laborer-displaced": {
+     "grain": 585,
+     "tool": 105
+    },
+    "hh--1_2-rural-landlord": {
+     "cloth": 106501,
+     "fiber": 859706,
+     "grain": 31946747,
+     "haul": 72999,
+     "tool": 8576
+    },
+    "hh--1_2-rural-middle_peasant": {
+     "cloth": 317188,
+     "fiber": 10821491,
+     "grain": 27234309,
+     "tool": 1085
+    },
+    "hh--1_2-rural-poor_peasant": {
+     "cloth": 312433,
+     "fiber": 47282700,
+     "grain": 25893038,
+     "tool": 1225
+    },
+    "hh--1_2-rural-rich_peasant": {
+     "cloth": 82685,
+     "fiber": 4572210,
+     "grain": 16623093,
+     "tool": 455
+    },
+    "hh--1_2-urban-landlord": {
+     "fiber": 3072,
+     "tool": 10495
+    },
+    "hh--1_2-urban-middle_peasant": {},
+    "hh--1_2-urban-poor_peasant": {},
+    "hh--1_2-urban-rich_peasant": {
+     "fiber": 2926,
+     "tool": 10670
+    },
+    "hh--2_0-rural-landless_laborer-displaced": {
+     "grain": 626
+    },
+    "hh--2_0-rural-landlord": {
+     "cloth": 735,
+     "fiber": 536677,
+     "grain": 14329656,
+     "tool": 140
+    },
+    "hh--2_0-rural-middle_peasant": {
+     "cloth": 251384,
+     "fiber": 7288853,
+     "grain": 20634031,
+     "tool": 1015
+    },
+    "hh--2_0-rural-poor_peasant": {
+     "cloth": 244487,
+     "fiber": 34178963,
+     "grain": 20376569,
+     "tool": 1190
+    },
+    "hh--2_0-rural-rich_peasant": {
+     "cloth": 273191,
+     "fiber": 3000289,
+     "grain": 12829312,
+     "tool": 455
+    },
+    "hh--2_0-urban-landlord": {
+     "fiber": 3952,
+     "tool": 9760
+    },
+    "hh--2_0-urban-middle_peasant": {},
+    "hh--2_0-urban-poor_peasant": {},
+    "hh--2_0-urban-rich_peasant": {
+     "fiber": 859,
+     "tool": 10670
+    },
+    "hh--2_1-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh--2_1-rural-landlord": {
+     "cloth": 805,
+     "fiber": 848714,
+     "grain": 31225603,
+     "tool": 140
+    },
+    "hh--2_1-rural-middle_peasant": {
+     "cloth": 317418,
+     "fiber": 10819891,
+     "grain": 27540477,
+     "tool": 1085
+    },
+    "hh--2_1-rural-poor_peasant": {
+     "cloth": 309522,
+     "fiber": 47383358,
+     "grain": 26353383,
+     "tool": 1260
+    },
+    "hh--2_1-rural-rich_peasant": {
+     "cloth": 79576,
+     "fiber": 4587183,
+     "grain": 17518092,
+     "tool": 455
+    },
+    "hh--2_1-urban-landlord": {
+     "fiber": 2196,
+     "tool": 10320
+    },
+    "hh--2_1-urban-middle_peasant": {},
+    "hh--2_1-urban-poor_peasant": {},
+    "hh--2_1-urban-rich_peasant": {
+     "fiber": 3072,
+     "tool": 10285
+    },
+    "hh--2_2-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh--2_2-rural-landlord": {
+     "cloth": 735,
+     "fiber": 848706,
+     "grain": 31662253,
+     "tool": 140
+    },
+    "hh--2_2-rural-middle_peasant": {
+     "cloth": 317286,
+     "fiber": 10824197,
+     "grain": 27532089,
+     "tool": 1085
+    },
+    "hh--2_2-rural-poor_peasant": {
+     "cloth": 311040,
+     "fiber": 47250853,
+     "grain": 26096189,
+     "tool": 1225
+    },
+    "hh--2_2-rural-rich_peasant": {
+     "cloth": 79795,
+     "fiber": 4575402,
+     "grain": 17467905,
+     "tool": 455
+    },
+    "hh--2_2-urban-landlord": {
+     "fiber": 1737,
+     "tool": 10670
+    },
+    "hh--2_2-urban-middle_peasant": {},
+    "hh--2_2-urban-poor_peasant": {},
+    "hh--2_2-urban-rich_peasant": {
+     "fiber": 2607,
+     "tool": 10670
+    },
+    "hh-0_-1-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-0_-1-rural-landlord": {
+     "cloth": 126,
+     "fiber": 848714,
+     "grain": 12832986,
+     "tool": 140
+    },
+    "hh-0_-1-rural-middle_peasant": {
+     "cloth": 317101,
+     "fiber": 10817501,
+     "grain": 7886713,
+     "tool": 1085
+    },
+    "hh-0_-1-rural-poor_peasant": {
+     "cloth": 309568,
+     "fiber": 35984594,
+     "grain": 15579856,
+     "tool": 1260
+    },
+    "hh-0_-1-rural-rich_peasant": {
+     "cloth": 82141,
+     "fiber": 4572449,
+     "grain": 3614989,
+     "tool": 455
+    },
+    "hh-0_-1-urban-landlord": {
+     "fiber": 2596,
+     "tool": 9760
+    },
+    "hh-0_-1-urban-middle_peasant": {},
+    "hh-0_-1-urban-poor_peasant": {},
+    "hh-0_-1-urban-rich_peasant": {
+     "fiber": 1172,
+     "tool": 10635
+    },
+    "hh-0_-2-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-0_-2-rural-landlord": {
+     "cloth": 630,
+     "fiber": 536906,
+     "grain": 13079575,
+     "tool": 140
+    },
+    "hh-0_-2-rural-middle_peasant": {
+     "cloth": 249101,
+     "fiber": 7235677,
+     "grain": 21349009,
+     "tool": 1085
+    },
+    "hh-0_-2-rural-poor_peasant": {
+     "cloth": 242591,
+     "fiber": 34129783,
+     "grain": 21102826,
+     "tool": 1260
+    },
+    "hh-0_-2-rural-rich_peasant": {
+     "cloth": 273172,
+     "fiber": 3002362,
+     "grain": 12733261,
+     "tool": 455
+    },
+    "hh-0_-2-urban-landlord": {
+     "fiber": 3639,
+     "tool": 10215
+    },
+    "hh-0_-2-urban-middle_peasant": {},
+    "hh-0_-2-urban-poor_peasant": {},
+    "hh-0_-2-urban-rich_peasant": {
+     "fiber": 1172,
+     "tool": 10635
+    },
+    "hh-0_0-rural-landless_laborer-displaced": {
+     "cloth": 910,
+     "grain": 25361,
+     "tool": 140
+    },
+    "hh-0_0-rural-landlord": {
+     "cloth": 245,
+     "fiber": 916911,
+     "grain": 18240833,
+     "tool": 140
+    },
+    "hh-0_0-rural-middle_peasant": {
+     "cloth": 317839,
+     "fiber": 9213890,
+     "grain": 41420004,
+     "tool": 1050
+    },
+    "hh-0_0-rural-poor_peasant": {
+     "cloth": 310339,
+     "fiber": 32635882,
+     "grain": 40061500,
+     "tool": 1260
+    },
+    "hh-0_0-rural-rich_peasant": {
+     "cloth": 112089,
+     "fiber": 3906098,
+     "grain": 24586302,
+     "tool": 455
+    },
+    "hh-0_0-urban-landless_laborer-displaced": {
+     "cloth": 3045,
+     "grain": 83393,
+     "tool": 525
+    },
+    "hh-0_0-urban-landlord": {
+     "cloth": 326181,
+     "fiber": 11956794,
+     "grain": 2322600,
+     "haul": 95855,
+     "iron": 10000,
+     "tool": 40303
+    },
+    "hh-0_0-urban-middle_peasant": {
+     "grain": 15875
+    },
+    "hh-0_0-urban-poor_peasant": {
+     "cloth": 1408055,
+     "fiber": 4152633,
+     "grain": 7155204,
+     "haul": 21749,
+     "iron": 110000,
+     "tool": 45362
+    },
+    "hh-0_0-urban-rich_peasant": {
+     "cloth": 722213,
+     "fiber": 12603395,
+     "grain": 5396856,
+     "haul": 2202,
+     "iron": 69111,
+     "tool": 50448
+    },
+    "hh-0_1-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-0_1-rural-landlord": {
+     "cloth": 80,
+     "fiber": 848572,
+     "grain": 12856949,
+     "tool": 140
+    },
+    "hh-0_1-rural-middle_peasant": {
+     "cloth": 316942,
+     "fiber": 10813293,
+     "grain": 7907761,
+     "tool": 1085
+    },
+    "hh-0_1-rural-poor_peasant": {
+     "cloth": 310448,
+     "fiber": 36023541,
+     "grain": 15654135,
+     "tool": 1260
+    },
+    "hh-0_1-rural-rich_peasant": {
+     "cloth": 83029,
+     "fiber": 4566477,
+     "grain": 3623088,
+     "tool": 455
+    },
+    "hh-0_1-urban-landlord": {
+     "fiber": 2753,
+     "tool": 10355
+    },
+    "hh-0_1-urban-middle_peasant": {},
+    "hh-0_1-urban-poor_peasant": {},
+    "hh-0_1-urban-rich_peasant": {
+     "fiber": 1718,
+     "tool": 9900
+    },
+    "hh-0_2-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh-0_2-rural-landlord": {
+     "cloth": 80,
+     "fiber": 847572,
+     "grain": 3500976,
+     "tool": 140
+    },
+    "hh-0_2-rural-middle_peasant": {
+     "cloth": 316793,
+     "fiber": 8081804,
+     "grain": 565975,
+     "tool": 1085
+    },
+    "hh-0_2-rural-poor_peasant": {
+     "cloth": 311962,
+     "fiber": 27710208,
+     "grain": 7067942,
+     "tool": 1225
+    },
+    "hh-0_2-rural-rich_peasant": {
+     "cloth": 111064,
+     "fiber": 3507562,
+     "grain": 667776,
+     "tool": 455
+    },
+    "hh-0_2-urban-landless_laborer-displaced": {
+     "grain": 1024
+    },
+    "hh-0_2-urban-landlord": {
+     "grain": 8012
+    },
+    "hh-0_2-urban-middle_peasant": {
+     "grain": 5160
+    },
+    "hh-0_2-urban-poor_peasant": {
+     "grain": 7963
+    },
+    "hh-0_2-urban-rich_peasant": {
+     "grain": 2730
+    },
+    "hh-1_-1-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-1_-1-rural-landlord": {
+     "cloth": 80,
+     "fiber": 848572,
+     "grain": 12862699,
+     "tool": 140
+    },
+    "hh-1_-1-rural-middle_peasant": {
+     "cloth": 317139,
+     "fiber": 10827783,
+     "grain": 7905927,
+     "tool": 1085
+    },
+    "hh-1_-1-rural-poor_peasant": {
+     "cloth": 311199,
+     "fiber": 36030053,
+     "grain": 15651672,
+     "tool": 1225
+    },
+    "hh-1_-1-rural-rich_peasant": {
+     "cloth": 82932,
+     "fiber": 4585042,
+     "grain": 3621111,
+     "tool": 455
+    },
+    "hh-1_-1-urban-landlord": {
+     "fiber": 2042,
+     "tool": 10635
+    },
+    "hh-1_-1-urban-middle_peasant": {},
+    "hh-1_-1-urban-poor_peasant": {},
+    "hh-1_-1-urban-rich_peasant": {
+     "fiber": 2196,
+     "tool": 9970
+    },
+    "hh-1_-2-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh-1_-2-rural-landlord": {
+     "cloth": 700,
+     "fiber": 847625,
+     "grain": 31303774,
+     "tool": 140
+    },
+    "hh-1_-2-rural-middle_peasant": {
+     "cloth": 317595,
+     "fiber": 10869000,
+     "grain": 27807521,
+     "tool": 1050
+    },
+    "hh-1_-2-rural-poor_peasant": {
+     "cloth": 309167,
+     "fiber": 47310506,
+     "grain": 25930614,
+     "tool": 1260
+    },
+    "hh-1_-2-rural-rich_peasant": {
+     "cloth": 79382,
+     "fiber": 4607716,
+     "grain": 17735089,
+     "tool": 455
+    },
+    "hh-1_-2-urban-landlord": {
+     "fiber": 2035,
+     "tool": 10155
+    },
+    "hh-1_-2-urban-middle_peasant": {},
+    "hh-1_-2-urban-poor_peasant": {},
+    "hh-1_-2-urban-rich_peasant": {
+     "fiber": 870,
+     "tool": 9617
+    },
+    "hh-1_0-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh-1_0-rural-landlord": {
+     "cloth": 80,
+     "fiber": 849564,
+     "grain": 12870256,
+     "tool": 140
+    },
+    "hh-1_0-rural-middle_peasant": {
+     "cloth": 318035,
+     "fiber": 10831130,
+     "grain": 7912719,
+     "tool": 1050
+    },
+    "hh-1_0-rural-poor_peasant": {
+     "cloth": 310690,
+     "fiber": 35989543,
+     "grain": 15642221,
+     "tool": 1260
+    },
+    "hh-1_0-rural-rich_peasant": {
+     "cloth": 83475,
+     "fiber": 4586226,
+     "grain": 3624120,
+     "tool": 455
+    },
+    "hh-1_0-urban-landlord": {
+     "fiber": 2031,
+     "tool": 9725
+    },
+    "hh-1_0-urban-middle_peasant": {},
+    "hh-1_0-urban-poor_peasant": {},
+    "hh-1_0-urban-rich_peasant": {
+     "fiber": 2031,
+     "tool": 9725
+    },
+    "hh-1_1-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh-1_1-rural-landlord": {
+     "cloth": 80,
+     "fiber": 849572,
+     "grain": 12871891,
+     "tool": 140
+    },
+    "hh-1_1-rural-middle_peasant": {
+     "cloth": 318090,
+     "fiber": 10813356,
+     "grain": 7902969,
+     "tool": 1050
+    },
+    "hh-1_1-rural-poor_peasant": {
+     "cloth": 310999,
+     "fiber": 36027393,
+     "grain": 15654187,
+     "tool": 1225
+    },
+    "hh-1_1-rural-rich_peasant": {
+     "cloth": 82837,
+     "fiber": 4586042,
+     "grain": 3621690,
+     "tool": 455
+    },
+    "hh-1_1-urban-landlord": {
+     "fiber": 1883,
+     "tool": 10495
+    },
+    "hh-1_1-urban-middle_peasant": {},
+    "hh-1_1-urban-poor_peasant": {},
+    "hh-1_1-urban-rich_peasant": {
+     "fiber": 1691,
+     "tool": 10382
+    },
+    "hh-2_-1-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-2_-1-rural-landlord": {
+     "cloth": 804,
+     "fiber": 537772,
+     "grain": 13025393,
+     "tool": 140
+    },
+    "hh-2_-1-rural-middle_peasant": {
+     "cloth": 248961,
+     "fiber": 7233729,
+     "grain": 21179415,
+     "tool": 1085
+    },
+    "hh-2_-1-rural-poor_peasant": {
+     "cloth": 242032,
+     "fiber": 34130817,
+     "grain": 21227205,
+     "tool": 1260
+    },
+    "hh-2_-1-rural-rich_peasant": {
+     "cloth": 273304,
+     "fiber": 3013898,
+     "grain": 12833692,
+     "tool": 455
+    },
+    "hh-2_-1-urban-landlord": {
+     "fiber": 2787,
+     "tool": 10733
+    },
+    "hh-2_-1-urban-middle_peasant": {},
+    "hh-2_-1-urban-poor_peasant": {},
+    "hh-2_-1-urban-rich_peasant": {
+     "fiber": 1883,
+     "tool": 10495
+    },
+    "hh-2_-2-rural-landless_laborer-displaced": {
+     "grain": 634
+    },
+    "hh-2_-2-rural-landlord": {
+     "cloth": 735,
+     "fiber": 849564,
+     "grain": 31041652,
+     "tool": 140
+    },
+    "hh-2_-2-rural-middle_peasant": {
+     "cloth": 317595,
+     "fiber": 10837574,
+     "grain": 27619895,
+     "tool": 1050
+    },
+    "hh-2_-2-rural-poor_peasant": {
+     "cloth": 310095,
+     "fiber": 47366080,
+     "grain": 26359799,
+     "tool": 1260
+    },
+    "hh-2_-2-rural-rich_peasant": {
+     "cloth": 79180,
+     "fiber": 4585498,
+     "grain": 17721747,
+     "tool": 455
+    },
+    "hh-2_-2-urban-landlord": {
+     "fiber": 2344,
+     "tool": 9550
+    },
+    "hh-2_-2-urban-middle_peasant": {},
+    "hh-2_-2-urban-poor_peasant": {},
+    "hh-2_-2-urban-rich_peasant": {
+     "fiber": 2196,
+     "tool": 10320
+    },
+    "hh-2_0-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-2_0-rural-landlord": {
+     "cloth": 804,
+     "fiber": 537764,
+     "grain": 13258628,
+     "tool": 140
+    },
+    "hh-2_0-rural-middle_peasant": {
+     "cloth": 249482,
+     "fiber": 7240323,
+     "grain": 21300742,
+     "tool": 1085
+    },
+    "hh-2_0-rural-poor_peasant": {
+     "cloth": 242955,
+     "fiber": 34142142,
+     "grain": 21035695,
+     "tool": 1225
+    },
+    "hh-2_0-rural-rich_peasant": {
+     "cloth": 274437,
+     "fiber": 3017083,
+     "grain": 12683469,
+     "tool": 455
+    },
+    "hh-2_0-urban-landlord": {
+     "fiber": 1895,
+     "tool": 9822
+    },
+    "hh-2_0-urban-middle_peasant": {},
+    "hh-2_0-urban-poor_peasant": {},
+    "hh-2_0-urban-rich_peasant": {
+     "fiber": 887,
+     "tool": 8417
+    },
+    "hh-gov-gov-central": {
+     "cloth": 98560,
+     "grain": 825040
+    },
+    "hh-gov-gov-province": {
+     "cloth": 98560,
+     "fiber": 1916,
+     "grain": 1959540458
+    },
+    "hh-gov-world-silver": {},
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--1_0-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-urban-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--1_1-rural-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-landlord-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-landlord-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh-0_1-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-landlord-0": {
+     "cloth": 70,
+     "grain": 2704
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-landlord-0": {
+     "cloth": 910,
+     "grain": 572303,
+     "tool": 140
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-rich_peasant-0": {
+     "cloth": 35,
+     "grain": 49
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-1-rural-rich_peasant-0": {
+     "cloth": 35,
+     "grain": 49
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-landlord-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-rich_peasant-0": {
+     "cloth": 105,
+     "grain": 74
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-rural-rich_peasant-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-urban-rich_peasant-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-landlord-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-rich_peasant-0": {
+     "cloth": 35,
+     "grain": 49
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-landlord-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-rich_peasant-0": {
+     "cloth": 105,
+     "grain": 74
+    },
+    "hh-mig-0_1-handicraft_workshop-hh-1_1-rural-rich_peasant-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-landlord-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-rich_peasant-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-landlord-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-rich_peasant-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-1_0-rural-rich_peasant-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-landlord-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-rich_peasant-0": {},
+    "hh-unit:gov-central": {
+     "cloth": 4,
+     "grain": 114957
+    },
+    "hh-unit:gov-province": {
+     "cloth": 4,
+     "grain": 12966
+    }
+   },
+   "commodities": {
+    "cloth": 15838080,
+    "fiber": 1042998120,
+    "grain": 3278080223,
+    "iron": 200000,
+    "tool": 554697
+   },
+   "md5ByHex": "1fb668d705396c59bfa4c709295a6afe",
+   "md5ByHousehold": "b615f9cc3dd616fb5d36af5d44d89625",
+   "nAccounts": 215
+  },
+  "money": {
+   "byHousehold": {
+    "hh--1_-1-rural-landless_laborer-displaced": {},
+    "hh--1_-1-rural-landlord": {},
+    "hh--1_-1-rural-middle_peasant": {
+     "silver": 745
+    },
+    "hh--1_-1-rural-poor_peasant": {},
+    "hh--1_-1-rural-rich_peasant": {
+     "silver": 224
+    },
+    "hh--1_-1-urban-landlord": {
+     "silver": 37
+    },
+    "hh--1_-1-urban-middle_peasant": {},
+    "hh--1_-1-urban-poor_peasant": {},
+    "hh--1_-1-urban-rich_peasant": {
+     "silver": 39
+    },
+    "hh--1_0-rural-landless_laborer-displaced": {},
+    "hh--1_0-rural-landlord": {},
+    "hh--1_0-rural-middle_peasant": {
+     "silver": 307
+    },
+    "hh--1_0-rural-poor_peasant": {
+     "silver": 391
+    },
+    "hh--1_0-rural-rich_peasant": {
+     "silver": 85
+    },
+    "hh--1_0-urban-landlord": {
+     "silver": 22
+    },
+    "hh--1_0-urban-middle_peasant": {},
+    "hh--1_0-urban-poor_peasant": {},
+    "hh--1_0-urban-rich_peasant": {
+     "silver": 16
+    },
+    "hh--1_1-rural-landless_laborer-displaced": {},
+    "hh--1_1-rural-landlord": {},
+    "hh--1_1-rural-middle_peasant": {
+     "silver": 42
+    },
+    "hh--1_1-rural-poor_peasant": {},
+    "hh--1_1-rural-rich_peasant": {
+     "silver": 71
+    },
+    "hh--1_1-urban-landlord": {
+     "silver": 26
+    },
+    "hh--1_1-urban-middle_peasant": {},
+    "hh--1_1-urban-poor_peasant": {},
+    "hh--1_1-urban-rich_peasant": {
+     "silver": 30
+    },
+    "hh--1_2-rural-landless_laborer-displaced": {},
+    "hh--1_2-rural-landlord": {},
+    "hh--1_2-rural-middle_peasant": {
+     "silver": 328
+    },
+    "hh--1_2-rural-poor_peasant": {},
+    "hh--1_2-rural-rich_peasant": {},
+    "hh--1_2-urban-landlord": {
+     "silver": 19
+    },
+    "hh--1_2-urban-middle_peasant": {},
+    "hh--1_2-urban-poor_peasant": {},
+    "hh--1_2-urban-rich_peasant": {
+     "silver": 17
+    },
+    "hh--2_0-rural-landless_laborer-displaced": {},
+    "hh--2_0-rural-landlord": {
+     "silver": 21
+    },
+    "hh--2_0-rural-middle_peasant": {
+     "silver": 186
+    },
+    "hh--2_0-rural-poor_peasant": {},
+    "hh--2_0-rural-rich_peasant": {},
+    "hh--2_0-urban-landlord": {
+     "silver": 27
+    },
+    "hh--2_0-urban-middle_peasant": {},
+    "hh--2_0-urban-poor_peasant": {},
+    "hh--2_0-urban-rich_peasant": {
+     "silver": 18
+    },
+    "hh--2_1-rural-landless_laborer-displaced": {},
+    "hh--2_1-rural-landlord": {},
+    "hh--2_1-rural-middle_peasant": {
+     "silver": 158
+    },
+    "hh--2_1-rural-poor_peasant": {},
+    "hh--2_1-rural-rich_peasant": {},
+    "hh--2_1-urban-landlord": {
+     "silver": 20
+    },
+    "hh--2_1-urban-middle_peasant": {},
+    "hh--2_1-urban-poor_peasant": {},
+    "hh--2_1-urban-rich_peasant": {
+     "silver": 23
+    },
+    "hh--2_2-rural-landless_laborer-displaced": {},
+    "hh--2_2-rural-landlord": {},
+    "hh--2_2-rural-middle_peasant": {
+     "silver": 45
+    },
+    "hh--2_2-rural-poor_peasant": {},
+    "hh--2_2-rural-rich_peasant": {},
+    "hh--2_2-urban-landlord": {
+     "silver": 17
+    },
+    "hh--2_2-urban-middle_peasant": {},
+    "hh--2_2-urban-poor_peasant": {},
+    "hh--2_2-urban-rich_peasant": {
+     "silver": 15
+    },
+    "hh-0_-1-rural-landless_laborer-displaced": {},
+    "hh-0_-1-rural-landlord": {},
+    "hh-0_-1-rural-middle_peasant": {
+     "silver": 45
+    },
+    "hh-0_-1-rural-poor_peasant": {},
+    "hh-0_-1-rural-rich_peasant": {},
+    "hh-0_-1-urban-landlord": {
+     "silver": 27
+    },
+    "hh-0_-1-urban-middle_peasant": {},
+    "hh-0_-1-urban-poor_peasant": {},
+    "hh-0_-1-urban-rich_peasant": {
+     "silver": 18
+    },
+    "hh-0_-2-rural-landless_laborer-displaced": {},
+    "hh-0_-2-rural-landlord": {},
+    "hh-0_-2-rural-middle_peasant": {
+     "silver": 39
+    },
+    "hh-0_-2-rural-poor_peasant": {},
+    "hh-0_-2-rural-rich_peasant": {},
+    "hh-0_-2-urban-landlord": {
+     "silver": 20
+    },
+    "hh-0_-2-urban-middle_peasant": {},
+    "hh-0_-2-urban-poor_peasant": {},
+    "hh-0_-2-urban-rich_peasant": {
+     "silver": 19
+    },
+    "hh-0_0-rural-landless_laborer-displaced": {
+     "silver": 117
+    },
+    "hh-0_0-rural-landlord": {},
+    "hh-0_0-rural-middle_peasant": {
+     "silver": 265
+    },
+    "hh-0_0-rural-poor_peasant": {
+     "silver": 139
+    },
+    "hh-0_0-rural-rich_peasant": {
+     "silver": 40
+    },
+    "hh-0_0-urban-landless_laborer-displaced": {
+     "silver": 619
+    },
+    "hh-0_0-urban-landlord": {
+     "silver": 1633
+    },
+    "hh-0_0-urban-middle_peasant": {},
+    "hh-0_0-urban-poor_peasant": {
+     "silver": 3511
+    },
+    "hh-0_0-urban-rich_peasant": {
+     "silver": 1571
+    },
+    "hh-0_1-rural-landless_laborer-displaced": {},
+    "hh-0_1-rural-landlord": {},
+    "hh-0_1-rural-middle_peasant": {},
+    "hh-0_1-rural-poor_peasant": {},
+    "hh-0_1-rural-rich_peasant": {},
+    "hh-0_1-urban-landlord": {
+     "silver": 19
+    },
+    "hh-0_1-urban-middle_peasant": {},
+    "hh-0_1-urban-poor_peasant": {},
+    "hh-0_1-urban-rich_peasant": {
+     "silver": 26
+    },
+    "hh-0_2-rural-landless_laborer-displaced": {},
+    "hh-0_2-rural-landlord": {
+     "silver": 4
+    },
+    "hh-0_2-rural-middle_peasant": {
+     "silver": 12
+    },
+    "hh-0_2-rural-poor_peasant": {},
+    "hh-0_2-rural-rich_peasant": {},
+    "hh-0_2-urban-landless_laborer-displaced": {},
+    "hh-0_2-urban-landlord": {},
+    "hh-0_2-urban-middle_peasant": {},
+    "hh-0_2-urban-poor_peasant": {},
+    "hh-0_2-urban-rich_peasant": {},
+    "hh-1_-1-rural-landless_laborer-displaced": {},
+    "hh-1_-1-rural-landlord": {},
+    "hh-1_-1-rural-middle_peasant": {},
+    "hh-1_-1-rural-poor_peasant": {},
+    "hh-1_-1-rural-rich_peasant": {},
+    "hh-1_-1-urban-landlord": {
+     "silver": 16
+    },
+    "hh-1_-1-urban-middle_peasant": {},
+    "hh-1_-1-urban-poor_peasant": {},
+    "hh-1_-1-urban-rich_peasant": {
+     "silver": 24
+    },
+    "hh-1_-2-rural-landless_laborer-displaced": {},
+    "hh-1_-2-rural-landlord": {},
+    "hh-1_-2-rural-middle_peasant": {},
+    "hh-1_-2-rural-poor_peasant": {},
+    "hh-1_-2-rural-rich_peasant": {},
+    "hh-1_-2-urban-landlord": {
+     "silver": 22
+    },
+    "hh-1_-2-urban-middle_peasant": {},
+    "hh-1_-2-urban-poor_peasant": {},
+    "hh-1_-2-urban-rich_peasant": {
+     "silver": 30
+    },
+    "hh-1_0-rural-landless_laborer-displaced": {},
+    "hh-1_0-rural-landlord": {},
+    "hh-1_0-rural-middle_peasant": {},
+    "hh-1_0-rural-poor_peasant": {},
+    "hh-1_0-rural-rich_peasant": {},
+    "hh-1_0-urban-landlord": {
+     "silver": 28
+    },
+    "hh-1_0-urban-middle_peasant": {},
+    "hh-1_0-urban-poor_peasant": {},
+    "hh-1_0-urban-rich_peasant": {
+     "silver": 28
+    },
+    "hh-1_1-rural-landless_laborer-displaced": {},
+    "hh-1_1-rural-landlord": {},
+    "hh-1_1-rural-middle_peasant": {},
+    "hh-1_1-rural-poor_peasant": {},
+    "hh-1_1-rural-rich_peasant": {},
+    "hh-1_1-urban-landlord": {
+     "silver": 18
+    },
+    "hh-1_1-urban-middle_peasant": {},
+    "hh-1_1-urban-poor_peasant": {},
+    "hh-1_1-urban-rich_peasant": {
+     "silver": 19
+    },
+    "hh-2_-1-rural-landless_laborer-displaced": {},
+    "hh-2_-1-rural-landlord": {},
+    "hh-2_-1-rural-middle_peasant": {},
+    "hh-2_-1-rural-poor_peasant": {},
+    "hh-2_-1-rural-rich_peasant": {},
+    "hh-2_-1-urban-landlord": {
+     "silver": 14
+    },
+    "hh-2_-1-urban-middle_peasant": {},
+    "hh-2_-1-urban-poor_peasant": {},
+    "hh-2_-1-urban-rich_peasant": {
+     "silver": 18
+    },
+    "hh-2_-2-rural-landless_laborer-displaced": {},
+    "hh-2_-2-rural-landlord": {},
+    "hh-2_-2-rural-middle_peasant": {},
+    "hh-2_-2-rural-poor_peasant": {},
+    "hh-2_-2-rural-rich_peasant": {},
+    "hh-2_-2-urban-landlord": {
+     "silver": 30
+    },
+    "hh-2_-2-urban-middle_peasant": {},
+    "hh-2_-2-urban-poor_peasant": {},
+    "hh-2_-2-urban-rich_peasant": {
+     "silver": 20
+    },
+    "hh-2_0-rural-landless_laborer-displaced": {},
+    "hh-2_0-rural-landlord": {},
+    "hh-2_0-rural-middle_peasant": {},
+    "hh-2_0-rural-poor_peasant": {},
+    "hh-2_0-rural-rich_peasant": {},
+    "hh-2_0-urban-landlord": {
+     "silver": 27
+    },
+    "hh-2_0-urban-middle_peasant": {},
+    "hh-2_0-urban-poor_peasant": {},
+    "hh-2_0-urban-rich_peasant": {
+     "silver": 39
+    },
+    "hh-gov-gov-central": {
+     "copper": 100000,
+     "silver": 88480
+    },
+    "hh-gov-gov-province": {
+     "silver": 154692
+    },
+    "hh-gov-world-silver": {
+     "silver": 5702
+    },
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": {
+     "silver": 8
+    },
+    "hh-mig--1_0-handicraft_workshop-hh--1_0-rural-rich_peasant-0": {
+     "silver": 3
+    },
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-landlord-0": {
+     "silver": 2
+    },
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-rich_peasant-0": {
+     "silver": 2
+    },
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-urban-rich_peasant-0": {
+     "silver": 12
+    },
+    "hh-mig--1_1-handicraft_workshop-hh--1_1-rural-rich_peasant-0": {
+     "silver": 3
+    },
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-landlord-0": {
+     "silver": 69
+    },
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-landlord-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh-0_1-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-landlord-0": {
+     "silver": 26
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-landlord-0": {
+     "silver": 15
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-1-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-landlord-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-urban-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-landlord-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-landlord-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-rich_peasant-0": {},
+    "hh-mig-0_1-handicraft_workshop-hh-1_1-rural-rich_peasant-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-landlord-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-rich_peasant-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-landlord-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-rich_peasant-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-1_0-rural-rich_peasant-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-landlord-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-rich_peasant-0": {},
+    "hh-unit:gov-central": {
+     "silver": 11520
+    },
+    "hh-unit:gov-province": {
+     "silver": 1280
+    }
+   },
+   "md5ByHousehold": "99c88fc61f9cec25476d5a7cd3799a90",
+   "nHouseholdsWithMoney": 72,
+   "totals": {
+    "copper": 100000,
+    "silver": 273200
+   }
+  },
+  "population": {
+   "byHex": {
+    "-1_-1": 196,
+    "-1_0": 198,
+    "-1_1": 194,
+    "-1_2": 183,
+    "-2_0": 197,
+    "-2_1": 207,
+    "-2_2": 201,
+    "0_-1": 209,
+    "0_-2": 201,
+    "0_0": 1007,
+    "0_1": 187,
+    "0_2": 571,
+    "1_-1": 190,
+    "1_-2": 206,
+    "1_0": 187,
+    "1_1": 182,
+    "2_-1": 205,
+    "2_-2": 205,
+    "2_0": 199
+   },
+   "byHouseholdEconomy": {
+    "hh--1_-1-rural-landless_laborer-displaced": 11,
+    "hh--1_-1-rural-landlord": 6,
+    "hh--1_-1-rural-middle_peasant": 69,
+    "hh--1_-1-rural-poor_peasant": 83,
+    "hh--1_-1-rural-rich_peasant": 27,
+    "hh--1_-1-urban-landlord": 0,
+    "hh--1_-1-urban-middle_peasant": 0,
+    "hh--1_-1-urban-poor_peasant": 0,
+    "hh--1_-1-urban-rich_peasant": 0,
+    "hh--1_0-rural-landless_laborer-displaced": 11,
+    "hh--1_0-rural-landlord": 0,
+    "hh--1_0-rural-middle_peasant": 72,
+    "hh--1_0-rural-poor_peasant": 83,
+    "hh--1_0-rural-rich_peasant": 22,
+    "hh--1_0-urban-landlord": 0,
+    "hh--1_0-urban-middle_peasant": 0,
+    "hh--1_0-urban-poor_peasant": 0,
+    "hh--1_0-urban-rich_peasant": 0,
+    "hh--1_1-rural-landless_laborer-displaced": 11,
+    "hh--1_1-rural-landlord": 0,
+    "hh--1_1-rural-middle_peasant": 72,
+    "hh--1_1-rural-poor_peasant": 82,
+    "hh--1_1-rural-rich_peasant": 23,
+    "hh--1_1-urban-landlord": 0,
+    "hh--1_1-urban-middle_peasant": 0,
+    "hh--1_1-urban-poor_peasant": 0,
+    "hh--1_1-urban-rich_peasant": 0,
+    "hh--1_2-rural-landless_laborer-displaced": 9,
+    "hh--1_2-rural-landlord": 0,
+    "hh--1_2-rural-middle_peasant": 72,
+    "hh--1_2-rural-poor_peasant": 81,
+    "hh--1_2-rural-rich_peasant": 21,
+    "hh--1_2-urban-landlord": 0,
+    "hh--1_2-urban-middle_peasant": 0,
+    "hh--1_2-urban-poor_peasant": 0,
+    "hh--1_2-urban-rich_peasant": 0,
+    "hh--2_0-rural-landless_laborer-displaced": 10,
+    "hh--2_0-rural-landlord": 8,
+    "hh--2_0-rural-middle_peasant": 69,
+    "hh--2_0-rural-poor_peasant": 80,
+    "hh--2_0-rural-rich_peasant": 30,
+    "hh--2_0-urban-landlord": 0,
+    "hh--2_0-urban-middle_peasant": 0,
+    "hh--2_0-urban-poor_peasant": 0,
+    "hh--2_0-urban-rich_peasant": 0,
+    "hh--2_1-rural-landless_laborer-displaced": 11,
+    "hh--2_1-rural-landlord": 9,
+    "hh--2_1-rural-middle_peasant": 73,
+    "hh--2_1-rural-poor_peasant": 84,
+    "hh--2_1-rural-rich_peasant": 30,
+    "hh--2_1-urban-landlord": 0,
+    "hh--2_1-urban-middle_peasant": 0,
+    "hh--2_1-urban-poor_peasant": 0,
+    "hh--2_1-urban-rich_peasant": 0,
+    "hh--2_2-rural-landless_laborer-displaced": 10,
+    "hh--2_2-rural-landlord": 8,
+    "hh--2_2-rural-middle_peasant": 71,
+    "hh--2_2-rural-poor_peasant": 83,
+    "hh--2_2-rural-rich_peasant": 29,
+    "hh--2_2-urban-landlord": 0,
+    "hh--2_2-urban-middle_peasant": 0,
+    "hh--2_2-urban-poor_peasant": 0,
+    "hh--2_2-urban-rich_peasant": 0,
+    "hh-0_-1-rural-landless_laborer-displaced": 10,
+    "hh-0_-1-rural-landlord": 0,
+    "hh-0_-1-rural-middle_peasant": 72,
+    "hh-0_-1-rural-poor_peasant": 84,
+    "hh-0_-1-rural-rich_peasant": 24,
+    "hh-0_-1-urban-landlord": 0,
+    "hh-0_-1-urban-middle_peasant": 0,
+    "hh-0_-1-urban-poor_peasant": 0,
+    "hh-0_-1-urban-rich_peasant": 0,
+    "hh-0_-2-rural-landless_laborer-displaced": 10,
+    "hh-0_-2-rural-landlord": 7,
+    "hh-0_-2-rural-middle_peasant": 73,
+    "hh-0_-2-rural-poor_peasant": 82,
+    "hh-0_-2-rural-rich_peasant": 29,
+    "hh-0_-2-urban-landlord": 0,
+    "hh-0_-2-urban-middle_peasant": 0,
+    "hh-0_-2-urban-poor_peasant": 0,
+    "hh-0_-2-urban-rich_peasant": 0,
+    "hh-0_0-rural-landless_laborer-displaced": 11,
+    "hh-0_0-rural-landlord": 2,
+    "hh-0_0-rural-middle_peasant": 70,
+    "hh-0_0-rural-poor_peasant": 84,
+    "hh-0_0-rural-rich_peasant": 20,
+    "hh-0_0-urban-landless_laborer-displaced": 36,
+    "hh-0_0-urban-landlord": 132,
+    "hh-0_0-urban-middle_peasant": 242,
+    "hh-0_0-urban-poor_peasant": 287,
+    "hh-0_0-urban-rich_peasant": 121,
+    "hh-0_1-rural-landless_laborer-displaced": 10,
+    "hh-0_1-rural-landlord": 0,
+    "hh-0_1-rural-middle_peasant": 72,
+    "hh-0_1-rural-poor_peasant": 81,
+    "hh-0_1-rural-rich_peasant": 21,
+    "hh-0_1-urban-landlord": 0,
+    "hh-0_1-urban-middle_peasant": 0,
+    "hh-0_1-urban-poor_peasant": 0,
+    "hh-0_1-urban-rich_peasant": 0,
+    "hh-0_2-rural-landless_laborer-displaced": 11,
+    "hh-0_2-rural-landlord": 0,
+    "hh-0_2-rural-middle_peasant": 73,
+    "hh-0_2-rural-poor_peasant": 77,
+    "hh-0_2-rural-rich_peasant": 25,
+    "hh-0_2-urban-landless_laborer-displaced": 16,
+    "hh-0_2-urban-landlord": 123,
+    "hh-0_2-urban-middle_peasant": 80,
+    "hh-0_2-urban-poor_peasant": 124,
+    "hh-0_2-urban-rich_peasant": 42,
+    "hh-1_-1-rural-landless_laborer-displaced": 10,
+    "hh-1_-1-rural-landlord": 0,
+    "hh-1_-1-rural-middle_peasant": 72,
+    "hh-1_-1-rural-poor_peasant": 82,
+    "hh-1_-1-rural-rich_peasant": 22,
+    "hh-1_-1-urban-landlord": 0,
+    "hh-1_-1-urban-middle_peasant": 0,
+    "hh-1_-1-urban-poor_peasant": 0,
+    "hh-1_-1-urban-rich_peasant": 0,
+    "hh-1_-2-rural-landless_laborer-displaced": 11,
+    "hh-1_-2-rural-landlord": 8,
+    "hh-1_-2-rural-middle_peasant": 72,
+    "hh-1_-2-rural-poor_peasant": 86,
+    "hh-1_-2-rural-rich_peasant": 29,
+    "hh-1_-2-urban-landlord": 0,
+    "hh-1_-2-urban-middle_peasant": 0,
+    "hh-1_-2-urban-poor_peasant": 0,
+    "hh-1_-2-urban-rich_peasant": 0,
+    "hh-1_0-rural-landless_laborer-displaced": 11,
+    "hh-1_0-rural-landlord": 0,
+    "hh-1_0-rural-middle_peasant": 71,
+    "hh-1_0-rural-poor_peasant": 82,
+    "hh-1_0-rural-rich_peasant": 20,
+    "hh-1_0-urban-landlord": 0,
+    "hh-1_0-urban-middle_peasant": 0,
+    "hh-1_0-urban-poor_peasant": 0,
+    "hh-1_0-urban-rich_peasant": 0,
+    "hh-1_1-rural-landless_laborer-displaced": 11,
+    "hh-1_1-rural-landlord": 0,
+    "hh-1_1-rural-middle_peasant": 70,
+    "hh-1_1-rural-poor_peasant": 80,
+    "hh-1_1-rural-rich_peasant": 21,
+    "hh-1_1-urban-landlord": 0,
+    "hh-1_1-urban-middle_peasant": 0,
+    "hh-1_1-urban-poor_peasant": 0,
+    "hh-1_1-urban-rich_peasant": 0,
+    "hh-2_-1-rural-landless_laborer-displaced": 10,
+    "hh-2_-1-rural-landlord": 9,
+    "hh-2_-1-rural-middle_peasant": 72,
+    "hh-2_-1-rural-poor_peasant": 84,
+    "hh-2_-1-rural-rich_peasant": 30,
+    "hh-2_-1-urban-landlord": 0,
+    "hh-2_-1-urban-middle_peasant": 0,
+    "hh-2_-1-urban-poor_peasant": 0,
+    "hh-2_-1-urban-rich_peasant": 0,
+    "hh-2_-2-rural-landless_laborer-displaced": 10,
+    "hh-2_-2-rural-landlord": 8,
+    "hh-2_-2-rural-middle_peasant": 72,
+    "hh-2_-2-rural-poor_peasant": 85,
+    "hh-2_-2-rural-rich_peasant": 30,
+    "hh-2_-2-urban-landlord": 0,
+    "hh-2_-2-urban-middle_peasant": 0,
+    "hh-2_-2-urban-poor_peasant": 0,
+    "hh-2_-2-urban-rich_peasant": 0,
+    "hh-2_0-rural-landless_laborer-displaced": 10,
+    "hh-2_0-rural-landlord": 9,
+    "hh-2_0-rural-middle_peasant": 71,
+    "hh-2_0-rural-poor_peasant": 82,
+    "hh-2_0-rural-rich_peasant": 27,
+    "hh-2_0-urban-landlord": 0,
+    "hh-2_0-urban-middle_peasant": 0,
+    "hh-2_0-urban-poor_peasant": 0,
+    "hh-2_0-urban-rich_peasant": 0,
+    "hh-gov-gov-central": 0,
+    "hh-gov-gov-province": 0,
+    "hh-gov-world-silver": 0,
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--1_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-urban-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_1-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-landlord-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-landlord-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh-0_1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-landlord-0": 7,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-urban-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-rich_peasant-0": 1,
+    "hh-mig-0_1-handicraft_workshop-hh-1_1-rural-rich_peasant-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-landlord-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-rich_peasant-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-landlord-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-rich_peasant-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-1_0-rural-rich_peasant-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-landlord-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-rich_peasant-0": 1,
+    "hh-unit:gov-central": 2,
+    "hh-unit:gov-province": 2
+   },
+   "byHouseholdSocial": {
+    "hh--1_-1-rural-landless_laborer-displaced": 11,
+    "hh--1_-1-rural-landlord": 6,
+    "hh--1_-1-rural-middle_peasant": 69,
+    "hh--1_-1-rural-poor_peasant": 83,
+    "hh--1_-1-rural-rich_peasant": 27,
+    "hh--1_-1-urban-landlord": 0,
+    "hh--1_-1-urban-middle_peasant": 0,
+    "hh--1_-1-urban-poor_peasant": 0,
+    "hh--1_-1-urban-rich_peasant": 0,
+    "hh--1_0-rural-landless_laborer-displaced": 11,
+    "hh--1_0-rural-landlord": 0,
+    "hh--1_0-rural-middle_peasant": 72,
+    "hh--1_0-rural-poor_peasant": 83,
+    "hh--1_0-rural-rich_peasant": 22,
+    "hh--1_0-urban-landlord": 0,
+    "hh--1_0-urban-middle_peasant": 0,
+    "hh--1_0-urban-poor_peasant": 0,
+    "hh--1_0-urban-rich_peasant": 0,
+    "hh--1_1-rural-landless_laborer-displaced": 11,
+    "hh--1_1-rural-landlord": 0,
+    "hh--1_1-rural-middle_peasant": 72,
+    "hh--1_1-rural-poor_peasant": 82,
+    "hh--1_1-rural-rich_peasant": 23,
+    "hh--1_1-urban-landlord": 0,
+    "hh--1_1-urban-middle_peasant": 0,
+    "hh--1_1-urban-poor_peasant": 0,
+    "hh--1_1-urban-rich_peasant": 0,
+    "hh--1_2-rural-landless_laborer-displaced": 9,
+    "hh--1_2-rural-landlord": 0,
+    "hh--1_2-rural-middle_peasant": 72,
+    "hh--1_2-rural-poor_peasant": 81,
+    "hh--1_2-rural-rich_peasant": 21,
+    "hh--1_2-urban-landlord": 0,
+    "hh--1_2-urban-middle_peasant": 0,
+    "hh--1_2-urban-poor_peasant": 0,
+    "hh--1_2-urban-rich_peasant": 0,
+    "hh--2_0-rural-landless_laborer-displaced": 10,
+    "hh--2_0-rural-landlord": 8,
+    "hh--2_0-rural-middle_peasant": 69,
+    "hh--2_0-rural-poor_peasant": 80,
+    "hh--2_0-rural-rich_peasant": 30,
+    "hh--2_0-urban-landlord": 0,
+    "hh--2_0-urban-middle_peasant": 0,
+    "hh--2_0-urban-poor_peasant": 0,
+    "hh--2_0-urban-rich_peasant": 0,
+    "hh--2_1-rural-landless_laborer-displaced": 11,
+    "hh--2_1-rural-landlord": 9,
+    "hh--2_1-rural-middle_peasant": 73,
+    "hh--2_1-rural-poor_peasant": 84,
+    "hh--2_1-rural-rich_peasant": 30,
+    "hh--2_1-urban-landlord": 0,
+    "hh--2_1-urban-middle_peasant": 0,
+    "hh--2_1-urban-poor_peasant": 0,
+    "hh--2_1-urban-rich_peasant": 0,
+    "hh--2_2-rural-landless_laborer-displaced": 10,
+    "hh--2_2-rural-landlord": 8,
+    "hh--2_2-rural-middle_peasant": 71,
+    "hh--2_2-rural-poor_peasant": 83,
+    "hh--2_2-rural-rich_peasant": 29,
+    "hh--2_2-urban-landlord": 0,
+    "hh--2_2-urban-middle_peasant": 0,
+    "hh--2_2-urban-poor_peasant": 0,
+    "hh--2_2-urban-rich_peasant": 0,
+    "hh-0_-1-rural-landless_laborer-displaced": 10,
+    "hh-0_-1-rural-landlord": 0,
+    "hh-0_-1-rural-middle_peasant": 72,
+    "hh-0_-1-rural-poor_peasant": 84,
+    "hh-0_-1-rural-rich_peasant": 24,
+    "hh-0_-1-urban-landlord": 0,
+    "hh-0_-1-urban-middle_peasant": 0,
+    "hh-0_-1-urban-poor_peasant": 0,
+    "hh-0_-1-urban-rich_peasant": 0,
+    "hh-0_-2-rural-landless_laborer-displaced": 10,
+    "hh-0_-2-rural-landlord": 7,
+    "hh-0_-2-rural-middle_peasant": 73,
+    "hh-0_-2-rural-poor_peasant": 82,
+    "hh-0_-2-rural-rich_peasant": 29,
+    "hh-0_-2-urban-landlord": 0,
+    "hh-0_-2-urban-middle_peasant": 0,
+    "hh-0_-2-urban-poor_peasant": 0,
+    "hh-0_-2-urban-rich_peasant": 0,
+    "hh-0_0-rural-landless_laborer-displaced": 11,
+    "hh-0_0-rural-landlord": 2,
+    "hh-0_0-rural-middle_peasant": 70,
+    "hh-0_0-rural-poor_peasant": 84,
+    "hh-0_0-rural-rich_peasant": 20,
+    "hh-0_0-urban-landless_laborer-displaced": 36,
+    "hh-0_0-urban-landlord": 132,
+    "hh-0_0-urban-middle_peasant": 242,
+    "hh-0_0-urban-poor_peasant": 287,
+    "hh-0_0-urban-rich_peasant": 121,
+    "hh-0_1-rural-landless_laborer-displaced": 10,
+    "hh-0_1-rural-landlord": 0,
+    "hh-0_1-rural-middle_peasant": 72,
+    "hh-0_1-rural-poor_peasant": 81,
+    "hh-0_1-rural-rich_peasant": 21,
+    "hh-0_1-urban-landlord": 0,
+    "hh-0_1-urban-middle_peasant": 0,
+    "hh-0_1-urban-poor_peasant": 0,
+    "hh-0_1-urban-rich_peasant": 0,
+    "hh-0_2-rural-landless_laborer-displaced": 11,
+    "hh-0_2-rural-landlord": 0,
+    "hh-0_2-rural-middle_peasant": 73,
+    "hh-0_2-rural-poor_peasant": 77,
+    "hh-0_2-rural-rich_peasant": 25,
+    "hh-0_2-urban-landless_laborer-displaced": 16,
+    "hh-0_2-urban-landlord": 123,
+    "hh-0_2-urban-middle_peasant": 80,
+    "hh-0_2-urban-poor_peasant": 124,
+    "hh-0_2-urban-rich_peasant": 42,
+    "hh-1_-1-rural-landless_laborer-displaced": 10,
+    "hh-1_-1-rural-landlord": 0,
+    "hh-1_-1-rural-middle_peasant": 72,
+    "hh-1_-1-rural-poor_peasant": 82,
+    "hh-1_-1-rural-rich_peasant": 22,
+    "hh-1_-1-urban-landlord": 0,
+    "hh-1_-1-urban-middle_peasant": 0,
+    "hh-1_-1-urban-poor_peasant": 0,
+    "hh-1_-1-urban-rich_peasant": 0,
+    "hh-1_-2-rural-landless_laborer-displaced": 11,
+    "hh-1_-2-rural-landlord": 8,
+    "hh-1_-2-rural-middle_peasant": 72,
+    "hh-1_-2-rural-poor_peasant": 86,
+    "hh-1_-2-rural-rich_peasant": 29,
+    "hh-1_-2-urban-landlord": 0,
+    "hh-1_-2-urban-middle_peasant": 0,
+    "hh-1_-2-urban-poor_peasant": 0,
+    "hh-1_-2-urban-rich_peasant": 0,
+    "hh-1_0-rural-landless_laborer-displaced": 11,
+    "hh-1_0-rural-landlord": 0,
+    "hh-1_0-rural-middle_peasant": 71,
+    "hh-1_0-rural-poor_peasant": 82,
+    "hh-1_0-rural-rich_peasant": 20,
+    "hh-1_0-urban-landlord": 0,
+    "hh-1_0-urban-middle_peasant": 0,
+    "hh-1_0-urban-poor_peasant": 0,
+    "hh-1_0-urban-rich_peasant": 0,
+    "hh-1_1-rural-landless_laborer-displaced": 11,
+    "hh-1_1-rural-landlord": 0,
+    "hh-1_1-rural-middle_peasant": 70,
+    "hh-1_1-rural-poor_peasant": 80,
+    "hh-1_1-rural-rich_peasant": 21,
+    "hh-1_1-urban-landlord": 0,
+    "hh-1_1-urban-middle_peasant": 0,
+    "hh-1_1-urban-poor_peasant": 0,
+    "hh-1_1-urban-rich_peasant": 0,
+    "hh-2_-1-rural-landless_laborer-displaced": 10,
+    "hh-2_-1-rural-landlord": 9,
+    "hh-2_-1-rural-middle_peasant": 72,
+    "hh-2_-1-rural-poor_peasant": 84,
+    "hh-2_-1-rural-rich_peasant": 30,
+    "hh-2_-1-urban-landlord": 0,
+    "hh-2_-1-urban-middle_peasant": 0,
+    "hh-2_-1-urban-poor_peasant": 0,
+    "hh-2_-1-urban-rich_peasant": 0,
+    "hh-2_-2-rural-landless_laborer-displaced": 10,
+    "hh-2_-2-rural-landlord": 8,
+    "hh-2_-2-rural-middle_peasant": 72,
+    "hh-2_-2-rural-poor_peasant": 85,
+    "hh-2_-2-rural-rich_peasant": 30,
+    "hh-2_-2-urban-landlord": 0,
+    "hh-2_-2-urban-middle_peasant": 0,
+    "hh-2_-2-urban-poor_peasant": 0,
+    "hh-2_-2-urban-rich_peasant": 0,
+    "hh-2_0-rural-landless_laborer-displaced": 10,
+    "hh-2_0-rural-landlord": 9,
+    "hh-2_0-rural-middle_peasant": 71,
+    "hh-2_0-rural-poor_peasant": 82,
+    "hh-2_0-rural-rich_peasant": 27,
+    "hh-2_0-urban-landlord": 0,
+    "hh-2_0-urban-middle_peasant": 0,
+    "hh-2_0-urban-poor_peasant": 0,
+    "hh-2_0-urban-rich_peasant": 0,
+    "hh-gov-gov-central": 0,
+    "hh-gov-gov-province": 0,
+    "hh-gov-world-silver": 0,
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--1_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-urban-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_1-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-landlord-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-landlord-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh-0_1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-landlord-0": 7,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-urban-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-rich_peasant-0": 1,
+    "hh-mig-0_1-handicraft_workshop-hh-1_1-rural-rich_peasant-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-landlord-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-rich_peasant-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-landlord-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-rich_peasant-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-1_0-rural-rich_peasant-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-landlord-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-rich_peasant-0": 1,
+    "hh-unit:gov-central": 2,
+    "hh-unit:gov-province": 2
+   },
+   "md5ByHex": "267a5bcce7c8c63969ec6b422d20b92d",
+   "md5ByHouseholdEconomy": "6d0cf3ee7471771e1fe6ef8dfd2a43d7",
+   "md5ByHouseholdSocial": "6d0cf3ee7471771e1fe6ef8dfd2a43d7",
+   "nHouseholdsEconomy": 215,
+   "nHouseholdsSocial": 215,
+   "totalEconomyRows": 4925,
+   "totalSocialMembers": 4925
+  },
+  "prices": {
+   "distinctNumeraire": [
+    "silver"
+   ],
+   "distinctPriceRows": [
+    "{\"cloth\":5,\"fiber\":1,\"grain\":1,\"haul\":4,\"iron\":9,\"tool\":9}"
+   ],
+   "md5": "de3b1edbf7812e86bf52c6646a21183a",
+   "nHexWithMarket": 19
+  },
+  "wholeState": {
+   "bytes": 5120813,
+   "md5Modules": "458574ca19e2a954d59339615146f291",
+   "perNamespace": {
+    "actor": "3641289eac0de9c8db2e9f77ced51305",
+    "army": "f3071f2a16269bef763f3668618bdb75",
+    "economy": "eb190c78b8874fcabdd17c445eb7617d",
+    "gov": "549a004125bd824f0091a0ef009b5d62",
+    "map": "7f42aa8fbdb69b20901c9a8a57af6602",
+    "sd": "182b681a89344209f40d1688f54b23de",
+    "social": "d3ea3d9c8248218af46719b594f8e807",
+    "unit": "a399ccef1d9cad3b26f4008c73b74f6f"
+   }
+  }
+ },
+ "pre": {
+  "classes": {
+   "md5Standings": "74cbc86d57cb59048b14d2f4f96d1016",
+   "md5Views": "705f4e3b851e3e8979683ef8e90a0a0f",
+   "nStandings": 210,
+   "stratumCounts": {
+    "artisan": 2,
+    "landless_laborer": 23,
+    "landlord": 52,
+    "middle_peasant": 38,
+    "official": 1,
+    "poor_peasant": 38,
+    "rich_peasant": 61
+   }
+  },
+  "debt": {
+   "byStatus": {
+    "DEFAULTED": 152,
+    "NORMAL": 136,
+    "SETTLED": 713
+   },
+   "count": 1001,
+   "md5": "8812bd5c734eb1df75f9ed01b7741323",
+   "md5DebtRefs": "0d869112d0594839db04e2a7b736decb",
+   "nDebtRefs": 1001,
+   "sumPrincipalByUnit": {
+    "{\"@class\":\"commodity\",\"commodity\":{\"value\":\"fiber\"}}": 0,
+    "{\"@class\":\"commodity\",\"commodity\":{\"value\":\"grain\"}}": 105558159,
+    "{\"@class\":\"commodity\",\"commodity\":{\"value\":\"tool\"}}": 0,
+    "{\"@class\":\"money\",\"currency\":{\"value\":\"silver\"}}": 24488
+   }
+  },
+  "flows": {
+   "md5": "5806f3772b46c068a378a4f6d084f3da",
+   "nHouseholds": 191,
+   "worldTotals": {
+    "consumed": {
+     "cloth": 1380736,
+     "fiber": 6300000,
+     "grain": 423177558,
+     "tool": 50000
+    },
+    "income": {
+     "cloth": 190657,
+     "fiber": 101704500,
+     "grain": 432444884
+    },
+    "interestDue": 4741872,
+    "netSurplus": -1123570048,
+    "newBorrowing": 226127,
+    "repaid": 216778969,
+    "taxPaid": 1128095502,
+    "unmetNeed": {
+     "cloth": 16346
+    }
+   }
+  },
+  "goods": {
+   "allCommodityTotals": {
+    "cloth": 15838080,
+    "fiber": 1042998120,
+    "grain": 3278080223,
+    "haul": 192805,
+    "iron": 200000,
+    "tool": 554697
+   },
+   "byHex": {
+    "-1_-1": {
+     "cloth": 286153,
+     "fiber": 63762249,
+     "grain": 100693621,
+     "iron": 10889,
+     "tool": 31217
+    },
+    "-1_0": {
+     "cloth": 429174,
+     "fiber": 52335162,
+     "grain": 39527856,
+     "tool": 23965
+    },
+    "-1_1": {
+     "cloth": 710521,
+     "fiber": 52295373,
+     "grain": 39954366,
+     "tool": 22460
+    },
+    "-1_2": {
+     "cloth": 818807,
+     "fiber": 63542105,
+     "grain": 101697772,
+     "haul": 72999,
+     "tool": 32611
+    },
+    "-2_0": {
+     "cloth": 769797,
+     "fiber": 45009593,
+     "grain": 68170194,
+     "tool": 23230
+    },
+    "-2_1": {
+     "cloth": 707321,
+     "fiber": 63644414,
+     "grain": 102638262,
+     "tool": 23545
+    },
+    "-2_2": {
+     "cloth": 708856,
+     "fiber": 63503502,
+     "grain": 102759095,
+     "tool": 24245
+    },
+    "0_-1": {
+     "cloth": 710651,
+     "fiber": 52227026,
+     "grain": 40490997,
+     "tool": 23475
+    },
+    "0_-2": {
+     "cloth": 765494,
+     "fiber": 44909539,
+     "grain": 68265330,
+     "tool": 23790
+    },
+    "0_0": {
+     "cloth": 3299480,
+     "fiber": 75385603,
+     "grain": 140247925,
+     "haul": 119806,
+     "iron": 189111,
+     "tool": 139683
+    },
+    "0_1": {
+     "cloth": 809063,
+     "fiber": 52258270,
+     "grain": 1999596016,
+     "tool": 23195
+    },
+    "0_2": {
+     "cloth": 739899,
+     "fiber": 40147146,
+     "grain": 11828265,
+     "tool": 2905
+    },
+    "1_-1": {
+     "cloth": 711350,
+     "fiber": 52295688,
+     "grain": 40042068,
+     "tool": 23510
+    },
+    "1_-2": {
+     "cloth": 706844,
+     "fiber": 63637752,
+     "grain": 102777705,
+     "tool": 22677
+    },
+    "1_0": {
+     "cloth": 712280,
+     "fiber": 52260525,
+     "grain": 40050023,
+     "tool": 22355
+    },
+    "1_1": {
+     "cloth": 712006,
+     "fiber": 52279937,
+     "grain": 40051444,
+     "tool": 23747
+    },
+    "2_-1": {
+     "cloth": 765101,
+     "fiber": 44920886,
+     "grain": 68266364,
+     "tool": 24168
+    },
+    "2_-2": {
+     "cloth": 707605,
+     "fiber": 63643256,
+     "grain": 102743727,
+     "tool": 22775
+    },
+    "2_0": {
+     "cloth": 767678,
+     "fiber": 44940094,
+     "grain": 68279193,
+     "tool": 21144
+    }
+   },
+   "byHousehold": {
+    "hh--1_-1-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh--1_-1-rural-landlord": {
+     "cloth": 14447,
+     "fiber": 862576,
+     "grain": 30613472,
+     "iron": 10889,
+     "tool": 8687
+    },
+    "hh--1_-1-rural-middle_peasant": {
+     "cloth": 132366,
+     "fiber": 10834525,
+     "grain": 26644612,
+     "tool": 1050
+    },
+    "hh--1_-1-rural-poor_peasant": {
+     "cloth": 136996,
+     "fiber": 47464379,
+     "grain": 26289848,
+     "tool": 1260
+    },
+    "hh--1_-1-rural-rich_peasant": {
+     "cloth": 2344,
+     "fiber": 4599597,
+     "grain": 17144982,
+     "tool": 455
+    },
+    "hh--1_-1-urban-landlord": {
+     "tool": 10190
+    },
+    "hh--1_-1-urban-middle_peasant": {},
+    "hh--1_-1-urban-poor_peasant": {},
+    "hh--1_-1-urban-rich_peasant": {
+     "fiber": 1172,
+     "tool": 9575
+    },
+    "hh--1_0-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh--1_0-rural-landlord": {
+     "cloth": 80,
+     "fiber": 861706,
+     "grain": 12438026,
+     "tool": 140
+    },
+    "hh--1_0-rural-middle_peasant": {
+     "cloth": 136169,
+     "fiber": 10817514,
+     "grain": 7885410,
+     "tool": 1085
+    },
+    "hh--1_0-rural-poor_peasant": {
+     "cloth": 210163,
+     "fiber": 36063697,
+     "grain": 15650686,
+     "tool": 1260
+    },
+    "hh--1_0-rural-rich_peasant": {
+     "cloth": 82762,
+     "fiber": 4588776,
+     "grain": 3553027,
+     "tool": 455
+    },
+    "hh--1_0-urban-landlord": {
+     "fiber": 1419,
+     "tool": 10390
+    },
+    "hh--1_0-urban-middle_peasant": {},
+    "hh--1_0-urban-poor_peasant": {},
+    "hh--1_0-urban-rich_peasant": {
+     "fiber": 2050,
+     "tool": 10635
+    },
+    "hh--1_1-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh--1_1-rural-landlord": {
+     "cloth": 80,
+     "fiber": 861706,
+     "grain": 12854700,
+     "tool": 140
+    },
+    "hh--1_1-rural-middle_peasant": {
+     "cloth": 317573,
+     "fiber": 10832281,
+     "grain": 7889625,
+     "tool": 1050
+    },
+    "hh--1_1-rural-poor_peasant": {
+     "cloth": 310676,
+     "fiber": 36030898,
+     "grain": 15656223,
+     "tool": 1260
+    },
+    "hh--1_1-rural-rich_peasant": {
+     "cloth": 82192,
+     "fiber": 4567809,
+     "grain": 3553111,
+     "tool": 455
+    },
+    "hh--1_1-urban-landlord": {
+     "fiber": 1254,
+     "tool": 9935
+    },
+    "hh--1_1-urban-middle_peasant": {},
+    "hh--1_1-urban-poor_peasant": {},
+    "hh--1_1-urban-rich_peasant": {
+     "fiber": 1425,
+     "tool": 9620
+    },
+    "hh--1_2-rural-landless_laborer-displaced": {
+     "grain": 585,
+     "tool": 105
+    },
+    "hh--1_2-rural-landlord": {
+     "cloth": 106501,
+     "fiber": 859706,
+     "grain": 31946747,
+     "haul": 72999,
+     "tool": 8576
+    },
+    "hh--1_2-rural-middle_peasant": {
+     "cloth": 317188,
+     "fiber": 10821491,
+     "grain": 27234309,
+     "tool": 1085
+    },
+    "hh--1_2-rural-poor_peasant": {
+     "cloth": 312433,
+     "fiber": 47282700,
+     "grain": 25893038,
+     "tool": 1225
+    },
+    "hh--1_2-rural-rich_peasant": {
+     "cloth": 82685,
+     "fiber": 4572210,
+     "grain": 16623093,
+     "tool": 455
+    },
+    "hh--1_2-urban-landlord": {
+     "fiber": 3072,
+     "tool": 10495
+    },
+    "hh--1_2-urban-middle_peasant": {},
+    "hh--1_2-urban-poor_peasant": {},
+    "hh--1_2-urban-rich_peasant": {
+     "fiber": 2926,
+     "tool": 10670
+    },
+    "hh--2_0-rural-landless_laborer-displaced": {
+     "grain": 626
+    },
+    "hh--2_0-rural-landlord": {
+     "cloth": 735,
+     "fiber": 536677,
+     "grain": 14329656,
+     "tool": 140
+    },
+    "hh--2_0-rural-middle_peasant": {
+     "cloth": 251384,
+     "fiber": 7288853,
+     "grain": 20634031,
+     "tool": 1015
+    },
+    "hh--2_0-rural-poor_peasant": {
+     "cloth": 244487,
+     "fiber": 34178963,
+     "grain": 20376569,
+     "tool": 1190
+    },
+    "hh--2_0-rural-rich_peasant": {
+     "cloth": 273191,
+     "fiber": 3000289,
+     "grain": 12829312,
+     "tool": 455
+    },
+    "hh--2_0-urban-landlord": {
+     "fiber": 3952,
+     "tool": 9760
+    },
+    "hh--2_0-urban-middle_peasant": {},
+    "hh--2_0-urban-poor_peasant": {},
+    "hh--2_0-urban-rich_peasant": {
+     "fiber": 859,
+     "tool": 10670
+    },
+    "hh--2_1-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh--2_1-rural-landlord": {
+     "cloth": 805,
+     "fiber": 848714,
+     "grain": 31225603,
+     "tool": 140
+    },
+    "hh--2_1-rural-middle_peasant": {
+     "cloth": 317418,
+     "fiber": 10819891,
+     "grain": 27540477,
+     "tool": 1085
+    },
+    "hh--2_1-rural-poor_peasant": {
+     "cloth": 309522,
+     "fiber": 47383358,
+     "grain": 26353383,
+     "tool": 1260
+    },
+    "hh--2_1-rural-rich_peasant": {
+     "cloth": 79576,
+     "fiber": 4587183,
+     "grain": 17518092,
+     "tool": 455
+    },
+    "hh--2_1-urban-landlord": {
+     "fiber": 2196,
+     "tool": 10320
+    },
+    "hh--2_1-urban-middle_peasant": {},
+    "hh--2_1-urban-poor_peasant": {},
+    "hh--2_1-urban-rich_peasant": {
+     "fiber": 3072,
+     "tool": 10285
+    },
+    "hh--2_2-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh--2_2-rural-landlord": {
+     "cloth": 735,
+     "fiber": 848706,
+     "grain": 31662253,
+     "tool": 140
+    },
+    "hh--2_2-rural-middle_peasant": {
+     "cloth": 317286,
+     "fiber": 10824197,
+     "grain": 27532089,
+     "tool": 1085
+    },
+    "hh--2_2-rural-poor_peasant": {
+     "cloth": 311040,
+     "fiber": 47250853,
+     "grain": 26096189,
+     "tool": 1225
+    },
+    "hh--2_2-rural-rich_peasant": {
+     "cloth": 79795,
+     "fiber": 4575402,
+     "grain": 17467905,
+     "tool": 455
+    },
+    "hh--2_2-urban-landlord": {
+     "fiber": 1737,
+     "tool": 10670
+    },
+    "hh--2_2-urban-middle_peasant": {},
+    "hh--2_2-urban-poor_peasant": {},
+    "hh--2_2-urban-rich_peasant": {
+     "fiber": 2607,
+     "tool": 10670
+    },
+    "hh-0_-1-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-0_-1-rural-landlord": {
+     "cloth": 126,
+     "fiber": 848714,
+     "grain": 12832986,
+     "tool": 140
+    },
+    "hh-0_-1-rural-middle_peasant": {
+     "cloth": 317101,
+     "fiber": 10817501,
+     "grain": 7886713,
+     "tool": 1085
+    },
+    "hh-0_-1-rural-poor_peasant": {
+     "cloth": 309568,
+     "fiber": 35984594,
+     "grain": 15579856,
+     "tool": 1260
+    },
+    "hh-0_-1-rural-rich_peasant": {
+     "cloth": 82141,
+     "fiber": 4572449,
+     "grain": 3614989,
+     "tool": 455
+    },
+    "hh-0_-1-urban-landlord": {
+     "fiber": 2596,
+     "tool": 9760
+    },
+    "hh-0_-1-urban-middle_peasant": {},
+    "hh-0_-1-urban-poor_peasant": {},
+    "hh-0_-1-urban-rich_peasant": {
+     "fiber": 1172,
+     "tool": 10635
+    },
+    "hh-0_-2-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-0_-2-rural-landlord": {
+     "cloth": 630,
+     "fiber": 536906,
+     "grain": 13079575,
+     "tool": 140
+    },
+    "hh-0_-2-rural-middle_peasant": {
+     "cloth": 249101,
+     "fiber": 7235677,
+     "grain": 21349009,
+     "tool": 1085
+    },
+    "hh-0_-2-rural-poor_peasant": {
+     "cloth": 242591,
+     "fiber": 34129783,
+     "grain": 21102826,
+     "tool": 1260
+    },
+    "hh-0_-2-rural-rich_peasant": {
+     "cloth": 273172,
+     "fiber": 3002362,
+     "grain": 12733261,
+     "tool": 455
+    },
+    "hh-0_-2-urban-landlord": {
+     "fiber": 3639,
+     "tool": 10215
+    },
+    "hh-0_-2-urban-middle_peasant": {},
+    "hh-0_-2-urban-poor_peasant": {},
+    "hh-0_-2-urban-rich_peasant": {
+     "fiber": 1172,
+     "tool": 10635
+    },
+    "hh-0_0-rural-landless_laborer-displaced": {
+     "cloth": 910,
+     "grain": 25361,
+     "tool": 140
+    },
+    "hh-0_0-rural-landlord": {
+     "cloth": 245,
+     "fiber": 916911,
+     "grain": 18240833,
+     "tool": 140
+    },
+    "hh-0_0-rural-middle_peasant": {
+     "cloth": 317839,
+     "fiber": 9213890,
+     "grain": 41420004,
+     "tool": 1050
+    },
+    "hh-0_0-rural-poor_peasant": {
+     "cloth": 310339,
+     "fiber": 32635882,
+     "grain": 40061500,
+     "tool": 1260
+    },
+    "hh-0_0-rural-rich_peasant": {
+     "cloth": 112089,
+     "fiber": 3906098,
+     "grain": 24586302,
+     "tool": 455
+    },
+    "hh-0_0-urban-landless_laborer-displaced": {
+     "cloth": 3045,
+     "grain": 83393,
+     "tool": 525
+    },
+    "hh-0_0-urban-landlord": {
+     "cloth": 326181,
+     "fiber": 11956794,
+     "grain": 2322600,
+     "haul": 95855,
+     "iron": 10000,
+     "tool": 40303
+    },
+    "hh-0_0-urban-middle_peasant": {
+     "grain": 15875
+    },
+    "hh-0_0-urban-poor_peasant": {
+     "cloth": 1408055,
+     "fiber": 4152633,
+     "grain": 7155204,
+     "haul": 21749,
+     "iron": 110000,
+     "tool": 45362
+    },
+    "hh-0_0-urban-rich_peasant": {
+     "cloth": 722213,
+     "fiber": 12603395,
+     "grain": 5396856,
+     "haul": 2202,
+     "iron": 69111,
+     "tool": 50448
+    },
+    "hh-0_1-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-0_1-rural-landlord": {
+     "cloth": 80,
+     "fiber": 848572,
+     "grain": 12856949,
+     "tool": 140
+    },
+    "hh-0_1-rural-middle_peasant": {
+     "cloth": 316942,
+     "fiber": 10813293,
+     "grain": 7907761,
+     "tool": 1085
+    },
+    "hh-0_1-rural-poor_peasant": {
+     "cloth": 310448,
+     "fiber": 36023541,
+     "grain": 15654135,
+     "tool": 1260
+    },
+    "hh-0_1-rural-rich_peasant": {
+     "cloth": 83029,
+     "fiber": 4566477,
+     "grain": 3623088,
+     "tool": 455
+    },
+    "hh-0_1-urban-landlord": {
+     "fiber": 2753,
+     "tool": 10355
+    },
+    "hh-0_1-urban-middle_peasant": {},
+    "hh-0_1-urban-poor_peasant": {},
+    "hh-0_1-urban-rich_peasant": {
+     "fiber": 1718,
+     "tool": 9900
+    },
+    "hh-0_2-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh-0_2-rural-landlord": {
+     "cloth": 80,
+     "fiber": 847572,
+     "grain": 3500976,
+     "tool": 140
+    },
+    "hh-0_2-rural-middle_peasant": {
+     "cloth": 316793,
+     "fiber": 8081804,
+     "grain": 565975,
+     "tool": 1085
+    },
+    "hh-0_2-rural-poor_peasant": {
+     "cloth": 311962,
+     "fiber": 27710208,
+     "grain": 7067942,
+     "tool": 1225
+    },
+    "hh-0_2-rural-rich_peasant": {
+     "cloth": 111064,
+     "fiber": 3507562,
+     "grain": 667776,
+     "tool": 455
+    },
+    "hh-0_2-urban-landless_laborer-displaced": {
+     "grain": 1024
+    },
+    "hh-0_2-urban-landlord": {
+     "grain": 8012
+    },
+    "hh-0_2-urban-middle_peasant": {
+     "grain": 5160
+    },
+    "hh-0_2-urban-poor_peasant": {
+     "grain": 7963
+    },
+    "hh-0_2-urban-rich_peasant": {
+     "grain": 2730
+    },
+    "hh-1_-1-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-1_-1-rural-landlord": {
+     "cloth": 80,
+     "fiber": 848572,
+     "grain": 12862699,
+     "tool": 140
+    },
+    "hh-1_-1-rural-middle_peasant": {
+     "cloth": 317139,
+     "fiber": 10827783,
+     "grain": 7905927,
+     "tool": 1085
+    },
+    "hh-1_-1-rural-poor_peasant": {
+     "cloth": 311199,
+     "fiber": 36030053,
+     "grain": 15651672,
+     "tool": 1225
+    },
+    "hh-1_-1-rural-rich_peasant": {
+     "cloth": 82932,
+     "fiber": 4585042,
+     "grain": 3621111,
+     "tool": 455
+    },
+    "hh-1_-1-urban-landlord": {
+     "fiber": 2042,
+     "tool": 10635
+    },
+    "hh-1_-1-urban-middle_peasant": {},
+    "hh-1_-1-urban-poor_peasant": {},
+    "hh-1_-1-urban-rich_peasant": {
+     "fiber": 2196,
+     "tool": 9970
+    },
+    "hh-1_-2-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh-1_-2-rural-landlord": {
+     "cloth": 700,
+     "fiber": 847625,
+     "grain": 31303774,
+     "tool": 140
+    },
+    "hh-1_-2-rural-middle_peasant": {
+     "cloth": 317595,
+     "fiber": 10869000,
+     "grain": 27807521,
+     "tool": 1050
+    },
+    "hh-1_-2-rural-poor_peasant": {
+     "cloth": 309167,
+     "fiber": 47310506,
+     "grain": 25930614,
+     "tool": 1260
+    },
+    "hh-1_-2-rural-rich_peasant": {
+     "cloth": 79382,
+     "fiber": 4607716,
+     "grain": 17735089,
+     "tool": 455
+    },
+    "hh-1_-2-urban-landlord": {
+     "fiber": 2035,
+     "tool": 10155
+    },
+    "hh-1_-2-urban-middle_peasant": {},
+    "hh-1_-2-urban-poor_peasant": {},
+    "hh-1_-2-urban-rich_peasant": {
+     "fiber": 870,
+     "tool": 9617
+    },
+    "hh-1_0-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh-1_0-rural-landlord": {
+     "cloth": 80,
+     "fiber": 849564,
+     "grain": 12870256,
+     "tool": 140
+    },
+    "hh-1_0-rural-middle_peasant": {
+     "cloth": 318035,
+     "fiber": 10831130,
+     "grain": 7912719,
+     "tool": 1050
+    },
+    "hh-1_0-rural-poor_peasant": {
+     "cloth": 310690,
+     "fiber": 35989543,
+     "grain": 15642221,
+     "tool": 1260
+    },
+    "hh-1_0-rural-rich_peasant": {
+     "cloth": 83475,
+     "fiber": 4586226,
+     "grain": 3624120,
+     "tool": 455
+    },
+    "hh-1_0-urban-landlord": {
+     "fiber": 2031,
+     "tool": 9725
+    },
+    "hh-1_0-urban-middle_peasant": {},
+    "hh-1_0-urban-poor_peasant": {},
+    "hh-1_0-urban-rich_peasant": {
+     "fiber": 2031,
+     "tool": 9725
+    },
+    "hh-1_1-rural-landless_laborer-displaced": {
+     "grain": 707
+    },
+    "hh-1_1-rural-landlord": {
+     "cloth": 80,
+     "fiber": 849572,
+     "grain": 12871891,
+     "tool": 140
+    },
+    "hh-1_1-rural-middle_peasant": {
+     "cloth": 318090,
+     "fiber": 10813356,
+     "grain": 7902969,
+     "tool": 1050
+    },
+    "hh-1_1-rural-poor_peasant": {
+     "cloth": 310999,
+     "fiber": 36027393,
+     "grain": 15654187,
+     "tool": 1225
+    },
+    "hh-1_1-rural-rich_peasant": {
+     "cloth": 82837,
+     "fiber": 4586042,
+     "grain": 3621690,
+     "tool": 455
+    },
+    "hh-1_1-urban-landlord": {
+     "fiber": 1883,
+     "tool": 10495
+    },
+    "hh-1_1-urban-middle_peasant": {},
+    "hh-1_1-urban-poor_peasant": {},
+    "hh-1_1-urban-rich_peasant": {
+     "fiber": 1691,
+     "tool": 10382
+    },
+    "hh-2_-1-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-2_-1-rural-landlord": {
+     "cloth": 804,
+     "fiber": 537772,
+     "grain": 13025393,
+     "tool": 140
+    },
+    "hh-2_-1-rural-middle_peasant": {
+     "cloth": 248961,
+     "fiber": 7233729,
+     "grain": 21179415,
+     "tool": 1085
+    },
+    "hh-2_-1-rural-poor_peasant": {
+     "cloth": 242032,
+     "fiber": 34130817,
+     "grain": 21227205,
+     "tool": 1260
+    },
+    "hh-2_-1-rural-rich_peasant": {
+     "cloth": 273304,
+     "fiber": 3013898,
+     "grain": 12833692,
+     "tool": 455
+    },
+    "hh-2_-1-urban-landlord": {
+     "fiber": 2787,
+     "tool": 10733
+    },
+    "hh-2_-1-urban-middle_peasant": {},
+    "hh-2_-1-urban-poor_peasant": {},
+    "hh-2_-1-urban-rich_peasant": {
+     "fiber": 1883,
+     "tool": 10495
+    },
+    "hh-2_-2-rural-landless_laborer-displaced": {
+     "grain": 634
+    },
+    "hh-2_-2-rural-landlord": {
+     "cloth": 735,
+     "fiber": 849564,
+     "grain": 31041652,
+     "tool": 140
+    },
+    "hh-2_-2-rural-middle_peasant": {
+     "cloth": 317595,
+     "fiber": 10837574,
+     "grain": 27619895,
+     "tool": 1050
+    },
+    "hh-2_-2-rural-poor_peasant": {
+     "cloth": 310095,
+     "fiber": 47366080,
+     "grain": 26359799,
+     "tool": 1260
+    },
+    "hh-2_-2-rural-rich_peasant": {
+     "cloth": 79180,
+     "fiber": 4585498,
+     "grain": 17721747,
+     "tool": 455
+    },
+    "hh-2_-2-urban-landlord": {
+     "fiber": 2344,
+     "tool": 9550
+    },
+    "hh-2_-2-urban-middle_peasant": {},
+    "hh-2_-2-urban-poor_peasant": {},
+    "hh-2_-2-urban-rich_peasant": {
+     "fiber": 2196,
+     "tool": 10320
+    },
+    "hh-2_0-rural-landless_laborer-displaced": {
+     "grain": 659
+    },
+    "hh-2_0-rural-landlord": {
+     "cloth": 804,
+     "fiber": 537764,
+     "grain": 13258628,
+     "tool": 140
+    },
+    "hh-2_0-rural-middle_peasant": {
+     "cloth": 249482,
+     "fiber": 7240323,
+     "grain": 21300742,
+     "tool": 1085
+    },
+    "hh-2_0-rural-poor_peasant": {
+     "cloth": 242955,
+     "fiber": 34142142,
+     "grain": 21035695,
+     "tool": 1225
+    },
+    "hh-2_0-rural-rich_peasant": {
+     "cloth": 274437,
+     "fiber": 3017083,
+     "grain": 12683469,
+     "tool": 455
+    },
+    "hh-2_0-urban-landlord": {
+     "fiber": 1895,
+     "tool": 9822
+    },
+    "hh-2_0-urban-middle_peasant": {},
+    "hh-2_0-urban-poor_peasant": {},
+    "hh-2_0-urban-rich_peasant": {
+     "fiber": 887,
+     "tool": 8417
+    },
+    "hh-gov-gov-central": {
+     "cloth": 98560,
+     "grain": 825040
+    },
+    "hh-gov-gov-province": {
+     "cloth": 98560,
+     "fiber": 1916,
+     "grain": 1959540458
+    },
+    "hh-gov-world-silver": {},
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--1_0-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-urban-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--1_1-rural-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-landlord-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-landlord-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh-0_1-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-landlord-0": {
+     "cloth": 70,
+     "grain": 2704
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-landlord-0": {
+     "cloth": 910,
+     "grain": 572303,
+     "tool": 140
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-rich_peasant-0": {
+     "cloth": 35,
+     "grain": 49
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-1-rural-rich_peasant-0": {
+     "cloth": 35,
+     "grain": 49
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-landlord-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-rich_peasant-0": {
+     "cloth": 105,
+     "grain": 74
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-rural-rich_peasant-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-urban-rich_peasant-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-landlord-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-rich_peasant-0": {
+     "cloth": 35,
+     "grain": 49
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-landlord-0": {
+     "cloth": 70,
+     "grain": 82
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-rich_peasant-0": {
+     "cloth": 105,
+     "grain": 74
+    },
+    "hh-mig-0_1-handicraft_workshop-hh-1_1-rural-rich_peasant-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-landlord-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-rich_peasant-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-landlord-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-rich_peasant-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-1_0-rural-rich_peasant-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-landlord-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-rich_peasant-0": {},
+    "hh-unit:gov-central": {
+     "cloth": 4,
+     "grain": 114957
+    },
+    "hh-unit:gov-province": {
+     "cloth": 4,
+     "grain": 12966
+    }
+   },
+   "commodities": {
+    "cloth": 15838080,
+    "fiber": 1042998120,
+    "grain": 3278080223,
+    "iron": 200000,
+    "tool": 554697
+   },
+   "md5ByHex": "1fb668d705396c59bfa4c709295a6afe",
+   "md5ByHousehold": "b615f9cc3dd616fb5d36af5d44d89625",
+   "nAccounts": 215
+  },
+  "money": {
+   "byHousehold": {
+    "hh--1_-1-rural-landless_laborer-displaced": {},
+    "hh--1_-1-rural-landlord": {},
+    "hh--1_-1-rural-middle_peasant": {
+     "silver": 745
+    },
+    "hh--1_-1-rural-poor_peasant": {},
+    "hh--1_-1-rural-rich_peasant": {
+     "silver": 224
+    },
+    "hh--1_-1-urban-landlord": {
+     "silver": 37
+    },
+    "hh--1_-1-urban-middle_peasant": {},
+    "hh--1_-1-urban-poor_peasant": {},
+    "hh--1_-1-urban-rich_peasant": {
+     "silver": 39
+    },
+    "hh--1_0-rural-landless_laborer-displaced": {},
+    "hh--1_0-rural-landlord": {},
+    "hh--1_0-rural-middle_peasant": {
+     "silver": 307
+    },
+    "hh--1_0-rural-poor_peasant": {
+     "silver": 391
+    },
+    "hh--1_0-rural-rich_peasant": {
+     "silver": 85
+    },
+    "hh--1_0-urban-landlord": {
+     "silver": 22
+    },
+    "hh--1_0-urban-middle_peasant": {},
+    "hh--1_0-urban-poor_peasant": {},
+    "hh--1_0-urban-rich_peasant": {
+     "silver": 16
+    },
+    "hh--1_1-rural-landless_laborer-displaced": {},
+    "hh--1_1-rural-landlord": {},
+    "hh--1_1-rural-middle_peasant": {
+     "silver": 42
+    },
+    "hh--1_1-rural-poor_peasant": {},
+    "hh--1_1-rural-rich_peasant": {
+     "silver": 71
+    },
+    "hh--1_1-urban-landlord": {
+     "silver": 26
+    },
+    "hh--1_1-urban-middle_peasant": {},
+    "hh--1_1-urban-poor_peasant": {},
+    "hh--1_1-urban-rich_peasant": {
+     "silver": 30
+    },
+    "hh--1_2-rural-landless_laborer-displaced": {},
+    "hh--1_2-rural-landlord": {},
+    "hh--1_2-rural-middle_peasant": {
+     "silver": 328
+    },
+    "hh--1_2-rural-poor_peasant": {},
+    "hh--1_2-rural-rich_peasant": {},
+    "hh--1_2-urban-landlord": {
+     "silver": 19
+    },
+    "hh--1_2-urban-middle_peasant": {},
+    "hh--1_2-urban-poor_peasant": {},
+    "hh--1_2-urban-rich_peasant": {
+     "silver": 17
+    },
+    "hh--2_0-rural-landless_laborer-displaced": {},
+    "hh--2_0-rural-landlord": {
+     "silver": 21
+    },
+    "hh--2_0-rural-middle_peasant": {
+     "silver": 186
+    },
+    "hh--2_0-rural-poor_peasant": {},
+    "hh--2_0-rural-rich_peasant": {},
+    "hh--2_0-urban-landlord": {
+     "silver": 27
+    },
+    "hh--2_0-urban-middle_peasant": {},
+    "hh--2_0-urban-poor_peasant": {},
+    "hh--2_0-urban-rich_peasant": {
+     "silver": 18
+    },
+    "hh--2_1-rural-landless_laborer-displaced": {},
+    "hh--2_1-rural-landlord": {},
+    "hh--2_1-rural-middle_peasant": {
+     "silver": 158
+    },
+    "hh--2_1-rural-poor_peasant": {},
+    "hh--2_1-rural-rich_peasant": {},
+    "hh--2_1-urban-landlord": {
+     "silver": 20
+    },
+    "hh--2_1-urban-middle_peasant": {},
+    "hh--2_1-urban-poor_peasant": {},
+    "hh--2_1-urban-rich_peasant": {
+     "silver": 23
+    },
+    "hh--2_2-rural-landless_laborer-displaced": {},
+    "hh--2_2-rural-landlord": {},
+    "hh--2_2-rural-middle_peasant": {
+     "silver": 45
+    },
+    "hh--2_2-rural-poor_peasant": {},
+    "hh--2_2-rural-rich_peasant": {},
+    "hh--2_2-urban-landlord": {
+     "silver": 17
+    },
+    "hh--2_2-urban-middle_peasant": {},
+    "hh--2_2-urban-poor_peasant": {},
+    "hh--2_2-urban-rich_peasant": {
+     "silver": 15
+    },
+    "hh-0_-1-rural-landless_laborer-displaced": {},
+    "hh-0_-1-rural-landlord": {},
+    "hh-0_-1-rural-middle_peasant": {
+     "silver": 45
+    },
+    "hh-0_-1-rural-poor_peasant": {},
+    "hh-0_-1-rural-rich_peasant": {},
+    "hh-0_-1-urban-landlord": {
+     "silver": 27
+    },
+    "hh-0_-1-urban-middle_peasant": {},
+    "hh-0_-1-urban-poor_peasant": {},
+    "hh-0_-1-urban-rich_peasant": {
+     "silver": 18
+    },
+    "hh-0_-2-rural-landless_laborer-displaced": {},
+    "hh-0_-2-rural-landlord": {},
+    "hh-0_-2-rural-middle_peasant": {
+     "silver": 39
+    },
+    "hh-0_-2-rural-poor_peasant": {},
+    "hh-0_-2-rural-rich_peasant": {},
+    "hh-0_-2-urban-landlord": {
+     "silver": 20
+    },
+    "hh-0_-2-urban-middle_peasant": {},
+    "hh-0_-2-urban-poor_peasant": {},
+    "hh-0_-2-urban-rich_peasant": {
+     "silver": 19
+    },
+    "hh-0_0-rural-landless_laborer-displaced": {
+     "silver": 117
+    },
+    "hh-0_0-rural-landlord": {},
+    "hh-0_0-rural-middle_peasant": {
+     "silver": 265
+    },
+    "hh-0_0-rural-poor_peasant": {
+     "silver": 139
+    },
+    "hh-0_0-rural-rich_peasant": {
+     "silver": 40
+    },
+    "hh-0_0-urban-landless_laborer-displaced": {
+     "silver": 619
+    },
+    "hh-0_0-urban-landlord": {
+     "silver": 1633
+    },
+    "hh-0_0-urban-middle_peasant": {},
+    "hh-0_0-urban-poor_peasant": {
+     "silver": 3511
+    },
+    "hh-0_0-urban-rich_peasant": {
+     "silver": 1571
+    },
+    "hh-0_1-rural-landless_laborer-displaced": {},
+    "hh-0_1-rural-landlord": {},
+    "hh-0_1-rural-middle_peasant": {},
+    "hh-0_1-rural-poor_peasant": {},
+    "hh-0_1-rural-rich_peasant": {},
+    "hh-0_1-urban-landlord": {
+     "silver": 19
+    },
+    "hh-0_1-urban-middle_peasant": {},
+    "hh-0_1-urban-poor_peasant": {},
+    "hh-0_1-urban-rich_peasant": {
+     "silver": 26
+    },
+    "hh-0_2-rural-landless_laborer-displaced": {},
+    "hh-0_2-rural-landlord": {
+     "silver": 4
+    },
+    "hh-0_2-rural-middle_peasant": {
+     "silver": 12
+    },
+    "hh-0_2-rural-poor_peasant": {},
+    "hh-0_2-rural-rich_peasant": {},
+    "hh-0_2-urban-landless_laborer-displaced": {},
+    "hh-0_2-urban-landlord": {},
+    "hh-0_2-urban-middle_peasant": {},
+    "hh-0_2-urban-poor_peasant": {},
+    "hh-0_2-urban-rich_peasant": {},
+    "hh-1_-1-rural-landless_laborer-displaced": {},
+    "hh-1_-1-rural-landlord": {},
+    "hh-1_-1-rural-middle_peasant": {},
+    "hh-1_-1-rural-poor_peasant": {},
+    "hh-1_-1-rural-rich_peasant": {},
+    "hh-1_-1-urban-landlord": {
+     "silver": 16
+    },
+    "hh-1_-1-urban-middle_peasant": {},
+    "hh-1_-1-urban-poor_peasant": {},
+    "hh-1_-1-urban-rich_peasant": {
+     "silver": 24
+    },
+    "hh-1_-2-rural-landless_laborer-displaced": {},
+    "hh-1_-2-rural-landlord": {},
+    "hh-1_-2-rural-middle_peasant": {},
+    "hh-1_-2-rural-poor_peasant": {},
+    "hh-1_-2-rural-rich_peasant": {},
+    "hh-1_-2-urban-landlord": {
+     "silver": 22
+    },
+    "hh-1_-2-urban-middle_peasant": {},
+    "hh-1_-2-urban-poor_peasant": {},
+    "hh-1_-2-urban-rich_peasant": {
+     "silver": 30
+    },
+    "hh-1_0-rural-landless_laborer-displaced": {},
+    "hh-1_0-rural-landlord": {},
+    "hh-1_0-rural-middle_peasant": {},
+    "hh-1_0-rural-poor_peasant": {},
+    "hh-1_0-rural-rich_peasant": {},
+    "hh-1_0-urban-landlord": {
+     "silver": 28
+    },
+    "hh-1_0-urban-middle_peasant": {},
+    "hh-1_0-urban-poor_peasant": {},
+    "hh-1_0-urban-rich_peasant": {
+     "silver": 28
+    },
+    "hh-1_1-rural-landless_laborer-displaced": {},
+    "hh-1_1-rural-landlord": {},
+    "hh-1_1-rural-middle_peasant": {},
+    "hh-1_1-rural-poor_peasant": {},
+    "hh-1_1-rural-rich_peasant": {},
+    "hh-1_1-urban-landlord": {
+     "silver": 18
+    },
+    "hh-1_1-urban-middle_peasant": {},
+    "hh-1_1-urban-poor_peasant": {},
+    "hh-1_1-urban-rich_peasant": {
+     "silver": 19
+    },
+    "hh-2_-1-rural-landless_laborer-displaced": {},
+    "hh-2_-1-rural-landlord": {},
+    "hh-2_-1-rural-middle_peasant": {},
+    "hh-2_-1-rural-poor_peasant": {},
+    "hh-2_-1-rural-rich_peasant": {},
+    "hh-2_-1-urban-landlord": {
+     "silver": 14
+    },
+    "hh-2_-1-urban-middle_peasant": {},
+    "hh-2_-1-urban-poor_peasant": {},
+    "hh-2_-1-urban-rich_peasant": {
+     "silver": 18
+    },
+    "hh-2_-2-rural-landless_laborer-displaced": {},
+    "hh-2_-2-rural-landlord": {},
+    "hh-2_-2-rural-middle_peasant": {},
+    "hh-2_-2-rural-poor_peasant": {},
+    "hh-2_-2-rural-rich_peasant": {},
+    "hh-2_-2-urban-landlord": {
+     "silver": 30
+    },
+    "hh-2_-2-urban-middle_peasant": {},
+    "hh-2_-2-urban-poor_peasant": {},
+    "hh-2_-2-urban-rich_peasant": {
+     "silver": 20
+    },
+    "hh-2_0-rural-landless_laborer-displaced": {},
+    "hh-2_0-rural-landlord": {},
+    "hh-2_0-rural-middle_peasant": {},
+    "hh-2_0-rural-poor_peasant": {},
+    "hh-2_0-rural-rich_peasant": {},
+    "hh-2_0-urban-landlord": {
+     "silver": 27
+    },
+    "hh-2_0-urban-middle_peasant": {},
+    "hh-2_0-urban-poor_peasant": {},
+    "hh-2_0-urban-rich_peasant": {
+     "silver": 39
+    },
+    "hh-gov-gov-central": {
+     "copper": 100000,
+     "silver": 88480
+    },
+    "hh-gov-gov-province": {
+     "silver": 154692
+    },
+    "hh-gov-world-silver": {
+     "silver": 5702
+    },
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": {
+     "silver": 8
+    },
+    "hh-mig--1_0-handicraft_workshop-hh--1_0-rural-rich_peasant-0": {
+     "silver": 3
+    },
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-landlord-0": {
+     "silver": 2
+    },
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-rich_peasant-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-landlord-0": {},
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-rich_peasant-0": {
+     "silver": 2
+    },
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-urban-rich_peasant-0": {
+     "silver": 12
+    },
+    "hh-mig--1_1-handicraft_workshop-hh--1_1-rural-rich_peasant-0": {
+     "silver": 3
+    },
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-landlord-0": {
+     "silver": 69
+    },
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-landlord-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-rich_peasant-0": {},
+    "hh-mig--1_1-handicraft_workshop-hh-0_1-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-landlord-0": {
+     "silver": 26
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-landlord-0": {
+     "silver": 15
+    },
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-1-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-landlord-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-urban-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-landlord-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-rich_peasant-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-landlord-0": {},
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-rich_peasant-0": {},
+    "hh-mig-0_1-handicraft_workshop-hh-1_1-rural-rich_peasant-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-landlord-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-rich_peasant-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-landlord-0": {},
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-rich_peasant-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-1_0-rural-rich_peasant-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-landlord-0": {},
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-rich_peasant-0": {},
+    "hh-unit:gov-central": {
+     "silver": 11520
+    },
+    "hh-unit:gov-province": {
+     "silver": 1280
+    }
+   },
+   "md5ByHousehold": "99c88fc61f9cec25476d5a7cd3799a90",
+   "nHouseholdsWithMoney": 72,
+   "totals": {
+    "copper": 100000,
+    "silver": 273200
+   }
+  },
+  "population": {
+   "byHex": {
+    "-1_-1": 196,
+    "-1_0": 198,
+    "-1_1": 194,
+    "-1_2": 183,
+    "-2_0": 197,
+    "-2_1": 207,
+    "-2_2": 201,
+    "0_-1": 209,
+    "0_-2": 201,
+    "0_0": 1007,
+    "0_1": 187,
+    "0_2": 571,
+    "1_-1": 190,
+    "1_-2": 206,
+    "1_0": 187,
+    "1_1": 182,
+    "2_-1": 205,
+    "2_-2": 205,
+    "2_0": 199
+   },
+   "byHouseholdEconomy": {
+    "hh--1_-1-rural-landless_laborer-displaced": 11,
+    "hh--1_-1-rural-landlord": 6,
+    "hh--1_-1-rural-middle_peasant": 69,
+    "hh--1_-1-rural-poor_peasant": 83,
+    "hh--1_-1-rural-rich_peasant": 27,
+    "hh--1_-1-urban-landlord": 0,
+    "hh--1_-1-urban-middle_peasant": 0,
+    "hh--1_-1-urban-poor_peasant": 0,
+    "hh--1_-1-urban-rich_peasant": 0,
+    "hh--1_0-rural-landless_laborer-displaced": 11,
+    "hh--1_0-rural-landlord": 0,
+    "hh--1_0-rural-middle_peasant": 72,
+    "hh--1_0-rural-poor_peasant": 83,
+    "hh--1_0-rural-rich_peasant": 22,
+    "hh--1_0-urban-landlord": 0,
+    "hh--1_0-urban-middle_peasant": 0,
+    "hh--1_0-urban-poor_peasant": 0,
+    "hh--1_0-urban-rich_peasant": 0,
+    "hh--1_1-rural-landless_laborer-displaced": 11,
+    "hh--1_1-rural-landlord": 0,
+    "hh--1_1-rural-middle_peasant": 72,
+    "hh--1_1-rural-poor_peasant": 82,
+    "hh--1_1-rural-rich_peasant": 23,
+    "hh--1_1-urban-landlord": 0,
+    "hh--1_1-urban-middle_peasant": 0,
+    "hh--1_1-urban-poor_peasant": 0,
+    "hh--1_1-urban-rich_peasant": 0,
+    "hh--1_2-rural-landless_laborer-displaced": 9,
+    "hh--1_2-rural-landlord": 0,
+    "hh--1_2-rural-middle_peasant": 72,
+    "hh--1_2-rural-poor_peasant": 81,
+    "hh--1_2-rural-rich_peasant": 21,
+    "hh--1_2-urban-landlord": 0,
+    "hh--1_2-urban-middle_peasant": 0,
+    "hh--1_2-urban-poor_peasant": 0,
+    "hh--1_2-urban-rich_peasant": 0,
+    "hh--2_0-rural-landless_laborer-displaced": 10,
+    "hh--2_0-rural-landlord": 8,
+    "hh--2_0-rural-middle_peasant": 69,
+    "hh--2_0-rural-poor_peasant": 80,
+    "hh--2_0-rural-rich_peasant": 30,
+    "hh--2_0-urban-landlord": 0,
+    "hh--2_0-urban-middle_peasant": 0,
+    "hh--2_0-urban-poor_peasant": 0,
+    "hh--2_0-urban-rich_peasant": 0,
+    "hh--2_1-rural-landless_laborer-displaced": 11,
+    "hh--2_1-rural-landlord": 9,
+    "hh--2_1-rural-middle_peasant": 73,
+    "hh--2_1-rural-poor_peasant": 84,
+    "hh--2_1-rural-rich_peasant": 30,
+    "hh--2_1-urban-landlord": 0,
+    "hh--2_1-urban-middle_peasant": 0,
+    "hh--2_1-urban-poor_peasant": 0,
+    "hh--2_1-urban-rich_peasant": 0,
+    "hh--2_2-rural-landless_laborer-displaced": 10,
+    "hh--2_2-rural-landlord": 8,
+    "hh--2_2-rural-middle_peasant": 71,
+    "hh--2_2-rural-poor_peasant": 83,
+    "hh--2_2-rural-rich_peasant": 29,
+    "hh--2_2-urban-landlord": 0,
+    "hh--2_2-urban-middle_peasant": 0,
+    "hh--2_2-urban-poor_peasant": 0,
+    "hh--2_2-urban-rich_peasant": 0,
+    "hh-0_-1-rural-landless_laborer-displaced": 10,
+    "hh-0_-1-rural-landlord": 0,
+    "hh-0_-1-rural-middle_peasant": 72,
+    "hh-0_-1-rural-poor_peasant": 84,
+    "hh-0_-1-rural-rich_peasant": 24,
+    "hh-0_-1-urban-landlord": 0,
+    "hh-0_-1-urban-middle_peasant": 0,
+    "hh-0_-1-urban-poor_peasant": 0,
+    "hh-0_-1-urban-rich_peasant": 0,
+    "hh-0_-2-rural-landless_laborer-displaced": 10,
+    "hh-0_-2-rural-landlord": 7,
+    "hh-0_-2-rural-middle_peasant": 73,
+    "hh-0_-2-rural-poor_peasant": 82,
+    "hh-0_-2-rural-rich_peasant": 29,
+    "hh-0_-2-urban-landlord": 0,
+    "hh-0_-2-urban-middle_peasant": 0,
+    "hh-0_-2-urban-poor_peasant": 0,
+    "hh-0_-2-urban-rich_peasant": 0,
+    "hh-0_0-rural-landless_laborer-displaced": 11,
+    "hh-0_0-rural-landlord": 2,
+    "hh-0_0-rural-middle_peasant": 70,
+    "hh-0_0-rural-poor_peasant": 84,
+    "hh-0_0-rural-rich_peasant": 20,
+    "hh-0_0-urban-landless_laborer-displaced": 36,
+    "hh-0_0-urban-landlord": 132,
+    "hh-0_0-urban-middle_peasant": 242,
+    "hh-0_0-urban-poor_peasant": 287,
+    "hh-0_0-urban-rich_peasant": 121,
+    "hh-0_1-rural-landless_laborer-displaced": 10,
+    "hh-0_1-rural-landlord": 0,
+    "hh-0_1-rural-middle_peasant": 72,
+    "hh-0_1-rural-poor_peasant": 81,
+    "hh-0_1-rural-rich_peasant": 21,
+    "hh-0_1-urban-landlord": 0,
+    "hh-0_1-urban-middle_peasant": 0,
+    "hh-0_1-urban-poor_peasant": 0,
+    "hh-0_1-urban-rich_peasant": 0,
+    "hh-0_2-rural-landless_laborer-displaced": 11,
+    "hh-0_2-rural-landlord": 0,
+    "hh-0_2-rural-middle_peasant": 73,
+    "hh-0_2-rural-poor_peasant": 77,
+    "hh-0_2-rural-rich_peasant": 25,
+    "hh-0_2-urban-landless_laborer-displaced": 16,
+    "hh-0_2-urban-landlord": 123,
+    "hh-0_2-urban-middle_peasant": 80,
+    "hh-0_2-urban-poor_peasant": 124,
+    "hh-0_2-urban-rich_peasant": 42,
+    "hh-1_-1-rural-landless_laborer-displaced": 10,
+    "hh-1_-1-rural-landlord": 0,
+    "hh-1_-1-rural-middle_peasant": 72,
+    "hh-1_-1-rural-poor_peasant": 82,
+    "hh-1_-1-rural-rich_peasant": 22,
+    "hh-1_-1-urban-landlord": 0,
+    "hh-1_-1-urban-middle_peasant": 0,
+    "hh-1_-1-urban-poor_peasant": 0,
+    "hh-1_-1-urban-rich_peasant": 0,
+    "hh-1_-2-rural-landless_laborer-displaced": 11,
+    "hh-1_-2-rural-landlord": 8,
+    "hh-1_-2-rural-middle_peasant": 72,
+    "hh-1_-2-rural-poor_peasant": 86,
+    "hh-1_-2-rural-rich_peasant": 29,
+    "hh-1_-2-urban-landlord": 0,
+    "hh-1_-2-urban-middle_peasant": 0,
+    "hh-1_-2-urban-poor_peasant": 0,
+    "hh-1_-2-urban-rich_peasant": 0,
+    "hh-1_0-rural-landless_laborer-displaced": 11,
+    "hh-1_0-rural-landlord": 0,
+    "hh-1_0-rural-middle_peasant": 71,
+    "hh-1_0-rural-poor_peasant": 82,
+    "hh-1_0-rural-rich_peasant": 20,
+    "hh-1_0-urban-landlord": 0,
+    "hh-1_0-urban-middle_peasant": 0,
+    "hh-1_0-urban-poor_peasant": 0,
+    "hh-1_0-urban-rich_peasant": 0,
+    "hh-1_1-rural-landless_laborer-displaced": 11,
+    "hh-1_1-rural-landlord": 0,
+    "hh-1_1-rural-middle_peasant": 70,
+    "hh-1_1-rural-poor_peasant": 80,
+    "hh-1_1-rural-rich_peasant": 21,
+    "hh-1_1-urban-landlord": 0,
+    "hh-1_1-urban-middle_peasant": 0,
+    "hh-1_1-urban-poor_peasant": 0,
+    "hh-1_1-urban-rich_peasant": 0,
+    "hh-2_-1-rural-landless_laborer-displaced": 10,
+    "hh-2_-1-rural-landlord": 9,
+    "hh-2_-1-rural-middle_peasant": 72,
+    "hh-2_-1-rural-poor_peasant": 84,
+    "hh-2_-1-rural-rich_peasant": 30,
+    "hh-2_-1-urban-landlord": 0,
+    "hh-2_-1-urban-middle_peasant": 0,
+    "hh-2_-1-urban-poor_peasant": 0,
+    "hh-2_-1-urban-rich_peasant": 0,
+    "hh-2_-2-rural-landless_laborer-displaced": 10,
+    "hh-2_-2-rural-landlord": 8,
+    "hh-2_-2-rural-middle_peasant": 72,
+    "hh-2_-2-rural-poor_peasant": 85,
+    "hh-2_-2-rural-rich_peasant": 30,
+    "hh-2_-2-urban-landlord": 0,
+    "hh-2_-2-urban-middle_peasant": 0,
+    "hh-2_-2-urban-poor_peasant": 0,
+    "hh-2_-2-urban-rich_peasant": 0,
+    "hh-2_0-rural-landless_laborer-displaced": 10,
+    "hh-2_0-rural-landlord": 9,
+    "hh-2_0-rural-middle_peasant": 71,
+    "hh-2_0-rural-poor_peasant": 82,
+    "hh-2_0-rural-rich_peasant": 27,
+    "hh-2_0-urban-landlord": 0,
+    "hh-2_0-urban-middle_peasant": 0,
+    "hh-2_0-urban-poor_peasant": 0,
+    "hh-2_0-urban-rich_peasant": 0,
+    "hh-gov-gov-central": 0,
+    "hh-gov-gov-province": 0,
+    "hh-gov-world-silver": 0,
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--1_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-urban-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_1-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-landlord-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-landlord-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh-0_1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-landlord-0": 7,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-urban-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-rich_peasant-0": 1,
+    "hh-mig-0_1-handicraft_workshop-hh-1_1-rural-rich_peasant-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-landlord-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-rich_peasant-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-landlord-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-rich_peasant-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-1_0-rural-rich_peasant-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-landlord-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-rich_peasant-0": 1,
+    "hh-unit:gov-central": 2,
+    "hh-unit:gov-province": 2
+   },
+   "byHouseholdSocial": {
+    "hh--1_-1-rural-landless_laborer-displaced": 11,
+    "hh--1_-1-rural-landlord": 6,
+    "hh--1_-1-rural-middle_peasant": 69,
+    "hh--1_-1-rural-poor_peasant": 83,
+    "hh--1_-1-rural-rich_peasant": 27,
+    "hh--1_-1-urban-landlord": 0,
+    "hh--1_-1-urban-middle_peasant": 0,
+    "hh--1_-1-urban-poor_peasant": 0,
+    "hh--1_-1-urban-rich_peasant": 0,
+    "hh--1_0-rural-landless_laborer-displaced": 11,
+    "hh--1_0-rural-landlord": 0,
+    "hh--1_0-rural-middle_peasant": 72,
+    "hh--1_0-rural-poor_peasant": 83,
+    "hh--1_0-rural-rich_peasant": 22,
+    "hh--1_0-urban-landlord": 0,
+    "hh--1_0-urban-middle_peasant": 0,
+    "hh--1_0-urban-poor_peasant": 0,
+    "hh--1_0-urban-rich_peasant": 0,
+    "hh--1_1-rural-landless_laborer-displaced": 11,
+    "hh--1_1-rural-landlord": 0,
+    "hh--1_1-rural-middle_peasant": 72,
+    "hh--1_1-rural-poor_peasant": 82,
+    "hh--1_1-rural-rich_peasant": 23,
+    "hh--1_1-urban-landlord": 0,
+    "hh--1_1-urban-middle_peasant": 0,
+    "hh--1_1-urban-poor_peasant": 0,
+    "hh--1_1-urban-rich_peasant": 0,
+    "hh--1_2-rural-landless_laborer-displaced": 9,
+    "hh--1_2-rural-landlord": 0,
+    "hh--1_2-rural-middle_peasant": 72,
+    "hh--1_2-rural-poor_peasant": 81,
+    "hh--1_2-rural-rich_peasant": 21,
+    "hh--1_2-urban-landlord": 0,
+    "hh--1_2-urban-middle_peasant": 0,
+    "hh--1_2-urban-poor_peasant": 0,
+    "hh--1_2-urban-rich_peasant": 0,
+    "hh--2_0-rural-landless_laborer-displaced": 10,
+    "hh--2_0-rural-landlord": 8,
+    "hh--2_0-rural-middle_peasant": 69,
+    "hh--2_0-rural-poor_peasant": 80,
+    "hh--2_0-rural-rich_peasant": 30,
+    "hh--2_0-urban-landlord": 0,
+    "hh--2_0-urban-middle_peasant": 0,
+    "hh--2_0-urban-poor_peasant": 0,
+    "hh--2_0-urban-rich_peasant": 0,
+    "hh--2_1-rural-landless_laborer-displaced": 11,
+    "hh--2_1-rural-landlord": 9,
+    "hh--2_1-rural-middle_peasant": 73,
+    "hh--2_1-rural-poor_peasant": 84,
+    "hh--2_1-rural-rich_peasant": 30,
+    "hh--2_1-urban-landlord": 0,
+    "hh--2_1-urban-middle_peasant": 0,
+    "hh--2_1-urban-poor_peasant": 0,
+    "hh--2_1-urban-rich_peasant": 0,
+    "hh--2_2-rural-landless_laborer-displaced": 10,
+    "hh--2_2-rural-landlord": 8,
+    "hh--2_2-rural-middle_peasant": 71,
+    "hh--2_2-rural-poor_peasant": 83,
+    "hh--2_2-rural-rich_peasant": 29,
+    "hh--2_2-urban-landlord": 0,
+    "hh--2_2-urban-middle_peasant": 0,
+    "hh--2_2-urban-poor_peasant": 0,
+    "hh--2_2-urban-rich_peasant": 0,
+    "hh-0_-1-rural-landless_laborer-displaced": 10,
+    "hh-0_-1-rural-landlord": 0,
+    "hh-0_-1-rural-middle_peasant": 72,
+    "hh-0_-1-rural-poor_peasant": 84,
+    "hh-0_-1-rural-rich_peasant": 24,
+    "hh-0_-1-urban-landlord": 0,
+    "hh-0_-1-urban-middle_peasant": 0,
+    "hh-0_-1-urban-poor_peasant": 0,
+    "hh-0_-1-urban-rich_peasant": 0,
+    "hh-0_-2-rural-landless_laborer-displaced": 10,
+    "hh-0_-2-rural-landlord": 7,
+    "hh-0_-2-rural-middle_peasant": 73,
+    "hh-0_-2-rural-poor_peasant": 82,
+    "hh-0_-2-rural-rich_peasant": 29,
+    "hh-0_-2-urban-landlord": 0,
+    "hh-0_-2-urban-middle_peasant": 0,
+    "hh-0_-2-urban-poor_peasant": 0,
+    "hh-0_-2-urban-rich_peasant": 0,
+    "hh-0_0-rural-landless_laborer-displaced": 11,
+    "hh-0_0-rural-landlord": 2,
+    "hh-0_0-rural-middle_peasant": 70,
+    "hh-0_0-rural-poor_peasant": 84,
+    "hh-0_0-rural-rich_peasant": 20,
+    "hh-0_0-urban-landless_laborer-displaced": 36,
+    "hh-0_0-urban-landlord": 132,
+    "hh-0_0-urban-middle_peasant": 242,
+    "hh-0_0-urban-poor_peasant": 287,
+    "hh-0_0-urban-rich_peasant": 121,
+    "hh-0_1-rural-landless_laborer-displaced": 10,
+    "hh-0_1-rural-landlord": 0,
+    "hh-0_1-rural-middle_peasant": 72,
+    "hh-0_1-rural-poor_peasant": 81,
+    "hh-0_1-rural-rich_peasant": 21,
+    "hh-0_1-urban-landlord": 0,
+    "hh-0_1-urban-middle_peasant": 0,
+    "hh-0_1-urban-poor_peasant": 0,
+    "hh-0_1-urban-rich_peasant": 0,
+    "hh-0_2-rural-landless_laborer-displaced": 11,
+    "hh-0_2-rural-landlord": 0,
+    "hh-0_2-rural-middle_peasant": 73,
+    "hh-0_2-rural-poor_peasant": 77,
+    "hh-0_2-rural-rich_peasant": 25,
+    "hh-0_2-urban-landless_laborer-displaced": 16,
+    "hh-0_2-urban-landlord": 123,
+    "hh-0_2-urban-middle_peasant": 80,
+    "hh-0_2-urban-poor_peasant": 124,
+    "hh-0_2-urban-rich_peasant": 42,
+    "hh-1_-1-rural-landless_laborer-displaced": 10,
+    "hh-1_-1-rural-landlord": 0,
+    "hh-1_-1-rural-middle_peasant": 72,
+    "hh-1_-1-rural-poor_peasant": 82,
+    "hh-1_-1-rural-rich_peasant": 22,
+    "hh-1_-1-urban-landlord": 0,
+    "hh-1_-1-urban-middle_peasant": 0,
+    "hh-1_-1-urban-poor_peasant": 0,
+    "hh-1_-1-urban-rich_peasant": 0,
+    "hh-1_-2-rural-landless_laborer-displaced": 11,
+    "hh-1_-2-rural-landlord": 8,
+    "hh-1_-2-rural-middle_peasant": 72,
+    "hh-1_-2-rural-poor_peasant": 86,
+    "hh-1_-2-rural-rich_peasant": 29,
+    "hh-1_-2-urban-landlord": 0,
+    "hh-1_-2-urban-middle_peasant": 0,
+    "hh-1_-2-urban-poor_peasant": 0,
+    "hh-1_-2-urban-rich_peasant": 0,
+    "hh-1_0-rural-landless_laborer-displaced": 11,
+    "hh-1_0-rural-landlord": 0,
+    "hh-1_0-rural-middle_peasant": 71,
+    "hh-1_0-rural-poor_peasant": 82,
+    "hh-1_0-rural-rich_peasant": 20,
+    "hh-1_0-urban-landlord": 0,
+    "hh-1_0-urban-middle_peasant": 0,
+    "hh-1_0-urban-poor_peasant": 0,
+    "hh-1_0-urban-rich_peasant": 0,
+    "hh-1_1-rural-landless_laborer-displaced": 11,
+    "hh-1_1-rural-landlord": 0,
+    "hh-1_1-rural-middle_peasant": 70,
+    "hh-1_1-rural-poor_peasant": 80,
+    "hh-1_1-rural-rich_peasant": 21,
+    "hh-1_1-urban-landlord": 0,
+    "hh-1_1-urban-middle_peasant": 0,
+    "hh-1_1-urban-poor_peasant": 0,
+    "hh-1_1-urban-rich_peasant": 0,
+    "hh-2_-1-rural-landless_laborer-displaced": 10,
+    "hh-2_-1-rural-landlord": 9,
+    "hh-2_-1-rural-middle_peasant": 72,
+    "hh-2_-1-rural-poor_peasant": 84,
+    "hh-2_-1-rural-rich_peasant": 30,
+    "hh-2_-1-urban-landlord": 0,
+    "hh-2_-1-urban-middle_peasant": 0,
+    "hh-2_-1-urban-poor_peasant": 0,
+    "hh-2_-1-urban-rich_peasant": 0,
+    "hh-2_-2-rural-landless_laborer-displaced": 10,
+    "hh-2_-2-rural-landlord": 8,
+    "hh-2_-2-rural-middle_peasant": 72,
+    "hh-2_-2-rural-poor_peasant": 85,
+    "hh-2_-2-rural-rich_peasant": 30,
+    "hh-2_-2-urban-landlord": 0,
+    "hh-2_-2-urban-middle_peasant": 0,
+    "hh-2_-2-urban-poor_peasant": 0,
+    "hh-2_-2-urban-rich_peasant": 0,
+    "hh-2_0-rural-landless_laborer-displaced": 10,
+    "hh-2_0-rural-landlord": 9,
+    "hh-2_0-rural-middle_peasant": 71,
+    "hh-2_0-rural-poor_peasant": 82,
+    "hh-2_0-rural-rich_peasant": 27,
+    "hh-2_0-urban-landlord": 0,
+    "hh-2_0-urban-middle_peasant": 0,
+    "hh-2_0-urban-poor_peasant": 0,
+    "hh-2_0-urban-rich_peasant": 0,
+    "hh-gov-gov-central": 0,
+    "hh-gov-gov-province": 0,
+    "hh-gov-world-silver": 0,
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--1_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh--2_1-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-landlord-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-rural-rich_peasant-0": 1,
+    "hh-mig--1_0-handicraft_workshop-hh-0_0-urban-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_1-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-landlord-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--1_2-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-landlord-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh--2_2-rural-rich_peasant-0": 1,
+    "hh-mig--1_1-handicraft_workshop-hh-0_1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-landlord-0": 7,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh--1_0-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_-2-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-0_0-urban-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-1-rural-rich_peasant-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-landlord-0": 1,
+    "hh-mig-0_-1-handicraft_workshop-hh-1_-2-rural-rich_peasant-0": 1,
+    "hh-mig-0_1-handicraft_workshop-hh-1_1-rural-rich_peasant-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-landlord-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-1-rural-rich_peasant-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-landlord-0": 1,
+    "hh-mig-1_-1-handicraft_workshop-hh-2_-2-rural-rich_peasant-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-1_0-rural-rich_peasant-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-landlord-0": 1,
+    "hh-mig-1_0-handicraft_workshop-hh-2_0-rural-rich_peasant-0": 1,
+    "hh-unit:gov-central": 2,
+    "hh-unit:gov-province": 2
+   },
+   "md5ByHex": "267a5bcce7c8c63969ec6b422d20b92d",
+   "md5ByHouseholdEconomy": "6d0cf3ee7471771e1fe6ef8dfd2a43d7",
+   "md5ByHouseholdSocial": "6d0cf3ee7471771e1fe6ef8dfd2a43d7",
+   "nHouseholdsEconomy": 215,
+   "nHouseholdsSocial": 215,
+   "totalEconomyRows": 4925,
+   "totalSocialMembers": 4925
+  },
+  "prices": {
+   "distinctNumeraire": [
+    "silver"
+   ],
+   "distinctPriceRows": [
+    "{\"cloth\":5,\"fiber\":1,\"grain\":1,\"haul\":4,\"iron\":9,\"tool\":9}"
+   ],
+   "md5": "de3b1edbf7812e86bf52c6646a21183a",
+   "nHexWithMarket": 19
+  },
+  "wholeState": {
+   "bytes": 5120813,
+   "md5Modules": "458574ca19e2a954d59339615146f291",
+   "perNamespace": {
+    "actor": "3641289eac0de9c8db2e9f77ced51305",
+    "army": "f3071f2a16269bef763f3668618bdb75",
+    "economy": "eb190c78b8874fcabdd17c445eb7617d",
+    "gov": "549a004125bd824f0091a0ef009b5d62",
+    "map": "7f42aa8fbdb69b20901c9a8a57af6602",
+    "sd": "182b681a89344209f40d1688f54b23de",
+    "social": "d3ea3d9c8248218af46719b594f8e807",
+    "unit": "a399ccef1d9cad3b26f4008c73b74f6f"
+   }
+  }
+ },
+ "samples": {}
+}

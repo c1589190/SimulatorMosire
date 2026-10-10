@@ -24,11 +24,13 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -41,12 +43,15 @@ import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.MarketRoundStats;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -65,6 +70,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -151,6 +157,30 @@ class EconomyCodecTest {
   private static final AssetShareId FARM_LAND_SHARE =
       OwnershipStake.idOf(
           FARM, AssetKind.LAND, FARM_OPERATOR, FARM_OPERATOR, OwnershipStake.RightKind.OWNED, 0L);
+
+  // ── ★★ W1 收尾批（2026-10-11）：市场夹具（本文件原先**一个市场都没有**）───────────────────────────────
+  //   为什么必须有：`MarketTable.isEmpty()` 是**派生判断**、不是状态组件 ⇒ 它一旦漏掉 `@JsonIgnore`，
+  //   Jackson 就把属性 `empty` 写进字节，严格读入随即因未知键 fail-closed（W1 期间真实发生过的往返缺陷）。
+  //   而"`empty` 不得进线格式"那条护栏（`encodingIsByteLevelStableForEconomyData`）**只在载荷里真有价表时**
+  //   才有观察点 —— 空市场夹具下它恒真（对改坏等价存活）。故这里派生 + 持久两种形态各一张。
+
+  /** ★ W1：派生形态市场的稳定 id（键不在区表里 ⇒ 成员格由价表条目回答）。 */
+  private static final MarketZoneId MARKET = new MarketZoneId("codec-derived-market");
+
+  /** 派生形态的成员格（刻意不属于下面那个持久区：构造期守卫不许成员格重叠）。 */
+  private static final HexCoord MARKET_HEX = new HexCoord(0, 0);
+
+  /** ★ W1：持久形态市场的区（法定币 = 夹具币种 {@link #CURRENCY}，故价表计价币必须逐值等于它）。 */
+  private static final MarketZoneId ZONE = new MarketZoneId("codec-persistent-zone");
+
+  /** 持久区的锚格/成员格（≠ {@link #MARKET_HEX}）。 */
+  private static final HexCoord ZONE_HEX = new HexCoord(2, 0);
+
+  /**
+   * ★ W1：<b>明确 0 价</b>那一行的商品 —— {@code prices} 有这一行且值为 0 = 明确免费交易；没有这一行 = 不交易。
+   * 两种状态是两件事，夹具必须在值层面把它们分开（否则"0 价行被丢掉"这条形状错误看不见）。
+   */
+  private static final CommodityId TOOL = new CommodityId("tool");
 
   private static final EconomyCodec CODEC = new EconomyCodec();
 
@@ -401,11 +431,30 @@ class EconomyCodecTest {
    * simos-app/src/test/.../app/determinism/CrossProcessDeterminismTest}（真起 ≥3 个独立 JVM、各自构造同一份数据
    * 并比字节 digest，覆盖 economy 快照/变更集与 map 快照）。两条覆盖面<b>不重叠</b>、都要在——本条管"往返丢序"， 那条管"同一份内容在不同 JVM 上字节不同"。
    *
-   * <p>★ 同时钉住"派生判断 {@code empty} <b>不进线格式</b>"（{@code isEmpty()} 不是状态；写进去会让严格读入当场炸）。
+   * <p>★ 同时钉住"派生判断 {@code empty} <b>不进线格式</b>"（{@code isEmpty()} 不是状态；写进去会让严格读入当场炸）。 ★★ W1
+   * 收尾批（2026-10-11）：这条护栏的判别力**依赖载荷里真的有市场**（空市场夹具下 {@code doesNotContain} 恒真 —— W1 引入的 {@code
+   * MarketTable.isEmpty()} 往返缺陷正是这么漏过去的）⇒ 本用例开头先把"有观察点"钉住，见那段注释。
    */
   @Test
   void encodingIsByteLevelStableForEconomyData() {
     EconomyData data = fullData();
+
+    // ★★ W1 收尾批：先钉住"这条护栏**有观察点**"—— 下面两句断言的判别力全靠载荷里真的有价表：
+    //   `MarketTable.isEmpty()` 是派生判断，它漏掉 @JsonIgnore 时 Jackson 会把 `"empty"` 写进字节，
+    //   而**空市场夹具下那句 doesNotContain 恒真**。⇒ 市场/统计簿非空 + 两种形态都在 + 派生形态那三个商品
+    //   （含一行**明确 0 价**）都在，缺一条本用例自己先红（"夹具退化 ⇒ 护栏恒真"这件事从此有护栏）。
+    assertThat(data.marketTables()).as("夹具必须真的有市场（否则 empty 护栏恒真）").hasSize(2);
+    assertThat(data.marketTables().get(MARKET)).isEqualTo(derivedMarketTable());
+    assertThat(data.marketTables().get(MARKET).hexes()).as("派生形态：成员格非空").isNotEmpty();
+    assertThat(data.marketTables().get(MARKET).hasPrice(TOOL)).as("派生形态含明确 0 价那一行").isTrue();
+    assertThat(data.marketTables().get(MARKET).isFree(TOOL)).isTrue();
+    assertThat(data.marketTables().get(MARKET).prices()).hasSize(3);
+    assertThat(data.marketTables().get(ZONE)).isEqualTo(persistentZoneTable());
+    assertThat(data.marketTables().get(ZONE).hexes()).as("持久形态：成员格为空").isEmpty();
+    assertThat(data.marketTables().get(ZONE).numeraire())
+        .as("持久形态：计价币 == 该区法定币")
+        .isEqualTo(data.marketZones().get(ZONE).legalTender());
+    assertThat(data.marketRoundStats()).as("统计簿必须非空（两个区）").hasSize(2);
 
     String snapshotOnce = CODEC.encodeSnapshot(snapshotOf(data, SimosTimestamp.of(10, "弘光元年")));
     String snapshotTwice = CODEC.encodeSnapshot(CODEC.decodeSnapshot(snapshotOnce));
@@ -416,6 +465,9 @@ class EconomyCodecTest {
     String changeTwice = CODEC.encodeChangeSet(CODEC.decodeChangeSet(changeOnce));
     assertThat(changeTwice).as("变更集的字节级往返").isEqualTo(changeOnce);
 
+    // ★ 线格式里**真的**带了市场（否则下面两句"不得含 empty"又退回恒真）
+    assertThat(snapshotOnce).as("快照必须真的写出市场").contains("marketTables").contains("marketRoundStats");
+    assertThat(changeOnce).as("变更集必须真的写出市场").contains("marketTables").contains("marketRoundStats");
     assertThat(changeOnce).as("派生判断 empty 不得进线格式").doesNotContain("\"empty\"");
     assertThat(snapshotOnce).as("快照里也没有派生判断").doesNotContain("\"empty\"");
   }
@@ -915,7 +967,11 @@ class EconomyCodecTest {
 
   /**
    * 非平凡数据：产业 / 阶层 / 债务 / 流水 / 劳动分配 / 生产关系 / 资产份额 / 生产单元**都非空**，两层自定义键、 各 Optional 的有值侧至少出现一次、两种
-   * AllocationRule 都在；市场 / 在途 / 经营者状态 / 需求 / 候选留空（追加在尾部的中性值）。
+   * AllocationRule 都在；在途 / 经营者状态 / 需求 / 候选留空（追加在尾部的中性值）。
+   *
+   * <p>★★ <b>W1 收尾批（2026-10-11）：市场不再留空</b> —— 派生形态价表（成员格非空、三个商品含一行**明确 0 价**） + 持久形态价表（键 =
+   * 区、成员格为空、计价币 == 该区法定币）+ **非空**市场轮统计簿（两区、三段窗口各两个商品）。 理由见上面市场夹具常量那一段：{@code MarketTable.isEmpty()}
+   * 的"派生判断不进线格式"这条护栏**只在载荷里真有市场时** 才有观察点，空市场下它恒真（对改坏等价存活 ⇒ 本次 W1 的 {@code "empty"} 往返缺陷就是这么漏过去的）。
    *
    * <p>★ 夹具必须是**当前形状且自洽**：{@code allocations} 的 activity 指到 unit 且 actor == unit.operator、 {@code
    * relations} 键 == unit id —— 于是构造期迁移是 no-op，往返量的就是本夹具本身。
@@ -974,7 +1030,72 @@ class EconomyCodecTest {
         //   ★ 覆盖值取**非默认**（FARM 默认 7 ⇒ 3；WORKSHOP 默认 5 ⇒ 2），否则"字段没进线格式"与"值等于默认"不可区分。
         .withOutputQuantityOverrides(Map.of(FARM, Map.of(GRAIN, 3L), WORKSHOP, Map.of(CLOTH, 2L)))
         .withProductionEfficiency(
-            Map.of(FARM_UNIT, new ProductionEfficiencyState(117_000L, 3L, 5L, 2L, 7L)));
+            Map.of(FARM_UNIT, new ProductionEfficiencyState(117_000L, 3L, 5L, 2L, 7L)))
+        // ★★ W1 收尾批：市场三件套都**非空**。★ 区先落、价表后落（派生形态要求成员格非空，而"key 不是区的
+        //   价表条目"必须有成员格 ⇒ 反过来落会撞守卫）；两处成员格不重叠（构造期守卫②）。
+        .withMarketZones(Map.of(ZONE, persistentZone()))
+        .withMarketTables(Map.of(MARKET, derivedMarketTable(), ZONE, persistentZoneTable()))
+        // ★★ 统计簿覆盖**两个市场**（派生 + 持久各一份，键集与价表相同）⇒ "只按第一个键成账 / 只写一份"
+        //   这类错误读得出来；★ 构造期**不要求**统计簿的键在 marketTables 里（撤市后统计仍可读），这里两边同键
+        //   只是为了让两种形态各有一份统计也过一遍线格式。
+        .withMarketRoundStats(
+            Map.of(
+                MARKET,
+                roundStats(9L, 3_200L, 6_400L, 5_601L),
+                ZONE,
+                roundStats(11L, 900L, 1_800L, 1_200L)));
+  }
+
+  // ── ★★ W1 收尾批：市场夹具（两种形态 + 统计簿） ─────────────────────────────────────────────
+
+  /** 派生形态价表：不在区表里的键 ⇒ 成员格 = {@link #MARKET_HEX}；三个商品、其中 {@link #TOOL} 是**明确 0 价**。 */
+  private static MarketTable derivedMarketTable() {
+    Map<CommodityId, Long> prices = new LinkedHashMap<>();
+    prices.put(GRAIN, 12L);
+    prices.put(CLOTH, 5L);
+    prices.put(TOOL, 0L);
+    return new MarketTable(CURRENCY, Set.of(MARKET_HEX), prices);
+  }
+
+  /** 持久形态价表：键 = 区 {@link #ZONE} ⇒ 成员格**必须为空**、计价币**必须等于**该区法定币。 */
+  private static MarketTable persistentZoneTable() {
+    return new MarketTable(CURRENCY, Set.of(), Map.of(GRAIN, 12L, CLOTH, 5L));
+  }
+
+  /** 持久形态的区（法定币 = 夹具币种；成员格 = 锚格，且不与派生市场的成员格重叠）。 */
+  private static MarketZone persistentZone() {
+    return new MarketZone(ZONE, ZONE_HEX, 0, Set.of(ZONE_HEX), CURRENCY, Map.of());
+  }
+
+  /** ★ W1：一份**三段窗口都非空**的市场轮统计簿（每段两个商品、三段取互不相同的读数 ⇒ "把某一段写成另一段"看得见）。 */
+  private static MarketRoundStats roundStats(
+      long day,
+      long lastRoundTurnoverMilli,
+      long cycleTurnoverMilli,
+      long previousCycleTurnoverMilli) {
+    return new MarketRoundStats(
+        day,
+        Map.of(
+            GRAIN, round(1_000L, 900L, 800L, 12L, 100L), CLOTH, round(500L, 480L, 470L, 5L, 30L)),
+        lastRoundTurnoverMilli,
+        Map.of(
+            GRAIN, round(2_000L, 1_800L, 1_600L, 12L, 200L),
+            CLOTH, round(900L, 880L, 860L, 5L, 40L)),
+        cycleTurnoverMilli,
+        Map.of(
+            GRAIN, round(3_000L, 2_800L, 2_700L, 12L, 150L),
+            CLOTH, round(700L, 690L, 680L, 5L, 20L)),
+        previousCycleTurnoverMilli);
+  }
+
+  /** 一行供需读数（D / S / 成交 / 均价 / 未满足；逐值 ≥ 0 由 {@link CommodityRound} 构造期判死）。 */
+  private static CommodityRound round(
+      long demandMilli,
+      long supplyMilli,
+      long tradedMilli,
+      long averagePriceMilli,
+      long unmetMilli) {
+    return new CommodityRound(demandMilli, supplyMilli, tradedMilli, averagePriceMilli, unmetMilli);
   }
 
   private static EconomyData dataWithIndustries(Map<IndustryId, Industry> industries) {

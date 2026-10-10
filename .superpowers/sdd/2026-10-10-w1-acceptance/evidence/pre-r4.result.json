@@ -1,0 +1,64 @@
+{
+  "advances": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 7.341,
+      "to": 360
+    }
+  ],
+  "checkpoints": [
+    {
+      "bytes": 981610,
+      "md5": "be52546e1222ae443883f1a6af1a7dc2",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 5402858,
+      "md5": "bcab35f0f203a0e8f32493cd4f4e2564",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "/tmp/w1acc/shell.json",
+  "days": 360,
+  "genesisCheckpointSeconds": null,
+  "genesisTick": 0,
+  "guiPort": 10451,
+  "headRevision": 2,
+  "jar": "/tmp/w1acc-pre/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "820c705e382329a65a41c7d84ed83636",
+  "log": "/tmp/w1acc/results/pre-r4.log",
+  "readySeconds": 1.682,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 4789743,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 360
+    }
+  ],
+  "revisionsAfterGenesis": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    }
+  ],
+  "segments": 1,
+  "startedAt": "2026-10-11T02:03:07",
+  "store": "/tmp/w1acc/store-pre-r4",
+  "tag": "pre-r4",
+  "tick": 360
+}

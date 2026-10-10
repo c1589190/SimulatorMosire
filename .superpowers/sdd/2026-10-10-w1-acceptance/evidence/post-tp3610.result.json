@@ -1,0 +1,83 @@
+{
+  "advances": [
+    {
+      "from": 3600,
+      "httpStatus": 200,
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":3}}",
+      "seconds": 1.735,
+      "to": 3610
+    }
+  ],
+  "checkpoints": [
+    {
+      "bytes": 1743440,
+      "md5": "a16a786e1dca679493f9def0df75981e",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 23947308,
+      "md5": "74fdbcc20a238ea9fa07c96882b58f10",
+      "path": "checkpoints/main/2.json"
+    },
+    {
+      "bytes": 24190534,
+      "md5": "c4d718e490f0649d3799184ca72b2319",
+      "path": "checkpoints/main/3.json"
+    }
+  ],
+  "config": "/tmp/w1acc/shell-three-powers.json",
+  "days": 3610,
+  "genesisCheckpointSeconds": null,
+  "genesisTick": 3600,
+  "guiPort": 10397,
+  "headRevision": 3,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "92f92ba05e46a54430d0b976345a87bc",
+  "log": "/tmp/w1acc/results/post-tp3610.log",
+  "readySeconds": 1.88,
+  "revisionDelta": 2,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 22161321,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 3600
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 3393352,
+      "commandType": "core.AdvanceTime",
+      "revision": 3,
+      "tick": 3610
+    }
+  ],
+  "revisionsAfterGenesis": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 22161321,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 3600
+    }
+  ],
+  "segments": 1,
+  "startedAt": "2026-10-11T02:11:37",
+  "store": "/tmp/w1acc/store-post-tp10y",
+  "tag": "post-tp3610",
+  "tick": 3610
+}

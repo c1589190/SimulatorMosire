@@ -1,0 +1,42 @@
+# bounded: marketRoundStats 逐窗大小（three-powers 10 年 / small-world 500 天上限）
+=== 2.json  tick=360  economy 载荷 4963761 字节 / 37 组件 ===
+  最大 8 个组件：debtContracts=2061507B, householdDebtRefs=818527B, pledges=292452B, allocations=250427B, relations=229763B, productionOrganizations=219668B, operatorConditions=189267B, assetShares=186493B
+  marketRoundStats: 4018 字节 / 366 叶 / 3 个市场；占比 0.0809%
+    市场 c-tp-copper      lastRoundDay=360 商品 5/0/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1321B/121 叶
+    市场 c-tp-gold        lastRoundDay=360 商品 5/0/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1322B/121 叶
+    市场 c-tp-silver      lastRoundDay=360 商品 5/0/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1326B/121 叶
+  flows                131725 字节
+  debtContracts       2061507 字节
+  shipments                 2 字节
+=== 2.json  tick=3600  economy 载荷 11089646 字节 / 37 组件 ===
+  最大 8 个组件：debtContracts=5909160B, householdDebtRefs=2388704B, pledges=450479B, operatorConditions=350000B, productionOrganizations=321751B, assetShares=288656B, relations=253106B, classStandings=245426B
+  marketRoundStats: 4015 字节 / 366 叶 / 3 个市场；占比 0.0362%
+    市场 c-tp-copper      lastRoundDay=3600 商品 5/0/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1321B/121 叶
+    市场 c-tp-gold        lastRoundDay=3600 商品 5/0/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1324B/121 叶
+    市场 c-tp-silver      lastRoundDay=3600 商品 5/0/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1321B/121 叶
+  flows                177083 字节
+  debtContracts       5909160 字节
+  shipments                 2 字节
+=== 3.json  tick=3610  economy 载荷 11316589 字节 / 37 组件 ===
+  最大 8 个组件：debtContracts=6062856B, householdDebtRefs=2451149B, pledges=450479B, operatorConditions=353727B, productionOrganizations=321741B, assetShares=288656B, relations=253106B, classStandings=245426B
+  marketRoundStats: 5764 字节 / 531 叶 / 3 个市场；占比 0.0509%
+    市场 c-tp-copper      lastRoundDay=3610 商品 5/5/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1904B/176 叶
+    市场 c-tp-gold        lastRoundDay=3610 商品 5/5/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1904B/176 叶
+    市场 c-tp-silver      lastRoundDay=3610 商品 5/5/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1907B/176 叶
+  flows                175855 字节
+  debtContracts       6062856 字节
+  shipments                 2 字节
+=== 2.json  tick=360  economy 载荷 4140750 字节 / 37 组件 ===
+  最大 8 个组件：debtContracts=2019843B, householdDebtRefs=799056B, pledges=307830B, allocations=141492B, assetShares=124599B, relations=122404B, productionOrganizations=120873B, operatorConditions=109353B
+  marketRoundStats: 1352 字节 / 122 叶 / 1 个市场；占比 0.0327%
+    市场 single-region    lastRoundDay=360 商品 5/0/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1333B/121 叶
+  flows                 60848 字节
+  debtContracts       2019843 字节
+  shipments                 2 字节
+=== 2.json  tick=500  economy 载荷 6486931 字节 / 37 组件 ===
+  最大 8 个组件：debtContracts=3500565B, householdDebtRefs=1396265B, pledges=521857B, assetShares=142761B, operatorConditions=139846B, productionOrganizations=122793B, relations=121575B, allocations=110840B
+  marketRoundStats: 1900 字节 / 177 叶 / 1 个市场；占比 0.0293%
+    市场 single-region    lastRoundDay=500 商品 5/5/5  键=cycleToDate,cycleTurnoverMilli,lastRound,lastRoundDay,lastRoundTurnoverMilli,previousCycle,previousCycleTurnoverMilli  1881B/176 叶
+  flows                 68362 字节
+  debtContracts       3500565 字节
+  shipments                 2 字节

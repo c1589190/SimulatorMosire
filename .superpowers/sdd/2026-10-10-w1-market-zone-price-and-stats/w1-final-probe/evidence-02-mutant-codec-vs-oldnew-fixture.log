@@ -1,0 +1,4 @@
+[codec] A 无市场载荷（旧夹具形态） | snapshot keys marketTables=true marketRoundStats=true | contains "empty"=false | decode=ok
+[codec] B 有市场载荷（新夹具形态） | snapshot keys marketTables=true marketRoundStats=true | contains "empty"=false | decode=ok
+[codec] A 无市场载荷（旧夹具形态） | snapshot keys marketTables=true marketRoundStats=true | contains "empty"=false | decode=ok
+[codec] B 有市场载荷（新夹具形态） | snapshot keys marketTables=true marketRoundStats=true | contains "empty"=true | decode=IllegalStateException: economy 侧 JSON 解码失败: EconomySnapshot

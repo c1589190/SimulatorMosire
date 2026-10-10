@@ -1,0 +1,21 @@
+# HTTP 读口对拍：GET /api/economy/hex 与 /api/economy/ownership，19 格 × 2 视图（revision=2, branch=main）
+差异叶：38（全量 8521718 字节视图）
+  /-1_-1/hex/dashboard/windows/unavailable/assetMarketValue
+    pre ="资产市值/非粮折粮没有可信价格口径（Market 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+    post="资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+  /-1_-1/ownership/dashboard/windows/unavailable/assetMarketValue
+    pre ="资产市值/非粮折粮没有可信价格口径（Market 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+    post="资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+  /-1_0/hex/dashboard/windows/unavailable/assetMarketValue
+    pre ="资产市值/非粮折粮没有可信价格口径（Market 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+    post="资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+  /-1_0/ownership/dashboard/windows/unavailable/assetMarketValue
+    pre ="资产市值/非粮折粮没有可信价格口径（Market 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+    post="资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+  /-1_1/hex/dashboard/windows/unavailable/assetMarketValue
+    pre ="资产市值/非粮折粮没有可信价格口径（Market 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+    post="资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+  /-1_1/ownership/dashboard/windows/unavailable/assetMarketValue
+    pre ="资产市值/非粮折粮没有可信价格口径（Market 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+    post="资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、LiquidationPolicy 的政策价不是市值）⇒ dashboard 只报实物数量，不折算成粮/钱"
+差异键分布：{'assetMarketValue': 38}（全部是同一句注释文案里的类型名 Market→MarketTable）

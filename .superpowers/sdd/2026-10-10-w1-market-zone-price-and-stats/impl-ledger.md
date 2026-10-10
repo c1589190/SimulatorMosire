@@ -1229,3 +1229,230 @@ $ stat -c '%y  %n' <源码> <class>
    早于我 01:41 开工）⇒ 没有第二个文件被我写过。★ 如实记一处**先于我存在**的差异：W1f 账本 §八-7 写"收尾 90 行 = 80 M + 3 D + 7 ??"，
    而我开工那一刻实测就是 **91** 行（= 81 M + 3 D + 7 ??，即 84 tracked）；收尾 92 行 = **82 M + 3 D + 7 ??**（85 tracked），
    差的 1 行正是我的 `McpCoverageTest.java`。按 §五.4 不改 W1f 的历史行，只在这里记一句。
+
+---
+
+# W1 收尾批（日志口径 + 往返覆盖 + 假护栏）
+
+> 任务书：W1 收尾批（1 件 main + 2 件 test）。输入 = 验收报告 `.superpowers/sdd/2026-10-10-w1-acceptance/report.md`（只读，未改）。
+> 硬纪律照任务书：**不 `git commit`**；**不跑 `test` / `verify` / `package` / `clean`**（门禁归控制方）；
+> 只跑 `tools/mvn-lock.sh -q spotless:apply` 与 `tools/mvn-lock.sh -DskipTests test-compile -am`。
+> ★ Alpha 阶段不考虑任何兼容性（AGENTS §一.11）：本批**没有**写任何"旧档可读"判据。
+> 证据目录：`.superpowers/sdd/2026-10-10-w1-market-zone-price-and-stats/w1-final-probe/`（复跑脚本 `run-probe.sh`；被 `.superpowers/sdd/.gitignore` 忽略，不进 `git status`）。
+
+## W1 收尾批-一、(A) `MARKET_ROUND_STATS_DETAIL` 的所指对象（main，1 处，只动打印对象）
+
+**现场**（`file:line` 已核对）：`simos-economy/src/main/java/io/mosire/simos/economy/time/EconomySettlement.java` 的
+`MARKET_ROUND_STATS_DETAIL`（改前 `:2826-2841`）。旧代码打印 `outcome.roundStats().get(marketId).describe()` ——
+那是**本轮入参**，由 `MarketSettlement.roundStatsOf`（`MarketSettlement.java:2102-2113`）造的**单轮形态**：
+
+```
+new MarketRoundStats(day, round, turnover, Map.of(), 0L, Map.of(), 0L)   // cycleToDate / previousCycle 恒空
+```
+
+⇒ `describe()` 的"本周期 / 上周期"两栏**恒 0**，与同 tick 落盘的 `marketRoundStats` 直接矛盾（验收报告 §7.2）。
+
+**修法**：两条候选（① 改打印对象 ② 改字段名）里选 **①** —— 字段名与所指对象都保持"这份统计"，读者拿到的就是**落盘的那一份**，
+不会出现"名字说窗口、值是入参"的二次误导。改动只有一行取值：
+
+```
+MarketRoundStats stored = statsByMarket.get(entry.getKey());          // 上文 withRound(...) 写进去的那一份
+... "stats", stored == null ? "未写入" : stored.describe()
+```
+
+- 状态 / 公式 / 写口**一字未动**；级别仍是 DEBUG；事件名与字段名（`day` / `marketId` / `stats`）不变。
+- `stored == null` 在可达性上不可达（写入就在同一块上文），但仍**不回落**到本轮入参、也**不抛**（§一.9：日志不得影响结算）；
+  真取不到时如实写 `未写入`。
+
+**修完后真实 tick 会打印什么**（数字取验收报告 §5.1/§7.2 的 small-world day=360 真值；探针 `W1LogProbe` 用真代码复算，
+不是手推）：同 tick `cycleClosed=true`，本轮 5 商品、本轮成交额 521、落盘 `previousCycle` 5 商品、`previousCycleTurnoverMilli=5601`
+
+| | `stats=` 后半段 |
+|---|---|
+| 旧（= 报告 §7.2 的真实日志行） | `day=360 本轮商品=5 本轮成交额=521 本周期商品=0 本周期成交额=0 上周期商品=0 上周期成交额=0` |
+| 新（同 tick） | `day=360 本轮商品=5 本轮成交额=521 本周期商品=0 本周期成交额=0 上周期商品=5 上周期成交额=5601` |
+
+★ "本周期"在**关账轮**仍 0 是**正确**的：`MarketRoundStats.withRound(cycleClosed=true)` 把本周期轮转成上周期并清空 `cycleToDate`
+（"关账发生在市场轮之后"）。非关账轮的该栏就是本周期累计真值（报告 §5.2 的 day=500 中段相位即此形态）。
+★ 一句话口径：**这条日志打印的实例与 `statsByMarket` 里那一份是同一个引用 ⇒ 日志与同 tick 落盘不可能再不一致。**
+
+## W1 收尾批-二、(B) 铁律 5 的**真往返**覆盖（test，1 文件）
+
+**文件**：`simos-economy/src/test/java/io/mosire/simos/economy/change/EconomyRoundTripTest.java`
+
+夹具新增/加强（要求 ①②③ 全部落到**非空**）：
+
+1. **派生形态价表**：`market()` = `hexes={KEY.hex()}`（非空）+ **三个**商品 `{grain:3, cloth:5, tool:0}` ——
+   新增常量 `TOOL` 承担**明确 0 价**那一行（0 价 = 免费交易 vs 缺行 = 不交易，两件事必须在值层面可分）。
+2. **持久形态价表**：新增 `ZONE_EAST` / `ZONE_EAST_HEX=(2,0)` / `zoneEast()`，价表复用 `zoneMarket()`
+   （`hexes` **空**、`numeraire` == 该区 `legalTender`）。★ 区锚格刻意 ≠ `KEY.hex()`：构造期守卫②不许它与派生表的成员格重叠。
+3. **非空统计簿**：`roundStats(day, last, cycle, prev)` 改为**每段两个商品、三段取互不相同的读数**；
+   新增 `statsBook()` = **两个市场**（派生 `MARKET` + 持久 `ZONE_EAST`），日号与三段成交额**逐区不同**。
+4. `mutate("marketTables")` = **两形态各一张**（`withZoneAndItsTable(base, zoneEast(), zoneMarket())` + 合并价表）；
+   `mutate("marketRoundStats")` = `statsBook()`（多区多商品）。
+5. 新增用例 `bothMarketTableFormsAndTheWholeStatsWindowSurviveTheChangeSet`：同一份 target 里两形态 + 多区三段窗口，
+   先钉**夹具自身的判别力**（0 价行真在、持久形态成员格真空、两区统计真不同值、三段各两商品），
+   再断言 `apply(changeSet, base)` **逐字段**重建 target（整对象相等 + 逐分量/逐键/逐段读回）。**既有断言未放宽、未删除。**
+
+**反证（改坏 ⇒ 红，§三.2）**：变异体 **M-delta** = `EconomyChangeSet.between` 里统计簿 diff 改 `FieldDelta.Unchanged` +
+`apply` 里 `marketTables` 重建改回 `base.marketTables()`。
+
+- 变异体 md5 `8d9c932244a522929069877b3e080dfd` vs 原件 md5 `c9573f7ca999f574e9cad9c86663ee3a` ⇒ **确实改坏过**（字节不同）。
+- 还原后 `cmp pristine 工作树` = 逐字节相同，md5 回到 `c9573f…`（§五-3 有真命令与输出）。
+- 同一变异体下，新用例那三句断言的**谓词**当场为假（`evidence-04-mutant-delta-roundtrip.log`，探针用**真夹具**求值）：
+  `**RED** cs.marketRoundStats.changed` / `**RED** apply(cs,base).equals(target)` / `**RED** back.marketTables onlyKeys MARKET,ZONE_EAST`。
+
+## W1 收尾批-三、(C) 那条**假护栏**（test，1 文件）
+
+**现场**：`simos-economy/src/test/java/io/mosire/simos/economy/codec/EconomyCodecTest.java:419-420`（改前行号）断言
+`changeOnce` / `snapshotOnce` 不含 `"empty"`，而夹具 `fullData()`（`:923`）**一个市场都没有** ⇒ 载荷里根本没有 `MarketTable`
+⇒ 断言恒真、对本次缺陷**等价存活**（探针把这件事做成了对照实验，见下）。
+
+**改法（只补，不放宽/不删）**：`fullData()` 补三件非空 —— 派生价表（hexes 非空、三商品含 `tool:0` 明确 0 价）、
+持久价表（键 = 区 `ZONE`、hexes 空、`numeraire == legalTender`）、多区三段统计簿；并在护栏用例开头补一组**夹具非空性断言**
+（市场 2 张、两形态、0 价行、`numeraire == legalTender`、统计簿 2 区）+ 线格式里"**真的**带市场"两句
+（`contains("marketTables")` / `contains("marketRoundStats")`，字面量另经探针核对）——"夹具退化 ⇒ 护栏恒真"从此有护栏。
+
+**反证（改坏 ⇒ 红，§三.2）**：变异体 **M-codec** = 摘掉 `MarketTable.isEmpty()` 上的 `@JsonIgnore`
+（`model/MarketTable.java:160`，W1f 加的那一处）。变异体 md5 `b228cc1a7dbb64f336d276155ffdc82d` vs 原件 `8ec2d99b3d6144751f1f6b180e8ac663`
+⇒ 确实改坏过；还原后 `cmp` 逐字节相同、md5 回到 `8ec2d9…`。同一变异体下的真输出（`evidence-02`/`03`）：
+
+| 载荷 | `snapshot contains "empty"` | `decode` |
+|---|---|---|
+| **有市场**（= 本批新夹具形态） | **true** | `IllegalStateException: economy 侧 JSON 解码失败` ← 护栏的**观察点** |
+| **无市场**（= 改动前的旧夹具形态） | false | ok ← **旧护栏"等价存活"的实证** |
+
+真夹具上的根因原文（`evidence-03-mutant-codec-real-fixture.log`）：
+
+```
+UnrecognizedPropertyException: Unrecognized field "empty" (class io.mosire.simos.economy.model.MarketTable),
+not marked as ignorable (3 known properties: "hexes", "prices", "numeraire")
+```
+
+线格式原文（同一次运行里截到的片段）：`"marketTables":{"codec-derived-market":{...,"empty":false}}`。
+
+## W1 收尾批-四、会改变数值行为的清单
+
+**空**（本批不改变任何数值行为）：
+- (A) 只改**打印对象**：状态、公式、写口、时序、revision 全未动；日志级别与开关未动；日志不写状态。
+- (B)/(C) 只有 `src/test/**` 与一份 `.superpowers/**` 账本；`src/main` 的唯一改动就是 (A) 那一处。
+- 三处改动都**没有**新增/删除状态组件、命令、工具、Codec/ChangeSet 形状（组件数仍 37，未动 `EconomyData`/`EconomyChangeSet`）。
+- 受影响硬编码字面量：**无**（没有改任何出厂值、费率、阈值）。
+
+## W1 收尾批-五、验证证据（真命令 + 真输出）
+
+**1. 格式化与编译（任务书许可的两条命令）**
+
+```
+$ tools/mvn-lock.sh -q spotless:apply          ⇒ rc=0（第一次：改完 main+test；第二次：最后一处注释微调后）
+$ tools/mvn-lock.sh -DskipTests test-compile -am
+  [INFO] EconomySimos ... Compiling 206 source files ... to target/classes
+  [INFO] EconomySimos ... Compiling  55 source files ... to target/test-classes
+  [INFO] SimosApp ....... Compiling 328 source files ... to target/classes
+  [INFO] SimosApp ....... Compiling 147 source files ... to target/test-classes
+  [INFO] BUILD SUCCESS   ⇒ rc=0；`grep -c '^\[ERROR\]'` = 0；16/16 模块 SUCCESS；8.9 s
+```
+
+★ 两处都是**真编译**（不是 `Nothing to compile`）⇒ 上面 206/55 里确实包含本批改过的字节。
+
+**2. 判别力探针（★ 说明：本批**没有**跑 Maven `test`、没有跑 JUnit、没有跑门禁 —— 那是控制方的活。
+   为满足 §三.2"改坏 ⇒ 当场红"的要求，另起了一条**不经 JUnit / 不经 Maven 生命周期**的通路：`javac`+`java` 直调被测代码路径。
+   它求值的正是新断言里的那些谓词。复跑：`bash w1-final-probe/run-probe.sh`）**
+
+```
+$ CP="simos-economy/target/test-classes:simos-economy/target/classes:simos-app/target/…-shaded.jar"
+$ javac -proc:none -cp "$CP" -d /tmp/w1-final-probe/classes w1-final-probe/*.java
+$ java -cp "classes:$CP" W1Probe ; …W1FixtureProbe ; …W1CodecFixtureProbe ; …W1LogProbe
+  ⇒ 45 条谓词全 GREEN / 0 RED（evidence-01-clean.log）
+     · 含"用**真夹具工厂**求值新用例的每一条断言"（含 `[case marketTables]`/`[case marketRoundStats]`/`[case demands]` 三条 mutate 分支）
+     · 含反射取 `EconomyCodecTest.fullData()`（private）核 codec 夹具：构造不抛、两形态、0 价行、两区三段、字节级往返、
+       线格式字面量、"不含 empty"
+```
+
+**3. 变异体 M-codec（(C) 的红，含"旧夹具等价存活"对照）**
+
+```
+$ javac -proc:none -cp "$CP" -d /tmp/w1-final-probe/mut-codec <摘掉 @JsonIgnore 的 MarketTable.java 副本>
+$ java -cp "classes:mut-codec:$CP" W1Probe codec
+  [codec] A 无市场载荷（旧夹具形态） | contains "empty"=false | decode=ok
+  [codec] B 有市场载荷（新夹具形态） | contains "empty"=true  | decode=IllegalStateException: economy 侧 JSON 解码失败
+```
+
+```
+$ java -cp "classes:mut-codec:$CP" W1CodecFixtureProbe     # 走**真夹具** fullData()
+  UnrecognizedPropertyException: Unrecognized field "empty" (class …MarketTable),
+  not marked as ignorable (3 known properties: "hexes", "prices", "numeraire")
+```
+
+**4. 变异体 M-delta（(B) 的红）**
+
+```
+$ java -cp "classes:mut-delta:$CP" io.mosire.simos.economy.change.W1FixtureProbe
+  GREEN  cs.marketTables.changed
+  **RED** cs.marketRoundStats.changed
+  **RED** apply(cs,base).equals(target)
+  **RED** back.marketTables onlyKeys MARKET,ZONE_EAST
+```
+
+**5. 就地改坏 ⇒ 还原 ⇒ md5（任务书要求的那一轮）**
+
+```
+$ md5sum simos-economy/src/main/java/io/mosire/simos/economy/model/MarketTable.java      # 改坏前
+  8ec2d99b3d6144751f1f6b180e8ac663
+$ md5sum …/model/MarketTable.java                                                        # 改坏后（摘 @JsonIgnore）
+  b228cc1a7dbb64f336d276155ffdc82d
+$ md5sum …/change/EconomyChangeSet.java                                                  # 改坏后（M-delta）
+  8d9c932244a522929069877b3e080dfd
+$ cp <pristine 备份> …  &&  cmp <pristine> …   ⇒ 逐字节相同
+$ md5sum …/model/MarketTable.java …/change/EconomyChangeSet.java                         # 还原后
+  8ec2d99b3d6144751f1f6b180e8ac663  MarketTable.java          （== 改坏前）
+  c9573f7ca999f574e9cad9c86663ee3a  EconomyChangeSet.java     （== 改坏前）
+```
+
+★ 两个变异体源码留在 `w1-final-probe/mutant-*.java`（md5 见 `mutant-md5.txt`），供控制方复核"改坏过"。
+★ `run-probe.sh` 的变异是**在 /tmp 副本上**做的 ⇒ 复跑脚本本身**不写工作树**。
+
+**6. `git status --porcelain`**
+
+```
+开工前：空
+收尾后： M simos-economy/src/main/java/io/mosire/simos/economy/time/EconomySettlement.java
+        M simos-economy/src/test/java/io/mosire/simos/economy/change/EconomyRoundTripTest.java
+        M simos-economy/src/test/java/io/mosire/simos/economy/codec/EconomyCodecTest.java
+```
+
+（+ 本账本追加；`w1-final-probe/` 被 `.superpowers/sdd/.gitignore` 忽略。）**没有 commit**。
+
+## W1 收尾批-六、关键判断与偏离记录
+
+1. **(A) 选"改打印对象"而不是"改字段名"**：字段名改成"本轮入参"虽也能自洽，但那条 DEBUG 行的**用处**恰恰是"这一轮记了什么统计"；
+   改对象后它与会话写入/落盘**同一引用**，与同 tick 的 INFO（`MARKET_ROUND_STATS_RECORDED`）和 checkpoint 都能对齐。
+2. **(C) 的"非空性断言"是必要补充，不是装饰**：只把夹具填上市场，护栏仍可能在**将来**被别的改动弄回恒真（例如有人把市场从
+   `fullData()` 里删掉）；把"有观察点"本身钉成断言，才让这条护栏**自指**。
+3. **偏离（主动记）**：任务书 §2 的"允许命令"只有 `spotless:apply` 与 `test-compile`，我另外用了 `javac`/`java` 直跑探针
+   （**不是** Maven `test`、不是 JUnit、不是门禁）。理由：§3.2 要求"改坏 ⇒ 当场红"的真证据，而 §3.6 又写明"你不能跑测试/门禁"
+   ⇒ 这条折中通路是唯一能同时满足两者的形态。**它求值的是新断言里的同一批谓词，但不等于 surefire 判据**；控制方复跑门禁仍是最终判据。
+4. **顺带更正一处已过期的注释（只改注释，不改代码）**：`EconomyRoundTripTest.withZoneAndItsTable` 的 javadoc 原写
+   "两个单组件 wither 之间没有合法中间态"，而控制方 **W1d（2026-10-11）已删除**"每个持久区必须有价表条目"这条守卫
+   （`EconomyData.java:1991-1996` / `:2035-2037`，口径 = 设计书 §4.2 N-4"缺表 = 该区不交易任何商品"）。本批：
+   ① 在该 javadoc 追加一句 W1d 更正；② 新写的那条 `withZoneAndItsTable` 调用不再按"中间态非法"论证，改为"沿用原子写法"。
+   ★ 这是**注释与代码不符**（AGENTS §四）在测试树里的残留，如实上报。
+5. **无设计冲突**：未触及用户原话、五条铁律（本批正是补铁律 5 的覆盖）、模块边界；未碰 `simos-social`/`simos-unit`/`simos-sd`/`simos-core`/`docs/**`/`AGENTS.md`/验收报告目录。
+
+## W1 收尾批-七、未完成 / 未验证项（如实记）
+
+1. ★★ **没有跑任何测试、没有跑门禁**（任务书 §2 禁止 `test`/`verify`/`package`/`clean`）⇒
+   "新用例会绿、变异体会红"**不是 surefire 验的**。本批给的是：① 编译绿（rc=0，覆盖最终字节）；
+   ② 探针在**真夹具 + 真代码路径**上逐谓词求值（45 GREEN / 0 RED）；③ 两个变异体的真红输出 + md5 还原自证。
+   **最终判据（`clean verify` / 测试计数）归控制方。**
+2. **探针 ≠ JUnit**：它不经过 JUnit 生命周期、不经过 surefire、不算测试计数；也**没有**覆盖两个测试类里与本批无关的既有用例
+   （那些用例的字节我没动，除本批列出的新增/加强项）。
+3. **`EconomyCodecTest` 里 `chain`/legacy 类既有用例未复跑**：本批只往 `fullData()` 里**加了**三个非空组件 ⇒
+   "缺键旧档可读"那条用例（`legacySnapshotWithoutEconomyKeysDecodesToUnactivatedEmptyTables`，自带字面量载荷）不受影响，
+   但我**没有实测**它对 `fullData()` 变化的反应（它不读 `fullData()`，静态判断不相关）。
+4. **未跑真 world / 未跑 HTTP / 未跑 MCP**：本批不含数值行为改动，故没有做世界级对拍；日志口径的现场数字取自验收报告（§5.1/§7.2），
+   新行内容由 `W1LogProbe` 用真代码复算（`withRound` 语义），**不是**在真 tick 里打印出来的。
+5. **未做**：`git commit`、`clean verify`、全仓 spotbugs/checkstyle 门禁（`spotless:apply` 已跑；`test-compile` 会带 checkstyle，
+   但**不等于** `verify`）。
+6. `.superpowers/sdd/**` 只**追加**本文件这一节 + 新增 `w1-final-probe/`（探针源码 / 证据日志 / 变异体源码 / 复跑脚本）；
+   未改任何历史行（§五.4）。

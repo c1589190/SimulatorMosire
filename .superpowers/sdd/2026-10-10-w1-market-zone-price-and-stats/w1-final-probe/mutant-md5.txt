@@ -1,0 +1,2 @@
+b228cc1a7dbb64f336d276155ffdc82d  .superpowers/sdd/2026-10-10-w1-market-zone-price-and-stats/w1-final-probe/mutant-M-codec-MarketTable.java
+8d9c932244a522929069877b3e080dfd  .superpowers/sdd/2026-10-10-w1-market-zone-price-and-stats/w1-final-probe/mutant-M-delta-EconomyChangeSet.java

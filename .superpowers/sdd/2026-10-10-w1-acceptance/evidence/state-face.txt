@@ -1,0 +1,20 @@
+# 形状投影后全状态面（唯一投影：markets[hex] / marketTables[zone]+hexes ⇒ marketsByHex；剔除新增 marketRoundStats）
+  proj-pre-r1.json     md5=458574ca19e2a954d59339615146f291  5120813 字节
+  proj-post-r1.json    md5=458574ca19e2a954d59339615146f291  5120813 字节
+  proj-pre-c1.json     md5=458574ca19e2a954d59339615146f291  5120813 字节
+  proj-post-c1.json    md5=458574ca19e2a954d59339615146f291  5120813 字节
+
+# 逐 namespace 规范串 md5（改前 / 改后）
+  actor    pre=3641289eac0de9c8 post=3641289eac0de9c8  相同  73188 字节
+  army     pre=f3071f2a16269bef post=f3071f2a16269bef  相同  124 字节
+  economy  pre=eb190c78b8874fca post=eb190c78b8874fca  相同  4036071 字节
+  gov      pre=549a004125bd824f post=549a004125bd824f  相同  4158 字节
+  map      pre=7f42aa8fbdb69b20 post=7f42aa8fbdb69b20  相同  5269 字节
+  sd       pre=182b681a89344209 post=182b681a89344209  相同  351 字节
+  social   pre=d3ea3d9c8248218a post=d3ea3d9c8248218a  相同  998839 字节
+  unit     pre=a399ccef1d9cad3b post=a399ccef1d9cad3b  相同  2746 字节
+
+# 形状投影本身（白名单①，非语义差异）
+  改前 economy.data.markets: 19 键（hex "q_r"），每格 {numeraire,prices}
+  改后 economy.data.marketTables: 1 键（"single-region"），{numeraire,hexes[19],prices}
+  投影后 marketsByHex: 19 键，md5 pre=de3b1edbf7812e86bf52c6646a21183a post=de3b1edbf7812e86bf52c6646a21183a

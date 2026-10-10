@@ -1,0 +1,32 @@
+# W1 性能对拍：small-world 创世新 store，一次 advance(0→360)；墙钟 = HTTP POST /api/advance 全程（含结算+落盘）
+# 机器：Intel Core Ultra 9 275HX / nproc=8 / 11G / OpenJDK 21.0.12.1；两侧同机同时段交替跑；两侧同参数（checkpointInterval=1）
+# 落盘样本（runner result.json，逐轮）：
+  post-r2     6.998 s  RevΔ=1
+  post-r3     8.761 s  RevΔ=1
+  post-r4     8.953 s  RevΔ=1
+  post-r5     7.479 s  RevΔ=1
+  post-r6     7.514 s  RevΔ=1
+  pre-r1      8.791 s  RevΔ=1
+  pre-r2      7.092 s  RevΔ=1
+  pre-r3      7.184 s  RevΔ=1
+  pre-r4      7.341 s  RevΔ=1
+  pre-r5      8.560 s  RevΔ=1
+  post-r1  7.364 s  RevΔ=1   ← result.json 因首轮 runner 键名缺陷未落盘；值为 runner stdout 实录
+
+# 主口径（各 5 次落盘样本）
+  改后 post(r2..r6)        n=5 原始=[6.998, 7.479, 7.514, 8.761, 8.953] 中位=7.514 最大=8.953 最小=6.998 均值=7.941
+  改前 pre(r1..r5)         n=5 原始=[7.092, 7.184, 7.341, 8.56, 8.791] 中位=7.341 最大=8.791 最小=7.092 均值=7.794
+  中位劣化 +2.36% ；最大劣化 +1.84% ；均值劣化 +1.89%
+
+# 附口径（改后 6 次，含 post-r1 实录）
+  改后 post(r1..r6)        n=6 原始=[6.998, 7.364, 7.479, 7.514, 8.761, 8.953] 中位=7.497 最大=8.953 最小=6.998 均值=7.845
+  改前 pre(r1..r5)         n=5 原始=[7.092, 7.184, 7.341, 8.56, 8.791] 中位=7.341 最大=8.791 最小=7.092 均值=7.794
+  中位劣化 +2.12% ；最大劣化 +1.84%
+
+# Revision Δ（落盘真数，来自 store 的 revisions 表）
+  pre-r1: [('main', 1, 0, 'core.Bootstrap', 67), ('main', 2, 360, 'core.AdvanceTime', 4789743)]
+  post-r2: [('main', 1, 0, 'core.Bootstrap', 67), ('main', 2, 360, 'core.AdvanceTime', 4789388)]
+
+# Δ 不随天数增长（three-powers，37 格 / 3 区）
+  0→3600（10 年）单次 advance：Rev 1→2（Δ=1），耗时 194.002 s，changeset=22161321 B，checkpoint=23947308 B
+  续跑 3600→3610（10 天）单次 advance：Rev 2→3（Δ=1），耗时 1.735 s，changeset=3393352 B
