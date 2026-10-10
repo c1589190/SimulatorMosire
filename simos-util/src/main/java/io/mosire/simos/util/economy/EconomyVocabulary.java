@@ -20,8 +20,13 @@ import java.util.Objects;
  * <p>★ **本类只放 {@code String} 与原生类型**：util 不能依赖 economy-api（方向相反），故 {@code CommodityId} 那一层留在
  * economy 侧，由 {@link #GRAIN_COMMODITY_ID} 构造。
  *
- * <p>★★ **商品不再只有粮**（R3 的 T1）：本类是**六个商品 id 的唯一拼写点**（粮 / 布 / 纤维 / 工具 / 铁 / 木）—— 三个以上模块各写一份
+ * <p>★★ **商品不再只有粮**（R3 的 T1）：本类是**七个商品 id 的唯一拼写点**（粮 / 布 / 纤维 / 工具 / 铁 / 木 / 运输服务）—— 三个以上模块各写一份
  * 字面量就是三处真相（{@code ApiViews} 与 {@code 旧结算引擎（R3a 已删除）} 各私藏一份 {@code "grain"} 正是 v1 的病灶形态）。
+ *
+ * <p>★★ <b>运输服务</b>（A1，2026-10-10；约束设计书 {@code 2026-10-10-haul-service-commodity-design.md} §3.1）：
+ * 用户原话「运输服务我不是说算商品吗，只是这个商品的需求需要额外通过其他已有商品的购买来计算」（选 A）⇒ 运输服务是**一种普通商品** （{@link
+ * #HAUL_COMMODITY_ID}），由跑商产业（{@code trade@hex}）在**生产阶段**产出。★ 它的**需求**由其他商品的购买派生（A2 批）， 本批（A1）只做"商品
+ * + 配方"。
  *
  * <p>★★ **需求口径带商品维度**（R3 的 T1；spec §七 原文："粮食不足与衣物不足对死亡的时间尺度显然不能一样"）：
  *
@@ -67,6 +72,24 @@ public final class EconomyVocabulary {
   /** 木材的商品 id（R3）：本轮**只进词表**（没有任何配方用它），留给后续的建材/燃料增量。 */
   public static final String WOOD_COMMODITY_ID = "wood";
 
+  /**
+   * ★★ <b>运输服务（跑商/承运）的商品 id</b>（A1，2026-10-10）：{@code haul} = 中文"运输服务"。
+   *
+   * <p>★ <b>它为什么是商品而不是一个量纲</b>：用户 2026-10-10 原话「运输服务我不是说算商品吗，只是这个商品的需求需要额外通过
+   * 其他已有商品的购买来计算，要我选的话我肯定选A」⇒ 运输服务走**普通商品**的那一套（词表 / 价格表 / 配方产出 / 市场成交）， 而**它的需求另由其他商品的购买派生**（A2
+   * 批）——不是"新造第二种商品体系"。
+   *
+   * <p>★ <b>它是开放 id 里的一个新键，不是新的持久状态形状</b>（设计书 §4）：{@code CommodityId} 本就是 {@code record(String)}，
+   * 各表是既有 {@code Map<CommodityId, …>} ⇒ **不触碰铁律 5**（无新组件、无 Codec/ChangeSet 改动、无新往返不变式）。
+   *
+   * <p>★ <b>量纲</b>：1 商品单位 = {@link #MILLI_PER_COMMODITY_UNIT} 毫运输服务；1 毫运输服务与既有的**运力**口径
+   * <b>同量纲</b>（毫商品·程，见 {@code CapacityDemand}/{@code MerchantCapacity}）—— 这是"不新造量纲"的落点。
+   *
+   * <p>★ <b>本批（A1）它的牌价与需求都还没设</b>：按既有 {@code Market.prices} 口径「缺价 ⇒ 不交易」，故 A1 **不产生任何运输服务交易**、
+   * 也不改既有数值（缺省中性；见设计书 §5 I-H3）。牌价与派生需求一起进 A2。
+   */
+  public static final String HAUL_COMMODITY_ID = "haul";
+
   /** 1 **单位商品** = 1000 最小计量单位（粮 ⇒ 毫粮、布 ⇒ 毫匹、工具 ⇒ 毫件……**与商品无关**）。 */
   public static final long MILLI_PER_COMMODITY_UNIT = 1000L;
 
@@ -99,7 +122,7 @@ public final class EconomyVocabulary {
   private EconomyVocabulary() {}
 
   /**
-   * ★★ <b>全部商品 id（<b>保序</b>：粮 → 布 → 纤维 → 工具 → 铁 → 木）—— <b>含留位商品</b></b>（H5 ④）。
+   * ★★ <b>全部商品 id（<b>保序</b>：粮 → 布 → 纤维 → 工具 → 铁 → 木 → 运输服务）—— <b>含留位商品</b></b>（H5 ④）。
    *
    * <p>★★ <b>它为什么必须有</b>（用户裁定"铁留作留位"的同一条要求）：本仓禁"看起来在记、其实永远不被读"的字段 —— 而 <b>H5 起 {@link
    * #IRON_COMMODITY_ID} 不再进任何配方</b>（作坊的投入由铁改成工具，见 {@code
@@ -112,13 +135,16 @@ public final class EconomyVocabulary {
    * <ul>
    *   <li>**在用**：{@code grain} / {@code cloth}（自然需求 + 配方）/ {@code fiber}（农田副产 + 织机与作坊的投入）/ {@code
    *       tool}（作坊的产出**与投入** —— H5 ④ 起自产自用）；
+   *   <li>**在用（A1 起，产出侧）**：{@code haul}（运输服务）—— **{@code trade@hex} 产业每周期产出它**（设计书 §3.2）； ★
+   *       但它的**需求与牌价**都在 A2 批，故本批世界里它**不产生交易**（缺价 ⇒ 不交易，既有 {@code Market.prices} 口径）；
    *   <li>**留位**：{@code iron}（★ H5 起**没有任何配方读它**；等冶炼流程）/ {@code wood}（R3 起只进词表， 等建材/燃料增量）。
    * </ul>
    *
    * <p>★ <b>为什么是"含留位"的完整清单而不是"在用商品"清单</b>：读口要回答的是"世界里存在哪些商品"（进账本、进价格表、 进守恒式的那一套），而"哪一条配方读它"是另一个问题（读
    * {@code Industry.inputPerUnit/outputPerUnit} 就看得出来）。 把留位项藏起来，等于把"铁到底是留位还是没人知道的死字面量"这件事从读口抹掉。
    *
-   * <p>★ 返回的是**保序**的不可变清单（声明序 = 本类的常量序）：调用方可以直接当"词表序"用（读口的键序要求）。
+   * <p>★ 返回的是**保序**的不可变清单（声明序 = 本类的常量序）：调用方可以直接当"词表序"用（读口的键序要求）。 ★★ <b>A1 把新项 {@code haul}
+   * 追加在**末尾**</b>（不是插在中间）：既有六项的**相对序逐字不动** ⇒ 任何按词表序读的既有读口/报告列序不发生位移 （缺省中性的一条硬要求，见设计书 §5 I-H3）。
    */
   public static java.util.List<String> allCommodityIds() {
     return java.util.List.of(
@@ -127,7 +153,8 @@ public final class EconomyVocabulary {
         FIBER_COMMODITY_ID,
         TOOL_COMMODITY_ID,
         IRON_COMMODITY_ID,
-        WOOD_COMMODITY_ID);
+        WOOD_COMMODITY_ID,
+        HAUL_COMMODITY_ID);
   }
 
   /**

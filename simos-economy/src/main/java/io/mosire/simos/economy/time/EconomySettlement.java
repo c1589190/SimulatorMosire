@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
@@ -484,6 +485,136 @@ public final class EconomySettlement {
       }
     }
     return total;
+  }
+
+  /**
+   * ★★ <b>A1（2026-10-10）：运输服务产出的 INFO + DEBUG（AGENTS §一.9"新增/修改经济阶段必须同时加日志"）</b>。
+   *
+   * <p>★★ <b>它记的是哪一件事</b>：{@code trade@hex}（跑商/承运产业）在**收获**这一步产出了商品 {@code haul}（运输服务） —— 即用户
+   * 2026-10-10 那句「跑商不是生产方式吗？」的落点：跑商的产出从此走**标准生产管线**的同一段代码（{@code harvest} 的净产入账 + relation
+   * 结算），不再是市场轮里的私有分支。
+   *
+   * <pre>
+   * INFO  HAUL_SERVICE_PRODUCED        （毛产里有 haul 才刷）**发生了什么 + 具名计数**：几个产业产出、毛产/净产（毫）、
+   *                                    产出计提条数与合计（毫）、有牌价的格数
+   * DEBUG HAUL_SERVICE_PRODUCED_DETAIL **为什么**：逐产业给 haul 的每规模单位产出/劳动/投入与该格的**牌价有无** ——
+   *                                    缺价 ⇒ 按既有 Market.prices 口径"不交易" ⇒ 本批世界里它只入账、不成交（I-H3 缺省中性）
+   * </pre>
+   *
+   * <p>★ <b>只读</b>：不写状态、不改任何公式、失败不影响结算（{@code EventLog} 的口径）。★ 调用点只在 {@code harvestWorks}
+   * 非空时；且**毛产里没有 haul 就一条都不刷** ⇒ 无跑商/无该产出的世界日志面逐字不变。
+   *
+   * @param day 当日日号（两级日志都必带）
+   * @param ledger 当日**收获**这一段的发生额（只读）
+   * @param base 当前世界状态（只用来判"这一格有没有给 haul 定价"，以及取产业模板的两个配方读数）
+   */
+  private static void logHaulServiceOutput(long day, ProductionLedger ledger, EconomyData base) {
+    long grossMilli = 0L;
+    long netMilli = 0L;
+    long industries = 0L;
+    for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry : ledger.gross().entrySet()) {
+      Long produced = entry.getValue().get(EconomyCommodities.HAUL);
+      if (produced == null || produced <= 0L) {
+        continue;
+      }
+      industries++;
+      long loss =
+          ledger
+              .losses()
+              .getOrDefault(entry.getKey(), Map.of())
+              .getOrDefault(EconomyCommodities.HAUL, 0L);
+      grossMilli = Math.addExact(grossMilli, produced);
+      netMilli = Math.addExact(netMilli, produced - loss);
+    }
+    if (industries <= 0L) {
+      return; // 本日没有任何产业产出运输服务 ⇒ 一条都不刷
+    }
+    long accrualLegs = 0L;
+    long accrualMilli = 0L;
+    for (ProductionLedger.ActorEntry accrual : ledger.outputAccruals()) {
+      if (EconomyCommodities.HAUL.equals(accrual.commodity())) {
+        accrualLegs++;
+        accrualMilli = Math.addExact(accrualMilli, accrual.delta());
+      }
+    }
+    long pricedMarkets = 0L;
+    for (Market market : base.markets().values()) {
+      if (market.hasPrice(EconomyCommodities.HAUL)) {
+        pricedMarkets++;
+      }
+    }
+    // ── INFO：发生了什么 + 具名计数 ──────────────────────────────────────────────────────────
+    EventLog.channel(TRACE)
+        .info(
+            LogEvent.of(
+                "HAUL_SERVICE_PRODUCED",
+                EconomyLogSource.ECONOMY_SETTLEMENT,
+                "day",
+                day,
+                "industries",
+                industries,
+                "grossMilli",
+                grossMilli,
+                "netMilli",
+                netMilli,
+                "accrualLegs",
+                accrualLegs,
+                "accrualMilli",
+                accrualMilli,
+                "pricedMarkets",
+                pricedMarkets));
+    // ── DEBUG：为什么（逐产业的配方读数 + 牌价有无 ⇒ 交易/不交易）────────────────────────────
+    if (!TRACE.isDebugEnabled()) {
+      return;
+    }
+    for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry : ledger.gross().entrySet()) {
+      Long produced = entry.getValue().get(EconomyCommodities.HAUL);
+      if (produced == null || produced <= 0L) {
+        continue;
+      }
+      Industry industry = base.industries().get(entry.getKey());
+      long haulPerScaleUnit =
+          industry == null
+              ? 0L
+              : industry.recipe().outputPerUnit().getOrDefault(EconomyCommodities.HAUL, 0L);
+      long impliedScale =
+          haulPerScaleUnit <= 0L
+              ? 0L
+              : produced / Math.multiplyExact(haulPerScaleUnit, MILLI_PER_GRAIN);
+      HexCoord hex = IndustryHexKeys.hexKeyOf(entry.getKey()).map(HexCoord::parse).orElse(null);
+      Market market = hex == null ? null : base.markets().get(hex);
+      boolean priced = market != null && market.hasPrice(EconomyCommodities.HAUL);
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "HAUL_SERVICE_PRODUCED_DETAIL",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "day",
+                  day,
+                  "industry",
+                  entry.getKey().value(),
+                  "hex",
+                  hex == null ? "" : hex.q() + "," + hex.r(),
+                  "grossMilli",
+                  produced,
+                  "lossMilli",
+                  ledger
+                      .losses()
+                      .getOrDefault(entry.getKey(), Map.of())
+                      .getOrDefault(EconomyCommodities.HAUL, 0L),
+                  "haulPerScaleUnit",
+                  haulPerScaleUnit,
+                  "impliedScale",
+                  impliedScale,
+                  "laborPerUnit",
+                  industry == null ? 0L : industry.recipe().laborPerUnit(),
+                  "inputPerUnit",
+                  industry == null ? Map.of() : industry.recipe().inputPerUnit(),
+                  "marketPriced",
+                  priced,
+                  "reason",
+                  priced ? "priced" : "no-haul-price-no-trade"));
+    }
   }
 
   /** 追踪日志辅助：产业 → 商品 → 数量的两层表求和（只在 DEBUG 打开时调用）。 */
@@ -1751,6 +1882,8 @@ public final class EconomySettlement {
                       harvestLedger.inputs().getOrDefault(industry, Map.of())));
         }
       }
+      // ★★ A1（2026-10-10）：**运输服务产出**的 INFO/DEBUG（AGENTS §一.9；口径见 logHaulServiceOutput 的类注）。
+      logHaulServiceOutput(day, harvestLedger, base);
     }
 
     // ── 3b. ★★ E4c：欠租/欠薪资本化（生产/租金阶段之后）─────────────────────────────────────

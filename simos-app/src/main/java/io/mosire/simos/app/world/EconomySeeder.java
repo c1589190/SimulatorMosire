@@ -225,6 +225,65 @@ public final class EconomySeeder {
    */
   public static final long TOOL_MILLI_PER_TRADE_UNIT_CYCLE = 100L;
 
+  /**
+   * ★★ <b>A1（2026-10-10）：每 1 单位贸易规模每周期产出的**运输服务**（商品单位 / 规模·周期）：{@code 1}</b> —— {@code trade@hex}
+   * 的 {@code outputPerUnit = {haul: 本值}}（设计书 §3.2）。
+   *
+   * <p>★★ <b>量纲（★ 改数之前先读这一行）</b>：{@code Industry.outputPerUnit} 的值侧恒是**商品单位** （{@code
+   * EconomySettlement.harvest}：{@code 规模 × 值 × MILLI_PER_COMMODITY_UNIT} = 毫单位），<b>不是</b>毫单位 —— 与
+   * {@code cycleInputPerUnit}（毫单位/规模）**刻意不同**（见 {@code Industry} 类注的"量纲陷阱"）。 ⇒ 本常量 1 = <b>1,000
+   * 毫运输服务 = 1,000 毫商品·程</b>；"毫商品·程"是 {@code CapacityDemand}/{@code MerchantCapacity} 的既有**运力**口径 ⇒
+   * **不新造量纲**（用户 2026-10-10 口径「运力就是每一笔长途商品需要额外支付的……」，设计书 §3.3）。
+   *
+   * <p>★★ <b>取值理由（两条独立口径给出同一个数，都按 {@link #MERCHANT_CATTLE_PER_CITY} = 100 规模的城市格算）</b>：
+   *
+   * <pre>
+   * ① 与**旧的每城运力口径同量级**：100 规模 × 1,000 毫 = **100,000 毫运输服务 / 城·周期**
+   *    = MerchantPolicy.CITY_CAPACITY_CEILING（= 旧创世常量 MERCHANT_CAPACITY_PER_CITY = 100,000，M-A1 类注引的同一个数）
+   *    ⇒ 产出量级与改前"每城每轮能承接 10 万毫商品"同量级。
+   * ② 与**本产业自己已声明的工具投入配套**：cycleInputPerUnit = 100 毫工具/规模·周期 ⇒ 100 规模 × 100 = 10,000 毫工具/周期；
+   *    MerchantHaul.TOOL_MILLI_PER_HAUL = 1,000 毫工具/趟 ⇒ 该投入 = **10 趟/周期**
+   *    ⇒ 10 趟 × (一趟承运 10 商品单位 = 10,000 毫商品) = **100,000 毫运输服务/周期**（与①逐值相同）。
+   * </pre>
+   *
+   * <p>★ <b>为什么一趟按 10 商品单位算</b>：{@code MerchantHaul} 类注的既有标定——"一趟的规模锚 = 承运 10 商品单位 （10,000 毫商品 =
+   * 一个人一个周期的口粮量）"；而 {@code CapacityDemand} 的**缺省耗用**是 1 毫商品 = 1 运力单位（1000‰） ⇒ 一趟的服务量 = 10,000
+   * 毫商品·程。两条既有标定在这里恰好闭合，故本常量不是新拍的数。
+   *
+   * <p>★ <b>毛产与净产</b>：本值是**毛产**；入账前的 3% 损耗走既有口径 （{@code EconomySettlement.FEED_PER_MILLE} = 0 +
+   * {@code DEPRECIATION_PER_MILLE} = 30）⇒ 家户账实收 = 97%。
+   *
+   * <p>★ <b>本批不做的事</b>：工具消耗**单套化**（{@code cycleInputPerUnit} 的 100/规模·周期 与 {@code
+   * MerchantHaul.TOOL_MILLI_PER_HAUL} 的 1,000/趟 两套并存）属 **A3** —— A1 若同时扣会**双扣**（设计书 §3.2 批次边界）。
+   */
+  public static final long HAUL_PER_TRADE_UNIT_CYCLE = 1L;
+
+  /**
+   * ★★ <b>A1：{@code trade@hex} 分配模板里**生产资料**那一侧的权重（‰）</b>：{@code 700}。
+   *
+   * <p>★ <b>为什么从 1000 改成 700</b>：改前该产业的分配模板是 {@code meansWeightPerMille=1000 /
+   * laborWeightPerMille=0} —— 劳动权重 0 意味着"劳动不参与分配"，与"跑商是一种生产方式（要人干）"自相矛盾（用户 2026-10-10
+   * 原话「跑商不是生产方式吗？」）。 改后劳动权重 = {@link #TRADE_SPLIT_LABOR_PER_MILLE}（两权重之和恒 = 1,000，由 {@code
+   * AllocationRule.Split} 构造期判）。
+   *
+   * <p>★ <b>为什么取 700/300 而不是别的比例</b>：与**农业**（{@code agriculture(...)}：700/300）同档 —— 两者都是
+   * **资本（生产资料）主导**的产业（农业 = 土地、承运 = 畜力/运力资产）；劳动主导的两档是纺织（300/700）与作坊（400/600）。 ⇒ 沿用既有档位、不新造第二套比例。
+   *
+   * <p>★★ <b>如实记的口径边界</b>：{@code AllocationRule.Split} 在本仓是**旧口径**（见 {@code EconomySettlement} 类注
+   * "旧口径的 {@code AllocationRule.Split}"）—— 当前生产结算走 relation（{@code ProductionRules}），不读这两个权重 ⇒
+   * <b>本改动不改任何数值</b>，它是"产业模板与它声明的制度自相一致"的形状修正。★ 跑商劳动的**真实约束**在 {@code Industry.laborPerUnit}（=
+   * {@link #LABOR_MILLI_PER_TRADE_UNIT} = 1,000 千分劳动/规模，**改前就已 &gt; 0**， 由 {@code
+   * LaborQueueBook.offer} 读）—— 设计书 §3.2 把"laborWeightPerMille = 0"读成"不施加劳动约束"是把上述两个字段混了， 已具名记进账本（§4
+   * D-A1-2），本批不因此改 {@code laborPerUnit}（它本来就非 0）。
+   */
+  public static final int TRADE_SPLIT_MEANS_PER_MILLE = 700;
+
+  /**
+   * ★★ <b>A1：{@code trade@hex} 分配模板里**劳动**那一侧的权重（‰）</b>：{@code 300}（理由见 {@link
+   * #TRADE_SPLIT_MEANS_PER_MILLE}）。
+   */
+  public static final int TRADE_SPLIT_LABOR_PER_MILLE = 300;
+
   /** ★★ 创世商号的层级（GM 默认）：{@link MerchantPolicy.MerchantTier#PORTER}（三档里最小的一档）。 */
   public static final MerchantPolicy.MerchantTier MERCHANT_TIER =
       MerchantPolicy.MerchantTier.PORTER;
@@ -671,6 +730,9 @@ public final class EconomySeeder {
 
   /** 铁（R3；作坊的原料）。 */
   public static final String COMMODITY_IRON = EconomyVocabulary.IRON_COMMODITY_ID;
+
+  /** ★★ 运输服务（A1，2026-10-10；{@code trade@hex} 产业的产出）。 */
+  public static final String COMMODITY_HAUL = EconomyVocabulary.HAUL_COMMODITY_ID;
 
   // ── H4：同格市场（固定价、每格单一计价货币）与创世货币禀赋 ──────────────────────────────
 
@@ -4146,12 +4208,24 @@ public final class EconomySeeder {
    * regime          = merchant（{@link RegimeOperators#MERCHANT}；BY_REGIME 不登记它，故经营主体显式给）
    * capacity        = {CATTLE: MERCHANT_CATTLE_PER_CITY}      // 具名 GM 默认（100）
    * capacityPerUnit = {CATTLE: 1}                             // 1 头畜力 / 1 单位运力
-   * outputPerUnit   = {}                                      // 贸易没有商品产出（收入走承运运费）
-   * cycleInputPerUnit = {CATTLE: {tool: TOOL_MILLI_PER_TRADE_UNIT_CYCLE}}  // ★ M-D 附修：工具补货路径
-   * laborPerUnit    = LABOR_MILLI_PER_TRADE_UNIT（1000）
+   * outputPerUnit   = {haul: HAUL_PER_TRADE_UNIT_CYCLE}       // ★ A1：产出**运输服务**（改前是空表 ⇒ 收获当场 return）
+   * cycleInputPerUnit = {CATTLE: {tool: TOOL_MILLI_PER_TRADE_UNIT_CYCLE}}  // ★ M-D 附修：工具补货路径（两套并存属 A3）
+   * laborPerUnit    = LABOR_MILLI_PER_TRADE_UNIT（1000）      // 劳动约束（LaborQueueBook 读它）
+   * 分配模板         = meansWeightPerMille = TRADE_SPLIT_MEANS_PER_MILLE(700) / laborWeightPerMille = 300
    * cycleDays       = CYCLE_DAYS
    * 经营者           = 该格 merchant principal 家户 actor
    * </pre>
+   *
+   * <p>★★ <b>A1（2026-10-10）为什么给 {@code outputPerUnit} 这一行</b>：改前它是**空表** ⇒ {@code
+   * EconomySettlement.harvest} 的 {@code netByCommodity.isEmpty() ⇒ return} 让 trade 的收获**当场返回** ——
+   * 收入腿不进标准管线的任何一步；同时 {@code LaborQueueBook.offer} 为它落 {@code NO_RECIPE_OUTPUT}（maxAbsorbable = 0）。
+   * 这正是用户 2026-10-10 原话「我觉得更该排查的是为什么跑商作为生产方式会和其他类型的生产隔离开来」指的那处**结构性隔离** （只读调查账本
+   * S-3/S-11）。给了产出之后：trade 走**同一条**净产入账/关系结算路径，劳动约束由 {@code laborPerUnit} 参与排队。
+   *
+   * <p>★★ <b>本批的缺省中性（设计书 §5 I-H3）</b>：运输服务**没有牌价**（{@code MARKET_PRICES_FACTORY} 不含它）⇒ 按既有 {@code
+   * Market.prices} 口径「缺价 ⇒ 不交易」：{@code MarketDemandBook} 算出的可寻址需求恒 0 ⇒ 家户不挂运输服务卖单、没有对手方 ⇒
+   * **不产生任何运输服务交易**；{@code LaborQueueBook} 的估值也因缺价恒为 0 （{@code outputPriced=false} + 净收益 ≤ 0）⇒
+   * trade **照旧不入队**、劳动分配逐值不变。★ 牌价与派生需求**一起**进 A2。
    *
    * <p>★ {@code capacity} 会在 {@code ownershipStakesOf(plan, mainCapacity)} 出口物化成 {@code owner =
    * operator} 的 {@code OWNED} CATTLE 份额（trade 没有家户副 unit 的配额 ⇒ 不拆分、整额给商号本金主）。
@@ -4164,11 +4238,17 @@ public final class EconomySeeder {
             "贸易",
             RegimeOperators.MERCHANT,
             Map.of(AssetKind.CATTLE.name(), MERCHANT_CATTLE_PER_CITY),
-            // 分配模板（旧形状的 split 规则）：承运以运力资产为主；trade 不发劳动配额，labor 权重只是模板占位。
-            orderedTable("meansWeightPerMille", 1000, "laborWeightPerMille", 0),
+            // 分配模板（旧口径的 split 规则）：承运以运力资产为主、劳动占三成（理由与档位见 TRADE_SPLIT_MEANS_PER_MILLE）。
+            orderedTable(
+                "meansWeightPerMille",
+                TRADE_SPLIT_MEANS_PER_MILLE,
+                "laborWeightPerMille",
+                TRADE_SPLIT_LABOR_PER_MILLE),
             Map.of(AssetKind.CATTLE.name(), 1L),
             LABOR_MILLI_PER_TRADE_UNIT,
-            Map.of(),
+            // ★★ A1：**产出 = 运输服务**（商品单位/规模·周期；具名常量与两条独立标定见 HAUL_PER_TRADE_UNIT_CYCLE）。
+            //   表只有一项 ⇒ 单键 Map.of 不存在迭代序抖动（本仓"保序"纪律针对多项表；与下面工具投入表同款）。
+            Map.of(COMMODITY_HAUL, HAUL_PER_TRADE_UNIT_CYCLE),
             // ★★ M-D 附修：**周期投入 = 工具**（改前是空表 ⇒ 跑商家户不会自发买工具 ⇒ 12 趟后停）。
             //   具名常量与量级理由见 {@link #TOOL_MILLI_PER_TRADE_UNIT_CYCLE}；键取运力资产（CATTLE）那一层，
             //   与手工业 {@code cycleInputPerUnit = {WORKSHOP: {...}}} 同形（{@code
@@ -4200,7 +4280,9 @@ public final class EconomySeeder {
    * relation} 会在解析期 fail-closed（{@code EconomyPayloads} 的 defaultRelation 分支）⇒ seeder 必须显式给一条。
    *
    * <p>空 {@code rules} = 产出全归 {@link ProductionRules#residualOwner()}（这与"缺 relation 走最小自留"逐值同效）；
-   * {@code trade} 没有商品产出，劳动来源按其本金主/经营者自营记 {@link LaborSource#SELF}。投入供方就是 operator（无投入， 这一栏只是形状）。
+   * {@code trade} 的产出（★ A1 起 = **运输服务**）因此全部留在 operator —— 即该格商号本金主家户（{@code creditOutput} 的单一主体）。
+   * 劳动来源按其本金主/经营者自营记 {@link LaborSource#SELF}。投入供方就是 operator（其 {@code cycleInputPerUnit} 的工具由
+   * operator 自己出，这一栏只是形状）。
    */
   private static ProductionRules tradeRelation(IndustryPlan plan) {
     ActorRef operator = plan.operator();
