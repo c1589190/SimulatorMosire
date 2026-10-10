@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
@@ -52,12 +52,12 @@ class MarketPayCurrencyAcceptanceTest {
   /** 生活保留（买方的目标缺口）= 1 人 1 天口粮 × 35 天窗口 —— 夹具算法与生产路径同源。 */
   private static final long DEMAND = MarketSettlementFixtures.lifeReserveGrain(1L);
 
-  private static Market silverMarket() {
-    return new Market(SILVER, new LinkedHashMap<>(Map.of(GRAIN, PRICE_MILLI)));
+  private static MarketTable silverMarket() {
+    return EconomyFixtures.quote(SILVER, new LinkedHashMap<>(Map.of(GRAIN, PRICE_MILLI)));
   }
 
-  private static Market copperMarket(long grainPrice) {
-    return new Market(COPPER, new LinkedHashMap<>(Map.of(GRAIN, grainPrice)));
+  private static MarketTable copperMarket(long grainPrice) {
+    return EconomyFixtures.quote(COPPER, new LinkedHashMap<>(Map.of(GRAIN, grainPrice)));
   }
 
   /** 世界 A：单币世界（没有第二个市场、买方只有银）。 */
@@ -90,8 +90,7 @@ class MarketPayCurrencyAcceptanceTest {
 
   private static MarketSettlement.MarketOutcome settle(MarketSettlementFixtures.World world) {
     return MarketSettlementFixtures.settle(
-        world,
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets())));
+        world, MarketSettlementFixtures.round(world, world.defaultsOf()));
   }
 
   /** 向上取整（与结算侧"买方币货款"同一条算式口径；此处只是把判据写成算式，不引用私有方法）。 */

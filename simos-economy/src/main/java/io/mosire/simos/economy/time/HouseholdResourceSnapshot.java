@@ -2,7 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -15,7 +15,7 @@ import java.util.Objects;
 /**
  * ★★ <b>§4.3.5 的"同一份资源快照"</b>：一个家户在一次结算日开始时的只读资源视图。
  *
- * <p>排序用到的所有投入都在这里冻结：<b>家户价目表（保留价的来源 = 本格的 {@link Market} + 本户 {@code expectedNeedMilli}）、
+ * <p>排序用到的所有投入都在这里冻结：<b>家户价目表（保留价的来源 = 本格的 {@link MarketTable} + 本户 {@code expectedNeedMilli}）、
  * 可动库存、可动货币、本 tick 时间预算</b>。活动执行<b>不得</b>回头重算它、也<b>不得</b>因"先执行者改了价格"而重排 —— 那会让同一存档两跑不同（{@link
  * ActivitySelector} 的类注）。
  *
@@ -32,7 +32,7 @@ import java.util.Objects;
 record HouseholdResourceSnapshot(
     long day,
     HouseholdId household,
-    Market market,
+    MarketTable market,
     Map<CommodityId, Long> goods,
     Map<CurrencyId, Long> money,
     long laborMilli) {

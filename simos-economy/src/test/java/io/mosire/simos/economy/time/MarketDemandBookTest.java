@@ -10,6 +10,7 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -23,7 +24,7 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
@@ -87,12 +88,12 @@ class MarketDemandBookTest {
         new AllocationRule.Split(500, 500));
   }
 
-  private static Market market() {
+  private static MarketTable market() {
     Map<CommodityId, Long> prices = new LinkedHashMap<>();
     prices.put(GRAIN, 10L);
     prices.put(FIBER, 20L);
     prices.put(CLOTH, 30L);
-    return new Market(new io.mosire.simos.economy.api.id.CurrencyId("silver"), prices);
+    return EconomyFixtures.quote(new io.mosire.simos.economy.api.id.CurrencyId("silver"), prices);
   }
 
   private static MarketReport reportWithUnfilled(long quantity) {
@@ -121,9 +122,9 @@ class MarketDemandBookTest {
   @Test
   void unfilledBuyerAndFundamentalResidualUseMaxNotSum() {
     // consumerNeed = 100/天 × 10 天 = 1,000；上一轮未成交 = 1,500。
-    Market market = market();
-    Map<HexCoord, Market> markets = Map.of(H, market);
-    MarketTopology topology = MarketTopology.singleHex(markets);
+    MarketTable market = market();
+    Map<MarketZoneId, MarketTable> markets = EconomyFixtures.hexMarkets(Map.of(H, market));
+    MarketTopology topology = MarketTopology.singleHex(markets, Map.of());
     Map<HouseholdId, HouseholdEconomy> rows = Map.of(HOUSE, row(10L, 10_000L, Map.of(GRAIN, 100L)));
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
@@ -172,9 +173,9 @@ class MarketDemandBookTest {
 
   @Test
   void noReportsFallsBackToFundamentalResidualAndNamesNoReport() {
-    Market market = market();
-    Map<HexCoord, Market> markets = Map.of(H, market);
-    MarketTopology topology = MarketTopology.singleHex(markets);
+    MarketTable market = market();
+    Map<MarketZoneId, MarketTable> markets = EconomyFixtures.hexMarkets(Map.of(H, market));
+    MarketTopology topology = MarketTopology.singleHex(markets, Map.of());
     Map<HouseholdId, HouseholdEconomy> rows = Map.of(HOUSE, row(10L, 10_000L, Map.of(GRAIN, 100L)));
 
     // 该 unit 的引致需求：FIBER 500 毫/规模 × 1 规模 × ceil(10/10)=1 = 500。
@@ -237,11 +238,13 @@ class MarketDemandBookTest {
 
   @Test
   void buildIsDeterministicIncludingMapIterationOrder() {
-    Market market = market();
-    Map<HexCoord, Market> markets = new LinkedHashMap<>();
-    markets.put(H, market);
-    markets.put(new HexCoord(1, 0), market);
-    MarketTopology topology = MarketTopology.singleHex(markets);
+    MarketTable market = market();
+    // ★★ W1：逐格报价 → 一格一张派生价表（键 = "hex:<q>_<r>"，与 MarketTopology.singleHex 的节点 id 同源）。
+    Map<HexCoord, MarketTable> quotes = new LinkedHashMap<>();
+    quotes.put(H, market);
+    quotes.put(new HexCoord(1, 0), market);
+    Map<MarketZoneId, MarketTable> markets = EconomyFixtures.hexMarkets(quotes);
+    MarketTopology topology = MarketTopology.singleHex(markets, Map.of());
     Map<HouseholdId, HouseholdEconomy> rows = new LinkedHashMap<>();
     rows.put(HOUSE, row(10L, 10_000L, Map.of(GRAIN, 100L, CLOTH, 7L)));
 

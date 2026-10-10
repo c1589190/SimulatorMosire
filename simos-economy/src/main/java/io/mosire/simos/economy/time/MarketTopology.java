@@ -1,18 +1,22 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.InstrumentId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketNode;
 import io.mosire.simos.economy.api.market.MarketRegion;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.CommodityFreightBase;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.TransportTariff;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -67,8 +71,13 @@ public final class MarketTopology {
   /** 旧入口的"无路"查询：任何 lane 的道路瓶颈都是 0（没有折扣）。 */
   private static final ToIntBiFunction<HexCoord, HexCoord> NO_ROADS = (from, to) -> 0;
 
-  /** 旧入口的"没有城市距离"查询：任何格到最近节点的距离都是 0（没有辐射成本）。 */
-  private static final ToIntFunction<HexCoord> NO_NEAREST_NODE_DISTANCE = hex -> 0;
+  /**
+   * ★ <b>"没有城市距离"查询</b>：任何格到最近节点的距离都是 0（没有辐射成本）。
+   *
+   * <p>★ W1 起它也是<b>派生形态</b>（{@code marketZones} 为空）的正式取值：与改动前的 {@code singleRegion} 逐字同源
+   * （单区语义下没有"最近城市"可言）⇒ 组合根装配时显式传它，费率公式的半径项逐值不变。
+   */
+  public static final ToIntFunction<HexCoord> NO_NEAREST_NODE_DISTANCE = hex -> 0;
 
   /**
    * ★ <b>默认城市商人折扣函数：恒 0</b>（旧行为逐值不变）。
@@ -192,348 +201,105 @@ public final class MarketTopology {
   }
 
   /**
-   * ★★ <b>逐格自成区的退化形态</b>（没有城市节点可用的世界）：每个有市场的 hex 是一个半径 0 的区，且**不构造任何跨区候选** —— 这保留了 M2-L1
-   * 的"同格市场"行为，给单模块用例与尚未提供城市信息的世界一条合法路径。
+   * ★★ <b>W1（2026-10-10）：逐格退化拓扑</b>（没有地图切片的世界：单模块夹具 / 纯状态读者）—— <b>每个有市场的格自成一个半径 0 的区</b>，
+   * 且<b>不构造任何跨区候选</b>（保留 M2-L1 的"同格市场"行为）。
+   *
+   * <p>★★ <b>它逐值等于改动前的 {@code singleHex(markets)}</b>：那时"有市场的格"就是价表键集，每个键一个区、 币 = 该格的计价币、 {@code
+   * moveCostAt} 恒 1、无道路/无辐射/默认费率。价表改成<b>每区一张</b>之后，"一个市场覆盖哪些格"由两处给定 —— 持久区（键 ∈ {@code
+   * marketZones}）取 {@code MarketZone.hexes}，派生市场取价表条目自己的 {@link MarketTable#hexes()} ——
+   * 本方法把它们<b>摊开回逐格</b>，于是同一个世界读到同一份退化拓扑。
+   *
+   * <p>★★ <b>W1d（2026-10-11）：缺表的区仍摊开为逐格区</b> —— 遍历的是<b>区 ∪ 价表条目</b>（不再是只看价表）， 某区没有价表条目时用<b>区</b>自己的
+   * {@code hexes}/{@code legalTender} 当权威（区在那一形态下正是唯一权威）； 它在这一拓扑里没有价格（{@code MarketIndex.at}
+   * 对它的成员格返回 {@code null}），与"缺表 = 该区不交易"一致 —— 但成员格的<b>归属</b>不因此消失（否则同一个世界在两处读到"这一格属不属于某个市场"的不同答案）。
+   *
+   * @param marketTables 逐市场价表（键 = 区 id / 派生市场 id）
+   * @param marketZones 持久市场区表（空 = 全部条目都是派生市场）
    */
-  public static MarketTopology singleHex(Map<HexCoord, Market> markets) {
-    Objects.requireNonNull(markets, "markets");
-    return of(List.of(), markets, markets.keySet(), hex -> 1, false);
-  }
-
-  /**
-   * ★★ <b>单市场区入口</b>（D-027：同币即同区）：{@code marketHexes} 里所有格归入<b>恰好一个</b> {@link
-   * MarketRegion}，没有跨区候选、没有第二个区。
-   *
-   * <p>★★ <b>锚格 = 规范序第一个格</b>（q, r 升序；与 {@code marketHexes} 的迭代序无关）， {@code nodeId =
-   * "single-region"}、{@code radiusHex = 0}（单区语义不用半径；{@link #adjacent} 对同区/自身恒 false）；{@code
-   * numeraire} 取该锚格 {@link Market#numeraire()}。
-   *
-   * <p>★★ <b>fail-closed</b>：{@code markets} 为空、{@code marketHexes} 为空、成员格没有市场表条目、锚格没有市场表条目、
-   * 两个入参不同源（{@code markets} 的某个键不在 {@code marketHexes} 里）⇒ {@link IllegalArgumentException}
-   * （"没有报价币种的区不能交易"这条既有守卫在这里也是具名拒绝，不静默退化）。
-   *
-   * <p>★ <b>地形/道路/费率入口与旧入口逐字同源</b>：{@code moveCostAt}/{@code roadBottleneckBetween}/ {@code tariff}
-   * 原样交给 {@link #transportCost}/{@link #travelTicks}/{@link #roadBottleneckBetween}/{@link
-   * #freightPerMilleBetween}；城市折扣/农村惩罚沿用 {@link #NO_CITY_DISCOUNT_PER_MILLE}/ {@link
-   * #NO_RURAL_PENALTY_PER_MILLE}（没有政策时恒 0）。逐格贸易成本本身由 {@link HexTradeCost} 现算，本类不内建。
-   *
-   * @param markets 逐格市场表（键 = 有市场的格；每个键都必须在 {@code marketHexes} 里）
-   * @param marketHexes 单区成员格（本批 = 有市场的全部 hex）；不得为空，且必须覆盖 {@code markets} 的全部键
-   * @param moveCostAt 逐格地形代价（组合根装配；{@code >= 1} 的钳位见 {@link #moveCostAt}）
-   * @param roadBottleneckBetween 两格间道路瓶颈等级（组合根装配）
-   * @param tariff 运输费率（{@link TransportTariff}）
-   */
-  public static MarketTopology singleRegion(
-      Map<HexCoord, Market> markets,
-      Set<HexCoord> marketHexes,
-      ToIntFunction<HexCoord> moveCostAt,
-      ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
-      TransportTariff tariff) {
-    Objects.requireNonNull(markets, "markets");
-    Objects.requireNonNull(marketHexes, "marketHexes");
-    Objects.requireNonNull(moveCostAt, "moveCostAt");
-    Objects.requireNonNull(roadBottleneckBetween, "roadBottleneckBetween");
-    Objects.requireNonNull(tariff, "tariff");
-    if (markets.isEmpty()) {
-      throw new IllegalArgumentException("MarketTopology.singleRegion 需要至少一个有市场的格（markets 为空）");
-    }
-    Set<HexCoord> members = new LinkedHashSet<>();
-    for (HexCoord hex : marketHexes) {
-      if (hex == null) {
-        throw new IllegalArgumentException("MarketTopology.singleRegion 的 marketHexes 不得含 null");
-      }
-      if (!markets.containsKey(hex)) {
-        throw new IllegalArgumentException(
-            "MarketTopology.singleRegion 的成员格必须有市场表条目（缺价/缺币种的格不能进单区）: " + hex);
-      }
-      members.add(hex);
-    }
-    if (members.isEmpty()) {
-      throw new IllegalArgumentException("MarketTopology.singleRegion 的 marketHexes 不得为空");
-    }
-    for (HexCoord hex : markets.keySet()) {
-      if (hex == null) {
-        throw new IllegalArgumentException("MarketTopology.singleRegion 的 markets 键不得含 null");
-      }
-      if (!marketHexes.contains(hex)) {
-        throw new IllegalArgumentException(
-            "MarketTopology.singleRegion 的 markets 里有成员表之外的格（两个入参不同源）: " + hex);
-      }
-      members.add(hex); // ★ "有市场的 hex 全部归入一个区"：markets 的每个键都在同一个区里，不造第二个区
-    }
-    HexCoord anchor = canonicalFirstHex(members);
-    Market anchorMarket = markets.get(anchor);
-    if (anchorMarket == null) {
-      throw new IllegalArgumentException(
-          "MarketTopology.singleRegion 的锚格没有市场表条目（没有报价币种可用）: " + anchor);
-    }
-    MarketNode node =
-        new MarketNode(
-            "single-region",
-            anchor,
-            0,
-            anchorMarket.numeraire(),
-            io.mosire.simos.economy.api.money.MoneyVocabulary.SILVER_SPECIE.id());
-    MarketRegion region = new MarketRegion(node, members);
+  public static MarketTopology singleHex(
+      Map<MarketZoneId, MarketTable> marketTables, Map<MarketZoneId, MarketZone> marketZones) {
+    Objects.requireNonNull(marketTables, "marketTables");
+    Objects.requireNonNull(marketZones, "marketZones");
+    List<MarketRegion> regions = new ArrayList<>();
     Map<HexCoord, MarketRegion> byHex = new LinkedHashMap<>();
-    for (HexCoord member : members) {
-      byHex.put(member, region);
+    // ★ W1d：迭代集合 = 价表条目 ∪ 区（规范序：先价表 id、再补只出现在区表里的 id，逐段各自有序）。
+    Set<MarketZoneId> ids = new LinkedHashSet<>(MarketTables.canonicalIds(marketTables));
+    ids.addAll(MarketTables.canonicalIdsOf(marketZones.keySet()));
+    for (MarketZoneId id : ids) {
+      MarketTable table = marketTables.get(id);
+      MarketZone zone = marketZones.get(id);
+      if (table == null && zone == null) {
+        continue; // 不可达（id 来自上面两处之一）
+      }
+      // ★ 成员格与计价币的权威按形态给：区在 ⇒ 区（I22，缺表时它仍是那一格的归属）；否则价表条目。
+      Set<HexCoord> members = zone != null ? zone.hexes() : table.hexes();
+      CurrencyId numeraire = zone != null ? zone.legalTender() : table.numeraire();
+      List<HexCoord> sortedMembers = new ArrayList<>(members);
+      sortedMembers.sort(HexCoord::compareTo);
+      for (HexCoord hex : sortedMembers) {
+        MarketNode node =
+            new MarketNode(
+                "hex:" + IndustryHexKeys.hexKey(hex.q(), hex.r()),
+                hex,
+                0,
+                numeraire,
+                MoneyVocabulary.SILVER_SPECIE.id());
+        MarketRegion region = new MarketRegion(node, Set.of(hex));
+        regions.add(region);
+        byHex.put(hex, region);
+      }
     }
     return new MarketTopology(
-        List.of(region),
+        regions,
         byHex,
-        moveCostAt,
-        roadBottleneckBetween,
-        NO_NEAREST_NODE_DISTANCE,
-        tariff,
-        NO_CITY_DISCOUNT_PER_MILLE,
-        NO_RURAL_PENALTY_PER_MILLE,
-        true);
-  }
-
-  /** 规范序（q, r 升序）第一个格；调用方保证非空。 */
-  private static HexCoord canonicalFirstHex(Set<HexCoord> hexes) {
-    HexCoord first = null;
-    for (HexCoord hex : hexes) {
-      if (first == null || hex.q() < first.q() || (hex.q() == first.q() && hex.r() < first.r())) {
-        first = hex;
-      }
-    }
-    return first;
-  }
-
-  /**
-   * 旧入口：城市节点 + 半径 + 地图格集 + 逐格地形代价。★ 道路/辐射/费率取"无路、最近城市距离 0、默认费率" —— 没有新数据的调用方行为保持可达；数值口径见 {@link
-   * #freightPerMilleBetween}。
-   */
-  public static MarketTopology of(
-      List<MarketNode> nodes,
-      Map<HexCoord, Market> markets,
-      Set<HexCoord> hexes,
-      ToIntFunction<HexCoord> moveCostAt) {
-    return of(
-        nodes,
-        markets,
-        hexes,
-        moveCostAt,
-        NO_ROADS,
-        NO_NEAREST_NODE_DISTANCE,
-        TransportTariff.probeDefaults());
-  }
-
-  /**
-   * 正常入口（P4 起）：城市节点 + 半径 + 地图格集 + 逐格地形代价 + <b>道路瓶颈查询</b> + <b>最近节点距离查询</b> +
-   * <b>运输费率</b>。前四个参数语义与旧入口逐字相同；后三个由组合根（同时看得见地图与经济）装配。★ 商人调整量默认恒 0（等价 {@link #of(List, Map, Set,
-   * ToIntFunction, ToIntBiFunction, ToIntFunction, TransportTariff, ToLongBiFunction,
-   * ToLongBiFunction)} 传两个 0 函数）。
-   */
-  public static MarketTopology of(
-      List<MarketNode> nodes,
-      Map<HexCoord, Market> markets,
-      Set<HexCoord> hexes,
-      ToIntFunction<HexCoord> moveCostAt,
-      ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
-      ToIntFunction<HexCoord> nearestNodeDistance,
-      TransportTariff tariff) {
-    return of(
-        nodes,
-        markets,
-        hexes,
-        moveCostAt,
-        roadBottleneckBetween,
-        nearestNodeDistance,
-        tariff,
-        NO_CITY_DISCOUNT_PER_MILLE,
-        NO_RURAL_PENALTY_PER_MILLE);
-  }
-
-  /**
-   * ★★ <b>P6 正常入口</b>：在 P4 入口上追加两个只读的商人调整量函数 —— {@code cityDiscountPerMilleBetween} 与 {@code
-   * ruralPenaltyPerMilleBetween}，按 {@code from→to} 返回该 lane 的折扣/惩罚（‰）。默认入口传的是恒 0 函数； P9/P7 在组合根按
-   * {@code MerchantPolicy} 的 {@code cityDiscountForLane/ruralPenaltyForLane} 汇总后注入。
-   */
-  public static MarketTopology of(
-      List<MarketNode> nodes,
-      Map<HexCoord, Market> markets,
-      Set<HexCoord> hexes,
-      ToIntFunction<HexCoord> moveCostAt,
-      ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
-      ToIntFunction<HexCoord> nearestNodeDistance,
-      TransportTariff tariff,
-      ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
-      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween) {
-    return of(
-        nodes,
-        markets,
-        hexes,
-        moveCostAt,
-        roadBottleneckBetween,
-        nearestNodeDistance,
-        tariff,
-        true,
-        cityDiscountPerMilleBetween,
-        ruralPenaltyPerMilleBetween);
-  }
-
-  /** 退化入口：旧语义 + 显式 regional 位（{@link #singleHex} 专用）；商人调整量恒 0。 */
-  private static MarketTopology of(
-      List<MarketNode> nodes,
-      Map<HexCoord, Market> markets,
-      Set<HexCoord> hexes,
-      ToIntFunction<HexCoord> moveCostAt,
-      boolean regional) {
-    return of(
-        nodes,
-        markets,
-        hexes,
-        moveCostAt,
+        hex -> 1,
         NO_ROADS,
         NO_NEAREST_NODE_DISTANCE,
         TransportTariff.probeDefaults(),
-        regional,
         NO_CITY_DISCOUNT_PER_MILLE,
-        NO_RURAL_PENALTY_PER_MILLE);
-  }
-
-  private static MarketTopology of(
-      List<MarketNode> nodes,
-      Map<HexCoord, Market> markets,
-      Set<HexCoord> hexes,
-      ToIntFunction<HexCoord> moveCostAt,
-      ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
-      ToIntFunction<HexCoord> nearestNodeDistance,
-      TransportTariff tariff,
-      boolean regional,
-      ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
-      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween) {
-    Objects.requireNonNull(nodes, "nodes");
-    Objects.requireNonNull(markets, "markets");
-    Objects.requireNonNull(hexes, "hexes");
-    Objects.requireNonNull(moveCostAt, "moveCostAt");
-    Objects.requireNonNull(roadBottleneckBetween, "roadBottleneckBetween");
-    Objects.requireNonNull(nearestNodeDistance, "nearestNodeDistance");
-    Objects.requireNonNull(tariff, "tariff");
-    Objects.requireNonNull(cityDiscountPerMilleBetween, "cityDiscountPerMilleBetween");
-    Objects.requireNonNull(ruralPenaltyPerMilleBetween, "ruralPenaltyPerMilleBetween");
-
-    // ★ 去重：同 nodeId 只认第一条（保序）；并跳过"锚格没有市场"的节点（没有报价币种的区不能交易）。
-    Map<String, MarketNode> byId = new LinkedHashMap<>();
-    for (MarketNode node : nodes) {
-      if (node == null) {
-        throw new IllegalArgumentException("MarketTopology.nodes 不得含 null");
-      }
-      if (!markets.containsKey(node.anchor())) {
-        continue; // 锚格没有市场表条目 ⇒ 没有价格/币种可用，这个节点不构成可交易区
-      }
-      byId.putIfAbsent(node.nodeId(), node);
-    }
-
-    // ★ 逐格归属：半径内最近；同距按 nodeId 字典序（构造性可复现）。
-    Map<String, LinkedHashSet<HexCoord>> members = new LinkedHashMap<>();
-    for (String id : byId.keySet()) {
-      members.put(id, new LinkedHashSet<>());
-    }
-    Map<HexCoord, MarketRegion> byHex = new LinkedHashMap<>();
-    List<HexCoord> sortedHexes = new ArrayList<>(hexes);
-    sortedHexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
-    for (HexCoord hex : sortedHexes) {
-      MarketNode best = null;
-      int bestDistance = Integer.MAX_VALUE;
-      for (MarketNode node : byId.values()) {
-        int distance = hex.distanceTo(node.anchor());
-        if (distance > node.radiusHex()) {
-          continue;
-        }
-        if (best == null
-            || distance < bestDistance
-            || (distance == bestDistance && node.nodeId().compareTo(best.nodeId()) < 0)) {
-          best = node;
-          bestDistance = distance;
-        }
-      }
-      if (best != null) {
-        members.get(best.nodeId()).add(hex);
-      }
-    }
-    // ★ 集散节点本身必须在成员表里（即使 hexes 不含它，或它超出自己的半径）。
-    for (MarketNode node : byId.values()) {
-      members.get(node.nodeId()).add(node.anchor());
-    }
-    List<MarketRegion> built = new ArrayList<>(byId.size());
-    for (MarketNode node : byId.values()) {
-      Set<HexCoord> regionMembers = members.get(node.nodeId());
-      MarketRegion region = new MarketRegion(node, regionMembers);
-      built.add(region);
-      for (HexCoord member : regionMembers) {
-        byHex.putIfAbsent(member, region);
-      }
-    }
-    // ★ 没有落在任何半径内的市场格 ⇒ 退化成单格区（它仍然可以**作为买方区**参与跨区候选；卖方得先有邻接）。
-    for (Map.Entry<HexCoord, Market> entry : markets.entrySet()) {
-      HexCoord hex = entry.getKey();
-      if (byHex.containsKey(hex)) {
-        continue;
-      }
-      Market market = entry.getValue();
-      MarketNode node =
-          new MarketNode(
-              "hex:" + IndustryHexKeys.hexKey(hex.q(), hex.r()),
-              hex,
-              0,
-              market.numeraire(),
-              io.mosire.simos.economy.api.money.MoneyVocabulary.SILVER_SPECIE.id());
-      MarketRegion region = new MarketRegion(node, Set.of(hex));
-      built.add(region);
-      byHex.put(hex, region);
-    }
-    // ★ 没有显式城市节点 ⇒ 不构造跨区候选（退化成单格区；与 singleHex 同语义）：否则"相邻单格区"
-    //   会被当成跨区路线，凭空造出 ETA/运力/在途 —— 那正是"没有城市信息的世界"不该有的行为。
-    return new MarketTopology(
-        built,
-        byHex,
-        moveCostAt,
-        roadBottleneckBetween,
-        nearestNodeDistance,
-        tariff,
-        cityDiscountPerMilleBetween,
-        ruralPenaltyPerMilleBetween,
-        regional && !byId.isEmpty() && built.size() > 1);
+        NO_RURAL_PENALTY_PER_MILLE,
+        false);
   }
 
   /**
-   * ★★ <b>B2（2026-10-08）：显式成员的拓扑</b>（约束设计书 §4.2；不变量 I22）—— 区的成员格<b>不再由半径现算</b>，而是由调用方 （组合根从持久状态
-   * {@code EconomyData.marketZones} 装配）逐区给定。
+   * ★★ <b>W1：显式成员格的拓扑（唯一的正式装配入口）</b>—— 区的成员格、锚、半径、计价币<b>全部由调用方给定</b>， 本类不做任何"半径推算 / 最近锚格归属 /
+   * 从价表键反推格"。
    *
-   * <p>★★ <b>它和 {@link #of(List, Map, Set, ToIntFunction, ToIntBiFunction, ToIntFunction,
-   * TransportTariff, ToLongBiFunction, ToLongBiFunction)} 的区别只有一处</b>：那个入口把"哪个 hex 归哪个区"算成
-   * "半径内最近节点（同距按 nodeId 字典序）"，本入口直接<b>采信</b> {@code zones} 的成员表。两条路径**不同时**生效：组合根在区表非空时
-   * 走本入口，空表时走派生入口（单一权威 —— 两个权威会让"这一格属于谁"有两份互相矛盾的答案）。
+   * <p>★★ <b>为什么把装配全部推给组合根</b>：改动前本类有四个工厂（{@code singleHex}/{@code singleRegion}/{@code of}/{@code
+   * ofZones}）， 每个都从 逐格价表 的**键集**推"哪些格有市场"、从**值**取"这一格用什么钱"。价表改成每区一张之后， 这两件事分别由 {@code
+   * MarketZone.hexes}/{@code legalTender}（持久形态）与 {@link MarketTable#hexes()}/{@link
+   * MarketTable#numeraire()}（派生形态）给定 ⇒ 拓扑侧只<b>采信</b>，不再"顺手推算"（单一权威）。
    *
-   * <p>★ <b>三条口径</b>：
+   * <p>★ <b>两条 fail-closed 守卫</b>（与改动前的 {@code ofZones} 逐字同款）：
    *
    * <ol>
-   *   <li><b>成员格按给定采信</b>（含没有市场表条目的格：它只是"在这个区里"，结算对它没有价格可用 —— {@code MarketRegion} 的既有口径）；
-   *   <li><b>未覆盖的市场格 ⇒ 退化成单格区</b>（与派生入口的兜底逐字相同）：不留"没有归属的市场格"，否则 {@code regionOf} 会在很远的结算路径上抛；
-   *   <li><b>重叠成员格 ⇒ 先到者胜 + 不抛</b>：状态层的 {@code EconomyData} 构造期守卫已把"一个 hex 属于两个区"判成非法 （fail-closed
-   *       在写入侧），这里只保证"即使拿到坏输入也不产生两处互相矛盾的归属"。
+   *   <li>{@code regions} 不得含 null，节点 id 去重（<b>先到者胜、不抛</b>）；
+   *   <li>成员格重叠 ⇒ <b>先到者胜、不抛</b>：状态层的 {@code EconomyData} 构造期守卫已把"一个 hex 属于两个市场"判成非法，
+   *       这里只保证"即使拿到坏输入也不产生两处互相矛盾的归属"。
    * </ol>
    *
-   * <p>★ {@code regional}（跨区候选）与本入口的"没有显式区"退化一致：{@code zones} 非空且最终建成 > 1 个区才为真 —— 与派生入口 的 {@code
-   * regional && !byId.isEmpty() && built.size() > 1} 同口径。
+   * <p>★ <b>{@code regional}</b> 由调用方给（"这张拓扑有没有跨区候选"）：持久形态 = 区数 > 1； 派生形态恒 {@code true} （与改动前的
+   * {@code singleRegion} 一致 —— 单区时它不产生任何跨区候选，因为 {@link #adjacent} 对自身恒 false）。
+   *
+   * @param regions 区的成员表（保序：调用方的声明序即读数序）
+   * @param moveCostAt 逐格地形代价（组合根装配；{@code >= 1} 的钳位见 {@link #moveCostAt}）
+   * @param roadBottleneckBetween 两格间道路瓶颈等级（组合根装配）
+   * @param nearestNodeDistance 到最近集散节点 anchor 的 hex 距离（组合根装配；派生形态传恒 0，见改动前 singleRegion 的口径）
+   * @param tariff 运输费率（{@link TransportTariff}）
+   * @param cityDiscountPerMilleBetween 城市商人折扣（‰；无政策时传 {@link #NO_CITY_DISCOUNT_PER_MILLE}）
+   * @param ruralPenaltyPerMilleBetween 农村商人累积惩罚（‰；无政策时传 {@link #NO_RURAL_PENALTY_PER_MILLE}）
+   * @param regional 有没有跨区候选
    */
-  public static MarketTopology ofZones(
-      List<MarketRegion> zones,
-      Map<HexCoord, Market> markets,
-      Set<HexCoord> hexes,
+  public static MarketTopology ofRegions(
+      List<MarketRegion> regions,
       ToIntFunction<HexCoord> moveCostAt,
       ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
       ToIntFunction<HexCoord> nearestNodeDistance,
       TransportTariff tariff,
       ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
-      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween) {
-    Objects.requireNonNull(zones, "zones");
-    Objects.requireNonNull(markets, "markets");
-    Objects.requireNonNull(hexes, "hexes");
+      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween,
+      boolean regional) {
+    Objects.requireNonNull(regions, "regions");
     Objects.requireNonNull(moveCostAt, "moveCostAt");
     Objects.requireNonNull(roadBottleneckBetween, "roadBottleneckBetween");
     Objects.requireNonNull(nearestNodeDistance, "nearestNodeDistance");
@@ -541,37 +307,19 @@ public final class MarketTopology {
     Objects.requireNonNull(cityDiscountPerMilleBetween, "cityDiscountPerMilleBetween");
     Objects.requireNonNull(ruralPenaltyPerMilleBetween, "ruralPenaltyPerMilleBetween");
     Map<String, MarketRegion> byId = new LinkedHashMap<>();
-    for (MarketRegion zone : zones) {
-      if (zone == null) {
-        throw new IllegalArgumentException("MarketTopology.ofZones 的 zones 不得含 null");
+    for (MarketRegion region : regions) {
+      if (region == null) {
+        throw new IllegalArgumentException("MarketTopology.ofRegions 的 regions 不得含 null");
       }
-      byId.putIfAbsent(zone.node().nodeId(), zone);
+      byId.putIfAbsent(region.node().nodeId(), region);
     }
     List<MarketRegion> built = new ArrayList<>(byId.size());
     Map<HexCoord, MarketRegion> byHex = new LinkedHashMap<>();
-    for (MarketRegion zone : byId.values()) {
-      built.add(zone);
-      for (HexCoord member : zone.members()) {
-        byHex.putIfAbsent(member, zone);
-      }
-    }
-    // ★ 未被任何持久区覆盖的市场格 ⇒ 退化成单格区（与派生入口的兜底逐字相同）。
-    for (Map.Entry<HexCoord, Market> entry : markets.entrySet()) {
-      HexCoord hex = entry.getKey();
-      if (byHex.containsKey(hex)) {
-        continue;
-      }
-      Market market = entry.getValue();
-      MarketNode node =
-          new MarketNode(
-              "hex:" + IndustryHexKeys.hexKey(hex.q(), hex.r()),
-              hex,
-              0,
-              market.numeraire(),
-              MoneyVocabulary.SILVER_SPECIE.id());
-      MarketRegion region = new MarketRegion(node, Set.of(hex));
+    for (MarketRegion region : byId.values()) {
       built.add(region);
-      byHex.put(hex, region);
+      for (HexCoord member : region.members()) {
+        byHex.putIfAbsent(member, region);
+      }
     }
     return new MarketTopology(
         built,
@@ -582,7 +330,63 @@ public final class MarketTopology {
         tariff,
         cityDiscountPerMilleBetween,
         ruralPenaltyPerMilleBetween,
-        !byId.isEmpty() && built.size() > 1);
+        regional);
+  }
+
+  /**
+   * ★★ <b>W1：一个市场（区或派生市场）的规范区域</b> —— 组装 {@link MarketNode} + {@link MarketRegion} 的<b>唯一拼写点</b>。
+   *
+   * <p>★ 三条口径（与改动前 {@code singleRegion}/{@code ofZones} 逐字同源）：
+   *
+   * <ol>
+   *   <li><b>锚格</b>：持久形态取 {@code MarketZone.anchor}；派生形态取成员格的<b>规范序第一个</b>（{@code (q,r)} 升序 —— "同状态
+   *       ⇒ 同锚"，与 {@code singleRegion} 的 {@code canonicalFirstHex} 同一口径）；
+   *   <li><b>计价币</b>：持久形态取 {@code legalTender}（唯一权威）；派生形态取价表条目的 {@code numeraire}；
+   *   <li><b>接收工具</b>：取该币种在世界状态里的工具 id（没有 ⇒ 既有占位 {@code SILVER_SPECIE}；该字段全仓零读取者， 不影响任何结算行为）。
+   * </ol>
+   *
+   * @param marketId 市场 id（= 区 id 或派生市场 id；成为 {@link MarketNode#nodeId()}，也是价表的键）
+   * @param anchor 锚格（集散节点；区内参考价取这一格）
+   * @param radiusHex 声明半径（只影响 {@link #adjacent} 的可达判据与读数）
+   * @param numeraire 本市场计价币
+   * @param receiveWith 卖方接收的货币工具
+   * @param members 成员格（非空；迭代序由 {@link MarketRegion} 保序冻结）
+   */
+  public static MarketRegion regionOf(
+      String marketId,
+      HexCoord anchor,
+      int radiusHex,
+      CurrencyId numeraire,
+      InstrumentId receiveWith,
+      Set<HexCoord> members) {
+    Objects.requireNonNull(marketId, "marketId");
+    Objects.requireNonNull(anchor, "anchor");
+    Objects.requireNonNull(numeraire, "numeraire");
+    Objects.requireNonNull(receiveWith, "receiveWith");
+    Objects.requireNonNull(members, "members");
+    if (members.isEmpty()) {
+      throw new IllegalArgumentException("MarketTopology.regionOf 的成员格不得为空: " + marketId);
+    }
+    MarketNode node = new MarketNode(marketId, anchor, radiusHex, numeraire, receiveWith);
+    return new MarketRegion(node, members);
+  }
+
+  /** ★ 规范序（q, r 升序）第一个格；调用方保证非空（派生市场的锚 = 它）。 */
+  public static HexCoord canonicalFirstHex(Set<HexCoord> hexes) {
+    Objects.requireNonNull(hexes, "hexes");
+    if (hexes.isEmpty()) {
+      throw new IllegalArgumentException("MarketTopology.canonicalFirstHex 的格集不得为空");
+    }
+    HexCoord first = null;
+    for (HexCoord hex : hexes) {
+      if (hex == null) {
+        throw new IllegalArgumentException("MarketTopology.canonicalFirstHex 的格集不得含 null");
+      }
+      if (first == null || hex.compareTo(first) < 0) {
+        first = hex;
+      }
+    }
+    return first;
   }
 
   /** 全部区（保序：节点声明序；退化单格区接在其后）。 */

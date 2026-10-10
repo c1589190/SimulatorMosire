@@ -3,11 +3,12 @@ package io.mosire.simos.economy.time;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.model.TransportTariff;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +25,6 @@ import org.junit.jupiter.api.Test;
  */
 class HexTradeCostTest {
 
-  private static final CommodityId GRAIN = EconomySettlement.GRAIN;
   private static final HexCoord H00 = new HexCoord(0, 0);
   private static final HexCoord H10 = new HexCoord(1, 0);
   private static final HexCoord H20 = new HexCoord(2, 0);
@@ -32,23 +32,35 @@ class HexTradeCostTest {
   private static final HexCoord H99 = new HexCoord(99, 0);
   private static final HexCoord OUTSIDE = new HexCoord(50, 50);
 
+  /**
+   * ★★ <b>W1：一个区的拓扑</b>—— 全部市场格同报价 ⇒ 它们就是**一个派生市场**（区 id = {@code "single-region"}、锚 = 规范序第一个成员格、半径
+   * 0、无辐射项）：与退役的 {@code MarketTopology.singleRegion(markets, markets.keySet(), …)}
+   * **逐值等价**（成员格集合、锚格、moveCost 入口、regional 标志全同）。
+   */
   private static MarketTopology topology() {
-    Map<HexCoord, Market> markets = new LinkedHashMap<>();
-    for (HexCoord hex : new HexCoord[] {H00, H10, H20, H01, H99}) {
-      markets.put(hex, new Market(MarketSettlementFixtures.SILVER, Map.of(GRAIN, 10L)));
-    }
     Map<HexCoord, Integer> moveCostAt = new LinkedHashMap<>();
     moveCostAt.put(H00, 1);
     moveCostAt.put(H10, 2);
     moveCostAt.put(H20, 4);
     moveCostAt.put(H01, 6);
     moveCostAt.put(H99, 999); // 不可通行的哨兵也不必特殊：封顶仍然生效
-    return MarketTopology.singleRegion(
-        markets,
-        markets.keySet(),
+    MarketRegion region =
+        MarketTopology.regionOf(
+            MarketSettlementFixtures.SINGLE_REGION_MARKET_ID,
+            H00,
+            0,
+            MarketSettlementFixtures.SILVER,
+            io.mosire.simos.economy.api.money.MoneyVocabulary.SILVER_SPECIE.id(),
+            new LinkedHashSet<>(List.of(H00, H10, H20, H01, H99)));
+    return MarketTopology.ofRegions(
+        List.of(region),
         hex -> moveCostAt.getOrDefault(hex, 1),
         (from, to) -> 0,
-        TransportTariff.probeDefaults());
+        MarketTopology.NO_NEAREST_NODE_DISTANCE,
+        TransportTariff.probeDefaults(),
+        MarketTopology.NO_CITY_DISCOUNT_PER_MILLE,
+        MarketTopology.NO_RURAL_PENALTY_PER_MILLE,
+        true);
   }
 
   @Test

@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.MarketRegion;
@@ -10,7 +11,7 @@ import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
@@ -210,7 +211,7 @@ public final class MarketDemandBook {
       Map<AssetShareId, OwnershipStake> shares,
       Map<ShipmentId, ShipmentBatch> shipments,
       AccountSession accounts,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       long day,
       long horizonDays) {
     Objects.requireNonNull(reports, "reports");
@@ -368,15 +369,17 @@ public final class MarketDemandBook {
    * 市场表键。迭代序不参与结果（只做查表），故用 HashMap。
    */
   private static Map<HexCoord, HexCoord> regionAnchors(
-      MarketTopology topology, Map<HexCoord, Market> markets) {
+      MarketTopology topology, Map<MarketZoneId, MarketTable> markets) {
     Map<HexCoord, HexCoord> anchors = new HashMap<>();
     for (MarketRegion region : topology.regions()) {
       for (HexCoord member : region.members()) {
         anchors.putIfAbsent(member, region.anchor());
       }
     }
-    for (HexCoord hex : markets.keySet()) {
-      anchors.putIfAbsent(hex, hex); // 拓扑构造期已为无归属市场格建单格区；这里是防坏输入的兜底
+    for (MarketTable table : markets.values()) {
+      for (HexCoord hex : table.hexes()) {
+        anchors.putIfAbsent(hex, hex); // 派生市场的成员格；持久形态由上面的拓扑分支覆盖（防坏输入的兜底）
+      }
     }
     return anchors;
   }
@@ -398,7 +401,7 @@ public final class MarketDemandBook {
       Map<IndustryId, Industry> industries,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<ShipmentId, ShipmentBatch> shipments,
-      Map<HexCoord, Market> markets) {
+      Map<MarketZoneId, MarketTable> markets) {
     Set<CommodityId> commodities = new TreeSet<>(Comparator.comparing(CommodityId::value));
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
       commodities.addAll(householdEconomy.naturalNeeds().keySet());
@@ -416,7 +419,7 @@ public final class MarketDemandBook {
     for (ShipmentBatch shipment : shipments.values()) {
       commodities.add(shipment.commodity());
     }
-    for (Market market : markets.values()) {
+    for (MarketTable market : markets.values()) {
       commodities.addAll(market.prices().keySet());
     }
     return commodities;

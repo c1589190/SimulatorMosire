@@ -3,7 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
 import java.util.Objects;
@@ -16,7 +16,7 @@ import java.util.Optional;
  *
  * <pre>
  * 单市场区内<b>逐格价表恒同价</b>（自适应定价每轮把同一份价表写进该区全部成员格，
- * MarketSettlement.java:1181 的 updated.put(member, new Market(...))）⇒ <b>不存在"买低格卖高格"</b>；
+ * MarketSettlement.java:1181 的 updated.put(member, new MarketTable(...))）⇒ <b>不存在"买低格卖高格"</b>；
  * 跨格货物流向已由既有机制承担（卖方按 unitCostEstimate + freightPerUnit 升序被选中，MarketSettlement.java:2928/3000）。
  * </pre>
  *
@@ -29,7 +29,7 @@ import java.util.Optional;
  * ratio(货币 → 商品 c) 的收益 = 该户对 c 的保留价 − 市场成交价（本格参考价）    // 每 1 商品单位，单位 = 微 numeraire
  * </pre>
  *
- * 保留价就是 §3.3 的"对买入是愿付的上限"，市场价就是 {@code Market.priceOf}（区价 = 成交价，见 {@code Market} 类注
+ * 保留价就是 §3.3 的"对买入是愿付的上限"，市场价就是 {@code MarketTable.priceOf}（区价 = 成交价，见 {@code MarketTable} 类注
  * "成交仍按参考价"）。两者之差为正 ⇒ 这笔兑换创造价值 ⇒ 值得花时间去做。
  *
  * <p>★★ <b>为什么用"微"（1 毫 = 1000 微）而不直接用毫</b>：真档粮价 = <b>1 毫/单位</b>，而保留价的压力项 （±{@link
@@ -131,8 +131,8 @@ final class TradeArbitrageActivity implements HouseholdActivity {
    * ★ <b>最小价差门槛（‰ 的市价）</b>：{@code 100} ⇒ 保留价必须比市价高至少 10% 才算"有套利机会"。
    *
    * <p>★ 依据两条：① 毫网格上"1 毫的价差"在真档（粮价 = 1）就是 100% 的价差，不设门槛会让噪声当信号； ② 买方限价 {@code ask} 本身就在参考价之上约
-   * 10‰（{@code Market.ASK_PER_MILLE = 1010}）⇒ 门槛低于它时， 家户可能在"限价高于自己保留价"的区间里下单，那笔兑换对它就<b>不</b>创造价值（与
-   * §3.3 的保留价语义矛盾）。
+   * 10‰（{@code MarketTable.ASK_PER_MILLE = 1010}）⇒ 门槛低于它时，
+   * 家户可能在"限价高于自己保留价"的区间里下单，那笔兑换对它就<b>不</b>创造价值（与 §3.3 的保留价语义矛盾）。
    */
   static final long MIN_EDGE_PER_MILLE = 100L;
 
@@ -287,7 +287,7 @@ final class TradeArbitrageActivity implements HouseholdActivity {
     Objects.requireNonNull(row, "evaluate 的家户行不得为 null");
     Objects.requireNonNull(prices, "evaluate 的家户价目表不得为 null");
     Objects.requireNonNull(snapshot, "evaluate 的资源快照不得为 null");
-    Market market = snapshot.market();
+    MarketTable market = snapshot.market();
     if (market == null) {
       return Evaluation.none("NO_MARKET");
     }

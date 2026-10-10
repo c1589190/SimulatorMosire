@@ -785,7 +785,7 @@ public final class ThreePowersWorld {
                 "population",
                 TOTAL_POPULATION,
                 "markets",
-                requireEconomy(state).markets().size()));
+                requireEconomy(state).marketTables().size()));
     EventLog.channel(AppLog.shell())
         .info(
             LogEvent.of(

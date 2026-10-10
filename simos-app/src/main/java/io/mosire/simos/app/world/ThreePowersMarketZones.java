@@ -12,6 +12,7 @@ import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.spi.EconomyDefineMarketZoneHandler;
 import io.mosire.simos.map.GameMap;
@@ -279,12 +280,15 @@ final class ThreePowersMarketZones {
                 + " 格"
                 + head(extra));
       }
-      // ②b 成员格逐格有市场行（派生路径只取有市场的格 ⇒ 这条保证两条路径的成员集逐格重合）
+      // ②b 成员格逐格有市场（改动前 = "派生路径只取有市场的格"；W1 之后 = 成员格必须在一张价表的成员集里，
+      //   否则这一格"在本区里、却没有任何价表覆盖它"，与"区内任何格取价一致"直接冲突）
+      Set<HexCoord> marketHexes =
+          MarketTables.allMarketHexes(economy.marketTables(), economy.marketZones());
       for (HexCoord hex : zone.hexes()) {
-        if (!economy.markets().containsKey(hex)) {
+        if (!marketHexes.contains(hex)) {
           throw fail(
               "zone-hex-without-market",
-              "区 " + spec.zoneId() + " 的成员格 " + hex + " 没有市场行（派生路径不会把它算作成员 ⇒ 两条路径会漂开）");
+              "区 " + spec.zoneId() + " 的成员格 " + hex + " 没有任何价表覆盖（区内任何格取价一致要求它有本区价表）");
         }
       }
       // ③ 本区法定币 = 声明值（命令载荷没被改写）

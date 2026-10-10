@@ -22,12 +22,12 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketRoundStats;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
 
@@ -82,7 +82,7 @@ public interface EconomyDayView {
   Map<ShipmentId, ShipmentBatch> shipments();
 
   /** 市场表（价格/库存）。★ <b>工作副本优先</b>：自适应价格与市场轮当日写回（运力判据按价格是数据）。 */
-  Map<HexCoord, Market> markets();
+  Map<MarketZoneId, MarketTable> marketTables();
 
   /** 政府表（政策/报价/国库户）。★ <b>工作副本优先</b>：日结算的发行/铸币腿与授权计划都按当刻政府表判。 */
   Map<GovernmentId, Government> governments();
@@ -113,4 +113,10 @@ public interface EconomyDayView {
 
   /** 市场区表（静态）⇒ 段内不变（写入口只有三条区命令）。 */
   Map<MarketZoneId, MarketZone> marketZones();
+
+  /**
+   * ★★ <b>W1：市场轮统计簿</b>（键 = 市场 id；纯读数）。★ <b>工作副本优先</b>：每个市场轮结束时当日结算会写它 ⇒
+   * 日内读者必须看当刻窗口（"本轮"就是刚过去的那一刻）。
+   */
+  Map<MarketZoneId, MarketRoundStats> marketRoundStats();
 }

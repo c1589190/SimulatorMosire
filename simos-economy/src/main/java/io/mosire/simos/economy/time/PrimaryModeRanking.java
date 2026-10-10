@@ -6,8 +6,9 @@ import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -238,7 +239,7 @@ public final class PrimaryModeRanking {
    */
   public static long inventoryMilli(
       AccountSession accounts,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       MarketTopology topology,
       HouseholdId household,
       HexCoord hex) {
@@ -246,7 +247,7 @@ public final class PrimaryModeRanking {
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(household, "household");
     Objects.requireNonNull(hex, "hex");
-    Market market = marketOf(markets, topology, hex);
+    MarketTable market = marketOf(markets, topology, hex);
     Map<CommodityId, Long> stock = accounts.householdGoods().getOrDefault(household, Map.of());
     Map<CurrencyId, Long> wallet = accounts.householdMoney().getOrDefault(household, Map.of());
     long cash = market == null ? 0L : wallet.getOrDefault(market.numeraire(), 0L);
@@ -418,19 +419,16 @@ public final class PrimaryModeRanking {
     return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
   }
 
-  /** 本格价表：优先本格市场；无则退到该格所在区的集散节点市场（区内同价）；都没有 ⇒ null。 */
-  static Market marketOf(Map<HexCoord, Market> markets, MarketTopology topology, HexCoord hex) {
-    Market direct = markets.get(hex);
-    if (direct != null) {
-      return direct;
+  /**
+   * ★★ <b>本格价表</b>（W1：每区一张 ⇒ 本格与本区是同一张表）：该格在拓扑里 ⇒ 本格所属市场的表；不在 ⇒ {@code null}。
+   *
+   * <p>★ 与改动前逐值等价：旧形状先取"本格那一张"、没有再退到"锚格那一张"—— 区内一价成立时两者逐字相同。
+   */
+  static MarketTable marketOf(
+      Map<MarketZoneId, MarketTable> markets, MarketTopology topology, HexCoord hex) {
+    if (topology == null || hex == null || !topology.contains(hex)) {
+      return null; // 该格不在拓扑里（没有市场）⇒ 没有价
     }
-    if (topology != null) {
-      try {
-        return markets.get(topology.regionOf(hex).anchor());
-      } catch (IllegalArgumentException ignored) {
-        // 该格不在拓扑里（没有市场）⇒ 没有价
-      }
-    }
-    return null;
+    return markets.get(new MarketZoneId(topology.regionOf(hex).node().nodeId()));
   }
 }

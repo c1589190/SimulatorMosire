@@ -31,7 +31,7 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
@@ -109,10 +109,10 @@ class ExpectedProfitBookEmployerOfTest {
         new AllocationRule.Split(500, 500));
   }
 
-  private static Market market() {
+  private static MarketTable market() {
     Map<CommodityId, Long> prices = new LinkedHashMap<>();
     prices.put(GRAIN, 10L);
-    return new Market(SILVER, prices);
+    return EconomyFixtures.quote(SILVER, prices);
   }
 
   private static OwnershipStake share(
@@ -194,7 +194,7 @@ class ExpectedProfitBookEmployerOfTest {
         .withProcesses(units)
         .withRelations(relations)
         .withOwnershipStakes(shares)
-        .withMarkets(Map.of(H, market()));
+        .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H, market())));
   }
 
   private static ExpectedProfitBook.Prospect prospect(
@@ -216,7 +216,7 @@ class ExpectedProfitBookEmployerOfTest {
         AccountSession.empty(),
         units,
         relations,
-        MarketTopology.singleHex(Map.of(H, market())),
+        MarketTopology.singleHex(EconomyFixtures.hexMarkets(Map.of(H, market())), Map.of()),
         0L);
   }
 

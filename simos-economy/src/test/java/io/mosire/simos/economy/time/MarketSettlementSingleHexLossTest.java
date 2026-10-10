@@ -39,8 +39,7 @@ class MarketSettlementSingleHexLossTest {
             .household(SELLER, MarketSettlementFixtures.H1, 1L, 200_000L, 0L)
             .household(BUYER, MarketSettlementFixtures.H1, 1L, 0L, 1_000_000L)
             .build();
-    Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+    Round round = MarketSettlementFixtures.round(world, world.defaultsOf());
 
     MarketSettlement.MarketOutcome outcome = MarketSettlementFixtures.settle(world, round);
 
@@ -80,8 +79,7 @@ class MarketSettlementSingleHexLossTest {
             //   ★ 承运户 0 人口 / 空需求 / 空货账 / 空钱账 ⇒ 不生成任何订单，只贡献运力（判别力不被夹具污染）。
             .carrier(CARRIER, MarketSettlementFixtures.H1, 10_000_000L, 10_000L)
             .build();
-    Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+    Round round = MarketSettlementFixtures.round(world, world.defaultsOf());
 
     MarketSettlement.MarketOutcome outcome =
         MarketSettlementFixtures.settleWithCarriers(world, round);
@@ -99,12 +97,8 @@ class MarketSettlementSingleHexLossTest {
         .as("★ 距离 1 × moveCost 1 × 2‰ = 2‰，向下取整")
         .isEqualTo(fill.quantity() * 2L * 1L / 1000L);
     assertThat(fill.unitPriceMilli()).as("成交单价仍是区内参考价，不被损耗加价").isEqualTo(10L);
-    assertThat(
-            world
-                .markets()
-                .get(MarketSettlementFixtures.H1)
-                .priceOf(MarketSettlementFixtures.GRAIN))
-        .as("★ §7.2.4：单 hex 损耗不写进 Market.prices 参考价")
+    assertThat(world.tableAt(MarketSettlementFixtures.H1).priceOf(MarketSettlementFixtures.GRAIN))
+        .as("★ §7.2.4：单 hex 损耗不写进 MarketTable.prices 参考价")
         .isEqualTo(10L);
 
     long sellerAfter = world.grainOf(SELLER);
@@ -188,8 +182,7 @@ class MarketSettlementSingleHexLossTest {
             .household(SELLER, MarketSettlementFixtures.H1, 1L, 200_000L, 0L)
             .household(BUYER, MarketSettlementFixtures.H2, 1L, 0L, 1_000_000L)
             .build();
-    Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+    Round round = MarketSettlementFixtures.round(world, world.defaultsOf());
 
     MarketSettlement.MarketOutcome outcome = MarketSettlementFixtures.settle(world, round);
 

@@ -8,7 +8,7 @@ import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -115,29 +115,38 @@ public final class EconomyMergeMarketZonesHandler
         return rejected(
             "zone-not-found", definition, null, null, "目标区不存在: " + targetId.value(), base);
       }
-      // ★★ 合并的守卫是**逐格**的（不是"两区法定币必须相同"）：合并后的区只认目标区的法定币 ⇒ 被并入的每一格
-      //   （凡有市场行者）的计价币必须已经是目标区法定币。这样"跨币合并"仍然可达（先 economy.SetMarketNumeraire
-      //   把那些格改成目标币，再合并），但**没有任何一次静默换汇**（I17/I24）—— 而"两区法定币必须相同"会把合并
-      //   在 three-powers 这种"三币三区、每格都被覆盖"的世界里彻底堵死（那正是本批要服务的世界）。
-      for (HexCoord hex : source.hexes()) {
-        Market market = base.markets().get(hex);
-        if (market != null && !market.numeraire().equals(target.legalTender())) {
-          return rejected(
-              "numeraire-mismatch",
-              definition,
-              source,
-              target,
-              "被并入的格 "
-                  + hex
-                  + " 的计价币是 "
-                  + market.numeraire().value()
-                  + "，与目标区 "
-                  + targetId.value()
-                  + " 的法定币 "
-                  + target.legalTender().value()
-                  + " 不一致（先 economy.SetMarketNumeraire 改那些格；合并不做静默换汇）",
-              base);
-        }
+      // ★★ W1（逐格 → 逐区）：价表按区一张 ⇒ 合并后只剩**目标区那一张表**，因此两条前提必须成立：
+      //   ① 两区法定币相同（否则是静默换汇，I17/I24）；② 两区价目相同（否则并进来的格会换价，且"一张表"装不下两套价）。
+      //   ★ 两条都可以先走 economy.SetMarketNumeraire / economy.SetMarketPrice 备好，再合并。
+      MarketTable sourceTable = base.marketTables().get(sourceId);
+      MarketTable targetTable = base.marketTables().get(targetId);
+      if (!source.legalTender().equals(target.legalTender())) {
+        return rejected(
+            "numeraire-mismatch",
+            definition,
+            source,
+            target,
+            "源区 "
+                + sourceId.value()
+                + " 的法定币是 "
+                + source.legalTender().value()
+                + "，与目标区 "
+                + targetId.value()
+                + " 的法定币 "
+                + target.legalTender().value()
+                + " 不一致（先 economy.SetMarketNumeraire 统一两区计价币；合并不做静默换汇）",
+            base);
+      }
+      if (sourceTable != null
+          && targetTable != null
+          && !sourceTable.prices().equals(targetTable.prices())) {
+        return rejected(
+            "prices-differ",
+            definition,
+            source,
+            target,
+            "两区价目不同（每区只能有一张价表，合并后装不下两套价）：先 economy.SetMarketPrice 把它们调成同一张",
+            base);
       }
       Map<String, OfficialRate> mergedRates = new LinkedHashMap<>(target.officialRates());
       for (Map.Entry<String, OfficialRate> entry : source.officialRates().entrySet()) {
@@ -178,7 +187,12 @@ public final class EconomyMergeMarketZonesHandler
       Map<MarketZoneId, MarketZone> zones = new LinkedHashMap<>(base.marketZones());
       zones.remove(sourceId);
       zones.put(targetId, merged);
-      EconomyData projected = base.withMarketZones(zones);
+      // ★★ W1：源区撤掉 ⇒ 它的价表条目必须一起摘掉（留下就是"没有区的价表"，会被读成缺成员格的派生市场 = 坏形状）。
+      Map<MarketZoneId, MarketTable> marketTables = new LinkedHashMap<>(base.marketTables());
+      marketTables.remove(sourceId);
+      // ★★ W1d（2026-10-11）：**撤区 + 摘表同一次落地**（原子写口）—— 拆成两个 wither 时 `withMarketZones(zones)`
+      //   先调 ⇒ 新的合并区还没有表（W1d 前硬拒；W1d 起缺表合法，但中间态仍不是目标态，且撤源区与摘源表会瞬时漂开）。
+      EconomyData projected = base.withMarketZonesAndTables(zones, marketTables);
       logMerged(source, target, merged);
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {

@@ -4,7 +4,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -47,8 +47,8 @@ import java.util.Optional;
  *       prospect 接进排队时收口；
  *   <li><b>需求封顶不建模</b>：产出按本格 bid 价全额估值，不计"卖不掉"的部分（对应 {@code ExpectedProfitBook} 的 {@code
  *       sellable}/{@code DEMAND_CAPPED}）；
- *   <li><b>未定价产出/投入</b>按 0 计并标具名 {@code NO_PRICE}/{@code NO_INPUT_PRICE}（与 {@code Market} 的 "未定价 vs
- *       明确 0 价"口径同源）；
+ *   <li><b>未定价产出/投入</b>按 0 计并标具名 {@code NO_PRICE}/{@code NO_INPUT_PRICE}（与 {@code MarketTable} 的
+ *       "未定价 vs 明确 0 价"口径同源）；
  *   <li><b>投入"能不能拿到"以已经扣进 unit 的 {@code cycleInputUsedMilli} 为准</b>：本 tick 的市场采购排在劳动分配
  *       之后，故"市场有价可买"不改变本 tick 的最大可吸收量（这正是 §13.4"借不到 ⇒ 劳动空缺"的实现口径）。
  * </ol>
@@ -171,7 +171,7 @@ public final class LaborQueueBook {
   public static Offer offer(
       ProductionProcess unit,
       Industry industry,
-      Market market,
+      MarketTable market,
       OperatorCondition condition,
       SettlementIndex index,
       Optional<ProductionModeId> modeId,
@@ -301,7 +301,7 @@ public final class LaborQueueBook {
   }
 
   private static String joinReasons(
-      String base, boolean priceMissing, boolean inputPriceMissing, Market market) {
+      String base, boolean priceMissing, boolean inputPriceMissing, MarketTable market) {
     List<String> parts = new ArrayList<>();
     if (!base.isBlank()) {
       parts.add(base);

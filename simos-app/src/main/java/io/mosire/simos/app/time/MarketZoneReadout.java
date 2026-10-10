@@ -33,7 +33,7 @@ import java.util.Optional;
  * 参数）—— 把区变持久状态是 B2 的事（约束设计书 §4.2 / I22）。故本类的读数 <b>逐次现算</b>，同一份状态必然给出同一份区表（{@link MarketTopology}
  * 的构造性可复现）。
  *
- * <p>★ <b>法定币 = 该区节点（集散城市）那格的 {@code Market.numeraire}</b>：区内逐格价格都按它计（D-027 的同币口径）， 故它是这一维的唯一读数口径。★
+ * <p>★ <b>法定币 = {@code MarketZone.legalTender}</b>（W1 起价表按区一张 ⇒ 区内逐格取价一致是结构上必然； 故它是这一维的唯一读数口径。★
  * 本批**没有**"区 → 法定币"的持久字段（那是 B2 的 {@code zoneId/hexes/法定币}；★ 2026-10-09 C 批起区里连"发行政府"也没有了）。
  *
  * <p>★ <b>区数怎么来的</b>（判据与坑都在 {@link MarketTopologyBook#from(SimulationState)} 的类注里）：同币 ⇒ 恰恰 1 个区；异币

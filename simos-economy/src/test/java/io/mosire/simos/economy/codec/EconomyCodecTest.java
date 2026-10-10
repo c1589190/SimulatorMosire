@@ -613,7 +613,9 @@ class EconomyCodecTest {
     assertThat(back.allocations()).isInstanceOf(FieldDelta.Unchanged.class);
     // ★ T2/H4/M2.4/S1/S3/R3B/R4-E2 依次补齐的组件同款。
     assertThat(back.relations()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.markets()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.marketTables()).isInstanceOf(FieldDelta.Unchanged.class);
+    // ★★ W1：第 40 个组件（市场轮统计簿）同款 —— 旧变更集里没有这个键 ⇒ Unchanged，不是 null。
+    assertThat(back.marketRoundStats()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.shipments()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.assetShares()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.operatorConditions()).isInstanceOf(FieldDelta.Unchanged.class);

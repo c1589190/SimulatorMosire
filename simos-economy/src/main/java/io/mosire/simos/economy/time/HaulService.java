@@ -2,7 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 
 /**
@@ -95,7 +95,7 @@ public final class HaulService {
   public static final IndustryId SERVICE_EXPIRED_ACCOUNT =
       new IndustryId("market-haul-service-expired");
 
-  /** 千分比口径（与 {@code CapacityDemand.PER_MILLE} / {@code Market.BID_PER_MILLE} 同值）。 */
+  /** 千分比口径（与 {@code CapacityDemand.PER_MILLE} / {@code MarketTable.BID_PER_MILLE} 同值）。 */
   public static final long PER_MILLE = 1000L;
 
   /**
@@ -115,10 +115,10 @@ public final class HaulService {
    * 给 haul 定了价（含明确 0 价）⇒ true  ⇒ 运费只走"服务商品成交"这一条（I-H5），运力 = 商家户手上的服务货
    * </pre>
    *
-   * <p>★ 这是本批**缺省中性（I-H3）的结构性开关**：没有牌价 ⇒ 一行判据都不变；它同时是"未定价 ⇒ 不交易"这条既有 {@code Market.hasPrice}
+   * <p>★ 这是本批**缺省中性（I-H3）的结构性开关**：没有牌价 ⇒ 一行判据都不变；它同时是"未定价 ⇒ 不交易"这条既有 {@code MarketTable.hasPrice}
    * 语义的直接复用（不另造一个开关维度）。
    */
-  public static boolean pricedAt(Market market) {
+  public static boolean pricedAt(MarketTable market) {
     return market != null && market.hasPrice(HAUL_COMMODITY);
   }
 

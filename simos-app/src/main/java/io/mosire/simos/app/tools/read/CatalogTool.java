@@ -423,8 +423,9 @@ public final class CatalogTool implements AgentTool {
                   + " 守恒；不动商品/货币/债务/劳动；同形现有份额尾段序号最大值+1 生成新 id，尾段不可解析 ⇒ 拒）"),
           Map.entry(
               "economy.SetMarketPrice",
-              "q, r, commodity, price(> 0)（★ 该格无市场 ⇒ 用 Silver 计价创建空市场；有市场 ⇒ 只 upsert 该商品价；"
-                  + "只写 markets，不造商品/货币）"),
+              "marketId, commodity, price(> 0)（★ W1：价表按市场区一张 ⇒ 键是**市场 id**（区 id 或派生市场 id，"
+                  + "见 economy.DefineMarketZone 与创世播种），不再是格坐标；市场不存在 ⇒ 拒 market-missing"
+                  + "（新市场走 economy.DefineMarketZone）；只 upsert 该商品价，不造商品/货币）"),
           Map.entry(
               "economy.SetCommodityFreight",
               "commodityId(必填；必须是词表里的商品 grain/cloth/fiber/tool/iron/wood), baseMilli(必填；≥ 0，"
@@ -438,9 +439,10 @@ public final class CatalogTool implements AgentTool {
                   + "GM 的 simos.command.submit 与窄工具 simos.economy.setCommodityFreight 可用）"),
           Map.entry(
               "economy.SetMarketNumeraire",
-              "q, r, numeraire(币种 id，须在世界词表里)（★ GM-only：把**某一格市场**的计价币改成另一种币；"
-                  + "该格必须已有市场行，否则拒 market-missing；币种不在词表 ⇒ 拒 unknown-currency；"
-                  + "与现值相同 ⇒ 拒 numeraire-unchanged；★ 只写 markets 一格，价格表逐值保留、"
+              "marketId, numeraire(币种 id，须在世界词表里)（★ W1：逐区；GM-only —— 把**某个市场**的计价币改成另一种币；"
+                  + "市场必须已存在，否则拒 market-missing；币种不在词表 ⇒ 拒 unknown-currency；"
+                  + "与现值相同 ⇒ 拒 numeraire-unchanged；★ 只写 marketTables 一个市场（持久形态下同一次变更集里把"
+                  + "MarketZone.legalTender 一起改，两处必须同值），价格表逐值保留、"
                   + "**不折算任何余额与价格**（世界无汇率）；改后该世界出现两种计价币 ⇒ 买方支付币 ≠ 卖方收款币的"
                   + "成交尝试一律具名拒 currency_mismatch（I19））"),
           Map.entry(

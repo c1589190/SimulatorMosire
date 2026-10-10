@@ -155,6 +155,20 @@ public record MarketZone(
   }
 
   /**
+   * ★★ <b>W1：只换本区法定币</b>（成员格、锚、半径、官方汇率表逐值不变）。
+   *
+   * <p>★ 它是"本区按什么钱报价"的<b>唯一写入形态</b>（{@code economy.SetMarketNumeraire} 的持久形态分支用它）：
+   * 法定币是区级唯一货币权威，价表里的 {@code numeraire} 是它的投影 —— 两者必须同值（{@code EconomyData} 的构造期
+   * 跨表守卫判死漂开），故调用方必须在<b>同一次变更集</b>里把价表那一栏一起改。
+   *
+   * @param nextLegalTender 新的法定币；不得为 null
+   */
+  public MarketZone withLegalTender(CurrencyId nextLegalTender) {
+    Objects.requireNonNull(nextLegalTender, "nextLegalTender");
+    return new MarketZone(zoneId, anchor, radiusHex, hexes, nextLegalTender, officialRates);
+  }
+
+  /**
    * ★★ <b>只换官方汇率覆盖里的一条</b>（法定币、成员格逐值不变）。
    *
    * <p>★ 它是"本区官方汇率"的唯一写入形态 —— 调用方拿不到"顺手把法定币也改了"的口子（{@code Government.withOfficialRate} 的同款）。

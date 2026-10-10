@@ -30,7 +30,6 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
@@ -230,7 +229,7 @@ final class EconomyEnterpriseSettlement {
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      Map<HexCoord, Market> markets,
+      MarketIndex markets,
       LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises) {
     return organize(
         base,
@@ -279,7 +278,7 @@ final class EconomyEnterpriseSettlement {
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      Map<HexCoord, Market> markets,
+      MarketIndex markets,
       LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises) {
     Objects.requireNonNull(base, "base");
     if (base.modes().isEmpty()) {
@@ -456,7 +455,7 @@ final class EconomyEnterpriseSettlement {
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      Map<HexCoord, Market> markets) {
+      MarketIndex markets) {
     ActorRef organizer = HouseholdActors.of(household);
     String modeKey = MODE_KEY_PREFIX + mode.id().value();
     List<IndustryId> candidates = IndustryHexKeys.at(industries, hex.q(), hex.r());
@@ -565,7 +564,7 @@ final class EconomyEnterpriseSettlement {
       long scale = available / entry.getValue();
       if (scale < 1L && inputReason == null) {
         inputReason =
-            (markets.containsKey(hex) ? REASON_NO_INPUT : REASON_NO_INPUT_NO_MARKET)
+            (markets.at(hex) != null ? REASON_NO_INPUT : REASON_NO_INPUT_NO_MARKET)
                 + ":commodity="
                 + entry.getKey().value()
                 + ",available="

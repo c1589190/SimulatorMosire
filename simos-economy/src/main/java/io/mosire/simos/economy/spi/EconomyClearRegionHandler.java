@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -29,7 +30,7 @@ import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -188,7 +189,7 @@ public final class EconomyClearRegionHandler
                   "householdsRemoved",
                   base.classes().size() - next.classes().size(),
                   "marketsRemoved",
-                  base.markets().size() - next.markets().size(),
+                  base.marketTables().size() - next.marketTables().size(),
                   "demandsRemoved",
                   base.demands().size() - next.demands().size(),
                   "enterprisesRemoved",
@@ -332,7 +333,21 @@ public final class EconomyClearRegionHandler
     Map<HouseholdId, HouseholdClassMembership> classMemberships =
         withoutKeys(base.classStandings(), removedClasses);
 
-    Map<HexCoord, Market> markets = withoutKeys(base.markets(), targetHexes);
+    // ★★ W1：市场按区存 ⇒ "清掉这些格的市场" = 从**派生价表**的成员格里摘掉它们（摘空即删表）。
+    //   ★ 持久区的成员格由区表（I22）给定、价表不携带成员格 ⇒ 持久价表原样带过（清区不改市场区表）。
+    Map<MarketZoneId, MarketTable> markets = new LinkedHashMap<>();
+    for (Map.Entry<MarketZoneId, MarketTable> entry : base.marketTables().entrySet()) {
+      MarketTable table = entry.getValue();
+      if (base.marketZones().containsKey(entry.getKey())) {
+        markets.put(entry.getKey(), table);
+        continue;
+      }
+      Set<HexCoord> remaining = new LinkedHashSet<>(table.hexes());
+      remaining.removeAll(targetHexes);
+      if (!remaining.isEmpty()) {
+        markets.put(entry.getKey(), table.withHexes(remaining));
+      }
+    }
     // ★★ Z1：产品产出数量覆盖表按被清产业（`IndustryId` 里的格键）删除 ⇒ 与 industries 同生共死；
     //   生产效率表按被清 unit 删除 ⇒ 与 units 同生共死（unit 的产业已由 removedUnits 定位）。
     Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides =
@@ -376,7 +391,7 @@ public final class EconomyClearRegionHandler
             .withClassMemberships(classMemberships)
             .withProcesses(units)
             .withOwnershipStakes(assetShares)
-            .withMarkets(markets)
+            .withMarketTables(markets)
             .withIndustries(industries);
 
     // ⑥ classes 与 memberships **同一次规范构造**：先删任一侧的中间态都非法（另一侧悬空或 Σ 守恒失衡）。
@@ -389,7 +404,7 @@ public final class EconomyClearRegionHandler
         staged.flows(),
         staged.allocations(),
         staged.relations(),
-        staged.markets(),
+        staged.marketTables(),
         staged.shipments(),
         staged.assetShares(),
         staged.operatorConditions(),
@@ -428,7 +443,8 @@ public final class EconomyClearRegionHandler
         //   原样带过 staged 的表 —— 漏了它 = 一次清区域把 GM 设过的基础运费静默抹掉。
         staged.commodityFreightBaseMilli(),
         // ★★ R1（第 39 个组件）：政府市场授权表原样带过（清区不动授权；授权由 GM 命令撤销）。
-        staged.govMarketMandates());
+        staged.govMarketMandates(),
+        staged.marketRoundStats());
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

@@ -61,8 +61,7 @@ class PortGateTaxAcceptanceTest {
 
   private static MarketSettlement.MarketOutcome settle(
       World world, PortEnforcementInput enforcement, PortTaxInput tax) {
-    Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+    Round round = MarketSettlementFixtures.round(world, world.defaultsOf());
     Round withInputs = MarketSettlementFixtures.withPortInputs(round, enforcement, tax, null);
     return MarketSettlementFixtures.settleWithCarriers(world, withInputs);
   }
@@ -442,8 +441,7 @@ class PortGateTaxAcceptanceTest {
             .household(SELLER, MarketSettlementFixtures.H1, 1L, SELLER_GRAIN, 0L)
             .household(BUYER, MarketSettlementFixtures.H1, 1L, 0L, BUYER_SILVER)
             .build();
-    Round round =
-        MarketSettlementFixtures.round(sameZone, MarketRegulation.defaultsFor(sameZone.markets()));
+    Round round = MarketSettlementFixtures.round(sameZone, sameZone.defaultsOf());
     Round injected =
         MarketSettlementFixtures.withPortInputs(
             round,

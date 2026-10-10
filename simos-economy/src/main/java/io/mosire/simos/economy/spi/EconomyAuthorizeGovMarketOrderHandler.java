@@ -11,7 +11,8 @@ import io.mosire.simos.economy.api.market.GovernmentMarketMandate;
 import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.Government;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -161,7 +162,8 @@ public final class EconomyAuthorizeGovMarketOrderHandler
             day);
       }
       // ⑤ 未知商品 / 未定价：国库户所在格的市场价表里没有该商品 ⇒ 市场对它整行不交易，授权是死行。
-      Market market = base.markets().get(treasuryHex(base, treasury));
+      // ★ W1：国库户所在格的价表（= 该格所属市场的那一张）。
+      MarketTable market = MarketTables.atOrNull(base, treasuryHex(base, treasury));
       if (market == null) {
         return reject(
             "treasury-hex-has-no-market",

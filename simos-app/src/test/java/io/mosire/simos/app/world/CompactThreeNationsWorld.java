@@ -21,7 +21,8 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -550,7 +551,7 @@ public final class CompactThreeNationsWorld {
       }
     }
     Set<String> commodities = new TreeSet<>();
-    for (Market market : economy.markets().values()) {
+    for (MarketTable market : economy.marketTables().values()) {
       for (CommodityId commodity : market.prices().keySet()) {
         commodities.add(commodity.value());
       }
@@ -617,7 +618,11 @@ public final class CompactThreeNationsWorld {
         economy.productionOrganizations().values().stream()
             .filter(org -> org.unitId().isPresent())
             .count());
-    out.put("markets", (long) economy.markets().size());
+    // ★★ W1：读数语义不变 —— "markets" = 有市场的**格数**（改动前 = 逐格价表的键集）。价表改成每区一张之后，
+    //   它由 {@code MarketTables.allMarketHexes}（持久区成员格 ∪ 派生市场成员格）回答，逐值等于改动前的键集。
+    out.put(
+        "markets",
+        (long) MarketTables.allMarketHexes(economy.marketTables(), economy.marketZones()).size());
     out.put("commodities", (long) commodities.size());
     out.put("commodityIds", List.copyOf(commodities));
     out.put("debts", (long) economy.debtContracts().size());
@@ -782,7 +787,11 @@ public final class CompactThreeNationsWorld {
           social.cities().values().stream()
               .filter(city -> city.region().filter(region::equals).isPresent())
               .count();
-      long markets = economy.markets().keySet().stream().filter(area::contains).count();
+      // ★★ W1：同 {@code summary()} —— 数的是**有市场的格**（不是价表条目数）。
+      long markets =
+          MarketTables.allMarketHexes(economy.marketTables(), economy.marketZones()).stream()
+              .filter(area::contains)
+              .count();
       long industries = 0L;
       for (IndustryId id : economy.industries().keySet()) {
         Optional<String> hexKey = IndustryHexKeys.hexKeyOf(id);

@@ -16,7 +16,7 @@ import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -138,7 +138,9 @@ final class LaborQueueSettlement {
     LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies =
         session.sheet().householdEconomies();
     Map<IndustryId, Industry> industryTemplates = session.sheet().industries();
-    LinkedHashMap<HexCoord, Market> markets = session.sheet().markets();
+    // ★ W1：结算器内部持**逐格取价表解析器**（价表每区一张 ⇒ 不能再按 hex 直接查表）。
+    MarketIndex markets =
+        MarketIndex.of(session.sheet().marketTables(), session.sheet().base().marketZones());
     Map<ProductionUnitId, OperatorCondition> conditions = session.sheet().operatorConditions();
     LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises =
         session.sheet().productionOrganizations();
@@ -277,7 +279,7 @@ final class LaborQueueSettlement {
       for (ProductionProcess unit : candidates) {
         candidateUnitsById.put(unit.id(), unit);
       }
-      Market market = marketOf(householdEconomy, candidates, markets);
+      MarketTable market = marketOf(householdEconomy, candidates, markets);
       List<LaborQueueBook.Offer> offers = new ArrayList<>();
       Set<ProductionUnitId> queuedUnits = new LinkedHashSet<>();
       for (ProductionProcess unit : candidates) {
@@ -615,7 +617,7 @@ final class LaborQueueSettlement {
       List<HouseholdId> orderedHouseholds,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, List<ProductionProcess>> candidatesByHousehold,
-      Map<HexCoord, Market> markets,
+      MarketIndex markets,
       AccountSession accounts) {
     Map<HouseholdId, HouseholdResourceSnapshot> snapshots = new LinkedHashMap<>();
     for (HouseholdId household : orderedHouseholds) {
@@ -623,7 +625,7 @@ final class LaborQueueSettlement {
       if (householdEconomy == null) {
         continue;
       }
-      Market market =
+      MarketTable market =
           marketOf(
               householdEconomy, candidatesByHousehold.getOrDefault(household, List.of()), markets);
       Map<CommodityId, Long> goods =
@@ -859,18 +861,16 @@ final class LaborQueueSettlement {
   }
 
   /** 居住格的价表（没有 ⇒ 该 unit 所在格的价表；都没有 ⇒ null = 无价，排队读数按 0 估值并具名）。 */
-  private static Market marketOf(
-      HouseholdEconomy householdEconomy,
-      List<ProductionProcess> candidates,
-      Map<HexCoord, Market> markets) {
-    Market market = markets.get(householdEconomy.view().hex());
+  private static MarketTable marketOf(
+      HouseholdEconomy householdEconomy, List<ProductionProcess> candidates, MarketIndex markets) {
+    MarketTable market = markets.at(householdEconomy.view().hex());
     if (market != null) {
       return market;
     }
     for (ProductionProcess unit : candidates) {
       Optional<HexCoord> hex = hexOf(unit);
-      if (hex.isPresent() && markets.get(hex.get()) != null) {
-        return markets.get(hex.get());
+      if (hex.isPresent() && markets.at(hex.get()) != null) {
+        return markets.at(hex.get());
       }
     }
     return null;

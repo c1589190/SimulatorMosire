@@ -6,7 +6,6 @@ import io.mosire.simos.economy.api.fx.FxFill;
 import io.mosire.simos.economy.api.fx.FxVenue;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
@@ -65,10 +64,13 @@ class FxHouseholdRoundAcceptanceTest {
     return MarketSettlementFixtures.builder()
         .region("zone-a", H1)
         .region("zone-b", H2)
-        .market(H1, new Market(SILVER, new LinkedHashMap<>(Map.of(GRAIN, 10_000L, CLOTH, 10_000L))))
+        .market(
+            H1,
+            EconomyFixtures.quote(
+                SILVER, new LinkedHashMap<>(Map.of(GRAIN, 10_000L, CLOTH, 10_000L))))
         .market(
             H2,
-            new Market(
+            EconomyFixtures.quote(
                 COPPER,
                 copperZoneGrainPrice < 0L
                     ? new LinkedHashMap<>(Map.of(CLOTH, 20_000L)) // ★ 缺 grain 的定价行
@@ -94,9 +96,8 @@ class FxHouseholdRoundAcceptanceTest {
   private static FxRoundResult fxRound(MarketSettlementFixtures.World w) {
     MarketSettlementFixtures.Round round =
         MarketSettlementFixtures.withFx(
-            MarketSettlementFixtures.round(w, MarketRegulation.defaultsFor(w.markets())),
-            FxRoundInput.none());
-    return FxSettlement.match(round.round(), w.markets(), w.topology());
+            MarketSettlementFixtures.round(w, w.defaultsOf()), FxRoundInput.none());
+    return FxSettlement.match(round.round(), w.marketTables(), w.topology());
   }
 
   private static long silverOf(MarketSettlementFixtures.World w, HouseholdId id) {
@@ -239,8 +240,11 @@ class FxHouseholdRoundAcceptanceTest {
     return MarketSettlementFixtures.builder()
         .region("zone-a", H1)
         .region("zone-b", H2)
-        .market(H1, new Market(SILVER, new LinkedHashMap<>(Map.of(GRAIN, 20_000L, CLOTH, 10_000L))))
-        .market(H2, new Market(COPPER, copperZonePrices))
+        .market(
+            H1,
+            EconomyFixtures.quote(
+                SILVER, new LinkedHashMap<>(Map.of(GRAIN, 20_000L, CLOTH, 10_000L))))
+        .market(H2, EconomyFixtures.quote(COPPER, copperZonePrices))
         .household(
             X,
             H1,

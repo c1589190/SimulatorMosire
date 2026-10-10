@@ -29,7 +29,8 @@ import org.junit.jupiter.api.Test;
  * ★ 两案的差恰好是"截断部分有没有进统计"：若把截断量算进去，无运力那一案会得到 9,921（= 有运力那一案）
  * </pre>
  *
- * <p>★ 价格表读两处（同一事实的两个读口，必须一致）：{@code report().priceUpdates()} 与 {@code outcome.markets()}（成员格同改）。
+ * <p>★ 价格表读两处（同一事实的两个读口，必须一致）：{@code report().priceUpdates()} 与 {@code outcome.marketTables()}
+ * （W1：区内成员格**逐格同改** —— 区内任何格取价一致是"每区一张"的结构性必然）。
  */
 class CapacityTruncationPricingAcceptanceTest {
 
@@ -67,12 +68,14 @@ class CapacityTruncationPricingAcceptanceTest {
 
   private static MarketSettlement.MarketOutcome settle(MarketSettlementFixtures.World world) {
     MarketSettlementFixtures.Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+        MarketSettlementFixtures.round(world, world.defaultsOf());
     return MarketSettlementFixtures.settleWithPool(world, round, world.carrierPool());
   }
 
-  private static long nextPriceOf(MarketSettlement.MarketOutcome outcome, HexCoord hex) {
-    return outcome.markets().get(hex).priceOf(MarketSettlementFixtures.GRAIN);
+  private static long nextPriceOf(
+      MarketSettlement.MarketOutcome outcome, MarketSettlementFixtures.World world, HexCoord hex) {
+    return MarketSettlementFixtures.tableAt(outcome, world, hex)
+        .priceOf(MarketSettlementFixtures.GRAIN);
   }
 
   private static long updateNextOf(MarketSettlement.MarketOutcome outcome) {
@@ -114,11 +117,13 @@ class CapacityTruncationPricingAcceptanceTest {
         .as("★ 剔除后的口径下：需求侧剔光、供给侧剔掉「本该运走的那份」 ⇒ z = −1 ⇒ 降 α 一档")
         .isEqualTo(9_500L);
 
-    assertThat(nextPriceOf(noCapacityOutcome, H1))
+    assertThat(nextPriceOf(noCapacityOutcome, noCapacity, H1))
         .as("★ V-20：无运力那一案的价格表 = 用剔除后的 demand/supply 算出的值")
         .isEqualTo(expectedNoCapacity);
     assertThat(updateNextOf(noCapacityOutcome)).as("两个读口一致（成员格同改）").isEqualTo(expectedNoCapacity);
-    assertThat(nextPriceOf(noCapacityOutcome, H2)).as("区内成员格同改").isEqualTo(expectedNoCapacity);
+    assertThat(nextPriceOf(noCapacityOutcome, noCapacity, H2))
+        .as("区内成员格同改")
+        .isEqualTo(expectedNoCapacity);
     assertThat(noCapacityOutcome.report().priceUpdates().get(0).previousPriceMilli())
         .as("改价记录带改前值")
         .isEqualTo(PRICE_MILLI);
@@ -126,7 +131,7 @@ class CapacityTruncationPricingAcceptanceTest {
     // ★ 反例（判别力所在）：把截断量算进去会得到另一个数 —— 若实现"只改读数、不改统计"，本断言当场红。
     long naiveNext = MarketSettlement.adaptiveNextPrice(PRICE_MILLI, demand, offered);
     assertThat(naiveNext).as("★ 把跨格需求算进统计会得到的值（= 有运力那一案的值）").isEqualTo(9_921L);
-    assertThat(nextPriceOf(noCapacityOutcome, H1))
+    assertThat(nextPriceOf(noCapacityOutcome, noCapacity, H1))
         .as("★「截断部分不提价」：它若进统计，价格会被推到 9,921（更高的那一档）")
         .isNotEqualTo(naiveNext);
 
@@ -144,12 +149,12 @@ class CapacityTruncationPricingAcceptanceTest {
 
     long expectedWithCapacity = MarketSettlement.adaptiveNextPrice(PRICE_MILLI, demand, offered);
     assertThat(expectedWithCapacity).isEqualTo(naiveNext);
-    assertThat(nextPriceOf(withCapacityOutcome, H1))
+    assertThat(nextPriceOf(withCapacityOutcome, withCapacity, H1))
         .as("★ V-20 对照案：没截断 ⇒ 统计就是订单本身（价格 = 9,921）")
         .isEqualTo(expectedWithCapacity);
-    assertThat(nextPriceOf(withCapacityOutcome, H1))
+    assertThat(nextPriceOf(withCapacityOutcome, withCapacity, H1))
         .as("★ 两案的价格表**逐值不同** ⇒ 本用例真的在测「截断有没有进价格表」")
-        .isNotEqualTo(nextPriceOf(noCapacityOutcome, H1));
+        .isNotEqualTo(nextPriceOf(noCapacityOutcome, noCapacity, H1));
   }
 
   /**
@@ -208,7 +213,7 @@ class CapacityTruncationPricingAcceptanceTest {
         .as("★ 四个候选值互不相等 ⇒「两侧都剔」可分辨（否则本用例是等价存活）")
         .doesNotHaveDuplicates();
 
-    assertThat(nextPriceOf(outcome, H1))
+    assertThat(nextPriceOf(outcome, world, H1))
         .as("★ V-20：价格表 = 两侧都剔掉被截断的那一份之后算出的值")
         .isEqualTo(correct)
         .isNotEqualTo(demandExcludedOnly)

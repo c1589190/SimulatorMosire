@@ -5,10 +5,9 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -20,24 +19,28 @@ import java.util.Objects;
 import org.slf4j.Logger;
 
 /**
- * ★★ {@code economy.SetMarketPrice}（R4-E2）：GM 给某格某商品定价。
+ * ★★ {@code economy.SetMarketPrice}（R4-E2；★★ W1 起**逐区**）：GM 给某个<b>市场</b>的某商品定价。
  *
  * <pre>{@code
- * {"q":-20,"r":-81,"commodity":"wool","price":12}
+ * {"marketId":"single-region","commodity":"wool","price":12}
  * }</pre>
  *
- * <p>★ <b>语义（逐条对应 E2a 任务书）</b>：
+ * <p>★★ <b>W1 的形状变更（逐格 ⇒ 逐区）</b>：价表按市场区一张（{@code EconomyData.marketTables} 键 = {@code
+ * MarketZoneId}）⇒ 本命令的载荷从 {@code {q,r}} 改成 {@code {marketId}}，写的就是那一张表。区内任何格此后
+ * 读到同一个数（"区内一价"由形状保证，不再需要逐成员格对齐）。
+ *
+ * <p>★ <b>语义（逐条）</b>：
  *
  * <ul>
- *   <li>{@code price > 0}（{@link Market} 的构造期守卫也判死；这里先给出具名拒绝）；
- *   <li>该格<b>没有市场行</b> ⇒ 用 Silver 计价创建一张空市场（只放这一个价；不造商品/货币/账户）；
- *   <li>该格<b>已有市场</b> ⇒ 保留原计价货币，只 upsert 该商品价格；
- *   <li><b>只写 {@code markets}</b>；不动价格以外的任何状态（自适应定价没有第二处改价，见 {@code MarketSettlement}）。
+ *   <li>{@code price > 0}（{@link MarketTable} 的构造期守卫也判死；这里先给出具名拒绝）；
+ *   <li>市场<b>必须已存在</b>（持久区走 {@code economy.DefineMarketZone}；派生市场由创世播种给出）——
+ *       "凭空建一张市场"必须同时给出成员格与计价币，那是立区命令的判据，不是定价命令能替的（fail-closed 具名拒）；
+ *   <li>保留该市场的计价币与成员格，只 upsert 该商品价格；
+ *   <li><b>只写 {@code marketTables}</b>；不动价格以外的任何状态（自适应定价没有第二处改价，见 {@code MarketSettlement}）。
  * </ul>
  *
- * <p>★ <b>不做的事</b>：不校验"该格在图上"（命令层只要求格坐标合法；市场可以在尚未播种的格上先建，等人口/产业后到 —— 那是 GM 的判断，不是状态守卫）；不实现 {@code
- * CommandTargets}（同 {@code economy.MigrateHousehold}：GM {@code simos.command.submit} 可用，directive
- * 内会被 fail-closed 拒）。
+ * <p>★ <b>不做的事</b>：不实现 {@code CommandTargets}（同 {@code economy.MigrateHousehold}：GM {@code
+ * simos.command.submit} 可用，directive 内会被 fail-closed 拒）。
  */
 public final class EconomySetMarketPriceHandler implements CommandHandler {
 
@@ -57,12 +60,8 @@ public final class EconomySetMarketPriceHandler implements CommandHandler {
     EconomyData base = EconomySnapshots.of(state).data();
     try {
       JsonNode payload = EconomyCommandPayloads.parseObject(COMMAND, payloadJson);
-      int q = EconomyCommandPayloads.optionalInt(COMMAND, payload, "q", Integer.MIN_VALUE);
-      int r = EconomyCommandPayloads.optionalInt(COMMAND, payload, "r", Integer.MIN_VALUE);
-      if (q == Integer.MIN_VALUE || r == Integer.MIN_VALUE) {
-        throw new IllegalArgumentException(COMMAND + " 缺少格坐标字段: q/r");
-      }
-      HexCoord hex = new HexCoord(q, r);
+      String marketIdText = EconomyCommandPayloads.requireText(COMMAND, payload, "marketId");
+      MarketZoneId marketId = MarketZoneId.parse(marketIdText);
       CommodityId commodity =
           CommodityId.parse(EconomyCommandPayloads.requireText(COMMAND, payload, "commodity"));
       long price = EconomyCommandPayloads.requireLong(COMMAND, payload, "price");
@@ -74,26 +73,23 @@ public final class EconomySetMarketPriceHandler implements CommandHandler {
                     EconomyLogSource.ECONOMY_COMMAND,
                     "reason",
                     "non-positive-price",
-                    "q",
-                    q,
-                    "r",
-                    r,
+                    "marketId",
+                    marketId.value(),
                     "commodity",
                     commodity.value(),
                     "price",
                     price));
         return new HandlerOutcome.Rejected("price 必须 > 0（'白送'不是一种价格）: " + price);
       }
-      Map<HexCoord, Market> markets = new LinkedHashMap<>(base.markets());
-      Market existing = markets.get(hex);
+      MarketTable existing = base.marketTables().get(marketId);
       if (LOG.isDebugEnabled()) {
         EventLog.channel(LOG)
             .debug(
                 LogEvent.of(
                     "ECONOMY_SET_MARKET_PRICE_CRITERIA",
                     EconomyLogSource.ECONOMY_COMMAND,
-                    "hex",
-                    hex.toString(),
+                    "marketId",
+                    marketId.value(),
                     "commodity",
                     commodity.value(),
                     "price",
@@ -103,35 +99,62 @@ public final class EconomySetMarketPriceHandler implements CommandHandler {
                     "existingPrice",
                     existing != null && existing.hasPrice(commodity)
                         ? existing.prices().get(commodity)
-                        : "-"));
+                        : "-",
+                    "numeraire",
+                    existing == null ? "-" : existing.numeraire().value(),
+                    "hexes",
+                    existing == null ? "-" : existing.hexes().size(),
+                    "authority",
+                    base.marketZones().containsKey(marketId)
+                        ? "persistent-zone"
+                        : "derived-market"));
       }
+      // ★★ W1（逐格 → 逐区）：定价只作用于**已存在的市场**（持久区 / 派生市场）—— 新形状下"凭空建一张市场"
+      //   必须同时给出成员格与计价币（那是 economy.DefineMarketZone 的判据），不是定价命令能替的。
       if (existing == null) {
-        markets.put(hex, new Market(MoneyVocabulary.SILVER_CURRENCY, Map.of(commodity, price)));
-      } else {
-        Map<CommodityId, Long> prices = new LinkedHashMap<>(existing.prices());
-        prices.put(commodity, price);
-        markets.put(hex, new Market(existing.numeraire(), prices));
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_SET_MARKET_PRICE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "market-missing",
+                    "marketId",
+                    marketId.value(),
+                    "commodity",
+                    commodity.value(),
+                    "knownMarkets",
+                    base.marketTables().size()));
+        return new HandlerOutcome.Rejected(
+            "市场不存在（说不出要改哪张价表；新市场走 economy.DefineMarketZone）: " + marketId.value());
       }
+      Map<MarketZoneId, MarketTable> marketTables = new LinkedHashMap<>(base.marketTables());
+      marketTables.put(marketId, existing.withPrice(commodity, price));
       EventLog.channel(LOG)
           .info(
               LogEvent.of(
                   "ECONOMY_SET_MARKET_PRICE_APPLIED",
                   EconomyLogSource.ECONOMY_COMMAND,
-                  "q",
-                  q,
-                  "r",
-                  r,
+                  "marketId",
+                  marketId.value(),
+                  "authority",
+                  base.marketZones().containsKey(marketId) ? "persistent-zone" : "derived-market",
+                  "numeraire",
+                  existing.numeraire().value(),
                   "commodity",
                   commodity.value(),
-                  "price",
+                  "from",
+                  existing.hasPrice(commodity) ? existing.prices().get(commodity) : "-",
+                  "to",
                   price,
-                  "marketCreated",
-                  existing == null,
                   "prices",
-                  markets.get(hex).prices().size(),
-                  "markets",
-                  markets.size()));
-      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base.withMarkets(markets)));
+                  marketTables.get(marketId).prices().size(),
+                  "marketTables",
+                  marketTables.size(),
+                  "note",
+                  "价表按市场区一张：区内任何格此后读到同一个数（W1 逐格价表已退役）"));
+      return new HandlerOutcome.Applied(
+          EconomyChangeSet.between(base, base.withMarketTables(marketTables)));
     } catch (IllegalArgumentException e) {
       EventLog.channel(LOG)
           .info(

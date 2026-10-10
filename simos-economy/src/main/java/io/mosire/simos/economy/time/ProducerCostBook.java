@@ -7,7 +7,7 @@ import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeRelations;
@@ -129,7 +129,7 @@ public final class ProducerCostBook {
       ProductionProcess unit,
       Industry industry,
       Map<AssetShareId, OwnershipStake> assetShares,
-      Market market,
+      MarketTable market,
       ProductionRules relation) {
     if (unit == null) {
       throw new IllegalArgumentException("ProducerCostBook.estimate 的 unit 不得为 null");
@@ -156,7 +156,7 @@ public final class ProducerCostBook {
       ProductionProcess unit,
       Industry industry,
       SettlementIndex index,
-      Market market,
+      MarketTable market,
       ProductionRules relation) {
     if (index == null) {
       throw new IllegalArgumentException("ProducerCostBook.estimate 的 index 不得为 null");
@@ -173,7 +173,7 @@ public final class ProducerCostBook {
   private static Estimate estimate(
       ProductionProcess unit,
       Industry industry,
-      Market market,
+      MarketTable market,
       ProductionRules relation,
       LongSupplier capacityScale) {
     if (unit == null) {
@@ -226,7 +226,7 @@ public final class ProducerCostBook {
    * <p>★ 只读规则类型 + {@code fixedAmount}；不解释规则公式（那是 {@code ProductionSettlement} 的职责）。
    */
   public static long assetRentPerUnit(
-      Industry industry, Market market, ProductionRules relation, long capacityScale) {
+      Industry industry, MarketTable market, ProductionRules relation, long capacityScale) {
     if (relation == null || relation.rules().isEmpty()) {
       return DEFAULT_ASSET_RENT_PER_UNIT;
     }
@@ -276,7 +276,7 @@ public final class ProducerCostBook {
     return hex.q() + "_" + hex.r() + "|" + actor.kind().name() + "|" + actor.id();
   }
 
-  private static long priceOf(Market market, CommodityId commodity) {
+  private static long priceOf(MarketTable market, CommodityId commodity) {
     return market == null ? 0L : market.priceOf(commodity);
   }
 }

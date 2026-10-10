@@ -68,6 +68,7 @@ import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.ClassStructure;
+import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
@@ -78,7 +79,8 @@ import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketRoundStats;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -148,6 +150,12 @@ class EconomyRoundTripTest {
 
   /** ★ H4：市场夹具的计价货币（每格恰一种 —— 裁定 M1-A）。 */
   private static final CurrencyId SILVER = new CurrencyId("silver");
+
+  /**
+   * ★★ W1：市场夹具的**市场 id**（价表键）。★ 派生形态（{@code marketZones} 为空）⇒ 键 = 派生市场 id、成员格住在价表条目里 （{@link
+   * MarketTable#hexes()}）；本夹具的成员格就是 {@link #KEY} 所在那一格（与改动前"键 = 格"同一份格集）。
+   */
+  private static final MarketZoneId MARKET = new MarketZoneId("market-round-trip");
 
   private static final LaborAllocationId ALLOCATION =
       new LaborAllocationId("alloc-farm-rural:0_0:MALE:1");
@@ -334,10 +342,15 @@ class EconomyRoundTripTest {
    * 2026-10-10 追加裁定 4）从 {@code EconomyData} 与 {@code EconomyChangeSet} **两侧同时删除**。⇒ 本数字按**实测**改成
    * 36（两侧同名同数，子集断言仍然双向成立）。★ 这条改动是**删维度**，不是 "旧档兼容位"：新测试不补任何 {@code merchantFirms} 的往返夹具（§一.11 第 2/3
    * 条）。
+   *
+   * <p>★★ <b>W1（2026-10-10）+1：36 → 37</b>：第 9 个组件**改名** {@code markets → marketTables}（形状级改造：键从格改成
+   * 市场 id，组件数不变）+ 新增第 40 个组件 {@code marketRoundStats}（市场轮统计簿：逐市场 D/S/成交量/均价/未满足量 + 成交额的三段固定窗口）。⇒
+   * 本数字按**实测**改成 37，{@code mutate}/{@code changedOf} 两个 switch 里同步给 {@code marketTables} 与 {@code
+   * marketRoundStats} 各一条**非空**夹具（空表与"字段没进变更集"在值层面不可区分）。
    */
   @Test
-  void changeSetHasExactlyThirtySixComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(36);
+  void changeSetHasExactlyThirtySevenComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(37);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -414,10 +427,13 @@ class EconomyRoundTripTest {
               .withIndustries(Map.of(FARM, industry(FARM)))
               .withProcesses(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
               .withRelations(Map.of(FARM_UNIT, relation(FARM_UNIT, NON_DEFAULT_OPERATOR)));
-      // ★ H4 的第 9 个组件：**自带支撑的格**（市场的键 = 格；本夹具的格就是 {@link #KEY} 所在那一格）。
-      //   ★ 价表**非空**：空价表与"字段没进变更集"在值层面不可区分（同上面 outputPerUnit 那条理由），
-      //     而"这一格什么价都没挂"恰恰是 H4 最想让人看得见的一种状态。
-      case "markets" -> base.withMarkets(Map.of(KEY.hex(), market()));
+      // ★★ W1 的第 9 个组件（**每区一张**：键从格改成市场 id）：**自带支撑的成员格**（价表条目的 hexes = {@link #KEY}
+      //   所在那一格）。★ 价表**非空**：空价表与"字段没进变更集"在值层面不可区分（同上面 outputPerUnit 那条理由），
+      //   而"这个市场什么价都没挂"恰恰是 H4 最想让人看得见的一种状态。
+      case "marketTables" -> base.withMarketTables(Map.of(MARKET, market()));
+      // ★★ W1 的第 40 个组件（市场轮统计簿）：**空表与"字段没进变更集"在值层面不可区分** ⇒ 判别力要求读数非空
+      //   （三段窗口里本轮明细 + 成交额都取非零/非默认值）。
+      case "marketRoundStats" -> base.withMarketRoundStats(Map.of(MARKET, roundStats()));
       // ★ M2.4 的第 10 个组件：**自带支撑的票**（在途批次没有跨表守卫，但仍要有真实的路线与至少一票，
       //   否则构造期就会拦下"在途必须能追到票"）。
       case "shipments" -> base.withShipments(Map.of(SHIPMENT, shipment()));
@@ -437,7 +453,7 @@ class EconomyRoundTripTest {
               .withProcesses(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)));
       // ★ R4-E2 的第 15 个组件：HEX 范围的需求自带一张**登记了该格的市场**（hexRegistered 的口径）。
       case "demands" ->
-          base.withMarkets(Map.of(KEY.hex(), market()))
+          base.withMarketTables(Map.of(MARKET, market()))
               .withHouseholdDemands(Map.of(DEMAND, demand()));
       // ★ R4-E2 的第 16 个组件：候选预设自带已登记的 regime 与自洽的 output/outputPerUnit。
       case "candidates" -> base.withCandidates(Map.of(CANDIDATE, candidate()));
@@ -494,9 +510,16 @@ class EconomyRoundTripTest {
       // ★★ B2（2026-10-08）的第 34 个组件：区表非空 ⇒ 必须自带"发行政府 + 它的 issuable 含该区法定币"
       //   （说不出谁发行法定币的区不许存在，fail-closed）⇒ 变异体自带一个 silver 发行政府。★ 法定币取 silver
       //   （默认词表里已有）⇒ 不必为了造一个区再去改词表，判别力仍落在 marketZones 这一维上。
+      //   ★★ W1c：W1 起"区表 + 它的价表"是**一对不可分的组件**（构造期守卫：每个持久区必须有价表条目、持久区
+      //   价表的成员格必须为空、计价币必须 = 区法定币）⇒ 两个单组件 wither 之间**没有合法中间态**：
+      //   `withMarketZones` 先调 ⇒ 那个区还没有表（"缺表 = 该区没有任何价格"）；`withMarketTables` 先调 ⇒
+      //   带空成员格的条目会被读成派生市场（"派生市场必须有成员格"）。本用例原先是"基础态里没有该区的表" ⇒
+      //   撞上守卫（W1c 的第一条红灯）。修法是**自洽**：把两个组件**一次落地**（见 withZoneAndItsTable）。
       case "marketZones" ->
-          base.withGovernments(Map.of(ZONE_GOV, silverIssuingGovernment()))
-              .withMarketZones(Map.of(ZONE, zone()));
+          withZoneAndItsTable(
+              base.withGovernments(Map.of(ZONE_GOV, silverIssuingGovernment())),
+              zone(),
+              zoneMarket());
       // ★★ 2026-10-09 选项 A 的第 35 个组件（家户债务引用**派生索引**）：它是构造期由合同表重建的产物 ⇒
       //   目标只能靠"合同 + 两端家户行"造出来；空表与"字段没进变更集"在值层面不可区分 ⇒ 判别力要求引用表非空。
       case "householdDebtRefs" -> oneDebtContractTarget(base);
@@ -550,7 +573,7 @@ class EconomyRoundTripTest {
       case "flows" -> cs.flows().changed();
       case "allocations" -> cs.allocations().changed();
       case "relations" -> cs.relations().changed();
-      case "markets" -> cs.markets().changed();
+      case "marketTables" -> cs.marketTables().changed();
       case "shipments" -> cs.shipments().changed();
       case "assetShares" -> cs.assetShares().changed();
       case "operatorConditions" -> cs.operatorConditions().changed();
@@ -583,6 +606,8 @@ class EconomyRoundTripTest {
       case "commodityFreightBaseMilli" -> cs.commodityFreightBaseMilli().changed();
       // ★★ R1（2026-10-09）的第 37 个组件（见 mutate 的同名 case）
       case "govMarketMandates" -> cs.govMarketMandates().changed();
+      // ★★ W1 的第 40 个组件（见 mutate 的同名 case）
+      case "marketRoundStats" -> cs.marketRoundStats().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -751,9 +776,22 @@ class EconomyRoundTripTest {
    * 空价表会让"把 markets 分量写成恒 Unchanged"这种坏实现**假绿**。
    *
    * <p>★ <b>为什么不逐格建不同的价</b>：本用例量的是"变更集看得见市场表"，不是价格业务；逐格差异留给价格那一轮。
+   *
+   * <p>★★ <b>W1：成员格住在价表条目里</b>（{@link MarketTable#hexes()}）—— 改动前"市场在哪一格"由键回答（键 = 格），
+   * 现在由价表条目的成员格回答（键 = 市场 id）。
    */
-  static Market market() {
-    return new Market(SILVER, Map.of(GRAIN, 3L, CLOTH, 5L));
+  static MarketTable market() {
+    return new MarketTable(SILVER, Set.of(KEY.hex()), Map.of(GRAIN, 3L, CLOTH, 5L));
+  }
+
+  /**
+   * ★★ <b>W1：市场轮统计簿夹具</b>（{@code EconomyData} 的第 40 个组件 {@code marketRoundStats}）：一个市场的三段窗口，
+   * 本轮明细与本/上周期读数**都非空**（判别力要求：空窗口与"字段没进变更集"在值层面不可区分）。
+   */
+  static MarketRoundStats roundStats() {
+    CommodityRound round = new CommodityRound(1_000L, 900L, 800L, 4L, 100L);
+    return new MarketRoundStats(
+        5L, Map.of(GRAIN, round), 3_200L, Map.of(GRAIN, round), 3_200L, Map.of(CLOTH, round), 5L);
   }
 
   /**
@@ -900,6 +938,71 @@ class EconomyRoundTripTest {
   private static MarketZone zone() {
     return new MarketZone(
         ZONE, KEY.hex(), 0, Set.of(KEY.hex()), MoneyVocabulary.SILVER_CURRENCY, Map.of());
+  }
+
+  /**
+   * ★★ <b>W1c：{@link #zone()} 那一份价表</b>（持久形态：**成员格为空** —— 持久区的成员格权威 = {@code
+   * MarketZone.hexes}，I22；计价币 = 该区法定币 {@code silver}）。
+   *
+   * <p>★ 价目取 {@link #market()} 的同值（非空，见那条理由）：判别力仍落在"区表 / 价表各自有没有进变更集"上。
+   */
+  static MarketTable zoneMarket() {
+    return new MarketTable(MoneyVocabulary.SILVER_CURRENCY, Set.of(), Map.of(GRAIN, 3L, CLOTH, 5L));
+  }
+
+  /**
+   * ★★ <b>W1c：把"市场区 + 它的价表"两个组件一次落地</b>（本文件唯一一处手写 canonical 构造）。
+   *
+   * <p>★ <b>为什么不能用 wither 链</b>：{@code EconomyData} 的 compact 构造器跑 W1 的跨表守卫（{@code
+   * EconomyData.java:1977-2029} 的"每区一张价表"三条），而**每一次** {@code with*()} 都会重新构造并重跑它 ——
+   * 两个单组件路径的中间态各自违反一条：{@code withMarketZones(zone)} 时那个区还没有价表 ⇒ "市场区没有价表条目"； {@code
+   * withMarketTables(成员格为空的表)} 时它还不是区 ⇒ "派生市场必须有成员格"。 ⇒ 与 {@code EconomyClearRegionHandler} 末尾对
+   * {@code classes}+{@code classStandings} 的处理同款： <b>两个互相约束的组件必须在同一次规范构造里改变</b>。
+   *
+   * <p>★ <b>代价与护栏</b>：这里显式列出全部 37 个组件 ⇒ 将来新增组件时本调用**编译不过**（不是静默丢字段）， 且本文件的 {@code
+   * changeSetHasExactlyThirtySevenComponents} 把两侧组件数钉住 —— 两处一起构成提醒。
+   */
+  private static EconomyData withZoneAndItsTable(
+      EconomyData base, MarketZone zone, MarketTable table) {
+    return new EconomyData(
+        base.meta(),
+        base.industries(),
+        base.classes(),
+        base.debtContracts(),
+        base.flows(),
+        base.allocations(),
+        base.relations(),
+        // ★★ 两个不可分组件：区表（marketTables）与它的价表条目同一次落地。
+        Map.of(zone.zoneId(), table),
+        base.shipments(),
+        base.assetShares(),
+        base.operatorConditions(),
+        base.units(),
+        base.demands(),
+        base.candidates(),
+        base.modes(),
+        base.classStructures(),
+        base.classPositions(),
+        base.classStandings(),
+        base.productionOrganizations(),
+        base.assetRules(),
+        base.governments(),
+        base.moneyIssuances(),
+        base.pledges(),
+        base.liquidationPolicies(),
+        base.crisisSignals(),
+        base.modeTransitions(),
+        base.classShares(),
+        base.periodicAdjustments(),
+        base.outputQuantityOverrides(),
+        base.productionEfficiency(),
+        base.currencies(),
+        base.moneyInstruments(),
+        Map.of(zone.zoneId(), zone),
+        base.householdDebtRefs(),
+        base.commodityFreightBaseMilli(),
+        base.govMarketMandates(),
+        base.marketRoundStats());
   }
 
   static MoneyIssuanceRecord moneyIssuance() {

@@ -24,7 +24,7 @@ import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
@@ -60,7 +60,7 @@ import java.util.Set;
  *   <li>{@code plannedOutput/selfConsumed/sellable/inputNeed} 一律<b>毫商品</b>；{@code outputPerUnit}
  *       是"商品单位/规模"⇒ × scale × {@link EconomyVocabulary#MILLI_PER_COMMODITY_UNIT}；{@code
  *       inputPerUnit} 已经是"毫商品/规模/周期"；
- *   <li>{@code Market.priceOf} 是"毫计价货币 / 1 商品单位"⇒ 数量（毫商品） × 价格 ÷ 1000 = 毫钱；
+ *   <li>{@code MarketTable.priceOf} 是"毫计价货币 / 1 商品单位"⇒ 数量（毫商品） × 价格 ÷ 1000 = 毫钱；
  *   <li>{@code laborPerUnit} 是"千分劳动 / 日 / 规模"⇒ <b>周期劳动</b>必须 × {@code horizonDays}（ {@link
  *       Industry#cycleDays()}）；{@code laborPerUnit × scale} 是每日劳动，不是周期劳动；
  *   <li>劳动成本折算：{@code laborNeed（千分劳动·日） × subsistence（毫粮/1000 千分劳动） ÷ 1000 = 毫粮}， 再 × 粮价（毫钱/商品单位） ÷
@@ -196,7 +196,7 @@ public final class ExpectedProfitBook {
       ProductionModeId modeId,
       HexCoord hex,
       Industry industryOrNull,
-      Market marketOrNull,
+      MarketTable marketOrNull,
       MarketDemandBook.Book demand,
       Map<AssetShareId, OwnershipStake> shares,
       Set<AssetShareId> claimedByEnterprises,
@@ -309,7 +309,7 @@ public final class ExpectedProfitBook {
       ProductionRole position,
       HexCoord hex,
       Industry industry,
-      Market market,
+      MarketTable market,
       MarketDemandBook.Book demand,
       Map<AssetShareId, OwnershipStake> shares,
       Set<AssetShareId> claimedByEnterprises,
@@ -505,7 +505,7 @@ public final class ExpectedProfitBook {
       ProductionRole position,
       HexCoord hex,
       Industry industry,
-      Market market,
+      MarketTable market,
       Map<AssetShareId, OwnershipStake> shares,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<ProductionUnitId, ProductionRules> relations) {
@@ -617,7 +617,7 @@ public final class ExpectedProfitBook {
       ProductionRole position,
       HexCoord hex,
       Industry industryOrNull,
-      Market market,
+      MarketTable market,
       MarketDemandBook.Book demand,
       Map<AssetShareId, OwnershipStake> shares,
       Set<AssetShareId> claimedByEnterprises,
@@ -837,7 +837,7 @@ public final class ExpectedProfitBook {
       HouseholdId household,
       HouseholdEconomy householdEconomy,
       HexCoord hex,
-      Market market,
+      MarketTable market,
       Map<CommodityId, Long> revenueByCommodity,
       Map<CommodityId, Long> inputCostByCommodity,
       long totalRevenue,
@@ -1137,7 +1137,7 @@ public final class ExpectedProfitBook {
   // ── 价 / 量 / 收益小工具 ───────────────────────────────────────────────────────────────────
 
   /** 产出的毛值（毫钱）：{@code Σ outputPerUnit × scale × bidPrice}（商品单位 × 规模 × 毫钱/单位）。 */
-  private static long grossOutputValue(Industry industry, long scale, Market market) {
+  private static long grossOutputValue(Industry industry, long scale, MarketTable market) {
     long total = 0L;
     for (Map.Entry<CommodityId, Long> output : industry.recipe().outputPerUnit().entrySet()) {
       if (output.getValue() <= 0L || market == null) {
@@ -1190,7 +1190,7 @@ public final class ExpectedProfitBook {
     return sellableTotal < remainingTotal;
   }
 
-  private static long maxMarketPrice(Market market) {
+  private static long maxMarketPrice(MarketTable market) {
     if (market == null) {
       return 0L;
     }

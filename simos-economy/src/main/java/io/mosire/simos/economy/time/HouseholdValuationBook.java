@@ -3,7 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -42,7 +42,7 @@ import java.util.Objects;
  * 本格价表"<b>当场重算</b>；本类<b>不持有</b>任何人口/需求账，也不写任何状态。缺项 ⇒ {@link #priceOf} 回 0（{@code 0 = 本户没有对应价格 ⇒
  * 回落市场默认}，与接口契约逐字一致；两者都缺 ⇒ 调用方具名跳过， <b>不猜价</b> —— 负向用例 N7）。
  *
- * <p>★ <b>量纲</b>：价格 = 毫 {@code numeraire} / 商品单位（与 {@link Market#prices()} 同量纲）。
+ * <p>★ <b>量纲</b>：价格 = 毫 {@code numeraire} / 商品单位（与 {@link MarketTable#prices()} 同量纲）。
  */
 final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable {
 
@@ -255,7 +255,7 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
         currencyValues.put(household, Map.of());
         continue;
       }
-      Market market = snapshot.market();
+      MarketTable market = snapshot.market();
       if (numeraire == null) {
         numeraire = market.numeraire();
       }
@@ -286,7 +286,7 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
    * <p>★ 说不出价的币（既没行情、本户也没持有）<b>不进表</b> —— 缺键就是"说不出这个价"（调用方按不可判处理）。
    */
   private static Map<CurrencyId, Long> deriveCurrencyValues(
-      Market market, HouseholdResourceSnapshot snapshot, CurrencyValuation valuations) {
+      MarketTable market, HouseholdResourceSnapshot snapshot, CurrencyValuation valuations) {
     LinkedHashSet<CurrencyId> candidates = new LinkedHashSet<>();
     candidates.add(market.numeraire());
     List<CurrencyId> held = new ArrayList<>(snapshot.money().keySet());
@@ -322,7 +322,7 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
    * @return {@code <= 0} = 本户对该商品没有保留价（没有价表 / 从未定价 / 明确 0 价）
    */
   static long reservationMicro(
-      Market market,
+      MarketTable market,
       CommodityId commodity,
       HouseholdId household,
       HouseholdEconomy row,
@@ -332,7 +332,7 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
     Objects.requireNonNull(household, "reservationMicro 的家户不得为 null");
     Objects.requireNonNull(tradeHistory, "reservationMicro 的成交史查询口不得为 null");
     if (market == null || row == null || !market.hasPrice(commodity)) {
-      return 0L; // "从未定价"与"明确 0 价"是两件事（Market 的口径）；这里只在有定价行时给保留价
+      return 0L; // "从未定价"与"明确 0 价"是两件事（MarketTable 的口径）；这里只在有定价行时给保留价
     }
     long base = market.priceOf(commodity);
     if (base <= 0L) {

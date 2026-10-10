@@ -53,9 +53,9 @@ class Z7MarketExclusionTest {
             world, MarketRegulation.none(), Set.of(TREASURY, UNIT_HOUSE));
 
     MarketSettlement.PlannedOrders legacyOrders =
-        MarketSettlement.planOrders(legacy.round(), H1, world.markets().get(H1), GRAIN);
+        MarketSettlement.planOrders(legacy.round(), H1, world.tableAt(H1), GRAIN);
     MarketSettlement.PlannedOrders fixedOrders =
-        MarketSettlement.planOrders(fixed.round(), H1, world.markets().get(H1), GRAIN);
+        MarketSettlement.planOrders(fixed.round(), H1, world.tableAt(H1), GRAIN);
 
     assertThat(sellableOf(legacyOrders.sells(), TREASURY))
         .as("旧口径复现 run6 D2：0 人口国库户粮 271,393 全程被当 sellable")

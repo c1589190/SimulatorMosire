@@ -14,6 +14,7 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -29,7 +30,7 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -71,19 +72,29 @@ class ModeMigrationPolicyD024Test {
   private static final ActorRef ESTATE =
       new ActorRef(ActorKind.ORGANIZATION, TARGET_INDUSTRY.value());
 
+  /**
+   * ★★ W1：市场 = **逐区价表**（{@code marketTables}）；逐格读口见 {@link #tableAt(HexCoord)}（改动前 {@code
+   * markets.get(hex)} 的替身）。
+   */
   private record Fixture(
       EconomyData base,
       AccountSession accounts,
       MarketTopology topology,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> marketTables,
       AssetShareId sourceShareId,
       AssetShareId targetShareId,
-      ProductionUnitId sourceUnitId) {}
+      ProductionUnitId sourceUnitId) {
 
-  private static Market market() {
+    MarketTable tableAt(HexCoord hex) {
+      MarketZoneId id = EconomyFixtures.marketIdOf(hex);
+      return marketTables.get(id);
+    }
+  }
+
+  private static MarketTable market() {
     Map<CommodityId, Long> prices = new LinkedHashMap<>();
     prices.put(GRAIN, 10L);
-    return new Market(SILVER, prices);
+    return EconomyFixtures.quote(SILVER, prices);
   }
 
   private static Industry industry(IndustryId id, String label, long outputUnits, long inputMilli) {
@@ -234,9 +245,11 @@ class ModeMigrationPolicyD024Test {
         new ProductionRules(
             sourceUnitId, sourceActor, new Payee.ToActor(sourceActor), List.of(), sourceActor);
 
-    Map<HexCoord, Market> markets = new LinkedHashMap<>();
-    markets.put(H1, market());
-    markets.put(H2, market());
+    // ★★ W1：逐格报价 → 一格一张派生价表（键 = "hex:<q>_<r>"，与 MarketTopology.singleHex 的节点 id 同源）。
+    Map<HexCoord, MarketTable> quotes = new LinkedHashMap<>();
+    quotes.put(H1, market());
+    quotes.put(H2, market());
+    Map<MarketZoneId, MarketTable> marketTables = EconomyFixtures.hexMarkets(quotes);
 
     EconomyData base =
         EconomyData.empty()
@@ -249,7 +262,7 @@ class ModeMigrationPolicyD024Test {
             .withProcesses(Map.of(sourceUnitId, sourceUnit))
             .withRelations(Map.of(sourceUnitId, sourceRelation))
             .withOwnershipStakes(shares)
-            .withMarkets(markets);
+            .withMarketTables(marketTables);
     if (sourceHasOrganization) {
       ProductionOrganizationId organizationId =
           ProductionOrganizationId.idOf(
@@ -290,8 +303,8 @@ class ModeMigrationPolicyD024Test {
     return new Fixture(
         base,
         accounts,
-        MarketTopology.singleHex(markets),
-        markets,
+        MarketTopology.singleHex(marketTables, Map.of()),
+        marketTables,
         h1ShareId,
         h2ShareId,
         sourceUnitId);
@@ -328,7 +341,7 @@ class ModeMigrationPolicyD024Test {
         fixture.base().assetShares(),
         fixture.base().relations(),
         Map.of(),
-        fixture.markets(),
+        fixture.marketTables(),
         fixture.base().debtContracts(),
         fixture.accounts(),
         new EnterpriseProfitBook.Book(Map.of(), Map.of(), Map.of()),
@@ -349,7 +362,7 @@ class ModeMigrationPolicyD024Test {
         DefaultProductionModes.FAMILY_FARM,
         H1,
         fixture.base().industries().get(SOURCE_INDUSTRY),
-        fixture.markets().get(H1),
+        fixture.tableAt(H1),
         demandOf(fixture),
         fixture.base().assetShares(),
         claimedFrom(fixture, organizations),
@@ -375,7 +388,7 @@ class ModeMigrationPolicyD024Test {
         mode,
         H2,
         fixture.base().industries().get(TARGET_INDUSTRY),
-        fixture.markets().get(H2),
+        fixture.tableAt(H2),
         demandOf(fixture),
         fixture.base().assetShares(),
         claimedFrom(fixture, organizations),
@@ -396,7 +409,7 @@ class ModeMigrationPolicyD024Test {
         fixture.base().assetShares(),
         fixture.base().shipments(),
         fixture.accounts(),
-        fixture.markets(),
+        fixture.marketTables(),
         10L,
         10L);
   }

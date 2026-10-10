@@ -9,7 +9,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
@@ -68,7 +68,8 @@ class FxPurchasingPowerAcceptanceTest {
 
   private static HouseholdPurchasingPower.ZoneTable table(
       CurrencyId currency, HexCoord anchor, Map<CommodityId, Long> prices) {
-    return new HouseholdPurchasingPower.ZoneTable(currency, anchor, new Market(currency, prices));
+    return new HouseholdPurchasingPower.ZoneTable(
+        currency, anchor, EconomyFixtures.quote(currency, prices));
   }
 
   // ── F-1：购买力 = "付清生活消费品需求要付多少"，付得最少者最强 ────────────────────────────
@@ -184,10 +185,15 @@ class FxPurchasingPowerAcceptanceTest {
   /** ★★ <b>F-1 的取价点 = 该币法定区的<b>锚格</b>市场</b>；锚格没有市场 / 计价币与法定币漂开 ⇒ 该币没有价表。 */
   @Test
   void zoneTablesTakeTheAnchorMarketAndRefuseMismatchedNumeraires() {
-    Market silverMarket = new Market(SILVER, Map.of(GRAIN, 10L));
-    Market copperMarket = new Market(COPPER, Map.of(GRAIN, 5L));
-    Map<HexCoord, Market> markets =
-        new java.util.LinkedHashMap<>(Map.of(H1, silverMarket, H2, copperMarket));
+    MarketTable silverMarket = EconomyFixtures.quote(SILVER, Map.of(GRAIN, 10L));
+    MarketTable copperMarket = EconomyFixtures.quote(COPPER, Map.of(GRAIN, 5L));
+    // ★★ W1：价表**每区一张**（键 = 区 id = 拓扑节点 id）。本用例的世界由下面那条 builder 声明了两个持久区
+    //   （zone-a → H1、zone-b → H2），故注入表必须按区 id 给（改动前按锚格给 —— 两个区的锚格各 = 那一格）。
+    Map<io.mosire.simos.economy.api.id.MarketZoneId, MarketTable> markets =
+        new java.util.LinkedHashMap<>(
+            Map.of(
+                new io.mosire.simos.economy.api.id.MarketZoneId("zone-a"), silverMarket,
+                new io.mosire.simos.economy.api.id.MarketZoneId("zone-b"), copperMarket));
     MarketTopology topology =
         MarketSettlementFixtures.builder()
             .region("zone-a", H1)
@@ -207,8 +213,11 @@ class FxPurchasingPowerAcceptanceTest {
     assertThat(tables.get(COPPER).market().priceOf(GRAIN)).as("copper 区锚格的 grain 价").isEqualTo(5L);
 
     // ★ 锚格市场的计价币与该区法定币漂开 ⇒ 不拿另一币的价表冒充（fail-closed）。
-    Map<HexCoord, Market> drifted =
-        new java.util.LinkedHashMap<>(Map.of(H1, silverMarket, H2, silverMarket));
+    Map<io.mosire.simos.economy.api.id.MarketZoneId, MarketTable> drifted =
+        new java.util.LinkedHashMap<>(
+            Map.of(
+                new io.mosire.simos.economy.api.id.MarketZoneId("zone-a"), silverMarket,
+                new io.mosire.simos.economy.api.id.MarketZoneId("zone-b"), silverMarket));
     assertThat(HouseholdPurchasingPower.zoneTables(drifted, topology))
         .as("★ 锚格是 silver 价表却挂在 copper 法定区 ⇒ copper 没有价表")
         .doesNotContainKey(COPPER);

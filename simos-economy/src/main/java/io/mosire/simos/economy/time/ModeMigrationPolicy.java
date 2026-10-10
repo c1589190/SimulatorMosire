@@ -10,10 +10,12 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
@@ -22,7 +24,9 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
+import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
@@ -279,7 +283,7 @@ public final class ModeMigrationPolicy {
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, ProductionRules> relations,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       Map<DebtContractId, DebtContract> debts,
       AccountSession accounts,
       EnterpriseProfitBook.Book book,
@@ -360,7 +364,7 @@ public final class ModeMigrationPolicy {
       return MigrationPlan.empty();
     }
 
-    List<HexCoord> hexes = globalHexes(householdEconomies, units, markets);
+    List<HexCoord> hexes = globalHexes(householdEconomies, units, markets, base.marketZones());
     List<ProductionMode> modes = sortedModes(base);
     Map<ProductionModeId, List<ProductionRole>> producingPositions =
         producingPositionsByMode(base, modes);
@@ -417,8 +421,13 @@ public final class ModeMigrationPolicy {
       List<Map<CurrencyId, Long>> moneySharesByCurrency =
           splitMoneyByCurrency(accounts, populations, sourcePopulation, source, emptiesSource);
       // ★ 旧读口 moneyMilli 仍报"主币种"份额；权威全币种表在 moneyByCurrency（D-023）。
+      HouseholdMode legacyCurrent = currentOf(modeByHousehold, source);
       CurrencyId legacyCurrency =
-          currentCurrency(currentOf(modeByHousehold, source), accounts, markets);
+          currentCurrency(
+              legacyCurrent,
+              accounts,
+              markets,
+              MarketZoneBook.zoneOfHex(base, legacyCurrent.hex).orElse(null));
       long[] debtShares = splitDebt(populations, sourcePopulation, source, debts, emptiesSource);
       for (int i = 0; i < drafts.size(); i++) {
         MoveDraft draft = drafts.get(i);
@@ -459,7 +468,7 @@ public final class ModeMigrationPolicy {
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, ProductionRules> relations,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       AccountSession accounts,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
       Set<AssetShareId> claimedByEnterprises,
@@ -616,7 +625,7 @@ public final class ModeMigrationPolicy {
       List<Target> targets,
       List<PrimaryModeRanking.Excluded> excluded,
       AccountSession accounts,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       MarketTopology topology) {
     List<PrimaryModeRanking.Row> rows = new ArrayList<>();
     String currentGate =
@@ -749,7 +758,7 @@ public final class ModeMigrationPolicy {
       Map<AssetShareId, OwnershipStake> assetShares,
       Set<AssetShareId> claimedByEnterprises,
       Map<ProductionUnitId, ProductionRules> relations,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       AccountSession accounts,
       MarketDemandBook.Book demandBook,
       MarketTopology topology,
@@ -1249,7 +1258,7 @@ public final class ModeMigrationPolicy {
    */
   private static long liquidityMilli(
       AccountSession accounts,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       MarketTopology topology,
       HouseholdId household,
       HexCoord hex) {
@@ -1257,8 +1266,8 @@ public final class ModeMigrationPolicy {
   }
 
   /** 本格价表：优先本格市场；无则退到该格所在区的集散节点市场（区内同价）；都没有 ⇒ null。 */
-  private static Market marketOf(
-      Map<HexCoord, Market> markets, MarketTopology topology, HexCoord hex) {
+  private static MarketTable marketOf(
+      Map<MarketZoneId, MarketTable> markets, MarketTopology topology, HexCoord hex) {
     return PrimaryModeRanking.marketOf(markets, topology, hex);
   }
 
@@ -1357,8 +1366,12 @@ public final class ModeMigrationPolicy {
   }
 
   private static CurrencyId currentCurrency(
-      HouseholdMode current, AccountSession accounts, Map<HexCoord, Market> markets) {
-    Market market = markets.get(current.hex);
+      HouseholdMode current,
+      AccountSession accounts,
+      Map<MarketZoneId, MarketTable> markets,
+      MarketZone zone) {
+    // ★ W1：本格价表 = 本格所属市场的那一张（价表每区一张；区内任何格同一张）。
+    MarketTable market = zone == null ? null : markets.get(zone.zoneId());
     if (market != null) {
       return market.numeraire();
     }
@@ -1616,13 +1629,15 @@ public final class ModeMigrationPolicy {
   private static List<HexCoord> globalHexes(
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionProcess> units,
-      Map<HexCoord, Market> markets) {
+      Map<MarketZoneId, MarketTable> markets,
+      Map<MarketZoneId, MarketZone> marketZones) {
     TreeSet<HexCoord> hexes =
         new TreeSet<>(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
       hexes.add(householdEconomy.view().hex());
     }
-    hexes.addAll(markets.keySet());
+    hexes.addAll(
+        MarketTables.allMarketHexes(markets, marketZones)); // ★ W1：有市场的格（持久 = 有价表的区成员格；派生 = 价表成员格）
     for (ProductionProcess unit : units.values()) {
       Optional<String> key = IndustryHexKeys.hexKeyOf(unit.industry());
       if (key.isPresent()) {

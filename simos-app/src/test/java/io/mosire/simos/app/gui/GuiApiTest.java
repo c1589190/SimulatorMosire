@@ -40,6 +40,7 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -50,6 +51,8 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.CityId;
@@ -910,9 +913,15 @@ class GuiApiTest {
                     Optional.empty())))
         .withIndustries(Map.of(farm, industry, workshop, workshopIndustry(workshop)))
         .withHouseholdEconomies(Map.of(H11_HOUSEHOLD, row, H12_HOUSEHOLD, otherRow))
-        // ★★ H4：第 9 个组件（市场表）—— 本夹具那一格给一个市场（计价货币 + 出厂价表都取真装载器的
-        //   {@link EconomySeeder#MARKET_FACTORY}，**本夹具不另拍价**）。
-        .withMarkets(Map.of(H11, EconomySeeder.MARKET_FACTORY))
+        // ★★ H4：第 9 个组件（市场价表）—— 本夹具那一格给一个市场（计价货币与出厂价表都取真装载器的
+        //   {@link EconomySeeder#MARKET_PRICES_FACTORY}/{@code MARKET_NUMERAIRE}，**本夹具不另拍价**）。
+        //   ★★ W1：价表**每市场一张**（键 = 市场 id、成员格住在条目里）—— 本夹具一格一市场，故键取
+        //   "{@code hex:<q>_<r>}"（与 {@code MarketTopology.singleHex} 的节点 id 同源），成员格 = {@code H11}。
+        .withMarketTables(
+            Map.of(
+                new MarketZoneId("hex:" + IndustryHexKeys.hexKey(H11.q(), H11.r())),
+                MarketTable.singleHex(
+                    EconomySeeder.MARKET_NUMERAIRE, H11, EconomySeeder.MARKET_PRICES_FACTORY)))
         .withProcesses(units)
         .withOwnershipStakes(Map.of(farmLandShareId, farmLandShare))
         .withLaborCommitments(laborAllocations())

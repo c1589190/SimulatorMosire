@@ -8,9 +8,11 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -29,7 +31,8 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
@@ -70,6 +73,33 @@ final class EconomyFixtures {
   }
 
   /**
+   * ★★ <b>W1：一格一张派生价表</b>（键 = {@code "hex:<q>_<r>"}，与 {@link MarketTopology#singleHex} 的节点 id 同源）。
+   *
+   * <p>★ 它是"没有地图切片"的退化世界的价表形态（逐格一市场）；改动前那些夹具写的是 {@code Map.of(H, new Market(...))} ——
+   * 本助手就是那个形状在新形状下的**逐值等价**表达（键从格变成派生的市场 id，成员格 = 该格）。
+   */
+  static Map<MarketZoneId, MarketTable> hexMarkets(Map<HexCoord, MarketTable> quotes) {
+    Map<MarketZoneId, MarketTable> tables = new LinkedHashMap<>();
+    for (Map.Entry<HexCoord, MarketTable> entry : quotes.entrySet()) {
+      tables.put(
+          marketIdOf(entry.getKey()),
+          MarketTable.singleHex(
+              entry.getValue().numeraire(), entry.getKey(), entry.getValue().prices()));
+    }
+    return tables;
+  }
+
+  /** ★ W1：价表**模板**（只有计价币与价格表，成员格为空）—— 由 {@link #hexMarkets} 挂到具体格上。 */
+  static MarketTable quote(CurrencyId numeraire, Map<CommodityId, Long> prices) {
+    return new MarketTable(numeraire, Set.of(), prices);
+  }
+
+  /** ★ W1：派生市场的稳定 id（与 {@code MarketTopology.singleHex} 的节点 id 逐字同源）。 */
+  static MarketZoneId marketIdOf(HexCoord hex) {
+    return new MarketZoneId("hex:" + IndustryHexKeys.hexKey(hex.q(), hex.r()));
+  }
+
+  /**
    * 从 {@code fromTick + 1} 逐日推到 {@code toTick}，交出终态。
    *
    * <p>★ 家户账工作副本按视图键传入/写回（旧用例形状）；推进内部载入 {@link AccountSession}，日循环结束后
@@ -97,7 +127,7 @@ final class EconomyFixtures {
         new EconomyDayStepper(
             base,
             accounts,
-            MarketTopology.singleHex(base.markets()),
+            MarketTopology.singleHex(base.marketTables(), base.marketZones()),
             EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
             famineMortalityPerMille);
     try {
@@ -303,7 +333,7 @@ final class EconomyFixtures {
       Map<CohortKey, FlowRow> flowsByView,
       Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
       Map<?, ProductionRules> relationsByIndustry,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> marketTables,
       Map<ShipmentId, ShipmentBatch> shipments) {
     LinkedHashMap<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>();
     for (Map.Entry<CohortKey, HouseholdEconomy> entry : classesByView.entrySet()) {
@@ -383,7 +413,7 @@ final class EconomyFixtures {
         .withFlows(flows)
         .withLaborCommitments(allocations)
         .withRelations(relations)
-        .withMarkets(markets)
+        .withMarketTables(marketTables)
         .withShipments(shipments);
   }
 

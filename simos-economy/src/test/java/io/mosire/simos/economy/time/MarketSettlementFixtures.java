@@ -11,11 +11,13 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.market.MarketNode;
+import io.mosire.simos.economy.api.market.MarketRegion;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.ProductionRules;
@@ -26,7 +28,8 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
@@ -91,6 +94,18 @@ final class MarketSettlementFixtures {
   static final long DAY = 5L;
 
   /**
+   * ★ <b>单区派生市场的规范 id</b>：{@code "single-region"} —— 与退役的 {@code MarketTopology.singleRegion} 的节点
+   * id 以及 {@code EconomySeeder.SINGLE_REGION_MARKET_ID} **逐字相同**（"同状态 ⇒ 同 id"：全格同报价的派生世界就是一个区）。
+   */
+  static final String SINGLE_REGION_MARKET_ID = "single-region";
+
+  /** ★★ <b>W1：本轮结束时的逐格价表</b>—— 改动前 {@code outcome.markets().get(hex)} 的替身（本格所属市场的表；没有市场 ⇒ null）。 */
+  static MarketTable tableAt(MarketSettlement.MarketOutcome outcome, World world, HexCoord hex) {
+    MarketZoneId id = world.marketIdByHex().get(hex);
+    return id == null ? null : outcome.marketTables().get(id);
+  }
+
+  /**
    * ★ 2026-10-09 家户结构修复后的口径：运行时生活保留 = <b>本户当日注入 {@code naturalNeeds} × 补货窗口</b> （{@code
    * HouseholdEconomy.expectedNeedMilli}），不再按 {@code population × 全局人均定额} 现算。 ⇒ 夹具把"1 人 1 天的口粮"注入
    * {@code naturalNeeds[grain]}，保留额 = 日额 × {@link MarketSettlement#MARKET_LIFE_RESERVE_DAYS}（35 天）。
@@ -110,9 +125,14 @@ final class MarketSettlementFixtures {
     return new Builder();
   }
 
-  /** 单格市场：只给 grain 一个价（其它商品在本夹具不交易）。 */
-  static Market grainMarket(long grainPrice) {
-    return new Market(SILVER, new LinkedHashMap<>(Map.of(GRAIN, grainPrice)));
+  /**
+   * ★★ <b>W1：一张"待挂到某一格"的价表</b>（只有计价币与价格表，成员格为空 —— 由 {@link Builder#market} 挂格时给定）。
+   *
+   * <p>★ 改动前它返回 {@code new Market(SILVER, {grain})}（逐格价表时代）；W1 起价表**每区一张**，故"一张表挂在哪几格" 是 {@link
+   * Builder} 的组装责任（见 {@link Builder#market(HexCoord, MarketTable)} 与 {@code build()} 的分组口径）。
+   */
+  static MarketTable grainMarket(long grainPrice) {
+    return new MarketTable(SILVER, Set.of(), new LinkedHashMap<>(Map.of(GRAIN, grainPrice)));
   }
 
   /**
@@ -121,11 +141,11 @@ final class MarketSettlementFixtures {
    * <p>★ 它是"服务成市"的结构性开关：{@link HaulService#pricedAt} = 本格给 {@code haul} 定过价 ⇒ 跨格货单派生服务需求、
    * 运费走服务成交（I-H5）；只给 grain 定价的既有夹具（{@link #grainMarket}）因此**逐值退回改前**（I-H3 缺省中性）。
    */
-  static Market grainAndHaulMarket(long grainPrice, long haulPrice) {
+  static MarketTable grainAndHaulMarket(long grainPrice, long haulPrice) {
     Map<CommodityId, Long> prices = new LinkedHashMap<>();
     prices.put(GRAIN, grainPrice);
     prices.put(HAUL, haulPrice);
-    return new Market(SILVER, prices);
+    return new MarketTable(SILVER, Set.of(), prices);
   }
 
   static HouseholdEconomy ruralRow(HouseholdId id, HexCoord hex, long population) {
@@ -145,7 +165,13 @@ final class MarketSettlementFixtures {
 
   static final class Builder {
 
-    private final Map<HexCoord, Market> markets = new LinkedHashMap<>();
+    /**
+     * ★★ <b>W1：逐格报价（构造期输入）</b>—— 键 = 格，值 = 该格的计价币 + 价格表（成员格恒 = {@code {该格}}，由 {@link #market}
+     * 归一）。{@code build()} 按"报价逐值相同"把这些格归成**每区一张**的 {@code EconomyData.marketTables} 形态（见 {@code
+     * build()}）。
+     */
+    private final Map<HexCoord, MarketTable> quotes = new LinkedHashMap<>();
+
     private final Map<HouseholdId, HouseholdEconomy> rows = new LinkedHashMap<>();
     private final Map<HouseholdId, Map<CommodityId, Long>> goods = new LinkedHashMap<>();
     private final Map<HouseholdId, Map<CurrencyId, Long>> money = new LinkedHashMap<>();
@@ -177,9 +203,12 @@ final class MarketSettlementFixtures {
     private final Map<String, HexCoord> regions = new LinkedHashMap<>();
 
     /**
-     * ★★ <b>声明一个市场区</b>（P-T1a/P-T1b 的跨区用例）：一旦声明了 ≥1 个区，{@code build()} 走 {@link MarketTopology#of}
-     * 的多区装配（每个锚格的半径 = 0 ⇒ 逐格各归其区），并且<b>区 id 就是注入表的区键</b> （组合根 {@code
-     * MarketTopologyBook.byPersistentZones} 的口径）。
+     * ★★ <b>声明一个市场区</b>（P-T1a/P-T1b 的跨区用例）：一旦声明了 ≥1 个区，{@code build()} 走<b>持久形态</b>的装配 —— 逐区一个
+     * {@link MarketZone}（锚格、半径 0、成员格 = {锚格}）+ 逐区一张价表（键 = 区 id、成员格为空），并且 <b>区 id 就是价表的键</b>（组合根
+     * {@code MarketTopologyBook.byPersistentZones} 的口径）。
+     *
+     * <p>★ W1：价表**每区一张**⇒ 声明区时该区只有一个格；"一个区含多格"的形态由 {@code EconomyData.marketZones} 承载 （本夹具不需要它 ——
+     * 声明区的用例都是逐格一区）。
      */
     Builder region(String zoneId, HexCoord anchor) {
       if (zoneId == null || zoneId.isBlank()) {
@@ -193,8 +222,25 @@ final class MarketSettlementFixtures {
       return market(hex, grainMarket(grainPrice));
     }
 
-    Builder market(HexCoord hex, Market market) {
-      markets.put(Objects.requireNonNull(hex, "hex"), Objects.requireNonNull(market, "market"));
+    /** ★ W1：一格挂一张自定义计价币/价格表的价表（多币种夹具用）。 */
+    Builder market(HexCoord hex, CurrencyId numeraire, Map<CommodityId, Long> prices) {
+      return market(hex, new MarketTable(numeraire, Set.of(), prices));
+    }
+
+    /**
+     * ★★ <b>W1：把一张价表挂到某一格</b>（成员格 = 该格）—— 逐值等价于改动前的 {@code markets.put(hex, market)}。
+     *
+     * <p>★ 传进来的表必须"不带成员格"（{@link #grainMarket}/{@link #grainAndHaulMarket} 的形态）或者恰以该格为唯一成员：
+     * 一格一张表是构造期的判据；真正的"哪些格共用一张表"由 {@code build()} 按**报价逐值相同**归组决定（W1「每区一张」）。
+     */
+    Builder market(HexCoord hex, MarketTable table) {
+      Objects.requireNonNull(hex, "hex");
+      Objects.requireNonNull(table, "table");
+      if (!table.hexes().isEmpty() && !table.hexes().equals(Set.of(hex))) {
+        throw new IllegalArgumentException(
+            "夹具的价表模板不得带别的成员格（要么空、要么恰 = {该格}）: " + hex + " → " + table.hexes());
+      }
+      quotes.put(hex, MarketTable.singleHex(table.numeraire(), hex, table.prices()));
       return this;
     }
 
@@ -422,12 +468,73 @@ final class MarketSettlementFixtures {
     }
 
     World build() {
-      if (markets.isEmpty()) {
+      if (quotes.isEmpty()) {
         throw new IllegalStateException("夹具至少需要一个市场格");
       }
-      MarketTopology topology = topology();
+      Map<MarketZoneId, MarketTable> tables = new LinkedHashMap<>();
+      Map<MarketZoneId, MarketZone> zones = new LinkedHashMap<>();
+      Map<HexCoord, MarketZoneId> idByHex = new LinkedHashMap<>();
+      // ★★ W1：价表**每区一张**。两件事分两处给定（与生产装配同一口径，见 MarketTopologyBook）：
+      //   ① 声明了区 ⇒ 逐区一张（成员格权威 = MarketZone.hexes，价表条目的 hexes 必须为空，I22）；
+      //   ② 没落在任何区里的格 ⇒ 派生市场，按"报价逐值相同"归组（同报价的格 = 同一个市场 —— 区内一价）。
+      for (Map.Entry<String, HexCoord> entry : regions.entrySet()) {
+        MarketZoneId zoneId = new MarketZoneId(entry.getKey());
+        HexCoord anchor = entry.getValue();
+        MarketTable atAnchor = quotes.get(anchor);
+        if (atAnchor == null) {
+          throw new IllegalStateException("区锚格没有市场表条目（该区不构成可交易区）: " + anchor);
+        }
+        zones.put(
+            zoneId,
+            new MarketZone(zoneId, anchor, 0, Set.of(anchor), atAnchor.numeraire(), Map.of()));
+        tables.put(zoneId, new MarketTable(atAnchor.numeraire(), Set.of(), atAnchor.prices()));
+        idByHex.put(anchor, zoneId);
+      }
+      List<List<HexCoord>> groupHexes = new ArrayList<>();
+      List<MarketTable> groupQuotes = new ArrayList<>();
+      for (Map.Entry<HexCoord, MarketTable> entry : quotes.entrySet()) {
+        if (idByHex.containsKey(entry.getKey())) {
+          continue;
+        }
+        int found = -1;
+        for (int i = 0; i < groupQuotes.size(); i++) {
+          if (sameQuote(groupQuotes.get(i), entry.getValue())) {
+            found = i;
+            break;
+          }
+        }
+        if (found < 0) {
+          groupQuotes.add(entry.getValue());
+          groupHexes.add(new ArrayList<>());
+          found = groupHexes.size() - 1;
+        }
+        groupHexes.get(found).add(entry.getKey());
+      }
+      // ★ 只有"没有持久区、且全部格共用同一个报价"才是改动前的**单区**形态 —— 那时区 id / 锚格 / 成员格
+      //   与退役的 {@code MarketTopology.singleRegion} 逐值相同（small-world 与多数夹具走这一条）。
+      boolean singleDerivedRegion = zones.isEmpty() && groupHexes.size() == 1;
+      for (int i = 0; i < groupHexes.size(); i++) {
+        List<HexCoord> members = groupHexes.get(i);
+        members.sort(HexCoord::compareTo);
+        MarketZoneId id =
+            singleDerivedRegion
+                ? new MarketZoneId(SINGLE_REGION_MARKET_ID)
+                : derivedMarketId(members.get(0));
+        tables.put(
+            id,
+            new MarketTable(
+                groupQuotes.get(i).numeraire(),
+                new LinkedHashSet<>(members),
+                groupQuotes.get(i).prices()));
+        for (HexCoord hex : members) {
+          idByHex.put(hex, id);
+        }
+      }
+      MarketTopology topology = topology(tables, zones);
       return new World(
-          markets,
+          tables,
+          zones,
+          idByHex,
           topology,
           rows,
           goods,
@@ -451,40 +558,69 @@ final class MarketSettlementFixtures {
           classPositions);
     }
 
-    /** ★★ <b>拓扑：没声明区 ⇒ 单区（既有 5 个用例逐值不变）；声明了区 ⇒ 逐锚格半径 0 的多区</b> （每个市场格各归其区，区 id = 注入表的区键）。 */
-    private MarketTopology topology() {
-      if (regions.isEmpty()) {
-        return MarketTopology.singleRegion(
-            markets, markets.keySet(), hex -> 1, (from, to) -> 0, TransportTariff.probeDefaults());
+    /** ★ 两份报价是不是同一个市场（计价币 + 价格表逐值相同 ⇒ 区内一价）。 */
+    private static boolean sameQuote(MarketTable left, MarketTable right) {
+      return left.numeraire().equals(right.numeraire()) && left.prices().equals(right.prices());
+    }
+
+    /** ★ 派生市场的稳定 id：{@code "hex:<q>_<r>"}（由该市场的规范序第一个成员格给出，与 {@code singleHex} 的节点 id 同源）。 */
+    private static MarketZoneId derivedMarketId(HexCoord first) {
+      return new MarketZoneId("hex:" + IndustryHexKeys.hexKey(first.q(), first.r()));
+    }
+
+    /**
+     * ★★ <b>W1：显式区域的拓扑装配</b>（逐值复刻退役的 {@code singleRegion}／{@code of} 两条口径）：
+     *
+     * <pre>
+     * 区 id     = 价表条目的键（结算按 {@code MarketIndex.at(hex)} = 本格所属区的 id 取表 ⇒ 键必须 = 拓扑节点 id）
+     * 锚格      = 声明区的锚格；派生市场取成员格的规范序第一个
+     * 成员格    = 声明区取 MarketZone.hexes；派生市场取价表条目的 hexes
+     * 辐射项    = 恒 0（改动前 singleRegion 传的就是 NO_NEAREST_NODE_DISTANCE；多区夹具传的是 hex -> 0）
+     * regional  = true（与改动前两条路径同值）
+     * </pre>
+     */
+    private static MarketTopology topology(
+        Map<MarketZoneId, MarketTable> tables, Map<MarketZoneId, MarketZone> zones) {
+      List<MarketRegion> regions = new ArrayList<>();
+      for (MarketZoneId id : MarketTables.canonicalIds(tables)) {
+        MarketTable table = tables.get(id);
+        MarketZone zone = zones.get(id);
+        Set<HexCoord> members = zone != null ? zone.hexes() : table.hexes();
+        CurrencyId numeraire = zone != null ? zone.legalTender() : table.numeraire();
+        regions.add(
+            MarketTopology.regionOf(
+                id.value(),
+                MarketTopology.canonicalFirstHex(members),
+                zone == null ? 0 : zone.radiusHex(),
+                numeraire,
+                MoneyVocabulary.SILVER_SPECIE.id(),
+                members));
       }
-      List<MarketNode> nodes = new ArrayList<>();
-      for (Map.Entry<String, HexCoord> entry : regions.entrySet()) {
-        HexCoord anchor = entry.getValue();
-        Market market = markets.get(anchor);
-        if (market == null) {
-          throw new IllegalStateException("区锚格没有市场表条目（该区不构成可交易区）: " + anchor);
-        }
-        nodes.add(
-            new MarketNode(
-                entry.getKey(),
-                anchor,
-                0,
-                market.numeraire(),
-                io.mosire.simos.economy.api.money.MoneyVocabulary.SILVER_SPECIE.id()));
-      }
-      return MarketTopology.of(
-          nodes,
-          markets,
-          markets.keySet(),
+      return MarketTopology.ofRegions(
+          regions,
           hex -> 1,
           (from, to) -> 0,
-          hex -> 0,
-          TransportTariff.probeDefaults());
+          MarketTopology.NO_NEAREST_NODE_DISTANCE,
+          TransportTariff.probeDefaults(),
+          MarketTopology.NO_CITY_DISCOUNT_PER_MILLE,
+          MarketTopology.NO_RURAL_PENALTY_PER_MILLE,
+          true);
     }
   }
 
+  /**
+   * ★★ <b>W1：夹具世界</b>—— 市场由<b>逐区价表</b>表示：
+   *
+   * <pre>
+   * marketTables   键 = 市场 id（声明区 id / 派生市场 id）；值 = 本市场的价表
+   * marketZones    持久市场区（没声明区 ⇒ 空表 = 全部条目都是派生市场）
+   * marketIdByHex  ★ 逐格读口：build() 一次定下"这一格属于哪个市场"（= 改动前 markets.get(hex) 的替身）
+   * </pre>
+   */
   record World(
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> marketTables,
+      Map<MarketZoneId, MarketZone> marketZones,
+      Map<HexCoord, MarketZoneId> marketIdByHex,
       MarketTopology topology,
       Map<HouseholdId, HouseholdEconomy> rows,
       Map<HouseholdId, Map<CommodityId, Long>> goods,
@@ -507,6 +643,24 @@ final class MarketSettlementFixtures {
       Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
       Map<HouseholdId, HouseholdClassMembership> classStandings,
       Map<ClassPositionId, ProductionRole> classPositions) {
+
+    /** ★ 该格的价表（= 改动前 {@code markets.get(hex)}；该格没有市场 ⇒ null）。 */
+    MarketTable tableAt(HexCoord hex) {
+      MarketZoneId id = marketIdByHex.get(hex);
+      return id == null ? null : marketTables.get(id);
+    }
+
+    /** ★ 规范序（(q,r) 升序）的全部"有市场的格"（= 改动前 {@code markets.keySet()}）。 */
+    List<HexCoord> marketHexes() {
+      List<HexCoord> hexes = new ArrayList<>(marketIdByHex.keySet());
+      hexes.sort(HexCoord::compareTo);
+      return List.copyOf(hexes);
+    }
+
+    /** ★ 本世界默认的市场规则（锚格 = 全部市场格的规范序第一个；与 {@code MarketRegulation.defaultsFor} 同源）。 */
+    MarketRegulation defaultsOf() {
+      return MarketRegulation.defaultsFor(marketTables, marketZones);
+    }
 
     long grainOf(HouseholdId household) {
       return goods.getOrDefault(household, Map.of()).getOrDefault(GRAIN, 0L);
@@ -597,7 +751,7 @@ final class MarketSettlementFixtures {
 
   static MarketSettlement.MarketOutcome settle(World world, Round round) {
     return MarketSettlement.clearOncePerCycle(
-        world.markets(), round.round(), MarketTrigger.PERIODIC, world.topology());
+        world.marketTables(), round.round(), MarketTrigger.PERIODIC, world.topology());
   }
 
   /**
@@ -608,7 +762,7 @@ final class MarketSettlementFixtures {
    */
   static MarketSettlement.MarketOutcome settleWithCarriers(World world, Round round) {
     return MarketSettlement.clearOncePerCycle(
-        world.markets(),
+        world.marketTables(),
         round.round(),
         MarketTrigger.PERIODIC,
         world.topology(),
@@ -624,7 +778,7 @@ final class MarketSettlementFixtures {
   static MarketSettlement.MarketOutcome settleWithPool(
       World world, Round round, MerchantCapacityPool pool) {
     return MarketSettlement.clearOncePerCycle(
-        world.markets(),
+        world.marketTables(),
         round.round(),
         MarketTrigger.PERIODIC,
         world.topology(),

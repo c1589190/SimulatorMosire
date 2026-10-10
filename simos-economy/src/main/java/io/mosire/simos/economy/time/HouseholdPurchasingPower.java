@@ -2,9 +2,10 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -21,13 +22,13 @@ import java.util.OptionalLong;
  *
  * 对持有币 c：cost(c) = Σ_g  naturalNeeds[g] × price_{该币法定区}(g) ÷ 1000      // 毫 c
  *   需求篮子 = 本户注入的 naturalNeeds（Social 是唯一权威，I-C6；economy 不造第二本）
- *   价格     = 该币<b>法定区</b>锚格的市场价表（{@link Market#prices()}，毫计价币 / 商品单位）
+ *   价格     = 该币<b>法定区</b>锚格的市场价表（{@link MarketTable#prices()}，毫计价币 / 商品单位）
  *   cost 越小 = 付清同一篮子越便宜 = 购买力越强；cost 最小者 = 最强
  * </pre>
  *
  * <p>★★ <b>缺价 ⇒ 整币不可比 ⇒ 不换</b>（F-1 的硬边界；V-7 冻结）：篮子里<b>任何一件需求量 &gt; 0 的商品</b>在该币法定区 的价表里没有定价行 ⇒
  * 该币<b>算不出</b>购买力（返回 {@link OptionalLong#empty()}），调用方<b>不得</b>猜、更不得按 1:1 静默顶上。★ "定价为 0" 与 "从未定价"
- * 是两件事（{@link Market#hasPrice(CommodityId)} 区分）：0 价是明确免费，照算 0。
+ * 是两件事（{@link MarketTable#hasPrice(CommodityId)} 区分）：0 价是明确免费，照算 0。
  *
  * <p>★★ <b>强度全序（F-2 的破平，唯一拼写点 = {@link #strengthOrder}）</b>：{@code (cost 升序, 币种 id 升序)} ⇒ <b>首项 =
  * 购买力最强</b>；反向遍历即"最弱先换"。全部排序键都是内容的纯函数（I7 / I-C5），不依赖任何 map 的迭代序。
@@ -52,9 +53,9 @@ final class HouseholdPurchasingPower {
    *
    * @param currency 该区的法定币（= 价表的计价币）
    * @param anchor 该区锚格（"区内参考价"的取价点；{@code MarketRegion.anchor()}）
-   * @param market 锚格的市场（{@link Market#prices()} 就是 F-1 用的价格）
+   * @param market 锚格的市场（{@link MarketTable#prices()} 就是 F-1 用的价格）
    */
-  record ZoneTable(CurrencyId currency, HexCoord anchor, Market market) {
+  record ZoneTable(CurrencyId currency, HexCoord anchor, MarketTable market) {
 
     ZoneTable {
       Objects.requireNonNull(currency, "ZoneTable.currency 不得为 null");
@@ -74,11 +75,12 @@ final class HouseholdPurchasingPower {
    * 家户自己所在区的价表由 {@link #tableFor} 优先（"我自己的市场上要付多少"）。
    */
   static Map<CurrencyId, ZoneTable> zoneTables(
-      Map<HexCoord, Market> markets, MarketTopology topology) {
+      Map<MarketZoneId, MarketTable> markets, MarketTopology topology) {
     Map<CurrencyId, ZoneTable> tables = new LinkedHashMap<>();
     for (MarketRegion region : topology.regions()) {
       CurrencyId currency = region.numeraire();
-      Market market = markets.get(region.anchor());
+      // ★ W1：本区价表（每区一张；区 id = 拓扑节点 id）。改动前取"锚格那一张"—— 区内一价成立时两者同一份。
+      MarketTable market = markets.get(new MarketZoneId(region.node().nodeId()));
       if (market == null || !market.numeraire().equals(currency)) {
         continue;
       }
@@ -99,9 +101,9 @@ final class HouseholdPurchasingPower {
       CurrencyId currency,
       MarketRegion ownRegion,
       Map<CurrencyId, ZoneTable> tables,
-      Map<HexCoord, Market> markets) {
+      Map<MarketZoneId, MarketTable> markets) {
     if (currency != null && ownRegion != null && ownRegion.numeraire().equals(currency)) {
-      Market own = markets.get(ownRegion.anchor());
+      MarketTable own = markets.get(new MarketZoneId(ownRegion.node().nodeId()));
       if (own != null && own.numeraire().equals(currency)) {
         return new ZoneTable(currency, ownRegion.anchor(), own);
       }
@@ -132,7 +134,7 @@ final class HouseholdPurchasingPower {
     if (row == null || table == null) {
       return OptionalLong.empty();
     }
-    Market market = table.market();
+    MarketTable market = table.market();
     long total = 0L;
     boolean any = false;
     for (Map.Entry<CommodityId, Long> need : row.naturalNeeds().entrySet()) {

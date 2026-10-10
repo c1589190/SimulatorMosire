@@ -39,7 +39,7 @@ import java.util.Set;
  * <pre>
  * 报价     每个提供者的**限价**是一个**纯派生量**（{@link #askPerMilleOf}：派生承运成本 × 规模档 + 具名固定"上门"附加费）——
  *          ★★ A3 起**没有"自报价簿"**（{@code CapacityQuote}/{@code CapacityQuoteBook} 已整族退役）：服务成市的 lane
- *          上，钱由**市场牌价**（{@code Market.prices[haul]}）定，本项只作"从最低价起买"的**选择序**与缺省口径的价。
+ *          上，钱由**市场牌价**（{@code MarketTable.prices[haul]}）定，本项只作"从最低价起买"的**选择序**与缺省口径的价。
  * 同价序   限价相同 ⇒ 沿用 M-A1 的 canonical 序（市场议价权占比‰ 降序 → 家户 id 升序）——"价格管买方的选择、
  *          议价权管稀缺时的分配"（Q-25），**不另设特权队列**。
  * 需求口径 报价口径下运力按**数量 × 距离**（{@link CapacityDemand#workPerGoodPerMille}，毫商品·程）扣减预算；
@@ -162,7 +162,7 @@ import java.util.Set;
  * <pre>
  * 已删（族）                                          取代者（标准管线的一环）
  * 工具门槛（每趟 ≥1,000 毫工具 + 烧工具 + 两种归因）    trade 产业的 cycleInputPerUnit（现扣 + 挂单保留）
- * 自报价簿 CapacityQuote/CapacityQuoteBook            市场牌价 Market.prices[haul]（服务成交的钱腿）
+ * 自报价簿 CapacityQuote/CapacityQuoteBook            市场牌价 MarketTable.prices[haul]（服务成交的钱腿）
  * 平行利润读数 MerchantProfitBook                     EnterpriseProfitBook（MARKET_TRADE 收入腿）
  * §16 预留特例（necessaryInputsOf 下夹一趟）           产业声明投入的**标准**保留循环（I-H6）
  * </pre>
@@ -188,7 +188,7 @@ public final class MerchantCapacityPool {
   public static final String RETIRED_PARALLEL_MACHINE_REPLACEMENTS =
       "industry-cycle-input(trade.cycleInputPerUnit={CATTLE:{tool:100}})"
           + ",enterprise-profit-book(MARKET_TRADE-revenue-leg)"
-          + ",market-haul-price(Market.prices[haul])"
+          + ",market-haul-price(MarketTable.prices[haul])"
           + ",industry-declared-input-necessaryInputsOf(standard-reserve)";
 
   /** 运力池日志（market 分类：它的生命周期就是市场轮）。 */
@@ -374,7 +374,7 @@ public final class MerchantCapacityPool {
    * 其余格                                ⇒ 逐值退回 {@link MerchantCapacity} 的既有算式（劳动 + 工具），进池判据同改前
    * </pre>
    *
-   * <p>★★ <b>为什么必须按格分流</b>：服务市场的开关是 {@code Market.hasPrice(haul)}（唯一拼写点 = {@link
+   * <p>★★ <b>为什么必须按格分流</b>：服务市场的开关是 {@code MarketTable.hasPrice(haul)}（唯一拼写点 = {@link
    * HaulService#pricedAt}）—— 没给运输服务定价的格一个判据都不变 ⇒ <b>缺省中性（I-H3）逐表达式成立</b>， 而不是靠"算出来恰好相等"。★
    * 已定过价的格则必须由**真货**兜底：服务不能凭空造，卖出多少就得有多少货（I-H2）。
    *

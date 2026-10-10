@@ -177,7 +177,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
    * 放本类（mapper 与 mixin 同处一地、谁也丢不了），领域类型保持零 Jackson 注解（{@code AllocationRule} 的 sealed
    * 多态注解除外——那是往返的硬前提；★ 2026-10-09 选项 A 追加第二个例外：{@code HouseholdEconomy} 上的
    * {@code @JsonIgnoreProperties("debts")} —— 退役字段的具名兼容必须落在**类型**上，因为重放走 Core 的第四台 mapper、
-   * 不经过本层，见那个注解的注释）。
+   * 不经过本层，见那个注解的注释；★ 2026-10-11 W1f 追加第三个例外：{@link
+   * io.mosire.simos.economy.model.MarketTable#isEmpty()} 上的 {@code @JsonIgnore} —— W1 新引入的记录把
+   * {@code isEmpty()} 当成属性 {@code empty} 写了出去（本类这层 mixin 够不着它：它不是 {@code ChangeSet}，而第四台 mapper 与裸
+   * mapper 同样看不见本层的 mixin），故只能落在类型上，见该方法的线格式契约注）。
    */
   private static ObjectMapper withEconomyMixins(ObjectMapper mapper) {
     mapper.addMixIn(EconomyChangeSet.class, EconomyChangeSetMixin.class);

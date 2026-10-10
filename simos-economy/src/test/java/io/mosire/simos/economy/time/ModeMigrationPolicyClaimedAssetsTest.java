@@ -27,7 +27,7 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -130,11 +130,11 @@ class ModeMigrationPolicyClaimedAssetsTest {
         new AllocationRule.Split(500, 500));
   }
 
-  private static Market market() {
+  private static MarketTable market() {
     Map<CommodityId, Long> prices = new LinkedHashMap<>();
     prices.put(CLOTH, 10L);
     prices.put(GRAIN, 10L);
-    return new Market(SILVER, prices);
+    return EconomyFixtures.quote(SILVER, prices);
   }
 
   private static MarketDemandBook.Book demand() {
@@ -191,11 +191,12 @@ class ModeMigrationPolicyClaimedAssetsTest {
             .withProcesses(units)
             .withRelations(Map.of())
             .withOwnershipStakes(shares)
-            .withMarkets(Map.of(H, market()));
+            .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H, market())));
 
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(NEWCOMER, H, Map.of(), Map.of(), Map.of(), Map.of());
-    MarketTopology topology = MarketTopology.singleHex(Map.of(H, market()));
+    MarketTopology topology =
+        MarketTopology.singleHex(EconomyFixtures.hexMarkets(Map.of(H, market())), Map.of());
     return new EstateUnitFixture(base, shares, units, estateShare.id(), accounts, topology);
   }
 

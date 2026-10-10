@@ -10,6 +10,7 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -32,7 +33,8 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketRoundStats;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -40,7 +42,6 @@ import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -81,7 +82,11 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<ProductionUnitId, ProductionProcess> units;
   private LinkedHashMap<ProductionUnitId, ProductionRules> relations;
   private LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> productionOrganizations;
-  private LinkedHashMap<HexCoord, Market> markets;
+  private LinkedHashMap<MarketZoneId, MarketTable> marketTables;
+
+  /** ★★ W1：市场轮统计簿的会话工作副本（键 = 市场 id）。 */
+  private LinkedHashMap<MarketZoneId, MarketRoundStats> marketRoundStats;
+
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private LinkedHashMap<GovernmentId, Government> governments;
   private LinkedHashMap<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances;
@@ -248,16 +253,33 @@ public final class EconomyStateBuilder {
   }
 
   /** 市场表工作副本。 */
-  public LinkedHashMap<HexCoord, Market> markets() {
-    if (markets == null) {
-      markets = new LinkedHashMap<>(base.markets());
+  public LinkedHashMap<MarketZoneId, MarketTable> marketTables() {
+    if (marketTables == null) {
+      marketTables = new LinkedHashMap<>(base.marketTables());
     }
-    return markets;
+    return marketTables;
   }
 
   /** ★★ <b>B2：市场表的只读选择</b>（同 {@link #industriesOrBase()} 的理由）。 */
-  public Map<HexCoord, Market> marketsOrBase() {
-    return markets == null ? base.markets() : markets;
+  public Map<MarketZoneId, MarketTable> marketTablesOrBase() {
+    return marketTables == null ? base.marketTables() : marketTables;
+  }
+
+  /**
+   * ★★ <b>W1：市场轮统计簿的当刻值</b>（未写 ⇒ base 的不可变表）。
+   *
+   * <p>★ 与其余工作副本同一条口径（{@code WorkingDayView} 的类注）：**已物化读工作副本、未物化直接复用 base**， 因此读一次当刻值不会顺带拷一份表。
+   */
+  public Map<MarketZoneId, MarketRoundStats> marketRoundStatsOrBase() {
+    return marketRoundStats == null ? base.marketRoundStats() : marketRoundStats;
+  }
+
+  /** ★ 统计簿的可写工作副本（每个市场轮结束时写它；惰性物化 = 只读的段不拷表）。 */
+  public LinkedHashMap<MarketZoneId, MarketRoundStats> marketRoundStats() {
+    if (marketRoundStats == null) {
+      marketRoundStats = new LinkedHashMap<>(base.marketRoundStats());
+    }
+    return marketRoundStats;
   }
 
   /** 在途批次表工作副本。 */
@@ -403,7 +425,7 @@ public final class EconomyStateBuilder {
         laborCommitments == null ? base.allocations() : laborCommitments,
         // ★★ R4-E2b：relations 也成了可选工作副本（进入执行会插入新 relation；未物化 ⇒ 原样复用 base）。
         relationsOrBase(),
-        markets == null ? base.markets() : markets,
+        marketTables == null ? base.marketTables() : marketTables,
         shipments == null ? base.shipments() : shipments,
         assetShares == null ? base.assetShares() : assetShares,
         operatorConditions == null ? base.operatorConditions() : operatorConditions,
@@ -456,6 +478,10 @@ public final class EconomyStateBuilder {
         //   但日结算会把**当日成交**累加进 {@code filledMilli} 并清除耗尽/到期的行（见
         //   EconomySettlement 的市场段）⇒ 走下面的显式工作副本，漏了它 = 任意一次 advance
         //   都会把 GM 授权过的挂单静默抹掉（账面上看不出是谁弄丢的）。
-        govMarketMandates == null ? base.govMarketMandates() : govMarketMandates);
+        govMarketMandates == null ? base.govMarketMandates() : govMarketMandates,
+        // ★★ W1（第 40 个组件）：市场轮统计簿**是**会话工作副本 —— 每个市场轮结束时写它
+        //   （最近一轮 / 本周期 / 上周期三段窗口，见 MarketRoundStats）。漏了它 = 统计在段内被写回、
+        //   下一次 advance 又从 base 的旧窗口开始（"统计永远差一轮"这种静默漂移）。
+        marketRoundStats == null ? base.marketRoundStats() : marketRoundStats);
   }
 }

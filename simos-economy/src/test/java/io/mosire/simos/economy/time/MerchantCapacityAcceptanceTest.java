@@ -229,7 +229,7 @@ class MerchantCapacityAcceptanceTest {
     //   1,000 毫工具"已随 MerchantHaul 退役，工具走 trade 产业的周期投入）⇒ 开市前后读同值，本行留作对照。
     long capacity = world.carrierPool().totalCapacityAt(H1);
     MarketSettlementFixtures.Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+        MarketSettlementFixtures.round(world, world.defaultsOf());
     MarketSettlement.MarketOutcome outcome =
         MarketSettlementFixtures.settleWithCarriers(world, round);
     assertThat(capacity).as("派生运力 = 劳动 1500 + 工具 1000").isEqualTo(2_500L);

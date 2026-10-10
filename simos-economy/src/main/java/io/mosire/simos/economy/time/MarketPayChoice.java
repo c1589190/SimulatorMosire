@@ -3,10 +3,11 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
@@ -108,7 +109,7 @@ final class MarketPayChoice {
    */
   static MarketPayChoice of(
       MarketSettlement.MarketRound round,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       MarketTopology topology,
       Map<String, List<HouseholdId>> rowsByHex,
       CurrencyValuation valuation,
@@ -124,7 +125,10 @@ final class MarketPayChoice {
     }
     Map<CurrencyId, HouseholdPurchasingPower.ZoneTable> zoneTables =
         HouseholdPurchasingPower.zoneTables(markets, topology);
-    List<HexCoord> hexes = new ArrayList<>(markets.keySet());
+    List<HexCoord> hexes = new ArrayList<>();
+    for (MarketRegion region : topology.regions()) {
+      hexes.addAll(region.members()); // ★ W1：有市场的格 = 拓扑成员格（改动前 = marketTables.keySet()）
+    }
     hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
     Map<HouseholdId, CurrencyId> chosen = new LinkedHashMap<>();
     int excluded = 0;
@@ -133,7 +137,11 @@ final class MarketPayChoice {
     int noComparablePower = 0;
     int localNumeraire = 0;
     for (HexCoord hex : hexes) {
-      Market market = markets.get(hex);
+      // ★ W1：本格价表 = 本格所属市场的那一张（每区一张；区 id = 拓扑节点 id）。
+      MarketTable market =
+          topology.contains(hex)
+              ? markets.get(new MarketZoneId(topology.regionOf(hex).node().nodeId()))
+              : null;
       if (market == null) {
         continue;
       }
@@ -246,7 +254,7 @@ final class MarketPayChoice {
    *
    * <p>★ 经营者（{@code household == null}）永远走回落：F-1 的购买力口径是<b>家户</b>的（{@code naturalNeeds} 是家户需求篮子）。
    */
-  CurrencyId payCurrencyFor(HouseholdId household, Market market) {
+  CurrencyId payCurrencyFor(HouseholdId household, MarketTable market) {
     Objects.requireNonNull(market, "market");
     if (household == null) {
       return market.numeraire();
@@ -265,7 +273,7 @@ final class MarketPayChoice {
    *
    * @return {@code > 0} = 微本格计价币 / 毫该币；{@code 0} = 说不出价（调用方 fail-closed，禁 1:1）
    */
-  long valueMicroOf(Market market, CurrencyId currency, HexCoord hex) {
+  long valueMicroOf(MarketTable market, CurrencyId currency, HexCoord hex) {
     Objects.requireNonNull(market, "market");
     Objects.requireNonNull(currency, "currency");
     if (currency.equals(market.numeraire())) {

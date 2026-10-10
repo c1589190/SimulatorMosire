@@ -1,0 +1,41 @@
+[1] economy.Seed 被 EconomyPayloads 接受：marketTables=[single-region] 成员格=[1_1] 计价币=silver 出厂粮价=1
+[2] SetMarketPrice outcome=Applied / 变更集 == between(播种态, 'single-region 粮价=2' 态) ? true / 该态粮价=2
+[3] AddDemand(hex=1_1) outcome=Applied
+[3b] 旧载荷 AddDemand(hex=1_2) outcome=Rejected reason=该格 1_2 没有商品 grain 的价（请先用 economy.SetMarketPrice 给该格定价）
+[2b] 旧载荷 SetMarketPrice outcome=Rejected reason=economy.SetMarketPrice 缺少非空文本字段: marketId
+[4] SetMarketNumeraire(拒例) outcome=Rejected reason=market-missing: 该市场不存在（说不出要改哪张价表）
+发现 economy handler 34 个
+[chain] economy.Seed => Applied
+[chain] economy.SetMarketPrice => Applied
+[chain] economy.SetCommodityFreight => Applied
+[chain] economy.AddDemand => Applied
+[chain] economy.CancelDemand => Applied
+[chain] economy.RegisterCandidate => Applied
+[chain] economy.TransferAssetShare => Applied
+[chain] 全部提交成功 ? true（未提交 0 条）
+--- economy 拒例（必须全部具名拒）---
+[reject] economy.SetHouseholdParticipation => rejected: economy.SetHouseholdParticipation 的家户不存在: hh-missing
+[reject] economy.SetMarketNumeraire => rejected: market-missing: 该市场不存在（说不出要改哪张价表）
+[reject] economy.DefineMarketZone => rejected: economy.DefineMarketZone 具名拒（bad-payload）: economy.DefineMarketZone 的 govUnitId 已退役（区不再记发行政府：谁管这种钱由 Government.issuable 反查）
+[reject] economy.GmAdjust => rejected: economy.GmAdjust.forgiveDebt 债务合同不存在: missing-debt
+[reject] economy.UpsertIndustry => rejected: 字段 name 必须是非空字符串: {"id":"office_missing@0_0"}
+[reject] economy.AuthorizeGovernmentMarketOrder => rejected: 未知政府（授权没有可执行的主体）: gov-missing
+[reject] economy.ReassignZoneHexes => rejected: economy.ReassignZoneHexes 具名拒（zone-not-found）: 源区不存在: zone-missing（现有一区表见日志）
+[reject] economy.UnitRepay => rejected: economy.UnitRepay 的 borrowerHousehold 不是已知家户（先 social.CreateHousehold / economy.RegisterGovernment）: hh-missing-a
+[reject] economy.UpsertGovUnit => 探针边界（需要别的切片）: IllegalStateException
+[reject] economy.SetHouseholdClass => rejected: economy.SetHouseholdClass 的家户不存在: hh-missing
+[reject] economy.MigrateHousehold => rejected: 家户不存在: hh-missing
+[reject] economy.RemoveHouseholdPeriodicAdjustment => rejected: 周期家户扣增规则不存在，拒绝静默成功: id=adj-missing
+[reject] economy.CancelGovernmentMarketOrder => rejected: 未知授权（不存在或已被耗尽/到期清除）: gm:missing
+[reject] economy.SetHouseholdLabor => rejected: economy.SetHouseholdLabor 的家户不存在: hh-missing
+[reject] economy.UpsertHouseholdPeriodicAdjustment => rejected: economy.UpsertHouseholdPeriodicAdjustment 缺少非空文本字段: id
+[reject] economy.DefineCurrency => rejected: economy.DefineCurrency 具名拒（government-not-registered）: GOV 单位未登记为政府（先 economy.RegisterGovernment）: gov-unit-gov-missing
+[reject] economy.SwitchMode => rejected: 生产组织不存在: org-missing
+[reject] economy.MergeMarketZones => rejected: economy.MergeMarketZones 具名拒（zone-not-found）: 源区不存在: zone-missing
+[reject] economy.SetGovServiceCommitment => 探针边界（需要别的切片）: IllegalStateException
+[reject] economy.UnitBorrow => rejected: economy.UnitBorrow 的 borrowerHousehold 不是已知家户（先 social.CreateHousehold / economy.RegisterGovernment）: hh-missing-a
+[reject] economy.SetOfficialRate => rejected: economy.SetOfficialRate 具名拒（currency-not-defined）: quote 币种未在世界词表里定义: copper
+[reject] economy.RecordMoneyIssuance => rejected: economy.RecordMoneyIssuance 具名拒（government-not-registered）: GOV 单位未登记为政府（先 economy.RegisterGovernment）: gov-unit-gov-missing
+[reject] economy.RenameCurrency => rejected: economy.RenameCurrency 具名拒（government-not-registered）: GOV 单位未登记为政府（先 economy.RegisterGovernment）: gov-unit-gov-missing
+[reject] economy.UpdateDemand => rejected: 需求不存在（新增请用 economy.AddDemand）: demand-missing
+拒例合计=24 具名拒=22 意外=0 探针边界=2

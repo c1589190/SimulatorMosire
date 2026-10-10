@@ -11,7 +11,8 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
@@ -307,7 +308,8 @@ public final class EconomyAddDemandHandler implements CommandHandler {
 
   /** 该格必须有市场行、且该商品有价；否则拒绝并**指名** {@code economy.SetMarketPrice}。★ 明确 0 价（免费）算"有价"。 */
   static void requirePriced(EconomyData base, HexCoord hex, CommodityId commodity, String where) {
-    Market market = base.markets().get(hex);
+    // ★ W1：本格价表 = 本格所属市场的那一张（每区一张；不在任何市场里 ⇒ null）。
+    MarketTable market = MarketTables.atOrNull(base, hex);
     if (market == null || !market.hasPrice(commodity)) {
       throw new IllegalArgumentException(
           where

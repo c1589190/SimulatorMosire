@@ -18,7 +18,8 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
@@ -725,7 +726,7 @@ public final class GovernmentServiceDesertionBridge {
               economy.assetShares(),
               economy.shipments(),
               accounts,
-              economy.markets(),
+              economy.marketTables(),
               day,
               DEMAND_HORIZON_DAYS);
     } catch (RuntimeException failure) {
@@ -848,7 +849,8 @@ public final class GovernmentServiceDesertionBridge {
     if (modeId == null || economy.modes().get(modeId) == null) {
       return 0L;
     }
-    Market market = economy.markets().get(hex);
+    // ★ W1：本格价表 = 本格所属市场的那一张（每区一张；不在任何市场里 ⇒ null）。
+    MarketTable market = MarketTables.atOrNull(economy, hex);
     try {
       ExpectedProfitBook.Prospect prospect =
           ExpectedProfitBook.prospect(

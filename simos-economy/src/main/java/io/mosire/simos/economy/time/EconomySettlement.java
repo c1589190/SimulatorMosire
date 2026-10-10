@@ -23,6 +23,7 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -47,6 +48,7 @@ import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.migrate.LegacyClassStructure;
+import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
@@ -57,7 +59,9 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketRoundStats;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -499,7 +503,7 @@ public final class EconomySettlement {
    * INFO  HAUL_SERVICE_PRODUCED        （毛产里有 haul 才刷）**发生了什么 + 具名计数**：几个产业产出、毛产/净产（毫）、
    *                                    产出计提条数与合计（毫）、有牌价的格数
    * DEBUG HAUL_SERVICE_PRODUCED_DETAIL **为什么**：逐产业给 haul 的每规模单位产出/劳动/投入与该格的**牌价有无** ——
-   *                                    缺价 ⇒ 按既有 Market.prices 口径"不交易" ⇒ 本批世界里它只入账、不成交（I-H3 缺省中性）
+   *                                    缺价 ⇒ 按既有 MarketTable.prices 口径"不交易" ⇒ 本批世界里它只入账、不成交（I-H3 缺省中性）
    * </pre>
    *
    * <p>★ <b>只读</b>：不写状态、不改任何公式、失败不影响结算（{@code EventLog} 的口径）。★ 调用点只在 {@code harvestWorks}
@@ -544,7 +548,7 @@ public final class EconomySettlement {
       }
     }
     long pricedMarkets = 0L;
-    for (Market market : view.markets().values()) {
+    for (MarketTable market : view.marketTables().values()) {
       if (market.hasPrice(EconomyCommodities.HAUL)) {
         pricedMarkets++;
       }
@@ -588,7 +592,13 @@ public final class EconomySettlement {
               ? 0L
               : produced / Math.multiplyExact(haulPerScaleUnit, MILLI_PER_GRAIN);
       HexCoord hex = IndustryHexKeys.hexKeyOf(entry.getKey()).map(HexCoord::parse).orElse(null);
-      Market market = hex == null ? null : view.markets().get(hex);
+      // ★★ W1e（2026-10-11）：`hex` **可能为 null**（产业 id 不含 `@`、或 `@` 之后为空 ⇒ hexKeyOf 返回空），
+      //   必须在**任何解引用之前**判掉，且**只判这一次**：null ⇒ 不查牌价表（priced=false，不猜牌价）、
+      //   hex 栏记空串、reason 具名 —— 改动前 `:595` 把 null 直接交给 MarketTables.atOrNull，
+      //   后者经 marketIdAt 的 `Objects.requireNonNull(hex, "hex")` 会当场 NPE（SpotBugs 报的
+      //   RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE 就是这个真隐患，不是误报）。
+      boolean hexResolved = hex != null;
+      MarketTable market = hexResolved ? MarketTables.atOrNull(view, hex) : null;
       boolean priced = market != null && market.hasPrice(EconomyCommodities.HAUL);
       EventLog.channel(TRACE)
           .debug(
@@ -600,7 +610,7 @@ public final class EconomySettlement {
                   "industry",
                   entry.getKey().value(),
                   "hex",
-                  hex == null ? "" : hex.q() + "," + hex.r(),
+                  hexResolved ? hex.q() + "," + hex.r() : "",
                   "grossMilli",
                   produced,
                   "lossMilli",
@@ -619,7 +629,9 @@ public final class EconomySettlement {
                   "marketPriced",
                   priced,
                   "reason",
-                  priced ? "priced" : "no-haul-price-no-trade"));
+                  hexResolved
+                      ? (priced ? "priced" : "no-haul-price-no-trade")
+                      : "industry-hex-unparsable"));
     }
     return netMilli;
   }
@@ -795,9 +807,10 @@ public final class EconomySettlement {
    */
   private static Set<HexCoord> haulServiceHexes(EconomyDayView view) {
     Set<HexCoord> hexes = new LinkedHashSet<>();
-    for (Map.Entry<HexCoord, Market> entry : view.markets().entrySet()) {
-      if (HaulService.pricedAt(entry.getValue())) {
-        hexes.add(entry.getKey());
+    // ★ W1：遍历的格 = "有市场的格"（持久形态 = 区成员格；派生形态 = 价表成员格），逐格取本格所属市场的价表。
+    for (HexCoord hex : MarketTables.allMarketHexes(view.marketTables(), view.marketZones())) {
+      if (HaulService.pricedAt(MarketTables.atOrNull(view, hex))) {
+        hexes.add(hex);
       }
     }
     return Collections.unmodifiableSet(hexes);
@@ -968,7 +981,7 @@ public final class EconomySettlement {
           session,
           day,
           AccountSession.empty(),
-          MarketTopology.singleHex(base.markets()),
+          MarketTopology.singleHex(base.marketTables(), base.marketZones()),
           PLANTING_DRAWS_BEFORE_CONSUMPTION,
           famineMortalityPerMille,
           ledger,
@@ -1018,7 +1031,7 @@ public final class EconomySettlement {
         day,
         flows,
         accounts,
-        MarketTopology.singleHex(base.markets()),
+        MarketTopology.singleHex(base.marketTables(), base.marketZones()),
         plantingDrawsFirst,
         FAMINE_MORTALITY_PER_MILLE,
         ledger);
@@ -1038,7 +1051,7 @@ public final class EconomySettlement {
         day,
         flows,
         accounts,
-        MarketTopology.singleHex(base.markets()),
+        MarketTopology.singleHex(base.marketTables(), base.marketZones()),
         plantingDrawsFirst,
         famineMortalityPerMille,
         ledger);
@@ -1342,10 +1355,10 @@ public final class EconomySettlement {
     //   状态转移读市场报告与债务/库存的可观察量，不在这里重算生产公式。
     LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions =
         session.sheet().operatorConditions();
-    // ★★ **M2.6（自适应价格的写回点）**：市场表的工作副本 —— 固定模式下结算只读它、终态与 {@code base.markets()} 逐值相同；
+    // ★★ **M2.6（自适应价格的写回点）**：市场表的工作副本 —— 固定模式下结算只读它、终态与 {@code base.marketTables()} 逐值相同；
     //   自适应打开时 {@code MarketSettlement} 返回更新后的价格表，本方法把**这一份**交给终态 ⇒ 改价只经
     //   "状态 → 变更集（markets 是既有 FieldDelta 组件）"这一条路，没有第二处改价。
-    LinkedHashMap<HexCoord, Market> markets = session.sheet().markets();
+    LinkedHashMap<MarketZoneId, MarketTable> markets = session.sheet().marketTables();
     // ★★ R4-E2b：生产关系表视图 —— 默认直接读 base 的不可变表；只有 E2b 进入执行真的新建 relation 时才物化工作副本
     //   （空表基线因此不产生任何拷贝）。下游所有日结算读取点统一走这个局部量，不再各处写 session.base().relations()。
     Map<ProductionUnitId, ProductionRules> relations = session.sheet().relationsOrBase();
@@ -1451,7 +1464,7 @@ public final class EconomySettlement {
               base.candidates(),
               industries,
               settlementIndex,
-              markets,
+              MarketIndex.of(dayView),
               householdEconomies,
               householdGoods,
               householdMoney,
@@ -1478,7 +1491,7 @@ public final class EconomySettlement {
                 householdGoods,
                 householdMoney,
                 composition,
-                markets,
+                MarketIndex.of(dayView),
                 day);
         outcomes.addAll(execution.outcomes());
         enteredToday = execution.enteredUnitIds();
@@ -1668,7 +1681,7 @@ public final class EconomySettlement {
               laborCommitments,
               composition,
               householdGoods,
-              markets,
+              MarketIndex.of(dayView),
               session.sheet().productionOrganizations());
       if (enterpriseOutcome.changed()) {
         // unit/关系/份额/配额/组织任一变了 ⇒ 换一份索引再进现有日结算（与 0-entry 的执行后重建同款）。
@@ -2222,7 +2235,7 @@ public final class EconomySettlement {
             base.demands(),
             // ★★ P-T1c：生产路径默认区内市场规则（单区锚格 = markets 规范序第一个 hex；无税费 ⇒ 逐值现状）。
             //   跨市场区/自定义税费由后续批次经 GM 命令面注入同一入口。
-            MarketRegulation.defaultsFor(markets),
+            MarketRegulation.defaultsFor(markets, base.marketZones()),
             // ★★ R1：本入口不预置信用（开市判定后由 withCredit 补）；排除集 = **只有**组合根传入的单位户
             //   （国库户不再并入：它现在是"只按授权下单"的市场参与者）。
             null,
@@ -2234,7 +2247,7 @@ public final class EconomySettlement {
     //   ★ 工具维读会话商品账（tool 商品；V-22：不动 AssetKind.TOOL 产权份额）。
     // ★★★ A3（2026-10-10）：原来的"运力报价表"（{@code CapacityQuote}/{@code CapacityQuoteBook}，逐户自报价簿）
     //   **已整族退役** —— 限价改为**纯派生量**（{@code MerchantCapacityPool.askPerMilleOf}：派生承运成本 × 规模档
-    //   + 具名固定"上门"附加费），服务成市 lane 上的钱由**市场牌价**定（{@code Market.prices[haul]}，见 A2）。
+    //   + 具名固定"上门"附加费），服务成市 lane 上的钱由**市场牌价**定（{@code MarketTable.prices[haul]}，见 A2）。
     //   ⇒ 生产路径传 {@code priced = true}（第 6 参）；夹具 / 纯状态读者传 {@code false} ⇒ 逐值退回 M-A1（I-C2）。
     //   ★★ 2026-10-10 G3-fix-1 + G3-fix-2：工具维必须读**可用量**（现货 − 冻结），且必须在**承运选择点**现读 ——
     //     与提交侧的实扣判据（{@link #consumeForLoss}：可用量 < 一趟 ⇒ 一点也不烧）同口径、同活表。
@@ -2296,7 +2309,7 @@ public final class EconomySettlement {
                   MerchantCapacityPool.RETIRED_PARALLEL_MACHINE_REPLACEMENTS));
     }
     MarketTrigger marketTrigger =
-        MarketSettlement.triggerFor(day, anyCycleClosed, markets, marketRound);
+        MarketSettlement.triggerFor(day, anyCycleClosed, markets, topology, marketRound);
     if (TRACE.isDebugEnabled()) {
       EventLog.channel(TRACE)
           .debug(
@@ -2762,13 +2775,69 @@ public final class EconomySettlement {
       OperatorSettlement.accumulateMarketEvidence(
           operatorConditions, units, industries, outcome.report(), outcome.haulService());
       // ★★ M2.6：自适应模式把价格表工作副本换成 outcome 交回的新表（默认固定模式下两者逐值相同 ⇒ 无状态变化）。
-      //   ★★ 2026-10-07 修：`markets` 是 `session.sheet().markets()` 的**工作副本引用**，不能整个重新绑定 ——
+      //   ★★ 2026-10-07 修：`markets` 是 `session.sheet().marketTables()` 的**工作副本引用**，不能整个重新绑定 ——
       //     重新绑定只改本地变量，`EconomyStateBuilder` 仍持旧表 ⇒ 自适应价算出来却永远不落盘。
-      //     `outcome.markets()` 在固定模式下就是同一实例；只有真的换了实例才 clear+putAll 回工作副本。
-      Map<HexCoord, Market> updatedMarkets = outcome.markets();
+      //     `outcome.marketTables()` 在固定模式下就是同一实例；只有真的换了实例才 clear+putAll 回工作副本。
+      Map<MarketZoneId, MarketTable> updatedMarkets = outcome.marketTables();
       if (updatedMarkets != markets) {
         markets.clear();
         markets.putAll(updatedMarkets);
+      }
+      // ★★ W1（2026-10-10）：**市场轮统计簿**——每轮把本轮读数折进状态（最近一轮明细 + 本周期累计 + 上周期累计）。
+      //   ★ 窗口固定（三段覆盖写 + 关账轮轮转）⇒ 状态大小与推进天数无关（性能红线：Revision Δ 不随天数增长；
+      //     本写入在**同一次 advance 的工作副本**里，不产生额外 revision）。
+      //   ★ 关账轮的语义：本轮先计入"本周期累计"，若本轮同时是关账轮 ⇒ 再把本周期轮转成上周期（关账发生在市场轮之后）。
+      if (!outcome.roundStats().isEmpty()) {
+        Map<MarketZoneId, MarketRoundStats> statsByMarket = session.sheet().marketRoundStats();
+        long recorded = 0L;
+        long tradedTotal = 0L;
+        for (Map.Entry<MarketZoneId, MarketRoundStats> entry : outcome.roundStats().entrySet()) {
+          MarketRoundStats round = entry.getValue();
+          MarketRoundStats current =
+              statsByMarket.getOrDefault(entry.getKey(), MarketRoundStats.EMPTY);
+          statsByMarket.put(
+              entry.getKey(),
+              current.withRound(
+                  day, round.lastRound(), round.lastRoundTurnoverMilli(), anyCycleClosed));
+          recorded++;
+          for (CommodityRound commodityRound : round.lastRound().values()) {
+            tradedTotal = Math.addExact(tradedTotal, commodityRound.tradedMilli());
+          }
+        }
+        EventLog.channel(MANDATE)
+            .info(
+                LogEvent.of(
+                    "MARKET_ROUND_STATS_RECORDED",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    day,
+                    "markets",
+                    recorded,
+                    "commodities",
+                    outcome.roundStats().values().stream()
+                        .mapToInt(stats -> stats.lastRound().size())
+                        .sum(),
+                    "tradedMilli",
+                    tradedTotal,
+                    "cycleClosed",
+                    anyCycleClosed,
+                    "window",
+                    "last-round+cycle-to-date+previous-cycle"));
+        if (MANDATE.isDebugEnabled()) {
+          for (Map.Entry<MarketZoneId, MarketRoundStats> entry : outcome.roundStats().entrySet()) {
+            EventLog.channel(MANDATE)
+                .debug(
+                    LogEvent.of(
+                        "MARKET_ROUND_STATS_DETAIL",
+                        EconomyLogSource.ECONOMY_MARKET,
+                        "day",
+                        day,
+                        "marketId",
+                        entry.getKey().value(),
+                        "stats",
+                        entry.getValue().describe()));
+          }
+        }
       }
     }
 
@@ -2780,7 +2849,7 @@ public final class EconomySettlement {
     // ★★ D-030 §3.4/§3.5：本日起所有“债务折价/还款折算”共用同一份家户价目表索引 ——
     //   有本格市场用本格，否则回落该格所在市场区的锚格默认价目表（单区 = 该区默认价）。
     //   ★ 这是 EconomySettlement 里唯一构造 debt lookup 的地方；算式在本类之外（DebtValuation）。
-    Map<HouseholdId, Market> marketByHousehold =
+    Map<HouseholdId, MarketTable> marketByHousehold =
         marketIndexByHousehold(householdEconomies, markets, topology);
     DebtCapacityBook.DebtUnitValueLookup debtUnitValueLookup =
         DebtCapacityBook.marketPriceLookup(marketByHousehold);
@@ -3095,7 +3164,7 @@ public final class EconomySettlement {
               stateIndex,
               householdGoods,
               householdMoney,
-              markets,
+              MarketIndex.of(dayView),
               closingUnits,
               shortfallByUnit);
       if (!exits.isEmpty()) {
@@ -3448,7 +3517,7 @@ public final class EconomySettlement {
               units,
               householdEconomies,
               industries,
-              markets,
+              MarketIndex.of(dayView),
               accounts);
       // ⑧ 迁移计划（真实利润权重 + A 规则 + 目标选择）。
       ModeMigrationPolicy.MigrationPlan migrationPlan =
@@ -6667,13 +6736,13 @@ public final class EconomySettlement {
    *
    * <p>★ 只读派生、不写市场表；单区（D-027）时锚格就是规范序第一个市场格。缺格不是坏数据：没有市场默认价目表的家户 仍可原物原还。
    */
-  private static Map<HouseholdId, Market> marketIndexByHousehold(
+  private static Map<HouseholdId, MarketTable> marketIndexByHousehold(
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       MarketTopology topology) {
-    LinkedHashMap<HouseholdId, Market> byHousehold = new LinkedHashMap<>();
+    LinkedHashMap<HouseholdId, MarketTable> byHousehold = new LinkedHashMap<>();
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
-      Market market = marketForHex(householdEconomy.view().hex(), markets, topology);
+      MarketTable market = marketForHex(householdEconomy.view().hex(), markets, topology);
       if (market != null) {
         byHousehold.put(householdEconomy.id(), market);
       }
@@ -6682,16 +6751,13 @@ public final class EconomySettlement {
   }
 
   /** 单格 → 市场区默认价目表：本格优先，缺则区锚格；没有归属 ⇒ null（合法状态）。 */
-  private static Market marketForHex(
-      HexCoord hex, Map<HexCoord, Market> markets, MarketTopology topology) {
-    Market direct = markets.get(hex);
-    if (direct != null) {
-      return direct;
-    }
+  private static MarketTable marketForHex(
+      HexCoord hex, Map<MarketZoneId, MarketTable> markets, MarketTopology topology) {
     if (topology == null || !topology.contains(hex)) {
       return null;
     }
-    return markets.get(topology.regionOf(hex).anchor());
+    // ★ W1：本格价表 = 本格所属市场的那一张（区内任何格同一张；区 id = 拓扑节点 id）。
+    return markets.get(new MarketZoneId(topology.regionOf(hex).node().nodeId()));
   }
 
   /**
@@ -7230,7 +7296,7 @@ public final class EconomySettlement {
       LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> repaidMoney,
       LinkedHashMap<DebtContractId, Long> repaidPrincipalByDebt,
       Map<ActorRef, HouseholdId> householdOfActor,
-      Map<HouseholdId, Market> marketsByHousehold,
+      Map<HouseholdId, MarketTable> marketsByHousehold,
       DebtValuation.RepayeeResolver repayeeResolver,
       DebtValuation.HouseholdPriceTable householdPrices,
       ProductionLedger.Accumulator ledger,
@@ -7253,7 +7319,7 @@ public final class EconomySettlement {
       if (owed.isEmpty()) {
         continue;
       }
-      Market market = marketsByHousehold.get(debtor);
+      MarketTable market = marketsByHousehold.get(debtor);
       owed.sort(repaymentOrder(debtor, market, householdPrices));
 
       // ★ 可动用资产与介质序都取“本轮还款开始时”的值：介质序按原始余额排序，随后在逐债循环里只做扣减。
@@ -7550,7 +7616,7 @@ public final class EconomySettlement {
    * identity 腿（见 {@link DebtValuation#choosePayment}）。
    */
   private static Comparator<DebtContract> repaymentOrder(
-      HouseholdId debtor, Market market, DebtValuation.HouseholdPriceTable householdPrices) {
+      HouseholdId debtor, MarketTable market, DebtValuation.HouseholdPriceTable householdPrices) {
     return (left, right) -> {
       OptionalLong leftValue =
           DebtValuation.commonValueMilli(

@@ -5,13 +5,17 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.economy.api.market.SellOrder;
+import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketRoundStats;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.math.BigInteger;
@@ -42,7 +46,7 @@ import java.util.Set;
  *       cycleNaturalNeedMilli} 对它们恒 0（逐商品累加器尚未实现，<b>不拿日需求冒充周期需要</b>）。★ 粮的累加器尚未累计 （旧档 / 还没结算过）⇒
  *       {@code naturalNeedWindow = last-settled-day}，退回该字段并如实标注；绝不把"还没累计"读成"没有需要"；
  *   <li>{@code referencePriceMilli} / {@code bidPriceMilli} / {@code askPriceMilli}：从 {@code
- *       Market} 现读现算 （bid/ask 两个具名常量，见 {@link Market}）；
+ *       MarketTable} 现读现算 （bid/ask 两个具名常量，见 {@link MarketTable}）；
  *   <li>★★ <b>{@code match}（成交量/到货价/运费/损耗/未成交原因分布/未利用运力）与 {@code priceUpdates} 来自 L2 的进程内 {@link
  *       MarketReport}——它<b>不落盘、重启即失</b>。没有它时本读数把 {@code match} 留成 {@link Optional#empty()}、并在
  *       {@code unavailable} 里具名"读不到"，<b>绝不填 0</b>（0 是"开了市但没有成交"， 与"读不到报告"是两回事）。
@@ -76,8 +80,24 @@ public record MarketReadout(
     List<MarketReport.PriceUpdate> priceUpdates,
     List<MarketReport.CreditFill> creditFills,
     List<RegionReadout> regions,
+    // ★★ W1（2026-10-10）：**市场轮统计簿的当刻快照**（键 = 市场 id 裸值；规范序）—— 每市场逐商品的
+    //   最后一轮 D/S/成交量/均价/未满足量 + 逐/本/上周期成交额。★ 它是**持久状态**的投影（重启后仍在），
+    //   不是进程内报告：来源是 {@code EconomyData.marketRoundStats}（读口只搬、不算）。
+    Map<String, MarketRoundStats> marketRoundStats,
     Map<String, String> provenance,
     Map<String, String> unavailable) {
+
+  /** ★ 某市场某商品的**最后一轮**读数（没有过任何一轮 / 该商品上轮没出现 ⇒ 空）。 */
+  public Optional<CommodityRound> lastRoundOf(String marketId, CommodityId commodity) {
+    MarketRoundStats stats = marketRoundStats.get(marketId);
+    return stats == null ? Optional.empty() : Optional.ofNullable(stats.lastRound().get(commodity));
+  }
+
+  /** ★ 某市场的**最后一轮成交额**（毫；没有过任何一轮 ⇒ 空）。 */
+  public OptionalLong lastRoundTurnoverOf(String marketId) {
+    MarketRoundStats stats = marketRoundStats.get(marketId);
+    return stats == null ? OptionalLong.empty() : OptionalLong.of(stats.lastRoundTurnoverMilli());
+  }
 
   public MarketReadout {
     Objects.requireNonNull(lastSettledDay, "lastSettledDay");
@@ -85,6 +105,17 @@ public record MarketReadout(
     priceUpdates = priceUpdates == null ? List.of() : List.copyOf(priceUpdates);
     creditFills = creditFills == null ? List.of() : List.copyOf(creditFills);
     regions = regions == null ? List.of() : List.copyOf(regions);
+    // ★★ W1e（2026-10-11）：**不可变包装必须是赋值右侧最外层那次调用** —— 改前写成
+    //   `x == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(x))`，最外层是三元表达式，
+    //   SpotBugs 因此报 `EI_EXPOSE_REP`（MarketReadout.marketRoundStats()）。把判空挪进包装里（与同类
+    //   `CommodityMatchReadout.unfilledLogisticsDetailQuantities` 逐字同形）⇒ 与改前逐值相同：
+    //   空/缺表 ⇒ 一张空表，非空 ⇒ 保序（LinkedHashMap，禁 Map.copyOf：I7 迭代序 = 内容的纯函数）的冻结副本。
+    //   ★ 代价 = 市场数（个位~低两位数）次 put，每次读数构建一次；值是 record 引用，不深拷 ⇒ 不需要额外优化。
+    marketRoundStats =
+        Collections.unmodifiableMap(
+            marketRoundStats == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(marketRoundStats));
     provenance = Collections.unmodifiableMap(copyStrings(provenance));
     unavailable = Collections.unmodifiableMap(copyStrings(unavailable));
   }
@@ -230,10 +261,12 @@ public record MarketReadout(
             CurrencyValuation.circulationByRegion(topology, rowsByHex, round.householdMoney()),
             round.portEnforcement());
     MarketPayChoice payChoice =
-        MarketPayChoice.of(round, data.markets(), topology, rowsByHex, readoutValuation, false);
+        MarketPayChoice.of(
+            round, data.marketTables(), topology, rowsByHex, readoutValuation, false);
     List<RegionReadout> regionReadouts = new ArrayList<>(regions.size());
     for (MarketRegion region : regions) {
-      Market anchorMarket = data.markets().get(region.anchor());
+      // ★ W1：本区价表（每区一张；区 id = 拓扑节点 id）。改动前它取的是"锚格那一张"—— 区内一价成立时两者同一份。
+      MarketTable anchorMarket = data.marketTables().get(new MarketZoneId(region.node().nodeId()));
       if (anchorMarket == null) {
         continue;
       }
@@ -242,15 +275,15 @@ public record MarketReadout(
       for (CommodityId commodity : sortedCommodities(anchorMarket)) {
         long reference = anchorMarket.priceOf(commodity);
         if (!anchorMarket.hasPrice(commodity)) {
-          continue; // 从未定价 ⇒ 本区不交易它（同 Market 的口径），不伪造一行 0
+          continue; // 从未定价 ⇒ 本区不交易它（同 MarketTable 的口径），不伪造一行 0
         }
         long supply = 0L;
         long demand = 0L;
         Set<ActorRef> buyers = new LinkedHashSet<>();
         for (HexCoord member : region.members()) {
-          Market memberMarket = data.markets().get(member);
-          if (memberMarket == null || !memberMarket.hasPrice(commodity)) {
-            continue; // 该成员格从未定价 ⇒ 不生成订单（明确 0 价仍要进订单/读数）
+          MarketTable memberMarket = anchorMarket; // ★ W1：成员格与本区共用同一张表（"区内任何格取价一致"）
+          if (!memberMarket.hasPrice(commodity)) {
+            continue; // 本区从未给该商品定价 ⇒ 不生成订单（明确 0 价仍要进订单/读数）
           }
           // ★★ P-T1c：订单生成的定价只看逐格价表 ⇒ 不再传区 id 与调控（区级参考价覆盖已删，设计书 §16）。
           MarketSettlement.PlannedOrders orders =
@@ -383,8 +416,21 @@ public record MarketReadout(
         report.map(MarketReport::priceUpdates).orElse(List.of()),
         creditFills,
         regionReadouts,
+        roundStatsByMarket(data),
         provenance,
         unavailable);
+  }
+
+  /** ★ W1：把状态里的统计簿搬成裸值键的规范序表（读口只搬、不算；不产生任何新事实）。 */
+  private static Map<String, MarketRoundStats> roundStatsByMarket(EconomyData data) {
+    Map<String, MarketRoundStats> byMarket = new LinkedHashMap<>();
+    for (MarketZoneId marketId : MarketTables.canonicalIds(data.marketTables())) {
+      MarketRoundStats stats = data.marketRoundStats().get(marketId);
+      if (stats != null) {
+        byMarket.put(marketId.value(), stats);
+      }
+    }
+    return byMarket;
   }
 
   private static CommodityMatchReadout matchReadout(
@@ -567,7 +613,7 @@ public record MarketReadout(
         logisticsDetailQuantities);
   }
 
-  private static List<CommodityId> sortedCommodities(Market anchorMarket) {
+  private static List<CommodityId> sortedCommodities(MarketTable anchorMarket) {
     List<CommodityId> commodities = new ArrayList<>(anchorMarket.prices().keySet());
     commodities.sort(Comparator.comparing(CommodityId::value));
     return commodities;

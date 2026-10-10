@@ -21,7 +21,7 @@ import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OperatorCondition.IndustryStatus;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -194,7 +194,7 @@ final class EconomyEntrySettlement {
       Map<CandidateId, ProductionCandidate> candidates,
       Map<IndustryId, Industry> industries,
       SettlementIndex index,
-      Map<HexCoord, Market> markets,
+      MarketIndex markets,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
@@ -280,7 +280,7 @@ final class EconomyEntrySettlement {
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
-      Map<HexCoord, Market> markets,
+      MarketIndex markets,
       long day) {
     Objects.requireNonNull(intents, "intents");
     if (intents.isEmpty()) {
@@ -524,7 +524,7 @@ final class EconomyEntrySettlement {
       //   收益 = 主产出单位量 × 产出价；成本 = Σ 正投入单位量 × 各自价；自留口粮 = 劳动 × 给养 × 粮价。
       //   ★ 任务书口径"缺价 ⇒ 不可行"：主产出、任一正投入、给养要用的粮缺价，都具名拒绝 ——
       //   不按 0 假装便宜（那不是保守，是把无价成本当成免费）。
-      Market market = context.markets.get(hex);
+      MarketTable market = context.markets.at(hex);
       if (market == null) {
         return Attempt.rejection(reject(context, household, candidate, "NO_MARKET"));
       }
@@ -1134,7 +1134,7 @@ final class EconomyEntrySettlement {
     private final Map<DemandId, HouseholdDemand> householdDemands;
     private final Map<HouseholdId, HouseholdEconomy> householdEconomies;
     private final Map<HouseholdId, Map<CommodityId, Long>> householdGoods;
-    private final Map<HexCoord, Market> markets;
+    private final MarketIndex markets;
     private final long day;
     private final Map<ActorRef, List<ProductionUnitId>> unitIdsByOperator = new LinkedHashMap<>();
     private final Map<HouseholdId, List<PeopleLotId>> lotsByHousehold = new LinkedHashMap<>();
@@ -1149,7 +1149,7 @@ final class EconomyEntrySettlement {
         Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
         Map<HouseholdId, Map<PeopleLotId, Long>> composition,
-        Map<HexCoord, Market> markets,
+        MarketIndex markets,
         long day) {
       this.tables = tables;
       this.householdDemands = householdDemands;

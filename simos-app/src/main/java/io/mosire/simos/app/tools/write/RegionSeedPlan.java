@@ -7,6 +7,7 @@ import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.app.world.PopulationSeeder;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -446,8 +447,13 @@ final class RegionSeedPlan {
         industryId ->
             IndustryHexKeys.hexKeyOf(industryId).filter(regionHexKeys::contains).isPresent(),
         industryId -> industryId.value());
+    // ★ W1：价表按区存 ⇒ "命中了哪些市场"逐格报（持久形态 = 区成员格；派生形态 = 价表成员格）。
     collect(
-        hits, "economy.market", economy.markets().keySet(), hexes::contains, HexCoord::toString);
+        hits,
+        "economy.market",
+        MarketTables.allMarketHexes(economy.marketTables(), economy.marketZones()),
+        hexes::contains,
+        HexCoord::toString);
     return new CleanGate(hits);
   }
 

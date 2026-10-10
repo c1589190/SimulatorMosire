@@ -5,8 +5,11 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -111,7 +114,7 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
                   "households",
                   seeded.classes().size(),
                   "markets",
-                  seeded.markets().size()));
+                  seeded.marketTables().size()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, seeded)); // 首次播种：打标
     }
     // ★ 已激活 ⇒ 按格追加：先逐格判重（任一格已被占用 ⇒ 整份拒绝并点名该格），再并入现有切片。
@@ -165,7 +168,7 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.relations(), seeded.relations()),
             // ★ H4：第 9 个组件（每格的现货市场）按同一套判重口径追加 —— ★ 漏了它 = 播种时给的价格
             //   **静默消失**（世界照旧起得来，只是市场全无、城市缺口不收敛，而账面上看不出是谁弄丢的）。
-            merge(base.markets(), seeded.markets()),
+            mergeMarketTables(base, seeded),
             // ★ M2.4：第 10 个组件（在途批次）—— 播种载荷没有在途，但**必须原样带过已有批次**：
             //   漏了它 = 一次按格追加播种会把全世界正在路上的货物静默抹掉（比"没播"更糟：货权凭据消失）。
             merge(base.shipments(), seeded.shipments()),
@@ -233,7 +236,8 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             base.commodityFreightBaseMilli(),
             // ★★ R1（第 39 个组件）：政府市场授权表原样带过 —— 漏了它 = 一次按格追加播种会把已授权
             //   的政府挂单静默抹掉（账面上看不出是谁弄丢的）。
-            base.govMarketMandates());
+            base.govMarketMandates(),
+            base.marketRoundStats());
     EventLog.channel(LOG)
         .info(
             LogEvent.of(
@@ -248,13 +252,13 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
                 "householdsAdded",
                 merged.classes().size() - base.classes().size(),
                 "marketsAdded",
-                merged.markets().size() - base.markets().size(),
+                merged.marketTables().size() - base.marketTables().size(),
                 "industries",
                 merged.industries().size(),
                 "households",
                 merged.classes().size(),
                 "markets",
-                merged.markets().size()));
+                merged.marketTables().size()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 
@@ -274,6 +278,52 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
               householdEconomy.view().hex().q(), householdEconomy.view().hex().r()));
     }
     return hexes;
+  }
+
+  /**
+   * ★★ <b>W1：逐区价表的追加合并</b>（不是 {@code putAll} 覆盖）—— 按格追加播种时，新播的格会形成一张新的派生价表 （键 = {@code
+   * single-region} / {@code currency:<币>}），若直接 {@code putAll} 就会把**已有世界的成员格与价目**
+   * 整条覆盖掉（账面上看不出是谁弄丢的，本仓最贵的那类 bug）。
+   *
+   * <pre>
+   * 键只在一侧      ⇒ 原样取那一侧
+   * 两侧同键、都是派生市场（成员格非空）⇒ 成员格取并集；计价币与价目**必须逐值相同**，否则具名拒（一张表装不下两套价）
+   * 两侧同键、其中一侧是持久区（成员格为空）⇒ 保留 base 的那一条（成员格权威在区表，I22）
+   * </pre>
+   */
+  private static Map<MarketZoneId, MarketTable> mergeMarketTables(
+      EconomyData base, EconomyData seeded) {
+    Map<MarketZoneId, MarketTable> merged = new LinkedHashMap<>(base.marketTables());
+    for (Map.Entry<MarketZoneId, MarketTable> entry : seeded.marketTables().entrySet()) {
+      MarketTable existing = merged.get(entry.getKey());
+      if (existing == null) {
+        merged.put(entry.getKey(), entry.getValue());
+        continue;
+      }
+      MarketTable added = entry.getValue();
+      if (existing.hexes().isEmpty() || added.hexes().isEmpty()) {
+        continue; // 持久区形态：成员格由区表给定，价表条目保留 base 的那一条
+      }
+      if (!existing.numeraire().equals(added.numeraire())
+          || !existing.prices().equals(added.prices())) {
+        throw new IllegalArgumentException(
+            "追加播种的市场 "
+                + entry.getKey().value()
+                + " 与已有市场同名但计价币/价目不同（一张价表装不下两套价）：已有="
+                + existing.numeraire().value()
+                + "/"
+                + existing.prices().size()
+                + " 行，新播="
+                + added.numeraire().value()
+                + "/"
+                + added.prices().size()
+                + " 行；先用 economy.SetMarketPrice 把它们调成同一张，或给新市场另起 id");
+      }
+      Set<HexCoord> union = new LinkedHashSet<>(existing.hexes());
+      union.addAll(added.hexes());
+      merged.put(entry.getKey(), existing.withHexes(union));
+    }
+    return merged;
   }
 
   /** 追加表：保留 {@code base} 的插入序，再把新增项接在后面（保序不可变的纯形态仍由 {@link EconomyData} 构造期冻结）。 */

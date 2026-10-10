@@ -14,6 +14,7 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
@@ -27,7 +28,7 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -79,23 +80,23 @@ class ExpectedProfitBookTest {
       Map<AssetShareId, OwnershipStake> shares,
       AccountSession accounts,
       MarketTopology topology,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> marketTables,
       MarketDemandBook.Book demand,
       /** ★ 当天工作副本 organizations；claimed 集合的唯一正确来源（绝不用 base.productionOrganizations()）。 */
       Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
 
     /** 本夹具的 H 格市场（H2 独立用例不走这里）。 */
-    Market market() {
-      return markets.get(H);
+    MarketTable market() {
+      return marketTables.get(EconomyFixtures.marketIdOf(H));
     }
   }
 
-  private static Market market() {
+  private static MarketTable market() {
     Map<CommodityId, Long> prices = new LinkedHashMap<>();
     prices.put(CLOTH, 10L);
     prices.put(FIBER, 20L);
     prices.put(GRAIN, 10L);
-    return new Market(SILVER, prices);
+    return EconomyFixtures.quote(SILVER, prices);
   }
 
   /** craft 配方（手算基准）：cycle=10、WORKSHOP 1/规模、FIBER 5,000 毫/规模、labor 1,000、CLOTH 2 单位/规模。 */
@@ -180,12 +181,20 @@ class ExpectedProfitBookTest {
             .withProcesses(Map.of(unitId, unit))
             .withRelations(Map.of(unitId, relation))
             .withOwnershipStakes(shares)
-            .withMarkets(Map.of(H, market()));
+            .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H, market())));
 
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
-    MarketTopology topology = MarketTopology.singleHex(Map.of(H, market()));
-    return new Fixture(base, shares, accounts, topology, Map.of(H, market()), demand, Map.of());
+    MarketTopology topology =
+        MarketTopology.singleHex(EconomyFixtures.hexMarkets(Map.of(H, market())), Map.of());
+    return new Fixture(
+        base,
+        shares,
+        accounts,
+        topology,
+        EconomyFixtures.hexMarkets(Map.of(H, market())),
+        demand,
+        Map.of());
   }
 
   /**
@@ -418,7 +427,9 @@ class ExpectedProfitBookTest {
                 DefaultProductionModes.ROLE_WORKSHOP_OWNER)
             .orElseThrow();
     HouseholdEconomy row = row(10_000L, Map.of(CLOTH, 100L));
-    Map<HexCoord, Market> markets = Map.of(H, market(), H2, market());
+    // ★★ W1：逐格报价 → 一格一张派生价表（键 = "hex:<q>_<r>"，与 MarketTopology.singleHex 的节点 id 同源）。
+    Map<MarketZoneId, MarketTable> markets =
+        EconomyFixtures.hexMarkets(Map.of(H, market(), H2, market()));
     EconomyData base =
         EconomyData.empty()
             .withModes(DefaultProductionModes.modes())
@@ -434,10 +445,10 @@ class ExpectedProfitBookTest {
             .withProcesses(Map.of(unit1, u1, unit2, u2))
             .withRelations(Map.of(unit1, r1, unit2, r2))
             .withOwnershipStakes(shares)
-            .withMarkets(markets);
+            .withMarketTables(markets);
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
-    MarketTopology topology = MarketTopology.singleHex(markets);
+    MarketTopology topology = MarketTopology.singleHex(markets, Map.of());
     MarketDemandBook.Book demand =
         new MarketDemandBook.Book(
             Map.of(
@@ -460,7 +471,7 @@ class ExpectedProfitBookTest {
             DefaultProductionModes.HANDICRAFT_WORKSHOP,
             H,
             craft(CRAFT),
-            markets.get(H),
+            markets.get(EconomyFixtures.marketIdOf(H)),
             demand,
             shares,
             claimedFrom(Map.of()),
@@ -476,7 +487,7 @@ class ExpectedProfitBookTest {
             DefaultProductionModes.HANDICRAFT_WORKSHOP,
             H2,
             craft2,
-            markets.get(H2),
+            markets.get(EconomyFixtures.marketIdOf(H2)),
             demand,
             shares,
             claimedFrom(Map.of()),
@@ -540,17 +551,18 @@ class ExpectedProfitBookTest {
                         NEWCOMER, position, position, Map.of(), 0L, 0L, "test-stale")))
             .withIndustries(Map.of(CRAFT, industry))
             .withOwnershipStakes(shares)
-            .withMarkets(Map.of(H, market()));
+            .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H, market())));
 
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(NEWCOMER, H, Map.of(), Map.of(), Map.of(), Map.of());
-    MarketTopology topology = MarketTopology.singleHex(Map.of(H, market()));
+    MarketTopology topology =
+        MarketTopology.singleHex(EconomyFixtures.hexMarkets(Map.of(H, market())), Map.of());
     return new Fixture(
         base,
         shares,
         accounts,
         topology,
-        Map.of(H, market()),
+        EconomyFixtures.hexMarkets(Map.of(H, market())),
         demandBook(CRAFT, CLOTH, 4_000L),
         Map.of());
   }

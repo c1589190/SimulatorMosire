@@ -52,7 +52,8 @@ import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketRoundStats;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -63,7 +64,6 @@ import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.state.ChangeSet;
@@ -142,7 +142,7 @@ public record EconomyChangeSet(
     FieldDelta<FlowRow> flows,
     FieldDelta<HouseholdLaborCommitment> allocations,
     FieldDelta<ProductionRules> relations,
-    FieldDelta<Market> markets,
+    FieldDelta<MarketTable> marketTables,
     FieldDelta<ShipmentBatch> shipments,
     FieldDelta<OwnershipStake> assetShares,
     FieldDelta<OperatorCondition> operatorConditions,
@@ -183,7 +183,9 @@ public record EconomyChangeSet(
     // ── R1（第 39 个组件）：政府市场授权表（与 EconomyData 的第 39 个组件一一对应，铁律 5）────────────
     //   键 = MarketMandateId 的裸值（toString），值 = 授权行（含累计成交 filledMilli）。
     //   ★ 日结算会写它（成交累加 + 耗尽/到期清除）⇒ 每 tick 只落**真正变化的那几行**（Upsert/Remove）。
-    FieldDelta<GovernmentMarketMandate> govMarketMandates)
+    FieldDelta<GovernmentMarketMandate> govMarketMandates,
+    // ── ★★ W1（第 40 个组件）：市场轮统计簿（键 = 市场 id；纯读数组件）─────────────────────────
+    FieldDelta<MarketRoundStats> marketRoundStats)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -216,8 +218,8 @@ public record EconomyChangeSet(
       relations = new FieldDelta.Unchanged<>();
     }
     // ★ 第 9 个组件（H4）：同一口径（旧档没提该组件，就是没动它）。
-    if (markets == null) {
-      markets = new FieldDelta.Unchanged<>();
+    if (marketTables == null) {
+      marketTables = new FieldDelta.Unchanged<>();
     }
     // ★ 第 10 个组件（M2.4）：同一口径（旧档没提该组件，就是没动它）。
     if (shipments == null) {
@@ -295,6 +297,9 @@ public record EconomyChangeSet(
     if (govMarketMandates == null) {
       govMarketMandates = new FieldDelta.Unchanged<>();
     }
+    if (marketRoundStats == null) {
+      marketRoundStats = new FieldDelta.Unchanged<>();
+    }
     // ★★ Z1 第 32/33 个组件（产品产出数量覆盖表 / 生产效率累计与余数表）：旧变更集没提该组件，就是没动它。
     if (outputQuantityOverrides == null) {
       outputQuantityOverrides = new FieldDelta.Unchanged<>();
@@ -339,7 +344,7 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.flows(), target.flows()),
         FieldDelta.diff(base.allocations(), target.allocations()),
         FieldDelta.diff(base.relations(), target.relations()),
-        FieldDelta.diff(base.markets(), target.markets()),
+        FieldDelta.diff(base.marketTables(), target.marketTables()),
         FieldDelta.diff(base.shipments(), target.shipments()),
         FieldDelta.diff(base.assetShares(), target.assetShares()),
         FieldDelta.diff(base.operatorConditions(), target.operatorConditions()),
@@ -369,7 +374,8 @@ public record EconomyChangeSet(
         // ★★ 第 38 个组件：商品基础运费表（键 = CommodityId 裸值；值 = 基础运费，毫/单位/程）。
         FieldDelta.diff(base.commodityFreightBaseMilli(), target.commodityFreightBaseMilli()),
         // ★★ R1（第 39 个组件）：政府市场授权表（成交累加与耗尽/到期清除写它，铁律 5 的一一对应）。
-        FieldDelta.diff(base.govMarketMandates(), target.govMarketMandates()));
+        FieldDelta.diff(base.govMarketMandates(), target.govMarketMandates()),
+        FieldDelta.diff(base.marketRoundStats(), target.marketRoundStats()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -384,7 +390,7 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.flows(), cs.flows(), EconomyChangeSet::householdId),
         FieldDelta.rebuild(base.allocations(), cs.allocations(), LaborAllocationId::parse),
         FieldDelta.rebuild(base.relations(), cs.relations(), ProductionUnitId::parse),
-        FieldDelta.rebuild(base.markets(), cs.markets(), HexCoord::parse),
+        FieldDelta.rebuild(base.marketTables(), cs.marketTables(), MarketZoneId::parse),
         FieldDelta.rebuild(base.shipments(), cs.shipments(), ShipmentId::parse),
         FieldDelta.rebuild(base.assetShares(), cs.assetShares(), AssetShareId::parse),
         FieldDelta.rebuild(
@@ -432,7 +438,8 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(
             base.commodityFreightBaseMilli(), cs.commodityFreightBaseMilli(), CommodityId::parse),
         FieldDelta.rebuild(
-            base.govMarketMandates(), cs.govMarketMandates(), MarketMandateId::parse));
+            base.govMarketMandates(), cs.govMarketMandates(), MarketMandateId::parse),
+        FieldDelta.rebuild(base.marketRoundStats(), cs.marketRoundStats(), MarketZoneId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -444,7 +451,7 @@ public record EconomyChangeSet(
         || flows.changed()
         || allocations.changed()
         || relations.changed()
-        || markets.changed()
+        || marketTables.changed()
         || shipments.changed()
         || assetShares.changed()
         || operatorConditions.changed()
@@ -472,7 +479,8 @@ public record EconomyChangeSet(
         || marketZones.changed()
         || householdDebtRefs.changed()
         || commodityFreightBaseMilli.changed()
-        || govMarketMandates.changed());
+        || govMarketMandates.changed()
+        || marketRoundStats.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

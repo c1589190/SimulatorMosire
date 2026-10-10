@@ -13,6 +13,7 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
+import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.codec.ArmyCodec;
@@ -29,10 +30,14 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.gov.GovSnapshot;
@@ -369,6 +374,7 @@ class McpCoverageTest {
               "{\"id\": \"gm:missing\", \"reason\": \"coverage\"}"),
           // ★★ A1/A2a/B2（2026-10-08）的 8 条：载荷形状逐字段合法（含必填字段），但点名的 GOV 单位 / 区 / 币种
           //   在本夹具世界里不存在 ⇒ 必须具名拒、且不推 revision（见 PRECONDITION_REJECT_TYPES 的同批注释）。
+          //   ★ W1g：其中 SetMarketNumeraire 的载荷已随 W1 从逐格 {q,r} 迁到 {marketId}（拒因不变，仍是"没有这个市场"）。
           Map.entry(
               "economy.DefineCurrency",
               "{\"govUnitId\": \"gov-missing\", \"currencyId\": \"gold\", \"scale\": 3, \"displayName\": \"金\", \"reason\": \"coverage\"}"),
@@ -392,7 +398,12 @@ class McpCoverageTest {
               "{\"sourceZoneId\": \"zone-missing\", \"targetZoneId\": \"zone-missing-2\", \"reason\": \"coverage\"}"),
           Map.entry(
               "economy.SetMarketNumeraire",
-              "{\"q\": 0, \"r\": 0, \"numeraire\": \"copper\", \"reason\": \"coverage\"}"),
+              // ★★ W1g（W1 契约迁移）：载荷从逐格 {q,r,numeraire} 改成 {marketId,numeraire}。本夹具里它仍必须是具名拒
+              //   （见 PRECONDITION_REJECT_TYPES），但拒因要与"这个格没有市场"逐字对应 ⇒ 点名一个**不存在**的市场 id
+              //   （与同批的 zone-missing / gov-missing 同款）：走 handler 的第一条 fail-closed（market-missing），
+              //   不依赖"币种词表为空"这个更靠后的判据。★ 真市场 COVERAGE_MARKET_ID 不在这里用 —— 它是**提交成功**
+              //   那条路径的被测对象（economy.SetMarketPrice），拿它当拒例会把两条路径的判据混在一起。
+              "{\"marketId\": \"market-missing\", \"numeraire\": \"copper\", \"reason\": \"coverage\"}"),
           Map.entry(
               "actor.RemitGovTreasury",
               "{\"household\":\"hh-missing\",\"fromHousehold\":\"hh-missing\",\"toHousehold\":\"hh-missing2\",\"grain\":1}"),
@@ -521,6 +532,43 @@ class McpCoverageTest {
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
+
+  /**
+   * ★★ <b>W1g：本夹具那个市场的 id</b> —— 取<b>真播种器</b>对"单币种世界"给出的派生市场 id （{@link
+   * EconomySeeder#SINGLE_REGION_MARKET_ID}；{@code EconomySeeder.derivedMarketTables} 是这条派生规则的唯一拼写点：
+   * 全格同币 ⇒ 恰一张 {@code single-region}，成员格 = 该币的全部市场格）。本夹具的世界正是这个形态（一种计价币、一个经济格） ⇒ 用播种器自己会给的
+   * id，**不手写一个"看起来像"的串**。
+   *
+   * <p>★ <b>为什么夹具必须先播一个市场</b>：W1 起 {@code economy.SetMarketPrice} 的载荷是 {@code {marketId, commodity,
+   * price}}，且**只改已存在的市场**（"凭空建一张市场"是 {@code economy.DefineMarketZone} 的判据）⇒ 市场由 {@code
+   * economy.Seed} 的顶层 {@code markets} 键播下（见 {@link #MINIMAL_PAYLOADS}）。
+   */
+  private static final String COVERAGE_MARKET_ID = EconomySeeder.SINGLE_REGION_MARKET_ID;
+
+  /**
+   * ★ <b>W1g：{@code economy.SetMarketPrice} 要写进去的粮价</b>：播种时给的是出厂粮价 {@link
+   * EconomySeeder#MARKET_PRICE_GRAIN}（= 1）⇒ 命令载荷（2）与出厂值**不同**，于是"这个价真的被写进去了"那条断言有判别力
+   * （若两者同值，一个什么都不写的 handler 也能让断言恒真）。
+   */
+  private static final long COVERAGE_GRAIN_PRICE = 2L;
+
+  /**
+   * ★★ <b>W1g：播种市场的价表 = 真播种器的出厂价表</b>（{@link EconomySeeder#MARKET_PRICES_FACTORY}）——夹具**不另拍价表**
+   * （{@code EconomyTestWorld} 的同一条纪律：夹具里的价与真档的价不许在两处静默漂开）。
+   *
+   * <p>★ 必须按声明序拼接（{@code MARKET_PRICES_FACTORY} 自己就是 {@code LinkedHashMap}）：{@code Map.of}
+   * 的迭代序不是内容的纯函数 ⇒ 载荷字节会抖。
+   */
+  private static String factoryPricesJson() {
+    StringBuilder json = new StringBuilder("{");
+    for (Map.Entry<CommodityId, Long> price : EconomySeeder.MARKET_PRICES_FACTORY.entrySet()) {
+      if (json.length() > 1) {
+        json.append(',');
+      }
+      json.append('"').append(price.getKey().value()).append("\":").append(price.getValue());
+    }
+    return json.append('}').toString();
+  }
 
   static {
     MINIMAL_PAYLOADS.put(
@@ -683,7 +731,24 @@ class McpCoverageTest {
             + "\"slots\":[{\"id\":\"poor_peasant\",\"name\":\"贫农\","
             + "\"laborParticipationPerMille\":950}]}],"
             + "\"classes\":[{\"residence\":\"rural\",\"slot\":\"poor_peasant\",\"population\":1000,"
-            + "\"laborMilli\":580000,\"participationPerMille\":950}]}]}");
+            + "\"laborMilli\":580000,\"participationPerMille\":950}]}],"
+            // ★★ W1g：**市场播种**（W1 起价表按市场一张，且 `economy.SetMarketPrice` 只改**已存在**的市场）。
+            //   ① id：本世界只有一种计价币（银）、一个经济格 ⇒ 恰是真播种器 `EconomySeeder.derivedMarketTables` 的
+            //      "单区"形态，故取它给出的 COVERAGE_MARKET_ID（= `single-region`）。
+            //   ② 成员格 = (1,1)：载荷层判"价表点名的格必须在 entries 里"，而本夹具只有 (1,1) 这一个 entry
+            //      （格串走 `IndustryHexKeys.hexKey` 这个唯一拼写点，不手拼 "<q>_<r>"）。
+            //   ③ 价表 = 出厂价表（粮 1 / 布 5 / 纤维 1 / 工具 20 / 铁 10 / 运力 4）：W1 起"这一格有没有某商品的价"
+            //      由**本区价表**回答（`EconomyAddDemandHandler.requirePriced` / `MarketTables.at`），下面的
+            //      `economy.AddDemand` 点的正是粮价 ⇒ 少这一键它当场具名拒。
+            + "\"markets\":{\""
+            + COVERAGE_MARKET_ID
+            + "\":{\"numeraire\":\""
+            + EconomySeeder.MARKET_NUMERAIRE.value()
+            + "\",\"hexes\":[\""
+            + IndustryHexKeys.hexKey(H11.q(), H11.r())
+            + "\"],\"prices\":"
+            + factoryPricesJson()
+            + "}}}");
     // ★ S1 阶段 2（2026-09-26）：actor 播种。放最后 ⇒ 不移动前面各命令的 revision 号；
     //   一格一主体 + 一本库存（必须产生**非空**变更集）。
     //   ★★ H0.5（2026-09-27，裁定 S3）：产权行 `holdings[]` 随 `AssetHolding` **整块退役**
@@ -712,15 +777,27 @@ class McpCoverageTest {
             + "{\"household\":\"hh-gov-u-2\",\"balances\":{}}]}]}");
 
     // ── E1–E6 的 economy 窄命令：追加在最后（不移动既有 revision 号）；每条都备最小合法载荷。──
+    // ★★ W1g（W1 契约迁移）：载荷是 {marketId, commodity, price}（价表**按市场一张**，不再是逐格 {q,r}），
+    //   且**只改已存在的市场** ⇒ marketId 取上面 economy.Seed 的 `markets` 键播下的那个（COVERAGE_MARKET_ID，
+    //   = 真播种器对单币种世界给出的派生 id）。★ "生效"这层由第 3 段的价格实读断言守（不只是 revision 前进）。
     MINIMAL_PAYLOADS.put(
-        "economy.SetMarketPrice", "{\"q\":1,\"r\":2,\"commodity\":\"grain\",\"price\":2}");
+        "economy.SetMarketPrice",
+        "{\"marketId\":\""
+            + COVERAGE_MARKET_ID
+            + "\",\"commodity\":\"grain\",\"price\":"
+            + COVERAGE_GRAIN_PRICE
+            + "}");
     // ★ F（2026-10-09）：商品运费系数表（GM-only；夹具世界词表里有 grain ⇒ 形状合法 ⇒ 真提交成功）。
     MINIMAL_PAYLOADS.put(
         "economy.SetCommodityFreight",
         "{\"commodityId\":\"grain\",\"baseMilli\":2,\"reason\":\"coverage\"}");
+    // ★★ W1g：HEX 范围的需求以"**该格有市场价**"为存在证据（EconomyAddDemandHandler.requirePriced）⇒ 需求必须落在
+    //   本夹具那个市场覆盖的格 (1,1) 上。★ 改前这里写的是 (1,2)：那条载荷之所以能过，靠的正是**上一行 SetMarketPrice
+    //   在 (1,2) 凭空建了一张市场**（旧逐格契约的副作用）；W1 起定价只作用于已存在的市场、而本夹具的市场只覆盖唯一的
+    //   经济格 (1,1)，那条隐式依赖随之消失 —— 这是"为旧形状而存在"的一处夹具事实，按新契约落到有价的格上。
     MINIMAL_PAYLOADS.put(
         "economy.AddDemand",
-        "{\"id\":\"demand-coverage\",\"scope\":\"HEX\",\"hex\":{\"q\":1,\"r\":2},"
+        "{\"id\":\"demand-coverage\",\"scope\":\"HEX\",\"hex\":{\"q\":1,\"r\":1},"
             + "\"commodity\":\"grain\",\"kind\":\"RECURRING\",\"unit\":\"TOTAL\","
             + "\"quantityPerCycle\":1}");
     MINIMAL_PAYLOADS.put("economy.CancelDemand", "{\"demand\":\"demand-coverage\"}");
@@ -992,6 +1069,24 @@ class McpCoverageTest {
         .as("u-2 在 AdjustComposition(+1 步枪) 后：10 + 1 = 11")
         .containsExactly(new CompositionEntry("步枪", 11));
 
+    // ★★ W1g：{@code economy.SetMarketPrice} 的"生效"这一层 —— 不只是 revision 前进，**价格真的被写进去**。
+    //   改前（逐格 {q,r} 契约）：命令自己在 (1,2) **新建**一张市场（价格 = 载荷的 2），紧随其后的
+    //   economy.AddDemand 靠"该格有价"落地 —— 但用例本身没有任何断言读那张价表，价写没写对看不出。
+    //   改后（W1 逐市场契约）：市场由 economy.Seed 的 markets 键播下（出厂粮价 = EconomySeeder.MARKET_PRICE_GRAIN = 1），
+    //   SetMarketPrice 点名它把粮价写成 COVERAGE_GRAIN_PRICE（= 2）⇒ 这里实读那张价表，钉住"1 → 2"。
+    //   ★ 判别力：出厂值（1）与载荷值（2）不同 ⇒ 一个"照单收下却什么都没写"的 handler 会让本条当场红。
+    EconomyData coverageEconomy = economySlice(afterUnitCommands);
+    MarketTable coverageMarket =
+        coverageEconomy.marketTables().get(new MarketZoneId(COVERAGE_MARKET_ID));
+    assertThat(coverageMarket)
+        .as("夹具播种的市场（%s）必须在经济切片里：播种 → 定价这条链不能断", COVERAGE_MARKET_ID)
+        .isNotNull();
+    assertThat(coverageMarket.prices().get(new CommodityId(EconomySeeder.COMMODITY_GRAIN)))
+        .as(
+            "economy.SetMarketPrice 必须真的改价（出厂粮价 %d → 载荷写的 %d）",
+            EconomySeeder.MARKET_PRICE_GRAIN, COVERAGE_GRAIN_PRICE)
+        .isEqualTo(COVERAGE_GRAIN_PRICE);
+
     // 4. simos.advance 的"可达 + 生效"由 ShellEndToEndTest 用真 MCP 覆盖（本夹具的 GOV/S3a 覆盖
     //    与世界闭合守卫的构造前提不同，此处不重复跑推进会干扰覆盖序列；工具面在 catalog 里已由第 1 段断言）。
 
@@ -1106,6 +1201,14 @@ class McpCoverageTest {
     UnitSnapshot slice =
         (UnitSnapshot) state.module("unit").orElseThrow(() -> new AssertionError("状态里没有 unit 切片"));
     return slice.state();
+  }
+
+  /** ★ W1g：E2 的"价格真的改了"这条断言要读经济切片（同 {@link #unitSlice} 的形制：装配故障当场炸，不静默）。 */
+  private static EconomyData economySlice(SimulationState state) {
+    EconomySnapshot slice =
+        (EconomySnapshot)
+            state.module("economy").orElseThrow(() -> new AssertionError("状态里没有 economy 切片"));
+    return slice.data();
   }
 
   private void seedGenesis() {

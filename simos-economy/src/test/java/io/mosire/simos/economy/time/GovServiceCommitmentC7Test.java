@@ -26,7 +26,6 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -416,7 +415,9 @@ class GovServiceCommitmentC7Test {
         .withHouseholdEconomies(Map.of(H, household(householdLaborMilli)))
         .withProcesses(Map.of(UNIT, process()))
         .withOwnershipStakes(Map.of(land.id(), land))
-        .withMarkets(Map.of(HEX, new Market(SILVER, Map.of(GRAIN, 1L))))
+        .withMarketTables(
+            EconomyFixtures.hexMarkets(
+                Map.of(HEX, EconomyFixtures.quote(SILVER, Map.of(GRAIN, 1L)))))
         .withLaborCommitments(commitments);
   }
 

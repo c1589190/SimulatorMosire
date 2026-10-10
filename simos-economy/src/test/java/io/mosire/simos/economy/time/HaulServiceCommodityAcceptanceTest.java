@@ -20,7 +20,7 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -140,7 +140,7 @@ class HaulServiceCommodityAcceptanceTest {
     MarketSettlementFixtures.World world = crossHexWorld(CARRIER_HAUL_MILLI);
     MerchantCapacityPool pool = world.serviceCarrierPool(Set.of(H1));
     MarketSettlementFixtures.Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+        MarketSettlementFixtures.round(world, world.defaultsOf());
 
     assertThat(pool.totalCapacityAt(H1))
         .as("服务成市格：运力预算 = 该户手上的服务货（I-H2）")
@@ -220,7 +220,7 @@ class HaulServiceCommodityAcceptanceTest {
             world.units(),
             world.rows(),
             world.industries(),
-            world.markets(),
+            MarketIndex.of(world.marketTables(), world.marketZones()),
             AccountSession.empty());
 
     assertThat(book.hasReading(DefaultProductionModes.MERCHANT, H1))
@@ -252,7 +252,7 @@ class HaulServiceCommodityAcceptanceTest {
     long sellerGrainBefore = world.grainOf(SELLER);
     long buyerSilverBefore = world.silverOf(BUYER);
     MarketSettlementFixtures.Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+        MarketSettlementFixtures.round(world, world.defaultsOf());
     MarketSettlement.MarketOutcome outcome =
         MarketSettlementFixtures.settleWithPool(world, round, pool);
 
@@ -296,7 +296,8 @@ class HaulServiceCommodityAcceptanceTest {
     MarketSettlementFixtures.World world =
         MarketSettlementFixtures.builder()
             .market(H1, MarketSettlementFixtures.grainAndHaulMarket(GRAIN_PRICE, HAUL_PRICE))
-            .market(H2, GRAIN_PRICE)
+            // ★★ W1c：两格报价逐值相同 ⇒ **同一个市场**（单区两格）= W1 前的形状 ⇒ 跨格货单走区内即时路线。
+            .market(H2, MarketSettlementFixtures.grainAndHaulMarket(GRAIN_PRICE, HAUL_PRICE))
             .household(SELLER, H1, 0L, SELLER_GRAIN, 0L)
             .household(BUYER, H2, 1L, 0L, BUYER_SILVER)
             .haulCarrier(broke, H1, 1_000L, CARRIER_HAUL_MILLI)
@@ -306,7 +307,7 @@ class HaulServiceCommodityAcceptanceTest {
     //   select 里已不存在任何读工具的判据）。
     MerchantCapacityPool pool = world.serviceCarrierPool(Set.of(H1));
     MarketSettlementFixtures.Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+        MarketSettlementFixtures.round(world, world.defaultsOf());
     MarketSettlement.MarketOutcome outcome =
         MarketSettlementFixtures.settleWithPool(world, round, pool);
 
@@ -366,7 +367,7 @@ class HaulServiceCommodityAcceptanceTest {
             .industryUnit(merchant, H1, trade, AssetKind.CATTLE, 1L)
             .build();
     MarketSettlementFixtures.Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+        MarketSettlementFixtures.round(world, world.defaultsOf());
     MarketSettlement.MarketOutcome outcome = MarketSettlementFixtures.settle(world, round);
 
     MarketReport.SellerOutcome toolOffer =
@@ -398,13 +399,10 @@ class HaulServiceCommodityAcceptanceTest {
     MarketSettlementFixtures.World with = localWorld(true);
     MarketSettlement.MarketOutcome a =
         MarketSettlementFixtures.settle(
-            without,
-            MarketSettlementFixtures.round(
-                without, MarketRegulation.defaultsFor(without.markets())));
+            without, MarketSettlementFixtures.round(without, without.defaultsOf()));
     MarketSettlement.MarketOutcome b =
         MarketSettlementFixtures.settle(
-            with,
-            MarketSettlementFixtures.round(with, MarketRegulation.defaultsFor(with.markets())));
+            with, MarketSettlementFixtures.round(with, with.defaultsOf()));
 
     assertThat(a.report().fills()).as("对照世界必须有成交（否则 dump 相同是平凡的）").hasSize(1);
     assertThat(stateDump(with, b, List.of(SELLER, LOCAL_BUYER)))
@@ -431,14 +429,15 @@ class HaulServiceCommodityAcceptanceTest {
       MarketSettlementFixtures.World world =
           MarketSettlementFixtures.builder()
               .market(H1, MarketSettlementFixtures.grainAndHaulMarket(GRAIN_PRICE, HAUL_PRICE))
-              .market(H2, GRAIN_PRICE)
+              // ★★ W1c：两格报价逐值相同 ⇒ **同一个市场**（单区两格）= W1 前的形状 ⇒ 跨格货单走区内即时路线。
+              .market(H2, MarketSettlementFixtures.grainAndHaulMarket(GRAIN_PRICE, HAUL_PRICE))
               .household(SELLER, H1, 0L, SELLER_GRAIN, 0L)
               .household(BUYER, H2, 1L, 0L, BUYER_SILVER)
               .haulCarrier(carrier, H1, 1_000L, CARRIER_HAUL_MILLI)
               .build();
       MerchantCapacityPool pool = world.serviceCarrierPool(Set.of(H1));
       MarketSettlementFixtures.Round round =
-          MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+          MarketSettlementFixtures.round(world, world.defaultsOf());
       MarketSettlement.MarketOutcome outcome =
           MarketSettlementFixtures.settleWithPool(world, round, pool);
       assertThat(outcome.report().fills()).as("两跑都必须有跨格成交（否则 dump 相同是平凡的）").hasSize(1);
@@ -450,7 +449,16 @@ class HaulServiceCommodityAcceptanceTest {
   // ── 夹具 ───────────────────────────────────────────────────────────────────────────
 
   /**
-   * 跨格世界：H1 = 服务成市（粮 + haul 都有价）+ 卖方 + 承运户；H2 = 买方（只有粮价）。
+   * 跨格世界：H1 = 服务成市（粮 + haul 都有价）+ 卖方 + 承运户；H2 = 买方。
+   *
+   * <p>★★ <b>W1c：两格报价**逐值相同** ⇒ 归组成**同一个市场**（单区两格）</b> —— 这是 W1「每区一张价表」下
+   * 唯一能表达"区内跨格"的形状，也是本用例判据的**前提**：{@code H1→H2} 只有落在同一个市场里才是 <b>区内跨格即时路线</b>（{@code route.immediate
+   * = true}、无 {@code ShipmentBatch}），单位运费按 {@code route.freightPerUnit}
+   * **原样报出**；两个市场时它退化成跨区在途，读数里的单位运费是 "本票实收 ÷ 成交量"向上取整的解，会与 {@code HaulService.unitFreightMilli}
+   * 漂开（见账本 §四-2）。
+   *
+   * <p>★ 服务成市是**区级**属性（{@code HaulService.pricedAt} 读本格所属市场的那一张表）⇒ H2 也报同一个价， 与"本区一张表"同一口径；发货格仍是
+   * H1（卖方在 H1），服务牌价、运力池、承运判据都读 H1 那一张表，逐值不变。
    *
    * <p>★ 承运户带一条**跑商产业 unit**（{@code outputPerUnit={haul:1}}、无周期投入）：这是 {@code EnterpriseProfitBook}
    * 认得出"这户在经营 merchant 生产方式"的前提（T-H3 的 {@code ProductionEnterprise} 必须有 unit）， 也是真实播种的形状（世界 {@code
@@ -459,7 +467,7 @@ class HaulServiceCommodityAcceptanceTest {
   private static MarketSettlementFixtures.World crossHexWorld(long carrierHaulMilli) {
     return MarketSettlementFixtures.builder()
         .market(H1, MarketSettlementFixtures.grainAndHaulMarket(GRAIN_PRICE, HAUL_PRICE))
-        .market(H2, GRAIN_PRICE)
+        .market(H2, MarketSettlementFixtures.grainAndHaulMarket(GRAIN_PRICE, HAUL_PRICE))
         .household(SELLER, H1, 0L, SELLER_GRAIN, 0L)
         .household(BUYER, H2, 1L, 0L, BUYER_SILVER)
         .haulCarrier(CARRIER, H1, 1_000L, carrierHaulMilli)
@@ -498,11 +506,11 @@ class HaulServiceCommodityAcceptanceTest {
   }
 
   /** 带自定义价表的市场（{@code grain} + 额外商品；本类的 T-H4 用例要一个 tool 价才能挂出 tool 卖单）。 */
-  private static Market pricedMarket(long grainPrice, Map<CommodityId, Long> extraPrices) {
+  private static MarketTable pricedMarket(long grainPrice, Map<CommodityId, Long> extraPrices) {
     Map<CommodityId, Long> prices = new LinkedHashMap<>();
     prices.put(MarketSettlementFixtures.GRAIN, grainPrice);
     prices.putAll(extraPrices);
-    return new Market(MarketSettlementFixtures.SILVER, prices);
+    return EconomyFixtures.quote(MarketSettlementFixtures.SILVER, prices);
   }
 
   /**
@@ -543,7 +551,7 @@ class HaulServiceCommodityAcceptanceTest {
           .append(sortedEntries(world.unmetToday().getOrDefault(household, Map.of())))
           .append('\n');
     }
-    List<HexCoord> hexes = new ArrayList<>(world.markets().keySet());
+    List<HexCoord> hexes = new ArrayList<>(world.marketHexes());
     hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
     for (HexCoord hex : hexes) {
       out.append("prices ")
@@ -551,14 +559,14 @@ class HaulServiceCommodityAcceptanceTest {
           .append(',')
           .append(hex.r())
           .append(' ')
-          .append(sortedEntries(world.markets().get(hex).prices()))
+          .append(sortedEntries(world.tableAt(hex).prices()))
           .append('\n');
       out.append("nextPrices ")
           .append(hex.q())
           .append(',')
           .append(hex.r())
           .append(' ')
-          .append(sortedEntries(outcome.markets().get(hex).prices()))
+          .append(sortedEntries(MarketSettlementFixtures.tableAt(outcome, world, hex).prices()))
           .append('\n');
     }
     out.append("fills ").append(outcome.report().fills()).append('\n');

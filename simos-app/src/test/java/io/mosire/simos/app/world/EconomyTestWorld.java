@@ -15,6 +15,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -26,7 +27,7 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.time.EconomySettlement;
@@ -162,11 +163,11 @@ public final class EconomyTestWorld {
     return genesis(false);
   }
 
-  private static SimulationState genesis(boolean withMarkets) {
+  private static SimulationState genesis(boolean withMarketTables) {
     StateRef ref = new StateRef(new BranchId("main"), new RevisionId(1));
     SimosTimestamp at = SimosTimestamp.of(0);
     Map<String, Snapshot> modules = new LinkedHashMap<>();
-    EconomyData data = data(new LinkedHashMap<>(), new LinkedHashMap<>(), withMarkets);
+    EconomyData data = data(new LinkedHashMap<>(), new LinkedHashMap<>(), withMarketTables);
     modules.put("economy", new EconomySnapshot(ref, at, data));
     modules.put("actor", new ActorSnapshot(ref, at, books()));
     return new SimulationState(new StateMeta(ref, at), modules, InMemoryInfoSystem.empty());
@@ -261,7 +262,7 @@ public final class EconomyTestWorld {
   private static EconomyData data(
       Map<HouseholdId, Map<CommodityId, Long>> stocks,
       Map<HouseholdId, Map<CurrencyId, Long>> money,
-      boolean withMarkets) {
+      boolean withMarketTables) {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     Map<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>();
     Map<LaborAllocationId, HouseholdLaborCommitment> allocations = new LinkedHashMap<>();
@@ -349,18 +350,25 @@ public final class EconomyTestWorld {
             .withRelations(relations(industries));
     // pending 配额在这一步触发迁移：拆成真实家户 + activity/actor 对齐到 unit + 补 memberships/assetShares。
     current = current.withLaborCommitments(allocations);
-    current = current.withMarkets(withMarkets ? markets(classes) : Map.of());
+    current = current.withMarketTables(withMarketTables ? markets(classes) : Map.of());
     return current.withMeta(Optional.of(meta));
   }
 
   /**
-   * ★★ <b>H4：逐格市场表</b>（{@code EconomyData.markets} 的第 9 个组件）：本夹具的**每一格**一个市场， 值取真播种器的出厂市场（{@link
-   * EconomySeeder#MARKET_FACTORY}）—— 夹具**不另拍价表**， 否则"夹具里的价"与"真档的价"会在两次改动之间静默漂开。
+   * ★★ <b>W1：逐格派生价表</b>（{@code EconomyData.marketTables} 的第 9 个组件）：本夹具的**每一格**一个派生市场 —— 键 = {@code
+   * "hex:<q>_<r>"}（与 {@code MarketTopology.singleHex} 的节点 id 同源；本夹具的 SimulationState **没有 map
+   * 切片**，组合根走的正是那条退化拓扑）、成员格 = 该格、价格表取真播种器的出厂价表 （{@link EconomySeeder#MARKET_PRICES_FACTORY}）——
+   * 夹具**不另拍价表**， 否则"夹具里的价"与"真档的价"会在两次改动之间静默漂开。
    */
-  private static Map<HexCoord, Market> markets(Map<HouseholdId, HouseholdEconomy> classes) {
-    Map<HexCoord, Market> markets = new LinkedHashMap<>();
+  private static Map<MarketZoneId, MarketTable> markets(
+      Map<HouseholdId, HouseholdEconomy> classes) {
+    Map<MarketZoneId, MarketTable> markets = new LinkedHashMap<>();
     for (HouseholdEconomy row : classes.values()) {
-      markets.putIfAbsent(row.view().hex(), EconomySeeder.MARKET_FACTORY);
+      HexCoord hex = row.view().hex();
+      markets.putIfAbsent(
+          new MarketZoneId("hex:" + IndustryHexKeys.hexKey(hex.q(), hex.r())),
+          MarketTable.singleHex(
+              EconomySeeder.MARKET_NUMERAIRE, hex, EconomySeeder.MARKET_PRICES_FACTORY));
     }
     return markets;
   }

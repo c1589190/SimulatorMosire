@@ -7,7 +7,6 @@ import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -139,23 +138,23 @@ public final class EconomyReassignZoneHexesHandler
                 + from.anchor()
                 + " 在被划走的格里（锚格是取价点；把它留下，或用 MergeMarketZones 撤掉这个区）");
       }
-      for (HexCoord hex : moving) {
-        Market market = base.markets().get(hex);
-        if (market != null && !market.numeraire().equals(to.legalTender())) {
-          return rejected(
-              "numeraire-mismatch",
-              definition,
-              hex,
-              "格 "
-                  + hex
-                  + " 的计价币是 "
-                  + market.numeraire().value()
-                  + "，与目标区 "
-                  + toId.value()
-                  + " 的法定币 "
-                  + to.legalTender().value()
-                  + " 不一致（先 economy.SetMarketNumeraire）");
-        }
+      // ★★ W1（逐格 → 逐区）：价表按区存 ⇒ 被划走的格的市场就是**源区**的那一张表，它的计价币 = 源区法定币。
+      //   ⇒ "划界不许静默换汇"这条判据落在**两个区的法定币必须相同**上（改动前是逐格计价币 = 目标区法定币，
+      //   在"区内一价"成立的世界里两者等价）。
+      if (!from.legalTender().equals(to.legalTender())) {
+        return rejected(
+            "numeraire-mismatch",
+            definition,
+            from.anchor(),
+            "源区 "
+                + fromId.value()
+                + " 的法定币是 "
+                + from.legalTender().value()
+                + "，与目标区 "
+                + toId.value()
+                + " 的法定币 "
+                + to.legalTender().value()
+                + " 不一致（价表按区一张 ⇒ 划界不许静默换汇；先 economy.SetMarketNumeraire 统一两区计价币）");
       }
       Set<HexCoord> fromHexes = new LinkedHashSet<>(from.hexes());
       fromHexes.removeAll(moving);

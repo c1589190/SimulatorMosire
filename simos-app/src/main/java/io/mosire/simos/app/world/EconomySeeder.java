@@ -20,6 +20,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -43,7 +44,7 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
@@ -862,7 +863,7 @@ public final class EconomySeeder {
    *      它的劳动必须由家户的劳动队列按预期净收益发放（{@code LaborQueueBook}）。而队列的判据是
    *        net = 卖出价(bid) − 投入成本 = ⌊牌价 × 990‰⌋ − 2 ，且要求 net ≥ 1 毫银/规模
    *      ⇒ 牌价 = 2 ⇒ net = −1（不排队）；牌价 = 3 ⇒ ⌊2.97⌋ = 2 ⇒ net = 0（仍不排队）；牌价 = 4 ⇒ ⌊3.96⌋ = 3 ⇒ net = 1 ✔
-   *      ⇒ **4 是能让跑商家户真的去跑商的最小整数牌价**（取整档位见 {@code Market.BID_PER_MILLE}）。
+   *      ⇒ **4 是能让跑商家户真的去跑商的最小整数牌价**（取整档位见 {@code MarketTable.BID_PER_MILLE}）。
    * ④ 与用户"按最低价的运力提供商买运力"的关系：牌价是**市场价**（所有提供者同价）⇒ 买方的择优落在既有的
    *      "限价升序 → 议价权降序 → 家户 id 升序"队列上（同价按 canonical 序），不另设特权队列。
    * </pre>
@@ -875,10 +876,10 @@ public final class EconomySeeder {
   /**
    * ★★ <b>出厂价格表（保序：粮 → 布 → 纤维 → 工具 → 铁）</b>—— 逐格市场的 {@code prices}，键 = 商品 id。
    *
-   * <p>★★ <b>量纲（与 {@code Market} 的契约逐字一致）：{@code 价格 = 毫计价货币 / 商品单位}</b>（1 商品单位 = 1000 最小计量单位，见
+   * <p>★★ <b>量纲（与 {@code MarketTable} 的契约逐字一致）：{@code 价格 = 毫计价货币 / 商品单位}</b>（1 商品单位 = 1000 最小计量单位，见
    * {@link EconomyVocabulary#MILLI_PER_COMMODITY_UNIT}）⇒ economy 侧的结算是 {@code 货款(毫银) = 数量(毫商品) × 价格
    * ÷ 1000}。★ 于是 {@link #MARKET_PRICE_GRAIN}（= 1）读作 <b>1 粮 = 1 毫银</b>（10,000 毫粮 ↔ 10 毫银 =
-   * 一个周期的口粮）——"每单位商品的毫银数"是本表的唯一读法， 本类**不另立一套量纲**（价格量纲的唯一拼写点在 {@code Market} 的类注）。
+   * 一个周期的口粮）——"每单位商品的毫银数"是本表的唯一读法， 本类**不另立一套量纲**（价格量纲的唯一拼写点在 {@code MarketTable} 的类注）。
    *
    * <p>★★ <b>整张表都是 GM 可调的数据，不是写死的行为</b>（信条十二）：本类只给**出厂值**，改价 = 改这一行 （或将来迁进 V7
    * 参数目录）；**没有任何代码分支依赖某个具体价格**——价格只被写进载荷、由 economy 侧的同格市场池读。
@@ -898,23 +899,59 @@ public final class EconomySeeder {
    * <p>★ 本批**逐格价格没有差异**（地力/距离进价格是后续轮次的事）⇒ 一个不可变实例被所有格共享（不逐格新建 799 份 逐字相同的对象）。
    *
    * <p>★★ <b>B1（2026-10-08 阶段 2-B）追加：逐格计价货币的入口</b> —— 多币种世界（{@code three-powers}）的每个市场区有自己的 **法定币**
-   * ⇒ 该区每一格的 {@code Market.numeraire} 与家户/经营者的**创世钱包币种**由同一个"逐格计价币"函数给出（见 {@link
+   * ⇒ 该区每一格的 {@code MarketTable.numeraire} 与家户/经营者的**创世钱包币种**由同一个"逐格计价币"函数给出（见 {@link
    * #marketFor(CurrencyId)} 与 {@code plan(..., java.util.function.Function)}）。★
    * <b>不传那个函数的老入口逐值不变</b>： 缺省函数恒回 {@link #MARKET_NUMERAIRE} ⇒ 载荷逐字节相同（既有世界与既有对照卷因此仍然有效）。
    */
-  public static final Market MARKET_FACTORY = new Market(MARKET_NUMERAIRE, MARKET_PRICES_FACTORY);
-
   /**
    * ★★ <b>B1：给定计价币的一格市场</b>（价格表恒为 {@link #MARKET_PRICES_FACTORY}，只有计价币换）。
    *
-   * <p>★ 它<b>不折算任何价格</b>：价格是"每商品单位的毫计价货币"，换了计价币就按新币读同一个数 —— 世界上没有汇率（I17），播种器也不许替 GM 换汇。★
-   * 与老入口的关系：{@code marketFor(MARKET_NUMERAIRE)} 与 {@link #MARKET_FACTORY} <b>逐值相等</b>（record
-   * 相等；载荷字节也相同，因为 {@link #marketNode(Market)} 只读 numeraire/prices 两个值）。
+   * <p>★ 它<b>不折算任何价格</b>：价格是"每商品单位的毫计价货币"，换了计价币就按新币读同一个数 —— 世界上没有汇率（I17），播种器也不许替 GM 换汇。 ★★
+   * W1：本方法给出的是**逐格**形态的价表（成员格 = 一个格），创世期把它按币归组成"每币一张派生价表" （{@link #derivedMarketTables}）；{@code
+   * MARKET_FACTORY} 常量随"逐格价表"一并退役。
    */
-  public static Market marketFor(CurrencyId numeraire) {
+  public static MarketTable marketFor(CurrencyId numeraire) {
     Objects.requireNonNull(numeraire, "numeraire");
-    return new Market(numeraire, MARKET_PRICES_FACTORY);
+    return new MarketTable(numeraire, Set.of(), MARKET_PRICES_FACTORY);
   }
+
+  /**
+   * ★★ <b>W1：派生价表（键 = 派生市场 id）</b>—— 创世期"只有计价币、还没有市场区"的世界形态。
+   *
+   * <pre>
+   * 全格同币 ⇒ 一张 {@code single-region}（成员格 = 全部有市场的格；与改动前 MarketTopology.singleRegion 的区 id 同源）
+   * 多币混用 ⇒ 逐币一张 {@code currency:<币>}（成员格 = 用该币的格）
+   * </pre>
+   *
+   * <p>★ <b>为什么按币分组</b>：区级价表自带计价币（{@link MarketTable#numeraire()}），而"这一格用什么钱"在改动前 是逐格 {@code
+   * Market.numeraire}。分币分组是"不丢信息"的最小映射：同一币的格共用一张表，跨币的格不许共用 （那会把两种钱的价混成一张）。★ 键是<b>内容派生</b>的（币种 id
+   * 升序）：同一份输入两次调用逐字节相同。
+   */
+  private static Map<MarketZoneId, MarketTable> derivedMarketTables(
+      Map<CurrencyId, Set<HexCoord>> hexesByNumeraire) {
+    Map<MarketZoneId, MarketTable> tables = new LinkedHashMap<>();
+    if (hexesByNumeraire.size() == 1) {
+      Map.Entry<CurrencyId, Set<HexCoord>> only = hexesByNumeraire.entrySet().iterator().next();
+      tables.put(
+          new MarketZoneId(SINGLE_REGION_MARKET_ID),
+          new MarketTable(only.getKey(), only.getValue(), MARKET_PRICES_FACTORY));
+      return Collections.unmodifiableMap(tables);
+    }
+    List<CurrencyId> currencies = new ArrayList<>(hexesByNumeraire.keySet());
+    currencies.sort(Comparator.comparing(CurrencyId::value));
+    for (CurrencyId currency : currencies) {
+      tables.put(
+          new MarketZoneId("currency:" + currency.value()),
+          new MarketTable(currency, hexesByNumeraire.get(currency), MARKET_PRICES_FACTORY));
+    }
+    return Collections.unmodifiableMap(tables);
+  }
+
+  /**
+   * ★ <b>单区派生市场的规范 id</b>：{@code "single-region"} —— 与改动前 {@code MarketTopology.singleRegion} 的节点
+   * id 逐字相同（"同状态 ⇒ 同 id"：派生拓扑给出的区 id 就是价表的键）。
+   */
+  public static final String SINGLE_REGION_MARKET_ID = "single-region";
 
   /**
    * ★★ <b>创世货币禀赋的缓冲系数（‰）</b>：{@code 1200} —— 每人 <b>1.2 个周期</b>的口粮等价。
@@ -980,12 +1017,12 @@ public final class EconomySeeder {
 
   /**
    * ★★ <b>一次生成的<strong>内存形态</strong></b>（H1）：同一条循环的<strong>四个</strong>产物 —— {@code economy.Seed}
-   * 的逐格 {@code entries} 与 {@code markets}，以及**家户的创世库存**与**创世货币禀赋**（键 = 家户身份）。
+   * 的逐格 {@code entries} 与逐区价表 {@code markets}，以及**家户的创世库存**与**创世货币禀赋**（键 = 家户身份）。
    *
    * <p>★★ <b>为什么把它们放在一起</b>：H1 起"商品库存"<b>不在阶层行里</b>（{@code HouseholdEconomy} 没有 {@code goods}，裁定
    * D3-C/K1）—— 它的持久真源是 actor 切片里该家户的 {@code HouseholdInventory}。而"每格两组四行的开缸余额"（口粮按阶层天数、纤维按田亩副产、
    * 城镇行的纤维与铁按作坊数）<b>只能算一次</b>：两处各算一遍必然漂移（本仓最忌"同一事实两处拼写点"）。故本记录是那条接缝 —— {@link #payload(String,
-   * List, GameMap)} 取 {@link #entries()} 与 {@link #markets()}，{@link HouseholdSeeder} 取 {@link
+   * List, GameMap)} 取 {@link #entries()} 与 {@link #marketTables()}，{@link HouseholdSeeder} 取 {@link
    * #householdStocks()} 与 {@link #householdMoney()}（**同一份**：命令播出来的世界与夹具手搭的世界逐字段同形）。
    *
    * <p>★★ <b>H4/E3 的货币口径</b>：{@link #householdMoney()} 由 {@link #genesisMoney(long, long)}
@@ -1001,7 +1038,7 @@ public final class EconomySeeder {
   public record Seed(
       String mapId,
       List<Map<String, Object>> entries,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> marketTables,
       Map<HouseholdId, HexCoord> householdLocations,
       Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
@@ -1034,9 +1071,10 @@ public final class EconomySeeder {
       List<Map<String, Object>> entriesCopy =
           new ArrayList<>(entries == null ? List.of() : entries);
       entries = Collections.unmodifiableList(entriesCopy);
-      // ★ 市场表：外层的键序 = 逐格（(q,r) 字典序，由 plan 保证）；值是共享的不可变 {@link Market}。
-      markets =
-          Collections.unmodifiableMap(new LinkedHashMap<>(markets == null ? Map.of() : markets));
+      // ★ 市场表：外层的键序 = 逐格（(q,r) 字典序，由 plan 保证）；值是共享的不可变 {@link MarketTable}。
+      marketTables =
+          Collections.unmodifiableMap(
+              new LinkedHashMap<>(marketTables == null ? Map.of() : marketTables));
       // ★ S1：家户 id → 它账所在的格（actor id 不进家户 id；账户 location 由这张表显式带过）。
       householdLocations =
           Collections.unmodifiableMap(
@@ -1113,7 +1151,7 @@ public final class EconomySeeder {
       return jsonOf(
           mapId,
           entries,
-          markets,
+          marketTables,
           governments,
           genesisEndowment,
           genesisMoneyMilliPerCapita,
@@ -1268,7 +1306,7 @@ public final class EconomySeeder {
    * = 本地市场对该格家户直接关门）：
    *
    * <ol>
-   *   <li>该格 {@code Market.numeraire}（{@link #marketFor(CurrencyId)}）；
+   *   <li>该格 {@code MarketTable.numeraire}（{@link #marketFor(CurrencyId)}）；
    *   <li>该格家户（含流民户）与作坊主**工资周转金**的创世钱包币种（{@link #genesisMoney(long, long, CurrencyId)}）。
    * </ol>
    *
@@ -1338,12 +1376,13 @@ public final class EconomySeeder {
    *
    * <pre>{@code
    * {"mapId":"Map1","rulesVersion":"aggregate-v1","entries":[…],
-   *  "markets":{"0_0":{"numeraire":"silver","prices":{"grain":1,"cloth":5,"fiber":1,"tool":20,"iron":10}}, …}}
+   *  "markets":{"single-region":{"numeraire":"silver","hexes":["0_0","0_1"],
+   *                             "prices":{"grain":1,"cloth":5,"fiber":1,"tool":20,"iron":10}}}}
    * }</pre>
    *
-   * ★ <b>键 = {@link HexCoord#toString()} 的规范串</b>（{@code "<q>_<r>"}）—— 本类**不自己拼**那个格式（
-   * "格怎么写成一个串"的唯一拼写点在 {@code HexCoord}）；★ 逐格按 {@code (q,r)} 字典序（{@code LinkedHashMap} 保序） ⇒
-   * 同一份输入两次调用**逐字节**相同。
+   * ★★ <b>W1：键 = 市场 id、值 = {@code {numeraire, hexes, prices}}</b>（逐格价表已退役）—— 全格同币 ⇒ 一张 {@code
+   * single-region}；多币 ⇒ 逐币一张 {@code currency:<币>}（见 {@link #derivedMarketTables}）。★ 格串一律由 {@link
+   * HexCoord#toString()} 给出（本类**不自己拼**那个格式），成员格按 {@code (q,r)} 字典序 ⇒ 同一份输入两次调用 **逐字节**相同。
    *
    * <p>★★ <b>缺格的格 = 没有市场</b>（合法状态）：市场只在"本格有经济 entry"时发出（格集 = 批次落点集合）——
    * "这一格没有市场"与"这一格不存在"是两件事，读口照此回答（{@code ApiViews.economyHex}）。
@@ -1364,7 +1403,7 @@ public final class EconomySeeder {
   static String jsonOf(
       String mapId,
       List<Map<String, Object>> entries,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       Map<GovernmentId, Government> governments,
       Map<CurrencyId, Long> genesisEndowment,
       long genesisMoneyMilliPerCapita,
@@ -1378,8 +1417,8 @@ public final class EconomySeeder {
     payload.put("rulesVersion", productionRuntimeRulesVersion());
     payload.put("entries", entries);
     Map<String, Object> marketNodes = new LinkedHashMap<>();
-    for (Map.Entry<HexCoord, Market> atHex : markets.entrySet()) {
-      marketNodes.put(atHex.getKey().toString(), marketNode(atHex.getValue()));
+    for (Map.Entry<MarketZoneId, MarketTable> atMarket : markets.entrySet()) {
+      marketNodes.put(atMarket.getKey().value(), marketNode(atMarket.getValue()));
     }
     payload.put("markets", marketNodes);
     // ★★ E3：政府与 INITIAL_ENDOWMENT 发行记录（缺省长（ENDOWMENT=零）时只有 governments；旧载荷缺这两个键 ⇒ 空表）。
@@ -1742,9 +1781,14 @@ public final class EconomySeeder {
   }
 
   /** 一格市场的载荷节点：{@code {numeraire, prices}}（键序固定 ⇒ 载荷字节可复现）。 */
-  static Map<String, Object> marketNode(Market market) {
+  static Map<String, Object> marketNode(MarketTable market) {
     Map<String, Object> node = new LinkedHashMap<>();
     node.put("numeraire", market.numeraire().value());
+    List<String> hexes = new ArrayList<>(market.hexes().size());
+    for (HexCoord hex : market.hexes()) {
+      hexes.add(hex.toString()); // ★ 格串的唯一拼写点在 HexCoord（本类不自己拼 "<q>_<r>"）
+    }
+    node.put("hexes", hexes);
     Map<String, Object> prices = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> price : market.prices().entrySet()) {
       prices.put(price.getKey().value(), price.getValue());
@@ -1900,7 +1944,7 @@ public final class EconomySeeder {
    * RATION_MILLI_PER_PERSON} = 10,000 毫粮/人 ⇒ 按挂牌粮价折 **10 毫银**；本值 **12 毫银 = 1.2 倍** （多出的两成是周转余量，见
    * {@link #GENESIS_MONEY_BUFFER_PER_MILLE}）。★ 口径与结算**同源**：口粮毫数取自 {@link
    * EconomyVocabulary#RATION_MILLI_PER_PERSON}（与 {@code 旧结算引擎（R3a 已删除）} 每日需求同一个常量）， 价格换算的 {@code ÷
-   * 1000} 与 {@code Market} 的货款公式**逐字同式**，不是本类另拍的数。
+   * 1000} 与 {@code MarketTable} 的货款公式**逐字同式**，不是本类另拍的数。
    *
    * <p>★★ <b>E3：初始禀赋就是一次显式 INITIAL_ENDOWMENT 发行</b>（GM 代 GOV，发行主体 = 世界级最小政府）。本方法仍只算 <b>每人金额</b>；总量由
    * {@link #genesisEndowmentOf(Map, List)} 对同一份钱包表求和，绝不另算一遍人口。默认值不变， 参数化入口见 {@link
@@ -1936,7 +1980,7 @@ public final class EconomySeeder {
   /**
    * ★★ <b>B1：一个家户的创世钱包，币种可注入</b>（多币种世界：本区法定币）。
    *
-   * <p>★ <b>为什么币种必须与同格的 {@code Market.numeraire} 同源</b>：家户要在**本地市场**买口粮 —— 若它的钱包是银、
+   * <p>★ <b>为什么币种必须与同格的 {@code MarketTable.numeraire} 同源</b>：家户要在**本地市场**买口粮 —— 若它的钱包是银、
    * 而本格市场按铜报价，则每一次买盘都会撞上 I19 的异币具名拒（{@code currency_mismatch}），
    * 这个家户在本地市场上等于没有购买力。故两者由**同一个**逐格函数给出（见 {@code plan(..., numeraireOf)}）。
    *
@@ -3381,8 +3425,12 @@ public final class EconomySeeder {
     // ★★ H4：创世货币禀赋（裁定 K14）走**同一处接缝** —— 与 householdStocks 同一次循环算出、同一份交给
     //   {@link HouseholdSeeder}（两处各算一遍必然漂开）。★ 它是**初始条件**，不是发行：见 {@link #householdMoney}。
     Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
-    // ★★ H4：逐格市场的载荷（M1-A 每格单一计价货币 + 固定价）。本批逐格价格无差异 ⇒ 共享同一个不可变 {@link Market}。
-    Map<HexCoord, Market> markets = new LinkedHashMap<>();
+    // ★★ H4：逐格市场的载荷（M1-A 每格单一计价货币 + 固定价）。本批逐格价格无差异 ⇒ 共享同一个不可变 {@link MarketTable}。
+    // ★★ W1：价表**每区一张**。创世期的区由"计价币"决定：全格同币 ⇒ 一张 {@code single-region}（派生形态，
+    //   与改动前 MarketTopology.singleRegion 的区 id 同源）；多币种 ⇒ 逐币一张（键 = {@code currency:<币>}）。
+    //   持久市场区（三权世界）在创世之后的 economy.DefineMarketZone 命令里落地，届时把这几张按币分组的
+    //   派生价表**改建**到区 id 上（见 EconomyDefineMarketZoneHandler 的改建段）。
+    Map<CurrencyId, Set<HexCoord>> hexesByNumeraire = new LinkedHashMap<>();
     // ★★ H5：逐格逐产业的**经营主体开缸账**（键序 = 产业生成序 = farm → weave → craft ⇒ 内容的纯函数）。
     List<OperatorSeed> operators = new ArrayList<>();
     for (HexCoord hex : hexes) {
@@ -3648,9 +3696,10 @@ public final class EconomySeeder {
       entries.add(entry);
       // ★★ H4：本格的市场（M1-A：每格一个计价货币 + 一张价表）。★ **有 entry 才有市场** ——
       //   "这一格没有市场"（格不在本表的键集里）是合法状态，不是缺数据。
-      //   ★★ B1：计价币取**本格的** {@code numeraire}（多币种世界 = 本区法定币）；老入口缺省恒回银 ⇒ 与
-      //   {@link #MARKET_FACTORY} 逐值相等、载荷逐字节相同。
-      markets.put(hex, marketFor(numeraire));
+      //   ★★ B1：计价币取**本格的** {@code numeraire}（多币种世界 = 本区法定币）；老入口缺省恒回银。
+      //   ★★ W1：逐格价表退役 ⇒ 这里不再逐格建表，只登记"这一格属于哪个币"，由 {@link #derivedMarketTables}
+      //   归组成每币一张派生价表（同一份信息、少 N-1 份逐字相同的表）。
+      hexesByNumeraire.computeIfAbsent(numeraire, ignored -> new LinkedHashSet<>()).add(hex);
     }
     // ★★ P2-C §13.7：政府家户**按调用方给出的政府引用稳定建户**（Social 侧已建好，经济侧只读）。
     //   给了引用（世界级 demo / GOV 单位）⇒ 追加该家户的空行+空账；没给（多国/多省的普通 seed）⇒
@@ -3677,6 +3726,8 @@ public final class EconomySeeder {
     // ★★ P3：INITIAL_ENDOWMENT 的总量取**条件注入之前**的家户+经营者钱包 —— 外部注入的货币走独立
     //   FISCAL_ISSUE 审计（见 applyTestConditions），绝不混进"每人禀赋"这条记录。
     Map<CurrencyId, Long> genesisEndowment = genesisEndowmentOf(householdMoney, operators);
+    // ★★ W1：把"逐格计价币"归组成**每币一张派生价表**（键 = single-region / currency:<币>；成员格 = 该币的全部格）。
+    Map<MarketZoneId, MarketTable> markets = derivedMarketTables(hexesByNumeraire);
     AppliedConditions applied =
         applyTestConditions(mapId, entries, householdStocks, householdMoney, conditions);
     if (LOG.isDebugEnabled()) {
@@ -4310,15 +4361,15 @@ public final class EconomySeeder {
    * S-3/S-11）。给了产出之后：trade 走**同一条**净产入账/关系结算路径，劳动约束由 {@code laborPerUnit} 参与排队。
    *
    * <p>★★ <b>A1 当时的缺省中性（设计书 §5 I-H3）——★ 已被 A2 取代，此处只留痕</b>：A1 时运输服务**没有牌价** （{@code
-   * MARKET_PRICES_FACTORY} 不含它）⇒ 按既有 {@code Market.prices} 口径「缺价 ⇒ 不交易」： {@code MarketDemandBook}
-   * 算出的可寻址需求恒 0 ⇒ 家户不挂运输服务卖单、没有对手方 ⇒ **不产生任何运输服务交易**； {@code LaborQueueBook} 的估值也因缺价恒为 0 （{@code
-   * outputPriced=false} + 净收益 ≤ 0）⇒ trade **照旧不入队**、劳动分配逐值不变。
+   * MARKET_PRICES_FACTORY} 不含它）⇒ 按既有 {@code MarketTable.prices} 口径「缺价 ⇒ 不交易」： {@code
+   * MarketDemandBook} 算出的可寻址需求恒 0 ⇒ 家户不挂运输服务卖单、没有对手方 ⇒ **不产生任何运输服务交易**； {@code LaborQueueBook}
+   * 的估值也因缺价恒为 0 （{@code outputPriced=false} + 净收益 ≤ 0）⇒ trade **照旧不入队**、劳动分配逐值不变。
    *
    * <p>★★★ <b>A2（2026-10-10）更正：牌价已经在表里了 —— 上面那段不再描述现状</b>。{@code MARKET_PRICES_FACTORY} 自 A2 起**含**
    * {@code haul}（出厂价 {@code MARKET_PRICE_HAUL = 4} 毫/商品单位；见 {@link #factoryPrices()} 的末位追加） ⇒
    * 缺省世界里运输服务**是成市的**：{@code trade} 真的产出服务、跨格货单真的派生服务需求并成交（A2 派生需求、 A3 并回标准管线、A5 周期作废）。仍然成立的是那条既有
-   * {@code Market.prices} 口径本身（无牌价格 ⇒ 不交易、逐值退回 M-A1），只是现在只有"未定价 / 被明确设成 0 以外无法删价"的世界才落在那一支；A4 实测真实
-   * world 里"无牌价世界" **构造不出**（GM 无删价路径、{@code commodityIds} 读词表）——见 A4 账本 §Q6。
+   * {@code MarketTable.prices} 口径本身（无牌价格 ⇒ 不交易、逐值退回 M-A1），只是现在只有"未定价 / 被明确设成 0 以外无法删价"的世界才落在那一支；A4
+   * 实测真实 world 里"无牌价世界" **构造不出**（GM 无删价路径、{@code commodityIds} 读词表）——见 A4 账本 §Q6。
    *
    * <p>★ {@code capacity} 会在 {@code ownershipStakesOf(plan, mainCapacity)} 出口物化成 {@code owner =
    * operator} 的 {@code OWNED} CATTLE 份额（trade 没有家户副 unit 的配额 ⇒ 不拆分、整额给商号本金主）。

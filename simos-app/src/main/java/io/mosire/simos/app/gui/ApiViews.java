@@ -67,7 +67,8 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -1399,7 +1400,7 @@ public final class ApiViews {
     view.put("moneyByHouseholdClass", moneyByClass);
     // ★★ H4：**本格的市场**（M1-A：单一计价货币 + 固定价表）；★ 该格没有市场 ⇒ {@code null}（**合法状态**：
     //   "这一格没有市场"与"这一格读不到数据"是两件事，前者要能在界面上看见）。★ 视图只**读**，不重算价表。
-    view.put("market", marketView(data.markets().get(coord)));
+    view.put("market", marketView(MarketTables.atOrNull(data, coord)));
     // ★★ R4-E2：**需求账本**只读视图（本格相关：HEX 范围命中本格 + HOUSEHOLD 范围住在该格的家户）。
     //   ★ 与订单路径同一份状态（{@code EconomyData.demands()}），视图不重算摊分；{@code effective} 由当前 tick 现判。
     view.put("demands", demandViews(data, coord, tick));
@@ -1871,7 +1872,7 @@ public final class ApiViews {
     view.put("importDemand", unmet);
     // ④ 有效购买力缺口：该格全部账本按本格粮价能买到的量（**上限**，见下面的 caveat）。
     //   ★ M2.6：另给一栏按 ask（买方限价）算的更紧上限 —— 两者都只是账本级上限，不是市场的有效需求。
-    Market market = data.markets().get(coord);
+    MarketTable market = MarketTables.atOrNull(data, coord);
     Long price = market == null ? null : market.prices().get(GRAIN);
     Long ask = market == null ? null : market.askPriceOf(GRAIN);
     CurrencyId numeraire = market == null ? null : market.numeraire();
@@ -1974,7 +1975,8 @@ public final class ApiViews {
 
   /** ★★ E6c：资产市值没有可信口径的具名原因（唯一拼写点）。 */
   private static final String DASHBOARD_ASSET_MARKET_VALUE_UNAVAILABLE =
-      "资产市值/非粮折粮没有可信价格口径（Market 只服务商品现货、LiquidationPolicy 的政策价不是市值）" + "⇒ dashboard 只报实物数量，不折算成粮/钱";
+      "资产市值/非粮折粮没有可信价格口径（MarketTable 只服务商品现货、LiquidationPolicy 的政策价不是市值）"
+          + "⇒ dashboard 只报实物数量，不折算成粮/钱";
 
   /** ★★ E6c：HouseholdEconomy.debts 引用悬空的具名原因（唯一拼写点）。 */
   private static final String DASHBOARD_DEBT_REF_DANGLING =
@@ -4420,10 +4422,10 @@ public final class ApiViews {
    * {"grain":1,"cloth":5,…}}}。
    *
    * <p>★★ <b>只读、不重算</b>（AGENT.md §8.3：视图装配只在 {@code ApiViews}，且**没有第二个价表拼写点**）： 计价货币与价格都直接取自 {@link
-   * Market}（它们是 economy 侧从创世载荷读进来的**数据**，GM 可调，信条十二）。 ★ 键序走 {@link #sortedCommodities}（字典序）⇒
+   * MarketTable}（它们是 economy 侧从创世载荷读进来的**数据**，GM 可调，信条十二）。 ★ 键序走 {@link #sortedCommodities}（字典序）⇒
    * 响应字节是内容的纯函数。 ★ <b>该格没有市场 ⇒ {@code null}</b>：那是**合法状态**（缺格的格没有市场），不是缺数据。
    */
-  private static Map<String, Object> marketView(Market market) {
+  private static Map<String, Object> marketView(MarketTable market) {
     if (market == null) {
       return null;
     }

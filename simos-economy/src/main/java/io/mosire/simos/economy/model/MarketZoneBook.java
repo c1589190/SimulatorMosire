@@ -81,6 +81,27 @@ public final class MarketZoneBook {
     return java.util.Collections.unmodifiableSet(ids);
   }
 
+  /**
+   * ★★ <b>W1：当日视图版的 {@link #zoneOfHex(EconomyData, HexCoord)}</b> —— 日循环内部（{@code EconomyDayView}）
+   * 与段级（{@code EconomyData} 自己实现该接口）共用同一处"这一格属于哪个区"。
+   */
+  public static Optional<MarketZone> zoneOfHex(EconomyDayView data, HexCoord hex) {
+    Objects.requireNonNull(data, "data");
+    Objects.requireNonNull(hex, "hex");
+    for (MarketZone zone : zones(data.marketZones())) {
+      if (zone.hexes().contains(hex)) {
+        return Optional.of(zone);
+      }
+    }
+    return Optional.empty();
+  }
+
+  /** ★ 区表版的规范序（{@link #zones(Map)} 的同一拼写点）：给"手里只有一张区表"的调用方。 */
+  public static List<MarketZone> zones(EconomyDayView data) {
+    Objects.requireNonNull(data, "data");
+    return zones(data.marketZones());
+  }
+
   /** 某个 hex 所属的区（成员格 = 唯一权威；不属于任何区 ⇒ 空 —— "没有区"是合法状态，不是故障）。 */
   public static Optional<MarketZone> zoneOfHex(EconomyData data, HexCoord hex) {
     Objects.requireNonNull(data, "data");

@@ -536,7 +536,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             "households",
             economy.classes().size(),
             "markets",
-            economy.markets().size(),
+            economy.marketTables().size(),
             "debtContracts",
             economy.debtContracts().size()));
 
@@ -1080,7 +1080,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 "finalDebtContracts",
                 currentEconomy.debtContracts().size(),
                 "finalMarkets",
-                currentEconomy.markets().size()));
+                currentEconomy.marketTables().size()));
         if (govActive) {
           if (!missingAdminRegions.isEmpty()) {
             // ★ 行政区域缺失是数据面异常：保留 WARN 档，只换新形态与来源字段。

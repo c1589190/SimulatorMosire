@@ -4,11 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.log.EventLog;
@@ -131,12 +132,21 @@ public final class EconomyDefineMarketZoneHandler
             "锚格必须在成员格里（它是本区的取价点）: anchor=" + definition.anchor(),
             base);
       }
-      if (!base.markets().containsKey(definition.anchor())) {
+      // ★★ W1：锚格必须有市场（"说不出本区按什么钱报价"这条拒绝语义逐字保留）—— 新形状下"有市场的格"
+      //   由 ①持久区成员格 ②派生价表成员格 给出；本命令只建**新区**，故只看派生价表。
+      MarketTable anchorSource = null;
+      for (MarketTable table : base.marketTables().values()) {
+        if (table.hexes().contains(definition.anchor())) {
+          anchorSource = table;
+          break;
+        }
+      }
+      if (anchorSource == null) {
         return rejected(
             "anchor-missing-market",
             definition,
             definition.anchor(),
-            "锚格没有市场行（说不出本区按什么钱报价；先 economy.SetMarketPrice 在该格建市场）: " + definition.anchor(),
+            "锚格没有市场（说不出本区按什么钱报价；先 economy.Seed 播种该格，或把它并入一个已有的区）: " + definition.anchor(),
             base);
       }
       CurrencyId legalTender = new CurrencyId(definition.legalTender());
@@ -163,23 +173,66 @@ public final class EconomyDefineMarketZoneHandler
               base);
         }
       }
+      // ★★ W1（逐格 → 逐区）：新区的价表由"这些格原来所在的那张派生价表"改建而来 ⇒ 三件事必须成立：
+      //   ① 每张被改到的派生价表的计价币 = 本区法定币（否则是静默换汇，I17）；② 被改到的派生价表的价目
+      //   必须彼此一致（新区只有一张表，冲突无法同时成立）；③ 改完之后该派生的剩余成员格（若有）另成一张表。
+      Set<MarketZoneId> sourceIds = new LinkedHashSet<>();
       for (HexCoord hex : definition.hexes()) {
-        Market market = base.markets().get(hex);
-        if (market != null && !market.numeraire().equals(legalTender)) {
+        for (Map.Entry<MarketZoneId, MarketTable> entry : base.marketTables().entrySet()) {
+          if (entry.getValue().hexes().contains(hex)) {
+            sourceIds.add(entry.getKey());
+          }
+        }
+      }
+      Map<CommodityId, Long> zonePrices = null;
+      for (MarketZoneId sourceId : sourceIds) {
+        MarketTable source = base.marketTables().get(sourceId);
+        if (!source.numeraire().equals(legalTender)) {
           return rejected(
               "numeraire-mismatch",
               definition,
-              hex,
-              "格 "
-                  + hex
+              definition.anchor(),
+              "格所属的市场 "
+                  + sourceId.value()
                   + " 的计价币是 "
-                  + market.numeraire().value()
+                  + source.numeraire().value()
                   + "，与本区法定币 "
                   + legalTender.value()
-                  + " 不一致（同一格上不许有两种\"这格用什么钱\"；先 economy.SetMarketNumeraire）",
+                  + " 不一致（同一片地方不许有两种\"这里用什么钱\"；先 economy.SetMarketNumeraire）",
+              base);
+        }
+        if (zonePrices == null) {
+          zonePrices = source.prices();
+        } else if (!zonePrices.equals(source.prices())) {
+          return rejected(
+              "prices-differ",
+              definition,
+              definition.anchor(),
+              "本区要覆盖的格来自多张价表且价目不同（每区只能有一张价表，冲突无法同时成立）：市场 "
+                  + sourceId.value()
+                  + " 的价目与另一张不一致；先 economy.SetMarketPrice 把它们调成同一张",
               base);
         }
       }
+      // ★ 新区自己一张表（成员格 = 空：持久形态的成员格权威是 MarketZone.hexes）；
+      //   来源派生表把本区的格摘走，摘空即删（不留"零成员格的派生市场"——那是坏形状）。
+      //   ★★ W1d：价目可能是**空表**（要覆盖的格在改动前就不在任何价表里）⇒ 那个区**不交易任何商品**
+      //      （设计书 §4.2 N-4 的口径），这是合法目标态，不是"缺表"。表仍要建：本命令的契约是"区 + 它的表"
+      //      一次落地（表在、价目空 = 明确不交易；两件事在读数与结算上等价，但形状上"表在"让 V 形态可分辨）。
+      Map<MarketZoneId, MarketTable> marketTables = new LinkedHashMap<>(base.marketTables());
+      for (MarketZoneId sourceId : sourceIds) {
+        MarketTable source = marketTables.get(sourceId);
+        Set<HexCoord> remaining = new LinkedHashSet<>(source.hexes());
+        remaining.removeAll(definition.hexes());
+        if (remaining.isEmpty()) {
+          marketTables.remove(sourceId);
+        } else {
+          marketTables.put(sourceId, source.withHexes(remaining));
+        }
+      }
+      marketTables.put(
+          zoneId,
+          new MarketTable(legalTender, Set.of(), zonePrices == null ? Map.of() : zonePrices));
       MarketZone zone =
           new MarketZone(
               zoneId,
@@ -190,7 +243,12 @@ public final class EconomyDefineMarketZoneHandler
               Map.of());
       Map<MarketZoneId, MarketZone> zones = new LinkedHashMap<>(base.marketZones());
       zones.put(zoneId, zone);
-      EconomyData projected = base.withMarketZones(zones);
+      // ★★ W1d（2026-10-11）：**区表与价表同一次落地**（原子写口）—— 拆成两个单组件 wither 时中间态会被
+      //   构造期跨表守卫拒掉（`withMarketZones` 先 ⇒ 新区的表还没进；`withMarketTables` 先 ⇒ 该键还不是区、
+      //   被读成"派生市场必须有成员格"）。W1 正是踩在这条上：`economy.DefineMarketZone` 恒被自己的守卫拒成
+      //   `contract-violation`（W1c 账本 §四-2 的调用序证据），三国世界的市场区播种因此整条走不通。
+      //   ★ 目标态不变：新区 + 它的表（计价币 = 该区法定币、成员格 = 空）与来源派生表的摘格在同一次构造里成立。
+      EconomyData projected = base.withMarketZonesAndTables(zones, marketTables);
       logDefined(zone, base.marketZones().size(), projected.marketZones().size());
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {

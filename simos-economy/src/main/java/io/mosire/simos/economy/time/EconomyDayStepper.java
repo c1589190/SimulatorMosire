@@ -126,7 +126,7 @@ public final class EconomyDayStepper implements AutoCloseable {
     this(
         base,
         accounts,
-        MarketTopology.singleHex(base.markets()),
+        MarketTopology.singleHex(base.marketTables(), base.marketZones()),
         EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
         EconomySettlement.FAMINE_MORTALITY_PER_MILLE,
         EconomyParallelism.singleThreaded());

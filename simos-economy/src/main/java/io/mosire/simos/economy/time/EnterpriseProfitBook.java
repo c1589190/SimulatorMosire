@@ -14,7 +14,7 @@ import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
@@ -58,7 +58,7 @@ import org.slf4j.Logger;
  * <p>★★ <b>货币口径（A2b 2026-10-08 收口；I24 / M7-⑤）</b>：每个组织<b>只有一个本币</b>，收入/成本都只按那一种钱计 ——
  *
  * <pre>
- * 本币 = 该组织所在格市场的 Market.numeraire()（权威、状态里可读）
+ * 本币 = 该组织所在格市场的 MarketTable.numeraire()（权威、状态里可读）
  *      说不出（该格没有市场）⇒ 取本周期**该组织**出现过的货币腿里规范串最小的币种（一次性预扫、确定性的）
  * 其他币种的腿 ⇒ **既不相加（改前的 Σ全部币种 = 跨币种 1:1）也不折算（世界无汇率）**，
  *                 逐笔走 DEBUG ECONOMY_ENTERPRISE_FOREIGN_CURRENCY_EXCLUDED 具名排除
@@ -435,7 +435,7 @@ public final class EnterpriseProfitBook {
       Map<ProductionUnitId, ProductionProcess> units,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<IndustryId, Industry> industries,
-      Map<HexCoord, Market> markets,
+      MarketIndex markets,
       AccountSession accounts) {
     Objects.requireNonNull(cycle, "cycle");
     Objects.requireNonNull(enterprises, "organizations");
@@ -685,7 +685,7 @@ public final class EnterpriseProfitBook {
    * ★★ <b>A2b（I24 / M7-⑤）：逐组织定下唯一本币</b>（一次预扫，确定性；见类注的货币口径）。
    *
    * <pre>
-   * ① 该组织所在格有市场 ⇒ 本币 = Market.numeraire()（状态权威；本组织所有腿都用它）
+   * ① 该组织所在格有市场 ⇒ 本币 = MarketTable.numeraire()（状态权威；本组织所有腿都用它）
    * ② 该格没有市场 ⇒ 本币 = 本周期该组织出现过的货币腿里**规范串最小**的币种（没有货币腿 ⇒ 无本币）
    * </pre>
    *
@@ -696,7 +696,7 @@ public final class EnterpriseProfitBook {
       Map<ActorRef, HouseholdId> householdByActor,
       Map<HouseholdId, ProductionEnterprise> orgByHousehold,
       Map<ProductionOrganizationId, HexCoord> hexOfOrg,
-      Map<HexCoord, Market> markets) {
+      MarketIndex markets) {
     Map<ProductionOrganizationId, CurrencyId> chosen = new LinkedHashMap<>();
     Map<ProductionOrganizationId, CurrencyId> canonical = new LinkedHashMap<>();
     for (ProductionLedger ledger : cycle.ledgers()) {
@@ -805,7 +805,7 @@ public final class EnterpriseProfitBook {
       ProductionOrganizationId orgId,
       Map<CommodityId, Long> goods,
       HexCoord hex,
-      Map<HexCoord, Market> markets) {
+      MarketIndex markets) {
     long[] row = acc.get(orgId);
     if (row == null || goods.isEmpty()) {
       return;
@@ -834,7 +834,7 @@ public final class EnterpriseProfitBook {
       Map<ProductionUnitId, ProductionProcess> units,
       Map<ProductionUnitId, ProductionEnterprise> orgByUnit,
       Map<ProductionOrganizationId, HexCoord> hexOfOrg,
-      Map<HexCoord, Market> markets,
+      MarketIndex markets,
       CycleAccumulator cycle) {
     if (goods == null || goods.isEmpty()) {
       return;
@@ -881,11 +881,11 @@ public final class EnterpriseProfitBook {
   }
 
   private static long goodsValue(
-      long quantityMilli, CommodityId commodity, HexCoord hex, Map<HexCoord, Market> markets) {
+      long quantityMilli, CommodityId commodity, HexCoord hex, MarketIndex markets) {
     if (commodity == null || hex == null || quantityMilli <= 0L) {
       return 0L;
     }
-    Market market = markets.get(hex);
+    MarketTable market = markets.at(hex);
     if (market == null) {
       return 0L; // 没有本地 ref 价 ⇒ 不折毫（宁缺勿造；缺口写收口报告）
     }
@@ -897,8 +897,8 @@ public final class EnterpriseProfitBook {
     return Math.multiplyExact(quantityMilli, price) / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
   }
 
-  private static CurrencyId currencyOf(HexCoord hex, Map<HexCoord, Market> markets) {
-    Market market = hex == null ? null : markets.get(hex);
+  private static CurrencyId currencyOf(HexCoord hex, MarketIndex markets) {
+    MarketTable market = markets.at(hex);
     return market == null ? null : market.numeraire();
   }
 }

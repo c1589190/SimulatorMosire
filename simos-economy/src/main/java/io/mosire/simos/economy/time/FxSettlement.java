@@ -10,12 +10,13 @@ import io.mosire.simos.economy.api.fx.FxVenue;
 import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
@@ -116,7 +117,9 @@ final class FxSettlement {
    * @return 本轮的外汇读数（没有市场 ⇒ {@link FxRoundResult#none()}；有市场但无事发生 ⇒ 空读数，与 {@code none()} 逐值等价）
    */
   static FxRoundResult match(
-      MarketSettlement.MarketRound round, Map<HexCoord, Market> markets, MarketTopology topology) {
+      MarketSettlement.MarketRound round,
+      Map<MarketZoneId, MarketTable> markets,
+      MarketTopology topology) {
     FxRoundInput input = round.fx();
     if (input == null || markets.isEmpty()) {
       return FxRoundResult.none();
@@ -318,7 +321,7 @@ final class FxSettlement {
    */
   private static HouseholdPlan planHouseholdOrders(
       MarketSettlement.MarketRound round,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> markets,
       MarketTopology topology,
       Map<String, List<Order>> books) {
     if (!hasMultipleCurrencies(round, markets)) {
@@ -329,7 +332,10 @@ final class FxSettlement {
         HouseholdPurchasingPower.zoneTables(markets, topology);
     Map<String, List<HouseholdId>> rowsByHex =
         EconomySettlement.rowsByHex(round.householdEconomies());
-    List<HexCoord> hexes = new ArrayList<>(markets.keySet());
+    List<HexCoord> hexes = new ArrayList<>();
+    for (MarketRegion region : topology.regions()) {
+      hexes.addAll(region.members()); // ★ W1：有市场的格 = 拓扑成员格（改动前 = marketTables.keySet()）
+    }
     hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
     Set<HouseholdId> participants = new LinkedHashSet<>();
     Set<String> touchedPairs = new LinkedHashSet<>();
@@ -639,9 +645,9 @@ final class FxSettlement {
    * 早退门：单币世界里连"最强币"都不必问（结构性的逐值不变，而不是"算出来恰好相等"）。
    */
   static boolean hasMultipleCurrencies(
-      MarketSettlement.MarketRound round, Map<HexCoord, Market> markets) {
+      MarketSettlement.MarketRound round, Map<MarketZoneId, MarketTable> markets) {
     CurrencyId first = null;
-    for (Market market : markets.values()) {
+    for (MarketTable market : markets.values()) {
       if (first == null) {
         first = market.numeraire();
       } else if (!first.equals(market.numeraire())) {

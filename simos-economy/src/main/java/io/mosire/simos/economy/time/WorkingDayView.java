@@ -23,12 +23,12 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketRoundStats;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
 import java.util.Objects;
@@ -86,8 +86,8 @@ final class WorkingDayView implements EconomyDayView {
   }
 
   @Override
-  public Map<HexCoord, Market> markets() {
-    return sheet.marketsOrBase();
+  public Map<MarketZoneId, MarketTable> marketTables() {
+    return sheet.marketTablesOrBase();
   }
 
   @Override
@@ -136,6 +136,11 @@ final class WorkingDayView implements EconomyDayView {
   @Override
   public Map<MarketZoneId, MarketZone> marketZones() {
     return sheet.base().marketZones();
+  }
+
+  @Override
+  public Map<MarketZoneId, MarketRoundStats> marketRoundStats() {
+    return sheet.marketRoundStatsOrBase();
   }
 
   @Override

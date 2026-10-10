@@ -6,7 +6,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
@@ -27,7 +27,7 @@ import java.util.OptionalLong;
  *
  * <ol>
  *   <li><b>估值顺序</b>：先看调用方给的<b>单个家户价目表</b>（{@link HouseholdPriceTable}；当前正式状态没有这个字段 ⇒ 调用方传 {@code
- *       null}）；该户没有对应价格时，回落该户所在<b>市场区默认价目表</b>（{@link Market#prices()}）；
+ *       null}）；该户没有对应价格时，回落该户所在<b>市场区默认价目表</b>（{@link MarketTable#prices()}）；
  *   <li><b>任意 medium ↔ 任意 {@link DebtUnit} 的折算</b>：commodity ↔ commodity、commodity ↔ money、money ↔
  *       money；缺任一侧价格 ⇒ 该 medium 对这条债具名不可折算（{@link PaymentPlan#unpricedAssets()}），调用方据此跳下一条， <b>不静默当
  *       0</b>。
@@ -36,7 +36,7 @@ import java.util.OptionalLong;
  * <p>★★ <b>共同尺度（唯一拼写点）</b>：一个单位的共同价值 {@code unitValue} 定义成
  *
  * <pre>
- * Commodity(c) = price(c)                 // 毫 numeraire / 商品单位（与 Market.prices 同量纲）
+ * Commodity(c) = price(c)                 // 毫 numeraire / 商品单位（与 MarketTable.prices 同量纲）
  * Money(cur)   = 1000                     // 仅当 cur == 价目表 numeraire；1 商品单位 = 1000 毫商品
  * </pre>
  *
@@ -44,7 +44,7 @@ import java.util.OptionalLong;
  * unitValue(debt)⌋}。这条式子同时给出本类类注里那四条既有算式：粮价 {@code price(grain)} 作为分母把共同尺度落回“毫粮等值”时，商品债为 {@code
  * principal × price(c) / price(grain)}、 货币债为 {@code principal × 1000 / price(grain)}（D-030 §3.4）。
  *
- * <p>★★ <b>量纲与整数口径</b>（与 {@link Market#prices()} 一致；1 商品单位 = {@value
+ * <p>★★ <b>量纲与整数口径</b>（与 {@link MarketTable#prices()} 一致；1 商品单位 = {@value
  * EconomyVocabulary#MILLI_PER_COMMODITY_UNIT} 毫商品）：
  *
  * <pre>
@@ -54,10 +54,11 @@ import java.util.OptionalLong;
  * 同商品 / 同币种                                  :  1:1（identity，不需要价目表）
  * </pre>
  *
- * <p>★★ <b>防 1000 倍错（量纲写死）</b>：{@link Market#prices()} 的价格 p 是<b>毫 numeraire / 1 商品单位</b>，而 1 商品单位
- * = {@value EconomyVocabulary#MILLI_PER_COMMODITY_UNIT} 毫商品；本类的 {@code quantity/amount/principal}
- * 又全是<b>毫</b>单位。所以商品价直接取 {@code price(c)}（不是 {@code price(c)/1000}），货币的“单位价”取 1000 —— 两条腿的毫数量乘各自的
- * unitValue 后才是同一量纲；{@code 商品↔货币} 的 1000 因子正是从 “1 商品单位 = 1000 毫商品”来的。
+ * <p>★★ <b>防 1000 倍错（量纲写死）</b>：{@link MarketTable#prices()} 的价格 p 是<b>毫 numeraire / 1 商品单位</b>，而 1
+ * 商品单位 = {@value EconomyVocabulary#MILLI_PER_COMMODITY_UNIT} 毫商品；本类的 {@code
+ * quantity/amount/principal} 又全是<b>毫</b>单位。所以商品价直接取 {@code price(c)}（不是 {@code
+ * price(c)/1000}），货币的“单位价”取 1000 —— 两条腿的毫数量乘各自的 unitValue 后才是同一量纲；{@code 商品↔货币} 的 1000 因子正是从 “1
+ * 商品单位 = 1000 毫商品”来的。
  *
  * <p>★ <b>identity 腿为什么不需要价格</b>：粮还粮、银还银是"原物原还"，不是折算；没有市场的格子里这笔债也必须能还。
  *
@@ -246,7 +247,8 @@ public final class DebtValuation {
    * <p>返回空 = 不可定价（market 缺、缺 grain 价、缺该单位价）。{@code amount == 0} ⇒ 返回 0（已结清的历史合同不再占 unpriced）。本方法是
    * {@link DebtCapacityBook#marketPriceLookup(Map)} 的唯一算式来源。
    */
-  public static OptionalLong grainEquivalentMilli(long amountMilli, DebtUnit unit, Market market) {
+  public static OptionalLong grainEquivalentMilli(
+      long amountMilli, DebtUnit unit, MarketTable market) {
     Objects.requireNonNull(unit, "unit 不得为 null");
     if (amountMilli < 0L) {
       throw new IllegalArgumentException("grainEquivalentMilli 的 amount 不得为负: " + amountMilli);
@@ -275,7 +277,7 @@ public final class DebtValuation {
       long amountMilli,
       DebtUnit unit,
       HouseholdId debtor,
-      Market market,
+      MarketTable market,
       HouseholdPriceTable householdPrices) {
     Objects.requireNonNull(unit, "unit 不得为 null");
     Objects.requireNonNull(debtor, "debtor 不得为 null");
@@ -328,7 +330,7 @@ public final class DebtValuation {
       HouseholdId debtor,
       List<DebtUnit> mediumOrder,
       Map<DebtUnit, Long> availableByUnit,
-      Market market,
+      MarketTable market,
       HouseholdPriceTable householdPrices) {
     Objects.requireNonNull(unit, "DebtValuation.choosePayment 的 unit 不得为 null");
     Objects.requireNonNull(debtor, "DebtValuation.choosePayment 的 debtor 不得为 null");
@@ -409,7 +411,8 @@ public final class DebtValuation {
    * ★★ <b>旧 P11.1 入口（兼容保留）</b>：给一笔债挑一组"能付得最多"的实际介质腿。
    *
    * <p>它按旧顺序构造介质表（合同单位 identity → 其它商品 id 升序 → 币种 id 升序）后委托给上面的 {@link #choosePayment(long,
-   * DebtUnit, HouseholdId, List, Map, Market, HouseholdPriceTable)}，因此旧调用方行为不变； 生产偿还路径使用显式介质序的重载。
+   * DebtUnit, HouseholdId, List, Map, MarketTable, HouseholdPriceTable)}，因此旧调用方行为不变；
+   * 生产偿还路径使用显式介质序的重载。
    *
    * @param outstandingPrincipal 合同未偿本金（合同计价单位；必须 &gt; 0）
    * @param unit 合同计价口径（商品 / 货币）
@@ -426,7 +429,7 @@ public final class DebtValuation {
       HouseholdId debtor,
       Map<CommodityId, Long> availableGoods,
       Map<CurrencyId, Long> availableMoney,
-      Market market,
+      MarketTable market,
       HouseholdPriceTable householdPrices) {
     Objects.requireNonNull(unit, "DebtValuation.choosePayment 的 unit 不得为 null");
     Objects.requireNonNull(debtor, "DebtValuation.choosePayment 的 debtor 不得为 null");
@@ -511,7 +514,7 @@ public final class DebtValuation {
   /** 已解析的价目表视图：家户表优先、否则市场默认；两者计价货币不同 ⇒ 不混用（缺价 ⇒ 0 = 无价格）。 */
   private record Pricing(
       CurrencyId numeraire,
-      Market market,
+      MarketTable market,
       HouseholdPriceTable householdPrices,
       HouseholdId household) {
 
@@ -533,7 +536,7 @@ public final class DebtValuation {
   }
 
   private static Pricing resolvePricing(
-      HouseholdId debtor, Market market, HouseholdPriceTable householdPrices) {
+      HouseholdId debtor, MarketTable market, HouseholdPriceTable householdPrices) {
     CurrencyId numeraire = market == null ? null : market.numeraire();
     if (householdPrices != null) {
       numeraire =

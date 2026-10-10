@@ -75,7 +75,7 @@ class PortPolicyMerchantLaneAcceptanceTest {
       MerchantCapacityPool pool,
       PortEnforcementInput enforcement) {
     MarketSettlementFixtures.Round round =
-        MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
+        MarketSettlementFixtures.round(world, world.defaultsOf());
     MarketSettlementFixtures.Round injected =
         MarketSettlementFixtures.withPortInputs(round, enforcement, null, null);
     return MarketSettlementFixtures.settleWithPool(world, injected, pool);
@@ -236,8 +236,13 @@ class PortPolicyMerchantLaneAcceptanceTest {
         .as("未成交归因分布逐值（= 不含政策门控族）")
         .isEqualTo(noPolicy.report().unfilledReasonCounts());
     assertThat(openPolicy.report().priceUpdates()).isEqualTo(noPolicy.report().priceUpdates());
-    assertThat(openPolicy.markets().get(MarketSettlementFixtures.H1).prices())
+    assertThat(
+            MarketSettlementFixtures.tableAt(
+                    openPolicy, openPolicyWorld, MarketSettlementFixtures.H1)
+                .prices())
         .as("下一轮价格表逐值")
-        .isEqualTo(noPolicy.markets().get(MarketSettlementFixtures.H1).prices());
+        .isEqualTo(
+            MarketSettlementFixtures.tableAt(noPolicy, noPolicyWorld, MarketSettlementFixtures.H1)
+                .prices());
   }
 }

@@ -2,7 +2,10 @@ package io.mosire.simos.economy.time;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.api.id.MarketZoneId;
+import io.mosire.simos.economy.api.market.MarketZone;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>区内市场规则（设计书 §15/§16 降级后）</b>：只保留<b>收税</b>一类条目 —— 逐区施加一次。它是<b>纯值类型</b>—— 不落盘、不进 {@code
@@ -19,15 +23,16 @@ import java.util.Objects;
  * <p>★★ <b>2026-10-10 大删（用户裁定，设计书 §16）</b>：本类原有七项条目，只留下"收税"：
  *
  * <ul>
- *   <li>{@code referencePrices}（区级参考价覆盖）—— <b>删</b>：定价只看逐格 {@link Market#prices()}（"有没有定价" = {@link
- *       Market#hasPrice}），不再有区级统一定价这一层；
+ *   <li>{@code referencePrices}（区级参考价覆盖）—— <b>删</b>：定价只看逐格 {@link MarketTable#prices()}（"有没有定价" =
+ *       {@link MarketTable#hasPrice}），不再有区级统一定价这一层；
  *   <li>{@code open}（关市）—— <b>删</b>：用户原话"市场你说关就关？没有这种事"；
  *   <li>{@code rules}（制度标签）—— <b>删</b>：只读标签，零行为；
  *   <li>{@code quotaPerWindow}（配额）—— <b>删</b>：用户原话"配额也删了"，连同 {@link MarketSettlement.MatchContext}
  *       的逐区配额表与扣减点一并撤；
  *   <li>{@code bidPerMille}/{@code askPerMille}（区级限价覆盖）—— <b>删</b>：用户原话"限价让政府决策人自己操控政府账户高价买低价卖，
- *       低价政府不可能直接限制住的"。★ 逐格价表自己的限价（{@link Market#BID_PER_MILLE}/{@link Market#ASK_PER_MILLE} 与
- *       {@link Market#bidPriceOf}/{@link Market#askPriceOf}）<b>保留不动</b>—— 那是市场自身的价差，不是区级管制。
+ *       低价政府不可能直接限制住的"。★ 逐格价表自己的限价（{@link MarketTable#BID_PER_MILLE}/{@link
+ *       MarketTable#ASK_PER_MILLE} 与 {@link MarketTable#bidPriceOf}/{@link
+ *       MarketTable#askPriceOf}）<b>保留不动</b>—— 那是市场自身的价差，不是区级管制。
  * </ul>
  *
  * <p>★★ <b>缺省语义中性（I-C2）</b>：{@link #tariffPerUnit} 空 ⇒ {@link #defined()} 为 false ⇒ 不产生任何税费读数 ⇒
@@ -62,9 +67,13 @@ public record MarketRegulation(HexCoord anchor, Map<CommodityId, Long> tariffPer
    *
    * <p>★ 它只做"锚格在哪"这一件事：单区语义（全部市场格归一个区）由 {@link MarketTopology#singleRegion} 承担； 本方法不猜币种、不拆区。
    */
-  public static MarketRegulation defaultsFor(Map<HexCoord, Market> markets) {
+  public static MarketRegulation defaultsFor(
+      Map<MarketZoneId, MarketTable> markets, Map<MarketZoneId, MarketZone> marketZones) {
     Objects.requireNonNull(markets, "markets");
-    HexCoord anchor = canonicalFirst(markets.keySet());
+    Objects.requireNonNull(marketZones, "marketZones");
+    // ★ W1：锚格 = 全部"有市场的格"的规范序第一个（持久形态看区成员格，派生形态看价表成员格）。
+    Set<HexCoord> hexes = MarketTables.allMarketHexes(markets, marketZones);
+    HexCoord anchor = canonicalFirst(hexes);
     return anchor == null ? none() : defaults(anchor);
   }
 

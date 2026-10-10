@@ -15,7 +15,7 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OperatorCondition.IndustryStatus;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -314,7 +314,7 @@ final class OperatorSettlement {
       SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
-      Map<HexCoord, Market> markets,
+      MarketIndex markets,
       Set<ProductionUnitId> closingUnits,
       Map<ProductionUnitId, Boolean> inputShortfallByUnit) {
     List<Exit> exits = new ArrayList<>();
@@ -384,7 +384,7 @@ final class OperatorSettlement {
       //   而"有钱"这件事必须按本币问：外币不能垫本币的下一周期投入（世界没有汇率 ⇒ 不能折算）。
       //   ★ 说不出本币（该 unit 的 hex 解析不出/该格没有市场）⇒ 记 0 并具名 DEBUG，**不**跨币种求和兜底。
       HexCoord hex = IndustryHexKeys.hexKeyOf(industry.id()).map(HexCoord::parse).orElse(null);
-      Market bookMarket = hex == null ? null : markets.get(hex);
+      MarketTable bookMarket = markets.at(hex);
       CurrencyId bookCurrency = bookMarket == null ? null : bookMarket.numeraire();
       long cash = cashOf(household, bookCurrency, householdMoney);
       if (household != null) {

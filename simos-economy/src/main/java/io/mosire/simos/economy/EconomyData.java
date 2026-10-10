@@ -66,7 +66,9 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketRoundStats;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -184,16 +186,24 @@ import java.util.Set;
  * 行的当前视图住在 {@code HouseholdEconomy.view}。⇒ "这个产业有哪些行"不再由键的产业段回答，而由**劳动配额表**推（{@code 旧结算引擎（R3a
  * 已删除）.householdKeysOf}，唯一拼写点）—— 一个家户给两个产业出劳动时，它<b>只有一行</b>（V9/I1.2）。
  *
- * <p>★★ **{@code markets} 是第 9 个组件**（H4；裁定 M1-A）：键 = {@link HexCoord}（**格**），值 = {@link Market}
- * （每格**单一计价货币** + 一张商品价格表）。★ 三条口径：
+ * <p>★★ <b>{@code marketTables} 是第 9 个组件</b>（H4；裁定 M1-A；★★ <b>W1 起每区一张</b>）：键 = {@link
+ * MarketZoneId}（**市场**：持久形态 = 区 id；派生形态 = 派生市场 id），值 = {@link MarketTable} （本市场**单一计价货币** + 成员格 +
+ * 一张商品价格表）。★ 四条口径：
  *
  * <ol>
- *   <li><b>缺格 = 该格没有市场</b>（合法状态，不抛）：结算对它什么都不做 —— 不造默认价、不猜一种货币；
- *   <li><b>键是格而不是市场 id</b>：本批的市场就是"某格的现货池"（同格供需直接撮合，见 {@code MarketSettlement}）， 多一个 {@code
- *       MarketId} 只会多一处可以漂开的身份（{@code MarketId} 那个契约留给"跨格市场节点"的后续增量）；
+ *   <li><b>缺键 = 那个市场没有价表</b> —— ★★ 2026-10-11 W1d：持久形态下这也是一种<b>合法状态</b>（"缺表 = 该区不交易任何商品"， 照设计书 §4.2
+ *       N-4 的"没有这一行 = 不交易该商品"同一条语义；W1 引入的"每个区必须有价表"守卫已删，理由见构造期那一节）。 派生形态下空表 = 世上没有市场。★ 所有读点对缺表一律
+ *       fail-closed 到"不交易"（{@code MarketTables.at} 返回空、 {@code MarketIndex.at} 返回 {@code
+ *       null}、拓扑不装配该区），**不抛、不 NPE、不造默认价**；
+ *   <li>★★ <b>键是市场而不是格</b>（W1 的形状变更）：改动前它是逐格的（键 = {@code HexCoord}）⇒ 同一区里每格各存一份"逐字
+ *       相同"的价表，而区内撮合实际只取锚格那一份 —— 存储与语义长期不一致，还养出 {@code adaptPrices} 的"逐成员对齐"补丁。
+ *       现在"这一格按什么价报价"由**本格所属市场**回答（{@code MarketTables.at} 的唯一拼写点），区内任何格取价一致是**结构上必然**；
+ *   <li><b>成员格与计价币的权威按形态给</b>：持久区看 {@code marketZones} 的 {@code hexes}/{@code legalTender}（I22
+ *       单一权威）； 派生市场看价表条目自己的 {@code hexes}/{@code numeraire}（那一形态下没有 {@code MarketZone} 可问）； ★ <b>键
+ *       ∈ 区表 ⇒ 计价币必须逐值等于该区 {@code legalTender}</b>（构造期守卫判死漂开）—— "区 + 它的价表" 要成对变化时走 {@link
+ *       #withMarketZonesAndTables}（原子写口，中间态不经过守卫）；
  *   <li>★ <b>它不含任何数量</b>：价格是数据、供需是每周期现算的（{@code MarketSettlement} 从家户账的会话工作副本读） ——
- *       市场表里没有"本期成交量"这类会过期的读数（读数在当天的 {@code ProductionLedger} 里；★ M2.7 的逐区读数是 {@code MarketReadout}
- *       在**读时**用它 + 进程内 {@code MarketReport} 现算的，同样不落进本切片）。
+ *       市场表里没有"本期成交量"这类会过期的读数（★ W1 起**市场轮统计簿**是本表的独立组件 {@code marketRoundStats}）。
  * </ol>
  *
  * <p>★★ **{@code shipments} 是第 10 个组件**（M2.4）：键 = {@link ShipmentId}，值 = {@link
@@ -306,7 +316,7 @@ public record EconomyData(
     Map<HouseholdId, FlowRow> flows,
     Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
     Map<ProductionUnitId, ProductionRules> relations,
-    Map<HexCoord, Market> markets,
+    Map<MarketZoneId, MarketTable> marketTables,
     Map<ShipmentId, ShipmentBatch> shipments,
     Map<AssetShareId, OwnershipStake> assetShares,
     Map<ProductionUnitId, OperatorCondition> operatorConditions,
@@ -356,7 +366,14 @@ public record EconomyData(
     //   ★ 空表 = 旧世界形态（没有任何授权 ⇒ 国库户在市场上零订单 ⇒ 与 Z7b 逐值同行为，I-P8）。
     //   ★ 它不是政策层/补贴层（用户 §1.3 明确禁止）：不改价格、不改成本、不豁免任何市场规则，
     //     订单仍走既有的 家户→订单→撮合→结算 全链路。
-    Map<MarketMandateId, GovernmentMarketMandate> govMarketMandates)
+    Map<MarketMandateId, GovernmentMarketMandate> govMarketMandates,
+    // ── ★★ W1（2026-10-10）第 40 个组件：市场轮统计簿 ────────────────────────────────────────
+    //   键 = 市场 id（区 / 派生市场），值 = 该市场的三段固定窗口（最近一轮明细 + 本周期累计 + 上周期累计）。
+    //   ★ 它是**纯读数**（写入在市场轮结算之后，不参与任何撮合/定价判定）；窗口固定 ⇒ 状态不随天数增长。
+    //   ★ 空表 = 这个档还没有过任何市场轮（合法状态；新世界第一轮之前）。
+    //   ★ 与 marketTables 的关系：**不要求**键在 marketTables 里 —— 市场被撤（ClearRegion/Merge）之后，
+    //     它的历史统计仍是历史事实（读口按键直取，不做"键必须仍存在"的守卫）。
+    Map<MarketZoneId, MarketRoundStats> marketRoundStats)
     implements EconomyDayView {
 
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
@@ -407,7 +424,7 @@ public record EconomyData(
       Map<HouseholdId, FlowRow> flows,
       Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
       Map<ProductionUnitId, ProductionRules> relations,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> marketTables,
       Map<ShipmentId, ShipmentBatch> shipments,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
@@ -436,7 +453,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -479,7 +496,7 @@ public record EconomyData(
       Map<HouseholdId, FlowRow> flows,
       Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
       Map<ProductionUnitId, ProductionRules> relations,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> marketTables,
       Map<ShipmentId, ShipmentBatch> shipments,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
@@ -512,7 +529,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -540,6 +557,7 @@ public record EconomyData(
         Map.of(),
         Map.of(),
         Map.of(),
+        Map.of(),
         Map.of());
   }
 
@@ -562,7 +580,7 @@ public record EconomyData(
       Map<HouseholdId, FlowRow> flows,
       Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
       Map<ProductionUnitId, ProductionRules> relations,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> marketTables,
       Map<ShipmentId, ShipmentBatch> shipments,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
@@ -593,7 +611,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -621,6 +639,7 @@ public record EconomyData(
         Map.of(),
         Map.of(),
         Map.of(),
+        Map.of(),
         Map.of());
   }
 
@@ -638,7 +657,7 @@ public record EconomyData(
       Map<HouseholdId, FlowRow> flows,
       Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
       Map<ProductionUnitId, ProductionRules> relations,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> marketTables,
       Map<ShipmentId, ShipmentBatch> shipments,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
@@ -666,7 +685,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -693,6 +712,8 @@ public record EconomyData(
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -974,8 +995,8 @@ public record EconomyData(
     }
     // ★ 空表 = **全归 residualOwner 的等价路径**（裁定 E9）：没有规则不是坏数据，是"全部自留"。
     // ★ 第 9 个组件（H4）：同一口径（缺键 ⇒ 空表 = 世界上一个市场都没有，见类注释）。
-    if (markets == null) {
-      markets = Map.of();
+    if (marketTables == null) {
+      marketTables = Map.of(); // 归一方向：缺表 = 没有任何市场（见类注）
     }
     Map<IndustryId, Industry> industriesCopy = new LinkedHashMap<>();
     for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
@@ -1280,18 +1301,20 @@ public record EconomyData(
                 + unit.operator());
       }
     }
-    // ── 第 9 个组件：市场表（H4；每格一个现货市场）──────────────────────────────────────
-    //   ★ 键 = 格（{@link HexCoord}）；**缺格 = 该格没有市场**（合法状态 —— 结算对它什么都不做，见 Market 的类注）。
+    // ── 第 9 个组件：市场价表（H4；★★ W1 起**每区一张**：键 = 市场区 id / 派生市场 id）──────────────────
+    //   ★ 键 = {@link MarketZoneId}；**缺键 = 那个市场没有价表**（持久形态下"区必须有价表"由下面的跨表守卫判死）。
     //   ★ 只判 null 与结构：**价格是数据**（GM 可调），这里没有"价格该是多少""哪些商品该有价"的判据 ——
     //     那些是 GM 的判断（信条十二），不是状态类型的守卫。
-    Map<HexCoord, Market> marketsCopy = new LinkedHashMap<>();
-    for (Map.Entry<HexCoord, Market> entry : markets.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("markets 的键与值都不得为 null: " + entry.getKey());
-      }
-      marketsCopy.put(entry.getKey(), entry.getValue());
+    //   ★ 迭代序归一成规范序（{@link MarketTables#frozen}）：内容相同的状态必须给出同一个逐区序（I7）。
+    if (marketTables == null) {
+      marketTables = Map.of();
     }
-    markets = Collections.unmodifiableMap(marketsCopy); // ★ 冻在赋值处
+    for (Map.Entry<MarketZoneId, MarketTable> entry : marketTables.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("marketTables 的键与值都不得为 null: " + entry.getKey());
+      }
+    }
+    marketTables = MarketTables.frozen(marketTables); // ★ 规范序 + 冻在赋值处
     // ── 第 10 个组件：在途批次表（M2.4；跨 tick 状态）───────────────────────────────────────
     //   ★ 键 = {@link ShipmentId}（{@code sh-<day>-<seq>}）；**缺键 = 这个世界的货物都在账上、没有在途**（合法状态）。
     //   ★ 它在到货日由日循环销账、在发运日由区域撮合建账；到货前目的地**消费不到它**（判据落在这一维）。
@@ -1394,7 +1417,8 @@ public record EconomyData(
         }
       } else {
         HexCoord hex = demand.hex().orElseThrow();
-        if (!hexRegistered(industriesCopy, householdEconomiesCopy, markets, hex)) {
+        if (!hexRegistered(
+            industriesCopy, householdEconomiesCopy, marketTables, marketZones, hex)) {
           throw new IllegalArgumentException(
               "HEX 范围的需求指名的格没有经济状态（该格不存在/未播种，也不在任何市场键里）: " + demand.id().value() + " → " + hex);
         }
@@ -1955,6 +1979,62 @@ public record EconomyData(
       marketZonesCopy.put(zoneId, zone);
     }
     marketZones = Collections.unmodifiableMap(marketZonesCopy); // ★ 冻在赋值处
+    // ── ★★ W1：两张市场表之间的跨表守卫（"一个 hex 属于哪个市场"只许有一个答案）────────────────────────
+    //   ① 键在区表里的价表条目：计价币必须逐值等于本区法定币（★ 双权威合并：法定币是唯一权威，
+    //      价表这一栏是它的投影，漂开即拒）；成员格必须为空（成员格权威是该区，I22）；
+    //   ② 任何价表条目的成员格都不得已被某个区覆盖（区成员格的市场由**该区**的条目给定）——
+    //      否则"这一格的价"会有两张表同时声称拥有它；
+    //   ③ 持久形态下、键不是区的条目 = **派生市场**（今天 MarketTopology 兜底单格区的对应物）：
+    //      它的成员格就是它的 hexes（必须非空），不得与任何区成员格重叠（由 ② 判死）；
+    //   ④ 派生形态（区表为空）下所有条目都是派生市场 ⇒ hexes 必须非空
+    //      （"有市场的格"没有别的来源）。
+    //   ★★ 2026-10-11 W1d（控制方裁定）：**"每个持久区必须有价表条目"这条守卫已删除** —— 按设计书 §4.2
+    //      N-4 的口径，"缺表 = 该区不交易任何商品"，与"表里没有这一行 = 不交易该商品"是同一条语义。
+    //      ★ 为什么必须删：守卫在 compact 构造器里 ⇒ 每次 with*() 都重跑它 ⇒ "区 + 它的价表必须成对变化"
+    //      的命令路径（划界/并区/改计价币）在**中间态**被自己的守卫拒掉，`economy.DefineMarketZone` 恒失败
+    //      （W1c 账本 §四-2 的实测证据链）。缺表是可表达、可读出的合法状态（读点一律 fail-closed 到"不交易"），
+    //      不再需要"一次构造里同时给表"。原子写口见 {@link #withMarketZonesAndTables}。
+    for (Map.Entry<MarketZoneId, MarketTable> entry : marketTables.entrySet()) {
+      MarketZoneId tableId = entry.getKey();
+      MarketTable table = entry.getValue();
+      MarketZone zone = marketZones.get(tableId);
+      if (zone != null) {
+        if (!table.numeraire().equals(zone.legalTender())) {
+          throw new IllegalArgumentException(
+              "市场 "
+                  + tableId.value()
+                  + " 的价表计价币与区法定币不一致（双权威未合并）：价表="
+                  + table.numeraire().value()
+                  + "，法定币="
+                  + zone.legalTender().value());
+        }
+        if (!table.hexes().isEmpty()) {
+          throw new IllegalArgumentException(
+              "持久形态下价表的成员格必须为空（成员格权威 = MarketZone.hexes，I22）：市场="
+                  + tableId.value()
+                  + "，价表成员格数="
+                  + table.hexes().size());
+        }
+      } else if (table.hexes().isEmpty()) {
+        throw new IllegalArgumentException(
+            "派生市场（键不在市场区表里）必须有成员格（它是\"有市场的格\"的唯一来源）：市场=" + tableId.value());
+      }
+      for (HexCoord hex : table.hexes()) {
+        MarketZoneId owner = hexOwner.get(hex);
+        if (owner != null) {
+          throw new IllegalArgumentException(
+              "价表的成员格已被市场区覆盖（该格的价只能由该区的条目给）：市场="
+                  + tableId.value()
+                  + "，hex="
+                  + hex
+                  + "，区="
+                  + owner.value());
+        }
+      }
+    }
+    // ★★ 2026-10-11 W1d：这里原有"每个持久区必须有价表条目"的循环（W1 引入）—— **已删**（见上面的口径注）。
+    //   缺表的区是合法状态：`MarketTables.at`/`MarketIndex.at`/`MarketTopology` 一律把它读成"不交易"，
+    //   不抛、不 NPE、不造默认价；`MarketTables.allMarketHexes` 也不把它的成员格算进"有市场的格"。
     // ── 第 38 个组件：商品基础运费表（约束设计书 §4.1 修正版；不变量 I-F1/I-F3）──────────────────────
     //   ★ 守卫只有一条：**值域 ≥ 0**（0 = 明确的"该商品免基础费"，不是"说不出价"；单位运费仍被 max(1,…) 抬到 1）。
     //     键域（必须是词表里的商品）在 GM 命令边界判 —— 状态层不反查词表，旧档/夹具因此能带任意商品键而不炸。
@@ -2019,6 +2099,18 @@ public record EconomyData(
       govMarketMandatesCopy.put(mandateId, mandate);
     }
     govMarketMandates = Collections.unmodifiableMap(govMarketMandatesCopy); // ★ 冻在赋值处
+    // ── ★★ W1（第 40 个组件）：市场轮统计簿 ────────────────────────────────────────────────
+    //   ★ 只判 null 与结构 + 归一成**规范序**（迭代序 = 内容的纯函数，I7）；**不**判"键必须在 marketTables 里"
+    //     —— 市场被撤之后它的历史统计仍是历史事实（见 record 头的组件注释）。
+    if (marketRoundStats == null) {
+      marketRoundStats = Map.of();
+    }
+    for (Map.Entry<MarketZoneId, MarketRoundStats> entry : marketRoundStats.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("marketRoundStats 的键与值都不得为 null: " + entry.getKey());
+      }
+    }
+    marketRoundStats = MarketRoundStats.frozen(marketRoundStats); // ★ 规范序 + 冻在赋值处
     // ── E4a 第 25 个组件：质押（Pledge）基础形状 ─────────────────────────────────────────────
     //   ★ 旧档缺键 ⇒ 空表（上面已归一）；空表整体 no-op。
     //   ★ 守卫按“对侧已提供”分段生效（与 E1/E2 的引用完整性同款）：合同表/资产份额表为空 = 该侧尚未提供
@@ -2338,7 +2430,8 @@ public record EconomyData(
   private static boolean hexRegistered(
       Map<IndustryId, Industry> industries,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<HexCoord, Market> markets,
+      Map<MarketZoneId, MarketTable> marketTables,
+      Map<MarketZoneId, MarketZone> marketZones,
       HexCoord hex) {
     String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
     for (IndustryId id : industries.keySet()) {
@@ -2351,7 +2444,21 @@ public record EconomyData(
         return true;
       }
     }
-    return markets.containsKey(hex);
+    // ★★ W1：价表按**区**存之后，"这一格有市场"= 这一格在任一张价表的成员格里（派生形态），
+    //   或属于某个市场区（持久形态 —— 区成员格都有本区价表，见 MarketTable 的类注）。
+    for (MarketTable table : marketTables.values()) {
+      if (table.hexes().contains(hex)) {
+        return true;
+      }
+    }
+    if (marketZones != null) {
+      for (MarketZone zone : marketZones.values()) {
+        if (zone.hexes().contains(hex)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -2417,7 +2524,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -2445,7 +2552,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2458,7 +2566,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -2486,7 +2594,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2499,7 +2608,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -2527,7 +2636,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -2543,7 +2653,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -2571,7 +2681,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -2584,7 +2695,7 @@ public record EconomyData(
         value,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -2612,7 +2723,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   public EconomyData withLaborCommitments(
@@ -2625,7 +2737,7 @@ public record EconomyData(
         flows,
         laborCommitments,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -2653,7 +2765,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2666,7 +2779,7 @@ public record EconomyData(
         flows,
         allocations,
         value,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -2694,7 +2807,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -2703,7 +2817,62 @@ public record EconomyData(
    * <p>★ <b>它是"GM 定价格"的唯一写入口</b>（铁律 2：所有修改最终表示为 Command → ChangeSet → Revision）——
    * 本批还没有"设价"命令，故它现在只被载荷（创世播种）与用例用到；命令留待 GM 参数目录落地。
    */
-  public EconomyData withMarkets(Map<HexCoord, Market> value) {
+  /**
+   * ★★ <b>W1：市场轮统计簿的唯一写入形态</b>（每个市场轮结束时由 {@code EconomySettlement} 调一次）。
+   *
+   * <p>★ 手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug，铁律 5 的由来） ⇒ 所有写入都必须走本方法。
+   */
+  public EconomyData withMarketRoundStats(Map<MarketZoneId, MarketRoundStats> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        marketTables,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency,
+        currencies,
+        moneyInstruments,
+        marketZones,
+        householdDebtRefs,
+        commodityFreightBaseMilli,
+        govMarketMandates,
+        value);
+  }
+
+  /**
+   * ★★ <b>W1：价表的唯一写入形态</b>（键 = 市场 id；每区一张）。
+   *
+   * <p>★ 手写 {@code new EconomyData(…)} 会在下一次新增组件时静默丢掉某个组件（本仓最贵的那类 bug，铁律 5 的由来） ⇒ 所有只改价表的写入都必须走本方法。
+   *
+   * <p>★★ <b>什么时候<b>不能</b>单用它</b>（2026-10-11 W1d）：当这次变更同时要动<b>区表</b>（新建区 / 撤区 / 改法定币）时，
+   * 中间态会被构造期的跨表守卫拒掉（"区在、价表不在"或"价表计价币 ≠ 区法定币"）—— 那种"区 + 它的价表成对变化"的场景走 {@link
+   * #withMarketZonesAndTables}。★ 反过来说：<b>只改价表</b>（改价、改某些行的价目）时中间态自洽，本方法就是正确入口。
+   */
+  public EconomyData withMarketTables(Map<MarketZoneId, MarketTable> value) {
     return new EconomyData(
         meta,
         industries,
@@ -2740,13 +2909,14 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
    * ★★ <b>第 10 个组件（M2.4）：在途批次表</b>；其余 29 个组件原样带过（全表共 30 个组件）。
    *
-   * <p>★ 与 {@link #withMarkets} 同款：它是"跨 tick 状态"的唯一写入口（在日循环的到货销账与发运建账里被调用）， 不是 GM 命令面。
+   * <p>★ 与 {@link #withMarketTables} 同款：它是"跨 tick 状态"的唯一写入口（在日循环的到货销账与发运建账里被调用）， 不是 GM 命令面。
    */
   public EconomyData withShipments(Map<ShipmentId, ShipmentBatch> value) {
     return new EconomyData(
@@ -2757,7 +2927,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         value,
         assetShares,
         operatorConditions,
@@ -2785,7 +2955,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -2797,7 +2968,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         value,
         operatorConditions,
@@ -2825,7 +2996,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2838,7 +3010,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         value,
@@ -2866,7 +3038,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2879,7 +3052,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -2907,7 +3080,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2920,7 +3094,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -2948,7 +3122,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2961,7 +3136,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -2989,7 +3164,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3002,7 +3178,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3030,7 +3206,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3043,7 +3220,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3071,7 +3248,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3084,7 +3262,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3112,7 +3290,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3135,7 +3314,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3163,7 +3342,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3177,7 +3357,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3205,7 +3385,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3219,7 +3400,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3247,7 +3428,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3260,7 +3442,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3288,7 +3470,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3301,7 +3484,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3329,7 +3512,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -3342,7 +3526,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3370,7 +3554,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3387,7 +3572,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3415,7 +3600,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3433,7 +3619,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3461,7 +3647,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3479,7 +3666,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3507,7 +3694,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3525,7 +3713,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3553,7 +3741,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3571,7 +3760,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3599,7 +3788,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3618,7 +3808,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3646,7 +3836,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3665,7 +3856,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3693,7 +3884,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3712,7 +3904,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3740,7 +3932,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /** {@link ProductionUnitId#idOf} 的固定前缀（唯一拼写点；用来识别"这看起来是一个 unit id"）。 */
@@ -3786,7 +3979,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3814,7 +4007,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3832,7 +4026,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3860,7 +4054,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3881,7 +4076,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3909,7 +4104,75 @@ public record EconomyData(
         value,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
+  }
+
+  /**
+   * ★★ <b>W1d（2026-10-11）：市场区表与价表（第 36/9 两个组件）的成对写口</b>；其余 38 个组件原样带过（全表共 40 个组件）。
+   *
+   * <p>★★ <b>为什么必须成对</b>：两条跨表守卫把这两张表锁在一起 —— ① 键 ∈ 区表的价表条目，其 {@code numeraire} 必须逐值等于该区 {@code
+   * legalTender}；② 该条目的 {@code hexes} 必须为空、且不得覆盖已属某区的格。两条都在 {@code EconomyData} 的 <b>compact
+   * 构造器</b>里，而<b>每一次</b> {@code with*()} 都会重新构造并重跑它们 ⇒ "新建区 + 给它一张表" / "撤区 + 摘掉它的表" / "改区法定币 +
+   * 改价表计价币"这三种变更，若拆成两个单组件 wither， <b>没有任何合法中间态</b>：
+   *
+   * <ul>
+   *   <li>{@code withMarketZones(新区)} 先调 ⇒ 该区的表还没进 ⇒ 被读成"区没有价表"（W1d 前是硬拒；W1d 起缺表合法， 但下一个 wither
+   *       前的中间态仍然不是目标态，且若同时还要摘掉旧条目就出现了瞬时不一致）；
+   *   <li>{@code withMarketTables(新表)} 先调 ⇒ 该键还不是区 ⇒ 被读成<b>派生市场</b> ⇒ 撞"派生市场必须有成员格"；
+   *   <li>改计价币时拆开 ⇒ 中间态是"新币的价表 + 旧法定币的区" ⇒ 撞"价表计价币必须等于该区法定币"。
+   * </ul>
+   *
+   * <p>⇒ 与 {@link #withClassStructuresAndPositions}、{@code EconomyClearRegionHandler} 末尾的"classes +
+   * memberships 同一次规范构造"<b>同款</b>：把两个互相约束的组件一次改变。★ <b>它不是第二套状态</b>：两个参数就是那两个既有组件， 最终仍走同一个 canonical
+   * 构造器与全部守卫（含上面那两条）—— 只是让"目标态"而不是"中间态"接受检查。
+   *
+   * <p>★ 调用方（本批三个）：{@code economy.DefineMarketZone}（立区 + 它的表）、{@code economy.MergeMarketZones} （撤源区
+   * + 摘它的表）、{@code economy.SetMarketNumeraire}（改法定币 + 改价表计价币）。
+   *
+   * @param zones 新的市场区表（键 = 区 id；空表 = 派生形态）
+   * @param tables 新的价表（键 = 市场 id；含全部派生市场条目与全部持久区的条目）
+   */
+  public EconomyData withMarketZonesAndTables(
+      Map<MarketZoneId, MarketZone> zones, Map<MarketZoneId, MarketTable> tables) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        tables,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency,
+        currencies,
+        moneyInstruments,
+        zones,
+        householdDebtRefs,
+        commodityFreightBaseMilli,
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3931,7 +4194,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -3959,7 +4222,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         value,
-        govMarketMandates);
+        govMarketMandates,
+        marketRoundStats);
   }
 
   /**
@@ -3982,7 +4246,7 @@ public record EconomyData(
         flows,
         allocations,
         relations,
-        markets,
+        marketTables,
         shipments,
         assetShares,
         operatorConditions,
@@ -4010,7 +4274,8 @@ public record EconomyData(
         marketZones,
         householdDebtRefs,
         commodityFreightBaseMilli,
-        value);
+        value,
+        marketRoundStats);
   }
 
   /** 币种表里全部 id 的可读清单（拒因/诊断用；保序）。 */

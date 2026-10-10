@@ -19,7 +19,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -101,16 +101,17 @@ public final class DebtCapacityBook {
    * ★★ <b>从市场价目表构造的债务折粮 lookup</b>——D-030 §3.4 的<b>唯一拼写点</b>。
    *
    * <p>价格来源 = {@code marketByHousehold} 给该债务人家户的市场；公式复用 {@link
-   * DebtValuation#grainEquivalentMilli(long, DebtUnit, Market)}（毫粮等值），因此与偿还侧的任意 medium 折算是同一套价目表
-   * 口径。家户没有市场、没有 grain 价、没有该单位价 ⇒ 返回负数（该债计 unpriced；该户新信用 fail-closed）。
+   * DebtValuation#grainEquivalentMilli(long, DebtUnit, MarketTable)}（毫粮等值），因此与偿还侧的任意 medium
+   * 折算是同一套价目表 口径。家户没有市场、没有 grain 价、没有该单位价 ⇒ 返回负数（该债计 unpriced；该户新信用 fail-closed）。
    *
    * @param marketByHousehold 家户 → 其所在市场区默认价目表（缺键或值 null = 没有价目表）
    */
-  public static DebtUnitValueLookup marketPriceLookup(Map<HouseholdId, Market> marketByHousehold) {
+  public static DebtUnitValueLookup marketPriceLookup(
+      Map<HouseholdId, MarketTable> marketByHousehold) {
     Objects.requireNonNull(marketByHousehold, "marketByHousehold 不得为 null");
     return debt -> {
       Objects.requireNonNull(debt, "debt 不得为 null");
-      Market market = marketByHousehold.get(debt.debtor());
+      MarketTable market = marketByHousehold.get(debt.debtor());
       return DebtValuation.grainEquivalentMilli(debt.principal(), debt.unit(), market).orElse(-1L);
     };
   }
