@@ -6331,7 +6331,6 @@ final class MarketSettlement {
         logFreightCurrencyUnvalued(ctx, buy, sell, route);
         return 0L;
       }
-      long nominalFreight = freightOf(quantity, unitFreight);
       // ★★ M-A2：本 lane 的**运力需求口径**（数量 × 距离，沿用既有运费算式；承运成本项取 0）——报价口径下
       //   按它扣提供者的运力预算，也按它把"该家户这一份需求要多少运力"记进本轮需求簿（K-A/K-B/K-5）。
       //   缺省口径（无报价）⇒ 1:1（M-A1 的毫商品口径）⇒ 逐值不变。

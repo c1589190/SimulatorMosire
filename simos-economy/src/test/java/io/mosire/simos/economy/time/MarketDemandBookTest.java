@@ -105,8 +105,9 @@ class MarketDemandBookTest {
             new MarketReport.Unfilled(
                 ACTOR, true, GRAIN, quantity, MarketUnfilledReason.NO_BUDGET, H)),
         List.of(),
-        0L,
-        0L,
+        // ★★ P-T4（2026-10-10）：两个运费读数改为**逐币表**（禁跨币种求和，I-C10）⇒ 夹具给空表。
+        Map.of(),
+        Map.of(),
         0L,
         0,
         0,

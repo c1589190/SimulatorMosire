@@ -6,6 +6,7 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -14,20 +15,25 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.market.MarketNode;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.DefaultProductionModes;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.TransportTariff;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -124,12 +130,108 @@ final class MarketSettlementFixtures {
     private final Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods = new LinkedHashMap<>();
     private final Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney = new LinkedHashMap<>();
 
+    /** ★★ M-A1（2026-10-10）：跑商家户的阶层归属与位置表（运力池的两张输入表；缺省空 ⇒ 无运力池）。 */
+    private final Map<HouseholdId, HouseholdClassMembership> classStandings = new LinkedHashMap<>();
+
+    private final Map<ClassPositionId, ProductionRole> classPositions = new LinkedHashMap<>();
+
+    /** ★★ P-T1a：显式声明的市场区（zoneId → 锚格）。空 ⇒ 沿用单区（既有 5 个用例的行为一字不改）。 */
+    private final Map<String, HexCoord> regions = new LinkedHashMap<>();
+
+    /**
+     * ★★ <b>声明一个市场区</b>（P-T1a/P-T1b 的跨区用例）：一旦声明了 ≥1 个区，{@code build()} 走 {@link MarketTopology#of}
+     * 的多区装配（每个锚格的半径 = 0 ⇒ 逐格各归其区），并且<b>区 id 就是注入表的区键</b> （组合根 {@code
+     * MarketTopologyBook.byPersistentZones} 的口径）。
+     */
+    Builder region(String zoneId, HexCoord anchor) {
+      if (zoneId == null || zoneId.isBlank()) {
+        throw new IllegalArgumentException("区 id 不得为空白");
+      }
+      regions.put(zoneId, Objects.requireNonNull(anchor, "anchor"));
+      return this;
+    }
+
     Builder market(HexCoord hex, long grainPrice) {
       return market(hex, grainMarket(grainPrice));
     }
 
     Builder market(HexCoord hex, Market market) {
       markets.put(Objects.requireNonNull(hex, "hex"), Objects.requireNonNull(market, "market"));
+      return this;
+    }
+
+    /**
+     * ★★ <b>一个只提供运力的跑商家户</b>（M-A1：运力 = 派生量 = 劳动 + 工具；不再有商号行）。
+     *
+     * <p>它<b>不参与商品市场</b>：0 人口 + 空自然需求 + 空商品账 + 空货币账 ⇒ 不生成买单也不生成卖单，只在 {@link #settleWithCarriers}
+     * 里进运力池。工具存量 ≥ {@code MerchantHaul.TOOL_MILLI_PER_HAUL} 是跑商门槛。
+     */
+    Builder carrier(HouseholdId id, HexCoord hex, long laborMilli, long toolMilli) {
+      dormant(id, hex);
+      laborOf(id, laborMilli);
+      ClassPositionId position = ClassPositionId.parse("merchant-fixture:" + id.value());
+      classPositions.putIfAbsent(
+          position,
+          new ProductionRole(
+              position,
+              DefaultProductionModes.MERCHANT,
+              "跑商（夹具）",
+              ProductionRole.RelationToMeans.MIXED,
+              ProductionRole.LaborRole.ORGANIZER,
+              ProductionRole.SurplusRole.SURPLUS_RECEIVER,
+              Map.of()));
+      classStandings.put(
+          id,
+          new HouseholdClassMembership(
+              id, position, position, Set.of(), Map.of(), 0L, 0L, "fixture:carrier"));
+      goods.put(id, new LinkedHashMap<>(Map.of(MerchantCapacityPool.TOOL_COMMODITY, toolMilli)));
+      return this;
+    }
+
+    /**
+     * ★★ <b>一个"睡着"的家户</b>：已登记（账户主体只有家户 ⇒ 国库户必须是家户）、不参与商品市场 （0 人口 / 空需求 / 空商品账 / 空货币账 ⇒
+     * 不生成任何订单）。服务"国库户"这类只收钱的账户主体。
+     */
+    Builder dormant(HouseholdId id, HexCoord hex) {
+      Objects.requireNonNull(id, "id");
+      Objects.requireNonNull(hex, "hex");
+      rows.put(
+          id,
+          new HouseholdEconomy(
+              id,
+              new CohortKey(hex, ResidenceKind.RURAL, new SocialClassId("official")),
+              0L,
+              0L,
+              0,
+              0L,
+              Map.of(),
+              Map.of(),
+              0L));
+      goods.put(id, new LinkedHashMap<>());
+      money.put(id, new LinkedHashMap<>());
+      frozenGoods.put(id, new LinkedHashMap<>());
+      frozenMoney.put(id, new LinkedHashMap<>());
+      unmetToday.put(id, new LinkedHashMap<>());
+      householdOfActor.put(HouseholdActors.of(id), id);
+      return this;
+    }
+
+    /** ★ 承运家户的劳动投入（M-A1 的运力来源之一；工具走商品账）。 */
+    Builder laborOf(HouseholdId id, long laborMilli) {
+      HouseholdEconomy row = rows.get(id);
+      Objects.requireNonNull(row, "laborOf 的家户必须先登记: " + id);
+      rows.put(
+          id,
+          new HouseholdEconomy(
+              id,
+              row.view(),
+              row.population(),
+              laborMilli,
+              1_000,
+              row.money(),
+              row.naturalNeeds(),
+              row.effectiveDemand(),
+              row.cycleNaturalNeedMilli()));
       return this;
     }
 
@@ -189,13 +291,7 @@ final class MarketSettlementFixtures {
       if (markets.isEmpty()) {
         throw new IllegalStateException("夹具至少需要一个市场格");
       }
-      MarketTopology topology =
-          MarketTopology.singleRegion(
-              markets,
-              markets.keySet(),
-              hex -> 1,
-              (from, to) -> 0,
-              TransportTariff.probeDefaults());
+      MarketTopology topology = topology();
       return new World(
           markets,
           topology,
@@ -216,7 +312,40 @@ final class MarketSettlementFixtures {
           operatorGoods,
           operatorMoney,
           operatorFrozenGoods,
-          operatorFrozenMoney);
+          operatorFrozenMoney,
+          classStandings,
+          classPositions);
+    }
+
+    /** ★★ <b>拓扑：没声明区 ⇒ 单区（既有 5 个用例逐值不变）；声明了区 ⇒ 逐锚格半径 0 的多区</b> （每个市场格各归其区，区 id = 注入表的区键）。 */
+    private MarketTopology topology() {
+      if (regions.isEmpty()) {
+        return MarketTopology.singleRegion(
+            markets, markets.keySet(), hex -> 1, (from, to) -> 0, TransportTariff.probeDefaults());
+      }
+      List<MarketNode> nodes = new ArrayList<>();
+      for (Map.Entry<String, HexCoord> entry : regions.entrySet()) {
+        HexCoord anchor = entry.getValue();
+        Market market = markets.get(anchor);
+        if (market == null) {
+          throw new IllegalStateException("区锚格没有市场表条目（该区不构成可交易区）: " + anchor);
+        }
+        nodes.add(
+            new MarketNode(
+                entry.getKey(),
+                anchor,
+                0,
+                market.numeraire(),
+                io.mosire.simos.economy.api.money.MoneyVocabulary.SILVER_SPECIE.id()));
+      }
+      return MarketTopology.of(
+          nodes,
+          markets,
+          markets.keySet(),
+          hex -> 1,
+          (from, to) -> 0,
+          hex -> 0,
+          TransportTariff.probeDefaults());
     }
   }
 
@@ -241,7 +370,9 @@ final class MarketSettlementFixtures {
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
-      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney) {
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
+      Map<HouseholdId, HouseholdClassMembership> classStandings,
+      Map<ClassPositionId, ProductionRole> classPositions) {
 
     long grainOf(HouseholdId household) {
       return goods.getOrDefault(household, Map.of()).getOrDefault(GRAIN, 0L);
@@ -249,6 +380,11 @@ final class MarketSettlementFixtures {
 
     long silverOf(HouseholdId household) {
       return money.getOrDefault(household, Map.of()).getOrDefault(SILVER, 0L);
+    }
+
+    /** ★ M-A1：本世界按"派生运力"装配的运力池（没有 carrier ⇒ 空池 ⇒ 跨格车道不建）。 */
+    MerchantCapacityPool carrierPool() {
+      return MerchantCapacityPool.of(classStandings, classPositions, rows, goods);
     }
   }
 
@@ -306,6 +442,47 @@ final class MarketSettlementFixtures {
   static MarketSettlement.MarketOutcome settle(World world, Round round) {
     return MarketSettlement.clearOncePerCycle(
         world.markets(), round.round(), MarketTrigger.PERIODIC, world.topology());
+  }
+
+  /**
+   * ★★ <b>M-A1：带派生运力池的结算入口</b>（有 {@code carrier(...)} 的世界走这一条）。
+   *
+   * <p>与 {@link #settle} 的唯一差别 = 运力池非空 ⇒ 跨格/跨区车道**建得起来**（否则具名 {@code LOGISTICS_CAPACITY}
+   * 拦下，一个字都不成交）。纯商号集合传空 ⇒ 谁都不豁免运费（本批用例不测免运费，那是 M-C 的判据）。
+   */
+  static MarketSettlement.MarketOutcome settleWithCarriers(World world, Round round) {
+    return MarketSettlement.clearOncePerCycle(
+        world.markets(),
+        round.round(),
+        MarketTrigger.PERIODIC,
+        world.topology(),
+        EconomyParallelism.singleThreaded(),
+        world.carrierPool(),
+        Set.of());
+  }
+
+  /**
+   * ★★ <b>P-T1a/P-T1b/P-T1d：把逐轮瞬态的口岸/税/优先级入参注入这一轮</b>（三者都是 {@code MarketRound} 的 wither， 缺省 {@code
+   * null} = 不注入 = 那一面逐值退回改前行为）。
+   *
+   * <p>★ 三个输入<b>分开注入</b>（闸 / 税 / 置顶各管各的缺省）—— 这正是"只设了税"的世界不被静默丢掉的原因。
+   */
+  static Round withPortInputs(
+      Round round,
+      PortEnforcementInput enforcement,
+      PortTaxInput tax,
+      ProcurementPriorityInput priority) {
+    MarketSettlement.MarketRound session = round.round();
+    if (enforcement != null) {
+      session = session.withPortEnforcement(enforcement);
+    }
+    if (tax != null) {
+      session = session.withPortTax(tax);
+    }
+    if (priority != null) {
+      session = session.withProcurementPriority(priority);
+    }
+    return new Round(round.world(), session, round.ledger());
   }
 
   /** 只服务夹具的 commodity id 常量拼写：避免测试里手写第二个字面量。 */

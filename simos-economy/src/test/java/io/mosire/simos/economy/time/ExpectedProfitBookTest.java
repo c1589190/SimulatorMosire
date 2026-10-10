@@ -232,7 +232,8 @@ class ExpectedProfitBookTest {
   void noExistingOrganizationStillFeasibleAndNonZeroPerLabor() {
     Fixture fixture = fixture(craft(CRAFT), 3L, 10_000L, demandBook(CRAFT, CLOTH, 4_000L));
     assertThat(fixture.base().productionOrganizations()).as("夹具：没有任何既有组织").isEmpty();
-    assertThat(fixture.base().merchantFirms()).isEmpty();
+    // ★★ M-A1（2026-10-10）：`merchantFirms`（第 30 个持久组件）已退役 —— 运力改为每轮派生的派生量，
+    //   不再有"商号表"可断言（§一.11：旧维度直接删，不补兼容夹具）。
 
     ExpectedProfitBook.Prospect p = prospect(fixture, craft(CRAFT));
 

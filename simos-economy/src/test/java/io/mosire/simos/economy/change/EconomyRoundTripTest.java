@@ -79,8 +79,6 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.MerchantFirm;
-import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -169,8 +167,6 @@ class EconomyRoundTripTest {
   private static final ClassPositionId POSITION = new ClassPositionId("position-1");
   private static final ProductionOrganizationId ORGANIZATION =
       new ProductionOrganizationId("organization-1");
-  private static final ProductionOrganizationId MERCHANT_ORGANIZATION =
-      new ProductionOrganizationId("organization-merchant-1");
   private static final AssetRuleId ASSET_RULE = AssetRuleId.idOf(MODE, AssetKind.CATTLE);
   private static final GovernmentId GOVERNMENT = new GovernmentId("government-1");
 
@@ -333,10 +329,15 @@ class EconomyRoundTripTest {
    *
    * <p>★★ <b>F 批（2026-10-09）再 +1 ⇒ 36</b>：{@code commodityFreightBaseMilli}（商品运费**基础费表**，缺键 ⇒
    * 现行硬编码分档；★ 2026-10-09 用户裁定「甲」后由"费率乘数"纠正为"基础费"）。
+   *
+   * <p>★★ <b>M-A1（2026-10-10）−1：37 → 36</b>：{@code merchantFirms}（原第 30 个持久组件）已随 "商号行退役、运力改派生量"（用户
+   * 2026-10-10 追加裁定 4）从 {@code EconomyData} 与 {@code EconomyChangeSet} **两侧同时删除**。⇒ 本数字按**实测**改成
+   * 36（两侧同名同数，子集断言仍然双向成立）。★ 这条改动是**删维度**，不是 "旧档兼容位"：新测试不补任何 {@code merchantFirms} 的往返夹具（§一.11 第 2/3
+   * 条）。
    */
   @Test
-  void changeSetHasExactlyThirtySevenComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(37);
+  void changeSetHasExactlyThirtySixComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(36);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -353,22 +354,6 @@ class EconomyRoundTripTest {
             SimosTimestamp.of(5),
             EconomyData.empty());
     assertThat(snapshot.namespace()).isEqualTo("economy");
-  }
-
-  /** ★ P10.1：非空的最小 merchantFirms 夹具（键 == 值内 organizationId；组织表为空时不需要组织支撑）。 */
-  private static MerchantFirm merchantFirm() {
-    return new MerchantFirm(
-        MERCHANT_ORGANIZATION,
-        MerchantPolicy.MerchantTier.PORTER,
-        new HexCoord(0, 0),
-        true,
-        100L,
-        0L,
-        2L,
-        0L,
-        0L,
-        0L,
-        0L);
   }
 
   /** ★ P4a：最小自洽的周期扣增规则（sink 档；商品腿正数即可，无需账户/家户支撑）。 */
@@ -475,7 +460,8 @@ class EconomyRoundTripTest {
       case "crisisSignals" -> base.withCrisisSignals(Map.of(CRISIS, crisisSignal()));
       case "modeTransitions" -> base.withModeTransitions(Map.of(TRANSITION, modeTransition()));
       case "classShares" -> base.withClassShares(Map.of(CLASS_SHARE, classShare()));
-      case "merchantFirms" -> base.withMerchantFirms(Map.of(MERCHANT_ORGANIZATION, merchantFirm()));
+      // ★★ M-A1（2026-10-10）：第 30 个组件 merchantFirms 已退役（运力改为派生量）⇒ 本条不再存在。
+      //    组件数随之 37 → 36（见 changeSetHasExactlyThirtySixComponents）。
       // ★ P4a 的第 31 个组件：规则只描述"从谁扣多少"，不落账户；键 == 值内 id 是唯一守卫。
       case "periodicAdjustments" ->
           base.withPeriodicAdjustments(Map.of(PERIODIC_ADJUSTMENT, periodicAdjustment()));
@@ -584,7 +570,7 @@ class EconomyRoundTripTest {
       case "crisisSignals" -> cs.crisisSignals().changed();
       case "modeTransitions" -> cs.modeTransitions().changed();
       case "classShares" -> cs.classShares().changed();
-      case "merchantFirms" -> cs.merchantFirms().changed();
+      // ★★ M-A1（2026-10-10）：merchantFirms 已退役 ⇒ 该分量不存在（见 mutate 的同名 note）。
       case "periodicAdjustments" -> cs.periodicAdjustments().changed();
       case "outputQuantityOverrides" -> cs.outputQuantityOverrides().changed();
       case "productionEfficiency" -> cs.productionEfficiency().changed();
@@ -721,33 +707,41 @@ class EconomyRoundTripTest {
         OwnershipStake.RightKind.OWNED);
   }
 
-  /** ★ S3.2 的经营者状态夹具：键 = {@link #FARM_UNIT}，值内 industry = {@link #FARM}（跨表守卫要求两者一致）。 */
+  /**
+   * ★ S3.2 的经营者状态夹具：键 = {@link #FARM_UNIT}，值内 industry = {@link #FARM}（跨表守卫要求两者一致）。
+   *
+   * <p>★★ <b>P-T4（2026-10-10）：两个收入字段改为逐币表</b>（{@code lastCycleRevenueByCurrency} / {@code
+   * cycleRevenueByCurrency}，禁跨币种求和 I-C10）⇒ 夹具按新形状给<b>空表</b>（= 没有任何收入读数）。 ★ 空表也参与往返：两个维度的判别力由"表被写成恒
+   * Unchanged 会红"承担（值层面空表与"字段没进变更集"不可区分 —— 但那一条由 {@code
+   * everyEconomyDataComponentParticipatesInTheChangeSet} 对 <b>整个</b> operatorConditions 分量的非
+   * Unchanged 断言覆盖）。
+   */
   static OperatorCondition operatorCondition() {
     return new OperatorCondition(
         FARM,
         OperatorCondition.IndustryStatus.ACTIVE,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        "",
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L);
+        0L, // consecutiveUnsoldCycles
+        0L, // consecutiveInputShortfallCycles
+        0L, // cashReserveMilli
+        0L, // debtPrincipalMilli
+        0L, // debtServiceDueMilli
+        Map.of(), // ★ P-T4：lastCycleRevenueByCurrency（逐币）
+        0L, // lastCycleCostMilli
+        0L, // lastCycleNetMilli
+        0L, // unsoldStockMilli
+        0L, // selfUsableStockMilli
+        0L, // consecutiveDebtStressCycles
+        0L, // consecutiveSuspendedCycles
+        0L, // reopens
+        "", // lastReason
+        0L, // cycleOfferedQty
+        0L, // cycleFilledQty
+        0L, // cycleUnfilledQty
+        Map.of(), // ★ P-T4：cycleRevenueByCurrency（逐币）
+        0L, // cycleOutcompetedActors
+        0L, // cycleOutcompetedQty
+        0L, // cycleMarketRounds
+        0L); // cycleInputShortfallCycles
   }
 
   /**

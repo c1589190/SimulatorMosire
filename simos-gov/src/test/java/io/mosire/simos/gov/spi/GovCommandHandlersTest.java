@@ -4,11 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
 
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.market.MarketOrderKind;
+import io.mosire.simos.economy.api.market.PortRule;
+import io.mosire.simos.economy.api.market.PortTaxMode;
 import io.mosire.simos.gov.GovAdministrationPlan;
 import io.mosire.simos.gov.GovBudgetCategory;
 import io.mosire.simos.gov.GovBudgetLine;
 import io.mosire.simos.gov.GovBudgetPolicy;
 import io.mosire.simos.gov.GovOfficialSalaryRule;
+import io.mosire.simos.gov.GovPortPolicy;
 import io.mosire.simos.gov.GovPostTier;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
@@ -115,6 +121,24 @@ class GovCommandHandlersTest {
               new GovBudgetLine(GovBudgetCategory.MILITARY_STIPEND, 5L, 50_000L),
               new GovBudgetLine(GovBudgetCategory.ADMIN_SALARY, 0L, 30_000L)),
           new GovOfficialSalaryRule(10L, 5L));
+
+  /**
+   * ★★ <b>P-T1a/P-T1d/P-T1e：四元组口岸政策载荷</b>（商品表 + "币种 → 挂单类型"表 + marketControl）。
+   *
+   * <p>★ 与 {@code McpCoverageTest} 里那条"缺前置 ⇒ 具名拒"的载荷<b>同形状</b>：那边考的是守卫（u-1 不是 GOV），
+   * 这边考的是合法载荷真的落成政策。
+   */
+  private static final String PORT_POLICY_PAYLOAD =
+      "{\"unitId\":\"gov-1\","
+          + "\"commodityRules\":{\"grain\":{"
+          + "\"entryRestrictionPerMille\":1000,"
+          + "\"exitRestrictionPerMille\":250,"
+          + "\"entryTax\":{\"mode\":\"per_unit_milli\",\"amount\":5},"
+          + "\"exitTax\":{\"mode\":\"ad_valorem_per_mille\",\"amount\":100}}},"
+          + "\"currencyRules\":{\"silver\":{"
+          + "\"lending\":{\"entryRestrictionPerMille\":1000},"
+          + "\"commodity\":{\"exitRestrictionPerMille\":250}}},"
+          + "\"marketControl\":true}";
 
   // ── gov.SetAdministrationPlan ─────────────────────────────────────────────────────
 
@@ -447,8 +471,117 @@ class GovCommandHandlersTest {
         .contains("PATCH|REPLACE");
   }
 
-  // ── GM-only / 切片装配故障 ────────────────────────────────────────────────────────
+  // ── gov.SetPortPolicy（P-T1a/P-T1d/P-T1e：四元组政策，2026-10-10）────────────────────
 
+  /**
+   * ★★ <b>T-正向（新形状的成功路径）</b>：四元组载荷（商品表 + "币种 → 挂单类型"表 + marketControl）⇒ {@code Applied}，
+   * 变更集重建出的政策<b>逐个数</b>对上（入口/出口限制 + 入口/出口税的计量方式与额）。
+   *
+   * <p>★ 这是 {@code McpCoverageTest} 里"旧形状载荷 ⇒ 缺前置具名拒"那条的<b>成功路径对侧</b>：那边证明"非法/缺前置被挡"，
+   * 这边证明"合法载荷真的落成政策"——只有一条腿的话，"handler 恒拒"也能全绿。
+   */
+  @Test
+  void setPortPolicyAppliesFourTupleRulesAndRebuildsExactPolicy() {
+    SetPortPolicyHandler handler = new SetPortPolicyHandler();
+    SimulationState state = state(GovState.empty(), Map.of(GOV_ID, govUnit(GOV_ID)));
+
+    HandlerOutcome outcome = handler.handle(state, PORT_POLICY_PAYLOAD);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Applied.class);
+    HandlerOutcome.Applied applied = (HandlerOutcome.Applied) outcome;
+    GovState after = govState(applied, state);
+    GovPortPolicy policy = after.portPolicies().get(GOV_ID);
+
+    assertThat(policy).as("政策落成持久状态（铁律 2 的唯一入口）").isNotNull();
+    // 商品四元组：grain = 入口 1000‰ / 出口 250‰ / 入口税 5 毫每单位 / 出口税 100‰ 从价。
+    assertThat(policy.commodityRules()).containsOnlyKeys(new CommodityId("grain"));
+    PortRule grain = policy.ruleOfCommodity(new CommodityId("grain"));
+    assertThat(grain.entryRestrictionPerMille()).isEqualTo(1_000L);
+    assertThat(grain.exitRestrictionPerMille()).isEqualTo(250L);
+    assertThat(grain.entryTax().mode()).isEqualTo(PortTaxMode.PER_UNIT_MILLI);
+    assertThat(grain.entryTax().amount()).isEqualTo(5L);
+    assertThat(grain.exitTax().mode()).isEqualTo(PortTaxMode.AD_VALOREM_PER_MILLE);
+    assertThat(grain.exitTax().amount()).isEqualTo(100L);
+    // 币种四元组：silver × LENDING 禁入 1000‰；silver × COMMODITY 禁出 250‰。
+    assertThat(
+            policy
+                .ruleOfCurrency(new CurrencyId("silver"), MarketOrderKind.LENDING)
+                .entryRestrictionPerMille())
+        .as("★ P-T1e：币种规则带挂单类型这一维（借贷 ≠ 货物买卖）")
+        .isEqualTo(1_000L);
+    assertThat(
+            policy
+                .ruleOfCurrency(new CurrencyId("silver"), MarketOrderKind.COMMODITY)
+                .exitRestrictionPerMille())
+        .isEqualTo(250L);
+    assertThat(policy.ruleOfCurrency(new CurrencyId("silver"), MarketOrderKind.EXCHANGE))
+        .as("没设过的挂单类型 ⇒ 不限制（缺键 = 不限制，I-P1）")
+        .isEqualTo(PortRule.unrestricted());
+    assertThat(policy.controlsMarket()).as("★ P-T1d：marketControl 开关落盘").isTrue();
+    assertThat(policy.noRules()).as("这份政策不是空政策").isFalse();
+
+    // ★ 幂等重放（同载荷再设一次）⇒ 空变更集、不落 revision（与另两条命令同一口径）。
+    SimulationState seededState = state(after, Map.of(GOV_ID, govUnit(GOV_ID)));
+    HandlerOutcome again = handler.handle(seededState, PORT_POLICY_PAYLOAD);
+    assertThat(again).isInstanceOf(HandlerOutcome.Applied.class);
+    assertThat(changeSet((HandlerOutcome.Applied) again).isEmpty())
+        .as("逐值相同的政策 ⇒ 空变更集（幂等 no-op）")
+        .isTrue();
+  }
+
+  /**
+   * ★★ <b>N2 负向</b>：非法政策一律<b>具名拒 + 零变更</b>，绝不静默忽略（拼错一个字段名 = 另一条规则，不是"没设"）。
+   *
+   * <p>四类各测一条：负税 / 未登记的挂单类型 / 规则里拼错的字段名 / marketControl 非布尔；外加"GOV 单位不存在"。
+   */
+  @Test
+  void setPortPolicyRejectsIllegalPoliciesByNameWithZeroRevision() {
+    SetPortPolicyHandler handler = new SetPortPolicyHandler();
+    SimulationState state = state(GovState.empty(), Map.of(GOV_ID, govUnit(GOV_ID)));
+    SimulationState missing =
+        state(GovState.empty(), Map.of(GOV_ID, govUnit(GOV_ID), PLAIN_ID, armyUnit(PLAIN_ID)));
+
+    assertThat(
+            reasonOf(
+                handler,
+                state,
+                "{\"unitId\":\"gov-1\",\"commodityRules\":{\"grain\":{\"entryTax\":{\"mode\":\"per_unit_milli\",\"amount\":-1}}}}"))
+        .as("负税 = 非法政策")
+        .contains("不得为负");
+    assertThat(
+            reasonOf(
+                handler,
+                state,
+                "{\"unitId\":\"gov-1\",\"currencyRules\":{\"silver\":{\"ioU\":{\"entryRestrictionPerMille\":1000}}}}"))
+        .as("未登记的挂单类型（拼错的类型名不许静默变成'没设规则'）")
+        .contains("挂单类型非法");
+    assertThat(
+            reasonOf(
+                handler,
+                state,
+                "{\"unitId\":\"gov-1\",\"commodityRules\":{\"grain\":{\"entryRestrictPerMille\":1}}}"))
+        .as("拼错一个字母 ⇒ 具名拒（不静默当缺省）")
+        .contains("不认识的键");
+    assertThat(reasonOf(handler, state, "{\"unitId\":\"gov-1\",\"marketControl\":\"true\"}"))
+        .as("marketControl 必须是 JSON 布尔（字符串 'true' 不许静默当开）")
+        .contains("必须是布尔");
+    assertThat(reasonOf(handler, missing, "{\"unitId\":\"plain-1\"}"))
+        .as("单位存在但不是 GOV 编制 ⇒ 具名拒")
+        .contains("GOV");
+    assertThat(reasonOf(handler, state, "{\"unitId\":\"gov-missing\"}"))
+        .as("单位不存在 ⇒ 具名拒")
+        .contains("gov-missing");
+  }
+
+  /** 拒因（不成立即当场失败；把"居然 Applied 了"也报成红）。 */
+  private static String reasonOf(
+      CommandHandler handler, SimulationState state, String payloadJson) {
+    HandlerOutcome outcome = handler.handle(state, payloadJson);
+    assertThat(outcome).as("非法政策必须具名拒，实得: %s", outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    return ((HandlerOutcome.Rejected) outcome).reason();
+  }
+
+  // ── GM-only / 切片装配故障 ────────────────────────────────────────────────────────
   @Test
   void bothCommandsAreGmOnlyAndCarryNoCommandTargets() {
     CommandHandler administrationPlan = new SetAdministrationPlanHandler();

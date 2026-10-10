@@ -739,11 +739,9 @@ public final class ModeMigrationSettlement {
     // ★★ D-023：不再有“整户消亡时把全部资产转给最后目标”的旧路径。资产随迁已在逐笔 move 里按人口比例完成；
     //    这里只负责组织/unit/关系/配额/成员份额的退役，以及决定“整户移除”还是“留资产壳户”。
     List<ProductionUnitId> removedUnits = new ArrayList<>();
-    List<ProductionOrganizationId> removedEnterprises = new ArrayList<>();
     for (ProductionEnterprise enterprise : new ArrayList<>(enterprises.values())) {
       if (enterprise.organizer().equals(sourceActorForOrg)) {
         enterprise.unitId().ifPresent(removedUnits::add);
-        removedEnterprises.add(enterprise.id());
         enterprises.remove(enterprise.id());
       }
     }

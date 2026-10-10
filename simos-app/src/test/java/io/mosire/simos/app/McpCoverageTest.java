@@ -485,9 +485,21 @@ class McpCoverageTest {
           Map.entry("economy.UpsertIndustry", "{\"id\": \"office_missing@0_0\"}"),
           Map.entry("economy.UpsertGovUnit", "{\"govUnitId\": \"g-missing\"}"),
           Map.entry("economy.SetGovServiceCommitment", "{\"govUnitId\": \"g-missing\"}"),
+          // ★★ P-T1a/P-T1d/P-T1e（2026-10-10）：口岸政策载荷 = **四元组**（每类 入口限制‰ / 出口限制‰ / 入口税 / 出口税），
+          //   商品表 + "币种 → 挂单类型"表 + marketControl 开关。旧形状（commodityRestrictionPerMille /
+          //   currencyRestrictionPerMille 两个标量表）已随旧设计整体删除（§一.11，不写兼容位）。
+          //   本夹具世界里的 u-1 不是 GOV 编制单位 ⇒ 形状合法但**缺前置 ⇒ 具名拒**（零 revision）；
+          //   成功路径见 simos-gov 的 GovCommandHandlersTest（同一个 handler、真状态）。
           Map.entry(
               "gov.SetPortPolicy",
-              "{\"unitId\": \"u-1\", \"commodityRestrictionPerMille\": {}, \"currencyRestrictionPerMille\": {}}"),
+              "{\"unitId\": \"u-1\","
+                  + " \"commodityRules\": {\"grain\": {\"entryRestrictionPerMille\": 1000,"
+                  + " \"exitRestrictionPerMille\": 250,"
+                  + " \"entryTax\": {\"mode\": \"per_unit_milli\", \"amount\": 5},"
+                  + " \"exitTax\": {\"mode\": \"ad_valorem_per_mille\", \"amount\": 100}}},"
+                  + " \"currencyRules\": {\"silver\": {\"lending\": {\"entryRestrictionPerMille\": 1000},"
+                  + " \"commodity\": {\"exitRestrictionPerMille\": 250}}},"
+                  + " \"marketControl\": true}"),
           Map.entry("gov.SetAdministrationPlan", "{\"unitId\": \"u-1\"}"),
           Map.entry("gov.SetBudgetPolicy", "{\"unitId\": \"u-1\"}"),
           Map.entry(

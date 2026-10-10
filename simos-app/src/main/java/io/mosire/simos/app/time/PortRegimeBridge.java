@@ -496,15 +496,16 @@ public final class PortRegimeBridge {
       Map<String, List<PortTaxInput.GovernmentShare>> governmentsByZone,
       Map<String, CurrencyId> legalTenderByZone) {
     Map<String, PortTaxInput.ZoneTaxTable> tables = new LinkedHashMap<>();
-    for (String zoneId : weightsByZone.keySet()) {
+    for (Map.Entry<String, Map<String, Long>> zoneEntry : weightsByZone.entrySet()) {
+      String zoneId = zoneEntry.getKey();
       List<PortTaxInput.GovernmentShare> governments = governmentsByZone.get(zoneId);
       CurrencyId legalTender = legalTenderByZone.get(zoneId);
       if (governments == null || legalTender == null) {
         continue;
       }
       long weightSum = 0L;
-      for (long weight : weightsByZone.get(zoneId).values()) {
-        weightSum = Math.addExact(weightSum, weight);
+      for (Map.Entry<String, Long> weight : zoneEntry.getValue().entrySet()) {
+        weightSum = Math.addExact(weightSum, weight.getValue());
       }
       tables.put(
           zoneId,

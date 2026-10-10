@@ -2224,18 +2224,6 @@ final class EconomyPayloads {
     return requireIntegral(value, field);
   }
 
-  /** 可选布尔键（缺键 / JSON {@code null} ⇒ fallback；给了非布尔 ⇒ 具名抛）。 */
-  private static boolean optionalBoolean(JsonNode node, String field, boolean fallback) {
-    JsonNode value = node.get(field);
-    if (value == null || value.isNull()) {
-      return fallback;
-    }
-    if (!value.isBoolean()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是布尔值: " + node);
-    }
-    return value.asBoolean();
-  }
-
   private static int optionalInt(JsonNode node, String field, int fallback) {
     JsonNode value = node.get(field);
     if (value == null || value.isNull()) {

@@ -611,8 +611,8 @@ final class FxSettlement {
   /** 逐币购买力读数的具名文本（币种 id 升序；{@code silver=12345,gold=6789}）。 */
   private static String powerText(Map<CurrencyId, Long> power) {
     List<String> parts = new ArrayList<>();
-    for (CurrencyId currency : power.keySet()) {
-      parts.add(currency.value() + "=" + power.get(currency));
+    for (Map.Entry<CurrencyId, Long> entry : power.entrySet()) {
+      parts.add(entry.getKey().value() + "=" + entry.getValue());
     }
     parts.sort(Comparator.naturalOrder());
     return String.join(",", parts);

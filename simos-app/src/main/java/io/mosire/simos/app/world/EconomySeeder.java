@@ -3236,9 +3236,6 @@ public final class EconomySeeder {
     Map<HexCoord, Market> markets = new LinkedHashMap<>();
     // ★★ H5：逐格逐产业的**经营主体开缸账**（键序 = 产业生成序 = farm → weave → craft ⇒ 内容的纯函数）。
     List<OperatorSeed> operators = new ArrayList<>();
-    // 商号本金主的位置是 merchant.principal（(residence=urban, slot=landlord) 的唯一裁决），全局只需算一次。
-    ClassPositionId merchantPrincipalPosition =
-        productionRuntimePositionId(ResidenceKind.URBAN, CLASS_IDS[LANDLORD_SLOT_INDEX]);
     for (HexCoord hex : hexes) {
       // ★★ P2-A：家户身份/人口从 Social 侧读入；劳动池要排除流民批次（D-023：流民没有工作），
       //   但成员份额投影要用**全部**批次（流民户也是真实的成员归属）。
