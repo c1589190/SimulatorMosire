@@ -89,8 +89,9 @@ class Z7HungerTest {
     assertThat(supply.paperworkLaborMilli()).isLessThan(supply.committedPaperworkLaborMilli());
     assertThat(supply.underfedHouseholds()).as("在编但供给不足的户数").isEqualTo(1L);
 
-    // ★ 时点口径（与读口 timing 同源）：day1 的 GovOfficeState 用日初（未饿）劳动预算算 ⇒ efficiency 仍 1000；
-    //   饿少后的劳动在 day2 的 GovOfficeState 生效（day2 日初 recompute 读到 satiety=850）。
+    // ★★ 时点口径（W3 两段式 tick 之后）：day1 的 GovOfficeState 在 ⑥「用当日新 Social 重刷劳动预算」之后才算 ⇒
+    //   它读到的已是 satiety=850 的**当日**劳动（不再有"日初未饿预算"那一档；`GovernmentServiceLaborBridge.supply`
+    //   取的是会话工作副本，见其类注）。断言因此落在 **day2**：再饿一天 ⇒ 劳动更少 ⇒ 必然 < 1000，与 day1 具体读数无关。
     SimulationState afterDay1 = starved.state();
     StateRunner secondDay = new StateRunner("Map1", afterDay1);
     secondDay.advance(1L, 2L);

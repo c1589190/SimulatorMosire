@@ -51,6 +51,16 @@ public final class EconomySession {
   private final List<EconomyPopulationTransfer> populationTransfers = new ArrayList<>();
 
   /**
+   * ★★★ <b>W3（2026-10-11）：本会话的逐户缺口 outbox</b>（瞬态；保序 = 家户处理序）。
+   *
+   * <p>★★ <b>为什么不进 {@link EconomyData}/变更集/{@code Codec}</b>：人口与死亡率的权威在 Social（AGENTS §〇 模块表）；
+   * {@code EconomySettlement} 只把"这一天经济腿看见的逐户缺口（生产花费未满足量 + 口粮缺口那一支）"记在这里，由 {@code simos-app} 的组合根在
+   * {@code stepper.step(day)} 之后取走、翻成 Social 的饥荒输入（S-11 第②半）。 与 {@link #populationTransfers}
+   * 同制：进程内本会话发生额，用完即弃；逐日重建 ⇒ 不引入跨日/跨 advance 记忆（B2 分段等价的硬前提）。
+   */
+  private final List<EconomyHouseholdGap> householdGaps = new ArrayList<>();
+
+  /**
    * ★★ <b>Z1：本 tick 的修正参数注入集</b>（瞬态；键 = unit id，保序 = 注入列表序）。
    *
    * <p>★★ <b>为什么不进 {@link EconomyData}/变更集/{@code Codec}</b>：机制给出的值必须是<b>已持久化状态的纯函数</b>，
@@ -135,6 +145,30 @@ public final class EconomySession {
     }
     List<EconomyPopulationTransfer> drained = List.copyOf(populationTransfers);
     populationTransfers.clear();
+    return drained;
+  }
+
+  /** ★★ W3：记一条逐户缺口事实（非 null；保序追加）。 */
+  public void recordHouseholdGap(EconomyHouseholdGap gap) {
+    householdGaps.add(Objects.requireNonNull(gap, "gap"));
+  }
+
+  /** ★★ W3：本次推进已记但尚未被 App 取走的逐户缺口 outbox（只读视图，保序 = 家户处理序）。 */
+  public List<EconomyHouseholdGap> pendingHouseholdGaps() {
+    return java.util.Collections.unmodifiableList(householdGaps);
+  }
+
+  /**
+   * ★★ W3：App 每日取走并清空缺口 outbox（返回保序快照）。
+   *
+   * <p>★ 空 ⇒ {@link List#of()}（共享空单例）；非空 ⇒ {@link List#copyOf} 的不可变快照，之后本会话记录清零， 保证"同一条事实只被翻译一次"。
+   */
+  public List<EconomyHouseholdGap> drainPendingHouseholdGaps() {
+    if (householdGaps.isEmpty()) {
+      return List.of();
+    }
+    List<EconomyHouseholdGap> drained = List.copyOf(householdGaps);
+    householdGaps.clear();
     return drained;
   }
 

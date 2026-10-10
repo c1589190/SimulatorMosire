@@ -12,6 +12,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
+import io.mosire.simos.economy.time.EconomyHouseholdGap;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -194,6 +195,25 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
     ActorData books = migratedBooks;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       ProductionLedger ledger = stepper.step(day);
+      // ★★ W3（2026-10-11）：经济腿每天还会推一份"逐户缺口"瞬态 outbox（报给 Social 的饥荒输入）。
+      //   本参与者只认识 economy + actor（**不认识 Social**）⇒ 它没有下家：这里必须**取走并丢弃**，
+      //   否则那张瞬态表会在一次长推进里按"天数 × 家户数"无界增长。★ 缺口的唯一消费者是
+      //   {@code PopulationEconomyTimeParticipant}（它同时看得见 Social）；本参与者是 main 作用域的**孤儿**
+      //   （只有测试夹具 {@code EconomyOwnershipFixture} 会实例化它，见约束设计书 §3.1-2 与 §5.2）。
+      List<EconomyHouseholdGap> droppedGaps = stepper.drainPendingHouseholdGaps();
+      if (!droppedGaps.isEmpty() && LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "HOUSEHOLD_GAP_DROPPED",
+                    AppLogSource.HOUSEHOLD_SYNC,
+                    "day",
+                    day,
+                    "households",
+                    droppedGaps.size(),
+                    "why",
+                    "this-participant-has-no-social-side (gaps are consumed by PopulationEconomyTimeParticipant)"));
+      }
       // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
       MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
       // ★★ 落账：当天的条目只落一次（ledger 是**一天一本**的）；落出来的新账户也要进写集。

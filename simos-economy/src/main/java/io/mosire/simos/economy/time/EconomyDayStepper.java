@@ -52,7 +52,6 @@ public final class EconomyDayStepper implements AutoCloseable {
   private static final org.slf4j.Logger LOG = EconomyLog.settlement();
 
   private final boolean plantingDrawsFirst;
-  private final int famineMortalityPerMille;
   private final MarketTopology topology;
 
   private final EconomySession session;
@@ -111,59 +110,34 @@ public final class EconomyDayStepper implements AutoCloseable {
    */
   private boolean lastCycleClosed;
 
-  /** ★★ <b>组合根入口（区域拓扑版）</b>：账户会话由调用方载入；两个行为旋钮取出厂默认值。 */
+  /** ★★ <b>组合根入口（区域拓扑版）</b>：账户会话由调用方载入；行为旋钮取出厂默认值。 */
   public EconomyDayStepper(EconomyData base, AccountSession accounts, MarketTopology topology) {
     this(
         base,
         accounts,
         topology,
         EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
-        EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
+        EconomyParallelism.singleThreaded());
   }
 
   /** ★ 单模块/手搭夹具：没有城市信息 ⇒ 每格一区、不跨区（M2-L1 的既有行为）。 */
   public EconomyDayStepper(EconomyData base, AccountSession accounts) {
-    this(
-        base,
-        accounts,
-        MarketTopology.singleHex(base.marketTables(), base.marketZones()),
-        EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
-        EconomySettlement.FAMINE_MORTALITY_PER_MILLE,
-        EconomyParallelism.singleThreaded());
+    this(base, accounts, MarketTopology.singleHex(base.marketTables(), base.marketZones()));
   }
 
   /**
-   * ★ <b>两个行为旋钮可注入</b>（公开：契约层的两个常量是唯一拼写点）：先播种还是先吃饭、以及致死率 —— 理由逐字见 {@code
-   * EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION} 与 {@code
-   * EconomySettlement.FAMINE_MORTALITY_PER_MILLE}。
-   */
-  public EconomyDayStepper(
-      EconomyData base,
-      AccountSession accounts,
-      MarketTopology topology,
-      boolean plantingDrawsFirst,
-      int famineMortalityPerMille) {
-    this(
-        base,
-        accounts,
-        topology,
-        plantingDrawsFirst,
-        famineMortalityPerMille,
-        EconomyParallelism.singleThreaded());
-  }
-
-  /**
-   * ★★ <b>R2 完整入口</b>：并行度可注入。{@code workerCount} 只决定"谁先算完"——分区函数、提交序与 tie-break 都由固定的 {@link
-   * EconomyParallelism#STRUCTURAL_PARTITIONS} 决定，1/4/8 线程共用同一套。
+   * ★ <b>行为旋钮可注入</b>（公开：契约层的常量的唯一拼写点）：先播种还是先吃饭 —— 理由逐字见 {@code
+   * EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION}。
    *
-   * <p>★ 池的生命周期归本对象：{@link #finish()} 会关掉 {@link EconomyParallelism#of(int)} 自建的池； 注入的池由调用方自己关。
+   * <p>★★ <b>W3（2026-10-11）：原第二个旋钮 {@code famineMortalityPerMille}（饿死致死率）已删</b> —— 死亡率的权威在
+   * Social（AGENTS §〇 模块表 / 约束设计书 §2 的 S-11 第②半）；经济侧只<b>报缺口</b>（见 {@link
+   * #drainPendingHouseholdGaps()}），不再持有任何"致死"口径。旧类型直接删（AGENTS §一.11）。
    */
   public EconomyDayStepper(
       EconomyData base,
       AccountSession accounts,
       MarketTopology topology,
       boolean plantingDrawsFirst,
-      int famineMortalityPerMille,
       EconomyParallelism parallelism) {
     this.lastCycleClosed = false;
     this.session = new EconomySession(Objects.requireNonNull(base, "base"));
@@ -171,7 +145,6 @@ public final class EconomyDayStepper implements AutoCloseable {
     this.topology =
         Objects.requireNonNull(topology, "topology（M2.3：没有城市信息用 MarketTopology.singleHex）");
     this.plantingDrawsFirst = plantingDrawsFirst;
-    this.famineMortalityPerMille = famineMortalityPerMille;
     this.parallelism = EconomyParallelism.requireNonNull(parallelism);
     this.profitCycle = base.modes().isEmpty() ? null : new EnterpriseProfitBook.CycleAccumulator();
   }
@@ -426,7 +399,6 @@ public final class EconomyDayStepper implements AutoCloseable {
         accounts,
         topology,
         plantingDrawsFirst,
-        famineMortalityPerMille,
         ledger,
         parallelism,
         profitCycle,
@@ -630,6 +602,27 @@ public final class EconomyDayStepper implements AutoCloseable {
    */
   public List<EconomyPopulationTransfer> drainPendingPopulationTransfers() {
     return session.drainPendingPopulationTransfers();
+  }
+
+  /**
+   * ★★★ <b>W3（2026-10-11）：本会话已记但尚未被 App 取走的逐户缺口 outbox</b>（只读视图；保序 = 家户处理序）。
+   *
+   * <p>由 {@link EconomySettlement} 在当日"全部救济通道之后"的<b>报缺口</b>阶段追加；App 的 {@code
+   * PopulationEconomyTimeParticipant} 在 {@code step(day)} 之后用 {@link #drainPendingHouseholdGaps()}
+   * 取走、 翻成 Social 的饥荒输入（S-11 第②半）。
+   */
+  public List<EconomyHouseholdGap> pendingHouseholdGaps() {
+    return session.pendingHouseholdGaps();
+  }
+
+  /**
+   * ★★★ <b>W3：App 每日取走并清空逐户缺口 outbox</b>（返回保序不可变快照；空 ⇒ {@link List#of()}）。
+   *
+   * <p>★ 同一条事实只被翻译一次：取走后本会话记录清零；整次 advance 失败 ⇒ 会话丢弃，不落 revision（outbox 是瞬态）。 ★ 逐日现算、逐日取走 ⇒ 即使把
+   * {@code advance(0,360)} 切成 3 段，每一天看到的仍是<b>那一天自己</b>的缺口（B2 分段等价）。
+   */
+  public List<EconomyHouseholdGap> drainPendingHouseholdGaps() {
+    return session.drainPendingHouseholdGaps();
   }
 
   /**

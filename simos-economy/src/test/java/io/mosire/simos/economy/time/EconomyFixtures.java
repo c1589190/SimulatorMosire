@@ -107,16 +107,6 @@ final class EconomyFixtures {
    */
   static EconomyData advance(
       EconomyData base, Map<CohortKey, Map<CommodityId, Long>> goods, long fromTick, long toTick) {
-    return advance(base, goods, fromTick, toTick, EconomySettlement.FAMINE_MORTALITY_PER_MILLE);
-  }
-
-  /** 同 {@link #advance(EconomyData, Map, long, long)}，但**致死率可注入**。 */
-  static EconomyData advance(
-      EconomyData base,
-      Map<CohortKey, Map<CommodityId, Long>> goods,
-      long fromTick,
-      long toTick,
-      int famineMortalityPerMille) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(goods, "goods");
     if (base.meta().isEmpty()) {
@@ -129,7 +119,7 @@ final class EconomyFixtures {
             accounts,
             MarketTopology.singleHex(base.marketTables(), base.marketZones()),
             EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
-            famineMortalityPerMille);
+            EconomyParallelism.singleThreaded());
     try {
       for (long day = fromTick + 1L; day <= toTick; day++) {
         stepper.step(day);

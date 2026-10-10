@@ -27,14 +27,16 @@ import java.util.Map;
  * 0}，含创世）把该行**整行从 0 重记** —— 上周期末的读数在**关账那一支的 revision 里**读得到（归档），
  * 次日才归零（清零）。故关账日读到的是**一整个周期**的量（{@code income} 含那次收获的毛产分配），不是两个周期的累计。
  *
- * <p>★★ **未满足需求与饿死（2026-09-25 新增；V4 起默认不致命）**：{@code unmetNeed} = 本周期**需求 − 实得**的逐日累加（毫粮），
- * 是饿死判据的输入；{@code deaths} = 本周期因饿死而减少的人口（人）。两者都由 {@code 旧结算引擎（R3a 已删除）} 写入，
- * 且与其它字段**同口径**（本期量、新周期第一天归零）。
+ * <p>★★ **未满足需求（2026-09-25 新增；W3 2026-10-11 改口径读法）**：{@code unmetNeed} = 本周期**需求 − 实得**的逐日累加（毫粮），
+ * 由日结算的消费步写入，与其它字段**同口径**（本期量、新周期第一天归零）。★ W3 起它有了第二个读法：**当日**那一笔（{@code settleOneDayInto} 的 {@code
+ * unmetToday}）是"报给 Social 的口粮缺口那一支"的分子（{@link
+ * io.mosire.simos.economy.time.EconomyHouseholdGap}）；本字段仍是**周期累计**口径 —— 两者窗口不同，别混读。
  *
- * <p>★★ **{@code deaths} 在默认路径上恒为 0**：致死率默认 {@code 旧结算引擎（R3a 已删除）.FAMINE_MORTALITY_PER_MILLE = 0‰}
- * （用户 2026-09-25：「可以先不做什么饿死人系统」）⇒ **缺口照记不误**（{@code unmetNeed} 非 0 是常态），但**不死人**。 字段**保留不删**（v1
- * spec §3.3 的形状，且致死判据落地时要用），旋钮是 {@code 旧结算引擎（R3a 已删除）} 的包内可见重载入参 （**不是** {@code static final} +
- * {@code if} 的死分支）。★ 读口读到的 {@code deaths == 0} 是**结论**，不是"没在记"。
+ * <p>★★ **{@code deaths} 自 W3 起结构性恒为 0**（不是"默认 0‰ 的可调旋钮"）：<b>经济侧不再判死、不再缩劳动</b> —— 死亡率与劳动是 Social
+ * 的唯一权威（AGENTS §〇 模块表；约束设计书 S-11 第②半）。原 {@code
+ * EconomySettlement.applyFamine}（直接按缺口处死）与致死率常量、以及死亡的劳动缩放已按 AGENTS §一.11 <b>整段删除</b>；
+ * 经济侧改为把逐户缺口<b>报出去</b>（{@code EconomySession#drainPendingHouseholdGaps()}）。 ★ 字段**保留不删**（v1 spec
+ * §3.3 的形状、读口与守恒式仍读它）；★ 读口读到的 {@code deaths == 0} 现在是**结构结论**，不是"没在记"。
  *
  * <p>★ **不变量（构造期判）**：{@code taxPaid}/{@code interestDue}/{@code newBorrowing}/{@code repaid}/{@code
  * unmetNeed}/{@code deaths} 均 {@code ≥ 0}；{@code income}/{@code consumed} 键值非空、逐值 {@code ≥
@@ -69,11 +71,11 @@ import java.util.Map;
  *     <p>★★ <b>统计窗口（M0.2 写明，报数前必读）</b>：口径 = <b>本周期累计</b>，<b>归档在关账那一支的 revision 里</b>、
  *     次日（新周期第一天）清零。⇒ ① <b>关账日</b>读到的是一整个周期缺的量（正确用法）；② <b>非关账日</b>读到的是"本周期到现在为止"
  *     的量（会逐日长大，**不可**当成整周期缺口）；③ 关账日的 {@code income}/{@code consumed} 同样是一整个周期的量。 三处读法混用是本仓踩过六次的口径坑。
- * @param deaths 本期死亡的人口（人）；不得为负。★★ **2026-10-09 每 tick 生死 Batch B 起本字段只承载 {@code applyFamine}
- *     那条路**（直接按缺口处死，默认致死率 0‰ ⇒ 默认路径不死人）：新主路径的出生/死亡由 Social 每 tick 结算，经济侧只同步 家户行 {@code
- *     population}（{@code EconomyDayStepper.applyHouseholdPopulationDeltas}），<b>不再</b>写这里的逐户 {@code
- *     births}/{@code deaths} 流水（本批已知边界，见 Batch B 报告）。
- *     <p>★ <b>它不是饿死数</b>：默认致死率 0‰ ⇒ 缺粮本身不产生 {@code deaths}（M0.2 的口径澄清）。报"饿死多少人"必须写清用的是哪条通道。
+ * @param deaths 本期死亡的人口（人）；不得为负。★★ <b>W3 起恒为 0</b>：出生/死亡由 Social 每 tick 结算（唯一权威）， 经济侧只同步家户行 {@code
+ *     population}（{@code EconomyDayStepper.applyHouseholdPopulationDeltas}）—— 它既不写这里的 逐户 {@code
+ *     births}/{@code deaths} 流水，也不再有任何"直接按缺口处死"的通道（那条路径已整段删除）。
+ *     <p>★ <b>报"饿死多少人"必须走 Social 的日志</b>（{@code FAMINE_MORTALITY}，含逐户 starvationRatio 与饥荒死亡数）；
+ *     本字段读到的 0 是结构结论。
  * @param births 本期出生的人口（人）；不得为负；与 {@code deaths} **对称**（R4 起人口两头都会动，只记死亡会让 "年末人口 − 创世人口 == 出生 −
  *     死亡"写不出来）
  * @param repaidMoney ★★ <b>P11.1 / D-023：本期偿还**实际走货币腿**的逐币种毫钱</b>—— 键值非空、逐值 ≥ 0。 <b>不塞进 {@link

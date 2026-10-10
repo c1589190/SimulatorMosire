@@ -110,7 +110,8 @@ import org.slf4j.Logger;
  *       #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000，见 {@link
  *       #lendableOf}，**不是**"消费后的全部库存"，也不是"当日盈余"）；借到的**累加进同一条** {@link DebtContract}（同一 (债务人, 债权人,
  *       unit, terms) 跨周期恒同一条，见 {@link DebtContractId#idOf}，本金递增）；**借完仍补不上**的部分记入本行流水的 {@code
- *       unmetNeed}（毫粮、逐日累加，供周期末的饿死判据 —— 见 {@link #FAMINE_MORTALITY_PER_MILLE}，默认致命率 0‰）。
+ *       unmetNeed}（毫粮、逐日累加；★ W3 起它同时是**报给 Social 的口粮缺口那一支**的当日分子 —— 见 {@link
+ *       EconomyHouseholdGap}，经济侧自己不据此判死）。
  *   <li>**进度**：每个产业 {@code progressDays + 1}。
  *   <li>**劳动投入**：本产业当日实际劳动 = **该产业名下全部 {@code HouseholdLaborCommitment} 的 {@code laborMilli}
  *       之和**（R2 改口径；改前是"Σ(行 {@code laborMilli × participationPerMille / 1000})"，两者在创世逐值相同）—— 累加进
@@ -154,9 +155,10 @@ import org.slf4j.Logger;
  *       {@link #chargeInterest}。★ **偿还在计息之前**（关账日、所得到账后，D-030 §3.5）：逐条债按未偿共同价值升序、 逐 medium
  *       先全部货币（余额降序）再全部商品（数量降序），任意库存都可折还，估值 = 债务人价目表优先、否则该户市场区 默认价目表（见 {@link #repayDebts} 与 {@link
  *       DebtValuation}）；粮另扣一日口粮保留、全币种余额可用、冻结不越， 缺价 medium 具名跳过不静默付 0；不足部分顺延到下一周期。
- *   <li>**饿死判据**（2026-09-25 用户点名；**默认不致命**）：按本周期累加的 {@code unmetNeed} 折出"饿满整周期"的人口比例，在这一比例里按 {@code
- *       famineMortalityPerMille}（**默认 {@link #FAMINE_MORTALITY_PER_MILLE} = 0‰**）致死；人口减少、有效劳动同比例缩，
- *       死亡数记入 {@link FlowRow#deaths()}。**顺序**：在收获/分配**之后**（本期产出照分给幸存者，死亡不回溯产量），同一次结算内完成。
+ *   <li>★★ **报缺口**（W3 2026-10-11；**取代**原"饿死判据"）：在**全部救济通道之后**（市场 → 借粮 → 还债）逐日、逐户 算出口粮缺口那一支（当日
+ *       {@code unmetNeed[grain]} ÷ 当日粮需求）与当日市场轮的"生产花费未满足量"（逐商品）， 写进会话的瞬态 outbox（{@link
+ *       EconomySession#recordHouseholdGap}）交给 app ⇒ Social。★ <b>经济侧不判死、不缩劳动、 不动人口</b>（死亡率与劳动是
+ *       Social 的唯一权威，AGENTS §〇 模块表；约束设计书 S-11 第②半）。**顺序**：在收获/分配 **之后**，同一次结算内完成。
  *   <li>★ 产出**进当天的 {@link ProductionLedger}**（毛产/损耗/投入/产权条目/货币待办）—— 由调用方落账；{@code progressDays}
  *       归零、周期劳动清零、{@link EconomyMeta#lastClosedCycle()} +1。
  * </ol>
@@ -373,28 +375,17 @@ public final class EconomySettlement {
    */
   public static final int LENDER_SUBSISTENCE_RESERVE_PER_MILLE = 1000;
 
-  /**
-   * ★★ **饿死判据的致死率默认值**（千分数）：**0‰（默认不致命）**。
+  /*
+   * ★★ W3（2026-10-11）：`FAMINE_MORTALITY_PER_MILLE`（饿死判据的致死率默认值，旧值 0‰）**已删**。
    *
-   * <p>★★ **为 0 是"先不做饿死人系统"，不是"删掉机制"**（v2 spec §1.3 + 用户 2026-09-25 两句话并读：
-   * 「可以先不做什么饿死人系统、青黄不接系统」+「项目代码应当是自由的」）：**缺口照记**（{@link FlowRow#unmetNeed()}，
-   * 逐日累计且读口可见），**致死率是一个旋钮** —— 旋钮做成**包内可见的入参**而不是"常量 + {@code if}"： {@code static final int = 0} 配
-   * {@code if (常量 != 0)} 会让非 0 那一支成为**编译期死代码**，任何用例都到不了它 （v2 spec §3.2 与 plan2
-   * 偏离③点名的同族：**看起来在、其实永远走不到**）。
+   * <p><b>为什么删而不是留成 0</b>：死亡率是 <b>Social 的唯一权威</b>（AGENTS §〇 模块表；约束设计书 §2 的 S-11 第②半：
+   * 「经济侧不自己扣劳动/人口」）。经济侧保留一个"致死率"旋钮 —— 哪怕默认 0 —— 就是留了一条绕过 Social 的判死通道，
+   * 而这正是 W3 要关闭的。经济侧现在只做一件事：<b>报缺口</b>（{@link EconomyHouseholdGap} / {@link
+   * EconomySession#drainPendingHouseholdGaps()}）。
    *
-   * <p>★ **旋钮的入口**：{@link #settle(EconomyData, long, long, int)} 与包内可见的 {@code settleOneDayInto} 重载
-   * （W2-fix6：原 {@code settleOneDay} 包内短重载零读者已删，非 0 值仍经 {@code settleOneDayInto} 注入）；公开入口 {@link
-   * #settle(EconomyData, long, long)} 恒喂本默认值。 ★ 原先点名的 {@code
-   * EconomySettlementTest.famineKillsTheStarvationShareOfThoseWhoGoHungryTheWholeCycle} 随 R3a
-   * 已不在测试树里 ⇒ 非 0 那条路**当前没有逐值用例钉住**（具名缺口，不是"已验过"）。
-   *
-   * <p>★ 口径：先把本周期逐日累加的 {@code unmetNeed} 折成 {@code faminePerMille = unmetNeed / 本周期总需求}（封顶
-   * 1000‰），再在这一比例的人口里按致死率致死 ⇒ {@code deaths = 人口 × faminePerMille / 1000 × 致死率 / 1000}。
-   *
-   * <p>★ 改这个数 = 改规则口径（记入 {@code rulesVersion}），不写死进公式。**V7 参数目录（spec §四）落地后**它迁入 {@code economy}
-   * 切片的参数表、成为 GM 可调（spec §1.3：致死率是"判断结果"⇒ 必须可调，默认取保守值）。
+   * <p>★ 旧口径的历史留痕（用户 2026-09-25「可以先不做什么饿死人系统、青黄不接系统」⇒ 当时把致死率做成默认 0‰ 的包内入参）
+   * 在 git 历史与本批账本里，不在这里复述；`settle(EconomyData,long,long,int)` 这个 4 参重载也随之一并删除。
    */
-  public static final int FAMINE_MORTALITY_PER_MILLE = 0;
 
   /**
    * ★★ <b>P5：死亡按人口比例删债的具名原因</b>（唯一拼写点）：写入 {@link DebtContractBook#forgive} 的 {@code reason}，
@@ -878,46 +869,15 @@ public final class EconomySettlement {
    * @param toTick 区间终点（世界日，右闭）；{@code day} 绝对日，参与债务 id 去重（{@code debt-<day>-<seq>}）
    * @return 结算后的新状态；{@code meta} 空 ⇒ 原样返回
    * @throws IllegalArgumentException {@code toTick < fromTick + 1}（至少一天）
-   */
-  public static EconomyData settle(EconomyData base, long fromTick, long toTick) {
-    return settle(base, fromTick, toTick, FAMINE_MORTALITY_PER_MILLE);
-  }
-
-  /**
-   * ★★ **同 {@link #settle(EconomyData, long, long)}，但致死率可注入**（**包内可见**的旋钮，见 {@link
-   * #FAMINE_MORTALITY_PER_MILLE}）—— ★★ **并且 fail-closed**（裁定 E7 / 计划 R4；H1 起收紧到"第一天之前"）。
-   *
-   * <p>★★ <b>为什么本入口必须 fail-closed（H1 起是两层）</b>：
-   *
-   * <ol>
-   *   <li>★★ <b>它没有家户账</b>（H1；裁定 K1）：日结算的消费与投入都从**家户账的会话工作副本**里读，而本入口手里没有它 —— 它只看经济切片，家户库存住在 actor
-   *       切片的 {@code HouseholdInventory} 上。⇒ 只要这个世界有 {@code population > 0}
-   *       的家户行，本入口就<b>在第一天之前当场抛</b>（把"没有账"当成"库存 0"正是本仓最反对的静默付 0）。 正确的入口是 {@link
-   *       EconomyDayStepper}（家户账是**会话状态**：载入 → 逐日 step → 交回）；
-   *   <li>产出<b>不再写进阶层行</b>（R5 ②）—— 它变成产权条目（{@code +净产 → operator}）与给家户 actor 的实付条目。 而"把产权条目落到
-   *       {@code ActorData.accounts} 上"这件事，<b>本入口也做不到</b>。⇒ 一旦某一天真的关账并产出，那些条目
-   *       <b>在账上静默消失</b>，故<b>当场抛</b>。这一层留着守"全零人口的世界照样不许静默丢产出"。
-   * </ol>
-   *
-   * <p>★★ <b>正确的两条路径</b>（消息里一并点出）：
-   *
-   * <ol>
-   *   <li>{@link EconomyDayStepper} —— economy 模块内的**会话入口**：它逐步交回当天的 {@link ProductionLedger}
-   *       （调用方自己决定落到哪里）。单模块用例走它；
-   *   <li>**app 协调器**（{@code EconomyOwnershipTimeParticipant} / {@code
-   *       PopulationEconomyTimeParticipant}） —— 唯一同时看得见 {@code economy} 与 {@code actor}
-   *       的地方：家户账由它载入/落回， 产权由它落账。
-   * </ol>
-   *
-   * <p>★ 第二层的判据是"<b>要产出</b>"（{@link ProductionLedger#hasOutput()}），不是"是多日"：全零人口的世界里不跨周期末的区间照旧可用
-   * （那些天没有任何产业关账、也没有人要吃饭）。
-   *
-   * @param famineMortalityPerMille 致死率（千分数；∈ [0, 1000] ⇒ 死亡 ≤ 需求未被满足的那部分人口）
    * @throws IllegalStateException 世界里存在 {@code population > 0} 的家户行（本入口没有家户账）、
    *     或者区间内**有产业关账并产出**（本入口没有产权落账口）—— 两者都当场抛，不静默
+   *     <p>★★ <b>为什么本入口必须 fail-closed（H1 起是两层）</b>：① 它没有家户账（裁定 K1）——"把没有账当成库存 0"正是本仓最反对的静默付 0；②
+   *     产出不再是阶层行字段而是产权条目，本入口没有落账口 ⇒ 会静默消失。正确入口见 {@link EconomyDayStepper}（家户账是**会话状态**：载入 → 逐日 step
+   *     → 交回）或 app 协调器。
+   *     <p>★★ <b>W3（2026-10-11）：原"致死率可注入"的 4 参重载已删</b>（AGENTS §一.11：旧设计直接删）—— 死亡率的权威在 Social（AGENTS
+   *     §〇 模块表）；经济侧只<b>报缺口</b>（见 {@link EconomySession#drainPendingHouseholdGaps()}），不再持有任何"致死"口径。
    */
-  static EconomyData settle(
-      EconomyData base, long fromTick, long toTick, int famineMortalityPerMille) {
+  public static EconomyData settle(EconomyData base, long fromTick, long toTick) {
     Objects.requireNonNull(base, "base");
     if (base.meta().isEmpty()) {
       return base; // 未激活：不做任何公式（§6.6）
@@ -955,7 +915,6 @@ public final class EconomySettlement {
           AccountSession.empty(),
           MarketTopology.singleHex(base.marketTables(), base.marketZones()),
           PLANTING_DRAWS_BEFORE_CONSUMPTION,
-          famineMortalityPerMille,
           ledger,
           Map.of());
       if (ledger.toLedger().hasOutput()) {
@@ -981,7 +940,6 @@ public final class EconomySettlement {
       AccountSession accounts,
       MarketTopology topology,
       boolean plantingDrawsFirst,
-      int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition) {
     settleOneDayInto(
@@ -990,7 +948,6 @@ public final class EconomySettlement {
         accounts,
         topology,
         plantingDrawsFirst,
-        famineMortalityPerMille,
         ledger,
         EconomyParallelism.singleThreaded(),
         composition);
@@ -1014,7 +971,6 @@ public final class EconomySettlement {
       AccountSession accounts,
       MarketTopology topology,
       boolean plantingDrawsFirst,
-      int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger,
       EconomyParallelism parallelism,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition) {
@@ -1025,7 +981,6 @@ public final class EconomySettlement {
         accounts,
         topology,
         plantingDrawsFirst,
-        famineMortalityPerMille,
         ledger,
         parallelism,
         null,
@@ -1047,7 +1002,6 @@ public final class EconomySettlement {
       AccountSession accounts,
       MarketTopology topology,
       boolean plantingDrawsFirst,
-      int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger,
       EconomyParallelism parallelism,
       EnterpriseProfitBook.CycleAccumulator profitCycle,
@@ -1060,7 +1014,6 @@ public final class EconomySettlement {
         accounts,
         topology,
         plantingDrawsFirst,
-        famineMortalityPerMille,
         ledger,
         parallelism,
         profitCycle,
@@ -1081,7 +1034,6 @@ public final class EconomySettlement {
       AccountSession accounts,
       MarketTopology topology,
       boolean plantingDrawsFirst,
-      int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger,
       EconomyParallelism parallelism,
       EnterpriseProfitBook.CycleAccumulator profitCycle,
@@ -1094,7 +1046,6 @@ public final class EconomySettlement {
         accounts,
         topology,
         plantingDrawsFirst,
-        famineMortalityPerMille,
         ledger,
         parallelism,
         profitCycle,
@@ -1116,7 +1067,6 @@ public final class EconomySettlement {
       AccountSession accounts,
       MarketTopology topology,
       boolean plantingDrawsFirst,
-      int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger,
       EconomyParallelism parallelism,
       EnterpriseProfitBook.CycleAccumulator profitCycle,
@@ -1130,7 +1080,6 @@ public final class EconomySettlement {
         accounts,
         topology,
         plantingDrawsFirst,
-        famineMortalityPerMille,
         ledger,
         parallelism,
         profitCycle,
@@ -1155,7 +1104,6 @@ public final class EconomySettlement {
       AccountSession accounts,
       MarketTopology topology,
       boolean plantingDrawsFirst,
-      int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger,
       EconomyParallelism parallelism,
       EnterpriseProfitBook.CycleAccumulator profitCycle,
@@ -1259,7 +1207,7 @@ public final class EconomySettlement {
     for (Map.Entry<DebtContractId, DebtContract> debtEntry : debts.entrySet()) {
       principalAtDayStart.put(debtEntry.getKey(), debtEntry.getValue().principal());
     }
-    // ★★ **R2：劳动配额表**——日结算**读**它（当日劳动的唯一来源），R4 起在**饿死**那一步**按存活比例缩**它
+    // ★★ **R2：劳动配额表**——日结算**读**它（当日劳动的唯一来源）。★ W3 起结算**不再**按存活比例缩它
     //   （见 {@link #scaleLaborOfIndustry}："人死了劳动没减"这条旧账的收口）⇒ 需要工作副本。
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments =
         session.sheet().laborCommitments();
@@ -1495,7 +1443,6 @@ public final class EconomySettlement {
     //   ProductionLedger#losses()}（守恒式里自成一项，见类注 §6.1 的新式）。留一个"分了损耗但没人收"的中间残留
     //   （旧口径里它是 consumed 的一部分）会让 I4.2 的 ΣLoss 被算两遍。
     LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetToday = new LinkedHashMap<>();
-    LinkedHashMap<HouseholdId, Long> deathsToday = new LinkedHashMap<>();
     LinkedHashMap<HouseholdId, Long> birthsToday = new LinkedHashMap<>();
     LinkedHashMap<HouseholdId, Long> interestToday = new LinkedHashMap<>(); // 周期末计息那一笔（§7.1③）
     // ★★ **H5：周期末偿还的那一笔**（{@code FlowRow.repaid} 的第一个写入点 —— 改前它恒 0）。
@@ -1802,7 +1749,7 @@ public final class EconomySettlement {
                   deficitGrain));
     }
 
-    // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
+    // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 ────────────────────────────────────
     boolean anyCycleClosed = false;
     Set<ProductionUnitId> newCycleUnits = new LinkedHashSet<>();
     // ★★★ A5（2026-10-10）+ A7：本日关账、且**产出运输服务**的 unit（`trade@hex`）—— 它们是"本日到周期边界"的
@@ -1856,7 +1803,7 @@ public final class EconomySettlement {
         }
       }
     }
-    // ★★ H5：本日关账的产业（饿死判据与劳动缩放要等救济通道走完 —— 见下面的 4d）。
+    // ★★ H5：本日关账的产业（它们的缺口读数要等救济通道走完才报 —— 见下面的 4d）。
     List<ClosedUnit> closed = new ArrayList<>();
     // ★★ P10.2：关账 unit 的周期劳动/投入快照（在下面把 unit 周期状态清零**之前**抓；⑦ 利润汇总用）。
     List<EnterpriseProfitBook.CloseFact> closedFacts = new ArrayList<>();
@@ -1926,7 +1873,7 @@ public final class EconomySettlement {
       Map<CommodityId, Long> nextInputUsed = unit.cycleInputUsedMilli(); // 非关账日：原样带过
       // ★ v2 spec §八.3：`progressDays ∈ [0, cycleDays]` 是**闭区间**：>= 才把合法状态收获掉。
       if (progressed >= industry.cycleDays()) {
-        // ── 周期末：产出 → 产权条目 + 关系规则入账（★ 饿死判据**挪到所有救济通道之后**，见下面的 4d）──
+        // ── 周期末：产出 → 产权条目 + 关系规则入账（★ 缺口读数在**所有救济通道之后**，见下面的 4d）──
         OperatorCondition condition = operatorConditions.get(id);
         long plannedPerMille =
             StressPolicy.plannedScalePerMille(
@@ -1959,7 +1906,7 @@ public final class EconomySettlement {
                 outputQuantityOverrides.getOrDefault(industry.id(), Map.of()),
                 hexOfIndustry(unit.industry()),
                 harvestOrder++));
-        // ★★ **H5：关账的 unit 先记下来，饿死判据等救济通道走完再算**。
+        // ★★ **H5：关账的 unit 先记下来 —— 4d 的报缺口等所有救济通道走完再算**（W3 起不再判死）。
         closed.add(
             new ClosedUnit(
                 id,
@@ -2941,109 +2888,20 @@ public final class EconomySettlement {
       }
     }
 
-    // ── 4d. 饿死判据（★ H5：**所有救济通道之后** —— 市场（4）→ 借（4b）→ 还（4c）之后才判）────────────
-    //   ★★ 口径与改前**逐值相同**：改前它排在借粮之后（只是那时借粮在收获之前）；本步把它排到市场与借粮之后 ⇒
-    //     "借到粮的人不按缺口去死"这条语义一个字没变，而"关账日的集市买到的粮也算救济"这条**新**口径进来了。
-    //   ★ 人口减少后劳动按同比例缩（`applyFamine` 缩**行**劳动 + 本步缩该产业名下的**全部配额**与对应批次的供给）。
-    for (ClosedUnit closing : closed) {
-      long populationBefore = 0L;
-      for (HouseholdId key : closing.keys()) {
-        populationBefore += householdEconomies.get(key).population();
-      }
-      for (HouseholdId key : closing.keys()) {
-        long carried =
-            newCycleUnits.contains(closing.unit()) || flows.get(key) == null
-                ? 0L
-                : flows.get(key).unmetNeed().getOrDefault(GRAIN, 0L);
-        HouseholdEconomy beforeFamineHouseholdEconomy = householdEconomies.get(key);
-        long populationBeforeFamine =
-            beforeFamineHouseholdEconomy == null ? 0L : beforeFamineHouseholdEconomy.population();
-        long famineUnmet = carried + unmetToday.getOrDefault(key, Map.of()).getOrDefault(GRAIN, 0L);
-        applyFamine(
-            householdEconomies,
-            deathsToday,
-            key,
-            householdEconomies.get(key),
-            famineUnmet,
-            famineMortalityPerMille);
-        HouseholdEconomy afterFamineHouseholdEconomy = householdEconomies.get(key);
-        long famineDeaths =
-            populationBeforeFamine
-                - (afterFamineHouseholdEconomy == null
-                    ? 0L
-                    : afterFamineHouseholdEconomy.population());
-        if (famineDeaths > 0L) {
-          EventLog.channel(RAW)
-              .trace(
-                  LogEvent.of(
-                      "FAMINE_DEATH",
-                      EconomyLogSource.ECONOMY_POPULATION,
-                      "day",
-                      day,
-                      "household",
-                      key.value(),
-                      "unit",
-                      closing.unit().value(),
-                      "deaths",
-                      famineDeaths,
-                      "populationBefore",
-                      populationBeforeFamine,
-                      "populationAfter",
-                      afterFamineHouseholdEconomy == null
-                          ? 0L
-                          : afterFamineHouseholdEconomy.population(),
-                      "unmetGrainMilli",
-                      famineUnmet));
-        }
-        // ★ P2-A A3：成员份额已迁 Social —— 饿死只改 HouseholdEconomy.population；Social 侧的家户成员回写由
-        //   跨切片协调器负责（本批如实记为缺口，见交付报告）。
-      }
-      long populationAfter = 0L;
-      for (HouseholdId key : closing.keys()) {
-        populationAfter += householdEconomies.get(key).population();
-      }
-      // ★★ **R4：饿死之后劳动按同比例缩 —— 而且这次真的缩到配额上**（R2 如实记下的那条旧账：
-      //   `applyFamine` 缩的是**行**劳动，而当日劳动自 R2 起取自**劳动分配表** ⇒ "人死了劳动没减"）。
-      if (populationAfter < populationBefore) {
-        scaleLaborOfUnit(
-            closing.unit(), populationBefore, populationAfter, laborCommitments, settlementIndex);
-      }
-    }
-    // ★★ Z3a/C7：全部关账 unit 的死亡缩放已跑完 —— 政府承诺整额保留后若越预算，这里统一具名 ERROR + fail-closed
-    //   （有 day 上下文 ⇒ 来源 TICK、事件带 day；与 Z1b 队列口径同事件名）。
+    // ── 4d. 报缺口（★★ W3 2026-10-11：原"饿死判据 + 劳动缩放"整段已删 —— 经济侧**不判死、不缩劳动**）──────
+    //   ★ 位置不变（★ H5：**所有救济通道之后** —— 市场（4）→ 借（4b）→ 还（4c）之后）：这里算出的缺口就是
+    //     "救济全走完还差多少"，与旧判据同一个时点、同一个当日分子（`unmetToday[grain]`）。旧判据另外把
+    //     本周期累计（`carried`）折进"饿满整周期"的比例里 —— 那条**周期口径随判死一起走了**：缺口现在按**当日**
+    //     报（分子=当日缺口、分母=当日粮需求，同窗口），由 Social 自己决定怎么折成死亡率。
+    //   ★ 报出去的形状见 {@link EconomyHouseholdGap}：① 生产花费未满足量（逐商品，取 W2 的市场读口，**不重算**）
+    //     ② 口粮缺口那一支（当日）③ 家户稳定身份 + 当日人口。
+    //   ★ 它是瞬态 outbox（不进 EconomyData/变更集/Codec），app 组合根在 step(day) 之后取走（S-11 第②半）。
+    reportHouseholdGaps(
+        session, householdEconomies, flows, unmetToday, newCycleHouseholds, ledger, day);
+    // ★★ Z3a/C7：政府承诺整额保留后若越预算，这里统一具名 ERROR + fail-closed（有 day 上下文 ⇒ 来源 TICK、
+    //   事件带 day；与 Z1b 队列口径同事件名）。★ W3 起它不再兼"死亡缩放的收口"——那条缩放已删（见上）。
     requireGovServiceCommitmentsWithinBudgets(
         laborCommitments, householdEconomies, EconomyLogSource.ECONOMY_POPULATION, day);
-    long famineDeathsTotal = traceTotalLongs(deathsToday);
-    if (famineDeathsTotal > 0L) {
-      EventLog.channel(TRACE)
-          .info(
-              LogEvent.of(
-                  "FAMINE",
-                  EconomyLogSource.ECONOMY_POPULATION,
-                  "day",
-                  day,
-                  "closedUnits",
-                  closed.size(),
-                  "deaths",
-                  famineDeathsTotal,
-                  "unmetTotalMilli",
-                  traceTotalGoods(unmetToday)));
-    }
-    if (TRACE.isDebugEnabled() && anyCycleClosed) {
-      EventLog.channel(TRACE)
-          .debug(
-              LogEvent.of(
-                  "FAMINE_DETAIL",
-                  EconomyLogSource.ECONOMY_POPULATION,
-                  "day",
-                  day,
-                  "closedUnits",
-                  closed.size(),
-                  "deathsToday",
-                  famineDeathsTotal,
-                  "unmetTotalMilli",
-                  traceTotalGoods(unmetToday)));
-    }
 
     // ── 5. 周期末计息（§7.1③ / §四 周期结算第 6 步）────────────────────────────────────
     //   ★ **一天只计一次**：结算日循环里可能有多个产业在同一天关账（各产业 cycleDays 可以不同）⇒ 计息挂在
@@ -3368,7 +3226,9 @@ public final class EconomySettlement {
       long netSurplus =
           earned.getOrDefault(GRAIN, 0L) - consumed.getOrDefault(GRAIN, 0L) - interest;
       Map<CommodityId, Long> dayUnmet = unmetToday.getOrDefault(key, Map.of());
-      long dayDeaths = deathsToday.getOrDefault(key, 0L);
+      // ★★ W3（2026-10-11）：经济侧**不再**产生任何死亡（判死归 Social）⇒ 当日死亡恒 0。
+      //   原 `deathsToday` 累加器与 `applyFamine` 一并删除（AGENTS §一.11：旧设计直接删）。
+      long dayDeaths = 0L;
       long dayBirths = birthsToday.getOrDefault(key, 0L);
       // ★★ E4c：货币债偿还与资本化读数的当日量（与其余字段同窗口：本周期累加、新周期第一天归零）。
       Map<CurrencyId, Long> dayRepaidMoney = repaidMoneyToday.getOrDefault(key, Map.of());
@@ -3421,7 +3281,7 @@ public final class EconomySettlement {
             meta.rulesVersion(),
             meta.migrationSource());
     // ★ R2：劳动供给表与配额表**原样带过结算的日常部分**（配额属命令层、供给属 social 的人口真值源）；
-    //   R4 起它们在**饿死**那一步会被按存活比例缩（上面的工作副本），故这里交出的是**工作副本**。
+    //   ★ W3 起结算**不再**按死亡比例缩配额（判死归 Social）⇒ 这里交出的是**工作副本**。
     // ★★ E3：把本次结算日产生的发行审计记录落进状态表（按 id 确定性排序；map 键 = 记录 id）。
     //   ★ 只有真的发生单边发行才有记录；没有发行时连工作副本都不碰（旧路径逐值不变）。
     List<MoneyIssuanceRecord> issuedToday = issuanceJournal.drainSorted();
@@ -3591,7 +3451,7 @@ public final class EconomySettlement {
                 "population",
                 dayEndPopulation,
                 "deaths",
-                traceTotalLongs(deathsToday),
+                0L, // ★ W3：经济侧不再判死（死亡只在 Social）；本字段结构性恒 0，留作读口形状
                 "unmet",
                 traceTotalGoods(unmetToday),
                 "borrowedGrainMilli",
@@ -4496,11 +4356,12 @@ public final class EconomySettlement {
    *      {@code 存活 == 0} ⇒ 全额减免），只动本金/状态、**不搬任何粮/钱、不产生利息**；删债额记进会话瞬态累加器。
    * </pre>
    *
-   * <p>★★ **为什么经济侧必须跟着动**（而不是"人死了只在社会侧少几个人"）：行人口是**分配权重**与劳动缩放的来源； 当日口粮需求已由 app 按 Social
+   * <p>★★ <b>为什么经济侧必须跟着动</b>（而不是"人死了只在社会侧少几个人"）：行人口是**分配权重**与劳动缩放的来源； 当日口粮需求已由 app 按 Social
    * 成员逐户展开注入（Batch 3）⇒ 不回写人口/劳动，权重与配额仍会停在旧账上。
    *
-   * <p>★★ **为什么配额要按 #③ 缩两次也不同**：{@code applyFamine}（直接按缺口处死的那条路径）缩的是**产业**那一侧， 本步缩的是**批次**那一侧 ——
-   * 两条路径各自知道自己死了谁，各自缩自己那份账。两者都落在同一条不变量上 （{@code Σ allocated ≤ available}）。
+   * <p>★★ <b>W3（2026-10-11）起本步是"批次侧"唯一的死亡缩放入口</b>：原"按缺口直接处死 + 缩产业配额"那条路径 （{@code applyFamine} /
+   * {@code scaleLaborOfUnit}）已整段删除 —— 判死与劳动口径都归 Social，经济侧只<b>报缺口</b>。本步只服务"外部
+   * （Social/命令面）已经算出逐批次死亡并交回经济侧"的场景；它仍落在同一条不变量上（{@code Σ allocated ≤ available}）。
    *
    * <p>★ **没有劳动配额的批次摊不出去**（{@code industriesOf} 里没有它）：本轮的世界里创世给每个批次都发了配额 （{@code
    * EconomySeeder}），故这条路径只服务"手工搭的、没有配额的状态"——那种状态本来也没有可缩的劳动。
@@ -5100,70 +4961,13 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ **把某个产业名下全部劳动配额（及对应批次的劳动供给）按存活比例缩**（R4 对 R2 那条旧账的收口）。
-   *
-   * <pre>
-   * ratio = after ÷ before          // 该产业各阶层行的**人口**之和，饿死前 → 饿死后
-   * 每条配额的 laborMilli        × ratio ÷ 1000 → 同比例缩
-   * 每条供给的 grossLaborMilli   × ratio ÷ 1000 → 同比例缩（⇒ Σ allocated ≤ available 仍然成立）
-   * </pre>
-   *
-   * <p>★★ **为什么两侧都要缩**：那条不变量是 {@code Σ allocated ≤ available}，而 {@code available} 就是供给的毛额减两项扣除 ——
-   * 只缩配额、不缩供给，缩法对了但账对不上；只缩供给、不缩配额，则会造出"配额超过可支配劳动"的**非法状态** （{@code EconomyData} 的构造期守卫当场拒 ⇒
-   * 整次推进回滚）。
-   *
-   * <p>★ **比例取整的方向安全**：{@code Σ floor(a_i × r) ≤ floor(Σ a_i × r) ≤ floor(available × r) =
-   * available'} ⇒ 收缩后不变量自动成立，不需要"再夹一次"。
-   *
-   * <p>★ **它只覆盖"人死了"这一侧**：出生**不放大**配额（新生儿不干活，且"劳动力增长"要走发配额的命令层，不是结算顺手改）。
-   *
-   * <p>★★ <b>Z3a/C7：{@code GOV_SERVICE} 行整额跳过</b>（政府行政岗位承诺不可缩；v1 spec §10 C7 / spec §17.2）—— 本方法只缩
-   * {@code PRODUCTION}；整批缩放完成后由 {@link #requireGovServiceCommitmentsWithinBudgets} 统一 fail-closed
-   * 校验政府承诺仍在预算内（越界 ⇒ 具名 {@code LABOR_COMMITMENT_CONTRACT} ERROR）。
-   *
-   * @param before 饿死前该产业的行人口之和；必须 &gt; 0（为 0 时没有可缩的东西，调用方先挡）
-   */
-  private static void scaleLaborOfUnit(
-      ProductionUnitId unitId,
-      long before,
-      long after,
-      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
-      SettlementIndex index) {
-    if (before <= 0L || after >= before) {
-      return;
-    }
-    // ★ R4-B.3a-perf：按 unit 的配额 id 列表查活表（旧实现每个关账 unit 扫全量配额）。
-    for (LaborAllocationId allocationId : index.allocationIdsOfUnit(unitId)) {
-      HouseholdLaborCommitment laborCommitment = laborCommitments.get(allocationId);
-      if (laborCommitment == null) {
-        continue; // 索引与活表同源；这里只防御中途被移除
-      }
-      if (laborCommitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
-        continue; // ★ Z3a/C7：政府行政岗位承诺不参与死亡比例缩；越预算由批次末尾统一 fail-closed
-      }
-      long scaled = laborCommitment.laborMilli() * after / before;
-      laborCommitments.put(
-          allocationId,
-          new HouseholdLaborCommitment(
-              laborCommitment.id(),
-              laborCommitment.group(),
-              laborCommitment.household(),
-              laborCommitment.actor(),
-              laborCommitment.activity(),
-              scaled,
-              laborCommitment.period(),
-              laborCommitment.kind()));
-    }
-  }
-
-  /**
    * ★★ **把一个批次在两个产业上的配额按"该批次的存活比例"缩**（R4 的出生/死亡回写路径用；与 {@link #scaleLaborOfIndustry}
    * 同一条口径，只是键换成了批次）。
    *
    * <p>★ 人口真值源在 social ⇒ 本步的**唯一输入**是一份 {@code group → (出生, 死亡)} 的账（见 {@link
    * #applyPopulationChange}）： economy 不需要认识 {@code PopulationGroup}，只需要它的稳定身份。
    *
-   * <p>★★ <b>Z3a/C7：{@code GOV_SERVICE} 行整额跳过</b>（同 {@link #scaleLaborOfUnit}）；批次缩放完成后由调用方统一 {@link
+   * <p>★★ <b>Z3a/C7：{@code GOV_SERVICE} 行整额跳过</b>；批次缩放完成后由调用方统一 {@link
    * #requireGovServiceCommitmentsWithinBudgets} fail-closed 校验。
    */
   private static void scaleLaborOfGroup(
@@ -6599,7 +6403,7 @@ public final class EconomySettlement {
 
   /**
    * 每个格一次：先各自吃自己的库存，库存不够的**在同格内借**（**按可贷余粮降序**找放贷人 —— 见 {@link #lendableOf}）；借到的**累加进同一条** {@link
-   * DebtContract}（§7.2 的聚合）；**仍补不上的** 记入未满足需求（{@code unmetNeed}，供周期末的饿死判据用）。
+   * DebtContract}（§7.2 的聚合）；**仍补不上的** 记入未满足需求（{@code unmetNeed}，★ W3 起它是报给 Social 的 口粮缺口那一支的当日分子）。
    *
    * <p>★ **借到的粮当日即被吃掉** ⇒ 缺口行 {@code consumed} 记足额（借入量并入当日消费），行库存归零；放贷行的库存相应减少（债权体现在债务表， **不进放贷行的
    * {@code consumed}** —— 它出去的是"债权"不是"消费"）。故 §6.1 的守恒式在**格/全局**上成立、**逐行不成立**。
@@ -6631,9 +6435,12 @@ public final class EconomySettlement {
    * @param dueCycle 借粮的到期周期 = 当前周期 + 1（滚动写进合同；连续余额只保留最新一笔的到期）
    */
   /**
-   * ★ <b>本日关账的一个 unit</b>（H5/R3B.2）：它的 id、产业模板 id、它名下的家户行 —— 饿死判据（{@link #applyFamine}）
-   * 与死亡后的劳动缩放（{@link #scaleLaborOfUnit}）要等**市场与借粮**走完才跑，故先把这三样收起来。 ★ Batch 3 起饿死判据分母取行上的 {@code
-   * cycleNaturalNeedMilli}，不再需要该 unit 的周期天数。
+   * ★ <b>本日关账的一个 unit</b>（H5/R3B.2）：它的 id、产业模板 id、它名下的家户行 —— 关账日的结算与读数要等
+   * <b>市场与借粮</b>走完才跑，故先把这几样收起来。
+   *
+   * <p>★★ <b>W3（2026-10-11）更正：本记录不再服务任何"判死/缩劳动"</b> —— 那条路径已整体删除（经济侧只 {@linkplain
+   * #reportHouseholdGaps 报缺口}，死亡率归 Social）。★ Batch 3 起饿死判据的分母口径（{@code
+   * cycleNaturalNeedMilli}）也随之一并作废：缺口现在按<b>当日</b>报（见 {@link EconomyHouseholdGap}）。
    */
   private record ClosedUnit(
       ProductionUnitId unit, IndustryId industry, List<HouseholdId> keys, boolean inputShortfall) {}
@@ -6641,7 +6448,7 @@ public final class EconomySettlement {
   /**
    * ★★ <b>同格借粮：最后手段</b>（H5 ②；改前的 {@code settleHexes} 的第二半）—— 逐格：缺口行向**本格可贷余粮** （按余粮降序，见 {@link
    * #lendableOf}）借，借到的**累加进同一条** {@link DebtContract}（E4a 连续身份）； **仍补不上的** 记入未满足需求（{@code
-   * unmetNeed}，供周期末的饿死判据用）。
+   * unmetNeed}，★ W3 起经 4d 报给 Social 当饥荒输入）。
    *
    * <p>★★ <b>四档次序（判据就是它）</b>：<b>① 自产/分配</b>（{@link #consumeOwnStockPartitioned} 吃自有库存，收获与分配在它之前） →
    * <b>② 市场购买</b>（{@link MarketSettlement}，在关账日、本步之前）→ <b>③ 救济</b>（★ <b>留位</b>：本批没有任何救济制度，
@@ -9877,61 +9684,163 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ **周期末的饿死判据**（2026-09-25 用户点名；**默认不致命** —— 见 {@link
-   * #FAMINE_MORTALITY_PER_MILLE}）：把本周期逐日累加的未满足需求 {@code cycleUnmet} 折成"**饿满整个周期的那个比例**"，再在这一比例的人口里按
-   * {@code famineMortalityPerMille} 致死。
+   * ★★★ <b>W3（2026-10-11）：报缺口 —— 经济侧对"人"的唯一动作</b>（原 {@code applyFamine} 的替代者）。
+   *
+   * <p>★★ <b>本方法不改任何状态、不判死、不缩劳动、不动人口</b>：它只把"这一天经济腿看见的逐户缺口"写进 {@link EconomySession} 的瞬态
+   * outbox（{@link EconomySession#recordHouseholdGap}），由 {@code simos-app} 的组合根在 {@code step(day)}
+   * 之后取走、翻成 Social 的饥荒输入（约束设计书 §2 的 S-11 第②半：<b>口粮缺口 ⇒ 报社会</b>， 社会据此扣劳动/人口；经济侧不自己扣）。
    *
    * <pre>
-   * long cycleNeed = householdEconomy.cycleNaturalNeedMilli(); // 本周期总需求：逐日注入 naturalNeeds[grain] 的累加
-   * int  faminePerMille = cycleNeed == 0 ? 0 : min(1000, cycleUnmet × 1000 / cycleNeed);
-   * long deaths = population × faminePerMille / 1000 × famineMortalityPerMille / 1000;
+   * 逐户（只报"口粮缺口 &gt; 0 或 生产花费缺口非空"的户；两条腿都干净的户不进 outbox = 缺省中性）：
+   *   ① productionCostGapByCommodity = 当日市场轮 MarketReport.unmetProductionCostByHousehold()
+   *        ★ W2 的读口原样取用（"生产花费（内含口粮）的未满足量"）；**没开市 ⇒ 空表**（不是"缺口 0"）
+   *   ② rationGapMilli  = 当日 unmetToday[grain]（"家户吃不上"的量；救济全部走完之后）
+   *      rationNeedMilli = 当日 naturalNeeds[grain]（同窗口的分母，由 app 从 Social 注入）
+   *   ③ household + population（稳定身份；铁律 1）
    * </pre>
    *
-   * <p>★★ **2026-10-09 Batch 3：本周期总需求分母改读行上的 {@code cycleNaturalNeedMilli}** （每日 app 逐户注入的 {@code
-   * naturalNeeds[grain]} 在消费步逐日累加，窗口 = 本周期实际经过的天）； <b>不再</b>用 {@code 人口 × 累计口粮定额} 现算 ——
-   * 分子（本周期累计未满足）与分母从此同源、同窗口。
+   * <p>★★ <b>窗口口径（与旧判据的唯一差异，具名）</b>：旧判据把"本周期累计缺口 ÷ 本周期累计需求"折成"饿满整周期的比例"， 只在**产业关账日**、只对**关账 unit
+   * 名下的家户**跑；本方法按<b>当日</b>报（分子分母同窗口 = 那一天）， <b>逐日对全部家户</b>跑。⇒ 缺口的"结算窗口"从"周期"变成"日"，与"每 tick
+   * 生死"（Social 的 ppm/tick + 余数累加器） 同一个时间基准；这正是 W3「两段式 tick + 死亡率移交」要的形态。
    *
-   * <p>★ 人口减少后，**有效劳动按同一比例缩**（{@code labor = labor × (population − deaths) / population}；{@code
-   * population == 0} ⇒ {@code labor = 0}，**不除零**）；死亡数记入本行流水（{@code deaths}）。**死亡不回溯产出**：
-   * 本周期收获已在调用方先行分配（照分给幸存者）。
+   * <p>★ <b>为什么读 {@code unmetToday} 而不是"再算一遍"</b>：它就是消费步（{@link #consumeOneHousehold}）
+   * 写下的同一笔账（{@code need − eaten}），并且已经在**借粮/还债之后**（本步的位置）：借到粮的人不再算缺口。 本方法只做"按家户取出 +
+   * 报出去"，不引入第二个缺口口径。
    *
-   * <p>★ 不变量：{@code faminePerMille ≤ 1000} 且致死率 {@code ≤ 1000‰} ⇒ {@code deaths ≤
-   * population}、{@code 人口 ≥ 0}、 {@code labor ≥ 0}（构造期由 {@link HouseholdEconomy} 再兜一层）。
-   *
-   * <p>★★ **R4 起这条旧账已收口**（R2 如实记过的那处不齐）：本节缩的**行**劳动之外，调用方还会把该产业名下的**全部劳动配额**
-   * 与对应批次的**劳动供给**按同一个存活比例缩（{@link #scaleLaborOfIndustry}）—— 于是"人死了劳动没减"不再成立。 ★ 另一条人口变化路径 （Social 每
-   * tick 生死，见 {@link #applyHouseholdPopulationDeltasInto}）只同步家户行人口：劳动预算由 app 用**结算后**的 Social
-   * 重算，不在这里按比例缩。
-   *
-   * <p>★ **它现在还是"直接按缺口处死"那个独立旋钮**（默认 0‰）：2026-10-09 每 tick 生死起，日常出生/死亡走 Social 的 ppm/tick 率表 +
-   * 余数累加器（不再有"生理压力抬死亡率"那条路）；本方法的致死率仍由 {@link #FAMINE_MORTALITY_PER_MILLE} 控制， 且**逐值用例仍钉着非 0
-   * 那一条路**（不是死分支）。
+   * <p>★ <b>日志（AGENTS §一.9）</b>：逐户明细 TRACE（{@code HOUSEHOLD_GAP}）；当日池子/为什么 DEBUG（{@code
+   * HOUSEHOLD_GAP_POOL}）；真有缺口时 INFO 一条具名计数（{@code HOUSEHOLD_GAP_REPORTED}）—— "谁因什么缺了多少"。
+   * 全部只读，日志失败不影响结算。
    */
-  private static void applyFamine(
+  private static void reportHouseholdGaps(
+      EconomySession session,
       LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
-      LinkedHashMap<HouseholdId, Long> deaths,
-      HouseholdId key,
-      HouseholdEconomy householdEconomy,
-      long cycleUnmet,
-      int famineMortalityPerMille) {
-    long population = householdEconomy.population();
-    // ★★ 2026-10-09 Batch 3：本周期总需求 = 行上的 cycleNaturalNeedMilli（消费步对逐日注入
-    //   naturalNeeds[grain] 的累加，新周期第一天在流水清零点重置）；不再按 population 现算累计口粮差。
-    long cycleNeed = householdEconomy.cycleNaturalNeedMilli();
-    int faminePerMille =
-        cycleNeed == 0L ? 0 : (int) Math.min(1000L, cycleUnmet * 1000L / cycleNeed);
-    long dead = population * faminePerMille / 1000L * famineMortalityPerMille / 1000L;
-    if (dead <= 0L) {
-      return;
+      LinkedHashMap<HouseholdId, FlowRow> flows,
+      Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
+      Set<HouseholdId> newCycleHouseholds,
+      ProductionLedger.Accumulator ledger,
+      long day) {
+    Objects.requireNonNull(session, "session（报缺口要落进会话 outbox）");
+    // ★ ① W2 的读口：没开市 ⇒ ledger.marketReport() == null ⇒ 空表（"那一天根本没有市场这件事"，
+    //   与"市场开了但大家都买到了"是两件事，后者是空 Map —— 两者在缺口语义上等价，在归因上不同）。
+    MarketReport marketReport = ledger.marketReport();
+    Map<HouseholdId, Map<CommodityId, Long>> productionCostGaps =
+        marketReport == null ? Map.of() : marketReport.unmetProductionCostByHousehold();
+    long householdsEvaluated = 0L;
+    long householdsWithRationGap = 0L;
+    long householdsWithProductionCostGap = 0L;
+    long rationGapTotalMilli = 0L;
+    long rationNeedTotalMilli = 0L;
+    long productionCostGapTotalMilli = 0L;
+    for (Map.Entry<HouseholdId, HouseholdEconomy> entry : householdEconomies.entrySet()) {
+      HouseholdId key = entry.getKey();
+      HouseholdEconomy row = entry.getValue();
+      householdsEvaluated++;
+      Map<CommodityId, Long> costGap = productionCostGaps.getOrDefault(key, Map.of());
+      long rationGapMilli =
+          unmetToday.getOrDefault(key, Map.of()).getOrDefault(GRAIN, 0L); // 当日缺口（毫粮）
+      if (rationGapMilli <= 0L && costGap.isEmpty()) {
+        continue; // 两条腿都没有 ⇒ 不进 outbox（"没缺口"就是不报，缺省中性）
+      }
+      long rationNeedMilli = row.naturalNeeds().getOrDefault(GRAIN, 0L); // 当日粮需求（同窗口分母）
+      session.recordHouseholdGap(
+          new EconomyHouseholdGap(key, row.population(), rationGapMilli, rationNeedMilli, costGap));
+      if (rationGapMilli > 0L) {
+        householdsWithRationGap++;
+        rationGapTotalMilli = Math.addExact(rationGapTotalMilli, rationGapMilli);
+      }
+      if (!costGap.isEmpty()) {
+        householdsWithProductionCostGap++;
+        for (long gap : costGap.values()) {
+          productionCostGapTotalMilli = Math.addExact(productionCostGapTotalMilli, gap);
+        }
+      }
+      rationNeedTotalMilli = Math.addExact(rationNeedTotalMilli, rationNeedMilli);
+      if (EventLog.channel(RAW).isTraceEnabled()) {
+        // ★ TRACE：逐户明细（谁、多少、为什么）—— 默认关闭，可单独开（-Dsimos.economy.traceLevel=TRACE）。
+        EventLog.channel(RAW)
+            .trace(
+                LogEvent.of(
+                    "HOUSEHOLD_GAP",
+                    EconomyLogSource.ECONOMY_POPULATION,
+                    "day",
+                    day,
+                    "household",
+                    key.value(),
+                    "population",
+                    row.population(),
+                    "rationGapMilli",
+                    rationGapMilli,
+                    "rationNeedMilli",
+                    rationNeedMilli,
+                    "productionCostGapByCommodity",
+                    costGap,
+                    "marketRan",
+                    marketReport != null,
+                    "why",
+                    rationGapMilli > 0L
+                        ? "ration-short-after-all-relief"
+                        : "production-cost-short-after-all-relief"));
+      }
     }
-    long nextPopulation = population - dead; // faminePerMille ≤ 1000 且致死率 ≤ 1000‰ ⇒ 必 ≥ 0
-    long nextLabor =
-        population == 0L
-            ? 0L
-            : householdEconomy.laborMilli() * nextPopulation / population; // 同比例缩，不除零
-    householdEconomies.put(
-        key, withPopulationAndLabor(householdEconomy, nextPopulation, nextLabor));
-    deaths.merge(key, dead, Long::sum);
+    // ★ 回写窗口的基线差分要用到"本周期累计"（app 侧读 FlowRow.unmetNeed），这里只做一条池子 DEBUG。
+    long cycleCarried = 0L;
+    for (Map.Entry<HouseholdId, FlowRow> entry : flows.entrySet()) {
+      if (newCycleHouseholds.contains(entry.getKey())) {
+        continue; // 新周期第一天的流水从 0 重记 ⇒ 没有"上期累计"可读
+      }
+      cycleCarried =
+          Math.addExact(cycleCarried, entry.getValue().unmetNeed().getOrDefault(GRAIN, 0L));
+    }
+    if (TRACE.isDebugEnabled()) {
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "HOUSEHOLD_GAP_POOL",
+                  EconomyLogSource.ECONOMY_POPULATION,
+                  "day",
+                  day,
+                  "householdsEvaluated",
+                  householdsEvaluated,
+                  "householdsWithRationGap",
+                  householdsWithRationGap,
+                  "householdsWithProductionCostGap",
+                  householdsWithProductionCostGap,
+                  "rationGapTotalMilli",
+                  rationGapTotalMilli,
+                  "rationNeedTotalMilli",
+                  rationNeedTotalMilli,
+                  "productionCostGapTotalMilli",
+                  productionCostGapTotalMilli,
+                  "marketRan",
+                  marketReport != null,
+                  "cycleGrainUnmetCarriedMilli",
+                  cycleCarried,
+                  "why",
+                  "w3-report-only: economy-no-longer-kills-or-scales-labor"));
+    }
+    if (householdsWithRationGap > 0L) {
+      EventLog.channel(TRACE)
+          .info(
+              LogEvent.of(
+                  "HOUSEHOLD_GAP_REPORTED",
+                  EconomyLogSource.ECONOMY_POPULATION,
+                  "day",
+                  day,
+                  "householdsWithRationGap",
+                  householdsWithRationGap,
+                  "householdsWithProductionCostGap",
+                  householdsWithProductionCostGap,
+                  "rationGapTotalMilli",
+                  rationGapTotalMilli,
+                  "rationNeedTotalMilli",
+                  rationNeedTotalMilli,
+                  "productionCostGapTotalMilli",
+                  productionCostGapTotalMilli,
+                  "marketRan",
+                  marketReport != null,
+                  "why",
+                  "S11-second-half: ration-gap-goes-to-social"));
+    }
   }
 
   /**
@@ -9952,7 +9861,7 @@ public final class EconomySettlement {
    * {@code netSurplus}：见 {@code settleOneDayInto} 里那条注释）。 **债权人这一侧本批不记**：它的资产增值体现在债务表里，而 {@code
    * FlowRow.income} 是**粮食**口径 （往里加"利息收入"会让守恒式当场不成立）⇒ 记在债权侧要等 §五 的索取源协议/市场折算（V7+）。
    *
-   * <p>★ **偿还先于计息**（R3 续修）：关账日的日序是 借粮 → 偿还 → 饿死判据 → 计息（见 {@link #repayDebts}）， 这里只负责把利息并入本金； {@link
+   * <p>★ **偿还先于计息**（R3 续修）：关账日的日序是 借粮 → 偿还 → 报缺口 → 计息（见 {@link #repayDebts}）， 这里只负责把利息并入本金； {@link
    * DebtContract#dueCycle()} 由借款路径滚动写入（读口与退出处置的排序会读它），{@link DebtContract#lastInterestDay()}
    * 在本步真的并入利息时写； E4a 只接线 {@link InterestTiming#AFTER_REPAYMENT_ON_CLOSE}，其它计息时点 fail-closed 具名抛（E4b
    * 接线）。
@@ -10574,7 +10483,7 @@ public final class EconomySettlement {
             + missing.subList(0, Math.min(8, missing.size())));
   }
 
-  /** 换人口与有效劳动（饿死惩罚用；其余字段原样带过）。 */
+  /** 换人口与有效劳动（其余字段原样带过）。★ W3 起经济侧**没有**"判死"调用者了（那条路径已删）—— 仍服务迁移等路径。 */
   private static HouseholdEconomy withPopulationAndLabor(
       HouseholdEconomy householdEconomy, long population, long laborMilli) {
     return new HouseholdEconomy(

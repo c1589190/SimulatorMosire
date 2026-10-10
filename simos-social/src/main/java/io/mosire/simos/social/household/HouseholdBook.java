@@ -15,6 +15,8 @@ import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.api.population.PopulationEventType;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.AgeBracket;
+import io.mosire.simos.social.population.FamineMortality;
+import io.mosire.simos.social.population.FamineMortalityInput;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.SocialVitalRemainder;
@@ -697,6 +699,29 @@ public final class HouseholdBook {
   }
 
   /**
+   * ★ 三参入口 = <b>缺省中性</b>（{@link FamineMortalityInput#none()}）：没有经济侧报来的缺口 ⇒ 饥荒项恒 0， 行为与 W3
+   * 之前<b>逐值相同</b>（"未设新东西 ⇒ 不动作"；单模块用例/旧调用走它）。
+   */
+  public static VitalSettlementResult settleVitalEventsResult(
+      SocialData base, long day, CalendarClock clock) {
+    return settleVitalEventsResult(base, day, clock, FamineMortalityInput.none());
+  }
+
+  /**
+   * ★★★ <b>W3（2026-10-11）：带饥荒输入的四参入口 —— 经济报缺口、Social 单独算死亡率（含饿死）</b>。
+   *
+   * <p>用户 0–8 第 0 条原话：「经济模块算完之后才应该把经济情况报给社会模块，<b>让社会模块单独核算死亡率</b>」； 三参重载 = 缺省中性（ {@link
+   * FamineMortalityInput#none()} ⇒ 饥荒项恒 0，行为与 W3 之前逐值相同）。
+   *
+   * @param famineInput 经济腿当日报来的逐户缺口事实（口径见 {@link FamineMortalityInput} / {@link
+   *     FamineMortality}）；没有就传 {@link FamineMortalityInput#none()}，不得为 null
+   */
+  public static VitalSettlementResult settleOneTick(
+      SocialData base, long day, CalendarClock clock, FamineMortalityInput famineInput) {
+    return settleVitalEventsResult(base, day, clock, famineInput);
+  }
+
+  /**
    * ★★ <b>每 tick 生死结算（新引擎，计划 §3）</b>：逐家户、逐成员批次，按 ppm/tick 率与余数累加器算 {@code DEATH} / {@code BIRTH}
    * 事件，一次 {@link #applyEvents} 落账，并清理无主余数。
    *
@@ -707,6 +732,11 @@ public final class HouseholdBook {
    *       numerator = 旧余数 + 份额 × birthRatePerMillionPerTick
    *       births    = numerator / 1_000_000；新余数 = numerator % 1_000_000
    * </pre>
+   *
+   * <p>★★ <b>W3（2026-10-11）：死亡率的第二个加项 = 饥荒项</b>（{@code effectivePpm = 基准率 + faminePpm}）—— 基准率来自
+   * {@code SocialVitalRates} / 家户覆盖（**不变**），{@code faminePpm} 由 {@code simos-app} 报来的逐户缺口经 {@link
+   * FamineMortality} 折算（<b>口径在 Social</b>；缺口 ≤ 0 ⇒ 加项恒 0）。★ 它只改本 tick 的分子：余数键、事件形状、
+   * 幂等键、清理规则**一个字没改** ⇒ 无新增持久组件（铁律 5 不触发）。
    *
    * <p>★★ <b>首次见到某余数键时用稳定哈希给 [0, 999_999] 的初相位</b>（{@link #initialRemainder}）， <b>不是
    * 0</b>：零初值会让每个小批次的首个事件被推迟到 {@code 1_000_000 ÷ (份额 × 率)} 个 tick 之后—— 2026-10-09 的 360 tick smoke
@@ -723,16 +753,25 @@ public final class HouseholdBook {
    * @param base 结算前状态；不得为 null
    * @param day 世界日（tick）；不得为负
    * @param clock 历法时钟：tick→JDN 与年龄年数换算唯一的入口；不得为 null
+   * @param famineInput 经济腿当日报来的逐户缺口事实（缺省中性用 {@link FamineMortalityInput#none()}）；不得为 null
    * @throws IllegalArgumentException 参数坏、批次年龄为负、率表缺键、事件重复等具名拒绝
    */
   public static VitalSettlementResult settleVitalEventsResult(
-      SocialData base, long day, CalendarClock clock) {
+      SocialData base, long day, CalendarClock clock, FamineMortalityInput famineInput) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(clock, "clock");
+    Objects.requireNonNull(
+        famineInput, "famineInput（没有饥荒输入就给 FamineMortalityInput.none()，不得为 null）");
     if (day < 0L) {
       throw vitalReject(day, "settleVitalEvents 的 day 不得为负: " + day);
     }
     long currentDayNumber = clock.dayNumberOfTick(day);
+    // ★ W3：饥荒输入在本 tick 真正被用到的读数（只服务日志/审计，不进状态）。
+    long famineHouseholds = 0L; // 报来缺口（口粮那一支 > 0）的家户数
+    long famineUnknownHouseholds = 0L; // 报来的家户不在 Social 里（装配边界；跳过并计数，不凭空建户）
+    long famineDeathsTotal = 0L; // 本 tick 由饥荒项贡献的死亡（人；基准率那一份不算）
+    long maxStarvationRatioPerMille = 0L;
+    String firstStarvingHousehold = null;
     EventLog.channel(SocialLog.settle())
         .info(
             LogEvent.of(
@@ -795,6 +834,60 @@ public final class HouseholdBook {
     for (Household household : base.households().values()) {
       long householdBirths = 0L;
       long householdDeaths = 0L;
+      // ★★★ W3：本户的饥荒项 —— 经济腿报来"当日吃不上多少 / 当日需求多少"，**怎么折成死亡率由 Social 定**
+      //   （{@link FamineMortality}）。★ 家户级（不逐批次）：`faminePpm` 对全户成员同一个值。
+      //   没报 ⇒ Optional.empty() ⇒ faminePpm = 0（缺口 0 只走基准率；判据 W3-④）。
+      FamineMortalityInput.Shortage famine = famineInput.forHousehold(household.id()).orElse(null);
+      long starvationRatioPerMille = 0L;
+      long famineRatePerMillionPerTick = 0L;
+      if (famine != null && famine.hasRationGap()) {
+        starvationRatioPerMille =
+            FamineMortality.shortageRatioPerMille(
+                famine.rationGapMilli(), famine.rationNeedMilli());
+        famineRatePerMillionPerTick =
+            FamineMortality.famineRatePerMillionPerTick(
+                famine.rationGapMilli(), famine.rationNeedMilli());
+        famineHouseholds++;
+        if (starvationRatioPerMille > maxStarvationRatioPerMille) {
+          maxStarvationRatioPerMille = starvationRatioPerMille;
+        }
+        if (firstStarvingHousehold == null) {
+          firstStarvingHousehold =
+              household.id()
+                  + "(gapMilli="
+                  + famine.rationGapMilli()
+                  + ",needMilli="
+                  + famine.rationNeedMilli()
+                  + ",ratioPerMille="
+                  + starvationRatioPerMille
+                  + ")";
+        }
+        if (SocialLog.settle().isDebugEnabled()) {
+          // ★ 关键判据 DEBUG（§一.9）：为什么这一户的死亡率被抬了多少。
+          EventLog.channel(SocialLog.settle())
+              .debug(
+                  LogEvent.of(
+                      "FAMINE_MORTALITY_HOUSEHOLD",
+                      SocialLogSource.SOCIAL_SETTLE,
+                      "day",
+                      day,
+                      "household",
+                      household.id(),
+                      "rationGapMilli",
+                      famine.rationGapMilli(),
+                      "rationNeedMilli",
+                      famine.rationNeedMilli(),
+                      "starvationRatioPerMille",
+                      starvationRatioPerMille,
+                      "faminePpmPerTick",
+                      famineRatePerMillionPerTick,
+                      "productionCostGapByCommodity",
+                      famine.productionCostGapByCommodity(),
+                      "why",
+                      "w3-famine-rate-is-social-authority: linear-in-realized-ration-shortfall"));
+        }
+      }
+      long householdFamineDeaths = 0L;
       for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
         PeopleLotId lot = member.getKey();
         long share = member.getValue();
@@ -824,12 +917,16 @@ public final class HouseholdBook {
                 clock.system(), Math.subtractExact(currentDayNumber, ageDays), currentDayNumber);
 
         // ② 死亡：份额 × 死亡率（ppm/tick），余数跨 tick 累加。
+        //   ★★ W3：本 tick 的死亡率 = 基准率（率表/家户覆盖）**+ 饥荒项**（家户级；缺口 0 ⇒ 加项 0）。
+        //     余数键与事件形状**一个字没改** —— 饥荒死亡与基准死亡共用 DEATH 那一档余数（口径统一、可审计）。
         HouseholdVitalRate deathRate = base.findVitalRate(household.id(), bracket, group.sex());
+        long baseDeathPpm = deathRate.deathRatePerMillionPerTick();
+        long effectiveDeathPpm = Math.addExact(baseDeathPpm, famineRatePerMillionPerTick);
         RemainderKey deathKey = new RemainderKey(household.id(), lot, VitalKind.DEATH);
         long deathNumerator =
             Math.addExact(
                 remainderFor(remainders, deathKey, household.id(), lot, VitalKind.DEATH),
-                Math.multiplyExact(share, deathRate.deathRatePerMillionPerTick()));
+                Math.multiplyExact(share, effectiveDeathPpm));
         long deaths = deathNumerator / 1_000_000L;
         putRemainder(remainders, deathKey, deathNumerator % 1_000_000L);
         if (deaths > 0L) {
@@ -842,10 +939,26 @@ public final class HouseholdBook {
                   bracket.key(),
                   deaths,
                   day,
-                  "ratePpm=" + deathRate.deathRatePerMillionPerTick(),
+                  famineRatePerMillionPerTick > 0L
+                      ? "ratePpm="
+                          + baseDeathPpm
+                          + " faminePpm="
+                          + famineRatePerMillionPerTick
+                          + " starvationRatioPerMille="
+                          + starvationRatioPerMille
+                          + " cause=BASE_PLUS_FAMINE"
+                      : "ratePpm=" + baseDeathPpm + " cause=BASE",
                   "SETTLEMENT",
                   lot));
           householdDeaths = Math.addExact(householdDeaths, deaths);
+          // ★ 饥荒项按份额分摊的死数（只作读数：同一个 numerator 里两项无法逐人死亡归因 ⇒ 按 ppm 占比折算，
+          //   与"余数累加"的长期期望一致）。★ 它**不改**任何状态，只进日志/结果。
+          if (famineRatePerMillionPerTick > 0L) {
+            long famineShareDeaths =
+                Math.floorDiv(
+                    Math.multiplyExact(deaths, famineRatePerMillionPerTick), effectiveDeathPpm);
+            householdFamineDeaths = Math.addExact(householdFamineDeaths, famineShareDeaths);
+          }
         }
 
         // ③ 出生：仅精确育龄窗口（15 ≤ ageYears < 45）的女性；率取 (15-59, FEMALE) 键。
@@ -916,6 +1029,14 @@ public final class HouseholdBook {
       }
       totalBirths = Math.addExact(totalBirths, householdBirths);
       totalDeaths = Math.addExact(totalDeaths, householdDeaths);
+      famineDeathsTotal = Math.addExact(famineDeathsTotal, householdFamineDeaths);
+    }
+
+    // ★★ W3：报来的家户不在 Social 里 ⇒ 跳过并计数（**不凭空建户**，与 HouseholdSatietyBridge 同一条边界口径）。
+    for (HouseholdId reported : famineInput.shortages().keySet()) {
+      if (!base.households().containsKey(reported)) {
+        famineUnknownHouseholds++;
+      }
     }
 
     // ④ 一次性落账；没有事件时也必须把余数表写回（余数本身就是状态）。
@@ -952,7 +1073,55 @@ public final class HouseholdBook {
                 "remainders",
                 finalRemainders.size(),
                 "cleanedRemainders",
-                cleanedRemainders));
+                cleanedRemainders,
+                // ★★ W3：饥荒那一支的具名计数（谁因什么死了多少；缺口 0 ⇒ 全 0 且不触发）。
+                "famineInputHouseholds",
+                famineInput.size(),
+                "famineHouseholds",
+                famineHouseholds,
+                "famineUnknownHouseholds",
+                famineUnknownHouseholds,
+                "famineDeaths",
+                famineDeathsTotal,
+                "maxStarvationRatioPerMille",
+                maxStarvationRatioPerMille,
+                "famineRateMaxPpmPerTick",
+                FamineMortality.FAMINE_MAX_PPM_PER_TICK));
+    if (famineHouseholds > 0L) {
+      // ★★ §一.9 / W3 判据⑤：一条 INFO「谁因什么死了多少」—— 报缺口那一支真的被消费了才发（缺口 0 ⇒ 无事发生）。
+      EventLog.channel(SocialLog.settle())
+          .info(
+              LogEvent.of(
+                  "FAMINE_MORTALITY",
+                  SocialLogSource.SOCIAL_SETTLE,
+                  "day",
+                  day,
+                  "householdsWithRationGap",
+                  famineHouseholds,
+                  "famineDeaths",
+                  famineDeathsTotal,
+                  "maxStarvationRatioPerMille",
+                  maxStarvationRatioPerMille,
+                  "firstHousehold",
+                  firstStarvingHousehold == null ? "-" : firstStarvingHousehold,
+                  "famineRateMaxPpmPerTick",
+                  FamineMortality.FAMINE_MAX_PPM_PER_TICK,
+                  "why",
+                  "w3: economy-reports-gap-social-decides-mortality (S-11 second half)"));
+    }
+    if (famineUnknownHouseholds > 0L) {
+      EventLog.channel(SocialLog.settle())
+          .warn(
+              LogEvent.of(
+                  "FAMINE_MORTALITY_UNKNOWN_HOUSEHOLD",
+                  SocialLogSource.SOCIAL_SETTLE,
+                  "day",
+                  day,
+                  "count",
+                  famineUnknownHouseholds,
+                  "why",
+                  "reported-household-not-in-social (skipped, never create)"));
+    }
     if (cleanedRemainders > 0) {
       EventLog.channel(SocialLog.settle())
           .warn(
@@ -964,16 +1133,17 @@ public final class HouseholdBook {
                   "count",
                   cleanedRemainders));
     }
-    return new VitalSettlementResult(data, populationDeltas, totalBirths, totalDeaths, day, events);
+    return new VitalSettlementResult(
+        data, populationDeltas, totalBirths, totalDeaths, famineDeathsTotal, day, events);
   }
 
   /**
-   * 计划 §3.1 的 App 侧调用名：与 {@link #settleVitalEventsResult} 同一条每 tick 引擎（旧 {@code
-   * settleVitalEvents(...)} 签名保留为只返回 {@link SocialData} 的兼容口）。
+   * 计划 §3.1 的 App 侧调用名：与 {@link #settleVitalEventsResult} 同一条每 tick 引擎（三参 = 缺省中性， 没有经济侧报来的缺口 ⇒ 饥荒项恒
+   * 0）。
    */
   public static VitalSettlementResult settleOneTick(
       SocialData base, long day, CalendarClock clock) {
-    return settleVitalEventsResult(base, day, clock);
+    return settleVitalEventsResult(base, day, clock, FamineMortalityInput.none());
   }
 
   /** 余数键：{@code (HouseholdId, PeopleLotId, VitalKind)}（计划 §3.4 的键语义）。 */

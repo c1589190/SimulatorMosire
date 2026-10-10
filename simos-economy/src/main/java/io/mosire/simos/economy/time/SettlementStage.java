@@ -42,8 +42,15 @@ public enum SettlementStage {
   LENDING(PartitionBasis.HEX, "借粮"),
   /** 偿还债务（按 debtor account 分组；债权人可能在别格 ⇒ R3 的跨区协调阶段）。 */
   REPAYMENT(PartitionBasis.COORDINATOR, "偿还"),
-  /** 饿死判据与劳动缩放（按 PeopleLotId / 产业 hex 分区；死亡缩放需全局同序）。 */
-  FAMINE_MORTALITY(PartitionBasis.COORDINATOR, "饿死/劳动缩放"),
+  /**
+   * ★★★ <b>报缺口（W3 2026-10-11 起；原名 {@code FAMINE_MORTALITY}「饿死/劳动缩放」）</b>：逐户算出口粮缺口那一支与当日
+   * 市场轮的生产花费未满足量，写进会话的瞬态 outbox 交给 app ⇒ Social（那里是死亡率的唯一权威）。
+   *
+   * <p>★★ <b>为什么改名而不是"留着名字、改掉内容"</b>：阶段名是<b>可审计的具名序</b>（本枚举的类注就是它的用途）。名字写着"饿死/劳动缩放"
+   * 而实际只报缺口，就是把"经济侧还在判死"这句假话钉在编译期常量上 —— 与 AGENTS §四「机制性描述一律回代码核」的教训同族。 ★ 它<b>不产生任何账户意向</b>（不参与
+   * {@link PartitionPlan}/{@link CommitOrder}）：与结算里其余协调器阶段同制。
+   */
+  RATION_GAP_REPORT(PartitionBasis.COORDINATOR, "报缺口"),
   /** 计息（债务表；协调阶段，只读当日起始本金）。 */
   INTEREST(PartitionBasis.COORDINATOR, "计息"),
   /** 人口回写（social 出生/死亡 → 经济行/配额；按 PeopleLotId 分区，协调阶段提交）。 */

@@ -22,7 +22,10 @@ import java.util.Map;
  * @param data 结算后的新社会状态（余数表已更新、无主余数已清理）；不得为 null
  * @param populationDeltas 逐家户净人口变化（出生 − 死亡）；不得为 null、值非 0
  * @param births 本次出生总数；不得为负
- * @param deaths 本次死亡总数；不得为负
+ * @param deaths 本次死亡总数；不得为负（★ <b>含饥荒那一份</b>：它与基准死亡共用 DEATH 余数，是同一个总数）
+ * @param famineDeaths ★★ <b>W3（2026-10-11）：本次死亡里由饥荒项贡献的那一部分</b>（人；≥ 0；≤ {@code deaths}）。
+ *     它是<b>读数</b>（按"饥荒 ppm ÷ 有效 ppm"从当 tick 的死亡里折算，与余数累加的长期期望一致）， 只进日志/报告，<b>不改</b>任何状态；缺口 = 0 时恒
+ *     0。★ App 用它写"谁因什么死了多少"的 INFO。
  * @param day 结算日（世界 tick）；不得为负
  * @param events 本次落账的事件（保序、冻结）；不得为 null
  */
@@ -31,6 +34,7 @@ public record VitalSettlementResult(
     Map<HouseholdId, Long> populationDeltas,
     long births,
     long deaths,
+    long famineDeaths,
     long day,
     List<HouseholdPopulationEvent> events) {
 
@@ -49,6 +53,17 @@ public record VitalSettlementResult(
     }
     if (deaths < 0L) {
       throw new IllegalArgumentException("VitalSettlementResult.deaths 不得为负: " + deaths);
+    }
+    if (famineDeaths < 0L) {
+      throw new IllegalArgumentException(
+          "VitalSettlementResult.famineDeaths 不得为负: " + famineDeaths);
+    }
+    if (famineDeaths > deaths) {
+      throw new IllegalArgumentException(
+          "VitalSettlementResult.famineDeaths 不得超过 deaths（饥荒是死亡的子集）: famineDeaths="
+              + famineDeaths
+              + " deaths="
+              + deaths);
     }
     if (day < 0L) {
       throw new IllegalArgumentException("VitalSettlementResult.day 不得为负: " + day);

@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -44,7 +43,7 @@ import org.junit.jupiter.api.Test;
  * ★★ <b>Z1b/Z3a C7 行为契约：{@code GOV_SERVICE} 不可缩、不进队列、不被覆盖</b>（设计书 §10 C7 / §17.2； z1b 台账 §10.2、z3a
  * 台账 §4/§7.2.8）。
  *
- * <p>本类把五条"会缩劳动"的路径逐条钉住，并全部用**负向**断言（缩了/删了/静默兜底都要红）：
+ * <p>本类把四条"会缩劳动"的路径逐条钉住，并全部用**负向**断言（缩了/删了/静默兜底都要红）：
  *
  * <ol>
  *   <li>{@link LaborQueueSettlement}：带 {@code GOV_SERVICE} 的 activity 不进队列、行逐值不变；队列只写 {@code
@@ -52,13 +51,14 @@ import org.junit.jupiter.api.Test;
  *   <li>{@link EconomySettlement#applyLaborBudgetsInto}：GOV 整额保留、只缩/删 PRODUCTION；ΣGOV &gt; 预算 = 合法
  *       underfed 态（Z7d-1：不抛、不缩、不删 GOV_SERVICE；PRODUCTION 可用量归 0）；
  *   <li>{@link EconomySettlement#applyPopulationChange} 的批次缩放（{@code scaleLaborOfGroup}）同上；
- *   <li>饥荒路径的 {@code scaleLaborOfUnit} 同上；
  *   <li>旧档 {@code reallocateLabor} 的 pass②（按 unit 最大可吸收量修剪）与 pass③（按家户预算封顶）同上。
  * </ol>
  *
- * <p>★ <b>反射说明</b>：{@code scaleLaborOfUnit}/{@code reallocateLabor} 是 {@code private static}
- * 生产实现（本区不得改生产代码）； 它们没有包内入口，故按 z3a 台账 §4.2 的探针同法用反射直调**真方法**（不是复刻算式）。每条反射调用都断言"方法签名找到" （{@code
- * getDeclaredMethod} 找不到会当场抛）。
+ * <p>★★ <b>W3（2026-10-11）删除的原第④条路径</b>：原"饥荒路径的 {@code scaleLaborOfUnit}"与本类的两个用例 （{@code
+ * famineUnitScale*}）已随经济侧判死/缩劳动通道整段删除 —— 理由与"判别力未削弱"的说明见下方 ④ 节注释。
+ *
+ * <p>★ <b>反射说明</b>：{@code reallocateLabor} 是 {@code private static} 生产实现（本区不得改生产代码）； 它没有包内入口，故按 z3a
+ * 台账 §4.2 的探针同法用反射直调**真方法**（不是复刻算式）。每条反射调用都断言"方法签名找到" （{@code getDeclaredMethod} 找不到会当场抛）。
  *
  * <p>★ <b>日志断言边界</b>：{@code LABOR_COMMITMENT_CONTRACT} ERROR 事件走 slf4j；economy 测试 scope 没有可捕获的
  * appender， 故字段断言落在与 ERROR 同源的具名 {@link IllegalStateException} 消息上（{@code
@@ -247,50 +247,19 @@ class GovServiceCommitmentC7Test {
         .isEqualTo(4_000L);
   }
 
-  // ── ④ 饥荒路径的 private scaleLaborOfUnit ─────────────────────────────────────────────
-
-  /** 饥荒死亡比例缩：GOV 行整额跳过，PRODUCTION 8000→7200。 */
-  @Test
-  void famineUnitScaleKeepsGovWhole() {
-    LinkedHashMap<ProductionUnitId, ProductionProcess> units = unitsMap();
-    Map<IndustryId, Industry> industries = industries();
-    LinkedHashMap<HouseholdId, HouseholdEconomy> households = householdsMap(20_000L);
-    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
-    commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
-    commitments.put(PRODUCTION_1, commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 8_000L));
-    SettlementIndex index = indexOfMaps(units, industries, commitments, households, 1L);
-
-    invokeScaleLaborOfUnit(UNIT, 100L, 90L, commitments, index);
-
-    assertThat(commitments.get(GOV).laborMilli()).as("GOV 整额跳过").isEqualTo(4_000L);
-    assertThat(commitments.get(PRODUCTION_1).laborMilli()).isEqualTo(7_200L);
-  }
-
-  /**
-   * ★★ Z7d-1：饥荒把预算缩到 GOV 以下 —— GOV 行不被缩（underfed 合法）；PRODUCTION 按存活比例缩到 0 后，统一校验 只盯"PRODUCTION
-   * 是否越政府预留后可用量"（此处 0 ≤ 0）⇒ 放行、GOV 4000 整额保留。
-   */
-  @Test
-  void famineUnitScaleAllowsGovServiceOverBudgetOnceProductionIsScaledToZero() {
-    LinkedHashMap<ProductionUnitId, ProductionProcess> units = unitsMap();
-    Map<IndustryId, Industry> industries = industries();
-    LinkedHashMap<HouseholdId, HouseholdEconomy> households = householdsMap(2_000L);
-    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> commitments = new LinkedHashMap<>();
-    commitments.put(GOV, commitment(GOV, LaborCommitmentKind.GOV_SERVICE, 4_000L));
-    commitments.put(PRODUCTION_1, commitment(PRODUCTION_1, LaborCommitmentKind.PRODUCTION, 1_000L));
-    SettlementIndex index = indexOfMaps(units, industries, commitments, households, 1L);
-
-    invokeScaleLaborOfUnit(UNIT, 100L, 0L, commitments, index);
-
-    assertThat(commitments.get(GOV).laborMilli())
-        .as("GOV 不被缩（预算 2000 < 承诺 4000）")
-        .isEqualTo(4_000L);
-    assertThat(commitments.get(PRODUCTION_1).laborMilli()).as("PRODUCTION 按存活比例缩到 0").isZero();
-    invokeRequireGovServiceCommitmentsWithinBudgets(
-        commitments, households, EconomyLogSource.ECONOMY_POPULATION_WRITE, -1L);
-    // 不抛 = underfed 合法（PRODUCTION 已归 0，GOV 行整额保留）。
-    assertThat(commitments.get(GOV).laborMilli()).isEqualTo(4_000L);
-  }
+  // ── ④（已删）饥荒路径的 private scaleLaborOfUnit ──────────────────────────────────────
+  //
+  // ★★★ W3（2026-10-11）迁移：`EconomySettlement.scaleLaborOfUnit` 与整条经济侧判死/缩劳动通道
+  // （`applyFamine` / `FAMINE_MORTALITY_PER_MILLE` / 4 参 `settle` / `EconomyDayStepper` 的致死率入参）
+  // 已按约束设计书 §6.1 W3 行 + §7 v3.11 + AGENTS §一.11「旧设计直接删」**整段删除** —— 死亡率的唯一权威
+  // 是 Social（S-11 第②半：口粮缺口 ⇒ 报社会，经济侧不自己扣劳动/人口）。原来钉在这条路径上的两个用例
+  // （`famineUnitScaleKeepsGovWhole` /
+  // `famineUnitScaleAllowsGovServiceOverBudgetOnceProductionIsScaledToZero`）
+  // 断言的是**已不存在的机制本身**（"饥荒比例缩 PRODUCTION、GOV 整额跳过"），没有可迁移的等价判据 ⇒ 整条删除。
+  // ★ 判别力未削弱：「GOV_SERVICE 不可缩 / underfed 合法」这条契约仍由本类 ①（LaborQueueSettlement）、
+  //   ②（applyLaborBudgetsInto）、③（applyPopulationChangeInto 的批次缩放）、⑤（旧档 reallocateLabor
+  //   pass②/pass③）四条路径各自钉住；`scaleLaborOfGroup`（applyPopulationChange）仍在生产代码里。
+  // ★ 新语义（"经济侧不再缩劳动、只报缺口"）的判据属于 W3 验收判据，由测试 Agent 另写（AGENTS §三.0）。
 
   // ── ⑤ 旧档 reallocateLabor pass②（最大可吸收量）与 pass③（家户预算）───────────────────
 
@@ -464,51 +433,6 @@ class GovServiceCommitmentC7Test {
   }
 
   // ── 反射入口（private static 生产方法；签名找不到会当场抛）────────────────────────────
-
-  private static void invokeScaleLaborOfUnit(
-      ProductionUnitId unitId,
-      long before,
-      long after,
-      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> commitments,
-      SettlementIndex index) {
-    Method method;
-    try {
-      method =
-          EconomySettlement.class.getDeclaredMethod(
-              "scaleLaborOfUnit",
-              ProductionUnitId.class,
-              long.class,
-              long.class,
-              LinkedHashMap.class,
-              SettlementIndex.class);
-      method.setAccessible(true);
-    } catch (NoSuchMethodException e) {
-      throw new IllegalStateException("生产方法 scaleLaborOfUnit 签名已变（测试需同步）", e);
-    }
-    invoke(method, unitId, before, after, commitments, index);
-  }
-
-  private static void invokeRequireGovServiceCommitmentsWithinBudgets(
-      Map<LaborAllocationId, HouseholdLaborCommitment> commitments,
-      Map<HouseholdId, HouseholdEconomy> households,
-      EconomyLogSource source,
-      long day) {
-    Method method;
-    try {
-      method =
-          EconomySettlement.class.getDeclaredMethod(
-              "requireGovServiceCommitmentsWithinBudgets",
-              Map.class,
-              Map.class,
-              EconomyLogSource.class,
-              long.class);
-      method.setAccessible(true);
-    } catch (NoSuchMethodException e) {
-      throw new IllegalStateException(
-          "生产方法 requireGovServiceCommitmentsWithinBudgets 签名已变（测试需同步）", e);
-    }
-    invoke(method, commitments, households, source, day);
-  }
 
   private static void invokeReallocateLabor(
       LinkedHashMap<ProductionUnitId, ProductionProcess> units,
