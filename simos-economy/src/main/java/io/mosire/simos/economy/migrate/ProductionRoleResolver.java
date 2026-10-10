@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.migrate;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -20,7 +21,7 @@ import java.util.Set;
  * EconomySeedHandler} / {@code EconomyStateBuilder} <b>全部原样不动</b>（旧路径仍以 {@code
  * HouseholdEconomy.view} 为准）；本类只有"未来显式迁移器或读口主动调用"时才起作用。调用与不调用都不构成行为变化 —— 唯一的区别是后者状态树里多/少四张新表。
  *
- * <p>★★ <b>只读解析的唯一口径 {@link #resolveCurrent(EconomyData, HouseholdId)}</b>（按优先级）：
+ * <p>★★ <b>只读解析的唯一口径 {@link #resolveCurrent(EconomyDayView, HouseholdId)}</b>（按优先级）：
  *
  * <ol>
  *   <li>{@code classStandings} 里有该户 ⇒ 返回其 {@link
@@ -63,11 +64,16 @@ public final class ProductionRoleResolver {
   /**
    * ★★ <b>只读解析一个家户的当前阶层位置</b>（新状态优先，其次旧 stratum 映射；口径见类注释）。
    *
-   * @param data 经济状态；不得为 null
+   * <p>★★ <b>B2（2026-10-10）：入参是"当日视图"（{@link EconomyDayView}）而不是段首 {@code EconomyData}</b> ——
+   * 本方法同时读<b>当刻归属</b>（{@code classStandings}）与<b>当刻家户行</b>（{@code classes}），两者都逐日会变； 只换一半 = 混合日视图。★
+   * {@code EconomyData} 自己实现该接口 ⇒ 段级/读口调用方逐字不变。
+   *
+   * @param data 当刻状态读口（日循环内 = 当日视图，revision 边界 = {@code EconomyData} 自己）；不得为 null
    * @param household 家户稳定身份；不得为 null
    * @return 当前位置；新状态里没有该户、且旧 {@code classes} 里也没有该户 ⇒ 空
    */
-  public static Optional<ClassPositionId> resolveCurrent(EconomyData data, HouseholdId household) {
+  public static Optional<ClassPositionId> resolveCurrent(
+      EconomyDayView data, HouseholdId household) {
     Objects.requireNonNull(data, "data");
     Objects.requireNonNull(household, "household");
     HouseholdClassMembership classMembership = data.classStandings().get(household);

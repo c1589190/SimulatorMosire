@@ -125,12 +125,25 @@ public final class EconomyStateBuilder {
     return industries;
   }
 
+  /**
+   * ★★ <b>B2：产业表的只读选择</b>：已物化工作副本则读它，否则读 base 的表 —— 当日视图（{@code WorkingDayView}）走这里，
+   * 因此"读一次当刻值"<b>不会</b>顺带整表拷一份（零拷贝读口）。
+   */
+  public Map<IndustryId, Industry> industriesOrBase() {
+    return industries == null ? base.industries() : industries;
+  }
+
   /** 家户行工作副本（键 = 稳定身份）。 */
   public LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies() {
     if (householdEconomies == null) {
       householdEconomies = new LinkedHashMap<>(base.classes());
     }
     return householdEconomies;
+  }
+
+  /** ★★ <b>B2：家户行表的只读选择</b>（同 {@link #industriesOrBase()} 的理由）。 */
+  public Map<HouseholdId, HouseholdEconomy> householdEconomiesOrBase() {
+    return householdEconomies == null ? base.classes() : householdEconomies;
   }
 
   /** ★★ E4a：债务**合同**表工作副本（键 = 稳定合同 id）。 */
@@ -216,6 +229,13 @@ public final class EconomyStateBuilder {
     return productionOrganizations;
   }
 
+  /** ★★ <b>B2：生产组织表的只读选择</b>（同 {@link #industriesOrBase()} 的理由）。 */
+  public Map<ProductionOrganizationId, ProductionEnterprise> productionOrganizationsOrBase() {
+    return productionOrganizations == null
+        ? base.productionOrganizations()
+        : productionOrganizations;
+  }
+
   /**
    * ★★ <b>Z1：生产效率累计与余数表工作副本</b>（键 = unit id）。Z2 的逐 tick 汇总与周期末公式在此就地表增/改； 未物化时 {@link #build} 直接复用
    * base 的不可变表。
@@ -235,12 +255,22 @@ public final class EconomyStateBuilder {
     return markets;
   }
 
+  /** ★★ <b>B2：市场表的只读选择</b>（同 {@link #industriesOrBase()} 的理由）。 */
+  public Map<HexCoord, Market> marketsOrBase() {
+    return markets == null ? base.markets() : markets;
+  }
+
   /** 在途批次表工作副本。 */
   public LinkedHashMap<ShipmentId, ShipmentBatch> shipments() {
     if (shipments == null) {
       shipments = new LinkedHashMap<>(base.shipments());
     }
     return shipments;
+  }
+
+  /** ★★ <b>B2：在途批次表的只读选择</b>（同 {@link #industriesOrBase()} 的理由）。 */
+  public Map<ShipmentId, ShipmentBatch> shipmentsOrBase() {
+    return shipments == null ? base.shipments() : shipments;
   }
 
   /** ★★ E3：政府表工作副本（发行腿切换前由 `syncAuthorities` 读它；写口目前只在 GM 命令）。 */
@@ -251,12 +281,22 @@ public final class EconomyStateBuilder {
     return governments;
   }
 
+  /** ★★ <b>B2：政府表的只读选择</b>（同 {@link #industriesOrBase()} 的理由）。 */
+  public Map<GovernmentId, Government> governmentsOrBase() {
+    return governments == null ? base.governments() : governments;
+  }
+
   /** ★★ E3：货币发行审计表工作副本（settleOneDay 的发行腿按转移 id 确定性追加记录）。 */
   public LinkedHashMap<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances() {
     if (moneyIssuances == null) {
       moneyIssuances = new LinkedHashMap<>(base.moneyIssuances());
     }
     return moneyIssuances;
+  }
+
+  /** ★★ <b>B2：货币发行审计表的只读选择</b>（同 {@link #industriesOrBase()} 的理由）。 */
+  public Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuancesOrBase() {
+    return moneyIssuances == null ? base.moneyIssuances() : moneyIssuances;
   }
 
   /**
@@ -304,6 +344,11 @@ public final class EconomyStateBuilder {
       modeTransitions = new LinkedHashMap<>(base.modeTransitions());
     }
     return modeTransitions;
+  }
+
+  /** ★★ <b>B2：模式变迁表的只读选择</b>（同 {@link #industriesOrBase()} 的理由）。 */
+  public Map<ModeTransitionId, ModeTransition> modeTransitionsOrBase() {
+    return modeTransitions == null ? base.modeTransitions() : modeTransitions;
   }
 
   /**

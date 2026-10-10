@@ -2,7 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -184,7 +184,7 @@ final class DebtPartyResolver {
 
   /** 解析一个 actor 端（payer 或 {@link Payee.ToActor} 的受方）。 */
   static Resolution resolveActor(
-      EconomyData data,
+      EconomyDayView data,
       SettlementIndex index,
       ActorRef actor,
       HexCoord hex,
@@ -257,7 +257,7 @@ final class DebtPartyResolver {
 
   /** 解析一个 {@link Payee} 端（payer 恒为 actor；creditor 可能是家户 / actor / 旧 cohort）。 */
   static Resolution resolvePayee(
-      EconomyData data,
+      EconomyDayView data,
       SettlementIndex index,
       Payee recipient,
       HexCoord hex,
@@ -351,7 +351,7 @@ final class DebtPartyResolver {
 
   /** E2 组织路：{@code laborSources} + 组织的家户归属受方。 */
   private static Resolution resolveViaEnterprises(
-      EconomyData data,
+      EconomyDayView data,
       SettlementIndex index,
       ActorRef actor,
       List<ProductionEnterprise> enterprises) {
@@ -385,7 +385,7 @@ final class DebtPartyResolver {
 
   /** 人口回退路：ESTATE = owner/surplus receiver；WORKSHOP = legacy artisan；旧档按 stratum 回落。 */
   private static Resolution resolveViaPopulation(
-      EconomyData data,
+      EconomyDayView data,
       SettlementIndex index,
       ActorRef actor,
       HexCoord hex,
@@ -455,7 +455,7 @@ final class DebtPartyResolver {
   }
 
   /** 旧 cohort 受方：在该 hex 上按 {@link HouseholdEconomy#view()} 逐字段相等匹配。 */
-  private static Resolution resolveCohort(EconomyData data, CohortKey cohort) {
+  private static Resolution resolveCohort(EconomyDayView data, CohortKey cohort) {
     LinkedHashSet<HouseholdId> households = new LinkedHashSet<>();
     for (HouseholdEconomy householdEconomy : data.classes().values()) {
       if (householdEconomy.view().equals(cohort)) {
@@ -474,7 +474,7 @@ final class DebtPartyResolver {
 
   /** 人口份额：按 {@link HouseholdEconomy#population()} 最大余数拆分；0 人口/缺行的家户不参与，目标按 id 升序。 */
   private static Resolution splitByPopulation(
-      EconomyData data, Collection<HouseholdId> households, String source, String detail) {
+      EconomyDayView data, Collection<HouseholdId> households, String source, String detail) {
     if (households == null || households.isEmpty()) {
       return Resolution.unresolved("no-population-composition:" + detail);
     }
@@ -525,13 +525,13 @@ final class DebtPartyResolver {
    * ★★ P2-A §13.3：庄园/作坊不再是 ActorKind ⇒ 聚合生产主体改用 {@code ORGANIZATION}（身份 = 产业 id）。 判据 = kind ==
    * ORGANIZATION 且 id 命中一个现存产业（不命中的 ORGANIZATION 不是产业经营者）。
    */
-  private static boolean isAggregateProductionActor(EconomyData data, ActorRef actor) {
+  private static boolean isAggregateProductionActor(EconomyDayView data, ActorRef actor) {
     return actor.kind() == ActorKind.ORGANIZATION
         && data.industries().containsKey(new IndustryId(actor.id()));
   }
 
   /** 该聚合生产主体是否是 {@code feudal}（庄园）制度：是 ⇒ estate 口径回退，否则按作坊口径。 */
-  private static boolean isFeudalIndustry(EconomyData data, ActorRef actor) {
+  private static boolean isFeudalIndustry(EconomyDayView data, ActorRef actor) {
     Industry industry = data.industries().get(new IndustryId(actor.id()));
     return industry != null && RegimeOperators.FEUDAL.equals(industry.regime().value());
   }

@@ -4,6 +4,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
@@ -509,10 +510,11 @@ public final class EconomySettlement {
    *
    * @param day 当日日号（两级日志都必带）
    * @param ledger 当日**收获**这一段的发生额（只读）
-   * @param base 当前世界状态（只用来判"这一格有没有给 haul 定价"，以及取产业模板的两个配方读数）
+   * @param view ★★ B2：当日视图（当刻市场表 + 当刻产业表）—— 本方法是**逐日**读者（每天都可能刷）， 故不得读段首 {@code
+   *     EconomyData}（那会把"今天的定价/今天的产出"读成段首那一份）
    * @return 本日运输服务的净产（毫服务；毛产 − 收获损耗，逐产业求和；没有产出 ⇒ 0）
    */
-  private static long logHaulServiceOutput(long day, ProductionLedger ledger, EconomyData base) {
+  private static long logHaulServiceOutput(long day, ProductionLedger ledger, EconomyDayView view) {
     long grossMilli = 0L;
     long netMilli = 0L;
     long industries = 0L;
@@ -542,7 +544,7 @@ public final class EconomySettlement {
       }
     }
     long pricedMarkets = 0L;
-    for (Market market : base.markets().values()) {
+    for (Market market : view.markets().values()) {
       if (market.hasPrice(EconomyCommodities.HAUL)) {
         pricedMarkets++;
       }
@@ -576,7 +578,7 @@ public final class EconomySettlement {
       if (produced == null || produced <= 0L) {
         continue;
       }
-      Industry industry = base.industries().get(entry.getKey());
+      Industry industry = view.industries().get(entry.getKey());
       long haulPerScaleUnit =
           industry == null
               ? 0L
@@ -586,7 +588,7 @@ public final class EconomySettlement {
               ? 0L
               : produced / Math.multiplyExact(haulPerScaleUnit, MILLI_PER_GRAIN);
       HexCoord hex = IndustryHexKeys.hexKeyOf(entry.getKey()).map(HexCoord::parse).orElse(null);
-      Market market = hex == null ? null : base.markets().get(hex);
+      Market market = hex == null ? null : view.markets().get(hex);
       boolean priced = market != null && market.hasPrice(EconomyCommodities.HAUL);
       EventLog.channel(TRACE)
           .debug(
@@ -791,9 +793,9 @@ public final class EconomySettlement {
    *
    * <p>★ 判据的唯一拼写点是 {@link HaulService#pricedAt}（本方法只负责"遍历哪些市场"）。
    */
-  private static Set<HexCoord> haulServiceHexes(EconomyData base) {
+  private static Set<HexCoord> haulServiceHexes(EconomyDayView view) {
     Set<HexCoord> hexes = new LinkedHashSet<>();
-    for (Map.Entry<HexCoord, Market> entry : base.markets().entrySet()) {
+    for (Map.Entry<HexCoord, Market> entry : view.markets().entrySet()) {
       if (HaulService.pricedAt(entry.getValue())) {
         hexes.add(entry.getKey());
       }
@@ -1247,6 +1249,16 @@ public final class EconomySettlement {
     Objects.requireNonNull(parallelism, "parallelism（R2：并行度配置）");
     Objects.requireNonNull(marketExcludedHouseholds, "marketExcludedHouseholds（无排除给空集，不得为 null）");
     EconomyData base = session.base();
+    // ── ★★ B2（2026-10-10）**当日视图**：逐日循环里"当刻状态"的唯一读口 ───────────────────────────────
+    //   形态 = 工作表的只读门面（WorkingDayView）：构造只持一个引用（引用级、与状态规模无关），
+    //   每次读取现场解析"工作副本优先、未物化则复用 base 的不可变表" ⇒ **零拷贝/零序列化/零落盘/零 Revision**。
+    //   ★★ 铁律（B2 §3.2）：本方法内所有**逐日**读者（迁移/择业/清算/前瞻/运力/市场装配/日志）一律读 dayView；
+    //     段首 `base` 只允许**段级**语义（审计/差分/回放起点），每一处仍读它的地方都在注释里写明理由
+    //     （完整清单见 .superpowers/sdd/2026-10-10-b2-per-day-view/impl-ledger.md）。
+    //   ★ 为什么必须在**每一天开始时**派生：一次 advance 的 N 天共用同一个会话工作表（整段一条 revision），
+    //     而 base 是段首快照 —— 段内第 2 天起再读 base 就是读"上一天以前的旧世界"（这正是路径效应的根因）。
+    //   ★ 为什么不是"构造时把表拍进字段"：工作副本是惰性物化的，拍快照会在它物化的那一刻变成过期引用。
+    EconomyDayView dayView = new WorkingDayView(session.sheet());
     // ★★ R1（2026-10-09，约束设计书 §4.5 G8 / 不变量 I-P6）：**撤销 Z7b 对"国库户"的那一半** ——
     //   有效排除集回到"组合根传入的单位户**减** 已登记政府国库户"（单位户那一半的实质一个字不改：官吏户/军户的
     //   实物供给不得被市场当余量卖掉；被摘出来的只有"是政府国库户"的那些单位户，见下面 C9 那一段）。
@@ -1262,11 +1274,12 @@ public final class EconomySettlement {
     //   ★ 这么做不改单位那一半的实质：国库户参与后**不生成任何自动订单**（含它的 GOV unit 经营者解析出来的
     //     必要投入/卖单），公家库存不会被自动清仓；FX 与市场信用同样不放行（见 MarketSettlement 的两处守卫）。
     Set<HouseholdId> effectiveMarketExcludedHouseholds =
-        unitExclusionsMinusGovernmentTreasuries(marketExcludedHouseholds, base.governments());
+        unitExclusionsMinusGovernmentTreasuries(marketExcludedHouseholds, dayView.governments());
     Objects.requireNonNull(effectiveMarketExcludedHouseholds, "marketExcludedHouseholds");
     // ★★ E3：发行主体的权威答案是当前世界状态（governments），不是进程里的旧登记。
-    //   日结算开始按 base 重建登记表：旧世界/旧档 governments 为空 ⇒ 清空登记 ⇒ requireIssuerOf 逐字保留旧 fail-closed 行为。
-    MoneyIssuance.syncAuthorities(base.governments().values());
+    //   日结算开始按**当日视图**重建登记表：旧世界/旧档 governments 为空 ⇒ 清空登记 ⇒ requireIssuerOf 逐字保留旧 fail-closed 行为。
+    //   ★ B2：这是**逐日**读者（每天都可能因 GM 命令/发行腿改政府表）⇒ 读当刻值，不读段首 base。
+    MoneyIssuance.syncAuthorities(dayView.governments().values());
     LinkedHashMap<HouseholdId, FlowRow> flows = session.flows();
     Map<HouseholdId, Map<CommodityId, Long>> householdGoods = accounts.householdGoods();
     Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = accounts.householdMoney();
@@ -1278,11 +1291,12 @@ public final class EconomySettlement {
     // ★★ 2026-10-07 GOV 非生产家户试点：周期开始日的政府铸币。
     //   位置：在任何转移/市场之前 —— 政府先按政策“印”出本周期可花的钱并落 FISCAL_ISSUE 审计；
     //   若政策量不够覆盖需求，后面的市场信用路径照常让它向家户借（= 政府发行债务）。
-    if (GovernmentSeigniorage.isCycleStart(base, day)) {
+    //   ★★ B2：三个入口都收**当日视图** —— 铸币读当刻产业表（周期第一天的产业关账口径）、发债读当刻政府表。
+    if (GovernmentSeigniorage.isCycleStart(dayView, day)) {
       long minted =
-          GovernmentSeigniorage.settleCycleStart(base, session, accounts, day, currentCycle);
+          GovernmentSeigniorage.settleCycleStart(dayView, session, accounts, day, currentCycle);
       long issued =
-          GovernmentDebtIssuance.issueCycleStart(base, session, accounts, day, currentCycle);
+          GovernmentDebtIssuance.issueCycleStart(dayView, session, accounts, day, currentCycle);
       if ((minted > 0L || issued > 0L) && TRACE.isDebugEnabled()) {
         EventLog.channel(TRACE)
             .debug(
@@ -1302,7 +1316,7 @@ public final class EconomySettlement {
     // ★★ E3：本次 revision 的发行审计收集器（id 由 transfer id + 币种确定性派生；并行分区也安全）。
     //   ★ 发行腿只在付方余额不足且付方 = 当前政府国库时才会用到；旧路径（无 issuer）不产生任何记录。
     MoneyIssuanceJournal issuanceJournal =
-        new MoneyIssuanceJournal(base.governments(), currentCycle);
+        new MoneyIssuanceJournal(dayView.governments(), currentCycle);
 
     // 工作副本：一律保序（绝不用 Map.copyOf——迭代序不是内容的纯函数）。
     LinkedHashMap<IndustryId, Industry> industries = session.sheet().industries();
@@ -1387,6 +1401,8 @@ public final class EconomySettlement {
                 "debtContracts",
                 debts.size(),
                 "modes",
+                // ★ B2-保留段首base：本组件**没有**会话工作副本（写入口只有创世/GM 命令）⇒ 段首表即当刻表；
+                //   本行是逐日日志的只读计数，不存在"当刻与段首不同"的可能。
                 base.modes().size(),
                 "topologyRegions",
                 topology.regions().size()));
@@ -1410,6 +1426,7 @@ public final class EconomySettlement {
                   "debtContracts",
                   debts.size(),
                   "modes",
+                  // ★ B2-保留段首base：同上一处（无工作副本的模板表；逐日日志只读计数）。
                   base.modes().size(),
                   "topologyRegions",
                   topology.regions().size()));
@@ -1425,6 +1442,8 @@ public final class EconomySettlement {
     //     "看起来像周期第一天"而重排一个本已跑了一半的周期（既有 unit 的配额因此不被进入动作改写）。
     Set<ProductionUnitId> enteredToday = Set.of();
     List<EntryOutcome> entryOutcomes = List.of();
+    // ★ B2-保留段首base：demands/candidates 两张表**没有**会话工作副本（写入口只有命令面）⇒ 段内不变，
+    //   段首 base 与当刻值是同一份表；此处读它是"静态模板"而不是"跳过当日视图"。
     if (!base.demands().isEmpty() && !base.candidates().isEmpty()) {
       EconomyEntrySettlement.Plan entryPlan =
           EconomyEntrySettlement.planEntries(
@@ -1568,11 +1587,14 @@ public final class EconomySettlement {
     //      HouseholdClassMembership；随后 organize 以新归属做幂等检查（新组织已 ACTIVE ⇒ 不重建），retain=1000 的旧
     //      EXITING 组织也不会被重建（organize 对该状态显式跳过）。
     //   ★★ 闸门：`modeTransitions` 为空时连工作副本都不建（空表基线逐值不变）；apply 内部再判一次到期 PENDING。
-    //   ★ 只对"base 里真有一条到期 PENDING"才进入：APPLIED/FAILED 的历史变迁不产生任何拷贝（跨 revision 的稳定基线）。
+    //   ★ 只对"**当刻**表里真有一条到期 PENDING"才进入：APPLIED/FAILED 的历史变迁不产生任何拷贝（跨 revision 的稳定基线）。
+    //   ★★ B2：判据读**当日视图**（= 会话工作副本优先）—— 段内第 D 天执行过的变迁在第 D+1 天已是 APPLIED，
+    //     读段首 base 会让它在整段里每天都"看起来到期"（每天白跑一次 apply + 白建六张工作副本），
+    //     与"逐日推进"路径的行为也不同源（那边每天看到的都是前一天终态）。
     //   ★ 它只写 enterprises / units / pledges / classStandings / modeTransitions / classShares
     // 六张工作副本。
     boolean dueModeTransition = false;
-    for (ModeTransition transition : base.modeTransitions().values()) {
+    for (ModeTransition transition : dayView.modeTransitions().values()) {
       if (transition.status() == ModeTransition.Status.PENDING
           && transition.effectiveDay() <= day) {
         dueModeTransition = true;
@@ -1582,7 +1604,7 @@ public final class EconomySettlement {
     if (dueModeTransition) {
       EconomyModeTransitionSettlement.Outcome transitionOutcome =
           EconomyModeTransitionSettlement.apply(
-              base,
+              dayView,
               day,
               householdEconomies,
               session.sheet().productionOrganizations(),
@@ -1629,10 +1651,11 @@ public final class EconomySettlement {
     //      productionOrganizations；不新建 Industry 模板、不写 markets/rows/debts。
     EconomyEnterpriseSettlement.Outcome enterpriseOutcome =
         EconomyEnterpriseSettlement.Outcome.empty();
+    // ★ B2-保留段首base：`modes` 无工作副本（静态模板）⇒ 本闸门在段内恒定；它判的是"这个世界接没接线 E1–E6"。
     if (!base.modes().isEmpty()) {
       enterpriseOutcome =
           EconomyEnterpriseSettlement.organize(
-              base,
+              dayView,
               // ★ E6a：变迁刚写过的 standing 工作副本优先（无变迁时 = base 的不可变表，旧路径逐值不变）。
               session.sheet().classMembershipsOrBase(),
               householdEconomies,
@@ -1777,6 +1800,7 @@ public final class EconomySettlement {
           settlementIndex);
       // ★★ P2-B：有 modes 的世界走"每 tick、按家户的利润率排队"（§13.4/§13.5）；旧档/未接线世界保留
       //   hex 分区再分配（换入空集逐值等价旧路径）。
+      // ★ B2-保留段首base：`modes` 无工作副本（静态模板）⇒ 段内恒定。
       if (base.modes().isEmpty()) {
         // ★ R2：劳动再分配已按 hex 并行（配额键含产业 id ⇒ 跨 hex 无冲突；同一批次跨 hex 的全局协调留给 R3）。
         // ★★ R4-E2b：今天刚进入的 unit 不触发"本周期是第一天"的重排判定（它今天确实是 0，但它不属于既有周期的重排对象）。
@@ -1814,6 +1838,7 @@ public final class EconomySettlement {
           day,
           parallelism,
           settlementIndex);
+      // ★ B2-保留段首base：`modes` 无工作副本（静态模板）⇒ 段内恒定。
       if (base.modes().isEmpty()) {
         reallocateLaborPartitioned(session, parallelism, settlementIndex, enteredToday);
       } else {
@@ -1919,6 +1944,8 @@ public final class EconomySettlement {
     LinkedHashMap<ProductionUnitId, ProductionEfficiencyState> productionEfficiency =
         session.sheet().productionEfficiency();
     // ★★ Z2（§6.2 ⑥）：产品产出数量 GM 覆盖表（只读；缺产业 = 该产业全部回落配方默认值）。
+    // ★ B2-保留段首base：本组件无工作副本（写入口只有 GM 命令 `Upsert/RemoveOutputQuantityOverride`）
+    //   ⇒ 段内不变，段首 base 与当刻值是同一份表。
     Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides =
         base.outputQuantityOverrides();
     for (ProductionUnitId id : new ArrayList<>(units.keySet())) {
@@ -2110,7 +2137,7 @@ public final class EconomySettlement {
       // ★★ A1（2026-10-10）：**运输服务产出**的 INFO/DEBUG（AGENTS §一.9；口径见 logHaulServiceOutput 的类注）。
       //   ★★★ A5：返回值 = 本日运输服务的**净产**（毫服务）—— 当日对账 INFO 的"产出"一栏（产出 − 交付 − 作废
       //     就是当期留下的服务货，三者必须能对上）。
-      haulServiceProducedMilli = logHaulServiceOutput(day, harvestLedger, base);
+      haulServiceProducedMilli = logHaulServiceOutput(day, harvestLedger, dayView);
     }
 
     // ── 3b. ★★ E4c：欠租/欠薪资本化（生产/租金阶段之后）─────────────────────────────────────
@@ -2121,7 +2148,7 @@ public final class EconomySettlement {
     //   ★ 位置在**借粮/偿还之前**：新增的既有债因此同日进入偿还排序（D-031 起不再进入任何借款额度门）；
     //     但不在当日起始本金快照里 ⇒ 当天不计息（与借粮同口径，见 principalAtDayStart）。
     capitalizeArrears(
-        base,
+        dayView,
         settlementIndex,
         ledger,
         householdEconomies,
@@ -2163,7 +2190,8 @@ public final class EconomySettlement {
 
     // ── 4. 区域市场清算（M2.3/M2.4：每 5 天一轮 + 低库存追加轮；区内即时 / 跨区 ETA）────────────
     //   ★★ 调度只依赖**绝对世界日 + 当前状态**（M0.1）：两条推进路径在同一天必然同轮。
-    //   ★ 它读 base.markets()（价格是数据）：缺格的格没有市场 ⇒ 不触发（不造默认价）。
+    //   ★ 它读**当刻**市场表（价格是数据）：缺格的格没有市场 ⇒ 不触发（不造默认价）。
+    //     ★ B2：本段的市场表来自会话工作副本（见上面的 `markets` 局部量），不是段首 base。
     //   ★★ 买卖**只走唯一的 applier**（applyTransfer）：本步绝不直接改副本 ——
     //     "任何库存变动必有对应转移记录"这条不变量的落点因此仍是一处（见 MarketSettlement 的类注）。
     //   ★★ M2.1 起这一支不再按"本周期缺口/余量"就地配对，而是**主体各自生成订单**（家户 + 经营者，见
@@ -2190,6 +2218,7 @@ public final class EconomySettlement {
             operatorConditions,
             settlementIndex,
             // ★★ R4-E2：当日有效需求来自状态组件的只读账本（订单路径据此把"生活保留基线 + 需求目标"合成买卖目标）。
+            // ★ B2-保留段首base：`demands` 无工作副本（写入口只有命令面）⇒ 段内不变。
             base.demands(),
             // ★★ P-T1c：生产路径默认区内市场规则（单区锚格 = markets 规范序第一个 hex；无税费 ⇒ 逐值现状）。
             //   跨市场区/自定义税费由后续批次经 GM 命令面注入同一入口。
@@ -2219,11 +2248,12 @@ public final class EconomySettlement {
     //       toolMilli = 装配时的可用量）由紧接着的那一行发出（见下）。
     // ★★★ A5（2026-10-10）：本日"服务成市"的格集**只算一次**，同一份值同时喂 ① 运力池的装配（下面第 7 参）
     //   ② 当日对账 INFO 一行的"要不要刷"判据（见 4 段末）—— 一处拼写、两处用它，不可能漂开。
-    Set<HexCoord> haulServiceMarketHexes = haulServiceHexes(base);
+    Set<HexCoord> haulServiceMarketHexes = haulServiceHexes(dayView);
     MerchantCapacityPool carrierPool =
         MerchantCapacityPool.of(
             session.sheet().classMemberships(),
-            base.classPositions(),
+            // ★ B2：阶层位置模板（无工作副本 ⇒ 段内不变）也统一走当日视图 —— 逐日读者只认一个"当刻值"来源。
+            dayView.classPositions(),
             householdEconomies,
             householdGoods,
             householdFrozenGoods,
@@ -2299,10 +2329,12 @@ public final class EconomySettlement {
       //   （累计发行量 ⇒ 储备上限）。★ B4 起报价口径 = 区级优先、按币对回落该区发行 GOV 的 GOV 级报价。
       //   ★ 一条生效报价都没有 ⇒ FxRoundInput.none() ⇒ 只有"没有政府窗口"这一件事；★ P-T5 起家户民间簿不依赖它
       //     （逐格逐户按 F-1 购买力自报价），本段仍会跑 —— 缺省中性（单币世界 / 无价可比）由 FxSettlement 自己守。
+      //   ★★ B2：三张表全部走**当日视图** —— 政府表与发行审计表都是会话工作副本（当日发行腿会追加记录，
+      //     读段首 base 会把"今天的储备上限"按段首累计发行量算），市场区表无工作副本（段内不变）。
       FxRoundInput fxInput =
-          FxRoundInput.of(base.governments(), base.moneyIssuances(), base.marketZones());
+          FxRoundInput.of(dayView.governments(), dayView.moneyIssuances(), dayView.marketZones());
       marketRound = marketRound.withFx(fxInput);
-      logFxWindows(day, base, fxInput);
+      logFxWindows(day, dayView, fxInput);
       // ★★★ A3（2026-10-10）：此处原有"注入本轮跑商家户集合"（§16.4 ①，提交 b22da5b7，
       //   {@code marketRound.withMerchantHouseholds(MerchantIdentity.merchants(...))}）—— **已随
       //   {@code MarketRound.merchantHouseholds} 字段一并撤回**：它只服务 {@code necessaryInputsOf} 里
@@ -2317,7 +2349,7 @@ public final class EconomySettlement {
       //     当日就对后续各日生效（读 base 会把已清掉的行再挂一遍 —— 探针实测踩到并已修）。
       GovernmentMarketMandatePlan govMandatePlan =
           GovernmentMarketMandatePlan.of(
-              session.sheet().govMarketMandatesOrBase(), base.governments(), day);
+              session.sheet().govMarketMandatesOrBase(), dayView.governments(), day);
       // ★★ R2：口岸实际管制力随授权计划一起注入（各自逐字段带过 ⇒ 两个字段都在；withPortEnforcement 不覆盖 govMandates）。
       //   ★★ P-T1b：三层税的税率与收税政府同样在这里注入（`withPortTax` 逐字段带过前四个字段）——
       //     闸（E）与税（税率）是两个量，缺省各管各的，合成一个字段会让"只设了税"静默丢掉。
@@ -2399,7 +2431,8 @@ public final class EconomySettlement {
       // ★★ M-C：本轮的纯商号集合（H-2；免运费判据 H-A/H-G 的**范围**）—— 判据的唯一拼写点是
       //   {@code MerchantIdentity}，这里只把它从同一份 classMemberships × classPositions 现算一次。
       Set<HouseholdId> pureMerchantHouseholds =
-          MerchantIdentity.pureMerchants(session.sheet().classMemberships(), base.classPositions());
+          MerchantIdentity.pureMerchants(
+              session.sheet().classMemberships(), dayView.classPositions());
       MarketSettlement.MarketOutcome outcome =
           MarketSettlement.clearOncePerCycle(
               markets,
@@ -3145,6 +3178,9 @@ public final class EconomySettlement {
     //   ★ 只在关账日推进（与 5 计息、5c 阶层写回同窗口）；新表全空 = 旧档 ⇒ 整段 no-op，旧路径逐值不变。
     //   ★ F/headroom 用 E4b/D-030 的唯一算法（DebtCapacityBook）；容量按**当刻债务终态**重算，
     //     且与 4b 共用同一份市场价目表 lookup（可定价债务全部计入；任一不可定价仍由借贷口径 fail-closed）。
+    // ★ B2-保留段首base：E5b 的**接线闸门**（六张表任一非空即启用），不是逐日读数：段内它只可能因
+    //   "全空世界中途长出归属行"而翻转，而那种世界在两条推进路径下都同样不启用 E5b。
+    //   ★ B1 账本（2026-10-10 fix-advance-path-dependence §3 末行）已裁定本处**不动**，留待接线面统一裁决。
     if (anyCycleClosed && EconomyLiquidationSettlement.isActive(base)) {
       Map<HouseholdId, DebtCapacity> closeDebtCapacities =
           debtCapacitiesForDay(
@@ -3397,6 +3433,7 @@ public final class EconomySettlement {
     if (profitCycle != null) {
       profitCycle.recordDay(day, ledger.toLedger(), ledger.marketReport());
     }
+    // ★ B2-保留段首base：`modes` 无工作副本（静态模板）⇒ 段内恒定；本闸门判"这个世界接没接线 E1–E6"。
     if (profitCycle != null && anyCycleClosed && !base.modes().isEmpty()) {
       profitCycle.recordCloseFacts(day, closedFacts);
       // ⑦a ★★ M-A1：商号周期结算（运费实收/porter 工资/upkeep/运力写回）**已整体退役** —— 它依赖的商号行
@@ -3416,7 +3453,7 @@ public final class EconomySettlement {
       // ⑧ 迁移计划（真实利润权重 + A 规则 + 目标选择）。
       ModeMigrationPolicy.MigrationPlan migrationPlan =
           ModeMigrationPolicy.plan(
-              base,
+              dayView,
               session.sheet().productionOrganizations(),
               units,
               householdEconomies,
@@ -3495,7 +3532,7 @@ public final class EconomySettlement {
                     migrationPlan.moves().size()));
       }
       int rowsBeforeMigration = householdEconomies.size();
-      ModeMigrationSettlement.apply(session, accounts, migrationPlan, base, day, ledger);
+      ModeMigrationSettlement.apply(session, accounts, migrationPlan, dayView, day, ledger);
       if (!migrationPlan.moves().isEmpty()) {
         EventLog.channel(TRACE)
             .info(
@@ -6988,7 +7025,7 @@ public final class EconomySettlement {
    * @param dueCycle 资本化合同的到期周期（当前周期 + 1）
    */
   private static void capitalizeArrears(
-      EconomyData data,
+      EconomyDayView data,
       SettlementIndex index,
       ProductionLedger.Accumulator ledger,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -8569,9 +8606,12 @@ public final class EconomySettlement {
    * </ul>
    *
    * <p>★ 日志只读状态：不写状态、不改公式、失败不影响结算（{@code EventLog} 的口径）。
+   *
+   * <p>★★ <b>B2（2026-10-10）：本方法是**逐日**读者 ⇒ 入参是当日视图</b> —— 政府表在段内会变（GM 设报价、发行腿 追加记录），读段首 {@code
+   * EconomyData} 会把"今天有几个政府窗口/几条区级覆盖"读成段首那一份。
    */
-  private static void logFxWindows(long day, EconomyData base, FxRoundInput fxInput) {
-    List<MarketZone> zones = MarketZoneBook.zones(base.marketZones());
+  private static void logFxWindows(long day, EconomyDayView view, FxRoundInput fxInput) {
+    List<MarketZone> zones = MarketZoneBook.zones(view.marketZones());
     int zonesWithRates = 0;
     for (MarketZone zone : zones) {
       if (!zone.officialRates().isEmpty()) {
@@ -8593,13 +8633,13 @@ public final class EconomySettlement {
                   "zonesWithOfficialRates",
                   zonesWithRates,
                   "governments",
-                  base.governments().size()));
+                  view.governments().size()));
     }
     if (!FX.isDebugEnabled()) {
       return;
     }
     int governmentsWithRates = 0;
-    for (Government government : base.governments().values()) {
+    for (Government government : view.governments().values()) {
       if (!government.officialRates().isEmpty()) {
         governmentsWithRates++;
       }
@@ -8626,7 +8666,7 @@ public final class EconomySettlement {
     for (FxRoundInput.Window window : fxInput.windows()) {
       OfficialRate rate = window.rate();
       List<MarketZone> covering =
-          MarketZoneBook.zonesCovering(base, window.governmentId(), rate.base(), rate.quote());
+          MarketZoneBook.zonesCovering(view, window.governmentId(), rate.base(), rate.quote());
       EventLog.channel(FX)
           .debug(
               LogEvent.of(

@@ -1,6 +1,6 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -47,7 +47,7 @@ final class GovernmentSeigniorage {
   /**
    * ★ 本日是不是“产业大周期开始日”。没有产业（旧档/未激活）时只有 day==1 算开始日；产业周期不等长时取最大周期 （试点世界三个产业同为 120 天，取最大值不会改变现有节奏）。
    */
-  static boolean isCycleStart(EconomyData base, long day) {
+  static boolean isCycleStart(EconomyDayView base, long day) {
     Objects.requireNonNull(base, "base");
     if (day < 1L) {
       return false;
@@ -72,7 +72,7 @@ final class GovernmentSeigniorage {
    * @param currentCycle 当前产业周期序号（≥ 1；进发行审计）
    */
   static long settleCycleStart(
-      EconomyData base,
+      EconomyDayView base,
       EconomySession session,
       AccountSession accounts,
       long day,

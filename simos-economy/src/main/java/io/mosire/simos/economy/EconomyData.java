@@ -294,6 +294,10 @@ import java.util.Set;
 //   ★ 被忽略 ⇒ 该组件读成 {@code Unchanged} ⇒ apply 保留 base 的表：旧 revision 行里的那一维**整体作废**，
 //   基础费回落到现行硬编码分档（与 EconomyCodec 的具名摘除+INFO 同一条语义）。
 @JsonIgnoreProperties("commodityFreightPerMille")
+// ★★ B2（2026-10-10）：本记录**自己实现** {@link EconomyDayView}（"我就是我自己的当刻值"）——
+//   段级/读口/GM 工具那些本来就在 revision 边界的调用方传 EconomyData 时逐字不变；
+//   只有一次 advance 的**日循环内部**改传工作副本视图（WorkingDayView），见该接口的类注。
+//   ★ 加 implements 不改任何组件/形状/编解码：record 的组件访问器原样满足接口（方法名与返回类型逐字相同）。
 public record EconomyData(
     Optional<EconomyMeta> meta,
     Map<IndustryId, Industry> industries,
@@ -352,7 +356,8 @@ public record EconomyData(
     //   ★ 空表 = 旧世界形态（没有任何授权 ⇒ 国库户在市场上零订单 ⇒ 与 Z7b 逐值同行为，I-P8）。
     //   ★ 它不是政策层/补贴层（用户 §1.3 明确禁止）：不改价格、不改成本、不豁免任何市场规则，
     //     订单仍走既有的 家户→订单→撮合→结算 全链路。
-    Map<MarketMandateId, GovernmentMarketMandate> govMarketMandates) {
+    Map<MarketMandateId, GovernmentMarketMandate> govMarketMandates)
+    implements EconomyDayView {
 
   /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
   public static final long MAX_OUTPUT_QUANTITY = 1_000_000L;

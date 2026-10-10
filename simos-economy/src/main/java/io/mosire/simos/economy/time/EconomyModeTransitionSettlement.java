@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
@@ -127,7 +127,7 @@ final class EconomyModeTransitionSettlement {
    * @param classShares 阶层保留份额工作副本（新增成功户的份额）
    */
   static Outcome apply(
-      EconomyData base,
+      EconomyDayView base,
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
@@ -251,7 +251,7 @@ final class EconomyModeTransitionSettlement {
       ModeTransition appliedTransition) {}
 
   private static Plan plan(
-      EconomyData base,
+      EconomyDayView base,
       ModeTransition transition,
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,

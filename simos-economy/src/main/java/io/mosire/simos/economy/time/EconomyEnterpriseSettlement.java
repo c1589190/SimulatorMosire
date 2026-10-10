@@ -2,7 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
-import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -216,7 +216,7 @@ final class EconomyEnterpriseSettlement {
    * EconomySettlement}）走带 standing 覆盖的新签名，以便组织阶段看见刚应用的变迁。
    */
   static Outcome organize(
-      EconomyData base,
+      EconomyDayView base,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<IndustryId, Industry> industries,
       Map<PledgeId, Pledge> pledges,
@@ -264,7 +264,7 @@ final class EconomyEnterpriseSettlement {
    * @return 是否写了状态 + 今天新建的 unit id
    */
   static Outcome organize(
-      EconomyData base,
+      EconomyDayView base,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<IndustryId, Industry> industries,
@@ -745,7 +745,7 @@ final class EconomyEnterpriseSettlement {
    * EconomyData} 构造期判死，本方法只读。
    */
   private static List<ClassPositionId> effectivePositions(
-      EconomyData base,
+      EconomyDayView base,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
       HouseholdId household) {
     HouseholdClassMembership classMembership = classMemberships.get(household);

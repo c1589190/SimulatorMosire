@@ -1,6 +1,6 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.debt.DebtTerms;
@@ -49,7 +49,7 @@ final class GovernmentDebtIssuance {
 
   /** 在周期开始日执行全部政府的发债政策；返回本次实际借入的货币总量（跨政府/币种直接相加，只作日志/调用方读数）。 */
   static long issueCycleStart(
-      EconomyData base,
+      EconomyDayView base,
       EconomySession session,
       AccountSession accounts,
       long day,

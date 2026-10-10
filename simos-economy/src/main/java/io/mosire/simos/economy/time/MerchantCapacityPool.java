@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -546,8 +546,13 @@ public final class MerchantCapacityPool {
     return Collections.unmodifiableMap(new LinkedHashMap<>(serviceAbsentTally));
   }
 
-  /** 纯状态派生查询（工具维取 0 ⇒ 运力下界，J-2）：该格有没有"选了跑商且有运力"的家户。 */
-  public static boolean hasCapacityAt(EconomyData base, HexCoord hex) {
+  /**
+   * 纯状态派生查询（工具维取 0 ⇒ 运力下界，J-2）：该格有没有"选了跑商且有运力"的家户。
+   *
+   * <p>★★ <b>B2：入参是"当日视图"（不是段首 {@code EconomyData}）</b> —— 本方法同时读阶层归属、家户位置与劳动，
+   * 三类都<b>逐日会变</b>；只换一半会拼出"当刻归属 + 段首位置"的混合日视图（接口类注明令禁止）。
+   */
+  public static boolean hasCapacityAt(EconomyDayView base, HexCoord hex) {
     return hexCapacityMilli(base, hex, Map.of()) > 0L;
   }
 
@@ -558,7 +563,7 @@ public final class MerchantCapacityPool {
    * @param goods 会话商品账（读 {@code tool} 存量）；没有商品账 ⇒ 传空表（工具项 = 0 ⇒ **运力下界**，J-2）
    */
   public static long hexCapacityMilli(
-      EconomyData base, HexCoord hex, Map<HouseholdId, Map<CommodityId, Long>> goods) {
+      EconomyDayView base, HexCoord hex, Map<HouseholdId, Map<CommodityId, Long>> goods) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(hex, "hex");
     Objects.requireNonNull(goods, "goods");
@@ -577,7 +582,7 @@ public final class MerchantCapacityPool {
    * MerchantIdentity#selectsMerchant}），算式同源（{@link MerchantCapacity#of}）。
    */
   private static long memberCapacityMilli(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId household,
       HexCoord hex,
       Map<HouseholdId, Map<CommodityId, Long>> goods) {
@@ -610,7 +615,7 @@ public final class MerchantCapacityPool {
    * {@code Map.of()} ⇒ 工具项 0 ⇒ 占比是**下界**（J-2 的具名偏差，方向 fail-closed）。
    */
   public static long sharePerMilleAsProviderAt(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId household,
       HexCoord hex,
       Map<HouseholdId, Map<CommodityId, Long>> goods) {

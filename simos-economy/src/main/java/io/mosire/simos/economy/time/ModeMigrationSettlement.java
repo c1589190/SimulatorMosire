@@ -2,7 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
-import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
@@ -101,7 +101,7 @@ public final class ModeMigrationSettlement {
       EconomySession session,
       AccountSession accounts,
       ModeMigrationPolicy.MigrationPlan plan,
-      EconomyData base,
+      EconomyDayView base,
       long day) {
     apply(session, accounts, plan, base, day, null);
   }
@@ -114,7 +114,7 @@ public final class ModeMigrationSettlement {
       EconomySession session,
       AccountSession accounts,
       ModeMigrationPolicy.MigrationPlan plan,
-      EconomyData base,
+      EconomyDayView base,
       long day,
       ProductionLedger.Accumulator auditLedger) {
     Objects.requireNonNull(session, "session");
@@ -237,7 +237,7 @@ public final class ModeMigrationSettlement {
       LinkedHashMap<PledgeId, Pledge> pledges,
       LinkedHashMap<ClassShareId, ClassShare> classShares,
       Map<DemandId, HouseholdDemand> householdDemands,
-      EconomyData base,
+      EconomyDayView base,
       long day,
       Set<HouseholdId> createdTargets,
       ProductionLedger.Accumulator auditLedger) {
@@ -788,7 +788,7 @@ public final class ModeMigrationSettlement {
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
       AccountSession accounts,
-      EconomyData base,
+      EconomyDayView base,
       long day) {
     HouseholdId target = move.target();
     if (householdEconomies.containsKey(target)) {
@@ -843,7 +843,7 @@ public final class ModeMigrationSettlement {
 
   /** 目标 mode 的位置选择：优先同 relationToMeans+surplusRole，其次第一个可生产位置（id 升序）。 */
   private static ClassPositionId pickTargetPosition(
-      EconomyData base,
+      EconomyDayView base,
       ProductionModeId modeId,
       HouseholdEconomy sourceHouseholdEconomy,
       Map<HouseholdId, HouseholdClassMembership> classMemberships) {
@@ -961,7 +961,7 @@ public final class ModeMigrationSettlement {
       LinkedHashMap<ProductionUnitId, ProductionProcess> units,
       LinkedHashMap<ProductionUnitId, ProductionRules> relations,
       LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
-      EconomyData base,
+      EconomyDayView base,
       LinkedHashMap<PledgeId, Pledge> pledges,
       List<AssetShareId> migratedShareIds,
       Map<IndustryId, Map<AssetKind, Long>> migratedCoverage,
@@ -1446,7 +1446,7 @@ public final class ModeMigrationSettlement {
       boolean empties,
       List<AssetShareId> sourceOwnedAssetIds,
       LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
-      EconomyData base,
+      EconomyDayView base,
       LinkedHashMap<PledgeId, Pledge> pledges,
       Set<AssetShareId> foreignUsedShareIds,
       Set<AssetShareId> movedWholeShareIds,
@@ -1572,7 +1572,7 @@ public final class ModeMigrationSettlement {
 
   /** 目标 hex 能承载该 AssetKind 的第一个产业（{@link IndustryHexKeys#at} 已按 id 升序）；无 ⇒ 空。 */
   private static Optional<IndustryId> hostIndustryFor(
-      EconomyData base, HexCoord targetHex, AssetKind asset) {
+      EconomyDayView base, HexCoord targetHex, AssetKind asset) {
     for (IndustryId candidate :
         IndustryHexKeys.at(base.industries(), targetHex.q(), targetHex.r())) {
       Industry industry = base.industries().get(candidate);
@@ -1751,7 +1751,7 @@ public final class ModeMigrationSettlement {
       ActorRef targetActor,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       HouseholdEconomy targetHouseholdEconomy,
-      EconomyData base,
+      EconomyDayView base,
       long day,
       ProductionLedger.Accumulator auditLedger) {
     Optional<RegimeId> templateRegime =
@@ -1794,7 +1794,7 @@ public final class ModeMigrationSettlement {
 
   /** mode → 关系模板 regime（唯一映射点；未知/未登记 ⇒ 空 = 具名回退，不猜别的制度）。 */
   private static Optional<RegimeId> migrationTemplateRegime(
-      ProductionModeId mode, IndustryId industryId, EconomyData base) {
+      ProductionModeId mode, IndustryId industryId, EconomyDayView base) {
     if (DefaultProductionModes.TENANCY_FIXED_KIND.equals(mode)
         || DefaultProductionModes.TENANCY_SHARE.equals(mode)
         || DefaultProductionModes.TENANCY_CASH.equals(mode)) {

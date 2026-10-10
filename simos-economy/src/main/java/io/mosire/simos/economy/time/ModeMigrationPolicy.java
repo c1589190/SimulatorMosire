@@ -2,7 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
-import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -271,7 +271,7 @@ public final class ModeMigrationPolicy {
 
   /** 计划入口：只读全部入参，返回确定性计划。 */
   public static MigrationPlan plan(
-      EconomyData base,
+      EconomyDayView base,
       Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -446,7 +446,7 @@ public final class ModeMigrationPolicy {
   // ── 逐源户计划 ─────────────────────────────────────────────────────────────────────────────
 
   private static List<MoveDraft> planForSource(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId source,
       HouseholdEconomy sourceHouseholdEconomy,
       HouseholdMode current,
@@ -609,7 +609,7 @@ public final class ModeMigrationPolicy {
    * ExpectedProfitBook.Prospect}（与候选同一把尺，A 规则与排序表不可能漂开）。DISPLACED 一类没有位置的候选不进表。
    */
   private static PrimaryModeRanking.Table rankingTable(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId source,
       HouseholdMode current,
       ExpectedProfitBook.Prospect currentProspect,
@@ -662,7 +662,7 @@ public final class ModeMigrationPolicy {
    * MerchantCapacityPool#sharePerMilleAsProviderAt}）。
    */
   private static long bargainingPowerPerMille(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId source,
       ProductionModeId mode,
       HexCoord hex,
@@ -734,7 +734,7 @@ public final class ModeMigrationPolicy {
    * claimed，避免周期开始时的过期快照把既有组织/在产 unit 正在使用的份额（含 ESTATE 土地）当 "闲置可租"。
    */
   private static List<Target> buildTargets(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId source,
       HouseholdEconomy sourceHouseholdEconomy,
       HouseholdMode current,
@@ -929,7 +929,7 @@ public final class ModeMigrationPolicy {
       long speedPerMille,
       String reason,
       List<Target> targets,
-      EconomyData base,
+      EconomyDayView base,
       HouseholdEconomy sourceHouseholdEconomy,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
@@ -1004,7 +1004,7 @@ public final class ModeMigrationPolicy {
       HouseholdId source,
       long speedPerMille,
       String reason,
-      EconomyData base,
+      EconomyDayView base,
       HouseholdEconomy sourceHouseholdEconomy,
       Map<AssetShareId, OwnershipStake> assetShares,
       List<MoveDraft> drafts,
@@ -1066,7 +1066,7 @@ public final class ModeMigrationPolicy {
       HexCoord hex,
       ProductionModeId mode,
       long take,
-      EconomyData base,
+      EconomyDayView base,
       HouseholdEconomy sourceHouseholdEconomy,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
@@ -1200,7 +1200,7 @@ public final class ModeMigrationPolicy {
    * 这样"当前户读数"用真实在产的配方，而不是"该格第一个模板"。
    */
   private static Industry currentIndustryOf(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId household,
       HouseholdMode current,
       Map<ProductionUnitId, ProductionProcess> units,
@@ -1270,7 +1270,7 @@ public final class ModeMigrationPolicy {
    * MerchantCapacityPool#hasCapacityAt(EconomyData, HexCoord)}）。旧"查商号行"的实现已随 {@code merchantFirms}
    * 退役。
    */
-  private static boolean hasMerchantCapacityAt(EconomyData base, HexCoord hex) {
+  private static boolean hasMerchantCapacityAt(EconomyDayView base, HexCoord hex) {
     return MerchantCapacityPool.hasCapacityAt(base, hex);
   }
 
@@ -1279,7 +1279,7 @@ public final class ModeMigrationPolicy {
    * 模板缺失）时退回"全部产业的最大者"，再没有 ⇒ 120。
    */
   private static long demandHorizonDays(
-      EconomyData base, Map<ProductionUnitId, ProductionProcess> units) {
+      EconomyDayView base, Map<ProductionUnitId, ProductionProcess> units) {
     long horizon = 0L;
     for (ProductionProcess unit : units.values()) {
       Industry industry = base.industries().get(unit.industry());
@@ -1307,7 +1307,7 @@ public final class ModeMigrationPolicy {
    * </ol>
    */
   static List<IndustryId> industriesForMode(
-      EconomyData base, HexCoord hex, ProductionModeId modeId) {
+      EconomyDayView base, HexCoord hex, ProductionModeId modeId) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(hex, "hex");
     Objects.requireNonNull(modeId, "modeId");
@@ -1475,12 +1475,12 @@ public final class ModeMigrationPolicy {
 
   // ── 小工具 ────────────────────────────────────────────────────────────────────────────────
 
-  private static boolean hasIndustryTemplate(EconomyData base, HexCoord hex) {
+  private static boolean hasIndustryTemplate(EconomyDayView base, HexCoord hex) {
     return !IndustryHexKeys.at(base.industries(), hex.q(), hex.r()).isEmpty();
   }
 
   private static Map<ProductionModeId, List<ProductionRole>> producingPositionsByMode(
-      EconomyData base, List<ProductionMode> modes) {
+      EconomyDayView base, List<ProductionMode> modes) {
     Map<ProductionModeId, List<ProductionRole>> result = new LinkedHashMap<>();
     for (ProductionMode mode : modes) {
       ClassStructure structure = base.classStructures().get(mode.classStructureId());
@@ -1600,7 +1600,7 @@ public final class ModeMigrationPolicy {
         && share.operator().equals(unit.operator());
   }
 
-  private static List<ProductionMode> sortedModes(EconomyData base) {
+  private static List<ProductionMode> sortedModes(EconomyDayView base) {
     List<ProductionMode> modes = new ArrayList<>(base.modes().values());
     modes.sort(Comparator.comparing(mode -> mode.id().value()));
     return modes;

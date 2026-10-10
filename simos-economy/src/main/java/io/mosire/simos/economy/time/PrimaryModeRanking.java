@@ -1,6 +1,6 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -279,7 +279,7 @@ public final class PrimaryModeRanking {
    * <p>★ 两类行都判（候选行 + 当前主业行）。★ 它只影响**排序表的读数与候选集**；A 规则读的 {@code expectedNet} 一字不改（冻结项 5）。
    */
   public static String merchantGateReason(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId household,
       HexCoord hex,
       Map<HouseholdId, Map<CommodityId, Long>> goods) {

@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.model;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
@@ -250,9 +251,12 @@ public final class MarketZoneBook {
    * ★★ <b>B4：按政府身份取"覆盖某币对的全部区"</b>（装订点日志用；政府未登记 ⇒ 空表 —— 说不出"谁被覆盖"就不猜）。
    *
    * <p>★ 与 {@link #zonesCovering(Government, Map, CurrencyId, CurrencyId)} 同一拼写点：本重载只做"身份 → 政府"的翻译。
+   *
+   * <p>★★ <b>B2（2026-10-10）：入参是"当日视图"</b> —— 它读 {@code governments}（会话工作副本：段内会因 GM 报价/发行腿变化）与
+   * {@code marketZones}（静态）。{@code EconomyData} 自己实现该接口 ⇒ 段级调用方逐字不变。
    */
   public static List<MarketZone> zonesCovering(
-      EconomyData data, GovernmentId governmentId, CurrencyId base, CurrencyId quote) {
+      EconomyDayView data, GovernmentId governmentId, CurrencyId base, CurrencyId quote) {
     Objects.requireNonNull(data, "data");
     Objects.requireNonNull(governmentId, "governmentId");
     Government government = data.governments().get(governmentId);

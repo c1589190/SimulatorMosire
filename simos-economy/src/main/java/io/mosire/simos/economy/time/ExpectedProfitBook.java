@@ -2,7 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
-import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyDayView;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -191,7 +191,7 @@ public final class ExpectedProfitBook {
    * @param day 当前世界日（merchant 分支的读数；不参与产出/成本公式）
    */
   public static Prospect prospect(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId household,
       ProductionModeId modeId,
       HexCoord hex,
@@ -610,7 +610,7 @@ public final class ExpectedProfitBook {
   // ── merchant 分支 ──────────────────────────────────────────────────────────────────────────
 
   private static Prospect merchantProspect(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId household,
       HouseholdEconomy householdEconomy,
       ProductionModeId modeId,
@@ -970,7 +970,7 @@ public final class ExpectedProfitBook {
    * 目标位置：先取家户当前位置（若它属于本 mode），否则同 relationToMeans/surplusRole 的第一个可生产位置，再否则 id 升序第一个 —— 与 {@code
    * ModeMigrationSettlement.pickTargetPosition} 同一口径（本类不另立一套）。
    */
-  private static ProductionRole currentPositionOf(EconomyData base, HouseholdId household) {
+  private static ProductionRole currentPositionOf(EconomyDayView base, HouseholdId household) {
     var classMembership = base.classStandings().get(household);
     return classMembership == null
         ? null
@@ -978,7 +978,7 @@ public final class ExpectedProfitBook {
   }
 
   private static ProductionRole choosePosition(
-      EconomyData base,
+      EconomyDayView base,
       HouseholdId household,
       ProductionModeId modeId,
       List<ProductionRole> producing) {
@@ -1009,7 +1009,8 @@ public final class ExpectedProfitBook {
     return industry != null && RegimeOperators.MERCHANT.equals(industry.regime().value());
   }
 
-  private static Industry resolveIndustry(EconomyData base, HexCoord hex, ProductionModeId modeId) {
+  private static Industry resolveIndustry(
+      EconomyDayView base, HexCoord hex, ProductionModeId modeId) {
     for (IndustryId industryId : ModeMigrationPolicy.industriesForMode(base, hex, modeId)) {
       Industry industry = base.industries().get(industryId);
       if (industry != null) {
@@ -1343,10 +1344,12 @@ public final class ExpectedProfitBook {
   /**
    * ★★ <b>M-A1：该家户在同格 merchant 生产方式下的生产组织</b>（有则用于取 unit/资产维护来源，没有 ⇒ 空）。
    *
-   * <p>★ 仍读 {@code base.productionOrganizations()} 快照（D-024 修复 1b 未改的 merchant 分支专用）：周期关账时 base 是
-   * 本周期开始时的 revision，当天自动组织阶段刚新建的组织不在其中。键集按 {@link ProductionOrganizationId#value()} 升序 ⇒ 同输入同答案。
+   * <p>★★ <b>B2（2026-10-10）：改读"当刻组织表"</b>（{@code prospect} 的入参已从段首 {@code EconomyData} 换成 {@code
+   * EconomyDayView}）—— 段内**当天**自动组织阶段刚 upsert 的 merchant 组织从此可见。这正是等价性判据要的：逐日推进时 每天看到的都是"前一天终态 +
+   * 当天已发生的阶段"，一次长推进必须同源（旧读法下，段内第 N 天看到的组织集取决于段从哪里 切，是路径效应的一种）。★ 键集按 {@link
+   * ProductionOrganizationId#value()} 升序 ⇒ 同输入同答案（确定性不变）。
    */
-  private static ProductionEnterprise merchantEnterpriseOf(EconomyData base, ActorRef actor) {
+  private static ProductionEnterprise merchantEnterpriseOf(EconomyDayView base, ActorRef actor) {
     List<ProductionOrganizationId> ids = new ArrayList<>(base.productionOrganizations().keySet());
     ids.sort(Comparator.comparing(ProductionOrganizationId::value));
     for (ProductionOrganizationId organizationId : ids) {
