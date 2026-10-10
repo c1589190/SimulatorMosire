@@ -295,6 +295,30 @@ W1 状态与账 ─→ W2 清算与价格 ─→ W3 人的进出 ─→ W4 家�
 
 ## 7. 修订记录
 
+- **v3.12**（2026-10-11 凌晨）：**W3 验收结果 + 两条真缺陷处置（控制方裁定）**。报告：`.superpowers/sdd/2026-10-11-w3-acceptance/report.md`（jar `1e978b76…`）。
+  **绿**：①两段式次序（同 tick 原文：`HOUSEHOLD_GAP_REPORTED → DAY_END → POPULATION_SETTLE → FAMINE_MORTALITY → HOUSEHOLD_VITAL_WRITEBACK → BRIDGED`，
+  **同一 revision** 同时含 social 成员 30→29、economy population 30→29、flows.deaths 0→1；每次 advance Δ=1）
+  ②**逐户一致 179/179**（Σ 逐值相等；`4800 + 145 生 − 428 死 = 4517 = ΣSocial = ΣEconomy`）
+  ③economy 侧死因写点全部定性为"接收"（判死 grep 7 命中全是注释）+ famine 死亡真进 `FlowRow.deaths`
+  ④**饥荒真发生**：`FAMINE_MORTALITY`/`HOUSEHOLD_GAP_REPORTED` 174/180（sw）、590/600（three-powers），行数与"有缺口的天"**集合级等价**；
+  断顿户中位 56、最高 87；180 天人口 −283（W2 同期 +46 ⇒ 本批有意改数值）；**死因 377 famine vs 51 base**
+  ⑤**负向**：GM 补粮后 43 天 `FAMINE_MORTALITY` **0 行**、22 死全 `cause=BASE`（实测 22 vs 基准率表 22.31）
+  ⑥B2 三份 dump md5 全等、差异叶 **0/68,963** ⑦Δ=1（360/600/1000）⑧货币/债务精确。
+  **处置**：
+  - **D1（既存 NPE，必修）**：`CrisisMonitor` FOOD 灯 `evidence.put("stressByAgeBracket", null)` × `Light` 的 `Map.copyOf` ⇒
+    **`GET /api/social/population` 500**，触发面 3/19~19/19 格，**并把 MORTALITY 灯整个遮住**（根因行早于 W3，`3de6a88a`）
+    ⇒ 修：缺值一律**不放键或放空表**（不许放 null），并扫同类 `evidence.put(null)`；修完 MORTALITY 灯必须真能读到。
+  - **D2（W3-fix 新接线 bug，必修）**：`HouseholdBook:959-963` 用 `floorDiv(deaths × faminePpm, effectiveDeathPpm)` 分摊 ⇒
+    "单户单日 1 人死亡"时**恒 0** ⇒ `famineDeaths` 读数全 0（sw180 的 377 条 famine 致死读出 0、1000 天 2576 死读出 0）；
+    且 `famineDeaths ≤ deaths` 不变量仍成立 ⇒ **门禁抓不到**。
+    **裁定**：改为**按死亡事件的 cause 直接计数**（`BASE_PLUS_FAMINE` ⇒ famine 致死；事件流已有 cause，不要再做比例分摊取整），
+    使 `famineDeaths` == famine 致死事件数，且不变量自然成立。
+  - **D3（修）**：`actor.AdjustAccounts` 工具描述/handler 类注写 `owner{kind,id}+q/r`，解析器实际要顶层 `household`（发文档口径会 422）⇒ 改文档/描述与解析器一致。
+  - **D4（顺手修）**：`HOUSEHOLD_VITAL_WRITEBACK` 缺 `day` 字段（162/162 条）⇒ 补。
+  - **D5（记 W4/W6 标定）**：小世界**结构性缺粮**（8–87 户长期 100% 吃不上）在 W3 下成了 **85% 的死亡来源** ⇒
+    "谁死 ≈ 谁排在市场队列后面"；**W4 排序落地后曲线会再变**，W6 用人口曲线 + 死因分布做标定。
+  - **D7（待查，记 O4/W6）**：创世后 **4 户 Social ≠ Economy 人口**（tick 1 起自洽；根因未查）。
+  ★ 未验遗留：货物守恒仍只能单边（无产出/损耗读数面，记 W6）；`blockedByPortMilli`/0 价跨格运费等 W2 遗留项未碰。
 - **v3.11**（2026-10-11 凌晨）：**W3（两段式 tick + 死亡率移交）生产码落地 + 两条口径裁定**。
   改动：新增 `EconomyHouseholdGap`（经济侧瞬态逐户缺口）/ `FamineMortalityInput` / `FamineMortality`（Social 侧口径唯一拼写点）
   / `FamineMortalityBridge`（**app** 组合根，形制照 P0 `MigrationSocialBridge`）；改 economy 5 文件 + social 2 + app 2（`+640/−392`），`compile -am` 绿。
