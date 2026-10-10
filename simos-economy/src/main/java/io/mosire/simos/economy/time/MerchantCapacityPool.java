@@ -884,12 +884,6 @@ public final class MerchantCapacityPool {
     return (product + entry.capacity.capacityMilli() - 1L) / entry.capacity.capacityMilli();
   }
 
-  /** 该户本轮的工具预算还剩多少（毫工具；读数/日志用；不在池里 ⇒ 0）。 */
-  public long remainingToolMilliOf(HouseholdId household) {
-    Entry entry = byHousehold.get(household);
-    return entry == null ? 0L : entry.remainingToolMilli;
-  }
-
   /** 本轮因缺工具未成立的跑商次数（全部家户之和；INFO 汇总用）。 */
   public long toolBlockedRuns() {
     long total = 0L;

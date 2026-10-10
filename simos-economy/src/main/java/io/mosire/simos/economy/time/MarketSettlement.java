@@ -6791,7 +6791,9 @@ final class MarketSettlement {
    * ★★ <b>M-A1：发货格没有运力 ⇒ 这条车道整条拦下</b>（具名 {@code LOGISTICS_CAPACITY}）—— 买卖两侧的余量都记成
    * "被运力截断"（V-20：截断部分不进自适应定价的 demand/supply 统计），并各留一条 DEBUG 的"为什么"。
    *
-   * <p>★ 两侧的截断量各自按对侧余量封顶（{@code min(本侧余量, 对侧余量)}）：一个买方要 100、卖方只剩 30 ⇒ 双方各记 30。
+   * <p>★ 两侧的截断量各自按对侧余量封顶（{@code min(本侧余量, 对侧余量)}）：一个买方要 100、卖方只剩 30 ⇒ 双方各记 30。 两侧记的是**同一条车道**的
+   * {@code min(买方余量合计, 卖方余量合计)}（= 下面日志的 {@code truncatedMilli}），
+   * 不是"对侧的整份余量"——后者会把本侧装不下的部分也记成截断，超过挂单量时连**已服务**的那份都被剔出统计（V-20）。
    */
   private static void blockLaneWithoutCapacity(
       MatchContext ctx,
@@ -6815,7 +6817,9 @@ final class MarketSettlement {
     long blocked = Math.min(buyTotal, sellTotal);
     for (BuySlot buy : buys) {
       if (buy.remaining > 0L) {
-        buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, sellTotal);
+        // ★★ D-1（2026-10-10 裁定）：按**本侧余量**封顶 —— 记的是这条车道真正装不下的量（min(买余, 卖余)），
+        //   不是对侧的整份余量。记多了会把**挂单量以内、已被服务**的那一份也剔出价格统计（V-20）。
+        buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, blocked);
         if (buy.blocked == null) {
           buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
         }
@@ -6824,7 +6828,7 @@ final class MarketSettlement {
     for (SellSlot sell : sells) {
       if (sell.remaining > 0L) {
         sell.capacityBlocked = true;
-        sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, buyTotal);
+        sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, blocked);
       }
     }
     if (MARKET.isDebugEnabled() && blocked > 0L) {
