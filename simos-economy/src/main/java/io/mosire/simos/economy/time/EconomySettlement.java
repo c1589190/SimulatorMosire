@@ -623,134 +623,139 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★★ <b>A5（2026-10-10）：周期边界作废"上一周期没卖出去的运输服务"</b>（用户裁定「运力作为特殊商品不可储存转卖」； 约束设计书 §3.1 v1.2 / I-H3
-   * v1.2）。
+   * ★★★ <b>A5 + A7（2026-10-10）：周期边界作废"上一周期没卖出去的运输服务"</b>（用户裁定「运力作为特殊商品不可储存转卖」； 约束设计书 §3.1 v1.2 /
+   * I-H3 v1.2 / v1.5 的 A7 收口）。
    *
    * <pre>
    * 触发   = 产出运输服务的 unit 关账那天（{@code progressed >= cycleDays}），在**收获入账之前**
-   * 作用域 = 该 unit 的账户主体家户（{@link HouseholdRouting#subjectOf} 的 all()，与收获净产入账**同一批判据**）
-   * 数量   = 每户 {@code max(0, haul 现货 − haul 冻结)}（被冻结的那一份是别处的明确占用，不动它）
+   * 扫谁   = **任何持有 haul 的家户**（A7 扩域；= 会话里全部已登记家户的 haul 键，不再限于关账 unit 的主体家户）
+   * 扫多少 = 每户 {@code max(0, haul 现货 − haul 冻结)}（被冻结的那一份是别处的明确占用，不动它）
    * 落点   = {@link EconomySettlement#consumeForLoss}（非换手损耗唯一写口）+ {@link HaulService#SERVICE_EXPIRED_ACCOUNT}
    * </pre>
    *
-   * <p>★★ <b>为什么必须在"收获之前"</b>：关账日的收获会把**本周期的净产**记进同一批账户。若作废排在收获之后， 刚产出的服务会被当成陈货一起作废（新货当陈货）。排在收获之前 ⇒
-   * 作废的**恰好**是上一周期留下、没卖出去的那一份； 而"谁有服务货可卖"（{@link MerchantCapacityPool#of} 的服务口径：{@code max(0, 现货 −
-   * 冻结)}）因此**只可能**看到 本周期的产出 —— 这就是"不得跨周期留存、不得再卖"的结构性落点，不需要给池加任何周期过滤（也就没有第二处判据）。
+   * <p>★★ <b>A7 为什么要扩到"任何持 haul 的家户"（A6 真实 world 实测的逃逸口）</b>：A5 的作用域是"关账 unit 的账户主体家户"，
+   * 而服务货会**离开**产它的家户 —— B 世界 day 240 的 5,249 毫陈货经 {@code loan_repayment}（实物还债）转移到已退出商家名册的持货户， 之后跨
+   * day 360 / day 480 两次边界都没被作废（A6 账本 §1.2）：效果上卖不掉（该户 480 天 0 条池行），字面上没销毁。 ★ 一旦该户被选回跑商（本仓确有 {@code
+   * pureMerchant} 状态机），陈货**立刻**变成可卖运力 ⇒ 按"任何持货家户"收口。
+   *
+   * <p>★★ <b>为什么必须在"收获之前"</b>：关账日的收获会把**本周周期的净产**记进同一批账户。若作废排在收获之后， 刚产出的服务会被当成陈货一起作废（新货当陈货）。排在收获之前
+   * ⇒ 作废的**恰好**是上一周期留下、没卖出去的那一份； 而"谁有服务货可卖"（{@link MerchantCapacityPool#of} 的服务口径：{@code max(0, 现货
+   * − 冻结)}）因此**只可能**看到 本周期的产出 —— 这就是"不得跨周期留存、不得再卖"的结构性落点，不需要给池加任何周期过滤（也就没有第二处判据）。 ★
+   * 全局清扫落在"收获之前"仍然成立：本阶段的**唯一**产出写入口是 {@code harvestPartitioned}（在调用点之后）， 而它尚未开始 ⇒ 此刻账上的 haul
+   * **一律**是"本周周期收获之前就存在"的存货 ⇒ 清扫不会误伤当期新产（详见实现账本 §3）。
    *
    * <p>★★ <b>为什么不是静默销毁（I-H2）</b>：走的是与货损 / 服务成交消耗**同一个**写口 —— 账户减与 {@code
    * ledger.addLoss(SERVICE_EXPIRED_ACCOUNT, haul, amount)} 在同一句话里做完 ⇒ Σ家户余额 + Σ损耗账守恒。
    * 具名账户与"卖出去时消耗"的那一项（{@code market-haul-service}）分开 ⇒ "卖了多少 / 烂了多少"在账上分得开。
    *
-   * <p>★ <b>为什么"只影响 haul"</b>：读写的商品键恒为 {@link HaulService#HAUL_COMMODITY}；作用域是"关账跑商 unit 的
-   * 账户主体家户"（别的家户的粮/布/工具一个字节不动）；且**没有**任何跨商品分支。无跑商 unit 的世界 ⇒ {@code closingHaulUnits} 为空 ⇒
+   * <p>★ <b>为什么"只影响 haul"</b>：读写的商品键恒为 {@link HaulService#HAUL_COMMODITY}；清扫只对"该户有 haul 键"的户写
+   * （别的商品一个字节不动）；且**没有**任何跨商品分支。无跑商 unit 的世界 ⇒ {@code triggeringUnits} 为空 ⇒
    * 本方法连一次表查询都不做（缺省中性，I-H3）。
    *
    * <p>★ <b>只作用于"没卖出去"的那一份</b>：{@code available = max(0, stock − frozen)}，冻结量不动（它是别处已明确的占用；
    * 服务不进订单簿，故现实中它为 0）；可用量为 0 的户连损耗条目都不落（不制造 0 额账）。
    *
+   * <p>★★ <b>确定性（I7 / I-H4）</b>：清扫顺序 = 家户 id 规范串升序（与 {@code MerchantCapacityPool} 的逐户顺序同一把尺），
+   * 是**内容的纯函数**；不依赖哈希序，也不用 {@code Map.copyOf}/{@code Set.copyOf}。
+   *
    * @param day 当日日号
-   * @param closingHaulUnits 本日关账且产出运输服务的 unit（顺序 = 日循环遍历序，确定）
-   * @param householdEconomies 家户行（主体解析只读它）
-   * @param enterpriseByProcess unit → 生产组织（主体解析只读它）
-   * @param index 结算索引（主体解析只读它）
+   * @param triggeringUnits 本日关账且产出运输服务的 unit（**只当触发开关与日志归因用**；A7 起不再是清扫范围）
    * @param accounts 会话账户（活表；本方法在收获阶段取快照**之前**写它）
    * @param ledger 当日发生额累加器（损耗账的唯一写入点）
    * @return 本日作废的服务总量（毫服务；没有作废 ⇒ 0）—— 当日对账 INFO 的"作废"一栏
    */
   private static long expireUnservedHaulService(
       long day,
-      List<ProductionProcess> closingHaulUnits,
-      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess,
-      SettlementIndex index,
+      List<ProductionProcess> triggeringUnits,
       AccountSession accounts,
       ProductionLedger.Accumulator ledger) {
-    if (closingHaulUnits.isEmpty()) {
+    if (triggeringUnits.isEmpty()) {
       return 0L; // 本日没有跑商 unit 关账 ⇒ 一行不跑、一账不动（缺省中性）
     }
     Map<HouseholdId, Map<CommodityId, Long>> householdGoods = accounts.householdGoods();
     Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods = accounts.householdFrozenGoods();
+    // ★★ A7：清扫范围 = 会话里**全部**已登记家户里"有 haul 存货"的那些（键的存在即"持有"——
+    //   余额归零即去键，见 setStock 的口径）⇒ 不再做任何主体解析，持货不再需要与"谁产的"挂钩。
+    List<HouseholdId> holders = new ArrayList<>();
+    for (Map.Entry<HouseholdId, Map<CommodityId, Long>> entry : householdGoods.entrySet()) {
+      if (entry.getValue().containsKey(HaulService.HAUL_COMMODITY)) {
+        holders.add(entry.getKey());
+      }
+    }
+    if (holders.isEmpty()) {
+      return 0L; // 全世界没有一户持 haul ⇒ 不排序、不落账、不改一个字节（"没有 haul 持有者 ⇒ 中性"）
+    }
+    holders.sort(Comparator.comparing(HouseholdId::value)); // ★ I7：顺序是内容的纯函数（不许依赖哈希/插入序）
     long total = 0L;
     long householdCount = 0L;
-    // ★ 保序：单位按关账遍历序、家户按主体表序（都是内容的纯函数 ⇒ I7）；已作废过的户不重复处理。
-    Set<HouseholdId> handled = new LinkedHashSet<>();
-    for (ProductionProcess unit : closingHaulUnits) {
-      HouseholdRouting.Subject subject =
-          HouseholdRouting.subjectOf(unit, householdEconomies, enterpriseByProcess, index);
-      for (HouseholdId household : subject.all()) {
-        if (!handled.add(household)) {
-          continue;
-        }
-        long stock = stockOf(householdGoods, household, HaulService.HAUL_COMMODITY);
-        long frozen = frozenGoodsOf(householdFrozenGoods, household, HaulService.HAUL_COMMODITY);
-        long available = Math.max(0L, stock - frozen);
-        if (available <= 0L) {
-          continue; // 这个户没有"没卖出去的"服务货（或全部被冻结）⇒ 不落 0 额账、不改一个字节
-        }
-        EconomySettlement.LossConsumption consumed =
-            consumeForLoss(
-                householdGoods,
-                householdFrozenGoods,
-                ledger,
-                HaulService.SERVICE_EXPIRED_ACCOUNT,
-                household,
-                HaulService.HAUL_COMMODITY,
-                available);
-        if (consumed.consumedMilli() <= 0L) {
-          // ★ fail-closed 的写口在"可用量 < 请求量"时一点也不扣；这里请求量**就是**可用量 ⇒ 结构上取不到 0。
-          //   真取到 0 说明账在两行之间被改了（契约故障）⇒ 具名 ERROR，绝不静默少作废。
-          EventLog.channel(TRACE)
-              .error(
-                  LogEvent.of(
-                      "HAUL_SERVICE_EXPIRY_FAULT",
-                      EconomyLogSource.ECONOMY_SETTLEMENT,
-                      "day",
-                      day,
-                      "household",
-                      household.value(),
-                      "unit",
-                      unit.id().value(),
-                      "requestedMilli",
-                      available,
-                      "stockMilli",
-                      consumed.stockMilli(),
-                      "frozenMilli",
-                      consumed.frozenMilli(),
-                      "reason",
-                      "haul-service-expiry-blocked-by-live-table-change"));
-          continue;
-        }
-        total = Math.addExact(total, consumed.consumedMilli());
-        householdCount++;
-        if (EconomyLog.trace().isTraceEnabled()) {
-          EventLog.channel(EconomyLog.trace())
-              .trace(
-                  LogEvent.of(
-                      "HAUL_SERVICE_EXPIRED_DETAIL",
-                      EconomyLogSource.ECONOMY_SETTLEMENT,
-                      "day",
-                      day,
-                      "household",
-                      household.value(),
-                      "unit",
-                      unit.id().value(),
-                      "industry",
-                      unit.industry().value(),
-                      "expiredMilli",
-                      consumed.consumedMilli(),
-                      "stockBeforeMilli",
-                      consumed.stockMilli(),
-                      "frozenMilli",
-                      consumed.frozenMilli(),
-                      "lossAccount",
-                      HaulService.SERVICE_EXPIRED_ACCOUNT.value(),
-                      "reason",
-                      "unsold-haul-service-cannot-be-stored-carried-over"));
-        }
+    for (HouseholdId household : holders) {
+      long stock = stockOf(householdGoods, household, HaulService.HAUL_COMMODITY);
+      long frozen = frozenGoodsOf(householdFrozenGoods, household, HaulService.HAUL_COMMODITY);
+      long available = Math.max(0L, stock - frozen);
+      if (available <= 0L) {
+        continue; // 这个户没有"没卖出去的"服务货（或全部被冻结）⇒ 不落 0 额账、不改一个字节
+      }
+      EconomySettlement.LossConsumption consumed =
+          consumeForLoss(
+              householdGoods,
+              householdFrozenGoods,
+              ledger,
+              HaulService.SERVICE_EXPIRED_ACCOUNT,
+              household,
+              HaulService.HAUL_COMMODITY,
+              available);
+      if (consumed.consumedMilli() <= 0L) {
+        // ★ fail-closed 的写口在"可用量 < 请求量"时一点也不扣；这里请求量**就是**可用量 ⇒ 结构上取不到 0。
+        //   真取到 0 说明账在两行之间被改了（契约故障）⇒ 具名 ERROR，绝不静默少作废。
+        EventLog.channel(TRACE)
+            .error(
+                LogEvent.of(
+                    "HAUL_SERVICE_EXPIRY_FAULT",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    day,
+                    "household",
+                    household.value(),
+                    "requestedMilli",
+                    available,
+                    "stockMilli",
+                    consumed.stockMilli(),
+                    "frozenMilli",
+                    consumed.frozenMilli(),
+                    "scope",
+                    "all-haul-holders",
+                    "reason",
+                    "haul-service-expiry-blocked-by-live-table-change"));
+        continue;
+      }
+      total = Math.addExact(total, consumed.consumedMilli());
+      householdCount++;
+      if (EconomyLog.trace().isTraceEnabled()) {
+        EventLog.channel(EconomyLog.trace())
+            .trace(
+                LogEvent.of(
+                    "HAUL_SERVICE_EXPIRED_DETAIL",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    day,
+                    "household",
+                    household.value(),
+                    "expiredMilli",
+                    consumed.consumedMilli(),
+                    "stockBeforeMilli",
+                    consumed.stockMilli(),
+                    "frozenMilli",
+                    consumed.frozenMilli(),
+                    "lossAccount",
+                    HaulService.SERVICE_EXPIRED_ACCOUNT.value(),
+                    "scope",
+                    "all-haul-holders",
+                    "reason",
+                    "unsold-haul-service-cannot-be-stored-carried-over"));
       }
     }
     if (total <= 0L) {
-      return 0L; // 本日关账的跑商家户手上没有陈货 ⇒ 不刷 INFO（"没发生"不进日志；对账行仍会报 0）
+      return 0L; // 有持货户但都没有"没卖出去的"那一份 ⇒ 不刷 INFO（"没发生"不进日志；对账行仍会报 0）
     }
     // ── INFO（§一.9：新状态写口至少一条"发生了什么 + 具名计数"）────────────────────────────
     EventLog.channel(TRACE)
@@ -762,8 +767,12 @@ public final class EconomySettlement {
                 day,
                 "households",
                 householdCount,
-                "closingUnits",
-                closingHaulUnits.size(),
+                "triggerUnits",
+                triggeringUnits.size(),
+                "holders",
+                holders.size(),
+                "scope",
+                "all-haul-holders",
                 "expiredMilli",
                 total,
                 "lossAccount",
@@ -1844,8 +1853,9 @@ public final class EconomySettlement {
     // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
     boolean anyCycleClosed = false;
     Set<ProductionUnitId> newCycleUnits = new LinkedHashSet<>();
-    // ★★★ A5（2026-10-10）：本日关账、且**产出运输服务**的 unit（`trade@hex`）—— 它们的账户主体手上
-    //   上一周期没卖出的服务货在本日收获**之前**作废（用户裁定「不可储存转卖」；见 expireUnservedHaulService）。
+    // ★★★ A5（2026-10-10）+ A7：本日关账、且**产出运输服务**的 unit（`trade@hex`）—— 它们是"本日到周期边界"的
+    //   触发条件（A7 起不再是清扫范围）：清扫扫的是**任何持有 haul 的家户**，在本日收获**之前**作废其陈货
+    //   （用户裁定「不可储存转卖」；见 expireUnservedHaulService 的类注）。
     List<ProductionProcess> haulExpiryUnits = new ArrayList<>();
     // ★★★ A5：当日运输服务的三个对账量（产出 / 交付 / 作废，毫服务）—— 交付量由市场轮交出（MarketOutcome.haulService()），
     //   三者一起进当日对账 INFO（见 4 段末的 HAUL_SERVICE_SETTLED）。
@@ -2030,22 +2040,15 @@ public final class EconomySettlement {
     Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess =
         enterprisesByProcess(session.sheet().productionOrganizations());
     Map<CohortKey, HouseholdId> viewIndex = viewToHousehold(householdEconomies);
-    // ── 3a'. ★★★ A5（2026-10-10）：周期边界作废上一周期未卖出的运输服务（用户裁定「不可储存转卖」）──────
+    // ── 3a'. ★★★ A5（2026-10-10）+ A7：周期边界作废上一周期未卖出的运输服务（用户裁定「不可储存转卖」）────
     //   ★ 位置是决定性的：必须在**本周期新产出被记入货物账之前**（下面 harvestPartitioned）—— 否则刚产出的那一份
     //     会被当成"上一周期的存货"一并作废（那是把新货当陈货，方向上正好反了）。
-    //   ★ 作用域 = 该关账 unit 的**账户主体家户**（与收获入账同一批判据 HouseholdRouting.subjectOf(...).all()），
-    //     不是全世界的服务货：同格别的户、别的商品一个字节都不动 ⇒ "只影响 haul" 由此结构性成立。
+    //   ★★ A7 扩域：作用域 = **任何持有 haul 的家户**（不再是"关账 unit 的账户主体家户"）—— A6 实测的逃逸口正是
+    //     "服务货经实物还债转移到已退出商家名册的持货户"（B 世界 day 240 的 5,249 毫，跨 day 360/480 两次边界未作废）。
+    //     别的商品一个字节都不动 ⇒ "只影响 haul"仍然结构性成立（读写的商品键恒为 HAUL_COMMODITY）。
     //   ★ 落点 = 既有非换手损耗唯一写口 consumeForLoss（账户减 + 损耗账加在同一句话里做完，
     //     账 = HaulService.SERVICE_EXPIRED_ACCOUNT 具名项）⇒ Σ余额 + losses 守恒（I-H2，不静默消失）。
-    haulServiceExpiredMilli =
-        expireUnservedHaulService(
-            day,
-            haulExpiryUnits,
-            householdEconomies,
-            enterpriseByProcess,
-            settlementIndex,
-            accounts,
-            ledger);
+    haulServiceExpiredMilli = expireUnservedHaulService(day, haulExpiryUnits, accounts, ledger);
     harvestPartitioned(
         harvestWorks,
         householdEconomies,
