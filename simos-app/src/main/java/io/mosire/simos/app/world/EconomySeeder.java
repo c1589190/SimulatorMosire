@@ -790,6 +790,36 @@ public final class EconomySeeder {
   public static final long MARKET_PRICE_TOOL = 20L;
 
   /**
+   * ★★ <b>A2：运输服务（{@code haul}）的出厂牌价 = 4</b>（毫银 / 商品单位服务；1 商品单位服务 = 1,000 毫运输服务 = 1,000 毫商品·程，量纲见
+   * {@link #HAUL_PER_TRADE_UNIT_CYCLE}）。
+   *
+   * <p>★★ <b>用户原话（2026-10-10，设计书 §1）</b>：「运输服务我不是说算商品吗，只是这个商品的需求需要额外通过其他已有商品的购买来
+   * 计算，要我选的话我肯定选A」＋「按照市场上最低价的运力提供商买运力」。
+   *
+   * <pre>
+   * ① 成本下界（本产业自己的配方，逐值可核）：
+   *      每 1 规模单位·周期 ⇒ 投入 {@link #TOOL_MILLI_PER_TRADE_UNIT_CYCLE}(100 毫工具) 、产出 {@link #HAUL_PER_TRADE_UNIT_CYCLE}(1 商品单位服务)
+   *      工具出厂价 {@link #MARKET_PRICE_TOOL}(20) ⇒ 单位服务成本 = 100 × 20 ÷ 1000 = **2 毫银 / 商品单位服务**
+   *      ⇒ 牌价 = 2 恰好**不亏不赚**（劳动没有回报）。
+   * ② 既有运费口径（改前的单位运费，逐式可核）：
+   *      freightUnitMilli(基础费 1, 路线费率 60‰, 承运成本 25‰) = max(1, ⌈1 × 1060 × 1025 ÷ 10^6⌉) = **2 毫银 / 商品单位**
+   *      ⇒ 改前买方为一单位货付的运费，折到"服务单价"上正是 ① 的 2 —— 两条独立口径在 2 处重合，
+   *        说明本行**不是新拍的数**（服务量 = 1,060 毫服务/商品单位货，见 {@code CapacityDemand}）。
+   * ③ 为什么取 4 而不是 2：{@code laborPerUnit = }{@link #LABOR_MILLI_PER_TRADE_UNIT} > 0 ⇒ 跑商是**要人干的产业**，
+   *      它的劳动必须由家户的劳动队列按预期净收益发放（{@code LaborQueueBook}）。而队列的判据是
+   *        net = 卖出价(bid) − 投入成本 = ⌊牌价 × 990‰⌋ − 2 ，且要求 net ≥ 1 毫银/规模
+   *      ⇒ 牌价 = 2 ⇒ net = −1（不排队）；牌价 = 3 ⇒ ⌊2.97⌋ = 2 ⇒ net = 0（仍不排队）；牌价 = 4 ⇒ ⌊3.96⌋ = 3 ⇒ net = 1 ✔
+   *      ⇒ **4 是能让跑商家户真的去跑商的最小整数牌价**（取整档位见 {@code Market.BID_PER_MILLE}）。
+   * ④ 与用户"按最低价的运力提供商买运力"的关系：牌价是**市场价**（所有提供者同价）⇒ 买方的择优落在既有的
+   *      "限价升序 → 议价权降序 → 家户 id 升序"队列上（同价按 canonical 序），不另设特权队列。
+   * </pre>
+   *
+   * <p>★★ <b>这是一行 GM 可调的数据，不是写死的行为</b>（与上面五条同一条纪律）：改它 = 改世界的运输服务价格。 ★ 敏感性已算清并记账：≤ 3 ⇒ 跑商拿不到劳动配额 ⇒
+   * <b>一件服务也产不出来</b>（跨格货单因此买不到运力而不成交）； 值越高 ⇒ 卖方利润越厚、买方运费越贵。真实世界的落点由 A4 用两套 world 复验。
+   */
+  public static final long MARKET_PRICE_HAUL = 4L;
+
+  /**
    * ★★ <b>出厂价格表（保序：粮 → 布 → 纤维 → 工具 → 铁）</b>—— 逐格市场的 {@code prices}，键 = 商品 id。
    *
    * <p>★★ <b>量纲（与 {@code Market} 的契约逐字一致）：{@code 价格 = 毫计价货币 / 商品单位}</b>（1 商品单位 = 1000 最小计量单位，见
@@ -1786,9 +1816,11 @@ public final class EconomySeeder {
   // ── H4：出厂价表与创世货币禀赋（纯函数）──────────────────────────────────────────────
 
   /**
-   * 出厂价表（{@link #MARKET_PRICES_FACTORY} 的构造）—— **保序**：粮 → 布 → 纤维 → 工具 → 铁。
+   * 出厂价表（{@link #MARKET_PRICES_FACTORY} 的构造）—— **保序**：粮 → 布 → 纤维 → 工具 → 铁 → 运输服务。
    *
-   * <p>★ 为什么不直接 {@code Map.of(...)}：它的迭代序不是内容的纯函数 ⇒ 载荷字节会抖（本仓对"可复现"的既定口径）。
+   * <p>★ 为什么不直接 {@code Map.of(...)}：它的迭代序不是内容的纯函数 ⇒ 载荷字节会抖（本仓对"可复现"的既定口径）。 ★★ A2（2026-10-10）：{@code
+   * haul} **追加在末尾**（既有五项的相对序一字不动）—— 加它是本批"运输服务成为可交易商品" 的落点（设计书 §3.1"进价格表？进"）；它同时是"服务成市"的开关（{@code
+   * HaulService.pricedAt}）。
    */
   static Map<CommodityId, Long> factoryPrices() {
     Map<CommodityId, Long> prices = new LinkedHashMap<>();
@@ -1797,6 +1829,8 @@ public final class EconomySeeder {
     prices.put(new CommodityId(COMMODITY_FIBER), MARKET_PRICE_FIBER);
     prices.put(new CommodityId(COMMODITY_TOOL), MARKET_PRICE_TOOL);
     prices.put(new CommodityId(COMMODITY_IRON), MARKET_PRICE_IRON);
+    // ★★ A2：运输服务（末位追加，既有五项的相对序不变）。
+    prices.put(new CommodityId(EconomyVocabulary.HAUL_COMMODITY_ID), MARKET_PRICE_HAUL);
     return Collections.unmodifiableMap(prices);
   }
 

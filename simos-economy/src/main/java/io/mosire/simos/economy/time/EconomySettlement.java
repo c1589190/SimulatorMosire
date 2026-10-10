@@ -617,6 +617,25 @@ public final class EconomySettlement {
     }
   }
 
+  /**
+   * ★★ <b>A2：本轮"运输服务成市"的格集</b>（= 本格市场给 {@code haul} 定过价）—— 逐轮现算，不落状态、不进任何组件。
+   *
+   * <p>★ <b>它是本批缺省中性的唯一开关</b>：本集为空 ⇒ 运力池按既有"劳动 + 工具"算式、运费走既有 {@code CARRIER_FEE} 腿 ⇒
+   * <b>逐值等于改前</b>（I-H3 的第一条腿"无牌价"）。★ 成市的格则改走服务商品口径（运力 = 商家户手上的服务货， 运费 = 服务成交），见 {@link
+   * MerchantCapacityPool#of}（第 7 参）与 {@code MarketSettlement} 的服务分支。
+   *
+   * <p>★ 判据的唯一拼写点是 {@link HaulService#pricedAt}（本方法只负责"遍历哪些市场"）。
+   */
+  private static Set<HexCoord> haulServiceHexes(EconomyData base) {
+    Set<HexCoord> hexes = new LinkedHashSet<>();
+    for (Map.Entry<HexCoord, Market> entry : base.markets().entrySet()) {
+      if (HaulService.pricedAt(entry.getValue())) {
+        hexes.add(entry.getKey());
+      }
+    }
+    return Collections.unmodifiableSet(hexes);
+  }
+
   /** 追踪日志辅助：产业 → 商品 → 数量的两层表求和（只在 DEBUG 打开时调用）。 */
   private static long traceTotalByIndustry(Map<IndustryId, Map<CommodityId, Long>> table) {
     long total = 0L;
@@ -1997,7 +2016,11 @@ public final class EconomySettlement {
             householdEconomies,
             householdGoods,
             householdFrozenGoods,
-            CapacityQuoteBook.selfQuoted());
+            CapacityQuoteBook.selfQuoted(),
+            // ★★ A2（2026-10-10）：**服务成市的格**（本格市场给 haul 定过价；唯一判据 = HaulService.pricedAt）。
+            //   这些格的运力预算改成"该户手上的运输服务货"（服务商品账，I-H2）；其余格一个判据都不变（I-H3）。
+            //   ★ 逐轮现算（价格是 GM 数据，可随时改）：不落任何状态、不进任何组件。
+            haulServiceHexes(base));
     // ★★ G3-leftovers（2026-10-10）：逐户装配读数（DEBUG；事件 MERCHANT_CAPACITY_HOUSEHOLD）。★ 位置与下面那条
     //   CAPACITY_QUOTE_BOOK 同因：池本身不知道世界日（`of` 的入参里没有 tick），而该事件必须带 `day` 才能与同日的
     //   MARKET_* / MERCHANT_HAUL_TOOL_BLOCKED_AT_SELECT 逐户按日对齐 ⇒ 由 tick 面的本处发。★ 发射时点与改前

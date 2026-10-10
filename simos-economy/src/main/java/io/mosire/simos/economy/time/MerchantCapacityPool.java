@@ -19,9 +19,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>M-A1/M-A2：逐 hex 运力池（派生量，一轮一份、瞬态、不落状态）</b>。
@@ -144,7 +146,10 @@ public final class MerchantCapacityPool {
 
   /** 空池（没有跑商家户的世界 / worker 本地副本）。 */
   private static final MerchantCapacityPool EMPTY =
-      new MerchantCapacityPool(Map.of(), Map.of(), Map.of(), 0L, false, 0L, null, null);
+      new MerchantCapacityPool(Map.of(), Map.of(), Map.of(), 0L, false, 0L, null, null, Set.of());
+
+  /** ★★ <b>A2：走"运输服务货"口径的格集</b>（空集 = 缺省口径，逐值退回改前）。只作日志归因（"为什么这一格买不到运力"）。 */
+  private final Set<HexCoord> haulServiceHexes;
 
   /** 逐格池（键序 = hex 的规范序；值按分配序、不可变）。 */
   private final Map<HexCoord, List<Entry>> byHex;
@@ -194,7 +199,8 @@ public final class MerchantCapacityPool {
       boolean priced,
       long maxAskPerMille,
       Map<HouseholdId, Map<CommodityId, Long>> liveGoods,
-      Map<HouseholdId, Map<CommodityId, Long>> liveFrozenGoods) {
+      Map<HouseholdId, Map<CommodityId, Long>> liveFrozenGoods,
+      Set<HexCoord> haulServiceHexes) {
     this.byHex = byHex;
     this.totalCapacityByHex = totalCapacityByHex;
     this.byHousehold = byHousehold;
@@ -203,6 +209,10 @@ public final class MerchantCapacityPool {
     this.maxAskPerMille = maxAskPerMille;
     this.liveGoods = liveGoods;
     this.liveFrozenGoods = liveFrozenGoods;
+    this.haulServiceHexes =
+        haulServiceHexes == null
+            ? Set.of()
+            : Collections.unmodifiableSet(new LinkedHashSet<>(haulServiceHexes));
     long sum = 0L;
     for (long value : totalCapacityByHex.values()) {
       sum = Math.addExact(sum, value);
@@ -232,6 +242,7 @@ public final class MerchantCapacityPool {
         Map.of(),
         CapacityQuoteBook.empty(),
         null,
+        null,
         null);
   }
 
@@ -258,7 +269,8 @@ public final class MerchantCapacityPool {
       Map<HouseholdId, HouseholdEconomy> rows,
       Map<HouseholdId, Map<CommodityId, Long>> goods,
       CapacityQuoteBook quotes) {
-    return assemble(classStandings, classPositions, rows, goods, Map.of(), quotes, null, null);
+    return assemble(
+        classStandings, classPositions, rows, goods, Map.of(), quotes, null, null, null);
   }
 
   /**
@@ -286,7 +298,44 @@ public final class MerchantCapacityPool {
       Map<HouseholdId, Map<CommodityId, Long>> frozenGoods,
       CapacityQuoteBook quotes) {
     return assemble(
-        classStandings, classPositions, rows, goods, frozenGoods, quotes, goods, frozenGoods);
+        classStandings, classPositions, rows, goods, frozenGoods, quotes, goods, frozenGoods, null);
+  }
+
+  /**
+   * ★★ <b>A2（2026-10-10）：服务商品口径下的运力池</b>—— 供给来自跑商家户手上的**运输服务货**（A1 起 {@code trade@hex}
+   * 的产出入既有货物账），不再由"劳动投入 + 工具存量"派生。
+   *
+   * <pre>
+   * 服务成市的格（haulServiceHexes 含该格）⇒ 该户本轮运力预算 = max(0, haul 现货 − haul 冻结)   ← 服务商品账，I-H2
+   * 其余格                                ⇒ 逐值退回 {@link MerchantCapacity} 的既有算式（劳动 + 工具）
+   * </pre>
+   *
+   * <p>★★ <b>为什么必须按格分流</b>：服务市场的开关是 {@code Market.hasPrice(haul)}（唯一拼写点 = {@link
+   * HaulService#pricedAt}）—— 没给运输服务定价的格一个判据都不变 ⇒ <b>缺省中性（I-H3）逐表达式成立</b>， 而不是靠"算出来恰好相等"。★
+   * 已定过价的格则必须由**真货**兜底：服务不能凭空造，卖出多少就得有多少货（I-H2）。
+   *
+   * <p>★ <b>工具门槛不变</b>：工具维仍按 {@link MerchantHaul} 读活视图（A2 不碰趟耗，单套化属 A3）。
+   *
+   * @param haulServiceHexes <b>服务成市</b>的格（{@link HaulService#pricedAt} 为真的那些格）；{@code null} = 全都不是
+   */
+  public static MerchantCapacityPool of(
+      Map<HouseholdId, HouseholdClassMembership> classStandings,
+      Map<ClassPositionId, ProductionRole> classPositions,
+      Map<HouseholdId, HouseholdEconomy> rows,
+      Map<HouseholdId, Map<CommodityId, Long>> goods,
+      Map<HouseholdId, Map<CommodityId, Long>> frozenGoods,
+      CapacityQuoteBook quotes,
+      Set<HexCoord> haulServiceHexes) {
+    return assemble(
+        classStandings,
+        classPositions,
+        rows,
+        goods,
+        frozenGoods,
+        quotes,
+        goods,
+        frozenGoods,
+        haulServiceHexes);
   }
 
   /**
@@ -301,7 +350,8 @@ public final class MerchantCapacityPool {
       Map<HouseholdId, Map<CommodityId, Long>> frozenGoods,
       CapacityQuoteBook quotes,
       Map<HouseholdId, Map<CommodityId, Long>> liveGoods,
-      Map<HouseholdId, Map<CommodityId, Long>> liveFrozenGoods) {
+      Map<HouseholdId, Map<CommodityId, Long>> liveFrozenGoods,
+      Set<HexCoord> haulServiceHexes) {
     Objects.requireNonNull(classStandings, "classStandings");
     Objects.requireNonNull(classPositions, "classPositions");
     Objects.requireNonNull(rows, "rows");
@@ -339,12 +389,32 @@ public final class MerchantCapacityPool {
       //   判据的唯一拼写点在 {@link MerchantIdentity}。★ 工具预算（H-5 的门槛维）= 装配时点该户的 tool 商品存量，
       //   每次跑商扣 {@link MerchantHaul#TOOL_MILLI_PER_HAUL}（一次性消耗、不返还）。
       boolean pureMerchant = MerchantIdentity.isPureMerchant(standing, classPositions);
+      // ★★ A2：服务成市的格 ⇒ 本轮运力预算 = 该户手上的**运输服务货**（max(0, 现货 − 冻结)）——
+      //   卖出多少服务就得有多少货（I-H2），"服务不能凭空造"由此结构性成立；其余格逐值退回劳动+工具算式。
+      //   ★ 单位锚（A1）：1 商品单位 haul = 1,000 毫服务 = 1,000 毫商品·程 ⇒ 这里不需要第二次换算。
+      long workBudgetMilli =
+          haulServiceHexes != null && haulServiceHexes.contains(hex)
+              ? Math.max(
+                  0L,
+                  goods
+                          .getOrDefault(household, Map.of())
+                          .getOrDefault(HaulService.HAUL_COMMODITY, 0L)
+                      - frozenGoods
+                          .getOrDefault(household, Map.of())
+                          .getOrDefault(HaulService.HAUL_COMMODITY, 0L))
+              : capacity.capacityMilli();
       pool.computeIfAbsent(hex, ignored -> new ArrayList<>())
           // ★★ G3-leftovers：`posted`（有没有挂运力单/自报价）在**装配点取一次**存进条目 —— 逐户读数的那条
           //   DEBUG 事件（{@link #logHouseholdAssembly}）在 tick 面的调用方发射（那里才有 `day`），
           //   此时报价表已不在本池手里（它只是装配入参）⇒ 读数必须与装配同源，不能事后从别处重取。
-          .add(new Entry(capacity, askPerMille, pureMerchant, quotes.hasPosted(household)));
-      totals.merge(hex, capacity.capacityMilli(), Math::addExact);
+          .add(
+              new Entry(
+                  capacity,
+                  askPerMille,
+                  pureMerchant,
+                  quotes.hasPosted(household),
+                  workBudgetMilli));
+      totals.merge(hex, workBudgetMilli, Math::addExact);
       counted++;
     }
     LinkedHashMap<HexCoord, List<Entry>> frozen = new LinkedHashMap<>();
@@ -381,7 +451,8 @@ public final class MerchantCapacityPool {
             quotes.isPriced(),
             maxAsk,
             liveGoods,
-            liveFrozenGoods);
+            liveFrozenGoods,
+            haulServiceHexes);
     // ★★ G3-leftovers：本池的逐户**装配**读数（事件 {@code MERCHANT_CAPACITY_HOUSEHOLD}）不在这里发射 ——
     //   本方法拿不到世界日（{@link #of} 的入参里没有 tick），而该事件按 §一.9 必须带 `day` 才能与同日的
     //   {@code MERCHANT_HAUL_TOOL_BLOCKED_AT_SELECT} / {@code MARKET_*} 逐户按日对齐。发射点 = tick 面的装配调用方
@@ -540,12 +611,18 @@ public final class MerchantCapacityPool {
     private final Map<CurrencyId, Long> earnedByCurrency = new LinkedHashMap<>();
 
     private Entry(
-        MerchantCapacity capacity, long askPerMille, boolean pureMerchant, boolean posted) {
+        MerchantCapacity capacity,
+        long askPerMille,
+        boolean pureMerchant,
+        boolean posted,
+        long workBudgetMilli) {
       this.capacity = capacity;
       this.askPerMille = askPerMille;
       this.pureMerchant = pureMerchant;
       this.posted = posted;
-      this.remainingWorkMilli = capacity.capacityMilli();
+      // ★★ A2：本轮运力预算的**唯一产生点** —— 缺省口径 = {@link MerchantCapacity#capacityMilli()}（劳动 + 工具，
+      //   逐值不变）；服务成市的格 = 该户手上的运输服务货（{@code assemble} 现算，I-H2）。
+      this.remainingWorkMilli = workBudgetMilli;
       this.remainingToolMilli = capacity.toolMilli();
     }
 
@@ -873,7 +950,10 @@ public final class MerchantCapacityPool {
                         subUnitWork,
                         toolBlockedRuns,
                         toolFrozenBlockedRuns,
-                        toolShortBlockedRuns)));
+                        toolShortBlockedRuns,
+                        // ★★ A2：这一格是"服务货口径"却一件服务货都没有 ⇒ 具名归因（"为什么买不到"的第一现场）。
+                        haulServiceHexes.contains(from)
+                            && totalCapacityByHex.getOrDefault(from, 0L) <= 0L)));
       }
     }
     return new CarrierAllocation(choices, quantityMilli, demandLeft, priced);
@@ -909,11 +989,16 @@ public final class MerchantCapacityPool {
       long subUnitWork,
       long toolBlockedRuns,
       long toolFrozenBlockedRuns,
-      long toolShortBlockedRuns) {
+      long toolShortBlockedRuns,
+      boolean serviceSupplyEmpty) {
     if (pool.isEmpty()) {
       return "no-merchant-household-in-shipping-hex";
     }
-    List<String> reasons = new ArrayList<>(3);
+    List<String> reasons = new ArrayList<>(4);
+    // ★★ A2：服务口径下"这一格一件服务货都没有"= 最典型的买不到（跑商家户还没产出/已卖光）⇒ 具名（唯一拼写点 = HaulService）。
+    if (serviceSupplyEmpty) {
+      reasons.add(HaulService.NO_SERVICE_SUPPLY_REASON);
+    }
     if (toolBlockedRuns > 0L) {
       // ★ T-fix/G3-fix-2：唯一拼写点在 MerchantHaul（此处不再写第二遍字面量）
       if (toolFrozenBlockedRuns > 0L) {

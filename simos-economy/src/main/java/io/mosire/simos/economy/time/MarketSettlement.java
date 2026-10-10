@@ -1695,6 +1695,46 @@ final class MarketSettlement {
       //   ★ 位置与上面两条并列：撮合已做完 ⇒ 差价/运费/税/损耗/劳动/工具都是本轮的事实。
       //   ★ 没有跑商家户 / 没有跨格运力 ⇒ 读数簿是空的 ⇒ 一行不打（缺省语义中性，I-C2）。
       ctx.merchantProfits.logRoundSummary(round.day, ctx.carrierPool.householdIds());
+      // ── 4a0d. ★★ A2：本轮"运输服务成交"的汇总（§一.9 INFO = 这一轮发生了什么 + 具名计数）────────────
+      //   ★ 位置：撮合（区内 + 跨区）之后 —— 此时"卖出去多少服务、收了多少钱"才是本轮的事实。
+      //   ★ 一行不刷的条件：没有服务成交（服务不成市 / 没有跨格运力 / 服务货为 0）⇒ 缺省世界一行不打（I-H3）。
+      if (ctx.haulServiceTrades > 0 && MARKET.isInfoEnabled()) {
+        EventLog.channel(MARKET)
+            .info(
+                LogEvent.of(
+                    "HAUL_SERVICE_SETTLED",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    round.day,
+                    "trades",
+                    ctx.haulServiceTrades,
+                    "serviceMilli",
+                    ctx.haulServiceSoldMilli,
+                    "paidByCurrency",
+                    ctx.haulServicePaidByCurrency,
+                    "providers",
+                    ctx.carrierPool.householdCount(),
+                    "deliveryFaults",
+                    ctx.haulServiceDeliveryFaults,
+                    "reason",
+                    "haul-service-sold-through-market-trade-legs"));
+      }
+      // ── 4a0e. ★★ A2（§一.9 级别规则）：交付点取不到服务货 = 跨切片一致性故障 ⇒ **ERROR 不降级**。──────
+      //   ★ 它必须为 0（池的运力预算就是该户当刻的 haul 可用量，交付紧跟分配之后）；非 0 说明账被别处改了
+      //     或池的预算不是从货来的 ⇒ 当场可见，绝不静默少扣（逐条 ERROR 在 deliverHaulService 里发）。
+      if (ctx.haulServiceDeliveryFaults > 0) {
+        EventLog.channel(MARKET)
+            .error(
+                LogEvent.of(
+                    "HAUL_SERVICE_DELIVERY_FAULTS",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    round.day,
+                    "faults",
+                    ctx.haulServiceDeliveryFaults,
+                    "reason",
+                    "contract-fault-service-goods-not-on-hand-at-delivery"));
+      }
       // ── 4a. ★★ P-T1a：口岸节流的轮级汇总（INFO：发生了什么 + 具名计数；逐区对在 DEBUG/TRACE）──────
       //   ★ 只报"被拦下多少"这一件事（计数口径 = 源区→目的区 的<b>区对</b>）：被拦下的量不进候选集、不落状态、不进账本（§11），所以它是日志事实，不是账。
       if (ctx.portGatedPairs > 0 && MARKET.isInfoEnabled()) {
@@ -2118,6 +2158,16 @@ final class MarketSettlement {
     //    买方只承担运费（运费与价格解耦，见 freightUnitMilli）。
     if (!market.hasPrice(commodity)) {
       return new PlannedOrders(List.of(), List.of()); // 没定价的商品不交易（不凭空造一行）
+    }
+    // ★★ A2（2026-10-10）：**运输服务不进订单簿**（本格成市时）—— 它的需求**不是独立需求**，而是由"其他商品的
+    //   购买"派生出来的（用户 2026-10-10 原话「这个商品的需求需要额外通过其他已有商品的购买来计算」；设计书 §3.3）。
+    //   ⇒ 供给也不该在订单簿里另挂一份：服务在**跨格成交那一刻**由运力池按"期限价升序 → 既有 canonical 序"选中的
+    //   跑商家户现卖（{@code executeTrade} 的服务分支），并当场消耗（{@link HaulService#SERVICE_CONSUMED_ACCOUNT}）。
+    //   ★ 若在这里给 haul 挂卖单，那批货会被 {@code commitFreezes} 冻结，而服务成交的实扣走同一条"可用量"判据
+    //     ⇒ 卖家自己的卖单会把要卖的服务冻住（此刻的"卖不动"而不是"卖完了"）—— 这是结构性冲突，故服务不挂簿。
+    //   ★ 缺省中性不受影响：本格没给 haul 定价时上面那条 hasPrice 守卫已经整行返回；本分支只在**成市**的格生效。
+    if (HaulService.HAUL_COMMODITY.equals(commodity) && HaulService.pricedAt(market)) {
+      return new PlannedOrders(List.of(), List.of());
     }
     long reference = market.priceOf(commodity);
     long bid = market.bidPriceOf(commodity);
@@ -5249,9 +5299,17 @@ final class MarketSettlement {
       long unitPrice = unitPriceOf(ctx, sells, commodity);
       // ★★ 2026-10-09：单位运费与货款价格解耦（商品种类 × 路线费率 × 默认承运成本）；撮合前的可负担量按它预判，
       //    真正的逐商号承运成本差异在 executeTrade/carrierChargeSplit 里按选中商号现算。
+      // ★★ A2：发货格的服务成市 ⇒ 单位运费改由**服务牌价**给出（同一算式骨架，只换第三个因子）——
+      //    预判（可负担量/总价上限）与结算读的是同一个 route.freightPerUnit ⇒ 两者不可能漂开。
+      boolean haulService = haulServiceAt(ctx, sellerHex);
+      long servicePriceMilli = servicePriceAt(ctx, sellerHex);
       long freightPerUnit =
-          freightUnitMilli(
-              commodityBaseMilli, freightRatePerMille, plannedCarrierCostPerMille(ctx));
+          haulService
+              ? HaulService.unitFreightMilli(
+                  ctx.carrierPool.workPerGoodPerMilleOf(commodityBaseMilli, freightRatePerMille),
+                  servicePriceMilli)
+              : freightUnitMilli(
+                  commodityBaseMilli, freightRatePerMille, plannedCarrierCostPerMille(ctx));
       RouteContext route =
           new RouteContext(
               sellerHex,
@@ -5265,7 +5323,9 @@ final class MarketSettlement {
               capacityPerWindow,
               MARKET_TRANSPORT_LOSS_PER_MILLE,
               arrivalTick,
-              false);
+              false,
+              haulService,
+              servicePriceMilli);
       long[] weights = new long[buys.size()];
       long demand = 0L;
       long supply = 0L;
@@ -5487,11 +5547,15 @@ final class MarketSettlement {
     // ★★ 区内跨格与跨区**同源**：费率不带商品维（距离/辐射/道路），商品维只走基础费（读同一张状态表，
     //   缺键 ⇒ 现行硬编码分档 ⇒ 逐值不变）；区别只在 immediate=true（不走在途）。
     long rate = ctx.topology.freightPerMilleBetween(sell.hex, buy.hex);
+    // ★★ A2：与上面条同源 —— 发货格服务成市 ⇒ 单位运费由服务牌价给出（预判与结算同一个数）。
+    boolean haulService = haulServiceAt(ctx, sell.hex);
+    long servicePriceMilli = servicePriceAt(ctx, sell.hex);
+    long commodityBaseMilli = commodityFreightBaseMilli(ctx.topology, commodity);
     long freightPerUnit =
-        freightUnitMilli(
-            commodityFreightBaseMilli(ctx.topology, commodity),
-            rate,
-            plannedCarrierCostPerMille(ctx));
+        haulService
+            ? HaulService.unitFreightMilli(
+                ctx.carrierPool.workPerGoodPerMilleOf(commodityBaseMilli, rate), servicePriceMilli)
+            : freightUnitMilli(commodityBaseMilli, rate, plannedCarrierCostPerMille(ctx));
     return new RouteContext(
         sell.hex,
         buy.hex,
@@ -5504,7 +5568,9 @@ final class MarketSettlement {
         MARKET_ROUTE_CAPACITY_MILLI_PER_WINDOW,
         MARKET_TRANSPORT_LOSS_PER_MILLE,
         ctx.round.day,
-        true);
+        true,
+        haulService,
+        servicePriceMilli);
   }
 
   /**
@@ -6578,6 +6644,16 @@ final class MarketSettlement {
       for (FreightCharge charge : freightCharges) {
         freight = Math.addExact(freight, charge.amountMilli());
       }
+      // ★★ A2：服务成市 ⇒ **先交付服务、再动任何账**（I-H2：卖出多少服务就得有多少货；买不到 ⇒ 该笔不成交）。
+      //   ★ 位置：decisive —— 它必须早于货腿/钱腿（下面 ②③ 步）；被 fail-closed 挡下时本方法直接返回 0，
+      //     库里一个字节都还没动（冻结/成交/在途都在后面），因此"本笔不成交"是完整的。
+      if (route.haulService()) {
+        long delivered = deliverHaulService(ctx, route, allocation);
+        if (delivered < 0L) {
+          ctx.haulServiceDeliveryFaults++;
+          return 0L; // 具名 ERROR 已在交付方法里发过；本笔不成交（不发货、不铸腿、不动账）
+        }
+      }
     }
 
     long payment =
@@ -6694,8 +6770,15 @@ final class MarketSettlement {
           round.householdOfActor,
           moneyLeg);
     }
-    // ★ P11.3：逐条实际承运条目分别铸 CARRIER_FEE；freightPaidByCurrency 只累加真实铸出的金额（Σ = 实际可收运费，
+    // ★ P11.3：逐条实际承运条目分别铸运费腿；freightPaidByCurrency 只累加真实铸出的金额（Σ = 实际可收运费，
     //   自承运条目已在 carrierChargeSplit 里剔除，因此不会出现"买方 → 买方"的自转移）。
+    // ★★ A2（I-H5 不双重记账）：**服务成市的 lane 上 CARRIER_FEE 腿停铸** —— 同一笔运费只走"运输服务成交"这一条：
+    //   服务货已在 {@link #deliverHaulService} 里从卖方消耗掉（账户减 + 损耗账加），这里铸的是它的**钱腿**，
+    //   理由码取既有的 {@code MARKET_TRADE}（= 服务商品的成交腿），不再是 {@code CARRIER_FEE} 那条私有腿。
+    //   ★ 两条腿**结构上互斥**（同一个三元表达式选一个理由码，一条 lane 只走一条）⇒ 不可能双记。
+    //   ★ 读数面（freightPaidByCurrency / freightUncollectedByCurrency / 利润读数的运费两腿）**原样保留**为只读，
+    //     所以"改前能核的账"改后仍能核（设计书 §8 Q-A3 的默认：CARRIER_FEE 降为只读读数）。
+    //   ★ 不成市的 lane（缺省世界）⇒ 理由码仍是 CARRIER_FEE、判据与金额一字未改 ⇒ 逐值退回改前（I-H3 第一条腿）。
     for (FreightCharge charge : freightCharges) {
       Transfer freightLeg =
           round.ledger.mint(
@@ -6704,7 +6787,7 @@ final class MarketSettlement {
               route.to,
               Map.of(),
               Map.of(buy.currency, charge.amountMilli()),
-              TransferReason.CARRIER_FEE);
+              route.haulService() ? TransferReason.MARKET_TRADE : TransferReason.CARRIER_FEE);
       EconomySettlement.applyTransfer(
           round.householdGoods,
           round.householdMoney,
@@ -6721,12 +6804,19 @@ final class MarketSettlement {
           buy.buyer.household, buy.currency, charge.amountMilli());
       ctx.merchantProfits.recordFreightEarned(
           charge.household(), buy.currency, charge.amountMilli());
+      if (route.haulService()) {
+        // ★★ A2：服务成交的轮级读数（逐币；只作日志/读数 —— 与上面的运费读数**同源同额**，不另记一份事实）。
+        //   服务量本身在 {@link #deliverHaulService} 里累加（它覆盖全部条目，含免运费条目）。
+        ctx.haulServicePaidByCurrency.merge(buy.currency, charge.amountMilli(), Math::addExact);
+        ctx.haulServiceTrades++;
+      }
       // ★★ M-A1（§一.9：TRACE = 逐笔运费）：付款人 → 提供运力的家户、金额、币种、lane。
+      //   ★★ A2：服务成市时事件名换成运输服务成交（同一条钱腿、同一个付款人/收款人；只是它现在表达的是"买了多少服务"）。
       if (EconomyLog.trace().isTraceEnabled()) {
         EventLog.channel(EconomyLog.trace())
             .trace(
                 LogEvent.of(
-                    "CARRIER_FEE_PAID",
+                    route.haulService() ? "HAUL_SERVICE_PAID" : "CARRIER_FEE_PAID",
                     EconomyLogSource.ECONOMY_ORGANIZATION,
                     "day",
                     round.day,
@@ -6745,7 +6835,15 @@ final class MarketSettlement {
                     "amountMilli",
                     charge.amountMilli(),
                     "currency",
-                    buy.currency.value()));
+                    buy.currency.value(),
+                    // ★★ A2：这一条腿买到的**服务量**（毫服务 = 毫商品·程）与它的单价（毫钱/商品单位）——
+                    //   "数量 × 单位运费 ≈ 金额"因此逐笔可核（差额只来自两端各自的向上取整）。
+                    "serviceMilli",
+                    charge.serviceMilli(),
+                    "unitFreightMilli",
+                    route.freightPerUnit(),
+                    "servicePriceMilli",
+                    route.servicePriceMilli()));
       }
     }
     //   ★★ P-T4：未收运费同样按币分列（键 = 本笔买方的支付币：名义运费就按这种钱的量纲算出来）。
@@ -7034,7 +7132,102 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>M-A1/M-A2/M-C：把一票跨格运费分摊成逐提供者（家户）的 CARRIER_FEE 金额</b>。
+   * ★★ <b>A2：服务交付 —— 把这条 lane 上被买走的运输服务从卖方（跑商家户）的货物账里消耗掉</b>（设计书 §3.3/§5 I-H2）。
+   *
+   * <pre>
+   * 逐条承运条目（{@code allocation.choices()}，含被免运费/自承运的条目 —— 服务是**物理上真的发生了**）：
+   *   服务量 = {@code CarrierChoice.consumedWorkMilli()}（= CapacityDemand.workConsumedBy(货量, 本 lane 耗用‰)，既有算式）
+   *   落点   = {@link EconomySettlement#consumeForLoss}（**非换手损耗的唯一写口**：账户减 + 损耗账加同址 ⇒ Σ余额 + losses 守恒）
+   *   账     = {@link HaulService#SERVICE_CONSUMED_ACCOUNT}（{@code market-haul-service}，与货损/工具磨损分开）
+   * </pre>
+   *
+   * <p>★★ <b>为什么在"动任何账之前"就交付</b>：它必须早于货腿/钱腿 —— 取不到服务货时本笔成交当场放弃（{@code executeTrade} 直接 {@code
+   * return 0}），库里一个字节都还没动 ⇒ "买不到 ⇒ 该笔不成交（具名归因，fail-closed）"是**完整**的， 不是"发了货再补一张欠条"。
+   *
+   * <p>★★ <b>取不到货 = 契约故障（ERROR 不降级）</b>：运力池的运力预算**就是**该户当刻的 {@code haul} 可用量 （{@link
+   * MerchantCapacityPool} 的服务口径），而本次交付紧跟在该次分配之后、在同一张活表上 ⇒ 正常情况下恒能取到。 取不到只有两种可能：账被别处改了、或池的预算不是从货来的
+   * —— 两者都必须当场可见（ERROR + 计数），绝不静默少扣。
+   *
+   * @return 实际消耗的服务总量（毫服务）；<b>-1 = 有一条被 fail-closed 挡下</b>（调用方必须放弃本笔成交）
+   */
+  private static long deliverHaulService(
+      MatchContext ctx, RouteContext route, MerchantCapacityPool.CarrierAllocation allocation) {
+    MarketRound round = ctx.round;
+    long total = 0L;
+    for (MerchantCapacityPool.CarrierChoice choice : allocation.choices()) {
+      long service = choice.consumedWorkMilli();
+      if (service <= 0L) {
+        continue;
+      }
+      EconomySettlement.LossConsumption consumed =
+          EconomySettlement.consumeForLoss(
+              round.householdGoods,
+              round.householdFrozenGoods,
+              round.ledger,
+              HaulService.SERVICE_CONSUMED_ACCOUNT,
+              choice.household(),
+              HaulService.HAUL_COMMODITY,
+              service);
+      if (consumed.consumedMilli() <= 0L) {
+        EventLog.channel(MARKET)
+            .error(
+                LogEvent.of(
+                    "HAUL_SERVICE_DELIVERY_FAULT",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    round.day,
+                    "household",
+                    choice.household().value(),
+                    "hex",
+                    choice.hex(),
+                    "fromHex",
+                    route.from,
+                    "toHex",
+                    route.to,
+                    "neededServiceMilli",
+                    service,
+                    "stockMilli",
+                    consumed.stockMilli(),
+                    "frozenMilli",
+                    consumed.frozenMilli(),
+                    "availableMilli",
+                    consumed.availableMilli(),
+                    "reason",
+                    "haul-service-goods-missing-at-delivery-no-trade"));
+        return -1L;
+      }
+      total = Math.addExact(total, consumed.consumedMilli());
+      // ★★ A2：轮级读数 = **物理上真的交付了多少服务**（含被免运费 / 自承运的条目 —— 服务照跑、只是不收钱）。
+      ctx.haulServiceSoldMilli = Math.addExact(ctx.haulServiceSoldMilli, consumed.consumedMilli());
+      if (EconomyLog.trace().isTraceEnabled()) {
+        EventLog.channel(EconomyLog.trace())
+            .trace(
+                LogEvent.of(
+                    "HAUL_SERVICE_DELIVERED",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    round.day,
+                    "household",
+                    choice.household().value(),
+                    "commodity",
+                    route.commodity.value(),
+                    "fromHex",
+                    route.from,
+                    "toHex",
+                    route.to,
+                    "goodsQuantityMilli",
+                    choice.quantityMilli(),
+                    "serviceMilli",
+                    consumed.consumedMilli(),
+                    "stockBeforeMilli",
+                    consumed.stockMilli()));
+      }
+    }
+    return total;
+  }
+
+  /**
+   * ★★ <b>M-A1/M-A2/M-C：把一票跨格运费分摊成逐提供者（家户）的运费金额</b>。
    *
    * <pre>
    * ⓪ 【M-C】**自运自货**（承运方是纯商号 ∧ 货主是纯商号）⇒ **整条豁免**（H-A/H-G："商号自己买东西不计运费"、
@@ -7086,8 +7279,12 @@ final class MarketSettlement {
       //   `carrierCostPerMille(tier)`（逐值不变），报价口径下它就是"从最低价起买"的成交价。
       long unitFreight =
           buy.payAmountOf(
-              freightUnitMilli(
-                  commodityBaseMilli, route.freightRatePerMille, choice.askPerMille()));
+              route.haulService()
+                  // ★★ A2：服务成市 ⇒ 成交价 = **服务牌价**（本 lane 已按它折出 route.freightPerUnit，
+                  //   预判与结算同源）；承运成本限价那一套不再进入**钱**的算式（只进"按最低价提供者买"的选择序）。
+                  ? route.freightPerUnit
+                  : freightUnitMilli(
+                      commodityBaseMilli, route.freightRatePerMille, choice.askPerMille()));
       if (unitFreight < 0L) {
         return List.of();
       }
@@ -7114,6 +7311,7 @@ final class MarketSettlement {
             new FreightCharge(
                 choice.carrier(),
                 ownFreight[i],
+                choice.consumedWorkMilli(),
                 choice.household(),
                 choice.hex(),
                 choice.pureMerchant()));
@@ -7139,16 +7337,28 @@ final class MarketSettlement {
       if (amount > 0L) {
         charges.add(
             new FreightCharge(
-                choice.carrier(), amount, choice.household(), choice.hex(), choice.pureMerchant()));
+                choice.carrier(),
+                amount,
+                choice.consumedWorkMilli(),
+                choice.household(),
+                choice.hex(),
+                choice.pureMerchant()));
       }
     }
     return List.copyOf(charges);
   }
 
-  /** 一条实际要铸的 CARRIER_FEE 腿（M-A1）：收款**家户** actor + 金额 + 归属（家户/发货格，日志用）。 */
+  /**
+   * 一条实际要铸的运费腿（M-A1）：收款**家户** actor + 金额 + 本条的**服务量** + 归属（家户/发货格，日志用）。
+   *
+   * <p>★ <b>A2：{@code serviceMilli} = 这条承运消耗掉的运输服务（毫服务 = 毫商品·程）</b>—— 它就是 {@code
+   * CapacityDemand.workConsumedBy(货量, 本 lane 耗用‰)} 的既有结果（{@code CarrierChoice.consumedWorkMilli}），
+   * 服务成交时按它从卖方货物账扣（{@link HaulService#SERVICE_CONSUMED_ACCOUNT}）。★ 缺省（服务不成市）路径下它只作读数， 不进任何算式。
+   */
   private record FreightCharge(
       ActorRef carrierActor,
       long amountMilli,
+      long serviceMilli,
       HouseholdId household,
       HexCoord hex,
       boolean pureMerchant) {
@@ -7158,6 +7368,9 @@ final class MarketSettlement {
       Objects.requireNonNull(hex, "hex");
       if (amountMilli <= 0L) {
         throw new IllegalArgumentException("FreightCharge 金额必须为正: " + amountMilli);
+      }
+      if (serviceMilli < 0L) {
+        throw new IllegalArgumentException("FreightCharge 的服务量不得为负: " + serviceMilli);
       }
     }
   }
@@ -7241,7 +7454,10 @@ final class MarketSettlement {
       if (choice.pureMerchant() && buyerIsPureMerchant) {
         long unitFreight =
             buy.payAmountOf(
-                freightUnitMilli(baseMilli, route.freightRatePerMille, choice.askPerMille()));
+                // ★★ A2：服务成市 ⇒ "本应付多少"同样按服务牌价口径（预判/实收/免运费三处同一个数）。
+                route.haulService()
+                    ? route.freightPerUnit()
+                    : freightUnitMilli(baseMilli, route.freightRatePerMille, choice.askPerMille()));
         if (unitFreight > 0L) {
           waived = freightOf(choice.quantityMilli(), unitFreight);
         }
@@ -7442,6 +7658,42 @@ final class MarketSettlement {
   static long commodityFreightBaseMilli(MarketTopology topology, CommodityId commodity) {
     Objects.requireNonNull(topology, "topology");
     return topology.commodityFreightBaseMilliOf(commodity);
+  }
+
+  /**
+   * ★★ <b>A2：某格运输服务的牌价（毫该格计价货币 / 商品单位服务）</b>；<b>该格没给 {@code haul} 定价 ⇒ 0</b>。
+   *
+   * <pre>
+   * 0 ⇒ 该格**服务不成市** ⇒ lane 的单位运费走既有 {@code freightUnitMilli}（承运成本口径）、运费腿铸 CARRIER_FEE
+   * &gt;0 ⇒ 该格服务成市   ⇒ 单位运费走 {@link HaulService#unitFreightMilli}（服务牌价口径）、运费只走服务商品成交
+   * </pre>
+   *
+   * <p>★ 判据的唯一拼写点是 {@link HaulService#pricedAt}（本方法只负责"取哪一格的市场"）；没有市场的格 ⇒ 0（不成市）。
+   */
+  private static long servicePriceAt(MatchContext ctx, HexCoord hex) {
+    Market market = ctx.markets.get(hex);
+    if (!HaulService.pricedAt(market)) {
+      return 0L;
+    }
+    return market.priceOf(HaulService.HAUL_COMMODITY);
+  }
+
+  /**
+   * ★★ <b>A2：这条 lane 走不走"运输服务商品"口径</b> = 发货格有没有给 {@code haul} 定价（含**明确 0 价**）。
+   *
+   * <pre>
+   * false（未定价 / 没有市场）⇒ **逐值退回改前**：单位运费由既有 freightUnitMilli（商品基础费 × 路线费率 × 承运成本）
+   *                            给出、运费腿铸 {@code CARRIER_FEE}（I-H3 第一条腿）
+   * true                       ⇒ 单位运费由服务牌价给出（{@link HaulService#unitFreightMilli}）、运费腿改走服务商品成交（I-H5）
+   * </pre>
+   *
+   * <p>★★ <b>为什么开关是"有没有定价行"而不是"牌价 &gt; 0"</b>：本仓对"从未定价 ⇒ 不交易"与"明确 0 价 ⇒ 免费交易" 有明文区分（{@code
+   * Market.hasPrice} / {@code isFree}）—— 用价格数值当开关会把"GM 明确设成免费服务"静默读成
+   * "这一格没有服务市场"，那正是本仓最反对的"两个状态混成一个"。★ 0 牌价下服务照卖（{@link HaulService#unitFreightMilli} 的 {@code
+   * max(1, …)} 沿用既有"0 基础费仍收 1 毫"口径）。
+   */
+  private static boolean haulServiceAt(MatchContext ctx, HexCoord hex) {
+    return HaulService.pricedAt(ctx.markets.get(hex));
   }
 
   /**
@@ -9336,7 +9588,10 @@ final class MarketSettlement {
       long capacityPerWindow,
       int lossPerMille,
       long arrivalTick,
-      boolean immediate) {
+      boolean immediate,
+      boolean haulService,
+      long servicePriceMilli) {
+
     TradeRoute toRoute() {
       return new TradeRoute(from, to, capacityPerWindow, travelTicks, costPerUnit, lossPerMille);
     }
@@ -9443,6 +9698,26 @@ final class MarketSettlement {
      * 本地副本上的累加在交回时丢弃，只从协调器那一份出日志/读数。
      */
     final CapacityDemandBook capacityDemands = new CapacityDemandBook();
+
+    /**
+     * ★★ <b>A2：本轮运输服务成交的读数</b>（毫服务 = 毫商品·程；只作日志/读数，<b>不落状态</b>）。
+     *
+     * <p>★ 与 {@code taxItems}/{@code capacityDemands} 同一条纪律：只在**协调器**路径上写（worker 副本上的是本地累加， 交回时丢弃）⇒
+     * 汇总只可能来自协调器那一份。★ 服务不成市的世界恒为 0 ⇒ 汇总行一条不打（缺省语义中性，I-H3）。
+     */
+    long haulServiceSoldMilli;
+
+    /** ★★ A2：本轮服务成交的金额（逐币分列；键 = 买方支付币；只作读数，不落状态）。 */
+    final Map<CurrencyId, Long> haulServicePaidByCurrency = new LinkedHashMap<>();
+
+    /** ★★ A2：本轮服务成交的服务腿条数（= 铸出去的服务钱腿条数）。 */
+    long haulServiceTrades;
+
+    /**
+     * ★★ A2：本轮因"服务货在交付点取不到"而放弃的成交笔数 —— <b>契约故障</b>（池只从当刻现货里分配，交付点却取不到货 ⇒ 跨切片一致性故障）。★ 它必须为 0；非 0
+     * 时每条都发 ERROR（不降级）且本笔不成交（fail-closed，见 {@code deliverHaulService}）。
+     */
+    long haulServiceDeliveryFaults;
 
     /**
      * ★★ <b>M-C：本轮商号利润读数</b>（逐户逐腿，**每轮算出来的读数、不落状态**；见 {@link MerchantProfitBook}）。
