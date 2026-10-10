@@ -107,6 +107,11 @@
 | 19 | **O4** | open-bugs 杂项 / INV（`writeMeta` 空值、`LatitudeBands` 负溢出、`Map.copyOf` null、day/tick 混用、seeder anchor tick） | §1.5 |
 | 20 | **A3** | v17l 地图重建 与 单格命名（★ 需 §5-4 / §5-11 默认确认） | §1.2 两项 |
 
+> ★★ **2026-10-10 深夜（用户定性"上一轮裁定的市场机制更新算一个经济模块重构"）**：本表**第 2 行（E1 铸币生产方式）**
+> 由《统一价 + 排序结算 + 铸币入市：约束设计书（v3）》§6 的 **R6** 接管（含"印出来的钱必须经市场结算"口径与
+> `simos.gov.issueMoney` 直接加钱腿的处置）；**该重构的派单顺序与验收标准见该文件 §6（R1→R2→R3→R4→R8→R5→R6→R7→R9）**，
+> **本表其余批次不动**。★ 别按本表第 2 行派 E1（那是已被回退、且设计已升级的旧批次）。
+
 **每批完成后**：控制方跑 `clean verify` + 前端门禁；涉及真实行为的批次另跑真实 world 读数；
 进度落 `docs/superpowers/status/*` 与 `.superpowers/sdd/<topic>/impl-ledger.md`。
 
