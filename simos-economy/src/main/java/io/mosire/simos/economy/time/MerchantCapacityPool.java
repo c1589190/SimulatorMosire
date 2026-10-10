@@ -137,6 +137,10 @@ public final class MerchantCapacityPool {
    * classPositions} 中 {@code modeId == merchant} 的位置。运力算式见 {@link MerchantCapacity}；限价见 {@link
    * CapacityQuoteBook#askPerMilleOf}（报价口径）。
    *
+   * <p>★ <b>本重载 = 无冻结概念</b>（工具可投入量取**存量**；夹具 / 纯状态读者 / 旧调用方）：它逐字委托下面带 {@code frozenGoods} 的重载，减项传空表
+   * ⇒ 与改前**逐值相同**（I-C2 缺省语义中性）。生产路径必须用带冻结的那一条 ——否则"同轮把 tool 全挂进卖单"的户会被误判成有工具（2026-10-10 G3-fix-1
+   * 修的就是这个）。
+   *
    * @param classStandings 家户 → 阶层归属（主业 = current、副业 = participating）
    * @param classPositions 位置 → 生产方式（判"是不是跑商"）
    * @param rows 家户行（劳动投入 + 所在格）
@@ -149,10 +153,35 @@ public final class MerchantCapacityPool {
       Map<HouseholdId, HouseholdEconomy> rows,
       Map<HouseholdId, Map<CommodityId, Long>> goods,
       CapacityQuoteBook quotes) {
+    return of(classStandings, classPositions, rows, goods, Map.of(), quotes);
+  }
+
+  /**
+   * ★★ <b>同理，但工具维按<b>可用量</b>读</b>（2026-10-10 G3-fix-1）：{@code tool} 的可投入量 = {@code max(0, 存量 −
+   * 冻结)}，与提交侧的实扣判据（{@code EconomySettlement.consumeForLoss}：可用量 &lt; 一趟 ⇒ 一点也不烧）**同口径**。
+   *
+   * <p>★★ <b>为什么必须同口径（实测缺陷）</b>：旧实现只读**存量** ⇒ 一个把 tool 全部挂进本轮卖单（冻结 12,000）的户 在池里仍显示 {@code
+   * toolRemainingMilli=12000}，{@code select} 于是放行该次承运、成交成立、{@code CARRIER_FEE} 照铸；到 {@code
+   * settleHaulRuns} 实扣时才发现 {@code available=0} ⇒ "货走了、运费收了、工具没扣"（H-5 「缺工具 ⇒ 该次跑商不成立」被绕过，真实 world 复测
+   * 3,589/3,672 趟如此）。 口径对齐后，这种户**根本进不了分配**（无劳动 ⇒ 运力 0 ⇒ 不入池；有劳动 ⇒ 预算 0 ⇒ {@link #select} 认作 {@link
+   * MerchantHaul#TOOL_FROZEN_REASON} 并具名计数）⇒ 该笔承运不成立、运费腿不铸。
+   *
+   * <p>★ <b>缺省中性</b>：{@code frozenGoods} 为空表（夹具 / 纯状态读者 / 旧调用方）⇒ 可用量 = 存量 ⇒ 与 5 参重载**逐值相同**（I-C2）。
+   *
+   * @param frozenGoods 会话冻结商品账（{@code max(0, 存量 − 冻结)} 的减项）；没有冻结概念时传 {@code Map.of()}
+   */
+  public static MerchantCapacityPool of(
+      Map<HouseholdId, HouseholdClassMembership> classStandings,
+      Map<ClassPositionId, ProductionRole> classPositions,
+      Map<HouseholdId, HouseholdEconomy> rows,
+      Map<HouseholdId, Map<CommodityId, Long>> goods,
+      Map<HouseholdId, Map<CommodityId, Long>> frozenGoods,
+      CapacityQuoteBook quotes) {
     Objects.requireNonNull(classStandings, "classStandings");
     Objects.requireNonNull(classPositions, "classPositions");
     Objects.requireNonNull(rows, "rows");
     Objects.requireNonNull(goods, "goods");
+    Objects.requireNonNull(frozenGoods, "frozenGoods");
     Objects.requireNonNull(quotes, "quotes");
     List<HouseholdId> households = new ArrayList<>(rows.keySet());
     households.sort(Comparator.comparing(HouseholdId::value));
@@ -166,7 +195,12 @@ public final class MerchantCapacityPool {
       if (row == null || !MerchantIdentity.selectsMerchant(standing, classPositions)) {
         continue;
       }
-      long toolMilli = goods.getOrDefault(household, Map.of()).getOrDefault(TOOL_COMMODITY, 0L);
+      // ★★ G3-fix-1：工具可投入量 = **可用量**（存量 − 冻结，下夹 0）—— 与提交侧 `consumeForLoss` 同一判据。
+      long toolStockMilli =
+          goods.getOrDefault(household, Map.of()).getOrDefault(TOOL_COMMODITY, 0L);
+      long toolFrozenMilli =
+          frozenGoods.getOrDefault(household, Map.of()).getOrDefault(TOOL_COMMODITY, 0L);
+      long toolMilli = Math.max(0L, toolStockMilli - toolFrozenMilli);
       MerchantCapacity capacity =
           MerchantCapacity.of(
               household, row.view().hex(), row.participationAdjustedLaborMilli(), toolMilli);

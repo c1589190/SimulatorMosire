@@ -1847,12 +1847,17 @@ public final class EconomySettlement {
     //   见 {@link CapacityQuote}）⇒ 买方按最低限价买运力（K-C）。报价每轮现算、跨轮不保留（与 FX 民间簿同形；
     //   运力不可储存不可转卖 ⇒ 运力单也不许跨轮存活）。传 CapacityQuoteBook.empty() 的调用方（夹具 / 纯状态读者）
     //   ⇒ 无报价 ⇒ 逐值退回 M-A1（I-C2 缺省语义中性）。
+    //   ★★ 2026-10-10 G3-fix-1：工具维必须读**可用量**（存量 − 冻结）—— 与提交侧的实扣判据
+    //     （{@link #consumeForLoss}：可用量 < 一趟 ⇒ 一点也不烧）同口径。旧版只读存量 ⇒ 同轮把 tool 全挂进卖单的户
+    //     仍被当成"有工具"⇒ 承运放行、CARRIER_FEE 照铸、货照走，而工具一点没烧（H-5 被绕过；真实 world 复测
+    //     3,589/3,672 趟如此）。装配点（这里）在所有冻结写入之前 ⇒ 读到的冻结就是本轮冻结的同一事实。
     MerchantCapacityPool carrierPool =
         MerchantCapacityPool.of(
             session.sheet().classMemberships(),
             base.classPositions(),
             householdEconomies,
             householdGoods,
+            householdFrozenGoods,
             CapacityQuoteBook.selfQuoted());
     // ★★ M-A2（§一.9：DEBUG = 每阶段池子/汇总）：本轮运力报价表与运力预算的装配读数（带 day —— 它是 tick 面的
     //   装配，落在这里而不是池内，是为了让 TICK 来源的事件都带 day）。分类 logger = market（与池内运力事件同一门面）。

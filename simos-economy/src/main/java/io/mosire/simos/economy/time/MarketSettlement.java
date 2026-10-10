@@ -49,6 +49,7 @@ import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -4202,6 +4203,57 @@ final class MarketSettlement {
   }
 
   /**
+   * ★★ <b>2026-10-10 G3-fix-1：这个 unit 的经营者是不是"按构造不是家户行"的合成聚合经营者</b>。
+   *
+   * <p>★★ <b>为什么必须与"真坏数据"分开</b>：{@code participantsFor} 的第 ⑤ 分支（有正资产、却连劳动家户都解析不到）
+   * 是**具名抛**的守卫，它防的是"经营者指着不存在的主体"这类坏数据（{@code
+   * docs/superpowers/specs/2026-10-23-weave-not-a-market-subject.md} §3.4 明文要求保留）。但**聚合经营**（如家户纺织
+   * {@code weave@<hex>}）的经营者**按构造就不是家户行**： {@code EconomySeeder} 不显式给 operator ⇒ 走 {@link
+   * RegimeOperators#defaultOperator} 的合成 actor （{@code
+   * HOUSEHOLD:weave@<hex>}），而它的账户主体是**名下劳动家户的集合**（{@link HouseholdRouting} ③）。
+   * 成员户一旦全部消亡/被迁移删行（{@link ModeMigrationSettlement} 的 {@code retireSource} 会删人口归零的成员户行）， 这个 unit
+   * 就落到第 ⑤ 分支 ⇒ 真实 world 复测里以"整条 AdvanceTime 不落 revision"的形式硬崩（day38）。
+   *
+   * <p>判据（两件同时成立，纯查表、无副作用）：
+   *
+   * <pre>
+   * ① unit.operator **恰是**该 unit 产业的合成默认经营者
+   *    {@link RegimeOperators#defaultOperator}(industry.regime(), industry.id())
+   *    —— regime 未登记（该方法抛）⇒ 判据不成立（真坏数据仍走具名抛）
+   * ② 该 operator **不是现存家户行**（{@link HouseholdRouting#householdOfActorOrNull} 为空）
+   *    —— 显式换上组织者家户的 farm/craft/trade **不满足 ①**；换成真家户的 unit **不满足 ②**
+   * </pre>
+   *
+   * <p>⇒ 只有"聚合 unit + 组织已无主"这一种合法终态被认出；绕过它就得伪造一个不存在的家户（铁律 1/3 禁止）。
+   *
+   * @param unitId 该 unit（必须在 {@code round.units} 里，调用方已保证）
+   * @param operator 该 unit 的经营者 actor
+   * @param round 本轮只读视图（取产业模板与现存家户行）
+   */
+  private static boolean isUnresolvedAggregateOperator(
+      ProductionUnitId unitId, ActorRef operator, MarketRound round) {
+    if (operator.kind() != ActorKind.HOUSEHOLD) {
+      return false; // 合成默认经营者的制度（household / tenant）都是 HOUSEHOLD；其余一律不算
+    }
+    ProductionProcess unit = round.units.get(unitId);
+    Industry industry = unit == null ? null : round.industries.get(unit.industry());
+    if (unit == null || industry == null || industry.regime() == null) {
+      return false;
+    }
+    ActorRef derived;
+    try {
+      derived = RegimeOperators.defaultOperator(industry.regime(), industry.id());
+    } catch (RuntimeException unregisteredRegime) {
+      // 制度未登记 ⇒ 推不出合成经营者 ⇒ 判据不成立（该 unit 仍走具名抛，fail-closed 不放宽）。
+      return false;
+    }
+    if (!operator.equals(derived)) {
+      return false; // 显式换上的组织者/经营者家户（或别的写法）⇒ 不属于本条
+    }
+    return HouseholdRouting.householdOfActorOrNull(operator, round.householdEconomies).isEmpty();
+  }
+
+  /**
    * ★★ <b>2026-10-09 D3：市场参与者解析失败（有正资产却既无关联家户、也无劳动家户）的具名诊断</b>。
    *
    * <p>先记 {@code MARKET_SUBJECT_UNRESOLVED_UNIT} ERROR（契约/跨切片一致性故障不降级），再返回 {@link
@@ -8154,7 +8206,14 @@ final class MarketSettlement {
     //   ② 解析不到单一主体但有名下劳动家户（集体经营，如家户纺织主 unit）⇒ **不是市场主体**（2026-10-23
     //      裁定 B）：不把聚合 unit 当市场参与者，静默跳过（只留默认关闭的 TRACE）；其产出已按劳动分给
     //      各成员家户账，各家按自己的库存与预算买卖；
-    //   ③ 连劳动家户都没有 ⇒ 具名抛（坏数据，不静默当成"零库存参与者"）。
+    //   ③ **没有任何正资产、也没有任何劳动配额**的 unit（合法空壳，B.3b）⇒ WARN `MARKET_SUBJECT_EMPTY_UNIT` + 跳过；
+    //   ④ ★★ 2026-10-10 G3-fix-1：**合成聚合经营者 + 名下劳动家户已全部不在行表**（成员户消亡/被迁移删行）
+    //      ⇒ 具名 WARN `MARKET_SUBJECT_COLLECTIVE_UNRESOLVED` + 跳过。它与 ③ 的区别是"这个生产组织还在、
+    //      但已经没有任何家户能收它的账"——这是合法终态（{@code ModeMigrationSettlement.retireSource}
+    //      会删掉人口归零的成员户行），不该以"整条 AdvanceTime 不落 revision"为代价；
+    //      详见 {@link #isUnresolvedAggregateOperator}。
+    //      ★ 区内路径与跨区路径**共用本方法**（跨区撮合只消费这里建好的槽位）⇒ 两条路径同口径。
+    //   ⑤ 其余（经营者指着不存在/非家户的主体等真坏数据）⇒ 具名抛，不静默当成"零库存参与者"。
     for (Map.Entry<ActorRef, List<ProductionUnitId>> entry : unitsByOperator.entrySet()) {
       for (ProductionUnitId unitId : entry.getValue()) {
         Optional<HouseholdId> single = round.index.economicHouseholdOf(unitId);
@@ -8182,6 +8241,38 @@ final class MarketSettlement {
                           entry.getKey(),
                           "reason",
                           "no-positive-asset-and-no-labor-allocation"));
+              continue;
+            }
+            // ★★ 2026-10-10 G3-fix-1：**合成聚合经营者**（`HOUSEHOLD:weave@<hex>` 一族）且它不是现存家户行
+            //   ⇒ 这个 unit 从来不是市场主体（裁定 B：聚合 unit 的产出/库存已按劳动落各成员家户账），
+            //   只是"成员户全都没了"让 ② 的判据（`householdsOf` 非空）也失效了。
+            //   ⇒ 具名 WARN 跳过，**不抛整轮**：AdvanceTime 必须能落 revision（真实 world 复测 day38 的崩点）。
+            //   ★ 不放宽真坏数据：判据要求 operator **恰是**该产业的合成默认经营者（见方法注），
+            //     显式换上的组织者家户（farm/craft/trade）走不到这里。
+            if (isUnresolvedAggregateOperator(unitId, entry.getKey(), round)) {
+              EventLog.channel(MARKET)
+                  .warn(
+                      LogEvent.of(
+                          "MARKET_SUBJECT_COLLECTIVE_UNRESOLVED",
+                          EconomyLogSource.ECONOMY_MARKET,
+                          "day",
+                          round.day,
+                          "unit",
+                          unitId.value(),
+                          "operator",
+                          entry.getKey(),
+                          "hex",
+                          round.index.hexOf(unitId) == null ? "none" : round.index.hexOf(unitId),
+                          "industry",
+                          round.units.get(unitId) == null
+                              ? "none"
+                              : round.units.get(unitId).industry(),
+                          "usableAssets",
+                          usable,
+                          "laborAllocations",
+                          round.index.allocationsOfUnit(unitId).size(),
+                          "reason",
+                          "aggregate-operator-without-any-household-row-is-not-a-market-subject"));
               continue;
             }
             throw unresolvedMarketSubject(round, unitId, entry.getKey(), usable);
