@@ -236,11 +236,44 @@ final class MarketSettlementFixtures {
     }
 
     Builder household(HouseholdId id, HexCoord hex, long population, long grain, long silver) {
+      return household(
+          id,
+          hex,
+          population,
+          Map.of(GRAIN, grain),
+          Map.of(SILVER, silver),
+          Map.of(GRAIN, dailyRationGrain(population)));
+    }
+
+    /**
+     * ★★ <b>T6 / T4-T5（2026-10-10 测试批）：可自定义"商品账 / 货币账 / 当日自然需求篮子"的家户</b>。
+     *
+     * <p>三张表分开给，是因为多币与多商品用例要表达的恰好是"同一户持有两种币、需求篮子只含其中一种商品的价" 这类形状；{@link #household(HouseholdId,
+     * HexCoord, long, long, long)} 只是它的单币单商品退化式 （逐值等同旧夹具口径：需求 = 1 人 1 天口粮、商品只有 grain、货币只有 silver）。
+     */
+    Builder household(
+        HouseholdId id,
+        HexCoord hex,
+        long population,
+        Map<CommodityId, Long> goodsByCommodity,
+        Map<CurrencyId, Long> moneyByCurrency,
+        Map<CommodityId, Long> naturalNeeds) {
       Objects.requireNonNull(id, "id");
       Objects.requireNonNull(hex, "hex");
-      rows.put(id, ruralRow(id, hex, population));
-      goods.put(id, new LinkedHashMap<>(Map.of(GRAIN, grain)));
-      money.put(id, new LinkedHashMap<>(Map.of(SILVER, silver)));
+      rows.put(
+          id,
+          new HouseholdEconomy(
+              id,
+              new CohortKey(hex, ResidenceKind.RURAL, new SocialClassId("poor_peasant")),
+              population,
+              0L,
+              0,
+              0L,
+              naturalNeeds,
+              Map.of(),
+              0L));
+      goods.put(id, new LinkedHashMap<>(goodsByCommodity));
+      money.put(id, new LinkedHashMap<>(moneyByCurrency));
       frozenGoods.put(id, new LinkedHashMap<>());
       frozenMoney.put(id, new LinkedHashMap<>());
       unmetToday.put(id, new LinkedHashMap<>());
@@ -459,6 +492,31 @@ final class MarketSettlementFixtures {
         EconomyParallelism.singleThreaded(),
         world.carrierPool(),
         Set.of());
+  }
+
+  /**
+   * ★★ <b>T4-T5（2026-10-10 测试批）：把运力池交给调用方持有</b> —— 用同一个实例结算，用例才能在**轮末**读 {@code
+   * remainingCapacityAt(hex)}（"这条车道到底有没有占过运力"是 J1 的判据面，读数必须在轮末读）。
+   */
+  static MarketSettlement.MarketOutcome settleWithPool(
+      World world, Round round, MerchantCapacityPool pool) {
+    return MarketSettlement.clearOncePerCycle(
+        world.markets(),
+        round.round(),
+        MarketTrigger.PERIODIC,
+        world.topology(),
+        EconomyParallelism.singleThreaded(),
+        pool,
+        Set.of());
+  }
+
+  /**
+   * ★★ <b>T4-T5：注入本轮外汇入参</b>（{@code FxRoundInput.none()} = 没有政府窗口、但民间簿照挂 —— P-T5 起这两件事已经分开；{@code
+   * null} 则整个 FX 段早退）。
+   */
+  static Round withFx(Round round, FxRoundInput fx) {
+    Objects.requireNonNull(fx, "fx（没有窗口就给 FxRoundInput.none()）");
+    return new Round(round.world(), round.round().withFx(fx), round.ledger());
   }
 
   /**
