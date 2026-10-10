@@ -39,7 +39,7 @@ class EconomyVocabularyGuardTest {
    * #theScannedModuleListMatchesTheOneTheBuildDeclares()} 要拦住的事。新增模块时**两处一起加**（本清单 + 根 {@code
    * pom.xml}），只加一处当场红。
    */
-  private static final List<String> MODULES =
+  static final List<String> MODULES =
       List.of(
           "simos-util",
           "simos-map",
@@ -217,5 +217,74 @@ class EconomyVocabularyGuardTest {
     assertThat(occurrencesByFile("CurrencyId(\"silver\")"))
         .as("不许有模块就地写 new CurrencyId(\"silver\")（M1.1 之前 RegimeRelations 正是这样写的）")
         .isEmpty();
+  }
+
+  // ── A1（2026-10-10）：运输服务（haul）成为商品 ⇒ 同款护栏 ─────────────────────────────
+
+  /**
+   * ★★ <b>A1：运输服务的商品 id 字面量也恰一份</b>（设计书 `2026-10-10-haul-service-commodity-design.md` §3.1 / T-H1）。
+   *
+   * <p>★ <b>为什么它必须进护栏</b>：`haul` 是**跨模块**的一个键 —— 词表（util）、牌价/配方（app）、服务成交与运力
+   * 口径（economy）都要用它。若哪一处就地写 `new CommodityId("haul")`，"运输服务"就会静默分叉成两种商品 （账面看不出来，只有守恒式会莫名其妙不平）—— 与
+   * `grain`/`cloth` 那两条同款病灶。
+   */
+  @Test
+  void haulCommodityIdLiteralIsWrittenExactlyOnce() {
+    assertThat(occurrencesByFile("HAUL_COMMODITY_ID = \"haul\""))
+        .as("运输服务的商品 id 字面量在全仓 src/main 里必须只被直接赋值一次（唯一权威 = EconomyVocabulary）")
+        .containsExactly(entry(VOCABULARY, 1L));
+  }
+
+  /** ★★ 与粮/五个新商品同款：**不许**有模块就地把 `haul` 拼出来（`new CommodityId("haul")`）。 */
+  @Test
+  void noModuleSpellsTheHaulIdInline() {
+    assertThat(occurrencesByFile("CommodityId(\"haul\")"))
+        .as("不许有模块就地写 new CommodityId(\"haul\")（照 grain/cloth/… 的先例）")
+        .isEmpty();
+  }
+
+  /**
+   * ★★ <b>A1：{@code haul} 追加在词表**末尾**，既有六项的相对序逐字不动</b>（设计书 §5 I-H3 缺省中性的硬要求）。
+   *
+   * <p>★ <b>为什么钉"序"而不只钉"包含"</b>：{@code allCommodityIds()} 是各读口/报告列序的**唯一来源**（{@code ApiViews} 的
+   * {@code commodityIds}、口岸政策校验、运费表校验都按它）；把新项插在中间会让既有六项的相对序发生位移， 而"按词表序读"的既有读口会静默换列 —— 这类位移不会报任何错。★
+   * 判别力：把 {@code HAUL_COMMODITY_ID} 插到 {@code WOOD_COMMODITY_ID} 之前 ⇒ 本条当场红。
+   *
+   * <p>★ <b>只读 {@code return} 那一条语句</b>（不含方法注释），且**先证明读取不是静默落空**再断言（§三："命中 0 先怀疑自己的读取"）。
+   */
+  @Test
+  void haulIsAppendedAfterTheSixLegacyIdsWhichKeepTheirRelativeOrder() throws IOException {
+    String body = allCommodityIdsReturnStatement();
+    int previous = -1;
+    for (String constant :
+        List.of(
+            "GRAIN_COMMODITY_ID",
+            "CLOTH_COMMODITY_ID",
+            "FIBER_COMMODITY_ID",
+            "TOOL_COMMODITY_ID",
+            "IRON_COMMODITY_ID",
+            "WOOD_COMMODITY_ID")) {
+      int at = body.indexOf(constant);
+      assertThat(at).as("★ 词表序里的 %s 必须出现在返回清单中", constant).isGreaterThanOrEqualTo(0);
+      assertThat(at).as("★ 前六项的相对序逐字不变（%s 不得被挪到更前面）", constant).isGreaterThan(previous);
+      previous = at;
+    }
+    int haul = body.indexOf("HAUL_COMMODITY_ID");
+    assertThat(haul).as("★ A1：haul 必须**追加在末尾**（前六项相对序不动）").isGreaterThan(previous);
+    assertThat(body.indexOf("HAUL_COMMODITY_ID", haul + 1))
+        .as("★ 清单里 haul 恰一项（不许写两遍）")
+        .isEqualTo(-1);
+  }
+
+  /** {@code EconomyVocabulary.allCommodityIds()} 的 {@code return …;} 语句（不含注释；读取失败当场红）。 */
+  private static String allCommodityIdsReturnStatement() throws IOException {
+    String source = RepoSourceScan.rawContent(RepoSourceScan.repoFile(VOCABULARY));
+    int method = source.indexOf("allCommodityIds()");
+    assertThat(method).as("★ 先证明读取不是静默落空（否则下面的序断言会恒真）").isGreaterThanOrEqualTo(0);
+    int start = source.indexOf("return", method);
+    int end = start < 0 ? -1 : source.indexOf(';', start);
+    assertThat(start).as("返回语句必须存在").isGreaterThan(method);
+    assertThat(end).as("返回语句必须以分号收尾").isGreaterThan(start);
+    return source.substring(start, end);
   }
 }
