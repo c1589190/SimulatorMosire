@@ -609,7 +609,7 @@ public final class MerchantCapacityPool {
     }
     List<String> reasons = new ArrayList<>(3);
     if (toolBlockedRuns > 0L) {
-      reasons.add("tool-short");
+      reasons.add(MerchantHaul.TOOL_SHORT_REASON); // ★ T-fix：唯一拼写点在 MerchantHaul（此处不再写第二遍字面量）
     }
     if (unreachableWork > 0L) {
       reasons.add("out-of-derived-radius");

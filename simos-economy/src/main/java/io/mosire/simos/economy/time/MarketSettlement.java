@@ -6948,8 +6948,10 @@ final class MarketSettlement {
    * <pre>
    * ① 工具：从承运家户的 {@code tool} **商品账**扣 {@link MerchantHaul#TOOL_MILLI_PER_HAUL}，
    *    并记进 {@link MerchantHaul#TOOL_BURN_ACCOUNT} 损耗账 ⇒ 守恒式（Σ余额 + losses）不变；
-   *    ★ 同轮里该户的工具若已被本轮的卖单卖掉一部分（装配时点存量 > 成交时点存量），实扣取**现货**上限，
-   *      差额具名记一条（绝不扣成负余额、也不静默当"没消耗"）；
+   *    ★★ T-fix：实扣走 {@link EconomySettlement#consumeForLoss}（**非换手损耗的唯一写口**，账户减 + 损耗账加同址），
+   *      判据 = **可用量** {@code max(0, stock − householdFrozenGoods)}：**被冻结的 tool 不许被跑商烧**
+   *      （同轮该户 {@code tool} 卖单的承诺优先）；可用量 &lt; 一趟 ⇒ **该次跑商不成立** ——
+   *      实扣恰为 {@code 0}（**绝不部分扣**），具名归因 {@code tool-frozen}（被冻结占住）/ {@code tool-short}（真缺货）；
    * ② 免运费读数（H-A/H-G）：**自运自货**（承运方 ∧ 货主都是纯商号）⇒ 该条运费不铸，改记"本应付多少"
    *    （同一张 {@link #freightUnitMilli} 算式 + 该户限价）⇒ 与利润读数的劳动力成本腿同一笔事实的两个面；
    * ③ 劳动成本腿：{@code 耗用运力 × 该户劳动 ÷ 该户运力}（{@code MerchantCapacityPool.laborHoursOf}）。
@@ -6968,43 +6970,49 @@ final class MarketSettlement {
     long baseMilli = commodityFreightBaseMilli(ctx.topology, route.commodity);
     for (MerchantCapacityPool.CarrierChoice choice : allocation.choices()) {
       // ① 一次性消耗工具（H-1：计成本、不返还；V-22：商品账，不动 AssetKind.TOOL 产权份额）
+      //   ★★ T-fix：实扣走唯一写口 {@link EconomySettlement#consumeForLoss}（账户减 + 损耗账加同址），
+      //     判据 = **可用量** max(0, stock − frozen) ⇒ 被冻结的 tool（同轮该户的 tool 卖单承诺）不许被烧；
+      //     可用量 < 一趟 ⇒ **该次跑商不成立**：一点也不烧（绝不部分扣），具名 tool-frozen / tool-short。
       long cost = choice.toolMilli();
-      long stock =
-          householdStockOf(round.householdGoods, choice.household(), MerchantHaul.TOOL_COMMODITY);
-      long consumed = Math.min(stock, cost);
+      EconomySettlement.LossConsumption burn =
+          EconomySettlement.consumeForLoss(
+              round.householdGoods,
+              round.householdFrozenGoods,
+              round.ledger,
+              MerchantHaul.TOOL_BURN_ACCOUNT,
+              choice.household(),
+              MerchantHaul.TOOL_COMMODITY,
+              cost);
+      long consumed = burn.consumedMilli();
       if (consumed > 0L) {
-        setHouseholdStock(
-            round.householdGoods,
-            choice.household(),
-            MerchantHaul.TOOL_COMMODITY,
-            stock - consumed);
-        // ★ 守恒：账户减、损耗账加（唯一的"货物离开账户但未换手"落点，与 TRANSPORT_LOSS_ACCOUNT 同款）
-        round.ledger.addLoss(MerchantHaul.TOOL_BURN_ACCOUNT, MerchantHaul.TOOL_COMMODITY, consumed);
         // ★★ 「计成本」（H-D）：烧掉的工具按**该户所在格的牌价**折成钱，进利润读数的**损耗腿**
         //   —— 读数的损耗口径与账本一致（账上它就在损耗账里）。★ 该格没有该商品的价 ⇒ 只记实物量、
         //   金额记 0 并具名（绝不按 1:1 或别的格的价猜）。
         recordToolBurnValue(ctx, choice, consumed);
-      }
-      if (consumed < cost) {
-        if (MARKET.isDebugEnabled()) {
-          EventLog.channel(MARKET)
-              .debug(
-                  LogEvent.of(
-                      "MERCHANT_HAUL_TOOL_SHORT_AT_COMMIT",
-                      EconomyLogSource.ECONOMY_ORGANIZATION,
-                      "day",
-                      round.day,
-                      "household",
-                      choice.household().value(),
-                      "neededMilli",
-                      cost,
-                      "burnedMilli",
-                      consumed,
-                      "stockMilli",
-                      stock,
-                      "reason",
-                      "tool-sold-out-same-round"));
-        }
+      } else if (burn.blocked() && MARKET.isDebugEnabled()) {
+        // ★★ T-fix：具名归因 —— `tool-frozen`（余额够、被冻结占住）与 `tool-short`（真缺货）**分得开**
+        //   （唯一拼写点在 {@link MerchantHaul}）。★ 记 DEBUG（与改前同级）：本行是**逐笔**归因。
+        EventLog.channel(MARKET)
+            .debug(
+                LogEvent.of(
+                    "MERCHANT_HAUL_TOOL_SHORT_AT_COMMIT",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    round.day,
+                    "household",
+                    choice.household().value(),
+                    "neededMilli",
+                    cost,
+                    "burnedMilli",
+                    consumed,
+                    "stockMilli",
+                    burn.stockMilli(),
+                    "frozenMilli",
+                    burn.frozenMilli(),
+                    "availableMilli",
+                    burn.availableMilli(),
+                    "reason",
+                    MerchantHaul.blockedReason(burn.stockMilli(), cost)));
       }
       // ② 免运费读数（只对**自运自货**：承运方 ∧ 货主都是纯商号；"本应付多少"用同一个单位运费算式 + 该户限价）
       long waived = 0L;

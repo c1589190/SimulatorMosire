@@ -8606,6 +8606,74 @@ public final class EconomySettlement {
   }
 
   /**
+   * ★★ <b>T-fix：非换手损耗扣减的唯一写口</b>（"货物离开某家户的账户、不换手给任何人"这一类；与 {@link #consumeFromHousehold}
+   * 的消费/投入扣减同族）。
+   *
+   * <pre>
+   * 可用量 = max(0, stock − frozen)      ← 冻结只表达已明确的占用：**被冻结的货不许被损耗扣掉**
+   * 可用量 &lt; requested ⇒ **一点也不扣**（fail-closed，绝不允许部分扣）⇒ consumedMilli = 0，两本账一字未动
+   * 可用量 ≥ requested ⇒ 扣 requested **并同址**记 ledger.addLoss(lossAccount, commodity, requested)
+   *                       ⇒ Σ余额 + losses 守恒（"账户减 + 损耗账加"在同一个落点里做完，调用方不可能只做一半）
+   * </pre>
+   *
+   * <p>★★ <b>为什么它不能是一个 {@link #applyTransfer}</b>（如实记，T-fix 的核心结论）：{@code Transfer} 的两端
+   * <b>恒为两个不同的已登记家户</b>（{@link Transfer} 的构造不变式 {@code from != to} + 本类 {@link #requireHouseholdOf}
+   * 的键集 = 现存家户行），而"损耗"<b>没有对端</b> —— 硬塞一个接收方等于伪造一笔转移： 接收方凭空多出货、账面上还看不出破绽（正是本仓最贵的那类账）。⇒ 损耗按 spec
+   * §3.2 的「守恒实现口径（唯一写口 + 非换手落点）」落在<b>非换手</b>那一半，且收成<b>一个</b>口：改前是市场轮自己 {@code setHouseholdStock}
+   * 直改会话账， 那条旁路既绕开写口、又不知道冻结（T-fix 要拆掉的正是它）。
+   *
+   * <p>★ 账户 = {@code (家户, 格)}：本方法的键是家户身份（与 {@link #applyTransfer} 同款），"落在哪一格"由调用方保证。
+   */
+  static LossConsumption consumeForLoss(
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
+      ProductionLedger.Accumulator ledger,
+      IndustryId lossAccount,
+      HouseholdId household,
+      CommodityId commodity,
+      long requestedMilli) {
+    Objects.requireNonNull(householdGoods, "householdGoods");
+    Objects.requireNonNull(householdFrozenGoods, "householdFrozenGoods");
+    Objects.requireNonNull(ledger, "ledger");
+    Objects.requireNonNull(lossAccount, "lossAccount");
+    Objects.requireNonNull(household, "household");
+    Objects.requireNonNull(commodity, "commodity");
+    if (requestedMilli <= 0L) {
+      throw new IllegalArgumentException("损耗扣减量必须为正（0 不是一次扣减）: " + requestedMilli);
+    }
+    long stock = stockOf(householdGoods, household, commodity);
+    long frozen = frozenGoodsOf(householdFrozenGoods, household, commodity);
+    if (Math.max(0L, stock - frozen) < requestedMilli) {
+      return new LossConsumption(stock, frozen, 0L); // ★ fail-closed：一点也不扣（不许部分扣）
+    }
+    setStock(householdGoods, household, commodity, stock - requestedMilli);
+    // ★ 守恒：账户减、损耗账加（同一句话里的两条腿，调用方拿不到"只减不记"的中间态）
+    ledger.addLoss(lossAccount, commodity, requestedMilli);
+    return new LossConsumption(stock, frozen, requestedMilli);
+  }
+
+  /**
+   * ★ <b>T-fix：一次非换手损耗扣减的读数</b>（{@code consumedMilli} 只可能是 {@code 0} 或请求量，<b>绝无中间值</b> ——
+   * 判别力就靠这一条：出现 {@code 0 < consumed < requested} 即"部分扣"，那是缺陷不是读数）。
+   *
+   * @param stockMilli 扣减前的余额（<b>未减冻结</b>；归因用）
+   * @param frozenMilli 扣减前同一 {@code (家户, 商品)} 轴上的冻结量（归因用）
+   * @param consumedMilli 实际扣掉的量（{@code 0} = 该次不成立，账未动）
+   */
+  record LossConsumption(long stockMilli, long frozenMilli, long consumedMilli) {
+
+    /** 扣减前的可用量 {@code max(0, stock − frozen)}（只读算式；不写状态）。 */
+    long availableMilli() {
+      return Math.max(0L, stockMilli - frozenMilli);
+    }
+
+    /** 这次扣减是否被 fail-closed 挡下（= 一点也不扣）。 */
+    boolean blocked() {
+      return consumedMilli == 0L;
+    }
+  }
+
+  /**
    * ★★ <b>受方家户的 fail-closed 守卫</b>（H1.3；{@code deliverCohortIntake} 的替代品）：逐条 {@code Payee.ToCohort}
    * 规则判两件事 —— <b>行在</b>、<b>它住在本格</b>。
    *
