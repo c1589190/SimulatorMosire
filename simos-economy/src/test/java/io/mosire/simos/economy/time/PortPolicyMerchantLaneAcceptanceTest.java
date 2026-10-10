@@ -18,9 +18,9 @@ import org.junit.jupiter.api.Test;
  * </pre>
  *
  * <p>★ <b>"商户侧"在本计划的现行冻结口径下是什么</b>（§2.4 M0/M0c/M2、V-19/V-24：商号行已退役 ⇒ 运力 = 派生量）： 可读的商户面 = ① 逐 hex
- * <b>运力池</b>（总量 / 轮末余量）② 逐 lane 的 <b>路线读数</b>（{@code MarketReport.routes()}： 运力窗口、用量、瓶颈标志）③
- * 逐卖方/买方的报价与成交读数。商号利润簿（{@code MerchantProfitBook}）是 {@code MatchContext}
- * 内部的逐轮瞬态、**不进任何公开读数**，本类不虚报它（见账本"没做的"一节）。
+ * <b>运力池</b>（总量 / 轮末余量 / 池成员数）② 逐 lane 的 <b>路线读数</b>（{@code MarketReport.routes()}： 运力窗口、用量、瓶颈标志）③
+ * 逐卖方/买方的报价与成交读数。★ A3（2026-10-10）：平行利润簿 {@code MerchantProfitBook} 已整族退役，跑商收益走**标准企业利润**（{@code
+ * EnterpriseProfitBook} 读同一批 {@code MARKET_TRADE} 钱腿）⇒ 本类只读上面三面，不虚报已退役的读口。
  *
  * <p>★ <b>夹具</b>：zone-a（H1：卖方 + 承运家户）、zone-b（H2：买方）；运力充足（运力 ≫ 过境量）。 政策只注入**商品管制力**这一面（未注入 = 改前行为）。
  */
@@ -214,7 +214,12 @@ class PortPolicyMerchantLaneAcceptanceTest {
     assertThat(openPolicyPool.remainingCapacityAt(MarketSettlementFixtures.H1))
         .as("★ 轮末运力余量逐值（商户侧读数）")
         .isEqualTo(noPolicyPool.remainingCapacityAt(MarketSettlementFixtures.H1));
-    assertThat(openPolicyPool.toolBlockedRuns()).isEqualTo(noPolicyPool.toolBlockedRuns());
+    // ★ A3（2026-10-10）：原第 4 项对照是 pool.toolBlockedRuns()（市场轮"缺工具 ⇒ 该次跑商不成立"的具名计数）——
+    //   工具门槛整族已随 MerchantHaul 退役（工具消耗单套化到 trade 产业的周期投入，设计书 §3.2 / I-H6），该读口
+    //   结构上不存在。改钉同一层的**池成员读数**（承接条目数）：政策面不许动"谁在池里"这一层。
+    assertThat(openPolicyPool.householdCountAt(MarketSettlementFixtures.H1))
+        .as("★ 池成员读数逐值（代替已退役的工具拦截计数）")
+        .isEqualTo(noPolicyPool.householdCountAt(MarketSettlementFixtures.H1));
 
     // ── ④ 商户侧：卖方/买方读数 + 价格表逐值 ────────────────────────────────────────
     assertThat(openPolicy.report().sellerOutcomes())

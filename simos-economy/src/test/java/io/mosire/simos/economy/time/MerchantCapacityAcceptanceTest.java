@@ -23,9 +23,13 @@ import org.junit.jupiter.api.Test;
  * <pre>
  * 派生运力    = 劳动 + 工具（MerchantCapacity；**不再有商号行 / 不再 ±5 自增长**）
  * 分配序      = 报价口径按**限价升序**（买方从最低价起买）→ 同价按**市场议价权**（本格占比‰降序）→ 家户 id 升序（I7）
- * 不变量      = **分配总量 ≤ 运力总量**（A3 退化式）；未分到的部分 unallocated（K-4/Q-27：不成交、不成债、不计价）
- * 门槛        = 手里工具不够一趟 ⇒ 该次跑商**不成立**（具名，绝不静默跳过）
+ * 不变量      = **分配总量 ≤ 运力总量**；未分到的部分 unallocated（K-4/Q-27：不成交、不成债、不计价）
  * </pre>
+ *
+ * <p>★★ <b>A3（2026-10-10）迁移说明</b>：本类原有两条"平行机器"判据已随 {@code MerchantHaul} 整族退役 —— ①「工具不够一趟 ⇒
+ * 该次跑商不成立」（市场轮工具门槛）②「自报价簿 {@code CapacityQuoteBook} 决定限价」。前者删（工具消耗 单套化到 {@code trade} 产业周期投入，设计书
+ * §3.2 / I-H6；"工具不再是准入判据"的反向判据见 {@code HaulServiceCommodityAcceptanceTest}），后者改为**纯派生限价**（{@code
+ * askPerMilleOf} = 承运成本(tier) + 25‰ 上门费，见 A3 账本 K-7）⇒ 分配序仍是"限价升序 → 议价权降序 → 家户 id 升序"。
  *
  * <p>★ 本类直测唯一拼写点 {@link MerchantCapacityPool}（不复制算式、不起整个市场轮）：池的成员判据是 "家户的<b>有效位置</b>里含 merchant
  * 生产方式的位置"（M-A1/M0c：商号行退役后运力是派生量）。 端到端的截断/归因由 {@code MarketSettlement} 的用例承担。
@@ -36,7 +40,7 @@ class MerchantCapacityAcceptanceTest {
   private static final HexCoord H2 = MarketSettlementFixtures.H2;
   private static final HexCoord FAR = new HexCoord(9, 9);
 
-  private static final CommodityId TOOL = MerchantCapacityPool.TOOL_COMMODITY;
+  private static final CommodityId TOOL = MarketSettlementFixtures.TOOL;
 
   private static HouseholdId hh(String id) {
     return HouseholdId.parse(id);
@@ -129,74 +133,65 @@ class MerchantCapacityAcceptanceTest {
         .isEqualTo(allocation.choices().get(1).consumedWorkMilli() * 750L);
   }
 
-  /** ★★ <b>M-A2/K-2/Q-25：有报价时"价格管买方的选择、议价权管稀缺分配"</b>——限价低者先被吃， 即使它的议价权（规模占比）更小；同价时才回到议价权序。 */
-  @Test
-  void lowestAskIsServedFirstWhenProvidersPostQuotes() {
-    HouseholdId big = hh("hh-big");
-    HouseholdId small = hh("hh-small");
-    Map<HouseholdId, HouseholdEconomy> rows = new LinkedHashMap<>();
-    rows.put(big, row(big, H1, 6_000L));
-    rows.put(small, row(small, H1, 2_000L));
-    Map<HouseholdId, Map<CommodityId, Long>> goods =
-        Map.of(big, Map.of(TOOL, 6_000L), small, Map.of(TOOL, 2_000L));
-    MerchantCapacityPool pool =
-        MerchantCapacityPool.of(
-            Map.of(big, merchantStanding(big, true), small, merchantStanding(small, true)),
-            Map.of(
-                merchantPosition(big),
-                merchantRole(big),
-                merchantPosition(small),
-                merchantRole(small)),
-            rows,
-            goods,
-            CapacityQuoteBook.selfQuoted(Map.of(small, 0L, big, 500L)));
-
-    CarrierAllocation allocation = pool.select(H1, H2, 6_000L, 1_000L);
-
-    assertThat(pool.isPriced()).as("有报价 ⇒ 池走报价口径").isTrue();
-    assertThat(allocation.choices()).hasSize(2);
-    assertThat(allocation.choices().get(0).household()).as("★ 限价低者先被吃（价格管选择）").isEqualTo(small);
-    assertThat(allocation.choices().get(0).quantityMilli())
-        .as("★ 先把它吃满（4000）再轮到贵的")
-        .isEqualTo(4_000L);
-    assertThat(allocation.choices().get(1).household()).isEqualTo(big);
-    assertThat(allocation.choices().get(1).quantityMilli()).isEqualTo(2_000L);
-  }
-
   /**
-   * ★★ <b>M0b/K-4：缺工具 ⇒ 该次跑商不成立</b>（门槛，不是按量计的费）：工具不足一趟的跑商家户一条分配都不产生； 分配总量的上界因此<b>小于</b>账面运力（这正是"分配
-   * ≤ 运力"的另一面）。
+   * ★★ <b>M-A2/K-2/Q-25（A3 口径）：有报价时"价格管买方的选择、议价权管稀缺分配"</b>—— 报价口径下**限价低者先被吃**，
+   * 即使它的议价权（规模占比）更小；同价时才回到议价权序（下面的 {@code equalAsksFallBackToShareOrder}）。
+   *
+   * <p>★★ <b>A3 迁移（与旧 {@code CapacityQuoteBook.selfQuoted} 版的差别）</b>：逐户自报价簿已随 {@code CapacityQuote}
+   * 整族退役（设计书 §3.4），限价现在是**纯派生量**（{@link MerchantCapacityPool#askPerMilleOf}：承运成本(tier) + 25‰ 上门费）⇒
+   * 本用例改成用**规模档**造出两个不同的限价，而不是手写两张报价：
+   *
+   * <pre>
+   * 小户 劳动 1,000   ⇒ 运力 1,000  &lt; 100,000  ⇒ PORTER     ⇒ 限价 25 + 25 = 50‰
+   * 大户 劳动 400,000 ⇒ 运力 400,000 ≥ 400,000 ⇒ BOSS       ⇒ 限价 100 + 25 = 125‰
+   * </pre>
+   *
+   * <p>★ 判据仍是"买方从**最低价**起买"（用户原话「按照市场上最低价的运力提供商买运力」）；本用例只换掉"限价从哪来"。
    */
   @Test
-  void aCarrierWithoutEnoughToolForOneRunProducesNoAllocation() {
-    HouseholdId poor = hh("hh-poor-tool");
-    Map<HouseholdId, HouseholdEconomy> rows = Map.of(poor, row(poor, H1, 5_000L));
-    Map<HouseholdId, Map<CommodityId, Long>> goods =
-        Map.of(poor, Map.of(TOOL, MerchantHaul.TOOL_MILLI_PER_HAUL - 1L));
-    MerchantCapacityPool pool =
-        MerchantCapacityPool.of(
-            Map.of(poor, merchantStanding(poor, true)),
-            Map.of(merchantPosition(poor), merchantRole(poor)),
-            rows,
-            goods);
+  void lowestDerivedAskIsServedFirstEvenWhenItsMarketShareIsSmaller() {
+    HouseholdId big = hh("hh-big");
+    HouseholdId small = hh("hh-small");
+    long bigLabor = 400_000L; // BOSS 档（≥ 400,000）
+    long smallLabor = 1_000L; // 脚夫档
+    MerchantCapacityPool pool = pricedPool(big, bigLabor, small, smallLabor);
 
-    assertThat(pool.totalCapacityAt(H1))
-        .as("账面运力仍然算得出来（= 劳动 + 工具，运力是派生量）")
-        .isEqualTo(5_000L + MerchantHaul.TOOL_MILLI_PER_HAUL - 1L);
-    CarrierAllocation allocation = pool.select(H1, H2, 1_000L, 1_000L);
-    assertThat(allocation.choices()).as("★ 工具不够一趟 ⇒ 该次跑商不成立（绝不放行）").isEmpty();
-    assertThat(allocation.unallocatedMilli()).as("全部转成「未获服务」").isEqualTo(1_000L);
-    assertThat(pool.toolBlockedRuns()).as("★ 具名计数（不静默跳过）").isEqualTo(1L);
+    assertThat(pool.isPriced()).as("priced = true ⇒ 池走报价口径").isTrue();
+    assertThat(pool.maxAskPerMille()).as("本轮最高限价 = 大户的 BOSS 档 + 上门费").isEqualTo(125L);
 
-    // 补足一份工具 ⇒ 同一用例立刻可跑（证明门槛判的是"够不够一趟"，不是别的）。
-    HouseholdId ok = hh("hh-poor-tool");
-    MerchantCapacityPool funded =
-        MerchantCapacityPool.of(
-            Map.of(ok, merchantStanding(ok, true)),
-            Map.of(merchantPosition(ok), merchantRole(ok)),
-            rows,
-            Map.of(ok, Map.of(TOOL, MerchantHaul.TOOL_MILLI_PER_HAUL)));
-    assertThat(funded.select(H1, H2, 1_000L, 1_000L).choices()).hasSize(1);
+    long total = pool.totalCapacityAt(H1);
+    assertThat(total).as("报价口径（无服务成市格）运力预算仍 = 劳动 + 工具，逐值可复算").isEqualTo(401_000L);
+
+    CarrierAllocation allocation = pool.select(H1, H2, total, 1_000L);
+
+    assertThat(allocation.choices()).as("两条分配（两位跑商都在半径内）").hasSize(2);
+    assertThat(allocation.choices().get(0).household())
+        .as("★ 限价低者（脚夫 50‰）先被吃 —— 尽管它的议价权占比只有 1/401")
+        .isEqualTo(small);
+    assertThat(allocation.choices().get(0).quantityMilli())
+        .as("★ 先把它吃满（它的整份预算 1,000）再轮到贵的")
+        .isEqualTo(1_000L);
+    assertThat(allocation.choices().get(0).askPerMille()).as("小户限价 = 25 + 25").isEqualTo(50L);
+    assertThat(allocation.choices().get(1).household()).isEqualTo(big);
+    assertThat(allocation.choices().get(1).askPerMille()).as("大户限价 = 100 + 25").isEqualTo(125L);
+    assertThat(allocation.choices().get(1).quantityMilli()).isEqualTo(400_000L);
+  }
+
+  /** ★★ <b>同价 ⇒ 回到 canonical 序（议价权占比‰降序 → 家户 id 升序）</b>：两位同为脚夫档 ⇒ 限价相同 ⇒ 序由占比定。 */
+  @Test
+  void equalAsksFallBackToTheCanonicalMarketShareOrder() {
+    HouseholdId big = hh("hh-big");
+    HouseholdId small = hh("hh-small");
+    MerchantCapacityPool pool = pricedPool(big, 5_000L, small, 1_000L); // 两户都 < 100,000 ⇒ 同为 PORTER
+
+    assertThat(pool.maxAskPerMille()).as("同档 ⇒ 同一个限价（脚夫 25 + 25）").isEqualTo(50L);
+    CarrierAllocation allocation = pool.select(H1, H2, 6_000L, 1_000L);
+
+    assertThat(allocation.choices()).hasSize(2);
+    assertThat(allocation.choices().get(0).household())
+        .as("★ 同价 ⇒ 议价权大者先被吃（5000/6000 = 833‰ > 1000/6000 = 166‰）")
+        .isEqualTo(big);
+    assertThat(allocation.choices().get(1).household()).isEqualTo(small);
   }
 
   /** ★★ <b>半径由规模派生 ⇒ 超出半径的格拿不到运力</b>（"运力到不了的地方不是价格问题，是没有承运"）。 */
@@ -230,7 +225,8 @@ class MerchantCapacityAcceptanceTest {
             .household(buyer, H2, 1L, 0L, 1_000_000L)
             .carrier(carrier, H1, 1_500L, 1_000L)
             .build();
-    // ★ 运力要**在开市前**读：本轮跑商会把承运户的工具烧掉（M-C 一次性消耗），开市后池里的数已经不是本轮的运力上界。
+    // ★ A3：缺省口径（无服务市场）下运力 = 劳动 + 工具，且它是**装配点的读数** —— 本轮不再"烧工具"（旧"每趟
+    //   1,000 毫工具"已随 MerchantHaul 退役，工具走 trade 产业的周期投入）⇒ 开市前后读同值，本行留作对照。
     long capacity = world.carrierPool().totalCapacityAt(H1);
     MarketSettlementFixtures.Round round =
         MarketSettlementFixtures.round(world, MarketRegulation.defaultsFor(world.markets()));
@@ -304,5 +300,25 @@ class MerchantCapacityAcceptanceTest {
     standings.put(big, merchantStanding(big, true));
     standings.put(small, merchantStanding(small, true));
     return MerchantCapacityPool.of(standings, positions, rows, goods);
+  }
+
+  /**
+   * ★★ <b>A3：两位跑商家户的**报价口径**池</b>（{@code priced = true}、无服务成市格 ⇒ 运力预算 = 劳动 + 工具）。
+   *
+   * <p>限价是纯派生量（{@code askPerMilleOf} = 承运成本(tier) + 25‰）⇒ 用**规模档**造出不同/相同的限价： 劳动 &lt; 100,000 ⇒
+   * PORTER(25+25)、≥ 400,000 ⇒ BOSS(100+25)。
+   */
+  private static MerchantCapacityPool pricedPool(
+      HouseholdId big, long bigLabor, HouseholdId small, long smallLabor) {
+    Map<HouseholdId, HouseholdEconomy> rows = new LinkedHashMap<>();
+    rows.put(big, row(big, H1, bigLabor));
+    rows.put(small, row(small, H1, smallLabor));
+    Map<ClassPositionId, ProductionRole> positions = new LinkedHashMap<>();
+    positions.put(merchantPosition(big), merchantRole(big));
+    positions.put(merchantPosition(small), merchantRole(small));
+    Map<HouseholdId, HouseholdClassMembership> standings = new LinkedHashMap<>();
+    standings.put(big, merchantStanding(big, true));
+    standings.put(small, merchantStanding(small, true));
+    return MerchantCapacityPool.of(standings, positions, rows, Map.of(), true);
   }
 }

@@ -62,6 +62,31 @@ final class MarketSettlementFixtures {
   static final CommodityId CLOTH = EconomyVocabularyCommodity.CLOTH;
   static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
 
+  /**
+   * ★ A3（2026-10-10）：工具商品（会话商品账口径）。
+   *
+   * <p>★ 为什么要夹具自带一份拼写：{@code MerchantCapacityPool.TOOL_COMMODITY} 在 A3 已**收成 private**
+   * （工具不再是市场轮门槛，那个常量只为池内部的 tier/share 派生服务）⇒ 夹具改从**词表**（唯一权威）取键， 不再借道池的内部常量。
+   */
+  static final CommodityId TOOL =
+      new CommodityId(io.mosire.simos.util.economy.EconomyVocabulary.TOOL_COMMODITY_ID);
+
+  /**
+   * ★ A2/A3（2026-10-10）：运输服务商品（{@code haul}）——服务成市格的夹具把它写进价格表。
+   *
+   * <p>★ 唯一拼写点 = {@link HaulService#HAUL_COMMODITY}（不在这里第二次手写 {@code new CommodityId("haul")}）。
+   */
+  static final CommodityId HAUL = HaulService.HAUL_COMMODITY;
+
+  /**
+   * ★ A3（2026-10-10）：承运家户的工具存量（毫工具）。
+   *
+   * <p>★★ <b>它不再是任何门槛</b>：旧"每趟烧 1,000 毫工具 / 工具不够一趟 ⇒ 该次跑商不成立"（{@code MerchantHaul}） 已整族退役，工具消耗单套化到
+   * {@code trade} 产业的周期投入（设计书 §3.2 / I-H6）。本夹具给一个**固定存量**只是为了 让缺省口径（无服务市场）的派生运力 = 劳动 +
+   * 工具**逐值可复算**；它不影响任何一次承运的成败（T-H1/T-H4 的判据面）。
+   */
+  static final long CARRIER_TOOL_MILLI = 1_000L;
+
   /** 市场轮的世界日：随便一个 >0 的日子；只影响 deadline 与 Fill 日号。 */
   static final long DAY = 5L;
 
@@ -88,6 +113,19 @@ final class MarketSettlementFixtures {
   /** 单格市场：只给 grain 一个价（其它商品在本夹具不交易）。 */
   static Market grainMarket(long grainPrice) {
     return new Market(SILVER, new LinkedHashMap<>(Map.of(GRAIN, grainPrice)));
+  }
+
+  /**
+   * ★★ <b>A2：给 {@code grain} 与运输服务（{@code haul}）各定一个价的市场</b>。
+   *
+   * <p>★ 它是"服务成市"的结构性开关：{@link HaulService#pricedAt} = 本格给 {@code haul} 定过价 ⇒ 跨格货单派生服务需求、
+   * 运费走服务成交（I-H5）；只给 grain 定价的既有夹具（{@link #grainMarket}）因此**逐值退回改前**（I-H3 缺省中性）。
+   */
+  static Market grainAndHaulMarket(long grainPrice, long haulPrice) {
+    Map<CommodityId, Long> prices = new LinkedHashMap<>();
+    prices.put(GRAIN, grainPrice);
+    prices.put(HAUL, haulPrice);
+    return new Market(SILVER, prices);
   }
 
   static HouseholdEconomy ruralRow(HouseholdId id, HexCoord hex, long population) {
@@ -164,9 +202,32 @@ final class MarketSettlementFixtures {
      * ★★ <b>一个只提供运力的跑商家户</b>（M-A1：运力 = 派生量 = 劳动 + 工具；不再有商号行）。
      *
      * <p>它<b>不参与商品市场</b>：0 人口 + 空自然需求 + 空商品账 + 空货币账 ⇒ 不生成买单也不生成卖单，只在 {@link #settleWithCarriers}
-     * 里进运力池。工具存量 ≥ {@code MerchantHaul.TOOL_MILLI_PER_HAUL} 是跑商门槛。
+     * 里进运力池。★ A3（2026-10-10）：工具存量**不再是门槛**（旧"每趟烧 1,000 毫工具"已退役，见 {@link
+     * MarketSettlementFixtures#CARRIER_TOOL_MILLI}）——它只进 {@code MerchantCapacity} 的派生运力读数（劳动 + 工具）。
      */
     Builder carrier(HouseholdId id, HexCoord hex, long laborMilli, long toolMilli) {
+      merchantStandingOf(id, hex, laborMilli);
+      goods.put(id, new LinkedHashMap<>(Map.of(TOOL, toolMilli)));
+      return this;
+    }
+
+    /**
+     * ★★ <b>A2：一个持有运输服务货（{@code haul}）的跑商家户</b>（服务成市格的口径）—— 夹具给它的商品账里放 {@code haul}，于是服务成市格的运力预算 =
+     * 手上的服务货（{@code MerchantCapacityPool} 的 7 参口径 / I-H2）。
+     *
+     * <p>★ 它与 {@link #carrier} 的差别只有一条：手上拿的是**服务商品**而不是工具 ⇒ "卖多少服务就得有多少货"由此可在 端到端断言里核对（{@code
+     * MarketSettlement.deliverHaulService} 现扣同一批货）。
+     *
+     * <p>★ 劳动仍必须 &gt; 0：池的**成员判据**是运力（劳动 + 工具）&gt; 0（M-A1 的派生式），服务货只决定"这一格能承接多少"。
+     */
+    Builder haulCarrier(HouseholdId id, HexCoord hex, long laborMilli, long haulMilli) {
+      merchantStandingOf(id, hex, laborMilli);
+      goods.put(id, new LinkedHashMap<>(Map.of(HAUL, haulMilli)));
+      return this;
+    }
+
+    /** 把家户登记成"选跑商"的成员（位置目录 + 阶层归属 + 劳动投入；不碰商品账）。 */
+    private void merchantStandingOf(HouseholdId id, HexCoord hex, long laborMilli) {
       dormant(id, hex);
       laborOf(id, laborMilli);
       ClassPositionId position = ClassPositionId.parse("merchant-fixture:" + id.value());
@@ -184,7 +245,47 @@ final class MarketSettlementFixtures {
           id,
           new HouseholdClassMembership(
               id, position, position, Set.of(), Map.of(), 0L, 0L, "fixture:carrier"));
-      goods.put(id, new LinkedHashMap<>(Map.of(MerchantCapacityPool.TOOL_COMMODITY, toolMilli)));
+    }
+
+    /**
+     * ★★ <b>T-H4 夹具：给一个家户挂一条"声明了周期投入 + 持有生产资料"的产业 unit</b>。
+     *
+     * <p>它服务"预留自动成立"的判据（I-H6）：产业声明的 {@code cycleInputPerUnit} 经标准循环 （{@code necessaryInputsOf} 读
+     * {@code Industry.inputPerUnit()} × 计划规模）变成该户卖单上的保留量 —— 于是"自家卖单
+     * 会不会把跑商要用的工具冻住"可以在**公开读数**（{@code sellerOutcomes().offeredQty()}）上逐值核对。
+     *
+     * <p>★ 计划规模由 {@code OwnershipStake} 派生（{@code capacityPerUnit} 那一路）：本夹具给 {@code 份额 = meansQty}
+     * 单位的 {@code means}，于是 {@code scale = meansQty ÷ capacityPerUnit[means]}。
+     */
+    Builder industryUnit(
+        HouseholdId id, HexCoord hex, Industry industry, AssetKind means, long meansQty) {
+      if (!rows.containsKey(id)) {
+        dormant(id, hex);
+      }
+      ActorRef actor = HouseholdActors.of(id);
+      industries.put(industry.id(), industry);
+      ProductionUnitId unitId = ProductionUnitId.idOf(industry.id(), actor);
+      units.put(
+          unitId,
+          new ProductionProcess(
+              unitId,
+              industry.id(),
+              actor,
+              "mode:fixture-" + industry.id().value(),
+              0L,
+              0L,
+              Map.of()));
+      AssetShareId shareId = new AssetShareId("share:" + id.value() + ":" + industry.id().value());
+      assetShares.put(
+          shareId,
+          new io.mosire.simos.economy.model.OwnershipStake(
+              shareId,
+              industry.id(),
+              means,
+              actor,
+              actor,
+              meansQty,
+              io.mosire.simos.economy.model.OwnershipStake.RightKind.OWNED));
       return this;
     }
 
@@ -415,9 +516,31 @@ final class MarketSettlementFixtures {
       return money.getOrDefault(household, Map.of()).getOrDefault(SILVER, 0L);
     }
 
+    /** ★ A2：该户手上的运输服务货（毫服务）——服务口径的运力预算与"卖出多少就得有多少货"的判据读数。 */
+    long haulOf(HouseholdId household) {
+      return goods.getOrDefault(household, Map.of()).getOrDefault(HAUL, 0L);
+    }
+
     /** ★ M-A1：本世界按"派生运力"装配的运力池（没有 carrier ⇒ 空池 ⇒ 跨格车道不建）。 */
     MerchantCapacityPool carrierPool() {
       return MerchantCapacityPool.of(classStandings, classPositions, rows, goods);
+    }
+
+    /**
+     * ★★ <b>A2：服务商品口径的运力池</b>（{@code priced = true} + 服务成市格集）。
+     *
+     * <pre>
+     * 服务成市格（{@code haulServiceHexes} 含发货格）⇒ 该户运力预算 = max(0, haul 现货 − haul 冻结)（I-H2）
+     * 其余格                                        ⇒ 逐值退回 {@link MerchantCapacity} 的"劳动 + 工具"
+     * </pre>
+     *
+     * <p>★ 传 {@code true} 的第二个理由：报价口径下 lane 的运力耗用按"数量 × 距离" （{@code
+     * CapacityDemand.workPerGoodPerMille}）扣，而不是 1:1 —— 这与 {@code MarketSettlement} 里 {@code
+     * route.haulService()} 那一路读的是**同一个** {@code workPerGoodPerMilleOf}（同源，不复制算式）。
+     */
+    MerchantCapacityPool serviceCarrierPool(Set<HexCoord> haulServiceHexes) {
+      return MerchantCapacityPool.of(
+          classStandings, classPositions, rows, goods, frozenGoods, true, haulServiceHexes);
     }
   }
 

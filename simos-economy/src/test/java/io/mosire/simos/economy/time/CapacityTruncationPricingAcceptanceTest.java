@@ -58,7 +58,9 @@ class CapacityTruncationPricingAcceptanceTest {
             .household(SELLER, H1, 0L, SELLER_GRAIN, 0L)
             .household(CROSS_BUYER, H2, 1L, 0L, BUYER_SILVER);
     if (carrierLabor >= 0L) {
-      builder.carrier(CARRIER, H1, carrierLabor, MerchantHaul.TOOL_MILLI_PER_HAUL);
+      // ★ A3（2026-10-10）：工具存量**不再是跑商门槛**（旧 MerchantHaul.TOOL_MILLI_PER_HAUL 已退役）——本夹具只用它
+      //   让缺省口径（本世界只给 grain 定价 ⇒ 服务不成市）的派生运力 = 劳动 + 工具**逐值可复算**。
+      builder.carrier(CARRIER, H1, carrierLabor, MarketSettlementFixtures.CARRIER_TOOL_MILLI);
     }
     return builder.build();
   }
