@@ -295,6 +295,24 @@ W1 状态与账 ─→ W2 清算与价格 ─→ W3 人的进出 ─→ W4 家�
 
 ## 7. 修订记录
 
+- **v3.11**（2026-10-11 凌晨）：**W3（两段式 tick + 死亡率移交）生产码落地 + 两条口径裁定**。
+  改动：新增 `EconomyHouseholdGap`（经济侧瞬态逐户缺口）/ `FamineMortalityInput` / `FamineMortality`（Social 侧口径唯一拼写点）
+  / `FamineMortalityBridge`（**app** 组合根，形制照 P0 `MigrationSocialBridge`）；改 economy 5 文件 + social 2 + app 2（`+640/−392`），`compile -am` 绿。
+  **两段式次序**（用户 0–8 第 0 条）：① Social 出当日视图 → ② 经济结算 → ③ **经济报逐户缺口** → ④ 既有回写（断顿/迁移桥）
+  → ⑤ **Social 算死亡率** → ⑥ 回写人口 delta；全程同一次 `simulateWorld` = **同一条 revision**。
+  **economy 侧判死通道整条删除**：`applyFamine`（改人口 + 缩行劳动）、`scaleLaborOfUnit`、`FAMINE_MORTALITY_PER_MILLE` + 4 参 `settle` 重载 + 入参链
+  （不删就等于留了一条绕过 Social 的判死通道）；`SettlementStage.FAMINE_MORTALITY` **改名 `RATION_GAP_REPORT`**；
+  `FlowRow.deaths` **结构性恒 0**（字段保留，形状不动 —— 铁律 5）。**铁律 5 不触发**：无新持久组件，Codec/ChangeSet 一字未改，
+  饥荒输入是**每 tick 入参**（与 CalendarClock 同制）。
+  **裁定 A（死亡率口径）**：只认**当日已实现的口粮缺口**（`rationGapMilli / rationNeedMilli`，**逐日、全部家户**），
+  **不**用"35 天前瞻保留"那一维 —— 否则一个"还剩 3 天存粮"的户会算出 ≈914‰ 断顿 ⇒ 饥荒变一次性团灭，与"逐步"冲突；
+  逐商品生产花费缺口仍**照报**（进审计/DEBUG 面），只是不入算式。★ 系数 `FAMINE_MAX_PPM_PER_TICK = 1000`（断顿 100% ⇒ +1‰/tick，
+  成年基准 33 ppm 的 +300%）是**控制方实现口径、非用户裁定**，**列 W6 标定首查项**（"线性 vs 带阈值/超线性"同格）。
+  **裁定 B（口径取代）**：判死窗口由"**关账日 + 仅关账 unit 名下户 + 周期累计**"改为"**逐日 + 全部家户 + 当日窗口**"；
+  `carried`（周期累计缺口）**不再入判据**。
+  **测试树影响（交 W3b）**：`EconomyFixtures` 引用已删常量/旧 5 参构造器 ⇒ **编译错误**；`GovServiceCommitmentC7Test` 反射已删 `scaleLaborOfUnit` ⇒ 运行时失败。
+  ★ **AGENTS §〇 的 economy 行已回填更正**：pom 明写「方案 A（2026-10-09 用户裁定）：economy 允许直连 `simos-social` + `simos-social-api`」
+  ⇒ 本设计书前文"economy 不得 import social"那句话**以 pom 为准**。
 - **v3.10**（2026-10-11 凌晨）：**W2 验收结果 + 七条缺陷处置（控制方裁定）**。验收报告：
   `.superpowers/sdd/2026-10-11-w2-acceptance/report.md`（jar `893dc088` vs 基线 `50e9817e`，一次一个实例、独立 store/端口）。
   **绿**：①缺货逐轮涨（small-world α=50‰、72 轮、grain 连涨 48 轮到 56；p≥20 时最大涨幅**恰 +50.0‰、0 例超 α**）
