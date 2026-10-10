@@ -62,8 +62,8 @@ import java.util.Objects;
  * <pre>
  * 时点  {@link #select} 内、逐条承运条目被判定的那一刻 —— 市场轮内、{@code commitFreezes} 之后，
  *       与提交侧 {@code EconomySettlement.consumeForLoss} 读的是**同一张活表**（{@code householdFrozenGoods}）
- * 算式  判据量 = max(0, 当刻可用量 − 本轮已放行 × 每趟门槛)；不足一趟 ⇒ **该条跑商不成立**
- *       （不放行 = 不成交、不铸 CARRIER_FEE、不烧工具；具名归因见 {@link MerchantHaul} 的 reason 常量）
+ * 算式  判据量 = **当刻可用量**（G3-fix-3：减项"本轮已放行 × 每趟门槛"已删 —— 活视图已含本轮燃烧，见下）；
+ *       不足一趟 ⇒ **该条跑商不成立**（不放行 = 不成交、不铸 CARRIER_FEE、不烧工具；具名归因见 {@link MerchantHaul} 的 reason 常量）
  * 缺省  无冻结概念（4/5 参旧路径，没有活视图）⇒ 判据量 ≡ 本轮预算余量 ⇒ 与改前**逐值相同**（I-C2）
  * </pre>
  *
@@ -73,11 +73,34 @@ import java.util.Objects;
  * —— A 世界实测被 {@code reason=tool-budget-exhausted} 拦下 29 行 / Σ{@code budgetBlockedRuns} = 5,824
  * 趟（最小样本 {@code day=153}：{@code stock=1610 available=1610 needed=1000
  * budgetRemaining=925}）。本批把判据量换成 {@code max(0, 当刻可用量 − 本轮已放行 × 每趟门槛)}：底数永远是当刻 活视图，减项 =
- * 本轮自己已放行的趟数（{@link Entry#releasedToolMilli()}，由装配镜像 − 剩余推出）⇒ <b>预算随放行实时递减</b>。
+ * 本轮自己已放行的趟数（{@link Entry#releasedToolMilli()}，由装配镜像 − 剩余推出）⇒ <b>预算随放行实时递减</b>。 ★ 该减项**已被 G3-fix-3
+ * 删除**（它就是下面那条"同一笔扣两次"）；本段保留作判据演进的历史叙述。
  *
  * <p>★ <b>方向仍 fail-closed（只过严不过宽）</b>，三档逐值可查：① 轮内该户工具<b>不动</b> ⇒ 当刻可用量 = 装配可用量 ⇒ {@code max(0, 可用量
  * − 已放行)} ≡ 装配镜像剩余 = 旧式 {@code min(剩余, 可用量)} —— <b>逐值相同</b>；② 工具<b>下降</b>（或冻结上升）⇒ 新判据 ≤ 旧判据（更严）；③
- * 只有工具<b>上升</b>时才放松 —— 那正是本次要修的偏差（被拦趟数减少、跨格成交回升）。已放行的减项若与提交侧 已落账的实扣<em>重复</em>，也只是让判据更严，绝不放松。
+ * 只有工具<b>上升</b>时才放松 —— 那正是本次要修的偏差（被拦趟数减少、跨格成交回升）。已放行的减项若与提交侧 已落账的实扣<em>重复</em>，也只是让判据更严，绝不放松。 ★★
+ * <b>G3-fix-3 更正</b>：末句"重复也只是更严，绝不放松"的推理**站不住** —— 过严不是安全侧（门槛是硬门槛，不是按量计的费）： 它把同一笔燃烧扣两次，在 B 世界造成 25
+ * 趟**假拦**（见下）。
+ *
+ * <p>★★ <b>G3-fix-3（2026-10-10）：删掉判据量里的"本轮已放行 × 每趟门槛" —— 活视图已含本轮的燃烧，再减一次就是同一笔扣两次</b>。 两条结构直证 +
+ * 一条实测直证：
+ *
+ * <pre>
+ * ① 同一张活表  {@code liveGoods} = 装配入口传进来的 {@code householdGoods}，与实扣 {@code EconomySettlement.consumeForLoss}
+ *              写的是**同一个 Map 实例**（{@code setStock} 就地 put ⇒ 池持有的引用当刻可见）
+ * ② 落账次序    实扣在同一次 {@code executeTrade} 的 {@link #select} **之后**（{@code MarketSettlement.settleHaulRuns}）、
+ *              下一笔 lane 的 select **之前** ⇒ 后一次 select 读到的可用量**已经**扣掉了前一趟的燃烧
+ * ③ 实测直证    A 世界同户同日：旧行 {@code stock=1879} → 新行 {@code stock=879}，差**恰 1000**（= 一趟门槛）
+ *              —— 不是"活视图没变"，是"真烧了一趟之后活视图少了 1000"
+ * 后果（G3d 复验）B 世界 25 趟假拦：{@code day=213 stock=1465 frozen=0 available=1465 needed=1000 released=2000}
+ *              ⇒ 旧式 {@code 1465 − 2000 < 1000} 被拦，而**两种成文口径都放行**（活视图 {@code 1465 ≥ 1000}；
+ *              或回到装配量 {@code 1465 + 2000 = 3465}，第 3 趟只用到 3,000）
+ * 结论          判据 = {@code 当刻可用量 ≥ 一趟}（{@link MerchantHaul#affordsRun}）；{@link Entry#releasedToolMilli()}
+ *              **不再参与判据**，只作日志自解释（{@code MERCHANT_HAUL_TOOL_BLOCKED_AT_SELECT.releasedMilli}）
+ * 单调性        新判据 ≥ 旧判据（逐点，减项非负）⇒ 只会**减少**拦、不会新增拦；fail-closed 方向不变（真不够 ⇒ 拦）
+ * 归因副作用    "拦 ⇔ 可用量 &lt; 一趟" ⇒ {@code tool-budget-exhausted} 在生产路径**结构上不可达**
+ *              （见 {@link #toolBlockReason}）；该常量与计数保留（日志字段不删），只是不再由判据产生
+ * </pre>
  *
  * <p>★ <b>"当刻"是哪一个时点（口径写清）</b>：{@code select} 只被 {@code MarketSettlement.executeTrade} 在
  * <b>协调器</b>上逐条 lane 调用（有运力池的世界整个区内撮合都退回串行，见 {@code matchWithinRegions}），且 {@code select}
@@ -211,9 +234,10 @@ public final class MerchantCapacityPool {
   }
 
   /**
-   * ★★ <b>生产装配点（唯一带"当刻可用量"口径的入口）</b>（2026-10-10 G3-fix-1 + G3-fix-2 + G3-leftovers）：{@code tool}
-   * 的判据量 = {@code max(0, 当刻可用量 − 本轮已放行 × 每趟门槛)}（见类注与 {@link #select}），与提交侧的实扣判据（{@code
-   * EconomySettlement.consumeForLoss}：可用量 &lt; 一趟 ⇒ 一点也不烧）**同口径、同活表**。
+   * ★★ <b>生产装配点（唯一带"当刻可用量"口径的入口）</b>（2026-10-10 G3-fix-1 + G3-fix-2 + G3-leftovers +
+   * G3-fix-3）：{@code tool} 的判据量 = {@code 当刻可用量}（见类注与 {@link #select}；G3-fix-3 删掉了"− 本轮已放行 ×
+   * 每趟门槛"这一重复扣减），与提交侧的实扣判据（{@code EconomySettlement.consumeForLoss}：可用量 &lt; 一趟 ⇒
+   * 一点也不烧）**同口径、同活表**。
    *
    * <p>★★ <b>为什么必须同口径（实测缺陷，两次）</b>：① 旧实现只读**存量** ⇒ 一个把 tool 全部挂进本轮卖单（冻结 12,000）的户在池里仍显示 {@code
    * toolRemainingMilli=12000}，{@code select} 于是放行该次承运、成交成立、{@code CARRIER_FEE} 照铸；到 {@code
@@ -454,8 +478,9 @@ public final class MerchantCapacityPool {
      * ★★ M-C + G3-leftovers：**装配时点**的工具预算镜像（毫工具；= 装配时点该户 {@code tool} 可用量）—— 每次跑商扣 {@link
      * MerchantHaul#TOOL_MILLI_PER_HAUL}（一次性消耗、不返还，H-1）。
      *
-     * <p>★ G3-leftovers 起它有**两个**用途：① 4/5 参旧路径（没有活视图）的门槛判据 —— 逐值退回改前；② <b>「本轮已放行」的计数载体</b>：{@link
-     * #releasedToolMilli()} = 装配镜像 − 剩余。生产路径的判据量不再取它本身（它 <b>过时</b>：装配之后该户工具可能已变），见 {@link #select}。
+     * <p>★ 用途随批次收窄：① 4/5 参旧路径（没有活视图）的门槛判据 —— 逐值退回改前；② G3-leftovers 起作「本轮已放行」的计数载体： {@link
+     * #releasedToolMilli()} = 装配镜像 − 剩余。生产路径的判据量**不再取它，也不取那个减项**（G3-fix-3：判据 = 当刻可用量）， 见 {@link
+     * #select}。
      *
      * <p>★ 轮内该户工具**上升**时它可以为负（已放行的趟数超过装配时点可用量）—— 这是真实读数，不是错值。
      */
@@ -479,7 +504,7 @@ public final class MerchantCapacityPool {
     private long toolBlockedFrozenMilli;
     private long toolBlockedAvailableMilli;
 
-    /** ★★ G3-leftovers：首次被拦下时**判据量的减项**（本轮已放行 × 每趟门槛）—— 与上面三个读数同时点取样。 */
+    /** ★★ G3-leftovers / G3-fix-3：首次被拦下时的"本轮已放行 × 每趟门槛"读数 —— **只进日志**，G3-fix-3 起不参与判据。 */
     private long toolBlockedReleasedMilli;
 
     /** ★ 本轮的运费实收（按币分列）—— **每轮算出的读数**，只进日志/读口，不落状态（冻结项 6 的"不落状态"）。 */
@@ -496,8 +521,8 @@ public final class MerchantCapacityPool {
     }
 
     /**
-     * ★★ <b>G3-leftovers：本轮**已放行**的趟数 × 每趟门槛</b>（毫工具）= 装配镜像 − 剩余 —— 判据量的减项，见 {@link
-     * #select}（"预算随放行实时递减"的唯一来源；不另设计数器，避免两处各记一遍而漂开）。
+     * ★★ <b>G3-leftovers：本轮**已放行**的趟数 × 每趟门槛</b>（毫工具）= 装配镜像 − 剩余 —— **只作日志自解释与计数** （"放行过几趟"）。★
+     * G3-fix-3 起它**不再是判据量的减项**：活视图已含本轮燃烧，减它 = 同一笔扣两次（见类注与 {@link #select}）。
      */
     private long releasedToolMilli() {
       return Math.max(0L, capacity.toolMilli() - remainingToolMilli);
@@ -508,7 +533,7 @@ public final class MerchantCapacityPool {
      *
      * @param reason {@link MerchantHaul} 的三个具名归因之一
      * @param stockMilli 当刻现货（{@code -1} = 本池没有活视图，旧路径）
-     * @param releasedMilli ★ G3-leftovers：当刻的**判据量减项**（本轮已放行 × 每趟门槛）—— 与上面三个读数同时点
+     * @param releasedMilli ★ G3-leftovers：当刻的"本轮已放行 × 每趟门槛"读数（**只进日志**；G3-fix-3 起不参与判据）
      */
     private void recordToolBlock(
         String reason, long stockMilli, long frozenMilli, long availableMilli, long releasedMilli) {
@@ -631,10 +656,10 @@ public final class MerchantCapacityPool {
    * <p>★ <b>供给不足（K-4/Q-27）</b>：没分到的部分（{@code unallocatedMilli}）由调用方收缩成交量 ⇒ <b>不成交、不成债、
    * 不计价</b>；被挡下的部分不提价不压价（V-20 的截断剔除）。本类不静默丢。
    *
-   * <p>★★ <b>G3-fix-2 + G3-leftovers：工具门槛的判据量在<b>本方法内、逐条承运被判定的那一刻</b>现取</b>（时点与理由见类注）： {@code 判据量 =
-   * max(0, 当刻可用量 − 本轮已放行 × 每趟门槛)}；不足一趟 ⇒ 该条不产生（不成交、不铸运费、不烧工具）， 具名归因 {@code tool-frozen} / {@code
-   * tool-short} / {@code tool-budget-exhausted}（{@link MerchantHaul}）。★ 没有活视图的 4/5 参旧路径
-   * 只判本轮预算余量（逐值退回改前）。
+   * <p>★★ <b>G3-fix-2 + G3-leftovers + G3-fix-3：工具门槛的判据量在<b>本方法内、逐条承运被判定的那一刻</b>现取</b>（时点与理由见类注）：
+   * {@code 判据量 = 当刻可用量}（G3-fix-3 起不再减"本轮已放行 × 每趟门槛" —— 活视图已含本轮燃烧，减它是重复扣减）； 不足一趟 ⇒
+   * 该条不产生（不成交、不铸运费、不烧工具）， 具名归因 {@code tool-frozen} / {@code tool-short}（{@link MerchantHaul}；{@code
+   * tool-budget-exhausted} 自 G3-fix-3 起不可达）。 ★ 没有活视图的 4/5 参旧路径只判本轮预算余量（逐值退回改前）。
    *
    * @param from 发货格（运力池所在的格）
    * @param to 收货格（判半径）
@@ -675,8 +700,9 @@ public final class MerchantCapacityPool {
       //   该条承运不产生，需求转成"运力未获服务"（K-4/Q-27：不成交、不成债、不计价）。
       //   ★ 判据只看**工具够不够一趟**，与 lane 长短/批量无关 —— 它是**门槛**，不是按量计的费。
       // ★★ G3-fix-2：判据量在**承运选择点**现取 —— 见下面的 liveToolStockMilli/FrozenMilli（时点与算式写在类注）。
-      // ★★ G3-leftovers：减项 = **当刻推导**的"本轮已放行 × 每趟门槛"（不再取装配时点的过期镜像 —— 见类注；
-      //   A 世界实测被它拦下 29 行 / 5,824 趟）。
+      // ★★ G3-leftovers：减项曾 = "本轮已放行 × 每趟门槛"（不再取装配时点的过期镜像）。
+      // ★★ G3-fix-3：**该减项已删** —— 活视图已含本轮燃烧（同一张活表 + 实扣在两次 select 之间落账，证据见类注）
+      //   ⇒ 旧式 = 同一笔扣两次（B 世界 25 趟假拦）。判据 = **当刻可用量本身**。
       long toolStockMilli = liveToolStockMilli(item.capacity.household());
       long toolFrozenMilli = liveToolFrozenMilli(item.capacity.household());
       long toolAvailableMilli =
@@ -684,8 +710,8 @@ public final class MerchantCapacityPool {
       long toolCheckMilli =
           toolAvailableMilli < 0L
               ? item.remainingToolMilli // 无活视图（4/5 参旧路径）⇒ 只判本轮预算，逐值退回改前
-              // 生产路径：max(0, 当刻可用量 − 本轮已放行 × 每趟门槛) —— 底数 = 当刻活视图，减项 = 本轮自己烧掉的。
-              : Math.max(0L, toolAvailableMilli - item.releasedToolMilli());
+              // 生产路径：判据量 = 当刻可用量（G3-fix-3；releasedMilli 只进日志，不参与判据）。
+              : toolAvailableMilli;
       if (!MerchantHaul.affordsRun(toolCheckMilli)) {
         String toolReason = toolBlockReason(toolStockMilli, toolAvailableMilli);
         item.recordToolBlock(
@@ -762,7 +788,8 @@ public final class MerchantCapacityPool {
                   subUnitWork,
                   "toolBlockedRuns",
                   toolBlockedRuns,
-                  // ★★ G3-fix-2：把"缺工具"这一条按**政策归因**拆开（tool-frozen / tool-short / 预算镜像）。
+                  // ★★ G3-fix-2：把"缺工具"这一条按**政策归因**拆开（tool-frozen / tool-short / 预算档）。
+                  //   ★ G3-fix-3 起预算档恒不可达（判据 = 可用量本身，拦 ⇔ 可用量 < 一趟）—— 字段与计数保留在日志面上。
                   "toolFrozenBlockedRuns",
                   toolFrozenBlockedRuns,
                   "toolShortBlockedRuns",
@@ -811,16 +838,17 @@ public final class MerchantCapacityPool {
    * <pre>
    * 现货 &lt; 一趟            ⇒ tool-short（真缺货：冻结为 0 也照样不成立）
    * 现货够、可用量不够一趟  ⇒ tool-frozen（缺口只能来自冻结）
-   * 两者都不是（可用量够）  ⇒ tool-budget-exhausted：**本轮已放行的趟数**把判据量吃掉了
-   *                          （判据量 = max(0, 当刻可用量 − 本轮已放行 × 每趟门槛)，见类注 + {@link #select}）
+   * 两者都不是（可用量够）  ⇒ tool-budget-exhausted：★★ G3-fix-3 起**生产路径结构上不可达** —— 判据量就是可用量本身
+   *                          （{@link #select}），"被拦"⇔ 可用量 &lt; 一趟 ⇒ 只可能是上面两支；本支只留给历史日志字段
    * 没有活视图（{@code stockMilli < 0}）⇒ {@code tool-short}：与改前 laneBlockedReason 的字面量逐字相同
    * </pre>
    *
    * ★ <b>更正（G3-leftovers，依据 = 实测而非推演）</b>：本注释此前写"两者都不是 ⇒ 生产路径不可达（每次放行都在同一步烧掉工具， 预算与账上可用量同步下降）"。A
    * 世界实测<b>证伪</b>了它 —— {@code reason=tool-budget-exhausted} 29 行 / Σ{@code budgetBlockedRuns} =
    * 5,824 趟（最小样本 {@code day=153}：{@code stock=1610 available=1610 needed=1000
-   * budgetRemaining=925}）：成因是判据量的减项取自**装配时点的过期镜像**，装配之后该户工具上升时它仍偏低。 G3-leftovers 已把减项换成当刻推导的"本轮已放行
-   * × 门槛"⇒ 本分支<b>依然可达且合法</b>（真放行过若干趟之后预算用尽）， 但不再由过期镜像产生。
+   * budgetRemaining=925}）：成因是判据量的减项取自**装配时点的过期镜像**，装配之后该户工具上升时它仍偏低。 G3-leftovers 曾把减项换成当刻推导的"本轮已放行
+   * × 门槛"（⇒ 该分支"可达"）；<b>G3-fix-3 又把减项整个删掉</b>（它是重复扣减，见类注）⇒ 本分支重新变得不可达 —— 这是**按裁定刻意**的结果，
+   * 不是被忘记的死代码：常量与计数留在日志面上（字段与既有日志行不删），但判据不再产生它。
    *
    * @param stockMilli {@link #liveToolStockMilli} 的读数（{@code -1} = 没有活视图）
    * @param availableMilli {@code max(0, 现货 − 冻结)}；没有活视图时传 {@code -1}
@@ -908,7 +936,8 @@ public final class MerchantCapacityPool {
   }
 
   /**
-   * ★★ G3-fix-2：本轮被工具门槛拦下的次数按政策归因拆分（{@code tool-frozen} = 下标 0、{@code tool-short} = 1、预算镜像 = 2）。
+   * ★★ G3-fix-2：本轮被工具门槛拦下的次数按政策归因拆分（{@code tool-frozen} = 下标 0、{@code tool-short} = 1、预算档 = 2）。 ★
+   * G3-fix-3 起下标 2 恒为 0（判据 = 当刻可用量本身 ⇒ 拦下必有真缺口），保留只为日志字段/读数不漂。
    */
   private long[] toolBlockedByReason() {
     long frozen = 0L;
@@ -966,13 +995,13 @@ public final class MerchantCapacityPool {
                     item.toolBlockedAvailableMilli,
                     "neededMilli",
                     MerchantHaul.TOOL_MILLI_PER_HAUL,
-                    // ★★ G3-leftovers：判据量的**减项**（首次被拦那一刻的"本轮已放行 × 每趟门槛"）—— 有它这一行才自解释：
-                    //   reason=tool-budget-exhausted ⇔ availableMilli − releasedMilli <
-                    // neededMilli（见 select 的判据量算式）。
+                    // ★★ G3-leftovers 加字段 / G3-fix-3 改语义：**本轮已放行 × 每趟门槛**（首次被拦那一刻的读数）——
+                    //   ★ 它**不参与 G3-fix-3 起的判据**，只回答"这一轮到这户为止已经放行过几趟"（同一行里
+                    //   availableMilli / neededMilli 才是判据的两个操作数：拦 ⇔ availableMilli < neededMilli）。
                     "releasedMilli",
                     item.toolBlockedReleasedMilli,
-                    // ★ 装配时点的镜像剩余（= 装配可用量 − 本轮已放行×门槛；只作对照 —— 生产路径的判据量不再取它，
-                    //   除非本池没有活视图 = 4/5 参旧路径）。
+                    // ★ 装配时点的镜像剩余（= 装配可用量 − 本轮已放行×门槛；只作对照 —— 生产路径的判据量不取它，
+                    //   除非本池没有活视图 = 4/5 参旧路径，那时它才是判据量）。
                     "toolBudgetRemainingMilli",
                     item.remainingToolMilli));
       }
@@ -1145,8 +1174,8 @@ public final class MerchantCapacityPool {
                 // ★★ M-C（§一.9：INFO = 门槛与利润汇总的门槛面）：本轮因缺工具未成立的跑商次数 + 池里剩余工具。
                 "toolBlockedRuns",
                 toolBlockedTotal,
-                // ★★ G3-fix-2：上面那个总数按政策归因拆开（tool-frozen / tool-short / 预算镜像；判据的唯一拼写点在
-                // MerchantHaul）。
+                // ★★ G3-fix-2：上面那个总数按政策归因拆开（tool-frozen / tool-short / 预算档；判据的唯一拼写点在
+                // MerchantHaul）。★ G3-fix-3 起预算档恒 0（拦截即真缺口）。
                 "toolFrozenBlockedRuns",
                 blockedByReason[0],
                 "toolShortBlockedRuns",

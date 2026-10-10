@@ -91,6 +91,10 @@ public final class MerchantHaul {
    * <p>它只在"放行过、却没在账上烧掉"时才可能出现（否则预算与账上可用量同步下降）—— 生产路径上不可达 （每次放行都在同一步由 {@code settleHaulRuns}
    * 烧工具）。出现它 = 该笔的预算先耗尽，<b>不是</b> H-5 的两种缺口之一； 单独具名是为了让 {@code tool-frozen} / {@code tool-short}
    * 两个政策名不被这种情形污染。
+   *
+   * <p>★★ <b>G3-fix-3（2026-10-10）起它在生产路径上结构上不可达</b>：判据量已改成"当刻可用量"本身（减项"本轮已放行 × 每趟门槛" 被删 ——
+   * 活视图已含本轮燃烧，那是重复扣减，见 {@code MerchantCapacityPool} 类注）⇒ "被拦"⇔ 可用量小于一趟 ⇒ 归因只能是 {@link
+   * #TOOL_SHORT_REASON}（真缺货）或 {@link #TOOL_FROZEN_REASON}（被冻结占住）。常量与日志字段保留（不删字段、不改名）。
    */
   public static final String TOOL_BUDGET_REASON = "tool-budget-exhausted";
 
