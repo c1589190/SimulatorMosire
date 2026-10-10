@@ -4122,6 +4122,9 @@ public final class ApiViews {
     // ★★ **R4：{@code unmetNeed} 也逐商品**（spec §七："粮食不足与衣物不足对死亡的时间尺度显然不能一样"）
     //   ⇒ 读口必须把两种缺口**各自发出来**（加成一个数就再也分不开了）。键序同样走 sortedCommodities。
     view.put("unmetNeed", flow == null ? Map.of() : sortedCommodities(flow.unmetNeed()));
+    // ★★ W3-fix（2026-10-11）两个人口读数的语义：**由社会（人口权威）报来的**本周期出生/死亡数 —— 经济侧不判定生死、
+    //   不缩劳动；社会每 tick 算完，App 把逐户原值回写进流水（{@code EconomyDayStepper.applyHouseholdPopulationDeltas}）。
+    //   ★ 窗口 = 本周期累计（新周期第一天归零）；饥荒死亡是 deaths 的子集（Social 的 FAMINE_MORTALITY 日志有逐户明细）。
     view.put("deaths", flow == null ? 0L : flow.deaths());
     view.put("births", flow == null ? 0L : flow.births()); // ★ R4：与 deaths 对称的那一项
     return view;

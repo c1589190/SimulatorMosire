@@ -828,6 +828,9 @@ public final class HouseholdBook {
     List<HouseholdPopulationEvent> events = new ArrayList<>();
     boolean traceEnabled = SocialLog.trace().isTraceEnabled();
     Map<HouseholdId, Long> populationDeltas = new LinkedHashMap<>();
+    // ★★ W3-fix：逐户出生/死亡原值（只含 > 0 的家户）—— 与 populationDeltas 同一次结算、同一份逐户自洽。
+    Map<HouseholdId, Long> birthsByHousehold = new LinkedHashMap<>();
+    Map<HouseholdId, Long> deathsByHousehold = new LinkedHashMap<>();
     long totalBirths = 0L;
     long totalDeaths = 0L;
 
@@ -1027,6 +1030,15 @@ public final class HouseholdBook {
       if (householdDelta != 0L) {
         populationDeltas.put(household.id(), householdDelta);
       }
+      // ★★★ W3-fix（2026-10-11）：逐户出生/死亡的**原值**也一并报出去 —— App 把这一份交给经济侧落进流水
+      //   （FlowRow.births / FlowRow.deaths）。只报净变化时"这一个周期死了多少人"在经济读数里根本读不到
+      //   （净变化在一户同时生死时只报差，且危机读数要的是死亡原值）。★ 只作读数：不改任何状态。
+      if (householdBirths > 0L) {
+        birthsByHousehold.put(household.id(), householdBirths);
+      }
+      if (householdDeaths > 0L) {
+        deathsByHousehold.put(household.id(), householdDeaths);
+      }
       totalBirths = Math.addExact(totalBirths, householdBirths);
       totalDeaths = Math.addExact(totalDeaths, householdDeaths);
       famineDeathsTotal = Math.addExact(famineDeathsTotal, householdFamineDeaths);
@@ -1134,7 +1146,15 @@ public final class HouseholdBook {
                   cleanedRemainders));
     }
     return new VitalSettlementResult(
-        data, populationDeltas, totalBirths, totalDeaths, famineDeathsTotal, day, events);
+        data,
+        populationDeltas,
+        birthsByHousehold,
+        deathsByHousehold,
+        totalBirths,
+        totalDeaths,
+        famineDeathsTotal,
+        day,
+        events);
   }
 
   /**

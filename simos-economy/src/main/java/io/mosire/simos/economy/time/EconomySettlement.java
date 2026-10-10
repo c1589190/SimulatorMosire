@@ -3226,8 +3226,12 @@ public final class EconomySettlement {
       long netSurplus =
           earned.getOrDefault(GRAIN, 0L) - consumed.getOrDefault(GRAIN, 0L) - interest;
       Map<CommodityId, Long> dayUnmet = unmetToday.getOrDefault(key, Map.of());
-      // ★★ W3（2026-10-11）：经济侧**不再**产生任何死亡（判死归 Social）⇒ 当日死亡恒 0。
+      // ★★ W3（2026-10-11）：经济侧**不再**产生任何死亡（判死归 Social）⇒ 本步当日死亡恒 0。
       //   原 `deathsToday` 累加器与 `applyFamine` 一并删除（AGENTS §一.11：旧设计直接删）。
+      //   ★ W3-fix（2026-10-11）：`FlowRow.deaths` 的**非 0 值来自"社会报来的死亡"**，由逐户回写路径
+      //     applyHouseholdPopulationDeltasInto（四参）→ withLifecycle 在**本步之后**写进同一行流水；
+      //     故下面的 `acc.deaths() + dayDeaths` 是"把本步没动的那一列原样带过"，不是"清账"
+      //     （清账只发生在 newCycleHouseholds 那一支）。
       long dayDeaths = 0L;
       long dayBirths = birthsToday.getOrDefault(key, 0L);
       // ★★ E4c：货币债偿还与资本化读数的当日量（与其余字段同窗口：本周期累加、新周期第一天归零）。
@@ -3451,7 +3455,11 @@ public final class EconomySettlement {
                 "population",
                 dayEndPopulation,
                 "deaths",
-                0L, // ★ W3：经济侧不再判死（死亡只在 Social）；本字段结构性恒 0，留作读口形状
+                0L, // ★ W3-fix：本字段 = **本阶段（经济日结算）自己产生的死亡数** ⇒ 结构性恒 0（经济侧不判死）。
+                //   社会报来的死亡不在这里读：它们由同一次修订里 step 之后的逐户回写写进 FlowRow.deaths，
+                //   并另发一条 HOUSEHOLD_VITAL_WRITEBACK（见
+                // applyHouseholdPopulationDeltasInto，INFO/DEBUG）。
+                //   ⇒ 别把这里的 deaths=0 读成"今天没人死"。
                 "unmet",
                 traceTotalGoods(unmetToday),
                 "borrowedGrainMilli",
@@ -4339,35 +4347,10 @@ public final class EconomySettlement {
   }
 
   // ── 人口变动回写（R4：社会侧的出生/死亡 → 经济侧的行人口、劳动配额与流水）──────────────────
+  //   ★★ W3-fix（2026-10-11）语义收口：本区两条入口（批次侧 applyPopulationChange / 逐户侧
+  //     applyHouseholdPopulationDeltasInto）都是**接收社会报来的生死**，经济侧**不判定死亡、不缩放劳动**。
+  //     原 applyPopulationChange 的 javadoc 悬在这里（离方法 180 行、语法上根本没挂到它身上）⇒ 已移到方法正上方。
 
-  /**
-   * ★★ **把一份"逐批次的出生/死亡"回写到经济侧**（R4 的接缝；**纯函数**：{@code base} 一字不改）。
-   *
-   * <pre>
-   * 对每个批次 g（只处理两侧不全为 0 的那些）：
-   *   ① 它在经济侧的"人"住在**它供给的那些产业的家户行**里（H0：行 = (格, 居住类型, 阶层)；居住类型取自批次本身，
-   *      格取自它供给的那些产业的 id）—— 真档里农村批次供给 农业+家庭纺织（**两者共用同一批农村家户行**）⇒ 只算一次；
-   *      城镇批次供给手工业 ⇒ 落城镇家户行。
-   *   ② 出生/死亡按**行人口**权重摊到那些家户行上；行人口 ∓、**行的 laborMilli 按存活比例缩**（新生儿不干活）
-   *   ③ 该批次名下的**全部配额与劳动供给**按同一个存活比例缩（"人死了劳动没减"的收口，见 scaleLaborOfGroup）
-   *   ④ 出生/死亡**逐行落进流水**（{@code FlowRow.births} / {@code FlowRow.deaths}）—— 人口守恒因此逐值可核
-   *   ⑤ ★ P5：**死亡按人口比例删债** —— 每个 {@code deathsParts[j] > 0} 的债务人行，把它**作为债务人**的全部活跃合同
-   *      逐笔按 {@code floor(本金 × 存活 ÷ 死亡前人口)} 缩减（走唯一写口 {@link DebtContractBook#forgive}；
-   *      {@code 存活 == 0} ⇒ 全额减免），只动本金/状态、**不搬任何粮/钱、不产生利息**；删债额记进会话瞬态累加器。
-   * </pre>
-   *
-   * <p>★★ <b>为什么经济侧必须跟着动</b>（而不是"人死了只在社会侧少几个人"）：行人口是**分配权重**与劳动缩放的来源； 当日口粮需求已由 app 按 Social
-   * 成员逐户展开注入（Batch 3）⇒ 不回写人口/劳动，权重与配额仍会停在旧账上。
-   *
-   * <p>★★ <b>W3（2026-10-11）起本步是"批次侧"唯一的死亡缩放入口</b>：原"按缺口直接处死 + 缩产业配额"那条路径 （{@code applyFamine} /
-   * {@code scaleLaborOfUnit}）已整段删除 —— 判死与劳动口径都归 Social，经济侧只<b>报缺口</b>。本步只服务"外部
-   * （Social/命令面）已经算出逐批次死亡并交回经济侧"的场景；它仍落在同一条不变量上（{@code Σ allocated ≤ available}）。
-   *
-   * <p>★ **没有劳动配额的批次摊不出去**（{@code industriesOf} 里没有它）：本轮的世界里创世给每个批次都发了配额 （{@code
-   * EconomySeeder}），故这条路径只服务"手工搭的、没有配额的状态"——那种状态本来也没有可缩的劳动。
-   *
-   * @param changes 逐批次的出生/死亡（social 侧的月度结算产物；键 = 批次身份）
-   */
   /**
    * ★★ <b>P2-A §13.4：每个 tick 重算家户时间预算</b>（毫小时）—— 输入 = 协调器从 Social 人口组成 × {@code SocialProvisioning}
    * 的劳动权威（C8；{@code HouseholdLaborTimeTable} 只是 legacy 值载体）现算的「household → 预算」；本方法把它写进 {@code
@@ -4550,6 +4533,39 @@ public final class EconomySettlement {
     }
   }
 
+  /**
+   * ★★ **把一份"外部（社会/命令面）报来的逐批次出生/死亡"回写到经济侧**（R4 的接缝；**纯函数**：{@code base} 一字不改）。
+   *
+   * <pre>
+   * 对每个批次 g（只处理两侧不全为 0 的那些）：
+   *   ① 它在经济侧的"人"住在**它供给的那些产业的家户行**里（H0：行 = (格, 居住类型, 阶层)；居住类型取自批次本身，
+   *      格取自它供给的那些产业的 id）—— 真档里农村批次供给 农业+家庭纺织（**两者共用同一批农村家户行**）⇒ 只算一次；
+   *      城镇批次供给手工业 ⇒ 落城镇家户行。
+   *   ② 出生/死亡按**行人口**权重摊到那些家户行上；行人口 ∓、**行的 laborMilli 按存活比例缩**（新生儿不干活）
+   *   ③ 该批次名下的**全部配额与劳动供给**按同一个存活比例缩（"人死了劳动没减"的收口，见 scaleLaborOfGroup）
+   *   ④ 出生/死亡**逐行落进流水**（{@code FlowRow.births} / {@code FlowRow.deaths}）—— 人口守恒因此逐值可核
+   *   ⑤ ★ P5：**死亡按人口比例删债** —— 每个 {@code deathsParts[j] > 0} 的债务人行，把它**作为债务人**的全部活跃合同
+   *      逐笔按 {@code floor(本金 × 存活 ÷ 死亡前人口)} 缩减（走唯一写口 {@link DebtContractBook#forgive}；
+   *      {@code 存活 == 0} ⇒ 全额减免），只动本金/状态、**不搬任何粮/钱、不产生利息**；删债额记进会话瞬态累加器。
+   * </pre>
+   *
+   * <p>★★ <b>语义（W3-fix 2026-10-11 收口）：这是"接收方"的入口，不是"判定方"</b> —— {@code changes} 里的出生/死亡是
+   * <b>别人算好的</b>（{@code LotChange} 的类注：判定在 social，落实在 economy）。经济侧<b>不判定死亡、不按缺口处死</b>：原 {@code
+   * applyFamine} / {@code scaleLaborOfUnit} 那条"按缺口直接处死 + 缩产业配额"的路径已按 AGENTS §一.11 <b>整段删除</b>；
+   * 本步只服务"外部已经算出逐批次生死并交回经济侧"的场景。★ 逐 tick 的主路径不走这里，走逐户形态 {@link
+   * #applyHouseholdPopulationDeltasInto(EconomySession, Map, Map, Map)}（同一语义、键换成家户）。
+   *
+   * <p>★★ <b>为什么经济侧必须跟着动</b>（而不是"人死了只在社会侧少几个人"）：行人口是**分配权重**与劳动缩放的来源； 当日口粮需求已由 app 按 Social
+   * 成员逐户展开注入（Batch 3）⇒ 不回写人口/劳动，权重与配额仍会停在旧账上。
+   *
+   * <p>★ <b>本步仍落在同一条不变量上</b>（{@code Σ allocated ≤ available}）：缩放后由 {@link
+   * #requireGovServiceCommitmentsWithinBudgets} 统一 fail-closed 校验（政府承诺整额保留）。
+   *
+   * <p>★ **没有劳动配额的批次摊不出去**（{@code industriesOf} 里没有它）：本轮的世界里创世给每个批次都发了配额 （{@code
+   * EconomySeeder}），故兜底路径只服务"手工搭的、没有配额的状态"——那种状态本来也没有可缩的劳动。
+   *
+   * @param changes 逐批次的出生/死亡（外部报来的生死账；键 = 批次身份；不得为 null）
+   */
   public static EconomyData applyPopulationChange(EconomyData base, List<LotChange> changes) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(changes, "changes");
@@ -4561,7 +4577,12 @@ public final class EconomySettlement {
     return session.build();
   }
 
-  /** ★ session 形态（{@link EconomyDayStepper} 走它）：就地更新工作表与流水，不构造中间状态。 */
+  /**
+   * ★ session 形态（{@link EconomyDayStepper} 走它）：就地更新工作表与流水，不构造中间状态。
+   *
+   * <p>★ <b>语义同 {@link #applyPopulationChange}</b>：接收外部报来的逐批次生死；经济侧不判定死亡（见那条的类注第②段）。 {@code
+   * deathsParts[j] > 0} 时删债是**经济侧对"人已死"这一既成事实的后果处理**（P5），不是"经济侧决定谁死"。
+   */
   static void applyPopulationChangeInto(EconomySession session, List<LotChange> changes) {
     Objects.requireNonNull(session, "session");
     Objects.requireNonNull(changes, "changes");
@@ -4679,6 +4700,11 @@ public final class EconomySettlement {
    *       结果 &lt; 0 或行不存在 ⇒ 具名拒（fail-closed，不静默跳过）
    * </pre>
    *
+   * <p>★★ <b>本重载不带生死流水</b>（出生/死亡两表当空表）：调用方是"人在户与户之间搬"的两条路 —— P0 迁移桥（{@code ModeMigrationSettlement}
+   * 的 outbox）与 Z7d-2 逃亡（{@code GovernmentServiceDesertionBridge}）。搬人不产生出生/死亡， 故 {@code
+   * FlowRow.births}/{@code FlowRow.deaths} 不该因它变化。★ 逐 tick 的**生死**走四参重载 {@link
+   * #applyHouseholdPopulationDeltasInto(EconomySession, Map, Map, Map)}。
+   *
    * <p>★★ <b>为什么不像旧路径那样摊批次/缩劳动/删债</b>：调用方（app 日循环）在调用本方法**之前**已经用新 Social 刷新了 {@code composition} /
    * {@code laborMilli} / {@code naturalNeeds}——劳动权威已经是结算后 Social；这里再按人口 比例缩一次会把当日权威缩两遍。人口 delta
    * 只改行人口这一项投影，其它派生量由调用方的刷新与后续 step 承担。
@@ -4688,13 +4714,51 @@ public final class EconomySettlement {
    */
   static void applyHouseholdPopulationDeltasInto(
       EconomySession session, Map<HouseholdId, Long> deltas) {
+    applyHouseholdPopulationDeltasInto(session, deltas, Map.of(), Map.of());
+  }
+
+  /**
+   * ★★★ <b>W3-fix（2026-10-11）：把 Social（人口权威）报来的逐户净变化 + 逐户出生/死亡一起落到经济侧</b>。
+   *
+   * <pre>
+   * ① row.population += delta                            // 净变化（出生 − 死亡）
+   * ② FlowRow.births += birthsByHousehold[household]     // 社会报来的出生原值 → 流水
+   *    FlowRow.deaths += deathsByHousehold[household]     // 社会报来的死亡原值 → 流水（含饥荒那一份）
+   * </pre>
+   *
+   * <p>★★ <b>为什么要有 ②</b>：净变化读不出"死了多少人"（一户同时生死时只报差），而经济侧的危机读数与流水要的正是死亡原值； 只报净变化 ⇒ {@code
+   * FlowRow.deaths} 永远是 0 ⇒ {@code CrisisMonitor} 的 MORTALITY 灯**永远不会亮**（W3b 报的读数缺口）。
+   * 本步把它接上：**经济侧仍然一个字都不判**（判死在 Social），只把社会报来的数落进流水（唯一写口 {@link #withLifecycle}）。 ★ <b>饥荒死亡是 {@code
+   * deathsByHousehold} 的子集</b>（{@code VitalSettlementResult#famineDeaths()}），故"饿死多少人"从此在
+   * 经济读数里也读得到；明细仍在 Social 的 {@code FAMINE_MORTALITY} 日志里。
+   *
+   * <p>★ <b>不做</b>：不摊批次、不缩劳动（劳动权威是结算后的 Social，调用方已刷新）、不删债、不改 {@code naturalNeeds}。
+   *
+   * <p>★★ <b>拒绝语义（fail-closed，全部在写任何一行之前）</b>：三张表的 null 键/值、0 值、值 &lt; 0、缺经济行，以及 "净变化 ≠ 出生 −
+   * 死亡"（逐户交叉核对）都具名拒（ERROR 日志 + 异常）。★ 三张表都空是合法输入（当天无生死、无人搬家）。
+   *
+   * <p>★ <b>日志</b>：报来的死亡 &gt; 0 ⇒ 一条 INFO「这一轮死了多少人、落在哪些行」（§一.9：生命周期事件走 INFO）； 只有出生 ⇒ 同事件名
+   * DEBUG。逐户明细由 Social 侧事件日志承担。
+   *
+   * @param deltas 逐家户净人口变化（出生 − 死亡；只含非 0 项）；不得为 null
+   * @param birthsByHousehold 逐家户出生原值（只含 &gt; 0 的家户）；不得为 null
+   * @param deathsByHousehold 逐家户死亡原值（只含 &gt; 0 的家户；<b>含饥荒那一份</b>）；不得为 null
+   */
+  static void applyHouseholdPopulationDeltasInto(
+      EconomySession session,
+      Map<HouseholdId, Long> deltas,
+      Map<HouseholdId, Long> birthsByHousehold,
+      Map<HouseholdId, Long> deathsByHousehold) {
     Objects.requireNonNull(session, "session");
     Objects.requireNonNull(deltas, "deltas");
-    if (deltas.isEmpty()) {
+    Objects.requireNonNull(birthsByHousehold, "birthsByHousehold");
+    Objects.requireNonNull(deathsByHousehold, "deathsByHousehold");
+    if (deltas.isEmpty() && birthsByHousehold.isEmpty() && deathsByHousehold.isEmpty()) {
       return;
     }
     LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies =
         session.sheet().householdEconomies();
+    LinkedHashMap<HouseholdId, FlowRow> flows = session.flows();
     // ① 先做全量校验：任何坏输入都在写任何一行之前具名拒（不留半落账状态）。
     long deltaSum = 0L;
     for (Map.Entry<HouseholdId, Long> entry : deltas.entrySet()) {
@@ -4775,6 +4839,44 @@ public final class EconomySettlement {
       }
       deltaSum = Math.addExact(deltaSum, delta);
     }
+    // ①b ★★ W3-fix：社会报来的两张生死原值表也在这里一次校验（同样是"写任何一行之前"）。
+    requireReportedVitalCounts(birthsByHousehold, "birthsByHousehold", householdEconomies);
+    requireReportedVitalCounts(deathsByHousehold, "deathsByHousehold", householdEconomies);
+    // ①c 交叉核对：净变化必须等于"报来的出生 − 报来的死亡"（缺键按 0 计）。Social 侧的同一条不变量在这里做**接收侧复核** ——
+    //   两侧对不上就当场拒，绝不让"落进人口的是一个数、落进流水的是另一个数"这种半落账状态存在。
+    Set<HouseholdId> lifecycleHouseholds = new LinkedHashSet<>(birthsByHousehold.keySet());
+    lifecycleHouseholds.addAll(deathsByHousehold.keySet());
+    for (HouseholdId household : lifecycleHouseholds) {
+      long births = birthsByHousehold.getOrDefault(household, 0L);
+      long deaths = deathsByHousehold.getOrDefault(household, 0L);
+      long delta = deltas.getOrDefault(household, 0L);
+      if (Math.subtractExact(births, deaths) != delta) {
+        EventLog.channel(EconomyLog.population())
+            .error(
+                LogEvent.of(
+                    "HOUSEHOLD_VITAL_WRITEBACK_REJECTED",
+                    EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                    "reason",
+                    "lifecycle-delta-mismatch",
+                    "household",
+                    household,
+                    "births",
+                    births,
+                    "deaths",
+                    deaths,
+                    "delta",
+                    delta));
+        throw new IllegalArgumentException(
+            "报来的逐户生死与净人口变化不一致（拒绝落账）: household="
+                + household
+                + " births="
+                + births
+                + " deaths="
+                + deaths
+                + " delta="
+                + delta);
+      }
+    }
     // ② 校验全过后再写：population += delta；laborMilli 原样（调用方已按新 Social 重算）。
     for (Map.Entry<HouseholdId, Long> entry : deltas.entrySet()) {
       HouseholdId household = entry.getKey();
@@ -4782,6 +4884,46 @@ public final class EconomySettlement {
       long nextPopulation = Math.addExact(row.population(), entry.getValue());
       householdEconomies.put(
           household, withPopulationAndLabor(row, nextPopulation, row.laborMilli()));
+    }
+    // ③ ★★ W3-fix：社会报来的**出生/死亡**逐行追进流水（唯一写口 withLifecycle）。
+    //   键序 = 家户行序（与 settleOneDayInto 的流水键序同一规则）⇒ 状态键序仍是输入的确定性函数。
+    //   ★ 这里只"落账"：不判定谁死、不缩劳动、不删债 —— 那些都已由 Social 判定/由调用方刷新。
+    if (!birthsByHousehold.isEmpty() || !deathsByHousehold.isEmpty()) {
+      long reportedBirths = 0L;
+      long reportedDeaths = 0L;
+      long lifecycleRows = 0L;
+      for (Map.Entry<HouseholdId, HouseholdEconomy> entry : householdEconomies.entrySet()) {
+        HouseholdId household = entry.getKey();
+        long births = birthsByHousehold.getOrDefault(household, 0L);
+        long deaths = deathsByHousehold.getOrDefault(household, 0L);
+        if (births == 0L && deaths == 0L) {
+          continue; // 绝大多数行与今天无关：不碰它们的流水（保住"没发生额就不建行"）
+        }
+        flows.put(household, withLifecycle(flows.get(household), household, births, deaths));
+        reportedBirths = Math.addExact(reportedBirths, births);
+        reportedDeaths = Math.addExact(reportedDeaths, deaths);
+        lifecycleRows++;
+      }
+      // ★ §一.9：死亡是生命周期事件 ⇒ INFO；只有出生 ⇒ DEBUG（同事件名、同字段，避免每天一条 INFO 噪声）。
+      LogEvent vital =
+          LogEvent.of(
+              "HOUSEHOLD_VITAL_WRITEBACK",
+              EconomyLogSource.ECONOMY_POPULATION_WRITE,
+              "households",
+              lifecycleRows,
+              "births",
+              reportedBirths,
+              "deaths",
+              reportedDeaths,
+              "unit",
+              "person",
+              "why",
+              "w3-fix: social-is-population-authority; economy-receives-births-deaths-into-flowrow");
+      if (reportedDeaths > 0L) {
+        EventLog.channel(EconomyLog.population()).info(vital);
+      } else if (EconomyLog.population().isDebugEnabled()) {
+        EventLog.channel(EconomyLog.population()).debug(vital);
+      }
     }
     if (EconomyLog.population().isDebugEnabled()) {
       EventLog.channel(EconomyLog.population())
@@ -4795,6 +4937,62 @@ public final class EconomySettlement {
                   deltaSum,
                   "unit",
                   "person"));
+    }
+  }
+
+  /**
+   * ★★ <b>W3-fix：校验"社会报来的逐户生死原值表"</b>（键必须落在经济家户行上；值非 null、&gt; 0）——坏项在写任何一行之前具名拒 （ERROR 日志 + 异常，与逐户
+   * delta 表同一条 fail-closed 口径）。
+   *
+   * <p>★ <b>为什么键必须在行上</b>：本步只往**已存在的家户行**落流水（不凭空建行）—— 报来一个没有行的家户 = Social/Economy
+   * 投影不一致的装配故障，静默跳过会让"社会说死了人、经济流水里没有"这种半落账状态留下来。
+   *
+   * @param counts 逐户出生或死亡原值表（只含 &gt; 0 的家户）；不得为 null
+   * @param field 表名（只进日志/异常文本，便于具名定位）
+   * @param householdEconomies 经济家户行工作表
+   */
+  private static void requireReportedVitalCounts(
+      Map<HouseholdId, Long> counts,
+      String field,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies) {
+    for (Map.Entry<HouseholdId, Long> entry : counts.entrySet()) {
+      HouseholdId household = entry.getKey();
+      Long count = entry.getValue();
+      String reason = null;
+      if (household == null) {
+        reason = "null-household-key";
+      } else if (count == null) {
+        reason = "null-count";
+      } else if (count < 0L) {
+        reason = "negative-count";
+      } else if (count == 0L) {
+        reason = "zero-count";
+      } else if (!householdEconomies.containsKey(household)) {
+        reason = "unknown-household-row";
+      }
+      if (reason == null) {
+        continue;
+      }
+      EventLog.channel(EconomyLog.population())
+          .error(
+              LogEvent.of(
+                  "HOUSEHOLD_VITAL_WRITEBACK_REJECTED",
+                  EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                  "reason",
+                  reason,
+                  "field",
+                  field,
+                  "household",
+                  household == null ? "-" : household));
+      throw new IllegalArgumentException(
+          "报来的逐户生死原值表不合法（拒绝落账）: field="
+              + field
+              + " reason="
+              + reason
+              + " household="
+              + household
+              + " count="
+              + count);
     }
   }
 
@@ -4821,7 +5019,8 @@ public final class EconomySettlement {
    * @param debtorContracts 该债务人的合同 id 清单（只读派生；合同表仍是权威）
    * @param debtor 本行家户（＝债务人）
    * @param population 本行死亡前人口（&gt; 0）
-   * @param deaths 本行的死亡数（≤ population；来自 {@link #allocate}）
+   * @param deaths 本行摊到的死亡数（**社会报来的死亡**按人口权重摊到本行的那一份；≤ population；来自 {@link #allocate}）——
+   *     它是"经济侧为**已死的人**做债务善后"的输入，不是"经济侧决定死多少人"（判死在 Social）
    * @param debtWriteOffs 会话瞬态删债累加器（就地更新；键 = 债务人）
    */
   private static void writeOffDebtsForDeaths(
@@ -4934,9 +5133,16 @@ public final class EconomySettlement {
   }
 
   /**
-   * 追加一条流水行的人口变动（{@code births}/{@code deaths}）——**保留**该行本期的其它发生额（不覆盖）。
+   * ★★ <b>{@code FlowRow.births}/{@code FlowRow.deaths} 的唯一写口</b>：把**外部（社会，人口权威）报来的**出生/死亡原值
+   * 追加进一条流水行 ——**保留**该行本期的其它发生额（不覆盖）。
+   *
+   * <p>★★ <b>语义（W3-fix 2026-10-11）：接收方，不是判定方</b>：本方法**不产生**任何生死判定，{@code births}/{@code deaths}
+   * 两个数由调用方（{@code VitalSettlementResult} 的逐户原值 / {@code LotChange} 的逐批次账）原样传来；经济侧也不在这里缩劳动、 不删债 ——
+   * 它只把"社会说死了/生了多少"落进流水读数（口径见 {@link FlowRow#deaths()}）。
    *
    * <p>★ 流水行缺席（该行本期还没有任何发生额）⇒ 以一条全零的流水起步：{@code FlowRow} 的其余字段本来就有合法零值， 而"这一行这个月死了人"必须**读得出来**。
+   *
+   * <p>★ 累加口径 = 本周期累计（新周期第一天由 {@code settleOneDayInto} 整行归零，与 {@code unmetNeed} 同窗口）。
    */
   private static FlowRow withLifecycle(FlowRow flow, HouseholdId key, long births, long deaths) {
     FlowRow base =

@@ -525,7 +525,12 @@ public final class EconomyDayStepper implements AutoCloseable {
                 modifierPerMille == null ? "-" : modifierPerMille));
   }
 
-  /** ★★ 把逐批次出生/死亡回写经济侧（行人口、劳动配额与流水；成员份额由 Social 权威维护，本侧不再持副本）。 */
+  /**
+   * ★★ 把**外部（社会/命令面）报来的**逐批次出生/死亡回写经济侧（行人口、劳动配额与流水；成员份额由 Social 权威维护，本侧不再持副本）。
+   *
+   * <p>★ <b>语义（W3-fix 2026-10-11）</b>：这是**接收**入口，不是判死入口 —— 经济侧不判定死亡、不按缺口处死（见 {@link
+   * EconomySettlement#applyPopulationChange}）。
+   */
   public void applyPopulationChange(List<LotChange> changes) {
     Objects.requireNonNull(changes, "changes");
     if (!changes.isEmpty()) {
@@ -550,11 +555,39 @@ public final class EconomyDayStepper implements AutoCloseable {
    * delta，最后 {@link #step(long)}。★ 劳动预算已在前面按新 Social 重算，故本方法**不动** {@code laborMilli}
    * ——在这里再按人口比例缩一遍会把 Social 的当日权威缩两次。
    *
+   * <p>★★ <b>本重载不带生死流水</b>：调用方是"人在户与户之间搬"的两条路（P0 迁移桥 outbox、Z7d-2 逃亡）—— 搬人不产生出生/死亡。 逐 tick 的生死走三参重载
+   * {@link #applyHouseholdPopulationDeltas(Map, Map, Map)}。
+   *
    * @param deltas 逐家户净人口变化（出生 − 死亡；只含非 0 项）；不得为 null
    */
   public void applyHouseholdPopulationDeltas(Map<HouseholdId, Long> deltas) {
     Objects.requireNonNull(deltas, "deltas");
     EconomySettlement.applyHouseholdPopulationDeltasInto(session, deltas);
+  }
+
+  /**
+   * ★★★ <b>W3-fix（2026-10-11）：把 Social（人口权威）报来的逐户净变化 + 逐户出生/死亡一起落到经济侧</b> ——委托 {@link
+   * EconomySettlement#applyHouseholdPopulationDeltasInto(EconomySession, Map, Map, Map)}。
+   *
+   * <p>★★ <b>为什么要把出生/死亡原值也传进来</b>：只传净变化时 {@code FlowRow.births}/{@code FlowRow.deaths} 永远是 0，
+   * 经济侧的危机读数（{@code CrisisMonitor} 的 MORTALITY 灯）与人口守恒读数因此没有输入；净变化在一户同时生死时只报差， 反推不出死亡数。★
+   * 经济侧收到后**只落账**（唯一写口 {@code EconomySettlement.withLifecycle}），**不判定死亡、不缩劳动**。
+   *
+   * <p>★ <b>拒绝语义</b>：三张表的 null 键/值、0 值、缺经济行，以及"净变化 ≠ 出生 − 死亡"都具名拒（ERROR + 异常，写任何一行之前）。
+   *
+   * @param deltas 逐家户净人口变化（出生 − 死亡；只含非 0 项）；不得为 null
+   * @param birthsByHousehold 逐家户出生原值（只含 &gt; 0 的家户）；不得为 null
+   * @param deathsByHousehold 逐家户死亡原值（只含 &gt; 0 的家户；含饥荒那一份）；不得为 null
+   */
+  public void applyHouseholdPopulationDeltas(
+      Map<HouseholdId, Long> deltas,
+      Map<HouseholdId, Long> birthsByHousehold,
+      Map<HouseholdId, Long> deathsByHousehold) {
+    Objects.requireNonNull(deltas, "deltas");
+    Objects.requireNonNull(birthsByHousehold, "birthsByHousehold");
+    Objects.requireNonNull(deathsByHousehold, "deathsByHousehold");
+    EconomySettlement.applyHouseholdPopulationDeltasInto(
+        session, deltas, birthsByHousehold, deathsByHousehold);
   }
 
   /**

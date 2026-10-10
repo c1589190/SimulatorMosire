@@ -282,3 +282,147 @@ rc=0
   本批**不动生产代码**（越界），如实上报（若要让"恒 0"成为全仓结论，需 W4/W6 决定该 API 的去留）。
 - 未做：`FlowRow.deaths` 读口的负向用例、`SettlementStage.RATION_GAP_REPORT` 的具名序用例、饥荒死亡率标定值用例 —— 均属
   新测试（§三.0 / §3-⑤ 明令不由本批写）。
+
+---
+
+# W3-fix（deaths 语义收口）
+
+> 责任区：把 W3 账本 §五-5 与 W3b-5 写的「`FlowRow.deaths` **结构性恒 0**」换成**正确语义**（W3b 实测：未删的
+> `applyPopulationChange` / `withLifecycle` 仍会写非 0 `deaths`），并把"社会报来的死亡（含饥荒那一份）"这条**读数**接进经济侧。
+> 控制方裁定（本批任务书 §1）：`deaths` = 「**由社会（人口权威）报来的死亡数**」；经济侧是**接收方**，不是判定方。
+> ★ 本批**不回头改** W3/W3b 的旧行（§五.4 留痕）——以本节为准。
+
+## W3f-1 语义改动（`file:line` + 前后对照）
+
+| # | 落点 | 改前 | 改后 |
+|---|---|---|---|
+| 1 | `simos-economy/.../model/FlowRow.java:35`（类注段） | 「`deaths` 自 W3 起**结构性恒为 0**…读口读到的 `deaths == 0` 是**结构结论**」 | 「`deaths` 的语义：**由社会（人口权威）报来的死亡数**；经济侧是**接收方，不是判定方**（不判死、不缩劳动）；唯一写口 `withLifecycle`，两条入口 = 逐户回写 + 批次回写；窗口 = 本周期累计」 |
+| 2 | `FlowRow.java:81`（`@param deaths`） | 「W3 起恒为 0…它既不写这里的逐户 `births`/`deaths` 流水」 | 「**由社会报来**：Social 每 tick 结算（唯一判定方），App 把逐户净变化 + 逐户原值一起回写；经济侧只把报来的死亡数累加进本字段」 |
+| 3 | `FlowRow.java:86`（`@param births`） | 「与 `deaths` 对称（R4 起人口两头都会动…）」 | 追加「**同一次回写里由社会报来**，经济侧同样只是接收方」 |
+| 4 | `EconomySettlement.java:4537-4569`（`applyPopulationChange`） | javadoc **悬空**（写在 `:4349` 那一段，离方法 180 行；语法上根本没挂到方法上，方法本身无 javadoc） | 移到方法**正上方** + 新增一段「**接收方入口，不是判定方**」；`:4349-4352` 原位留指针注释说明已移动 |
+| 5 | `EconomySettlement.java:4581-4586`（`applyPopulationChangeInto`） | 只有一句「session 形态」 | 追加「语义同 `applyPopulationChange`：接收外部报来的生死；删债是对**既成事实**的后果处理，不是决定谁死」 |
+| 6 | `EconomySettlement.java:5022`（`writeOffDebtsForDeaths` 的 `@param deaths`） | 「本行的死亡数（≤ population；来自 `allocate`）」 | 「**社会报来的死亡**按人口权重摊到本行的那一份…这是经济侧为**已死的人**做债务善后，不是决定死多少人」 |
+| 7 | `EconomySettlement.java:3229-3235`（日结算 `dayDeaths`） | 「经济侧不再产生任何死亡 ⇒ 当日死亡恒 0」 | 追加「`FlowRow.deaths` 的非 0 值来自**社会报来的死亡**，由逐户回写在**本步之后**写进同一行流水；`acc.deaths() + dayDeaths` 是原样带过，**不是清账**（清账只在 `newCycleHouseholds` 那一支）」 |
+| 8 | `EconomySettlement.java:3458-3461`（`DAY_END` 的 `deaths` 字段） | 「本字段结构性恒 0，留作读口形状」 | 「本字段 = **本阶段（经济日结算）自己产生的死亡数** ⇒ 恒 0；社会报来的死亡另发 `HOUSEHOLD_VITAL_WRITEBACK`；**别读成"今天没人死"**」 |
+| 9 | `EconomyDayStepper.java:528-533`、`:559-560`（两个入口的 javadoc） | 「把逐批次出生/死亡回写经济侧」 | 「把**外部（社会/命令面）报来的**…回写；这是**接收**入口，不是判死入口」；2 参重载加「不带生死流水（搬人 ≠ 生死）」 |
+| 10 | `simos-app/.../crisis/CrisisMonitor.java:181-184`（读口） | 无注释 | 「`flow.deaths()` = **社会报来的本周期死亡数**；窗口 = 本周期累计，与 `population`（当日存量）**不同窗口**」 |
+| 11 | `simos-app/.../gui/ApiViews.java:4125-4127`（读口） | 无注释 | 同上（语义 + 窗口 + 饥荒死亡是子集） |
+
+**命名（任务书 §1 第三条）**：核对后**不改名**——经济侧没有任何"听起来像判死"的 API：两个入口（`applyPopulationChange` /
+`applyHouseholdPopulationDeltas`）名字都是「apply（接收）报来的人口变化」，误导点在**javadoc 缺失/悬空**（已按上表补齐）；
+`writeOffDebtsForDeaths` 是「为死者做债务善后」，也不是判死。⇒ 按任务书「改名**或**加明确注」的**后一支**走；**不留兼容别名**（§一.11）。
+
+## W3f-2 `simos-economy/src/main` 里写 `deaths` 的点（逐个说明）
+
+`grep -rn "\.deaths()\|new FlowRow(" simos-economy/src/main` 的全部命中，逐条定性：
+
+| # | `file:line` | 是不是"判定" | 证据 |
+|---|---|---|---|
+| 1 | `FlowRow.java:106`（record 组件）/ `:136-137`（非负守卫） | ❌ 存储 + 守卫 | 只把调用方给的数存下来；`deaths < 0` 具名拒；**无任何公式** |
+| 2 | `FlowRow.java:241`（`withAdditionalGrainTaxPaid`） | ❌ 原样搬运 | 新 record 的 `deaths` 槽位直接填 `deaths`（税那一支不动人口列） |
+| 3 | `EconomySettlement.java:5147`（`withLifecycle`，**唯一累加点**） | ❌ 落账 | `base.deaths() + deaths`（`:5163`）；入参由调用方**原样**传来；方法内零判定、零公式、不缩劳动；缺席行以全零起步 |
+| 3a | ↳ 调用点 `EconomySettlement.java:4665`（批次侧 `applyPopulationChangeInto`） | ❌ 接收 | 数来自 `LotChange.deaths()`（economy-api 桥类型，类注原文：「出生/死亡的**判定**在 social，**落实**在 economy」）；★ **实测 `src/main` 零调用点**，只有 `GovServiceCommitmentC7Test` / `DeathDebtWriteOffTest` 调用 |
+| 3b | ↳ 调用点 `EconomySettlement.java:4902`（逐户侧，**本批新增**） | ❌ 接收 | `deathsByHousehold` 由 `VitalSettlementResult` 原样传来（Social 结算产物），经济侧只 `put` 进流水 |
+| 4 | `EconomySettlement.java:3259`（`settleOneDayInto` 的流水重建） | ❌ 搬运 + 清账 | `(acc == null ? 0L : acc.deaths()) + dayDeaths`，而 `dayDeaths ≡ 0L`（`:3235`，本步不判死）；`acc == null` 只发生在**新周期第一天**（清账），不是重算 |
+| 5 | `EconomyCodec.LegacyFlowRowDeserializer`（`:471-493`） | ❌ 反序列化 | Jackson 读回字段值（含旧键 `key` 整形）；不是判定 |
+
+**「经济侧不再判死」的可核证据（grep）**：
+
+```
+$ grep -rnE "applyFamine|scaleLaborOfUnit|FAMINE_MORTALITY_PER_MILLE|famineMortalityPerMille|deathsToday" \
+    --include=*.java simos-economy/src/main/java
+6 命中，逐条已核全部是注释/javadoc：EconomyDayStepper:132、EconomySettlement:379 / 3230 / 4555 / 9893、FlowRow:37
+⇒ 零代码引用：判死通道（致死率常量 + 按缺口处死 + 劳动缩放）确实不在生产代码里。
+```
+
+★ 经济侧对"人"的唯一动作仍是**报缺口**（`EconomySettlement.reportHouseholdGaps`，类注 `:9893`）；本批只多了一条
+「接收社会报来的生死并落进流水」——**接收**，不是判定。
+
+## W3f-3 famine 死亡是否已进经济读数：改前**否**，本批接上
+
+**改前的事实链（读数缺口）**：Social 的饥荒死亡与基准死亡**共用 DEATH 余数**（`HouseholdBook.java:924-931`），逐户死亡进
+`VitalSettlementResult.deaths()` / `famineDeaths()`；但 App 只把**净变化**回写经济（旧 `PopulationEconomyTimeParticipant.java:752`
+= `applyHouseholdPopulationDeltas(vital.populationDeltas())`），而逐户入口**只写 `population`、不写流水**（旧 `:4778-4785`）
+⇒ `FlowRow.deaths` 在**主路径上恒 0** ⇒ `CrisisMonitor` 的 MORTALITY 灯**结构性不可达**。
+
+**接法（复用既有写口，不新增机制）**：
+
+1. **Social 报出逐户原值**（净变化读不出原值）：
+   - `HouseholdBook.java:832-833` 两张新表；`:1033-1041` 在**已经算好 `householdBirths`/`householdDeaths` 的同一处**填表（只填 > 0 的家户）；
+   - `VitalSettlementResult.java:48-49` 两个新组件；`:111-152` 构造期逐户自洽核：`Σ births == births`、`Σ deaths == deaths`、
+     `births − deaths == populationDeltas`（缺键按 0）⇒ 「报出去的生死」与「落到经济行的净 delta」不可能各说各话。
+2. **App 一并回写**（同一次修订、同一次写入）：`PopulationEconomyTimeParticipant.java:758-760`
+   `stepper.applyHouseholdPopulationDeltas(vital.populationDeltas(), vital.birthsByHousehold(), vital.deathsByHousehold())`。
+3. **经济侧落账**：`EconomyDayStepper.java:582` → `EconomySettlement.applyHouseholdPopulationDeltasInto`（四参，`:4747`）
+   - ①b/①c `:4843-4878` 先全量校验（三张表的 null / 0 / 负 / 缺行 + `net == births − deaths` 交叉核对），
+     任何坏输入在**写任何一行之前**具名拒；`requireReportedVitalCounts` 在 `:4954`；
+   - ③ `:4888-4905` 逐行 `withLifecycle`（唯一写口，调用点 `:4902`）把报来的出生/死亡累加进 `FlowRow.births` / `FlowRow.deaths`；
+     循环走**家户行序**（与 `settleOneDayInto` 的流水键序同一规则）⇒ 状态键序仍是输入的确定性函数；
+   - **不**摊批次、**不**缩劳动、**不**删债、**不**改 `naturalNeeds`。
+   - 2 参重载 `:4715` 一字未改（迁移桥 `:713`、逃亡 `:1062` 走它 ⇒ 搬人**不**产生出生/死亡流水）。
+
+⇒ **famine 死亡现在会落进 `FlowRow.deaths`**（它是子集）：`VitalSettlementResult.java:82-87` 的 `famineDeaths ≤ deaths` 不变量
++ `Σ deathsByHousehold == deaths`。★ **缺省中性**：某天完全无生死 ⇒ 三张表都空 ⇒ 早退，逐值不变。
+
+**新增日志**（§一.9；只读、不写状态、失败不影响结算）：
+
+- `HOUSEHOLD_VITAL_WRITEBACK`（`:4907-4926`）：`households / births / deaths / unit / why`；**死亡 > 0 ⇒ INFO**，
+  只有出生 ⇒ 同事件名 DEBUG（避免每天一条 INFO 噪声）。
+- `HOUSEHOLD_VITAL_WRITEBACK_REJECTED`（交叉核对 `:4857`、原值表校验 `:4979`，均 ERROR）：`reason / field / household`，
+  取值 `null-household-key` / `null-count` / `negative-count` / `zero-count` / `unknown-household-row` / `lifecycle-delta-mismatch`；
+  **先记 ERROR、再抛**（fail-closed）。
+- 既有 `FAMINE_MORTALITY_BRIDGED`（app `:764`，INFO）仍在且 `famineDeaths` 字段未变 ⇒ "谁因什么死了多少"两条日志（Social + App）都在。
+
+## W3f-4 命令与结果（真命令 + rc）
+
+```
+$ tools/mvn-lock.sh -q spotless:apply            # rc=0（第三次复跑确认无格式残留；只改了本批 8 个文件，无别模块连坐）
+$ tools/mvn-lock.sh -DskipTests compile -am      # rc=0；[INFO] BUILD SUCCESS；16/16 模块 SUCCESS（含 economy/social/app）
+```
+
+- 日志：`/tmp/w3fix-compile3.log`（前两轮 `/tmp/w3fix-compile.log`、`/tmp/w3fix-compile2.log` 同为 rc=0）。
+- `target/classes` 关键类 mtime 落在本轮（`05:46:18`–`05:46:22`）⇒ 不是拿旧产物当绿。
+- `git status --porcelain` = **8 个文件**，全部在允许范围内（economy 3 + social 2 + app 3）；**未碰** `simos-unit` / `simos-sd` /
+  `simos-core` / `docs/**` / `AGENTS.md`；**未 `git commit`**。
+
+## W3f-5 会改变数值行为的清单
+
+| # | 条目 | 是否改数值 |
+|---|---|---|
+| 1 | `FlowRow.births` / `FlowRow.deaths` 从"主路径恒 0"变为「**社会报来的逐户原值、本周期累计**」 | ❌ **不是公式变化**，是**状态列/读数**变化。已逐条核实：全仓 `src/main` 内**没有任何算式读** `flow.births()` / `flow.deaths()`（读点只有 `ApiViews.java:4128-4129`（GUI 视图）与 `CrisisMonitor.java:185`（GUI 危机灯；`lightsAt` 只在 `ApiViews.java:5674` 被调用 ⇒ 纯读、不回写状态）） |
+| 2 | 受影响的**读数**（具名）：`ApiViews.flowView` 的 `deaths` / `births`；GUI 危机灯的 `MORTALITY` **现在可能亮**（`deaths×1000÷population > 20‰`；窗口 = 本周期累计 ÷ 当日人口，判据口径**未改**，只是分母/分子第一次有输入） | 读数变化（非模拟数值） |
+| 3 | `VitalSettlementResult` **+2 组件**（`birthsByHousehold` / `deathsByHousehold`） | ❌ 瞬时返回值形状；不落状态、不进任何算式（唯一构造点 `HouseholdBook.java:1148`） |
+| 4 | 新日志事件 2 个（`HOUSEHOLD_VITAL_WRITEBACK`、`HOUSEHOLD_VITAL_WRITEBACK_REJECTED`）+ 既有 `DAY_END` 注释订正 | ❌ 零数值影响 |
+| 5 | 新入口重载（`EconomyDayStepper.applyHouseholdPopulationDeltas` 3 参 / `EconomySettlement.applyHouseholdPopulationDeltasInto` 4 参） | ❌ **纯增量**：2 参形态一字未改 |
+| 6 | 日结算 `dayDeaths ≡ 0`、`DAY_END` 的 `deaths=0`、`acc.deaths() + dayDeaths` 算式 | ❌ 一字未改（只改注释） |
+
+⇒ **模拟数值（人口 / 钱 / 货 / 债 / 价格 / 劳动）零变化**；变化只落在"经济侧的出生/死亡读数"与两条日志上。
+
+## W3f-6 偏离记录 / 未完成 / 未验证（如实）
+
+**偏离（主动记）**：
+
+1. **没有改名，只加注**（任务书给的是"改名**或**加明确注"）：两个入口的名字都不含"判定"语义，误导点是 javadoc 缺失/悬空 ⇒ 走后一支。
+2. **接线的载荷放在 `VitalSettlementResult`（social）+ 逐户入口（economy）**，而不是让 App 从 `vital.events()` 反推逐户生死：
+   反推会在 Social 将来新增第三种生命事件时**静默漏记**；放进结果可带构造期不变量（Σ == 总数、逐户 == delta），
+   并在经济侧再做一次**接收复核**（`EconomySettlement.java:4844-4878`）。这是读数缺口的 fail-closed 接法，不是新机制。
+3. **`DAY_END` 的 `deaths` 键保留（值仍 0）**：`docs/superpowers/specs/2026-10-04-economy-logging.md:118` 把该字段写进了 `DAY_END`
+   的字段清单，而 `docs/**` 本批**禁改** ⇒ 改名会造成"代码 vs 日志规格"漂移。改为：注释写清"这是**本阶段自己产生**的死亡数，
+   别读成今天没人死"，并由 `HOUSEHOLD_VITAL_WRITEBACK` 承担"今天社会报来多少死亡"。
+4. **`FlowRow.births` 一并接上**（不只 `deaths`）：同一张原值表、同一个写口；人口守恒读数（`年末人口 − 创世人口 == 出生 − 死亡`）
+   要求两头都在。
+
+**未完成 / 未验证**：
+
+- **一条测试都没跑**（本批明令不许 `test` / `verify` / `package` / `clean`）；**也没跑 `test-compile`**（不在授权命令集内）
+  ⇒ **测试树能否编译未实测**。静态评估：无任何测试构造 `VitalSettlementResult`（`grep -rn "new VitalSettlementResult(" .` 只 1 处，
+  在 `HouseholdBook.java:1148`），两个旧入口的 2 参形态一字未删 ⇒ 预期不破编译；**仍须由测试 Agent 实跑确认**。
+- **真实 world 一条没跑** ⇒ "接上后 `FlowRow.deaths > 0`"是**静态链条**（Social 逐户原值 → App 三参回写 → 经济 `withLifecycle`），
+  **不是实测数字**。给测试 Agent 的候选判据：① 驱动真日循环 N 天后某户 `flows().get(h).deaths() > 0`，且 `Σ deaths` 与 Social 侧
+  同周期 `deaths` 一致；② 把 `deathsByHousehold` 改坏 ⇒ 经济侧 `HOUSEHOLD_VITAL_WRITEBACK_REJECTED` 当场红（负向用例）；
+  ③ 三张表空 ⇒ 逐值不变（缺省中性）；④ 高死亡率世界里 `CrisisMonitor.lightsAt` 能产出 `Kind.MORTALITY` 灯（改前结构性不可达）。
+- **性能未测**：四参入口在"当天有生死"时多一次 O(家户行) 扫描（迁移/逃亡那两条路走 2 参、两表为空 ⇒ 不扫）。
+- **`FlowRow` 的形状/往返不变式**未在本批验证（本批未改形状 ⇒ 不触及铁律 5 的新增面）。
+- **文档漂移（只报不改）**：`docs/superpowers/specs/2026-10-04-economy-logging.md:110` 仍写「`13` 饿死｜有死亡 ⇒ INFO
+  （closedUnits/deaths/unmet）」——该通道已随 W3 删除，"谁因什么死了多少"现在在 Social 的 `FAMINE_MORTALITY` 与 App 的
+  `FAMINE_MORTALITY_BRIDGED`。请控制方决定何时追加标注（§五.4：不篡改历史行）。

@@ -32,11 +32,18 @@ import java.util.Map;
  * unmetToday}）是"报给 Social 的口粮缺口那一支"的分子（{@link
  * io.mosire.simos.economy.time.EconomyHouseholdGap}）；本字段仍是**周期累计**口径 —— 两者窗口不同，别混读。
  *
- * <p>★★ **{@code deaths} 自 W3 起结构性恒为 0**（不是"默认 0‰ 的可调旋钮"）：<b>经济侧不再判死、不再缩劳动</b> —— 死亡率与劳动是 Social
- * 的唯一权威（AGENTS §〇 模块表；约束设计书 S-11 第②半）。原 {@code
- * EconomySettlement.applyFamine}（直接按缺口处死）与致死率常量、以及死亡的劳动缩放已按 AGENTS §一.11 <b>整段删除</b>；
- * 经济侧改为把逐户缺口<b>报出去</b>（{@code EconomySession#drainPendingHouseholdGaps()}）。 ★ 字段**保留不删**（v1 spec
- * §3.3 的形状、读口与守恒式仍读它）；★ 读口读到的 {@code deaths == 0} 现在是**结构结论**，不是"没在记"。
+ * <p>★★ <b>{@code deaths} 的语义（W3-fix 2026-10-11 收口）：它是「<b>由社会（人口权威）报来的死亡数</b>」</b>—— 经济侧是
+ * <b>接收方，不是判定方</b>：<b>经济侧不判定死亡、不缩放劳动</b>（死亡率与劳动口径都是 Social 的唯一权威；AGENTS §〇 模块表； 约束设计书 S-11 第②半）。原
+ * {@code EconomySettlement.applyFamine}（直接按缺口处死）与致死率常量、以及死亡的劳动缩放已按 AGENTS §一.11
+ * <b>整段删除</b>；经济侧改为把逐户缺口<b>报出去</b>（{@code EconomySession#drainPendingHouseholdGaps()}），由 Social
+ * 算死、再把逐户出生/死亡交回来，经济侧把它们<b>落进本字段</b>（唯一写口 {@code EconomySettlement#withLifecycle}；入口 {@code
+ * EconomySettlement#applyHouseholdPopulationDeltasInto} 与批次侧的 {@code
+ * EconomySettlement#applyPopulationChange}）。★ 两条入口是<b>同一条语义</b>：都是"外部报来的生死落在流水上"，经济侧一字不判。 ★ 窗口 =
+ * <b>本周期累计</b>、新周期第一天归零（与 {@code unmetNeed} 同口径）。
+ *
+ * <p>★ <b>报"饿死多少人"仍走 Social 的日志</b>（{@code FAMINE_MORTALITY}，含逐户 starvationRatio 与饥荒死亡数）；本字段是那个数在
+ * <b>经济流水里的同值投影</b>（饥荒死亡 ⊆ 死亡，见 {@code VitalSettlementResult#famineDeaths()}）。 ★ 字段**保留不删**（v1 spec
+ * §3.3 的形状、读口与守恒式仍读它）。
  *
  * <p>★ **不变量（构造期判）**：{@code taxPaid}/{@code interestDue}/{@code newBorrowing}/{@code repaid}/{@code
  * unmetNeed}/{@code deaths} 均 {@code ≥ 0}；{@code income}/{@code consumed} 键值非空、逐值 {@code ≥
@@ -71,13 +78,13 @@ import java.util.Map;
  *     <p>★★ <b>统计窗口（M0.2 写明，报数前必读）</b>：口径 = <b>本周期累计</b>，<b>归档在关账那一支的 revision 里</b>、
  *     次日（新周期第一天）清零。⇒ ① <b>关账日</b>读到的是一整个周期缺的量（正确用法）；② <b>非关账日</b>读到的是"本周期到现在为止"
  *     的量（会逐日长大，**不可**当成整周期缺口）；③ 关账日的 {@code income}/{@code consumed} 同样是一整个周期的量。 三处读法混用是本仓踩过六次的口径坑。
- * @param deaths 本期死亡的人口（人）；不得为负。★★ <b>W3 起恒为 0</b>：出生/死亡由 Social 每 tick 结算（唯一权威）， 经济侧只同步家户行 {@code
- *     population}（{@code EconomyDayStepper.applyHouseholdPopulationDeltas}）—— 它既不写这里的 逐户 {@code
- *     births}/{@code deaths} 流水，也不再有任何"直接按缺口处死"的通道（那条路径已整段删除）。
- *     <p>★ <b>报"饿死多少人"必须走 Social 的日志</b>（{@code FAMINE_MORTALITY}，含逐户 starvationRatio 与饥荒死亡数）；
- *     本字段读到的 0 是结构结论。
- * @param births 本期出生的人口（人）；不得为负；与 {@code deaths} **对称**（R4 起人口两头都会动，只记死亡会让 "年末人口 − 创世人口 == 出生 −
- *     死亡"写不出来）
+ * @param deaths 本期死亡的人口（人）；不得为负。★★ <b>由社会（人口权威）报来</b>：Social 每 tick 结算出生/死亡（唯一判定方）， App
+ *     把逐户净变化与逐户出生/死亡一起回写经济侧（{@code EconomyDayStepper#applyHouseholdPopulationDeltas}），
+ *     经济侧只把"报来的死亡数"累加进本字段（{@code EconomySettlement#withLifecycle}）—— <b>不判定死亡、不缩放劳动</b>。
+ *     <p>★ <b>报"饿死多少人"走 Social 的日志</b>（{@code FAMINE_MORTALITY}，含逐户 starvationRatio 与饥荒死亡数）；
+ *     本字段是它在经济流水里的<b>同值投影</b>（饥荒死亡 ⊆ 本字段）。★ 窗口 = <b>本周期累计</b>、新周期第一天归零。
+ * @param births 本期出生的人口（人）；不得为负；**与 {@code deaths} 对称**（R4 起人口两头都会动，只记死亡会让 "年末人口 − 创世人口 == 出生 −
+ *     死亡"写不出来）。★★ 与 {@code deaths} 同一次回写里由<b>社会报来</b>，经济侧同样只是接收方（同上：不判定、不缩放）。
  * @param repaidMoney ★★ <b>P11.1 / D-023：本期偿还**实际走货币腿**的逐币种毫钱</b>—— 键值非空、逐值 ≥ 0。 <b>不塞进 {@link
  *     #repaid()}</b>（那个标量是粮口径；把钱记成粮 = 篡改单位）。窗口与 {@code income}/消费同： 本周期累计、新周期第一天归零。★
  *     它不再等于“货币债本金”：钱可以按价折付任何计价口径的债务，这里记真实出账的钱；贷方收到的钱由 actor 账户与合同本金下降读，两处同值。

@@ -178,6 +178,10 @@ public final class CrisisMonitor {
       if (flow != null) {
         grainUnmet += flow.unmetNeed().getOrDefault(commodityGrain(), 0L);
         clothUnmet += flow.unmetNeed().getOrDefault(commodityCloth(), 0L);
+        // ★★ W3-fix（2026-10-11）：{@code flow.deaths()} = **社会（人口权威）报来的本周期死亡数**——
+        //   经济侧不判定死亡，只把社会报回的逐户死亡累加进流水（{@code EconomySettlement.withLifecycle}）。
+        //   ★ 窗口 = 本周期累计（新周期第一天归零），与下面的 {@code population}（当日存量）**不同窗口**：
+        //     本灯读的是"这一周期至今死了多少"，不是"今天死了多少"。
         deaths += flow.deaths();
         borrowing += flow.newBorrowing();
       }

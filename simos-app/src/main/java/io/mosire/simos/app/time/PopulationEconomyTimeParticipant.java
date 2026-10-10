@@ -745,11 +745,18 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               HouseholdBook.settleOneTick(
                   currentSocial, day, CalendarClock.julianDefault(), famineGaps.input());
           currentSocial = vital.data();
-          // ── ⑥ 回写人口 delta + 用新 Social 刷新投影（供同日 gov 阶段与下一天使用）────────────
+          // ── ⑥ 回写人口 delta + 社会报来的出生/死亡落进流水 + 用新 Social 刷新投影（供同日 gov 阶段与下一天）──
           stepper.updateComposition(compositionOf(currentSocial));
           stepper.recomputeLaborBudgets(laborBudgetsOf(currentSocial, day));
           stepper.updateNaturalNeeds(naturalNeedsOf(currentSocial, day));
-          stepper.applyHouseholdPopulationDeltas(vital.populationDeltas());
+          //   ★★★ W3-fix（2026-10-11）读数接线：把 Social 报来的**逐户出生/死亡原值**一并交回经济 ——
+          //     经济只把它们落进流水读数（FlowRow.births / FlowRow.deaths，唯一写口 withLifecycle），**不判定、不缩劳动**。
+          //     ★ 饥荒死亡（vital.famineDeaths()）是 vital.deaths() 的子集 ⇒ 从这一行起"饿死多少人"在经济读数里也读得到；
+          //     此前它只进 Social 的 FAMINE_MORTALITY 日志，FlowRow.deaths 恒 0 ⇒ CrisisMonitor 的 MORTALITY
+          // 灯永不亮。
+          //     逐户明细仍在 Social 侧事件日志；三张表逐户自洽（出生−死亡 == delta）由两侧各自 fail-closed 核。
+          stepper.applyHouseholdPopulationDeltas(
+              vital.populationDeltas(), vital.birthsByHousehold(), vital.deathsByHousehold());
           if (vital.famineDeaths() > 0L || famineGaps.householdsWithRationGap() > 0L) {
             // ★★ §一.9 / W3 判据⑤：一条 INFO「谁因什么死了多少」—— 跨域汇总（Social 侧还有一条同事件名）。
             TIME.info(
