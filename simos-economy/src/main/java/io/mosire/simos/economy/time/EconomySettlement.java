@@ -1930,6 +1930,15 @@ public final class EconomySettlement {
           FxRoundInput.of(base.governments(), base.moneyIssuances(), base.marketZones());
       marketRound = marketRound.withFx(fxInput);
       logFxWindows(day, base, fxInput);
+      // ★★ §16.4 ①（2026-10-10 用户裁定 6）：本轮的**跑商家户**集合 —— 挂单保留"工具至少一趟"的**范围**。
+      //   ★ 判据的唯一拼写点是 {@code MerchantIdentity.selectsMerchant}（有效位置 = 主业 ∪ 副业含 {@code merchant.*}）；
+      //     这里只把它从**同一份** classMemberships × classPositions 现算一次。
+      //   ★★ 范围为什么不是 carrierPool 的成员表：池成员多一道"运力 > 0"的过滤，会漏掉"选了跑商但没有运力"的家户，
+      //     而 §16.4 ① 要覆盖**所有**跑商家户（与有没有 trade unit / 有没有运力无关）。
+      //   ★ 缺省中性：这一项没有 ⇒ necessary 里不追加任何键 ⇒ 逐值退回改前（I-C2）。
+      Set<HouseholdId> merchantHouseholds =
+          MerchantIdentity.merchants(session.sheet().classMemberships(), base.classPositions());
+      marketRound = marketRound.withMerchantHouseholds(merchantHouseholds);
       // ★★ R1（2026-10-09）：政府市场授权计划 = 本日生效的"明确挂单"（逐轮瞬态，不落盘）。
       //   ★ 它必须**最后**注入：withCredit/withArbitrage/withFx 三处各自逐字段带过它（克隆丢字段是本类踩过的坑），
       //     而这里注入之后不再有别的 withX。

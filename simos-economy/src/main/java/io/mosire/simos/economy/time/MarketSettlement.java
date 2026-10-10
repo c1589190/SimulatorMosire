@@ -397,6 +397,22 @@ final class MarketSettlement {
     private ProcurementPriorityInput procurementPriority = ProcurementPriorityInput.none();
 
     /**
+     * ★★ <b>§16.4 ①（2026-10-10 用户裁定 6）：本轮的<b>跑商家户</b>集合</b> —— 挂单保留"工具至少一趟"的<b>范围</b>。
+     *
+     * <p>★ <b>判据</b> = {@code MerchantIdentity.selectsMerchant}（<b>有效位置</b> = 主业 ∪ 副业里含 {@code
+     * merchant.*} 的位置；唯一的 mode 比较点在那一个类里，本类不另判）；由 {@code EconomySettlement}/{@code MarketReadout}
+     * 从同一份 {@code classMemberships × classPositions} 现算后经 {@link #withMerchantHouseholds} 注入。
+     *
+     * <p>★★ <b>为什么范围是"所有跑商家户"而不是运力池成员</b>：池成员多一道"运力 &gt; 0"的过滤；而 {@link #necessaryInputsOf}
+     * 的这项保留必须与"有没有 {@code trade} unit / 有没有运力"无关（同格无 trade unit 的跑商家户 也要留住一趟的工具，否则它挂出的 tool 卖单被全额冻结
+     * ⇒ 跑商当刻可用量 = 0）。
+     *
+     * <p>★ <b>缺省 {@code Set.of()} ⇒ 逐值退回改前</b>（缺省中性，I-C2）：夹具 / 旧构造器 / 不含 {@code merchant.*}
+     * 位置的世界一个数都不动。★ 逐轮瞬态：不进 {@code EconomyData}、不进变更集、不落盘。
+     */
+    private Set<HouseholdId> merchantHouseholds = Set.of();
+
+    /**
      * ★★ <b>2026-10-08（阶段 2-A2a）：本轮的外汇入参</b>（官方汇率 + 窗口储备上限；由 {@code EconomySettlement} 从 {@code
      * EconomyData.governments()} 装配后经 {@link #withFx} 注入；★ B4 起再加上 {@code
      * EconomyData.marketZones()} 的区级覆盖 —— 口径 = 区级优先、按币对回落该区发行 GOV 的 GOV 级报价）。 默认 {@link
@@ -691,6 +707,7 @@ final class MarketSettlement {
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段
       next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
       next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
+      next.merchantHouseholds = merchantHouseholds; // ★ §16.4 ①：同一个坑的第七个字段（丢了它 = "工具至少一趟"静默不生效）
       return next;
     }
 
@@ -732,6 +749,7 @@ final class MarketSettlement {
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段
       next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
       next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
+      next.merchantHouseholds = merchantHouseholds; // ★ §16.4 ①：同一个坑的第七个字段（丢了它 = "工具至少一趟"静默不生效）
       return next;
     }
 
@@ -800,6 +818,7 @@ final class MarketSettlement {
       next.portEnforcement = portEnforcement;
       next.portTax = portTax;
       next.procurementPriority = input;
+      next.merchantHouseholds = merchantHouseholds; // ★ §16.4 ①：同一个坑的第七个字段（丢了它 = "工具至少一趟"静默不生效）
       return next;
     }
 
@@ -811,6 +830,71 @@ final class MarketSettlement {
      */
     ProcurementPriorityInput procurementPriority() {
       return procurementPriority;
+    }
+
+    /** ★★ §16.4 ①：本轮的跑商家户集合（缺省空集 ⇒ 没有任何"至少一趟工具"的追加保留，逐值退回改前）。 */
+    Set<HouseholdId> merchantHouseholds() {
+      return merchantHouseholds;
+    }
+
+    /**
+     * ★★ <b>§16.4 ①（2026-10-10）：注入本轮的<b>跑商家户</b>集合</b>（返回一个新的 {@link MarketRound}；原对象不动）。
+     *
+     * <p>★ 形制与 {@link #withProcurementPriority} 逐字相同：<b>不新增构造器签名</b>（既有调用方/测试因此逐字不动， 旧路径自然拿到空集 ⇒
+     * 缺省中性）。★ 它必须与其余六个 {@code withX} 互相带过（见各方法里的 {@code next.xxx = xxx} 几行 + {@link
+     * #copyForWorker}）—— 丢字段是本类踩过三次的坑：丢了它 = "工具至少一趟"整段静默不生效。
+     */
+    MarketRound withMerchantHouseholds(Set<HouseholdId> households) {
+      Objects.requireNonNull(households, "withMerchantHouseholds 的集合不得为 null（没有跑商家户就给 Set.of()）");
+      MarketRound next =
+          new MarketRound(
+              day,
+              householdEconomies,
+              householdGoods,
+              householdMoney,
+              householdFrozenGoods,
+              householdFrozenMoney,
+              unmetToday,
+              householdOfActor,
+              industries,
+              units,
+              assetShares,
+              relations,
+              laborCommitments,
+              shipments,
+              ledger,
+              operatorConditions,
+              index,
+              householdDemands,
+              regulation,
+              creditConfig,
+              debts,
+              marketExcludedHouseholds);
+      next.arbitrage = arbitrage;
+      next.fx = fx;
+      next.govMandates = govMandates;
+      next.portEnforcement = portEnforcement;
+      next.portTax = portTax;
+      next.procurementPriority = procurementPriority; // ★ P-T1d：第六个字段（本方法逐字段带过）
+      next.merchantHouseholds = freezeMerchantHouseholds(households);
+      return next;
+    }
+
+    /**
+     * ★ 跑商家户集合是**身份集合**：逐元素查 null、保序冻结（绝不用 {@code Set.copyOf} —— 它不承诺保序，I7）。
+     *
+     * <p>★ 与 {@code freezeExcludedHouseholds} 分开而不是共用一个helper：两者语义不同（一个"排除下单"、一个"追加保留"），
+     * 合成一个会让将来只改一侧时静默改到另一侧。
+     */
+    private static Set<HouseholdId> freezeMerchantHouseholds(Set<HouseholdId> households) {
+      LinkedHashSet<HouseholdId> copy = new LinkedHashSet<>();
+      for (HouseholdId household : households) {
+        if (household == null) {
+          throw new IllegalArgumentException("merchantHouseholds 不得含 null");
+        }
+        copy.add(household);
+      }
+      return Collections.unmodifiableSet(copy);
     }
 
     /**
@@ -851,6 +935,7 @@ final class MarketSettlement {
       next.portEnforcement = portEnforcement;
       next.portTax = input;
       next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
+      next.merchantHouseholds = merchantHouseholds; // ★ §16.4 ①：同一个坑的第七个字段（丢了它 = "工具至少一趟"静默不生效）
       return next;
     }
 
@@ -893,6 +978,7 @@ final class MarketSettlement {
       next.portEnforcement = input;
       next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段
       next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
+      next.merchantHouseholds = merchantHouseholds; // ★ §16.4 ①：同一个坑的第七个字段（丢了它 = "工具至少一趟"静默不生效）
       return next;
     }
 
@@ -936,6 +1022,7 @@ final class MarketSettlement {
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段
       next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
       next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
+      next.merchantHouseholds = merchantHouseholds; // ★ §16.4 ①：同一个坑的第七个字段（丢了它 = "工具至少一趟"静默不生效）
       return next;
     }
 
@@ -995,6 +1082,7 @@ final class MarketSettlement {
       next.portEnforcement = portEnforcement; // ★ R2：同一个坑的第四个字段（丢了它 = 口岸管制整段不生效）
       next.portTax = portTax; // ★ P-T1b：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
       next.procurementPriority = procurementPriority; // ★ P-T1d：同一个坑的第六个字段
+      next.merchantHouseholds = merchantHouseholds; // ★ §16.4 ①：同一个坑的第七个字段（丢了它 = "工具至少一趟"静默不生效）
       return next;
     }
 
@@ -1044,6 +1132,7 @@ final class MarketSettlement {
       next.arbitrage = arbitrage;
       next.fx = fx;
       next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段（丢了它 = 授权整段静默失效）
+      next.merchantHouseholds = merchantHouseholds; // ★ §16.4 ①：同一个坑的第七个字段（丢了它 = "工具至少一趟"静默不生效）
       return next;
     }
 
@@ -1463,6 +1552,14 @@ final class MarketSettlement {
                   "actualHouseholds",
                   planningRound.govMandates().authorizationOnlyHouseholds()));
       throw new IllegalStateException("政府市场授权计划被计划轮克隆丢掉（国库户会退回自动下单，契约故障）: day=" + round.day);
+    }
+    // ★★ §16.4 ① 防复发守卫（与上面两条同一条坑）：**计划轮必须携带同一份跑商家户集合**。
+    //   订单生成用的是 planningRound ⇒ 克隆丢了它 = "工具至少一趟"这项保留**整段静默不生效**，跑商家户照旧把工具
+    //   全额挂出去（跑商当刻可用量恒 0）—— 与 2026-10-08 套利 / R1 授权计划被克隆丢掉是同一形态的无声故障
+    //   （§16.4 ① 是用户裁定 6 的最小第一步，静默不生效等于没做）。契约/一致性故障 ⇒ ERROR + fail-closed（§一.9：不降级）。
+    if (!planningRound.merchantHouseholds().equals(round.merchantHouseholds())) {
+      throw merchantHouseholdsLostByClone(
+          round.merchantHouseholds().size(), planningRound.merchantHouseholds().size());
     }
     if (!round.arbitrage().isEmpty() && MARKET.isDebugEnabled()) {
       EventLog.channel(MARKET)
@@ -4384,6 +4481,34 @@ final class MarketSettlement {
             + cloneHouseholds
             + " 户）：订单生成用的是克隆轮，丢字段会让整个套利静默不生效。"
             + "克隆必须走 MarketRound.copyForWorker 这个唯一拼写点。");
+  }
+
+  /**
+   * ★★ <b>§16.4 ①：计划轮克隆丢掉"跑商家户"集合时的契约故障</b>（{@link #clearOncePerCycle} 的防复发守卫调用）。
+   *
+   * <p>★ 与 {@link #arbitragePlanLostByClone} 同一条坑、同一个形制：订单生成用的是克隆轮，丢字段 = {@link #necessaryInputsOf}
+   * 里"工具至少一趟"这一项整段静默不生效（跑商家户照旧把工具全额挂出去 ⇒ 跑商当刻可用量恒 0）。 契约/一致性故障 ⇒ ERROR 不降级 + fail-closed；正常路径上恒不触发。
+   */
+  private static IllegalStateException merchantHouseholdsLostByClone(
+      int motherHouseholds, int cloneHouseholds) {
+    EventLog.channel(MARKET)
+        .error(
+            LogEvent.of(
+                "MERCHANT_HOUSEHOLDS_LOST_BY_CLONE",
+                EconomyLogSource.ECONOMY_MARKET,
+                "motherHouseholds",
+                motherHouseholds,
+                "cloneHouseholds",
+                cloneHouseholds,
+                "reason",
+                "planning-round-clone-dropped-merchant-households"));
+    return new IllegalStateException(
+        "市场轮的克隆丢了\"跑商家户\"集合（母轮 "
+            + motherHouseholds
+            + " 户 / 克隆轮 "
+            + cloneHouseholds
+            + " 户）：订单生成用的是克隆轮，丢字段会让\"工具至少一趟\"这项挂单保留静默不生效。"
+            + "克隆必须走 MarketRound.copyForWorker 这个唯一拼写点（或任一 withX —— 它们逐字段带过）。");
   }
 
   /**
@@ -8506,7 +8631,52 @@ final class MarketSettlement {
         necessary.merge(entry.getKey(), entry.getValue() * scale, Long::sum);
       }
     }
+    long haulToolReserve = merchantHaulToolReserveMilli(round, participant);
+    if (haulToolReserve > 0L) {
+      Long declared = necessary.get(MerchantHaul.TOOL_COMMODITY);
+      // ★★ "至少一趟" = **下夹**（已有声明量更小才抬到一趟），不是"产业声明量 + 一趟"（sum）：
+      //    ① 用户裁定 6 的措辞是"至少保留一趟跑商的量"；
+      //    ② 求和会把 trade unit 那一户的保留从 10,000 抬到 11,000（凭空多冻 10%），而它本来就是同一件事的两套口径；
+      //    ③ 下夹只增不减地保住"能跑一趟"，且**不按运力上界放大** ⇒ 不会把工具市场冻死。
+      //    ★ put 覆盖已有键时**保序**（LinkedHashMap：键位置不变）⇒ I7 不被这一行扰动。
+      if (declared == null || declared < haulToolReserve) {
+        necessary.put(MerchantHaul.TOOL_COMMODITY, haulToolReserve);
+      }
+    }
     return necessary;
+  }
+
+  /**
+   * ★★ <b>§16.4 ①（2026-10-10 用户裁定 6）：跑商家户在 {@code tool} 上的<b>保留下限 = 恰好一趟</b></b>（唯一拼写点）。
+   *
+   * <p>★★ <b>用户原话</b>：「跑商不是生产方式吗？难到家户不会给预估生产方式预留生产资料吗？」
+   *
+   * <pre>
+   * 范围 = "有效位置含 merchant.*"的家户（判据的唯一拼写点 = MerchantIdentity.selectsMerchant，本类不另判）
+   *        ⇒ **与有没有 trade unit、有没有运力都无关**。这正是本项要修的那条缝：旧口径只看 participant.units，
+   *          而同格里没有 trade unit 的跑商家户 necessary(tool) = 0 ⇒ 它挂出的 tool 卖单在 commitFreezes 里被
+   *          **全额**冻结 ⇒ 跑商当刻可用量 = 0（3,589 趟被拦的机制面）。
+   * 量   = MerchantHaul.TOOL_MILLI_PER_HAUL（1,000 毫工具/趟，**标定值一字不改**）。
+   * </pre>
+   *
+   * <p>★★ <b>为什么是"一趟"而不是"运力 ÷ 门槛"（运力上界）</b>：一趟 = 跑商本体的**最小可成立单位** （{@code
+   * MerchantHaul.blockedReason} 的判据就是"可用量 ≥ 1 趟"）—— 保留的意义只是"别把这一户的工具全额挂出去",
+   * 保住"它想跑就有一趟"；按运力折算会随劳动/运力线性放大，把同一格的工具**长期冻在账上**（工具是存量、用完才补）， 那是把跑商的门槛变成对工具市场的抽干。★ 这一项因此是**每户恒
+   * 1,000**，与运力、规模、趟数上限都无关。
+   *
+   * <p>★ <b>不走 {@code supplies} 那道守卫</b>（{@link #necessaryInputsOf} 的 unit 循环里那道）：那道判据问的是
+   * "这份投入是不是我自己供的"（别人供的会由市场送到我手上，不必自留）；而跑商的工具消耗**无条件**从本户自己的 {@code tool} 商品账扣（{@code
+   * MerchantCapacityPool} 读本户可用量、{@code consumeForLoss} 扣本户账）， 与谁供料无关 ⇒ 这里必须自留。
+   *
+   * <p>★ <b>只减"可卖量"，不加买单</b>：{@code ordersFor} 里家户的买目标 = 生活保留 + 需求目标，{@code necessary}
+   * 只进卖单的减项（{@code sellable = max(0, 存量 − 冻结 − necessary − 保留)}）与"未卖余量自用"判据 （{@code
+   * sellerSelfUsable}）⇒ 本项**不新增工具需求**、不改门槛、不改任何标定值（缺工具仍 fail-closed）。
+   */
+  private static long merchantHaulToolReserveMilli(MarketRound round, Participant participant) {
+    return participant.household != null
+            && round.merchantHouseholds().contains(participant.household)
+        ? MerchantHaul.TOOL_MILLI_PER_HAUL
+        : 0L;
   }
 
   private static Map<CommodityId, Long> householdLifeReserveOf(HouseholdEconomy householdEconomy) {
