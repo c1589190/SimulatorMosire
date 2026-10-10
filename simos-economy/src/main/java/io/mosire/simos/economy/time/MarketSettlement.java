@@ -5093,7 +5093,7 @@ final class MarketSettlement {
     long freightRatePerMille =
         ctx.topology.freightPerMilleBetween(
             sellerHex, buyerHex, cityDiscountPerMille, ruralPenaltyPerMille);
-    String routeKey = sellerHex + "->" + buyerHex + "#" + commodity.value();
+    String routeKey = LaneUnservedBook.laneKey(sellerHex, buyerHex, commodity);
     RouteAccumulator acc =
         ctx.routes.computeIfAbsent(
             routeKey,
@@ -5282,21 +5282,29 @@ final class MarketSettlement {
       }
       if (capacityLeft <= 0L && (remainingOf(buys) > 0L || remainingOfSells(sells) > 0L)) {
         acc.bottleneck = true;
+        // ★★ D-1b（净额记账）：路线窗口预算用尽也是"这条 lane 运力不够"的**同一个事实** ⇒ 走同一份"已记"状态，
+        //   且与另两处同口径：记的是**车道级** min(买侧余量合计, 卖侧余量合计) = 这条 lane 真正没运走的量，
+        //   不是各侧自己的余量（后者会让余量大的一侧把"本侧装不下、也没人要"的那份也剔出统计 —— 与 D-1 同一个幅度错）。
+        long recorded =
+            ctx.laneUnserved.claimLane(
+                LaneUnservedBook.laneKey(sellerHex, buyerHex, commodity),
+                Math.min(remainingOf(buys), remainingOfSells(sells)));
         for (BuySlot buy : buys) {
           if (buy.remaining > 0L && buy.blocked == null) {
             buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
           }
           // ★★ M-A1（V-20）：本车道路线窗口容量用尽 ⇒ 未服务的余量记成"被运力截断"，不进自适应定价的统计。
-          if (buy.remaining > 0L) {
-            buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, buy.remaining);
+          if (buy.remaining > 0L && recorded > 0L) {
+            buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, recorded);
           }
         }
         // ★★ 2026-10-09：卖方剩余同样具名（路线每窗口运力用尽）—— 不让它落进 OUTCOMPETED 的误档。
         for (SellSlot sell : sells) {
           if (sell.remaining > 0L) {
             sell.capacityBlocked = true;
-            sell.capacityTruncatedMilli =
-                Math.addExact(sell.capacityTruncatedMilli, sell.remaining);
+            if (recorded > 0L) {
+              sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, recorded);
+            }
           }
         }
       }
@@ -6763,6 +6771,9 @@ final class MarketSettlement {
    * <p>★ M-A1 起参数改用 {@code (from, to, commodity)} 而不是 {@code RouteContext}：有一条"发货格没有运力"的拦下发生在
    * **路线根本不建**的那一刻（那时没有 RouteContext）。
    *
+   * <p>★★ D-1b：记进两侧的是 {@link LaneUnservedBook#claimPair} / {@link LaneUnservedBook#claimLane}
+   * 认领的**增量**。 同一条 lane 的同一份未服务量若已由本轮其它落点记过（候选生成处的整条拦下 / 路线窗口预算用尽），这里不再记第二遍。
+   *
    * @param truncatedMilli 本笔因运力未获服务的量（毫商品；&gt; 0）
    */
   private static void markCapacityBlocked(
@@ -6777,11 +6788,16 @@ final class MarketSettlement {
       buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
     }
     sell.capacityBlocked = true;
-    if (truncatedMilli > 0L) {
-      buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, truncatedMilli);
-      sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, truncatedMilli);
+    // ★★ D-1b（净额记账）：同一次配对的这份未服务量只记一次 —— 本笔"没分到的那份"在同一轮的多次试配 / 多个运力窗口上
+    //   会被反复观察到（**同一份**量）；整条车道级的水位（整条拦下 / 路线窗口用尽记在所有还有剩余的槽位上）同样要认。
+    String laneKey = LaneUnservedBook.laneKey(from, to, commodity);
+    long recorded =
+        ctx.laneUnserved.claimPair(laneKey, buy.orderIndex, sell.orderIndex, truncatedMilli);
+    if (recorded > 0L) {
+      buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, recorded);
+      sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, recorded);
     }
-    RouteAccumulator acc = ctx.routes.get(from + "->" + to + "#" + commodity.value());
+    RouteAccumulator acc = ctx.routes.get(laneKey);
     if (acc != null) {
       acc.bottleneck = true;
     }
@@ -6794,6 +6810,10 @@ final class MarketSettlement {
    * <p>★ 两侧的截断量各自按对侧余量封顶（{@code min(本侧余量, 对侧余量)}）：一个买方要 100、卖方只剩 30 ⇒ 双方各记 30。 两侧记的是**同一条车道**的
    * {@code min(买方余量合计, 卖方余量合计)}（= 下面日志的 {@code truncatedMilli}），
    * 不是"对侧的整份余量"——后者会把本侧装不下的部分也记成截断，超过挂单量时连**已服务**的那份都被剔出统计（V-20）。
+   *
+   * <p>★★ <b>D-1b（净额记账）</b>：这里记进两侧的是 {@link LaneUnservedBook#claimLane} 认领的**增量**。 同一条 lane
+   * 的同一份未服务量若已被本轮其它落点记过（承运分配不足 {@link #markCapacityBlocked} / 路线窗口预算用尽），
+   * 本落点<b>不再记第二遍</b>（两次相加会把已服务的那一份也剔出统计 ⇒ demand 被剔光、价格信号被压低）。
    */
   private static void blockLaneWithoutCapacity(
       MatchContext ctx,
@@ -6815,11 +6835,18 @@ final class MarketSettlement {
       }
     }
     long blocked = Math.min(buyTotal, sellTotal);
+    // ★★ D-1b（净额记账）：整条车道的这份未服务量只记一次 —— 同一份量可能已由本轮的**别的落点**记过
+    //   （承运分配不足 / 路线窗口预算用尽），那两次相加会把**已服务**的那一份也剔出价格统计（V-20 幅度错）。
+    long recorded =
+        ctx.laneUnserved.claimLane(
+            LaneUnservedBook.laneKey(sellerHex, buyerHex, commodity), blocked);
     for (BuySlot buy : buys) {
       if (buy.remaining > 0L) {
         // ★★ D-1（2026-10-10 裁定）：按**本侧余量**封顶 —— 记的是这条车道真正装不下的量（min(买余, 卖余)），
         //   不是对侧的整份余量。记多了会把**挂单量以内、已被服务**的那一份也剔出价格统计（V-20）。
-        buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, blocked);
+        if (recorded > 0L) {
+          buy.capacityTruncatedMilli = Math.addExact(buy.capacityTruncatedMilli, recorded);
+        }
         if (buy.blocked == null) {
           buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
         }
@@ -6828,7 +6855,9 @@ final class MarketSettlement {
     for (SellSlot sell : sells) {
       if (sell.remaining > 0L) {
         sell.capacityBlocked = true;
-        sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, blocked);
+        if (recorded > 0L) {
+          sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, recorded);
+        }
       }
     }
     if (MARKET.isDebugEnabled() && blocked > 0L) {
@@ -6847,6 +6876,9 @@ final class MarketSettlement {
                   buyerHex,
                   "truncatedMilli",
                   blocked,
+                  // ★★ D-1b：本落点**真正记进两个槽位**的量（0 = 这条 lane 的这份未服务量已由别的落点记过 ⇒ 未重复计入）。
+                  "recordedMilli",
+                  recorded,
                   "reason",
                   "shipping-hex-has-no-merchant-household"));
     }
@@ -9272,6 +9304,18 @@ final class MarketSettlement {
         new LinkedHashMap<>();
 
     final Map<String, RouteAccumulator> routes = new LinkedHashMap<>();
+
+    /**
+     * ★★ <b>D-1b：本轮"因运力未获服务的量"的净额记账簿</b>（{@link LaneUnservedBook}）。
+     *
+     * <p>三处运力截断落点（承运分配不足 / 整条拦下 / 路线窗口预算用尽）共享的同一份"已记"状态：同一份未服务量只记一次，
+     * 免得截断读数超过该槽真正未服务的量、把<b>已服务</b>的那一份也剔出价格统计（V-20 幅度错）。
+     *
+     * <p>★ 逐轮瞬态（不进 {@code EconomyData} / 变更集 / 落盘），只由协调器单线程路径触碰。 ★ worker 副本各持一份新的空簿：它只走同格意向（{@code
+     * route == null}）⇒ 到不了运力截断。
+     */
+    final LaneUnservedBook laneUnserved = new LaneUnservedBook();
+
     final Map<ShipmentKey, ShipmentBuilder> shipments = new LinkedHashMap<>();
     // ★ 地形代价的纯记忆化：组合根的 moveCostAt 会重建整张地形索引，同一 buyerHex 在逐卖方路线里只需算一次。
     final Map<HexCoord, Long> moveCostCache = new LinkedHashMap<>();
