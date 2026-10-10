@@ -567,7 +567,7 @@ public final class EconomyDayStepper implements AutoCloseable {
 
   /**
    * ★★★ <b>W3-fix（2026-10-11）：把 Social（人口权威）报来的逐户净变化 + 逐户出生/死亡一起落到经济侧</b> ——委托 {@link
-   * EconomySettlement#applyHouseholdPopulationDeltasInto(EconomySession, Map, Map, Map)}。
+   * EconomySettlement#applyHouseholdPopulationDeltasInto(EconomySession, Map, Map, Map, long)}。
    *
    * <p>★★ <b>为什么要把出生/死亡原值也传进来</b>：只传净变化时 {@code FlowRow.births}/{@code FlowRow.deaths} 永远是 0，
    * 经济侧的危机读数（{@code CrisisMonitor} 的 MORTALITY 灯）与人口守恒读数因此没有输入；净变化在一户同时生死时只报差， 反推不出死亡数。★
@@ -578,16 +578,19 @@ public final class EconomyDayStepper implements AutoCloseable {
    * @param deltas 逐家户净人口变化（出生 − 死亡；只含非 0 项）；不得为 null
    * @param birthsByHousehold 逐家户出生原值（只含 &gt; 0 的家户）；不得为 null
    * @param deathsByHousehold 逐家户死亡原值（只含 &gt; 0 的家户；含饥荒那一份）；不得为 null
+   * @param day ★★ W3-fix2（D4，2026-10-11）：世界日 —— 落进 {@code HOUSEHOLD_VITAL_WRITEBACK} 的 {@code day}
+   *     字段，使这条"今天社会报来多少死亡"的读数**可按天检索/对账**（改前 162/162 条都没有该字段）；不得为负
    */
   public void applyHouseholdPopulationDeltas(
       Map<HouseholdId, Long> deltas,
       Map<HouseholdId, Long> birthsByHousehold,
-      Map<HouseholdId, Long> deathsByHousehold) {
+      Map<HouseholdId, Long> deathsByHousehold,
+      long day) {
     Objects.requireNonNull(deltas, "deltas");
     Objects.requireNonNull(birthsByHousehold, "birthsByHousehold");
     Objects.requireNonNull(deathsByHousehold, "deathsByHousehold");
     EconomySettlement.applyHouseholdPopulationDeltasInto(
-        session, deltas, birthsByHousehold, deathsByHousehold);
+        session, deltas, birthsByHousehold, deathsByHousehold, day);
   }
 
   /**

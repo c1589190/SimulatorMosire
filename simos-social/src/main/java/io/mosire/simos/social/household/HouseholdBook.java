@@ -59,6 +59,18 @@ public final class HouseholdBook {
   /** 年龄档代表性年龄的"天"折算（仅用于"事件只给档 id、没给逐日年龄"时新建批次；不是档界判定）。 */
   private static final long DAYS_PER_REPRESENTATIVE_YEAR = 365L;
 
+  /**
+   * ★★★ <b>死亡事件 {@code reason} 里的 {@code cause=} 取值</b>（2026-10-11 W3-fix2，设计书 v3.12 §7 的 D2 裁定）：
+   * {@code famineDeaths} **按死亡事件的 cause 直接计数** —— 本 tick 的 {@code DEATH} 事件里 cause 含饥荒的那些事件
+   * **携带的人数之和**（★ W3-fix3 收口：按人数、不按条数；可达世界里每条事件恰好 1 人 ⇒ 两种读法同值）。
+   *
+   * <p>★ 常量在这里只有一个拼写点：{@code reason} 串与"算不算饥荒致死"都读它，两者不可能各拼一份而漂。
+   */
+  private static final String DEATH_CAUSE_BASE = "BASE";
+
+  /** 饥荒项参与过的死亡事件（基准率与饥荒项共用同一个 DEATH 余数 ⇒ 只能标"参与"）。 */
+  private static final String DEATH_CAUSE_BASE_PLUS_FAMINE = "BASE_PLUS_FAMINE";
+
   private HouseholdBook() {}
 
   // ── 生命周期 ─────────────────────────────────────────────────────────────────────────
@@ -769,7 +781,7 @@ public final class HouseholdBook {
     // ★ W3：饥荒输入在本 tick 真正被用到的读数（只服务日志/审计，不进状态）。
     long famineHouseholds = 0L; // 报来缺口（口粮那一支 > 0）的家户数
     long famineUnknownHouseholds = 0L; // 报来的家户不在 Social 里（装配边界；跳过并计数，不凭空建户）
-    long famineDeathsTotal = 0L; // 本 tick 由饥荒项贡献的死亡（人；基准率那一份不算）
+    long famineDeathsTotal = 0L; // 本 tick 里 cause 含饥荒的**饿死人数**（基准率那一份不算；D2/W3-fix3 裁定见下）
     long maxStarvationRatioPerMille = 0L;
     String firstStarvingHousehold = null;
     EventLog.channel(SocialLog.settle())
@@ -890,6 +902,8 @@ public final class HouseholdBook {
                       "w3-famine-rate-is-social-authority: linear-in-realized-ration-shortfall"));
         }
       }
+      // ★★ D2 / W3-fix3：本户本 tick 的**饿死人数** = cause 含饥荒的那些死亡事件携带的人数之和
+      //   （逐事件累加它自己的 `deaths`；**不**按 ppm 占比分摊取整）。
       long householdFamineDeaths = 0L;
       for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
         PeopleLotId lot = member.getKey();
@@ -933,6 +947,12 @@ public final class HouseholdBook {
         long deaths = deathNumerator / 1_000_000L;
         putRemainder(remainders, deathKey, deathNumerator % 1_000_000L);
         if (deaths > 0L) {
+          // ★★★ W3-fix2（2026-10-11，设计书 v3.12 §7 的 D2 裁定）：死亡事件的 **cause** 是
+          //   "这条死亡算不算饥荒致死"的**唯一**依据 —— famineDeaths 只累加 cause 含饥荒的那些事件的**人数**，
+          //   **不再**按 ppm 占比分摊取整（旧式 floorDiv(deaths × faminePpm, effectivePpm) 在"单户单日
+          //   死 1 人"时恒为 0 ⇒ 读数系统性为 0，且 famineDeaths ≤ deaths 仍成立 ⇒ 门禁抓不到）。
+          String deathCause =
+              famineRatePerMillionPerTick > 0L ? DEATH_CAUSE_BASE_PLUS_FAMINE : DEATH_CAUSE_BASE;
           events.add(
               new HouseholdPopulationEvent(
                   vitalEventId(VitalKind.DEATH, household.id(), lot, day, group.sex()),
@@ -949,18 +969,20 @@ public final class HouseholdBook {
                           + famineRatePerMillionPerTick
                           + " starvationRatioPerMille="
                           + starvationRatioPerMille
-                          + " cause=BASE_PLUS_FAMINE"
-                      : "ratePpm=" + baseDeathPpm + " cause=BASE",
+                          + " cause="
+                          + deathCause
+                      : "ratePpm=" + baseDeathPpm + " cause=" + deathCause,
                   "SETTLEMENT",
                   lot));
           householdDeaths = Math.addExact(householdDeaths, deaths);
-          // ★ 饥荒项按份额分摊的死数（只作读数：同一个 numerator 里两项无法逐人死亡归因 ⇒ 按 ppm 占比折算，
-          //   与"余数累加"的长期期望一致）。★ 它**不改**任何状态，只进日志/结果。
-          if (famineRatePerMillionPerTick > 0L) {
-            long famineShareDeaths =
-                Math.floorDiv(
-                    Math.multiplyExact(deaths, famineRatePerMillionPerTick), effectiveDeathPpm);
-            householdFamineDeaths = Math.addExact(householdFamineDeaths, famineShareDeaths);
+          // ★★ W3-fix3（2026-10-11，D2 口径收口）：饥荒那一份 = **本户本 tick 里 cause 含饥荒的那些死亡事件
+          //   携带的人数之和** —— 就是该事件自己的 `deaths`（本批次死掉的人数），**不是事件条数**（读数，不改任何状态）。
+          //   语义对齐"饿死多少人"：famineDeaths 被 VitalSettlementResult、POPULATION_SETTLE 的同名字段、
+          //   W3 验收的"死因分布"都按人数读。★ 事件按批次发时，逐条累加该批次的人数即可。
+          //   不变量仍成立：饥荒事件是全部死亡事件的**子集** ⇒ ΣfamineDeaths ≤ Σdeaths 由结构保证；
+          //   逐户自洽在循环出口再过一道 fail-closed（见下面的 householdFamineDeaths > householdDeaths）。
+          if (DEATH_CAUSE_BASE_PLUS_FAMINE.equals(deathCause)) {
+            householdFamineDeaths = Math.addExact(householdFamineDeaths, deaths);
           }
         }
 
@@ -1025,6 +1047,20 @@ public final class HouseholdBook {
                       "births",
                       births));
         }
+      }
+      // ★★ W3-fix2（D2）/ W3-fix3（按人数）：**逐户自洽**的 fail-closed 守卫 —— 饥荒致死人数不可能超过该户本 tick
+      //   的死亡人数（饥荒那些事件是全部 DEATH 事件的一个子集，每条 deaths ≥ 1，逐条累加的同一批人数）。
+      //   它同时守住"ΣfamineDeaths ≤ Σdeaths"的总量不变量：
+      //   总量那一条在 VitalSettlementResult 的构造期再核一次（两处口径相同，越界当场炸、不静默）。
+      if (householdFamineDeaths > householdDeaths) {
+        throw vitalReject(
+            day,
+            "饿死人数超过死亡人数（逐户自洽被破坏）household="
+                + household.id()
+                + " famineDeaths="
+                + householdFamineDeaths
+                + " deaths="
+                + householdDeaths);
       }
       long householdDelta = Math.subtractExact(householdBirths, householdDeaths);
       if (householdDelta != 0L) {

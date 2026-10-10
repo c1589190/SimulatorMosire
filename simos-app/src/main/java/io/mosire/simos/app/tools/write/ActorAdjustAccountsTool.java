@@ -13,9 +13,16 @@ import java.util.Map;
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 经 MCP
  * 调用时走审批门链。
  *
- * <p>★ <b>载荷形状</b>：{@code {entries:[{owner:{kind,id}, q, r, goods:{商品:净增量}?,
- * money:{币种:净增量}?}...]}}—— {@code entries} 必填非空；每项 {@code owner/q/r} 必填；{@code goods}/{@code money}
- * 至少一个非空；值是<b>有符号净增量</b> （0 不得出现，无操作条目请删）。
+ * <p>★ <b>载荷形状（★ D3 / W3-fix2 以解析器为准改写：账户主体只有家户，没有 owner/q/r）</b>：{@code {entries:[{household,
+ * goods:{商品:有符号净增量}?, money:{币种:有符号净增量}?}...]}}—— {@code entries} 必填非空；每项 {@code household}
+ * 必填（非空白家户 id 字符串）；{@code goods}/{@code money} 至少一个非空；值是<b>有符号净增量</b> （0 不得出现，无操作条目请删）；同一 {@code
+ * household} 一条载荷里只能出现一次。
+ *
+ * <p>★★ <b>为什么不再有 {@code owner{kind,id}} + {@code q}/{@code r}（P2-A §13.3）</b>：账户主体只剩家户、一本账，位置从
+ * {@code Household.location} 派生 ⇒ 格子不再是载荷的一部分，命令也<b>没有</b>格资源目标（{@code
+ * AdjustAccountsHandler#targetPaths} 恒空）。按旧形状（{@code owner/q/r}）发会被解析器<b>具名 422 拒</b> （"字段
+ * household 必须是家户 id 字符串"）；旧形状**不做**兼容解析。★ 形状的权威是解析器 {@code ActorPayloads#adjustments} / {@code
+ * AccountPayloads#household}，本描述与它逐字段对齐。
  *
  * <p>★ <b>语义三条</b>：整条原子（任一违例 ⇒ 全拒，不做部分生效）；缺账 + 纯正增量 ⇒ 新建该账；负增量不得使余额 &lt; 0、 <b>不得侵占冻结额</b>（可支配 = 余额
  * − 冻结）。
@@ -44,9 +51,10 @@ public final class ActorAdjustAccountsTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "调整 actor 账目：固定 actor.AdjustAccounts，载荷"
-        + " {entries:[{owner:{kind,id}, q, r, goods:{商品:有符号净增量}?, money:{币种:有符号净增量}?}]}"
-        + "（★ entries 必填非空；每项 owner/q/r 必填；goods/money 至少一个非空；"
-        + "值 = 有符号净增量、不得为 0；同一 (owner,q,r) 不得重复；"
+        + " {entries:[{household, goods:{商品:有符号净增量}?, money:{币种:有符号净增量}?}]}"
+        + "（★ entries 必填非空；每项 household 必填（家户 id 字符串）；"
+        + "★ 账户主体只有家户、一本账 —— 载荷里**没有** owner/q/r（旧形状会被具名拒），位置从 Household.location 派生；"
+        + "goods/money 至少一个非空、值 = 有符号净增量、不得为 0；同一 household 不得重复；"
         + "缺账只允许纯正增量并新建；负增量不得使余额 < 0、不得侵占冻结额（可支配 = 余额 − 冻结）；整条原子，任一违例全拒）";
   }
 

@@ -426,3 +426,352 @@ $ tools/mvn-lock.sh -DskipTests compile -am      # rc=0；[INFO] BUILD SUCCESS�
 - **文档漂移（只报不改）**：`docs/superpowers/specs/2026-10-04-economy-logging.md:110` 仍写「`13` 饿死｜有死亡 ⇒ INFO
   （closedUnits/deaths/unmet）」——该通道已随 W3 删除，"谁因什么死了多少"现在在 Social 的 `FAMINE_MORTALITY` 与 App 的
   `FAMINE_MORTALITY_BRIDGED`。请控制方决定何时追加标注（§五.4：不篡改历史行）。
+
+---
+
+# W3-fix2（D1 NPE + D2 famineDeaths 计数 + D3 文档漂移 + D4 day 字段）
+
+- **批次**：W3-fix2（写码 Agent），日期 2026-10-11；父提交 `e1527e91`（工作树干净开工）
+- **裁定来源**：设计书 `docs/superpowers/specs/2026-10-10-unified-price-and-ordered-settlement-design.md` **v3.12 §7**；
+  验收报告 `.superpowers/sdd/2026-10-11-w3-acceptance/report.md` §3
+- **授权改动面**：`simos-app/src/main/**`、`simos-social/src/main/**`、`simos-economy/src/main/**`（**未**碰 `src/test/**`、simos-unit/sd/core、docs、AGENTS.md、simos-actor）
+- **一次一个 Maven**：全程 `tools/mvn-lock.sh`，开工/收工 `pgrep -af "classworlds.launcher|surefirebooter"` = 空
+
+## W3f2-1 D1 —— `CrisisMonitor` FOOD 灯的 null 撞 `Map.copyOf`（真缺陷，必修）
+
+**根因**（验收报告 §3 D1 的栈原文）：`evidence.put("stressByAgeBracket", null)` → `new Light(...)` →
+`Light` 紧凑构造器 `Map.copyOf(evidence)`（`CrisisMonitor.java:345`）**拒 null 值** ⇒ 只要 FOOD 灯亮，
+`GET /api/social/population` **整条 500**（NPE），并把排在它后面的 **MORTALITY 灯整个遮住**。
+
+**改动点（前 → 后）**：
+
+| # | 落点 | 改前 | 改后 |
+|---|---|---|---|
+| 1 | `CrisisMonitor.java:205`（原 :199） | `evidence.put("stressByAgeBracket", null);` | `evidence.put("stressByAgeBracket", Map.of());` |
+| 2 | `CrisisMonitor.java:37-38` 类注判据表 | "键保留并给 `null`" | "键保留并给**空表** `Map.of()`" + 点名 D1 与 fail-closed 守卫 |
+| 3 | `CrisisMonitor.java:83-86` `STRESS_BY_AGE_BRACKET_UNAVAILABLE` 类注 | "读口保留键并给 `null`" | "读口保留键并给**空表**（给 null 会撞守卫 ⇒ 500）" |
+| 4 | `CrisisMonitor.java:331-335` `Light` record 类注 | （无）| **新增**：`Map.copyOf` 是 fail-closed 守卫、**不许放松**；产 evidence 的每一处必须自己遵守"缺值放空表或**不放键** + 另给 `…Unavailable`，绝不放 null" |
+
+**`Light` 的 `Map.copyOf` 一字未改**（`CrisisMonitor.java:345`）——按裁定，它是契约守卫，放松它 = 把"依据"的契约放松。
+
+**★ 同类 null 扫查结果（逐处点名）**：
+
+1. **`CrisisMonitor` 类内**：`grep -n "put(.*null"` = **1 处**（就是原 :199，已修）；修后 = **0 处**。
+   该类 `lightsAt` 的**全部** 5 盏灯的 evidence 逐键复核，除该处外全是 `long` 原语装箱值与 1 个非空常量：
+   FOOD（`grainSatisfactionPerMille`/`grainUnmetMilli`/`elapsedDays`/`cycleDays`/`stressByAgeBracket`/`stressByAgeBracketUnavailable`）、
+   CLOTH（4 键 long）、MORTALITY（3 键 long）、DEBT（4 键 long）、LABOR_BURDEN（3 键 long）
+   ⇒ **修后不存在任何 null 能到达 `Map.copyOf`**（静态逐键核，非推理）。
+2. **三个授权模块全量扫**（`grep -rn "\.put([^)]*,\s*null\s*)" --include=*.java simos-app/src/main simos-social/src/main simos-economy/src/main`）：
+   命中 **62 处**，逐处定性 —— **全部落在"直接序列化成 JSON 的视图表"**里（`gui/ApiViews` 46 处、`gui/GuiServer` 5 处、
+   `tools/write/RunDecisionMakersTool` 9 处、`tools/read/GovInfoTool` 8 处、`tools/write/GmPeriodicAdjustmentTool` 2 处、
+   `world/EconomySeeder` 1 处），这些表**不进任何 `Map.copyOf`/`Map.of` 守卫**（上述 6 个文件里 `Map.copyOf` 的**代码**命中 = 0；
+   `ApiViews` 那 1 处命中是**注释**，`:4929`）⇒ **不是 D1 同类缺陷**（JSON 里 null 合法）。
+3. **另两处 fail-closed `Map.copyOf` 守卫**（同族形态，逐个核过、**均无 null 生产者**）：
+   - `simos-economy/.../EconomyLiquidationSettlement.java:1901` `AuditEntry` 的 `Map.copyOf(evidence)`：值是 `Map<String, Long>`，
+     生产者（`:394/:462-479`、`:616-622`、`:679+`）全是 `long` 原语装箱 ⇒ 不可能为 null；
+   - `simos-economy/.../MarketSettlement.java:643` `Map.copyOf(operatorConditions)`：状态组件 `Map<ProductionUnitId, OperatorCondition>`，
+     值由 codec/变更集构造，无 `put(…, null)` 生产者。
+4. **结论**：D1 家族（null 撞 fail-closed 守卫 ⇒ 读口 500）在授权面内**只有 `CrisisMonitor` 那一处**，已修；未发现第二处。
+
+**预期效果（静态，未跑）**：FOOD 灯亮时 `GET /api/social/population` 不再因 null 500；同格 MORTALITY 灯（若判据成立）
+随同一响应一起被读到。响应体的变化是 `"stressByAgeBracket":{}` + 原本就有的 `"stressByAgeBracketUnavailable":"…"`。
+
+## W3f2-2 D2 —— `famineDeaths` 恒 0（W3-fix 新接线 bug，必修）：改为按事件 cause 直接计数
+
+**根因**：`HouseholdBook.java:960-963`（改前）`floorDiv(deaths × faminePpm, effectiveDeathPpm)` —— 单户单日死 1 人时
+`floorDiv(1×1000, 1033) = 0` ⇒ 读数系统性为 0（sw180 的 377 条 famine 致死读出 0），且 `famineDeaths ≤ deaths`
+仍成立 ⇒ **门禁抓不到**（验收报告 D2）。
+
+**改动点（前 → 后）**：
+
+| # | 落点 | 改前 | 改后 |
+|---|---|---|---|
+| 1 | `HouseholdBook.java:63-71` | （无）| **新增**两个私有常量 `DEATH_CAUSE_BASE` / `DEATH_CAUSE_BASE_PLUS_FAMINE` —— `reason` 串与"算不算饥荒致死"**同一个拼写点** |
+| 2 | `HouseholdBook.java:952-953` | `reason` 里 `" cause=BASE_PLUS_FAMINE"` / `" cause=BASE"` 两处字面量 | `String deathCause = famineRate… > 0 ? BASE_PLUS_FAMINE : BASE;` 再由它拼 `cause=` |
+| 3 | `HouseholdBook.java:977-981` | `floorDiv(deaths × faminePpm, effectiveDeathPpm)` 累加 | `if (DEATH_CAUSE_BASE_PLUS_FAMINE.equals(deathCause)) householdFamineDeaths += 1L;`（**逐事件计 1 条**） |
+| 4 | `HouseholdBook.java:1046-1058` | （无）| **新增逐户 fail-closed 守卫**：`householdFamineDeaths > householdDeaths` ⇒ `vitalReject(day, …)` |
+| 5 | `VitalSettlementResult.java:39-46` | "由饥荒项贡献的那一部分（人）…按 ppm 折算" | "cause 含饥荒的**死亡事件条数**（条 ≤ 人数）"+ 记明 D2 裁定与旧式为何错 |
+| 6 | `VitalSettlementResult.java:85-93` | 断言文案"饥荒是死亡的子集" | 断言文案"饥荒致死事件条数 ≤ 死亡人数"（**断言本身一字未动**：仍是 `famineDeaths > deaths ⇒ throw`） |
+| 7 | `FlowRow.java:44-47` / `EconomySettlement.java:4737-4741` / `PopulationEconomyTimeParticipant.java:754-757` | 三处把 `famineDeaths` 说成"死亡的子集/同值投影" | 改为"**≤** 死亡人数（条数 ≤ 人数）"，口径与代码一致（D3 同族纪律：文档跟着代码走） |
+
+**不变量断言的两处落点（都是 fail-closed，不静默夹取）**：
+1. **逐户**：`HouseholdBook.java:1049-1058`（结算循环里、每户出口）；
+2. **总量**：`VitalSettlementResult.java:85-93`（记录构造期，`famineDeaths > deaths ⇒ IllegalArgumentException`）。
+   逐户 == 净变化（`births − deaths == delta`）与两张原值表的既有核对一字未动。
+
+**★ 判据自检（逐值表；静态推演自代码，**未跑任何测试/world**）**：
+设 faminePpm = 饥荒项（缺口 0 ⇒ 0），basePpm = 33，`effectivePpm = base + famine`；
+每条 DEATH 事件 = 一个 (户, 批次) 当 tick 的一条记录，`count = deaths`（人数）。
+
+| 情形 | 输入（构造） | 事件流 | `famineDeaths`（新） | 旧式 `floorDiv` | 备注 |
+|---|---|---|---|---|---|
+| **A. deaths=1 且 famine 参与** | share×1033 ≥ 1e6（含余数），faminePpm=1000 | **1 条** DEATH，`count=1`，`cause=BASE_PLUS_FAMINE` | **1** | `floorDiv(1×1000,1033)=0` ← D2 | 正是验收报告 §3 D2 的最小复现（`ratePpm=33 faminePpm=1000`） |
+| **B. deaths=0** | 余数 + share×effectivePpm < 1e6 | **0 条**（`if (deaths > 0)` 不进） | **0** | 0 | 不产生事件 ⇒ 不计数（缺省中性） |
+| **C. 纯 BASE 致死** | faminePpm = 0（无缺口 / 缺口 0） | 1 条 DEATH，`cause=BASE` | **0** | 0 | 对应 `nogap` 世界（22 死全 `cause=BASE` ⇒ 0，验收报告称为"正确"） |
+| **D. 混合（同户同日）** | 批次甲 famine 参与且 deaths≥1；批次乙 faminePpm=0 且 deaths≥1 | 2 条 DEATH：1×`BASE_PLUS_FAMINE` + 1×`BASE` | **1**（= famine 参与条数） | 可能 0 | 等于"cause 含饥荒的条数" |
+| D'. 混合（反例） | 同上但 famine 参与 2 条 + BASE 1 条 | 3 条 | **2** | ≤1（系统性偏小） | 守卫 `2 ≤ 3` 通过 |
+
+**与验收报告的量化对齐**：sw180 的 `Σdeaths = 428` 与"famine 事件 377 + BASE 事件 51 = 428"**逐值相等**
+（报告 §2.4 ②）⇒ 该世界里**每条 DEATH 事件的 `count` 恰为 1** ⇒ 新口径下 `ΣfamineDeaths = 377`（= famine 致死事件数），
+旧口径恒 0。**这是"应有读数"的推导，不是我实测的数字**（本批不许跑 world/test）。
+
+**★ 一个口径选择点（主动上报控制方，不阻塞）**：裁定原文是"该日该户的死亡里 `cause` 含饥荒的**条数**"、设计书写"`famineDeaths`
+== famine 致死**事件数**"，故本批实现为**逐事件计 1**。若控制方要的是"人数"（famine 参与的整条事件按 `count` 计入），
+改动是**一行**（`Math.addExact(householdFamineDeaths, 1L)` → `…, deaths)`），且**在所有可达世界里两者同值**
+（本世界 `count` 恒 1；`share × effectivePpm < 2e6` 时 deaths 不可能 ≥ 2）。★ 两种读法都不改"谁死"。
+
+## W3f2-3 D3 —— `actor.AdjustAccounts` 的载荷形状与解析器对齐（以解析器为准）
+
+**解析器（权威，读代码）**：`ActorPayloads.adjustments`（`simos-actor/.../spi/ActorPayloads.java:240-272`）→
+`AccountPayloads.household(node,"household")`（`AccountPayloads.java:60-71`）⇒ **只有一种形态**：
+
+```
+{"entries":[{"household":"hh-…", "goods":{"<商品id>": <有符号整数≠0>}?, "money":{"<币种id>": <有符号整数≠0>}?}, …]}
+```
+
+- `entries`：必填、非空数组；每项必须是对象；
+- `household`：必填、**顶层字符串**（`HouseholdId.parse` 只校验非空白）；**没有** `owner{kind,id}`、**没有** `q`/`r`；
+- `goods`/`money`：缺键 / JSON null ⇒ 空表；至少一张非空；键 = `CommodityId`/`CurrencyId`；值 = 整数且 **≠ 0**；
+- 同一 `household` 在一份载荷里**只能出现一次**；
+- 命令**没有格资源目标**：`AdjustAccountsHandler.targetPaths`（`:99-102`）恒 `List.of()`。
+
+**逐字段对照表（工具 description 改后 ↔ 解析器）**：
+
+| 字段 | 解析器要求（`file:line`） | 改后描述 | 一致 |
+|---|---|---|---|
+| `entries` | 必填非空数组（`ActorPayloads.java:241-244`） | "entries 必填非空" | ✅ |
+| `household` | 顶层字符串、非空白（`:253-258` + `AccountPayloads.java:60-71`） | "每项 household 必填（家户 id 字符串）" | ✅ |
+| `owner`/`q`/`r` | **不存在**（`:249-252` 只认 `{household,goods?,money?}`） | "载荷里没有 owner/q/r（旧形状会被具名拒）" | ✅ |
+| `goods`/`money` 至少一张 | `:264-267` | "至少一个非空" | ✅ |
+| 值 ≠ 0 / 有符号整数 | `:288-320`（`deltas`）+ `requireIntegral` | "有符号净增量、不得为 0" | ✅ |
+| 同一 household 不重复 | `:259-261` | "同一 household 不得重复" | ✅ |
+| 缺账 + 纯正增量 ⇒ 新建；负增量不得 <0 / 侵占冻结 | `AdjustAccountsHandler:140-190` | 逐字保留原文 | ✅ |
+
+**改了哪些描述（file:line）**：
+
+| # | 落点 | 改前 | 改后 |
+|---|---|---|---|
+| 1 | `simos-app/.../tools/write/ActorAdjustAccountsTool.java:16-25`（类注"载荷形状"） | `{entries:[{owner:{kind,id}, q, r, goods…}]}`；"每项 owner/q/r 必填" | `{entries:[{household, goods?, money?}…]}` + 逐字段必填口径 + **新增一段**"为什么不再有 owner+q/r（P2-A §13.3：位置从 `Household.location` 派生；旧形状不做兼容解析）+ 形状权威是解析器" |
+| 2 | 同文件 `:53-59`（`description()`，即模型看得到的工具描述） | "每项 owner/q/r 必填；同一 (owner,q,r) 不得重复" | "每项 household 必填（家户 id 字符串）；**没有** owner/q/r（旧形状会被具名拒）；同一 household 不得重复" |
+
+**★ `CatalogTool` 提示：查过，本来就是对的、一字未改**——`CatalogTool.java:684-692` 的 `PAYLOAD_HINTS["actor.AdjustAccounts"]`
+已写 `entries[{household, goods{商品:有符号净增量}?, money{币种:有符号净增量}?}...]`（与解析器一致），演员形状的那处漂移**不在** catalog 里。
+同族查过：`simos-app/src/main` 全量 `grep -rn "owner:{kind,id}" ... | grep -i adjust` 现在**只剩"没有 owner"这类说明句**；
+`gov/army/Social` 等其它工具描述里的 `owner{kind,id}` 属于**它们各自的**命令形状（未受影响、未改）。
+
+**★ 未做（越权项，需控制方裁定）**：`D3` 的第三处 —— **handler 类注**在 `simos-actor/src/main/java/io/mosire/simos/actor/spi/AdjustAccountsHandler.java:31-47`
+（示例在 `:34-38`，仍写 `owner{kind,id}+q+r`），另有同文件 `:77-79` 说目标来自 `ActorPayloads#entryHexKeys`（而 `targetPaths` 恒空）。
+**`simos-actor` 不在本批授权改动面内**（任务书 §2 的"允许改"只列了 app/social/economy 三个 main），故**只报不改**。修法（控制方授权后一行级）：
+把 `:31-47` 的 pre 块换成 `{"entries":[{"household":"hh-1","goods":{"grain":-120},"money":{"silver":-30}}]}` 与逐字段说明，
+把 `:77-79` 改成"家户账户无格 ⇒ `targetPaths` 恒空"。
+
+## W3f2-4 D4 —— `HOUSEHOLD_VITAL_WRITEBACK` 补 `day` 字段
+
+**改动点**：事件发射在 `EconomySettlement.java:4929-4943`（写口 `applyHouseholdPopulationDeltasInto`）。
+`day` 往上两跳都在调用方手里（app 日循环的 `day`），故按**显式入参**往下传（不猜、不从状态反推）：
+
+| # | 落点 | 改动 |
+|---|---|---|
+| 1 | `EconomySettlement.java:4934-4935` | `LogEvent.of("HOUSEHOLD_VITAL_WRITEBACK", source, **"day", day**, "households", …)` —— 字段名与同写口邻居（`POPULATION_SETTLE`/`FAMINE_MORTALITY`/`HOUSEHOLD_GAP_*`）一致 |
+| 2 | `EconomySettlement.java:4758-4780` | 结算方法签名加 `long day`（第 5 参）+ **fail-closed 守卫**：`day < 0 && (births/deaths 非空)` ⇒ 具名拒（绝不用假日凑数） |
+| 3 | `EconomySettlement.java:4715-4727` | 2 参重载（"搬人"路径，两表恒空）改用哨兵 `NO_WORLD_DAY = -1L`（该路径事件永不发射 ⇒ 哨兵不进任何输出）；签名保留 ⇒ 既有测试调用点不动 |
+| 4 | `EconomyDayStepper.java:582-595` | 公开入口 `applyHouseholdPopulationDeltas(deltas, births, deaths, **day**)`（加第 4 参）+ javadoc |
+| 5 | `PopulationEconomyTimeParticipant.java:759-760` | 调用点补 `day`（app 日循环里本来就有） |
+
+**既有测试调用点静态核对**（保持可编译）：`ModeMigrationPolicyD024Test.java:581` 走 **2 参**重载（签名未动）、
+`EconomyLoggingTest.java:241` 走 `EconomyDayStepper.applyHouseholdPopulationDeltas(Map)` **1 参**重载（签名未动）；
+全仓 `grep -rn "applyHouseholdPopulationDeltas"` 已无第 3 处旧签名调用。
+
+## W3f2-5 命令与结果（真命令 + rc + 关键输出）
+
+```
+$ pgrep -af "classworlds.launcher|surefirebooter"        # 开工与收工各一次
+(no maven running)
+
+$ tools/mvn-lock.sh -q spotless:apply
+[spotless rc=0]
+
+$ git status --porcelain                                  # spotless 未越界改别的模块
+ M simos-app/src/main/java/io/mosire/simos/app/crisis/CrisisMonitor.java
+ M simos-app/src/main/java/io/mosire/simos/app/time/PopulationEconomyTimeParticipant.java
+ M simos-app/src/main/java/io/mosire/simos/app/tools/write/ActorAdjustAccountsTool.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/model/FlowRow.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/EconomyDayStepper.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/EconomySettlement.java
+ M simos-social/src/main/java/io/mosire/simos/social/household/HouseholdBook.java
+ M simos-social/src/main/java/io/mosire/simos/social/household/VitalSettlementResult.java
+
+$ tools/mvn-lock.sh -DskipTests compile -am 2>&1 | tail -45 ; echo "[PIPESTATUS0=${PIPESTATUS[0]}]"
+[INFO] You have 0 Checkstyle violations.
+[INFO] Compiling 330 source files with javac [debug release 21] to target/classes
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+  ... 16/16 全部 SUCCESS（Util/Map/Calendar/SocialApi/ActorApi/EconomyApi/Social/Unit/Core/SD/Actor/Economy/Gov/Army/App）
+[INFO] BUILD SUCCESS
+[INFO] Total time:  8.399 s
+[PIPESTATUS0=0]
+```
+
+★ **未跑**（守任务书 §2）：`test` / `verify` / `package` / `clean` / `test-compile`；**未起任何服务、未跑任何 world**
+（`simos-app/target/*.jar` 一字未动 ⇒ 不存在覆盖运行中 jar 的风险）。8 个文件的改动全部为 `src/main`。
+
+## W3f2-6 会改变数值行为的清单（逐条具名）
+
+**结论：本批不改任何模拟状态、不改"谁死"，只改读数与日志。** 逐条：
+
+| 改动 | 会变的数 | 不会变的东西（依据） |
+|---|---|---|
+| **D1**（`CrisisMonitor`） | `GET /api/social/population` 的响应体：FOOD 灯的 evidence 从"整条 500"变为 `"stressByAgeBracket":{}`（+ 原有 unavailable 原因） | 零状态改动；`lightsAt` 全是只读聚合；`Light` 的守卫未动 |
+| **D2**（`famineDeaths`） | **只改读数**：`VitalSettlementResult.famineDeaths`（→ Social `POPULATION_SETTLE`/`FAMINE_MORTALITY` 两条 INFO、App `FAMINE_MORTALITY_BRIDGED` INFO、`POPULATION_SETTLE_APP` DEBUG 的同名字段），以及 App 那条 INFO 的**发射条件**（`famineDeaths > 0` 由"几乎恒假"变为真 ⇒ 这些行会重新出现/变多——**日志行数会变，数值状态不变**） | `deaths`/`births`/`populationDeltas`/余数表/事件 `count` **一字未动**（只读 `deathCause` 本地变量与 `deaths` 累加之外的第三个局部量）；谁死谁活与 D2 无关（判死输入仍是 `effectiveDeathPpm`） |
+| **D3**（工具描述/类注） | 无（纯文本） | 工具名/命令类型/权限（`ACTOR_NAMESPACE_WRITE`）/解析器/域层语义一字未动；**没有**为迁就文档去改解析器 |
+| **D4**（`day` 字段） | **只加一个日志字段**（`HOUSEHOLD_VITAL_WRITEBACK` 多 `day=<世界日>`）；新增 fail-closed 守卫（`day<0` + 有生死 ⇒ 抛）在既有调用路径上**永不触发** | 三张表的校验/写口/`FlowRow` 形状未动；`NO_WORLD_DAY` 只走"搬人"路径且该路径不发射事件 |
+| 文档同步（`FlowRow`/`EconomySettlement`/App 注释） | 无 | 注释与文本 |
+| `HouseholdBook` 新增逐户守卫 | 无（越界才抛；结构上不可能越界：条数 ≤ 人数） | — |
+
+**唯一"可能被读成数值变化"的一处**：D2 让 App 的 `FAMINE_MORTALITY_BRIDGED` INFO **重新开始发射**（此前 `famineDeaths=0` 且
+`householdsWithRationGap>0` 时它本来就发；缺口 0 的那 43 天不发）。这是**日志面**变化，不是状态变化。
+
+## W3f2-7 未完成 / 未验证（如实）
+
+1. **一条测试都没跑、一个 world 都没跑**（本批明令只许 `spotless:apply` + `compile -am`）⇒
+   D1 的"500 不再来自 null"、D2 的"ΣfamineDeaths = 377"、D4 的"日志里有 `day=`"**都是静态推演，不是实测**"。
+   给验收批的候选判据（按判据写、别按代码反推）：
+   - D1：高缺粮世界里 `GET /api/social/population?q=&r=` 在**有 FOOD 灯的格**返回 200 且 evidence 含
+     `stressByAgeBracket={}` + `stressByAgeBracketUnavailable`；**负向**：同一响应里若同时满足死亡率判据，`crisis[]` 里必须**同时**能看到
+     `kind=MORTALITY`（这条正是"遮蔽"的回归判据）。★ 断言"**500 的响应体不是 `{"error":"internal error"}`**"这类**负向**判据更有判别力。
+   - D2：driving N 天后 `Σ famineDeaths`（把当日 INFO 逐条相加）== `populationEvents` 里 `cause=BASE_PLUS_FAMINE` 的**条数**；
+     三种负向：缺口 0 的世界 ⇒ 恒 0；纯 BASE 死 ⇒ 0；把 `DEATH_CAUSE_BASE_PLUS_FAMINE` 或那行 `equals` 改坏 ⇒ 当场红（变异自证）。
+     ★ 口径若按"人数"读，请先看 W3f2-2 末尾的**口径选择点**。
+   - D4：`HOUSEHOLD_VITAL_WRITEBACK` 行里 `day=` 存在，且与同日 `POPULATION_SETTLE.day` / `FAMINE_MORTALITY_BRIDGED.day` **逐值相等**；
+     负向：`day` 不得为 `-1`（哨兵不得出现在任何发射行里）。
+2. **`test-compile` 未跑**（不在授权命令集内）⇒ 测试树能否编译**未实测**。静态核对：两处签名变化的旧形态调用点均已在上文点名且不存在
+   （`ModeMigrationPolicyD024Test:581` 走 2 参、`EconomyLoggingTest:241` 走 1 参）；无测试引用 `stressByAgeBracket`/`cause=BASE`/
+   `HOUSEHOLD_VITAL_WRITEBACK`/`famineDeaths`（全仓 `src/test` grep = 0）⇒ 预期不破，**仍须测试 Agent 实跑确认**。
+3. **D3 的 handler 类注（`simos-actor`）未改** —— 越权（见 W3f2-3 末段），需控制方授权或另派。
+4. **未验**：`Light` 的 evidence 在 GUI/JSON 序列化下 `{}` 的展示是否被前端误读成"压力为 0"（前端 `webui/*.js` 全仓
+   `grep stressByAgeBracket` = 0 命中 ⇒ 当前无读者，但**读的人**要看到旁边的 `…Unavailable` 才不误读——这是文档面提醒）。
+5. **未做**：D5–D8（验收报告 §3 的其余条目）不在本批任务书内，一字未碰。
+
+# W3-fix3（famineDeaths 按人数 + actor 类注）
+
+> 控制方两处裁定（本批任务书 §1/§2）：① D2 的 `famineDeaths` 计数口径**由"条数"改为"人数"**；
+> ② 授权改 `simos-actor/.../AdjustAccountsHandler.java` 的**注释**（本批唯一越界授权，只改注释/描述，不改解析器、不改权限）。
+> 纪律：不 `git commit`；不跑 `test`/`verify`/`package`/`clean`；工作树里 W3-fix2 的未提交改动**不回退、不重做**。
+
+## W3f3-1 ① 口径改动点（`file:line` + 前后）
+
+语义改动只有 **1 行**；同批把同口径的**文案**同步（措辞跟代码走，零行为）。
+
+| # | 落点（改后行号） | 改前 | 改后 |
+|---|---|---|---|
+| 1 | `HouseholdBook.java:984-986` | `if (DEATH_CAUSE_BASE_PLUS_FAMINE.equals(deathCause)) { householdFamineDeaths = Math.addExact(householdFamineDeaths, 1L); }`（累加量 = 常量 `1L`，即"计 1 条"） | 同一个 `if`，累加量换成 **`deaths`**（该条 DEATH 事件携带的人数） |
+| 2 | `HouseholdBook.java:978-983`（累加行正上方） | "饥荒那一份 = 本户本 tick 里 cause 含饥荒的死亡**事件条数**；条数 ≤ 人数（每条 deaths ≥ 1）" | "= 那些事件**携带的人数之和**（就是事件自己的 `deaths`）；按批次发时逐条累加；不变量由**子集**关系保证" |
+| 3 | `HouseholdBook.java:950-953`（`deathCause` 上方） | "famineDeaths 直接数 cause 含饥荒的**条数**" | "只累加 cause 含饥荒的那些事件的**人数**" |
+| 4 | `HouseholdBook.java:64-65`（常量注）/ `:784`（`famineDeathsTotal` 行内注）/ `:905-906`（逐户累加器注） | "条数" | "饿死人数" |
+| 5 | `HouseholdBook.java:1051-1064`（**逐户守卫**） | 文案"饿死**条数**超过死亡人数" | 文案"饿死**人数**超过死亡人数"；**断言与抛出一字未动** |
+| 6 | `VitalSettlementResult.java:39-45`（record javadoc） | "cause 含饥荒的**死亡事件条数**（条）；直接计 1 条" | "cause 含饥荒的**饿死人数**（人）；把那些事件的 `count` 逐条累加 —— 不是数事件条数" |
+| 7 | `VitalSettlementResult.java:86-93`（**总量守卫**文案） | "饥荒致死事件条数 ≤ 死亡人数" | "饥荒致死人数 ≤ 死亡人数"；**断言一字未动** |
+| 8 | `FlowRow.java:45-47`、`EconomySettlement.java:4740-4742`、`PopulationEconomyTimeParticipant.java:754-755` | 三处"（条数 ≤ 人数）" | 三处"（人数 ≤ 人数）" |
+
+★ 为什么 #2–#8 也动：W3-fix2 把"条数"写进了 6 个文件的注释/拒因文案，口径一改这些句子就成了**假陈述**
+（AGENTS §四"机制性描述一律回代码核"）。全部**只改字、不改任何 Java 语句**——本批唯一语句改动是 #1
+（`git diff -U0` 过滤纯注释行后，这 6 个文件只剩 W3-fix2 早已落下的语句 + #1）。
+
+**★ 与 W3f2-2 末段的关系**：那一节把"按条数"记为待裁定的**口径选择点**，并预告"若要人数，改动是一行
+（`Math.addExact(householdFamineDeaths, 1L)` → `…, deaths)`）"。控制方 2026-10-11 裁定 = **按人数**，本批落地。
+W3f2 的记录**不回头改**（§五.4 留痕），以本节为准。
+
+## W3f3-2 不变量断言（两处，保留；fail-closed、不静默夹取）
+
+| 层级 | 落点 | 断言 |
+|---|---|---|
+| 逐户 | `HouseholdBook.java:1055-1064` | `householdFamineDeaths > householdDeaths` ⇒ `vitalReject(day, "饿死人数超过死亡人数（逐户自洽被破坏）…")` |
+| 总量 | `VitalSettlementResult.java:86-93` | `famineDeaths > deaths` ⇒ `IllegalArgumentException("…不得超过 deaths（饥荒致死人数 ≤ 死亡人数）…")` |
+
+结构论证（人数口径下比"条数"更直接）：饥荒事件集 ⊆ 全部 DEATH 事件集，逐户两笔都是**同一批 `deaths` 的求和**
+⇒ 子集和 ≤ 全集和；总量那两笔又各自是逐户同名量的求和 ⇒ 总量不变量同样由结构保证。越界即抛，**不夹取**。
+
+## W3f3-3 逐值自检表（**静态推演自代码；本批未跑 test/world**）
+
+读的是改后代码路径：`if (deaths > 0)`（`HouseholdBook.java:949`，守卫整条事件与计数）→ `deathCause`（`:954-955`）→ 累加（`:984-986`）。
+
+| 情形 | 构造 | 事件流 | `famineDeaths`（改后=人数） | 旧"条数"口径 |
+|---|---|---|---|---|
+| **A. `deaths=1` 且 famine 参与** | faminePpm>0，单批死 1 人 | 1 条 DEATH，`count=1`，`cause=BASE_PLUS_FAMINE` | **1** | 1（同值） |
+| **B. `deaths=0`** | 余数不足 1 人 | **0 条**（`if (deaths > 0)` 不进） | **0** | 0（同值） |
+| **C. 纯 BASE** | faminePpm=0（缺口 0） | 1 条 DEATH，`cause=BASE` | **0** | 0（同值） |
+| **D. 混合** | famine **2 条共 3 人** + BASE **1 条 1 人**（总 4 人） | 3 条 DEATH | **3** | 2（**不同值** ← 本裁定要修的就这一格） |
+| D'. 混合（人数=条数） | famine 2 条各 1 人 + BASE 1 条 1 人 | 3 条 | **2** | 2（同值；sw180 的 377 属这一类） |
+
+⇒ 可达世界（`share × effectivePpm < 2e6` ⇒ 每条事件 `deaths` 恒 1）两种读法同值；只在"一条事件含多人"时按人数才对。
+**这是推导、不是实测**（本批明令不跑 test/world）。
+
+## W3f3-4 ② `AdjustAccountsHandler` 类注（`file:line` + 改后原文）
+
+**改后示例块（`AdjustAccountsHandler.java:33-38`，原文）**：
+
+```java
+ * <pre>{@code
+ * {"entries":[
+ *   {"household":"hh-1","goods":{"grain":-120,"cloth":5},"money":{"silver":-30}},
+ *   {"household":"hh-2","goods":{"grain":120},"money":{"silver":30}}
+ * ]}
+ * }</pre>
+```
+
+**逐字段 ↔ 解析器对照（解析器 = 权威）**：
+
+| 字段 | 解析器（`file:line`） | 改后类注写的 | 一致 |
+|---|---|---|---|
+| `entries` | 必填、非空数组（`ActorPayloads.java:241-244`） | "必填、非空数组：每项 = 一本家户账的净增量" | ✅ |
+| 每项形状 | 必须是 `{household,goods?,money?}` 对象（`ActorPayloads.java:248-252`） | "每项是 `{household, goods?, money?}` 对象" | ✅ |
+| `household` | 顶层**字符串**、`HouseholdId.parse`（`ActorPayloads.java:253-258` + `AccountPayloads.java:60-71`） | "必填、字符串、合法家户 id" | ✅ |
+| `owner`/`q`/`r` | **不存在**（只认上面三个键） | "**没有** `owner{kind,id}`，也**没有** `q`/`r`" | ✅ |
+| 重复 household | 同一份载荷里重复 ⇒ 拒（`ActorPayloads.java:259-261`） | "同一 `household` 只能出现一次" | ✅ |
+| `goods`/`money` | 缺键/JSON null ⇒ 空表；至少一张非空（`:264-267`、`:283-293`） | "至少一个非空；缺键/null=空表；两个都空=这条没动作，拒" | ✅ |
+| 键 / 值 | `CommodityId.parse`/`CurrencyId.parse`；整数；**0 拒**（`:288-320`） | "键走 `…parse`；值=有符号净增量(long)，0 不得出现" | ✅ |
+| 账户键 | `new HouseholdAccountKey(entry.household())`（`AdjustAccountsHandler.java:148`）；键 = 家户、**无格** | "`household` 就是 `HouseholdAccountKey` 的全部内容；格从家户位置派生" | ✅ |
+
+**改后 `:81-84`（原 `:77-79`）原文**：
+
+> ★ **目标声明**（`CommandTargets`）：**家户账户无格 ⇒ `targetPaths` 恒为空列表**（本命令不动任何 hex 资源；账户键只有家户，
+> 格由家户的位置派生），`targetResources` 走默认实现 ⇒ 目标清单同样为空（空 = 本命令没有可寻址目标）。
+> `ActorPayloads#entryHexKeys`（`ResourcePaths#actor(int,int)` 那条逐格拼写）是 `actor.Seed` 载荷的路径，**本命令不经过它**
+> ——本命令的载荷里没有 `q`/`r`。
+
+依据：`targetPaths` 实际实现 `:103-107`（解析后 `return List.of()`，`:106`）；`entryHexKeys`（`ActorPayloads.java:134-145`）
+读的是 `q`/`r`，只被 `ActorSeedHandler` 用（`:63`/`:139`）⇒ 与 `AdjustAccounts` 无关。`targetResources` 是接口默认实现
+（`CommandTargets.java:79-88`：把 `targetPaths` 逐条包命名空间）⇒ 空进空出。
+
+**未动**：解析器、`targetPaths` 实现、`CommandTargets`/`GmOnlyCommand`、权限围栏、任何 Java 语句
+（本文件 diff **纯注释**：`git diff -U0 … | grep -v '^\s*\*'` 为空）。
+
+## W3f3-5 命令与结果（真命令 + rc）
+
+| 命令 | rc | 关键输出 |
+|---|---|---|
+| `tools/mvn-lock.sh -q spotless:apply` | **0** | 静默；事后 md5 比对：只重排了 `AdjustAccountsHandler.java` 与 `VitalSettlementResult.java`（google-java-format 折行），W3-fix2 的其余 8 个文件**一字未动** |
+| `tools/mvn-lock.sh -DskipTests compile -am` | **0** | `BUILD SUCCESS`；16/16 模块 SUCCESS；各模块 `You have 0 Checkstyle violations.`；enforcer `BannedDependencies passed`（含 social/actor 的边界规则）；`SocialSimos` 编译 78 个源文件、`ActorSimos` 25 个 |
+
+**未跑**（守任务书 §3）：`test` / `verify` / `package` / `clean`；未起服务、未跑 world
+（`simos-app/target/*.jar` 未被动过 ⇒ 无覆盖运行中 jar 风险）。两轮命令均经 `tools/mvn-lock.sh` 串行锁、前台执行（一次只有一个 Maven）。
+
+## W3f3-6 会改变数值行为的清单
+
+**本批 Java 语句改动只有 1 处**（`HouseholdBook.java:985` 的累加量），且**在所有可达世界同值**——它只在"一条 DEATH 事件含多人"时与旧口径分叉：
+
+| 改动 | 会变的数 | 不会变的东西（依据） |
+|---|---|---|
+| ① 累加量 `1L` → `deaths` | **只改读数**：`VitalSettlementResult.famineDeaths` 及其下游同名字段（Social `POPULATION_SETTLE`/`FAMINE_MORTALITY`、App `FAMINE_MORTALITY_BRIDGED`/`POPULATION_SETTLE_APP`），以及 App 那条 INFO 的发射条件 | `deaths`/`births`/`populationDeltas`/余数表/事件 `count`/`cause` **一字未动**——累加发生在事件已构造之后，只读局部量 `deaths`；"谁死"仍只由 `effectiveDeathPpm` 决定 |
+| ② 注释/文案（6 个文件的注释 + 2 条异常文案） | 无 | 无 Java 语句改动 |
+
+**唯一可能非空的数值差异**：若某条 DEATH 事件 `count ≥ 2` 且 famine 参与，读数从"1 条"变"该事件人数"（情形 D）。
+可达世界实测 `count` 恒 1（W3f2-2 已核：sw180 的 428 死 = 428 条事件）⇒ 与 W3 验收的"死因分布 377 famine"**逐值不变**。
+
+## W3f3-7 未完成 / 未验证（如实）
+
+1. **一条测试没跑、一个 world 没跑**：W3f3-3 的逐值表与"377 不变"都是**静态推演**，不是实测。
+2. **`test-compile` 未跑**（不在授权命令集）：本批改动里只有注释与 2 条异常文案，无签名/形状变化 ⇒ 预期测试树不受影响，**仍须测试 Agent 实跑确认**。
+3. **给验收批的判据修正**：W3f2-7 第 1 条 D2 写的"Σ famineDeaths == `cause=BASE_PLUS_FAMINE` 的**条数**"**已被本裁定取代** ⇒
+   应改为"== 那些事件的 `count` 之和（人数）"。★ 在 `count` 恒 1 的世界里两式同值 ⇒ **该判据没有判别力**，要区分两种口径须
+   构造"一条 DEATH 事件含多人"的夹具（或直接断言 W3f3-3 的情形 D）。
+4. **未做**：D5–D8 与 W3 验收报告其余条目一字未碰；`docs/**`（含报告里的"死因分布 377 famine"）按任务书禁改。

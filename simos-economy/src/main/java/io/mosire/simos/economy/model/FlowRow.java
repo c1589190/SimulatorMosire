@@ -41,9 +41,10 @@ import java.util.Map;
  * EconomySettlement#applyPopulationChange}）。★ 两条入口是<b>同一条语义</b>：都是"外部报来的生死落在流水上"，经济侧一字不判。 ★ 窗口 =
  * <b>本周期累计</b>、新周期第一天归零（与 {@code unmetNeed} 同口径）。
  *
- * <p>★ <b>报"饿死多少人"仍走 Social 的日志</b>（{@code FAMINE_MORTALITY}，含逐户 starvationRatio 与饥荒死亡数）；本字段是那个数在
- * <b>经济流水里的同值投影</b>（饥荒死亡 ⊆ 死亡，见 {@code VitalSettlementResult#famineDeaths()}）。 ★ 字段**保留不删**（v1 spec
- * §3.3 的形状、读口与守恒式仍读它）。
+ * <p>★ <b>报"饿死多少人"仍走 Social 的日志</b>（{@code FAMINE_MORTALITY}，含逐户 starvationRatio
+ * 与饥荒致死人数）；本字段是"死亡人数"在 <b>经济流水里的同值投影</b>。★ 记准口径（W3-fix2 / D2 + W3-fix3）：{@code
+ * VitalSettlementResult#famineDeaths()} 是"cause 含饥荒的死亡<b>人数</b>"， 它 ≤ 本字段（人数 ≤
+ * 人数），但<b>不是</b>本字段的一部分、也不由本字段派生。 ★ 字段**保留不删**（v1 spec §3.3 的形状、读口与守恒式仍读它）。
  *
  * <p>★ **不变量（构造期判）**：{@code taxPaid}/{@code interestDue}/{@code newBorrowing}/{@code repaid}/{@code
  * unmetNeed}/{@code deaths} 均 {@code ≥ 0}；{@code income}/{@code consumed} 键值非空、逐值 {@code ≥

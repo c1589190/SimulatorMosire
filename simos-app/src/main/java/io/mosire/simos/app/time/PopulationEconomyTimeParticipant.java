@@ -751,12 +751,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           stepper.updateNaturalNeeds(naturalNeedsOf(currentSocial, day));
           //   ★★★ W3-fix（2026-10-11）读数接线：把 Social 报来的**逐户出生/死亡原值**一并交回经济 ——
           //     经济只把它们落进流水读数（FlowRow.births / FlowRow.deaths，唯一写口 withLifecycle），**不判定、不缩劳动**。
-          //     ★ 饥荒死亡（vital.famineDeaths()）是 vital.deaths() 的子集 ⇒ 从这一行起"饿死多少人"在经济读数里也读得到；
+          //     ★ 饥荒那一份（vital.famineDeaths()）= 本 tick **cause 含饥荒的那些死亡事件携带的人数之和**（≤ vital.deaths()；
+          //     W3-fix2 / D2 + W3-fix3 裁定，不再按 ppm 占比分摊）⇒ 从这一行起"饿死多少"在经济读数里也读得到；
           //     此前它只进 Social 的 FAMINE_MORTALITY 日志，FlowRow.deaths 恒 0 ⇒ CrisisMonitor 的 MORTALITY
           // 灯永不亮。
           //     逐户明细仍在 Social 侧事件日志；三张表逐户自洽（出生−死亡 == delta）由两侧各自 fail-closed 核。
           stepper.applyHouseholdPopulationDeltas(
-              vital.populationDeltas(), vital.birthsByHousehold(), vital.deathsByHousehold());
+              vital.populationDeltas(), vital.birthsByHousehold(), vital.deathsByHousehold(), day);
           if (vital.famineDeaths() > 0L || famineGaps.householdsWithRationGap() > 0L) {
             // ★★ §一.9 / W3 判据⑤：一条 INFO「谁因什么死了多少」—— 跨域汇总（Social 侧还有一条同事件名）。
             TIME.info(

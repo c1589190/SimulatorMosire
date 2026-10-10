@@ -36,9 +36,13 @@ import java.util.Set;
  * @param births 本次出生总数；不得为负（= {@code birthsByHousehold} 之和）
  * @param deaths 本次死亡总数；不得为负（★ <b>含饥荒那一份</b>：它与基准死亡共用 DEATH 余数，是同一个总数；= {@code deathsByHousehold}
  *     之和）
- * @param famineDeaths ★★ <b>W3（2026-10-11）：本次死亡里由饥荒项贡献的那一部分</b>（人；≥ 0；≤ {@code deaths}）。
- *     它是<b>读数</b>（按"饥荒 ppm ÷ 有效 ppm"从当 tick 的死亡里折算，与余数累加的长期期望一致）， 只进日志/报告，<b>不改</b>任何状态；缺口 = 0 时恒
- *     0。★ App 用它写"谁因什么死了多少"的 INFO。
+ * @param famineDeaths ★★ <b>W3（2026-10-11）/ W3-fix2（D2）/ W3-fix3（按人数）：本次死亡里 cause 含饥荒的饿死人数</b>（人；≥
+ *     0；≤ {@code deaths}）。★ <b>口径（设计书 v3.12 §7 的 D2 裁定 + W3-fix3 收口）</b>：按每条 {@code DEATH} 事件的
+ *     {@code cause}（{@code BASE_PLUS_FAMINE}）筛选出饥荒那些事件，**把它们的 {@code count}（该批次人数）逐条累加** ——
+ *     不是数事件条数；<b>不再</b>按 {@code 饥荒 ppm ÷ 有效 ppm} 从死亡人数里分摊取整（旧式在"单户单日死 1 人"时恒为 0（{@code
+ *     floorDiv(1×faminePpm, effectivePpm)} = 0），使读数系统性为 0 而门禁抓不到）。★
+ *     它是<b>读数</b>：只进日志/报告，<b>不改</b>任何状态；缺口 = 0 时恒 0。★ 饥荒事件是全部死亡事件的子集、每条 {@code count} ≥ 1 ⇒ 人数 ≤ 该
+ *     tick 的死亡人数，不变量由结构保证（逐户在 {@code HouseholdBook} 结算循环里、总量在本记录构造期各核一次）。★ App 用它写"谁因什么死了多少"的 INFO。
  * @param day 结算日（世界 tick）；不得为负
  * @param events 本次落账的事件（保序、冻结）；不得为 null
  */
@@ -80,8 +84,10 @@ public record VitalSettlementResult(
           "VitalSettlementResult.famineDeaths 不得为负: " + famineDeaths);
     }
     if (famineDeaths > deaths) {
+      // ★★ W3-fix2（D2）/ W3-fix3（按人数）：总量侧的"饿死人数 ≤ 死亡人数"不变量 —— 逐户那一道在 HouseholdBook 的结算循环里
+      //   （见那里的 householdFamineDeaths 守卫）；两处口径相同：越界即 fail-closed，不静默夹取。
       throw new IllegalArgumentException(
-          "VitalSettlementResult.famineDeaths 不得超过 deaths（饥荒是死亡的子集）: famineDeaths="
+          "VitalSettlementResult.famineDeaths 不得超过 deaths（饥荒致死人数 ≤ 死亡人数）: famineDeaths="
               + famineDeaths
               + " deaths="
               + deaths);

@@ -35,7 +35,8 @@ import java.util.Map;
  *   <tr><th>spec 列的</th><th>本类的落点</th></tr>
  *   <tr><td>当前需求满足水平</td><td>{@link Kind#FOOD}/{@link Kind#CLOTH}：本周期**逐商品**的满足率（粮与布**各一条**）</td></tr>
  *   <tr><td>儿童·青壮年·老年人分别受影响程度</td><td>★★ <b>Batch B 后具名 unavailable</b>：{@code stressByAgeBracket} 的键保留并给
- *       {@code null}，另给 {@link #STRESS_BY_AGE_BRACKET_UNAVAILABLE} 原因（生理压力字段已退役，不填 0 冒充）</td></tr>
+ *       <b>空表</b> {@code Map.of()}，另给 {@link #STRESS_BY_AGE_BRACKET_UNAVAILABLE} 原因（生理压力字段已退役，不填 0 冒充）。
+ *       ★ <b>D1（W3-fix2）</b>：此处**不得放 {@code null}** —— {@link Light} 的 {@code Map.copyOf} 是 fail-closed 守卫</td></tr>
  *   <tr><td>债务增长</td><td>{@link Kind#DEBT}：本期新借入 ÷ 本周期**至今**需求（与分子同基准）</td></tr>
  *   <tr><td>劳动负担</td><td>{@link Kind#LABOR_BURDEN}：该格劳动占用率（{@code Σ配额 ÷ Σ可用劳动}）</td></tr>
  *   <tr><td>相比历史基线的突变</td><td>★ **如实记：本阶段用的是"满额基线（1000‰）"** ——真正的"与历史基线相比"要一份跨周期的留痕
@@ -80,7 +81,8 @@ public final class CrisisMonitor {
 
   /**
    * ★★ <b>Batch B：{@code stressByAgeBracket} 的具名不可用原因</b>（2026-10-09 每 tick 生死计划 §4：生理压力与压力自动传导
-   * 一起删）。读口保留键并给 {@code null}，另用本常量说明为什么没有数——**不填 0 冒充"没有压力"**。
+   * 一起删）。读口保留键并给<b>空表</b>（★ <b>D1</b>：给 {@code null} 会撞 {@link Light} 构造期的 {@code Map.copyOf} 守卫 ⇒
+   * 整个读口 500），另用本常量说明为什么没有数——**不填 0 冒充"没有压力"**。
    */
   public static final String STRESS_BY_AGE_BRACKET_UNAVAILABLE =
       "生理压力字段已退役（2026-10-09 每 tick 生死计划 §4）：生死改由 Social ppm/tick 率表 + 余数累加器每 tick 结算，" + "本读口不再有数";
@@ -195,8 +197,12 @@ public final class CrisisMonitor {
       // ★ 相位：让读的人知道这是**部分周期**的读数（elapsedDays ≤ cycleDays）。
       evidence.put("elapsedDays", elapsedDaysSeen);
       evidence.put("cycleDays", cycleDaysSeen);
-      // ★★ Batch B：生理压力读数已退役（计划 §4）——保留键给 null + 具名 unavailable 原因，不填 0 冒充。
-      evidence.put("stressByAgeBracket", null);
+      // ★★ Batch B：生理压力读数已退役（计划 §4）——保留键 + 具名 unavailable 原因，不填 0 冒充。
+      //   ★★★ D1（W3-fix2，2026-10-11）：这里**绝不放 null** —— {@link Light} 的构造期 {@code Map.copyOf}
+      //   是**故意 fail-closed 的守卫**（拒 null 值，放松它 = 把"依据"的契约放松）。放 null 的实际后果是
+      //   **整条读口 500**（`GET /api/social/population`，栈见 W3 验收报告 D1），并把它后面的 MORTALITY 灯
+      //   整个遮住。缺值一律放**空表**（键保留、不冒充读数；"为什么没有数"由下面那条 Unavailable 说明）。
+      evidence.put("stressByAgeBracket", Map.of());
       evidence.put("stressByAgeBracketUnavailable", STRESS_BY_AGE_BRACKET_UNAVAILABLE);
       lights.add(new Light(coord, Kind.FOOD, evidence));
     }
@@ -321,6 +327,10 @@ public final class CrisisMonitor {
 
   /**
    * 一盏红灯：**类别** + **当场量到的数字**（依据）。★ **没有概率字段**（见类注）。
+   *
+   * <p>★★ <b>D1（W3-fix2，2026-10-11）：{@code Map.copyOf} 是 fail-closed 守卫，不许放松</b>——它拒收 {@code null}
+   * 值，把"某个键没有读数"这件事挡在构造期。所以**产 evidence 的每一处都必须自己遵守**：缺值放**空表** （{@code Map.of()}）或**不放那个键**，另用一条
+   * {@code …Unavailable} 键说明原因；**绝不放 {@code null}** （放 null = 读这条灯的整条 HTTP 读口 500，且会遮住排在它后面的灯）。
    *
    * @param at 哪一格
    * @param kind 危机类别

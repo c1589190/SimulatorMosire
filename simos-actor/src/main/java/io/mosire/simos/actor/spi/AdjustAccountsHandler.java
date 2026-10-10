@@ -25,25 +25,29 @@ import java.util.Objects;
 import org.slf4j.Logger;
 
 /**
- * ★★ {@code actor.AdjustAccounts} 命令的处理器（辖区阶段 6 / 计划 §6.2）：**按有符号净增量改 actor 账** —— 一条命令、 一条
+ * ★★ {@code actor.AdjustAccounts} 命令的处理器（辖区阶段 6 / 计划 §6.2）：**按有符号净增量改家户账** —— 一条命令、 一条
  * revision、<b>整条原子</b>。
  *
- * <p>★★ <b>载荷形状（本原语定稿）</b>：
+ * <p>★★ <b>载荷形状（本原语定稿；逐字段对应 {@link ActorPayloads#adjustments} 的解析）</b>：
  *
  * <pre>{@code
  * {"entries":[
- *   {"owner":{"kind":"HOUSEHOLD","id":"hh-1"},"q":0,"r":0,
- *    "goods":{"grain":-120,"cloth":5},"money":{"silver":-30}},
- *   {"owner":{"kind":"UNIT","id":"u-1"},"q":3,"r":2,"goods":{"grain":120},"money":{"silver":30}}
+ *   {"household":"hh-1","goods":{"grain":-120,"cloth":5},"money":{"silver":-30}},
+ *   {"household":"hh-2","goods":{"grain":120},"money":{"silver":30}}
  * ]}
  * }</pre>
  *
  * <ul>
- *   <li>{@code entries} 必填、非空数组；每项 {@code owner{kind,id}}、{@code q}、{@code r} 必填；
- *   <li>{@code goods} / {@code money} <b>至少一个非空</b>（缺省 / {@code null} = 空表）：键 = 商品 id / 币种 id，值 =
- *       <b>有符号净增量</b>（long，<b>0 不得出现</b>，无操作条目请删）；
- *   <li>{@code (owner, 格)} 就是 {@link HouseholdAccountKey} 的 {@code (owner,
- *       location)}：增量打在**那一本账**上。
+ *   <li>{@code entries} 必填、非空数组：每项 = 一本家户账的净增量（一条命令可含多户，仍只落一条 revision）；
+ *   <li>每项是 {@code {household, goods?, money?}} 对象 —— P2-A §13.3 起账户主体<b>只有家户</b>，故<b>没有</b> {@code
+ *       owner{kind,id}}，也<b>没有</b> {@code q} / {@code r}；
+ *   <li>{@code household} 必填、字符串、合法家户 id（走 {@code AccountPayloads.household}，词表在 {@code
+ *       HouseholdId.parse}）；同一 {@code household} 在一份载荷里<b>只能出现一次</b>；
+ *   <li>{@code goods} / {@code money} 是两张 {@code {"商品/币种 id": 有符号整数}} 表，<b>至少一个非空</b>（缺键 / {@code
+ *       null} = 空表；两个都空 = 这条没有任何动作，拒）：键走 {@code CommodityId.parse} / {@code CurrencyId.parse} （词表在
+ *       ID 类型里），值 = <b>有符号净增量</b>（long，<b>0 不得出现</b>，无操作条目请删）；
+ *   <li>{@code household} 就是 {@link HouseholdAccountKey} 的<b>全部内容</b>：增量打在**该家户那一本账**上；格不写进载荷
+ *       （从家户的位置派生 ⇒ 家户搬家账自动跟走）。
  * </ul>
  *
  * <p>★★ <b>数值语义（整条原子：任一违例 ⇒ 全拒，不做部分生效）</b>：
@@ -55,28 +59,29 @@ import org.slf4j.Logger;
  *   <li><b>缺账 + 任何负增量</b> ⇒ 拒；
  *   <li><b>负增量使余额 &lt; 0</b> ⇒ 拒；<b>负增量侵占冻结额</b> ⇒ 拒（可支配 = 余额 − 冻结，走 {@link AvailableStock}
  *       的<b>唯一算法</b>，本类不自己写减法）；
- *   <li>只动 {@code accounts} 一张表：{@code meta} / {@code actors} <b>一字不动</b>（<b>不给 UNIT owner 建 {@code
+ *   <li>只动 {@code accounts} 一张表：{@code meta} / {@code actors} <b>一字不动</b>（<b>不给 owner（家户）建 {@code
  *       Actor} 行</b>——{@link ActorData} 明确允许 {@code accounts} 的 owner 不在 {@code actors}
  *       里，存在性由装配期与调用方负责）。
  * </ul>
  *
- * <p>★★ <b>具名拒清单</b>（中文、可读、带 owner / 位置 / 维度 / 数字；解析层抛 {@link IllegalArgumentException}，本类折成 {@link
+ * <p>★★ <b>具名拒清单</b>（中文、可读、带家户 / 维度 / 数字；解析层抛 {@link IllegalArgumentException}，本类折成 {@link
  * HandlerOutcome.Rejected}）：
  *
  * <ol>
  *   <li>{@code entries} 缺失、不是数组、或为空；
- *   <li>某条不是对象；或缺 {@code owner} / {@code q} / {@code r}；{@code kind} / {@code id} 非法；
- *   <li>{@code goods} / {@code money} 至少一个非空不成立；某张表的键不是合法 id、值不是整数；
+ *   <li>某条不是对象；或缺 {@code household}（不是字符串 / 家户 id 词表不合法）；
+ *   <li>{@code goods} / {@code money} 至少一个非空不成立；某张表不是对象、键不是合法 id、值不是整数；
  *   <li>{@code goods} / {@code money} 的值为 0；
- *   <li>同一 {@code (owner, q, r)} 在一条载荷里重复；
+ *   <li>同一 {@code household} 在一条载荷里重复；
  *   <li>缺账 + 任何负增量；
  *   <li>负增量使余额 &lt; 0；
  *   <li>负增量侵占冻结额（可用 = 余额 − 冻结）。
  * </ol>
  *
- * <p>★ <b>目标声明</b>（{@link CommandTargets}）：{@code entries[]} 里**每一个**格资源 {@link
- * ResourcePaths#actor(int, int)}，经 {@link ActorPayloads#entryHexKeys} 这个与 {@code actor.Seed}
- * <b>共用</b>的拼写点（两处各拼一份 ⇒ 权限围栏两侧会漂）。
+ * <p>★ <b>目标声明</b>（{@link CommandTargets}）：<b>家户账户无格 ⇒ {@code targetPaths} 恒为空列表</b>（本命令不动任何 hex
+ * 资源；账户键只有家户，格由家户的位置派生），{@code targetResources} 走默认实现 ⇒ 目标清单同样为空（空 = 本命令没有可寻址目标）。 {@link
+ * ActorPayloads#entryHexKeys}（{@link ResourcePaths#actor(int, int)} 那条逐格拼写）是 {@code actor.Seed}
+ * 载荷的路径， <b>本命令不经过它</b>——本命令的载荷里没有 {@code q} / {@code r}。
  *
  * <p>★★ <b>GM-only（辖区阶段 6）</b>：实现 {@link GmOnlyCommand} —— 本命令是给组合工具用的<b>裸账目原语</b>， 上限 / 管辖 /
  * 人力口径都在 {@code simos.unit.levyRegion} 里；若它能被嵌进决策令，那些上限就被绕过了。 标记只禁"嵌入令 / {@code RegisterEffect} /

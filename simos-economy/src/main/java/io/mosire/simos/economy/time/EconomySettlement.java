@@ -4702,8 +4702,8 @@ public final class EconomySettlement {
    *
    * <p>★★ <b>本重载不带生死流水</b>（出生/死亡两表当空表）：调用方是"人在户与户之间搬"的两条路 —— P0 迁移桥（{@code ModeMigrationSettlement}
    * 的 outbox）与 Z7d-2 逃亡（{@code GovernmentServiceDesertionBridge}）。搬人不产生出生/死亡， 故 {@code
-   * FlowRow.births}/{@code FlowRow.deaths} 不该因它变化。★ 逐 tick 的**生死**走四参重载 {@link
-   * #applyHouseholdPopulationDeltasInto(EconomySession, Map, Map, Map)}。
+   * FlowRow.births}/{@code FlowRow.deaths} 不该因它变化。★ 逐 tick 的**生死**走五参重载 {@link
+   * #applyHouseholdPopulationDeltasInto(EconomySession, Map, Map, Map, long)}。
    *
    * <p>★★ <b>为什么不像旧路径那样摊批次/缩劳动/删债</b>：调用方（app 日循环）在调用本方法**之前**已经用新 Social 刷新了 {@code composition} /
    * {@code laborMilli} / {@code naturalNeeds}——劳动权威已经是结算后 Social；这里再按人口 比例缩一次会把当日权威缩两遍。人口 delta
@@ -4711,11 +4711,20 @@ public final class EconomySettlement {
    *
    * <p>★ <b>拒绝语义</b>：null 键/值、0 delta、缺经济行、结果为负都具名拒（ERROR 日志 + 异常）；空表是合法输入 （当天无生死）。★ 汇总只记
    * DEBUG（逐户明细由 Social 侧事件日志承担）。
+   *
+   * <p>★ <b>D4（W3-fix2，2026-10-11）：本重载不带世界日</b>——它的两表恒空 ⇒ {@code HOUSEHOLD_VITAL_WRITEBACK}
+   * 永不发射（见下面的守卫），故 {@link #NO_WORLD_DAY} 不进任何输出。真发生生死的路径必须给真日。
    */
   static void applyHouseholdPopulationDeltasInto(
       EconomySession session, Map<HouseholdId, Long> deltas) {
-    applyHouseholdPopulationDeltasInto(session, deltas, Map.of(), Map.of());
+    applyHouseholdPopulationDeltasInto(session, deltas, Map.of(), Map.of(), NO_WORLD_DAY);
   }
+
+  /**
+   * ★ <b>"这条调用路径没有世界日"的哨兵</b>（只给"人在户与户之间搬"那条路用；那条路 births/deaths 恒空 ⇒ {@code
+   * HOUSEHOLD_VITAL_WRITEBACK} 永不发射）。★ <b>D4</b>：真发生生死的调用必须给真日 —— 否则下面的守卫当场拒， 绝不把假日写进日志。
+   */
+  private static final long NO_WORLD_DAY = -1L;
 
   /**
    * ★★★ <b>W3-fix（2026-10-11）：把 Social（人口权威）报来的逐户净变化 + 逐户出生/死亡一起落到经济侧</b>。
@@ -4728,9 +4737,9 @@ public final class EconomySettlement {
    *
    * <p>★★ <b>为什么要有 ②</b>：净变化读不出"死了多少人"（一户同时生死时只报差），而经济侧的危机读数与流水要的正是死亡原值； 只报净变化 ⇒ {@code
    * FlowRow.deaths} 永远是 0 ⇒ {@code CrisisMonitor} 的 MORTALITY 灯**永远不会亮**（W3b 报的读数缺口）。
-   * 本步把它接上：**经济侧仍然一个字都不判**（判死在 Social），只把社会报来的数落进流水（唯一写口 {@link #withLifecycle}）。 ★ <b>饥荒死亡是 {@code
-   * deathsByHousehold} 的子集</b>（{@code VitalSettlementResult#famineDeaths()}），故"饿死多少人"从此在
-   * 经济读数里也读得到；明细仍在 Social 的 {@code FAMINE_MORTALITY} 日志里。
+   * 本步把它接上：**经济侧仍然一个字都不判**（判死在 Social），只把社会报来的数落进流水（唯一写口 {@link #withLifecycle}）。 ★ <b>{@code
+   * VitalSettlementResult#famineDeaths()} ≤ 这里的死亡人数</b>（它是"cause 含饥荒的死亡人数"，W3-fix2 / D2 + W3-fix3
+   * 裁定），故"饿死多少"在经济读数里也读得到；明细仍在 Social 的 {@code FAMINE_MORTALITY} 日志里。
    *
    * <p>★ <b>不做</b>：不摊批次、不缩劳动（劳动权威是结算后的 Social，调用方已刷新）、不删债、不改 {@code naturalNeeds}。
    *
@@ -4743,16 +4752,31 @@ public final class EconomySettlement {
    * @param deltas 逐家户净人口变化（出生 − 死亡；只含非 0 项）；不得为 null
    * @param birthsByHousehold 逐家户出生原值（只含 &gt; 0 的家户）；不得为 null
    * @param deathsByHousehold 逐家户死亡原值（只含 &gt; 0 的家户；<b>含饥荒那一份</b>）；不得为 null
+   * @param day ★★ <b>W3-fix2（D4，2026-10-11）：世界日</b> —— {@code HOUSEHOLD_VITAL_WRITEBACK} 的 {@code
+   *     day} 字段（改前 162/162 条都没有该字段 ⇒ 这条读数无法按天检索/对账）；<b>真发生生死的调用必须 ≥ 0</b> （{@link #NO_WORLD_DAY}
+   *     只许给两表恒空的搬迁路径）
    */
   static void applyHouseholdPopulationDeltasInto(
       EconomySession session,
       Map<HouseholdId, Long> deltas,
       Map<HouseholdId, Long> birthsByHousehold,
-      Map<HouseholdId, Long> deathsByHousehold) {
+      Map<HouseholdId, Long> deathsByHousehold,
+      long day) {
     Objects.requireNonNull(session, "session");
     Objects.requireNonNull(deltas, "deltas");
     Objects.requireNonNull(birthsByHousehold, "birthsByHousehold");
     Objects.requireNonNull(deathsByHousehold, "deathsByHousehold");
+    // ★★ D4 守卫（fail-closed）：只有"真的要把生死写进流水"时才需要世界日 —— 缺了它绝不用假日凑数。
+    if (day < 0L && (!birthsByHousehold.isEmpty() || !deathsByHousehold.isEmpty())) {
+      throw new IllegalArgumentException(
+          "HOUSEHOLD_VITAL_WRITEBACK 需要世界日（day >= 0），但调用方给的是 day="
+              + day
+              + "（births="
+              + birthsByHousehold.size()
+              + " 户, deaths="
+              + deathsByHousehold.size()
+              + " 户）");
+    }
     if (deltas.isEmpty() && birthsByHousehold.isEmpty() && deathsByHousehold.isEmpty()) {
       return;
     }
@@ -4905,10 +4929,14 @@ public final class EconomySettlement {
         lifecycleRows++;
       }
       // ★ §一.9：死亡是生命周期事件 ⇒ INFO；只有出生 ⇒ DEBUG（同事件名、同字段，避免每天一条 INFO 噪声）。
+      //   ★★ D4（W3-fix2）：补 `day` —— 与同写口的邻居（POPULATION_SETTLE / FAMINE_MORTALITY /
+      //   HOUSEHOLD_GAP_*）同字段名同语义，这条读数从此可按天检索/对账。
       LogEvent vital =
           LogEvent.of(
               "HOUSEHOLD_VITAL_WRITEBACK",
               EconomyLogSource.ECONOMY_POPULATION_WRITE,
+              "day",
+              day,
               "households",
               lifecycleRows,
               "births",
