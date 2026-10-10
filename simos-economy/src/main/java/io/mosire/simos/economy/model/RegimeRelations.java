@@ -617,6 +617,45 @@ public final class RegimeRelations {
   }
 
   /**
+   * ★★★ <b>W2-fix7 / D1①（控制方裁定 v3.10 §7）：该制度模板的<b>实物腿商品</b>（保序、去重）</b>。
+   *
+   * <p>★ <b>它服务什么</b>：迁移决策要在<b>落计划之前</b>判"目标生产方式的关系模板里，哪些实物腿的商品不在这条产业的产出表里" —— 那正是 E14
+   * 的同一份判据（{@code ProductionSettlement.requireProducibleCommodities}）。★ 判据不在这里下结论：
+   * 本方法只回答"模板点名了哪些实物商品"（货币腿的 {@code commodity} 恒空，不在此列）。
+   *
+   * <p>★ <b>为什么按模板而不是按已生成的关系</b>：决策发生在关系生成之前（{@code ModeMigrationSettlement} 才按 mode 选模板） ——
+   * 两者的商品集合都只由本表决定（受方/格/居住类型不改变商品）⇒ 模板就是权威，不会漂。
+   *
+   * <p>★ <b>为什么去重</b>：一个模板可以给多个 cohort/受方各写一条同商品的腿（如 {@code feudal} 的给养 ×4 个阶层都是粮）——
+   * 决策只关心"哪些商品"，重复项会让日志与判据出现同一件事实的多个副本。
+   *
+   * @param regime 生产制度；不得为 null；未登记 ⇒ 抛（fail-closed，消息列出已登记的档 —— 与 {@link #defaultRelation}
+   *     同一条纪律：不猜、不静默给空表）
+   * @return 实物腿的商品（表序、去重；没有实物腿 ⇒ 空表）
+   */
+  public static List<CommodityId> inKindCommodities(RegimeId regime) {
+    if (regime == null) {
+      throw new IllegalArgumentException("RegimeRelations.inKindCommodities 的 regime 不得为 null");
+    }
+    List<RuleSpec> specs = BY_REGIME.get(regime.value());
+    if (specs == null) {
+      throw new IllegalArgumentException(
+          "未登记的制度，无法读出它的实物腿商品：" + regime.value() + "；已登记的档: " + BY_REGIME.keySet());
+    }
+    List<CommodityId> commodities = new ArrayList<>();
+    for (RuleSpec spec : specs) {
+      if (spec.commodity().isEmpty()) {
+        continue; // 货币腿：没有商品可判（与 E14 "只判实物档" 同一条口径）
+      }
+      CommodityId commodity = new CommodityId(spec.commodity().get());
+      if (!commodities.contains(commodity)) {
+        commodities.add(commodity);
+      }
+    }
+    return Collections.unmodifiableList(commodities);
+  }
+
+  /**
    * 一条规则模板：<b>只差"绑定到哪一格、哪种居住类型"</b>（受方的 {@code stratum} 已定，{@code hex} 与 {@code residence} 在 {@link
    * #defaultRelation(RegimeId, IndustryId, ActorRef, Set)} 里补上）。
    *

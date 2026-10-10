@@ -2103,7 +2103,10 @@ final class MarketSettlement {
     // ② 成交量 / 均价 / 成交额（逐笔成交按卖方市场归属）
     Map<MarketZoneId, Map<CommodityId, long[]>> tradedQuantity = new LinkedHashMap<>();
     Map<MarketZoneId, Map<CommodityId, java.math.BigInteger>> tradedValue = new LinkedHashMap<>();
-    Map<MarketZoneId, Long> turnover = new LinkedHashMap<>();
+    // ★★★ W2-fix7 / D4（控制方裁定 v3.10 §7）：**两栏成交额**
+    //   turnoverMilli     = 名义货值 = ⌊Σ(量 × 单价) / 1000⌋（全额货款，含赊购部分）—— 就是下面这张 tradedValue
+    //   cashTurnoverMilli = 实付现金 = Σ goodsPaymentMilli（改前 turnover 的口径，逐值保留在这一栏）
+    Map<MarketZoneId, Long> cashTurnover = new LinkedHashMap<>();
     for (MarketReport.Fill fill : ctx.fills) {
       MarketZoneId marketId = marketIdAt(ctx, fill.from());
       if (marketId == null) {
@@ -2125,7 +2128,20 @@ final class MarketSettlement {
               java.math.BigInteger.valueOf(fill.quantity())
                   .multiply(java.math.BigInteger.valueOf(fill.unitPriceMilli())),
               java.math.BigInteger::add);
-      turnover.merge(marketId, fill.goodsPaymentMilli(), Math::addExact);
+      cashTurnover.merge(marketId, fill.goodsPaymentMilli(), Math::addExact);
+    }
+    // ★ 名义货值按**市场一次取整**（不是逐笔取整）：`⌊Σ(量×单价)/1000⌋` —— 与上面均价用的同一份 BigInteger
+    //   中间量同源（量×价的毫²量纲 ÷ 1000 = 毫）。★ 为什么不用逐笔的 `paymentForQuantity`（那是 ⌈…⌉、且异币成交
+    //   时取的是买方价）：本栏是**统计读数**（"这个市场做了多大的生意"），逐笔取整会把 1 毫级成交放大成整笔货款；
+    //   逐笔真收/真欠在成交那一刻的账上（转移凭据 + debtContracts），本栏不冒充它。
+    Map<MarketZoneId, Long> turnover = new LinkedHashMap<>();
+    for (Map.Entry<MarketZoneId, Map<CommodityId, java.math.BigInteger>> entry :
+        tradedValue.entrySet()) {
+      java.math.BigInteger total = java.math.BigInteger.ZERO;
+      for (java.math.BigInteger value : entry.getValue().values()) {
+        total = total.add(value);
+      }
+      turnover.put(entry.getKey(), total.divide(THOUSAND).longValueExact());
     }
     for (Map.Entry<MarketZoneId, Map<CommodityId, long[]>> entry : tradedQuantity.entrySet()) {
       Map<CommodityId, CommodityRound> per =
@@ -2177,10 +2193,14 @@ final class MarketSettlement {
           new MarketRoundStats(
               ctx.round.day,
               entry.getValue(),
+              // ★ W2-fix7 / D4：名义货值（全额货款，含赊购）+ 实付现金，两栏各归各的（见 readRoundStats 的口径注）
               turnover.getOrDefault(entry.getKey(), 0L),
+              cashTurnover.getOrDefault(entry.getKey(), 0L),
               Map.of(),
               0L,
+              0L,
               Map.of(),
+              0L,
               0L));
     }
     return java.util.Collections.unmodifiableMap(stats);
@@ -2199,7 +2219,7 @@ final class MarketSettlement {
    *
    * <pre>
    * D &gt; S（缺货）: r = (D − S) / max(1, S)；step‰ = min(α, ⌊α·r⌋)；p' = max(p + 1, ⌊p×(1000 + step)/1000⌋)（p &gt; 0；无上限）
-   * S &gt; D（滞销）: r = (S − D) / max(1, D)；step‰ = min(α, ⌊α·r⌋)；p' = max(0, ⌊p×(1000 − step)/1000⌋)（触底 0）
+   * S &gt; D（滞销）: r = (S − D) / max(1, D)；step‰ = min(α, ⌊α·r⌋)；p' = max(0, min(p − 1, ⌈p×(1000 − step)/1000⌉))（触底 0；★ v3.10 与涨侧对称）
    * D = S:         p' = p                                                   （缺省中性：不失衡的世界逐值不变）
    * </pre>
    *
@@ -2379,7 +2399,7 @@ final class MarketSettlement {
    * D &gt; S（缺货）: r = (D − S) / max(1, S)；step‰ = min(α, ⌊α × r⌋)
    *                p &gt; 0: p' = max(p + 1, ⌊p × (1000 + step) / 1000⌋)   // 无上限
    *                p = 0: p' = 1                                        // 退出免费态（唯一例外，见下）
-   * S &gt; D（滞销）: r = (S − D) / max(1, D)；step‰ = min(α, ⌊α × r⌋)；p' = max(0, ⌊p × (1000 − step) / 1000⌋)
+   * S &gt; D（滞销）: r = (S − D) / max(1, D)；step‰ = min(α, ⌊α × r⌋)；p' = max(0, min(p − 1, ⌈p × (1000 − step) / 1000⌉))（★ v3.10：与涨侧对称）
    * D = S:         p' = p                                               // 不动（缺省中性）
    * </pre>
    *
@@ -2390,11 +2410,13 @@ final class MarketSettlement {
    * <p>★★ <b>整数/定点，禁浮点</b>：全程 {@code long}/{@link BigInteger}，无平台差异（可复现是 I7 的要求）。 乘法真的越过 {@code
    * long} ⇒ 顶上 {@code Long.MAX_VALUE}（"价无上限"的饱和，不抛、不回退 double）。
    *
-   * <p>★★★ <b>整数毫位的"最小步进"（W2-fix，控制方裁定 v3.5 §2.1 第二条 ★★）</b>：缺货且 {@code p &gt; 0} 时取 {@code max(p +
-   * 1, ⌊p×(1000+step)/1000⌋)} —— 因为价格以**毫**为最小单位，{@code p &lt; ⌈1000/step⌉} （α=50‰ ⇒ {@code p &lt;
-   * 20} 毫）时纯取整会**恒等不动**，与"缺货价格应该逐步增加"直接矛盾（真实世界的 1 毫粮价 将永不涨）。★ {@code +1 毫} =
-   * **整数粒度下最小的"逐步"**，不是第二条公式：涨价方向、步长上限（≤ α）、无上限， 全仍由上面那条乘法式定，{@code +1} 只是它的整数下限。★
-   * <b>滞销侧不加对称例外</b>：{@code max(0, ⌊p×(1000−step)/1000⌋)} 在 {@code p = 1} 时已经到 0（白送），不需要补。
+   * <p>★★★ <b>整数毫位的"最小步进"（W2-fix，控制方裁定 v3.5 §2.1 第二条 ★★；W2-fix7 扩到跌侧）</b>：缺货且 {@code p &gt; 0} 时取
+   * {@code max(p + 1, ⌊p×(1000+step)/1000⌋)} —— 因为价格以**毫**为最小单位，{@code p &lt; ⌈1000/step⌉} （α=50‰ ⇒
+   * {@code p &lt; 20} 毫）时纯取整会**恒等不动**，与"缺货价格应该逐步增加"直接矛盾（真实世界的 1 毫粮价 将永不涨）。★ {@code +1 毫} =
+   * **整数粒度下最小的"逐步"**，不是第二条公式：涨价方向、步长上限（≤ α）、无上限， 全仍由上面那条乘法式定，{@code +1} 只是它的整数下限。★ <b>滞销侧自
+   * W2-fix7（v3.10）起有对称的例外</b>：{@code min(p − 1, ⌈p×(1000−step)/1000⌉)} —— 只靠 {@code ⌈…⌉} 的话 {@code
+   * p = 1} 会恒等不动（{@code ⌈0.95⌉ = 1}），跌不到 0，与"触底 0 = 白送"矛盾； {@code min(p − 1, …)} 就是"至少降 1 毫"，与涨侧的
+   * {@code max(p + 1, …)} 逐字对称（代价也一样：{@code p &lt; 20} 时实现跌幅必然 &gt; α）。
    *
    * <p>★★ <b>0 价的"退出免费态"具名例外（W2 保留，见账本偏离记录）</b>：{@code p = 0} 时乘法式恒为 0 （{@code ⌊0 ×
    * (1000+step)/1000⌋ = 0}）⇒ 白送出去的商品<b>永远涨不回来</b>，与 §2.1 的"缺货逐步涨" 及判据
@@ -2449,10 +2471,20 @@ final class MarketSettlement {
     }
     long step = stepPerMille(s - d, Math.max(1L, d), alphaPerMille);
     if (step <= 0L) {
-      return price;
+      return price; // ★ α = 0（或倍数取整后为 0）⇒ 本轮不动（v3.8 口径；与缺货侧逐字同款）
     }
-    long next = multiplyByPerMille(price, Math.max(0L, 1000L - step), 0L);
-    return Math.max(0L, next);
+    // ★★★ W2-fix7（控制方裁定 v3.10 §2.1：跌侧与涨侧**对称**）：
+    //   p' = max(0, min(p − 1, ⌈p × (1000 − step) / 1000⌉))
+    //   ★ 为什么把 ⌊…⌋ 改成 ⌈…⌉：向下取整会让**实现**跌幅超过 α（验收报告 §3 D3 实测：day120 grain
+    //     56→53 = −53.6‰、最大 −90.9‰ 出现在 p=11、step=50 一步掉到 10）—— 机制步长 step ≤ α 恒成立，
+    //     超出的部分全是 floor 伪影。向上取整后 p ≥ ⌈1000/step⌉ 的档实现跌幅 ≤ α。
+    //   ★ 为什么还要 min(p − 1, …)：p 小于 ⌈1000/step⌉ 时整数取整会把降价**完全抹平**
+    //     （p=1、step=50 ⇒ ⌈0.95⌉ = 1 = p ⇒ 永远跌不到 0），与"滞销逐步跌、触底 0（白送合法）"直接矛盾。
+    //     min(p − 1, …) = 整数粒度下最小的一步，**不是第二条公式** —— 正是缺货侧 max(p + 1, …) 的镜像。
+    //     代价与涨侧同形：p < 20（α=50‰）时实现跌幅必然 > α（一步 1 毫），这是整数毫位的必然，不是失控。
+    //   ★ 溢出/饱和：乘法式溢出 ⇒ 饱和 0（跌侧的饱和方向就是一步到 0）；p ≥ 1 ⇒ p − 1 ≥ 0。
+    long multiplicative = multiplyByPerMilleCeiling(price, Math.max(0L, 1000L - step), 0L);
+    return Math.max(0L, Math.min(Math.max(0L, price - 1L), multiplicative));
   }
 
   /**
@@ -2502,7 +2534,30 @@ final class MarketSettlement {
     return product.longValueExact();
   }
 
+  /**
+   * ★★ <b>W2-fix7（v3.10 §2.1 跌侧）：{@code ⌈value × numerator ÷ 1000⌉}</b>（整数、<b>向上</b>取整；溢出 ⇒ {@code
+   * saturation} 饱和值而不是抛）。
+   *
+   * <p>★ 与 {@link #multiplyByPerMille} 是同一个乘法式的两种取整方向：涨侧与"至少降 1 毫"的例外都用 floor 那一支（那正是 v3.5
+   * 冻结的算式），<b>跌侧的乘法式用 ceiling</b> —— 只有向上取整才能保证"实现跌幅 ≤ α" （向下取整会把不足 1 毫的降价也吃满 1 毫，见 {@link
+   * #adaptiveNextPrice} 的裁定注）。 溢出纪律与 floor 那支同款：饱和、不抛。
+   */
+  private static long multiplyByPerMilleCeiling(long value, long numerator, long saturation) {
+    BigInteger ceiling =
+        BigInteger.valueOf(value)
+            .multiply(BigInteger.valueOf(numerator))
+            .add(THOUSAND_MINUS_ONE)
+            .divide(THOUSAND);
+    if (ceiling.bitLength() > 62) {
+      return saturation;
+    }
+    return ceiling.longValueExact();
+  }
+
   private static final BigInteger THOUSAND = BigInteger.valueOf(1000L);
+
+  /** {@code 999}（ceiling 的整数式 {@code ⌈a/1000⌉ = (a + 999) / 1000} 里的常数）。 */
+  private static final BigInteger THOUSAND_MINUS_ONE = BigInteger.valueOf(999L);
 
   /**
    * ★★ <b>W2：本区本轮的自适应步长 α</b>（‰/轮）—— 唯一拼写点。

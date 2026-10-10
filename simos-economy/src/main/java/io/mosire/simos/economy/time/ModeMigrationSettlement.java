@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
@@ -23,9 +24,11 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
@@ -1754,6 +1757,83 @@ public final class ModeMigrationSettlement {
       EconomyDayView base,
       long day,
       ProductionLedger.Accumulator auditLedger) {
+    MigrationRelationPlan plan =
+        planMigrationRelation(
+            move,
+            unitId,
+            industryId,
+            targetActor,
+            householdEconomies,
+            targetHouseholdEconomy,
+            base,
+            day,
+            auditLedger);
+    // ★★★ W2-fix7 / D1①（控制方裁定 v3.10 §7 第 ①/③ 条）：**绝不落一条 E14 非法的关系** ——
+    //   迁移决策处（ModeMigrationPolicy）已经按"实物腿商品拿不到就不迁入"挡过一轮，这里是**执行期的兜底**：
+    //   计划期的产业（industriesForMode 的第一个）与执行期实际选中的产业（第一个租赁资产凑得齐的）可能不同，
+    //   而 E14 对"除实物租腿以外的每一档"仍然 fail-closed（裁定第 ③ 条）⇒ 落一条那样的关系 = 下次 harvest
+    //   整段 advance 被拒（世界卡死）。
+    //   ★ 处置 = 退回**具名**空规则（产出全归 operator，既有显式允许的缺省路径）+ 当天 ledger 审计 + INFO 一条；
+    //     绝不静默、也绝不让世界死。★ 实物租腿（FIXED_IN_KIND_RENT）**不在此列**：它走三级支付链
+    //     （ProductionSettlement），欠租是可读的缺口/债权，不是配置错误。
+    Industry industry = base.industries().get(industryId);
+    if (industry != null) {
+      for (CompensationRule rule : plan.relation().rules()) {
+        if (rule.commodity().isEmpty() || rule.type() == RuleType.FIXED_IN_KIND_RENT) {
+          continue;
+        }
+        CommodityId commodity = rule.commodity().get();
+        if (industry.outputPerUnit().containsKey(commodity)) {
+          continue;
+        }
+        String reason =
+            "e14-illegal-in-kind-leg:"
+                + rule.type()
+                + ":"
+                + commodity.value()
+                + ":industryOutputs="
+                + industry.outputPerUnit().keySet();
+        recordRelationFallbackAudit(auditLedger, day, move, reason);
+        EventLog.channel(EconomyLog.migration())
+            .info(
+                LogEvent.of(
+                    "MIGRATION_RELATION_E14_ILLEGAL_FALLBACK",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "target",
+                    move.target().value(),
+                    "targetMode",
+                    move.targetMode().value(),
+                    "industry",
+                    industryId.value(),
+                    "ruleType",
+                    rule.type().name(),
+                    "commodity",
+                    commodity.value(),
+                    "industryOutputs",
+                    industry.outputPerUnit().keySet().toString(),
+                    "why",
+                    "E14 对非租腿档仍 fail-closed ⇒ 不落非法关系，退回具名空规则（产出全归 operator）"));
+        return new MigrationRelationPlan(
+            fallbackMigrationRelation(unitId, targetActor),
+            "migration:" + move.reason() + ":fallback-empty:" + reason);
+      }
+    }
+    return plan;
+  }
+
+  /** 关系模板的**装配本体**（{@link #buildMigrationRelation} 的 E14 兜底之外的原有逻辑，逐字未改）。 */
+  private static MigrationRelationPlan planMigrationRelation(
+      ModeMigrationPolicy.MigrationMove move,
+      ProductionUnitId unitId,
+      IndustryId industryId,
+      ActorRef targetActor,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      HouseholdEconomy targetHouseholdEconomy,
+      EconomyDayView base,
+      long day,
+      ProductionLedger.Accumulator auditLedger) {
     Optional<RegimeId> templateRegime =
         migrationTemplateRegime(move.targetMode(), industryId, base);
     Set<ResidenceKind> residences = Set.of(targetHouseholdEconomy.view().residence());
@@ -1792,8 +1872,14 @@ public final class ModeMigrationSettlement {
         "migration:" + move.reason() + ":fallback-empty:" + reason);
   }
 
-  /** mode → 关系模板 regime（唯一映射点；未知/未登记 ⇒ 空 = 具名回退，不猜别的制度）。 */
-  private static Optional<RegimeId> migrationTemplateRegime(
+  /**
+   * mode → 关系模板 regime（唯一映射点；未知/未登记 ⇒ 空 = 具名回退，不猜别的制度）。
+   *
+   * <p>★ <b>W2-fix7 / D1①：包内可见</b>（改前 private）—— {@code ModeMigrationPolicy} 的"目标生产方式的实物腿商品是否
+   * 在这条产业的产出表里"这道迁移决策约束要读同一份 mode→模板映射。★ <b>不许在策略侧另写一份</b>：两份映射漂开会让
+   * 决策判的模板与执行期落的模板不是同一个（那正是本仓最反对的"同一件事两处拼写"）。
+   */
+  static Optional<RegimeId> migrationTemplateRegime(
       ProductionModeId mode, IndustryId industryId, EconomyDayView base) {
     if (DefaultProductionModes.TENANCY_FIXED_KIND.equals(mode)
         || DefaultProductionModes.TENANCY_SHARE.equals(mode)

@@ -1129,3 +1129,315 @@ if (household == null) {                       // 先取到、判空、具名，
    ⇒ 非 0 致死率与"吃饭优先"两种次序**当前没有逐值用例**。本批只把注释改成如实（不新增测试，硬纪律）。
 5. **`git commit` 未做**（控制方审后提交）；`src/test/**`、其他模块、`docs/**`、`AGENTS.md` 一字未改。
 6. **`/tmp/w2fix6_scan.py` / `w2fix6_imports.py` / `w2fix6_members.py` 是临时装置**，不在仓内、不随批提交。
+
+# W2-fix7（D1 回归 + D3 跌侧 + D4 成交额口径 + D5 日志字段）
+
+- **依据**：验收报告 `.superpowers/sdd/2026-10-11-w2-acceptance/report.md` §3（D1/D3/D4/D5）+ 约束设计书
+  `docs/superpowers/specs/2026-10-10-unified-price-and-ordered-settlement-design.md` **v3.10 §2.1 / §7**（控制方裁定）。
+- **范围**：只改 `simos-economy/src/main`（9 个文件）；`src/test/**`、`docs/**`、`AGENTS.md`、其他模块**一字未改**；**不 commit**。
+
+## 一、D1（★★ 回归，必修）：three-powers `539→540` 的 E14 fail-closed 400
+
+### 1.1 关键调查结论（`file:line` → 结论 → 影响）
+
+| # | 证据 | 结论 |
+|---|---|---|
+| 1 | `ProductionSettlement:485-495`（改前）`requireProducibleCommodities` | E14 判"规则指名的商品必须在该产业的产出表里"，**在任何数量计算之前**判死。D1 的租腿（`FIXED_IN_KIND_RENT` grain）挂在产出表只有 `[haul]` 的 `trade@-3_3` unit 上 ⇒ 必抛。 |
+| 2 | `ModeMigrationSettlement:1741-1783`（改前 `buildMigrationRelation`）走 `RegimeRelations.defaultRelation(TENANT …)` | **迁移路径直接照抄模板关系**，没有 `EconomyEnterpriseSettlement.rentCommodity`（B3）那道"租金腿商品必须能产"的判据 ⇒ 它**能造出 E2 自动组织路径明确拒绝落盘的关系**。这是 D1 的**结构性入口**（不是 W2 的 diff 造成的，是 S-10 改了轨迹后第一次走到）。 |
+| 3 | `RegimeRelations:551-563` `tenantRules()` | 租佃模板**只有一条** `FIXED_IN_KIND_RENT(GRAIN, 20,000,000)`（常量，看不见产业）⇒ 目标产业不产粮时必不相容。 |
+| 4 | `EconomySettlement:8712-8830` `harvest` → `ProductionSettlement.settle` | 三条 tenancy mode（fixed_kind/share/cash）在迁移里共用同一份 tenant 模板 ⇒ **任一 tenancy 迁移到不产粮的格都会卡死世界**（不止 cash）。 |
+| 5 | `checkpoint rev 15`（= day 420，验收存档 `store-tp600seg`）首次出现 `hh-mig--3_3-tenancy_cash-…` | 该户在 **390→420** 段被建出来（旧代码），540 段第一次收获时 E14 抛 —— 与验收报告的"day 540 首次走到该组合"一致。 |
+
+### 1.2 落点（file:line，前后各一行）
+
+**(a) 迁移决策处加约束（裁定 ①）** —— `ModeMigrationPolicy.java`（`buildTargets` 内，新目标分支）
+
+```
+        HouseholdId existing =
+            bestExistingTarget(source, hex, mode, modeByHousehold, positions, householdEconomies);
++       // ★★★ W2-fix7 / D1①（控制方裁定 v3.10 §7）：目标生产方式的实物腿商品拿不到 ⇒ 该户不迁入这个 mode
++       if (existing == null) {
++         String refusal =
++             inKindLegUnavailableReason(base, source, mode.id(), hex, accounts, markets, topology);
++         if (refusal != null) {
++           excluded.add(new PrimaryModeRanking.Excluded(mode.id(), hex, refusal));
++           if (weight > 0L) { EventLog…("MIGRATION_IN_KIND_LEG_UNAVAILABLE_REFUSED", …); }
++           continue;
++         }
++       }
+        long weight =
+            Math.max(0L, Math.subtractExact(prospect.netPerLaborScaled(), currentPerLabor));
+-       if (weight <= 0L) { continue; }
+-       HouseholdId existing =
+-           bestExistingTarget(source, hex, mode, modeByHousehold, positions, householdEconomies);
+```
+
+判据本体（包内纯函数，可被探针直接钉住）：
+
+```
++  static String inKindLegUnavailableReasonOf(IndustryId, Industry, List<CommodityId> inKind,
++      Map<CommodityId, Long> householdStock, MarketTable market, RegimeId regime) {
++    for (CommodityId commodity : inKindCommodities) {
++      if (industry.outputPerUnit().containsKey(commodity)) continue;   // ① 本产业能产
++      if (householdStock.getOrDefault(commodity, 0L) > 0L) continue;    // ② 该户手头有库存
++      if (market != null && market.hasPrice(commodity)) continue;       // ③ 目标格市场交易它（价 0 也算）
++      … 具名理由（商品 / 产业 / 产出表 / stock / market）
++    }
+```
+
+- 供它读"模板实物腿商品"的两个新拼写点（**都只有一处**）：
+  `RegimeRelations.inKindCommodities(RegimeId)`（新，保序去重；`simos-economy/.../model/RegimeRelations.java:626+`）、
+  `ModeMigrationSettlement.migrationTemplateRegime(...)`（`private` → **包内可见**，理由写在该方法注里；
+  **不许在策略侧另写一份 mode→模板映射**）。
+- **只判"新建"目标**：并入既有户不生成新关系（`ModeMigrationSettlement:414` 的 `if (newTarget && !DISPLACED)`）。
+
+**(b) 实物租腿改三级支付链（裁定 ②）** —— `ProductionSettlement.java`
+
+```
+-      long available =
+-          Math.max(0L, facts.net().getOrDefault(commodity, 0L) - paidOf(paid, commodity));
++      long available = availableOf(rule, facts, paid, commodity);
+       long paidNow = Math.min(due.getAsLong(), available);
+
++  private static long availableOf(CompensationRule rule, Facts facts, Map<CommodityId, Long> paid,
++      CommodityId commodity) {
++    long fromUnitOutput = Math.max(0L, facts.net().getOrDefault(commodity, 0L) - paidOf(paid, commodity));
++    if (rule.type() != RuleType.FIXED_IN_KIND_RENT) return fromUnitOutput;   // 其余档逐字不动
++    long fromHouseholdStock = Math.max(0L, facts.payerStock().getOrDefault(commodity, 0L) - paidOf(paid, commodity));
++    return Math.max(fromUnitOutput, fromHouseholdStock);
++  }
+```
+
+- `Facts` 新增组件 `Map<CommodityId, Long> payerStock`（付方主体**结算前**的实物库存合计；走同一份 `requireQuantities` 校验）。
+  调用点 `EconomySettlement.harvest` 在 `creditOutput`（把本周期净产计进家户账）**之后**取它 ⇒
+  **①"本 unit 产出" = ②"家户库存" 的同一份数的一级**，与路由 `payerShares` 的可付量口径逐值一致（不会出现"结算要得多、路由付不出"）。
+- ③ **具名缺口**：`paidNow < due` ⇒ 进 `RuleSettlement.owed`（S4 读数）→ `harvest` 的 `IN_KIND_RENT_CHAIN_GAP`（**INFO**，默认档可见）
+  → 关账处 `capitalizeArrears` 折成债权（实测 day540 `CAPITALIZE_ARREARS capitalized=1 unresolved=0`）。**不静默 0、不抛。**
+- 成功付清的租腿另记 `IN_KIND_RENT_CHAIN`（DEBUG，含 应付/实付/产出/库存/是否可产）。
+
+**(c) E14 保留（裁定 ③）** —— `ProductionSettlement.requireProducibleCommodities`
+
+```
+    for (CompensationRule rule : ordered) {
+      if (rule.commodity().isEmpty()) continue;
++     if (rule.type() == RuleType.FIXED_IN_KIND_RENT) continue;   // ★ D1②：租腿走三级支付链
+      CommodityId commodity = rule.commodity().get();
+      if (!facts.outputPerUnit().containsKey(commodity)) { throw … }
+```
+
+**(d) 执行期兜底（裁定 ①/③ 之间的缝）** —— `ModeMigrationSettlement.buildMigrationRelation`
+
+- 计划期产业（`industriesForMode` 的第一个）与执行期实际选中的产业（第一个租赁资产凑得齐的）**可能不同** ⇒ 执行期再判一次：
+  **非租腿**的实物腿商品不在该产业产出表里 ⇒ **不落这条 E14 非法关系**，退回`具名`空规则（`fallbackMigrationRelation` + ledger 审计 +
+  INFO `MIGRATION_RELATION_E14_ILLEGAL_FALLBACK`）。原装配逻辑整体搬进 `planMigrationRelation`（逐字未改）。
+- 租腿**不在**这条兜底里（它由三级支付链承接，欠租不是配置错误）。
+
+### 1.3 真回执（真世界，一次一个实例、一次一个 Maven；未覆盖运行中服务的 jar —— 开工 `pgrep -af java` 只有自己的 shell）
+
+| 项 | 值 |
+|---|---|
+| jar | `/tmp/w2fix7/simos-app-w2fix7.jar`，md5 **`acd8e7442e55c1e44537f081391269d6`**（`tools/mvn-lock.sh -DskipTests package -pl simos-app -am`，BUILD SUCCESS 14.4 s） |
+| 装置 | 验收 Agent 的 `runner.py`（只读复用，`/tmp/w2acc/runner.py`）+ 本批自建 store/端口 10570 / 10580 |
+| 命令 A | three-powers 新 store，`advance 0→600` 单次（`-Dsimos.economy.logLevel=INFO`） |
+| **回执 A** | **HTTP 200**、`{"result":"committed","ref":{"branch":"main","revision":2}}`、**Δ=1**（rev 1→2）、**35.180 s**；`revisions` 表 = 创世 + 1 |
+| 命令 B | 从验收存档的 **day 510**（rev 18，`store-tp600seg` 的副本）**续跑 `510→540`**（该段在验收里是 400）`logLevel=DEBUG` |
+| **回执 B** | **HTTP 200**、rev **18→19**（Δ=1）、**6.126 s**；`failedAt=null` |
+| **被判"不迁入"的具名样本** | **本世界无样本**（见 §三-1：three-powers 三个市场区都挂着 `grain` 行（day390 实测 `prices.grain=0` = 免费交易）⇒ "市场可得"成立 ⇒ 闸门不触发）。闸门本体由合成探针逐值钉住（§一.4-B） |
+| **day 540 的具名缺口（原文）** | `event=IN_KIND_RENT_CHAIN_GAP origin=economy-settlement originKind=tick day=540 unit=unit-trade@-3_3-HOUSEHOLD-hh-mig--3_3-tenancy_cash-hh--3_3-urban-middle_peasant-0 industry=trade@-3_3 commodity=grain payee=HOUSEHOLD:hh--3_3-urban-landlord dueMilli=20000000 paidMilli=0 gapMilli=20000000 unitOutputMilli=0 payerStockMilli=0 commodityInIndustryOutput=false why=in-kind-rent-chain:unit-output-then-household-stock-remainder-is-a-named-gap (该商品不在本产业产出表里)` —— **正是验收报告 §3 D1 那条 400 的同一个 unit/同一户/同一个量** |
+| 世界连续性 | 该租腿从此每关账轮照结（缺口具名 + 资本化成债权），**世界不再卡死** |
+
+### 1.4 判据自检（合成夹具，直接调真代码；装置在 `/tmp/w2fix7/D1Chain`、`/tmp/w2fix7/D1Gate`，不落仓）
+
+**A) 三级支付链（`ProductionSettlement.settle` 纯函数重载；产出表 = `[haul]`、租腿 = grain、应付 500）**
+
+| 情形 | 应付 | 实付 | 欠 | 转移 | 判定 |
+|---|---|---|---|---|---|
+| A 产出 = 0 且库存 = 0 | 500 | **0** | **500** | 0 条 | ③具名缺口：**不抛、不静默**（改前这里 E14 抛） |
+| B 产出 = 0 且库存 = 700 | 500 | **500** | 0 | 1 条 `{grain=500}` | ②**家户库存**那一级真的付款 |
+| C 产出 = 500（能产） | 500 | **500** | 0 | 1 条 `{grain=500}` | ①本 unit 产出那一级 |
+| D 对照：同商品挂 `OUTPUT_SHARE` | —— | —— | —— | —— | **仍 fail-closed 抛**（E14 保留；消息原文含"规则指名的商品不在该产业的产出表里（E14）"） |
+
+**B) 迁移决策闸门（`ModeMigrationPolicy.inKindLegUnavailableReasonOf`；产业 `trade@-3_3` 产出 `[haul]`、模板实物腿 `[grain]`）**
+
+| 情形 | 结果 |
+|---|---|
+| ①产业能产（farm 产出 grain） | null（可迁） |
+| ②该户有库存（grain ≥ 1 毫） | null（可迁） |
+| ③市场有这一行（价 7） | null（可迁） |
+| ③′市场有这一行（**价 0 = 免费交易**） | null（可迁） |
+| ④三者都不成立 | **拒**：`in-kind-leg-unavailable:grain(industry=trade@-3_3 outputs=[haul],stock=0,market=false):regime=tenant` |
+| ④′目标格没有市场（null） | **拒**：`…,market=none):regime=tenant` |
+
+## 二、D3（跌侧破 α）、D4（成交额口径）、D5（日志 day）
+
+### 2.1 D3 落点与逐值表
+
+`MarketSettlement.adaptiveNextPrice`（S > D 支）+ 新增 `multiplyByPerMilleCeiling`：
+
+```
+-    long next = multiplyByPerMille(price, Math.max(0L, 1000L - step), 0L);
+-    return Math.max(0L, next);
++    long multiplicative = multiplyByPerMilleCeiling(price, Math.max(0L, 1000L - step), 0L);
++    return Math.max(0L, Math.min(Math.max(0L, price - 1L), multiplicative));
+```
+
+**逐值（真 Java 调用，非推演；`/tmp/w2fix7/D3check`）**：
+
+| p | step=50 → p' | 实现跌幅‰ | α=0 → p' | p=0 → p' |
+|---|---|---|---|---|
+| 1 | **0** | 1000 | 1 | 0 |
+| 2 | **1** | 500 | 2 | 0 |
+| 19 | 18 | 52 | 19 | 0 |
+| 20 | **19** | **50** | 20 | 0 |
+| 56 | **54** | 35（≈ 判据的 −35.7‰） | 56 | 0 |
+| 1000 | **950** | **50** | 1000 | 0 |
+
+- `p ≥ 20` 的实现跌幅**恒 ≤ α**（p=20 恰 50‰、p=56 为 35‰、p=1000 恰 50‰）；
+  `p < 20` 因"**至少降 1 毫**"必然 > α（p=19 → 52‰、p=2 → 500‰）—— 与涨侧 `max(p+1, …)` 的
+  "p<20 涨幅必然 > α"**逐字对称**，是整数毫位的必然，不是失控（v3.10 §2.1 的字面算式即如此）。
+- `α=0`（`step ≤ 0`）⇒ **不动**（v3.8 口径，缺货/滞销两侧同款）；`p=0` ⇒ 0；`D=S` ⇒ 不动（实测 p=56 → 56）。
+- 对照：涨侧 `p=56 → 58`、`p=1 → 2`（既有的最小步进，未改）。
+
+### 2.2 D4 落点（铁律 5 三件套点名）+ 旧 turnover 的读者改动清单
+
+**(a) 持久组件形状**（`simos-economy/.../model/MarketRoundStats.java`）：record 由 7 组件 → **10 组件**，
+三段窗口**每段两栏**（名义 / 现金）：
+
+```
+ lastRoundDay, lastRound, lastRoundTurnoverMilli,  lastRoundCashTurnoverMilli,
+ cycleToDate,  cycleTurnoverMilli,  cycleCashTurnoverMilli,
+ previousCycle, previousCycleTurnoverMilli, previousCycleCashTurnoverMilli
+```
+
+- **口径**：`turnover*` = **名义货值** = `⌊Σ(量 × 单价) / 1000⌋`（整轮一次取整，与均价同源；全额货款，含赊购）；
+  `cashTurnover*` = **实付现金** = `Σ goodsPaymentMilli`（改前 `turnover` 的口径，**逐值搬到新字段**）。
+  两栏**不互相约束**（逐笔货款是 `⌈…⌉` ⇒ 小额轮里现金可略大于名义；实测 day540 三区都有此现象 ⇒ **不写"现金 ≤ 名义"守卫**）。
+- **三件套**：
+  ① **Codec**：`EconomyCodec` 对本组件走通用 Jackson record 绑定（该文件**零** `MarketRoundStats` 引用）⇒ 新增组件自动进线格式；
+     **实测往返**：新 jar 写出的 checkpoint（`store-sw120/checkpoints/main/2.json`）被**同一新 jar 重新载入**并续跑 120→150 成功（rev 2→3），
+     落盘原文两栏俱在（见下）⇒ 读写两侧都验过。
+  ② **ChangeSet**：`EconomyChangeSet` 的第 N 组件 + `FieldDelta.diff/rebuild(base.marketRoundStats(), …, MarketZoneId::parse)` —— 形状未变（仍是 map 级 delta），
+     组件的加减由 record 自身承载；`changed()` 覆盖不变。
+  ③ **往返不变式**：既有 `EconomyRoundTripTest` / `EconomyCodecTest` 的 `MarketRoundStats` 夹具用**旧 7 参构造器** ⇒
+     本批保留了一个**具名**便利构造器（现金栏 = 0，javadoc 明说"不建模现金腿的夹具"），**测试源码一字未改**、语义不静默
+     （"整轮全赊购 ⇒ 现金 0"本身是合法状态）。
+- **落盘原文（small-world day120，`store-sw120/checkpoints/main/2.json`）**：
+  `single-region day=120 本轮 名义=901852 现金=1543 ｜ 本周期 名义=0 现金=0 ｜ 上周期 名义=1243879 现金=1607`
+  ⇒ **现金栏 = 1543 = 验收报告 §3 D4 表里的旧 `lastRoundTurnoverMilli`（1,543）逐值相同**；名义栏 901,852
+  （报告的量×价估算 ≈896,973，差 0.5% 来自 D3 改了价格路径 ⇒ 成交量 16,098,349 vs 16,017,382）。
+- **INFO 日志两栏都给**：`MARKET_ROUND_STATS_RECORDED day=120 markets=1 commodities=5 tradedMilli=16098349 turnoverMilli=901852 cashTurnoverMilli=1543 cycleClosed=true`；
+  `describe()`（DEBUG `MARKET_ROUND_STATS_DETAIL`）同样两栏。
+
+**(b) 旧 `turnover` 的读者清单（逐个改动点）**
+
+| 读者 | 改动 |
+|---|---|
+| `MarketSettlement.readRoundStats`（**写口**） | 新增 `cashTurnover` 累加（`Σ goodsPaymentMilli`）；`turnover` 改由 `tradedValue`（量×价）整轮取整算出 |
+| `MarketRoundStats.withRound`（**唯一逐轮写口**） | 加 `cashTurnoverMilli` 参数；三段窗口两栏同步累加/轮转 |
+| `EconomySettlement:2659-2720`（写状态 + INFO/DEBUG 日志） | 传两栏；INFO 加 `turnoverMilli` / `cashTurnoverMilli` 两个字段 |
+| `MarketRoundStats.describe()`（日志面） | 三段各打"名义 + 现金"两栏（改前只打一栏 ⇒ D4 的误读形态） |
+| `MarketRoundStatsBook.lastRoundTurnover / cycleTurnover / previousCycleTurnover` | 语义改为**名义货值**（javadoc 点名 D4）；新增 `lastRoundCashTurnover / cycleCashTurnover / previousCycleCashTurnover` 三个现金读口 + `lastRoundCashTurnoverByMarket` |
+| `MarketReadout.lastRoundTurnoverOf` | 语义改为名义；新增 `lastRoundCashTurnoverOf` |
+| `ApiViews.marketTurnoverReferenceView`（GUI `moneyOutputReference`） | **未改**：它不是 `MarketRoundStats` 的读者（自己从 `fill.goodsPaymentMilli()` 现算"逐 hex/世界成交额（现金）"）⇒ 属**另一处口径**，要与统计簿同名同义得另开一批（记在 §四-3） |
+
+### 2.3 D5 落点
+
+`EconomySettlement.repayDebts` 增参 `long day`（调用点在 `:2860`），**这一族事件全部补 `day`**（比裁定点名的三条多两条，同因）：
+
+| 事件 | 级别 | 改动 |
+|---|---|---|
+| `DEBT_REPAY_ROUND` | INFO | `+ "day", day` |
+| `DEBT_REPAY_RESERVE_POLICY` | DEBUG | `+ "day", day` |
+| `DEBT_REPAY_MEDIUM_ORDER` | TRACE | `+ "day", day` |
+| `DEBT_REPAY_DECISION` | TRACE | `+ "day", day`（验收报告 §3 D5 点名的第三条是它；一并补齐） |
+| `DEBT_REPAY_UNPRICED` | TRACE | `+ "day", day`（同族，缺 day 则按天检索仍会漏） |
+
+## 三、偏离记录（与裁定 / 任务书不一致之处，主动记）
+
+1. **①的判据边界（我的实现口径，控制方可推翻）**：`householdStock` 取**迁移源户**手头的库存（裁定原文"该户"=被决策的家户），
+   **目标格市场**取"该格所属市场的价目表里有这一行"（含 0 价 = 免费交易；依据 §2.1"有这一行 = 交易、没有 = 不交易" +
+   债务式清算下"没钱也能买"）。★ 如实记一处**既有边界**：本仓迁移**不搬实物库存**（`ModeMigrationSettlement` 的 ①–⑥ 只搬人/钱/债/资产/劳动配额）
+   ⇒ "源户有库存"放行的迁移，在**新建**目标户头一轮仍可能欠一轮租 —— 那一轮由 ③ 具名缺口 + 债权资本化承接。
+   ★ **后果**：three-powers 的 `grain` 在每个市场区都有价（0 = 免费）⇒ **闸门在本世界不触发**，"世界不卡死"实际由 ② 三级支付链兜住（回执见 §一.3）。
+2. **①的判据范围比裁定字面宽一格**：裁定只点名"**实物租腿**商品"，我按**关系模板的全部实物腿**判（含 `OUTPUT_SHARE` / `FIXED_IN_KIND_PER_LABOR`）。
+   理由：E14 对**非租腿**档仍然 fail-closed（裁定 ③）⇒ 那些腿不可产时迁过去 = 下次 harvest 整段 advance 被拒（与 D1 同款的卡死），
+   与"世界不许因这种不相容而卡死"的裁定总纲冲突。★ 执行期另有 (d) 兜底，两道一起才封住这条路。
+3. **`MarketRoundStats` 保留了一个旧 7 参构造器**（现金栏 = 0）：只为让既有测试夹具**不改一字**仍能编译/通过（`src/test/**` 禁改）。
+   它不写状态、不被生产代码调用、javadoc 明说不静默（见 §2.2a）。★ 若控制方认为这属于"兼容位"，删它会让两个既有测试类编不过（本批只报不修）。
+4. **D3 的"至少降 1 毫"必然让 `p < 20` 的实现跌幅 > α**：这是 v3.10 §2.1 字面算式的直接后果（与涨侧 `+1 毫` 逐字对称），
+   **不是实现偏差**；已在方法注里写明并给逐值表（§2.1）。
+5. **`RegimeRelations.inKindCommodities` 顺带把 `ModeMigrationSettlement.migrationTemplateRegime` 从 `private` 放宽到包内可见**：
+   为避免"mode→模板"出现第二份映射（同一件事两处拼写）。不放宽就得在策略侧抄一份映射表 —— 那是更坏的偏离。
+
+## 四、会改变数值行为的清单（逐条具名）
+
+1. **实物租腿的可付量从"本周期产出"扩到"本周期产出 + 家户库存"**（`ProductionSettlement.availableOf`）⇒
+   租腿应付 > 本周期产出时，**先吃家户库存**（含货币？不 —— 货币腿另路），欠款读数（`RuleSettlement.owed`）与由此资本化的租金债权**双双变小**。
+   ★ 影响面：所有带 `FIXED_IN_KIND_RENT` 关系的 unit（迁移建的 tenancy 户 + 资产规则建的实物租佃）。
+2. **实物租腿不再因"商品不在产出表里"抛** ⇒ 这类世界从"整段 advance 400"变成"具名缺口 + 债权"（D1 的本体）。
+3. **迁移计划会少掉一部分目标**：模板实物腿商品"产业不产 + 该户无库存 + 目标格市场不交易"时不再迁入该 mode
+   （`ModeMigrationPolicy`）⇒ 迁移人数/方向、随迁钱债资产、后续产业产出都可能变（**three-powers 本世界未触发**）。
+4. **执行期新增一条回退路径**（`MIGRATION_RELATION_E14_ILLEGAL_FALLBACK`）：非租腿实物腿不可产时，新户关系退回**空规则**
+   （产出全归 operator，不再收租/给养）—— 只在计划期没挡住时走到（three-powers 未触发）。
+5. **跌侧价格路径逐毫变化**（D3）⇒ 所有 `S > D` 的轮里，价格比改前**多留 1 毫**（跌幅变小）；进而影响后续成交/迁移/债务轨迹。
+6. **统计簿两栏口径**（D4）：`turnover*` 由"现金"变"名义货值"（数值变大，day120 实测 1,543 → 901,852，×584）；
+   `cashTurnover*` = 旧值。★ 这是**纯读数**，不参与定价/撮合 ⇒ **不改世界轨迹**；W4 若按"上周期成交额"排序，量纲随之改变。
+7. **还债事件多一个 `day` 字段**（D5）：纯日志。
+
+## 五、交账证据（真实命令 + rc + 关键输出）
+
+| # | 命令 | rc | 关键输出 |
+|---|---|---|---|
+| 1 | `tools/mvn-lock.sh -q spotless:apply` | **0** | 无输出（静默通过） |
+| 2 | `tools/mvn-lock.sh -DskipTests compile -am` | **0** | `BUILD SUCCESS`，16/16 模块（8.276 s） |
+| 3 | `tools/mvn-lock.sh -DskipTests package -pl simos-app -am` | **0** | `BUILD SUCCESS`（14.4 s）⇒ jar md5 `acd8e7442e55c1e44537f081391269d6` |
+| 4 | `python3 /tmp/w2acc/runner.py --jar … --world three-powers --plan [advance 600] --log-level INFO` | **0** | `advance 0->600 HTTP 200 35.180s`、`revisionDelta: 1`、`headRevision: 2`、`failedAt: null` |
+| 5 | 同上，`--store`(day510 存档副本) `--plan [advance 540]` `--log-level DEBUG --keep-store` | **0** | `advance 510->540 HTTP 200 6.126s`、rev 18→19、`failedAt: null`；`IN_KIND_RENT_CHAIN_GAP` ×1（原文见 §一.3） |
+| 6 | 同上（small-world）`--plan [advance 120]` | **0** | 落盘 `marketRoundStats`: 名义 901852 / 现金 1543；INFO 行两栏俱在 |
+| 7 | 同上（续跑 `--keep-store`）`--plan [advance 150]` | **0** | rev 2→3、tick 150；上周期轮转为 名义 795145 / 现金 1325 ⇒ **新格式 checkpoint 载入 + 续跑成功**（Codec 往返实测） |
+| 8 | `java … D3TableCheck`（`/tmp/w2fix7/D3check`） | **0** | 逐值表见 §2.1（含 α=0 与 p=0 两档） |
+| 9 | `java … D1ChainCheck`（`/tmp/w2fix7/D1Chain`） | **0** | A/B/C/D 四行见 §1.4-A |
+| 10 | `java … D1GateCheck`（`/tmp/w2fix7/D1Gate`） | **0** | 六行见 §1.4-B |
+
+## 六、未完成 / 未验证项（如实记）
+
+1. **门禁一字未跑**（`test` / `verify` / `clean` 禁用；`package` 只为 D1 自证跑了一次，任务书允许）⇒ **既有测试是否仍绿未验**。
+   ★ 已知需要门禁确认的点：`MarketRoundStats` 加了 3 个组件（旧 7 参构造器已保留 ⇒ 两个既有测试类**应**能编译），
+   D3 改了跌侧算式（`CapacityTruncationPricingAcceptanceTest` 的期望值我逐条核过：p=10000 时新旧公式**逐值相同**，
+   因为 10000×(1000−step)/1000 恒为整数 ⇒ 该类的 9500/9820/9890/9640 四个字面量都不变；**但没跑**）。
+2. **①闸门没有真实世界的触发样本**（§三-1：three-powers 每区都交易 grain）⇒ 只有合成探针（§1.4-B）+ 代码路径。
+   **"被挡下的迁移"在真世界长什么样，未验。**
+3. **②的"家户库存那一级"没有真实世界的触发样本**：本世界 day540 那个 unit 的 `payerStockMilli=0`（新户，账户空）
+   ⇒ 真世界只走到 ③（缺口）；②由合成探针钉住（§1.4-A 的 B 行）。**"租金吃老库存"的真实现场未观测。**
+4. **`IN_KIND_RENT_CHAIN`（DEBUG，付清）在两次真世界跑里 0 行** ⇒ three-powers 的实物租腿只有那一条（迁移建的）；
+   资产规则建的租腿在该世界全是 `SHARE`（`RENT_COMMODITY_FROM_INDUSTRY_OUTPUT` ×3 佐证）。**"付得清的租腿"样本未采。**
+5. **D3 的全量影响面未量化**：只给了逐值表与"p≥20 跌幅 ≤ α"；**跌侧价格变化对 600 天轨迹的影响没做前后对照**（需另跑旧 jar 对照，超本批预算）。
+6. **D4 的 W4 下游未验**（W4 未实现）；`ApiViews` 的 GUI 现金成交额口径**未统一**（§2.2b 最后一行，记作待办）。
+7. **SpotBugs / enforcer / 前端门禁未跑**；本批新增的 `payerStock` 组件与 `describe()` 拼接未过静态分析器。
+8. **`git commit` 未做**（控制方审后提交）；`src/test/**`、`docs/**`、`AGENTS.md`、`simos-social`/`unit`/`sd`/`core` 一字未改。
+9. **装置与产物**：`/tmp/w2fix7/**`（jar、store-*、results/*.log、三个探针、plan-*.json）**全在仓外**，不随批提交；
+   复用验收 Agent 的 `/tmp/w2acc/runner.py` 与 `shell*.json`（只读，未改）。`store-tp390`/`store-tp510` 是验收存档的**副本**（原件未动）；
+   其中 `store-tp390` 的副本被我删过 rev > 14 的行与 checkpoint（只为重放 390→420 段，属仓外一次性装置）。
+10. **`src/test` 的编译未验**（`compile` 只覆盖 `src/main`）⇒ 若门禁红，第一嫌疑是 `MarketRoundStats` 的构造器/`withRound` 调用点（已尽量保留旧形状）。
+
+## 七、落点行号（改动后，`simos-economy/src/main`）
+
+| 项 | file:line | 内容 |
+|---|---|---|
+| D1① | `time/ModeMigrationPolicy.java:840-850` | `buildTargets` 里的闸门调用（`excluded` + INFO `MIGRATION_IN_KIND_LEG_UNAVAILABLE_REFUSED:846`） |
+| D1① | `time/ModeMigrationPolicy.java:918` / `:963` | `inKindLegUnavailableReason`（取参）/ `inKindLegUnavailableReasonOf`（判据本体） |
+| D1① | `model/RegimeRelations.java:636` | `inKindCommodities(RegimeId)` |
+| D1① | `time/ModeMigrationSettlement.java:1882` | `migrationTemplateRegime`（`private` → 包内可见） |
+| D1(d) | `time/ModeMigrationSettlement.java:1747-1815` | `buildMigrationRelation` 的 E14 兜底（INFO `MIGRATION_RELATION_E14_ILLEGAL_FALLBACK:1800`）+ `planMigrationRelation` |
+| D1② | `time/ProductionSettlement.java:195` | `Facts.payerStock` 新组件 |
+| D1② | `time/ProductionSettlement.java:282` / `:504` | `settle` 改调 `availableOf` / 三级支付链本体 |
+| D1② | `time/EconomySettlement.java:8370` / `:8836` | `availableGoodsOf` / `harvest` 取 `payerStock` |
+| D1② | `time/EconomySettlement.java:8899` / `:8920-8975` | `logInKindRentChain` 调用 / 本体（INFO `IN_KIND_RENT_CHAIN_GAP:8941`、DEBUG `IN_KIND_RENT_CHAIN`） |
+| D1③ | `time/ProductionSettlement.java:533` | `requireProducibleCommodities` 对 `FIXED_IN_KIND_RENT` 放行（其余档照旧抛） |
+| D3 | `time/MarketSettlement.java:2486` / `:2545` | 跌侧 `⌈…⌉ + min(p−1, …)` / `multiplyByPerMilleCeiling` |
+| D4 | `model/MarketRoundStats.java:56-66` / `:145` | 10 组件 record（三段两栏）/ `withRound(…, cashTurnoverMilli, …)` |
+| D4 | `time/MarketSettlement.java:2131` / `:2137-2146` | `cashTurnover` 累加 / `turnover`（量×价整轮取整） |
+| D4 | `time/EconomySettlement.java:2668-2700` | 写状态传两栏 + INFO 加 `turnoverMilli` / `cashTurnoverMilli` |
+| D4 | `time/MarketRoundStatsBook.java:79-121` / `:160-170` | 三个名义读口语义改 + 三个现金读口 + 一览 |
+| D4 | `time/MarketReadout.java:94-107` | `lastRoundTurnoverOf`（名义）+ `lastRoundCashTurnoverOf`（现金） |
+| D5 | `time/EconomySettlement.java:7578/7646/7670/7697/7720` | 五条还债事件各加 `"day", day`；`repayDebts` 增 `long day`（`:7510`），调用点 `:2860` |

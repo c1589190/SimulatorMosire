@@ -62,7 +62,9 @@ import java.util.OptionalLong;
  *
  * <p>★★ <b>付款上限（R6）= 本周期收到的产出</b>：每条实付 = {@code min(应付, 可用)}，可用 = {@code net_j − 已付_j}。 要得比产出多 ⇒
  * <b>实付 = 产出</b>（<b>不抛、不造账、不留索取权</b>）；实付为 0 的那条<b>不产生转移</b>。 ★ 正因为上限只看本周期，本方法<b>不需要任何历史余额</b>（→
- * {@link Facts} 里没有"期初库存"这种东西）。
+ * {@link Facts} 里没有"期初库存"这种东西）。 ★★ <b>W2-fix7 / D1② 的唯一例外 = {@code
+ * FIXED_IN_KIND_RENT}</b>：固定实物租是"每周期一笔的 对外义务"（池 = {@code FIXED_AMOUNT}、与产出无关）⇒
+ * 它的可用量是<b>家户库存</b>（含本周期净产），见 {@link #availableOf}； 其余档的分成/给养的池就是"这一份产出"，逐字不动。
  *
  * <p>★★ <b>H2：每条实付 = 一条 {@link Transfer}（{@code from=operator, to=受方}，原因 {@link
  * TransferReason#RELATION_PAYMENT}）</b>——改前是两条"一 actor × 一商品"的条目（转出 + 收入）。 一条转移自带两端与方向 ⇒
@@ -84,7 +86,10 @@ import java.util.OptionalLong;
  *
  * <p>★★ <b>E14 的守卫（fail-closed，本类存在的理由之一）</b>：<b>规则指名的商品必须在该产业的产出表里</b> （{@link
  * Facts#outputPerUnit()}）。★ 依据：GM 把 {@code household}（布规则）套在<b>农业</b>产业上时，若没有这条守卫， 那条规则会<b>静默付
- * 0</b> —— 无人察觉，正是本仓最反对的形态。故它在<b>任何数量计算之前</b>判死（与"本期产了多少"无关： 产出表里有、本期产 0 仍然合法）。
+ * 0</b> —— 无人察觉，正是本仓最反对的形态。故它在<b>任何数量计算之前</b>判死（与"本期产了多少"无关： 产出表里有、本期产 0 仍然合法）。 ★★ <b>W2-fix7 /
+ * D1（v3.10 §7 裁定②③）起唯一的例外 = {@code FIXED_IN_KIND_RENT}</b>：实物租腿改走 {@link #availableOf} 的**三级支付链**（本
+ * unit 产出 → 家户库存 → 具名缺口），故不在这里判死；其余每一档照旧 fail-closed （详见 {@link #requireProducibleCommodities}
+ * 的口径注）。
  *
  * <p>★ <b>未登记的 (type × pool × weight) 组合</b>也 fail-closed（裁定 E11：组合的落点就是这张公式表）。★ 两类组合<b>不受</b>此判 ——
  * {@code FIXED_MONEY_*}（H4 起真的结算，但**不读池与权重**）与 {@code SELF_RETENTION}（数量恒 0）：它们不读那两个字段， 而"没读的字段不判"。
@@ -186,8 +191,23 @@ public final class ProductionSettlement {
       Map<CommodityId, Long> inputs,
       Map<HouseholdId, Long> laborOfHousehold,
       Map<CommodityId, Long> outputPerUnit,
-      Map<CurrencyId, Long> availableMoney) {
+      Map<CurrencyId, Long> availableMoney,
+      Map<CommodityId, Long> payerStock) {
 
+    /**
+     * ★★★ <b>W2-fix7 / D1②（v3.10 §7 裁定②）：{@code payerStock} = 付方主体结算前持有的库存（逐商品合计，毫）</b>。
+     *
+     * <p>★ <b>它只服务实物租腿（{@code FIXED_IN_KIND_RENT}）的三级支付链</b>（见 {@link #settle}）： 租腿的可付量 =
+     * 这一份库存（其中<b>已含</b>本周期刚计提的净产 —— 调用方 {@code EconomySettlement.harvest} 的 {@code creditOutput}
+     * 先把净产计进家户账、再调本方法）⇒ ① 本 unit 产出 与 ② 家户库存 是同一份数的两级， ③ 付不出的余额进 {@link
+     * RuleSettlement#owed()}（读得见）+ 由调用方落日志/资本化，<b>绝不静默为 0、绝不抛</b>。
+     *
+     * <p>★ <b>为什么必须由调用方给</b>：本类是纯函数，看不见家户账；而"付方主体"= {@code relation.operator()} 解析出的家户 （{@code
+     * EconomyData} 的构造期守卫已判死 {@code relation.operator() == unit.operator()}）⇒ 只有调用方知道该给哪几户求和。
+     *
+     * <p>★ <b>其余实物档不读它</b>（仍按 R6 的"本周期收到的产出"封顶）—— 契约是"没读的字段不判亦不用"，与本类对 {@code inputs} 的既有口径同源。空表 =
+     * 没有库存（合法状态：新户、纯赊购世界）。
+     */
     public Facts {
       if (location == null) {
         throw new IllegalArgumentException("Facts.location 不得为 null");
@@ -205,6 +225,8 @@ public final class ProductionSettlement {
       // ★ H4：货币余额表走同一份"键值非 null、逐值 ≥ 0"的校验（负余额是"凭空造钱"，不是一种数量）。
       availableMoney =
           Collections.unmodifiableMap(requireQuantities(availableMoney, "Facts.availableMoney"));
+      // ★ W2-fix7 / D1②：付方库存表走同一份校验（负库存不是一种数量）。
+      payerStock = Collections.unmodifiableMap(requireQuantities(payerStock, "Facts.payerStock"));
     }
   }
 
@@ -257,9 +279,8 @@ public final class ProductionSettlement {
       }
       OptionalLong due = dueAmount(rule, facts, paid);
       CommodityId commodity = commodityOf(rule);
-      long available =
-          Math.max(0L, facts.net().getOrDefault(commodity, 0L) - paidOf(paid, commodity));
-      long paidNow = Math.min(due.getAsLong(), available); // ★ R6：付款上限 = 本周期收到的产出
+      long available = availableOf(rule, facts, paid, commodity);
+      long paidNow = Math.min(due.getAsLong(), available); // ★ R6：付款上限 = 本周期收到的产出（租腿见 availableOf）
       // ★★ S4：读数**先记**（连实付 0 的那些）—— 只报实付会让"制度要得多、实际付不出"这件事在账上消失。
       readings.add(
           new RuleSettlement(
@@ -460,16 +481,57 @@ public final class ProductionSettlement {
   // ── 配置守卫（fail-closed）────────────────────────────────────────────────────────
 
   /**
+   * ★★★ <b>W2-fix7 / D1②（控制方裁定 v3.10 §7）：一条实物规则本轮的可付量</b>。
+   *
+   * <pre>
+   * FIXED_IN_KIND_RENT（实物租腿）—— **三级支付链**：
+   *   ① 本 unit 产出   = facts.net()[commodity] − 已付
+   *   ② 家户库存       = facts.payerStock()[commodity] − 已付   （含 ①：净产已由 creditOutput 先计进家户账）
+   *   可用 = max(①, ②) = ②（真实调用路径下两者恒相等，max 只为"库存表不含净产"的夹具留一条不改语义的下限）
+   *   ③ 具名缺口       = 应付 − 实付 ⇒ 进 RuleSettlement 的 owed（S4 的读数）+ 调用方落日志 + 资本化成债权；
+   *                      **绝不静默为 0、绝不抛**（这正是 D1 的现场：租腿商品不在产出表里 ⇒ 改前 E14 当场抛）
+   * 其余实物档（OUTPUT_SHARE / FIXED_IN_KIND_PER_LABOR / SELF_RETENTION）：
+   *   可用 = facts.net()[commodity] − 已付（R6 的"付款上限 = 本周期收到的产出"，**一字未改**）
+   * </pre>
+   *
+   * <p>★★ <b>为什么租腿要能吃到家户库存</b>：D1 的现场里 target unit（{@code unit-trade@-3_3}）的产出表只有 {@code
+   * haul}，而租约指名 {@code grain} ⇒ "本周期产出"这一级恒为 0；家户手头有粮却永远付不出租 —— 那不是"付不出"，是公式 看不见支付能力 ⇒ 世界被
+   * fail-closed 卡死（验收报告 §3 D1）。加上第二级之后，租金先吃本 unit 产出、再吃家户库存、 剩下的才是**具名缺口**（可读、可资本化、可巡检）。
+   *
+   * <p>★ <b>为什么其余实物档不动</b>：它们的语义是"<b>这一份产出的</b>分成/给养"（池 = 毛产 / 净产）⇒ 超出本周期产出的部分 按 R6
+   * 只会记欠、不会去掏家户库存；只有<b>固定实物租</b>是"每周期一笔的对外义务"（{@code Pool.FIXED_AMOUNT}、与产出无关）。
+   */
+  private static long availableOf(
+      CompensationRule rule, Facts facts, Map<CommodityId, Long> paid, CommodityId commodity) {
+    long fromUnitOutput =
+        Math.max(0L, facts.net().getOrDefault(commodity, 0L) - paidOf(paid, commodity));
+    if (rule.type() != RuleType.FIXED_IN_KIND_RENT) {
+      return fromUnitOutput;
+    }
+    long fromHouseholdStock =
+        Math.max(0L, facts.payerStock().getOrDefault(commodity, 0L) - paidOf(paid, commodity));
+    return Math.max(fromUnitOutput, fromHouseholdStock);
+  }
+
+  /**
    * ★★ <b>E14 的守卫</b>：<b>规则指名的商品必须在该产业的产出表里</b>。
    *
    * <p>★ 判的是<b>产出表</b>（"这个产业能产什么"），不是"本期产了多少" —— 表里有、本期产 0（规模 0）是合法状态。 ★ 只判<b>实物</b>规则（有 {@code
    * commodity} 的那些）：货币档没有商品可判。
+   *
+   * <p>★★ <b>W2-fix7 / D1③（v3.10 §7）：{@code FIXED_IN_KIND_RENT} 不在本条判死之列</b> —— 实物租腿改走 {@link
+   * #availableOf} 的三级支付链（本 unit 产出 → 家户库存 → 具名缺口），于是"租约指名的粮不在这条产业 的产出表里"不再是世界的死结（D1 的第 540
+   * 天就是被这一条拒掉的）。★ <b>其余每一档仍在这里 fail-closed</b>： 分成/给养的池就是"这一份产出"，产出表里没有那个商品时它只会静默付 0（本仓最反对的形态）——
+   * 复核见 D1 裁定第 ③ 条。
    */
   private static void requireProducibleCommodities(
       List<CompensationRule> ordered, ProductionRules relation, Facts facts) {
     for (CompensationRule rule : ordered) {
       if (rule.commodity().isEmpty()) {
         continue;
+      }
+      if (rule.type() == RuleType.FIXED_IN_KIND_RENT) {
+        continue; // ★ D1②/③：实物租腿走三级支付链（见 availableOf），不在配置期判死
       }
       CommodityId commodity = rule.commodity().get();
       if (!facts.outputPerUnit().containsKey(commodity)) {

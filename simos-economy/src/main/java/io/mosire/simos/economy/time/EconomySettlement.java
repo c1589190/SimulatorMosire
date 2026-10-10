@@ -45,6 +45,7 @@ import io.mosire.simos.economy.api.production.ProductionEfficiencyModifier;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.migrate.LegacyClassStructure;
@@ -2660,15 +2661,25 @@ public final class EconomySettlement {
         Map<MarketZoneId, MarketRoundStats> statsByMarket = session.sheet().marketRoundStats();
         long recorded = 0L;
         long tradedTotal = 0L;
+        long turnoverTotal = 0L;
+        long cashTurnoverTotal = 0L;
         for (Map.Entry<MarketZoneId, MarketRoundStats> entry : outcome.roundStats().entrySet()) {
           MarketRoundStats round = entry.getValue();
           MarketRoundStats current =
               statsByMarket.getOrDefault(entry.getKey(), MarketRoundStats.EMPTY);
+          // ★★ W2-fix7 / D4（v3.10 §7）：两栏都写 —— `turnover` = 名义货值（全额货款，含赊购）、
+          //   `cashTurnover` = 实付现金（改前 `turnover` 的口径，逐值搬到新字段）。
           statsByMarket.put(
               entry.getKey(),
               current.withRound(
-                  day, round.lastRound(), round.lastRoundTurnoverMilli(), anyCycleClosed));
+                  day,
+                  round.lastRound(),
+                  round.lastRoundTurnoverMilli(),
+                  round.lastRoundCashTurnoverMilli(),
+                  anyCycleClosed));
           recorded++;
+          turnoverTotal = Math.addExact(turnoverTotal, round.lastRoundTurnoverMilli());
+          cashTurnoverTotal = Math.addExact(cashTurnoverTotal, round.lastRoundCashTurnoverMilli());
           for (CommodityRound commodityRound : round.lastRound().values()) {
             tradedTotal = Math.addExact(tradedTotal, commodityRound.tradedMilli());
           }
@@ -2688,6 +2699,11 @@ public final class EconomySettlement {
                         .sum(),
                     "tradedMilli",
                     tradedTotal,
+                    // ★ D4：两栏都给（名义货值 / 实付现金）—— 只打一栏会让读者以为"成交额 = 现金"
+                    "turnoverMilli",
+                    turnoverTotal,
+                    "cashTurnoverMilli",
+                    cashTurnoverTotal,
                     "cycleClosed",
                     anyCycleClosed,
                     "window",
@@ -2842,6 +2858,7 @@ public final class EconomySettlement {
                   marketByHousehold),
               HouseholdValuationBook.NO_TRADE_HISTORY);
       repayDebts(
+          day,
           householdEconomies,
           debts,
           householdGoods,
@@ -4267,6 +4284,7 @@ public final class EconomySettlement {
               for (String hex : partition.canonicalKeys()) {
                 for (HarvestWork work : byHex.get(hex)) {
                   harvest(
+                      day,
                       work.unit(),
                       work.industry(),
                       work.scale(),
@@ -7486,8 +7504,11 @@ public final class EconomySettlement {
    *     DebtValuation.RepayeeResolver#HOUSEHOLD_ACTORS}； 外部放贷主体/政府账户可换一份 resolver）
    * @param householdPrices 家户价目表（可选；W2 起由 {@link HouseholdValuationBook} 现算注入 —— 它是 S-5
    *     介质序与债务折价的<b>唯一</b>估值尺）
+   * @param day 本日的绝对世界日（★ W2-fix7 / D5：还债的每一条事件都带 {@code day} —— 现场可按天直接检索/对账， 不再依赖"日志时间序的最近一个
+   *     day"去推）
    */
   private static void repayDebts(
+      long day,
       LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
@@ -7556,6 +7577,8 @@ public final class EconomySettlement {
                 LogEvent.of(
                     "DEBT_REPAY_MEDIUM_ORDER",
                     EconomyLogSource.ECONOMY_DEBT_STATE,
+                    "day",
+                    day,
                     "debtor",
                     debtor.value(),
                     "mediumOrder",
@@ -7622,6 +7645,8 @@ public final class EconomySettlement {
                   LogEvent.of(
                       "DEBT_REPAY_DECISION",
                       EconomyLogSource.ECONOMY_DEBT_STATE,
+                      "day",
+                      day,
                       "debtor",
                       debtor.value(),
                       "creditor",
@@ -7644,6 +7669,8 @@ public final class EconomySettlement {
                     LogEvent.of(
                         "DEBT_REPAY_UNPRICED",
                         EconomyLogSource.ECONOMY_DEBT_STATE,
+                        "day",
+                        day,
                         "debtor",
                         debtor.value(),
                         "creditor",
@@ -7669,6 +7696,8 @@ public final class EconomySettlement {
             LogEvent.of(
                 "DEBT_REPAY_ROUND",
                 EconomyLogSource.ECONOMY_DEBT,
+                "day",
+                day,
                 "debtorsWithOutstanding",
                 debtorsWithOutstanding,
                 "householdsRepaid",
@@ -7690,6 +7719,8 @@ public final class EconomySettlement {
               LogEvent.of(
                   "DEBT_REPAY_RESERVE_POLICY",
                   EconomyLogSource.ECONOMY_DEBT,
+                  "day",
+                  day,
                   "reserveCommodities",
                   0,
                   "reserveMoney",
@@ -8329,6 +8360,29 @@ public final class EconomySettlement {
     return sums;
   }
 
+  /**
+   * ★★ <b>W2-fix7 / D1②：主体的实物库存合计（逐商品；单一主体 = 它自己的库存，集体 = 各户之和）</b>。
+   *
+   * <p>★ 与 {@link #availableMoneyOf} 逐字同形、同一条口径：它喂 {@link
+   * ProductionSettlement.Facts#payerStock()}（实物租腿的 三级支付链第二级），因此<b>必须是"结算前这一刻"的会话库存</b> ——
+   * 调用点（{@code harvest}）在 {@code creditOutput} 之后、{@code settle} 之前取它 ⇒ 表里已含本周期刚计提的净产。
+   */
+  private static Map<CommodityId, Long> availableGoodsOf(
+      HouseholdRouting.Subject subject, Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
+    Map<CommodityId, Long> sums = new LinkedHashMap<>();
+    for (HouseholdId household : subject.all()) {
+      for (Map.Entry<CommodityId, Long> entry :
+          householdGoods.getOrDefault(household, Map.of()).entrySet()) {
+        // ★ 与 availableMoneyOf 同款：并发读到的 null 值按"此刻不可用"处理（fail-closed 不 NPE）。
+        if (entry.getValue() == null) {
+          continue;
+        }
+        sums.merge(entry.getKey(), entry.getValue(), Math::addExact);
+      }
+    }
+    return sums;
+  }
+
   /** 净产入账：单一主体 ⇒ 一条计提；集体主体 ⇒ 按劳动权重分给各家家户；解析不到主体 ⇒ <b>具名缺口</b> （WARN + 跳过，不凭空造账、不静默塞给某个家户）。 */
   private static void creditOutput(
       HouseholdRouting.Subject subject,
@@ -8710,6 +8764,7 @@ public final class EconomySettlement {
    * @param ledger 当天的发生额累加器（毛产 / 损耗 / 产权条目 / 货币待办都进这里）
    */
   private static void harvest(
+      long day,
       ProductionProcess unit,
       Industry industry,
       long scale,
@@ -8774,6 +8829,11 @@ public final class EconomySettlement {
     // ★ 同一 unit 的多条规则共用一批家户时，付方可用量必须在**本轮结算内**累计扣减（否则同一笔钱会被两条规则各花一次）。
     Map<HouseholdId, Map<CommodityId, Long>> routedGoodsDebited = new LinkedHashMap<>();
     Map<HouseholdId, Map<CurrencyId, Long>> routedMoneyDebited = new LinkedHashMap<>();
+    // ★★★ W2-fix7 / D1②（v3.10 §7 裁定②）：**实物租腿三级支付链的②级** —— 付方主体结算前的实物库存（逐商品合计）。
+    //   ★ 上面的 creditOutput 已把本周期净产计进这批家户的账 ⇒ ①"本 unit 产出"与 ②"家户库存"在这张表里是
+    //     同一份数的两级（与 ProductionSettlement.availableOf 的口径注同源）。★ 主体 = unit 的账户主体，
+    //     而 {@code EconomyData} 的构造期守卫已判死 {@code relation.operator() == unit.operator()} ⇒ 与路由付方同源。
+    Map<CommodityId, Long> payerStock = availableGoodsOf(subject, householdGoods);
     ProductionSettlement.Outcome outcome =
         ProductionSettlement.settle(
             relation,
@@ -8786,7 +8846,9 @@ public final class EconomySettlement {
                 industry.outputPerUnit(),
                 // ★★ 货币档的付款上限 = **账户主体家户们的可花货币合计**（逐币种）；解析不到主体 ⇒ 空表（实付 0、
                 //   欠额进读数 —— 如实报，不是静默付 0）。
-                availableMoneyOf(subject, householdMoney)),
+                availableMoneyOf(subject, householdMoney),
+                // ★ W2-fix7 / D1②：实物租腿的第二级（见上面的 payerStock 口径注）
+                payerStock),
             (from, to, transferLocation, goods, money, reason) -> {
               Transfer first =
                   routeRelationTransfer(
@@ -8829,6 +8891,111 @@ public final class EconomySettlement {
     }
     for (CompensationRule rule : outcome.deferredMoney()) {
       ledger.addDeferred(rule);
+    }
+    // ★★★ W2-fix7 / D1②（v3.10 §7 裁定②）：**实物租腿三级支付链的日志面** —— ①本 unit 产出 → ②家户库存 →
+    //   ③具名缺口。"付不出"绝不静默：缺口一条 INFO（默认档就看得见，含 应付/实付/缺口/产出/库存/是否可产），
+    //   付得出来的逐条在 DEBUG（现场判"租金吃的是产出还是老库存"）。★ 缺口同时进 RuleSettlement.owed（S4 读数）
+    //   并在关账处被 capitalizeArrears 折成债权 —— 三处都读得到，不是只有日志。
+    logInKindRentChain(day, unit, industry, outcome, netByCommodity, payerStock);
+  }
+
+  /**
+   * ★★★ <b>W2-fix7 / D1②（控制方裁定 v3.10 §7）：实物租腿「三级支付链」的日志面</b>。
+   *
+   * <pre>
+   * ① 本 unit 产出 = netByCommodity[commodity]（本周期这条产业的净产；creditOutput 已计进家户账）
+   * ② 家户库存     = payerStock[commodity]（结算前的会话库存合计，含 ①）
+   * ③ 具名缺口     = 应付 − 实付 ⇒ **INFO 一条**（默认档可见）+ RuleSettlement.owed（S4 读数）+ 关账资本化成债权
+   * </pre>
+   *
+   * <p>★ <b>为什么逐条打、而不是只打缺口</b>：现场要能回答"这一轮租金吃的是新产出还是老库存" —— 只打缺口时 "付得出"的那些一条都看不见，读者无法判断 D1
+   * 的三级链到底有没有被用到（旧实现里这类租腿是当场抛）。
+   *
+   * <p>★ <b>只读</b>：不改任何状态、不改任何公式、不影响守恒；日志失败不得影响结算（§一.9）。
+   *
+   * @param outcome 已结算的读数（{@link ProductionLedger.RuleSettlement} 逐规则一条，连实付 0 的也在）
+   * @param netByCommodity 本 unit 本周期逐商品净产（①）
+   * @param payerStock 付方主体结算前逐商品库存（②；含 ①）
+   */
+  private static void logInKindRentChain(
+      long day,
+      ProductionProcess unit,
+      Industry industry,
+      ProductionSettlement.Outcome outcome,
+      Map<CommodityId, Long> netByCommodity,
+      Map<CommodityId, Long> payerStock) {
+    for (ProductionLedger.RuleSettlement reading : outcome.ruleSettlements()) {
+      if (reading.rule().type() != RuleType.FIXED_IN_KIND_RENT) {
+        continue; // 三级支付链只服务实物租腿；其余档的读数走 S4 的既有面
+      }
+      if (reading.commodity().isEmpty()) {
+        continue; // 实物租腿必有商品（CompensationRule 的构造期守卫）；这里是兜底，不猜
+      }
+      CommodityId commodity = reading.commodity().get();
+      boolean producible = industry.outputPerUnit().containsKey(commodity);
+      long gap = reading.owed();
+      if (gap > 0L) {
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "IN_KIND_RENT_CHAIN_GAP",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    day,
+                    "unit",
+                    unit.id().value(),
+                    "industry",
+                    industry.id().value(),
+                    "commodity",
+                    commodity.value(),
+                    "payee",
+                    reading.payee().toString(),
+                    "dueMilli",
+                    reading.dueAmount(),
+                    "paidMilli",
+                    reading.paidNow(),
+                    "gapMilli",
+                    gap,
+                    "unitOutputMilli",
+                    netByCommodity.getOrDefault(commodity, 0L),
+                    "payerStockMilli",
+                    payerStock.getOrDefault(commodity, 0L),
+                    "commodityInIndustryOutput",
+                    producible,
+                    "why",
+                    "in-kind-rent-chain:unit-output-then-household-stock-remainder-is-a-named-gap"
+                        + (producible ? "" : " (该商品不在本产业产出表里)")));
+        continue;
+      }
+      if (TRACE.isDebugEnabled()) {
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "IN_KIND_RENT_CHAIN",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    day,
+                    "unit",
+                    unit.id().value(),
+                    "industry",
+                    industry.id().value(),
+                    "commodity",
+                    commodity.value(),
+                    "payee",
+                    reading.payee().toString(),
+                    "dueMilli",
+                    reading.dueAmount(),
+                    "paidMilli",
+                    reading.paidNow(),
+                    "unitOutputMilli",
+                    netByCommodity.getOrDefault(commodity, 0L),
+                    "payerStockMilli",
+                    payerStock.getOrDefault(commodity, 0L),
+                    "commodityInIndustryOutput",
+                    producible,
+                    "why",
+                    "in-kind-rent-paid-in-full (①本 unit 产出 → ②家户库存)"));
+      }
     }
   }
 

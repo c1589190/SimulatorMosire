@@ -20,6 +20,10 @@ import java.util.OptionalLong;
  * ★★ <b>W1（2026-10-10）：市场轮统计簿的只读查询面</b> —— 按 <b>(市场, 商品)</b> 读最后一轮 <b>D / S / 成交量 / 均价 /
  * 未满足量</b>、按<b>市场</b>读本轮与本/上周期<b>成交额</b>（{@code EconomyData.marketRoundStats}）。
  *
+ * <p>★★ <b>W2-fix7 / D4：成交额读口分两栏</b> —— {@code …Turnover} = <b>名义货值</b>（全额货款，含赊购部分）、 {@code
+ * …CashTurnover} = <b>实付现金</b>（只数真钱）。改前只有"实付现金"一栏却叫"成交额"，在几乎全赊购的世界里 把它读成市场规模会差两个数量级（验收报告 §3 D4）——
+ * 两栏并存，谁也不冒充谁。
+ *
  * <p>★★ <b>三个窗口的语义（读口不再解释第二遍）</b>：{@link #lastRound} = 最近一轮明细；{@link #cycleToDate} = 本周期累计； {@link
  * #previousCycle} = 上周期累计（关账轮轮转 ⇒ **上周期快照**，W4 的市场区排序量）。★ 本账是**持久**的（随 {@code EconomyData} 进
  * Codec/ChangeSet）⇒ 重启后仍在（"进程内、重启即失"是改动前 {@code MarketReport} 的老毛病）。
@@ -66,22 +70,51 @@ public final class MarketRoundStatsBook {
     return of(view, marketId).stream().mapToLong(MarketRoundStats::lastRoundDay).findFirst();
   }
 
-  /** ★ <b>逐市场成交额</b>（毫；单位口径见 {@link MarketRoundStats} 的类注）。 */
+  /**
+   * ★★ <b>逐市场"最后一轮"成交额</b>（毫；口径见 {@link MarketRoundStats} 的类注）—— <b>名义货值</b> （全额货款，含赊购部分）。★ W2-fix7
+   * / D4 起本读口的语义由"实付现金"改为"名义货值"； 现金口径在 {@link #lastRoundCashTurnover}。
+   */
   public static OptionalLong lastRoundTurnover(EconomyDayView view, MarketZoneId marketId) {
     return of(view, marketId).stream()
         .mapToLong(MarketRoundStats::lastRoundTurnoverMilli)
         .findFirst();
   }
 
-  /** ★ 本周期累计成交额（毫；W4 的"上周期成交额"排序量在 {@link #previousCycleTurnover}）。 */
+  /** ★ W2-fix7 / D4：逐市场"最后一轮"**实付现金**（毫；只数真钱，赊购部分不进这一栏）。 */
+  public static OptionalLong lastRoundCashTurnover(EconomyDayView view, MarketZoneId marketId) {
+    return of(view, marketId).stream()
+        .mapToLong(MarketRoundStats::lastRoundCashTurnoverMilli)
+        .findFirst();
+  }
+
+  /** ★ 本周期累计成交额（**名义货值**；毫；W4 的"上周期成交额"排序量在 {@link #previousCycleTurnover}）。 */
   public static OptionalLong cycleTurnover(EconomyDayView view, MarketZoneId marketId) {
     return of(view, marketId).stream().mapToLong(MarketRoundStats::cycleTurnoverMilli).findFirst();
   }
 
-  /** ★★ <b>上周期累计成交额</b>（毫）：W4 的市场区排序量（S-4/N-1 的防自指输入）。 */
+  /** ★ W2-fix7 / D4：本周期累计**实付现金**（毫）。 */
+  public static OptionalLong cycleCashTurnover(EconomyDayView view, MarketZoneId marketId) {
+    return of(view, marketId).stream()
+        .mapToLong(MarketRoundStats::cycleCashTurnoverMilli)
+        .findFirst();
+  }
+
+  /**
+   * ★★ <b>上周期累计成交额</b>（毫）：W4 的市场区排序量（S-4/N-1 的防自指输入）。
+   *
+   * <p>★ W2-fix7 / D4 起它是<b>名义货值</b>（全额货款，含赊购部分）—— 改前只数现金时，几乎全赊购的世界里 排序会退化成"谁付过现金"； 现金口径在 {@link
+   * #previousCycleCashTurnover}。
+   */
   public static OptionalLong previousCycleTurnover(EconomyDayView view, MarketZoneId marketId) {
     return of(view, marketId).stream()
         .mapToLong(MarketRoundStats::previousCycleTurnoverMilli)
+        .findFirst();
+  }
+
+  /** ★ W2-fix7 / D4：上周期累计**实付现金**（毫）。 */
+  public static OptionalLong previousCycleCashTurnover(EconomyDayView view, MarketZoneId marketId) {
+    return of(view, marketId).stream()
+        .mapToLong(MarketRoundStats::previousCycleCashTurnoverMilli)
         .findFirst();
   }
 
@@ -115,12 +148,22 @@ public final class MarketRoundStatsBook {
     return List.copyOf(lines);
   }
 
-  /** ★ 全部市场"最后一轮成交额"的一览（市场 id 规范序；只读派生，不落盘）。 */
+  /** ★ 全部市场"最后一轮成交额（名义货值）"的一览（市场 id 规范序；只读派生，不落盘）。 */
   public static Map<MarketZoneId, Long> lastRoundTurnoverByMarket(EconomyDayView view) {
     Objects.requireNonNull(view, "view");
     Map<MarketZoneId, Long> byMarket = new LinkedHashMap<>();
     for (MarketZoneId marketId : marketIds(view)) {
       byMarket.put(marketId, lastRoundTurnover(view, marketId).orElse(0L));
+    }
+    return java.util.Collections.unmodifiableMap(byMarket);
+  }
+
+  /** ★ W2-fix7 / D4：全部市场"最后一轮实付现金"的一览（市场 id 规范序；只读派生，不落盘）。 */
+  public static Map<MarketZoneId, Long> lastRoundCashTurnoverByMarket(EconomyDayView view) {
+    Objects.requireNonNull(view, "view");
+    Map<MarketZoneId, Long> byMarket = new LinkedHashMap<>();
+    for (MarketZoneId marketId : marketIds(view)) {
+      byMarket.put(marketId, lastRoundCashTurnover(view, marketId).orElse(0L));
     }
     return java.util.Collections.unmodifiableMap(byMarket);
   }

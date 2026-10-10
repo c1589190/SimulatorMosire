@@ -3,9 +3,12 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyDayView;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -14,6 +17,7 @@ import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.relation.ProductionRules;
@@ -33,8 +37,11 @@ import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -819,11 +826,39 @@ public final class ModeMigrationPolicy {
         }
         long weight =
             Math.max(0L, Math.subtractExact(prospect.netPerLaborScaled(), currentPerLabor));
-        if (weight <= 0L) {
-          continue;
-        }
         HouseholdId existing =
             bestExistingTarget(source, hex, mode, modeByHousehold, positions, householdEconomies);
+        // ★★★ W2-fix7 / D1①（控制方裁定 v3.10 §7）：**目标生产方式的实物腿商品拿不到 ⇒ 该户不迁入这个 mode**。
+        //   判据（详见 inKindLegUnavailableReason）：目标产业的产出表里没有这个商品 **且** 该户没有可用库存
+        //   **且** 目标格的市场也不交易它 ⇒ 迁过去只会得到一条永远付不出的租腿（改前是 day 540 的 E14 400，
+        //   世界当场卡死）。★ 只判**新建**目标：并入既有户不生成新关系（既有关系早就在跑）。
+        //   ★ 被挡下的目标进排序表的 excluded（不静默）+ 一条具名 INFO。
+        if (existing == null) {
+          String refusal =
+              inKindLegUnavailableReason(base, source, mode.id(), hex, accounts, markets, topology);
+          if (refusal != null) {
+            excluded.add(new PrimaryModeRanking.Excluded(mode.id(), hex, refusal));
+            if (weight > 0L) {
+              // ★ 只在"它本来是活候选"时报 INFO（weight = 0 的目标本来就不会被选中，报它只是噪声）。
+              EventLog.channel(EconomyLog.migration())
+                  .info(
+                      LogEvent.of(
+                          "MIGRATION_IN_KIND_LEG_UNAVAILABLE_REFUSED",
+                          EconomyLogSource.ECONOMY_MIGRATION,
+                          "day",
+                          day,
+                          "household",
+                          source.value(),
+                          "targetHex",
+                          hex.q() + "," + hex.r(),
+                          "targetMode",
+                          mode.id().value(),
+                          "reason",
+                          refusal));
+            }
+            continue;
+          }
+        }
         long room =
             existing == null
                 ? 0L
@@ -851,6 +886,115 @@ public final class ModeMigrationPolicy {
             .thenComparing(target -> target.canonical)
             .thenComparing(target -> target.existing == null ? "" : target.existing.value()));
     return targets;
+  }
+
+  /**
+   * ★★★ <b>W2-fix7 / D1①（控制方裁定 v3.10 §7 第 ① 条）：一个"新建目标"能不能迁 —— 实物腿商品的可得性判据</b>。
+   *
+   * <pre>
+   * 目标产业 I   = industriesForMode(base, hex, mode) 的第一个（与 ExpectedProfitBook.resolveIndustry 同源）
+   * 模板制度 R   = ModeMigrationSettlement.migrationTemplateRegime(mode, I, base)（唯一映射点，不另写一份）
+   * 实物腿商品 C = RegimeRelations.inKindCommodities(R)（模板里所有 commodity 非空的腿，去重保序）
+   * 逐 c ∈ C（只要有一条**拿不到**就拒这个目标）：
+   *   ① c ∈ I.outputPerUnit()                ⇒ 拿得到（本 unit 自己就产它）
+   *   ② 该户（承担这条租腿的那个家户）手头有 c ⇒ 拿得到（家户库存）
+   *   ③ 目标格所属市场的价目表里有 c 这一行    ⇒ 拿得到（能买；含 0 价 = 免费交易，债务式清算下"没钱也能买"）
+   *   三者都不成立 ⇒ 返回具名理由（调用方：不迁入这个 mode、进 excluded、INFO 一条），世界继续跑
+   * </pre>
+   *
+   * <p>★★ <b>"该户"= 被决策的这个家户（迁移源户）</b>：判据读的是它手头的库存（{@code accounts.householdGoods()}）。 ★
+   * <b>一处如实记的边界</b>：本仓的迁移 ①–⑥ 只搬人/钱/债/资产/劳动配额，<b>不搬实物库存</b>（既有事实，本批不改）⇒
+   * 源户"有库存"放行的迁移，在**新建**目标户那一侧头一轮仍然可能欠租 —— 那一轮由三级支付链的 ③ 具名缺口 + 债权 资本化承接（不是死结，也不是静默 0）。★
+   * 并入既有户不走本判据（{@code existing != null} 时调用方直接跳过）： 那种 move <b>不生成新关系</b>，既有关系的合法性早由 E14 把守。
+   *
+   * <p>★★ <b>为什么"市场有这一行"就等于可得</b>：S-6/§2.1 的口径是"表里有这一行（含 0）= 可交易；没有这一行 = 不交易"， 且债务式清算下"没钱也能买（记债）"⇒
+   * 市场交易该商品 = 这户有拿到它的通道。★ 反向（市场不交易、产出表也没有、 自己也没库存）才是真死路 —— 那正是要挡的形态。
+   *
+   * <p>★ <b>为什么按 mode→模板→商品，而不是按"已生成的关系"</b>：决策发生在关系生成之前；商品集合只由 {@link RegimeRelations}
+   * 的表决定（受方/格/居住类型不改变商品）⇒ 模板就是权威。
+   *
+   * @return 具名拒绝理由；null = 可以迁
+   */
+  private static String inKindLegUnavailableReason(
+      EconomyDayView base,
+      HouseholdId source,
+      ProductionModeId mode,
+      HexCoord hex,
+      AccountSession accounts,
+      Map<MarketZoneId, MarketTable> markets,
+      MarketTopology topology) {
+    IndustryId industryId = null;
+    Industry industry = null;
+    for (IndustryId candidate : industriesForMode(base, hex, mode)) {
+      Industry resolved = base.industries().get(candidate);
+      if (resolved != null) {
+        industryId = candidate;
+        industry = resolved;
+        break;
+      }
+    }
+    if (industryId == null || industry == null) {
+      return null; // 没有产业模板：本方法不判（该目标的可行性由 prospect / merchant 门槛具名把关）
+    }
+    Optional<RegimeId> regime =
+        ModeMigrationSettlement.migrationTemplateRegime(mode, industryId, base);
+    if (regime.isEmpty()) {
+      return null; // 模板制度未登记（如 merchant）⇒ 关系走具名回退空规则，没有实物腿可判
+    }
+    return inKindLegUnavailableReasonOf(
+        industryId,
+        industry,
+        RegimeRelations.inKindCommodities(regime.get()),
+        accounts.householdGoods().getOrDefault(source, Map.of()),
+        marketOf(markets, topology, hex),
+        regime.get());
+  }
+
+  /**
+   * ★★ <b>{@link #inKindLegUnavailableReason} 的判据本体（包内可见 ⇒ 可被逐值探针直接钉住）</b>： 三条"拿得到"的通道逐商品判，
+   * 只要有一条商品三条都不成立 ⇒ 返回具名理由。
+   *
+   * @param industry 目标产业（产出表 = 唯一的"自己能产"权威）
+   * @param inKindCommodities 目标模板的实物腿商品（{@link RegimeRelations#inKindCommodities}）
+   * @param householdStock 该户手头库存（逐商品；缺键 = 0）
+   * @param market 目标格所属市场的价目表（null = 该格没有市场 ⇒ 市场那一档不成立）
+   * @return 具名拒绝理由；null = 可以迁
+   */
+  static String inKindLegUnavailableReasonOf(
+      IndustryId industryId,
+      Industry industry,
+      List<CommodityId> inKindCommodities,
+      Map<CommodityId, Long> householdStock,
+      MarketTable market,
+      RegimeId regime) {
+    StringBuilder refused = new StringBuilder();
+    for (CommodityId commodity : inKindCommodities) {
+      if (industry.outputPerUnit().containsKey(commodity)) {
+        continue; // ① 本产业能产
+      }
+      if (householdStock.getOrDefault(commodity, 0L) > 0L) {
+        continue; // ② 该户手头有库存
+      }
+      if (market != null && market.hasPrice(commodity)) {
+        continue; // ③ 目标格的市场交易它（含 0 价 = 免费交易）
+      }
+      if (refused.length() > 0) {
+        refused.append('|');
+      }
+      refused
+          .append(commodity.value())
+          .append("(industry=")
+          .append(industryId.value())
+          .append(" outputs=")
+          .append(industry.outputPerUnit().keySet())
+          .append(",stock=0,market=")
+          .append(market == null ? "none" : market.hasPrice(commodity))
+          .append(')');
+    }
+    if (refused.length() == 0) {
+      return null;
+    }
+    return "in-kind-leg-unavailable:" + refused + ":regime=" + regime.value();
   }
 
   /** A 规则专用：DISPLACED 目标（已有流民户或同一/邻格新建；不要求产业/资产）。 */

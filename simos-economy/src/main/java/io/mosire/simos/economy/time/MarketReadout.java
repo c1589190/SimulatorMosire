@@ -90,10 +90,22 @@ public record MarketReadout(
     return stats == null ? Optional.empty() : Optional.ofNullable(stats.lastRound().get(commodity));
   }
 
-  /** ★ 某市场的**最后一轮成交额**（毫；没有过任何一轮 ⇒ 空）。 */
+  /**
+   * ★★ 某市场的**最后一轮成交额**（毫；没有过任何一轮 ⇒ 空）—— <b>名义货值</b>（全额货款，含赊购部分）。
+   *
+   * <p>★ W2-fix7 / D4：本读口的语义由"实付现金"改为"名义货值"；现金口径见 {@link #lastRoundCashTurnoverOf}。
+   */
   public OptionalLong lastRoundTurnoverOf(String marketId) {
     MarketRoundStats stats = marketRoundStats.get(marketId);
     return stats == null ? OptionalLong.empty() : OptionalLong.of(stats.lastRoundTurnoverMilli());
+  }
+
+  /** ★ W2-fix7 / D4：某市场**最后一轮实付现金**（毫；只数真钱，赊购部分不进这一栏）。 */
+  public OptionalLong lastRoundCashTurnoverOf(String marketId) {
+    MarketRoundStats stats = marketRoundStats.get(marketId);
+    return stats == null
+        ? OptionalLong.empty()
+        : OptionalLong.of(stats.lastRoundCashTurnoverMilli());
   }
 
   public MarketReadout {
