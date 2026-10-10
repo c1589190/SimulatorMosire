@@ -42,6 +42,12 @@ import io.mosire.simos.util.economy.EconomyVocabulary;
  * <p>★★ <b>I-H2（货物守恒）与"不可储存转卖"</b>：服务在**成交那一刻**被消耗（卖方账户减 + 既有损耗落点加， Σ余额 + losses 守恒），买方**不接手**库存 ⇒
  * 一份运力不可能被卖两轮、也不可能被转卖 —— 这正是用户原话 「运力作为特殊商品不可储存转卖」的字面执行。★ 与设计书 §3.1 的"可储存（作为普通商品）"<b>不一致</b>， 按
  * §一.8.1（用户原话优先）取"成交即消耗"，理由已记进实现账本 D-A2-3。
+ *
+ * <p>★★★ <b>A5（2026-10-10）："不可储存"的另一半 —— 没卖出去的那一份到周期边界<b>作废</b></b>。A2 只做到"成交即消耗" ⇒
+ * 未卖出的服务会**跨周期累积**、下一周期照样被当运力卖（A4 真实 world 实测：Σ现货 = Σ净产 − Σ交付 恰好相等， A 227,997 / B 307,988 毫服务）。A5
+ * 按同一条用户裁定补上：产出运输服务的 unit 关账时，把它账户主体家户手上**上一周期 未卖出的**服务货作废（{@link
+ * #SERVICE_EXPIRED_ACCOUNT}，在收获入账之前）⇒ 任何时刻池里能卖的服务货**只可能**是本周期产出的。
+ * 两半合起来才是「不可储存转卖」：既不能卖两轮，也不能存到下个周期再卖。
  */
 public final class HaulService {
 
@@ -62,6 +68,29 @@ public final class HaulService {
    * cycleInputPerUnit}），它走既有生产投入的现扣与损耗落点，不再有跑商私有的损耗账。
    */
   public static final IndustryId SERVICE_CONSUMED_ACCOUNT = new IndustryId("market-haul-service");
+
+  /**
+   * ★★★ <b>A5（2026-10-10）：周期边界"未卖出的运输服务作废"记进哪个损耗账</b>（{@code ProductionLedger.Accumulator.addLoss}
+   * 的键）。
+   *
+   * <pre>
+   * 触发点 = 产出运输服务的那个 {@code trade} unit 的**周期关账**（{@code progressed >= industry.cycleDays()}），
+   *          在**本周期新产出入账之前**：上一周期没被卖掉的服务货当场作废（账户减 + 本损耗账加，Σ余额 + losses 守恒）。
+   * 作用域 = 该 unit 的账户主体家户（= 收获时被记入净产的那批家户，{@code HouseholdRouting}.
+   *          {@code subjectOf(...).all()}）—— 别的商品、别的家户一个字节都不动。
+   * </pre>
+   *
+   * <p>★★ <b>为什么必须与 {@link #SERVICE_CONSUMED_ACCOUNT} 分开</b>：两者是两件事，读数不许混 —— 前者（{@code
+   * market-haul-service}）是"**卖出去**的那一份在成交那一刻被消耗"（有对价、有买方）， 本项（{@code
+   * market-haul-service-expired}）是"**没卖出去**的那一份在周期边界作废"（无对价、无买方）。 合并成一个键会让"到底卖了多少、烂了多少"在账上再也分不开（用户
+   * 2026-10-10 裁定的"不可储存转卖"正是后者）。
+   *
+   * <p>★★ <b>为什么这不是"静默销毁"（I-H2）</b>：走的是既有的**非换手损耗唯一写口** {@code
+   * EconomySettlement.consumeForLoss}（"账户减 + 损耗账加"在同一句话里做完）⇒ Σ家户余额 + Σ损耗账逐值守恒， 与货损（{@code
+   * market-transport}）、服务成交消耗同一条守恒式。
+   */
+  public static final IndustryId SERVICE_EXPIRED_ACCOUNT =
+      new IndustryId("market-haul-service-expired");
 
   /** 千分比口径（与 {@code CapacityDemand.PER_MILLE} / {@code Market.BID_PER_MILLE} 同值）。 */
   public static final long PER_MILLE = 1000L;

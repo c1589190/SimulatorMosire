@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -86,16 +87,25 @@ final class OperatorSettlement {
   /**
    * ★★ <b>一个市场轮结束后累加周期证据</b>（每轮调用一次；唯一写口）。
    *
+   * <p>★★ <b>A5（2026-10-10，T-H3）：服务收入也要进这本账</b>。运输服务**不进订单簿**（它的需求由其他商品的购买派生 —— 用户 2026-10-10
+   * 原话），因此 {@code report.fills()} 里**结构上永远没有**服务成交 ⇒ 跑商产业 （{@code trade@hex}）的 {@code
+   * cycleRevenueByCurrency} 恒空、{@code lastCycleNetMilli} 只剩成本一项 （A4 账本 §5-3 实测 {@code trade@0_*} 恒
+   * {@code {} } / net −104，是误导性读数）。{@code haulService} 是市场轮 按**收款家户**交出的服务实收（同一条 {@code
+   * MARKET_TRADE} 钱腿）⇒ 归入"该家户名下产出运输服务的那个 unit"。 服务钱腿在 {@code fills} 里不存在 ⇒
+   * 两条来源**结构上互斥**，不可能重复计（I-H5 不双记）。
+   *
    * @param conditions 经营者状态工作表（键 = unit id；会被就地更新）
    * @param units 生产单元表（键 = unit id；本轮参与累加的主体）
    * @param industries 技术模板表（产出商品判据；只读）
    * @param report 本轮市场报告（{@code null} = 本轮没开市；保持已有累计不动）
+   * @param haulService 本轮运输服务读数（{@code null} = 没有服务活动；见 {@link MarketSettlement.HaulServiceRound}）
    */
   static void accumulateMarketEvidence(
       LinkedHashMap<ProductionUnitId, OperatorCondition> conditions,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, Industry> industries,
-      MarketReport report) {
+      MarketReport report,
+      MarketSettlement.HaulServiceRound haulService) {
     if (report == null) {
       return;
     }
@@ -156,6 +166,12 @@ final class OperatorSettlement {
         }
       }
     }
+    // ★★★ A5（2026-10-10，T-H3）：**服务成交的钱腿也进这本账**（运输服务的"货款"）—— 服务不进订单簿 ⇒
+    //   它不会出现在上面的 fills 循环里；不接这一段，"跑商的收益"在任何标准读数面上都看不到（见被调方法的注）。
+    MarketSettlement.HaulServiceRound serviceRound =
+        haulService == null ? MarketSettlement.HaulServiceRound.none() : haulService;
+    accumulateHaulServiceRevenue(
+        unitsByOperator, units, industries, byUnit, serviceRound.revenueByHousehold());
     for (ProductionUnitId id : new ArrayList<>(units.keySet())) {
       ProductionProcess unit = units.get(id);
       if (unit == null) {
@@ -200,6 +216,86 @@ final class OperatorSettlement {
               evidence.outcompetedActors,
               evidence.outcompetedQty));
     }
+  }
+
+  /**
+   * ★★★ <b>A5（2026-10-10，T-H3）：把本轮运输服务的实收按**收款家户**归入"它名下产出运输服务的那个 unit"</b>。
+   *
+   * <pre>
+   * 候选 = unitsByOperator[收款家户的 actor] 中，配方 {@code outputPerUnit} 含 {@code haul} 的那些 unit
+   * 恰好 1 个   ⇒ 全额归它（正常世界：每格一个 {@code trade@hex} unit，经营者 = 该格商号本金主家户）
+   * 多于 1 个   ⇒ 只归 **unit id 规范序最小** 的那个，并记一条具名 DEBUG（不静默、不重复计、不丢总额）
+   * 0 个        ⇒ 不动任何账（那不是这些 unit 的收入）；另记一条具名 DEBUG（"钱收了但没有对应 unit"是事实）
+   * </pre>
+   *
+   * <p>★ <b>为什么是"归一个"而不是"归每一个"</b>：读数是"该产业的周期收入"，把同一笔钱同时记进两个 unit 的账
+   * 就是**双记**（本仓最贵的一类账）。多于一个候选在真实世界里不可达（播种器每格一个 trade 产业、一个 unit）， 真出现时宁可只归一个并留下具名读数。
+   *
+   * <p>★ <b>为什么必须做这件事</b>：服务不进订单簿 ⇒ {@code report.fills()} 里没有服务成交 ⇒ 不接这条， 跑商产业的 {@code
+   * condition.lastCycleRevenueByCurrency} 恒 {@code {} }、{@code lastCycleNetMilli} 只减成本 （A4
+   * §5-3）。接上之后"服务收入确实体现为该产业经营者的收益"在**已公开的标准读数面**（hex 视图的逐产业 condition）可见，且与 {@code
+   * EnterpriseProfitBook} 读的是同一条钱腿（不构成第二本账）。
+   */
+  private static void accumulateHaulServiceRevenue(
+      Map<ActorRef, List<ProductionUnitId>> unitsByOperator,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, Industry> industries,
+      Map<ProductionUnitId, EvidenceAccumulator> byUnit,
+      Map<HouseholdId, Map<CurrencyId, Long>> revenueByHousehold) {
+    for (Map.Entry<HouseholdId, Map<CurrencyId, Long>> entry : revenueByHousehold.entrySet()) {
+      List<ProductionUnitId> candidates = unitsByOperator.get(HouseholdActors.of(entry.getKey()));
+      if (candidates == null || candidates.isEmpty()) {
+        logHaulServiceRevenueUnattributed(entry.getKey(), null, "no-unit-of-this-household");
+        continue;
+      }
+      List<ProductionUnitId> haulUnits = new ArrayList<>();
+      for (ProductionUnitId id : candidates) {
+        ProductionProcess unit = units.get(id);
+        Industry industry = unit == null ? null : industries.get(unit.industry());
+        if (unit != null
+            && industry != null
+            && industry.outputPerUnit().containsKey(HaulService.HAUL_COMMODITY)) {
+          haulUnits.add(id);
+        }
+      }
+      if (haulUnits.isEmpty()) {
+        logHaulServiceRevenueUnattributed(
+            entry.getKey(), null, "household-has-no-haul-producing-unit");
+        continue;
+      }
+      haulUnits.sort(java.util.Comparator.comparing(ProductionUnitId::value));
+      ProductionUnitId target = haulUnits.get(0);
+      if (haulUnits.size() > 1) {
+        logHaulServiceRevenueUnattributed(
+            entry.getKey(), target, "multiple-haul-producing-units-attributed-to-canonical-first");
+      }
+      EvidenceAccumulator accumulator =
+          byUnit.computeIfAbsent(target, ignored -> new EvidenceAccumulator());
+      for (Map.Entry<CurrencyId, Long> leg : entry.getValue().entrySet()) {
+        if (leg.getValue() != null && leg.getValue() > 0L) {
+          accumulator.revenueByCurrency.merge(leg.getKey(), leg.getValue(), Long::sum);
+        }
+      }
+    }
+  }
+
+  /** ★ A5：服务实收"无法归属到一个 unit"时的具名 DEBUG（不静默、不改任何账）。 */
+  private static void logHaulServiceRevenueUnattributed(
+      HouseholdId household, ProductionUnitId target, String reason) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "HAUL_SERVICE_REVENUE_ATTRIBUTION",
+                EconomyLogSource.ECONOMY_OPERATOR_STATE,
+                "household",
+                household.value(),
+                "unit",
+                target == null ? "" : target.value(),
+                "reason",
+                reason));
   }
 
   /**

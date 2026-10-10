@@ -739,6 +739,46 @@ public final class MerchantCapacityPool {
   }
 
   /**
+   * ★★★ <b>A5（2026-10-10，T-H3 的读数来源）：本轮**逐户运费实收**（= 服务成交的钱腿收款人侧）</b>—— 按币分列。
+   *
+   * <pre>
+   * 键 = 家户 id（**家户 id 升序**，确定性 I7）；值 = {币种（规范串升序） → 毫}
+   * 只含本轮真的收到钱的户（零额/没成交的户不落键）⇒ 空表 = 本轮没有服务成交（不是 0）
+   * </pre>
+   *
+   * <p>★★ <b>它解决什么</b>：服务不进订单簿（需求由其他商品的购买派生），所以 {@code MarketReport.fills()} 里 <b>结构上永远没有</b>服务成交 ⇒
+   * 跑商产业的 {@code OperatorCondition.cycleRevenueByCurrency} 恒空、 {@code lastCycleNetMilli} 只剩成本一项（A4
+   * 账本 §5-3 实测：{@code trade@0_*} 恒 {@code {} } / net −104，误导）。
+   * 本条读数是"服务收入确实体现为该产业经营者的收益"的**唯一来源**：{@code MarketSettlement} 把它随 {@code MarketOutcome} 交出，{@code
+   * OperatorSettlement} 按收款家户归入它名下产出运输服务的那个 unit。
+   *
+   * <p>★ <b>它是读数、不是账</b>：钱腿本身只有一条（{@code MARKET_TRADE}，买方 → 承运家户），{@link #recordFee} 只是把同一条腿按户归集一次
+   * ⇒ 与 {@code EnterpriseProfitBook} 读同一批转移腿，<b>不构成第二本账</b>（I-H5 不双记）。 保序 = {@code LinkedHashMap} +
+   * {@code Collections.unmodifiableMap}（I7：禁 {@code Map.copyOf}）。
+   */
+  public Map<HouseholdId, Map<CurrencyId, Long>> freightEarnedByHousehold() {
+    List<HouseholdId> households = new ArrayList<>(byHousehold.keySet());
+    households.sort(Comparator.comparing(HouseholdId::value));
+    Map<HouseholdId, Map<CurrencyId, Long>> ordered = new LinkedHashMap<>();
+    for (HouseholdId household : households) {
+      Entry entry = byHousehold.get(household);
+      Map<CurrencyId, Long> earned = new LinkedHashMap<>();
+      List<CurrencyId> currencies = new ArrayList<>(entry.earnedByCurrency.keySet());
+      currencies.sort(Comparator.comparing(CurrencyId::value));
+      for (CurrencyId currency : currencies) {
+        long amountMilli = entry.earnedByCurrency.getOrDefault(currency, 0L);
+        if (amountMilli != 0L) {
+          earned.put(currency, amountMilli);
+        }
+      }
+      if (!earned.isEmpty()) {
+        ordered.put(household, Collections.unmodifiableMap(earned));
+      }
+    }
+    return Collections.unmodifiableMap(ordered);
+  }
+
+  /**
    * ★★ <b>本轮的**跑商家户**（= 池成员，判据 {@link MerchantIdentity#selectsMerchant}）</b>。
    *
    * <p>★ A3 起唯一的生产调用点（"商号利润读数的范围"）已随 {@code MerchantProfitBook} 退役 ⇒ 现在只剩夹具/读口的

@@ -4309,10 +4309,16 @@ public final class EconomySeeder {
    * 这正是用户 2026-10-10 原话「我觉得更该排查的是为什么跑商作为生产方式会和其他类型的生产隔离开来」指的那处**结构性隔离** （只读调查账本
    * S-3/S-11）。给了产出之后：trade 走**同一条**净产入账/关系结算路径，劳动约束由 {@code laborPerUnit} 参与排队。
    *
-   * <p>★★ <b>本批的缺省中性（设计书 §5 I-H3）</b>：运输服务**没有牌价**（{@code MARKET_PRICES_FACTORY} 不含它）⇒ 按既有 {@code
-   * Market.prices} 口径「缺价 ⇒ 不交易」：{@code MarketDemandBook} 算出的可寻址需求恒 0 ⇒ 家户不挂运输服务卖单、没有对手方 ⇒
-   * **不产生任何运输服务交易**；{@code LaborQueueBook} 的估值也因缺价恒为 0 （{@code outputPriced=false} + 净收益 ≤ 0）⇒
-   * trade **照旧不入队**、劳动分配逐值不变。★ 牌价与派生需求**一起**进 A2。
+   * <p>★★ <b>A1 当时的缺省中性（设计书 §5 I-H3）——★ 已被 A2 取代，此处只留痕</b>：A1 时运输服务**没有牌价** （{@code
+   * MARKET_PRICES_FACTORY} 不含它）⇒ 按既有 {@code Market.prices} 口径「缺价 ⇒ 不交易」： {@code MarketDemandBook}
+   * 算出的可寻址需求恒 0 ⇒ 家户不挂运输服务卖单、没有对手方 ⇒ **不产生任何运输服务交易**； {@code LaborQueueBook} 的估值也因缺价恒为 0 （{@code
+   * outputPriced=false} + 净收益 ≤ 0）⇒ trade **照旧不入队**、劳动分配逐值不变。
+   *
+   * <p>★★★ <b>A2（2026-10-10）更正：牌价已经在表里了 —— 上面那段不再描述现状</b>。{@code MARKET_PRICES_FACTORY} 自 A2 起**含**
+   * {@code haul}（出厂价 {@code MARKET_PRICE_HAUL = 4} 毫/商品单位；见 {@link #factoryPrices()} 的末位追加） ⇒
+   * 缺省世界里运输服务**是成市的**：{@code trade} 真的产出服务、跨格货单真的派生服务需求并成交（A2 派生需求、 A3 并回标准管线、A5 周期作废）。仍然成立的是那条既有
+   * {@code Market.prices} 口径本身（无牌价格 ⇒ 不交易、逐值退回 M-A1），只是现在只有"未定价 / 被明确设成 0 以外无法删价"的世界才落在那一支；A4 实测真实
+   * world 里"无牌价世界" **构造不出**（GM 无删价路径、{@code commodityIds} 读词表）——见 A4 账本 §Q6。
    *
    * <p>★ {@code capacity} 会在 {@code ownershipStakesOf(plan, mainCapacity)} 出口物化成 {@code owner =
    * operator} 的 {@code OWNED} CATTLE 份额（trade 没有家户副 unit 的配额 ⇒ 不拆分、整额给商号本金主）。

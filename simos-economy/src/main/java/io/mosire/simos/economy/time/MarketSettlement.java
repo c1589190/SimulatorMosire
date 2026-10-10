@@ -1136,14 +1136,23 @@ final class MarketSettlement {
    *
    * <p>★ 价格表<b>只经这里</b>离开本类 → {@code EconomySettlement} 把它放进交出的 {@code EconomyData} → {@code
    * markets} 作为既有 {@code FieldDelta} 组件进变更集。没有第二条改价路径。
+   *
+   * <p>★★ <b>A5（2026-10-10）</b>：第 4 个组件 {@link HaulServiceRound} = 本轮运输服务成交的读数（交付量 / 钱腿条数 / 交付故障 /
+   * 逐户服务收入）。它**必须**跟着交出物一起离开本类：① 服务不进订单簿 ⇒ 这些量在 {@link MarketReport} 里没有 对应槽位（{@code fills}/{@code
+   * sellerOutcomes} 恒无服务成交）；② {@code OperatorSettlement}（T-H3 的收益归属）与 {@code
+   * EconomySettlement}（当日产出/交付/作废三量对账 INFO）都要读它 ⇒ 不能只活在市场轮的本地 ctx 里。
    */
   record MarketOutcome(
-      MarketReport report, Map<HexCoord, Market> markets, Map<MarketMandateId, Long> mandateFills) {
+      MarketReport report,
+      Map<HexCoord, Market> markets,
+      Map<MarketMandateId, Long> mandateFills,
+      HaulServiceRound haulService) {
 
     MarketOutcome {
       Objects.requireNonNull(report, "report");
       Objects.requireNonNull(markets, "markets");
       Objects.requireNonNull(mandateFills, "mandateFills（没有授权成交给空表）");
+      Objects.requireNonNull(haulService, "haulService（没有服务成交给 HaulServiceRound.none()）");
       // ★ 保序不可变（不用 Map.copyOf：迭代序不是内容的纯函数）；值是不可变 record / Long。
       markets = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(markets));
       mandateFills = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(mandateFills));
@@ -1151,7 +1160,79 @@ final class MarketSettlement {
 
     /** ★ R1 的旧形状（没有政府授权成交）：{@code mandateFills} 取空表。 */
     MarketOutcome(MarketReport report, Map<HexCoord, Market> markets) {
-      this(report, markets, Map.of());
+      this(report, markets, Map.of(), HaulServiceRound.none());
+    }
+
+    /** ★ A5 之前的形状（没有服务读数）：{@link HaulServiceRound#none()}。 */
+    MarketOutcome(
+        MarketReport report,
+        Map<HexCoord, Market> markets,
+        Map<MarketMandateId, Long> mandateFills) {
+      this(report, markets, mandateFills, HaulServiceRound.none());
+    }
+  }
+
+  /**
+   * ★★★ <b>A5（2026-10-10）：一轮运输服务成交的只读读数</b>（{@link MarketOutcome} 的第 4 个组件）。
+   *
+   * <pre>
+   * deliveredMilli     本轮**物理上真的交付**的运输服务（毫服务；含被免运费 / 自承运的条目 —— 服务照跑、只是不收钱）
+   * trades             本轮铸出去的服务钱腿条数（免运费/自承运条目不计 ⇒ 它可以 &lt; deliveredMilli 对应的条数）
+   * deliveryFaults     交付点取不到服务货的次数（**契约故障**；必须为 0，非 0 时逐条 ERROR 且本笔不成交）
+   * revenueByHousehold 逐户服务收入（按币分列；键 = 承运家户）—— T-H3"服务收入体现为该产业经营者的收益"的唯一来源
+   * </pre>
+   *
+   * <p>★★ <b>为什么必须单独一个形状</b>（A4 账本 §5-2 的漏报）：{@code HAUL_SERVICE_SETTLED} 旧实现只报 {@code trades}
+   * 与它一起的金额 ⇒ "有交付但一条钱腿都没铸"的日子（全天免运费 / 自承运）**整行不刷**， INFO 读数比实际交付少 33.4%。{@code deliveredMilli} 与
+   * {@code trades} 拆成两个量之后， "全天零成交但确有交付"再也不可能被静默丢掉。
+   *
+   * <p>★ 保序/不可变：逐户表按（家户 id 升序 → 币种规范串升序）冻结（I7；禁 {@code Map.copyOf}）。
+   */
+  record HaulServiceRound(
+      long deliveredMilli,
+      long trades,
+      long deliveryFaults,
+      Map<HouseholdId, Map<CurrencyId, Long>> revenueByHousehold) {
+
+    HaulServiceRound {
+      if (deliveredMilli < 0L || trades < 0L || deliveryFaults < 0L) {
+        throw new IllegalArgumentException(
+            "服务读数不得为负: delivered="
+                + deliveredMilli
+                + ", trades="
+                + trades
+                + ", faults="
+                + deliveryFaults);
+      }
+      Map<HouseholdId, Map<CurrencyId, Long>> ordered = new LinkedHashMap<>();
+      Map<HouseholdId, Map<CurrencyId, Long>> source =
+          revenueByHousehold == null ? Map.of() : revenueByHousehold;
+      List<HouseholdId> households = new ArrayList<>(source.keySet());
+      households.sort(Comparator.comparing(HouseholdId::value));
+      for (HouseholdId household : households) {
+        Map<CurrencyId, Long> legs = source.get(household);
+        if (legs == null || legs.isEmpty()) {
+          continue;
+        }
+        Map<CurrencyId, Long> frozen = new LinkedHashMap<>();
+        List<CurrencyId> currencies = new ArrayList<>(legs.keySet());
+        currencies.sort(Comparator.comparing(CurrencyId::value));
+        for (CurrencyId currency : currencies) {
+          long amountMilli = legs.getOrDefault(currency, 0L);
+          if (amountMilli != 0L) {
+            frozen.put(currency, amountMilli);
+          }
+        }
+        if (!frozen.isEmpty()) {
+          ordered.put(household, java.util.Collections.unmodifiableMap(frozen));
+        }
+      }
+      revenueByHousehold = java.util.Collections.unmodifiableMap(ordered);
+    }
+
+    /** 本轮没有任何服务活动（缺省中性：不落任何读数、不改任何判据）。 */
+    static HaulServiceRound none() {
+      return new HaulServiceRound(0L, 0L, 0L, Map.of());
     }
   }
 
@@ -1606,30 +1687,15 @@ final class MarketSettlement {
       //   ★ 组织侧的真实利润在周期关账时由 {@code EnterpriseProfitBook.collect} 从同一批
       //     {@code ProductionLedger} 腿汇总（收入 = MARKET_TRADE 钱腿按卖方组织归集）—— 服务成交的钱腿
       //     已取 {@code MARKET_TRADE}（见 executeTrade 的运费腿），所以跑商收益**结构上**进得了那一本账。
-      // ── 4a0d. ★★ A2：本轮"运输服务成交"的汇总（§一.9 INFO = 这一轮发生了什么 + 具名计数）────────────
-      //   ★ 位置：撮合（区内 + 跨区）之后 —— 此时"卖出去多少服务、收了多少钱"才是本轮的事实。
-      //   ★ 一行不刷的条件：没有服务成交（服务不成市 / 没有跨格运力 / 服务货为 0）⇒ 缺省世界一行不打（I-H3）。
-      if (ctx.haulServiceTrades > 0 && MARKET.isInfoEnabled()) {
-        EventLog.channel(MARKET)
-            .info(
-                LogEvent.of(
-                    "HAUL_SERVICE_SETTLED",
-                    EconomyLogSource.ECONOMY_ORGANIZATION,
-                    "day",
-                    round.day,
-                    "trades",
-                    ctx.haulServiceTrades,
-                    "serviceMilli",
-                    ctx.haulServiceSoldMilli,
-                    "paidByCurrency",
-                    ctx.haulServicePaidByCurrency,
-                    "providers",
-                    ctx.carrierPool.householdCount(),
-                    "deliveryFaults",
-                    ctx.haulServiceDeliveryFaults,
-                    "reason",
-                    "haul-service-sold-through-market-trade-legs"));
-      }
+      // ── 4a0d. ★★★ A5（2026-10-10）：本轮的"运输服务成交"汇总行**从这里撤走**（不是删读数）─────────
+      //   ★ 为什么撤：当日可对账的 INFO 必须是**一行三量**（产出 / 交付 / 作废）—— 产出与作废发生在 tick 面的
+      //     生产阶段（{@code EconomySettlement}），市场轮看不到它们；而市场轮看得到的交付量在这里，
+      //     旧实现又把它绑在 {@code trades > 0} 上（"有交付但一条钱腿都没铸"的日子整行不刷 ⇒ A4 实测 B 世界
+      //     漏报 10 天 / 33.4%）。⇒ 三个量各自的最全来源都在 tick 面，对账行改由
+      //     {@code EconomySettlement} 在**每个开市日**发一次（事件名不变：{@code HAUL_SERVICE_SETTLED}），
+      //     交付量经 {@link #HaulServiceRound} 随 {@link MarketOutcome} 交出（见下面 6 段末的装配）。
+      //   ★ 读数本身一个都没丢：{@code ctx.haulServiceSoldMilli} / {@code haulServiceTrades} /
+      //     {@code carrierPool} 的逐户实收（含逐币总额）全部原样带出。
       // ── 4a0e. ★★ A2（§一.9 级别规则）：交付点取不到服务货 = 跨切片一致性故障 ⇒ **ERROR 不降级**。──────
       //   ★ 它必须为 0（池的运力预算就是该户当刻的 haul 可用量，交付紧跟分配之后）；非 0 说明账被别处改了
       //     或池的预算不是从货来的 ⇒ 当场可见，绝不静默少扣（逐条 ERROR 在 deliverHaulService 里发）。
@@ -1720,6 +1786,16 @@ final class MarketSettlement {
     AdaptivePrices adapted = adaptPrices(markets, ctx);
     // ★★ R1：本轮的政府授权成交（用于把 filledMilli 累加回授权行、并清除耗尽/到期行）。
     Map<MarketMandateId, Long> mandateFills = collectGovMandateFills(round, ctx);
+    // ★★★ A5（2026-10-10）：本轮运输服务的读数（交付量 / 钱腿条数 / 交付故障 / 逐户服务收入）随交出物一起离开。
+    //   ★ 它是 T-H3"服务收入体现为该产业经营者的收益"的唯一来源（服务不进订单簿 ⇒ report.fills() 里没有它），
+    //     也是当日"产出/交付/作废"三量对账 INFO 的交付侧读数（见 HaulServiceRound 的类注）。
+    //   ★ 逐户实收 = 池在本轮的 recordFee 累加（同一条钱腿、同一批数值；不另记一份事实）。
+    HaulServiceRound haulService =
+        new HaulServiceRound(
+            ctx.haulServiceSoldMilli,
+            ctx.haulServiceTrades,
+            ctx.haulServiceDeliveryFaults,
+            ctx.carrierPool.freightEarnedByHousehold());
     return new MarketOutcome(
         MarketReport.withRegulatedTariff(
             round.day,
@@ -1743,7 +1819,8 @@ final class MarketSettlement {
             // ★★ P-T1b：三层税的逐项账目（层/金额/币种/收款政府）—— 读口 taxItems()/taxByCurrency() 的唯一来源。
             ctx.taxItems),
         adapted.markets(),
-        mandateFills);
+        mandateFills,
+        haulService);
   }
 
   /**
@@ -6691,9 +6768,10 @@ final class MarketSettlement {
       //   服务成交的钱腿 reason = MARKET_TRADE（见下面那一行的三元表达式）⇒ 承运方的收入逐笔进
       //   {@code EnterpriseProfitBook} 的 revenue（按卖方组织归集），无需第二本账。
       if (route.haulService()) {
-        // ★★ A2：服务成交的轮级读数（逐币；只作日志/读数 —— 与上面的运费读数**同源同额**，不另记一份事实）。
+        // ★★ A2：服务成交的轮级读数（只作日志/读数 —— 与上面的运费读数**同源同额**，不另记一份事实）。
         //   服务量本身在 {@link #deliverHaulService} 里累加（它覆盖全部条目，含免运费条目）。
-        ctx.haulServicePaidByCurrency.merge(buy.currency, charge.amountMilli(), Math::addExact);
+        //   ★★ A5：金额不再另记一份（逐币总额由上面 recordFee 的**逐户**实收按币求和得到，见 ctx 字段注）；
+        //     这里只累加"铸了几条钱腿" —— 它与交付量是两个量，交付量在 deliverHaulService 里累加。
         ctx.haulServiceTrades++;
       }
       // ★★ M-A1（§一.9：TRACE = 逐笔运费）：付款人 → 提供运力的家户、金额、币种、lane。
@@ -9583,17 +9661,22 @@ final class MarketSettlement {
     final CapacityDemandBook capacityDemands = new CapacityDemandBook();
 
     /**
-     * ★★ <b>A2：本轮运输服务成交的读数</b>（毫服务 = 毫商品·程；只作日志/读数，<b>不落状态</b>）。
+     * ★★ <b>A2：本轮运输服务**交付量**的读数</b>（毫服务 = 毫商品·程；只作日志/读数，<b>不落状态</b>）。
      *
      * <p>★ 与 {@code taxItems}/{@code capacityDemands} 同一条纪律：只在**协调器**路径上写（worker 副本上的是本地累加， 交回时丢弃）⇒
      * 汇总只可能来自协调器那一份。★ 服务不成市的世界恒为 0 ⇒ 汇总行一条不打（缺省语义中性，I-H3）。
+     *
+     * <p>★★ A5：它**含被免运费 / 自承运的条目**（服务照跑、只是不收钱）⇒ 与 {@link #haulServiceTrades} 是两个量， 绝不能合成一个（A4 账本
+     * §5-2 的 33.4% 漏报正是"只报 trades 一起的那份"造成的）。它随 {@link HaulServiceRound} 一起交出去。
      */
     long haulServiceSoldMilli;
 
-    /** ★★ A2：本轮服务成交的金额（逐币分列；键 = 买方支付币；只作读数，不落状态）。 */
-    final Map<CurrencyId, Long> haulServicePaidByCurrency = new LinkedHashMap<>();
+    // ★★★ A5（2026-10-10）：这里原有 {@code final Map<CurrencyId, Long> haulServicePaidByCurrency} ——
+    //   它是"本轮服务成交金额（逐币）"的第二份事实。A5 撤掉它：同一批金额已由 {@code carrierPool.recordFee}
+    //   按**家户**逐笔记下（{@link MerchantCapacityPool#freightEarnedByHousehold()}），按币求和即得同一个逐币总额
+    //   ⇒ 留着就是同一件事的第二处拼写（本仓最反对的"两个状态混成一个"的镜像：一份事实两个账）。
 
-    /** ★★ A2：本轮服务成交的服务腿条数（= 铸出去的服务钱腿条数）。 */
+    /** ★★ A2：本轮服务成交的服务腿条数（= 铸出去的服务钱腿条数；免运费/自承运条目不计）。 */
     long haulServiceTrades;
 
     /**
