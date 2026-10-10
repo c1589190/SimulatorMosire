@@ -133,7 +133,8 @@ class McpCoverageTest {
    * 起 46 → 49，economy/actor 全族补齐后 50 → 60，辖区阶段 5–8 起 60 → 65，阶段 9–12 起 65 → 71，P1b1/P1b2/P3/R3a 与
    * D1/D3a/D4/D5 起 71 → 85，S3a 的家户/人口 8 条起 85 → 93；P0.1 删除 economy.UnitBorrow/UnitRepay 两个 handler
    * ⇒ 91；Z1a/Z1c/Z2/Z3a/Z3d 再 +7 条 ⇒ 128；★★ 2026-10-09 按实测补入 A1/A2a/B2（2026-10-08 货币词表 + 官方汇率 +
-   * 市场区）的 8 条 ⇒ 136（与 SimosToolsTest 同源；那 8 条当时漏回填，本条与下面那句计数一起红了）。
+   * 市场区）的 8 条 ⇒ 136，W2 新增 {@code economy.SetMarketZonePriceAlpha} ⇒ **141**（与 SimosToolsTest 同源：那边的
+   * {@code EXPECTED_COMMAND_TYPES} 也按实测更新，两处计数必须逐字相同）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -171,6 +172,8 @@ class McpCoverageTest {
           "economy.AuthorizeGovernmentMarketOrder",
           "economy.CancelGovernmentMarketOrder",
           "economy.SetCommodityFreight",
+          // ★★ W2（2026-10-11）：逐区动态价步长 α 的 GM 写口（140 → 141）
+          "economy.SetMarketZonePriceAlpha",
           "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
           "economy.SetOfficialRate",
@@ -311,6 +314,9 @@ class McpCoverageTest {
           "economy.ReassignZoneHexes",
           "economy.MergeMarketZones",
           "economy.SetMarketNumeraire",
+          // ★★ W2（2026-10-11）：逐区 α 只作用于**已存在的持久市场区**；本夹具的市场是派生形态（marketZones 为空）
+          //   ⇒ 载荷形状合法但必须具名拒 zone-missing（与同批的 DefineMarketZone/SetMarketNumeraire 同款）。
+          "economy.SetMarketZonePriceAlpha",
           // ★ R1（2026-10-09）：政府市场授权要"已登记政府 + 其国库是家户"（本夹具没有）⇒ 走具名拒路径。
           "economy.AuthorizeGovernmentMarketOrder",
           "economy.CancelGovernmentMarketOrder",
@@ -396,6 +402,10 @@ class McpCoverageTest {
           Map.entry(
               "economy.MergeMarketZones",
               "{\"sourceZoneId\": \"zone-missing\", \"targetZoneId\": \"zone-missing-2\", \"reason\": \"coverage\"}"),
+          Map.entry(
+              "economy.SetMarketZonePriceAlpha",
+              // ★★ W2：载荷形状逐字段合法（marketId + alphaPerMille 都在），点名一个**不存在**的区 ⇒ 拒 zone-missing。
+              "{\"marketId\": \"zone-missing\", \"alphaPerMille\": 100, \"reason\": \"coverage\"}"),
           Map.entry(
               "economy.SetMarketNumeraire",
               // ★★ W1g（W1 契约迁移）：载荷从逐格 {q,r,numeraire} 改成 {marketId,numeraire}。本夹具里它仍必须是具名拒
@@ -988,7 +998,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 136 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）")
+            "catalog 列出的 type 与 Shell 注册的 141 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);

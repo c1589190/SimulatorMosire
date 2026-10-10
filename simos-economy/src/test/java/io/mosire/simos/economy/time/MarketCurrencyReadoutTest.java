@@ -213,7 +213,6 @@ class MarketCurrencyReadoutTest {
         List.of(),
         List.of(),
         List.of(),
-        List.of(),
         Map.of(),
         FxRoundResult.none(),
         taxItems);
@@ -234,7 +233,6 @@ class MarketCurrencyReadoutTest {
         0L,
         0L,
         PriceMode.FIXED,
-        List.of(),
         List.of(),
         List.of(),
         List.of());

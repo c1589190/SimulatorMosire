@@ -108,7 +108,7 @@ import org.slf4j.Logger;
  *       #lendDeficitsInHex}；从有粮的行的**余粮**划转 —— 余粮 = 库存 − **本周期自需** × {@link
  *       #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000，见 {@link
  *       #lendableOf}，**不是**"消费后的全部库存"，也不是"当日盈余"）；借到的**累加进同一条** {@link DebtContract}（同一 (债务人, 债权人,
- *       unit, terms) 跨周期恒同一条，见 {@link #legacyGrainDebtId}，本金递增）；**借完仍补不上**的部分记入本行流水的 {@code
+ *       unit, terms) 跨周期恒同一条，见 {@link DebtContractId#idOf}，本金递增）；**借完仍补不上**的部分记入本行流水的 {@code
  *       unmetNeed}（毫粮、逐日累加，供周期末的饿死判据 —— 见 {@link #FAMINE_MORTALITY_PER_MILLE}，默认致命率 0‰）。
  *   <li>**进度**：每个产业 {@code progressDays + 1}。
  *   <li>**劳动投入**：本产业当日实际劳动 = **该产业名下全部 {@code HouseholdLaborCommitment} 的 {@code laborMilli}
@@ -146,7 +146,8 @@ import org.slf4j.Logger;
  *       本阶段起不由结算读取</b>（载荷/编码/往返全不动）：它已是**死数据**， 删它是另一件事（计划 Review Focus ①）。★★ <b>H0（2026-09-27，裁定
  *       K2/R-N1-A）起受方就是家户</b>：cohort 键（格 + 居住类型 + 阶层）与行键 <b>一一对应</b> ⇒ 改前那套"受方产业集 + 按人口分派"（E24 的
  *       {@code receiverIndustriesOf} / {@code
- *       classRowsOfCohort}）<b>整个删除</b>；"哪些行属于这个产业"改由**劳动配额表**推（{@link #householdKeysOf}）。
+ *       classRowsOfCohort}）<b>整个删除</b>；"哪些行属于这个产业"改由**劳动配额表**推（{@link
+ *       SettlementIndex#householdsOf}）。
  *   <li>**计息**（v2 spec §7.1 第三处 + §四 周期结算第 6 步；V6 落地）：全部债务按 {@code principal × ratePerMillePerCycle
  *       ÷ 1000} 计**一次**、**并入本金**（纯数学：不搬运粮、**不动任何库存**），同额记入**债务人**本行流水的 {@code interestDue} —— 见
  *       {@link #chargeInterest}。★ **偿还在计息之前**（关账日、所得到账后，D-030 §3.5）：逐条债按未偿共同价值升序、 逐 medium
@@ -324,25 +325,6 @@ public final class EconomySettlement {
   public static final String CAPITALIZATION_TERMS_SOURCE = "E4c_LEGACY_DEFAULT";
 
   /**
-   * ★★ <b>借粮的信用倍数 κ（千分数；E4b 起已迁到 {@link DebtCapacity#CREDIT_F_MULTIPLE_PER_MILLE}）</b>。
-   *
-   * <p>★★ <b>E4b 起信用线不再是“可观察偿付基础 × κ”：</b>新公式是
-   *
-   * <pre>
-   * F        = max(0, 本周期已实现粮所得 − 本周期累计口粮 − 下一轮必要投入 − 实缴税)
-   * headroom = max(0, ⌊κ × F ÷ 1000⌋ + 可自用余粮 + 政策钩子 − 同 unit 既有本金)
-   * </pre>
-   *
-   * <p>本常量保留为<b>兼容别名</b>（旧测试/旧读数的字面量），生产代码只读 {@link DebtCapacity#CREDIT_F_MULTIPLE_PER_MILLE}
-   * 这一个拼写点。
-   *
-   * @deprecated E4b 用 {@link DebtCapacity#CREDIT_F_MULTIPLE_PER_MILLE}；本常量只是它的别名，旧 “可观察偿付基础 ×
-   *     倍数”算式已不存在。
-   */
-  @Deprecated
-  public static final int LOAN_INCOME_MULTIPLE_PER_MILLE = DebtCapacity.CREDIT_F_MULTIPLE_PER_MILLE;
-
-  /**
    * ★★ <b>偿还比例（千分数；H5 ②，R3 续修改为"按可用粮"）</b>：<b>从本户可用粮里取出这么多来还本</b>。
    *
    * <pre>
@@ -361,18 +343,6 @@ public final class EconomySettlement {
    * 迁入参数表、GM 可调（与上面那条同处置）。
    */
   public static final int DEBT_REPAYMENT_SHARE_PER_MILLE = 1000;
-
-  /**
-   * ★★ <b>债务人最低口粮保留（天；R3 续修）</b>：{@link #repayDebts} 只把"超过本保留额"的粮视作<strong>可用粮</strong>（★ E4b 的信用额度
-   * {@link DebtCapacity#headroom()} 走的是另一套口径：F 与可自用余粮，不读本保留额）。
-   *
-   * <p>★ 为什么是 1 天：分类/借粮都在"关账日"结算，而债务人在本模型中没有可靠的下一周期粮所得（城镇家户尤其如此）—— 保留整整一个周期会 让偿还结构性地恒为 0（正是 R3
-   * 续修要修的读数）；一点也不留则会当天见底、把"还债"变成"立刻断粮"。一日最低口粮是<strong>可解释的下界</strong>： 只动员"今天吃完还有余"的那部分粮。
-   *
-   * <p>★ 它是**制度层参数**，与 {@link #DEBT_REPAYMENT_SHARE_PER_MILLE} 同处置（V7 迁入参数表、GM 可调）。★ 保留额按 {@code
-   * HouseholdEconomy.naturalNeeds[GRAIN]}（结算日当天的自然口粮需要）取，不用"人口 × 拍出来的数"另算一份。
-   */
-  public static final int DEBTOR_SUBSISTENCE_RESERVE_DAYS = 1;
 
   /**
    * ★★ **放贷方必须留口粮的千分比**（相对**本周期自需**；v2 spec §7.1 第一处，V6 落地）：**默认 1000‰**。
@@ -411,11 +381,11 @@ public final class EconomySettlement {
    * {@code if (常量 != 0)} 会让非 0 那一支成为**编译期死代码**，任何用例都到不了它 （v2 spec §3.2 与 plan2
    * 偏离③点名的同族：**看起来在、其实永远走不到**）。
    *
-   * <p>★ **旋钮的入口**：{@link #settle(EconomyData, long, long, int)} 与 {@link
-   * #settleOneDay(EconomyData, long, LinkedHashMap, boolean, int)}（包内可见）；公开入口 {@link
-   * #settle(EconomyData, long, long)} 恒喂本默认值。 非 0 那条路由 {@code
-   * EconomySettlementTest.famineKillsTheStarvationShareOfThoseWhoGoHungryTheWholeCycle}
-   * **逐值**钉住（不是死分支）。
+   * <p>★ **旋钮的入口**：{@link #settle(EconomyData, long, long, int)} 与包内可见的 {@code settleOneDayInto} 重载
+   * （W2-fix6：原 {@code settleOneDay} 包内短重载零读者已删，非 0 值仍经 {@code settleOneDayInto} 注入）；公开入口 {@link
+   * #settle(EconomyData, long, long)} 恒喂本默认值。 ★ 原先点名的 {@code
+   * EconomySettlementTest.famineKillsTheStarvationShareOfThoseWhoGoHungryTheWholeCycle} 随 R3a
+   * 已不在测试树里 ⇒ 非 0 那条路**当前没有逐值用例钉住**（具名缺口，不是"已验过"）。
    *
    * <p>★ 口径：先把本周期逐日累加的 {@code unmetNeed} 折成 {@code faminePerMille = unmetNeed / 本周期总需求}（封顶
    * 1000‰），再在这一比例的人口里按致死率致死 ⇒ {@code deaths = 人口 × faminePerMille / 1000 × 致死率 / 1000}。
@@ -441,9 +411,10 @@ public final class EconomySettlement {
    * "凡行为一律做成预设"，故它**不许**被写死成"代码选一个聪明的"）。届时本常量只作默认值。
    *
    * <p>★ 取 {@code false} = "吃饭优先、种子看运气"：那是 GM 的选择，不是代码该替他做的判断。 无论取真取假，**播种日这个步骤都在**（spec
-   * §3.2：参数化不许改变流程形状），只是扣减次序不同。 那条"取假"的路**不是死代码**：它由 {@code
-   * EconomySowingTest.drawingBeforeOrAfterTheDaysMealChangesWhatCanBeSown} 逐值钉住（直测包内可见的 {@link
-   * #settleOneDay(EconomyData, long, LinkedHashMap, boolean)}）。
+   * §3.2：参数化不许改变流程形状），只是扣减次序不同。 那条"取假"的路**不是死代码**：它经包内可见的 {@code settleOneDayInto} 重载与 {@link
+   * EconomyDayStepper} 的构造器注入（W2-fix6：原直测的 {@code settleOneDay} 短重载零读者已删； 原 javadoc 点名的 {@code
+   * EconomySowingTest.drawingBeforeOrAfterTheDaysMealChangesWhatCanBeSown} 随 R3a 已不在测试树里 ⇒
+   * 两种次序**当前没有逐值用例钉住**，具名缺口）。
    */
   public static final boolean PLANTING_DRAWS_BEFORE_CONSUMPTION = true;
 
@@ -892,8 +863,8 @@ public final class EconomySettlement {
    * 结算一个**区间** {@code (fromTick, toTick]}：**从 {@code fromTick + 1} 逐日跑到 {@code toTick}**（2026-09-25
    * §十一 裁定： 一次 {@code AdvanceTime} 可以推 N 天、只落一条 revision，但**结算语义不跳日**）。
    *
-   * <p>★ 每一次内部迭代 = 上面 {@link #settleOneDay} 的一天（播种 → 消费 → 缺口/借粮/建债 → {@code progressDays + 1} → 到达
-   * {@code cycleDays} 就收获 + 生产消耗（{@link #FEED_PER_MILLE} + {@link #DEPRECIATION_PER_MILLE}）+ 按
+   * <p>★ 每一次内部迭代 = 一次日结算（{@code settleOneDayInto}）的一天（播种 → 消费 → 缺口/借粮/建债 → {@code progressDays + 1}
+   * → 到达 {@code cycleDays} 就收获 + 生产消耗（{@link #FEED_PER_MILLE} + {@link #DEPRECIATION_PER_MILLE}）+ 按
    * {@code Split} 分配；计息/到期不做）。**流水跨日累加**：{@code flows} 提到 日循环之外，逐日把当天发生额并入本期流水，循环结束后统一建 {@link
    * FlowRow}（否则"推进 N 天"只显示最后一天）。
    *
@@ -971,7 +942,7 @@ public final class EconomySettlement {
                 + "step(day) 就地更新它、finish() 之后由协调器落回 actor；"
                 + "单模块用例同样走它（step 交回当天的 ProductionLedger）");
       }
-      // ★ 0 人口的家户：不需要账（它们不吃饭、不出工；见 settleOneDay 的同款口径）。
+      // ★ 0 人口的家户：不需要账（它们不吃饭、不出工；见 settleOneDayInto 的同款口径）。
     }
     // ★ 本期流水与可变工作表都在 revision 级会话里：日循环不再逐日深拷贝，只在末尾构造一次 EconomyData（P1.5）。
     EconomySession session = new EconomySession(base);
@@ -997,64 +968,6 @@ public final class EconomySettlement {
       }
     }
     return session.build();
-  }
-
-  /**
-   * 结算**一天**（**次序可注入**、致死率取默认值）：日流程 = {@code 播种（周期第一天）→ 消费/同格借粮 → 进度/劳动/周期末收获分配}。
-   *
-   * <p>★★ **为什么次序是一个参数而不是常量分支**：{@code plantingDrawsFirst == false} 的那条路是"吃饭优先、
-   * 种子看运气"这个**预设**的实现（v2 spec §3.2：凡行为一律做成预设）。写成 {@code static final boolean} + {@code if}
-   * 会让取假的那一支在编译期成为**死代码**，任何用例都到不了它 —— 那正是 spec §3.2 要防的"看起来在、其实永远走不到"。 故开放为**包内可见**的重载（仓库先例：{@link
-   * #allocate}），由 {@code EconomySowingTest.drawingBeforeOrAfterTheDaysMealChangesWhatCanBeSown}
-   * 逐值测到两种次序。
-   *
-   * <p>★ 公开入口 {@link #settle} 恒用常量默认值（{@link #PLANTING_DRAWS_BEFORE_CONSUMPTION} 与 {@link
-   * #FAMINE_MORTALITY_PER_MILLE}）。
-   *
-   * @param base 结算前的经济状态（**已激活**；{@link #settle} 已判过 meta）
-   * @param day 推进到的世界日（1 tick = 1 天）；参与**口粮的逐日差分**与债务 id 的去重（{@code debt-<day>-<seq>}）
-   * @param flows 本期流水的逐日累加器（跨日持有、**就地更新**；由 {@link #settle} 在循环结束后统一带回）
-   * @param householdGoods ★★ **家户账的会话工作副本**（H1；裁定 K1）：键 = 家户身份、值 = 商品余额（缺失键 = 没有该商品）。 **就地更新**（与
-   *     {@code flows} 同待遇）。★ 某行 {@code population > 0} 而这里没有它的键 ⇒ **当场抛**
-   *     （fail-closed：不许把"没有账"静默当成"库存 0"）；{@code population == 0} 的行跳过消费与投入 ⇒ 可以缺席
-   * @return 结算后的新状态（{@code flows} 由 {@link #settle} 在循环结束后统一挂上）
-   */
-  static EconomyData settleOneDay(
-      EconomyData base,
-      long day,
-      LinkedHashMap<HouseholdId, FlowRow> flows,
-      AccountSession accounts,
-      boolean plantingDrawsFirst,
-      ProductionLedger.Accumulator ledger) {
-    return settleOneDay(
-        base,
-        day,
-        flows,
-        accounts,
-        MarketTopology.singleHex(base.marketTables(), base.marketZones()),
-        plantingDrawsFirst,
-        FAMINE_MORTALITY_PER_MILLE,
-        ledger);
-  }
-
-  /** 同上一支，但致死率可注入（包内旋钮，见 {@link #FAMINE_MORTALITY_PER_MILLE}）。 */
-  static EconomyData settleOneDay(
-      EconomyData base,
-      long day,
-      LinkedHashMap<HouseholdId, FlowRow> flows,
-      AccountSession accounts,
-      boolean plantingDrawsFirst,
-      int famineMortalityPerMille,
-      ProductionLedger.Accumulator ledger) {
-    return settleOneDay(
-        base,
-        day,
-        flows,
-        accounts,
-        MarketTopology.singleHex(base.marketTables(), base.marketZones()),
-        plantingDrawsFirst,
-        famineMortalityPerMille,
-        ledger);
   }
 
   /**
@@ -1967,7 +1880,8 @@ public final class EconomySettlement {
       if (industry == null) {
         throw new IllegalStateException("生产单元指名的产业模板不存在（状态已被改坏）: " + unit);
       }
-      // ★★ **H0：这个 unit 的家户行 = 由劳动配额表推**（{@link #householdKeysOf}：配额 activity == unit id）。
+      // ★★ **H0：这个 unit 的家户行 = 由劳动配额表推**（{@code SettlementIndex.householdsOf}：配额 activity == unit
+      // id）。
       //   ★ R4-B.3a-perf：入口索引已按 unit 聚好（去重/排序口径与 householdKeysOf 逐值相同）。
       List<HouseholdId> keys = settlementIndex.householdsOf(id);
       // ★★ **当日实际劳动取自该 unit 名下的全部配额**（不再从"本产业各行 laborMilli × participation"独立算）。
@@ -2236,7 +2150,7 @@ public final class EconomySettlement {
             // ★★ P-T1c：生产路径默认区内市场规则（单区锚格 = markets 规范序第一个 hex；无税费 ⇒ 逐值现状）。
             //   跨市场区/自定义税费由后续批次经 GM 命令面注入同一入口。
             MarketRegulation.defaultsFor(markets, base.marketZones()),
-            // ★★ R1：本入口不预置信用（开市判定后由 withCredit 补）；排除集 = **只有**组合根传入的单位户
+            // ★★ R1：本入口不预置债务记账能力（开市判定后由 withDeferredPayments 补）；排除集 = **只有**组合根传入的单位户
             //   （国库户不再并入：它现在是"只按授权下单"的市场参与者）。
             null,
             null,
@@ -2330,7 +2244,7 @@ public final class EconomySettlement {
     if (marketTrigger != MarketTrigger.NONE) {
       // ★★ D-031：借款人侧不再有信用额度上限 —— 市场信用只带到期周期与当日债务工作副本；唯一上限 = 放贷人
       //   实际可借的货币/卖单剩余。`DebtCapacity` 不再是任何借出路径的门。
-      marketRound = marketRound.withCredit(dueCycle, debts);
+      marketRound = marketRound.withDeferredPayments(dueCycle, debts);
       // ★★ 2026-10-08（阶段 1）：把排序产出的套利决定注入本轮市场（订单生成的输入；不进状态）。
       //   ★ 位置 = 市场轮之前（设计书 §9 的冻结落点）：它必须在撮合之前（它的输出就是订单），且依赖"到货已结算"
       //     （:1240 的 deliverShipments 先于它）。
@@ -2354,7 +2268,7 @@ public final class EconomySettlement {
       //   "给跑商家户下夹一趟工具"那段特例，而该特例已删（预留改由产业声明的投入经标准循环覆盖，I-H6）。
       //   ★ 撤回理由与三支直证见 {@code MarketSettlement.necessaryInputsOf} 尾部的注（不再需要"范围"这个概念）。
       // ★★ R1（2026-10-09）：政府市场授权计划 = 本日生效的"明确挂单"（逐轮瞬态，不落盘）。
-      //   ★ 它必须**最后**注入：withCredit/withArbitrage/withFx 三处各自逐字段带过它（克隆丢字段是本类踩过的坑），
+      //   ★ 它必须**最后**注入：withDeferredPayments/withArbitrage/withFx 三处各自逐字段带过它（克隆丢字段是本类踩过的坑），
       //     而这里注入之后不再有别的 withX。
       //   ★★ 名单上**所有**政府的国库户都在里面（哪怕今天没有授权）：它们是"只按授权下单"的家户，
       //     自动买卖单、市场信用放贷、家户外汇单全部不生成。
@@ -2422,7 +2336,7 @@ public final class EconomySettlement {
                     "windows",
                     fxInput.windows().size()));
       }
-      // ★★ R1 防复发守卫：**本轮注入的授权计划必须真的在 round 上**。withCredit/withArbitrage/withFx 三处各自
+      // ★★ R1 防复发守卫：**本轮注入的授权计划必须真的在 round 上**。withDeferredPayments/withArbitrage/withFx 三处各自
       //   逐字段带过它（"克隆丢字段"是本类与 MarketRound 都踩过的坑：丢了它 = 国库户当场退回"自动清仓"且毫无报错）。
       //   ★ 契约/一致性故障 ⇒ ERROR + fail-closed（§一.9：不降级）；正常路径上恒不触发。
       if (!marketRound.govMandates().equals(govMandatePlan)) {
@@ -2454,7 +2368,10 @@ public final class EconomySettlement {
               topology,
               parallelism,
               carrierPool,
-              pureMerchantHouseholds);
+              pureMerchantHouseholds,
+              // ★★ W2：本轮的持久市场区表（自适应定价逐区读步长 α = MarketZone.priceAlphaPerMille）。
+              //   ★ B2 保留段首 base：α 是命令面组件，段内无工作副本（改 α ⇒ 下一段/下一轮生效）。
+              base.marketZones());
       // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
       ledger.recordMarketReport(outcome.report());
       govMandateFills = outcome.mandateFills();
@@ -2498,15 +2415,6 @@ public final class EconomySettlement {
                     "reason",
                     "haul-service-day-reconciliation-produced-delivered-expired"));
       }
-      long creditMoney = 0L;
-      long creditGoods = 0L;
-      for (MarketReport.CreditFill credit : report.creditFills()) {
-        if (credit.unit() instanceof DebtUnit.Money) {
-          creditMoney++;
-        } else {
-          creditGoods++;
-        }
-      }
       Map<MarketUnfilledReason, Long> reasonCounts = new TreeMap<>();
       // ★★ F-2（2026-10-10）：**"卡在运力"这一档的具名细分**（键 = MerchantCapacityPool.LogisticsBlock 的字面量）——
       //   改前"没有服务卖"与"运力不足"在读数里同为 LOGISTICS_CAPACITY；这里按**具名档**分列未成交量，
@@ -2544,12 +2452,6 @@ public final class EconomySettlement {
                   // ★★ F-2：LOGISTICS_CAPACITY 的具名细分（空表 = 本轮没有卡在运力的未成交；缺省中性）。
                   "logisticsDetailQuantities",
                   logisticsDetailCounts,
-                  "creditFills",
-                  report.creditFills().size(),
-                  "creditMoney",
-                  creditMoney,
-                  "creditGoods",
-                  creditGoods,
                   "regulatedTariffByCurrency",
                   report.regulatedTariffByCurrency(),
                   // ★★ P-T4：运费读数按币分列（禁跨币相加）—— 一并进"这一轮发生了什么"。
@@ -2628,33 +2530,6 @@ public final class EconomySettlement {
                       unfilled.reason(),
                       "hex",
                       unfilled.hex().q() + "," + unfilled.hex().r()));
-        }
-        for (MarketReport.CreditFill credit : report.creditFills()) {
-          EventLog.channel(RAW)
-              .trace(
-                  LogEvent.of(
-                      "MARKET_CREDIT_FILL",
-                      EconomyLogSource.ECONOMY_MARKET,
-                      "day",
-                      day,
-                      "hex",
-                      credit.hex().q() + "," + credit.hex().r(),
-                      "commodity",
-                      credit.commodity().value(),
-                      "borrower",
-                      credit.borrower().id(),
-                      "lenderOrSeller",
-                      credit.lenderOrSeller().id(),
-                      "quantity",
-                      credit.quantityMilli(),
-                      "unit",
-                      credit.unit().key(),
-                      "debtId",
-                      credit.debtId().value(),
-                      "ratePerMille",
-                      credit.ratePerMille(),
-                      "dueCycle",
-                      credit.dueCycle()));
         }
         for (MarketReport.SellerOutcome seller : report.sellerOutcomes()) {
           EventLog.channel(RAW)
@@ -2755,12 +2630,6 @@ public final class EconomySettlement {
                     report.unfilled().size(),
                     "reasons",
                     reasonCounts,
-                    "creditFills",
-                    report.creditFills().size(),
-                    "creditMoney",
-                    creditMoney,
-                    "creditGoods",
-                    creditGoods,
                     "regulatedTariffByCurrency",
                     report.regulatedTariffByCurrency(),
                     "freightPaidByCurrency",
@@ -2944,11 +2813,34 @@ public final class EconomySettlement {
     // ── 4c. 偿还（★ P11.1 / D-023 / D-030：所得到账后、计息前，“有啥付啥”的任意介质偿还）────────────
     //   ★★ 它挂在"今天有产业关账"上（利息／市场的同一处日级事实）：所得是**整周期**结算出来的
     //     （收获与分配在本步之前刚发生）⇒ 还债的时点就是所得到手的那一刻。
-    //   ★ 可动用资产 = 全部商品 + **全部币种**余额；粮保留一日口粮、冻结不越；介质序 = 货币降序 → 商品降序；
+    //   ★★ v3.6（2026-10-11 用户第六批裁定）：**可动用资产 = 家户手头库存（含货币）—— 不扣任何保留量**；
+    //     冻结不越；介质序 = S-5 的"预估价值最低优先"（见 {@link #repaymentMediumOrder}）；
     //     债序 = 折成共同价值升序（不可定价排最后）；估值 = 家户价目表（可选）→ 该户市场区默认价目表。
+    //     ★ 用户原话：「为啥要设还债窗口，应当是有库存就还，没库存就不还啊」⇒ D-030 §4 的"一日口粮保留"
+    //       与 v3.5 的"35 天窗口"**一并作废**（见约束设计书 v3.6/v3.7 §4.1 的"还债保全"行）。
+    //     ★ 唯一保留的"前瞻扣除"在**卖侧**（用户 0–8 第 5 条：投入市场的商品 = 扣除下一 tick 生产需要后的）。
     //   ★ 本批没有家户价目表字段 ⇒ {@code householdPrices = null} 走市场默认；外部/政府收款口由
     //     {@link DebtValuation.RepayeeResolver#HOUSEHOLD_ACTORS} 起步（账户在会话/actor 账里可收即可）。
     if (anyCycleClosed) {
+      // ★★★ W2（2026-10-11）：还款轮的两项口径来源（都在这里一次装配，逐户只读）——
+      //   ① ★ **家户价目表**（{@link HouseholdValuationBook}，逐 tick 现算、不进状态）：改动前这里传 {@code null}
+      //      ⇒ 估值一律回落"市场区默认价目表"，与用户 D-023 §2 的"先看家户自己的价目表"不一致（W1 账本 §3 记过）。
+      //      传入之后，债务折价与 S-5 介质序都按**该户自己的保留价**估值（说不出价 ⇒ 0 ⇒ 排最前/具名 skip，不静默）。
+      //   ② ★★ **没有保留量**（v3.6，用户第六批）：还债可用量 = 家户手头库存本身 ⇒ 本处不再装配
+      //      "下轮生产花费"（{@code productionCostsByHousehold} 已随该口径一并删除，见 AGENTS §一.11：
+      //      旧设计不留）。
+      HouseholdValuationBook repaymentPrices =
+          HouseholdValuationBook.derive(
+              householdEconomies,
+              repaymentSnapshots(
+                  day,
+                  householdEconomies,
+                  householdGoods,
+                  householdFrozenGoods,
+                  householdMoney,
+                  householdFrozenMoney,
+                  marketByHousehold),
+              HouseholdValuationBook.NO_TRADE_HISTORY);
       repayDebts(
           householdEconomies,
           debts,
@@ -2962,7 +2854,7 @@ public final class EconomySettlement {
           householdOfActor,
           marketByHousehold,
           DebtValuation.RepayeeResolver.HOUSEHOLD_ACTORS,
-          null,
+          repaymentPrices,
           ledger,
           issuanceJournal);
       long repaidGrainTotal = traceTotalLongs(repaidToday);
@@ -2989,6 +2881,29 @@ public final class EconomySettlement {
                     debts.size()));
       }
       if (TRACE.isDebugEnabled()) {
+        // ★★ W2（§一.9：关键判据 DEBUG = 为什么）—— 还款轮的三条新口径逐条具名，供"为什么这样还"的现场判读。
+        //   ★★ v3.6：`reserve` 由 "next-round-production-cost-including-rations" 改为 **none**（用户第六批裁定：
+        //     有库存就还、没库存记债 ⇒ 保留量恒 0）。
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "REPAY_CRITERIA",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "valuation",
+                    "household-valuation-book→market-zone-default",
+                    "reserve",
+                    "none",
+                    "mediumOrder",
+                    "ascending-estimated-unit-value",
+                    "sharePerMille",
+                    DEBT_REPAYMENT_SHARE_PER_MILLE,
+                    "householdsWithRepayment",
+                    repaidToday.size(),
+                    "why",
+                    "S5-medium-order-by-lowest-estimated-value + v3.6-no-reserve-window"
+                        + " (stock-only: 有库存就还、没库存记债)"));
         EventLog.channel(TRACE)
             .debug(
                 LogEvent.of(
@@ -3674,8 +3589,6 @@ public final class EconomySettlement {
                 ledger.toLedger().transfers().size(),
                 "marketFills",
                 dayMarketReport == null ? 0 : dayMarketReport.fills().size(),
-                "marketCreditFills",
-                dayMarketReport == null ? 0 : dayMarketReport.creditFills().size(),
                 "marketUnfilled",
                 dayMarketReport == null ? 0 : dayMarketReport.unfilled().size()));
     if (TRACE.isDebugEnabled()) {
@@ -3721,36 +3634,6 @@ public final class EconomySettlement {
     //   放在本方法（唯一日结算实现）末尾：直接 settleOneDayInto 的调用方也得到同一"当日消费后清空"语义；
     //   抛异常时不清空（本会话随本次推进丢弃，不落 revision）。
     session.clearProductionModifiers();
-  }
-
-  /**
-   * ★ 旧签名（测试/单模块调用方）：内部新建一次 {@link EconomySession}，跑完一天后构造一次 {@link EconomyData}。★ 多日推进请用 {@link
-   * EconomyDayStepper}（它复用同一个会话，只有 revision 边界构造一次）。
-   */
-  static EconomyData settleOneDay(
-      EconomyData base,
-      long day,
-      LinkedHashMap<HouseholdId, FlowRow> flows,
-      AccountSession accounts,
-      MarketTopology topology,
-      boolean plantingDrawsFirst,
-      int famineMortalityPerMille,
-      ProductionLedger.Accumulator ledger) {
-    EconomySession session = new EconomySession(base);
-    session.flows().clear();
-    session.flows().putAll(flows);
-    settleOneDayInto(
-        session,
-        day,
-        accounts,
-        topology,
-        plantingDrawsFirst,
-        famineMortalityPerMille,
-        ledger,
-        Map.of());
-    flows.clear();
-    flows.putAll(session.flows());
-    return session.build();
   }
 
   /**
@@ -4055,12 +3938,13 @@ public final class EconomySettlement {
     }
   }
 
-  /** 周期投入阶段一个分区的产出（意向 + 本地产业写回 + 本地消费累加器 + 本地账本）。 */
+  /** 周期投入阶段一个分区的产出（意向 + 本地产业写回 + 本地消费累加器 + 本地账本 + "扣产能"日志读数）。 */
   private record InputDrawPartition(
       List<OrderedAccountIntent> intents,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<HouseholdId, Map<CommodityId, Long>> consumed,
-      ProductionLedger.Accumulator ledger) {}
+      ProductionLedger.Accumulator ledger,
+      CapacityDeductionSummary deductions) {}
 
   /**
    * ★★ <b>现扣周期投入按 hex 并行</b>（{@link #drawCycleInputs} 的并行外壳）。
@@ -4100,6 +3984,8 @@ public final class EconomySettlement {
           .computeIfAbsent(hexKey.get(), ignored -> new LinkedHashMap<>())
           .put(entry.getKey(), entry.getValue());
     }
+    // ★★ W2-fix3：本轮"扣产能"日志读数 —— 分区各记各的（worker 内），在这里按分区序合并后**只发一条 INFO**。
+    CapacityDeductionSummary deductions = new CapacityDeductionSummary(day);
     if (!byHex.isEmpty()) {
       AccountSnapshot snapshot = accounts.snapshot();
       PartitionPlan plan =
@@ -4124,20 +4010,26 @@ public final class EconomySettlement {
                 LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumed = new LinkedHashMap<>();
                 ProductionLedger.Accumulator partitionLedger =
                     new ProductionLedger.Accumulator(day, partition.partitionIndex());
-                drawCycleInputs(
-                    localUnits,
-                    industries,
-                    householdEconomies,
-                    relations,
-                    operatorConditions,
-                    index,
-                    tables.householdGoods,
-                    tables.householdMoney,
-                    consumed,
-                    householdOfActor,
-                    partitionLedger);
+                CapacityDeductionSummary partitionDeductions =
+                    drawCycleInputs(
+                        localUnits,
+                        industries,
+                        householdEconomies,
+                        relations,
+                        operatorConditions,
+                        index,
+                        tables.householdGoods,
+                        tables.householdMoney,
+                        consumed,
+                        householdOfActor,
+                        partitionLedger,
+                        day);
                 return new InputDrawPartition(
-                    buffer.drainIntents(), localUnits, consumed, partitionLedger);
+                    buffer.drainIntents(),
+                    localUnits,
+                    consumed,
+                    partitionLedger,
+                    partitionDeductions);
               },
               parallelism.poolOrNull());
       List<OrderedAccountIntent> intents = new ArrayList<>();
@@ -4158,6 +4050,8 @@ public final class EconomySettlement {
         //   seq 是分区内序号，与旧串行号的对应关系不保证。同代码态内 1/4/8 线程确定；V 阶段跨代码态比较
         //   transfers/outputAccruals/ruleSettlements 一律"按业务键排序后比较集合"，不得按 id 或列表下标逐条比。
         ledger.absorb(partition.ledger());
+        // ★★ W2-fix3：分区账按**分区计划序**合并（{@code SettlementExecutor.execute} 保证结果序 = 计划序）。
+        deductions.merge(partition.deductions());
       }
     }
     if (!noHex.isEmpty()) {
@@ -4166,22 +4060,27 @@ public final class EconomySettlement {
       for (ProductionUnitId id : noHex) {
         local.put(id, units.get(id));
       }
-      drawCycleInputs(
-          local,
-          industries,
-          householdEconomies,
-          relations,
-          operatorConditions,
-          index,
-          accounts.householdGoods(),
-          accounts.householdMoney(),
-          consumedGoods,
-          householdOfActor,
-          ledger);
+      deductions.merge(
+          drawCycleInputs(
+              local,
+              industries,
+              householdEconomies,
+              relations,
+              operatorConditions,
+              index,
+              accounts.householdGoods(),
+              accounts.householdMoney(),
+              consumedGoods,
+              householdOfActor,
+              ledger,
+              day));
       for (Map.Entry<ProductionUnitId, ProductionProcess> update : local.entrySet()) {
         units.put(update.getKey(), update.getValue());
       }
     }
+    // ★★ W2-fix3（§一.9）：轮末**一条 INFO 汇总**（协调器线程；与分区数无关 ⇒ 行数恒为 1）。
+    //   逐 unit 明细已在各分区里按 DEBUG 发出（PRODUCTION_CAPACITY_DEDUCTED_DETAIL）。
+    deductions.logSummary();
   }
 
   /** 劳动再分配阶段一个分区的产出（本地配额表 + 该分区 seed 过的键，用于识别"整条回池"的删除）。 */
@@ -5437,8 +5336,8 @@ public final class EconomySettlement {
    *       {@code farm@0_0}）：<b>economy 看不见它的账</b> —— 那本账住在 actor 切片的 {@code HouseholdInventory} 上（键
    *       {@code (actor, location)}），而会话工作副本按 {@code HouseholdId} 索引、只有家户账进得来（铁律 3：economy 不认识
    *       actor 切片；S1 起家户账经 {@code HouseholdActors.of} 派生 actor 后落进 AccountSession）。⇒ 由
-   *       <b>该产业名下的家户账代理它</b>（"这个主体的缸" = 它名下那些家户的缸，与"谁供给这个产业"同一条唯一事实 {@link #householdKeysOf}）。★
-   *       这<b>不是</b>"按人口猜<b>谁</b>出料"（谁是供方已经由 relation 说了），而是"指名的主体
+   *       <b>该产业名下的家户账代理它</b>（"这个主体的缸" = 它名下那些家户的缸，与"谁供给这个产业"同一条唯一事实 {@link
+   *       SettlementIndex#householdsOf}）。★ 这<b>不是</b>"按人口猜<b>谁</b>出料"（谁是供方已经由 relation 说了），而是"指名的主体
    *       <b>内部</b>怎么摊"的管道口径：先按人口占比问一遍（负担按人头摊），再由**同层还有货的账**补齐 ⇒ 只要这个主体**整体**出得起，
    *       需求就<b>一分不少</b>地筹齐（改前那种"逐行取整 ⇒ 取不满"不再发生）；
    * </ol>
@@ -5507,8 +5406,17 @@ public final class EconomySettlement {
    *
    * <p>★ <b>为什么不在这里扣"每日原料"</b>：{@code dailyInputPerUnit} 是**每日**口径，本轮仍是零读取点（spec §3.3
    * 明说两个字段并存、语义各自清楚），不在本步范围。
+   *
+   * <p>★★★ <b>S-11（v3.7，2026-10-11 用户第七批裁定）的落点就在第一遍</b>：{@code InputPlan.capacityScale}
+   * 不再是"计划规模"本身， 而是 <b>计划规模 × 投入满足率</b>（最短缺那一项投入的 Leontief 满足率，逐户按手头库存现算）—— 详见 {@link
+   * #inputSatisfactionPerMille}。满足率为 0 的 unit 与"本格没有产能"同支（不进池、不要料、不产出）。 ★ 口粮缺口**不**走这条（劳动与人口是
+   * Social 的唯一权威，W3 另报）。
+   *
+   * <p>★ <b>W2-fix3</b>：返回"产能被投入短缺扣掉"的日志读数（{@link CapacityDeductionSummary}；只服务 §一.9 的 INFO 汇总，
+   * 不进任何算式）。★ 本方法的调用者是**分区 worker**（一个分区一次调用），故它只把读数交回去、<b>不</b>发射 INFO —— 由协调器把全部分区（+
+   * 无格那一批）合并后**一次**发射，否则分区数会把"一条 INFO"变成"每分区一条"。
    */
-  private static void drawCycleInputs(
+  private static CapacityDeductionSummary drawCycleInputs(
       LinkedHashMap<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, Industry> industries,
       LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -5519,7 +5427,8 @@ public final class EconomySettlement {
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
       Map<ActorRef, HouseholdId> householdOfActor,
-      ProductionLedger.Accumulator ledger) {
+      ProductionLedger.Accumulator ledger,
+      long day) {
     // ── 第一遍：调查（**只读**：不改任何账）────────────────────────────────────────────
     List<InputPlan> plans =
         surveyInputDemands(
@@ -5533,6 +5442,15 @@ public final class EconomySettlement {
             householdOfActor);
     // ── 第二遍：同格争用 ⇒ 开池 + 按需求比例配给（H6-lite；无争用 ⇒ 一个字段都不动）────────
     rationContestedInputs(plans, householdGoods);
+    // ── 第二遍b：★★★ S-11 定规模 —— 实际产能 = 计划产能 × 投入满足率（最短缺那一项投入）。
+    //   位置必须在开池**之后**：池子把 available 换成"取料口径"的可供量，S-11 的"拿不到"必须按同一份量算
+    //   （否则"自己账上没料、同格池子里有"的 unit 会被误判成产能 0 ⇒ 把 H6-lite 那条实测修好的通道堵死）。
+    //   ★★ W2-fix3：逐 unit 明细下 DEBUG；INFO 只发**一条** —— 读数在这里累计、由调用方（协调器线程）在
+    //   全部分区合并后发射（本方法是一次分区调用，自己发射就会变成"每分区一条 INFO"）。
+    CapacityDeductionSummary deductions = new CapacityDeductionSummary(day);
+    for (InputPlan plan : plans) {
+      applyInputSatisfaction(plan, day, deductions);
+    }
     // ── 第三遍：逐 unit 落账（需求上限 = 配给额；无争用 ⇒ 就是它自己算出来的 need）──────────
     for (InputPlan plan : plans) {
       drawOneProductionProcessInputs(
@@ -5545,6 +5463,7 @@ public final class EconomySettlement {
           householdOfActor,
           ledger);
     }
+    return deductions;
   }
 
   /**
@@ -5553,8 +5472,9 @@ public final class EconomySettlement {
    * <p>★ <b>为什么要有它</b>：H6-lite 的配给要**先看清全部需求方**才谈得上"按需求比例" —— 逐 unit 就地算就地扣的旧写法
    * 天然是"先到先得"。故把"算"与"扣"分成两遍：本类只在第一遍被读写，第二遍改 {@link #available}（争用的商品换成池子） 与 {@link #quota}，第三遍才动账。
    *
-   * <p>★ 字段的可变性是**有意的、且被限制在两处**：{@code available} 只被 {@link #rationContestedInputs} 覆盖， {@code
-   * quota}/{@code sharedKeys} 只由它填 ⇒ 第三遍是纯读。
+   * <p>★ 字段的可变性是**有意的、且被限制在三处**：{@code available} 只被 {@link #rationContestedInputs} 覆盖， {@code
+   * quota}/{@code sharedKeys} 只由它填；★ S-11 起 {@code capacityScale} 只被 {@link
+   * #applyInputSatisfaction} 覆盖 ⇒ 第三遍是纯读。
    */
   private static final class InputPlan {
 
@@ -5570,8 +5490,17 @@ public final class EconomySettlement {
     /** 逐单位规模要的商品（= {@code industry.inputPerUnit()}；只读）。 */
     private final Map<CommodityId, Long> perScale;
 
-    /** 产能折出的规模（= {@link ProductionProcessBook#plannedCapacityScaleOf}；**不含投入那一路** —— 那是"可供量"的事）。 */
-    private final long capacityScale;
+    /** 产业模板（S-11 的 INFO 日志要报它；只读）。 */
+    private final Industry industry;
+
+    /** ★★ <b>计划规模</b>（= {@code ProductionProcessBook.plannedCapacityScaleOf}；只读）。 */
+    private final long plannedScale;
+
+    /**
+     * ★★★ S-11（v3.7）：<b>实际产能</b> = 计划规模 × 投入满足率（{@link #inputSatisfactionPerMille}，最短缺那一项投入）。 ★
+     * 可变、且**唯一写点**是 {@link #applyInputSatisfaction}（H6-lite 第二遍之后：必须等池子把 available 换成取料口径）。
+     */
+    private long capacityScale;
 
     /** relation 名下的家户账（保序去重；取料的第二层与"补齐"层）。 */
     private final List<HouseholdId> ownKeys;
@@ -5589,23 +5518,31 @@ public final class EconomySettlement {
         ProductionUnitId id,
         ProductionProcess unit,
         HexCoord hex,
+        Industry industry,
         Map<CommodityId, Long> perScale,
-        long capacityScale,
+        long plannedScale,
         List<HouseholdId> ownKeys,
         Map<CommodityId, Long> available) {
       this.id = id;
       this.unit = unit;
       this.hex = hex;
+      this.industry = industry;
       this.perScale = perScale;
-      this.capacityScale = capacityScale;
+      this.plannedScale = plannedScale;
+      this.capacityScale = plannedScale; // 先记计划规模；applyInputSatisfaction 折算成实际产能
       this.ownKeys = ownKeys;
       this.available = available;
     }
 
-    /** 本 unit 在 {@code commodity} 上的取料上限：争用的商品 = 配给额，其余 = 规模折出来的需求。 */
+    /**
+     * 本 unit 在 {@code commodity} 上的取料上限：争用的商品 = 配给额，其余 = 规模折出来的需求。 ★ S-11（v3.7）起再对**实际产能**折出的需求取
+     * min：配给额是按**计划规模**算的，而 S-11 可能把这一轮的产能 调低（拿不到料）⇒ 取料不得越过"实际产能需要的量"（旧代码里 quota ≤ need 恒成立，这一层 min
+     * 是恒等的）。
+     */
     private long limitOf(CommodityId commodity, long usableScale) {
+      long need = usableScale * perScale.getOrDefault(commodity, 0L);
       Long ration = quota.get(commodity);
-      return ration != null ? ration : usableScale * perScale.getOrDefault(commodity, 0L);
+      return ration != null ? Math.min(ration, need) : need;
     }
   }
 
@@ -5616,7 +5553,25 @@ public final class EconomySettlement {
    * available_j = (供方自己的账在副本里 ? 它在 j 上的余额 : 0) + Σ_{k ∈ ownKeys} 库存_k,j
    * </pre>
    *
-   * <p>★ <b>谁是"需求方"</b>：周期第一天、配了投入、且**本格有产能**（{@code capacityScale > 0}）的 unit。★ 产能为 0 的 unit
+   * <p>★★★ <b>S-11（v3.7，2026-10-11 用户第七批裁定）：供不应求才扣产能 —— 生产阶段的落点是 {@link
+   * #applyInputSatisfaction}</b>（本方法只记计划规模；折算在 H6-lite
+   * 的池子成形之后）。用户原话：「如果市场供不应求了，单个家户拿不到足够的生产资料/口粮，这时候才算开始扣产能」。本批只做<b>生产资料那一支</b>：
+   *
+   * <pre>
+   * 计划规模 S0 = plannedCapacityScaleOf(unit, industry, index, condition)        （= 本格产能 × 状态机计划系数）
+   * 计划需求 q_j = S0 × inputPerUnit_j                                            （固定配方 / Leontief）
+   * 实际到手 h_j = Σ_{k ∈ ownKeys} 库存_k,j                                       （★ 家户手头库存**现算**，不新增状态）
+   * 逐项满足率 r_j = q_j ≤ 0 ? 1000 : min(1000, ⌊h_j × 1000 ÷ q_j⌋)
+   * 投入满足率 r   = min_j r_j                                                     （★ 最短缺那一项，不取加权平均）
+   * 实际产能 S     = ⌊S0 × r ÷ 1000⌋                                               （= 计划产能 × 满足率）
+   * </pre>
+   *
+   * <p>★ <b>"拿不到"= 物理短缺，不是穷</b>：本算式只读<b>库存</b>，一分钱都不看 —— 债务式清算下"没钱也能买" （未付价款记债，见 {@code
+   * MarketSettlement.executeTrade}），买不到只可能是没货/运力不足/口岸拦下。
+   *
+   * <p>★ <b>口粮缺口不进这条</b>（S-11 第②半）：劳动与人口是 Social 的唯一权威，本方法既不改人口也不改可提供劳动； 口粮缺口由 W3 的通道报社会。
+   *
+   * <p>★ <b>谁是"需求方"</b>：周期第一天、配了投入、且**实际产能 &gt; 0**（{@code capacityScale > 0}）的 unit。★ 产能为 0 的 unit
    * **不进池也不参与争用** —— 它一根料都不会要（旧口径在 {@code usableScale <= 0} 那一支被跳过，读数逐值相同）。
    */
   private static List<InputPlan> surveyInputDemands(
@@ -5642,10 +5597,10 @@ public final class EconomySettlement {
       if (perScale.isEmpty()) {
         continue; // ★ 空表与"缺键"同义：不扣、不缩规模 ⇒ 未配投入的 unit 行为与 V2 一字不差
       }
-      long capacityScale =
+      long plannedScale =
           ProductionProcessBook.plannedCapacityScaleOf(
               unit, industry, index, operatorConditions.get(id));
-      if (capacityScale <= 0L) {
+      if (plannedScale <= 0L) {
         continue; // 本格没有产能 / 已缩到 0 ⇒ 它不产出、也不要料（"地荒着"）
       }
       // ★★ H3：**谁出料由 relation 说**。缺 relation（合法状态）⇒ 退回缺省 = operator。
@@ -5663,6 +5618,9 @@ public final class EconomySettlement {
         }
         available.put(commodity, sum);
       }
+      // ② ★★★ S-11：这里先记**计划规模**；"实际产能 = 计划产能 × 投入满足率"在第二遍之后统一折算
+      //   （{@link #applyInputSatisfaction}）—— 必须等 H6-lite 的池子把 available 换成"取料口径"之后再算，
+      //   否则"自己账上一根料都没有、但同格池子里有"的 unit 会被误判成产能 0（那正是 H6-lite 要修的实测病）。
       plans.add(
           new InputPlan(
               id,
@@ -5670,12 +5628,288 @@ public final class EconomySettlement {
               // ★ 拿不到格键 ⇒ null（**不抛**：改前这条路径也不需要格，{@code householdKeysOf} 会给空表 ⇒ 逐值同旧），
               //   它因此不属于任何一格、也就不参与"同格争用"。
               IndustryHexKeys.hexKeyOf(unit.industry()).map(HexCoord::parse).orElse(null),
+              industry,
               perScale,
-              capacityScale,
+              plannedScale,
               ownKeys,
               available));
     }
     return plans;
+  }
+
+  /**
+   * ★★★ <b>S-11（v3.7，2026-10-11 用户第七批裁定）：定规模 —— 实际产能 = 计划产能 × 投入满足率</b> （H6-lite 第二遍之后、落账之前；逐 plan
+   * 一次）。
+   *
+   * <p>它读的 {@code available} 是<b>取料口径</b>的可供量（争用的商品在第二遍已被换成池子）—— 与第三遍实际取料、 与 {@link #usableScaleOf}
+   * 用的是同一份量，三处不可能漂开。★ 它同时把"拿不到多少"记进 {@link CapacityDeductionSummary}（逐 unit 明细下 DEBUG， INFO
+   * 一条轮汇总由协调器发射）。
+   */
+  private static void applyInputSatisfaction(
+      InputPlan plan, long day, CapacityDeductionSummary deductions) {
+    long satisfactionPerMille =
+        inputSatisfactionPerMille(plan.perScale, plan.available, plan.plannedScale);
+    long actualScale = plan.plannedScale * satisfactionPerMille / 1_000L;
+    plan.capacityScale = actualScale;
+    if (satisfactionPerMille < 1_000L && (TRACE.isInfoEnabled() || TRACE.isDebugEnabled())) {
+      // ★★ W2-fix3（§一.9）：扣减发生 ⇒ ① 逐 unit 明细下 DEBUG（PRODUCTION_CAPACITY_DEDUCTED_DETAIL）；
+      //   ② 累进"本轮汇总"，轮末由协调器发一条 INFO（PRODUCTION_CAPACITY_DEDUCTED）。
+      //   ★ 两个级别都关 ⇒ 连"最短缺那一项"都不复算（结算路径一个字段都不多算；它纯属日志读数，不进任何算式）。
+      CommodityId scarcest = scarcestInputOf(plan.perScale, plan.available, plan.plannedScale);
+      deductions.record(plan, scarcest, satisfactionPerMille, actualScale);
+      logCapacityDeductionDetail(day, plan, scarcest, satisfactionPerMille, actualScale);
+    }
+  }
+
+  /**
+   * ★★★ <b>S-11（v3.7，2026-10-11 用户第七批裁定）：投入品满足率 —— "最短缺那一项投入"的 Leontief 口径</b>。
+   *
+   * <pre>
+   * 计划需求 q_j = plannedScale × inputPerUnit_j        （固定配方；逐商品一条）
+   * 逐项满足率 r_j = q_j ≤ 0 ? 1000 : min(1000, ⌊hand_j × 1000 ÷ q_j⌋)
+   * 投入满足率 r   = min_j r_j                          （★ 最短缺那一项；**不取加权平均**）
+   * </pre>
+   *
+   * <p>★ 语义（用户原话「单个家户拿不到足够的生产资料…这时候才算开始扣产能」）：<b>拿不到 = 物理短缺</b>。本算式只看 <b>库存</b>，不看钱 ——
+   * 债务式清算下"没钱也能买"（未付价款记债），所以"买不到"只能是没货/运力不足/口岸拦下。
+   *
+   * <p>★ 缺省中性：没有任何一项投入（{@code inputPerUnit} 为空、或每单位需求 ≤ 0）⇒ 返回 1000 ⇒ 实际产能 = 计划产能 （与改前逐值相同）。
+   *
+   * <p>★ 与 {@link #usableScaleOf} 的分工：本方法把"<b>产能</b>那一路"从计划规模折成实际产能， {@code usableScaleOf}
+   * 仍把"可供量那一路"（含 H6-lite 的池子）取 min —— 两者读<b>同一份</b> {@code available}（第二遍之后的取料口径）， 因此缺省中性（料够 ⇒ 满足率
+   * 1000）与"缸空 ⇒ 地荒"两支逐值不变，差异只到<b>千分比取整</b>这一级。 ★ <b>刻意不按"本户自己的账"算</b>：relation 名下的账在争用时会被 H6-lite
+   * 换成同格池子（同格作坊+织机的纤维之争）， 按自家账算会把"自己账上没料、池子里有"的 unit 判成产能 0 ⇒ 堵死那条已实测修好的通道（见 {@link
+   * #drawCycleInputs} 的注）。 ★ 也不按"家户合并算"：Leontief 的固定比例是<b>每条生产方式（unit）</b>的口径，把一户名下多个 unit
+   * 的投入并成一份最小 满足率会让一条产线的缺料去砍另一条产线（本批不做，记为待裁定）。
+   *
+   * @param perScale 逐商品的单位规模需求（{@code industry.inputPerUnit()}；只读）
+   * @param hand 逐商品的实际到手量（= {@code available}：relation 指名账上的库存合计）
+   * @param plannedScale 计划规模（≥ 0）
+   * @return 满足率（0..1000 的千分比）
+   */
+  static long inputSatisfactionPerMille(
+      Map<CommodityId, Long> perScale, Map<CommodityId, Long> hand, long plannedScale) {
+    if (plannedScale <= 0L) {
+      return 0L;
+    }
+    long satisfaction = 1_000L;
+    for (Map.Entry<CommodityId, Long> entry : perScale.entrySet()) {
+      Long per = entry.getValue();
+      if (per == null || per <= 0L) {
+        continue; // 每单位需求 ≤ 0 ⇒ 这一路不构成约束（与 usableScaleOf / 收获日公式同口径）
+      }
+      long required = plannedScale * per; // 计划的需求量（毫商品）
+      if (required <= 0L) {
+        continue;
+      }
+      long onHand = hand.getOrDefault(entry.getKey(), 0L);
+      long rate = onHand >= required ? 1_000L : Math.max(0L, onHand) * 1_000L / required;
+      satisfaction = Math.min(satisfaction, Math.min(1_000L, rate));
+    }
+    return satisfaction;
+  }
+
+  /**
+   * ★★ W2-fix3：<b>最短缺那一项投入</b>（与 {@link #inputSatisfactionPerMille} 同一判据；只为日志复算一次，不改算式）。
+   *
+   * <p>★ 它是"扣产能"两条日志的共同输入：轮汇总的商品分布计数（{@link CapacityDeductionSummary}）与逐 unit DEBUG 明细的 {@code
+   * scarcestInput/scarcestOnHand/scarcestRequired} 三个字段。
+   *
+   * @return 最短缺的商品（没有任何一项构成约束 ⇒ null）
+   */
+  private static CommodityId scarcestInputOf(
+      Map<CommodityId, Long> perScale, Map<CommodityId, Long> hand, long plannedScale) {
+    CommodityId scarcest = null;
+    long scarcestPerMille = 1_000L;
+    for (Map.Entry<CommodityId, Long> entry : perScale.entrySet()) {
+      Long per = entry.getValue();
+      if (per == null || per <= 0L) {
+        continue;
+      }
+      long required = plannedScale * per;
+      if (required <= 0L) {
+        continue;
+      }
+      long onHand = hand.getOrDefault(entry.getKey(), 0L);
+      long rate = onHand >= required ? 1_000L : Math.max(0L, onHand) * 1_000L / required;
+      rate = Math.min(1_000L, rate);
+      if (rate < scarcestPerMille) {
+        scarcestPerMille = rate;
+        scarcest = entry.getKey();
+      }
+    }
+    return scarcest;
+  }
+
+  /**
+   * ★★ W2-fix3：<b>逐 unit 的"扣产能"明细 —— DEBUG（{@code PRODUCTION_CAPACITY_DEDUCTED_DETAIL}）</b>。
+   *
+   * <p>改前 {@code PRODUCTION_CAPACITY_DEDUCTED} 是<b>逐 unit 一条 INFO</b>（真档一轮可能上百行）；现在它的字段整体下到
+   * DEBUG，INFO 只留轮末一条汇总（{@link CapacityDeductionSummary}）。★ <b>一个字段都没丢</b>：本事件的字段 = 改前 INFO 的全部字段
+   * （unit/industry/households/scarcestInput/scarcestOnHand/scarcestRequired/satisfactionPerMille/plannedScale/actualScale/
+   * deductedScale/why）+ 原有的逐商品两张表（perUnit/onHand）。
+   *
+   * <p>只在<b>真的发生扣减</b>（满足率 &lt; 1000‰）时被调用；DEBUG 关着 ⇒ 直接返回（日志失败不得影响结算）。
+   */
+  private static void logCapacityDeductionDetail(
+      long day, InputPlan plan, CommodityId scarcest, long satisfactionPerMille, long actualScale) {
+    if (!TRACE.isDebugEnabled()) {
+      return; // 日志关闭不得影响结算
+    }
+    // ★ W2-fix3（①）：两个"最短缺"读数先在**基本型 long** 上落定，再进事件表 —— 改前这里写的是
+    //   `scarcest == null ? 0L : hand.getOrDefault(scarcest, 0L)`：三元表达式把 Long 拆箱、随即又为
+    //   事件表的 Object 形参装箱（SpotBugs BX_UNBOXING_IMMEDIATELY_REBOXED @ 5898）。数值与字段语义一字不变。
+    long scarcestOnHand = 0L;
+    long scarcestRequired = 0L;
+    if (scarcest != null) {
+      scarcestOnHand = plan.available.getOrDefault(scarcest, 0L);
+      scarcestRequired = plan.plannedScale * plan.perScale.getOrDefault(scarcest, 0L);
+    }
+    Map<String, Long> perInput = new LinkedHashMap<>();
+    Map<String, Long> handByInput = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : plan.perScale.entrySet()) {
+      perInput.put(entry.getKey().value(), entry.getValue());
+      handByInput.put(entry.getKey().value(), plan.available.getOrDefault(entry.getKey(), 0L));
+    }
+    EventLog.channel(TRACE)
+        .debug(
+            LogEvent.of(
+                "PRODUCTION_CAPACITY_DEDUCTED_DETAIL",
+                EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                "day",
+                day,
+                "unit",
+                plan.id.value(),
+                "industry",
+                plan.industry.id().value(),
+                "households",
+                plan.ownKeys.stream().map(HouseholdId::value).toList(),
+                "scarcestInput",
+                scarcest == null ? "none" : scarcest.value(),
+                "scarcestOnHand",
+                scarcestOnHand,
+                "scarcestRequired",
+                scarcestRequired,
+                "satisfactionPerMille",
+                satisfactionPerMille,
+                "plannedScale",
+                plan.plannedScale,
+                "actualScale",
+                actualScale,
+                "deductedScale",
+                plan.plannedScale - actualScale,
+                "why",
+                "S-11：计划产能 × 最短缺投入的满足率（拿不到 = 物理短缺，非因穷）",
+                "perUnit",
+                perInput,
+                "onHand",
+                handByInput));
+  }
+
+  /**
+   * ★★ W2-fix3（§一.9）：<b>本轮"产能被投入短缺扣掉"的汇总账 —— INFO 只发一条</b>。
+   *
+   * <p>改前 {@code PRODUCTION_CAPACITY_DEDUCTED} 是<b>逐 unit 一条 INFO</b>（真档一轮可能上百行）。现在：
+   *
+   * <pre>
+   * 逐 unit 明细 → DEBUG  PRODUCTION_CAPACITY_DEDUCTED_DETAIL（字段见 {@link #logCapacityDeductionDetail}）
+   * 轮汇总       → INFO   PRODUCTION_CAPACITY_DEDUCTED（事件名保留；语义从"逐 unit"变成"轮汇总"）
+   *                      day / units（被扣 unit 数）/ households（被扣家户数，去重）/ totalPlannedScale /
+   *                      totalActualScale / totalDeductedScale / maxDeductedPerMille（最大扣减比例，千分比）/
+   *                      scarcestInputs（"最短缺投入"的商品分布计数）/ why
+   * </pre>
+   *
+   * <p>★ <b>它只是日志读数</b>：{@code capacityScale} 早已由 {@link #applyInputSatisfaction}
+   * 定完，本类不参与任何算式、不改任何状态。 ★ 每份实例只被<b>一个</b>分区 worker（或协调器单线程那一段）触碰，分区之间在协调器上经 {@link #merge} 合并 ⇒
+   * 没有跨线程共享的可变状态。
+   *
+   * <p>★ <b>为什么必须合并后再发</b>：{@link #drawCycleInputs} 是分区 worker（一次调用 = 一个分区）⇒ 就地发射会变成"每分区一条
+   * INFO"；合并由协调器按分区计划序做 ⇒ 行数恒为 1，且 {@code scarcestInputs} 用 {@link TreeMap}（商品 id 升序）⇒ 字段值与线程调度、
+   * 合并次序都无关。
+   */
+  private static final class CapacityDeductionSummary {
+
+    /** 本轮的 day（全部分区同一天）。 */
+    private final long day;
+
+    /** 被扣的 unit 数。 */
+    private int units;
+
+    /** 被扣的家户（去重；只读它的 size = "几户被扣"）。 */
+    private final Set<HouseholdId> households = new LinkedHashSet<>();
+
+    /** 计划规模合计（与 {@link InputPlan#plannedScale} 同单位）。 */
+    private long totalPlannedScale;
+
+    /** 实际产能合计（与 {@link InputPlan#capacityScale} 同单位）。 */
+    private long totalActualScale;
+
+    /** 最大扣减比例（千分比 = 1000 − 最低满足率）。 */
+    private long maxDeductedPerMille;
+
+    /** "最短缺投入"的商品分布计数（{@link TreeMap} ⇒ 按商品 id 升序，跨分区合并次序不影响渲染）。 */
+    private final Map<String, Integer> scarcestInputs = new TreeMap<>();
+
+    private CapacityDeductionSummary(long day) {
+      this.day = day;
+    }
+
+    /**
+     * 记一个<b>真被扣了产能</b>的 unit（只被 {@link #applyInputSatisfaction} 在满足率 &lt; 1000‰ 时调用）。
+     *
+     * <p>★ 用基本型 {@code +=} 而不是 {@code Math.addExact}：这是日志读数，<b>任何情况下都不许抛</b>（日志失败不得影响结算）。
+     */
+    private void record(
+        InputPlan plan, CommodityId scarcest, long satisfactionPerMille, long actualScale) {
+      units++;
+      households.addAll(plan.ownKeys);
+      totalPlannedScale += plan.plannedScale;
+      totalActualScale += actualScale;
+      maxDeductedPerMille = Math.max(maxDeductedPerMille, 1_000L - satisfactionPerMille);
+      scarcestInputs.merge(scarcest == null ? "none" : scarcest.value(), 1, Integer::sum);
+    }
+
+    /** ★ 分区账合并（协调器按分区计划序调用；各分区同一天）。 */
+    private void merge(CapacityDeductionSummary other) {
+      units += other.units;
+      households.addAll(other.households);
+      totalPlannedScale += other.totalPlannedScale;
+      totalActualScale += other.totalActualScale;
+      maxDeductedPerMille = Math.max(maxDeductedPerMille, other.maxDeductedPerMille);
+      for (Map.Entry<String, Integer> entry : other.scarcestInputs.entrySet()) {
+        scarcestInputs.merge(entry.getKey(), entry.getValue(), Integer::sum);
+      }
+    }
+
+    /** ★ §一.9：轮末<b>一条 INFO 汇总</b>；本轮一次扣减都没发生（或 INFO 关着）⇒ 一条都不发（与改前"只在真扣减时发射"同口径）。 */
+    private void logSummary() {
+      if (units == 0 || !TRACE.isInfoEnabled()) {
+        return;
+      }
+      EventLog.channel(TRACE)
+          .info(
+              LogEvent.of(
+                  "PRODUCTION_CAPACITY_DEDUCTED",
+                  EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                  "day",
+                  day,
+                  "units",
+                  units,
+                  "households",
+                  households.size(),
+                  "totalPlannedScale",
+                  totalPlannedScale,
+                  "totalActualScale",
+                  totalActualScale,
+                  "totalDeductedScale",
+                  totalPlannedScale - totalActualScale,
+                  "maxDeductedPerMille",
+                  maxDeductedPerMille,
+                  "scarcestInputs",
+                  scarcestInputs,
+                  "why",
+                  "S-11：实际产能 = 计划产能 × 最短缺投入的满足率（拿不到 = 物理短缺，非因穷）；逐 unit 明细见 PRODUCTION_CAPACITY_DEDUCTED_DETAIL"));
+    }
   }
 
   /**
@@ -5756,6 +5990,9 @@ public final class EconomySettlement {
 
   /**
    * 规模 = <b>min(产能那一路, 逐投入的可供量那一路)</b>（= 改前 {@code rowUsageScale} 的 unit 版）。
+   *
+   * <p>★★ S-11（v3.7）起"产能那一路" = {@link InputPlan#capacityScale} = **计划规模 × 投入满足率**（见 {@link
+   * #inputSatisfactionPerMille}）；"可供量那一路"照旧按 {@code available} 算（争用的商品在第二遍被换成池子）。
    *
    * <p>★★ <b>它是唯一拼写点</b>：第二遍"这一家想要多少"与第三遍"这一家实际取多少"必须是**同一把尺**。
    */
@@ -6213,57 +6450,6 @@ public final class EconomySettlement {
     return false;
   }
 
-  /**
-   * ★★ <b>"供给这个产业的家户行"的唯一算法</b>（H0；裁定 K2 + R-N1-A）：
-   *
-   * <pre>
-   * ① 产业所在格 = IndustryHexKeys.hexKeyOf(industryId)      （唯一拼写点；拿不到格键 ⇒ 空表，不猜 (0,0)）
-   * ② 居住类型   = ResidenceKind.ofLot(allocation.group())   （批次前缀的唯一拼写点在 ResidenceKind）
-   * ③ 家户行     = 从 HouseholdLaborCommitment.household 取"actor 命中该产业"的家户，按稳定 HouseholdId 去重、只留真有行的
-   * </pre>
-   *
-   * <p>★★ <b>它取代了改前的 {@code classKeysOf(rows, industryId)}</b>（按行键里的产业段过滤）：H0 之后**行里没有产业了** （键 = 格
-   * + 居住类型 + 阶层）—— 一个家户给两个产业出劳动（农村家户既种地又织布）时它**只有一行**，而"哪些行属于这个产业"
-   * 只能由**劳动配额表**回答：出劳动的那批人住哪儿，就是它的家户。
-   *
-   * <p>★ <b>行不存在 ⇒ 跳过</b>（不是坏数据）：逐组件增量落盘 ⇒ 配额先到、行后到是合法写序（同 {@code EconomyData} 的
-   * "表与表之间没有引用完整性约束"）。★ <b>一条配额都没有的产业 ⇒ 空表</b>（没有家户 ⇒ 没有劳动者；收获的产出全留 operator）。
-   *
-   * <p>★★ <b>S3：本方法不读 {@code HouseholdEconomy.view.stratum}，也不按四阶层枚举</b> —— 归属的唯一事实源是 {@link
-   * HouseholdLaborCommitment#household()}（H0 的裁定，S3 写回阶层后仍然成立）。故阶层改成 {@code
-   * landless_laborer}/{@code artisan}/{@code official} 后，这里既不会漏行也不会错行。
-   *
-   * <p>★ 序 = 稳定 {@link HouseholdId#value()} 字典序（纯函数、与配额表插入序无关；不再按 {@code SocialClassId.all()}
-   * 的四档顺序假想行集合）。
-   */
-  static List<HouseholdId> householdKeysOf(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      ProductionUnitId unit,
-      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
-    // ★★ S1：家户归属的**唯一事实源 = HouseholdLaborCommitment.household**（不再从视角的阶层段反推）。
-    //   ★★ R3B.2：归属判据从 {@code actor.id() == industryId} 改成 {@code activity == unit.id()} ——
-    //     "这份劳动喂哪条生产活动"由 activity 回答（与结算按 activity 归集劳动同一个源）。
-    LinkedHashSet<HouseholdId> households = new LinkedHashSet<>();
-    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
-      if (laborCommitment.activity().equals(unit.value())) {
-        households.add(laborCommitment.household());
-      }
-    }
-    List<HouseholdId> keys = new ArrayList<>();
-    for (HouseholdId household : households) {
-      if (householdEconomies.containsKey(household)) {
-        keys.add(household);
-      }
-    }
-    keys.sort(Comparator.comparing(HouseholdId::value));
-    return keys;
-  }
-
-  /** ★★ 索引口径的“供给这个 unit 的家户行”（R4-B.3a-perf；去重/排序在索引构建时已按旧口径完成）。 */
-  static List<HouseholdId> householdKeysOf(ProductionUnitId unit, SettlementIndex index) {
-    return index.householdsOf(unit);
-  }
-
   /** ★★ 索引口径的“一个批次摊到哪些家户行”（R4-B.3a-perf；只有调用方仍需给 target 集合，不再扫全量配额）。 */
   private static List<HouseholdId> householdKeysOfLot(
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -6286,10 +6472,10 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>家户 → 它供给的 unit 集合</b>（从配额表推 —— 与 {@link #householdKeysOf} 是**同一条事实的两个方向**）。
+   * ★★ <b>家户 → 它供给的 unit 集合</b>（从配额表推 —— 与 {@link SettlementIndex#householdsOf} 是**同一条事实的两个方向**）。
    *
    * <p>用途有两条：① 借粮的"本周期自需"要一个 {@code cycleDays}（见 {@link #cycleDaysByHousehold}）； ② 各行流水的"本期"何时翻篇（见
-   * {@code settleOneDay} 的流水循环）。
+   * {@code settleOneDayInto} 的流水循环）。
    *
    * <p>★ <b>只认 activity 命中现存 unit 的配额</b>：家户型 actor 的 id 可以只是消费主体，或 activity 是自由家户劳动词 ⇒ 那时它不进任何
    * unit（只进守恒与读口）。
@@ -6405,7 +6591,7 @@ public final class EconomySettlement {
    * 既不是消费、也不是转移），正是"任何库存变动必有对应转移记录"这条不变量要钉的东西。★ 借入方当天吃掉那一笔走 {@link #consumeFromHousehold}（转移 +
    * 消费两条痕，余额净 0 —— 与改前逐值相同）。
    *
-   * <p>★★ **E4a 连续债务身份**：id 由 {@code (债务人, 债权人, unit, terms)} 的纯函数 {@link #legacyGrainDebtId} 给出 ⇒
+   * <p>★★ **E4a 连续债务身份**：id 由 {@code (债务人, 债权人, unit, terms)} 的纯函数 {@link DebtContractId#idOf} 给出 ⇒
    * 同一对主体**跨周期命中同一条** {@link DebtContract}（本金递增），不同 unit/terms 必然分开；旧“周期在 id
    * 里、新周期开新条”的行为到此结束（这是本阶段的**有意**行为变化，见交付报告）。
    *
@@ -6452,8 +6638,8 @@ public final class EconomySettlement {
    * <p>★★ <b>H2：那一笔"放贷行扣库存、却不进它的 consumed"现在有一条转移记录相伴</b>（{@code from=放贷家户, to=借款家户}，原因 {@link
    * TransferReason#LOAN_PRINCIPAL}）。★ 借入方当天吃掉那一笔走 {@link #consumeFromHousehold}（转移 + 消费两条痕，余额净 0）。
    *
-   * <p>★★ <b>E4a 连续债务身份</b>：id 由 {@code (债务人, 债权人, unit, terms)} 的纯函数 {@link #legacyGrainDebtId} 给出
-   * ⇒ 同一对主体**跨周期命中同一条** {@link DebtContract}（本金递增），不同 unit/terms 必然分开；旧“周期在 id
+   * <p>★★ <b>E4a 连续债务身份</b>：id 由 {@code (债务人, 债权人, unit, terms)} 的纯函数 {@link DebtContractId#idOf}
+   * 给出 ⇒ 同一对主体**跨周期命中同一条** {@link DebtContract}（本金递增），不同 unit/terms 必然分开；旧“周期在 id
    * 里、新周期开新条”的行为到此结束（这是本阶段的**有意**行为变化，见交付报告）。
    *
    * <p>★★ <b>D-031：借款人侧无额度上限</b>：借出量 = {@code min(剩余缺口, 各放贷方实际余粮之和)}；放贷方余粮按 {@link #lendableOf}
@@ -6672,9 +6858,9 @@ public final class EconomySettlement {
    * taxPaid                    = (本周期翻篇 ? 0 : 流水中的 taxPaid)          // 当前生产路径恒 0，照实读
    * </pre>
    *
-   * ★ 三条与 {@code settleOneDay} 末尾写 {@code FlowRow} 时的 {@code acc = newCycleHouseholds.contains(key)
-   * ? null : flows.get(key)} 是同一条口径 ⇒ 借粮读到的“本周期” 与关账那一支读到的不是两个窗口（旧 {@code creditLinesOf} 只读当日
-   * {@code income} 局部量，是另一个窗口 —— 见交付报告）。
+   * ★ 三条与 {@code settleOneDayInto} 末尾写 {@code FlowRow} 时的 {@code acc =
+   * newCycleHouseholds.contains(key) ? null : flows.get(key)} 是同一条口径 ⇒ 借粮读到的“本周期” 与关账那一支读到的不是两个窗口（旧
+   * {@code creditLinesOf} 只读当日 {@code income} 局部量，是另一个窗口 —— 见交付报告）。
    *
    * <p>★ 库存由调用点保证（{@code requireHouseholdAccounts}）⇒ 本方法里每行都“读得到”；读口那边才可能出现空（具名缺失）。
    *
@@ -6732,7 +6918,7 @@ public final class EconomySettlement {
   /*
    * ★ E4b/D-030/D-031：新口径的唯一算法仍在 DebtCapacityBook.capacities，但现在只服务清算/阶层下滑/只读诊断；
    * 借粮（4b）与市场信用都已不再把 headroom 当借款门（D-031：借款人无上限，唯一上限 = 放贷人实际可借头寸）。
-   * 旧 LOAN_INCOME_MULTIPLE_PER_MILLE 只留 @Deprecated 别名。
+   * 旧 {@code LOAN_INCOME_MULTIPLE_PER_MILLE} 兼容别名已删（W2-fix6；κ 的唯一拼写点是 {@code DebtCapacity.CREDIT_F_MULTIPLE_PER_MILLE}）。
    */
 
   /**
@@ -7263,16 +7449,18 @@ public final class EconomySettlement {
    *            tie = 债权人 id 升序 → 债的单位 id 升序 → DebtContractId.value
    * 条款闸   = 只走 RepaymentRule.AVAILABLE_SURPLUS_SHARE + InterestTiming.AFTER_REPAYMENT_ON_CLOSE
    *            其它组合 fail-closed 具名抛（不静默当默认档）
-   * 可动用   = 商品：max(0, 余额 − 冻结)；粮再扣 max(0, … − 一日口粮 × DEBTOR_SUBSISTENCE_RESERVE_DAYS) × 千分比
+   * 可动用   = 商品：★★ v3.6（用户第六批裁定）= max(0, 余额 − 冻结) —— **不扣任何保留量**（有库存就还）
+   *            × 还款份额千分比
    *            货币：max(0, 逐币种余额 − 冻结)（全部币种；不跨币种求和/折换）
-   * 介质序   = ① 全部货币：余额原始数量降序，tie 币种 id 升序
-   *            ② 全部商品：余额原始数量降序，tie 商品 id 升序
-   *            （钱永远第一位；不是每条债内部先钱后货）
+   * 介质序   = ★ W2 起 = 该户**预估价值最低**的单位优先（S-5，用户 2026-10-10 第二批第 5 条）：
+   *            {@code DebtValuation.estimatedUnitValueMilli} 升序，同值按单位 canonical 串升序。
+   *            （旧口径"全部货币按余额降序 → 全部商品按余额降序、钱永远第一"= D-030 §4，已被取代）
    * 选择     = 逐条债（合同序）× 逐 medium（介质序）：identity 直接 1:1；否则用债务人价目表折成共同价值、
    *            整数 floor、最多还清本金；缺价 medium 具名跳过，换下一条
    * 付款     = 一组实际商品/货币腿铸成**唯一一条** LOAN_REPAYMENT 转移 → applyTransfer（带冻结/发行审计）
    * 本金     = 只减合同唯一的 principal（走 DebtContractBook.reduce；无 interest/principal 双账）
    * 缺价     = 持有资产但没有稳定价格 ⇒ 不折算、不静默付 0；记具名 DebtRepaymentSkip
+   * 还不上   = **挂账、计息、不清零**（用户 0–8 第 7 条「没库存就记为实际债务」）—— 本方法不核销
    * </pre>
    *
    * <p>★★ <b>为什么不按 DebtUnit/币种分别核算</b>（D-023 第 3 条）：合同仍只有一条连续本金；利息仍按现有 {@link #chargeInterest}
@@ -7282,8 +7470,11 @@ public final class EconomySettlement {
    * = 家户 actor）；只要其账户在本日 {@code AccountSession}/{@code actor} 账里可收，任意商品/货币腿都照收。收不了 ⇒ 具名
    * fail-closed，绝不静默吞款。
    *
-   * <p>★★ <b>粮保留与冻结口径不弱化</b>：粮永远保留一天口粮后才可动（无论合同计价是粮还是钱）；任何腿都不越过冻结； 还清后 {@link DebtContract} 留在表里（本金
-   * 0 的历史条不删，见 {@link DebtContractBook#reduce}）。
+   * <p>★★ <b>★★ v3.6（2026-10-11 用户第六批裁定）：还债不设任何保留窗口</b> —— 用户原话：「<b>为啥要设还债窗口，应当是有库存就还，
+   * 没库存就不还啊</b>」⇒ 可动额 = 手头库存（含货币，逐 medium 按 S-5 估值升序取用），**不扣"下轮生产花费"、不扣"一日口粮"、不扣任何 前瞻量**（D-030 §4
+   * 的"一日口粮保留"与 v3.5 的"35 天窗口"一并作废）。★ 唯一保留的前瞻扣除在<b>卖侧</b>（用户 0–8 第 5 条：投入市场的商品 = 扣除下一 tick
+   * 生产需要后的），本方法不碰它。★ 冻结口径不弱化：任何腿都不越过冻结；还清后 {@link DebtContract} 留在表里（本金 0 的历史条不删，见 {@link
+   * DebtContractBook#reduce}）。
    *
    * <p>★ <b>读数</b>：{@code repaid} 记本日实际走粮腿的毫粮（含以粮折付其它计价口径）；{@code repaidMoney}
    * 记本日实际走货币腿的逐币种毫钱；其它商品腿从合同 principal 下降 + 转移凭据读出。
@@ -7293,7 +7484,8 @@ public final class EconomySettlement {
    * @param marketsByHousehold 债务人 → 其所在市场区默认价目表（缺键 = 没有市场默认价目表 ⇒ 只有 identity 腿可付）
    * @param repayeeResolver 债权人 → 收款 actor 的解析口（默认 {@link
    *     DebtValuation.RepayeeResolver#HOUSEHOLD_ACTORS}； 外部放贷主体/政府账户可换一份 resolver）
-   * @param householdPrices 单个家户价目表（可选；本批正式状态没有该字段 ⇒ 传 {@code null} 走市场默认）
+   * @param householdPrices 家户价目表（可选；W2 起由 {@link HouseholdValuationBook} 现算注入 —— 它是 S-5
+   *     介质序与债务折价的<b>唯一</b>估值尺）
    */
   private static void repayDebts(
       LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -7314,6 +7506,11 @@ public final class EconomySettlement {
     Map<HouseholdId, List<DebtContractId>> debtsByDebtor = DebtIndex.byDebtor(debts);
     List<HouseholdId> debtors = new ArrayList<>(householdEconomies.keySet());
     debtors.sort(Comparator.comparing(HouseholdId::value)); // 稳定债务人序（不沿用 Map 插入序）
+    // ★★ §一.9：还债轮的三个具名计数（INFO 一条用；只读累加，不改任何口径）。
+    long debtorsWithOutstanding = 0L;
+    long householdsRepaid = 0L;
+    long householdsWithNoStockToRepay = 0L;
+    Set<HouseholdId> debtorsWithPayment = new LinkedHashSet<>();
     for (HouseholdId debtor : debtors) {
       HouseholdEconomy householdEconomy = householdEconomies.get(debtor);
       if (householdEconomy == null) {
@@ -7329,18 +7526,45 @@ public final class EconomySettlement {
       if (owed.isEmpty()) {
         continue;
       }
+      debtorsWithOutstanding++;
       MarketTable market = marketsByHousehold.get(debtor);
       owed.sort(repaymentOrder(debtor, market, householdPrices));
 
-      // ★ 可动用资产与介质序都取“本轮还款开始时”的值：介质序按原始余额排序，随后在逐债循环里只做扣减。
-      long dailyNeed = householdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L);
-      long grainReserve = Math.multiplyExact(dailyNeed, DEBTOR_SUBSISTENCE_RESERVE_DAYS);
+      // ★★★ v3.6（2026-10-11，用户第六批原话：「为啥要设还债窗口，应当是有库存就还，没库存就不还啊」）：
+      //   **不扣任何保留量** —— 可动商品 = max(0, 余额 − 冻结)（含冻结不越），逐商品同式；
+      //   ★ 作废的两条：D-030 §4 的"一日口粮保留"、v3.5 裁定的"35 天窗口"（见约束设计书 v3.6/v3.7 §4.1）。
+      //   ★ 还不上 ⇒ 挂账、计息、不清零（0–8 第 7 条）；本方法不核销、不留位。
       Map<CommodityId, Long> spendableGoods =
-          spendableGoods(debtor, householdGoods, householdFrozenGoods, grainReserve);
+          spendableGoods(debtor, householdGoods, householdFrozenGoods);
       Map<CurrencyId, Long> spendableMoney =
           spendableMoney(debtor, householdMoney, householdFrozenMoney);
-      List<DebtUnit> mediumOrder = repaymentMediumOrder(spendableMoney, spendableGoods);
+      // ★★ S-5（用户 2026-10-10 第二批第 5 条）：介质序 = **该户预估价值最低的商品优先** ——
+      //   {@link DebtValuation#estimatedUnitValueMilli} 升序（估算尺 = 家户价目表 → 市场区默认；
+      //   说不出价的排最后，同值按单位 canonical 串升序保证可复现）。★ 旧口径"钱永远第一 → 商品按数量降序"
+      //   （D-030 §4）**已被取代**，见 {@link #repaymentMediumOrder}。
+      List<DebtUnit> mediumOrder =
+          repaymentMediumOrder(debtor, spendableMoney, spendableGoods, market, householdPrices);
       Map<DebtUnit, Long> availableByUnit = availableByUnit(spendableMoney, spendableGoods);
+      // ★★ §一.9：无货可还 ⇒ 挂账（有未偿本金、而可动用介质一件都没有）。只计数，不改口径。
+      if (availableByUnit.isEmpty()) {
+        householdsWithNoStockToRepay++;
+      }
+      if (RAW.isTraceEnabled()) {
+        // ★★ W2（§一.9：逐笔明细 TRACE）—— S-5 介质序的现场证据：这一户这一轮按什么次序付、为什么是这个次序。
+        EventLog.channel(RAW)
+            .trace(
+                LogEvent.of(
+                    "DEBT_REPAY_MEDIUM_ORDER",
+                    EconomyLogSource.ECONOMY_DEBT_STATE,
+                    "debtor",
+                    debtor.value(),
+                    "mediumOrder",
+                    mediumOrder.stream().map(DebtUnit::key).toList(),
+                    "reserveCommodities",
+                    0,
+                    "why",
+                    "ascending-estimated-unit-value (S-5) + v3.6-no-reserve-window"));
+      }
 
       for (DebtContract debt : owed) {
         requireRepayableTerms(debt);
@@ -7355,6 +7579,9 @@ public final class EconomySettlement {
                 householdPrices);
         long paid = plan.totalContractUnits();
         if (paid > 0L) {
+          if (debtorsWithPayment.add(debtor)) {
+            householdsRepaid++; // ★ §一.9：逐户只计一次（同一户可能有多条合同）
+          }
           ActorRef payee =
               requireReceivableRepayee(
                   repayeeResolver, debt, householdOfActor, householdGoods, householdMoney);
@@ -7434,29 +7661,82 @@ public final class EconomySettlement {
             ledger, debtor, debt, debt.principal() - paid, plan.unpricedAssets());
       }
     }
+    // ★★ §一.9（v3.6 落地）：还债轮 INFO 一条 —— "本轮还了多少 / 有几户无货可还（挂账）"。
+    //   ★ 具名口径：`householdsWithNoStockToRepay` = 有未偿本金、而手头可动用介质**一件都没有**的家户数
+    //     （挂账、计息、不清零 —— 用户 0–8 第 7 条）⇒ 这就是"没库存就不还"的现场读数。
+    EventLog.channel(TRACE)
+        .info(
+            LogEvent.of(
+                "DEBT_REPAY_ROUND",
+                EconomyLogSource.ECONOMY_DEBT,
+                "debtorsWithOutstanding",
+                debtorsWithOutstanding,
+                "householdsRepaid",
+                householdsRepaid,
+                "householdsWithNoStockToRepay",
+                householdsWithNoStockToRepay,
+                "repaidGrainMilli",
+                traceTotalLongs(repaid),
+                "debtContracts",
+                debts.size(),
+                "reserveCommodities",
+                0,
+                "why",
+                "v3.6-no-reserve-window (有库存就还、没库存记债)"));
+    if (TRACE.isDebugEnabled()) {
+      // ★ 保留量口径 DEBUG 一条（为什么"一件都不扣"）：供现场判读"还债额为什么比上一版大"。
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "DEBT_REPAY_RESERVE_POLICY",
+                  EconomyLogSource.ECONOMY_DEBT,
+                  "reserveCommodities",
+                  0,
+                  "reserveMoney",
+                  0,
+                  "spendableGoodsRule",
+                  "max(0, 余额 − 冻结)",
+                  "spendableMoneyRule",
+                  "max(0, 逐币种余额 − 冻结)",
+                  "why",
+                  "v3.6：D-030 §4 一日口粮保留 + v3.5 的 35 天窗口一并作废；卖侧前瞻未动"));
+    }
   }
 
-  /** ★★ <b>D-030 §3.5 的介质序</b>：全部货币（余额降序、币种 id 升序）→ 全部商品（余额降序、商品 id 升序）。 钱永远第一位；商品内部按原始数量、不按价值。 */
+  /**
+   * ★★★ <b>W2（2026-10-11）：S-5 的介质序 —— 该户预估价值最低的商品优先</b>。
+   *
+   * <pre>
+   * 逐介质估值 = {@link DebtValuation#estimatedUnitValueMilli}(债务人, 单位, 市场默认价目表, 家户价目表)
+   * 排序       = 估值升序 → 单位 canonical 串升序（同值/不可定价的稳定 tie-break，I7：序是内容的纯函数）
+   * </pre>
+   *
+   * <p>★★ <b>它取代了什么</b>：改动前是 D-030 §4 的「全部货币（余额降序、币种 id 升序）→ 全部商品（余额降序、商品 id 升序）」 ——
+   * <b>钱永远第一位</b>，商品内部只看数量、不看价值。用户 2026-10-10 第二批第 5 条已取代该口径：
+   * 「偿还顺序不是先还钱或者先还粮还工具之类的，而是只取决于这个家户的哪个种类商品，预估价值最低」。
+   *
+   * <p>★ <b>不可定价（估值为 0）排最前</b>：0 价商品与"说不出价的资产"在"值不值钱"这一维上是同一档（都换不来钱）， 先付掉它们对债务人最有利。★ 与 {@code
+   * choosePayment} 的分工不变：本方法只定<b>次序</b>， 逐笔能不能折、折多少仍由 {@code choosePayment}/{@code
+   * commonValueMilli} 判（缺价 ⇒ 具名 skip，不静默付 0）。
+   */
   private static List<DebtUnit> repaymentMediumOrder(
-      Map<CurrencyId, Long> spendableMoney, Map<CommodityId, Long> spendableGoods) {
-    List<CurrencyId> currencies = new ArrayList<>(spendableMoney.keySet());
-    currencies.sort(
-        Comparator.comparingLong((CurrencyId currency) -> spendableMoney.getOrDefault(currency, 0L))
-            .reversed()
-            .thenComparing(CurrencyId::value));
-    List<CommodityId> commodities = new ArrayList<>(spendableGoods.keySet());
-    commodities.sort(
-        Comparator.comparingLong(
-                (CommodityId commodity) -> spendableGoods.getOrDefault(commodity, 0L))
-            .reversed()
-            .thenComparing(CommodityId::value));
-    List<DebtUnit> order = new ArrayList<>(currencies.size() + commodities.size());
-    for (CurrencyId currency : currencies) {
+      HouseholdId debtor,
+      Map<CurrencyId, Long> spendableMoney,
+      Map<CommodityId, Long> spendableGoods,
+      MarketTable market,
+      DebtValuation.HouseholdPriceTable householdPrices) {
+    List<DebtUnit> order = new ArrayList<>(spendableMoney.size() + spendableGoods.size());
+    for (CurrencyId currency : spendableMoney.keySet()) {
       order.add(DebtUnit.money(currency));
     }
-    for (CommodityId commodity : commodities) {
+    for (CommodityId commodity : spendableGoods.keySet()) {
       order.add(DebtUnit.commodity(commodity));
     }
+    order.sort(
+        Comparator.comparingLong(
+                (DebtUnit unit) ->
+                    DebtValuation.estimatedUnitValueMilli(debtor, unit, market, householdPrices))
+            .thenComparing(DebtUnit::key));
     return order;
   }
 
@@ -7504,12 +7784,82 @@ public final class EconomySettlement {
     availableByUnit.put(unit, remaining);
   }
 
-  /** 可动商品 = max(0, 余额 − 冻结)；粮再扣一日口粮保留 × 千分比（唯一拼写点，与旧 E4c 口径逐值同式）。 */
+  /**
+   * ★★ <b>W2：还款轮的逐户资源快照</b>（{@link HouseholdValuationBook#derive} 的入参）—— 只读、不写状态。
+   *
+   * <pre>
+   * market = 该户所在市场区的默认价目表（{@code marketsByHousehold}；缺 ⇒ 该户整户不给价，回落市场默认）
+   * goods  = max(0, 现货 − 冻结)   money = max(0, 余额 − 冻结)
+   * labor  = 该户当刻的劳动预算（估值不用它，照快照契约带上）
+   * </pre>
+   *
+   * <p>★ 与 {@code LaborQueueSettlement.buildArbitrageSnapshots} 同一条"净额"口径（余额 − 冻结，夹到 ≥ 0）；
+   * 那份是套利时刻、这份是还款时刻 —— 两者都不进状态，故不共享实例（时点不同）。
+   */
+  private static Map<HouseholdId, HouseholdResourceSnapshot> repaymentSnapshots(
+      long day,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
+      Map<HouseholdId, MarketTable> marketsByHousehold) {
+    List<HouseholdId> ordered = new ArrayList<>(householdEconomies.keySet());
+    ordered.sort(Comparator.comparing(HouseholdId::value));
+    Map<HouseholdId, HouseholdResourceSnapshot> snapshots = new LinkedHashMap<>();
+    for (HouseholdId household : ordered) {
+      HouseholdEconomy row = householdEconomies.get(household);
+      if (row == null) {
+        continue;
+      }
+      snapshots.put(
+          household,
+          new HouseholdResourceSnapshot(
+              day,
+              household,
+              marketsByHousehold.get(household),
+              netOf(householdGoods.get(household), householdFrozenGoods.get(household)),
+              netOf(householdMoney.get(household), householdFrozenMoney.get(household)),
+              Math.max(0L, row.laborMilli())));
+    }
+    return snapshots;
+  }
+
+  /** {@code 余额 − 冻结}（逐键；缺冻结 = 0；结果夹到 ≥ 0；保序；空 ⇒ 空表）。 */
+  private static <K> Map<K, Long> netOf(Map<K, Long> stock, Map<K, Long> frozen) {
+    if (stock == null || stock.isEmpty()) {
+      return Map.of();
+    }
+    LinkedHashMap<K, Long> net = new LinkedHashMap<>();
+    for (Map.Entry<K, Long> entry : stock.entrySet()) {
+      long held = entry.getValue() == null ? 0L : entry.getValue();
+      long blocked = frozen == null ? 0L : frozen.getOrDefault(entry.getKey(), 0L);
+      long available = Math.max(0L, held - blocked);
+      if (available > 0L) {
+        net.put(entry.getKey(), available);
+      }
+    }
+    return net;
+  }
+
+  /**
+   * ★★★ <b>v3.6（2026-10-11）：可动商品 = max(0, 余额 − 冻结)</b> —— <b>不扣任何保留量</b>。
+   *
+   * <p>★★ <b>用户原话（第六批）</b>：「<b>为啥要设还债窗口，应当是有库存就还，没库存就不还啊</b>」⇒ 还债可用量 = 家户手头库存本身 （含货币；介质序仍按 S-5 =
+   * 预估价值最低优先）。
+   *
+   * <p>★★ <b>它作废了什么（两条，均不再保留）</b>：① 更早的 "自然口粮日需求 × {@code
+   * DEBTOR_SUBSISTENCE_RESERVE_DAYS}"（那条独立的一日口粮账）；② W2 上一版的"下轮生产方式的生产花费（内含口粮，S-10）"保留 —— 后者连同
+   * {@code productionCostsByHousehold} 一并删除（AGENTS §一.11：旧设计不留）。 ★ 唯一保留的"前瞻扣除"在<b>卖侧</b>（{@code
+   * MarketSettlement} 的 {@code retention}，用户 0–8 第 5 条），本方法不碰它。
+   *
+   * <p>★ 冻结不越：任何腿都不越过 {@code householdFrozenGoods}。还款份额（{@link #DEBT_REPAYMENT_SHARE_PER_MILLE}，出厂
+   * 1000‰ = 全还）对**每一种可动商品**同式（出厂值 ⇒ 逐值等于"不乘"）。
+   */
   private static Map<CommodityId, Long> spendableGoods(
       HouseholdId debtor,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
-      long grainReserve) {
+      Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods) {
     Map<CommodityId, Long> stock = householdGoods.getOrDefault(debtor, Map.of());
     if (stock.isEmpty()) {
       return Map.of();
@@ -7522,10 +7872,9 @@ public final class EconomySettlement {
       }
       long free =
           Math.max(0L, amount - frozenGoodsOf(householdFrozenGoods, debtor, entry.getKey()));
-      if (entry.getKey().equals(GRAIN)) {
-        free = Math.max(0L, free - grainReserve);
-        free = free * DEBT_REPAYMENT_SHARE_PER_MILLE / 1000L;
-      }
+      // ★★ v3.6：**这里不再扣任何保留量**（旧的两条：一日口粮 / 下轮生产花费 —— 均已作废）。
+      // ★ 还款份额（{@link #DEBT_REPAYMENT_SHARE_PER_MILLE}，出厂 1000‰ = 全还）。
+      free = free * DEBT_REPAYMENT_SHARE_PER_MILLE / 1000L;
       if (free > 0L) {
         spendable.put(entry.getKey(), free);
       }
@@ -7916,21 +8265,6 @@ public final class EconomySettlement {
         laborMilli,
         laborCommitment.period(),
         laborCommitment.kind());
-  }
-
-  /**
-   * ★★ <b>既有 runtime 借粮路径的合同 id（唯一拼写点之一）</b>：债务人 × 债权人 × 粮 × 默认 legacy terms。
-   *
-   * <p>★ 真正的四元组派生在 {@link DebtContractId#idOf}；本方法只固定“这条 runtime 路径用粮单位与默认 legacy
-   * terms”这两个维度，避免结算里两处各拼一遍（利率/规则的唯一字面量在 {@link DebtTerms}）。 ★ 跨周期必然命中同一条（这是 E4a 的连续身份），旧“周期在 id
-   * 里”的行为到此结束（见交付报告的行为差异）。
-   */
-  static DebtContractId legacyGrainDebtId(HouseholdId debtor, HouseholdId creditor) {
-    return DebtContractId.idOf(
-        debtor,
-        creditor,
-        DebtUnit.commodity(GRAIN),
-        DebtTerms.legacyDefault(BORROW_RATE_PER_MILLE_PER_CYCLE));
   }
 
   // ── 周期收获与制度分配 ─────────────────────────────────────────────────────────────
@@ -9061,7 +9395,10 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>P5：回笼（WITHDRAWAL）写口的包内入口</b> —— 薄转发到唯一实现 {@link TreasuryWithdrawal#withdraw}；
+   * ★ <b>为什么还活着（W2-fix6 裁定保留，不是孤儿）</b>：计划内待接线入口 —— 消费者 = **P7 的 GM 编辑工具**（回笼写口） 与日结算/命令层的同包代码（批次：P5
+   * 立口、P7/GM 工具批接线；接上之前零自动调用方，属预期）。
+   *
+   * <p>★★ <b>P5：回笼（WITHDRAWAL）写口的包内入口</b> —— 薄转发到唯一实现 {@link TreasuryWithdrawal#withdraw}；
    * 发行授权、余额/冻结守卫、审计 id 与重放幂等全部在那一处，本方法不再写第二份算式。
    *
    * <p>★ <b>为什么保留这个入口</b>：日结算/命令层的同包代码与 P7 的 GM 编辑工具可以只依赖 {@code EconomySettlement} 这一个门面；跨包调用方直接走
@@ -9445,7 +9782,7 @@ public final class EconomySettlement {
    * ratePerMillePerCycle = 20} 就只是一个写进去、谁也不读的数（账面记成"债务"、语义却是**无限量无偿赈济**）。
    *
    * <p>★★ **它不搬运任何粮、不动任何库存**（纯数学）⇒ §6.1 的守恒式不受影响；债务人的"更穷"体现在 ①本金变大、②本行流水的 {@code interestDue}（以及
-   * {@code netSurplus}：见 {@code settleOneDay} 里那条注释）。 **债权人这一侧本批不记**：它的资产增值体现在债务表里，而 {@code
+   * {@code netSurplus}：见 {@code settleOneDayInto} 里那条注释）。 **债权人这一侧本批不记**：它的资产增值体现在债务表里，而 {@code
    * FlowRow.income} 是**粮食**口径 （往里加"利息收入"会让守恒式当场不成立）⇒ 记在债权侧要等 §五 的索取源协议/市场折算（V7+）。
    *
    * <p>★ **偿还先于计息**（R3 续修）：关账日的日序是 借粮 → 偿还 → 饿死判据 → 计息（见 {@link #repayDebts}）， 这里只负责把利息并入本金； {@link
@@ -9455,7 +9792,7 @@ public final class EconomySettlement {
    *
    * <p>★★ **计息本金取"当日起始"快照，不取当日 lend/repay 之后的本金**（M0.5 守恒式的权威口径：计息日 {@code + ⌊昨 × 率 ÷ 1000⌋}，"昨" =
    * 当日开始时的本金）：当天新借的债当天不计息；当天还掉的那部分本金 **今天照样计息**（"先还后计"的偿还次序不变，只是计息基数不跟着偿还缩水）。计息仍并入**当前**本金 ⇒ 与守恒式
-   * {@code 本金_今 = 昨 + 放出 − 偿还 + ⌊昨 × 率 ÷ 1000⌋} 逐值一致。★ 快照由 {@code settleOneDay} 在任何 lend/repay
+   * {@code 本金_今 = 昨 + 放出 − 偿还 + ⌊昨 × 率 ÷ 1000⌋} 逐值一致。★ 快照由 {@code settleOneDayInto} 在任何 lend/repay
    * 之前建好传入。
    *
    * @param debts 债务表（就地更新：本金并入利息）
@@ -9989,22 +10326,6 @@ public final class EconomySettlement {
       return;
     }
     setMoney(householdMoney, key, currency, moneyOf(householdMoney, key, currency) + delta);
-  }
-
-  /**
-   * ★ <b>"这个世界没有货币"的会话副本</b>（每个家户一本空钱包）—— 只服务**包内**的单模块入口 （{@link #settleOneDay} 的短重载与 {@code
-   * EconomyDayStepper} 的短构造器）。
-   *
-   * <p>★ 它<b>不是</b>"余额为 0 的默认值"：它说的是"世界的货币总量是 0"这个**合法状态** —— 没有货币 ⇒ 没有有效需求（市场买不动）、没有货币工资（可用 0）。★
-   * <b>app 协调器不许走它</b>： 真档的货币（创世禀赋）住在 actor 侧，必须由协调器载入（否则钱会在账上静默消失）。
-   */
-  static LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> emptyMoneyAccountsFor(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
-    LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> money = new LinkedHashMap<>();
-    for (HouseholdId key : householdEconomies.keySet()) {
-      money.put(key, Map.of());
-    }
-    return money;
   }
 
   /**

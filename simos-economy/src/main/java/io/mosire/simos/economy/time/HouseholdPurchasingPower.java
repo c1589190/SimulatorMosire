@@ -124,8 +124,8 @@ final class HouseholdPurchasingPower {
    *   <li>篮子 = {@link HouseholdEconomy#naturalNeeds()} <b>全部键</b>（需求量 &gt; 0 的那些）——
    *       不动库存（不扣"已有多少货"）， 因为 F-1 问的是"<b>付清</b>需求"，而扣库存会让口径混进商品面；★ 需求量为 0 的键不进篮子（缺它的价不影响"付清需求"）；
    *   <li>价格 = 该币法定区价表（{@link ZoneTable}）；<b>缺定价行 ⇒ 整币 {@link OptionalLong#empty()}</b>；
-   *   <li>除法向下取整（与 {@code MarketSettlement.moneyReserveOfHousehold} 的花钱口径逐字同源）；溢出按饱和处理（{@code
-   *       Long.MAX_VALUE}，不抛、不静默变负）。
+   *   <li>除法向下取整（与 {@code MarketSettlement} 的花钱口径同源；★ 那个"家户货币保留额"算式已随 W2-fix4 退役市场信用撮合一并删除 ——
+   *       本类现在是"付清需求要付多少"的唯一拼写点）；溢出按饱和处理（{@code Long.MAX_VALUE}，不抛、不静默变负）。
    * </ol>
    *
    * <p>★ <b>空篮子 ⇒ 空读数</b>（没有需求就没有"付清需求要付多少"这件事 ⇒ 不换；这也是"未注入 naturalNeeds 的旧世界一个数都不动" 的落点）。

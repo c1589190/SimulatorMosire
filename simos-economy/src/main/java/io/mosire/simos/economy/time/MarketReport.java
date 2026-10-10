@@ -1,10 +1,8 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketTaxLayer;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
@@ -58,8 +56,6 @@ import java.util.OptionalLong;
  * @param priceUpdates ★ M2.6：自适应模式下的逐 (集散节点, 商品) 改价记录；固定模式恒为空表
  * @param sellerOutcomes ★ S3：逐卖方槽位的只读结果（成本估计 / 成交 / 未成交原因 / 被谁挤掉）；空表 = 本轮没有卖方槽
  * @param buyerOutcomes ★ S3：逐买方槽位的只读结果（库存/覆盖/缺口/预算/下单/成交/原因）；空表 = 本轮没有买方槽
- * @param creditFills ★★ D-030：本轮信用成交的债务来源（钱货销售另在 {@link #fills()} 里一笔；借实物只有本表一笔）。
- *     它是"信用成交"与"现金成交"的分辨点：同一笔钱货销售同时出现在 {@code fills} 与 {@code creditFills}，纯现金成交 只在 {@code fills}。
  */
 public record MarketReport(
     long day,
@@ -77,7 +73,6 @@ public record MarketReport(
     List<PriceUpdate> priceUpdates,
     List<SellerOutcome> sellerOutcomes,
     List<BuyerOutcome> buyerOutcomes,
-    List<CreditFill> creditFills,
     FxRoundResult fx) {
 
   /**
@@ -162,8 +157,7 @@ public record MarketReport(
       PriceMode priceMode,
       List<PriceUpdate> priceUpdates,
       List<SellerOutcome> sellerOutcomes,
-      List<BuyerOutcome> buyerOutcomes,
-      List<CreditFill> creditFills) {
+      List<BuyerOutcome> buyerOutcomes) {
     this(
         day,
         trigger,
@@ -180,7 +174,6 @@ public record MarketReport(
         priceUpdates,
         sellerOutcomes,
         buyerOutcomes,
-        creditFills,
         FxRoundResult.none());
   }
 
@@ -200,7 +193,6 @@ public record MarketReport(
     priceUpdates = priceUpdates == null ? List.of() : List.copyOf(priceUpdates);
     sellerOutcomes = sellerOutcomes == null ? List.of() : List.copyOf(sellerOutcomes);
     buyerOutcomes = buyerOutcomes == null ? List.of() : List.copyOf(buyerOutcomes);
-    creditFills = creditFills == null ? List.of() : List.copyOf(creditFills);
     fx = fx == null ? FxRoundResult.none() : fx;
   }
 
@@ -271,7 +263,6 @@ public record MarketReport(
       List<PriceUpdate> priceUpdates,
       List<SellerOutcome> sellerOutcomes,
       List<BuyerOutcome> buyerOutcomes,
-      List<CreditFill> creditFills,
       Map<Fill, Long> tariffByFill) {
     return withRegulatedTariff(
         day,
@@ -289,7 +280,6 @@ public record MarketReport(
         priceUpdates,
         sellerOutcomes,
         buyerOutcomes,
-        creditFills,
         tariffByFill,
         FxRoundResult.none());
   }
@@ -315,7 +305,6 @@ public record MarketReport(
       List<PriceUpdate> priceUpdates,
       List<SellerOutcome> sellerOutcomes,
       List<BuyerOutcome> buyerOutcomes,
-      List<CreditFill> creditFills,
       Map<Fill, Long> tariffByFill,
       FxRoundResult fx) {
     return withRegulatedTariff(
@@ -334,7 +323,6 @@ public record MarketReport(
         priceUpdates,
         sellerOutcomes,
         buyerOutcomes,
-        creditFills,
         tariffByFill,
         fx,
         List.of());
@@ -367,7 +355,6 @@ public record MarketReport(
       List<PriceUpdate> priceUpdates,
       List<SellerOutcome> sellerOutcomes,
       List<BuyerOutcome> buyerOutcomes,
-      List<CreditFill> creditFills,
       Map<Fill, Long> tariffByFill,
       FxRoundResult fx,
       List<TaxItem> taxItems) {
@@ -388,7 +375,6 @@ public record MarketReport(
             priceUpdates,
             sellerOutcomes,
             buyerOutcomes,
-            creditFills,
             fx);
     if (taxItems != null && !taxItems.isEmpty()) {
       // ★ 保序冻结（逐票顺序 → 逐层顺序 → 逐政府规范序），且逐条判非 null：读数里不许出现"半个税项"。
@@ -428,6 +414,40 @@ public record MarketReport(
   public List<TaxItem> taxItems() {
     List<TaxItem> items = TAX_ITEMS_BY_REPORT.get(new IdentityKey(this));
     return items == null ? List.of() : items;
+  }
+
+  /**
+   * ★★★ <b>W2（2026-10-11，S-10）：逐户“生产花费（内含口粮）未满足量”—— W3 的缺口/满足率读口</b>。
+   *
+   * <pre>
+   * 逐户未满足量 = Σ_{本户的 BuyerOutcome} gapQty
+   * gapQty      = max(0, desiredQty − 可用 − 在途)
+   * desiredQty  = ★ 生产花费（内含口粮）+ 有效需求目标   （{@code MarketSettlement.collectBuyerOutcomes}）
+   * </pre>
+   *
+   * <p>★★ <b>为什么它就是 W3 要的量</b>：约束设计书 §6.1 W3 行把"逐户缺口/满足率"定义为 「**生产花费（内含口粮）的未满足量**，与 W2 **同一个量**」；而
+   * {@code desiredQty} 自 W2 起就是那个 生产花费（{@code MarketSettlement.householdProductionCostOf} = 名义 unit
+   * 的必要投入 + naturalNeeds 前瞻）， 故本方法**不重算**任何东西 —— 它只是把同一批读数按家户求和（一个量贯穿买卖、还债、饿死）。
+   *
+   * <p>★ <b>量纲</b>：毫商品（按商品分列在 {@link BuyerOutcome#commodity()}）；<b>不跨商品相加成"一个数"</b> ——
+   * 需要单一标量（如满足率）的调用方必须自己说清怎么加权（与"禁跨币相加"同一条纪律）。 ★ 经营者（{@code household} 为空）不进表：它不是"家户的生产花费"。
+   */
+  public Map<HouseholdId, Map<CommodityId, Long>> unmetProductionCostByHousehold() {
+    Map<HouseholdId, Map<CommodityId, Long>> byHousehold = new LinkedHashMap<>();
+    for (BuyerOutcome outcome : buyerOutcomes) {
+      if (outcome.household().isEmpty() || outcome.gapQty() <= 0L) {
+        continue;
+      }
+      byHousehold
+          .computeIfAbsent(outcome.household().get(), ignored -> new LinkedHashMap<>())
+          .merge(outcome.commodity(), outcome.gapQty(), Long::sum);
+    }
+    LinkedHashMap<HouseholdId, Map<CommodityId, Long>> frozen = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, Map<CommodityId, Long>> entry : byHousehold.entrySet()) {
+      frozen.put(
+          entry.getKey(), Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
+    }
+    return Collections.unmodifiableMap(frozen);
   }
 
   /**
@@ -547,7 +567,7 @@ public record MarketReport(
         List.of(),
         List.of(),
         List.of(),
-        List.of());
+        FxRoundResult.none());
   }
 
   /** 未成交原因分布（档位 → 条数；保序 = {@link MarketUnfilledReason} 的声明序）。 */
@@ -737,57 +757,6 @@ public record MarketReport(
       Objects.requireNonNull(from, "from");
       Objects.requireNonNull(to, "to");
       Objects.requireNonNull(commodity, "commodity");
-    }
-  }
-
-  /**
-   * ★★ <b>D-030：一笔市场信用成交（债务来源读数）</b>。
-   *
-   * <p>★★ <b>量纲</b>：{@code quantityMilli} = 该合同本笔**本金**，单位由 {@code unit} 给出 —— {@code
-   * DebtUnit.Money} 时是毫计价货币（借银买货），{@code DebtUnit.Commodity} 时是毫商品（借实物）。{@code commodity}
-   * 是这笔信用服务的商品：借货币买货 ⇒ 买到的商品；借实物 ⇒ 借出的商品。{@code hex} = 卖方槽位所在格（区内信用成交的 货物起点；单区世界里就是区内某格）。
-   *
-   * <p>★ <b>与 {@link #fills()} 的关系</b>：借货币买货对卖方仍是一笔现金销售 ⇒ 同一笔同时写一条普通 {@code Fill}
-   * （钱货）与本条（债务来源）；借实物没有货币腿 ⇒ 只写本条，{@code fills} 不伪造一条 0 货款销售。因此"现金成交"与 "信用成交"的分辨点是本表：出现在这里的 {@code
-   * (borrower, commodity)} 对应的那笔成交即信用成交。
-   *
-   * @param hex 卖方槽位所在格（区内信用的货物起点）
-   * @param commodity 本笔信用服务的商品（买到的或借出的）
-   * @param borrower 债务人 / 买方主体
-   * @param lenderOrSeller 债权人 / 卖方主体（借货币 = 出借人；借实物 = 卖家）
-   * @param quantityMilli 本笔本金（单位 = {@code unit}；毫钱 或 毫商品）
-   * @param unit 债务计量单位（{@code Money} / {@code Commodity}）
-   * @param debtId 累加后的债务合同稳定身份（同一四元组跨笔恒同一条）
-   * @param ratePerMille 每周期利率（千分数；本批 = {@code BORROW_RATE_PER_MILLE_PER_CYCLE}）
-   * @param dueCycle 到期周期（本批 = 当前周期 + 1）
-   */
-  public record CreditFill(
-      HexCoord hex,
-      CommodityId commodity,
-      ActorRef borrower,
-      ActorRef lenderOrSeller,
-      long quantityMilli,
-      DebtUnit unit,
-      DebtContractId debtId,
-      long ratePerMille,
-      long dueCycle) {
-
-    public CreditFill {
-      Objects.requireNonNull(hex, "hex");
-      Objects.requireNonNull(commodity, "commodity");
-      Objects.requireNonNull(borrower, "borrower");
-      Objects.requireNonNull(lenderOrSeller, "lenderOrSeller");
-      Objects.requireNonNull(unit, "unit");
-      Objects.requireNonNull(debtId, "debtId");
-      if (quantityMilli <= 0L) {
-        throw new IllegalArgumentException("CreditFill.quantityMilli 必须 > 0: " + quantityMilli);
-      }
-      if (ratePerMille < 0L) {
-        throw new IllegalArgumentException("CreditFill.ratePerMille 不得为负: " + ratePerMille);
-      }
-      if (dueCycle < 0L) {
-        throw new IllegalArgumentException("CreditFill.dueCycle 不得为负: " + dueCycle);
-      }
     }
   }
 

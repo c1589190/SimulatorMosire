@@ -83,7 +83,7 @@ class McpPortTopologyTest {
           "simos.unit.list");
 
   /**
-   * **非窄写**的写工具（44 条）：3 条通用写 + D1–P7 的组合/编排写 + S3a 的 6 条家户/人口组合写 + 2026-10-09 按实测补入 A1/A2a 的 4 条
+   * **非窄写**的写工具（60 条）：3 条通用写 + D1–P7 的组合/编排写 + S3a 的 6 条家户/人口组合写 + 2026-10-09 按实测补入 A1/A2a 的 4 条
    * {@code simos.gov.*} 货币工具（都不继承 AbstractNarrowWriteTool）。
    */
   private static final List<String> NON_NARROW_WRITES =
@@ -223,9 +223,10 @@ class McpPortTopologyTest {
       List.of("simos.army.recordCombat", "social.UpdateCity", "actor.AdjustAccounts");
 
   /**
-   * ★★ <b>B2（2026-10-08）市场区的 3 条窄写工具名</b>（都继承 {@code AbstractNarrowWriteTool}；工具名 ≠ 命令类型）。
+   * ★★ <b>市场区（zone）+ 政府挂单的 6 条窄写工具名</b>（都继承 {@code AbstractNarrowWriteTool}；工具名 ≠ 命令类型）。
    *
-   * <p>2026-10-09 按实测补入：这三条当时没进任何名单 ⇒ GM 桶与 {@code GM_NARROW_WRITES} 对不上而红。
+   * <p>2026-10-09 按实测补入 B2 的 3 条（当时没进任何名单 ⇒ GM 桶与 {@code GM_NARROW_WRITES} 对不上而红）； ★★
+   * W2（2026-10-11）按实测补入 {@code simos.economy.setMarketZonePriceAlpha}（逐区价格步长 α 的 GM 窄写）。
    */
   private static final List<String> ECONOMY_ZONE_WRITES =
       List.of(
@@ -233,9 +234,10 @@ class McpPortTopologyTest {
           "simos.economy.reassignZoneHexes",
           "simos.economy.mergeMarketZones",
           "simos.economy.setCommodityFreight",
-          "simos.gm.govMarketMandate");
+          "simos.gm.govMarketMandate",
+          "simos.economy.setMarketZonePriceAlpha");
 
-  /** GM 组的 63 条窄写：21 sd + 8 map + 3 economy zone + 28 unit + 3 其他；**都不是**通用写。 */
+  /** GM 组的 66 条窄写：21 sd + 8 map + 6 economy zone/govMandate + 28 unit + 3 其他；**都不是**通用写。 */
   private static final List<String> GM_NARROW_WRITES =
       concat(
           concat(SD_NARROW_WRITES, MAP_WRITES),
@@ -259,7 +261,10 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 37 + 非窄写 60 + 窄写 63 = 160；2026-10-09 按实测补入 A1/A2a/B2 的 7 条）。 */
+  /**
+   * J1：**唯一的 MCP 口 = GM 组**（读 37 + 非窄写 60 + 窄写 66 = 163；W2 按实测补入
+   * simos.economy.setMarketZonePriceAlpha）。
+   */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -267,7 +272,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（37 读 + 60 非窄写 + 63 窄写 = 160）")
+          .as("J1：唯一口 = GM 组（37 读 + 60 非窄写 + 66 窄写 = 163）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

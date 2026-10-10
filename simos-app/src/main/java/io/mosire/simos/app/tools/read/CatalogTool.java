@@ -438,6 +438,15 @@ public final class CatalogTool implements AgentTool {
                   + " freight-unchanged（与现值逐字相同，不做静默幂等）；★ GM-only：不进令/RegisterEffect/决策人目录，"
                   + "GM 的 simos.command.submit 与窄工具 simos.economy.setCommodityFreight 可用）"),
           Map.entry(
+              "economy.SetMarketZonePriceAlpha",
+              "marketId, alphaPerMille(≥ 0 的整数；‰/轮)（★ W2：GM 设置某个市场区的**动态价步长 α**"
+                  + "（MarketZone.priceAlphaPerMille；缺省 50‰/轮，不设上下限 —— 可以远大于 50，也可以取 0 ="
+                  + " 该区价格不再随供需变动）；缺货每轮最多涨 α‰、滞销每轮最多跌 α‰，规模只决定多快打满 α；"
+                  + "区不存在（含派生市场）⇒ 拒 zone-missing；与现值相同 ⇒ 拒 alpha-unchanged；α < 0 ⇒ 拒 bad-payload；"
+                  + "★ 只写 marketZones 一个区的这一个字段，价格/成员格/法定币/账户/债务一个数都不动；"
+                  + "★ 生效时点 = 下一市场轮；★ GM-only：不进令/RegisterEffect/决策人目录，"
+                  + "GM 的 simos.command.submit 与窄工具 simos.economy.setMarketZonePriceAlpha 可用）"),
+          Map.entry(
               "economy.SetMarketNumeraire",
               "marketId, numeraire(币种 id，须在世界词表里)（★ W1：逐区；GM-only —— 把**某个市场**的计价币改成另一种币；"
                   + "市场必须已存在，否则拒 market-missing；币种不在词表 ⇒ 拒 unknown-currency；"

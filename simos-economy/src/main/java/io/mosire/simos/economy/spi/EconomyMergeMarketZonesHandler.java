@@ -149,6 +149,22 @@ public final class EconomyMergeMarketZonesHandler
             base);
       }
       Map<String, OfficialRate> mergedRates = new LinkedHashMap<>(target.officialRates());
+      // ★★ W2（2026-10-11）：动态价步长 α 是**逐区政策** ⇒ 两区不同值时合并会静默丢掉其中一个（"手写构造器漏字段"
+      //   的同族形态）。与 official-rate-conflict / prices-differ 同一处置：具名拒，让调用方先
+      //   economy.SetMarketZonePriceAlpha 统一，再合并。
+      if (source.priceAlphaPerMille() != target.priceAlphaPerMille()) {
+        return rejected(
+            "price-alpha-conflict",
+            definition,
+            source,
+            target,
+            "两区的动态价步长 α 不同（源="
+                + source.priceAlphaPerMille()
+                + "‰ 目标="
+                + target.priceAlphaPerMille()
+                + "‰；合并后只能有一个）—— 先 economy.SetMarketZonePriceAlpha 统一，再合并",
+            base);
+      }
       for (Map.Entry<String, OfficialRate> entry : source.officialRates().entrySet()) {
         OfficialRate existing = mergedRates.get(entry.getKey());
         if (existing != null && !existing.equals(entry.getValue())) {
@@ -182,7 +198,9 @@ public final class EconomyMergeMarketZonesHandler
                   mergedRadius,
                   mergedHexes,
                   target.legalTender(),
-                  Map.of())
+                  Map.of(),
+                  // ★★ W2：α 显式带过（两区必须同值，上面已判）—— 绝不走六参缺省构造器（那会把政策静默重置成 50‰）。
+                  target.priceAlphaPerMille())
               .withOfficialRates(mergedRates);
       Map<MarketZoneId, MarketZone> zones = new LinkedHashMap<>(base.marketZones());
       zones.remove(sourceId);

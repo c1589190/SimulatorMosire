@@ -92,6 +92,7 @@ import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketNumeraireHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
+import io.mosire.simos.economy.spi.EconomySetMarketZonePriceAlphaHandler;
 import io.mosire.simos.economy.spi.EconomySetOfficialRateHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
@@ -679,6 +680,12 @@ public final class Shell implements AutoCloseable {
                 //   simos.economy.setCommodityFreight 照常可用。★ 不实现 CommandTargets（不进决策令桶，
                 //   与 SetMarketPrice/SetMarketNumeraire 同款）。──
                 new EconomySetCommodityFreightHandler(),
+                // ── economy（W2，2026-10-11；约束设计书 §2.1 + 口径溯源 §4.1「α 必须可政策调」）：
+                //   GM 设置**某个市场区**的动态价步长 α（MarketZone.priceAlphaPerMille；‰/轮，缺省 50，不设上下限）。
+                //   只写 marketZones 一个区的一个字段；下一市场轮生效。★ GM-only（标 GmOnlyCommand）⇒
+                //   排除出令白名单 / RegisterEffect / 决策人目录；窄工具 simos.economy.setMarketZonePriceAlpha
+                // 照常可用。──
+                new EconomySetMarketZonePriceAlphaHandler(),
                 new EconomyAddDemandHandler(),
                 new EconomyCancelDemandHandler(),
                 new EconomyRegisterCandidateHandler(),

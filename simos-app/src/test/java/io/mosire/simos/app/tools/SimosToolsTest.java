@@ -341,11 +341,20 @@ class SimosToolsTest {
           "simos.economy.reassignZoneHexes",
           "simos.economy.mergeMarketZones",
           // ★ F（2026-10-09）：商品运费系数表的窄写工具
-          "simos.economy.setCommodityFreight");
+          "simos.economy.setCommodityFreight",
+          // ★★ W2（2026-10-11）：逐区价格步长 α 的窄写工具（GM 把某区价格钉死/调快调慢）
+          "simos.economy.setMarketZonePriceAlpha");
 
-  /** {@link #ECONOMY_ZONE_WRITE_NAMES} 对应的 3 个命令类型（catalog 与 handler 面认的键）。 */
+  /**
+   * {@link #ECONOMY_ZONE_WRITE_NAMES} 里"工具名 ≠ 命令类型"的那几条对应的命令类型（catalog 与 handler 面认的键）：
+   * 立区/改划/合并三区命令 + W2 的逐区 α（{@code economy.SetCommodityFreight} 与它同名，故不重列）。
+   */
   private static final List<String> ECONOMY_ZONE_WRITE_COMMAND_TYPES =
-      List.of("economy.DefineMarketZone", "economy.ReassignZoneHexes", "economy.MergeMarketZones");
+      List.of(
+          "economy.DefineMarketZone",
+          "economy.ReassignZoneHexes",
+          "economy.MergeMarketZones",
+          "economy.SetMarketZonePriceAlpha");
 
   /** M1 的 8 条 map 窄写：**只进 GM 组**（= MCP 口），**不进**决策人组（决策人不能直接改数据）。 */
   private static final List<String> MAP_WRITE_NAMES =
@@ -541,6 +550,8 @@ class SimosToolsTest {
           "economy.AuthorizeGovernmentMarketOrder",
           "economy.CancelGovernmentMarketOrder",
           "economy.SetCommodityFreight",
+          // ★★ W2（2026-10-11）：逐区价格步长 α（GM 把某区价格钉死/调快调慢）—— 140 → 141
+          "economy.SetMarketZonePriceAlpha",
           "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
           "economy.SetOfficialRate",
@@ -919,10 +930,10 @@ class SimosToolsTest {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
         .as(
-            "扫描必须恰为 140 个 *Handler.java 的 type()（128 → 136：A1/A2a/B2 的 8 条货币/市场区命令按实测补入本表）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
+            "扫描必须恰为 141 个 *Handler.java 的 type()（W2 的 economy.SetMarketZonePriceAlpha 按实测补入本表 ⇒ 140 → 141）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
                 + "P1b1/P3/R3a 的区域清空与国库上缴，辖区阶段 5–12，D1/D3a/D4/D5 的 unit/sd/army 新命令，"
                 + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds；Z6 起纳入 simos-gov 的 2 条 handler；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）")
-        .hasSize(140);
+        .hasSize(141);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -959,8 +970,8 @@ class SimosToolsTest {
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
         .as(
-            "★ Z6 后：GM 桶 = 37 读 + 123 写 = 160（60 非窄写 + 63 窄写；2026-10-09 按实测补入 A1/A2a/B2 的 4 条货币 + 3 条市场区工具）")
-        .hasSize(162);
+            "★ W2 后：GM 桶 = 37 读 + 126 写 = 163（61 非窄写 + 65 窄写；W2 的 simos.economy.setMarketZonePriceAlpha 是窄写 ⇒ 163）")
+        .hasSize(163);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1067,8 +1078,10 @@ class SimosToolsTest {
   void everyNarrowWriteToolClassIsWiredIntoTheGmBucket() throws Exception {
     Set<String> implemented = narrowWriteToolNamesFromSources();
     assertThat(implemented)
-        .as("扫描必须恰为 66 个窄写工具类（62 → 65：B2 的 3 条市场区窄工具；扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
-        .hasSize(66);
+        .as(
+            "扫描必须恰为 67 个窄写工具类（W2 的 simos.economy.setMarketZonePriceAlpha 继承 AbstractNarrowWriteTool ⇒ "
+                + "66 → 67；扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
+        .hasSize(67);
 
     // 真工具面派生的 GM 窄写 = GM 桶 ∖ 读名单 ∖ 非窄写写工具。
     List<String> gmNarrow =
@@ -1078,7 +1091,7 @@ class SimosToolsTest {
             .filter(name -> !NON_NARROW_WRITE_NAMES.contains(name))
             .toList();
     assertThat(gmNarrow)
-        .as("GM 窄写必须逐条等于 NARROW_WRITE_NAMES（63 条）")
+        .as("GM 窄写必须逐条等于 NARROW_WRITE_NAMES（65 条：9 + 8 map + 5 economy-zone + 28 unit + 15 sd）")
         .containsExactlyInAnyOrderElementsOf(NARROW_WRITE_NAMES);
 
     // ★ D5：决策人桶里也有窄写（两条外交命令型窄工具）——它们同样必须在册，不能成为"扫描器盲区"。
@@ -1708,8 +1721,10 @@ class SimosToolsTest {
   void everyToolClassOnDiskIsRegisteredInSomeBucket() throws Exception {
     Set<String> onDisk = toolNamesFromSources();
     assertThat(onDisk)
-        .as("扫描必须恰为 172 个 *Tool.java 的 NAME（2026-10-09 按实测更新；扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(172);
+        .as(
+            "扫描必须恰为 173 个 *Tool.java 的 NAME（W2 新增 simos.economy.setMarketZonePriceAlpha ⇒ 172 → 173；"
+                + "扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(173);
 
     List<String> union =
         Stream.concat(

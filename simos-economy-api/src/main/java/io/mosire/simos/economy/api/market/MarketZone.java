@@ -19,14 +19,22 @@ import java.util.Set;
  * ★★ <b>一个市场区</b>（阶段 2-B2，2026-10-08；约束设计书 §4.2 / §4.3 / 不变量 I22）。
  *
  * <pre>
- * MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, officialRates)
- *   zoneId        区的稳定身份（命令面点名它；改 hexes 不改身份 —— 铁律 1）
- *   anchor        集散节点格（区内参考价取这一格的市场；必须在 hexes 里）
- *   radiusHex     区的<b>声明半径</b>（hex；只用于邻接判据与读数，<b>绝不</b>用它派生成员格）
- *   hexes         成员格（<b>唯一权威</b>：一个 hex 属于哪个区由它给定，I22）
- *   legalTender   本区法定币（区内价格按它计）—— ★ 区的<b>唯一货币事实</b>
- *   officialRates 本区官方汇率覆盖（币对键 {@code base|quote}；空 = 本区没有覆盖）
+ * MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, officialRates, priceAlphaPerMille)
+ *   zoneId              区的稳定身份（命令面点名它；改 hexes 不改身份 —— 铁律 1）
+ *   anchor              集散节点格（区内参考价取这一格的市场；必须在 hexes 里）
+ *   radiusHex           区的<b>声明半径</b>（hex；只用于邻接判据与读数，<b>绝不</b>用它派生成员格）
+ *   hexes               成员格（<b>唯一权威</b>：一个 hex 属于哪个区由它给定，I22）
+ *   legalTender         本区法定币（区内价格按它计）—— ★ 区的<b>唯一货币事实</b>
+ *   officialRates       本区官方汇率覆盖（币对键 {@code base|quote}；空 = 本区没有覆盖）
+ *   priceAlphaPerMille  ★★ 本区每市场轮价格调整步长 α（‰/轮；W2，见下）
  * </pre>
+ *
+ * <p>★★ <b>W2（2026-10-11）：{@code priceAlphaPerMille} —— 动态价的步长，逐区、GM 可调</b>。它是约束设计书 §2.1 的
+ * α：缺货每轮最多涨 α‰、滞销每轮最多跌 α‰（规模只决定"多快打满 α"，见 {@code MarketSettlement} 的 自适应算式）。<b>不设上下限</b>（除 α ≥ 0）——
+ * 用户 2026-09-25 裁定「凡行为一律做成 GM 可调的预设」， 故它必须可被政策改写（{@code economy.SetMarketZonePriceAlpha}），而不是编译期常量。
+ *
+ * <p>★ <b>缺省 = {@value #DEFAULT_PRICE_ALPHA_PER_MILLE}‰/轮</b>：由下面那个六参构造器给（"没设过"的世界 逐值走这个数）。α = 0
+ * 是合法状态 = 该区价格永不随供需变动（"不动作"的缺省语义，不是坏数据）。
  *
  * <p>★★ <b>2026-10-09 C 批：{@code issuingGov} 退役</b>（用户原话「法定货币发行者也丢掉」；约束设计书 §4.1/G1）。区只记"这一片用哪种钱"，
  * <b>不记"谁发行这种钱"</b>：同一个市场区里可以有多个政府（G2），而"谁管这种钱"由 {@code Government.issuable} <b>反查</b>回答 （{@code
@@ -66,6 +74,8 @@ import java.util.Set;
  * @param hexes 成员格（非空、规范序、不可变）
  * @param legalTender 本区法定币；不得为 null
  * @param officialRates 本区官方汇率覆盖（键 = {@link OfficialRate#key()}；空 = 无覆盖）
+ * @param priceAlphaPerMille ★★ W2：本区动态价步长 α（‰/轮；≥ 0；0 = 价格永不随供需变动；缺省 {@value
+ *     #DEFAULT_PRICE_ALPHA_PER_MILLE}）
  */
 // ★★ 旧档兼容（具名、只忽略这一个退役键）：issuingGov 于 2026-10-09 C 批退役（约束设计书 §4.1）。
 //   必须落在**类型**上——重放路径（Replay → Timeline.readChangeSet）走 Core 的第四台 mapper、不过 codec 整形层。
@@ -77,12 +87,46 @@ public record MarketZone(
     int radiusHex,
     Set<HexCoord> hexes,
     CurrencyId legalTender,
-    Map<String, OfficialRate> officialRates) {
+    Map<String, OfficialRate> officialRates,
+    long priceAlphaPerMille) {
+
+  /**
+   * ★★ <b>W2：动态价步长 α 的出厂缺省（‰/轮）</b> = {@code 50}（5%/轮）。
+   *
+   * <p>它是"没有政策指令时"的值，不是上限：{@code MarketZone.priceAlphaPerMille} 可以取任意 ≥ 0 的数 （约束设计书 §2.1「不设上下限」）。
+   */
+  public static final long DEFAULT_PRICE_ALPHA_PER_MILLE = 50L;
+
+  /**
+   * ★ 六参形态 = α 取缺省（{@value #DEFAULT_PRICE_ALPHA_PER_MILLE}‰/轮）：<b>立区/合并区等"不表态 α"的写入形态</b>。
+   *
+   * <p>★ 它是"缺省语义中性"的落点（AGENTS §一.11：未设新东西 ⇒ 走缺省），<b>不是</b>旧档兼容位：任何一条 命令都可以改用七参构造器显式给 α。
+   */
+  public MarketZone(
+      MarketZoneId zoneId,
+      HexCoord anchor,
+      int radiusHex,
+      Set<HexCoord> hexes,
+      CurrencyId legalTender,
+      Map<String, OfficialRate> officialRates) {
+    this(
+        zoneId,
+        anchor,
+        radiusHex,
+        hexes,
+        legalTender,
+        officialRates,
+        DEFAULT_PRICE_ALPHA_PER_MILLE);
+  }
 
   public MarketZone {
     Objects.requireNonNull(zoneId, "MarketZone.zoneId 不得为 null");
     Objects.requireNonNull(anchor, "MarketZone.anchor 不得为 null");
     Objects.requireNonNull(legalTender, "MarketZone.legalTender 不得为 null");
+    if (priceAlphaPerMille < 0L) {
+      throw new IllegalArgumentException(
+          "MarketZone.priceAlphaPerMille 不得为负（0 = 价格不随供需变动，是合法状态）: " + priceAlphaPerMille);
+    }
     if (radiusHex < 0) {
       throw new IllegalArgumentException("MarketZone.radiusHex 不得为负: " + radiusHex);
     }
@@ -187,7 +231,21 @@ public record MarketZone(
    * 也可以，但那样"并集"这件事就散落在命令层（两处拼写 = 两处会漂）。冲突（同币对不同价）由**调用方**在合并之前判掉， 本方法只做形状守卫（键 == 值内币对）。
    */
   public MarketZone withOfficialRates(Map<String, OfficialRate> nextRates) {
-    return new MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, nextRates);
+    return new MarketZone(
+        zoneId, anchor, radiusHex, hexes, legalTender, nextRates, priceAlphaPerMille);
+  }
+
+  /**
+   * ★★ <b>W2：只换本区动态价步长 α</b>（成员格、锚、半径、法定币、官方汇率全部逐值不变）。
+   *
+   * <p>★ 它是"本区价格每轮最多动多少"的<b>唯一写入形态</b>（{@code economy.SetMarketZonePriceAlpha} 用它）： 一条命令只动这一个字段 ⇒
+   * 其余组件结构上不可能被顺手改掉（本仓最贵的那类 bug 是"手写构造器漏字段"）。
+   *
+   * @param nextPriceAlphaPerMille 新的步长（‰/轮；≥ 0；0 = 价格不随供需变动）；不设上限
+   */
+  public MarketZone withPriceAlphaPerMille(long nextPriceAlphaPerMille) {
+    return new MarketZone(
+        zoneId, anchor, radiusHex, hexes, legalTender, officialRates, nextPriceAlphaPerMille);
   }
 
   /** 本区一行人类可读摘要（日志/探针用；只输出稳定 id 与数量，§一.9 的日志纪律）。 */
@@ -201,6 +259,8 @@ public record MarketZone(
         + radiusHex
         + "]="
         + legalTender.value()
+        + ",alpha="
+        + priceAlphaPerMille
         + (officialRates.isEmpty() ? "" : " rates=" + officialRates.size());
   }
 }

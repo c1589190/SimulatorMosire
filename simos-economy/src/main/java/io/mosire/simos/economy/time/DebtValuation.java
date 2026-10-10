@@ -306,6 +306,35 @@ public final class DebtValuation {
     };
   }
 
+  /**
+   * ★★★ <b>W2（2026-10-11）：一条单位在某个债务人价目表下的“预估单位价值”—— S-5 介质序的唯一依据</b>。
+   *
+   * <pre>
+   * 价目表 = 家户价目表（{@code householdPrices}，非 null 时优先）→ 该户市场区默认价目表（{@code market}）
+   * 商品 c   ⇒ ⌊该户保留价（毫 numeraire / 商品单位）⌋        // 见 {@link HouseholdPriceTable#priceOf}
+   * 本币     ⇒ {@link EconomyVocabulary#MILLI_PER_COMMODITY_UNIT}（面值 1:1）
+   * 说不出价 ⇒ 0（= 不可定价，调用方把它排最后，见 {@code EconomySettlement.repaymentMediumOrder}）
+   * </pre>
+   *
+   * <p>★★ <b>用户原话（第二批第 5 条）</b>：「偿还顺序不是先还钱或者先还粮还工具之类的，而是只取决于这个家户的哪个种类商品， <b>预估价值最低</b>」⇒ 介质序 =
+   * 本值<b>升序</b>（不再是 D-030 §4 的"钱永远第一 → 商品按数量降序"）。
+   *
+   * <p>★ <b>它就是 {@link #commonUnitValue} 的公开读口</b>（同一条 switch、同一个 {@code Pricing}）——
+   * 排序与付款选择因此不可能用两把尺。{@code <= 0} 同时表达"不可定价"与"价值为 0"（0 价商品）： 两者在介质序里都排最前（都不值钱 ⇒ 先付掉），故不需要在排序里区分它们。
+   *
+   * @param debtor 债务人（家户价目表按它取价）；不得为 null
+   * @param unit 待估值的单位；不得为 null
+   * @param market 该户所在市场区默认价目表（可为 null）
+   * @param householdPrices 家户价目表（可为 null）
+   * @return 毫 numeraire / 单位（货币 = 1000 毫/单位面值）；说不出价 ⇒ 0
+   */
+  public static long estimatedUnitValueMilli(
+      HouseholdId debtor, DebtUnit unit, MarketTable market, HouseholdPriceTable householdPrices) {
+    Objects.requireNonNull(debtor, "estimatedUnitValueMilli 的 debtor 不得为 null");
+    Objects.requireNonNull(unit, "estimatedUnitValueMilli 的 unit 不得为 null");
+    return commonUnitValue(resolvePricing(debtor, market, householdPrices), unit);
+  }
+
   // ── 付款选择 ───────────────────────────────────────────────────────────────────────────────
 
   /**

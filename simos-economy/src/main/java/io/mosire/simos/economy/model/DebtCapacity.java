@@ -79,8 +79,8 @@ public record DebtCapacity(
 
   /**
    * ★★ <b>信用公式里 F 的乘数 κ（千分数）</b>：<b>1000</b>，复现旧信用线的乘数 （旧 {@code 旧结算引擎（R3a
-   * 已删除）.LOAN_INCOME_MULTIPLE_PER_MILLE = 1000}）。<b>唯一拼写点</b>：旧的公开常量现在是 {@code @Deprecated}
-   * 别名，生产代码只读这里。
+   * 已删除）.LOAN_INCOME_MULTIPLE_PER_MILLE = 1000}）。<b>唯一拼写点</b>：生产代码只读这里（★ W2-fix6：那个
+   * {@code @Deprecated} 兼容别名本身已零读者删除，本常量仍被 {@link #headroom()} 读）。
    *
    * <p>★ 它是制度层参数：{@code 0} = 五 F 即无 F 信用；{@code 2000} = 允许两倍 F（“宽信用”）。V7 参数目录落地后迁入参数表。
    */

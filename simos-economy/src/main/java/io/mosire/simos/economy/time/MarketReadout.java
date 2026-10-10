@@ -65,8 +65,6 @@ import java.util.Set;
  * @param adaptivePricingEnabled 自适应开关的当值（2026-10-07 起默认 true）
  * @param crossRegionSettlementImmediate 跨区结算暂设即时（恒 true；M2.0 #4 必须在读数里标注）
  * @param priceUpdates 自适应模式下的逐 (集散节点, 商品) 改价记录；固定模式恒空
- * @param creditFills ★★ D-030：来自进程内 {@link MarketReport#creditFills()} 的信用成交透传（只读；没有报告 ⇒ 空表， 不填
- *     0）；{@code deriveFor} 时只含落点在该焦点区成员格上的信用成交
  * @param regions 逐区读数（{@code deriveFor} 时只含焦点区）
  * @param provenance 每个数"从哪来、什么窗口、人口快照是什么"的机器可读标注
  * @param unavailable 读不到的项与**具名原因**（键 = 项名；绝不填 0）
@@ -78,7 +76,6 @@ public record MarketReadout(
     boolean adaptivePricingEnabled,
     boolean crossRegionSettlementImmediate,
     List<MarketReport.PriceUpdate> priceUpdates,
-    List<MarketReport.CreditFill> creditFills,
     List<RegionReadout> regions,
     // ★★ W1（2026-10-10）：**市场轮统计簿的当刻快照**（键 = 市场 id 裸值；规范序）—— 每市场逐商品的
     //   最后一轮 D/S/成交量/均价/未满足量 + 逐/本/上周期成交额。★ 它是**持久状态**的投影（重启后仍在），
@@ -103,7 +100,6 @@ public record MarketReadout(
     Objects.requireNonNull(lastSettledDay, "lastSettledDay");
     Objects.requireNonNull(priceMode, "priceMode");
     priceUpdates = priceUpdates == null ? List.of() : List.copyOf(priceUpdates);
-    creditFills = creditFills == null ? List.of() : List.copyOf(creditFills);
     regions = regions == null ? List.of() : List.copyOf(regions);
     // ★★ W1e（2026-10-11）：**不可变包装必须是赋值右侧最外层那次调用** —— 改前写成
     //   `x == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(x))`，最外层是三元表达式，
@@ -397,15 +393,6 @@ public record MarketReadout(
         data.meta().isPresent() && tick >= data.meta().orElseThrow().activatedDay()
             ? OptionalLong.of(tick)
             : OptionalLong.empty();
-    // ★★ D-030：信用成交只读透传（焦点区读口按落点格过滤；没有报告 ⇒ 空表，不填 0）。
-    List<MarketReport.CreditFill> creditFills = new ArrayList<>();
-    if (report.isPresent()) {
-      for (MarketReport.CreditFill fill : report.get().creditFills()) {
-        if (regionByHex.containsKey(fill.hex())) {
-          creditFills.add(fill);
-        }
-      }
-    }
     return new MarketReadout(
         tick,
         lastSettledDay,
@@ -414,7 +401,6 @@ public record MarketReadout(
         MarketSettlement.MARKET_ADAPTIVE_PRICING_ENABLED,
         MarketReport.CROSS_REGION_SETTLEMENT_IMMEDIATE,
         report.map(MarketReport::priceUpdates).orElse(List.of()),
-        creditFills,
         regionReadouts,
         roundStatsByMarket(data),
         provenance,
@@ -677,7 +663,8 @@ public record MarketReadout(
    * @param cycleNaturalNeedMilli 粮 = 本周期累计自然需要；其它商品 = 0（逐商品累加器未实现，见类注）
    * @param naturalNeedWindow {@code cycle} = 用本周期累加器；{@code last-settled-day} = 累加器尚未累计（旧档 /
    *     还没结算过）⇒ 退回最近结算日日需求并如实标注窗口；非粮商品恒 {@code last-settled-day}
-   * @param effectiveDemandMilli 本轮买订单数量之和（预算 &gt; 0 且买得起；来自同一 {@code planOrders}）
+   * @param effectiveDemandMilli 本轮买订单数量之和（来自同一 {@code planOrders}）。★★ W2：家户的需求**不再按预算/买得起折回**
+   *     （债务式清算 ⇒ 全额下单），故这一栏对家户 = 需求缺口本身；经营者仍按现金封顶
    * @param needsButCannotAffordMilli 生理需要 &gt; 0、本轮无有效需求、且可花货币 ≤ 0 的部分（只对粮；毫粮）
    * @param match 撮合结果（进程内报告；读不到 ⇒ {@link Optional#empty()}，不是 0）
    */

@@ -29,6 +29,7 @@ import io.mosire.simos.economy.api.market.MarketOrderKind;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketTaxLayer;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.api.market.PortDirection;
 import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.economy.api.market.SellOrder;
@@ -72,7 +73,6 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 
 /**
  * ★★ <b>区域市场撮合与在途运输（M2.3 + M2.4 + M2.5）</b>：把 M2.1/M2.2 的"订单体系"从"每格一次"扩成 <b>每 5 天一轮、区内优先、邻区稀疏跨区、跨区走
@@ -102,8 +102,9 @@ import java.util.TreeSet;
  * <p>★★ <b>运费必须有收款方</b>：承运主体 = {@code ActorKind.ORGANIZATION} 且会话里有货币账。世界里没有承运 actor
  * 时<b>不收运费</b>（{@link MarketReport#freightUncollectedByCurrency()} 记下应收而未收的读数），禁钱凭空消失。
  *
- * <p>★★ <b>跨区结算暂设即时</b>：{@code MARKET_CROSS_REGION_SETTLEMENT_IMMEDIATE = true} —— 货款与运费在**发运日**
- * 结清，货却在 ETA 之后才到；这是设计允许的简化，L3 的读数契约必须原样标注（M2.0 #4）。
+ * <p>★★ <b>跨区结算暂设即时</b>：{@link MarketReport#CROSS_REGION_SETTLEMENT_IMMEDIATE} = {@code true}（★
+ * W2-fix6：本类原副本 {@code MARKET_CROSS_REGION_SETTLEMENT_IMMEDIATE} 零读者，已删；唯一拼写点是 {@code MarketReport}
+ * 的那一份）—— 货款与运费在**发运日** 结清，货却在 ETA 之后才到；这是设计允许的简化，L3 的读数契约必须原样标注（M2.0 #4）。
  *
  * <p>★★ <b>价格（M2.6）</b>：参考价是格价表里的报价（区内成交价 = 集散节点格价、跨区 = 卖方格价）；买卖两侧的 **限价**由 {@code MarketTable}
  * 的两个具名常量现算（bid = 卖方底价、ask = 买方限价），订单按限价过滤 —— 价差没有中间人截留， 成交仍按参考价。自适应（{@link
@@ -129,9 +130,59 @@ final class MarketSettlement {
    */
   static final long MARKET_SAFETY_STOCK_DAYS = 30L;
 
-  /** ★ <b>生活保留的总天数</b> = 撮合间隔 + 安全库存 = 35 天。它是"生活保留"这条算式的唯一拼写点。 */
+  /**
+   * ★ <b>生活保留的总天数</b> = 撮合间隔 + 安全库存 = 35 天。它是"生活保留"这条算式的唯一拼写点。
+   *
+   * <p>★★ <b>服务面（v3.6 起，2026-10-11 用户第六批裁定后收窄）</b>：它**只服务卖/买两侧的"生活保留"**—— ① 家户的买盘目标 （{@link
+   * #householdProductionCostOf} 的口粮那一项）；② 卖侧的"不卖保留"（{@code retention}，用户 0–8 第 5 条"投入市场的商品 = 扣除下一
+   * tick 生产需要后的"）；③ 买方到货时限（{@link #MARKET_BUY_DEADLINE_DAYS}）。 ★ <b>它不再服务还债侧</b>：还债的保留窗口（"35
+   * 天"那一版）已按用户第六批原话「为啥要设还债窗口，应当是有库存就还，没库存就不还啊」 **作废**（见 {@code
+   * EconomySettlement.spendableGoods}）。常量保留 —— 卖侧仍在用，不删。
+   */
   static final long MARKET_LIFE_RESERVE_DAYS =
       MARKET_RESTOCK_INTERVAL_DAYS + MARKET_SAFETY_STOCK_DAYS;
+
+  /**
+   * ★★★ <b>W2（2026-10-11）：一个家户的“生产花费（内含口粮）”—— S-10 的唯一量</b>。
+   *
+   * <pre>
+   * 生产花费(商品) = 本户名下各 unit 的必要投入（recipe.inputPerUnit × 计划规模）
+   *                + 本户的口粮/自然需要前瞻（naturalNeeds × {@link #MARKET_LIFE_RESERVE_DAYS}）
+   * </pre>
+   *
+   * <p>★★ <b>用户原话（第五批）</b>：「生产方式也要一并修改，我之前说单个生产方式包括所需要消耗的口粮，因此<b>不需要额外计算"一日口粮"</b>， 只需要<b>增强生产花费 +
+   * 只预估生产花费并购买</b>就行」。⇒ 家户的买盘目标 = <b>这一个量</b>（不再"口粮一条账、投入另一条账"）。
+   *
+   * <p>★★ <b>"无业"也是一种生产方式</b>（0–8 第 2 条）：名下没有 unit 的家户，上式第一项为空 ⇒ 生产花费 = 基本生理需求 （{@code
+   * naturalNeeds} 前瞻）—— 同一个算式，没有第二个分支。
+   *
+   * <p>★★ <b>模块边界（不变）</b>：数量口径仍来自 Social 注入的 {@code naturalNeeds}（人口需求系数的唯一权威是 {@code
+   * SocialProvisioning}）；经济侧只是把它<b>归入生产花费</b>、不再单列"口粮"这条独立下单路径。
+   *
+   * <p>★ <b>合用点（唯一口径）</b>：买盘目标（{@code ordersFor} 的 {@code baseTarget}）、不卖保留（{@code sellable} 的
+   * {@code retention}）、以及"生产花费未满足量"读口（{@link #unmetProductionCostOf}）都读它 —— 一个量贯穿买卖、缺口。 ★★
+   * <b>v3.6（2026-10-11 用户第六批裁定）起它不再服务还债侧</b>：{@code EconomySettlement.repayDebts} 的"逐商品保留"已整块删除 （还债
+   * = 有库存就还、没库存记债，不扣任何前瞻量）—— 本方法本身一字未改，只是少了一个调用点。
+   */
+  static Map<CommodityId, Long> householdProductionCostOf(
+      MarketRound round, Participant participant) {
+    Map<CommodityId, Long> cost = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : necessaryInputsOf(round, participant).entrySet()) {
+      if (entry.getValue() > 0L) {
+        cost.merge(entry.getKey(), entry.getValue(), Long::sum);
+      }
+    }
+    HouseholdEconomy row =
+        participant.household == null ? null : round.householdEconomies.get(participant.household);
+    if (row != null) {
+      for (Map.Entry<CommodityId, Long> entry : householdLifeReserveOf(row).entrySet()) {
+        if (entry.getValue() > 0L) {
+          cost.merge(entry.getKey(), entry.getValue(), Long::sum);
+        }
+      }
+    }
+    return cost;
+  }
 
   /**
    * ★★ <b>买订单的到货时限</b>（天，= 生活保留 35 天）："在 35 天内到货的粮仍然顶得上这次保留" —— 超过它， 到货也救不了即将发生的断粮。★ L1
@@ -189,20 +240,6 @@ final class MarketSettlement {
   static final int MARKET_TRANSPORT_LOSS_PER_MILLE = 5;
 
   /**
-   * ★ <b>买方可付额的回退边距</b>（毫计价货币）：货款与运费各自 {@code ⌈…⌉}，按这个边距先少买一点。
-   *
-   * <p>★★ <b>安全性不再靠它</b>（缺陷 A 的收口）：任何成交序列的累计付款 ≤ 买方剩余可付，由 {@link #pairUp} 每笔成交前 按当前实际账重新复核 + {@link
-   * #totalCostAtMost} 的精确上限保证。本边距只保留原口径的"保守少买"行为，不让取整余数咬进预算。
-   */
-  static final long MARKET_MONEY_ROUNDING_MARGIN_MILLI = 2L;
-
-  /**
-   * ★★ <b>跨区结算暂设即时</b>（M2.0 #4 的具名标注）：货款与运费在发运日结清，货却在 ETA 之后到 —— 设计允许、 但读数契约必须写明。★
-   * 本批不做到货付款（那要一条信用/挂账机制，属后续增量）。
-   */
-  static final boolean MARKET_CROSS_REGION_SETTLEMENT_IMMEDIATE = true;
-
-  /**
    * ★★ <b>M2.6 自适应价格的开关（2026-10-07 用户裁定：打开）</b>：打开后每轮结算<b>结束</b>时按 {@code z = clamp((有预算且合限价的需求 −
    * 可出售供给) / max(需求 + 供给, ε), −1, 1)}、 {@code p_next = max(p_min, round(p × (1 + α·z)))}
    * 更新**各区集散节点价**，并把同一区成员格的同商品价一并改到该值 （"每区每商品一个报价"）。
@@ -217,23 +254,15 @@ final class MarketSettlement {
   static final boolean MARKET_ADAPTIVE_PRICING_ENABLED = true;
 
   /**
-   * ★★ <b>自适应的步长 α（千分比/轮）</b>：{@code 50‰ = 5%} —— 计划要求的**起步上界 ≤5%/轮**。
+   * ★★ <b>自适应的步长 α 的出厂缺省（千分比/轮）</b>：{@code 50‰ = 5%}。
    *
-   * <p>★ 它是 GM 可调出厂值，与 {@link #MARKET_ADAPTIVE_PRICING_ENABLED} 分开：开关回答"调不调"，本值回答"每轮最多调多少"。
+   * <p>★★ <b>W2（2026-10-11）：α 不再是这里的常量，而是逐区状态</b> —— 权威落点为 {@link
+   * MarketZone#priceAlphaPerMille()}（{@code MarketZone} 的持久字段，GM 可经 {@code
+   * economy.SetMarketZonePriceAlpha} 改，缺省 {@link MarketZone#DEFAULT_PRICE_ALPHA_PER_MILLE}）。
+   * 本常量保留为"出厂值与出厂缺省同值"的**单一事实**的别名，读点只有 {@link #priceAlphaPerMilleOf} 一处 ——
+   * 结算路径<b>不</b>读它（它读区表；没有区表的世界读 {@code MarketZone} 的缺省常量）。
    */
-  static final long MARKET_ADAPTIVE_ALPHA_PER_MILLE = 50L;
-
-  /**
-   * ★★ <b>自适应价格的下限 p_min</b>（毫计价货币/商品单位）：{@code 0}（2026-10-09 用户口径：取消 1 毫下限）。 价格可以一路降到 0 —— 0
-   * 是<b>明确免费交易</b>（买方只出运费，货款腿为 0），不是"没有定价"；"从未定价"的商品根本不会进自适应 （{@link #hasEffectivePrice} 先判）。
-   */
-  static final long MARKET_PRICE_FLOOR_MILLI = 0L;
-
-  /**
-   * ★ <b>自适应公式里分母的 ε</b>（毫商品）：{@code 1} —— {@code max(需求 + 供给, ε)} 的分母保护，保证零供需时 {@code z = 0}
-   * 而不是除零。
-   */
-  static final long MARKET_ADAPTIVE_Z_EPSILON_MILLI = 1L;
+  static final long MARKET_ADAPTIVE_ALPHA_PER_MILLE = MarketZone.DEFAULT_PRICE_ALPHA_PER_MILLE;
 
   /**
    * ★★ <b>D-030 §3.1：出借人的人均货币保留额</b>（毫计价货币 / 人）：默认 <b>12</b>。
@@ -242,18 +271,6 @@ final class MarketSettlement {
    * 毫银/人} 的口粮/缓冲钱，剩下的才算可借货币。防的是"把出借人自己的口粮钱借空"，不是禁止 货币出借。参数目录落地后迁入 GM 参数表。
    */
   static final long LENDER_MONEY_BUFFER_PER_CAPITA_MILLI = 12L;
-
-  /**
-   * ★★ <b>D-030：货币出借头寸每轮按余额自动派生（GM 默认开）</b>—— 本批没有显式挂单，出借人保留额之外的余额就是可借 货币；关掉它 ⇒
-   * 本轮没有货币信用（现金与借实物仍可跑）。★ 它是 GM 默认开关，不是交易规则的一部分。
-   */
-  static final boolean MONEY_LENDING_AUTO_LIST = true;
-
-  /**
-   * ★★ <b>D-030：卖单剩余即可借（GM 默认开）</b>—— 现金成交后卖单剩余直接成为商品可借池，不另建仓库/不复制库存；关掉它 ⇒ 本轮没有实物信用（货币信用仍可跑）。★ 它是
-   * GM 默认开关，与"卖单剩余"这一事实来源无关。
-   */
-  static final boolean MARKET_GOODS_LENDING_ENABLED = true;
 
   /**
    * ★★ <b>运输损耗的记账账户</b>：{@code ProductionLedger.losses} 的键是 {@code IndustryId}，而运输不是产业 ——
@@ -315,13 +332,13 @@ final class MarketSettlement {
     private final MarketRegulation regulation;
 
     /**
-     * ★★ <b>D-030/D-031：本轮市场信用的入参</b>（{@code null} = 本入口没有信用能力，逐值退回现金市场）；只带
-     * 到期周期，借款人侧不再有额度上限，唯一上限是放贷人实际可借头寸。
+     * ★★ <b>W2：本轮"未付价款记债"的入参</b>（{@code null} = 本入口没有记债能力 ⇒ 逐值退回"现金封顶"的旧口径）； 只带<b>到期周期</b>（市场信用撮合已随
+     * W2-fix4 整段退役，见 {@link MarketRound#DeferredPaymentConfig}）。
      */
-    private final CreditConfig creditConfig;
+    private final DeferredPaymentConfig deferredPaymentConfig;
 
     /**
-     * ★★ <b>D-030：债务工作表</b>（与 {@code EconomySettlement} 的当日工作副本同一个 map；信用合同经 {@link
+     * ★★ <b>W2：债务工作表</b>（与 {@code EconomySettlement} 的当日工作副本同一个 map；未付价款合同经 {@link
      * DebtContractBook#upsert} 写入，市场不另造债务表）。{@code null} = 信用关闭。
      */
     private final Map<DebtContractId, DebtContract> debts;
@@ -415,14 +432,18 @@ final class MarketSettlement {
     private FxRoundInput fx = FxRoundInput.none();
 
     /**
-     * ★★ <b>D-031：市场信用的一轮入参</b>（借款人侧不再有额度；唯一上限 = 放贷人实际可借头寸）。
+     * ★★ <b>W2：一轮"未付价款记债"的入参</b>（{@code null} = 本轮没有记债能力 ⇒ 退回旧口径）。
+     *
+     * <p>★★ <b>W2-fix4（2026-10-11）改名并收窄</b>：原 {@code CreditConfig}（D-030/D-031 的市场信用入参：
+     * 放贷人可借头寸、借款人额度）随市场信用撮合整段退役 ⇒ 现在它只剩一个字段，服务 {@link #recordDeferredPaymentDebt} 那一条通道（未付价款 ⇒
+     * 对该卖方的债务）。
      *
      * @param dueCycle 新合同的到期周期（本批 = 当前周期 + 1；与 {@code lendDeficitsInHex} 同源）
      */
-    record CreditConfig(long dueCycle) {
-      CreditConfig {
+    record DeferredPaymentConfig(long dueCycle) {
+      DeferredPaymentConfig {
         if (dueCycle < 0L) {
-          throw new IllegalArgumentException("CreditConfig.dueCycle 不得为负: " + dueCycle);
+          throw new IllegalArgumentException("DeferredPaymentConfig.dueCycle 不得为负: " + dueCycle);
         }
       }
     }
@@ -474,8 +495,8 @@ final class MarketSettlement {
     /**
      * ★★ <b>带区内市场规则的完整构造器</b>（生产路径用；旧构造器委托 {@link MarketRegulation#none()}）。
      *
-     * <p>★ 旧构造器<b>保留且行为不变</b>：{@code regulation = none()} ⇒ 无税费；{@code creditConfig}/{@code debts}
-     * 为 {@code null} ⇒ 信用关闭、逐值退回现金市场。
+     * <p>★ 旧构造器<b>保留且行为不变</b>：{@code regulation = none()} ⇒ 无税费；{@code
+     * deferredPaymentConfig}/{@code debts} 为 {@code null} ⇒ 无记债能力、逐值退回"现金封顶"的旧口径。
      */
     MarketRound(
         long day,
@@ -543,7 +564,7 @@ final class MarketSettlement {
         SettlementIndex index,
         Map<DemandId, HouseholdDemand> householdDemands,
         MarketRegulation regulation,
-        CreditConfig creditConfig,
+        DeferredPaymentConfig deferredPaymentConfig,
         Map<DebtContractId, DebtContract> debts) {
       this(
           day,
@@ -565,7 +586,7 @@ final class MarketSettlement {
           index,
           householdDemands,
           regulation,
-          creditConfig,
+          deferredPaymentConfig,
           debts,
           Set.of());
     }
@@ -598,7 +619,7 @@ final class MarketSettlement {
         SettlementIndex index,
         Map<DemandId, HouseholdDemand> householdDemands,
         MarketRegulation regulation,
-        CreditConfig creditConfig,
+        DeferredPaymentConfig deferredPaymentConfig,
         Map<DebtContractId, DebtContract> debts,
         Set<HouseholdId> marketExcludedHouseholds) {
       this.day = day;
@@ -623,19 +644,22 @@ final class MarketSettlement {
       this.index = Objects.requireNonNull(index, "index");
       this.householdDemands = householdDemands == null ? Map.of() : householdDemands;
       this.regulation = regulation == null ? MarketRegulation.none() : regulation;
-      this.creditConfig = creditConfig;
+      this.deferredPaymentConfig = deferredPaymentConfig;
       this.debts = debts;
       this.marketExcludedHouseholds = freezeExcludedHouseholds(marketExcludedHouseholds);
     }
 
-    /** ★★ D-030：本入口有没有市场信用能力（缺一即关闭；旧构造器因此逐值退回现金市场）。 */
-    boolean creditEnabled() {
-      return creditConfig != null && debts != null;
+    /**
+     * ★★ <b>本入口有没有"未付价款 ⇒ 记债"的能力</b>（{@code deferredPaymentConfig} 与债务工作副本缺一即关闭； 旧构造器因此逐值退回"货款 + 运费
+     * + 税 ≤ 可付"的旧口径，绝不凭空赊账）。
+     */
+    boolean deferredPaymentsEnabled() {
+      return deferredPaymentConfig != null && debts != null;
     }
 
-    /** ★ D-030：信用入参（{@code null} = 信用关闭；订单生成与信用撮合都只读它）。 */
-    CreditConfig creditConfig() {
-      return creditConfig;
+    /** ★ W2：记债入参（{@code null} = 本轮无记债能力；订单生成与 {@code executeTrade} 都只读它）。 */
+    DeferredPaymentConfig deferredPaymentConfig() {
+      return deferredPaymentConfig;
     }
 
     /** ★ D-030：债务工作表引用（信用关闭时为 {@code null}；市场不复制、不另建第二份）。 */
@@ -662,7 +686,7 @@ final class MarketSettlement {
     /**
      * ★★ <b>2026-10-08（阶段 1）：注入本轮的套利决定</b>（返回一个新的 {@link MarketRound}；原对象不动）。
      *
-     * <p>★ 沿用 {@code withCredit} 的形制：先用既有唯一完整构造器造一份新实例，再把套利计划挂上 ——
+     * <p>★ 沿用 {@code withDeferredPayments} 的形制：先用既有唯一完整构造器造一份新实例，再把套利计划挂上 ——
      * <b>不改任何构造器签名</b>（既有调用方/测试因此逐字不动，旧路径自然拿到 {@link
      * MarketArbitragePlan#empty()}）。挂载发生在对象发布之前（同一天结算内的协调器线程），因此不存在 数据竞争。
      */
@@ -689,7 +713,7 @@ final class MarketSettlement {
               index,
               householdDemands,
               regulation,
-              creditConfig,
+              deferredPaymentConfig,
               debts,
               marketExcludedHouseholds);
       next.arbitrage = plan;
@@ -730,7 +754,7 @@ final class MarketSettlement {
               index,
               householdDemands,
               regulation,
-              creditConfig,
+              deferredPaymentConfig,
               debts,
               marketExcludedHouseholds);
       next.arbitrage = arbitrage;
@@ -798,7 +822,7 @@ final class MarketSettlement {
               index,
               householdDemands,
               regulation,
-              creditConfig,
+              deferredPaymentConfig,
               debts,
               marketExcludedHouseholds);
       next.arbitrage = arbitrage;
@@ -849,7 +873,7 @@ final class MarketSettlement {
               index,
               householdDemands,
               regulation,
-              creditConfig,
+              deferredPaymentConfig,
               debts,
               marketExcludedHouseholds);
       next.arbitrage = arbitrage;
@@ -891,7 +915,7 @@ final class MarketSettlement {
               index,
               householdDemands,
               regulation,
-              creditConfig,
+              deferredPaymentConfig,
               debts,
               marketExcludedHouseholds);
       next.arbitrage = arbitrage;
@@ -908,7 +932,7 @@ final class MarketSettlement {
      *
      * <p>★ 形制与 {@link #withArbitrage} 逐字相同：不新增构造器签名，既有调用方自然拿到 {@link
      * GovernmentMarketMandatePlan#empty()}。★ 它必须**最后**注入（或由各个 {@code withX} 逐字段带过），否则会被后续的 {@code
-     * withCredit}/{@code withArbitrage}/{@code withFx} 静默丢掉 —— 那正是本类踩过的"克隆丢字段"坑。
+     * withDeferredPayments}/{@code withArbitrage}/{@code withFx} 静默丢掉 —— 那正是本类踩过的"克隆丢字段"坑。
      */
     MarketRound withGovMandates(GovernmentMarketMandatePlan plan) {
       Objects.requireNonNull(
@@ -934,7 +958,7 @@ final class MarketSettlement {
               index,
               householdDemands,
               regulation,
-              creditConfig,
+              deferredPaymentConfig,
               debts,
               marketExcludedHouseholds);
       next.arbitrage = arbitrage;
@@ -954,16 +978,16 @@ final class MarketSettlement {
      * arbitrage}），克隆就会把它悄悄丢掉，而克隆出的那个轮<b>才是在下订单的那一份</b> ⇒ 整套套利一次都不生效、且没有任何报错（实测：360 tick 与基线逐值相同，计划
      * 83 户但 {@code ARBITRAGE_BUY_ORDER} = 0 条）。
      *
-     * <p>★★ <b>语义</b>：<b>逐字段原样带过本轮的其余全部输入</b>（含 {@code regulation} / {@code creditConfig} / {@code
-     * debts} / {@code marketExcludedHouseholds} / {@code index} / {@code arbitrage}），
+     * <p>★★ <b>语义</b>：<b>逐字段原样带过本轮的其余全部输入</b>（含 {@code regulation} / {@code deferredPaymentConfig}
+     * / {@code debts} / {@code marketExcludedHouseholds} / {@code index} / {@code arbitrage}），
      * 只替换调用方<b>显式点名</b>的六样：四张账户表、未满足表、账本累加器 —— 这六样正是两条克隆路径真正不同的部分。 因此"将来再加一个 {@code MarketRound}
      * 字段"不再需要改克隆点。
      *
      * <p>★ <b>与改前的逐值差异（已审计）</b>：旧克隆把 {@code regulation} 写死成 {@link MarketRegulation#none()}、 区副本还把
-     * {@code creditConfig}/{@code debts}/{@code marketExcludedHouseholds} 留成缺省。三者在本轮**都没有
+     * {@code deferredPaymentConfig}/{@code debts}/{@code marketExcludedHouseholds} 留成缺省。三者在本轮**都没有
      * 读取点**：克隆轮只进 {@code planFor}/{@code ordersFor}（P-T1c 起订单生成只读逐格价表，不再读调控）与 {@code
-     * matchGroup}（区副本，信用撮合 {@code creditRound}/{@code collectUnfilled}/{@code creditUnfilledReason}
-     * 全部只在协调器的真实 {@code ctx} 上跑）⇒ 本方法把它们原样带过是**行为等价**的，只是不再有"字段悄悄变缺省"。
+     * matchGroup}（区副本；{@code collectUnfilled} 只在协调器的真实 {@code ctx} 上跑）⇒ 本方法把它们原样带过是
+     * **行为等价**的，只是不再有"字段悄悄变缺省"。
      */
     MarketRound copyForWorker(
         Map<HouseholdId, Map<CommodityId, Long>> householdGoodsCopy,
@@ -993,7 +1017,7 @@ final class MarketSettlement {
               index,
               householdDemands,
               regulation,
-              creditConfig,
+              deferredPaymentConfig,
               debts,
               marketExcludedHouseholds);
       next.arbitrage = arbitrage; // ★ 新字段在这里被带过 —— 这正是"手抄 22 个参数"漏掉的那一行
@@ -1019,10 +1043,10 @@ final class MarketSettlement {
     }
 
     /**
-     * ★★ <b>D-030/D-031：给已构造的市场轮补上信用入参</b>（{@code EconomySettlement} 在判定今天真的开市之后才构造 {@link
-     * CreditConfig}；本方法<b>不复制账户表</b>，只换信用字段）。借款人侧不再传入任何容量表。
+     * ★★ <b>W2：给已构造的市场轮补上"未付价款记债"的入参</b>（{@code EconomySettlement} 在判定今天真的开市之后才构造 {@link
+     * DeferredPaymentConfig}；本方法<b>不复制账户表</b>，只换记债入参）。
      */
-    MarketRound withCredit(long dueCycle, Map<DebtContractId, DebtContract> debts) {
+    MarketRound withDeferredPayments(long dueCycle, Map<DebtContractId, DebtContract> debts) {
       Objects.requireNonNull(debts, "debts");
       MarketRound next =
           new MarketRound(
@@ -1045,7 +1069,7 @@ final class MarketSettlement {
               index,
               householdDemands,
               regulation,
-              new CreditConfig(dueCycle),
+              new DeferredPaymentConfig(dueCycle),
               debts,
               marketExcludedHouseholds);
       next.arbitrage = arbitrage;
@@ -1393,7 +1417,7 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>开一次市</b>（由 {@code EconomySettlement.settleOneDay} 在触发日调用一次）。
+   * ★★ <b>开一次市</b>（由 {@code EconomySettlement.settleOneDayInto} 在触发日调用一次）。
    *
    * <p>★ 返回 {@link MarketOutcome}（= 报告 + 本轮结束时的价格表）是 L3 的读数原料与 M2.6 的**唯一改价出口**（见 {@link
    * #MARKET_ADAPTIVE_PRICING_ENABLED}）：本类保证"信息不聚合丢失"，不替 L3 落成读数组件。失败时抛异常 —— 一次推进整条回滚，不产生半轮市场。
@@ -1435,6 +1459,7 @@ final class MarketSettlement {
       EconomyParallelism parallelism) {
     // ★ M-A1：没有运力池的世界（没有"选了跑商的家户"）⇒ 跨格货走不动；同格成交逐值不变。
     // ★ M-C：没有纯商号集合（夹具 / 纯状态读者）⇒ 谁都不豁免运费 ⇒ 逐值退回 M-A2（缺省语义中性，I-C2）。
+    // ★ W2：没有持久区表（夹具 / 纯状态读者）⇒ α 走出厂缺省 50‰（同一族的缺省语义中性）。
     return clearOncePerCycle(
         marketTables,
         round,
@@ -1442,7 +1467,8 @@ final class MarketSettlement {
         topology,
         parallelism,
         MerchantCapacityPool.empty(),
-        Set.of());
+        Set.of(),
+        Map.of());
   }
 
   /**
@@ -1453,6 +1479,9 @@ final class MarketSettlement {
    * @param pureMerchantHouseholds ★★ <b>M-C：本轮的纯商号家户集合</b>（H-2；由 {@code EconomySettlement} 从 同一份
    *     {@code classMemberships × classPositions} 现算，判据的唯一拼写点是 {@code MerchantIdentity}）。
    *     <b>自运自货</b>（承运方与货主都是纯商号）⇒ 免运费（H-A/H-G）；空集 ⇒ 谁都不豁免 ⇒ 逐值退回 M-A2（缺省中性）。
+   * @param marketZones ★★ <b>W2：本轮的持久市场区表</b>（{@code MarketZoneId → MarketZone}）—— 自适应定价逐区读 {@link
+   *     MarketZone#priceAlphaPerMille()}（步长 α）。空表 = 派生形态 / 夹具 ⇒ α 取出厂缺省 {@link
+   *     MarketZone#DEFAULT_PRICE_ALPHA_PER_MILLE}（缺省语义中性）。
    */
   static MarketOutcome clearOncePerCycle(
       Map<MarketZoneId, MarketTable> marketTables,
@@ -1462,12 +1491,35 @@ final class MarketSettlement {
       EconomyParallelism parallelism,
       MerchantCapacityPool carrierPool,
       Set<HouseholdId> pureMerchantHouseholds) {
+    // ★ W2：没有持久市场区表（夹具 / 纯状态读者）⇒ α 一律走出厂缺省（缺省语义中性，与 marketTables 为空那些退化入口同一族）。
+    return clearOncePerCycle(
+        marketTables,
+        round,
+        trigger,
+        topology,
+        parallelism,
+        carrierPool,
+        pureMerchantHouseholds,
+        Map.of());
+  }
+
+  /** ★★ <b>W2：带持久市场区表的承运入口</b>（生产路径走这一条）—— 与上一个重载逐字同源，只多一份区表供自适应定价逐区读步长 α。 */
+  static MarketOutcome clearOncePerCycle(
+      Map<MarketZoneId, MarketTable> marketTables,
+      MarketRound round,
+      MarketTrigger trigger,
+      MarketTopology topology,
+      EconomyParallelism parallelism,
+      MerchantCapacityPool carrierPool,
+      Set<HouseholdId> pureMerchantHouseholds,
+      Map<MarketZoneId, MarketZone> marketZones) {
     Objects.requireNonNull(marketTables, "marketTables");
     Objects.requireNonNull(round, "round");
     Objects.requireNonNull(trigger, "trigger");
     Objects.requireNonNull(topology, "topology");
     Objects.requireNonNull(parallelism, "parallelism");
     Objects.requireNonNull(carrierPool, "carrierPool");
+    Objects.requireNonNull(marketZones, "marketZones（没有持久区请给空表）");
     if (MARKET.isDebugEnabled()) {
       EventLog.channel(MARKET)
           .debug(
@@ -1488,8 +1540,8 @@ final class MarketSettlement {
                   carrierPool.hexCount(),
                   "rows",
                   round.householdEconomies.size(),
-                  "creditEnabled",
-                  round.creditEnabled()));
+                  "deferredPayments",
+                  round.deferredPaymentsEnabled()));
     }
     // ★★ E（2026-10-09）：本轮"钱的价"（世界行情 + 当地实际流通的币种）只装配一次 —— 它依赖本轮**全部**家户的
     //   货币账户，故必须由协调器算好、与各区 worker 副本共用同一份实例（各自现算会在"认不认得出某种钱"上漂开）。
@@ -1506,6 +1558,8 @@ final class MarketSettlement {
             round, marketTables, topology, carrierPool, round.regulation(), currencyValuation);
     // ★★ M-C：本轮的纯商号集合（免运费判据的范围）—— 从调用方给的集合原样带入（装配点在 EconomySettlement）。
     ctx.pureMerchantHouseholds = pureMerchantHouseholds;
+    // ★★ W2：本轮的持久市场区表（自适应定价逐区读 α）—— 同上，由入口参数带入，worker 副本照抄。
+    ctx.marketZones = marketZones;
     if (MARKET.isDebugEnabled()) {
       // ★★ E（§一.9：DEBUG 写"为什么"）：本轮"钱的价"认得出哪些币 —— "某笔异币为什么没成交"的第一现场。
       EventLog.channel(MARKET)
@@ -1778,11 +1832,10 @@ final class MarketSettlement {
       releaseAllFreezes(ctx);
     }
 
-    // ── 4b. ★★ D-030 市场信用：现金撮合（含区内/跨区）之后的借钱买货 → 借实物 ───────────────────
-    //   ★ 位置：冻结已释放之后、未成交原因落档之前。冻结释放让"可花货币"回到市场轮的真实可用额（不被本轮临时挂单
-    //     承诺占住）；信用成交消耗的是各主体的真实余额，转移仍全走唯一写口 applyTransfer。
-    //   ★ 顺序：按"买方稳定序"逐户处理；每个买方先货币（钱优先），货币借不到/不够才用商品卖单剩余借实物。
-    creditRound(ctx, indexes);
+    // ── 4b. ★★★ W2-fix4（2026-10-11）：这里原有"市场信用撮合"（{@code creditRound}：借钱买货 → 借实物）──
+    //   **整段退役**，理由见本文件"W2 债务式清算"那个段落头与 W2-fix4 账本：那两条腿绕过运费/运力池/税，
+    //   会在现金撮合已明确拒绝的车道上把货搬走 ⇒ 卖方余量被一次搬空、市场从 day 8 起再无供给。
+    //   ⇒ 本位置不再有任何信用撮合；未付价款记债发生在 {@code executeTrade} 里（唯一通道）。
 
     // ── 4c. ★★ A2a + P-T5：外汇撮合（与商品撮合同一处落账口）──────────────────────────────
     //   ★ 位置：商品撮合 + 信用之后、未成交归因之前 —— 家户能花的钱是"商品买卖之后"的余额（= 用户"挂完生产需求后"的
@@ -1812,6 +1865,25 @@ final class MarketSettlement {
     //   在撮合之后改下一轮的参考价。★ 开关判据收在 adaptPrices 内部、这里**无条件调用** ——
     //   ★ 开关判据收在 adaptPrices 内部、这里**无条件调用**；即使将来把常量改回 false，也能保证方法在字节码里存在。
     AdaptivePrices adapted = adaptPrices(marketTables, ctx);
+    // ★★ W2（§一.9）：本轮"未付价款记为债务"的轮级 INFO（发生了什么 + 具名计数）—— 逐笔明细在
+    //   {@link #recordDeferredPaymentDebt} 的 INFO/DEBUG/TRACE 三档里；这里只给"这一轮一共赊了多少"。
+    if (ctx.deferredPaymentFills > 0 && MARKET.isInfoEnabled()) {
+      EventLog.channel(MARKET)
+          .info(
+              LogEvent.of(
+                  "MARKET_DEFERRED_PAYMENTS_SETTLED",
+                  EconomyLogSource.ECONOMY_DEBT,
+                  "day",
+                  round.day,
+                  "fills",
+                  ctx.deferredPaymentFills,
+                  "deferredMilli",
+                  ctx.deferredPaymentMilli,
+                  "debtContracts",
+                  ctx.debts == null ? 0 : ctx.debts.size(),
+                  "reason",
+                  "unpaid-goods-price-recorded-as-debt-to-seller"));
+    }
     // ★★ R1：本轮的政府授权成交（用于把 filledMilli 累加回授权行、并清除耗尽/到期行）。
     Map<MarketMandateId, Long> mandateFills = collectGovMandateFills(round, ctx);
     // ★★★ A5（2026-10-10）：本轮运输服务的读数（交付量 / 钱腿条数 / 交付故障 / 逐户服务收入）随交出物一起离开。
@@ -1841,7 +1913,6 @@ final class MarketSettlement {
             adapted.updates(),
             ctx.sellerOutcomes,
             ctx.buyerOutcomes,
-            ctx.creditFills,
             ctx.tariffByFill,
             fx,
             // ★★ P-T1b：三层税的逐项账目（层/金额/币种/收款政府）—— 读口 taxItems()/taxByCurrency() 的唯一来源。
@@ -2005,7 +2076,7 @@ final class MarketSettlement {
    * ★★ <b>W1（2026-10-10）：本轮市场轮统计读数</b>（逐市场 · 逐商品 D / S / 成交量 / 均价 / 未满足量 + 逐市场成交额）。
    *
    * <pre>
-   * D / S        自适应定价那一步的累加器（D = 折回"按当前价付得起的量"、S = 剔掉被运力截断的部分）
+   * D / S        自适应定价那一步的累加器（D = 全额想要量，一个量都不扣；S = 剔掉被运力截断的部分 —— 这条**不对称**是 v3.5 §2.1 的刻意口径）
    * 成交量 / 均价 逐笔成交（{@code report.fills}）按**卖方所在市场**归属；均价 = Σ(量×单价)/Σ量（向下取整；0 成交 ⇒ 0）
    * 未满足量      未成交原因表（{@code report.unfilled}）的**买方侧**按**买方所在市场**归属
    * 成交额        Σ 货款（毫；按卖方市场归属，单位 = 该笔的支付币 —— 世界无汇率，不折算）
@@ -2124,24 +2195,36 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>按供需 z 逐区改价</b>（M2.6 自适应；开关判据在本方法内，调用点无条件）—— 开关关时立即原样交回入参价格表。
+   * ★★ <b>按供需逐区改价</b>（M2.6 自适应；开关判据在本方法内，调用点无条件）—— 开关关时立即原样交回入参价格表。
    *
    * <pre>
-   * z      = clamp((demand − supply) / max(demand + supply, ε), −1, 1)
-   * p_next = max(p_min, round(p × (1 + α·z)))       // 定点整数：BigInteger 中间量，避免 long 溢出与 double 不可复现
+   * D &gt; S（缺货）: r = (D − S) / max(1, S)；step‰ = min(α, ⌊α·r⌋)；p' = max(p + 1, ⌊p×(1000 + step)/1000⌋)（p &gt; 0；无上限）
+   * S &gt; D（滞销）: r = (S − D) / max(1, D)；step‰ = min(α, ⌊α·r⌋)；p' = max(0, ⌊p×(1000 − step)/1000⌋)（触底 0）
+   * D = S:         p' = p                                                   （缺省中性：不失衡的世界逐值不变）
    * </pre>
    *
-   * <p>★★ <b>需求口径</b>：{@code demand} = 本轮**已生成**的买订单数量（{@code ordersFor} 已在生成时施加"预算 &gt; 0 +
-   * 买得起"两重过滤）之和；{@code supply} = 卖订单的 {@code sellable} 之和。★ 只按绝对供需，不看本轮成交结果 ——
-   * 成交已受运力/运费/时限约束，那些属物流读数，不是价格信号。
+   * ★ 算式本体与逐值口径全部在 {@link #adaptiveNextPrice}（唯一拼写点）；本方法只负责**汇总 D/S 与逐区取 α**。
    *
-   * <p>★★ <b>M-A1（V-20）：被运力截断的部分不提价、不压价（两侧都剔）</b> —— 每个槽位先扣掉 {@code
-   * capacityTruncatedMilli}（本轮真正因运力未获服务的量），再进上面的汇总。用户的裁定是"多出来的不计入当前 hex
-   * 的家户商品价格表"：不可服务的跨格买卖不许把本格价格推上去（需求侧）或压下来（供给侧）。 ★ 扣除量按该槽本轮的统计量封顶（{@code min(统计量,
-   * 截断量)}），跨车道累加也不会扣成负数。
+   * <p>★★ <b>需求口径（W2-fix，控制方裁定 v3.5 §2.1）：D = 全额想要量，一个量都不扣</b> —— {@code demand} = 本轮 **已生成**的买槽
+   * {@code order.quantity()} 之和。改动前它被折回"按当前参考价真正付得起的量"（2026-10-09 的 防乘性暴涨补丁），随后又保留了 M-A1
+   * 的"扣掉被运力截断的那一份"；两者现在**都已删除**（前者见下面买槽循环的注释， 后者见 v3.5 的 ★★ 裁定）。★ 只按绝对供需，不看本轮成交结果 ——
+   * 成交受运力/运费/时限约束，那些是撮合期事实， 已在全额需求里；再扣一遍等于"运力没运走 ⇒ 没人要"。
    *
-   * <p>★★ <b>区价 = 集散节点价，成员格同改</b>：新价对**该区所有"已经给这个商品定价"的成员格**生效（缺价的格不凭空造一行）——
-   * 这就是"每区每商品一个报价"的落点，也避免成员价格各自漂开后"区价"这个词失去意义。
+   * <p>★★★ <b>D/S 的不对称是刻意的（不许改回对称）</b>：
+   *
+   * <ul>
+   *   <li><b>D 不扣</b>"运力截断量"：买家的"想要"就是全额需求，运力没运走 ≠ 没人要；
+   *   <li><b>S 仍扣</b>{@code capacityTruncatedMilli}：供给侧只算**真能上架**的（运不出去的不算，不自我抵消）。
+   * </ul>
+   *
+   * ⇒ 缺货压力只能从这条不对称里来 —— 若两侧同扣，"被运力/口岸拦下"的那部分会同时从 D 与 S 里消失、比值不变、
+   * 价格不动，与用户"缺货价格应该逐步增加"直接矛盾。这就是"抢手能涨价"的**唯一通道**（设计书 §2.1 v3.5 的两条 ★★）。
+   *
+   * <p>★ <b>"口岸闸拦下的量"不新增、不重复计</b>：它**本来就在 D 里** —— D 取自买槽 {@code order.quantity()} 全额，
+   * 而口岸闸拦下的是撮合期事实（只写 {@code remaining}/{@code blocked}，从不改 {@code order.quantity()}）。 逐 (区, 商品)
+   * 的那一份只作**日志读数**（{@link #logDemandComposition}），不进任何算式。
+   *
+   * <p>★★ <b>区价 = 集散节点价</b>：W1 之后价表每区一张，"区内一价"是**结构上必然**（改价 = 本区一次 upsert）， 不再有逐成员对齐循环。
    */
   private static AdaptivePrices adaptPrices(
       Map<MarketZoneId, MarketTable> marketTables, MatchContext ctx) {
@@ -2152,32 +2235,31 @@ final class MarketSettlement {
     // 逐 (region, commodity) 汇总订单；region 用拓扑对象本身当键（它由 node+members 派生，等值即同区）。
     Map<MarketRegion, Map<CommodityId, long[]>> byRegion = new LinkedHashMap<>();
     for (BuySlot buy : ctx.buys) {
-      // ★★ 2026-10-09 红字修复：信用世界里的挂单量 = 整笔缺口（不按现金封顶），直接喂给自适应公式会让
-      //   需求对价格**完全不敏感** ⇒ 价格每轮 multiplicative 上涨（实测 cloth 涨到 1.2e10 毫/单位，
-      //   跨区布匹贸易因此停滞、商号运费实收归 0）。这里把需求折回"按当前参考价真正付得起的量"：
-      //   价格越涨、有效需求越小，公式才能在供需处收敛。信用能补的那部分不在价格信号里重复放大。
+      // ★★ W2（2026-10-11）：**D 全算** —— 需求全额进价格信号。改动前这里把需求折回"按当前参考价真正付得起的量"
+      //   （{@code affordable = 可付额 × 1000 ÷ 参考价}）：那是 2026-10-09 为压住"需求对价格不敏感 ⇒ 每轮乘性暴涨"
+      //   加的红字补丁。W2 起"买不起"这个概念已经不存在（未付价款进债务、需求全额成交），故该折回**删除** ——
+      //   取而代之的防失控闸门是 §2.1 的"每轮 ≤ α"（约束设计书 §2.1 末段的具名理由）。
       CommodityId commodity = buy.order.commodity();
       long quantity = buy.order.quantity();
-      // ★ W1：本格价表 = 本区价表（每区一张）；不在任何市场里的买方格 ⇒ null（与改动前的"锚格回落"同一答案）。
-      MarketTable buyMarket = ctx.tableAt(buy.hex);
-      if (buyMarket != null) {
-        long reference = buyMarket.priceOf(commodity);
-        if (reference > 0L) {
-          long affordable =
-              safeMulDiv(payableMoneyOf(ctx, buy), EconomySettlement.MILLI_PER_GRAIN, reference);
-          quantity = Math.min(quantity, affordable);
-        }
-      }
+      // ★★★ W2-fix（2026-10-11，控制方裁定 v3.5 §2.1）：**D = 全额想要量，一个量都不扣**。
+      //   ★ 改动前这里还留着 M-A1（V-20）的"扣掉被运力截断的那一份"；v3.5 的 ★★ 条明确：
+      //     **D 不扣"运力截断量"**（买家的"想要"就是全额需求；运力没运走 ≠ 没人要），**S 仍扣**（只算真能上架的）。
+      //   ★★★ 这条**不对称是刻意的**：缺货压力只能从这条不对称里来 —— 若两侧都扣，被运力/口岸拦下的那部分
+      //     会同时从 D 与 S 里消失 ⇒ D 与 S 一起缩小、比值不变 ⇒ 价格不动，与用户"缺货价格应该逐步增加"
+      //     直接矛盾（这正是"抢手能涨价"的唯一通道）。S 侧一字未动（见下面卖槽循环）。
+      //   ★ 与"口岸闸拦下的量"的关系：那部分**本来就在 D 里**（D 取自买槽 `order.quantity()` 全额，
+      //     口岸闸拦下的是撮合期事实、只写 `remaining`/`blocked`，从不改 `order.quantity()`）⇒ 不新增、不重复计。
       byRegion.computeIfAbsent(buy.region, ignored -> new LinkedHashMap<>())
               .computeIfAbsent(commodity, ignored -> new long[2])[0] +=
-          // ★★ M-A1（V-20）：先剔掉"因运力未获服务"的那一份（上限 = 上面的有效需求量）。
-          quantity - Math.min(quantity, buy.capacityTruncatedMilli);
+          quantity;
     }
     for (SellSlot sell : ctx.sells) {
       long sellable = sell.order.sellable();
       byRegion.computeIfAbsent(sell.region, ignored -> new LinkedHashMap<>())
               .computeIfAbsent(sell.order.commodity(), ignored -> new long[2])[1] +=
-          // ★★ M-A1（V-20）：供给侧同样剔除被运力截断的部分（上限 = 该槽可售量）。
+          // ★★ M-A1（V-20，W2-fix 后**保留不动**）：供给侧仍然剔除被运力截断的部分（上限 = 该槽可售量）。
+          //   ★ 为什么 S 扣、D 不扣：这就是 v3.5 §2.1 那条 ★★ 的**刻意不对称**（见上面买槽循环的同一段注释）——
+          //     "能上架"只算真能卖的（运不出去的不算），而"想要"是全额需求。两侧口径**不许**被改回对称。
           sellable - Math.min(sellable, sell.capacityTruncatedMilli);
     }
     // ★★ W1（价表每区一张）：**逐成员对齐循环随形状退役**。改动前沿 {@code region.members()} 逐格写回
@@ -2203,7 +2285,12 @@ final class MarketSettlement {
         long[] demandSupply = quantities.get(commodity);
         long demand = demandSupply == null ? 0L : demandSupply[0];
         long supply = demandSupply == null ? 0L : demandSupply[1];
-        long next = adaptiveNextPrice(reference, demand, supply);
+        // ★★ W2：α 逐区现读（{@code MarketZone.priceAlphaPerMille}，GM 可调）—— 改 α 后下一市场轮生效。
+        long alphaPerMille = priceAlphaPerMilleOf(ctx, zoneId);
+        // ★★ W2-fix（§一.9 DEBUG = 每一阶段的池子/汇总/理由）：把 **D 的构成**如实记下来（全额 / 其中运力未服务 /
+        //   其中口岸拦下），否则"N 涨了"只能靠事后读代码反推是需求真的多了还是口径变了。
+        logDemandComposition(ctx, zoneId, commodity, demand, supply, alphaPerMille);
+        long next = adaptiveNextPrice(reference, demand, supply, alphaPerMille);
         if (next == reference) {
           continue; // 不动的商品一行都不写（缺省中性：失衡为 0 的世界逐值不变）
         }
@@ -2220,54 +2307,213 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>自适应公式的定点实现</b>（包内可见，直接可测）：{@code z} 用有理数表示（分子 = demand − supply、分母 = max(demand + supply,
-   * ε)），再按 {@code p_next = max(p_min, round(p × (1 + α·z)))} 取整。
+   * ★★ <b>W2-fix：D 的构成（DEBUG 一条，逐区逐商品）</b>—— 只读、不写状态、不改任何算式（§一.9 的"每一阶段的池子/汇总/理由"）。
    *
-   * <p>★ 为什么用 {@link BigInteger}：{@code price × α × 需求量} 在量级上可以越过 {@code long}；浮点又会破坏"可复现"。
-   * BigInteger 是整数、无平台差异，且每轮每区每商品只调用一次（真档 &lt; 1000 次/轮），不是热路径。
+   * <pre>
+   * demandMilli               D（全额想要量）—— 一个量都不扣（v3.5 §2.1 的 ★★）
+   *   unservedByCapacityMilli 其中：因**运力**未获服务的部分（Σ min(买槽挂单量, capacityTruncatedMilli)）
+   *   blockedByPortMilli      其中：因**口岸闸**拦下的部分（见 down 的读数口径；无口岸面 ⇒ 恒 0）
+   * supplyMilli               S（只算真能上架的 —— 供给侧仍扣运力截断，这是刻意的**不对称**）
+   * </pre>
    *
-   * <p>★ 取整 = <b>四舍五入（远离零）</b>：余数 × 2 ≥ 分母就向远离零方向加一毫。z 为负（供 &gt; 求）时价格下调，公式对 {@code α·z ∈ (−5%, 0]}
-   * 对称。
+   * <p>★ 为什么这三项都要打在**同一行**：V-20 的原始裁定是"被运力截断的不提价/不压价"，而 W2-fix 把它**只**保留在
+   * 供给侧；没有这一行，读日志的人无法分辨"需求真的变多了"与"扣除口径变了"（两者都会让 D 变大、价上涨）。
+   *
+   * <p>★★ <b>两个"其中"互不重叠</b>：运力截断记在 {@code capacityTruncatedMilli}（协调器串行路径的 承运分配不足 / 整条车道无运力 /
+   * 路线窗口预算用尽三处），口岸拦下记在 {@link MatchContext#portBlockedMilliByZoneCommodity} （{@code matchRoute}
+   * 里"闸用尽且还有合格需求"那一个分支）—— 后者**不改**前者（见那一处的具名注释）。
    */
-  static long adaptiveNextPrice(long price, long demand, long supply) {
+  private static void logDemandComposition(
+      MatchContext ctx,
+      MarketZoneId zoneId,
+      CommodityId commodity,
+      long demand,
+      long supply,
+      long alphaPerMille) {
+    if (!MARKET.isDebugEnabled()) {
+      return; // 逐区逐商品一行 ⇒ 默认关（TRACE 太细、INFO 太粗：这是"池子/汇总/理由"那一档）
+    }
+    long unservedByCapacity = 0L;
+    for (BuySlot buy : ctx.buys) {
+      if (!zoneId.value().equals(buy.region.node().nodeId())
+          || !commodity.equals(buy.order.commodity())) {
+        continue;
+      }
+      long quantity = buy.order.quantity();
+      // 上限按本槽挂单量封顶（与 S 侧同一条纪律）：截断读数不该超过"这份挂单真正想要的量"。
+      unservedByCapacity =
+          Math.addExact(unservedByCapacity, Math.min(quantity, buy.capacityTruncatedMilli));
+    }
+    Map<CommodityId, Long> blockedByCommodity = ctx.portBlockedMilliByZoneCommodity.get(zoneId);
+    long blockedByPort =
+        blockedByCommodity == null ? 0L : blockedByCommodity.getOrDefault(commodity, 0L);
+    EventLog.channel(MARKET)
+        .debug(
+            LogEvent.of(
+                "MARKET_DEMAND_COMPOSITION",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.round.day,
+                "zone",
+                zoneId.value(),
+                "commodity",
+                commodity.value(),
+                "demandMilli",
+                demand,
+                "unservedByCapacityMilli",
+                unservedByCapacity,
+                "blockedByPortMilli",
+                blockedByPort,
+                "supplyMilli",
+                supply,
+                "alphaPerMille",
+                alphaPerMille,
+                "reason",
+                "demand-is-full-quantity-supply-excludes-capacity-truncation"));
+  }
+
+  /**
+   * ★★ <b>自适应公式的定点实现（W2：约束设计书 §2.1 的冻结算式 + W2-fix 的整数毫位最小步进）</b>（包内可见，直接可测）。
+   *
+   * <pre>
+   * D &gt; S（缺货）: r = (D − S) / max(1, S)；step‰ = min(α, ⌊α × r⌋)
+   *                p &gt; 0: p' = max(p + 1, ⌊p × (1000 + step) / 1000⌋)   // 无上限
+   *                p = 0: p' = 1                                        // 退出免费态（唯一例外，见下）
+   * S &gt; D（滞销）: r = (S − D) / max(1, D)；step‰ = min(α, ⌊α × r⌋)；p' = max(0, ⌊p × (1000 − step) / 1000⌋)
+   * D = S:         p' = p                                               // 不动（缺省中性）
+   * </pre>
+   *
+   * <p>★★ <b>它取代了什么</b>：改动前是 {@code z = clamp((D − S) / max(D + S, ε), −1, 1)}、 {@code p' = max(0,
+   * round(p × (1 + 50‰ × z)))} —— 在那个算式里"缺货倍数"被分母 {@code D + S} 摊平， 于是<b>再严重的缺货每轮也只涨
+   * ≈α/2</b>，且缺口越大涨得越慢（{@code z → 1} 但被 clamp 住）。 §2.1 把速度交回给规模：{@code r} 是"缺口相对供给的倍数"，倍数越大越快打满 α。
+   *
+   * <p>★★ <b>整数/定点，禁浮点</b>：全程 {@code long}/{@link BigInteger}，无平台差异（可复现是 I7 的要求）。 乘法真的越过 {@code
+   * long} ⇒ 顶上 {@code Long.MAX_VALUE}（"价无上限"的饱和，不抛、不回退 double）。
+   *
+   * <p>★★★ <b>整数毫位的"最小步进"（W2-fix，控制方裁定 v3.5 §2.1 第二条 ★★）</b>：缺货且 {@code p &gt; 0} 时取 {@code max(p +
+   * 1, ⌊p×(1000+step)/1000⌋)} —— 因为价格以**毫**为最小单位，{@code p &lt; ⌈1000/step⌉} （α=50‰ ⇒ {@code p &lt;
+   * 20} 毫）时纯取整会**恒等不动**，与"缺货价格应该逐步增加"直接矛盾（真实世界的 1 毫粮价 将永不涨）。★ {@code +1 毫} =
+   * **整数粒度下最小的"逐步"**，不是第二条公式：涨价方向、步长上限（≤ α）、无上限， 全仍由上面那条乘法式定，{@code +1} 只是它的整数下限。★
+   * <b>滞销侧不加对称例外</b>：{@code max(0, ⌊p×(1000−step)/1000⌋)} 在 {@code p = 1} 时已经到 0（白送），不需要补。
+   *
+   * <p>★★ <b>0 价的"退出免费态"具名例外（W2 保留，见账本偏离记录）</b>：{@code p = 0} 时乘法式恒为 0 （{@code ⌊0 ×
+   * (1000+step)/1000⌋ = 0}）⇒ 白送出去的商品<b>永远涨不回来</b>，与 §2.1 的"缺货逐步涨" 及判据
+   * W2-⑦"抢手场景逐轮单调涨"直接冲突。故保留既有那条<b>唯一</b>的例外：{@code p = 0} 且 {@code D > S} ⇒ 下一轮从 1 毫重新起步；{@code p =
+   * 0} 且 {@code S ≥ D} ⇒ 维持 0（免费）。★ 它不是第二套定价公式： 只在 `p == 0` 这一个不可乘点上替代乘法式，其余一切仍走上式。
+   *
+   * <p>★ <b>α = 0 仍然是"该区价格不随供需变动"</b>（W2 的具名口径，见账本 §四-6）：{@code α = 0} 是**合法状态** （GM
+   * 可以把某区的价格钉死），不是"最慢的逐步" ⇒ 缺货侧在 {@code step ≤ 0} 时**不动**，{@code +1} 不越过它。 ★ 这是一处**具名例外**（v3.5
+   * 的公式没写 α=0 这一支），已在 W2-fix 账本"偏离记录"里记明。
+   *
+   * @param price 当前单价（毫计价货币 / 商品单位；≥ 0）
+   * @param demand 本轮该区该商品的 <b>D</b>（毫商品；全额口径见 {@link #adaptPrices}）
+   * @param supply 本轮该区该商品的 <b>S</b>（毫商品；只含真能上架的）
+   * @param alphaPerMille ★★ 本区步长 α（‰/轮；≥ 0；0 = 价格不动）。由 {@link MarketZone#priceAlphaPerMille()}
+   *     逐区给出，缺省 {@link MarketZone#DEFAULT_PRICE_ALPHA_PER_MILLE}
+   */
+  static long adaptiveNextPrice(long price, long demand, long supply, long alphaPerMille) {
     if (price < 0L) {
       throw new IllegalArgumentException("自适应价格的入参 price 不得为负: " + price);
     }
-    // ★★ 0 价态（明确免费交易）：乘法公式在 0 上恒为 0，故显式给一条具名的"退出免费态"规则 ——
-    //   需求 > 供给 ⇒ 下一轮从 1 毫重新起步；供给 ≥ 需求 ⇒ 维持 0（免费）。这是粗口径，不是第二套定价公式。
+    if (alphaPerMille < 0L) {
+      throw new IllegalArgumentException("自适应价格的入参 alphaPerMille 不得为负: " + alphaPerMille);
+    }
+    long d = Math.max(0L, demand);
+    long s = Math.max(0L, supply);
+    if (d == s) {
+      return price; // D = S ⇒ 不动（缺省中性：不失衡的世界逐值不变）
+    }
+    if (d > s) {
+      // ── 缺货：涨 ─────────────────────────────────────────────────────────────────────
+      if (price == 0L) {
+        return 1L; // ★ 具名例外：退出免费态（见类注），否则 0 价商品永远涨不回来
+      }
+      long step = stepPerMille(d - s, Math.max(1L, s), alphaPerMille);
+      if (step <= 0L) {
+        // ★ α = 0 或倍数取整后为 0 ⇒ 本轮不动。★ α = 0 是**合法状态**（该区价格不随供需变动，W2 口径），
+        //   不是"最慢的逐步" ⇒ 下面的 +1 毫最小步进**不越过**它（见方法注的具名例外）。
+        return price;
+      }
+      // ★★★ W2-fix（控制方裁定 v3.5 §2.1 第二条 ★★）：整数毫位的**最小步进**。
+      //   p < ⌈1000/step⌉ 时 ⌊p×(1000+step)/1000⌋ 恒等于 p（α=50‰ ⇒ p < 20 毫被整数除法抹平）⇒
+      //   "缺货逐步涨"在低价位失效（真实世界的 1 毫粮价永不涨）。取 max(p + 1, 乘法式)：
+      //   +1 毫 = 整数粒度下最小的"逐步"，**不是第二条公式**（方向/上限/无上限全由乘法式定，+1 只是它的整数下限）。
+      //   ★ 乘法式溢出时返回 Long.MAX_VALUE ⇒ max 自然取饱和值；p 已到 Long.MAX_VALUE ⇒ +1 那一侧也饱和
+      //     （不减、不抛、不回退 —— 与乘法式同一条"价无上限"的饱和纪律）。
+      return Math.max(
+          incrementOneMilli(price), multiplyByPerMille(price, 1000L + step, Long.MAX_VALUE));
+    }
+    // ── 滞销：跌（触底 0 = 白送）─────────────────────────────────────────────────────────
     if (price == 0L) {
-      return demand > supply ? 1L : 0L;
+      return 0L; // 已经白送且供过于求 ⇒ 维持白送
     }
-    BigInteger d = BigInteger.valueOf(Math.max(0L, demand));
-    BigInteger s = BigInteger.valueOf(Math.max(0L, supply));
-    BigInteger denominator = d.add(s);
-    if (denominator.signum() == 0) {
-      denominator = BigInteger.valueOf(MARKET_ADAPTIVE_Z_EPSILON_MILLI);
+    long step = stepPerMille(s - d, Math.max(1L, d), alphaPerMille);
+    if (step <= 0L) {
+      return price;
     }
-    BigInteger numerator = d.subtract(s);
-    // z ∈ [−1, 1]：分子 clamp 到 ±分母。
-    if (numerator.compareTo(denominator) > 0) {
-      numerator = denominator;
-    } else if (numerator.compareTo(denominator.negate()) < 0) {
-      numerator = denominator.negate();
-    }
-    BigInteger scaled =
-        BigInteger.valueOf(price)
-            .multiply(BigInteger.valueOf(MARKET_ADAPTIVE_ALPHA_PER_MILLE))
-            .multiply(numerator);
-    BigInteger divisor = BigInteger.valueOf(1000L).multiply(denominator);
-    BigInteger[] quotientAndRemainder = scaled.divideAndRemainder(divisor);
-    BigInteger delta = quotientAndRemainder[0];
-    if (quotientAndRemainder[1].abs().shiftLeft(1).compareTo(divisor) >= 0) {
-      delta = delta.add(scaled.signum() < 0 ? BigInteger.ONE.negate() : BigInteger.ONE);
-    }
-    long next;
+    long next = multiplyByPerMille(price, Math.max(0L, 1000L - step), 0L);
+    return Math.max(0L, next);
+  }
+
+  /**
+   * ★★ <b>W2-fix：整数毫位的最小步进 {@code p + 1}</b>（缺货侧 {@code max} 的右项；见 {@link #adaptiveNextPrice}）。
+   *
+   * <p>★ 为什么需要它：价格的最小单位是毫，{@code ⌊p×(1000+step)/1000⌋} 在小价位上会被整数除法**完全抹平** （α=50‰、{@code p < 20} 毫
+   * ⇒ 每轮涨 0）⇒ "缺货逐步涨"这一条在低价位失效。+1 毫就是这条粒度下的最小一步。
+   *
+   * <p>★ 溢出：{@code p} 已到 {@link Long#MAX_VALUE} 时返回原值（饱和，不回退、不抛 —— 与乘法式同一条纪律）。
+   */
+  private static long incrementOneMilli(long price) {
     try {
-      next = price + delta.longValueExact();
+      return Math.addExact(price, 1L);
     } catch (ArithmeticException overflow) {
-      next = delta.signum() < 0 ? MARKET_PRICE_FLOOR_MILLI : Long.MAX_VALUE;
+      return price; // 价已到 long 的顶 ⇒ +1 毫没有意义（乘法式那边同样饱和成 Long.MAX_VALUE）
     }
-    return Math.max(MARKET_PRICE_FLOOR_MILLI, next);
+  }
+
+  /** {@code step‰ = min(α, ⌊α × r⌋)}，{@code r} 是"缺口 / max(1, 对手方)"的整数比（floor，禁浮点）。 */
+  private static long stepPerMille(long gap, long base, long alphaPerMille) {
+    if (alphaPerMille <= 0L || gap <= 0L) {
+      return 0L;
+    }
+    // ⌊α × gap / base⌋：先乘后除；α 与 gap 都是 long，乘积可能溢出 ⇒ BigInteger 中间量（每轮每区每商品一次，不是热路径）。
+    BigInteger scaled =
+        BigInteger.valueOf(alphaPerMille)
+            .multiply(BigInteger.valueOf(gap))
+            .divide(BigInteger.valueOf(base));
+    if (scaled.compareTo(BigInteger.valueOf(alphaPerMille)) > 0) {
+      return alphaPerMille; // min(α, ⌊α·r⌋) —— r 大时打满 α（"逐步"的封顶）
+    }
+    return scaled.longValueExact();
+  }
+
+  /**
+   * {@code ⌊value × numerator ÷ 1000⌋}（整数、向下取整；溢出 ⇒ {@code saturation} 饱和值而不是抛）。
+   *
+   * <p>★ 用 {@link BigInteger} 而不是 {@code Math.multiplyExact} 的 try/catch：这里是"价本身无上限"的落点，
+   * 溢出必须是<b>饱和</b>（{@code Long.MAX_VALUE}）而不是异常 —— 世界真的通胀到那个量级时，模拟要继续跑。
+   */
+  private static long multiplyByPerMille(long value, long numerator, long saturation) {
+    BigInteger product =
+        BigInteger.valueOf(value).multiply(BigInteger.valueOf(numerator)).divide(THOUSAND);
+    if (product.bitLength() > 62) {
+      return saturation;
+    }
+    return product.longValueExact();
+  }
+
+  private static final BigInteger THOUSAND = BigInteger.valueOf(1000L);
+
+  /**
+   * ★★ <b>W2：本区本轮的自适应步长 α</b>（‰/轮）—— 唯一拼写点。
+   *
+   * <p>★ 持久形态：{@link MarketZone#priceAlphaPerMille()}（GM 可调，{@code
+   * economy.SetMarketZonePriceAlpha}）。 ★ 派生形态 / 没有区表（夹具、没有 map 切片的世界）：出厂缺省 {@link
+   * MarketZone#DEFAULT_PRICE_ALPHA_PER_MILLE}。 ★ 区表里有这个键但它是派生市场（键不是持久区 id ⇒ 其实查不到）同样落缺省 —— 不静默建区。
+   */
+  private static long priceAlphaPerMilleOf(MatchContext ctx, MarketZoneId marketId) {
+    MarketZone zone = ctx.marketZones.get(marketId);
+    return zone == null ? MARKET_ADAPTIVE_ALPHA_PER_MILLE : zone.priceAlphaPerMille();
   }
 
   // ── 订单生成 ───────────────────────────────────────────────────────────────────────
@@ -2357,8 +2603,8 @@ final class MarketSettlement {
           plan.necessaryInputs
               .getOrDefault(participant.actor, Map.of())
               .getOrDefault(commodity, 0L);
-      long life =
-          plan.lifeReserves.getOrDefault(participant.actor, Map.of()).getOrDefault(commodity, 0L);
+      // ★★ W2（S-10）：这里不再单独读 {@code plan.lifeReserves}（口粮）—— 它已并进
+      //   {@link #householdProductionCostOf} 的"生产花费"里（下面 {@code productionCostHere}）。
       // ★★ R4-E2：GM 需求只归家户；经营者不因需求加目标（demandParts 恒空）。
       List<Long> demandParts =
           participant.household == null
@@ -2379,20 +2625,28 @@ final class MarketSettlement {
       //   ★★ P-T5b：选币策略**只改 orderCurrencyFor 一处**（它读 MarketPayChoice 的"该户最强持有币"）——
       //     预算/可负担量/冻结/运费折算都跟着这个币走，见下面各处的"按买方支付币折算"。
       CurrencyId orderCurrency = orderCurrencyFor(payChoice, participant, market);
-      // ── 卖：可卖 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留基线 − 有效需求目标) ─────
+      // ── 卖：可卖 = max(0, 持有 − 已冻结 − **生产花费（内含口粮）** − 有效需求目标) ─────────────
       //   ★★ 需求目标同时进"不卖"一侧：要买的粮/布（或任何新商品）不许在同一轮又被当余量卖掉。
-      long retention = Math.addExact(life, demandTarget);
-      long sellable = Math.max(0L, stock - frozen - necessary - retention);
+      //   ★★ W2（S-10）：家户的"必要生产投入 + 生活保留"合并成**一个量**（生产花费，内含口粮）——
+      //     {@link #householdProductionCostOf}。数值上与改动前的 {@code necessary + life + demandTarget}
+      //     **逐值相同**（两个分量都在表里、只是口径合成一个；经营者那一支 {@code life} 恒 0）⇒ 卖侧零行为变化。
+      Map<CommodityId, Long> productionCost = householdProductionCostOf(round, participant);
+      long productionCostHere = productionCost.getOrDefault(commodity, 0L);
+      long retention = Math.addExact(productionCostHere, demandTarget);
+      long sellable = Math.max(0L, stock - frozen - retention);
       if (sellable > 0L) {
         sells.add(
             new SellOrder(
                 participant.actor, hex, commodity, sellable, bid, round.day, orderCurrency));
       }
-      // ── 买：家户补到"生活保留基线 + 有效需求目标"；经营者补到必要生产投入 ─────────────────
+      // ── 买：家户补到**生产花费（内含口粮）** + 有效需求目标；经营者补到必要生产投入 ─────────────
       //   ★ M2.4：目标缺口 = target − 可用 − **该时限前确定到货**（在途批次里买方那一份；M2.1 的原文）。
       //   ★★ R4-E2 的预算优先级：先保生活保留基线，再按 demands 的 priority 升序（同 priority 按
       //     DemandId）逐个扣"按参考价折算的买得起量"；下层需求拿上一层剩下的额度。
-      long baseTarget = participant.household != null ? life : necessary;
+      //   ★★ W2（S-10，用户第五批原话）：**家户只预估"生产花费"并据此下单** —— 改动前这里只拿 {@code life}
+      //     （口粮前瞻），名下 unit 的必要投入不上买盘（只在卖侧保留）。现在两者合成一个目标量：
+      //     "无业"家户的生产花费 = 基本生理需求（第一项为空），同一个算式、没有第二个分支。
+      long baseTarget = participant.household != null ? productionCostHere : necessary;
       long incoming = confirmedIncoming(round, participant.actor, commodity, deadline);
       // ★★ 3c：预算按**买方支付币**读（不再把本格币的可花额当买方币）——缺省同币 ⇒ 逐值不变。
       long budget = spendableMoneyOf(round, participant, orderCurrency);
@@ -2411,18 +2665,24 @@ final class MarketSettlement {
           referenceInPay == 0L
               ? Long.MAX_VALUE
               : budget * EconomySettlement.MILLI_PER_GRAIN / referenceInPay;
-      // ★★ D-031：借款人侧不再有额度上限。家户把"目标缺口 + 需求缺口"整笔挂出来（现金撮合仍只按真实预算付，
-      //    剩余由信用撮合按放贷人实际可借头寸补）；经营者不参与信用 ⇒ 仍按现金买得起量封顶。
-      boolean creditDemand = participant.household != null && round.creditEnabled();
+      // ★★★ W2（2026-10-11）：**家户把"生产花费 + 需求缺口"整笔挂出来** —— 数量不按现金折回；撮合时先用手上的
+      //   现金付货款、不足的部分**全额记为对该卖方的债务**（{@link #recordDeferredPaymentDebt}，用户 0–8 第 6 条）。
+      //   ★ 前提是**本轮有债务工作副本**（{@code round.deferredPaymentsEnabled()}，与 {@code deferralPossible}
+      // 同一条判据）——
+      //     没有它就没有地方记那笔欠款，此时退回"按现金买得起量封顶"（旧口径，绝不凭空赊账）。
+      //   ★ 经营者不参与债务式清算（{@code DebtContract} 的两端只能是家户）⇒ 仍按现金买得起量封顶。
+      boolean deferredPaymentDemand =
+          participant.household != null && round.deferredPaymentsEnabled();
       long quantity =
-          creditDemand
+          deferredPaymentDemand
               ? desiredQuantity(baseTarget, demandParts, available, incoming)
               : allocateQuantity(baseTarget, demandParts, available, incoming, cashAffordable);
       // ── ★★ 2026-10-08（阶段 1，§4.3.1 第 ④ 步）：家户套利买盘 ────────────────────────────────
       //   ★ 它是"在既有买目标**之上**加量"（I15：生活保留/需求目标一份都不减），量已在排序阶段按
       //     "机会上限（30 天目标保有量的 25%）+ 可动现金的两成 + 价格冲击"封死（见 TradeArbitrageActivity）。
       //   ★★ **刻意不在订单层再按"计划量占用的现金"二次封顶**：credit 世界里既有买盘的最后一段本来就是信用
-      //     （`creditRound`）结的，按 notional 现金再封一道会让套利在"现金相对货值极贫瘠"的真档世界里恒为 0
+      //     （该段已随 W2-fix4 退役：缺口改由"未付价款记债"结），按 notional 现金再封一道会让套利在
+      //     "现金相对货值极贫瘠"的真档世界里恒为 0
       //     （= 静默死分支，正是本仓最反对的形态）。"自有资源"约束因此落在**计划那一侧**（可动现金 ×
       //     MONEY_CAP_PER_MILLE‰），而不是订单侧；这条取舍与其数值后果已记进实现账本。
       if (participant.household != null) {
@@ -2433,8 +2693,10 @@ final class MarketSettlement {
           // ★★ 2026-10-08 自配对（fix-ledger ①）：这一行**不**与上面的 `sellable` 对账 —— 卖单余量已经把
           //   生活保留(35 天)与需求目标扣掉，而套利买盘按 30 天目标的**劳动阶段**快照加量，两者在同一轮里
           //   可以同时为正（当日收获/产出落在两个阶段之间）⇒ 同一户在同一市场上既卖又买**同一商品**。
-          //   ★ 本批不去改这一行的量（会改变未崩溃世界的数值），而是在撮合与信用两处加"同户配对跳过"守卫
-          //     （pairUp / moneyCreditForBuy，形制照 FxSettlement.matchBook）；根因与后果见账本。
+          //   ★ 本批不去改这一行的量（会改变未崩溃世界的数值），而是在撮合处加"同户配对跳过"守卫
+          //     （{@code pairUp}，形制照 FxSettlement.matchBook）；根因与后果见账本。
+          //   ★★ W2-fix4（2026-10-11）：当年与之配对的另一处守卫住在 {@code moneyCreditForBuy}（市场信用撮合）
+          //     —— 那一段已整段退役 ⇒ 现在**只剩 pairUp 一处**需要这条守卫。
           quantity = Math.addExact(quantity, arbitrageQuantity);
           if (EconomyLog.market().isTraceEnabled()) {
             EventLog.channel(EconomyLog.market())
@@ -2596,8 +2858,8 @@ final class MarketSettlement {
    *
    * <ul>
    *   <li>{@code BUY}（收购/压价）：量 = {@code min(剩余授权量, 按参考价买得起的量)}，限价 = {@code min(授权限价, 市场买方限价)} ——
-   *       授权只能比市场更严，<b>不能</b>突破市场自身的价格纪律；★ 买盘<b>不走信用</b>（授权 ≠ 加杠杆，见 {@code creditRound} 的 auth-only
-   *       守卫）；
+   *       授权只能比市场更严，<b>不能</b>突破市场自身的价格纪律；★ 买盘<b>不走信用</b>（授权 ≠ 加杠杆，见 {@code deferralPossible} 的
+   *       auth-only 守卫）；
    *   <li>{@code SELL}（抛售）：量 = {@code min(剩余授权量, 可卖余量)}，底价 = {@code max(授权限价, 市场卖方底价)}。
    * </ul>
    *
@@ -2623,6 +2885,15 @@ final class MarketSettlement {
       List<SellOrder> sells,
       MarketPayChoice payChoice) {
     HouseholdId household = participant.household;
+    // ★★ W2-fix3（fail-closed）：本段以**家户**为键（{@code govMandates().liveFor(household, commodity)}），
+    //   没有家户就没有一条可执行的授权 ⇒ 具名跳过、**先判空再解引用**。改前方法体自己不判空，而唯一解引用
+    //   household 的地方（下面的 household.value()）落在 MARKET.isDebugEnabled() 块内 ⇒ 同一份世界
+    //   "开 DEBUG = NPE / 关 DEBUG = 静默不生成"，行为取决于日志开关。现在两支都是"零订单 + 具名理由"
+    //   （来路与逐条证据见 logGovMandateNoHousehold 的注）。
+    if (household == null) {
+      logGovMandateNoHousehold(round, participant, hex, commodity);
+      return;
+    }
     long stock = stockOf(round, participant, commodity);
     long frozen = frozenGoodsOf(round, participant, commodity);
     long available = Math.max(0L, stock - frozen);
@@ -2780,12 +3051,11 @@ final class MarketSettlement {
     }
     if (MARKET.isDebugEnabled()) {
       // ★★ 被压住的自动订单（同一算式的复算；只为证据，不参与写路径）。
-      long necessary =
-          plan.necessaryInputs
-              .getOrDefault(participant.actor, Map.of())
-              .getOrDefault(commodity, 0L);
-      long life =
-          plan.lifeReserves.getOrDefault(participant.actor, Map.of()).getOrDefault(commodity, 0L);
+      // ★★ W2-fix3：本方法开头已经"家户为 null ⇒ 具名跳过 + return"（见 logGovMandateNoHousehold）⇒
+      //   participant.household 走到这里恒非 null：原来的 `participant.household != null ? productionCostHere
+      // :
+      //   necessary` 与 `participant.household != null && round.deferredPaymentsEnabled()` 两条空支都是死代码
+      //   （SpotBugs RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE），随守卫一并删去；**可达路径上逐值不变**。
       long demandTarget = 0L;
       for (long part :
           plan.demandParts
@@ -2793,12 +3063,16 @@ final class MarketSettlement {
               .getOrDefault(commodity, List.of())) {
         demandTarget = Math.addExact(demandTarget, part);
       }
-      long retention = Math.addExact(life, demandTarget);
-      long wouldBeSell = Math.max(0L, stock - frozen - necessary - retention);
+      // ★★ W2（S-10）：与真实订单路径**同一个量**（生产花费 = 必要投入 + 口粮前瞻）—— 这条 DEBUG 是
+      //   "被授权压住的自动订单"的证据，口径漂开就会给出错的反事实读数。
+      long productionCostHere =
+          householdProductionCostOf(round, participant).getOrDefault(commodity, 0L);
+      long retention = Math.addExact(productionCostHere, demandTarget);
+      long wouldBeSell = Math.max(0L, stock - frozen - retention);
       long incoming = confirmedIncoming(round, participant.actor, commodity, deadline);
-      long baseTarget = life;
+      long baseTarget = productionCostHere;
       long wouldBeBuy =
-          round.creditEnabled()
+          round.deferredPaymentsEnabled()
               ? desiredQuantity(
                   baseTarget,
                   plan.demandParts
@@ -2853,9 +3127,55 @@ final class MarketSettlement {
   }
 
   /**
+   * ★★ W2-fix3（fail-closed）：<b>"只按授权下单"这一段拿不到家户 ⇒ 具名跳过（DEBUG），不静默、不解引用</b>。
+   *
+   * <p><b>household 什么时候会是 null（调用链来路）</b>：本方法第一行取 {@code HouseholdId household =
+   * participant.household}，而 {@code Participant.household} 是<b>可空字段</b> —— {@link Participant}
+   * 的紧凑构造器只对 {@code actor}/{@code units} 做 {@code requireNonNull}（{@link Participant}，本文件
+   * :1150-1157），全类多处按可空读它 （{@code :176} 家户经济视图、{@code :2597} 市场排除户、{@code :2633} 需求段、{@code
+   * :2672}/{@code :2696} 目标量与信用需求、 {@code :2792} 支付币、{@code :3951} 信用轮、{@code :9075} 债务清算、{@code
+   * :9495}+ 计划表）， 连 {@link #logPayCurrencyUnvalued} 都直接兜了空串（{@code :2855}）。
+   *
+   * <p><b>今天走不走得到</b>：走不到 —— {@link #participantsFor} 现存三处构造点（本文件 :9326/:9465/:9476）传的都是
+   * 解析出来的家户键，且本方法唯一调用点在本文件 {@code :2607-2608}，那里有一道 {@code participant.household != null} 守卫。 ⇒
+   * 本条守卫是<b>纵深防御</b>，不是"改了一条现有路径"：它消掉的是"一旦那道守卫被放宽 / 多点一个调用点，同一份世界里 '开 DEBUG = NPE、关 DEBUG =
+   * 静默不生成'（行为取决于日志开关）"这种不确定性；现在两支都收敛成"零订单 + 具名理由"。
+   *
+   * <p><b>为什么是 DEBUG 而不是 INFO</b>：它是"这一段为什么不成立"的判据（§一.9：理由归 DEBUG），与同方法的 {@code
+   * GOV_MARKET_MANDATE_ORDER_SKIPPED}、{@link #logPayCurrencyUnvalued} 的 {@code
+   * MARKET_PAY_CURRENCY_UNVALUED} 同一档（后者成文写了同款理由，本文件 {@code :2832-2834}）；轮级的"谁在按授权下单"由 {@code
+   * GovernmentMarketMandatePlan} 的 INFO 承担。
+   */
+  private static void logGovMandateNoHousehold(
+      MarketRound round, Participant participant, HexCoord hex, CommodityId commodity) {
+    if (!MARKET.isDebugEnabled()) {
+      return; // 日志失败/关闭不得影响订单生成
+    }
+    EventLog.channel(MARKET)
+        .debug(
+            LogEvent.of(
+                "GOV_MARKET_MANDATE_PLAN_SKIPPED",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                round.day,
+                "actor",
+                participant.actor.id(),
+                "hex",
+                hex,
+                "commodity",
+                commodity.value(),
+                "reason",
+                "no-household",
+                "why",
+                "授权单以家户为键（GovernmentMarketMandatePlan.liveFor(household, commodity)）⇒ 没有家户就没有可执行的授权，本格本商品的授权单整段不生成"));
+  }
+
+  /**
    * ★★ <b>D-031：借款人侧无额度时，一个家户在"目标缺口 + 需求缺口"上的全额挂单量</b>（毫商品）。
    *
-   * <p>现金撮合仍只按真实预算付钱；这里挂出来的全部缺口由后续信用撮合按放贷人实际可借头寸补。经营者不参与信用 ⇒ 仍走 {@link #allocateQuantity} 的现金封顶口径。
+   * <p>现金撮合仍只按真实预算付钱；这里挂出来的全部缺口由 {@code executeTrade} 的"未付价款 ⇒ 对该卖方的债务"补 （W2-fix4
+   * 起，市场信用撮合已整段退役）。经营者不参与债务式清算（{@code DebtContract} 两端只能是家户） ⇒ 仍走 {@link #allocateQuantity}
+   * 的现金封顶口径。
    */
   private static long desiredQuantity(
       long baseTarget, List<Long> demandParts, long available, long incoming) {
@@ -2947,6 +3267,10 @@ final class MarketSettlement {
       refreshSellFrozen(ctx, sell); // O(1)：读轴累计值（见 MatchContext.sellFrozenSums）
     }
     // 买：逐主体把"最多要花多少钱"按可花余额封顶后冻结（预算独立算，但承诺不许超过钱包）。
+    //   ★★ W2（2026-10-11）：**这里不再写"因缺钱被拒"** —— 改动前 {@code total <= 0} 会把整组买槽标成
+    //     {@link MarketUnfilledReason#NO_BUDGET} 且冻结 0（= 没钱就出局）。W2 起"没钱"不再是出局条件：
+    //     未付价款记为债务 ⇒ 冻结**退化为"承诺/上限"**（把本单能拿出的现金预留出来，钱包是 0 就预留 0），
+    //     它仍然是一次真实的状态写（冻结 ≤ 余额的会话不变式照旧），但**不再是成交的前置条件**。
     //   ★ P1.3：先把全部分组的 frozenRemaining 定完，再按 (buyer, currency) 轴一次写冻结表。
     ctx.buyFrozenSums.clear();
     Map<String, List<BuySlot>> byOwner = new LinkedHashMap<>();
@@ -2960,14 +3284,13 @@ final class MarketSettlement {
       for (BuySlot buy : group) {
         buy.baseFrozenMoney = frozenMoneyOf(ctx.round, buy.buyer, buy.currency);
         buy.requestedMoney = requestedMoneyOf(buy);
-        requested += buy.requestedMoney;
+        requested = safeAdd(requested, buy.requestedMoney);
       }
       long spendable = spendableMoneyOf(ctx.round, first.buyer, first.currency);
       long total = Math.min(requested, spendable);
-      if (total <= 0L) {
+      if (total <= 0L || requested <= 0L) {
         for (BuySlot buy : group) {
-          buy.frozenRemaining = 0L;
-          buy.blocked = MarketUnfilledReason.NO_BUDGET;
+          buy.frozenRemaining = 0L; // 钱包里没有可预留的现金 ⇒ 承诺额 0（仍可赊购，见 executeTrade）
         }
       } else if (total == requested) {
         for (BuySlot buy : group) {
@@ -3077,772 +3400,29 @@ final class MarketSettlement {
     ctx.buyFrozenSums.put(axis, sum);
   }
 
-  // ── D-030 市场信用：现金撮合之后的"借钱买货 → 借实物" ─────────────────────────────────────
+  // ── W2 债务式清算：未付价款 ⇒ 对该卖方的债务（{@link #recordDeferredPaymentDebt}）──────────────
 
-  /** ★ D-030 的市场信用条款（与 {@code lendDeficitsInHex} 同一利率常量、同一 legacy 维；身份 ⇒ 同债权人的借入累加）。 */
-  private static final DebtTerms MARKET_CREDIT_TERMS =
+  /**
+   * ★★ <b>W2：未付价款记债的条款</b>（与 {@code EconomySettlement.lendDeficitsInHex} 同一利率常量、同一 legacy 维； 身份 ⇒
+   * 同一 (债务人, 债权人, 标的, 条款) 的欠款自动累加成一条未偿额 —— D-023 §3"不做分别核算"）。
+   *
+   * <p>★ W2-fix4 前它是市场信用撮合的条款（名字 {@code MARKET_CREDIT_TERMS}）；信用撮合退役后它只服务 {@link
+   * #recordDeferredPaymentDebt}（{@code executeTrade} 的未付价款腿），**值一字未改**。
+   */
+  private static final DebtTerms DEFERRED_PAYMENT_TERMS =
       DebtTerms.legacyDefault(EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE);
 
-  /**
-   * ★★ <b>D-030 市场信用撮合</b>（在现金买卖之后、未成交归因之前跑一次）：
-   *
-   * <pre>
-   * 每个仍有缺口的家户买方，按现金撮合的稳定序（拓扑区序 × 商品 id 序 × 全局买槽插入序）：
-   *   ① 自己的现金已在现金撮合里花完；
-   *   ② 先借货币：出借人可借额 = max(0, 可花货币 − reserve)，按费率升序 → 可借额降序 →
-   *      出借人 actor id 升序取；借入额 = min(缺口货款, 出借人可借额)；货物必须同时存在
-   *      （原子绑定：没有可买货物就不放贷）；
-   *   ③ 货币借不到/不够时借实物：从现金成交后的卖单剩余（且卖家是家户、能成为债权人）
-   *      按"可借数量降序 → 商品 id 升序 → 卖家 actor id 升序"取；货腿 卖家 → 买方（LOAN_PRINCIPAL）。
-   * ★★ D-031：借款人侧没有额度上限；每笔成交只受"放贷人剩余可借头寸"限制，借空即止。
-   * </pre>
-   *
-   * <p>★★ <b>唯一写口不变</b>：货币/商品换手全部经 {@code EconomySettlement.applyTransfer}；债务经 {@link
-   * DebtContractBook#upsert}；市场只改槽位 remaining / 合同表 / 债务人行的派生引用。借货币买货对卖方仍是一笔现金销售 （连同 {@link
-   * MarketReport.Fill} 与 MARKET_TRADE 两条腿），借实物只写货腿与 {@link MarketReport.CreditFill}。
-   *
-   * <p>★ <b>本批口径（与设计文档的差异均在此具名）</b>：① 单区（D-027）：只从买方所在区取货币/商品头寸；② 债权人/债务人 必须是家户（{@link
-   * DebtContract} 的两端是 {@code HouseholdId}，经营者 actor 没有这一身份）⇒ 经营者只参与现金买卖， 不作为放贷人/借实物卖方/债务人；③
-   * 不跨区、不承运、不聚集。
-   */
-  private static void creditRound(MatchContext ctx, MarketIndexes indexes) {
-    if (!ctx.creditEnabled()) {
-      return;
-    }
-    if (!MONEY_LENDING_AUTO_LIST && !MARKET_GOODS_LENDING_ENABLED) {
-      return;
-    }
-    MarketRound round = ctx.round;
-    // ★★ D-031：借款人侧不再有额度/头寸上限 —— 信用撮合直接以放贷人可借池为唯一上限。
-    CreditPools pools = CreditPools.build(ctx, indexes);
-    // ② 稳定买方序：与 matchWithinRegions 的 (区序 × 商品序 × 买槽插入序) 逐字同源。
-    for (MarketRegion region : ctx.topology.regions()) {
-      MarketTable anchor = ctx.tableOf(region);
-      if (anchor == null) {
-        continue;
-      }
-      String regionId = region.node().nodeId();
-      Map<CommodityId, List<BuySlot>> buysByCommodity =
-          indexes.buysByRegionCommodity.getOrDefault(regionId, Map.of());
-      for (CommodityId commodity : indexes.commodities) {
-        List<BuySlot> slots = buysByCommodity.getOrDefault(commodity, List.of());
-        if (slots.isEmpty()) {
-          continue;
-        }
-        long price = anchor.priceOf(commodity);
-        if (!anchor.hasPrice(commodity)) {
-          continue; // 从未定价 ⇒ 不交易，也谈不上信用
-        }
-        if (price == 0L) {
-          continue; // 明确 0 价 ⇒ 货款腿为 0，不需要货款信用（运费由现金腿承担）
-        }
-        for (BuySlot buy : slots) {
-          if (buy.remaining <= 0L || buy.buyer.household == null) {
-            continue;
-          }
-          // ★★ R1：**明确授权 ≠ 加杠杆** —— 国库户的授权买盘只花它自己的钱（不借货币、不借实物）。
-          //   授权表只授权"买多少、什么价"，没有授权"借多少钱来买"；把它挂出来的量按现金封顶（见
-          //   planGovMandateOrders），这里再守一道，保证它永远进不了信用撮合。
-          if (round.govMandates().isAuthorizationOnly(buy.buyer.household)) {
-            continue;
-          }
-          if (buy.order.latestArrivalTick() < round.day || buy.order.maxLandedPrice() < price) {
-            continue; // 与现金撮合的 activeBuys 同一组门槛（信用不改变到货时限/买方限价）
-          }
-          creditForBuy(ctx, buy, price, pools);
-        }
-      }
-    }
-    pools.recordRemaining(ctx);
-  }
-
-  /** 一个买方的信用顺序：钱优先；钱不够（或没有）才借实物。 */
-  private static void creditForBuy(MatchContext ctx, BuySlot buy, long price, CreditPools pools) {
-    if (MONEY_LENDING_AUTO_LIST) {
-      moneyCreditForBuy(ctx, buy, price, pools);
-    }
-    if (MARKET_GOODS_LENDING_ENABLED && buy.remaining > 0L) {
-      goodsCreditForBuy(ctx, buy, price, pools);
-    }
-  }
-
-  /**
-   * ★★ <b>D-030 ②a：借钱买货</b>（D-031 起借款人无额度上限）。逐出借人取 {@code amount = min(缺口货款, 出借人可借额)}； 由 amount
-   * 反解能买的量（货款 ceil），货物必须同时在卖方剩余里 ⇒ 三腿原子落地：出借人→买方（LOAN_PRINCIPAL）、 买方→卖方（MARKET_TRADE
-   * 货款）、卖方→买方（MARKET_TRADE 货）。
-   */
-  private static void moneyCreditForBuy(
-      MatchContext ctx, BuySlot buy, long price, CreditPools pools) {
-    HouseholdId borrower = buy.buyer.household;
-    if (borrower == null) {
-      return;
-    }
-    String regionId = buy.regionId;
-    List<MoneyLendOrder> lenders = pools.moneyLenders(regionId);
-    int cursor = pools.moneyCursor(regionId);
-    int index = cursor;
-    // ★★ 2026-10-08 自配对守卫（与 pairUp 的同一条；形制照 goodsCreditForBuy 的 skippedForThisBuyer）：
-    //   借款人本人名下的卖单不得成为"借来的钱要买的那批货"的卖方 —— 否则 executeMoneyCredit 的三条腿里有
-    //   两条的两端相等（买方→卖方 的货款腿、卖方→买方 的货腿），`Transfer` 当场 fail-closed（整轮 400）。
-    //   ★ 为什么这条腿以前没人堵：goodsCreditForBuy 一开始就按 household 排除了自己，货币腿这条路径没有。
-    Set<SellSlot> skippedSelfSellers = new LinkedHashSet<>();
-    while (buy.remaining > 0L) {
-      SellSlot sell = pools.bestCashSeller(regionId, buy.order.commodity(), skippedSelfSellers);
-      if (sell == null) {
-        break; // 没有可买货物 ⇒ 不放贷（原子绑定）
-      }
-      if (sell.seller.actor.equals(buy.buyer.actor)) {
-        // ★ 记录（§一.9）：业务拒绝 = INFO（具名），理由 = DEBUG；然后换下一个卖方，没有下一个就停在
-        //   "没有可买货物"这一档（本买方这一轮不走货币信用，绝不铸自转移）。
-        skippedSelfSellers.add(sell);
-        EventLog.channel(MARKET)
-            .info(
-                LogEvent.of(
-                    "MARKET_CREDIT_SELF_MATCH_SKIPPED",
-                    EconomyLogSource.ECONOMY_MARKET,
-                    "day",
-                    ctx.round.day,
-                    "household",
-                    buy.buyer.actor.id(),
-                    "commodity",
-                    buy.order.commodity().value(),
-                    "hex",
-                    sell.hex,
-                    "skippedSellRemainingMilli",
-                    sell.remaining,
-                    "reason",
-                    "borrower-is-also-the-seller-of-the-same-commodity"));
-        if (MARKET.isDebugEnabled()) {
-          EventLog.channel(MARKET)
-              .debug(
-                  LogEvent.of(
-                      "MARKET_CREDIT_SELF_MATCH_SKIPPED_WHY",
-                      EconomyLogSource.ECONOMY_MARKET,
-                      "day",
-                      ctx.round.day,
-                      "household",
-                      buy.buyer.actor.id(),
-                      "commodity",
-                      buy.order.commodity().value(),
-                      "buyRemainingMilli",
-                      buy.remaining,
-                      "reason",
-                      "money-credit-legs-would-have-equal-ends-loan-principal-still-from-others"));
-        }
-        continue;
-      }
-      // ★★ E（§3.1）：信用腿同样走**唯一拼写点** —— 借来的钱按 buy.currency 付给卖方，故判据与现金腿逐字同一口径
-      //   （估价不足/说不出价 ⇒ 不划算，市场性理由）。fail-closed：本买方这一轮不再走信用，绝不按 1:1 静默付出去。
-      long buyerUnitPrice =
-          settlementUnitPrice(ctx, buy, sell, buy.remaining, price, LEG_MONEY_CREDIT, true);
-      if (buyerUnitPrice < 0L) {
-        break;
-      }
-      while (index < lenders.size()) {
-        MoneyLendOrder candidate = lenders.get(index);
-        if (candidate.remaining <= 0L
-            || !candidate.currency.equals(buy.currency)
-            || candidate.lender.household.equals(borrower)) {
-          index++;
-          continue;
-        }
-        break;
-      }
-      if (index >= lenders.size()) {
-        break;
-      }
-      MoneyLendOrder lender = lenders.get(index);
-      long gapPayment = paymentForQuantity(buy.remaining, buyerUnitPrice);
-      long amount = Math.min(gapPayment, lender.remaining);
-      if (amount <= 0L) {
-        break;
-      }
-      long quantity =
-          Math.min(
-              buy.remaining, Math.min(sell.remaining, maxQuantityForMoney(amount, buyerUnitPrice)));
-      if (quantity <= 0L) {
-        if (amount == lender.remaining) {
-          index++; // 这个出借人太小，买不起一个最小交易单位；看下一个
-          continue;
-        }
-        break;
-      }
-      long payment = paymentForQuantity(quantity, buyerUnitPrice);
-      if (payment <= 0L || payment > amount) {
-        break; // 理论到不了；到得了就是算法漂开，停在本档不超借
-      }
-      executeMoneyCredit(ctx, buy, sell, lender, payment, quantity, price, buyerUnitPrice, pools);
-      while (cursor < lenders.size() && lenders.get(cursor).remaining <= 0L) {
-        cursor++;
-      }
-      if (index < cursor) {
-        index = cursor;
-      }
-    }
-    pools.putMoneyCursor(regionId, cursor);
-  }
-
-  /**
-   * ★★ <b>D-030/D-031 ②b：借实物</b>。从卖单剩余（卖家须是家户，才能成为 {@link DebtContract} 的债权人）按"可借数量 降序 → 商品 id 升序 →
-   * 卖家 actor id 升序"取；量 = min(缺口, 卖单剩余, 配额剩余)，货腿 卖家 → 买方 （{@code LOAN_PRINCIPAL}），无货币腿、也不写普通 sale
-   * fill。★ D-031：借款人侧不再设额度上限。
-   *
-   * <p>★★ <b>E（2026-10-09 裁定 R1/R2）：本腿不再看币种</b> —— 借实物不经货币（债务单位 = 商品），A2b 那条 "异币 ⇒
-   * 具名拒"的判据随之退役；本腿仍然走过<b>同一个拼写点</b> {@link #settlementUnitPrice}（{@code leg =
-   * goods-credit}），由它统一回答"这条腿要不要看币种"（答案：不看）。A2b 当年是在"三条腿只有它漏堵"的背景下加的门， 而 E
-   * 批把三条腿的<b>判据</b>换成了"按钱的价判划算与否"——对不铸钱腿的这条腿，那个判据没有对象。
-   */
-  private static void goodsCreditForBuy(
-      MatchContext ctx, BuySlot buy, long price, CreditPools pools) {
-    HouseholdId borrower = buy.buyer.household;
-    if (borrower == null) {
-      return;
-    }
-    String regionId = buy.regionId;
-    CommodityId commodity = buy.order.commodity();
-    Set<SellSlot> skippedForThisBuyer = new LinkedHashSet<>();
-    while (buy.remaining > 0L) {
-      SellSlot sell = pools.bestGoodsSeller(regionId, commodity, skippedForThisBuyer);
-      if (sell == null) {
-        break;
-      }
-      if (sell.seller.household == null || sell.seller.household.equals(borrower)) {
-        skippedForThisBuyer.add(sell); // 不是可成立合同的两端（自借自买不是一笔信用）
-        continue;
-      }
-      long quantity = Math.min(buy.remaining, sell.remaining);
-      if (quantity <= 0L) {
-        skippedForThisBuyer.add(sell);
-        continue;
-      }
-      // ★★ E（2026-10-09 裁定 R1/R2）：借实物这条腿**不经货币**（债务单位 = 商品，见 {@code DebtUnit.Commodity}），
-      //   故"币种不符"不再构成拒因 —— 但三条腿仍走**同一个拼写点** {@link #settlementUnitPrice}（{@code leg =
-      //   goods-credit}）：它统一回答"这条腿要不要看币种"（答案：不看，币种维为空）。不许在这里另写第二套比较。
-      //   ★ 本笔一个数都不动：不减剩余、不铸货腿、不建债务合同。
-      settlementUnitPrice(ctx, buy, sell, quantity, 0L, LEG_GOODS_CREDIT, true);
-      executeGoodsCredit(ctx, buy, sell, quantity, pools);
-    }
-  }
-
-  /** 借货币买货的三腿 + 债务合同 + 读数（唯一 applier / 唯一债务写口）。 */
-  private static void executeMoneyCredit(
-      MatchContext ctx,
-      BuySlot buy,
-      SellSlot sell,
-      MoneyLendOrder lender,
-      long payment,
-      long quantity,
-      long sellerUnitPrice,
-      long buyerUnitPrice,
-      CreditPools pools) {
-    MarketRound round = ctx.round;
-    CommodityId commodity = buy.order.commodity();
-    // ① 出借人 → 买方：本金腿（LOAN_PRINCIPAL）。
-    applyMarketLeg(
-        ctx,
-        round.ledger.mint(
-            lender.lender.actor,
-            buy.buyer.actor,
-            lender.hex,
-            Map.of(),
-            Map.of(buy.currency, payment),
-            TransferReason.LOAN_PRINCIPAL));
-    // ② 卖方 → 买方：货腿（MARKET_TRADE，毛量）。
-    applyMarketLeg(
-        ctx,
-        round.ledger.mint(
-            sell.seller.actor,
-            buy.buyer.actor,
-            sell.hex,
-            Map.of(commodity, quantity),
-            Map.of(),
-            TransferReason.MARKET_TRADE));
-    long loss = creditLossMilli(ctx, sell, buy, quantity);
-    if (loss > 0L) {
-      deductBuyerLossNoTransfer(ctx, buy, loss);
-      round.ledger.addLoss(TRANSPORT_LOSS_ACCOUNT, commodity, loss);
-    }
-    // ③ 买方 → 卖方：货款腿（MARKET_TRADE）—— 对卖方就是一笔现金销售。
-    applyMarketLeg(
-        ctx,
-        round.ledger.mint(
-            buy.buyer.actor,
-            sell.seller.actor,
-            sell.hex,
-            Map.of(),
-            Map.of(buy.currency, payment),
-            TransferReason.MARKET_TRADE));
-    // 槽位/头寸/合同。债务合同在转移之后 upsert：生成债务不碰余额，失败时整轮回滚不产生半笔。
-    pools.sellChanged(sell, quantity);
-    buy.remaining -= quantity;
-    lender.remaining -= payment;
-    DebtUnit unit = new DebtUnit.Money(buy.currency);
-    DebtContract contract =
-        DebtContractBook.upsert(
-            ctx.debts,
-            buy.buyer.household,
-            lender.lender.household,
-            unit,
-            MARKET_CREDIT_TERMS,
-            payment,
-            round.day,
-            OptionalLong.of(ctx.creditConfig.dueCycle()));
-    // ★★ 2026-10-09 选项 A：这里改前会把新合同的派生引用补进债务人**行**（顺带 fail-closed 地断言该行在场）；
-    //   拆表后引用表由 EconomyData 构造期的 DebtReferenceReconciler 按 ctx.debts 整表重建，故补引用这一步消失，
-    //   但**那条具名断言逐字保留**（拆表不许放松守卫）：债务人的家户行必须在本轮工作副本里。
-    requireHouseholdRowInRound(round, buy.buyer.household);
-    ctx.creditFills.add(
-        new MarketReport.CreditFill(
-            sell.hex,
-            commodity,
-            buy.buyer.actor,
-            lender.lender.actor,
-            payment,
-            unit,
-            contract.id(),
-            EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE,
-            ctx.creditConfig.dueCycle()));
-    MarketReport.Fill fill =
-        new MarketReport.Fill(
-            sell.hex,
-            buy.hex,
-            commodity,
-            sell.seller.actor,
-            buy.buyer.actor,
-            quantity,
-            // ★★ P-T4：单价币 = 卖方格计价币；实付币 = 买方支付币（钱腿就铸在它上面）。
-            sell.market.numeraire(),
-            sellerUnitPrice,
-            buy.currency,
-            payment,
-            0L,
-            0L,
-            round.day,
-            true,
-            "",
-            loss);
-    ctx.fills.add(fill);
-    if (!buy.currency.equals(sell.market.numeraire()) && payment > 0L) {
-      // ★★ E（§3.1 日志）：信用腿的异币成交同样具名记录（哪两户、什么币、估值多少、成交比价）。
-      logForeignCurrencyFill(
-          ctx, buy, sell, commodity, quantity, sellerUnitPrice, buyerUnitPrice, payment);
-    }
-    long tariffPerUnit = ctx.tariffPerUnitOf(sell.regionId, commodity);
-    if (tariffPerUnit > 0L) {
-      ctx.tariffByFill.put(fill, tariffPerUnit);
-    }
-    ctx.immediateFills++;
-    if (buy.buyer.household != null) {
-      reduceUnmet(round.unmetToday, buy.buyer.household, commodity, quantity - loss);
-    }
-  }
-
-  /** 借实物：货腿 卖家 → 买方（LOAN_PRINCIPAL）+ 债务合同 + CreditFill；没有货币腿、不写普通 sale fill。 */
-  private static void executeGoodsCredit(
-      MatchContext ctx, BuySlot buy, SellSlot sell, long quantity, CreditPools pools) {
-    MarketRound round = ctx.round;
-    CommodityId commodity = buy.order.commodity();
-    applyMarketLeg(
-        ctx,
-        round.ledger.mint(
-            sell.seller.actor,
-            buy.buyer.actor,
-            sell.hex,
-            Map.of(commodity, quantity),
-            Map.of(),
-            TransferReason.LOAN_PRINCIPAL));
-    long loss = creditLossMilli(ctx, sell, buy, quantity);
-    if (loss > 0L) {
-      deductBuyerLossNoTransfer(ctx, buy, loss);
-      round.ledger.addLoss(TRANSPORT_LOSS_ACCOUNT, commodity, loss);
-    }
-    pools.sellChanged(sell, quantity);
-    buy.remaining -= quantity;
-    DebtUnit unit = new DebtUnit.Commodity(commodity);
-    DebtContract contract =
-        DebtContractBook.upsert(
-            ctx.debts,
-            buy.buyer.household,
-            sell.seller.household,
-            unit,
-            MARKET_CREDIT_TERMS,
-            quantity,
-            round.day,
-            OptionalLong.of(ctx.creditConfig.dueCycle()));
-    // ★★ 2026-10-09 选项 A：这里改前会把新合同的派生引用补进债务人**行**（顺带 fail-closed 地断言该行在场）；
-    //   拆表后引用表由 EconomyData 构造期的 DebtReferenceReconciler 按 ctx.debts 整表重建，故补引用这一步消失，
-    //   但**那条具名断言逐字保留**（拆表不许放松守卫）：债务人的家户行必须在本轮工作副本里。
-    requireHouseholdRowInRound(round, buy.buyer.household);
-    ctx.creditFills.add(
-        new MarketReport.CreditFill(
-            sell.hex,
-            commodity,
-            buy.buyer.actor,
-            sell.seller.actor,
-            quantity,
-            unit,
-            contract.id(),
-            EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE,
-            ctx.creditConfig.dueCycle()));
-    if (buy.buyer.household != null) {
-      reduceUnmet(round.unmetToday, buy.buyer.household, commodity, quantity - loss);
-    }
-  }
-
-  /** 信用的单 hex 即时损耗（与现金成交逐字同源；损耗不产生货币运费）。 */
-  private static long creditLossMilli(MatchContext ctx, SellSlot sell, BuySlot buy, long quantity) {
-    if (sell.hex.equals(buy.hex)) {
-      return 0L;
-    }
-    return Math.min(
-        quantity, quantity * ctx.hexTradeCost.lossPerMilleBetween(sell.hex, buy.hex) / 1000L);
-  }
-
+  //   ★★★ W2-fix4（2026-10-11）：这里原有 D-030 的市场信用撮合（{@code creditRound}：借钱买货 → 借实物）——
+  //     **整段退役**（用户 0–8 第 6–7 条的债务式清算取代它：家户一股脑全拿下，付不出的部分直接欠卖方）。
+  //     退役理由（真实 world 实测，见 W2-fix4 账本）：那两条腿**绕过**了现金腿的全部约束（运费/运力池/三层税），
+  //     于是能在"现金撮合明确拒绝"的跨格车道上把货直接搬走 ⇒ 卖方的实物余量被一次性搬空、市场在 day 8 起
+  //     再无供给（day 30 成交 0 笔）。⇒ 唯一信用通道 = 未付价款记债（本段下面的 {@link #recordDeferredPaymentDebt}）。
   /** 与 {@code executeTrade} 的货款算式同源：{@code ⌈数量 × 单价 ÷ 1000⌉}（毫计价货币）。 */
   private static long paymentForQuantity(long quantity, long unitPrice) {
     if (quantity <= 0L || unitPrice <= 0L) {
       return 0L;
     }
     return ceilDivPositive(safeMulDiv(quantity, unitPrice, 1L), EconomySettlement.MILLI_PER_GRAIN);
-  }
-
-  /** {@code amount} 毫计价货币最多能买多少毫商品（保证 ceil(量 × 单价 ÷ 1000) ≤ amount）。 */
-  private static long maxQuantityForMoney(long amountMilli, long unitPrice) {
-    if (amountMilli <= 0L || unitPrice <= 0L) {
-      return 0L;
-    }
-    return safeMulDiv(amountMilli, EconomySettlement.MILLI_PER_GRAIN, unitPrice);
-  }
-
-  /**
-   * ★★ <b>D-030/D-031 §3.1：一个家户出借人的货币保留额</b>（毫计价货币）：
-   *
-   * <pre>
-   * reserve = value(自身未覆盖自然需求，按市场价) + LENDER_MONEY_BUFFER_PER_CAPITA_MILLI × 人口
-   * </pre>
-   *
-   * <p>★ "未覆盖"= {@code max(0, 日自然需求 − (持有 − 冻结))}；缺该商品市场价 ⇒ 该商品需要不入保留额（不硬折、不假装 0 需要，见交付报告）。人口/行读不到
-   * ⇒ {@link Long#MAX_VALUE}（fail-closed：不把"读不到"当"不用留"）。
-   */
-  private static long moneyReserveOf(
-      MatchContext ctx, Participant participant, MarketTable market) {
-    // ★★ A2a：委托到家户版（同一份算式；两处各写一遍 = 下一个改口径的人只会改一处）。
-    return moneyReserveOfHousehold(ctx.round, participant.household, market);
-  }
-
-  /**
-   * 参与者所在格的市场价表（★ W1：**该格所属市场的价表**，区内任何格同一张）。
-   *
-   * <p>★ 它与改动前的 {@code marketTables.get(hex) → 锚格回落} 逐值等价：旧形状里"本格价表"与"锚格价表"在合法 状态下逐字相同（{@code
-   * adaptPrices} 逐成员对齐），新形状里它们本来就是同一张表（每区一张）。 参与者所在格没有市场（不在拓扑里）⇒ {@code null}（与改动前一致）。
-   */
-  private static MarketTable marketForParticipant(MatchContext ctx, Participant participant) {
-    HexCoord hex = ctx.participantHex.get(participant.actor);
-    return ctx.tableAt(hex);
-  }
-
-  /**
-   * ★★ <b>2026-10-09 选项 A 后剩下的具名断言</b>（改前住在 {@code addDebtReference} 里）：信用成交的债务人行必须在本轮 市场工作副本里 ——
-   * 行不在 = 状态漂开，fail-closed 具名抛（不静默当作"没有这一户"）。
-   */
-  private static void requireHouseholdRowInRound(MarketRound round, HouseholdId debtor) {
-    if (!round.householdEconomies.containsKey(debtor)) {
-      throw new IllegalStateException("信用成交的债务人行不在市场轮里（状态漂开）: " + debtor);
-    }
-  }
-
-  /** 市场信用的转移腿：唯一 applier = {@code EconomySettlement.applyTransfer}（带冻结表的 10 参入口）。 */
-  private static void applyMarketLeg(MatchContext ctx, Transfer transfer) {
-    MarketRound round = ctx.round;
-    EconomySettlement.applyTransfer(
-        round.householdGoods,
-        round.householdMoney,
-        round.householdFrozenGoods,
-        round.householdFrozenMoney,
-        round.householdOfActor,
-        transfer);
-  }
-
-  /**
-   * ★★ <b>D-030/D-031：信用撮合结束后、买方剩余的信用归因</b>。
-   *
-   * <pre>
-   * 两个可借池都空且没钱        ⇒ NO_BUDGET
-   * 两个可借池都空但买方还有钱  ⇒ NO_CREDIT_LIMIT（语义已更正：不再表示"借款人额度为 0"）
-   * 无商品可借                  ⇒ NO_LENDABLE_GOODS（原子绑定：没有可成立的商品头寸）
-   * 无货币可借                  ⇒ NO_LENDABLE_MONEY
-   * 两池都还有剩余却凑不成正交易 ⇒ NO_CREDIT_LIMIT
-   * </pre>
-   *
-   * <p>只对家户买方生效；经营者（{@code household == null}）没有合同主体身份 ⇒ 返回 null、走旧分档。
-   */
-  private static MarketUnfilledReason creditUnfilledReason(MatchContext ctx, BuySlot buy) {
-    if (!ctx.creditEnabled() || buy.buyer.household == null) {
-      return null;
-    }
-    if (!MONEY_LENDING_AUTO_LIST && !MARKET_GOODS_LENDING_ENABLED) {
-      return null; // 信用由 GM 开关整体关闭 ⇒ 逐值退回旧分档
-    }
-    long cash = spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
-    boolean goodsLeft =
-        MARKET_GOODS_LENDING_ENABLED
-            && ctx.creditGoodsRemaining(buy.regionId, buy.order.commodity()) > 0L;
-    boolean moneyLeft =
-        MONEY_LENDING_AUTO_LIST
-            && ctx.creditMoneyRemainingByRegion.getOrDefault(buy.regionId, 0L) > 0L;
-    if (!goodsLeft && !moneyLeft) {
-      // 两个可借池都空了：没钱可借时退回 NO_BUDGET；还有自己的现金但买不成 ⇒ NO_CREDIT_LIMIT（语义已更正）。
-      return cash <= 0L ? MarketUnfilledReason.NO_BUDGET : MarketUnfilledReason.NO_CREDIT_LIMIT;
-    }
-    if (moneyLeft && !goodsLeft) {
-      return MarketUnfilledReason.NO_LENDABLE_GOODS;
-    }
-    if (!moneyLeft && goodsLeft) {
-      return MarketUnfilledReason.NO_LENDABLE_MONEY;
-    }
-    // 两个池都还有剩余，但剩余头寸凑不成一笔正交易。★ D-031：不再表示“借款人额度为 0”。
-    return MarketUnfilledReason.NO_CREDIT_LIMIT;
-  }
-
-  /** 一条瞬态货币出借头寸（每轮从余额派生；不落盘；{@code remaining} 在撮合里递减）。 */
-  private static final class MoneyLendOrder {
-    final Participant lender;
-    final CurrencyId currency;
-    final long ratePerMille;
-    final HexCoord hex;
-    long remaining;
-
-    MoneyLendOrder(
-        Participant lender,
-        CurrencyId currency,
-        long ratePerMille,
-        HexCoord hex,
-        long amountMilli) {
-      this.lender = lender;
-      this.currency = currency;
-      this.ratePerMille = ratePerMille;
-      this.hex = hex;
-      this.remaining = amountMilli;
-    }
-  }
-
-  /**
-   * ★★ <b>一轮信用撮合的瞬态池</b>：货币出借单按区（费率升序 → 可借额降序 → actor id 升序）+ 两类卖单池：
-   *
-   * <ul>
-   *   <li>{@code cashSellers}：任意卖家（借钱买货对卖方是现金销售），按现金撮合的 {@code costOrder}；
-   *   <li>{@code goodsLenders}：家户卖家（能成为债权人），按"可借数量降序 → 商品 id 升序 → 卖家 actor id 升序"。
-   * </ul>
-   *
-   * <p>★ 都是本轮瞬态；不新增持久状态、不复制库存。
-   */
-  private static final class CreditPools {
-    private final Map<String, List<MoneyLendOrder>> moneyByRegion = new LinkedHashMap<>();
-    private final Map<String, Integer> moneyCursorByRegion = new LinkedHashMap<>();
-    private final Map<String, Map<CommodityId, TreeSet<SellSlot>>> cashSellers =
-        new LinkedHashMap<>();
-    private final Map<String, Map<CommodityId, TreeSet<SellSlot>>> goodsLenders =
-        new LinkedHashMap<>();
-
-    private static final Comparator<SellSlot> CASH_SELLER_ORDER = costOrder(null);
-    private static final Comparator<MoneyLendOrder> MONEY_ORDER =
-        Comparator.comparingLong((MoneyLendOrder order) -> order.ratePerMille)
-            .thenComparing(
-                Comparator.comparingLong((MoneyLendOrder order) -> order.remaining).reversed())
-            .thenComparing(order -> order.lender.actor.id());
-    private static final Comparator<SellSlot> GOODS_ORDER =
-        Comparator.comparingLong((SellSlot sell) -> sell.remaining)
-            .reversed()
-            .thenComparing(sell -> sell.order.commodity().value())
-            .thenComparing(sell -> sell.seller.actor.id());
-
-    private CreditPools() {}
-
-    static CreditPools build(MatchContext ctx, MarketIndexes indexes) {
-      CreditPools pools = new CreditPools();
-      if (MONEY_LENDING_AUTO_LIST) {
-        for (Participant participant : ctx.participants.values()) {
-          if (participant.household == null) {
-            continue;
-          }
-          // ★★ R1：国库户（"只按授权下单"）**不放贷** —— 自动放贷也是"没被授权的经济行为"。
-          //   ★ 改前国库户不在参与者表里（Z7b 排除集）⇒ 它本来就不是放贷人；本守卫保住那一半语义，
-          //     否则"回市场"会顺手把它变成市场信用的自动放贷人（普通家户的借贷结果随之改变）。
-          if (ctx.round.govMandates().isAuthorizationOnly(participant.household)) {
-            continue;
-          }
-          MarketTable market = marketForParticipant(ctx, participant);
-          HexCoord hex = ctx.participantHex.get(participant.actor);
-          if (market == null || hex == null || !ctx.topology.contains(hex)) {
-            continue;
-          }
-          CurrencyId currency = market.numeraire();
-          long spendable =
-              Math.max(
-                  0L,
-                  moneyOf(ctx.round, participant, currency)
-                      - frozenMoneyOf(ctx.round, participant, currency));
-          long reserve = moneyReserveOf(ctx, participant, market);
-          long lendable = Math.max(0L, spendable - reserve);
-          if (lendable <= 0L) {
-            continue;
-          }
-          String regionId = ctx.topology.regionOf(hex).node().nodeId();
-          pools
-              .moneyByRegion
-              .computeIfAbsent(regionId, ignored -> new ArrayList<>())
-              .add(
-                  new MoneyLendOrder(
-                      participant,
-                      currency,
-                      EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE,
-                      hex,
-                      lendable));
-        }
-        for (List<MoneyLendOrder> orders : pools.moneyByRegion.values()) {
-          orders.sort(MONEY_ORDER);
-        }
-      }
-      for (MarketRegion region : ctx.topology.regions()) {
-        MarketTable anchor = ctx.tableOf(region);
-        if (anchor == null) {
-          continue;
-        }
-        String regionId = region.node().nodeId();
-        Map<CommodityId, List<SellSlot>> byCommodity =
-            indexes.sellsByRegionCommodity.getOrDefault(regionId, Map.of());
-        for (CommodityId commodity : indexes.commodities) {
-          long price = anchor.priceOf(commodity);
-          if (!anchor.hasPrice(commodity)) {
-            continue; // 从未定价 ⇒ 不交易
-          }
-          if (price == 0L) {
-            continue; // 明确 0 价 ⇒ 无货可借（货款腿 0，不存在要借的货款）
-          }
-          for (SellSlot sell : byCommodity.getOrDefault(commodity, List.of())) {
-            if (sell.remaining <= 0L
-                || sell.order.minPrice() > price
-                || sell.order.availableFromTick() > ctx.round.day) {
-              continue;
-            }
-            pools.addSeller(regionId, commodity, sell);
-          }
-        }
-      }
-      return pools;
-    }
-
-    private void addSeller(String regionId, CommodityId commodity, SellSlot sell) {
-      cashSellers
-          .computeIfAbsent(regionId, ignored -> new LinkedHashMap<>())
-          .computeIfAbsent(commodity, ignored -> new TreeSet<>(CASH_SELLER_ORDER))
-          .add(sell);
-      if (sell.seller.household != null) {
-        goodsLenders
-            .computeIfAbsent(regionId, ignored -> new LinkedHashMap<>())
-            .computeIfAbsent(commodity, ignored -> new TreeSet<>(GOODS_ORDER))
-            .add(sell);
-      }
-    }
-
-    /**
-     * ★ 一笔信用成交后的卖单池同步：{@code goods} 的排序键读 {@code remaining}，因此先摘旧值、扣减、再按新值放回； {@code cash}
-     * 的排序键是静态成本，只在卖光时移除。
-     */
-    void sellChanged(SellSlot sell, long delta) {
-      if (delta <= 0L) {
-        return;
-      }
-      TreeSet<SellSlot> goods = goodsPool(sell.regionId, sell.order.commodity());
-      TreeSet<SellSlot> cash = cashPool(sell.regionId, sell.order.commodity());
-      if (goods != null) {
-        goods.remove(sell);
-      }
-      sell.remaining -= delta;
-      if (goods != null && sell.remaining > 0L) {
-        goods.add(sell);
-      }
-      if (cash != null && sell.remaining <= 0L) {
-        cash.remove(sell);
-      }
-    }
-
-    List<MoneyLendOrder> moneyLenders(String regionId) {
-      return moneyByRegion.getOrDefault(regionId, List.of());
-    }
-
-    int moneyCursor(String regionId) {
-      return moneyCursorByRegion.getOrDefault(regionId, 0);
-    }
-
-    void putMoneyCursor(String regionId, int cursor) {
-      moneyCursorByRegion.put(regionId, cursor);
-    }
-
-    SellSlot bestCashSeller(
-        String regionId, CommodityId commodity, Set<SellSlot> skippedForThisBuyer) {
-      TreeSet<SellSlot> pool = cashPool(regionId, commodity);
-      if (pool == null) {
-        return null;
-      }
-      while (!pool.isEmpty() && pool.first().remaining <= 0L) {
-        pool.pollFirst();
-      }
-      for (SellSlot sell : pool) {
-        if (sell.remaining > 0L && !skippedForThisBuyer.contains(sell)) {
-          return sell;
-        }
-      }
-      return null;
-    }
-
-    SellSlot bestGoodsSeller(
-        String regionId, CommodityId commodity, Set<SellSlot> skippedForThisBuyer) {
-      TreeSet<SellSlot> pool = goodsPool(regionId, commodity);
-      if (pool == null) {
-        return null;
-      }
-      for (SellSlot sell : pool) {
-        if (sell.remaining > 0L && !skippedForThisBuyer.contains(sell)) {
-          return sell;
-        }
-      }
-      return null;
-    }
-
-    void recordRemaining(MatchContext ctx) {
-      for (Map.Entry<String, List<MoneyLendOrder>> entry : moneyByRegion.entrySet()) {
-        long sum = 0L;
-        for (MoneyLendOrder order : entry.getValue()) {
-          sum += Math.max(0L, order.remaining);
-        }
-        ctx.creditMoneyRemainingByRegion.put(entry.getKey(), sum);
-      }
-      for (Map.Entry<String, Map<CommodityId, TreeSet<SellSlot>>> byRegion :
-          goodsLenders.entrySet()) {
-        Map<CommodityId, Long> byCommodity = new LinkedHashMap<>();
-        for (Map.Entry<CommodityId, TreeSet<SellSlot>> entry : byRegion.getValue().entrySet()) {
-          long sum = 0L;
-          for (SellSlot sell : entry.getValue()) {
-            if (sell.remaining > 0L) {
-              sum += sell.remaining;
-            }
-          }
-          byCommodity.put(entry.getKey(), sum);
-        }
-        ctx.creditGoodsRemainingByRegionCommodity.put(byRegion.getKey(), byCommodity);
-      }
-    }
-
-    private TreeSet<SellSlot> cashPool(String regionId, CommodityId commodity) {
-      Map<CommodityId, TreeSet<SellSlot>> byCommodity = cashSellers.get(regionId);
-      return byCommodity == null ? null : byCommodity.get(commodity);
-    }
-
-    private TreeSet<SellSlot> goodsPool(String regionId, CommodityId commodity) {
-      Map<CommodityId, TreeSet<SellSlot>> byCommodity = goodsLenders.get(regionId);
-      return byCommodity == null ? null : byCommodity.get(commodity);
-    }
   }
 
   // ── P1.2：每轮一次的只读索引（worker 只读；构建序全部来自 canonical 内容）──────────────────────
@@ -4280,6 +3860,8 @@ final class MarketSettlement {
             ctx.currencyValuation());
     // ★★ M-C：worker 副本照抄同一份纯商号集合（它只跑 route == null 的区内同格意向 ⇒ 判据不可达，但两份上下文保持一致）。
     local.pureMerchantHouseholds = ctx.pureMerchantHouseholds;
+    // ★★ W2：worker 副本照抄同一份区表（自适应定价在协调器跑；这里保持两份上下文一致，同 M-C 的理由）。
+    local.marketZones = ctx.marketZones;
     local.buys.addAll(localBuys);
     local.sells.addAll(localSells);
     local.recordFillIntents = true;
@@ -4792,12 +4374,12 @@ final class MarketSettlement {
         long[] weights = new long[run.size()];
         long demand = 0L;
         for (int i = 0; i < run.size(); i++) {
-          // ★★ P-T5b：本档的价格 `price` 是**本格计价币**的参考价，而 affordableQuantity 收的是**买方支付币**单价
+          // ★★ P-T5b：本档的价格 `price` 是**本格计价币**的参考价，而 chargeAffordableQuantity 收的是**买方支付币**单价
           //   （3c 起其余三处调用点传的都是折过的单价）⇒ 这里补上同一次折算（同币 ⇒ 原样，逐值不变）。
           //   ★ 说不出这种钱的价（-1）⇒ 本档买不起（不得让它落进"完全免费"那条分支）。
+          // ★★ W2：需求权重改按**现金腿（运费 + 税）**折算 —— 货款不再封顶（它可以进债务）。
           long buyerPrice = run.get(i).payAmountOf(price);
-          long affordable =
-              buyerPrice < 0L ? 0L : affordableQuantity(ctx, run.get(i), buyerPrice, route);
+          long affordable = buyerPrice < 0L ? 0L : chargeAffordableQuantity(ctx, run.get(i), route);
           weights[i] = Math.min(run.get(i).remaining, affordable);
           demand += weights[i];
         }
@@ -5276,6 +4858,29 @@ final class MarketSettlement {
                 "port-transit-cap-exhausted"));
   }
 
+  /**
+   * ★★ <b>W2-fix：把"被口岸闸拦下的买家侧需求量"按 买方区 × 商品 累加</b>（唯一写入点 = {@code matchRoute} 的 "闸用尽且还有合格需求"那一支；见
+   * {@link MatchContext#portBlockedMilliByZoneCommodity}）。
+   *
+   * <p>★ 这是**读数**，不是算式：量本身**本来就在 D 里**（D 取自买槽 {@code order.quantity()} 全额，口岸闸只写 {@code
+   * remaining}/{@code blocked}）⇒ 回加进 D 就是重复计数，v3.5 §2.1 明令不新增口岸项。它只让 {@code
+   * MARKET_DEMAND_COMPOSITION} 那一行的 {@code blockedByPortMilli} 有值可读。
+   *
+   * <p>★ 入参 {@code blockedMilli} 必须是"闸拦下的"那一份（调用方已按合格需求与未满足量封顶）；{@code <= 0} ⇒ 一个键都不建（缺省世界无口岸面 ⇒
+   * 这张表恒空 ⇒ 逐值不变、日志恒 0）。
+   */
+  private static void recordPortBlockedDemand(
+      MatchContext ctx, HexCoord buyerHex, CommodityId commodity, long blockedMilli) {
+    if (blockedMilli <= 0L || buyerHex == null || ctx.topology == null) {
+      return;
+    }
+    // ★ 键 = **买方所在区**（与 adaptPrices 的 D 累加器同一条归属口径：D 也按买方所在区汇总）。
+    MarketZoneId zoneId = new MarketZoneId(ctx.topology.regionOf(buyerHex).node().nodeId());
+    ctx.portBlockedMilliByZoneCommodity
+        .computeIfAbsent(zoneId, ignored -> new LinkedHashMap<>())
+        .merge(commodity, blockedMilli, Math::addExact);
+  }
+
   private static boolean hasActiveBuyAtHex(
       MarketIndexes indexes, HexCoord hex, CommodityId commodity) {
     for (BuySlot buy : indexedBuysAtHex(indexes, hex, commodity)) {
@@ -5468,7 +5073,7 @@ final class MarketSettlement {
           weights[i] = 0L;
           continue;
         }
-        long affordable = affordableQuantity(ctx, buy, buyerUnitPrice, route);
+        long affordable = chargeAffordableQuantity(ctx, buy, route);
         weights[i] = Math.min(buy.remaining, affordable);
         demand += weights[i];
       }
@@ -5520,11 +5125,10 @@ final class MarketSettlement {
           long tierDemand = 0L;
           for (int i = 0; i < run.size(); i++) {
             // ★★ 3c：可负担量同样按**买方支付币**的单价折算（同一口径；逐卖方槽位读出单价所属币）。
+            //   ★★ W2：改按**现金腿（运费 + 税）**折算 —— 货款不封顶（进债务）。
             long tierBuyerPrice = worstBuyerUnitPrice(ctx, run.get(i), tier, unitPrice);
             long affordable =
-                tierBuyerPrice < 0L
-                    ? 0L
-                    : affordableQuantity(ctx, run.get(i), tierBuyerPrice, route);
+                tierBuyerPrice < 0L ? 0L : chargeAffordableQuantity(ctx, run.get(i), route);
             tierBuyWeights[i] = Math.min(run.get(i).remaining, affordable);
             tierDemand += tierBuyWeights[i];
           }
@@ -5575,6 +5179,13 @@ final class MarketSettlement {
             sell.portBlocked = true;
           }
         }
+        // ★★ W2-fix：把"被口岸拦下的**买家侧需求量**"按 买方区 × 商品 记成**日志读数**（见 portBlockedMilliByZoneCommodity）。
+        //   ★ 上限 = 本 lane 配给前"愿意且买得起"的合计（{@code demand}）——闸拦下的不可能超过真的想买的那份；
+        //     再按本轮仍未满足的量封顶，免得把"已经成交的那部分"也算成被拦（那是幅度错，与 V-20 同族）。
+        //   ★ 它只作读数：被拦下的量**本来就在 D 里**（D 取挂单全额），回加进 D 就是重复计数（v3.5 明令不新增口岸项）。
+        //   ★ 与下面的运力截断**互斥**：那一支的判据是 {@code capacityLeft <= 0}，本支是 {@code portLeft <= 0}
+        //     —— 同一份未服务量不会同时进两项，{@code MARKET_DEMAND_COMPOSITION} 的两个"其中"因此不重叠。
+        recordPortBlockedDemand(ctx, buyerHex, commodity, Math.min(demand, remainingOf(buys)));
         if (!portLogged) {
           portLogged = true;
           logPortRouteExhausted(
@@ -5817,36 +5428,48 @@ final class MarketSettlement {
         }
         boolean freeTicket =
             price <= 0L && (effectiveRoute == null || effectiveRoute.freightPerUnit <= 0L);
-        // ★ 递归约束：上一笔实际付款（含各自 ceil 的货款与运费）已经写进 spentMilli 与余额/冻结表，
-        //   这里按**当前**剩余可付重算上限，堵住 N 笔各 ceil 一毫的累计越界。先取原口径的保守配给量，
-        //   再用逐笔实际算式精确封顶（跨区运费 floor + 两处 ceil 的累计误差都在这里削平）。
-        long affordable = affordableQuantity(ctx, buy, buyerUnitPrice, effectiveRoute);
-        if (quantity > affordable) {
-          quantity = affordable;
-        }
+        // ★★★ W2（2026-10-11）：**取消支付能力硬约束** —— 成交数量不再按"付得起多少货款"折回。
+        //   改动前这里是两道封顶：① {@code affordableQuantity}（按"可花 + 冻结"反解买得起的量）、
+        //   ② {@code exactAffordableUpTo}（按"货款 + 运费 + 税 ≤ 可付"逐笔精确封顶）。
+        //   W2 起货款可以**全额进债务**（用户 0–8 第 6 条「一股脑全拿下，先不管有没有能力支付…然后把价格全部记为债务」）
+        //   ⇒ 数量只受 需求 / 卖方剩余 / 运力 / 口岸 约束。
+        //   ★ <b>唯一保留的现金约束 = 现金腿（运费 + 税）</b>：它们的收款人是承运家户与政府国库户，不是卖方，
+        //     不属于"价款记债"这条通道（判据与理由见 {@link #chargesAtMost}）。同格无税 ⇒ 该约束恒成立。
+        //   ★★ <b>没有赊购能力的世界仍按旧口径</b>（{@link #deferralPossible}：没有债务工作副本 / 卖方不是家户 /
+        //     国库户的授权买盘）⇒ 那种成交仍按"货款 + 运费 + 税 ≤ 可付"封顶，绝不铸出一笔无法记账的欠款。
         long payable = payableMoneyOf(ctx, buy);
-        quantity =
-            exactAffordableUpTo(
-                ctx,
-                buy,
-                sell,
-                buy.order.commodity(),
-                quantity,
-                payable,
-                buyerUnitPrice,
-                effectiveRoute);
-        if (quantity <= 0L) {
-          // 钱包/预算在账面上已经归零（不是"这个价买不起"）⇒ 这个买方在**任何**正价格上都再无成交可能：
-          // 置 noMoney 让后续跨区路线直接跳过它（否则它会以 remaining>0 的身份把每条路线都试一遍）。
-          // ★ 完全免费（0 价 + 0 运费）不是"没钱"：不得置 noMoney，否则区内免费拿货会被自己关死。
-          if (payable <= 0L && !freeTicket) {
-            buy.noMoney = true;
-            if (buy.blocked == null) {
-              buy.blocked = MarketUnfilledReason.NO_BUDGET;
-            }
+        long quantityByCash =
+            deferralPossible(ctx, buy, sell)
+                ? exactChargeAffordableUpTo(
+                    ctx,
+                    buy,
+                    sell,
+                    buy.order.commodity(),
+                    quantity,
+                    payable,
+                    buyerUnitPrice,
+                    effectiveRoute)
+                : exactTotalCostAffordableUpTo(
+                    ctx,
+                    buy,
+                    sell,
+                    buy.order.commodity(),
+                    quantity,
+                    payable,
+                    buyerUnitPrice,
+                    effectiveRoute);
+        if (quantityByCash <= 0L) {
+          // ★ 具名改义：{@code NO_BUDGET} 不再表示"买不起货"，只表示"现金付不出这一笔的运费/税"
+          //   （或：本笔没有赊购能力、而现金付不出整笔）。
+          //   ★ 不置 {@code noMoney}：那会让这个买方在本轮剩余的所有路线上被跳过 —— 而它仍可能在其他
+          //     （同格 / 更近的）卖方那里成交（那些 lane 的现金腿可能是 0）。
+          //   ★ 完全免费（0 价 + 0 运费 + 0 税）时判据恒真 ⇒ 这一支结构上到不了。
+          if (!freeTicket && buy.blocked == null) {
+            buy.blocked = MarketUnfilledReason.NO_BUDGET;
           }
           break;
         }
+        quantity = quantityByCash;
         long executed = executeTrade(ctx, buy, sell, quantity, price, effectiveRoute);
         if (executed <= 0L) {
           // ★★ 承运运力不足 ⇒ 本笔不成交（executeTrade 已把买卖槽位与路线标成 LOGISTICS_CAPACITY）。
@@ -5868,13 +5491,18 @@ final class MarketSettlement {
   /**
    * ★★ <b>E（2026-10-09 裁定 R1/R2/R3/R4/R6）：唯一拼写点 —— 本笔"收什么钱、按什么价收"的裁决</b>。
    *
-   * <p>★★ <b>为什么必须共用一处</b>：商品面上"钱从买方到卖方"有<b>三条</b>腿 ——
+   * <p>★★ <b>为什么必须共用一处</b>：商品面上"钱从买方到卖方"的腿共用<b>这一个拼写点</b>：
    *
    * <pre>
-   * ① 现金成交腿 executeTrade          ：payment 按 buy.currency 铸
-   * ② 信用成交腿 moneyCreditForBuy     ：借来的钱同样按 buy.currency 付给卖方
-   * ③ 借实物腿   goodsCreditForBuy     ：货腿不经货币（债务单位 = 商品）⇒ 币种维为空
+   * ① 现金成交腿 executeTrade          ：payment 按 buy.currency 铸（★ 唯一活着的调用方）
+   * ② 信用成交腿 moneyCreditForBuy     ：—— ★★ 已随 W2-fix4 整段退役（市场信用撮合删除），无调用方
+   * ③ 借实物腿   goodsCreditForBuy     ：—— 同上（货腿不经货币、币种维为空的判据保留，但无调用方）
    * </pre>
+   *
+   * <p>★ <b>②③ 的分支为什么还留在代码里（具名）</b>：{@code leg} 这个参数仍是**币种挂单闸**（P-T1e）的挂单类型 词表 —— {@link
+   * #orderKindOfLeg} 把"哪条腿"翻成 {@link MarketOrderKind}（货↔钱 / 借贷），而 {@code
+   * PortEnforcementInput.CurrencyEnforcement} 与 {@code PortGateTaxAcceptanceTest} 都按这个类型分列规则。
+   * 删掉它们要改动那条判据面（超出本批），故只把"已无调用方"具名写在这里；它们**不产生任何成交**。
    *
    * <p>★★ <b>判据（逐字 = 文档 §3.1）</b>：
    *
@@ -5920,6 +5548,7 @@ final class MarketSettlement {
       boolean bookRefusal) {
     if (LEG_GOODS_CREDIT.equals(leg)) {
       // ★ 借实物腿不经货币（债务单位 = 商品）：币种维为空 ⇒ 判据落在既有的"可借余量"上，本方法不新增门槛。
+      //   ★★ W2-fix4：这条腿已随市场信用撮合退役 ⇒ **本支当前不可达**（保留理由见方法注：leg 是 P-T1e 的挂单类型词表）。
       return unitPrice;
     }
     // ★★ 3c（V-1）+ P-T1e：候选成立条件的第一项 —— **买方支付币过得了"币种挂单闸"**（卖方接受集 ∩ 两侧口岸规则）。
@@ -6051,7 +5680,7 @@ final class MarketSettlement {
    * <ul>
    *   <li>它是<b>预判</b>（限价过滤 + 可负担量的配给权重），不是落账判据：逐笔真判在 {@link #pairUp} / {@link #executeTrade}
    *       里按<b>当时那一个</b>卖方槽位重算（同一个拼写点 {@link #currencySettlement}）⇒ 预判绝不可能放行一笔付不起的成交；
-   *   <li>取最不利 = 与既有 {@link #affordableQuantity} 的"保守少买"同一取向（宁可少配、不可多配）；
+   *   <li>取最不利 = 与既有 {@link #chargeAffordableQuantity} 的"保守少买"同一取向（宁可少配、不可多配）；
    *   <li><b>说不出价的槽位不参与</b>（{@code -1}）：那种币对这一买方根本不可成交，把它当"最高价"会把整条路线判死 —— 全组都说不出来时才返回 {@code -1}（=
    *       这条路线对这个买方不可成交）。
    * </ul>
@@ -6404,7 +6033,7 @@ final class MarketSettlement {
    * <p>★★ <b>缺省语义中性（I-C2）</b>：未注入税表 / 该层税率为 0 / 该区没有政府 ⇒ 本方法返回空表 ⇒ {@code total = payment +
    * freight} 逐值等于改前。
    *
-   * <p>★ 调用点<b>只有两处</b>：{@link #executeTrade}（真收）与 {@link #totalCostAtMost}（可负担的精确封顶）——
+   * <p>★ 调用点<b>只有两处</b>：{@link #executeTrade}（真收）与 {@link #chargesAtMost}（现金腿的精确封顶）——
    * 同一个方法保证"判得起"与"真的扣"不可能漂开（那正是负余额/静默少买这类故障的来源）。
    */
   private static List<MarketTaxBook.Charge> taxesFor(
@@ -6527,7 +6156,7 @@ final class MarketSettlement {
             zoneId);
     if (assessment.unvalued()) {
       // ★ 业务路径上的具名缺口（INFO，不降级为静默 0）：法定币在买方这一侧既无报价也不流通 ⇒ 说不出价。
-      //   ★ `logUnvalued == false` = 可负担预判那条路（{@link #totalCostAtMost} 的二分里会被问很多次）⇒
+      //   ★ `logUnvalued == false` = 可负担预判那条路（{@link #chargesAtMost} 的二分里会被问很多次）⇒
       //     只算不记：日志只由**真的落账**那一处（{@link #executeTrade}）发一条，不刷屏、也不重复。
       if (!logUnvalued) {
         return;
@@ -6616,7 +6245,7 @@ final class MarketSettlement {
   /**
    * ★ <b>P-T5b：买方支付币说不出价、连运费都算不出来 ⇒ 本笔不成交 + 具名归因（DEBUG）</b>。
    *
-   * <p>★ 正常路径上不可达（{@code totalCostAtMost} 已先按同一个 {@link BuySlot#payAmountOf} 把这种路线判成"付不起"）；
+   * <p>★ 正常路径上不可达（{@code chargesAtMost} 已先按同一个 {@link BuySlot#payAmountOf} 把这种路线判成"付不起"）；
    * 它在这里是<b>第二道 fail-closed</b>：万一预判被绕过，也绝不把本格计价币的运费当成支付币的运费去铸腿。
    */
   private static void logFreightCurrencyUnvalued(
@@ -6695,7 +6324,7 @@ final class MarketSettlement {
     long unitFreight = route == null ? 0L : buy.payAmountOf(route.freightPerUnit);
     if (route != null) {
       // ★★ P-T5b：单位运费从**本格计价币**折成**买方支付币**（运费腿铸在 buy.currency 上，见 P-T4 的
-      //   Fill.freightCurrency ≡ paymentCurrency）—— 与 totalCostAtMost 走同一个 payAmountOf（唯一拼写点）
+      //   Fill.freightCurrency ≡ paymentCurrency）—— 与 chargesAtMost 走同一个 payAmountOf（唯一拼写点）
       //   ⇒ "判得起"与"真的扣"不可能漂开。
       //   ★ 说不出这种钱的价（-1）⇒ 本笔不成交（不铸腿、不动账）：绝不把本格计价币的运费当支付币的运费。
       if (unitFreight < 0L) {
@@ -6865,22 +6494,52 @@ final class MarketSettlement {
     }
 
     // ③ 买方把冻结的货款（+运费 +税）放出来，再货款 → 卖方、运费 → 承运人、三层税 → 各政府国库。
-    //   ★★ P-T1b：`total` 含税 ⇒ 冻结的释放量与可负担判据（{@link #totalCostAtMost}）同口径；**卖方那一腿
+    //   ★★ P-T1b：`total` 含税 ⇒ 冻结的释放量与现金腿判据（{@link #chargesAtMost}）同口径；**卖方那一腿
     //     （payment）一个字不改** ⇒ "买方多付、卖方仍收原价" 是结构性的，不是两处对齐出来的。
-    long total = Math.addExact(Math.addExact(payment, freight), taxTotal);
+    // ★★★ W2（2026-10-11）：**现金先付、不足的部分全额记为债务**（用户 0–8 第 6–7 条）：
+    //   cash       = 本单此刻能动用的现金（钱包 − 冻结，再受订单预算余额封顶）
+    //   charges    = 运费 + 三层税（收款人是承运家户与政府国库户，**不走债务通道**，见 chargesAtMost）
+    //   paidCash   = min(货款, max(0, cash − charges))        ← 货款优先吃剩下的现金
+    //   deferred   = 货款 − paidCash                          ← ★ 记为对该**卖方**的债务（同一本 debtContracts）
+    //   ★ pairUp 已按 {@link #exactChargeAffordableUpTo} 保证 charges ≤ cash ⇒ 下面不会把账扣成负。
+    long cashAvailable = payableMoneyOf(ctx, buy);
+    long charges = Math.addExact(freight, taxTotal);
+    long paidCash = Math.min(payment, Math.max(0L, cashAvailable - charges));
+    long deferred = payment - paidCash;
+    if (deferred > 0L && !deferralPossible(ctx, buy, sell)) {
+      // ★ fail-closed 契约断言：本笔没有赊购能力（没有债务账 / 任一端不是家户 / 国库户授权买盘）时，
+      //   {@code pairUp} 走的是旧口径 {@code exactTotalCostAffordableUpTo} ⇒ 未付价款**结构性**为 0。
+      //   走到这里说明两道判据漂开了 —— 具名抛，绝不铸一笔没有地方记账的欠款（也不静默少付卖方）。
+      throw new IllegalStateException(
+          "无赊购能力的成交出现了未付价款（pairUp 的现金封顶与 executeTrade 的拆分漂开）: day="
+              + round.day
+              + " commodity="
+              + commodity.value()
+              + " buyer="
+              + buy.buyer.actor
+              + " seller="
+              + sell.seller.actor
+              + " paymentMilli="
+              + payment
+              + " paidCashMilli="
+              + paidCash
+              + " deferredMilli="
+              + deferred);
+    }
+    long total = Math.addExact(Math.addExact(paidCash, freight), taxTotal);
     // ★★★ A3：本钱占用腿（微毫）已随 {@code MerchantProfitBook} 退役（并行利润读数，T-H3）。
     long buyRelease = Math.min(total, buy.frozenRemaining);
     buy.frozenRemaining -= buyRelease;
     releaseBuyFrozenSum(ctx, buy, buyRelease);
     refreshBuyFrozen(ctx, buy);
-    if (payment > 0L) {
+    if (paidCash > 0L) {
       Transfer moneyLeg =
           round.ledger.mint(
               buy.buyer.actor,
               sell.seller.actor,
               location,
               Map.of(),
-              Map.of(buy.currency, payment),
+              Map.of(buy.currency, paidCash),
               TransferReason.MARKET_TRADE);
       EconomySettlement.applyTransfer(
           round.householdGoods,
@@ -6889,6 +6548,13 @@ final class MarketSettlement {
           round.householdFrozenMoney,
           round.householdOfActor,
           moneyLeg);
+    }
+    // ★★★ W2 并行内核纪律：**worker 副本只产意向、不写共享状态** —— 本区的区内成交由 R2 的 worker 在
+    //   账户副本上先算一遍（{@code ctx.recordFillIntents = true}），协调器随后按区序用**同一条**
+    //   {@code executeTrade} 回放（{@link #replayRegionOutcome}）。{@code ctx.debts} 是**共享**的债务工作副本
+    //   ⇒ 若在 worker 里也 upsert，同一笔赊购会被记两次（且构成数据竞争）。故台账只在回放侧落。
+    if (deferred > 0L && !ctx.recordFillIntents) {
+      recordDeferredPaymentDebt(ctx, buy, sell, commodity, executed, payment, paidCash, deferred);
     }
     // ★ P11.3：逐条实际承运条目分别铸运费腿；freightPaidByCurrency 只累加真实铸出的金额（Σ = 实际可收运费，
     //   自承运条目已在 carrierChargeSplit 里剔除，因此不会出现"买方 → 买方"的自转移）。
@@ -7043,7 +6709,9 @@ final class MarketSettlement {
               sell.market.numeraire(),
               unitPrice,
               buy.currency,
-              payment,
+              // ★★★ W2：这一栏是**实付货款**（现金腿），不是名义货价 —— 未付的那一份记为债务、不是货币流水
+              //   （统计簿的成交额因此只数真钱；债务由 debtContracts 单独记）。
+              paidCash,
               // ★★ P-T5b：单位运费按**买方支付币**报（与 freightCurrency ≡ paymentCurrency 同币；换算见上）。
               //   ★★ M-C：**实收为 0 时报 0**（免运费 H-A / 没有可收条目）—— 与下面在途路径的
               //   `reportedFreightPerUnit`（由实收额反解）同一个口径：这一列是"实收运费"的读数，
@@ -7105,7 +6773,8 @@ final class MarketSettlement {
             sell.market.numeraire(),
             unitPrice,
             buy.currency,
-            payment,
+            // ★★★ W2：同区内即时分支 —— 这一栏是**实付货款**（现金腿）；未付部分进债务。
+            paidCash,
             reportedFreightPerUnit,
             freight,
             route.arrivalTick,
@@ -7114,6 +6783,146 @@ final class MarketSettlement {
             // ★ M2.7：逐票预排损耗与到货日的扣减公式逐字同源（deliverShipments 也是 quantity × lossPerMille ÷ 1000）。
             Math.multiplyExact(executed, route.lossPerMille) / 1000L));
     return executed;
+  }
+
+  /**
+   * ★★★ <b>W2（2026-10-11）：把一笔成交的**未付价款全额记为债务**</b> —— 债务式清算的唯一写口。
+   *
+   * <pre>
+   * 债务人 = 买方家户（{@code buy.buyer.household}）
+   * 债权人 = 卖方家户（{@code sell.seller.household}）
+   * 单位   = 买方支付币（{@code DebtUnit.Money(buy.currency)}）—— 与现金腿同一种钱，不做任何折算
+   * 本金   = 未付价款（{@code payment − paidCash}）
+   * 条款   = {@link #DEFERRED_PAYMENT_TERMS}（与 {@code lendDeficitsInHex} 同一利率、同一 legacy 维）
+   * 落点   = {@code ctx.debts}（= {@code EconomyData.debtContracts} 的当日工作副本）—— ★ <b>同一本债账</b>：
+   *          约束设计书 §4.1 的 D-023 §3「不做分别核算、合同只有一个未偿额」；不存在第二本债务表。
+   * </pre>
+   *
+   * <p>★★ <b>为什么不另立条款</b>：合同身份 = {@code (债务人, 债权人, 单位, 条款)}（{@code DebtContractId.idOf}）—— 用同一份条款 ⇒
+   * 同一对家户之间的"赊购"与"借款"合并成**一个未偿额**，正是 D-023 §3 要的形状。若另立一份 条款，同一对债权人就会同时挂两条合同，读者要自己相加才知道"这家户欠那家户多少"。
+   *
+   * <p>★★ <b>只有家户能进这本账</b>：{@code DebtContract} 的两端是 {@link HouseholdId} ⇒ 经营者/单位户的买盘 结构上进不了这里（W2
+   * 的债务式清算因此只覆盖家户买方，见账本"偏离记录"）。
+   *
+   * <p>★ <b>与"卖家可借商品"（D-030 §1–§3）的关系</b>：那条通道一字未改（{@code creditForBuy} 仍在现金撮合之后跑）；
+   * 本方法是<b>卖方直接给予的赊账</b>（无需任何放贷人），两者写进同一本账、合成同一类合同。
+   */
+  private static void recordDeferredPaymentDebt(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long executed,
+      long payment,
+      long paidCash,
+      long deferred) {
+    HouseholdId debtor = buy.buyer.household;
+    HouseholdId creditor = sell.seller.household;
+    if (debtor == null || creditor == null || ctx.debts == null) {
+      // ★ 契约故障（不是"跳过"）：走到这里说明现金-债务拆分的上游判据与债务账的存在性漂开了。
+      //   静默把未付价款吞掉 = 凭空免债（与"静默付 0"同族的失败），故具名抛。
+      throw new IllegalStateException(
+          "未付价款无法记账（债务式清算要求买卖双方都是家户且债务工作副本在场）: day="
+              + ctx.round.day
+              + " commodity="
+              + commodity.value()
+              + " debtor="
+              + debtor
+              + " creditorHousehold="
+              + creditor
+              + " debtsPresent="
+              + (ctx.debts != null)
+              + " deferredMilli="
+              + deferred);
+    }
+    DebtUnit unit = new DebtUnit.Money(buy.currency);
+    DebtContract contract =
+        DebtContractBook.upsert(
+            ctx.debts,
+            debtor,
+            creditor,
+            unit,
+            DEFERRED_PAYMENT_TERMS,
+            deferred,
+            ctx.round.day,
+            ctx.deferredPaymentConfig == null
+                ? null
+                : OptionalLong.of(ctx.deferredPaymentConfig.dueCycle()));
+    ctx.deferredPaymentMilli = Math.addExact(ctx.deferredPaymentMilli, deferred);
+    ctx.deferredPaymentFills++;
+    EventLog.channel(MARKET)
+        .info(
+            LogEvent.of(
+                "MARKET_DEFERRED_PAYMENT",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.round.day,
+                "commodity",
+                commodity.value(),
+                "debtor",
+                debtor.value(),
+                "creditor",
+                creditor.value(),
+                "currency",
+                buy.currency.value(),
+                "quantityMilli",
+                executed,
+                "paymentMilli",
+                payment,
+                "paidCashMilli",
+                paidCash,
+                "deferredMilli",
+                deferred,
+                "contract",
+                contract.id().value(),
+                "outstandingMilli",
+                contract.principal(),
+                "reason",
+                "unpaid-goods-price-becomes-debt-to-seller"));
+    if (MARKET.isDebugEnabled()) {
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "MARKET_DEFERRED_PAYMENT_WHY",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  ctx.round.day,
+                  "commodity",
+                  commodity.value(),
+                  "debtor",
+                  debtor.value(),
+                  "creditor",
+                  creditor.value(),
+                  "cashAvailableMilli",
+                  payableMoneyOf(ctx, buy),
+                  "paidCashMilli",
+                  paidCash,
+                  "deferredMilli",
+                  deferred,
+                  "why",
+                  "demand-enters-matching-in-full-unpaid-price-is-recorded-as-debt-user-0-8-item-6-7"));
+    }
+    if (EconomyLog.trace().isTraceEnabled()) {
+      EventLog.channel(EconomyLog.trace())
+          .trace(
+              LogEvent.of(
+                  "MARKET_DEFERRED_PAYMENT_LEG",
+                  EconomyLogSource.ECONOMY_DEBT,
+                  "day",
+                  ctx.round.day,
+                  "debtor",
+                  debtor.value(),
+                  "creditor",
+                  creditor.value(),
+                  "unit",
+                  unit.key(),
+                  "amountMilli",
+                  deferred,
+                  "contractId",
+                  contract.id().value(),
+                  "outstandingAfterMilli",
+                  contract.principal()));
+    }
   }
 
   /**
@@ -7492,7 +7301,7 @@ final class MarketSettlement {
       lastChargeable = i;
       chargeableQuantity = Math.addExact(chargeableQuantity, choice.quantityMilli());
       // ★★ P-T5b：逐条的单位运费同样折成**买方支付币**（腿铸在 buy.currency 上）；说不出价 ⇒ 整票不收运费腿
-      //   （fail-closed：与 totalCostAtMost / executeTrade 的判据同口径，绝不按 1:1 顶上）。
+      //   （fail-closed：与 chargesAtMost / executeTrade 的判据同口径，绝不按 1:1 顶上）。
       //   ★★ M-A2：承运成本项改用**该提供者自己的限价**（`choice.askPerMille()`）——缺省口径下它就等于
       //   `carrierCostPerMille(tier)`（逐值不变），报价口径下它就是"从最低价起买"的成交价。
       long unitFreight =
@@ -7894,41 +7703,40 @@ final class MarketSettlement {
   }
 
   /**
-   * 买方在这条路上**计划**买得起多少：可花余额 + 本单剩余冻结，按"单价 + 单位运费"折算，再受订单预算余额封顶， 并保留 {@link
-   * #MARKET_MONEY_ROUNDING_MARGIN_MILLI} 的保守回退。
+   * ★★ <b>W2：买方在一条路线上按“现金腿（名义运费）”折算的成交上限</b> —— <b>货款不参与</b>（它可以进债务）。
    *
-   * <p>★★ <b>它不是安全边界的守卫</b>：货款/运费各自向上取整，整单反解出的量逐笔成交时可能多付。累计付款 ≤ 买方 可支配的保证在 {@link #pairUp} ——
-   * 每笔成交前用 {@link #totalCostAtMost} 按当前剩余可付精确复核并封顶（见 {@link
-   * #exactAffordableUpTo}）。这样保留原口径的配给数量，不再依赖边距兜住"N 笔各 ceil 一毫"。
+   * <pre>
+   * unitFreight = route == null ? 0 : buy.payAmountOf(route.freightPerUnit)      // 买方支付币
+   * unitFreight &lt; 0   ⇒ 0        （说不出这种钱的价 ⇒ 付不起，与结算侧同一条 fail-closed）
+   * unitFreight == 0  ⇒ 无上限   （区内同格 / 免运费 lane：现金腿为 0，钱不是任何约束）
+   * 否则              ⇒ ⌊可付额 × 1000 ÷ unitFreight⌋
+   * </pre>
+   *
+   * <p>★★ <b>它与 {@link #exactTotalCostAffordableUpTo} 的分工</b>：后者是"货款 + 运费 + 税 ≤ 可付"的<b>总价</b>上限 （W2
+   * 起由 {@link #chargesAtMost} 承接）；本方法是 W2 的配给口径 —— 只把<b>现金腿</b>当约束。 税费不在这里折（它依赖卖方/方向，逐笔在 {@link
+   * #exactChargeAffordableUpTo} 精确判），故本值是**上界**： 需求权重宁可高估，逐笔成交仍会被 {@link #pairUp} 的精确二分削平（与 {@link
+   * #chargeAffordableQuantity} 的"保守少买"同一取向）。
    */
-  private static long affordableQuantity(
-      MatchContext ctx, BuySlot buy, long unitPrice, RouteContext route) {
-    // ★★ P-T5b：运费腿按**买方支付币**折算 —— unitPrice 已是支付币的单价（3c 的折算结果），而
-    //   route.freightPerUnit 是**本格计价币**的单位运费 ⇒ 必须折成同一个币才能相加（禁把两种钱直接相加）。
-    //   ★ 说不出这种钱的价 ⇒ 0（买不起）：与结算侧的具名拒（MARKET_CURRENCY_VALUE_REFUSED / 限价不过）同口径。
+  private static long chargeAffordableQuantity(MatchContext ctx, BuySlot buy, RouteContext route) {
     long unitFreight = route == null ? 0L : buy.payAmountOf(route.freightPerUnit);
     if (unitFreight < 0L) {
       return 0L;
     }
-    long unitCost = unitPrice + unitFreight;
-    if (unitCost <= 0L) {
-      // ★★ 完全免费（0 价 + 0 运费，典型 = 区内即时免费拿）：钱不是约束，数量由需求/供给决定。
-      //    ★ 跨区 0 价仍要付运费（route.freightPerUnit > 0）⇒ 走下面的按钱折算分支。
-      return Long.MAX_VALUE;
+    if (unitFreight == 0L) {
+      return Long.MAX_VALUE; // 没有现金腿 ⇒ 数量只受需求/供给/运力/口岸约束
     }
     long money = payableMoneyOf(ctx, buy);
-    if (money <= MARKET_MONEY_ROUNDING_MARGIN_MILLI) {
+    if (money <= 0L) {
       return 0L;
     }
-    money -= MARKET_MONEY_ROUNDING_MARGIN_MILLI;
-    return safeMulDiv(money, EconomySettlement.MILLI_PER_GRAIN, unitCost);
+    return safeMulDiv(money, EconomySettlement.MILLI_PER_GRAIN, unitFreight);
   }
 
   /**
    * 这一张买单当前还能动用的钱：{@code min(可花 + 本单剩余冻结, 订单预算余额 + 本单剩余冻结)}。
    *
-   * <p>★ 它不是"还买得起多少"（那还要按价与逐笔 ceil 反解），只是"钱包/预算层面是否已经耗尽" —— {@link #pairUp} 用它给 {@link
-   * BuySlot#noMoney} 置位，避免余额已经归零的买方在每条跨区路线上反复重试。
+   * <p>★★ <b>W2 改义</b>：它不再回答"买得起多少货"（那个概念已随"未付价款进债务"消失），只回答 <b>这一笔能拿出多少现金</b>（现金腿 = 运费 + 税
+   * 从这里扣，货款优先用它、不足的部分进债务）。
    */
   private static long payableMoneyOf(MatchContext ctx, BuySlot buy) {
     long money = spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
@@ -7937,33 +7745,112 @@ final class MarketSettlement {
   }
 
   /**
-   * 这一笔数量按**与 {@link #executeTrade} 同一算式**算出的总价（货款 + 运费 + <b>P-T1b 的三层税</b>）是否 ≤ {@code money}。
-   * 运费与货款解耦（{@link #freightUnitMilli}），0 价商品仍计运费；税由 {@link #taxesFor} 逐层算（同一个方法 ⇒
-   * "判得起"与"真的扣"不可能漂开）。全程 {@code long}；乘法真的会溢出 ⇒ 这个数量在 {@code executeTrade} 里同样不可付，按"付不起"处理。
+   * ★★ <b>W2：这一对买卖能不能"赊购"</b>（未付价款记为债务）—— 唯一拼写点。
+   *
+   * <pre>
+   * ① 本轮有债务工作副本（{@code ctx.debts != null} ⇔ 市场轮注入了信用/债务能力）
+   * ② 买方是家户（{@code DebtContract} 的一端只能是家户）
+   * ③ 卖方是家户（同上；经营者单位的卖单不能成为债权人）
+   * ④ 买方不是"只按授权下单"的国库户（R1：**明确授权 ≠ 加杠杆**，授权买盘只花自己的钱）
+   * </pre>
+   *
+   * <p>★ 四条全真 ⇒ 数量不按货款封顶（只按现金腿封顶）、未付部分进债务；任一条假 ⇒ 退回旧口径 （{@code exactTotalCostAffordableUpTo}：货款 +
+   * 运费 + 税 ≤ 可付），因为那种成交<b>没有地方记那笔欠款</b>。
    */
+  private static boolean deferralPossible(MatchContext ctx, BuySlot buy, SellSlot sell) {
+    return ctx.debts != null
+        && buy.buyer.household != null
+        && sell.seller.household != null
+        && !ctx.round.govMandates().isAuthorizationOnly(buy.buyer.household);
+  }
+
+  /**
+   * ★★ <b>W2：旧口径的回退封顶</b>（没有赊购能力时用）：最大 {@code q ≤ upper} 使 {@code 货款(q) + 现金腿(q) ≤ cashBudget} ——
+   * 与改动前的 {@code exactAffordableUpTo} 逐字同式 （同一个 {@link #chargesAtMost}，只是把货款也算进预算里）。
+   *
+   * <p>★ 单调性：货款、名义运费、从量/从价税都是数量 q 的非降函数 ⇒ 判据关于 q 单调，二分成立。
+   */
+  private static long exactTotalCostAffordableUpTo(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long upper,
+      long cashBudget,
+      long unitPrice,
+      RouteContext route) {
+    if (upper <= 0L) {
+      return 0L;
+    }
+    if (totalCostAtMost(ctx, buy, sell, commodity, upper, cashBudget, unitPrice, route)) {
+      return upper;
+    }
+    long low = 0L;
+    long high = upper;
+    while (low < high) {
+      long mid = low + (high - low + 1L) / 2L;
+      if (totalCostAtMost(ctx, buy, sell, commodity, mid, cashBudget, unitPrice, route)) {
+        low = mid;
+      } else {
+        high = mid - 1L;
+      }
+    }
+    return low;
+  }
+
+  /** 一笔（货款 + 现金腿）是否 ≤ 现金：{@code 货款 ≤ cash && 现金腿 ≤ cash − 货款}（与 {@link #chargesAtMost} 同一算式）。 */
   private static boolean totalCostAtMost(
       MatchContext ctx,
       BuySlot buy,
       SellSlot sell,
       CommodityId commodity,
       long quantity,
-      long money,
-      long buyerUnitPrice,
+      long cashBudget,
+      long unitPrice,
       RouteContext route) {
     long payment;
     try {
       payment =
           ceilDivPositive(
-              Math.multiplyExact(quantity, buyerUnitPrice), EconomySettlement.MILLI_PER_GRAIN);
+              Math.multiplyExact(quantity, unitPrice), EconomySettlement.MILLI_PER_GRAIN);
     } catch (ArithmeticException overflow) {
       return false;
     }
-    if (payment > money) {
+    if (payment > cashBudget) {
       return false;
     }
-    long outlay = payment;
-    // ★★ P-T5b：运费腿按**买方支付币**折算（route.freightPerUnit 是本格计价币的单位运费，而 payment / money 都是
-    //   支付币）—— 与 executeTrade 走**同一个** payAmountOf（唯一拼写点）⇒ "判得起"与"真的扣"不可能漂开。
+    return chargesAtMost(
+        ctx, buy, sell, commodity, quantity, cashBudget - payment, unitPrice, route);
+  }
+
+  /**
+   * ★★ <b>W2：这一笔的“现金腿”是否付得起</b> —— 现金腿 = <b>名义运费 + P-T1b 的三层税</b>；<b>货款不计</b> （它可以进债务，见 {@link
+   * #executeTrade}）。
+   *
+   * <p>★★ <b>为什么运费/税仍必须是现金</b>：它们的收款人是<b>承运家户</b>与<b>政府国库户</b>（两条独立的钱腿）， 不是卖方 ——
+   * "先消费、价款记债"这条通道只覆盖<b>卖方那一腿</b>。让它们也走债务就要为每个承运人/政府各开一条 债务，那超出 W2 的范围（且改变了 A2
+   * 的服务成交口径）。故口径定为：<b>买不起货款照买（记债），付不起运费/税则不成交</b>。
+   *
+   * <p>★ <b>同格即时成交</b>（route == null）且无区内税 ⇒ 现金腿恒 0 ⇒ <b>结构上永不因缺钱被拒</b> （判据 W2-①
+   * 的"现金为零仍拿得到货"正是这一支）。
+   *
+   * <p>★ 与 {@link #executeTrade} 走<b>同一个</b> {@code taxesFor} 与 {@code payAmountOf} ⇒
+   * "判得起"与"真的扣"不可能漂开。
+   */
+  private static boolean chargesAtMost(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      CommodityId commodity,
+      long quantity,
+      long cashBudget,
+      long buyerUnitPrice,
+      RouteContext route) {
+    if (quantity <= 0L) {
+      return true;
+    }
+    long outlay = 0L;
+    // ★★ P-T5b：运费腿按**买方支付币**折算（route.freightPerUnit 是本格计价币的单位运费）。
     //   ★ 说不出这种钱的价 ⇒ 付不起（false），绝不按 1:1 顶上。
     long unitFreight = route == null ? 0L : buy.payAmountOf(route.freightPerUnit);
     if (unitFreight < 0L) {
@@ -7982,8 +7869,6 @@ final class MarketSettlement {
         return false;
       }
     }
-    // ★★ P-T1b：税是买方总支出的一部分（"买方多付"）⇒ 可负担的判据必须含它，否则会在成交那一步把
-    //   家户账扣成负数（那是 fail-closed 的 400，不是"少买一点"）。
     try {
       for (MarketTaxBook.Charge charge :
           taxesFor(ctx, buy, sell, commodity, quantity, buyerUnitPrice, inTransit(route), false)) {
@@ -7992,50 +7877,47 @@ final class MarketSettlement {
     } catch (ArithmeticException overflow) {
       return false;
     }
-    return outlay <= money;
-  }
-
-  /** 跨区在途判据（{@link #executeTrade} 与可负担判据的唯一拼写点）。 */
-  private static boolean inTransit(RouteContext route) {
-    return route != null && !route.immediate;
+    return outlay <= cashBudget;
   }
 
   /**
-   * 把预分配/计划量按**当前剩余可付**精确封顶：最大 {@code q ≤ upper} 使 {@code q} 这一笔的总价（货款 + 名义运费 + 三层税）≤ {@code
-   * payable}。
+   * ★★ <b>W2：把成交数量按“现金腿付得起”精确封顶</b>：最大 {@code q ≤ upper} 使 {@link #chargesAtMost}(q) 成立（{@code
+   * cargo} 不封顶 —— 那部分进债务）。
    *
-   * <p>★ 这是缺陷 A 的安全点：{@link #affordableQuantity} 的边距只负责"保守少买"，跨区运费、三层税与两处 ceil 造成 的累计越界在这里被逐笔按实际账削平
-   * ⇒ 任何成交序列下付款 ≤ 可支配（冻结 + 可花）。★ 0 价 + 0 运费的完全免费交易 在 {@code payable == 0} 时也应放行，故这里不再用 {@code
-   * payable <= 0} 提前判死（由 {@link #totalCostAtMost} 按真实总价回答）。
-   *
-   * <p>★ <b>单调性</b>（二分的前提）：货款、运费、从量税、从价税都是数量 q 的非降函数 ⇒ {@code totalCostAtMost} 关于 q 单调。
+   * <p>★ <b>单调性</b>（二分的前提）：名义运费与从量/从价税都是数量 q 的非降函数 ⇒ {@code chargesAtMost} 关于 q 单调。 ★ 形状照 {@link
+   * #exactTotalCostAffordableUpTo}（同一个二分骨架），只是判据换成"只算现金腿"。
    */
-  private static long exactAffordableUpTo(
+  private static long exactChargeAffordableUpTo(
       MatchContext ctx,
       BuySlot buy,
       SellSlot sell,
       CommodityId commodity,
       long upper,
-      long payable,
+      long cashBudget,
       long unitPrice,
       RouteContext route) {
     if (upper <= 0L) {
       return 0L;
     }
-    if (totalCostAtMost(ctx, buy, sell, commodity, upper, payable, unitPrice, route)) {
+    if (chargesAtMost(ctx, buy, sell, commodity, upper, cashBudget, unitPrice, route)) {
       return upper;
     }
     long low = 0L;
     long high = upper;
     while (low < high) {
       long mid = low + (high - low + 1L) / 2L;
-      if (totalCostAtMost(ctx, buy, sell, commodity, mid, payable, unitPrice, route)) {
+      if (chargesAtMost(ctx, buy, sell, commodity, mid, cashBudget, unitPrice, route)) {
         low = mid;
       } else {
         high = mid - 1L;
       }
     }
     return low;
+  }
+
+  /** 跨区在途判据（{@link #executeTrade} 与可负担判据的唯一拼写点）。 */
+  private static boolean inTransit(RouteContext route) {
+    return route != null && !route.immediate;
   }
 
   /** 向下取整的 {@code value × multiplier ÷ divisor}；乘法溢出时保守回退成 `Long.MAX_VALUE`。 */
@@ -8081,34 +7963,28 @@ final class MarketSettlement {
       long minSellerPrice =
           minSellerPriceByCommodity.getOrDefault(buy.order.commodity(), Long.MAX_VALUE);
       MarketUnfilledReason reason = buy.blocked;
-      // ★★ D-030：信用可能覆盖"没钱"这一档 ⇒ NO_BUDGET 先让位给信用归因，最后仍没信用再落回 NO_BUDGET。
+      // ★★ W2（2026-10-11）：**"没钱"不再是买方未成交的理由** —— 家户的需求全额进撮合、未付价款进债务
+      //   （见 {@code executeTrade} / {@code recordDeferredPaymentDebt}）⇒ 这里不再因"现金 ≤ 0"就把原因
+      //   写成 NO_BUDGET。{@code NO_BUDGET} 只剩一个具名改义后的含义：**现金付不出这一笔的运费/税**
+      //   （由 {@code pairUp} 的 {@code chargesAtMost} 置位，见那里）。
+      //   ★★★ W2-fix4（2026-10-11）：这里原有第二层"信用归因"（{@code creditUnfilledReason}：可借池剩多少 ⇒
+      //   NO_LENDABLE_GOODS / NO_LENDABLE_MONEY / NO_CREDIT_LIMIT）—— **随信用撮合一并退役**。那两个
+      //   枚举常量仍留在 {@code MarketUnfilledReason}（历史 revision 的未成交档里还有这些字面量，解析必须继续认），
+      //   但**本轮结算不再产生它们**：归因回到"真的没有供给 / 没有合格买方 / 价格 / 路线 / 算法残余"这几档。
       if (reason == MarketUnfilledReason.NO_BUDGET) {
         reason = null;
       }
       if (reason == null) {
-        MarketUnfilledReason creditReason = creditUnfilledReason(ctx, buy);
-        long cashSpendable =
-            spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
-        boolean cashBlocked = buy.requestedMoney <= 0L || cashSpendable <= 0L;
-        if (cashBlocked
-            && (creditReason == null || creditReason == MarketUnfilledReason.NO_BUDGET)) {
-          reason = MarketUnfilledReason.NO_BUDGET;
-        } else if (totalSellRemaining <= 0L) {
+        if (totalSellRemaining <= 0L) {
           reason =
-              creditReason == MarketUnfilledReason.NO_LENDABLE_GOODS
-                  ? creditReason
-                  : inputShortfallNear(ctx, buy, indexes)
-                      ? MarketUnfilledReason.INPUT_SHORTFALL
-                      : classifyNoSupply(ctx, buy, indexes);
+              inputShortfallNear(ctx, buy, indexes)
+                  ? MarketUnfilledReason.INPUT_SHORTFALL
+                  : classifyNoSupply(ctx, buy, indexes);
         } else if (!hasSupplyNear(buy, indexes)) {
           reason = MarketUnfilledReason.NO_ADJACENT_SUPPLY;
         } else if (minSellerPrice != Long.MAX_VALUE
             && buy.order.maxLandedPrice() < minSellerPrice) {
           reason = MarketUnfilledReason.PRICE_LIMIT;
-        } else if (creditReason != null) {
-          reason = creditReason;
-        } else if (cashBlocked) {
-          reason = MarketUnfilledReason.NO_BUDGET;
         } else {
           reason = MarketUnfilledReason.ALGORITHM_UNCOVERED;
         }
@@ -8246,8 +8122,11 @@ final class MarketSettlement {
           continue;
         }
         anyBuy = true;
-        long spendable = spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
-        if (buy.noMoney || spendable <= 0L) {
+        // ★★★ W2（2026-10-11，具名改义）：**"没钱"不再是买方买不到货的原因** —— 家户的需求全额进撮合、
+        //   未付价款进债务 ⇒ 这里不再用"可花额 ≤ 0"把卖方剩余归因成 {@code NO_BUDGET}（那是旧口径的
+        //   "这些买方都没钱"）。{@code noMoney} 这个槽位标记保留（W2 起 {@code pairUp} 只在**运费/税**
+        //   付不出时置位，不再因"买不起货"置位）—— 于是卖方剩余的归因落到真实原因（限价/路线/时限/无买方）。
+        if (buy.noMoney) {
           budgetBlocked = true;
           continue;
         }
@@ -8500,8 +8379,11 @@ final class MarketSettlement {
                   .getOrDefault(hexKeyOf(hex), Map.of())
                   .getOrDefault(participant.household(), Map.of())
                   .getOrDefault(commodity, 0L);
+          // ★★★ W2（S-10）：目标量 = **生产花费（内含口粮）** + 有效需求目标 —— 与订单路径
+          //   （{@code ordersFor} 的 {@code baseTarget}）**同一个量**。于是下面那个 {@code gap}
+          //   = "生产花费未满足量"（W3 的缺口/满足率读的就是它），不需要第二个算式。
           desired =
-              Math.addExact(lifeReserveOfParticipant(ctx, participant, commodity), demandTarget);
+              Math.addExact(productionCostOfParticipant(ctx, participant, commodity), demandTarget);
         }
         List<BuySlot> slots =
             buysByActorCommodity.getOrDefault(
@@ -8547,12 +8429,16 @@ final class MarketSettlement {
           }
         }
         Optional<MarketUnfilledReason> reason;
+        // ★★ W2（2026-10-11）：家户买方走债务式清算 ⇒ **"预算为 0"不再是它不下单/买不到的原因**
+        //   （需求全额下单、未付价款进债务）。故这一层的 {@code NO_BUDGET} 只对**经营者**（现金封顶的买盘）
+        //   保留；家户一律按"供不上 / 限价 / 算法未覆盖"归因 —— 否则读数会把"没有供给"误报成"没钱"。
+        boolean householdDebtClearing = participant.household() != null;
         if (gap <= 0L) {
           reason = Optional.of(MarketUnfilledReason.STOCK_SUFFICIENT);
         } else if (ordered <= 0L) {
           reason =
               Optional.of(
-                  budget <= 0L || affordable <= 0L
+                  !householdDebtClearing && (budget <= 0L || affordable <= 0L)
                       ? MarketUnfilledReason.NO_BUDGET
                       : MarketUnfilledReason.ALGORITHM_UNCOVERED);
         } else if (filled >= ordered) {
@@ -8562,7 +8448,7 @@ final class MarketSettlement {
         } else {
           reason =
               Optional.of(
-                  budget <= 0L
+                  !householdDebtClearing && budget <= 0L
                       ? MarketUnfilledReason.NO_BUDGET
                       : MarketUnfilledReason.ALGORITHM_UNCOVERED);
         }
@@ -8596,7 +8482,7 @@ final class MarketSettlement {
    *
    * <p>★★ <b>为什么不是 {@code market.numeraire()} 一条路</b>：订单可选币之后，"这个买方的钱够不够"要按<b>它要付的那种钱</b>回答
    * ——否则一个持铜户会被按它没有的银回答"买得起"（或反之）。★ 这里取最大者是<b>上界读数</b>的取向（诊断只回答"账面是否为空"）， 逐笔真判在撮合那一侧（{@code
-   * payableMoneyOf}/{@code affordableQuantity}，都按 {@code buy.currency}）。
+   * payableMoneyOf}/{@code chargeAffordableQuantity}，都按 {@code buy.currency}）。
    *
    * <p>★ <b>缺省语义中性（I-C2）</b>：本批订单币恒等于本格计价币 ⇒ 与改前逐值相同。
    */
@@ -8609,13 +8495,16 @@ final class MarketSettlement {
     return slots.isEmpty() ? spendableMoneyOf(ctx.round, participant, market.numeraire()) : budget;
   }
 
-  /** 家户在某商品上的生活保留（家户没有该商品的需要 ⇒ 0；不是"读不到"）。 */
-  private static long lifeReserveOfParticipant(
+  /**
+   * ★★★ <b>W2（S-10）：本主体在某商品上的“生产花费（内含口粮）”——唯一读口</b>。
+   *
+   * <p>它就是 {@link #householdProductionCostOf} 的单商品投影；经营者（{@code household == null}）走 {@code
+   * necessaryInputsOf}（经营者没有口粮这条账）。★ W3 的"逐户缺口/满足率"读的量 = 本值 − 可用 − 在途 （= {@code
+   * MarketReport.BuyerOutcome.gap}，见 {@code collectBuyerOutcomes}）。
+   */
+  static long productionCostOfParticipant(
       MatchContext ctx, Participant participant, CommodityId commodity) {
-    HouseholdEconomy householdEconomy = ctx.round.householdEconomies.get(participant.household());
-    return householdEconomy == null
-        ? 0L
-        : householdLifeReserveOf(householdEconomy).getOrDefault(commodity, 0L);
+    return householdProductionCostOf(ctx.round, participant).getOrDefault(commodity, 0L);
   }
 
   /**
@@ -9204,13 +9093,6 @@ final class MarketSettlement {
     round.householdFrozenGoods.put(participant.household, inner);
   }
 
-  private static long moneyOf(MarketRound round, Participant participant, CurrencyId currency) {
-    return round
-        .householdMoney
-        .getOrDefault(participant.household, Map.of())
-        .getOrDefault(currency, 0L);
-  }
-
   private static long frozenMoneyOf(
       MarketRound round, Participant participant, CurrencyId currency) {
     return round
@@ -9245,54 +9127,6 @@ final class MarketSettlement {
     long frozen =
         round.householdFrozenMoney.getOrDefault(household, Map.of()).getOrDefault(currency, 0L);
     return Math.max(0L, balance - frozen);
-  }
-
-  /** ★ A2a：家户为键的实物可花额（实物保留/信用口径读它；★ P-T5 起外汇面<b>不再</b>读它 —— F-3 是"挂单全部"，不扣任何储备）。 */
-  static long spendableGoodsOf(MarketRound round, HouseholdId household, CommodityId commodity) {
-    long balance =
-        round.householdGoods.getOrDefault(household, Map.of()).getOrDefault(commodity, 0L);
-    long frozen =
-        round.householdFrozenGoods.getOrDefault(household, Map.of()).getOrDefault(commodity, 0L);
-    return Math.max(0L, balance - frozen);
-  }
-
-  /**
-   * ★★ <b>A2a：家户为键的货币保留额</b>（{@link #moneyReserveOf(MatchContext, Participant, MarketTable)} 的家户版，
-   * 逐值同源）：出借人可借头寸用它算"这笔钱是不是余钱"。
-   *
-   * <p>★★ <b>P-T5 起外汇面不再用它</b>：用户 2026-10-10 的 F-3 是"挂单全部（不扣生活/生产储备）"，家户 FX 单的量 = 该币
-   * <b>全部可花额</b>（{@code FxSettlement#placeHouseholdOrder}）—— 旧口径"余钱才拿去换外币"已随旧规则退役。
-   *
-   * <p>★ 口径原样不动：未覆盖的日自然需求按本格市价折算 + 人均货币缓冲；缺价不入保留额、人口/行读不到 ⇒ {@code
-   * Long.MAX_VALUE}（fail-closed：读不到不等于不用留）。
-   */
-  static long moneyReserveOfHousehold(
-      MarketRound round, HouseholdId household, MarketTable market) {
-    HouseholdEconomy householdEconomy = round.householdEconomies.get(household);
-    if (householdEconomy == null || market == null) {
-      return Long.MAX_VALUE;
-    }
-    long reserve = 0L;
-    for (Map.Entry<CommodityId, Long> need : householdEconomy.naturalNeeds().entrySet()) {
-      if (need.getValue() <= 0L) {
-        continue;
-      }
-      long available = spendableGoodsOf(round, household, need.getKey());
-      long uncovered = Math.max(0L, need.getValue() - available);
-      if (uncovered <= 0L) {
-        continue;
-      }
-      long price = market.priceOf(need.getKey());
-      if (price <= 0L) {
-        continue;
-      }
-      reserve = safeAdd(reserve, safeMulDiv(uncovered, price, EconomySettlement.MILLI_PER_GRAIN));
-    }
-    reserve =
-        safeAdd(
-            reserve,
-            safeMulDiv(householdEconomy.population(), LENDER_MONEY_BUFFER_PER_CAPITA_MILLI, 1L));
-    return reserve;
   }
 
   private static long ceilDiv(long numerator, long denominator) {
@@ -9766,8 +9600,7 @@ final class MarketSettlement {
      * = 价表键，见 {@code MarketTopology.ofRegions} 的装配口径）。
      *
      * <p>★★ W1d：区没有价表条目 ⇒ {@code null}（缺表 = 该区不交易任何商品）。所有调用方都已按 {@code null} 跳过该区（{@code
-     * matchWithinRegions} / {@code matchWithinRegionsSerial} / {@code creditRound} / {@code
-     * debtRound} / {@code matchWithinRegionsParallel}）。
+     * matchWithinRegions} / {@code matchWithinRegionsSerial} / {@code matchWithinRegionsParallel}）。
      */
     MarketTable tableOf(MarketRegion region) {
       return marketTables.get(new MarketZoneId(region.node().nodeId()));
@@ -9882,6 +9715,24 @@ final class MarketSettlement {
      */
     Set<HouseholdId> pureMerchantHouseholds = Set.of();
 
+    /**
+     * ★★ <b>W2：本轮"未付价款记为债务"的轮级读数</b>（毫买方支付币 / 笔数）—— 只作日志与读数，不落状态 （债务本身落在 {@code debtContracts}）。
+     */
+    long deferredPaymentMilli;
+
+    /** 见 {@link #deferredPaymentMilli}（本轮发生了赊购的成交笔数）。 */
+    int deferredPaymentFills;
+
+    /**
+     * ★★ <b>W2：本轮的持久市场区表</b>（{@code MarketZoneId → MarketZone}）—— 只被自适应定价读一个字段： {@link
+     * MarketZone#priceAlphaPerMille()}（逐区动态价步长 α，约束设计书 §2.1）。
+     *
+     * <p>★ 由 {@code clearOncePerCycle} 的入口参数赋值（照 {@link #pureMerchantHouseholds} 的先例：构造后赋值、 worker
+     * 副本照抄、不改构造器签名）。{@code Map.of()} = 没有持久区（派生形态 / 夹具）⇒ α 一律取出厂缺省 {@link
+     * MarketZone#DEFAULT_PRICE_ALPHA_PER_MILLE}（缺省语义中性：没设过 α 的世界走 50‰）。
+     */
+    Map<MarketZoneId, MarketZone> marketZones = Map.of();
+
     final List<BuySlot> buys = new ArrayList<>();
     final List<SellSlot> sells = new ArrayList<>();
     final Map<ActorRef, Participant> participants = new LinkedHashMap<>();
@@ -9891,17 +9742,9 @@ final class MarketSettlement {
     // ★ S3：逐槽位只读结果（不落盘；供 MarketReadout / ApiViews 聚合）。
     final List<MarketReport.SellerOutcome> sellerOutcomes = new ArrayList<>();
     final List<MarketReport.BuyerOutcome> buyerOutcomes = new ArrayList<>();
-    // ★★ D-030 市场信用：入参来自 MarketRound（关闭时为 null）；本表只记录本轮的债务来源与剩额头寸。
-    final MarketRound.CreditConfig creditConfig;
+    // ★★ W2：债务式清算的入参（来自 MarketRound；没有债务工作副本时为空 ⇒ 未付价款无处记 ⇒ 退回旧口径）。
+    final MarketRound.DeferredPaymentConfig deferredPaymentConfig;
     final Map<DebtContractId, DebtContract> debts;
-    final List<MarketReport.CreditFill> creditFills = new ArrayList<>();
-
-    /** 区 id → 本轮结束时货币可借池剩余（毫计价货币；collectUnfilled 的 NO_LENDABLE_MONEY 判据）。 */
-    final Map<String, Long> creditMoneyRemainingByRegion = new LinkedHashMap<>();
-
-    /** 区 id × 商品 → 本轮结束时商品可借池剩余（毫商品；NO_LENDABLE_GOODS 判据）。 */
-    final Map<String, Map<CommodityId, Long>> creditGoodsRemainingByRegionCommodity =
-        new LinkedHashMap<>();
 
     final Map<String, RouteAccumulator> routes = new LinkedHashMap<>();
 
@@ -9943,6 +9786,22 @@ final class MarketSettlement {
     long portBlockedMilli;
 
     /**
+     * ★★ <b>W2-fix：本轮被口岸闸拦下的<b>买家侧需求量</b>（逐 买方区 × 商品；毫商品）</b>—— 只作日志读数（ {@code
+     * MARKET_DEMAND_COMPOSITION} 的 {@code blockedByPortMilli}），<b>不进任何算式、不落状态</b>。
+     *
+     * <p>★ <b>口径</b>（唯一写入点 = {@code matchRoute} 的"闸用尽且还有合格需求"分支）：记的是 {@code min(该 lane 本轮配给前仍愿买的合计,
+     * 闸拦下的挂单余量)} —— 被拦下的量**本来就在 D 里** （D 取自买槽 {@code order.quantity()} 全额），这里只是把它**按区按商品读出来**，绝不回加进
+     * D（回加就是重复计数）。
+     *
+     * <p>★ <b>它不重复计"运力截断"</b>：那条 lane 的运力截断记在 {@code capacityTruncatedMilli}（走 {@code capacityLeft
+     * <= 0} 那一支），口岸闸走 {@code portLeft <= 0} 那一支，两支的判据不同 ⇒ 一份未服务量不会同时进两项。
+     *
+     * <p>★ 逐轮瞬态（不进 {@code EconomyData} / 变更集 / 落盘），且只在 {@code matchAcrossRegions}（协调器单线程）里写。
+     */
+    final Map<MarketZoneId, Map<CommodityId, Long>> portBlockedMilliByZoneCommodity =
+        new LinkedHashMap<>();
+
+    /**
      * ★★ <b>P-T1e：本轮被币种挂单闸挡下的候选笔数与被请求的货物量</b>（毫商品；只作日志/读数 —— 被挡下的候选<b>不成交、不落状态、不进账本</b>， 设计书
      * §14.3）。
      */
@@ -9963,7 +9822,7 @@ final class MarketSettlement {
       this.marketTables = marketTables;
       this.topology = topology;
       this.regulation = regulation == null ? MarketRegulation.none() : regulation;
-      this.creditConfig = round.creditConfig();
+      this.deferredPaymentConfig = round.deferredPaymentConfig();
       this.debts = round.debts();
       this.hexTradeCost = new HexTradeCost(topology);
       this.currencyValuation =
@@ -9982,16 +9841,12 @@ final class MarketSettlement {
       return currencyValuation;
     }
 
-    /** ★★ D-030：本入口有没有市场信用能力（{@code creditConfig} 与债务表必须同时在场；旧构造器 = 关闭）。 */
-    boolean creditEnabled() {
-      return creditConfig != null && debts != null;
-    }
-
-    /** ★★ D-030：某区本轮结束时的商品可借池剩余（毫商品；缺键 ⇒ 0）。 */
-    long creditGoodsRemaining(String regionId, CommodityId commodity) {
-      return creditGoodsRemainingByRegionCommodity
-          .getOrDefault(regionId, Map.of())
-          .getOrDefault(commodity, 0L);
+    /**
+     * ★★ <b>本入口有没有"未付价款 ⇒ 记债"的能力</b>（{@code deferredPaymentConfig} 与债务工作副本必须同时在场； 旧构造器 = 关闭 ⇒ 退回"货款
+     * + 运费 + 税 ≤ 可付"的旧口径，绝不凭空赊账）。
+     */
+    boolean deferredPaymentsEnabled() {
+      return deferredPaymentConfig != null && debts != null;
     }
 
     /** 本区适用区内市场规则（没有 ⇒ {@link MarketRegulation#none()}）。 */

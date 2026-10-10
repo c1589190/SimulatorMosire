@@ -203,7 +203,7 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
    *                          : (stock > 0 ? 1000 : 0)
    *   pressure  = NECESSITY_PREMIUM_PER_MILLE × shortfall ÷ 1000
    *             − SATURATION_DISCOUNT_PER_MILLE × saturation ÷ 1000          // 逐千分，可为负
-   *   derived   = max(1, base × 1000 + base × 1000 × pressure ÷ 1000)       // 微刻度（见 MICRO_PER_MILLI）
+   *   derived   = max(0, base × 1000 + base × 1000 × pressure ÷ 1000)       // 微刻度（W2 起放开 1 微地板）
    *   history   = tradeHistory.lastTradePriceOf(户, c) × 1000               // 默认 0 = 无历史
    *   price     = history > 0 ? (derived × (1000 − HISTORY_WEIGHT) + history × HISTORY_WEIGHT) ÷ 1000
    *                           : derived
@@ -314,7 +314,7 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
    * base      = market.priceOf(commodity)                     // 区价
    * target    = row.expectedNeedMilli(commodity, HOLD_DAYS)   // Social 权威的当日物化视图 × 天数
    * pressure  = NECESSITY_PREMIUM × shortfall‰ − SATURATION_DISCOUNT × saturation‰
-   * derived   = max(1, baseMicro + baseMicro × pressure ÷ 1000)
+   * derived   = max(0, baseMicro + baseMicro × pressure ÷ 1000)   // ★ W2：放开 1 微地板
    * history   > 0 ⇒ 与自有成交史加权
    * </pre>
    *
@@ -379,15 +379,19 @@ final class HouseholdValuationBook implements DebtValuation.HouseholdPriceTable 
           "家户保留价整数溢出的具名失败（拒绝回退到 double）: baseMicro=" + baseMicro + " pressure=" + pressure,
           overflow);
     }
-    return Math.max(1L, Math.addExact(baseMicro, delta));
+    // ★★ W2：下限从 "≥ 1 微" 放开到 "≥ 0"（约束设计书 §5.2）—— 极度过剩时保留价可以真的落到 0。
+    return Math.max(0L, Math.addExact(baseMicro, delta));
   }
 
-  /** 需求价与自有成交史的加权平均（{@code HISTORY_WEIGHT_PER_MILLE} 权重；整数、floor；两侧同为微刻度）。 */
+  /**
+   * 需求价与自有成交史的加权平均（{@code HISTORY_WEIGHT_PER_MILLE} 权重；整数、floor；两侧同为微刻度）。★ W2：下限与 {@link
+   * #applyPressure} 同为 0。
+   */
   private static long blend(long reservationMicro, long historyMicro) {
     long weighted =
         Math.addExact(
             Math.multiplyExact(reservationMicro, 1000L - HISTORY_WEIGHT_PER_MILLE),
             Math.multiplyExact(historyMicro, HISTORY_WEIGHT_PER_MILLE));
-    return Math.max(1L, weighted / 1000L);
+    return Math.max(0L, weighted / 1000L);
   }
 }
