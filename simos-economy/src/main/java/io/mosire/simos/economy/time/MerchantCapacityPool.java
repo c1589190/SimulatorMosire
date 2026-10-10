@@ -53,6 +53,25 @@ import java.util.Objects;
  * G-2 运力池挂**发货格**（select 的 from）
  * </pre>
  *
+ * <p>★★ <b>G3-fix-2（2026-10-10）：工具门槛读"当刻可用量"（时点 = 承运选择点，不是装配点）</b>—— G3-fix-1
+ * 把门槛判据从<b>存量</b>改成<b>可用量</b>，但读的是<b>池装配点</b>的冻结表，而本轮的卖单冻结由 {@code MarketSettlement.commitFreezes}
+ * 在<b>市场轮内</b>才落表 ⇒ 真实世界里减项恒为 {@code 0}（G3b 复验： {@code MERCHANT_HAUL_TOOL_SHORT_AT_COMMIT} 3,589
+ * 条逐值未变、928 组同户同日"SHORT 具名 + {@code toolBurnedMilli=0}"、 其中 708 组连 {@code CARRIER_FEE_PAID} 一起成立 ——
+ * 门槛不成立却照运、运费照铸）。本批把可用量的读取挪到选择点：
+ *
+ * <pre>
+ * 时点  {@link #select} 内、逐条承运条目被判定的那一刻 —— 市场轮内、{@code commitFreezes} 之后，
+ *       与提交侧 {@code EconomySettlement.consumeForLoss} 读的是**同一张活表**（{@code householdFrozenGoods}）
+ * 算式  判据量 = min(本轮预算余量, max(0, 当刻现货 − 当刻冻结))；不足一趟 ⇒ **该条跑商不成立**
+ *       （不放行 = 不成交、不铸 CARRIER_FEE、不烧工具；具名归因见 {@link MerchantHaul} 的 reason 常量）
+ * 缺省  无冻结的世界里 当刻可用量 ≥ 本轮预算余量 ⇒ 判据量 ≡ 本轮预算余量 ⇒ 与改前**逐值相同**（I-C2）
+ * </pre>
+ *
+ * <p>★ <b>"当刻"是哪一个时点（口径写清）</b>：{@code select} 只被 {@code MarketSettlement.executeTrade} 在
+ * <b>协调器</b>上逐条 lane 调用（有运力池的世界整个区内撮合都退回串行，见 {@code matchWithinRegions}），且 {@code select}
+ * 自身<b>不写账户</b>（烧工具在它之后的 {@code settleHaulRuns}）⇒ 一次 {@code select} 内所有条目读到的都是同一个账户状态；两次 {@code
+ * select} 之间账户可能已变（上一笔的烧工具已落账）， 那正是"每一条承运都按它被判定的那一刻"的严格口径。
+ *
  * <p>★★ <b>一轮一份、不累积</b>：每次装配都从当刻状态重算（{@code 不落状态、不储存、不转卖}）。{@code select} 就地扣 剩余运力 ⇒
  * 本类<b>只允许协调器单线程使用</b>；并行 worker 副本拿 {@link #empty()}（与旧 CarrierPool 同款约定）。
  *
@@ -70,7 +89,7 @@ public final class MerchantCapacityPool {
 
   /** 空池（没有跑商家户的世界 / worker 本地副本）。 */
   private static final MerchantCapacityPool EMPTY =
-      new MerchantCapacityPool(Map.of(), Map.of(), Map.of(), 0L, false, 0L);
+      new MerchantCapacityPool(Map.of(), Map.of(), Map.of(), 0L, false, 0L, null, null);
 
   /** 逐格池（键序 = hex 的规范序；值按分配序、不可变）。 */
   private final Map<HexCoord, List<Entry>> byHex;
@@ -93,19 +112,34 @@ public final class MerchantCapacityPool {
   /** 本轮所有提供者的最高限价（‰；报价口径下 "计划单位运费" 的上界）。 */
   private final long maxAskPerMille;
 
+  /**
+   * ★★ <b>G3-fix-2：工具维的<b>活视图</b>（商品账）</b>—— 只有带冻结的重载（生产装配点）才非空；{@link #select}
+   * 在承运选择点按它取当刻现货（时点见类注）。
+   *
+   * <p>{@code null} = 本池没有活视图（4/5 参重载：夹具 / 纯状态读者）⇒ 门槛只看本轮预算余量，与改前逐值相同。
+   */
+  private final Map<HouseholdId, Map<CommodityId, Long>> liveGoods;
+
+  /** ★★ <b>G3-fix-2：工具维的<b>活视图</b>（冻结账）</b>—— 与 {@link #liveGoods} 成对（同一时点、同一口径）。 */
+  private final Map<HouseholdId, Map<CommodityId, Long>> liveFrozenGoods;
+
   private MerchantCapacityPool(
       Map<HexCoord, List<Entry>> byHex,
       Map<HexCoord, Long> totalCapacityByHex,
       Map<HouseholdId, Entry> byHousehold,
       long householdCount,
       boolean priced,
-      long maxAskPerMille) {
+      long maxAskPerMille,
+      Map<HouseholdId, Map<CommodityId, Long>> liveGoods,
+      Map<HouseholdId, Map<CommodityId, Long>> liveFrozenGoods) {
     this.byHex = byHex;
     this.totalCapacityByHex = totalCapacityByHex;
     this.byHousehold = byHousehold;
     this.householdCount = householdCount;
     this.priced = priced;
     this.maxAskPerMille = maxAskPerMille;
+    this.liveGoods = liveGoods;
+    this.liveFrozenGoods = liveFrozenGoods;
     long sum = 0L;
     for (long value : totalCapacityByHex.values()) {
       sum = Math.addExact(sum, value);
@@ -120,14 +154,22 @@ public final class MerchantCapacityPool {
   /**
    * ★★ <b>装配一轮的运力池（缺省口径：无报价）</b>—— 价格与分配序逐值退回 M-A1（I-C2）。
    *
-   * <p>夹具 / 纯状态读者 / 旧调用方走这一条；生产路径走 {@link #of(Map, Map, Map, Map, CapacityQuoteBook)}。
+   * <p>夹具 / 纯状态读者 / 旧调用方走这一条；生产路径走带 {@code frozenGoods} 的 6 参重载（它会带活视图进池）。
    */
   public static MerchantCapacityPool of(
       Map<HouseholdId, HouseholdClassMembership> classStandings,
       Map<ClassPositionId, ProductionRole> classPositions,
       Map<HouseholdId, HouseholdEconomy> rows,
       Map<HouseholdId, Map<CommodityId, Long>> goods) {
-    return of(classStandings, classPositions, rows, goods, CapacityQuoteBook.empty());
+    return assemble(
+        classStandings,
+        classPositions,
+        rows,
+        goods,
+        Map.of(),
+        CapacityQuoteBook.empty(),
+        null,
+        null);
   }
 
   /**
@@ -137,9 +179,9 @@ public final class MerchantCapacityPool {
    * classPositions} 中 {@code modeId == merchant} 的位置。运力算式见 {@link MerchantCapacity}；限价见 {@link
    * CapacityQuoteBook#askPerMilleOf}（报价口径）。
    *
-   * <p>★ <b>本重载 = 无冻结概念</b>（工具可投入量取**存量**；夹具 / 纯状态读者 / 旧调用方）：它逐字委托下面带 {@code frozenGoods} 的重载，减项传空表
-   * ⇒ 与改前**逐值相同**（I-C2 缺省语义中性）。生产路径必须用带冻结的那一条 ——否则"同轮把 tool 全挂进卖单"的户会被误判成有工具（2026-10-10 G3-fix-1
-   * 修的就是这个）。
+   * <p>★ <b>本重载 = 无冻结概念</b>（工具可投入量取**装配点的存量**；夹具 / 纯状态读者 / 旧调用方）：它逐字委托 {@link
+   * #assemble}，减项传空表且**不带活视图** ⇒ 与改前**逐值相同**（I-C2 缺省语义中性）。生产路径必须用带冻结的那一条 ——否则"同轮把 tool
+   * 全挂进卖单"的户会被误判成有工具（2026-10-10 G3-fix-1 修的就是这个；G3-fix-2 又把读取时点挪到 承运选择点，见类注）。
    *
    * @param classStandings 家户 → 阶层归属（主业 = current、副业 = participating）
    * @param classPositions 位置 → 生产方式（判"是不是跑商"）
@@ -153,22 +195,24 @@ public final class MerchantCapacityPool {
       Map<HouseholdId, HouseholdEconomy> rows,
       Map<HouseholdId, Map<CommodityId, Long>> goods,
       CapacityQuoteBook quotes) {
-    return of(classStandings, classPositions, rows, goods, Map.of(), quotes);
+    return assemble(classStandings, classPositions, rows, goods, Map.of(), quotes, null, null);
   }
 
   /**
-   * ★★ <b>同理，但工具维按<b>可用量</b>读</b>（2026-10-10 G3-fix-1）：{@code tool} 的可投入量 = {@code max(0, 存量 −
-   * 冻结)}，与提交侧的实扣判据（{@code EconomySettlement.consumeForLoss}：可用量 &lt; 一趟 ⇒ 一点也不烧）**同口径**。
+   * ★★ <b>生产装配点（唯一带"当刻可用量"口径的入口）</b>（2026-10-10 G3-fix-1 + G3-fix-2）：{@code tool} 的 判据量 = {@code
+   * min(本轮预算余量, max(0, 当刻现货 − 当刻冻结))}，与提交侧的实扣判据（{@code EconomySettlement.consumeForLoss}：可用量 &lt;
+   * 一趟 ⇒ 一点也不烧）**同口径、同活表**。
    *
-   * <p>★★ <b>为什么必须同口径（实测缺陷）</b>：旧实现只读**存量** ⇒ 一个把 tool 全部挂进本轮卖单（冻结 12,000）的户 在池里仍显示 {@code
+   * <p>★★ <b>为什么必须同口径（实测缺陷，两次）</b>：① 旧实现只读**存量** ⇒ 一个把 tool 全部挂进本轮卖单（冻结 12,000）的户在池里仍显示 {@code
    * toolRemainingMilli=12000}，{@code select} 于是放行该次承运、成交成立、{@code CARRIER_FEE} 照铸；到 {@code
-   * settleHaulRuns} 实扣时才发现 {@code available=0} ⇒ "货走了、运费收了、工具没扣"（H-5 「缺工具 ⇒ 该次跑商不成立」被绕过，真实 world 复测
-   * 3,589/3,672 趟如此）。 口径对齐后，这种户**根本进不了分配**（无劳动 ⇒ 运力 0 ⇒ 不入池；有劳动 ⇒ 预算 0 ⇒ {@link #select} 认作 {@link
-   * MerchantHaul#TOOL_FROZEN_REASON} 并具名计数）⇒ 该笔承运不成立、运费腿不铸。
+   * settleHaulRuns} 实扣时才发现 {@code available=0} ⇒ "货走了、运费收了、工具没扣"。 ② G3-fix-1
+   * 改成读可用量，但读的是**装配点**（市场轮之前）的冻结表 —— 本轮卖单冻结在市场轮内才落表 ⇒ 减项恒为 0，真实世界**一格没变**（G3b 复验 3,589 条逐值未变）。⇒
+   * 本重载把 {@code goods}/{@code frozenGoods} <b>作为活视图带进池</b>，由 {@link #select} 在**承运选择点**现读（时点口径见类注）。
    *
-   * <p>★ <b>缺省中性</b>：{@code frozenGoods} 为空表（夹具 / 纯状态读者 / 旧调用方）⇒ 可用量 = 存量 ⇒ 与 5 参重载**逐值相同**（I-C2）。
+   * <p>★ <b>缺省中性</b>：{@code frozenGoods} 为空表（夹具 / 纯状态读者 / 旧调用方）⇒ 当刻可用量 = 现货 ⇒ 判据量 ≡ 本轮预算余量 ⇒ 与 5
+   * 参重载**逐值相同**（I-C2）。
    *
-   * @param frozenGoods 会话冻结商品账（{@code max(0, 存量 − 冻结)} 的减项）；没有冻结概念时传 {@code Map.of()}
+   * @param frozenGoods 会话冻结商品账（{@code max(0, 现货 − 冻结)} 的减项）；没有冻结概念时传 {@code Map.of()}
    */
   public static MerchantCapacityPool of(
       Map<HouseholdId, HouseholdClassMembership> classStandings,
@@ -177,6 +221,23 @@ public final class MerchantCapacityPool {
       Map<HouseholdId, Map<CommodityId, Long>> goods,
       Map<HouseholdId, Map<CommodityId, Long>> frozenGoods,
       CapacityQuoteBook quotes) {
+    return assemble(
+        classStandings, classPositions, rows, goods, frozenGoods, quotes, goods, frozenGoods);
+  }
+
+  /**
+   * <b>装配体（唯一拼写点）</b>：{@code liveGoods}/{@code liveFrozenGoods} = {@link #select} 在承运选择点现读的活视图
+   * （{@code null} ⇒ 本池没有活视图，门槛只看本轮预算余量 = 4/5 参旧路径的逐值行为）。
+   */
+  private static MerchantCapacityPool assemble(
+      Map<HouseholdId, HouseholdClassMembership> classStandings,
+      Map<ClassPositionId, ProductionRole> classPositions,
+      Map<HouseholdId, HouseholdEconomy> rows,
+      Map<HouseholdId, Map<CommodityId, Long>> goods,
+      Map<HouseholdId, Map<CommodityId, Long>> frozenGoods,
+      CapacityQuoteBook quotes,
+      Map<HouseholdId, Map<CommodityId, Long>> liveGoods,
+      Map<HouseholdId, Map<CommodityId, Long>> liveFrozenGoods) {
     Objects.requireNonNull(classStandings, "classStandings");
     Objects.requireNonNull(classPositions, "classPositions");
     Objects.requireNonNull(rows, "rows");
@@ -251,7 +312,9 @@ public final class MerchantCapacityPool {
             Collections.unmodifiableMap(frozenByHousehold),
             counted,
             quotes.isPriced(),
-            maxAsk);
+            maxAsk,
+            liveGoods,
+            liveFrozenGoods);
     if (LOG.isDebugEnabled()) {
       for (Map.Entry<HexCoord, List<Entry>> entry : built.byHex.entrySet()) {
         long total = built.totalCapacityByHex.getOrDefault(entry.getKey(), 0L);
@@ -411,6 +474,21 @@ public final class MerchantCapacityPool {
     /** 本轮因**缺工具**未成立的跑商次数（具名归因的计数；读数/日志用）。 */
     private long toolBlockedRuns;
 
+    /** ★★ G3-fix-2：上面那个总数按**政策归因**拆开（各自由实际发生的次数决定；读数/日志用）。 */
+    private long toolFrozenBlockedRuns;
+
+    /** ★★ G3-fix-2：{@link #toolFrozenBlockedRuns} 的另两支（见 {@link MerchantHaul} 的三个 reason 常量）。 */
+    private long toolShortBlockedRuns;
+
+    private long toolBudgetBlockedRuns;
+
+    /** ★★ G3-fix-2：**首次**被拦下时的具名归因与读数（给轮末的逐户 DEBUG 行；不改任何判据）。 */
+    private String toolBlockedReason;
+
+    private long toolBlockedStockMilli;
+    private long toolBlockedFrozenMilli;
+    private long toolBlockedAvailableMilli;
+
     /** ★ 本轮的运费实收（按币分列）—— **每轮算出的读数**，只进日志/读口，不落状态（冻结项 6 的"不落状态"）。 */
     private final Map<CurrencyId, Long> earnedByCurrency = new LinkedHashMap<>();
 
@@ -420,6 +498,30 @@ public final class MerchantCapacityPool {
       this.pureMerchant = pureMerchant;
       this.remainingWorkMilli = capacity.capacityMilli();
       this.remainingToolMilli = capacity.toolMilli();
+    }
+
+    /**
+     * ★★ <b>G3-fix-2：记一次"被工具门槛拦下"</b>（在承运选择点，判据量不足一趟 ⇒ 该条跑商不成立）—— 只累加读数与首次样本，不改任何判据、不写账户。
+     *
+     * @param reason {@link MerchantHaul} 的三个具名归因之一
+     * @param stockMilli 当刻现货（{@code -1} = 本池没有活视图，旧路径）
+     */
+    private void recordToolBlock(
+        String reason, long stockMilli, long frozenMilli, long availableMilli) {
+      toolBlockedRuns++;
+      if (MerchantHaul.TOOL_FROZEN_REASON.equals(reason)) {
+        toolFrozenBlockedRuns++;
+      } else if (MerchantHaul.TOOL_SHORT_REASON.equals(reason)) {
+        toolShortBlockedRuns++;
+      } else {
+        toolBudgetBlockedRuns++;
+      }
+      if (toolBlockedReason == null) {
+        toolBlockedReason = reason;
+        toolBlockedStockMilli = stockMilli;
+        toolBlockedFrozenMilli = frozenMilli;
+        toolBlockedAvailableMilli = availableMilli;
+      }
     }
   }
 
@@ -524,6 +626,10 @@ public final class MerchantCapacityPool {
    * <p>★ <b>供给不足（K-4/Q-27）</b>：没分到的部分（{@code unallocatedMilli}）由调用方收缩成交量 ⇒ <b>不成交、不成债、
    * 不计价</b>；被挡下的部分不提价不压价（V-20 的截断剔除）。本类不静默丢。
    *
+   * <p>★★ <b>G3-fix-2：工具门槛的判据量在<b>本方法内、逐条承运被判定的那一刻</b>现取</b>（时点与理由见类注）： {@code 判据量 = min(本轮预算余量,
+   * max(0, 当刻现货 − 当刻冻结))}；不足一趟 ⇒ 该条不产生（不成交、不铸运费、不烧工具）， 具名归因 {@code tool-frozen} / {@code
+   * tool-short}（{@link MerchantHaul}）。
+   *
    * @param from 发货格（运力池所在的格）
    * @param to 收货格（判半径）
    * @param quantityMilli 本笔请求承运量（毫商品）
@@ -545,6 +651,9 @@ public final class MerchantCapacityPool {
     long unreachableWork = 0L;
     long subUnitWork = 0L;
     long toolBlockedRuns = 0L;
+    long toolFrozenBlockedRuns = 0L;
+    long toolShortBlockedRuns = 0L;
+    long toolBudgetBlockedRuns = 0L;
     for (Entry item : pool) {
       if (demandLeft <= 0L) {
         break;
@@ -558,9 +667,26 @@ public final class MerchantCapacityPool {
       }
       // ★★ M-C：跑商门槛 = 工具（H-D/H-5）。手里的工具不够一趟 ⇒ **该次跑商不成立**（具名归因，绝不静默跳过）：
       //   该条承运不产生，需求转成"运力未获服务"（K-4/Q-27：不成交、不成债、不计价）。
-      //   ★ 判据只看**工具预算够不够一趟**，与 lane 长短/批量无关 —— 它是**门槛**，不是按量计的费。
-      if (!MerchantHaul.affordsRun(item.remainingToolMilli)) {
-        item.toolBlockedRuns++;
+      //   ★ 判据只看**工具够不够一趟**，与 lane 长短/批量无关 —— 它是**门槛**，不是按量计的费。
+      // ★★ G3-fix-2：判据量在**承运选择点**现取 —— 见下面的 liveToolStockMilli/FrozenMilli（时点与算式写在类注）。
+      long toolStockMilli = liveToolStockMilli(item.capacity.household());
+      long toolFrozenMilli = liveToolFrozenMilli(item.capacity.household());
+      long toolAvailableMilli =
+          toolStockMilli < 0L ? -1L : Math.max(0L, toolStockMilli - toolFrozenMilli);
+      long toolCheckMilli =
+          toolAvailableMilli < 0L
+              ? item.remainingToolMilli // 无活视图（4/5 参旧路径）⇒ 只判本轮预算，逐值退回改前
+              : Math.min(item.remainingToolMilli, toolAvailableMilli);
+      if (!MerchantHaul.affordsRun(toolCheckMilli)) {
+        String toolReason = toolBlockReason(toolStockMilli, toolAvailableMilli);
+        item.recordToolBlock(toolReason, toolStockMilli, toolFrozenMilli, toolAvailableMilli);
+        if (MerchantHaul.TOOL_FROZEN_REASON.equals(toolReason)) {
+          toolFrozenBlockedRuns++;
+        } else if (MerchantHaul.TOOL_SHORT_REASON.equals(toolReason)) {
+          toolShortBlockedRuns++;
+        } else {
+          toolBudgetBlockedRuns++;
+        }
         toolBlockedRuns++;
         continue;
       }
@@ -622,28 +748,100 @@ public final class MerchantCapacityPool {
                   subUnitWork,
                   "toolBlockedRuns",
                   toolBlockedRuns,
+                  // ★★ G3-fix-2：把"缺工具"这一条按**政策归因**拆开（tool-frozen / tool-short / 预算镜像）。
+                  "toolFrozenBlockedRuns",
+                  toolFrozenBlockedRuns,
+                  "toolShortBlockedRuns",
+                  toolShortBlockedRuns,
+                  "toolBudgetBlockedRuns",
+                  toolBudgetBlockedRuns,
                   "toolMilliPerHaul",
                   MerchantHaul.TOOL_MILLI_PER_HAUL,
                   "priced",
                   priced,
                   "reason",
-                  laneBlockedReason(pool, unreachableWork, subUnitWork, toolBlockedRuns)));
+                  laneBlockedReason(
+                      pool,
+                      unreachableWork,
+                      subUnitWork,
+                      toolBlockedRuns,
+                      toolFrozenBlockedRuns,
+                      toolShortBlockedRuns,
+                      toolBudgetBlockedRuns)));
     }
     return new CarrierAllocation(choices, quantityMilli, demandLeft, priced);
   }
 
   /**
+   * ★★ <b>G3-fix-2：一个家户的<b>当刻现货</b></b>（承运选择点现读活表）。返回 {@code -1} = <b>本池没有活视图</b> （4/5 参旧路径：夹具 /
+   * 纯状态读者）⇒ 调用方只判本轮预算余量（与改前逐值相同）。
+   */
+  private long liveToolStockMilli(HouseholdId household) {
+    if (liveGoods == null) {
+      return -1L; // "不可知"（不是 0：0 会被误读成"真缺货"）
+    }
+    return liveGoods.getOrDefault(household, Map.of()).getOrDefault(TOOL_COMMODITY, 0L);
+  }
+
+  /** ★★ <b>G3-fix-2：一个家户的<b>当刻冻结量</b></b>（同一张活表、同一时点；没有活视图 ⇒ 0 = 无冻结概念）。 */
+  private long liveToolFrozenMilli(HouseholdId household) {
+    if (liveFrozenGoods == null) {
+      return 0L;
+    }
+    return liveFrozenGoods.getOrDefault(household, Map.of()).getOrDefault(TOOL_COMMODITY, 0L);
+  }
+
+  /**
+   * ★★ <b>G3-fix-2：这一条被工具门槛拦下时的<b>具名归因</b></b>（三选一；政策名的唯一拼写点在 {@link MerchantHaul}）：
+   *
+   * <pre>
+   * 现货 &lt; 一趟            ⇒ tool-short（真缺货：冻结为 0 也照样不成立）
+   * 现货够、可用量不够一趟  ⇒ tool-frozen（缺口只能来自冻结）
+   * 两者都不是（可用量够）  ⇒ 本轮的**预算镜像**已放行过若干趟 —— 生产路径不可达（每次放行都在同一步烧掉工具，
+   *                          预算与账上可用量同步下降），出现它只说明"预算先耗尽"，不是 H-5 的两种缺口之一
+   * 没有活视图（{@code stockMilli < 0}）⇒ {@code tool-short}：与改前 laneBlockedReason 的字面量逐字相同
+   * </pre>
+   *
+   * @param stockMilli {@link #liveToolStockMilli} 的读数（{@code -1} = 没有活视图）
+   * @param availableMilli {@code max(0, 现货 − 冻结)}；没有活视图时传 {@code -1}
+   */
+  private static String toolBlockReason(long stockMilli, long availableMilli) {
+    if (stockMilli < 0L || stockMilli < MerchantHaul.TOOL_MILLI_PER_HAUL) {
+      return MerchantHaul.TOOL_SHORT_REASON;
+    }
+    return availableMilli < MerchantHaul.TOOL_MILLI_PER_HAUL
+        ? MerchantHaul.TOOL_FROZEN_REASON
+        : MerchantHaul.TOOL_BUDGET_REASON;
+  }
+
+  /**
    * ★ <b>这一笔为什么没走完</b>（具名归因，按固定次序拼接：缺工具 / 半径外 / 亚单位残余 / 运力耗尽 / 本格没有跑商家户）—— 只在 DEBUG
-   * 行里出现，判据本身不改任何行为。★ 多个原因同时成立时**全部列出**（不挑一个代表性说法）。
+   * 行里出现，判据本身不改任何行为。★ 多个原因同时成立时**全部列出**（不挑一个代表性说法）； ★★ G3-fix-2 起"缺工具"按政策归因拆开 （{@code tool-frozen}
+   * / {@code tool-short} / {@code tool-budget-exhausted}，各自由实际发生的次数决定）。
    */
   private static String laneBlockedReason(
-      List<Entry> pool, long unreachableWork, long subUnitWork, long toolBlockedRuns) {
+      List<Entry> pool,
+      long unreachableWork,
+      long subUnitWork,
+      long toolBlockedRuns,
+      long toolFrozenBlockedRuns,
+      long toolShortBlockedRuns,
+      long toolBudgetBlockedRuns) {
     if (pool.isEmpty()) {
       return "no-merchant-household-in-shipping-hex";
     }
     List<String> reasons = new ArrayList<>(3);
     if (toolBlockedRuns > 0L) {
-      reasons.add(MerchantHaul.TOOL_SHORT_REASON); // ★ T-fix：唯一拼写点在 MerchantHaul（此处不再写第二遍字面量）
+      // ★ T-fix/G3-fix-2：唯一拼写点在 MerchantHaul（此处不再写第二遍字面量）
+      if (toolFrozenBlockedRuns > 0L) {
+        reasons.add(MerchantHaul.TOOL_FROZEN_REASON);
+      }
+      if (toolShortBlockedRuns > 0L) {
+        reasons.add(MerchantHaul.TOOL_SHORT_REASON);
+      }
+      if (toolBudgetBlockedRuns > 0L) {
+        reasons.add(MerchantHaul.TOOL_BUDGET_REASON);
+      }
     }
     if (unreachableWork > 0L) {
       reasons.add("out-of-derived-radius");
@@ -690,6 +888,71 @@ public final class MerchantCapacityPool {
   }
 
   /**
+   * ★★ G3-fix-2：本轮被工具门槛拦下的次数按政策归因拆分（{@code tool-frozen} = 下标 0、{@code tool-short} = 1、预算镜像 = 2）。
+   */
+  private long[] toolBlockedByReason() {
+    long frozen = 0L;
+    long shortRuns = 0L;
+    long budget = 0L;
+    for (List<Entry> entries : byHex.values()) {
+      for (Entry item : entries) {
+        frozen = Math.addExact(frozen, item.toolFrozenBlockedRuns);
+        shortRuns = Math.addExact(shortRuns, item.toolShortBlockedRuns);
+        budget = Math.addExact(budget, item.toolBudgetBlockedRuns);
+      }
+    }
+    return new long[] {frozen, shortRuns, budget};
+  }
+
+  /**
+   * ★★ <b>G3-fix-2：逐户"本轮为什么没跑成"</b>（DEBUG；只在**有**被拦下的户上打，一轮一行/户）—— 这是"门槛不成立 ⇒ 该笔不成立"的**具名证据**（带
+   * {@code day}：可与同日的 {@code CARRIER_FEE_PAID} 逐户对照； 生产路径上不该出现"这户今天被 tool-frozen 拦过、却又收过运费"的组合）。
+   */
+  private void logToolBlocks(long day) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    for (Map.Entry<HexCoord, List<Entry>> hex : byHex.entrySet()) {
+      for (Entry item : hex.getValue()) {
+        if (item.toolBlockedRuns <= 0L) {
+          continue;
+        }
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "MERCHANT_HAUL_TOOL_BLOCKED_AT_SELECT",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    day,
+                    "household",
+                    item.capacity.household().value(),
+                    "hex",
+                    item.capacity.hex(),
+                    "blockedRuns",
+                    item.toolBlockedRuns,
+                    "frozenBlockedRuns",
+                    item.toolFrozenBlockedRuns,
+                    "shortBlockedRuns",
+                    item.toolShortBlockedRuns,
+                    "budgetBlockedRuns",
+                    item.toolBudgetBlockedRuns,
+                    "reason",
+                    item.toolBlockedReason,
+                    "stockMilli",
+                    item.toolBlockedStockMilli,
+                    "frozenMilli",
+                    item.toolBlockedFrozenMilli,
+                    "availableMilli",
+                    item.toolBlockedAvailableMilli,
+                    "neededMilli",
+                    MerchantHaul.TOOL_MILLI_PER_HAUL,
+                    "toolBudgetRemainingMilli",
+                    item.remainingToolMilli));
+      }
+    }
+  }
+
+  /**
    * ★★ <b>记一条本轮的运费实收</b>（唯一致谢点：{@code MarketSettlement} 铸 {@code CARRIER_FEE} 时调用）。
    *
    * <p>它是"利润 = 每轮算出的读数"在本批的**可读部分**：只累计运费实收（按币分列），进日志/读口，<b>不落状态</b>。 完整的利润算式（含纯商号/顺便分流与三层税）属
@@ -705,6 +968,8 @@ public final class MerchantCapacityPool {
 
   /** ★ 一轮结束后的逐格分配汇总（INFO = 每格运力池与分配汇总；§一.9）。 */
   public void logRoundSummary(long day) {
+    // ★★ G3-fix-2：门槛归因的逐户证据（DEBUG；与 INFO 汇总的开关无关 —— 没有活视图 / 没有被拦下的户 ⇒ 一行不打）。
+    logToolBlocks(day);
     if (!LOG.isInfoEnabled()) {
       return;
     }
@@ -713,6 +978,7 @@ public final class MerchantCapacityPool {
     long allocationsTotal = 0L;
     long toolBlockedTotal = 0L;
     long remainingToolTotal = 0L;
+    long[] blockedByReason = toolBlockedByReason();
     for (Map.Entry<HexCoord, List<Entry>> entry : byHex.entrySet()) {
       long usedGoods = 0L;
       long usedWork = 0L;
@@ -789,6 +1055,14 @@ public final class MerchantCapacityPool {
                 // ★★ M-C（§一.9：INFO = 门槛与利润汇总的门槛面）：本轮因缺工具未成立的跑商次数 + 池里剩余工具。
                 "toolBlockedRuns",
                 toolBlockedTotal,
+                // ★★ G3-fix-2：上面那个总数按政策归因拆开（tool-frozen / tool-short / 预算镜像；判据的唯一拼写点在
+                // MerchantHaul）。
+                "toolFrozenBlockedRuns",
+                blockedByReason[0],
+                "toolShortBlockedRuns",
+                blockedByReason[1],
+                "toolBudgetBlockedRuns",
+                blockedByReason[2],
                 "toolMilliRemaining",
                 remainingToolTotal,
                 "toolMilliPerHaul",

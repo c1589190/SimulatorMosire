@@ -1847,10 +1847,15 @@ public final class EconomySettlement {
     //   见 {@link CapacityQuote}）⇒ 买方按最低限价买运力（K-C）。报价每轮现算、跨轮不保留（与 FX 民间簿同形；
     //   运力不可储存不可转卖 ⇒ 运力单也不许跨轮存活）。传 CapacityQuoteBook.empty() 的调用方（夹具 / 纯状态读者）
     //   ⇒ 无报价 ⇒ 逐值退回 M-A1（I-C2 缺省语义中性）。
-    //   ★★ 2026-10-10 G3-fix-1：工具维必须读**可用量**（存量 − 冻结）—— 与提交侧的实扣判据
-    //     （{@link #consumeForLoss}：可用量 < 一趟 ⇒ 一点也不烧）同口径。旧版只读存量 ⇒ 同轮把 tool 全挂进卖单的户
-    //     仍被当成"有工具"⇒ 承运放行、CARRIER_FEE 照铸、货照走，而工具一点没烧（H-5 被绕过；真实 world 复测
-    //     3,589/3,672 趟如此）。装配点（这里）在所有冻结写入之前 ⇒ 读到的冻结就是本轮冻结的同一事实。
+    //   ★★ 2026-10-10 G3-fix-1 + G3-fix-2：工具维必须读**可用量**（现货 − 冻结），且必须在**承运选择点**现读 ——
+    //     与提交侧的实扣判据（{@link #consumeForLoss}：可用量 < 一趟 ⇒ 一点也不烧）同口径、同活表。
+    //     ★★ 时点（这里曾被写错、并因此让修复空转了一整轮）：本处装配在市场轮**之前**，而本轮的卖单冻结由
+    //       {@code MarketSettlement.commitFreezes} 在市场轮**内**才落表 ⇒ 在装配点读冻结，减项**结构上不可能**
+    //       含本轮承诺（G3b 复验：真实世界 `TOOL_SHORT_AT_COMMIT` 3,589 条逐值未变、708 组连运费腿一起成立）。
+    //       ⇒ 口径落在 {@link MerchantCapacityPool#select}：它拿到的 goods/frozenGoods 是**活视图**
+    //         （{@code accounts.householdGoods()/householdFrozenGoods()}，与市场轮写的是同一张表），
+    //         在每条承运被判定的那一刻现读 {@code max(0, 现货 − 冻结)}。
+    //     ★ 本处仍把活视图传进池（第 4/5 参 = 活视图的来源），并在装配点写一条逐户读数（toolMilli = 装配时的可用量）。
     MerchantCapacityPool carrierPool =
         MerchantCapacityPool.of(
             session.sheet().classMemberships(),

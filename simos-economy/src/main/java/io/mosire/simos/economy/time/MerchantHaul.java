@@ -85,6 +85,15 @@ public final class MerchantHaul {
    */
   public static final String TOOL_FROZEN_REASON = "tool-frozen";
 
+  /**
+   * ★★ <b>G3-fix-2：本轮的<b>跑商预算镜像</b>已放行过若干趟，判据量因此不足一趟</b>（既不是真缺货、也不是被冻结占住）。
+   *
+   * <p>它只在"放行过、却没在账上烧掉"时才可能出现（否则预算与账上可用量同步下降）—— 生产路径上不可达 （每次放行都在同一步由 {@code settleHaulRuns}
+   * 烧工具）。出现它 = 该笔的预算先耗尽，<b>不是</b> H-5 的两种缺口之一； 单独具名是为了让 {@code tool-frozen} / {@code tool-short}
+   * 两个政策名不被这种情形污染。
+   */
+  public static final String TOOL_BUDGET_REASON = "tool-budget-exhausted";
+
   private MerchantHaul() {}
 
   /** 手里的工具够不够跑一趟（H-5 的硬门槛；不足 ⇒ 该次跑商不成立）。 */
