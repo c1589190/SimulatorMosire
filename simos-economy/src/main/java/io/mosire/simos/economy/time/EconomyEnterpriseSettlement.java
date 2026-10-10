@@ -3,6 +3,8 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyDayView;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -46,6 +48,8 @@ import io.mosire.simos.economy.model.RentRule;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -666,7 +670,7 @@ final class EconomyEnterpriseSettlement {
             shareIdsOf(industryId, organizer, assetShares),
             REASON_NO_RENT_RULE + ":" + grant.asset().name());
       }
-      rules.addAll(rentRules(rentRule, new Payee.ToActor(grant.owner())));
+      rules.addAll(rentRules(rentRule, new Payee.ToActor(grant.owner()), industry, mode));
     }
     ProductionRules relation =
         new ProductionRules(
@@ -1073,10 +1077,26 @@ final class EconomyEnterpriseSettlement {
     return new ArrayList<>(groups.values());
   }
 
-  /** {@link RentRule} → 结算侧规则（逐腿一条；货币腿走既有 FIXED_MONEY_RENT 路径）。 */
-  private static List<CompensationRule> rentRules(RentRule rentRule, Payee recipient) {
+  /**
+   * {@link RentRule} → 结算侧规则（逐腿一条；货币腿走既有 FIXED_MONEY_RENT 路径）。
+   *
+   * <p>★★ <b>B3（2026-10-10）：实物腿的商品由 {@link #rentCommodity} 定（= 本产业的产出表）</b>，不再照抄资产规则里的 常量商品 ——
+   * 理由与三条分支见该方法。
+   *
+   * @param industry 这条 unit 的产业模板（产出表 = 商品的唯一权威）；不得为 null
+   * @param mode 组织这条 unit 的生产方式（只进日志/拒因，不参与判据）
+   * @throws IllegalArgumentException 实物腿的商品判不出（见 {@link #rentCommodity}）⇒ 调用方 fail-closed：不建 unit、
+   *     落具名 SHORTAGE（**不落一条 E14 非法的关系**）
+   */
+  private static List<CompensationRule> rentRules(
+      RentRule rentRule, Payee recipient, Industry industry, ProductionMode mode) {
     List<CompensationRule> rules = new ArrayList<>();
     for (RentRule.RentLeg leg : rentRule.legs()) {
+      // ★ 货币腿（commodity 空）没有商品可判（E14 只判实物档）；实物腿的商品走 rentCommodity 解析。
+      Optional<CommodityId> commodity =
+          leg.commodity().isEmpty()
+              ? Optional.empty()
+              : rentCommodity(leg, industry, mode, recipient);
       CompensationRule rule =
           switch (leg.kind()) {
             case FIXED_IN_KIND ->
@@ -1087,7 +1107,7 @@ final class EconomyEnterpriseSettlement {
                     Weight.NONE,
                     0,
                     leg.fixedAmount(),
-                    leg.commodity(),
+                    commodity,
                     Optional.empty(),
                     rentRule.priority());
             case FIXED_MONEY ->
@@ -1109,7 +1129,7 @@ final class EconomyEnterpriseSettlement {
                     Weight.NONE,
                     leg.ratePerMille(),
                     0L,
-                    leg.commodity(),
+                    commodity,
                     Optional.empty(),
                     rentRule.priority());
             case MIXED -> throw new IllegalArgumentException("RentLeg.kind 不得为 MIXED（构造期已判死）");
@@ -1117,6 +1137,97 @@ final class EconomyEnterpriseSettlement {
       rules.add(rule);
     }
     return rules;
+  }
+
+  /**
+   * ★★ <b>B3（2026-10-10）：一条实物租金腿该用哪个商品 —— 权威 = <b>本产业的产出表</b>。</b>
+   *
+   * <p>★★ <b>为什么权威是产业产出表、而不是资产规则里的商品常量</b>：租金腿的语义（{@link RentRule} / {@link RentRule.RentLeg}
+   * 的类注）是"该 unit <b>毛产的</b> {@code ratePerMille}‰"，落到结算侧就是 {@code OUTPUT_SHARE ×
+   * GROSS_OUTPUT}（{@link #rentRules} 的 SHARE 分支）；而"毛产"是<b>这一个产业</b>的产出 —— {@code
+   * ProductionSettlement.requireProducibleCommodities} 的 E14 判据（"规则指名的商品必须在该产业的产出表里"）说的正是同一件事。
+   * 资产规则那边是 {@code (mode × 资产种类)} 的<b>常量表</b>（{@code
+   * EconomySeeder.productionRuntimeRentRuleNode}：LAND 分成粮、其余资产分成布），它<b>看不见产业</b>；"非 LAND ⇒
+   * 布"那条出厂标定成立的前提是"非 LAND 的租佃只发生在产布的手工业" —— A1（{@code a15fb3ec}）把 {@code trade@hex} 的产出从空表改成
+   * <b>haul</b>（运输服务）之后，这条常量对它就是一条 E14 非法数据（{@code CATTLE} 是 trade 的产能资产 ⇒ 租佃腿恒取"布"）。 ⇒
+   * 判据收敛到**产业产出表**这一个权威上（而不是给资产规则再加一份"按产业"的表）。
+   *
+   * <p>★★ <b>三条分支（都判在关系落盘之前，绝不静默）</b>：
+   *
+   * <ol>
+   *   <li>腿上的商品<b>本产业能产</b> ⇒ 原样用（既有世界逐值不变：农田→粮 / 织机→布 / 作坊→布）；
+   *   <li>腿上的商品<b>不能产</b>、且这是<b>分成腿</b>、且该产业<b>恰有一个产出商品</b> ⇒ 把分成记在<b>它自己的产出</b>上（这正是 "产出分成"的定义；记一条
+   *       DEBUG，含被替换的商品与产业）；
+   *   <li>其余情形（固定实物租的商品不能产 / 多产出产业判不出该取哪一个）⇒ <b>抛</b>，由调用方落具名 SHORTAGE、不建 unit —— 比落一条 E14
+   *       非法的关系（下次关账整段 advance 被拒、`Bad_request`）或静默付 0 都好。
+   * </ol>
+   *
+   * @param leg 实物腿（{@code commodity} 非空；货币腿不进本方法）；不得为 null
+   * @param industry 这条 unit 的产业模板（产出表的唯一来源）；不得为 null
+   * @param mode 组织这条 unit 的生产方式（只进日志/拒因）
+   * @param recipient 受方（只进日志/拒因）
+   * @return 该腿要结算的商品（恒非空）
+   * @throws IllegalArgumentException 见上面第 3 条分支（调用方 fail-closed）
+   */
+  private static Optional<CommodityId> rentCommodity(
+      RentRule.RentLeg leg, Industry industry, ProductionMode mode, Payee recipient) {
+    CommodityId declared = leg.commodity().orElseThrow();
+    Map<CommodityId, Long> outputs = industry.outputPerUnit();
+    if (outputs.containsKey(declared)) {
+      return Optional.of(declared); // ★ 能产 ⇒ 逐值不变（绝不动既有世界的关系）
+    }
+    if (leg.kind() == RentRule.RentType.SHARE && outputs.size() == 1) {
+      CommodityId sole = outputs.keySet().iterator().next();
+      EventLog.channel(EconomyLog.enterprise())
+          .debug(
+              LogEvent.of(
+                  "RENT_COMMODITY_FROM_INDUSTRY_OUTPUT",
+                  EconomyLogSource.ECONOMY_ORGANIZATION_RENT,
+                  "mode",
+                  mode.id().value(),
+                  "industry",
+                  industry.id().value(),
+                  "assetCommodity",
+                  declared.value(),
+                  "industryCommodity",
+                  sole.value(),
+                  "recipient",
+                  recipient.toString(),
+                  "reason",
+                  "share-rent-is-paid-in-this-industry-output"));
+      return Optional.of(sole);
+    }
+    EventLog.channel(EconomyLog.enterprise())
+        .info(
+            LogEvent.of(
+                "RENT_COMMODITY_NOT_PRODUCED_REFUSED",
+                EconomyLogSource.ECONOMY_ORGANIZATION_RENT,
+                "mode",
+                mode.id().value(),
+                "industry",
+                industry.id().value(),
+                "commodity",
+                declared.value(),
+                "industryOutputs",
+                outputs.keySet().toString(),
+                "rentKind",
+                leg.kind().name(),
+                "recipient",
+                recipient.toString(),
+                "reason",
+                "rent-commodity-not-in-industry-output"));
+    throw new IllegalArgumentException(
+        "租金腿的商品不在该产业的产出表里（与 E14 同一判据，判在落关系之前）：industry="
+            + industry.id().value()
+            + " commodity="
+            + declared.value()
+            + " 该产业的产出="
+            + outputs.keySet()
+            + " kind="
+            + leg.kind()
+            + " mode="
+            + mode.id().value()
+            + " —— 判不出正确的商品 ⇒ 拒绝这条租佃（不落非法关系、不静默付 0）");
   }
 
   // ── 关系生成 ─────────────────────────────────────────────────────────────────────────────

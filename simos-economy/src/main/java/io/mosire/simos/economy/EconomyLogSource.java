@@ -29,6 +29,18 @@ public enum EconomyLogSource implements LogOrigin {
       "economy-organization", "自动生产组织/租佃/经营者进退（tick 算法，必带 day）", LogOriginKind.TICK),
   ECONOMY_POPULATION(
       "economy-population", "出生/死亡/人口回写/劳动缩放/自然需求注入（tick 算法，必带 day）", LogOriginKind.TICK),
+  /**
+   * ★★ <b>B3（2026-10-10）：租佃租金腿的商品解析</b>—— 资产规则里的租金模板是 {@code (mode × 资产种类)} 的<b>常量</b>、
+   * 看不见产业，而"毛产分成"的池是<b>该产业</b>的产出 ⇒ 两条权威必须收敛到产业产出表（= E14 的同一份判据）。 本条记"分成腿的商品被 产业产出纠正"与"判不出 ⇒
+   * 拒绝租佃"两条判据。
+   *
+   * <p>★ {@code EconomyEnterpriseSettlement.rentRules} 的方法签名<b>没有 day 上下文</b> ⇒ 按本表纪律归 {@link
+   * LogOriginKind#SYSTEM}（同 {@link #ECONOMY_POPULATION_WRITE} / {@link #ECONOMY_DEBT_STATE} 的理由）。
+   */
+  ECONOMY_ORGANIZATION_RENT(
+      "economy-organization-rent",
+      "租佃租金腿的商品解析：分成腿按产业产出表定商品、判不出即具名拒（方法签名无 day 上下文，按纪律归 system）",
+      LogOriginKind.SYSTEM),
   ECONOMY_POPULATION_WRITE(
       "economy-population-write", "人口/自然需求回写原语（方法签名无 day 上下文，按纪律归 system）", LogOriginKind.SYSTEM),
   ECONOMY_DEBT_STATE(
