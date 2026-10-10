@@ -2308,6 +2308,15 @@ public final class EconomySettlement {
       Set<HouseholdId> pureMerchantHouseholds =
           MerchantIdentity.pureMerchants(
               session.sheet().classMemberships(), dayView.classPositions());
+      // ★★★ W4（2026-10-11，S-4 / N-1）：**开盘前结算序快照** —— 家户按"资产 − 负债净值"、区按"上周期名义成交额"。
+      //   ★ 位置（禁自指的全部理由）：它必须在 `clearOncePerCycle` **之前**构造一次 —— 快照一落，本轮撮合/改价/记账
+      //     一个字节都进不了排序量（"把当日成交额翻倍 ⇒ 排序不变"由结构保证，不靠纪律）；
+      //   ★ 区序的量取自 W1 统计簿的 `previousCycle`（上周期累计，关账轮轮转）→ 同值退 `cycleToDate` → 再退区 id；
+      //     两者都在**盘前**读 ⇒ 不含当轮。★ 家户净值与 {@code ClassSlideSettlement} 的债务/资产**同一把尺**
+      //     （同一份快照，不另算第二套），见 {@link SettlementOrderBook}。
+      SettlementOrderBook ordering =
+          SettlementOrderBook.snapshot(
+              day, topology, markets, householdEconomies, debts, accounts, dayView);
       MarketSettlement.MarketOutcome outcome =
           MarketSettlement.clearOncePerCycle(
               markets,
@@ -2319,7 +2328,9 @@ public final class EconomySettlement {
               pureMerchantHouseholds,
               // ★★ W2：本轮的持久市场区表（自适应定价逐区读步长 α = MarketZone.priceAlphaPerMille）。
               //   ★ B2 保留段首 base：α 是命令面组件，段内无工作副本（改 α ⇒ 下一段/下一轮生效）。
-              base.marketZones());
+              base.marketZones(),
+              // ★★ W4：结算序快照（盘前构造、不可变；撮合期间不回读任何当轮量）。
+              ordering);
       // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
       ledger.recordMarketReport(outcome.report());
       govMandateFills = outcome.mandateFills();
@@ -2680,6 +2691,42 @@ public final class EconomySettlement {
                         stored == null ? "未写入" : stored.describe()));
           }
         }
+      }
+      // ── ★★★ W4（2026-10-11，S-1）：**阶层滑落** —— 速度 = f(债务/资产)，结算点 = **市场轮最末** ────────────
+      //   ★ 位置为什么是"这里"（用户原话「这个速度的结算必须在当前经济操作搞完之后最后再结算…当轮算出这个家户的
+      //     债务规模后进行」）：上面这一段已经跑完 ① 撮合（本轮赊购 ⇒ 本轮的 debtContracts 已建）② 自适应价格写回
+      //     ③ 统计簿落盘 ⇒ "当轮债务规模"与"本轮价"都已是事实；而 4b 借粮 / 4c 偿还 / 计息都在**下面** ——
+      //     滑落读的是"市场轮结束时点"的债务/资产，不掺当天后续的借还（口径唯一、可复现）。
+      //   ★ 逐级不跳级：{@link ClassSlideSettlement} 每次调用对同一户只写一次、只写一个"最近严格低位"。
+      ClassSlideSettlement.SlideRound slideRound =
+          ClassSlideSettlement.settleAtMarketRoundEnd(
+              base, session.sheet(), day, householdEconomies, debts, accounts, topology, markets);
+      if (TRACE.isDebugEnabled()) {
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "CLASS_SLIDE_SETTLED",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "trigger",
+                    marketTrigger,
+                    "evaluated",
+                    slideRound.evaluated(),
+                    "slid",
+                    slideRound.slid(),
+                    "skippedNoDebt",
+                    slideRound.skippedNoDebt(),
+                    "skippedNoPosition",
+                    slideRound.skippedNoPosition(),
+                    "skippedCooldown",
+                    slideRound.skippedCooldown(),
+                    "skippedNoLowerTarget",
+                    slideRound.skippedNoLowerTarget(),
+                    "unpricedDebtHouseholds",
+                    slideRound.unpricedDebtHouseholds(),
+                    "at",
+                    "market-round-end-after-price-writeback"));
       }
     }
 

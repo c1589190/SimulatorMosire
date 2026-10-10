@@ -1500,7 +1500,8 @@ final class MarketSettlement {
         parallelism,
         carrierPool,
         pureMerchantHouseholds,
-        Map.of());
+        Map.of(),
+        SettlementOrderBook.empty(round.day));
   }
 
   /** ★★ <b>W2：带持久市场区表的承运入口</b>（生产路径走这一条）—— 与上一个重载逐字同源，只多一份区表供自适应定价逐区读步长 α。 */
@@ -1513,6 +1514,37 @@ final class MarketSettlement {
       MerchantCapacityPool carrierPool,
       Set<HouseholdId> pureMerchantHouseholds,
       Map<MarketZoneId, MarketZone> marketZones) {
+    return clearOncePerCycle(
+        marketTables,
+        round,
+        trigger,
+        topology,
+        parallelism,
+        carrierPool,
+        pureMerchantHouseholds,
+        marketZones,
+        SettlementOrderBook.empty(round.day));
+  }
+
+  /**
+   * ★★★ <b>W4：带结算序快照的入口</b>（生产路径走这一条）—— 与上一个重载逐字同源，只多一份<b>开盘前快照</b>（S-4/N-1）。
+   *
+   * <p>★ <b>快照怎么用</b>：① 买槽按家户名次（净值降序）排序 ⇒ "谁先拿到稀缺货"；② 区的遍历序按上周期名义成交额降序 ⇒ 谁先被撮合、谁先消耗本轮的共享运力池；③ 买侧"需求
+   * &gt; 供给"时按这个序<b>依次吃满</b>（不再按权重比例人人分一口）。
+   *
+   * @param ordering W4 开盘前结算序快照（{@link SettlementOrderBook#snapshot} 在<b>本入口之前</b>构造一次）⇒
+   *     撮合期间不回读任何当轮量（禁自指）
+   */
+  static MarketOutcome clearOncePerCycle(
+      Map<MarketZoneId, MarketTable> marketTables,
+      MarketRound round,
+      MarketTrigger trigger,
+      MarketTopology topology,
+      EconomyParallelism parallelism,
+      MerchantCapacityPool carrierPool,
+      Set<HouseholdId> pureMerchantHouseholds,
+      Map<MarketZoneId, MarketZone> marketZones,
+      SettlementOrderBook ordering) {
     Objects.requireNonNull(marketTables, "marketTables");
     Objects.requireNonNull(round, "round");
     Objects.requireNonNull(trigger, "trigger");
@@ -1520,6 +1552,7 @@ final class MarketSettlement {
     Objects.requireNonNull(parallelism, "parallelism");
     Objects.requireNonNull(carrierPool, "carrierPool");
     Objects.requireNonNull(marketZones, "marketZones（没有持久区请给空表）");
+    Objects.requireNonNull(ordering, "ordering（W4 结算序快照；没有排序面给 SettlementOrderBook.empty(day)）");
     if (MARKET.isDebugEnabled()) {
       EventLog.channel(MARKET)
           .debug(
@@ -1555,7 +1588,13 @@ final class MarketSettlement {
             round.portEnforcement());
     MatchContext ctx =
         new MatchContext(
-            round, marketTables, topology, carrierPool, round.regulation(), currencyValuation);
+            round,
+            marketTables,
+            topology,
+            carrierPool,
+            round.regulation(),
+            currencyValuation,
+            ordering);
     // ★★ M-C：本轮的纯商号集合（免运费判据的范围）—— 从调用方给的集合原样带入（装配点在 EconomySettlement）。
     ctx.pureMerchantHouseholds = pureMerchantHouseholds;
     // ★★ W2：本轮的持久市场区表（自适应定价逐区读 α）—— 同上，由入口参数带入，worker 副本照抄。
@@ -1733,6 +1772,13 @@ final class MarketSettlement {
       ctx.buys.addAll(ordered.buys());
       ctx.sells.addAll(ordered.sells());
     }
+    // ★★ W4（S-4 / N-1）：**买槽按结算序重排** —— 家户序 = 资产 − 负债净值降序（同值按稳定 id 的 canonical 序）。
+    //   ★ 位置必须在 orderIndex 赋值与 MarketIndexes.build **之前**：槽位的全局下标、各 (区,商品) 桶的相对序、
+    //     冻结的写序、撮合的配给序全都读这份表 ⇒ 只在这里排一次，后面不许再排第二遍（两处排序必然漂开）。
+    //   ★ 卖槽**不按净值排**：卖侧的服务序是既有的"到货成本升序 → costTieBreak(canonical)"（S3/P-T1d 的机制，
+    //     本批不动它）；插入序只影响同成本同 key 的残余并列，且那份并列已由 ProducerCostBook.canonicalKey 收敛。
+    //   ★ 禁自指：名次全部来自 ordering（开盘前快照），排序输入里没有任何当轮成交/当轮余额。
+    sortBuySlotsByOrdering(ctx);
     // ★ 槽位的全局下标 = 它们在 ctx.buys / ctx.sells 里的位置；worker 产出的 FillIntent 用它定位回放目标。
     for (int i = 0; i < ctx.buys.size(); i++) {
       ctx.buys.get(i).orderIndex = i;
@@ -3586,6 +3632,123 @@ final class MarketSettlement {
         .add(value);
   }
 
+  // ── ★★ W4：结算序（S-4 / N-1；见 SettlementOrderBook 的口径）────────────────────────────────
+
+  /**
+   * ★★ <b>W4：把买槽按结算序重排</b>（唯一拼写点）。排序键（全序，内容的纯函数）：
+   *
+   * <pre>
+   * ① 区名次（S-4 的"区之间按上周期总 GDP"）升序 —— 未知名次排最后
+   * ② 家户名次（S-4 的"区内按经济发达程度" = 资产 − 负债净值降序）升序 —— 未知名次排最后
+   * ③ 格 (q, r) 升序 → ④ 买方 actor canonical 串 → ⑤ 商品 id → ⑥ 原下标
+   * </pre>
+   *
+   * <p>★ <b>为什么 ③~⑥ 必须有</b>：①②是"经济含义"的两级，但同一户可以在多格/多商品挂单 ⇒ 只按 ①② 排不是全序 （{@code List.sort}
+   * 的稳定性会退化成"谁先被装配"= 写入史的函数）⇒ 用稳定 id 的 canonical 序兜底到全序。
+   */
+  private static void sortBuySlotsByOrdering(MatchContext ctx) {
+    List<BuySlot> buys = ctx.buys;
+    if (buys.size() <= 1) {
+      return;
+    }
+    Map<BuySlot, Integer> originalIndex = new LinkedHashMap<>();
+    for (int i = 0; i < buys.size(); i++) {
+      originalIndex.put(buys.get(i), i);
+    }
+    buys.sort(
+        Comparator.comparingInt(
+                (BuySlot buy) -> ctx.ordering.zoneRankOf(buy.region.node().nodeId()))
+            .thenComparingInt(buy -> ctx.ordering.householdRankOf(buy.buyer.household))
+            .thenComparingInt(buy -> buy.hex.q())
+            .thenComparingInt(buy -> buy.hex.r())
+            .thenComparing(buy -> actorKeyOf(buy.buyer.actor))
+            .thenComparing(buy -> buy.order.commodity().value())
+            .thenComparingInt(buy -> originalIndex.getOrDefault(buy, 0)));
+    if (MARKET.isInfoEnabled()) {
+      EventLog.channel(MARKET)
+          .info(
+              LogEvent.of(
+                  "MARKET_ORDER_APPLIED",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  ctx.round.day,
+                  "buySlots",
+                  buys.size(),
+                  "orderedHouseholds",
+                  ctx.ordering.householdCount(),
+                  "orderedZones",
+                  ctx.ordering.zoneCount(),
+                  "unpricedDebtContracts",
+                  ctx.ordering.unpricedDebtContracts(),
+                  "unpricedDebtAmountRawMilli",
+                  ctx.ordering.unpricedDebtAmountRawMilli(),
+                  "unpricedHouseholds",
+                  ctx.ordering.unpricedHouseholds(),
+                  "reason",
+                  "households-by-net-worth-desc+zones-by-previous-cycle-nominal-turnover-desc"));
+    }
+    if (MARKET.isDebugEnabled()) {
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "MARKET_ORDER_WHY",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  ctx.round.day,
+                  "zones",
+                  ctx.ordering.describeZones(),
+                  "householdRanking",
+                  "assets(money+inventory-at-zone-price)-minus-priced-debt-principal",
+                  "zoneRanking",
+                  "previous-cycle-nominal-turnover-then-cycle-to-date-then-zone-id",
+                  "snapshot",
+                  "pre-round(no-current-round-turnover)"));
+    }
+    if (MARKET.isTraceEnabled()) {
+      EventLog.channel(MARKET)
+          .trace(
+              LogEvent.of(
+                  "MARKET_ORDER_HOUSEHOLDS",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  ctx.round.day,
+                  "ranked",
+                  ctx.ordering.describeHouseholds()));
+    }
+  }
+
+  /**
+   * ★★ <b>W4：买侧配给 = 按结算序<b>依次吃满</b></b>（唯一拼写点）。
+   *
+   * <p>★★ <b>为什么改</b>：改动前买侧用 {@link ProportionalSplit#byDenominator}（按需求权重比例人人分一口）——
+   * 那是"没有顺序"的算法：把买槽表怎么排都不改变每户拿到的量（只改 ±1 毫的残差分派）⇒ 用户原话「家户之间的顺序还是得排序的啊」 落不了地。W4 起：<b>需求 &gt;
+   * 供给时，按结算序在前面的先拿满，后面的拿剩下的</b>（稀缺品的分配装置 = 排序）。 ★ 供给充足（{@code matched ==
+   * demand}）时逐值等价于改动前（每户都拿满自己的需求）。
+   *
+   * <p>★★ <b>W4-fix2：份额是"取用权"，不是"预先切好的量"</b> —— 本方法原样交出各买槽<b>自己的</b>可付剩余需求 （{@code weights}），由
+   * {@link #pairUp} 按列表序（= 结算序）依次取用：先到者先吃满，<b>吃不到（本条 lane 不通）或吃不下的余量留给下一个买槽</b>；总成交仍由卖侧份额（{@code Σ
+   * sellParts = matched}）封顶。
+   *
+   * <p>★★ <b>为什么不能预先切分（W4 初版的写法，已按现场证据改掉）</b>：初版用 {@code min(weights[i], 剩余 matched)} 逐槽把 {@code
+   * matched} <b>切完</b> ⇒ 排在后面的买槽份额恒为 0，于是它们 <b>根本进不了</b> {@link #pairUp} 的内层循环。而落账是逐 (买方 × 卖方) lane
+   * 判的（自配对 / 币种 / 运力 / 现金腿四关）：高名次买槽在别的格、又没有运力时，它那一份<b>整批丢掉</b>，而唯一能在这条 lane 上成交的同格买槽 已被切成 0。 ★
+   * 现场证据（three-powers，{@code -Dsimos.economy.logLevel=DEBUG} 的 {@code
+   * MARKET_PAIRING_SHORTFALL}）：{@code day=90 commodity=grain region=c-tp-gold} —— 56 买 / 8 卖， 前 4
+   * 名按名次划走全部 12,178,452 毫，指针卡在 {@code sellerIndex=0}（格 -3,3，该格 4 个买槽份额全 0）， {@code executedMilli=0}
+   * ⇒ 该区该商品<b>一笔不成</b>，整轮 {@code fills=0}（历史缺陷"市场冻结"复发）。
+   *
+   * <p>★ <b>与预分配形态的等价性</b>：所有 lane 都通时，"按序取用"与"预先切分"是同一个贪心（{@code Σ sellParts = matched} 封顶）⇒
+   * 逐槽成交额<b>逐值相同</b>，W4 的排序语义（谁先拿满）不变。
+   *
+   * <p>★ <b>卖侧不动</b>：卖方之间仍是按成本层 + 比例（同一档内的成本无差别，谁先谁后不改变成交量），见 {@code matchGroup}。
+   *
+   * @param weights 各买槽的可成交上限（需求 ∩ 现金腿可负担量；非负），数组序 = 结算序
+   * @return 与 {@code weights} 同内容的数组（{@link #pairUp} 只读、不写）
+   */
+  private static long[] buyPartsByPriority(long[] weights) {
+    return weights;
+  }
+
   /** 每个商品一条按 {@code (q, r)} 升序的 distinct hex 表（与串行路径的 sort 口径逐字相同）。 */
   private static Map<CommodityId, List<HexCoord>> sortedHexes(
       Map<CommodityId, LinkedHashSet<HexCoord>> raw) {
@@ -3732,7 +3895,8 @@ final class MarketSettlement {
   private static void matchWithinRegions(
       MatchContext ctx, EconomyParallelism parallelism, MarketIndexes indexes) {
     List<MarketRegion> regions = new ArrayList<>();
-    for (MarketRegion region : ctx.topology.regions()) {
+    // ★★ W4：区遍历序 = 结算序（上周期名义成交额降序 → 区 id 升序），不是拓扑声明序。
+    for (MarketRegion region : ctx.orderedRegions) {
       if (ctx.tableOf(region) == null) {
         continue; // 串行路径的同款跳过：锚格没有市场表 ⇒ 这个区没有可交易报价
       }
@@ -3912,7 +4076,10 @@ final class MarketSettlement {
             ctx.regulationFor(regionId),
             // ★★ E：**协调器那一份**"钱的价"（含全部家户的流通币种）—— 副本自己现算会漂开，
             //   而"认不认得出某种钱"必须两边同一个答案（否则回放对不上，具名抛）。
-            ctx.currencyValuation());
+            ctx.currencyValuation(),
+            // ★★ W4：worker 副本照抄**协调器那一份**结算序快照（盘前构造、不可变）——
+            //   副本自己现算会在"快照该在哪一刻取"上漂开（那正是"禁自指"要挡的），也不可复现。
+            ctx.ordering);
     // ★★ M-C：worker 副本照抄同一份纯商号集合（它只跑 route == null 的区内同格意向 ⇒ 判据不可达，但两份上下文保持一致）。
     local.pureMerchantHouseholds = ctx.pureMerchantHouseholds;
     // ★★ W2：worker 副本照抄同一份区表（自适应定价在协调器跑；这里保持两份上下文一致，同 M-C 的理由）。
@@ -4452,7 +4619,9 @@ final class MarketSettlement {
         }
         long matched = Math.min(demand, supply);
         if (matched > 0L) {
-          long[] buyParts = ProportionalSplit.byDenominator(matched, weights, demand);
+          // ★★ W4/W4-fix2：买侧按结算序依次吃满（份额 = 各槽自己的可付需求，由 pairUp 按列表序取用；
+          //   见 buyPartsByPriority）；卖侧保持按权重比例（同档成本无差别）。
+          long[] buyParts = buyPartsByPriority(weights);
           long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, supply);
           pairUp(ctx, run, buyParts, tier, sellParts, price, route);
         }
@@ -4584,6 +4753,14 @@ final class MarketSettlement {
           buyerHexes.add(hex);
         }
       }
+      // ★★ W4：跨区的买方格序 = 结算序（买方所在区的名次 → (q, r)）—— 与区内/区序同一口径，
+      //   否则"区之间按总 GDP 排序"只作用于区内路径、跨区路径仍按 (q, r)（同一件事两处拼写必然漂开）。
+      buyerHexes.sort(
+          Comparator.comparingInt(
+                  (HexCoord hex) ->
+                      ctx.ordering.zoneRankOf(ctx.topology.regionOf(hex).node().nodeId()))
+              .thenComparingInt(HexCoord::q)
+              .thenComparingInt(HexCoord::r));
       for (HexCoord buyerHex : buyerHexes) {
         MarketRegion buyerRegion = ctx.topology.regionOf(buyerHex);
         List<BuySlot> buys = activeBuysAtHex(indexes, buyerHex, commodity);
@@ -5203,7 +5380,8 @@ final class MarketSettlement {
           long matched =
               Math.min(tierDemand, Math.min(tierSupply, Math.min(capacityLeft, portLeft)));
           if (matched > 0L) {
-            long[] buyParts = ProportionalSplit.byDenominator(matched, tierBuyWeights, tierDemand);
+            // ★★ W4/W4-fix2：买侧按结算序依次吃满（跨区与区内同一口径，见 buyPartsByPriority）；卖侧仍按权重比例。
+            long[] buyParts = buyPartsByPriority(tierBuyWeights);
             long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, tierSupply);
             // ★★ 2026-10-09：路线窗口容量按**真正落账**的量扣 —— 承运商每周期运力不足时 pairUp 只会
             //   成交可承运的部分，若这里仍按 matched 扣，窗口容量会被高估、后续买方被误判"没运力"。
@@ -5366,6 +5544,11 @@ final class MarketSettlement {
    * spendable + 本单剩余冻结}、订单预算余额）重新算一次"这一笔最多买多少"，并取小。
    * 货款/运费每个小笔各自向上取整，因此整单按总价反解出的数量不保证逐笔加起来付得起；只有把每笔的实际付款累进 {@link BuySlot#spentMilli}（{@code
    * executeTrade} 写）再递推复核，任何成交序列下累计付款才不会越过后端的冻结/余额守卫。
+   *
+   * <p>★★ <b>W4-fix2：{@code buyParts} 是"取用权"而不是"预先切好的量"</b> —— 买侧份额 = 各买槽自己的可付需求 （见 {@link
+   * #buyPartsByPriority}），<b>按 {@code buyers} 的列表序（= 结算序）在此依次取用</b>：先到者先吃满， 吃不到（lane
+   * 不通）或吃不下的余量<b>留给下一个买槽</b>。总量仍由卖侧份额（{@code Σ sellParts = matched}）封顶 ⇒ 所有 lane
+   * 都通时与"预先切分"逐值相同（同一个贪心，只是分配发生在取用时刻）。
    */
   private static long pairUp(
       MatchContext ctx,
@@ -5378,6 +5561,29 @@ final class MarketSettlement {
     long executedTotal = 0L;
     int sellerIndex = 0;
     long sellLeft = sellers.isEmpty() ? 0L : sellParts[0];
+    // ★★ W4-fix3（fail-closed 修 NP_LOAD_OF_KNOWN_NULL_VALUE）：路线种类读数**在判空之前**一次算好（具名）。
+    //   {@code route == null} 在本方法里是合法取值（没有预建运费路线 —— 同格即时腿），故**不拒、不降级、不改判据**；
+    //   但它一旦被下面那条 {@code route == null} 判过，再把 {@code route} 传出去就是"已知为 null 仍被加载/传递"
+    //   （SpotBugs 报的 `[line 5694]` 就是那次调用 —— 恰在该判空分支内）。判空拼写点收口到 routeKindOf，
+    //   读数本身结构上非 null。
+    // ★★ W4-fix4（读数如实）：{@code routeKindOf(null)} 由 {@code "same-hex"} 改名为 {@code "no-route"}
+    //   —— "调用方没给预建路线"不等于"同格"，一个词兼两义会打出假读数；而"跨格 + 发货格无承运运力"那一支
+    //   **能确知真相**，故不借泛化读数、本处具名 {@code "cross-hex-no-carrier-capacity"}。
+    //   字段名仍是 {@code route}，事件名/级别不变，判据零改。
+    final String routeKind = routeKindOf(route);
+    // ★★ W4-fix2 诊断（§一.9：关键判据 DEBUG + 具名理由）：本轮**本该**能落账多少、实际落了多少、卡在哪一条。
+    //   ★ plannedTotal = 买侧取用权合计（= 各槽可付需求之和）；offeredTotal = 卖侧份额合计（= matched，真正的量上限）。
+    long plannedTotal = 0L;
+    for (long part : buyParts) {
+      plannedTotal = Math.addExact(plannedTotal, Math.max(0L, part));
+    }
+    long offeredTotal = 0L;
+    for (long part : sellParts) {
+      offeredTotal = Math.addExact(offeredTotal, Math.max(0L, part));
+    }
+    long selfMatchSkips = 0L;
+    long currencySkips = 0L;
+    String stopReason = "all-offered-quantity-served";
     for (int i = 0; i < buyers.size(); i++) {
       long need = buyParts[i];
       BuySlot buy = buyers.get(i);
@@ -5389,6 +5595,21 @@ final class MarketSettlement {
           }
         }
         if (sellerIndex >= sellers.size()) {
+          stopReason = "all-sellers-consumed-or-skipped";
+          logPairingShortfall(
+              ctx,
+              buyers,
+              buyParts,
+              sellParts,
+              sellers,
+              routeKind,
+              plannedTotal,
+              offeredTotal,
+              executedTotal,
+              selfMatchSkips,
+              currencySkips,
+              sellerIndex,
+              stopReason);
           return executedTotal;
         }
         SellSlot sell = sellers.get(sellerIndex);
@@ -5453,6 +5674,7 @@ final class MarketSettlement {
           }
           sellerIndex++;
           sellLeft = sellerIndex < sellers.size() ? sellParts[sellerIndex] : 0L;
+          selfMatchSkips++;
           continue;
         }
         long quantity = Math.min(need, sellLeft);
@@ -5465,6 +5687,7 @@ final class MarketSettlement {
         if (buyerUnitPrice < 0L) {
           sellerIndex++;
           sellLeft = sellerIndex < sellers.size() ? sellParts[sellerIndex] : 0L;
+          currencySkips++;
           continue;
         }
         // ★★ M-A1：跨格（同市场区、不同 hex）的成交必须由**发货格**的运力池承运 ⇒ 合成一条"即时但有运费"的路线；
@@ -5477,6 +5700,23 @@ final class MarketSettlement {
           if (!ctx.carrierPool.hasCapacityAt(sell.hex)) {
             blockLaneWithoutCapacity(
                 ctx, List.of(buy), List.of(sell), sell.hex, buy.hex, buy.order.commodity());
+            stopReason = "seller-hex-without-carrier-capacity";
+            // ★★ W4-fix4：这一支**能确知真相**（上面刚判过 route == null 且 !buy.hex.equals(sell.hex) ⇒ 跨格），
+            //   故用具名读数，不用 routeKindOf(null) 那条泛化值（它只说"没给预建路线"，说不出跨格与运力）。
+            logPairingShortfall(
+                ctx,
+                buyers,
+                buyParts,
+                sellParts,
+                sellers,
+                "cross-hex-no-carrier-capacity",
+                plannedTotal,
+                offeredTotal,
+                executedTotal,
+                selfMatchSkips,
+                currencySkips,
+                sellerIndex,
+                stopReason);
             break;
           }
           effectiveRoute = intraRegionFreightRoute(ctx, buy, sell, price);
@@ -5522,6 +5762,7 @@ final class MarketSettlement {
           if (!freeTicket && buy.blocked == null) {
             buy.blocked = MarketUnfilledReason.NO_BUDGET;
           }
+          stopReason = "cash-leg-of-freight-or-tax-unaffordable";
           break;
         }
         quantity = quantityByCash;
@@ -5529,6 +5770,7 @@ final class MarketSettlement {
         if (executed <= 0L) {
           // ★★ 承运运力不足 ⇒ 本笔不成交（executeTrade 已把买卖槽位与路线标成 LOGISTICS_CAPACITY）。
           //   不置 noMoney（钱不是瓶颈），也不扣槽位剩余 —— 剩余留给下一轮/下一窗口。
+          stopReason = "execute-trade-returned-zero";
           break;
         }
         executedTotal = Math.addExact(executedTotal, executed);
@@ -5538,7 +5780,164 @@ final class MarketSettlement {
         sellLeft -= executed;
       }
     }
+    logPairingShortfall(
+        ctx,
+        buyers,
+        buyParts,
+        sellParts,
+        sellers,
+        routeKind,
+        plannedTotal,
+        offeredTotal,
+        executedTotal,
+        selfMatchSkips,
+        currencySkips,
+        sellerIndex,
+        stopReason);
     return executedTotal;
+  }
+
+  /**
+   * ★★ <b>W4-fix3：路线种类的唯一拼写点</b>（喂给 {@link #logPairingShortfall} 的具名读数）。
+   *
+   * <p>{@code route == null} 是<b>合法取值</b>：本轮<b>没有预建运费路线</b>（同格即时腿就是这种形态）。W4-fix3 曾把它具名成 {@code
+   * "same-hex"}，但那把一个词同时用于"没给预建路线"与"同格" ⇒ 跨格、而发货格又无承运运力时同样 {@code route == null}，
+   * 打出来却是"同格"，<b>读数不准</b>。W4-fix4 裁定改为如实具名 {@code "no-route"}。于是调用方（尤其 {@link #pairUp} 里"已判为
+   * null"的那条分支内的发射点）<b>不必</b>再加载那个已知为 null 的引用 —— 那正是 SpotBugs {@code NP_LOAD_OF_KNOWN_NULL_VALUE}
+   * 的由来（已知 null 仍被加载/传递）。判据、成交序列、日志字段名（仍是 {@code route}）与另两个取值（{@code intra-region-cross-hex} /
+   * {@code cross-region}）与改动前逐字相同。
+   */
+  private static String routeKindOf(RouteContext route) {
+    if (route == null) {
+      return "no-route";
+    }
+    return route.immediate ? "intra-region-cross-hex" : "cross-region";
+  }
+
+  /**
+   * ★★ <b>W4-fix2：一次配给的"没落账量"具名读数</b>（§一.9：关键判据 DEBUG + 具名理由）。
+   *
+   * <p>配给（{@link #buyPartsByPriority} / {@link ProportionalSplit}）给出的是<b>上限</b>，真正落账还要过自配对、币种、运力、
+   * 现金腿四关 ⇒ 两者不等时这里给出一条"差在哪一关、差多少"。它只读、不落状态、不改任何判据。
+   */
+  private static void logPairingShortfall(
+      MatchContext ctx,
+      List<BuySlot> buyers,
+      long[] buyParts,
+      long[] sellParts,
+      List<SellSlot> sellers,
+      String routeKind,
+      long plannedTotal,
+      long offeredTotal,
+      long executedTotal,
+      long selfMatchSkips,
+      long currencySkips,
+      int sellerIndex,
+      String stopReason) {
+    long ceiling = Math.min(plannedTotal, offeredTotal);
+    if (!MARKET.isDebugEnabled() || executedTotal >= ceiling || buyers.isEmpty()) {
+      return;
+    }
+    BuySlot firstBuy = buyers.get(0);
+    SellSlot firstSell = sellers.isEmpty() ? null : sellers.get(0);
+    // ★ 卡点读数：指针停在哪一条卖槽上，以及**那个格的买方里有多少人这一轮根本没分到份额**
+    //   （"没份额 ⇒ 进不了内层循环 ⇒ 永远吃不到这条卖槽"是把配给量整批丢掉的结构性原因）。
+    SellSlot stalled =
+        sellers.isEmpty()
+            ? null
+            : sellers.get(Math.min(Math.max(sellerIndex, 0), sellers.size() - 1));
+    long buyersInStalledHex = 0L;
+    long buyersInStalledHexWithZeroPart = 0L;
+    if (stalled != null) {
+      for (int i = 0; i < buyers.size(); i++) {
+        if (!buyers.get(i).hex.equals(stalled.hex)) {
+          continue;
+        }
+        buyersInStalledHex++;
+        if (buyParts[i] <= 0L) {
+          buyersInStalledHexWithZeroPart++;
+        }
+      }
+    }
+    long buyersWithZeroPart = 0L;
+    for (long part : buyParts) {
+      if (part <= 0L) {
+        buyersWithZeroPart++;
+      }
+    }
+    // ★ 同格买槽里"有可付需求却没取用权"的条数 —— W4 初版的预分配形态下这>0 就是"整批被丢掉"的直接原因
+    //   （取用权就是可付需求 ⇒ 本形态下结构上恒 0；留作读数，回归复发时当场可见）。
+    long buyersInStalledHexWithDemandButNoPart = 0L;
+    if (stalled != null) {
+      for (int i = 0; i < buyers.size(); i++) {
+        if (buyers.get(i).hex.equals(stalled.hex) && buyParts[i] <= 0L) {
+          buyersInStalledHexWithDemandButNoPart++;
+        }
+      }
+    }
+    EventLog.channel(MARKET)
+        .debug(
+            LogEvent.of(
+                "MARKET_PAIRING_SHORTFALL",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.round.day,
+                "route",
+                routeKind,
+                "commodity",
+                firstBuy.order.commodity().value(),
+                "region",
+                firstBuy.regionId,
+                "buyers",
+                buyers.size(),
+                "sellers",
+                sellers.size(),
+                "buyTakingRightsMilli",
+                plannedTotal,
+                "sellOfferedMilli",
+                offeredTotal,
+                "executedMilli",
+                executedTotal,
+                "lostMilli",
+                ceiling - executedTotal,
+                "topBuyerAllocatedMilli",
+                Math.max(0L, buyParts[0]),
+                "topBuyerHousehold",
+                firstBuy.buyer.household.value(),
+                "topBuyerHex",
+                firstBuy.hex.q() + "," + firstBuy.hex.r(),
+                "topBuyerCurrency",
+                firstBuy.currency.value(),
+                "topBuyerRemainingMilli",
+                firstBuy.remaining,
+                "topBuyerBlocked",
+                firstBuy.blocked == null ? "-" : firstBuy.blocked.name(),
+                "firstSellerHousehold",
+                firstSell == null ? "-" : firstSell.seller.household.value(),
+                "firstSellerHex",
+                firstSell == null ? "-" : firstSell.hex.q() + "," + firstSell.hex.r(),
+                "stalledSellerIndex",
+                stalled == null ? -1 : sellerIndex,
+                "stalledSellerHex",
+                stalled == null ? "-" : stalled.hex.q() + "," + stalled.hex.r(),
+                "stalledSellerAllocatedMilli",
+                stalled == null || sellerIndex < 0 || sellerIndex >= sellParts.length
+                    ? -1L
+                    : sellParts[sellerIndex],
+                "buyersInStalledSellerHex",
+                buyersInStalledHex,
+                "buyersInStalledSellerHexWithZeroPart",
+                buyersInStalledHexWithZeroPart,
+                "buyersInStalledSellerHexWithDemandButNoTakingRight",
+                buyersInStalledHexWithDemandButNoPart,
+                "buyersWithZeroPart",
+                buyersWithZeroPart,
+                "selfMatchSkips",
+                selfMatchSkips,
+                "currencySkips",
+                currencySkips,
+                "stopReason",
+                stopReason));
   }
 
   // ── 一笔成交（区内即时 / 跨区在途）────────────────────────────────────────────────
@@ -9676,6 +10075,12 @@ final class MarketSettlement {
 
     final MarketTopology topology;
 
+    /** ★★ <b>W4：开盘前结算序快照</b>（家户名次 = 资产 − 负债净值；区名次 = 上周期名义成交额）。禁自指：只在盘前构造一次。 */
+    final SettlementOrderBook ordering;
+
+    /** ★★ <b>W4：本轮的区遍历序</b>（见 {@code orderRegions}；撮合与运力池消耗都按它走）。 */
+    final List<MarketRegion> orderedRegions;
+
     /**
      * ★★ <b>本轮区内市场规则</b>（{@link MarketRound#regulation()} 的唯一读取点；逐轮瞬态、不落盘）。P-T1c 起它只剩"区内税"一类条目 ⇒ 只有
      * {@link MarketRegulation#anchor()} 所在的区受它约束；未锚定的区走默认路径（无税）。
@@ -9872,7 +10277,8 @@ final class MarketSettlement {
         MarketTopology topology,
         MerchantCapacityPool carrierPool,
         MarketRegulation regulation,
-        CurrencyValuation currencyValuation) {
+        CurrencyValuation currencyValuation,
+        SettlementOrderBook ordering) {
       this.round = round;
       this.marketTables = marketTables;
       this.topology = topology;
@@ -9883,12 +10289,30 @@ final class MarketSettlement {
       this.currencyValuation =
           Objects.requireNonNull(currencyValuation, "MatchContext 的\"钱的价\"不得为 null（没有就给 none()）");
       this.carrierPool = carrierPool;
+      this.ordering = ordering == null ? SettlementOrderBook.empty(round.day) : ordering;
+      this.orderedRegions = orderRegions(this.topology, this.ordering);
       String anchorRegionId =
           this.regulation.defined() && topology.contains(this.regulation.anchor())
               ? regionIdAt(topology, this.regulation.anchor())
               : null;
       this.regulationByRegionId =
           anchorRegionId == null ? Map.of() : Map.of(anchorRegionId, this.regulation);
+    }
+
+    /**
+     * ★★ <b>W4：本轮的区遍历序</b>（S-4：区之间按<b>上周期名义成交额</b>降序、同值按区 id 升序）。
+     *
+     * <p>★ 它决定"哪个区先被撮合、先消耗本轮共享的运力池"，因此与买槽序一样是结算序的一部分。★ 名次未知的区（快照里没有的） 一律排在已知区之后，并按区 id 升序 ——
+     * 未知名次不许退化成"哈希序/写入史序"。
+     */
+    private static List<MarketRegion> orderRegions(
+        MarketTopology topology, SettlementOrderBook ordering) {
+      List<MarketRegion> ordered = new ArrayList<>(topology.regions());
+      ordered.sort(
+          Comparator.comparingInt(
+                  (MarketRegion region) -> ordering.zoneRankOf(region.node().nodeId()))
+              .thenComparing(region -> region.node().nodeId()));
+      return List.copyOf(ordered);
     }
 
     /** ★★ E：本轮的"钱的价"（只读）。 */

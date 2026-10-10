@@ -228,14 +228,18 @@ public final class ModeMigrationPolicy {
         throw new IllegalArgumentException(
             "MigrationMove 的 moneyMilli/debtMilli 不得为负: " + moneyMilli + "/" + debtMilli);
       }
-      if (transferSpeedPerMille != MIGRATION_PER_MILLE
-          && transferSpeedPerMille != A_RULE_TRANSFER_SPEED_PER_MILLE) {
+      // ★★ W4（2026-10-11）：速度不再只允许两个具名值 —— 基线速度改成"债务/资产"的函数
+      //   （用户第二批第 1 条：「直接根据债务/资产规模估算向其他阶层流动的速度」），A 规则仍是 1000‰ 的上界。
+      //   口径 = ‰/周期，合法区间 [1, 1000]；0 表示"不迁移"（由调用方在产生 move 之前就挡掉）。
+      if (transferSpeedPerMille < 1L || transferSpeedPerMille > A_RULE_TRANSFER_SPEED_PER_MILLE) {
         throw new IllegalArgumentException(
-            "MigrationMove.transferSpeedPerMille 只允许 "
-                + MIGRATION_PER_MILLE
-                + " 或 "
+            "MigrationMove.transferSpeedPerMille 必须在 [1, "
                 + A_RULE_TRANSFER_SPEED_PER_MILLE
-                + ": "
+                + "]（W4：基线 = max("
+                + MIGRATION_PER_MILLE
+                + ", f(债务/资产))，A 规则 = "
+                + A_RULE_TRANSFER_SPEED_PER_MILLE
+                + "）: "
                 + transferSpeedPerMille);
       }
       LinkedHashMap<CurrencyId, Long> moneyCopy = new LinkedHashMap<>();
@@ -376,6 +380,17 @@ public final class ModeMigrationPolicy {
     Map<ProductionModeId, List<ProductionRole>> producingPositions =
         producingPositionsByMode(base, modes);
 
+    // ★★ W4（2026-10-11，S-1）：**基线速度改按"债务/资产"**（用户第二批第 1 条：「直接根据债务/资产规模估算
+    //   向其他阶层流动的速度」）。口径与 {@link ClassSlideSettlement} / 市场轮结算序**共用同一份快照**
+    //   （{@link SettlementOrderBook}：资产 = 货币 + 商品库存折价；负债 = Σ 未偿本金的可定价共同价值）
+    //   ⇒ "排序用的发达程度"与"滑落速度用的债务/资产"不可能漂成两把尺。
+    //   ★ 速度 = max(基线 MIGRATION_PER_MILLE, f(债务/资产))：f 见 {@link
+    // ClassSlideSettlement#speedPerMille}。
+    //     取 max（而不是纯 f）是**本批的 fail-closed 取舍**：纯 f 会让"无债户"速度恒 0 ⇒ 生产方式迁移整条机制
+    //     对绝大多数户停摆（那是另一项设计决定，不在 W4 授权范围内）。偏离记录见实现账本。
+    SettlementOrderBook ordering =
+        SettlementOrderBook.snapshot(
+            day, topology, markets, householdEconomies, debts, accounts, base);
     LinkedHashMap<HouseholdId, List<MoveDraft>> draftsBySource = new LinkedHashMap<>();
     for (HouseholdId source : sortedHouseholds(householdEconomies)) {
       HouseholdMode current = modeByHousehold.get(source);
@@ -404,7 +419,8 @@ public final class ModeMigrationPolicy {
               claimedByEnterprises,
               demandBook,
               topology,
-              day);
+              day,
+              slideSpeedPerMille(ordering, source));
       if (!drafts.isEmpty()) {
         draftsBySource.put(source, drafts);
       }
@@ -481,7 +497,8 @@ public final class ModeMigrationPolicy {
       Set<AssetShareId> claimedByEnterprises,
       MarketDemandBook.Book demandBook,
       MarketTopology topology,
-      long day) {
+      long day,
+      long w4SlideSpeedPerMille) {
     // ★★ D-024：当前户读数改由同一个预期利润计算器现算（真实利润账退位为事后对账）。
     Industry currentIndustry = currentIndustryOf(base, source, current, units, enterprises);
     ExpectedProfitBook.Prospect currentProspect =
@@ -590,10 +607,12 @@ public final class ModeMigrationPolicy {
       }
     } else {
       List<Target> positive = ranked.stream().filter(target -> target.weight > 0L).toList();
+      // ★★ W4：基线速度 = max(MIGRATION_PER_MILLE, f(债务/资产))（见 plan() 里的口径注与偏离记录）。
+      long baselineSpeedPerMille = Math.max(MIGRATION_PER_MILLE, w4SlideSpeedPerMille);
       long moveable =
           Math.min(
               sourceHouseholdEconomy.population(),
-              Math.max(1L, sourceHouseholdEconomy.population() * MIGRATION_PER_MILLE / 1000L));
+              Math.max(1L, sourceHouseholdEconomy.population() * baselineSpeedPerMille / 1000L));
       drafts =
           positive.isEmpty() || moveable <= 0L
               ? List.of()
@@ -601,7 +620,7 @@ public final class ModeMigrationPolicy {
                   source,
                   sourceHouseholdEconomy.population(),
                   moveable,
-                  MIGRATION_PER_MILLE,
+                  baselineSpeedPerMille,
                   MigrationMove.REASON_PROFIT_WEIGHTED,
                   positive,
                   base,
@@ -1407,6 +1426,19 @@ public final class ModeMigrationPolicy {
       HouseholdId household,
       HexCoord hex) {
     return PrimaryModeRanking.inventoryMilli(accounts, markets, topology, household, hex);
+  }
+
+  /**
+   * ★★ <b>W4：该户的"债务/资产"滑落速度（‰/周期）</b> —— 与 {@link ClassSlideSettlement} 同一条算式、同一份快照。 快照里没有该户（人口 0 /
+   * 无行）⇒ 0（= 不加速，退回基线常量）。
+   */
+  private static long slideSpeedPerMille(SettlementOrderBook ordering, HouseholdId household) {
+    Long assets = ordering.householdAssetsOf(household);
+    Long debt = ordering.householdDebtOf(household);
+    if (assets == null || debt == null) {
+      return 0L;
+    }
+    return ClassSlideSettlement.speedPerMille(debt, assets);
   }
 
   /** 本格价表：优先本格市场；无则退到该格所在区的集散节点市场（区内同价）；都没有 ⇒ null。 */
