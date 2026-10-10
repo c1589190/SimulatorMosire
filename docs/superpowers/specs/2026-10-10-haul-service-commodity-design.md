@@ -125,7 +125,7 @@ capacity         = { CATTLE: 份额 }    // 保留（畜力/运力载体）
 | T-H3 | 跑商家户的收益走**标准企业利润**（`EnterpriseProfitBook` 一侧可见），`MerchantProfitBook` 不再并存 |
 | T-H4 | **预留自动成立**：跑商家户的工具不会被自家卖单冻结到无法跑商（无需 §16 特例） |
 | T-H5 | **真实 world**：`MERCHANT_HAUL_TOOL_SHORT_AT_COMMIT` 一类"缺工具照运"归零；跨格成交回升到**由需求与运力共同决定**的水平（给对照） |
-| N-H1 | 无跑商/无跨格需求的世界 ⇒ 逐值不变（md5 级或状态 dump 对照） |
+| N-H1 | **（v1.4 修正）无跑商家户 / 跑商模式未被选中**的世界 ⇒ 逐值不变。★ A4 实测："无牌价 / 零跨格需求"世界**结构性不可构造**（GM 无删价路径；`commodityIds` 读词表 ⇒ 世界里永远有第 6 种商品，md5 级永不成立）⇒ 判据不按字面要求，改按 I-H3 v1.2 的口径 |
 | N-H2 | 全仓不得再出现"走私/平行运力池门槛/双记运费"三族残留（grep 证明） |
 | N-H3 | 两跑确定性：同 store 同参数两跑，状态 dump 逐字节相同 |
 
@@ -156,6 +156,11 @@ capacity         = { CATTLE: 份额 }    // 保留（畜力/运力载体）
 
 ## 9. 修订记录
 
+- v1.4（2026-10-10 下午）：**A4 真实 world 验收后的两处更正** —— ① N-H1 按 I-H3 v1.2 口径重述（"无牌价/零跨格需求"世界
+  结构性不可构造，见 §6）；② 记录 A4 的**五项实测发现**：未卖出服务跨周期累积可再卖（**违反用户"不可储存转卖"
+  裁定，已开修复批**）、`HAUL_SERVICE_SETTLED` 在 trades=0 的日子不发（10 天漏报 33.4%）、T-H3 的"一侧可见"
+  目前不可验收（`trade@` 的 `lastCycleRevenueByCurrency` 恒空）、`EconomySeeder:4312` 注释与 `:1886` 代码矛盾、
+  `trade@0_2` 工具投入不足会缩产（运力上界还受工具市场约束）。
 - v1.3（2026-10-10 下午）：**A3 落地后的更正** —— `LaneUnservedBook` 从退役清单移出（它是 V-20 价格统计的输入，
   不是门槛家族的读数）；记录 A3 的三分类（删 `MerchantHaul`/`MerchantProfitBook`/`CapacityQuote*`；
   降级 `MerchantCapacityPool`/`CapacityDemandBook`/`LaneUnservedObservationBook` 为只读；留 `CapacityDemand`/`LaneUnservedBook`）
