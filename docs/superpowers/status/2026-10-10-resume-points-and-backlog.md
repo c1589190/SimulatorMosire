@@ -287,6 +287,24 @@ core 231 / sd 232 / actor 130 / economy 266 / gov 111 / army 91 / app 907
 ③ `LOGISTICS_CAPACITY` 严重低估运力不足；④ `MERCHANT_CAPACITY_HOUSEHOLD` 不带 `day`（逐户池读数无法按日对齐）。
 
 
+### 7.8 只读诊断：G3c 四处异常的定性（该修 / 该记 / 待裁定）
+
+| # | 事项 | 定性 | 证据要点 |
+|---|---|---|---|
+| 1 | **B 世界债务 −98.3%** | **真实状态，不是读口口径变化**（G3 账本原判断"口径已变"理由错） | 读口零改动（`git log -S'debtPrincipal'` 只有 docs/test）；真因 = G3b 那轮多出 **20 条巨额实物粮债**（全 `commodity:grain`/NORMAL/债权人 `hh-0_0-rural-landlord`/`dueDay=none`）：该出借人 **in-kind 粮信用 121 笔/Σ2,990,558 → 0 笔**；无"少结债"证据 |
+| 2 | `tool-budget-exhausted` 分支更严 | **判据时点错**（不是故意更严）：`min(本轮预算余量, 当刻可用量)` 里的"预算"＝**装配时点**可用量（过期快照） | `MerchantCapacityPool.java:676-679/259-267/500`；A 世界 29 行 / Σ`budgetBlockedRuns=5,824`；样本 day153 `stock=1610 available=1610 needed=1000 budgetRemaining=925 ⇒ 拦`；方向 fail-closed（只过严不过宽） |
+| 3 | `LOGISTICS_CAPACITY` "低估" | **单位不同 + 混档**（不是漏一半）：它是**逐槽位/日终残余**归因，且**缺工具与缺运力混同一档** | 产生点 `EconomySettlement.java:2133-2151`、flag 三落点 `MarketSettlement:6773-6786/6820-6827/5290-5298`；B Σquantity 反而 −10.8% |
+| 4 | `MERCHANT_CAPACITY_HOUSEHOLD` 缺 `day` | **本链引入（M-A1 `2488b3e1`）**，仅可观测性 | 写入点 `MerchantCapacityPool.java:318-356`（同族 POOL_HEX/POOL 都有 `day`） |
+
+**该修（下轮，非阻塞）**：① 补 `day`（1 行）；② tool 预算镜像时点——收窄为"当刻可用量 − 本轮已放行×1000"，
+或把"装配时点预算"写成正式口径并删掉那条已被实测证伪的"生产路径不可达"断言。
+**该记**：③ `debtPrincipal` 顶层标量**跨 unit 混算**（粮与银相加），与 dashboard 自身"本金不跨 unit 合计"
+（`ApiViews.java:2177-2200`）自相矛盾 ⇒ 台账改用 `byUnit`；④ 更正 G3 账本 `:105` 的错理由（追加行，不篡改）；
+⑤ G3c 账本 §6-3 的"低估"改写为"单位不同、量反向"。
+**★ 待用户裁定**：⑥ **敞开式实物粮债**（`dueDay=none` / 20‰/周期 / NORMAL / 单户 10 万粮，占债务存量 **97.8%**）
+是否允许——这直接决定债务存量口径与"借贷是否失控"。
+
+
 ### 7.5 下一步（夜间继续）
 
 1. **G3：真实 world 复测**（起独立 world + 360 tick + 读日志，验节流/税/FX/运力/优先级真发生）；
