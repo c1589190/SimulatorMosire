@@ -295,6 +295,20 @@ W1 状态与账 ─→ W2 清算与价格 ─→ W3 人的进出 ─→ W4 家�
 
 ## 7. 修订记录
 
+- **v3.13**（2026-10-11 凌晨）：**W4（排序结算 + 阶层滑落）生产码落地 + 三条裁定**。新增 `SettlementOrderBook`（开盘前结算序快照 + 逐户估值唯一算式）、
+  `ClassSlideSettlement`（阶层滑落唯一写口）、`ClassLadderBook`（"级"的唯一拼写点，从 E5b 整体搬来）；改 `MarketSettlement`（买槽按结算序重排、买侧配给改"按序依次吃满"、区序）、
+  `EconomySettlement`（盘前快照 + 市场轮最末调滑落）、`EconomyLiquidationSettlement`（**E5b 阈值触发的阶层下滑支路整段删除**）、`ModeMigrationPolicy`（基线速度口径）。
+  **禁自指是结构保证**：快照在 `clearOncePerCycle` **之前**构造并作不可变参数传入（worker 复制同一实例），撮合/改价/记账期间**没有任何代码回读当轮量**；
+  区序量取统计簿 `previousCycleTurnover`（**名义货值**）、tie-break 取盘前 `cycleTurnover`。
+  滑落速度：`ratio=⌊债×1000÷max(1,资产)⌋`、`speed=min(1000,⌊ratio×100÷1000⌋)`、`每级天数=⌈5×1000÷speed⌉` ⇒ 债/资=1 → 50 天一级、=2 → 25 天、≥10 → 5 天（上限）；**一个市场轮最多降一级**。
+  **裁定 A（"级"的口径）**：现有位置表里 **贫/中/富农的角色元组完全相同** ⇒ 模型里**没有**"富→中→贫"这条阶梯；本批按**唯一既有的位阶**（`ProductionRole` 的 `relationToMeans × surplusRole`）
+  实现"一次只走**最近严格低位**"，并把边界写进类注。★ **若要"富农→中农→贫农"这条阶梯，需要给位置表补 `ruleExtensions.downwardPositionId`（数据/创世面，另批小事）** —— 这一条请用户确认预期。
+  **裁定 B（`CommitOrder` 不改）**：实测市场轮的冻结**直写活表**（`commitFreezes`）、成交走 `applyTransfer` 唯一写口，**根本不经过 `CommitOrder`**（它排的是账户意向，掺进市场名次会破坏 R1 分区确定性）
+  ⇒ 序落在"买槽表 + 冻结写序"上即可；任务书里"与 CommitOrder 一起改"是我基于旧认知的假设，**以代码为准**。
+  **裁定 C（`ModeMigrationPolicy` 时点不挪）**：它是**生产方式迁移**（不是阶层下滑）；本批只把速度口径改为 `max(10‰, f(债务/资产))`（纯 f 会让无债户速度恒 0 ⇒ 迁移机制停摆），
+  S-1 的"市场轮最末"由 `ClassSlideSettlement` 承担；`transferSpeedPerMille` 守卫由 {10,1000} 放宽到 [1,1000]。
+  **会改变数值行为**：①买侧分配由"比例"改"按序吃满"②买槽处理序 ③区序 ④阶层滑落由"关账日 + 三阈值"改"市场轮末 + 速度"（无债户不再因核心资产被处置而下滑）⑤迁移基线速度随债务/资产变大 ⑥`transferSpeedPerMille` 值域扩大。
+  **标定项（列 W6 首查）**：滑落斜率 `100‰`（即 ratio 每 +1 ⇒ 每级天数减半）是**控制方实现口径**、非用户裁定；改一个常量即可。
 - **v3.12**（2026-10-11 凌晨）：**W3 验收结果 + 两条真缺陷处置（控制方裁定）**。报告：`.superpowers/sdd/2026-10-11-w3-acceptance/report.md`（jar `1e978b76…`）。
   **绿**：①两段式次序（同 tick 原文：`HOUSEHOLD_GAP_REPORTED → DAY_END → POPULATION_SETTLE → FAMINE_MORTALITY → HOUSEHOLD_VITAL_WRITEBACK → BRIDGED`，
   **同一 revision** 同时含 social 成员 30→29、economy population 30→29、flows.deaths 0→1；每次 advance Δ=1）
