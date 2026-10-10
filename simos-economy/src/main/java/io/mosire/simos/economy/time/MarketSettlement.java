@@ -6401,7 +6401,16 @@ final class MarketSettlement {
       //   缺省口径 = 提供方市场议价权序）；分配多少才走多少，一点运力都没有 ⇒ 本笔不成交（绝不发"免费"的跨格货）。
       //   ★ M-C：**缺工具 ⇒ 该次跑商不成立**（H-5）也落在 select 里（具名 tool-short），因此"分不到"同样收缩成交。
       //   CARRIER_FEE 收款人 = 提供运力的**家户**（纯商号免运费，见 carrierChargeSplit）。
-      allocation = ctx.carrierPool.select(route.from, route.to, quantity, workPerGoodPerMille);
+      // ★★ 2026-10-10（池侧读数去重）：把**请求身份**一并交给池 —— 它与 D-1b 槽侧认领（{@link LaneUnservedBook#claimPair}）
+      //   **同键同拼写**（车道键 + 买槽序 > 卖槽序）。★ 它只被池侧 {@code MERCHANT_CAPACITY_LANE_TRUNCATED} 的净额字段用：
+      //   本笔的承运分配、成交量、价格、账目一字不动（池那边也只写它自己的观察簿，不碰任何判据）。
+      String requestKey =
+          LaneUnservedBook.pairKey(
+              LaneUnservedBook.laneKey(route.from, route.to, route.commodity),
+              buy.orderIndex,
+              sell.orderIndex);
+      allocation =
+          ctx.carrierPool.select(route.from, route.to, quantity, workPerGoodPerMille, requestKey);
       long allocated = allocation.allocatedMilli();
       if (allocated <= 0L) {
         // ★★ M-A2：全被拦下的那部分同样是"这一份需求要运力但没买到" ⇒ 记进需求簿（供 K-4 的缺口归因）。

@@ -114,6 +114,25 @@ import java.util.Objects;
  * <p>★★ <b>缺省中性（冻结项 6）</b>：无报价（家户未挂运力单）⇒ 分配口径与价格逐值退回 M-A1 ⇒ 世界里没有"选了跑商的家户"时 {@link #hasCapacityAt}
  * 恒 false ⇒ 跨格（跨区 + 同区跨格）路线在候选生成处就<b>不建</b>、具名 {@code LOGISTICS_CAPACITY}；<b>同 hex
  * 成交一字不动</b>（它不走运力）。
+ *
+ * <p>★★ <b>2026-10-10：池侧"未服务量"读数的去重（★ 只动读数与说明，判据/成交/价格/运力分配一字未动）</b>—— 事件 {@code
+ * MERCHANT_CAPACITY_LANE_TRUNCATED} 原来只报<b>本次观察</b>的 {@code unallocatedMilli}，而<b>同一次请求</b>（同一车道键 +
+ * 同一对买卖槽）会在多个运力窗口（{@code MARKET_MAX_TRANSPORT_ROUNDS = 4}）与多次试配上被反复观察：反复看到的是<b>同一份</b>没运走的量 ⇒
+ * 逐行相加会把它算 2~36 遍（把同一车道上量相同的<b>不同</b>请求合并看，最高 72 次）。G3f 实测 A 世界 103 天：Σ 逐行 = 真实量的 3.0~3.45
+ * 倍。现在每行另外报三个字段，<b>口径写死在这里</b>：
+ *
+ * <pre>
+ * unallocatedMilli            本次观察的原始值 —— ❌ **不可**逐行相加当真实量（同一请求会重复）
+ * unallocatedNetMilli         本次净额       —— ✅ **可**当真实量：对全部行求和 = 每份未服务量只算一次的合计
+ * unallocatedObservationIndex 该请求的第几次观察（1 起）—— ≥2 ⇒ 本行与前面某行是**同一份**量
+ * requestKeyTracked          有没有请求身份（false = 4/5 参旧路径：本次调用自己成一份）
+ * </pre>
+ *
+ * ⇒ 读"真实未承运量"只认 {@code Σ unallocatedNetMilli}（每日合计见 {@link #logRoundSummary} 的 {@code
+ * unallocatedRawMilli} / {@code unallocatedNetMilli} 两栏的对照）。 请求身份 = {@link
+ * LaneUnservedBook#pairKey}（与 D-1b 槽侧认领<b>同键同拼写</b>，由 {@code MarketSettlement.executeTrade} 拼好传入）；
+ * 去重状态只活在 {@link LaneUnservedObservationBook} 里、只被上述日志字段读，<b>不参与任何判据</b>（与 D-1b 那份 <b>改</b>价格输入的
+ * {@link LaneUnservedBook} 各自独立）。★ 缺省中性：没有截断 ⇒ 本事件一行不打、上簿一次不记 ⇒ 字段不出现、数值一字不变。
  */
 public final class MerchantCapacityPool {
 
@@ -158,6 +177,14 @@ public final class MerchantCapacityPool {
 
   /** ★★ <b>G3-fix-2：工具维的<b>活视图</b>（冻结账）</b>—— 与 {@link #liveGoods} 成对（同一时点、同一口径）。 */
   private final Map<HouseholdId, Map<CommodityId, Long>> liveFrozenGoods;
+
+  /**
+   * ★★ <b>2026-10-10：池侧"未服务量观察"的净额簿</b>（{@link LaneUnservedObservationBook}）—— <b>只服务日志读数</b>：
+   * 同一请求被反复观察时只净记一次，供 {@link #select} 的 DEBUG 字段与 {@link #logRoundSummary} 的日合计读。 ★
+   * 它<b>不参与任何判据</b>、不改 {@link CarrierAllocation} 的任何数值；逐轮瞬态（本池本身一轮一份）。
+   */
+  private final LaneUnservedObservationBook unservedObservations =
+      new LaneUnservedObservationBook();
 
   private MerchantCapacityPool(
       Map<HexCoord, List<Entry>> byHex,
@@ -643,6 +670,23 @@ public final class MerchantCapacityPool {
   }
 
   /**
+   * ★★ <b>无请求身份的分配入口</b>（等价于 5 参重载传 {@code requestKey = null}）—— 夹具 / 纯状态读者 / 旧调用方走这一条。
+   *
+   * <p>★ 读数的差别只有一个：{@code MERCHANT_CAPACITY_LANE_TRUNCATED} 的 {@code requestKeyTracked=false}、
+   * {@code unallocatedObservationIndex} 恒 1（每次调用自己成一份，因为这里没有"哪一次请求"的身份）。<b>算法与判据与 5
+   * 参重载完全同一条路径</b>（见那个重载的说明），返回值逐值相同。
+   *
+   * @param from 发货格（运力池所在的格）
+   * @param to 收货格（判半径）
+   * @param quantityMilli 本笔请求承运量（毫商品）
+   * @param workPerGoodPerMille 本 lane 的运力耗用（‰；{@link CapacityDemand}。缺省口径传 1000 = 1:1）
+   */
+  public CarrierAllocation select(
+      HexCoord from, HexCoord to, long quantityMilli, long workPerGoodPerMille) {
+    return select(from, to, quantityMilli, workPerGoodPerMille, null);
+  }
+
+  /**
    * ★★ <b>按买方选择键（限价）分配一条 lane 的运力</b>（K-C/K-2/Q-25/Q-27）。
    *
    * <pre>
@@ -664,13 +708,19 @@ public final class MerchantCapacityPool {
    * MerchantHaul#blockedReason}；第三档归因自 G3-fix-3 起不可达、已随其常量与计数删除）。 ★ 没有活视图的 4/5
    * 参旧路径只判本轮预算余量（逐值退回改前）。
    *
+   * <p>★★ <b>2026-10-10 池侧读数去重（只动读数）</b>：{@code demandLeft > 0} 时本方法记一笔"未服务量观察"，并另发 {@code
+   * unallocatedNetMilli} / {@code unallocatedObservationIndex} / {@code requestKeyTracked} 三个字段 ——
+   * <b>口径写在类注里</b>（"Σ 原始读数不可当真实量、Σ 净额可以"）。★ 去重只读 {@code requestKey}、只写本类的观察簿， 不改本方法的任何返回值。
+   *
    * @param from 发货格（运力池所在的格）
    * @param to 收货格（判半径）
    * @param quantityMilli 本笔请求承运量（毫商品）
    * @param workPerGoodPerMille 本 lane 的运力耗用（‰；{@link CapacityDemand}。缺省口径传 1000 = 1:1）
+   * @param requestKey <b>请求身份</b>（{@link LaneUnservedBook#pairKey}：车道键 + 买槽序 &gt; 卖槽序）—— 只服务上面那三个
+   *     日志字段的去重；{@code null} = 无身份（夹具 / 纯状态读者）⇒ 本次调用自己成一份
    */
   public CarrierAllocation select(
-      HexCoord from, HexCoord to, long quantityMilli, long workPerGoodPerMille) {
+      HexCoord from, HexCoord to, long quantityMilli, long workPerGoodPerMille, String requestKey) {
     Objects.requireNonNull(from, "from");
     Objects.requireNonNull(to, "to");
     if (quantityMilli < 0L) {
@@ -761,54 +811,70 @@ public final class MerchantCapacityPool {
               consumed));
     }
     long allocated = quantityMilli - demandLeft;
-    if (LOG.isDebugEnabled() && demandLeft > 0L) {
-      EventLog.channel(LOG)
-          .debug(
-              LogEvent.of(
-                  "MERCHANT_CAPACITY_LANE_TRUNCATED",
-                  EconomyLogSource.ECONOMY_ORGANIZATION,
-                  "from",
-                  from,
-                  "to",
-                  to,
-                  "requestedMilli",
-                  quantityMilli,
-                  "allocatedMilli",
-                  allocated,
-                  "unallocatedMilli",
-                  demandLeft,
-                  "workPerGoodPerMille",
-                  workPerGoodPerMille,
-                  "requestedWorkMilli",
-                  CapacityDemand.workMilliOf(quantityMilli, workPerGoodPerMille),
-                  "allocatedWorkMilli",
-                  CapacityDemand.workMilliOf(allocated, workPerGoodPerMille),
-                  "hexTotalCapacityMilli",
-                  totalCapacityByHex.getOrDefault(from, 0L),
-                  "outOfRadiusWorkMilli",
-                  unreachableWork,
-                  "subUnitResidualWorkMilli",
-                  subUnitWork,
-                  "toolBlockedRuns",
-                  toolBlockedRuns,
-                  // ★★ G3-fix-2：把"缺工具"这一条按**政策归因**拆开（tool-frozen / tool-short 两支）。
-                  //   ★ 第三档（预算档）自 G3-fix-3 起不可达（判据 = 可用量本身，拦 ⇔ 可用量 < 一趟）⇒ 2026-10-10 清理已删字段。
-                  "toolFrozenBlockedRuns",
-                  toolFrozenBlockedRuns,
-                  "toolShortBlockedRuns",
-                  toolShortBlockedRuns,
-                  "toolMilliPerHaul",
-                  MerchantHaul.TOOL_MILLI_PER_HAUL,
-                  "priced",
-                  priced,
-                  "reason",
-                  laneBlockedReason(
-                      pool,
-                      unreachableWork,
-                      subUnitWork,
-                      toolBlockedRuns,
-                      toolFrozenBlockedRuns,
-                      toolShortBlockedRuns)));
+    // ★★ 2026-10-10：真有未服务量时先记一笔"观察"（无条件记 —— 与日志档位无关，否则 INFO 汇总会在只开 INFO 时假报 0），
+    //   再按档位发 DEBUG 行。★ 记账结果**只被下面那几个字段读**：不改 demandLeft、不改 choices、不改返回值。
+    if (demandLeft > 0L) {
+      LaneUnservedObservationBook.Observation observation =
+          unservedObservations.observe(requestKey, demandLeft);
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "MERCHANT_CAPACITY_LANE_TRUNCATED",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "from",
+                    from,
+                    "to",
+                    to,
+                    "requestedMilli",
+                    quantityMilli,
+                    "allocatedMilli",
+                    allocated,
+                    // ★★ 口径（类注同文）：这是**本次观察**的原始值 —— **不可**逐行相加当真实量（同一请求会被反复观察）。
+                    "unallocatedMilli",
+                    demandLeft,
+                    // ★★ 净额（每份未服务量只算一次）：**对全部行求和 = 真实量**（可当真实量用）。
+                    "unallocatedNetMilli",
+                    observation.netMilli(),
+                    // ★★ 该请求的第几次观察（1 起）：≥2 ⇒ 本行与前面某行是**同一份**量（重复倍数的下界读数）。
+                    "unallocatedObservationIndex",
+                    observation.observationIndex(),
+                    // ★★ 有没有请求身份：false = 4/5 参旧路径（夹具/纯状态读者）⇒ 本次调用自己成一份。
+                    "requestKeyTracked",
+                    observation.requestKeyTracked(),
+                    "workPerGoodPerMille",
+                    workPerGoodPerMille,
+                    "requestedWorkMilli",
+                    CapacityDemand.workMilliOf(quantityMilli, workPerGoodPerMille),
+                    "allocatedWorkMilli",
+                    CapacityDemand.workMilliOf(allocated, workPerGoodPerMille),
+                    "hexTotalCapacityMilli",
+                    totalCapacityByHex.getOrDefault(from, 0L),
+                    "outOfRadiusWorkMilli",
+                    unreachableWork,
+                    "subUnitResidualWorkMilli",
+                    subUnitWork,
+                    "toolBlockedRuns",
+                    toolBlockedRuns,
+                    // ★★ G3-fix-2：把"缺工具"这一条按**政策归因**拆开（tool-frozen / tool-short 两支）。
+                    //   ★ 第三档（预算档）自 G3-fix-3 起不可达（判据 = 可用量本身，拦 ⇔ 可用量 < 一趟）⇒ 2026-10-10 清理已删字段。
+                    "toolFrozenBlockedRuns",
+                    toolFrozenBlockedRuns,
+                    "toolShortBlockedRuns",
+                    toolShortBlockedRuns,
+                    "toolMilliPerHaul",
+                    MerchantHaul.TOOL_MILLI_PER_HAUL,
+                    "priced",
+                    priced,
+                    "reason",
+                    laneBlockedReason(
+                        pool,
+                        unreachableWork,
+                        subUnitWork,
+                        toolBlockedRuns,
+                        toolFrozenBlockedRuns,
+                        toolShortBlockedRuns)));
+      }
     }
     return new CarrierAllocation(choices, quantityMilli, demandLeft, priced);
   }
@@ -1038,7 +1104,15 @@ public final class MerchantCapacityPool {
     }
   }
 
-  /** ★ 一轮结束后的逐格分配汇总（INFO = 每格运力池与分配汇总；§一.9）。 */
+  /**
+   * ★ 一轮结束后的逐格分配汇总（INFO = 每格运力池与分配汇总；§一.9）。
+   *
+   * <p>★★ <b>2026-10-10：{@code MERCHANT_CAPACITY_POOL} 另报本轮"因运力未获服务"的钱/量对照</b>（口径写在同一行里）： {@code
+   * unallocatedRawMilli} = Σ 逐行原始读数（同一请求被反复观察 ⇒ <b>不可</b>当真实量）、{@code unallocatedNetMilli} = Σ
+   * 净额（每份只算一次 ⇒ <b>可</b>当真实量）；另附 {@code unallocatedObservations}（行数）/ {@code
+   * unallocatedRequests}（请求数）/ {@code unallocatedMaxObservations}（单个请求最高被观察几次）三栏， 让"放大倍数"当场可算。★
+   * 与日志档位无关：观察簿无条件记账 ⇒ 只开 INFO 时这一行也是真值（不是假 0）。
+   */
   public void logRoundSummary(long day) {
     // ★★ G3-fix-2：门槛归因的逐户证据（DEBUG；与 INFO 汇总的开关无关 —— 没有活视图 / 没有被拦下的户 ⇒ 一行不打）。
     logToolBlocks(day);
@@ -1136,7 +1210,22 @@ public final class MerchantCapacityPool {
                 "toolMilliRemaining",
                 remainingToolTotal,
                 "toolMilliPerHaul",
-                MerchantHaul.TOOL_MILLI_PER_HAUL));
+                MerchantHaul.TOOL_MILLI_PER_HAUL,
+                // ★★ 2026-10-10：本轮"因运力未获服务"的读数**净额 vs 原始**（口径与算法见类注与
+                //   LaneUnservedObservationBook）——
+                //   unallocatedRawMilli = Σ 逐行 unallocatedMilli（同一请求会被反复观察）⇒ ❌ 不可当真实量；
+                //   unallocatedNetMilli = Σ 每份只算一次                 ⇒ ✅ 可当真实量（读这一栏）。
+                //   后三栏 = 重复结构（行数 / 请求数 / 单个请求的最高观察次数），让"放大倍数"当场可算。
+                "unallocatedRawMilli",
+                unservedObservations.rawTotalMilli(),
+                "unallocatedNetMilli",
+                unservedObservations.netTotalMilli(),
+                "unallocatedObservations",
+                unservedObservations.observationRows(),
+                "unallocatedRequests",
+                unservedObservations.requestCount(),
+                "unallocatedMaxObservations",
+                unservedObservations.maxObservations()));
   }
 
   /**

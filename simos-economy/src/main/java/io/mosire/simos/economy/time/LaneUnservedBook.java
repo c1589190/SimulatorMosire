@@ -100,7 +100,12 @@ final class LaneUnservedBook {
     return delta;
   }
 
-  private static String pairKey(String laneKey, int buyOrderIndex, int sellOrderIndex) {
+  /**
+   * ★★ <b>一次请求（一对买卖槽）的稳定键</b>（唯一定义点）—— 槽侧认领（{@link #claimPair}）与池侧读数去重 （{@link
+   * LaneUnservedObservationBook}，由 {@code MarketSettlement.executeTrade} 拼好传进池）共用这一处拼写：
+   * 两边的"同一份量"必须是同一个键，否则读数与判据会各说各话。★ 只放宽可见性，串本身一字未动。
+   */
+  static String pairKey(String laneKey, int buyOrderIndex, int sellOrderIndex) {
     return laneKey + "|" + buyOrderIndex + ">" + sellOrderIndex;
   }
 }
