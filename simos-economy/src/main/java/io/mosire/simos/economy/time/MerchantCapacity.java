@@ -39,12 +39,18 @@ import java.util.Objects;
  * {@link #tierOf(long)} 由运力规模分档、{@link #serviceRadiusOf} 由 tier 取具名默认（2/4/8）。<b>半径仍用于 判"这条 lane
  * 够不够得着"</b>（沿用旧 {@code servesLane} 语义：lane 长度 ≤ 半径；家户就在发货格 ⇒ 到发货格距离恒 0）， 但不落任何状态。
  *
+ * <p>★★★ <b>2026-10-10 A3 残留修复（F-1/F-3）：服务成市格的规模维改成"手上的运输服务货"</b>—— {@link #ofService(HouseholdId,
+ * HexCoord, long, long, long)} 是第二条装配口：{@code capacityMilli = 服务货可用量} （{@code max(0, haul 现货 − haul
+ * 冻结)}，与 {@link MerchantCapacityPool} 的运力预算<b>同一个操作数</b>）， {@code tier}/{@code serviceRadiusHex}
+ * 由它派生 ⇒ 设计书 §3.2「运力 = 该产业本周期可产出的服务量」与 §3.3 「市场自然议价（价格优先、同价按既有 canonical 序）」在"谁能提供运力"这一层上 <b>不再由劳动
+ * + 工具派生</b>。 ★ {@code laborMilli}/{@code toolMilli} 两栏在服务口径下**只作读数**（日志/读口），不进任何判据。
+ *
  * @param household 提供运力的家户（= 收款主体；家户是唯一持账主体）
  * @param carrier 该家户的 actor（{@code HouseholdActors.of(household)}；CARRIER_FEE 收款人）
  * @param hex 家户所在格 = 运力池所在格 = <b>发货格</b>（G-2）
  * @param laborMilli 本轮劳动投入（毫小时；参与率折算后）
  * @param toolMilli 本轮工具可投入量（毫商品；读不到 = 0）
- * @param capacityMilli 本轮运力（毫商品；= 劳动项 + 工具项）
+ * @param capacityMilli 本轮运力（毫商品；服务成市格 = 手上的运输服务货，其余格 = 劳动项 + 工具项）
  * @param tier 派生 tier 读数（不落状态）
  * @param serviceRadiusHex 派生服务半径读数（hex；不落状态）
  */
@@ -126,6 +132,48 @@ public record MerchantCapacity(
         laborMilli,
         toolMilli,
         capacity,
+        tier,
+        serviceRadiusOf(tier));
+  }
+
+  /**
+   * ★★ <b>2026-10-10 A3 残留修复（F-1/F-3）：由"手上的运输服务货可用量"派生一条运力读数</b>（服务成市格的唯一装配口）。
+   *
+   * <pre>
+   * 服务成市格（{@code MerchantCapacityPool} 的 haulServiceHexes 含该格）：
+   *   capacityMilli     = serviceAvailableMilli（= max(0, haul 现货 − haul 冻结)；与池的运力预算**同一个操作数**）
+   *   tier              = tierOf(capacityMilli)   ← 规模维换成服务货（A3 残留：旧口径由劳动 + 工具派生）
+   *   serviceRadiusHex  = serviceRadiusOf(tier)   ← 随 tier 派生（口径一致，不出现"tier 与服务货脱钩"的第二套）
+   *   laborMilli/toolMilli 两栏只作读数（日志/读口），不进任何判据
+   * </pre>
+   *
+   * <p>★ <b>缺省中性（I-H3）</b>：本方法**只在服务成市格被调用** —— 没有牌价的格一格都不走它 ⇒ 那些格的产量是 {@link #of} 的逐值结果，改前改后一字不变。★
+   * 两条装配口不并存于同一格：调用点按 {@code haulServiceHexes} 分流。
+   *
+   * <p>★ <b>档界沿用不新造</b>：{@link #tierOf(long)} 的三个档位本身承载的是"承运成本档（25/50/100‰）与触达范围（2/4/8
+   * hex）"这两个**规模的函数**，与服务货口径同一量纲（毫商品 ↔ 毫商品·程，A1 单位锚 1:1）⇒ 直接复用，不引入第二套阈值。
+   *
+   * @param serviceAvailableMilli 该户手上的运输服务货可用量（毫服务；{@code max(0, 现货 − 冻结)}）
+   * @param laborMilli 本轮劳动投入（毫小时；<b>只作读数</b>）
+   * @param toolMilli 本轮工具可投入量（毫商品；<b>只作读数</b>）
+   */
+  public static MerchantCapacity ofService(
+      HouseholdId household,
+      HexCoord hex,
+      long serviceAvailableMilli,
+      long laborMilli,
+      long toolMilli) {
+    if (serviceAvailableMilli < 0L) {
+      throw new IllegalArgumentException("运输服务货可用量不得为负: " + serviceAvailableMilli);
+    }
+    MerchantPolicy.MerchantTier tier = tierOf(serviceAvailableMilli);
+    return new MerchantCapacity(
+        household,
+        HouseholdActors.of(household),
+        hex,
+        laborMilli,
+        toolMilli,
+        serviceAvailableMilli,
         tier,
         serviceRadiusOf(tier));
   }

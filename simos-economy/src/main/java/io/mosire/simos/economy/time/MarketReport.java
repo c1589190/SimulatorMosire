@@ -660,6 +660,13 @@ public record MarketReport(
    *
    * <p>★ M2.7：{@code hex} = 这一单所在的格（买方 = 收货格、卖方 = 发货格）—— 逐区读数需要它把剩余归到区， 不能靠"猜 actor
    * 在哪"（那会是同一事实的第二处拼写）。
+   *
+   * <p>★★ <b>F-2（2026-10-10）：{@code logisticsDetail} = "卡在运力"这一档的**可分辨归因**</b>—— 改前"没有服务卖"与"运力不足"同为
+   * {@link MarketUnfilledReason#LOGISTICS_CAPACITY} ⇒ 公开读数不可分辨（而处置完全不同： 前者等下一轮产出、后者退单/等运力）。它装的是
+   * {@code MerchantCapacityPool.LogisticsBlock} 的具名字面量； {@code null} = 这一笔不是卡在运力（或没有具名归因）。★
+   * 它只作读数：不改任何判据、不进账本、不落状态。
+   *
+   * @param logisticsDetail 卡在运力时的具名归因档（见上；{@code null} = 不适用）
    */
   public record Unfilled(
       ActorRef actor,
@@ -667,13 +674,29 @@ public record MarketReport(
       CommodityId commodity,
       long quantity,
       MarketUnfilledReason reason,
-      HexCoord hex) {
+      HexCoord hex,
+      String logisticsDetail) {
 
     public Unfilled {
       Objects.requireNonNull(actor, "actor");
       Objects.requireNonNull(commodity, "commodity");
       Objects.requireNonNull(reason, "reason");
       Objects.requireNonNull(hex, "hex");
+    }
+
+    /**
+     * ★ <b>F-2 之前的 6 参入口</b>（夹具/旧读者）：{@code logisticsDetail = null}（"没有具名归因"）。
+     *
+     * <p>★ 保留它是为了让**既有夹具**不必为一条纯读数改签名（新代码请用规范构造器）。
+     */
+    public Unfilled(
+        ActorRef actor,
+        boolean buyerSide,
+        CommodityId commodity,
+        long quantity,
+        MarketUnfilledReason reason,
+        HexCoord hex) {
+      this(actor, buyerSide, commodity, quantity, reason, hex, null);
     }
   }
 

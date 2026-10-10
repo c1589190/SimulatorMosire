@@ -5360,6 +5360,9 @@ final class MarketSettlement {
         for (BuySlot buy : buys) {
           if (buy.remaining > 0L && buy.blocked == null) {
             buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
+            // ★★ F-2（2026-10-10）：本落点是**路线窗口容量**用尽（有货、有路、有运力池，窗口吃不下）
+            //   ⇒ 具名"运力不足"这一支，**不是**"没有服务卖"（两档不许混）。
+            buy.logisticsDetail = MerchantCapacityPool.LogisticsBlock.CAPACITY_EXHAUSTED.detail();
           }
           // ★★ M-A1（V-20）：本车道路线窗口容量用尽 ⇒ 未服务的余量记成"被运力截断"，不进自适应定价的统计。
           if (buy.remaining > 0L && recorded > 0L) {
@@ -5370,6 +5373,7 @@ final class MarketSettlement {
         for (SellSlot sell : sells) {
           if (sell.remaining > 0L) {
             sell.capacityBlocked = true;
+            sell.logisticsDetail = MerchantCapacityPool.LogisticsBlock.CAPACITY_EXHAUSTED.detail();
             if (recorded > 0L) {
               sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, recorded);
             }
@@ -6497,7 +6501,12 @@ final class MarketSettlement {
             quantity,
             0L,
             workPerGoodPerMille);
-        markCapacityBlocked(ctx, buy, sell, route.from, route.to, route.commodity, quantity);
+        // ★★ F-2（2026-10-10）：业务拒绝（"没有服务卖" / "缺提供商"）⇒ INFO 具名行（§一.9）；
+        //   运行期三支（半径/亚单位/耗尽）只进池侧 DEBUG/TRACE 读数。★ 无牌价 ⇒ 归因退回"运力不足"。
+        String blockedDetail = logisticsBlockDetail(ctx, route.from, allocation);
+        markCapacityBlocked(
+            ctx, buy, sell, route.from, route.to, route.commodity, quantity, blockedDetail);
+        logLogisticsBusinessRejection(ctx, buy, route, allocation, blockedDetail, quantity);
         return 0L;
       }
       executed = Math.min(quantity, allocated);
@@ -6511,8 +6520,18 @@ final class MarketSettlement {
           executed,
           workPerGoodPerMille);
       if (executed < quantity) {
+        String blockedDetail = logisticsBlockDetail(ctx, route.from, allocation);
         markCapacityBlocked(
-            ctx, buy, sell, route.from, route.to, route.commodity, quantity - executed);
+            ctx,
+            buy,
+            sell,
+            route.from,
+            route.to,
+            route.commodity,
+            quantity - executed,
+            blockedDetail);
+        logLogisticsBusinessRejection(
+            ctx, buy, route, allocation, blockedDetail, quantity - executed);
         // 应收而未收的名义运费：被运力截断的那部分没有收款人，读数具名、不静默变 0。
         uncollectedFreight = freightOf(quantity - executed, unitFreight);
       }
@@ -6864,6 +6883,67 @@ final class MarketSettlement {
   }
 
   /**
+   * ★★ <b>F-2（2026-10-10）：一条 lane 上"卡在运力"的**具名归因档**（唯一拼写点）</b>。
+   *
+   * <pre>
+   * 发货格 fromHex 服务成市（有 haul 牌价）⇒ 取池给出的那一档（缺提供商 / 缺服务货 / 半径外 / 亚单位 / 运力耗尽）
+   * 否则（无牌价）                          ⇒ "capacity-exhausted"（逐值等于改前的笼统"运力不足"）
+   * </pre>
+   *
+   * <p>★ 为什么按 {@code fromHex} 有没有牌价分流：服务口径与非服务口径的"没走完"归因不同（前者可能根本没货、 后者只可能是运力不够）；这一条与 {@code
+   * HaulService.pricedAt}（唯一的成市判据）同一口径。
+   */
+  private static String logisticsBlockDetail(
+      MatchContext ctx, HexCoord fromHex, MerchantCapacityPool.CarrierAllocation allocation) {
+    MerchantCapacityPool.LogisticsBlock block = allocation.logisticsBlock();
+    return haulServiceAt(ctx, fromHex)
+        ? block.detail()
+        : MerchantCapacityPool.LogisticsBlock.CAPACITY_EXHAUSTED.detail();
+  }
+
+  /**
+   * ★★ <b>F-2（2026-10-10）：业务拒绝的 INFO 具名行</b>（§一.9 分级："业务拒绝 = INFO"）—— 只在归因档是**业务拒绝**（缺提供商 /
+   * 缺服务货）时发一行；运行期三支（半径 / 亚单位 / 耗尽）不发（那由池侧 DEBUG/TRACE 与逐轮 INFO 分档给出）。★ 不发 ⇒ 缺省世界（无牌价、无跨格需求）日志逐字不变。
+   *
+   * <p>★ 它是"买不到运力"的**第一现场读数**：改前这一档在公开读数面与"运力不足"同为 {@code LOGISTICS_CAPACITY}， 读者必须开 DEBUG
+   * 才能分辨；现在这一行按具名 reason 出现，另加 {@link MarketReport.Unfilled#logisticsDetail()} 的逐笔细分。
+   */
+  private static void logLogisticsBusinessRejection(
+      MatchContext ctx,
+      BuySlot buy,
+      RouteContext route,
+      MerchantCapacityPool.CarrierAllocation allocation,
+      String detail,
+      long truncatedMilli) {
+    if (truncatedMilli <= 0L || !allocation.businessRejection()) {
+      return;
+    }
+    EventLog.channel(MARKET)
+        .info(
+            LogEvent.of(
+                "LOGISTICS_SERVICE_SUPPLY_REJECTED",
+                EconomyLogSource.ECONOMY_ORGANIZATION,
+                "day",
+                ctx.round.day,
+                "reason",
+                detail,
+                "commodity",
+                route.commodity.value(),
+                "fromHex",
+                route.from,
+                "toHex",
+                route.to,
+                "buyer",
+                buy.buyer.actor.id(),
+                "truncatedMilli",
+                truncatedMilli,
+                "requestedMilli",
+                allocation.requestedMilli(),
+                "unallocatedMilli",
+                allocation.unallocatedMilli()));
+  }
+
+  /**
    * ★★ <b>承运运力不足的具名落点</b>：买方槽 blocked、卖方槽 capacityBlocked、路线 bottleneck（有这条车道时），三处都
    * 读得到；并把<b>被运力截断的量</b>累加到两个槽位（V-20：截断部分不许进自适应定价的 demand/supply 统计）。
    *
@@ -6882,10 +6962,15 @@ final class MarketSettlement {
       HexCoord from,
       HexCoord to,
       CommodityId commodity,
-      long truncatedMilli) {
+      long truncatedMilli,
+      String logisticsDetail) {
     if (buy.blocked == null) {
       buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
     }
+    // ★★ F-2（2026-10-10）：**具名归因档**与 blocked 在**同一处**落定（两者不可能漂开）；卖方侧同写。
+    //   档由调用方从池的分配结果取（缺提供商 / 缺服务货 / 半径外 / 亚单位 / 运力耗尽；无牌价 ⇒ "运力不足"）。
+    buy.logisticsDetail = logisticsDetail;
+    sell.logisticsDetail = logisticsDetail;
     sell.capacityBlocked = true;
     // ★★ D-1b（净额记账）：同一次配对的这份未服务量只记一次 —— 本笔"没分到的那份"在同一轮的多次试配 / 多个运力窗口上
     //   会被反复观察到（**同一份**量）；整条车道级的水位（整条拦下 / 路线窗口用尽记在所有还有剩余的槽位上）同样要认。
@@ -6934,6 +7019,14 @@ final class MarketSettlement {
       }
     }
     long blocked = Math.min(buyTotal, sellTotal);
+    // ★★ F-2（2026-10-10）：**可分辨归因** —— 发货格有牌价（运输服务成市）⇒ 本格的拒绝原因不再是笼统的"没有承运人"，
+    //   而是具名的"这一格没有跑商家户"（缺提供商）；没有牌价 ⇒ 退回既有的"运力不足"一支（逐值等于改前）。
+    //   ★ 与"有跑商家户但没有服务货"（池侧 NO_SERVICE_GOODS）**分开**：两者处置不同（引商 vs 等货）。
+    //   ★ 这一档随轮级读数（池的 blockedByReason 与 MARKET 的 blockedByReason）进公开面。
+    String detail =
+        haulServiceAt(ctx, sellerHex)
+            ? MerchantCapacityPool.NO_MERCHANT_HOUSEHOLD_REASON
+            : MerchantCapacityPool.LogisticsBlock.CAPACITY_EXHAUSTED.detail();
     // ★★ D-1b（净额记账）：整条车道的这份未服务量只记一次 —— 同一份量可能已由本轮的**别的落点**记过
     //   （承运分配不足 / 路线窗口预算用尽），那两次相加会把**已服务**的那一份也剔出价格统计（V-20 幅度错）。
     long recorded =
@@ -6949,15 +7042,39 @@ final class MarketSettlement {
         if (buy.blocked == null) {
           buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
         }
+        // ★★ F-2：具名归因与 blocked 同写点（有牌价 ⇒ "缺提供商"；无牌价 ⇒ 退回"运力不足"）。
+        buy.logisticsDetail = detail;
       }
     }
     for (SellSlot sell : sells) {
       if (sell.remaining > 0L) {
         sell.capacityBlocked = true;
+        sell.logisticsDetail = detail;
         if (recorded > 0L) {
           sell.capacityTruncatedMilli = Math.addExact(sell.capacityTruncatedMilli, recorded);
         }
       }
+    }
+    // ★★ F-2（§一.9 分级）：**业务拒绝 = INFO**（不必开 DEBUG 就能分辨"没有服务卖"与"运力不足"）。
+    //   ★ 只在真的有量被拦（blocked > 0）时发一行 —— 缺省世界（无牌价、无跨格需求）一行不打。
+    if (blocked > 0L && MerchantCapacityPool.NO_MERCHANT_HOUSEHOLD_REASON.equals(detail)) {
+      EventLog.channel(MARKET)
+          .info(
+              LogEvent.of(
+                  "LOGISTICS_SERVICE_SUPPLY_REJECTED",
+                  EconomyLogSource.ECONOMY_ORGANIZATION,
+                  "day",
+                  ctx.round.day,
+                  "reason",
+                  detail,
+                  "commodity",
+                  commodity.value(),
+                  "sellerHex",
+                  sellerHex,
+                  "buyerHex",
+                  buyerHex,
+                  "truncatedMilli",
+                  blocked));
     }
     if (MARKET.isDebugEnabled() && blocked > 0L) {
       EventLog.channel(MARKET)
@@ -6979,7 +7096,7 @@ final class MarketSettlement {
                   "recordedMilli",
                   recorded,
                   "reason",
-                  "shipping-hex-has-no-merchant-household"));
+                  detail));
     }
   }
 
@@ -7764,7 +7881,15 @@ final class MarketSettlement {
       }
       ctx.unfilled.add(
           new MarketReport.Unfilled(
-              buy.buyer.actor, true, buy.order.commodity(), buy.remaining, reason, buy.hex));
+              buy.buyer.actor,
+              true,
+              buy.order.commodity(),
+              buy.remaining,
+              reason,
+              buy.hex,
+              // ★★ F-2（2026-10-10）：卡在运力时带上具名归因档（"没有服务卖" vs "运力不足"）——
+              //   reason 仍是既有的 LOGISTICS_CAPACITY（读数面兼容），本栏是**可分辨的那一半**。
+              buy.logisticsDetail));
     }
     // ── 卖方：逐条按"合格买方是否存在"分档（不再 anyBuy ⇒ NO_BUDGET 的全局写法）────────────
     Map<SellSlot, MarketUnfilledReason> sellerReasons = new LinkedHashMap<>();
@@ -7776,7 +7901,13 @@ final class MarketSettlement {
       sellerReasons.put(sell, reason);
       ctx.unfilled.add(
           new MarketReport.Unfilled(
-              sell.seller.actor, false, sell.order.commodity(), sell.remaining, reason, sell.hex));
+              sell.seller.actor,
+              false,
+              sell.order.commodity(),
+              sell.remaining,
+              reason,
+              sell.hex,
+              sell.logisticsDetail));
     }
     collectSellerOutcomes(ctx, indexes, sellerReasons);
     collectBuyerOutcomes(ctx, indexes);
@@ -9039,6 +9170,15 @@ final class MarketSettlement {
     MarketUnfilledReason blocked;
 
     /**
+     * ★★ <b>F-2（2026-10-10）：本槽"卡在运力"的**具名归因档**</b>（{@link MerchantCapacityPool.LogisticsBlock}
+     * 的具名字面量）—— 与 {@link #blocked}{@code == LOGISTICS_CAPACITY} **同一写点**落定（两者不可能漂开）。{@code null} =
+     * 不适用。
+     *
+     * <p>★ 它只作读数（进 {@link MarketReport.Unfilled#logisticsDetail()} 与逐轮 INFO 分档），不改任何判据、不进账本、不落状态。
+     */
+    String logisticsDetail;
+
+    /**
      * ★★ <b>M-A1（V-20）：本槽被运力截断的量</b>（毫商品）—— 与 {@link SellSlot#capacityTruncatedMilli} 对称：
      * 本轮因运力未获服务的量不进喂给自适应定价的 demand 统计（被截断的部分不提价；两侧都剔）。
      */
@@ -9196,6 +9336,14 @@ final class MarketSettlement {
 
     /** ★★ 2026-10-09：本槽剩余是否卡在"承运运力不足"（路线窗口/逐 hex 运力池）。 */
     boolean capacityBlocked;
+
+    /**
+     * ★★ <b>F-2（2026-10-10）：本槽"卡在运力"的**具名归因档**</b>（{@link MerchantCapacityPool.LogisticsBlock}
+     * 的具名字面量）—— 与 {@link #capacityBlocked} **同一写点**落定。{@code null} = 不适用。
+     *
+     * <p>★ 它只作读数（进 {@link MarketReport.Unfilled#logisticsDetail()} 与逐轮 INFO 分档），不改任何判据、不进账本、不落状态。
+     */
+    String logisticsDetail;
 
     /**
      * ★★ <b>M-A1（V-20）：本槽被运力截断的量</b>（毫商品）—— 它在**真正因运力拦下**的三处累加（发货格无运力 / 分配不足 / 路线窗口容量用尽），由 {@code

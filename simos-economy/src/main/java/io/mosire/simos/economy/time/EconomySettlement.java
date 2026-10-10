@@ -2212,8 +2212,17 @@ public final class EconomySettlement {
         }
       }
       Map<MarketUnfilledReason, Long> reasonCounts = new TreeMap<>();
+      // ★★ F-2（2026-10-10）：**"卡在运力"这一档的具名细分**（键 = MerchantCapacityPool.LogisticsBlock 的字面量）——
+      //   改前"没有服务卖"与"运力不足"在读数里同为 LOGISTICS_CAPACITY；这里按**具名档**分列未成交量，
+      //   让两者在公开读数面（本条 INFO/TRACE 的 MARKET 汇总）可分辨（§一.9：业务拒绝本该 INFO 可读）。
+      //   ★ 保序 = LinkedHashMap（I7：键序是内容的纯函数，禁 Map.copyOf/无序表）。
+      Map<String, Long> logisticsDetailCounts = new LinkedHashMap<>();
       for (MarketReport.Unfilled unfilled : report.unfilled()) {
         reasonCounts.merge(unfilled.reason(), 1L, Long::sum);
+        if (unfilled.reason() == MarketUnfilledReason.LOGISTICS_CAPACITY
+            && unfilled.logisticsDetail() != null) {
+          logisticsDetailCounts.merge(unfilled.logisticsDetail(), unfilled.quantity(), Long::sum);
+        }
       }
       EventLog.channel(TRACE)
           .info(
@@ -2236,6 +2245,9 @@ public final class EconomySettlement {
                   report.unfilled().size(),
                   "reasons",
                   reasonCounts,
+                  // ★★ F-2：LOGISTICS_CAPACITY 的具名细分（空表 = 本轮没有卡在运力的未成交；缺省中性）。
+                  "logisticsDetailQuantities",
+                  logisticsDetailCounts,
                   "creditFills",
                   report.creditFills().size(),
                   "creditMoney",

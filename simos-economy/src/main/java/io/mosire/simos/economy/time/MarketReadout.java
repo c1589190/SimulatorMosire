@@ -408,6 +408,10 @@ public record MarketReadout(
     Map<MarketUnfilledReason, Long> sellCounts = new LinkedHashMap<>();
     Map<MarketUnfilledReason, Long> buyQuantities = new LinkedHashMap<>();
     Map<MarketUnfilledReason, Long> sellQuantities = new LinkedHashMap<>();
+    // ★★ F-2（2026-10-10）：**"卡在运力"这一档的具名细分**（键 = MerchantCapacityPool.LogisticsBlock 的字面量）
+    //   —— 让"没有服务卖"（业务拒绝）与"运力不足"在同一张读数里**分开**（改前两者同为 LOGISTICS_CAPACITY）。
+    //   ★ 只收 reason == LOGISTICS_CAPACITY 且带具名档的那些条目；没有 ⇒ 空表（缺省中性：读数一字不变）。
+    Map<String, Long> logisticsDetailQuantities = new LinkedHashMap<>();
     for (MarketReport.Fill fill : report.fills()) {
       if (!fill.commodity().equals(commodity)) {
         continue;
@@ -445,6 +449,11 @@ public record MarketReadout(
       } else {
         sellCounts.merge(unfilled.reason(), 1L, Long::sum);
         sellQuantities.merge(unfilled.reason(), unfilled.quantity(), Long::sum);
+      }
+      // ★★ F-2：具名细分（只对"卡在运力"这一档有值；其余档 detail 为 null ⇒ 不进表）。
+      if (unfilled.reason() == MarketUnfilledReason.LOGISTICS_CAPACITY
+          && unfilled.logisticsDetail() != null) {
+        logisticsDetailQuantities.merge(unfilled.logisticsDetail(), unfilled.quantity(), Long::sum);
       }
     }
     for (MarketReport.RouteUsage route : report.routes()) {
@@ -554,7 +563,8 @@ public record MarketReadout(
         buyCounts,
         sellCounts,
         buyQuantities,
-        sellQuantities);
+        sellQuantities,
+        logisticsDetailQuantities);
   }
 
   private static List<CommodityId> sortedCommodities(Market anchorMarket) {
@@ -667,7 +677,10 @@ public record MarketReadout(
    *   <li>{@code freightByCurrency} = 逐币实付运费（键 = 该笔的运费币 = 买方支付币）；
    *   <li>{@code unusedCapacityMilli} = 每条路线的 {@code max(0, 每窗运力 × 最大轮数 − 已用)} 之和（量，不是钱）；
    *   <li>{@code unfilled*Counts} / {@code unfilled*Quantities}：买方/卖方两侧分开、逐原因档——"有货卖不掉"与
-   *       "买不起"因此不会合成一个数。
+   *       "买不起"因此不会合成一个数；
+   *   <li>★★ <b>F-2：{@code unfilledLogisticsDetailQuantities}</b>：{@code LOGISTICS_CAPACITY}
+   *       这一档的**具名细分** （键 = 具名归因档的字面量，值 = 该档的未成交量之和）—— "没有服务卖"（业务拒绝，等下一轮产出）与
+   *       "运力不足"（退单/等运力）因此**可分辨**；没有具名档 ⇒ 空表（缺省中性：读数不变）。
    * </ul>
    *
    * @param landedPriceExcludedFills 因<b>单价币 ≠ 运费币</b>而未计入任何币到货价的成交笔数（0 = 本区本商品全是同币成交；
@@ -695,7 +708,8 @@ public record MarketReadout(
       Map<MarketUnfilledReason, Long> unfilledBuyCounts,
       Map<MarketUnfilledReason, Long> unfilledSellCounts,
       Map<MarketUnfilledReason, Long> unfilledBuyQuantities,
-      Map<MarketUnfilledReason, Long> unfilledSellQuantities) {
+      Map<MarketUnfilledReason, Long> unfilledSellQuantities,
+      Map<String, Long> unfilledLogisticsDetailQuantities) {
 
     public CommodityMatchReadout {
       Objects.requireNonNull(landedPriceByCurrency, "landedPriceByCurrency");
@@ -720,6 +734,12 @@ public record MarketReadout(
       unfilledSellCounts = Collections.unmodifiableMap(copyCounts(unfilledSellCounts));
       unfilledBuyQuantities = Collections.unmodifiableMap(copyCounts(unfilledBuyQuantities));
       unfilledSellQuantities = Collections.unmodifiableMap(copyCounts(unfilledSellQuantities));
+      // ★★ F-2：具名细分表同款防御性拷贝（保序 LinkedHashMap + 不可变；禁 Map.copyOf，I7）。
+      unfilledLogisticsDetailQuantities =
+          Collections.unmodifiableMap(
+              unfilledLogisticsDetailQuantities == null
+                  ? new LinkedHashMap<>()
+                  : new LinkedHashMap<>(unfilledLogisticsDetailQuantities));
     }
 
     /**

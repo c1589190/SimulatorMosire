@@ -57,6 +57,20 @@ import java.util.Set;
  * G-2 运力池挂**发货格**（select 的 from）
  * </pre>
  *
+ * <p>★★★ <b>2026-10-10 A3 残留修复（本批；F-1 / F-3 / F-2）</b>—— 服务成市格的三处口径收口（其余格一个判据都不动）：
+ *
+ * <pre>
+ * F-1 进池/提供者判据  服务成市的格：判据 = **持有可交付的 {@code haul} 服务货**（{@code max(0, 现货 − 冻结) > 0}）
+ *                      ★ 旧判据"劳动 + 工具 > 0"是**已退役的门槛家族残留**：劳动/工具为 0 但手上有服务货的户
+ *                        结构上卖不出服务，与设计书 §3.2「运力 = 该产业本周期可产出的服务量」不一致。
+ *                      其余格：判据一字不变（{@code capacityMilli > 0}）⇒ 无牌价的世界逐值退回改前（I-H3）。
+ * F-3 tier / 限价序    服务成市格：{@code tier} 与半径由**服务货可用量**派生（{@link MerchantCapacity#ofService}），
+ *                      限价 = 承运成本(tier) + 上门附加费；序仍是**价格优先**（{@code askPerMille} 升序）→ 同价按
+ *                      M-A1 的 canonical 序（议价权降序 → 家户 id 升序）——**不另设特权队列**（设计书 §3.3）。
+ * F-2 归因可分辨        {@link LogisticsBlock}：把"没有服务卖"（业务拒绝，INFO）与"运力不足"（运行期读数）分开，
+ *                      随 {@link CarrierAllocation#logisticsBlock()} 返回、并在逐轮 INFO 汇总的 {@code blockedByReason} 分档计数。
+ * </pre>
+ *
  * <p>★★★ <b>A3 阅读提示（2026-10-10）：下面这三段（G3-fix-2 / G3-leftovers / G3-fix-3）是**工具门槛的演进史**
  * ——门槛族已整族退役（见类末 A3 注与 {@code MerchantHaul} 的删除）⇒ 这三段**只作留痕**，不是现行判据。现行的
  * "本条能不能成立"只有一条判据：该条目还有没有服务货（{@code remainingWorkMilli &gt; 0}，I-H2），见 {@link #select}。
@@ -192,10 +206,42 @@ public final class MerchantCapacityPool {
 
   /** 空池（没有跑商家户的世界 / worker 本地副本）。 */
   private static final MerchantCapacityPool EMPTY =
-      new MerchantCapacityPool(Map.of(), Map.of(), Map.of(), 0L, false, 0L, Set.of());
+      new MerchantCapacityPool(
+          Map.of(), Map.of(), Map.of(), 0L, false, 0L, Set.of(), new LinkedHashMap<>());
+
+  /**
+   * ★★ <b>F-2（2026-10-10）：本类"为什么这条路没走完"归因词表的两个**非**运力支</b>。
+   *
+   * <pre>
+   * NO_MERCHANT_HOUSEHOLD_REASON  具名归因：本格没有"选了跑商的家户"（连卖家都没有）
+   * NO_SERVICE_GOODS_REASON       具名归因：本格**有**跑商家户，但一件可交付服务货都没有（等下一轮产出）
+   *                                ★ 与 {@link HaulService#NO_SERVICE_SUPPLY_REASON} 分开：
+   *                                  前者是"没有提供商"，后者是"有提供商但没有货"——处置不同（引商 vs 等货）。
+   * </pre>
+   *
+   * <p>★ 这两支与 {@code out-of-derived-radius} / {@code sub-unit-residual} / {@code
+   * capacity-exhausted} 一起由 {@link #laneBlockedReason} 拼成**同一份** fixed-order 词表；
+   * 它们只进读数（INFO/DEBUG/TRACE）， <b>不是任何判据</b>（§一.9 的日志纪律）。★ 字面量与 {@code
+   * HaulService.NO_SERVICE_SUPPLY_REASON} 同制（小写连字符）， 是逐轮 INFO 汇总 {@code blockedByReason}
+   * 栏的键，也是读数面按名分档的依据。
+   */
+  public static final String NO_MERCHANT_HOUSEHOLD_REASON = "no-merchant-household-in-shipping-hex";
+
+  /** 见 {@link #NO_MERCHANT_HOUSEHOLD_REASON}：有跑商家户、但手上没有可交付的服务货。 */
+  public static final String NO_SERVICE_GOODS_REASON = "merchant-household-holds-no-service-goods";
 
   /** ★★ <b>A2：走"运输服务货"口径的格集</b>（空集 = 缺省口径，逐值退回改前）。只作日志归因（"为什么这一格买不到运力"）。 */
   private final Set<HexCoord> haulServiceHexes;
+
+  /**
+   * ★★ <b>F-2（2026-10-10）：本轮的"装配期缺货计数"（**瞬态、每轮一份、只进日志**）</b>—— 键 = 具名词表，值 = 该事实
+   * 在本轮出现的**家户数**。当前唯一在册的键是 {@link #NO_SERVICE_GOODS_REASON}（服务成市格里"选了跑商、但手上可交付服务货 为 0"的家户数）。
+   *
+   * <p>★ 它<b>不是</b>状态组件：不落盘、不进 codec / 变更集、不参与任何判据、不改变任何返回值； 每轮装配时新建（与池同生命周期）。 理由是 §一.9
+   * 要求"业务拒绝在公开读数面可分辨"——把"没有服务卖"（本表 + 运行期 {@code MARKET} 的 {@code
+   * logisticsDetailQuantities}）与"没有承运人"（{@link #NO_MERCHANT_HOUSEHOLD_REASON}）分开，读者不必开 DEBUG。
+   */
+  private final Map<String, Long> serviceAbsentTally;
 
   /** 逐格池（键序 = hex 的规范序；值按分配序、不可变）。 */
   private final Map<HexCoord, List<Entry>> byHex;
@@ -233,13 +279,16 @@ public final class MerchantCapacityPool {
       long householdCount,
       boolean priced,
       long maxAskPerMille,
-      Set<HexCoord> haulServiceHexes) {
+      Set<HexCoord> haulServiceHexes,
+      Map<String, Long> serviceAbsentTally) {
     this.byHex = byHex;
     this.totalCapacityByHex = totalCapacityByHex;
     this.byHousehold = byHousehold;
     this.householdCount = householdCount;
     this.priced = priced;
     this.maxAskPerMille = maxAskPerMille;
+    // ★★ F-2（2026-10-10）：缺货计数的**构造期防御性拷贝**（保序 + 不可变；I7 禁 Map.copyOf）。
+    this.serviceAbsentTally = Collections.unmodifiableMap(new LinkedHashMap<>(serviceAbsentTally));
     this.haulServiceHexes =
         haulServiceHexes == null
             ? Set.of()
@@ -321,7 +370,8 @@ public final class MerchantCapacityPool {
    *
    * <pre>
    * 服务成市的格（haulServiceHexes 含该格）⇒ 该户本轮运力预算 = max(0, haul 现货 − haul 冻结)   ← 服务商品账，I-H2
-   * 其余格                                ⇒ 逐值退回 {@link MerchantCapacity} 的既有算式（劳动 + 工具）
+   *                                        ★ 进池**不再要求**"劳动 + 工具 > 0"（F-1）；tier/半径由服务货规模派生（F-3）
+   * 其余格                                ⇒ 逐值退回 {@link MerchantCapacity} 的既有算式（劳动 + 工具），进池判据同改前
    * </pre>
    *
    * <p>★★ <b>为什么必须按格分流</b>：服务市场的开关是 {@code Market.hasPrice(haul)}（唯一拼写点 = {@link
@@ -331,6 +381,11 @@ public final class MerchantCapacityPool {
    * <p>★★ <b>A3（2026-10-10）：工具门槛已删</b>——服务口径下"能不能跑"只由**手上有没有服务货**决定（I-H2）， 工具不再是跑商的市场轮门槛：它由 {@code
    * trade} 产业声明的周期投入经**标准生产管线**消耗 （{@code Industry.cycleInputPerUnit} → 现扣 + 挂单保留），见设计书 §3.2 与 §5
    * I-H6。
+   *
+   * <p>★★★ <b>F-1/F-3（2026-10-10 A3 残留修复）</b>：服务成市格的**进池判据**从"劳动 + 工具 &gt; 0"（已退役的门槛家族残留）
+   * 换成"选了跑商即进池、运力 = 手上的服务货"；{@code tier}/{@code serviceRadiusHex}/{@code askPerMille} 随之由 **服务货规模 +
+   * 牌价**派生（见 {@link MerchantCapacity#ofService} 与 {@link #askPerMilleOf}）， <b>序仍是"价格优先 → 同价按
+   * canonical 序"，不另设特权队列</b>（设计书 §3.3、Q-25）。
    *
    * @param haulServiceHexes <b>服务成市</b>的格（{@link HaulService#pricedAt} 为真的那些格）；{@code null} = 全都不是
    */
@@ -364,6 +419,8 @@ public final class MerchantCapacityPool {
     households.sort(Comparator.comparing(HouseholdId::value));
     Map<HexCoord, List<Entry>> pool = new LinkedHashMap<>();
     Map<HexCoord, Long> totals = new LinkedHashMap<>();
+    // ★★ F-2：装配期的缺货计数（**局部**，装配完交给池；见字段注：瞬态、只进日志、不是状态组件）。
+    Map<String, Long> serviceAbsent = new LinkedHashMap<>();
     long counted = 0L;
     long maxAsk = 0L;
     for (HouseholdId household : households) {
@@ -372,6 +429,7 @@ public final class MerchantCapacityPool {
       if (row == null || !MerchantIdentity.selectsMerchant(standing, classPositions)) {
         continue;
       }
+      HexCoord hex0 = row.view().hex();
       // ★★ A3（2026-10-10）：工具维 = {@link MerchantCapacity} 的**作业层**可投入量（装配点的存量 − 冻结）。
       //   它**不再是任何门槛**（旧 "每趟烧 1,000 毫工具" 的门槛已随 MerchantHaul 删除）：工具由 trade 产业声明的
       //   周期投入经标准生产管线消耗（设计书 §3.2 / I-H6）⇒ 这里读它只为把"运力规模"（tier/share 的派生依据）
@@ -381,11 +439,45 @@ public final class MerchantCapacityPool {
       long toolFrozenMilli =
           frozenGoods.getOrDefault(household, Map.of()).getOrDefault(TOOL_COMMODITY, 0L);
       long toolMilli = Math.max(0L, toolStockMilli - toolFrozenMilli);
+      // ★★ A2：服务成市的格 ⇒ 本轮运力预算 = 该户手上的**运输服务货**（max(0, 现货 − 冻结)）——
+      //   卖出多少服务就得有多少货（I-H2），"服务不能凭空造"由此结构性成立；其余格逐值退回劳动+工具算式。
+      //   ★ 单位锚（A1）：1 商品单位 haul = 1,000 毫服务 = 1,000 毫商品·程 ⇒ 这里不需要第二次换算。
+      boolean servicePriced = haulServiceHexes != null && haulServiceHexes.contains(hex0);
+      long serviceAvailableMilli =
+          Math.max(
+              0L,
+              goods.getOrDefault(household, Map.of()).getOrDefault(HaulService.HAUL_COMMODITY, 0L)
+                  - frozenGoods
+                      .getOrDefault(household, Map.of())
+                      .getOrDefault(HaulService.HAUL_COMMODITY, 0L));
+      // ★★★ F-1（2026-10-10，A3 残留修复）：**进池/提供者判据改成与"有服务货"一致**。
+      //
+      //   服务成市的格：**进池不再要求"劳动 + 工具 > 0"**（那是已退役的门槛家族残留）——该户只要"选了跑商"
+      //     就进池，它的运力预算 = **手上可交付的服务货**（{@code max(0, 现货 − 冻结)}，I-H2）。
+      //     ⇒ 一个劳动/工具为 0 但持有服务货的户**结构上不再卖不出服务**（设计书 §3.2「运力 = 该产业本周期
+      //       可产出的服务量」）。★ 预算为 0 的条目留在池里但**分不到任何量**（{@code select} 只看预算），
+      //       这样"本格**有**跑商家户、但没有服务货"这条事实在读数面仍然看得见（{@code householdCountAt} /
+      //       {@code MERCHANT_CAPACITY_HOUSEHOLD}）—— 它是 F-2 "没有服务卖" 与 "没有承运人" 分辨的依据。
+      //   其余格（无牌价）：判据**一字不变**（{@code capacityMilli > 0}）⇒ 逐值退回改前（I-H3 缺省中性）。
+      //   ★ 分格分流的开关仍是 HaulService.pricedAt（唯一拼写点）——不是"算出来恰好相等"。
       MerchantCapacity capacity =
-          MerchantCapacity.of(
-              household, row.view().hex(), row.participationAdjustedLaborMilli(), toolMilli);
-      if (capacity.capacityMilli() <= 0L) {
-        continue; // 0 运力 = 不进池（"有这家户"与"它提供运力"是两件事）
+          servicePriced
+              // ★★ F-3：服务成市格的 tier / 半径由**服务货可用量**派生（{@link MerchantCapacity#ofService}），
+              //   不再由劳动 + 工具派生；labor/tool 两栏降为读数（见该方法注）。
+              ? MerchantCapacity.ofService(
+                  household,
+                  hex0,
+                  serviceAvailableMilli,
+                  row.participationAdjustedLaborMilli(),
+                  toolMilli)
+              : MerchantCapacity.of(
+                  household, hex0, row.participationAdjustedLaborMilli(), toolMilli);
+      if (capacity.capacityMilli() <= 0L && !servicePriced) {
+        continue; // 0 运力 = 不进池（无牌价格：逐字等于改前；"有这家户"与"它提供运力"是两件事）
+      }
+      if (servicePriced && serviceAvailableMilli <= 0L) {
+        // F-2 具名归因：**有提供商、但没有货**（与"没有提供商"分开计数；只进读数，不改判据）。
+        serviceAbsent.merge(NO_SERVICE_GOODS_REASON, 1L, Math::addExact);
       }
       long askPerMille = askPerMilleOf(capacity, priced);
       maxAsk = Math.max(maxAsk, askPerMille);
@@ -393,20 +485,7 @@ public final class MerchantCapacityPool {
       // ★★ M-C：纯商号（H-2：**主业** ∈ merchant.*）/ 顺便跑商（merchant 只在副业）—— 免运费与利润算式的分流依据；
       //   判据的唯一拼写点在 {@link MerchantIdentity}。
       boolean pureMerchant = MerchantIdentity.isPureMerchant(standing, classPositions);
-      // ★★ A2：服务成市的格 ⇒ 本轮运力预算 = 该户手上的**运输服务货**（max(0, 现货 − 冻结)）——
-      //   卖出多少服务就得有多少货（I-H2），"服务不能凭空造"由此结构性成立；其余格逐值退回劳动+工具算式。
-      //   ★ 单位锚（A1）：1 商品单位 haul = 1,000 毫服务 = 1,000 毫商品·程 ⇒ 这里不需要第二次换算。
-      long workBudgetMilli =
-          haulServiceHexes != null && haulServiceHexes.contains(hex)
-              ? Math.max(
-                  0L,
-                  goods
-                          .getOrDefault(household, Map.of())
-                          .getOrDefault(HaulService.HAUL_COMMODITY, 0L)
-                      - frozenGoods
-                          .getOrDefault(household, Map.of())
-                          .getOrDefault(HaulService.HAUL_COMMODITY, 0L))
-              : capacity.capacityMilli();
+      long workBudgetMilli = servicePriced ? serviceAvailableMilli : capacity.capacityMilli();
       // ★★ A3：`posted`（有没有逐户挂运力单）随自报价簿退役 —— 现在**不存在**逐户覆写，"限价"是条目的纯派生量
       //   （{@link #askPerMilleOf}）⇒ 该读数栏恒为假、已从条目与日志里删除。
       pool.computeIfAbsent(hex, ignored -> new ArrayList<>())
@@ -447,13 +526,24 @@ public final class MerchantCapacityPool {
             counted,
             priced,
             maxAsk,
-            haulServiceHexes);
+            haulServiceHexes,
+            serviceAbsent);
     // ★★ G3-leftovers：本池的逐户**装配**读数（事件 {@code MERCHANT_CAPACITY_HOUSEHOLD}）不在这里发射 ——
     //   本方法拿不到世界日（{@link #of} 的入参里没有 tick），而该事件按 §一.9 必须带 `day` 才能与同日的
     //   {@code MARKET_*} 逐户按日对齐。发射点 = tick 面的装配调用方
     //   （{@code EconomySettlement}，与 {@code CAPACITY_QUOTE_BOOK} 同款先例）：{@link
     // #logHouseholdAssembly(long)}。
     return built;
+  }
+
+  /**
+   * ★★ <b>F-2：本轮的装配期缺货计数（保序、不可变；没有 ⇒ 空表）</b>—— 供逐轮 INFO 汇总读。
+   *
+   * <p>★ 保序 = {@code LinkedHashMap} + {@code Collections.unmodifiableMap}（I7 确定性；禁 {@code
+   * Map.copyOf}）。 它是**只读视图**：键的插入序由首次出现序决定（装配按家户 id 升序遍历 ⇒ 内容的纯函数）。
+   */
+  public Map<String, Long> serviceAbsentTally() {
+    return Collections.unmodifiableMap(new LinkedHashMap<>(serviceAbsentTally));
   }
 
   /** 纯状态派生查询（工具维取 0 ⇒ 运力下界，J-2）：该格有没有"选了跑商且有运力"的家户。 */
@@ -572,6 +662,8 @@ public final class MerchantCapacityPool {
       this.pureMerchant = pureMerchant;
       // ★★ A2：本轮运力预算的**唯一产生点** —— 缺省口径 = {@link MerchantCapacity#capacityMilli()}（劳动 + 工具，
       //   逐值不变）；服务成市的格 = 该户手上的运输服务货（{@code assemble} 现算，I-H2）。
+      // ★★ F-1（2026-10-10）：服务成市格的 budget 与 capacity 是**同一个操作数**（服务货可用量）——
+      //   这正是"进池判据 = 有服务货"的算术落点；labor/tool 两栏在服务口径下只作读数。
       this.remainingWorkMilli = workBudgetMilli;
     }
   }
@@ -795,6 +887,13 @@ public final class MerchantCapacityPool {
               consumed));
     }
     long allocated = quantityMilli - demandLeft;
+    // ★★ F-2（2026-10-10）：本笔未获服务的具名归因档（**一次算、两处读** —— DEBUG 行与返回值读的是同一份）。
+    LogisticsBlock logisticsBlock =
+        logisticsBlockOf(
+            pool,
+            unreachableWork,
+            subUnitWork,
+            haulServiceHexes.contains(from) && totalCapacityByHex.getOrDefault(from, 0L) <= 0L);
     // ★★ 2026-10-10：真有未服务量时先记一笔"观察"（无条件记 —— 与日志档位无关，否则 INFO 汇总会在只开 INFO 时假报 0），
     //   再按档位发 DEBUG 行。★ 记账结果**只被下面那几个字段读**：不改 demandLeft、不改 choices、不改返回值。
     if (demandLeft > 0L) {
@@ -847,10 +946,18 @@ public final class MerchantCapacityPool {
                         subUnitWork,
                         // ★★ A2：这一格是"服务货口径"却一件服务货都没有 ⇒ 具名归因（"为什么买不到"的第一现场）。
                         haulServiceHexes.contains(from)
-                            && totalCapacityByHex.getOrDefault(from, 0L) <= 0L)));
+                            && totalCapacityByHex.getOrDefault(from, 0L) <= 0L),
+                    // ★★ F-2（2026-10-10）：**可分辨的归因档**（与上面 reason 同一组操作数算出的单一支）——
+                    //   业务拒绝（缺提供商 / 缺服务货）的档位在 INFO 汇总里也出现，不必开 DEBUG。
+                    "logisticsDetail",
+                    logisticsBlock.detail(),
+                    "businessRejection",
+                    logisticsBlock.businessRejection()));
       }
     }
-    return new CarrierAllocation(choices, quantityMilli, demandLeft, priced);
+    // ★★ F-2：**具名归因随分配结果一起返回**（"没有服务卖" / "运力不足" / …）—— 读数面据此分档，
+    //   不再让两件事在公开读数里同为 LOGISTICS_CAPACITY。★ 分配全成功 ⇒ UNSPECIFIED（不硬塞一个假原因）。
+    return new CarrierAllocation(choices, quantityMilli, demandLeft, priced, logisticsBlock);
   }
 
   /**
@@ -859,27 +966,111 @@ public final class MerchantCapacityPool {
    *
    * <p>★★ <b>A3（2026-10-10）</b>：原来还有两支"缺工具"归因（{@code tool-frozen} / {@code tool-short}）—— 门槛已删 （见
    * {@link #select}），归因随之退役。
+   *
+   * <p>★★ <b>F-2（2026-10-10）</b>：本方法与 {@link #logisticsBlockOf} 读**同一组**操作数、各司其职 —— 本方法给"全部同时成立的
+   * 原因"（DEBUG 行的诊断串），后者给**可分辨的那一支**（见该方法的优先级表）。
    */
   private static String laneBlockedReason(
       List<Entry> pool, long unreachableWork, long subUnitWork, boolean serviceSupplyEmpty) {
-    if (pool.isEmpty()) {
-      return "no-merchant-household-in-shipping-hex";
+    LogisticsBlock block = logisticsBlockOf(pool, unreachableWork, subUnitWork, serviceSupplyEmpty);
+    if (block == LogisticsBlock.NO_MERCHANT_HOUSEHOLD || block == LogisticsBlock.NO_SERVICE_GOODS) {
+      return block.detail();
     }
     List<String> reasons = new ArrayList<>(4);
-    // ★★ A2：服务口径下"这一格一件服务货都没有"= 最典型的买不到（跑商家户还没产出/已卖光）⇒ 具名（唯一拼写点 = HaulService）。
-    if (serviceSupplyEmpty) {
-      reasons.add(HaulService.NO_SERVICE_SUPPLY_REASON);
-    }
     if (unreachableWork > 0L) {
-      reasons.add("out-of-derived-radius");
+      reasons.add(LogisticsBlock.OUT_OF_RADIUS.detail());
     }
     if (subUnitWork > 0L) {
-      reasons.add("sub-unit-residual");
+      reasons.add(LogisticsBlock.SUB_UNIT_RESIDUAL.detail());
+    }
+    if (block == LogisticsBlock.CAPACITY_EXHAUSTED) {
+      reasons.add(LogisticsBlock.CAPACITY_EXHAUSTED.detail());
     }
     if (reasons.isEmpty()) {
-      reasons.add("capacity-exhausted");
+      reasons.add(LogisticsBlock.UNSPECIFIED.detail());
     }
     return String.join("+", reasons);
+  }
+
+  /**
+   * ★★ <b>F-2（2026-10-10）：可分辨的归因档</b>—— 键 = 本类词表的唯一拼写点，{@link #logisticsBlockOf} 的唯一取值域。★
+   * 它是**读数**：不进任何判据、不改任何返回值、不落状态。
+   *
+   * <p>★ {@link #UNSPECIFIED} = "这一笔确实没走完，但没有一支具名原因成立"（不硬塞一个假原因，也不静默）。 {@link
+   * #NO_MERCHANT_HOUSEHOLD} / {@link #NO_SERVICE_GOODS} 是**业务拒绝**（§一.9：INFO 档可读），
+   * 其余三支是**运行期读数**（DEBUG/TRACE 档）。
+   */
+  public enum LogisticsBlock {
+    /** 本格没有"选了跑商的家户"（连卖家都没有）。 */
+    NO_MERCHANT_HOUSEHOLD(NO_MERCHANT_HOUSEHOLD_REASON),
+    /** 本格没有可交付的服务货（跑商家户还没产出 / 已卖光）—— 与 {@link HaulService#NO_SERVICE_SUPPLY_REASON} 同拼写。 */
+    NO_SERVICE_GOODS(HaulService.NO_SERVICE_SUPPLY_REASON),
+    /** 运力不够（服务/规模都还在，但这一笔吃不下）。 */
+    CAPACITY_EXHAUSTED("capacity-exhausted"),
+    /** lane 超出提供者的派生服务半径。 */
+    OUT_OF_RADIUS("out-of-derived-radius"),
+    /** 剩余运力不足一个整商品单位（亚单位残余）。 */
+    SUB_UNIT_RESIDUAL("sub-unit-residual"),
+    /** 没走完但没有具名原因可归（兜底，不静默）。 */
+    UNSPECIFIED("logistics-capacity-unattributed");
+
+    private final String detail;
+
+    LogisticsBlock(String detail) {
+      this.detail = detail;
+    }
+
+    /** 具名字面量（**小写连字符**，与 {@code HaulService.NO_SERVICE_SUPPLY_REASON} 同制）：进读数/日志的唯一拼写。 */
+    public String detail() {
+      return detail;
+    }
+
+    /**
+     * ★ 这一档是不是**业务拒绝**（§一.9 的分级：业务拒绝 = INFO 档可读）。
+     *
+     * <p>★ 只有这两档是"世界缺东西"（缺提供商 / 缺货）⇒ 读者不必开 DEBUG 就能分开它们； 其余三档是运行期读数（"分配用完了"/"够不着"），照旧只在 DEBUG/TRACE
+     * 出现。
+     */
+    public boolean businessRejection() {
+      return this == NO_MERCHANT_HOUSEHOLD || this == NO_SERVICE_GOODS;
+    }
+  }
+
+  /**
+   * ★★ <b>F-2（2026-10-10）：把"这一笔为什么没走完"收敛成**一个可分辨的档**</b>（与 {@link #laneBlockedReason} 同一组操作数）——
+   * 这就是"没有服务卖"与"运力不足"在公开读数面分开的落点。
+   *
+   * <pre>
+   * 次序（先命中先返回；次序本身是口径的一部分）：
+   * ① 发货格池为空                              ⇒ NO_MERCHANT_HOUSEHOLD（业务拒绝）
+   * ② 服务成市格却一件服务货都没有（预算合计 ≤ 0）⇒ NO_SERVICE_GOODS（业务拒绝）
+   * ③ 有预算但全部够不着（半径外）               ⇒ OUT_OF_RADIUS
+   * ④ 有够得着的预算但不足一个整商品单位          ⇒ SUB_UNIT_RESIDUAL
+   * ⑤ 其余（预算被本轮别的 lane 吃光/被扣到 0）    ⇒ CAPACITY_EXHAUSTED
+   * ⑥ 都不成立                                   ⇒ UNSPECIFIED（兜底，不静默）
+   * </pre>
+   *
+   * <p>★ <b>为什么②优先于③④⑤</b>：②说的是"这一格根本没有服务可买"（等下一轮产出），③④⑤说的是"有运力但给不了这一笔" （退单/等运力/改路线）——
+   * 两者的处置完全不同，这正是 F-2 要分开的那一刀。★ ①与②也分开（缺提供商 vs 缺货）。
+   */
+  private static LogisticsBlock logisticsBlockOf(
+      List<Entry> pool, long unreachableWork, long subUnitWork, boolean serviceSupplyEmpty) {
+    if (pool.isEmpty()) {
+      return LogisticsBlock.NO_MERCHANT_HOUSEHOLD;
+    }
+    if (serviceSupplyEmpty) {
+      return LogisticsBlock.NO_SERVICE_GOODS;
+    }
+    if (unreachableWork > 0L) {
+      return LogisticsBlock.OUT_OF_RADIUS;
+    }
+    if (subUnitWork > 0L) {
+      return LogisticsBlock.SUB_UNIT_RESIDUAL;
+    }
+    // ★ 走到这里 = 池非空、有服务预算、也没被吃光 —— 却仍然没分完 ⇒ 本笔没吃到的那份预算是"被本轮别的 lane
+    //   吃光/扣到亚单位"（remainingWork 或 subUnitWork 已覆盖前者，本条只剩兜底）：具名 capacity-exhausted 是
+    //   唯一不猜的说法（不许硬塞"没有服务卖"）。
+    return LogisticsBlock.CAPACITY_EXHAUSTED;
   }
 
   /**
@@ -1085,7 +1276,13 @@ public final class MerchantCapacityPool {
                 "unallocatedRequests",
                 unservedObservations.requestCount(),
                 "unallocatedMaxObservations",
-                unservedObservations.maxObservations()));
+                unservedObservations.maxObservations(),
+                // ★★ F-2（2026-10-10）：**F-2 归因的公开读数面** —— 业务拒绝（缺提供商 / 缺服务货）在这里
+                //   按**具名键**分档计数（INFO = "这一轮发生了什么"），读者不必开 DEBUG 就能把"没有服务卖"
+                //   与"运力不足"分开；运行期三支（半径/亚单位/耗尽）由 MERCHANT_CAPACITY_LANE_TRUNCATED 的
+                //   logisticsDetail 与逐格竞争读数给出。★ 没有拒绝 ⇒ 空表（缺省中性：这一栏不新增任何噪声）。
+                "serviceGoodsAbsentHouseholds",
+                serviceAbsentTally()));
   }
 
   /**
@@ -1130,13 +1327,30 @@ public final class MerchantCapacityPool {
    * <p>不变量：{@code Σ choices.quantityMilli + unallocatedMilli == requestedMilli}（A3 退化为"分配总量 ≤
    * 运力总量"）。{@code unallocatedMilli} 必须由调用方显式处理（记 {@code LOGISTICS_CAPACITY} 与"被运力截断量"）， 本类不静默丢。
    *
+   * <p>★★ <b>F-2（2026-10-10）</b>：{@link #logisticsBlock} 是"这笔为什么没走完"的**具名归因档** ——
+   * 调用方/读数面据此把"没有服务卖"（业务拒绝，INFO 可读）与"运力不足"分开；全部分配成功 ⇒ {@link
+   * LogisticsBlock#UNSPECIFIED}（不硬塞一个假原因）。★ 它<b>不是</b>第二套判据：值是 {@link #select} 里 现算的同一份读数，{@code
+   * choices}/{@code unallocatedMilli} 一字不受它影响。
+   *
    * @param priced 本次分配是否走报价口径（决定运费怎么收：报价口径逐条按各自限价，缺省口径沿用 M-A1 的按量比例分摊）
+   * @param logisticsBlock 本笔未获服务的具名归因（业务拒绝 → INFO；运行期三支 → DEBUG/TRACE）
    */
   public record CarrierAllocation(
-      List<CarrierChoice> choices, long requestedMilli, long unallocatedMilli, boolean priced) {
+      List<CarrierChoice> choices,
+      long requestedMilli,
+      long unallocatedMilli,
+      boolean priced,
+      LogisticsBlock logisticsBlock) {
+
+    /** 4 参兼容入口（夹具/纯读者）：归因档取 {@link LogisticsBlock#UNSPECIFIED}（"没有可归的原因"）。 */
+    public CarrierAllocation(
+        List<CarrierChoice> choices, long requestedMilli, long unallocatedMilli, boolean priced) {
+      this(choices, requestedMilli, unallocatedMilli, priced, LogisticsBlock.UNSPECIFIED);
+    }
 
     public CarrierAllocation {
       Objects.requireNonNull(choices, "choices");
+      Objects.requireNonNull(logisticsBlock, "logisticsBlock");
       choices = List.copyOf(choices);
       if (requestedMilli < 0L || unallocatedMilli < 0L || unallocatedMilli > requestedMilli) {
         throw new IllegalArgumentException(
@@ -1168,6 +1382,11 @@ public final class MerchantCapacityPool {
     /** 一条都没分出去（该格没有跑商家户 / 半径外 / 运力耗尽）。 */
     public boolean isEmpty() {
       return choices.isEmpty();
+    }
+
+    /** ★ F-2：本笔的归因是不是**业务拒绝**（§一.9：INFO 档可读）—— 调用方据此选日志档位，不自己判词。 */
+    public boolean businessRejection() {
+      return unallocatedMilli > 0L && logisticsBlock.businessRejection();
     }
   }
 }
