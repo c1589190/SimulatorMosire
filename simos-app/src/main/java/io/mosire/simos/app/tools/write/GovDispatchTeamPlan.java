@@ -21,6 +21,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.spi.CreateUnitHandler;
 import io.mosire.simos.unit.spi.DismissStaffHandler;
 import io.mosire.simos.unit.spi.SetArmyFormationHandler;
+import io.mosire.simos.unit.tools.UnitToolReads;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
@@ -159,7 +160,7 @@ final class GovDispatchTeamPlan {
     GovernmentFormation governmentFormation = requireGovernmentFormation(source, unitId);
 
     // ★★ Z4/C1：出人源选择（岗位户优先；没有岗位户且 posts 为空时维持旧档财政户口径）──────────────
-    HouseholdId postHousehold = HouseholdId.parse(RaiseUnitPlan.householdIdFor(unitId));
+    HouseholdId postHousehold = HouseholdId.parse(UnitToolReads.householdIdFor(unitId));
     boolean postHouseholdMode = source.households().contains(postHousehold);
     if (!postHouseholdMode && governmentFormation.staffIsHouseholdProjection()) {
       throw new IllegalArgumentException(
@@ -218,7 +219,7 @@ final class GovDispatchTeamPlan {
     String newId =
         GovSelectExamineesPlan.resolveNewUnitId(
             units, newUnitId, "team-" + unitId + "-" + tick + "-" + count, "newUnitId");
-    String householdId = RaiseUnitPlan.householdIdFor(newId);
+    String householdId = UnitToolReads.householdIdFor(newId);
     if (social.households().containsKey(HouseholdId.parse(householdId))) {
       throw new IllegalArgumentException(
           "P1.5 新单位的人口家户 id 已被占用: " + householdId + "（先清掉同名家户，或换 newUnitId）");

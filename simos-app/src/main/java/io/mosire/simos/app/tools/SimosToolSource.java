@@ -44,8 +44,6 @@ import io.mosire.simos.app.tools.read.SocialHouseholdsTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
 import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
-import io.mosire.simos.app.tools.read.UnitGetTool;
-import io.mosire.simos.app.tools.read.UnitListTool;
 import io.mosire.simos.app.tools.social.AppSocialToolPerspective;
 import io.mosire.simos.app.tools.social.AppSocialToolViews;
 import io.mosire.simos.app.tools.social.AppSocialUnitPort;
@@ -54,6 +52,10 @@ import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
 import io.mosire.simos.app.tools.write.AppArmyManpowerPort;
 import io.mosire.simos.app.tools.write.AppArmyToolViews;
+import io.mosire.simos.app.tools.write.AppUnitToolAllocations;
+import io.mosire.simos.app.tools.write.AppUnitToolCommandTypes;
+import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
+import io.mosire.simos.app.tools.write.AppUnitToolViews;
 import io.mosire.simos.app.tools.write.CalendarConfigureTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.ForkTool;
@@ -83,13 +85,11 @@ import io.mosire.simos.app.tools.write.GovSetEstablishmentTool;
 import io.mosire.simos.app.tools.write.GovSetFxRateTool;
 import io.mosire.simos.app.tools.write.GovTransferTreasuryTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
-import io.mosire.simos.app.tools.write.LevyRegionTool;
 import io.mosire.simos.app.tools.write.MyPacketTool;
 import io.mosire.simos.app.tools.write.PacketIntentTool;
 import io.mosire.simos.app.tools.write.ProposeCallTool;
 import io.mosire.simos.app.tools.write.ProvinceApplyTool;
 import io.mosire.simos.app.tools.write.ProvinceAssignCitiesTool;
-import io.mosire.simos.app.tools.write.RaiseUnitTool;
 import io.mosire.simos.app.tools.write.RecordDiplomaticEventTool;
 import io.mosire.simos.app.tools.write.RegionClearDataTool;
 import io.mosire.simos.app.tools.write.RegionClearStructuresTool;
@@ -116,38 +116,9 @@ import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.app.tools.write.SetDecisionMakerAccessTool;
 import io.mosire.simos.app.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.app.tools.write.SimosSdReportTool;
-import io.mosire.simos.app.tools.write.SpawnArmyTool;
 import io.mosire.simos.app.tools.write.StartDecisionTool;
 import io.mosire.simos.app.tools.write.SubmitPacketTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
-import io.mosire.simos.app.tools.write.UnitAdjustCompositionTool;
-import io.mosire.simos.app.tools.write.UnitApplyCasualtiesTool;
-import io.mosire.simos.app.tools.write.UnitAttachTool;
-import io.mosire.simos.app.tools.write.UnitCancelRouteTool;
-import io.mosire.simos.app.tools.write.UnitCreateCommandChainTool;
-import io.mosire.simos.app.tools.write.UnitCreateTool;
-import io.mosire.simos.app.tools.write.UnitDetachTool;
-import io.mosire.simos.app.tools.write.UnitDisbandTool;
-import io.mosire.simos.app.tools.write.UnitMergeFormationTool;
-import io.mosire.simos.app.tools.write.UnitPlaceAtTool;
-import io.mosire.simos.app.tools.write.UnitPlanRouteTool;
-import io.mosire.simos.app.tools.write.UnitPlanSparseRouteTool;
-import io.mosire.simos.app.tools.write.UnitRenameTool;
-import io.mosire.simos.app.tools.write.UnitReparentSubtreeTool;
-import io.mosire.simos.app.tools.write.UnitReparentTool;
-import io.mosire.simos.app.tools.write.UnitSetArmyFormationTool;
-import io.mosire.simos.app.tools.write.UnitSetCompositionTool;
-import io.mosire.simos.app.tools.write.UnitSetFormationOffsetTool;
-import io.mosire.simos.app.tools.write.UnitSetGovPolicyTool;
-import io.mosire.simos.app.tools.write.UnitSetGovSuperiorTool;
-import io.mosire.simos.app.tools.write.UnitSetGovernmentFormationTool;
-import io.mosire.simos.app.tools.write.UnitSetJurisdictionTool;
-import io.mosire.simos.app.tools.write.UnitSetRejoinTargetTool;
-import io.mosire.simos.app.tools.write.UnitSetStateDescriptionTool;
-import io.mosire.simos.app.tools.write.UnitSetStatusTool;
-import io.mosire.simos.app.tools.write.UnitSetTaxRateTool;
-import io.mosire.simos.app.tools.write.UnitSplitFormationTool;
-import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.app.tools.write.VoidAdjudicationTool;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.army.tools.ArmyManpowerPort;
@@ -215,6 +186,43 @@ import io.mosire.simos.social.tools.write.SocialLaborTool;
 import io.mosire.simos.social.tools.write.SocialUpdateCityTool;
 import io.mosire.simos.social.tools.write.UnitAssignHouseholdTool;
 import io.mosire.simos.social.tools.write.UnitDetachHouseholdTool;
+import io.mosire.simos.unit.tools.UnitToolAllocations;
+import io.mosire.simos.unit.tools.UnitToolCommandTypes;
+import io.mosire.simos.unit.tools.UnitToolPerspective;
+import io.mosire.simos.unit.tools.UnitToolViews;
+import io.mosire.simos.unit.tools.read.UnitGetTool;
+import io.mosire.simos.unit.tools.read.UnitListTool;
+import io.mosire.simos.unit.tools.write.LevyRegionTool;
+import io.mosire.simos.unit.tools.write.RaiseUnitTool;
+import io.mosire.simos.unit.tools.write.SpawnArmyTool;
+import io.mosire.simos.unit.tools.write.UnitAdjustCompositionTool;
+import io.mosire.simos.unit.tools.write.UnitApplyCasualtiesTool;
+import io.mosire.simos.unit.tools.write.UnitAttachTool;
+import io.mosire.simos.unit.tools.write.UnitCancelRouteTool;
+import io.mosire.simos.unit.tools.write.UnitCreateCommandChainTool;
+import io.mosire.simos.unit.tools.write.UnitCreateTool;
+import io.mosire.simos.unit.tools.write.UnitDetachTool;
+import io.mosire.simos.unit.tools.write.UnitDisbandTool;
+import io.mosire.simos.unit.tools.write.UnitMergeFormationTool;
+import io.mosire.simos.unit.tools.write.UnitPlaceAtTool;
+import io.mosire.simos.unit.tools.write.UnitPlanRouteTool;
+import io.mosire.simos.unit.tools.write.UnitPlanSparseRouteTool;
+import io.mosire.simos.unit.tools.write.UnitRenameTool;
+import io.mosire.simos.unit.tools.write.UnitReparentSubtreeTool;
+import io.mosire.simos.unit.tools.write.UnitReparentTool;
+import io.mosire.simos.unit.tools.write.UnitSetArmyFormationTool;
+import io.mosire.simos.unit.tools.write.UnitSetCompositionTool;
+import io.mosire.simos.unit.tools.write.UnitSetFormationOffsetTool;
+import io.mosire.simos.unit.tools.write.UnitSetGovPolicyTool;
+import io.mosire.simos.unit.tools.write.UnitSetGovSuperiorTool;
+import io.mosire.simos.unit.tools.write.UnitSetGovernmentFormationTool;
+import io.mosire.simos.unit.tools.write.UnitSetJurisdictionTool;
+import io.mosire.simos.unit.tools.write.UnitSetRejoinTargetTool;
+import io.mosire.simos.unit.tools.write.UnitSetStateDescriptionTool;
+import io.mosire.simos.unit.tools.write.UnitSetStatusTool;
+import io.mosire.simos.unit.tools.write.UnitSetTaxRateTool;
+import io.mosire.simos.unit.tools.write.UnitSplitFormationTool;
+import io.mosire.simos.unit.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.util.spi.CommandTargets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -627,6 +635,19 @@ public final class SimosToolSource implements ToolSource {
     //   （`io.mosire.simos.map.tools.write`），这里只剩装配——注入 ga-spi 的窄写口（适配器在 app，见
     //   `CoreSimosToolWritePort`：命令 id / 发起者 / 信封由它装配，工具不再直连 CoreSimos）。
     ToolWritePort mapWrites = new CoreSimosToolWritePort(core, initiator);
+    // ★★ 2026-10-12 B3 第五域（unit，最大的域）：28 条 unit 窄写 + 3 条 GM 组合工具**已下放**
+    //   （`io.mosire.simos.unit.tools.write`），这里只做装配——注入 ga-spi 的窄写口/窄读口（适配器在 app，
+    //   命令 id / 发起者 / 信封由它装配）+ unit 自己声明的五类端口：
+    //   ① 视图口（ApiViews.unit / ToolSupport 的 hexCoord / compositionView / compositionEntries 同一份实现）；
+    //   ② 视角口（可见性围栏 + sd 侧 army id 占用 + GOV 国库家户解析 + 落点城乡判据，四者唯一实现在 app）；
+    //   ③ 分摊口（家户账瀑布 + share-aware 选人层；唯一实现在 app.tools.write，历法时钟由适配器持有）；
+    //   ④ 跨域命令类型口（economy.RegisterHousehold / actor.EnsureHouseholdAccount 的拼写点在各自 handler）。
+    ToolWritePort unitWrites = new CoreSimosToolWritePort(core, initiator);
+    ToolReadPort unitReads = new QueryServiceToolReadPort(query);
+    UnitToolViews unitViews = new AppUnitToolViews(calendarService);
+    UnitToolPerspective unitPerspective = new AppUnitToolPerspective();
+    UnitToolAllocations unitAllocations = new AppUnitToolAllocations(calendarService);
+    UnitToolCommandTypes unitCommandTypes = new AppUnitToolCommandTypes();
     built.add(new MapSetTerrainTool(mapWrites, mapId));
     built.add(new MapSetEdgeTool(mapWrites, mapId));
     built.add(new MapCreateRegionTool(mapWrites, mapId));
@@ -639,48 +660,48 @@ public final class SimosToolSource implements ToolSource {
     built.add(new MapRandomizeRegionTool(mapWrites, mapId));
     built.add(new MapRegisterPathwayGroupTool(mapWrites, mapId));
     // M2（spec §八.3）：unit 域窄写 —— ★ **只在 GM 组**（D-1 曾让它们也挂决策人桶，2026-09-22 已撤销）。
-    built.add(new UnitRenameTool(core, initiator, mapId));
-    built.add(new UnitCreateTool(core, initiator, mapId));
-    built.add(new UnitReparentTool(core, initiator, mapId));
-    built.add(new UnitSetCompositionTool(core, initiator, mapId));
-    built.add(new UnitPlaceAtTool(core, initiator, mapId));
-    built.add(new UnitPlanRouteTool(core, initiator, mapId));
-    built.add(new UnitCancelRouteTool(core, initiator, mapId));
-    built.add(new UnitDisbandTool(core, initiator, mapId));
-    built.add(new UnitSetStatusTool(core, initiator, mapId));
+    built.add(new UnitRenameTool(unitWrites, mapId));
+    built.add(new UnitCreateTool(unitWrites, mapId));
+    built.add(new UnitReparentTool(unitWrites, mapId));
+    built.add(new UnitSetCompositionTool(unitWrites, mapId));
+    built.add(new UnitPlaceAtTool(unitWrites, mapId));
+    built.add(new UnitPlanRouteTool(unitWrites, mapId));
+    built.add(new UnitCancelRouteTool(unitWrites, mapId));
+    built.add(new UnitDisbandTool(unitWrites, mapId));
+    built.add(new UnitSetStatusTool(unitWrites, mapId));
     // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的窄写。**只在 GM 桶**（命令本身非 GmOnly，
     //   决策人仍可经 sd.IssueDirective 审批链写）；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new UnitSetStateDescriptionTool(core, initiator, mapId));
-    built.add(new UnitAttachTool(core, initiator, mapId));
-    built.add(new UnitDetachTool(core, initiator, mapId));
-    built.add(new UnitReparentSubtreeTool(core, initiator, mapId));
-    built.add(new UnitSetFormationOffsetTool(core, initiator, mapId));
-    built.add(new UnitSplitFormationTool(core, initiator, mapId));
-    built.add(new UnitMergeFormationTool(core, initiator, mapId));
-    built.add(new UnitPlanSparseRouteTool(core, initiator, mapId));
-    built.add(new UnitSetRejoinTargetTool(core, initiator, mapId));
-    built.add(new UnitCreateCommandChainTool(core, initiator, mapId));
-    built.add(new UnitUpdateCommandChainTool(core, initiator, mapId));
-    built.add(new UnitApplyCasualtiesTool(core, initiator, mapId));
+    built.add(new UnitSetStateDescriptionTool(unitWrites, mapId));
+    built.add(new UnitAttachTool(unitWrites, mapId));
+    built.add(new UnitDetachTool(unitWrites, mapId));
+    built.add(new UnitReparentSubtreeTool(unitWrites, mapId));
+    built.add(new UnitSetFormationOffsetTool(unitWrites, mapId));
+    built.add(new UnitSplitFormationTool(unitWrites, mapId));
+    built.add(new UnitMergeFormationTool(unitWrites, mapId));
+    built.add(new UnitPlanSparseRouteTool(unitWrites, mapId));
+    built.add(new UnitSetRejoinTargetTool(unitWrites, mapId));
+    built.add(new UnitCreateCommandChainTool(unitWrites, mapId));
+    built.add(new UnitUpdateCommandChainTool(unitWrites, mapId));
+    built.add(new UnitApplyCasualtiesTool(unitWrites, mapId));
     // ★★ D3a（2026-10-02 / D-009 补裁）：GM 对单独 Unit 人力/装备直接变动的调试直通口（有符号增量，一条命令原子）。
     //   **只在 GM 桶**；命令本身非 GmOnly（与既有 unit 命令同待遇）。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new UnitAdjustCompositionTool(core, initiator, mapId));
+    built.add(new UnitAdjustCompositionTool(unitWrites, mapId));
     // 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率。**只在 GM 桶**（与既有 unit 窄写同待遇）。
-    built.add(new UnitSetJurisdictionTool(core, initiator, mapId));
-    built.add(new UnitSetTaxRateTool(core, initiator, mapId));
+    built.add(new UnitSetJurisdictionTool(unitWrites, mapId));
+    built.add(new UnitSetTaxRateTool(unitWrites, mapId));
     // ★★ R2a（2026-10-01 行政区划修复计划 §1.2/§R4）：social 域窄写——改城市 name/props/region 的唯一窄面
     //   （region 键缺席=保持、字符串=设值、null=清空）。**只在 GM 桶**；命令 handler 的 targetPaths 仍为空。
     built.add(new SocialUpdateCityTool(toolWrites, mapId));
     // 阶段 10a（2026-09-30 GOV/Army 计划）：两条"立编制"命令的窄封装（编制字段在 Unit.module ⇒ 是 unit 域命令）。
     //   **只在 GM 桶**；决策人侧要改编制仍走 sd.IssueDirective 的审批链（这两条命令非 GmOnly，可嵌入令）。
-    built.add(new UnitSetGovernmentFormationTool(core, initiator, mapId));
-    built.add(new UnitSetArmyFormationTool(core, initiator, mapId));
+    built.add(new UnitSetGovernmentFormationTool(unitWrites, mapId));
+    built.add(new UnitSetArmyFormationTool(unitWrites, mapId));
     // 阶段 10b-i（2026-10-01 GOV 计划）：GOV 政策 / 上级层级两条窄工具。**只在 GM 桶**。
     //   ★ **有意不为 unit.RecruitStaff / unit.DismissStaff 配窄工具**：那会变成"凭空造人 / 跳过退休支付"的
     //   直通口。两条命令本身已注册（非 GmOnly），由阶段 10b-ii 的三条配套工具批（createOffice / recruit / dismiss）
     //   或决策令批使用；★ 离编人员的**社会回写**明确留阶段 13（见 GovDismissTool/GovDismissPlan 类注的具名缺口）。
-    built.add(new UnitSetGovPolicyTool(core, initiator, mapId));
-    built.add(new UnitSetGovSuperiorTool(core, initiator, mapId));
+    built.add(new UnitSetGovPolicyTool(unitWrites, mapId));
+    built.add(new UnitSetGovSuperiorTool(unitWrites, mapId));
     // 阶段 10b-ii（2026-10-01 GOV 计划）：三条 GOV 组合工具（建 GOV+绑决策人 / 招募 / 离编+退休待遇）。
     //   **只在 GM 桶**；★ 三个工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；各自走 CoreSimos.submitBatch
     //   一批一条 revision（批内固定顺序与载荷见各自 *Plan 类）。
@@ -740,16 +761,20 @@ public final class SimosToolSource implements ToolSource {
     // 辖区阶段 6（2026-09-30 / 计划 §6.1）：GM 组合工具——一次抽粮/钱/人力，三条命令同批落一条 revision。
     //   **只在 GM 桶**；★ 它不是一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。actor.AdjustAccounts 已标
     //   GmOnlyCommand ⇒ 这条组合工具的上限/管辖区口径不会被"嵌进决策令"绕过。
-    built.add(new LevyRegionTool(core, query, initiator, mapId, calendarService));
+    built.add(
+        new LevyRegionTool(unitWrites, unitReads, unitViews, unitPerspective, unitAllocations));
     // 辖区阶段 8（2026-09-30 / 计划 §5）：组军 GM 组合工具——从地方抽人力 + 抽粮/钱，同批 unit.CreateUnit +
     //   actor.AdjustAccounts + social.SeedGroups + sd.PutInfo，四条命令同批落一条 revision。**只在 GM 桶**；
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；分摊与 levyRegion 共用 RegionAllocations 一份瀑布。
-    built.add(new RaiseUnitTool(core, query, initiator, mapId, calendarService));
+    built.add(
+        new RaiseUnitTool(
+            unitWrites, unitReads, unitViews, unitPerspective, unitAllocations, unitCommandTypes));
     // P5（2026-10-01 后端 + MCP 稳定化计划）：按格直接建军 GM 组合工具——GM 特权不抽人口/粮饷，同批
     //   unit.CreateUnit + [role 非空: unit.SetArmyFormation] + sd.CreateArmy + sd.PutInfo，一条
     // revision。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；raiseUnit 的抽取语义不变。
-    built.add(new SpawnArmyTool(core, query, initiator, mapId));
+    built.add(
+        new SpawnArmyTool(unitWrites, unitReads, unitViews, unitPerspective, unitCommandTypes));
     // ★★ 2026-10-12 B3 第二域（army，设计书 §4.3 / 台账 §5 + 试点 §6.5）：army 的编排工具**已下放到
     //   `simos-army`**（`io.mosire.simos.army.tools.{read,write}`），这里只剩装配——注入四类接缝：
     //   ① 窄写口（命令 id / correlationId / initiator 由 `CoreSimosToolWritePort` 生成并**回报**，见
@@ -1010,6 +1035,12 @@ public final class SimosToolSource implements ToolSource {
     ToolReadPort socialReads = new QueryServiceToolReadPort(query);
     SocialToolViews socialViews = new AppSocialToolViews(calendarService);
     SocialToolPerspective socialPerspective = new AppSocialToolPerspective();
+    // ★★ 2026-10-12 B3 第五域（unit）：两条 unit 读工具**已下放**（`unit.tools.read`），注入同一套接缝——
+    //   窄读口（通用适配器）+ 视图口（ApiViews.unit / ToolSupport.units 的同一份实现，持历法服务）
+    //   + 视角口（可见性围栏唯一实现）。
+    ToolReadPort unitReads = new QueryServiceToolReadPort(query);
+    UnitToolViews unitViews = new AppUnitToolViews(calendarService);
+    UnitToolPerspective unitPerspective = new AppUnitToolPerspective();
     return List.of(
         // ★★ E6b：catalog 的**命令清单**取完整注册面（含 GM-only），决策人可见性由显式"可嵌入令"白名单过滤
         //   （CatalogVisibility）—— GM 看得到 economy.SwitchMode / economy.GmAdjust，决策人看不到。
@@ -1039,8 +1070,8 @@ public final class SimosToolSource implements ToolSource {
         //   与 hex（单格）/ overview（全块多边形）不同形；GUI 该端点拒 as= ⇒ 只给 GM 桶（GmOnlyRead）。
         new MapBlockTool(mapReads, mapViews),
         // ★ C6a：单位/人口的只读时间戳（movement.departedAt / at）要带日期 ⇒ 三件都传世界同一份 CalendarService。
-        new UnitListTool(query, calendarService),
-        new UnitGetTool(query, calendarService),
+        new UnitListTool(unitReads, unitViews),
+        new UnitGetTool(unitReads, unitViews, unitPerspective),
         new PopulationTool(socialReads, socialViews, socialPerspective),
         // ★★ D1（2026-10-22 决策包计划）：家户聚合读口（GM 与决策人共用；scope=ALL 由工具内 social 面
         //   unrestricted 判定，不标 GmOnlyRead）。资源声明 map/social/unit/economy/actor 全 READ_ONLY。

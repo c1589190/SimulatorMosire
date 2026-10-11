@@ -63,14 +63,18 @@ public final class CoreSimosToolWritePort implements ToolWritePort {
    * 既作批内共享的 correlationId、又作结果视图里报出去的 id"⇒ 适配器必须产出同一个东西，否则工具报出去的 id 与落盘信封对不上（见 {@link
    * ToolWritePort.BatchReceipt}）。单条 {@link #submitWithReceipt} 的缺省口径（{@code correlationId =
    * commandId}）不变。
+   *
+   * <p>★ 不带 id 的那条（3 参）由端口契约的 default 投影生成一个 UUID 后转到本方法（4 参）——{@code batchId} 仍**只**由装配面 写进信封；带 id
+   * 的那条服务"载荷里要引用本链 id"的组合工具（{@code spawnArmy}/{@code levyRegion} 的工单幂等键）。
    */
   @Override
   public BatchReceipt submitBatchWithReceipt(
-      BranchId branch, RevisionId expectedRevision, List<Request> batch) {
+      BranchId branch, RevisionId expectedRevision, List<Request> batch, String correlationId) {
     Objects.requireNonNull(branch, "branch");
     Objects.requireNonNull(expectedRevision, "expectedRevision");
     Objects.requireNonNull(batch, "batch");
-    String batchId = UUID.randomUUID().toString();
+    Objects.requireNonNull(correlationId, "correlationId");
+    String batchId = correlationId;
     List<CommandEnvelope> envelopes = new ArrayList<>(batch.size());
     List<String> commandIds = new ArrayList<>(batch.size());
     for (Request request : batch) {

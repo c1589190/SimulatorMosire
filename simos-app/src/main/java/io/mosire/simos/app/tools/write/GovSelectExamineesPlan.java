@@ -23,6 +23,7 @@ import io.mosire.simos.unit.move.PathFinder;
 import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.unit.spi.CreateUnitHandler;
 import io.mosire.simos.unit.spi.PlanRouteHandler;
+import io.mosire.simos.unit.tools.UnitToolReads;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
@@ -57,8 +58,9 @@ import java.util.Set;
  *   <li><b>守恒</b>：Σ share.taken == {@code count} == 新人口家户的成员增量；Plan 构造期逐值互校，批载荷逐值对应。
  * </ol>
  *
- * <p>★★ <b>新单位人口家户 = {@code hh-unit:<newUnitId>}（与 {@code RaiseUnitPlan} 同拼写）</b>：先校验它不在 {@code
- * SocialData.households()}（不得复用既有家户），再作为工单 target；新单位的 {@code unit.households} 恰好是该家户。
+ * <p>★★ <b>新单位人口家户 = {@code hh-unit:<newUnitId>}（唯一拼写点 {@code
+ * UnitToolReads.householdIdFor}）</b>：先校验它不在 {@code SocialData.households()}（不得复用既有家户），再作为工单
+ * target；新单位的 {@code unit.households} 恰好是该家户。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
  * orderId=gov-select-examinees:<batchId>:<newUnitId>}；{@code plan =
@@ -237,7 +239,7 @@ final class GovSelectExamineesPlan {
           "来源 GOV " + unitId + " 的 jurisdiction 为空（无管辖区域）：没有可科举来源；先 unit.SetJurisdiction");
     }
     SocialData social = ToolSupport.socialData(state);
-    String householdId = RaiseUnitPlan.householdIdFor(newId);
+    String householdId = UnitToolReads.householdIdFor(newId);
     if (social.households().containsKey(HouseholdId.parse(householdId))) {
       throw new IllegalArgumentException(
           "P1.5 新单位的人口家户 id 已被占用: " + householdId + "（先清掉同名家户，或换 newUnitId）");
@@ -323,8 +325,9 @@ final class GovSelectExamineesPlan {
   }
 
   /**
-   * P1.5：新人口家户 economy 视图的居住类型（与 {@link RaiseUnitPlan} 同口径）——落点是某座 {@code SocialCity} 的 {@code at}
-   * ⇒ {@link ResidenceKind#URBAN}，否则 {@link ResidenceKind#RURAL}。两个 P1.5 工具共用这一份，不另写第二份判据。
+   * P1.5：新人口家户 economy 视图的居住类型（**既有唯一实现就是本方法**；{@code unit} 的 raise/spawn 经 {@code
+   * UnitToolPerspective.residenceAt} 转调它）——落点是某座 {@code SocialCity} 的 {@code at} ⇒ {@link
+   * ResidenceKind#URBAN}，否则 {@link ResidenceKind#RURAL}。两个 P1.5 工具共用这一份，不另写第二份判据。
    */
   static ResidenceKind residenceAt(SocialData social, HexCoord at) {
     for (var city : social.cities().values()) {

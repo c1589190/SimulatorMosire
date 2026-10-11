@@ -17,6 +17,7 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.spi.AssignGovPostHandler;
+import io.mosire.simos.unit.tools.UnitToolReads;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -128,7 +129,7 @@ final class GovRecruitPlan {
     GovernmentFormation governmentFormation = requireGovernmentFormation(unit, unitId);
 
     // ★★ Z4/C1：目标家户选择（岗位户优先；没有岗位户且 posts 为空时维持旧档财政户口径）──────────────
-    HouseholdId postHousehold = HouseholdId.parse(RaiseUnitPlan.householdIdFor(unitId));
+    HouseholdId postHousehold = HouseholdId.parse(UnitToolReads.householdIdFor(unitId));
     boolean postHouseholdMode = unit.households().contains(postHousehold);
     if (!postHouseholdMode && governmentFormation.staffIsHouseholdProjection()) {
       throw new IllegalArgumentException(

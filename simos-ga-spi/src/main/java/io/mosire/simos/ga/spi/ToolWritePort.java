@@ -242,8 +242,28 @@ public interface ToolWritePort {
    * @param batch 批内命令（只有 {@code type} / {@code payloadJson}）
    * @return 批级调用链 id + 逐条命令 id + 三种结局之一（**不抛**"拒 / 冲突"）
    */
+  default BatchReceipt submitBatchWithReceipt(
+      BranchId branch, RevisionId expectedRevision, List<Request> batch) {
+    return submitBatchWithReceipt(
+        branch, expectedRevision, batch, java.util.UUID.randomUUID().toString());
+  }
+
+  /**
+   * 同上，但**调用链 id 由调用方给**（{@code correlationId}）：工具需要在**命令载荷里**引用这条链的 id 时用它。
+   *
+   * <p>★★ <b>为什么必须有这条</b>（2026-10-12 B3 第五域 unit 新增；与 {@link BatchReceipt} 同一族、同一理由）：{@code
+   * simos.unit.spawnArmy} / {@code simos.unit.levyRegion} 的社会工单载荷里有一个**确定性幂等键** {@code orderId =
+   * "<kind>:<batchId>:<unitId>"} —— {@code batchId} 就是本次批提交的 {@code
+   * correlationId}。工具要写出**逐字节不变**的载荷 （I-G1），就必须在组批**之前**知道这个 id；只回 {@link BatchReceipt}
+   * 的话，载荷只能留空或事后重写（前者改字节、后者改语义）。
+   *
+   * <p>★ <b>它没有把"id 由装配面生成"这条原则推翻</b>：id 仍然只由**装配面写进信封**（实现负责把它放进批内**每一条**信封的 {@code
+   * correlationId}），工具只是"预先指定"那一个值；不需要预知的工具照旧调上面那条（由实现生成）。{@code commandIds} 恒由实现逐条生成。
+   *
+   * @param correlationId 本次批提交的调用链 id（批内所有信封共用）
+   */
   BatchReceipt submitBatchWithReceipt(
-      BranchId branch, RevisionId expectedRevision, List<Request> batch);
+      BranchId branch, RevisionId expectedRevision, List<Request> batch, String correlationId);
 
   /**
    * 只要结局、不要 id 的形态（{@link #submitBatchWithReceipt} 的投影）。

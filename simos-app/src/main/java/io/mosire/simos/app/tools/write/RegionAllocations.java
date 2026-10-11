@@ -24,8 +24,7 @@ import java.util.function.ToLongFunction;
  *
  * <p>★★ <b>为什么必须只有这一份</b>：{@code simos.unit.levyRegion}（阶段 6）与 {@code simos.unit.raiseUnit}（阶段 8）
  * 抽的是同一批家户账与同一批人口批次，口径（可支配 = 余额 − 冻结、只抽 MALE + 成年档、降序瀑布、不足整条拒）必须逐字一致。
- * 两处各写一遍排序与扣减，就会在某个版本里悄悄漂开——本仓最贵的教训形态。故这里集中两份瀑布，{@link LevyRegionPlan} 与 {@link RaiseUnitPlan}
- * 都只准调它，不许再写第二份。
+ * 两处各写一遍排序与扣减，就会在某个版本里悄悄漂开——本仓最贵的教训形态。故这里集中两份瀑布，{@code unit} 的 levy/raise 两条推导 都只准调它，不许再写第二份。
  *
  * <p>★ <b>家户账瀑布</b>（{@link #allocateAccounts}）：region 各 hex 上 {@link ActorKind#HOUSEHOLD} 的账 → 可用量
  * ≤ 0 的 不进来源表 → 按“可用量降序、同量按 {@link io.mosire.simos.actor.model.HouseholdAccountKey#toString()}
@@ -37,7 +36,7 @@ import java.util.function.ToLongFunction;
  * → 按“count 降序、id 升序”逐批扣满。
  *
  * <p>★ <b>不足 ⇒ 整条拒</b>：总可用 < requested 时抛具名 {@link IllegalArgumentException}（带 requested /
- * available / 缺口），不做部分抽取、不截断——{@link LevyRegionPlan} 与 {@link RaiseUnitPlan} 因此都在推导期 fail-closed。
+ * available / 缺口），不做部分抽取、不截断——{@code unit} 的 levy/raise 两条推导因此都在推导期 fail-closed。
  *
  * <p>★ <b>纯函数 / 确定性 / 保序不可变</b>：本类不碰 {@code ToolContext} / {@code CoreSimos} / 墙钟；排序键是内容的全序 （键在 Map
  * 里唯一、批次 id 全局唯一 ⇒ 无并列歧义）；返回的来源表按瀑布序、以 {@link List#copyOf} 冻住，调用方拿不到可变集合。 遍历的是传入状态里保序不可变的 {@code

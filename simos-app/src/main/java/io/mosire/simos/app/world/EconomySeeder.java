@@ -2771,8 +2771,8 @@ public final class EconomySeeder {
    *
    * <p>★★ <b>为什么不查该户自己的阶层槽位（回代码核过）</b>：单位户在经济行里的 {@code stratum} 是 {@code official} （官吏户，{@code
    * GovWorldBootstrap.registerHouseholdPayload}）或 {@code landless_laborer}（军户，{@code
-   * RaiseUnitPlan}/{@code SpawnArmyPlan}）—— <b>两者都不在初始口粮天数表里</b> ⇒ {@link
-   * #initialRationDays(String)} 对它们 fail-closed（"拒绝臆造"，不是能查到 0 天）。而"**没有阶层槽位的家户怎么给
+   * unit.tools.write.RaiseUnitPlan}/{@code unit.tools.write.SpawnArmyPlan}）—— <b>两者都不在初始口粮天数表里</b>
+   * ⇒ {@link #initialRationDays(String)} 对它们 fail-closed（"拒绝臆造"，不是能查到 0 天）。而"**没有阶层槽位的家户怎么给
    * 创世粮**"在本类里已经有**唯一先例**：{@link #DISPLACED_SLOT} 的流民户走 {@code initialRationDays(CLASS_IDS[0])} （见
    * {@code classRows}）⇒ 本方法沿用它，**不新造常数、不改那张表、不动任何时点/相位**。
    */

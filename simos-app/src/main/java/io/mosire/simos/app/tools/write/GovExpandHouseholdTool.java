@@ -41,6 +41,7 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.spi.AssignGovPostHandler;
 import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
+import io.mosire.simos.unit.tools.UnitToolReads;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -191,7 +192,7 @@ public final class GovExpandHouseholdTool implements AgentTool {
       String activity = ToolSupport.optionalText(args, "activity", null);
       String profileName = ToolSupport.optionalText(args, "name", "官吏户:" + target.govId().value());
       HouseholdId targetHouseholdId =
-          HouseholdId.parse(RaiseUnitPlan.householdIdFor(target.govId().value()));
+          HouseholdId.parse(UnitToolReads.householdIdFor(target.govId().value()));
 
       SocialData social = ToolSupport.socialData(state);
       UnitState units = ToolSupport.unitState(state);

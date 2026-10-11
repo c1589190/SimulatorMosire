@@ -114,7 +114,7 @@ import java.util.Set;
  */
 public final class ThreePowersGovBootstrap {
 
-  /** 官吏户 id 前缀（形状与 {@code RaiseUnitPlan.householdIdFor} 逐字一致；后者包内可见，跨包调不到）。 */
+  /** 官吏户 id 前缀（形状与 {@code UnitToolReads.householdIdFor} 逐字一致；本常量是本创世类的既有拼写点，不动）。 */
   public static final String OFFICIAL_HOUSEHOLD_PREFIX = "hh-unit:";
 
   /** 每个官吏户配的成年男性人数（2 名 = 全职基层班子的最小可运行规模；与 {@code GovWorldBootstrap} 同值）。 */

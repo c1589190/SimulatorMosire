@@ -26,6 +26,13 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
     </dependency>
+    <!-- ★★ 2026-10-12 B3 第五域（unit 工具下放，设计书 §4.1/§4.3）：本域的工具实现落在
+         `io.mosire.simos.unit.tools.{read,write}`，只依赖**工具契约层**（工具接口/角色标签/GM-only 标签/窄写口/
+         资源与 schema 助手），**不依赖 `simos-ga`**（`ga` 必须认识各域 ⇒ 域再依赖它当场成环，Maven 建图期直接拒）。
+         本批只加这一条：其余允许面（util/map/social-api/social）与禁列一字未动。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-ga-spi</artifactId>
+    </dependency>
     <!-- ★ S3a（2026-10-09 Unit/Gov 家户容纳 §3）：unit 直接 import social-api 的 HouseholdId 等稳定 ID，
          按"依赖传递不是契约"继续显式声明这份**更上游的低层身份契约**。 -->
     <dependency>
@@ -98,7 +105,7 @@
                     <exclude>io.mosire:simos-calendar</exclude>
                     <exclude>io.mosire:simos-economy-api</exclude>
                   </excludes>
-                  <message>simos-unit 是编制树与单位（不依赖社会实现）：只许依赖 util/map/social-api/social；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 actor/app/army/economy/gov/sd/core、运行框架 ga 与已退役的 ledger）。★ 例外：actor-api 与 economy-api 由 social → economy-api → actor-api 传递带出、calendar 由 social 传递带出，三条按 I-F1 不入禁列（见上方传递依赖例外注）。</message>
+                  <message>simos-unit 是编制树与单位（不依赖社会实现）：只许依赖 util/map/social-api/social + 工具契约层 ga-spi；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 actor/app/army/economy/gov/sd/core、运行框架 ga 与已退役的 ledger）。★ 例外：actor-api 与 economy-api 由 social → economy-api → actor-api 传递带出、calendar 由 social 传递带出，三条按 I-F1 不入禁列（见上方传递依赖例外注）；ga-spi 不在禁列（组合根与契约层，5 个模块按冻结文档 §4 I-F4 列了它，本模块不在其中）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

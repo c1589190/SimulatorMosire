@@ -15,6 +15,7 @@ import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.tools.UnitToolReads;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -138,7 +139,7 @@ final class GovRetireStaffPlan {
     SocialData social = ToolSupport.socialData(state);
 
     // ── Z4/C1：退休源选择（岗位户优先；没有岗位户时按旧档口径回落到财政户）─────────────────────────
-    HouseholdId postHousehold = HouseholdId.parse(RaiseUnitPlan.householdIdFor(unitId));
+    HouseholdId postHousehold = HouseholdId.parse(UnitToolReads.householdIdFor(unitId));
     boolean postHouseholdMode = unit.households().contains(postHousehold);
     HouseholdId sourceHousehold;
     long legacyStaffBefore = -1L;

@@ -324,7 +324,7 @@ public final class HouseholdSeeder {
    * —— 国库口径的唯一权威 = {@code EconomyData.governments()} 的 {@code Government.treasury()}（经 {@link
    * HouseholdActors#householdOf} 折成家户 id，与 {@code GovernmentMarketMandatePlan}
    * 的"只按授权下单"名单同源）。今天这两个创世路径里它就是<b>官吏户</b>（{@code hh-unit:<govId>}；军户同形，见 {@code
-   * RaiseUnitPlan.householdIdFor}）。★ 国库户<b>不</b>在这里：它的创世给养是同一批里的 国库注资（粮/布/币），再给一份就是重复计。
+   * UnitToolReads.householdIdFor}）。★ 国库户<b>不</b>在这里：它的创世给养是同一批里的 国库注资（粮/布/币），再给一份就是重复计。
    *
    * <p>★★ <b>它补的是哪个缺口</b>（真根因；判别实验见 W5.5-fix 台账 ③-1 与设计书 v3.22 §7）：单位户（{@code hh-unit:<unitId>} ——
    * 官吏户/军户）由 {@code GovWorldBootstrap}/{@code ThreePowersGovBootstrap} 在 {@code actor.Seed}

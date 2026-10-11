@@ -50,6 +50,8 @@ import io.mosire.simos.unit.spi.SetGovernmentFormationHandler;
 import io.mosire.simos.unit.spi.SetJurisdictionHandler;
 import io.mosire.simos.unit.spi.SetTaxRateHandler;
 import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
+import io.mosire.simos.unit.tools.UnitToolReads;
+import io.mosire.simos.unit.tools.write.UnitSetTaxRateTool;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.state.SimulationState;
@@ -489,7 +491,7 @@ public final class GovWorldBootstrap {
     String reason = "small-world 创世：建 " + spec.govId() + " 行政链";
     String officeIndustryId = officeIndustryId(spec.at());
     String governmentHousehold = GovernmentHouseholds.of(spec.govId()).value();
-    String officialHousehold = RaiseUnitPlan.householdIdFor(spec.govId());
+    String officialHousehold = UnitToolReads.householdIdFor(spec.govId());
 
     SimulationState next = state;
     next =

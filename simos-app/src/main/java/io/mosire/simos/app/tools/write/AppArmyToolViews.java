@@ -7,6 +7,7 @@ import io.mosire.simos.army.tools.ArmyToolViews;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
+import io.mosire.simos.unit.tools.UnitToolReads;
 import java.util.List;
 import java.util.Map;
 
@@ -17,12 +18,13 @@ import java.util.Map;
  * **共用**（{@code ApiViews.armyCombat} / {@code ToolSupport.hexCoord} 的类注都点明"两处各写一份 = 加字段时没人提醒"） ⇒
  * 工具下放到 {@code simos-army} 后形状仍只有一份实现，输出因此逐字节不变（I-G1）。
  *
- * <p>★★ <b>为什么这个适配器住在 {@code app.tools.write} 而不是 {@code app.tools.army}</b>：它要转调的 {@link
- * RaiseUnitPlan#unitAddress(String)} 是**包内可见**的（本仓那种"单位 canonical 地址"的既有唯一拼写点之一，旁边还有 {@code
- * GovCreateOfficePlan}/{@code SpawnArmyPlan} 的同名同形函数）。★ 刻意的取舍：**不为一次下放把既有类的可见性放宽**，
- * 代价只是适配器与它同包（同包先例：{@code AppArmyManpowerPort}——它的委托人 {@code HouseholdManpowerAllocator} 也是包内可见）。
- * 其余不依赖包内可见物的军队适配器（{@code AppArmyToolPerspective}）仍住在 {@code app.tools.army}，与 B3 试点的 {@code
- * app.tools.map.*} 同形制。
+ * <p>★★ <b>为什么这个适配器住在 {@code app.tools.write} 而不是 {@code app.tools.army}</b>：它转调的 {@code
+ * ToolSupport.*} 视图函数都在本包；单位地址的唯一拼写点原先是本包包内可见的 {@code RaiseUnitPlan.unitAddress}。B3 第五域把 {@code
+ * unit} 工具整体搬进 {@code simos-unit} 后，那个拼写点随语义进了域内（{@link UnitToolReads#unitAddress}，public）⇒
+ * 本类改调它，**全仓仍然只有一处** {@code unit:<id>} 的拼法。★ 刻意的取舍：**不为一次下放把既有类的可见性放宽**， 代价只是适配器与它同包（同包先例：{@code
+ * AppArmyManpowerPort}——它的委托人 {@code HouseholdManpowerAllocator} 也是包内可见； 第五域新增的三个 unit
+ * 适配器同样因委托人包内可见而住本包）。其余不依赖包内可见物的军队适配器（{@code AppArmyToolPerspective}）仍住在 {@code app.tools.army}，与
+ * B3 试点的 {@code app.tools.map.*} 同形制。
  *
  * <p>★ 本类对下放工具的行为是**恒等**的：同一个入参进去，同一个视图对象/同一段字节出来。
  */
@@ -49,11 +51,11 @@ public final class AppArmyToolViews implements ArmyToolViews {
   }
 
   /**
-   * ★ 转调 {@link RaiseUnitPlan#unitAddress(String)}（{@code unit:<id>} 的既有拼写点；`FormatUnitTool`
-   * 迁入前用的就是它）。
+   * ★ 转调 {@link UnitToolReads#unitAddress(String)}（{@code unit:<id>} 的既有唯一拼写点；B3 第五域把它随 {@code
+   * unit} 工具一起搬进域内，仍在 app 的调用方（含本类）改为调它）。
    */
   @Override
   public String unitAddress(String unitId) {
-    return RaiseUnitPlan.unitAddress(unitId);
+    return UnitToolReads.unitAddress(unitId);
   }
 }
