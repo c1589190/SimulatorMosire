@@ -97,3 +97,23 @@ ga 归属工具**留 app**，属 **B2b/B3**。`simos-ga` 现**无 `src/test`**�
 ★ **终审（控制方亲跑，B2a+C1 提交后）**：`tools/mvn-lock.sh clean verify` → **BUILD SUCCESS**，
 **18/18 模块全绿**（含新模块 `GaSpiSimos` / `GaSimos`），**5:37**（spotless / spotbugs / enforcer×16 / 前端门禁 / shaded-jar guard 全跑）。
 2026-10-12 03:01:49 完成。
+
+---
+
+## 5. ★★ B3 的前置（本批新核，2026-10-12）：比设计书估的便宜
+
+设计书 §4.2/§9 把"读口"列为 B3 的最大不确定项（98 个工具用 app 的 `QueryService`）。**实测收窄了**：
+
+| 项 | 实测 | 结论 |
+|---|---|---|
+| 98 个工具实际调的 `QueryService` 方法 | **只有 3 个**：`stateAt(QueryTarget)` **76 次**、`resolve(String, QueryTarget)` 2 次、`facets(String, QueryTarget)` 2 次 | 读口面 = **3 个方法**，不是 11 个 |
+| `QueryService.stateAt` 的返回 | **`SimulationState`**（`util.state` 类型；`QueryService.java:96`） | ✅ 读口可抽成 `ga-spi` 的窄接口（只依赖 util），**不引 core、不引 app** |
+| `ToolSupport` 的调用热度 | `prop` 632 / `json` 257 / `requiredText` 142 / `optionalText` 140 / `ok` 131 / `optionalLong` 109 / `schema` 107 / `optionalBoolean` 61 / `requireAll` 50 / `requiredLong` 48 —— **绝大多数是纯助手** | ✅ 这些**已在 B1 搬进 `ga-spi`**（`ToolSchema`/`ToolResources`），域工具改用它们即可 |
+| 领域取数助手能否搬 `ga-spi` | `hexCoord` / `stateRef` / `unitState` / `socialData` / `sdState` / `gameMap` **都只从 `SimulationState` 按 namespace 取快照**（无 app 依赖） | ✅ 可搬 `ga-spi`（`ToolResources`/新 `ToolReads`） |
+| **搬不动的** | ① 可见性谓词（`hexVisible`/`unitVisible`/…，依赖 `ApiViews` + `QueryService`）；② `target(...)`（返回 app 的 `QueryService.QueryTarget`）；③ `economyData(...)`（内部走 `ApiViews.economyData`） | ⇒ 这三族**留 app**；域工具若需要"按坐标查世界"，走**注入的读口**（`QueryTarget` 的构造也须由 app 提供或改为 `(branch, revision)` 值参） |
+
+**⇒ B3 的执行顺序（建议，未派）**：
+1. **写口**：`ga` 里给 `ga-spi.ToolWritePort` 写 core 适配器（`CoreSimos` → 端口），域工具把 `core.submit(...)` 换成端口调用；
+2. **读口**：`ga-spi` 新增窄读接口（`stateAt` 三方法面）+ `ToolReads` 助手；域工具改用它（`QueryTarget` 的构造由 app 以值参或注入解决）；
+3. **`ToolSupport` 收口**：把已搬 `ga-spi` 的助手从 app 的 `ToolSupport` 删掉、留可见性谓词与 `target`/`economyData`；
+4. **按域搬工具**（建议 **先 `simos-map` 15 个做试点**，它是纯读+纯 map 域、依赖面最小），再 unit/gov/social/economy/army/sd/ga。
