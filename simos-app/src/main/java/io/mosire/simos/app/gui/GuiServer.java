@@ -2350,7 +2350,7 @@ public final class GuiServer implements AutoCloseable {
 
   /**
    * 可选格过滤（{@code GET /api/army/combats} 的 {@code q}/{@code r}）：两个都不给 ⇒ {@code null}；只给一个 ⇒ 400
-   * （**不静默当"没给"**，与 {@code io.mosire.simos.app.tools.read.ArmyCombatsTool} 同一口径）。
+   * （**不静默当"没给"**，与 {@code io.mosire.simos.army.tools.read.ArmyCombatsTool} 同一口径）。
    */
   private static HexCoord optionalHexFilter(Map<String, String> params) {
     String rawQ = params.get("q");

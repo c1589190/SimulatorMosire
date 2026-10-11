@@ -5,6 +5,8 @@ import io.mosire.simos.util.state.Command;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -156,6 +158,36 @@ public interface ToolWritePort {
   }
 
   /**
+   * 一批命令的**回执**：批级 {@code correlationId} + 逐条 {@code commandId} + 三结局之一。
+   *
+   * <p>★★ <b>为什么必须有批回执</b>（2026-10-12 B3 第二域 army 新增；与单条 {@link Receipt} 同一族、同一理由）： 组合工具（一次批写多切片，如
+   * {@code army.startCombat} / {@code army.resolveCombat} / {@code army.formatUnit} / {@code
+   * army.assignGov}）的结果视图里有 {@code commandId} 与 {@code correlationId} 两个字段，而按本接口类注的适配规则**命令 id
+   * 由装配面生成**（工具不给）⇒ 只回 {@link BatchOutcome} 的话，工具要么报不出这两个字段（改载荷 = 破 I-G1），要么自己另生成一套 id（报出去的 id
+   * 与落盘信封里的 id 不是同一个 = 静默地对不上）。
+   *
+   * <p>★ <b>批级 correlationId 的语义</b>：一次批提交 = 一条链 ⇒ 批内**所有**信封共享这一个 {@code correlationId}
+   * （单条链的缺省口径仍是 {@code correlationId = commandId}，见类注的适配规则）；{@code commandIds} 与入参批次**逐位对应**、长度相同。
+   *
+   * <p>★ 本条是本批对既有契约的**唯一**改动（改动时 {@code submitBatch} 在全仓**零调用点**——先下放的地图 15 个工具一条都不用批量，
+   * 故改动面为零）；{@code submitBatch} 降为 default 投影，语义不变。
+   *
+   * @param correlationId 本次批提交的调用链 id（批内所有信封共用）
+   * @param commandIds 批内逐条命令 id（**与入参批次逐位对应、长度相同**）
+   * @param outcome 三结局之一
+   */
+  record BatchReceipt(String correlationId, List<String> commandIds, BatchOutcome outcome) {
+
+    public BatchReceipt {
+      Objects.requireNonNull(correlationId, "correlationId");
+      Objects.requireNonNull(commandIds, "commandIds");
+      // ★ 保序冻结在赋值处（不用 List.copyOf：本仓明文口径——迭代序不是内容的纯函数，且 SpotBugs 认不出它的不可变性）。
+      commandIds = Collections.unmodifiableList(new ArrayList<>(commandIds));
+      Objects.requireNonNull(outcome, "outcome");
+    }
+  }
+
+  /**
    * 一次提交的**回执**：装配面生成的命令 id + 三结局之一。
    *
    * <p>★★ <b>为什么必须有这个回执</b>（2026-10-12 B3 试点新增；偏离与理由记在台账 {@code
@@ -199,12 +231,30 @@ public interface ToolWritePort {
   }
 
   /**
-   * **原子批提交**（"一批命令 = 一条 revision"）：要么全成、要么全不成。
+   * **原子批提交**（"一批命令 = 一条 revision"）：要么全成、要么全不成；并把装配面生成的**批级 correlationId 与逐条命令 id** 一并回报（见 {@link
+   * BatchReceipt}）。
    *
    * <p>★ 批内所有请求共享 {@code branch} 与 {@code expectedRevision}（core 的硬约束）；{@code batch} 为空、或批内坐标不一致 ⇒
    * 与 core 同口径当场抛（那是调用点的装配错误，不是世界的拒绝）。
+   *
+   * @param branch 写入目标分支（工具从载荷取）
+   * @param expectedRevision 批级期望版本（乐观并发坐标；批内共享）
+   * @param batch 批内命令（只有 {@code type} / {@code payloadJson}）
+   * @return 批级调用链 id + 逐条命令 id + 三种结局之一（**不抛**"拒 / 冲突"）
    */
-  BatchOutcome submitBatch(BranchId branch, RevisionId expectedRevision, List<Request> batch);
+  BatchReceipt submitBatchWithReceipt(
+      BranchId branch, RevisionId expectedRevision, List<Request> batch);
+
+  /**
+   * 只要结局、不要 id 的形态（{@link #submitBatchWithReceipt} 的投影）。
+   *
+   * <p>★ 要把 {@code commandId} / {@code correlationId} 报进结果的组合工具调 {@link #submitBatchWithReceipt}；
+   * 不需要的那些照旧调本方法。
+   */
+  default BatchOutcome submitBatch(
+      BranchId branch, RevisionId expectedRevision, List<Request> batch) {
+    return submitBatchWithReceipt(branch, expectedRevision, batch).outcome();
+  }
 
   /**
    * 分支 head（写前读现状：工具据此自己判"我给的期望版本是不是当前 head"）。

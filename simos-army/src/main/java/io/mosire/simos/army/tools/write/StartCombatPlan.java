@@ -1,11 +1,12 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.army.tools.write;
 
-import io.mosire.simos.app.gui.ApiViews;
-import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.ArmyAddresses;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.army.spi.RecordCombatHandler;
+import io.mosire.simos.army.tools.ArmyToolReads;
+import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -22,12 +23,12 @@ import java.util.Set;
 /**
  * ★★ {@code simos.army.startCombat} 的<b>纯推导</b>（阶段 D4 / 用户设计 D-009 补裁 + D-010 +
  * D-012，2026-10-02）：从一份 {@link SimulationState} 与参数算出 {@link Plan}——<b>不碰 {@code ToolContext} /
- * {@code CoreSimos}</b>，preview 与 apply 因此共用同一份语义（工具只负责读态、组批、折叠结局）。
+ * 写口</b>，preview 与 apply 因此共用同一份语义（工具只负责读态、组批、折叠结局）。
  *
  * <p>★★ <b>职责边界（D-010/D-012）</b>：Unit 是状态与数据本体（"进入交战"= 一条 {@code unit.SetStateDescription}
  * 状态链接）；Army 是编排层（建一条 {@code army.RecordCombat} 记录，把参与单位的状态链到 {@code
- * army:combat.<id>}）。两条命令写两个命名空间，单条命令做不到，故这是一个 **app 组合工具**：同 batchId/branch/expectedRevision ⇒ 一批
- * = 一条 revision（原子）。
+ * army:combat.<id>}）。两条命令写两个命名空间，单条命令做不到，故这是一个 **army 组合工具**：同 branch/expectedRevision 的一批 ⇒ 一批 =
+ * 一条 revision（原子）。★ 跨切片批写**不算越界**：写口是注入的（设计书 §4.3 的"跨模块工单不算越界"同一条）。
  *
  * <p>★★ <b>状态键口径（推荐值，本类唯一拼写点）</b>：{@code state="combat"}、{@code
  * address="army:combat.<id>"}；"自定义交战状态"的**自由文本** 放在记录的 {@code kind} 里（"轰城" = {@code kind="轰城"}
@@ -42,6 +43,10 @@ import java.util.Set;
  * 一次性）；每个参与单位必须在 unit 切片里存在（因为要写 {@code unit.SetStateDescription}——不存在单位的链接命令必被单位层拒，这里把它折成前置具名拒）。
  *
  * <p>★ <b>确定性</b>：不碰墙钟（tick 是 base state 的函数）、不用随机量；participants 的输入序原样保留。
+ *
+ * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/write} 随工具迁入 {@code simos-army}；视图/载荷形状走注入的
+ * {@link ArmyToolViews}（{@code {q,r}} 坐标形状与 {@code sd.PutInfo} 一样只有一份实现），切片取用走 {@link
+ * ArmyToolReads}。
  */
 final class StartCombatPlan {
 
@@ -102,11 +107,11 @@ final class StartCombatPlan {
       throw new IllegalArgumentException("participants 至少要有 1 个单位（D-009：单方入场也可判交战）");
     }
     CombatRecordId id = CombatRecordId.parse(combatId);
-    ArmyData army = ApiViews.armyData(state);
+    ArmyData army = ArmyToolReads.armyData(state);
     if (army.combats().containsKey(id)) {
       throw new IllegalArgumentException("交战记录 id 已存在（记录 id 是一次性身份，不覆盖）: " + combatId);
     }
-    UnitState units = ToolSupport.unitState(state);
+    UnitState units = ArmyToolReads.unitState(state);
     for (UnitId unit : participants) {
       if (!units.units().containsKey(unit)) {
         throw new IllegalArgumentException("参与单位不存在: " + unit.value());
@@ -176,16 +181,20 @@ final class StartCombatPlan {
       return List.copyOf(values);
     }
 
-    /** {@code army.RecordCombat} 载荷（不发 initialStage ⇒ handler 合成 {@code start} 阶段）。 */
-    String recordCombatPayloadJson() {
+    /**
+     * {@code army.RecordCombat} 载荷（不发 initialStage ⇒ handler 合成 {@code start} 阶段）。
+     *
+     * <p>★ 坐标形状走注入的 {@link ArmyToolViews#hexCoord}（与 GUI / 其它读口同一份 {@code {q,r}}），不在这里另拼。
+     */
+    String recordCombatPayloadJson(ArmyToolViews views) {
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("id", combatId);
       payload.put("kind", kind);
       payload.put("tick", tick);
-      payload.put("hex", ToolSupport.hexCoord(hex));
+      payload.put("hex", views.hexCoord(hex));
       payload.put("participants", participantValues());
       payload.put("text", text);
-      return ToolSupport.json(payload);
+      return ToolResults.json(payload);
     }
 
     /**
@@ -199,7 +208,7 @@ final class StartCombatPlan {
         payload.put("id", unit.value());
         payload.put("state", STATE_KEY);
         payload.put("address", combatAddress);
-        payloads.add(ToolSupport.json(payload));
+        payloads.add(ToolResults.json(payload));
       }
       return List.copyOf(payloads);
     }

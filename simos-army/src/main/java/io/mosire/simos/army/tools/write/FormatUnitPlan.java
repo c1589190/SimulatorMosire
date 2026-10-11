@@ -1,6 +1,8 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.army.tools.write;
 
-import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.army.tools.ArmyToolReads;
+import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -19,8 +21,8 @@ import java.util.Set;
 
 /**
  * ★★ {@code simos.army.formatUnit} 的<b>纯推导</b>（阶段 D3a，2026-10-02 / D-010 + 补裁 R2 的<b>最小环</b>）： 从一份
- * {@link SimulationState} 与目标格式算出新的有序人力/装备表——<b>不碰 {@code ToolContext} / {@code CoreSimos}</b>，
- * preview 与 apply 因此共用同一份语义（工具只负责读态、组批、折叠结局）。
+ * {@link SimulationState} 与目标格式算出新的有序人力/装备表——<b>不碰 {@code ToolContext} / 写口</b>， preview 与 apply
+ * 因此共用同一份语义（工具只负责读态、组批、折叠结局）。
  *
  * <p>★★ <b>职责边界（D-010/R2）</b>：Unit 只提供"状态与变动原语"；本类属于 <b>Army 侧的整表复写工具链</b>——按给定格式 （每条 = {@code
  * type} + 基准量 + 可选随机化幅度/上下限）算出目标表，再经 {@code unit.SetComposition} **整表复写**。 战后结算 / 概率表 / 投骰 /
@@ -41,6 +43,10 @@ import java.util.Set;
  * 不再掷骰（回放逐值相等）。
  *
  * <p>★ <b>本阶段不做</b>：概率表、按结局选分支、战后多命令编排、跨单位批量——那些是 D-010/R2 的后续阶段。
+ *
+ * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/write} 随工具迁入 {@code simos-army}；人力/装备表的 JSON
+ * 形状走注入的 {@link ArmyToolViews#compositionView}（{@code ToolSupport.compositionView} 是"全仓工具面的唯一转换点"），
+ * 切片取用走 {@link ArmyToolReads}。
  */
 final class FormatUnitPlan {
 
@@ -119,7 +125,7 @@ final class FormatUnitPlan {
               + " 条人力规格）。人员移动请用 social.* 家户命令");
     }
     requireNoDuplicateSpecTypes(equipmentSpecs, "equipment");
-    UnitState units = ToolSupport.unitState(state);
+    UnitState units = ArmyToolReads.unitState(state);
     Unit current = units.units().get(UnitId.parse(unitId));
     if (current == null) {
       throw new IllegalArgumentException("单位不存在: " + unitId);
@@ -299,28 +305,28 @@ final class FormatUnitPlan {
     }
 
     /** {@code unit.SetComposition} 载荷：两张算好的目标表整表复写。 */
-    String setCompositionPayloadJson() {
+    String setCompositionPayloadJson(ArmyToolViews views) {
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("id", unitId);
       // ★ S3b：不再发 manpower（Unit.manpower 已退役；人员属于 Social 家户）。
-      payload.put("equipment", ToolSupport.compositionView(equipment));
-      return ToolSupport.json(payload);
+      payload.put("equipment", views.compositionView(equipment));
+      return ToolResults.json(payload);
     }
 
     /**
      * {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>）：把生效种子、是否显式、前后两张表与 reason 写进同一批的
      * revision——这是"随机化可复现"的**审计证据路径**（命令记录里带种子）。
      */
-    String infoValueJson(String reason) {
+    String infoValueJson(ArmyToolViews views, String reason) {
       Map<String, Object> value = new LinkedHashMap<>();
       value.put("unitId", unitId);
       value.put("seed", seed);
       value.put("seedProvided", seedProvided);
       value.put("tick", tick);
-      value.put("equipment", ToolSupport.compositionView(equipment));
-      value.put("beforeEquipment", ToolSupport.compositionView(beforeEquipment));
+      value.put("equipment", views.compositionView(equipment));
+      value.put("beforeEquipment", views.compositionView(beforeEquipment));
       value.put("reason", reason);
-      return ToolSupport.json(value);
+      return ToolResults.json(value);
     }
 
     /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */

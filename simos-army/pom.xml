@@ -30,6 +30,12 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
     </dependency>
+    <!-- ★★ 2026-10-12 B3 第二域：工具下放 —— 军队的工具实现（`io.mosire.simos.army.tools.{read,write}`）
+         住在本模块，只依赖**工具契约层** `simos-ga-spi`（工具接口/角色标签/窄读口/窄写口/资源与 schema 助手），
+         **不依赖 `simos-ga`**（运行流）——域模块依赖 ga 会成环（设计书 §4.1 的答案）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-ga-spi</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
     </dependency>
@@ -106,7 +112,7 @@
                     <exclude>io.mosire:simos-economy-api</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
                   </excludes>
-                  <message>simos-army 是交战记录与军方编排（一期：辖区 = 视野的纯派生视图，不落盘、不算战力）：只许依赖 util/map/unit/social；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 core/app/agentlib、sd、运行框架 ga、兄弟切片 gov/economy/actor 与已退役的 ledger）。★ 例外：social-api / calendar / economy-api / actor-api 由 unit 与 social 传递带出，四条按 I-F1 不入禁列。</message>
+                  <message>simos-army 是交战记录与军方编排（一期：辖区 = 视野的纯派生视图，不落盘、不算战力）：只许依赖 util/map/unit/social + 工具契约层 ga-spi（★ 2026-10-12 B3 第二域：军队的工具实现下放到本模块，只依赖 ga-spi、不依赖运行流 ga）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 core/app/agentlib、sd、运行框架 ga、兄弟切片 gov/economy/actor 与已退役的 ledger）。★ 例外：social-api / calendar / economy-api / actor-api 由 unit 与 social 传递带出，四条按 I-F1 不入禁列。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

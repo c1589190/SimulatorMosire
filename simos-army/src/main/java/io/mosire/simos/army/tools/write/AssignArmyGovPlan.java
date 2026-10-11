@@ -1,8 +1,10 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.army.tools.write;
 
-import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.sd.id.ArmyId;
-import io.mosire.simos.sd.model.Army;
+import io.mosire.simos.army.tools.ArmyToolPerspective;
+import io.mosire.simos.army.tools.ArmyToolPerspective.ArmyGovernance;
+import io.mosire.simos.army.tools.ArmyToolReads;
+import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
@@ -21,12 +23,12 @@ import java.util.Optional;
 
 /**
  * ★★ {@code simos.army.assignGov} 的<b>纯推导</b>（阶段 12 后续赋值缺口，2026-10-01）：从一份 {@link SimulationState}
- * 与参数算出 {@link Plan}——<b>不碰 {@link io.mosire.agentlib.tool.ToolContext}、不碰 {@code
- * CoreSimos}</b>，preview 与 apply 因此共用同一份语义（工具只负责读态、把 Plan 折成视图、组批、折叠结局）。
+ * 与参数算出 {@link Plan}——<b>不碰 {@link io.mosire.agentlib.tool.ToolContext}、不碰写口</b>， preview 与 apply
+ * 因此共用同一份语义（工具只负责读态、把 Plan 折成视图、组批、折叠结局）。
  *
- * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：Army 主子在 {@code sd} 切片、单位侧 {@code ArmyFormation.masterGov} 在
- * {@code unit} 切片，单条命令只能落一个命名空间。本工具走 {@link io.mosire.simos.core.CoreSimos#submitBatch}（同 branch +
- * 同 expectedRevision ⇒ 一批 = 一条 revision，原子），把两侧主子同批落定、不给漂移留窗口。
+ * <p>★★ <b>它为什么是一次批写多切片的组合工具而不是一条命令</b>：Army 主子在 {@code sd} 切片、单位侧 {@code ArmyFormation.masterGov}
+ * 在 {@code unit} 切片，单条命令只能落一个命名空间。本工具走注入的 {@code ToolWritePort#submitBatchWithReceipt}（同 branch + 同
+ * expectedRevision ⇒ 一批 = 一条 revision，原子）， 把两侧主子同批落定、不给漂移留窗口。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：需要同步 unit 侧时先 {@code unit.SetArmyFormation} → {@code
  * sd.SetArmyMasterGov} → {@code sd.PutInfo}；不需要同步时第一条缺席。后一条看得见前一条累积后的候选态。
@@ -48,10 +50,14 @@ import java.util.Optional;
  *
  * <p>★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：{@code armyId}/{@code reason}
  * 非空白；Army 必须存在；root unit 必须存在；新主子若给必须存在且带 {@link GovernmentFormation}；{@code syncUnitSide=true} 时
- * unit 侧 role 必须能确定（见上）。批内域层拒（如 root 已带 {@code GovernmentFormation}、同 tick 二次改编）由 {@code
- * submitBatch} 整条拒，逐条真拒因折成 {@code REJECTED}。
+ * unit 侧 role 必须能确定（见上）。批内域层拒（如 root 已带 {@code GovernmentFormation}、同 tick 二次改编）由写口的批提交整条拒， 逐条真拒因折成
+ * {@code REJECTED}。
  *
  * <p>★ <b>确定性</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；字段序固定（{@code LinkedHashMap}）。
+ *
+ * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/write} 随工具迁入 {@code simos-army}；sd 侧事实（Army
+ * 的 root 单位与已认领 GOV）走注入的 {@link ArmyToolPerspective#armyGovernance}——army **不认识 sd**（铁律 3），
+ * 端口只回两个用得到的字段。
  */
 final class AssignArmyGovPlan {
 
@@ -74,6 +80,7 @@ final class AssignArmyGovPlan {
    * @param masterGovUnitId 新主子 GOV 单位 id；空 Optional = 解除认领
    * @param syncUnitSide 是否同批同步 root unit 的 {@code ArmyFormation.masterGov}
    * @param role unit 侧 role（仅"root 还没有 ArmyFormation 且需要同步"时参与，必须是给定值；工具层已折成非空白）
+   * @param perspective 视角口（sd 侧的 Army 两个字段；实现只有一份，见 {@link ArmyToolPerspective}）
    * @throws IllegalArgumentException 任一具名前置不满足（工具折 {@code BAD_REQUEST}）
    */
   static Plan plan(
@@ -81,17 +88,18 @@ final class AssignArmyGovPlan {
       String armyId,
       Optional<String> masterGovUnitId,
       boolean syncUnitSide,
-      Optional<String> role) {
+      Optional<String> role,
+      ArmyToolPerspective perspective) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(masterGovUnitId, "masterGovUnitId");
     Objects.requireNonNull(role, "role");
+    Objects.requireNonNull(perspective, "perspective");
     requireNonBlank(armyId, "armyId");
-    ArmyId id = ArmyId.parse(armyId);
-    Army army = ToolSupport.sdState(state).armies().get(id);
-    if (army == null) {
-      throw new IllegalArgumentException("军队不存在: " + armyId);
-    }
-    UnitState units = ToolSupport.unitState(state);
+    ArmyGovernance army =
+        perspective
+            .armyGovernance(state, armyId)
+            .orElseThrow(() -> new IllegalArgumentException("军队不存在: " + armyId));
+    UnitState units = ArmyToolReads.unitState(state);
     Unit root = units.units().get(army.rootUnit());
     if (root == null) {
       throw new IllegalArgumentException("root 单位不存在: " + army.rootUnit());
@@ -147,10 +155,14 @@ final class AssignArmyGovPlan {
   /**
    * Army 的 canonical 地址（{@code sd:army.<armyId>}）：与 {@code SdResolver} 的 {@code address("army",
    * name)} 同形态（AST → {@link Address#canonical()}，不手拼），行动记录的唯一拼写点。
+   *
+   * <p>★ 命名空间字面量取 {@link ToolResources#SD_NAMESPACE}（值 {@code "sd"}，与迁入前的 {@code
+   * ToolSupport.SD_NAMESPACE} 同源同值）：不在这里另抄一个 {@code "sd"}。
    */
   static String armyAddress(String armyId) {
     Objects.requireNonNull(armyId, "armyId");
-    return new Address(List.of(new Namespace(ToolSupport.SD_NAMESPACE), Entity.of("army", armyId)))
+    return new Address(
+            List.of(new Namespace(ToolResources.SD_NAMESPACE), Entity.of("army", armyId)))
         .canonical();
   }
 
@@ -219,7 +231,7 @@ final class AssignArmyGovPlan {
       payload.put("unitId", rootUnit);
       payload.put("role", role.orElseThrow());
       newMasterGov.ifPresent(govId -> payload.put("masterGov", govId));
-      return ToolSupport.json(payload);
+      return ToolResults.json(payload);
     }
 
     /**
@@ -230,7 +242,7 @@ final class AssignArmyGovPlan {
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("armyId", armyId);
       newMasterGov.ifPresent(govId -> payload.put("masterGovUnitId", govId));
-      return ToolSupport.json(payload);
+      return ToolResults.json(payload);
     }
 
     /** {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；字段序固定，人可读审计）。 */
@@ -244,7 +256,7 @@ final class AssignArmyGovPlan {
       value.put("syncUnitSide", syncUnitSide);
       value.put("role", role.orElse(null));
       value.put("reason", reason);
-      return ToolSupport.json(value);
+      return ToolResults.json(value);
     }
 
     /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */

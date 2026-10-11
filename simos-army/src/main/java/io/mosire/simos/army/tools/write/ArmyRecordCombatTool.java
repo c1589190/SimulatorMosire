@@ -1,10 +1,10 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.army.tools.write;
 
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.army.spi.RecordCombatHandler;
-import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.List;
 import java.util.Map;
 
@@ -23,14 +23,17 @@ import java.util.Map;
  * <p>★ <b>只在 GM 桶</b>：{@code army.RecordCombat} 标了 {@code GmOnlyCommand}（裁定战果是 GM 的活，决策人不得凭空写战果），
  * 故本工具也只在 {@code SimosToolSource.addGmWrites} 注册。★ <b>写面只声明 {@code army} 命名空间</b>（{@link
  * #ARMY_NAMESPACE_WRITE}），GM 侧 {@code army} 在 {@code Shell#gmPermissionSet} 显式 {@code unlimited()}。
+ *
+ * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-army}，对 {@code
+ * CoreSimos} 的直连换成构造期注入的 {@link ToolWritePort}（适配器在组合根）；工具名、载荷、拒绝码、资源声明逐字不变。
  */
 public final class ArmyRecordCombatTool extends AbstractNarrowWriteTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.army.recordCombat";
 
-  public ArmyRecordCombatTool(CoreSimos core, String initiator, String mapId) {
-    super(core, initiator, mapId);
+  public ArmyRecordCombatTool(ToolWritePort writes, String mapId) {
+    super(writes, mapId);
   }
 
   @Override

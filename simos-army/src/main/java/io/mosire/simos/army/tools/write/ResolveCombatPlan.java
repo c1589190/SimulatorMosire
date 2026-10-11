@@ -1,7 +1,5 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.army.tools.write;
 
-import io.mosire.simos.app.gui.ApiViews;
-import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.ArmyAddresses;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.CombatOutcome;
@@ -13,11 +11,12 @@ import io.mosire.simos.army.CombatStage;
 import io.mosire.simos.army.CombatStageId;
 import io.mosire.simos.army.CombatUnitLoss;
 import io.mosire.simos.army.spi.ResolveCombatStageHandler;
-import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.army.tools.ArmyManpowerPort;
+import io.mosire.simos.army.tools.ArmyToolReads;
+import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.social.api.population.Sex;
-import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.spi.SubmitHouseholdWorkOrderHandler;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.Unit;
@@ -37,17 +36,16 @@ import java.util.Set;
 /**
  * ★★ {@code simos.army.resolveCombat} 的<b>纯推导</b>（阶段 D4 / 用户设计 D-009 补裁 + D-010 +
  * D-012，2026-10-02；P2 人员伤亡回写 Social，2026-10-13）：从一份 {@link SimulationState} 与参数算出结算 {@link
- * Plan}——<b>不碰 {@code ToolContext} / {@code CoreSimos}</b>，preview 与 apply 因此共用同一份语义
- * （工具只负责读态、组批、折叠结局）。
+ * Plan}——<b>不碰 {@code ToolContext} / 写口</b>，preview 与 apply 因此共用同一份语义 （工具只负责读态、组批、折叠结局）。
  *
  * <p>★★ <b>职责边界（D-010/R2 + P2）</b>：Army 只做编排/随机化——判定算法委托 {@link
  * CombatResolution}（全仓唯一）；命中结局的损失拆成两条腿：
  *
  * <ol>
  *   <li><b>人员损失（P2）</b>：{@code CombatUnitLoss.manpower} 只接受<b>负增量</b>；{@code lossCount = Σ|amount|}
- *       从 {@code Unit.households()} 的 Social 家户份额里抽 {@code MALE + ADULT} 人（{@link
- *       HouseholdManpowerAllocator#allocateFromHouseholds}），逐单位落一张 {@code
- *       social.SubmitHouseholdWorkOrder} （{@code REMOVE_MEMBERS} 步骤）；<b>Unit 侧不写第二本 headcount</b>；
+ *       从 {@code Unit.households()} 的 Social 家户份额里抽 {@code MALE + ADULT} 人（注入的 {@link
+ *       ArmyManpowerPort}——选人层的唯一实现在 app），逐单位落一张 {@code social.SubmitHouseholdWorkOrder} （{@code
+ *       REMOVE_MEMBERS} 步骤）；<b>Unit 侧不写第二本 headcount</b>；
  *   <li><b>装备损失</b>：{@code unit.AdjustComposition} 只带 {@code equipment} 维度（{@code {id,equipment}}
  *       形状； 空装备不发命令），语义与本批之前一致。
  * </ol>
@@ -71,6 +69,10 @@ import java.util.Set;
  * 必须在概率表里；投骰必须有概率表；命中结局里**有实际增量**的单位必须存在于 unit 切片；人员损失必须全为负增量且 {@code Σ|amount|} 不溢出；人员损失单位的 {@code
  * Unit.households()} 必须非空、其中 {@code MALE + ADULT} 份额必须够 {@code lossCount} （不足 ⇒ 带
  * unit/requested/available/缺口具名拒，不部分抽、不换年龄档）。
+ *
+ * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/write} 随工具迁入 {@code simos-army}；选人层走注入的
+ * {@link ArmyManpowerPort}（历法时钟由实现持有——{@code simos-calendar} 在 army 禁列里），视图/载荷形状走注入的 {@link
+ * ArmyToolViews}，切片取用走 {@link ArmyToolReads}。载荷字节、拒因文案、批内顺序逐字不变。
  */
 final class ResolveCombatPlan {
 
@@ -92,20 +94,6 @@ final class ResolveCombatPlan {
   private ResolveCombatPlan() {}
 
   /**
-   * 测试/旧路径入口：全缺省儒略历时钟（与 {@code HouseholdManpowerAllocator} 的年龄档现算口径一致）。
-   *
-   * <p>★ 生产路径一律用带 {@link CalendarClock} 的重载（{@code CalendarService.clock()}），本重载只为既有测试/旧调用点保留。
-   */
-  static Plan derive(
-      SimulationState state,
-      String combatId,
-      String stageId,
-      Optional<String> outcomeId,
-      Optional<Long> seed) {
-    return derive(state, combatId, stageId, outcomeId, seed, CalendarClock.julianDefault());
-  }
-
-  /**
    * 生产推导入口（校验清单见类注；P2 起还负责人员伤亡的 Social 家户分摊与工单载荷）。
    *
    * @param state 读数所在状态（preview/apply 共用同一坐标）
@@ -113,7 +101,7 @@ final class ResolveCombatPlan {
    * @param stageId 要判定的阶段 id
    * @param outcomeId 显式结局（空 = 由 seed/派生种子投骰）
    * @param seed 显式 seed（空 = 由 {@code combatId+stageId+tick+概率表} 确定性派生）
-   * @param clock 历法时钟（年龄档现算的唯一拼写点；非空；生产路径 = {@code CalendarService.clock()}）
+   * @param manpower 选人口（家户份额瀑布 + 年龄档现算；实现持有历法时钟，见 {@link ArmyManpowerPort} 类注）
    */
   static Plan derive(
       SimulationState state,
@@ -121,13 +109,13 @@ final class ResolveCombatPlan {
       String stageId,
       Optional<String> outcomeId,
       Optional<Long> seed,
-      CalendarClock clock) {
+      ArmyManpowerPort manpower) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(outcomeId, "outcomeId");
     Objects.requireNonNull(seed, "seed");
-    Objects.requireNonNull(clock, "clock");
+    Objects.requireNonNull(manpower, "manpower");
     CombatRecordId recordId = CombatRecordId.parse(combatId);
-    ArmyData army = ApiViews.armyData(state);
+    ArmyData army = ArmyToolReads.armyData(state);
     CombatRecord record = army.combats().get(recordId);
     if (record == null) {
       throw new IllegalArgumentException("交战记录不存在: " + combatId);
@@ -151,7 +139,7 @@ final class ResolveCombatPlan {
         CombatResolution.select(
             record.id(), stage.id(), record.tick(), stage.outcomes(), explicitOutcomeId, seed);
 
-    UnitState units = ToolSupport.unitState(state);
+    UnitState units = ArmyToolReads.unitState(state);
     long tick = state.meta().timestamp().tick();
     // ★ P2：没有人员损失时保持原行为——不读 Social（惰性取），批内只有装备命令。
     SocialData social = null;
@@ -179,20 +167,12 @@ final class ResolveCombatPlan {
                 + " 人战斗人员损失：先 unit.AssignHousehold 把人口家户挂到该单位（不猜、不新建第二本 headcount）");
       }
       if (social == null) {
-        social = ToolSupport.socialData(state);
+        social = ArmyToolReads.socialData(state);
       }
-      HouseholdManpowerAllocator.Allocation allocation;
+      ArmyManpowerPort.Allocation allocation;
       try {
         allocation =
-            HouseholdManpowerAllocator.allocateFromHouseholds(
-                social,
-                Set.copyOf(unit.households()),
-                lossCount,
-                clock,
-                tick,
-                Optional.of(Sex.MALE),
-                Optional.of(AgeBracket.ADULT),
-                Set.of());
+            manpower.allocateMalesOfAdult(social, Set.copyOf(unit.households()), lossCount, tick);
       } catch (IllegalArgumentException e) {
         // ★ 不足拒因由选人层给出 requested/available/缺口；这里补 unit 与"这是战斗人员损失"的上下文，整条 plan 拒。
         throw new IllegalArgumentException(
@@ -306,11 +286,11 @@ final class ResolveCombatPlan {
   }
 
   /** {@code unit.AdjustComposition} 的装备维度载荷（P2：只带 equipment，绝不带 manpower）。 */
-  private static String equipmentAdjustPayloadJson(CombatUnitLoss loss) {
+  private static String equipmentAdjustPayloadJson(ArmyToolViews views, CombatUnitLoss loss) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("id", loss.unit().value());
-    payload.put("equipment", ToolSupport.compositionDeltaView(loss.equipment()));
-    return ToolSupport.json(payload);
+    payload.put("equipment", views.compositionDeltaView(loss.equipment()));
+    return ToolResults.json(payload);
   }
 
   private static void requireNonBlank(String value, String field) {
@@ -340,7 +320,7 @@ final class ResolveCombatPlan {
       UnitId unit,
       String orderId,
       HouseholdId target,
-      List<HouseholdManpowerAllocator.ManpowerShare> shares,
+      List<ArmyManpowerPort.Share> shares,
       String reason) {
 
     CasualtyOrder {
@@ -367,7 +347,7 @@ final class ResolveCombatPlan {
      */
     String payloadJson() {
       List<Map<String, Object>> steps = new ArrayList<>(shares.size());
-      for (HouseholdManpowerAllocator.ManpowerShare share : shares) {
+      for (ArmyManpowerPort.Share share : shares) {
         Map<String, Object> step = new LinkedHashMap<>();
         step.put("op", "REMOVE_MEMBERS");
         step.put("household", share.householdId().value());
@@ -381,31 +361,31 @@ final class ResolveCombatPlan {
       payload.put("reason", reason);
       payload.put("source", Map.of("module", "army"));
       payload.put("plan", steps);
-      return ToolSupport.json(payload);
+      return ToolResults.json(payload);
     }
 
     /** 逐 share 的来源视图（preview 用；HEX 家户带 hex，UNIT 家户为 null）。 */
-    List<Map<String, Object>> sharesView() {
+    List<Map<String, Object>> sharesView(ArmyToolViews views) {
       List<Map<String, Object>> rows = new ArrayList<>(shares.size());
-      for (HouseholdManpowerAllocator.ManpowerShare share : shares) {
+      for (ArmyManpowerPort.Share share : shares) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("household", share.householdId().value());
         row.put("lotId", share.lotId().value());
         row.put("count", share.taken());
-        row.put("hex", share.hexOptional().map(ToolSupport::hexCoord).orElse(null));
+        row.put("hex", share.hexOptional().map(views::hexCoord).orElse(null));
         rows.add(row);
       }
       return List.copyOf(rows);
     }
 
     /** 一条人员工单的完整预览视图（含可直接比对的载荷字节）。 */
-    Map<String, Object> view() {
+    Map<String, Object> view(ArmyToolViews views) {
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("unit", unit.value());
       view.put("orderId", orderId);
       view.put("target", target.value());
       view.put("reason", reason);
-      view.put("shares", sharesView());
+      view.put("shares", sharesView(views));
       view.put("payload", payloadJson());
       return view;
     }
@@ -501,13 +481,13 @@ final class ResolveCombatPlan {
     }
 
     /** 逐单位的 {@code unit.AdjustComposition} 载荷（顺序 = 结局 losses 表序；只装备维度，空装备跳过）。 */
-    List<String> adjustPayloadsJson() {
+    List<String> adjustPayloadsJson(ArmyToolViews views) {
       List<String> payloads = new ArrayList<>();
       for (CombatUnitLoss loss : outcome.losses()) {
         if (loss.equipment().isEmpty()) {
           continue;
         }
-        payloads.add(equipmentAdjustPayloadJson(loss));
+        payloads.add(equipmentAdjustPayloadJson(views, loss));
       }
       return List.copyOf(payloads);
     }
@@ -529,7 +509,7 @@ final class ResolveCombatPlan {
      * ★ 批内前段命令（ResolveCombatStage 之前）的精确顺序：逐 unit 先人员工单（如有）再装备命令（如有）。 apply 组批与 preview
      * 命令视图都只认这一处，避免视图与真实批序漂移。
      */
-    List<PlannedCommand> unitCommands() {
+    List<PlannedCommand> unitCommands(ArmyToolViews views) {
       List<PlannedCommand> commands = new ArrayList<>();
       int casualtyIndex = 0;
       for (CombatUnitLoss loss : outcome.losses()) {
@@ -539,15 +519,15 @@ final class ResolveCombatPlan {
         }
         if (!loss.equipment().isEmpty()) {
           commands.add(
-              new PlannedCommand(ADJUST_COMPOSITION_TYPE, equipmentAdjustPayloadJson(loss)));
+              new PlannedCommand(ADJUST_COMPOSITION_TYPE, equipmentAdjustPayloadJson(views, loss)));
         }
       }
       return List.copyOf(commands);
     }
 
     /** 实际批内命令类型（含逐单位顺序 + ResolveCombatStage + 清链接；preview 与 apply 共用）。 */
-    List<String> commandTypes() {
-      List<PlannedCommand> unitCommands = unitCommands();
+    List<String> commandTypes(ArmyToolViews views) {
+      List<PlannedCommand> unitCommands = unitCommands(views);
       List<String> types = new ArrayList<>(unitCommands.size() + 1 + clearLinkUnits.size());
       for (PlannedCommand command : unitCommands) {
         types.add(command.type());
@@ -566,7 +546,7 @@ final class ResolveCombatPlan {
       payload.put("stageId", stageId.value());
       payload.put("outcomeId", outcome.id().value());
       seed.ifPresent(value -> payload.put("seed", value));
-      return ToolSupport.json(payload);
+      return ToolResults.json(payload);
     }
 
     /** 逐单位的 {@code unit.SetStateDescription} 清除载荷（省略 address = 删除 combat 链接）。 */
@@ -576,7 +556,7 @@ final class ResolveCombatPlan {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("id", unit.value());
         payload.put("state", STATE_KEY);
-        payloads.add(ToolSupport.json(payload));
+        payloads.add(ToolResults.json(payload));
       }
       return List.copyOf(payloads);
     }
@@ -592,13 +572,13 @@ final class ResolveCombatPlan {
     }
 
     /** 选中结局的损失视图（preview 用；形状与命令载荷同源）。 */
-    List<Map<String, Object>> lossesView() {
+    List<Map<String, Object>> lossesView(ArmyToolViews views) {
       List<Map<String, Object>> rows = new ArrayList<>(outcome.losses().size());
       for (CombatUnitLoss loss : outcome.losses()) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("unit", loss.unit().value());
-        row.put("manpower", ToolSupport.compositionDeltaView(loss.manpower()));
-        row.put("equipment", ToolSupport.compositionDeltaView(loss.equipment()));
+        row.put("manpower", views.compositionDeltaView(loss.manpower()));
+        row.put("equipment", views.compositionDeltaView(loss.equipment()));
         row.put("empty", loss.empty());
         rows.add(row);
       }
@@ -606,10 +586,10 @@ final class ResolveCombatPlan {
     }
 
     /** 逐单位人员伤亡工单视图（preview 用；含 orderId/target/shares/可直接比对的载荷字节）。 */
-    List<Map<String, Object>> casualtyOrdersView() {
+    List<Map<String, Object>> casualtyOrdersView(ArmyToolViews views) {
       List<Map<String, Object>> rows = new ArrayList<>(casualtyOrders.size());
       for (CasualtyOrder order : casualtyOrders) {
-        rows.add(order.view());
+        rows.add(order.view(views));
       }
       return List.copyOf(rows);
     }

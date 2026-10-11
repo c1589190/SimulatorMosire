@@ -12,12 +12,11 @@ import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.time.CalendarService;
+import io.mosire.simos.app.tools.army.AppArmyToolPerspective;
 import io.mosire.simos.app.tools.map.AppMapPathPort;
 import io.mosire.simos.app.tools.map.AppMapRenderPort;
 import io.mosire.simos.app.tools.map.AppMapToolPerspective;
 import io.mosire.simos.app.tools.map.AppMapToolViews;
-import io.mosire.simos.app.tools.read.ArmyCombatTool;
-import io.mosire.simos.app.tools.read.ArmyCombatsTool;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CalendarInfoTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
@@ -51,8 +50,8 @@ import io.mosire.simos.app.tools.read.UnitListTool;
 import io.mosire.simos.app.tools.write.ActorAdjustAccountsTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
-import io.mosire.simos.app.tools.write.ArmyRecordCombatTool;
-import io.mosire.simos.app.tools.write.AssignArmyGovTool;
+import io.mosire.simos.app.tools.write.AppArmyManpowerPort;
+import io.mosire.simos.app.tools.write.AppArmyToolViews;
 import io.mosire.simos.app.tools.write.CalendarConfigureTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
@@ -67,10 +66,8 @@ import io.mosire.simos.app.tools.write.EconomySetMarketZonePriceAlphaTool;
 import io.mosire.simos.app.tools.write.EconomyUpsertGovUnitTool;
 import io.mosire.simos.app.tools.write.EconomyUpsertIndustryTool;
 import io.mosire.simos.app.tools.write.ForkTool;
-import io.mosire.simos.app.tools.write.FormatUnitTool;
 import io.mosire.simos.app.tools.write.GmAdjustPopulationTool;
 import io.mosire.simos.app.tools.write.GmApproveTool;
-import io.mosire.simos.app.tools.write.GmArmyPayPolicyTool;
 import io.mosire.simos.app.tools.write.GmDecidePacketTool;
 import io.mosire.simos.app.tools.write.GmGovMarketMandateTool;
 import io.mosire.simos.app.tools.write.GmMergedPlanApplyTool;
@@ -112,7 +109,6 @@ import io.mosire.simos.app.tools.write.RegionClearStructuresTool;
 import io.mosire.simos.app.tools.write.RegionSeedTool;
 import io.mosire.simos.app.tools.write.RejectDirectiveTool;
 import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
-import io.mosire.simos.app.tools.write.ResolveCombatTool;
 import io.mosire.simos.app.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.app.tools.write.RunDecisionTool;
 import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
@@ -141,7 +137,6 @@ import io.mosire.simos.app.tools.write.SocialHouseholdRatesTool;
 import io.mosire.simos.app.tools.write.SocialLaborTool;
 import io.mosire.simos.app.tools.write.SocialUpdateCityTool;
 import io.mosire.simos.app.tools.write.SpawnArmyTool;
-import io.mosire.simos.app.tools.write.StartCombatTool;
 import io.mosire.simos.app.tools.write.StartDecisionTool;
 import io.mosire.simos.app.tools.write.SubmitPacketTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
@@ -177,6 +172,17 @@ import io.mosire.simos.app.tools.write.UnitSplitFormationTool;
 import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.app.tools.write.VoidAdjudicationTool;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
+import io.mosire.simos.army.tools.ArmyManpowerPort;
+import io.mosire.simos.army.tools.ArmyToolPerspective;
+import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.army.tools.read.ArmyCombatTool;
+import io.mosire.simos.army.tools.read.ArmyCombatsTool;
+import io.mosire.simos.army.tools.write.ArmyRecordCombatTool;
+import io.mosire.simos.army.tools.write.AssignArmyGovTool;
+import io.mosire.simos.army.tools.write.FormatUnitTool;
+import io.mosire.simos.army.tools.write.GmArmyPayPolicyTool;
+import io.mosire.simos.army.tools.write.ResolveCombatTool;
+import io.mosire.simos.army.tools.write.StartCombatTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
@@ -726,10 +732,22 @@ public final class SimosToolSource implements ToolSource {
     // revision。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；raiseUnit 的抽取语义不变。
     built.add(new SpawnArmyTool(core, query, initiator, mapId));
+    // ★★ 2026-10-12 B3 第二域（army，设计书 §4.3 / 台账 §5 + 试点 §6.5）：army 的编排工具**已下放到
+    //   `simos-army`**（`io.mosire.simos.army.tools.{read,write}`），这里只剩装配——注入四类接缝：
+    //   ① 窄写口（命令 id / correlationId / initiator 由 `CoreSimosToolWritePort` 生成并**回报**，见
+    // ToolWritePort.BatchReceipt）；
+    //   ② 窄读口（QueryService 的三方法面，含 head 解析/创世等待/读缓存）；
+    //   ③ 视图口（ApiViews / ToolSupport 的**同一份** view 函数，形状不另写第二份）；
+    //   ④ 视角口 + 选人口（可见性围栏 + sd 侧 Army 事实 + MALE+ADULT 家户份额瀑布，实现都只有一份）。
+    ToolWritePort toolWrites = new CoreSimosToolWritePort(core, initiator);
+    ToolReadPort toolReads = new QueryServiceToolReadPort(query);
+    ArmyToolViews armyViews = new AppArmyToolViews();
+    ArmyToolPerspective armyPerspective = new AppArmyToolPerspective();
+    ArmyManpowerPort armyManpower = new AppArmyManpowerPort(calendarService);
     // 阶段 12 后续赋值缺口（2026-10-01）：Army 创建后的主子改派/解除 GM 组合工具——unit.SetArmyFormation
     //   → sd.SetArmyMasterGov → sd.PutInfo 同批落一条 revision，避免 sd / unit 两侧主子漂移。**只在 GM
     //   桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new AssignArmyGovTool(core, query, initiator, mapId));
+    built.add(new AssignArmyGovTool(toolWrites, toolReads, armyPerspective));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
     built.add(new SdCreateNationTool(core, initiator, mapId));
     built.add(new SdCreateArmyTool(core, initiator, mapId));
@@ -762,18 +780,18 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SdSetDecisionMakerProviderTool(core, initiator, mapId));
     // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录写入（GM-only 命令 army.RecordCombat 的窄封装）。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 army 命名空间。
-    built.add(new ArmyRecordCombatTool(core, initiator, mapId));
+    built.add(new ArmyRecordCombatTool(toolWrites, mapId));
     // ★★ D4（2026-10-02 / D-009 补裁 + D-010 + D-012；P2 2026-10-13 人员伤亡回写 Social）：Army 编排层的两条组合
     //   工具——让单位进入交战（RecordCombat + 逐单位 SetStateDescription，一批一条 revision）与结算一个阶段
     //   （逐单位 SubmitHouseholdWorkOrder + AdjustComposition + ResolveCombatStage +（全阶段判定完）清除状态链接，
     //   一批一条 revision）。**只在 GM 桶**；两条工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面各自声明
     //   social/unit/army 命名空间（与批内命令逐条对齐）。
-    built.add(new StartCombatTool(core, query, initiator));
-    built.add(new ResolveCombatTool(core, query, initiator, calendarService));
+    built.add(new StartCombatTool(toolWrites, toolReads, armyViews));
+    built.add(new ResolveCombatTool(toolWrites, toolReads, armyViews, armyManpower));
     // ★★ D3a（2026-10-02 / D-010 + 补裁 R2 最小环）：Army 侧"按统一格式整表复写单位人力/装备"的工具链入口——
     //   按格式（有序条目 + 可选 jitter/上下限 + 可选 seed）算出目标表，经 unit.SetComposition 整表复写，
     //   同批写 sd.PutInfo（含生效 seed，可复现证据）。**只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new FormatUnitTool(core, query, initiator));
+    built.add(new FormatUnitTool(toolWrites, toolReads, armyViews));
     // ★★ E6b：GM 经济调整（economy.GmAdjust 的窄封装：预览 / 原因 / 前后差异 / 审计）。
     //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它，DecisionCallerFactory.WHITELIST 也没有它，
     //   且 economy.GmAdjust 本身标了 GmOnlyCommand（令/RegisterEffect/决策人 catalog 三条路径都排除）。
@@ -852,7 +870,7 @@ public final class SimosToolSource implements ToolSource {
     // ★★ R1（2026-10-09）：政府市场授权（行政家户挂单）的 GM 窄工具 —— 只写一张授权表，订单仍由日结算的
     //   家户→订单→撮合→结算 生成（用户 §1.3：不加政策层）。
     built.add(new GmGovMarketMandateTool(core, query, initiator));
-    built.add(new GmArmyPayPolicyTool(core, query, initiator));
+    built.add(new GmArmyPayPolicyTool(toolWrites, toolReads));
     built.add(new GmVitalRatesTool(core, query, initiator));
     built.add(new GmAdjustPopulationTool(core, query, initiator));
     // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：GM 审批队列裁决口（控制面，不落世界 revision）。
@@ -962,6 +980,11 @@ public final class SimosToolSource implements ToolSource {
     MapToolPerspective mapPerspective = new AppMapToolPerspective();
     MapRenderPort mapRender = new AppMapRenderPort(renderService);
     MapPathPort mapPaths = new AppMapPathPort();
+    // ★★ 2026-10-12 B3 第二域（army）：两条 army 读工具**已下放到 `simos-army`**（`army.tools.read`），
+    //   注入同一套接缝——窄读口（通用适配器，与 map 共用一个形制）+ 视图口 + 视角口（可见性围栏唯一实现）。
+    ToolReadPort armyReads = new QueryServiceToolReadPort(query);
+    ArmyToolViews armyViews = new AppArmyToolViews();
+    ArmyToolPerspective armyPerspective = new AppArmyToolPerspective();
     return List.of(
         // ★★ E6b：catalog 的**命令清单**取完整注册面（含 GM-only），决策人可见性由显式"可嵌入令"白名单过滤
         //   （CatalogVisibility）—— GM 看得到 economy.SwitchMode / economy.GmAdjust，决策人看不到。
@@ -1031,8 +1054,8 @@ public final class SimosToolSource implements ToolSource {
         // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录读口（"当前 tick 在哪发生交战"的唯一直接读口）。
         //   四桶共享（世界状态、可回放）；逐条可见性按记录所在格判（ToolSupport.hexVisible）——看不见的格不进结果。
         //   形状与 GUI 同源（ApiViews.armyCombat）。
-        new ArmyCombatsTool(query, mapId),
-        new ArmyCombatTool(query, mapId),
+        new ArmyCombatsTool(armyReads, armyViews, armyPerspective, mapId),
+        new ArmyCombatTool(armyReads, armyViews, armyPerspective, mapId),
         // ★ 判决（模型原始输出 + meta）：省略 actor = FULL 全量披露 ⇒ 只给 GM 桶（GmOnlyRead），见类注。
         new SdVerdictsTool(query, mapId),
         // ★★ D2（2026-10-22 决策包计划）：GM 决策包两条读口（摘要列表 + 单包全量）。

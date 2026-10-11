@@ -1,4 +1,4 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.army.tools.write;
 
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
@@ -12,15 +12,13 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.app.query.QueryService;
-import io.mosire.simos.app.query.QueryService.QueryTarget;
-import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.spi.RecordCombatHandler;
-import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.command.BatchResult;
-import io.mosire.simos.core.command.CommandEnvelope;
-import io.mosire.simos.core.command.CommandOutcome;
-import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolSchema;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -30,16 +28,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * ★★ {@code simos.army.startCombat}（阶段 D4 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02）：GM-only
  * 组合工具——**让单位进入交战**： 一批（一条 revision）= 一条 {@code army.RecordCombat}（建记录 + 初始阶段）+ 每个参与单位一条 {@code
  * unit.SetStateDescription}（状态链接）。
  *
- * <p>★★ <b>为什么是 app 组合工具</b>：记录在 {@code army} 命名空间、状态链接在 {@code unit} 命名空间，单条命令只能落一个；本工具走 {@link
- * CoreSimos#submitBatch}（同 batchId + 同 branch/expectedRevision ⇒ 一批 = 一条 revision，原子）。preview
- * 一个字节都不写。
+ * <p>★★ <b>为什么是一次批写多切片的组合工具</b>：记录在 {@code army} 命名空间、状态链接在 {@code unit} 命名空间，单条命令只能落一个；本工具走注入的
+ * {@link ToolWritePort#submitBatchWithReceipt}（同一批 + 同 branch/expectedRevision ⇒ 一批 = 一条
+ * revision，原子）。 preview 一个字节都不写。
  *
  * <p>★★ <b>口径（写进报告给测试代理）</b>：{@code state="combat"}、{@code address="army:combat.<id>"}、初始阶段由
  * handler 合成为 {@code id="start"}；"自定义交战状态"的自由文本落在记录的 {@code kind}（"轰城" = {@code
@@ -57,6 +54,11 @@ import java.util.UUID;
  * <p>★ <b>失败具名</b>：参数缺失/类型错 / id 已存在 / 参与单位不存在 / 记录 id 已存在 ⇒ {@code BAD_REQUEST}（零 revision）；批内域拒 ⇒
  * {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
  * ResourceDeniedException}。
+ *
+ * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-army}，对 {@code
+ * CoreSimos} / {@code QueryService} 的直连换成构造期注入（写口 / 读口 / 视图口）；工具名、载荷、拒绝码、资源声明、批内顺序逐字不变。 报出去的 {@code
+ * submission.commandId}/{@code correlationId} 仍**就是**落盘信封里的那一对（批级 id 由写口适配器生成并回报， 见 {@link
+ * ToolWritePort.BatchReceipt}）。
  */
 public final class StartCombatTool implements AgentTool {
 
@@ -67,23 +69,23 @@ public final class StartCombatTool implements AgentTool {
   private static final ResourceManifest START_COMBAT_WRITE =
       ResourceManifest.of(
           Map.of(
-              ToolSupport.ARMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolResources.ARMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolResources.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /** 与 {@link #START_COMBAT_WRITE} 同源的逐命名空间粗断言（顺序 = 批内命令命名空间序）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
       List.of(
-          ResourceId.of(ToolSupport.ARMY_NAMESPACE, "*"),
-          ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"));
+          ResourceId.of(ToolResources.ARMY_NAMESPACE, "*"),
+          ResourceId.of(ToolResources.UNIT_NAMESPACE, "*"));
 
-  private final CoreSimos core;
-  private final QueryService query;
-  private final String initiator;
+  private final ToolWritePort writes;
+  private final ToolReadPort reads;
+  private final ArmyToolViews views;
 
-  public StartCombatTool(CoreSimos core, QueryService query, String initiator) {
-    this.core = Objects.requireNonNull(core, "core");
-    this.query = Objects.requireNonNull(query, "query");
-    this.initiator = Objects.requireNonNull(initiator, "initiator");
+  public StartCombatTool(ToolWritePort writes, ToolReadPort reads, ArmyToolViews views) {
+    this.writes = Objects.requireNonNull(writes, "writes");
+    this.reads = Objects.requireNonNull(reads, "reads");
+    this.views = Objects.requireNonNull(views, "views");
   }
 
   @Override
@@ -106,22 +108,22 @@ public final class StartCombatTool implements AgentTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
-    props.put("combatId", ToolSupport.prop("string", "交战记录 id（如 c-1；不得与既有记录重复）"));
-    props.put("kind", ToolSupport.prop("string", "自定义交战状态（自由文本，如 野战 / 轰城 / 围城）"));
-    props.put("q", ToolSupport.prop("integer", "交战格：六角列坐标 q"));
-    props.put("r", ToolSupport.prop("integer", "交战格：六角行坐标 r"));
-    props.put("participants", ToolSupport.prop("array", "参与单位 id [unitId...]（至少一个、不重复、必须已存在）"));
-    props.put("text", ToolSupport.prop("string", "自然语言过程（记录级概述，同时作为初始阶段文本）"));
+    props.put("combatId", ToolSchema.prop("string", "交战记录 id（如 c-1；不得与既有记录重复）"));
+    props.put("kind", ToolSchema.prop("string", "自定义交战状态（自由文本，如 野战 / 轰城 / 围城）"));
+    props.put("q", ToolSchema.prop("integer", "交战格：六角列坐标 q"));
+    props.put("r", ToolSchema.prop("integer", "交战格：六角行坐标 r"));
+    props.put("participants", ToolSchema.prop("array", "参与单位 id [unitId...]（至少一个、不重复、必须已存在）"));
+    props.put("text", ToolSchema.prop("string", "自然语言过程（记录级概述，同时作为初始阶段文本）"));
     props.put(
         "preview",
-        ToolSupport.prop(
+        ToolSchema.prop(
             "boolean", "true（缺省）= 只算不写；false = 提交 RecordCombat + SetStateDescription 同一批"));
-    props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
+    props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
-        ToolSupport.prop(
+        ToolSchema.prop(
             "integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=head）"));
-    return ToolSupport.schema(props, List.of("combatId", "kind", "q", "r", "participants", "text"));
+    return ToolSchema.schema(props, List.of("combatId", "kind", "q", "r", "participants", "text"));
   }
 
   @Override
@@ -149,7 +151,7 @@ public final class StartCombatTool implements AgentTool {
             + " preview="
             + args.getOrDefault("preview", true)
             + " branch="
-            + args.getOrDefault("branch", ToolSupport.DEFAULT_BRANCH)
+            + args.getOrDefault("branch", ToolResources.DEFAULT_BRANCH)
             + " expected="
             + args.get("expectedRevision"),
         AskKind.SENSITIVE);
@@ -158,19 +160,19 @@ public final class StartCombatTool implements AgentTool {
   @Override
   public ToolResult execute(ToolContext context) {
     try {
-      ToolSupport.requireAll(context, Operation.WRITE, WRITE_RESOURCES);
+      ToolResources.requireAll(context, Operation.WRITE, WRITE_RESOURCES);
       Map<String, Object> args = context.arguments();
-      String combatId = ToolSupport.requiredText(args, "combatId");
-      String kind = ToolSupport.requiredText(args, "kind");
+      String combatId = ToolSchema.requiredText(args, "combatId");
+      String kind = ToolSchema.requiredText(args, "kind");
       HexCoord hex =
           new HexCoord(
-              (int) ToolSupport.requiredLong(args, "q"), (int) ToolSupport.requiredLong(args, "r"));
+              (int) ToolSchema.requiredLong(args, "q"), (int) ToolSchema.requiredLong(args, "r"));
       List<String> participants = requireParticipantIds(args);
-      String text = ToolSupport.requiredText(args, "text");
-      boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
+      String text = ToolSchema.requiredText(args, "text");
+      boolean preview = ToolSchema.optionalBoolean(args, "preview").orElse(true);
       BranchId branch =
-          new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
-      Long expectedRevisionArg = ToolSupport.optionalLong(args, "expectedRevision");
+          new BranchId(ToolSchema.optionalText(args, "branch", ToolResources.DEFAULT_BRANCH));
+      Long expectedRevisionArg = ToolSchema.optionalLong(args, "expectedRevision");
       if (expectedRevisionArg != null && expectedRevisionArg < 0L) {
         return ToolResult.error("BAD_REQUEST", "expectedRevision 不得为负: " + expectedRevisionArg);
       }
@@ -179,15 +181,13 @@ public final class StartCombatTool implements AgentTool {
             "BAD_REQUEST", "preview=false 时必须给 expectedRevision（提交的乐观并发 base revision）");
       }
       long expectedRevision = expectedRevisionArg == null ? -1L : expectedRevisionArg;
+      // ★ 读数坐标 = 提交坐标：缺省（<0）= 该分支 head（与 QueryTarget.head 同义，见 ToolReadPort 的约定）。
       SimulationState state =
-          query.stateAt(
-              expectedRevision < 0L
-                  ? QueryTarget.head(branch)
-                  : QueryTarget.at(branch, new RevisionId(expectedRevision)));
+          reads.stateAt(branch, expectedRevision < 0L ? null : new RevisionId(expectedRevision));
       StartCombatPlan.Plan plan =
           StartCombatPlan.derive(state, combatId, hex, kind, participants, text);
       if (preview) {
-        return ToolSupport.ok(view(plan, true, false, null));
+        return ToolResults.ok(view(plan, true, false, null));
       }
       return apply(plan, branch, expectedRevision);
     } catch (IllegalArgumentException e) {
@@ -223,70 +223,63 @@ public final class StartCombatTool implements AgentTool {
   // ── preview / apply 共用视图与组批 ─────────────────────────────────────────────────
 
   private ToolResult apply(StartCombatPlan.Plan plan, BranchId branch, long expectedRevision) {
-    String batchId = UUID.randomUUID().toString();
-    List<CommandEnvelope> batch = new ArrayList<>(1 + plan.participants().size());
+    List<ToolWritePort.Request> batch = new ArrayList<>(1 + plan.participants().size());
     batch.add(
-        envelope(
-            batchId,
-            branch,
-            expectedRevision,
-            StartCombatPlan.RECORD_COMBAT_TYPE,
-            plan.recordCombatPayloadJson()));
+        new ToolWritePort.Request(
+            StartCombatPlan.RECORD_COMBAT_TYPE, plan.recordCombatPayloadJson(views)));
     for (String payload : plan.stateDescriptionPayloadsJson()) {
-      batch.add(
-          envelope(
-              batchId,
-              branch,
-              expectedRevision,
-              StartCombatPlan.SET_STATE_DESCRIPTION_TYPE,
-              payload));
+      batch.add(new ToolWritePort.Request(StartCombatPlan.SET_STATE_DESCRIPTION_TYPE, payload));
     }
-    BatchResult result = core.submitBatch(batch);
-    if (result instanceof BatchResult.Committed committed) {
-      return ToolSupport.ok(view(plan, false, true, committedView(committed, batchId)));
+    ToolWritePort.BatchReceipt receipt =
+        writes.submitBatchWithReceipt(branch, new RevisionId(expectedRevision), batch);
+    // ★ 批级 id 由写口适配器生成并回报 ⇒ 结果里报出去的就是落盘信封里的那一个（不再是"工具另生成一个"）。
+    String batchId = receipt.correlationId();
+    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Committed committed) {
+      return ToolResults.ok(view(plan, false, true, committedView(committed, batchId)));
     }
-    if (result instanceof BatchResult.Conflict conflict) {
+    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Conflict conflict) {
       Map<String, Object> submission = new LinkedHashMap<>();
       submission.put("result", "conflict");
-      submission.put("current", ToolSupport.stateRef(conflict.current()));
+      submission.put("current", ToolResults.stateRef(conflict.current()));
       submission.put("commandId", batchId);
       submission.put("correlationId", batchId);
-      return ToolResult.error("CONFLICT", ToolSupport.json(view(plan, false, true, submission)));
+      return ToolResult.error("CONFLICT", ToolResults.json(view(plan, false, true, submission)));
     }
     // ★ 整批拒：逐条把真拒因摆出来（批是原子的，一条修复不了就全体不生效）。
-    BatchResult.Rejected rejected = (BatchResult.Rejected) result;
+    ToolWritePort.BatchOutcome.Rejected rejected =
+        (ToolWritePort.BatchOutcome.Rejected) receipt.outcome();
     Map<String, Object> submission = new LinkedHashMap<>();
     submission.put("result", "rejected");
     submission.put("commandId", batchId);
     submission.put("correlationId", batchId);
     List<Map<String, Object>> rows = new ArrayList<>();
-    List<CommandOutcome> outcomes = rejected.outcomes();
+    List<ToolWritePort.Outcome> outcomes = rejected.outcomes();
     for (int i = 0; i < outcomes.size(); i++) {
       Map<String, Object> row = new LinkedHashMap<>();
       row.put("type", batch.get(i).type());
-      CommandResult outcome = outcomes.get(i).result();
+      ToolWritePort.Outcome outcome = outcomes.get(i);
       row.put(
           "reason",
-          outcome instanceof CommandResult.Rejected rejection
+          outcome instanceof ToolWritePort.Outcome.Rejected rejection
               ? rejection.reason()
               : outcome.toString());
       rows.add(row);
     }
     submission.put("commands", rows);
-    return ToolResult.error("REJECTED", ToolSupport.json(view(plan, false, true, submission)));
+    return ToolResult.error("REJECTED", ToolResults.json(view(plan, false, true, submission)));
   }
 
   private static Map<String, Object> committedView(
-      BatchResult.Committed committed, String batchId) {
+      ToolWritePort.BatchOutcome.Committed committed, String batchId) {
     Map<String, Object> submission = new LinkedHashMap<>();
     submission.put("result", "committed");
-    submission.put("ref", ToolSupport.stateRef(committed.ref()));
+    submission.put("ref", ToolResults.stateRef(committed.ref()));
     submission.put("commandId", batchId);
     submission.put("correlationId", batchId);
     return submission;
   }
 
-  private static Map<String, Object> view(
+  private Map<String, Object> view(
       StartCombatPlan.Plan plan,
       boolean preview,
       boolean submitted,
@@ -296,7 +289,7 @@ public final class StartCombatTool implements AgentTool {
     view.put("submitted", submitted);
     view.put("combatId", plan.combatId());
     view.put("kind", plan.kind());
-    view.put("hex", ToolSupport.hexCoord(plan.hex()));
+    view.put("hex", views.hexCoord(plan.hex()));
     view.put("participants", plan.participantValues());
     view.put("text", plan.text());
     view.put("tick", plan.tick());
@@ -308,17 +301,5 @@ public final class StartCombatTool implements AgentTool {
       view.put("submission", submission);
     }
     return view;
-  }
-
-  private CommandEnvelope envelope(
-      String batchId, BranchId branch, long expectedRevision, String type, String payloadJson) {
-    return new CommandEnvelope(
-        UUID.randomUUID().toString(),
-        batchId,
-        initiator,
-        branch,
-        new RevisionId(expectedRevision),
-        type,
-        payloadJson);
   }
 }

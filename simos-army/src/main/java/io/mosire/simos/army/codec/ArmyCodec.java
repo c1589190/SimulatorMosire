@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.army.ArmyLog;
 import io.mosire.simos.army.ArmyLogSource;
 import io.mosire.simos.army.ArmySnapshot;
@@ -112,6 +113,21 @@ public final class ArmyCodec implements ModuleCodec, ModuleDiffer {
     return readJson(json, ArmyChangeSet.class);
   }
 
+  /**
+   * ★★ <b>{@code BC_UNCONFIRMED_CAST} 的两处精确豁免（2026-10-12 B3 第二域下放时补）</b>：{@link ChangeSet}
+   * 是**标记接口** （util 只给接口，字段清单由各模块自己派生）⇒ 从它到本模块的 {@link ArmyChangeSet} 的向下转型在 SpotBugs 眼里"不保证成立"。
+   * 但本仓的 {@link ModuleCodec} 契约（C26）保证了它：`encodeChangeSet` / `apply` 只会被 core 用**本 namespace 自己的**
+   * 变更集调用（`CommandBus.applyToCandidate` 的类注原文：「`ModuleCodec#apply` 的 cast 在模块自己的地盘（C26）」）。
+   *
+   * <p>★ 为什么本批才加：这两条 finding 是**潜伏**的——SpotBugs 的 BC 检测器在本模块"只有状态类型、没有工具实现"时不报，
+   * 一旦模块里出现较丰富的工具代码（实测：`army.tools.write.StartCombatTool`）就翻出来；同一形态的 7 个兄弟 codec
+   * （map/social/unit/sd/economy/actor/gov）目前都没报。⇒ 豁免是把"检测器的环境敏感 + 契约已保证"这件事写明白，
+   * 不是掩盖缺陷。**行为零变化**（注解不进字节码语义）。
+   */
+  @SuppressFBWarnings(
+      value = "BC_UNCONFIRMED_CAST",
+      justification =
+          "ModuleCodec 契约（C26）：encodeChangeSet 只收本 namespace 自己的变更集（ArmyChangeSet），与 8 个兄弟 codec 同形；ChangeSet 是标记接口 ⇒ 检测器无法证明，属误报")
   @Override
   public String encodeChangeSet(ChangeSet changeSet) {
     return writeJson((ArmyChangeSet) changeSet);
@@ -128,6 +144,10 @@ public final class ArmyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /** 施加变更集，返回<b>新的</b>快照：ref/timestamp 来自 {@code newMeta}（C28），不是 base 的。 */
+  @SuppressFBWarnings(
+      value = "BC_UNCONFIRMED_CAST",
+      justification =
+          "ModuleCodec 契约（C26）：apply 只收本 namespace 自己的变更集（ArmyChangeSet），见 encodeChangeSet 的同一条豁免")
   @Override
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
     ArmySnapshot armyBase = asArmySnapshot(base);

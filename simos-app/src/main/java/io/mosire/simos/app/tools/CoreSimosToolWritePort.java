@@ -12,6 +12,7 @@ import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -54,30 +55,44 @@ public final class CoreSimosToolWritePort implements ToolWritePort {
   }
 
   /**
-   * 原子批提交：批内每条命令各生成一个 id（同一条链的 {@code correlationId} = 各自的 {@code commandId}），批级共享 {@code
-   * branch}/{@code expectedRevision}；结局与入参**逐位对应**（端口契约的不变式）。
+   * 原子批提交：**批级一个 {@code batchId}（= 批内所有信封的 {@code correlationId}）+ 逐条命令一个 {@code commandId}**，批级共享
+   * {@code branch}/{@code expectedRevision}；结局与入参**逐位对应**（端口契约的不变式）。
+   *
+   * <p>★ <b>批级 correlationId 的由来</b>：今天 app 侧的组合工具（{@code StartCombatTool}/{@code
+   * ResolveCombatTool}/{@code FormatUnitTool}/{@code AssignArmyGovTool}…）都是"同一个 {@code batchId}
+   * 既作批内共享的 correlationId、又作结果视图里报出去的 id"⇒ 适配器必须产出同一个东西，否则工具报出去的 id 与落盘信封对不上（见 {@link
+   * ToolWritePort.BatchReceipt}）。单条 {@link #submitWithReceipt} 的缺省口径（{@code correlationId =
+   * commandId}）不变。
    */
   @Override
-  public BatchOutcome submitBatch(
+  public BatchReceipt submitBatchWithReceipt(
       BranchId branch, RevisionId expectedRevision, List<Request> batch) {
     Objects.requireNonNull(branch, "branch");
     Objects.requireNonNull(expectedRevision, "expectedRevision");
     Objects.requireNonNull(batch, "batch");
+    String batchId = UUID.randomUUID().toString();
     List<CommandEnvelope> envelopes = new ArrayList<>(batch.size());
+    List<String> commandIds = new ArrayList<>(batch.size());
     for (Request request : batch) {
       Objects.requireNonNull(request, "request");
       String commandId = UUID.randomUUID().toString();
+      commandIds.add(commandId);
       envelopes.add(
           new CommandEnvelope(
               commandId,
-              commandId,
+              batchId,
               initiator,
               branch,
               expectedRevision,
               request.type(),
               request.payloadJson()));
     }
-    return switch (core.submitBatch(envelopes)) {
+    return new BatchReceipt(batchId, commandIds, adaptBatch(core.submitBatch(envelopes)));
+  }
+
+  /** core 的批结局 → 端口批结局（逐字段同形；语义一字不改）。 */
+  private static BatchOutcome adaptBatch(BatchResult result) {
+    return switch (result) {
       case BatchResult.Committed committed ->
           new BatchOutcome.Committed(committed.ref(), adaptAll(committed.outcomes()));
       case BatchResult.Rejected rejected ->
@@ -102,7 +117,8 @@ public final class CoreSimosToolWritePort implements ToolWritePort {
     for (CommandOutcome outcome : outcomes) {
       adapted.add(adapt(outcome.result()));
     }
-    return List.copyOf(adapted);
+    // ★ 保序冻结在赋值处（本仓口径：不用 List.copyOf —— SpotBugs 认不出它的不可变性）。
+    return Collections.unmodifiableList(adapted);
   }
 
   /** core 结局 → 端口结局（逐字段同形；语义一字不改）。 */

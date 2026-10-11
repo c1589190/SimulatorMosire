@@ -1,16 +1,19 @@
-package io.mosire.simos.app.tools.read;
+package io.mosire.simos.army.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.app.gui.ApiViews;
-import io.mosire.simos.app.query.QueryService;
-import io.mosire.simos.app.query.QueryService.QueryTarget;
-import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
+import io.mosire.simos.army.tools.ArmyToolPerspective;
+import io.mosire.simos.army.tools.ArmyToolReads;
+import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.SimulationState;
@@ -26,23 +29,31 @@ import java.util.Map;
  * <p>★ <b>过滤</b>：{@code tick?}（可选；只列该世界日的记录，缺省 = 全部——不把"当前 tick"设成隐含缺省，免得读历史时被静默截断）与 {@code
  * q?/r?}（可选；只列该格的记录，两个要一起给）。过滤后按记录 id **字典序**发出（{@code combats} 是插入序表，不排序则响应字节不可复现）。
  *
- * <p>★ <b>形状与 GUI / 详情读口同源</b>：每条走 {@link ApiViews#armyCombat(CombatRecord)}（GUI 与 MCP
+ * <p>★ <b>形状与 GUI / 详情读口同源</b>：每条走 {@link ArmyToolViews#armyCombat(CombatRecord)}（GUI 与 MCP
  * 共用这一份；本类不另拼字段清单）。
  *
  * <p>★ <b>四桶共享</b>（不标 {@code GmOnlyRead}）：交战记录是世界状态（可回放）——但**可见性按记录所在格判**（{@link
- * ToolSupport#hexVisible}，与 {@code map.hex}/{@code simos.sd.combats} 的地图可见性同口径）：看不见的格上的交战不进结果，
- * 而不是把整调拒掉（T10 的"部分可见"）。★ 逐条判可见性而不是"按 tick 整表发"：D-002 的中央不开天眼同样约束军队记录。
+ * ArmyToolPerspective#hexVisible}，与 {@code map.hex}/{@code simos.sd.combats}
+ * 的地图可见性同口径）：看不见的格上的交战不进结果， 而不是把整调拒掉（T10 的"部分可见"）。★ 逐条判可见性而不是"按 tick 整表发"：D-002 的中央不开天眼同样约束军队记录。
+ *
+ * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/read} 迁入 {@code simos-army}，对 app/core 的直连换成
+ * 构造期注入；载荷、文案、拒绝码、资源声明逐字不变。
  */
 public final class ArmyCombatsTool implements AgentTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.army.combats";
 
-  private final QueryService query;
+  private final ToolReadPort reads;
+  private final ArmyToolViews views;
+  private final ArmyToolPerspective perspective;
   private final String mapId;
 
-  public ArmyCombatsTool(QueryService query, String mapId) {
-    this.query = query;
+  public ArmyCombatsTool(
+      ToolReadPort reads, ArmyToolViews views, ArmyToolPerspective perspective, String mapId) {
+    this.reads = reads;
+    this.views = views;
+    this.perspective = perspective;
     this.mapId = mapId;
   }
 
@@ -60,28 +71,27 @@ public final class ArmyCombatsTool implements AgentTool {
 
   @Override
   public Map<String, Object> jsonSchema() {
-    Map<String, Object> props = ToolSupport.targetProps();
-    props.put("tick", ToolSupport.prop("integer", "只列该世界日的交战（可选；缺省 = 全部，含历史）"));
-    props.put("q", ToolSupport.prop("integer", "只列该格的交战：六角列坐标 q（可选，须与 r 同时给）"));
-    props.put("r", ToolSupport.prop("integer", "只列该格的交战：六角行坐标 r（可选，须与 q 同时给）"));
-    return ToolSupport.schema(props, List.of());
+    Map<String, Object> props = ToolSchema.targetProps();
+    props.put("tick", ToolSchema.prop("integer", "只列该世界日的交战（可选；缺省 = 全部，含历史）"));
+    props.put("q", ToolSchema.prop("integer", "只列该格的交战：六角列坐标 q（可选，须与 r 同时给）"));
+    props.put("r", ToolSchema.prop("integer", "只列该格的交战：六角行坐标 r（可选，须与 q 同时给）"));
+    return ToolSchema.schema(props, List.of());
   }
 
   @Override
   public ResourceManifest resources() {
-    return ToolSupport.ALL_READ;
+    return ToolResources.ALL_READ;
   }
 
   @Override
   public ToolResult execute(ToolContext context) {
     try {
       Map<String, Object> args = context.arguments();
-      Long tick = ToolSupport.optionalLong(args, "tick");
+      Long tick = ToolSchema.optionalLong(args, "tick");
       HexCoord hex = optionalHex(args);
-      QueryTarget target = ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH);
-      SimulationState state = query.stateAt(target);
-      ArmyData data = ApiViews.armyData(state);
-      GameMap map = ToolSupport.gameMap(state);
+      SimulationState state = ArmyToolReads.state(reads, args);
+      ArmyData data = ArmyToolReads.armyData(state);
+      GameMap map = ArmyToolReads.gameMap(state);
       List<CombatRecordId> ids = new ArrayList<>(data.combats().keySet());
       ids.sort(Comparator.comparing(CombatRecordId::value));
       List<Map<String, Object>> combats = new ArrayList<>();
@@ -93,14 +103,14 @@ public final class ArmyCombatsTool implements AgentTool {
         if (hex != null && !record.hex().equals(hex)) {
           continue;
         }
-        if (!ToolSupport.hexVisible(context, mapId, map, record.hex())) {
+        if (!perspective.hexVisible(context, mapId, map, record.hex())) {
           continue; // ★ 不可见的格：不进结果（不是整调拒）
         }
-        combats.add(ApiViews.armyCombat(record));
+        combats.add(views.armyCombat(record));
       }
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("combats", combats);
-      return ToolSupport.ok(view);
+      return ToolResults.ok(view);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
@@ -108,8 +118,8 @@ public final class ArmyCombatsTool implements AgentTool {
 
   /** 可选格过滤：q/r 给了一个就必须给另一个（半给 ⇒ BAD_REQUEST，不静默当"没给"）。 */
   private static HexCoord optionalHex(Map<String, Object> args) {
-    boolean hasQ = ToolSupport.has(args, "q");
-    boolean hasR = ToolSupport.has(args, "r");
+    boolean hasQ = ToolSchema.has(args, "q");
+    boolean hasR = ToolSchema.has(args, "r");
     if (!hasQ && !hasR) {
       return null;
     }
@@ -117,6 +127,6 @@ public final class ArmyCombatsTool implements AgentTool {
       throw new IllegalArgumentException("格过滤必须 q 与 r 同时给（当前 q=" + hasQ + ", r=" + hasR + "）");
     }
     return new HexCoord(
-        (int) ToolSupport.requiredLong(args, "q"), (int) ToolSupport.requiredLong(args, "r"));
+        (int) ToolSchema.requiredLong(args, "q"), (int) ToolSchema.requiredLong(args, "r"));
   }
 }

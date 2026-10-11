@@ -1,4 +1,4 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.army.tools.write;
 
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
@@ -12,14 +12,12 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.app.query.QueryService;
-import io.mosire.simos.app.query.QueryService.QueryTarget;
-import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.command.BatchResult;
-import io.mosire.simos.core.command.CommandEnvelope;
-import io.mosire.simos.core.command.CommandOutcome;
-import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolSchema;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -29,19 +27,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * ★★ {@code simos.army.formatUnit}（阶段 D3a，2026-10-02 / D-010 + 补裁 R2 的<b>最小环</b>）：GM-only
  * 组合工具——按给定格式 （有序人力/装备条目 + 可选随机化幅度/上下限 + 可选 seed）算出目标表，经 {@code unit.SetComposition} **整表复写**，
  * 并同批写一条 {@code sd.PutInfo} 审计记录（含生效种子）。
  *
- * <p>★★ <b>为什么是 app 组合工具而不是一条命令</b>：它同时写 {@code unit}（一条 {@code unit.SetComposition}）与 {@code
- * sd}（一条 {@code sd.PutInfo}）两个命名空间；单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch} （同一 batchId +
- * 同一 branch/expectedRevision ⇒ **一批 = 一条 revision**，原子）；preview 一个字节都不写。
+ * <p>★★ <b>为什么是一次批写多切片的组合工具而不是一条命令</b>：它同时写 {@code unit}（一条 {@code unit.SetComposition}）与 {@code
+ * sd}（一条 {@code sd.PutInfo}）两个命名空间；单条命令只能落一个命名空间。本工具走注入的 {@link
+ * ToolWritePort#submitBatchWithReceipt}（同一批 + 同一 branch/expectedRevision ⇒ **一批 = 一条
+ * revision**，原子）； preview 一个字节都不写。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点在 {@link FormatUnitPlan#derive}（不碰 {@link
- * ToolContext} / {@code CoreSimos}）；随机化与"同状态同参数 ⇒ 同结果"的口径写在那里的类注。
+ * ToolContext} / 写口）；随机化与"同状态同参数 ⇒ 同结果"的口径写在那里的类注。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；工具名不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。它提交的 {@code unit.SetComposition} 本身非 GmOnly（可嵌进决策令），但 {@code formatUnit} 这条带随机化
@@ -59,6 +57,9 @@ import java.util.UUID;
  * <p>★ <b>失败具名</b>：参数缺失/类型错 / unitId 不存在 / 格式重复 type / 随机化溢出 ⇒ {@code BAD_REQUEST}（零 revision）；
  * 批内域拒 ⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
  * ResourceDeniedException}。
+ *
+ * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-army}，对 {@code
+ * CoreSimos} / {@code QueryService} 的直连换成构造期注入；工具名、载荷、拒绝码、资源声明、批内顺序逐字不变。
  */
 public final class FormatUnitTool implements AgentTool {
 
@@ -72,28 +73,28 @@ public final class FormatUnitTool implements AgentTool {
   private static final ResourceManifest FORMAT_UNIT_WRITE =
       ResourceManifest.of(
           Map.of(
-              ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolResources.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /** 与 {@link #FORMAT_UNIT_WRITE} 同源的逐命名空间粗断言（顺序 = 批内命令命名空间序）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
       List.of(
-          ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"),
-          ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
+          ResourceId.of(ToolResources.UNIT_NAMESPACE, "*"),
+          ResourceId.of(ToolResources.SD_NAMESPACE, "*"));
 
-  private final CoreSimos core;
-  private final QueryService query;
-  private final String initiator;
+  private final ToolWritePort writes;
+  private final ToolReadPort reads;
+  private final ArmyToolViews views;
 
   /**
-   * @param core 唯一写入口（apply 走 {@code submitBatch}；preview 时一个字节都不写）
-   * @param query 只读入口（读 branch/revision 的当前 {@link SimulationState}；preview 与 apply 共用同一份推导）
-   * @param initiator 落盘时的发起者（{@code <kind>:<id>} 形态）
+   * @param writes 唯一写入口（apply 走 {@code submitBatchWithReceipt}；preview 时一个字节都不写）
+   * @param reads 只读入口（读 branch/revision 的当前 {@link SimulationState}；preview 与 apply 共用同一份推导）
+   * @param views 视图口（人力/装备表形状 + 单位 canonical 地址；实现逐条转调 app 的同一份函数）
    */
-  public FormatUnitTool(CoreSimos core, QueryService query, String initiator) {
-    this.core = Objects.requireNonNull(core, "core");
-    this.query = Objects.requireNonNull(query, "query");
-    this.initiator = Objects.requireNonNull(initiator, "initiator");
+  public FormatUnitTool(ToolWritePort writes, ToolReadPort reads, ArmyToolViews views) {
+    this.writes = Objects.requireNonNull(writes, "writes");
+    this.reads = Objects.requireNonNull(reads, "reads");
+    this.views = Objects.requireNonNull(views, "views");
   }
 
   @Override
@@ -111,7 +112,7 @@ public final class FormatUnitTool implements AgentTool {
         + " equipment[](必填，空数组合法), seed?, reason?(缺省 "
         + DEFAULT_REASON
         + "), preview?(缺省 true), branch?(缺省 "
-        + ToolSupport.DEFAULT_BRANCH
+        + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。seed 缺省 = 由 unitId + 基态 revision + tick + 格式表确定性派生；"
         + "jitterPerMille 千分比（0 = 不随机），每条在 [base−floor(base×jitter/1000), base+…] 均匀取整后按 [min,max] 截断；"
         + "未列出的 type 会消失（整表复写）。批顺序：unit.SetComposition → sd.PutInfo。"
@@ -122,27 +123,27 @@ public final class FormatUnitTool implements AgentTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
-    props.put("unitId", ToolSupport.prop("string", "目标单位 id（必须存在）"));
+    props.put("unitId", ToolSchema.prop("string", "目标单位 id（必须存在）"));
     props.put(
         "manpower",
-        ToolSupport.prop(
+        ToolSchema.prop(
             "array", "人力目标格式 [{type, baseAmount, jitterPerMille?, min?, max?}…]（必填，空数组合法）"));
-    props.put("equipment", ToolSupport.prop("array", "装备目标格式（同 manpower 形状；必填，空数组合法）"));
+    props.put("equipment", ToolSchema.prop("array", "装备目标格式（同 manpower 形状；必填，空数组合法）"));
     props.put(
         "seed",
-        ToolSupport.prop("integer", "显式随机种子（可选；缺省 = 由 unitId + 基态 revision + tick + 格式表确定性派生）"));
+        ToolSchema.prop("integer", "显式随机种子（可选；缺省 = 由 unitId + 基态 revision + tick + 格式表确定性派生）"));
     props.put(
         "reason",
-        ToolSupport.prop("string", "操作原因（可选；缺省 " + DEFAULT_REASON + "，进 sd.PutInfo 审计记录）"));
+        ToolSchema.prop("string", "操作原因（可选；缺省 " + DEFAULT_REASON + "，进 sd.PutInfo 审计记录）"));
     props.put(
         "preview",
-        ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交 SetComposition + PutInfo 同一批"));
-    props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
+        ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交 SetComposition + PutInfo 同一批"));
+    props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
-        ToolSupport.prop(
+        ToolSchema.prop(
             "integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=head）"));
-    return ToolSupport.schema(props, List.of("unitId", "manpower", "equipment"));
+    return ToolSchema.schema(props, List.of("unitId", "manpower", "equipment"));
   }
 
   @Override
@@ -168,7 +169,7 @@ public final class FormatUnitTool implements AgentTool {
             + " preview="
             + args.getOrDefault("preview", true)
             + " branch="
-            + args.getOrDefault("branch", ToolSupport.DEFAULT_BRANCH)
+            + args.getOrDefault("branch", ToolResources.DEFAULT_BRANCH)
             + " expected="
             + args.get("expectedRevision")
             + " reason="
@@ -179,17 +180,17 @@ public final class FormatUnitTool implements AgentTool {
   @Override
   public ToolResult execute(ToolContext context) {
     try {
-      ToolSupport.requireAll(context, Operation.WRITE, WRITE_RESOURCES);
+      ToolResources.requireAll(context, Operation.WRITE, WRITE_RESOURCES);
       Map<String, Object> args = context.arguments();
-      String unitId = ToolSupport.requiredText(args, "unitId");
+      String unitId = ToolSchema.requiredText(args, "unitId");
       List<FormatUnitPlan.EntrySpec> manpower = requireSpecs(args, "manpower");
       List<FormatUnitPlan.EntrySpec> equipment = requireSpecs(args, "equipment");
-      Long seed = ToolSupport.optionalLong(args, "seed");
-      String reason = ToolSupport.optionalText(args, "reason", DEFAULT_REASON);
-      boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
+      Long seed = ToolSchema.optionalLong(args, "seed");
+      String reason = ToolSchema.optionalText(args, "reason", DEFAULT_REASON);
+      boolean preview = ToolSchema.optionalBoolean(args, "preview").orElse(true);
       BranchId branch =
-          new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
-      Long expectedRevisionArg = ToolSupport.optionalLong(args, "expectedRevision");
+          new BranchId(ToolSchema.optionalText(args, "branch", ToolResources.DEFAULT_BRANCH));
+      Long expectedRevisionArg = ToolSchema.optionalLong(args, "expectedRevision");
       if (expectedRevisionArg != null && expectedRevisionArg < 0L) {
         return ToolResult.error("BAD_REQUEST", "expectedRevision 不得为负: " + expectedRevisionArg);
       }
@@ -198,15 +199,13 @@ public final class FormatUnitTool implements AgentTool {
             "BAD_REQUEST", "preview=false 时必须给 expectedRevision（提交的乐观并发 base revision）");
       }
       long expectedRevision = expectedRevisionArg == null ? -1L : expectedRevisionArg;
+      // ★ 读数坐标 = 提交坐标：缺省（<0）= 该分支 head（与 QueryTarget.head 同义，见 ToolReadPort 的约定）。
       SimulationState state =
-          query.stateAt(
-              expectedRevision < 0L
-                  ? QueryTarget.head(branch)
-                  : QueryTarget.at(branch, new RevisionId(expectedRevision)));
+          reads.stateAt(branch, expectedRevision < 0L ? null : new RevisionId(expectedRevision));
       FormatUnitPlan.Plan plan =
           FormatUnitPlan.derive(state, unitId, manpower, equipment, Optional.ofNullable(seed));
       if (preview) {
-        return ToolSupport.ok(view(plan, reason, true, false, null));
+        return ToolResults.ok(view(plan, reason, true, false, null));
       }
       return apply(plan, reason, branch, expectedRevision);
     } catch (IllegalArgumentException e) {
@@ -235,12 +234,12 @@ public final class FormatUnitTool implements AgentTool {
     List<FormatUnitPlan.EntrySpec> specs = new ArrayList<>(list.size());
     for (Object item : list) {
       Map<String, Object> spec = stringKeyedObject(item, field);
-      String type = ToolSupport.requiredText(spec, "type");
-      long baseAmount = ToolSupport.requiredLong(spec, "baseAmount");
-      Long jitterArg = ToolSupport.optionalLong(spec, "jitterPerMille");
+      String type = ToolSchema.requiredText(spec, "type");
+      long baseAmount = ToolSchema.requiredLong(spec, "baseAmount");
+      Long jitterArg = ToolSchema.optionalLong(spec, "jitterPerMille");
       long jitterPerMille = jitterArg == null ? 0L : jitterArg;
-      Long minArg = ToolSupport.optionalLong(spec, "min");
-      Long maxArg = ToolSupport.optionalLong(spec, "max");
+      Long minArg = ToolSchema.optionalLong(spec, "min");
+      Long maxArg = ToolSchema.optionalLong(spec, "max");
       long minAmount = minArg == null ? 0L : minArg;
       long maxAmount = maxArg == null ? Long.MAX_VALUE : maxArg;
       specs.add(
@@ -268,75 +267,63 @@ public final class FormatUnitTool implements AgentTool {
 
   private ToolResult apply(
       FormatUnitPlan.Plan plan, String reason, BranchId branch, long expectedRevision) {
-    String batchId = UUID.randomUUID().toString();
-    List<CommandEnvelope> batch =
+    List<ToolWritePort.Request> batch =
         List.of(
-            envelope(
-                batchId,
-                branch,
-                expectedRevision,
-                FormatUnitPlan.SET_COMPOSITION_TYPE,
-                plan.setCompositionPayloadJson()),
-            envelope(
-                batchId,
-                branch,
-                expectedRevision,
-                FormatUnitPlan.PUT_INFO_TYPE,
-                infoPayload(plan, reason)));
-    BatchResult result = core.submitBatch(batch);
-    if (result instanceof BatchResult.Committed committed) {
-      return ToolSupport.ok(view(plan, reason, false, true, committedView(committed, batchId)));
+            new ToolWritePort.Request(
+                FormatUnitPlan.SET_COMPOSITION_TYPE, plan.setCompositionPayloadJson(views)),
+            new ToolWritePort.Request(FormatUnitPlan.PUT_INFO_TYPE, infoPayload(plan, reason)));
+    ToolWritePort.BatchReceipt receipt =
+        writes.submitBatchWithReceipt(branch, new RevisionId(expectedRevision), batch);
+    // ★ 批级 id 由写口适配器生成并回报 ⇒ 结果里报出去的就是落盘信封里的那一个。
+    String batchId = receipt.correlationId();
+    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Committed committed) {
+      return ToolResults.ok(view(plan, reason, false, true, committedView(committed, batchId)));
     }
-    if (result instanceof BatchResult.Conflict conflict) {
+    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Conflict conflict) {
       Map<String, Object> submission = new LinkedHashMap<>();
       submission.put("result", "conflict");
-      submission.put("current", ToolSupport.stateRef(conflict.current()));
+      submission.put("current", ToolResults.stateRef(conflict.current()));
       submission.put("commandId", batchId);
       submission.put("correlationId", batchId);
       return ToolResult.error(
-          "CONFLICT", ToolSupport.json(viewWithSubmission(plan, reason, submission)));
+          "CONFLICT", ToolResults.json(view(plan, reason, false, true, submission)));
     }
     // ★ 整批拒：逐条把真拒因摆出来（批是原子的，一条修复不了就全体不生效）。
-    BatchResult.Rejected rejected = (BatchResult.Rejected) result;
+    ToolWritePort.BatchOutcome.Rejected rejected =
+        (ToolWritePort.BatchOutcome.Rejected) receipt.outcome();
     Map<String, Object> submission = new LinkedHashMap<>();
     submission.put("result", "rejected");
     submission.put("commandId", batchId);
     submission.put("correlationId", batchId);
     List<Map<String, Object>> rows = new ArrayList<>();
-    List<CommandOutcome> outcomes = rejected.outcomes();
+    List<ToolWritePort.Outcome> outcomes = rejected.outcomes();
     for (int i = 0; i < outcomes.size(); i++) {
       Map<String, Object> row = new LinkedHashMap<>();
       row.put("type", batch.get(i).type());
-      CommandResult outcome = outcomes.get(i).result();
+      ToolWritePort.Outcome outcome = outcomes.get(i);
       row.put(
           "reason",
-          outcome instanceof CommandResult.Rejected rejection
+          outcome instanceof ToolWritePort.Outcome.Rejected rejection
               ? rejection.reason()
               : outcome.toString());
       rows.add(row);
     }
     submission.put("commands", rows);
     return ToolResult.error(
-        "REJECTED", ToolSupport.json(viewWithSubmission(plan, reason, submission)));
+        "REJECTED", ToolResults.json(view(plan, reason, false, true, submission)));
   }
 
   private static Map<String, Object> committedView(
-      BatchResult.Committed committed, String batchId) {
+      ToolWritePort.BatchOutcome.Committed committed, String batchId) {
     Map<String, Object> submission = new LinkedHashMap<>();
     submission.put("result", "committed");
-    submission.put("ref", ToolSupport.stateRef(committed.ref()));
+    submission.put("ref", ToolResults.stateRef(committed.ref()));
     submission.put("commandId", batchId);
     submission.put("correlationId", batchId);
     return submission;
   }
 
-  private static Map<String, Object> viewWithSubmission(
-      FormatUnitPlan.Plan plan, String reason, Map<String, Object> submission) {
-    Map<String, Object> view = view(plan, reason, false, true, submission);
-    return view;
-  }
-
-  private static Map<String, Object> view(
+  private Map<String, Object> view(
       FormatUnitPlan.Plan plan,
       String reason,
       boolean preview,
@@ -350,8 +337,8 @@ public final class FormatUnitTool implements AgentTool {
     view.put("seedProvided", plan.seedProvided());
     view.put("tick", plan.tick());
     // ★ S3b：不再回 manpower 表（Unit.manpower 已退役，人员属于 Social 家户）；只回装备前后值。
-    view.put("equipment", ToolSupport.compositionView(plan.equipment()));
-    view.put("beforeEquipment", ToolSupport.compositionView(plan.beforeEquipment()));
+    view.put("equipment", views.compositionView(plan.equipment()));
+    view.put("beforeEquipment", views.compositionView(plan.beforeEquipment()));
     view.put("commands", plan.commandTypes());
     view.put("reason", reason);
     view.put("infoText", plan.infoNote(reason));
@@ -361,26 +348,14 @@ public final class FormatUnitTool implements AgentTool {
     return view;
   }
 
-  private CommandEnvelope envelope(
-      String batchId, BranchId branch, long expectedRevision, String type, String payloadJson) {
-    return new CommandEnvelope(
-        UUID.randomUUID().toString(),
-        batchId,
-        initiator,
-        branch,
-        new RevisionId(expectedRevision),
-        type,
-        payloadJson);
-  }
-
   /** {@code sd.PutInfo} 载荷：单位 canonical 地址 + key + value(JSON 字符串) + note + tick。 */
-  private static String infoPayload(FormatUnitPlan.Plan plan, String reason) {
+  private String infoPayload(FormatUnitPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("address", RaiseUnitPlan.unitAddress(plan.unitId()));
+    payload.put("address", views.unitAddress(plan.unitId()));
     payload.put("key", FormatUnitPlan.INFO_KEY);
-    payload.put("value", plan.infoValueJson(reason));
+    payload.put("value", plan.infoValueJson(views, reason));
     payload.put("note", plan.infoNote(reason));
     payload.put("tick", plan.tick());
-    return ToolSupport.json(payload);
+    return ToolResults.json(payload);
   }
 }
