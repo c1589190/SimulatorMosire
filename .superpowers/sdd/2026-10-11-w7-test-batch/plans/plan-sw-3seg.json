@@ -1,0 +1,6 @@
+[
+  { "op": "advance", "to": 120 },
+  { "op": "advance", "to": 240 },
+  { "op": "advance", "to": 360 },
+  { "op": "dump", "label": "d360-3seg" }
+]

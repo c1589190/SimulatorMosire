@@ -1,0 +1,7 @@
+event = MERCHANT_CAPACITY_LANE_TRUNCATED   窗口 = [(0, 360), (361, 600), (601, 689)]
+  other|capacity-exhausted                                   笔数=91        ΣunallocatedMilli=94492
+  other|no-carrier-with-deliverable-service                  笔数=13551     ΣunallocatedMilli=61879715
+  other|out-of-derived-radius                                笔数=2672      ΣunallocatedMilli=3319569
+  [窗口小计 0:360] 笔数=0  ΣunallocatedMilli=0
+  [窗口小计 361:600] 笔数=0  ΣunallocatedMilli=0
+  [窗口小计 601:689] 笔数=0  ΣunallocatedMilli=0

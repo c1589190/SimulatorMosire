@@ -183,13 +183,12 @@ class EconomyCycleHealthTest {
    * 旧指纹（W4b 基线，改前世界）：
    *   {17=10, 18=1, 21=7, 22=9, 23=5, 24=12, 31=1, 34=1, 35=3, 36=4, 37=8, 38=1,
    *    39=2, 40=13, 41=2, 44=1, 53=8, 54=1, 55=3, 56=2, 66=1, 131=1}      min/中位/max = 17 / 35.0 / 131
-   * 新指纹（W5.5 全链 + fix2 之后的真值；★ 单一形态）：
+   * W5.5 指纹（被 W7 取代，留作对照）：
    *   {15=1, 21=11, 22=8, 23=4, 24=6, 25=5, 26=10, 30=1, 41=1, 43=4, 44=5, 45=24,
    *    46=2, 47=5, 48=1, 49=1, 50=1, 51=1, 56=1, 57=1, 66=1, 92=1, 140=1}   min/中位/max = 15 / 43.0 / 140
-   *   （轮数 96、零成交轮次 0；Σfills = 3522 由本分布唯一决定，并与 MARKET_FILL 逐笔行数交叉验证。）
    * </pre>
    *
-   * <p>★★ <b>依据（三条一起，逐条具名）</b>：
+   * <p>★★ <b>依据（W5.5 那三条一起，逐条具名）</b>：
    *
    * <ol>
    *   <li><b>W5.5 的货币腿</b>（S-12：「先借钱再买货」）：现金不足的家户先借入再成交 ⇒ <b>每轮成交笔数整体上移</b> （20 及以下的轮次从 11 轮降到 1
@@ -197,6 +196,108 @@ class EconomyCycleHealthTest {
    *   <li><b>R2 的参与者收窄</b>（军户/官吏户只买不卖）：单位户回到买盘 ⇒ 它们的买单进入逐轮成交（W5.5-fix 账本 ⑤-③ 实测 120 天 43 条 {@code
    *       MARKET_HOUSEHOLD_BUY_ORDER}、全部现金付清）；
    *   <li><b>W5.5-fix2 的单位户创世粮</b>（每户 75000 毫粮）：单位户首日不再断顿 ⇒ 它们的卖/买行为不因饥饿缩量。
+   * </ol>
+   *
+   * <p>★★★ <b>W7 测试批（2026-10-11）：再次显式重新基线化（旧值 → 新值 + 依据）</b>：
+   *
+   * <pre>
+   * W5.5 旧指纹（本次实跑复现的第一行红 —— 与本文件原先钉的值逐值相同）：
+   *   {15=1, 21=11, 22=8, 23=4, 24=6, 25=5, 26=10, 30=1, 41=1, 43=4, 44=5, 45=24,
+   *    46=2, 47=5, 48=1, 49=1, 50=1, 51=1, 56=1, 57=1, 66=1, 92=1, 140=1}   min/中位/max = 15 / 43.0 / 140，Σfills = 3522
+   * W7 新指纹（本批实跑真值；★ 单一形态，见下"两套独立装置各测一次"）：
+   *   {15=1, 21=11, 22=8, 23=4, 24=6, 25=5, 26=10, 30=1, 41=1, 42=3, 43=2, 44=10,
+   *    45=8, 46=5, 47=10, 48=3, 49=1, 50=1, 53=1, 55=1, 56=1, 66=1, 151=1, 198=1}
+   *   min/中位/max = 15 / 42.0 / 198，轮数 = 96，零成交轮次 = 0，Σfills = 3648（Δ = +126）
+   *   ★ 逐档差异（旧 → 新）：消失 51×1 / 57×1 / 92×1 / 140×1；新增 42×3 / 53×1 / 55×1 / 151×1 / 198×1；
+   *     计数变化 43: 4→2、44: 5→10、45: 24→8、46: 2→5、47: 5→10、48: 1→3。
+   * </pre>
+   *
+   * <p>★★ <b>W7 依据（四条一起，逐条具名；每条都给本批真读数可核）</b>：
+   *
+   * <ol>
+   *   <li><b>① 运力池全市场区共享</b>（用户原话「运力提供不应该也是全市场区共享的吗」，v3.26 选定「全国/跨区也能被雇」）：
+   *       候选集从"发货格的池"改成<b>全池</b>、行程闸改成"自家格 → 发货格 → 收货格 ≤ 派生半径"。⇒ 本世界里跨格成交的**可成交集**变了 （发货格没有承运方的
+   *       lane 从"根本不建"变成"可被接单"），逐轮成交笔数随之改变 —— 这是本批分布变动的主因（成交笔数整体从"45×24" 这一档散开）；
+   *   <li><b>② {@code haul} 进 §2.1 自适应定价</b>：运力 D/S 注入各自市场区的 {@code quantities[haul]}（唯一算式 {@code
+   *       adaptiveNextPrice} 一字未改）⇒ 运费牌价随缺口上升、充足时回落 ⇒ 运费改变 ⇒ 跨格贸易的成交与笔数改变。本世界实测（本批 tp 真跑， day 3 起
+   *       264 轮）：{@code HAUL_PRICE_SIGNAL} 三市场牌价 5 → 109,604（copper）/ 5 → 60,448（silver）/ 5 →
+   *       2,128,784（gold）；
+   *   <li><b>③ 非城市格可长出跑商</b>（按需 {@code trade@hex}）：★ <b>本世界里一条都没长出来</b>（本批 tp 真跑： {@code
+   *       MERCHANT_TRADE_INDUSTRY_CREATED} = 0、{@code ONDEMAND_TRADE_MIGRATION_SKIPPED} = 0）⇒
+   *       <b>这一条对本次指纹变动 没有贡献</b>（如实记，不把它算进依据）；
+   *   <li><b>④ 两把尺统一</b>（{@code providerCapacityMilli}）：决策层的候选门槛与结算层的议价权读同一份派生量 ⇒ 候选集与排序输入改变
+   *       （改前"手上有服务货、劳动为 0"的户被判 {@code no-bargaining-power}）。本世界实测：{@code
+   *       no-deliverable-service-capacity} 这条**新理由**已经从"两把尺同一口径"里发出来（tp 本批真跑也有该理由的行）。
+   * </ol>
+   *
+   * <p>★★ <b>为什么这不是"放宽判据"</b>：世界行为被 W7 有意改变了（用户裁定的 ①②④），指纹守卫的作用正是"行为一变就必须显式重新基线化" ——
+   * 本次**只换期望值**，"零成交轮次 = 0"、轮次数 96、同日不得两轮、相邻间隔 ≤ 5 天、{@code Σ逐轮 fills == MARKET_FILL 行数}
+   * 四条牙**一字未动**（见下 {@code assertEveryMarketRoundTraded}）。
+   *
+   * <p>★★★ <b>单一形态的两套独立装置各测一次（AGENTS §三.5：见到"两个结果"先核产物，不先怀疑非确定性）</b>：
+   *
+   * <ol>
+   *   <li><b>装置 A（本测试自身）</b>：JUnit 进程内真 {@code Shell} + {@code AppLogCapture}，本批实跑 （{@code
+   *       tools/mvn-lock.sh test -pl simos-app -am -Dtest='EconomyCycleHealthTest'
+   *       -Dsurefire.failIfNoSpecifiedTests=false}） ⇒ 分布逐值 = 上面 W7 新指纹；
+   *   <li><b>装置 B（真世界 HTTP）</b>：W7 shaded jar（md5 {@code
+   *       783ec45439f2e50d54b4828a9c54df44}）从**创世新播**的 three-powers 世界、{@code POST /api/advance}
+   *       0→660、日志档只留白名单事件 （装置与读数：{@code .superpowers/sdd/2026-10-11-w7-test-batch/}）⇒ 取同一窗口 day
+   *       0–240（96 轮）的 {@code MARKET_REPORT} 逐轮 fills ⇒ 分布与本指纹**逐值相同**（Σ = 3648、零成交轮 = 0、min/中位/max
+   *       = 15/42.0/198）。
+   * </ol>
+   *
+   * ⇒ 两套装置（进程内 vs 真 HTTP + 独立 store）给出同一份指纹 ⇒ 它**不是**产物陈旧的假象，也不是非确定性；本测试据此收回单一期望。 ★
+   * 实跑命令、完整分布、逐窗口读数与账本见 {@code .superpowers/sdd/2026-10-11-w7-test-batch/impl-ledger.md}。
+   *
+   * <p>★★★ <b>W7e 测试批（2026-10-11）：第三次显式重新基线化（旧值 → 新值 + 依据）—— W7-fix / W7-fix2 落地后再钉一次</b>。
+   *
+   * <pre>
+   * W7 旧指纹（W7d 测试批按当时工作树实跑钉的；本批实跑复现的第一行红 —— 与本文件原先钉的值逐值相同）：
+   *   {15=1, 21=11, 22=8, 23=4, 24=6, 25=5, 26=10, 30=1, 41=1, 42=3, 43=2, 44=10,
+   *    45=8, 46=5, 47=10, 48=3, 49=1, 50=1, 53=1, 55=1, 56=1, 66=1, 151=1, 198=1}
+   *   min/中位/max = 15 / 42.0 / 198，轮数 = 96，零成交轮次 = 0，Σfills = 3648
+   * W7e 新指纹（本批实跑真值；★ 装置 A/B 逐值相同，见下）：
+   *   {15=1, 21=11, 22=8, 23=4, 24=6, 25=5, 26=10, 30=1, 41=1, 42=3, 43=2, 44=10,
+   *    45=8, 46=5, 47=10, 48=3, 49=1, 52=1, 53=1, 55=1, 57=1, 66=1, 151=1, 198=1}
+   *   min/中位/max = 15 / 42.0 / 198（★ 三项都没变），轮数 = 96，零成交轮次 = 0，Σfills = 3651（Δ = +3）
+   *   ★ 逐档差异（旧 → 新，**只有两档动**）：50×1 → 52×1（某一轮 +2 笔）、56×1 → 57×1（某一轮 +1 笔）；
+   *     其余 22 档逐值相同、min/中位/max 三项逐值相同。
+   * </pre>
+   *
+   * <p>★★ <b>W7e 依据（为什么这次分布动了 3 笔，逐条具名）</b>：
+   *
+   * <ol>
+   *   <li><b>① 跑商可行性判据从"自备牲口"换成"劳动 + 工具"</b>（用户裁定 v3.28 §7「**能不能先把牲口要求取消掉啊？目前是在跑测试，
+   *       算作工具需求得了**」）：{@code ExpectedProfitBook.merchantProspect} 的候选集与拒绝理由随之改变（{@code
+   *       no-carrier-asset} → {@code no-labor} / {@code no-tool-input}）⇒ 迁移轮的候选与排序输入变了 ⇒ 有户换了主业/换了格
+   *       ⇒ 市场参与者与成交笔数跟着动；
+   *   <li><b>② 作业资本那一维 CATTLE → TOOL，且规模锚刻意保持 100</b>（W7-fix 换维、W7-fix2 把 {@code TOOL_PER_UNIT} 定成
+   *       {@code 12,000 ÷ 100 = 120}）：城市格 {@code trade} 的规模逐值仍是 100（产出 100,000 毫服务 / 周期、 周期工具投入
+   *       10,000 毫），但**押住规模的那一维资产**从牲口换成工具 ⇒ 该产业的资产占用/租赁/随迁口径随之改变；
+   *   <li><b>③ F1 归因改读全池</b>（{@code out-of-derived-radius}）与 <b>④ F2 两条理由合并到唯一拼写点</b>：两者都是**只读**面
+   *       （归因与日志字段），**对成交笔数零影响** —— 如实记：它们**不是**本次 +3 笔的原因。
+   * </ol>
+   *
+   * <p>★★ <b>为什么这不是"放宽判据"（五条牙一字未动）</b>：本次**只换期望值**（两档）； {@code BASELINE_MARKET_ROUNDS =
+   * 96}、同日不得两轮、相邻间隔 ≤ 5 天、<b>零成交轮次 = 0</b>、{@code Σ逐轮 fills == MARKET_FILL 行数} 五条牙与 {@code
+   * assertEveryMarketRoundTraded} 的断言体**一个字符都没改**（{@code git diff} 可核：本文件本批的改动只有本注释块与 {@link
+   * #baselineFills()} 的两档计数）。
+   *
+   * <p>★★★ <b>两套独立装置各测一次（AGENTS §三.5）</b>：
+   *
+   * <ol>
+   *   <li><b>装置 A（本测试自身）</b>：JUnit 进程内真 {@code Shell} + {@code AppLogCapture}，本批实跑 ⇒ 分布逐值 = 上面 W7e
+   *       新指纹 （<b>Σfills = 3651、轮数 = 96、零成交轮 = 0、min/中位/max = 15/42.0/198</b>； {@code
+   *       tools/mvn-lock.sh test -pl simos-app -am -Dtest='EconomyCycleHealthTest'
+   *       -Dsurefire.failIfNoSpecifiedTests=false} ⇒ {@code Tests run: 1, Failures: 0}， 五条牙的读数行落在
+   *       {@code simos-app/target/economy-cycle-invariant/summary.txt}）；
+   *   <li><b>装置 B（真世界 HTTP）</b>：W7e shaded jar（md5 {@code
+   *       4180bedd2f9a9566dd880c7e9c760614}）从**创世新播**的 three-powers 世界、{@code POST /api/advance}
+   *       0→360（再逐日 361→660），取同一窗口 day 0–240（96 轮）的 {@code MARKET_REPORT} 逐轮 {@code fills} ⇒
+   *       <b>逐值相同</b>：96 轮 / 零成交轮 = 0 / 同日两轮 = 否 / 相邻最大间隔 = 3 天 / min/中位/max = 15/42.0/198 /
+   *       <b>Σfills = 3651 == MARKET_FILL 3651 行</b> / 分布 24 档逐值相同 （读数：{@code
+   *       .superpowers/sdd/2026-10-11-w7e-test-batch/results/tp360.fingerprint-0-240.txt}）。
    * </ol>
    *
    * <p>★★★ <b>W5.5-fix3 的诊断结论：这里没有非确定性 —— 曾经读到的"第二个形态"是 {@code target/classes} 陈旧造成的另一份编译产物</b>
@@ -223,7 +324,7 @@ class EconomyCycleHealthTest {
     }
   }
 
-  /** ★ 本世界 96 轮成交笔数分布（min/中位/max = 15 / 43.0 / 140；96 轮的中间两项都是 43）。 */
+  /** ★ 本世界 96 轮成交笔数分布（min/中位/max = 15 / 42.0 / 198；96 轮的中间两项都是 42）。 */
   private static FillRegime baselineFills() {
     Map<Long, Integer> distribution = new TreeMap<>();
     distribution.put(15L, 1);
@@ -235,21 +336,24 @@ class EconomyCycleHealthTest {
     distribution.put(26L, 10);
     distribution.put(30L, 1);
     distribution.put(41L, 1);
-    distribution.put(43L, 4);
-    distribution.put(44L, 5);
-    distribution.put(45L, 24);
-    distribution.put(46L, 2);
-    distribution.put(47L, 5);
-    distribution.put(48L, 1);
+    distribution.put(42L, 3);
+    distribution.put(43L, 2);
+    distribution.put(44L, 10);
+    distribution.put(45L, 8);
+    distribution.put(46L, 5);
+    distribution.put(47L, 10);
+    distribution.put(48L, 3);
     distribution.put(49L, 1);
-    distribution.put(50L, 1);
-    distribution.put(51L, 1);
-    distribution.put(56L, 1);
+    // ★ W7e（2026-10-11）：50×1 → 52×1（某一轮 +2 笔）、56×1 → 57×1（某一轮 +1 笔）—— 旧值 = W7，新值 = 本批实跑真值
+    //   （依据与两套装置证据见类注释的「W7e 测试批」一节；Σfills 3648 → 3651）。
+    distribution.put(52L, 1);
+    distribution.put(53L, 1);
+    distribution.put(55L, 1);
     distribution.put(57L, 1);
     distribution.put(66L, 1);
-    distribution.put(92L, 1);
-    distribution.put(140L, 1);
-    return new FillRegime(distribution, 15L, 43.0, 140L);
+    distribution.put(151L, 1);
+    distribution.put(198L, 1);
+    return new FillRegime(distribution, 15L, 42.0, 198L);
   }
 
   /** ★ W4b 加牙：市场例行轮的最大间隔（天）—— 用它守"读侧没漏采轮次"（每 5 天必有一轮例行开市）。 */

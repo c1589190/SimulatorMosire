@@ -99,13 +99,46 @@ public final class HaulService {
   public static final long PER_MILLE = 1000L;
 
   /**
-   * ★★ <b>具名归因：这一格是"服务货口径"却一件服务货都没有</b>（{@code MerchantCapacityPool.laneBlockedReason} 用）——
-   * 跨格货单因此买不到运力、**该笔不成交**（设计书 §6 T-H2 的 fail-closed）。
+   * ★★★ <b>W7（2026-10-11）具名归因（货侧）：<b>承运方手上没有可交付的运输服务货</b></b>（还没产出 / 已卖光 / 不可交付）。
    *
-   * <p>★ 与池里既有的三支归因（{@code tool-short} / {@code out-of-derived-radius} / {@code
-   * capacity-exhausted}）分开： 那三支说的是"提供了但给不了"，本支说的是"<b>根本没有服务可买</b>"—— 前者要补货/退单，后者要等下一轮产出。
+   * <pre>
+   * 本常量（货侧）      no-deliverable-haul-service-goods  = **服务商品账上拿不出货**（等下一轮产出）
+   * {@link MerchantCapacityPool#NO_CARRIER_WITH_SERVICE_REASON}（池侧）
+   *                     no-carrier-with-deliverable-service = **全池没有一个能覆盖本 lane 且手上有服务货的承运方**
+   *
+   * 三支互不相同的既有归因（另见 {@code MerchantCapacityPool.LogisticsBlock}）：
+   *   no-merchant-household-in-shipping-hex  连"选了跑商的家户"都没有（引商）
+   *   out-of-derived-radius                  有承运方与货，但**总行程**超出它的派生半径（改派近的 / 扩半径）
+   *   capacity-exhausted                     有货、够得着，但这一笔的预算被本轮别的 lane 吃光了（等下一轮 / 加运力）
+   * </pre>
+   *
+   * <p>★★ <b>为什么必须改这个字面量（AGENTS §四 的结构性歧义，调查报告 §2.5 A2 实测）</b>：它改前是 {@code
+   * no-haul-service-in-shipping-hex}，与 {@code
+   * MerchantCapacityPool.LogisticsBlock.NO_CARRIER_WITH_SERVICE} 的 {@code detail()} **同值** ⇒
+   * 日志里同一个词被读成三件互不相同的事——"这一格没有牌价"（❌ 按代码不成立：有牌价才算服务成市格）、 "这一格没有承运方"、"这一格没有服务货"。运力调查因此把归因读反过一次。W7
+   * 把两者拆成上面两个**不同且自解释**的名字。
+   *
+   * <p>★ 与池里既有的三支归因（{@code out-of-derived-radius} / {@code sub-unit-residual} / {@code
+   * capacity-exhausted}）分开：那三支说的是"提供了但给不了"，本支说的是"<b>根本没有服务可交付</b>" —— 前者要补货/退单，后者要等下一轮产出。
+   *
+   * <p>★★ <b>W7-fix（2026-10-11，F2）：本常量此前在 main 里**零发射点**（只有 javadoc 与测试引用）—— 现已接线</b>。 处置 =
+   * <b>接到真正的发射点</b>（不是删）：唯一拼写点留在本类，池侧那个**真有发射点**的常量 （{@code
+   * MerchantCapacityPool.NO_SERVICE_GOODS_REASON}，装配期"服务成市、有跑商家户、但可交付服务货为 0" 的逐户计数，它进逐轮 INFO 汇总的
+   * {@code serviceGoodsAbsentHouseholds} 栏）改为**引用本常量**。
+   *
+   * <pre>
+   * 改前  HaulService.no-deliverable-haul-service-goods               ← main 零发射点（悬空常量）
+   *       MerchantCapacityPool.merchant-household-holds-no-service-goods ← 真发射点（两串说同一件事）
+   * 改后  HaulService.no-deliverable-haul-service-goods               ← 唯一拼写点（被下面那行引用）
+   *       MerchantCapacityPool.NO_SERVICE_GOODS_REASON = 本常量         ← 真发射点（读数键随之为上面那一串）
+   * </pre>
+   *
+   * ★ <b>为什么是"合并"而不是"再拆"</b>：真正需要分辨的那一刀是"**没有提供商**"（{@code
+   * MerchantCapacityPool.NO_MERCHANT_HOUSEHOLD_REASON}）vs"**有提供商但没货**"（本支）—— 两者**本来就不同值**；
+   * 而"家户账上没有货"与"承运方手上没有货"是**同一件事**的两种说法（同一份服务商品账）。★ 记账口径一字未改 （仍按家户计数、仍只进读数），只改那个键的字符串。
    */
-  public static final String NO_SERVICE_SUPPLY_REASON = "no-haul-service-in-shipping-hex";
+  public static final String NO_DELIVERABLE_SERVICE_GOODS_REASON =
+      "no-deliverable-haul-service-goods";
 
   /**
    * ★★ <b>本格的服务市场成不成市</b>（= 本格市场给 {@code haul} 定过价）。

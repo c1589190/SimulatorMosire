@@ -1,0 +1,6 @@
+[
+  { "op": "advance", "to": 360 },
+  { "op": "dump", "label": "d360-oneshot" },
+  { "op": "advance_daily", "to": 660 },
+  { "op": "dump", "label": "d660" }
+]

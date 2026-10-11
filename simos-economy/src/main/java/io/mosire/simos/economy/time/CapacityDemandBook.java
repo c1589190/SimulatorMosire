@@ -7,6 +7,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -156,6 +157,31 @@ final class CapacityDemandBook {
   /** 本轮的运力需求份数（(家户, 商品) 去重）。 */
   long demandInstances() {
     return total.instances.size();
+  }
+
+  /**
+   * ★★★ <b>W7（2026-10-11）：逐<b>发货格</b>的运力需求量（毫商品·程）—— §2.1 自适应定价里 {@code haul} 的 D</b>。
+   *
+   * <p>★★ <b>为什么 D 取"全额派生需求"而不是"未获服务的部分"</b>：§2.1 的冻结算式里 {@code D = 该区本轮"想要"的总量} （★ v3.5 的刻意不对称：**D
+   * 不扣运力截断**——"运力没运走 ≠ 没人要"）。把只未服务的部分当 D，等于"运力没运走 ⇒ 需求消失" ⇒ 缺口越大价格越不动，与用户"缺运力 ⇒ 运费上升"直接矛盾。
+   *
+   * <p>★ 键 = 发货格（承运方要出发的那一格）；调用方按市场区的成员格求和 ⇒ 得到该区的 D。键序 = 首次出现序（I7 保序）。
+   */
+  Map<HexCoord, Long> demandWorkByShippingHex() {
+    Map<HexCoord, Long> table = new LinkedHashMap<>();
+    for (Map.Entry<HexCoord, Bucket> entry : byShippingHex.entrySet()) {
+      table.put(entry.getKey(), entry.getValue().demandWorkMilli);
+    }
+    return Collections.unmodifiableMap(table);
+  }
+
+  /** 逐发货格**已获服务**的运力量（毫商品·程）—— 只作读数（不参与任何判据）。 */
+  Map<HexCoord, Long> servedWorkByShippingHex() {
+    Map<HexCoord, Long> table = new LinkedHashMap<>();
+    for (Map.Entry<HexCoord, Bucket> entry : byShippingHex.entrySet()) {
+      table.put(entry.getKey(), entry.getValue().servedWorkMilli);
+    }
+    return Collections.unmodifiableMap(table);
   }
 
   /** 本轮运力需求总量（毫商品·程）。 */

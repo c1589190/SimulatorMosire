@@ -1,0 +1,1320 @@
+[
+ {
+  "file": "sw700-d700.json",
+  "tick": 700,
+  "revision": 342,
+  "tool_total_milli": 24192,
+  "tool_shares": 73,
+  "tool_by_owner": {
+   "share-office@0_0-TOOL-HOUSEHOLD-hh-gov-gov-central-HOUSEHOLD-hh-gov-gov-central-OWNED-0": 1,
+   "share-office@0_1-TOOL-HOUSEHOLD-hh-gov-gov-province-HOUSEHOLD-hh-gov-gov-province-OWNED-0": 1,
+   "share-trade@0_0-TOOL-HOUSEHOLD-hh-0_0-urban-landlord-HOUSEHOLD-hh-0_0-urban-landlord-OWNED-0": 10685,
+   "share-trade@0_2-TOOL-HOUSEHOLD-hh-0_2-urban-landlord-HOUSEHOLD-hh-0_2-urban-landlord-OWNED-0": 0,
+   "share-trade@0_2-TOOL-HOUSEHOLD-hh-0_2-urban-middle_peasant-HOUSEHOLD-hh-0_2-urban-middle_peasant-OWNED-0": 11520,
+   "share-trade@0_2-TOOL-HOUSEHOLD-hh-0_2-urban-middle_peasant-HOUSEHOLD-hh-0_2-urban-rich_peasant-TENANCY-0": 480,
+   "share-weave@-1_-1-TOOL-HOUSEHOLD-hh--1_-1-rural-poor_peasant-HOUSEHOLD-hh--1_-1-rural-poor_peasant-OWNED-0": 3,
+   "share-weave@-1_-1-TOOL-HOUSEHOLD-weave@-1_-1-HOUSEHOLD-weave@-1_-1-OWNED-0": 7,
+   "share-weave@-1_0-TOOL-HOUSEHOLD-hh--1_0-rural-landlord-HOUSEHOLD-hh--1_0-rural-landlord-OWNED-0": 2,
+   "share-weave@-1_0-TOOL-HOUSEHOLD-hh--1_0-rural-middle_peasant-HOUSEHOLD-hh--1_0-rural-middle_peasant-OWNED-0": 0,
+   "share-weave@-1_0-TOOL-HOUSEHOLD-hh--1_0-rural-poor_peasant-HOUSEHOLD-hh--1_0-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@-1_0-TOOL-HOUSEHOLD-weave@-1_0-HOUSEHOLD-weave@-1_0-OWNED-0": 7,
+   "share-weave@-1_1-TOOL-HOUSEHOLD-hh--1_1-rural-landlord-HOUSEHOLD-hh--1_1-rural-landlord-OWNED-0": 1,
+   "share-weave@-1_1-TOOL-HOUSEHOLD-hh--1_1-rural-poor_peasant-HOUSEHOLD-hh--1_1-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@-1_1-TOOL-HOUSEHOLD-hh--1_1-rural-rich_peasant-HOUSEHOLD-hh--1_1-rural-rich_peasant-OWNED-0": 1316,
+   "share-weave@-1_1-TOOL-HOUSEHOLD-weave@-1_1-HOUSEHOLD-weave@-1_1-OWNED-0": 7,
+   "share-weave@-1_2-TOOL-HOUSEHOLD-hh--1_2-rural-landlord-HOUSEHOLD-hh--1_2-rural-landlord-OWNED-0": 2,
+   "share-weave@-1_2-TOOL-HOUSEHOLD-hh--1_2-rural-poor_peasant-HOUSEHOLD-hh--1_2-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@-1_2-TOOL-HOUSEHOLD-weave@-1_2-HOUSEHOLD-weave@-1_2-OWNED-0": 7,
+   "share-weave@-2_0-TOOL-HOUSEHOLD-hh--2_0-rural-landlord-HOUSEHOLD-hh--2_0-rural-landlord-OWNED-0": 2,
+   "share-weave@-2_0-TOOL-HOUSEHOLD-hh--2_0-rural-poor_peasant-HOUSEHOLD-hh--2_0-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@-2_0-TOOL-HOUSEHOLD-weave@-2_0-HOUSEHOLD-weave@-2_0-OWNED-0": 7,
+   "share-weave@-2_1-TOOL-HOUSEHOLD-hh--2_1-rural-landlord-HOUSEHOLD-hh--2_1-rural-landlord-OWNED-0": 1,
+   "share-weave@-2_1-TOOL-HOUSEHOLD-hh--2_1-rural-poor_peasant-HOUSEHOLD-hh--2_1-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@-2_1-TOOL-HOUSEHOLD-hh--2_1-rural-rich_peasant-HOUSEHOLD-hh--2_1-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@-2_1-TOOL-HOUSEHOLD-weave@-2_1-HOUSEHOLD-weave@-2_1-OWNED-0": 7,
+   "share-weave@-2_2-TOOL-HOUSEHOLD-hh--2_2-rural-landlord-HOUSEHOLD-hh--2_2-rural-landlord-OWNED-0": 1,
+   "share-weave@-2_2-TOOL-HOUSEHOLD-hh--2_2-rural-poor_peasant-HOUSEHOLD-hh--2_2-rural-poor_peasant-OWNED-0": 2,
+   "share-weave@-2_2-TOOL-HOUSEHOLD-weave@-2_2-HOUSEHOLD-weave@-2_2-OWNED-0": 7,
+   "share-weave@0_-1-TOOL-HOUSEHOLD-hh-0_-1-rural-poor_peasant-HOUSEHOLD-hh-0_-1-rural-poor_peasant-OWNED-0": 3,
+   "share-weave@0_-1-TOOL-HOUSEHOLD-weave@0_-1-HOUSEHOLD-weave@0_-1-OWNED-0": 7,
+   "share-weave@0_-2-TOOL-HOUSEHOLD-hh-0_-2-rural-poor_peasant-HOUSEHOLD-hh-0_-2-rural-poor_peasant-OWNED-0": 3,
+   "share-weave@0_-2-TOOL-HOUSEHOLD-weave@0_-2-HOUSEHOLD-weave@0_-2-OWNED-0": 7,
+   "share-weave@0_0-TOOL-HOUSEHOLD-hh-0_0-rural-middle_peasant-HOUSEHOLD-hh-0_0-rural-middle_peasant-OWNED-0": 1,
+   "share-weave@0_0-TOOL-HOUSEHOLD-hh-0_0-rural-poor_peasant-HOUSEHOLD-hh-0_0-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@0_0-TOOL-HOUSEHOLD-hh-0_0-rural-rich_peasant-HOUSEHOLD-hh-0_0-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@0_0-TOOL-HOUSEHOLD-weave@0_0-HOUSEHOLD-weave@0_0-OWNED-0": 7,
+   "share-weave@0_1-TOOL-HOUSEHOLD-hh-0_1-rural-middle_peasant-HOUSEHOLD-hh-0_1-rural-middle_peasant-OWNED-0": 1,
+   "share-weave@0_1-TOOL-HOUSEHOLD-hh-0_1-rural-poor_peasant-HOUSEHOLD-hh-0_1-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@0_1-TOOL-HOUSEHOLD-hh-0_1-rural-rich_peasant-HOUSEHOLD-hh-0_1-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@0_1-TOOL-HOUSEHOLD-weave@0_1-HOUSEHOLD-weave@0_1-OWNED-0": 7,
+   "share-weave@0_2-TOOL-HOUSEHOLD-hh-0_2-rural-middle_peasant-HOUSEHOLD-hh-0_2-rural-middle_peasant-OWNED-0": 1,
+   "share-weave@0_2-TOOL-HOUSEHOLD-hh-0_2-rural-poor_peasant-HOUSEHOLD-hh-0_2-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@0_2-TOOL-HOUSEHOLD-hh-0_2-rural-rich_peasant-HOUSEHOLD-hh-0_2-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@0_2-TOOL-HOUSEHOLD-weave@0_2-HOUSEHOLD-weave@0_2-OWNED-0": 7,
+   "share-weave@1_-1-TOOL-HOUSEHOLD-hh-1_-1-rural-middle_peasant-HOUSEHOLD-hh-1_-1-rural-middle_peasant-OWNED-0": 1,
+   "share-weave@1_-1-TOOL-HOUSEHOLD-hh-1_-1-rural-poor_peasant-HOUSEHOLD-hh-1_-1-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@1_-1-TOOL-HOUSEHOLD-hh-1_-1-rural-rich_peasant-HOUSEHOLD-hh-1_-1-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@1_-1-TOOL-HOUSEHOLD-weave@1_-1-HOUSEHOLD-weave@1_-1-OWNED-0": 7,
+   "share-weave@1_-2-TOOL-HOUSEHOLD-hh-1_-2-rural-middle_peasant-HOUSEHOLD-hh-1_-2-rural-middle_peasant-OWNED-0": 1,
+   "share-weave@1_-2-TOOL-HOUSEHOLD-hh-1_-2-rural-poor_peasant-HOUSEHOLD-hh-1_-2-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@1_-2-TOOL-HOUSEHOLD-hh-1_-2-rural-rich_peasant-HOUSEHOLD-hh-1_-2-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@1_-2-TOOL-HOUSEHOLD-weave@1_-2-HOUSEHOLD-weave@1_-2-OWNED-0": 7,
+   "share-weave@1_0-TOOL-HOUSEHOLD-hh-1_0-rural-middle_peasant-HOUSEHOLD-hh-1_0-rural-middle_peasant-OWNED-0": 1,
+   "share-weave@1_0-TOOL-HOUSEHOLD-hh-1_0-rural-poor_peasant-HOUSEHOLD-hh-1_0-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@1_0-TOOL-HOUSEHOLD-hh-1_0-rural-rich_peasant-HOUSEHOLD-hh-1_0-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@1_0-TOOL-HOUSEHOLD-weave@1_0-HOUSEHOLD-weave@1_0-OWNED-0": 7,
+   "share-weave@1_1-TOOL-HOUSEHOLD-hh-1_1-rural-middle_peasant-HOUSEHOLD-hh-1_1-rural-middle_peasant-OWNED-0": 1,
+   "share-weave@1_1-TOOL-HOUSEHOLD-hh-1_1-rural-poor_peasant-HOUSEHOLD-hh-1_1-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@1_1-TOOL-HOUSEHOLD-hh-1_1-rural-rich_peasant-HOUSEHOLD-hh-1_1-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@1_1-TOOL-HOUSEHOLD-weave@1_1-HOUSEHOLD-weave@1_1-OWNED-0": 7,
+   "share-weave@2_-1-TOOL-HOUSEHOLD-hh-2_-1-rural-middle_peasant-HOUSEHOLD-hh-2_-1-rural-middle_peasant-OWNED-0": 1,
+   "share-weave@2_-1-TOOL-HOUSEHOLD-hh-2_-1-rural-poor_peasant-HOUSEHOLD-hh-2_-1-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@2_-1-TOOL-HOUSEHOLD-hh-2_-1-rural-rich_peasant-HOUSEHOLD-hh-2_-1-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@2_-1-TOOL-HOUSEHOLD-weave@2_-1-HOUSEHOLD-weave@2_-1-OWNED-0": 7,
+   "share-weave@2_-2-TOOL-HOUSEHOLD-hh-2_-2-rural-middle_peasant-HOUSEHOLD-hh-2_-2-rural-middle_peasant-OWNED-0": 1,
+   "share-weave@2_-2-TOOL-HOUSEHOLD-hh-2_-2-rural-poor_peasant-HOUSEHOLD-hh-2_-2-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@2_-2-TOOL-HOUSEHOLD-hh-2_-2-rural-rich_peasant-HOUSEHOLD-hh-2_-2-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@2_-2-TOOL-HOUSEHOLD-weave@2_-2-HOUSEHOLD-weave@2_-2-OWNED-0": 7,
+   "share-weave@2_0-TOOL-HOUSEHOLD-hh-2_0-rural-middle_peasant-HOUSEHOLD-hh-2_0-rural-middle_peasant-OWNED-0": 1,
+   "share-weave@2_0-TOOL-HOUSEHOLD-hh-2_0-rural-poor_peasant-HOUSEHOLD-hh-2_0-rural-poor_peasant-OWNED-0": 1,
+   "share-weave@2_0-TOOL-HOUSEHOLD-hh-2_0-rural-rich_peasant-HOUSEHOLD-hh-2_0-rural-rich_peasant-OWNED-0": 1,
+   "share-weave@2_0-TOOL-HOUSEHOLD-weave@2_0-HOUSEHOLD-weave@2_0-OWNED-0": 7
+  },
+  "tool_share_rows": [
+   {
+    "id": "share-office@0_0-TOOL-HOUSEHOLD-hh-gov-gov-central-HOUSEHOLD-hh-gov-gov-central-OWNED-0",
+    "qty": 1,
+    "owner": "hh-gov-gov-central",
+    "operator": "hh-gov-gov-central",
+    "industry": "office@0_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-office@0_1-TOOL-HOUSEHOLD-hh-gov-gov-province-HOUSEHOLD-hh-gov-gov-province-OWNED-0",
+    "qty": 1,
+    "owner": "hh-gov-gov-province",
+    "operator": "hh-gov-gov-province",
+    "industry": "office@0_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-trade@0_0-TOOL-HOUSEHOLD-hh-0_0-urban-landlord-HOUSEHOLD-hh-0_0-urban-landlord-OWNED-0",
+    "qty": 10685,
+    "owner": "hh-0_0-urban-landlord",
+    "operator": "hh-0_0-urban-landlord",
+    "industry": "trade@0_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-trade@0_2-TOOL-HOUSEHOLD-hh-0_2-urban-landlord-HOUSEHOLD-hh-0_2-urban-landlord-OWNED-0",
+    "qty": 0,
+    "owner": "hh-0_2-urban-landlord",
+    "operator": "hh-0_2-urban-landlord",
+    "industry": "trade@0_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-trade@0_2-TOOL-HOUSEHOLD-hh-0_2-urban-middle_peasant-HOUSEHOLD-hh-0_2-urban-middle_peasant-OWNED-0",
+    "qty": 11520,
+    "owner": "hh-0_2-urban-middle_peasant",
+    "operator": "hh-0_2-urban-middle_peasant",
+    "industry": "trade@0_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-trade@0_2-TOOL-HOUSEHOLD-hh-0_2-urban-middle_peasant-HOUSEHOLD-hh-0_2-urban-rich_peasant-TENANCY-0",
+    "qty": 480,
+    "owner": "hh-0_2-urban-middle_peasant",
+    "operator": "hh-0_2-urban-rich_peasant",
+    "industry": "trade@0_2",
+    "kind": "TENANCY"
+   },
+   {
+    "id": "share-weave@-1_-1-TOOL-HOUSEHOLD-hh--1_-1-rural-poor_peasant-HOUSEHOLD-hh--1_-1-rural-poor_peasant-OWNED-0",
+    "qty": 3,
+    "owner": "hh--1_-1-rural-poor_peasant",
+    "operator": "hh--1_-1-rural-poor_peasant",
+    "industry": "weave@-1_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_-1-TOOL-HOUSEHOLD-weave@-1_-1-HOUSEHOLD-weave@-1_-1-OWNED-0",
+    "qty": 7,
+    "owner": "weave@-1_-1",
+    "operator": "weave@-1_-1",
+    "industry": "weave@-1_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_0-TOOL-HOUSEHOLD-hh--1_0-rural-landlord-HOUSEHOLD-hh--1_0-rural-landlord-OWNED-0",
+    "qty": 2,
+    "owner": "hh--1_0-rural-landlord",
+    "operator": "hh--1_0-rural-landlord",
+    "industry": "weave@-1_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_0-TOOL-HOUSEHOLD-hh--1_0-rural-middle_peasant-HOUSEHOLD-hh--1_0-rural-middle_peasant-OWNED-0",
+    "qty": 0,
+    "owner": "hh--1_0-rural-middle_peasant",
+    "operator": "hh--1_0-rural-middle_peasant",
+    "industry": "weave@-1_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_0-TOOL-HOUSEHOLD-hh--1_0-rural-poor_peasant-HOUSEHOLD-hh--1_0-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh--1_0-rural-poor_peasant",
+    "operator": "hh--1_0-rural-poor_peasant",
+    "industry": "weave@-1_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_0-TOOL-HOUSEHOLD-weave@-1_0-HOUSEHOLD-weave@-1_0-OWNED-0",
+    "qty": 7,
+    "owner": "weave@-1_0",
+    "operator": "weave@-1_0",
+    "industry": "weave@-1_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_1-TOOL-HOUSEHOLD-hh--1_1-rural-landlord-HOUSEHOLD-hh--1_1-rural-landlord-OWNED-0",
+    "qty": 1,
+    "owner": "hh--1_1-rural-landlord",
+    "operator": "hh--1_1-rural-landlord",
+    "industry": "weave@-1_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_1-TOOL-HOUSEHOLD-hh--1_1-rural-poor_peasant-HOUSEHOLD-hh--1_1-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh--1_1-rural-poor_peasant",
+    "operator": "hh--1_1-rural-poor_peasant",
+    "industry": "weave@-1_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_1-TOOL-HOUSEHOLD-hh--1_1-rural-rich_peasant-HOUSEHOLD-hh--1_1-rural-rich_peasant-OWNED-0",
+    "qty": 1316,
+    "owner": "hh--1_1-rural-rich_peasant",
+    "operator": "hh--1_1-rural-rich_peasant",
+    "industry": "weave@-1_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_1-TOOL-HOUSEHOLD-weave@-1_1-HOUSEHOLD-weave@-1_1-OWNED-0",
+    "qty": 7,
+    "owner": "weave@-1_1",
+    "operator": "weave@-1_1",
+    "industry": "weave@-1_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_2-TOOL-HOUSEHOLD-hh--1_2-rural-landlord-HOUSEHOLD-hh--1_2-rural-landlord-OWNED-0",
+    "qty": 2,
+    "owner": "hh--1_2-rural-landlord",
+    "operator": "hh--1_2-rural-landlord",
+    "industry": "weave@-1_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_2-TOOL-HOUSEHOLD-hh--1_2-rural-poor_peasant-HOUSEHOLD-hh--1_2-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh--1_2-rural-poor_peasant",
+    "operator": "hh--1_2-rural-poor_peasant",
+    "industry": "weave@-1_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-1_2-TOOL-HOUSEHOLD-weave@-1_2-HOUSEHOLD-weave@-1_2-OWNED-0",
+    "qty": 7,
+    "owner": "weave@-1_2",
+    "operator": "weave@-1_2",
+    "industry": "weave@-1_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-2_0-TOOL-HOUSEHOLD-hh--2_0-rural-landlord-HOUSEHOLD-hh--2_0-rural-landlord-OWNED-0",
+    "qty": 2,
+    "owner": "hh--2_0-rural-landlord",
+    "operator": "hh--2_0-rural-landlord",
+    "industry": "weave@-2_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-2_0-TOOL-HOUSEHOLD-hh--2_0-rural-poor_peasant-HOUSEHOLD-hh--2_0-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh--2_0-rural-poor_peasant",
+    "operator": "hh--2_0-rural-poor_peasant",
+    "industry": "weave@-2_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-2_0-TOOL-HOUSEHOLD-weave@-2_0-HOUSEHOLD-weave@-2_0-OWNED-0",
+    "qty": 7,
+    "owner": "weave@-2_0",
+    "operator": "weave@-2_0",
+    "industry": "weave@-2_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-2_1-TOOL-HOUSEHOLD-hh--2_1-rural-landlord-HOUSEHOLD-hh--2_1-rural-landlord-OWNED-0",
+    "qty": 1,
+    "owner": "hh--2_1-rural-landlord",
+    "operator": "hh--2_1-rural-landlord",
+    "industry": "weave@-2_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-2_1-TOOL-HOUSEHOLD-hh--2_1-rural-poor_peasant-HOUSEHOLD-hh--2_1-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh--2_1-rural-poor_peasant",
+    "operator": "hh--2_1-rural-poor_peasant",
+    "industry": "weave@-2_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-2_1-TOOL-HOUSEHOLD-hh--2_1-rural-rich_peasant-HOUSEHOLD-hh--2_1-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh--2_1-rural-rich_peasant",
+    "operator": "hh--2_1-rural-rich_peasant",
+    "industry": "weave@-2_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-2_1-TOOL-HOUSEHOLD-weave@-2_1-HOUSEHOLD-weave@-2_1-OWNED-0",
+    "qty": 7,
+    "owner": "weave@-2_1",
+    "operator": "weave@-2_1",
+    "industry": "weave@-2_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-2_2-TOOL-HOUSEHOLD-hh--2_2-rural-landlord-HOUSEHOLD-hh--2_2-rural-landlord-OWNED-0",
+    "qty": 1,
+    "owner": "hh--2_2-rural-landlord",
+    "operator": "hh--2_2-rural-landlord",
+    "industry": "weave@-2_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-2_2-TOOL-HOUSEHOLD-hh--2_2-rural-poor_peasant-HOUSEHOLD-hh--2_2-rural-poor_peasant-OWNED-0",
+    "qty": 2,
+    "owner": "hh--2_2-rural-poor_peasant",
+    "operator": "hh--2_2-rural-poor_peasant",
+    "industry": "weave@-2_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@-2_2-TOOL-HOUSEHOLD-weave@-2_2-HOUSEHOLD-weave@-2_2-OWNED-0",
+    "qty": 7,
+    "owner": "weave@-2_2",
+    "operator": "weave@-2_2",
+    "industry": "weave@-2_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_-1-TOOL-HOUSEHOLD-hh-0_-1-rural-poor_peasant-HOUSEHOLD-hh-0_-1-rural-poor_peasant-OWNED-0",
+    "qty": 3,
+    "owner": "hh-0_-1-rural-poor_peasant",
+    "operator": "hh-0_-1-rural-poor_peasant",
+    "industry": "weave@0_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_-1-TOOL-HOUSEHOLD-weave@0_-1-HOUSEHOLD-weave@0_-1-OWNED-0",
+    "qty": 7,
+    "owner": "weave@0_-1",
+    "operator": "weave@0_-1",
+    "industry": "weave@0_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_-2-TOOL-HOUSEHOLD-hh-0_-2-rural-poor_peasant-HOUSEHOLD-hh-0_-2-rural-poor_peasant-OWNED-0",
+    "qty": 3,
+    "owner": "hh-0_-2-rural-poor_peasant",
+    "operator": "hh-0_-2-rural-poor_peasant",
+    "industry": "weave@0_-2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_-2-TOOL-HOUSEHOLD-weave@0_-2-HOUSEHOLD-weave@0_-2-OWNED-0",
+    "qty": 7,
+    "owner": "weave@0_-2",
+    "operator": "weave@0_-2",
+    "industry": "weave@0_-2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_0-TOOL-HOUSEHOLD-hh-0_0-rural-middle_peasant-HOUSEHOLD-hh-0_0-rural-middle_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-0_0-rural-middle_peasant",
+    "operator": "hh-0_0-rural-middle_peasant",
+    "industry": "weave@0_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_0-TOOL-HOUSEHOLD-hh-0_0-rural-poor_peasant-HOUSEHOLD-hh-0_0-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-0_0-rural-poor_peasant",
+    "operator": "hh-0_0-rural-poor_peasant",
+    "industry": "weave@0_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_0-TOOL-HOUSEHOLD-hh-0_0-rural-rich_peasant-HOUSEHOLD-hh-0_0-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-0_0-rural-rich_peasant",
+    "operator": "hh-0_0-rural-rich_peasant",
+    "industry": "weave@0_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_0-TOOL-HOUSEHOLD-weave@0_0-HOUSEHOLD-weave@0_0-OWNED-0",
+    "qty": 7,
+    "owner": "weave@0_0",
+    "operator": "weave@0_0",
+    "industry": "weave@0_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_1-TOOL-HOUSEHOLD-hh-0_1-rural-middle_peasant-HOUSEHOLD-hh-0_1-rural-middle_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-0_1-rural-middle_peasant",
+    "operator": "hh-0_1-rural-middle_peasant",
+    "industry": "weave@0_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_1-TOOL-HOUSEHOLD-hh-0_1-rural-poor_peasant-HOUSEHOLD-hh-0_1-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-0_1-rural-poor_peasant",
+    "operator": "hh-0_1-rural-poor_peasant",
+    "industry": "weave@0_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_1-TOOL-HOUSEHOLD-hh-0_1-rural-rich_peasant-HOUSEHOLD-hh-0_1-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-0_1-rural-rich_peasant",
+    "operator": "hh-0_1-rural-rich_peasant",
+    "industry": "weave@0_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_1-TOOL-HOUSEHOLD-weave@0_1-HOUSEHOLD-weave@0_1-OWNED-0",
+    "qty": 7,
+    "owner": "weave@0_1",
+    "operator": "weave@0_1",
+    "industry": "weave@0_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_2-TOOL-HOUSEHOLD-hh-0_2-rural-middle_peasant-HOUSEHOLD-hh-0_2-rural-middle_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-0_2-rural-middle_peasant",
+    "operator": "hh-0_2-rural-middle_peasant",
+    "industry": "weave@0_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_2-TOOL-HOUSEHOLD-hh-0_2-rural-poor_peasant-HOUSEHOLD-hh-0_2-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-0_2-rural-poor_peasant",
+    "operator": "hh-0_2-rural-poor_peasant",
+    "industry": "weave@0_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_2-TOOL-HOUSEHOLD-hh-0_2-rural-rich_peasant-HOUSEHOLD-hh-0_2-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-0_2-rural-rich_peasant",
+    "operator": "hh-0_2-rural-rich_peasant",
+    "industry": "weave@0_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@0_2-TOOL-HOUSEHOLD-weave@0_2-HOUSEHOLD-weave@0_2-OWNED-0",
+    "qty": 7,
+    "owner": "weave@0_2",
+    "operator": "weave@0_2",
+    "industry": "weave@0_2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_-1-TOOL-HOUSEHOLD-hh-1_-1-rural-middle_peasant-HOUSEHOLD-hh-1_-1-rural-middle_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_-1-rural-middle_peasant",
+    "operator": "hh-1_-1-rural-middle_peasant",
+    "industry": "weave@1_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_-1-TOOL-HOUSEHOLD-hh-1_-1-rural-poor_peasant-HOUSEHOLD-hh-1_-1-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_-1-rural-poor_peasant",
+    "operator": "hh-1_-1-rural-poor_peasant",
+    "industry": "weave@1_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_-1-TOOL-HOUSEHOLD-hh-1_-1-rural-rich_peasant-HOUSEHOLD-hh-1_-1-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_-1-rural-rich_peasant",
+    "operator": "hh-1_-1-rural-rich_peasant",
+    "industry": "weave@1_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_-1-TOOL-HOUSEHOLD-weave@1_-1-HOUSEHOLD-weave@1_-1-OWNED-0",
+    "qty": 7,
+    "owner": "weave@1_-1",
+    "operator": "weave@1_-1",
+    "industry": "weave@1_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_-2-TOOL-HOUSEHOLD-hh-1_-2-rural-middle_peasant-HOUSEHOLD-hh-1_-2-rural-middle_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_-2-rural-middle_peasant",
+    "operator": "hh-1_-2-rural-middle_peasant",
+    "industry": "weave@1_-2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_-2-TOOL-HOUSEHOLD-hh-1_-2-rural-poor_peasant-HOUSEHOLD-hh-1_-2-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_-2-rural-poor_peasant",
+    "operator": "hh-1_-2-rural-poor_peasant",
+    "industry": "weave@1_-2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_-2-TOOL-HOUSEHOLD-hh-1_-2-rural-rich_peasant-HOUSEHOLD-hh-1_-2-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_-2-rural-rich_peasant",
+    "operator": "hh-1_-2-rural-rich_peasant",
+    "industry": "weave@1_-2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_-2-TOOL-HOUSEHOLD-weave@1_-2-HOUSEHOLD-weave@1_-2-OWNED-0",
+    "qty": 7,
+    "owner": "weave@1_-2",
+    "operator": "weave@1_-2",
+    "industry": "weave@1_-2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_0-TOOL-HOUSEHOLD-hh-1_0-rural-middle_peasant-HOUSEHOLD-hh-1_0-rural-middle_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_0-rural-middle_peasant",
+    "operator": "hh-1_0-rural-middle_peasant",
+    "industry": "weave@1_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_0-TOOL-HOUSEHOLD-hh-1_0-rural-poor_peasant-HOUSEHOLD-hh-1_0-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_0-rural-poor_peasant",
+    "operator": "hh-1_0-rural-poor_peasant",
+    "industry": "weave@1_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_0-TOOL-HOUSEHOLD-hh-1_0-rural-rich_peasant-HOUSEHOLD-hh-1_0-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_0-rural-rich_peasant",
+    "operator": "hh-1_0-rural-rich_peasant",
+    "industry": "weave@1_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_0-TOOL-HOUSEHOLD-weave@1_0-HOUSEHOLD-weave@1_0-OWNED-0",
+    "qty": 7,
+    "owner": "weave@1_0",
+    "operator": "weave@1_0",
+    "industry": "weave@1_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_1-TOOL-HOUSEHOLD-hh-1_1-rural-middle_peasant-HOUSEHOLD-hh-1_1-rural-middle_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_1-rural-middle_peasant",
+    "operator": "hh-1_1-rural-middle_peasant",
+    "industry": "weave@1_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_1-TOOL-HOUSEHOLD-hh-1_1-rural-poor_peasant-HOUSEHOLD-hh-1_1-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_1-rural-poor_peasant",
+    "operator": "hh-1_1-rural-poor_peasant",
+    "industry": "weave@1_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_1-TOOL-HOUSEHOLD-hh-1_1-rural-rich_peasant-HOUSEHOLD-hh-1_1-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-1_1-rural-rich_peasant",
+    "operator": "hh-1_1-rural-rich_peasant",
+    "industry": "weave@1_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@1_1-TOOL-HOUSEHOLD-weave@1_1-HOUSEHOLD-weave@1_1-OWNED-0",
+    "qty": 7,
+    "owner": "weave@1_1",
+    "operator": "weave@1_1",
+    "industry": "weave@1_1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_-1-TOOL-HOUSEHOLD-hh-2_-1-rural-middle_peasant-HOUSEHOLD-hh-2_-1-rural-middle_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-2_-1-rural-middle_peasant",
+    "operator": "hh-2_-1-rural-middle_peasant",
+    "industry": "weave@2_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_-1-TOOL-HOUSEHOLD-hh-2_-1-rural-poor_peasant-HOUSEHOLD-hh-2_-1-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-2_-1-rural-poor_peasant",
+    "operator": "hh-2_-1-rural-poor_peasant",
+    "industry": "weave@2_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_-1-TOOL-HOUSEHOLD-hh-2_-1-rural-rich_peasant-HOUSEHOLD-hh-2_-1-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-2_-1-rural-rich_peasant",
+    "operator": "hh-2_-1-rural-rich_peasant",
+    "industry": "weave@2_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_-1-TOOL-HOUSEHOLD-weave@2_-1-HOUSEHOLD-weave@2_-1-OWNED-0",
+    "qty": 7,
+    "owner": "weave@2_-1",
+    "operator": "weave@2_-1",
+    "industry": "weave@2_-1",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_-2-TOOL-HOUSEHOLD-hh-2_-2-rural-middle_peasant-HOUSEHOLD-hh-2_-2-rural-middle_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-2_-2-rural-middle_peasant",
+    "operator": "hh-2_-2-rural-middle_peasant",
+    "industry": "weave@2_-2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_-2-TOOL-HOUSEHOLD-hh-2_-2-rural-poor_peasant-HOUSEHOLD-hh-2_-2-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-2_-2-rural-poor_peasant",
+    "operator": "hh-2_-2-rural-poor_peasant",
+    "industry": "weave@2_-2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_-2-TOOL-HOUSEHOLD-hh-2_-2-rural-rich_peasant-HOUSEHOLD-hh-2_-2-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-2_-2-rural-rich_peasant",
+    "operator": "hh-2_-2-rural-rich_peasant",
+    "industry": "weave@2_-2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_-2-TOOL-HOUSEHOLD-weave@2_-2-HOUSEHOLD-weave@2_-2-OWNED-0",
+    "qty": 7,
+    "owner": "weave@2_-2",
+    "operator": "weave@2_-2",
+    "industry": "weave@2_-2",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_0-TOOL-HOUSEHOLD-hh-2_0-rural-middle_peasant-HOUSEHOLD-hh-2_0-rural-middle_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-2_0-rural-middle_peasant",
+    "operator": "hh-2_0-rural-middle_peasant",
+    "industry": "weave@2_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_0-TOOL-HOUSEHOLD-hh-2_0-rural-poor_peasant-HOUSEHOLD-hh-2_0-rural-poor_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-2_0-rural-poor_peasant",
+    "operator": "hh-2_0-rural-poor_peasant",
+    "industry": "weave@2_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_0-TOOL-HOUSEHOLD-hh-2_0-rural-rich_peasant-HOUSEHOLD-hh-2_0-rural-rich_peasant-OWNED-0",
+    "qty": 1,
+    "owner": "hh-2_0-rural-rich_peasant",
+    "operator": "hh-2_0-rural-rich_peasant",
+    "industry": "weave@2_0",
+    "kind": "OWNED"
+   },
+   {
+    "id": "share-weave@2_0-TOOL-HOUSEHOLD-weave@2_0-HOUSEHOLD-weave@2_0-OWNED-0",
+    "qty": 7,
+    "owner": "weave@2_0",
+    "operator": "weave@2_0",
+    "industry": "weave@2_0",
+    "kind": "OWNED"
+   }
+  ],
+  "cattle_total_milli": 0,
+  "cattle_shares": 0,
+  "cattle_by_owner": {},
+  "cattle_share_rows": [],
+  "money_total_by_currency": {
+   "copper": 100000,
+   "silver": 269700
+  },
+  "issuance_by_kind": {
+   "GENESIS_ENDOWMENT": 200000,
+   "INITIAL_ENDOWMENT": 167200,
+   "MINT_PRODUCTION": 2500
+  },
+  "issuance_by_kind_currency": {
+   "GENESIS_ENDOWMENT": {
+    "silver": 200000
+   },
+   "INITIAL_ENDOWMENT": {
+    "copper": 100000,
+    "silver": 67200
+   },
+   "MINT_PRODUCTION": {
+    "silver": 2500
+   }
+  },
+  "issuance_records": 9,
+  "money_conservation_delta_by_currency": {
+   "copper": 0,
+   "silver": 0
+  },
+  "haul_holders": 1,
+  "haul_total_milli": 92074,
+  "tool_goods_holders": 71,
+  "tool_goods_total_milli": 447011,
+  "trade_industries": {
+   "trade@0_0": {
+    "regime": "merchant",
+    "capacityPerUnit": {
+     "TOOL": 120
+    },
+    "capacityPerUnitTool": 120,
+    "capacityPerUnitCattle": null,
+    "laborPerUnit": 1000,
+    "outputPerUnit": {
+     "haul": 1
+    },
+    "cycleInputPerUnit": {
+     "TOOL": {
+      "tool": 100
+     }
+    }
+   },
+   "trade@0_2": {
+    "regime": "merchant",
+    "capacityPerUnit": {
+     "TOOL": 120
+    },
+    "capacityPerUnitTool": 120,
+    "capacityPerUnitCattle": null,
+    "laborPerUnit": 1000,
+    "outputPerUnit": {
+     "haul": 1
+    },
+    "cycleInputPerUnit": {
+     "TOOL": {
+      "tool": 100
+     }
+    }
+   }
+  },
+  "trade_hexes": [
+   "0_0",
+   "0_2"
+  ],
+  "merchant_households": [
+   {
+    "hh": "hh--1_-1-urban-landlord",
+    "hex": "-1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 7262,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_-1-urban-rich_peasant",
+    "hex": "-1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 11545,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_0-urban-landlord",
+    "hex": "-1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_0-urban-rich_peasant",
+    "hex": "-1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_1-urban-landlord",
+    "hex": "-1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_1-urban-rich_peasant",
+    "hex": "-1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_2-urban-landlord",
+    "hex": "-1_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_2-urban-rich_peasant",
+    "hex": "-1_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_0-urban-landlord",
+    "hex": "-2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_0-urban-rich_peasant",
+    "hex": "-2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_1-urban-landlord",
+    "hex": "-2_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_1-urban-rich_peasant",
+    "hex": "-2_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_2-urban-landlord",
+    "hex": "-2_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_2-urban-rich_peasant",
+    "hex": "-2_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-1-urban-landlord",
+    "hex": "0_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-1-urban-rich_peasant",
+    "hex": "0_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-2-urban-landlord",
+    "hex": "0_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-2-urban-rich_peasant",
+    "hex": "0_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_0-urban-landlord",
+    "hex": "0_0",
+    "population": 58,
+    "laborMilli": 524000,
+    "participationPerMille": 100,
+    "toolShareMilli": 10685,
+    "cattleShare": 0,
+    "toolGoodsMilli": 3495,
+    "haulMilli": 92074
+   },
+   {
+    "hh": "hh-0_0-urban-rich_peasant",
+    "hex": "0_0",
+    "population": 99,
+    "laborMilli": 740000,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 1400,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_1-urban-landlord",
+    "hex": "0_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_1-urban-rich_peasant",
+    "hex": "0_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_2-urban-landlord",
+    "hex": "0_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 141,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_2-urban-rich_peasant",
+    "hex": "0_2",
+    "population": 26,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 4384,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-1-urban-landlord",
+    "hex": "1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-1-urban-rich_peasant",
+    "hex": "1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-2-urban-landlord",
+    "hex": "1_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-2-urban-rich_peasant",
+    "hex": "1_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_0-urban-landlord",
+    "hex": "1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_0-urban-rich_peasant",
+    "hex": "1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_1-urban-landlord",
+    "hex": "1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_1-urban-rich_peasant",
+    "hex": "1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-1-urban-landlord",
+    "hex": "2_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-1-urban-rich_peasant",
+    "hex": "2_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-2-urban-landlord",
+    "hex": "2_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-2-urban-rich_peasant",
+    "hex": "2_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_0-urban-landlord",
+    "hex": "2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_0-urban-rich_peasant",
+    "hex": "2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "toolShareMilli": 0,
+    "cattleShare": 0,
+    "toolGoodsMilli": 12000,
+    "haulMilli": 0
+   }
+  ],
+  "merchant_households_with_tool_share": [
+   {
+    "hh": "hh-0_0-urban-landlord",
+    "hex": "0_0",
+    "population": 58,
+    "laborMilli": 524000,
+    "participationPerMille": 100,
+    "toolShareMilli": 10685,
+    "cattleShare": 0,
+    "toolGoodsMilli": 3495,
+    "haulMilli": 92074
+   }
+  ],
+  "merchant_households_with_haul": [
+   {
+    "hh": "hh-0_0-urban-landlord",
+    "hex": "0_0",
+    "population": 58,
+    "laborMilli": 524000,
+    "participationPerMille": 100,
+    "toolShareMilli": 10685,
+    "cattleShare": 0,
+    "toolGoodsMilli": 3495,
+    "haulMilli": 92074
+   }
+  ],
+  "merchant_households_by_hex": {
+   "-1_-1": 2,
+   "-1_0": 2,
+   "-1_1": 2,
+   "-1_2": 2,
+   "-2_0": 2,
+   "-2_1": 2,
+   "-2_2": 2,
+   "0_-1": 2,
+   "0_-2": 2,
+   "0_0": 2,
+   "0_1": 2,
+   "0_2": 2,
+   "1_-1": 2,
+   "1_-2": 2,
+   "1_0": 2,
+   "1_1": 2,
+   "2_-1": 2,
+   "2_-2": 2,
+   "2_0": 2
+  },
+  "population_events": 3698,
+  "population_social": 3067,
+  "households": 178,
+  "debt_contracts": 1479,
+  "debt_principal_milli": 1079682931648527064,
+  "empty_debtor_open_contracts": 14,
+  "empty_debtor_open_principal_milli": 1043790,
+  "empty_debtor_samples": [
+   {
+    "id": "debtc-68682d2d315f302d727572616c2d6d6964646c655f70656173616e74-68682d2d315f302d727572616c2d6c616e646c6f7264-6d6f6e65793a73696c766572-3634363536323734326437343635373236643733326437363331376337323631373436353364333233303763373436393664363936653637336434313436353434353532356635323435353034313539346434353465353435663466346535663433346334663533343537633732363537303631373933643431353634313439346334313432346334353566353335353532353034633535353335663533343834313532343537633633366636653736363537323734336434653466353435663431346334633466353734353434376337323635366436353634373933643464343135323462356634343435343634313535346335343435343437633634373536353433373936333663363533643665366636653635376336343735363534343631373933643665366636653635",
+    "debtor": "hh--1_0-rural-middle_peasant",
+    "principal": 203130,
+    "status": "DEFAULTED",
+    "openedDay": 150,
+    "lastInterestDay": 210,
+    "creditor": "hh--1_0-rural-landlord",
+    "populationEvents": 35
+   },
+   {
+    "id": "debtc-68682d2d315f302d727572616c2d726963685f70656173616e74-68682d2d315f302d727572616c2d6c616e646c6f7264-6d6f6e65793a73696c766572-3634363536323734326437343635373236643733326437363331376337323631373436353364333233303763373436393664363936653637336434313436353434353532356635323435353034313539346434353465353435663466346535663433346334663533343537633732363537303631373933643431353634313439346334313432346334353566353335353532353034633535353335663533343834313532343537633633366636653736363537323734336434653466353435663431346334633466353734353434376337323635366436353634373933643464343135323462356634343435343634313535346335343435343437633634373536353433373936333663363533643665366636653635376336343735363534343631373933643665366636653635",
+    "debtor": "hh--1_0-rural-rich_peasant",
+    "principal": 61596,
+    "status": "DEFAULTED",
+    "openedDay": 183,
+    "lastInterestDay": null,
+    "creditor": "hh--1_0-rural-landlord",
+    "populationEvents": 18
+   },
+   {
+    "id": "debtc-68682d2d315f312d727572616c2d6d6964646c655f70656173616e74-68682d2d315f312d727572616c2d6c616e646c6f7264-6d6f6e65793a73696c766572-3634363536323734326437343635373236643733326437363331376337323631373436353364333233303763373436393664363936653637336434313436353434353532356635323435353034313539346434353465353435663466346535663433346334663533343537633732363537303631373933643431353634313439346334313432346334353566353335353532353034633535353335663533343834313532343537633633366636653736363537323734336434653466353435663431346334633466353734353434376337323635366436353634373933643464343135323462356634343435343634313535346335343435343437633634373536353433373936333663363533643665366636653635376336343735363534343631373933643665366636653635",
+    "debtor": "hh--1_1-rural-middle_peasant",
+    "principal": 3302,
+    "status": "DEFAULTED",
+    "openedDay": 360,
+    "lastInterestDay": null,
+    "creditor": "hh--1_1-rural-landlord",
+    "populationEvents": 34
+   },
+   {
+    "id": "debtc-68682d2d315f322d727572616c2d6d6964646c655f70656173616e74-68682d2d315f322d727572616c2d6c616e646c6f7264-6d6f6e65793a73696c766572-3634363536323734326437343635373236643733326437363331376337323631373436353364333233303763373436393664363936653637336434313436353434353532356635323435353034313539346434353465353435663466346535663433346334663533343537633732363537303631373933643431353634313439346334313432346334353566353335353532353034633535353335663533343834313532343537633633366636653736363537323734336434653466353435663431346334633466353734353434376337323635366436353634373933643464343135323462356634343435343634313535346335343435343437633634373536353433373936333663363533643665366636653635376336343735363534343631373933643665366636653635",
+    "debtor": "hh--1_2-rural-middle_peasant",
+    "principal": 173320,
+    "status": "DEFAULTED",
+    "openedDay": 245,
+    "lastInterestDay": null,
+    "creditor": "hh--1_2-rural-landlord",
+    "populationEvents": 36
+   },
+   {
+    "id": "debtc-68682d2d315f322d727572616c2d726963685f70656173616e74-68682d2d315f322d727572616c2d6c616e646c6f7264-6d6f6e65793a73696c766572-3634363536323734326437343635373236643733326437363331376337323631373436353364333233303763373436393664363936653637336434313436353434353532356635323435353034313539346434353465353435663466346535663433346334663533343537633732363537303631373933643431353634313439346334313432346334353566353335353532353034633535353335663533343834313532343537633633366636653736363537323734336434653466353435663431346334633466353734353434376337323635366436353634373933643464343135323462356634343435343634313535346335343435343437633634373536353433373936333663363533643665366636653635376336343735363534343631373933643665366636653635",
+    "debtor": "hh--1_2-rural-rich_peasant",
+    "principal": 26984,
+    "status": "DEFAULTED",
+    "openedDay": 245,
+    "lastInterestDay": null,
+    "creditor": "hh--1_2-rural-landlord",
+    "populationEvents": 17
+   },
+   {
+    "id": "debtc-68682d2d325f302d727572616c2d6d6964646c655f70656173616e74-68682d2d325f302d727572616c2d6c616e646c6f7264-6d6f6e65793a73696c766572-3634363536323734326437343635373236643733326437363331376337323631373436353364333233303763373436393664363936653637336434313436353434353532356635323435353034313539346434353465353435663466346535663433346334663533343537633732363537303631373933643431353634313439346334313432346334353566353335353532353034633535353335663533343834313532343537633633366636653736363537323734336434653466353435663431346334633466353734353434376337323635366436353634373933643464343135323462356634343435343634313535346335343435343437633634373536353433373936333663363533643665366636653635376336343735363534343631373933643665366636653635",
+    "debtor": "hh--2_0-rural-middle_peasant",
+    "principal": 3066,
+    "status": "DEFAULTED",
+    "openedDay": 215,
+    "lastInterestDay": null,
+    "creditor": "hh--2_0-rural-landlord",
+    "populationEvents": 33
+   },
+   {
+    "id": "debtc-68682d2d325f312d727572616c2d6d6964646c655f70656173616e74-68682d2d325f312d727572616c2d6c616e646c6f7264-6d6f6e65793a73696c766572-3634363536323734326437343635373236643733326437363331376337323631373436353364333233303763373436393664363936653637336434313436353434353532356635323435353034313539346434353465353435663466346535663433346334663533343537633732363537303631373933643431353634313439346334313432346334353566353335353532353034633535353335663533343834313532343537633633366636653736363537323734336434653466353435663431346334633466353734353434376337323635366436353634373933643464343135323462356634343435343634313535346335343435343437633634373536353433373936333663363533643665366636653635376336343735363534343631373933643665366636653635",
+    "debtor": "hh--2_1-rural-middle_peasant",
+    "principal": 47937,
+    "status": "DEFAULTED",
+    "openedDay": 215,
+    "lastInterestDay": null,
+    "creditor": "hh--2_1-rural-landlord",
+    "populationEvents": 32
+   },
+   {
+    "id": "debtc-68682d2d325f322d727572616c2d6d6964646c655f70656173616e74-68682d2d325f322d727572616c2d6c616e646c6f7264-6d6f6e65793a73696c766572-3634363536323734326437343635373236643733326437363331376337323631373436353364333233303763373436393664363936653637336434313436353434353532356635323435353034313539346434353465353435663466346535663433346334663533343537633732363537303631373933643431353634313439346334313432346334353566353335353532353034633535353335663533343834313532343537633633366636653736363537323734336434653466353435663431346334633466353734353434376337323635366436353634373933643464343135323462356634343435343634313535346335343435343437633634373536353433373936333663363533643665366636653635376336343735363534343631373933643665366636653635",
+    "debtor": "hh--2_2-rural-middle_peasant",
+    "principal": 273785,
+    "status": "DEFAULTED",
+    "openedDay": 188,
+    "lastInterestDay": null,
+    "creditor": "hh--2_2-rural-landlord",
+    "populationEvents": 32
+   },
+   {
+    "id": "debtc-68682d2d325f322d727572616c2d726963685f70656173616e74-68682d2d325f322d727572616c2d6c616e646c6f7264-6d6f6e65793a73696c766572-3634363536323734326437343635373236643733326437363331376337323631373436353364333233303763373436393664363936653637336434313436353434353532356635323435353034313539346434353465353435663466346535663433346334663533343537633732363537303631373933643431353634313439346334313432346334353566353335353532353034633535353335663533343834313532343537633633366636653736363537323734336434653466353435663431346334633466353734353434376337323635366436353634373933643464343135323462356634343435343634313535346335343435343437633634373536353433373936333663363533643665366636653635376336343735363534343631373933643665366636653635",
+    "debtor": "hh--2_2-rural-rich_peasant",
+    "principal": 28831,
+    "status": "DEFAULTED",
+    "openedDay": 188,
+    "lastInterestDay": null,
+    "creditor": "hh--2_2-rural-landlord",
+    "populationEvents": 13
+   },
+   {
+    "id": "debtc-68682d305f2d312d727572616c2d6d6964646c655f70656173616e74-68682d305f2d312d727572616c2d6c616e646c6f7264-6d6f6e65793a73696c766572-3634363536323734326437343635373236643733326437363331376337323631373436353364333233303763373436393664363936653637336434313436353434353532356635323435353034313539346434353465353435663466346535663433346334663533343537633732363537303631373933643431353634313439346334313432346334353566353335353532353034633535353335663533343834313532343537633633366636653736363537323734336434653466353435663431346334633466353734353434376337323635366436353634373933643464343135323462356634343435343634313535346335343435343437633634373536353433373936333663363533643665366636653635376336343735363534343631373933643665366636653635",
+    "debtor": "hh-0_-1-rural-middle_peasant",
+    "principal": 147998,
+    "status": "DEFAULTED",
+    "openedDay": 215,
+    "lastInterestDay": null,
+    "creditor": "hh-0_-1-rural-landlord",
+    "populationEvents": 29
+   }
+  ]
+ }
+]

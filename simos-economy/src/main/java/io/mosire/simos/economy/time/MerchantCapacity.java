@@ -228,15 +228,57 @@ public record MerchantCapacity(
    * 升序（I7）。总量 ≤ 0 ⇒ 0。
    */
   public long sharePerMilleOf(long hexTotalCapacityMilli) {
-    if (hexTotalCapacityMilli <= 0L) {
+    return sharePerMilleOf(capacityMilli, hexTotalCapacityMilli);
+  }
+
+  /**
+   * ★★ <b>W7：占比算式的<b>唯一拼写点</b>（静态形态）</b>—— 服务"手上没有 {@link MerchantCapacity} 实例、 只有两个数"的调用点（{@code
+   * MerchantCapacityPool.sharePerMilleAsProviderAt} 的分母是全池总量， 与实例无关）。实例方法 {@link
+   * #sharePerMilleOf(long)} 直接委托本方法 ⇒ 两处**不可能漂开**。
+   *
+   * @param capacityMilli 该户的可交付运力（毫）
+   * @param poolTotalCapacityMilli 分母（本格或全池的可交付运力；≤ 0 ⇒ 0）
+   */
+  public static long sharePerMilleOf(long capacityMilli, long poolTotalCapacityMilli) {
+    if (capacityMilli < 0L) {
+      throw new IllegalArgumentException("占比算式的分子不得为负: " + capacityMilli);
+    }
+    if (poolTotalCapacityMilli <= 0L) {
       return 0L;
     }
-    return Math.multiplyExact(capacityMilli, PER_MILLE) / hexTotalCapacityMilli;
+    return Math.multiplyExact(capacityMilli, PER_MILLE) / poolTotalCapacityMilli;
   }
 
   /** 这条 lane 够不够得着：lane 长度 ≤ 派生半径（家户就在发货格 ⇒ 只判终点那一端；沿用旧 {@code servesLane} 语义）。 */
   public boolean servesLane(HexCoord to) {
     Objects.requireNonNull(to, "to 不得为 null");
     return serviceRadiusHex > 0L && hex.distanceTo(to) <= serviceRadiusHex;
+  }
+
+  /**
+   * ★★★ <b>W7（2026-10-11）：全局共享下的"够不够得着"—— <b>总行程</b> ≤ 派生半径</b>。
+   *
+   * <pre>
+   * 行程 = 自家格 → 发货格 → 收货格  =  d(hex, from) + d(from, to)
+   * 判据 = 行程 ≤ serviceRadiusHex
+   * </pre>
+   *
+   * <p>★★ <b>为什么带上"自家格 → 发货格"这一段</b>：运力池改成**全市场区共享**之后，承运方不一定住在发货格 —— 用户原话「注意"运力"过来同样需要运力」（M0d
+   * 的口径：深度 1 + 固定附加费，不递归展开）。 那一段的**价格**由固定附加费（{@link
+   * MerchantCapacityPool#GET_READY_SURCHARGE_PER_MILLE}，不随距离）表达；
+   * 它的**物理可达性**由本判据表达（半径是"一次跑商能覆盖多大范围"的派生读数）。
+   *
+   * <p>★ <b>与改前逐值可比（fail-closed 方向）</b>：承运方就在发货格时 {@code d(hex, from) = 0} ⇒ 本式<b>逐值退化</b>为 {@link
+   * #servesLane(HexCoord)}；承运方不在发货格时它只会**更严**（多一段非负里程），绝不放松。 ★ 半径来自 tier（2/4/8），tier 再来自运力规模 ⇒
+   * "规模决定触达范围"这条既有口径不动。
+   */
+  public boolean servesTrip(HexCoord from, HexCoord to) {
+    Objects.requireNonNull(from, "servesTrip.from 不得为 null");
+    Objects.requireNonNull(to, "servesTrip.to 不得为 null");
+    if (serviceRadiusHex <= 0L) {
+      return false;
+    }
+    long trip = (long) hex.distanceTo(from) + (long) from.distanceTo(to);
+    return trip <= serviceRadiusHex;
   }
 }

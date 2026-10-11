@@ -1,0 +1,2506 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 7504650,
+      "md5": "584ff031abd15126ebbe71c0a357c024",
+      "path": "checkpoints/main/331.json"
+    },
+    {
+      "bytes": 7510410,
+      "md5": "5efe23c04c9ca06c7fced21ea4a694fa",
+      "path": "checkpoints/main/332.json"
+    },
+    {
+      "bytes": 7509784,
+      "md5": "922b7b0b734ff8919dc696ff0403b5d3",
+      "path": "checkpoints/main/333.json"
+    },
+    {
+      "bytes": 7512173,
+      "md5": "2e91148bb31a89e7ed5613a877fecbef",
+      "path": "checkpoints/main/334.json"
+    },
+    {
+      "bytes": 7513846,
+      "md5": "7f5992aca5d8d463df3e12c4d9622b55",
+      "path": "checkpoints/main/335.json"
+    },
+    {
+      "bytes": 7515667,
+      "md5": "339a2023d28748263e89b9437b533ad7",
+      "path": "checkpoints/main/336.json"
+    },
+    {
+      "bytes": 7517554,
+      "md5": "c9e64ee5568f5f6daa1b69a8593034e8",
+      "path": "checkpoints/main/337.json"
+    },
+    {
+      "bytes": 7518525,
+      "md5": "d86e3740422f4b4fcbdd3ccf59a038de",
+      "path": "checkpoints/main/338.json"
+    },
+    {
+      "bytes": 7520556,
+      "md5": "f6ae6de30bf62cd71db18ed27791cbc3",
+      "path": "checkpoints/main/339.json"
+    },
+    {
+      "bytes": 7522194,
+      "md5": "27937d42076f17123392f7aee45bdf98",
+      "path": "checkpoints/main/340.json"
+    },
+    {
+      "bytes": 7523739,
+      "md5": "c49d69fa8d550a61b235b20f50900141",
+      "path": "checkpoints/main/341.json"
+    },
+    {
+      "bytes": 7525103,
+      "md5": "abea3cc2412966cacb58e888a9d0417e",
+      "path": "checkpoints/main/342.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 297174,
+    "commandType": "core.AdvanceTime",
+    "revision": 331,
+    "tick": 689
+  },
+  "guiPort": 10941,
+  "headRevision": 342,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "783ec45439f2e50d54b4828a9c54df44",
+  "jvmOpts": "-Dsimos.economy.logLevel=INFO",
+  "keepStore": true,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7-test-batch/logs/sw700.log",
+  "logKeep": "event=(HAUL_PRICE_SIGNAL|MIGRATION_[A-Z_]*|DEBT_[A-Z_]*)",
+  "logKeptLines": 9,
+  "logLines": 9,
+  "logStrippedMd5": "84c645e0ec3e2e4db849e4494475705f",
+  "pid": 406748,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7-test-batch/plans/plan-sw-w8.json",
+  "readySeconds": 1.521,
+  "revisionDelta": 341,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 5248181,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 360
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 302771,
+      "commandType": "core.AdvanceTime",
+      "revision": 3,
+      "tick": 361
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 288057,
+      "commandType": "core.AdvanceTime",
+      "revision": 4,
+      "tick": 362
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 414028,
+      "commandType": "core.AdvanceTime",
+      "revision": 5,
+      "tick": 363
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 285958,
+      "commandType": "core.AdvanceTime",
+      "revision": 6,
+      "tick": 364
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 409354,
+      "commandType": "core.AdvanceTime",
+      "revision": 7,
+      "tick": 365
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 289532,
+      "commandType": "core.AdvanceTime",
+      "revision": 8,
+      "tick": 366
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290904,
+      "commandType": "core.AdvanceTime",
+      "revision": 9,
+      "tick": 367
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 417556,
+      "commandType": "core.AdvanceTime",
+      "revision": 10,
+      "tick": 368
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 287504,
+      "commandType": "core.AdvanceTime",
+      "revision": 11,
+      "tick": 369
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 411410,
+      "commandType": "core.AdvanceTime",
+      "revision": 12,
+      "tick": 370
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 287120,
+      "commandType": "core.AdvanceTime",
+      "revision": 13,
+      "tick": 371
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 284690,
+      "commandType": "core.AdvanceTime",
+      "revision": 14,
+      "tick": 372
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 412231,
+      "commandType": "core.AdvanceTime",
+      "revision": 15,
+      "tick": 373
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291361,
+      "commandType": "core.AdvanceTime",
+      "revision": 16,
+      "tick": 374
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 412745,
+      "commandType": "core.AdvanceTime",
+      "revision": 17,
+      "tick": 375
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293898,
+      "commandType": "core.AdvanceTime",
+      "revision": 18,
+      "tick": 376
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 288708,
+      "commandType": "core.AdvanceTime",
+      "revision": 19,
+      "tick": 377
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 409644,
+      "commandType": "core.AdvanceTime",
+      "revision": 20,
+      "tick": 378
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 286695,
+      "commandType": "core.AdvanceTime",
+      "revision": 21,
+      "tick": 379
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 415151,
+      "commandType": "core.AdvanceTime",
+      "revision": 22,
+      "tick": 380
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294846,
+      "commandType": "core.AdvanceTime",
+      "revision": 23,
+      "tick": 381
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292726,
+      "commandType": "core.AdvanceTime",
+      "revision": 24,
+      "tick": 382
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 413340,
+      "commandType": "core.AdvanceTime",
+      "revision": 25,
+      "tick": 383
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292711,
+      "commandType": "core.AdvanceTime",
+      "revision": 26,
+      "tick": 384
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 413030,
+      "commandType": "core.AdvanceTime",
+      "revision": 27,
+      "tick": 385
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291135,
+      "commandType": "core.AdvanceTime",
+      "revision": 28,
+      "tick": 386
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 289950,
+      "commandType": "core.AdvanceTime",
+      "revision": 29,
+      "tick": 387
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 415940,
+      "commandType": "core.AdvanceTime",
+      "revision": 30,
+      "tick": 388
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291780,
+      "commandType": "core.AdvanceTime",
+      "revision": 31,
+      "tick": 389
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1204699,
+      "commandType": "core.AdvanceTime",
+      "revision": 32,
+      "tick": 390
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293257,
+      "commandType": "core.AdvanceTime",
+      "revision": 33,
+      "tick": 391
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 300236,
+      "commandType": "core.AdvanceTime",
+      "revision": 34,
+      "tick": 392
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 415934,
+      "commandType": "core.AdvanceTime",
+      "revision": 35,
+      "tick": 393
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290421,
+      "commandType": "core.AdvanceTime",
+      "revision": 36,
+      "tick": 394
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 410710,
+      "commandType": "core.AdvanceTime",
+      "revision": 37,
+      "tick": 395
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293752,
+      "commandType": "core.AdvanceTime",
+      "revision": 38,
+      "tick": 396
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 288602,
+      "commandType": "core.AdvanceTime",
+      "revision": 39,
+      "tick": 397
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 415991,
+      "commandType": "core.AdvanceTime",
+      "revision": 40,
+      "tick": 398
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291437,
+      "commandType": "core.AdvanceTime",
+      "revision": 41,
+      "tick": 399
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 409950,
+      "commandType": "core.AdvanceTime",
+      "revision": 42,
+      "tick": 400
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 289838,
+      "commandType": "core.AdvanceTime",
+      "revision": 43,
+      "tick": 401
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291855,
+      "commandType": "core.AdvanceTime",
+      "revision": 44,
+      "tick": 402
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 416453,
+      "commandType": "core.AdvanceTime",
+      "revision": 45,
+      "tick": 403
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291343,
+      "commandType": "core.AdvanceTime",
+      "revision": 46,
+      "tick": 404
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 435185,
+      "commandType": "core.AdvanceTime",
+      "revision": 47,
+      "tick": 405
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 288742,
+      "commandType": "core.AdvanceTime",
+      "revision": 48,
+      "tick": 406
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294409,
+      "commandType": "core.AdvanceTime",
+      "revision": 49,
+      "tick": 407
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 415800,
+      "commandType": "core.AdvanceTime",
+      "revision": 50,
+      "tick": 408
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290922,
+      "commandType": "core.AdvanceTime",
+      "revision": 51,
+      "tick": 409
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 439408,
+      "commandType": "core.AdvanceTime",
+      "revision": 52,
+      "tick": 410
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 289982,
+      "commandType": "core.AdvanceTime",
+      "revision": 53,
+      "tick": 411
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290505,
+      "commandType": "core.AdvanceTime",
+      "revision": 54,
+      "tick": 412
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 418264,
+      "commandType": "core.AdvanceTime",
+      "revision": 55,
+      "tick": 413
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292158,
+      "commandType": "core.AdvanceTime",
+      "revision": 56,
+      "tick": 414
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 409206,
+      "commandType": "core.AdvanceTime",
+      "revision": 57,
+      "tick": 415
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294161,
+      "commandType": "core.AdvanceTime",
+      "revision": 58,
+      "tick": 416
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291462,
+      "commandType": "core.AdvanceTime",
+      "revision": 59,
+      "tick": 417
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 426023,
+      "commandType": "core.AdvanceTime",
+      "revision": 60,
+      "tick": 418
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 286608,
+      "commandType": "core.AdvanceTime",
+      "revision": 61,
+      "tick": 419
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1356187,
+      "commandType": "core.AdvanceTime",
+      "revision": 62,
+      "tick": 420
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292191,
+      "commandType": "core.AdvanceTime",
+      "revision": 63,
+      "tick": 421
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 284450,
+      "commandType": "core.AdvanceTime",
+      "revision": 64,
+      "tick": 422
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 428485,
+      "commandType": "core.AdvanceTime",
+      "revision": 65,
+      "tick": 423
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297238,
+      "commandType": "core.AdvanceTime",
+      "revision": 66,
+      "tick": 424
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 420836,
+      "commandType": "core.AdvanceTime",
+      "revision": 67,
+      "tick": 425
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290830,
+      "commandType": "core.AdvanceTime",
+      "revision": 68,
+      "tick": 426
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 289017,
+      "commandType": "core.AdvanceTime",
+      "revision": 69,
+      "tick": 427
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 421731,
+      "commandType": "core.AdvanceTime",
+      "revision": 70,
+      "tick": 428
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295227,
+      "commandType": "core.AdvanceTime",
+      "revision": 71,
+      "tick": 429
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 420461,
+      "commandType": "core.AdvanceTime",
+      "revision": 72,
+      "tick": 430
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290636,
+      "commandType": "core.AdvanceTime",
+      "revision": 73,
+      "tick": 431
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290200,
+      "commandType": "core.AdvanceTime",
+      "revision": 74,
+      "tick": 432
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 421297,
+      "commandType": "core.AdvanceTime",
+      "revision": 75,
+      "tick": 433
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294907,
+      "commandType": "core.AdvanceTime",
+      "revision": 76,
+      "tick": 434
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 419723,
+      "commandType": "core.AdvanceTime",
+      "revision": 77,
+      "tick": 435
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291503,
+      "commandType": "core.AdvanceTime",
+      "revision": 78,
+      "tick": 436
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 287437,
+      "commandType": "core.AdvanceTime",
+      "revision": 79,
+      "tick": 437
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 418766,
+      "commandType": "core.AdvanceTime",
+      "revision": 80,
+      "tick": 438
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295146,
+      "commandType": "core.AdvanceTime",
+      "revision": 81,
+      "tick": 439
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 420341,
+      "commandType": "core.AdvanceTime",
+      "revision": 82,
+      "tick": 440
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 289790,
+      "commandType": "core.AdvanceTime",
+      "revision": 83,
+      "tick": 441
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293781,
+      "commandType": "core.AdvanceTime",
+      "revision": 84,
+      "tick": 442
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 420969,
+      "commandType": "core.AdvanceTime",
+      "revision": 85,
+      "tick": 443
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290244,
+      "commandType": "core.AdvanceTime",
+      "revision": 86,
+      "tick": 444
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 412448,
+      "commandType": "core.AdvanceTime",
+      "revision": 87,
+      "tick": 445
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292826,
+      "commandType": "core.AdvanceTime",
+      "revision": 88,
+      "tick": 446
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293801,
+      "commandType": "core.AdvanceTime",
+      "revision": 89,
+      "tick": 447
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 416298,
+      "commandType": "core.AdvanceTime",
+      "revision": 90,
+      "tick": 448
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290826,
+      "commandType": "core.AdvanceTime",
+      "revision": 91,
+      "tick": 449
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1417689,
+      "commandType": "core.AdvanceTime",
+      "revision": 92,
+      "tick": 450
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292975,
+      "commandType": "core.AdvanceTime",
+      "revision": 93,
+      "tick": 451
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297800,
+      "commandType": "core.AdvanceTime",
+      "revision": 94,
+      "tick": 452
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 449247,
+      "commandType": "core.AdvanceTime",
+      "revision": 95,
+      "tick": 453
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294737,
+      "commandType": "core.AdvanceTime",
+      "revision": 96,
+      "tick": 454
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 409567,
+      "commandType": "core.AdvanceTime",
+      "revision": 97,
+      "tick": 455
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296313,
+      "commandType": "core.AdvanceTime",
+      "revision": 98,
+      "tick": 456
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290125,
+      "commandType": "core.AdvanceTime",
+      "revision": 99,
+      "tick": 457
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 441070,
+      "commandType": "core.AdvanceTime",
+      "revision": 100,
+      "tick": 458
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293380,
+      "commandType": "core.AdvanceTime",
+      "revision": 101,
+      "tick": 459
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 415829,
+      "commandType": "core.AdvanceTime",
+      "revision": 102,
+      "tick": 460
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297691,
+      "commandType": "core.AdvanceTime",
+      "revision": 103,
+      "tick": 461
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299158,
+      "commandType": "core.AdvanceTime",
+      "revision": 104,
+      "tick": 462
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 410906,
+      "commandType": "core.AdvanceTime",
+      "revision": 105,
+      "tick": 463
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294335,
+      "commandType": "core.AdvanceTime",
+      "revision": 106,
+      "tick": 464
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 408821,
+      "commandType": "core.AdvanceTime",
+      "revision": 107,
+      "tick": 465
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 300367,
+      "commandType": "core.AdvanceTime",
+      "revision": 108,
+      "tick": 466
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 300740,
+      "commandType": "core.AdvanceTime",
+      "revision": 109,
+      "tick": 467
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 414569,
+      "commandType": "core.AdvanceTime",
+      "revision": 110,
+      "tick": 468
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291230,
+      "commandType": "core.AdvanceTime",
+      "revision": 111,
+      "tick": 469
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 417249,
+      "commandType": "core.AdvanceTime",
+      "revision": 112,
+      "tick": 470
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292766,
+      "commandType": "core.AdvanceTime",
+      "revision": 113,
+      "tick": 471
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296301,
+      "commandType": "core.AdvanceTime",
+      "revision": 114,
+      "tick": 472
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 414176,
+      "commandType": "core.AdvanceTime",
+      "revision": 115,
+      "tick": 473
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294193,
+      "commandType": "core.AdvanceTime",
+      "revision": 116,
+      "tick": 474
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 411600,
+      "commandType": "core.AdvanceTime",
+      "revision": 117,
+      "tick": 475
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297694,
+      "commandType": "core.AdvanceTime",
+      "revision": 118,
+      "tick": 476
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 300827,
+      "commandType": "core.AdvanceTime",
+      "revision": 119,
+      "tick": 477
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 418948,
+      "commandType": "core.AdvanceTime",
+      "revision": 120,
+      "tick": 478
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293253,
+      "commandType": "core.AdvanceTime",
+      "revision": 121,
+      "tick": 479
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1579011,
+      "commandType": "core.AdvanceTime",
+      "revision": 122,
+      "tick": 480
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 307206,
+      "commandType": "core.AdvanceTime",
+      "revision": 123,
+      "tick": 481
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294279,
+      "commandType": "core.AdvanceTime",
+      "revision": 124,
+      "tick": 482
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 474188,
+      "commandType": "core.AdvanceTime",
+      "revision": 125,
+      "tick": 483
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296856,
+      "commandType": "core.AdvanceTime",
+      "revision": 126,
+      "tick": 484
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 451829,
+      "commandType": "core.AdvanceTime",
+      "revision": 127,
+      "tick": 485
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 302342,
+      "commandType": "core.AdvanceTime",
+      "revision": 128,
+      "tick": 486
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294442,
+      "commandType": "core.AdvanceTime",
+      "revision": 129,
+      "tick": 487
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 419562,
+      "commandType": "core.AdvanceTime",
+      "revision": 130,
+      "tick": 488
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 307857,
+      "commandType": "core.AdvanceTime",
+      "revision": 131,
+      "tick": 489
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 420417,
+      "commandType": "core.AdvanceTime",
+      "revision": 132,
+      "tick": 490
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294407,
+      "commandType": "core.AdvanceTime",
+      "revision": 133,
+      "tick": 491
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297907,
+      "commandType": "core.AdvanceTime",
+      "revision": 134,
+      "tick": 492
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 419798,
+      "commandType": "core.AdvanceTime",
+      "revision": 135,
+      "tick": 493
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291417,
+      "commandType": "core.AdvanceTime",
+      "revision": 136,
+      "tick": 494
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 417446,
+      "commandType": "core.AdvanceTime",
+      "revision": 137,
+      "tick": 495
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297254,
+      "commandType": "core.AdvanceTime",
+      "revision": 138,
+      "tick": 496
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295072,
+      "commandType": "core.AdvanceTime",
+      "revision": 139,
+      "tick": 497
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 417881,
+      "commandType": "core.AdvanceTime",
+      "revision": 140,
+      "tick": 498
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293366,
+      "commandType": "core.AdvanceTime",
+      "revision": 141,
+      "tick": 499
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400208,
+      "commandType": "core.AdvanceTime",
+      "revision": 142,
+      "tick": 500
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294765,
+      "commandType": "core.AdvanceTime",
+      "revision": 143,
+      "tick": 501
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296077,
+      "commandType": "core.AdvanceTime",
+      "revision": 144,
+      "tick": 502
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 398565,
+      "commandType": "core.AdvanceTime",
+      "revision": 145,
+      "tick": 503
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295009,
+      "commandType": "core.AdvanceTime",
+      "revision": 146,
+      "tick": 504
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400194,
+      "commandType": "core.AdvanceTime",
+      "revision": 147,
+      "tick": 505
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299966,
+      "commandType": "core.AdvanceTime",
+      "revision": 148,
+      "tick": 506
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293777,
+      "commandType": "core.AdvanceTime",
+      "revision": 149,
+      "tick": 507
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 398961,
+      "commandType": "core.AdvanceTime",
+      "revision": 150,
+      "tick": 508
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294820,
+      "commandType": "core.AdvanceTime",
+      "revision": 151,
+      "tick": 509
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1684385,
+      "commandType": "core.AdvanceTime",
+      "revision": 152,
+      "tick": 510
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295113,
+      "commandType": "core.AdvanceTime",
+      "revision": 153,
+      "tick": 511
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 289123,
+      "commandType": "core.AdvanceTime",
+      "revision": 154,
+      "tick": 512
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 395837,
+      "commandType": "core.AdvanceTime",
+      "revision": 155,
+      "tick": 513
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 289673,
+      "commandType": "core.AdvanceTime",
+      "revision": 156,
+      "tick": 514
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 402142,
+      "commandType": "core.AdvanceTime",
+      "revision": 157,
+      "tick": 515
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294222,
+      "commandType": "core.AdvanceTime",
+      "revision": 158,
+      "tick": 516
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293992,
+      "commandType": "core.AdvanceTime",
+      "revision": 159,
+      "tick": 517
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 401348,
+      "commandType": "core.AdvanceTime",
+      "revision": 160,
+      "tick": 518
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295129,
+      "commandType": "core.AdvanceTime",
+      "revision": 161,
+      "tick": 519
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 396576,
+      "commandType": "core.AdvanceTime",
+      "revision": 162,
+      "tick": 520
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295932,
+      "commandType": "core.AdvanceTime",
+      "revision": 163,
+      "tick": 521
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291382,
+      "commandType": "core.AdvanceTime",
+      "revision": 164,
+      "tick": 522
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 396598,
+      "commandType": "core.AdvanceTime",
+      "revision": 165,
+      "tick": 523
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290941,
+      "commandType": "core.AdvanceTime",
+      "revision": 166,
+      "tick": 524
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 398604,
+      "commandType": "core.AdvanceTime",
+      "revision": 167,
+      "tick": 525
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292732,
+      "commandType": "core.AdvanceTime",
+      "revision": 168,
+      "tick": 526
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 289313,
+      "commandType": "core.AdvanceTime",
+      "revision": 169,
+      "tick": 527
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 401619,
+      "commandType": "core.AdvanceTime",
+      "revision": 170,
+      "tick": 528
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299771,
+      "commandType": "core.AdvanceTime",
+      "revision": 171,
+      "tick": 529
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 402510,
+      "commandType": "core.AdvanceTime",
+      "revision": 172,
+      "tick": 530
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294678,
+      "commandType": "core.AdvanceTime",
+      "revision": 173,
+      "tick": 531
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 298913,
+      "commandType": "core.AdvanceTime",
+      "revision": 174,
+      "tick": 532
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 397287,
+      "commandType": "core.AdvanceTime",
+      "revision": 175,
+      "tick": 533
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292481,
+      "commandType": "core.AdvanceTime",
+      "revision": 176,
+      "tick": 534
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 399606,
+      "commandType": "core.AdvanceTime",
+      "revision": 177,
+      "tick": 535
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294111,
+      "commandType": "core.AdvanceTime",
+      "revision": 178,
+      "tick": 536
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294359,
+      "commandType": "core.AdvanceTime",
+      "revision": 179,
+      "tick": 537
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 396494,
+      "commandType": "core.AdvanceTime",
+      "revision": 180,
+      "tick": 538
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293365,
+      "commandType": "core.AdvanceTime",
+      "revision": 181,
+      "tick": 539
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1648077,
+      "commandType": "core.AdvanceTime",
+      "revision": 182,
+      "tick": 540
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294010,
+      "commandType": "core.AdvanceTime",
+      "revision": 183,
+      "tick": 541
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297120,
+      "commandType": "core.AdvanceTime",
+      "revision": 184,
+      "tick": 542
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 402753,
+      "commandType": "core.AdvanceTime",
+      "revision": 185,
+      "tick": 543
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291345,
+      "commandType": "core.AdvanceTime",
+      "revision": 186,
+      "tick": 544
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 405033,
+      "commandType": "core.AdvanceTime",
+      "revision": 187,
+      "tick": 545
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295951,
+      "commandType": "core.AdvanceTime",
+      "revision": 188,
+      "tick": 546
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299144,
+      "commandType": "core.AdvanceTime",
+      "revision": 189,
+      "tick": 547
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 393670,
+      "commandType": "core.AdvanceTime",
+      "revision": 190,
+      "tick": 548
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297205,
+      "commandType": "core.AdvanceTime",
+      "revision": 191,
+      "tick": 549
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 411892,
+      "commandType": "core.AdvanceTime",
+      "revision": 192,
+      "tick": 550
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290061,
+      "commandType": "core.AdvanceTime",
+      "revision": 193,
+      "tick": 551
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295014,
+      "commandType": "core.AdvanceTime",
+      "revision": 194,
+      "tick": 552
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400317,
+      "commandType": "core.AdvanceTime",
+      "revision": 195,
+      "tick": 553
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295329,
+      "commandType": "core.AdvanceTime",
+      "revision": 196,
+      "tick": 554
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 396987,
+      "commandType": "core.AdvanceTime",
+      "revision": 197,
+      "tick": 555
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 298005,
+      "commandType": "core.AdvanceTime",
+      "revision": 198,
+      "tick": 556
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295720,
+      "commandType": "core.AdvanceTime",
+      "revision": 199,
+      "tick": 557
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 403645,
+      "commandType": "core.AdvanceTime",
+      "revision": 200,
+      "tick": 558
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296444,
+      "commandType": "core.AdvanceTime",
+      "revision": 201,
+      "tick": 559
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 401206,
+      "commandType": "core.AdvanceTime",
+      "revision": 202,
+      "tick": 560
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291888,
+      "commandType": "core.AdvanceTime",
+      "revision": 203,
+      "tick": 561
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291896,
+      "commandType": "core.AdvanceTime",
+      "revision": 204,
+      "tick": 562
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 394736,
+      "commandType": "core.AdvanceTime",
+      "revision": 205,
+      "tick": 563
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297128,
+      "commandType": "core.AdvanceTime",
+      "revision": 206,
+      "tick": 564
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400007,
+      "commandType": "core.AdvanceTime",
+      "revision": 207,
+      "tick": 565
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291276,
+      "commandType": "core.AdvanceTime",
+      "revision": 208,
+      "tick": 566
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 305040,
+      "commandType": "core.AdvanceTime",
+      "revision": 209,
+      "tick": 567
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 398673,
+      "commandType": "core.AdvanceTime",
+      "revision": 210,
+      "tick": 568
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299136,
+      "commandType": "core.AdvanceTime",
+      "revision": 211,
+      "tick": 569
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1631952,
+      "commandType": "core.AdvanceTime",
+      "revision": 212,
+      "tick": 570
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296311,
+      "commandType": "core.AdvanceTime",
+      "revision": 213,
+      "tick": 571
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 290814,
+      "commandType": "core.AdvanceTime",
+      "revision": 214,
+      "tick": 572
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 403247,
+      "commandType": "core.AdvanceTime",
+      "revision": 215,
+      "tick": 573
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299155,
+      "commandType": "core.AdvanceTime",
+      "revision": 216,
+      "tick": 574
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 397195,
+      "commandType": "core.AdvanceTime",
+      "revision": 217,
+      "tick": 575
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295141,
+      "commandType": "core.AdvanceTime",
+      "revision": 218,
+      "tick": 576
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292019,
+      "commandType": "core.AdvanceTime",
+      "revision": 219,
+      "tick": 577
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 401703,
+      "commandType": "core.AdvanceTime",
+      "revision": 220,
+      "tick": 578
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292187,
+      "commandType": "core.AdvanceTime",
+      "revision": 221,
+      "tick": 579
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 397681,
+      "commandType": "core.AdvanceTime",
+      "revision": 222,
+      "tick": 580
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294596,
+      "commandType": "core.AdvanceTime",
+      "revision": 223,
+      "tick": 581
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293323,
+      "commandType": "core.AdvanceTime",
+      "revision": 224,
+      "tick": 582
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400720,
+      "commandType": "core.AdvanceTime",
+      "revision": 225,
+      "tick": 583
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295010,
+      "commandType": "core.AdvanceTime",
+      "revision": 226,
+      "tick": 584
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 402862,
+      "commandType": "core.AdvanceTime",
+      "revision": 227,
+      "tick": 585
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295647,
+      "commandType": "core.AdvanceTime",
+      "revision": 228,
+      "tick": 586
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295160,
+      "commandType": "core.AdvanceTime",
+      "revision": 229,
+      "tick": 587
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 394008,
+      "commandType": "core.AdvanceTime",
+      "revision": 230,
+      "tick": 588
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296204,
+      "commandType": "core.AdvanceTime",
+      "revision": 231,
+      "tick": 589
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 397989,
+      "commandType": "core.AdvanceTime",
+      "revision": 232,
+      "tick": 590
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292560,
+      "commandType": "core.AdvanceTime",
+      "revision": 233,
+      "tick": 591
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294492,
+      "commandType": "core.AdvanceTime",
+      "revision": 234,
+      "tick": 592
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400098,
+      "commandType": "core.AdvanceTime",
+      "revision": 235,
+      "tick": 593
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295529,
+      "commandType": "core.AdvanceTime",
+      "revision": 236,
+      "tick": 594
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400381,
+      "commandType": "core.AdvanceTime",
+      "revision": 237,
+      "tick": 595
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296558,
+      "commandType": "core.AdvanceTime",
+      "revision": 238,
+      "tick": 596
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 300232,
+      "commandType": "core.AdvanceTime",
+      "revision": 239,
+      "tick": 597
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400908,
+      "commandType": "core.AdvanceTime",
+      "revision": 240,
+      "tick": 598
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295065,
+      "commandType": "core.AdvanceTime",
+      "revision": 241,
+      "tick": 599
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1647925,
+      "commandType": "core.AdvanceTime",
+      "revision": 242,
+      "tick": 600
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 303456,
+      "commandType": "core.AdvanceTime",
+      "revision": 243,
+      "tick": 601
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294917,
+      "commandType": "core.AdvanceTime",
+      "revision": 244,
+      "tick": 602
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 403611,
+      "commandType": "core.AdvanceTime",
+      "revision": 245,
+      "tick": 603
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294503,
+      "commandType": "core.AdvanceTime",
+      "revision": 246,
+      "tick": 604
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 401368,
+      "commandType": "core.AdvanceTime",
+      "revision": 247,
+      "tick": 605
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295042,
+      "commandType": "core.AdvanceTime",
+      "revision": 248,
+      "tick": 606
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291885,
+      "commandType": "core.AdvanceTime",
+      "revision": 249,
+      "tick": 607
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 398553,
+      "commandType": "core.AdvanceTime",
+      "revision": 250,
+      "tick": 608
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297006,
+      "commandType": "core.AdvanceTime",
+      "revision": 251,
+      "tick": 609
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 397939,
+      "commandType": "core.AdvanceTime",
+      "revision": 252,
+      "tick": 610
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295213,
+      "commandType": "core.AdvanceTime",
+      "revision": 253,
+      "tick": 611
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299353,
+      "commandType": "core.AdvanceTime",
+      "revision": 254,
+      "tick": 612
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 401078,
+      "commandType": "core.AdvanceTime",
+      "revision": 255,
+      "tick": 613
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295873,
+      "commandType": "core.AdvanceTime",
+      "revision": 256,
+      "tick": 614
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 406281,
+      "commandType": "core.AdvanceTime",
+      "revision": 257,
+      "tick": 615
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 303435,
+      "commandType": "core.AdvanceTime",
+      "revision": 258,
+      "tick": 616
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295355,
+      "commandType": "core.AdvanceTime",
+      "revision": 259,
+      "tick": 617
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 399856,
+      "commandType": "core.AdvanceTime",
+      "revision": 260,
+      "tick": 618
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291858,
+      "commandType": "core.AdvanceTime",
+      "revision": 261,
+      "tick": 619
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 396737,
+      "commandType": "core.AdvanceTime",
+      "revision": 262,
+      "tick": 620
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 291637,
+      "commandType": "core.AdvanceTime",
+      "revision": 263,
+      "tick": 621
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297759,
+      "commandType": "core.AdvanceTime",
+      "revision": 264,
+      "tick": 622
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400080,
+      "commandType": "core.AdvanceTime",
+      "revision": 265,
+      "tick": 623
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 298820,
+      "commandType": "core.AdvanceTime",
+      "revision": 266,
+      "tick": 624
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 396814,
+      "commandType": "core.AdvanceTime",
+      "revision": 267,
+      "tick": 625
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297202,
+      "commandType": "core.AdvanceTime",
+      "revision": 268,
+      "tick": 626
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297071,
+      "commandType": "core.AdvanceTime",
+      "revision": 269,
+      "tick": 627
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400047,
+      "commandType": "core.AdvanceTime",
+      "revision": 270,
+      "tick": 628
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294705,
+      "commandType": "core.AdvanceTime",
+      "revision": 271,
+      "tick": 629
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1627044,
+      "commandType": "core.AdvanceTime",
+      "revision": 272,
+      "tick": 630
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 301403,
+      "commandType": "core.AdvanceTime",
+      "revision": 273,
+      "tick": 631
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294282,
+      "commandType": "core.AdvanceTime",
+      "revision": 274,
+      "tick": 632
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 408165,
+      "commandType": "core.AdvanceTime",
+      "revision": 275,
+      "tick": 633
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293552,
+      "commandType": "core.AdvanceTime",
+      "revision": 276,
+      "tick": 634
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 407557,
+      "commandType": "core.AdvanceTime",
+      "revision": 277,
+      "tick": 635
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297457,
+      "commandType": "core.AdvanceTime",
+      "revision": 278,
+      "tick": 636
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292843,
+      "commandType": "core.AdvanceTime",
+      "revision": 279,
+      "tick": 637
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 406656,
+      "commandType": "core.AdvanceTime",
+      "revision": 280,
+      "tick": 638
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297894,
+      "commandType": "core.AdvanceTime",
+      "revision": 281,
+      "tick": 639
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400164,
+      "commandType": "core.AdvanceTime",
+      "revision": 282,
+      "tick": 640
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295664,
+      "commandType": "core.AdvanceTime",
+      "revision": 283,
+      "tick": 641
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299410,
+      "commandType": "core.AdvanceTime",
+      "revision": 284,
+      "tick": 642
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 405611,
+      "commandType": "core.AdvanceTime",
+      "revision": 285,
+      "tick": 643
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 300086,
+      "commandType": "core.AdvanceTime",
+      "revision": 286,
+      "tick": 644
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 401520,
+      "commandType": "core.AdvanceTime",
+      "revision": 287,
+      "tick": 645
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294293,
+      "commandType": "core.AdvanceTime",
+      "revision": 288,
+      "tick": 646
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296367,
+      "commandType": "core.AdvanceTime",
+      "revision": 289,
+      "tick": 647
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 411230,
+      "commandType": "core.AdvanceTime",
+      "revision": 290,
+      "tick": 648
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 301785,
+      "commandType": "core.AdvanceTime",
+      "revision": 291,
+      "tick": 649
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 406769,
+      "commandType": "core.AdvanceTime",
+      "revision": 292,
+      "tick": 650
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295782,
+      "commandType": "core.AdvanceTime",
+      "revision": 293,
+      "tick": 651
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295090,
+      "commandType": "core.AdvanceTime",
+      "revision": 294,
+      "tick": 652
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 404795,
+      "commandType": "core.AdvanceTime",
+      "revision": 295,
+      "tick": 653
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299025,
+      "commandType": "core.AdvanceTime",
+      "revision": 296,
+      "tick": 654
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 404735,
+      "commandType": "core.AdvanceTime",
+      "revision": 297,
+      "tick": 655
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296783,
+      "commandType": "core.AdvanceTime",
+      "revision": 298,
+      "tick": 656
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299547,
+      "commandType": "core.AdvanceTime",
+      "revision": 299,
+      "tick": 657
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 402549,
+      "commandType": "core.AdvanceTime",
+      "revision": 300,
+      "tick": 658
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299416,
+      "commandType": "core.AdvanceTime",
+      "revision": 301,
+      "tick": 659
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1593606,
+      "commandType": "core.AdvanceTime",
+      "revision": 302,
+      "tick": 660
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297956,
+      "commandType": "core.AdvanceTime",
+      "revision": 303,
+      "tick": 661
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293523,
+      "commandType": "core.AdvanceTime",
+      "revision": 304,
+      "tick": 662
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 404626,
+      "commandType": "core.AdvanceTime",
+      "revision": 305,
+      "tick": 663
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 301539,
+      "commandType": "core.AdvanceTime",
+      "revision": 306,
+      "tick": 664
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 399541,
+      "commandType": "core.AdvanceTime",
+      "revision": 307,
+      "tick": 665
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294111,
+      "commandType": "core.AdvanceTime",
+      "revision": 308,
+      "tick": 666
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294343,
+      "commandType": "core.AdvanceTime",
+      "revision": 309,
+      "tick": 667
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 398963,
+      "commandType": "core.AdvanceTime",
+      "revision": 310,
+      "tick": 668
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294988,
+      "commandType": "core.AdvanceTime",
+      "revision": 311,
+      "tick": 669
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 405935,
+      "commandType": "core.AdvanceTime",
+      "revision": 312,
+      "tick": 670
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299101,
+      "commandType": "core.AdvanceTime",
+      "revision": 313,
+      "tick": 671
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292231,
+      "commandType": "core.AdvanceTime",
+      "revision": 314,
+      "tick": 672
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 407480,
+      "commandType": "core.AdvanceTime",
+      "revision": 315,
+      "tick": 673
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 298955,
+      "commandType": "core.AdvanceTime",
+      "revision": 316,
+      "tick": 674
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 404625,
+      "commandType": "core.AdvanceTime",
+      "revision": 317,
+      "tick": 675
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297626,
+      "commandType": "core.AdvanceTime",
+      "revision": 318,
+      "tick": 676
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297638,
+      "commandType": "core.AdvanceTime",
+      "revision": 319,
+      "tick": 677
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 401185,
+      "commandType": "core.AdvanceTime",
+      "revision": 320,
+      "tick": 678
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294310,
+      "commandType": "core.AdvanceTime",
+      "revision": 321,
+      "tick": 679
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 399140,
+      "commandType": "core.AdvanceTime",
+      "revision": 322,
+      "tick": 680
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 293414,
+      "commandType": "core.AdvanceTime",
+      "revision": 323,
+      "tick": 681
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 299583,
+      "commandType": "core.AdvanceTime",
+      "revision": 324,
+      "tick": 682
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 405321,
+      "commandType": "core.AdvanceTime",
+      "revision": 325,
+      "tick": 683
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295016,
+      "commandType": "core.AdvanceTime",
+      "revision": 326,
+      "tick": 684
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 403480,
+      "commandType": "core.AdvanceTime",
+      "revision": 327,
+      "tick": 685
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297388,
+      "commandType": "core.AdvanceTime",
+      "revision": 328,
+      "tick": 686
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 295262,
+      "commandType": "core.AdvanceTime",
+      "revision": 329,
+      "tick": 687
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 401302,
+      "commandType": "core.AdvanceTime",
+      "revision": 330,
+      "tick": 688
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 297174,
+      "commandType": "core.AdvanceTime",
+      "revision": 331,
+      "tick": 689
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1368560,
+      "commandType": "core.AdvanceTime",
+      "revision": 332,
+      "tick": 690
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292835,
+      "commandType": "core.AdvanceTime",
+      "revision": 333,
+      "tick": 691
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 298334,
+      "commandType": "core.AdvanceTime",
+      "revision": 334,
+      "tick": 692
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 398686,
+      "commandType": "core.AdvanceTime",
+      "revision": 335,
+      "tick": 693
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 298504,
+      "commandType": "core.AdvanceTime",
+      "revision": 336,
+      "tick": 694
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 401404,
+      "commandType": "core.AdvanceTime",
+      "revision": 337,
+      "tick": 695
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 294644,
+      "commandType": "core.AdvanceTime",
+      "revision": 338,
+      "tick": 696
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 298091,
+      "commandType": "core.AdvanceTime",
+      "revision": 339,
+      "tick": 697
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 404106,
+      "commandType": "core.AdvanceTime",
+      "revision": 340,
+      "tick": 698
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 296911,
+      "commandType": "core.AdvanceTime",
+      "revision": 341,
+      "tick": 699
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 400695,
+      "commandType": "core.AdvanceTime",
+      "revision": 342,
+      "tick": 700
+    }
+  ],
+  "startedAt": "2026-10-11T19:02:19",
+  "steps": [
+    {
+      "from": 689,
+      "i": 0,
+      "op": "advance_daily",
+      "seconds": 4.068,
+      "to": 700
+    },
+    {
+      "bytes": 7525103,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7-test-batch/dumps/sw700-d700.json",
+      "i": 1,
+      "label": "d700",
+      "md5": "abea3cc2412966cacb58e888a9d0417e",
+      "op": "dump",
+      "revision": 342
+    }
+  ],
+  "store": "/tmp/w7t/stores/sw360",
+  "tag": "sw700",
+  "tick": 700,
+  "world": "small-world"
+}

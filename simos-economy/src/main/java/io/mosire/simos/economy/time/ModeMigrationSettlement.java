@@ -37,6 +37,7 @@ import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
@@ -93,6 +94,9 @@ import java.util.Set;
  * <p>★★ <b>失败具名抛</b>：不静默丢人/丢债/丢钱；整段写入发生在同一个 {@link EconomySession}/revision 内。
  */
 public final class ModeMigrationSettlement {
+
+  /** 迁移执行日志（migration 分类：按需建商号 / 凑不出牲口的具名跳过，§一.9）。 */
+  private static final org.slf4j.Logger LOG = EconomyLog.migration();
 
   private ModeMigrationSettlement() {}
 
@@ -160,8 +164,63 @@ public final class ModeMigrationSettlement {
     LinkedHashMap<ClassShareId, ClassShare> classShares = session.sheet().classShares();
     Map<DemandId, HouseholdDemand> householdDemands = base.demands();
 
-    Map<HouseholdId, List<ModeMigrationPolicy.MigrationMove>> bySource = new LinkedHashMap<>();
+    // ★★★ W7（2026-10-11）：**跑商自己长出来** —— 把"目标格还没有 merchant 产业模板"的迁移笔挑出来，
+    //   按需为它创建 {@code trade@hex} 记录（唯一拼写点 = {@link MerchantTradeTemplate}，与创世播种逐字段同值；
+    //   与决策层的可行性预估**同一个模板**）。
+    //
+    //   ★★ **不凭空造资产**：模板只是配方，真正让商号跑起来的是**该户自备/随迁携带**的作业资本
+    //     （★ W7-fix 起 = **工具**，改前 = 牲口；D-023 §4 可移动资产随迁）。⇒ 执行前先按"这一笔实际能带过来
+    //     多少作业资本"**具名过滤**：带不来的笔**整笔跳过**（INFO 具名），绝不建一间凑不齐作业资本的空商号，
+    //     也绝不让 tick 在 {@code createEnterpriseAndProcess} 里当场抛（那会把整个世界卡死）。
+    LinkedHashMap<IndustryId, Industry> industries = session.sheet().industries();
+    LinkedHashSet<HexCoord> onDemandTradeHexes = new LinkedHashSet<>();
     for (ModeMigrationPolicy.MigrationMove move : plan.moves()) {
+      if (DefaultProductionModes.MERCHANT.equals(move.targetMode())
+          && ModeMigrationPolicy.industriesForMode(industries, move.targetHex(), move.targetMode())
+              .isEmpty()) {
+        onDemandTradeHexes.add(move.targetHex());
+      }
+    }
+    List<ModeMigrationPolicy.MigrationMove> acceptedMoves =
+        filterOnDemandMerchantMoves(
+            plan.moves(), onDemandTradeHexes, householdEconomies, assetShares, enterprises, day);
+    // 逐 hex 建一次（键序 = 首次出现序 = 计划里的迁移序 ⇒ 确定性 I7）。
+    LinkedHashMap<HexCoord, IndustryId> createdTradeIndustries = new LinkedHashMap<>();
+    for (ModeMigrationPolicy.MigrationMove move : acceptedMoves) {
+      if (!onDemandTradeHexes.contains(move.targetHex())
+          || createdTradeIndustries.containsKey(move.targetHex())) {
+        continue;
+      }
+      Industry created = MerchantTradeTemplate.industry(move.targetHex());
+      industries.put(created.id(), created);
+      createdTradeIndustries.put(move.targetHex(), created.id());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "MERCHANT_TRADE_INDUSTRY_CREATED",
+                  EconomyLogSource.ECONOMY_MIGRATION,
+                  "day",
+                  day,
+                  "hex",
+                  move.targetHex(),
+                  "industry",
+                  created.id().value(),
+                  "regime",
+                  created.regime().value(),
+                  "cycleDays",
+                  created.cycleDays(),
+                  // ★ W7-fix：作业资本那一维从 CATTLE 换成 TOOL（字段名随之改名，§一.11 不留旧名）——
+                  //   读的是模板的 capacityPerUnit（键集与每单位量都只有模板一处拼写）。
+                  "toolPerUnitMilli",
+                  created
+                      .recipe()
+                      .capacityPerUnit()
+                      .getOrDefault(MerchantTradeTemplate.capacityKinds().get(0), 0L),
+                  "reason",
+                  "on-demand-trade-for-migration-no-template"));
+    }
+    Map<HouseholdId, List<ModeMigrationPolicy.MigrationMove>> bySource = new LinkedHashMap<>();
+    for (ModeMigrationPolicy.MigrationMove move : acceptedMoves) {
       bySource.computeIfAbsent(move.source(), ignored -> new ArrayList<>()).add(move);
     }
     List<HouseholdId> sources = new ArrayList<>(bySource.keySet());
@@ -192,7 +251,8 @@ public final class ModeMigrationSettlement {
           base,
           day,
           createdTargets,
-          auditLedger);
+          auditLedger,
+          industries);
     }
     // ★★ P0 防回归：已有经济行的 population/laborMilli 在本次 apply 前后必须逐值相等。
     for (Map.Entry<HouseholdId, Long> entry : initialPopulation.entrySet()) {
@@ -243,7 +303,8 @@ public final class ModeMigrationSettlement {
       EconomyDayView base,
       long day,
       Set<HouseholdId> createdTargets,
-      ProductionLedger.Accumulator auditLedger) {
+      ProductionLedger.Accumulator auditLedger,
+      Map<IndustryId, Industry> industries) {
     HouseholdEconomy sourceHouseholdEconomy = householdEconomies.get(source);
     if (sourceHouseholdEconomy == null) {
       throw new IllegalStateException("迁移源家户不存在（拒绝静默丢人）: " + source);
@@ -408,7 +469,8 @@ public final class ModeMigrationSettlement {
               pledges,
               foreignUsedShareIds,
               movedWholeShareIds,
-              residualReasons);
+              residualReasons,
+              industries);
       if (!assetOutcome.createdIds().isEmpty()) {
         migratedShareIdsByTarget
             .computeIfAbsent(move.target(), ignored -> new ArrayList<>())
@@ -421,6 +483,7 @@ public final class ModeMigrationSettlement {
         targetUnit =
             createEnterpriseAndProcess(
                 move,
+                industries,
                 householdEconomies,
                 targetHouseholdEconomy.withPopulationAndLabor(
                     plannedPopulation.get(move.target()), plannedLabor.get(move.target())),
@@ -957,6 +1020,7 @@ public final class ModeMigrationSettlement {
 
   private static ProductionUnitId createEnterpriseAndProcess(
       ModeMigrationPolicy.MigrationMove move,
+      Map<IndustryId, Industry> industries,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       HouseholdEconomy targetHouseholdEconomy,
       ClassPositionId positionId,
@@ -973,9 +1037,9 @@ public final class ModeMigrationSettlement {
     ActorRef targetActor = HouseholdActors.of(move.target());
     // ★★ D-024：按目标 mode 的默认 regime 选产业模板（与计划期 ModeMigrationPolicy.industriesForMode 同源）——
     //   merchant 目标只在 trade 模板里找；找不到 ⇒ 空 ⇒ 具名失败（绝不把农场模板当商号）。
-    List<IndustryId> industries =
-        ModeMigrationPolicy.industriesForMode(base, move.targetHex(), move.targetMode());
-    if (industries.isEmpty()) {
+    List<IndustryId> industryCandidates =
+        ModeMigrationPolicy.industriesForMode(industries, move.targetHex(), move.targetMode());
+    if (industryCandidates.isEmpty()) {
       throw new IllegalStateException("新建目标 hex 没有产业模板（拒绝凭空造生产）: " + move.targetHex());
     }
     IndustryId industryId = null;
@@ -990,8 +1054,8 @@ public final class ModeMigrationSettlement {
         new LinkedHashSet<>(
             ModeMigrationPolicy.claimedOwnershipStakes(enterprises, units, assetShares));
     claimedByEnterprises.addAll(migratedShareIds);
-    for (IndustryId candidate : industries) {
-      Industry candidateIndustry = base.industries().get(candidate);
+    for (IndustryId candidate : industryCandidates) {
+      Industry candidateIndustry = industries.get(candidate);
       if (candidateIndustry == null) {
         continue;
       }
@@ -1026,8 +1090,7 @@ public final class ModeMigrationSettlement {
     }
     List<AssetShareId> createdShares = new ArrayList<>();
     if (!assetMoves.isEmpty()) {
-      createdShares.addAll(
-          OwnershipStakeBook.apply(assetShares, base.industries(), pledges, assetMoves));
+      createdShares.addAll(OwnershipStakeBook.apply(assetShares, industries, pledges, assetMoves));
     }
     // ★★ GAP-2：组织 assetSources 只收 operator == organizer（targetActor）的份额。随迁份额由
     //    migrateAssetsForMove 按 targetActor 重建（同/跨 hex 都一样）；租赁份额由上方 planAssetMoves
@@ -1071,7 +1134,8 @@ public final class ModeMigrationSettlement {
             targetHouseholdEconomy,
             base,
             day,
-            auditLedger);
+            auditLedger,
+            industries);
     ProductionRules relation = relationPlan.relation();
     relations.put(unitId, relation);
     ProductionOrganizationId organizationId =
@@ -1453,7 +1517,8 @@ public final class ModeMigrationSettlement {
       LinkedHashMap<PledgeId, Pledge> pledges,
       Set<AssetShareId> foreignUsedShareIds,
       Set<AssetShareId> movedWholeShareIds,
-      Map<AssetShareId, String> residualReasons) {
+      Map<AssetShareId, String> residualReasons,
+      Map<IndustryId, Industry> industries) {
     boolean sameHex = move.targetHex().equals(sourceHex);
     ActorRef targetActor = HouseholdActors.of(move.target());
     List<OwnershipStakeBook.Move> sameHexMoves = new ArrayList<>();
@@ -1488,7 +1553,7 @@ public final class ModeMigrationSettlement {
           residualReasons.putIfAbsent(share.id(), "immobile-cross-hex:" + asset.name());
           continue;
         }
-        Optional<IndustryId> hostIndustry = hostIndustryFor(base, move.targetHex(), asset);
+        Optional<IndustryId> hostIndustry = hostIndustryFor(industries, move.targetHex(), asset);
         if (hostIndustry.isEmpty()) {
           residualReasons.putIfAbsent(share.id(), "no-host-industry:" + asset.name());
           continue;
@@ -1503,12 +1568,10 @@ public final class ModeMigrationSettlement {
     }
     List<AssetShareId> createdIds = new ArrayList<>();
     if (!sameHexMoves.isEmpty()) {
-      createdIds.addAll(
-          OwnershipStakeBook.apply(assetShares, base.industries(), pledges, sameHexMoves));
+      createdIds.addAll(OwnershipStakeBook.apply(assetShares, industries, pledges, sameHexMoves));
     }
     if (!rebuildMoves.isEmpty()) {
-      createdIds.addAll(
-          OwnershipStakeBook.rebuild(assetShares, base.industries(), pledges, rebuildMoves));
+      createdIds.addAll(OwnershipStakeBook.rebuild(assetShares, industries, pledges, rebuildMoves));
     }
     if (createdIds.isEmpty()) {
       return AssetMigrationOutcome.empty();
@@ -1575,15 +1638,134 @@ public final class ModeMigrationSettlement {
 
   /** 目标 hex 能承载该 AssetKind 的第一个产业（{@link IndustryHexKeys#at} 已按 id 升序）；无 ⇒ 空。 */
   private static Optional<IndustryId> hostIndustryFor(
-      EconomyDayView base, HexCoord targetHex, AssetKind asset) {
-    for (IndustryId candidate :
-        IndustryHexKeys.at(base.industries(), targetHex.q(), targetHex.r())) {
-      Industry industry = base.industries().get(candidate);
+      Map<IndustryId, Industry> industries, HexCoord targetHex, AssetKind asset) {
+    for (IndustryId candidate : IndustryHexKeys.at(industries, targetHex.q(), targetHex.r())) {
+      Industry industry = industries.get(candidate);
       if (industry != null && industry.capacityPerUnit().containsKey(asset)) {
         return Optional.of(candidate);
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * ★★★ <b>W7（2026-10-11）/ W7-fix（2026-10-11）：把"目标格要按需建商号、但这一笔**带不来作业资本**"的迁移笔**具名跳过**</b>。
+   *
+   * <pre>
+   * 触发条件（两条同时成立）：
+   *   ① mode = merchant 且目标格本来没有 merchant 制度的产业模板（= 本批要按需建 trade@hex）
+   *   ② 这一笔**实际能随迁携带**的作业资本（★ W7-fix 起 = 工具；改前 = 牲口）≤ 0
+   * 判据（与 {@code migrateAssetsForMove} 的取整逐式对齐）：
+   *   范围 = owner == 源户 actor ∧ asset ∈ {@link MerchantTradeTemplate#capacityKinds()} ∧ quantity &gt; 0
+   *          ∧ 未被别的组织实际使用
+   *   取整 = 整户迁空 ⇒ 全部；否则 ⇒ ⌊数量 × 本笔人口 ÷ 该源户当时的投影人口⌋
+   *   ★ "当时" = 同一源户前面的迁移笔已扣掉它们搬走的人口与份额（顺序 = 计划序 ⇒ 确定性）
+   * 处置 = INFO 具名跳过（不建商号、不搬人、不搬资产）；其余笔一字不动
+   * </pre>
+   *
+   * <p>★ <b>为什么必须有这道闸</b>：{@code createEnterpriseAndProcess} 在"新建户凑不齐目标产业的租赁资产"时
+   * 是**当场抛**的（fail-closed）—— 而"按需建的 trade@hex 下唯一能有的作业资本就是这一笔背过来的那一份"。 决策层（{@code
+   * ExpectedProfitBook} + {@code perMoveNewRoom}）已经按同一条口径挡过一轮，这里是执行期兜底： 挡住 = 一笔迁移不发生（可读、可重试），挡不住 =
+   * 整个世界卡死。
+   *
+   * <p>★★ <b>W7-fix：判据从牲口换成工具</b>（用户裁定 v3.28 §7「能不能先把牲口要求取消掉啊？…算作工具需求得了」）—— 与模板 {@code
+   * capacityPerUnit = {TOOL: TOOL_PER_UNIT}} 同源；工具是**可移动资产**（{@code isMobileAsset} 含 TOOL），
+   * 随迁携带那一条路照旧成立。★ 理由字面量随之改名（{@code no-carrier-asset-… → no-tool-input-…}，§一.11 不留旧名）。
+   */
+  private static List<ModeMigrationPolicy.MigrationMove> filterOnDemandMerchantMoves(
+      List<ModeMigrationPolicy.MigrationMove> moves,
+      Set<HexCoord> onDemandTradeHexes,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      long day) {
+    if (onDemandTradeHexes.isEmpty()) {
+      return moves;
+    }
+    // 逐源户模拟（键序 = 计划里的首次出现序；同一源户的多笔按计划序扣减 ⇒ 与执行期同序）。
+    Map<HouseholdId, Long> projectedPopulation = new LinkedHashMap<>();
+    Map<HouseholdId, Long> carriedCarrierAssetsLeft = new LinkedHashMap<>();
+    List<ModeMigrationPolicy.MigrationMove> accepted = new ArrayList<>();
+    for (ModeMigrationPolicy.MigrationMove move : moves) {
+      boolean needsOnDemandIndustry =
+          DefaultProductionModes.MERCHANT.equals(move.targetMode())
+              && onDemandTradeHexes.contains(move.targetHex());
+      HouseholdEconomy row = householdEconomies.get(move.source());
+      if (!needsOnDemandIndustry || row == null) {
+        accepted.add(move);
+        continue;
+      }
+      long population =
+          projectedPopulation.computeIfAbsent(move.source(), ignored -> row.population());
+      long carrierAssetLeft =
+          carriedCarrierAssetsLeft.computeIfAbsent(
+              move.source(),
+              ignored -> carriedCarrierAssets(row, assetShares, enterprises, move.source()));
+      boolean empties = population <= 0L || move.population() >= population;
+      long carry =
+          empties
+              ? carrierAssetLeft
+              : Math.multiplyExact(carrierAssetLeft, move.population()) / Math.max(1L, population);
+      if (carry <= 0L) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ONDEMAND_TRADE_MIGRATION_SKIPPED",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "source",
+                    move.source().value(),
+                    "target",
+                    move.target().value(),
+                    "targetHex",
+                    move.targetHex(),
+                    "targetMode",
+                    move.targetMode().value(),
+                    "population",
+                    move.population(),
+                    // ★ W7-fix：字段名随作业资本那一维改名（改前 = carriedCattle）。
+                    "carriedToolInput",
+                    carry,
+                    "reason",
+                    "no-tool-input-to-host-on-demand-trade-industry"));
+        continue;
+      }
+      projectedPopulation.put(move.source(), Math.max(0L, population - move.population()));
+      carriedCarrierAssetsLeft.put(move.source(), Math.max(0L, carrierAssetLeft - carry));
+      accepted.add(move);
+    }
+    return List.copyOf(accepted);
+  }
+
+  /**
+   * ★ W7 / W7-fix：一个源户"这一批迁移能带走的**作业资本**总量" —— 判据与 {@code migrateAssetsForMove} 同源 （owner == 源户 ∧
+   * 未被别的组织实际使用）。★ 只统计**可移动**资产（{@code isMobileAsset}；{@code TOOL} 在其中）。
+   *
+   * <p>★★ W7-fix（用户裁定 v3.28 §7）：那一维从 {@code CATTLE} 换成 {@link
+   * MerchantTradeTemplate#capacityKinds()}（= 模板的 {@code capacityPerUnit} 键集，唯一拼写点） ——
+   * 牲口不再是跑商的可行性门槛，也不再是运力的来源。
+   */
+  private static long carriedCarrierAssets(
+      HouseholdEconomy row,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      HouseholdId source) {
+    ActorRef sourceActor = HouseholdActors.of(source);
+    Set<AssetShareId> foreignUsed = foreignUsedOwnershipStakeIds(enterprises, sourceActor);
+    List<AssetKind> capacityKinds = MerchantTradeTemplate.capacityKinds();
+    long total = 0L;
+    for (OwnershipStake share : assetShares.values()) {
+      if (share == null
+          || !capacityKinds.contains(share.asset())
+          || share.quantity() <= 0L
+          || !share.owner().equals(sourceActor)
+          || foreignUsed.contains(share.id())) {
+        continue;
+      }
+      total = Math.addExact(total, share.quantity());
+    }
+    return total;
   }
 
   /** 被 organizer != 源户的组织在 assetSources 里实际使用的份额 id 并集（这些份额本批不搬，留原户并具名）。 */
@@ -1756,7 +1938,8 @@ public final class ModeMigrationSettlement {
       HouseholdEconomy targetHouseholdEconomy,
       EconomyDayView base,
       long day,
-      ProductionLedger.Accumulator auditLedger) {
+      ProductionLedger.Accumulator auditLedger,
+      Map<IndustryId, Industry> industries) {
     MigrationRelationPlan plan =
         planMigrationRelation(
             move,
@@ -1776,7 +1959,7 @@ public final class ModeMigrationSettlement {
     //   ★ 处置 = 退回**具名**空规则（产出全归 operator，既有显式允许的缺省路径）+ 当天 ledger 审计 + INFO 一条；
     //     绝不静默、也绝不让世界死。★ 实物租腿（FIXED_IN_KIND_RENT）**不在此列**：它走三级支付链
     //     （ProductionSettlement），欠租是可读的缺口/债权，不是配置错误。
-    Industry industry = base.industries().get(industryId);
+    Industry industry = industries.get(industryId);
     if (industry != null) {
       for (CompensationRule rule : plan.relation().rules()) {
         if (rule.commodity().isEmpty() || rule.type() == RuleType.FIXED_IN_KIND_RENT) {

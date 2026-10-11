@@ -1,0 +1,78 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 988762,
+      "md5": "737001e8c9aa52eb05f4daeffa14f10b",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 5833409,
+      "md5": "3f6c64ff2abc016feb6534c9a910ec19",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10951,
+  "headRevision": 2,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "783ec45439f2e50d54b4828a9c54df44",
+  "jvmOpts": "-Dsimos.economy.logLevel=INFO",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7-test-batch/logs/swperf.log",
+  "logKeep": "event=(HAUL_PRICE_SIGNAL|MARKET_REPORT)",
+  "logKeptLines": 144,
+  "logLines": 144,
+  "logStrippedMd5": "6a57fd6bbcae98f0db80225e944fb01a",
+  "pid": 406815,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7-test-batch/plans/plan-sw-perf.json",
+  "readySeconds": 1.707,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 5248181,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 360
+    }
+  ],
+  "startedAt": "2026-10-11T19:02:28",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 6.298,
+      "to": 360
+    },
+    {
+      "bytes": 5833409,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7-test-batch/dumps/swperf-d360-perf.json",
+      "i": 1,
+      "label": "d360-perf",
+      "md5": "3f6c64ff2abc016feb6534c9a910ec19",
+      "op": "dump",
+      "revision": 2
+    }
+  ],
+  "store": "/tmp/w7t/stores/swperf",
+  "tag": "swperf",
+  "tick": 360,
+  "world": "small-world"
+}

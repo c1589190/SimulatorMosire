@@ -2467,6 +2467,9 @@ final class MarketSettlement {
     List<MarketReport.PriceUpdate> updates = new ArrayList<>();
     // ★★ W1：把"拓扑区对象 → 累加器"翻译成"市场 id → 累加器"（统计簿的键空间 = 价表的键空间）。
     Map<MarketZoneId, Map<CommodityId, long[]>> quantitiesByMarket = new LinkedHashMap<>();
+    // ★★★ W7：运输服务的**派生需求**逐发货格取一次（{@link CapacityDemandBook}）—— 同一个量在下面按市场区求和。
+    Map<HexCoord, Long> haulDemandByShippingHex = ctx.capacityDemands.demandWorkByShippingHex();
+    Map<HexCoord, Long> haulServedByShippingHex = ctx.capacityDemands.servedWorkByShippingHex();
     for (MarketRegion region : ctx.topology.regions()) {
       MarketZoneId zoneId = new MarketZoneId(region.node().nodeId());
       MarketTable zoneMarket = updated.get(zoneId);
@@ -2474,6 +2477,60 @@ final class MarketSettlement {
         continue; // ★ W1d：这个区没有价表条目 ⇒ 不交易（不是"坏状态"，是"缺表 = 这个区没有任何价格"）
       }
       Map<CommodityId, long[]> quantities = byRegion.getOrDefault(region, Map.of());
+      // ★★★ W7（2026-10-11）：**把"运力需求"接进 §2.1 唯一的那套自适应定价**（禁另写一套算式）。
+      //
+      //   用户派单口径（逐字）：「让运力需求进入市场机制：至少让 haul（运输服务）参与 §2.1 的自适应定价
+      //   （D = 该轮真实未满足运力量、S = 可交付运力），缺运力 ⇒ 运费上升（照 §2.1 唯一实现，禁另写一套）」。
+      //
+      //   <pre>
+      //   D（本区）= Σ 本区**成员格作为发货格**这一轮派生出来的运输服务需求全额（毫商品·程）
+      //              ★ 全额（含已服务的那一份）—— §2.1 的 D 语义就是"想要的总量"，见 CapacityDemandBook 的同一段口径
+      //   S（本区）= Σ 本区成员格里承运方**可交付的运输服务货**（毫商品·程）
+      //   接入点    = quantities[haul]（下面那个既有循环把它交给 adaptiveNextPrice —— 一个字面量的算式都不新写）
+      //   </pre>
+      //
+      //   ★ 为什么服务不在订单簿里却还能有 D/S：服务的**需求**由其他商品的购买派生（不挂单，见 executeTrade），
+      //     它的**供给**是商家户手上的服务货（MerchantCapacityPool 的运力预算）—— 两者都是每轮现算的派生量，
+      //     在撮合与分配都做完之后（本方法的位置）已经齐备。
+      //   ★ 缺省中性：服务未定价的区一个字节都不动（{@code hasPrice} 为假 ⇒ 不注入）；两侧都为 0 ⇒ 不注入
+      //     ⇒ 既有世界（无运力、无需求）逐值不变。
+      if (zoneMarket.hasPrice(HaulService.HAUL_COMMODITY)) {
+        long haulDemandMilli = 0L;
+        long haulSupplyMilli = 0L;
+        long haulUnservedMilli = 0L;
+        Map<HexCoord, Long> zoneDemandDetail = new LinkedHashMap<>();
+        for (HexCoord member : region.members()) {
+          long memberDemand = haulDemandByShippingHex.getOrDefault(member, 0L);
+          long memberServed = haulServedByShippingHex.getOrDefault(member, 0L);
+          haulDemandMilli = Math.addExact(haulDemandMilli, memberDemand);
+          haulSupplyMilli =
+              Math.addExact(haulSupplyMilli, Math.max(0L, ctx.carrierPool.totalCapacityAt(member)));
+          haulUnservedMilli =
+              Math.addExact(haulUnservedMilli, Math.max(0L, memberDemand - memberServed));
+          if (memberDemand > 0L) {
+            zoneDemandDetail.put(member, memberDemand);
+          }
+        }
+        if (haulDemandMilli > 0L || haulSupplyMilli > 0L) {
+          long[] slot = quantities.get(HaulService.HAUL_COMMODITY);
+          if (slot == null) {
+            Map<CommodityId, long[]> extended = new LinkedHashMap<>(quantities);
+            slot = new long[2];
+            extended.put(HaulService.HAUL_COMMODITY, slot);
+            quantities = extended;
+          }
+          slot[0] = Math.addExact(slot[0], haulDemandMilli);
+          slot[1] = Math.addExact(slot[1], haulSupplyMilli);
+          logHaulPriceSignal(
+              ctx,
+              zoneId,
+              zoneMarket,
+              haulDemandMilli,
+              haulSupplyMilli,
+              haulUnservedMilli,
+              zoneDemandDetail);
+        }
+      }
       for (CommodityId commodity : orderedCommodities(ctx)) {
         // ★★ 2026-10-09：有定价行（含明确 0 价）才自适应；"从未定价"的商品跳过（不凭空造一行）。
         if (!zoneMarket.hasPrice(commodity)) {
@@ -2502,6 +2559,69 @@ final class MarketSettlement {
       }
     }
     return new AdaptivePrices(updates, updated, quantitiesByMarket);
+  }
+
+  /**
+   * ★★★ <b>W7（2026-10-11）：运输服务的价格信号读数（INFO = "这一轮运力缺口把运费推成什么"）</b>。
+   *
+   * <pre>
+   * haulDemandWorkMilli      D = 本区（按**发货格**归属）本轮派生出来的运输服务需求全额（毫商品·程）
+   * haulSupplyWorkMilli      S = 本区承运方手上**可交付**的运输服务货（毫商品·程）
+   * unservedWorkMilli        其中**真的没运走**的那一份（Σ 未服务工作量；只作读数，不进 §2.1 的 D —— 见那条口径）
+   * priceMilliBefore / alphaPerMille / priceMilliAfter   本轮 §2.1 的输入与输出（唯一算式，本方法只读数）
+   * providersWithService     全池"手上有可交付服务货"的家户数（**全局**：运力池已改为全市场区共享）
+   * demandByShippingHex      逐发货格明细（谁在等运力；"可被接单"的第一现场）
+   * </pre>
+   *
+   * <p>★ 只在服务定价行存在、且 D 或 S 非零时发（缺省中性：无运力的世界一行不打）。★ 不写任何状态、不改任何算式。
+   */
+  private static void logHaulPriceSignal(
+      MatchContext ctx,
+      MarketZoneId zoneId,
+      MarketTable zoneMarket,
+      long haulDemandWorkMilli,
+      long haulSupplyWorkMilli,
+      long haulUnservedWorkMilli,
+      Map<HexCoord, Long> demandByShippingHex) {
+    if (!MARKET.isInfoEnabled()) {
+      return;
+    }
+    long reference = zoneMarket.priceOf(HaulService.HAUL_COMMODITY);
+    long next =
+        adaptiveNextPrice(
+            reference, haulDemandWorkMilli, haulSupplyWorkMilli, priceAlphaPerMilleOf(ctx, zoneId));
+    EventLog.channel(MARKET)
+        .info(
+            LogEvent.of(
+                "HAUL_PRICE_SIGNAL",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                ctx.round.day,
+                "market",
+                zoneId.value(),
+                "haulDemandWorkMilli",
+                haulDemandWorkMilli,
+                "haulSupplyWorkMilli",
+                haulSupplyWorkMilli,
+                "unservedWorkMilli",
+                haulUnservedWorkMilli,
+                "shortageRatioPerMille",
+                haulSupplyWorkMilli <= 0L
+                    ? (haulDemandWorkMilli > 0L ? 1000L : 0L)
+                    : Math.min(
+                        1000L,
+                        Math.multiplyExact(1000L, haulDemandWorkMilli - haulSupplyWorkMilli)
+                            / Math.max(1L, haulSupplyWorkMilli)),
+                "priceMilliBefore",
+                reference,
+                "priceMilliAfter",
+                next,
+                "alphaPerMille",
+                priceAlphaPerMilleOf(ctx, zoneId),
+                "providersWithService",
+                ctx.carrierPool.householdsWithCapacity(),
+                "demandByShippingHex",
+                demandByShippingHex));
   }
 
   /**
@@ -5192,7 +5312,10 @@ final class MarketSettlement {
           }
           // ★★ M-A1：跨区车道的运力 = **发货格**（sellerHex）的逐 hex 运力池。该格没有"选了跑商的家户" ⇒ 这条
           //   车道根本不建（货走不动，具名 LOGISTICS_CAPACITY）；被截断量记进两个槽位（V-20）。
-          if (!ctx.carrierPool.hasCapacityAt(sellerHex)) {
+          //   ★★★ W7（2026-10-11）：判据加上"**全池**也没有可交付服务"这一半（用户裁定：运力提供全市场区共享）——
+          //   发货格没有承运方但别格有货时，这条车道必须**建起来**（需求才有被接单的机会）。
+          if (!ctx.carrierPool.hasCapacityAt(sellerHex)
+              && ctx.carrierPool.totalCapacityMilli() <= 0L) {
             blockLaneWithoutCapacity(ctx, buys, sells, sellerHex, buyerHex, commodity);
             continue;
           }
@@ -6101,7 +6224,13 @@ final class MarketSettlement {
         //     并行回放路径不认 executed=0（见 RegionClone/prepareRegion 的注释）。
         RouteContext effectiveRoute = route;
         if (route == null && !buy.hex.equals(sell.hex)) {
-          if (!ctx.carrierPool.hasCapacityAt(sell.hex)) {
+          // ★★★ W7（2026-10-11）：**候选生成处的运力闸改成全池口径**（用户裁定：运力提供全市场区共享）。
+          //   改前是 {@code !carrierPool.hasCapacityAt(sell.hex)}（只看**发货格**）⇒ 发货格没有跑商家户时这条跨格
+          //   车道**根本不建**，"需求"连一次求值机会都没有（调查报告 §2.5：sw 18 格 / tp 36 格的货因此发不出去）。
+          //   现在只在全池**一件可交付服务货都没有**时才在候选生成处拦下；池里还有货 ⇒ 放行进 executeTrade，
+          //   由 {@code MerchantCapacityPool.select} 按**全局序**分配（够不着的承运方在那里具名归因）。
+          if (!ctx.carrierPool.hasCapacityAt(sell.hex)
+              && ctx.carrierPool.totalCapacityMilli() <= 0L) {
             blockLaneWithoutCapacity(
                 ctx, List.of(buy), List.of(sell), sell.hex, buy.hex, buy.order.commodity());
             stopReason = "seller-hex-without-carrier-capacity";
@@ -7922,7 +8051,7 @@ final class MarketSettlement {
     long blocked = Math.min(buyTotal, sellTotal);
     // ★★ F-2（2026-10-10）：**可分辨归因** —— 发货格有牌价（运输服务成市）⇒ 本格的拒绝原因不再是笼统的"没有承运人"，
     //   而是具名的"这一格没有跑商家户"（缺提供商）；没有牌价 ⇒ 退回既有的"运力不足"一支（逐值等于改前）。
-    //   ★ 与"有跑商家户但没有服务货"（池侧 NO_SERVICE_GOODS）**分开**：两者处置不同（引商 vs 等货）。
+    //   ★ 与"有跑商家户但没有服务货"（池侧 NO_CARRIER_WITH_SERVICE）**分开**：两者处置不同（引商 vs 等货）。
     //   ★ 这一档随轮级读数（池的 blockedByReason 与 MARKET 的 blockedByReason）进公开面。
     String detail =
         haulServiceAt(ctx, sellerHex)

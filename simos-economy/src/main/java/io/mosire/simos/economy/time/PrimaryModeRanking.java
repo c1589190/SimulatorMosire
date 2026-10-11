@@ -269,7 +269,22 @@ public final class PrimaryModeRanking {
    * ★★ <b>排序输入在"跑商行"上的门槛</b>（Q-18 库存 + Q-19 议价权）：成立 ⇒ {@code null}；否则返回**具名原因**。
    *
    * <pre>
-   * no-bargaining-power  该户在本格作为运力提供者的议价权占比‰ = 0（§11.4 G-1 口径）⇒ 本格按议价权序分不到运力
+   * no-deliverable-service-capacity  ★ W7 新增：该户**既没有可交付的服务货、也产不出运力**
+   *                                  （判据 = {@link MerchantCapacityPool#providerCapacityMilli}，与结算层**同一把尺**）
+   * no-bargaining-power              该户可交付运力 &gt; 0，但在（**全局共享的**）运力池里占比‰向下取整为 0
+   *                                  （§11.4 G-1 口径；★ W7 起分母 = 全池可交付运力）
+   * </pre>
+   *
+   * <p>★★ <b>W7（2026-10-11）：两把尺统一到这一处</b> —— 用户派单 ④ 的原话：「把 {@code
+   * ExpectedProfitBook.merchantProspect} 的判据与结算层（承运/议价权）的判据**统一到同一口径** —— 以能真交付服务的
+   * 那一侧为准（或两侧都读同一份派生量）」。
+   *
+   * <pre>
+   * 改前：这里读 {@code MerchantCapacity.of(labor, tool).capacityMilli() <= 0} 就报 {@code no-bargaining-power}
+   *       ⇒ 一个**手上有服务货、但劳动/工具为 0** 的户（调查报告 G4/A3 实测的 {@code hh-0_2-urban-landlord} 那一类）
+   *         被判成"没有议价权"，而它其实随时能卖服务 ⇒ 永远当不上主业跑商（**误判**）。
+   * 改后：判据与 {@code merchantProspect}、与池的分配序读**同一个** {@code providerCapacityMilli}
+   *       ⇒ 零运力时给的是"没有可交付运力"这条**事实**，而不是"没有议价权"这条**推论**。
    * </pre>
    *
    * <p>★★ <b>A3（2026-10-10）：原来的 {@code tool-stock-zero} 门槛（"tool 不够一趟 ⇒ 跑商行不成立"）已删</b> —— 它与市场轮的
@@ -284,6 +299,10 @@ public final class PrimaryModeRanking {
       HouseholdId household,
       HexCoord hex,
       Map<HouseholdId, Map<CommodityId, Long>> goods) {
+    if (MerchantCapacityPool.providerCapacityMilli(base, household, hex, goods) <= 0L) {
+      // ★★ W7：具名事实（"这一户拿不出可交付的运力"）—— 与结算层的空池/空预算判据同源。
+      return "no-deliverable-service-capacity";
+    }
     if (MerchantCapacityPool.sharePerMilleAsProviderAt(base, household, hex, goods) <= 0L) {
       return "no-bargaining-power";
     }

@@ -1,0 +1,353 @@
+{
+ "tag": "sw360",
+ "log": "logs/sw360.log",
+ "haul_price_signal": {
+  "single-region": {
+   "rows": 275,
+   "first_day": 3,
+   "last_day": 688,
+   "price_first": 5,
+   "price_last": 1030,
+   "price_min": 5,
+   "price_max": 6482,
+   "rises": 197,
+   "falls": 77,
+   "flat": 0
+  }
+ },
+ "haul_first_days": {
+  "single-region": {
+   "3": {
+    "D": 8405466,
+    "S": 0,
+    "unserved": 8405466,
+    "alpha": 50,
+    "before": 4,
+    "after": 5,
+    "providers": 0
+   },
+   "5": {
+    "D": 6677130,
+    "S": 0,
+    "unserved": 6677130,
+    "alpha": 50,
+    "before": 5,
+    "after": 6,
+    "providers": 0
+   },
+   "8": {
+    "D": 7120121,
+    "S": 0,
+    "unserved": 7120121,
+    "alpha": 50,
+    "before": 6,
+    "after": 7,
+    "providers": 0
+   },
+   "10": {
+    "D": 5636817,
+    "S": 0,
+    "unserved": 5636817,
+    "alpha": 50,
+    "before": 7,
+    "after": 8,
+    "providers": 0
+   },
+   "13": {
+    "D": 4188639,
+    "S": 0,
+    "unserved": 4188639,
+    "alpha": 50,
+    "before": 8,
+    "after": 9,
+    "providers": 0
+   },
+   "15": {
+    "D": 3568857,
+    "S": 0,
+    "unserved": 3568857,
+    "alpha": 50,
+    "before": 9,
+    "after": 10,
+    "providers": 0
+   }
+  }
+ },
+ "haul_last_days": {
+  "single-region": {
+   "675": {
+    "D": 100,
+    "S": 96962,
+    "unserved": 100,
+    "alpha": 50,
+    "before": 1399,
+    "after": 1330,
+    "providers": 1
+   },
+   "678": {
+    "D": 449,
+    "S": 96962,
+    "unserved": 449,
+    "alpha": 50,
+    "before": 1330,
+    "after": 1264,
+    "providers": 1
+   },
+   "680": {
+    "D": 88,
+    "S": 96962,
+    "unserved": 88,
+    "alpha": 50,
+    "before": 1264,
+    "after": 1201,
+    "providers": 1
+   },
+   "683": {
+    "D": 88,
+    "S": 96962,
+    "unserved": 88,
+    "alpha": 50,
+    "before": 1201,
+    "after": 1141,
+    "providers": 1
+   },
+   "685": {
+    "D": 88,
+    "S": 96962,
+    "unserved": 88,
+    "alpha": 50,
+    "before": 1141,
+    "after": 1084,
+    "providers": 1
+   },
+   "688": {
+    "D": 88,
+    "S": 96962,
+    "unserved": 88,
+    "alpha": 50,
+    "before": 1084,
+    "after": 1030,
+    "providers": 1
+   }
+  }
+ },
+ "reject_by_reason": {
+  "0:360|no-carrier-with-deliverable-service": 11871,
+  "361:600|no-carrier-with-deliverable-service": 1675
+ },
+ "reject_milli_by_reason": {
+  "0:360|no-carrier-with-deliverable-service": 61432735,
+  "361:600|no-carrier-with-deliverable-service": 398077
+ },
+ "lane_truncated": {
+  "0:360": 16141
+ },
+ "lane_truncated_milli": {
+  "0:360": 65142802
+ },
+ "moves_by_target_mode": {
+  "0:360|handicraft_workshop": 8,
+  "0:360|merchant": 12,
+  "0:360|tenancy_fixed_kind": 22,
+  "0:360|wage_farm": 129,
+  "361:600|family_farm": 4,
+  "361:600|merchant": 4,
+  "361:600|tenancy_fixed_kind": 5,
+  "361:600|wage_farm": 8,
+  "601:689|family_farm": 2,
+  "601:689|tenancy_fixed_kind": 2
+ },
+ "merchant_moves": [
+  [
+   "0:360",
+   120,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "0:360",
+   150,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "0:360",
+   180,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "0:360",
+   210,
+   "hh--1_0-rural-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "0:360",
+   210,
+   "hh--1_2-rural-middle_peasant",
+   "hh-0_2-urban-landlord",
+   "0,2"
+  ],
+  [
+   "0:360",
+   210,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "0:360",
+   240,
+   "hh--1_1-rural-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "0:360",
+   240,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "0:360",
+   270,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "0:360",
+   300,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "0:360",
+   330,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "0:360",
+   360,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "361:600",
+   390,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "361:600",
+   420,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "361:600",
+   450,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ],
+  [
+   "361:600",
+   480,
+   "hh-0_0-urban-middle_peasant",
+   "hh-0_0-urban-landlord",
+   "0,0"
+  ]
+ ],
+ "trade_created": [],
+ "ondemand_skipped": [],
+ "prospect_infeasible_by_reason": {
+  "0:360|NO_MERCHANT_CAPACITY:no-capacity": 346,
+  "0:360|NO_MERCHANT_CAPACITY:no-carrier-asset": 9581
+ },
+ "candidates_rounds": 22,
+ "candidates_last": "ural-landlord=8, NO_LABOR:hh-1_-2-rural-middle_peasant=9, NO_LABOR:hh-1_-2-rural-poor_peasant=13, NO_LABOR:hh-1_-2-rural-rich_peasant=9, NO_LABOR:hh-1_0-rural-landless_laborer-displaced=8, NO_ASSET:weave@2_0=17, NO_ASSET:farm@2_0=61, NO_LABOR:hh-1_0-rural-landlord=11, NO_LABOR:hh-1_0-rural-middle_peasant=11, NO_LABOR:hh-1_0-rural-poor_peasant=18, NO_LABOR:hh-1_0-rural-rich_peasant=11, NO_LABOR:hh-1_1-rural-landless_laborer-displaced=6, NO_LABOR:hh-1_1-rural-landlord=9, NO_LABOR:hh-1_1-rural-middle_peasant=9, NO_LABOR:hh-1_1-rural-poor_peasant=14, NO_LABOR:hh-1_1-rural-rich_peasant=9, NO_LABOR:hh-2_-1-rural-landless_laborer-displaced=5, NO_LABOR:hh-2_-1-rural-landlord=8, NO_LABOR:hh-2_-1-rural-middle_peasant=9, NO_LABOR:hh-2_-1-rural-poor_peasant=13, NO_LABOR:hh-2_-1-rural-rich_peasant=9, NO_LABOR:hh-2_-2-rural-landless_laborer-displaced=4, NO_LABOR:hh-2_-2-rural-middle_peasant=8, NO_LABOR:hh-2_-2-rural-poor_peasant=11, NO_LABOR:hh-2_-2-rural-rich_peasant=8, NO_LABOR:hh-2_0-rural-landless_laborer-displaced=4, NO_LABOR:hh-2_0-rural-landlord=7, NO_LABOR:hh-2_0-rural-middle_peasant=8, NO_LABOR:hh-2_0-rural-poor_peasant=11, NO_LABOR:hh-2_0-rural-rich_peasant=8} moves=2 movedPopulation=2",
+ "primary_mode_changed": {
+  "0:360": 142,
+  "361:600": 21,
+  "601:689": 4
+ },
+ "no_bargaining_power_lines": {
+  "0:360": 15,
+  "361:600": 8,
+  "601:689": 2
+ },
+ "market_rounds": {
+  "0:360": {
+   "rounds": 144,
+   "first_day": 3,
+   "last_day": 360,
+   "zero_fill_rounds": 0,
+   "total_fills": 1746,
+   "min": 3,
+   "max": 160
+  },
+  "361:600": {
+   "rounds": 96,
+   "first_day": 363,
+   "last_day": 600,
+   "zero_fill_rounds": 0,
+   "total_fills": 1333,
+   "min": 8,
+   "max": 256
+  },
+  "601:689": {
+   "rounds": 35,
+   "first_day": 603,
+   "last_day": 688,
+   "zero_fill_rounds": 0,
+   "total_fills": 295,
+   "min": 8,
+   "max": 11
+  }
+ },
+ "fills_by_commodity": {
+  "0:360|cloth": 839,
+  "0:360|grain": 802,
+  "0:360|tool": 105,
+  "361:600|cloth": 730,
+  "361:600|grain": 587,
+  "361:600|tool": 16,
+  "601:689|cloth": 183,
+  "601:689|grain": 107,
+  "601:689|tool": 5
+ },
+ "fills_qty_by_commodity": {
+  "0:360|cloth": 311067,
+  "0:360|grain": 203918358,
+  "0:360|tool": 59808,
+  "361:600|cloth": 196772,
+  "361:600|grain": 2903521,
+  "361:600|tool": 23005,
+  "601:689|cloth": 43024,
+  "601:689|grain": 1952920,
+  "601:689|tool": 4071
+ },
+ "fills_value_by_currency": {
+  "0:360|silver": 109107,
+  "361:600|silver": 2448,
+  "601:689|silver": 0
+ },
+ "fills_freight_by_currency": {
+  "0:360|silver": 37278,
+  "361:600|silver": 27798,
+  "601:689|silver": 80
+ }
+}

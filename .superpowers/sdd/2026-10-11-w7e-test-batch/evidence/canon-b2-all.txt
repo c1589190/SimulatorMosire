@@ -1,0 +1,27 @@
+dumps/sw360-d360-oneshot.json  state=28a2e4779f5e528b09c6418fac5959c3  bytes=5410985
+    actor      8ae8fa7e18737628d47e0c861057a3d9  bytes=58231
+    army       de91755f4aaf083a80bc17632210655b  bytes=23
+    economy    68b91c6de413d3a8a8899c4465b23a8a  bytes=3953111
+    gov        871bfc345cf907394de541dddd43f37f  bytes=4055
+    map        ea15a812bab1acb93fb741be08694878  bytes=5168
+    sd         6cc33e1f91050464489c355ff58d8005  bytes=248
+    social     0c884d56bfa846476f3ee5caa793dc97  bytes=1387410
+    unit       c611c2e057b6d2f72d0f9007cb7833eb  bytes=2643
+dumps/sw3seg-d360-3seg.json  state=28a2e4779f5e528b09c6418fac5959c3  bytes=5410985
+    actor      8ae8fa7e18737628d47e0c861057a3d9  bytes=58231
+    army       de91755f4aaf083a80bc17632210655b  bytes=23
+    economy    68b91c6de413d3a8a8899c4465b23a8a  bytes=3953111
+    gov        871bfc345cf907394de541dddd43f37f  bytes=4055
+    map        ea15a812bab1acb93fb741be08694878  bytes=5168
+    sd         6cc33e1f91050464489c355ff58d8005  bytes=248
+    social     0c884d56bfa846476f3ee5caa793dc97  bytes=1387410
+    unit       c611c2e057b6d2f72d0f9007cb7833eb  bytes=2643
+dumps/swtick-d360-tick.json  state=28a2e4779f5e528b09c6418fac5959c3  bytes=5410985
+    actor      8ae8fa7e18737628d47e0c861057a3d9  bytes=58231
+    army       de91755f4aaf083a80bc17632210655b  bytes=23
+    economy    68b91c6de413d3a8a8899c4465b23a8a  bytes=3953111
+    gov        871bfc345cf907394de541dddd43f37f  bytes=4055
+    map        ea15a812bab1acb93fb741be08694878  bytes=5168
+    sd         6cc33e1f91050464489c355ff58d8005  bytes=248
+    social     0c884d56bfa846476f3ee5caa793dc97  bytes=1387410
+    unit       c611c2e057b6d2f72d0f9007cb7833eb  bytes=2643

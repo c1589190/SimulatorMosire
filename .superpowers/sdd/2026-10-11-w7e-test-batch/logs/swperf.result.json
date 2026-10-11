@@ -1,0 +1,73 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 5712137,
+      "md5": "c5934128bd959f9852865a60c0b268b5",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10966,
+  "headRevision": 2,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "4180bedd2f9a9566dd880c7e9c760614",
+  "jvmOpts": "-Dsimos.economy.logLevel=INFO -Dsimos.economy.traceLevel=INFO -Dsimos.social.logLevel=INFO -Dsimos.app.logLevel=INFO",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7e-test-batch/logs/swperf.log",
+  "logKeep": "event=(HAUL_[A-Z_]*|LOGISTICS_[A-Z_]*|MERCHANT_[A-Z_]*|ONDEMAND_[A-Z_]*|MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET_[A-Z_]*|PRIMARY_MODE[A-Z_]*|CAPACITY_[A-Z_]*|MINT_[A-Z_]*|MONEY_MARKET[A-Z_]*|DEBT_[A-Z_]*|HOUSEHOLD_[A-Z_]*|POPULATION_[A-Z_]*|DAY_START|DAY_END)",
+  "logKeptLines": 26052,
+  "logLines": 26052,
+  "logStrippedMd5": "01cade99210dfb0360a5366501e237eb",
+  "pid": 422233,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7e-test-batch/plans/plan-sw-perf.json",
+  "readySeconds": 1.717,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 5129750,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 360
+    }
+  ],
+  "startedAt": "2026-10-11T19:39:22",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 6.658,
+      "to": 360
+    },
+    {
+      "bytes": 5712137,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7e-test-batch/dumps/swperf-d360-perf.json",
+      "i": 1,
+      "label": "d360-perf",
+      "md5": "c5934128bd959f9852865a60c0b268b5",
+      "op": "dump",
+      "revision": 2
+    }
+  ],
+  "store": "/tmp/w7e/stores/swperf",
+  "tag": "swperf",
+  "tick": 360,
+  "world": "small-world"
+}

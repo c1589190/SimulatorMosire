@@ -1,0 +1,110 @@
+=== pristine md5（变异前的原件字节）===
+c6e2d74df2de202d0c692aef41b99722  simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationSettlement.java
+67a2a5c6f70dedbfc60692b5ccf8ed40  simos-economy/src/main/java/io/mosire/simos/economy/time/MerchantCapacityPool.java
+72937042c26a9e1e1788a438d40b3080  simos-economy/src/main/java/io/mosire/simos/economy/time/OwnershipStakeBook.java
+00171dd8676584e7239b8840d9bb018a  simos-economy/src/main/java/io/mosire/simos/economy/model/MerchantTradeTemplate.java
+   [M1] 变异写入 OK（命中 1 次）
+
+### M1 ｜ 守恒式（跨 hex 随迁按人口比例 floor）
+    期望红：「源留 5 / 目标得 3」那条比例断言
+    变异体 md5: b999e44f646043c6fd2af8b67433ded2
+    Maven rc=1
+    [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.economy.time.HaulGlobalPoolW7Test
+    [ERROR] Tests run: 12, Failures: 1, Errors: 0, Skipped: 0
+    红: io.mosire.simos.economy.time.MerchantOnDemandTradeW7Test.migrationWithSelfSuppliedCattleCreatesTheTemplateAndConservesCattle -- Time elapsed: 0.076 s <<< FAILURE!
+       org.opentest4j.AssertionFailedError: 
+       [★ 源份额同量减少（8 → 5：⌊8 × 40 ÷ 100⌋ = 3 头随迁）] 
+    还原核验: md5sum -c OK（四份原件逐字节相同）
+   [M1P] 变异写入 OK（命中 1 次）
+
+### M1P ｜ 守恒式本体（Σ CATTLE 凭空 +1）
+    期望红：「CATTLE 总量前后逐值相同」那条 Σ 恒等式
+    变异体 md5: 4574d954aaabec283088d04a33e2542b
+    Maven rc=1
+    [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in io.mosire.simos.economy.time.HaulGlobalPoolW7Test
+    [ERROR] Tests run: 12, Failures: 2, Errors: 0, Skipped: 0
+    红: io.mosire.simos.economy.time.MerchantOnDemandTradeW7Test.migrationWithSelfSuppliedCattleCreatesTheTemplateAndConservesCattle -- Time elapsed: 0.079 s <<< FAILURE!
+    红: io.mosire.simos.economy.time.MerchantOnDemandTradeW7Test.fullMoveCarriesAllCattleAndKeepsTheTotalUnchanged -- Time elapsed: 0.003 s <<< FAILURE!
+       org.opentest4j.AssertionFailedError: 
+       [★ 守恒式：CATTLE 总量前后逐值相同（8 → 10）] 
+       org.opentest4j.AssertionFailedError: 
+       [整户迁空 ⇒ 源侧一头不剩] 
+    还原核验: md5sum -c OK（四份原件逐字节相同）
+   [M2] 变异写入 OK（命中 1 次）
+
+### M2 ｜ 不丢失（配方/身份）
+    期望红：「模板必须声明 CATTLE」那条断言
+    变异体 md5: 8b6e3dba44af48a37078555a4945d33b
+    Maven rc=1
+    [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in io.mosire.simos.economy.time.HaulGlobalPoolW7Test
+    [ERROR] Tests run: 12, Failures: 0, Errors: 4, Skipped: 0
+    红: io.mosire.simos.economy.time.MerchantOnDemandTradeW7Test.migrationWithSelfSuppliedCattleCreatesTheTemplateAndConservesCattle -- Time elapsed: 0.041 s <<< ERROR!
+    红: io.mosire.simos.economy.time.MerchantOnDemandTradeW7Test.prospectWithSelfSuppliedCattlePassesTheCarrierAssetGate -- Time elapsed: 0.005 s <<< ERROR!
+    红: io.mosire.simos.economy.time.MerchantOnDemandTradeW7Test.fullMoveCarriesAllCattleAndKeepsTheTotalUnchanged -- Time elapsed: 0.001 s <<< ERROR!
+    红: io.mosire.simos.economy.time.MerchantOnDemandTradeW7Test.merchantTradeTemplateIsPureAndCarriesNoStock -- Time elapsed: 0.001 s <<< ERROR!
+       java.lang.IllegalArgumentException: Industry.capacityPerUnit 不得为空（它是"单位规模"的锚，没有它规模无上界）
+       java.lang.IllegalArgumentException: Industry.capacityPerUnit 不得为空（它是"单位规模"的锚，没有它规模无上界）
+       java.lang.IllegalArgumentException: Industry.capacityPerUnit 不得为空（它是"单位规模"的锚，没有它规模无上界）
+       java.lang.IllegalArgumentException: Industry.capacityPerUnit 不得为空（它是"单位规模"的锚，没有它规模无上界）
+    还原核验: md5sum -c OK（四份原件逐字节相同）
+   [M3] 变异写入 OK（命中 1 次）
+
+### M3 ｜ 静默付 0（拒绝不再具名可读）
+    期望红：「ONDEMAND_TRADE_MIGRATION_SKIPPED 具名 INFO」那条断言
+    变异体 md5: 3d5dfb1fcb24f33cd288f152ec63756c
+    Maven rc=1
+    [INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.economy.time.HaulGlobalPoolW7Test
+    [ERROR] Tests run: 12, Failures: 1, Errors: 0, Skipped: 0
+    红: io.mosire.simos.economy.time.MerchantOnDemandTradeW7Test.migrationWithoutSelfSuppliedCattleIsSkippedByNameAndCreatesNothing -- Time elapsed: 0.005 s <<< FAILURE!
+       java.lang.AssertionError: 
+       [★ 必须有一条具名 INFO（世界可读：为什么这一笔没发生）] 
+    还原核验: md5sum -c OK（四份原件逐字节相同）
+   [M4] 变异写入 OK（命中 1 次）
+
+### M4 ｜ 断粮（全局池退回逐格 ⇒ 别格运力到不了）
+    期望红：「跨格分配」那条正向断言
+    变异体 md5: 26a40738ea8506105bfb84a92ab644dc
+    Maven rc=1
+    [ERROR] Tests run: 6, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.028 s <<< FAILURE! -- in io.mosire.simos.economy.time.HaulGlobalPoolW7Test
+    [ERROR] Tests run: 12, Failures: 2, Errors: 0, Skipped: 0
+    红: io.mosire.simos.economy.time.HaulGlobalPoolW7Test.carrierInAnotherHexServesTheLaneWhoseShippingHexHasNoCarrier -- Time elapsed: 0.016 s <<< FAILURE!
+    红: io.mosire.simos.economy.time.HaulGlobalPoolW7Test.laneWhoseTripExceedsTheDerivedRadiusIsRefusedByName -- Time elapsed: 0.003 s <<< FAILURE!
+       java.lang.AssertionError: 
+       [★ 全局共享：发货格没有承运方，但全池有 ⇒ 这一笔必须被分到（用户原话「运力提供不应该也是全市场区共享的吗」）] 
+       []
+       org.opentest4j.AssertionFailedError: 
+    还原核验: md5sum -c OK（四份原件逐字节相同）
+   [M5] 变异写入 OK（命中 1 次）
+
+### M5 ｜ 口径一致（两类承运方不许混接）
+    期望红：「未定价 lane 不得被服务货口径承运方承接」那条负向
+    变异体 md5: f0221f272de20c1f5cff0dc9f15363f2
+    Maven rc=1
+    [ERROR] Tests run: 6, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.029 s <<< FAILURE! -- in io.mosire.simos.economy.time.HaulGlobalPoolW7Test
+    [ERROR] Tests run: 12, Failures: 2, Errors: 0, Skipped: 0
+    红: io.mosire.simos.economy.time.HaulGlobalPoolW7Test.carrierInAnotherHexServesTheLaneWhoseShippingHexHasNoCarrier -- Time elapsed: 0.011 s <<< FAILURE!
+    红: io.mosire.simos.economy.time.HaulGlobalPoolW7Test.carriersOfTheOtherCaliberAreNotHandedAServicePricedLane -- Time elapsed: 0.010 s <<< FAILURE!
+       java.lang.AssertionError: 
+       [★ 全局共享：发货格没有承运方，但全池有 ⇒ 这一笔必须被分到（用户原话「运力提供不应该也是全市场区共享的吗」）] 
+       []
+       java.lang.AssertionError: 
+    还原核验: md5sum -c OK（四份原件逐字节相同）
+
+=== 收工：md5sum -c（必须逐条 OK）+ main 侧工作树状态 ===
+simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationSettlement.java: OK
+simos-economy/src/main/java/io/mosire/simos/economy/time/MerchantCapacityPool.java: OK
+simos-economy/src/main/java/io/mosire/simos/economy/time/OwnershipStakeBook.java: OK
+simos-economy/src/main/java/io/mosire/simos/economy/model/MerchantTradeTemplate.java: OK
+ M simos-app/src/main/java/io/mosire/simos/app/world/EconomySeeder.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/CapacityDemandBook.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/ExpectedProfitBook.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/HaulService.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/MarketSettlement.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/MerchantCapacity.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/MerchantCapacityPool.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationPolicy.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationSettlement.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/PrimaryModeRanking.java
+?? simos-economy/src/main/java/io/mosire/simos/economy/model/IndustryClassSlots.java
+?? simos-economy/src/main/java/io/mosire/simos/economy/model/MerchantTradeTemplate.java
+=== MUTATION ROUNDS DONE ===

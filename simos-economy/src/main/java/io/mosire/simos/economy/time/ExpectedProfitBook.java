@@ -26,6 +26,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MerchantPolicy;
+import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
@@ -267,7 +268,8 @@ public final class ExpectedProfitBook {
           units,
           relations,
           topology,
-          day);
+          day,
+          accounts);
     }
     if (industry == null) {
       return infeasible(household, modeId, position.id(), hex, null, "NO_INDUSTRY");
@@ -607,6 +609,47 @@ public final class ExpectedProfitBook {
         joinReasons(notes, List.of("WAGE_POSITION")));
   }
 
+  /**
+   * ★★★ <b>W7-fix（2026-10-11，用户裁定 v3.28 §7）：跑商可行性的**新判据 = 劳动 + 工具**</b> ——
+   * 「**能不能先把牲口要求取消掉啊？目前是在跑测试，算作工具需求得了**」。
+   *
+   * <pre>
+   * 判据 = 该户**本轮能投的劳动投入 &gt; 0** ∧ 该户**手上的工具 &gt; 0**（会话商品账）
+   * 口径 = J-B 的既有算式「运力 = f(劳动投入, 工具消耗)」的两个操作数（{@link MerchantCapacity#capacityMilliOf}）
+   * 缺项 = 具名不可行：{@code NO_MERCHANT_CAPACITY:no-labor} / {@code NO_MERCHANT_CAPACITY:no-tool-input}
+   * </pre>
+   *
+   * <p>★★ <b>它取代了什么（W7 的 `no-carrier-asset` 已删，§一.11）</b>：W7 在这一处要求"该户**自备 CATTLE &gt; 0**"。
+   * 实测真世界（W7d 测试批）：全世界只有 {@code 0_0}/{@code 0_2} 两户持 CATTLE，非城市格既买不到也养不出 ⇒ {@code
+   * MERCHANT_TRADE_INDUSTRY_CREATED} = **0**、非城市格一户新跑商都没有 —— 那道闸把本批要开的路整个堵死。 用户据此裁定：**CATTLE
+   * 不再是跑商的可行性门槛，也不再是运力的来源**；跑商的家户**凭"劳动 + 工具"就能跑商**。
+   *
+   * <p>★ <b>真正决定成败的量仍是执行期与结算期的那一份</b>：本判据只回答"这一户**有没有**跑商的投入"（可行性）， 规模/收益/能不能接到活由 {@link
+   * MerchantCapacityPool#providerCapacityMilli} 与市场轮决定（fail-closed： 这里说不可行 ⇒ 一定不可行）。
+   *
+   * @param accounts 会话账户（读该户的 {@code tool} 存量；读不到 ⇒ 0 ⇒ 具名 {@code no-tool-input}）
+   */
+  private static String merchantInputFailureReason(
+      HouseholdEconomy householdEconomy, HouseholdId household, AccountSession accounts) {
+    Objects.requireNonNull(householdEconomy, "householdEconomy");
+    Objects.requireNonNull(accounts, "accounts");
+    // ① 劳动维：参与率折算后的本轮劳动投入（与 J-B 算式、与主/副业排序读**同一个** getter）。
+    if (householdEconomy.participationAdjustedLaborMilli() <= 0L) {
+      return "NO_MERCHANT_CAPACITY:no-labor";
+    }
+    // ② 工具维：手上**可投入**的工具（商品账口径；V-22 冻结：不动 AssetKind.TOOL 产权份额）。
+    //    ★ 只判"有没有"（> 0），不判多少 —— 量级由 providerCapacityMilli 与市场轮决定（不在这里造第二套标定）。
+    long toolMilli =
+        accounts
+            .householdGoods()
+            .getOrDefault(household, Map.of())
+            .getOrDefault(MerchantTradeTemplate.TOOL_COMMODITY, 0L);
+    if (toolMilli <= 0L) {
+      return "NO_MERCHANT_CAPACITY:no-tool-input";
+    }
+    return null;
+  }
+
   // ── merchant 分支 ──────────────────────────────────────────────────────────────────────────
 
   private static Prospect merchantProspect(
@@ -624,14 +667,35 @@ public final class ExpectedProfitBook {
       Map<ProductionUnitId, ProductionProcess> units,
       Map<ProductionUnitId, ProductionRules> relations,
       MarketTopology topology,
-      long day) {
+      long day,
+      AccountSession accounts) {
     Industry trade =
         industryOrNull != null && isMerchantRegime(industryOrNull)
             ? industryOrNull
             : resolveIndustry(base, hex, modeId);
+    // ★★★ W7-fix（2026-10-11，用户裁定 v3.28 §7）：**可行性 = 劳动 + 工具**（CATTLE 门槛已删）。
+    //
+    //   判据位置在**解析产业模板之前**：这一户有没有跑商的投入，与"本格有没有商号模板"是两件事 —— 缺投入的户
+    //   在本格有模板时同样不可行（改前它会在下游以 `NO_MERCHANT_CAPACITY:no-capacity` 返回，理由不如这里具体）。
+    //   ⇒ 具名理由：no-labor（没劳动）/ no-tool-input（没工具），两者都是 NO_MERCHANT_CAPACITY 一族
+    //      ⇒ 逐候选 DEBUG（MODE_MIGRATION_PROSPECT_INFEASIBLE）与轮级 MODE_MIGRATION_CANDIDATES 照旧可读。
+    String inputFailure = merchantInputFailureReason(householdEconomy, household, accounts);
+    if (inputFailure != null) {
+      return infeasible(household, modeId, position.id(), hex, null, inputFailure);
+    }
+    // ★★★ W7（2026-10-11）：**非城市格也能长出跑商** —— 本格没有 merchant 制度的产业模板时，允许在该格
+    //   **按需开一间商号**（用户问的正是这条：「难道没有家户自动估算其他生产方式的利润，然后自动设置
+    //   往其他所需要投入更低、利润更高的家户跑的机制吗？」）。
+    //
+    //   ★★ W7-fix：门槛不再是"自备 CATTLE"，而是上面那条"劳动 + 工具"（用户裁定）⇒ 非城市格的家户
+    //     **凭劳动 + 工具就能跑商**，这正是"跑商自己长出来"这条通道被打通的那一步。
+    //     ★ 作业资本那一维（capacityPerUnit）已随模板改成 TOOL ⇒ 执行期 `planAssetMoves` 要的是**工具**份额，
+    //       它是可移动资产（随迁携带，D-023 §4），不再要求非城市格有牲口。
+    //
+    //   ★ 估算用的模板 = {@link MerchantTradeTemplate#industry(HexCoord)}（**纯函数、不落状态**）—— 它与迁移执行
+    //     真的写进工作副本的那一份是**同一个拼写点** ⇒ "预估的那个商号"与"真的长出来的那个商号"不可能漂开。
     if (trade == null || !isMerchantRegime(trade)) {
-      return infeasible(
-          household, modeId, position.id(), hex, null, "NO_MERCHANT_CAPACITY:no-trade-industry");
+      trade = MerchantTradeTemplate.industry(hex);
     }
     if (isWagePosition(position)) {
       return wageProspect(
@@ -647,13 +711,17 @@ public final class ExpectedProfitBook {
           relations);
     }
     ActorRef actor = HouseholdActors.of(household);
-    // ★★ M-A1：运力是**派生量** —— 由该家户的劳动投入现算（{@link MerchantCapacity}）；商号行（MerchantFirm）与
-    //   "退回 CATTLE/SHIP 资产当运力"的旧支路都已随 merchantFirms 退役。
-    //   ★ 工具维在这条纯状态路径上读不到（商品账只在会话里）⇒ 传 0 = **运力下界**（工具项只增不减，见 MerchantCapacity 的 J-2）。
-    ProductionEnterprise firmEnterprise = merchantEnterpriseOf(base, actor);
+    // ★★★ W7 / 两把尺统一（用户派单 ④）：运力 = {@link MerchantCapacityPool#providerCapacityMilli} —— **决策层与
+    //   结算层读同一份派生量**（服务成市格 = max(手上可交付的服务货, 劳动 + 工具能产出的量)；其余格 = 劳动 + 工具）。
+    //   ★ 改前这里只读 `laborCapacityMilli(participationAdjustedLaborMilli)`（劳动一项）⇒ 与结算层的"手上的服务货"
+    //     是两把尺：一个手上有服务货、但劳动为 0 的户会被判成"没有运力"，而它其实能卖服务（调查报告 G4/A3 实测的
+    //     `hh-0_2-urban-landlord` 的 `no-bargaining-power` 就是这一处）。
+    //   ★ 工具维在这条路径上从**会话商品账**读（W7 起 `accounts` 本来就在入参里，不再是"读不到 ⇒ 传 0"）——
+    //     这正是用户原话「难到家户不会给预估生产方式预留生产资料吗？」指的那一项。
     long capacity =
-        MerchantCapacity.laborCapacityMilli(householdEconomy.participationAdjustedLaborMilli());
+        MerchantCapacityPool.providerCapacityMilli(base, household, hex, accounts.householdGoods());
     MerchantPolicy.MerchantTier tier = MerchantCapacity.tierOf(capacity);
+    ProductionEnterprise firmEnterprise = merchantEnterpriseOf(base, actor);
     ProductionUnitId unitId =
         firmEnterprise != null && firmEnterprise.unitId().isPresent()
             ? firmEnterprise.unitId().get()

@@ -2126,10 +2126,15 @@ public final class EconomySettlement {
             // ★★ A2（2026-10-10）：**服务成市的格**（本格市场给 haul 定过价；唯一判据 = HaulService.pricedAt）。
             //   这些格的运力预算改成"该户手上的运输服务货"（服务商品账，I-H2）；其余格一个判据都不变（I-H3）。
             //   ★ 逐轮现算（价格是 GM 数据，可随时改）：不落任何状态、不进任何组件。
-            haulServiceMarketHexes);
-    // ★★ G3-leftovers（2026-10-10）：逐户装配读数（DEBUG；事件 MERCHANT_CAPACITY_HOUSEHOLD）。★ 位置与下面那条
-    //   CAPACITY_PRICING_ASSEMBLY 同因：池本身不知道世界日（`of` 的入参里没有 tick），而该事件必须带 `day` 才能与
-    //   同日的 MARKET_* 逐户按日对齐 ⇒ 由 tick 面的本处发。
+            haulServiceMarketHexes,
+            // ★★ W7-fix3（2026-10-11）：把**本轮的世界日**交给池 —— {@code select} 的
+            //   MERCHANT_CAPACITY_LANE_TRUNCATED 一行据此补上 `day`（同族三条 INFO/DEBUG 都带日）。
+            //   ★ 与下面 MarketRound 的 `day` **同源**（本方法同一个 `day`）⇒ 池的 lane 读数与轮级
+            //     汇总读数不可能按不同的日对齐。★ 只被日志读：不改任何判据、不落状态。
+            day);
+    // ★★ G3-leftovers（2026-10-10）：逐户装配读数（DEBUG；事件 MERCHANT_CAPACITY_HOUSEHOLD）。★ 由 tick 面的本处发
+    //   （与下面那条 CAPACITY_PRICING_ASSEMBLY 同位；池只把日**记下来**供 {@code select} 的 lane 读数用，本事件的
+    //   发射点不动）⇒ 该事件必须带 `day` 才能与同日的 MARKET_* 逐户按日对齐。
     carrierPool.logHouseholdAssembly(day);
     // ★★★ A3（2026-10-10）：原来这条 DEBUG 叫 {@code CAPACITY_QUOTE_BOOK}（报"报价表挂了多少户"）——
     //   自报价簿已整族退役（{@code CapacityQuote}/{@code CapacityQuoteBook}）⇒ 改名

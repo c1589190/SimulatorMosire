@@ -1,0 +1,105 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 5712137,
+      "md5": "93453c5d3f2357a4f982b34d3f08dc5a",
+      "path": "checkpoints/main/4.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10963,
+  "headRevision": 4,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "4180bedd2f9a9566dd880c7e9c760614",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=INFO -Dsimos.app.logLevel=INFO",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7e-test-batch/logs/sw3seg.log",
+  "logKeep": "event=(HAUL_[A-Z_]*|LOGISTICS_[A-Z_]*|MERCHANT_[A-Z_]*|ONDEMAND_[A-Z_]*|MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET_[A-Z_]*|PRIMARY_MODE[A-Z_]*|CAPACITY_[A-Z_]*|MINT_[A-Z_]*|MONEY_MARKET[A-Z_]*|DEBT_[A-Z_]*|HOUSEHOLD_[A-Z_]*|POPULATION_[A-Z_]*|DAY_START|DAY_END)",
+  "logKeptLines": 257942,
+  "logLines": 257942,
+  "logStrippedMd5": "5533b333509ef0435f9f6046c0531bf0",
+  "pid": 421539,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7e-test-batch/plans/plan-sw-3seg.json",
+  "readySeconds": 1.703,
+  "revisionDelta": 3,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 2452025,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 120
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 2660205,
+      "commandType": "core.AdvanceTime",
+      "revision": 3,
+      "tick": 240
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 2046909,
+      "commandType": "core.AdvanceTime",
+      "revision": 4,
+      "tick": 360
+    }
+  ],
+  "startedAt": "2026-10-11T19:34:53",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 3.602,
+      "to": 120
+    },
+    {
+      "from": 120,
+      "httpStatus": 200,
+      "i": 1,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":3}}",
+      "seconds": 2.778,
+      "to": 240
+    },
+    {
+      "from": 240,
+      "httpStatus": 200,
+      "i": 2,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":4}}",
+      "seconds": 3.693,
+      "to": 360
+    },
+    {
+      "bytes": 5712137,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w7e-test-batch/dumps/sw3seg-d360-3seg.json",
+      "i": 3,
+      "label": "d360-3seg",
+      "md5": "93453c5d3f2357a4f982b34d3f08dc5a",
+      "op": "dump",
+      "revision": 4
+    }
+  ],
+  "store": "/tmp/w7e/stores/sw3seg",
+  "tag": "sw3seg",
+  "tick": 360,
+  "world": "small-world"
+}

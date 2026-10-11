@@ -1,0 +1,904 @@
+[
+ {
+  "file": "sw360-d360-oneshot.json",
+  "tick": 360,
+  "revision": 2,
+  "cattle_total": 200,
+  "cattle_shares": 3,
+  "cattle_by_owner": {
+   "share-trade@0_0-CATTLE-HOUSEHOLD-hh-0_0-urban-landlord-HOUSEHOLD-hh-0_0-urban-landlord-OWNED-0": 100,
+   "share-trade@0_2-CATTLE-HOUSEHOLD-hh-0_2-urban-landlord-HOUSEHOLD-hh-0_2-urban-landlord-OWNED-0": 88,
+   "share-trade@0_2-CATTLE-HOUSEHOLD-hh-0_2-urban-middle_peasant-HOUSEHOLD-hh-0_2-urban-middle_peasant-OWNED-0": 12
+  },
+  "money_total_by_currency": {
+   "copper": 100000,
+   "silver": 268700
+  },
+  "issuance_by_kind": {
+   "GENESIS_ENDOWMENT": 200000,
+   "INITIAL_ENDOWMENT": 167200,
+   "MINT_PRODUCTION": 1500
+  },
+  "issuance_by_kind_currency": {
+   "GENESIS_ENDOWMENT": {
+    "silver": 200000
+   },
+   "INITIAL_ENDOWMENT": {
+    "copper": 100000,
+    "silver": 67200
+   },
+   "MINT_PRODUCTION": {
+    "silver": 1500
+   }
+  },
+  "issuance_records": 7,
+  "money_conservation_delta_by_currency": {
+   "copper": 0,
+   "silver": 0
+  },
+  "haul_holders": 4,
+  "haul_total_milli": 112828,
+  "haul_by_household": {
+   "hh-0_0-rural-landlord": 1220,
+   "hh-0_0-urban-landlord": 93780,
+   "hh-unit:gov-central": 8582,
+   "hh-unit:gov-province": 9246
+  },
+  "trade_industries": {
+   "trade@0_0": {
+    "regime": "merchant",
+    "cattlePerUnit": 1,
+    "laborPerUnit": 1000,
+    "outputPerUnit": {
+     "haul": 1
+    },
+    "cycleInputPerUnit": {
+     "CATTLE": {
+      "tool": 100
+     }
+    }
+   },
+   "trade@0_2": {
+    "regime": "merchant",
+    "cattlePerUnit": 1,
+    "laborPerUnit": 1000,
+    "outputPerUnit": {
+     "haul": 1
+    },
+    "cycleInputPerUnit": {
+     "CATTLE": {
+      "tool": 100
+     }
+    }
+   }
+  },
+  "merchant_households": [
+   {
+    "hh": "hh--1_-1-urban-landlord",
+    "hex": "-1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_-1-urban-rich_peasant",
+    "hex": "-1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_0-urban-landlord",
+    "hex": "-1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_0-urban-rich_peasant",
+    "hex": "-1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_1-urban-landlord",
+    "hex": "-1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_1-urban-rich_peasant",
+    "hex": "-1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_2-urban-landlord",
+    "hex": "-1_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_2-urban-rich_peasant",
+    "hex": "-1_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_0-urban-landlord",
+    "hex": "-2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_0-urban-rich_peasant",
+    "hex": "-2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_1-urban-landlord",
+    "hex": "-2_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_1-urban-rich_peasant",
+    "hex": "-2_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_2-urban-landlord",
+    "hex": "-2_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_2-urban-rich_peasant",
+    "hex": "-2_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-1-urban-landlord",
+    "hex": "0_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-1-urban-rich_peasant",
+    "hex": "0_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-2-urban-landlord",
+    "hex": "0_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-2-urban-rich_peasant",
+    "hex": "0_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_0-urban-landlord",
+    "hex": "0_0",
+    "population": 55,
+    "laborMilli": 504000,
+    "participationPerMille": 100,
+    "cattle": 100,
+    "haulMilli": 93780
+   },
+   {
+    "hh": "hh-0_0-urban-rich_peasant",
+    "hex": "0_0",
+    "population": 104,
+    "laborMilli": 812000,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_1-urban-landlord",
+    "hex": "0_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_1-urban-rich_peasant",
+    "hex": "0_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_2-urban-landlord",
+    "hex": "0_2",
+    "population": 13,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 88,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_2-urban-rich_peasant",
+    "hex": "0_2",
+    "population": 32,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-1-urban-landlord",
+    "hex": "1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-1-urban-rich_peasant",
+    "hex": "1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-2-urban-landlord",
+    "hex": "1_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-2-urban-rich_peasant",
+    "hex": "1_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_0-urban-landlord",
+    "hex": "1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_0-urban-rich_peasant",
+    "hex": "1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_1-urban-landlord",
+    "hex": "1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_1-urban-rich_peasant",
+    "hex": "1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-1-urban-landlord",
+    "hex": "2_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-1-urban-rich_peasant",
+    "hex": "2_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-2-urban-landlord",
+    "hex": "2_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-2-urban-rich_peasant",
+    "hex": "2_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_0-urban-landlord",
+    "hex": "2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_0-urban-rich_peasant",
+    "hex": "2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   }
+  ],
+  "merchant_households_with_cattle": [
+   {
+    "hh": "hh-0_0-urban-landlord",
+    "hex": "0_0",
+    "population": 55,
+    "laborMilli": 504000,
+    "participationPerMille": 100,
+    "cattle": 100,
+    "haulMilli": 93780
+   },
+   {
+    "hh": "hh-0_2-urban-landlord",
+    "hex": "0_2",
+    "population": 13,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 88,
+    "haulMilli": 0
+   }
+  ],
+  "merchant_households_with_haul": [
+   {
+    "hh": "hh-0_0-urban-landlord",
+    "hex": "0_0",
+    "population": 55,
+    "laborMilli": 504000,
+    "participationPerMille": 100,
+    "cattle": 100,
+    "haulMilli": 93780
+   }
+  ],
+  "population_social": 3872,
+  "households": 178,
+  "debt_principal_milli": 102673290
+ },
+ {
+  "file": "sw360-d689.json",
+  "tick": 689,
+  "revision": 331,
+  "cattle_total": 200,
+  "cattle_shares": 4,
+  "cattle_by_owner": {
+   "share-trade@0_0-CATTLE-HOUSEHOLD-hh-0_0-urban-landlord-HOUSEHOLD-hh-0_0-urban-landlord-OWNED-0": 100,
+   "share-trade@0_2-CATTLE-HOUSEHOLD-hh-0_2-urban-landlord-HOUSEHOLD-hh-0_2-urban-landlord-OWNED-0": 88,
+   "share-trade@0_2-CATTLE-HOUSEHOLD-hh-0_2-urban-middle_peasant-HOUSEHOLD-hh-0_2-urban-middle_peasant-OWNED-0": 8,
+   "share-trade@0_2-CATTLE-HOUSEHOLD-hh-0_2-urban-middle_peasant-HOUSEHOLD-hh-0_2-urban-rich_peasant-TENANCY-0": 4
+  },
+  "money_total_by_currency": {
+   "copper": 100000,
+   "silver": 269700
+  },
+  "issuance_by_kind": {
+   "GENESIS_ENDOWMENT": 200000,
+   "INITIAL_ENDOWMENT": 167200,
+   "MINT_PRODUCTION": 2500
+  },
+  "issuance_by_kind_currency": {
+   "GENESIS_ENDOWMENT": {
+    "silver": 200000
+   },
+   "INITIAL_ENDOWMENT": {
+    "copper": 100000,
+    "silver": 67200
+   },
+   "MINT_PRODUCTION": {
+    "silver": 2500
+   }
+  },
+  "issuance_records": 9,
+  "money_conservation_delta_by_currency": {
+   "copper": 0,
+   "silver": 0
+  },
+  "haul_holders": 1,
+  "haul_total_milli": 96962,
+  "haul_by_household": {
+   "hh-0_0-urban-landlord": 96962
+  },
+  "trade_industries": {
+   "trade@0_0": {
+    "regime": "merchant",
+    "cattlePerUnit": 1,
+    "laborPerUnit": 1000,
+    "outputPerUnit": {
+     "haul": 1
+    },
+    "cycleInputPerUnit": {
+     "CATTLE": {
+      "tool": 100
+     }
+    }
+   },
+   "trade@0_2": {
+    "regime": "merchant",
+    "cattlePerUnit": 1,
+    "laborPerUnit": 1000,
+    "outputPerUnit": {
+     "haul": 1
+    },
+    "cycleInputPerUnit": {
+     "CATTLE": {
+      "tool": 100
+     }
+    }
+   }
+  },
+  "merchant_households": [
+   {
+    "hh": "hh--1_-1-urban-landlord",
+    "hex": "-1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_-1-urban-rich_peasant",
+    "hex": "-1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_0-urban-landlord",
+    "hex": "-1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_0-urban-rich_peasant",
+    "hex": "-1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_1-urban-landlord",
+    "hex": "-1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_1-urban-rich_peasant",
+    "hex": "-1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_2-urban-landlord",
+    "hex": "-1_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--1_2-urban-rich_peasant",
+    "hex": "-1_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_0-urban-landlord",
+    "hex": "-2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_0-urban-rich_peasant",
+    "hex": "-2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_1-urban-landlord",
+    "hex": "-2_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_1-urban-rich_peasant",
+    "hex": "-2_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_2-urban-landlord",
+    "hex": "-2_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh--2_2-urban-rich_peasant",
+    "hex": "-2_2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-1-urban-landlord",
+    "hex": "0_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-1-urban-rich_peasant",
+    "hex": "0_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-2-urban-landlord",
+    "hex": "0_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_-2-urban-rich_peasant",
+    "hex": "0_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_0-urban-landlord",
+    "hex": "0_0",
+    "population": 62,
+    "laborMilli": 552000,
+    "participationPerMille": 100,
+    "cattle": 100,
+    "haulMilli": 96962
+   },
+   {
+    "hh": "hh-0_0-urban-rich_peasant",
+    "hex": "0_0",
+    "population": 100,
+    "laborMilli": 756000,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_1-urban-landlord",
+    "hex": "0_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_1-urban-rich_peasant",
+    "hex": "0_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_2-urban-landlord",
+    "hex": "0_2",
+    "population": 9,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 88,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-0_2-urban-rich_peasant",
+    "hex": "0_2",
+    "population": 26,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-1-urban-landlord",
+    "hex": "1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-1-urban-rich_peasant",
+    "hex": "1_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-2-urban-landlord",
+    "hex": "1_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_-2-urban-rich_peasant",
+    "hex": "1_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_0-urban-landlord",
+    "hex": "1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_0-urban-rich_peasant",
+    "hex": "1_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_1-urban-landlord",
+    "hex": "1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-1_1-urban-rich_peasant",
+    "hex": "1_1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-1-urban-landlord",
+    "hex": "2_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-1-urban-rich_peasant",
+    "hex": "2_-1",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-2-urban-landlord",
+    "hex": "2_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_-2-urban-rich_peasant",
+    "hex": "2_-2",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_0-urban-landlord",
+    "hex": "2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 0,
+    "haulMilli": 0
+   },
+   {
+    "hh": "hh-2_0-urban-rich_peasant",
+    "hex": "2_0",
+    "population": 0,
+    "laborMilli": 0,
+    "participationPerMille": 750,
+    "cattle": 0,
+    "haulMilli": 0
+   }
+  ],
+  "merchant_households_with_cattle": [
+   {
+    "hh": "hh-0_0-urban-landlord",
+    "hex": "0_0",
+    "population": 62,
+    "laborMilli": 552000,
+    "participationPerMille": 100,
+    "cattle": 100,
+    "haulMilli": 96962
+   },
+   {
+    "hh": "hh-0_2-urban-landlord",
+    "hex": "0_2",
+    "population": 9,
+    "laborMilli": 0,
+    "participationPerMille": 100,
+    "cattle": 88,
+    "haulMilli": 0
+   }
+  ],
+  "merchant_households_with_haul": [
+   {
+    "hh": "hh-0_0-urban-landlord",
+    "hex": "0_0",
+    "population": 62,
+    "laborMilli": 552000,
+    "participationPerMille": 100,
+    "cattle": 100,
+    "haulMilli": 96962
+   }
+  ],
+  "population_social": 3099,
+  "households": 178,
+  "debt_principal_milli": 557835167253552674
+ }
+]

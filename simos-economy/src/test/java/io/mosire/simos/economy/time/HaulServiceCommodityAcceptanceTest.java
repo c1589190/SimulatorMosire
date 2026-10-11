@@ -334,8 +334,10 @@ class HaulServiceCommodityAcceptanceTest {
    * </pre>
    *
    * <p>★ 为什么预留量取 250 而不是世界里的 100：本夹具刻意取一个**与硬编码不同**的声明值 —— 判据是"预留 = 声明投入"， 不是"预留 = 某个历史常量"。世界
-   * {@code trade} 产业那一份（{@code {CATTLE:{tool:100}}} ⇒ 10,000）由 app 侧的 {@code
-   * HaulServiceCommoditySeedTest} 钉住配置，两侧合起来覆盖 T-H4。
+   * {@code trade} 产业那一份（★ W7e 更正：分路键已随作业资本从 CATTLE 改成 TOOL ⇒ 现在写作 {@code {TOOL:{tool:100}}}，值侧 100
+   * 一字未改；⇒ 10,000）由 app 侧的 {@code HaulServiceCommoditySeedTest} 钉住配置，两侧合起来覆盖 T-H4。★ 本夹具自己那条 {@code
+   * capacityPerUnit={CATTLE:1}} 是**夹具口径**（判据是"预留 = 声明投入"，与是哪一维资产无关） —— 世界 {@code trade}
+   * 那一维由上面那条注释指向的用例守。
    */
   @Test
   void ownListingsReserveTheDeclaredIndustryInputNotAHardcodedRunCost() {

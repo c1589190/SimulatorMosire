@@ -1,0 +1,7 @@
+event = CAPACITY_DEMAND_GAP_WHY   窗口 = [(0, 360), (361, 600), (601, 689)]
+  0:360|capacity-budget-below-demand-or-out-of-derived-radius 笔数=300     
+  361:600|capacity-budget-below-demand-or-out-of-derived-radius 笔数=192     
+  601:689|capacity-budget-below-demand-or-out-of-derived-radius 笔数=70      
+  [窗口小计 0:360] 笔数=300
+  [窗口小计 361:600] 笔数=192
+  [窗口小计 601:689] 笔数=70

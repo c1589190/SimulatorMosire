@@ -1,0 +1,4 @@
+[
+  { "op": "advance_daily", "to": 700 },
+  { "op": "dump", "label": "d700" }
+]

@@ -2,12 +2,14 @@ package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.region.Region;
@@ -127,7 +129,15 @@ class HaulServiceCommoditySeedTest {
       assertThat(trade.inputPerUnit())
           .as("★ 工具消耗的唯一入口 = 本产业的周期投入（恰一项 tool）")
           .containsExactly(Map.entry(TOOL, EconomySeeder.TOOL_MILLI_PER_TRADE_UNIT_CYCLE));
-      assertThat(trade.capacityPerUnit()).as("运力资产维：1 头 CATTLE / 1 单位规模").hasSize(1);
+      // ★★ W7e 测试批迁移（旧口径 → 新口径，具名）：旧断言 = `capacityPerUnit()`「运力资产维：1 头 CATTLE / 1
+      //   单位规模」`hasSize(1)`。W7-fix 起作业资本那一维 = TOOL（用户裁定 v3.28 §7「**能不能先把牲口要求取消掉啊？
+      //   目前是在跑测试，算作工具需求得了**」）⇒ 旧断言只剩"恰一项"，对"是哪一维"**没有判别力**（把键换成 CATTLE
+      //   照样绿）。⇒ 改成逐键逐值钉住（键 = TOOL、值 = 模板锚）；"规模锚必须保持 100"那条跨模块耦合由
+      //   {@code MerchantTradeScaleAnchorCouplingTest} 守。
+      assertThat(trade.capacityPerUnit())
+          .as("★ 作业资本那一维 = TOOL：每 1 单位规模压 TOOL_PER_UNIT 毫工具（牲口已退出配方）")
+          .containsOnlyKeys(AssetKind.TOOL)
+          .containsEntry(AssetKind.TOOL, MerchantTradeTemplate.TOOL_PER_UNIT);
     }
 
     // ── 单套化的"唯一强度常量"派生式（T-H1「与趟耗同口径」的算式面）────────────────────────────

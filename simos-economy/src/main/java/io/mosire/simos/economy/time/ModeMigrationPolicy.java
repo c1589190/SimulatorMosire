@@ -31,6 +31,7 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.MarketZoneBook;
+import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
@@ -86,6 +87,9 @@ import java.util.TreeSet;
  * <p>★★ <b>确定性</b>：无随机、无时钟、无 UUID；全部遍历按稳定 id / (q,r) 排序；同输入同计划。
  */
 public final class ModeMigrationPolicy {
+
+  /** 迁移政策日志（migration 分类：候选评估与"为什么没成"，§一.9）。 */
+  private static final org.slf4j.Logger LOG = EconomyLog.migration();
 
   private ModeMigrationPolicy() {}
 
@@ -391,6 +395,8 @@ public final class ModeMigrationPolicy {
     SettlementOrderBook ordering =
         SettlementOrderBook.snapshot(
             day, topology, markets, householdEconomies, debts, accounts, base);
+    // ★★★ W7（2026-10-11）：本轮候选评估的**具名账**（只进日志、不是状态 —— 见 {@link CandidateTally}）。
+    CandidateTally tally = new CandidateTally();
     LinkedHashMap<HouseholdId, List<MoveDraft>> draftsBySource = new LinkedHashMap<>();
     for (HouseholdId source : sortedHouseholds(householdEconomies)) {
       HouseholdMode current = modeByHousehold.get(source);
@@ -420,11 +426,18 @@ public final class ModeMigrationPolicy {
               demandBook,
               topology,
               day,
-              slideSpeedPerMille(ordering, source));
+              slideSpeedPerMille(ordering, source),
+              tally);
       if (!drafts.isEmpty()) {
         draftsBySource.put(source, drafts);
       }
     }
+    // ★★★ W7（2026-10-11，§一.9）：**"为什么这一轮没有新跑商"必须能从日志里读出来**（用户派单 ⑤）。
+    //   改前这条链在 {@code !prospect.feasible()} 处**静默 continue** —— 调查者只看日志会误判成"非城市格从来没被
+    //   评估过"，而真相是"被评估了、每次都具名失败、失败理由一行没打"（运力调查报告 §2.2 的实测）。
+    //   ★ 轮级一行（DEBUG，含逐格候选数与**首个失败理由**）+ 逐候选具名行（DEBUG，只对
+    //     {@code NO_MERCHANT_CAPACITY:*} 一族发，见 {@link CandidateTally#failure}）。
+    tally.logRound(day, draftsBySource.size(), totalDraftPopulation(draftsBySource));
     if (draftsBySource.isEmpty()) {
       return MigrationPlan.empty();
     }
@@ -498,7 +511,8 @@ public final class ModeMigrationPolicy {
       MarketDemandBook.Book demandBook,
       MarketTopology topology,
       long day,
-      long w4SlideSpeedPerMille) {
+      long w4SlideSpeedPerMille,
+      CandidateTally tally) {
     // ★★ D-024：当前户读数改由同一个预期利润计算器现算（真实利润账退位为事后对账）。
     Industry currentIndustry = currentIndustryOf(base, source, current, units, enterprises);
     ExpectedProfitBook.Prospect currentProspect =
@@ -541,7 +555,8 @@ public final class ModeMigrationPolicy {
             accounts,
             demandBook,
             topology,
-            day);
+            day,
+            tally);
     // ★★ M-D（设计书 §13 I-A/I-B）：**生产方式排序表** —— 当前项（主业）+ 全部成立候选，
     //   排序输入 = 市场议价权（本格运力占比‰，G-1 同一拼写点）+ 库存（货币余额 + 商品库存折价 + 生产资料份额）；
     //   破平 = 位置 id 升序（I-3）。★ 纯读数：本表不写任何状态，落点仍走既有模式变迁路径。
@@ -788,7 +803,8 @@ public final class ModeMigrationPolicy {
       AccountSession accounts,
       MarketDemandBook.Book demandBook,
       MarketTopology topology,
-      long day) {
+      long day,
+      CandidateTally tally) {
     List<Target> targets = new ArrayList<>();
     for (HexCoord hex : hexes) {
       int distance = sourceHouseholdEconomy.view().hex().distanceTo(hex);
@@ -813,6 +829,10 @@ public final class ModeMigrationPolicy {
         if (!hasIndustry && !merchantCapacity) {
           continue;
         }
+        // ★★★ W7（2026-10-11）：候选评估的两个具名落点（§一.9）—— ① "评估过"（逐格计数）；
+        //   ② "为什么没成"（prospect 的具名理由 / 门槛 / 实物腿），轮级一行汇总（见 CandidateTally.logRound）。
+        boolean merchantCandidate = DefaultProductionModes.MERCHANT.equals(mode.id());
+        tally.candidate(hex, merchantCandidate);
         ExpectedProfitBook.Prospect prospect =
             ExpectedProfitBook.prospect(
                 base,
@@ -830,6 +850,18 @@ public final class ModeMigrationPolicy {
                 topology,
                 day);
         if (!prospect.feasible() || prospect.feasibleScale() <= 0L) {
+          tally.failure(
+              hex,
+              mode.id(),
+              prospect.reason(),
+              merchantCandidate,
+              source,
+              merchantCandidate
+                  ? MerchantCapacityPool.providerCapacityMilli(
+                      base, source, hex, accounts.householdGoods())
+                  : 0L,
+              sourceHouseholdEconomy,
+              accounts.householdGoods());
           continue; // 不可行/规模 0：不凭空造目标（理由在 prospect 里具名）
         }
         // ★★ M-D：排序输入在**跑商候选**上的门槛（Q-18 库存 = tool 不够一趟；Q-19 议价权占比‰ = 0）。
@@ -840,13 +872,39 @@ public final class ModeMigrationPolicy {
               PrimaryModeRanking.merchantGateReason(base, source, hex, accounts.householdGoods());
           if (gate != null) {
             excluded.add(new PrimaryModeRanking.Excluded(mode.id(), hex, gate));
+            tally.failure(
+                hex,
+                mode.id(),
+                gate,
+                true,
+                source,
+                MerchantCapacityPool.providerCapacityMilli(
+                    base, source, hex, accounts.householdGoods()),
+                sourceHouseholdEconomy,
+                accounts.householdGoods());
             continue;
           }
         }
         long weight =
             Math.max(0L, Math.subtractExact(prospect.netPerLaborScaled(), currentPerLabor));
+        // ★★★ W7（2026-10-11）：**并入既有户这一支也要目标格真能承载这种生产方式**。
+        //   判据 = 该格有该 mode 的产业模板（{@code industriesForMode} 的唯一拼写点）。merchant 在**非城市格**
+        //   没有 trade 模板 ⇒ 那些格里的 merchant **壳户**（人口 0、劳动 0、无 unit）不得被当作并入目标 ——
+        //   并进去只会得到"一户没有生产 unit 的跑商家户"（人到了、活干不了）；W7 要的是"**新开一间商号**"
+        //   （新建目标 ⇒ 走 {@code createEnterpriseAndProcess}，由该户自带的**作业资本**建 unit；
+        //     ★ W7-fix 起作业资本 = 工具，改前 = 牲口）。
+        boolean hostIndustryAvailable =
+            !DefaultProductionModes.MERCHANT.equals(mode.id())
+                || !industriesForMode(base, hex, mode.id()).isEmpty();
         HouseholdId existing =
-            bestExistingTarget(source, hex, mode, modeByHousehold, positions, householdEconomies);
+            bestExistingTarget(
+                source,
+                hex,
+                mode,
+                modeByHousehold,
+                positions,
+                householdEconomies,
+                hostIndustryAvailable);
         // ★★★ W2-fix7 / D1①（控制方裁定 v3.10 §7）：**目标生产方式的实物腿商品拿不到 ⇒ 该户不迁入这个 mode**。
         //   判据（详见 inKindLegUnavailableReason）：目标产业的产出表里没有这个商品 **且** 该户没有可用库存
         //   **且** 目标格的市场也不交易它 ⇒ 迁过去只会得到一条永远付不出的租腿（改前是 day 540 的 E14 400，
@@ -857,6 +915,18 @@ public final class ModeMigrationPolicy {
               inKindLegUnavailableReason(base, source, mode.id(), hex, accounts, markets, topology);
           if (refusal != null) {
             excluded.add(new PrimaryModeRanking.Excluded(mode.id(), hex, refusal));
+            tally.failure(
+                hex,
+                mode.id(),
+                refusal,
+                merchantCandidate,
+                source,
+                merchantCandidate
+                    ? MerchantCapacityPool.providerCapacityMilli(
+                        base, source, hex, accounts.householdGoods())
+                    : 0L,
+                sourceHouseholdEconomy,
+                accounts.householdGoods());
             if (weight > 0L) {
               // ★ 只在"它本来是活候选"时报 INFO（weight = 0 的目标本来就不会被选中，报它只是噪声）。
               EventLog.channel(EconomyLog.migration())
@@ -1045,7 +1115,7 @@ public final class ModeMigrationPolicy {
       }
       HouseholdId existing =
           bestExistingTarget(
-              source, hex, displaced, modeByHousehold, positions, householdEconomies);
+              source, hex, displaced, modeByHousehold, positions, householdEconomies, true);
       long room =
           existing == null
               ? 0L
@@ -1254,15 +1324,100 @@ public final class ModeMigrationPolicy {
                 / sourceHouseholdEconomy.population();
     // ★ 与执行期（ModeMigrationSettlement.createEnterpriseAndProcess）同一份"该 mode 能用哪些产业模板"：
     //   按 mode 的默认 regime 优先；merchant 找不到 trade 模板 ⇒ 空（绝不把农场模板当商号）。
-    for (IndustryId industryId : industriesForMode(base, hex, mode)) {
+    List<IndustryId> templates = industriesForMode(base, hex, mode);
+    // ★★★ W7（2026-10-11）：**非城市格的跑商** —— 本格没有 merchant 制度的产业模板时，走"按需创建"那一支：
+    //   估算用的模板 = {@link MerchantTradeTemplate#industry(HexCoord)}（与 {@code ExpectedProfitBook}
+    // 的可行性预估、
+    //   与迁移执行真的写进工作副本的那一份**同一个拼写点**）；可用的**作业资本 = 工具** = **该户自备/随迁携带**的
+    //   那一份（D-023 §4 可移动资产随迁；判据与执行期 {@code migrateAssetsForMove} 的按人口比例取整逐式对齐）。
+    //   ★★ W7-fix（2026-10-11，用户裁定 v3.28 §7）：判据从 **CATTLE** 换成 **工具**（= 模板的
+    //     {@code capacityPerUnit} 那一维）—— 牲口不再是跑商的可行性门槛，也不再是运力的来源。
+    //     没有作业资本（工具）的户 ⇒ 这里算不出可用量 ⇒ 返回 0 ⇒ 不就这一格建目标
+    //     （"新建户凑不齐作业资本就建不出商号"仍是诚实的约束，且与执行期 {@code planAssetMoves} 同一口径）。
+    if (templates.isEmpty() && DefaultProductionModes.MERCHANT.equals(mode)) {
+      Industry onDemand = MerchantTradeTemplate.industry(hex);
+      Map<AssetKind, Long> carried =
+          carriedCarrierAssetsForMove(sourceHouseholdEconomy, take, assetShares);
+      // ★★★ 规模口径必须与执行期**逐式对齐**：{@code createEnterpriseAndProcess} 对**新建**目标户算
+      //   {@code scale = max(1, 目标行.laborMilli / laborPerUnit)}，而 P0 起新建行的 labor 是 **0**
+      //   （人口/劳动由 App 按 outbox 回写）⇒ 执行期实际只要求 {@code scale = 1} 的那一份作业资本。
+      //   ⇒ 这里传 {@code laborPerUnit}（⇒ scale = 1），而**不是** laborEstimate：传 laborEstimate 会把
+      //     "整户劳动撑满的规模"当成门槛（实测口径差 = labor÷1000 ÷ 作业资本数，往往 ≫ 1），把本批要开的
+      //     那条路**在规划期就自己堵死**。
+      //   ★ 产业规模**随后由资产派生**（ProductionProcessBook 读 OwnershipStake）：一户带 N 毫工具过去
+      //     就得到 N 单位规模的商号（上界）；真正的规模由劳动与投入满足率取最紧那一路 ——
+      //     "从 1 单位起步、随作业资本长大"，这正是"不凭空造资产"的字面结果。
+      return reserveIdleAssetsFor(
+              onDemand,
+              onDemand.recipe().laborPerUnit(),
+              assetShares,
+              reservedIdle,
+              claimedByEnterprises,
+              carried)
+          ? take
+          : 0L;
+    }
+    for (IndustryId industryId : templates) {
       Industry industry = base.industries().get(industryId);
       if (industry != null
           && reserveIdleAssetsFor(
-              industry, laborEstimate, assetShares, reservedIdle, claimedByEnterprises)) {
+              industry, laborEstimate, assetShares, reservedIdle, claimedByEnterprises, Map.of())) {
         return take;
       }
     }
     return 0L;
+  }
+
+  /**
+   * ★★★ <b>W7（2026-10-11）/ W7-fix（2026-10-11）：这一批人**随迁携带**的**作业资本**量</b> —— 判据与执行期 {@code
+   * ModeMigrationSettlement.migrateAssetsForMove} 的取整**逐式对齐**：
+   *
+   * <pre>
+   * 取整 = 整户迁空（take ≥ 源户人口）        ⇒ 全部数量
+   *        否则                             ⇒ ⌊数量 × take ÷ 源户人口⌋   （与执行期同一式、同一 floor）
+   * 范围 = owner == 源户 actor ∧ asset ∈ {模板的 capacityPerUnit 那一维} ∧ quantity &gt; 0
+   * </pre>
+   *
+   * <p>★★ <b>W7-fix（用户裁定 v3.28 §7）</b>：那一维从 {@code CATTLE} 换成 {@code TOOL} —— 与 {@link
+   * MerchantTradeTemplate#industry(HexCoord)} 的 {@code capacityPerUnit} 键**同源**（不是第二个拼写点： 本方法直接从模板的
+   * {@code capacityPerUnit.keySet()} 取，模板改哪一维这里跟着改）。
+   *
+   * <p>★ 它是"**不凭空造资产**"在决策层的落点：按需创建的 {@code trade@H} 只承载这一份真实存在的作业资本。 ★ 执行期还有一条"已被别的组织实际使用 ⇒
+   * 留原户并具名"的排除（{@code foreignUsedOwnershipStakeIds}）—— 那种极端情形由 {@code ModeMigrationSettlement}
+   * 在执行前**具名跳过该笔迁移**（不静默丢人、也不让 tick 抛）。
+   */
+  private static Map<AssetKind, Long> carriedCarrierAssetsForMove(
+      HouseholdEconomy sourceHouseholdEconomy,
+      long take,
+      Map<AssetShareId, OwnershipStake> assetShares) {
+    long population = sourceHouseholdEconomy.population();
+    ActorRef sourceActor = HouseholdActors.of(sourceHouseholdEconomy.id());
+    boolean empties = population <= 0L || take >= population;
+    // ★ W7-fix：作业资本那一维 = 模板声明的 capacityPerUnit 键集（唯一拼写点是模板，不在这里写死 AssetKind）。
+    Map<AssetKind, Long> carriedByKind = new LinkedHashMap<>();
+    for (AssetKind kind : MerchantTradeTemplate.capacityKinds()) {
+      carriedByKind.put(kind, 0L);
+    }
+    for (OwnershipStake share : assetShares.values()) {
+      if (share == null
+          || !carriedByKind.containsKey(share.asset())
+          || share.quantity() <= 0L
+          || !share.owner().equals(sourceActor)) {
+        continue;
+      }
+      long amount =
+          empties
+              ? share.quantity()
+              : Math.multiplyExact(share.quantity(), take) / Math.max(1L, population);
+      carriedByKind.merge(share.asset(), amount, Math::addExact);
+    }
+    Map<AssetKind, Long> coverage = new LinkedHashMap<>();
+    for (Map.Entry<AssetKind, Long> entry : carriedByKind.entrySet()) {
+      if (entry.getValue() > 0L) {
+        coverage.put(entry.getKey(), entry.getValue());
+      }
+    }
+    return coverage;
   }
 
   /**
@@ -1279,7 +1434,8 @@ public final class ModeMigrationPolicy {
       long laborMilli,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
-      Set<AssetShareId> claimedByEnterprises) {
+      Set<AssetShareId> claimedByEnterprises,
+      Map<AssetKind, Long> carriedByKind) {
     long scale =
         industry.recipe().laborPerUnit() <= 0L
             ? 1L
@@ -1288,7 +1444,10 @@ public final class ModeMigrationPolicy {
     Map<AssetKind, Long> needs = new LinkedHashMap<>();
     for (Map.Entry<AssetKind, Long> required : industry.recipe().capacityPerUnit().entrySet()) {
       long need = Math.multiplyExact(scale, required.getValue());
-      long available = 0L;
+      // ★★★ W7：**随迁携带**的那一份先计入可用量（按需创建的 {@code trade@H} 下还不存在任何份额，
+      //   它的作业资本就是这批人自己背过来的 —— 见 carriedCarrierAssetsForMove；
+      //   ★ W7-fix 起那一维 = 工具，改前 = 牲口）。
+      long available = carriedByKind.getOrDefault(required.getKey(), 0L);
       for (OwnershipStake share : assetShares.values()) {
         if (!share.industry().equals(industry.id())
             || share.asset() != required.getKey()
@@ -1318,7 +1477,13 @@ public final class ModeMigrationPolicy {
       ProductionMode mode,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
       List<ProductionRole> producingPositions,
-      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      boolean hostIndustryAvailable) {
+    if (!hostIndustryAvailable) {
+      // ★★★ W7：本格**没有**该 mode 的产业模板 ⇒ 不得并入既有户（并入 = 一户没有生产 unit 的空壳；
+      //   见调用点的具名理由）。返回 null 让上层走"新建户"那一支（新建会按需建产业 + 由该户自带的资产建 unit）。
+      return null;
+    }
     Set<ClassPositionId> positionIds = new LinkedHashSet<>();
     for (ProductionRole position : producingPositions) {
       positionIds.add(position.id());
@@ -1494,10 +1659,22 @@ public final class ModeMigrationPolicy {
   static List<IndustryId> industriesForMode(
       EconomyDayView base, HexCoord hex, ProductionModeId modeId) {
     Objects.requireNonNull(base, "base");
+    return industriesForMode(base.industries(), hex, modeId);
+  }
+
+  /**
+   * ★★★ <b>W7（2026-10-11）：上一条的"显式产业表"重载</b>（唯一判据逐字相同）。
+   *
+   * <p>★ <b>为什么要它</b>：W7 起 {@code trade} 可以在迁移时**按需创建**（写进 {@code EconomySession} 的工作副本）， 而"这一格有没有
+   * merchant 模板"从创建那一刻起就必须读**工作副本**（不是当日只读视图）—— 否则同一 tick 内后面的 迁移笔看不到刚落的那一条，会重复创建或走错分支。★
+   * 判据本体只有这一处拼写。
+   */
+  static List<IndustryId> industriesForMode(
+      Map<IndustryId, Industry> industries, HexCoord hex, ProductionModeId modeId) {
+    Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(hex, "hex");
     Objects.requireNonNull(modeId, "modeId");
-    List<IndustryId> candidates =
-        new ArrayList<>(IndustryHexKeys.at(base.industries(), hex.q(), hex.r()));
+    List<IndustryId> candidates = new ArrayList<>(IndustryHexKeys.at(industries, hex.q(), hex.r()));
     candidates.sort(Comparator.comparing(IndustryId::value));
     Optional<String> wanted = RegimeOperators.defaultRegimeForMode(modeId);
     if (wanted.isEmpty()) {
@@ -1505,7 +1682,7 @@ public final class ModeMigrationPolicy {
     }
     List<IndustryId> matching = new ArrayList<>();
     for (IndustryId industryId : candidates) {
-      Industry industry = base.industries().get(industryId);
+      Industry industry = industries.get(industryId);
       if (industry != null && wanted.get().equals(industry.regime().value())) {
         matching.add(industryId);
       }
@@ -1928,5 +2105,158 @@ public final class ModeMigrationPolicy {
       this.reason = reason;
       this.primaryPositionId = primaryPositionId;
     }
+  }
+
+  /**
+   * ★★★ <b>W7（2026-10-11）：一轮"生产方式候选"评估的**具名账**（瞬态；只进日志，不是状态组件）</b>。
+   *
+   * <p>★★ <b>它回答的问题是</b>：「**为什么这一轮没有新跑商？**」—— 用户派单 ⑤ 的原话： 「{@code NO_MERCHANT_CAPACITY:*} 一族（含
+   * {@code no-trade-industry} / {@code no-capacity}）在**决策层静默 continue 处** 发具名 DEBUG（或 INFO，按 §一.9
+   * 的级别约定），字段含 hex/mode/reason/关键量级；★ 同时把"为什么这一轮没有新跑商" 在轮级 DEBUG 里可读（含每格候选数与首个失败理由）」。
+   *
+   * <p>★★ <b>W7-fix（2026-10-11）：{@code NO_MERCHANT_CAPACITY:*} 一族的成员换了</b> —— 用户裁定 v3.28 §7
+   * 取消牲口要求后， 该族现在是「{@code no-labor}」（没有劳动投入）/「{@code no-tool-input}」（手上没有工具）/ 「{@code
+   * no-capacity}」（服务成市格上取较大者后仍为 0 的兜底）；{@code no-trade-industry} 与 {@code no-carrier-asset}
+   * 两条**已不存在**（前者被"按需创建模板"取代，后者被用户裁定删除）。★ 本类的机制一字未改。
+   *
+   * <pre>
+   * 轮级一行（DEBUG，事件 MODE_MIGRATION_CANDIDATES）：
+   *   candidateRows          本轮评估过的 (家户 × mode × hex) 候选数
+   *   merchantCandidates     其中 merchant 候选数
+   *   byHex                  逐格候选数（键序 = hex 规范序）
+   *   merchantFirstFailure   逐格"首个具名失败理由"（★ W7 前这条链是**静默 continue**，日志里一片空白）
+   *   failuresByReason       逐理由计数（NO_MERCHANT_CAPACITY:no-labor / no-tool-input / no-capacity /
+   *                          no-deliverable-service-capacity / no-bargaining-power …）
+   *   moves / movedPopulation 本轮真的落地的迁移笔数与人口（0 ⇒ 一行也不少 —— "没有"本身就是要读的事实）
+   * 逐候选一行（DEBUG，事件 MODE_MIGRATION_PROSPECT_INFEASIBLE，**只对 NO_MERCHANT_CAPACITY:* 一族发**）：
+   *   household / mode / hex / reason / merchantCandidate
+   * </pre>
+   *
+   * <p>★ <b>级别取舍（具名记下）</b>：§一.9 把"业务拒绝"定为 INFO，但这里**不逐候选发 INFO** —— 非城市格每天每户都会 产生同样的拒绝（调查报告实测：sw 17
+   * 格 × 每户每天），逐行 INFO 会把真正的"这一轮发生了什么"淹掉。⇒ **轮级一行**（"这一轮有几个候选、为什么没成"）承担 INFO 的可读性职责，逐候选明细留在 DEBUG。
+   * 这条取舍与"日志失败不得影响结算"同级：本类只读、不写任何状态、不改任何判据。
+   */
+  private static final class CandidateTally {
+
+    private final Map<HexCoord, Long> candidatesByHex = new LinkedHashMap<>();
+    private final Map<HexCoord, Long> merchantCandidatesByHex = new LinkedHashMap<>();
+    private final Map<HexCoord, String> merchantFirstFailureByHex = new LinkedHashMap<>();
+    private final Map<String, Long> failuresByReason = new LinkedHashMap<>();
+    private long candidateRows = 0L;
+    private long merchantCandidates = 0L;
+
+    /** 记一次"这个 (家户, mode, hex) 候选被评估过"。 */
+    private void candidate(HexCoord hex, boolean merchant) {
+      candidateRows++;
+      candidatesByHex.merge(hex, 1L, Math::addExact);
+      if (merchant) {
+        merchantCandidates++;
+        merchantCandidatesByHex.merge(hex, 1L, Math::addExact);
+      }
+    }
+
+    /**
+     * 记一次"这个候选没成"（具名理由）。★ 逐候选 DEBUG **只对 {@code NO_MERCHANT_CAPACITY:*} 一族发** ——
+     * 那正是用户点名的、改前**一行都不打**的那一族；其余理由（门槛/实物腿/其它 mode 的不可行）只进轮级计数。
+     *
+     * <p>★★ <b>W7-fix（2026-10-11）：量级字段补上"劳动 + 工具"两项</b> —— 用户裁定 v3.28 §7 之后该族的新成员 （{@code no-labor}
+     * / {@code no-tool-input}）说的正是这两项；只报 {@code deliverableCapacityMilli} 会让"可交付运力明明 &gt; 0
+     * 却不可行"在同一行里读不出原因（读数面必须自解释）。
+     */
+    private void failure(
+        HexCoord hex,
+        ProductionModeId modeId,
+        String reason,
+        boolean merchant,
+        HouseholdId household,
+        long deliverableCapacityMilli,
+        HouseholdEconomy row,
+        Map<HouseholdId, Map<CommodityId, Long>> goods) {
+      String named = reason == null ? "UNSPECIFIED" : reason;
+      failuresByReason.merge(named, 1L, Math::addExact);
+      if (!merchant) {
+        return;
+      }
+      merchantFirstFailureByHex.putIfAbsent(hex, named);
+      if (named.startsWith("NO_MERCHANT_CAPACITY:") && LOG.isDebugEnabled()) {
+        // ★ 具名行（字段按用户派单 ⑤：hex / mode / reason / **关键量级**）—— 量级 = 该户的
+        //   **可交付运力**（{@link MerchantCapacityPool#providerCapacityMilli}，与结算层同一把尺），
+        //   外加 W7-fix 的两个可行性操作数（劳动投入 / 手上的工具）。
+        //   ★★ W7-fix3（2026-10-11）：工具存量先在**对象口径**取出来（见下面那条注释）—— 改前它是
+        //   `goods == null ? 0L : <Long>`：三目里 long 与 Long 混用会**拆箱**，随即又为 varargs **装箱**
+        //   （SpotBugs BX_UNBOXING_IMMEDIATELY_REBOXED）。★ 只改取值形态，不碰字段名/值/级别/发射条件。
+        Long toolMilli = 0L;
+        if (goods != null) {
+          toolMilli =
+              goods
+                  .getOrDefault(household, Map.of())
+                  .getOrDefault(MerchantTradeTemplate.TOOL_COMMODITY, 0L);
+        }
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "MODE_MIGRATION_PROSPECT_INFEASIBLE",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "household",
+                    household.value(),
+                    "modeId",
+                    modeId.value(),
+                    "hex",
+                    hex,
+                    "reason",
+                    named,
+                    "deliverableCapacityMilli",
+                    deliverableCapacityMilli,
+                    "laborMilli",
+                    row == null ? 0L : row.participationAdjustedLaborMilli(),
+                    "toolMilli",
+                    toolMilli));
+      }
+    }
+
+    /** 轮级汇总（DEBUG，一行）—— **无论本轮有没有迁移都发**（"没有"是要读的事实，不是噪声）。 */
+    private void logRound(long day, long moves, long movedPopulation) {
+      if (!LOG.isDebugEnabled()) {
+        return;
+      }
+      Map<HexCoord, Long> candidatesView = new LinkedHashMap<>(candidatesByHex);
+      Map<HexCoord, Long> merchantView = new LinkedHashMap<>(merchantCandidatesByHex);
+      Map<HexCoord, String> firstFailureView = new LinkedHashMap<>(merchantFirstFailureByHex);
+      Map<String, Long> reasonsView = new LinkedHashMap<>(failuresByReason);
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "MODE_MIGRATION_CANDIDATES",
+                  EconomyLogSource.ECONOMY_MIGRATION,
+                  "day",
+                  day,
+                  "candidateRows",
+                  candidateRows,
+                  "merchantCandidates",
+                  merchantCandidates,
+                  "byHex",
+                  candidatesView,
+                  "merchantCandidatesByHex",
+                  merchantView,
+                  "merchantFirstFailureByHex",
+                  firstFailureView,
+                  "failuresByReason",
+                  reasonsView,
+                  "moves",
+                  moves,
+                  "movedPopulation",
+                  movedPopulation));
+    }
+  }
+
+  /** 本轮计划迁出的人口合计（只作轮级读数）。 */
+  private static long totalDraftPopulation(Map<HouseholdId, List<MoveDraft>> draftsBySource) {
+    long total = 0L;
+    for (List<MoveDraft> drafts : draftsBySource.values()) {
+      for (MoveDraft draft : drafts) {
+        total = Math.addExact(total, draft.population);
+      }
+    }
+    return total;
   }
 }
