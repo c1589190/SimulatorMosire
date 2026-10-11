@@ -1,6 +1,6 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.map.tools.write;
 
-import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
 
 /**
@@ -10,13 +10,16 @@ import java.util.Map;
  *
  * <p>★ **{@code mode} 没有默认值**（域层 {@code EdgeOperations} 只收 {@code replace}/{@code merge}）：缺字段 ⇒
  * {@code Rejected}，不兜一个"看着合理"的模式。{@code kind} 必须在状态的通路组词表内（fail-closed）。
+ *
+ * <p>★ <b>2026-10-12 B3 下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-map}，对 {@code CoreSimos}
+ * 的直连换成构造期注入的 {@link ToolWritePort}（命令类型、载荷、拒绝码、资源声明、审批门逐字不变）。
  */
 public final class MapSetEdgeTool extends AbstractNarrowWriteTool {
 
   public static final String NAME = "map.SetEdge";
 
-  public MapSetEdgeTool(CoreSimos core, String initiator, String mapId) {
-    super(core, initiator, mapId);
+  public MapSetEdgeTool(ToolWritePort writes, String mapId) {
+    super(writes, mapId);
   }
 
   @Override

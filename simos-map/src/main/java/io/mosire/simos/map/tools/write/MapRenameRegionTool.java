@@ -1,7 +1,7 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.map.tools.write;
 
-import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolSchema;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,14 +17,17 @@ import java.util.Map;
  *
  * <p>★ <b>GM-only 命令</b>：它提交的 {@code map.RenameRegion} handler 标了 {@code GmOnlyCommand} ⇒ 决策人令 /
  * {@code RegisterEffect} / 决策人 catalog 三条路径都到不了；GM 直接提交与这条窄工具照常可用。
+ *
+ * <p>★ <b>2026-10-12 B3 下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-map}，对 {@code CoreSimos}
+ * 的直连换成构造期注入的 {@link ToolWritePort}（命令类型、载荷、拒绝码、资源声明、审批门逐字不变）。
  */
 public final class MapRenameRegionTool extends AbstractNarrowWriteTool {
 
   /** 工具名（与命令类型同名，同一个拼写点）。 */
   public static final String NAME = "map.RenameRegion";
 
-  public MapRenameRegionTool(CoreSimos core, String initiator, String mapId) {
-    super(core, initiator, mapId);
+  public MapRenameRegionTool(ToolWritePort writes, String mapId) {
+    super(writes, mapId);
   }
 
   @Override
@@ -48,11 +51,11 @@ public final class MapRenameRegionTool extends AbstractNarrowWriteTool {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put(
         "payloadJson",
-        ToolSupport.prop(
+        ToolSchema.prop(
             "string",
             "命令载荷 JSON 文本：{regionId(必填，必须是当前地图里已存在的 Region)," + " name(必填非空白)}；只改显示名，不动内容与边界"));
-    props.put("branch", ToolSupport.prop("string", "分支名"));
-    props.put("expectedRevision", ToolSupport.prop("integer", "期望的 base revision（乐观并发）"));
-    return ToolSupport.schema(props, List.of("branch", "expectedRevision"));
+    props.put("branch", ToolSchema.prop("string", "分支名"));
+    props.put("expectedRevision", ToolSchema.prop("integer", "期望的 base revision（乐观并发）"));
+    return ToolSchema.schema(props, List.of("branch", "expectedRevision"));
   }
 }

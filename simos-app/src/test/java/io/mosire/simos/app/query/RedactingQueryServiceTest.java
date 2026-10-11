@@ -12,14 +12,17 @@ import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.ScopeFixtures;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.app.tools.read.MapHexTool;
+import io.mosire.simos.app.tools.map.AppMapToolPerspective;
+import io.mosire.simos.app.tools.map.AppMapToolViews;
 import io.mosire.simos.app.tools.read.UnitGetTool;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.map.tools.read.MapHexTool;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
@@ -106,7 +109,14 @@ class RedactingQueryServiceTest {
     RedactingQueryService service = start();
     QueryService query = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
     ToolRegistry registry = new ToolRegistry();
-    registry.register(new MapHexTool(query, MAP_ID));
+    // ★★ 2026-10-12 B3 试点：simos.map.hex 已下放到 simos-map ⇒ 与生产装配（SimosToolSource.readTools）
+    //   同源地注入四类接缝（窄读口 / 视图口 / 视角口 / mapId）。
+    registry.register(
+        new MapHexTool(
+            new QueryServiceToolReadPort(query),
+            new AppMapToolViews(),
+            new AppMapToolPerspective(),
+            MAP_ID));
     registry.register(new UnitGetTool(query));
     DecisionCallerFactory factory = DecisionCallerFactory.defaults(authorizer());
     SimulationState state = stateAt(1);

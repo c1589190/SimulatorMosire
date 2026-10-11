@@ -1,16 +1,20 @@
-package io.mosire.simos.app.tools.read;
+package io.mosire.simos.map.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.app.query.QueryService;
-import io.mosire.simos.app.tools.GmOnlyRead;
-import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.ga.spi.GmOnlyRead;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.map.tools.MapToolPerspective;
+import io.mosire.simos.map.tools.MapToolViews;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -27,7 +31,11 @@ import java.util.Set;
  * Nation}）下的区域是否存在部分重合 / 完全重合 / 包含关系。
  *
  * <p>★ <b>只读、GM 专用</b>（{@link GmOnlyRead}）：区域几何是全图信息，决策人不给——避免越过视野泄露全图区域形状； 资源的声明只看 map 域（{@link
- * ToolSupport#MAP_READ}）。
+ * ToolResources#MAP_READ}）。
+ *
+ * <p>★ <b>2026-10-12 B3 下放</b>：本类自 {@code app/tools/read} 迁入 {@code simos-map}，对 app/core
+ * 的直连换成构造期注入 （{@link ToolReadPort} 读口 + {@link MapToolViews} 视图口 + {@link MapToolPerspective}
+ * 视角口）；载荷、文案、拒绝码、 资源声明逐字不变。
  *
  * <p>★ <b>算法是 hex → 区域成员的倒排，不是 n² 区域对枚举</b>：先把候选区域的成员格收进 {@code Map<HexCoord,
  * List<regionId>>}，再对每个成员数 ≥2 的格做 i&lt;j 两两组合累加交集格数；候选区域按 {@code RegionId.value()} 字典序处理 ⇒
@@ -51,11 +59,16 @@ public final class MapOverlapsTool implements AgentTool, GmOnlyRead {
   /** {@code limit} 的硬上限；超过明确拒（不静默截断）。 */
   public static final int MAX_LIMIT = 500;
 
-  private final QueryService query;
+  private final ToolReadPort reads;
+  private final MapToolViews views;
+  private final MapToolPerspective perspective;
   private final String mapId;
 
-  public MapOverlapsTool(QueryService query, String mapId) {
-    this.query = query;
+  public MapOverlapsTool(
+      ToolReadPort reads, MapToolViews views, MapToolPerspective perspective, String mapId) {
+    this.reads = reads;
+    this.views = views;
+    this.perspective = perspective;
     this.mapId = mapId;
   }
 
@@ -71,45 +84,45 @@ public final class MapOverlapsTool implements AgentTool, GmOnlyRead {
 
   @Override
   public Map<String, Object> jsonSchema() {
-    Map<String, Object> props = new LinkedHashMap<>(ToolSupport.targetProps());
-    props.put("regionId", ToolSupport.prop("string", "只看涉及该区域的重合对（可选）"));
-    props.put("tag", ToolSupport.prop("string", "只看两侧区域 meta.tag 逐字都等于该值的对（可选，如 Nation）"));
-    props.put("sameTagOnly", ToolSupport.prop("boolean", "只看两侧 tag 非空且逐字相等的对（缺省 false）"));
-    props.put("minOverlapHexes", ToolSupport.prop("integer", "交集格数下界，必须 ≥1（缺省 1；达到下界才输出）"));
+    Map<String, Object> props = new LinkedHashMap<>(ToolSchema.targetProps());
+    props.put("regionId", ToolSchema.prop("string", "只看涉及该区域的重合对（可选）"));
+    props.put("tag", ToolSchema.prop("string", "只看两侧区域 meta.tag 逐字都等于该值的对（可选，如 Nation）"));
+    props.put("sameTagOnly", ToolSchema.prop("boolean", "只看两侧 tag 非空且逐字相等的对（缺省 false）"));
+    props.put("minOverlapHexes", ToolSchema.prop("integer", "交集格数下界，必须 ≥1（缺省 1；达到下界才输出）"));
     props.put(
-        "wholeOnly", ToolSupport.prop("boolean", "只输出 relation != partial 的对（完全重合/包含；缺省 false）"));
+        "wholeOnly", ToolSchema.prop("boolean", "只输出 relation != partial 的对（完全重合/包含；缺省 false）"));
     props.put(
         "includeHexes",
-        ToolSupport.prop(
+        ToolSchema.prop(
             "boolean", "每对附带交集格清单（按 q 升序、再 r 升序；单对最多 " + MAX_HEXES_PER_PAIR + " 格，超出截断；缺省 false）"));
     props.put(
         "limit",
-        ToolSupport.prop(
+        ToolSchema.prop(
             "integer",
             "返回对上限，1.." + MAX_LIMIT + "（缺省 " + DEFAULT_LIMIT + "；超上限即 BAD_REQUEST，不静默截断）"));
-    return ToolSupport.schema(props, List.of());
+    return ToolSchema.schema(props, List.of());
   }
 
   @Override
   public ResourceManifest resources() {
-    return ToolSupport.MAP_READ;
+    return ToolResources.MAP_READ;
   }
 
   @Override
   public ToolResult execute(ToolContext context) {
     try {
       Map<String, Object> args = context.arguments();
-      String regionIdText = ToolSupport.optionalText(args, "regionId", null);
-      String tag = ToolSupport.optionalText(args, "tag", null);
-      boolean sameTagOnly = ToolSupport.optionalBoolean(args, "sameTagOnly").orElse(false);
-      Long rawMin = ToolSupport.optionalLong(args, "minOverlapHexes");
+      String regionIdText = ToolSchema.optionalText(args, "regionId", null);
+      String tag = ToolSchema.optionalText(args, "tag", null);
+      boolean sameTagOnly = ToolSchema.optionalBoolean(args, "sameTagOnly").orElse(false);
+      Long rawMin = ToolSchema.optionalLong(args, "minOverlapHexes");
       long minOverlapHexes = rawMin == null ? 1L : rawMin;
       if (minOverlapHexes < 1L) {
         throw new IllegalArgumentException("minOverlapHexes 必须 ≥1: " + minOverlapHexes);
       }
-      boolean wholeOnly = ToolSupport.optionalBoolean(args, "wholeOnly").orElse(false);
-      boolean includeHexes = ToolSupport.optionalBoolean(args, "includeHexes").orElse(false);
-      Long rawLimit = ToolSupport.optionalLong(args, "limit");
+      boolean wholeOnly = ToolSchema.optionalBoolean(args, "wholeOnly").orElse(false);
+      boolean includeHexes = ToolSchema.optionalBoolean(args, "includeHexes").orElse(false);
+      Long rawLimit = ToolSchema.optionalLong(args, "limit");
       long limit = rawLimit == null ? DEFAULT_LIMIT : rawLimit;
       if (limit < 1L) {
         throw new IllegalArgumentException("limit 必须 ≥1: " + limit);
@@ -117,15 +130,14 @@ public final class MapOverlapsTool implements AgentTool, GmOnlyRead {
       if (limit > MAX_LIMIT) {
         throw new IllegalArgumentException("limit 上限为 " + MAX_LIMIT + ": " + limit);
       }
-      var target = ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH);
-      SimulationState state = query.stateAt(target);
-      GameMap map = ToolSupport.gameMap(state);
+      SimulationState state = MapToolReads.state(reads, args);
+      GameMap map = MapToolReads.gameMap(state);
 
       RegionId selectedRegionId = null;
       if (regionIdText != null) {
         selectedRegionId = RegionId.parse(regionIdText);
         Region selected = map.regions().get(selectedRegionId);
-        if (selected == null || !ToolSupport.regionVisible(context, mapId, selectedRegionId)) {
+        if (selected == null || !perspective.regionVisible(context, mapId, selectedRegionId)) {
           return ToolResult.error("NOT_FOUND", "区域不存在: " + regionIdText);
         }
       }
@@ -283,7 +295,7 @@ public final class MapOverlapsTool implements AgentTool, GmOnlyRead {
       view.put("sameTagPairCount", sameTagPairCount);
       view.put("filters", filters);
       view.put("overlaps", rows);
-      return ToolSupport.ok(view);
+      return ToolResults.ok(view);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
@@ -320,7 +332,7 @@ public final class MapOverlapsTool implements AgentTool, GmOnlyRead {
     return aTag != null && !aTag.isBlank() && bTag != null && !bTag.isBlank() && aTag.equals(bTag);
   }
 
-  private static Map<String, Object> overlapRow(
+  private Map<String, Object> overlapRow(
       Pair pair,
       Region a,
       Region b,
@@ -344,7 +356,7 @@ public final class MapOverlapsTool implements AgentTool, GmOnlyRead {
       boolean hexesTruncated = hexes.size() > MAX_HEXES_PER_PAIR;
       List<Map<String, Object>> hexViews = new ArrayList<>();
       for (int i = 0; i < Math.min(hexes.size(), MAX_HEXES_PER_PAIR); i++) {
-        hexViews.add(ToolSupport.hexCoord(hexes.get(i)));
+        hexViews.add(views.hexCoord(hexes.get(i)));
       }
       row.put("overlapHexes", hexViews);
       row.put("overlapHexesTruncated", hexesTruncated);

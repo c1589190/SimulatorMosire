@@ -12,6 +12,10 @@ import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.time.CalendarService;
+import io.mosire.simos.app.tools.map.AppMapPathPort;
+import io.mosire.simos.app.tools.map.AppMapRenderPort;
+import io.mosire.simos.app.tools.map.AppMapToolPerspective;
+import io.mosire.simos.app.tools.map.AppMapToolViews;
 import io.mosire.simos.app.tools.read.ArmyCombatTool;
 import io.mosire.simos.app.tools.read.ArmyCombatsTool;
 import io.mosire.simos.app.tools.read.BranchListTool;
@@ -29,13 +33,6 @@ import io.mosire.simos.app.tools.read.GmPacketsTool;
 import io.mosire.simos.app.tools.read.GmToolUsageTool;
 import io.mosire.simos.app.tools.read.GovInfoTool;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
-import io.mosire.simos.app.tools.read.MapBlockTool;
-import io.mosire.simos.app.tools.read.MapHexTool;
-import io.mosire.simos.app.tools.read.MapOverlapsTool;
-import io.mosire.simos.app.tools.read.MapOverviewTool;
-import io.mosire.simos.app.tools.read.MapPathTool;
-import io.mosire.simos.app.tools.read.MapRegionTool;
-import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
 import io.mosire.simos.app.tools.read.ProvinceDivideTool;
 import io.mosire.simos.app.tools.read.SdCombatsTool;
@@ -103,14 +100,6 @@ import io.mosire.simos.app.tools.write.GovSetFxRateTool;
 import io.mosire.simos.app.tools.write.GovTransferTreasuryTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.LevyRegionTool;
-import io.mosire.simos.app.tools.write.MapCreateRegionTool;
-import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
-import io.mosire.simos.app.tools.write.MapRandomizeRegionTool;
-import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
-import io.mosire.simos.app.tools.write.MapRenameRegionTool;
-import io.mosire.simos.app.tools.write.MapSetEdgeTool;
-import io.mosire.simos.app.tools.write.MapSetTerrainTool;
-import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
 import io.mosire.simos.app.tools.write.MyPacketTool;
 import io.mosire.simos.app.tools.write.PacketIntentTool;
 import io.mosire.simos.app.tools.write.ProposeCallTool;
@@ -189,6 +178,27 @@ import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.app.tools.write.VoidAdjudicationTool;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.map.tools.MapPathPort;
+import io.mosire.simos.map.tools.MapRenderPort;
+import io.mosire.simos.map.tools.MapToolPerspective;
+import io.mosire.simos.map.tools.MapToolViews;
+import io.mosire.simos.map.tools.read.MapBlockTool;
+import io.mosire.simos.map.tools.read.MapHexTool;
+import io.mosire.simos.map.tools.read.MapOverlapsTool;
+import io.mosire.simos.map.tools.read.MapOverviewTool;
+import io.mosire.simos.map.tools.read.MapPathTool;
+import io.mosire.simos.map.tools.read.MapRegionTool;
+import io.mosire.simos.map.tools.read.MapRenderTool;
+import io.mosire.simos.map.tools.write.MapCreateRegionTool;
+import io.mosire.simos.map.tools.write.MapDeleteRegionTool;
+import io.mosire.simos.map.tools.write.MapRandomizeRegionTool;
+import io.mosire.simos.map.tools.write.MapRegisterPathwayGroupTool;
+import io.mosire.simos.map.tools.write.MapRenameRegionTool;
+import io.mosire.simos.map.tools.write.MapSetEdgeTool;
+import io.mosire.simos.map.tools.write.MapSetTerrainTool;
+import io.mosire.simos.map.tools.write.MapUpdateRegionTool;
 import io.mosire.simos.util.spi.CommandTargets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -589,17 +599,21 @@ public final class SimosToolSource implements ToolSource {
     //   hexCount 最小、并列按 regionId 字典序；一批 social.UpdateCity 共享 batchId ⇒ 恰一条 revision。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 social。
     built.add(new ProvinceAssignCitiesTool(core, query, initiator));
-    built.add(new MapSetTerrainTool(core, initiator, mapId));
-    built.add(new MapSetEdgeTool(core, initiator, mapId));
-    built.add(new MapCreateRegionTool(core, initiator, mapId));
-    built.add(new MapUpdateRegionTool(core, initiator, mapId));
+    // ★★ 2026-10-12 B3 试点（设计书 §4.3 / 台账 §5）：地图的 8 条窄写**已下放到 simos-map**
+    //   （`io.mosire.simos.map.tools.write`），这里只剩装配——注入 ga-spi 的窄写口（适配器在 app，见
+    //   `CoreSimosToolWritePort`：命令 id / 发起者 / 信封由它装配，工具不再直连 CoreSimos）。
+    ToolWritePort mapWrites = new CoreSimosToolWritePort(core, initiator);
+    built.add(new MapSetTerrainTool(mapWrites, mapId));
+    built.add(new MapSetEdgeTool(mapWrites, mapId));
+    built.add(new MapCreateRegionTool(mapWrites, mapId));
+    built.add(new MapUpdateRegionTool(mapWrites, mapId));
     // ★★ R4（2026-10-01 行政区划修复计划 §1.4）：GM 改区域名的窄面——命令 map.RenameRegion 标 GmOnlyCommand
     //   ⇒ 决策人令 / RegisterEffect / 决策人 catalog 三条路径都到不了；GM 直接提交与这条窄工具照常可用。
     //   **只在 GM 桶**；改名只动 name，不动内容与边界。──
-    built.add(new MapRenameRegionTool(core, initiator, mapId));
-    built.add(new MapDeleteRegionTool(core, initiator, mapId));
-    built.add(new MapRandomizeRegionTool(core, initiator, mapId));
-    built.add(new MapRegisterPathwayGroupTool(core, initiator, mapId));
+    built.add(new MapRenameRegionTool(mapWrites, mapId));
+    built.add(new MapDeleteRegionTool(mapWrites, mapId));
+    built.add(new MapRandomizeRegionTool(mapWrites, mapId));
+    built.add(new MapRegisterPathwayGroupTool(mapWrites, mapId));
     // M2（spec §八.3）：unit 域窄写 —— ★ **只在 GM 组**（D-1 曾让它们也挂决策人桶，2026-09-22 已撤销）。
     built.add(new UnitRenameTool(core, initiator, mapId));
     built.add(new UnitCreateTool(core, initiator, mapId));
@@ -937,6 +951,17 @@ public final class SimosToolSource implements ToolSource {
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
       PendingApprovals pendingApprovals) {
+    // ★★ 2026-10-12 B3 试点（设计书 §4.3 / 台账 §5）：地图的 7 条读工具**已下放到 simos-map**
+    //   （`io.mosire.simos.map.tools.read`），这里只剩装配——注入四类接缝：
+    //   ① 窄读口（QueryService 的三个方法面，含 head 解析/创世等待/读缓存）；
+    //   ② 视图口（ApiViews / ToolSupport 的**同一份** view 函数，形状不另写第二份）；
+    //   ③ 视角口（可见性围栏 + 归属国家/邻国这两个 sd 派生事实）；
+    //   ④ 服务口（渲染 RenderService、寻路 unit.PathFinder）。
+    ToolReadPort mapReads = new QueryServiceToolReadPort(query);
+    MapToolViews mapViews = new AppMapToolViews();
+    MapToolPerspective mapPerspective = new AppMapToolPerspective();
+    MapRenderPort mapRender = new AppMapRenderPort(renderService);
+    MapPathPort mapPaths = new AppMapPathPort();
     return List.of(
         // ★★ E6b：catalog 的**命令清单**取完整注册面（含 GM-only），决策人可见性由显式"可嵌入令"白名单过滤
         //   （CatalogVisibility）—— GM 看得到 economy.SwitchMode / economy.GmAdjust，决策人看不到。
@@ -952,19 +977,19 @@ public final class SimosToolSource implements ToolSource {
         //   历法只是"今天几号、什么节气"，不含可见性侧信道（配置是 store_meta 库级元数据、不落 revision）。
         //   ★ 不标 GmOnlyRead、**不进** PAYLOAD_HINTS（它不是命令类型）。
         new CalendarInfoTool(query, calendarService),
-        new MapOverviewTool(query, mapId),
-        new MapHexTool(query, mapId),
-        new MapRegionTool(query, mapId),
+        new MapOverviewTool(mapReads, mapViews, mapPerspective, mapId),
+        new MapHexTool(mapReads, mapViews, mapPerspective, mapId),
+        new MapRegionTool(mapReads, mapViews, mapPerspective, mapId),
         // ★ 用户 2026-10-02：GM 专用只读重合检测——同一 tag（如 Nation）下找区域的部分重合 / 完全重合 /
         //   包含；决策人不给，避免越过视野泄露全图区域几何。
-        new MapOverlapsTool(query, mapId),
+        new MapOverlapsTool(mapReads, mapViews, mapPerspective, mapId),
         // ★ P3（2026-10-01）：省份划分建议（只出建议、零写入）——递归主轴二分 + 可选首都圈 + 相交 Region 清单。
         //   只给 GM 桶（GmOnlyRead）：划分是 GM 的规划动作，决策人不做行政区划。
         new ProvinceDivideTool(query, mapId),
-        new MapPathTool(query),
+        new MapPathTool(mapReads, mapViews, mapPaths),
         // ★ 工具面补齐（2026-09-25）：GUI `/api/map/block` 的对应读口——某格所在的**整块地形**（成员格清单）。
         //   与 hex（单格）/ overview（全块多边形）不同形；GUI 该端点拒 as= ⇒ 只给 GM 桶（GmOnlyRead）。
-        new MapBlockTool(query),
+        new MapBlockTool(mapReads, mapViews),
         // ★ C6a：单位/人口的只读时间戳（movement.departedAt / at）要带日期 ⇒ 三件都传世界同一份 CalendarService。
         new UnitListTool(query, calendarService),
         new UnitGetTool(query, calendarService),
@@ -983,7 +1008,7 @@ public final class SimosToolSource implements ToolSource {
         //   只在 GM 桶（GmOnlyRead）：响应含 actor 切片的商品余额，而 actor 面在本仓的资源表态里是缺省拒。
         new EconomyOwnershipTool(query, mapId),
         // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）
-        new MapRenderTool(query, renderService),
+        new MapRenderTool(mapReads, mapViews, mapRender),
         // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `sd.CreateDecisionMaker` 写、写完看不见。
         new DecisionMakersTool(query),
         // ★ 2026-09-25：详情并入 GUI 的 `/{id}/scope`（现算可见范围）——同一资源的两个端点合成一条工具。
@@ -1030,6 +1055,11 @@ public final class SimosToolSource implements ToolSource {
    *
    * <p>为什么需要它：M4 侦察报告逐条核过，有几条读口照抄 GUI 会**越过决策人的可见范围**（{@code map.path} 是地形探测、{@code
    * sd.decision-makers} 是别人的底牌）。creed 五要求"哪个工具归哪个桶要**写出来**"， 而当时无处可写 —— 本方法就是那个"写出来的地方"。
+   *
+   * <p>★★ <b>2026-10-12 B3 试点的并集</b>：地图的 GM-only 读工具（{@code map.path}/{@code map.block}/{@code
+   * map.overlaps}）随下放改标契约层的 {@link io.mosire.simos.ga.spi.GmOnlyRead}（域模块看不见 app 的标记），
+   * 故这里**两个标记取并集**——漏掉契约层那支 = 这三条工具**悄悄进决策人桶**（权限放大，且没有任何症状）； 漏掉 app 那支 = 其余 12 条 GM-only
+   * 读工具一起放大。两支各自都是"显式声明"，并集不放松任何一条判定。 （B4 收口后 app 的标记退役，这里只剩一支。）
    */
   private static List<AgentTool> readToolsFor(List<AgentTool> all, Role role) {
     if (role == Role.GM) {
@@ -1037,7 +1067,7 @@ public final class SimosToolSource implements ToolSource {
     }
     List<AgentTool> shared = new ArrayList<>(all.size());
     for (AgentTool tool : all) {
-      if (!(tool instanceof GmOnlyRead)) {
+      if (!(tool instanceof GmOnlyRead) && !(tool instanceof io.mosire.simos.ga.spi.GmOnlyRead)) {
         shared.add(tool);
       }
     }

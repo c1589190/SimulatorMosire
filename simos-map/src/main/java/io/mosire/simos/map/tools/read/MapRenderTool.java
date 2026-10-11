@@ -1,29 +1,27 @@
-package io.mosire.simos.app.tools.read;
+package io.mosire.simos.map.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.app.query.QueryService;
-import io.mosire.simos.app.query.QueryService.QueryTarget;
-import io.mosire.simos.app.render.RenderLayer;
-import io.mosire.simos.app.render.RenderRequest;
-import io.mosire.simos.app.render.RenderService;
-import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.map.tools.MapRenderPort;
+import io.mosire.simos.map.tools.MapToolViews;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * {@code simos.map.render}：把世界<b>渲染成图</b>——图片随工具结果一并出站（MCP 的 {@code ImageContent} / 决策人的图片分片），
@@ -37,6 +35,10 @@ import java.util.Set;
  * </ul>
  *
  * <p>★ 视野只能按<b>中心</b>或<b>区域</b>给：不给就 {@code BAD_REQUEST}——静默给个"世界中心"会让模型以为看到的是它问的那块。
+ *
+ * <p>★ <b>2026-10-12 B3 下放</b>：本类自 {@code app/tools/read} 迁入 {@code simos-map}，对 app/core
+ * 的直连换成构造期注入 （读口 + 视图口 + 渲染口 {@link MapRenderPort}——渲染服务/工件库/token 预算都在 app，地图模块不做存储）；
+ * 参数缺省、图层校验文案、载荷字段逐字不变。
  */
 public final class MapRenderTool implements AgentTool {
 
@@ -57,14 +59,20 @@ public final class MapRenderTool implements AgentTool {
   /** 缺省半径（4 ⇒ 61 格：看图足够、token 友好）。 */
   private static final int DEFAULT_RADIUS = 4;
 
-  private static final Set<RenderLayer> DEFAULT_LAYERS =
-      EnumSet.of(RenderLayer.TERRAIN, RenderLayer.REGIONS, RenderLayer.CITIES, RenderLayer.UNITS);
+  /**
+   * 缺省图层名（与今天的 {@code EnumSet.of(TERRAIN, REGIONS, CITIES, UNITS)} 同集合）：交给渲染口按既有词表解析
+   * （解析只有一处，未知名照样响亮拒绝）。
+   */
+  private static final List<String> DEFAULT_LAYER_NAMES =
+      List.of("terrain", "regions", "cities", "units");
 
-  private final QueryService query;
-  private final RenderService render;
+  private final ToolReadPort reads;
+  private final MapToolViews views;
+  private final MapRenderPort render;
 
-  public MapRenderTool(QueryService query, RenderService render) {
-    this.query = Objects.requireNonNull(query, "query");
+  public MapRenderTool(ToolReadPort reads, MapToolViews views, MapRenderPort render) {
+    this.reads = Objects.requireNonNull(reads, "reads");
+    this.views = Objects.requireNonNull(views, "views");
     this.render = Objects.requireNonNull(render, "render");
   }
 
@@ -82,56 +90,58 @@ public final class MapRenderTool implements AgentTool {
 
   @Override
   public Map<String, Object> jsonSchema() {
-    Map<String, Object> props = ToolSupport.targetProps();
-    props.put("q", ToolSupport.prop("integer", "中心六角列坐标 q（与 r 同时给；也可改用 regionId）"));
-    props.put("r", ToolSupport.prop("integer", "中心六角行坐标 r"));
-    props.put("regionId", ToolSupport.prop("string", "按区域取景（取该区域最北偏西的一格作中心）"));
-    props.put("radius", ToolSupport.prop("integer", "半径 1..10（轴向距离；缺省 " + DEFAULT_RADIUS + "）"));
+    Map<String, Object> props = ToolSchema.targetProps();
+    props.put("q", ToolSchema.prop("integer", "中心六角列坐标 q（与 r 同时给；也可改用 regionId）"));
+    props.put("r", ToolSchema.prop("integer", "中心六角行坐标 r"));
+    props.put("regionId", ToolSchema.prop("string", "按区域取景（取该区域最北偏西的一格作中心）"));
+    props.put("radius", ToolSchema.prop("integer", "半径 1..10（轴向距离；缺省 " + DEFAULT_RADIUS + "）"));
     props.put(
         "layers",
-        ToolSupport.prop("array", "图层，可多选：terrain / regions / cities / units / population（缺省前四者）"));
-    props.put("width", ToolSupport.prop("integer", "画布宽 64..1024（缺省 768）"));
-    props.put("height", ToolSupport.prop("integer", "画布高 64..1024（缺省 768）"));
+        ToolSchema.prop("array", "图层，可多选：terrain / regions / cities / units / population（缺省前四者）"));
+    props.put("width", ToolSchema.prop("integer", "画布宽 64..1024（缺省 768）"));
+    props.put("height", ToolSchema.prop("integer", "画布高 64..1024（缺省 768）"));
     props.put(
-        "format", ToolSupport.prop("string", "auto（缺省：按你的模型有没有视觉能力选图/字符图）| image | text（字符图）"));
-    return ToolSupport.schema(props, List.of());
+        "format", ToolSchema.prop("string", "auto（缺省：按你的模型有没有视觉能力选图/字符图）| image | text（字符图）"));
+    return ToolSchema.schema(props, List.of());
   }
 
   @Override
   public ResourceManifest resources() {
     // 一次取景同时读 map（地形/区域）、social（城市/人口）、unit（单位位置）——按"全读"声明最诚实
-    return ToolSupport.ALL_READ;
+    return ToolResources.ALL_READ;
   }
 
   @Override
   public ToolResult execute(ToolContext context) {
     try {
       Map<String, Object> args = context.arguments();
-      QueryTarget target = ToolSupport.target(args, ToolSupport.DEFAULT_BRANCH);
-      SimulationState state = query.stateAt(target);
-      GameMap map = ToolSupport.gameMap(state);
+      SimulationState state = MapToolReads.state(reads, args);
+      GameMap map = MapToolReads.gameMap(state);
 
       HexCoord center = resolveCenter(args, map);
       int radius = resolveRadius(args);
       String format = resolveFormat(args, context.config());
 
       if ("text".equals(format)) {
-        RenderService.Rendered rendered = render.renderText(target, center, radius);
+        MapRenderPort.Rendered rendered =
+            render.renderText(
+                MapToolReads.branch(args), MapToolReads.revision(args), center, radius);
         Map<String, Object> view = view(center, radius, "text", rendered);
-        return ToolSupport.ok(view);
+        return ToolResults.ok(view);
       }
 
-      RenderRequest request =
-          new RenderRequest(
+      MapRenderPort.Rendered rendered =
+          render.renderImage(
+              MapToolReads.branch(args),
+              MapToolReads.revision(args),
               center,
               radius,
               resolveLayers(args),
-              resolveSide(args, "width"),
-              resolveSide(args, "height"));
-      RenderService.Rendered rendered = render.renderImage(target, request);
+              ToolSchema.optionalLong(args, "width"),
+              ToolSchema.optionalLong(args, "height"));
       Map<String, Object> view = view(center, radius, "image", rendered);
       // ★ 文本摘要 + 图片资产（assetId）：MCP 面把它出成 ImageContent，决策人面把它附成图片分片
-      return ToolResult.ok(ToolSupport.json(view), List.of(rendered.assetId().orElseThrow()));
+      return ToolResult.ok(ToolResults.json(view), List.of(rendered.assetId().orElseThrow()));
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
@@ -140,9 +150,9 @@ public final class MapRenderTool implements AgentTool {
   // ---------- 参数 ----------
 
   private HexCoord resolveCenter(Map<String, Object> args, GameMap map) {
-    Long q = ToolSupport.optionalLong(args, "q");
-    Long r = ToolSupport.optionalLong(args, "r");
-    String regionId = ToolSupport.optionalText(args, "regionId", null);
+    Long q = ToolSchema.optionalLong(args, "q");
+    Long r = ToolSchema.optionalLong(args, "r");
+    String regionId = ToolSchema.optionalText(args, "regionId", null);
     boolean byCoord = q != null || r != null;
     if (byCoord && regionId != null) {
       throw new IllegalArgumentException("q/r 与 regionId 只能给一个（同时给无法判断以谁为准）");
@@ -153,7 +163,8 @@ public final class MapRenderTool implements AgentTool {
       }
       HexCoord coord = new HexCoord((int) (long) q, (int) (long) r);
       if (!map.hexes().containsKey(coord)) {
-        throw new IllegalArgumentException("中心格不存在: " + coord.q() + "_" + coord.r());
+        // ★ 坐标串取 HexCoord.toString()（L6：坐标串只有一份实现），文案逐字不变。
+        throw new IllegalArgumentException("中心格不存在: " + coord);
       }
       return coord;
     }
@@ -180,19 +191,15 @@ public final class MapRenderTool implements AgentTool {
   }
 
   private static int resolveRadius(Map<String, Object> args) {
-    Long radius = ToolSupport.optionalLong(args, "radius");
+    Long radius = ToolSchema.optionalLong(args, "radius");
     return radius == null ? DEFAULT_RADIUS : (int) (long) radius;
   }
 
-  private static int resolveSide(Map<String, Object> args, String name) {
-    Long side = ToolSupport.optionalLong(args, name);
-    return side == null ? RenderRequest.DEFAULT_SIDE : (int) (long) side;
-  }
-
-  private static Set<RenderLayer> resolveLayers(Map<String, Object> args) {
+  /** 图层名（{@code layers} 的列表形态与 {@code "terrain,units"} 字符串形态都容忍；解析/拒绝在渲染口）。 */
+  private static List<String> resolveLayers(Map<String, Object> args) {
     Object raw = args.get("layers");
     if (raw == null) {
-      return DEFAULT_LAYERS;
+      return DEFAULT_LAYER_NAMES;
     }
     List<String> names = new ArrayList<>();
     if (raw instanceof List<?> list) {
@@ -205,7 +212,7 @@ public final class MapRenderTool implements AgentTool {
         names.add(piece);
       }
     }
-    return RenderLayer.parseAll(names);
+    return names;
   }
 
   /**
@@ -218,8 +225,7 @@ public final class MapRenderTool implements AgentTool {
    * <p>★ **显式 {@code image}/{@code text} 一律照办**（能力位不覆盖调用者的明确要求）：调用方要什么给什么，选错是它的事。
    */
   private static String resolveFormat(Map<String, Object> args, Map<String, Object> config) {
-    String format =
-        ToolSupport.optionalText(args, "format", "auto").trim().toLowerCase(Locale.ROOT);
+    String format = ToolSchema.optionalText(args, "format", "auto").trim().toLowerCase(Locale.ROOT);
     return switch (format) {
       case "auto" -> visionEnabled(config) ? "image" : "text";
       case "image" -> "image";
@@ -237,10 +243,10 @@ public final class MapRenderTool implements AgentTool {
     return true;
   }
 
-  private static Map<String, Object> view(
-      HexCoord center, int radius, String format, RenderService.Rendered rendered) {
+  private Map<String, Object> view(
+      HexCoord center, int radius, String format, MapRenderPort.Rendered rendered) {
     Map<String, Object> view = new LinkedHashMap<>();
-    view.put("center", ToolSupport.hexCoord(center));
+    view.put("center", views.hexCoord(center));
     view.put("radius", radius);
     view.put("format", format);
     view.put("summary", rendered.text());

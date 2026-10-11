@@ -2,7 +2,6 @@ package io.mosire.simos.app.decision;
 
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
-import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
@@ -12,6 +11,7 @@ import io.mosire.simos.app.tools.write.ProposeCallTool;
 import io.mosire.simos.app.tools.write.SubmitPacketTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.ga.decision.DecisionToolNames;
+import io.mosire.simos.map.tools.read.MapRenderTool;
 
 /**
  * **app 侧交给运行流的工具名声明**（{@link DecisionToolNames} 的实现）：这是"app 只负责组装"的接线点之一。

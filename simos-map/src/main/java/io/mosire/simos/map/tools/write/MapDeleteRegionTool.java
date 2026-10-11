@@ -1,6 +1,6 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.map.tools.write;
 
-import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
 
 /**
@@ -9,13 +9,16 @@ import java.util.Map;
  * <p>★ **只在 GM 桶**（故运行时 MCP 口（= GM 组）也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
  * <p>★ **不做静默幂等**：目标区域不存在 ⇒ 域层 fail-closed 拒绝（"删一个不存在的东西"是坏载荷，不是一次无副作用的写）。
+ *
+ * <p>★ <b>2026-10-12 B3 下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-map}，对 {@code CoreSimos}
+ * 的直连换成构造期注入的 {@link ToolWritePort}（命令类型、载荷、拒绝码、资源声明、审批门逐字不变）。
  */
 public final class MapDeleteRegionTool extends AbstractNarrowWriteTool {
 
   public static final String NAME = "map.DeleteRegion";
 
-  public MapDeleteRegionTool(CoreSimos core, String initiator, String mapId) {
-    super(core, initiator, mapId);
+  public MapDeleteRegionTool(ToolWritePort writes, String mapId) {
+    super(writes, mapId);
   }
 
   @Override

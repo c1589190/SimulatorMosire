@@ -12,7 +12,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.tools.read.CatalogTool;
-import io.mosire.simos.app.tools.read.MapHexTool;
+import io.mosire.simos.map.tools.read.MapHexTool;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;

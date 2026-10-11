@@ -120,3 +120,70 @@ ga 归属工具**留 app**，属 **B2b/B3**。`simos-ga` 现**无 `src/test`**�
 2. **读口**：`ga-spi` 新增窄读接口（`stateAt` 三方法面）+ `ToolReads` 助手；域工具改用它（`QueryTarget` 的构造由 app 以值参或注入解决）；
 3. **`ToolSupport` 收口**：把已搬 `ga-spi` 的助手从 app 的 `ToolSupport` 删掉、留可见性谓词与 `target`/`economyData`；
 4. **按域搬工具**（建议 **先 `simos-map` 15 个做试点**，它是纯读+纯 map 域、依赖面最小），再 unit/gov/social/economy/army/sd/ga。
+
+---
+
+## 6. ★★ B3 试点已完成：`simos-map` 15 个工具下放（模式已验证，其余域照抄）
+
+**规模**：`git mv` 15 个 `Map*` 工具 → `io.mosire.simos.map.tools.{read,write}`（app 侧 `Map*Tool` **清零**，
+map 侧 18 个文件含基类/助手）；`simos-map/src/main` 对 `core`/`app` 的 import **= 0**；
+`dependency:tree` 的 `io.mosire` 只剩 `simos-util` + `simos-ga-spi`（**无 core / 无 app / 无领域模块**）。
+
+### 6.1 新增的接缝（其余域可直接复用）
+
+| 接缝 | 落点 | app 侧实现 |
+|---|---|---|
+| `ToolReadPort`（`stateAt`/`facets`，**值参 branch/revision**） | **ga-spi** | `app.tools.QueryServiceToolReadPort`（通用） |
+| `ToolResults`（`json`/`ok`/`stateRef`/`committedView`/`fold(Outcome)`） | **ga-spi** | 纯函数（无实现） |
+| `ToolWritePort.submitWithReceipt` + `Receipt`（★ 唯一契约改动） | **ga-spi** | `app.tools.CoreSimosToolWritePort` |
+| `MapToolViews` / `MapToolPerspective` / `MapPathPort` / `MapRenderPort`（签名含 `GameMap`/`HexCoord`/`Region` ⇒ 放不进 ga-spi） | **simos-map 自己声明** | `app.tools.map.App*`，逐条**转调既有唯一实现** ⇒ 输出逐字不变 |
+
+### 6.2 偏离与裁定
+
+- **D1（已追认）** `ToolWritePort` 加 `Receipt`/`submitWithReceipt`：原端口只回 `Outcome` ⇒ 工具拿不到自己命令的真实
+  `commandId`，而结果载荷里有它 ⇒ 不改就会"报出去的 id ≠ 落盘信封 id"。改动时全仓无实现类，面为零。
+- **D3（已裁定）** `agentlib-mosire` 仍在 `simos-map` 的**禁列**里，但工具所需 agentlib 类型走 `ga-spi` **传递**引入 ——
+  因 `searchTransitive=false`，禁列只拦**直接声明** ⇒ **保留现状**（"域模块不许直接声明 agentlib"这条纪律没破）。
+- **③（已裁定）** `AppWritePathGuardTest`（R1 禁直连存储）**不扩扫描面**到 `simos-map/.../map/tools`：
+  被搬走的工具**结构上不可能**再直连存储（`simos-map` 的 enforcer 禁 `core`）⇒ 扩扫 = 重复围栏。
+- **★ 留下的观察**：`simos.map.path` 的实体是 **unit 域**（寻路/位置），本批按设计书 §4.3 留 `map` + 用 `MapPathPort` 解边界；
+  若要改归 `simos-unit`，是**另一次归属裁定**（本批不动）。
+
+### 6.3 测试迁移（C2）
+
+3 个测试文件改到全绿：`SimosToolsTest`（import 搬家 + 9 处构造改吃注入端口 + `mapOverlaps` 的标记判据改成
+**app 标记 ∪ 契约层标记**，与生产 `SimosToolSource.java:1070` 的并集判据对齐 ⇒ 不是放宽）、
+`RedactingQueryServiceTest`、`GmToolUsageApiTest`（后者实际在 `app/gui/`，报告里曾写成 `app/gm/`）。
+★ **两条"扫描面"计数断言（70 / 176）字面量一字未改**：实测"下放只移动落点、不增减工具"⇒ 只把**扫描根**
+从 app 单根扩成 app + `simos-map` 两根（抽成命名助手，注明"下一个域下放时在此加一行"），**绊线判别力保持**；
+**变异自证**：摘掉 map 根 ⇒ `Expected size: 70 but was: 62` / `176 but was: 161` 当场红，还原后 md5 逐字节一致。
+
+### 6.4 验收
+
+| 门禁 | 结果 |
+|---|---|
+| `-q -DskipTests compile` | rc=0 |
+| `-DskipTests validate` | rc=0；`BannedDependencies passed` ×16；18/18 模块 SUCCESS |
+| `-pl simos-app -am -DskipTests=false test` | rc=0；**tests=3409 / failures=0 / errors=0 / skipped=5**（413 类） |
+| `spotless:check -pl simos-app,simos-map` | rc=0 |
+| 负向（map→actor-api） | rc=1，`banned via the exclude/include list`；还原 md5 一致 |
+| 负向（map→core） | rc=1，Maven **`cyclic reference`**（map→core→map(test)） |
+| `clean verify`（B3 试点后） | **BUILD SUCCESS**，18/18 模块全绿，5:36（2026-10-12 03:38） |
+
+★ **踩坑 1（供下一批）**：聚焦跑 `-pl simos-app` **必须带 `-am`**，否则 `simos-ga` 不在本地库 ⇒ 直接 `DependencyResolutionException`（0.2s 假红）。
+★ **踩坑 2（本批真踩到）**：B3 试点只跑了 `compile`/`validate`/`test`，**没跑 `verify`** ⇒ 直到终审才发现 `spotbugs:check @ simos-map`
+**3 条 finding**（`EI_EXPOSE_REP`/`EI_EXPOSE_REP2` 在 `MapPathPort.Outcome.Reachable`、`CT_CONSTRUCTOR_THROW` 在 map 的窄写基类）。
+处置（**下次下放域必须同样处理**）：① 记录类型的有序集合一律**保序冻结在赋值处**（`Collections.unmodifiableList(new ArrayList<>(…))`，
+**禁用** `List.copyOf`/`Set.copyOf`——迭代序不是内容的纯函数，本仓明文禁用）；② `abstract` 基类构造器只做 `requireNonNull` 时，
+用仓内既有的 `@SuppressFBWarnings(value="CT_CONSTRUCTOR_THROW", …)`（同款见 `simos-app/.../AbstractHouseholdGmTool:87`），
+并**给该域补 `spotbugs-annotations`（provided、4.10.4）**——`simos-map` 原先没声明它（11 个模块早有先例）。
+修复后 `spotbugs @ simos-map` 3 → **0**，全仓终审 BUILD SUCCESS。
+
+### 6.5 下一个域（照抄试点的模板）
+
+1. `simos-map/pom.xml` 只加 `ga-spi` 一条依赖 + 把它从禁列除名（**不改其余禁列、不加 `<includes>`**）；
+2. 工具搬进 `<域>/src/main/java/.../<域>/tools/{read,write}`，写侧继承域内 `AbstractNarrowWriteTool`（吃 `ToolWritePort`）；
+3. 域内**声明**自己需要的端口（签名含域类型时放不进 ga-spi），app 侧实现**逐条转调既有唯一实现**；
+4. 权限围栏（可见性谓词）**不抄第二份** —— 域声明端口、app 转调 `ToolSupport`；
+5. app 侧：`SimosToolSource` 的 new 处换成注入 + 该域 `App*` 适配器；测试扫描根 +1 行、计数不动；
+6. 门禁：`compile` → `validate`（看 `BannedDependencies passed` 次数）→ 聚焦测试 → `clean verify`。

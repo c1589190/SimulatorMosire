@@ -17,6 +17,24 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
     </dependency>
+    <!-- ★★ 2026-10-12 B3 试点（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
+         §4.1/§4.3/§4.4；台账 §5 的执行顺序第 4 条「先 simos-map 15 个做试点」）：地图工具（`io.mosire.simos.map.tools.**`）
+         住在**自己的域**里，靠这一条拿到工具契约层——工具接口/角色标签（`SimosTool`/`ToolRole`/`GmOnlyRead`）、
+         窄写口（`ToolWritePort`）与两个纯助手（`ToolResources`/`ToolSchema`）。
+         ★ 方向不变：`ga-spi → {util, agentlib}`，本模块**不依赖 core/app/任何领域模块**（下面的 enforcer 逐条强制）。
+         ★ `agentlib-mosire`（AgentTool / ToolContext / ToolResult / ResourceManifest）**不在依赖块里**：
+           enforcer 明禁直接声明它，工具经 `simos-ga-spi` 的**传递依赖**使用这些类型（本批唯一新增依赖 = 本块）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-ga-spi</artifactId>
+    </dependency>
+    <!-- ★★ 2026-10-12 B3 试点补：地图工具面的窄写基类（`map/tools/write/AbstractNarrowWriteTool`）的构造器
+         只做 `Objects.requireNonNull`（fail-closed），SpotBugs 的 `CT_CONSTRUCTOR_THROW` 对 `abstract` 类是
+         **启发式误报** —— 处置沿用仓内既有形制（`simos-app/.../AbstractHouseholdGmTool:87` 的同一条
+         `@SuppressFBWarnings`），故需要该注解。11 个模块都已这样声明（provided、不进产物，版本与 spotbugs 插件同代）。 -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
     </dependency>
@@ -63,10 +81,14 @@
                     <exclude>io.mosire:simos-army</exclude>
                     <exclude>io.mosire:simos-economy</exclude>
                     <exclude>io.mosire:simos-economy-api</exclude>
-                    <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
-                         §4.1/§4.2）：`simos-ga-spi` 是**工具契约层**（只依赖 util）——地图侧永远不知道工具面存在
-                         （"地图工具"住在 app/未来的 map 工具包，不反向依赖契约层）⇒ 按冻结文档 §4 I-F4 的口径列入。 -->
-                    <exclude>io.mosire:simos-ga-spi</exclude>
+                    <!-- ★★ 2026-10-12 B3 试点（设计书 §4.3/§4.4；台账 §5 的执行顺序）：`simos-ga-spi`
+                         **从禁列除名** —— 地图的 15 个工具（`Map*`）已下放本模块（`io.mosire.simos.map.tools.**`），
+                         它们必须看得见工具契约层。除名的依据：`ga-spi` 只依赖 `util` + `agentlib`，
+                         **不引任何领域模块、不引 core**（它的 enforcer 逐条禁）⇒ 无环、不破铁律 3。
+                         ★ B1（2026-10-12）本行原按冻结文档 §4 I-F4 列入，原注释保留作留痕：
+                           「`simos-ga-spi` 是**工具契约层**（只依赖 util）——地图侧永远不知道工具面存在
+                           （"地图工具"住在 app/未来的 map 工具包，不反向依赖契约层）」——该判断已被 B3 取代
+                           （工具的家 = 它自己的域，正是本批要做的事）。 -->
                     <exclude>io.mosire:simos-gov</exclude>
                     <!-- ★★ 2026-10-12 B2a（设计书 §4.1 / §5 I-G2）：运行框架 simos-ga（工具运作 + 决策人运行）——
                          它永不依赖 app，其余模块也不得依赖它 ⇒ 列入禁列（组合根 simos-app 是唯一认识它的地方）。 -->
@@ -75,7 +97,7 @@
                     <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
                   </excludes>
-                  <message>simos-map 是地图与区域（地形/连通性/寻址），永不知道 SocialSimos / UnitSimos / ActorSimos 存在：只许依赖 simos-util。★ 禁列 = 全仓 simos 模块 − 自己 − util（含全部契约层、运行框架 ga 与已退役的 ledger，作历史留痕与未来防线），也不依赖 AgentLibMosire、不做任何存储。</message>
+                  <message>simos-map 是地图与区域（地形/连通性/寻址），永不知道 SocialSimos / UnitSimos / ActorSimos 存在：只许依赖 simos-util 与 simos-ga-spi（工具契约层，只依赖 util —— 本模块的 15 个地图工具住在这里）。★ 禁列 = 全仓 simos 模块 − 自己 − {util, ga-spi}（含全部领域/编排模块与已退役的 ledger，作历史留痕与未来防线），也不依赖 AgentLibMosire、不做任何存储。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

@@ -29,18 +29,10 @@ import io.mosire.simos.app.render.RenderCache;
 import io.mosire.simos.app.render.RenderRequest;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.testing.SocialHouseholdFixture;
+import io.mosire.simos.app.tools.map.AppMapToolPerspective;
+import io.mosire.simos.app.tools.map.AppMapToolViews;
 import io.mosire.simos.app.tools.read.CatalogTool;
-import io.mosire.simos.app.tools.read.MapOverlapsTool;
-import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
-import io.mosire.simos.app.tools.write.MapCreateRegionTool;
-import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
-import io.mosire.simos.app.tools.write.MapRandomizeRegionTool;
-import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
-import io.mosire.simos.app.tools.write.MapRenameRegionTool;
-import io.mosire.simos.app.tools.write.MapSetEdgeTool;
-import io.mosire.simos.app.tools.write.MapSetTerrainTool;
-import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
 import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
 import io.mosire.simos.app.tools.write.SdCancelEffectTool;
 import io.mosire.simos.app.tools.write.SdCommitCombatOutcomeTool;
@@ -98,6 +90,8 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.spi.EconomyGmAdjustments;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -114,6 +108,16 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.map.tools.read.MapOverlapsTool;
+import io.mosire.simos.map.tools.read.MapRenderTool;
+import io.mosire.simos.map.tools.write.MapCreateRegionTool;
+import io.mosire.simos.map.tools.write.MapDeleteRegionTool;
+import io.mosire.simos.map.tools.write.MapRandomizeRegionTool;
+import io.mosire.simos.map.tools.write.MapRegisterPathwayGroupTool;
+import io.mosire.simos.map.tools.write.MapRenameRegionTool;
+import io.mosire.simos.map.tools.write.MapSetEdgeTool;
+import io.mosire.simos.map.tools.write.MapSetTerrainTool;
+import io.mosire.simos.map.tools.write.MapUpdateRegionTool;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -744,16 +748,19 @@ class SimosToolsTest {
   void mapNarrowWriteToolsAreNamedAfterTheirFixedCommandType() throws Exception {
     CoreSimos core = shell.coreSimos();
     String mapId = ShellConfig.defaults(tempDir).mapId();
+    // ★★ 2026-10-12 B3 试点：8 条 map 窄写已下放到 simos-map（`io.mosire.simos.map.tools.write`）⇒ 构造器
+    //   改吃注入的窄写口，这里与生产装配（SimosToolSource）**同源**地传：同一个 CoreSimosToolWritePort。
+    ToolWritePort mapWrites = new CoreSimosToolWritePort(core, TEST_INITIATOR);
     List<AgentTool> mapTools =
         List.of(
-            new MapSetTerrainTool(core, TEST_INITIATOR, mapId),
-            new MapSetEdgeTool(core, TEST_INITIATOR, mapId),
-            new MapCreateRegionTool(core, TEST_INITIATOR, mapId),
-            new MapUpdateRegionTool(core, TEST_INITIATOR, mapId),
-            new MapRenameRegionTool(core, TEST_INITIATOR, mapId),
-            new MapDeleteRegionTool(core, TEST_INITIATOR, mapId),
-            new MapRandomizeRegionTool(core, TEST_INITIATOR, mapId),
-            new MapRegisterPathwayGroupTool(core, TEST_INITIATOR, mapId));
+            new MapSetTerrainTool(mapWrites, mapId),
+            new MapSetEdgeTool(mapWrites, mapId),
+            new MapCreateRegionTool(mapWrites, mapId),
+            new MapUpdateRegionTool(mapWrites, mapId),
+            new MapRenameRegionTool(mapWrites, mapId),
+            new MapDeleteRegionTool(mapWrites, mapId),
+            new MapRandomizeRegionTool(mapWrites, mapId),
+            new MapRegisterPathwayGroupTool(mapWrites, mapId));
 
     assertThat(toolNames(mapTools))
         .as("8 条 map 窄工具的 name() == 它们各自钉死的命令类型")
@@ -1097,8 +1104,9 @@ class SimosToolsTest {
   }
 
   /**
-   * ★★ **M2 判据 §5.5（本任务新增的同源强判据）**：扫 {@code tools/write/*Tool.java} 把**实现了窄写工具类**的 {@code NAME}
-   * 常量抽出来，断言 **"实现了窄写工具类的集合 == GM 桶的窄写工具集合"**。
+   * ★★ **M2 判据 §5.5（本任务新增的同源强判据）**：扫**各模块**的 {@code tools/write/*Tool.java}（★ 2026-10-12 B3 起含
+   * {@code simos-map} 的同名目录，见 {@link #narrowWriteSourceRoots()}）把**实现了窄写工具类**的 {@code NAME} 常量抽出来，
+   * 断言 **"实现了窄写工具类的集合 == GM 桶的窄写工具集合"**。
    *
    * <p>**它挡住的失效模式**：写了 {@code write/UnitXxxTool.java} 却**忘了接进任何桶** —— 工具面看不见它、两份手抄名单也不认识它，
    * 于是**没有任何断言会红**（M4 侦察点名的「同源判据只覆盖命令、不覆盖工具」那个缺口）。M2 的变异 m3（孤儿工具）就是它的靶子。
@@ -1117,7 +1125,10 @@ class SimosToolsTest {
             "扫描必须恰为 70 个窄写工具类（W2 的 simos.economy.setMarketZonePriceAlpha 继承 AbstractNarrowWriteTool ⇒ "
                 + "66 → 67；★★ W5-fix6 的 simos.economy.setGovernmentMintScale 同样继承它 ⇒ 67 → 68；"
                 + "★★ W5.5 的 simos.economy.setMarketZoneLoanRateAlpha 同样继承它 ⇒ 68 → 69；"
-                + "★★ W10 的 simos.economy.setEconomyPolicy 同样继承它 ⇒ 69 → 70；扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
+                + "★★ W10 的 simos.economy.setEconomyPolicy 同样继承它 ⇒ 69 → 70；"
+                + "★★ 2026-10-12 B3 试点把 8 条 map 窄写下放到 simos-map（扫描根见 narrowWriteSourceRoots()）——"
+                + "下放只移动落点、不增减工具 ⇒ 总数仍是 70（扫描根没跟上就会静默掉到 62，这里当场红）；"
+                + "扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
         .hasSize(70);
 
     // 真工具面派生的 GM 窄写 = GM 桶 ∖ 读名单 ∖ 非窄写写工具。
@@ -1156,33 +1167,62 @@ class SimosToolsTest {
    * 也没有这条继承）。
    */
   private static Set<String> narrowWriteToolNamesFromSources() throws IOException {
-    Path root = Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "write");
+    List<Path> roots = narrowWriteSourceRoots();
     Pattern nameConstant = Pattern.compile("String\\s+NAME\\s*=\\s*\"([^\"]+)\"");
     Pattern nameHandlerType = Pattern.compile("String\\s+NAME\\s*=\\s*([A-Za-z0-9_]+)\\.TYPE");
     Map<String, String> handlerTypes = handlerTypeConstantsFromSources();
     Set<String> names = new LinkedHashSet<>();
-    try (Stream<Path> files = Files.walk(root)) {
-      for (Path file :
-          files.filter(path -> path.getFileName().toString().endsWith("Tool.java")).toList()) {
-        String source = Files.readString(file);
-        if (!source.contains("extends AbstractNarrowWriteTool")) {
-          continue;
+    for (Path root : roots) {
+      try (Stream<Path> files = Files.walk(root)) {
+        for (Path file :
+            files.filter(path -> path.getFileName().toString().endsWith("Tool.java")).toList()) {
+          String source = Files.readString(file);
+          if (!source.contains("extends AbstractNarrowWriteTool")) {
+            continue;
+          }
+          Matcher matcher = nameConstant.matcher(source);
+          if (matcher.find()) {
+            names.add(matcher.group(1));
+            continue;
+          }
+          Matcher constant = nameHandlerType.matcher(source);
+          assertThat(constant.find()).as("%s 继承了窄写基类却抽不到 NAME 常量（扫描器要当场响，不许静默跳过）", file).isTrue();
+          String resolved = handlerTypes.get(constant.group(1));
+          assertThat(resolved)
+              .as("%s 的 NAME = %s.TYPE 解析不到命令类型（静态扫描必须能还原）", file, constant.group(1))
+              .isNotNull();
+          names.add(resolved);
         }
-        Matcher matcher = nameConstant.matcher(source);
-        if (matcher.find()) {
-          names.add(matcher.group(1));
-          continue;
-        }
-        Matcher constant = nameHandlerType.matcher(source);
-        assertThat(constant.find()).as("%s 继承了窄写基类却抽不到 NAME 常量（扫描器要当场响，不许静默跳过）", file).isTrue();
-        String resolved = handlerTypes.get(constant.group(1));
-        assertThat(resolved)
-            .as("%s 的 NAME = %s.TYPE 解析不到命令类型（静态扫描必须能还原）", file, constant.group(1))
-            .isNotNull();
-        names.add(resolved);
       }
     }
     return names;
+  }
+
+  /**
+   * 实现了窄写基类的工具类所在源码根（**按模块逐条给出**）。
+   *
+   * <p>★★ 2026-10-12 B3 试点：地图的 8 条窄写已下放到 {@code simos-map}（{@code
+   * io.mosire.simos.map.tools.write}）⇒ 扫描面必须跟着架构走。只扫 app 会让下放的工具**静默漏出**扫描面（本仓踩过的
+   * "扫描器静默"陷阱），故这里两个模块都列；下一个域下放时在此加一行即可。
+   *
+   * <p>★ 路径相对 {@code simos-app/}（surefire 的工作目录）：自己的树写 {@code src/…}，兄弟模块写 {@code
+   * ../simos-<模块>/…}（与 {@link #commandHandlerSourceRoots()} 同款，主树与 worktree 里都成立）。
+   */
+  private static List<Path> narrowWriteSourceRoots() {
+    return List.of(
+        Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "write"),
+        Paths.get(
+            "..",
+            "simos-map",
+            "src",
+            "main",
+            "java",
+            "io",
+            "mosire",
+            "simos",
+            "map",
+            "tools",
+            "write"));
   }
 
   /**
@@ -1561,11 +1601,22 @@ class SimosToolsTest {
     assertThat(missing.code()).isEqualTo("NOT_FOUND");
     assertThat(missing.message()).contains("r-none");
 
+    // ★★ 2026-10-12 B3 试点：读工具已下放到 simos-map（`io.mosire.simos.map.tools.read`）⇒ 构造器改吃注入的
+    //   四个接缝，这里与生产装配（SimosToolSource 的 readTools）**同源**地传同一批 app 侧实现。
+    ToolReadPort mapReads = new QueryServiceToolReadPort(shell.queryService());
     AgentTool tool = shell.toolRegistry().find("simos.map.overlaps").orElseThrow();
     // ★ 注册表里的 GM 面是 RecordingToolSource.RecordingTool 装饰器，标记要看生产类本身。
-    assertThat(new MapOverlapsTool(shell.queryService(), ShellConfig.defaults(tempDir).mapId()))
-        .as("生产类必须实现 GmOnlyRead（只进 GM 桶的标记来源）")
-        .isInstanceOf(GmOnlyRead.class);
+    // ★★ 2026-10-12 B3 试点：map.overlaps 随下放改标**契约层**的 {@code ga-spi.GmOnlyRead}（域模块看不见 app
+    //   的标记）⇒ 这里与生产桶装配**同一判据**（SimosToolSource.readToolsFor 的两支并集；漏任一支 = 这条工具悄悄
+    //   进决策人桶 = 权限放大）。
+    assertThat(
+            new MapOverlapsTool(
+                mapReads,
+                new AppMapToolViews(),
+                new AppMapToolPerspective(),
+                ShellConfig.defaults(tempDir).mapId()))
+        .as("生产类必须实现 GmOnlyRead（只进 GM 桶的标记来源；app 与 ga-spi 两支之一）")
+        .isInstanceOfAny(GmOnlyRead.class, io.mosire.simos.ga.spi.GmOnlyRead.class);
     assertThat(tool.resources()).isEqualTo(ToolSupport.MAP_READ);
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM))).contains("simos.map.overlaps");
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)))
@@ -1751,7 +1802,8 @@ class SimosToolsTest {
    * *Handler.java}），对工具面**没有任何等价物** ⇒ 加一条 {@code read/*Tool.java} 却忘了加进 {@code SimosToolSource}
    * 不会红。
    *
-   * <p>口径：扫 {@code tools/read} 与 {@code tools/write} 两目录，抽 {@code NAME = "…"}；断言 **扫描到的名字 ⊆
+   * <p>口径：扫**各模块**的 {@code tools/read} 与 {@code tools/write} 两目录（★ 2026-10-12 B3 起含 {@code
+   * simos-map} 的同名两目录，见 {@link #toolSourceRoots()}），抽 {@code NAME = "…"}；断言 **扫描到的名字 ⊆
    * 两个桶的并集**，且**GM 桶里没有源码里不存在的名字**（双向：既不漏注册、也没有幽灵条目）。
    */
   @Test
@@ -1762,7 +1814,10 @@ class SimosToolsTest {
             "扫描必须恰为 176 个 *Tool.java 的 NAME（W2 新增 simos.economy.setMarketZonePriceAlpha ⇒ 172 → 173；"
                 + "★★ W5-fix6 新增 simos.economy.setGovernmentMintScale ⇒ 173 → 174；"
                 + "★★ W5.5 新增 simos.economy.setMarketZoneLoanRateAlpha ⇒ 174 → 175；"
-                + "★★ W10 新增 simos.economy.setEconomyPolicy ⇒ 175 → 176；扫到 0/漏文件是『扫描器静默』陷阱）")
+                + "★★ W10 新增 simos.economy.setEconomyPolicy ⇒ 175 → 176；"
+                + "★★ 2026-10-12 B3 试点把 15 个 Map*Tool 下放到 simos-map（扫描根见 toolSourceRoots()）——"
+                + "下放只移动落点、不增减工具 ⇒ 总数仍是 176（扫描根没跟上就会静默掉到 161）；"
+                + "扫到 0/漏文件是『扫描器静默』陷阱）")
         .hasSize(176);
 
     List<String> union =
@@ -1778,12 +1833,49 @@ class SimosToolsTest {
         .isSubsetOf(onDisk);
   }
 
+  /**
+   * 扫工具面 {@code NAME = "…"} 的全部源码根（{@code tools/read} + {@code tools/write}，M4 同源判据用）。
+   *
+   * <p>★★ 2026-10-12 B3 试点：地图的 15 个 {@code Map*Tool} 已下放到 {@code simos-map}（{@code
+   * io.mosire.simos.map.tools.{read,write}}）⇒ 扫描面必须跟着架构走（只扫 app 会让下放的工具静默漏出扫描面 ⇒
+   * "扫描器静默"陷阱）；下一个域下放时在此加一行。
+   *
+   * <p>★ 路径相对 {@code simos-app/}（surefire 的工作目录）：自己的树写 {@code src/…}，兄弟模块写 {@code
+   * ../simos-<模块>/…}（与 {@link #commandHandlerSourceRoots()} 同款）。
+   */
+  private static List<Path> toolSourceRoots() {
+    return List.of(
+        Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "read"),
+        Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "write"),
+        Paths.get(
+            "..",
+            "simos-map",
+            "src",
+            "main",
+            "java",
+            "io",
+            "mosire",
+            "simos",
+            "map",
+            "tools",
+            "read"),
+        Paths.get(
+            "..",
+            "simos-map",
+            "src",
+            "main",
+            "java",
+            "io",
+            "mosire",
+            "simos",
+            "map",
+            "tools",
+            "write"));
+  }
+
   /** 扫 {@code tools/read} + {@code tools/write} 的 {@code NAME = "…"}（M4 同源判据用）。 */
   private static Set<String> toolNamesFromSources() throws IOException {
-    List<Path> roots =
-        List.of(
-            Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "read"),
-            Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "write"));
+    List<Path> roots = toolSourceRoots();
     Map<String, String> handlerTypes = handlerTypeConstantsFromSources();
     Pattern nameLiteral = Pattern.compile("String NAME = \"([^\"]+)\"");
     Pattern nameHandlerType = Pattern.compile("String NAME = ([A-Za-z0-9_]+)\\.TYPE");

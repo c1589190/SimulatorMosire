@@ -156,7 +156,27 @@ public interface ToolWritePort {
   }
 
   /**
-   * 提交一条命令。
+   * 一次提交的**回执**：装配面生成的命令 id + 三结局之一。
+   *
+   * <p>★★ <b>为什么必须有这个回执</b>（2026-10-12 B3 试点新增；偏离与理由记在台账 {@code
+   * .superpowers/sdd/2026-10-12-b3-pilot-map/impl-ledger.md}）：工具结果的视图里带 {@code commandId} / {@code
+   * correlationId} 两个字段（app 侧 {@code ToolSupport.committedView} 的既有对外载荷），而按本接口类注的适配规则 **命令 id
+   * 由装配面生成**（工具不给）⇒ 只回 {@link Outcome} 的话，工具**拿不到**自己这条命令的真实 id： 要么报不出这两个字段（改载荷 = 破
+   * I-G1），要么自己另生成一个（报出去的 id 与落盘信封的 id 不是同一个 = 静默地对不上）。回执把"适配器生成 id"与"工具要报 id"两件事同时钉住。
+   *
+   * @param commandId 本次提交的命令 id（= correlationId 的缺省来源，见接口类注的适配规则）
+   * @param outcome 三结局之一
+   */
+  record Receipt(String commandId, Outcome outcome) {
+
+    public Receipt {
+      Objects.requireNonNull(commandId, "commandId");
+      Objects.requireNonNull(outcome, "outcome");
+    }
+  }
+
+  /**
+   * 提交一条命令，并把装配面生成的**命令 id** 一并回报（见 {@link Receipt}）。
    *
    * <p>★ {@code command} 只提供 {@link Command#expectedRevision()}（乐观并发坐标）——{@code type} / {@code
    * payloadJson} 由工具单独给：它们今天也是工具拼进信封的，且工具**不该**为了调一次写口去实现一个 core 侧的命令类型。
@@ -165,9 +185,18 @@ public interface ToolWritePort {
    * @param command 只承载期望版本（{@code () -> new RevisionId(n)} 即可）
    * @param type 命令类型，形如 {@code <namespace>.<Command>}（如 {@code "unit.RenameUnit"}）
    * @param payloadJson 不透明载荷（逐字节转交）
-   * @return 三种结局之一（**不抛**"拒 / 冲突"）
+   * @return 命令 id + 三种结局之一（**不抛**"拒 / 冲突"）
    */
-  Outcome submit(BranchId branch, Command command, String type, String payloadJson);
+  Receipt submitWithReceipt(BranchId branch, Command command, String type, String payloadJson);
+
+  /**
+   * 只要结局、不要 id 的形态（{@link #submitWithReceipt} 的投影）。
+   *
+   * <p>★ 要把 {@code commandId} 报进结果的工具调 {@link #submitWithReceipt}；不需要的那些照旧调本方法。
+   */
+  default Outcome submit(BranchId branch, Command command, String type, String payloadJson) {
+    return submitWithReceipt(branch, command, type, payloadJson).outcome();
+  }
 
   /**
    * **原子批提交**（"一批命令 = 一条 revision"）：要么全成、要么全不成。

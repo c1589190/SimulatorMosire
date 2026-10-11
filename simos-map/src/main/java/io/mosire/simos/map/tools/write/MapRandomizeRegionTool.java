@@ -1,6 +1,6 @@
-package io.mosire.simos.app.tools.write;
+package io.mosire.simos.map.tools.write;
 
-import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
 
 /**
@@ -13,13 +13,16 @@ import java.util.Map;
  *
  * <p>★ **两种地形同样没有默认值**（2026-09-24 用户裁定）：{@code terrainA}/{@code terrainB} 由调用方给（缺任一 ⇒ 拒）。
  * 原先这两种地形写死在域层（{@code plains}/{@code desert}），用户报「不管我在上面点击哪个地形，都只能替换为沙漠和平原」。
+ *
+ * <p>★ <b>2026-10-12 B3 下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-map}，对 {@code CoreSimos}
+ * 的直连换成构造期注入的 {@link ToolWritePort}（命令类型、载荷、拒绝码、资源声明、审批门逐字不变）。
  */
 public final class MapRandomizeRegionTool extends AbstractNarrowWriteTool {
 
   public static final String NAME = "map.RandomizeRegion";
 
-  public MapRandomizeRegionTool(CoreSimos core, String initiator, String mapId) {
-    super(core, initiator, mapId);
+  public MapRandomizeRegionTool(ToolWritePort writes, String mapId) {
+    super(writes, mapId);
   }
 
   @Override
