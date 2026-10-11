@@ -161,3 +161,52 @@ WebUI 412/412；大地图性能；`unit.SetVisionRadius`；P4a/P4b（军俸政�
 2. 真想让数值好看，第一步是**改小世界创世数据**（城镇分布、工具/粮/钱的家户禀赋、运力覆盖），不是碰 `simos-economy`。
 3. 若哪天要接上那 5 个"写了不生效"的政策键，是**独立的小批次**（5 处读取点），不牵动机制。
 4. 下一批功能方向**不受经济线阻塞**：非经济面 19 条开口原样有效（§4）。
+
+---
+
+## 9. 2026-10-12 大文件事故与清洗（推送阻塞 → 重写未推送历史）
+
+**现象**：`git push origin main` 失败 —— `RPC failed; HTTP 408 curl 22` /
+`send-pack: unexpected disconnect while reading sideband packet`。
+
+**根因（不是网络）**：W 线 **40 个未推送提交**里被 `git add -f` 塞进了 **23 个单文件 >100 MB 的运行产物**
+（合计 **14.4 GB**；待推送集合共 **1,082 blob / 16.9 GB**），远超 **GitHub 的单文件 100 MB 硬上限**。
+`.superpowers/sdd/.gitignore` 的内容就是 `*`（本该挡住它们），这些文件是**强加**进去的。
+（本地 `.git` 只有 1.4 GB —— 文本日志压得极狠，但 **GitHub 的上限按未压缩体积算**，照样必拒。）
+
+**用户裁定（2026-10-12，逐字）**：「这些大文件干脆都别提交了，所有大于100MB的单文件都不提交可以吗」
+
+**23 个超限文件（按批次，未压缩体积）**：
+
+| 批次目录 | 体积 / 个数 | 内容 |
+|---|---|---|
+| `sdd/2026-10-11-w10-scale-unlimited` | **9.74 GB / 8** | `w10close-tp240.log` 2,025 MB、`w10fix-tp240.log` 2,025 MB、两份 1,968 MB `.log.stripped`、`w10fix-tppolicy*.log` 505×2 MB + 两份 490 MB stripped |
+| `sdd/2026-10-11-w9-test-batch` | 1.52 GB / 1 | `logs/tp360.log.stripped` 1,552 MB |
+| `sdd/2026-10-11-wealth-concentration` | 0.67 GB / 3 | `tp600/simos.db` 373 MB、`sw600/simos.db` 203 MB、`daily/hh-tp600.jsonl` 109 MB |
+| `sdd/2026-10-11-haul-supply-investigation` | 0.63 GB / 2 | `tp-replay/simos.db` 411 MB、`sw-replay/simos.db` 234 MB |
+| `sdd/2026-10-11-w6-calibration` | 0.62 GB / 2 | `tp600/simos.db` 405 MB、`sw600/simos.db` 225 MB |
+| `sdd/2026-10-11-death-debt-writeoff` | 0.56 GB / 2 | `tp600/simos.db` 373 MB、`sw600/simos.db` 203 MB |
+| `sdd/2026-10-11-w7e-test-batch` | 0.44 GB / 3 | `tp360.log.gz` 154 MB、`sw360.log` 149 MB、`sw360.log.stripped` 143 MB |
+| `sdd/2026-10-11-w7-test-batch` | 0.27 GB / 2 | `tp360.log.gz` 158 MB、`sw360.log` 123 MB |
+
+按类型：**日志 11.97 GB**（6 个 `.stripped` 6.46 GB + 6 个 `.log` 5.21 GB + 2 个 `.log.gz` 0.30 GB）、
+**世界库 8 个 `simos.db` 2.37 GB**、逐日读数 1 个 `.jsonl` 0.11 GB。
+
+**处置（已完成）**：
+
+1. **备份分支** `backup/pre-largefile-clean` = 重写前 HEAD `4663a970`（远端从未见过这条历史）。
+2. `git filter-branch --index-filter`（范围 `origin/main..HEAD`，**只重写这 40 个未推送提交**）
+   把上述 23 条路径从全部提交剔除 ⇒ 新 HEAD `985834c7`，提交数仍 40，**内容除这 23 个文件外逐值不变**。
+3. **磁盘原件一个没删**：重写收尾的硬重置确实把它们从工作树删掉了，已用
+   `git checkout backup/pre-largefile-clean -- <路径>` + `git reset` **全部恢复**（抽查 2,026 MB / 406 MB / 109 MB 三件在位）。
+4. **待推送体积：16.9 GB → 2.07 GB**（1,059 blob），**最大单文件 86.1 MB** ✓ 符合新规则。
+5. **残留（<100 MB，仍会入库）**：W10 的 `w10fix2-tp240.log(.stripped)`、W7/W7e 的 360 天 `.log.gz`、
+   若干 smoke 世界库等 —— 若要"运行产物一律不入库"，另开一批。
+
+**新增纪律**（已写入 `AGENTS.md` §五.1）：单文件 >100 MB 不入库（附提交前自查命令）；
+`.superpowers/sdd/**` 运行产物禁 `git add -f`；**排查大文件禁用会解压全仓的命令**
+（`rev-list --objects --all | cat-file` / `pack-objects` / `gc` —— 本次就是这样把机器卡死的），
+改用 `du -sh` / `find -size +100M`（只 stat）。
+
+**顺带记一条教训**：`pkill -f 'pack-objects'` 会**匹配到自己的命令行**并把自身杀掉 ——
+要杀进程用 `pkill -f 'pack[-]objects'` 这种不自匹配的写法。

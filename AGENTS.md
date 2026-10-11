@@ -630,6 +630,24 @@ W5 让新世界创世失败，46 个 app 测试全红，报错原文是「**未�
    而提交信息却写着"21 个文件"（**信息与提交内容不符**）。
    ⇒ **纪律**：全仓工具跑完后，用 `git diff --name-only` **列全**再逐条确认，
    或按"我改过的模块清单"取并集，不要只给一个模块路径。
+   ★★ **2026-10-12 用户裁定（写死）：单文件 >100 MB 一律不入库。**
+   GitHub 的单文件硬上限就是 **100 MB（按未压缩体积算）**，超限的提交必被拒 —— 首次推送时表现为
+   `RPC failed; HTTP 408 … send-pack: unexpected disconnect`，**不要误判成网络问题**。
+   - **提交前自查**（只读对象头、不解压；有输出就别提交）：
+     `git diff --cached --name-only -z | xargs -0 -I{} git cat-file -s :{} | awk '$1>104857600'`
+   - **`.superpowers/sdd/**` 的运行产物**（`*.log` / `*.log.stripped` / `*.log.gz` / `simos.db` / `*.jsonl`）
+     **只许 `git add`，禁 `-f`**：该目录 `.gitignore` 的内容就是 `*`，它们本来就不该进库。
+     要留证据就留"摘要 + md5 + 命令"，原始大文件留在磁盘或 `~/simos-runs/**`。
+   - **由来（代价）**：W 线 40 个未推送提交里被 `git add -f` 塞进 **23 个运行产物、14.4 GB**
+     （最大单文件 2,025 MB），推送必然失败。处置见
+     `docs/superpowers/status/2026-10-12-known-issues-code-verified.md` §9
+     （重写未推送历史 + 备份分支 `backup/pre-largefile-clean`；**磁盘原件未删**）。
+   - ★ **重写历史的两个坑**（实测）：① `git filter-branch` 收尾会**硬重置工作树** ⇒ 被剔除的
+     已跟踪文件会**从磁盘消失**（本次用 `git checkout <备份分支> -- <路径>` + `git reset` 恢复）；
+     ② 排查大文件**禁用** `git rev-list --objects --all | git cat-file`、`git pack-objects`、`git gc`
+     —— 会把十几 GB 从 pack 里解出来、**直接把机器卡死**；改用 `du -sh` / `find -size +100M`（只 stat）
+     与 `git log --name-only --diff-filter=A -- <路径>`（不读 blob），单对象大小用
+     `git cat-file --batch-check` 且**只喂小集合**。
 2. 提交信息**中文**、写清"改了什么 + 为什么 + 验收的实际数字 + 未验的部分"；本仓惯例是**把诚实边界写进提交信息**。
 3. 已确认的发现，**若修复比描述还短，当场修**，别 park 成 issue。
 4. `.superpowers/sdd/**` 与 `docs/**` 的历史台账行是**留痕**：**不篡改**；要更正就**追加**标注。
