@@ -75,12 +75,17 @@
                     <exclude>io.mosire:simos-army</exclude>
                     <exclude>io.mosire:simos-economy</exclude>
                     <exclude>io.mosire:simos-economy-api</exclude>
+                    <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
+                         §4.1/§4.2）：`simos-ga-spi` 是**工具契约层**，依赖方向是 `ga-spi → util`；
+                         这里钉的是**反向**——util 必须保持零 simos 依赖，否则 `util → ga-spi → util` 成环
+                         ⇒ 按冻结文档 §4 I-F4 的口径列入。 -->
+                    <exclude>io.mosire:simos-ga-spi</exclude>
                     <exclude>io.mosire:simos-gov</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
                   </excludes>
-                  <message>simos-util 是零依赖地基（地址/身份/时间/快照/变更集协议/SPI，不碰文件系统）：只许 Jackson(databind + datatype-jdk8) 与 SLF4J，不许依赖任何 simos 模块。★ 禁列 = 全仓 15 个 simos 模块 − 自己（一个不剩：含全部契约层 social-api/actor-api/economy-api 与已退役的 ledger），文案与强制一致。</message>
+                  <message>simos-util 是零依赖地基（地址/身份/时间/快照/变更集协议/SPI，不碰文件系统）：只许 Jackson(databind + datatype-jdk8) 与 SLF4J，不许依赖任何 simos 模块。★ 禁列 = 全仓 16 个 simos 模块 − 自己（一个不剩：含全部契约层 social-api/actor-api/economy-api/**ga-spi** 与已退役的 ledger），文案与强制一致。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

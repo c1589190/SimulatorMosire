@@ -15,6 +15,12 @@
 
   <modules>
     <module>simos-util</module>
+    <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
+         §4.1 目标依赖图 / §4.2 内容表）：**工具契约层** —— SimosTool 工具接口 + ToolRole 角色标签 +
+         GmOnlyRead 标签 + ToolWritePort 窄写口 + ToolResources/ToolSchema 纯助手。
+         它紧贴 util 之上，只依赖 util + agentlib-mosire，**不依赖 core**（core 的 test scope 依赖
+         map/social/unit ⇒ 会成环）；各域模块的工具实现依赖它（B3），运行框架 simos-ga 依赖它（B2）。 -->
+    <module>simos-ga-spi</module>
     <module>simos-map</module>
     <module>simos-calendar</module>
     <!-- ★ 阶段 S1（2026-10-09 家户/人口计划）：social 切片共用的低层人口/家户身份契约
@@ -90,6 +96,11 @@
       <!-- 本仓五模块：版本集中在此，模块 POM 不再重复写 -->
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-util</artifactId><version>${project.version}</version>
+      </dependency>
+      <!-- ★★ 2026-10-12 新增（设计书 §4.1/§4.2）：工具契约层。与其余模块同款在此集中版本，
+           模块 POM 不再重复写（B2/B3 的工具实现与运行框架都依赖它）。 -->
+      <dependency>
+        <groupId>io.mosire</groupId><artifactId>simos-ga-spi</artifactId><version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-map</artifactId><version>${project.version}</version>

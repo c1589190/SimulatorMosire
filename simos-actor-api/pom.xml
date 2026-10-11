@@ -62,6 +62,10 @@
                     <exclude>io.mosire:simos-actor</exclude>
                     <exclude>io.mosire:simos-army</exclude>
                     <exclude>io.mosire:simos-calendar</exclude>
+                    <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
+                         §4.1/§4.2）：`simos-ga-spi` 是工具契约层（依赖 util + agentlib）——本模块主依赖为零、
+                         与工具面无关 ⇒ 按冻结文档 §4 I-F4 的口径列入。 -->
+                    <exclude>io.mosire:simos-ga-spi</exclude>
                     <exclude>io.mosire:simos-gov</exclude>
                     <exclude>io.mosire:simos-map</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
@@ -69,7 +73,7 @@
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
                   </excludes>
-                  <message>simos-actor-api 是 actor 切片最底层的共用契约（ActorRef/ActorKind/AssetKind/AssetClassKey；主依赖为零、零 simos import）：不声明任何 simos 依赖 ⇒ 禁列 = 全仓其他 14 个 simos 模块全部（含 util/map 与全部契约层、已退役的 ledger），一个口子都不留。</message>
+                  <message>simos-actor-api 是 actor 切片最底层的共用契约（ActorRef/ActorKind/AssetKind/AssetClassKey；主依赖为零、零 simos import）：不声明任何 simos 依赖 ⇒ 禁列 = 全仓其他 15 个 simos 模块全部（含 util/map/ga-spi 与全部契约层、已退役的 ledger），一个口子都不留。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

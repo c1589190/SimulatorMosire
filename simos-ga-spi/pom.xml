@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.mosire</groupId>
+    <artifactId>simos-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>simos-ga-spi</artifactId>
+  <name>GaSpiSimos</name>
+  <description>工具契约层：SimosTool（工具接口 + roles() 角色声明）+ ToolRole 角色标签 + GmOnlyRead 标签 + ToolWritePort 窄写口 + ToolResources/ToolSchema 纯助手。零逻辑、零状态、不依赖任何领域模块与 core。</description>
+
+  <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
+       §4.1 目标依赖图 / §4.2 内容表 / §5 不变量 I-G2）：本模块是**工具契约层**，紧贴 util 之上，
+       只依赖 simos-util（Command/BranchId/RevisionId/StateRef/SimulationState 等状态协议）
+       与 agentlib-mosire（AgentTool / ResourceManifest / ToolContext）。
+       ★ 为什么域模块依赖 ga-spi 而不是 ga（用户原话 ④ 的答案）：ga 必须依赖各域（它要跑回合、读状态），
+         域再依赖 ga ⇒ 环，Maven 建图期直接拒。契约层是唯一出路——与既有的
+         actor-api / economy-api / social-api 同一形制。
+       ★ 为什么不让域模块直连 agentlib（用户选 ga-spi 的理由）：域模块的依赖树会凭空多出
+         sqlite-jdbc / pf4j / MCP SDK，与"领域模块不碰存储、不认识编排"的既有纪律直接冲突。 -->
+  <dependencies>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>agentlib-mosire</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-module-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <!-- ★★ 2026-10-12 闭合形制（照 14 个既有模块的最新一行）：本仓的边界语义 = 「本模块不许**直接声明**
+                       某个依赖」；传递可见是 Maven 依赖图的事实、本模块控制不了 ⇒ 显式关掉传递检查
+                       （enforcer 3.6.3 的 `searchTransitive` 默认 true，逐字节码核实）。 -->
+                  <searchTransitive>false</searchTransitive>
+                  <excludes>
+                    <!-- ★★ 设计书 §4.2 末段 / §5 不变量 I-G2（**本模块的硬约束**）：**不许依赖 core** ——
+                         `core` 的 test scope 依赖 map/social/unit，若本模块依赖 core，则
+                         `map → ga-spi → core → map(test)` 成环（Maven 建图期直接拒）。
+                         ⇒ 窄写口只用 util 类型表达：不引 CommandEnvelope / CommandResult / BatchResult /
+                           WorldChangeSet / RevisionRow（那五个都是 core 类型）。
+                         ★ 禁列 = 全仓 simos 模块 − 自己 − util（含全部领域/编排模块与已退役 ledger 留痕），
+                         零例外；`agentlib-mosire` **不在禁列**（它是本模块的允许面）。 -->
+                    <exclude>io.mosire:simos-map</exclude>
+                    <exclude>io.mosire:simos-calendar</exclude>
+                    <exclude>io.mosire:simos-social-api</exclude>
+                    <exclude>io.mosire:simos-social</exclude>
+                    <exclude>io.mosire:simos-unit</exclude>
+                    <exclude>io.mosire:simos-core</exclude>
+                    <exclude>io.mosire:simos-sd</exclude>
+                    <exclude>io.mosire:simos-actor-api</exclude>
+                    <exclude>io.mosire:simos-actor</exclude>
+                    <exclude>io.mosire:simos-economy-api</exclude>
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-gov</exclude>
+                    <exclude>io.mosire:simos-army</exclude>
+                    <exclude>io.mosire:simos-app</exclude>
+                    <!-- ★ `simos-ledger` 已于 2026-09-27 退役、当前无同名模块：照冻结表列入，
+                         作历史留痕与未来防线（与其余 14 个模块的禁列口径一致）。 -->
+                    <exclude>io.mosire:simos-ledger</exclude>
+                  </excludes>
+                  <message>simos-ga-spi 是工具契约层（SimosTool 工具接口 + ToolRole 角色标签 + GmOnlyRead 标签 + ToolWritePort 窄写口 + ToolResources/ToolSchema 纯助手，零逻辑零状态）：只许依赖 simos-util（状态协议）与 agentlib-mosire（工具/权限契约）。★ 禁列 = 全仓 16 个 simos 模块 − 自己 − util（含全部领域/编排模块与已退役的 ledger 留痕），零例外；★ 尤其**不许依赖 core**：core 的 test scope 依赖 map/social/unit ⇒ `map → ga-spi → core → map(test)` 会成环（设计书 §4.2 末段 / I-G2）。</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

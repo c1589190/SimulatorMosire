@@ -996,3 +996,36 @@ E = 0（全禁 + 满效率）⇒ 一点也进不来；E = 1000（不设限/没�
 1. 本节 F1~F8 是**只读代码核实**（2026-10-12，`a5d79afb`）；**未跑 Maven、未起服务、未跑世界**。
 2. F9 **已回 pom 亲核并更正**（economy 未声明 `simos-unit`、零 import ⇒ 见 §21.6 O-5）。
 3. "多政府共管一区"的权重口径（§12/§13）**不在本裁定范围**，继续按原文执行。
+
+---
+
+## 22. ★ 收口记录（2026-10-12）：§21 三条裁定的处置 + 落地验收
+
+> **性质**：追加记录，不改上文任何一行。**已提交**：`1630104e`（`main` = `origin/main`，已 push）。
+
+### 22.1 三条裁定（用户 2026-10-12）
+
+| # | 裁定 | 处置 | 依据 |
+|---|---|---|---|
+| **D-5** | **§21.3-5 的类型收敛不做**：`PortRule` / `PortTaxRule` / `PortTaxMode` / `PortDirection` **留在 `economy-api`** | ✅ **关闭**。理由：政策搬走后 `simos-gov` 对这四个类型**零引用**（实测），挪进实现层唯一效果是改 `simos-app` 的 4 行 import；且 §21.9（后出、明文取代 §21.3 前两段）不再提这条 | 实现方主动提出 + 控制方复核同意 |
+| **D-6** | **删除 `GovPortPolicyGuard`**（§21.7 只写"允许写"、未写"删"） | ✅ **同意删**。理由：该 guard 的存在前提是"gov 看不见经济词表"（它是组合根里的词表校验）；词表判据已搬进命令边界（`EconomyGovPolicyPayloads`，未知商品/币种在**命令边界**具名拒），留着会造出**第二处词表拼写点** | 同上 |
+| **D-7** | **`ProcurementPriorityBridge` 的顺序等价性**必须实测钉死（实现方只给了静态论证：旧序 = GOV 单位 id 升序，新序 = `GovernmentId`（`gov-unit-<id>`）升序，同前缀 ⇒ 字典序同向） | ✅ **已实测**：测试 Agent 用 3 个要求管控的 GOV（id 故意取 `gov-2`/`gov-10`/`gov-1`，数字序与字典序会分叉的构造）+ 1 个不要求管控的 GOV + 1 个世界级政府，断言"`GovernmentId` 升序 == 映射成单位 id 后的升序"逐位相同、两池逐值、不要求管控者与世界级政府都不进表 | 测试批报告 §1-B |
+
+### 22.2 落地验收（控制方亲跑，两个 Agent 均落定后）
+
+```
+tools/mvn-lock.sh clean verify  ⇒  BUILD SUCCESS（15 模块全绿，5:34，含 spotless / spotbugs / 前端门禁 / shaded-jar guard）
+surefire 合计 3409 条 / 0 失败 / 0 错误 / 5 跳过（跳过 = 既有真 LLM 门控），报告 mtime 全部落在本轮
+```
+
+- **边界不变量**（控制方复核）：`simos-gov` 对 `simos-economy` 的 import **7 处全在 `economy.api.*`**（契约层），pom 只声明 `simos-economy-api`；`simos-economy` 零 `simos-unit` import。
+- **算式未动**（I-B7）：`PortRegimeAggregation` / `PortThrottle` / `MarketTaxBook` 的 `git status` 无输出 = 未被触碰。
+- **状态形状**：`Government` 7 → 10 字段、`GovState` 5 → 2 组件、`GovChangeSet` 删三个 `FieldDelta`。
+- **测试**：新增 2 个测试文件（`EconomySetGovernmentPolicyHandlerTest` 11 条 / `GovPolicyIntoEconomyZ6Test` 7 条），修红 10 个既有测试（零删除），3 条变异自证（改坏 ⇒ 当场红 ⇒ 还原 ⇒ md5 逐字节一致）。守恒式与断粮对本批结构性不可表达，**未编红点**（如实记）。
+- **实现方偏离（已审，全部认可）**：① §21.3-5 不做（= D-5）；② 删 `GovPortPolicyGuard`（= D-6）；③ `GovSalaryRuleBridge` 的"要发薪的 GOV 集合"从 `govState.offices()` 键改为"带 `GovernmentFormation` 的单位"（口径等价）；④ `GovRemittanceBridge.settle` **加**了 `EconomyData` 形参（上缴比例是政策、而 `remittanceStates` 不随迁，这是两条要求的交点）；⑤ 工具面保留平铺载荷 + 内部嵌装（工具参数面一字不变）。
+- **账本里一处措辞与代码不符（已记，非缺陷）**：账本写"4 个既有 `with*` 全部委托 `withPolicies(...)`"，实测 `withMintScalePerCycle`/`withMintedLastCyclePerCycle`/`withIssuable`/`withTreasury` 是手写 10 参构造器（逐字段带全、行为正确），只有 4 个政策相关 `with*` 走 `withPolicies`。行为无缺陷（变异体 M2 证明"漏带"会被 `everyCopyWithAccessorKeepsAllThreePolicies` 当场抓住）。
+
+### 22.3 后续（另批，不在本记录范围）
+
+- **工具面下放**与 **`simos-ga-spi` / `simos-ga` / `sd` 语义扩张**：见 `docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md`（含用户原话逐字附录与 B1~B4 批次顺序）。
+- **模块语义冻结**：见 `docs/superpowers/specs/2026-10-12-module-boundaries-freeze.md`（15 行权威边界表 + enforcer 闭合）。

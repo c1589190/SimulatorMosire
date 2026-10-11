@@ -63,6 +63,10 @@
                     <exclude>io.mosire:simos-army</exclude>
                     <exclude>io.mosire:simos-economy</exclude>
                     <exclude>io.mosire:simos-economy-api</exclude>
+                    <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
+                         §4.1/§4.2）：`simos-ga-spi` 是**工具契约层**（只依赖 util）——地图侧永远不知道工具面存在
+                         （"地图工具"住在 app/未来的 map 工具包，不反向依赖契约层）⇒ 按冻结文档 §4 I-F4 的口径列入。 -->
+                    <exclude>io.mosire:simos-ga-spi</exclude>
                     <exclude>io.mosire:simos-gov</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-sd</exclude>
