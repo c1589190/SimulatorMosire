@@ -1,0 +1,37 @@
+[
+ {
+  "op": "advance",
+  "to": 10
+ },
+ {
+  "op": "dump",
+  "label": "d10-pre-write"
+ },
+ {
+  "op": "tool",
+  "name": "simos.economy.setEconomyPolicy",
+  "args": {
+   "payloadJson": "{\"key\":\"SLIDE_SPEED_PER_MILLE_PER_RATIO\",\"valueMilli\":1000}"
+  }
+ },
+ {
+  "op": "get",
+  "path": "/api/gm/tool-usage"
+ },
+ {
+  "op": "advance",
+  "to": 30
+ },
+ {
+  "op": "dump",
+  "label": "d30-after-1-advance"
+ },
+ {
+  "op": "advance",
+  "to": 40
+ },
+ {
+  "op": "dump",
+  "label": "d40-policy"
+ }
+]

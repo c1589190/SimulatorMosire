@@ -1,0 +1,39 @@
+=== [21:56:30] sw600 world=small-world port=10901 plan=plan-sw600.json store=sw600 daily=daily-sw600.jsonl extras=--prune ===
+[21:56:30] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/sw600 --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-sw.json --gui-port 10901 --mcp-port 10902 --approval-port 10903
+[21:56:32] GUI 就绪（1.70s）
+[21:56:32] 创世后 head rev=1 tick=0
+[21:58:16] advance_daily 0->600 完成 head=601
+[21:58:16] dump d600 rev=601 bytes=8409214 md5=a8206a6786820a2d35df4afa5278a7a3
+[21:58:16] get /api/economy/gov HTTP 200 bytes=3176
+[21:58:16] get /api/economy/overview HTTP 200 bytes=1271
+[21:58:17] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/logs/sw600.result.json
+{
+  "tag": "sw600",
+  "jarMd5": "24c8a0a2291f5cdbeaff49edca71a13b",
+  "readySeconds": 1.701,
+  "revisionDelta": 600,
+  "headRevision": 601,
+  "tick": 600,
+  "logStrippedMd5": "4f2004760dd2e9b8daaa7d655fc360e4"
+}
+=== [21:58:17] sw600 rc=0 ===
+=== [21:58:17] tp600 world=three-powers port=10902 plan=plan-tp600.json store=tp600 daily=daily-tp600.jsonl extras=--prune ===
+[21:58:17] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/tp600 --world=three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-tp.json --gui-port 10902 --mcp-port 10903 --approval-port 10904
+[21:58:19] GUI 就绪（1.69s）
+[21:58:19] 创世后 head rev=1 tick=0
+[22:02:11] advance_daily 0->600 完成 head=601
+[22:02:11] dump d600 rev=601 bytes=13604548 md5=d30e219be8b2aafd4b6be8721d707e71
+[22:02:11] get /api/economy/gov HTTP 200 bytes=3877
+[22:02:11] get /api/economy/overview HTTP 200 bytes=1617
+[22:02:45] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/logs/tp600.result.json
+{
+  "tag": "tp600",
+  "jarMd5": "24c8a0a2291f5cdbeaff49edca71a13b",
+  "readySeconds": 1.691,
+  "revisionDelta": 600,
+  "headRevision": 601,
+  "tick": 600,
+  "logStrippedMd5": "0129cf7784fb9d790209849e502fde87"
+}
+=== [22:02:45] tp600 rc=0 ===
+=== [22:02:45] MODE=long DONE ===

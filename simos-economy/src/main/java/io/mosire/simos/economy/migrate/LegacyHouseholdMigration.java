@@ -529,6 +529,12 @@ public final class LegacyHouseholdMigration {
             EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
             value.migrationSource().isPresent()
                 ? value.migrationSource()
-                : Optional.of(LEGACY_MIGRATION_SOURCE)));
+                : Optional.of(LEGACY_MIGRATION_SOURCE),
+            // ★★★ W10-fix（2026-10-11）：政策表**原样带过**（与 `EconomySettlement` 的逐日重建同一条缺陷）。
+            //   ★ 它为什么是真损失路径：本迁移由 {@code EconomyData} 的**构造期**自动触发（`needed(...)` 只看
+            //     units/relations/conditions 的对齐，**不看** meta）⇒ W10 世界里"units 空而 relations 非空"
+            //     这类合法状态会让每次构造都重跑迁移；缺这一行 ⇒ GM 写入的政策在下一次构造时被清空。
+            //   ★ 旧档（pre-modern-v1）本来就没有政策表 ⇒ 这一行对旧档是空表进空表出，逐值不变。
+            value.economyPolicies()));
   }
 }

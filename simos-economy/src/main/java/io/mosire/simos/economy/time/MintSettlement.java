@@ -12,6 +12,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.MoneyOutput;
@@ -230,10 +231,19 @@ final class MintSettlement {
           continue;
         }
         long scale = entry.getValue();
+        // ★★★ W10：铸币产出率的**运行期**权威 = 政策键 MINT_MILLI_PER_FURNACE_CYCLE（GM 写入即下一关账日生效）。
+        //   ★ "未配置"⇒ 用产业载荷里声明的值（`Industry.moneyOutputPerUnit`）—— 那正是这条改动前的唯一来源
+        //     （创世由 EconomySeeder 从同一个常量播种）⇒ **从没被 GM 写过的世界逐值不变**。
+        boolean policyOverride =
+            base.economyPolicyConfigured(EconomyPolicyKey.MINT_MILLI_PER_FURNACE_CYCLE);
+        long policyMilliPerFurnaceCycle =
+            base.economyPolicyOf(EconomyPolicyKey.MINT_MILLI_PER_FURNACE_CYCLE);
         for (Map.Entry<CurrencyId, Long> line :
             industry.moneyOutputPerUnit().perUnit().entrySet()) {
           CurrencyId currency = line.getKey();
-          long requested = Math.multiplyExact(scale, line.getValue());
+          long requested =
+              Math.multiplyExact(
+                  scale, policyOverride ? policyMilliPerFurnaceCycle : line.getValue());
           if (requested <= 0L) {
             continue; // 规模 0 或产出率 0 ⇒ 没有产出（不做"0 毫的发行记录"：金额必须 > 0）
           }

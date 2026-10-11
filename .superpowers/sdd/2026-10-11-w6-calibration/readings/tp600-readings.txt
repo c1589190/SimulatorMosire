@@ -1,0 +1,320 @@
+W6 标定读数（2026-10-11，只读批） —— tag=tp600
+生成器：scripts/calib5.py；输入 daily=daily/daily-tp600.jsonl log=logs/tp600.log
+
+========================================================================================================
+§0 装置与窗口
+========================================================================================================
+世界           : three-powers（/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-tp.json）
+jar md5        : 24c8a0a2291f5cdbeaff49edca71a13b
+store          : /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/tp600
+GUI 端口       : 10902（MCP/审批 = +1/+2）
+JVM 开关       : -Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=DEBUG -Dsimos.social.traceLevel=INFO -Dsimos.app.logLevel=DEBUG
+log-keep 正则  : event=(MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET_REPORT|MARKET_FILL|MARKET_ROUND_START|MARKET_UNFILLED|MINT_[A-Z_]*|MONEY_MARKET[A-Z_]*|CLASS_[A-Z_]*|SLIDE_[A-Z_]*|STRATUM[A-Z_]*|FAMINE_[A-Z_]*|SEED_MINT[A-Z_]*|INDUSTRY_[A-Z_]*|DEBT_[A-Z_]*|HAUL_[A-Z_]*|LOGISTICS_[A-Z_]*|MERCHANT_[A-Z_]*|ONDEMAND_[A-Z_]*|PROFIT_MIGRATION_PLAN|DAY_START|DAY_END|GUI_REQUEST_FAILED)|\tat |Caused by:|Suppressed:
+PID            : 496229（收工 = 装置对该 PID 发 SIGTERM，未用 pkill -f）
+启动就绪       : 1.691 s
+head revision  : 601（tick=600，Δrev=600）
+advance_daily  : 0→600 装置累计耗时 233.317 s
+dump           : d600 rev=601 bytes=13604548 md5=d30e219be8b2aafd4b6be8721d707e71
+日志行数(去掉时间戳后) : 3776177；去时间戳 md5 = 0129cf7784fb9d790209849e502fde87
+
+========================================================================================================
+§1 饿死率快慢 —— FAMINE_MAX_PPM_PER_TICK = 1000（常量，simos-social/.../FamineMortality.java:48）
+========================================================================================================
+窗口：逐日（day 0..600）；人口/满足率为**时点**读数，死亡与 faminePpm 为**当日发生额**。
+
+【人口曲线（每 30 天，时点）】
+  day | 社会人口 | 经济人口 | 户数 | 日死亡(famine/base) | 断顿户 lt1000/有读数 | 全额满足户 | Σsatiety/1000n
+     0 |     6350 |     6350 |  342 |   0 /   0 |    0 /    0 |    0 | -
+    30 |     6231 |     6231 |  342 |   4 /   0 |  118 /  148 |   30 | 0.240
+    60 |     6111 |     6111 |  342 |   5 /   0 |  132 /  166 |   34 | 0.209
+    90 |     5998 |     5998 |  342 |   6 /   0 |  145 /  172 |   27 | 0.162
+   120 |     5889 |     5889 |  342 |   7 /   0 |  146 /  172 |   26 | 0.153
+   150 |     5762 |     5762 |  342 |   7 /   0 |  162 /  173 |   11 | 0.239
+   180 |     5703 |     5703 |  342 |   2 /   3 |  118 /  174 |   56 | 0.453
+   210 |     5650 |     5650 |  342 |   3 /   2 |   85 /  174 |   89 | 0.531
+   240 |     5613 |     5613 |  342 |   2 /   1 |   85 /  175 |   90 | 0.542
+   270 |     5552 |     5552 |  342 |   1 /   0 |   96 /  175 |   79 | 0.522
+   300 |     5519 |     5519 |  342 |   2 /   0 |   81 /  175 |   94 | 0.581
+   330 |     5470 |     5470 |  342 |   5 /   0 |   72 /  175 |  103 | 0.589
+   360 |     5434 |     5434 |  342 |   2 /   0 |   73 /  175 |  102 | 0.593
+   390 |     5393 |     5393 |  342 |   2 /   1 |   84 /  175 |   91 | 0.534
+   420 |     5350 |     5350 |  342 |   2 /   0 |   84 /  175 |   91 | 0.525
+   450 |     5291 |     5291 |  342 |   5 /   0 |   87 /  175 |   88 | 0.504
+   480 |     5225 |     5225 |  342 |   1 /   0 |   89 /  175 |   86 | 0.507
+   510 |     5132 |     5132 |  342 |   7 /   1 |  113 /  176 |   63 | 0.370
+   540 |     5066 |     5066 |  342 |   0 /   0 |  114 /  178 |   64 | 0.395
+   570 |     4987 |     4987 |  342 |   3 /   0 |  116 /  184 |   68 | 0.386
+   600 |     4916 |     4916 |  342 |   3 /   1 |  116 /  185 |   69 | 0.373
+
+【死因构成（累计 0..600）】
+  BASE_PLUS_FAMINE（饥荒类）= 1866；BASE（基准率）= 155；其它 = 0
+  ★ 饥荒类占全部死亡 = 1866/2021 = 92.33%
+  人口净变化 = 6350 → 4916（Δ=-1434，-22.58%）
+
+【断顿与满足率（逐日发生额/时点，统计窗口 = 有读数的那 600 天）】
+  断顿户数/日（satiety<1000）：min=72 中位=113.0 max=163；分母 n（有 satiety 读数的户）中位=175.0
+  其中 satiety==0（一点没吃上）的户/日：中位=84.0 max=146
+  ★ 全额满足户占比（逐日）：min=0.0% 中位=36.7% max=58.9%
+  ★ 平均满足率 Σsatiety/(1000·n)：min=0.1060 中位=0.4624 max=0.8500
+
+【faminePpm 分布（口径 = 死亡事件的 reason 字段，累计 0..600）】
+  总死亡事件数（带 faminePpm 字段）= 1866
+  faminePpm 值×次数（值×次数，前 24 档）: 739×1, 740×1, 1000×1864
+  ★ 顶格（== FAMINE_MAX_PPM_PER_TICK = 1000）占比 = 1864/1866 = 99.89%
+  starvationRatioPerMille 值×次数（前 24 档）: 739×1, 740×1, 1000×1864
+
+【日志口径：FAMINE_MORTALITY（INFO，逐日汇总）】
+  发过该事件的天数 = 600 / 601（每天都有断顿户）
+  断顿户数/日：min=67 中位=85.0 max=148（与上面 satiety<1000 同量级）
+  maxStarvationRatioPerMille：中位=1000.0，==1000 的天数 = 600 / 600
+  日饥荒死亡 famineDeaths：Σ=1866（对照：死亡事件口径 Σ=1866）
+
+【日志口径：FAMINE_MORTALITY_HOUSEHOLD（DEBUG，逐户逐日；58141 行）】
+  faminePpmPerTick 值×次数（值×次数，前 24 档）: 2×1, 22×1, 27×1, 42×1, 54×1, 73×1, 87×1, 98×1, 100×1, 144×1, 160×1, 172×1, 173×1, 176×1, 186×1, 193×1, 195×1, 203×1, 226×2, 232×1, 255×1, 276×1, 296×1, 379×1
+  ★ 逐户 faminePpm == 1000（顶格）占比 = 57940/58141 = 99.65%
+  ★ 逐户 faminePpm 均值 = 999.3（上限 1000）
+  逐户 starvationRatioPerMille 值×次数（前 24 档）: 2×1, 22×1, 27×1, 42×1, 54×1, 73×1, 87×1, 98×1, 100×1, 144×1, 160×1, 172×1, 173×1, 176×1, 186×1, 193×1, 195×1, 203×1, 226×2, 232×1, 255×1, 276×1, 296×1, 379×1
+
+========================================================================================================
+§2 阶层滑落斜率 —— SLIDE_SPEED_PER_MILLE_PER_RATIO=100 / SLIDE_COST_PER_LEVEL=1000 / SLIDE_ROUND_DAYS=5
+========================================================================================================
+窗口：滑落事件为**当日发生额**（累计 0..600）；停留天数取自每次滑落事件自带的 elapsedDays。
+
+【滑落次数（600 天累计）】总滑落 = 54 次；涉户 = 51 户 / 共 342 户（14.9%）
+  滑落轮数（CLASS_SLIDE_ROUND）= 240 ⇒ 平均每轮滑落 0.2250 次；每户每轮滑落率 = 0.0658%
+  ★ 每次滑落是否恰好一级：levels 字段分布 = {1: 54}（全部 == 1 ⇒ 不跳级）
+
+【滑落为什么这么少：逐轮评估/跳过原因（Σ 全窗 240 轮）】
+  Σevaluated                  =    48096（占 evaluated 的 100.0%）
+  Σslid                       =       54（占 evaluated 的 0.1%）
+  ΣskippedNoDebt              =    26373（占 evaluated 的 54.8%）
+  ΣskippedNoPosition          =      172（占 evaluated 的 0.4%）
+  ΣskippedCooldown            =     2423（占 evaluated 的 5.0%）
+  ΣskippedNoLowerTarget       =    19074（占 evaluated 的 39.7%）
+  ΣunpricedDebtHouseholds     =     8691（占 evaluated 的 18.1%）
+
+【各级停留天数（每次滑落携带的 elapsedDays = 在本级停留了几天）】
+  min=62 中位=235.0 max=423 均值=190.6
+  elapsedDays 值×次数（值×次数，前 24 档）: 62×1, 63×2, 65×1, 67×1, 75×2, 85×2, 88×1, 93×2, 113×1, 115×1, 120×3, 123×2, 143×1, 148×1, 160×1, 235×12, 240×13, 243×1, 273×1, 290×2, 303×1, 333×1, 423×1
+  对照公式（【推理】，非实测）：每级天数 = ⌈SLIDE_ROUND_DAYS × SLIDE_COST_PER_LEVEL ÷ speed⌉ = ⌈5×1000÷speed⌉；speed = min(1000, ⌊ratio×100÷1000⌋)；ratio = ⌊债×1000÷max(1,资产)⌋
+
+【债务比 ratio / 速度 speed / 所需天数 required（逐次滑落）】
+  debtRatioPerMille  min=130 中位=1125.0 max=1000000；值×次数: 130×1, 352×1, 362×1, 377×1, 471×1, 481×1, 523×1, 551×1, 557×1, 610×1, 640×1, 643×1
+  speedPerMille      min=13 中位=112.5 max=1000；值×次数: 13×1, 35×1, 36×1, 37×1, 47×1, 48×1, 52×1, 55×2, 61×1, 64×2, 66×1, 67×2
+  requiredDays       min=5 中位=45.0 max=385；值×次数: 5×11, 7×1, 8×4, 9×1, 13×1, 15×2, 17×1, 25×4, 34×1, 40×1, 50×3, 56×1
+  ★ 逐值核对 speed == min(1000, ⌊ratio×100÷1000⌋)：不符 0 / 54 次
+  ★ 逐值核对 requiredDays == ⌈5×1000÷speed⌉：不符 0 / 54 次
+
+【层级迁移对（fromLevel → toLevel）】
+  DIRECT_LABORER/WAGE_EARNER(1,1)          → DIRECT_LABORER/DEPENDENT(1,0)            24 次
+  OWNER/SURPLUS_RECEIVER(4,3)              → OPERATOR/SURPLUS_RECEIVER(2,3)           18 次
+  MIXED/SELF_SUBSISTENCE(3,2)              → DIRECT_LABORER/WAGE_EARNER(1,1)          6 次
+  OWNER/SURPLUS_RECEIVER(4,3)              → MIXED/SELF_SUBSISTENCE(3,2)              3 次
+  OWNER/SURPLUS_RECEIVER(4,3)              → DIRECT_LABORER/WAGE_EARNER(1,1)          3 次
+
+【滑落日分布（前 20 个滑落日）】
+  d63×2, d65×1, d75×2, d85×2, d88×1, d93×2, d113×1, d115×1, d120×3, d123×2, d143×1, d148×1, d155×1, d160×1, d235×12, d240×13, d243×1, d273×1, d290×2, d303×2
+  滑落最多的户：hh--3_3-urban-landlord×2, hh-3_0-urban-landlord×2, hh-0_-3-urban-landlord×2, hh--3_3-rural-landlord×1, hh-0_-3-rural-landlord×1, hh-3_0-rural-landlord×1
+
+========================================================================================================
+§3 铸币产出率 —— MINT_MILLI_PER_FURNACE_CYCLE=500（EconomySeeder.java:4008）/ MINT_LABOR_SHARE_PER_MILLE=30（:599）
+========================================================================================================
+窗口：铸币按**产业周期关账日**发生（mint cycleDays=120）⇒ 逐关账日列示；货币总量为**时点**。
+
+【逐关账日 MINT_PRODUCTION（当日发生额）】
+  （无）
+
+【国库曲线（时点；每 60 天）】
+  day | money_total | gov-unit-gov-tp-copper | gov-unit-gov-tp-gold | gov-unit-gov-tp-silver | world-silver
+     0 |      690600 | {'copper': 100000, 'silver': 100000} | {'gold': 100000, 'silver': 100000} | {'silver': 200000} | {}
+    60 |      690600 | {'copper': 100000, 'silver': 98080} | {'gold': 100000, 'silver': 98080} | {'silver': 198080} | {}
+   120 |      690600 | {'copper': 100000, 'silver': 96160} | {'gold': 100000, 'silver': 96160} | {'silver': 196160} | {}
+   180 |      690600 | {'copper': 100000, 'silver': 94240} | {'gold': 100000, 'silver': 94240} | {'silver': 194240} | {}
+   240 |      690600 | {'copper': 100000, 'silver': 92320} | {'gold': 100000, 'silver': 92320} | {'silver': 192320} | {}
+   300 |      690600 | {'copper': 100000, 'silver': 90400} | {'gold': 100000, 'silver': 90400} | {'silver': 190400} | {}
+   360 |      690600 | {'copper': 100000, 'silver': 88480} | {'gold': 100000, 'silver': 88480} | {'silver': 188480} | {}
+   420 |      690600 | {'copper': 100000, 'silver': 86560} | {'gold': 100000, 'silver': 86560} | {'silver': 186560} | {}
+   480 |      690600 | {'copper': 100000, 'silver': 84640} | {'gold': 100000, 'silver': 84640} | {'silver': 184640} | {}
+   540 |      690600 | {'copper': 100000, 'silver': 82720} | {'gold': 100000, 'silver': 82720} | {'silver': 182720} | {}
+   600 |      690600 | {'copper': 100000, 'silver': 80800} | {'gold': 100000, 'silver': 80800} | {'silver': 180800} | {}
+  day 600 |      690600 | {'copper': 100000, 'silver': 80800} | {'gold': 100000, 'silver': 80800} | {'silver': 180800} | {}
+
+【货币总量曲线（对照 m0 = 创世后 day 0）】
+  m0 = 690600（{'copper': 136600, 'gold': 129400, 'silver': 424600}）
+  m600 = 690600（{'copper': 136600, 'gold': 129400, 'silver': 424600}）
+  ★ Δ = +0（+0.000%）；其中铸币贡献 = +0（+0.000%）
+  逐 120 天货币总量：d0=690600, d120=690600, d240=690600, d360=690600, d480=690600, d600=690600
+  发行恒等式（累计）: {'copper': 136600, 'gold': 129400, 'silver': 424600}
+  按 kind 累计       : {'GENESIS_ENDOWMENT': {'silver': 200000}, 'INITIAL_ENDOWMENT': {'copper': 136600, 'gold': 129400, 'silver': 224600}}
+
+【日志侧：铸币关账读数】
+
+【政策闸门（mintScalePerCycle）vs 实际产出】
+  world-silver 的 mintScalePerCycle = 2000 毫/周期（GOVERNMENT_MINT_SCALE_PER_CYCLE_MILLI，EconomySeeder.java:1058）
+  实际每轮 = 500 毫 ⇒ **上限不是瓶颈（差 4 倍）**；瓶颈是单位规模（=1）×产出率（500）
+
+========================================================================================================
+§4 借贷利率 —— DEFAULT_LOAN_RATE_ALPHA_PER_MILLE=50（MarketTable.java:110）+ MarketTable 默认 20‰
+========================================================================================================
+窗口：**逐市场轮**（每轮一行/区）；200‰/50‰ 为政策现值，利率轨迹为实测。
+
+【市场轮计数】MONEY_MARKET_WHY（逐区逐轮）= 720；MONEY_MARKET_ROUND = 240；MONEY_MARKET_SKIPPED（无债务工作副本）= 0
+  ★ 需求 demandMilli：min=0 中位=0.0 max=6363001；Σ=583212557
+  ★ 供给 supplyMilli：min=0 中位=23238.0 max=42103；Σ=12218619
+  ★ 成交 lentMilli ：min=0 中位=0.0 max=22533；Σ=559482（Σlent/Σdemand = 0.10%）
+  ★ 未满足 unmetMilli：min=0 中位=0.0 max=3420444；Σ=31925142
+  ★ 利率 ratePerMillePerCycle：min=0 中位=91.5 max=3407
+    下一轮利率 rateNext：min=0 中位=91.5 max=3407
+    利率分布（值×轮数）: 0×74, 1×2, 2×2, 3×2, 4×2, 5×2, 6×2, 7×2, 8×3, 9×3, 10×3, 11×3, 12×3, 13×3, 14×3, 15×3
+  ★ 放贷池全空轮次（supply==0 且 demand>0）= 17 / 720
+  ★ 一笔未成交轮次（loans==0 且 demand>0）= 17 / 720
+  ★ 实际放款笔数 Σloans = 1779；Σ借户 1081 / Σ贷户 998；零需求轮次 = 408 / 720（利率顶到无人借）
+  ★ 平均每笔放款 = 314.5 毫（Σlent÷Σloans）
+  ★ alphaPerMille 分布: {50: 720}
+
+【逐 10 轮轨迹（day / 需求 / 供给 / 成交 / 未满足 / 利率→下轮 / 借户/贷户）】
+  d3          93223       4757       4757        832     20 → 21     2/1
+  d28        620288        320        320      11311     30 → 31     4/2
+  d53       1211094        474        474         10     40 → 42     2/2
+  d78       3328913        974        974        490     60 → 63     4/1
+  d103      4529123       1039       1039        186     93 → 97     3/1
+  d128      5012443        816        816        237    145 → 152    8/3
+  d153      4286538      10186      10186      59777    231 → 242    2/6
+  d178      2600425          2          2          0    370 → 388    1/2
+  d203      1601158         30         30       9173    597 → 626    2/2
+  d228      2046046          4          4       8697    964 → 1012   2/4
+  d253      1350689          0          0    1350689   1565 → 1643   0/0
+  d278       505479          0          0     505479   2544 → 2671   0/0
+  d303            0      23424          0          0   2777 → 2639   0/0
+  d328            0      23484          0          0   1666 → 1583   0/0
+  d353            0      25443          0          0   1001 → 951    0/0
+  d378            0      25910          0          0    604 → 574    0/0
+  d403            0      26469          0          0    365 → 347    0/0
+  d428            0      26004          0          0    223 → 212    0/0
+  d453            0      26618          0          0    137 → 131    0/0
+  d478            0      26834          0          0     87 → 83     0/0
+  d503            0      27134          0          0     56 → 54     0/0
+  d528            0      27346          0          0     37 → 36     0/0
+  d553            0      27179          0          0     27 → 26     0/0
+  d578            0      27433          0          0     17 → 16     0/0
+
+【MONEY_MARKET_UNFILLED 归因（逐户逐轮缺口，累计）】
+  pool-empty                  893 条 / Σ缺口 26038924 毫
+  pool-exhausted              282 条 / Σ缺口 5886218 毫
+
+【债务存量 vs 货币总量（时点，每 120 天；★ 利率自适应的后果）】
+  day | 未偿 money:silver 本金 | 全世界 silver 存量 | 倍数 | 未偿合同数 | 当日 interestDue
+     0 |                      0 |             424600 |        0 |          0 | 0
+   120 |                 381451 |             424600 |    0.898 |        528 | 35313
+   240 |                1232539 |             424600 |      2.9 |       1759 | 16147791
+   360 |                2573091 |             424600 |     6.06 |       2103 | 15353616
+   480 |               19393079 |             424600 |     45.7 |       2157 | 369268329
+   600 |              280501778 |             424600 |      661 |       2173 | 78556226063
+  ★ 旧口径说明：w6lib.extract 的 `loans`（按 kind/origin 认贷款）在当前 DebtContract 形状下**无该字段** ⇒ 恒 0，
+    不代表没有放款；放款笔数取上面 MONEY_MARKET_WHY 的 Σloans。
+
+【市场价表侧（逐日时点，每 60 天）】
+  day    0 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 20, "numeraire": {"value": "copper"}, "prices": {"cloth": 5, "fiber": 1, "grain": 1, "haul": 4, "iron": 10, "tool": 20}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 20, "nume
+  day   60 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 48, "numeraire": {"value": "copper"}, "prices": {"cloth": 29, "fiber": 0, "grain": 25, "haul": 28, "iron": 0, "tool": 0}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 48, "num
+  day  120 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 133, "numeraire": {"value": "copper"}, "prices": {"cloth": 63, "fiber": 0, "grain": 54, "haul": 66, "iron": 0, "tool": 0}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 133, "n
+  day  180 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 407, "numeraire": {"value": "copper"}, "prices": {"cloth": 26, "fiber": 0, "grain": 22, "haul": 191, "iron": 0, "tool": 0}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 407, "
+  day  240 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 1289, "numeraire": {"value": "copper"}, "prices": {"cloth": 2, "fiber": 0, "grain": 20, "haul": 597, "iron": 0, "tool": 0}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 1057, 
+  day  300 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 2777, "numeraire": {"value": "copper"}, "prices": {"cloth": 0, "fiber": 0, "grain": 0, "haul": 1901, "iron": 0, "tool": 0}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 314, "
+  day  360 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 817, "numeraire": {"value": "copper"}, "prices": {"cloth": 0, "fiber": 0, "grain": 0, "haul": 5966, "iron": 0, "tool": 0}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 99, "nu
+  day  420 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 246, "numeraire": {"value": "copper"}, "prices": {"cloth": 0, "fiber": 0, "grain": 0, "haul": 19221, "iron": 0, "tool": 0}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 36, "n
+  day  480 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 79, "numeraire": {"value": "copper"}, "prices": {"cloth": 0, "fiber": 0, "grain": 0, "haul": 56069, "iron": 0, "tool": 0}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 12, "nu
+  day  540 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 31, "numeraire": {"value": "copper"}, "prices": {"cloth": 0, "fiber": 0, "grain": 0, "haul": 90557, "iron": 0, "tool": 0}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 0, "num
+  day  600 tables={"c-tp-copper": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 7, "numeraire": {"value": "copper"}, "prices": {"cloth": 0, "fiber": 0, "grain": 0, "haul": 183531, "iron": 0, "tool": 0}}, "c-tp-gold": {"loanRateAlphaPerMille": 50, "loanRatePerMille": 0, "num
+
+========================================================================================================
+§5 转业上限与斜率 —— MIGRATION_SPEED_CAP_PER_MILLE=100 / PROFIT_GAP_SPEED_SLOPE_PER_MILLE=100（均**无 GM 写口**）
+========================================================================================================
+窗口：转业只在**周期关账钩子**发生（实测每 30 天一轮）；速度为逐笔实测，闸门吃紧为推导（见下）。
+
+【转业笔数（累计 0..600）】MIGRATION_MOVE = 554 笔；涉源户 = 84 户；MIGRATION_APPLIED 轮 = 20
+  逐轮落点：d30:9笔, d60:9笔, d90:6笔, d120:12笔, d150:47笔, d180:47笔, d210:48笔, d240:55笔, d270:47笔, d300:37笔, d330:37笔, d360:35笔, d390:29笔, d420:27笔, d450:23笔, d480:23笔, d510:17笔, d540:16笔, d570:15笔, d600:15笔
+  轮次间隔（天）: [30]
+  MIGRATION_APPLIED 中 rowsBefore==rowsAfter（并入既有户）= 20 / 20
+
+【速度分布（逐笔实测，迁移笔数为权重）】
+  min=5 中位=99.0 max=126 均值=84.1
+  speedPerMille 值×笔数（值×次数，前 24 档）: 5×1, 6×1, 7×1, 12×1, 22×7, 25×4, 29×11, 30×12, 39×3, 43×4, 44×2, 47×1, 61×15, 63×35, 64×3, 66×53, 67×34, 70×1, 72×2, 80×1, 81×2, 87×1, 89×4, 93×4
+  ★ speed > MIGRATION_SPEED_CAP_PER_MILLE(100) 的笔数 = 1/554 = 0.18%（⇒这些笔的**配额可能被人口闸夹过**）
+  ★ speed == 1000（A 规则满速档）的笔数 = 0/554 = 0.00%
+  ★ speed ≤ 100（闸门**不可能**生效）的笔数 = 553/554 = 99.82%
+
+【搬迁人口与方向（累计）】
+  Σ搬迁人口 = 1271；单笔最大 = 11；Σ随迁货币 = 48072 毫；Σ随迁债务 = 127218129
+  ★ Σ搬迁人口 / 期末人口 = 25.85%
+  reason 分布: {'PROFIT_WEIGHTED': 554}
+  targetMode 分布: {'wage_farm': 176, 'handicraft_workshop': 125, 'merchant': 232, 'family_farm': 21}
+  ★ targetTierIndex 分布（0=贫农/兜底档 … 3=地主档）: {0: 514, 1: 33, 2: 7}
+
+【人口闸吃紧比例】
+  【推理】闸门生效当且仅当 max(1,⌊pop×speed÷1000⌋) > max(1,⌊pop×100÷1000⌋)，即需 speed > 100。
+  ★ 实测（无需人口的上界）：speed>100 的**笔数占比** = 1/554 = 0.18% ⇒ 闸门可能生效的比例上界。
+  ★ 逐户人口不在逐日紧凑读数里 ⇒ 精确吃紧比例见补充读数（--pop-daily）。
+
+【候选闸（MODE_MIGRATION_CANDIDATES）与壳户过滤】
+  d30    candidateRows=1639  merchant=235  skippedShellNoPop=142  noLabor=152  moves=9   movedPop=16
+  d60    candidateRows=1557  merchant=223  skippedShellNoPop=142  noLabor=154  moves=9   movedPop=16
+  d90    candidateRows=1235  merchant=176  skippedShellNoPop=142  noLabor=161  moves=6   movedPop=11
+  d120   candidateRows=1187  merchant=169  skippedShellNoPop=142  noLabor=162  moves=10  movedPop=22
+  d150   candidateRows=2529  merchant=365  skippedShellNoPop=142  noLabor=132  moves=47  movedPop=61
+  d180   candidateRows=3786  merchant=549  skippedShellNoPop=142  noLabor=101  moves=47  movedPop=56
+  d210   candidateRows=3854  merchant=559  skippedShellNoPop=142  noLabor=99   moves=48  movedPop=57
+  d240   candidateRows=3950  merchant=573  skippedShellNoPop=142  noLabor=97   moves=50  movedPop=173
+  d270   candidateRows=3936  merchant=571  skippedShellNoPop=142  noLabor=97   moves=36  movedPop=82
+  d300   candidateRows=4168  merchant=605  skippedShellNoPop=145  noLabor=88   moves=25  movedPop=76
+  d330   candidateRows=3990  merchant=579  skippedShellNoPop=146  noLabor=91   moves=24  movedPop=73
+  d360   candidateRows=4004  merchant=581  skippedShellNoPop=147  noLabor=90   moves=23  movedPop=74
+  d390   candidateRows=3601  merchant=522  skippedShellNoPop=147  noLabor=100  moves=22  movedPop=70
+  d420   candidateRows=3519  merchant=510  skippedShellNoPop=147  noLabor=102  moves=21  movedPop=70
+  d450   candidateRows=3485  merchant=505  skippedShellNoPop=147  noLabor=103  moves=20  movedPop=71
+  d480   candidateRows=3437  merchant=498  skippedShellNoPop=147  noLabor=104  moves=20  movedPop=73
+  d510   candidateRows=2447  merchant=353  skippedShellNoPop=147  noLabor=129  moves=15  movedPop=66
+  d540   candidateRows=2755  merchant=398  skippedShellNoPop=147  noLabor=122  moves=15  movedPop=67
+  d570   candidateRows=2693  merchant=389  skippedShellNoPop=147  noLabor=123  moves=15  movedPop=68
+  d600   candidateRows=2597  merchant=375  skippedShellNoPop=147  noLabor=125  moves=15  movedPop=69
+  ΣcandidateRows=60369 Σmoves=477 ΣmovedPop=1271 ΣnoPop=2892 ΣnoLabor=2332
+  ★ 逐轮失败理由 failuresByReason（Σ 全窗）:
+      DEPENDENT                                                1567
+      NO_ASSET:farm@2_0                                        1357
+      NO_ASSET:farm@-2_2                                       1342
+      NO_ASSET:farm@-2_3                                       1011
+      NO_ASSET:farm@2_1                                        1000
+      NO_ASSET:farm@0_-2                                        987
+      NO_ASSET:farm@3_-1                                        982
+      NO_ASSET:farm@-3_2                                        931
+      NO_ASSET:farm@0_1                                         913
+      NO_ASSET:farm@-1_-2                                       904
+      NO_ASSET:farm@-2_1                                        881
+      NO_ASSET:farm@0_0                                         822
+      NO_ASSET:farm@1_-3                                        798
+      NO_ASSET:farm@2_-1                                        779
+
+【市场 Σfills（转业引起的市场损伤读数）】
+  MARKET_REPORT 轮数 = 240；Σfills = 8472；MARKET_FILL 行数 = 8472 ⇒ 一致 = True
+  ★ 零成交轮次 = 0/240 = 0.00%（W9d 实测的硬牙：上限 100‰ 就是为它加的）
+  min/中位/max = 15 / 35.0 / 193
+
+========================================================================================================
+§6 运维读数（性能 3 样本 / 人口曲线 / 货币总量）
+========================================================================================================
+【性能：0→360 one-shot，每世界 3 样本（DEBUG+TRACE，与 W9f 同口径；各自独立 store/端口）】
+  样本 |   世界 | advance 秒 | 装置累计秒 | ready 秒 | head rev | logStrippedMd5
+
+【两世界人口/货币总量曲线（每 60 天，时点）】
+  ── tp600 ──
+    day |    人口 |  户数 |  货币总量 | 铸币累计 | 滑落累计(该日) | 断顿户
+       0 |    6350 |   342 |     690600 |        0 |              - |      0
+      60 |    6111 |   342 |     690600 |        0 |              - |    132
+     120 |    5889 |   342 |     690600 |        0 |              - |    146
+     180 |    5703 |   342 |     690600 |        0 |              - |    118
+     240 |    5613 |   342 |     690600 |        0 |              - |     85
+     300 |    5519 |   342 |     690600 |        0 |              - |     81
+     360 |    5434 |   342 |     690600 |        0 |              - |     73
+     420 |    5350 |   342 |     690600 |        0 |              - |     84
+     480 |    5225 |   342 |     690600 |        0 |              - |     89
+     540 |    5066 |   342 |     690600 |        0 |              - |    114
+     600 |    4916 |   342 |     690600 |        0 |              - |    116

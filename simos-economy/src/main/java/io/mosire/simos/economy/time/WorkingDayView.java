@@ -18,6 +18,7 @@ import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassStructure;
+import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
@@ -58,6 +59,16 @@ final class WorkingDayView implements EconomyDayView {
 
   WorkingDayView(EconomyStateBuilder sheet) {
     this.sheet = Objects.requireNonNull(sheet, "sheet（当日视图必须挂在会话工作表上）");
+  }
+
+  @Override
+  public long economyPolicyOf(EconomyPolicyKey key) {
+    return sheet.base().economyPolicyOf(key);
+  }
+
+  @Override
+  public boolean economyPolicyConfigured(EconomyPolicyKey key) {
+    return sheet.base().economyPolicyConfigured(key);
   }
 
   @Override

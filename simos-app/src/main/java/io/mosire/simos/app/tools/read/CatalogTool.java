@@ -467,6 +467,16 @@ public final class CatalogTool implements AgentTool {
                   + "★ GM-only：不进令/RegisterEffect/决策人目录，GM 的 simos.command.submit 与窄工具"
                   + " simos.economy.setGovernmentMintScale 可用）"),
           Map.entry(
+              "economy.SetEconomyPolicy",
+              "key(政策键枚举名), valueMilli(整数)（★ W10：GM 把一个**经济侧行为值**写成运行期生效的政策预设 —— 用户裁定"
+                  + "「凡\"行为\"一律做成 GM 可调的预设」。九个键与缺省值：FAMINE_MAX_PPM_PER_TICK=1000 /"
+                  + " SLIDE_SPEED_PER_MILLE_PER_RATIO=100 / SLIDE_COST_PER_LEVEL=1000 / SLIDE_ROUND_DAYS=5 /"
+                  + " MINT_MILLI_PER_FURNACE_CYCLE=500 / MINT_LABOR_SHARE_PER_MILLE=30 / LOAN_BASE_RATE_PER_MILLE=20 /"
+                  + " MIGRATION_SPEED_CAP_PER_MILLE=100 / PROFIT_GAP_SPEED_SLOPE_PER_MILLE=100。★ 缺键 = 该键的具名缺省"
+                  + " ⇒ 从没被写过的世界逐值等于改动前；写成缺省值 ⇒ 该行从政策表删掉。具名拒：unknown-key / bad-range /"
+                  + " unchanged / not-activated；★ 只写 economy.meta 的一个键，其余组件一个数都不动；★ GM-only"
+                  + "（不进令/RegisterEffect/决策人目录），窄工具 simos.economy.setEconomyPolicy 可用）"),
+          Map.entry(
               "economy.SetMarketNumeraire",
               "marketId, numeraire(币种 id，须在世界词表里)（★ W1：逐区；GM-only —— 把**某个市场**的计价币改成另一种币；"
                   + "市场必须已存在，否则拒 market-missing；币种不在词表 ⇒ 拒 unknown-currency；"

@@ -1,0 +1,46 @@
+=== [22:08:24] ab360-fix-r1 jar=/tmp/simos-shaded-4OVYlv.jar port=10921 ===
+[22:08:36] advance 0->360 HTTP 200 10.637s
+[22:08:36] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+  "readySeconds": 1.729,
+    ★ dump md5 == 89bbecfa44e5e6320507d781dd5577c4（工作内容逐字节相同）
+=== [22:08:37] ab360-fix2-r1 jar=/tmp/simos-shaded-4GZGPk.jar port=10922 ===
+[22:08:48] advance 0->360 HTTP 200 8.976s
+[22:08:48] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+  "readySeconds": 1.701,
+    ★ dump md5 == 89bbecfa44e5e6320507d781dd5577c4（工作内容逐字节相同）
+=== [22:08:48] ab360-head-r1 jar=/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar port=10923 ===
+[22:09:01] advance 0->360 HTTP 200 9.510s
+[22:09:01] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+  "readySeconds": 2.712,
+    ★ dump md5 == 89bbecfa44e5e6320507d781dd5577c4（工作内容逐字节相同）
+=== [22:09:01] ab360-fix-r2 jar=/tmp/simos-shaded-4OVYlv.jar port=10924 ===
+[22:09:12] advance 0->360 HTTP 200 9.424s
+[22:09:12] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+  "readySeconds": 1.762,
+    ★ dump md5 == 89bbecfa44e5e6320507d781dd5577c4（工作内容逐字节相同）
+=== [22:09:13] ab360-fix2-r2 jar=/tmp/simos-shaded-4GZGPk.jar port=10925 ===
+[22:09:25] advance 0->360 HTTP 200 10.596s
+[22:09:25] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+  "readySeconds": 1.712,
+    ★ dump md5 == 89bbecfa44e5e6320507d781dd5577c4（工作内容逐字节相同）
+=== [22:09:26] ab360-head-r2 jar=/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar port=10926 ===
+[22:09:37] advance 0->360 HTTP 200 9.128s
+[22:09:37] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+  "readySeconds": 1.704,
+    ★ dump md5 == 89bbecfa44e5e6320507d781dd5577c4（工作内容逐字节相同）
+=== [22:09:37] ab360-fix-r3 jar=/tmp/simos-shaded-4OVYlv.jar port=10927 ===
+[22:09:48] advance 0->360 HTTP 200 9.334s
+[22:09:48] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+  "readySeconds": 1.712,
+    ★ dump md5 == 89bbecfa44e5e6320507d781dd5577c4（工作内容逐字节相同）
+=== [22:09:49] ab360-fix2-r3 jar=/tmp/simos-shaded-4GZGPk.jar port=10928 ===
+[22:10:01] advance 0->360 HTTP 200 10.042s
+[22:10:01] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+  "readySeconds": 1.688,
+    ★ dump md5 == 89bbecfa44e5e6320507d781dd5577c4（工作内容逐字节相同）
+=== [22:10:01] ab360-head-r3 jar=/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar port=10929 ===
+[22:10:12] advance 0->360 HTTP 200 8.985s
+[22:10:12] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+  "readySeconds": 1.711,
+    ★ dump md5 == 89bbecfa44e5e6320507d781dd5577c4（工作内容逐字节相同）
+=== [22:10:12] AB DONE ===

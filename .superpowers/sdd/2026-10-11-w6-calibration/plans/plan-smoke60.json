@@ -1,0 +1,2 @@
+[ {"op":"advance_daily","from":0,"to":60},
+  {"op":"dump","label":"d60"} ]

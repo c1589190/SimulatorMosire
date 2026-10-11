@@ -1,0 +1,78 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 988750,
+      "md5": "b1c7f3ef1a576d1e10b7a2bf7f68f5cd",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 6329746,
+      "md5": "89bbecfa44e5e6320507d781dd5577c4",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-sw.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10924,
+  "headRevision": 2,
+  "jar": "/tmp/simos-shaded-4OVYlv.jar",
+  "jarMd5": "c29ba84c7499c5e990c66ce6fc36d73c",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=INFO -Dsimos.social.traceLevel=INFO -Dsimos.app.logLevel=INFO",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/logs/ab360-fix-r2.log",
+  "logKeep": "event=(MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET_REPORT|MARKET_FILL|MARKET_ROUND_START|MARKET_UNFILLED|MINT_[A-Z_]*|MONEY_MARKET[A-Z_]*|CLASS_[A-Z_]*|SLIDE_[A-Z_]*|STRATUM[A-Z_]*|FAMINE_[A-Z_]*|SEED_MINT[A-Z_]*|INDUSTRY_[A-Z_]*|DEBT_[A-Z_]*|HAUL_[A-Z_]*|LOGISTICS_[A-Z_]*|MERCHANT_[A-Z_]*|ONDEMAND_[A-Z_]*|PROFIT_MIGRATION_PLAN|DAY_START|DAY_END|GUI_REQUEST_FAILED)|\\tat |Caused by:|Suppressed:",
+  "logKeptLines": 114334,
+  "logLines": 114334,
+  "logStrippedMd5": "e6b15867c3b194268bbf7ba842001aa3",
+  "pid": 498291,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/plans/plan-sw360.json",
+  "readySeconds": 1.762,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 5705105,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 360
+    }
+  ],
+  "startedAt": "2026-10-11T22:09:01",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 9.424,
+      "to": 360
+    },
+    {
+      "bytes": 6329746,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/dumps/ab360-fix-r2-d360-oneshot.json",
+      "i": 1,
+      "label": "d360-oneshot",
+      "md5": "89bbecfa44e5e6320507d781dd5577c4",
+      "op": "dump",
+      "revision": 2
+    }
+  ],
+  "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/ab360-fix-r2",
+  "tag": "ab360-fix-r2",
+  "tick": 360,
+  "world": "small-world"
+}

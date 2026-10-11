@@ -17,6 +17,7 @@ import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassStructure;
+import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
@@ -61,6 +62,21 @@ import java.util.Map;
 public interface EconomyDayView {
 
   /** 产业表（模板 + 存量）。★ <b>工作副本优先</b>：生产/收获/组织各阶段会在段内改它（产出、投入、闲置份额）， 故逐日读者必须看当刻值。 */
+  /**
+   * ★★★ <b>W10（用户裁定「凡"行为"一律做成 GM 可调的预设」）：政策读口</b> —— 缺键 ⇒ 该键的具名缺省（= 改造前的常量值）。
+   *
+   * <p>★ 它是结算类读政策值的**唯一拼写点**（不得各处自己 {@code meta().economyPolicies().get(...)} 再兜底）。
+   */
+  long economyPolicyOf(EconomyPolicyKey key);
+
+  /**
+   * ★★ <b>W10：该政策键是否被 GM 显式配置过</b>（缺键 ⇒ false）。
+   *
+   * <p>★ 只给"缺省值不在政策表里、而在别处"的那一类读取点用（铸币产出率的缺省住在产业载荷 {@code Industry.moneyOutputPerUnit}
+   * 里）：这类点必须在**未配置时逐值等于改动前**。其余键一律用 {@link #economyPolicyOf}（缺省 = 该键的 {@code defaultValue()}）。
+   */
+  boolean economyPolicyConfigured(EconomyPolicyKey key);
+
   Map<IndustryId, Industry> industries();
 
   /**

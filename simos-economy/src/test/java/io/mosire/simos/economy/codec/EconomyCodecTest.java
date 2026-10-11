@@ -46,6 +46,8 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
+// ★★ W10（2026-10-11）：EconomyMeta 的第 6 组件（政策预设表）的键
+import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -218,6 +220,68 @@ class EconomyCodecTest {
 
     assertThat(back).isEqualTo(snapshot);
     assertThat(back.data().meta()).as("未激活必须原样回来").isEmpty();
+  }
+
+  /**
+   * ★★★ <b>W10（2026-10-11）：{@code EconomyMeta} 第 6 组件（政策预设表 {@code economyPolicies}）的 Codec 往返</b>
+   * —— 带<b>非空</b>政策表的 meta 写出 → 读回，逐字段相等，且把两件容易静默退化的事各自钉死：<b>表的顺序</b>与 <b>缺键语义</b>。
+   *
+   * <p>★★ <b>为什么"逐字段相等"这一条不够</b>：{@code Map.equals} 是<b>与迭代序无关</b>的内容判等 ⇒ 一个把保序 {@code
+   * LinkedHashMap} 换成 {@code HashMap}/{@code Map.copyOf} 的解码实现能让"相等"全绿，而<b>同一份配置写出的字节从此抖动</b> （本仓
+   * I7 明令禁 {@code Map.copyOf} 正是为此）。故本用例另钉 {@code keySet()} 的迭代序 = <b>枚举声明序</b>（规范序），
+   * 并加一条<b>字节级</b>断言（编码 → 解码 → 再编码逐字节相等）—— 序一漂，字节必变。
+   *
+   * <p>★ <b>缺键语义</b>：没被 GM 配过的键<b>不在表里</b>（不是"表里存着等于缺省的一行"），读口 {@code policyOf}
+   * 对缺键给出该键的<b>具名缺省</b>（= 改造前的那个常量值，"缺省中性"）。⇒ 本条同时守住"空表 = 全部走缺省"与 "缺键 ≠ 值为 0"这两件事。
+   *
+   * <p>★ <b>判别力（改坏 ⇒ 红）</b>：把解码路径改成"按 {@code HashMap} 重建政策表" ⇒ {@code keySet()} 那句红；把 {@code
+   * EconomyPolicyKey.normalize} 的声明序遍历改成"按输入插入序" ⇒ 同一句也红（本用例刻意**乱序**插入）。
+   */
+  @Test
+  void economyPolicyTableSurvivesTheCodecInOrderAndKeepsMissingKeysMissing() {
+    // ★ 刻意**乱序**插入（PROFIT_GAP → SLIDE_ROUND → FAMINE）：规范序是枚举声明序，
+    //   即 FAMINE_MAX_PPM_PER_TICK → SLIDE_ROUND_DAYS → PROFIT_GAP_SPEED_SLOPE_PER_MILLE。
+    //   若实现改成"按插入序"，下面的 keySet 断言当场红。
+    Map<EconomyPolicyKey, Long> configured = new LinkedHashMap<>();
+    configured.put(EconomyPolicyKey.PROFIT_GAP_SPEED_SLOPE_PER_MILLE, 250L);
+    configured.put(EconomyPolicyKey.SLIDE_ROUND_DAYS, 9L);
+    configured.put(EconomyPolicyKey.FAMINE_MAX_PPM_PER_TICK, 7_000L);
+    EconomyMeta withPolicies =
+        new EconomyMeta(
+            "m1",
+            7L,
+            OptionalLong.of(2L),
+            "rules-2026-10",
+            Optional.of("worlds/v17levant.json"),
+            configured);
+    EconomyData data = EconomyData.empty().withMeta(Optional.of(withPolicies));
+    EconomySnapshot snapshot = snapshotOf(data, SimosTimestamp.of(13));
+
+    String encoded = CODEC.encodeSnapshot(snapshot);
+    EconomySnapshot back = (EconomySnapshot) CODEC.decodeSnapshot(encoded);
+
+    assertThat(back).as("整份快照逐字段往返").isEqualTo(snapshot);
+    Map<EconomyPolicyKey, Long> readBack = back.data().meta().orElseThrow().economyPolicies();
+    assertThat(readBack).as("政策表逐键逐值相等（三个键都在）").isEqualTo(configured);
+    assertThat(readBack.keySet())
+        .as("★ 政策表的**顺序** = 枚举声明序（规范序）—— Map.equals 与序无关，这条才钉得住保序")
+        .containsExactly(
+            EconomyPolicyKey.FAMINE_MAX_PPM_PER_TICK,
+            EconomyPolicyKey.SLIDE_ROUND_DAYS,
+            EconomyPolicyKey.PROFIT_GAP_SPEED_SLOPE_PER_MILLE);
+    // ★ 缺键语义：没配过的键不在表里，但读口给具名缺省（不是 0，也不是"表里补一行"）。
+    assertThat(readBack)
+        .as("没配过的键**不得**出现在表里（缺键 = 缺省，不留冗余行）")
+        .doesNotContainKey(EconomyPolicyKey.SLIDE_COST_PER_LEVEL)
+        .doesNotContainKey(EconomyPolicyKey.LOAN_BASE_RATE_PER_MILLE);
+    assertThat(back.data().meta().orElseThrow().policyOf(EconomyPolicyKey.SLIDE_COST_PER_LEVEL))
+        .as("缺键 ⇒ 该键的具名缺省（= 改造前的常量值）")
+        .isEqualTo(EconomyPolicyKey.SLIDE_COST_PER_LEVEL.defaultValue());
+    assertThat(readBack).as("表里恰 3 键（没有别的键被顺手补进来）").hasSize(3);
+    // ★ 字节级：解码换了容器序 ⇒ 再编码的字节会变。
+    assertThat(CODEC.encodeSnapshot(back))
+        .as("快照编码 → 解码 → 再编码必须**逐字节相等**（序漂移即红）")
+        .isEqualTo(encoded);
   }
 
   /** 变更集往返：四条变体各造一条（都落在 {@code industries} 组件上），逐条过线。 */

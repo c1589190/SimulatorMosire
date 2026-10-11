@@ -1,0 +1,188 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 1748211,
+      "md5": "839252b123c43c0734805e000e923cc3",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 2144479,
+      "md5": "09120a250afd3fbbd335619351021f73",
+      "path": "checkpoints/main/2.json"
+    },
+    {
+      "bytes": 2144519,
+      "md5": "b5d1cac1019091d915ea847d499014e0",
+      "path": "checkpoints/main/3.json"
+    },
+    {
+      "bytes": 2487369,
+      "md5": "0e494e2ec755493603eed077c3fdf8e4",
+      "path": "checkpoints/main/4.json"
+    },
+    {
+      "bytes": 2743799,
+      "md5": "899d90ac577256cc9b44aae3668f1e44",
+      "path": "checkpoints/main/5.json"
+    }
+  ],
+  "config": "shell-tp.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10921,
+  "headRevision": 5,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "d68c860e669c51a327aced94e31e1f99",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/results/w10fix-tppolicy.log",
+  "logKeep": null,
+  "logKeptLines": 1224677,
+  "logLines": 1224677,
+  "logStrippedMd5": "5e25dfff7d3f487ebe1a4d600bd549ff",
+  "pid": 514795,
+  "plan": "plan-tp-w10fix-policy.json",
+  "readySeconds": 1.731,
+  "revisionDelta": 4,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1184783,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 10
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1768,
+      "commandType": "economy.SetEconomyPolicy",
+      "revision": 3,
+      "tick": 10
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1125180,
+      "commandType": "core.AdvanceTime",
+      "revision": 4,
+      "tick": 30
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 838872,
+      "commandType": "core.AdvanceTime",
+      "revision": 5,
+      "tick": 40
+    }
+  ],
+  "startedAt": "2026-10-11T23:00:52",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 3.295,
+      "to": 10
+    },
+    {
+      "bytes": 2144479,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/dumps/w10fix-tppolicy-d10-pre-write.json",
+      "i": 1,
+      "label": "d10-pre-write",
+      "md5": "09120a250afd3fbbd335619351021f73",
+      "op": "dump",
+      "revision": 2
+    },
+    {
+      "args": {
+        "branch": "main",
+        "expectedRevision": 2,
+        "payloadJson": "{\"key\":\"SLIDE_SPEED_PER_MILLE_PER_RATIO\",\"valueMilli\":1000}"
+      },
+      "body": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":3},\"commandId\":\"4118e47e-2db3-49c8-8905-9da1c694c37b\",\"correlationId\":\"4118e47e-2db3-49c8-8905-9da1c694c37b\"}",
+      "i": 2,
+      "isError": false,
+      "name": "simos.economy.setEconomyPolicy",
+      "op": "tool",
+      "parsed": {
+        "commandId": "4118e47e-2db3-49c8-8905-9da1c694c37b",
+        "correlationId": "4118e47e-2db3-49c8-8905-9da1c694c37b",
+        "ref": {
+          "branch": "main",
+          "revision": 3
+        },
+        "result": "committed"
+      }
+    },
+    {
+      "body": {
+        "entries": [
+          {
+            "atEpochMs": 1791730857919,
+            "code": null,
+            "ok": true,
+            "tool": "simos.economy.setEconomyPolicy"
+          }
+        ]
+      },
+      "bytes": 103,
+      "httpStatus": 200,
+      "i": 3,
+      "op": "get",
+      "path": "/api/gm/tool-usage"
+    },
+    {
+      "from": 10,
+      "httpStatus": 200,
+      "i": 4,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":4}}",
+      "seconds": 4.475,
+      "to": 30
+    },
+    {
+      "bytes": 2487369,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/dumps/w10fix-tppolicy-d30-after-1-advance.json",
+      "i": 5,
+      "label": "d30-after-1-advance",
+      "md5": "0e494e2ec755493603eed077c3fdf8e4",
+      "op": "dump",
+      "revision": 4
+    },
+    {
+      "from": 30,
+      "httpStatus": 200,
+      "i": 6,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":5}}",
+      "seconds": 2.085,
+      "to": 40
+    },
+    {
+      "bytes": 2743799,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/dumps/w10fix-tppolicy-d40-policy.json",
+      "i": 7,
+      "label": "d40-policy",
+      "md5": "899d90ac577256cc9b44aae3668f1e44",
+      "op": "dump",
+      "revision": 5
+    }
+  ],
+  "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/store-w10fix-tppolicy",
+  "tag": "w10fix-tppolicy",
+  "tick": 40,
+  "world": "three-powers"
+}

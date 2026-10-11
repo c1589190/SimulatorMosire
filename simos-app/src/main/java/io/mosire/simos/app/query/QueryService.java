@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
@@ -86,15 +87,36 @@ public final class QueryService {
    *
    * @throws IllegalArgumentException 分支不存在（没有 head 可查）
    */
+  /**
+   * ★★★ <b>W10（A1）：读口等创世落盘的上限（毫秒）</b>。创世要在磁盘上编码写完整份状态（小世界实测 ~1.7 s）， 取 30 s
+   * 是"远大于任何一次创世、又不会把读线程挂死"的折中；超时 ⇒ 具名 {@link WorldNotReadyException}（503）。
+   */
+  public static final long GENESIS_READY_WAIT_MILLIS = 30_000L;
+
   public SimulationState stateAt(QueryTarget target) {
     Objects.requireNonNull(target, "target");
     RevisionId revision = target.revision();
     if (revision == null) {
+      Optional<RevisionId> head = core.head(target.branch());
+      if (head.isEmpty() && core.genesisPending()) {
+        // ★★★ W10（A1 启动竞态）：空库启动时 GUI/MCP 的口先监听、创世后落盘 ⇒ 这个窗口里的读会撞上
+        //   "父链回退到根仍无可用 checkpoint"（500 + 14 行栈）。这里**等创世真的落盘**（不是重试、不是报错），
+        //   就绪后只再读一次 head；超时才走下面的具名"世界未就绪"。
+        core.awaitGenesisReady(GENESIS_READY_WAIT_MILLIS);
+        head = core.head(target.branch());
+      }
       revision =
-          core.head(target.branch())
-              .orElseThrow(
-                  () ->
-                      new IllegalArgumentException("分支不存在，没有 head 可查：" + target.branch().value()));
+          head.orElseThrow(
+              () ->
+                  core.genesisPending()
+                      ? new WorldNotReadyException(
+                          "世界尚未就绪（创世还未落盘；等 "
+                              + GENESIS_READY_WAIT_MILLIS
+                              + " ms 后仍无 "
+                              + target.branch().value()
+                              + " 的 head）")
+                      : new IllegalArgumentException(
+                          "分支不存在，没有 head 可查：" + target.branch().value()));
     }
     StateRef ref = new StateRef(target.branch(), revision);
     SimulationState cached = stateCache.get(ref);

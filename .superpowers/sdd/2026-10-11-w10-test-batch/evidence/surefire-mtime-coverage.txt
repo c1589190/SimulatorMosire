@@ -1,0 +1,19 @@
+窗口 = 2026-10-11 23:32:44 .. 23:37:20（tools/mvn-lock.sh test -am，exit=0）
+module                txt  in-window    newest    oldest
+simos-util             26         26  23:32:49  23:32:45
+simos-map              39         39  23:32:52  23:32:50
+simos-calendar          6          6  23:32:53  23:32:53
+simos-social-api        1          1  23:32:53  23:32:53
+simos-actor-api         1          1  23:32:54  23:32:54
+simos-economy-api       8          8  23:32:54  23:32:54
+simos-social           25         25  23:32:56  23:32:56
+simos-unit             29         29  23:32:58  23:32:57
+simos-core             33         33  23:33:06  23:32:58
+simos-sd               25         25  23:33:07  23:33:06
+simos-actor             9          9  23:33:08  23:33:07
+simos-economy          61         61  23:33:10  23:33:08
+simos-gov               8          8  23:33:11  23:33:11
+simos-army              9          9  23:33:11  23:33:11
+simos-app             136        136  23:37:08  23:33:16
+--------------------------------------------------------
+TOTAL txt=416  in-window=416  stale=0

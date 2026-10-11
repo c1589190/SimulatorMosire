@@ -1,0 +1,78 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 988750,
+      "md5": "b1c7f3ef1a576d1e10b7a2bf7f68f5cd",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 6329746,
+      "md5": "89bbecfa44e5e6320507d781dd5577c4",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-sw.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10905,
+  "headRevision": 2,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "24c8a0a2291f5cdbeaff49edca71a13b",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=DEBUG -Dsimos.social.traceLevel=INFO -Dsimos.app.logLevel=DEBUG",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/logs/sw360perf3.log",
+  "logKeep": "event=(MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET_REPORT|MARKET_FILL|MARKET_ROUND_START|MARKET_UNFILLED|MINT_[A-Z_]*|MONEY_MARKET[A-Z_]*|CLASS_[A-Z_]*|SLIDE_[A-Z_]*|STRATUM[A-Z_]*|FAMINE_[A-Z_]*|SEED_MINT[A-Z_]*|INDUSTRY_[A-Z_]*|DEBT_[A-Z_]*|HAUL_[A-Z_]*|LOGISTICS_[A-Z_]*|MERCHANT_[A-Z_]*|ONDEMAND_[A-Z_]*|PROFIT_MIGRATION_PLAN|DAY_START|DAY_END|GUI_REQUEST_FAILED)|\\tat |Caused by:|Suppressed:",
+  "logKeptLines": 139833,
+  "logLines": 139833,
+  "logStrippedMd5": "9535a9b602fd95888c35a6719584067a",
+  "pid": 497163,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/plans/plan-sw360.json",
+  "readySeconds": 1.697,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 5705105,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 360
+    }
+  ],
+  "startedAt": "2026-10-11T22:06:08",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 11.291,
+      "to": 360
+    },
+    {
+      "bytes": 6329746,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/dumps/sw360perf3-d360-oneshot.json",
+      "i": 1,
+      "label": "d360-oneshot",
+      "md5": "89bbecfa44e5e6320507d781dd5577c4",
+      "op": "dump",
+      "revision": 2
+    }
+  ],
+  "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/sw360perf3",
+  "tag": "sw360perf3",
+  "tick": 360,
+  "world": "small-world"
+}

@@ -3265,7 +3265,13 @@ public final class EconomySettlement {
             meta.activatedDay(),
             lastClosed,
             meta.rulesVersion(),
-            meta.migrationSource());
+            meta.migrationSource(),
+            // ★★★ W10-fix（2026-10-11）：政策表**原样带过**。缺这一行 ⇒ 本行用 5 参便捷构造器
+            //   （= 空表）重建 meta，逐日结算把 GM 写进 economyPolicies 的政策**静默清空** ——
+            //   政策只在"写入的那一个 tick"内成立，下一个 advance 之后就不见了（W10-收口批实测
+            //   240/240 个结算日全中）。★ 本类型的"逐字段手写重建"是铁律 5 那一族的老坑：
+            //   再加第 7 个组件时，这里同样要跟着加。
+            meta.economyPolicies());
     // ★ R2：劳动供给表与配额表**原样带过结算的日常部分**（配额属命令层、供给属 social 的人口真值源）；
     //   ★ W3 起结算**不再**按死亡比例缩配额（判死归 Social）⇒ 这里交出的是**工作副本**。
     // ★★ E3：把本次结算日产生的发行审计记录落进状态表（按 id 确定性排序；map 键 = 记录 id）。

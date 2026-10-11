@@ -1,0 +1,66 @@
+# W6 标定读数批（2026-10-11）运行清单 —— jar / store / 端口 / Δrev / PID / JVM 开关 / 日志 md5
+# 装置：scripts/w6run.py = /tmp/w6acc/w6run.py 的逐字副本（只改 OUT/DUMPS/cwd 三处落点）；scripts/w6lib.py 逐字副本
+# 原始 w6run.py md5 = b7b8b0f501e19a643e8470fa342689d3
+# 本批 w6run.py md5 = f93ab3af1555a4378aa789dbe8ca4b3e（改落点后）；w6lib.py md5 = 5253b7f7bb7a61d5059d67be13d702c8
+# 驱动脚本 md5：run-worlds.sh=de321ed10a6c550dcd9cb8a2ba1ff75b  ab-jars.sh=0c2b4eae10e6eb4bbcf56160c7a54296  calib5.py=efd25b90e191b52300408187af4e7928  gate_probe.py=0bb09535f68d243379c4631f88f5d9a9
+# 收工方式：全部由装置对**该次 PID** 发 SIGTERM（proc.send_signal(SIGTERM)），未用 pkill -f
+
+tag              jar_md5                            store                            port   Δrev tick      pid ready_s  advance_s logStrippedMd5                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+sw600            24c8a0a2291f5cdbeaff49edca71a13b   store/sw600                     10901    600  600   495940  1.701    105.172 4f2004760dd2e9b8daaa7d655fc360e4  
+tp600            24c8a0a2291f5cdbeaff49edca71a13b   store/tp600                     10902    600  600   496229  1.691    233.317 0129cf7784fb9d790209849e502fde87  
+sw360perf1       24c8a0a2291f5cdbeaff49edca71a13b   store/sw360perf1                10905      1  360   496703  2.243     11.851 3e02b72d2bc6dfd7af1b97394c28244a  
+sw360perf2       24c8a0a2291f5cdbeaff49edca71a13b   store/sw360perf2                10905      1  360   496947  1.737     14.202 9535a9b602fd95888c35a6719584067a  
+sw360perf3       24c8a0a2291f5cdbeaff49edca71a13b   store/sw360perf3                10905      1  360   497163  1.697     11.291 9535a9b602fd95888c35a6719584067a  
+tp360perf1       24c8a0a2291f5cdbeaff49edca71a13b   store/tp360perf1                10908      1  360   496763  1.727     56.434 624b35e92719f12b983020b5f5894002  
+tp360perf2       24c8a0a2291f5cdbeaff49edca71a13b   store/tp360perf2                10908      1  360   497012  1.734     53.908 624b35e92719f12b983020b5f5894002  
+tp360perf3       24c8a0a2291f5cdbeaff49edca71a13b   store/tp360perf3                10908      1  360   497228   1.74     48.223 624b35e92719f12b983020b5f5894002  
+ab360-fix-r1     c29ba84c7499c5e990c66ce6fc36d73c   store/ab360-fix-r1              10921      1  360   498110  1.729     10.637 e6b15867c3b194268bbf7ba842001aa3  
+ab360-fix2-r1    ce0bf3ba8f388492b0f0ab8ae079c22c   store/ab360-fix2-r1             10922      1  360   498169  1.701      8.976 85e6c7d7ebfd682e3dcb56b5fbf34c05  
+ab360-head-r1    24c8a0a2291f5cdbeaff49edca71a13b   store/ab360-head-r1             10923      1  360   498231  2.712       9.51 e6b15867c3b194268bbf7ba842001aa3  
+ab360-fix-r2     c29ba84c7499c5e990c66ce6fc36d73c   store/ab360-fix-r2              10924      1  360   498291  1.762      9.424 e6b15867c3b194268bbf7ba842001aa3  
+ab360-fix2-r2    ce0bf3ba8f388492b0f0ab8ae079c22c   store/ab360-fix2-r2             10925      1  360   498351  1.712     10.596 e6b15867c3b194268bbf7ba842001aa3  
+ab360-head-r2    24c8a0a2291f5cdbeaff49edca71a13b   store/ab360-head-r2             10926      1  360   498432  1.704      9.128 e6b15867c3b194268bbf7ba842001aa3  
+ab360-fix-r3     c29ba84c7499c5e990c66ce6fc36d73c   store/ab360-fix-r3              10927      1  360   498495  1.712      9.334 75aec2d0a4f5736116cebd26c8282245  
+ab360-fix2-r3    ce0bf3ba8f388492b0f0ab8ae079c22c   store/ab360-fix2-r3             10928      1  360   498559  1.688     10.042 e6b15867c3b194268bbf7ba842001aa3  
+ab360-head-r3    24c8a0a2291f5cdbeaff49edca71a13b   store/ab360-head-r3             10929      1  360   498625  1.711      8.985 e6b15867c3b194268bbf7ba842001aa3  
+
+# dump（逐份 md5；--prune ⇒ store 里只留最新 checkpoint，dump 由装置拷出）
+  ab360-fix-r1-d360-oneshot.json                 89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  ab360-fix-r2-d360-oneshot.json                 89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  ab360-fix-r3-d360-oneshot.json                 89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  ab360-fix2-r1-d360-oneshot.json                89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  ab360-fix2-r2-d360-oneshot.json                89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  ab360-fix2-r3-d360-oneshot.json                89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  ab360-head-r1-d360-oneshot.json                89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  ab360-head-r2-d360-oneshot.json                89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  ab360-head-r3-d360-oneshot.json                89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  smoke60app-d60.json                            0b6b707049ea85110b0165135dfe4de2  1746025 bytes
+  sw360perf1-d360-oneshot.json                   89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  sw360perf2-d360-oneshot.json                   89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  sw360perf3-d360-oneshot.json                   89bbecfa44e5e6320507d781dd5577c4  6329746 bytes
+  sw600-d600.json                                a8206a6786820a2d35df4afa5278a7a3  8409214 bytes
+  tp360perf1-d360-oneshot.json                   838477e41aaf5b9db732d12a424c7605  12371339 bytes
+  tp360perf2-d360-oneshot.json                   838477e41aaf5b9db732d12a424c7605  12371339 bytes
+  tp360perf3-d360-oneshot.json                   838477e41aaf5b9db732d12a424c7605  12371339 bytes
+  tp600-d600.json                                d30e219be8b2aafd4b6be8721d707e71  13604548 bytes
+
+# 逐日紧凑读数（daily/*.jsonl.gz；601 行 = day 0..600）
+  daily-sw600.jsonl.gz               64c88b7694a2e8fba04cc8dd6c4a343f  180412 bytes
+  daily-tp600.jsonl.gz               774ac90171e2d0e42e099e977ab5e516  330801 bytes
+
+# 日志（gz；stripped = 去掉时间戳前缀，跨进程逐行比对的形态）
+  sw600.log.gz                       04fd3ac932510ef146776ff930248465  3339357 bytes
+  tp600.log.gz                       ea28ab4054df3c61cde274b6092e27b2  28810567 bytes
+  sw600.log.stripped.gz              7354928d68c90445e22d9c2035fd21cf  3268805 bytes
+  tp600.log.stripped.gz              4733a69f0d84a0e1ca5b028c138f88d8  28273738 bytes
+
+# ── 追加：日志非确定性判别实验（§3 A1 的最小复现；3 次同命令，只保留日志三份 + dump）───
+# tag       jar_md5                            store         port   Δrev tick  pid     advance_s  logStrippedMd5(去时间戳)            逐日行数  d360 dump md5
+# logdet1   24c8a0a2291f5cdbeaff49edca71a13b   (已删省盘)    10931  1    360   4990xx  见 .result.json  e6b15867c3b194268bbf7ba842001aa3  114334   89bbecfa44e5e6320507d781dd5577c4
+# logdet2   同上一行（逐字同命令）              (已删省盘)    10932  1    360   4990xx  见 .result.json  85e6c7d7ebfd682e3dcb56b5fbf34c05  114349★  89bbecfa44e5e6320507d781dd5577c4
+# logdet3   同上一行（逐字同命令）              (已删省盘)    10933  1    360   4990xx  见 .result.json  e6b15867c3b194268bbf7ba842001aa3  114334   89bbecfa44e5e6320507d781dd5577c4
+# ★ logdet2 多出的 15 行 = 1 行 WARN `GUI_REQUEST_FAILED path=/api/economy/overview` + 14 行异常栈
+#   （`IllegalStateException: 重放回退到父链的根仍无可用 checkpoint … main@1`，抛点 Replay.java:181）⇒ 启动竞态（1/3 命中）。
+# ★ 三次的 d360 dump **逐字节相同** ⇒ 状态零差异；差异只在日志。logdet1 与 logdet3 的日志逐字节相同（cmp 通过）。
+# ★ 本实验的 store 三个各 13 MB 已删（读数只需日志与 dump 的 md5）。

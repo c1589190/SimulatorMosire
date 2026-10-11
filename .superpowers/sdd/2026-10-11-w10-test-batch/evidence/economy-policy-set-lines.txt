@@ -1,0 +1,4 @@
+event=ECONOMY_POLICY_SET origin=economy-command originKind=system key=SLIDE_COST_PER_LEVEL from=1000 to=4000 default=1000 min=0 max=1000000000 configuredKeys=2 effectiveFrom=same-revision note=行为值政策预设：写入即生效（读取点每 tick 从政策表读，不再读编译期常量）
+event=ECONOMY_POLICY_SET origin=economy-command originKind=system key=SLIDE_COST_PER_LEVEL from=4000 to=1000 default=1000 min=0 max=1000000000 configuredKeys=1 effectiveFrom=same-revision note=行为值政策预设：写入即生效（读取点每 tick 从政策表读，不再读编译期常量）
+event=ECONOMY_POLICY_SET origin=economy-command originKind=system key=SLIDE_ROUND_DAYS from=5 to=7 default=5 min=1 max=1000 configuredKeys=1 effectiveFrom=same-revision note=行为值政策预设：写入即生效（读取点每 tick 从政策表读，不再读编译期常量）
+event=ECONOMY_POLICY_SET origin=economy-command originKind=system key=SLIDE_ROUND_DAYS from=5 to=9 default=5 min=1 max=1000 configuredKeys=1 effectiveFrom=same-revision note=行为值政策预设：写入即生效（读取点每 tick 从政策表读，不再读编译期常量）

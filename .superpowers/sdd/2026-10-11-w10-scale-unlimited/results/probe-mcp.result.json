@@ -1,0 +1,59 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 1748211,
+      "md5": "839252b123c43c0734805e000e923cc3",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 1748251,
+      "md5": "0e004f3be1421ce6043d2cf3f328bf32",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "shell-tp.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10941,
+  "headRevision": 2,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "d68c860e669c51a327aced94e31e1f99",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/results/probe-mcp.log",
+  "logKeep": null,
+  "logKeptLines": 484,
+  "logLines": 484,
+  "logStrippedMd5": "bfb66d344d34f8acc8465124386c70f4",
+  "pid": 514710,
+  "plan": "/dev/stdin",
+  "readySeconds": 1.529,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1768,
+      "commandType": "economy.SetEconomyPolicy",
+      "revision": 2,
+      "tick": 0
+    }
+  ],
+  "startedAt": "2026-10-11T22:59:56",
+  "steps": [],
+  "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/store-probe-mcp",
+  "tag": "probe-mcp",
+  "tick": 0,
+  "world": "three-powers"
+}

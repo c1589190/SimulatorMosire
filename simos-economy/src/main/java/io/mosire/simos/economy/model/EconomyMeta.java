@@ -1,6 +1,10 @@
 package io.mosire.simos.economy.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 
@@ -27,7 +31,13 @@ public record EconomyMeta(
     long activatedDay,
     OptionalLong lastClosedCycle,
     String rulesVersion,
-    Optional<String> migrationSource) {
+    Optional<String> migrationSource,
+    // ── ★★★ W10（2026-10-11，用户裁定「凡"行为"一律做成 GM 可调的预设」）第 6 个组件：经济侧政策预设表 ──
+    //   键 = EconomyPolicyKey（稳定枚举名），值 = 该键的当前值。
+    //   ★ 缺键 = 该键的具名缺省（= 改造前的常量值）⇒ 空表的世界逐值等于改动前（缺省中性，I-P8 同款）。
+    //   ★ 宿主选这里（而不是新开第 42 个组件）的理由见实现账本：本组件是世界级单值组件，ChangeSet 走"单键表"投影、
+    //     Codec 走既有 Jackson record 绑定 ⇒ 加一个字段不动任何既有 with*/构造点，也不引入"新组件忘了接三件套"的风险。
+    Map<EconomyPolicyKey, Long> economyPolicies) {
 
   /** ★ S1 迁移后的规则版本标签（计划 S1.5）：迁移器把旧档升到本版本；再次加载不得二次迁移。 */
   public static final String RULES_VERSION_PRE_MODERN_V1 = "pre-modern-v1";
@@ -67,6 +77,84 @@ public record EconomyMeta(
       throw new IllegalArgumentException(
           "EconomyMeta.migrationSource 不得为 null（直接创世用 Optional.empty()）");
     }
+    // ★★★ W10：政策表缺键（旧档 / 未设）⇒ 空表（= 全部走具名缺省）；null 与空表同义，不写第二个真相。
+    //   ★ 越域的**已配置**值在构造期 fail-closed（命令边界另有一道同样的判据）—— 越域不是"调得激进"，是坏数据。
+    // ★★★ W10-fix2（2026-10-11）：★ 冻在赋值处（与 MarketTable.hexes / RentRule.legs / Government.issuable
+    // 同一形制）。
+    //   ★ 为什么要有这一道**多余**的包装：{@code EconomyPolicyKey.normalize(...)} 虽已返回 {@code
+    //   Collections.unmodifiableMap}（保序），但它在**另一个类**里 —— SpotBugs 的 EI_EXPOSE_REP 不做跨过程分析，
+    //   只认它在这一个方法里看得见的 {@code Collections.unmodifiableMap}，于是把生成的 record 访问器报成"暴露内部表示"
+    //   （canonical verify 实测 1 条，line 28 = record 头）。包内其余 22 个 record 组件都在 compact 构造器里就地包装，
+    //   所以只有本类型被报。
+    //   ★ 语义为空操作：normalize 已保序、已冻结 ⇒ 逐键、逐序、逐字节不变（缺省中性 I-P8 不受影响）。
+    //   ★ **禁用 Map.copyOf / Set.copyOf**（会破坏保序；AGENTS §〇 铁律 7 / I7）。
+    economyPolicies = Collections.unmodifiableMap(EconomyPolicyKey.normalize(economyPolicies));
+    for (Map.Entry<EconomyPolicyKey, Long> entry : economyPolicies.entrySet()) {
+      if (entry.getValue() == null || !entry.getKey().accepts(entry.getValue())) {
+        throw new IllegalArgumentException(
+            "EconomyMeta.economyPolicies 的政策值越域："
+                + entry.getKey().name()
+                + " = "
+                + entry.getValue()
+                + "（有效域 ["
+                + entry.getKey().minValue()
+                + ", "
+                + entry.getKey().maxValue()
+                + "]）");
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>W10：旧组件面的便捷构造器</b>（5 参 = 政策表为空）—— 历史调用点（含创世载荷与迁移器）不必为新增组件逐个改动； 语义 = "这个档没有配过任何政策" ⇒ 全部走
+   * {@link EconomyPolicyKey#defaultValue()}（缺省中性）。
+   */
+  public EconomyMeta(
+      String mapId,
+      long activatedDay,
+      OptionalLong lastClosedCycle,
+      String rulesVersion,
+      Optional<String> migrationSource) {
+    this(mapId, activatedDay, lastClosedCycle, rulesVersion, migrationSource, Map.of());
+  }
+
+  /**
+   * ★★ <b>W10：读一个政策值</b>（缺键 ⇒ 该键的具名缺省 = 现值）。★ 读口的唯一拼写点 —— 各结算类不得自己 {@code
+   * economyPolicies().get(...)} 再兜底一遍。
+   */
+  public long policyOf(EconomyPolicyKey key) {
+    Objects.requireNonNull(key, "key");
+    Long configured = economyPolicies.get(key);
+    return configured == null ? key.defaultValue() : configured;
+  }
+
+  /**
+   * ★★ <b>W10：写一个政策值</b>（返回新实例；`value == 该键缺省` ⇒ <b>删掉这一行</b>，不留"等于现值的冗余行"）。
+   *
+   * <p>★ 越域当场抛（命令 handler 先在命令边界具名拒，这里是第二道闸）。
+   */
+  public EconomyMeta withPolicy(EconomyPolicyKey key, long value) {
+    Objects.requireNonNull(key, "key");
+    if (!key.accepts(value)) {
+      throw new IllegalArgumentException(
+          "EconomyMeta.withPolicy 的政策值越域："
+              + key.name()
+              + " = "
+              + value
+              + "（有效域 ["
+              + key.minValue()
+              + ", "
+              + key.maxValue()
+              + "]）");
+    }
+    LinkedHashMap<EconomyPolicyKey, Long> next = new LinkedHashMap<>(economyPolicies);
+    if (value == key.defaultValue()) {
+      next.remove(key);
+    } else {
+      next.put(key, value);
+    }
+    return new EconomyMeta(
+        mapId, activatedDay, lastClosedCycle, rulesVersion, migrationSource, next);
   }
 
   /**

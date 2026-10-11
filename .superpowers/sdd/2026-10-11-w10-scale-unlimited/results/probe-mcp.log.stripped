@@ -1,0 +1,484 @@
+[run-shaded] 快照 /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar -> /tmp/simos-shaded-v2GieP.jar（本次进程独占，免受就地重写影响）
+Picked up JAVA_TOOL_OPTIONS: -Dsimos.economy.logLevel=DEBUG
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.calendar.season - event=CALENDAR_SEASON_CONFIGURED origin=calendar-season originKind=system boundary=SOLAR_TERM tropicalModel=RAINY_DRY rainyStart=45.0 rainyEnd=165.0 bandsConfigured=false
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.calendar.season - event=CALENDAR_SEASON_CONFIGURED origin=calendar-season originKind=system boundary=SOLAR_TERM tropicalModel=RAINY_DRY rainyStart=45.0 rainyEnd=165.0 bandsConfigured=false
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.calendar.season - event=CALENDAR_SEASON_CONFIGURED origin=calendar-season originKind=system boundary=SOLAR_TERM tropicalModel=RAINY_DRY rainyStart=45.0 rainyEnd=165.0 bandsConfigured=false
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.calendar.season - event=CALENDAR_SEASON_CONFIGURED origin=calendar-season originKind=system boundary=SOLAR_TERM tropicalModel=RAINY_DRY rainyStart=45.0 rainyEnd=165.0 bandsConfigured=false
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.calendar.season - event=CALENDAR_SEASON_CONFIGURED origin=calendar-season originKind=system boundary=SOLAR_TERM tropicalModel=RAINY_DRY rainyStart=45.0 rainyEnd=165.0 bandsConfigured=false
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.calendar.season - event=CALENDAR_SEASON_CONFIGURED origin=calendar-season originKind=system boundary=SOLAR_TERM tropicalModel=RAINY_DRY rainyStart=45.0 rainyEnd=165.0 bandsConfigured=false
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.calendar.season - event=CALENDAR_SEASON_CONFIGURED origin=calendar-season originKind=system boundary=SOLAR_TERM tropicalModel=RAINY_DRY rainyStart=45.0 rainyEnd=165.0 bandsConfigured=false
+INFO  io.mosire.agentlib.mcp.AgentToMcpServer - MCP streamable server 已启动: name=simos-shell version=0.1.0-SNAPSHOT 外发工具 166 个 [actor.AdjustAccounts, map.CreateRegion, map.DeleteRegion, map.RandomizeRegion, map.RegisterPathwayGroup, map.RenameRegion, map.SetEdge, map.SetTerrain, map.UpdateRegion, sd.AddCombatStage, sd.AdjudicateTick, sd.CancelEffect, sd.CommitCombatOutcome, sd.CreateArmy, sd.CreateCombat, sd.CreateDecisionMaker, sd.CreateNation, sd.IssueDirective, sd.PutInfo, sd.RecordCasualties, sd.RegisterEffect, sd.RejectDirective, sd.ResetDecisionMakerConversation, sd.RunDecision, sd.SetArmyMasterGov, sd.SetDecisionMakerAccess, sd.SetDecisionMakerProvider, sd.SetStageOutcomeTable, sd.StartDecision, sd.SubmitVerdict, sd.VoidAdjudication, simos.advance, simos.army.assignGov, simos.army.combat, simos.army.combats, simos.army.formatUnit, simos.army.recordCombat, simos.army.resolveCombat, simos.army.startCombat, simos.calendar.configure, simos.calendar.info, simos.command.catalog, simos.command.submit, simos.economy.adjust, simos.economy.defineMarketZone, simos.economy.hex, simos.economy.mergeMarketZones, simos.economy.ownership, simos.economy.reassignZoneHexes, simos.economy.setCommodityFreight, simos.economy.setEconomyPolicy, simos.economy.setGovernmentMintScale, simos.economy.setMarketZoneLoanRateAlpha, simos.economy.setMarketZonePriceAlpha, simos.economy.upsertGovUnit, simos.economy.upsertIndustry, simos.fork, simos.gm.adjustPopulation, simos.gm.approvals, simos.gm.approve, simos.gm.armyPayPolicy, simos.gm.govMarketMandate, simos.gm.mergedPlan.apply, simos.gm.mergedPlan.upsert, simos.gm.packet, simos.gm.packet.decide, simos.gm.packet.execute, simos.gm.packets, simos.gm.periodicAdjustment, simos.gm.tool-usage, simos.gm.vitalRates, simos.gov.absorbUnit, simos.gov.applyStaffing, simos.gov.assignPosts, simos.gov.createOffice, simos.gov.defineCurrency, simos.gov.dismiss, simos.gov.dispatchTeam, simos.gov.expandHousehold, simos.gov.info, simos.gov.issueMoney, simos.gov.openPostsToMarket, simos.gov.recruit, simos.gov.remit, simos.gov.renameCurrency, simos.gov.retireStaff, simos.gov.selectExaminees, simos.gov.setBudgetPolicy, simos.gov.setEstablishment, simos.gov.setFxRate, simos.gov.transferTreasury, simos.llm.providers, simos.map.block, simos.map.hex, simos.map.overlaps, simos.map.overview, simos.map.path, simos.map.region, simos.map.render, simos.province.apply, simos.province.assignCities, simos.province.divide, simos.region.clearData, simos.region.clearStructures, simos.region.seed, simos.sd.combats, simos.sd.decision-maker, simos.sd.decision-makers, simos.sd.diplomacy, simos.sd.diplomatic-events, simos.sd.directives, simos.sd.record-diplomatic-event, simos.sd.reports, simos.sd.run-decision-makers, simos.sd.set-diplomatic-relation, simos.sd.verdicts, simos.skill, simos.social.demand, simos.social.household.create, simos.social.household.members, simos.social.household.move, simos.social.household.rates, simos.social.households, simos.social.labor, simos.social.population, simos.state.facets, simos.state.resolve, simos.timeline.branches, simos.timeline.revisions, simos.unit.adjust-composition, simos.unit.assignHousehold, simos.unit.detachHousehold, simos.unit.get, simos.unit.levyRegion, simos.unit.list, simos.unit.raiseUnit, simos.unit.set-composition, simos.unit.set-state-description, simos.unit.spawnArmy, simos.worldgen.initialize, social.UpdateCity, unit.ApplyCasualties, unit.AttachUnit, unit.CancelRoute, unit.CreateCommandChain, unit.CreateUnit, unit.DetachUnit, unit.DisbandUnit, unit.MergeFormation, unit.PlaceAt, unit.PlanRoute, unit.PlanSparseRoute, unit.RenameUnit, unit.ReparentSubtree, unit.ReparentUnit, unit.SetArmyFormation, unit.SetFormationOffset, unit.SetGovFormation, unit.SetGovPolicy, unit.SetGovSuperior, unit.SetJurisdiction, unit.SetRejoinTarget, unit.SetStatus, unit.SetTaxRate, unit.SplitFormation, unit.UpdateCommandChain]；Registry 共 166 个，未外发 0 个 []
+INFO  io.mosire.simos.app.gui - event=GUI_SERVER_STARTED origin=shell-lifecycle originKind=system host=127.0.0.1 port=10941 url=http://127.0.0.1:10941/
+INFO  io.mosire.simos.app.shell - event=SHELL_ASSEMBLED origin=shell-lifecycle originKind=system store=store-probe-mcp checkpointInterval=1 codec=8 handler=144 participant=2 resolver=7 facet=2 tool=166 mapId=three-powers bindAddress=127.0.0.1 mcpPort=10942 guiPort=10941 approvalPort=10943
+INFO  io.mosire.simos.social.provisioning - event=SOCIAL_PROVISIONING_DEFAULTS_SEEDED origin=social-provisioning originKind=system demandRows=18 laborRows=6 commodities=[grain, cloth, tool]
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.social.provisioning - event=SOCIAL_PROVISIONING_DEFAULTS_SEEDED origin=social-provisioning originKind=system demandRows=18 laborRows=6 commodities=[grain, cloth, tool]
+INFO  io.mosire.simos.social.provisioning - event=SOCIAL_VITAL_RATES_DEFAULTS_SEEDED origin=social-provisioning originKind=system rows=6 unit=ppmPerTick
+INFO  io.mosire.simos.social.command - event=SOCIAL_SET_POPULATION_APPLIED origin=social-command originKind=system cells=37 population=5550 anchorTick=0
+INFO  io.mosire.simos.social.command - event=SOCIAL_CREATE_CITY_APPLIED origin=social-command originKind=system city=c-tp-silver at=3_0 region=province-silver props=1 cities=1
+INFO  io.mosire.simos.social.command - event=SOCIAL_CREATE_CITY_APPLIED origin=social-command originKind=system city=c-tp-copper at=0_-3 region=province-copper props=1 cities=2
+INFO  io.mosire.simos.social.command - event=SOCIAL_CREATE_CITY_APPLIED origin=social-command originKind=system city=c-tp-gold at=-3_3 region=province-gold props=1 cities=3
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_0-rural-poor_peasant location=HEX:-3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_0-rural-middle_peasant location=HEX:-3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_0-rural-rich_peasant location=HEX:-3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_0-rural-landlord location=HEX:-3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_0-rural-landless_laborer-displaced location=HEX:-3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_0-urban-poor_peasant location=HEX:-3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_0-urban-middle_peasant location=HEX:-3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_0-urban-rich_peasant location=HEX:-3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_0-urban-landlord location=HEX:-3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_1-rural-poor_peasant location=HEX:-3_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_1-rural-middle_peasant location=HEX:-3_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_1-rural-rich_peasant location=HEX:-3_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_1-rural-landlord location=HEX:-3_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_1-rural-landless_laborer-displaced location=HEX:-3_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_1-urban-poor_peasant location=HEX:-3_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_1-urban-middle_peasant location=HEX:-3_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_1-urban-rich_peasant location=HEX:-3_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_1-urban-landlord location=HEX:-3_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_2-rural-poor_peasant location=HEX:-3_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_2-rural-middle_peasant location=HEX:-3_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_2-rural-rich_peasant location=HEX:-3_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_2-rural-landlord location=HEX:-3_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_2-rural-landless_laborer-displaced location=HEX:-3_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_2-urban-poor_peasant location=HEX:-3_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_2-urban-middle_peasant location=HEX:-3_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_2-urban-rich_peasant location=HEX:-3_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_2-urban-landlord location=HEX:-3_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_3-rural-poor_peasant location=HEX:-3_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_3-rural-middle_peasant location=HEX:-3_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_3-rural-rich_peasant location=HEX:-3_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_3-rural-landlord location=HEX:-3_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_3-rural-landless_laborer-displaced location=HEX:-3_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_3-urban-poor_peasant location=HEX:-3_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_3-urban-middle_peasant location=HEX:-3_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_3-urban-rich_peasant location=HEX:-3_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_3-urban-landlord location=HEX:-3_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--3_3-urban-landless_laborer-displaced location=HEX:-3_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_-1-rural-poor_peasant location=HEX:-2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_-1-rural-middle_peasant location=HEX:-2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_-1-rural-rich_peasant location=HEX:-2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_-1-rural-landlord location=HEX:-2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_-1-rural-landless_laborer-displaced location=HEX:-2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_-1-urban-poor_peasant location=HEX:-2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_-1-urban-middle_peasant location=HEX:-2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_-1-urban-rich_peasant location=HEX:-2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_-1-urban-landlord location=HEX:-2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_0-rural-poor_peasant location=HEX:-2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_0-rural-middle_peasant location=HEX:-2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_0-rural-rich_peasant location=HEX:-2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_0-rural-landlord location=HEX:-2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_0-rural-landless_laborer-displaced location=HEX:-2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_0-urban-poor_peasant location=HEX:-2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_0-urban-middle_peasant location=HEX:-2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_0-urban-rich_peasant location=HEX:-2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_0-urban-landlord location=HEX:-2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_1-rural-poor_peasant location=HEX:-2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_1-rural-middle_peasant location=HEX:-2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_1-rural-rich_peasant location=HEX:-2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_1-rural-landlord location=HEX:-2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_1-rural-landless_laborer-displaced location=HEX:-2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_1-urban-poor_peasant location=HEX:-2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_1-urban-middle_peasant location=HEX:-2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_1-urban-rich_peasant location=HEX:-2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_1-urban-landlord location=HEX:-2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_2-rural-poor_peasant location=HEX:-2_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_2-rural-middle_peasant location=HEX:-2_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_2-rural-rich_peasant location=HEX:-2_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_2-rural-landlord location=HEX:-2_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_2-rural-landless_laborer-displaced location=HEX:-2_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_2-urban-poor_peasant location=HEX:-2_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_2-urban-middle_peasant location=HEX:-2_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_2-urban-rich_peasant location=HEX:-2_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_2-urban-landlord location=HEX:-2_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_3-rural-poor_peasant location=HEX:-2_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_3-rural-middle_peasant location=HEX:-2_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_3-rural-rich_peasant location=HEX:-2_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_3-rural-landlord location=HEX:-2_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_3-rural-landless_laborer-displaced location=HEX:-2_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_3-urban-poor_peasant location=HEX:-2_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_3-urban-middle_peasant location=HEX:-2_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_3-urban-rich_peasant location=HEX:-2_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--2_3-urban-landlord location=HEX:-2_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-2-rural-poor_peasant location=HEX:-1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-2-rural-middle_peasant location=HEX:-1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-2-rural-rich_peasant location=HEX:-1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-2-rural-landlord location=HEX:-1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-2-rural-landless_laborer-displaced location=HEX:-1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-2-urban-poor_peasant location=HEX:-1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-2-urban-middle_peasant location=HEX:-1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-2-urban-rich_peasant location=HEX:-1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-2-urban-landlord location=HEX:-1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-1-rural-poor_peasant location=HEX:-1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-1-rural-middle_peasant location=HEX:-1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-1-rural-rich_peasant location=HEX:-1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-1-rural-landlord location=HEX:-1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-1-rural-landless_laborer-displaced location=HEX:-1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-1-urban-poor_peasant location=HEX:-1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-1-urban-middle_peasant location=HEX:-1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-1-urban-rich_peasant location=HEX:-1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_-1-urban-landlord location=HEX:-1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_0-rural-poor_peasant location=HEX:-1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_0-rural-middle_peasant location=HEX:-1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_0-rural-rich_peasant location=HEX:-1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_0-rural-landlord location=HEX:-1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_0-rural-landless_laborer-displaced location=HEX:-1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_0-urban-poor_peasant location=HEX:-1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_0-urban-middle_peasant location=HEX:-1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_0-urban-rich_peasant location=HEX:-1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_0-urban-landlord location=HEX:-1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_1-rural-poor_peasant location=HEX:-1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_1-rural-middle_peasant location=HEX:-1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_1-rural-rich_peasant location=HEX:-1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_1-rural-landlord location=HEX:-1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_1-rural-landless_laborer-displaced location=HEX:-1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_1-urban-poor_peasant location=HEX:-1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_1-urban-middle_peasant location=HEX:-1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_1-urban-rich_peasant location=HEX:-1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_1-urban-landlord location=HEX:-1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_2-rural-poor_peasant location=HEX:-1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_2-rural-middle_peasant location=HEX:-1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_2-rural-rich_peasant location=HEX:-1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_2-rural-landlord location=HEX:-1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_2-rural-landless_laborer-displaced location=HEX:-1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_2-urban-poor_peasant location=HEX:-1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_2-urban-middle_peasant location=HEX:-1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_2-urban-rich_peasant location=HEX:-1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_2-urban-landlord location=HEX:-1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_3-rural-poor_peasant location=HEX:-1_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_3-rural-middle_peasant location=HEX:-1_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_3-rural-rich_peasant location=HEX:-1_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_3-rural-landlord location=HEX:-1_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_3-rural-landless_laborer-displaced location=HEX:-1_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_3-urban-poor_peasant location=HEX:-1_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_3-urban-middle_peasant location=HEX:-1_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_3-urban-rich_peasant location=HEX:-1_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh--1_3-urban-landlord location=HEX:-1_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-3-rural-poor_peasant location=HEX:0_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-3-rural-middle_peasant location=HEX:0_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-3-rural-rich_peasant location=HEX:0_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-3-rural-landlord location=HEX:0_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-3-rural-landless_laborer-displaced location=HEX:0_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-3-urban-poor_peasant location=HEX:0_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-3-urban-middle_peasant location=HEX:0_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-3-urban-rich_peasant location=HEX:0_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-3-urban-landlord location=HEX:0_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-3-urban-landless_laborer-displaced location=HEX:0_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-2-rural-poor_peasant location=HEX:0_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-2-rural-middle_peasant location=HEX:0_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-2-rural-rich_peasant location=HEX:0_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-2-rural-landlord location=HEX:0_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-2-rural-landless_laborer-displaced location=HEX:0_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-2-urban-poor_peasant location=HEX:0_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-2-urban-middle_peasant location=HEX:0_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-2-urban-rich_peasant location=HEX:0_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-2-urban-landlord location=HEX:0_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-1-rural-poor_peasant location=HEX:0_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-1-rural-middle_peasant location=HEX:0_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-1-rural-rich_peasant location=HEX:0_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-1-rural-landlord location=HEX:0_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-1-rural-landless_laborer-displaced location=HEX:0_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-1-urban-poor_peasant location=HEX:0_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-1-urban-middle_peasant location=HEX:0_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-1-urban-rich_peasant location=HEX:0_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_-1-urban-landlord location=HEX:0_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_0-rural-poor_peasant location=HEX:0_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_0-rural-middle_peasant location=HEX:0_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_0-rural-rich_peasant location=HEX:0_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_0-rural-landlord location=HEX:0_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_0-rural-landless_laborer-displaced location=HEX:0_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_0-urban-poor_peasant location=HEX:0_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_0-urban-middle_peasant location=HEX:0_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_0-urban-rich_peasant location=HEX:0_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_0-urban-landlord location=HEX:0_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_1-rural-poor_peasant location=HEX:0_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_1-rural-middle_peasant location=HEX:0_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_1-rural-rich_peasant location=HEX:0_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_1-rural-landlord location=HEX:0_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_1-rural-landless_laborer-displaced location=HEX:0_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_1-urban-poor_peasant location=HEX:0_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_1-urban-middle_peasant location=HEX:0_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_1-urban-rich_peasant location=HEX:0_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_1-urban-landlord location=HEX:0_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_2-rural-poor_peasant location=HEX:0_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_2-rural-middle_peasant location=HEX:0_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_2-rural-rich_peasant location=HEX:0_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_2-rural-landlord location=HEX:0_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_2-rural-landless_laborer-displaced location=HEX:0_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_2-urban-poor_peasant location=HEX:0_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_2-urban-middle_peasant location=HEX:0_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_2-urban-rich_peasant location=HEX:0_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_2-urban-landlord location=HEX:0_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_3-rural-poor_peasant location=HEX:0_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_3-rural-middle_peasant location=HEX:0_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_3-rural-rich_peasant location=HEX:0_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_3-rural-landlord location=HEX:0_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_3-rural-landless_laborer-displaced location=HEX:0_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_3-urban-poor_peasant location=HEX:0_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_3-urban-middle_peasant location=HEX:0_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_3-urban-rich_peasant location=HEX:0_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-0_3-urban-landlord location=HEX:0_3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-3-rural-poor_peasant location=HEX:1_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-3-rural-middle_peasant location=HEX:1_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-3-rural-rich_peasant location=HEX:1_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-3-rural-landlord location=HEX:1_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-3-rural-landless_laborer-displaced location=HEX:1_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-3-urban-poor_peasant location=HEX:1_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-3-urban-middle_peasant location=HEX:1_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-3-urban-rich_peasant location=HEX:1_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-3-urban-landlord location=HEX:1_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-2-rural-poor_peasant location=HEX:1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-2-rural-middle_peasant location=HEX:1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-2-rural-rich_peasant location=HEX:1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-2-rural-landlord location=HEX:1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-2-rural-landless_laborer-displaced location=HEX:1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-2-urban-poor_peasant location=HEX:1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-2-urban-middle_peasant location=HEX:1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-2-urban-rich_peasant location=HEX:1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-2-urban-landlord location=HEX:1_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-1-rural-poor_peasant location=HEX:1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-1-rural-middle_peasant location=HEX:1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-1-rural-rich_peasant location=HEX:1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-1-rural-landlord location=HEX:1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-1-rural-landless_laborer-displaced location=HEX:1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-1-urban-poor_peasant location=HEX:1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-1-urban-middle_peasant location=HEX:1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-1-urban-rich_peasant location=HEX:1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_-1-urban-landlord location=HEX:1_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_0-rural-poor_peasant location=HEX:1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_0-rural-middle_peasant location=HEX:1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_0-rural-rich_peasant location=HEX:1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_0-rural-landlord location=HEX:1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_0-rural-landless_laborer-displaced location=HEX:1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_0-urban-poor_peasant location=HEX:1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_0-urban-middle_peasant location=HEX:1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_0-urban-rich_peasant location=HEX:1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_0-urban-landlord location=HEX:1_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_1-rural-poor_peasant location=HEX:1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_1-rural-middle_peasant location=HEX:1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_1-rural-rich_peasant location=HEX:1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_1-rural-landlord location=HEX:1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_1-rural-landless_laborer-displaced location=HEX:1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_1-urban-poor_peasant location=HEX:1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_1-urban-middle_peasant location=HEX:1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_1-urban-rich_peasant location=HEX:1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_1-urban-landlord location=HEX:1_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_2-rural-poor_peasant location=HEX:1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_2-rural-middle_peasant location=HEX:1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_2-rural-rich_peasant location=HEX:1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_2-rural-landlord location=HEX:1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_2-rural-landless_laborer-displaced location=HEX:1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_2-urban-poor_peasant location=HEX:1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_2-urban-middle_peasant location=HEX:1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_2-urban-rich_peasant location=HEX:1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-1_2-urban-landlord location=HEX:1_2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-3-rural-poor_peasant location=HEX:2_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-3-rural-middle_peasant location=HEX:2_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-3-rural-rich_peasant location=HEX:2_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-3-rural-landlord location=HEX:2_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-3-rural-landless_laborer-displaced location=HEX:2_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-3-urban-poor_peasant location=HEX:2_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-3-urban-middle_peasant location=HEX:2_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-3-urban-rich_peasant location=HEX:2_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-3-urban-landlord location=HEX:2_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-2-rural-poor_peasant location=HEX:2_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-2-rural-middle_peasant location=HEX:2_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-2-rural-rich_peasant location=HEX:2_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-2-rural-landlord location=HEX:2_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-2-rural-landless_laborer-displaced location=HEX:2_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-2-urban-poor_peasant location=HEX:2_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-2-urban-middle_peasant location=HEX:2_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-2-urban-rich_peasant location=HEX:2_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-2-urban-landlord location=HEX:2_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-1-rural-poor_peasant location=HEX:2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-1-rural-middle_peasant location=HEX:2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-1-rural-rich_peasant location=HEX:2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-1-rural-landlord location=HEX:2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-1-rural-landless_laborer-displaced location=HEX:2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-1-urban-poor_peasant location=HEX:2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-1-urban-middle_peasant location=HEX:2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-1-urban-rich_peasant location=HEX:2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_-1-urban-landlord location=HEX:2_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_0-rural-poor_peasant location=HEX:2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_0-rural-middle_peasant location=HEX:2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_0-rural-rich_peasant location=HEX:2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_0-rural-landlord location=HEX:2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_0-rural-landless_laborer-displaced location=HEX:2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_0-urban-poor_peasant location=HEX:2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_0-urban-middle_peasant location=HEX:2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_0-urban-rich_peasant location=HEX:2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_0-urban-landlord location=HEX:2_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_1-rural-poor_peasant location=HEX:2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_1-rural-middle_peasant location=HEX:2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_1-rural-rich_peasant location=HEX:2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_1-rural-landlord location=HEX:2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_1-rural-landless_laborer-displaced location=HEX:2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_1-urban-poor_peasant location=HEX:2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_1-urban-middle_peasant location=HEX:2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_1-urban-rich_peasant location=HEX:2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-2_1-urban-landlord location=HEX:2_1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-3-rural-poor_peasant location=HEX:3_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-3-rural-middle_peasant location=HEX:3_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-3-rural-rich_peasant location=HEX:3_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-3-rural-landlord location=HEX:3_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-3-rural-landless_laborer-displaced location=HEX:3_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-3-urban-poor_peasant location=HEX:3_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-3-urban-middle_peasant location=HEX:3_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-3-urban-rich_peasant location=HEX:3_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-3-urban-landlord location=HEX:3_-3 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-2-rural-poor_peasant location=HEX:3_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-2-rural-middle_peasant location=HEX:3_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-2-rural-rich_peasant location=HEX:3_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-2-rural-landlord location=HEX:3_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-2-rural-landless_laborer-displaced location=HEX:3_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-2-urban-poor_peasant location=HEX:3_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-2-urban-middle_peasant location=HEX:3_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-2-urban-rich_peasant location=HEX:3_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-2-urban-landlord location=HEX:3_-2 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-1-rural-poor_peasant location=HEX:3_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-1-rural-middle_peasant location=HEX:3_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-1-rural-rich_peasant location=HEX:3_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-1-rural-landlord location=HEX:3_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-1-rural-landless_laborer-displaced location=HEX:3_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-1-urban-poor_peasant location=HEX:3_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-1-urban-middle_peasant location=HEX:3_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-1-urban-rich_peasant location=HEX:3_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_-1-urban-landlord location=HEX:3_-1 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_0-rural-poor_peasant location=HEX:3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_0-rural-middle_peasant location=HEX:3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_0-rural-rich_peasant location=HEX:3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_0-rural-landlord location=HEX:3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_0-rural-landless_laborer-displaced location=HEX:3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_0-urban-poor_peasant location=HEX:3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_0-urban-middle_peasant location=HEX:3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_0-urban-rich_peasant location=HEX:3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_0-urban-landlord location=HEX:3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-3_0-urban-landless_laborer-displaced location=HEX:3_0 source=social.SeedGroups
+INFO  io.mosire.simos.social.command - event=SOCIAL_SEED_GROUPS_APPLIED origin=social-command originKind=system households=336 created=336 updated=0 groups=1200 source=social.SeedGroups
+DEBUG io.mosire.simos.economy.command - event=ECONOMY_SEED_CRITERIA origin=economy-command originKind=system mode=first payloadHexes=37
+INFO  io.mosire.simos.economy.command - event=ECONOMY_SEED_APPLIED origin=economy-command originKind=system mode=first hexes=37 industries=80 households=336 markets=3
+INFO  io.mosire.simos.actor.seed - event=ACTOR_SEEDED origin=actor-seed originKind=system first=true actors=336 accounts=336
+INFO  io.mosire.simos.economy.command - event=INDUSTRY_UPSERTED origin=economy-command originKind=system id=office@3_0 mode=created cycleDays=30 capacityAssets=1 outputCommodities=0 units=0 assetShares=0 relations=0 changed=true
+INFO  io.mosire.simos.unit.command - event=UNIT_CREATE_UNIT_APPLIED origin=unit-command originKind=system unit=gov-tp-silver equipment=0 households=0 parent=-
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-gov-gov-tp-silver location=UNIT:gov-tp-silver name=银省中央政府政府家户 members=0
+INFO  io.mosire.simos.social.command - event=SOCIAL_CREATE_HOUSEHOLD_APPLIED origin=social-command originKind=system household=hh-gov-gov-tp-silver location=UNIT:gov-tp-silver rates=0 households=337
+INFO  io.mosire.simos.actor.account - event=HOUSEHOLD_ACCOUNT_ENSURED origin=actor-account originKind=system household=hh-gov-gov-tp-silver created=true reasonLength=35
+INFO  io.mosire.simos.unit.command - event=UNIT_SET_GOV_FORMATION_APPLIED origin=unit-command originKind=system unit=gov-tp-silver level=CENTRAL staff=1
+INFO  io.mosire.simos.economy.organization - event=GOVERNMENT_REGISTERED origin=economy-command originKind=system government=gov-unit-gov-tp-silver govUnit=gov-tp-silver household=hh-gov-gov-tp-silver population=0 laborMilli=0 participationPerMille=0 issuable=[silver] mintScalePerCycle=0 reasonLength=35
+INFO  io.mosire.simos.unit.command - event=UNIT_SET_JURISDICTION_APPLIED origin=unit-command originKind=system unit=gov-tp-silver regions=1
+INFO  io.mosire.simos.economy.command - event=GOV_UNIT_UPSERTED origin=economy-command originKind=system govUnit=gov-tp-silver unit=unit-office@3_0-HOUSEHOLD-hh-gov-gov-tp-silver operator=HOUSEHOLD|hh-gov-gov-tp-silver industry=office@3_0 modeKey=gov_service unitCreated=true relationCreated=true sharesAdded=1 changed=true
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-unit:gov-tp-silver location=UNIT:gov-tp-silver name=官吏户:gov-tp-silver members=0
+INFO  io.mosire.simos.social.command - event=SOCIAL_CREATE_HOUSEHOLD_APPLIED origin=social-command originKind=system household=hh-unit:gov-tp-silver location=UNIT:gov-tp-silver rates=0 households=338
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_MEMBER_TRANSFER origin=social-command originKind=system from=hh-1_0-rural-poor_peasant to=hh-unit:gov-tp-silver lot=rural:1_0:MALE:s0-1 movedLot=rural:1_0:MALE:s0-1 count=2 mode=PARTIAL_SHARE reason=three-powers 创世：建 gov-tp-silver 行政链
+INFO  io.mosire.simos.social.command - event=POPULATION_TRANSFER_OUT origin=social-command originKind=system from=hh-1_0-rural-poor_peasant lot=rural:1_0:MALE:s0-1 count=2 reason=three-powers 创世：建 gov-tp-silver 行政链
+INFO  io.mosire.simos.social.command - event=POPULATION_TRANSFER_IN origin=social-command originKind=system to=hh-unit:gov-tp-silver lot=rural:1_0:MALE:s0-1 count=2 reason=three-powers 创世：建 gov-tp-silver 行政链
+INFO  io.mosire.simos.social.command - event=SOCIAL_TRANSFER_HOUSEHOLD_MEMBERS_APPLIED origin=social-command originKind=system from=hh-1_0-rural-poor_peasant to=hh-unit:gov-tp-silver lot=rural:1_0:MALE:s0-1 count=2
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.unit.household - event=UNIT_HOUSEHOLDS_SET origin=unit-command originKind=system unit=gov-tp-silver count=2 households=[hh-gov-gov-tp-silver, hh-unit:gov-tp-silver] reason=three-powers 创世：建 gov-tp-silver 行政链
+INFO  io.mosire.simos.economy.command - event=HOUSEHOLD_REGISTERED origin=economy-command originKind=system household=hh-unit:gov-tp-silver q=3 r=0 residence=urban stratum=official participationPerMille=1000 created=true reasonLength=35
+INFO  io.mosire.simos.actor.account - event=HOUSEHOLD_ACCOUNT_ENSURED origin=actor-account originKind=system household=hh-unit:gov-tp-silver created=true reasonLength=35
+INFO  io.mosire.simos.unit.command - event=UNIT_ASSIGN_GOV_POST_APPLIED origin=unit-command originKind=system unit=gov-tp-silver household=hh-unit:gov-tp-silver role=POST tierId=tier-3
+INFO  io.mosire.simos.economy.population - event=HOUSEHOLD_LABOR_CONFIG origin=economy-command originKind=system household=hh-unit:gov-tp-silver laborMilli=32000 participationPerMille=1000
+INFO  io.mosire.simos.economy.command - event=GOV_SERVICE_COMMITMENT_SET origin=economy-command originKind=system govUnit=gov-tp-silver unit=unit-office@3_0-HOUSEHOLD-hh-gov-gov-tp-silver household=hh-unit:gov-tp-silver commitment=gov-service:unit-office@3_0-HOUSEHOLD-hh-gov-gov-tp-silver:hh-unit:gov-tp-silver kind=GOV_SERVICE laborMilli=32000 action=created changed=true
+INFO  io.mosire.simos.gov.command - event=GOV_SET_ADMINISTRATION_PLAN_APPLIED origin=gov-command originKind=system unit=gov-tp-silver mode=created securityPlannedLaborMilli=16000 paperworkPlannedLaborMilli=16000 postTiers=3 securitySupplyStaticModifierPerMille=1000 paperworkSupplyStaticModifierPerMille=1000 securityDemandStaticModifierPerMille=1000 paperworkDemandStaticModifierPerMille=1000 k=1 changed=true
+INFO  io.mosire.simos.gov.command - event=GOV_SET_BUDGET_POLICY_APPLIED origin=gov-command originKind=system unit=gov-tp-silver mode=created requestMode=PATCH categories=5 grainMilliPerCommittedHour=10 silverMilliPerCommittedHour=1 remittancePerMilleToSuperior=0 changed=true
+INFO  io.mosire.simos.economy.command - event=INDUSTRY_UPSERTED origin=economy-command originKind=system id=office@0_-3 mode=created cycleDays=30 capacityAssets=1 outputCommodities=0 units=0 assetShares=0 relations=0 changed=true
+INFO  io.mosire.simos.unit.command - event=UNIT_CREATE_UNIT_APPLIED origin=unit-command originKind=system unit=gov-tp-copper equipment=0 households=0 parent=-
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-gov-gov-tp-copper location=UNIT:gov-tp-copper name=铜省政府政府家户 members=0
+INFO  io.mosire.simos.social.command - event=SOCIAL_CREATE_HOUSEHOLD_APPLIED origin=social-command originKind=system household=hh-gov-gov-tp-copper location=UNIT:gov-tp-copper rates=0 households=339
+INFO  io.mosire.simos.actor.account - event=HOUSEHOLD_ACCOUNT_ENSURED origin=actor-account originKind=system household=hh-gov-gov-tp-copper created=true reasonLength=35
+INFO  io.mosire.simos.unit.command - event=UNIT_SET_GOV_FORMATION_APPLIED origin=unit-command originKind=system unit=gov-tp-copper level=PROVINCE staff=1
+INFO  io.mosire.simos.economy.organization - event=GOVERNMENT_REGISTERED origin=economy-command originKind=system government=gov-unit-gov-tp-copper govUnit=gov-tp-copper household=hh-gov-gov-tp-copper population=0 laborMilli=0 participationPerMille=0 issuable=[] mintScalePerCycle=0 reasonLength=35
+INFO  io.mosire.simos.economy.command - event=CURRENCY_DEFINED origin=economy-money originKind=system currency=copper scale=3 displayName=铜 instrument=copper-specie instrumentKind=SPECIE government=gov-unit-gov-tp-copper govUnit=gov-tp-copper issuableSize=1 reasonLength=53
+INFO  io.mosire.simos.unit.command - event=UNIT_SET_JURISDICTION_APPLIED origin=unit-command originKind=system unit=gov-tp-copper regions=1
+INFO  io.mosire.simos.economy.command - event=GOV_UNIT_UPSERTED origin=economy-command originKind=system govUnit=gov-tp-copper unit=unit-office@0_-3-HOUSEHOLD-hh-gov-gov-tp-copper operator=HOUSEHOLD|hh-gov-gov-tp-copper industry=office@0_-3 modeKey=gov_service unitCreated=true relationCreated=true sharesAdded=1 changed=true
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-unit:gov-tp-copper location=UNIT:gov-tp-copper name=官吏户:gov-tp-copper members=0
+INFO  io.mosire.simos.social.command - event=SOCIAL_CREATE_HOUSEHOLD_APPLIED origin=social-command originKind=system household=hh-unit:gov-tp-copper location=UNIT:gov-tp-copper rates=0 households=340
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_MEMBER_TRANSFER origin=social-command originKind=system from=hh--3_0-rural-poor_peasant to=hh-unit:gov-tp-copper lot=rural:-3_0:MALE:s0-1 movedLot=rural:-3_0:MALE:s0-1 count=2 mode=PARTIAL_SHARE reason=three-powers 创世：建 gov-tp-copper 行政链
+INFO  io.mosire.simos.social.command - event=POPULATION_TRANSFER_OUT origin=social-command originKind=system from=hh--3_0-rural-poor_peasant lot=rural:-3_0:MALE:s0-1 count=2 reason=three-powers 创世：建 gov-tp-copper 行政链
+INFO  io.mosire.simos.social.command - event=POPULATION_TRANSFER_IN origin=social-command originKind=system to=hh-unit:gov-tp-copper lot=rural:-3_0:MALE:s0-1 count=2 reason=three-powers 创世：建 gov-tp-copper 行政链
+INFO  io.mosire.simos.social.command - event=SOCIAL_TRANSFER_HOUSEHOLD_MEMBERS_APPLIED origin=social-command originKind=system from=hh--3_0-rural-poor_peasant to=hh-unit:gov-tp-copper lot=rural:-3_0:MALE:s0-1 count=2
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.unit.household - event=UNIT_HOUSEHOLDS_SET origin=unit-command originKind=system unit=gov-tp-copper count=2 households=[hh-gov-gov-tp-copper, hh-unit:gov-tp-copper] reason=three-powers 创世：建 gov-tp-copper 行政链
+INFO  io.mosire.simos.economy.command - event=HOUSEHOLD_REGISTERED origin=economy-command originKind=system household=hh-unit:gov-tp-copper q=0 r=-3 residence=urban stratum=official participationPerMille=1000 created=true reasonLength=35
+INFO  io.mosire.simos.actor.account - event=HOUSEHOLD_ACCOUNT_ENSURED origin=actor-account originKind=system household=hh-unit:gov-tp-copper created=true reasonLength=35
+INFO  io.mosire.simos.unit.command - event=UNIT_ASSIGN_GOV_POST_APPLIED origin=unit-command originKind=system unit=gov-tp-copper household=hh-unit:gov-tp-copper role=POST tierId=tier-3
+INFO  io.mosire.simos.economy.population - event=HOUSEHOLD_LABOR_CONFIG origin=economy-command originKind=system household=hh-unit:gov-tp-copper laborMilli=32000 participationPerMille=1000
+INFO  io.mosire.simos.economy.command - event=GOV_SERVICE_COMMITMENT_SET origin=economy-command originKind=system govUnit=gov-tp-copper unit=unit-office@0_-3-HOUSEHOLD-hh-gov-gov-tp-copper household=hh-unit:gov-tp-copper commitment=gov-service:unit-office@0_-3-HOUSEHOLD-hh-gov-gov-tp-copper:hh-unit:gov-tp-copper kind=GOV_SERVICE laborMilli=32000 action=created changed=true
+INFO  io.mosire.simos.gov.command - event=GOV_SET_ADMINISTRATION_PLAN_APPLIED origin=gov-command originKind=system unit=gov-tp-copper mode=created securityPlannedLaborMilli=16000 paperworkPlannedLaborMilli=16000 postTiers=3 securitySupplyStaticModifierPerMille=1000 paperworkSupplyStaticModifierPerMille=1000 securityDemandStaticModifierPerMille=1000 paperworkDemandStaticModifierPerMille=1000 k=1 changed=true
+INFO  io.mosire.simos.gov.command - event=GOV_SET_BUDGET_POLICY_APPLIED origin=gov-command originKind=system unit=gov-tp-copper mode=created requestMode=PATCH categories=5 grainMilliPerCommittedHour=10 silverMilliPerCommittedHour=1 remittancePerMilleToSuperior=0 changed=true
+INFO  io.mosire.simos.economy.command - event=INDUSTRY_UPSERTED origin=economy-command originKind=system id=office@-3_3 mode=created cycleDays=30 capacityAssets=1 outputCommodities=0 units=0 assetShares=0 relations=0 changed=true
+INFO  io.mosire.simos.unit.command - event=UNIT_CREATE_UNIT_APPLIED origin=unit-command originKind=system unit=gov-tp-gold equipment=0 households=0 parent=-
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-gov-gov-tp-gold location=UNIT:gov-tp-gold name=金省政府政府家户 members=0
+INFO  io.mosire.simos.social.command - event=SOCIAL_CREATE_HOUSEHOLD_APPLIED origin=social-command originKind=system household=hh-gov-gov-tp-gold location=UNIT:gov-tp-gold rates=0 households=341
+INFO  io.mosire.simos.actor.account - event=HOUSEHOLD_ACCOUNT_ENSURED origin=actor-account originKind=system household=hh-gov-gov-tp-gold created=true reasonLength=33
+INFO  io.mosire.simos.unit.command - event=UNIT_SET_GOV_FORMATION_APPLIED origin=unit-command originKind=system unit=gov-tp-gold level=PROVINCE staff=1
+INFO  io.mosire.simos.economy.organization - event=GOVERNMENT_REGISTERED origin=economy-command originKind=system government=gov-unit-gov-tp-gold govUnit=gov-tp-gold household=hh-gov-gov-tp-gold population=0 laborMilli=0 participationPerMille=0 issuable=[] mintScalePerCycle=0 reasonLength=33
+INFO  io.mosire.simos.economy.command - event=CURRENCY_DEFINED origin=economy-money originKind=system currency=gold scale=3 displayName=金 instrument=gold-specie instrumentKind=SPECIE government=gov-unit-gov-tp-gold govUnit=gov-tp-gold issuableSize=1 reasonLength=49
+INFO  io.mosire.simos.unit.command - event=UNIT_SET_JURISDICTION_APPLIED origin=unit-command originKind=system unit=gov-tp-gold regions=1
+INFO  io.mosire.simos.economy.command - event=GOV_UNIT_UPSERTED origin=economy-command originKind=system govUnit=gov-tp-gold unit=unit-office@-3_3-HOUSEHOLD-hh-gov-gov-tp-gold operator=HOUSEHOLD|hh-gov-gov-tp-gold industry=office@-3_3 modeKey=gov_service unitCreated=true relationCreated=true sharesAdded=1 changed=true
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_CREATED origin=social-command originKind=system id=hh-unit:gov-tp-gold location=UNIT:gov-tp-gold name=官吏户:gov-tp-gold members=0
+INFO  io.mosire.simos.social.command - event=SOCIAL_CREATE_HOUSEHOLD_APPLIED origin=social-command originKind=system household=hh-unit:gov-tp-gold location=UNIT:gov-tp-gold rates=0 households=342
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.social.command - event=HOUSEHOLD_MEMBER_TRANSFER origin=social-command originKind=system from=hh--3_1-rural-poor_peasant to=hh-unit:gov-tp-gold lot=rural:-3_1:MALE:s0-1 movedLot=rural:-3_1:MALE:s0-1 count=2 mode=PARTIAL_SHARE reason=three-powers 创世：建 gov-tp-gold 行政链
+INFO  io.mosire.simos.social.command - event=POPULATION_TRANSFER_OUT origin=social-command originKind=system from=hh--3_1-rural-poor_peasant lot=rural:-3_1:MALE:s0-1 count=2 reason=three-powers 创世：建 gov-tp-gold 行政链
+INFO  io.mosire.simos.social.command - event=POPULATION_TRANSFER_IN origin=social-command originKind=system to=hh-unit:gov-tp-gold lot=rural:-3_1:MALE:s0-1 count=2 reason=three-powers 创世：建 gov-tp-gold 行政链
+INFO  io.mosire.simos.social.command - event=SOCIAL_TRANSFER_HOUSEHOLD_MEMBERS_APPLIED origin=social-command originKind=system from=hh--3_1-rural-poor_peasant to=hh-unit:gov-tp-gold lot=rural:-3_1:MALE:s0-1 count=2
+INFO  io.mosire.simos.calendar.clock - event=CALENDAR_CLOCK_BOUND origin=calendar-clock originKind=system system=julian epoch=CalendarDate[year=1445, month=1, day=1] epochDayNumber=2248845
+INFO  io.mosire.simos.unit.household - event=UNIT_HOUSEHOLDS_SET origin=unit-command originKind=system unit=gov-tp-gold count=2 households=[hh-gov-gov-tp-gold, hh-unit:gov-tp-gold] reason=three-powers 创世：建 gov-tp-gold 行政链
+INFO  io.mosire.simos.economy.command - event=HOUSEHOLD_REGISTERED origin=economy-command originKind=system household=hh-unit:gov-tp-gold q=-3 r=3 residence=urban stratum=official participationPerMille=1000 created=true reasonLength=33
+INFO  io.mosire.simos.actor.account - event=HOUSEHOLD_ACCOUNT_ENSURED origin=actor-account originKind=system household=hh-unit:gov-tp-gold created=true reasonLength=33
+INFO  io.mosire.simos.unit.command - event=UNIT_ASSIGN_GOV_POST_APPLIED origin=unit-command originKind=system unit=gov-tp-gold household=hh-unit:gov-tp-gold role=POST tierId=tier-3
+INFO  io.mosire.simos.economy.population - event=HOUSEHOLD_LABOR_CONFIG origin=economy-command originKind=system household=hh-unit:gov-tp-gold laborMilli=32000 participationPerMille=1000
+INFO  io.mosire.simos.economy.command - event=GOV_SERVICE_COMMITMENT_SET origin=economy-command originKind=system govUnit=gov-tp-gold unit=unit-office@-3_3-HOUSEHOLD-hh-gov-gov-tp-gold household=hh-unit:gov-tp-gold commitment=gov-service:unit-office@-3_3-HOUSEHOLD-hh-gov-gov-tp-gold:hh-unit:gov-tp-gold kind=GOV_SERVICE laborMilli=32000 action=created changed=true
+INFO  io.mosire.simos.gov.command - event=GOV_SET_ADMINISTRATION_PLAN_APPLIED origin=gov-command originKind=system unit=gov-tp-gold mode=created securityPlannedLaborMilli=16000 paperworkPlannedLaborMilli=16000 postTiers=3 securitySupplyStaticModifierPerMille=1000 paperworkSupplyStaticModifierPerMille=1000 securityDemandStaticModifierPerMille=1000 paperworkDemandStaticModifierPerMille=1000 k=1 changed=true
+INFO  io.mosire.simos.gov.command - event=GOV_SET_BUDGET_POLICY_APPLIED origin=gov-command originKind=system unit=gov-tp-gold mode=created requestMode=PATCH categories=5 grainMilliPerCommittedHour=10 silverMilliPerCommittedHour=1 remittancePerMilleToSuperior=0 changed=true
+INFO  io.mosire.simos.economy.command - event=MARKET_ZONE_DEFINED origin=economy-market-zone originKind=system zone=c-tp-silver anchor=3_0 hexCount=9 legalTender=silver radiusHex=8 zonesBefore=0 zonesAfter=1
+DEBUG io.mosire.simos.economy.command - event=MARKET_ZONE_DEFINED_DETAIL origin=economy-market-zone originKind=system zone=c-tp-silver hexes=1_0,1_1,1_2,2_-1,2_0,2_1,3_-2,3_-1,3_0
+INFO  io.mosire.simos.economy.command - event=MARKET_ZONE_DEFINED origin=economy-market-zone originKind=system zone=c-tp-copper anchor=0_-3 hexCount=16 legalTender=copper radiusHex=8 zonesBefore=1 zonesAfter=2
+DEBUG io.mosire.simos.economy.command - event=MARKET_ZONE_DEFINED_DETAIL origin=economy-market-zone originKind=system zone=c-tp-copper hexes=-3_0,-2_-1,-2_0,-1_-2,-1_-1,-1_0,0_-3,0_-2,0_-1,0_0,1_-3,1_-2,1_-1,2_-3,2_-2,3_-3
+INFO  io.mosire.simos.economy.command - event=MARKET_ZONE_DEFINED origin=economy-market-zone originKind=system zone=c-tp-gold anchor=-3_3 hexCount=12 legalTender=gold radiusHex=8 zonesBefore=2 zonesAfter=3
+DEBUG io.mosire.simos.economy.command - event=MARKET_ZONE_DEFINED_DETAIL origin=economy-market-zone originKind=system zone=c-tp-gold hexes=-3_1,-3_2,-3_3,-2_1,-2_2,-2_3,-1_1,-1_2,-1_3,0_1,0_2,0_3
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_MARKET_ZONE_PERSISTED origin=shell-lifecycle originKind=system world=three-powers zone=c-tp-silver anchor=3_0 hexCount=9 legalTender=silver radiusHex=8
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_MARKET_ZONE_PERSISTED origin=shell-lifecycle originKind=system world=three-powers zone=c-tp-copper anchor=0_-3 hexCount=16 legalTender=copper radiusHex=8
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_MARKET_ZONE_PERSISTED origin=shell-lifecycle originKind=system world=three-powers zone=c-tp-gold anchor=-3_3 hexCount=12 legalTender=gold radiusHex=8
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_MARKET_ZONES_PERSISTED origin=shell-lifecycle originKind=system world=three-powers zones=3 hexes=37 authority=persistent requiredSelfChecks=5
+INFO  io.mosire.simos.actor.account - event=ACTOR_ACCOUNTS_ADJUSTED origin=actor-account originKind=system entries=3 accountsBefore=342 accountsAfter=342
+INFO  io.mosire.simos.economy.command - event=MONEY_ISSUANCE_RECORDED origin=economy-money originKind=system issuance=gov-issue-gov-unit-gov-tp-silver-0-silver-1 government=gov-unit-gov-tp-silver govUnit=govUnitId:gov-tp-silver currency=silver amountMilli=200000 kind=INITIAL_ENDOWMENT day=0 period=1 recordsTotal=4
+INFO  io.mosire.simos.economy.command - event=MONEY_ISSUANCE_RECORDED origin=economy-money originKind=system issuance=gov-issue-gov-unit-gov-tp-copper-0-copper-1 government=gov-unit-gov-tp-copper govUnit=govUnitId:gov-tp-copper currency=copper amountMilli=100000 kind=INITIAL_ENDOWMENT day=0 period=1 recordsTotal=5
+INFO  io.mosire.simos.economy.command - event=MONEY_ISSUANCE_RECORDED origin=economy-money originKind=system issuance=gov-issue-gov-unit-gov-tp-gold-0-gold-1 government=gov-unit-gov-tp-gold govUnit=govUnitId:gov-tp-gold currency=gold amountMilli=100000 kind=INITIAL_ENDOWMENT day=0 period=1 recordsTotal=6
+INFO  io.mosire.simos.economy.command - event=MONEY_ISSUANCE_RECORDED origin=economy-money originKind=system issuance=gov-issue-gov-unit-gov-tp-silver-0-silver-2 government=gov-unit-gov-tp-silver govUnit=govUnitId:gov-tp-silver currency=silver amountMilli=100000 kind=GENESIS_ENDOWMENT day=0 period=1 recordsTotal=7
+INFO  io.mosire.simos.economy.command - event=MONEY_ISSUANCE_RECORDED origin=economy-money originKind=system issuance=gov-issue-gov-unit-gov-tp-silver-0-silver-3 government=gov-unit-gov-tp-silver govUnit=govUnitId:gov-tp-silver currency=silver amountMilli=100000 kind=GENESIS_ENDOWMENT day=0 period=1 recordsTotal=8
+INFO  io.mosire.simos.app.shell - event=GENESIS_UNIT_HOUSEHOLD_RATION origin=genesis-seed originKind=system world=three-powers household=hh-unit:gov-tp-silver population=2 rationSlot=poor_peasant rationDays=450 grainMilli=75000 basis=same-algorithm-as-ordinary-household-genesis-ration
+INFO  io.mosire.simos.app.shell - event=GENESIS_UNIT_HOUSEHOLD_RATION origin=genesis-seed originKind=system world=three-powers household=hh-unit:gov-tp-copper population=2 rationSlot=poor_peasant rationDays=450 grainMilli=75000 basis=same-algorithm-as-ordinary-household-genesis-ration
+INFO  io.mosire.simos.app.shell - event=GENESIS_UNIT_HOUSEHOLD_RATION origin=genesis-seed originKind=system world=three-powers household=hh-unit:gov-tp-gold population=2 rationSlot=poor_peasant rationDays=450 grainMilli=75000 basis=same-algorithm-as-ordinary-household-genesis-ration
+INFO  io.mosire.simos.actor.account - event=ACTOR_ACCOUNTS_ADJUSTED origin=actor-account originKind=system entries=3 accountsBefore=342 accountsAfter=342
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS origin=shell-lifecycle originKind=system world=three-powers hexes=37 regions=3 cities=3 population=6350 markets=3
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_ZONES origin=shell-lifecycle originKind=system world=three-powers zones=3 zoneIds=[c-tp-copper, c-tp-gold, c-tp-silver]
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_GOVS origin=shell-lifecycle originKind=system world=three-powers govs=3
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_CURRENCIES origin=shell-lifecycle originKind=system world=three-powers currencies=3 currencyIds=[silver, copper, gold]
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_ZONE_NUMERAIRE origin=shell-lifecycle originKind=system world=three-powers zone=c-tp-copper anchor=0_-3 hexes=16 numeraire=copper
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_ZONE_NUMERAIRE origin=shell-lifecycle originKind=system world=three-powers zone=c-tp-gold anchor=-3_3 hexes=12 numeraire=gold
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_ZONE_NUMERAIRE origin=shell-lifecycle originKind=system world=three-powers zone=c-tp-silver anchor=3_0 hexes=9 numeraire=silver
+INFO  io.mosire.simos.app.shell - event=THREE_POWERS_GENESIS_EXCLUSIVITY_OK origin=shell-lifecycle originKind=system world=three-powers regions=3 hexesChecked=37 overlaps=0
+INFO  io.mosire.simos.core.life - event=CORE_GENESIS_BOOTSTRAPPED origin=core-lifecycle originKind=system branch=main revision=1 modules=8 tick=0
+INFO  io.mosire.simos.app.shell - event=SHELL_GENESIS_INITIALIZED origin=shell-lifecycle originKind=system worldId=three-powers description=B1：3 个市场区 / 3 个 GOV / 3 种货币的测试世界（37 hex / 三区三城三币 / 行政区两两不相交（I23）/ 每区法定币不同）
+INFO  io.mosire.simos.app.shell - event=SHELL_STARTED origin=shell-lifecycle originKind=system store=store-probe-mcp checkpointInterval=1 modules=8 bindAddress=127.0.0.1 guiPort=10941 mcpPort=10942 mcpPath=/mcp approvalPort=10943 mapId=three-powers worldId=three-powers
+INFO  io.mosire.simos.app.shell - event=SHELL_WEBUI_READY origin=shell-lifecycle originKind=system port=10941 url=http://127.0.0.1:10941/
+INFO  io.mosire.simos.core.life - event=CORE_ASSEMBLED origin=core-lifecycle originKind=system codecs=8 handlers=144 participants=2 guards=3
+INFO  io.mosire.simos.app.gui - event=GUI_ACCESS origin=gui-request originKind=interaction method=GET path=/api/economy/overview status=200 millis=505 caller=127.0.0.1
+INFO  io.modelcontextprotocol.server.McpAsyncServer - Client initialize request - Protocol: 2025-06-18, Capabilities: ClientCapabilities[experimental=null, roots=null, sampling=null, elicitation=null], Info: Implementation[name=probe, title=null, version=1, description=null, icons=null, websiteUrl=null]
+INFO  io.mosire.simos.economy.command - event=ECONOMY_POLICY_SET origin=economy-command originKind=system key=SLIDE_SPEED_PER_MILLE_PER_RATIO from=100 to=1000 default=100 min=0 max=1000 configuredKeys=1 effectiveFrom=same-revision note=行为值政策预设：写入即生效（读取点每 tick 从政策表读，不再读编译期常量）
+DEBUG io.mosire.simos.economy.command - event=ECONOMY_POLICY_CRITERIA origin=economy-command originKind=system key=SLIDE_SPEED_PER_MILLE_PER_RATIO description=阶层滑落速度斜率（‰/比值） previousValue=100 writtenValue=1000 isDefaultAfterWrite=false note=写回缺省值 ⇒ 该行从政策表里删掉（缺键 = 缺省）
+INFO  io.mosire.simos.core.command - event=COMMAND_COMMITTED origin=command-entry originKind=interaction type=economy.SetEconomyPolicy commandId=92ba5043-280a-4a94-89c2-4ca3073e7f5a correlationId=92ba5043-280a-4a94-89c2-4ca3073e7f5a caller=agent:external-mcp branch=main revision=2
+WARN  io.mosire.simos.core.store - event=CHECKPOINT_MISSING origin=checkpoint originKind=system branch=main revision=2 path=store-probe-mcp/checkpoints/main/2.json
+INFO  io.mosire.simos.app.shell - event=SHELL_STOP_SIGNAL origin=shell-lifecycle originKind=system

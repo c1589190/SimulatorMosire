@@ -36,6 +36,8 @@ import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.codec.EconomyCodec;
+// ★★ W10（2026-10-11）：政策预设写口的键（见 COVERAGE_POLICY_KEY）
+import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -136,7 +138,9 @@ class McpCoverageTest {
    * 市场区）的 8 条 ⇒ 136，W2 新增 {@code economy.SetMarketZonePriceAlpha} ⇒ **141**，★★ W5-fix6 新增 {@code
    * economy.SetGovernmentMintScale} ⇒ **142**（与 SimosToolsTest 同源：那边的 {@code
    * EXPECTED_COMMAND_TYPES} 也按实测更新，两处计数必须逐字相同）；★★ W5.5 新增 {@code
-   * economy.SetMarketZoneLoanRateAlpha} ⇒ **143**（同源同上）。
+   * economy.SetMarketZoneLoanRateAlpha} ⇒ **143**（同源同上）；★★ W10 新增 {@code economy.SetEconomyPolicy}
+   * ⇒ **144**（同源同上；★ 本条一开始就只报"catalog 集合 ≠ 表"这一个差异 —— 判据见 {@code CatalogTool} 已列该 type：属**本表陈旧**，不是
+   * main 侧缺口）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -180,6 +184,9 @@ class McpCoverageTest {
           "economy.SetGovernmentMintScale",
           // ★★ W5.5（2026-10-11，S-12⑤）：货币市场利率的自适应步长 α 的 GM 写口（142 → 143）
           "economy.SetMarketZoneLoanRateAlpha",
+          // ★★ W10（2026-10-11，用户裁定「凡"行为"一律做成 GM 可调的预设」）：经济侧行为值政策预设的 GM 写口
+          //   （143 → 144；★ catalog 早已列出它，本表当时没跟上 ⇒ 本条红属**基线陈旧**）
+          "economy.SetEconomyPolicy",
           "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
           "economy.SetOfficialRate",
@@ -588,6 +595,18 @@ class McpCoverageTest {
   private static final long COVERAGE_GRAIN_PRICE = 2L;
 
   /**
+   * ★★ <b>W10（2026-10-11）：{@code economy.SetEconomyPolicy} 要写进去的政策键</b> —— {@code
+   * SLIDE_ROUND_DAYS}（"阶层滑落的市场轮天数"，缺省 {@link EconomyPolicyKey#SLIDE_ROUND_DAYS} = 5）。
+   */
+  private static final EconomyPolicyKey COVERAGE_POLICY_KEY = EconomyPolicyKey.SLIDE_ROUND_DAYS;
+
+  /**
+   * ★★ <b>W10：上面那个键要写成的值</b>（7 ≠ 缺省 5）—— 与"写缺省值"那条语义**分开**：缺省值会让该行从政策表 <b>删掉</b>（缺键 =
+   * 缺省），那样"写进去了没有"就读不出来；这里刻意取一个非缺省值，使读回断言有判别力 （一个什么都不写的 handler 会让断言读到 5 ⇒ 当场红）。
+   */
+  private static final long COVERAGE_POLICY_VALUE = 7L;
+
+  /**
    * ★★ <b>W1g：播种市场的价表 = 真播种器的出厂价表</b>（{@link EconomySeeder#MARKET_PRICES_FACTORY}）——夹具**不另拍价表**
    * （{@code EconomyTestWorld} 的同一条纪律：夹具里的价与真档的价不许在两处静默漂开）。
    *
@@ -971,6 +990,13 @@ class McpCoverageTest {
             + "{\"bracketId\":\"60+\",\"sex\":\"FEMALE\","
             + "\"birthRatePerMillionPerTick\":1,\"deathRatePerMillionPerTick\":1}],"
             + "\"reason\":\"coverage\"}");
+    // ★★ W10（2026-10-11）：经济侧**行为值政策预设**的 GM 写口。载荷由 {@code economy.Seed} 播下的 meta 承接
+    //   （政策表住在 {@code economy.meta} 里）⇒ 本夹具的 meta 非空 ⇒ 走**正常提交**路径（不是 not-activated）。
+    //   ★ 值刻意取 ≠ 该键缺省（SLIDE_ROUND_DAYS 缺省 = 5，这里写 7）—— 与现值相同会被具名拒 `unchanged`，
+    //     而"写成缺省值 ⇒ 该行从表里删掉"那条语义另由 {@link #COVERAGE_POLICY_KEY} 的读回断言把住。
+    MINIMAL_PAYLOADS.put(
+        "economy.SetEconomyPolicy",
+        "{\"key\":\"SLIDE_ROUND_DAYS\",\"valueMilli\":" + COVERAGE_POLICY_VALUE + "}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -1023,7 +1049,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 142 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142）")
+            "catalog 列出的 type 与 Shell 注册的 144 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);
@@ -1121,6 +1147,21 @@ class McpCoverageTest {
             "economy.SetMarketPrice 必须真的改价（出厂粮价 %d → 载荷写的 %d）",
             EconomySeeder.MARKET_PRICE_GRAIN, COVERAGE_GRAIN_PRICE)
         .isEqualTo(COVERAGE_GRAIN_PRICE);
+
+    // ★★ W10（2026-10-11）：{@code economy.SetEconomyPolicy} 的"生效"这一层 —— 与上面那条同形：不只是
+    //   revision 前进，**政策值真的落进 {@code economy.meta.economyPolicies}**，且"非缺省值 ⇒ 该行在表里"。
+    //   ★ 判别力：缺省 = 5、载荷写 7 ⇒ 一个"照单收下却什么都没写"的 handler 会让下面读到 5 ⇒ 当场红。
+    assertThat(coverageEconomy.meta())
+        .as("政策表的宿主 = economy.meta（本夹具由 economy.Seed 播下）")
+        .isPresent();
+    assertThat(coverageEconomy.meta().orElseThrow().policyOf(COVERAGE_POLICY_KEY))
+        .as(
+            "economy.SetEconomyPolicy 必须真的写进政策表（缺省 %d → 载荷写的 %d）",
+            COVERAGE_POLICY_KEY.defaultValue(), COVERAGE_POLICY_VALUE)
+        .isEqualTo(COVERAGE_POLICY_VALUE);
+    assertThat(coverageEconomy.meta().orElseThrow().economyPolicies())
+        .as("★ 写成**非缺省**值 ⇒ 该键在政策表里（写成缺省值才会删行 —— 那条语义在 EconomyMeta.withPolicy）")
+        .containsEntry(COVERAGE_POLICY_KEY, COVERAGE_POLICY_VALUE);
 
     // 4. simos.advance 的"可达 + 生效"由 ShellEndToEndTest 用真 MCP 覆盖（本夹具的 GOV/S3a 覆盖
     //    与世界闭合守卫的构造前提不同，此处不重复跑推进会干扰覆盖序列；工具面在 catalog 里已由第 1 段断言）。

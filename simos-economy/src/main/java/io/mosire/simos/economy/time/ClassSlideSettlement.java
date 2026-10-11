@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
@@ -39,8 +40,8 @@ import java.util.Set;
  * 每市场轮、逐户（稳定 HouseholdId 序）各算一次（资产/负债直接取开盘前快照的那一把尺，不另算第二套口径）：
  *   ratioPerMille = ⌊负债 × 1000 ÷ max(1, 资产)⌋                        // "债务/资产规模"（‰）
  *   speedPerMille = min(SLIDE_MAX_SPEED_PER_MILLE,
- *                       ⌊ratioPerMille × SLIDE_SPEED_PER_MILLE_PER_RATIO ÷ 1000⌋)
- *   requiredDays  = ⌈SLIDE_ROUND_DAYS × SLIDE_COST_PER_LEVEL ÷ speedPerMille⌉
+ *                       ⌊ratioPerMille × 斜率 ÷ 1000⌋（斜率 = 政策键 SLIDE_SPEED_PER_MILLE_PER_RATIO；★ W10 起从政策表读）)
+ *   requiredDays  = ⌈轮天数 × 每级成本 ÷ speedPerMille⌉（政策键 SLIDE_ROUND_DAYS / SLIDE_COST_PER_LEVEL）
  *   滑落一级 ⟺ speedPerMille &gt; 0 ∧ 负债 &gt; 0 ∧ (day − lastTransitionDay) ≥ requiredDays ∧ 存在"下一级"
  * </pre>
  *
@@ -70,20 +71,8 @@ import java.util.Set;
  */
 public final class ClassSlideSettlement {
 
-  /**
-   * ★ <b>速度斜率</b>：债务/资产 = 1.0 时每市场轮累计 {@value} ‰（= 每 50 天降一级）。★ 这是<b>政策标定值</b> （控制方实现口径，非用户裁定；列为
-   * W6"阶层滑落速度"标定首查项）。
-   */
-  public static final long SLIDE_SPEED_PER_MILLE_PER_RATIO = 100L;
-
   /** ★ 速度上限（‰/轮）：配合"一轮最多一级"⇒ 每轮恰好一级就是"最快"。 */
   public static final long SLIDE_MAX_SPEED_PER_MILLE = 1000L;
-
-  /** ★ 升一级的"阶"成本（‰）：速度按轮累加，累计满本值才走<b>一级</b>（"慢慢滑"的量化形态）。 */
-  public static final long SLIDE_COST_PER_LEVEL = 1000L;
-
-  /** ★ 一个市场轮多少天（速度的积分步长；与 {@code MarketSettlement} 的开市间隔同一常量）。 */
-  public static final long SLIDE_ROUND_DAYS = MarketSettlement.MARKET_RESTOCK_INTERVAL_DAYS;
 
   /** 滑落原因前缀（读口按它分类；不在多处拼字符串）。 */
   public static final String REASON_PREFIX = "class-slide-speed:";
@@ -123,6 +112,12 @@ public final class ClassSlideSettlement {
     if (positions.isEmpty()) {
       return new SlideRound(0L, 0L, 0L, 0L, 0L, 0L, 0L, List.of());
     }
+    // ★★★ W10（用户裁定「凡"行为"一律做成 GM 可调的预设」）：三个标定值改从**政策表**读（缺键 = 现值），
+    //   一轮读一次（本方法 = 一个市场轮）⇒ GM 写入后**下一轮**生效，且世界内所有家户同一把尺。
+    long slideSpeedPerMillePerRatio =
+        base.economyPolicyOf(EconomyPolicyKey.SLIDE_SPEED_PER_MILLE_PER_RATIO);
+    long slideCostPerLevel = base.economyPolicyOf(EconomyPolicyKey.SLIDE_COST_PER_LEVEL);
+    long slideRoundDays = base.economyPolicyOf(EconomyPolicyKey.SLIDE_ROUND_DAYS);
     Map<HouseholdId, HouseholdClassMembership> classMemberships = sheet.classMemberships();
     // ★★ 时点（用户原话「当轮算出这个家户的债务规模后进行」）：估值读**市场轮末的活状态** ——
     //   含本轮赊购新记的债、本轮买卖后的货币/库存，以及轮内写回的新价；算式与排序共用
@@ -158,7 +153,7 @@ public final class ClassSlideSettlement {
       long assetCommon = valuation.assetsCommonValue();
       long debtCommon = valuation.debtCommonValue();
       long ratioPerMille = ratioPerMille(debtCommon, assetCommon);
-      long speedPerMille = speedPerMille(debtCommon, assetCommon);
+      long speedPerMille = speedPerMille(debtCommon, assetCommon, slideSpeedPerMillePerRatio);
       if (speedPerMille <= 0L) {
         noDebt++;
         logSpeed(
@@ -192,7 +187,7 @@ public final class ClassSlideSettlement {
       HouseholdClassMembership membership = classMemberships.get(household);
       long lastTransitionDay = membership == null ? 0L : membership.lastTransitionDay();
       long elapsedDays = Math.max(0L, day - lastTransitionDay);
-      long requiredDays = requiredDays(speedPerMille);
+      long requiredDays = requiredDays(speedPerMille, slideRoundDays, slideCostPerLevel);
       if (elapsedDays < requiredDays) {
         cooldown++;
         logSpeed(
@@ -344,11 +339,11 @@ public final class ClassSlideSettlement {
                   "unpricedDebtHouseholds",
                   unpricedHouseholds,
                   "costPerLevelPerMille",
-                  SLIDE_COST_PER_LEVEL,
+                  slideCostPerLevel,
                   "speedPerRatioPerMille",
-                  SLIDE_SPEED_PER_MILLE_PER_RATIO,
+                  slideSpeedPerMillePerRatio,
                   "roundDays",
-                  SLIDE_ROUND_DAYS,
+                  slideRoundDays,
                   "reason",
                   "speed-f(debt/assets)-settled-at-market-round-end-one-level-max"));
     }
@@ -370,25 +365,34 @@ public final class ClassSlideSettlement {
     return numerator / denominator;
   }
 
-  /** 速度（‰/轮）= min(上限, ⌊比率 × 斜率 ÷ 1000⌋)；比率 ≤ 0 ⇒ 0（不滑）。 */
-  static long speedPerMille(long debtCommon, long assetCommon) {
+  /**
+   * 速度（‰/轮）= min(上限, ⌊比率 × 斜率 ÷ 1000⌋)；比率 ≤ 0 ⇒ 0（不滑）。
+   *
+   * <p>★ W10：斜率由调用方从**政策表**取（{@code EconomyPolicyKey.SLIDE_SPEED_PER_MILLE_PER_RATIO}），
+   * 本方法是纯算术、不读任何全局量。
+   */
+  static long speedPerMille(long debtCommon, long assetCommon, long slopePerMille) {
     long ratio = ratioPerMille(debtCommon, assetCommon);
     if (ratio <= 0L) {
       return 0L;
     }
     // ★ 先除后乘 + 余数补算：避免 ratio × 斜率 在极端值上溢出（逐值等于 ⌊ratio × 斜率 ÷ 1000⌋）。
-    long whole = ratio / 1000L * SLIDE_SPEED_PER_MILLE_PER_RATIO;
-    long residual = ratio % 1000L * SLIDE_SPEED_PER_MILLE_PER_RATIO / 1000L;
+    long whole = ratio / 1000L * slopePerMille;
+    long residual = ratio % 1000L * slopePerMille / 1000L;
     long speed = saturatedAdd(whole, residual);
     return Math.min(SLIDE_MAX_SPEED_PER_MILLE, speed);
   }
 
-  /** 走一级需要多少天：{@code ⌈轮距 × 每级成本 ÷ 速度⌉}（速度 ≤ 0 ⇒ 不可达 = {@code Long.MAX_VALUE}）。 */
-  static long requiredDays(long speedPerMille) {
+  /**
+   * 走一级需要多少天：{@code ⌈轮距 × 每级成本 ÷ 速度⌉}（速度 ≤ 0 ⇒ 不可达 = {@code Long.MAX_VALUE}）。
+   *
+   * <p>★ W10：轮距与每级成本由调用方从**政策表**取（{@code SLIDE_ROUND_DAYS} / {@code SLIDE_COST_PER_LEVEL}）。
+   */
+  static long requiredDays(long speedPerMille, long roundDays, long costPerLevel) {
     if (speedPerMille <= 0L) {
       return Long.MAX_VALUE;
     }
-    long numerator = SLIDE_ROUND_DAYS * SLIDE_COST_PER_LEVEL;
+    long numerator = roundDays * costPerLevel;
     return (numerator + speedPerMille - 1L) / speedPerMille;
   }
 

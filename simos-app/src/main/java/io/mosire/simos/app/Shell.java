@@ -86,6 +86,7 @@ import io.mosire.simos.economy.spi.EconomyRemovePeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.EconomyRenameCurrencyHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetCommodityFreightHandler;
+import io.mosire.simos.economy.spi.EconomySetEconomyPolicyHandler;
 import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetGovernmentMintScaleHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
@@ -701,6 +702,12 @@ public final class Shell implements AutoCloseable {
                 //   排除出令白名单 / RegisterEffect / 决策人目录；窄工具 simos.economy.setGovernmentMintScale
                 // 照常可用。──
                 new EconomySetGovernmentMintScaleHandler(),
+                // ★★★ W10（2026-10-11）：经济侧**行为值政策预设**的 GM 写口（economy.SetEconomyPolicy）——
+                //   用户裁定第 18 条「凡"行为"一律做成 GM 可调的预设」。只写 economy.meta.economyPolicies 一个键；
+                //   缺键 = 该键的具名缺省（= 改造前的常量值）⇒ 从没被写过的世界逐值等于改动前。
+                //   GM-only（标 GmOnlyCommand）⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
+                //   窄工具 simos.economy.setEconomyPolicy 照常可用。──
+                new EconomySetEconomyPolicyHandler(),
                 new EconomyAddDemandHandler(),
                 new EconomyCancelDemandHandler(),
                 new EconomyRegisterCandidateHandler(),

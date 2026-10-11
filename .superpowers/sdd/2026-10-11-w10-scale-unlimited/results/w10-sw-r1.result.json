@@ -1,0 +1,73 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 7386938,
+      "md5": "8885d5396926b8ce55daf0cd0b49e019",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/shell-sw.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10941,
+  "headRevision": 2,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "1cfc10c1e2b6f462a6c9d1940376b145",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/results/w10-sw-r1.log",
+  "logKeep": "MIGRATION|MERCHANT_TRADE_INDUSTRY_CREATED|MARKET_ROUND|CLASS_SLIDE_ROUND|MINT_PRODUCTION|GUI_|ADVANCE|PRODUCTION_EFFICIENCY_CONTRACT|ERROR",
+  "logKeptLines": 3300,
+  "logLines": 3300,
+  "logStrippedMd5": "a8b83b0f128296a79ff728b644565208",
+  "pid": 508107,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/plan-sw360.json",
+  "readySeconds": 1.368,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 6673573,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 360
+    }
+  ],
+  "startedAt": "2026-10-11T22:40:43",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 16.576,
+      "to": 360
+    },
+    {
+      "bytes": 7386938,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/dumps/w10-sw-r1-d360-oneshot.json",
+      "i": 1,
+      "label": "d360-oneshot",
+      "md5": "8885d5396926b8ce55daf0cd0b49e019",
+      "op": "dump",
+      "revision": 2
+    }
+  ],
+  "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/store-sw-r1",
+  "tag": "w10-sw-r1",
+  "tick": 360,
+  "world": "small-world"
+}

@@ -1,0 +1,78 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 1748211,
+      "md5": "839252b123c43c0734805e000e923cc3",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 10740471,
+      "md5": "c17cf92a88ca8231f6728f40c689962b",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "shell-tp.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10921,
+  "headRevision": 2,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "8ebc7f9f24649e8c12f4997eff693700",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/results/w10fix2-tp240.log",
+  "logKeep": "advance|dump|创世|GUI 就绪|起服务",
+  "logKeptLines": 18,
+  "logLines": 18,
+  "logStrippedMd5": "94503e5acd4ac50b31889e080ff52a66",
+  "pid": 518170,
+  "plan": "plan-tp240-w10fix-default.json",
+  "readySeconds": 1.769,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 9716001,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 240
+    }
+  ],
+  "startedAt": "2026-10-11T23:12:03",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 34.236,
+      "to": 240
+    },
+    {
+      "bytes": 10740471,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/dumps/w10fix2-tp240-d240-w10fix-default.json",
+      "i": 1,
+      "label": "d240-w10fix-default",
+      "md5": "c17cf92a88ca8231f6728f40c689962b",
+      "op": "dump",
+      "revision": 2
+    }
+  ],
+  "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/store-w10fix2-tp240",
+  "tag": "w10fix2-tp240",
+  "tick": 240,
+  "world": "three-powers"
+}

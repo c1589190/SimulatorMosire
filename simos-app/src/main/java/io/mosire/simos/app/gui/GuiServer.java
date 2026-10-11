@@ -22,6 +22,7 @@ import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.query.RedactingQueryService;
 import io.mosire.simos.app.query.SdQueryService;
+import io.mosire.simos.app.query.WorldNotReadyException;
 import io.mosire.simos.app.sd.DecisionAdjudicationService;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
@@ -619,6 +620,26 @@ public final class GuiServer implements AutoCloseable {
       }
     } catch (IllegalArgumentException e) {
       safeError(exchange, 400, e.getMessage());
+    } catch (WorldNotReadyException e) {
+      // ★★★ W10（A1）：创世尚未落盘 ⇒ **具名 503**（不是 500 + 栈）。★ 这一支是"启动窗口"的合法答复：
+      //   读口已等过（QueryService.GENESIS_READY_WAIT_MILLIS），只有超时才走到这里 ⇒ 日志按 INFO 记事件名，
+      //   **不带栈**（它不是故障，是"世界还没长出来"）。状态侧零影响。
+      if (AppLog.gui().isInfoEnabled()) {
+        EventLog.channel(AppLog.gui())
+            .info(
+                LogEvent.of(
+                    "GUI_WORLD_NOT_READY",
+                    AppLogSource.GUI_REQUEST,
+                    "method",
+                    exchange.getRequestMethod(),
+                    "path",
+                    exchange.getRequestURI().getPath(),
+                    "caller",
+                    remoteHostOf(exchange),
+                    "reason",
+                    e.getMessage() == null ? "none" : e.getMessage()));
+      }
+      safeError(exchange, 503, "world not ready");
     } catch (Exception e) {
       // ★★ 2026-10-09 D3：**正文必须进日志**。旧实现只记异常类名，长跑现场（`/api/advance` 抛具名
       //   IllegalStateException）在日志里只剩 `error=IllegalStateException` —— 排障当场断线（控制方

@@ -1,0 +1,126 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 1748211,
+      "md5": "839252b123c43c0734805e000e923cc3",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 2144479,
+      "md5": "09120a250afd3fbbd335619351021f73",
+      "path": "checkpoints/main/2.json"
+    },
+    {
+      "bytes": 2144519,
+      "md5": "b5d1cac1019091d915ea847d499014e0",
+      "path": "checkpoints/main/3.json"
+    },
+    {
+      "bytes": 2487369,
+      "md5": "0e494e2ec755493603eed077c3fdf8e4",
+      "path": "checkpoints/main/4.json"
+    },
+    {
+      "bytes": 2743799,
+      "md5": "899d90ac577256cc9b44aae3668f1e44",
+      "path": "checkpoints/main/5.json"
+    },
+    {
+      "bytes": 2747224,
+      "md5": "53a77a5dc396900f872e53935f3fe2da",
+      "path": "checkpoints/main/6.json"
+    }
+  ],
+  "config": "shell-tp.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 838872,
+    "commandType": "core.AdvanceTime",
+    "revision": 5,
+    "tick": 40
+  },
+  "guiPort": 10951,
+  "headRevision": 6,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "d68c860e669c51a327aced94e31e1f99",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE",
+  "keepStore": true,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/results/w10fix-tp-restart.log",
+  "logKeep": null,
+  "logKeptLines": 1368,
+  "logLines": 1368,
+  "logStrippedMd5": "a08d05d04fcc1c3c8862096055bf5a2e",
+  "pid": 515002,
+  "plan": "plan-tp-restart-w10fix.json",
+  "readySeconds": 1.384,
+  "revisionDelta": 5,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1184783,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 10
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1768,
+      "commandType": "economy.SetEconomyPolicy",
+      "revision": 3,
+      "tick": 10
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 1125180,
+      "commandType": "core.AdvanceTime",
+      "revision": 4,
+      "tick": 30
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 838872,
+      "commandType": "core.AdvanceTime",
+      "revision": 5,
+      "tick": 40
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 415959,
+      "commandType": "core.AdvanceTime",
+      "revision": 6,
+      "tick": 41
+    }
+  ],
+  "startedAt": "2026-10-11T23:01:31",
+  "steps": [
+    {
+      "from": 40,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":6}}",
+      "seconds": 0.434,
+      "to": 41
+    },
+    {
+      "bytes": 2747224,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/dumps/w10fix-tp-restart-d41-after-restart.json",
+      "i": 1,
+      "label": "d41-after-restart",
+      "md5": "53a77a5dc396900f872e53935f3fe2da",
+      "op": "dump",
+      "revision": 6
+    }
+  ],
+  "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/store-w10fix-tppolicy",
+  "tag": "w10fix-tp-restart",
+  "tick": 41,
+  "world": "three-powers"
+}

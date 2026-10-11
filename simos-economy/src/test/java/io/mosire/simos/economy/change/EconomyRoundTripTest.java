@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.change;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
@@ -71,6 +72,8 @@ import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.CommodityRound;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
+// ★★ W10（2026-10-11）：EconomyMeta 第 6 组件（政策预设表）的键
+import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
@@ -404,6 +407,143 @@ class EconomyRoundTripTest {
     assertThat(back.marketRoundStats().get(MARKET))
         .as("两区统计不是同一份值（否则「只按第一个键成账」也能过）")
         .isNotEqualTo(back.marketRoundStats().get(ZONE_EAST));
+  }
+
+  /**
+   * ★★★ <b>W10（2026-10-11）：{@code EconomyMeta.economyPolicies}（政策预设表）的变更集真往返 —— 两个方向都走一遍</b>（铁律
+   * 5：{@code apply(between(base, target), base)} 逐字段重建 target）。
+   *
+   * <p>★★ <b>为什么上面那条逐组件的用例挡不住它</b>：那条把 {@code meta} 组件的目标造成"<b>空</b>政策表"（{@link #meta()} 是 5
+   * 参便捷构造器）⇒ 表里有键、键序、多键这些形态<b>从没进过变更集</b>；而政策表恰恰是"一个组件里的嵌套表" （最容易被 {@code FieldDelta} 的 record
+   * 相等判成"没变化"或重建时丢掉的那类形状）。
+   *
+   * <p>★★ <b>两个方向</b>：① base = 空表 → target = 非空表（{@code Upsert}）；② 反向 target → base（值→另一个值，仍是
+   * {@code Upsert}）。
+   *
+   * <p>★ <b>夹具刻意乱序插入</b>（PROFIT_GAP → SLIDE_ROUND → FAMINE，与枚举声明序不同）⇒ 规范序 = 声明序，重建后 {@code
+   * keySet()} 必须落回声明序；若哪一层把保序容器换成 {@code HashMap}/{@code Map.copyOf}，下面那句当场红。
+   *
+   * <p>★ <b>判别力（改坏 ⇒ 红）</b>：把 {@code EconomyChangeSet.between} 的 {@code meta} 分量改成恒 {@code
+   * Unchanged} ⇒ {@code changed()} 与 {@code isInstanceOf(Upsert)} 两句红；把 {@code apply} 的 {@code
+   * meta} 重建写漏（或让它落回"空表 meta"） ⇒ 逐字段那几句红。
+   */
+  @Test
+  void theEconomyPolicyTableSurvivesTheChangeSetInBothDirections() {
+    EconomyData base = EconomyData.empty().withMeta(Optional.of(meta()));
+    Map<EconomyPolicyKey, Long> configured = new LinkedHashMap<>();
+    configured.put(EconomyPolicyKey.PROFIT_GAP_SPEED_SLOPE_PER_MILLE, 250L);
+    configured.put(EconomyPolicyKey.SLIDE_ROUND_DAYS, 9L);
+    configured.put(EconomyPolicyKey.FAMINE_MAX_PPM_PER_TICK, 7_000L);
+    EconomyMeta configuredMeta =
+        new EconomyMeta(
+            meta().mapId(),
+            meta().activatedDay(),
+            meta().lastClosedCycle(),
+            meta().rulesVersion(),
+            meta().migrationSource(),
+            configured);
+    EconomyData target = base.withMeta(Optional.of(configuredMeta));
+
+    // 前置：两份夹具的差别就是那张表（否则下面的断言会对着别的差异变绿）。
+    assertThat(base.meta().orElseThrow().economyPolicies()).as("base 的政策表是空的").isEmpty();
+    assertThat(target.meta().orElseThrow().economyPolicies()).hasSize(3);
+
+    EconomyChangeSet cs = EconomyChangeSet.between(base, target);
+    assertThat(cs.meta())
+        .as("政策表变了 ⇒ meta 分量不得退化成 Unchanged")
+        .isInstanceOf(FieldDelta.Upsert.class);
+    assertThat(cs.meta().changed()).as("差异必须看得见政策表").isTrue();
+
+    EconomyData rebuilt = EconomyChangeSet.apply(cs, base);
+    assertThat(rebuilt).as("★ 重建后的整份状态 == target（逐字段）").isEqualTo(target);
+    assertThat(rebuilt.meta().orElseThrow().economyPolicies())
+        .as("政策表逐键逐值重建")
+        .isEqualTo(configured);
+    assertThat(rebuilt.meta().orElseThrow().economyPolicies().keySet())
+        .as("★ 重建后的**顺序** = 枚举声明序（保序容器不得在变更集这一层被换掉）")
+        .containsExactly(
+            EconomyPolicyKey.FAMINE_MAX_PPM_PER_TICK,
+            EconomyPolicyKey.SLIDE_ROUND_DAYS,
+            EconomyPolicyKey.PROFIT_GAP_SPEED_SLOPE_PER_MILLE);
+    assertThat(rebuilt.meta().orElseThrow().policyOf(EconomyPolicyKey.SLIDE_COST_PER_LEVEL))
+        .as("缺键语义在重建后仍成立（缺键 ⇒ 具名缺省）")
+        .isEqualTo(EconomyPolicyKey.SLIDE_COST_PER_LEVEL.defaultValue());
+
+    // ② 反向：非空 → 空（同一个单键表投影的另一侧）。
+    EconomyChangeSet reverse = EconomyChangeSet.between(target, base);
+    assertThat(reverse.meta())
+        .as("值 → 另一个值 = Upsert（不是 Remove：两侧都有 meta）")
+        .isInstanceOf(FieldDelta.Upsert.class);
+    assertThat(reverse.meta().changed()).isTrue();
+    EconomyData backToEmpty = EconomyChangeSet.apply(reverse, target);
+    assertThat(backToEmpty).as("★ 反向重建 == base（政策表回到空表）").isEqualTo(base);
+    assertThat(backToEmpty.meta().orElseThrow().economyPolicies())
+        .as("反向重建后政策表是空的（缺键 = 全部走缺省）")
+        .isEmpty();
+  }
+
+  /**
+   * ★★★ <b>W10（2026-10-11）：{@code EconomyMeta.withPolicy} 的"写缺省 ⇒ 删行 ⇒ 空表"语义</b>（用户裁定的写口
+   * 形状：政策表里<b>不留</b>"等于现值的冗余行"）。
+   *
+   * <p>★ 这条为什么必须有独立用例：写口的**写入**语义（非缺省值进表）由 {@link
+   * #theEconomyPolicyTableSurvivesTheChangeSetInBothDirections} 与 MCP 覆盖用例把住，而"写回缺省值是<b>删除</b>、
+   * 删到最后一个键时表<b>变空</b>"是另一条路径 —— 一个"往表里塞缺省值"的实现能让上面两条全绿，却让
+   * "从没被写过的世界逐值等于改动前"（缺省中性）在**改过又改回来**之后不再成立（表里躺着冗余行 ⇒ 字节不同）。
+   *
+   * <p>★ <b>三条路都走</b>：① 非缺省 → 缺省（删该行，其它键保留）；② 删掉最后一个键 ⇒ 空表；③ 对<b>本来就没有</b>该键的 meta 写缺省 ⇒
+   * 仍是空表（不凭空补一行）。
+   *
+   * <p>★ 另加一条<b>负向</b>：越域值当场抛（fail-closed），且 policy 表不被改动。
+   */
+  @Test
+  void writingTheDefaultValueDeletesTheRowAndEmptiesTheTable() {
+    EconomyPolicyKey key = EconomyPolicyKey.SLIDE_ROUND_DAYS;
+    EconomyPolicyKey other = EconomyPolicyKey.FAMINE_MAX_PPM_PER_TICK;
+    long custom = key.defaultValue() + 4L;
+
+    // ① 非缺省 → 缺省：删该行，**其它键保留**（不是把整张表清空）。
+    EconomyMeta twoKeys =
+        meta().withPolicy(key, custom).withPolicy(other, other.defaultValue() + 1_000L);
+    assertThat(twoKeys.economyPolicies())
+        .as("前置：两个键都在表里")
+        .containsOnlyKeys(key, other)
+        .containsEntry(key, custom);
+    EconomyMeta afterDefault = twoKeys.withPolicy(key, key.defaultValue());
+    assertThat(afterDefault.economyPolicies())
+        .as("★ 写回缺省值 ⇒ 该行被**删掉**（不是留一行等于缺省值的冗余行）")
+        .doesNotContainKey(key);
+    assertThat(afterDefault.economyPolicies())
+        .as("其它键不受影响")
+        .containsEntry(other, other.defaultValue() + 1_000L);
+
+    // ② 删掉最后一个键 ⇒ 表变空（= 从没被写过的世界）。
+    EconomyMeta emptied = afterDefault.withPolicy(other, other.defaultValue());
+    assertThat(emptied.economyPolicies()).as("★ 最后一个键被写回缺省 ⇒ 政策表**空**").isEmpty();
+    assertThat(emptied.policyOf(key)).as("空表读口 = 全部走具名缺省").isEqualTo(key.defaultValue());
+    assertThat(emptied.policyOf(other)).isEqualTo(other.defaultValue());
+
+    // ③ 对**本来就没有**该键的 meta 写缺省 ⇒ 仍是空表（不凭空补一行）。
+    assertThat(meta().withPolicy(key, key.defaultValue()).economyPolicies())
+        .as("写缺省到空表 ⇒ 仍是空表（不留冗余行）")
+        .isEmpty();
+
+    // ④ 非缺省值仍然进表（反向对照：上面的"删行"不是"什么都不写"）。
+    assertThat(meta().withPolicy(key, custom).economyPolicies())
+        .as("非缺省值必须真的进表（否则①②的'删除'断言可能是对着一个恒空实现变绿）")
+        .containsExactly(Map.entry(key, custom));
+
+    // ⑤ 负向：越域当场抛（fail-closed），且原实例不动（record 不可变）。
+    EconomyMeta before = meta().withPolicy(key, custom);
+    assertThatThrownBy(() -> before.withPolicy(key, key.maxValue() + 1L))
+        .as("越域值（上界 +1）必须 fail-closed")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("越域");
+    assertThatThrownBy(() -> before.withPolicy(key, key.minValue() - 1L))
+        .as("越域值（下界 −1）必须 fail-closed")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("越域");
+    assertThat(before.economyPolicies()).as("被拒的写不得改动原实例").containsExactly(Map.entry(key, custom));
   }
 
   /**

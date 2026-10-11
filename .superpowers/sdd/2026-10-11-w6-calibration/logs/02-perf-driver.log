@@ -1,0 +1,103 @@
+=== [22:03:01] sw360perf1 world=small-world port=10905 plan=plan-sw360.json store=sw360perf1 daily=- extras= ===
+[22:03:01] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/sw360perf1 --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-sw.json --gui-port 10905 --mcp-port 10906 --approval-port 10907
+[22:03:04] GUI 就绪（2.24s）
+[22:03:04] 创世后 head rev=1 tick=0
+[22:03:15] advance 0->360 HTTP 200 11.851s
+[22:03:15] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+[22:03:16] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/logs/sw360perf1.result.json
+{
+  "tag": "sw360perf1",
+  "jarMd5": "24c8a0a2291f5cdbeaff49edca71a13b",
+  "readySeconds": 2.243,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "3e02b72d2bc6dfd7af1b97394c28244a"
+}
+=== [22:03:16] sw360perf1 rc=0 ===
+=== [22:03:16] tp360perf1 world=three-powers port=10908 plan=plan-tp360.json store=tp360perf1 daily=- extras= ===
+[22:03:16] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/tp360perf1 --world=three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-tp.json --gui-port 10908 --mcp-port 10909 --approval-port 10910
+[22:03:18] GUI 就绪（1.73s）
+[22:03:18] 创世后 head rev=1 tick=0
+[22:04:14] advance 0->360 HTTP 200 56.434s
+[22:04:14] dump d360-oneshot rev=2 bytes=12371339 md5=838477e41aaf5b9db732d12a424c7605
+[22:04:35] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/logs/tp360perf1.result.json
+{
+  "tag": "tp360perf1",
+  "jarMd5": "24c8a0a2291f5cdbeaff49edca71a13b",
+  "readySeconds": 1.727,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "624b35e92719f12b983020b5f5894002"
+}
+=== [22:04:36] tp360perf1 rc=0 ===
+=== [22:04:36] sw360perf2 world=small-world port=10905 plan=plan-sw360.json store=sw360perf2 daily=- extras= ===
+[22:04:36] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/sw360perf2 --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-sw.json --gui-port 10905 --mcp-port 10906 --approval-port 10907
+[22:04:38] GUI 就绪（1.74s）
+[22:04:38] 创世后 head rev=1 tick=0
+[22:04:52] advance 0->360 HTTP 200 14.202s
+[22:04:52] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+[22:04:53] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/logs/sw360perf2.result.json
+{
+  "tag": "sw360perf2",
+  "jarMd5": "24c8a0a2291f5cdbeaff49edca71a13b",
+  "readySeconds": 1.737,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "9535a9b602fd95888c35a6719584067a"
+}
+=== [22:04:53] sw360perf2 rc=0 ===
+=== [22:04:53] tp360perf2 world=three-powers port=10908 plan=plan-tp360.json store=tp360perf2 daily=- extras= ===
+[22:04:53] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/tp360perf2 --world=three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-tp.json --gui-port 10908 --mcp-port 10909 --approval-port 10910
+[22:04:55] GUI 就绪（1.73s）
+[22:04:55] 创世后 head rev=1 tick=0
+[22:05:49] advance 0->360 HTTP 200 53.908s
+[22:05:49] dump d360-oneshot rev=2 bytes=12371339 md5=838477e41aaf5b9db732d12a424c7605
+[22:06:07] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/logs/tp360perf2.result.json
+{
+  "tag": "tp360perf2",
+  "jarMd5": "24c8a0a2291f5cdbeaff49edca71a13b",
+  "readySeconds": 1.734,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "624b35e92719f12b983020b5f5894002"
+}
+=== [22:06:08] tp360perf2 rc=0 ===
+=== [22:06:08] sw360perf3 world=small-world port=10905 plan=plan-sw360.json store=sw360perf3 daily=- extras= ===
+[22:06:08] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/sw360perf3 --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-sw.json --gui-port 10905 --mcp-port 10906 --approval-port 10907
+[22:06:09] GUI 就绪（1.70s）
+[22:06:09] 创世后 head rev=1 tick=0
+[22:06:21] advance 0->360 HTTP 200 11.291s
+[22:06:21] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+[22:06:23] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/logs/sw360perf3.result.json
+{
+  "tag": "sw360perf3",
+  "jarMd5": "24c8a0a2291f5cdbeaff49edca71a13b",
+  "readySeconds": 1.697,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "9535a9b602fd95888c35a6719584067a"
+}
+=== [22:06:23] sw360perf3 rc=0 ===
+=== [22:06:23] tp360perf3 world=three-powers port=10908 plan=plan-tp360.json store=tp360perf3 daily=- extras= ===
+[22:06:23] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/store/tp360perf3 --world=three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/scripts/shell-tp.json --gui-port 10908 --mcp-port 10909 --approval-port 10910
+[22:06:24] GUI 就绪（1.74s）
+[22:06:24] 创世后 head rev=1 tick=0
+[22:07:13] advance 0->360 HTTP 200 48.223s
+[22:07:13] dump d360-oneshot rev=2 bytes=12371339 md5=838477e41aaf5b9db732d12a424c7605
+[22:07:31] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w6-calibration/logs/tp360perf3.result.json
+{
+  "tag": "tp360perf3",
+  "jarMd5": "24c8a0a2291f5cdbeaff49edca71a13b",
+  "readySeconds": 1.74,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "624b35e92719f12b983020b5f5894002"
+}
+=== [22:07:31] tp360perf3 rc=0 ===
+=== [22:07:31] MODE=perf DONE ===

@@ -56,6 +56,7 @@ import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.CommodityFreightBase;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
+import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
@@ -397,6 +398,24 @@ public record EconomyData(
    * 同款：跨类契约、不能改成自由文案）。
    */
   public static final String COMMODITY_FREIGHT_CONTRACT_PREFIX = "commodityFreightBaseMilli 契约违约：";
+
+  /**
+   * ★★★ <b>W10：政策读口</b>（{@link EconomyDayView#economyPolicyOf} 的实现）—— 缺键 ⇒ 该键的具名缺省（= 改造前的常量值）。
+   *
+   * <p>★ {@code meta} 为空（切片未激活）⇒ 一律缺省（与"表里没有这个键"同一支，不制造第二档语义）。
+   */
+  @Override
+  public long economyPolicyOf(EconomyPolicyKey key) {
+    Objects.requireNonNull(key, "key");
+    return meta.map(value -> value.policyOf(key)).orElseGet(key::defaultValue);
+  }
+
+  /** ★★ <b>W10：该政策键是否被显式配置过</b>（{@link EconomyDayView#economyPolicyConfigured} 的实现）。 */
+  @Override
+  public boolean economyPolicyConfigured(EconomyPolicyKey key) {
+    Objects.requireNonNull(key, "key");
+    return meta.map(value -> value.economyPolicies().containsKey(key)).orElse(false);
+  }
 
   /**
    * ★★ <b>某个商品的<b>基础运费</b>（毫计价货币 / 商品单位 / 程）—— "缺键 ⇒ 具名缺省" 的读取唯一拼写点</b>。

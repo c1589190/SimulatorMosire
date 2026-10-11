@@ -108,6 +108,19 @@ public final class CoreSimos implements AutoCloseable {
   private volatile boolean sealed;
 
   /**
+   * ★★★ <b>W10（A1 启动竞态）：创世落盘的完成信号</b>。空库启动时，GUI/MCP 的口先监听、创世后落盘（{@code ShellMain.run} 的既有次序）⇒
+   * 在那个窗口里到达的读请求会撞上"父链回退到根仍无可用 checkpoint"（{@code Replay} 抛 {@link IllegalStateException} ⇒ GUI 500
+   * + 14 行栈）。本闩让这类读者**等到创世真的落盘**再继续（不是重试、不是报错）。
+   *
+   * <p>★ 非空库（已有世界）在构造期就 countDown ⇒ 一切读路径行为不变。★ 创世失败也 countDown（进程正在退出， 不许把读者永久挂住）。
+   */
+  private final java.util.concurrent.CountDownLatch genesisReady =
+      new java.util.concurrent.CountDownLatch(1);
+
+  /** 构造那一刻库是否为空（空 = 这个进程将要创世 ⇒ 读口可能要等；非空 = 立即可读）。 */
+  private final boolean genesisPending;
+
+  /**
    * 封存后才有值。★ 两个字段都 **{@code volatile}**：写发生在 {@link #sealIfNeeded()} 的锁内，读发生在锁外（{@link #sealedBus}
    * / {@link #load} / {@link #maybeWriteCheckpoint}）——非 volatile 会被 SpotBugs 判 {@code
    * IS2_INCONSISTENT_SYNC}（同一字段一半加锁一半不加锁），而 volatile 本身就是"读侧不必加锁"的声明。
@@ -126,6 +139,11 @@ public final class CoreSimos implements AutoCloseable {
     this.store = SqliteStore.open(config.storeDir().resolve(DB_FILE_NAME));
     this.timeline = new Timeline(store, config.checkpointInterval());
     this.checkpoints = new CheckpointStore(config.storeDir());
+    // ★★★ W10（A1）：空库 ⇒ 这个进程将要创世（读口要等它就绪）；非空库 ⇒ 立刻放行（读路径行为一字不变）。
+    this.genesisPending = timeline.branches().isEmpty();
+    if (!genesisPending) {
+      genesisReady.countDown();
+    }
     LIFE.debug(
         LogEvent.of("CORE_OPENED", CoreLogSource.CORE_LIFECYCLE, "storeDir", config.storeDir()));
   }
@@ -282,6 +300,14 @@ public final class CoreSimos implements AutoCloseable {
    * @throws NullPointerException {@code genesis} 为 null
    */
   public void bootstrapGenesis(SimulationState genesis) {
+    try {
+      bootstrapGenesisInternal(genesis);
+    } finally {
+      genesisReady.countDown(); // ★ W10（A1）：成功或失败都放行读者（失败时进程正在退出，不许挂住任何人）
+    }
+  }
+
+  private void bootstrapGenesisInternal(SimulationState genesis) {
     Objects.requireNonNull(genesis, "genesis");
     if (!timeline.branches().isEmpty()) {
       throw new IllegalStateException(
@@ -329,6 +355,38 @@ public final class CoreSimos implements AutoCloseable {
    */
   public Set<BranchId> branches() {
     return timeline.branches();
+  }
+
+  /**
+   * ★★★ <b>W10（A1 启动竞态）：等创世落盘就绪</b>（{@code revision 行 + (main,1) checkpoint 都写完）。
+   *
+   * <p>语义（三态，调用方据此决定"等 / 照旧报错"）：
+   *
+   * <ul>
+   *   <li><b>非空库</b>（构造时已有分支）⇒ <b>不等</b>、返回 {@code false} —— 这个进程不会创世，读路径一字不变；
+   *   <li><b>空库 + 已落盘</b> ⇒ 返回 {@code true}（立即）；
+   *   <li><b>空库 + 还在创世</b> ⇒ 阻塞至多 {@code timeoutMillis}；就绪返回 {@code true}，超时返回 {@code false}。
+   * </ul>
+   *
+   * <p>★ 它**不是重试**：调用方等到就绪后**只读一次**；超时那一支走具名"世界未就绪"，不是 500 + 栈。
+   *
+   * @return 调用返回时创世是否已就绪；{@code false} 同时覆盖"本进程不会创世"与"超时"
+   */
+  public boolean awaitGenesisReady(long timeoutMillis) {
+    if (!genesisPending) {
+      return false; // 非空库：从来没有"等创世"这回事（读路径行为与改前逐字相同）
+    }
+    try {
+      return genesisReady.await(timeoutMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
+  }
+
+  /** 构造那一刻库是否为空（= 这个进程将要创世）。只读；给读口判断"要不要等"用。 */
+  public boolean genesisPending() {
+    return genesisPending;
   }
 
   /**

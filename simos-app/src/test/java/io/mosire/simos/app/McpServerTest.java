@@ -99,13 +99,14 @@ class McpServerTest {
    * H0.6 的 simos.economy.ownership）。
    */
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 37 读 + 128 写 = 165 条（★★ W2 按实测补入
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 37 读 + 129 写 = 166 条（★★ W2 按实测补入
    * simos.economy.setMarketZonePriceAlpha ⇒ 162 → 163；★★ W5-fix6 按实测补入
    * simos.economy.setGovernmentMintScale ⇒ 163 → 164；★★ W5.5 按实测补入
-   * simos.economy.setMarketZoneLoanRateAlpha ⇒ 164 → 165；2026-10-09 按实测补入 A1/A2a/B2 的 4 条货币 + 3
-   * 条市场区工具）（spec §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与 P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐，以及用户
-   * 2026-10-02 的 {@code simos.map.overlaps}；S3a 再 +6 条 家户/人口 GM 窄写；Z6 起含 Z1a/Z1c/Z2/Z3c/Z3d 的 9 条
-   * gov/economy 新口）。
+   * simos.economy.setMarketZoneLoanRateAlpha ⇒ 164 → 165；★★ W10 按实测补入
+   * simos.economy.setEconomyPolicy ⇒ 165 → 166；2026-10-09 按实测补入 A1/A2a/B2 的 4 条货币 + 3 条市场区工具）（spec
+   * §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与 P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐，以及用户 2026-10-02 的
+   * {@code simos.map.overlaps}；S3a 再 +6 条 家户/人口 GM 窄写；Z6 起含 Z1a/Z1c/Z2/Z3c/Z3d 的 9 条 gov/economy
+   * 新口）。
    */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
@@ -165,6 +166,8 @@ class McpServerTest {
           "simos.economy.setGovernmentMintScale",
           // ★★ W5.5（2026-10-11）：货币市场利率的自适应步长 α 的 GM 窄写工具
           "simos.economy.setMarketZoneLoanRateAlpha",
+          // ★★ W10（2026-10-11，用户裁定「凡"行为"一律做成 GM 可调的预设」）：经济侧行为值政策预设的 GM 窄写工具
+          "simos.economy.setEconomyPolicy",
           "simos.gm.govMarketMandate",
           "simos.economy.hex",
           "simos.economy.ownership",
@@ -332,7 +335,7 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 165 条（37 读 + 128 写；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2）")
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 166 条（37 读 + 129 写；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

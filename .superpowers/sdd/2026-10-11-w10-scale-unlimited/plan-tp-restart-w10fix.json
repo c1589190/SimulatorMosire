@@ -1,0 +1,10 @@
+[
+ {
+  "op": "advance",
+  "to": 41
+ },
+ {
+  "op": "dump",
+  "label": "d41-after-restart"
+ }
+]

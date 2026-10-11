@@ -1,0 +1,56 @@
+{
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/shell-tp.json",
+  "failedAt": {
+    "from": 0,
+    "httpStatus": 400,
+    "i": 0,
+    "op": "advance",
+    "response": "{\"error\":\"OwnershipStakeBook 的 Σ活跃质押必须 ≤ 份额 quantity：份额=share-farm@0_0-LAND-HOUSEHOLD-hh-1_0-rural-poor_peasant-HOUSEHOLD-hh-1_0-rural-poor_peasant-OWNED-0 质押合计=6959，终态数量=6235\"}",
+    "seconds": 42.694,
+    "to": 360
+  },
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10951,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "1cfc10c1e2b6f462a6c9d1940376b145",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/results/w10-tp-r1.log",
+  "logKeep": "MIGRATION|MERCHANT_TRADE_INDUSTRY_CREATED|MARKET_ROUND|CLASS_SLIDE_ROUND|MINT_PRODUCTION|GUI_|ADVANCE|PRODUCTION_EFFICIENCY_CONTRACT|ERROR",
+  "logKeptLines": 4967,
+  "logLines": 4967,
+  "logStrippedMd5": "d2430ead7e89b4f20dee553748313b87",
+  "pid": 508294,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/plan-tp360.json",
+  "readySeconds": 1.738,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    }
+  ],
+  "startedAt": "2026-10-11T22:41:39",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 400,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"error\":\"OwnershipStakeBook 的 Σ活跃质押必须 ≤ 份额 quantity：份额=share-farm@0_0-LAND-HOUSEHOLD-hh-1_0-rural-poor_peasant-HOUSEHOLD-hh-1_0-rural-poor_peasant-OWNED-0 质押合计=6959，终态数量=6235\"}",
+      "seconds": 42.694,
+      "to": 360
+    }
+  ],
+  "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w10-scale-unlimited/store-tp-r1",
+  "tag": "w10-tp-r1",
+  "world": "three-powers"
+}
