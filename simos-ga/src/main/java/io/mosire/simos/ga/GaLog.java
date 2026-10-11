@@ -15,6 +15,8 @@ import org.slf4j.LoggerFactory;
  *   <caption>分类与用途</caption>
  *   <tr><th>取用方法</th><th>logger 名</th><th>记什么</th></tr>
  *   <tr><td>{@link #decision()}</td><td>{@code .decision}</td><td>决策人运行流（一轮开始/结束/预算中止/逐次工具调用/开场快照）</td></tr>
+ *   <tr><td>{@link #tool()}</td><td>{@code .tool}</td><td>工具面的每一次实际执行（工具名 + 结果码 + 时刻；GM 口留痕与日志共用一个装饰器）</td></tr>
+ *   <tr><td>{@link #approval()}</td><td>{@code .approval}</td><td>审批控制面（待裁决清单、裁决结果、未接入）</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td>逐轮逐工具的明细（默认关；与 decision 同级但可单独升降）</td></tr>
  * </table>
  *
@@ -49,8 +51,12 @@ public final class GaLog {
   public static final String ROOT_LOGGER_NAME = "io.mosire.simos.ga";
 
   public static final String DECISION_LOGGER_NAME = ROOT_LOGGER_NAME + ".decision";
+  public static final String TOOL_LOGGER_NAME = ROOT_LOGGER_NAME + ".tool";
+  public static final String APPROVAL_LOGGER_NAME = ROOT_LOGGER_NAME + ".approval";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger DECISION = LoggerFactory.getLogger(DECISION_LOGGER_NAME);
+  private static final Logger TOOL = LoggerFactory.getLogger(TOOL_LOGGER_NAME);
+  private static final Logger APPROVAL = LoggerFactory.getLogger(APPROVAL_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private GaLog() {}
@@ -58,6 +64,28 @@ public final class GaLog {
   /** 决策人运行流（一轮开始/结束/预算中止/逐次工具调用/开场快照）。 */
   public static Logger decision() {
     return DECISION;
+  }
+
+  /**
+   * 工具面的每一次**实际执行**（工具名 + 结果码 + 时刻；见 {@link io.mosire.simos.ga.tools.RecordingToolSource}）。
+   *
+   * <p>★ 2026-10-12 B2b：{@code RecordingToolSource} 自 app 迁入本模块 ⇒ 它的事件从 {@code AppLog.tool()}
+   * （{@code io.mosire.simos.app.tool}）挪到这里；开关随之从 {@code -Dsimos.app.logLevel} 换成 {@code
+   * -Dsimos.ga.logLevel}（**只影响输出的 logger 名与开关，不改任何状态/载荷/拒绝码**）。
+   */
+  public static Logger tool() {
+    return TOOL;
+  }
+
+  /**
+   * 审批控制面（待裁决清单的读 / 裁决 / 未接入）。
+   *
+   * <p>★ 2026-10-12 B2b：{@code simos.gm.approvals} / {@code simos.gm.approve} 两条工具自 app 迁入本模块 ⇒
+   * 它们的事件从 {@code AppLog.approval()}（{@code io.mosire.simos.app.approval}）挪到这里（同 {@link #tool()}
+   * 的处置）。
+   */
+  public static Logger approval() {
+    return APPROVAL;
   }
 
   /** 逐轮逐工具的明细（默认关；与 {@link #decision()} 同级但可单独升降）。 */

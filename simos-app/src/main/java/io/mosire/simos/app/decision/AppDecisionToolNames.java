@@ -4,13 +4,13 @@ import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
-import io.mosire.simos.app.tools.write.IssueDirectiveTool;
-import io.mosire.simos.app.tools.write.MyPacketTool;
-import io.mosire.simos.app.tools.write.PacketIntentTool;
-import io.mosire.simos.app.tools.write.ProposeCallTool;
-import io.mosire.simos.app.tools.write.SubmitPacketTool;
-import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.ga.decision.DecisionToolNames;
+import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
+import io.mosire.simos.ga.tools.write.MyPacketTool;
+import io.mosire.simos.ga.tools.write.PacketIntentTool;
+import io.mosire.simos.ga.tools.write.ProposeCallTool;
+import io.mosire.simos.ga.tools.write.SubmitPacketTool;
+import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
 import io.mosire.simos.map.tools.read.MapRenderTool;
 
 /**

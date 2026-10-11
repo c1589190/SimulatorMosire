@@ -18,7 +18,11 @@ import io.mosire.simos.util.log.LogOriginKind;
  */
 public enum GaLogSource implements LogOrigin {
   GA_DECISION_TURN(
-      "ga-decision-turn", "决策人运行流的一轮（LLM 回合、逐次工具调用、回合结算与中止）", LogOriginKind.INTERACTION);
+      "ga-decision-turn", "决策人运行流的一轮（LLM 回合、逐次工具调用、回合结算与中止）", LogOriginKind.INTERACTION),
+  /** 工具面的每一次实际执行（{@code RecordingToolSource} 装饰器；发起 / 具名拒绝 / 成功结果三行）。 */
+  GA_TOOL_CALL("ga-tool-call", "工具面的每一次实际执行（工具名、调用者身份、结果码）", LogOriginKind.INTERACTION),
+  /** 审批控制面：待裁决清单的读、裁决结果、未接入。 */
+  GA_APPROVAL("ga-approval", "审批控制面（待裁决清单、裁决结果、未接入）", LogOriginKind.INTERACTION);
 
   private final String id;
   private final String description;

@@ -6,7 +6,6 @@ import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.decision.ProposalCatalog;
-import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.RenderService;
@@ -15,6 +14,12 @@ import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.army.AppArmyToolPerspective;
 import io.mosire.simos.app.tools.economy.AppEconomyToolPerspective;
 import io.mosire.simos.app.tools.economy.AppEconomyToolViews;
+import io.mosire.simos.app.tools.ga.AppGaDecisionHost;
+import io.mosire.simos.app.tools.ga.AppGaEffectExecution;
+import io.mosire.simos.app.tools.ga.AppGaProposalHost;
+import io.mosire.simos.app.tools.ga.AppGaToolIdentity;
+import io.mosire.simos.app.tools.ga.AppGaToolQueries;
+import io.mosire.simos.app.tools.ga.AppGaToolViews;
 import io.mosire.simos.app.tools.gov.AppGovToolCommandTypes;
 import io.mosire.simos.app.tools.gov.AppGovToolEconomy;
 import io.mosire.simos.app.tools.gov.AppGovToolPerspective;
@@ -26,21 +31,7 @@ import io.mosire.simos.app.tools.map.AppMapToolViews;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CalendarInfoTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
-import io.mosire.simos.app.tools.read.DecisionDocsTool;
-import io.mosire.simos.app.tools.read.DecisionMakerTool;
-import io.mosire.simos.app.tools.read.DecisionMakersTool;
-import io.mosire.simos.app.tools.read.DecisionResultsTool;
-import io.mosire.simos.app.tools.read.GmApprovalsTool;
-import io.mosire.simos.app.tools.read.GmPacketTool;
-import io.mosire.simos.app.tools.read.GmPacketsTool;
-import io.mosire.simos.app.tools.read.GmToolUsageTool;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
-import io.mosire.simos.app.tools.read.SdCombatsTool;
-import io.mosire.simos.app.tools.read.SdDiplomacyTool;
-import io.mosire.simos.app.tools.read.SdDiplomaticEventsTool;
-import io.mosire.simos.app.tools.read.SdDirectivesTool;
-import io.mosire.simos.app.tools.read.SdVerdictsTool;
-import io.mosire.simos.app.tools.read.SimosSdReportsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.SocialHouseholdsTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
@@ -62,43 +53,8 @@ import io.mosire.simos.app.tools.write.AppUnitToolViews;
 import io.mosire.simos.app.tools.write.CalendarConfigureTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.ForkTool;
-import io.mosire.simos.app.tools.write.GmApproveTool;
-import io.mosire.simos.app.tools.write.GmDecidePacketTool;
-import io.mosire.simos.app.tools.write.GmMergedPlanApplyTool;
-import io.mosire.simos.app.tools.write.GmMergedPlanUpsertTool;
-import io.mosire.simos.app.tools.write.GmPacketExecuteTool;
-import io.mosire.simos.app.tools.write.IssueDirectiveTool;
-import io.mosire.simos.app.tools.write.MyPacketTool;
-import io.mosire.simos.app.tools.write.PacketIntentTool;
-import io.mosire.simos.app.tools.write.ProposeCallTool;
-import io.mosire.simos.app.tools.write.RecordDiplomaticEventTool;
 import io.mosire.simos.app.tools.write.RegionClearDataTool;
 import io.mosire.simos.app.tools.write.RegionSeedTool;
-import io.mosire.simos.app.tools.write.RejectDirectiveTool;
-import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
-import io.mosire.simos.app.tools.write.RunDecisionMakersTool;
-import io.mosire.simos.app.tools.write.RunDecisionTool;
-import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
-import io.mosire.simos.app.tools.write.SdCancelEffectTool;
-import io.mosire.simos.app.tools.write.SdCommitCombatOutcomeTool;
-import io.mosire.simos.app.tools.write.SdCreateArmyTool;
-import io.mosire.simos.app.tools.write.SdCreateCombatTool;
-import io.mosire.simos.app.tools.write.SdCreateDecisionMakerTool;
-import io.mosire.simos.app.tools.write.SdCreateNationTool;
-import io.mosire.simos.app.tools.write.SdPutInfoTool;
-import io.mosire.simos.app.tools.write.SdRecordCasualtiesTool;
-import io.mosire.simos.app.tools.write.SdRecordDiplomaticEventTool;
-import io.mosire.simos.app.tools.write.SdRegisterEffectTool;
-import io.mosire.simos.app.tools.write.SdSetArmyMasterGovTool;
-import io.mosire.simos.app.tools.write.SdSetDecisionMakerProviderTool;
-import io.mosire.simos.app.tools.write.SdSetDiplomaticRelationTool;
-import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
-import io.mosire.simos.app.tools.write.SetDecisionMakerAccessTool;
-import io.mosire.simos.app.tools.write.SetDiplomaticRelationTool;
-import io.mosire.simos.app.tools.write.SimosSdReportTool;
-import io.mosire.simos.app.tools.write.StartDecisionTool;
-import io.mosire.simos.app.tools.write.SubmitPacketTool;
-import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.app.tools.write.VoidAdjudicationTool;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.army.tools.ArmyManpowerPort;
@@ -132,6 +88,64 @@ import io.mosire.simos.economy.tools.write.GmGovMarketMandateTool;
 import io.mosire.simos.economy.tools.write.GmPeriodicAdjustmentTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.ga.tools.GaDecisionHost;
+import io.mosire.simos.ga.tools.GaEffectExecution;
+import io.mosire.simos.ga.tools.GaProposalHost;
+import io.mosire.simos.ga.tools.GaToolIdentity;
+import io.mosire.simos.ga.tools.GaToolQueries;
+import io.mosire.simos.ga.tools.GaToolSource;
+import io.mosire.simos.ga.tools.GaToolViews;
+import io.mosire.simos.ga.tools.GmToolUsage;
+import io.mosire.simos.ga.tools.ToolBuckets;
+import io.mosire.simos.ga.tools.read.DecisionDocsTool;
+import io.mosire.simos.ga.tools.read.DecisionMakerTool;
+import io.mosire.simos.ga.tools.read.DecisionMakersTool;
+import io.mosire.simos.ga.tools.read.DecisionResultsTool;
+import io.mosire.simos.ga.tools.read.GmApprovalsTool;
+import io.mosire.simos.ga.tools.read.GmPacketTool;
+import io.mosire.simos.ga.tools.read.GmPacketsTool;
+import io.mosire.simos.ga.tools.read.GmToolUsageTool;
+import io.mosire.simos.ga.tools.read.SdCombatsTool;
+import io.mosire.simos.ga.tools.read.SdDiplomacyTool;
+import io.mosire.simos.ga.tools.read.SdDiplomaticEventsTool;
+import io.mosire.simos.ga.tools.read.SdDirectivesTool;
+import io.mosire.simos.ga.tools.read.SdVerdictsTool;
+import io.mosire.simos.ga.tools.read.SimosSdReportsTool;
+import io.mosire.simos.ga.tools.write.GmApproveTool;
+import io.mosire.simos.ga.tools.write.GmDecidePacketTool;
+import io.mosire.simos.ga.tools.write.GmMergedPlanApplyTool;
+import io.mosire.simos.ga.tools.write.GmMergedPlanUpsertTool;
+import io.mosire.simos.ga.tools.write.GmPacketExecuteTool;
+import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
+import io.mosire.simos.ga.tools.write.MyPacketTool;
+import io.mosire.simos.ga.tools.write.PacketIntentTool;
+import io.mosire.simos.ga.tools.write.ProposeCallTool;
+import io.mosire.simos.ga.tools.write.RecordDiplomaticEventTool;
+import io.mosire.simos.ga.tools.write.RejectDirectiveTool;
+import io.mosire.simos.ga.tools.write.ResetDecisionMakerConversationTool;
+import io.mosire.simos.ga.tools.write.RunDecisionMakersTool;
+import io.mosire.simos.ga.tools.write.RunDecisionTool;
+import io.mosire.simos.ga.tools.write.SdAddCombatStageTool;
+import io.mosire.simos.ga.tools.write.SdCancelEffectTool;
+import io.mosire.simos.ga.tools.write.SdCommitCombatOutcomeTool;
+import io.mosire.simos.ga.tools.write.SdCreateArmyTool;
+import io.mosire.simos.ga.tools.write.SdCreateCombatTool;
+import io.mosire.simos.ga.tools.write.SdCreateDecisionMakerTool;
+import io.mosire.simos.ga.tools.write.SdCreateNationTool;
+import io.mosire.simos.ga.tools.write.SdPutInfoTool;
+import io.mosire.simos.ga.tools.write.SdRecordCasualtiesTool;
+import io.mosire.simos.ga.tools.write.SdRecordDiplomaticEventTool;
+import io.mosire.simos.ga.tools.write.SdRegisterEffectTool;
+import io.mosire.simos.ga.tools.write.SdSetArmyMasterGovTool;
+import io.mosire.simos.ga.tools.write.SdSetDecisionMakerProviderTool;
+import io.mosire.simos.ga.tools.write.SdSetDiplomaticRelationTool;
+import io.mosire.simos.ga.tools.write.SdSetStageOutcomeTableTool;
+import io.mosire.simos.ga.tools.write.SetDecisionMakerAccessTool;
+import io.mosire.simos.ga.tools.write.SetDiplomaticRelationTool;
+import io.mosire.simos.ga.tools.write.SimosSdReportTool;
+import io.mosire.simos.ga.tools.write.StartDecisionTool;
+import io.mosire.simos.ga.tools.write.SubmitPacketTool;
+import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
 import io.mosire.simos.gov.tools.GovToolSupport;
 import io.mosire.simos.gov.tools.read.GovInfoTool;
 import io.mosire.simos.gov.tools.read.ProvinceDivideTool;
@@ -253,8 +267,8 @@ import java.util.Set;
  */
 public final class SimosToolSource implements ToolSource {
 
-  /** 供给源标识（同一运行时内唯一；审计与按源卸载依赖它）。 */
-  public static final String ID = "simos";
+  /** 供给源标识（同一运行时内唯一；审计与按源卸载依赖它）。★ 值住在契约实现 {@link GaToolSource#ID}（B2b 迁入 ga）。 */
+  public static final String ID = GaToolSource.ID;
 
   /**
    * 工具面按角色分载（spec §八.3 的 N9/N11，**2026-09-22 起按 spec §2.1/§四.3 重划**）：**只有两档**。
@@ -281,7 +295,12 @@ public final class SimosToolSource implements ToolSource {
     DECISION_AGENT
   }
 
-  private final List<AgentTool> tools;
+  /**
+   * ★★ 2026-10-12 B2b：工具源的**运行时承载**（静态快照 + {@code ToolSource} 三个出口）已迁入 {@code simos-ga} （{@link
+   * GaToolSource}）；本类只剩**装配**（认识全部 16 个模块并 {@code new} 出工具实例）—— 那是组合根的活， 搬进 ga 就是 {@code app → ga →
+   * app} 环（设计书 §5 I-G2）。
+   */
+  private final GaToolSource source;
 
   /**
    * 测试/旧路径：全缺省时钟（不读 store）；生产 Shell 必须用带 {@link CalendarService} 的重载（{@link CalendarService#load}）。
@@ -534,15 +553,18 @@ public final class SimosToolSource implements ToolSource {
         // ★ 第 3 波第 3 步：决策人**只读**自己能看的决策结果（用户原话「允许决策人查看不同 tick 的不同决策结果」）。
         //   **只在决策人桶**——GM 侧看不到它（GM 有 GUI 面与 sd 只读全权，不靠这条）；它的可见性判据在
         //   RedactingQueryService#decisionResults（tags 含调用者自己）。
-        built.add(new DecisionResultsTool(query, mapId));
+        ToolReadPort gaReads = new QueryServiceToolReadPort(query);
+        GaToolQueries gaQueries = new AppGaToolQueries(query, mapId);
+        GaToolIdentity gaIdentity = new AppGaToolIdentity();
+        built.add(new DecisionResultsTool(gaQueries, gaIdentity));
         // ★ Docs 系统（2026-09-23）：决策人**只读**发给自己的设定文档。同样**只在决策人桶**（GM 侧有 GUI 的文档子页，
         //   可按任意决策人的视角预览实际可见集合）；可见性判据在 RedactingQueryService#docs
         //   （tags 含调用者自己 **或** affiliations 含调用者归属，两轴取并集）。
-        built.add(new DecisionDocsTool(query, mapId));
+        built.add(new DecisionDocsTool(gaQueries, gaIdentity));
         addDecisionAgentWrites(built, core, calendarService, query, initiator, mapId);
       }
     }
-    this.tools = List.copyOf(built);
+    this.source = GaToolSource.of(built);
   }
 
   /** GM 面必须带上决策人运行流（{@code sd.RunDecision} 没有它就只是半条工具）——缺了当场抛，不静默少一条。 */
@@ -589,21 +611,28 @@ public final class SimosToolSource implements ToolSource {
     //   ② 社会单位编制口（家户归属的权威在 unit 侧，social 结构上看不见 unit）。
     ToolWritePort toolWrites = new CoreSimosToolWritePort(core, initiator);
     ToolReadPort toolReads = new QueryServiceToolReadPort(query);
+    // ★★ 2026-10-12 B3 第七域：sd/决策族的窄写与决策包工具**已下放**（`ga.tools.{read,write}`），这里只做装配
+    //   ——写口/读口复用同一对适配器，另注入三条 ga 自有接缝（身份口、决策运行口、提议/执行口）。
+    ToolWritePort gaWrites = new CoreSimosToolWritePort(core, initiator);
+    ToolReadPort gaReads = new QueryServiceToolReadPort(query);
+    GaToolIdentity gaIdentity = new AppGaToolIdentity();
+    GaToolQueries gaQueries = new AppGaToolQueries(query, mapId);
+    GaDecisionHost gaDecision = new AppGaDecisionHost(decisionAgent);
     EconomyToolPerspective economyPerspective = new AppEconomyToolPerspective();
     SocialUnitPort socialUnits = new AppSocialUnitPort();
-    built.add(new IssueDirectiveTool(core, initiator, mapId));
-    built.add(new SubmitVerdictTool(core, initiator, mapId));
-    built.add(new SetDecisionMakerAccessTool(core, initiator, mapId));
+    built.add(new IssueDirectiveTool(gaWrites, gaIdentity, mapId));
+    built.add(new SubmitVerdictTool(gaWrites, gaIdentity, mapId));
+    built.add(new SetDecisionMakerAccessTool(gaWrites, gaIdentity, mapId));
     // 「把某个决策人的会话换一段新的」：只在 GM 桶——决策人不重置自己（那等于给自己开一个"忘掉刚才答应过什么"的按钮）。
-    built.add(new ResetDecisionMakerConversationTool(core, initiator, mapId));
-    built.add(new StartDecisionTool(core, initiator, mapId));
+    built.add(new ResetDecisionMakerConversationTool(gaWrites, gaIdentity, mapId));
+    built.add(new StartDecisionTool(gaWrites, gaIdentity, mapId));
     // T11C：触发**决策人自己**跑一轮（真 LLM + 真工具）。★ **只在 GM 桶**——决策人不触发自己（那是自环）。
-    built.add(new RunDecisionTool(core, initiator, mapId, decisionAgent));
+    built.add(new RunDecisionTool(gaWrites, gaIdentity, mapId, gaDecision));
     // ★★ P7a（2026-10-01 后端 + MCP 稳定化计划）：显式名单批量派决策人（GM-only 组合工具）。
     //   不做自动筛选/自动派出：due 只读展示、不参与选择；名单由调用方显式给。先同批落 N 条 sd.RunDecision 触发事实
     //   （一条 revision），批成功后按名单顺序逐个调运行流跑真轮；批拒/冲突零 revision 且不跑 LLM。
     //   本工具不做跨调用锁、不做自动重试；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new RunDecisionMakersTool(core, query, initiator, decisionAgent));
+    built.add(new RunDecisionMakersTool(core, initiator, gaDecision, gaQueries));
     // 第 3 波第 2 步：把某 tick 里所有决策人的令**一起**判效果、一次落一条 revision（原子）。
     //   ★ **只在 GM 桶**（裁决是 GM 的活）；★ 它**不是**一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     //   ★★ E6b：它吃的是**可嵌入令**白名单（注册面 − GM-only）——economy.SwitchMode / economy.GmAdjust
@@ -615,7 +644,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new VoidAdjudicationTool(core, initiator));
     // 2026-09-23 用户裁定（"决策人一般流程"第 2 件）：GM 打回一条令 —— 理由原样**投进该决策人的会话**（复用 say 通道）
     //   + 该令标 CANCELLED，同批留审计条目。★ 只在 GM 桶；★ 也不是命令类型 ⇒ 不进 catalog。
-    built.add(new RejectDirectiveTool(core, initiator, decisionAgent));
+    built.add(new RejectDirectiveTool(core, initiator, gaDecision, gaIdentity));
     // 2026-09-23：GM 世界初始化 —— 把聚落生成器接到真写路径（1 条 SetPopulation + N 条 CreateCity + 1 条 economy.Seed，
     //   一批一条 revision；dryRun 只算不写）。★ 它不是某一条命令的窄封装 ⇒ 不继承 AbstractNarrowWriteTool；★
     //   也不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。只在 GM 桶。
@@ -815,35 +844,37 @@ public final class SimosToolSource implements ToolSource {
     //   桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new AssignArmyGovTool(toolWrites, toolReads, armyPerspective));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
-    built.add(new SdCreateNationTool(core, initiator, mapId));
-    built.add(new SdCreateArmyTool(core, initiator, mapId));
-    built.add(new SdSetArmyMasterGovTool(core, initiator, mapId));
-    built.add(new SdCreateDecisionMakerTool(core, initiator, mapId));
-    built.add(new SdPutInfoTool(core, initiator, mapId));
+    built.add(new SdCreateNationTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdCreateArmyTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdSetArmyMasterGovTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdCreateDecisionMakerTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdPutInfoTool(gaWrites, gaIdentity, mapId));
     // ★★ D2（2026-10-22 决策包计划）：GM 裁决决策包（写）。**只在 GM 桶**；工具名不是命令类型
     //   ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）。
-    built.add(new GmDecidePacketTool(core, query, initiator));
+    built.add(new GmDecidePacketTool(core, gaReads, initiator));
     // ★★ D3（2026-10-22 合并计划契约 §9）：三条 GM 决策效果工具——建计划 / 执行计划 / 执行已批准 call。
     //   **只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）；
     //   执行器复用决策人桶同源的 ProposalCatalog（真工具实例 + 目标清单 fail-closed）。
     ProposalCatalog gmProposalCatalog =
         new ProposalCatalog(core, calendarService, query, initiator, mapId);
-    built.add(new GmMergedPlanUpsertTool(core, query, initiator, gmProposalCatalog));
-    built.add(new GmMergedPlanApplyTool(core, query, initiator, gmProposalCatalog));
-    built.add(new GmPacketExecuteTool(core, query, initiator, gmProposalCatalog));
+    GaProposalHost gaProposal = new AppGaProposalHost(gmProposalCatalog);
+    GaEffectExecution gaEffects = new AppGaEffectExecution(core, gmProposalCatalog);
+    built.add(new GmMergedPlanUpsertTool(core, gaReads, initiator, gaProposal));
+    built.add(new GmMergedPlanApplyTool(gaReads, initiator, gaEffects));
+    built.add(new GmPacketExecuteTool(gaReads, initiator, gaEffects));
     // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件的 GM 窄写。
     //   **只在 GM 桶**；工具名（simos.sd.*）不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 sd。
     //   决策人侧另有同名命令型的窄工具（见 addDecisionAgentWrites）。──
-    built.add(new SdSetDiplomaticRelationTool(core, initiator, mapId));
-    built.add(new SdRecordDiplomaticEventTool(core, initiator, mapId));
-    built.add(new SdCreateCombatTool(core, initiator, mapId));
-    built.add(new SdAddCombatStageTool(core, initiator, mapId));
-    built.add(new SdSetStageOutcomeTableTool(core, initiator, mapId));
-    built.add(new SdCommitCombatOutcomeTool(core, initiator, mapId));
-    built.add(new SdRecordCasualtiesTool(core, initiator, mapId));
-    built.add(new SdRegisterEffectTool(core, initiator, mapId));
-    built.add(new SdCancelEffectTool(core, initiator, mapId));
-    built.add(new SdSetDecisionMakerProviderTool(core, initiator, mapId));
+    built.add(new SdSetDiplomaticRelationTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdRecordDiplomaticEventTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdCreateCombatTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdAddCombatStageTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdSetStageOutcomeTableTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdCommitCombatOutcomeTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdRecordCasualtiesTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdRegisterEffectTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdCancelEffectTool(gaWrites, gaIdentity, mapId));
+    built.add(new SdSetDecisionMakerProviderTool(gaWrites, gaIdentity, mapId));
     // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录写入（GM-only 命令 army.RecordCombat 的窄封装）。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 army 命名空间。
     built.add(new ArmyRecordCombatTool(toolWrites, mapId));
@@ -976,14 +1007,17 @@ public final class SimosToolSource implements ToolSource {
       QueryService query,
       String initiator,
       String mapId) {
-    built.add(new IssueDirectiveTool(core, initiator, mapId));
-    built.add(new SubmitVerdictTool(core, initiator, mapId));
+    ToolWritePort gaWrites = new CoreSimosToolWritePort(core, initiator);
+    ToolReadPort gaReads = new QueryServiceToolReadPort(query);
+    GaToolIdentity gaIdentity = new AppGaToolIdentity();
+    built.add(new IssueDirectiveTool(gaWrites, gaIdentity, mapId));
+    built.add(new SubmitVerdictTool(gaWrites, gaIdentity, mapId));
     // ★★ D5（2026-10-02 / D-003、D-005、R5、R6）：决策人侧的三条新增窄写——
     //   外交关系边（from 必须是调用者 Nation）、外交事件（participants 必须含调用者 Nation）、
     //   "给 XXX 政府钱"（付款人 = 调用者所属 GOV，身份派生；任意收款 GOV 由既有审批链把关）。
     //   **桶**（本方法）与 **权限组白名单**（DecisionCallerFactory.WHITELIST）必须同源——只改一处 = 留旁路。
-    built.add(new SetDiplomaticRelationTool(core, query, initiator, mapId));
-    built.add(new RecordDiplomaticEventTool(core, query, initiator, mapId));
+    built.add(new SetDiplomaticRelationTool(gaWrites, gaReads, gaIdentity, mapId));
+    built.add(new RecordDiplomaticEventTool(gaWrites, gaReads, gaIdentity, mapId));
     GovToolSupport gov =
         new GovToolSupport(
             new CoreSimosToolWritePort(core, initiator),
@@ -1022,14 +1056,15 @@ public final class SimosToolSource implements ToolSource {
     //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；submit/intent 走 own-packet 围栏。
     ProposalCatalog proposalCatalog =
         new ProposalCatalog(core, calendarService, query, initiator, mapId);
-    built.add(new ProposeCallTool(core, query, initiator, mapId, proposalCatalog));
-    built.add(new SubmitPacketTool(core, query, initiator));
-    built.add(new PacketIntentTool(core, query, initiator));
-    built.add(new MyPacketTool(query));
+    GaProposalHost gaProposal = new AppGaProposalHost(proposalCatalog);
+    built.add(new ProposeCallTool(core, gaReads, initiator, mapId, gaProposal, gaIdentity));
+    built.add(new SubmitPacketTool(core, gaReads, initiator, gaIdentity));
+    built.add(new PacketIntentTool(core, gaReads, initiator, gaIdentity));
+    built.add(new MyPacketTool(gaReads, gaIdentity));
     // ★★ D4（2026-10-22）：跨区上报写口——发送人=调用者身份（context.identity()），只写自己的
     //   sd:decision-maker/<自己> 自指域；落一条 sd.PutInfo（key=report）= 一条 revision。
     //   **只在决策人桶**；DecisionCallerFactory.WHITELIST 必须同源。
-    built.add(new SimosSdReportTool(core, query, initiator));
+    built.add(new SimosSdReportTool(core, gaReads, initiator, gaIdentity));
   }
 
   private static List<AgentTool> readTools(
@@ -1051,6 +1086,15 @@ public final class SimosToolSource implements ToolSource {
     //   ② 视图口（ApiViews / ToolSupport 的**同一份** view 函数，形状不另写第二份）；
     //   ③ 视角口（可见性围栏 + 归属国家/邻国这两个 sd 派生事实）；
     //   ④ 服务口（渲染 RenderService、寻路 unit.PathFinder）。
+    // ★★ 2026-10-12 B3 第七域（ga/sd 决策族）：读工具**已下放**（`io.mosire.simos.ga.tools.read`），
+    //   这里只做装配——注入窄读口 + 三条 ga 自有的接缝：
+    //   ① 视图口（ApiViews 的 combats/diplomacy/events/gmToolUsage 逐条转调，形状只此一份）；
+    //   ② 查询口（SdQueryService + RedactingQueryService 的裁剪读面；窗口类型是 ga 的镜像，转换只在此一处）；
+    //   ③ 身份口（DecisionCallerFactory 的身份派生 + 自指域 kind）。
+    ToolReadPort gaReads = new QueryServiceToolReadPort(query);
+    GaToolViews gaViews = new AppGaToolViews();
+    GaToolQueries gaQueries = new AppGaToolQueries(query, mapId);
+    GaToolIdentity gaIdentity = new AppGaToolIdentity();
     ToolReadPort mapReads = new QueryServiceToolReadPort(query);
     MapToolViews mapViews = new AppMapToolViews();
     MapToolPerspective mapPerspective = new AppMapToolPerspective();
@@ -1135,37 +1179,37 @@ public final class SimosToolSource implements ToolSource {
         // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）
         new MapRenderTool(mapReads, mapViews, mapRender),
         // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `sd.CreateDecisionMaker` 写、写完看不见。
-        new DecisionMakersTool(query),
+        new DecisionMakersTool(gaQueries),
         // ★ 2026-09-25：详情并入 GUI 的 `/{id}/scope`（现算可见范围）——同一资源的两个端点合成一条工具。
-        new DecisionMakerTool(query, mapId),
+        new DecisionMakerTool(gaQueries),
         // ★★ P7c（2026-10-01 后端 + MCP 稳定化计划）：决策记录清单（GUI GET /api/sd/directives 的 MCP 读口）。
         //   与 decision-makers/decision-maker 同属"读别人的底牌" ⇒ 只给 GM 桶（GmOnlyRead）；视图直接复用
         //   ApiViews.directives，不另写一份。
-        new SdDirectivesTool(query),
+        new SdDirectivesTool(gaQueries),
         // ★ 工具面补齐（2026-09-25）：交战记录（世界状态 ⇒ 四桶共享，复用 ApiViews.combats）。
-        new SdCombatsTool(query),
+        new SdCombatsTool(gaReads, gaViews),
         // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件（世界级自然语言文本 ⇒
         //   四桶共享读；不标 GmOnlyRead；**不做逐格视野过滤**、也绝不借它给中央 DM 地图/单位视野——D-002）。
         //   形状复用 ApiViews.diplomaticRelations / ApiViews.diplomaticEvents。
-        new SdDiplomacyTool(query),
-        new SdDiplomaticEventsTool(query),
+        new SdDiplomacyTool(gaReads, gaViews),
+        new SdDiplomaticEventsTool(gaReads, gaViews),
         // ★★ D4（2026-10-22）：跨区上报读口（simos.sd.reports）——**两桶共享**（决策人桶 + GM 桶；不标
         //   GmOnlyRead）。决策人只看到 tags 含自己 / affiliations 含自己归属 / 自己发的报告，GM 读全部；
         //   读报告不授予任何跨区原始数据读权（报告内容由发送方负责）。
-        new SimosSdReportsTool(query),
+        new SimosSdReportsTool(gaReads, gaQueries, gaIdentity),
         // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录读口（"当前 tick 在哪发生交战"的唯一直接读口）。
         //   四桶共享（世界状态、可回放）；逐条可见性按记录所在格判（ToolSupport.hexVisible）——看不见的格不进结果。
         //   形状与 GUI 同源（ApiViews.armyCombat）。
         new ArmyCombatsTool(armyReads, armyViews, armyPerspective, mapId),
         new ArmyCombatTool(armyReads, armyViews, armyPerspective, mapId),
         // ★ 判决（模型原始输出 + meta）：省略 actor = FULL 全量披露 ⇒ 只给 GM 桶（GmOnlyRead），见类注。
-        new SdVerdictsTool(query, mapId),
+        new SdVerdictsTool(gaQueries),
         // ★★ D2（2026-10-22 决策包计划）：GM 决策包两条读口（摘要列表 + 单包全量）。
         //   只给 GM 桶（GmOnlyRead）：决策包是 GM 的裁决工作面，决策人用 simos.sd.packet.my 读自己的。
-        new GmPacketsTool(query),
-        new GmPacketTool(query),
+        new GmPacketsTool(gaReads),
+        new GmPacketTool(gaReads),
         // ★ GM 面观测/配置读口（只给 GM 桶）：工具使用记录（运行时监督数据）与 LLM provider 掩码配置。
-        new GmToolUsageTool(gmToolUsage),
+        new GmToolUsageTool(gmToolUsage, gaViews),
         // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：待裁决审批清单（控制面；只在 GM 桶，GmOnlyRead）。
         //   读的是传入的 PendingApprovals（null = 未接入 ⇒ 执行期 UNAVAILABLE）；资源声明 NONE、不落 revision。
         new GmApprovalsTool(pendingApprovals),
@@ -1190,23 +1234,21 @@ public final class SimosToolSource implements ToolSource {
     if (role == Role.GM) {
       return all;
     }
-    List<AgentTool> shared = new ArrayList<>(all.size());
-    for (AgentTool tool : all) {
-      if (!(tool instanceof GmOnlyRead) && !(tool instanceof io.mosire.simos.ga.spi.GmOnlyRead)) {
-        shared.add(tool);
-      }
-    }
-    return List.copyOf(shared);
+    // ★★ 2026-10-12 B2b：过滤**规则**已迁入 simos-ga（ToolBuckets.decisionAgentReads）；两支 GM-only 标记
+    //   （契约层 ga.spi.GmOnlyRead ∪ app 尚未退役的 GmOnlyRead）的**并集**仍在这里（唯一拼写点）——本类才同时看得见两支。
+    return ToolBuckets.decisionAgentReads(
+        all,
+        tool -> tool instanceof GmOnlyRead || tool instanceof io.mosire.simos.ga.spi.GmOnlyRead);
   }
 
   @Override
   public String id() {
-    return ID;
+    return GaToolSource.ID;
   }
 
   @Override
   public List<AgentTool> listTools() {
-    return tools;
+    return source.listTools();
   }
 
   /** 静态工具集：订阅即时成立、永不变更，故返回空句柄（契约要求非 null）。 */

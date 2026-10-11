@@ -32,6 +32,15 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-ga-spi</artifactId>
     </dependency>
+    <!-- ★★ 2026-10-12 B3 第七域（工具下放）：本模块现**真实**使用 core —— 决策包族/触发族/打回族的工具直接构造
+         `CommandEnvelope` 并调 `CoreSimos.submit/submitBatch/head/replay`（它们的载荷里嵌了本工具自己生成的
+         commandId/correlationId，走窄写口会改载荷字节 ⇒ 按既有形制保留内联折叠）。
+         ★ core 本就在设计书 §4.1 给 ga 的允许面里（`ga ── { 工具运作 + 决策人运行 }，依赖 core + sd + util + ga-spi +
+           agentlib`），只是 B2a 零 import 时按"按实际 import 增删"未声明（台账 §3 第 3 条）——本批补上。
+         ★ 不成环：没有任何模块依赖 ga（15 个模块的禁列里都有它）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-core</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-sd</artifactId>
     </dependency>
@@ -43,6 +52,13 @@
     </dependency>
     <dependency>
       <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+    <!-- ★ 2026-10-12 B3 第七域：域内窄写基类用 `@SuppressFBWarnings`（CT_CONSTRUCTOR_THROW 的既有处置形制，
+         与 app/simos-map/simos-unit/simos-gov 同款）⇒ 注解依赖必须显式声明。 -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version>
+      <scope>provided</scope>
     </dependency>
   </dependencies>
 
