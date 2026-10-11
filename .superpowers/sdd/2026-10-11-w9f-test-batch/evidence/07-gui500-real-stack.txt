@@ -1,0 +1,32 @@
+=== W9f ⑤ 真 500 现场（2026-10-11T21:38:53+08:00）===
+jar md5 = ce0bf3ba8f388492b0f0ab8ae079c22c；store=/tmp/w9f/gui500/store；gui-port=11001；-Dsimos.app.logLevel=INFO
+PID=481754
+
+① 正常轮：advance 0→10（expectedRevision=1）⇒ HTTP 200
+   checkpoint 文件：
+1.json
+2.json
+
+② 故障注入：rm -rf /tmp/w9f/gui500/store（运行中的实例，磁盘消失）
+③ 同一实例：advance 10→20（expectedRevision=2）⇒ HTTP 500
+   响应体：{"error":"internal error"}
+
+④ 日志（GUI_REQUEST_FAILED 行 + 其后 12 行 = 栈）：
+1780:21:39:27.338 WARN  io.mosire.simos.app.gui - event=GUI_REQUEST_FAILED origin=gui-request originKind=interaction method=POST path=/api/advance caller=127.0.0.1 error=IllegalStateException message=重放回退到父链的根仍无可用 checkpoint（C19 第③项保证 (main, 1) 应当有；文件缺失且无更早者可退，C18 的回退到此为止）: main@1
+1781-java.lang.IllegalStateException: 重放回退到父链的根仍无可用 checkpoint（C19 第③项保证 (main, 1) 应当有；文件缺失且无更早者可退，C18 的回退到此为止）: main@1
+1782-	at io.mosire.simos.core.store.Replay.replay(Replay.java:181)
+1783-	at io.mosire.simos.core.CoreSimos.load(CoreSimos.java:481)
+1784-	at io.mosire.simos.core.advance.TimeAdvance.run(TimeAdvance.java:228)
+1785-	at io.mosire.simos.core.command.CommandBus.submit(CommandBus.java:226)
+1786-	at io.mosire.simos.core.CoreSimos.submit(CoreSimos.java:195)
+1787-	at io.mosire.simos.app.gui.GuiServer.advanceReply(GuiServer.java:1697)
+1788-	at io.mosire.simos.app.gui.GuiServer.handlePost(GuiServer.java:941)
+1789-	at io.mosire.simos.app.gui.GuiServer.handleApi(GuiServer.java:714)
+1790-	at io.mosire.simos.app.gui.GuiServer.handle(GuiServer.java:616)
+1791-	at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:98)
+1792-	at jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(AuthFilter.java:82)
+
+   日志里 \tat 行数 = 17
+
+⑤ 收工：kill 481754
+   已退出

@@ -1,0 +1,41 @@
+=== ② GUI_REQUEST_FAILED 并入异常栈：改前 / 改后 ===
+
+--- 改前（W9e 现场 tp360diag.log:2196161；-Dsimos.app.logLevel=INFO）---
+21:07:59.615 WARN  io.mosire.simos.app.gui - event=GUI_REQUEST_FAILED origin=gui-request originKind=interaction method=POST path=/api/advance caller=127.0.0.1 error=IllegalStateException message=新建目标户的租赁资产不足（计划不该包含此目标；已按 id 序遍历该 hex 全部产业模板）: hex=2_0 labor=8857
+（★ 此后再无任何行 —— 栈挂在另一条 DEBUG 事件 GUI_REQUEST_FAILED_STACK 上，而该轮 app 级别 = INFO ⇒ isDebugEnabled()=false ⇒ 栈一条都没有；出处：.superpowers/sdd/2026-10-11-w9e-test-batch/evidence/tp500-rootcause.txt + 本批 §9 U-C）
+
+--- 改法（simos-app/src/main/java/io/mosire/simos/app/gui/GuiServer.java:632-659）---
+  if (AppLog.gui().isWarnEnabled()) {
+    AppLog.gui().warn(LogEvent.of("GUI_REQUEST_FAILED", AppLogSource.GUI_REQUEST, …).toLine(), e);
+  }
+  （= SLF4J warn(String, Throwable)：同一事件、同一行首，栈紧随其后；级别仍 WARN；删除重复的 DEBUG 事件 GUI_REQUEST_FAILED_STACK）
+  响应体不变：safeError(exchange, 500, "internal error") ⇒ {"error":"internal error"}
+
+--- 改后：渲染探针（同一份 shaded jar 的 log4j2.xml + 同一 logger 名 + -Dsimos.app.logLevel=INFO） ---
+命令：JAVA_TOOL_OPTIONS=-Dsimos.app.logLevel=INFO java -cp simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar LogProbe.java
+（探针走 util 的 EventLog/LogEvent 生成同一行，再调 LogManager.getLogger("io.mosire.simos.app.gui").warn(line, new IllegalStateException(...)) —— 与 GuiServer 改后的调用逐字同形）
+21:24:04.287 WARN  io.mosire.simos.app.gui - event=GUI_REQUEST_FAILED method=POST path=/api/advance caller=127.0.0.1 error=IllegalStateException message=新建目标户的租赁资产不足（计划不该包含此目标）: hex=2_0 labor=8857
+java.lang.IllegalStateException: probe: 栈是否随 WARN 事件打出
+	at LogProbe.main(LogProbe.java:18)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at jdk.compiler/com.sun.tools.javac.launcher.Main.execute(Main.java:484)
+	at jdk.compiler/com.sun.tools.javac.launcher.Main.run(Main.java:208)
+	at jdk.compiler/com.sun.tools.javac.launcher.Main.main(Main.java:135)
+⇒ 结论：默认 INFO 下，WARN 事件行之后**直接跟完整栈**（log4j2 PatternLayout 的 alwaysWriteExceptions 默认 true；本仓 log4j2.xml 的 pattern 未含 %throwable，靠该默认逐字生效 —— 探针实测）。
+
+--- 真 HTTP 侧的旁证（同一 jar、复制 store、端口 10994、-Dsimos.app.logLevel=INFO） ---
+本批对读端点/写端点打了 12 发负向请求（未知命令类型 / 未知 region·unit·决策人 id / 未知 branch / 空 TimeRange / 坏载荷 / 未注册维度），
+状态码全部落在 400/404/409/422 与 200（3 条复现与设计一致），**没有一发进到 catch(Exception) 那条 500 路径** ⇒ GUI_REQUEST_FAILED 的栈在本批拿不到真 500 现场（改动本身由上面的渲染探针逐字证明）。
+请求与状态码：
+  POST /api/command {"type":"economy.NoSuchCommand"}          -> 422 rejected 未注册的命令类型
+  GET  /api/sd/decision-makers/zzz                              -> 404
+  GET  /api/map/region/zzz                                      -> 404
+  GET  /api/unit/detail/zzz                                     -> 404
+  GET  /api/social/household?...&groupBy=zzz                    -> 404（无此路由）
+  GET  /api/query?path=zzz                                      -> 404（无此路由）
+  POST /api/command（缺 branch）                                -> 400
+  POST /api/command SetHouseholdLabor 缺 laborMilli              -> 409 conflict
+  GET  /api/timeline?branch=zzz                                 -> 404 branch not found
+  GET  /api/social/population?region=%ZZ                        -> 400 Bad request URI
+  POST /api/advance {from:360,to:360}                           -> 400 TimeRange 不得为空

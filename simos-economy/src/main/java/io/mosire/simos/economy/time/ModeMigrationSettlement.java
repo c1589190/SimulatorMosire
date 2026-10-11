@@ -22,6 +22,8 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -29,6 +31,8 @@ import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.transfer.Transfer;
+import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
@@ -37,6 +41,8 @@ import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
@@ -183,7 +189,14 @@ public final class ModeMigrationSettlement {
     }
     List<ModeMigrationPolicy.MigrationMove> acceptedMoves =
         filterOnDemandMerchantMoves(
-            plan.moves(), onDemandTradeHexes, householdEconomies, assetShares, enterprises, day);
+            plan.moves(),
+            onDemandTradeHexes,
+            householdEconomies,
+            assetShares,
+            enterprises,
+            units,
+            base,
+            day);
     // 逐 hex 建一次（键序 = 首次出现序 = 计划里的迁移序 ⇒ 确定性 I7）。
     LinkedHashMap<HexCoord, IndustryId> createdTradeIndustries = new LinkedHashMap<>();
     for (ModeMigrationPolicy.MigrationMove move : acceptedMoves) {
@@ -409,7 +422,14 @@ public final class ModeMigrationSettlement {
                 plannedPopulation.get(source), plannedLabor.get(source));
         newTargetPosition =
             createNewHousehold(
-                move, sourceProjection, householdEconomies, classMemberships, accounts, base, day);
+                move,
+                sourceProjection,
+                householdEconomies,
+                classMemberships,
+                accounts,
+                base,
+                day,
+                industries);
         // ★★ P0：新建目标行人口/劳动 0 起步，先登记进投影账（跨 source 共享）；
         //   实际行由 App 按 outbox 的 +pop delta 回写（newTarget=true ⇒ Social 侧对应 CREATE_HOUSEHOLD）。
         plannedPopulation.putIfAbsent(move.target(), 0L);
@@ -557,6 +577,22 @@ public final class ModeMigrationSettlement {
         moveAllCurrenciesByPopulation(
             accounts, source, move.target(), populationBefore, popTake, empties);
       }
+
+      // ③b ★★★ W9（2026-10-11，用户裁定 v3.29 §7 第 1 条「默认带一部分库存过去」）：**可移动商品库存随迁**。
+      //   口径照 D-023 §4 的既有形制（与货币/资产同式）：按**逐笔迁移人口比例** ⌊剩余量 × 比例⌋，余数留源户；
+      //   整户迁空（empties）⇒ 余数随这一笔走（不留悬空库存）。写路径 = 唯一写口
+      //   {@code EconomySettlement.applyTransfer}（守恒：源减 = 目标增，总量一字不变）。
+      carryGoodsForMove(
+          accounts,
+          source,
+          move.target(),
+          move.population(),
+          populationBefore,
+          empties,
+          move.targetHex(),
+          day,
+          auditLedger,
+          index);
 
       // ④ 债务（计划金额分摊到源户合同；目标不新建组织）
       if (move.debtMilli() > 0L) {
@@ -855,7 +891,8 @@ public final class ModeMigrationSettlement {
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
       AccountSession accounts,
       EconomyDayView base,
-      long day) {
+      long day,
+      Map<IndustryId, Industry> industries) {
     HouseholdId target = move.target();
     if (householdEconomies.containsKey(target)) {
       throw new IllegalStateException("新建目标家户 id 已存在（拒绝覆盖）: " + target);
@@ -872,11 +909,16 @@ public final class ModeMigrationSettlement {
         usesPlannedPrimary
             ? plannedPrimary
             : pickTargetPosition(base, move.targetMode(), sourceHouseholdEconomy, classMemberships);
+    // ★★★ W9（2026-10-11，用户裁定 v3.29 §7 第 2 条）：**目标档位 = 这户带来的库存能支撑的最高档**
+    //   ⇒ 新建户的**阶层槽位**（{@code view.stratum}）随档位走（贫农 → 中农 → 富农 → 地主），而不是照抄源户的槽位。
+    //   ★ 档位下标由**计划**给出（{@code MigrationMove.targetTierIndex}：规划期已按"带得走的作业资本"算好；
+    //     执行期不改判 —— 计划/执行两处各算一遍必然漂开）。槽位表 = 目标产业模板的 slots()（唯一拼写点）。
+    SocialClassId tierStratum = stratumForTier(base, industries, move);
     CohortKey view =
         new CohortKey(
             move.targetHex(),
             sourceHouseholdEconomy.view().residence(),
-            sourceHouseholdEconomy.view().stratum());
+            tierStratum == null ? sourceHouseholdEconomy.view().stratum() : tierStratum);
     HouseholdEconomy createdHouseholdEconomy =
         new HouseholdEconomy(
             target,
@@ -905,6 +947,45 @@ public final class ModeMigrationSettlement {
                 : "AUTO_MIGRATION:" + move.reason()));
     accounts.registerHousehold(target, move.targetHex(), Map.of(), Map.of(), Map.of(), Map.of());
     return positionId;
+  }
+
+  /**
+   * ★★★ <b>W9（2026-10-11，用户裁定 v3.29 §7 第 2 条）：档位 → 新建目标户的阶层槽位</b>。
+   *
+   * <pre>
+   * 档位 = 计划给的 {@code MigrationMove.targetTierIndex}（规划期按"带得走的作业资本"算，见 ModeMigrationPolicy.supportedTierIndex）
+   * 槽位 = 目标产业模板 slots().get(min(档位, size−1)).id()   （{@link IndustryClassSlots}：贫农/中农/富农/地主）
+   * 档位 ≤ 0（兜底档 / 旧计划）⇒ 返回 null ⇒ 调用方照抄源户槽位（逐值等于改前）
+   * </pre>
+   *
+   * <p>★ <b>为什么由计划给、执行期不重算</b>：执行期的"能带走多少"依赖逐笔比例切分（同一源户的多笔各不同）， 重算会让同一个目标户的槽位依赖执行顺序；规划期算一次、执行期照用 ⇒
+   * 计划/执行不可能漂开。
+   */
+  private static SocialClassId stratumForTier(
+      EconomyDayView base,
+      Map<IndustryId, Industry> industries,
+      ModeMigrationPolicy.MigrationMove move) {
+    int tier = move.targetTierIndex();
+    if (tier <= 0) {
+      return null;
+    }
+    Industry industry = null;
+    for (IndustryId candidate :
+        ModeMigrationPolicy.industriesForMode(base, move.targetHex(), move.targetMode())) {
+      Industry resolved = industries.get(candidate);
+      if (resolved != null) {
+        industry = resolved;
+        break;
+      }
+    }
+    if (industry == null && DefaultProductionModes.MERCHANT.equals(move.targetMode())) {
+      industry = industries.get(MerchantTradeTemplate.industryId(move.targetHex()));
+    }
+    if (industry == null || industry.slots().isEmpty()) {
+      return null;
+    }
+    int index = Math.min(tier, industry.slots().size() - 1);
+    return industry.slots().get(index).id();
   }
 
   /** 目标 mode 的位置选择：优先同 relationToMeans+surplusRole，其次第一个可生产位置（id 升序）。 */
@@ -972,6 +1053,11 @@ public final class ModeMigrationSettlement {
    *
    * <p>★★ D-023：{@code availableByKind} = 本目标户随迁进来、已登记在该产业下的份额（{@code AssetKind → quantity}）。
    * 它们已经是目标户自有的产能 ⇒ 先从需求里抵减，只对缺口租闲置份额，避免同一份资产既随迁又租一遍。
+   *
+   * <p>★★★ <b>W9（2026-10-11，用户裁定 v3.29 §7 第 3 条「没有生产工具不会买吗」）：{@code crossIndustryIdleInHex}</b> ——
+   * 为真时，闲置份额的候选集从"**同一产业模板下**"放宽到"**同一格内、同一种 AssetKind**"（其它产业的闲置资产也可以 租来当这座新产业的作业资本）。★ 只对"**按需新建的
+   * trade 产业**"为真：那个产业是本轮才长出来的，它名下不可能有任何份额 ⇒ 不放宽就永远凑不齐作业资本（W7 记的 E3 遗留门槛）。★ 安全性来自 {@code
+   * isIdleShare} 本身：闲置 = 没有任何组织/在产 unit 在用的份额 ⇒ 租走它不会让别人的产能凭空消失。
    */
   private static List<OwnershipStakeBook.Move> planAssetMoves(
       IndustryId industryId,
@@ -980,12 +1066,23 @@ public final class ModeMigrationSettlement {
       long scale,
       Map<AssetShareId, OwnershipStake> assetShares,
       Set<AssetShareId> claimedByEnterprises,
-      Map<AssetKind, Long> availableByKind) {
+      Map<AssetKind, Long> availableByKind,
+      boolean crossIndustryIdleInHex,
+      HexCoord hex) {
     Map<AssetKind, Long> coveredByKind = availableByKind == null ? Map.of() : availableByKind;
+    String hexKey = hex == null ? null : IndustryHexKeys.hexKey(hex.q(), hex.r());
     List<OwnershipStake> idle = new ArrayList<>();
     for (OwnershipStake share : assetShares.values()) {
-      if (share.industry().equals(industryId)
-          && ModeMigrationPolicy.isIdleShare(share, claimedByEnterprises)) {
+      if (!ModeMigrationPolicy.isIdleShare(share, claimedByEnterprises)) {
+        continue;
+      }
+      if (share.industry().equals(industryId)) {
+        idle.add(share);
+        continue;
+      }
+      if (crossIndustryIdleInHex
+          && hexKey != null
+          && IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isPresent()) {
         idle.add(share);
       }
     }
@@ -1054,17 +1151,30 @@ public final class ModeMigrationSettlement {
         new LinkedHashSet<>(
             ModeMigrationPolicy.claimedOwnershipStakes(enterprises, units, assetShares));
     claimedByEnterprises.addAll(migratedShareIds);
+    // ★★★ W9-fix2：失败时把"每个候选按哪个规模要多少"带上（本次事故的诊断成本全在缺的这一行信息上：
+    //   现场只有 labor=8857，看不出执行期要的是 scale=8 ⇒ 与计划期预留 scale=1 的具名不一致）。
+    StringBuilder triedCandidates = new StringBuilder();
     for (IndustryId candidate : industryCandidates) {
       Industry candidateIndustry = industries.get(candidate);
       if (candidateIndustry == null) {
         continue;
       }
+      // ★★★ W9-fix2（2026-10-11）：规模算式的**唯一拼写点** = {@link
+      // ModeMigrationPolicy#requiredWorkCapitalScale}（计划期预留与执行期索取共用；P0 语义在那里写一次）。
+      //   ★ 这里的 labor 是**带本笔随迁投影的工作行视图**的劳动（新建户 = 0 + 本笔迁入劳动；落盘行仍是 0，
+      //     由 App 按 outbox 回写）—— 逐字读落盘行会得到 scale = 1，那正是 W9-fix2 改前计划侧的旧假设。
       long scale =
-          candidateIndustry.recipe().laborPerUnit() <= 0L
-              ? 1L
-              : Math.max(
-                  1L,
-                  targetHouseholdEconomy.laborMilli() / candidateIndustry.recipe().laborPerUnit());
+          ModeMigrationPolicy.requiredWorkCapitalScale(
+              candidateIndustry, targetHouseholdEconomy.laborMilli());
+      if (triedCandidates.length() > 0) {
+        triedCandidates.append(' ');
+      }
+      triedCandidates
+          .append(candidate.value())
+          .append(":scale=")
+          .append(scale)
+          .append(",need=")
+          .append(candidateIndustry.recipe().capacityPerUnit());
       List<OwnershipStakeBook.Move> planned =
           planAssetMoves(
               candidate,
@@ -1073,7 +1183,14 @@ public final class ModeMigrationSettlement {
               scale,
               assetShares,
               claimedByEnterprises,
-              migratedCoverage.getOrDefault(candidate, Map.of()));
+              migratedCoverage.getOrDefault(candidate, Map.of()),
+              // ★★★ W9（用户裁定 v3.29 §7 第 3 条「没有生产工具不会买吗」）：**这一笔没带来作业资本**时，
+              //   允许租**同格**其它产业的闲置同种资产（工具可买/可租）—— 否则"按需新建的 trade 产业"名下
+              //   永远没有任何份额，只能整笔否决（W7 记的 E3 遗留门槛）。★ 只在"随迁覆盖为空"时为真：
+              //   带来了作业资本就照旧只在本产业内找闲置（逐值等于改前）。
+              DefaultProductionModes.MERCHANT.equals(move.targetMode())
+                  && migratedCoverage.getOrDefault(candidate, Map.of()).isEmpty(),
+              move.targetHex());
       if (planned != null) {
         industryId = candidate;
         industry = candidateIndustry;
@@ -1086,7 +1203,10 @@ public final class ModeMigrationSettlement {
           "新建目标户的租赁资产不足（计划不该包含此目标；已按 id 序遍历该 hex 全部产业模板）: hex="
               + move.targetHex()
               + " labor="
-              + targetHouseholdEconomy.laborMilli());
+              + targetHouseholdEconomy.laborMilli()
+              + " tried=["
+              + triedCandidates
+              + "]");
     }
     List<AssetShareId> createdShares = new ArrayList<>();
     if (!assetMoves.isEmpty()) {
@@ -1249,6 +1369,114 @@ public final class ModeMigrationSettlement {
     LinkedHashMap<CurrencyId, Long> nextTarget = new LinkedHashMap<>(targetMoney);
     nextTarget.merge(currency, amount, Math::addExact);
     accounts.householdMoney().put(target, nextTarget);
+  }
+
+  /**
+   * ★★★ <b>W9（2026-10-11，用户裁定 v3.29 §7 第 1 条）：商品库存随迁 —— 「默认带一部分库存过去」</b>。
+   *
+   * <pre>
+   * 可移动商品 = 家户商品账里的**实物库存**（粮 / 纤维 / 布 / 工具 / 铁…），**不含** {@link HaulService#HAUL_COMMODITY}
+   *              （运输服务不是可搬运的实物：它是"在这个格能交付的运力"的现货，跨格搬它等于凭空承诺别处的服务）
+   * 逐商品取整  = 整户迁空（empties）⇒ 冻结之外的**剩余量全部**
+   *              否则            ⇒ ⌊可用量 × 本笔人口 ÷ 迁出前人口⌋          （与货币/资产同式，余数留源户）
+   * 可用量      = 商品账余额 − 该商品的冻结量（★ 冻结不越：付款承诺/质押的那一份不得随人走）
+   * 写路径      = {@code EconomySettlement.applyTransfer}（唯一写口，两遍式校验）；一条 move **一条转移**（多商品腿）
+   * </pre>
+   *
+   * <p>★ <b>守恒</b>：两端都是已登记家户 ⇒ 该商品在**家户账总和**上一字不变（源减 = 目标增）；没有任何"凭空造/销毁"的腿。
+   *
+   * <p>★ <b>顺序</b>：本方法在同一源户的多笔 move 之间**逐笔读活表**（前面的笔已经把库存带走了）⇒ 与 D-023 §4 的"⌊剩余量 ×
+   * 比例⌋、余数留源户"逐字一致（不是对同一份初值各算一遍）。
+   */
+  private static void carryGoodsForMove(
+      AccountSession accounts,
+      HouseholdId source,
+      HouseholdId target,
+      long popTake,
+      long populationBefore,
+      boolean empties,
+      HexCoord targetHex,
+      long day,
+      ProductionLedger.Accumulator auditLedger,
+      int moveOrdinal) {
+    Map<CommodityId, Long> sourceGoods = accounts.householdGoods().getOrDefault(source, Map.of());
+    if (sourceGoods.isEmpty()) {
+      return;
+    }
+    Map<CommodityId, Long> frozenGoods =
+        accounts.householdFrozenGoods().getOrDefault(source, Map.of());
+    LinkedHashMap<CommodityId, Long> carried = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : sourceGoods.entrySet()) {
+      CommodityId commodity = entry.getKey();
+      if (!isMobileCommodity(commodity)) {
+        continue;
+      }
+      long available = entry.getValue() - frozenGoods.getOrDefault(commodity, 0L);
+      if (available <= 0L) {
+        continue;
+      }
+      long take =
+          empties
+              ? available
+              : Math.multiplyExact(available, popTake) / Math.max(1L, populationBefore);
+      take = Math.min(take, available);
+      if (take > 0L) {
+        carried.put(commodity, take);
+      }
+    }
+    if (carried.isEmpty()) {
+      return;
+    }
+    ActorRef from = HouseholdActors.of(source);
+    ActorRef to = HouseholdActors.of(target);
+    Transfer transfer =
+        auditLedger == null
+            ? new Transfer(
+                new TransferId("tr-" + day + "-migration-" + moveOrdinal),
+                day,
+                from,
+                to,
+                targetHex,
+                carried,
+                Map.of(),
+                TransferReason.MIGRATION_CARRY,
+                Optional.empty())
+            : auditLedger.mint(
+                from, to, targetHex, carried, Map.of(), TransferReason.MIGRATION_CARRY);
+    EconomySettlement.applyTransfer(
+        accounts.householdGoods(),
+        accounts.householdMoney(),
+        accounts.householdFrozenGoods(),
+        accounts.householdFrozenMoney(),
+        accounts.householdOfActor(),
+        transfer);
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MIGRATION_INVENTORY_CARRIED",
+                EconomyLogSource.ECONOMY_MIGRATION,
+                "day",
+                day,
+                "source",
+                source.value(),
+                "target",
+                target.value(),
+                "targetHex",
+                targetHex,
+                "population",
+                popTake,
+                "goods",
+                carried,
+                "reason",
+                "mobile-commodity-inventory-carried-by-population-ratio"));
+  }
+
+  /**
+   * ★★ <b>W9：哪些商品算"可移动"（唯一拼写点）</b> —— 家户商品账里的**实物库存**都可以随人走（粮、纤维、布、工具、铁…）； <b>运输服务</b>（{@link
+   * HaulService#HAUL_COMMODITY}）**不算**：它是"在本格能交付的运力"现货（服务不入库随迁）， 把它搬到另一个格等于凭空承诺那边的服务。
+   */
+  static boolean isMobileCommodity(CommodityId commodity) {
+    return commodity != null && !HaulService.HAUL_COMMODITY.equals(commodity);
   }
 
   /**
@@ -1610,8 +1838,13 @@ public final class ModeMigrationSettlement {
     return index + 1;
   }
 
-  /** 可移动资产判据（D-023：TOOL/SHIP/CATTLE/MACHINE 随人走；LAND/WORKSHOP 不跨 hex）。 */
-  private static boolean isMobileAsset(AssetKind asset) {
+  /**
+   * 可移动资产判据（D-023：TOOL/SHIP/CATTLE/MACHINE 随人走；LAND/WORKSHOP 不跨 hex）。
+   *
+   * <p>★ <b>W9（2026-10-11）：包内可见</b> —— {@code
+   * ModeMigrationPolicy.carriedCapitalByKind}（档位判据）要读同一条判据； 只改可见性，判据本体一字未动（转业档位不得有第二份"什么带得走"的拼写）。
+   */
+  static boolean isMobileAsset(AssetKind asset) {
     return switch (asset) {
       case TOOL, SHIP, CATTLE, MACHINE -> true;
       case LAND, WORKSHOP -> false;
@@ -1678,6 +1911,8 @@ public final class ModeMigrationSettlement {
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
+      EconomyDayView base,
       long day) {
     if (onDemandTradeHexes.isEmpty()) {
       return moves;
@@ -1707,6 +1942,43 @@ public final class ModeMigrationSettlement {
               ? carrierAssetLeft
               : Math.multiplyExact(carrierAssetLeft, move.population()) / Math.max(1L, population);
       if (carry <= 0L) {
+        // ★★★ W9（2026-10-11，用户裁定 v3.29 §7 第 3 条「没有生产工具不会买吗？」）：先问"**买不买得到**"。
+        //   判据 = 目标格的市场交易工具这个商品（买 / 赊购通道）∧ 本格有**闲置**的同种作业资本（可租）。
+        //   成立 ⇒ 放行（具名 INFO：走购买/租佃通道；真的租到由 createEnterpriseAndProcess 的放宽分支完成）。
+        MarketTable market = marketForHex(base, move.targetHex());
+        boolean toolTraded =
+            market != null && market.hasPrice(MerchantTradeTemplate.TOOL_COMMODITY);
+        long idleToolMilli = idleToolInHex(assetShares, enterprises, units, move.targetHex());
+        if (toolTraded && idleToolMilli > 0L) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE",
+                      EconomyLogSource.ECONOMY_MIGRATION,
+                      "day",
+                      day,
+                      "source",
+                      move.source().value(),
+                      "target",
+                      move.target().value(),
+                      "targetHex",
+                      move.targetHex(),
+                      "targetMode",
+                      move.targetMode().value(),
+                      "population",
+                      move.population(),
+                      "carriedToolInput",
+                      carry,
+                      "toolUnitPriceMilli",
+                      market.priceOf(MerchantTradeTemplate.TOOL_COMMODITY),
+                      "idleToolMilliInHex",
+                      idleToolMilli,
+                      "reason",
+                      "no-tool-input-bought-or-leased-at-market"));
+          projectedPopulation.put(move.source(), Math.max(0L, population - move.population()));
+          accepted.add(move);
+          continue;
+        }
         EventLog.channel(LOG)
             .info(
                 LogEvent.of(
@@ -1727,6 +1999,11 @@ public final class ModeMigrationSettlement {
                     // ★ W7-fix：字段名随作业资本那一维改名（改前 = carriedCattle）。
                     "carriedToolInput",
                     carry,
+                    // ★ W9：把"到底卡在哪一条"补上（市场有没有这一行 / 本格有没有闲着的工具）。
+                    "toolTradedAtMarket",
+                    toolTraded,
+                    "idleToolMilliInHex",
+                    idleToolMilli,
                     "reason",
                     "no-tool-input-to-host-on-demand-trade-industry"));
         continue;
@@ -1736,6 +2013,49 @@ public final class ModeMigrationSettlement {
       accepted.add(move);
     }
     return List.copyOf(accepted);
+  }
+
+  /**
+   * ★★ <b>W9：目标格所属市场的价表（执行期可用、不依赖 topology）</b> —— 与 {@code PrimaryModeRanking.marketOf(markets,
+   * topology, hex)} 是**同一张表**（区内一张，键 = 市场区 id）：执行期手里只有 {@link EconomyDayView}，故用 {@link
+   * MarketZoneBook#zoneOfHex(EconomyDayView, HexCoord)} 求区。没有区 / 没有这一行 ⇒ null（"这格没有市场"是合法状态，不是故障）。
+   */
+  private static MarketTable marketForHex(EconomyDayView base, HexCoord hex) {
+    return MarketZoneBook.zoneOfHex(base, hex)
+        .map(zone -> base.marketTables().get(zone.zoneId()))
+        .orElse(null);
+  }
+
+  /**
+   * ★★ <b>W9：本格里"闲置的"作业资本有多少（{@link MerchantTradeTemplate#capacityKinds()} 那一维，毫）</b> ——
+   * 它是"这户就算没带工具，也买/租得到"的**物理前提**（W2 起没钱也能买 ⇒ 唯一还要问的是"有没有闲着的"）。
+   *
+   * <p>★ <b>同一把尺</b>：闲置判据 = {@link ModeMigrationPolicy#isIdleShare}（没有任何组织/在产 unit 在用）， 与 {@code
+   * planAssetMoves}、与"同格跨产业放宽"那一条完全同源；只数**同一格**的份额（跨格搬工具要运力，本批不引入）。
+   */
+  private static long idleToolInHex(
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
+      HexCoord hex) {
+    Set<AssetShareId> claimed =
+        ModeMigrationPolicy.claimedOwnershipStakes(enterprises, units, assetShares);
+    String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
+    List<AssetKind> capacityKinds = MerchantTradeTemplate.capacityKinds();
+    long total = 0L;
+    for (OwnershipStake share : assetShares.values()) {
+      if (share == null
+          || !capacityKinds.contains(share.asset())
+          || share.quantity() <= 0L
+          || !ModeMigrationPolicy.isIdleShare(share, claimed)) {
+        continue;
+      }
+      if (IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isEmpty()) {
+        continue;
+      }
+      total = Math.addExact(total, share.quantity());
+    }
+    return total;
   }
 
   /**

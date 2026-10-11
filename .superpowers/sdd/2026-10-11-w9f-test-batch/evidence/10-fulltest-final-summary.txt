@@ -1,0 +1,28 @@
+=== W9f ① 最终全仓轮（2026-10-11T21:45:02+08:00）—— 本批测试改动落地之后 ===
+命令：tools/mvn-lock.sh test -am
+[INFO] BUILD SUCCESS
+[INFO] Total time:  04:24 min
+[INFO] Finished at: 2026-10-11T21:44:59+08:00
+--- 逐模块 Tests run（合计行）---
+[INFO] Tests run: 217, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 379, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 33, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 50, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 217, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 518, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 231, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 232, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 130, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 343, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 111, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 91, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 909, Failures: 0, Errors: 0, Skipped: 5
+--- 红点扫描 ---
+BUILD FAILURE 行数 = 0；surefire 失败/错误行数 = 0
+--- 本批改动的两个类 ---
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.043 s -- in io.mosire.simos.economy.time.ModeMigrationPolicyD024Test
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.economy.time.ModeMigrationWorkCapitalScaleW9fTest
+--- 指纹类 ---
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 73.27 s -- in io.mosire.simos.app.time.EconomyCycleHealthTest

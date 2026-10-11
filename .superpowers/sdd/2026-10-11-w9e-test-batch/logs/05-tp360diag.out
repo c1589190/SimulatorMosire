@@ -1,0 +1,4 @@
+[21:07:21] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9e/stores/tp360diag --world=three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-tp.json --gui-port 10987 --mcp-port 10988 --approval-port 10989
+[21:07:22] GUI 就绪（1.70s）
+[21:07:22] 创世后 head rev=1 tick=0
+[21:07:59] advance 0->360 HTTP 500 36.828s

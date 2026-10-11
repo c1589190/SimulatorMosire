@@ -1,0 +1,30 @@
+# W9 真世界读数证据（0→360；jar md5 b07bb719257cf2b313d037610aacb106）
+
+## sw360（small-world，0→360，--log-level DEBUG --trace-level TRACE）
+MIGRATION_PLAN                             11
+MIGRATION_MOVE                             91
+MIGRATION_INVENTORY_CARRIED                91
+ONDEMAND_TRADE_MIGRATION_SKIPPED           0
+ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE     0
+MERCHANT_TRADE_INDUSTRY_CREATED            0
+MODE_MIGRATION_CANDIDATES                  12
+MARKET_FILL                                2362
+MARKET_REPORT                              144
+PRIMARY_MODE_CHANGED                       46
+MIGRATION_APPLIED                          11
+failuresByReason(day=360):
+  {NO_ASSET:farm@-1_0=33, NO_ASSET:farm@-1_1=33, NO_ASSET:weave@0_-1=11, NO_ASSET:farm@0_-1=33, NO_ASSET:craft@0_0=27, NO_ASSET:farm@0_0=2, NO_ASSET:weave@0_1=11, NO_ASSET:farm@0_1=33, NO_ASSET:weave@1_-1=11, NO_ASSET:farm@1_-1=33, NO_ASSET:weave@1_0=11, NO_ASSET:farm@1_0=33, NO_EMPLOYER:trade@-1_0=7, NO_EMPLOYER:trade@-1_1=7, NO_EMPLOYER:trade@0_-1=7, NO_EMPLOYER:trade@0_1=7, NO_EMPLOYER:trade@1_-1=7, NO_EMPLOYER:trade@1_0=7} moves=1 movedPopulation=2
+
+## tp360（three-powers，0→360）
+MIGRATION_PLAN                             12
+MIGRATION_MOVE                             93
+MIGRATION_INVENTORY_CARRIED                93
+ONDEMAND_TRADE_MIGRATION_SKIPPED           0
+ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE     0
+MERCHANT_TRADE_INDUSTRY_CREATED            0
+MODE_MIGRATION_CANDIDATES                  12
+MARKET_FILL                                3130
+MARKET_REPORT                              144
+PRIMARY_MODE_CHANGED                       56
+MIGRATION_APPLIED                          12
+零成交轮次（0→360）: 21 个 —— day=38 40 43 45 48 50 53 55 58 60 75 78 80 83 95 98 100 110 113 115 118

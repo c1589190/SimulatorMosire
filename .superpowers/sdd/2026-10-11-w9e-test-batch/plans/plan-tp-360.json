@@ -1,0 +1,4 @@
+[
+  { "op": "advance", "to": 360 },
+  { "op": "dump", "label": "d360-oneshot" }
+]

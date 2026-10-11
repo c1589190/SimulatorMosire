@@ -162,6 +162,20 @@ final class ClassLadderBook {
                   .reversed())
           .thenComparing(position -> position.id().value());
 
+  /**
+   * ★★★ <b>W9（2026-10-11，用户裁定 v3.29 §7 第 2 条）：同一套位阶的<b>升序</b>形态 —— "取能支撑的最高档"用它</b>。
+   *
+   * <p>★ <b>为什么必须落在这里</b>：位阶的唯一拼写点是本类（{@link #POSITION_HEIGHT_ORDER} 与两个 {@code ordinal} 函数）。W9
+   * 的转业档位要在**同一个 mode 的可生产位置**里从低到高取"能支撑的最高那一个"；若复用降序表取首项，方向就反了 （"库存最少也落最高档"）——
+   * 这种反向错误不抛、不报，只会让世界静默变样。⇒ 升序表与降序表**同处一文件、共用同一组 ordinal**，只差方向； tie-break 仍是 {@code
+   * ClassPositionId.value()} 升序（确定性 I7）。
+   */
+  static final Comparator<ProductionRole> POSITION_LADDER_ASCENDING =
+      Comparator.comparingInt(
+              (ProductionRole position) -> relationOrdinal(position.relationToMeans()))
+          .thenComparingInt(position -> surplusOrdinal(position.surplusRole()))
+          .thenComparing(position -> position.id().value());
+
   /** 与生产资料的关系序（越大越高）：OWNER &gt; MIXED &gt; OPERATOR &gt; DIRECT_LABORER。 */
   static int relationOrdinal(RelationToMeans relation) {
     return switch (relation) {

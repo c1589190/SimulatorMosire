@@ -1,0 +1,12 @@
+-------------------------------------------------------------------------------
+Test set: io.mosire.simos.app.time.EconomyCycleHealthTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 61.00 s <<< FAILURE! -- in io.mosire.simos.app.time.EconomyCycleHealthTest
+io.mosire.simos.app.time.EconomyCycleHealthTest.twoFullCyclesInRealThreePowersWorldKeepMoneyConservedAndMarketAlive -- Time elapsed: 60.99 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+[逐市场轮成交笔数的分布必须与实测基线**逐值相同**（任何一轮的笔数变了都当场红；世界行为有意改变时必须显式重新基线化，不许放宽）。基线=15×1, 21×11, 22×8, 23×4, 24×6, 25×5, 26×10, 30×1, 41×1, 42×3, 43×2, 44×10, 45×8, 46×5, 47×10, 48×3, 49×1, 52×1, 53×1, 55×1, 57×1, 66×1, 151×1, 198×1 实测=15×1, 21×18, 22×8, 23×8, 24×8, 25×1, 27×1, 35×3, 36×14, 37×3, 38×3, 40×2, 41×5, 42×8, 43×1, 44×1, 45×2, 46×3, 47×1, 48×1, 49×1, 66×1, 167×1, 193×1] 
+expected: {15L=1, 21L=11, 22L=8, 23L=4, 24L=6, 25L=5, 26L=10, 30L=1, 41L=1, 42L=3, 43L=2, 44L=10, 45L=8, 46L=5, 47L=10, 48L=3, 49L=1, 52L=1, 53L=1, 55L=1, 57L=1, 66L=1, 151L=1, 198L=1}
+ but was: {15L=1, 21L=18, 22L=8, 23L=8, 24L=8, 25L=1, 27L=1, 35L=3, 36L=14, 37L=3, 38L=3, 40L=2, 41L=5, 42L=8, 43L=1, 44L=1, 45L=2, 46L=3, 47L=1, 48L=1, 49L=1, 66L=1, 167L=1, 193L=1}
+	at io.mosire.simos.app.time.EconomyCycleHealthTest.assertEveryMarketRoundTraded(EconomyCycleHealthTest.java:589)
+	at io.mosire.simos.app.time.EconomyCycleHealthTest.twoFullCyclesInRealThreePowersWorldKeepMoneyConservedAndMarketAlive(EconomyCycleHealthTest.java:516)
+

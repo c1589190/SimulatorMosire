@@ -1,0 +1,4 @@
+[
+  { "op": "advance", "to": 240 },
+  { "op": "dump", "label": "d240-oneshot" }
+]

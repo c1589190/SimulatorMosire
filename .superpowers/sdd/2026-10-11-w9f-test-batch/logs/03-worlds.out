@@ -1,0 +1,71 @@
+=== [21:33:46] sw360 world=small-world port=10995 plan=plan-sw-360.json store=sw360 extras=--keep-store ===
+[21:33:46] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9f/stores/sw360 --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json --gui-port 10995 --mcp-port 10996 --approval-port 10997
+[21:33:48] GUI 就绪（1.73s）
+[21:33:48] 创世后 head rev=1 tick=0
+[21:33:58] advance 0->360 HTTP 200 10.650s
+[21:33:58] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+[21:33:59] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9f-test-batch/logs/sw360.result.json
+{
+  "tag": "sw360",
+  "jarMd5": "ce0bf3ba8f388492b0f0ab8ae079c22c",
+  "readySeconds": 1.726,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "5772392ec72ac1ef2305257db6c49a73"
+}
+=== [21:33:59] sw360 rc=0 ===
+=== [21:33:59] tp360 world=three-powers port=10996 plan=plan-tp-360.json store=tp360 extras= ===
+[21:33:59] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9f/stores/tp360 --world=three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-tp.json --gui-port 10996 --mcp-port 10997 --approval-port 10998
+[21:34:00] GUI 就绪（1.74s）
+[21:34:00] 创世后 head rev=1 tick=0
+[21:34:49] advance 0->360 HTTP 200 48.654s
+[21:34:49] dump d360-oneshot rev=2 bytes=12371339 md5=838477e41aaf5b9db732d12a424c7605
+[21:35:08] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9f-test-batch/logs/tp360.result.json
+{
+  "tag": "tp360",
+  "jarMd5": "ce0bf3ba8f388492b0f0ab8ae079c22c",
+  "readySeconds": 1.743,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "d2317c8e302804547f6e829093408163"
+}
+=== [21:35:09] tp360 rc=0 ===
+=== [21:35:09] sw3seg world=small-world port=10997 plan=plan-sw-3seg.json store=sw3seg extras= ===
+[21:35:09] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9f/stores/sw3seg --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json --gui-port 10997 --mcp-port 10998 --approval-port 10999
+[21:35:11] GUI 就绪（2.35s）
+[21:35:11] 创世后 head rev=1 tick=0
+[21:35:17] advance 0->120 HTTP 200 5.970s
+[21:35:21] advance 120->240 HTTP 200 3.488s
+[21:35:24] advance 240->360 HTTP 200 3.283s
+[21:35:24] dump d360-3seg rev=4 bytes=6329746 md5=d63c4e68770079e46959bac21724182f
+[21:35:24] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9f-test-batch/logs/sw3seg.result.json
+{
+  "tag": "sw3seg",
+  "jarMd5": "ce0bf3ba8f388492b0f0ab8ae079c22c",
+  "readySeconds": 2.349,
+  "revisionDelta": 3,
+  "headRevision": 4,
+  "tick": 360,
+  "logStrippedMd5": "92a90f68482586914ca3e9a45ae2ef83"
+}
+=== [21:35:24] sw3seg rc=0 ===
+=== [21:35:24] swtick world=small-world port=10998 plan=plan-sw-tick.json store=swtick extras= ===
+[21:35:26] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9f/stores/swtick --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json --gui-port 10998 --mcp-port 10999 --approval-port 11000
+[21:35:27] GUI 就绪（1.73s）
+[21:35:27] 创世后 head rev=1 tick=0
+[21:36:09] advance_daily 0->360 完成 head=361
+[21:36:09] dump d360-tick rev=361 bytes=6329760 md5=9cb8f3804e6f4d3067ebae9a6d25978a
+[21:36:12] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9f-test-batch/logs/swtick.result.json
+{
+  "tag": "swtick",
+  "jarMd5": "ce0bf3ba8f388492b0f0ab8ae079c22c",
+  "readySeconds": 1.726,
+  "revisionDelta": 360,
+  "headRevision": 361,
+  "tick": 360,
+  "logStrippedMd5": "b8a5c3d44e138690ba6ab1d0d2c30195"
+}
+=== [21:36:12] swtick rc=0 ===
+=== [21:36:12] MODE=all DONE ===

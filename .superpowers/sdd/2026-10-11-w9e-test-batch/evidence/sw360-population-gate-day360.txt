@@ -1,0 +1,22 @@
+[W9e ④.2 人口闸：day=360 逐源户判读（源户人口 pre = dump post + 当日迁出总和；dump 与 move 是同一 revision 的两侧）]
+dump 里 social 户数 = 178，economy 行数 = 178（逐户人口两切片是否一致：True）
+source                             postPop  pop_pre   Σmoved      上限折算      速度折算 判定
+hh--1_1-rural-rich_peasant              17       18        1         1         1 OK
+hh-0_-2-rural-rich_peasant              13       14        1         1         1 OK
+hh-0_0-rural-middle_peasant             35       38        3         3         3 OK
+hh-0_0-rural-rich_peasant               15       16        1         1         1 OK
+hh-0_0-urban-middle_peasant            158      174       16        17        17 OK
+hh-0_0-urban-rich_peasant               91      101       10        10        10 OK
+
+逐笔：
+  day360 hh--1_1-rural-rich_peasant -> hh--1_1-rural-landlord pop=1 speed=45‰ | min(速度折算 1, 上限折算 1) = 1 ⇒ OK
+  day360 hh-0_-2-rural-rich_peasant -> hh-0_-2-rural-landlord pop=1 speed=45‰ | min(速度折算 1, 上限折算 1) = 1 ⇒ OK
+  day360 hh-0_0-rural-middle_peasant -> hh-0_0-rural-poor_peasant pop=1 speed=45‰ | min(速度折算 1, 上限折算 3) = 1 ⇒ OK
+  day360 hh-0_0-rural-middle_peasant -> hh-0_0-urban-middle_peasant pop=1 speed=100‰ | min(速度折算 3, 上限折算 3) = 3 ⇒ OK
+  day360 hh-0_0-rural-middle_peasant -> hh-0_0-rural-poor_peasant pop=1 speed=45‰ | min(速度折算 1, 上限折算 3) = 1 ⇒ OK
+  day360 hh-0_0-rural-rich_peasant -> hh-0_0-rural-poor_peasant pop=1 speed=45‰ | min(速度折算 1, 上限折算 1) = 1 ⇒ OK
+  day360 hh-0_0-urban-middle_peasant -> hh-0_0-urban-landlord pop=1 speed=99‰ | min(速度折算 17, 上限折算 17) = 17 ⇒ OK
+  day360 hh-0_0-urban-middle_peasant -> hh-0_0-urban-landlord pop=15 speed=99‰ | min(速度折算 17, 上限折算 17) = 17 ⇒ OK
+  day360 hh-0_0-urban-rich_peasant -> hh-0_0-urban-middle_peasant pop=10 speed=100‰ | min(速度折算 10, 上限折算 10) = 10 ⇒ OK
+
+结论：day=360 的 9 笔 / 6 个源户 ⇒ 人口闸 全部成立

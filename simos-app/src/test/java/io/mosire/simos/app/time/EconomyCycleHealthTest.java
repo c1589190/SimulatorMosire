@@ -300,6 +300,52 @@ class EconomyCycleHealthTest {
    *       .superpowers/sdd/2026-10-11-w7e-test-batch/results/tp360.fingerprint-0-240.txt}）。
    * </ol>
    *
+   * <p>★★★ <b>W9e 测试批（2026-10-11）：第四次显式重新基线化（旧值 → 新值 + 依据）—— W9 / W9-fix 落地后按实跑真值重钉</b>。
+   *
+   * <pre>
+   * W7e 旧指纹（本次实跑复现的第一行红 —— 与本文件原先钉的值逐值相同）：
+   *   {15=1, 21=11, 22=8, 23=4, 24=6, 25=5, 26=10, 30=1, 41=1, 42=3, 43=2, 44=10,
+   *    45=8, 46=5, 47=10, 48=3, 49=1, 52=1, 53=1, 55=1, 57=1, 66=1, 151=1, 198=1}
+   *   min/中位/max = 15 / 42.0 / 198，轮数 = 96，零成交轮次 = 0，Σfills = 3651
+   * W9 首版（★ 踩牙的那一轮，留作对照；不是本文件钉的值）：
+   *   Σfills = 2027（−44.5%），**零成交轮次 = 21**（day 38,40,43,…），min/中位/max = 0 / 24.0 / 120
+   * W9e 新指纹（本批实跑真值；装置 A = 本测试自身；★ W9-fix 后"零成交轮次 = 0"恢复）：
+   *   {15=1, 21=18, 22=8, 23=8, 24=8, 25=1, 27=1, 35=3, 36=14, 37=3, 38=3, 40=2,
+   *    41=5, 42=8, 43=1, 44=1, 45=2, 46=3, 47=1, 48=1, 49=1, 66=1, 167=1, 193=1}
+   *   min/中位/max = 15 / 35.5 / 193，轮数 = 96，**零成交轮次 = 0**，Σfills = 3337（Δ = −314，−8.6%）
+   *   ★ 逐档差异（旧 → 新）：消失 26×10 / 30×1 / 52×1 / 53×1 / 55×1 / 57×1 / 151×1 / 198×1；
+   *     新增 27×1 / 35×3 / 36×14 / 37×3 / 38×3 / 40×2 / 167×1 / 193×1；
+   *     计数变化 21: 11→18、23: 4→8、24: 6→8、25: 5→1、41: 1→5、42: 3→8、43: 2→1、44: 10→1、
+   *     45: 8→2、46: 5→3、47: 10→1、48: 3→1；未变 15×1 / 22×8 / 49×1 / 66×1。
+   * </pre>
+   *
+   * <p>★★ <b>W9e 依据（W9 / W9-fix 的哪些改动改了世界行为，逐条具名）</b>：
+   *
+   * <ol>
+   *   <li><b>① 转业速度 = 预期收益差驱动</b>（用户裁定 v3.30 §7 第 2 条；旧口径是 {@code max(10‰, f(债务/资产))}）：
+   *       迁移的目的地、笔数与落点全变 ⇒ 市场参与者/成交笔数跟着变 —— 本次分布变动的<b>主因</b>；
+   *   <li><b>② W9 首版的分母退化</b>（{@code max(1, |收益_当前|)} ⇒ 收益 ≈ 0 时打满 1000‰ ⇒ 单笔搬 199 人 = 整户迁空）在
+   *       three-powers 造出 <b>21 个零成交轮</b> + Σfills 2027 + min·中位·max = 0·24.0·120；
+   *   <li><b>③ W9-fix 的分母修正</b>（{@code max(|当前|, |其他|, 收益规模基准)}；基准 = max(每单位规模劳动的毛收入, 口粮成本)）——
+   *       <b>这是把肇事链按死的那一件</b>：零收益户 1000‰ ⇒ ≤ 100‰ ⇒ <b>零成交轮次 21 → 0</b>、 Σfills 2027 → 3337；
+   *   <li><b>④ W9-fix 的人口闸</b>（{@code MIGRATION_SPEED_CAP_PER_MILLE = 100} ⇒ 每计划轮每户 ≤ max(1,
+   *       ⌊人口×100÷1000⌋)）—— 主要在 {@code 收益_当前 &lt; 0} 的反号支吃紧（那里分母修正不减小速度）： 把"一轮搬空整户"的上界钉在人口的 10%；
+   *   <li><b>⑤ W9-fix 的 U1（源户候选表与并入目标表分开）与 U5（规模 = 0 ⇒ 最低档）</b>：迁入落点从"新建户"改回 "并入既有户"、极小户不再被抬到最高档 ⇒
+   *       目标格的人/货/单位落点改变 ⇒ 逐轮流量的分布改变。
+   * </ol>
+   *
+   * <p>★★ <b>为什么这不是"放宽判据"（五条牙一字未动）</b>：本次<b>只换期望值</b>（分布 + min/中位/max）； {@code
+   * BASELINE_MARKET_ROUNDS = 96}、同日不得两轮、相邻间隔 ≤ 5 天、<b>零成交轮次 = 0</b>、 {@code Σ逐轮 fills ==
+   * MARKET_FILL 行数} 五条牙与 {@code assertEveryMarketRoundTraded} 的断言体 <b>一个字符都没改</b>。★★ 特别记一句：<b>W9
+   * 首版曾把"零成交轮次 = 0"这条牙踩红 21 轮</b>（W9d 实测），按纪律 当时<b>拒绝重基线</b>（重基线等于把"市场冻结"洗白）；W9-fix
+   * 修好后，本批才按实跑真值重基线。
+   *
+   * <p>★★ <b>装置与读数（本批实跑）</b>：装置 A = 本测试自身（{@code tools/mvn-lock.sh test -pl simos-app -am
+   * -Dtest='EconomyCycleHealthTest' -Dsurefire.failIfNoSpecifiedTests=false}，本批实跑 {@code Tests run:
+   * 1}）； 四个数另由<b>原始日志独立重算</b>（不经测试代码）：96 行 {@code MARKET_REPORT} ⇒ 轮数 96 / 零成交 0 / Σfills 3337 ==
+   * {@code MARKET_FILL} 3337 行 / min·中位·max = 15·35.5·193 / 同日两轮 = 否 / 相邻最大间隔 = 3 天。证据落 {@code
+   * .superpowers/sdd/2026-10-11-w9e-test-batch/evidence/}。
+   *
    * <p>★★★ <b>W5.5-fix3 的诊断结论：这里没有非确定性 —— 曾经读到的"第二个形态"是 {@code target/classes} 陈旧造成的另一份编译产物</b>
    * （权威：W5.5-fix3 账本 §②；纪律：AGENTS §三.5「"同一个输入跑出两个结果"的第一嫌疑是产物陈旧，不是非确定性」）。诊断链： ① 那个"第二形态"与 W5.5-fix2
    * <b>之前</b>的读数<b>逐值相同</b> ⇒ 它是"fix2 的创世粮没生效"的世界； ② <b>判别实验（决定性）</b>：把 <b>pre-fix2</b> 的 {@code
@@ -324,36 +370,37 @@ class EconomyCycleHealthTest {
     }
   }
 
-  /** ★ 本世界 96 轮成交笔数分布（min/中位/max = 15 / 42.0 / 198；96 轮的中间两项都是 42）。 */
+  /** ★ 本世界 96 轮成交笔数分布（min/中位/max = 15 / 35.5 / 193；96 轮的中间两项是 35 与 36）。 */
   private static FillRegime baselineFills() {
     Map<Long, Integer> distribution = new TreeMap<>();
     distribution.put(15L, 1);
-    distribution.put(21L, 11);
+    distribution.put(21L, 18);
     distribution.put(22L, 8);
-    distribution.put(23L, 4);
-    distribution.put(24L, 6);
-    distribution.put(25L, 5);
-    distribution.put(26L, 10);
-    distribution.put(30L, 1);
-    distribution.put(41L, 1);
-    distribution.put(42L, 3);
-    distribution.put(43L, 2);
-    distribution.put(44L, 10);
-    distribution.put(45L, 8);
-    distribution.put(46L, 5);
-    distribution.put(47L, 10);
-    distribution.put(48L, 3);
+    distribution.put(23L, 8);
+    distribution.put(24L, 8);
+    distribution.put(25L, 1);
+    // ★ W9e（2026-10-11）：26×10 / 30×1 消失（26 与 30 两档在本世界不再出现），27×1 / 35×3 新增。
+    distribution.put(27L, 1);
+    distribution.put(35L, 3);
+    distribution.put(36L, 14);
+    distribution.put(37L, 3);
+    distribution.put(38L, 3);
+    distribution.put(40L, 2);
+    distribution.put(41L, 5);
+    distribution.put(42L, 8);
+    distribution.put(43L, 1);
+    distribution.put(44L, 1);
+    distribution.put(45L, 2);
+    distribution.put(46L, 3);
+    distribution.put(47L, 1);
+    distribution.put(48L, 1);
     distribution.put(49L, 1);
-    // ★ W7e（2026-10-11）：50×1 → 52×1（某一轮 +2 笔）、56×1 → 57×1（某一轮 +1 笔）—— 旧值 = W7，新值 = 本批实跑真值
-    //   （依据与两套装置证据见类注释的「W7e 测试批」一节；Σfills 3648 → 3651）。
-    distribution.put(52L, 1);
-    distribution.put(53L, 1);
-    distribution.put(55L, 1);
-    distribution.put(57L, 1);
+    // ★ W9e（2026-10-11）：52×1 / 53×1 / 55×1 / 57×1 消失；66×1 未变。
     distribution.put(66L, 1);
-    distribution.put(151L, 1);
-    distribution.put(198L, 1);
-    return new FillRegime(distribution, 15L, 42.0, 198L);
+    // ★ W9e（2026-10-11）：151×1 / 198×1 消失，167×1 / 193×1 新增（长尾上限 198 ⇒ 193）。
+    distribution.put(167L, 1);
+    distribution.put(193L, 1);
+    return new FillRegime(distribution, 15L, 35.5, 193L);
   }
 
   /** ★ W4b 加牙：市场例行轮的最大间隔（天）—— 用它守"读侧没漏采轮次"（每 5 天必有一轮例行开市）。 */

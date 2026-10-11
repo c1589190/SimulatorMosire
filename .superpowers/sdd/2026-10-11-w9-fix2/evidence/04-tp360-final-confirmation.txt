@@ -1,0 +1,30 @@
+=== ★ 最终字节轮：three-powers 0→360（jar ce0bf3ba8f388492b0f0ab8ae079c22c）===
+HTTP 200 / 48.932s / head rev=2 tick=360 / Δrev=1 / dump bytes=12371339 md5=838477e41aaf5b9db732d12a424c7605
+logStrippedMd5=c18b32b7bd1d50f7b6026c021d5a0b03（日志留档：logs/tp360fix2b.log，3.0 MB / 7626 行）
+
+★ 与第一轮（jar 90e9f85a…，含 ceilDiv 版向上取整）逐值相同：
+  dump md5 838477e41aaf5b9db732d12a424c7605 == 第一轮同值；读数 389/233/120/144/5131/0/0/0 全等
+  ⇒ ① 那次改写（ceilDiv → 商/余数形态）逐值等价；② 跨进程确定性成立（AGENTS §三.5 的'两结果'排查第一步）。
+
+--- 计数（与第一轮同） ---
+MIGRATION_MOVE 总=389  day<=240=233（W9e=233）  targetMode=merchant=120
+MARKET_REPORT=144  MARKET_FILL=5131  MERCHANT_TRADE_INDUSTRY_CREATED=0  ONDEMAND_*=0  异常/栈/GUI_REQUEST_FAILED=0
+
+--- 落点：12 轮全部并入既有户（rowsBefore == rowsAfter == 342） ---
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=30 moves=9 rowsBefore=342 rowsAfter=342 transfersToday=181
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=60 moves=9 rowsBefore=342 rowsAfter=342 transfersToday=241
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=90 moves=6 rowsBefore=342 rowsAfter=342 transfersToday=272
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=120 moves=12 rowsBefore=342 rowsAfter=342 transfersToday=910
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=150 moves=47 rowsBefore=342 rowsAfter=342 transfersToday=472
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=180 moves=47 rowsBefore=342 rowsAfter=342 transfersToday=446
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=210 moves=48 rowsBefore=342 rowsAfter=342 transfersToday=507
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=240 moves=55 rowsBefore=342 rowsAfter=342 transfersToday=835
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=270 moves=47 rowsBefore=342 rowsAfter=342 transfersToday=383
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=300 moves=37 rowsBefore=342 rowsAfter=342 transfersToday=310
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=330 moves=37 rowsBefore=342 rowsAfter=342 transfersToday=345
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=360 moves=35 rowsBefore=342 rowsAfter=342 transfersToday=329
+
+--- day=270（肇事日，改前崩在这里）---
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=270 moves=47 rowsBefore=342 rowsAfter=342 transfersToday=383
+该日 targetHex=2,0 且 targetMode=merchant 的迁移笔数 = 0（改前 = 1，正是撞守卫那一笔）
+全窗 trade@2_0 产业是否被按需创建：trade@* = ['trade@-3_3', 'trade@0_-3', 'trade@3_0'] ⇒ trade@2_0 不在其中

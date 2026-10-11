@@ -29,6 +29,7 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -308,6 +309,16 @@ class ExpectedProfitBookTest {
     assertThat(c2.reason()).isEqualTo("NO_INDUSTRY");
 
     // ④ 缺 merchant 运力/产业模板 ⇒ NO_MERCHANT_CAPACITY（D-024 §3.2.5）。
+    // ★★★ W9（2026-10-11，用户裁定 v3.29 §7 第 3 条「没有生产工具不会买吗？」）：`no-tool-input` 的成立条件
+    //   已收窄为「**手头没有 ∧ 目标格市场也不交易 tool**」—— 只断"不可行"会让这条断言变得**无判别力**
+    //   （W9 起只要夹具市场里多出 tool 这一行，理由就会变成"可行/别的理由"，而断言仍可能因别的原因绿）。
+    //   ⇒ 这里把**判据的物理前提**显式钉住：本夹具的 H 格市场**不交易 tool**（夹具里只报 CLOTH/FIBER/GRAIN）。
+    assertThat(noIndustry.market().hasPrice(MerchantTradeTemplate.TOOL_COMMODITY))
+        .as("★ W9 前置：夹具目标格市场**不交易** tool ⇒ `no-tool-input` 的'买不到'那一支成立")
+        .isFalse();
+    assertThat(noIndustry.accounts().householdGoods().getOrDefault(HOUSE, Map.of()))
+        .as("★ W9 前置：手头也没有 tool 商品 ⇒ 两个条件同时成立才该具名 no-tool-input")
+        .doesNotContainKey(MerchantTradeTemplate.TOOL_COMMODITY);
     ExpectedProfitBook.Prospect merchant =
         ExpectedProfitBook.prospect(
             emptyIndustry,
@@ -325,7 +336,9 @@ class ExpectedProfitBookTest {
             noIndustry.topology(),
             0L);
     assertThat(merchant.feasible()).isFalse();
-    assertThat(merchant.reason()).startsWith("NO_MERCHANT_CAPACITY");
+    assertThat(merchant.reason())
+        .as("★ W9：买不到（手头无 tool ∧ 市场不交易 tool）⇒ 仍是这条具名理由")
+        .isEqualTo("NO_MERCHANT_CAPACITY:no-tool-input");
   }
 
   @Test

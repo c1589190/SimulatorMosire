@@ -1,0 +1,37 @@
+=== [20:39:52] sw3seg world=small-world port=10973 plan=plan-sw-3seg.json store=sw3seg extras= ===
+[20:39:52] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9t/stores/sw3seg --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json --gui-port 10973 --mcp-port 10974 --approval-port 10975
+[20:39:54] GUI 就绪（1.71s）
+[20:39:54] 创世后 head rev=1 tick=0
+[20:39:58] advance 0->120 HTTP 200 3.468s
+[20:40:00] advance 120->240 HTTP 200 2.640s
+[20:40:03] advance 240->360 HTTP 200 2.368s
+[20:40:03] dump d360-3seg rev=4 bytes=5620567 md5=4e316dd01d72eb07c76d0ab21e4adf67
+[20:40:04] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-test-batch/logs/sw3seg.result.json
+{
+  "tag": "sw3seg",
+  "jarMd5": "b07bb719257cf2b313d037610aacb106",
+  "readySeconds": 1.706,
+  "revisionDelta": 3,
+  "headRevision": 4,
+  "tick": 360,
+  "logStrippedMd5": "d0f4beaeb29d3f0a594c3ad164e6907f"
+}
+=== [20:40:04] sw3seg rc=0 ===
+=== [20:40:04] swtick world=small-world port=10974 plan=plan-sw-tick.json store=swtick extras= ===
+[20:40:04] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9t/stores/swtick --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json --gui-port 10974 --mcp-port 10975 --approval-port 10976
+[20:40:05] GUI 就绪（1.69s）
+[20:40:05] 创世后 head rev=1 tick=0
+[20:40:38] advance_daily 0->360 完成 head=361
+[20:40:38] dump d360-tick rev=361 bytes=5620581 md5=c4dc3e33e9c0a94b520f56ef4c3483f3
+[20:40:40] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-test-batch/logs/swtick.result.json
+{
+  "tag": "swtick",
+  "jarMd5": "b07bb719257cf2b313d037610aacb106",
+  "readySeconds": 1.69,
+  "revisionDelta": 360,
+  "headRevision": 361,
+  "tick": 360,
+  "logStrippedMd5": "1df9c2b9be4bc12097eefd123f9174d5"
+}
+=== [20:40:40] swtick rc=0 ===
+=== [20:40:40] MODE=b2 DONE ===

@@ -410,8 +410,13 @@ public final class AccountSession {
     return account;
   }
 
-  /** 家户 actor → 家户身份（唯一写口 {@code applyTransfer} 的入参形状；键按 canonical 升序构造）。 */
-  private Map<ActorRef, HouseholdId> householdOfActor() {
+  /**
+   * 家户 actor → 家户身份（唯一写口 {@code applyTransfer} 的入参形状；键按 canonical 升序构造）。
+   *
+   * <p>★ <b>W9（2026-10-11）：包内可见</b> —— {@code ModeMigrationSettlement} 的商品库存随迁也要走那条唯一写口 （{@code
+   * EconomySettlement.applyTransfer}），需要同一份映射；只改可见性，映射内容与构造序一字未动。
+   */
+  Map<ActorRef, HouseholdId> householdOfActor() {
     List<Map.Entry<ActorRef, HouseholdId>> entries = new ArrayList<>();
     for (HouseholdId household : householdIndex.keySet()) {
       entries.add(Map.entry(HouseholdActors.of(household), household));

@@ -1,0 +1,8 @@
+=== tp 500 的服务端真实异常（tp360diag.log:2196161，本批两次复现都停在 day=270） ===
+21:07:59.615 WARN  io.mosire.simos.app.gui - event=GUI_REQUEST_FAILED origin=gui-request originKind=interaction method=POST path=/api/advance caller=127.0.0.1 error=IllegalStateException message=新建目标户的租赁资产不足（计划不该包含此目标；已按 id 序遍历该 hex 全部产业模板）: hex=2_0 labor=8857
+=== 该行前最后 3 条迁移事件（day=270） ===
+21:07:59.606 INFO  io.mosire.simos.economy.migration - event=MIGRATION_INVENTORY_CARRIED origin=economy-migration originKind=tick day=270 source=hh-3_0-rural-rich_peasant target=hh-3_0-urban-rich_peasant targetHex=3_0 population=1 goods={fiber=232448, grain=323006, tool=15, cloth=439} reason=mobile-commodity-inventory-carried-by-population-ratio
+21:07:59.607 INFO  io.mosire.simos.economy.migration - event=MIGRATION_INVENTORY_CARRIED origin=economy-migration originKind=tick day=270 source=hh-3_0-rural-rich_peasant target=hh-3_0-urban-rich_peasant targetHex=3_0 population=1 goods={fiber=232448, grain=323006, tool=15, cloth=439} reason=mobile-commodity-inventory-carried-by-population-ratio
+21:07:59.608 INFO  io.mosire.simos.economy.migration - event=MIGRATION_INVENTORY_CARRIED origin=economy-migration originKind=tick day=270 source=hh-3_0-urban-landlord target=hh-3_0-urban-middle_peasant targetHex=3_0 population=1 goods={grain=15972, tool=275, cloth=1303, iron=109, fiber=5889} reason=mobile-commodity-inventory-carried-by-population-ratio
+=== day=270 有 targetHex=2,0 targetMode=merchant 的迁移笔数 ===
+1

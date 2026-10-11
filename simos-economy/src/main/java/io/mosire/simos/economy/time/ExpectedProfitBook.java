@@ -206,6 +206,53 @@ public final class ExpectedProfitBook {
       Map<ProductionUnitId, ProductionRules> relations,
       MarketTopology topology,
       long day) {
+    return prospect(
+        base,
+        household,
+        modeId,
+        hex,
+        industryOrNull,
+        marketOrNull,
+        demand,
+        shares,
+        claimedByEnterprises,
+        accounts,
+        units,
+        relations,
+        topology,
+        day,
+        null);
+  }
+
+  /**
+   * ★★★ <b>W9（2026-10-11，用户裁定 v3.29/v3.30 §7 第 2/4 条）：可以指定"落在哪一档"的同一入口</b> —— {@code positionOrNull
+   * != null} 时用它当这次评估的位置（该户带的库存能支撑到的那一档），{@code null} ⇒ 既有口径 （{@link
+   * #choosePosition}）。其余判据、算式、量纲一字不改。
+   *
+   * <p>★★ <b>为什么要能指定</b>：「**取库存最能支持的最高家户**」是<b>档位</b>（{@code IndustryClassSlots} 的四档）决定的 —— 同一
+   * (mode, hex) 里"落哪一档"会改<b>位置</b>（如 merchant 的 {@code principal / self_employed /
+   * porter}），而位置决定收益模型 （工资位置走 {@code wageProspect}、经营位置走 {@code productionProspect}）⇒
+   * 预期收益必须**按那一档的位置**算，否则"算的是甲档、落的是乙档"。
+   *
+   * <p>★ <b>fail-closed</b>：指定的位置不在该 mode 的<b>可生产位置</b>集合里（或为 null）⇒ 退回 {@link #choosePosition}
+   * 的既有口径（不抛、不静默换 mode）。
+   */
+  public static Prospect prospect(
+      EconomyDayView base,
+      HouseholdId household,
+      ProductionModeId modeId,
+      HexCoord hex,
+      Industry industryOrNull,
+      MarketTable marketOrNull,
+      MarketDemandBook.Book demand,
+      Map<AssetShareId, OwnershipStake> shares,
+      Set<AssetShareId> claimedByEnterprises,
+      AccountSession accounts,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionRules> relations,
+      MarketTopology topology,
+      long day,
+      ClassPositionId positionOrNull) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(household, "household");
     Objects.requireNonNull(modeId, "modeId");
@@ -241,7 +288,7 @@ public final class ExpectedProfitBook {
             || currentPosition.surplusRole() == ProductionRole.SurplusRole.DEPENDENT)) {
       return infeasible(household, modeId, currentPosition.id(), hex, null, "DEPENDENT");
     }
-    ProductionRole position = choosePosition(base, household, modeId, producing);
+    ProductionRole position = resolvePosition(base, household, modeId, producing, positionOrNull);
     HouseholdEconomy householdEconomy = base.classes().get(household);
     if (householdEconomy == null || householdEconomy.population() <= 0L) {
       return infeasible(household, modeId, position.id(), hex, null, "NO_ROW");
@@ -628,9 +675,13 @@ public final class ExpectedProfitBook {
    * MerchantCapacityPool#providerCapacityMilli} 与市场轮决定（fail-closed： 这里说不可行 ⇒ 一定不可行）。
    *
    * @param accounts 会话账户（读该户的 {@code tool} 存量；读不到 ⇒ 0 ⇒ 具名 {@code no-tool-input}）
+   * @param market 目标格的价表（★ W9 新增入参：工具维的"**买得到**"通道读它；{@code null} = 该格没有市场 ⇒ 买不到）
    */
   private static String merchantInputFailureReason(
-      HouseholdEconomy householdEconomy, HouseholdId household, AccountSession accounts) {
+      HouseholdEconomy householdEconomy,
+      HouseholdId household,
+      AccountSession accounts,
+      MarketTable market) {
     Objects.requireNonNull(householdEconomy, "householdEconomy");
     Objects.requireNonNull(accounts, "accounts");
     // ① 劳动维：参与率折算后的本轮劳动投入（与 J-B 算式、与主/副业排序读**同一个** getter）。
@@ -644,10 +695,18 @@ public final class ExpectedProfitBook {
             .householdGoods()
             .getOrDefault(household, Map.of())
             .getOrDefault(MerchantTradeTemplate.TOOL_COMMODITY, 0L);
-    if (toolMilli <= 0L) {
-      return "NO_MERCHANT_CAPACITY:no-tool-input";
+    if (toolMilli > 0L) {
+      return null;
     }
-    return null;
+    // ★★★ W9（2026-10-11，用户裁定 v3.29 §7 第 3 条「**没有生产工具不会买吗**」）：**手头没有工具 ≠ 不可行** ——
+    //   只要目标格的市场**交易**工具这个商品，这户就有"买 / 赊购"的通道（W2 起买得起不是前提：未付价款记债 =
+    //   {@code MarketSettlement.DEFERRED_PAYMENT_TERMS} 的口径；"0 价"也是合法定价 = 白送）。
+    //   判据与 {@code ModeMigrationPolicy.inKindLegUnavailableReasonOf} 第 ③ 条**同一口径**（"市场有这一行 ⇒ 拿得到"）。
+    //   ⇒ 只在"**手头没有 ∧ 市场也不交易它**"时才具名失败（＝用户说的"买不到（没货）"那一支）。
+    if (market != null && market.hasPrice(MerchantTradeTemplate.TOOL_COMMODITY)) {
+      return null;
+    }
+    return "NO_MERCHANT_CAPACITY:no-tool-input";
   }
 
   // ── merchant 分支 ──────────────────────────────────────────────────────────────────────────
@@ -679,7 +738,7 @@ public final class ExpectedProfitBook {
     //   在本格有模板时同样不可行（改前它会在下游以 `NO_MERCHANT_CAPACITY:no-capacity` 返回，理由不如这里具体）。
     //   ⇒ 具名理由：no-labor（没劳动）/ no-tool-input（没工具），两者都是 NO_MERCHANT_CAPACITY 一族
     //      ⇒ 逐候选 DEBUG（MODE_MIGRATION_PROSPECT_INFEASIBLE）与轮级 MODE_MIGRATION_CANDIDATES 照旧可读。
-    String inputFailure = merchantInputFailureReason(householdEconomy, household, accounts);
+    String inputFailure = merchantInputFailureReason(householdEconomy, household, accounts, market);
     if (inputFailure != null) {
       return infeasible(household, modeId, position.id(), hex, null, inputFailure);
     }
@@ -1065,6 +1124,26 @@ public final class ExpectedProfitBook {
     return producing.get(0);
   }
 
+  /**
+   * ★★ <b>W9：位置解析的唯一分叉点</b> —— 指定了 {@code positionOrNull} 且它确实是该 mode 的<b>可生产位置</b> ⇒ 用它
+   * （"按库存能支撑的最高档"那条路）；否则退回 {@link #choosePosition} 的既有口径（逐值不变）。
+   */
+  private static ProductionRole resolvePosition(
+      EconomyDayView base,
+      HouseholdId household,
+      ProductionModeId modeId,
+      List<ProductionRole> producing,
+      ClassPositionId positionOrNull) {
+    if (positionOrNull != null) {
+      for (ProductionRole candidate : producing) {
+        if (candidate.id().equals(positionOrNull)) {
+          return candidate;
+        }
+      }
+    }
+    return choosePosition(base, household, modeId, producing);
+  }
+
   private static boolean isWagePosition(ProductionRole position) {
     if (position.surplusRole() == ProductionRole.SurplusRole.WAGE_EARNER) {
       return true;
@@ -1232,6 +1311,29 @@ public final class ExpectedProfitBook {
             .multiply(BigInteger.valueOf(subsistence))
             .multiply(BigInteger.valueOf(grainPrice));
     return numerator.divide(BigInteger.valueOf(1_000_000L)).longValueExact();
+  }
+
+  /**
+   * ★★★ <b>W9-fix（2026-10-11）：把任意"毫钱"读数折成<b>每单位劳动的缩放值</b> —— 与 {@link Prospect#netPerLaborScaled()}
+   * <b>同一把尺</b>（{@link #PER_LABOR_SCALE} 百万分之一刻度）。</b>
+   *
+   * <pre>
+   * perLaborScaled(amountMilli, laborNeedMilli) = ⌊amountMilli × PER_LABOR_SCALE ÷ laborNeedMilli⌋
+   * amountMilli ≤ 0 ∨ laborNeedMilli ≤ 0 ⇒ 0（"没有这笔钱" / "没有规模" ⇒ 没有基准）
+   * </pre>
+   *
+   * <p>★ <b>它为什么存在（唯一拼写点）</b>：转业速度算式（{@code ModeMigrationPolicy.profitGapSpeedPerMille}）需要一个
+   * <b>正参考基准</b>（"这个生产方式的收益规模有多大"），而基准必须与收益差<b>同一把尺</b>才不会漂开 ⇒ 复用 {@link #scaledNetPerLabor}
+   * 的那一次乘法（{@code × PER_LABOR_SCALE}），不新造第二份刻度。
+   *
+   * <p>★ 溢出语义：与 {@code netPerLaborScaled} 同制 —— {@code BigInteger} 中间量 + {@code longValueExact}
+   * 溢出即抛（fail-closed，拒绝静默回绕）。
+   */
+  public static long perLaborScaled(long amountMilli, long laborNeedMilli) {
+    if (amountMilli <= 0L || laborNeedMilli <= 0L) {
+      return 0L;
+    }
+    return scaledNetPerLabor(amountMilli, laborNeedMilli);
   }
 
   /** {@code floor(net × PER_LABOR_SCALE / max(1, laborNeed))}；负数也向下取整（同 EnterpriseProfitBook）。 */

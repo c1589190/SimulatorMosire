@@ -1,0 +1,53 @@
+=== W9-fix2 真世界读数（jar 90e9f85abd4a620562926752fc4b1b8f；three-powers 0→360；HTTP 200 / 47.794s / head rev=2 tick=360）===
+
+--- ① MIGRATION_APPLIED（12 轮，落点：rowsBefore==rowsAfter ⇒ 全部并入既有户） ---
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=30 moves=9 rowsBefore=342 rowsAfter=342 transfersToday=181
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=60 moves=9 rowsBefore=342 rowsAfter=342 transfersToday=241
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=90 moves=6 rowsBefore=342 rowsAfter=342 transfersToday=272
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=120 moves=12 rowsBefore=342 rowsAfter=342 transfersToday=910
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=150 moves=47 rowsBefore=342 rowsAfter=342 transfersToday=472
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=180 moves=47 rowsBefore=342 rowsAfter=342 transfersToday=446
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=210 moves=48 rowsBefore=342 rowsAfter=342 transfersToday=507
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=240 moves=55 rowsBefore=342 rowsAfter=342 transfersToday=835
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=270 moves=47 rowsBefore=342 rowsAfter=342 transfersToday=383
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=300 moves=37 rowsBefore=342 rowsAfter=342 transfersToday=310
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=330 moves=37 rowsBefore=342 rowsAfter=342 transfersToday=345
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_APPLIED origin=economy-migration originKind=tick day=360 moves=35 rowsBefore=342 rowsAfter=342 transfersToday=329
+
+--- ② MIGRATION_PLAN（12 轮） ---
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=30 moves=9 organizations=123 modeHexProfits=80
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=60 moves=9 organizations=123 modeHexProfits=80
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=90 moves=6 organizations=126 modeHexProfits=83
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=120 moves=12 organizations=129 modeHexProfits=83
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=150 moves=47 organizations=131 modeHexProfits=83
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=180 moves=47 organizations=133 modeHexProfits=83
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=210 moves=48 organizations=133 modeHexProfits=83
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=240 moves=55 organizations=145 modeHexProfits=95
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=270 moves=47 organizations=146 modeHexProfits=96
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=300 moves=37 organizations=149 modeHexProfits=98
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=330 moves=37 organizations=151 modeHexProfits=98
+INFO  io.mosire.simos.economy.settlement - event=MIGRATION_PLAN origin=economy-migration originKind=tick day=360 moves=35 organizations=152 modeHexProfits=98
+
+--- ③ 计数 ---
+MIGRATION_MOVE 总笔数 = 389
+MIGRATION_MOVE day<=240 = 233（W9e 同窗口读数 = 233）
+MIGRATION_MOVE targetMode=merchant 总 = 120（day<=240 = 16）
+MARKET_REPORT 轮数 = 144（W9e sw 0→360 = 144；tp 0→240 = 96）
+MARKET_FILL 笔数 = 5131
+MERCHANT_TRADE_INDUSTRY_CREATED = 0（W9e 崩前 0→270 = 1，正是肇事那一条）
+ONDEMAND_TRADE_MIGRATION_{TOOL_PURCHASE,SKIPPED} = 0
+MIGRATION_IN_KIND_LEG_UNAVAILABLE_REFUSED = 0
+异常/栈/GUI_REQUEST_FAILED 行数 = 0
+
+--- ④ targetTierIndex 分布（整窗 / day<=240） ---
+    349 targetTierIndex=0
+     33 targetTierIndex=1
+      7 targetTierIndex=2
+day<=240:
+    217 targetTierIndex=0
+      9 targetTierIndex=1
+      7 targetTierIndex=2
+（W9e tp 0→240：0×217, 1×9, 2×7 = 233 笔）
+
+--- ⑤ day=270 候选轮（肇事日） ---
+DEBUG io.mosire.simos.economy.migration - event=MODE_MIGRATION_CANDIDATES origin=economy-migration originKind=tick day=270 candidateRows=3936 merchantCandidates=571 skippedShellNoPopulation=142 skippedShellNoLabor=97 byHex={-2_-1=82, -2_0=124, -1_-2=124, -1_-1=108, -1_0=124, 0_-2=138, 0_-1=89, 0_-3=83, -2_1=137, -1_1=122, 0_0=104, -2_2=193, -1_2=129, 0_1=125, -2_3=144, -1_3=81, 0_2=111, 0_3=55, -3_0=61, -3_1=88, -3_2=137, -3_3=111, 1_-2=62, 1_-1=90, 1_-3=90, 1_0=108, 1_1=123, 1_2=74, 2_-2=76, 2_-1=123, 2_-3=34, 2_0=186, 2_1=137, 3_-2=74, 3_-1=137, 3_-3=41, 3_0=111} merchantCandidatesByHex={-2_

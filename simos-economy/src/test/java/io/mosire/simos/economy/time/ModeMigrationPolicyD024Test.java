@@ -9,10 +9,14 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtStatus;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -24,6 +28,7 @@ import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -40,6 +45,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -176,10 +182,51 @@ class ModeMigrationPolicyD024Test {
       long sourceMoney,
       boolean sourceHasOrganization,
       boolean targetShareOwnedByEstate) {
+    return build(
+        sourceOutputUnits,
+        sourceInputMilli,
+        buyer1NeedPerDay,
+        buyer2NeedPerDay,
+        sourceMoney,
+        sourceHasOrganization,
+        targetShareOwnedByEstate,
+        DEFAULT_H2_SHARE_QUANTITY);
+  }
+
+  /** 既有 100 单位（HEAD 逐值）—— 逐格夹具的默认作业资本量；W9f 的负向用例把它压到 need − 1。 */
+  private static final long DEFAULT_H2_SHARE_QUANTITY = 100L;
+
+  /**
+   * @param h2ShareQuantity ★★★ <b>W9f 测试批（2026-10-11）加的第八参</b>：H2 那份 {@code WORKSHOP} 份额的数量 —— 计划期
+   *     {@code reserveIdleAssetsFor} 判"凑不凑得齐作业资本"读的就是它（{@code isIdleShare}：数量 &gt; 0 ∧ operator ==
+   *     owner ∧ 未被在产单位占用）。把它参数化，才能做"计划期预留尺度 == 执行期索取尺度"的边界用例（need − 1 ⇒ 计划期就该拒）。
+   */
+  private static Fixture build(
+      long sourceOutputUnits,
+      long sourceInputMilli,
+      long buyer1NeedPerDay,
+      long buyer2NeedPerDay,
+      long sourceMoney,
+      boolean sourceHasOrganization,
+      boolean targetShareOwnedByEstate,
+      long h2ShareQuantity) {
     ClassPositionId position = familyPosition();
     Map<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>();
     classes.put(SOURCE, row(SOURCE, H1, 100L, 1_000L, Map.of(GRAIN, 100L)));
     classes.put(BUYER1, row(BUYER1, H1, 100L, 0L, Map.of(GRAIN, buyer1NeedPerDay)));
+    // ★★★ W9-fix 测试批（2026-10-11）：**H2 的既有并入目标户劳动 = 0**（与 HEAD 逐值相同：`git show
+    //   HEAD:…ModeMigrationPolicyD024Test.java` 的第 183 行就是 `row(BUYER2, H2, 100L, 0L, …)`）。
+    //
+    //   ★ 这一行**同时就是 U1 的回归用例**：W9 首版把"参与率折算劳动 = 0"的户从**同一张表**里删掉，而那张表
+    //     既是"源户候选表"、又是 `bestExistingTarget` 的**并入目标注册表** ⇒ 劳动 0 的 H2 户不再能被并入，
+    //     迁入只能**新建户**、撞上实物腿闸（`in-kind-leg-unavailable:cloth`）⇒ 计划变空（W9d 实测 `moves=0`）。
+    //     W9d 当时把这一格改成 1,000 正是为了绕开那个缺陷。
+    //   ★★ W9-fix 的 ③ 把两张表**分开**（源户候选表要求劳动 > 0；并入目标注册表**不**要求）⇒ 这一格可以、
+    //     也必须改回 0 —— 改回后计划应**仍非空且落在并入支**（`target == BUYER2`，见
+    //     `hasReadingFalseButPositiveExpectedCandidateYieldsPlan` 的断言）。★ 若哪天有人把两张表再合回去，
+    //     本行 + 那条断言会当场红 —— 这就是它的判别力所在。
+    //   ★ 取值 0 也让 BUYER2 自己**不产生** move（它在 H2 的当前读数高于它在 H1 的候选 ⇒ 收益差为负），
+    //     本类"源户只有 SOURCE"的断言因此仍然成立。
     classes.put(BUYER2, row(BUYER2, H2, 100L, 0L, Map.of(GRAIN, buyer2NeedPerDay)));
 
     Map<HouseholdId, HouseholdClassMembership> standings = new LinkedHashMap<>();
@@ -231,7 +278,7 @@ class ModeMigrationPolicyD024Test {
             AssetKind.WORKSHOP,
             targetShareOwner,
             targetShareOwner,
-            100L,
+            h2ShareQuantity,
             OwnershipStake.RightKind.OWNED);
     Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     shares.put(h1ShareId, h1Share);
@@ -427,21 +474,237 @@ class ModeMigrationPolicyD024Test {
     assertThat(target.feasible()).isTrue();
     assertThat(target.netPerLaborScaled()).as("★ 预期正收益候选").isPositive();
 
+    // ★★★ W9（2026-10-11，用户裁定 v3.30 §7 第 2 条）：**速度不再是常量基线**（`MIGRATION_PER_MILLE` 已按 §一.11
+    //   删除）—— 它由这一对 (当前, 目标) 的**预期收益差**现算。下面用夹具自己算出来的两把读数推期望值，
+    //   算式与 main 的 `profitGapSpeedPerMille` 逐字同形（不写死一个数 ⇒ 换夹具即换期望，断言仍有效）；
+    //   「算式本身逐值对不对」由本账本新增的 `ModeMigrationProfitGapSpeedW9Test` 用逐值表钉。
+    long currentPerLabor = currentProspect(fixture).netPerLaborScaled();
+    long targetPerLabor = target.netPerLaborScaled();
+    assertThat(targetPerLabor)
+        .as("★ 前置：差必须为正，否则下面 allSatisfy 会空洞地绿")
+        .isGreaterThan(currentPerLabor);
+    long expectedSpeed = expectedProfitGapSpeed(currentPerLabor, targetPerLabor);
+    assertThat(expectedSpeed).as("★ 前置：正的收益差必须产生正的转业速度").isPositive();
+
     ModeMigrationPolicy.MigrationPlan plan = plan(fixture);
     assertThat(plan.moves()).as("★ D-024：没有既存读数也能产出非空迁移计划").isNotEmpty();
+    assertThat(plan.moves())
+        .as(
+            "★★ U1 回归（W9-fix）：H2 的既住户 BUYER2 劳动 = 0（与 HEAD 的同格夹具逐值相同），但它**仍留在并入目标"
+                + "注册表**里 ⇒ 这一笔必须落在'并入既有户'那一支（target == BUYER2），而不是新建户。"
+                + "改前（W9 首版把两张表合一）：劳动 0 的户连并入目标都当不了 ⇒ 迁入落到新建支、撞实物腿闸 ⇒ 计划为空")
+        .anyMatch(move -> move.target().equals(BUYER2));
     assertThat(plan.moves())
         .allSatisfy(
             move -> {
               assertThat(move.source()).isEqualTo(SOURCE);
               assertThat(move.target()).isNotEqualTo(move.source());
               assertThat(move.transferSpeedPerMille())
-                  .isEqualTo(ModeMigrationPolicy.MIGRATION_PER_MILLE);
+                  .as("★ W9：速度 = 收益差驱动（不再是常量基线）")
+                  .isEqualTo(expectedSpeed);
               assertThat(move.reason())
                   .isEqualTo(ModeMigrationPolicy.MigrationMove.REASON_PROFIT_WEIGHTED);
             });
     assertThat(plan.moves().stream().mapToLong(ModeMigrationPolicy.MigrationMove::population).sum())
-        .as("基线迁移人口 = max(1, 100 × 10 ÷ 1000) = 1")
-        .isEqualTo(1L);
+        .as(
+            "★ W9-fix 可迁人口 = min(速度折算, 上限折算)（人口 100、速度 %d‰ ⇒ %d 人）",
+            expectedSpeed, expectedMoveablePopulation(100L, expectedSpeed))
+        .isEqualTo(expectedMoveablePopulation(100L, expectedSpeed));
+  }
+
+  /**
+   * ★★★ <b>W9f 测试批（2026-10-11）：计划期"预留多少作业资本" == 执行期"索取多少"（尺度唯一的拼写点），且<b>少一份就必须在计划期被拒</b></b>。
+   *
+   * <p>★★ <b>这条判据补的是什么（W9-fix2 的判据缺口）</b>：W9-fix2 把"本笔需要多少作业资本"收成唯一拼写点 {@code
+   * ModeMigrationPolicy.requiredWorkCapitalScale(Industry, long)}，计划期<b>预留</b>（{@code
+   * reserveIdleAssetsFor}）与执行期<b>索取</b>（{@code ModeMigrationSettlement.createEnterpriseAndProcess →
+   * planAssetMoves}）共用它。两侧一旦各拼一遍（W9-fix2 之前就是），缺口表现为 <b>计划期少留、执行期多要</b> ⇒ 撞 fail-closed 守卫 ⇒ <b>整个
+   * tick 抛（真世界 three-powers day=270 HTTP 500）</b>。 而本批实跑全仓 3,464 条 0 红 ⇒
+   * 这条一致性在既有测试里<b>没有任何入口</b>。本用例就是那个入口。
+   *
+   * <p>★★ <b>为什么它是"真"判据而不是恒真断言</b>：判据链是"<b>先读这一笔真的会被搬多少人口</b>（{@code take}）⇒ 用与 main 同形但独立重写的算式算
+   * need ⇒ 把目标格的闲置作业资本压到 {@code need − 1} ⇒ 计划必须<b>空</b>；给回 {@code need} ⇒
+   * 计划必须<b>回来</b>"。任何一侧的尺度算式漂开（份额算少、劳动口径取错、预留不查），这条链都会断在"压到 {@code need − 1} 仍然有 move"上。
+   *
+   * <p>★ <b>读数层</b>：{@code take} 由夹具自己的两把读数（速度、人口）现算，不写死；need 由目标产业模板自己的 {@code laborPerUnit} /
+   * {@code capacityPerUnit} 现算。
+   */
+  @Test
+  void thePlanPhaseReservesExactlyTheWorkCapitalThatExecutionWillClaim() {
+    // ① 富余夹具（H2 的 WORKSHOP 份额 = 夹具默认的 100 单位）：计划必须非空，并读出这一笔会搬多少人口。
+    Fixture rich = build(100L, 0L, 5_000L, 10_000L, 0L, false);
+    ModeMigrationPolicy.MigrationPlan plan = plan(rich);
+    assertThat(plan.moves()).as("★ 前置：富余作业资本的夹具必须产出非空计划（否则下面整条链空洞地绿）").isNotEmpty();
+    long take =
+        plan.moves().stream().mapToLong(ModeMigrationPolicy.MigrationMove::population).sum();
+
+    Industry targetIndustry = rich.base().industries().get(TARGET_INDUSTRY);
+    HouseholdEconomy source = rich.base().classes().get(SOURCE);
+    long laborPerUnit = targetIndustry.recipe().laborPerUnit();
+    long perUnit = targetIndustry.recipe().capacityPerUnit().get(AssetKind.WORKSHOP);
+    // 计划期的劳动入参 = 唯一拼写点 laborCarriedByMoveUpperBound（★ 本用例直接调它，等于把"计划期用哪一份劳动"也钉住）；
+    // need = requiredWorkCapitalScale(模板, 那份劳动) × capacityPerUnit[每一维]（与执行期 planAssetMoves 同一乘）。
+    long laborEstimate =
+        ModeMigrationPolicy.laborCarriedByMoveUpperBound(
+            source.laborMilli(), source.population(), take);
+    long scale = ModeMigrationPolicy.requiredWorkCapitalScale(targetIndustry, laborEstimate);
+    long need = Math.multiplyExact(scale, perUnit);
+
+    assertThat(laborEstimate)
+        .as(
+            "计划期劳动入参 = ⌈源户劳动 %d × take %d ÷ 源户人口 %d⌉（唯一拼写点，不是落盘行的 0）",
+            source.laborMilli(), take, source.population())
+        .isPositive();
+    assertThat(need)
+        .as(
+            "需要量 = scale(%d) × capacityPerUnit[WORKSHOP](%d) = %d 单位（laborPerUnit=%d）",
+            scale, perUnit, need, laborPerUnit)
+        .isPositive();
+
+    // ② 负向：把目标格的闲置作业资本压到 need − 1 ⇒ 计划期**就该拒**（不能留给执行期撞守卫 ⇒ 那是 HTTP 500）。
+    Fixture shortByOne =
+        build(100L, 0L, 5_000L, 10_000L, 0L, false, false, Math.max(0L, need - 1L));
+    assertThat(plan(shortByOne).moves())
+        .as(
+            "★ 只给 need − 1 = %d 单位作业资本 ⇒ 计划必须为空（预留不足的目标不许进计划；"
+                + "这一笔若进了计划，执行期会按同一算式索取 %d 单位 ⇒ 撞 fail-closed 守卫 ⇒ tick 抛）",
+            Math.max(0L, need - 1L), need)
+        .isEmpty();
+
+    // ③ 边界正向：给回 need ⇒ 计划必须回来（证明 ② 拒的是"少一份"，不是"这一格根本不迁"）。
+    Fixture exactly = build(100L, 0L, 5_000L, 10_000L, 0L, false, false, need);
+    assertThat(plan(exactly).moves())
+        .as("★ 恰好 need = %d 单位 ⇒ 计划必须恢复（边界就在 need 这一份上）", need)
+        .isNotEmpty();
+    assertThat(
+            plan(exactly).moves().stream()
+                .mapToLong(ModeMigrationPolicy.MigrationMove::population)
+                .sum())
+        .as("★ 边界两侧的 take 逐值相同（预留只决定'这一笔在不在'，不改变搬多少人）")
+        .isEqualTo(take);
+  }
+
+  /**
+   * ★★★ <b>W9f 测试批（2026-10-11）：壳户（人口 ≤ 0）不产出迁移，也不改变别人的计划（判据"壳户跳过"）</b>。
+   *
+   * <p>口径出处：{@code ModeMigrationPolicy.java:457-460}（候选循环：{@code population <= 0 || classMembership
+   * == null} ⇒ {@code tally.shellSkipped(true)} + {@code continue}）+ 用户派单 ⑥（W9：「壳户不刷屏」，只进轮级汇总）。
+   * 真世界读数面 = {@code MODE_MIGRATION_CANDIDATES} 的 {@code skippedShellNoPopulation}（W9f sw
+   * 0→360：Σ876； tp 0→360：Σ1716）；本用例是它**在计划层面的可执行判据**。
+   *
+   * <p>★★ <b>为什么是"逐值不变"而不是"少了几笔"</b>：壳户被跳过必须是**纯剔除**——它既不自己产生 move，也不能把别人的 move
+   * 挤掉（否则"跳过壳户"就是一条会改世界行为的隐藏筛选）。所以判据 = ① 没有任何 move 的 source 是壳户；② 整份计划 （source →
+   * target/targetMode/population/speed 的规范串）与**没有壳户的那份夹具逐值相同**。
+   */
+  @Test
+  void aShellHouseholdProducesNoMoveAndDoesNotChangeAnyoneElsesPlan() {
+    HouseholdId shell = HouseholdId.parse("hh-d024-shell-population-zero");
+    HexCoord h3 = new HexCoord(2, 0);
+    Fixture plain = build(100L, 0L, 5_000L, 10_000L, 0L, false);
+    Fixture withShell = withShellHousehold(plain, shell, h3);
+
+    assertThat(withShell.base().classes())
+        .as("★ 前置：壳户真的在夹具里（人口 0 ∧ 有阶层归属 ⇒ 走 shell 那一支，不是'没登记'那一支）")
+        .containsKey(shell);
+    assertThat(withShell.base().classes().get(shell).population()).isZero();
+    assertThat(withShell.base().classStandings()).containsKey(shell);
+
+    ModeMigrationPolicy.MigrationPlan shellPlan = plan(withShell);
+    assertThat(signature(plan(plain)))
+        .as("★ 判别力自检：没有壳户的那份计划必须**非空**（否则 ② 的逐值相等是空洞地绿）")
+        .isNotEmpty();
+    assertThat(shellPlan.moves())
+        .as("① 壳户不得是任何一笔的源户（人口 0 ⇒ 没有可迁的人）")
+        .noneMatch(move -> move.source().equals(shell));
+    assertThat(signature(shellPlan))
+        .as("② 整份计划必须与没有壳户时**逐值相同**（跳壳户是纯剔除，不许改别人的落点/人口/速度）")
+        .isEqualTo(signature(plan(plain)));
+    assertThat(withShell.base().classes()).as("③ 计划是只读的：壳户仍在（不被清理、也不被改写）").containsKey(shell);
+  }
+
+  /** 计划的规范串（只取"这一笔是谁→谁、什么 mode、多少人、多快"四维，避免依赖 move 的记录序）。 */
+  private static java.util.List<String> signature(ModeMigrationPolicy.MigrationPlan plan) {
+    return plan.moves().stream()
+        .map(
+            move ->
+                move.source().value()
+                    + "->"
+                    + move.target().value()
+                    + "/"
+                    + move.targetMode().value()
+                    + "/"
+                    + move.population()
+                    + "/"
+                    + move.transferSpeedPerMille())
+        .sorted()
+        .toList();
+  }
+
+  /** 在既有夹具上**加**一个壳户（人口 0、劳动 0、有阶层归属、位于第三个格 H3）：只改两份成员表，其余逐值不动。 */
+  private static Fixture withShellHousehold(Fixture base, HouseholdId shell, HexCoord hex) {
+    Map<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>(base.base().classes());
+    classes.put(shell, row(shell, hex, 0L, 0L, Map.of()));
+    Map<HouseholdId, HouseholdClassMembership> standings =
+        new LinkedHashMap<>(base.base().classStandings());
+    ClassPositionId position = familyPosition();
+    standings.put(
+        shell,
+        new HouseholdClassMembership(
+            shell, position, position, Map.of(), 0L, 0L, "test-d024-shell"));
+    return new Fixture(
+        base.base().withHouseholdEconomies(classes).withClassMemberships(standings),
+        base.accounts(),
+        base.topology(),
+        base.marketTables(),
+        base.sourceShareId(),
+        base.targetShareId(),
+        base.sourceUnitId());
+  }
+
+  /**
+   * ★★★ <b>W9：`profitGapSpeedPerMille` 的期望值（测试侧独立复述算式，防止断言跟着实现一起漂）</b>。
+   *
+   * <pre>
+   * gap ≤ 0 ⇒ 0
+   * 否则    ⇒ clamp(⌊SLOPE × gap ÷ 分母⌋, 1, 1000)，SLOPE = 100（政策常量）
+   * 分母（★★ W9-fix，2026-10-11）= max(|当前|, |其他|, 收益规模基准)；本类调两参形态 ⇒ 基准 = 0
+   * </pre>
+   *
+   * <p>★ 旧口径 {@code max(1, |当前|)} 在 {@code 收益_当前 ≈ 0} 时退化成 1 ⇒ 打满 1000‰ ⇒ 一笔搬空整户 （W9d 实测
+   * three-powers 21 个零成交轮）；W9-fix 把分母改成"三个非负量取大" ⇒ 不再需要"不许除零"补丁。 ★
+   * 这里**不写死任何速度值**：期望值由夹具自己的两把读数按上面算式现算 ⇒ 换夹具即换期望，断言仍有效。
+   */
+  private static long expectedProfitGapSpeed(long currentPerLabor, long targetPerLabor) {
+    long gap = targetPerLabor - currentPerLabor;
+    if (gap <= 0L) {
+      return 0L;
+    }
+    long slope = ModeMigrationPolicy.PROFIT_GAP_SPEED_SLOPE_PER_MILLE;
+    if (slope <= 0L) {
+      return 0L;
+    }
+    long denominator = Math.max(Math.abs(currentPerLabor), Math.abs(targetPerLabor));
+    long speed = slope * gap / denominator;
+    return Math.min(1000L, Math.max(1L, speed));
+  }
+
+  /**
+   * ★★ <b>W9-fix 的人口闸（测试侧独立复述）：本户本轮可转人口 = min(速度折算, 上限折算)</b>。
+   *
+   * <pre>
+   * 速度折算 = min(人口, max(1, ⌊人口 × 速度 ÷ 1000⌋))
+   * 上限折算 = min(人口, max(1, ⌊人口 × MIGRATION_SPEED_CAP_PER_MILLE ÷ 1000⌋))
+   * </pre>
+   *
+   * <p>★ 为什么在计划级用例里也要复述一遍：W9 首版这里是 {@code max(1, ⌊人口 × 速度 ÷ 1000⌋)}（**没有上限**）—— 速度 ≈ 1000‰
+   * 时它等于整户人口。上限是 W9-fix 的第二个机制，必须与速度**分开**验（两栏在 `MIGRATION_MOVE` 里同时可读：速度报算式输出、人口报这条闸）。
+   */
+  private static long expectedMoveablePopulation(long population, long speedPerMille) {
+    return Math.min(
+        Math.min(population, Math.max(1L, population * speedPerMille / 1000L)),
+        Math.min(
+            population,
+            Math.max(1L, population * ModeMigrationPolicy.MIGRATION_SPEED_CAP_PER_MILLE / 1000L)));
   }
 
   @Test
@@ -471,6 +734,107 @@ class ModeMigrationPolicyD024Test {
         .noneMatch(move -> move.source().equals(SOURCE));
   }
 
+  /**
+   * ★★★ <b>W9 判据（用户原话④）：「债务规模决定<b>本生产方式内</b>阶层跌落速度，生产方式收益决定<b>生产方式间</b>转业速度」 ⇒ <b>债务很高、但「别的方式收益 ≤
+   * 当前」⇒ 必须一笔转业都不产生</b></b>。
+   *
+   * <p>★ <b>负向（本条的主角）</b>：给源户挂 <b>50 亿毫</b>债务，收益差仍 ≤ 0 ⇒ 源户迁移笔数必须为 0。 旧口径（{@code max(10‰,
+   * f(债务/资产))}，W4）下这笔债会把速度抬起来 ⇒ 现在抬高速度的那个输入已被整体移除。
+   *
+   * <p>★ <b>正对照（必须有，否则"没迁移"可能只是因为整个世界没动静）</b>：同一个夹具把两格需求对调 ⇒ 收益差 &gt; 0 ⇒ 有转业；
+   * 且**加上同一笔巨债后计划逐值不变**（目标/人口/速度/档位全同，只有债务分摊那一栏从 0 变成正数） —— 这就是"债务不是转业速度的输入"的可执行证据。
+   */
+  @Test
+  void w9HighDebtDoesNotMigrateWhenTheProfitGapIsNonPositive() {
+    // 负向世界：H1 需求 10,000 / H2 需求 5,000 ⇒ 当前(H1) 高于目标(H2) ⇒ 收益差 ≤ 0。
+    Fixture down = build(100L, 0L, 10_000L, 5_000L, 0L, false);
+    long downCurrent = currentProspect(down).netPerLaborScaled();
+    long downTarget = targetProspect(down, FAMILY).netPerLaborScaled();
+    assertThat(downTarget).as("★ 前置：负向世界的收益差必须 ≤ 0（否则这条用例没有判别力）").isLessThanOrEqualTo(downCurrent);
+    assertThat(sourceMoves(plan(down))).as("无债务：收益差 ≤ 0 ⇒ 源户不转业").isEmpty();
+    Fixture downWithDebt = withSourceDebt(down, 5_000_000_000L);
+    assertThat(sourceMoves(plan(downWithDebt)))
+        .as("★ 债务 50 亿毫（「债务很高」）∧ 收益差 ≤ 0 ⇒ 仍然一笔转业都没有（债务不再是转业速度的输入）")
+        .isEmpty();
+
+    // 正对照：同一个夹具把需求对调 ⇒ 收益差 > 0。
+    Fixture up = build(100L, 0L, 5_000L, 10_000L, 0L, false);
+    assertThat(targetProspect(up, FAMILY).netPerLaborScaled())
+        .as("★ 正对照前置：收益差 > 0")
+        .isGreaterThan(currentProspect(up).netPerLaborScaled());
+    List<ModeMigrationPolicy.MigrationMove> upMoves = sourceMoves(plan(up));
+    assertThat(upMoves).as("★ 正对照：收益差 > 0 ⇒ 源户真的转业").isNotEmpty();
+    Fixture upWithDebt = withSourceDebt(up, 5_000_000_000L);
+    List<ModeMigrationPolicy.MigrationMove> upDebtMoves = sourceMoves(plan(upWithDebt));
+    assertThat(planSignature(upDebtMoves))
+        .as("★ 债务不改变计划：目标格/人口/速度/档位逐值相同（只有债务分摊那一栏不同）")
+        .isEqualTo(planSignature(upMoves));
+    assertThat(upDebtMoves)
+        .as("★ 而那笔债确实被分摊进计划（不是被静默丢掉）")
+        .allSatisfy(move -> assertThat(move.debtMilli()).isPositive());
+  }
+
+  /** 源户的那些迁移笔（本类的判据几乎都只看源户）。 */
+  private static List<ModeMigrationPolicy.MigrationMove> sourceMoves(
+      ModeMigrationPolicy.MigrationPlan plan) {
+    return plan.moves().stream().filter(move -> move.source().equals(SOURCE)).toList();
+  }
+
+  /** 计划的**逐值签名**（把"债务以外的一切"压成可比字符串 —— 用于"债务不改变计划"那条断言）。 */
+  private static List<String> planSignature(List<ModeMigrationPolicy.MigrationMove> moves) {
+    return moves.stream()
+        .map(
+            move ->
+                move.source().value()
+                    + "->"
+                    + move.target().value()
+                    + "@"
+                    + move.targetHex().q()
+                    + ","
+                    + move.targetHex().r()
+                    + ":"
+                    + move.targetMode().value()
+                    + ":pop="
+                    + move.population()
+                    + ":speed="
+                    + move.transferSpeedPerMille()
+                    + ":tier="
+                    + move.targetTierIndex()
+                    + ":reason="
+                    + move.reason())
+        .toList();
+  }
+
+  /**
+   * ★★ <b>W9：给夹具的源户挂一笔债务</b>（"债务很高"的负向用例要它）。
+   *
+   * <p>★ 公开前置：只换 {@code debtContracts} 一个组件，其余（账户/拓扑/价表/份额 id）逐值带过 —— 这样"加了债"与"没加债"
+   * 两个世界只差那一笔债，因果是干净的。
+   */
+  private static Fixture withSourceDebt(Fixture fixture, long principalMilli) {
+    DebtContract contract =
+        new DebtContract(
+            DebtContractId.idOf(
+                SOURCE, BUYER2, DebtUnit.commodity(GRAIN), DebtTerms.legacyDefault()),
+            SOURCE,
+            BUYER2,
+            DebtUnit.commodity(GRAIN),
+            DebtTerms.legacyDefault(),
+            principalMilli,
+            0L,
+            OptionalLong.empty(),
+            OptionalLong.empty(),
+            DebtStatus.NORMAL);
+    return new Fixture(
+        fixture.base().withDebtContracts(Map.of(contract.id(), contract)),
+        fixture.accounts(),
+        fixture.topology(),
+        fixture.marketTables(),
+        fixture.sourceShareId(),
+        fixture.targetShareId(),
+        fixture.sourceUnitId());
+  }
+
   @Test
   void aRuleUsesExpectedProfitNotRealBook() {
     // 预期亏损 + 流动性 < 下一周期投入 ⇒ A 规则 1000‰。
@@ -493,8 +857,15 @@ class ModeMigrationPolicyD024Test {
         .as("A 规则把源户 100 人全部转出")
         .isEqualTo(100L);
 
-    // 有足够流动性 ⇒ A 规则不触发，只走 10‰ 基线（或没有更高目标）。
+    // 有足够流动性 ⇒ A 规则不触发，只走**收益差驱动**的转业速度（W9：常量基线已删）。
     Fixture liquid = build(1L, 5_000_000L, 5_000L, 10_000L, 1_000_000L, false);
+    long liquidCurrent = currentProspect(liquid).netPerLaborScaled();
+    long liquidTarget = targetProspect(liquid, FAMILY).netPerLaborScaled();
+    long liquidExpectedSpeed = expectedProfitGapSpeed(liquidCurrent, liquidTarget);
+    assertThat(liquidExpectedSpeed)
+        .as("★ 前置：这一支必须真有正收益差（否则下面的 allSatisfy 空洞地绿、断言失去判别力）")
+        .isPositive()
+        .isLessThan(1000L);
     ModeMigrationPolicy.MigrationPlan liquidPlan = plan(liquid);
     assertThat(liquidPlan.moves())
         .as("★ 流动性足够 ⇒ 不得出现 1000‰ A 规则迁移")
@@ -504,15 +875,15 @@ class ModeMigrationPolicyD024Test {
                     && move.transferSpeedPerMille() == 1000L
                     && move.reason()
                         .equals(ModeMigrationPolicy.MigrationMove.REASON_A_RULE_MAX_SPEED));
-    assertThat(liquidPlan.moves())
-        .as("但目标预期更高 ⇒ 仍可走 10‰ 基线")
+    List<ModeMigrationPolicy.MigrationMove> liquidSourceMoves =
+        liquidPlan.moves().stream().filter(move -> move.source().equals(SOURCE)).toList();
+    assertThat(liquidSourceMoves).as("★ 非空（原断言用 allSatisfy，空集也会绿 —— W9 起改成先钉非空）").isNotEmpty();
+    assertThat(liquidSourceMoves)
         .allSatisfy(
-            move -> {
-              if (move.source().equals(SOURCE)) {
+            move ->
                 assertThat(move.transferSpeedPerMille())
-                    .isEqualTo(ModeMigrationPolicy.MIGRATION_PER_MILLE);
-              }
-            });
+                    .as("★ W9：速度 = 收益差驱动（不再是 10‰ 常量基线）")
+                    .isEqualTo(liquidExpectedSpeed));
 
     // 预期净收益 >=0 ⇒ A 规则条件的第一项就不满足。
     Fixture profitable = build(100L, 0L, 5_000L, 10_000L, 0L, false);
@@ -602,9 +973,30 @@ class ModeMigrationPolicyD024Test {
     assertThat(after.units().get(fixture.sourceUnitId()).modeKey())
         .as("★ D-022：源户 unit.modeKey 不变")
         .isEqualTo(beforeUnit.modeKey());
+    // ★ W9（2026-10-11）：迁出人口不再写死 1 人 —— 速度改成**收益差驱动**之后，可迁人口 =
+    //   min(⌊人口 × 速度 ÷ 1000⌋, ⌊人口 × 上限 ÷ 1000⌋)（★ W9-fix 加的第二个机制 = 人口闸
+    //   `MIGRATION_SPEED_CAP_PER_MILLE`），speed 由这一对 (当前, 目标) 的预期收益差现算。
+    //   ⇒ 期望值从**测试侧独立复述的算式**推（不写死数字，也不抄 main 的输出）：
+    //     ① 计划里源户那一笔的总人口 == expectedMoveablePopulation(人口, 速度)；
+    //     ② outbox 回写后源户人口 == 100 − 那一笔的总人口（守恒，P0 口径）。
+    long plannedMove =
+        plan.moves().stream()
+            .filter(move -> move.source().equals(SOURCE))
+            .mapToLong(ModeMigrationPolicy.MigrationMove::population)
+            .sum();
+    long expectedSpeed =
+        expectedProfitGapSpeed(
+            currentProspect(fixture).netPerLaborScaled(),
+            targetProspect(fixture, FAMILY).netPerLaborScaled());
+    assertThat(plannedMove)
+        .as(
+            "★ W9-fix 可迁人口 = min(速度折算, 上限折算)（人口 100、速度 %d‰ ⇒ %d 人；不再是常量基线，也不许整户迁空）",
+            expectedSpeed, expectedMoveablePopulation(100L, expectedSpeed))
+        .isEqualTo(expectedMoveablePopulation(100L, expectedSpeed));
     assertThat(after.classes().get(SOURCE).population())
-        .as("基线迁移只缩编 1 人（P0：outbox 回写后），源户仍在")
-        .isEqualTo(99L);
+        .as("★ 源户缩编量 == 计划里那一笔（P0：outbox 回写后），源户仍在")
+        .isEqualTo(100L - plannedMove)
+        .isPositive();
   }
 
   /**

@@ -1,0 +1,73 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 8850172,
+      "md5": "3773c19326b2e54cc9576d51539de304",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-tp.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10972,
+  "headRevision": 2,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "b07bb719257cf2b313d037610aacb106",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=INFO -Dsimos.app.logLevel=INFO",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-test-batch/logs/tp360.log",
+  "logKeep": "event=(HAUL_[A-Z_]*|LOGISTICS_[A-Z_]*|MERCHANT_[A-Z_]*|ONDEMAND_[A-Z_]*|MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET_[A-Z_]*|PRIMARY_MODE[A-Z_]*|CAPACITY_[A-Z_]*|MINT_[A-Z_]*|MONEY_MARKET[A-Z_]*|DEBT_[A-Z_]*|HOUSEHOLD_[A-Z_]*|POPULATION_[A-Z_]*|DAY_START|DAY_END|CLASS_[A-Z_]*|SLIDE_[A-Z_]*|STRATUM[A-Z_]*)",
+  "logKeptLines": 3744168,
+  "logLines": 3744168,
+  "logStrippedMd5": "9357d145d77367f7373d8f4f79a5d1ff",
+  "pid": 457521,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-test-batch/plans/plan-tp-360.json",
+  "readySeconds": 1.71,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 7834656,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 360
+    }
+  ],
+  "startedAt": "2026-10-11T20:38:07",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 29.866,
+      "to": 360
+    },
+    {
+      "bytes": 8850172,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-test-batch/dumps/tp360-d360-oneshot.json",
+      "i": 1,
+      "label": "d360-oneshot",
+      "md5": "3773c19326b2e54cc9576d51539de304",
+      "op": "dump",
+      "revision": 2
+    }
+  ],
+  "store": "/tmp/w9t/stores/tp360",
+  "tag": "tp360",
+  "tick": 360,
+  "world": "three-powers"
+}

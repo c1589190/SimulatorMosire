@@ -1,0 +1,2540 @@
+TAP version 13
+# (node:457093) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: decodeBlocks-restores-vertex-world-coordinates
+ok 1 - decodeBlocks-restores-vertex-world-coordinates
+  ---
+  duration_ms: 1.391818
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-preserves-block-metadata
+ok 2 - decodeBlocks-preserves-block-metadata
+  ---
+  duration_ms: 0.113624
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-keeps-rings-closed-with-same-vertex-count
+ok 3 - decodeBlocks-keeps-rings-closed-with-same-vertex-count
+  ---
+  duration_ms: 0.130626
+  type: 'test'
+  ...
+# Subtest: decodeBlocks-does-not-mutate-the-wire-input
+ok 4 - decodeBlocks-does-not-mutate-the-wire-input
+  ---
+  duration_ms: 0.135831
+  type: 'test'
+  ...
+# Subtest: terrainAt-reads-decoded-block-at-hex-center
+ok 5 - terrainAt-reads-decoded-block-at-hex-center
+  ---
+  duration_ms: 0.16627
+  type: 'test'
+  ...
+# Subtest: countsByTerrain-sums-decoded-hex-counts
+ok 6 - countsByTerrain-sums-decoded-hex-counts
+  ---
+  duration_ms: 0.086311
+  type: 'test'
+  ...
+# (node:457094) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: formatCalendarDate-formats-year-month-day-and-does-not-pad-year
+ok 7 - formatCalendarDate-formats-year-month-day-and-does-not-pad-year
+  ---
+  duration_ms: 0.560174
+  type: 'test'
+  ...
+# Subtest: formatCalendarDate-null-non-object-and-missing-components-return-empty
+ok 8 - formatCalendarDate-null-non-object-and-missing-components-return-empty
+  ---
+  duration_ms: 0.101631
+  type: 'test'
+  ...
+# Subtest: groupByTick-same-tick-same-date-keeps-first-object-and-one-date-string
+ok 9 - groupByTick-same-tick-same-date-keeps-first-object-and-one-date-string
+  ---
+  duration_ms: 0.417698
+  type: 'test'
+  ...
+# Subtest: groupByTick-without-date-stays-null-with-empty-dates
+ok 10 - groupByTick-without-date-stays-null-with-empty-dates
+  ---
+  duration_ms: 0.076645
+  type: 'test'
+  ...
+# Subtest: groupByTick-mixed-dates-keeps-first-and-lists-every-distinct-string
+ok 11 - groupByTick-mixed-dates-keeps-first-and-lists-every-distinct-string
+  ---
+  duration_ms: 0.125511
+  type: 'test'
+  ...
+# Subtest: hexSeasonText-missing-season-is-explicit-on-both-host-pages
+ok 12 - hexSeasonText-missing-season-is-explicit-on-both-host-pages
+  ---
+  duration_ms: 0.138771
+  type: 'test'
+  ...
+# Subtest: hexSeasonText-fallback-zone-source-uses-north-hemisphere-wording-on-both
+ok 13 - hexSeasonText-fallback-zone-source-uses-north-hemisphere-wording-on-both
+  ---
+  duration_ms: 0.092528
+  type: 'test'
+  ...
+# Subtest: hexSeasonText-full-season-shows-zone-day-range-and-percent-on-both
+ok 14 - hexSeasonText-full-season-shows-zone-day-range-and-percent-on-both
+  ---
+  duration_ms: 0.207797
+  type: 'test'
+  ...
+# Subtest: hexSeasonText-rounds-per-mille-to-integer-percent-on-both
+ok 15 - hexSeasonText-rounds-per-mille-to-integer-percent-on-both
+  ---
+  duration_ms: 0.22074
+  type: 'test'
+  ...
+# Subtest: hexSeasonText-missing-progress-does-not-fabricate-zero-percent-on-both
+ok 16 - hexSeasonText-missing-progress-does-not-fabricate-zero-percent-on-both
+  ---
+  duration_ms: 0.301321
+  type: 'test'
+  ...
+# Subtest: zoneReadableName-maps-known-zones-and-passes-unknown-through-on-both
+ok 17 - zoneReadableName-maps-known-zones-and-passes-unknown-through-on-both
+  ---
+  duration_ms: 0.15179
+  type: 'test'
+  ...
+# Subtest: the-two-copies-of-hexSeasonText-and-zoneReadableName-are-identical-after-comment-strip
+ok 18 - the-two-copies-of-hexSeasonText-and-zoneReadableName-are-identical-after-comment-strip
+  ---
+  duration_ms: 0.784638
+  type: 'test'
+  ...
+# Subtest: timeline-static-wiring-renders-tl-date-only-when-server-sent-a-date
+ok 19 - timeline-static-wiring-renders-tl-date-only-when-server-sent-a-date
+  ---
+  duration_ms: 0.246375
+  type: 'test'
+  ...
+# Subtest: panels-static-wiring-renders-season-row-from-api-season-field
+ok 20 - panels-static-wiring-renders-season-row-from-api-season-field
+  ---
+  duration_ms: 0.476974
+  type: 'test'
+  ...
+# Subtest: map-hostpage-static-wiring-renders-season-row-from-api-season-field
+ok 21 - map-hostpage-static-wiring-renders-season-row-from-api-season-field
+  ---
+  duration_ms: 0.084343
+  type: 'test'
+  ...
+# Subtest: old-backend-without-date-or-season-degrades-without-fabrication
+ok 22 - old-backend-without-date-or-season-degrades-without-fabrication
+  ---
+  duration_ms: 0.627451
+  type: 'test'
+  ...
+# (node:457095) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: parseCompositionText-empty-is-an-empty-table
+ok 23 - parseCompositionText-empty-is-an-empty-table
+  ---
+  duration_ms: 0.759521
+  type: 'test'
+  ...
+# Subtest: parseCompositionText-keeps-write-order-across-mixed-separators
+ok 24 - parseCompositionText-keeps-write-order-across-mixed-separators
+  ---
+  duration_ms: 0.189834
+  type: '(node:457074) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+test'
+  ...
+# Subtest: parseCompositionText-rejects-a-duplicate-type
+ok 25 - parseCompositionText-rejects-a-duplicate-type
+  ---
+  duration_ms: 0.21492
+  type: 'test'
+  ...
+# Subtest: parseCompositionText-rejects-negative-or-non-integer-amounts
+ok 26 - parseCompositionText-rejects-negative-or-non-integer-amounts
+  ---
+  duration_ms: 0.105036
+  type: 'test'
+  ...
+# Subtest: parseCompositionText-rejects-missing-equals-and-keeps-no-legacy-map-semantics
+ok 27 - parseCompositionText-rejects-missing-equals-and-keeps-no-legacy-map-semantics
+  ---
+  duration_ms: 0.078933
+  type: 'test'
+  ...
+# Subtest: compositionText-renders-ordered-entries-and-flags-legacy-shapes
+ok 28 - compositionText-renders-ordered-entries-and-flags-legacy-shapes
+  ---
+  duration_ms: 0.106367
+  type: 'test'
+  ...
+# Subtest: armyCombatForRenderer-maps-id-hex-and-participants-without-inventing-name-stage
+ok 29 - armyCombatForRenderer-maps-id-hex-and-participants-without-inventing-name-stage
+  ---
+  duration_ms: 0.161634
+  type: 'test'
+  ...
+# Subtest: armyCombatForRenderer-defaults-participants-and-filters-missing-hex
+ok 30 - armyCombatForRenderer-defaults-participants-and-filters-missing-hex
+  ---
+  duration_ms: 0.069677
+  type: 'test'
+  ...
+# Subtest: api-cachedArmyCombats-hits-the-relative-current-tick-endpoint-once
+ok 31 - api-cachedArmyCombats-hits-the-relative-current-tick-endpoint-once
+  ---
+  duration_ms: 1.081168
+  type: 'test'
+  ...
+# Subtest: map-combat-layer-treats-army-as-truth-and-falls-back-to-sd-only-when-army-is-empty
+ok 32 - map-combat-layer-treats-army-as-truth-and-falls-back-to-sd-only-when-army-is-empty
+  ---
+  duration_ms: 0.903578
+  type: 'test'
+  ...
+# Subtest: workbench-unit-editor-uses-parseCompositionText-and-sends-both-tables
+ok 33 - workbench-unit-editor-uses-parseCompositionText-and-sends-both-tables
+  ---
+  duration_ms: 0.854007
+  type: 'test'
+  ...
+# Subtest: index-html-exposes-manpower-and-equipment-inputs-without-legacy-member-fields
+ok 34 - index-html-exposes-manpower-and-equipment-inputs-without-legacy-member-fields
+  ---
+  duration_ms: 0.286261
+  type: 'test'
+  ...
+# (node:457101) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: docs-request-needs-an-actor
+ok 35 - docs-request-needs-an-actor
+  ---
+  duration_ms: 0.544146
+  type: 'test'
+  ...
+# Subtest: docs-request-with-a-doc-id-is-exact-and-carries-no-limit
+ok 36 - docs-request-with-a-doc-id-is-exact-and-carries-no-limit
+  ---
+  duration_ms: 0.078235
+  type: 'test'
+  ...
+# Subtest: docs-request-escapes-the-actor-and-defaults-the-limit
+ok 37 - docs-request-escapes-the-actor-and-defaults-the-limit
+  ---
+  duration_ms: 0.081207
+  type: 'test'
+  ...
+# Subtest: docs-request-rejects-an-out-of-range-limit
+ok 38 - docs-request-rejects-an-out-of-range-limit
+  ---
+  duration_ms: 0.077937
+  type: 'test'
+  ...
+# Subtest: doc-entry-projects-title-body-and-subject
+ok 39 - doc-entry-projects-title-body-and-subject
+  ---
+  duration_ms: 0.176591
+  type: 'test'
+  ...
+# Subtest: doc-entry-shows-both-visibility-axes
+ok 40 - doc-entry-shows-both-visibility-axes
+  ---
+  duration_ms: 0.384782
+  type: 'test'
+  ...
+# Subtest: doc-entry-keeps-the-raw-text-when-the-value-is-not-json
+ok 41 - doc-entry-keeps-the-raw-text-when-the-value-is-not-json
+  ---
+  duration_ms: 0.121321
+  type: 'test'
+  ...
+# Subtest: doc-entry-handles-a-missing-value-without-throwing
+ok 42 - doc-entry-handles-a-missing-value-without-throwing
+  ---
+  duration_ms: 0.080042
+  type: 'test'
+  ...
+# Subtest: docs-view-maps-rows-and-carries-the-server-note
+ok 43 - docs-view-maps-rows-and-carries-the-server-note
+  ---
+  duration_ms: 0.252918
+  type: 'test'
+  ...
+# Subtest: docs-view-is-empty-and-keeps-the-servers-wording
+ok 44 - docs-view-is-empty-and-keeps-the-servers-wording
+  ---
+  duration_ms: 0.233818
+  type: 'test'
+  ...
+# Subtest: docs-view-tolerates-a-malformed-body
+ok 45 - docs-view-tolerates-a-malformed-body
+  ---
+  duration_ms: 0.13103
+  type: 'test'
+  ...
+# (node:457102) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: module-loads
+ok 46 - module-loads
+  ---
+  duration_ms: 0.662211
+  type: 'test'
+  ...
+# Subtest: subpage-ids-and-labels
+ok 47 - subpage-ids-and-labels
+  ---
+  duration_ms: 0.35988
+  type: 'test'
+  ...
+# Subtest: subpage-state-is-fail-closed
+ok 48 - subpage-state-is-fail-closed
+  ---
+  duration_ms: 0.177122
+  type: 'test'
+  ...
+# Subtest: subpage-visibility-is-mutually-exclusive
+ok 49 - subpage-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.314896
+  type: 'test'
+  ...
+# Subtest: decision-results-request-builds-a-bounded-window
+ok 50 - decision-results-request-builds-a-bounded-window
+  ---
+  duration_ms: 0.330104
+  type: 'test'
+  ...
+# Subtest: decision-results-entry-parses-value-and-never-throws
+ok 51 - decision-results-entry-parses-value-and-never-throws
+  ---
+  duration_ms: 0.250879
+  type: 'test'
+  ...
+# Subtest: decision-results-view-groups-by-tick-and-keeps-note-as-no-result
+ok 52 - decision-results-view-groups-by-tick-and-keeps-note-as-no-result
+  ---
+  duration_ms: 0.224881
+  type: 'test'
+  ...
+# Subtest: decision-groups-put-nation-then-army-and-sort-by-id
+ok 53 - decision-groups-put-nation-then-army-and-sort-by-id
+  ---
+  duration_ms: 11.259196
+  type: 'test'
+  ...
+# Subtest: decision-groups-keep-unknown-kinds-and-preserve-length
+ok 54 - decision-groups-keep-unknown-kinds-and-preserve-length
+  ---
+  duration_ms: 0.45938
+  type: 'test'
+  ...
+# Subtest: decision-makers-for-nation-matches-exactly
+ok 55 - decision-makers-for-nation-matches-exactly
+  ---
+  duration_ms: 0.40333
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-resolves-root-and-descendants
+ok 56 - decision-maker-for-unit-resolves-root-and-descendants
+  ---
+  duration_ms: 0.381967
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-is-deterministic-across-two-armies
+ok 57 - decision-maker-for-unit-is-deterministic-across-two-armies
+  ---
+  duration_ms: 0.114829
+  type: 'test'
+  ...
+# Subtest: decision-maker-for-unit-survives-a-parent-cycle
+ok 58 - decision-maker-for-unit-survives-a-parent-cycle
+  ---
+  duration_ms: 0.059728
+  type: 'test'
+  ...
+# Subtest: pending-status-text-never-fabricates
+ok 59 - pending-status-text-never-fabricates
+  ---
+  duration_ms: 0.051601
+  type: 'test'
+  ...
+# Subtest: affiliation-label-formats-kind-name-and-id
+ok 60 - affiliation-label-formats-kind-name-and-id
+  ---
+  duration_ms: 0.083003
+  type: 'test'
+  ...
+# Subtest: start-decision-gate-requires-due
+ok 61 - start-decision-gate-requires-due
+  ---
+  duration_ms: 0.086057
+  type: 'test'
+  ...
+# Subtest: render-left-gates-the-start-button-on-due
+ok 62 - render-left-gates-the-start-button-on-due
+  ---
+  duration_ms: 7.439479
+  type: 'test'
+  ...
+# Subtest: render-left-keeps-the-start-button-clickable-when-not-due
+ok 63 - render-left-keeps-the-start-button-clickable-when-not-due
+  ---
+  duration_ms: 10.702606
+  type: 'test'
+  ...
+# Subtest: start-decision-posts-the-target-when-due
+ok 64 - start-decision-posts-the-target-when-due
+  ---
+  duration_ms: 8.2049
+  type: 'test'
+  ...
+# Subtest: start-decision-advances-the-cursor-on-success
+ok 65 - start-decision-advances-the-cursor-on-success
+  ---
+  duration_ms: 8.512935
+  type: 'test'
+  ...
+# Subtest: start-decision-retries-once-after-409-with-the-fresh-head
+ok 66 - start-decision-retries-once-after-409-with-the-fresh-head
+  ---
+  duration_ms: 8.492325
+  type: 'test'
+  ...
+# Subtest: start-decision-does-not-retry-beyond-once
+ok 67 - start-decision-does-not-retry-beyond-once
+  ---
+  duration_ms: 7.340737
+  type: 'test'
+  ...
+# Subtest: a-round-runs-asynchronously-and-the-decision-lands-in-place
+ok 68 - a-round-runs-asynchronously-and-the-decision-lands-in-place
+  ---
+  duration_ms: 8.145651
+  type: 'test'
+  ...
+# Subtest: say-and-context-reset-are-two-separate-explicit-actions
+ok 69 - say-and-context-reset-are-two-separate-explicit-actions
+  ---
+  duration_ms: 6.611057
+  type: 'test'
+  ...
+# Subtest: merged-button-sends-the-text-first-then-starts-and-runs
+ok 70 - merged-button-sends-the-text-first-then-starts-and-runs
+  ---
+  duration_ms: 14.375844
+  type: 'test'
+  ...
+# Subtest: start-decision-posts-even-when-target-is-not-due
+ok 71 - start-decision-posts-even-when-target-is-not-due
+  ---
+  duration_ms: 3.993164
+  type: 'test'
+  ...
+# Subtest: decision-maker-fields-project-the-server-shape
+ok 72 - decision-maker-fields-project-the-server-shape
+  ---
+  duration_ms: 0.190851
+  type: 'test'
+  ...
+# Subtest: nation-region-ids-are-set-equal-not-subset
+ok 73 - nation-region-ids-are-set-equal-not-subset
+  ---
+  duration_ms: 0.134911
+  type: 'test'
+  ...
+# Subtest: nation-tag-helpers-ignore-non-nation-and-blank-tags
+ok 74 - nation-tag-helpers-ignore-non-nation-and-blank-tags
+  ---
+  duration_ms: 0.051741
+  type: 'test'
+  ...
+# Subtest: nation-ids-of-regions-unions-distinct-nations
+ok 75 - nation-ids-of-regions-unions-distinct-nations
+  ---
+  duration_ms: 0.116236
+  type: 'test'
+  ...
+# Subtest: render-left-shows-army-decision-maker-for-a-descendant-unit
+ok 76 - render-left-shows-army-decision-maker-for-a-descendant-unit
+  ---
+  duration_ms: 3.005201
+  type: 'test'
+  ...
+# Subtest: render-left-shows-no-decision-maker-for-an-unrelated-unit
+ok 77 - render-left-shows-no-decision-maker-for-an-unrelated-unit
+  ---
+  duration_ms: 5.589348
+  type: 'test'
+  ...
+# Subtest: render-left-shows-nation-decision-maker-for-a-nation-region-hex
+ok 78 - render-left-shows-nation-decision-maker-for-a-nation-region-hex
+  ---
+  duration_ms: 4.401148
+  type: 'test'
+  ...
+# Subtest: index-html-has-six-modes-and-decision-panel
+ok 79 - index-html-has-six-modes-and-decision-panel
+  ---
+  duration_ms: 0.382525
+  type: 'test'
+  ...
+# Subtest: index-html-decision-mode-has-start-decision-button
+ok 80 - index-html-decision-mode-has-start-decision-button
+  ---
+  duration_ms: 0.274922
+  type: 'test'
+  ...
+# Subtest: map-js-wires-decision-click-to-nation-highlight
+ok 81 - map-js-wires-decision-click-to-nation-highlight
+  ---
+  duration_ms: 0.494599
+  type: 'test'
+  ...
+# Subtest: panels-js-and-app-js-delegate-subpage-visibility
+ok 82 - panels-js-and-app-js-delegate-subpage-visibility
+  ---
+  duration_ms: 0.707773
+  type: 'test'
+  ...
+# Subtest: tab-click-actually-switches-the-visible-subpage
+ok 83 - tab-click-actually-switches-the-visible-subpage
+  ---
+  duration_ms: 0.815994
+  type: 'test'
+  ...
+# (node:457113) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: activated-economy-yields-per-value-rows
+ok 84 - activated-economy-yields-per-value-rows
+  ---
+  duration_ms: 0.587366
+  type: 'test'
+  ...
+# Subtest: regime-and-cycle-progress-come-from-the-industry
+ok 85 - regime-and-cycle-progress-come-from-the-industry
+  ---
+  duration_ms: 0.116762
+  type: 'test'
+  ...
+# Subtest: grain-stock-daily-consumption-and-flow-come-from-the-server
+ok 86 - grain-stock-daily-consumption-and-flow-come-from-the-server
+  ---
+  duration_ms: 0.123879
+  type: 'test'
+  ...
+# Subtest: hex-without-industry-says-no-industry
+ok 87 - hex-without-industry-says-no-industry
+  ---
+  duration_ms: 0.071697
+  type: 'test'
+  ...
+# Subtest: inactive-economy-says-not-activated
+ok 88 - inactive-economy-says-not-activated
+  ---
+  duration_ms: 0.053961
+  type: 'test'
+  ...
+# Subtest: missing-payload-degrades-to-no-data
+ok 89 - missing-payload-degrades-to-no-data
+  ---
+  duration_ms: 0.048131
+  type: 'test'
+  ...
+# Subtest: missing-fields-degrade-to-zero-without-throwing
+ok 90 - missing-fields-degrade-to-zero-without-throwing
+  ---
+  duration_ms: 0.05665
+  type: 'test'
+  ...
+# Subtest: api-exposes-cached-economy-hex-hitting-the-endpoint-once
+ok 91 - api-exposes-cached-economy-hex-hitting-the-endpoint-once
+  ---
+  duration_ms: 2.080782
+  type: 'test'
+  ...
+# Subtest: hex-panel-wires-the-economy-readout
+ok 92 - hex-panel-wires-the-economy-readout
+  ---
+  duration_ms: 0.804308
+  type: 'test'
+  ...
+# (node:457124) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: normalize-combat-event-keeps-frozen-fields-and-raw-identity
+ok 93 - normalize-combat-event-keeps-frozen-fields-and-raw-identity
+  ---
+  duration_ms: 0.957243
+  type: 'test'
+  ...
+# Subtest: normalize-combat-event-rejects-missing-id-or-incomplete-hex
+ok 94 - normalize-combat-event-rejects-missing-id-or-incomplete-hex
+  ---
+  duration_ms: 0.121213
+  type: 'test'
+  ...
+# Subtest: filter-events-for-hex-copies-all-and-matches-string-or-number-coords
+ok 95 - filter-events-for-hex-copies-all-and-matches-string-or-number-coords
+  ---
+  duration_ms: 0.147443
+  type: 'test'
+  ...
+# Subtest: format-delta-signs-types-and-empty-fallback
+ok 96 - format-delta-signs-types-and-empty-fallback
+  ---
+  duration_ms: 0.160048
+  type: 'test'
+  ...
+# Subtest: format-outcome-losses-exact-multi-entry-text-and-non-array-fallback
+ok 97 - format-outcome-losses-exact-multi-entry-text-and-non-array-fallback
+  ---
+  duration_ms: 0.19044
+  type: 'test'
+  ...
+# Subtest: combat-icon-at-hits-cell-center-and-misses-far-points
+ok 98 - combat-icon-at-hits-cell-center-and-misses-far-points
+  ---
+  duration_ms: 0.281683
+  type: 'test'
+  ...
+# Subtest: combat-icon-at-skips-unparsable-keys-and-tolerates-missing-input
+ok 99 - combat-icon-at-skips-unparsable-keys-and-tolerates-missing-input
+  ---
+  duration_ms: 0.149735
+  type: 'test'
+  ...
+# Subtest: open-for-hex-shows-only-that-cell-and-expands-its-details
+ok 100 - open-for-hex-shows-only-that-cell-and-expands-its-details
+  ---
+  duration_ms: 1.398046
+  type: 'test'
+  ...
+# Subtest: open-all-shows-current-tick-cards-collapsed-without-scope-toggle
+ok 101 - open-all-shows-current-tick-cards-collapsed-without-scope-toggle
+  ---
+  duration_ms: 1.361459
+  type: 'test'
+  ...
+# Subtest: open-for-hex-without-match-shows-empty-state-and-not-other-cards
+ok 102 - open-for-hex-without-match-shows-empty-state-and-not-other-cards
+  ---
+  duration_ms: 0.954961
+  type: 'test'
+  ...
+# Subtest: close-and-combats-layer-off-both-hide-the-panel
+ok 103 - close-and-combats-layer-off-both-hide-the-panel
+  ---
+  duration_ms: 1.821636
+  type: 'test'
+  ...
+# Subtest: provider-load-rejection-renders-error-without-throwing
+ok 104 - provider-load-rejection-renders-error-without-throwing
+  ---
+  duration_ms: 0.630596
+  type: 'test'
+  ...
+# Subtest: register-provider-feeds-a-non-combat-event-into-the-panel
+ok 105 - register-provider-feeds-a-non-combat-event-into-the-panel
+  ---
+  duration_ms: 0.616956
+  type: 'test'
+  ...
+# Subtest: on-state-reloads-only-when-open-and-target-revision-changed
+ok 106 - on-state-reloads-only-when-open-and-target-revision-changed
+  ---
+  duration_ms: 5.556303
+  type: 'test'
+  ...
+# Subtest: render-combat-detail-builds-kv-selected-outcome-and-loss-deltas
+ok 107 - render-combat-detail-builds-kv-selected-outcome-and-loss-deltas
+  ---
+  duration_ms: 0.856994
+  type: 'test'
+  ...
+# Subtest: render-combat-detail-uses-app-el-only-and-handles-empty-losses
+ok 108 - render-combat-detail-uses-app-el-only-and-handles-empty-losses
+  ---
+  duration_ms: 0.68354
+  type: 'test'
+  ...
+# Subtest: render-combat-detail-fills-outcome-losses-cell-from-format-outcome-losses
+ok 109 - render-combat-detail-fills-outcome-losses-cell-from-format-outcome-losses
+  ---
+  duration_ms: 0.609137
+  type: 'test'
+  ...
+# Subtest: renderer-pick-at-prioritises-combat-icon-before-marker-loop
+ok 110 - renderer-pick-at-prioritises-combat-icon-before-marker-loop
+  ---
+  duration_ms: 0.425894
+  type: 'test'
+  ...
+# Subtest: renderer-combat-pick-is-gated-by-combats-layer-and-layout
+ok 111 - renderer-combat-pick-is-gated-by-combats-layer-and-layout
+  ---
+  duration_ms: 0.350109
+  type: 'test'
+  ...
+# Subtest: map-apply-layer-prefs-links-the-combats-layer-to-the-events-panel
+ok 112 - map-apply-layer-prefs-links-the-combats-layer-to-the-events-panel
+  ---
+  duration_ms: 0.486156
+  type: 'test'
+  ...
+# Subtest: index-html-event-panel-elements-and-script-order
+ok 113 - index-html-event-panel-elements-and-script-order
+  ---
+  duration_ms: 0.187619
+  type: 'test'
+  ...
+# Subtest: index-html-combats-layer-label-is-battle-events-and-old-label-is-gone
+ok 114 - index-html-combats-layer-label-is-battle-events-and-old-label-is-gone
+  ---
+  duration_ms: 0.252178
+  type: 'test'
+  ...
+# Subtest: styles-css-adds-event-panel-and-explicit-hidden-rule
+ok 115 - styles-css-adds-event-panel-and-explicit-hidden-rule
+  ---
+  duration_ms: 1.023798
+  type: 'test'
+  ...
+# Subtest: combat-event-text-full-event-emits-fixed-blocks-and-selected-markers
+ok 116 - combat-event-text-full-event-emits-fixed-blocks-and-selected-markers
+  ---
+  duration_ms: 0.273735
+  type: 'test'
+  ...
+# Subtest: combat-event-text-minimal-event-uses-dashes-for-missing-fields
+ok 117 - combat-event-text-minimal-event-uses-dashes-for-missing-fields
+  ---
+  duration_ms: 0.07849
+  type: 'test'
+  ...
+# Subtest: events-to-text-joins-two-events-with-blank-line-and-empty-inputs
+ok 118 - events-to-text-joins-two-events-with-blank-line-and-empty-inputs
+  ---
+  duration_ms: 0.272946
+  type: 'test'
+  ...
+# Subtest: copy-text-to-clipboard-shell-without-navigator-or-document-resolves-false
+ok 119 - copy-text-to-clipboard-shell-without-navigator-or-document-resolves-false
+  ---
+  duration_ms: 6.354228
+  type: 'test'
+  ...
+# Subtest: copy-text-to-clipboard-prefers-writeText-and-passes-original-text
+ok 120 - copy-text-to-clipboard-prefers-writeText-and-passes-original-text
+  ---
+  duration_ms: 0.489715
+  type: 'test'
+  ...
+# Subtest: copy-text-to-clipboard-writeText-rejection-without-document-resolves-false
+ok 121 - copy-text-to-clipboard-writeText-rejection-without-document-resolves-false
+  ---
+  duration_ms: 0.47002
+  type: 'test'
+  ...
+# Subtest: styles-css-d021-event-panel-body-is-the-shrinkable-scroll-block
+ok 122 - styles-css-d021-event-panel-body-is-the-shrinkable-scroll-block
+  ---
+  duration_ms: 0.402078
+  type: 'test'
+  ...
+# Subtest: styles-css-d021-event-card-does-not-shrink
+ok 123 - styles-css-d021-event-card-does-not-shrink
+  ---
+  duration_ms: 0.271177
+  type: 'test'
+  ...
+# Subtest: events-js-copy-buttons-are-wired-to-the-toolbar-and-detail
+ok 124 - events-js-copy-buttons-are-wired-to-the-toolbar-and-detail
+  ---
+  duration_ms: 0.113451
+  type: 'test'
+  ...
+# Subtest: events-exports-combat-text-and-clipboard-functions
+ok 125 - events-exports-combat-text-and-clipboard-functions
+  ---
+  duration_ms: 0.36203
+  type: 'test'
+  ...
+# (node:457149) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: f1-layer-visibility-keeps-government-layers-off-and-is-fail-closed
+ok 126 - f1-layer-visibility-keeps-government-layers-off-and-is-fail-closed
+  ---
+  duration_ms: 0.884647
+  type: 'test'
+  ...
+# Subtest: f1-layer-presets-map-to-exact-nine-key-sets
+ok 127 - f1-layer-presets-map-to-exact-nine-key-sets
+  ---
+  duration_ms: 0.235162
+  type: 'test'
+  ...
+# Subtest: f1-world-lod-has-no-city-markers-and-region-lod-drops-small-tiers
+ok 128 - f1-world-lod-has-no-city-markers-and-region-lod-drops-small-tiers
+  ---
+  duration_ms: 0.384611
+  type: 'test'
+  ...
+# Subtest: f1-search-index-and-matches-are-deterministic-and-cover-all-kinds
+ok 129 - f1-search-index-and-matches-are-deterministic-and-cover-all-kinds
+  ---
+  duration_ms: 4.780587
+  type: 'test'
+  ...
+# Subtest: f1-nation-summaries-aggregate-f2-fields-by-nation-tag
+ok 130 - f1-nation-summaries-aggregate-f2-fields-by-nation-tag
+  ---
+  duration_ms: 0.451108
+  type: 'test'
+  ...
+# Subtest: f1-decision-model-labels-and-matches-gov-affiliation
+ok 131 - f1-decision-model-labels-and-matches-gov-affiliation
+  ---
+  duration_ms: 0.284505
+  type: 'test'
+  ...
+# Subtest: f1-class-first-readout-uses-authoritative-rows-and-never-old-zero-projection
+ok 132 - f1-class-first-readout-uses-authoritative-rows-and-never-old-zero-projection
+  ---
+  duration_ms: 0.474695
+  type: 'test'
+  ...
+# Subtest: f1-class-first-missing-fields-degrade-to-named-unavailable-not-zero
+ok 133 - f1-class-first-missing-fields-degrade-to-named-unavailable-not-zero
+  ---
+  duration_ms: 0.097965
+  type: 'test'
+  ...
+# Subtest: f1-class-first-row-projection-is-shared-not-duplicated
+ok 134 - f1-class-first-row-projection-is-shared-not-duplicated
+  ---
+  duration_ms: 1.0665
+  type: 'test'
+  ...
+# Subtest: f1-renderer-wires-city-lod-gov-layers-and-heatmap-order
+ok 135 - f1-renderer-wires-city-lod-gov-layers-and-heatmap-order
+  ---
+  duration_ms: 0.694014
+  type: 'test'
+  ...
+# Subtest: f1-map-wires-world-overview-layer-drawer-and-gov-layer-key
+ok 136 - f1-map-wires-world-overview-layer-drawer-and-gov-layer-key
+  ---
+  duration_ms: 0.726807
+  type: 'test'
+  ...
+# (node:457150) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: f2-heatmap-metric-table-is-frozen-and-covers-designed-first-batch
+ok 137 - f2-heatmap-metric-table-is-frozen-and-covers-designed-first-batch
+  ---
+  duration_ms: 0.795568
+  type: 'test'
+  ...
+# Subtest: f2-color-scale-empty-input-is-empty-not-zero-filled
+ok 138 - f2-color-scale-empty-input-is-empty-not-zero-filled
+  ---
+  duration_ms: 0.154028
+  type: 'test'
+  ...
+# Subtest: f2-color-scale-same-value-collapses-to-one-deterministic-bin
+ok 139 - f2-color-scale-same-value-collapses-to-one-deterministic-bin
+  ---
+  duration_ms: 0.3128
+  type: 'test'
+  ...
+# Subtest: f2-color-scale-long-tail-bins-cover-every-finite-value-with-bounded-colors
+ok 140 - f2-color-scale-long-tail-bins-cover-every-finite-value-with-bounded-colors
+  ---
+  duration_ms: 0.320672
+  type: 'test'
+  ...
+# Subtest: f2-color-scale-ignores-non-finite-values-and-fail-closes-bad-options
+ok 141 - f2-color-scale-ignores-non-finite-values-and-fail-closes-bad-options
+  ---
+  duration_ms: 0.163471
+  type: 'test'
+  ...
+# Subtest: f2-legend-unavailable-layer-names-its-reason-and-never-says-zero
+ok 142 - f2-legend-unavailable-layer-names-its-reason-and-never-says-zero
+  ---
+  duration_ms: 0.258218
+  type: 'test'
+  ...
+# Subtest: f2-legend-carries-bins-stats-notes-and-empty-payload-does-not-throw
+ok 143 - f2-legend-carries-bins-stats-notes-and-empty-payload-does-not-throw
+  ---
+  duration_ms: 0.200429
+  type: 'test'
+  ...
+# Subtest: f2-map-wires-data-controls-and-unavailable-layer-clears-cells
+ok 144 - f2-map-wires-data-controls-and-unavailable-layer-clears-cells
+  ---
+  duration_ms: 0.918302
+  type: 'test'
+  ...
+# Subtest: f2-api-cached-heatmap-dedupes-same-metric-and-keys-by-metric
+ok 145 - f2-api-cached-heatmap-dedupes-same-metric-and-keys-by-metric
+  ---
+  duration_ms: 1.107858
+  type: 'test'
+  ...
+# Subtest: f2-api-cities-and-region-summaries-use-relative-read-only-paths
+ok 146 - f2-api-cities-and-region-summaries-use-relative-read-only-paths
+  ---
+  duration_ms: 0.917847
+  type: 'test'
+  ...
+# (node:457157) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: all-required-test-files-are-present
+ok 147 - all-required-test-files-are-present
+  ---
+  duration_ms: 0.734029
+  type: 'test'
+  ...
+# Subtest: assertion-count-is-not-below-the-frozen-floor
+ok 148 - assertion-count-is-not-below-the-frozen-floor
+  ---
+  duration_ms: 7.548938
+  type: 'test'
+  ...
+# (node:457167) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: module-loads
+ok 149 - module-loads
+  ---
+  duration_ms: 0.496591
+  type: 'test'
+  ...
+# Subtest: toolUsageEntries-reads-two-response-shapes
+ok 150 - toolUsageEntries-reads-two-response-shapes
+  ---
+  duration_ms: 0.365205
+  type: 'test'
+  ...
+# Subtest: resultText-marks-success-and-failure
+ok 151 - resultText-marks-success-and-failure
+  ---
+  duration_ms: 0.09582
+  type: 'test'
+  ...
+# Subtest: formatEntry-includes-tool-and-result
+ok 152 - formatEntry-includes-tool-and-result
+  ---
+  duration_ms: 26.093525
+  type: 'test'
+  ...
+# Subtest: renderPlan-empty-state-is-explicit
+ok 153 - renderPlan-empty-state-is-explicit
+  ---
+  duration_ms: 0.175027
+  type: 'test'
+  ...
+# Subtest: renderPlan-keeps-server-order-and-flags
+ok 154 - renderPlan-keeps-server-order-and-flags
+  ---
+  duration_ms: 0.099908
+  type: 'test'
+  ...
+# Subtest: renderInto-reads-exactly-one-GET-api-gm-tool-usage
+ok 155 - renderInto-reads-exactly-one-GET-api-gm-tool-usage
+  ---
+  duration_ms: 1.095649
+  type: 'test'
+  ...
+# Subtest: renderInto-renders-server-entries-from-the-response
+ok 156 - renderInto-renders-server-entries-from-the-response
+  ---
+  duration_ms: 0.183514
+  type: 'test'
+  ...
+# Subtest: renderInto-shows-empty-state-when-server-has-none
+ok 157 - renderInto-shows-empty-state-when-server-has-none
+  ---
+  duration_ms: 0.242086
+  type: 'test'
+  ...
+# Subtest: renderInto-degrades-when-endpoint-unavailable
+ok 158 - renderInto-degrades-when-endpoint-unavailable
+  ---
+  duration_ms: 0.317544
+  type: 'test'
+  ...
+# Subtest: setOpen-toggles-overlay-and-aria-expanded
+ok 159 - setOpen-toggles-overlay-and-aria-expanded
+  ---
+  duration_ms: 0.182188
+  type: 'test'
+  ...
+# Subtest: mount-wires-open-close-and-refresh
+ok 160 - mount-wires-open-close-and-refresh
+  ---
+  duration_ms: 8.883227
+  type: 'test'
+  ...
+# Subtest: index.html-has-gm-button-in-timeline-bar-and-fullscreen-overlay
+ok 161 - index.html-has-gm-button-in-timeline-bar-and-fullscreen-overlay
+  ---
+  duration_ms: 0.313443
+  type: 'test'
+  ...
+# Subtest: gm-overlay-is-fixed-hidden-by-default-and-clickable
+ok 162 - gm-overlay-is-fixed-hidden-by-default-and-clickable
+  ---
+  duration_ms: 0.535603
+  type: 'test'
+  ...
+# Subtest: gm-overlay-has-no-chat-input
+ok 163 - gm-overlay-has-no-chat-input
+  ---
+  duration_ms: 0.313096
+  type: 'test'
+  ...
+# (node:457168) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: module-loads
+ok 164 - module-loads
+  ---
+  duration_ms: 0.4627
+  type: 'test'
+  ...
+# Subtest: subtool-ids-and-labels
+ok 165 - subtool-ids-and-labels
+  ---
+  duration_ms: 0.371896
+  type: 'test'
+  ...
+# Subtest: subtool-state-is-fail-closed
+ok 166 - subtool-state-is-fail-closed
+  ---
+  duration_ms: 0.179083
+  type: 'test'
+  ...
+# Subtest: subtool-tools-return-a-snapshot-and-default-tool
+ok 167 - subtool-tools-return-a-snapshot-and-default-tool
+  ---
+  duration_ms: 0.113215
+  type: 'test'
+  ...
+# Subtest: mapEditSubtoolOf-maps-tools-and-rejects-unknown
+ok 168 - mapEditSubtoolOf-maps-tools-and-rejects-unknown
+  ---
+  duration_ms: 0.083968
+  type: 'test'
+  ...
+# Subtest: write-allowed-is-per-subtool-and-cross-line-is-denied
+ok 169 - write-allowed-is-per-subtool-and-cross-line-is-denied
+  ---
+  duration_ms: 0.060226
+  type: 'test'
+  ...
+# Subtest: write-gate-resolves-tool-then-subtool
+ok 170 - write-gate-resolves-tool-then-subtool
+  ---
+  duration_ms: 0.204825
+  type: 'test'
+  ...
+# Subtest: panel-visibility-is-mutually-exclusive
+ok 171 - panel-visibility-is-mutually-exclusive
+  ---
+  duration_ms: 0.14773
+  type: 'test'
+  ...
+# Subtest: bucket-writes-go-through-the-terrain-line-gate
+ok 172 - bucket-writes-go-through-the-terrain-line-gate
+  ---
+  duration_ms: 0.247412
+  type: 'test'
+  ...
+# Subtest: index-html-has-suboption-control-and-grouped-panels
+ok 173 - index-html-has-suboption-control-and-grouped-panels
+  ---
+  duration_ms: 0.416409
+  type: 'test'
+  ...
+# Subtest: suboptions-are-not-new-modes
+ok 174 - suboptions-are-not-new-modes
+  ---
+  duration_ms: 0.260502
+  type: 'test'
+  ...
+# Subtest: map-js-gates-every-map-write-with-the-matching-type
+ok 175 - map-js-gates-every-map-write-with-the-matching-type
+  ---
+  duration_ms: 0.602357
+  type: 'test'
+  ...
+# Subtest: page-delegates-to-the-single-guard-implementation
+ok 176 - page-delegates-to-the-single-guard-implementation
+  ---
+  duration_ms: 0.644841
+  type: 'test'
+  ...
+# (node:457187) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: edgeKeyOf-is-canonical-by-q-then-r
+ok 177 - edgeKeyOf-is-canonical-by-q-then-r
+  ---
+  duration_ms: 0.489318
+  type: 'test'
+  ...
+# Subtest: edgeKeyOf-rejects-self-loops-and-incomplete-points
+ok 178 - edgeKeyOf-rejects-self-loops-and-incomplete-points
+  ---
+  duration_ms: 0.124831
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-connects-an-adjacent-run
+ok 179 - edgeChainEdges-connects-an-adjacent-run
+  ---
+  duration_ms: 0.409536
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-dedupes-a-repeated-pair
+ok 180 - edgeChainEdges-dedupes-a-repeated-pair
+  ---
+  duration_ms: 0.075994
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+ok 181 - edgeChainEdges-skips-a-non-adjacent-jump-and-keeps-the-anchor
+  ---
+  duration_ms: 0.117692
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+ok 182 - edgeChainEdges-same-hex-as-the-anchor-ends-the-path
+  ---
+  duration_ms: 0.088003
+  type: 'test'
+  ...
+# Subtest: edgeChainResult-reports-ending-and-skipped-non-adjacency
+ok 183 - edgeChainResult-reports-ending-and-skipped-non-adjacency
+  ---
+  duration_ms: 0.251822
+  type: 'test'
+  ...
+# Subtest: edgeChainEdges-treats-a-missing-sample-as-no-op
+ok 184 - edgeChainEdges-treats-a-missing-sample-as-no-op
+  ---
+  duration_ms: 0.132114
+  type: 'test'
+  ...
+# Subtest: edgeModeState-has-no-default
+ok 185 - edgeModeState-has-no-default
+  ---
+  duration_ms: 0.285558
+  type: 'test'
+  ...
+# Subtest: parseSeedInput-does-not-fall-back-to-zero
+ok 186 - parseSeedInput-does-not-fall-back-to-zero
+  ---
+  duration_ms: 0.339347
+  type: 'test'
+  ...
+# Subtest: randomizeRecipeState-requires-both-terrains-and-allows-equal-pair
+ok 187 - randomizeRecipeState-requires-both-terrains-and-allows-equal-pair
+  ---
+  duration_ms: 0.123727
+  type: 'test'
+  ...
+# Subtest: randomize-panel-has-two-terrain-pickers-fed-by-the-authoritative-vocabulary
+ok 188 - randomize-panel-has-two-terrain-pickers-fed-by-the-authoritative-vocabulary
+  ---
+  duration_ms: 0.426716
+  type: 'test'
+  ...
+# Subtest: randomizeSelectionState-rejects-an-empty-selection
+ok 189 - randomizeSelectionState-rejects-an-empty-selection
+  ---
+  duration_ms: 0.119196
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-guards-instead-of-re-implementing-them
+ok 190 - page-层-uses-the-guards-instead-of-re-implementing-them
+  ---
+  duration_ms: 0.685099
+  type: 'test'
+  ...
+# Subtest: parseEdgeKey-round-trips-and-rejects-malformed-keys
+ok 191 - parseEdgeKey-round-trips-and-rejects-malformed-keys
+  ---
+  duration_ms: 0.133667
+  type: 'test'
+  ...
+# Subtest: edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+ok 192 - edgeHitAtWorldPoint-honours-the-12px-threshold-and-kind
+  ---
+  duration_ms: 0.168218
+  type: 'test'
+  ...
+# Subtest: edgeDeletePlan-replaces-with-the-surviving-set
+ok 193 - edgeDeletePlan-replaces-with-the-surviving-set
+  ---
+  duration_ms: 0.112653
+  type: 'test'
+  ...
+# Subtest: registered-edge-kinds-default-then-follow-the-server
+ok 194 - registered-edge-kinds-default-then-follow-the-server
+  ---
+  duration_ms: 0.174623
+  type: 'test'
+  ...
+# Subtest: isFormationMember-true-only-for-an-attached-child
+ok 195 - isFormationMember-true-only-for-an-attached-child
+  ---
+  duration_ms: 0.051253
+  type: 'test'
+  ...
+# Subtest: isFormationMember-never-blocks-on-unknown-state
+ok 196 - isFormationMember-never-blocks-on-unknown-state
+  ---
+  duration_ms: 0.033858
+  type: 'test'
+  ...
+# (node:457197) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: axialNeighbors-six-exact-vectors
+ok 197 - axialNeighbors-six-exact-vectors
+  ---
+  duration_ms: 0.715132
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-offset-by-origin
+ok 198 - axialNeighbors-offset-by-origin
+  ---
+  duration_ms: 0.121818
+  type: 'test'
+  ...
+# Subtest: axialNeighbors-are-distinct-and-at-distance-one
+ok 199 - axialNeighbors-are-distinct-and-at-distance-one
+  ---
+  duration_ms: 0.11332
+  type: 'test'
+  ...
+# Subtest: axialDistance-frozen-values
+ok 200 - axialDistance-frozen-values
+  ---
+  duration_ms: 0.063188
+  type: 'test'
+  ...
+# Subtest: hexLine-endpoints-are-exact
+ok 201 - hexLine-endpoints-are-exact
+  ---
+  duration_ms: 0.28329
+  type: 'test'
+  ...
+# Subtest: hexLine-length-is-distance-plus-one
+ok 202 - hexLine-length-is-distance-plus-one
+  ---
+  duration_ms: 0.100559
+  type: 'test'
+  ...
+# Subtest: hexLine-has-no-duplicates-and-no-gaps
+ok 203 - hexLine-has-no-duplicates-and-no-gaps
+  ---
+  duration_ms: 0.176858
+  type: 'test'
+  ...
+# Subtest: hexLine-long-diagonal-is-dense
+ok 204 - hexLine-long-diagonal-is-dense
+  ---
+  duration_ms: 0.061301
+  type: 'test'
+  ...
+# Subtest: hexLine-single-cell-returns-fresh-single
+ok 205 - hexLine-single-cell-returns-fresh-single
+  ---
+  duration_ms: 0.165604
+  type: 'test'
+  ...
+# (node:457203) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: module-loads
+ok 206 - module-loads
+  ---
+  duration_ms: 0.56507
+  type: 'test'
+  ...
+# Subtest: mode-ids-order
+ok 207 - mode-ids-order
+  ---
+  duration_ms: 0.497513
+  type: 'test'
+  ...
+# Subtest: mode-labels
+ok 208 - mode-labels
+  ---
+  duration_ms: 0.073447
+  type: 'test'
+  ...
+# Subtest: mode-label-unknown-passthrough
+ok 209 - mode-label-unknown-passthrough
+  ---
+  duration_ms: 0.715365
+  type: 'test'
+  ...
+# Subtest: view-allows-no-write
+ok 210 - view-allows-no-write
+  ---
+  duration_ms: 0.200046
+  type: 'test'
+  ...
+# Subtest: region-allows-no-write
+ok 211 - region-allows-no-write
+  ---
+  duration_ms: 0.092796
+  type: 'test'
+  ...
+# Subtest: map-edit-allows-exactly-four-writes
+ok 212 - map-edit-allows-exactly-four-writes
+  ---
+  duration_ms: 0.131303
+  type: 'test'
+  ...
+# Subtest: region-edit-allows-three-writes
+ok 213 - region-edit-allows-three-writes
+  ---
+  duration_ms: 0.054021
+  type: 'test'
+  ...
+# Subtest: unit-allows-route-and-editor-writes
+ok 214 - unit-allows-route-and-editor-writes
+  ---
+  duration_ms: 0.208807
+  type: 'test'
+  ...
+# Subtest: decision-allows-exactly-start-decision
+ok 215 - decision-allows-exactly-start-decision
+  ---
+  duration_ms: 0.274166
+  type: 'test'
+  ...
+# Subtest: fail-closed-on-unknown-mode-and-empty-type
+ok 216 - fail-closed-on-unknown-mode-and-empty-type
+  ---
+  duration_ms: 0.114659
+  type: 'test'
+  ...
+# Subtest: allowedWrites-returns-a-snapshot
+ok 217 - allowedWrites-returns-a-snapshot
+  ---
+  duration_ms: 0.06624
+  type: 'test'
+  ...
+# Subtest: workbench-write-calls-are-all-whitelisted
+ok 218 - workbench-write-calls-are-all-whitelisted
+  ---
+  duration_ms: 3.411539
+  type: 'test'
+  ...
+# Subtest: whitelist-entries-are-well-formed-command-types
+ok 219 - whitelist-entries-are-well-formed-command-types
+  ---
+  duration_ms: 0.206726
+  type: 'test'
+  ...
+# (node:457204) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: module-loads
+ok 220 - module-loads
+  ---
+  duration_ms: 0.34749
+  type: 'test'
+  ...
+# Subtest: pendingCount-reads-the-three-response-shapes
+ok 221 - pendingCount-reads-the-three-response-shapes
+  ---
+  duration_ms: 0.791041
+  type: 'test'
+  ...
+# Subtest: summaryText-shows-the-count
+ok 222 - summaryText-shows-the-count
+  ---
+  duration_ms: 0.087186
+  type: 'test'
+  ...
+# Subtest: renderInto-reads-exactly-one-GET-api-approvals
+ok 223 - renderInto-reads-exactly-one-GET-api-approvals
+  ---
+  duration_ms: 1.061802
+  type: 'test'
+  ...
+# Subtest: renderInto-degrades-when-approvals-unavailable
+ok 224 - renderInto-degrades-when-approvals-unavailable
+  ---
+  duration_ms: 0.196475
+  type: 'test'
+  ...
+# Subtest: index.html-has-notification-element-and-no-right-panel-approvals
+ok 225 - index.html-has-notification-element-and-no-right-panel-approvals
+  ---
+  duration_ms: 0.356594
+  type: 'test'
+  ...
+# (node:457210) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: module-exports-the-pending-helpers
+ok 226 - module-exports-the-pending-helpers
+  ---
+  duration_ms: 0.388006
+  type: 'test'
+  ...
+# Subtest: pending-status-text-maps-only-real-booleans-and-never-fabricates
+ok 227 - pending-status-text-maps-only-real-booleans-and-never-fabricates
+  ---
+  duration_ms: 0.088397
+  type: 'test'
+  ...
+# Subtest: decision-maker-fields-project-due-into-pending
+ok 228 - decision-maker-fields-project-due-into-pending
+  ---
+  duration_ms: 0.140262
+  type: 'test'
+  ...
+# Subtest: right-list-renders-pending-from-server-due
+ok 229 - right-list-renders-pending-from-server-due
+  ---
+  duration_ms: 7.133283
+  type: 'test'
+  ...
+# Subtest: left-detail-shows-pending-from-server-due
+ok 230 - left-detail-shows-pending-from-server-due
+  ---
+  duration_ms: 5.075575
+  type: 'test'
+  ...
+# Subtest: panels-list-item-wires-server-due-into-pending-text
+ok 231 - panels-list-item-wires-server-due-into-pending-text
+  ---
+  duration_ms: 0.62563
+  type: 'test'
+  ...
+# (node:457229) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: provider-subpage-is-registered-as-the-third-subpage
+ok 232 - provider-subpage-is-registered-as-the-third-subpage
+  ---
+  duration_ms: 0.764259
+  type: 'test'
+  ...
+# Subtest: provider-visibility-is-keyed-and-fail-closed
+ok 233 - provider-visibility-is-keyed-and-fail-closed
+  ---
+  duration_ms: 0.193106
+  type: 'test'
+  ...
+# Subtest: provider-form-to-payload-rejects-missing-required-fields
+ok 234 - provider-form-to-payload-rejects-missing-required-fields
+  ---
+  duration_ms: 0.175114
+  type: 'test'
+  ...
+# Subtest: provider-form-to-payload-normalizes-and-omits-empty-optional-fields
+ok 235 - provider-form-to-payload-normalizes-and-omits-empty-optional-fields
+  ---
+  duration_ms: 0.114011
+  type: 'test'
+  ...
+# Subtest: provider-form-to-payload-keeps-api-key-out-of-routes-and-rejects-bad-timeout
+ok 236 - provider-form-to-payload-keeps-api-key-out-of-routes-and-rejects-bad-timeout
+  ---
+  duration_ms: 0.106011
+  type: 'test'
+  ...
+# Subtest: provider-form-to-payload-sanitizes-provider-id-characters
+ok 237 - provider-form-to-payload-sanitizes-provider-id-characters
+  ---
+  duration_ms: 0.068416
+  type: 'test'
+  ...
+# Subtest: provider-fields-masks-and-does-not-fabricate-missing-values
+ok 238 - provider-fields-masks-and-does-not-fabricate-missing-values
+  ---
+  duration_ms: 0.130437
+  type: 'test'
+  ...
+# Subtest: provider-fields-keeps-broken-entries-visible-with-error-code
+ok 239 - provider-fields-keeps-broken-entries-visible-with-error-code
+  ---
+  duration_ms: 0.064348
+  type: 'test'
+  ...
+# Subtest: provider-binding-payload-requires-both-fields
+ok 240 - provider-binding-payload-requires-both-fields
+  ---
+  duration_ms: 0.16858
+  type: 'test'
+  ...
+# Subtest: provider-endpoints-are-exported-and-call-the-declared-paths
+ok 241 - provider-endpoints-are-exported-and-call-the-declared-paths
+  ---
+  duration_ms: 1.554273
+  type: 'test'
+  ...
+# Subtest: provider-panel-index-html-has-the-third-subpage-and-form-anchors
+ok 242 - provider-panel-index-html-has-the-third-subpage-and-form-anchors
+  ---
+  duration_ms: 0.337658
+  type: 'test'
+  ...
+# Subtest: provider-panel-js-has-no-second-visibility-implementation
+ok 243 - provider-panel-js-has-no-second-visibility-implementation
+  ---
+  duration_ms: 0.700151
+  type: 'test'
+  ...
+# Subtest: provider-config-does-not-touch-localstorage-or-fabricate-a-default-provider
+ok 244 - provider-config-does-not-touch-localstorage-or-fabricate-a-default-provider
+  ---
+  duration_ms: 0.570725
+  type: 'test'
+  ...
+# (node:457230) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: daily-budget-rate-multiplies-speed-by-1000-and-24
+ok 245 - daily-budget-rate-multiplies-speed-by-1000-and-24
+  ---
+  duration_ms: 0.611265
+  type: 'test'
+  ...
+# Subtest: etaTick-stays-days-from-departure-with-the-24h-rate
+ok 246 - etaTick-stays-days-from-departure-with-the-24h-rate
+  ---
+  duration_ms: 0.54736
+  type: 'test'
+  ...
+# (node:457243) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: rings-and-vertex-counts-match-independent-derivation
+ok 247 - rings-and-vertex-counts-match-independent-derivation
+  ---
+  duration_ms: 2.571233
+  type: 'test'
+  ...
+# Subtest: donut-has-outer-18-and-inner-hole-6
+ok 248 - donut-has-outer-18-and-inner-hole-6
+  ---
+  duration_ms: 0.473551
+  type: 'test'
+  ...
+# Subtest: single-hex-vertices-are-exactly-the-six-corners
+ok 249 - single-hex-vertices-are-exactly-the-six-corners
+  ---
+  duration_ms: 0.148592
+  type: 'test'
+  ...
+# Subtest: every-ring-is-closed-with-unit-edges
+ok 250 - every-ring-is-closed-with-unit-edges
+  ---
+  duration_ms: 0.402254
+  type: 'test'
+  ...
+# Subtest: vertices-are-distinct-within-a-ring
+ok 251 - vertices-are-distinct-within-a-ring
+  ---
+  duration_ms: 0.324575
+  type: 'test'
+  ...
+# Subtest: vertices-lie-on-the-hex-vertex-lattice
+ok 252 - vertices-lie-on-the-hex-vertex-lattice
+  ---
+  duration_ms: 0.363028
+  type: 'test'
+  ...
+# Subtest: vertices-are-not-hex-centers
+ok 253 - vertices-are-not-hex-centers
+  ---
+  duration_ms: 0.403463
+  type: 'test'
+  ...
+# Subtest: empty-and-invalid-input-return-no-ring
+ok 254 - empty-and-invalid-input-return-no-ring
+  ---
+  duration_ms: 0.188287
+  type: 'test'
+  ...
+# Subtest: deterministic-across-calls
+ok 255 - deterministic-across-calls
+  ---
+  duration_ms: 0.667222
+  type: 'test'
+  ...
+# (node:457244) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: region-edit-hex-pick-sets-region-focus-and-not-highlight
+ok 256 - region-edit-hex-pick-sets-region-focus-and-not-highlight
+  ---
+  duration_ms: 5.490572
+  type: 'test'
+  ...
+# Subtest: region-edit-hex-without-region-keeps-the-current-focus
+ok 257 - region-edit-hex-without-region-keeps-the-current-focus
+  ---
+  duration_ms: 2.503055
+  type: 'test'
+  ...
+# Subtest: region-edit-hex-read-failure-keeps-the-current-focus
+ok 258 - region-edit-hex-read-failure-keeps-the-current-focus
+  ---
+  duration_ms: 2.375893
+  type: 'test'
+  ...
+# Subtest: region-view-hex-pick-uses-single-highlight-not-region-focus
+ok 259 - region-view-hex-pick-uses-single-highlight-not-region-focus
+  ---
+  duration_ms: 2.810367
+  type: 'test'
+  ...
+# Subtest: region-edit-city-pick-selects-city-and-still-sets-region-focus
+ok 260 - region-edit-city-pick-selects-city-and-still-sets-region-focus
+  ---
+  duration_ms: 2.338512
+  type: 'test'
+  ...
+# Subtest: region-edit-unit-pick-selects-unit-and-still-sets-region-focus
+ok 261 - region-edit-unit-pick-selects-unit-and-still-sets-region-focus
+  ---
+  duration_ms: 1.797576
+  type: 'test'
+  ...
+# Subtest: combat-pick-opens-the-events-panel-and-touches-no-selection-state
+ok 262 - combat-pick-opens-the-events-panel-and-touches-no-selection-state
+  ---
+  duration_ms: 4.503442
+  type: 'test'
+  ...
+# Subtest: region-edit-hex-pick-honours-region-tag-filter
+ok 263 - region-edit-hex-pick-honours-region-tag-filter
+  ---
+  duration_ms: 5.242528
+  type: 'test'
+  ...
+# Subtest: region-view-hex-pick-honours-region-tag-filter
+ok 264 - region-view-hex-pick-honours-region-tag-filter
+  ---
+  duration_ms: 2.687646
+  type: 'test'
+  ...
+# Subtest: region-edit-tag-without-matching-region-keeps-current-focus
+ok 265 - region-edit-tag-without-matching-region-keeps-current-focus
+  ---
+  duration_ms: 1.873854
+  type: 'test'
+  ...
+# Subtest: region-view-tag-without-matching-region-does-not-clear-highlight
+ok 266 - region-view-tag-without-matching-region-does-not-clear-highlight
+  ---
+  duration_ms: 1.486571
+  type: 'test'
+  ...
+# Subtest: region-tag-null-still-picks-the-global-last-region
+ok 267 - region-tag-null-still-picks-the-global-last-region
+  ---
+  duration_ms: 1.346392
+  type: 'test'
+  ...
+# Subtest: region-tag-falls-back-to-region-detail-when-overview-lacks-the-tag
+ok 268 - region-tag-falls-back-to-region-detail-when-overview-lacks-the-tag
+  ---
+  duration_ms: 2.156299
+  type: 'test'
+  ...
+# Subtest: renderer-shows-pointer-cursor-for-region-edit-mode
+ok 269 - renderer-shows-pointer-cursor-for-region-edit-mode
+  ---
+  duration_ms: 0.481922
+  type: 'test'
+  ...
+# (node:457259) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: buildRegionHighlightPlan-puts-focus-regions-first
+ok 270 - buildRegionHighlightPlan-puts-focus-regions-first
+  ---
+  duration_ms: 1.14173
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-highlights-every-focus-id-for-the-tag-group-path
+ok 271 - buildRegionHighlightPlan-highlights-every-focus-id-for-the-tag-group-path
+  ---
+  duration_ms: 0.19112
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+ok 272 - buildRegionHighlightPlan-region-view-without-focus-paints-nothing
+  ---
+  duration_ms: 0.074324
+  type: 'test'
+  ...
+# Subtest: buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+ok 273 - buildRegionHighlightPlan-region-edit-without-focus-fades-everything
+  ---
+  duration_ms: 0.23007
+  type: 'test'
+  ...
+# Subtest: the-two-modes-share-one-plan-and-differ-only-in-parameters
+ok 274 - the-two-modes-share-one-plan-and-differ-only-in-parameters
+  ---
+  duration_ms: 0.098746
+  type: 'test'
+  ...
+# Subtest: page-层-uses-the-shared-plan-for-both-modes
+ok 275 - page-层-uses-the-shared-plan-for-both-modes
+  ---
+  duration_ms: 0.528598
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+ok 276 - regionMembershipSummary-counts-each-region-itself-and-unions-the-hexes
+  ---
+  duration_ms: 0.228652
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-keeps-three-owners-as-one-hex
+ok 277 - regionMembershipSummary-keeps-three-owners-as-one-hex
+  ---
+  duration_ms: 0.07439
+  type: 'test'
+  ...
+# Subtest: regionMembershipSummary-refuses-to-guess-without-hex-lists
+ok 278 - regionMembershipSummary-refuses-to-guess-without-hex-lists
+  ---
+  duration_ms: 0.203495
+  type: 'test'
+  ...
+# Subtest: page-层-shows-the-union-and-never-a-summed-total
+ok 279 - page-层-shows-the-union-and-never-a-summed-total
+  ---
+  duration_ms: 0.72743
+  type: 'test'
+  ...
+# Subtest: debug-hooks-for-the-region-view-mode-are-exposed
+ok 280 - debug-hooks-for-the-region-view-mode-are-exposed
+  ---
+  duration_ms: 0.090179
+  type: 'test'
+  ...
+# (node:457267) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: layout-constants-are-frozen
+ok 281 - layout-constants-are-frozen
+  ---
+  duration_ms: 0.429868
+  type: 'test'
+  ...
+# Subtest: columnX-is-left-margin-plus-column-minus-one-times-width
+ok 282 - columnX-is-left-margin-plus-column-minus-one-times-width
+  ---
+  duration_ms: 0.095666
+  type: 'test'
+  ...
+# Subtest: main-branch-columns-follow-tick-order
+ok 283 - main-branch-columns-follow-tick-order
+  ---
+  duration_ms: 0.116707
+  type: 'test'
+  ...
+# Subtest: forked-branch-first-tick-aligns-with-parent-column
+ok 284 - forked-branch-first-tick-aligns-with-parent-column
+  ---
+  duration_ms: 0.075422
+  type: 'test'
+  ...
+# Subtest: unknown-tick-falls-back-to-first-column
+ok 285 - unknown-tick-falls-back-to-first-column
+  ---
+  duration_ms: 0.11081
+  type: 'test'
+  ...
+# Subtest: tickOfRevision-reads-the-injected-table
+ok 286 - tickOfRevision-reads-the-injected-table
+  ---
+  duration_ms: 0.061019
+  type: 'test'
+  ...
+# Subtest: nodeX-composes-columnOf-with-columnX
+ok 287 - nodeX-composes-columnOf-with-columnX
+  ---
+  duration_ms: 0.09703
+  type: 'test'
+  ...
+# Subtest: groupByTick-merges-same-tick-into-one-node
+ok 288 - groupByTick-merges-same-tick-into-one-node
+  ---
+  duration_ms: 0.386455
+  type: 'test'
+  ...
+# Subtest: groupByTick-empty-input
+ok 289 - groupByTick-empty-input
+  ---
+  duration_ms: 0.162806
+  type: 'test'
+  ...
+# Subtest: isAtTip-only-true-at-branch-head
+ok 290 - isAtTip-only-true-at-branch-head
+  ---
+  duration_ms: 0.190992
+  type: 'test'
+  ...
+# Subtest: shortCommandType-takes-last-segment
+ok 291 - shortCommandType-takes-last-segment
+  ---
+  duration_ms: 0.089234
+  type: 'test'
+  ...
+# Subtest: nextBranchName-picks-smallest-free-b-name
+ok 292 - nextBranchName-picks-smallest-free-b-name
+  ---
+  duration_ms: 0.068914
+  type: 'test'
+  ...
+# Subtest: orderedBranches-puts-main-first-then-lexicographic
+ok 293 - orderedBranches-puts-main-first-then-lexicographic
+  ---
+  duration_ms: 0.06691
+  type: 'test'
+  ...
+# Subtest: tickIndex-finds-position
+ok 294 - tickIndex-finds-position
+  ---
+  duration_ms: 0.051013
+  type: 'test'
+  ...
+# Subtest: advanceByDays-submits-one-request-with-to-equals-from-plus-days
+ok 295 - advanceByDays-submits-one-request-with-to-equals-from-plus-days
+  ---
+  duration_ms: 0.600209
+  type: 'test'
+  ...
+# Subtest: advanceByDays-reports-a-single-rejected-request-as-zero-progress
+ok 296 - advanceByDays-reports-a-single-rejected-request-as-zero-progress
+  ---
+  duration_ms: 0.598796
+  type: 'test'
+  ...
+# Subtest: advanceByDays-rejects-a-response-without-a-new-revision
+ok 297 - advanceByDays-rejects-a-response-without-a-new-revision
+  ---
+  duration_ms: 0.511388
+  type: 'test'
+  ...
+# Subtest: advanceStatusText-reports-server-reason-and-success-range
+ok 298 - advanceStatusText-reports-server-reason-and-success-range
+  ---
+  duration_ms: 0.058038
+  type: 'test'
+  ...
+# (node:457274) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: buildTree-depth-parent-children-per-node
+ok 299 - buildTree-depth-parent-children-per-node
+  ---
+  duration_ms: 1.167816
+  type: 'test'
+  ...
+# Subtest: branch-point-is-two-or-more-direct-children-only
+ok 300 - branch-point-is-two-or-more-direct-children-only
+  ---
+  duration_ms: 0.243953
+  type: 'test'
+  ...
+# Subtest: branch-teeth-single-vs-double-vs-zero
+ok 301 - branch-teeth-single-vs-double-vs-zero
+  ---
+  duration_ms: 0.131773
+  type: 'test'
+  ...
+# Subtest: multi-root-forest-in-input-order
+ok 302 - multi-root-forest-in-input-order
+  ---
+  duration_ms: 0.158934
+  type: 'test'
+  ...
+# Subtest: missing-or-null-parent-becomes-root
+ok 303 - missing-or-null-parent-becomes-root
+  ---
+  duration_ms: 0.101499
+  type: 'test'
+  ...
+# Subtest: dangling-parent-becomes-root-and-is-preserved
+ok 304 - dangling-parent-becomes-root-and-is-preserved
+  ---
+  duration_ms: 0.086032
+  type: 'test'
+  ...
+# Subtest: descendant-count-is-postorder-total
+ok 305 - descendant-count-is-postorder-total
+  ---
+  duration_ms: 0.101961
+  type: 'test'
+  ...
+# Subtest: empty-input-returns-empty-forest
+ok 306 - empty-input-returns-empty-forest
+  ---
+  duration_ms: 0.072256
+  type: 'test'
+  ...
+# Subtest: flatten-returns-depth-first-including-self
+ok 307 - flatten-returns-depth-first-including-self
+  ---
+  duration_ms: 0.228212
+  type: 'test'
+  ...
+# Subtest: armyOptions-lists-one-option-per-forest-root
+ok 308 - armyOptions-lists-one-option-per-forest-root
+  ---
+  duration_ms: 0.447014
+  type: 'test'
+  ...
+# Subtest: subtreeOf-keeps-only-the-chosen-army
+ok 309 - subtreeOf-keeps-only-the-chosen-army
+  ---
+  duration_ms: 0.178154
+  type: 'test'
+  ...
+# Subtest: subtreeOf-unknown-or-dangling-root-returns-null-without-throwing
+ok 310 - subtreeOf-unknown-or-dangling-root-returns-null-without-throwing
+  ---
+  duration_ms: 0.065211
+  type: 'test'
+  ...
+# Subtest: rootIdOf-walks-parent-chain-to-the-army-root
+ok 311 - rootIdOf-walks-parent-chain-to-the-army-root
+  ---
+  duration_ms: 0.089042
+  type: 'test'
+  ...
+# Subtest: clampPanelPosition-pulls-a-target-back-inside-the-viewport
+ok 312 - clampPanelPosition-pulls-a-target-back-inside-the-viewport
+  ---
+  duration_ms: 0.08719
+  type: 'test'
+  ...
+# Subtest: clampPanelPosition-passes-through-a-position-already-inside
+ok 313 - clampPanelPosition-passes-through-a-position-already-inside
+  ---
+  duration_ms: 0.046743
+  type: 'test'
+  ...
+# Subtest: stackOffset-is-zero-for-a-single-unit
+ok 314 - stackOffset-is-zero-for-a-single-unit
+  ---
+  duration_ms: 0.051613
+  type: 'test'
+  ...
+# Subtest: stackOffset-symmetric-distinct-around-center-for-three
+ok 315 - stackOffset-symmetric-distinct-around-center-for-three
+  ---
+  duration_ms: 0.06986
+  type: 'test'
+  ...
+# Subtest: stackSpacing-keeps-neighbouring-circles-apart
+ok 316 - stackSpacing-keeps-neighbouring-circles-apart
+  ---
+  duration_ms: 0.033149
+  type: 'test'
+  ...
+# Subtest: stackSpacing-still-spreads-when-the-stack-cannot-fit-inside-the-cell
+ok 317 - stackSpacing-still-spreads-when-the-stack-cannot-fit-inside-the-cell
+  ---
+  duration_ms: 0.060017
+  type: 'test'
+  ...
+# Subtest: stackSpacing-stays-zero-when-the-screen-cell-is-too-small
+ok 318 - stackSpacing-stays-zero-when-the-screen-cell-is-too-small
+  ---
+  duration_ms: 0.049999
+  type: 'test'
+  ...
+# Subtest: markerGroups-collapses-a-capital-hex-to-one-army-marker
+ok 319 - markerGroups-collapses-a-capital-hex-to-one-army-marker
+  ---
+  duration_ms: 0.178089
+  type: 'test'
+  ...
+# Subtest: markerGroups-does-not-swallow-a-detachment-alone-in-another-hex
+ok 320 - markerGroups-does-not-swallow-a-detachment-alone-in-another-hex
+  ---
+  duration_ms: 0.128169
+  type: 'test'
+  ...
+# Subtest: markerGroups-splits-two-armies-in-the-same-hex
+ok 321 - markerGroups-splits-two-armies-in-the-same-hex
+  ---
+  duration_ms: 0.074879
+  type: 'test'
+  ...
+# Subtest: markerGroups-lead-is-the-shallowest-ancestor-present-on-the-hex
+ok 322 - markerGroups-lead-is-the-shallowest-ancestor-present-on-the-hex
+  ---
+  duration_ms: 0.065019
+  type: 'test'
+  ...
+# Subtest: markerGroups-ignores-units-without-a-position-but-still-roots-through-them
+ok 323 - markerGroups-ignores-units-without-a-position-but-still-roots-through-them
+  ---
+  duration_ms: 0.996385
+  type: 'test'
+  ...
+# Subtest: markerGroups-root-rule-matches-buildTree-rootIdOf
+ok 324 - markerGroups-root-rule-matches-buildTree-rootIdOf
+  ---
+  duration_ms: 0.17454
+  type: 'test'
+  ...
+# Subtest: markerGroups-empty-and-null-input-return-no-markers
+ok 325 - markerGroups-empty-and-null-input-return-no-markers
+  ---
+  duration_ms: 0.03991
+  type: 'test'
+  ...
+# Subtest: subtree-puts-the-root-above-its-children
+ok 326 - subtree-puts-the-root-above-its-children
+  ---
+  duration_ms: 0.997125
+  type: 'test'
+  ...
+# Subtest: subtree-keeps-root-on-top-through-three-levels
+ok 327 - subtree-keeps-root-on-top-through-three-levels
+  ---
+  duration_ms: 0.629788
+  type: 'test'
+  ...
+# Subtest: clampTreePan-clamps-pan-when-content-overflows-the-viewport
+ok 328 - clampTreePan-clamps-pan-when-content-overflows-the-viewport
+  ---
+  duration_ms: 0.061586
+  type: 'test'
+  ...
+# Subtest: clampTreePan-lets-small-content-move-freely-inside-the-viewport
+ok 329 - clampTreePan-lets-small-content-move-freely-inside-the-viewport
+  ---
+  duration_ms: 0.059055
+  type: 'test'
+  ...
+# Subtest: clampTreePan-mixes-both-axes-independently
+ok 330 - clampTreePan-mixes-both-axes-independently
+  ---
+  duration_ms: 0.038478
+  type: 'test'
+  ...
+# Subtest: preferredTreePan-centers-only-the-axis-that-fits
+ok 331 - preferredTreePan-centers-only-the-axis-that-fits
+  ---
+  duration_ms: 0.088774
+  type: 'test'
+  ...
+# Subtest: clampTreePan-tolerates-missing-and-non-finite-input
+ok 332 - clampTreePan-tolerates-missing-and-non-finite-input
+  ---
+  duration_ms: 0.053577
+  type: 'test'
+  ...
+# Subtest: unit-panel-has-a-reset-control-that-is-wired
+ok 333 - unit-panel-has-a-reset-control-that-is-wired
+  ---
+  duration_ms: 0.286034
+  type: 'test'
+  ...
+# Subtest: unitTree-has-no-leftover-scrollIntoView-dead-code
+ok 334 - unitTree-has-no-leftover-scrollIntoView-dead-code
+  ---
+  duration_ms: 0.160825
+  type: 'test'
+  ...
+# Subtest: markerScreenVisible-true-inside-and-false-outside-the-viewport
+ok 335 - markerScreenVisible-true-inside-and-false-outside-the-viewport
+  ---
+  duration_ms: 0.074057
+  type: 'test'
+  ...
+# Subtest: markerScreenVisible-respects-the-margin-band-boundary
+ok 336 - markerScreenVisible-respects-the-margin-band-boundary
+  ---
+  duration_ms: 0.046498
+  type: 'test'
+  ...
+# Subtest: centerViewOn-centers-the-world-point-under-worldToScreen
+ok 337 - centerViewOn-centers-the-world-point-under-worldToScreen
+  ---
+  duration_ms: 0.224954
+  type: 'test'
+  ...
+# Subtest: centerViewOn-passes-the-scale-through-unchanged
+ok 338 - centerViewOn-passes-the-scale-through-unchanged
+  ---
+  duration_ms: 0.057496
+  type: 'test'
+  ...
+# Subtest: UNIT_VISIBLE_MIN_SCALE-makes-the-marker-measurably-visible
+ok 339 - UNIT_VISIBLE_MIN_SCALE-makes-the-marker-measurably-visible
+  ---
+  duration_ms: 0.042016
+  type: 'test'
+  ...
+# Subtest: unit-panel-has-a-locate-control-that-is-wired
+ok 340 - unit-panel-has-a-locate-control-that-is-wired
+  ---
+  duration_ms: 0.317211
+  type: 'test'
+  ...
+# Subtest: map-select-choke-point-triggers-ensureUnitVisible
+ok 341 - map-select-choke-point-triggers-ensureUnitVisible
+  ---
+  duration_ms: 0.765757
+  type: 'test'
+  ...
+# Subtest: combatHexes-real-data-two-armies-sharing-one-hex-counts-two-parties
+ok 342 - combatHexes-real-data-two-armies-sharing-one-hex-counts-two-parties
+  ---
+  duration_ms: 0.186799
+  type: 'test'
+  ...
+# Subtest: combatHexes-one-root-with-many-subunits-is-not-a-combat-hex
+ok 343 - combatHexes-one-root-with-many-subunits-is-not-a-combat-hex
+  ---
+  duration_ms: 0.058631
+  type: 'test'
+  ...
+# Subtest: combatHexes-engaged-group-makes-a-single-root-hex-a-combat-hex
+ok 344 - combatHexes-engaged-group-makes-a-single-root-hex-a-combat-hex
+  ---
+  duration_ms: 0.056702
+  type: 'test'
+  ...
+# Subtest: markerGroups-engaged-only-reflects-that-hex-and-empty-input-is-safe
+ok 345 - markerGroups-engaged-only-reflects-that-hex-and-empty-input-is-safe
+  ---
+  duration_ms: 0.074592
+  type: 'test'
+  ...
+# Subtest: combatHexes-recorded-hex-with-no-unit-markers-is-a-combat-hex-with-value-at-least-one
+ok 346 - combatHexes-recorded-hex-with-no-unit-markers-is-a-combat-hex-with-value-at-least-one
+  ---
+  duration_ms: 0.07024
+  type: 'test'
+  ...
+# Subtest: combatHexes-keeps-the-legacy-inference-beside-the-recorded-hexes
+ok 347 - combatHexes-keeps-the-legacy-inference-beside-the-recorded-hexes
+  ---
+  duration_ms: 0.066997
+  type: 'test'
+  ...
+# Subtest: combatHexes-recorded-hex-merged-with-legacy-count-takes-the-max
+ok 348 - combatHexes-recorded-hex-merged-with-legacy-count-takes-the-max
+  ---
+  duration_ms: 0.111269
+  type: 'test'
+  ...
+# Subtest: combatSlot-two-parties-one-each-side-on-the-center-row
+ok 349 - combatSlot-two-parties-one-each-side-on-the-center-row
+  ---
+  duration_ms: 0.078951
+  type: 'test'
+  ...
+# Subtest: combatSlot-four-parties-are-two-two-non-overlapping-and-symmetric
+ok 350 - combatSlot-four-parties-are-two-two-non-overlapping-and-symmetric
+  ---
+  duration_ms: 0.067304
+  type: 'test'
+  ...
+# Subtest: combatSlot-odd-count-puts-the-surplus-party-on-the-left
+ok 351 - combatSlot-odd-count-puts-the-surplus-party-on-the-left
+  ---
+  duration_ms: 0.093202
+  type: 'test'
+  ...
+# Subtest: combatIcon-sits-at-the-hex-center-and-its-font-is-visible-when-layout-is-on
+ok 352 - combatIcon-sits-at-the-hex-center-and-its-font-is-visible-when-layout-is-on
+  ---
+  duration_ms: 0.057624
+  type: 'test'
+  ...
+# Subtest: combatLayoutEnabled-gates-the-special-layout-on-screen-cell-height
+ok 353 - combatLayoutEnabled-gates-the-special-layout-on-screen-cell-height
+  ---
+  duration_ms: 0.06564
+  type: 'test'
+  ...
+# Subtest: renderer-wires-combat-layout-draw-and-hit-without-inventing-coordinates
+ok 354 - renderer-wires-combat-layout-draw-and-hit-without-inventing-coordinates
+  ---
+  duration_ms: 0.372906
+  type: 'test'
+  ...
+# Subtest: unit-panel-has-detach-and-attach-formation-controls-that-are-wired
+ok 355 - unit-panel-has-detach-and-attach-formation-controls-that-are-wired
+  ---
+  duration_ms: 2.934106
+  type: 'test'
+  ...
+# Subtest: attach-formation-button-disabled-follows-the-selected-units-parent
+ok 356 - attach-formation-button-disabled-follows-the-selected-units-parent
+  ---
+  duration_ms: 0.442693
+  type: 'test'
+  ...
+# Subtest: formation-buttons-pass-through-the-server-reason-without-a-second-truth
+ok 357 - formation-buttons-pass-through-the-server-reason-without-a-second-truth
+  ---
+  duration_ms: 0.101257
+  type: 'test'
+  ...
+# Subtest: markerLabel-shows-the-army-name-times-member-count-and-truncates-overlong-names
+ok 358 - markerLabel-shows-the-army-name-times-member-count-and-truncates-overlong-names
+  ---
+  duration_ms: 0.088908
+  type: 'test'
+  ...
+# Subtest: renderer-marker-text-is-the-army-name-not-a-unit-short-id
+ok 359 - renderer-marker-text-is-the-army-name-not-a-unit-short-id
+  ---
+  duration_ms: 0.456063
+  type: 'test'
+  ...
+# Subtest: buildTree-carries-the-formation-fields-verbatim
+ok 360 - buildTree-carries-the-formation-fields-verbatim
+  ---
+  duration_ms: 0.081369
+  type: 'test'
+  ...
+# Subtest: buildTree-defaults-the-formation-fields-when-the-server-does-not-send-them
+ok 361 - buildTree-defaults-the-formation-fields-when-the-server-does-not-send-them
+  ---
+  duration_ms: 0.0355
+  type: 'test'
+  ...
+# Subtest: clampTreeScale-clamps-the-frozen-range-literals
+ok 362 - clampTreeScale-clamps-the-frozen-range-literals
+  ---
+  duration_ms: 0.076646
+  type: 'test'
+  ...
+# Subtest: clampTreeScale-exported-bounds-are-the-function-s-actual-bounds
+ok 363 - clampTreeScale-exported-bounds-are-the-function-s-actual-bounds
+  ---
+  duration_ms: 0.04221
+  type: 'test'
+  ...
+# Subtest: zoomedTreePan-keeps-the-content-point-under-focus-on-the-same-screen-pixel
+ok 364 - zoomedTreePan-keeps-the-content-point-under-focus-on-the-same-screen-pixel
+  ---
+  duration_ms: 0.110706
+  type: 'test'
+  ...
+# Subtest: zoomedTreePan-tolerates-missing-or-non-finite-pan-and-focus
+ok 365 - zoomedTreePan-tolerates-missing-or-non-finite-pan-and-focus
+  ---
+  duration_ms: 0.055743
+  type: 'test'
+  ...
+# Subtest: zoomedTreePan-treats-missing-non-finite-or-non-positive-old-scale-as-one
+ok 366 - zoomedTreePan-treats-missing-non-finite-or-non-positive-old-scale-as-one
+  ---
+  duration_ms: 0.061442
+  type: 'test'
+  ...
+# Subtest: render-writes-translate-then-scale-with-scale-one-on-the-content-layer
+ok 367 - render-writes-translate-then-scale-with-scale-one-on-the-content-layer
+  ---
+  duration_ms: 0.641519
+  type: 'test'
+  ...
+# Subtest: unit-panel-zoom-controls-are-present-and-wired-including-wheel
+ok 368 - unit-panel-zoom-controls-are-present-and-wired-including-wheel
+  ---
+  duration_ms: 0.342823
+  type: 'test'
+  ...
+# Subtest: zoom-readout-starts-at-100-percent-and-is-aria-live
+ok 369 - zoom-readout-starts-at-100-percent-and-is-aria-live
+  ---
+  duration_ms: 0.160496
+  type: 'test'
+  ...
+# Subtest: reset-view-title-covers-zoom-resetting-too
+ok 370 - reset-view-title-covers-zoom-resetting-too
+  ---
+  duration_ms: 0.210485
+  type: 'test'
+  ...
+# Subtest: unit-panel-width-and-height-are-the-same-min-expression
+ok 371 - unit-panel-width-and-height-are-the-same-min-expression
+  ---
+  duration_ms: 0.293391
+  type: 'test'
+  ...
+# Subtest: tree-canvas-transform-origin-is-top-left
+ok 372 - tree-canvas-transform-origin-is-top-left
+  ---
+  duration_ms: 0.187299
+  type: 'test'
+  ...
+# Subtest: zoom-in-button-click-really-raises-the-content-layer-scale-above-one
+ok 373 - zoom-in-button-click-really-raises-the-content-layer-scale-above-one
+  ---
+  duration_ms: 0.793136
+  type: 'test'
+  ...
+# (node:457275) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: terrainDimAlpha-is-nonzero-only-in-region-modes
+ok 374 - terrainDimAlpha-is-nonzero-only-in-region-modes
+  ---
+  duration_ms: 0.82338
+  type: 'test'
+  ...
+# Subtest: terrain-dim-is-painted-after-terrain-and-before-highlights
+ok 375 - terrain-dim-is-painted-after-terrain-and-before-highlights
+  ---
+  duration_ms: 0.410364
+  type: 'test'
+  ...
+# Subtest: terrain-dim-is-a-full-canvas-dark-scrim
+ok 376 - terrain-dim-is-a-full-canvas-dark-scrim
+  ---
+  duration_ms: 0.336598
+  type: 'test'
+  ...
+# Subtest: pixel-sampling-hook-is-exposed-for-color-level-evidence
+ok 377 - pixel-sampling-hook-is-exposed-for-color-level-evidence
+  ---
+  duration_ms: 0.065863
+  type: 'test'
+  ...
+# Subtest: regionLabelLayout-uses-centroid-and-sqrt-font
+ok 378 - regionLabelLayout-uses-centroid-and-sqrt-font
+  ---
+  duration_ms: 0.121437
+  type: 'test'
+  ...
+# Subtest: regionLabelLayout-refuses-to-guess-without-label-or-hexcount
+ok 379 - regionLabelLayout-refuses-to-guess-without-label-or-hexcount
+  ---
+  duration_ms: 0.094087
+  type: 'test'
+  ...
+# Subtest: region-name-draws-both-stroke-and-fill-with-zoom-guard
+ok 380 - region-name-draws-both-stroke-and-fill-with-zoom-guard
+  ---
+  duration_ms: 0.362126
+  type: 'test'
+  ...
+# Subtest: regionNamePlan-culls-by-viewport-like-hex-rendering
+ok 381 - regionNamePlan-culls-by-viewport-like-hex-rendering
+  ---
+  duration_ms: 0.228524
+  type: 'test'
+  ...
+# Subtest: region-names-are-actually-invoked-in-render-order
+ok 382 - region-names-are-actually-invoked-in-render-order
+  ---
+  duration_ms: 0.553906
+  type: 'test'
+  ...
+# Subtest: region-name-toggle-is-wired-and-persisted
+ok 383 - region-name-toggle-is-wired-and-persisted
+  ---
+  duration_ms: 0.717154
+  type: 'test'
+  ...
+# Subtest: regionTag-keeps-null-and-string-verbatim
+ok 384 - regionTag-keeps-null-and-string-verbatim
+  ---
+  duration_ms: 0.109336
+  type: 'test'
+  ...
+# Subtest: single-plan-brightens-focus-and-fades-only-same-tag
+ok 385 - single-plan-brightens-focus-and-fades-only-same-tag
+  ---
+  duration_ms: 0.335929
+  type: 'test'
+  ...
+# Subtest: single-focus-alpha-is-higher-than-tag-group-alpha
+ok 386 - single-focus-alpha-is-higher-than-tag-group-alpha
+  ---
+  duration_ms: 0.104628
+  type: 'test'
+  ...
+# Subtest: tag-group-plan-is-unchanged
+ok 387 - tag-group-plan-is-unchanged
+  ---
+  duration_ms: 0.146356
+  type: 'test'
+  ...
+# Subtest: setHighlightRegions-infers-kind-and-honours-explicit-kind
+ok 388 - setHighlightRegions-infers-kind-and-honours-explicit-kind
+  ---
+  duration_ms: 0.140745
+  type: 'test'
+  ...
+# Subtest: setRegionTag-trims-and-normalizes-blank-to-null
+ok 389 - setRegionTag-trims-and-normalizes-blank-to-null
+  ---
+  duration_ms: 0.069217
+  type: 'test'
+  ...
+# Subtest: setMode-clears-regionTag-in-the-same-batch
+ok 390 - setMode-clears-regionTag-in-the-same-batch
+  ---
+  duration_ms: 0.045262
+  type: 'test'
+  ...
+# Subtest: topRegionId-picks-the-definition-order-last-not-the-lexicographic-max
+ok 391 - topRegionId-picks-the-definition-order-last-not-the-lexicographic-max
+  ---
+  duration_ms: 0.066927
+  type: 'test'
+  ...
+# Subtest: taggedTopRegionId-falls-back-to-global-last-when-active-tag-is-null
+ok 392 - taggedTopRegionId-falls-back-to-global-last-when-active-tag-is-null
+  ---
+  duration_ms: 0.082962
+  type: 'test'
+  ...
+# Subtest: taggedTopRegionId-picks-the-last-of-the-active-tag-not-the-global-last
+ok 393 - taggedTopRegionId-picks-the-last-of-the-active-tag-not-the-global-last
+  ---
+  duration_ms: 0.066307
+  type: 'test'
+  ...
+# Subtest: taggedTopRegionId-returns-null-on-no-match-or-non-array
+ok 394 - taggedTopRegionId-returns-null-on-no-match-or-non-array
+  ---
+  duration_ms: 0.044491
+  type: 'test'
+  ...
+# Subtest: normalizedTag-trims-and-folds-blank-to-null
+ok 395 - normalizedTag-trims-and-folds-blank-to-null
+  ---
+  duration_ms: 0.048138
+  type: 'test'
+  ...
+# Subtest: sources-split-single-vs-group-at-the-three-call-sites
+ok 396 - sources-split-single-vs-group-at-the-three-call-sites
+  ---
+  duration_ms: 0.59749
+  type: 'test'
+  ...
+# Subtest: panel-right-wires-region-tag-at-both-click-sites
+ok 397 - panel-right-wires-region-tag-at-both-click-sites
+  ---
+  duration_ms: 0.120561
+  type: 'test'
+  ...
+# Subtest: regionViewDebug-exposes-kind-and-both-alphas
+ok 398 - regionViewDebug-exposes-kind-and-both-alphas
+  ---
+  duration_ms: 0.452693
+  type: 'test'
+  ...
+# Subtest: loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost
+ok 399 - loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost
+  ---
+  duration_ms: 0.035198
+  type: 'test'
+  ...
+# Subtest: right-panel-carries-world-overview-in-view-mode-and-yields-when-selected
+ok 400 - right-panel-carries-world-overview-in-view-mode-and-yields-when-selected
+  ---
+  duration_ms: 0.348195
+  type: 'test'
+  ...
+# Subtest: side-columns-have-a-usable-stable-width
+ok 401 - side-columns-have-a-usable-stable-width
+  ---
+  duration_ms: 0.909867
+  type: 'test'
+  ...
+# Subtest: kv-value-column-is-not-squeezed-to-one-character
+ok 402 - kv-value-column-is-not-squeezed-to-one-character
+  ---
+  duration_ms: 0.171896
+  type: 'test'
+  ...
+# Subtest: region-names-only-show-in-the-two-region-modes
+ok 403 - region-names-only-show-in-the-two-region-modes
+  ---
+  duration_ms: 0.05859
+  type: 'test'
+  ...
+# Subtest: region-name-paint-is-gated-by-mode
+ok 404 - region-name-paint-is-gated-by-mode
+  ---
+  duration_ms: 0.380597
+  type: 'test'
+  ...
+# Subtest: region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant
+ok 405 - region-name-toggle-is-in-the-topbar-and-hidden-when-irrelevant
+  ---
+  duration_ms: 0.145597
+  type: 'test'
+  ...
+# (node:457289) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: api.js-declares-exactly-the-allowed-write-endpoints
+ok 406 - api.js-declares-exactly-the-allowed-write-endpoints
+  ---
+  duration_ms: 1.357482
+  type: 'test'
+  ...
+# Subtest: api.js-exports-the-command-and-approval-write-functions
+ok 407 - api.js-exports-the-command-and-approval-write-functions
+  ---
+  duration_ms: 0.955299
+  type: 'test'
+  ...
+# Subtest: no-other-webui-asset-has-a-write-call
+ok 408 - no-other-webui-asset-has-a-write-call
+  ---
+  duration_ms: 3.181101
+  type: 'test'
+  ...
+# Subtest: scanner-has-teeth-on-undeclared-endpoint
+ok 409 - scanner-has-teeth-on-undeclared-endpoint
+  ---
+  duration_ms: 0.333135
+  type: 'test'
+  ...
+# Subtest: scanner-detects-a-missing-declared-endpoint
+ok 410 - scanner-detects-a-missing-declared-endpoint
+  ---
+  duration_ms: 0.42361
+  type: 'test'
+  ...
+# Subtest: dynamic-write-functions-hit-only-allowed-endpoints
+ok 411 - dynamic-write-functions-hit-only-allowed-endpoints
+  ---
+  duration_ms: 1.476946
+  type: 'test'
+  ...
+# Subtest: module-path-resolution-is-non-empty
+ok 412 - module-path-resolution-is-non-empty
+  ---
+  duration_ms: 0.663642
+  type: 'test'
+  ...
+1..412
+# tests 412
+# suites 0
+# pass 412
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 278.291107
+(node:457086) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[frontend-gate] OK tests=412 pass=412 fail=0
+EXIT=0

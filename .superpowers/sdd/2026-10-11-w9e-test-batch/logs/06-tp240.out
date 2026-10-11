@@ -1,0 +1,15 @@
+[21:09:24] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9e/stores/tp240 --world=three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-tp.json --gui-port 10988 --mcp-port 10989 --approval-port 10990
+[21:09:26] GUI 就绪（1.71s）
+[21:09:26] 创世后 head rev=1 tick=0
+[21:10:00] advance 0->240 HTTP 200 33.942s
+[21:10:00] dump d240-oneshot rev=2 bytes=10740448 md5=58d1d5d97a6ece50bb37395adf65e8e4
+[21:10:16] 结果落盘 .superpowers/sdd/2026-10-11-w9e-test-batch/logs/tp240.result.json
+{
+  "tag": "tp240",
+  "jarMd5": "c29ba84c7499c5e990c66ce6fc36d73c",
+  "readySeconds": 1.713,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 240,
+  "logStrippedMd5": "92c2360937072a540215ab4ec83324e3"
+}

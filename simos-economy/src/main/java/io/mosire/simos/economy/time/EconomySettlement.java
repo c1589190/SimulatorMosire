@@ -3368,6 +3368,13 @@ public final class EconomySettlement {
                         move.debtMilli(),
                         "speedPerMille",
                         move.transferSpeedPerMille(),
+                        // ★★★ W9-fix（U3 修复，控制方裁定 v3.32 §7 第 5 条）：**谁落到目标产业的第几档**
+                        //   （0 = 贫农/兜底档 … 3 = 地主档；规划期按"带得走的作业资本"算，见
+                        //   ModeMigrationPolicy.supportedTierIndex）。改前这一维**只存在于瞬态计划类型里**，
+                        //   没有任何日志/落盘 ⇒ 真世界读不到"按库存定档"是否发生（W9d 只能靠单测替代）。
+                        //   ★ 同族字段 speedPerMille 已在（上面一行），无需补。
+                        "targetTierIndex",
+                        move.targetTierIndex(),
                         "reason",
                         move.reason()));
           }

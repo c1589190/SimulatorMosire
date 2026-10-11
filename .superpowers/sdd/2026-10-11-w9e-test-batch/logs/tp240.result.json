@@ -1,0 +1,78 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 1748188,
+      "md5": "3a74415ecea3a4b7d723098f968f6ee5",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 10740448,
+      "md5": "58d1d5d97a6ece50bb37395adf65e8e4",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-tp.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10988,
+  "headRevision": 2,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "c29ba84c7499c5e990c66ce6fc36d73c",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=INFO -Dsimos.app.logLevel=INFO",
+  "keepStore": false,
+  "log": ".superpowers/sdd/2026-10-11-w9e-test-batch/logs/tp240.log",
+  "logKeep": "event=(MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET_REPORT|MARKET_FILL|MERCHANT_[A-Z_]*|ONDEMAND_[A-Z_]*|HAUL_[A-Z_]*|LOGISTICS_[A-Z_]*|CAPACITY_(?!DEMAND_INSTANCE)[A-Z_]*|MINT_[A-Z_]*|MONEY_MARKET[A-Z_]*|DEBT_[A-Z_]*|CLASS_[A-Z_]*|SLIDE_[A-Z_]*|STRATUM[A-Z_]*|DAY_START|DAY_END)",
+  "logKeptLines": 2099756,
+  "logLines": 2099756,
+  "logStrippedMd5": "92c2360937072a540215ab4ec83324e3",
+  "pid": 469582,
+  "plan": ".superpowers/sdd/2026-10-11-w9e-test-batch/plans/plan-tp-240.json",
+  "readySeconds": 1.713,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 9715980,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 240
+    }
+  ],
+  "startedAt": "2026-10-11T21:09:24",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 33.942,
+      "to": 240
+    },
+    {
+      "bytes": 10740448,
+      "dst": ".superpowers/sdd/2026-10-11-w9e-test-batch/dumps/tp240-d240-oneshot.json",
+      "i": 1,
+      "label": "d240-oneshot",
+      "md5": "58d1d5d97a6ece50bb37395adf65e8e4",
+      "op": "dump",
+      "revision": 2
+    }
+  ],
+  "store": "/tmp/w9e/stores/tp240",
+  "tag": "tp240",
+  "tick": 240,
+  "world": "three-powers"
+}

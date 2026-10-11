@@ -1,0 +1,73 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 5620567,
+      "md5": "1ddb48bc282f096874d8092373a22501",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10971,
+  "headRevision": 2,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "b07bb719257cf2b313d037610aacb106",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=INFO -Dsimos.app.logLevel=INFO",
+  "keepStore": true,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-test-batch/logs/sw360.log",
+  "logKeep": "event=(HAUL_[A-Z_]*|LOGISTICS_[A-Z_]*|MERCHANT_[A-Z_]*|ONDEMAND_[A-Z_]*|MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET_[A-Z_]*|PRIMARY_MODE[A-Z_]*|CAPACITY_[A-Z_]*|MINT_[A-Z_]*|MONEY_MARKET[A-Z_]*|DEBT_[A-Z_]*|HOUSEHOLD_[A-Z_]*|POPULATION_[A-Z_]*|DAY_START|DAY_END|CLASS_[A-Z_]*|SLIDE_[A-Z_]*|STRATUM[A-Z_]*)",
+  "logKeptLines": 239899,
+  "logLines": 239899,
+  "logStrippedMd5": "7354cd443b06ca2937d9f6ded3f7c109",
+  "pid": 457347,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-test-batch/plans/plan-sw-360.json",
+  "readySeconds": 1.686,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 5004143,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 360
+    }
+  ],
+  "startedAt": "2026-10-11T20:37:22",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 7.698,
+      "to": 360
+    },
+    {
+      "bytes": 5620567,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-test-batch/dumps/sw360-d360-oneshot.json",
+      "i": 1,
+      "label": "d360-oneshot",
+      "md5": "1ddb48bc282f096874d8092373a22501",
+      "op": "dump",
+      "revision": 2
+    }
+  ],
+  "store": "/tmp/w9t/stores/sw360",
+  "tag": "sw360",
+  "tick": 360,
+  "world": "small-world"
+}

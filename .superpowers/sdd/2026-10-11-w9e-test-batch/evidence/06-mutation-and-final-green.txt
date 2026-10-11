@@ -1,0 +1,20 @@
+=== 变异轮（5 处）红点 ===
+[ERROR] Tests run: 12, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.124 s <<< FAILURE! -- in io.mosire.simos.economy.time.ModeMigrationPolicyW9Test
+[ERROR] io.mosire.simos.economy.time.ModeMigrationPolicyW9Test.theBottomTierNeverRequiresAnyInventory -- Time elapsed: 0.011 s <<< FAILURE!
+[ERROR] io.mosire.simos.economy.time.ModeMigrationPolicyW9Test.theMigrationSpeedCapClampsTheMoveablePopulationPerPlanRound -- Time elapsed: 0.002 s <<< FAILURE!
+[ERROR] io.mosire.simos.economy.time.ModeMigrationPolicyW9Test.profitGapSpeedMatchesTheFrozenPerValueTable -- Time elapsed: 0.001 s <<< FAILURE!
+[ERROR] Tests run: 6, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.100 s <<< FAILURE! -- in io.mosire.simos.economy.time.ModeMigrationPolicyD024Test
+[ERROR] io.mosire.simos.economy.time.ModeMigrationPolicyD024Test.hasReadingFalseButPositiveExpectedCandidateYieldsPlan -- Time elapsed: 0.015 s <<< FAILURE!
+MUT_RC=1
+=== M1 单独轮 ===
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 71.76 s <<< FAILURE! -- in io.mosire.simos.app.time.EconomyCycleHealthTest
+[逐市场轮成交笔数的分布必须与实测基线**逐值相同**（任何一轮的笔数变了都当场红；世界行为有意改变时必须显式重新基线化，不许放宽）。基线=15
+[ERROR]   EconomyCycleHealthTest.twoFullCyclesInRealThreePowersWorldKeepMoneyConservedAndMarketAlive:565->assertEveryMarketRoundTraded:638 [逐市场轮成交笔数的分布必须与实测基线**逐�
+=== 还原后最终绿轮 ===
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.111 s -- in io.mosire.simos.economy.time.ModeMigrationPolicyW9Test
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.100 s -- in io.mosire.simos.economy.time.ModeMigrationPolicyD024Test
+[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 71.89 s -- in io.mosire.simos.app.time.EconomyCycleHealthTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+FINAL_RC=0

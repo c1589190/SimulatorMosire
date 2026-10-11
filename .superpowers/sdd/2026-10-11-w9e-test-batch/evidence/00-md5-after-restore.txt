@@ -1,0 +1,3 @@
+b4ec80bc5acbf1b3f4588f81acdf7c6d  simos-app/src/test/java/io/mosire/simos/app/time/EconomyCycleHealthTest.java
+c7da43bd1cc0258a03b8786b40813f7f  simos-economy/src/test/java/io/mosire/simos/economy/time/ModeMigrationPolicyW9Test.java
+5c56c4b6a3531ed7564bee401301b701  simos-economy/src/test/java/io/mosire/simos/economy/time/ModeMigrationPolicyD024Test.java

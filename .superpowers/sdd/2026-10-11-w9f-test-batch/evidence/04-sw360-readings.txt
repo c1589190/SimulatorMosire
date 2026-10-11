@@ -1,0 +1,72 @@
+====================================================================================================
+W9f 读数：tag=sw360-0-360  window=全窗  文件=logs/sw360.log
+====================================================================================================
+
+[① 市场轮] 轮数 = 144；★ 零成交轮次 = 0；Σfills = 1751（MARKET_FILL 行 = 1751）
+  min / 中位 / max = 3 / 9.0 / 168
+  同日两轮 = 否；相邻最大间隔 = 3 天
+  分布（笔数:轮数）: 3×1, 4×1, 5×2, 6×28, 7×31, 8×6, 9×29, 10×10, 11×6, 12×10, 13×2, 15×2, 16×1, 17×3, 19×1, 22×1, 23×1, 25×2, 30×1, 35×1, 39×1, 57×1, 67×1, 121×1, 168×1
+  ★ Σfills == MARKET_FILL 行数 ⇒ True
+
+[② 转业] MIGRATION_MOVE 笔数 = 222
+  reason: {'PROFIT_WEIGHTED': 222}
+  速度 min/中位/max = 10 / 45.0 / 101；1000‰ 笔数 = 0
+  targetMode: {'wage_farm': 143, 'handicraft_workshop': 16, 'tenancy_fixed_kind': 47, 'merchant': 16}
+  ★ targetTierIndex 分布: 0×211, 1×11
+  单笔最大搬迁人口 = 18；Σ搬迁人口 = 507
+
+  ★ 落点（MIGRATION_APPLIED，12 轮）：
+    day=30   moves=8    rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=60   moves=6    rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=90   moves=5    rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=120  moves=6    rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=150  moves=26   rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=180  moves=35   rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=210  moves=36   rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=240  moves=34   rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=270  moves=25   rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=300  moves=23   rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=330  moves=9    rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    day=360  moves=9    rowsBefore=178 rowsAfter=178 （并入既有户 ⇒ 行数不变）
+    ⇒ rowsBefore == rowsAfter 的轮数 = 12 / 12（新建户行 0 个）
+
+  ★ 随迁库存（MIGRATION_INVENTORY_CARRIED）= 222 笔（迁移 222 笔 ⇒ 每笔都带）
+    带 haul 的笔数 = 0（应为 0 = D2 排除生效）；带 grain 的笔数 = 156 / 222
+    样本: source=hh--2_1-rural-rich_peasant target=hh--2_1-rural-poor_peasant targetHex=-2_1 population=2 goods={fiber=181789, grain=3305} reason=mobile-commodity-inventory-carried-by-population-ratio
+    样本: source=hh--2_2-rural-rich_peasant target=hh--2_2-rural-poor_peasant targetHex=-2_2 population=2 goods={fiber=175925, grain=6722} reason=mobile-commodity-inventory-carried-by-population-ratio
+    样本: source=hh-0_-1-rural-rich_peasant target=hh-0_-1-rural-poor_peasant targetHex=0_-1 population=2 goods={fiber=181789, grain=3428} reason=mobile-commodity-inventory-carried-by-population-ratio
+    样本: source=hh-0_-2-rural-rich_peasant target=hh-0_-2-rural-poor_peasant targetHex=0_-2 population=2 goods={fiber=119629, grain=5914} reason=mobile-commodity-inventory-carried-by-population-ratio
+    样本:  day=30 source=hh-0_0-rural-landlord target=hh-0_0-rural-poor_peasant targetHex=0_0 population=1 goods={fiber=91894, grain=2045} reason=mobile-commodity-inventory-carried-by-population-ratio
+
+  ★ 壳户计数（MODE_MIGRATION_CANDIDATES，12 轮）ΣnoPopulation=876 ΣnoLabor=943
+  逐户不可行 / 实物腿拒: {}
+
+[③ 运粮 / 运力]
+  MERCHANT_CAPACITY_LANE_TRUNCATED（逐理由：笔数 / ΣunallocatedMilli）:
+    no-carrier-with-deliverable-service                7525 笔 / Σ      58888186 毫
+    out-of-derived-radius                              4074 笔 / Σ       5476991 毫
+    out-of-derived-radius+sub-unit-residual            1946 笔 / Σ        918497 毫
+    capacity-exhausted                                   42 笔 / Σ         87945 毫
+    sub-unit-residual                                    29 笔 / Σ           664 毫
+  ★ no-carrier-with-deliverable-service = 7525 笔 / 58888186 毫
+  ★ out-of-derived-radius = 4074 笔 / 5476991 毫
+  CAPACITY_DEMAND_GAP_WHY（另一口径，逐理由）:
+    capacity-budget-below-demand-or-out-of-derived-radius           297 笔 / Σ      67084135 毫
+
+[④ 跑商]
+  MERCHANT_TRADE_INDUSTRY_CREATED = 0
+  ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE = 0
+  ONDEMAND_TRADE_MIGRATION_SKIPPED = 0
+  MIGRATION_MOVE targetMode=merchant = 16
+    hh-0_0-urban-middle_peasant                → hex=0,0     16 笔 / Σ人口  133 / Σ钱 416 毫；日=[120, 150, 180, 180, 210, 210, 240, 240, 270, 270, 300, 300]
+
+[⑤ 不回归（事件计数，全窗）]
+  W4 阶层滑落          CLASS_SLIDE_ROUND=144, CLASS_SLIDE_SETTLED=144, CLASS_SLIDE=44, CLASS_TRANSITIONS=1
+  W5 铸币            MINT_SETTLED=3, MINT_LIMIT_WINDOW=9, MINT_LAST_CYCLE_READOUT=1, MINT_PRODUCTION=0
+  W5.5 货币市场        MONEY_MARKET_ROUND=144, MONEY_MARKET_WHY=144, MONEY_MARKET_UNFILLED=144, MONEY_MARKET_RATE_WRITTEN=144, MONEY_MARKET_GOV_SUPPLY_SUPPRESSED=144, MONEY_MARKET_BUDGET_TOPUP=144
+  W7 运力/运费         HAUL_PRICE_SIGNAL=144, HAUL_SERVICE_DELIVERED=438, HAUL_PAID=0, HAUL_SETTLED=0, HAUL_EXPIRED=0, LOGISTICS_ALLOCATED=0
+  W8 债务语义          DEBT_REPAY_DECISION=3786, DEBT_STRESS_THRESHOLD_FIRED=872, MIGRATION_DEBT_MOVED=118, MIGRATION_DEBT_SELF_NETTED=41, DEBT_WRITEOFF=0
+  市场/迁移            MARKET=0, MARKET_REPORT=144, MARKET_FILL=1751, MIGRATION_PLAN=12, MIGRATION_APPLIED=12, MIGRATION_MOVE=222, MIGRATION_INVENTORY_CARRIED=222, MODE_MIGRATION_CANDIDATES=12
+  异常/500           GUI_REQUEST_FAILED=0
+  日循环              DAY_START=360, DAY_END=360
+  ★ 名字里含 EXCEPTION/ERROR/FAILED/STACK 的事件: （无）

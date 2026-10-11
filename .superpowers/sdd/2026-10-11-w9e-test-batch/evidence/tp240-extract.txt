@@ -1,0 +1,92 @@
+====================================================================================================
+W9e 读数：tag=tp240  window=0..240  文件=.superpowers/sdd/2026-10-11-w9e-test-batch/logs/tp240.log
+====================================================================================================
+
+[① 迁移（MIGRATION_MOVE）] 笔数 = 233
+  reason 分布: {'PROFIT_WEIGHTED': 233}
+  速度分布(‰): 5×1, 7×1, 12×1, 22×7, 25×3, 29×11, 30×12, 43×4, 44×2, 63×34, 64×3, 66×52, 67×34, 70×1, 72×2, 89×2, 93×4, 94×1, 95×2, 97×1, 98×2, 99×17, 100×36
+  速度 min/中位/max = 5 / 66 / 100
+  速度=1000‰ 的笔数 = 0
+  人口分布: 1×172, 2×15, 3×17, 4×5, 5×15, 6×4, 7×3, 9×1, 10×1
+  targetMode 分布: {'wage_farm': 158, 'handicraft_workshop': 38, 'merchant': 16, 'family_farm': 21}
+  ★ targetTierIndex 分布: 0×217, 1×9, 2×7
+
+[② 人口闸（逐笔样本，最多 20 行）]
+  day    pop      speed‰     速度折算         上限折算         实际       上限生效?
+  30     3        100        1            ?            3        ?
+  30     3        100        1            ?            3        ?
+  30     4        100        1            ?            4        ?
+  60     3        100        1            ?            3        ?
+  60     3        100        1            ?            3        ?
+  120    1        100        1            ?            1        ?
+  120    1        100        1            ?            1        ?
+  150    1        100        1            ?            1        ?
+  150    1        100        1            ?            1        ?
+  180    1        100        1            ?            1        ?
+  180    1        100        1            ?            1        ?
+  210    1        100        1            ?            1        ?
+  210    1        100        1            ?            1        ?
+  240    7        100        1            ?            7        ?
+  240    5        100        1            ?            5        ?
+  240    6        100        1            ?            6        ?
+  240    6        100        1            ?            6        ?
+  240    5        100        1            ?            5        ?
+  240    5        100        1            ?            5        ?
+  240    5        100        1            ?            5        ?
+
+  ★ 说明：完整的人口闸判读见 [②b]（用 MIGRATION_INVENTORY_CARRIED 的源户人口对齐）
+
+[②b 带库存随迁（MIGRATION_INVENTORY_CARRIED，233 笔）]
+  day=30 hh--3_3-rural-landlord -> hh--3_3-rural-poor_peasant pop=1 goods={fiber=115332, grain=2261}
+  day=30 hh--3_3-rural-middle_peasant -> hh--3_3-rural-poor_peasant pop=1 goods={fiber=128488, tool=15, grain=60733}
+  day=30 hh--3_3-urban-rich_peasant -> hh--3_3-urban-middle_peasant pop=3 goods={grain=444000, fiber=1839, iron=810, tool=726}
+  day=30 hh-0_-3-rural-landlord -> hh-0_-3-rural-poor_peasant pop=1 goods={fiber=131808, grain=2037}
+  day=30 hh-0_-3-rural-middle_peasant -> hh-0_-3-rural-poor_peasant pop=1 goods={fiber=121215, tool=15, grain=40756}
+  day=30 hh-0_-3-urban-rich_peasant -> hh-0_-3-urban-middle_peasant pop=3 goods={grain=444000, fiber=1839, iron=810, tool=726}
+  day=30 hh-3_0-rural-landlord -> hh-3_0-rural-poor_peasant pop=1 goods={fiber=131808, grain=2335}
+  day=30 hh-3_0-rural-middle_peasant -> hh-3_0-rural-poor_peasant pop=1 goods={fiber=123546, tool=15, grain=58504}
+  ★ goods 里出现 haul 的笔数 = 0（应为 0）
+  ★ goods 里带 grain 的笔数 = 228 / 233
+
+[③ 壳户噪声]
+  轮级 MODE_MIGRATION_CANDIDATES 行数 = 8
+  ΣskippedShellNoLabor = 1058，ΣskippedShellNoPopulation = 1136
+  首行 day=30: noPopulation=142 noLabor=152 moves=9
+  末行 day=240: noPopulation=142 noLabor=97 moves=50
+  逐户 PROSPECT_INFEASIBLE / IN_KIND_REFUSED 计数: {}
+  ★ no-labor 行数 = 0，no-tool-input 行数 = 0（W9d 对照：sw 8,844 / tp 17,610 行 ⇒ 应 0）
+
+[④ 跑商与运粮]
+  MERCHANT_TRADE_INDUSTRY_CREATED = 0
+  ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE = 0
+  ONDEMAND_TRADE_MIGRATION_SKIPPED = 0
+  MERCHANT_TRADE_SKIPPED = 0
+  MIGRATION_MOVE targetMode=merchant = 16
+  运力归因（CAPACITY_DEMAND_GAP_WHY）:
+    capacity-budget-below-demand-or-out-of-derived-radius     3552 笔 / Σ    7946262839 毫
+  运力截断（MERCHANT_CAPACITY_LANE_TRUNCATED）:
+    out-of-derived-radius                  838368 笔 / Σ    2769023731 毫
+    no-carrier-with-deliverable-service    602011 笔 / Σ    4607203136 毫
+    sub-unit-residual                        4275 笔 / Σ       4576812 毫
+    capacity-exhausted                          1 笔 / Σ           513 毫
+  ★ no-carrier-with-deliverable-service = CAPACITY 口径 0 笔 / 0 毫；LANE_TRUNCATED 口径 602011 笔 / 4607203136 毫
+  ★ out-of-derived-radius = CAPACITY 口径 0 笔 / 0 毫；LANE_TRUNCATED 口径 838368 笔 / 2769023731 毫
+  HAUL_* 事件: {'HAUL_PRICE_SIGNAL': 288, 'HAUL_SERVICE_DELIVERED': 244, 'HAUL_SERVICE_EXPIRED': 1, 'HAUL_SERVICE_EXPIRED_DETAIL': 1, 'HAUL_SERVICE_PAID': 244, 'HAUL_SERVICE_PRODUCED': 2, 'HAUL_SERVICE_PRODUCED_DETAIL': 6, 'HAUL_SERVICE_SETTLED': 96}
+  MIGRATION_DEBT_* 事件: {'MIGRATION_DEBT_MOVED': 165, 'MIGRATION_DEBT_SELF_NETTED': 44}
+
+[⑤ 市场轮（MARKET_REPORT）]
+  轮数 = 96  零成交轮次 = 0 []
+  Σfills = 3337  == MARKET_FILL 行数 3337 ? True
+  min/中位/max = 15 / 35.5 / 193
+  分布: 15×1, 21×18, 22×8, 23×8, 24×8, 25×1, 27×1, 35×3, 36×14, 37×3, 38×3, 40×2, 41×5, 42×8, 43×1, 44×1, 45×2, 46×3, 47×1, 48×1, 49×1, 66×1, 167×1, 193×1
+  同日两轮 = 0；相邻最大间隔 = 3
+
+[⑥ 其他事件计数（不回归面）]
+  MONEY_MARKET*: {'MONEY_MARKET_UNFILLED': 657, 'MONEY_MARKET_WHY': 288, 'MONEY_MARKET_GOV_SUPPLY_SUPPRESSED': 96, 'MONEY_MARKET_ROUND': 96, 'MONEY_MARKET_BUDGET_TOPUP': 96, 'MONEY_MARKET_RATE_WRITTEN': 96}
+  DEBT_*: {'DEBT_REPAY_MEDIUM_ORDER': 709, 'DEBT_REPAY_DECISION': 5439, 'DEBT_REPAY_UNPRICED': 5046, 'DEBT_REPAY_ROUND': 8, 'DEBT_REPAY_RESERVE_POLICY': 8, 'DEBT_STRESS_THRESHOLD_FIRED': 1040, 'DEBT_STRESS_BRANCH_FIRED': 7, 'DEBT_STATUS': 941, 'DEBT_REFERENCES_REBUILT': 1}
+  CLASS_*: {'CLASS_SLIDE_ROUND': 96, 'CLASS_SLIDE_SETTLED': 96, 'CLASS_TRANSITIONS': 1, 'CLASS_TRANSITIONS_DETAIL': 8, 'CLASS_SLIDE': 46}
+  DAY_START*: {'DAY_START': 240}
+  MODE_MIGRATION*: {'MODE_MIGRATION_CANDIDATES': 8, 'MODE_MIGRATION_BRIDGED': 8}
+  MIGRATION_DEBT*: {'MIGRATION_DEBT_MOVED': 165, 'MIGRATION_DEBT_SELF_NETTED': 44}
+
+  全部事件（前 60 名）: [('MERCHANT_CAPACITY_LANE_TRUNCATED', 1444655), ('LOGISTICS_SERVICE_SUPPLY_REJECTED', 602011), ('MERCHANT_CAPACITY_HOUSEHOLD', 17760), ('DEBT_REPAY_DECISION', 5439), ('DEBT_REPAY_UNPRICED', 5046), ('MERCHANT_CAPACITY_POOL_HEX', 3552), ('CAPACITY_DEMAND_SUPPLY_HEX', 3552), ('CAPACITY_DEMAND_GAP_WHY', 3552), ('CAPACITY_DEMAND_BUYER_HEX', 3425), ('MARKET_FILL', 3337), ('DEBT_STRESS_THRESHOLD_FIRED', 1040), ('DEBT_STATUS', 941), ('DEBT_REPAY_MEDIUM_ORDER', 709), ('MONEY_MARKET_UNFILLED', 657), ('MONEY_MARKET_WHY', 288), ('CAPACITY_DEMAND_REGION', 288), ('HAUL_PRICE_SIGNAL', 288), ('HAUL_SERVICE_DELIVERED', 244), ('HAUL_SERVICE_PAID', 244), ('MERCHANT_HAUL_RUN', 244), ('DAY_START', 240), ('CAPACITY_PRICING_ASSEMBLY', 240), ('DAY_END', 240), ('MIGRATION_MOVE', 233), ('MIGRATION_INVENTORY_CARRIED', 233), ('MIGRATION_DEBT_MOVED', 165), ('MONEY_MARKET_GOV_SUPPLY_SUPPRESSED', 96), ('MONEY_MARKET_ROUND', 96), ('MONEY_MARKET_BUDGET_TOPUP', 96), ('MERCHANT_CAPACITY_POOL', 96), ('CAPACITY_DEMAND_TOTAL', 96), ('MONEY_MARKET_RATE_WRITTEN', 96), ('HAUL_SERVICE_SETTLED', 96), ('MARKET_REPORT', 96), ('CLASS_SLIDE_ROUND', 96), ('CLASS_SLIDE_SETTLED', 96), ('CLASS_SLIDE', 46), ('MIGRATION_DEBT_SELF_NETTED', 44), ('DEBT_REPAY_ROUND', 8), ('DEBT_REPAY_RESERVE_POLICY', 8), ('CLASS_TRANSITIONS_DETAIL', 8), ('MODE_MIGRATION_CANDIDATES', 8), ('MIGRATION_PLAN', 8), ('MIGRATION_APPLIED', 8), ('MIGRATION_APPLIED_DETAIL', 8), ('MODE_MIGRATION_BRIDGED', 8), ('DEBT_STRESS_BRANCH_FIRED', 7), ('HAUL_SERVICE_PRODUCED_DETAIL', 6), ('HAUL_SERVICE_PRODUCED', 2), ('CLASS_TRANSITIONS', 1), ('HAUL_SERVICE_EXPIRED_DETAIL', 1), ('HAUL_SERVICE_EXPIRED', 1), ('DEBT_REFERENCES_REBUILT', 1)]

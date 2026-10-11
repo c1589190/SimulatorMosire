@@ -1,0 +1,56 @@
+{
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-tp.json",
+  "failedAt": {
+    "from": 0,
+    "httpStatus": 500,
+    "i": 0,
+    "op": "advance",
+    "response": "{\"error\":\"internal error\"}",
+    "seconds": 36.828,
+    "to": 360
+  },
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10987,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "c29ba84c7499c5e990c66ce6fc36d73c",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=INFO -Dsimos.app.logLevel=INFO",
+  "keepStore": true,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9e-test-batch/logs/tp360diag.log",
+  "logKeep": "(event=(MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET_REPORT|MARKET_FILL|MERCHANT_[A-Z_]*|ONDEMAND_[A-Z_]*|HAUL_[A-Z_]*|LOGISTICS_[A-Z_]*|CAPACITY_(?!DEMAND_INSTANCE)[A-Z_]*|MINT_[A-Z_]*|MONEY_MARKET[A-Z_]*|DEBT_[A-Z_]*|CLASS_[A-Z_]*|SLIDE_[A-Z_]*|STRATUM[A-Z_]*|DAY_START|DAY_END))|(ERROR)|(Exception)|(Caused by)|(\\tat )",
+  "logKeptLines": 2196161,
+  "logLines": 2196161,
+  "logStrippedMd5": "1309ae3b46b7d12de5abc74029f920e0",
+  "pid": 469202,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9e-test-batch/plans/plan-tp-360.json",
+  "readySeconds": 1.704,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    }
+  ],
+  "startedAt": "2026-10-11T21:07:21",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 500,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"error\":\"internal error\"}",
+      "seconds": 36.828,
+      "to": 360
+    }
+  ],
+  "store": "/tmp/w9e/stores/tp360diag",
+  "tag": "tp360diag",
+  "world": "three-powers"
+}

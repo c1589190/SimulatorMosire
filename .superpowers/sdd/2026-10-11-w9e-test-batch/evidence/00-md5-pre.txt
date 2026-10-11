@@ -1,0 +1,7 @@
+e0139f3f421e371a445797d94193157b  simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationPolicy.java
+7fed43cb227075b66b2e15b4774fe60b  simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationSettlement.java
+f251d260a85550f07568f0c31a65e556  simos-economy/src/main/java/io/mosire/simos/economy/time/ExpectedProfitBook.java
+43cd497b1e924da101ba5ddfac280ac9  simos-economy/src/test/java/io/mosire/simos/economy/time/ModeMigrationPolicyW9Test.java
+4eb3b7d1928237218a69470f6071cb0e  simos-economy/src/test/java/io/mosire/simos/economy/time/ModeMigrationInventoryCarryW9Test.java
+5a06547df99ae8c89ac5191eae822042  simos-economy/src/test/java/io/mosire/simos/economy/time/ModeMigrationPolicyD024Test.java
+44011f7b1ed6d478f801bfda60397d98  simos-app/src/test/java/io/mosire/simos/app/time/EconomyCycleHealthTest.java

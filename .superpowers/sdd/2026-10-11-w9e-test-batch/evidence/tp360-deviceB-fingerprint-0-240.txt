@@ -1,0 +1,4 @@
+=== 装置 B（真 HTTP shaded jar c29ba84c…，独立 store /tmp/w9e/stores/tp360，从创世新播）窗口 day 0..240 ===
+rounds=96  zero-fill=0  Sigma_fills=3337  min/median/max=15/35.5/193  dup_days=0  max_gap=3
+dist = 15x1, 21x18, 22x8, 23x8, 24x8, 25x1, 27x1, 35x3, 36x14, 37x3, 38x3, 40x2, 41x5, 42x8, 43x1, 44x1, 45x2, 46x3, 47x1, 48x1, 49x1, 66x1, 167x1, 193x1
+（与装置 A 的 summary.txt 逐值相同 ⇒ 两套独立装置同指纹；原始行见 tp360-market-report-raw.txt，108 行含 240 之后）

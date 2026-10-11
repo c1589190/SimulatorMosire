@@ -1,0 +1,94 @@
+====================================================================================================
+W9e 读数：tag=sw360  window=0..360  文件=.superpowers/sdd/2026-10-11-w9e-test-batch/logs/sw360.log
+====================================================================================================
+
+[① 迁移（MIGRATION_MOVE）] 笔数 = 222
+  reason 分布: {'PROFIT_WEIGHTED': 222}
+  速度分布(‰): 10×2, 23×1, 25×6, 26×1, 29×4, 30×4, 33×4, 38×2, 39×13, 43×21, 44×4, 45×51, 64×1, 66×1, 67×18, 68×61, 90×2, 99×10, 100×15, 101×1
+  速度 min/中位/max = 10 / 45.0 / 101
+  速度=1000‰ 的笔数 = 0
+  人口分布: 1×141, 2×39, 3×10, 4×8, 5×5, 6×6, 7×1, 8×2, 9×2, 10×1, 15×3, 16×1, 17×1, 18×2
+  targetMode 分布: {'wage_farm': 143, 'handicraft_workshop': 16, 'tenancy_fixed_kind': 47, 'merchant': 16}
+  ★ targetTierIndex 分布: 0×211, 1×11
+
+[② 人口闸（逐笔样本，最多 20 行）]
+  day    pop      speed‰     速度折算         上限折算         实际       上限生效?
+  210    1        101        1            ?            1        ?
+  30     4        100        1            ?            4        ?
+  60     4        100        1            ?            4        ?
+  90     3        100        1            ?            3        ?
+  120    3        100        1            ?            3        ?
+  150    3        100        1            ?            3        ?
+  270    1        100        1            ?            1        ?
+  270    1        100        1            ?            1        ?
+  270    9        100        1            ?            9        ?
+  270    1        100        1            ?            1        ?
+  300    1        100        1            ?            1        ?
+  300    8        100        1            ?            8        ?
+  330    1        100        1            ?            1        ?
+  330    9        100        1            ?            9        ?
+  360    1        100        1            ?            1        ?
+  360    10       100        1            ?            10       ?
+  240    2        99         1            ?            2        ?
+  240    18       99         1            ?            18       ?
+  270    1        99         1            ?            1        ?
+  270    17       99         1            ?            17       ?
+
+  ★ 说明：完整的人口闸判读见 [②b]（用 MIGRATION_INVENTORY_CARRIED 的源户人口对齐）
+
+[②b 带库存随迁（MIGRATION_INVENTORY_CARRIED，222 笔）]
+  day=30 hh--2_1-rural-rich_peasant -> hh--2_1-rural-poor_peasant pop=2 goods={fiber=181789, grain=3305}
+  day=30 hh--2_2-rural-rich_peasant -> hh--2_2-rural-poor_peasant pop=2 goods={fiber=175925, grain=6722}
+  day=30 hh-0_-1-rural-rich_peasant -> hh-0_-1-rural-poor_peasant pop=2 goods={fiber=181789, grain=3428}
+  day=30 hh-0_-2-rural-rich_peasant -> hh-0_-2-rural-poor_peasant pop=2 goods={fiber=119629, grain=5914}
+  day=30 hh-0_0-rural-landlord -> hh-0_0-rural-poor_peasant pop=1 goods={fiber=91894, grain=2045}
+  day=30 hh-0_0-rural-middle_peasant -> hh-0_0-rural-poor_peasant pop=1 goods={fiber=91466, grain=30815}
+  day=30 hh-0_0-rural-rich_peasant -> hh-0_0-rural-poor_peasant pop=1 goods={fiber=94029, grain=31289}
+  day=30 hh-0_2-urban-rich_peasant -> hh-0_2-urban-middle_peasant pop=4 goods={grain=282222, fiber=1122, iron=888, tool=683}
+  ★ goods 里出现 haul 的笔数 = 0（应为 0）
+  ★ goods 里带 grain 的笔数 = 156 / 222
+
+[③ 壳户噪声]
+  轮级 MODE_MIGRATION_CANDIDATES 行数 = 12
+  ΣskippedShellNoLabor = 943，ΣskippedShellNoPopulation = 876
+  首行 day=30: noPopulation=73 noLabor=84 moves=8
+  末行 day=360: noPopulation=73 noLabor=92 moves=6
+  逐户 PROSPECT_INFEASIBLE / IN_KIND_REFUSED 计数: {}
+  ★ no-labor 行数 = 0，no-tool-input 行数 = 0（W9d 对照：sw 8,844 / tp 17,610 行 ⇒ 应 0）
+
+[④ 跑商与运粮]
+  MERCHANT_TRADE_INDUSTRY_CREATED = 0
+  ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE = 0
+  ONDEMAND_TRADE_MIGRATION_SKIPPED = 0
+  MERCHANT_TRADE_SKIPPED = 0
+  MIGRATION_MOVE targetMode=merchant = 16
+  运力归因（CAPACITY_DEMAND_GAP_WHY）:
+    capacity-budget-below-demand-or-out-of-derived-radius      297 笔 / Σ      67084135 毫
+  运力截断（MERCHANT_CAPACITY_LANE_TRUNCATED）:
+    no-carrier-with-deliverable-service      7525 笔 / Σ      58888186 毫
+    out-of-derived-radius                    4074 笔 / Σ       5476991 毫
+    out-of-derived-radius+sub-unit-residual     1946 笔 / Σ        918497 毫
+    capacity-exhausted                         42 笔 / Σ         87945 毫
+    sub-unit-residual                          29 笔 / Σ           664 毫
+  ★ no-carrier-with-deliverable-service = CAPACITY 口径 0 笔 / 0 毫；LANE_TRUNCATED 口径 7525 笔 / 58888186 毫
+  ★ out-of-derived-radius = CAPACITY 口径 0 笔 / 0 毫；LANE_TRUNCATED 口径 4074 笔 / 5476991 毫
+  HAUL_* 事件: {'HAUL_PRICE_SIGNAL': 144, 'HAUL_SERVICE_DELIVERED': 438, 'HAUL_SERVICE_EXPIRED': 2, 'HAUL_SERVICE_EXPIRED_DETAIL': 9, 'HAUL_SERVICE_PAID': 319, 'HAUL_SERVICE_PRODUCED': 3, 'HAUL_SERVICE_PRODUCED_DETAIL': 6, 'HAUL_SERVICE_REVENUE_ATTRIBUTION': 4, 'HAUL_SERVICE_SETTLED': 144}
+  MIGRATION_DEBT_* 事件: {'MIGRATION_DEBT_MOVED': 118, 'MIGRATION_DEBT_SELF_NETTED': 41}
+
+[⑤ 市场轮（MARKET_REPORT）]
+  轮数 = 144  零成交轮次 = 0 []
+  Σfills = 1751  == MARKET_FILL 行数 1751 ? True
+  min/中位/max = 3 / 9.0 / 168
+  分布: 3×1, 4×1, 5×2, 6×28, 7×31, 8×6, 9×29, 10×10, 11×6, 12×10, 13×2, 15×2, 16×1, 17×3, 19×1, 22×1, 23×1, 25×2, 30×1, 35×1, 39×1, 57×1, 67×1, 121×1, 168×1
+  同日两轮 = 0；相邻最大间隔 = 3
+
+[⑥ 其他事件计数（不回归面）]
+  MINT_*: {'MINT_LIMIT_WINDOW': 9, 'MINT_SETTLED': 3, 'MINT_LAST_CYCLE_READOUT': 1}
+  MONEY_MARKET*: {'MONEY_MARKET_UNFILLED': 144, 'MONEY_MARKET_WHY': 144, 'MONEY_MARKET_GOV_SUPPLY_SUPPRESSED': 144, 'MONEY_MARKET_ROUND': 144, 'MONEY_MARKET_BUDGET_TOPUP': 144, 'MONEY_MARKET_RATE_WRITTEN': 144}
+  DEBT_*: {'DEBT_REPAY_MEDIUM_ORDER': 774, 'DEBT_REPAY_DECISION': 3786, 'DEBT_REPAY_UNPRICED': 3287, 'DEBT_REPAY_ROUND': 12, 'DEBT_REPAY_RESERVE_POLICY': 12, 'DEBT_STRESS_THRESHOLD_FIRED': 872, 'DEBT_STRESS_BRANCH_FIRED': 11, 'DEBT_STATUS': 632, 'DEBT_REPAY_SELF_HELD_SKIPPED': 9, 'DEBT_STRESS_SELF_HELD_SKIPPED': 9, 'DEBT_INTEREST_SELF_HELD_SKIPPED': 8, 'DEBT_REFERENCES_REBUILT': 1}
+  CLASS_*: {'CLASS_SLIDE_ROUND': 144, 'CLASS_SLIDE_SETTLED': 144, 'CLASS_TRANSITIONS': 1, 'CLASS_TRANSITIONS_DETAIL': 12, 'CLASS_SLIDE': 44}
+  DAY_START*: {'DAY_START': 360}
+  MODE_MIGRATION*: {'MODE_MIGRATION_CANDIDATES': 12, 'MODE_MIGRATION_BRIDGED': 12}
+  MIGRATION_DEBT*: {'MIGRATION_DEBT_MOVED': 118, 'MIGRATION_DEBT_SELF_NETTED': 41}
+
+  全部事件（前 60 名）: [('MERCHANT_CAPACITY_HOUSEHOLD', 13680), ('MERCHANT_CAPACITY_LANE_TRUNCATED', 13616), ('LOGISTICS_SERVICE_SUPPLY_REJECTED', 7525), ('DEBT_REPAY_DECISION', 3786), ('DEBT_REPAY_UNPRICED', 3287), ('MERCHANT_CAPACITY_POOL_HEX', 2736), ('CAPACITY_DEMAND_BUYER_HEX', 2099), ('MARKET_FILL', 1751), ('DEBT_STRESS_THRESHOLD_FIRED', 872), ('DEBT_REPAY_MEDIUM_ORDER', 774), ('DEBT_STATUS', 632), ('HAUL_SERVICE_DELIVERED', 438), ('MERCHANT_HAUL_RUN', 438), ('DAY_START', 360), ('CAPACITY_PRICING_ASSEMBLY', 360), ('DAY_END', 360), ('HAUL_SERVICE_PAID', 319), ('CAPACITY_DEMAND_SUPPLY_HEX', 303), ('CAPACITY_DEMAND_GAP_WHY', 297), ('MIGRATION_MOVE', 222), ('MIGRATION_INVENTORY_CARRIED', 222), ('MONEY_MARKET_UNFILLED', 144), ('MONEY_MARKET_WHY', 144), ('MONEY_MARKET_GOV_SUPPLY_SUPPRESSED', 144), ('MONEY_MARKET_ROUND', 144), ('MONEY_MARKET_BUDGET_TOPUP', 144), ('MERCHANT_CAPACITY_POOL', 144), ('CAPACITY_DEMAND_REGION', 144), ('CAPACITY_DEMAND_TOTAL', 144), ('HAUL_PRICE_SIGNAL', 144), ('MONEY_MARKET_RATE_WRITTEN', 144), ('HAUL_SERVICE_SETTLED', 144), ('MARKET_REPORT', 144), ('CLASS_SLIDE_ROUND', 144), ('CLASS_SLIDE_SETTLED', 144), ('MIGRATION_DEBT_MOVED', 118), ('CLASS_SLIDE', 44), ('MIGRATION_DEBT_SELF_NETTED', 41), ('DEBT_REPAY_ROUND', 12), ('DEBT_REPAY_RESERVE_POLICY', 12), ('CLASS_TRANSITIONS_DETAIL', 12), ('MODE_MIGRATION_CANDIDATES', 12), ('MIGRATION_PLAN', 12), ('MIGRATION_APPLIED', 12), ('MIGRATION_APPLIED_DETAIL', 12), ('MODE_MIGRATION_BRIDGED', 12), ('DEBT_STRESS_BRANCH_FIRED', 11), ('MINT_LIMIT_WINDOW', 9), ('DEBT_REPAY_SELF_HELD_SKIPPED', 9), ('DEBT_STRESS_SELF_HELD_SKIPPED', 9), ('HAUL_SERVICE_EXPIRED_DETAIL', 9), ('DEBT_INTEREST_SELF_HELD_SKIPPED', 8), ('HAUL_SERVICE_PRODUCED_DETAIL', 6), ('HAUL_SERVICE_REVENUE_ATTRIBUTION', 4), ('MINT_SETTLED', 3), ('HAUL_SERVICE_PRODUCED', 3), ('HAUL_SERVICE_EXPIRED', 2), ('CLASS_TRANSITIONS', 1), ('MINT_LAST_CYCLE_READOUT', 1), ('DEBT_REFERENCES_REBUILT', 1)]

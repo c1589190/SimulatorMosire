@@ -1,0 +1,18 @@
+=== [20:38:06] tp360 world=three-powers port=10972 plan=plan-tp-360.json store=tp360 extras= ===
+[20:38:07] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9t/stores/tp360 --world=three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-tp.json --gui-port 10972 --mcp-port 10973 --approval-port 10974
+[20:38:08] GUI 就绪（1.71s）
+[20:38:08] 创世后 head rev=1 tick=0
+[20:38:38] advance 0->360 HTTP 200 29.866s
+[20:38:38] dump d360-oneshot rev=2 bytes=8850172 md5=3773c19326b2e54cc9576d51539de304
+[20:38:59] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-test-batch/logs/tp360.result.json
+{
+  "tag": "tp360",
+  "jarMd5": "b07bb719257cf2b313d037610aacb106",
+  "readySeconds": 1.71,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "9357d145d77367f7373d8f4f79a5d1ff"
+}
+=== [20:39:05] tp360 rc=0 ===
+=== [20:39:05] MODE=tp DONE ===

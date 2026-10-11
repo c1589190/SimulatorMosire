@@ -1,0 +1,66 @@
+=== W9f ① 全仓测试实跑（2026-10-11T21:33:33+08:00）===
+命令：tools/mvn-lock.sh test -am   （无 -pl ⇒ 全仓 16 模块；cwd=/home/cna/SimulatorMosire）
+
+2580538:[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+2580539-[INFO] 
+2580540-[INFO] SimulatorMosire .................................... SUCCESS [  0.511 s]
+2580541-[INFO] UtilSimos .......................................... SUCCESS [  3.775 s]
+2580542-[INFO] MapSimos ........................................... SUCCESS [  5.135 s]
+2580543-[INFO] CalendarSimos ...................................... SUCCESS [  0.726 s]
+2580544-[INFO] SocialApiSimos ..................................... SUCCESS [  0.768 s]
+2580545-[INFO] ActorApiSimos ...................................... SUCCESS [  0.413 s]
+2580546-[INFO] EconomyApiSimos .................................... SUCCESS [  1.023 s]
+2580547-[INFO] SocialSimos ........................................ SUCCESS [  3.483 s]
+2580548-[INFO] UnitSimos .......................................... SUCCESS [  2.353 s]
+2580549-[INFO] CoreSimos .......................................... SUCCESS [ 11.356 s]
+2580550-[INFO] SDSimos ............................................ SUCCESS [  1.754 s]
+2580551-[INFO] ActorSimos ......................................... SUCCESS [  1.071 s]
+2580552-[INFO] EconomySimos ....................................... SUCCESS [  4.990 s]
+2580553-[INFO] GovSimos ........................................... SUCCESS [  1.142 s]
+2580554-[INFO] ArmySimos .......................................... SUCCESS [  0.935 s]
+2580555-[INFO] SimosApp ........................................... SUCCESS [03:42 min]
+2580556-[INFO] ------------------------------------------------------------------------
+2580557-[INFO] BUILD SUCCESS
+2580558-[INFO] ------------------------------------------------------------------------
+2580559-[INFO] Total time:  04:22 min
+2580560-[INFO] Finished at: 2026-10-11T21:33:14+08:00
+
+--- 汇总 ---
+[INFO] BUILD SUCCESS
+[INFO] Total time:  04:22 min
+[INFO] Finished at: 2026-10-11T21:33:14+08:00
+--- 逐模块 Tests run（合计行）---
+[INFO] Tests run: 217, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 379, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 33, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 50, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 217, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 518, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 231, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 232, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 130, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 335, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 111, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 91, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 909, Failures: 0, Errors: 0, Skipped: 5
+--- 红点扫描 ---
+FAILURE 行数 = 0
+surefire 失败/错误行数 = 0
+
+--- 6 个推断候选类的真结果（surefire 原文）---
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.041 s -- in io.mosire.simos.economy.time.MerchantOnDemandTradeW7Test
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.economy.time.ModeMigrationPolicyW9Test
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.030 s -- in io.mosire.simos.economy.time.ModeMigrationPolicyD024Test
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.economy.time.ModeMigrationInventoryCarryW9Test
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.038 s -- in io.mosire.simos.economy.time.ModeMigrationGovServiceFailClosedTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 69.18 s -- in io.mosire.simos.app.time.EconomyCycleHealthTest
+
+--- surefire 报告 mtime（全部落在本轮 21:28:51–21:33:14）---
+194
+194
+
+--- surefire 报告 mtime（全部落在本轮 21:28:51–21:33:14）---
+194
+194

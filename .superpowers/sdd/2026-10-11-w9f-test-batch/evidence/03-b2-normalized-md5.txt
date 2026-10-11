@@ -1,0 +1,31 @@
+=== canon2.py md5（三形态规范化 md5；W9e 基线 = 5ec07665c26d37e4b3f04b9213102d77）===
+dumps/sw360-d360-oneshot.json  state=5ec07665c26d37e4b3f04b9213102d77  bytes=6005160
+    actor      6c755f7494ddbac72d87fb0c3b1dc56a  bytes=58638
+    army       de91755f4aaf083a80bc17632210655b  bytes=23
+    economy    ee82cf10c8a0f4c503c517699dacc5ed  bytes=4473793
+    gov        871bfc345cf907394de541dddd43f37f  bytes=4055
+    map        ea15a812bab1acb93fb741be08694878  bytes=5168
+    sd         6cc33e1f91050464489c355ff58d8005  bytes=248
+    social     a6e3f1737e5c1a0d8ec61813d3dcbee7  bytes=1460496
+    unit       c611c2e057b6d2f72d0f9007cb7833eb  bytes=2643
+dumps/sw3seg-d360-3seg.json  state=5ec07665c26d37e4b3f04b9213102d77  bytes=6005160
+    actor      6c755f7494ddbac72d87fb0c3b1dc56a  bytes=58638
+    army       de91755f4aaf083a80bc17632210655b  bytes=23
+    economy    ee82cf10c8a0f4c503c517699dacc5ed  bytes=4473793
+    gov        871bfc345cf907394de541dddd43f37f  bytes=4055
+    map        ea15a812bab1acb93fb741be08694878  bytes=5168
+    sd         6cc33e1f91050464489c355ff58d8005  bytes=248
+    social     a6e3f1737e5c1a0d8ec61813d3dcbee7  bytes=1460496
+    unit       c611c2e057b6d2f72d0f9007cb7833eb  bytes=2643
+dumps/swtick-d360-tick.json  state=5ec07665c26d37e4b3f04b9213102d77  bytes=6005160
+    actor      6c755f7494ddbac72d87fb0c3b1dc56a  bytes=58638
+    army       de91755f4aaf083a80bc17632210655b  bytes=23
+    economy    ee82cf10c8a0f4c503c517699dacc5ed  bytes=4473793
+    gov        871bfc345cf907394de541dddd43f37f  bytes=4055
+    map        ea15a812bab1acb93fb741be08694878  bytes=5168
+    sd         6cc33e1f91050464489c355ff58d8005  bytes=248
+    social     a6e3f1737e5c1a0d8ec61813d3dcbee7  bytes=1460496
+    unit       c611c2e057b6d2f72d0f9007cb7833eb  bytes=2643
+=== diff 差异叶 ===
+差异叶数: 0 / 总叶数 81703
+差异叶数: 0 / 总叶数 81703

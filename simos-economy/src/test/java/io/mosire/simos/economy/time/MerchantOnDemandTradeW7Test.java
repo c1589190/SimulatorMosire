@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
@@ -13,9 +14,12 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.market.MarketZone;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DefaultProductionModes;
@@ -26,6 +30,7 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.testing.TestLogCapture;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -45,7 +50,7 @@ import org.slf4j.event.Level;
  *   <li><b>用户原话（逐字）</b>：「<b>跑商不是生产方式吗？难到家户不会给预估生产方式预留生产资料吗？</b>」、「难道没有家户自动估算其他生产方式的利润，
  *       然后自动设置往其他所需要投入更低、利润更高的家户跑的机制吗？」（{@link MerchantTradeTemplate} 类注同引）；
  *   <li><b>W7 派单 ③</b>（本批任务书）：非城市格可长出跑商 —— 规划/执行按需创建 {@code trade@hex} 模板（同 revision 落变更集），
- *       作业资本<b>只能自备/随迁</b>（不凭空造），带不来 ⇒ INFO {@code ONDEMAND_TRADE_MIGRATION_SKIPPED}；
+ *       作业资本<b>只能自备/随迁/买租</b>（不凭空造）；★ <b>W9 改判</b>：带不来不再是终局 —— 见下面执行层判据那张表；
  *   <li><b>W7 派单 ⑤</b>：具名失败可观测（{@code NO_MERCHANT_CAPACITY:*} 的**理由**必须能在读数面读到）；
  *   <li><b>设计书 §6.3 判据 1</b> 的「<b>守恒式</b>」关键项 + 判据 3 的负向用例。
  * </ol>
@@ -60,9 +65,32 @@ import org.slf4j.event.Level;
  *   手上的 {@code tool} 商品账 &le; 0 ⇒ {@code NO_MERCHANT_CAPACITY:no-tool-input}
  *   两者都 &gt; 0                ⇒ 这条闸放行（不再看 CATTLE：{@code no-carrier-asset} 已删）
  * 执行层判据（{@link ModeMigrationSettlement} 的 {@code filterOnDemandMerchantMoves}）：
- *   这一笔能随迁携带的作业资本（{@link MerchantTradeTemplate#capacityKinds()} = {TOOL}）≤ 0
- *   ⇒ 整笔跳过、具名 INFO {@code ONDEMAND_TRADE_MIGRATION_SKIPPED} + {@code no-tool-input-to-host-on-demand-trade-industry}
+ *   ★★ W9（用户裁定 v3.29 §7 第 3 条「没有生产工具不会买吗」）**改判**：
+ *     这一笔能随迁携带的作业资本（{@link MerchantTradeTemplate#capacityKinds()} = {TOOL}）&gt; 0
+ *       ⇒ 放行（走随迁那一份；逐值等于改前）
+ *     ≤ 0 且（目标格市场交易 {@code tool} ∧ 本格有**闲置**的同种作业资本）
+ *       ⇒ **放行**，走"买 / 租佃"通道，具名 INFO {@code ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE}
+ *     ≤ 0 且买不到 / 租不到（市场不交易它 **或** 本格没有闲置工具）
+ *       ⇒ 整笔跳过、具名 INFO {@code ONDEMAND_TRADE_MIGRATION_SKIPPED}
+ *          + {@code no-tool-input-to-host-on-demand-trade-industry}（附 {@code toolTradedAtMarket} / {@code idleToolMilliInHex} 两栏）
  * </pre>
+ *
+ * <p>★★★ <b>W9（2026-10-11，用户裁定 v3.29/v3.30 §7 第 3 条）的改判记录（旧 → 新，逐条具名）</b>：
+ *
+ * <table>
+ *   <caption>W9 改判：执行期闸门从"必须带得来作业资本"→"买得到 / 租得到也放行"</caption>
+ *   <tr><th>旧（W7-fix 的口径）</th><th>新（W9）</th><th>依据</th></tr>
+ *   <tr><td>带不来作业资本 ⇒ <b>整笔跳过</b>（只有自备/随迁一条通道）</td>
+ *       <td>带不来 ⇒ 先问"<b>买不买得到</b>"：市场交易 {@code tool} ∧ 本格有闲置同种资产 ⇒ <b>放行</b>（买/租佃通道）</td>
+ *       <td>用户原话：「<b>没有生产工具不会买吗？</b>」——"买不到"才是失败那一支（具名跳过保留给它）</td></tr>
+ *   <tr><td>跳过理由只有 {@code no-tool-input-to-host-on-demand-trade-industry} 一句</td>
+ *       <td>同一句 + 新增两栏 {@code toolTradedAtMarket} / {@code idleToolMilliInHex}（"卡在哪一条"可读）</td>
+ *       <td>具名失败要可观测（W7 判据⑤ 的同一条纪律）</td></tr>
+ * </table>
+ *
+ * <p>★★ <b>本类夹具的默认形态决定了每条用例走哪一支</b>：默认 {@code base(...)} 的 H2 <b>不在任何市场区里</b> （{@code marketZones}
+ * 为空）⇒ {@code toolTradedAtMarket=false} ⇒ 落"买不到"那一支。要验"买得到"必须显式给 H2 一个立了区、且价表里**有 tool
+ * 这一行**的市场，并放一份**闲置**工具份额在 H2。
  *
  * <p>★★★ <b>本批（W7e 测试批）的迁移记录：旧口径 → 新口径，逐条具名（§一.11：只在断言「旧机制本身」时删除）</b>：
  *
@@ -97,16 +125,20 @@ import org.slf4j.event.Level;
  * <ul>
  *   <li><b>决策层</b>（{@link ExpectedProfitBook#prospect}）：非城市格、无 {@code trade} 模板时，缺劳动 /
  *       缺工具**各自具名**；两者齐备 ⇒ 这条闸放行（理由不再是 {@code NO_MERCHANT_CAPACITY:*}）；
- *   <li><b>执行层</b>（{@link ModeMigrationSettlement#apply}）：带不来作业资本（TOOL 份额）的按需笔**整笔跳过**（具名
- *       INFO、不建商号、不搬人、不搬资产）； 带得来 ⇒ 建 {@code trade@hex} 并落同一份模板 —— 且 <b>TOOL 总量逐值不变</b>（源减 = 目标增）。
+ *   <li><b>执行层</b>（{@link ModeMigrationSettlement#apply}）：★ <b>W9 起分三支</b> —— 带得来作业资本（TOOL 份额）⇒ 建
+ *       {@code trade@hex} 并落同一份模板（<b>TOOL 总量逐值不变</b>）；带不来但**买得到 / 租得到** ⇒ 同样放行（{@code
+ *       ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE}，资产由本格闲置份额租佃而来、总量仍守恒）；两者都不成立 ⇒ **整笔跳过** （具名
+ *       INFO、不建商号、不搬人、不搬资产）。
  * </ul>
  *
- * <p>★ <b>为什么"没作业资本 ⇒ 不迁"必须真跑（而不是只读代码）</b>：执行期 {@code createEnterpriseAndProcess} 在凑不齐目标产业租赁资产时是
+ * <p>★ <b>为什么"没作业资本 ⇒ 不迁"这一支必须真跑（而不是只读代码）</b>：执行期 {@code createEnterpriseAndProcess} 在凑不齐目标产业租赁资产时是
  * <b>当场抛</b>的（fail-closed）—— 这道闸若失效，整个 tick 会炸、世界卡死。下面的 {@link
- * #migrationWithoutCarriedToolInputIsSkippedByNameAndCreatesNothing()} 就是它的负向。
+ * #migrationWithoutCarriedToolInputIsSkippedByNameAndCreatesNothing()}（买不到）与 {@link
+ * #migrationWithToolTradedButNoIdleToolInHexIsStillSkippedByName()}（买得到但租不到）是它的两条负向。
  *
- * <p>★ <b>本类只测单测面</b>；真世界里"到底有没有长出新的跑商户"由批账本的真读数回答（★ W7e 实测答案：<b>仍然没有</b> —— 卡在执行期闸门：
- * 只有城市格的"商号本金主"持有 TOOL 作业资本份额，非城市格/其它城镇跑商户带不来份额 ⇒ 逐理由计数见账本 §真读数，遗留门槛 = W7-fix2 的 E3）。
+ * <p>★ <b>本类只测单测面</b>；真世界里"到底有没有长出新的跑商户 / 有没有走买租通道"由批账本的真读数回答（W7e 实测：<b>仍然没有</b> ——
+ * 卡在执行期闸门：只有城市格的"商号本金主"持有 TOOL 作业资本份额，非城市格/其它城镇跑商户带不来份额 ⇒ 逐理由计数见账本 §真读数； ★ W9 起本格市场交易 tool ∧
+ * 本格有闲置工具也放行，该遗留门槛是否被真正拆掉，由 W9 测试批的真读数作答）。
  */
 class MerchantOnDemandTradeW7Test {
 
@@ -123,6 +155,12 @@ class MerchantOnDemandTradeW7Test {
 
   /** 源户的一个"与跑商无关"的既有产业（让世界有产业表，且**不是**目标格的那个）。 */
   private static final IndustryId FARM = IndustryHexKeys.id("farm", H1.q(), H1.r());
+
+  /**
+   * ★★ <b>W9：H2 的另一个产业（**不是** trade）</b> —— 它是"本格闲置作业资本"的挂靠处：按需新建的 {@code trade@H2} 名下
+   * 不可能有任何份额，所以"缺工具可买/可租"那一条判据只能从**同格其它产业**的闲置份额里租（§3 ⑤ 的同格跨产业放宽）。
+   */
+  private static final IndustryId H2_FARM = IndustryHexKeys.id("h2-farm", H2.q(), H2.r());
 
   private static final long MOVED_POPULATION = 40L;
 
@@ -278,13 +316,17 @@ class MerchantOnDemandTradeW7Test {
         .containsExactly(AssetKind.TOOL);
   }
 
-  // ── ② 执行层：带不来作业资本 ⇒ 具名跳过；带得来 ⇒ 建商号 + 守恒 ────────────────────────────
+  // ── ② 执行层：带不来作业资本 ⇒（W9）先问买/租得到；都不行 ⇒ 具名跳过；带得来 ⇒ 建商号 + 守恒 ────────
 
   /**
-   * ★★★ <b>判据③ 负向（执行层，最关键的一条）：带不来作业资本（TOOL 份额）的按需笔必须**整笔跳过**且具名</b>。
+   * ★★★ <b>判据③ 负向（执行层，最关键的一条）：带不来作业资本（TOOL 份额）**且买不到 / 租不到**的按需笔必须**整笔跳过**且具名</b>。
    *
-   * <p>四条同时断言：① 具名 INFO {@code ONDEMAND_TRADE_MIGRATION_SKIPPED} 发出且理由具名；② 该格**没有**长出 {@code
-   * trade@hex}；③ 人**没搬**（无 outbox）；④ 资产**没动**（没有凭空造出 TOOL 份额）。
+   * <p>★ <b>W9 改判后它为什么仍然成立</b>（不许放宽语义）：跳过那一支的判据已从"带不来"改成"<b>带不来 ∧ 买不到 ∧ 租不到</b>"； 本夹具的 H2
+   * **不在任何市场区里**（{@code marketZones} 为空 ⇒ {@code toolTradedAtMarket=false}）、也**没有**任何 H2 的闲置工具份额
+   * （{@code idleToolMilliInHex=0}）⇒ 落"买不到"那一支，跳过仍是对的。★ 断言里把这两栏也钉上，避免"跳过"变成只由第一条成立而静默通过。
+   *
+   * <p>四条同时断言：① 具名 INFO {@code ONDEMAND_TRADE_MIGRATION_SKIPPED} 发出且理由具名 + 两条卡点栏；② 该格**没有**长出
+   * {@code trade@hex}；③ 人**没搬**（无 outbox）；④ 资产**没动**（没有凭空造出 TOOL 份额）。
    */
   @Test
   void migrationWithoutCarriedToolInputIsSkippedByNameAndCreatesNothing() {
@@ -308,6 +350,16 @@ class MerchantOnDemandTradeW7Test {
       assertThat(log.lines())
           .as("★ 理由必须具名（不是静默 continue）")
           .anyMatch(line -> line.contains("reason=no-tool-input-to-host-on-demand-trade-industry"));
+      assertThat(log.lines())
+          .as("★ W9：跳过必须真的是「买不到」那一支（本夹具 H2 没有市场区 ⇒ toolTradedAtMarket=false）")
+          .anyMatch(
+              line ->
+                  line.contains("ONDEMAND_TRADE_MIGRATION_SKIPPED")
+                      && line.contains("toolTradedAtMarket=false")
+                      && line.contains("idleToolMilliInHex=0"));
+      assertThat(log.lines())
+          .as("★ W9：跳过那一支不得同时又发「买/租放行」那条 INFO（两条读数不是一回事）")
+          .noneMatch(line -> line.contains("ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE"));
       assertThat(log.lines())
           .as("★ 字段名随作业资本那一维改名：旧名 carriedCattle 不得再出现（§一.11）")
           .noneMatch(line -> line.contains("carriedCattle"));
@@ -333,7 +385,10 @@ class MerchantOnDemandTradeW7Test {
    * ★★★ <b>判据③ 负向的第二支（W7-fix 专有）：自备 CATTLE 份额**不再**顶用 —— 牲口不是作业资本</b>。
    *
    * <p>★ 为什么必须有这一条：用户裁定的原话是「**能不能先把牲口要求取消掉啊**」—— 若执行期闸门偷偷退回"数 CATTLE"，本类其它用例（夹具里没有
-   * CATTLE）仍然全绿，这条裁定就被静默推翻了。这里给源户**只有** 8,000 毫 CATTLE 份额 ⇒ 必须与"什么都没有"同命运（整笔跳过）。
+   * CATTLE）仍然全绿，这条裁定就被静默推翻了。这里给源户**只有** 8,000 毫 CATTLE 份额 ⇒ 必须与"什么都没有"同命运。
+   *
+   * <p>★★ <b>W9 改判后它落在哪一支</b>：CATTLE ≠ TOOL ⇒ 随迁携带量仍是 0 ⇒ 走"买不买得到"那一支；而本夹具默认 H2 没有市场区、 也没有闲置工具 ⇒
+   * 落"买不到" ⇒ 仍是整笔跳过。★ 若哪天有人把 CATTLE 塞进 {@code capacityKinds()}，这条会立刻红（判别力仍在）。
    */
   @Test
   void cattleShareDoesNotSatisfyTheToolInputGate() {
@@ -365,6 +420,193 @@ class MerchantOnDemandTradeW7Test {
     assertThat(toolTotal(session.sheet().assetShares()))
         .as("★ 更不得凭空把 CATTLE 折算成 TOOL：作业资本总量仍是 0")
         .isZero();
+  }
+
+  // ── ②′ ★★★ W9 新增：缺工具**可以买/租**（用户原话「没有生产工具不会买吗？」）──────────────────────
+
+  /**
+   * ★★★ <b>W9 判据（用户裁定 v3.29 §7 第 3 条）第二支负向：**买得到、但租不到** ⇒ 仍然整笔跳过、且卡点具名</b>。
+   *
+   * <p>★ <b>为什么必须有这一条</b>：W9 的放行判据是**两条同时成立** —— ① 目标格市场交易 {@code tool}（买 / 赊购通道）； ②
+   * 本格有**闲置**的同种作业资本（真让商号开起来的物理前提，因为本模型没有资本品市场：{@code AssetKind.TOOL} 份额不会从商品买入里长出来）。 只测"两条都成立 ⇒
+   * 放行"会让"只看市场不看闲置"这种半截实现**静默存活**；这条把 ① 单独钉住：市场明明有价， 但本格一份闲置工具都没有 ⇒ 必须维持跳过（否则 {@code
+   * createEnterpriseAndProcess} 会当场抛、整个 tick 炸）。
+   */
+  @Test
+  void migrationWithToolTradedButNoIdleToolInHexIsStillSkippedByName() {
+    EconomyData base = baseWithTradableToolInH2(Map.of(), 0L, /* idleToolInH2= */ 0L);
+    EconomySession session = new EconomySession(base);
+
+    try (TestLogCapture log = TestLogCapture.attach(EconomyLog.MIGRATION_LOGGER_NAME, Level.INFO)) {
+      ModeMigrationSettlement.apply(
+          session,
+          accounts(),
+          plan(move(DefaultProductionModes.MERCHANT, MOVED_POPULATION)),
+          base,
+          30L);
+
+      assertThat(log.lines())
+          .as("★ 买得到但租不到 ⇒ 必须具名跳过（否则执行期会当场抛）")
+          .anyMatch(
+              line ->
+                  line.contains("ONDEMAND_TRADE_MIGRATION_SKIPPED")
+                      && line.contains("reason=no-tool-input-to-host-on-demand-trade-industry"));
+      assertThat(log.lines())
+          .as("★ 卡点必须可读：市场这一条**成立**（toolTradedAtMarket=true），卡的是闲置那一栏")
+          .anyMatch(
+              line ->
+                  line.contains("ONDEMAND_TRADE_MIGRATION_SKIPPED")
+                      && line.contains("toolTradedAtMarket=true")
+                      && line.contains("idleToolMilliInHex=0"));
+      assertThat(log.lines())
+          .as("★ 不得发「买/租放行」那条 INFO（放行未成立）")
+          .noneMatch(line -> line.contains("ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE"));
+    }
+
+    assertThat(session.sheet().industries().keySet())
+        .as("★ 没有按需建出 trade@H2")
+        .doesNotContain(MerchantTradeTemplate.industryId(H2));
+    assertThat(session.pendingPopulationTransfers()).as("★ 人没搬").isEmpty();
+  }
+
+  /**
+   * ★★★ <b>W9 判据（用户裁定 v3.29 §7 第 3 条）正向第二支：**买得到 ∧ 本格有闲置工具 ⇒ 放行**，商号真的开起来、人真的搬走，
+   * 作业资本由**同格跨产业的闲置份额租佃**而来，且 TOOL 总量守恒</b>。
+   *
+   * <pre>
+   * 前置（夹具显式给）：H2 立了市场区、价表里有 tool 这一行 ∧ H2 有一份**闲置**的 TOOL 份额（其它产业名下，H2_FARM）
+   * 判据             ：这一笔带不来任何作业资本（源户 0 份额）⇒ 走"买/租"通道
+   * 期望             ：① INFO ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE（含市场单价与闲置量）
+   *                   ② trade@H2 长出来（逐字段 == MerchantTradeTemplate.industry(H2)）
+   *                   ③ 人搬了（outbox 一笔，population = 计划里那一笔）
+   *                   ④ 守恒式：Σ TOOL 前后逐值相同；闲置份额的 **owner 不变、operator 变为新商号**（租佃不改所有权）
+   *                   ⑤ 不丢失：新商号拿到的 TOOL = 它真需要的量（scale × TOOL_PER_UNIT），不凭空多、不凭空少
+   * </pre>
+   */
+  @Test
+  void migrationWithoutCarriedToolIsAllowedWhenToolIsTradedAndIdleInHex() {
+    long idleToolMilli = 12_000L;
+    EconomyData base = baseWithTradableToolInH2(Map.of(), 0L, /* idleToolInH2= */ idleToolMilli);
+    EconomySession session = new EconomySession(base);
+    long toolBefore = toolTotal(session.sheet().assetShares());
+    assertThat(toolBefore).as("★ 前置：本格闲置工具就是这一份（源户自己没有份额 ⇒ 走买/租通道）").isEqualTo(idleToolMilli);
+    AssetShareId idleShareId = session.sheet().assetShares().keySet().iterator().next();
+
+    try (TestLogCapture log = TestLogCapture.attach(EconomyLog.MIGRATION_LOGGER_NAME, Level.INFO)) {
+      ModeMigrationSettlement.apply(
+          session,
+          accounts(),
+          plan(move(DefaultProductionModes.MERCHANT, MOVED_POPULATION)),
+          base,
+          30L);
+
+      assertThat(log.lines())
+          .as("★ W9：走购买/租佃通道必须具名（含市场单价与闲置量两栏，可回读）")
+          .anyMatch(
+              line ->
+                  line.contains("ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE")
+                      && line.contains("toolUnitPriceMilli=")
+                      && line.contains("idleToolMilliInHex=" + idleToolMilli)
+                      && line.contains("carriedToolInput=0"));
+      assertThat(log.lines())
+          .as("★ 放行那一支不得同时发跳过那条 INFO（两条读数不是一回事）")
+          .noneMatch(line -> line.contains("ONDEMAND_TRADE_MIGRATION_SKIPPED"));
+      assertThat(log.lines())
+          .as("★ 商号按需长出（放行的后果必须真发生，不是只打了一行日志）")
+          .anyMatch(line -> line.contains("MERCHANT_TRADE_INDUSTRY_CREATED"));
+    }
+
+    Industry created = session.sheet().industries().get(MerchantTradeTemplate.industryId(H2));
+    assertThat(created).as("① trade@H2 长出来了").isNotNull();
+    assertThat(created)
+        .as("①′ 与决策层预估那一份逐字段同值（同一拼写点）")
+        .isEqualTo(MerchantTradeTemplate.industry(H2));
+
+    assertThat(session.pendingPopulationTransfers()).as("② 人搬了（放行不是空放）").hasSize(1);
+    assertThat(session.pendingPopulationTransfers().get(0).population())
+        .as("②′ 搬走人数逐值等于计划里那一笔")
+        .isEqualTo(MOVED_POPULATION);
+
+    // ③ 守恒式 + 不丢失 + 租佃语义（逐值）：
+    //   源份额 quantity 同量减少、**新建**一条 TENANCY 份额（owner 仍是原主、operator = 新商号），
+    //   Σ TOOL 前后逐值相同。★ 实测形态（本批真读数）：源 12,000 → 11,880（OWNED 原样保留）、
+    //   新份额 `…-TOOL-<原主>-<新商号>-TENANCY-0` quantity = 120 == 规模 × TOOL_PER_UNIT。
+    long targetScale =
+        Math.max(
+            1L,
+            session.sheet().householdEconomies().get(NEW_TARGET).laborMilli()
+                / MerchantTradeTemplate.LABOR_MILLI_PER_UNIT);
+    long needed = targetScale * MerchantTradeTemplate.TOOL_PER_UNIT;
+    List<OwnershipStake> leasedShares =
+        session.sheet().assetShares().values().stream()
+            .filter(
+                share ->
+                    share.asset() == AssetKind.TOOL
+                        && share.operator().equals(HouseholdActors.of(NEW_TARGET)))
+            .toList();
+    assertThat(leasedShares).as("③ 租佃真的发生：新商号名下**恰一条** TOOL 作业资本份额（operator = 新商号）").hasSize(1);
+    OwnershipStake leased = leasedShares.get(0);
+    assertThat(leased.quantity())
+        .as("③′ 不丢失也不多给：恰为 规模 × TOOL_PER_UNIT（scale=%d）", targetScale)
+        .isEqualTo(needed);
+    assertThat(leased.owner())
+        .as("④ 租佃**不转移所有权**：owner 仍是原主（不是新商号）")
+        .isEqualTo(idleToolShareInH2(idleToolMilli).owner());
+    assertThat(leased.kind())
+        .as("④′ 权利种类随租佃改变（不是 OWNED）")
+        .isEqualTo(OwnershipStake.RightKind.TENANCY);
+    assertThat(leased.industry()).as("④″ 份额落在**同格**的作业资本产业下（同格跨产业租佃，产业 id 带格键）").isEqualTo(H2_FARM);
+    assertThat(toolTotal(session.sheet().assetShares()))
+        .as("⑤ 守恒式：Σ TOOL 前后逐值相同（本格闲置 → 目标户租佃，总量一字不变）")
+        .isEqualTo(toolBefore)
+        .isEqualTo(idleToolMilli);
+    assertThat(toolOwnedByOperator(session.sheet().assetShares(), NEW_TARGET))
+        .as("⑤′ 源减 == 目标增（守恒式的逐值恒等式）")
+        .isEqualTo(toolBefore - sourceToolLeft(session.sheet().assetShares(), idleShareId));
+  }
+
+  /**
+   * ★★ <b>W9 放行通道的第三支负向：市场交易 tool ∧ 本格有 TOOL 份额，但那一份**已被在产 unit 占用** ⇒ 不算闲置 ⇒ 跳过</b>。
+   *
+   * <p>★ 判据（{@code isIdleShare} ∧ {@code usedByUnit}）：闲置 = 没有任何组织/在产 unit 在用。若"占用"这一格被判据漏掉，
+   * 就等于**把别人正在用的产能**租给新商号（别人的产能凭空消失）—— 这是守恒式的第二面，必须真跑。
+   */
+  @Test
+  void busyToolShareIsNotLeasableSoTheMoveIsStillSkipped() {
+    long toolMilli = 12_000L;
+    OwnershipStake busy = idleToolShareInH2(toolMilli);
+    // 同产业、同 operator 的一份在产 unit ⇒ usedByUnit 成立 ⇒ 该份额已被占用，不是闲置。
+    ProductionUnitId busyUnitId = ProductionUnitId.idOf(H2_FARM, busy.operator());
+    ProductionProcess busyUnit =
+        new ProductionProcess(
+            busyUnitId, H2_FARM, busy.operator(), "mode:family_farm", 0L, 0L, Map.of());
+    EconomyData base =
+        baseWithTradableToolInH2(
+            Map.of(busy.id(), busy), 0L, /* idleToolInH2= */ 0L, Map.of(busyUnitId, busyUnit));
+    EconomySession session = new EconomySession(base);
+
+    try (TestLogCapture log = TestLogCapture.attach(EconomyLog.MIGRATION_LOGGER_NAME, Level.INFO)) {
+      ModeMigrationSettlement.apply(
+          session,
+          accounts(),
+          plan(move(DefaultProductionModes.MERCHANT, MOVED_POPULATION)),
+          base,
+          30L);
+
+      assertThat(log.lines())
+          .as("★ 被在产 unit 占用的份额不是闲置 ⇒ 仍然跳过（否则等于把别人的产能租走）")
+          .anyMatch(
+              line ->
+                  line.contains("ONDEMAND_TRADE_MIGRATION_SKIPPED")
+                      && line.contains("toolTradedAtMarket=true"));
+      assertThat(log.lines())
+          .as("★ 也不得放行（`ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE` 一条都不许有）")
+          .noneMatch(line -> line.contains("ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE"));
+    }
+    assertThat(session.sheet().industries().keySet())
+        .as("★ 没有按需建出 trade@H2")
+        .doesNotContain(MerchantTradeTemplate.industryId(H2));
+    assertThat(session.pendingPopulationTransfers()).as("★ 人没搬").isEmpty();
   }
 
   /**
@@ -405,6 +647,9 @@ class MerchantOnDemandTradeW7Test {
       assertThat(log.lines())
           .as("★ 带得来作业资本 ⇒ 不该发跳过（两条读数不是一回事）")
           .noneMatch(line -> line.contains("ONDEMAND_TRADE_MIGRATION_SKIPPED"));
+      assertThat(log.lines())
+          .as("★ W9：带得来 ⇒ 也**不该**发「买/租」那条 INFO（走的是随迁那一支，不是买租）")
+          .noneMatch(line -> line.contains("ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE"));
     }
 
     Industry created = session.sheet().industries().get(MerchantTradeTemplate.industryId(H2));
@@ -590,6 +835,130 @@ class MerchantOnDemandTradeW7Test {
         .withMarketTables(EconomyFixtures.hexMarkets(Map.of(H1, market())));
   }
 
+  // ── ②″ ★★★ W9 夹具：让 H2"买得到 / 租得到"（缺工具可买那一条判据的两个物理前提）────────────────────
+
+  /**
+   * ★★★ <b>W9 夹具：H2 立了市场区、价表里有 {@code tool} 这一行，并按需放一份 <b>H2 的闲置 TOOL 份额</b></b>。
+   *
+   * <pre>
+   * ① 市场：H2 进 {@code marketZones}（成员格 = {H2}，锚格 = H2），{@code marketTables} 里有该区一张表
+   *         ⇒ 执行期 {@code ModeMigrationSettlement.marketForHex} 求得到区、{@code MarketTable.hasPrice(TOOL)} 成立
+   * ② 闲置工具：{@code H2_FARM}（同格、**另一个产业**）名下的一份 {@code {TOOL: idleToolMilli}} 份额，
+   *            owner == operator（自己的、没人在用）⇒ {@code isIdleShare} 成立
+   * </pre>
+   *
+   * <p>★ 为什么必须**跨产业**：按需新建的 {@code trade@H2} 名下不可能有任何份额（本轮才长出来）⇒ 不放宽到"同格同种资产" 就永远凑不齐作业资本（W7 记的 E3
+   * 遗留门槛）。这条夹具正是"同格跨产业闲置租佃"那条判据的入口。
+   *
+   * @param idleToolInH2 放在 H2 的闲置 TOOL 份额（毫工具）；{@code 0} ⇒ 不放（用来验"买得到但租不到"那一支）
+   */
+  private static EconomyData baseWithTradableToolInH2(
+      Map<AssetShareId, OwnershipStake> extraShares, long laborMilli, long idleToolInH2) {
+    return baseWithTradableToolInH2(extraShares, laborMilli, idleToolInH2, Map.of());
+  }
+
+  private static EconomyData baseWithTradableToolInH2(
+      Map<AssetShareId, OwnershipStake> extraShares,
+      long laborMilli,
+      long idleToolInH2,
+      Map<ProductionUnitId, ProductionProcess> extraUnits) {
+    Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>(extraShares);
+    if (idleToolInH2 > 0L) {
+      OwnershipStake idle = idleToolShareInH2(idleToolInH2);
+      shares.put(idle.id(), idle);
+    }
+    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    industries.put(FARM, farm());
+    industries.put(H2_FARM, h2Farm());
+    // ★ H1 仍是"派生市场"形态（价表自带成员格）；★ H2 是**持久立区**形态 —— 成员格的唯一权威是
+    //   `MarketZone.hexes`（I22）⇒ 它的价表**成员格必须为空**（`MarketTable` 构造期 fail-closed：
+    //   "持久形态下价表的成员格必须为空"）。⇒ H2 用 {@link EconomyFixtures#quote} 的**模板**（hexes 为空），
+    //   不走 hexMarkets 的 singleHex 包装。
+    Map<MarketZoneId, MarketTable> marketTables = new LinkedHashMap<>();
+    marketTables.put(
+        EconomyFixtures.marketIdOf(H1),
+        MarketTable.singleHex(market().numeraire(), H1, market().prices()));
+    marketTables.put(EconomyFixtures.marketIdOf(H2), toolMarket());
+    Map<MarketZoneId, MarketZone> zones =
+        Map.of(
+            EconomyFixtures.marketIdOf(H2),
+            new MarketZone(
+                EconomyFixtures.marketIdOf(H2),
+                H2,
+                0,
+                Set.of(H2),
+                MarketSettlementFixtures.SILVER,
+                Map.of()));
+    Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>(extraUnits);
+    // ★★ 原子写口：区与它的价表必须**同一次构造**给 —— `withMarketTables(...)` 单独调会在中间态被自己的守卫拒掉
+    //   （"派生市场（键不在市场区表里）必须有成员格"：H2 的表在区还没落时是"派生形态却没有成员格"）。
+    return EconomyData.empty()
+        .withModes(DefaultProductionModes.modes())
+        .withClassStructures(DefaultProductionModes.classStructures())
+        .withProductionRoles(DefaultProductionModes.classPositions())
+        .withHouseholdEconomies(Map.of(SOURCE, row(SOURCE, H1, SOURCE_POPULATION, laborMilli)))
+        .withClassMemberships(
+            Map.of(SOURCE, membership(SOURCE, DefaultProductionModes.FAMILY_FARM)))
+        .withIndustries(industries)
+        .withOwnershipStakes(shares)
+        .withProcesses(units)
+        .withMarketZonesAndTables(zones, marketTables);
+  }
+
+  /** H2 的另一个产业（**不是** trade）：只是"本格闲置工具"的挂靠处，regime 与 merchant 不同 ⇒ 不会冒充 trade 模板。 */
+  private static Industry h2Farm() {
+    return new Industry(
+        H2_FARM,
+        "h2-farm-w9",
+        new RegimeId("household"),
+        10L,
+        Map.of(AssetKind.LAND, 1L),
+        Map.of(),
+        0L,
+        1_000L,
+        Map.of(GRAIN, 1L),
+        Map.of(),
+        List.of(new ClassSlot(POOR, "peasant", 1_000)),
+        new AllocationRule.Split(500, 500));
+  }
+
+  /** H2 的价表：★ 含 {@code tool} 这一行（"买得到"的物理前提）。 */
+  private static MarketTable toolMarket() {
+    Map<CommodityId, Long> prices = new LinkedHashMap<>();
+    prices.put(GRAIN, 10L);
+    prices.put(MerchantTradeTemplate.TOOL_COMMODITY, 25L);
+    return EconomyFixtures.quote(MarketSettlementFixtures.SILVER, prices);
+  }
+
+  /** H2 的一份**闲置** TOOL 份额（挂在 {@link #H2_FARM} 下；owner == operator，没人在用）。 */
+  private static OwnershipStake idleToolShareInH2(long quantity) {
+    ActorRef owner = new ActorRef(ActorKind.HOUSEHOLD, "hh-w9-h2-idle-tool-owner");
+    AssetShareId id =
+        OwnershipStake.idOf(
+            H2_FARM, AssetKind.TOOL, owner, owner, OwnershipStake.RightKind.OWNED, 0L);
+    return new OwnershipStake(
+        id, H2_FARM, AssetKind.TOOL, owner, owner, quantity, OwnershipStake.RightKind.OWNED);
+  }
+
+  /** 某个 actor（此处 = 新商号）名下**当作业资本用**的 TOOL 份额合计（OWNED + TENANCY 都算）。 */
+  private static long toolOwnedByOperator(
+      Map<AssetShareId, OwnershipStake> shares, HouseholdId operator) {
+    ActorRef actor = HouseholdActors.of(operator);
+    long total = 0L;
+    for (OwnershipStake share : shares.values()) {
+      if (share.asset() == AssetKind.TOOL && share.operator().equals(actor)) {
+        total += share.quantity();
+      }
+    }
+    return total;
+  }
+
+  /** 指定份额在表里的剩余量（**行已被移空删除 ⇒ 0** —— 与 {@code OwnershipStakeBook} 的"零行保留"同口径）。 */
+  private static long sourceToolLeft(Map<AssetShareId, OwnershipStake> shares, AssetShareId id) {
+    OwnershipStake share = shares.get(id);
+    return share == null ? 0L : share.quantity();
+  }
+
   /** 源户的账户（新建目标户的账户由迁移执行处自己登记 —— {@code ModeMigrationSettlement} 的 create 路径）。 */
   private static AccountSession accounts() {
     return accountsWithTool(0L);
@@ -623,6 +992,16 @@ class MerchantOnDemandTradeW7Test {
     return new ModeMigrationPolicy.MigrationPlan(List.of(moves));
   }
 
+  /**
+   * ★ <b>W9（2026-10-11）：夹具用的计划速度（‰）</b> —— 它<b>不是</b>生产口径的"基线速度"： {@code
+   * ModeMigrationPolicy.MIGRATION_PER_MILLE}（10‰ 常量）已按 §一.11 随旧口径 （{@code max(10‰,
+   * f(债务/资产))}）一并删除；生产速度改由**预期收益差**逐目标现算 （{@code ModeMigrationPolicy.profitGapSpeedPerMille}）。
+   *
+   * <p>★ 本类的判据全部落在**执行期闸门**上（"这一笔带不带来 / 买不买得到作业资本"），与速度怎么来的无关 ⇒ 这里显式给一个固定夹具值（合法区间 [1, 1000]）；名字里带
+   * {@code FIXTURE_} 是为了让后人一眼看出"它不是口径常量"。
+   */
+  private static final long FIXTURE_PLAN_SPEED_PER_MILLE = 10L;
+
   /** 一笔"往 H2 转成 merchant"的迁移（10 参旧构造 ⇒ targetMode 显式给）。 */
   private static ModeMigrationPolicy.MigrationMove move(
       ProductionModeId targetMode, long population) {
@@ -631,7 +1010,7 @@ class MerchantOnDemandTradeW7Test {
         NEW_TARGET,
         H2,
         targetMode,
-        ModeMigrationPolicy.MIGRATION_PER_MILLE,
+        FIXTURE_PLAN_SPEED_PER_MILLE,
         population,
         0L,
         0L,

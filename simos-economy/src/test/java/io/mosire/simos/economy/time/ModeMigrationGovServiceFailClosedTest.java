@@ -178,6 +178,16 @@ class ModeMigrationGovServiceFailClosedTest {
     return new ModeMigrationPolicy.MigrationPlan(List.of(moves));
   }
 
+  /**
+   * ★ <b>W9（2026-10-11）：夹具用的计划速度（‰）</b> —— 它<b>不是</b>生产口径的"基线速度"： {@code
+   * ModeMigrationPolicy.MIGRATION_PER_MILLE} 已按 §一.11 随旧口径（{@code max(10‰, f(债务/资产))}）一并删除，
+   * 生产速度改由**预期收益差**逐目标现算（{@code ModeMigrationPolicy.profitGapSpeedPerMille}）。
+   *
+   * <p>★ 本类只测"执行器对计划里给定速度如何处理"，与速度**怎么来的**无关 ⇒ 这里显式给一个固定夹具值（合法区间 [1, 1000]），
+   * 并把"它不再是口径常量"写在名字里，避免后人误读成"生产基线还是 10‰"。
+   */
+  private static final long FIXTURE_PLAN_SPEED_PER_MILLE = 10L;
+
   private static ModeMigrationPolicy.MigrationMove move(
       HouseholdId target, HexCoord targetHex, long population) {
     return new ModeMigrationPolicy.MigrationMove(
@@ -185,7 +195,7 @@ class ModeMigrationGovServiceFailClosedTest {
         target,
         targetHex,
         FAMILY,
-        ModeMigrationPolicy.MIGRATION_PER_MILLE,
+        FIXTURE_PLAN_SPEED_PER_MILLE,
         population,
         0L,
         0L,

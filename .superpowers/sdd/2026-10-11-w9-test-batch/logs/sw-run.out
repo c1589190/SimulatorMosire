@@ -1,0 +1,18 @@
+=== [20:37:22] sw360 world=small-world port=10971 plan=plan-sw-360.json store=sw360 extras=--keep-store ===
+[20:37:22] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9t/stores/sw360 --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json --gui-port 10971 --mcp-port 10972 --approval-port 10973
+[20:37:24] GUI 就绪（1.69s）
+[20:37:24] 创世后 head rev=1 tick=0
+[20:37:31] advance 0->360 HTTP 200 7.698s
+[20:37:31] dump d360-oneshot rev=2 bytes=5620567 md5=1ddb48bc282f096874d8092373a22501
+[20:37:32] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-test-batch/logs/sw360.result.json
+{
+  "tag": "sw360",
+  "jarMd5": "b07bb719257cf2b313d037610aacb106",
+  "readySeconds": 1.686,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "7354cd443b06ca2937d9f6ded3f7c109"
+}
+=== [20:37:32] sw360 rc=0 ===
+=== [20:37:32] MODE=sw DONE ===

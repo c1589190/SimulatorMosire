@@ -1,0 +1,89 @@
+====================================================================================================
+W9f 读数：tag=tp360-0-360  window=全窗  文件=logs/tp360.log
+====================================================================================================
+
+[① 市场轮] 轮数 = 144；★ 零成交轮次 = 0；Σfills = 5131（MARKET_FILL 行 = 5131）
+  min / 中位 / max = 15 / 36.0 / 193
+  同日两轮 = 否；相邻最大间隔 = 3 天
+  分布（笔数:轮数）: 15×1, 21×18, 22×8, 23×8, 24×8, 25×1, 27×1, 31×1, 32×2, 33×7, 34×4, 35×12, 36×17, 37×5, 38×9, 39×7, 40×5, 41×5, 42×8, 43×1, 44×1, 45×3, 46×4, 47×2, 48×1, 49×1, 66×1, 76×1, 167×1, 193×1
+  ★ Σfills == MARKET_FILL 行数 ⇒ True
+
+[② 转业] MIGRATION_MOVE 笔数 = 389
+  reason: {'PROFIT_WEIGHTED': 389}
+  速度 min/中位/max = 5 / 87 / 126；1000‰ 笔数 = 0
+  targetMode: {'wage_farm': 176, 'handicraft_workshop': 72, 'merchant': 120, 'family_farm': 21}
+  ★ targetTierIndex 分布: 0×349, 1×33, 2×7
+  单笔最大搬迁人口 = 10；Σ搬迁人口 = 717
+
+  ★ 落点（MIGRATION_APPLIED，12 轮）：
+    day=30   moves=9    rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=60   moves=9    rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=90   moves=6    rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=120  moves=12   rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=150  moves=47   rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=180  moves=47   rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=210  moves=48   rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=240  moves=55   rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=270  moves=47   rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=300  moves=37   rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=330  moves=37   rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    day=360  moves=35   rowsBefore=342 rowsAfter=342 （并入既有户 ⇒ 行数不变）
+    ⇒ rowsBefore == rowsAfter 的轮数 = 12 / 12（新建户行 0 个）
+
+  ★ 随迁库存（MIGRATION_INVENTORY_CARRIED）= 389 笔（迁移 389 笔 ⇒ 每笔都带）
+    带 haul 的笔数 = 0（应为 0 = D2 排除生效）；带 grain 的笔数 = 383 / 389
+    样本: =30 source=hh--3_3-rural-landlord target=hh--3_3-rural-poor_peasant targetHex=-3_3 population=1 goods={fiber=115332, grain=2261} reason=mobile-commodity-inventory-carried-by-population-ratio
+    样本: _3-rural-middle_peasant target=hh--3_3-rural-poor_peasant targetHex=-3_3 population=1 goods={fiber=128488, tool=15, grain=60733} reason=mobile-commodity-inventory-carried-by-population-ratio
+    样本: ich_peasant target=hh--3_3-urban-middle_peasant targetHex=-3_3 population=3 goods={grain=444000, fiber=1839, iron=810, tool=726} reason=mobile-commodity-inventory-carried-by-population-ratio
+    样本: =30 source=hh-0_-3-rural-landlord target=hh-0_-3-rural-poor_peasant targetHex=0_-3 population=1 goods={fiber=131808, grain=2037} reason=mobile-commodity-inventory-carried-by-population-ratio
+    样本: -3-rural-middle_peasant target=hh-0_-3-rural-poor_peasant targetHex=0_-3 population=1 goods={fiber=121215, tool=15, grain=40756} reason=mobile-commodity-inventory-carried-by-population-ratio
+
+  ★ 壳户计数（MODE_MIGRATION_CANDIDATES，12 轮）ΣnoPopulation=1716 ΣnoLabor=1424
+  逐户不可行 / 实物腿拒: {}
+
+[③ 运粮 / 运力]
+  MERCHANT_CAPACITY_LANE_TRUNCATED（逐理由：笔数 / ΣunallocatedMilli）:
+    out-of-derived-radius                            926357 笔 / Σ    2809340544 毫
+    no-carrier-with-deliverable-service              925565 笔 / Σ    4656075024 毫
+    capacity-exhausted                                 6122 笔 / Σ       2408238 毫
+    sub-unit-residual                                  4275 笔 / Σ       4576812 毫
+  ★ no-carrier-with-deliverable-service = 925565 笔 / 4656075024 毫
+  ★ out-of-derived-radius = 926357 笔 / 2809340544 毫
+  CAPACITY_DEMAND_GAP_WHY（另一口径，逐理由）:
+    capacity-budget-below-demand-or-out-of-derived-radius          5328 笔 / Σ    8065671505 毫
+
+[④ 跑商]
+  MERCHANT_TRADE_INDUSTRY_CREATED = 0
+  ONDEMAND_TRADE_MIGRATION_TOOL_PURCHASE = 0
+  ONDEMAND_TRADE_MIGRATION_SKIPPED = 0
+  MIGRATION_MOVE targetMode=merchant = 120
+    hh--3_3-urban-middle_peasant               → hex=-3,3    15 笔 / Σ人口   43 / Σ钱 1490 毫；日=[120, 120, 150, 180, 210, 240, 240, 270, 270, 300, 300, 330]
+    hh-3_0-urban-middle_peasant                → hex=3,0     11 笔 / Σ人口   59 / Σ钱 1988 毫；日=[120, 120, 240, 270, 270, 300, 300, 330, 330, 360, 360]
+    hh--3_3-rural-rich_peasant                 → hex=-3,3    10 笔 / Σ人口   10 / Σ钱 0 毫；日=[240, 240, 270, 270, 300, 300, 330, 330, 360, 360]
+    hh-3_0-rural-rich_peasant                  → hex=3,0     10 笔 / Σ人口   10 / Σ钱 0 毫；日=[240, 240, 270, 270, 300, 300, 330, 330, 360, 360]
+    hh-0_-3-urban-middle_peasant               → hex=0,-3     9 笔 / Σ人口   43 / Σ钱 1357 毫；日=[240, 270, 270, 300, 300, 330, 330, 360, 360]
+    hh-0_-3-rural-middle_peasant               → hex=0,-3     8 笔 / Σ人口   11 / Σ钱 138 毫；日=[240, 270, 300, 300, 330, 330, 360, 360]
+    hh--2_3-rural-rich_peasant                 → hex=-3,3     8 笔 / Σ人口    8 / Σ钱 0 毫；日=[270, 270, 300, 300, 330, 330, 360, 360]
+    hh--3_3-rural-middle_peasant               → hex=-3,3     8 笔 / Σ人口   14 / Σ钱 26 毫；日=[270, 270, 300, 300, 330, 330, 360, 360]
+    hh-3_0-rural-middle_peasant                → hex=3,0      8 笔 / Σ人口   14 / Σ钱 8 毫；日=[270, 270, 300, 300, 330, 330, 360, 360]
+    hh--2_2-rural-rich_peasant                 → hex=-3,3     4 笔 / Σ人口    7 / Σ钱 7 毫；日=[270, 300, 330, 360]
+    hh--3_2-rural-rich_peasant                 → hex=-3,3     4 笔 / Σ人口    7 / Σ钱 0 毫；日=[270, 300, 330, 360]
+    hh-2_0-rural-rich_peasant                  → hex=3,0      4 笔 / Σ人口    6 / Σ钱 0 毫；日=[270, 300, 330, 360]
+    hh-2_1-rural-rich_peasant                  → hex=3,0      4 笔 / Σ人口    7 / Σ钱 0 毫；日=[270, 300, 330, 360]
+    hh-3_-1-rural-rich_peasant                 → hex=3,0      4 笔 / Σ人口    6 / Σ钱 4 毫；日=[270, 300, 330, 360]
+    hh-0_-3-rural-rich_peasant                 → hex=0,-3     4 笔 / Σ人口    4 / Σ钱 0 毫；日=[300, 300, 330, 360]
+    hh--1_-2-rural-middle_peasant              → hex=0,-3     3 笔 / Σ人口    8 / Σ钱 0 毫；日=[300, 330, 360]
+    hh--1_-2-rural-rich_peasant                → hex=0,-3     3 笔 / Σ人口    3 / Σ钱 0 毫；日=[300, 330, 360]
+    hh--1_-2-rural-landlord                    → hex=0,-3     2 笔 / Σ人口    2 / Σ钱 1463 毫；日=[300, 330]
+    hh-1_-3-rural-landlord                     → hex=0,-3     1 笔 / Σ人口    1 / Σ钱 0 毫；日=[300]
+
+[⑤ 不回归（事件计数，全窗）]
+  W4 阶层滑落          CLASS_SLIDE_ROUND=144, CLASS_SLIDE_SETTLED=144, CLASS_SLIDE=53, CLASS_TRANSITIONS=1
+  W5 铸币            MINT_SETTLED=0, MINT_LIMIT_WINDOW=0, MINT_LAST_CYCLE_READOUT=0, MINT_PRODUCTION=0
+  W5.5 货币市场        MONEY_MARKET_ROUND=144, MONEY_MARKET_WHY=432, MONEY_MARKET_UNFILLED=1175, MONEY_MARKET_RATE_WRITTEN=144, MONEY_MARKET_GOV_SUPPLY_SUPPRESSED=144, MONEY_MARKET_BUDGET_TOPUP=106
+  W7 运力/运费         HAUL_PRICE_SIGNAL=432, HAUL_SERVICE_DELIVERED=333, HAUL_PAID=0, HAUL_SETTLED=0, HAUL_EXPIRED=0, LOGISTICS_ALLOCATED=0
+  W8 债务语义          DEBT_REPAY_DECISION=12480, DEBT_STRESS_THRESHOLD_FIRED=1694, MIGRATION_DEBT_MOVED=290, MIGRATION_DEBT_SELF_NETTED=170, DEBT_WRITEOFF=0
+  市场/迁移            MARKET=0, MARKET_REPORT=144, MARKET_FILL=5131, MIGRATION_PLAN=12, MIGRATION_APPLIED=12, MIGRATION_MOVE=389, MIGRATION_INVENTORY_CARRIED=389, MODE_MIGRATION_CANDIDATES=12
+  异常/500           GUI_REQUEST_FAILED=0
+  日循环              DAY_START=360, DAY_END=360
+  ★ 名字里含 EXCEPTION/ERROR/FAILED/STACK 的事件: （无）

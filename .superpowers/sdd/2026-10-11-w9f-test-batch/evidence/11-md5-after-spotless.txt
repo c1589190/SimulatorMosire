@@ -1,0 +1,2 @@
+0b4643c1f2e3b247c4faecf983387459  simos-economy/src/test/java/io/mosire/simos/economy/time/ModeMigrationPolicyD024Test.java
+9c91c927b8dc346cd8f2b5004a2a9975  simos-economy/src/test/java/io/mosire/simos/economy/time/ModeMigrationWorkCapitalScaleW9fTest.java

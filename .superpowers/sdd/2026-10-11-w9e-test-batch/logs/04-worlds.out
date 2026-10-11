@@ -1,0 +1,60 @@
+=== [21:04:06] sw360 world=small-world port=10981 plan=plan-sw-360.json store=sw360 extras=--keep-store ===
+[21:04:06] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9e/stores/sw360 --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json --gui-port 10981 --mcp-port 10982 --approval-port 10983
+[21:04:08] GUI 就绪（1.69s）
+[21:04:08] 创世后 head rev=1 tick=0
+[21:04:16] advance 0->360 HTTP 200 8.226s
+[21:04:16] dump d360-oneshot rev=2 bytes=6329746 md5=89bbecfa44e5e6320507d781dd5577c4
+[21:04:16] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9e-test-batch/logs/sw360.result.json
+{
+  "tag": "sw360",
+  "jarMd5": "c29ba84c7499c5e990c66ce6fc36d73c",
+  "readySeconds": 1.69,
+  "revisionDelta": 1,
+  "headRevision": 2,
+  "tick": 360,
+  "logStrippedMd5": "5772392ec72ac1ef2305257db6c49a73"
+}
+=== [21:04:16] sw360 rc=0 ===
+=== [21:04:16] tp360 world=three-powers port=10982 plan=plan-tp-360.json store=tp360 extras= ===
+[21:04:16] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9e/stores/tp360 --world=three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-tp.json --gui-port 10982 --mcp-port 10983 --approval-port 10984
+[21:04:18] GUI 就绪（1.69s）
+[21:04:18] 创世后 head rev=1 tick=0
+[21:04:50] advance 0->360 HTTP 500 31.856s
+=== [21:05:04] tp360 rc=0 ===
+=== [21:05:04] sw3seg world=small-world port=10983 plan=plan-sw-3seg.json store=sw3seg extras= ===
+[21:05:04] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9e/stores/sw3seg --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json --gui-port 10983 --mcp-port 10984 --approval-port 10985
+[21:05:06] GUI 就绪（1.70s）
+[21:05:06] 创世后 head rev=1 tick=0
+[21:05:10] advance 0->120 HTTP 200 3.744s
+[21:05:13] advance 120->240 HTTP 200 3.092s
+[21:05:16] advance 240->360 HTTP 200 2.892s
+[21:05:16] dump d360-3seg rev=4 bytes=6329746 md5=d63c4e68770079e46959bac21724182f
+[21:05:16] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9e-test-batch/logs/sw3seg.result.json
+{
+  "tag": "sw3seg",
+  "jarMd5": "c29ba84c7499c5e990c66ce6fc36d73c",
+  "readySeconds": 1.695,
+  "revisionDelta": 3,
+  "headRevision": 4,
+  "tick": 360,
+  "logStrippedMd5": "a03a4831192d9452bdc5043770441866"
+}
+=== [21:05:16] sw3seg rc=0 ===
+=== [21:05:16] swtick world=small-world port=10984 plan=plan-sw-tick.json store=swtick extras= ===
+[21:05:16] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /tmp/w9e/stores/swtick --world=small-world --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json --gui-port 10984 --mcp-port 10985 --approval-port 10986
+[21:05:18] GUI 就绪（1.72s）
+[21:05:18] 创世后 head rev=1 tick=0
+[21:05:53] advance_daily 0->360 完成 head=361
+[21:05:53] dump d360-tick rev=361 bytes=6329760 md5=9cb8f3804e6f4d3067ebae9a6d25978a
+[21:05:55] 结果落盘 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9e-test-batch/logs/swtick.result.json
+{
+  "tag": "swtick",
+  "jarMd5": "c29ba84c7499c5e990c66ce6fc36d73c",
+  "readySeconds": 1.72,
+  "revisionDelta": 360,
+  "headRevision": 361,
+  "tick": 360,
+  "logStrippedMd5": "b8a5c3d44e138690ba6ab1d0d2c30195"
+}
+=== [21:05:55] swtick rc=0 ===
+=== [21:05:55] MODE=all DONE ===

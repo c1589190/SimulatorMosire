@@ -1,0 +1,22 @@
+=== W9e ② / ③ 实跑：完整测试面（RC + 逐模块汇总 + 三个被迁移类） ===
+124:[INFO] Tests run: 217, Failures: 0, Errors: 0, Skipped: 0
+246:[INFO] Tests run: 379, Failures: 0, Errors: 0, Skipped: 0
+300:[INFO] Tests run: 33, Failures: 0, Errors: 0, Skipped: 0
+341:[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+382:[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+437:[INFO] Tests run: 50, Failures: 0, Errors: 0, Skipped: 0
+562:[INFO] Tests run: 217, Failures: 0, Errors: 0, Skipped: 0
+662:[INFO] Tests run: 518, Failures: 0, Errors: 0, Skipped: 0
+832:[INFO] Tests run: 231, Failures: 0, Errors: 0, Skipped: 0
+924:[INFO] Tests run: 232, Failures: 0, Errors: 0, Skipped: 0
+984:[INFO] Tests run: 130, Failures: 0, Errors: 0, Skipped: 0
+1195:[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.economy.time.ModeMigrationPolicyW9Test
+1199:[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.025 s -- in io.mosire.simos.economy.time.ModeMigrationPolicyD024Test
+1237:[INFO] Tests run: 335, Failures: 0, Errors: 0, Skipped: 0
+1295:[INFO] Tests run: 111, Failures: 0, Errors: 0, Skipped: 0
+1355:[INFO] Tests run: 91, Failures: 0, Errors: 0, Skipped: 0
+2568459:[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 61.97 s -- in io.mosire.simos.app.time.EconomyCycleHealthTest
+2577890:[INFO] Tests run: 909, Failures: 0, Errors: 0, Skipped: 5
+2580453:[INFO] BUILD SUCCESS
+2580455:[INFO] Total time:  03:43 min
+2580462:RC=0

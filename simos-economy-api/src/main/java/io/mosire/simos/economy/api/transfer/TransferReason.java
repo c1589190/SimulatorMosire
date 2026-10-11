@@ -102,7 +102,19 @@ public enum TransferReason {
    * <p>★ <b>P-T1b 之前的语义</b>：这条税<b>只累计读数、不搬钱</b>（{@code MarketReport.regulatedTariffByCurrency()}）；
    * 本档是它"真收款"之后的具名原因。
    */
-  MARKET_TAX_IN_ZONE("market_tax_in_zone");
+  MARKET_TAX_IN_ZONE("market_tax_in_zone"),
+
+  /**
+   * ★★★ <b>W9（2026-10-11，用户裁定 v3.29 §7 第 1 条）：生产方式迁移时家户<b>带走的那一部分库存</b></b> —— {@code 源家户 →
+   * 目标家户}，只带**商品**腿（货币腿仍走既有的逐币种随迁，不进本档）。
+   *
+   * <p>★★ <b>为什么单列一档</b>（与 {@link #MARKET_TRADE} 分开）：这是**同一个家户的两个身份之间**的搬运（源户 → 迁入目标户）， 不是买卖 ——
+   * 没有对价、没有价格、没有税；读账时"这笔粮是卖出去的还是随人搬走的"必须分得开（用户原话：「**默认带一部分库存过去**」）。 口径照 D-023 §4 的既有形制：按逐笔迁移人口比例
+   * {@code ⌊剩余量 × 比例⌋}，余数留源户。
+   *
+   * <p>★ <b>守恒</b>：两条腿都是已登记家户 ⇒ 该商品在家户账上的**总量一字不变**（源减 = 目标增）。
+   */
+  MIGRATION_CARRY("migration_carry");
 
   private final String value;
 

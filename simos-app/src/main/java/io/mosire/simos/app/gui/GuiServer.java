@@ -624,23 +624,30 @@ public final class GuiServer implements AutoCloseable {
       //   IllegalStateException）在日志里只剩 `error=IllegalStateException` —— 排障当场断线（控制方
       //   2026-10-09 复现时正是如此）。此处补 message（WARN，恒开）与栈（DEBUG，按需开），
       //   二者都只记异常自身的文本，不含业务载荷。
-      GUI.warn(
-          LogEvent.of(
-              "GUI_REQUEST_FAILED",
-              AppLogSource.GUI_REQUEST,
-              "method",
-              exchange.getRequestMethod(),
-              "path",
-              exchange.getRequestURI().getPath(),
-              "caller",
-              remoteHostOf(exchange),
-              "error",
-              e.getClass().getSimpleName(),
-              "message",
-              e.getMessage() == null ? "none" : e.getMessage()));
-      if (AppLog.gui().isDebugEnabled()) {
+      // ★★★ W9-fix2（2026-10-11，U-C）：**栈并入本事件**（级别仍是 WARN、响应体仍是 `{"error":"internal error"}`）。
+      //   改前栈挂在另一条 DEBUG 事件 `GUI_REQUEST_FAILED_STACK` 上 ⇒ 默认 `-Dsimos.app.logLevel=INFO` 时
+      //   **一条栈都没有**：W9e 批的 three-powers day=270 HTTP 500 只留下 `error=IllegalStateException
+      //   message=…`，归因靠人工 keep 过滤器 + 两次重跑（本批 §9 U-C）。⇒ 现在 WARN 这一条**自带 throwable**
+      //   （SLF4J 的 `warn(String, Throwable)`：同一事件、同一行首，栈紧随其后），DEBUG 那条重复事件删掉。
+      //   ★ 纪律不变：栈只进日志（`%throwable` 由 log4j2 渲染），**不进响应体**；不记载荷明文。
+      if (AppLog.gui().isWarnEnabled()) {
         AppLog.gui()
-            .debug("event=GUI_REQUEST_FAILED_STACK path=" + exchange.getRequestURI().getPath(), e);
+            .warn(
+                LogEvent.of(
+                        "GUI_REQUEST_FAILED",
+                        AppLogSource.GUI_REQUEST,
+                        "method",
+                        exchange.getRequestMethod(),
+                        "path",
+                        exchange.getRequestURI().getPath(),
+                        "caller",
+                        remoteHostOf(exchange),
+                        "error",
+                        e.getClass().getSimpleName(),
+                        "message",
+                        e.getMessage() == null ? "none" : e.getMessage())
+                    .toLine(),
+                e);
       }
       safeError(exchange, 500, "internal error");
     } finally {

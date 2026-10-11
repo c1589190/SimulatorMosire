@@ -1,0 +1,35 @@
+=== ③ 守卫（ModeMigrationSettlement.createEnterpriseAndProcess 的 fail-closed 抛点）没有被放宽 —— 源码对照 ===
+
+--- 改后现状（本批，行号取自改后文件） ---
+1201:    if (industryId == null || industry == null) {
+1202-      throw new IllegalStateException(
+1203-          "新建目标户的租赁资产不足（计划不该包含此目标；已按 id 序遍历该 hex 全部产业模板）: hex="
+1204-              + move.targetHex()
+1205-              + " labor="
+1206-              + targetHouseholdEconomy.laborMilli()
+1207-              + " tried=["
+1208-              + triedCandidates
+1209-              + "]");
+1210-    }
+1211-    List<AssetShareId> createdShares = new ArrayList<>();
+1212-    if (!assetMoves.isEmpty()) {
+1213-      createdShares.addAll(OwnershipStakeBook.apply(assetShares, industries, pledges, assetMoves));
+
+--- 改前原文（W9e 工作树，本会话开工时读到的同一段） ---
+    if (industryId == null || industry == null) {
+      throw new IllegalStateException(
+          "新建目标户的租赁资产不足（计划不该包含此目标；已按 id 序遍历该 hex 全部产业模板）: hex="
+              + move.targetHex()
+              + " labor="
+              + targetHouseholdEconomy.laborMilli());
+    }
+--- 结论 ---
+① 守卫条件逐字未变：industryId == null || industry == null（= 遍历完全部候选都没能预留成功）
+② planAssetMoves 的索取算式逐字未变：need = scale × capacityPerUnit[每维]；任一维 need > 0 ⇒ return null
+③ 本批在该方法里只改了两处：scale 改调共享拼写点 requiredWorkCapitalScale(...)；抛出消息追加 tried=[候选:scale,need]
+
+--- 本批对该方法的 diff（对 W9e 工作树的相对变化，逐字） ---
+   - long scale = candidateIndustry.recipe().laborPerUnit() <= 0L ? 1L : Math.max(1L, targetHouseholdEconomy.laborMilli() / candidateIndustry.recipe().laborPerUnit());
+   + long scale = ModeMigrationPolicy.requiredWorkCapitalScale(candidateIndustry, targetHouseholdEconomy.laborMilli());
+   +（循环内）triedCandidates.append(candidate.value()).append(":scale=").append(scale).append(",need=").append(candidateIndustry.recipe().capacityPerUnit());
+   +（抛出消息）… + " tried=[" + triedCandidates + "]"

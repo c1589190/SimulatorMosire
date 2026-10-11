@@ -1,0 +1,78 @@
+{
+  "checkpoints": [
+    {
+      "bytes": 1748188,
+      "md5": "3a74415ecea3a4b7d723098f968f6ee5",
+      "path": "checkpoints/main/1.json"
+    },
+    {
+      "bytes": 12371339,
+      "md5": "838477e41aaf5b9db732d12a424c7605",
+      "path": "checkpoints/main/2.json"
+    }
+  ],
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-tp.json",
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10991,
+  "headRevision": 2,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "90e9f85abd4a620562926752fc4b1b8f",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=INFO -Dsimos.app.logLevel=INFO",
+  "keepStore": false,
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-fix2/logs/tp360fix2.log",
+  "logKeep": "event=(MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET_REPORT|MARKET_FILL|MERCHANT_[A-Z_]*|ONDEMAND_[A-Z_]*|GUI_REQUEST_FAILED|DAY_START|DAY_END)|\\tat |Caused by:|Suppressed:|ERROR",
+  "logKeptLines": 1902057,
+  "logLines": 1902057,
+  "logStrippedMd5": "939805d8b7b1008cbf6fbeabd1b46ca9",
+  "pid": 472586,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-fix2/plan-tp-360.json",
+  "readySeconds": 1.73,
+  "revisionDelta": 1,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 11290883,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 360
+    }
+  ],
+  "startedAt": "2026-10-11T21:20:57",
+  "steps": [
+    {
+      "from": 0,
+      "httpStatus": 200,
+      "i": 0,
+      "op": "advance",
+      "response": "{\"result\":\"committed\",\"ref\":{\"branch\":\"main\",\"revision\":2}}",
+      "seconds": 47.794,
+      "to": 360
+    },
+    {
+      "bytes": 12371339,
+      "dst": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-w9-fix2/dumps/tp360fix2-d360-oneshot.json",
+      "i": 1,
+      "label": "d360-oneshot",
+      "md5": "838477e41aaf5b9db732d12a424c7605",
+      "op": "dump",
+      "revision": 2
+    }
+  ],
+  "store": "/tmp/w9f2/stores/tp360",
+  "tag": "tp360fix2",
+  "tick": 360,
+  "world": "three-powers"
+}
