@@ -422,3 +422,17 @@ L4a.2（Replay 解码失败 / CombatResolution 不变量两条 ERROR）、L4b（
 3. 真 `-Dsimos.<module>.logLevel/traceLevel` 系统属性轮未跑（测试内用等价 Configurator 验证）；
 4. §9.6「日志不先于 ChangeSet/apply 产生副作用」仅静态审阅，无运行时插桩。
 
+---
+
+## 14. 2026-10-12 回代码核的更正（追加，不改上文）
+
+- **§13 第 3 条（夹具）**：`RealTwelveHexWorld` 夹具**全树 0 使用者**（只有自引用与历史文档；`@Test` 计数 0）
+  ⇒ 「被一个 0.005s 的单测使用」不成立，它是**死夹具**（`simos-app/src/test/java/io/mosire/simos/app/world/RealTwelveHexWorld.java`）。
+- **§13 第 2 条**：`Replay.applyWorld` 的**"缺 codec"那一支已有 ERROR**（`Replay.java:221/241` + `:268 REPLAY_DECODE_FAILED`）；
+  真缺口只剩 `:226-227`「模块不在状态里」。`Timeline.readChangeSet`（`Timeline.java:385-390`）与
+  `Envelope.decode`（`Envelope.java:96-148`）仍无 ERROR 行 —— 这两条不变。
+- **§13 第 1 条（计数口径）**：按 **handler 数**是 9 个非 `.command()` 分类；按**成功事件数**是 **8 条**
+  （`UnitRepayHandler` 无独立成功事件名）。另：`EconomyLog.entry()` 在 `simos-economy/src/main` **0 个调用点**。
+- **§13 第 3 条（真 `-D` 轮）**：`log4j2.xml:36-57` 确实读 `${sys:simos.<module>.logLevel}` / `traceLevel`，
+  11 组模块名齐全；"轮未跑"属计划自述，静态不可判定其历史。
+

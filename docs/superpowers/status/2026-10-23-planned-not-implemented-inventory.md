@@ -216,3 +216,21 @@
 | `plans/2026-10-22-d2-decision-packet.md` | 补记：D4 实际只做了 GM `simos.gm.armyPayPolicy`；`simos.unit.setArmyPayPolicy` 是否进决策人 catalog 仍属 P4c 未定项 |
 | `plans/2026-10-02-undeveloped-features.md` | 追加「2026-10-23 复核更正」节：老条目中被后续批次补齐的清单指向本文件 |
 | `HANDOFF-2026-10-22-d5-decision-turn-economy.md` | 追加本次盘点入口指针 |
+
+---
+
+## 8. 2026-10-12 回代码核的更正（追加，不改上文）
+
+> **口径以 `docs/superpowers/status/2026-10-12-known-issues-code-verified.md` 为准**
+> （4 个只读代理 + 控制方自核，逐条 `file:line`；54 条说法 = **39 成立 / 14 加限定 / 1 整条作废**，另 16 处文档更正）。
+
+| 本文原条目 | 更正 |
+|---|---|
+| §1.1「**铸币生产方式 M1**」 | **已完成**（W5）：`Industry.java:144 moneyOutputPerUnit`、`EconomySeeder.java:4066-4074`、`MintSettlement` 落 `MINT_PRODUCTION`、GM 工具 `simos.economy.setGovernmentMintScale`；`seignioragePerCycle` 已删；「**发债**」随 W5 双轨合并删除（`EconomySeeder.java:4259`）；`MintRule` 这个类**从来不存在** |
+| §1.1「`economyHex` 三项不可用指标」 | `logisticsGap` **已有算式 + 窗口**（`ApiViews.java:1973` → `MarketReport.java:589`）；仍不可用的是 `productionSelfSufficiency`、`paymentInstrumentGap`（`:1970/:1980`） |
+| §1.5「工具面下沉」的计数 | 实测 `**/tools/**` **207 个 `.java`**、工具类 **176 个**（本文写 183）；领域模块 `*Tool.java` **0 个**成立 |
+| §1.5「enforcer 回填」 | 只剩**半条**：`util/map/unit` 仍不拦 `economy/economy-api/ledger`；`simos-app/pom.xml:35-43` **已显式声明** `util`/`actor-api`/`economy-api`（AGENTS 已就地更正） |
+| §1.2 / §1.3 / §1.4 / §2.2 / §2.3 各条 | **逐条核实仍成立**（唯一例外是 §1.3「城防/工事」的**未来形状**仍待裁定，见 §5-#3） |
+| §2.1「经济数值/验收债（P2-E）」「家户结构修复剩余」 | **逐条核实仍成立**（5 + 5 条，`file:line` 见新 status 页 §3） |
+| §5 待裁定 | 第 9 条「铸币 M1 的待决问题」**基本消解**（形状已定形：挂 `moneyOutputPerUnit`、系数 500/单位、规模随身、上限 = 政策旋钮；只剩"无 GUI 写面"）；其余 13 条不变 |
+| **缺失条目** | 「**城市化 / 用地池 / 矿业**（Q1–Q11 待裁定 + U1–U7 待做）」本文**没有**条目，应回填（现只在 `AGENTS.md` 与 `specs/2026-10-10-urbanization-and-industry-pool-design.md`） |

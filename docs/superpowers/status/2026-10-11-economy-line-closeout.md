@@ -42,3 +42,26 @@
 ## 四、下一批
 
 用户 2026-10-11：「**做完这个做下一批功能了，不用管经济了**」。⇒ 经济线关闭；下一批方向待用户指定（控制方默认候选：**可观测性 —— 把世界"看得见"**，即让 GUI/工具能直接看"谁在饿死、谁有钱有粮、货运不出去卡在哪"，对后续所有批都用得上且不碰经济逻辑）。
+
+---
+
+## 五、2026-10-12 回代码核的更正（追加，不改上文）
+
+> 4 个只读核查代理 + 控制方自核，结论带 `file:line`；全文见
+> `docs/superpowers/status/2026-10-12-known-issues-code-verified.md`。
+> **用户裁定（2026-10-12）**：「我实在不想碰经济模块了，我看原则上没问题可以通过改测试数据解决就不碰了」
+> ⇒ 经济线**不再碰逻辑**。
+
+1. **§二.1②「家户几乎没钱 + 工具常缺货」不成立**：买/租工具走 TENANCY、**无付款腿、不读钱**
+   （`ModeMigrationSettlement.java:1062-1108`）；真闸 = `market.hasPrice(TOOL) && idleToolInHex>0`（`:1949-1952`）。
+   ⇒ 本条的"入场券"卡点是**该格有没有 TOOL 市价与闲置工具** + 资本份额只在城镇格播种。
+2. **§二.1「12/12 轮 `rowsBefore==rowsAfter`（新建户 0）」不是结构保证**：新建行路径仍在
+   （`ModeMigrationSettlement.java:923-933`），日志只记不判等（`EconomySettlement.java:3404-3431`）。
+3. **§二.3 补一条**：`MINT_LABOR_SHARE_PER_MILLE` **连创世也没有读取点**（创世读 `EconomySeeder.java:599` 自己的常量）；
+   另 `CatalogTool.java:472-475` 列的是 9 键的**缺省值**（写口文档），**不是当前状态** ⇒ 不可当读口用。
+4. **§二.4 补一条**：规模算式有**三份同式副本**（`ProductionProcessBook.java:125-131`、`SettlementIndex.java:456-462`、
+   `ExpectedProfitBook.java:900-902`），且**没有"Σ份额 ≤ 该格上限"的守卫** —— 将来做变量索引时收敛点是三处 + 一处守卫。
+5. **§二.6 之外的读数更正**：`economyHex.logisticsGap` **已有真实算式 + 窗口**（`ApiViews.java:1973` → `MarketReport.java:589`）；
+   只有 `productionSelfSufficiency`、`paymentInstrumentGap` 仍走 `unavailable`。
+6. **§二 的"标定五数"可分两类**：**滑落三常量 + 铸币产出率 = 政策键已生效，直接拧**；
+   另三个（饿死率上限、借贷基准利率、转业上限/斜率）**未接读取点**，要改就得碰代码。
