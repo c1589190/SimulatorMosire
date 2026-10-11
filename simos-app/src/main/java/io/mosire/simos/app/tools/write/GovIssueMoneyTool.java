@@ -56,8 +56,11 @@ import java.util.UUID;
  * <p>★★ <b>权限不得放大（M6）</b>：只有<b>该币种的发行 GOV</b>能发它 —— ① 目标 GOV 由身份派生（决策人给别的 GOV ⇒ 具名拒）② handler 判
  * {@code Government.issuable} ③ GM 审批链。三层都过才落得下一条 revision。
  *
- * <p>★★ <b>它不是铸币生产方式</b>（用户 §1.1「铸币暂缓」仍有效）：本工具是"DM 定发多少"的行政发行 + 审计， 不接产业产出、不做成色/铸熔；周期铸币仍归 {@code
- * Government.seignioragePerCycle} 与 {@code GovernmentSeigniorage} 那条既有路径。
+ * <p>★★ <b>它不是铸币生产方式（W5 起这句话有了执行面）</b>：本工具是"DM 定发多少"的<b>行政发行</b> + 审计 —— 它是约束设计书 §6.1 W5
+ * 行点名的<b>唯一具名例外</b>（DM 明确授权 + 审批链 + 审计腿）。★ 与之并列的常规路径 是<b>铸币生产方式</b>：钱由产业产出（{@code
+ * Industry.moneyOutputPerUnit}）、组织者是政府家户、受 {@code Government.mintScalePerCycle} 上限（{@code
+ * MintSettlement}；★ W5-fix5：上限就是这个旋钮本身 —— 决策人预期即权威，没有第二条闸门），落 {@code MINT_PRODUCTION} 审计且记进同一本
+ * {@code debtContracts}。 两条路径的区别是权限来源：本工具 = DM 行政授权；那条 = 生产与市场结算。
  *
  * <p>★ 资源声明：{@code actor}（断言自己国库所在格的账路径，身份派生）+ {@code economy}（世界级审计表）。 决策人的 {@code actor}
  * 可达面天然含"自己 + superiorGov 的国库格"（{@link io.mosire.simos.app.access.GovScope}）⇒ 自己那一笔必过、别人的必拒；GM 侧两面都

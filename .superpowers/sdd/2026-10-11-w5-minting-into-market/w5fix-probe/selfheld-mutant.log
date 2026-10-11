@@ -1,0 +1,6 @@
+=== BLOCKED-2 运行时探针：播种形状（国库钱是活的 = 不冻结）+ 铸币债自持
+  step+finish 结果 = 抛: java.lang.IllegalArgumentException: Transfer 的两端不得相等（自转移不是一条发生额，是坏数据）: HOUSEHOLD:hh-gov-mint
+  --- 自持排除的具名日志行（settlement logger, DEBUG 及以上）：
+    （没有 DEBT_REPAY_SELF_HELD_SKIPPED 行）
+  见到 DEBT_REPAY_SELF_HELD_SKIPPED = false
+=== 结论：★ 仍失败：java.lang.IllegalArgumentException: Transfer 的两端不得相等（自转移不是一条发生额，是坏数据）: HOUSEHOLD:hh-gov-mint

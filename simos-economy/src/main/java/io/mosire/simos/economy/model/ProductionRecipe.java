@@ -47,12 +47,29 @@ import java.util.Map;
  *     键值非空、逐值 {@code ≥ 0}。空表 = 不消耗任何商品
  * @param laborPerUnit 每 1 单位规模需要的劳动（**千分劳动**）；不得为负。{@code 0} = 不施加劳动约束
  * @param outputPerUnit 每 1 单位规模的产出（农业 = 每亩 67 粮；织机 = 每台 N 匹布）；键值非空、逐值 {@code ≥ 0}
+ * @param moneyOutputPerUnit ★★ <b>W5：每 1 单位规模的铸币产出（毫货币/规模·周期）</b>；{@link MoneyOutput#NONE}（空表）=
+ *     这一路不存在。★ 与商品产出<b>刻意同形、但量纲不同</b>（货币最小单位就是毫 ⇒ 不再 ×1000）；键类型是 {@code CurrencyId}（另一个身份命名空间）——
+ *     理由见 {@link MoneyOutput} 的类注
  */
 public record ProductionRecipe(
     Map<AssetKind, Long> capacityPerUnit,
     Map<CommodityId, Long> inputPerUnit,
     long laborPerUnit,
-    Map<CommodityId, Long> outputPerUnit) {
+    Map<CommodityId, Long> outputPerUnit,
+    MoneyOutput moneyOutputPerUnit) {
+
+  /**
+   * ★ <b>W5 之前的 4 参形状</b>：{@code moneyOutputPerUnit} 取 {@link MoneyOutput#NONE}（不铸币）。
+   *
+   * <p>★ 它服务不铸币的既有调用点/夹具：语义 = 这个配方<b>没有铸币这一路</b>，逐值退回 W5 之前。
+   */
+  public ProductionRecipe(
+      Map<AssetKind, Long> capacityPerUnit,
+      Map<CommodityId, Long> inputPerUnit,
+      long laborPerUnit,
+      Map<CommodityId, Long> outputPerUnit) {
+    this(capacityPerUnit, inputPerUnit, laborPerUnit, outputPerUnit, MoneyOutput.NONE);
+  }
 
   public ProductionRecipe {
     if (capacityPerUnit == null) {
@@ -120,5 +137,11 @@ public record ProductionRecipe(
       outputCopy.put(entry.getKey(), entry.getValue());
     }
     outputPerUnit = Collections.unmodifiableMap(outputCopy); // ★ 冻在赋值处
+    // ★★ W5：铸币那一路只判"非 null"（逐值 > 0 与冻结在 {@link MoneyOutput} 自己的构造期做完 —— 不在这里
+    //   把同一条判据写第二遍；两处判同一条边界正是本仓最贵的那类漂移）。
+    if (moneyOutputPerUnit == null) {
+      throw new IllegalArgumentException(
+          "ProductionRecipe.moneyOutputPerUnit 不得为 null（不铸币请给 MoneyOutput.NONE）");
+    }
   }
 }

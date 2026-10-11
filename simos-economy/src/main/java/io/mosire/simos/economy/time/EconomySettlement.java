@@ -1167,27 +1167,10 @@ public final class EconomySettlement {
     //   位置：在任何转移/市场之前 —— 政府先按政策“印”出本周期可花的钱并落 FISCAL_ISSUE 审计；
     //   若政策量不够覆盖需求，后面的市场信用路径照常让它向家户借（= 政府发行债务）。
     //   ★★ B2：三个入口都收**当日视图** —— 铸币读当刻产业表（周期第一天的产业关账口径）、发债读当刻政府表。
-    if (GovernmentSeigniorage.isCycleStart(dayView, day)) {
-      long minted =
-          GovernmentSeigniorage.settleCycleStart(dayView, session, accounts, day, currentCycle);
-      long issued =
-          GovernmentDebtIssuance.issueCycleStart(dayView, session, accounts, day, currentCycle);
-      if ((minted > 0L || issued > 0L) && TRACE.isDebugEnabled()) {
-        EventLog.channel(TRACE)
-            .debug(
-                LogEvent.of(
-                    "GOV_POLICY",
-                    EconomyLogSource.ECONOMY_SETTLEMENT,
-                    "day",
-                    day,
-                    "minted",
-                    minted,
-                    "debtIssued",
-                    issued,
-                    "period",
-                    currentCycle));
-      }
-    }
+    //   ★★★ W5（2026-10-11）：上面那一段（`GovernmentSeigniorage` / `GovernmentDebtIssuance` 双轨）**已整段删除** ——
+    //     它是用户点名的"印钱绕过市场"的旁路，且与发债构成双轨（§一.11：旧设计直接删）。
+    //     铸币现在的落点是**产业关账处**（见下面 harvest 之后调用的 {@link MintSettlement#settleCycleClose}）：
+    //     钱是**生产出来的**（scale × Industry.moneyOutputPerUnit），投入走既有的周期投入管线，不再有"周期开始直接加钱"。
     // ★★ E3：本次 revision 的发行审计收集器（id 由 transfer id + 币种确定性派生；并行分区也安全）。
     //   ★ 发行腿只在付方余额不足且付方 = 当前政府国库时才会用到；旧路径（无 issuer）不产生任何记录。
     MoneyIssuanceJournal issuanceJournal =
@@ -1811,6 +1794,11 @@ public final class EconomySettlement {
     //   按 hex 并行执行（同一 hex 内的多个产业共用家户账/关系账 ⇒ 同分区串行，见 runHarvestStage）。
     List<HarvestWork> harvestWorks = new ArrayList<>();
     int harvestOrder = 0;
+    // ★★★ W5（2026-10-11）：本日关账的 unit → 关账处求好的规模（scale）。铸币产出走**同一个 scale**
+    //   （{@link MintSettlement#settleCycleClose}）—— 这是"投入真实消耗、产出 = 货币"两半不漂开的落点：
+    //   投入侧由既有的周期投入管线（drawCycleInputs + ProductionEfficiencyBook.evaluateHarvest）扣，
+    //   产出侧读的正是同一份求好的 scale。★ 没关账的日子这张表是空的 ⇒ 铸币一个字节都不动。
+    Map<ProductionUnitId, Long> closedUnitScales = new LinkedHashMap<>();
     // ★★ Z2（§6.1）：当日注入的修正集（缺省 1000‰ = 中性；读取的是本 tick 的只读视图）与效率表工作副本。
     //   效率表是结算工作副本（Z1 已在 EconomyStateBuilder 备好）；缺行 = 全 0 余数 + 本周期全 1000‰。
     Map<ProductionUnitId, ProductionEfficiencyModifier> dayProductionModifiers =
@@ -1906,6 +1894,11 @@ public final class EconomySettlement {
                 outputQuantityOverrides.getOrDefault(industry.id(), Map.of()),
                 hexOfIndustry(unit.industry()),
                 harvestOrder++));
+        // ★★★ W5：把这一份 scale 记下来给铸币用（只有真的铸币的产业会在 MintSettlement 里被读；
+        //   记全部关账 unit 是刻意的 —— 判据"这个 unit 铸不铸币"只在一个地方回答：Industry.moneyOutputPerUnit 是否为空）。
+        if (!industry.moneyOutputPerUnit().isEmpty()) {
+          closedUnitScales.put(id, efficiency.scale());
+        }
         // ★★ **H5：关账的 unit 先记下来 —— 4d 的报缺口等所有救济通道走完再算**（W3 起不再判死）。
         closed.add(
             new ClosedUnit(
@@ -1965,6 +1958,20 @@ public final class EconomySettlement {
         issuanceJournal,
         day,
         parallelism);
+    // ── ★★★ W5（2026-10-11）：铸币生产方式的收获 ────────────────────────────────────────────────────
+    //   ★ 位置 = **产业关账之后**（`harvestPartitioned` 已把本轮的净产计进各主体账）：
+    //     铸币读的是关账处求好的 scale（与粮/布同一次 evaluateHarvest 的产物），因此"投入真实消耗"与
+    //     "产出 = 货币"是同一次关账的两面，不可能漂开。
+    //   ★ 它写三件事实（三者同一次调用里做完，见 MintSettlement.credit）：
+    //     ① 国库家户账户余额（货币产出走账户余额，与商品产出走货物账同一条"产出计入组织者"的口径）
+    //     ② MoneyIssuanceRecord（kind = MINT_PRODUCTION，id 由 (政府, 日, 币种) 确定性派生）
+    //     ③ 同一本 debtContracts 的一条合同（货币 = 发行政府的债务）
+    //   ★ "本轮能新投入多少 ≤ 上一轮印了多少"的闸门也在那里（从 MoneyIssuanceRecord 现算，判据 ③）。
+    //   ★ 没关账 / 没铸币产业 / 旋钮 0 ⇒ 空表 ⇒ 一个字节都不动（判据 ②：规模 0 ⇒ 新钱 0 毫）。
+    if (!closedUnitScales.isEmpty()) {
+      MintSettlement.settleCycleClose(
+          dayView, session, accounts, day, currentCycle, closedUnitScales);
+    }
     if (!harvestWorks.isEmpty()) {
       ProductionLedger harvestLedger = ledger.toLedger();
       EventLog.channel(TRACE)
@@ -7200,6 +7207,33 @@ public final class EconomySettlement {
           if (debt == null || !debt.debtor().equals(debtor)) {
             continue;
           }
+          if (debt.debtor().equals(debt.creditor())) {
+            // ★★★ W5-fix（BLOCKED-2 同族，2026-10-11）：**自持合同（debtor == creditor）不是可执行的债权**（见
+            //   `repayDebts` 里 DEBT_REPAY_SELF_HELD_SKIPPED 那一段的同一口径）⇒ 这里若照旧铸
+            //   debtor → creditor 的清偿转移，`Transfer` 会因"两端相等"当场抛（退出清算把自持债算进去 = 同一个坑）。
+            //   处置**与还债轮同一口径**：排除、不铸转移、**不判违约**（它是记账事实，不是坏数据），
+            //   本金与状态一概不动；**不静默**：DEBUG 具名一条。
+            if (TRACE.isDebugEnabled()) {
+              EventLog.channel(TRACE)
+                  .debug(
+                      LogEvent.of(
+                          "ENTERPRISE_EXIT_SELF_HELD_DEBT_SKIPPED",
+                          EconomyLogSource.ECONOMY_DEBT_STATE,
+                          "day",
+                          day,
+                          "household",
+                          debtor.value(),
+                          "debtContract",
+                          debt.id().value(),
+                          "unit",
+                          debt.unit().key(),
+                          "outstandingPrincipal",
+                          debt.principal(),
+                          "why",
+                          "self-held-not-executable"));
+            }
+            continue;
+          }
           long available =
               switch (debt.unit()) {
                 case DebtUnit.Commodity commodity ->
@@ -7619,6 +7653,8 @@ public final class EconomySettlement {
     long debtorsWithOutstanding = 0L;
     long householdsRepaid = 0L;
     long householdsWithNoStockToRepay = 0L;
+    // ★★ W5-fix（BLOCKED-2）：本轮被排除的**自持合同**条数（见下面 `debtor.equals(creditor)` 那一段）。
+    long selfHeldExcluded = 0L;
     Set<HouseholdId> debtorsWithPayment = new LinkedHashSet<>();
     for (HouseholdId debtor : debtors) {
       HouseholdEconomy householdEconomy = householdEconomies.get(debtor);
@@ -7628,9 +7664,43 @@ public final class EconomySettlement {
       List<DebtContract> owed = new ArrayList<>();
       for (DebtContractId debtId : debtsByDebtor.getOrDefault(debtor, List.of())) {
         DebtContract debt = debts.get(debtId);
-        if (debt != null && debt.principal() > 0L) {
-          owed.add(debt);
+        if (debt == null || debt.principal() <= 0L) {
+          continue;
         }
+        if (debt.debtor().equals(debt.creditor())) {
+          // ★★★ W5-fix（BLOCKED-2，2026-10-11）：**自持合同（debtor == creditor）不是可执行的债权** ——
+          //   它是"发行额 = 政府负债"这一类**记账事实**（铸币生产方式是其唯一生产者：`MintSettlement.credit` 的
+          //   债务人是发行政府的国库家户、债权人是铸币这一路的组织者，常态世界里两者同一户）。
+          //   对它清偿 = 铸一条 debtor → creditor 的转移 ⇒ `Transfer` 判死（两端相等不是一条发生额，是坏数据），
+          //   而经济上它本来就是"自己的钱还给自己"（什么也没发生）⇒ **还债轮排除**（控制方裁定，设计书 v3.15 §7）。
+          //   ★ **不静默**：逐条 DEBUG 具名（谁 / 哪条合同 / 为什么不动它）。
+          //   ★ 排除**不改任何状态**：合同原样留在 `debts` 里（本金不减、状态不改）—— 它是记账事实，不是坏数据。
+          //   ★ 同族先例（同一口径已存在于别处）：`DebtPartyResolver.splitDebtAmounts` 的自债净额
+          //     （`capitalizeArrears` 用它，永不落自持合同）、`ModeMigrationSettlement.moveDebt` 的
+          //     `MIGRATION_DEBT_SELF_NETTED`（目标恰是债权人 ⇒ 不落合同）。
+          selfHeldExcluded++;
+          if (TRACE.isDebugEnabled()) {
+            EventLog.channel(TRACE)
+                .debug(
+                    LogEvent.of(
+                        "DEBT_REPAY_SELF_HELD_SKIPPED",
+                        EconomyLogSource.ECONOMY_DEBT_STATE,
+                        "day",
+                        day,
+                        "household",
+                        debtor.value(),
+                        "debtContract",
+                        debt.id().value(),
+                        "unit",
+                        debt.unit().key(),
+                        "outstandingPrincipal",
+                        debt.principal(),
+                        "why",
+                        "self-held-not-executable"));
+          }
+          continue;
+        }
+        owed.add(debt);
       }
       if (owed.isEmpty()) {
         continue;
@@ -7792,6 +7862,9 @@ public final class EconomySettlement {
                 householdsRepaid,
                 "householdsWithNoStockToRepay",
                 householdsWithNoStockToRepay,
+                // ★★ W5-fix（BLOCKED-2）：本轮被排除的自持合同条数（`0` = 本世界没有这种合同）。
+                "selfHeldExcluded",
+                selfHeldExcluded,
                 "repaidGrainMilli",
                 traceTotalLongs(repaid),
                 "debtContracts",

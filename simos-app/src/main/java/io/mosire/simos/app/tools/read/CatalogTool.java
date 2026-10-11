@@ -493,7 +493,8 @@ public final class CatalogTool implements AgentTool {
                   + " hh-gov-<govUnitId>), nationRef(必填非空白), q, r(economy 落点), residence?(缺省"
                   + " urban；大小写敏感；既有行缺席=保持), stratum?(缺省 official；既有行缺席=保持),"
                   + " population?/laborMilli?/participationPerMille?, classPosition?(须已存在),"
-                  + " issuable?[币种], seignioragePerCycle?(≥0), debtIssuePerCycle?(≥0), reason?（★"
+                  + " issuable?[币种], mintScalePerCycle?(≥0；★ W5 唯一的铸币政策旋钮：本周期最多铸多少毫，"
+                  + "0 = 不许铸), reason?（★"
                   + " P2-C：一个 GOV 单位恰一份政府 + 恰一个政府家户；身份由 govUnitId 派生；写"
                   + " classes/classStandings/governments 三张表；缺省字段新建取 0/空集、重复登记逐值保留；要求 economy"
                   + " 已激活；GM-only；账户由同批 actor.EnsureHouseholdAccount 补）"),

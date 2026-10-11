@@ -50,7 +50,7 @@ import org.slf4j.Logger;
  *  "population"?: 0, "laborMilli"?: 0, "participationPerMille"?: 0,  // 缺省 = 新建时 0 / 既有行保留
  *  "classPosition"?: "…",                    // 可选的阶层归属（必须已存在）；不给 = 不写 HouseholdClassMembership
  *  "issuable"?: ["silver"],                  // 缺省空集（= 纯财政主体，不铸币）；铸币算法后置
- *  "seignioragePerCycle"?: 0, "debtIssuePerCycle"?: 0,
+ *  "mintScalePerCycle"?: 0,                    // ★ W5：唯一的铸币政策旋钮（本周期最多铸多少毫；0 = 不许铸）
  *  "reason"?: "gm:…"}
  * }</pre>
  *
@@ -317,14 +317,13 @@ public final class EconomyRegisterGovernmentHandler
           registration.issuableSpecified()
               ? registration.issuable()
               : (existingGovernment == null ? Set.of() : existingGovernment.issuable());
-      long seignioragePerCycle =
-          registration.seigniorageSpecified()
-              ? registration.seignioragePerCycle()
-              : (existingGovernment == null ? 0L : existingGovernment.seignioragePerCycle());
-      long debtIssuePerCycle =
-          registration.debtIssueSpecified()
-              ? registration.debtIssuePerCycle()
-              : (existingGovernment == null ? 0L : existingGovernment.debtIssuePerCycle());
+      // ★★★ W5（2026-10-11）：双轨合并 —— 改前这里是 `seignioragePerCycle` 与 `debtIssuePerCycle` 两个旋钮，
+      //   现在只剩 `mintScalePerCycle`（铸币政策旋钮：本周期最多铸多少毫）。语义与上面 issuable 同制：
+      //   不给 = 在既有政府上**逐值保留**（不是静默清零）；新政府缺省 0（= 政策不许铸币）。
+      long mintScalePerCycle =
+          registration.mintScaleSpecified()
+              ? registration.mintScalePerCycle()
+              : (existingGovernment == null ? 0L : existingGovernment.mintScalePerCycle());
       for (Map.Entry<GovernmentId, Government> entry : base.governments().entrySet()) {
         if (entry.getKey().equals(governmentId)) {
           continue;
@@ -356,8 +355,11 @@ public final class EconomyRegisterGovernmentHandler
               registration.nationRef(),
               HouseholdActors.of(registration.household()),
               issuable,
-              seignioragePerCycle,
-              debtIssuePerCycle,
+              mintScalePerCycle,
+              // ★★ W5：上一轮印量是**结算写的事实**（MintSettlement 每轮关账覆盖写），不是命令参数 ——
+              //   重登记必须原样带过，否则一次"补登记"会把"上一轮印了多少"这个读数静默清空
+              //   （★ W5-fix5 起它只是读数、不再是闸门；但读数也不该被命令面重置）。
+              previous == null ? java.util.Map.of() : previous.mintedLastCyclePerCycle(),
               // ★★ A2a：重复登记是同键 upsert（幂等，见 EconomySeedHandler 的注释）—— 已登记的政府若
               //   定过官方汇率，重登记必须原样带过（否则一次"补登记"会把政策价静默清零）。
               previous == null ? java.util.Map.of() : previous.officialRates());
@@ -387,10 +389,8 @@ public final class EconomyRegisterGovernmentHandler
                   householdEconomy.participationPerMille(),
                   "issuable",
                   issuable,
-                  "seignioragePerCycle",
-                  seignioragePerCycle,
-                  "debtIssuePerCycle",
-                  debtIssuePerCycle,
+                  "mintScalePerCycle",
+                  mintScalePerCycle,
                   "reasonLength",
                   reason == null ? 0 : reason.length()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
@@ -431,10 +431,8 @@ public final class EconomyRegisterGovernmentHandler
       ClassPositionId classPositionId,
       Set<CurrencyId> issuable,
       boolean issuableSpecified,
-      long seignioragePerCycle,
-      boolean seigniorageSpecified,
-      long debtIssuePerCycle,
-      boolean debtIssueSpecified,
+      long mintScalePerCycle,
+      boolean mintScaleSpecified,
       String reason) {
 
     Registration {
@@ -458,11 +456,9 @@ public final class EconomyRegisterGovernmentHandler
         throw new IllegalArgumentException(
             "participationPerMille 必须 ∈ [0,1000]: " + participationPerMille);
       }
-      if (seignioragePerCycle < 0L) {
-        throw new IllegalArgumentException("seignioragePerCycle 不得为负: " + seignioragePerCycle);
-      }
-      if (debtIssuePerCycle < 0L) {
-        throw new IllegalArgumentException("debtIssuePerCycle 不得为负: " + debtIssuePerCycle);
+      if (mintScalePerCycle < 0L) {
+        throw new IllegalArgumentException(
+            "mintScalePerCycle 不得为负（0 = 政策不许铸币）: " + mintScalePerCycle);
       }
     }
   }
@@ -526,11 +522,9 @@ public final class EconomyRegisterGovernmentHandler
             : null;
     boolean issuableSpecified = payload.hasNonNull("issuable");
     Set<CurrencyId> issuable = parseIssuable(command, payload);
-    boolean seigniorageSpecified = payload.hasNonNull("seignioragePerCycle");
-    long seigniorage =
-        EconomyCommandPayloads.optionalLong(command, payload, "seignioragePerCycle", 0L);
-    boolean debtIssueSpecified = payload.hasNonNull("debtIssuePerCycle");
-    long debtIssue = EconomyCommandPayloads.optionalLong(command, payload, "debtIssuePerCycle", 0L);
+    // ★★★ W5：双轨合并 —— 铸币政策旋钮只有一个字段（旧的两个字段直接删，见 Government 的类注）。
+    boolean mintScaleSpecified = payload.hasNonNull("mintScalePerCycle");
+    long mintScale = EconomyCommandPayloads.optionalLong(command, payload, "mintScalePerCycle", 0L);
     String reason =
         payload.hasNonNull("reason")
             ? EconomyCommandPayloads.requireText(command, payload, "reason")
@@ -554,10 +548,8 @@ public final class EconomyRegisterGovernmentHandler
         productionRole,
         issuable,
         issuableSpecified,
-        seigniorage,
-        seigniorageSpecified,
-        debtIssue,
-        debtIssueSpecified,
+        mintScale,
+        mintScaleSpecified,
         reason);
   }
 

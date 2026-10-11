@@ -539,11 +539,54 @@ public final class EconomySeeder {
    * 该性别在本活动的权重}）⇒ 男人照样进纺织、女人照样种地，只是**默认配置**偏一侧。 ★ 与 {@code AGE_LABOR_COEF_BY_SEX} 同为"创世 preset"：R4
    * 的季节性（农忙 ⇒ 农业劳动需求升 ⇒ 家庭纺织降）会重配它。
    */
-  static final Map<String, Map<Sex, Integer>> ACTIVITY_SEX_WEIGHT_PER_MILLE =
-      Map.of(
-          FARM, Map.of(Sex.MALE, 600, Sex.FEMALE, 400),
-          WEAVE, Map.of(Sex.MALE, 200, Sex.FEMALE, 800),
-          CRAFT, Map.of(Sex.MALE, 500, Sex.FEMALE, 500));
+  static final Map<String, Map<Sex, Integer>> ACTIVITY_SEX_WEIGHT_PER_MILLE = activitySexWeights();
+
+  /**
+   * ★ <b>活动 → 性别权重表</b>（保序不可变；照本类"绝不用 {@code Map.of} 拼多键表"的既有纪律： {@code Map.of} 的 ≥2
+   * 键形态迭代序不是内容的纯函数）。
+   *
+   * <p>★★ W5 追加 {@link #MINT}（与作坊同档 500/500：铸币是体力 + 手艺的混合活）。
+   */
+  private static Map<String, Map<Sex, Integer>> activitySexWeights() {
+    Map<String, Map<Sex, Integer>> weights = new LinkedHashMap<>();
+    weights.put(FARM, Map.of(Sex.MALE, 600, Sex.FEMALE, 400));
+    weights.put(WEAVE, Map.of(Sex.MALE, 200, Sex.FEMALE, 800));
+    weights.put(CRAFT, Map.of(Sex.MALE, 500, Sex.FEMALE, 500));
+    weights.put(MINT, Map.of(Sex.MALE, 500, Sex.FEMALE, 500));
+    return Collections.unmodifiableMap(weights);
+  }
+
+  /**
+   * ★★★ <b>W5-fix3（2026-10-11）：城镇池的日劳动里分给铸币的份额（‰）：{@code 30}</b> —— 铸币劳动从**作坊配额发完后的剩余预算**里取。
+   *
+   * <p>★★ <b>为什么从 10 改成 30（实测读数，不是估算）</b>：配额 = {@code min(池日劳动 × 本值 ÷ 1000, 作坊发完后的剩余预算)}，
+   * 而"能不能产出"由规模公式的第二段决定：{@code laborScale = ⌊周期平均日劳动 ÷ laborPerUnit⌋}（见 {@code
+   * ProductionEfficiencyBook.evaluateHarvest}）。小世界首都（0,0）实测：
+   *
+   * <pre>
+   * 池日劳动（参与率折扣后）      = 349,160 毫劳动/日
+   * 改前 10‰：请求 3,491/日 ⇒ 实际落表 3,147/日   &lt; 单位规模需求 8,000 ⇒ laborScale = 0 ⇒ 规模 0 ⇒ 铸币 0 毫
+   * 改后 30‰：请求 10,474/日 ⇒ 实际落表 9,440/日  ≥ 单位规模需求 8,000 ⇒ laborScale = 1 ⇒ 规模 = min(劳动 1, 产能 1, 投入 1) = 1
+   *                                                                      ⇒ 产出 = 1 × MINT_MILLI_PER_FURNACE_CYCLE = 500 毫/周期
+   * </pre>
+   *
+   * <p>★★ <b>为什么是"提份额"而不是"缩单位规模"</b>（W5-fix3 的选择理由，任务书约束 ②）：份额只改**铸币向池子要多少**， 单位规模的三个出厂率（劳动 {@link
+   * #MINT_LABOR_MILLI_PER_FURNACE} / 工具 {@link #MINT_TOOL_MILLI_PER_FURNACE} / 产出 {@link
+   * #MINT_MILLI_PER_FURNACE_CYCLE}）一个字节都不动 ⇒ "毫/毫劳动"（0.0625）与"工具/毫劳动"（0.25）两条比率**逐值同改前** （约束 ②
+   * 的最强形态：既不让铸币变暴利，也不让工具变免费）。缩单位规模则要同时等比改三个常量、并把"1 座铸炉"的物理含义改掉。
+   *
+   * <p>★★ <b>它不抢作坊的劳动</b>：铸币拿的是 {@code appendAllocation} 走完之后**剩下的**那份预算（同一张预算表多做一次读取） ⇒
+   * 作坊的配额逐值不变（实测：改前改后 {@code unit-craft@0_0} 的日配额都是 313,023 毫劳动）。
+   *
+   * <p>★ <b>为什么是 30 而不是刚好够的 ≈26‰</b>：{@code laborBudget} 不给"时间预算为 0"的批次发配额，而 {@code
+   * appendAllocation} 按性别权重把总量摊到**池里每个批次**上 —— 摊到零预算批次的那一份被预算封顶**静默削掉**。小世界实测削掉 12 个批次：8
+   * 个老龄批次（{@code …MALE/FEMALE:s0-2 … s3-2}，老龄时间预算 = 0）+ 4 个流民批次（{@code …MALE/FEMALE:d-1 /
+   * d-2}，D-023：流民没有工作），合计 1,034/10,474 ≈ 9.9%。 留 ~18% 余量让"一个单位规模"在削掉之后仍然成立。
+   *
+   * <p>★ <b>三个旋钮各管一段</b>（都是**标定项**，W6 首查 / 用户拍板）：本值 = 铸币的劳动投入规模；{@link
+   * #MINT_MILLI_PER_FURNACE_CYCLE} = 产出率（毫/规模·周期）；{@link #MINT_FURNACES_PER_CAPITA} = 铸炉数（产能上限）。
+   */
+  public static final int MINT_LABOR_SHARE_PER_MILLE = 30;
 
   /**
    * ★★ **农村日劳动里分给家庭纺织的份额**（‰）：**100**。
@@ -987,20 +1030,18 @@ public final class EconomySeeder {
   public static final String GENESIS_GOVERNMENT_NATION_REF = "world";
 
   /**
-   * ★★ <b>2026-10-07 GOV 非生产家户试点：周期铸币的出厂量</b>（毫计价货币 / 产业周期；{@code 10_000} = 10 银）。
+   * ★★★ <b>W5（2026-10-11）：铸币政策旋钮的出厂值</b>（毫 / 产业周期）—— 写进 {@link Government#mintScalePerCycle()}。
    *
-   * <p>它是 production-runtime **带政府家户的 demo 世界**（小世界）的具名 GM 默认值：写进 {@link
-   * Government#seignioragePerCycle()}。当前还没有 GM 实时编辑命令；要改本批口径就改这个常量并重播 （与其余 seeder 初态参数同制）。
-   */
-  public static final long GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI = 2_000L;
-
-  /**
-   * ★★ <b>2026-10-07 GOV 非生产家户试点：周期发债目标</b>（毫计价货币 / 产业周期；{@code 5_000} = 5 银）。
+   * <p>★★ <b>它取代了两个旧常量</b>（{@code GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI} = 2,000 与 {@code
+   * GOVERNMENT_DEBT_ISSUE_PER_CYCLE_MILLI} = 5,000，双轨）：按 §一.11，旧的两个字段与两个常量<b>直接删</b>。
+   * 语义也换了：改前那是"周期开始<b>直接加进国库</b>的钱"（旁路），现在是"本周期铸币的<b>产出上限</b>"—— 钱必须由铸币产业<b>生产出来</b>（{@code
+   * Industry.moneyOutputPerUnit}）并受 {@code Government.mintScalePerCycle} 上限约束（★
+   * W5-fix5：上限就是这个旋钮本身）。
    *
-   * <p>周期开始日政府按此目标向家户借入货币（真实余额转移 + {@code DebtContract}，不是新钱）；家户可借额不足时 只借到实际可借部分并记 shortfall。它与
-   * {@link #GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI} 一起构成“政府缺钱：先印一部分、 再向家户发一部分债”的试点口径。
+   * <p>★ 取 {@code 2_000} 是与旧铸币量同量级（毫计价货币：2 银/周期）的<b>保号标定</b>，不是重新标定； 真正的产出还取决于铸币 unit
+   * 的规模与产出率，故实测值会小于本上限。
    */
-  public static final long GOVERNMENT_DEBT_ISSUE_PER_CYCLE_MILLI = 5_000L;
+  public static final long GOVERNMENT_MINT_SCALE_PER_CYCLE_MILLI = 2_000L;
 
   private EconomySeeder() {}
 
@@ -1696,12 +1737,11 @@ public final class EconomySeeder {
         issuable.add(currency.value());
       }
       node.put("issuable", issuable);
-      // ★ 旧行为逐字节不变：两个财政旋钮为 0 时不写键（旧载荷/旧档继续读 0）。
-      if (government.seignioragePerCycle() > 0L) {
-        node.put("seignioragePerCycle", government.seignioragePerCycle());
-      }
-      if (government.debtIssuePerCycle() > 0L) {
-        node.put("debtIssuePerCycle", government.debtIssuePerCycle());
+      // ★ 旧行为逐字节不变：旋钮为 0 时不写键（读口按缺省 0 回读）。
+      //   ★★ W5：只有一个旋钮了（双轨合并）；"上一轮印量"**不进这个节点** —— 它是结算写的事实
+      //     （MintSettlement 每轮覆盖写），把它当 seed 参数发出去等于让"播种"覆盖运行期事实。
+      if (government.mintScalePerCycle() > 0L) {
+        node.put("mintScalePerCycle", government.mintScalePerCycle());
       }
       nodes.add(node);
     }
@@ -3419,6 +3459,10 @@ public final class EconomySeeder {
     hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
 
     List<Map<String, Object>> entries = new ArrayList<>(hexes.size());
+    // ★★★ W5（2026-10-11）：逐格的"作坊配额发完之后仍未被用掉的劳动预算"（键 = 格）。
+    //   铸币产业的劳动**只能从这里拿**（见 seedGovernmentMint 的"劳动从哪来"）—— 它保证了
+    //   "Σ 家户 PRODUCTION 配额 ≤ 时间预算"这条构造期不变量**逐值仍成立**（不是再造一份劳动）。
+    Map<HexCoord, Map<PeopleLotId, Long>> urbanSlackLaborByHex = new LinkedHashMap<>();
     Map<HouseholdId, Map<CommodityId, Long>> householdStocks = new LinkedHashMap<>();
     // ★ S1：家户 id → 账所在格（去重表：id 由 ofSeed 生成 ⇒ 同 (格,居住,阶层) 恒同一 id）。
     Map<HouseholdId, HexCoord> householdLocations = new LinkedHashMap<>();
@@ -3560,9 +3604,13 @@ public final class EconomySeeder {
       }
       if (hasCraft) {
         IndustryPlan craftPlan = planOf(plans, craftId);
+        // ★★★ W5（2026-10-11）：把**城镇池的剩余预算**留下来给铸币产业（见 seedGovernmentMint 的"劳动从哪来"）。
+        //   ★ 顺序不变、口径不变（appendAllocation 的 total/权重/预算封顶一字未改）：这里只是把同一张预算表
+        //     多做一次读取 —— 铸币拿的是**作坊配额封顶之后真的没被用掉的那部分**，不是"再造一份劳动"。
+        Map<PeopleLotId, Long> urbanMintBudget = laborBudget(urbanPool);
         appendAllocation(
             allocations,
-            laborBudget(urbanPool),
+            urbanMintBudget,
             urbanPool,
             hex,
             craftPlan.unitId(),
@@ -3570,6 +3618,7 @@ public final class EconomySeeder {
             CRAFT,
             industryDailyLabor(
                 urbanCohorts.classPopulations(), laborMilli(urbanPool), populationOf(urbanPool)));
+        urbanSlackLaborByHex.put(hex, urbanMintBudget);
       }
       // ★★ **R4-B.3a：把上面的"整额配额 + 整份 capacity"确定性地拆成主 unit + 家户副 unit** ——
       //   劳动行已经按现有规则发完（逐值不动），这里只做"把已有的拆成两笔"：
@@ -3707,16 +3756,36 @@ public final class EconomySeeder {
     //   economy.RegisterGovernment + actor.EnsureHouseholdAccount 按 GOV 单位稳定 id 建。
     Optional<HouseholdId> governmentHousehold = seeding.governmentHousehold();
     if (governmentHousehold.isPresent()) {
+      HouseholdId govHousehold = governmentHousehold.get();
       seedGovernmentHousehold(
           entries,
           seeding.households(),
-          governmentHousehold.get(),
+          govHousehold,
           householdLocations,
           householdStocks,
           householdMoney);
+      // ★★★ W5（2026-10-11）：给政府家户播一个**铸币生产方式**（{@link Industry#moneyOutputPerUnit()} 的
+      //   {@code moneyOutputPerUnit}）+ 它的 unit，并把铸币要吃的投入（工具）记进政府家户库存。
+      //   ★ 为什么必须由创世给出、而不是结算里凭空造：铸币是"生产出来的"（用户原话），生产必须有组织者、
+      //     有产能锚（"单位规模"的定义）、有要被**真实消耗**的投入 —— 三者都只能在播种/命令面出现
+      //     （GM 侧 {@code economy.UpsertIndustry} 也照同形追加/修改模板）。
+      //   ★ 本周期最多铸多少毫 = {@code Government.mintScalePerCycle}（政策旋钮）；实际产出还取决于本 unit 的规模。
+      HexCoord mintHex = householdLocations.get(govHousehold);
+      seedGovernmentMint(
+          entries,
+          govHousehold,
+          mintHex,
+          householdStocks,
+          householdMoney,
+          numeraireOf.apply(mintHex),
+          // ★★ 铸币的劳动：从**这一格作坊配额发完之后剩下的预算**里拿（见方法注"劳动从哪来"）。
+          //   没有剩余（或这一格根本没有城镇池）⇒ 铸币拿不到劳动 ⇒ 本方法具名跳过（不造一份假劳动）。
+          mintAllocationsOf(mintHex, entries),
+          urbanByHex.getOrDefault(mintHex, List.of()),
+          urbanSlackLaborByHex.get(mintHex));
     }
     // ★★ S1.4 出口自检：tick0 seed 是"人工造份额"的唯一入口 ⇒ 这里逐 lot 对账，不等就播不出去（fail-closed）。
-    //   给了政府家户 ⇒ 国库 = 它的账户，seigniorage/debtIssue 取具名 GM 默认值（demo 世界才有铸币/发债）；
+    //   给了政府家户 ⇒ 国库 = 它的账户，铸币政策旋钮取具名 GM 默认值（demo 世界才铸币）；
     //   没给 ⇒ 只落一条**不持户的创世审计主体**（world-silver 的 legacy 形状）给 INITIAL_ENDOWMENT 归属，
     //   不声称任何家户/账户，也不参与铸币/发债（旋钮恒 0）。
     Map<GovernmentId, Government> governments =
@@ -3834,6 +3903,291 @@ public final class EconomySeeder {
     return householdId;
   }
 
+  // ── ★★★ W5（2026-10-11）：铸币生产方式（"钱的来源"）的创世参数 ──────────────────────────────────
+
+  /**
+   * ★★ <b>铸币产业的 kind</b>（{@code <kind>@<q>_<r>} 的 kind 段；唯一拼写点）。
+   *
+   * <p>★ 用 {@code mint} 而不是复用某个既有 kind：铸币是**一等生产方式**（有配方、有产能锚、有产出）， 复用一个不相关的 kind
+   * 会让"这个产业到底是干什么的"在读口处不可判（判据 ⑤：kind 要具名）。
+   */
+  public static final String MINT = "mint";
+
+  /** 铸币产业的制度名（本批不新增 {@code ProductionMode}/阶层结构：它<b>不建户、不参与阶层流动</b>）。 */
+  public static final String REGIME_MINT = "government_mint";
+
+  /**
+   * ★★ <b>每座铸炉的产能锚</b>（{@link #MINT_FURNACES_PER_CAPITA} × 首都人口，最少 {@code 1} 座）。
+   *
+   * <p>★ "单位规模"必须有一个生产资料锚（{@code capacityPerUnit} 不得为空 —— 否则规模无上界、产出随"可用"无限涨）： 铸币锚在 {@code
+   * WORKSHOP}（铸炉/作坊）上，与手工业同一种资产，故不需要新造 {@code AssetKind}。
+   */
+  public static final long MINT_FURNACES_PER_CAPITA = 1L;
+
+  /**
+   * ★★ <b>每 1 座铸炉每周期的劳动需求</b>（千分劳动；{@code 8_000} = 8 人·周期）—— 铸币<b>吃劳动</b>那一半。
+   *
+   * <p>★ 量纲与 {@code Industry.laborPerUnit} 同侧（千分劳动/规模），与既有的 {@code LABOR_MILLI_PER_LOOM}/{@code
+   * LABOR_MILLI_PER_WORKSHOP} 同制。
+   *
+   * <p>★★ <b>W5-fix3 量纲澄清（只改注释，不改值）</b>：它在规模公式里比较的对象是**周期平均日劳动** {@code avgLaborMilli = 本周期累计劳动 ÷
+   * cycleDays}（{@code ProductionEfficiencyBook.evaluateHarvest} 的 ② 劳动链）⇒ 运算上读作
+   * <b>毫劳动/日·单位规模</b>（{@code laborScale = ⌊avgLaborMilli ÷ 本值⌋}），<b>不是</b>"一个周期总共 8,000"。
+   * 故"一个单位规模"= 每天 8,000 毫劳动（= {@code SocialProvisioning} 出厂默认里成年女性一天的 8,000 毫小时定额）， 一个 120 天的周期共吃
+   * 8,000 × 120 = 960,000 毫劳动。★ 本值本身是**标定项**：改它必须同步等比改 {@link #MINT_TOOL_MILLI_PER_FURNACE} 与
+   * {@link #MINT_MILLI_PER_FURNACE_CYCLE}，否则"毫/劳动"比率会漂（W5-fix3 选择改 {@link
+   * #MINT_LABOR_SHARE_PER_MILLE} 而不是改它，正是为了不动这三条出厂率）。
+   */
+  public static final long MINT_LABOR_MILLI_PER_FURNACE = 8_000L;
+
+  /**
+   * ★★ <b>每 1 座铸炉每周期的工具投入</b>（毫工具；{@code 2_000} = 2 件工具）。
+   *
+   * <p>★★ <b>为什么是工具而不是金银</b>（如实记的实现口径）：本世界没有贵金属商品（词表里只有粮/纤维/布/铁/工具/ 运输服务，见 {@code
+   * EconomyVocabulary}）⇒"铸币消耗金属"这条在**当前词表下表达不出来**。本批按用户原话 "消耗劳动 +
+   * 工具/金属等投入"取**工具**（铸范/模具/器具）：它是既有商品、可被真实买、可被真实消耗， 且它让铸币**有投入约束**（不是"有劳动就能无限印"）。★
+   * 将来加入贵金属商品时，改这一张投入表即可（形状不变）。
+   */
+  public static final long MINT_TOOL_MILLI_PER_FURNACE = 2_000L;
+
+  /**
+   * ★★ <b>每 1 座铸炉每周期的产出率（毫货币 / 规模）</b> —— {@code Industry.moneyOutputPerUnit} 的出厂值。
+   *
+   * <p>★ 取 {@code 500} 毫/座·周期：在"首都 1 座铸炉"的最小世界里，产出上限 = 500 毫，而政策旋钮 {@link
+   * #GOVERNMENT_MINT_SCALE_PER_CYCLE_MILLI} = 2,000 毫 ⇒ 实测能看出"产出的实际约束来自规模与投入，不是旋钮"。 ★ 它是**标定项**（列
+   * W6 首查）：改这一个常量即可调整铸币曲线。
+   */
+  public static final long MINT_MILLI_PER_FURNACE_CYCLE = 500L;
+
+  /**
+   * ★★★ <b>给政府家户播一个铸币生产方式 + 它的 unit + 它的投入库存</b>（W5 的创世落点）。
+   *
+   * <pre>
+   * 产业    id = mint@&lt;q&gt;_&lt;r&gt;（落点 = 政府家户所在格）
+   *         regime = government_mint；cycleDays = CYCLE_DAYS（与其余产业同一周期，关账日同一天）
+   *         capacityPerUnit = {WORKSHOP: 1}                        ← "单位规模"的锚（1 座铸炉 = 1 单位规模）
+   *         laborPerUnit    = MINT_LABOR_MILLI_PER_FURNACE          ← 吃劳动
+   *         cycleInputPerUnit = {WORKSHOP: {tool: …}}               ← 吃工具（真实消耗，走既有周期投入管线）
+   *         moneyOutputPerUnit = {<本格计价币>: MINT_MILLI_PER_FURNACE_CYCLE}  ← ★ 产出 = 货币
+   * unit    operator = HOUSEHOLD:hh-gov-…（政府家户 = 组织者，用户原话）
+   * 投入库存 政府家户账上加一份工具（够跑 MINT_SEED_CYCLES 个周期；吃完就得靠市场买 —— 而国库户只按授权下单）
+   * </pre>
+   *
+   * <p>★ <b>不变量</b>：本方法只在"有政府家户"的世界（demo / small-world）被调用 ⇒ 别的世界的产业表一个字节不变。
+   */
+  private static void seedGovernmentMint(
+      List<Map<String, Object>> entries,
+      HouseholdId govHousehold,
+      HexCoord hex,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+      CurrencyId numeraire,
+      List<Map<String, Object>> allocations,
+      List<PopulationGroup> urbanPool,
+      Map<PeopleLotId, Long> urbanSlackLabor) {
+    if (hex == null) {
+      throw new IllegalStateException(
+          "铸币产业找不到政府家户的落点格（seed 内部不一致）：household=" + govHousehold.value());
+    }
+    if (numeraire == null) {
+      throw new IllegalStateException("铸币产业说不出本格计价币（铸哪种钱必须有币种，拒绝静默落到银）：hex=" + hex);
+    }
+    long furnaces = Math.max(1L, MINT_FURNACES_PER_CAPITA);
+    IndustryId mintId = IndustryHexKeys.id(MINT, hex.q(), hex.r());
+    ActorRef operator = HouseholdActors.of(govHousehold);
+    List<Map<String, Object>> slots = new ArrayList<>(CLASS_IDS.length);
+    for (int i = 0; i < CLASS_IDS.length; i++) {
+      Map<String, Object> slot = new LinkedHashMap<>();
+      slot.put("id", CLASS_IDS[i]);
+      slot.put("name", CLASS_NAMES[i]);
+      slot.put("laborParticipationPerMille", CLASS_LABOR_PER_MILLE[i]);
+      slots.add(slot);
+    }
+    Map<String, Object> allocation = new LinkedHashMap<>();
+    allocation.put("@class", "split");
+    allocation.put("meansWeightPerMille", 500);
+    allocation.put("laborWeightPerMille", 500);
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("id", mintId.value());
+    payload.put("name", "铸币");
+    payload.put("regime", REGIME_MINT);
+    payload.put("cycleDays", CYCLE_DAYS);
+    payload.put("capacityPerUnit", Map.of(AssetKind.WORKSHOP.name(), 1L));
+    payload.put("laborPerUnit", MINT_LABOR_MILLI_PER_FURNACE);
+    payload.put("dailyInputPerUnit", Map.of());
+    payload.put("dailyLaborPerUnit", 0);
+    payload.put("outputPerUnit", Map.of());
+    // ★★★ 本批新增的那一行：产出 = 货币（毫/规模·周期；键是 CurrencyId）。
+    payload.put("moneyOutputPerUnit", Map.of(numeraire.value(), MINT_MILLI_PER_FURNACE_CYCLE));
+    Map<String, Object> mintInput = new LinkedHashMap<>();
+    mintInput.put(COMMODITY_TOOL, MINT_TOOL_MILLI_PER_FURNACE);
+    payload.put("cycleInputPerUnit", Map.of(AssetKind.WORKSHOP.name(), mintInput));
+    payload.put("allocation", allocation);
+    payload.put("slots", slots);
+    Map<String, Object> unit = new LinkedHashMap<>();
+    unit.put("id", ProductionUnitId.idOf(mintId, operator).value());
+    unit.put("industry", mintId.value());
+    unit.put("operator", actorNode(operator));
+    unit.put("modeKey", mintId.value());
+    unit.put("progressDays", 0);
+    unit.put("cycleLaborMilli", 0);
+    unit.put("cycleInputUsedMilli", Map.of());
+    // ① 铸币的产能：整额 OWNED 给组织者（与其余产业同一条"capacity 物化成份额"的口径）
+    Map<String, Object> share =
+        ownershipStakeNode(
+            mintId.value(),
+            AssetKind.WORKSHOP.name(),
+            operator,
+            operator,
+            OwnershipStake.RightKind.OWNED,
+            furnaces);
+    // ② 把产业 + unit + 份额挂进政府家户落点那一格的 entry（entry 一定存在：seedGovernmentHousehold 刚写过）
+    boolean attached = false;
+    for (Map<String, Object> entry : entries) {
+      int q = ((Number) entry.get("q")).intValue();
+      int r = ((Number) entry.get("r")).intValue();
+      if (q != hex.q() || r != hex.r()) {
+        continue;
+      }
+      @SuppressWarnings("unchecked")
+      List<Map<String, Object>> industries = (List<Map<String, Object>>) entry.get("industries");
+      @SuppressWarnings("unchecked")
+      List<Map<String, Object>> units = (List<Map<String, Object>>) entry.get("units");
+      @SuppressWarnings("unchecked")
+      List<Map<String, Object>> shares = (List<Map<String, Object>>) entry.get("assetShares");
+      industries.add(payload);
+      units.add(unit);
+      shares.add(share);
+      attached = true;
+      break;
+    }
+    if (!attached) {
+      throw new IllegalStateException(
+          "铸币产业找不到落点 entry（seed 内部不一致）：hex=" + hex + " entries=" + entries.size());
+    }
+    // ②-b ★★★ 劳动从哪来（W5 的关键一步，别跳过这一节）：铸币**必须有劳动**才能产出 ——
+    //   `Industry.laborPerUnit` 参与规模公式（`evaluateHarvest` 的 ② 劳动链），
+    //   而劳动的唯一来源是**劳动配额表**（`laborByUnit`）⇒ 没有配额的 unit 规模恒 0
+    //   ⇒ 印不出钱（判据 ② 会以"0 毫"的形式静默通过，但那不是"政策关掉了铸币"，
+    //   是"这个产业根本没干活"。）
+    //   ★ 政府家户自己人口为 0（非生产家户）⇒ 劳动只能来自**这一格城镇池的剩余预算**
+    //     （= 作坊配额发完之后真的没被用掉的那部分，见 `urbanSlackLaborByHex` 的声明）。
+    //   ★★ 剩余不足一份铸币配额 ⇒ **具名跳过**（DEBUG 一行），不缩作坊的配额、不造第二份劳动：
+    //     结果 = 这一格没有铸币（合法状态：新钱 0 毫），而不是"把别人的劳动偷过来"。
+    //   ★★★ W5-fix3：真正决定"跑不跑得起来"的是 `grantedLaborMilli ÷ MINT_LABOR_MILLI_PER_FURNACE ≥ 1`
+    //     （规模公式的劳动链取整）—— 这个比值 < 1 时上面这条跳过**不会**触发（配额明明 > 0），
+    //     但规模仍然是 0、铸币仍然 0 毫：W5 在 10‰ 下就是这样空转的（3,147 ÷ 8,000 = 0）。
+    //     ⇒ 现在两个分支都发具名 DEBUG（SEED_MINT_LABOR / SEED_MINT_SKIPPED），都带这个比值要用的四个数。
+    long mintLabor = 0L;
+    long mintShare = 0L;
+    // ★★ W5-fix3：这两个数是"铸币为什么产/不产"的**判据读数**（§一.9；W6 标定直接读 SEED_MINT_LABOR 那一行）。
+    long poolDailyLabor = 0L;
+    long slackAvailable = 0L;
+    if (urbanPool != null && !urbanPool.isEmpty() && urbanSlackLabor != null) {
+      // ★★ 名字要说实话（W5-fix3）：`poolDailyLabor` = 本格城镇池的日劳动（参与率折扣后口径）；
+      //   `requestedLabor` = 它 × 本份额（铸币要的配额）；`slackAvailable` = 作坊发完后的剩余预算（宽的那道网）。
+      //   ⇒ 实际配额 = min(requestedLabor, slackAvailable)。改前这两个数没有分开记，标定时只能猜谁是瓶颈。
+      poolDailyLabor = industryDailyLabor(urbanPool);
+      long requestedLabor = poolDailyLabor * MINT_LABOR_SHARE_PER_MILLE / 1_000L;
+      long available = 0L;
+      for (long left : urbanSlackLabor.values()) {
+        available = Math.addExact(available, left);
+      }
+      slackAvailable = available;
+      mintShare = Math.min(requestedLabor, available);
+      if (mintShare > 0L) {
+        // ★ 与 appendAllocation 同一条"按性别权重 × 可用劳动切配额"的口径（不另写第二套切法）；
+        //   预算表按切出的份额就地扣减 ⇒ 它天然不会超过剩余。
+        Map<PeopleLotId, Long> budget = new LinkedHashMap<>(urbanSlackLabor);
+        int before = allocations.size();
+        appendAllocation(
+            allocations,
+            budget,
+            urbanPool,
+            hex,
+            ProductionUnitId.idOf(mintId, operator),
+            operator,
+            MINT,
+            mintShare);
+        for (int i = before; i < allocations.size(); i++) {
+          mintLabor =
+              Math.addExact(mintLabor, ((Number) allocations.get(i).get("laborMilli")).longValue());
+        }
+      }
+    }
+    if (mintLabor <= 0L) {
+      // ★ 仍然播产业与 unit：产业**存在但不产**（配额 0 ⇒ 规模 0 ⇒ 新钱 0 毫）是合法状态，
+      //   而且它让 GM 之后能通过市场/调产把它喂起来（"有配额才有产出"这条口径唯一）。
+      LOG.debug(
+          io.mosire.simos.util.log.EventLog.kv(
+              new String[] {
+                "event",
+                "SEED_MINT_SKIPPED",
+                "household",
+                govHousehold.value(),
+                "hex",
+                hex.q() + "," + hex.r(),
+                "reason",
+                "no-urban-slack-labor",
+                "poolDailyLaborMilli",
+                Long.toString(poolDailyLabor),
+                "sharePerMille",
+                Integer.toString(MINT_LABOR_SHARE_PER_MILLE),
+                "mintShareRequested",
+                Long.toString(mintShare),
+                "slackAvailableMilli",
+                Long.toString(slackAvailable),
+                "perUnitLaborMilli",
+                Long.toString(MINT_LABOR_MILLI_PER_FURNACE)
+              }));
+    } else {
+      // ★★★ W5-fix3（§一.9）：**发出去多少劳动**这条判据路径的具名读数 —— 铸币能不能跑起来只由这一个比值决定：
+      //   `unitScalesSupported = grantedLaborMilli ÷ perUnitLaborMilli`；它 < 1 ⇒ 规模 0 ⇒ 新钱恒 0 毫
+      //   （W5-fix2 的实测现场就是 3,147 ÷ 8,000 = 0）。W6 改份额/产出率/铸炉数之后，先读这一行看有没有跑起来。
+      LOG.debug(
+          io.mosire.simos.util.log.EventLog.kv(
+              new String[] {
+                "event",
+                "SEED_MINT_LABOR",
+                "household",
+                govHousehold.value(),
+                "hex",
+                hex.q() + "," + hex.r(),
+                "poolDailyLaborMilli",
+                Long.toString(poolDailyLabor),
+                "sharePerMille",
+                Integer.toString(MINT_LABOR_SHARE_PER_MILLE),
+                "requestedLaborMilli",
+                Long.toString(mintShare),
+                "slackAvailableMilli",
+                Long.toString(slackAvailable),
+                "grantedLaborMilli",
+                Long.toString(mintLabor),
+                "perUnitLaborMilli",
+                Long.toString(MINT_LABOR_MILLI_PER_FURNACE),
+                "unitScalesSupported",
+                Long.toString(mintLabor / MINT_LABOR_MILLI_PER_FURNACE)
+              }));
+    }
+
+    // ③ 铸币要吃的投入：给政府家户一份工具库存（够跑 MINT_SEED_CYCLES 个周期）。
+    //   ★ 这是**创世库存**（与作坊主家户的工具周转料同制）：吃完之后铸币要么靠市场买（而国库户只按授权下单）、
+    //     要么停工 —— 后者是合法状态（产出 0 ⇒ 新钱 0 毫，判据 ② 的自然形态）。
+    Map<CommodityId, Long> stock =
+        new LinkedHashMap<>(householdStocks.getOrDefault(govHousehold, Map.of()));
+    stock.merge(
+        new CommodityId(COMMODITY_TOOL),
+        Math.multiplyExact(furnaces * MINT_SEED_CYCLES, MINT_TOOL_MILLI_PER_FURNACE),
+        Math::addExact);
+    householdStocks.put(govHousehold, stock);
+    if (!householdMoney.containsKey(govHousehold)) {
+      householdMoney.put(govHousehold, Map.of());
+    }
+  }
+
+  /** 铸币的创世投入够跑几个周期（见 {@link #seedGovernmentMint} 第 ③ 步）。 */
+  public static final int MINT_SEED_CYCLES = 4;
+
   /** GOV 家户行：population/labor/participation 全 0、无需求；身份仍由 {@link HouseholdId} 稳定承载。 */
   private static Map<String, Object> governmentHouseholdEconomy(HouseholdId householdId) {
     Map<String, Object> row = new LinkedHashMap<>();
@@ -3849,7 +4203,10 @@ public final class EconomySeeder {
     return row;
   }
 
-  /** GOV 家户政府的国库指向它的家户账户；周期铸币/发债量取本类的两个具名 GM 默认值（只在 demo 世界有政府家户时调用）。 */
+  /**
+   * GOV 家户政府的国库指向它的家户账户；★★ W5：铸币政策旋钮取本类的具名 GM 默认值 （{@link
+   * #GOVERNMENT_MINT_SCALE_PER_CYCLE_MILLI}），发债旋钮<b>已随双轨合并删除</b>。 只在 demo 世界有政府家户时调用。
+   */
   private static Government governmentHouseholdGovernment(HouseholdId governmentHousehold) {
     Objects.requireNonNull(governmentHousehold, "governmentHousehold");
     return new Government(
@@ -3857,8 +4214,7 @@ public final class EconomySeeder {
         GENESIS_GOVERNMENT_NATION_REF,
         HouseholdActors.of(governmentHousehold),
         Set.of(MARKET_NUMERAIRE),
-        GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI,
-        GOVERNMENT_DEBT_ISSUE_PER_CYCLE_MILLI);
+        GOVERNMENT_MINT_SCALE_PER_CYCLE_MILLI);
   }
 
   /**
@@ -3869,16 +4225,14 @@ public final class EconomySeeder {
    * MoneyIssuanceRecord.governmentId} 必须存在于 {@code governments}）；每次 seed 生成的这份记录逐值相同，
    * 因此多国重复播种是幂等叠加，而不是"第一份赢"。
    *
-   * <p>真正的政府（有家户国库、可铸币/发债/入市/生产）由 GOV 单位路径 {@code economy.RegisterGovernment} 按 GOV 单位稳定 id 建立。
+   * <p>真正的政府（有家户国库、可铸币/入市/生产）由 GOV 单位路径 {@code economy.RegisterGovernment} 按 GOV 单位稳定 id 建立。
    */
   private static Government genesisAuditGovernment() {
     return new Government(
         GENESIS_GOVERNMENT_ID,
         GENESIS_GOVERNMENT_NATION_REF,
         new ActorRef(ActorKind.GOVERNMENT, GENESIS_GOVERNMENT_ID.value()),
-        Set.of(),
-        0L,
-        0L);
+        Set.of());
   }
 
   // ── P2：PRODUCTION_RUNTIME 的资产规则 / 清算政策（DefaultProductionModes 是唯一 mode 来源）──────────
@@ -4594,6 +4948,27 @@ public final class EconomySeeder {
       unit.put("relation", relationNode(relation));
     }
     return unit;
+  }
+
+  /**
+   * ★★ <b>W5：某一格 entry 的 {@code allocations} 列表</b>（铸币要往里追加一条劳动配额）。
+   *
+   * <p>★ 找不到 entry ⇒ 抛（播种器的内部不一致不许静默吞掉：那时铸币会拿到一份假的空配额表）。
+   */
+  private static List<Map<String, Object>> mintAllocationsOf(
+      HexCoord hex, List<Map<String, Object>> entries) {
+    for (Map<String, Object> entry : entries) {
+      int q = ((Number) entry.get("q")).intValue();
+      int r = ((Number) entry.get("r")).intValue();
+      if (q != hex.q() || r != hex.r()) {
+        continue;
+      }
+      @SuppressWarnings("unchecked")
+      List<Map<String, Object>> allocations = (List<Map<String, Object>>) entry.get("allocations");
+      return allocations;
+    }
+    throw new IllegalStateException(
+        "铸币配额找不到落点 entry（seed 内部不一致）：hex=" + hex + " entries=" + entries.size());
   }
 
   /** 一个受方的载荷节点（{@code actor|household|cohort} 恰其一）——与 {@code EconomyPayloads.recipient} 同一形状。 */

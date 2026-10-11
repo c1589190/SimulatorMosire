@@ -1635,7 +1635,9 @@ public final class ApiViews {
    *
    * <ul>
    *   <li>{@code governments[]}：{@code EconomyData.governments} 每个政府的身份 / 国库 actor / 可发行币种 /
-   *       <b>周期铸币与周期发债政策</b>（{@code seignioragePerCycle} / {@code debtIssuePerCycle}）；
+   *       <b>铸币政策旋钮</b>（{@code mintScalePerCycle}，W5 双轨合并后的唯一财政旋钮 —— 也是**唯一闸门**：W5-fix5
+   *       起实铸上限就是它本身）与<b>上一铸币轮印量</b>（{@code mintedLastCyclePerCycle}，逐币种；★ 它是**读数**、 不参与任何 clamp，由
+   *       {@code MintSettlement} 每轮关账覆盖写）；
    *   <li>{@code treasuryAccounts[]}：国库 actor 的 {@code HouseholdInventory}（production-runtime 里国库 =
    *       内置 GOV 家户账户）：逐格商品 / 货币 / 冻结 / 可支配；找不到账 ⇒ 该条为空数组（不填 0 冒充）；
    *   <li>{@code issuance}：按政府分组的 {@code MoneyIssuanceRecord} 累计（创世禀赋 / 财政发行 / 回笼 / 净额）——
@@ -1668,9 +1670,15 @@ public final class ApiViews {
       }
       issuable.sort(Comparator.naturalOrder());
       node.put("issuable", issuable);
-      // ★ 政策旋钮（每产业大周期）：写进 Government 的出厂值就是这两个；读口不重算、不补缺省。
-      node.put("seignioragePerCycle", government.seignioragePerCycle());
-      node.put("debtIssuePerCycle", government.debtIssuePerCycle());
+      // ★ W5（2026-10-11）：双轨合并后只剩一个政策旋钮（每产业大周期最多铸多少毫）；读口不重算、不补缺省。
+      //   ★ 另给"上一铸币轮印量"（逐币种）—— ★ W5-fix5：它是**读数**（决策人/GUI 看"上一轮印了多少"），
+      //     不是本轮实铸额的上限（上限 = 上面的政策旋钮本身）；由 MintSettlement 每轮关账覆盖写。
+      node.put("mintScalePerCycle", government.mintScalePerCycle());
+      Map<String, Object> mintedLastCycle = new LinkedHashMap<>();
+      for (Map.Entry<CurrencyId, Long> minted : government.mintedLastCyclePerCycle().entrySet()) {
+        mintedLastCycle.put(minted.getKey().value(), minted.getValue());
+      }
+      node.put("mintedLastCyclePerCycle", mintedLastCycle);
       node.put("mintCurrency", issuable.isEmpty() ? null : issuable.get(0));
       // ★ 国库在两种形态间：带政府家户的世界是 kind=HOUSEHOLD（这里反查它的家户行，人口/slot 可配置）；
       //   普通 nation seed 的创世审计主体是 kind=GOVERNMENT（不持户、treasuryHousehold=null，读口如实给 null）。

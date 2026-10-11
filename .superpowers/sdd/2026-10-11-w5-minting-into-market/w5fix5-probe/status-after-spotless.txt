@@ -1,0 +1,25 @@
+ M simos-app/src/main/java/io/mosire/simos/app/gui/ApiViews.java
+ M simos-app/src/main/java/io/mosire/simos/app/household/GovernmentServiceUnitConsistency.java
+ M simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java
+ M simos-app/src/main/java/io/mosire/simos/app/tools/write/EconomyUpsertIndustryTool.java
+ M simos-app/src/main/java/io/mosire/simos/app/tools/write/GovIssueMoneyTool.java
+ M simos-app/src/main/java/io/mosire/simos/app/world/EconomySeeder.java
+ M simos-app/src/test/java/io/mosire/simos/app/logging/EconomyLoggingTest.java
+ M simos-app/src/test/java/io/mosire/simos/app/time/EconomyCycleHealthTest.java
+ M simos-economy-api/src/main/java/io/mosire/simos/economy/api/id/MoneyIssuanceId.java
+ M simos-economy-api/src/main/java/io/mosire/simos/economy/api/money/MoneyIssuanceKind.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/model/Government.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/model/Industry.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/model/ProductionRecipe.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/model/RegimeOperators.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/model/RegimeRelations.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/spi/EconomyPayloads.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/spi/EconomyRegisterGovernmentHandler.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/spi/EconomyUpsertIndustryHandler.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/EconomySettlement.java
+ D simos-economy/src/main/java/io/mosire/simos/economy/time/GovernmentDebtIssuance.java
+ D simos-economy/src/main/java/io/mosire/simos/economy/time/GovernmentSeigniorage.java
+ M simos-economy/src/main/java/io/mosire/simos/economy/time/MarketSettlement.java
+?? simos-economy/src/main/java/io/mosire/simos/economy/model/MoneyOutput.java
+?? simos-economy/src/main/java/io/mosire/simos/economy/time/MintSettlement.java
+?? simos-economy/src/test/java/io/mosire/simos/economy/time/MintProductionSettlementTest.java

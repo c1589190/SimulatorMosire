@@ -117,6 +117,11 @@ import java.util.Set;
  * @param operator ★ <b>旧档兼容位</b>（见类注；生产路径禁读）：旧"经营主体"（S1 spec §2.1 的 {@code ProductionOperator}）。新档恒
  *     {@code null}；<b>允许 null 仅限本兼容位</b>。★ 新档经营主体住在 {@link ProductionProcess#operator()}；旧档缺省由
  *     {@code EconomyData} 的归一化按 {@code RegimeOperators.defaultOperator(regime, industryId)} 推导
+ * @param moneyOutputPerUnit ★★★ <b>W5（2026-10-11）：铸币生产方式的产出率</b>（币种 → 每 1 单位规模产出多少<b>毫货币</b>）。
+ *     <b>刻意与 {@code outputPerUnit} 同形</b>（同为"每单位规模产出什么"的第四路）：货币是<b>生产出来的</b>， 组织者 = 该 unit 的 {@code
+ *     operator}（政府家户）；{@link MoneyOutput#NONE}（空表）= <b>本产业不铸币</b>， 既有全部产业（农业/纺织/作坊/贸易/官署）逐值不受影响。★
+ *     量纲 = <b>毫</b>/规模·周期（不像商品产出那样再 ×1000）； 理由（键类型是两个身份命名空间、入账走账户余额而非货物账、货币最小单位就是毫）见 {@link
+ *     MoneyOutput} 的类注
  */
 public record Industry(
     IndustryId id,
@@ -135,11 +140,57 @@ public record Industry(
     long progressDays,
     Map<AssetKind, Long> capacity,
     long cycleLaborMilli,
-    Map<CommodityId, Long> cycleInputUsedMilli) {
+    Map<CommodityId, Long> cycleInputUsedMilli,
+    MoneyOutput moneyOutputPerUnit) {
 
   /**
-   * ★★ <b>新形状（纯模板）的 12 参构造器</b>：新代码的唯一入口。末尾 5 个旧档兼容位取中性值 （{@code null / 0 / Map.of()}，见类注），委托给 17 参
-   * canonical 构造器。
+   * ★★ <b>W5 之前的 17 参形状（旧组件顺序的兼容入口）</b>：{@code moneyOutputPerUnit} 取 {@link MoneyOutput#NONE}。
+   *
+   * <p>★ 它服务的正是"旧夹具/旧调用点一字不改仍编译、仍逐值可用"这一条（与 {@code Government} 的旧形状构造器同制）：
+   * 不铸币的产业（本批之前的<b>全部</b>产业）走它，语义 = 这个产业<b>没有铸币这一路产出</b>。
+   */
+  public Industry(
+      IndustryId id,
+      String name,
+      RegimeId regime,
+      long cycleDays,
+      Map<AssetKind, Long> capacityPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> dailyInputPerUnit,
+      long dailyLaborPerUnit,
+      long laborPerUnit,
+      Map<CommodityId, Long> outputPerUnit,
+      Map<AssetKind, Map<CommodityId, Long>> cycleInputPerUnit,
+      List<ClassSlot> slots,
+      AllocationRule allocation,
+      ActorRef operator,
+      long progressDays,
+      Map<AssetKind, Long> capacity,
+      long cycleLaborMilli,
+      Map<CommodityId, Long> cycleInputUsedMilli) {
+    this(
+        id,
+        name,
+        regime,
+        cycleDays,
+        capacityPerUnit,
+        dailyInputPerUnit,
+        dailyLaborPerUnit,
+        laborPerUnit,
+        outputPerUnit,
+        cycleInputPerUnit,
+        slots,
+        allocation,
+        operator,
+        progressDays,
+        capacity,
+        cycleLaborMilli,
+        cycleInputUsedMilli,
+        MoneyOutput.NONE);
+  }
+
+  /**
+   * ★★ <b>新形状（纯模板）的 12 参构造器</b>：新代码的唯一入口。末尾 6 个组件取中性值 （{@code null / 0 / Map.of()}， 见类注）、{@code
+   * moneyOutputPerUnit} 取 {@link MoneyOutput#NONE}（不铸币），委托给 18 参 canonical 构造器。
    */
   public Industry(
       IndustryId id,
@@ -171,7 +222,8 @@ public record Industry(
         0L,
         Map.of(),
         0L,
-        Map.of());
+        Map.of(),
+        MoneyOutput.NONE);
   }
 
   public Industry {
@@ -312,6 +364,13 @@ public record Industry(
     if (capacityPerUnit.isEmpty()) {
       throw new IllegalArgumentException("Industry.capacityPerUnit 不得为空（它是\"单位规模\"的锚，没有它规模无上界）");
     }
+    // ★★★ W5：铸币产出率 —— 构造期只判"这一路要么整份缺席（NONE = 不铸币）、要么逐值有据"。
+    //   ★ 这里**不**判"必须同时有 inputPerUnit"：铸币可以只吃劳动（"规模单位"的锚仍由 capacityPerUnit 把住，
+    //     规模无上界这条守卫没有被放松）；把两路绑死只会让"纯劳动铸币"这种合法配方写不出来。
+    if (moneyOutputPerUnit == null) {
+      throw new IllegalArgumentException(
+          "Industry.moneyOutputPerUnit 不得为 null（不铸币请给 MoneyOutput.NONE）");
+    }
     List<ClassSlot> slotsCopy = new ArrayList<>();
     Set<SocialClassId> slotIds = new LinkedHashSet<>();
     for (ClassSlot slot : slots) {
@@ -336,7 +395,8 @@ public record Industry(
    * {@code Industry} 的字段漂开。每次调用新建一个不可变记录（很小；只被收获那一步读一次）。
    */
   public ProductionRecipe recipe() {
-    return new ProductionRecipe(capacityPerUnit, inputPerUnit(), laborPerUnit, outputPerUnit);
+    return new ProductionRecipe(
+        capacityPerUnit, inputPerUnit(), laborPerUnit, outputPerUnit, moneyOutputPerUnit);
   }
 
   /**

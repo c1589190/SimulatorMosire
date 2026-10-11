@@ -57,10 +57,16 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>★★ <b>为什么选 {@code three-powers} 而不是 {@code small-world}</b>：<b>①</b> 它有 <b>3 种货币</b>（silver /
  * copper / gold，每区法定币不同）⇒「逐币种货币总量守恒」这条判据在这里<b>非平凡</b>：跨区成交、外汇、跨币种工资任何一处"凭空造币/烧币"都会当场破；
- * 单币种世界里这条断言弱得多（少一个币种就少一类泄漏面）。<b>②</b> 它的 GOV 单位在 {@code economy.RegisterGovernment}
- * 里<b>不声明周期铸币</b> （{@code seignioragePerCycle} 缺省 0），而 {@code small-world} 走的是"demo 世界政府家户"路径、出厂就带
- * {@code GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI = 2,000} 毫/周期<b>真的印钱</b> ⇒
- * 在那个世界上"货币总量不变"<b>本来就不该成立</b>。 <b>③</b> 它是阶段 2 判据 G1 指定的验收世界（3 区 / 3 币 / 辖区两两不相交），不是为这条测试临时造的夹具。
+ * 单币种世界里这条断言弱得多（少一个币种就少一类泄漏面）。<b>②</b> 它<b>没有政府家户</b>（{@code ThreePowersWorld} 建 {@code
+ * PopulationSeeder.Seeding} 时 {@code governmentRef = null}），三个 GOV 走 {@code
+ * economy.RegisterGovernment} 的 <b>GOV 单位</b>路径、不声明铸币政策（★★ W5 起字段名是 {@code mintScalePerCycle}，缺省
+ * 0）⇒ 本世界<b>既没有铸币产业</b> （{@code EconomySeeder.seedGovernmentMint} 只播种给"有政府家户"的世界）<b>也没有 GM 发行</b> ⇒
+ * 货币总量<b>理应逐值不变</b>。 而 {@code small-world} 走的是"demo 世界政府家户"路径、出厂就带 {@code
+ * GOVERNMENT_MINT_SCALE_PER_CYCLE_MILLI = 2,000} 毫/周期 + 一座铸币产业（W5 账本 N-5 / N-11）<b>真的产出货币</b> ⇒
+ * 在那个世界上"货币总量不变"<b>本来就不该成立</b>（★ 旧口径是 {@code seignioragePerCycle} 在周期开始<b>直接加进国库</b>，W5 起改成"产业产出 +
+ * 上限 = 政策旋钮 {@code mintScalePerCycle}"；★★ W5-fix5 / 设计书 v3.18 §7 起"上一轮印量"只作真读数、<b>不参与任何
+ * clamp</b>，用户原话 「铸币能进政府的家户，按照决策人预期被发行就行」）。 <b>③</b> 它是阶段 2 判据 G1 指定的验收世界（3 区 / 3 币 /
+ * 辖区两两不相交），不是为这条测试临时造的夹具。
  *
  * <p>★★ <b>推进口径（为什么 30 天一段，不是一天一步）</b>：{@code
  * docs/superpowers/specs/2026-10-08-currency-exchange-stage2-design.md} §12–§13 实测：单步推进 485 ms/天 vs
@@ -71,10 +77,10 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <ol>
  *   <li><b>①货币守恒（最硬）</b>：<b>逐币种</b>的货币总量 = Σ 全部账户（家户 / 组织 / 国库 / 单位）在该币种上的余额，<b>全程与创世基线逐值相同</b>。
- *       理由：本仓货币只有三个合法来源（创世 {@code INITIAL_ENDOWMENT} 发行记录、GM 的 {@code RecordMoneyIssuance}、政府的周期铸币
- *       {@code seignioragePerCycle}），而 {@code three-powers}
- *       创世后<b>没有任何一个</b>在跑；一切经济行为（成交、借还、税、工资、迁移、跨区结算）都必须是 <b>余额转移</b>。⇒ 任何一处"凭空造币 / 静默烧币"都会在这里当场红。★
- *       这条也顺带守住"货款腿与货腿原子"（只动钱不动物、或只动物不动钱，会先破别的判据）。
+ *       理由：本仓货币只有三个合法来源（创世 {@code INITIAL_ENDOWMENT} 发行记录、GM 的 {@code RecordMoneyIssuance}、 ★ W5 起的
+ *       <b>铸币生产方式</b> {@code MINT_PRODUCTION} —— 旧口径的"周期铸币 {@code seignioragePerCycle}
+ *       直充国库"已随双轨一并删除），而 {@code three-powers} 创世后<b>没有任何一个</b>在跑；一切经济行为（成交、借还、税、工资、迁移、跨区结算）都必须是
+ *       <b>余额转移</b>。⇒ 任何一处"凭空造币 / 静默烧币"都会在这里当场红。★ 这条也顺带守住"货款腿与货腿原子"（只动钱不动物、或只动物不动钱，会先破别的判据）。
  *   <li><b>②非负</b>：人口 &gt; 0、粮存量 ≥ 0、布存量 ≥ 0、债务本金 ≥ 0。理由：库存与债务本金都是<b>存量</b>，负数是"透支"这种本仓明令不存在的语义
  *       （{@code HouseholdInventory} 构造期就拒负）；而人口为 0 意味着世界死了。
  *   <li><b>③人口不爆不灭</b>：每个关账日人口 &gt; 0，且相邻两段（30 天）人口的比值落在 <b>[1/2, 2]</b> 内。理由：30 天尺度上人口只由生死率
@@ -105,9 +111,9 @@ import org.junit.jupiter.api.io.TempDir;
  *       本测试在同一进程内推进后立即读，因此可读；这是它的合法用法。
  * </ul>
  *
- * <p>★★ <b>这条红了怎么办（fail-closed，不许靠放宽判据变绿）</b>：① 若红在<b>货币守恒</b>上 ⇒ 先查"这一批是不是新引入了货币的 发行/回笼"（周期铸币
- * {@code seignioragePerCycle}、GM 的 {@code RecordMoneyIssuance}、税费/拆迁里的销毁）—— 若确实引入，正确的修法是让本测试把
- * <b>发行记录</b>并入等式（{@code Σ账户余额 = Σ INITIAL_ENDOWMENT + Σ FISCAL_ISSUE − Σ
+ * <p>★★ <b>这条红了怎么办（fail-closed，不许靠放宽判据变绿）</b>：① 若红在<b>货币守恒</b>上 ⇒ 先查"这一批是不是新引入了货币的 发行/回笼"（W5 起的铸币
+ * {@code MINT_PRODUCTION}、GM 的 {@code RecordMoneyIssuance}、税费/拆迁里的销毁）—— 若确实引入，正确的修法是让本测试把
+ * <b>发行记录</b>并入等式（{@code Σ账户余额 = Σ INITIAL_ENDOWMENT + Σ MINT_PRODUCTION + Σ FISCAL_ISSUE − Σ
  * WITHDRAWAL}），<b>不是</b>把断言删掉或放宽成区间； 若没有引入发行，那它就是<b>真缺陷</b>（凭空造币/静默烧币），停下来如实报告。② 若红在<b>市场成交 0
  * 笔</b>上 ⇒ 那就是"市场冻结"复发， 同样按缺陷报，不许把这条判据降级成"允许 0 笔"。
  */

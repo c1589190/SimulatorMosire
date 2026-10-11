@@ -3,13 +3,9 @@ package io.mosire.simos.app.logging;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
-import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.model.EconomyMeta;
-import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
@@ -28,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
-import java.util.Set;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
@@ -54,7 +49,11 @@ import org.junit.jupiter.api.Test;
  *   <li>具名失败面：economy 模块<b>没有 INFO 拒绝事件</b> —— 两个具名拒绝 {@code HOUSEHOLD_NATURAL_NEEDS_REJECTED} /
  *       {@code HOUSEHOLD_POPULATION_DELTA_REJECTED} 都是 fail-closed 的 ERROR（裁定 §4.2「被拒绝肯定走
  *       INFO」在本模块的既有 ERROR 面**不降级**）。本测试用 {@link EconomyDayStepper} 低成本触发它们，断言仍是 ERROR；
- *   <li>既有 WARN（{@code GOV_DEBT_ISSUE_SKIPPED}）不降级。
+ *   <li>★★ <b>W5b（2026-10-11 测试批）删掉的那一条，如实记</b>：原第 4 条断言"既有 WARN（{@code GOV_DEBT_ISSUE_SKIPPED}）
+ *       不降级"，而那条 WARN 的生产者 {@code GovernmentDebtIssuance}（周期发债双轨之一）已按 W5 的 N-2 **整类删除** ⇒
+ *       事件与夹具都不复存在，该断言**没有断言对象**了，故删除（§一.11：旧设计直接删；不给已删事件留"兼容断言"）。 ★ 代价如实说：economy 模块"既有 WARN
+ *       不降级"这条 claim 在本类里**不再有覆盖**，其余两条 WARN（{@code MARKET_SUBJECT_EMPTY_UNIT} / {@code
+ *       ACCOUNT_SUBJECT_UNRESOLVED}）需要市场轮 / 关账夹具，不在本类的低成本装置范围内。
  * </ul>
  *
  * <p>★ 装置住 app 模块：只有 app 的测试类路径上有 log4j-core + log4j-slf4j2-impl；这里只借 app 的类路径，被验对象仍是 {@code
@@ -262,40 +261,6 @@ class EconomyLoggingTest {
         "household=" + MISSING_HOUSEHOLD,
         "origin=economy-population-write",
         "originKind=system");
-  }
-
-  /**
-   * §4.2「既有 WARN 一律不降级」：{@code GOV_DEBT_ISSUE_SKIPPED}（政府无可发行币种但发债目标 &gt; 0）仍是 WARN。
-   *
-   * <p>夹具成本极低：一个只有 {@code Government} 一行的已激活经济 + 公开入口 {@code settle(0,1)}，发债在周期开始日（day=1） 走短路支路，记一条
-   * WARN 后跳过，不需要账户/家户/产业。
-   */
-  @Test
-  void existingWarnEventIsNotDowngraded() {
-    setEconomyLevel(Level.INFO);
-    appender.clear();
-
-    Government government =
-        new Government(
-            new GovernmentId("gov-log"),
-            "world",
-            new ActorRef(ActorKind.GOVERNMENT, "gov-log"),
-            Set.of(),
-            0L,
-            100L);
-    EconomySettlement.settle(
-        activatedEmptyEconomy().withGovernments(Map.of(government.id(), government)), 0L, 1L);
-
-    assertLevelEvent(
-        appender.messages(),
-        "WARN",
-        "GOV_DEBT_ISSUE_SKIPPED",
-        "day=1",
-        "government=gov-log",
-        "reason=no-issuable-currency",
-        "target=100",
-        "origin=economy-debt",
-        "originKind=tick");
   }
 
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────

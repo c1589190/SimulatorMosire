@@ -27,6 +27,8 @@ import org.slf4j.Logger;
  *  "dailyLaborPerUnit":0,         // 可选；缺省 0
  *  "laborPerUnit":16000,          // 可选；缺省 0
  *  "outputPerUnit":{},            // 可选；空 map = 无商品产出（服务产业）
+ *  "moneyOutputPerUnit":{},       // 可选（★ W5 新增）；空 map = 本产业不铸币，逐值退回 W5 之前
+ *                                 //   {币种:每 1 单位规模产出多少**毫**货币} —— 键是 CurrencyId、量纲是毫
  *  "cycleInputPerUnit":{},        // 可选
  *  "slots":[{"id":"...","name":"...","laborParticipationPerMille":1000}],
  *  "allocation":{"@class":"split","meansWeightPerMille":500,"laborWeightPerMille":500}}

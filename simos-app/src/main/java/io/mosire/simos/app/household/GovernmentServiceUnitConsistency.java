@@ -7,6 +7,7 @@ import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.spi.EconomyGovUnitUpserts;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovernmentFormation;
@@ -27,9 +28,26 @@ import java.util.Optional;
  * GovernmentFormation}</b>。
  *
  * <pre>
- * economy.units 的 operator == HOUSEHOLD:hh-gov-&lt;govUnitId&gt;
+ * economy.units 的 operator == HOUSEHOLD:hh-gov-&lt;govUnitId&gt; 且 modeKey == gov_service
  *   ⇒ unit 切片必须有 Unit(&lt;govUnitId&gt;)，且 module() instanceof GovernmentFormation
  * </pre>
+ *
+ * <p>★★ <b>W5-fix2（2026-10-11）：判据补上 {@code modeKey == gov_service} 这一维</b> —— 本类管的是 <b>gov service
+ * unit</b>（行政服务），而它的旧判据只看"operator 是政府家户"，那是一个<b>过近似</b>：任何<b>由</b>政府家户<b>经营</b>的 生产性 unit（W5 的铸币
+ * {@code mint@<q>_<r>}，regime {@code government_mint}）也被卷进来，要求它必须在 unit 切片有一支 GOV 编制 —— 而那不是服务
+ * unit，没有任何编制可补。 实测（{@code SmallWorld.state} 创世后）：operator 是政府家户的经济 unit 共 3 个 —— {@code
+ * unit-mint@0_0-…hh-gov-world-silver}（{@code modeKey=mint@0_0}）、{@code
+ * …office@0_0…hh-gov-gov-central} 与 {@code …office@0_1…hh-gov-gov-province}（两者 {@code
+ * modeKey=gov_service}）⇒ <b>只有 2 个</b>是本类的判据面。
+ *
+ * <p>★★ <b>为什么 {@code modeKey} 是"是不是服务 unit"的判据</b>：{@code gov_service} 是行政服务生产方式的稳定键， 它的唯一拼写点是
+ * {@link EconomyGovUnitUpserts#GOV_SERVICE_MODE_KEY}（{@code economy.UpsertGovUnit} 的 {@code
+ * modeKey} 缺省值），而<b>唯一</b>能建出 gov service unit 的命令路径就是那一条 —— 它同时由 {@code requireOfficeIndustry}
+ * 判死"产业 base kind 必须是 {@code office}"。⇒ 判据不靠猜、也不放宽：走那条路径的 unit 恒带这个键。
+ *
+ * <p>★ <b>§一.9：被排除的 unit 具名可查</b> —— 每次跳过发一行 DEBUG（{@code
+ * event=GOV_SERVICE_UNIT_SKIPPED_NOT_SERVICE} + {@code
+ * unit/modeKey/industry/operatorHousehold/reason}），不是静默缩小判据面。
  *
  * <p>★★ <b>为什么必须有这一处</b>：Z1c 的 {@code economy.UpsertGovUnit} handler 在 economy 侧只能看见经济信封（已登记 +
  * {@code hh-gov} 在 classes/Social），<b>编译期看不见 unit</b>（模块边界，见 spec §18 裁定 A）；app 的 GM 窄工具 {@code
@@ -100,6 +118,24 @@ public final class GovernmentServiceUnitConsistency {
         continue;
       }
       if (!GovernmentHouseholds.isGovernment(operatorHousehold)) {
+        continue;
+      }
+      // ★★ W5-fix2：本类只管 **gov service unit**（见类注）—— 政府家户经营的**生产性** unit（W5 的铸币）不属于本判据面。
+      if (!EconomyGovUnitUpserts.GOV_SERVICE_MODE_KEY.equals(process.modeKey())) {
+        CONSISTENCY.debug(
+            LogEvent.of(
+                "GOV_SERVICE_UNIT_SKIPPED_NOT_SERVICE",
+                AppLogSource.HOUSEHOLD_SYNC,
+                "unit",
+                process.id().value(),
+                "modeKey",
+                process.modeKey(),
+                "industry",
+                process.industry().value(),
+                "operatorHousehold",
+                operatorHousehold.value(),
+                "reason",
+                "not-a-gov-service-unit"));
         continue;
       }
       Optional<String> govUnitRef = GovernmentHouseholds.unitRefOf(operatorHousehold);

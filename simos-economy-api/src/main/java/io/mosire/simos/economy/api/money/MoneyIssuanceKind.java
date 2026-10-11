@@ -5,6 +5,10 @@ package io.mosire.simos.economy.api.money;
  *
  * <ul>
  *   <li>{@link #INITIAL_ENDOWMENT}：GM 代 GOV 的创世一次性发行（发给家户/经营者/官署）；
+ *   <li>{@link #MINT_PRODUCTION}：★★ <b>W5（2026-10-11）铸币生产方式</b> —— 产业产出货币（消耗劳动 + 工具/金属等投入）， 组织者 =
+ *       政府家户；钱是<b>生产出来的</b>，不是"缺钱就加一个数字"。★ 它是<b>具名的新类别</b>，<b>不复用</b> {@code
+ *       FISCAL_ISSUE}：后者的语义是"发行主体余额不足时单边支付形成的差额"（= 透支腿），与"生产出一批钱" 是两件不同的事实（W5 判据 ⑤
+ *       要求"含铸币生产方式这条新路径；kind 要具名"）；
  *   <li>{@link #FISCAL_ISSUE}：运行期财政发行（发行主体在余额不足时单边支付形成的差额）；
  *   <li>{@link #WITHDRAWAL}：回笼（发行主体收钱/注销；E3 已留枚举与读口，运行期回笼命令留给 E6）。
  * </ul>
@@ -13,6 +17,7 @@ package io.mosire.simos.economy.api.money;
  */
 public enum MoneyIssuanceKind {
   INITIAL_ENDOWMENT,
+  MINT_PRODUCTION,
   FISCAL_ISSUE,
   WITHDRAWAL;
 

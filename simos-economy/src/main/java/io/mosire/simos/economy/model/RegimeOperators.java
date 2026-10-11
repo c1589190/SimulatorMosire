@@ -58,6 +58,23 @@ public final class RegimeOperators {
   public static final String MERCHANT = "merchant";
 
   /**
+   * ★★★ <b>W5-fix2（2026-10-11）：铸币生产方式的制度名</b>（= {@code EconomySeeder.REGIME_MINT} 在 economy
+   * 侧的具名引用点）。
+   *
+   * <p>★★ <b>它<b>不</b>进本类的 {@link #BY_REGIME}</b>（这一条是 W5 的裁定 D-3，W5-fix2 <b>不</b>推翻它）：铸币的 operator
+   * 必须由载荷<b>显式给出</b>（= 那一格的政府家户 ActorRef），因为它<b>不是</b>"按产业 id 派生一个 actor"能表达的 —— {@code
+   * defaultOperator} 会造出 {@code ActorRef(HOUSEHOLD, "mint@q_r")}（产业 id 当家户 id），而铸币真正的经营者是 {@code
+   * HouseholdActors.of(hh-gov-…)}（政府家户的稳定身份）。 两者不是同一个主体 ⇒ 登记它等于让 {@code defaultOperator}
+   * 给出一个**错的**默认值。★ 这与 {@link #MERCHANT} 同款（贸易产业的 operator 也由载荷显式给）。
+   *
+   * <p>★ <b>而 {@link RegimeRelations} 的关系表必须登记它</b>（那是另一张表、另一个问题）：关系表回答的是"缺 {@code relation}
+   * 键时该推出哪一组<b>补偿规则</b>"，铸币的答案是**空规则表**（产出是货币、走 {@code MintSettlement} 的 {@code moneyOutputPerUnit}
+   * 腿，不走实物分成）—— 两条依据见 {@code RegimeRelations.mintRules()} 的类注。 ★ 不登记关系表的后果是实测过的：播种小世界在 {@code
+   * economy.Seed} 当场 {@code IllegalStateException} （"未登记的制度，无法推导默认经营主体"），46 条 app 测试全红（W5 的第三个 P0）。
+   */
+  public static final String GOVERNMENT_MINT = "government_mint";
+
+  /**
    * 登记表：{@code regime 字面量 → 默认经营主体种类}。
    *
    * <p>★★ **静态初始化块 + {@code LinkedHashMap} + {@code Collections.unmodifiableMap}**：顺序 = spec §六

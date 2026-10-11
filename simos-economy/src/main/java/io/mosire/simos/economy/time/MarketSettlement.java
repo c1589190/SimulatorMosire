@@ -1045,6 +1045,16 @@ final class MarketSettlement {
     /**
      * ★★ <b>W2：给已构造的市场轮补上"未付价款记债"的入参</b>（{@code EconomySettlement} 在判定今天真的开市之后才构造 {@link
      * DeferredPaymentConfig}；本方法<b>不复制账户表</b>，只换记债入参）。
+     *
+     * <p>★★★ <b>W5-fix（2026-10-11）：本方法此前是六个 wither 里<b>唯一</b>漏带三个字段的那一个</b> —— 它只带过 {@code
+     * arbitrage}/{@code fx}/{@code govMandates}，<b>不带</b> {@code portEnforcement}/{@code
+     * portTax}/{@code procurementPriority}。 生产注入次序（{@code withDeferredPayments} 在 {@code
+     * withGovMandates}/{@code withPortEnforcement}/ {@code withPortTax}/{@code
+     * withProcurementPriority} <b>之前</b>调用）恰好绕过了这个缺陷，因此它不是可复现的 线上故障 —— 但形状与其余五个 wither
+     * 的注释里点名三次的"克隆丢字段"坑<b>逐字相同</b>：换一次注入次序 （例如把记债入参挪到口岸/税之后注入）就会让口岸管制与三层税<b>整段静默失效且毫无报错</b>。
+     *
+     * <p>★ <b>按 fail-closed 修</b>：逐字段带过它们（与 {@code withArbitrage}/{@code withFx}/… 同一形态），
+     * 并加一条**运行期守卫**（见方法尾）—— 真正的契约故障宁可当场抛，也不许静默退回缺省。
      */
     MarketRound withDeferredPayments(long dueCycle, Map<DebtContractId, DebtContract> debts) {
       Objects.requireNonNull(debts, "debts");
@@ -1075,6 +1085,43 @@ final class MarketSettlement {
       next.arbitrage = arbitrage;
       next.fx = fx;
       next.govMandates = govMandates; // ★ R1：同一个坑的第三个字段（丢了它 = 授权整段静默失效）
+      next.portEnforcement = portEnforcement; // ★ W5-fix：同一个坑的第四个字段
+      next.portTax = portTax; // ★ W5-fix：同一个坑的第五个字段（丢了它 = 三层税整段不生效且毫无报错）
+      next.procurementPriority = procurementPriority; // ★ W5-fix：同一个坑的第六个字段
+      // ★★ W5-fix 的 fail-closed 守卫：**这一轮上原本有的**入参，克隆之后必须还是**同一个实例**。
+      //   ★ 判据用引用相等（不是 equals）：本类全部 wither 的语义就是"逐字段原样带过**同一份**输入"
+      //     （缺省实例 {@code none()}/{@code empty()} 因此也逐值相同），引用漂开只可能来自"新建了一份"。
+      //   ★ 契约故障 ⇒ ERROR 且不降级（AGENTS §一.9：不把一致性故障降级成 WARN/DEBUG）。
+      if (arbitrage != next.arbitrage
+          || fx != next.fx
+          || govMandates != next.govMandates
+          || portEnforcement != next.portEnforcement
+          || portTax != next.portTax
+          || procurementPriority != next.procurementPriority) {
+        EventLog.channel(MARKET)
+            .error(
+                LogEvent.of(
+                    "MARKET_ROUND_CLONE_FIELD_LOST",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    day,
+                    "reason",
+                    "withDeferredPayments-dropped-a-field",
+                    "arbitrageKept",
+                    arbitrage == next.arbitrage,
+                    "fxKept",
+                    fx == next.fx,
+                    "govMandatesKept",
+                    govMandates == next.govMandates,
+                    "portEnforcementKept",
+                    portEnforcement == next.portEnforcement,
+                    "portTaxKept",
+                    portTax == next.portTax,
+                    "procurementPriorityKept",
+                    procurementPriority == next.procurementPriority));
+        throw new IllegalStateException(
+            "MarketRound.withDeferredPayments 丢了一个本轮已注入的字段（克隆丢字段，契约故障）: day=" + day);
+      }
       return next;
     }
 

@@ -16,6 +16,9 @@ public record MoneyIssuanceId(String value) {
   /** ★ P5 回笼派生的前缀（唯一拼写点；与转移派生的 {@code mi-<transferId>} 区分，回放不会与发行腿撞 id）。 */
   private static final String WITHDRAWAL_PREFIX = "mi-wd-";
 
+  /** ★★ W5 铸币生产方式派生的前缀（唯一拼写点；与转移/回笼两条前缀互不重叠 ⇒ 回放不会撞 id）。 */
+  private static final String MINT_PREFIX = "mi-mint-";
+
   public MoneyIssuanceId {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException("MoneyIssuanceId 不得为空白");
@@ -80,5 +83,35 @@ public record MoneyIssuanceId(String value) {
       throw new IllegalArgumentException("币种名不得含 '.' 或 '|'（发行 id 的分段约定）: " + currencyValue);
     }
     return new MoneyIssuanceId(WITHDRAWAL_PREFIX + operationRef + "-" + currencyValue);
+  }
+
+  /**
+   * ★★★ <b>W5：铸币生产方式（{@code MINT_PRODUCTION}）审计记录的确定性 id</b>： {@code
+   * mi-mint-<government>-<day>-<currency>}。
+   *
+   * <p>★★ <b>为什么这一路能按 (政府, 日, 币种) 派生、而 GM 发行那一路不能</b>：铸币<b>一个政府一个市场轮一个币种至多一次</b> ——
+   * 它是周期关账的<b>结算事实</b>（规模 × 产出率，纯函数），不是"同一天可以合法发多次"的命令。 ⇒ 这个三元组就是它的 <b>稳定身份</b>；重放/分支给出同一个
+   * id（第二次写入会撞键 ⇒ 当场抛，不静默覆盖，与 {@code GovernmentSeigniorage} 的旧幂等口径同制）。
+   *
+   * <p>★ {@code governmentId} 里的 {@code '|'} 换成 {@code ':'}（它同时是账户/编码分段符）；币种名禁止 {@code '.'} 与
+   * {@code '|'}（地址解析器在第一个 {@code '.'} 处切名字）—— 非法输入当场抛。
+   */
+  public static MoneyIssuanceId forMintProduction(
+      String governmentId, long day, CurrencyId currency) {
+    if (governmentId == null || governmentId.isBlank()) {
+      throw new IllegalArgumentException("MoneyIssuanceId.forMintProduction 的 governmentId 不得为空白");
+    }
+    if (day < 0L) {
+      throw new IllegalArgumentException("MoneyIssuanceId.forMintProduction 的 day 不得为负: " + day);
+    }
+    if (currency == null) {
+      throw new IllegalArgumentException("MoneyIssuanceId.forMintProduction 的 currency 不得为 null");
+    }
+    String currencyValue = currency.value();
+    if (currencyValue.indexOf('.') >= 0 || currencyValue.indexOf('|') >= 0) {
+      throw new IllegalArgumentException("币种名不得含 '.' 或 '|'（发行 id 的分段约定）: " + currencyValue);
+    }
+    return new MoneyIssuanceId(
+        MINT_PREFIX + governmentId.replace('|', ':') + "-" + day + "-" + currencyValue);
   }
 }

@@ -21,6 +21,7 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.spi.EconomyIndustryUpserts;
@@ -96,7 +97,10 @@ public final class EconomyUpsertIndustryTool implements AgentTool {
         + "payloadJson 与 economy.Seed 的 industries[] 节点同形："
         + "{id(<kind>@<q>_<r>，新版本写 kind：office_v2@0_0), name, regime, cycleDays(≥1),"
         + " capacityPerUnit(非空且逐值>0), dailyInputPerUnit?, dailyLaborPerUnit?, laborPerUnit?,"
-        + " outputPerUnit?(空 map = 无商品产出), cycleInputPerUnit?,"
+        + " outputPerUnit?(空 map = 无商品产出), moneyOutputPerUnit?(★ W5：{币种:毫/规模·周期}，空 map = 本产业"
+        + " 不铸币；铸币产出走账户余额，组织者 = unit.operator，另受 Government.mintScalePerCycle"
+        + " 上限约束（★ W5-fix5：决策人预期即权威，实铸 = min(产出请求, 该旋钮)，没有第二条闸门）),"
+        + " cycleInputPerUnit?,"
         + " slots[{id,name,laborParticipationPerMille}], allocation({@class:split,两权重和=1000})}。"
         + "id 不存在 ⇒ 创建（格必须已有已激活经济状态；同格同 kind 版本不得倒退/撞号）；"
         + "id 已存在 ⇒ 仅当无 units/assetShares/relations 引用时原地全量替换，被引用 ⇒ 具名拒并指路新版本 id；"
@@ -113,7 +117,7 @@ public final class EconomyUpsertIndustryTool implements AgentTool {
             "string",
             "产业模板 JSON 文本（与 economy.Seed 的 industries[] 节点同形，逐字透传给命令）："
                 + "{id,name,regime,cycleDays,capacityPerUnit,dailyInputPerUnit?,dailyLaborPerUnit?,"
-                + "laborPerUnit?,outputPerUnit?,cycleInputPerUnit?,slots,allocation}；"
+                + "laborPerUnit?,outputPerUnit?,moneyOutputPerUnit?,cycleInputPerUnit?,slots,allocation}；"
                 + "id=<kind>@<q>_<r>，新版本 = 新 kind 后缀 id（office_v2@0_0）"));
     props.put(
         "preview",
@@ -289,6 +293,12 @@ public final class EconomyUpsertIndustryTool implements AgentTool {
     view.put("dailyLaborPerUnit", industry.dailyLaborPerUnit());
     view.put("laborPerUnit", industry.laborPerUnit());
     view.put("outputPerUnit", commodityAmounts(industry.outputPerUnit()));
+    // ★★ W5：铸币产出率（空表 = 本产业不铸币）—— 读口与商品产出并排，读者不必去猜"这个产业铸不铸"。
+    Map<String, Object> moneyOutput = new LinkedHashMap<>();
+    for (Map.Entry<CurrencyId, Long> minted : industry.moneyOutputPerUnit().perUnit().entrySet()) {
+      moneyOutput.put(minted.getKey().value(), minted.getValue());
+    }
+    view.put("moneyOutputPerUnit", moneyOutput);
     view.put("cycleInputPerUnit", assetCommodityAmounts(industry.cycleInputPerUnit()));
     List<Map<String, Object>> slots = new ArrayList<>(industry.slots().size());
     for (ClassSlot slot : industry.slots()) {

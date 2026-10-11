@@ -1,6 +1,8 @@
 package io.mosire.simos.economy.model;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -21,6 +23,8 @@ import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -38,7 +42,7 @@ import java.util.Set;
  * 静态块 + {@code LinkedHashMap} + {@code Collections.unmodifiableMap}（★ **绝不用 {@code Map.of}** ——
  * 错误消息要列出档位， 迭代序必须是内容的纯函数）。
  *
- * <p>★★ <b>四档的规则（R8 表；★ 两处对 spec §六 的修订已在下面就地注明）</b>：
+ * <p>★★ <b>五档的规则（R8 表；★ 两处对 spec §六 的修订已在下面就地注明；第 5 档是 W5-fix2 追加的）</b>：
  *
  * <table border="1">
  *   <caption>档位 → 默认规则</caption>
@@ -61,6 +65,14 @@ import java.util.Set;
  *     <td>{@link RegimeOperators#TENANT}</td>
  *     <td><b>固定实物租</b>（{@code FIXED_IN_KIND_RENT}，粮）给 {@code (hex, landlord)} cohort + 佃农家户自留</td>
  *   </tr>
+ *   <tr>
+ *     <td>{@link RegimeOperators#GOVERNMENT_MINT}</td>
+ *     <td>★★ <b>W5-fix2：空规则表</b> —— 产出全归 {@code residualOwner = operator}（政府家户）。
+ *       ★ 依据两条（见 {@link #mintRules()}）：铸币的产出物是<b>货币</b>（{@code Industry.moneyOutputPerUnit}，
+ *       入账走 {@code MintSettlement}、不走 {@code harvest} 的实物分支 ⇒ 本表任何腿都不会被执行一次）；
+ *       而照抄别的档的 cohort 腿会在第一个关账日被 {@code requireCohortRows} 拒绝（铸币 labor 的受方家户是
+ *       零人口的政府家户，它没有 {@code (hex, urban, 传统四阶层)} 行）。</td>
+ *   </tr>
  * </table>
  *
  * <p>★★ <b>裁定 E2（修订 spec §六 的 {@code household → SELF_RETENTION}）</b>：spec §七 V3 要「<b>织布的人拿到布</b>」，
@@ -76,14 +88,17 @@ import java.util.Set;
  * SELF_RETENTION} 规则。理由两条：① {@code SELF_RETENTION} 属<b>实物档</b> ⇒ 按 {@link CompensationRule}
  * 的二选一守卫<b>必须带 {@code commodity}</b>（T1 的契约不动），而"自留"在语义上是 <b>对全部商品</b>的自留 —— 挑一个商品反而把话说小了；② T3
  * 的公式表里它的数量恒为 0 ⇒「不写这条规则」是 <b>等价路径</b>（空表 ⇒ 全归 {@code residualOwner}）。★ 于是"改回一条 {@code
- * SELF_RETENTION}"这种改动会在 {@code RegimeRelationsTest} 上当场红。
+ * SELF_RETENTION}"这种改动会在 {@code RegimeRelationsTest} 上当场红。★ <b>W5-fix2 补一句</b>：{@code
+ * government_mint} 这一档把那条"等价路径"用到了<b>极端</b> —— 它的规则表<b>整体为空</b>（不是"少了自留那一条"）， 依据见 {@link
+ * #mintRules()}；两处的 {@code residualOwner} 都是同一个值（{@code operator}）。
  *
  * <p>★★ <b>H3（2026-09-27，裁定 C3 + operator=C）：四档的"投入由谁出"默认值</b> —— {@code feudal} = <b>经营者（庄园）出</b>
  * · {@code tenant} = <b>佃农家户出</b> · {@code household} = <b>家户自出</b> · {@code handicraft} =
  * <b>作坊主出</b>（唯一拼写点是 {@link #defaultInputSupplier}）。
  *
  * <p>★★ <b>如实记：这四档默认<b>同值</b> —— 都落在该档的 {@code operator} 上</b>（因为 operator 就是那个主体：庄园 / 佃农家户 / 织布的家户
- * / 作坊主）。⇒ <b>这一栏的价值不是"改默认值"</b>，而是把"谁出料"从<b>按人口猜</b>（改前的 {@code 旧结算引擎（R3a
+ * / 作坊主）。★ <b>W5-fix2 追加的 {@code government_mint} 同值</b>（政府家户自备工具；登记表里它没有自己的一行 ⇒ 走 {@link
+ * #defaultInputSupplier} 的同一处默认）。⇒ <b>这一栏的价值不是"改默认值"</b>，而是把"谁出料"从<b>按人口猜</b>（改前的 {@code 旧结算引擎（R3a
  * 已删除）.rowSharesOf}：该产业各行人口占比 + 逐行向下取整）变成<b>制度明说</b>，并让 GM 能配（载荷里一条显式 {@code relation}
  * 就能写"<b>地主出种</b>"这种制度 —— spec §2.4"同一个制度可以 A 格这样、B 格那样"的落点）。详见 {@code ProductionRules} 的类注。
  *
@@ -210,6 +225,55 @@ public final class RegimeRelations {
   private static final long TENANT_RENT_MILLI_GRAIN = 20_000_000L;
 
   /**
+   * ★★★ <b>W5-fix2（2026-10-11）：铸币生产方式（{@code government_mint}）的默认关系 = <b>空规则表</b></b>。
+   *
+   * <p>★★ <b>它是一个具名常量而不是"顺手传个 {@code List.of()}"</b>：下面 {@link #BY_REGIME} 的那一行要能自证"空表是
+   * <b>本档的制度内容</b>，不是漏写"（{@link #mintRules()} 的类注给出两条依据）。
+   */
+  private static final List<RuleSpec> MINT_RULES = Collections.emptyList();
+
+  /** 铸币日志（settlement 分类）：服务 §一.9 —— 本档"空规则表"的具名说明（见 {@link #mintRules()}）。 */
+  private static final org.slf4j.Logger LOG = EconomyLog.settlement();
+
+  /**
+   * ★★★ <b>铸币这一档的制度</b>（W5-fix2 新增；唯一调用方 = {@link #BY_REGIME}）。
+   *
+   * <pre>
+   * 组织者     = 该 unit 的 operator = 政府家户（播种时显式给，见 EconomySeeder.seedGovernmentMint）
+   * 劳动与投入 = 组织者自备（劳动来自它落点格的**城镇劳动配额**，投入是它库存里的工具 —— 都不走实物分成）
+   * 规则表     = 空               ⇒ 产出全部留在 residualOwner = operator（裁定 E9 的等价路径）
+   * </pre>
+   *
+   * <p>★★ <b>为什么必须是空表（两条依据，逐条回代码核过）</b>：
+   *
+   * <ol>
+   *   <li><b>铸币没有实物产出 ⇒ 本表的规则永远不被结算，写了就是死数据</b>。铸币的产出行是 {@code Industry.moneyOutputPerUnit}（{@code
+   *       MoneyOutput}），而 {@code EconomySettlement.harvest} 对 {@code recipe.outputPerUnit()} 为空的
+   *       unit <b>在结算规则之前就 return</b>（{@code netByCommodity.isEmpty()} ⇒ "连规则都不必结算"）。钱的入账走 {@code
+   *       MintSettlement.credit}（{@code 国库账户余额 +minted}），不走 {@code ProductionSettlement}。⇒ 任何
+   *       {@code OUTPUT_SHARE}/{@code FIXED_MONEY_WAGE} 腿在这里都<b>不会执行一次</b>。
+   *   <li><b>写"四个阶层 cohort"的规则腿会在第一个关账日当场炸</b>：{@code harvest} 的第一步守卫是 {@code
+   *       EconomySettlement.requireCohortRows}（"受方必须有行、且住在这一格"），而铸币 labor 的受方家户是
+   *       <b>零人口的政府家户</b>（它的行 {@code slot = official}，在 {@code ResidenceKind} × 传统四阶层里
+   *       <b>没有对应行</b>）⇒ 四条 {@code (hex,urban,*) cohort} 腿逐条 fail-closed。★ 这不是"缺登记"，是这一档
+   *       本来就没有实物分成；凭空补四条腿会把它伪装成"有劳动者分成"。
+   * </ol>
+   *
+   * <p>★ <b>为什么不是"照 {@code handicraft} 抄一份"</b>：{@code handicraft} 的 600‰ × 劳动量发的是<b>布</b>（{@code
+   * CLOTH}，它的产出商品）；铸币的产出物是<b>货币</b>，而 {@link CompensationRule} 的实物腿要求 {@code commodity} 是一个 {@link
+   * CommodityId}（货币不是商品，见 {@code MoneyOutput} 的类注："键是两个身份命名空间"）⇒ 照抄表达不出来。 唯一能表达"发钱"的腿是 {@code
+   * FIXED_MONEY_WAGE}，而它<b>在 {@code harvest} 的实物分支里结算</b> （{@code netByCommodity} 空 ⇒ 走不到）⇒ 同样是死数据。
+   *
+   * <p>★★ <b>登记之后"多居住类型即抛"这一条对本档自动失效（如实记）</b>：那个循环逐条检查 {@code spec.weight() != LABOR_AMOUNT}，空表 ⇒
+   * 循环体一次都不执行 ⇒ 铸币可以由多种居住类型的家户供给而不抛。★ 这是<b>正确的放宽</b>：那一 条守卫的理由是"非劳动加权的腿会被重复计费"，而本档一条腿都没有 ⇒
+   * 不存在可重复计费的东西。真档里铸币的劳动来自它落点格的 <b>城镇池</b>（{@code EconomySeeder.seedGovernmentMint}
+   * 的"劳动从哪来"一节），故常态就是单居住类型。
+   */
+  private static List<RuleSpec> mintRules() {
+    return MINT_RULES;
+  }
+
+  /**
    * ★★ <b>默认关系只覆盖传统四档</b>（贫农/中农/富农/地主）—— 不能读 {@code SocialClassId.all()}： S3 追加的 {@code
    * landless_laborer}/{@code artisan}/{@code official} <b>没有</b>创世行（播种器仍按传统四档建行）， 若默认规则点名它们，收获时的
    * {@code requireCohortRows} 会因"受方行不存在"fail-closed ⇒ 旧世界开不了账。 新档位由 S2/S3
@@ -242,6 +306,9 @@ public final class RegimeRelations {
     byRegime.put(RegimeOperators.HOUSEHOLD, householdRules());
     byRegime.put(RegimeOperators.HANDICRAFT, handicraftRules());
     byRegime.put(RegimeOperators.TENANT, tenantRules());
+    // ★★★ W5-fix2（2026-10-11）：铸币档（W5 的第三个 P0：创世被拒）。★ 表序 = spec §六 表序 + 本档追加在末
+    //   （既不插队改变既有四档的迭代序，也不动它们的规则）⇒ registered() 的档位列表只在尾部多一项。
+    byRegime.put(RegimeOperators.GOVERNMENT_MINT, mintRules());
     BY_REGIME = Collections.unmodifiableMap(byRegime);
   }
 
@@ -314,6 +381,31 @@ public final class RegimeRelations {
       }
     }
     HexCoord hex = hexOf(industry);
+    if (specs.isEmpty()) {
+      // ★★ §一.9（W5-fix2）：本档**唯一的等价路径**必须具名 —— 空规则表不是"漏写规则"，而是这一档的制度内容
+      //   （产出全归 residualOwner = operator；见 mintRules() 的两条依据）。★ 发 DEBUG 而不是 INFO：
+      //   铸币在小世界里每个 revision 都会被解析一次，INFO 会刷屏；而"发生了什么事"那一面（铸了多少毫、
+      //   上限拒了多少）已由 MintSettlement 的 MINT_SETTLED / MINT_LIMIT_REJECTED 在关账日给出。
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "REGIME_RELATION_EMPTY_TEMPLATE",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "regime",
+                  regime.value(),
+                  "activity",
+                  activity.value(),
+                  "industry",
+                  industry.value(),
+                  "operator",
+                  operator.kind().name() + ":" + operator.id(),
+                  "residualOwner",
+                  operator.kind().name() + ":" + operator.id(),
+                  "ruleCount",
+                  0,
+                  "reason",
+                  "empty-rule-template-all-output-stays-with-operator"));
+    }
     List<CompensationRule> rules = new ArrayList<>(specs.size() * Math.max(1, residences.size()));
     for (RuleSpec spec : specs) {
       // ★ 居住类型按 ResidenceKind.all() 的保序取（**不按 Set 的迭代序**：那会让规则表的次序成为调用方容器的函数）。
@@ -355,6 +447,14 @@ public final class RegimeRelations {
       return LaborSource.FAMILY;
     }
     if (RegimeOperators.HANDICRAFT.equals(value)) {
+      return LaborSource.WAGE;
+    }
+    if (RegimeOperators.GOVERNMENT_MINT.equals(value)) {
+      // ★★ W5-fix2：铸币的"劳动从哪来" = 该 unit 的劳动配额（EconomySeeder.seedGovernmentMint 从**落点格城镇池的
+      //   剩余预算**里切一份给铸币，见那里的"劳动从哪来"一节）⇒ 与 handicraft 同档（WAGE：劳动力是被雇来的，
+      //   不是自己家的）。★ 本档的规则表是空的（见 mintRules()）⇒ 这一维当前**没有数值后果**，它的作用是在
+      //   登记处把"铸币的劳动不是经营者自营"这句话写下来（LaborSourcePolicy.priorityTier 的同优先级次序、
+      //   HouseholdCondition/HouseholdClassRule 的谋生状态读数都读它）。
       return LaborSource.WAGE;
     }
     throw new IllegalArgumentException(
@@ -438,14 +538,31 @@ public final class RegimeRelations {
   }
 
   /**
-   * 登记面（<b>保序</b>：spec §六 表序）：{@code regime 字面量 → 该档第一条规则的规则类型}。
+   * 登记面（<b>保序</b>：spec §六 表序）：{@code regime 字面量 → 该档<b>第一条规则的规则类型</b>}。
    *
    * <p>★ <b>派生视图、不是第二份规则表</b>：它每次从 {@link #BY_REGIME} 算出来 ⇒ 与规则表<b>不可能漂开</b> （改成"两处各写一份"会立刻产生"表说
    * A、标志类型说 B"的病）。返回的 Map 不可变。
+   *
+   * <p>★★ <b>W5-fix2（2026-10-11）：「没有第一条规则」的档<b>不出现在本视图里</b>，不是取 {@code get(0)} 硬崩</b> —— 本方法的契约是"档位
+   * → 它的<b>标志性规则类型</b>"，而 {@code government_mint} 的规则表<b>整体为空</b> （依据见 {@link #mintRules()}）⇒
+   * 它<b>没有</b>标志性规则类型，这个视图里就没有它的条目。 ★ 不改成 {@code Map<String, Optional<RuleType>>}：那会让四个既有只读 {@code
+   * containsKey} 的调用点 （{@code ModeMigrationSettlement} ×3、{@code ExpectedProfitBook}
+   * ×1）与既有测试全部要改签名，而"没有标志性类型" 与"这一档不在表里"在本视图的语义下是同一件事（本视图本来就<b>只</b>覆盖有标志性类型的档）。
+   *
+   * <p>★★ <b>这条修法是被实测逼出来的</b>：注册 {@code government_mint} 之后，120 天长跑在 {@code
+   * ExpectedProfitBook.relationFor}（经 {@code registered().containsKey} 判"这一档有默认表"）走进 {@code
+   * defaultRelation}，而 {@code defaultRelation} 的 DEBUG 行里读了本视图 ⇒ {@code IndexOutOfBoundsException:
+   * Index: 0}（{@code Collections$EmptyList.get}）—— <b>铸币让"空规则表的档"第一次真的进了 {@code BY_REGIME}</b>。
+   *
+   * <p>★ <b>其余入口的键集不受影响</b>：{@link #BY_REGIME} 本身照旧含全部五档（错误消息、{@code containsKey} 判据都读它）；
+   * 本视图只服务"标志性类型"这一个用途。
    */
   public static Map<String, RuleType> registered() {
     Map<String, RuleType> registered = new LinkedHashMap<>();
     for (Map.Entry<String, List<RuleSpec>> entry : BY_REGIME.entrySet()) {
+      if (entry.getValue().isEmpty()) {
+        continue; // ★ 空规则表的档（government_mint）没有标志性类型 —— 见方法注释（不取 get(0)）
+      }
       registered.put(entry.getKey(), entry.getValue().get(0).type());
     }
     return Collections.unmodifiableMap(registered);

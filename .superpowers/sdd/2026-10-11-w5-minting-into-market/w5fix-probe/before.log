@@ -1,0 +1,236 @@
+=== jackson impl version = 2.22.2
+=== mapper = SimosObjectMapper.create()（裸 mapper；模块私有 mixin 一概看不见）
+
+########## SCOPE A：EconomyData + EconomyChangeSet 闭包（W5-fix 责任区）
+### TYPE io.mosire.simos.economy.EconomyData [BeanSerializer] components=37 props=37 [allocations, assetRules, assetShares, candidates, classPositions, classShares, classStandings, classStructures, classes, commodityFreightBaseMilli, crisisSignals, currencies, debtContracts, demands, flows, govMarketMandates, governments, householdDebtRefs, industries, liquidationPolicies, marketRoundStats, marketTables, marketZones, meta, modeTransitions, modes, moneyInstruments, moneyIssuances, operatorConditions, outputQuantityOverrides, periodicAdjustments, pledges, productionEfficiency, productionOrganizations, relations, shipments, units]
+### TYPE io.mosire.simos.economy.change.EconomyChangeSet [BeanSerializer] components=37 props=37 [allocations, assetRules, assetShares, candidates, classPositions, classShares, classStandings, classStructures, classes, commodityFreightBaseMilli, crisisSignals, currencies, debtContracts, demands, flows, govMarketMandates, governments, householdDebtRefs, industries, liquidationPolicies, marketRoundStats, marketTables, marketZones, meta, modeTransitions, modes, moneyInstruments, moneyIssuances, operatorConditions, outputQuantityOverrides, periodicAdjustments, pledges, productionEfficiency, productionOrganizations, relations, shipments, units]
+    shaped-not-written  isEmpty() → 候选属性名="empty"  实测 props 里没有 ⇒ 不会写出
+### TYPE io.mosire.simos.economy.model.EconomyMeta [BeanSerializer] components=5 props=5 [activatedDay, lastClosedCycle, mapId, migrationSource, rulesVersion]
+    shaped-not-written  isCurrentRuntimeVersion() → 候选属性名="currentRuntimeVersion"  实测 props 里没有 ⇒ 不会写出
+### TYPE io.mosire.simos.economy.api.id.IndustryId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.Industry [BeanSerializer] components=18 props=18 [allocation, capacity, capacityPerUnit, cycleDays, cycleInputPerUnit, cycleInputUsedMilli, cycleLaborMilli, dailyInputPerUnit, dailyLaborPerUnit, id, laborPerUnit, moneyOutputPerUnit, name, operator, outputPerUnit, progressDays, regime, slots]
+### TYPE io.mosire.simos.social.api.id.HouseholdId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.HouseholdEconomy [BeanSerializer] components=9 props=9 [cycleNaturalNeedMilli, effectiveDemand, id, laborMilli, money, naturalNeeds, participationPerMille, population, view]
+### TYPE io.mosire.simos.economy.api.id.DebtContractId [JsonValueSerializer] components=1 props=0 [value]  ★props≠components []
+### TYPE io.mosire.simos.economy.model.DebtContract [BeanSerializer] components=10 props=10 [creditor, debtor, dueCycle, id, lastInterestDay, openedDay, principal, status, terms, unit]
+### TYPE io.mosire.simos.economy.model.FlowRow [BeanSerializer] components=13 props=13 [births, capitalizedArrears, consumed, deaths, id, income, interestDue, netSurplus, newBorrowing, repaid, repaidMoney, taxPaid, unmetNeed]
+### TYPE io.mosire.simos.economy.api.id.LaborAllocationId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.api.labor.HouseholdLaborCommitment [BeanSerializer] components=8 props=8 [activity, actor, group, household, id, kind, laborMilli, period]
+### TYPE io.mosire.simos.economy.api.id.ProductionUnitId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.api.relation.ProductionRules [BeanSerializer] components=6 props=6 [activity, inputSupplier, laborSource, operator, residualOwner, rules]
+### TYPE io.mosire.simos.economy.api.id.MarketZoneId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.MarketTable [BeanSerializer] components=3 props=3 [hexes, numeraire, prices]
+    shaped-not-written  isEmpty() → 候选属性名="empty"  实测 props 里没有 ⇒ 不会写出
+### TYPE io.mosire.simos.economy.api.id.ShipmentId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.api.market.ShipmentBatch [BeanSerializer] components=6 props=6 [allocations, arrivalTick, commodity, dispatchTick, quantity, route]
+### TYPE io.mosire.simos.economy.api.id.AssetShareId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.OwnershipStake [BeanSerializer] components=7 props=7 [asset, id, industry, kind, operator, owner, quantity]
+### TYPE io.mosire.simos.economy.model.OperatorCondition [BeanSerializer] components=24 props=24 [cashReserveMilli, consecutiveDebtStressCycles, consecutiveInputShortfallCycles, consecutiveSuspendedCycles, consecutiveUnsoldCycles, cycleFilledQty, cycleInputShortfallCycles, cycleMarketRounds, cycleOfferedQty, cycleOutcompetedActors, cycleOutcompetedQty, cycleRevenueByCurrency, cycleUnfilledQty, debtPrincipalMilli, debtServiceDueMilli, industry, lastCycleCostMilli, lastCycleNetMilli, lastCycleRevenueByCurrency, lastReason, reopens, selfUsableStockMilli, status, unsoldStockMilli]
+### TYPE io.mosire.simos.economy.model.ProductionProcess [BeanSerializer] components=7 props=7 [cycleInputUsedMilli, cycleLaborMilli, id, industry, modeKey, operator, progressDays]
+### TYPE io.mosire.simos.economy.api.id.DemandId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.HouseholdDemand [BeanSerializer] components=12 props=12 [commodity, createdDay, expiresDay, hex, household, id, kind, priority, quantityPerCycle, scope, source, unit]
+### TYPE io.mosire.simos.economy.api.id.CandidateId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.ProductionCandidate [BeanSerializer] components=14 props=14 [acceptedRightKinds, assetSource, buildDays, cycleDays, id, inputPerUnit, laborPerUnit, laborSource, name, output, outputPerUnit, regime, requiredAssets, version]
+### TYPE io.mosire.simos.economy.api.id.ProductionModeId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.ProductionMode [BeanSerializer] components=4 props=4 [classStructureId, id, name, version]
+### TYPE io.mosire.simos.economy.api.id.ClassStructureId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.ClassStructure [BeanSerializer] components=4 props=4 [defaultSharesPerMille, id, modeId, positions]
+### TYPE io.mosire.simos.economy.api.id.ClassPositionId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.ProductionRole [BeanSerializer] components=7 props=7 [id, laborRole, modeId, name, relationToMeans, ruleExtensions, surplusRole]
+### TYPE io.mosire.simos.economy.model.HouseholdClassMembership [BeanSerializer] components=8 props=8 [consecutiveDebtStressCycles, currentPositionId, householdId, lastTransitionDay, originalPositionId, participatingPositionIds, reason, retainedShares]
+### TYPE io.mosire.simos.economy.api.id.ProductionOrganizationId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.ProductionEnterprise [BeanSerializer] components=12 props=12 [assetSources, classPositionId, id, inputSources, laborSources, modeId, organizer, outputOwnership, relationTemplateRef, status, statusReason, unitId]
+### TYPE io.mosire.simos.economy.api.id.AssetRuleId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.AssetRule [BeanSerializer] components=8 props=8 [assetKind, id, isCoreMeans, liquidationPriority, modeId, pledgeable, rentRule, transferRule]
+### TYPE io.mosire.simos.economy.api.id.GovernmentId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.Government [BeanSerializer] components=7 props=7 [id, issuable, mintScalePerCycle, mintedLastCyclePerCycle, nationRef, officialRates, treasury]
+### TYPE io.mosire.simos.economy.api.id.MoneyIssuanceId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.api.money.MoneyIssuanceRecord [BeanSerializer] components=8 props=8 [amount, currency, day, governmentId, id, kind, period, reason]
+### TYPE io.mosire.simos.economy.api.id.PledgeId [JsonValueSerializer] components=1 props=0 [value]  ★props≠components []
+### TYPE io.mosire.simos.economy.model.Pledge [BeanSerializer] components=7 props=7 [assetShareId, debtContractId, id, modeId, priority, quantity, status]
+### TYPE io.mosire.simos.economy.model.LiquidationPolicy [BeanSerializer] components=6 props=6 [maxLiquidatePerMille, policyValuePerUnitMilli, priceSource, protectedReserve, recipientRule, ruleId]
+### TYPE io.mosire.simos.economy.api.id.CrisisSignalId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.HexCrisisSignal [BeanSerializer] components=9 props=9 [classes, day, evidence, hex, households, id, kind, reason, severity]
+### TYPE io.mosire.simos.economy.api.id.ModeTransitionId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.ModeTransition [BeanSerializer] components=9 props=9 [effectiveDay, fromModeId, id, organizationId, reason, requestedDay, retainOriginalPerMille, status, toModeId]
+### TYPE io.mosire.simos.economy.api.id.ClassShareId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.ClassShare [BeanSerializer] components=5 props=5 [classPositionId, householdId, id, sharePerMille, transitionId]
+### TYPE io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment [BeanSerializer] components=11 props=11 [expiresOnDay, goodsPerCycle, id, moneyPerCycle, payee, payer, periodDays, phaseDay, policySource, reason, startsOnDay]
+### TYPE io.mosire.simos.economy.api.id.CommodityId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.ProductionEfficiencyState [BeanSerializer] components=5 props=5 [cycleModifierSumPerMille, laborDayRemainderMilli, laborScaleRemainderMilli, modifierRemainderMilli, scaleRemainderMilli]
+### TYPE io.mosire.simos.economy.api.id.CurrencyId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.api.money.CurrencyDef [BeanSerializer] components=3 props=3 [displayName, id, scale]
+### TYPE io.mosire.simos.economy.api.id.InstrumentId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.api.money.MoneyInstrument [BeanSerializer] components=5 props=5 [currency, id, issuer, kind, redeemer]
+### TYPE io.mosire.simos.economy.api.market.MarketZone [BeanSerializer] components=7 props=7 [anchor, hexes, legalTender, officialRates, priceAlphaPerMille, radiusHex, zoneId]
+### TYPE io.mosire.simos.economy.model.HouseholdDebtReference [BeanSerializer] components=2 props=2 [contract, household]
+### TYPE io.mosire.simos.economy.api.market.MarketMandateId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.api.market.GovernmentMarketMandate [BeanSerializer] components=10 props=10 [authorizedDay, commodity, expiresOnDay, filledMilli, government, id, limitPriceMilli, quantityMilli, side, source]
+### TYPE io.mosire.simos.economy.model.MarketRoundStats [BeanSerializer] components=10 props=10 [cycleCashTurnoverMilli, cycleToDate, cycleTurnoverMilli, lastRound, lastRoundCashTurnoverMilli, lastRoundDay, lastRoundTurnoverMilli, previousCycle, previousCycleCashTurnoverMilli, previousCycleTurnoverMilli]
+### TYPE io.mosire.simos.util.state.FieldDelta$Unchanged [BeanSerializer] components=0 props=0
+### TYPE io.mosire.simos.util.state.FieldDelta$Upsert [BeanSerializer] components=1 props=1 [entries]
+### TYPE io.mosire.simos.util.state.FieldDelta$Remove [BeanSerializer] components=1 props=1 [keys]
+### TYPE io.mosire.simos.util.state.FieldDelta$Patch [BeanSerializer] components=2 props=2 [removals, upserts]
+### TYPE io.mosire.simos.economy.api.id.RegimeId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.ClassSlot [BeanSerializer] components=3 props=3 [id, laborParticipationPerMille, name]
+### TYPE io.mosire.simos.economy.model.AllocationRule$Split [BeanSerializer] components=2 props=2 [laborWeightPerMille, meansWeightPerMille]
+### TYPE io.mosire.simos.economy.model.AllocationRule$WageFirst [BeanSerializer] components=2 props=2 [ownerResidual, wagePerLaborMilli]
+### TYPE io.mosire.simos.actor.api.actor.ActorRef [BeanSerializer] components=2 props=2 [id, kind]
+### TYPE io.mosire.simos.economy.model.MoneyOutput [BeanSerializer] components=1 props=2 [perUnit]  ★props≠components [empty, perUnit]
+    SHAPED-SERIALIZED  isEmpty() → prop="empty"  ★会被写出（非组件）
+### TYPE io.mosire.simos.economy.api.cohort.CohortKey [JsonValueSerializer] components=3 props=0 [hex, residence, stratum]  ★props≠components []
+### TYPE io.mosire.simos.economy.api.debt.DebtUnit$Commodity [BeanSerializer] components=1 props=1 [commodity]
+### TYPE io.mosire.simos.economy.api.debt.DebtUnit$Money [BeanSerializer] components=1 props=1 [currency]
+### TYPE io.mosire.simos.economy.api.debt.DebtTerms [BeanSerializer] components=7 props=7 [defaultRemedy, dueCycle, dueDay, interestRatePerMillePerCycle, interestTiming, monetaryConversion, repaymentRule]
+### TYPE io.mosire.simos.social.api.id.PeopleLotId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.api.relation.Payee$ToActor [BeanSerializer] components=1 props=1 [actor]
+### TYPE io.mosire.simos.economy.api.relation.Payee$ToHousehold [BeanSerializer] components=1 props=1 [household]
+### TYPE io.mosire.simos.economy.api.relation.Payee$ToCohort [BeanSerializer] components=1 props=1 [cohort]
+### TYPE io.mosire.simos.economy.api.relation.CompensationRule [BeanSerializer] components=9 props=9 [commodity, currency, fixedAmount, pool, priority, ratePerMille, recipient, type, weight]
+### TYPE io.mosire.simos.map.hex.HexCoord [BeanSerializer] components=2 props=2 [q, r]
+### TYPE io.mosire.simos.economy.api.market.TradeRoute [BeanSerializer] components=6 props=6 [capacityPerWindow, costPerUnit, from, lossPerMille, to, travelTicks]
+### TYPE io.mosire.simos.economy.api.market.ShipmentAllocation [BeanSerializer] components=5 props=5 [buyer, deliverTo, lossBearer, quantity, seller]
+### TYPE io.mosire.simos.economy.model.RentRule [BeanSerializer] components=3 props=3 [legs, priority, type]
+### TYPE io.mosire.simos.economy.model.TransferRule [BeanSerializer] components=3 props=3 [allowSublease, requiresOwnerConsent, transferable]
+### TYPE io.mosire.simos.economy.api.fx.OfficialRate [BeanSerializer] components=4 props=4 [base, buyPerMille, quote, sellPerMille]
+### TYPE io.mosire.simos.economy.api.id.SocialClassId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.model.CommodityRound [BeanSerializer] components=5 props=5 [averagePriceMilli, demandMilli, supplyMilli, tradedMilli, unmetMilli]
+### TYPE io.mosire.simos.economy.model.RentRule$RentLeg [BeanSerializer] components=5 props=5 [commodity, currency, fixedAmount, kind, ratePerMille]
+### SUMMARY typesAudited=91 components=463 plainNoArg(不写出)=39 shapedMethods=4 hazards=1 props≠components=1
+  MISMATCH [A] MoneyOutput components=[perUnit] props=[empty, perUnit]
+  --- 未做属性内省的类型（37 个）
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.actor.api.actor.ActorKind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.actor.api.asset.AssetKind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.cohort.ResidenceKind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.debt.DebtStatus
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.debt.DefaultRemedy
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.debt.InterestTiming
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.debt.MonetaryConversion
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.debt.RepaymentRule
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.labor.LaborCommitmentKind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.market.GovernmentMarketMandate$Side
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.market.LossBearer
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.money.InstrumentKind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.money.MoneyIssuanceKind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.relation.LaborSource
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.relation.Pool
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.relation.RuleType
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.relation.Weight
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.api.stock.DeductionReason
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.HexCrisisSignal$Kind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.HouseholdDemand$DemandKind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.HouseholdDemand$DemandScope
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.HouseholdDemand$DemandUnit
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.LiquidationPolicy$PayeeRule
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.LiquidationPolicy$PriceSource
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.ModeTransition$Status
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.OperatorCondition$IndustryStatus
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.OwnershipStake$RightKind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.Pledge$Status
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.ProductionEnterprise$Status
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.ProductionRole$LaborRole
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.ProductionRole$RelationToMeans
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.ProductionRole$SurplusRole
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.economy.model.RentRule$RentType
+  SKIPPED [非具体类型，只作节点] io.mosire.simos.economy.api.debt.DebtUnit（sealed：实现已按许可子类入队）
+  SKIPPED [非具体类型，只作节点] io.mosire.simos.economy.api.relation.Payee（sealed：实现已按许可子类入队）
+  SKIPPED [非具体类型，只作节点] io.mosire.simos.economy.model.AllocationRule（sealed：实现已按许可子类入队）
+  SKIPPED [非具体类型，只作节点] io.mosire.simos.util.state.FieldDelta（sealed：实现已按许可子类入队）
+### 系统排查表（每个**非组件 bean 形状无参方法**一条）
+| 类型 | 方法 | 隐式属性名 | 写侧写出 | 读侧 | 处置 |
+|---|---|---|---|---|---|
+| EconomyChangeSet | `isEmpty()` | `empty` | 否 | — | 无需处理（实测不写出） |
+| EconomyMeta | `isCurrentRuntimeVersion()` | `currentRuntimeVersion` | 否 | — | 无需处理（实测不写出） |
+| MarketTable | `isEmpty()` | `empty` | 否 | — | 无需处理（实测不写出） |
+| MoneyOutput | `isEmpty()` | `empty` | **是** | **拒绝** | ★需处理：读侧拒收 ⇒ 写出即读不回 |
+### SHAPED（bean 形状的无参方法：isEmpty / isXxx / getXxx）与实测判定
+  shaped-not-written  isEmpty() → 候选属性名="empty"  实测 props 里没有 ⇒ 不会写出
+  shaped-not-written  isCurrentRuntimeVersion() → 候选属性名="currentRuntimeVersion"  实测 props 里没有 ⇒ 不会写出
+  shaped-not-written  isEmpty() → 候选属性名="empty"  实测 props 里没有 ⇒ 不会写出
+  SHAPED-SERIALIZED  isEmpty() → prop="empty"  ★会被写出（非组件）
+### HAZARDS（会被写出、且不是 record 组件的属性）
+  [A] MoneyOutput :: 写侧写出 prop="empty" ← isEmpty()，实测读侧把它当**未知字段**（UnrecognizedPropertyException）⇒ 写出即读不回
+
+########## SCOPE B：SocialData + ActorData 闭包（只读旁证，不改）
+### TYPE io.mosire.simos.social.SocialData [BeanSerializer] components=10 props=10 [cities, fleeStates, groups, households, populationEvents, populations, provisioning, satietyPerMille, vitalRates, vitalRemainders]
+### TYPE io.mosire.simos.actor.ActorData [BeanSerializer] components=3 props=3 [accounts, actors, meta]
+### TYPE io.mosire.simos.map.hex.HexCoord [BeanSerializer] components=2 props=2 [q, r]
+### TYPE io.mosire.simos.social.population.PopulationSeries [BeanSerializer] components=3 props=3 [anchor, events, growth]
+### TYPE io.mosire.simos.map.CityId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.social.city.SocialCity [BeanSerializer] components=5 props=5 [at, id, name, props, region]
+### TYPE io.mosire.simos.social.api.id.PeopleLotId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.social.population.PopulationGroup [BeanSerializer] components=5 props=5 [ageAtAnchorDays, anchorTick, count, id, sex]
+### TYPE io.mosire.simos.social.api.id.HouseholdId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.social.household.Household [BeanSerializer] components=5 props=5 [id, location, members, profile, vitalRates]
+### TYPE io.mosire.simos.social.api.population.HouseholdPopulationEvent [BeanSerializer] components=10 props=10 [ageBracketId, count, day, householdId, id, lotId, reason, sex, source, type]
+### TYPE io.mosire.simos.social.provisioning.SocialProvisioning [BeanSerializer] components=4 props=4 [globalDemandDefaults, globalLaborDefaults, householdDemandOverrides, householdLaborOverrides]
+### TYPE io.mosire.simos.social.population.SocialVitalRates [BeanSerializer] components=1 props=1 [globalDefaults]
+### TYPE io.mosire.simos.social.population.SocialVitalRemainders [BeanSerializer] components=1 props=1 [entries]
+### TYPE io.mosire.simos.social.household.HouseholdFleeState [BeanSerializer] components=7 props=7 [fleeRatePerMille, lastDriverDay, lastDriverReason, lastFleeCount, lastFleeDay, lastFleeReason, remainderMilli]
+### TYPE io.mosire.simos.actor.ActorMeta [BeanSerializer] components=3 props=3 [activatedDay, mapId, rulesVersion]
+### TYPE io.mosire.simos.actor.api.actor.ActorRef [BeanSerializer] components=2 props=2 [id, kind]
+### TYPE io.mosire.simos.actor.model.Actor [BeanSerializer] components=2 props=2 [label, ref]
+### TYPE io.mosire.simos.actor.model.HouseholdAccountKey [BeanSerializer] components=1 props=1 [household]
+### TYPE io.mosire.simos.actor.model.HouseholdInventory [BeanSerializer] components=5 props=5 [balances, frozenBalances, frozenMoney, key, money]
+### TYPE io.mosire.simos.util.time.Segment [BeanSerializer] components=2 props=2 [from, value]
+### TYPE io.mosire.simos.util.time.SegmentedSeries [BeanSerializer] components=3 props=3 [addition, events, segments]
+### TYPE io.mosire.simos.util.time.Event [BeanSerializer] components=3 props=3 [at, mode, value]
+### TYPE io.mosire.simos.map.region.RegionId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.social.api.household.HouseholdLocation$Hex [BeanSerializer] components=1 props=1 [hex]
+### TYPE io.mosire.simos.social.api.household.HouseholdLocation$Unit [BeanSerializer] components=1 props=1 [unitId]
+### TYPE io.mosire.simos.social.api.household.HouseholdProfile [BeanSerializer] components=3 props=3 [description, metadata, name]
+### TYPE io.mosire.simos.social.api.population.HouseholdVitalRates [BeanSerializer] components=1 props=1 [rates]
+### TYPE io.mosire.simos.social.provisioning.DemandCoefficient [BeanSerializer] components=6 props=6 [ageBracket, amountMilli, commodity, cycleDays, period, sex]
+### TYPE io.mosire.simos.social.provisioning.LaborCoefficient [BeanSerializer] components=3 props=3 [ageBracket, milliHoursPerTick, sex]
+### TYPE io.mosire.simos.social.population.SocialVitalRemainder [BeanSerializer] components=4 props=4 [householdId, kind, lotId, numerator]
+### TYPE io.mosire.simos.economy.api.id.CommodityId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.economy.api.id.CurrencyId [BeanSerializer] components=1 props=1 [value]
+### TYPE io.mosire.simos.util.time.SimosTimestamp [BeanSerializer] components=2 props=2 [calendarLabel, tick]
+### TYPE io.mosire.simos.social.api.population.HouseholdVitalRate [BeanSerializer] components=4 props=4 [birthRatePerMillionPerTick, bracketId, deathRatePerMillionPerTick, sex]
+### SUMMARY typesAudited=35 components=108 plainNoArg(不写出)=9 shapedMethods=0 hazards=0 props≠components=0
+  --- 未做属性内省的类型（8 个）
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.actor.api.actor.ActorKind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.social.api.population.PopulationEventType
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.social.api.population.Sex
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.social.population.AgeBracket
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.social.population.VitalKind
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.social.provisioning.DemandPeriod
+  SKIPPED [enum，按名字序列化无属性] io.mosire.simos.util.time.EventMode
+  SKIPPED [非具体类型，只作节点] io.mosire.simos.social.api.household.HouseholdLocation（sealed：实现已按许可子类入队）
+### SHAPED（bean 形状的无参方法：isEmpty / isXxx / getXxx）与实测判定
+  （无）
+### HAZARDS（会被写出、且不是 record 组件的属性）
+  （无）
+
+=== PART B: MoneyOutput 裸 mapper 往返（BLOCKED-1 的最小复现/验收）
+  JSON = {"perUnit":{"silver":500},"empty":false}
+  含 "empty" 属性 = true
+  读回失败 = com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException: Unrecognized field "empty" (class io.mosire.simos.economy.model.MoneyOutput), not marked as ignorable (one known property: "perUnit")
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 40] (through reference chain: io.mosire.simos.economy.model.MoneyOutput["empty"])
+  旧字节（含 "empty"）读回 = 失败: UnrecognizedPropertyException: Unrecognized field "empty" (class io.mosire.simos.economy.model.MoneyOutput), not marked as ignorable (one known property: "perUnit")
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 40] (through reference chain: io.mosire.simos.economy.model.MoneyOutput["empty"])
+  其它未知字段仍 fail-closed = true（bogus 被拒）
+  NONE JSON = {"perUnit":{},"empty":true}
+  NONE 读回失败 = UnrecognizedPropertyException: Unrecognized field "empty" (class io.mosire.simos.economy.model.MoneyOutput), not marked as ignorable (one known property: "perUnit")
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 27] (through reference chain: io.mosire.simos.economy.model.MoneyOutput["empty"])
+
+=== PART C: EconomyCodec.encodeSnapshot/decodeSnapshot 端到端往返（含 Industry.moneyOutputPerUnit）
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+  编码成功，字节数 = 1572
+  含 "empty" 属性 = true
+  失败 = java.lang.IllegalStateException: economy 侧 JSON 解码失败: EconomySnapshot
+    caused by com.fasterxml.jackson.databind.JsonMappingException: EconomyData 解码失败: {"meta":null,"industries":{"ind-mint-probe":{"id":{"value":"ind-mint-probe"},"name":"探针铸币作坊","regime":{"value":"household_self"},"cycleDays":30,"capacityPerUnit":{"TOOL":2000},"dailyInputPerUnit":{},"dailyLaborPerUnit":0,"laborPerUnit":0,"outputPerUnit":{"grain":1},"cycleInputPerUnit":{},"slots":[{"id":{"value":"artisan"},"name":"探针阶层","laborParticipationPerMille":1000}],"allocation":{"@class":"split","meansWeightPerMille":500,"laborWeightPerMille":500},"operator":null,"progressDays":0,"capacity":{},"cycleLaborMilli":0,"cycleInputUsedMilli":{},"moneyOutputPerUnit":{"perUnit":{"silver":500},"empty":false}}},"classes":{},"debtContracts":{},"flows":{},"allocations":{},"relations":{},"marketTables":{},"shipments":{},"assetShares":{},"operatorConditions":{},"units":{},"demands":{},"candidates":{},"modes":{},"classStructures":{},"classPositions":{},"classStandings":{},"productionOrganizations":{},"assetRules":{},"governments":{},"moneyIssuances":{},"pledges":{},"liquidationPolicies":{},"crisisSignals":{},"modeTransitions":{},"classShares":{},"periodicAdjustments":{},"outputQuantityOverrides":{},"productionEfficiency":{},"currencies":{"silver":{"id":"silver","scale":3,"displayName":"银"}},"moneyInstruments":{"silver-specie":{"id":{"value":"silver-specie"},"currency":{"value":"silver"},"kind":"SPECIE","issuer":null,"redeemer":null}},"marketZones":{},"householdDebtRefs":{},"commodityFreightBaseMilli":{},"govMarketMandates":{},"marketRoundStats":{}} (through reference chain: io.mosire.simos.economy.EconomySnapshot["data"])
+    caused by java.lang.IllegalStateException: EconomyData 解码失败: {"meta":null,"industries":{"ind-mint-probe":{"id":{"value":"ind-mint-probe"},"name":"探针铸币作坊","regime":{"value":"household_self"},"cycleDays":30,"capacityPerUnit":{"TOOL":2000},"dailyInputPerUnit":{},"dailyLaborPerUnit":0,"laborPerUnit":0,"outputPerUnit":{"grain":1},"cycleInputPerUnit":{},"slots":[{"id":{"value":"artisan"},"name":"探针阶层","laborParticipationPerMille":1000}],"allocation":{"@class":"split","meansWeightPerMille":500,"laborWeightPerMille":500},"operator":null,"progressDays":0,"capacity":{},"cycleLaborMilli":0,"cycleInputUsedMilli":{},"moneyOutputPerUnit":{"perUnit":{"silver":500},"empty":false}}},"classes":{},"debtContracts":{},"flows":{},"allocations":{},"relations":{},"marketTables":{},"shipments":{},"assetShares":{},"operatorConditions":{},"units":{},"demands":{},"candidates":{},"modes":{},"classStructures":{},"classPositions":{},"classStandings":{},"productionOrganizations":{},"assetRules":{},"governments":{},"moneyIssuances":{},"pledges":{},"liquidationPolicies":{},"crisisSignals":{},"modeTransitions":{},"classShares":{},"periodicAdjustments":{},"outputQuantityOverrides":{},"productionEfficiency":{},"currencies":{"silver":{"id":"silver","scale":3,"displayName":"银"}},"moneyInstruments":{"silver-specie":{"id":{"value":"silver-specie"},"currency":{"value":"silver"},"kind":"SPECIE","issuer":null,"redeemer":null}},"marketZones":{},"householdDebtRefs":{},"commodityFreightBaseMilli":{},"govMarketMandates":{},"marketRoundStats":{}}
+    caused by com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException: Unrecognized field "empty" (class io.mosire.simos.economy.model.MoneyOutput), not marked as ignorable (one known property: "perUnit")
+ at [Source: UNKNOWN; byte offset: #UNKNOWN] (through reference chain: io.mosire.simos.economy.EconomyData["industries"]->java.util.LinkedHashMap["ind-mint-probe"]->io.mosire.simos.economy.model.Industry["moneyOutputPerUnit"]->io.mosire.simos.economy.model.MoneyOutput["empty"])
+true
+
+=== PART D: 合成 record 的写入规则（哪些形状被当属性写出去）
+  JSON = {"value":"v","rows":{"k":1},"empty":false,"configured":true,"label":"L"}
+
+=== PART E: Government 组件（W5 改了它的形状；属性集已由 SCOPE A 的表覆盖）
+  Government components = [id, nationRef, treasury, issuable, mintScalePerCycle, mintedLastCyclePerCycle, officialRates]
+  Government 含非组件 bean getter = false

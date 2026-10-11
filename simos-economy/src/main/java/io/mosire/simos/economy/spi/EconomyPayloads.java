@@ -66,6 +66,7 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
+import io.mosire.simos.economy.model.MoneyOutput;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionMode;
@@ -1383,6 +1384,9 @@ final class EconomyPayloads {
     long dailyLabor = optionalLong(node, "dailyLaborPerUnit", 0L);
     Map<CommodityId, Long> output =
         commodityMap(optionalObject(node, "outputPerUnit"), "outputPerUnit");
+    // ★★ W5：铸币产出率（可选；缺键/空表 = 本产业不铸币 ⇒ 逐值退回 W5 之前，I-C2）。
+    Map<CurrencyId, Long> moneyOutput =
+        currencyMap(optionalObject(node, "moneyOutputPerUnit"), "moneyOutputPerUnit");
     Map<AssetKind, Map<CommodityId, Long>> cycleInput =
         assetCommodityMap(optionalObject(node, "cycleInputPerUnit"), "cycleInputPerUnit");
     List<ClassSlot> slots = new ArrayList<>();
@@ -1419,7 +1423,13 @@ final class EconomyPayloads {
         output,
         cycleInput,
         slots,
-        rule);
+        rule,
+        null,
+        0L,
+        Map.of(),
+        0L,
+        Map.of(),
+        new MoneyOutput(moneyOutput));
   }
 
   /**
@@ -1432,16 +1442,40 @@ final class EconomyPayloads {
     return industry(node);
   }
 
-  /** ★★ 旧载荷的 Industry 节点：模板 + 旧实例字段快照（合成默认 unit/份额用；新载荷 legacy=false）。 */
+  /**
+   * ★★ 旧载荷的 Industry 节点：模板 + 旧实例字段快照（合成默认 unit/份额用；新载荷 legacy=false）。
+   *
+   * <p>★★ <b>W5-fix2（2026-10-11）：{@code legacyOperator} 改为<b>惰性</b>（不再在解析期就按 regime 推默认经营主体）</b> ——
+   * 它只在 {@link #legacy} 为真时才有消费者（合成旧形状 unit，见 {@code parse(JsonNode)} 的 {@code spec.legacy()} 分支）。
+   * 解析期就推它的后果（实测的 W5 第三个 P0）：{@code economy.Seed} 的<b>新形状</b>产业节点（{@code units[]} 里自带 {@code
+   * operator}，产业节点上没有 operator/capacity/… 这些旧键）也会被推一次 —— 于是 {@code government_mint} （{@link
+   * RegimeOperators#GOVERNMENT_MINT} 刻意<b>不</b>登记在 {@code RegimeOperators.BY_REGIME}：铸币的经营者是政府
+   * 家户的稳定身份，推不出来）在播种时当场抛 {@code IllegalArgumentException}，被 {@code SmallWorld.applyCommand} 折成
+   * {@code IllegalStateException}「小世界创世命令被拒」⇒ 46 条 app 测试全红在创世。
+   */
   private record IndustrySpec(
       Industry template,
       JsonNode node,
       boolean legacy,
-      ActorRef legacyOperator,
+      JsonNode legacyOperatorNode,
       long progressDays,
       long cycleLaborMilli,
       Map<CommodityId, Long> cycleInputUsedMilli,
-      Map<AssetKind, Long> capacity) {}
+      Map<AssetKind, Long> capacity) {
+
+    /**
+     * 旧载荷合成 unit 用的经营主体：节点显式给了 ⇒ 用它；没给 ⇒ 按产业 regime 推默认 （{@link RegimeOperators#defaultOperator}，裁定
+     * R1 的 fail-closed 原样保留）。
+     *
+     * <p>★ 未登记的制度在这里仍然<b>具名抛</b>（同 R1：不许静默落到某个主体）；★ 新形状载荷走不到本方法 （{@link #legacy} 为假 ⇒ 调用方不读这个值）。
+     */
+    ActorRef legacyOperator() {
+      if (legacyOperatorNode != null) {
+        return actorRef(legacyOperatorNode);
+      }
+      return RegimeOperators.defaultOperator(template.regime(), template.id());
+    }
+  }
 
   /** 读一个 industry 节点：模板走 {@link #industry}，旧实例字段另存；判据 = 四个旧键任一出现。 */
   private static IndustrySpec industrySpec(JsonNode node) {
@@ -1452,18 +1486,22 @@ final class EconomyPayloads {
             || node.has("progressDays")
             || node.has("cycleLaborMilli")
             || node.has("cycleInputUsedMilli");
-    JsonNode operatorNode = optionalObject(node, "operator");
-    ActorRef legacyOperator =
-        operatorNode == null
-            ? RegimeOperators.defaultOperator(template.regime(), template.id())
-            : actorRef(operatorNode);
+    // ★★ W5-fix2：这里**不再**推默认经营主体（见 IndustrySpec 的类注）—— 只把节点原样留给 legacyOperator()。
+    JsonNode legacyOperatorNode = optionalObject(node, "operator");
     long progressDays = optionalLong(node, "progressDays", 0L);
     long cycleLabor = optionalLong(node, "cycleLaborMilli", 0L);
     Map<CommodityId, Long> cycleInputUsed =
         commodityMap(optionalObject(node, "cycleInputUsedMilli"), "cycleInputUsedMilli");
     Map<AssetKind, Long> capacity = assetMap(optionalObject(node, "capacity"), "capacity");
     return new IndustrySpec(
-        template, node, legacy, legacyOperator, progressDays, cycleLabor, cycleInputUsed, capacity);
+        template,
+        node,
+        legacy,
+        legacyOperatorNode,
+        progressDays,
+        cycleLabor,
+        cycleInputUsed,
+        capacity);
   }
 
   /** 同一 entry 内按产业 id 找 spec（新载荷 unit 引用产业模板）。 */
@@ -1669,6 +1707,27 @@ final class EconomyPayloads {
             entry ->
                 out.put(
                     CommodityId.parse(entry.getKey()),
+                    requireIntegral(entry.getValue(), field + "." + entry.getKey())));
+    return out;
+  }
+
+  /**
+   * ★★ <b>W5：铸币产出率表</b>（{@code {币种: 毫/规模·周期}}）—— 与 {@link #commodityMap} <b>同形但键类型不同</b>。
+   *
+   * <p>★ 形状守卫只判"能不能解析成 {@code CurrencyId} + 值是不是整数"；<b>逐值必须 &gt; 0</b> 与冻结由 {@link
+   * io.mosire.simos.economy.model.MoneyOutput} 的构造期守卫判（同一处口径，不在这里写第二遍）。
+   */
+  private static Map<CurrencyId, Long> currencyMap(JsonNode object, String field) {
+    Map<CurrencyId, Long> out = new LinkedHashMap<>();
+    if (object == null) {
+      return out;
+    }
+    object
+        .fields()
+        .forEachRemaining(
+            entry ->
+                out.put(
+                    CurrencyId.parse(entry.getKey()),
                     requireIntegral(entry.getValue(), field + "." + entry.getKey())));
     return out;
   }
@@ -2087,7 +2146,7 @@ final class EconomyPayloads {
 
   /**
    * 顶层可选 {@code governments}：{@code
-   * [{id,nationRef,treasury:{kind,id},issuable:[币种…],seignioragePerCycle?,debtIssuePerCycle?}]}。
+   * [{id,nationRef,treasury:{kind,id},issuable:[币种…],mintScalePerCycle?}]}。
    *
    * <p>缺键 ⇒ 空表（旧载荷没有政府 ⇒ 零登记，旧 fail-closed 行为逐字不变）；一个币种只能有一个发行主体由 {@code EconomyData} 的构造期守卫判死。
    */
@@ -2108,18 +2167,16 @@ final class EconomyPayloads {
         }
         issuable.add(CurrencyId.parse(currencyNode.asText()));
       }
-      long seignioragePerCycle = optionalLong(node, "seignioragePerCycle", 0L);
-      if (seignioragePerCycle < 0L) {
+      // ★★★ W5（2026-10-11）：双轨合并 —— 铸币政策旋钮只剩 `mintScalePerCycle` 一个字段；
+      //   `seignioragePerCycle` / `debtIssuePerCycle` 两个旧键**直接删**（§一.11：旧设计不留兼容位）。
+      //   ★ "上一轮印量"不是载荷字段：它是结算写的事实（MintSettlement 每轮关账覆盖写）⇒ 走 Government 的
+      //     缺省空表，播种出来的政府还没有过任何铸币轮。
+      long mintScalePerCycle = optionalLong(node, "mintScalePerCycle", 0L);
+      if (mintScalePerCycle < 0L) {
         throw new IllegalArgumentException(
-            "governments[].seignioragePerCycle 不得为负: " + seignioragePerCycle);
+            "governments[].mintScalePerCycle 不得为负（0 = 政策不许铸币）: " + mintScalePerCycle);
       }
-      long debtIssuePerCycle = optionalLong(node, "debtIssuePerCycle", 0L);
-      if (debtIssuePerCycle < 0L) {
-        throw new IllegalArgumentException(
-            "governments[].debtIssuePerCycle 不得为负: " + debtIssuePerCycle);
-      }
-      Government government =
-          new Government(id, nationRef, treasury, issuable, seignioragePerCycle, debtIssuePerCycle);
+      Government government = new Government(id, nationRef, treasury, issuable, mintScalePerCycle);
       if (governments.putIfAbsent(id, government) != null) {
         throw new IllegalArgumentException("同一份载荷里政府 id 重复: " + id);
       }
