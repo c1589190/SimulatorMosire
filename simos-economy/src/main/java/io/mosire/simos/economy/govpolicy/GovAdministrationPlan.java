@@ -1,4 +1,4 @@
-package io.mosire.simos.gov;
+package io.mosire.simos.economy.govpolicy;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -8,7 +8,7 @@ import java.util.Set;
 
 /**
  * 单个 GOV 的行政编制计划（Z2 新增源状态，设计书 §4.1；<b>R2 扩为三维</b>，2026-10-09 口岸设计书 §4.2 + 上位文档 §10-3）。
- * 这是用户可以估、可以改的<b>计划需求量</b>——{@link GovEfficiency} 的冻结公式 永远用这里的 {@code plannedLaborMilli}，<b>不用</b>
+ * 这是用户可以估、可以改的<b>计划需求量</b>——{@code GovEfficiency} 的冻结公式 永远用这里的 {@code plannedLaborMilli}，<b>不用</b>
  * {@link GovDemand} 的建议值（建议值只在 Z3 用于默认/告警）。
  *
  * <p>★★ <b>字段（单位毫小时/tick）</b>：
@@ -21,8 +21,8 @@ import java.util.Set;
  *   <li>{@link #supernumerarySqrtCoefficient()}：超编开方系数 {@code k}（默认 1；GM 可改）。
  * </ul>
  *
- * <p>★★ <b>中性默认</b>（{@link #neutral()}）：三维计划量 0、默认 3 档、六个修正 1000‰、{@code k=1}。旧档没有该 GOV 的源状态时由
- * {@link GovState#administrationPlanOrDefault(io.mosire.simos.unit.UnitId)} 返回它。
+ * <p>★★ <b>中性默认</b>（{@link #neutral()}）：三维计划量 0、默认 3 档、六个修正 1000‰、{@code k=1}。承载它的政府记录 （{@code
+ * Government.administrationPlan()}）没有设过 ⇒ 取它（缺省中性，I-B1）。
  *
  * <p>★★ <b>不封顶 + 保序不可变</b>：六个修正、权重、{@code k} 都只判 ≥ 0，<b>没有上界</b>（用户 2026-10-23「都不封顶」）； {@code
  * postTiers} 用 {@code ArrayList} 拷贝 + 赋值处 {@code Collections.unmodifiableList} 冻结，<b>不用 {@code
@@ -35,13 +35,13 @@ import java.util.Set;
  *       "没设口岸编制，但修正面是中性的"）；
  *   <li><b>JSON 侧</b>：旧档缺这三个键 ⇒ Jackson 对原始 {@code long} 给 <b>0</b>。{@code portPlannedLaborMilli=0}
  *       正确；两个 修正 0 使口岸效率恒 0 ⇒ 实际管制力 0 ⇒ 一切照旧放行。<b>两条缺省路径的数值可能不同（0 vs 1000‰），但对世界的效果相同</b> （口岸维供给本就是
- *       0，见 {@link GovEfficiency} 的"任一维供给 = 0 ⇒ 该维效率 0"）——这是刻意的 fail-closed 方向， 探针里两种形态都逐值贴过（账本
+ *       0，见 {@code GovEfficiency} 的"任一维供给 = 0 ⇒ 该维效率 0"）——这是刻意的 fail-closed 方向， 探针里两种形态都逐值贴过（账本
  *       §探针）。
  * </ul>
  *
- * <p>★ <b>为什么没有 unitId</b>：身份是 {@link GovState#administrationPlans()} 的<b>键</b>（{@code
- * UnitId}），内容不内嵌 第二份身份；这样 {@link GovEfficiency} 的过渡桥也能直接用建议值构造计划（旧签名没有 UnitId）。键值一致性由 {@link
- * GovState} 的“键非空”守卫保证。
+ * <p>★ <b>为什么没有政府身份</b>：身份是承载它的 {@code Government} 记录的<b>键</b>（{@link
+ * io.mosire.simos.economy.api.id.GovernmentId}，由 {@code GovernmentIds.ofUnit(govUnitId)} 从 GOV
+ * 单位派生）， 内容不内嵌第二份身份。★★ 2026-10-12 追加裁定 12 §21.9 D-1 起本类型住 {@code simos-economy}（GOV 只调写口、不负责存）。
  *
  * @param securityPlannedLaborMilli 治安计划劳动量（毫小时/tick；≥ 0，不封顶）
  * @param paperworkPlannedLaborMilli 公文计划劳动量（毫小时/tick；≥ 0，不封顶）
@@ -130,7 +130,7 @@ public record GovAdministrationPlan(
    * ★ <b>旧 8 参构造器（R2 兼容）</b>：口岸三字段取 {@code 计划 0 / 供给静态 1000‰ / 需求静态 1000‰}（= 中性修正 + 不设口岸编制）。
    *
    * <p>旧调用点（bootstrap / 工具 / 旧测试夹具）不改一字即得"口岸维度缺席"的旧语义；要开口岸编制就走 canonical 构造器或 {@code
-   * gov.SetAdministrationPlan} 的 {@code portPlannedLaborMilli}。
+   * economy.SetGovernmentPolicy} 的 {@code portPlannedLaborMilli}。
    */
   public GovAdministrationPlan(
       long securityPlannedLaborMilli,

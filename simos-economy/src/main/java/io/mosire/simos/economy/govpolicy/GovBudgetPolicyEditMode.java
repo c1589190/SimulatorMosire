@@ -1,10 +1,10 @@
-package io.mosire.simos.gov;
+package io.mosire.simos.economy.govpolicy;
 
 import java.util.Locale;
 import java.util.Objects;
 
 /**
- * ★★ <b>{@code gov.SetBudgetPolicy} 的编辑模式（Z7e-3，控制方 2026-10-23 裁定 A+B："AB同时应用吧"）</b>。
+ * ★★ <b>{@code economy.SetGovernmentPolicy} 的编辑模式（Z7e-3，控制方 2026-10-23 裁定 A+B："AB同时应用吧"）</b>。
  *
  * <ul>
  *   <li>{@link #PATCH}（<b>缺省</b>）：载荷里<b>缺省字段保留现值</b>——只改 {@code remittancePerMilleToSuperior}

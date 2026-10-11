@@ -11,9 +11,8 @@ import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.stock.DeductionReason;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
-import io.mosire.simos.gov.GovBudgetPolicy;
-import io.mosire.simos.gov.GovOfficialSalaryRule;
-import io.mosire.simos.gov.GovState;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
+import io.mosire.simos.economy.govpolicy.GovOfficialSalaryRule;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovernmentFormation;
@@ -39,8 +38,8 @@ import org.slf4j.Logger;
  * DeductionReason#ADMIN_SALARY}），交给 P4a 的无状态执行器逐腿 {@code min(可用,请求)} 支付。
  *
  * <pre>
- * 逐 GOV（{@code GovState.offices()} 键按 id 升序）：
- *   policy   = govState.budgetPolicyOrDefault(gov)
+ * 逐 GOV（unit 切片里带 GovernmentFormation 的单位，按 id 升序）：
+ *   policy   = economy.governmentOrDefault(govUnitId.value()).budgetPolicy()
  *   rate     = policy.officialSalaryRule()          // 0/0 = 明确不发薪，不是缺口
  *   payer    = GovernmentHouseholds.of(govUnitId)   // hh-gov-&lt;govUnitId&gt; 国库
  *   逐承诺家户（GovernmentServiceLaborBridge.committedLaborByHousehold，按 allocation id 首现序）：
@@ -90,17 +89,25 @@ public final class GovSalaryRuleBridge {
   /**
    * 现算当日工资规则（不筛到期：{@code periodDays=1} 使每条规则在 {@code day ≥ 1} 都到期）。
    *
-   * @param govState GOV 源状态（预算政策 = 工资规则的唯一权威；{@code offices} 键 = 要发薪的 GOV 集合）
-   * @param units 单位状态（校验 GOV 单位 + 取 {@link GovernmentFormation}）
-   * @param economy 经济状态（{@code GOV_SERVICE} 承诺 = 工资唯一的劳动口径）
+   * @param units 单位状态（要发薪的 GOV 集合 = 带 {@link GovernmentFormation} 的单位；顺带取它）
+   * @param economy 经济状态（★★ 2026-10-12 追加裁定 12 §21.9 D-1 起：预算政策也在这里 —— {@code
+   *     EconomyData.governments} 的 {@code Government.budgetPolicy()} 是工资规则的唯一权威； 另 {@code
+   *     GOV_SERVICE} 承诺 = 工资唯一的劳动口径）
    * @param day 世界日（只进日志/契约故障上下文）
    */
-  public static Report deriveReport(
-      GovState govState, UnitState units, EconomyData economy, long day) {
-    Objects.requireNonNull(govState, "govState");
+  public static Report deriveReport(UnitState units, EconomyData economy, long day) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(economy, "economy");
-    List<UnitId> ordered = new ArrayList<>(govState.offices().keySet());
+    // ★ 要发薪的 GOV 集合 = unit 切片里带 GovernmentFormation 的单位（按 id 升序）。旧形状读的是
+    //   GovState.offices() 的键；政府政策搬进 economy 后 offices 只剩"每 tick 读数"，而它对本桥的**唯一**用途
+    //   就是"列出 GOV 集合"——按编制过滤得到的集合与旧读法逐值相同（orphan office / 未建 office 的编制两种情况
+    //   旧代码也都 continue）。
+    List<UnitId> ordered = new ArrayList<>();
+    for (Unit unit : units.units().values()) {
+      if (unit.module().orElse(null) instanceof GovernmentFormation) {
+        ordered.add(unit.id());
+      }
+    }
     ordered.sort(Comparator.comparing(UnitId::value));
     List<HouseholdPeriodicAdjustment> rules = new ArrayList<>();
     List<String> gaps = new ArrayList<>();
@@ -135,7 +142,7 @@ public final class GovSalaryRuleBridge {
         throw contractFailure("committed-labor-total-overflow", day, govUnitId, e.getMessage());
       }
       committedHouseholds += committed.size();
-      GovBudgetPolicy policy = govState.budgetPolicyOrDefault(govUnitId);
+      GovBudgetPolicy policy = economy.governmentOrDefault(govUnitId.value()).budgetPolicy();
       GovOfficialSalaryRule rate = policy.officialSalaryRule();
       if (rate.grainMilliPerCommittedHour() == 0L && rate.silverMilliPerCommittedHour() == 0L) {
         continue; // 0/0 = 政策明确不发薪（不是静默：规则来源就在 source state 里）。

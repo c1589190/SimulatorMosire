@@ -50,6 +50,8 @@
             <configuration>
               <rules>
                 <bannedDependencies>
+                  <!-- ★★ 2026-10-12 闭合（用户裁定「冻结各个模块的语义，确保下次改不越界」）：本仓的边界语义 = 「本模块不许**直接声明**某个依赖」；传递可见是 Maven 依赖图的事实、本模块控制不了 ⇒ 显式关掉传递检查（enforcer 3.6.3 `searchTransitive` 默认 true，字节码核实）。禁列全仓 simos 模块 − 自己 − 允许面，零例外。 -->
+                  <searchTransitive>false</searchTransitive>
                   <excludes>
                     <exclude>io.mosire:agentlib-mosire</exclude>
                     <exclude>io.mosire:simos-map</exclude>
@@ -63,8 +65,22 @@
                     <exclude>io.mosire:simos-actor</exclude>
                     <!-- ★ C1（2026-10-02，D-019）：防反向依赖 calendar（依赖方向 util → map → calendar）。 -->
                     <exclude>io.mosire:simos-calendar</exclude>
+                    <!-- ★★ 2026-10-12 模块语义冻结（docs/superpowers/specs/2026-10-12-module-boundaries-freeze.md §3）：
+                         对称闭合 = 禁掉"本模块 + 允许面（util 为空）之外"的全部 simos 模块。
+                         ★ 上方 Task 10 那段"`simos-actor-api` 不在此列（契约层）"的口径**已被本次冻结取代**
+                         （原文保留作留痕）：util 零 simos 依赖 ⇒ 契约层也不再有例外。
+                         ★ `simos-ledger` 已于 2026-09-27 退役、当前无同名模块：照冻结表列入，作历史留痕与未来防线。 -->
+                    <exclude>io.mosire:simos-actor-api</exclude>
+                    <exclude>io.mosire:simos-app</exclude>
+                    <exclude>io.mosire:simos-army</exclude>
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-economy-api</exclude>
+                    <exclude>io.mosire:simos-gov</exclude>
+                    <exclude>io.mosire:simos-ledger</exclude>
+                    <exclude>io.mosire:simos-sd</exclude>
+                    <exclude>io.mosire:simos-social-api</exclude>
                   </excludes>
-                  <message>UtilSimos 是零依赖地基：不得依赖 AgentLibMosire 或任何 simos 模块（spec §3.1 / G6）</message>
+                  <message>simos-util 是零依赖地基（地址/身份/时间/快照/变更集协议/SPI，不碰文件系统）：只许 Jackson(databind + datatype-jdk8) 与 SLF4J，不许依赖任何 simos 模块。★ 禁列 = 全仓 15 个 simos 模块 − 自己（一个不剩：含全部契约层 social-api/actor-api/economy-api 与已退役的 ledger），文案与强制一致。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

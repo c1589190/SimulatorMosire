@@ -829,3 +829,170 @@ E = 0（全禁 + 满效率）⇒ 一点也进不来；E = 1000（不设限/没�
 | N-2 | "扩大官僚队伍"的代价形状：招多少人、人从哪来、花谁的钱？ | 走**既有**两条路：家户人口/劳动转移 + 国库俸禄支出（`GovDaily`），**不新造资源**；规模与俸禄标定由实现方给具名常量 |
 | N-3 | 扩编是否立刻生效（同 tick）还是下一轮？ | 下一轮（照"注入晚一轮"的既有形制），除非用户另裁 |
 | N-4 | 行政力池被其他政务占用时，插队是否与它们**竞争**同一池子？ | **是**（同一个编制池：`demand` 里既有日常政务也有插队） |
+
+---
+
+## 21. ★★ 追加裁定 12（2026-10-12）：**口岸机制与规则归 economy，GOV 只调写口、不负责存**
+
+> **本节性质**：约束设计书（供派单实现，AGENTS §一.8 / §一.8.1）。**追加式**，不改上文任何一行。
+> 上文 §4/§12~§17 的**形状**（四元组、两侧方向、税两分量、行政力池）**全部继续有效**；
+> 本节只改**归属**：规则**存哪、谁写、机制归谁**。
+
+### 21.1 用户原话附录（逐字照录，不改写、不缩写、不意译）
+
+**2026-10-12（本会话，用户对"口岸语义归属"的裁定，两问两答）**：
+
+> 问（控制方）：「口岸这套东西，是归 GOV 维护、还是归 economy 维护？」
+>
+> 答（用户）：「**口岸本身肯定是交给经济模块负责维护的，包括规则之类的，但是写入规则需要交给GOV，
+> 也就是GOV只调用相关修改，不负责管理机制，这样能行吗**」
+
+> 问（控制方）：「政策表是"GOV 存值"（A）还是"进 EconomyData"（B）？」
+>
+> 答（用户）：「**B，GOV不应该负责存**」
+
+> 问（控制方）：「先让 economy 搞个通用 handler、声明从哪来干啥就能改，然后让 GOV 越过 unit 单独调用？」
+>
+> 答（用户）：「**gov模块要改，那先让eco搞个通用handler，声明从哪来干啥就能改，然后让gov越过unit单独调用不就得了，这样权限系统最干净**」
+>
+> 问（控制方，三问）：「通用写口只管口岸，还是把 GOV 三条政策都收进来？『从哪来』用什么声明？命令名怎么定？」
+>
+> 答（用户，三个选择）：
+> 1. **三条全收** —— 口岸 / 预算 / 编制三类政策都进 economy 的通用写口，**GOV 侧命令面清空**；
+> 2. **`GovernmentId`** 作为"来源"（economy **完全不认识 `unit` 命名空间**）；
+> 3. **新增 `economy.SetGovernmentPolicy`，删除旧名 `gov.SetPortPolicy`**。
+
+**如何读这两句（控制方读解，非用户原话；用户可推翻）**：
+
+1. **机制 + 规则 = economy 的**：口岸的限制/税/闸/优先级的**算式、缺省语义、规则数据的归属**都在 economy。
+2. **决定权 = GOV 的**：设什么值由 GOV（GM，经 `GmOnlyCommand`）决定 —— GOV **调用修改**，不实现机制。
+3. **存储 = economy 的**（第二句）：`GovState` 不再持有规则表。⇒ 与既有 `MarketRegulation`
+   同形（机制 + 规则 + 存储都在 economy，见 §16 对 `MarketRegulation` 的降级裁定）。
+
+> ★ 与 §1 用户原话的关系：§1 里「每个政府都可以维护自己控制的口岸的口岸政策」讲的是**决定权**
+> （逐政府各自定政策），**不是**存储位置。两句话不冲突：GOV 各自定，economy 统一存与执行。
+
+### 21.2 现状事实（`file:line`，2026-10-12 于 `a5d79afb` 核实）
+
+| # | 事实 | 证据 |
+|---|---|---|
+| F1 | 规则表**存在 GOV 切片**：`GovState` 第 4 个组件 `Map<UnitId, GovPortPolicy> portPolicies` | `simos-gov/.../gov/GovState.java:49` |
+| F2 | 规则进 **GOV 变更集**（铁律 5 的往返面） | `GovChangeSet.java:37`（`FieldDelta<GovPortPolicy>`）、`:104`、`:118-122` |
+| F3 | 写口是 **GOV 命令**（handler 住 gov） | `simos-gov/.../gov/spi/SetPortPolicyHandler.java:70`（`implements CommandHandler, GmOnlyCommand`）、载荷解析 `GovPayloads.java:192-196` |
+| F4 | **类型住 economy-api**（形状 + 类型层缺省），但 economy **自己不用**这两个类型 | `economy/api/market/PortRule.java`、`PortTaxRule.java`、`PortTaxMode.java`（跨模块真 import 者只有 `app` + `gov`） |
+| F5 | 换算点在**组合根**：读 GOV 政策 + 逐边权重 → 折成经济侧入参 | `simos-app/.../app/time/PortRegimeBridge.java`（类注自述"唯一折算点，组合根"）；入参 `economy/time/PortEnforcementInput.java`、`PortTaxInput.java`（均"逐轮瞬态、不落盘"） |
+| F6 | 机制/算式**已经在 economy** | `economy/time/PortThrottle.java`、`PortRegimeAggregation.java`（自述"全仓唯一拼写点"）、`MarketTaxBook` |
+| F7 | 另一个读者：行政力池按 GOV 政策表挑"要求管控市场"的政府 | `simos-app/.../app/time/ProcurementPriorityBridge.java:119/125`（读 `govState.portPolicies()`） |
+| F8 | economy 侧**已有**政府身份表（第 27 个组件） | `EconomyData.governments: Map<GovernmentId, Government>`；`economy/model/Government.java:69-76`（现 7 字段，末尾带旧形状构造器） |
+| F9 | ★ **回 pom 亲核的更正（2026-10-12）**：`simos-economy` **既没有声明 `simos-unit`、main 里也零 import**（依赖块实测只有 actor-api / util / economy-api / map / social-api / social）。⇒ 若写口 handler 要住 economy 并**就地校验"这个 UnitId 是不是 GOV 编制单位"**，必须**先回填 `simos-unit` 声明**（权威文档三处允许 economy 直连 unit，但 pom 至今没接） | `simos-economy/pom.xml` 依赖块（实测）；`grep -rn '^import io.mosire.simos.unit' simos-economy/src/main` = 0；见 §21.6 O-2/O-5 |
+| F10 | GOV 单元删除**没有**清理 `portPolicies`（文档已记 INV/缺口） | `docs/superpowers/plans/2026-10-02-open-bugs.md`「DeleteCity 不清理 economy 引用」同族；handler 侧无级联 |
+
+### 21.3 目标形状（冻结）
+
+1. **规则表进 `EconomyData`，挂在政府身份上**：
+   `Government` 追加字段 `portPolicy`（类型 = 现 `GovPortPolicy` 的形状，四元组表 × 2 + `marketControl`）。
+   - **不新增独立组件**：`governments` 已是组件，规则随政府记录走 ⇒ **组件数不变**；
+   - ★★ **本裁定的核心红利**：政府记录没了 ⇒ 规则跟着没了 ⇒ **"GOV 删除后政策悬空"这一类问题在结构上不可能出现**
+     （无需级联清理、无需悬空检测）。
+2. **`GovState.portPolicies` 删除**（连 `GovChangeSet` 字段、`GovCodec` 该段、`GovPayloads.portPolicy`、
+   `SetPortPolicyHandler` 一并处理）。GovState 组件 5 → 4。
+   - AGENTS §一.11：**旧档不兼容**，不写归一、不写兼容位（形状变 ⇒ 旧档读不了就读不了）。
+3. **写口**：写命令改为落在 economy（读 GOV 身份做校验 + 写 `EconomyData.governments`）；
+   校验面（GOV 单位存在、是 GOV 编制、键必须存在于世界）**保留**，住哪见 §21.6 O-1/O-2。
+4. **换算点仍在组合根**：`PortRegimeBridge` 继续算"逐边权重/接触面"（那要 map + unit 辖区）；
+   但**规则值改为从 `EconomyData.governments` 取**，不再传 `GovState`。
+   ★ 远期（不在本批）：组合根这层折算可再收进 economy 的 Facet —— 见 §21.6 O-3。
+5. **类型归属**：`PortRule`/`PortTaxRule`/`PortTaxMode`/`PortDirection` + 政策载体类型
+   从 `economy-api` / `gov` 收敛到 **economy**（经济自己的规则 = 经济自己的类型）；
+   `MarketOrderKind`、`ZonePortRegime`、`PortContactSurface`、`PortEnforcementInput`/`PortTaxInput` 留在原处
+   （前者被 gov 借作政策键，后三者本来就在 economy 且 gov 不用）。
+
+### 21.4 不变量（实现必须守住）
+
+| # | 不变量 |
+|---|---|
+| I-B1 | **缺省中性**（沿用 I-P1/I-P8/I-C2）：没设过规则的世界 ⇒ 逐值退回改前行为（开放度 1000、税 0、优先级别空） |
+| I-B2 | **缺省语义唯一拼写点**：`unrestricted()` 一处；gov 侧读侧不再自己兜一遍（本裁定顺手关闭"两份缺省值"） |
+| I-B3 | **铁律 5 往返**：`Government` 加字段后，`EconomyChangeSet` 往返逐字段重建（既有反射枚举测试必须继续绿） |
+| I-B4 | **权限单调性**：写口仍 `GmOnlyCommand`；不许因搬家而出现"决策人可写口岸政策"的新路径 |
+| I-B5 | **模块边界**：economy 不许 import `simos-gov`（反向）；GOV 仍可被 economy 读其**效率维**（`GovEfficiency` —— 见 §21.6 O-4） |
+| I-B6 | **名字与身份**：规则的宿主身份 = `GovernmentId`（不是 `UnitId`）；单位 ↔ 政府的换算走既有 `GovernmentIds.ofUnit` |
+| I-B7 | 机制算式**一个数都不改**：本裁定只搬归属，`PortRegimeAggregation`/`PortThrottle`/税算式逐值不变 |
+
+### 21.5 验收判据（派单时逐条对照）
+
+1. **正向往返**：设一条口岸规则 → 推进 → 重启 → 规则仍在、读数一致（`EconomyData.governments` 路径）；
+2. **缺省中性**（负向）：不设任何规则的世界，`MarketSettlement` 的跨区节流/税额/优先级与改前**逐值相同**；
+3. **非法政策 fail-closed**（负向）：负限制、未知 `CommodityId`/`CurrencyId`、非 GOV 编制单位 ⇒ 具名拒 + 零 revision；
+4. **权限**（负向）：决策人路径**不可**写口岸政策（catalog/令/RegisterEffect 三条都不放大）；
+5. **GOV 删除**（正向收益）：删掉一个 GOV 单位后，其规则**随之消失**，且没有悬空键、不影响别的政府；
+6. **两桥一致**：`PortRegimeBridge` 与 `ProcurementPriorityBridge` 读到同一份规则（同一个数据源）；
+7. `clean verify` 全绿（含 `EconomyRoundTripTest` 的组件枚举）。
+
+### 21.6 开放点（**派单前必须结清**；O-1~O-4 需用户裁定）
+
+| # | 开放点 | 影响 |
+|---|---|---|
+| **O-1** | 写命令**名字**：保 `gov.SetPortPolicy`（语义上"GOV 决定"）还是改 `economy.SetPortPolicy`（归属一致） | 改名字要动 `CatalogTool`、`CatalogVisibilityTest REGISTERED`、`McpCoverageTest`（`EXPECTED_COMMAND_TYPES`/`MINIMAL_PAYLOADS`）、`SimosToolsTest` 等 4+ 处清单 |
+| **O-2** | handler **住哪**：economy（可读 unit 校验 GOV 身份 ⇒ **需先回填 `simos-unit` 声明**，见 F9）还是 app（组合根跨切片，同 `GovPortPolicyGuard` 现状） | 影响依赖回填与 enforcer |
+| **O-3** | 组合根的"逐边权重折算"是**本批保留**还是**一并收进 economy 的 Facet** | 一并收 ⇒ 触及铁律 3 的可见性机制（Facet），批次变大 |
+| **O-4** | `GovEfficiency`（口岸效率维，政府属性）在新形状下的读法：仍由组合根注入，还是也进 economy | 只影响"效率算不算规则"的边界陈述 |
+| **O-5** | **已核（2026-10-12）**：economy **未**声明 `simos-unit`（F9 更正） | 只在 O-2 选 "handler 住 economy" 时才需要回填 `simos-unit` + 过 `verify` |
+
+### 21.7 文件所有权（派单时写死）
+
+- **允许写**：`simos-economy/**`（`model/Government.java`、`time/Port*.java`、`spi/` 新 handler）、
+  `simos-economy-api/**`（类型搬迁）、`simos-gov/**`（删 `portPolicies` 一路）、
+  `simos-app/**`（两个 bridge + 工具装配 + guard）。
+- **禁止碰**：`simos-core`、机制算式（`PortRegimeAggregation`/`PortThrottle` 的公式）、
+  与口岸无关的状态组件、enforcer 禁列（除 O-2 逼出的 `simos-unit` 声明回填）。
+
+### 21.9 ★★ 决策记录（2026-10-12，按 §21.1 的三个答复冻结；**取代 §21.3 前两段与 §21.6 的 O-1/O-2/O-5**）
+
+| # | 决定 | 依据 |
+|---|---|---|
+| **D-1** | **三类政策全收**：口岸 / 预算 / 编制 都进 `EconomyData`，由 economy 一条**通用政府政策写口**承接；`GovState` **不再承载任何政策表** | 用户"三条全收" |
+| **D-2** | "来源" = **`GovernmentId`**（经济自己的身份）；**economy 不 import `simos-unit`、不碰 unit 命名空间** | 用户选 GovernmentId + "越过 unit" |
+| **D-3** | 命令名：**新增 `economy.SetGovernmentPolicy`**（通用口）；**删除旧三条名** `gov.SetPortPolicy` / `gov.SetBudgetPolicy` / `gov.SetAdministrationPlan` | 用户"新增…旧名删除" |
+| **D-4** | 权限面：新命令仍 `GmOnlyCommand`、仍自报 `CommandTargets` 与 `ResourceManifest` —— **复用既有声明式机制，不造第二套** | §21.2 F11 |
+
+**通用写口的形状（实现契约）**：
+
+```json
+{ "governmentId": "<GovernmentId>",
+  "policies": { "port": { …同现有 GovPayloads 的口岸节点… },
+                "budget": { … },
+                "administration": { … } } }
+```
+
+- **一条命令**改任意子集（缺席 = 不改该子集；`policies` 为空 ⇒ 具名拒，不做空写）；
+- **缺省中性**（I-B1）：没设过的政府 ⇒ 三类都取 `neutral()`/`unrestricted()`，逐值退回改前行为；
+- **fail-closed**（判据 3）：`GovernmentId` 不存在 ⇒ 具名拒 + 零 revision；非法值（负限制、未知商品/币种键、坏引用）⇒ 具名拒；
+- **一条 revision**：三类同批写入。
+
+**连带删除（D-1 的直接后果）**：
+1. `GovState.portPolicies` / `administrationPlans` / `budgetPolicies`（GovState 5 → **1**，只剩 `offices`；`remittanceStates` 见 §21.10-1）；
+2. `GovChangeSet` 对应三个 `FieldDelta`、`GovCodec` 对应三段；
+3. `GovAdministrationProjections`（现为跨模块读取做的"重复投影"，政策归经济后失去存在理由）；
+4. 三条 `Set*Handler`。
+
+**★★ 必须守住的一条（否则造出反向依赖）**：`GovEfficiency.of(GovernmentFormation, …, GovAdministrationPlan, …)`
+（`simos-gov/.../gov/GovEfficiency.java:91/136/193/380`）今天把编制计划当**入参**。政策类型随迁后
+**`simos-gov` 不许 import `simos-economy`** ⇒ 实现方二选一并写进账本：
+- (a) `GovEfficiency` 改吃**纯值参数**（系数由组合根从 `EconomyData` 取出后传入）—— 保住"gov 不认识 economy"；**推荐**；
+- (b) 编制计划类型留在 `economy-api`（契约层）—— 但与 D-1"三类同住一处"有张力。
+
+### 21.10 本批新增开放点（实现方在账本里回答，不阻塞开工）
+
+| # | 开放点 | 控制方默认 |
+|---|---|---|
+| 1 | `remittanceStates` 是否随迁（它是 GOV 上缴/欠缴**状态**，非政策） | **不随迁**（服务 `GovDaily` 自身结算，留 gov） |
+| 2 | 政策类型（`GovBudgetPolicy`/`GovPortPolicy`/`GovAdministrationPlan`/`GovBudgetCategory`/`GovBudgetLine`/`GovPostTier`/`GovBudgetPolicyEditMode`…）迁到 economy 的落点 | economy 侧建 `govpolicy` 子包；具体由实现方定 |
+| 3 | 旧名残留点（`CatalogTool.PAYLOAD_HINTS`、`CatalogVisibilityTest`、`McpCoverageTest`、`SimosToolsTest`、bootstrap/工具） | 一律改新名，**不给别名、不留兼容位**（AGENTS §一.11） |
+| 4 | 真世界 bootstrap（`GovWorldBootstrap`/`ThreePowersGovBootstrap`）现在直接构造 gov 状态 | 改走新写口；多条则用 `submitBatch` 保持"一批一条 revision" |
+
+### 21.11 未核项（如实）
+
+1. 本节 F1~F8 是**只读代码核实**（2026-10-12，`a5d79afb`）；**未跑 Maven、未起服务、未跑世界**。
+2. F9 **已回 pom 亲核并更正**（economy 未声明 `simos-unit`、零 import ⇒ 见 §21.6 O-5）。
+3. "多政府共管一区"的权重口径（§12/§13）**不在本裁定范围**，继续按原文执行。

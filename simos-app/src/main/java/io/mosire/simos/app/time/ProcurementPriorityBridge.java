@@ -10,7 +10,6 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.time.ProcurementPriorityInput;
-import io.mosire.simos.gov.GovState;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.log.EventLog;
@@ -28,7 +27,8 @@ import java.util.Objects;
  * ★★ <b>P-T1d：逐政府的"政府采购优先级"折算（唯一折算点，组合根）</b>（2026-10-10 口岸设计书 §16.3 / §17）。
  *
  * <pre>
- * ① 触发（法律层）  gov 政策 {@code govState.portPolicyOrDefault(unitId).controlsMarket()}（= 用户"政府要求管控市场"）
+ * ① 触发（法律层）  {@code EconomyData.governments} 里该政府的 {@code portPolicy().controlsMarket()}（= 用户"政府要求管控市场"；
+ *                  ★ 2026-10-12 追加裁定 12 §21.9 D-1 起政策住经济侧，故本桥不必再看 gov 切片）
  * ② 编制劳动力      supply(unitId) 的**行政维**供给劳动 = securityLaborMilli + paperworkLaborMilli
  *                  （★ 口岸维**不进**：§16.4 M-2「按行政效率执行用行政维效率，口岸维只管边界」）
  * ③ 行政力池（单位 = 家户，设计书 §17.4 N-1）
@@ -42,8 +42,8 @@ import java.util.Objects;
  * <p>★★ <b>为什么折算只能在组合根</b>：{@code simos-gov} 看不见经济状态（政府记录/国库户）、{@code simos-economy} 不认识
  * gov（政策与编制）—— 只有 app 同时看得见三边（与 {@link PortRegimeBridge} 同一条理由）。
  *
- * <p>★★ <b>缺省语义中性（I-C2）</b>：没有任何 GOV 要求管控市场（缺 {@code portPolicies} 键 / 键上 {@code
- * marketControl=false}）⇒ 空表 ⇒ 经济侧不注入、不置顶、不消耗 ⇒ 一个数都不动。
+ * <p>★★ <b>缺省语义中性（I-C2）</b>：没有任何政府要求管控市场（政府记录没设过 / {@code marketControl=false}）⇒ 空表 ⇒
+ * 经济侧不注入、不置顶、不消耗 ⇒ 一个数都不动。
  *
  * <p>★★ <b>fail-closed（§17.2 失败语义）</b>：算不出池（没有该政府的编制供给 / 定额非正 / 国库不是家户）⇒ 该政府
  * <b>不进表</b>（连"要求管控"都不注入）并具名记一条 —— "要管控却一户也超不了"在语义上等价于没管控，且不会静默： 决策人从日志里看得到是哪一条断的。
@@ -88,21 +88,18 @@ public final class ProcurementPriorityBridge {
   /**
    * ★★ <b>算本轮的政府采购优先级</b>（纯函数；不写状态、不落盘、不用随机数）。
    *
-   * @param govState 政府切片（政策 = 逐 GOV 的口岸/市场管制政策，含 {@code marketControl}）；不得为 null
    * @param supplyByUnit 当日逐 GOV 的编制供给（{@code GovEfficiencyDay.supplyByUnit}；缺项 = 该政府没有编制供给 ⇒ 池
    *     0）；不得为 null
-   * @param economy 经济切片（政府记录 = 国库户的唯一权威）；不得为 null
+   * @param economy 经济切片（政府记录既是"要求管控市场"这条**政策**的唯一权威，也是国库户的唯一权威）；不得为 null
    * @param standardLaborMilliHoursPerTick 标准岗位定额（毫小时/tick；C8 唯一权威，由调用方从 Social 读出传入）；非正 ⇒ 全员池
    *     0（fail-closed）
    * @param day 世界日（只进日志）
    */
   public static ProcurementPriorityDay compute(
-      GovState govState,
       Map<UnitId, GovernmentServiceLaborBridge.Supply> supplyByUnit,
       EconomyData economy,
       long standardLaborMilliHoursPerTick,
       long day) {
-    Objects.requireNonNull(govState, "govState");
     Objects.requireNonNull(supplyByUnit, "supplyByUnit");
     Objects.requireNonNull(economy, "economy");
     if (standardLaborMilliHoursPerTick <= 0L) {
@@ -116,31 +113,36 @@ public final class ProcurementPriorityBridge {
               "standardLaborMilliHoursPerTick",
               standardLaborMilliHoursPerTick,
               "governments",
-              govState.portPolicies().size(),
+              economy.governments().size(),
               "reason",
               "non-positive-standard-post-quota-no-overtake-fail-closed"));
       return new ProcurementPriorityDay(ProcurementPriorityInput.none(), 0, 0L, 0, Map.of());
     }
-    // ★ 政府序 = GOV 单位 id 升序（内容的纯函数；I7），且只遍历**显式设过政策**的那些键。
-    List<UnitId> orderedUnits = new ArrayList<>(govState.portPolicies().keySet());
-    orderedUnits.sort(Comparator.comparing(UnitId::value));
+    // ★ 政府序 = 政府 id 升序（内容的纯函数；I7），且只遍历**要求管控市场**的那些政府。
+    //   ★★ 2026-10-12 追加裁定 12 §21.9 D-1：政策来源从 gov 切片改成 EconomyData.governments（同一个遍历序 = 政府 id 升序，
+    //     与旧形状"只遍历显式设过政策键的 GOV 单位"的结果集逐值相同：没设过的政策恒 controlsMarket=false）。
+    List<GovernmentId> orderedGovernments = new ArrayList<>(economy.governments().keySet());
+    orderedGovernments.sort(Comparator.comparing(GovernmentId::value));
     Map<HouseholdId, Long> poolByTreasury = new LinkedHashMap<>();
     Map<String, Long> unitsByGovernment = new LinkedHashMap<>();
     int zeroPool = 0;
-    for (UnitId unitId : orderedUnits) {
-      if (!govState.portPolicyOrDefault(unitId).controlsMarket()) {
-        continue; // 这个政府没要求管控市场 ⇒ 不进表（缺省语义中性）
+    for (GovernmentId governmentId : orderedGovernments) {
+      Government government = economy.governments().get(governmentId);
+      if (government == null || !government.portPolicy().controlsMarket()) {
+        continue; // 查不到（并发改动防御）/ 没要求管控市场 ⇒ 不进表（缺省语义中性）
       }
-      GovernmentId governmentId;
-      try {
-        governmentId = GovernmentIds.ofUnit(unitId.value());
-      } catch (IllegalArgumentException bad) {
-        logSkipped(day, unitId.value(), "-", "government-unit-id-cannot-be-derived");
+      // ★ 政府 → GOV 单位（纯字符串换算，D-2/I-B6：economy 侧不 import simos-unit 的任何领域类型）。
+      String govUnitRef = GovernmentIds.unitRefOf(governmentId).orElse(null);
+      if (govUnitRef == null) {
+        // 世界级政府（world-silver 这类不是任何 GOV 单位的发行主体）没有编制供给可折 ⇒ 不进表。
+        logSkipped(day, "-", governmentId.value(), "not-a-gov-unit-government");
         continue;
       }
-      Government government = economy.governments().get(governmentId);
-      if (government == null) {
-        logSkipped(day, unitId.value(), governmentId.value(), "no-government-record");
+      UnitId unitId;
+      try {
+        unitId = UnitId.parse(govUnitRef);
+      } catch (IllegalArgumentException bad) {
+        logSkipped(day, govUnitRef, governmentId.value(), "government-unit-id-cannot-be-derived");
         continue;
       }
       if (government.treasury().kind() != ActorKind.HOUSEHOLD) {

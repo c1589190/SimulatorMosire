@@ -6,13 +6,14 @@ import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
+import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.stock.DeductionReason;
 import io.mosire.simos.economy.api.stock.HouseholdStockDeduction;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
 import io.mosire.simos.economy.time.AccountSession;
-import io.mosire.simos.gov.GovBudgetPolicy;
 import io.mosire.simos.gov.GovDaily;
 import io.mosire.simos.gov.GovRemittanceState;
 import io.mosire.simos.gov.GovState;
@@ -45,9 +46,11 @@ import org.slf4j.Logger;
  *
  * <ul>
  *   <li>读：{@link UnitState} 的 {@link GovernmentFormation#superiorGov()} 与 {@link
- *       GovernmentHouseholdResolver} 解析出的两个国库家户；{@link GovState#budgetPolicyOrDefault(UnitId)} 的
- *       {@link GovBudgetPolicy#remittancePerMilleToSuperior()}；{@link
- *       GovState#remittanceStateOrDefault(UnitId)} 的本周期累计；
+ *       GovernmentHouseholdResolver} 解析出的两个国库家户；{@code
+ *       economy.governmentOrDefault(UnitId.value()).budgetPolicy()} 的 {@link
+ *       GovBudgetPolicy#remittancePerMilleToSuperior()}（★★ 2026-10-12 追加裁定 12 §21.9 D-1：政策从 gov
+ *       切片搬进 {@code EconomyData.governments}）；{@link GovState#remittanceStateOrDefault(UnitId)}
+ *       的本周期累计；
  *   <li>写：账户只走 {@link StockDeductionService} + {@link
  *       HouseholdStockDeduction#transfer}（与日税同一落账原语：整批 先校验、后一次 commit），gov 状态只写 {@link
  *       GovState#withRemittanceState(UnitId, GovRemittanceState)}（周期账清零 + 最近一次应缴/实缴/缺口读数）；<b>不</b>改
@@ -95,6 +98,8 @@ final class GovRemittanceBridge {
    *
    * @param govState 当刻 gov 源状态（不修改；输出为新实例）
    * @param units unit 切片（读上级关系与座位；GOV 单位按 id 升序遍历）
+   * @param economy 经济切片（★★ 2026-10-12 追加裁定 12 §21.9 D-1：上缴比例住在 {@code EconomyData.governments}
+   *     的政府记录上，已不在 gov 切片）
    * @param grainCollectedByUnit 本日逐 unit 实收粮（毫；来自 {@code JurisdictionDailyTax.Report}）
    * @param silverCollectedByUnit 本日逐 unit 实收银（毫）
    * @param accounts 本次推进的唯一账户会话（与税/预算同一会话）
@@ -104,6 +109,7 @@ final class GovRemittanceBridge {
   static Outcome settle(
       GovState govState,
       UnitState units,
+      EconomyData economy,
       Map<UnitId, Long> grainCollectedByUnit,
       Map<UnitId, Long> silverCollectedByUnit,
       AccountSession accounts,
@@ -111,6 +117,7 @@ final class GovRemittanceBridge {
       boolean cycleClosed) {
     Objects.requireNonNull(govState, "govState");
     Objects.requireNonNull(units, "units");
+    Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(grainCollectedByUnit, "grainCollectedByUnit");
     Objects.requireNonNull(silverCollectedByUnit, "silverCollectedByUnit");
     Objects.requireNonNull(accounts, "accounts");
@@ -140,7 +147,9 @@ final class GovRemittanceBridge {
         continue;
       }
 
-      GovBudgetPolicy policy = govState.budgetPolicyOrDefault(govId);
+      // ★★ 2026-10-12 追加裁定 12 §21.9 D-1：上缴比例（预算政策的一部分）现在住 EconomyData.governments
+      //   （读侧唯一入口 economy.governmentOrDefault；缺省 = neutral() = 0‰ = 不上缴，I-B1）。
+      GovBudgetPolicy policy = economy.governmentOrDefault(govId.value()).budgetPolicy();
       long ratePerMille = policy.remittancePerMilleToSuperior();
       GovernmentFormation formation = (GovernmentFormation) unit.module().orElseThrow();
       Optional<UnitId> superiorGov = formation.superiorGov();

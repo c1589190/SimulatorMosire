@@ -1,4 +1,4 @@
-package io.mosire.simos.gov;
+package io.mosire.simos.economy.govpolicy;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,18 +19,17 @@ import java.util.Set;
  * 预算表；也可以只写预算表、工资规则取 0（不发薪）。
  *
  * <p>★ <b>中性默认</b>（{@link #neutral()}）：空类别表 + {@link GovOfficialSalaryRule#zero()} =
- * <b>不自动付</b>。旧档没有该 GOV 的预算政策时由 {@link GovState#budgetPolicyOrDefault(io.mosire.simos.unit.UnitId)}
- * 返回它。
+ * <b>不自动付</b>。旧档没有该 GOV 的预算政策时由 {@code EconomyData.governmentOrDefault(UnitId)} 返回它。
  *
  * <p>★ <b>保序不可变</b>：类别表用 {@code ArrayList} 拷贝 + 赋值处 {@code Collections.unmodifiableList} 冻结，<b>不用
  * {@code List.copyOf}</b>（保序纪律）；同一类别不得在表里出现两次（否则优先级有歧义，构造期当场拒）。
  *
  * <p>★★ <b>Z7c：上级上缴比例</b>：{@link #remittancePerMilleToSuperior()}（0..1000‰，默认 0）是本 GOV 的
  * <b>省可改可抗税</b>旋钮——周期末（关账日）按本周期实收税 × 比例上缴 {@code GovernmentFormation.superiorGov} 的国库；改成 0
- * 即"抗税"（不转移、无缺口告警）。它就在本 record 里、复用同一条 {@code gov.SetBudgetPolicy} 写口， 不新增命令/不改 handler 的权限面。旧档缺字段
- * ⇒ Jackson 给 primitive 0（= 不上缴）。
+ * 即"抗税"（不转移、无缺口告警）。它就在本 record 里、复用同一条 {@code economy.SetGovernmentPolicy} 写口， 不新增命令/不改 handler
+ * 的权限面。旧档缺字段 ⇒ Jackson 给 primitive 0（= 不上缴）。
  *
- * <p>★ <b>为什么没有 unitId</b>：同 {@link GovAdministrationPlan} —— 身份是 {@link GovState#budgetPolicies()}
+ * <p>★ <b>为什么没有 unitId</b>：同 {@link GovAdministrationPlan} —— 身份是 {@code EconomyData.governments}
  * 的键。
  *
  * @param orderedCategories 有序支出类别表（非 null、表项非 null、类别不重复；可为空 = 不自动付；保序不可变）

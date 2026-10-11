@@ -12,24 +12,23 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovBudgetCategory;
+import io.mosire.simos.economy.govpolicy.GovPostTier;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.spi.EconomyDefineCurrencyHandler;
 import io.mosire.simos.economy.spi.EconomyRecordMoneyIssuanceHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
+import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertGovUnitHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
-import io.mosire.simos.gov.GovAdministrationPlan;
-import io.mosire.simos.gov.GovBudgetCategory;
-import io.mosire.simos.gov.GovPostTier;
-import io.mosire.simos.gov.codec.GovCodec;
-import io.mosire.simos.gov.spi.SetAdministrationPlanHandler;
-import io.mosire.simos.gov.spi.SetBudgetPolicyHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -97,8 +96,9 @@ import java.util.Optional;
  * → unit.SetUnitHouseholds（hh-gov + hh-unit）→ economy.RegisterHousehold → actor.EnsureHouseholdAccount
  * → unit.AssignGovPost（POST / tier-3：两维各 50%）
  * → economy.SetHouseholdLabor（= Social 投影劳动）→ economy.SetGovServiceCommitment（GOV_SERVICE 全职）
- * → gov.SetAdministrationPlan（两维计划、默认 3 档、静态修正 1000‰、k=1）
- * → gov.SetBudgetPolicy（默认五类顺序 + 官吏工资规则 粮 10/银 1 毫·承诺小时）
+ * → economy.SetGovernmentPolicy（**一条**通用政府政策写口，同时给 policies.administration 与 policies.budget：
+ *   两维计划 + 默认 3 档 + 静态修正 1000‰ + k=1；默认五类顺序 + 官吏工资规则 粮 10/银 1 毫·承诺小时。
+ *   ★★ 2026-10-12 追加裁定 12 §21.9 D-3：旧两条 gov.SetAdministrationPlan / gov.SetBudgetPolicy 已删除）
  * …两级之后（A1 追加，顺序不可换）：
  * economy.DefineCurrency（中央 GOV 定义第二币种 copper，scale 3、SPECIE、发行权归中央）
  * → actor.AdjustAccounts（一次给两国库注入初始 粮/布/银 + 给中央国库注入铜）
@@ -640,17 +640,13 @@ public final class GovWorldBootstrap {
     next =
         applier.apply(
             next,
-            SetAdministrationPlanHandler.TYPE,
-            new SetAdministrationPlanHandler(),
-            new GovCodec(),
-            administrationPlanPayload(spec));
-    next =
-        applier.apply(
-            next,
-            SetBudgetPolicyHandler.TYPE,
-            new SetBudgetPolicyHandler(),
-            new GovCodec(),
-            budgetPolicyPayload(spec.govId()));
+            // ★★ 2026-10-12 追加裁定 12 §21.9 D-1/D-3：编制 + 预算两类政策合并成**同一条** economy
+            //   通用写口（一批一条 revision；旧形状这里是两条 gov 命令、两条 revision）。
+            //   ★ 载荷面：{governmentId, policies:{administration,…,budget…}}；本组合根是唯一构造点。
+            EconomySetGovernmentPolicyHandler.TYPE,
+            new EconomySetGovernmentPolicyHandler(),
+            new EconomyCodec(),
+            governmentPolicyPayload(spec));
     return next;
   }
 
@@ -839,7 +835,25 @@ public final class GovWorldBootstrap {
     return ToolSupport.json(payload);
   }
 
-  private static String administrationPlanPayload(GovSpec spec) {
+  /**
+   * ★★ <b>创世的两类政府政策载荷（追加裁定 12 §21.9 D-1/D-3）</b>：把旧形状的两条命令（{@code gov.SetAdministrationPlan} +
+   * {@code gov.SetBudgetPolicy}）合并成<b>同一条</b> {@code economy.SetGovernmentPolicy} 的载荷。
+   *
+   * <p>★ 逐字段与旧两份载荷<b>逐字相同</b>（计划：两维计划量 + 默认 3 档 + 四个静态修正 1000‰ + k=1；预算：五类默认顺序 + 官吏工资规则 + 上缴
+   * 0‰）——本方法只改"装进哪个信封"，不改任何数值（I-B7）。
+   */
+  private static String governmentPolicyPayload(GovSpec spec) {
+    Map<String, Object> policies = new LinkedHashMap<>();
+    policies.put("administration", administrationPolicyPayload(spec));
+    policies.put("budget", budgetPolicyPayload());
+    Map<String, Object> payload = new LinkedHashMap<>();
+    // ★ 来源 = GovernmentId（D-2）：由 GOV 单位 id 纯字符串派生（GovernmentIds.ofUnit，economy 侧同一把换算）。
+    payload.put("governmentId", GovernmentIds.ofUnit(spec.govId()).value());
+    payload.put("policies", policies);
+    return ToolSupport.json(payload);
+  }
+
+  private static Map<String, Object> administrationPolicyPayload(GovSpec spec) {
     List<Map<String, Object>> tiers =
         new ArrayList<>(GovAdministrationPlan.DEFAULT_POST_TIERS.size());
     for (GovPostTier tier : GovAdministrationPlan.DEFAULT_POST_TIERS) {
@@ -849,26 +863,25 @@ public final class GovWorldBootstrap {
       row.put("paperworkWeightPerMille", tier.paperworkWeightPerMille());
       tiers.add(row);
     }
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("unitId", spec.govId());
-    payload.put("securityPlannedLaborMilli", spec.securityPlannedLaborMilli());
-    payload.put("paperworkPlannedLaborMilli", spec.paperworkPlannedLaborMilli());
-    payload.put("postTiers", tiers);
-    payload.put(
+    Map<String, Object> policy = new LinkedHashMap<>();
+    policy.put("securityPlannedLaborMilli", spec.securityPlannedLaborMilli());
+    policy.put("paperworkPlannedLaborMilli", spec.paperworkPlannedLaborMilli());
+    policy.put("postTiers", tiers);
+    policy.put(
         "securitySupplyStaticModifierPerMille", GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
-    payload.put(
+    policy.put(
         "paperworkSupplyStaticModifierPerMille", GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
-    payload.put(
+    policy.put(
         "securityDemandStaticModifierPerMille", GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
-    payload.put(
+    policy.put(
         "paperworkDemandStaticModifierPerMille", GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
-    payload.put(
+    policy.put(
         "supernumerarySqrtCoefficient",
         GovAdministrationPlan.DEFAULT_SUPERNUMERARY_SQRT_COEFFICIENT);
-    return ToolSupport.json(payload);
+    return policy;
   }
 
-  private static String budgetPolicyPayload(String govId) {
+  private static Map<String, Object> budgetPolicyPayload() {
     List<Map<String, Object>> categories = new ArrayList<>(GovBudgetCategory.values().length);
     for (GovBudgetCategory category : GovBudgetCategory.values()) {
       Map<String, Object> line = new LinkedHashMap<>();
@@ -880,13 +893,12 @@ public final class GovWorldBootstrap {
     Map<String, Object> salaryRule = new LinkedHashMap<>();
     salaryRule.put("grainMilliPerCommittedHour", SALARY_GRAIN_MILLI_PER_COMMITTED_HOUR);
     salaryRule.put("silverMilliPerCommittedHour", SALARY_SILVER_MILLI_PER_COMMITTED_HOUR);
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("unitId", govId);
-    payload.put("orderedCategories", categories);
-    payload.put("officialSalaryRule", salaryRule);
+    Map<String, Object> policy = new LinkedHashMap<>();
+    policy.put("orderedCategories", categories);
+    policy.put("officialSalaryRule", salaryRule);
     // ★ Z7c：创世显式冻结 remittance 默认 0‰（省可改可抗税；中央不能自动强制）。
-    payload.put("remittancePerMilleToSuperior", 0L);
-    return ToolSupport.json(payload);
+    policy.put("remittancePerMilleToSuperior", 0L);
+    return policy;
   }
 
   /**

@@ -58,8 +58,8 @@ import java.util.Set;
  *
  * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand}（排除出令白名单 / {@code RegisterEffect} / 决策人命令目录三条路；
  * 命令总线本身仍可被窄工具提交）。决策人侧的受控入口是窄工具 {@code simos.gov.defineCurrency}（身份派生 + 只能自己的 GOV + GM 审批链），与
- * {@code gov.SetAdministrationPlan} 的既有形制同源。★ 不声明格资源（世界级词表没有格）⇒ {@link CommandTargets#targetPaths}
- * 恒空。
+ * {@code economy.SetGovernmentPolicy} 的既有形制同源（★★ 2026-10-12 追加裁定 12 前是 {@code
+ * gov.SetAdministrationPlan}，该命令已删除）。★ 不声明格资源（世界级词表没有格）⇒ {@link CommandTargets#targetPaths} 恒空。
  */
 public final class EconomyDefineCurrencyHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {

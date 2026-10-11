@@ -13,11 +13,11 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovBudgetCategory;
+import io.mosire.simos.economy.govpolicy.GovBudgetLine;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
 import io.mosire.simos.economy.time.AccountSession;
-import io.mosire.simos.gov.GovAdministrationPlan;
-import io.mosire.simos.gov.GovBudgetCategory;
-import io.mosire.simos.gov.GovBudgetLine;
-import io.mosire.simos.gov.GovBudgetPolicy;
 import io.mosire.simos.gov.GovDaily;
 import io.mosire.simos.gov.GovEfficiency;
 import io.mosire.simos.gov.GovState;
@@ -115,7 +115,8 @@ public final class GovBudgetExecutionBridge {
   /**
    * 现算并执行当日的预算分配（纯规划 + 返回可执行件；真正落账由调用方按返回的 oracle/规则表完成）。
    *
-   * @param govState GOV 源状态（预算政策 = 唯一权威）
+   * @param govState GOV 源状态（★★ 2026-10-12 追加裁定 12 §21.9 D-1：本桥<b>只</b>读它的 {@code offices} 键当 "逐 GOV
+   *     遍历序"；预算政策与编制计划的唯一权威已改成 {@code EconomyData.governments} 的政府记录）
    * @param units 单位状态（GOV 单位/编制/有效位置）
    * @param social 社会状态（军俸桥解析收款家户用）
    * @param economy 经济状态（单位/承诺/家户行）
@@ -145,8 +146,7 @@ public final class GovBudgetExecutionBridge {
 
     MilitaryPayRuleBridge.Report militaryReport =
         MilitaryPayRuleBridge.deriveReport(units, social, economy, day);
-    GovSalaryRuleBridge.Report salaryReport =
-        GovSalaryRuleBridge.deriveReport(govState, units, economy, day);
+    GovSalaryRuleBridge.Report salaryReport = GovSalaryRuleBridge.deriveReport(units, economy, day);
 
     Map<UnitId, ResourceVector> militaryDemand = new LinkedHashMap<>();
     for (HouseholdPeriodicAdjustment rule : militaryReport.rules()) {
@@ -202,7 +202,9 @@ public final class GovBudgetExecutionBridge {
         if (at != null) {
           seatByGov.put(gov, at);
         }
-        GovBudgetPolicy policy = govState.budgetPolicyOrDefault(gov);
+        // ★★ 2026-10-12 追加裁定 12 §21.9 D-1：预算政策与编制计划的来源 = EconomyData.governments（读侧唯一入口
+        //   economy.governmentOrDefault；缺记录/没设过 ⇒ neutral()，I-B1 逐值退回改前行为）。
+        GovBudgetPolicy policy = economy.governmentOrDefault(gov.value()).budgetPolicy();
         ResourceVector available = treasuryAvailable(accounts, unit, gov, day);
         Map<GovBudgetCategory, ResourceVector> demands = new LinkedHashMap<>();
         demands.put(
@@ -227,7 +229,7 @@ public final class GovBudgetExecutionBridge {
               planAlerts(
                   gov,
                   at,
-                  govState.administrationPlanOrDefault(gov),
+                  economy.governmentOrDefault(gov.value()).administrationPlan(),
                   policy,
                   demands,
                   allocations,

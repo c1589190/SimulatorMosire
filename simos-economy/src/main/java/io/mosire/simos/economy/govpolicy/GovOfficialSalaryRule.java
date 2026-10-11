@@ -1,4 +1,4 @@
-package io.mosire.simos.gov;
+package io.mosire.simos.economy.govpolicy;
 
 /**
  * 官吏工资规则（Z2，设计书 §4.1 / §9）：<b>每承诺小时</b>发多少粮/银。

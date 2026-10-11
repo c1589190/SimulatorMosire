@@ -1,4 +1,4 @@
-package io.mosire.simos.gov;
+package io.mosire.simos.economy.govpolicy;
 
 /**
  * 政府预算支出类别词表（Z2，设计书 §9 / §14.4）。

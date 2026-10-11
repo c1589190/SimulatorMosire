@@ -22,13 +22,14 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovBudgetCategory;
+import io.mosire.simos.economy.govpolicy.GovBudgetLine;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
+import io.mosire.simos.economy.govpolicy.GovPostTier;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
-import io.mosire.simos.gov.GovAdministrationPlan;
-import io.mosire.simos.gov.GovBudgetCategory;
-import io.mosire.simos.gov.GovBudgetLine;
-import io.mosire.simos.gov.GovBudgetPolicy;
 import io.mosire.simos.gov.GovOfficeState;
-import io.mosire.simos.gov.GovPostTier;
 import io.mosire.simos.gov.GovRemittanceState;
 import io.mosire.simos.gov.GovServiceFlow;
 import io.mosire.simos.gov.GovSnapshot;
@@ -159,8 +160,12 @@ public final class GovInfoTool implements AgentTool {
         Unit unit = units.units().get(govId);
         Optional<HexCoord> at = units.effectivePosition(govId, state.meta().timestamp());
         requireVisible(context, govId, at);
+        // ★★ 2026-10-12 追加裁定 12 §21.9 D-1：三类政策（口岸/预算/编制）的来源 = 该 GOV 的政府记录。
+        //   缺记录 ⇒ governmentOrDefault 给中性壳（缺省中性，I-B1）；读口只展示它，不写任何状态。
+        Government government = economy.governmentOrDefault(govId.value());
         governments.add(
-            governmentInfo(state, map, govState, economy, social, units, unit, govId, at, tick));
+            governmentInfo(
+                state, map, govState, government, economy, social, units, unit, govId, at, tick));
       }
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("activated", true);
@@ -262,6 +267,7 @@ public final class GovInfoTool implements AgentTool {
       SimulationState state,
       GameMap map,
       GovState govState,
+      Government government,
       EconomyData economy,
       SocialData social,
       UnitState units,
@@ -283,16 +289,17 @@ public final class GovInfoTool implements AgentTool {
         "governmentHousehold",
         GovernmentHouseholdResolver.requireGovernmentHousehold(unit, govId.value()).value());
 
-    GovAdministrationPlan plan = govState.administrationPlanOrDefault(govId);
-    info.put(
-        "administrationPlanSource",
-        govState.administrationPlans().containsKey(govId) ? "explicit" : "neutral-default");
+    // ★★ 2026-10-12 追加裁定 12 §21.9 D-1：政策从 gov 切片搬到 EconomyData.governments 的政府记录。
+    //   "explicit / neutral-default" 的判据 = 该政府记录在不在（而不是旧形状的"政策表里有没有这把键"）：
+    //   没有记录 ⇒ governmentOrDefault 给的是全中性壳（三类政策都是各自的中性值）。
+    boolean governmentRegistered =
+        economy.governments().containsKey(GovernmentIds.ofUnit(govId.value()));
+    GovAdministrationPlan plan = government.administrationPlan();
+    info.put("administrationPlanSource", governmentRegistered ? "explicit" : "neutral-default");
     info.put("administrationPlan", planView(plan));
 
-    GovBudgetPolicy policy = govState.budgetPolicyOrDefault(govId);
-    info.put(
-        "budgetPolicySource",
-        govState.budgetPolicies().containsKey(govId) ? "explicit" : "neutral-default");
+    GovBudgetPolicy policy = government.budgetPolicy();
+    info.put("budgetPolicySource", governmentRegistered ? "explicit" : "neutral-default");
     info.put("budgetPolicy", policyView(policy));
     info.put("remittance", remittanceView(govState, govId, policy));
 
@@ -301,7 +308,7 @@ public final class GovInfoTool implements AgentTool {
     info.put("externalPosts", postsView(formation.externalPosts()));
     info.put("projectedStaff", projectedStaffView(economy, social, units, govId, tick));
     info.put("efficiency", efficiencyView(govState.offices().get(govId)));
-    info.put("supply", supplyView(economy, govId, formation, plan, tick));
+    info.put("supply", supplyView(economy, govId, formation, tick));
     info.put("committedLabor", committedLaborView(economy, social, govId, formation, plan, tick));
     info.put("desertion", desertionView(social, economy, govId, formation, tick));
     info.put("budgetSettlement", budgetSettlementView(govState.offices().get(govId), policy));
@@ -451,15 +458,11 @@ public final class GovInfoTool implements AgentTool {
 
   /** 实际供给（复用 Z3b 唯一桥；契约故障 ⇒ 具名 unavailable，不填 0）。★ Z7d-1 起同时给承诺/有效两套口径。 */
   private static Map<String, Object> supplyView(
-      EconomyData economy,
-      UnitId govId,
-      GovernmentFormation formation,
-      GovAdministrationPlan plan,
-      long tick) {
+      EconomyData economy, UnitId govId, GovernmentFormation formation, long tick) {
     Map<String, Object> view = new LinkedHashMap<>();
     try {
       GovernmentServiceLaborBridge.Supply supply =
-          GovernmentServiceLaborBridge.supply(economy, govId, formation, plan, tick);
+          GovernmentServiceLaborBridge.supply(economy, govId, formation, tick);
       view.put("available", true);
       // 旧字段名保留（有效供给），另给显式的 committed/effective 两套字段与 underfed 读数。
       view.put("securityLaborMilli", supply.securityLaborMilli());

@@ -6,6 +6,9 @@ import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.money.MoneyAuthority;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
+import io.mosire.simos.economy.govpolicy.GovPortPolicy;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -52,6 +55,19 @@ import java.util.Set;
  * <p>★ <b>{@code issuable} 为空 = 这个政府不是任何币种的发行人</b>（它可以只是财政主体）；{@code authorityOf} 对集合外的币种 当场抛 ——
  * "谁能造钱"这条判据不能由一个宽松的集合悄悄抹掉。
  *
+ * <p>★★★ <b>追加裁定 12（2026-10-12 §21.9 D-1）：三类政府政策随本记录走</b>（{@code portPolicy} / {@code budgetPolicy}
+ * / {@code administrationPlan}）。用户原话「口岸本身肯定是交给经济模块负责维护的……但是写入规则需要交给 GOV， 也就是 GOV
+ * 只调用相关修改，不负责管理机制」、「B，GOV 不应该负责存」⇒
+ *
+ * <ul>
+ *   <li><b>机制 + 规则 + 存储 = economy</b>：政策值就挂在本记录上（<b>不新增独立组件</b> ⇒ 组件数不变），由 economy 的 唯一写口 {@code
+ *       economy.SetGovernmentPolicy}（GM-only）写；
+ *   <li><b>决定权 = GOV</b>：谁定这些值由 GOV 的命令面决定，economy 只负责"存得住、算得对"；
+ *   <li>★★ <b>结构红利</b>：政府记录没了 ⇒ 它的政策跟着没了 ⇒ "GOV 删除后政策悬空"在结构上不可能出现（无需级联清理、 无需悬空检测）；
+ *   <li>★ <b>缺省中性</b>（I-B1）：本记录<b>恒</b>持有非 null 的政策值；没设过 = {@code GovPortPolicy.empty()} / {@code
+ *       GovBudgetPolicy.neutral()} / {@code GovAdministrationPlan.neutral()}（唯一拼写点，I-B2），逐值退回改前行为。
+ * </ul>
+ *
  * @param id 政府稳定身份；不得为 null（键 == 值内 id 由 {@code EconomyData} 判）
  * @param nationRef 国家/辖区引用（当前为世界级最小政府，取 {@code "world"}；不得为空白）
  * @param treasury 国库 actor（{@code GOVERNMENT} 或非生产家户模型下的 {@code HOUSEHOLD}；不得为 null）
@@ -65,6 +81,13 @@ import java.util.Set;
  *     MintSettlement} 在每轮关账时覆盖写、 固定大小 ⇒ 状态不随推进天数增长（性能红线）。★ 空表 = 还没有过任何铸币轮（合法状态：这一轮没有上一轮印量可比）。 键不得为
  *     null、逐值必须 {@code > 0}（0 不是一条记录，删键即可）；保序不可变
  * @param officialRates 官方汇率表（键 == 值内币对）；不得为 null；保序不可变
+ * @param portPolicy ★★ <b>追加裁定 12（2026-10-12 §21.9 D-1）：口岸管制政策</b>（逐商品 / 逐（币种 × 挂单类型）的四元组 + {@code
+ *     marketControl} 开关）。缺省 = {@link GovPortPolicy#empty()}（= 什么都不限制、不收税、不要求管控 ⇒
+ *     逐值退回改前行为，I-B1/I-P1）；不得为 null
+ * @param budgetPolicy ★★ <b>追加裁定 12：国库预算政策</b>（有序支出类别 + 官吏工资规则 + 上缴比例）。缺省 = {@link
+ *     GovBudgetPolicy#neutral()}（空表 + 零工资 + 零上缴 = 不自动付，I-B1）；不得为 null
+ * @param administrationPlan ★★ <b>追加裁定 12：行政编制计划</b>（三维计划量 + 3 档岗位目录 + 六个静态修正 + k）。缺省 = {@link
+ *     GovAdministrationPlan#neutral()}（计划 0 / 默认 3 档 / 修正 1000‰ / k=1，I-B1）；不得为 null
  */
 public record Government(
     GovernmentId id,
@@ -73,17 +96,31 @@ public record Government(
     Set<CurrencyId> issuable,
     long mintScalePerCycle,
     Map<CurrencyId, Long> mintedLastCyclePerCycle,
-    Map<String, OfficialRate> officialRates)
+    Map<String, OfficialRate> officialRates,
+    GovPortPolicy portPolicy,
+    GovBudgetPolicy budgetPolicy,
+    GovAdministrationPlan administrationPlan)
     implements MoneyAuthority {
 
   /**
    * ★ 旧形状兼容构造器：铸币旋钮 0、上一轮印量为空（逐值等于"这个政府还不铸币"）。
    *
-   * <p>★ 它服务于"旧夹具/旧载荷走它"这一条（与 A2a 的官方汇率构造器同制）：非发行人/纯财政主体走它。
+   * <p>★ 它服务于"旧夹具/旧载荷走它"这一条（与 A2a 的官方汇率构造器同制）：非发行人/纯财政主体走它。 ★★ 2026-10-12 追加裁定
+   * 12：三类政策取<b>中性缺省</b>（口岸不限制 / 预算不自动付 / 编制中性）⇒ 逐值退回改前行为（I-B1）。
    */
   public Government(
       GovernmentId id, String nationRef, ActorRef treasury, Set<CurrencyId> issuable) {
-    this(id, nationRef, treasury, issuable, 0L, Map.of(), Map.of());
+    this(
+        id,
+        nationRef,
+        treasury,
+        issuable,
+        0L,
+        Map.of(),
+        Map.of(),
+        GovPortPolicy.empty(),
+        GovBudgetPolicy.neutral(),
+        GovAdministrationPlan.neutral());
   }
 
   /**
@@ -100,7 +137,17 @@ public record Government(
       ActorRef treasury,
       Set<CurrencyId> issuable,
       long mintScalePerCycle) {
-    this(id, nationRef, treasury, issuable, mintScalePerCycle, Map.of(), Map.of());
+    this(
+        id,
+        nationRef,
+        treasury,
+        issuable,
+        mintScalePerCycle,
+        Map.of(),
+        Map.of(),
+        GovPortPolicy.empty(),
+        GovBudgetPolicy.neutral(),
+        GovAdministrationPlan.neutral());
   }
 
   /**
@@ -116,7 +163,51 @@ public record Government(
       Set<CurrencyId> issuable,
       long mintScalePerCycle,
       Map<CurrencyId, Long> mintedLastCyclePerCycle) {
-    this(id, nationRef, treasury, issuable, mintScalePerCycle, mintedLastCyclePerCycle, Map.of());
+    this(
+        id,
+        nationRef,
+        treasury,
+        issuable,
+        mintScalePerCycle,
+        mintedLastCyclePerCycle,
+        Map.of(),
+        GovPortPolicy.empty(),
+        GovBudgetPolicy.neutral(),
+        GovAdministrationPlan.neutral());
+  }
+
+  /**
+   * ★★ <b>追加裁定 12（2026-10-12 §21.9 D-1）：显式给三类政策、官方汇率取空的形状</b>——承载政策的字段住本记录（现 10 个组件）， 由 {@code
+   * economy.SetGovernmentPolicy} 一条通用写口写（GOV 只调写口、不负责存）。
+   *
+   * <p>★ <b>为什么只有一个"给政策"的重载</b>：政策三者是一个整体（"这个政府设过哪些政策"），再拆成多个组合重载只会 制造"哪一版才是当前形状"的歧义。要"只改其中一类"请走
+   * {@link #withPortPolicy} / {@link #withBudgetPolicy} / {@link
+   * #withAdministrationPlan}（它们逐字段带过其余全部字段）。
+   *
+   * <p>★ 缺省（上面几个旧形状构造器）恒为中性：口岸 {@link GovPortPolicy#empty()}、预算 {@link
+   * GovBudgetPolicy#neutral()}、编制 {@link GovAdministrationPlan#neutral()} ⇒ 没设过政策的世界逐值退回改前行为（I-B1）。
+   */
+  public Government(
+      GovernmentId id,
+      String nationRef,
+      ActorRef treasury,
+      Set<CurrencyId> issuable,
+      long mintScalePerCycle,
+      Map<CurrencyId, Long> mintedLastCyclePerCycle,
+      GovPortPolicy portPolicy,
+      GovBudgetPolicy budgetPolicy,
+      GovAdministrationPlan administrationPlan) {
+    this(
+        id,
+        nationRef,
+        treasury,
+        issuable,
+        mintScalePerCycle,
+        mintedLastCyclePerCycle,
+        Map.of(),
+        portPolicy,
+        budgetPolicy,
+        administrationPlan);
   }
 
   public Government {
@@ -186,6 +277,21 @@ public record Government(
       rates.put(entry.getKey(), entry.getValue());
     }
     officialRates = Collections.unmodifiableMap(rates);
+    // ★★ 2026-10-12 追加裁定 12（§21.9 D-1）：三类政策随政府记录走（不新增独立组件）——本记录的每个实例都必须持有
+    //   一份**非 null** 的政策值；"没设过"统一拼成 neutral()/empty()（缺省中性唯一拼写点，I-B1/I-B2）。
+    //   ★ 不做 null ⇒ neutral 的静默归一：那会让"某处漏传政策"看起来成功（本仓最忌的一族）。
+    if (portPolicy == null) {
+      throw new IllegalArgumentException(
+          "Government.portPolicy 不得为 null（没设过用 GovPortPolicy.empty()）");
+    }
+    if (budgetPolicy == null) {
+      throw new IllegalArgumentException(
+          "Government.budgetPolicy 不得为 null（没设过用 GovBudgetPolicy.neutral()）");
+    }
+    if (administrationPlan == null) {
+      throw new IllegalArgumentException(
+          "Government.administrationPlan 不得为 null（没设过用 GovAdministrationPlan.neutral()）");
+    }
   }
 
   /** ★★ <b>A2a：一个币对的官方汇率</b>（缺 ⇒ 空；"这个币对没有官方汇率"是合法状态，不是故障）。 */
@@ -203,8 +309,7 @@ public record Government(
     Objects.requireNonNull(rate, "rate");
     LinkedHashMap<String, OfficialRate> rates = new LinkedHashMap<>(officialRates);
     rates.put(rate.key(), rate);
-    return new Government(
-        id, nationRef, treasury, issuable, mintScalePerCycle, mintedLastCyclePerCycle, rates);
+    return withPolicies(rates, portPolicy, budgetPolicy, administrationPlan);
   }
 
   /**
@@ -219,7 +324,10 @@ public record Government(
         issuable,
         nextMintScalePerCycle,
         mintedLastCyclePerCycle,
-        officialRates);
+        officialRates,
+        portPolicy,
+        budgetPolicy,
+        administrationPlan);
   }
 
   /**
@@ -231,7 +339,16 @@ public record Government(
   public Government withMintedLastCyclePerCycle(Map<CurrencyId, Long> nextMintedLastCycle) {
     Objects.requireNonNull(nextMintedLastCycle, "nextMintedLastCycle");
     return new Government(
-        id, nationRef, treasury, issuable, mintScalePerCycle, nextMintedLastCycle, officialRates);
+        id,
+        nationRef,
+        treasury,
+        issuable,
+        mintScalePerCycle,
+        nextMintedLastCycle,
+        officialRates,
+        portPolicy,
+        budgetPolicy,
+        administrationPlan);
   }
 
   /**
@@ -247,10 +364,13 @@ public record Government(
         nextIssuable,
         mintScalePerCycle,
         mintedLastCyclePerCycle,
-        officialRates);
+        officialRates,
+        portPolicy,
+        budgetPolicy,
+        administrationPlan);
   }
 
-  /** ★★ <b>只换国库 actor</b>（其它字段原样带过；官方汇率与发行权都不动）。 */
+  /** ★★ <b>只换国库 actor</b>（其它字段原样带过；官方汇率、发行权与三类政策都不动）。 */
   public Government withTreasury(ActorRef nextTreasury) {
     Objects.requireNonNull(nextTreasury, "nextTreasury");
     return new Government(
@@ -260,7 +380,60 @@ public record Government(
         issuable,
         mintScalePerCycle,
         mintedLastCyclePerCycle,
-        officialRates);
+        officialRates,
+        portPolicy,
+        budgetPolicy,
+        administrationPlan);
+  }
+
+  /**
+   * ★★ <b>只换口岸管制政策</b>（其它字段原样带过）：{@code economy.SetGovernmentPolicy} 的 {@code policies.port} 子集走它。
+   */
+  public Government withPortPolicy(GovPortPolicy nextPortPolicy) {
+    Objects.requireNonNull(nextPortPolicy, "nextPortPolicy");
+    return withPolicies(officialRates, nextPortPolicy, budgetPolicy, administrationPlan);
+  }
+
+  /**
+   * ★★ <b>只换国库预算政策</b>（其它字段原样带过）：{@code economy.SetGovernmentPolicy} 的 {@code policies.budget}
+   * 子集走它。
+   */
+  public Government withBudgetPolicy(GovBudgetPolicy nextBudgetPolicy) {
+    Objects.requireNonNull(nextBudgetPolicy, "nextBudgetPolicy");
+    return withPolicies(officialRates, portPolicy, nextBudgetPolicy, administrationPlan);
+  }
+
+  /**
+   * ★★ <b>只换行政编制计划</b>（其它字段原样带过）：{@code economy.SetGovernmentPolicy} 的 {@code
+   * policies.administration} 子集走它。
+   */
+  public Government withAdministrationPlan(GovAdministrationPlan nextAdministrationPlan) {
+    Objects.requireNonNull(nextAdministrationPlan, "nextAdministrationPlan");
+    return withPolicies(officialRates, portPolicy, budgetPolicy, nextAdministrationPlan);
+  }
+
+  /**
+   * ★★★ <b>唯一重建点</b>（拷贝纪律）：本记录每加一个组件，只有这一处需要跟着改 —— 其余 {@code with*} 全部委托它。
+   *
+   * <p>★ 为什么把它抽出来：2026-10-12 追加裁定 12 一口气加了三个组件，若按老写法在 7 个 {@code with*} 里各串一遍 canonical
+   * 构造器，任何一处漏参都会<b>静默丢掉一类政策</b>（本仓最贵的那类 bug）。收成一处 ⇒ 漏参在编译期就现形。
+   */
+  private Government withPolicies(
+      Map<String, OfficialRate> rates,
+      GovPortPolicy nextPortPolicy,
+      GovBudgetPolicy nextBudgetPolicy,
+      GovAdministrationPlan nextAdministrationPlan) {
+    return new Government(
+        id,
+        nationRef,
+        treasury,
+        issuable,
+        mintScalePerCycle,
+        mintedLastCyclePerCycle,
+        rates,
+        nextPortPolicy,
+        nextBudgetPolicy,
+        nextAdministrationPlan);
   }
 
   /** ★★ 发行源：{@code issuable} 内含 {@code currency} ⇒ 返回国库 actor；否则当场抛（说不出"谁发的"）。 */

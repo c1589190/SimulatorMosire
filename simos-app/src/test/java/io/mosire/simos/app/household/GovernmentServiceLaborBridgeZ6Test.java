@@ -10,18 +10,22 @@ import io.mosire.simos.app.time.GovServiceFlowFeed;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovPostTier;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.ProductionProcess;
-import io.mosire.simos.gov.GovAdministrationPlan;
+import io.mosire.simos.gov.AdministrationCoefficients;
 import io.mosire.simos.gov.GovDaily;
 import io.mosire.simos.gov.GovEfficiency;
 import io.mosire.simos.gov.GovEfficiencyModifier;
 import io.mosire.simos.gov.GovOfficeState;
-import io.mosire.simos.gov.GovPostTier;
 import io.mosire.simos.gov.GovServiceFlow;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.hex.HexCoord;
@@ -46,6 +50,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -106,10 +111,9 @@ class GovernmentServiceLaborBridgeZ6Test {
     EconomyData economy = economy(List.of(serviceUnit("u1")), List.<HouseholdLaborCommitment>of());
     GovernmentServiceLaborBridge.Supply supply =
         GovernmentServiceLaborBridge.supply(
-            economy,
+            withPlan(economy, plan(tiers(tier("t1", 500, 500)))),
             GOV,
             formation(Map.of(H1, post(H1, "t1")), Map.of()),
-            plan(tiers(tier("t1", 500, 500))),
             DAY);
     assertThat(supply.securityLaborMilli()).isZero();
     assertThat(supply.paperworkLaborMilli()).isZero();
@@ -126,10 +130,9 @@ class GovernmentServiceLaborBridgeZ6Test {
 
     GovernmentServiceLaborBridge.Supply supply =
         GovernmentServiceLaborBridge.supply(
-            economy,
+            withPlan(economy, plan(tiers(tier("t1", 500, 500)))),
             GOV,
             formation(Map.of(H1, post(H1, "t1")), Map.of()),
-            plan(tiers(tier("t1", 500, 500))),
             DAY);
     assertThat(supply.securityLaborMilli()).isEqualTo(8000L);
     assertThat(supply.paperworkLaborMilli()).isEqualTo(8001L);
@@ -150,10 +153,9 @@ class GovernmentServiceLaborBridgeZ6Test {
 
     GovernmentServiceLaborBridge.Supply fromBase =
         GovernmentServiceLaborBridge.supply(
-            economy,
+            withPlan(economy, plan(tiers(tier("t1", 500, 500)))),
             GOV,
             formation(Map.of(H1, post(H1, "t1")), Map.of()),
-            plan(tiers(tier("t1", 500, 500))),
             DAY);
     assertThat(fromBase.securityLaborMilli()).as("10000 × 500/1000").isEqualTo(5_000L);
     assertThat(fromBase.paperworkLaborMilli()).isEqualTo(5_000L);
@@ -165,11 +167,10 @@ class GovernmentServiceLaborBridgeZ6Test {
     HouseholdId govHousehold = GovernmentHouseholds.of(GOV.value());
     GovernmentServiceLaborBridge.Supply fromWorkingCopy =
         GovernmentServiceLaborBridge.supply(
-            economy,
+            withPlan(economy, plan(tiers(tier("t1", 500, 500)))),
             Map.of(H1, householdRow(H1, 8_000L), govHousehold, householdRow(govHousehold)),
             GOV,
             formation(Map.of(H1, post(H1, "t1")), Map.of()),
-            plan(tiers(tier("t1", 500, 500))),
             DAY);
     assertThat(fromWorkingCopy.securityLaborMilli()).as("8000 × 500/1000").isEqualTo(4_000L);
     assertThat(fromWorkingCopy.paperworkLaborMilli()).isEqualTo(4_000L);
@@ -204,7 +205,10 @@ class GovernmentServiceLaborBridgeZ6Test {
     EconomyData economy = economy(List.of(serviceUnit("u1")), List.of(commitment));
     GovernmentServiceLaborBridge.Supply supply =
         GovernmentServiceLaborBridge.supply(
-            economy, GOV, formation(Map.of(), Map.of()), plan(tiers(tier("t1", 500, 500))), DAY);
+            withPlan(economy, plan(tiers(tier("t1", 500, 500)))),
+            GOV,
+            formation(Map.of(), Map.of()),
+            DAY);
 
     assertThat(supply.securityLaborMilli()).isZero();
     assertThat(supply.paperworkLaborMilli()).isZero();
@@ -396,7 +400,7 @@ class GovernmentServiceLaborBridgeZ6Test {
         GovEfficiency.of(
             formation,
             Map.of(),
-            plan2(32_000L, 32_000L),
+            coefficients(plan2(32_000L, 32_000L)),
             96_000L,
             96_000L,
             1000L,
@@ -416,7 +420,7 @@ class GovernmentServiceLaborBridgeZ6Test {
         GovEfficiency.of(
             formation,
             Map.of(),
-            plan2(32_000L, 32_000L),
+            coefficients(plan2(32_000L, 32_000L)),
             16_000L,
             16_000L,
             1000L,
@@ -434,7 +438,7 @@ class GovernmentServiceLaborBridgeZ6Test {
         GovEfficiency.of(
             formation,
             Map.of(),
-            plan2(0L, 0L),
+            coefficients(plan2(0L, 0L)),
             16_000L,
             16_000L,
             1000L,
@@ -538,7 +542,10 @@ class GovernmentServiceLaborBridgeZ6Test {
     EconomyData economy = economy(List.of(serviceUnit("u1")), List.of(commitment));
     GovernmentServiceLaborBridge.Supply supply =
         GovernmentServiceLaborBridge.supply(
-            economy, GOV, formation(Map.of(post.householdId(), post), Map.of()), plan(tiers), DAY);
+            withPlan(economy, plan(tiers)),
+            GOV,
+            formation(Map.of(post.householdId(), post), Map.of()),
+            DAY);
     return new long[] {supply.securityLaborMilli(), supply.paperworkLaborMilli()};
   }
 
@@ -551,10 +558,9 @@ class GovernmentServiceLaborBridgeZ6Test {
     assertThatThrownBy(
             () ->
                 GovernmentServiceLaborBridge.supply(
-                    economy(List.of(serviceUnit("u1")), List.of(commitment)),
+                    withPlan(economy(List.of(serviceUnit("u1")), List.of(commitment)), plan(tiers)),
                     GOV,
                     formation(Map.of(post.householdId(), post), Map.of()),
-                    plan(tiers),
                     DAY))
         .as("契约故障 reason=%s ⇒ ISE", reason)
         .isInstanceOf(IllegalStateException.class);
@@ -760,6 +766,47 @@ class GovernmentServiceLaborBridgeZ6Test {
         1000L,
         1000L,
         GovAdministrationPlan.DEFAULT_SUPERNUMERARY_SQRT_COEFFICIENT);
+  }
+
+  /**
+   * ★★ <b>编制计划 → {@code GovEfficiency} 的纯值入参</b>（追加裁定 12 §21.9 末段选 (a)：{@code simos-gov} 不许 import
+   * economy ⇒ 组合根把 {@code Government.administrationPlan()} 逐字段折成本类型，gov 侧只吃纯值）。
+   *
+   * <p>映射与生产调用点（{@code PopulationEconomyTimeParticipant}）<b>逐字段同形</b>：字段顺序 = 该记录组件顺序。
+   */
+  private static AdministrationCoefficients coefficients(GovAdministrationPlan plan) {
+    return AdministrationCoefficients.of(
+        plan.securityPlannedLaborMilli(),
+        plan.paperworkPlannedLaborMilli(),
+        plan.portPlannedLaborMilli(),
+        plan.securitySupplyStaticModifierPerMille(),
+        plan.paperworkSupplyStaticModifierPerMille(),
+        plan.portSupplyStaticModifierPerMille(),
+        plan.securityDemandStaticModifierPerMille(),
+        plan.paperworkDemandStaticModifierPerMille(),
+        plan.portDemandStaticModifierPerMille(),
+        plan.supernumerarySqrtCoefficient());
+  }
+
+  /**
+   * ★★ <b>把编制计划写进 economy 的政府记录</b>（追加裁定 12 §21.9 D-1：档位目录的唯一权威 = {@code EconomyData.governments} 的
+   * {@code Government.administrationPlan()}；本夹具世界还没登记 u-1 政府 ⇒ 先补一条中性记录）。
+   */
+  private static EconomyData withPlan(EconomyData economy, GovAdministrationPlan plan) {
+    GovernmentId id = GovernmentIds.ofUnit(GOV.value());
+    Government government =
+        economy
+            .governments()
+            .getOrDefault(
+                id,
+                new Government(
+                    id,
+                    GOV.value(),
+                    HouseholdActors.of(GovernmentHouseholds.of(GOV.value())),
+                    Set.of()));
+    Map<GovernmentId, Government> governments = new LinkedHashMap<>(economy.governments());
+    governments.put(id, government.withAdministrationPlan(plan));
+    return economy.withGovernments(governments);
   }
 
   private static UnitState oneGovUnit() {

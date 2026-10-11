@@ -17,14 +17,13 @@ import io.mosire.simos.economy.api.market.PortRule;
 import io.mosire.simos.economy.api.market.PortTaxMode;
 import io.mosire.simos.economy.api.market.PortTaxRule;
 import io.mosire.simos.economy.api.market.ZonePortRegime;
+import io.mosire.simos.economy.govpolicy.GovPortPolicy;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.MarketZoneBook;
 import io.mosire.simos.economy.time.PortEnforcementInput;
 import io.mosire.simos.economy.time.PortRegimeAggregation;
 import io.mosire.simos.economy.time.PortTaxInput;
 import io.mosire.simos.gov.GovEfficiency;
-import io.mosire.simos.gov.GovPortPolicy;
-import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -159,22 +158,22 @@ public final class PortRegimeBridge {
   /**
    * ★★ <b>算本轮的口岸执行规律</b>（纯函数；不写状态、不落盘、不用随机数）。
    *
-   * @param govState 政府切片（口岸政策 = 逐政府 × 逐类的四元组规则）；不得为 null
    * @param units 单位切片（辖区 ⇒ 暴露边归属）；不得为 null
    * @param map 地图（Region→hexes、hex 存在性）；不得为 null
-   * @param economy 经济切片（区表 = 成员格唯一权威；币种词表 = {@code currencies()}）；不得为 null
+   * @param economy 经济切片（区表 = 成员格唯一权威；币种词表 = {@code currencies()}；★★ 2026-10-12 追加裁定 12 §21.9 D-1
+   *     起<b>口岸政策也在这里</b> —— {@code EconomyData.governments} 的 {@code
+   *     Government.portPolicy()}，读侧唯一入口 {@code economy.governmentOrDefault(UnitId.value())}）；不得为
+   *     null
    * @param efficiencyByUnit 当日逐 GOV 效率表（口岸效率 = 第三维）；缺失的 GOV 按"没有口岸编制"（e = 0）读
    * @param day 世界日（只进日志）
    * @throws IllegalStateException 非法政策（未知商品/未知币种）⇒ 具名 ERROR + fail-closed
    */
   public static PortRegimeDay compute(
-      GovState govState,
       UnitState units,
       GameMap map,
       EconomyData economy,
       Map<UnitId, GovEfficiency.Efficiency> efficiencyByUnit,
       long day) {
-    Objects.requireNonNull(govState, "govState");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(map, "map");
     Objects.requireNonNull(economy, "economy");
@@ -219,7 +218,7 @@ public final class PortRegimeBridge {
       List<String> ownerKeys = new ArrayList<>(zoneEntry.getValue().keySet());
       ownerKeys.sort(Comparator.naturalOrder());
       for (String ownerKey : ownerKeys) {
-        GovPortPolicy policy = policyOf(govState, units, ownerKey);
+        GovPortPolicy policy = policyOf(economy, units, ownerKey);
         checkKnownClasses(policy, economy, ownerKey, day);
         long weight = zoneEntry.getValue().get(ownerKey);
         for (Map.Entry<CommodityId, PortRule> rule : policy.commodityRules().entrySet()) {
@@ -311,7 +310,7 @@ public final class PortRegimeBridge {
                   orderKind,
                   ownerKeys,
                   zoneEntry.getValue(),
-                  govState,
+                  economy,
                   units,
                   efficiencyByUnit,
                   PortDirection.ENTRY);
@@ -324,7 +323,7 @@ public final class PortRegimeBridge {
                   orderKind,
                   ownerKeys,
                   zoneEntry.getValue(),
-                  govState,
+                  economy,
                   units,
                   efficiencyByUnit,
                   PortDirection.EXIT);
@@ -337,7 +336,7 @@ public final class PortRegimeBridge {
             // ★ 零值条目不进表（0 与"缺键"读法同义；表更小、注入差异更干净）。
             byKind.put(orderKind, directional);
           }
-          logCurrencyFeeShapedOnly(day, zoneId, classKey, orderKind, govState, units, ownerKeys);
+          logCurrencyFeeShapedOnly(day, zoneId, classKey, orderKind, economy, units, ownerKeys);
         }
         if (!byKind.isEmpty()) {
           currencyEnforcementByZone
@@ -353,7 +352,7 @@ public final class PortRegimeBridge {
                 classKey,
                 ownerKeys,
                 zoneEntry.getValue(),
-                govState,
+                economy,
                 units,
                 efficiencyByUnit,
                 PortDirection.ENTRY);
@@ -364,7 +363,7 @@ public final class PortRegimeBridge {
                 classKey,
                 ownerKeys,
                 zoneEntry.getValue(),
-                govState,
+                economy,
                 units,
                 efficiencyByUnit,
                 PortDirection.EXIT);
@@ -612,7 +611,7 @@ public final class PortRegimeBridge {
       String classKey,
       List<String> ownerKeys,
       Map<String, Long> weights,
-      GovState govState,
+      EconomyData economy,
       UnitState units,
       Map<UnitId, GovEfficiency.Efficiency> efficiencyByUnit,
       PortDirection direction) {
@@ -632,7 +631,7 @@ public final class PortRegimeBridge {
                 ownerKeys,
                 weights,
                 policy -> policy.ruleOfCommodity(commodity),
-                govState,
+                economy,
                 units,
                 efficiencyByUnit));
     logRegime(day, regime, null);
@@ -655,7 +654,7 @@ public final class PortRegimeBridge {
       MarketOrderKind orderKind,
       List<String> ownerKeys,
       Map<String, Long> weights,
-      GovState govState,
+      EconomyData economy,
       UnitState units,
       Map<UnitId, GovEfficiency.Efficiency> efficiencyByUnit,
       PortDirection direction) {
@@ -674,7 +673,7 @@ public final class PortRegimeBridge {
                 ownerKeys,
                 weights,
                 policy -> policy.ruleOfCurrency(currency, orderKind),
-                govState,
+                economy,
                 units,
                 efficiencyByUnit));
     logRegime(day, regime, orderKind);
@@ -710,13 +709,13 @@ public final class PortRegimeBridge {
       List<String> ownerKeys,
       Map<String, Long> weights,
       RuleLookup ruleLookup,
-      GovState govState,
+      EconomyData economy,
       UnitState units,
       Map<UnitId, GovEfficiency.Efficiency> efficiencyByUnit) {
     List<PortContactSurface> surfaces = new ArrayList<>(ownerKeys.size());
     for (String ownerKey : ownerKeys) {
       UnitId owner = ownerUnitOf(units, ownerKey);
-      GovPortPolicy policy = policyOf(govState, units, ownerKey);
+      GovPortPolicy policy = policyOf(economy, units, ownerKey);
       // 三不管：没有政府 ⇒ 无从设限（s = 0；policy 也是 empty ⇒ 查表结果同样是 unrestricted）。
       PortRule rule = ruleLookup.ruleOf(policy);
       long restriction = rule.restriction(direction);
@@ -745,10 +744,17 @@ public final class PortRegimeBridge {
     return null;
   }
 
-  /** 该归属键的口岸政策（三不管/查无/未设 ⇒ {@link GovPortPolicy#empty()} = 不限制、不收税）。 */
-  private static GovPortPolicy policyOf(GovState govState, UnitState units, String ownerKey) {
+  /**
+   * 该归属键的口岸政策（三不管/查无/未设 ⇒ {@link GovPortPolicy#empty()} = 不限制、不收税）。
+   *
+   * <p>★★ 2026-10-12 追加裁定 12 §21.9 D-1：政策来源 = {@code EconomyData.governments} 的政府记录（读侧唯一入口 {@code
+   * economy.governmentOrDefault(UnitId.value())} —— 缺记录/没设过 ⇒ {@code empty()}，I-B1/I-P1 逐值退回改前行为）。
+   */
+  private static GovPortPolicy policyOf(EconomyData economy, UnitState units, String ownerKey) {
     UnitId owner = ownerUnitOf(units, ownerKey);
-    return owner == null ? GovPortPolicy.empty() : govState.portPolicyOrDefault(owner);
+    return owner == null
+        ? GovPortPolicy.empty()
+        : economy.governmentOrDefault(owner.value()).portPolicy();
   }
 
   /** 该政府的口岸效率（‰）；缺失 ⇒ 0（"没有口岸编制" = 管不住 ⇒ 该接触面全开）。 */
@@ -929,7 +935,7 @@ public final class PortRegimeBridge {
       String zoneId,
       String classKey,
       MarketOrderKind orderKind,
-      GovState govState,
+      EconomyData economy,
       UnitState units,
       List<String> ownerKeys) {
     if (!LOG.isInfoEnabled()) {
@@ -939,7 +945,7 @@ public final class PortRegimeBridge {
     String exitFee = null;
     CurrencyId currency = new CurrencyId(classKey);
     for (String ownerKey : ownerKeys) {
-      PortRule rule = policyOf(govState, units, ownerKey).ruleOfCurrency(currency, orderKind);
+      PortRule rule = policyOf(economy, units, ownerKey).ruleOfCurrency(currency, orderKind);
       if (rule.entryTax().leviesTax()) {
         entryFee = rule.entryTax().toString();
       }

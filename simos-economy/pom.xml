@@ -79,6 +79,8 @@
             <configuration>
               <rules>
                 <bannedDependencies>
+                  <!-- ★★ 2026-10-12 闭合（用户裁定「冻结各个模块的语义，确保下次改不越界」）：本仓的边界语义 = 「本模块不许**直接声明**某个依赖」；传递可见是 Maven 依赖图的事实、本模块控制不了 ⇒ 显式关掉传递检查（enforcer 3.6.3 `searchTransitive` 默认 true，字节码核实）。禁列全仓 simos 模块 − 自己 − 允许面，零例外。 -->
+                  <searchTransitive>false</searchTransitive>
                   <excludes>
                     <!-- ★ 2026-10-09 方案 A（用户裁定）：原 `exclude simos-social` 已删——
                          Social 是人员/家户的唯一域，economy 允许直接依赖其实现（与 social 单向，不成环）。
@@ -88,9 +90,23 @@
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:simos-app</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
+                    <!-- ★★ 2026-10-12 模块语义冻结（文档 §3）：对称闭合补禁 army / gov
+                         （`ledger` 原已在列；已退役、当前无同名模块，作历史留痕与未来防线）。
+                         允许面 = actor-api/util/economy-api/map/social-api/social。
+                         ★★ **传递依赖例外（2026-10-12 实测）**：冻结表 §3 也把 `simos-calendar` 列进本模块禁列，
+                         但它**加不进来**——enforcer 3.6.3 `searchTransitive` 默认 true ⇒ 禁列查传递依赖，实测链：
+                             simos-economy → simos-social → simos-calendar
+                         （方案 A 起 economy 直连 social，social 显式声明 calendar）⇒ 加进去 `validate` 当场红。
+                         ★ I-F2 禁止加 `<includes>` 绕过 ⇒ 此处不列 calendar；归属应由冻结表重算（另裁）。
+                         ★★ 同一冻结的 §4 I-F4 比 §3 的补进列更严：`simos-actor` 不在允许面里 ⇒ 按 I-F4 一并列入
+                         （economy 只依赖 actor-api 契约，实测 actor 不在传递闭包上）。 -->
+                    <exclude>io.mosire:simos-actor</exclude>
+                    <exclude>io.mosire:simos-army</exclude>
+                    <exclude>io.mosire:simos-gov</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
+                    <exclude>io.mosire:simos-calendar</exclude>
                   </excludes>
-                  <message>切片之间互不依赖（新经济设计 §2）：economy 不依赖 unit/sd/core/app/agentlib/ledger 实现；★ 方案 A（2026-10-09）：允许直接依赖 simos-social（人员/家户唯一域）及其低层契约 social-api（social 侧仍由 enforcer 禁反向依赖 economy）。</message>
+                  <message>simos-economy 是聚合式经济切片（产业/阶层行/债务/流水/市场/货币/政府政策），**机制与规则的归属地**：只许依赖 actor-api/util/economy-api/map/social-api/social（★ 方案 A 2026-10-09：允许直连 social —— 人员/家户唯一域）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 unit/sd/core/app、army/gov 与同层 actor、已退役的 ledger）。★ 例外：calendar 由 social 传递带出，按 I-F1 不入禁列（见上方注）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

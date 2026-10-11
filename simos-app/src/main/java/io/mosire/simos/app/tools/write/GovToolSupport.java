@@ -12,8 +12,8 @@ import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
-import io.mosire.simos.gov.GovSnapshot;
-import io.mosire.simos.gov.GovState;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
@@ -177,15 +177,23 @@ final class GovToolSupport {
         context, Operation.WRITE, List.of(ToolSupport.resourceUnit(target.govId().value())));
   }
 
-  /** gov 切片提取：缺切片/类型不符 = 装配故障（ERROR 不降级）。 */
-  static GovState govState(SimulationState state) {
+  /**
+   * economy 切片提取：缺切片/类型不符 = 装配故障（ERROR 不降级）。
+   *
+   * <p>★★ 2026-10-12 追加裁定 12 §21.9 D-1：原来这里是 {@code govState(state)}（读 gov 切片的两条源状态）。 三类政府政策搬进
+   * {@code EconomyData.governments} 后，政府工具面<b>只</b>从 economy 取政策 ⇒ 这个方法跟着换源； gov 切片对本面只剩"每 tick
+   * 读数"（由 {@code GovInfoTool} 直接读）。
+   */
+  static EconomyData economyData(SimulationState state) {
     Snapshot snapshot =
-        state.module("gov").orElseThrow(() -> new IllegalStateException("state 里没有 gov 切片（装配故障）"));
-    if (snapshot instanceof GovSnapshot govSnapshot) {
-      return govSnapshot.state();
+        state
+            .module("economy")
+            .orElseThrow(() -> new IllegalStateException("state 里没有 economy 切片（装配故障）"));
+    if (snapshot instanceof EconomySnapshot economySnapshot) {
+      return economySnapshot.data();
     }
     throw new IllegalStateException(
-        "state 的 gov 切片不是 GovSnapshot: " + snapshot.getClass().getName());
+        "state 的 economy 切片不是 EconomySnapshot: " + snapshot.getClass().getName());
   }
 
   /** 当刻有效位置（无位置 = 空，不伪造坐标）。 */

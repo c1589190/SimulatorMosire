@@ -163,8 +163,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 工具集验收（M5 T5；D1–D5 后）：注册表 144 条（GM 桶全量 = 36 读 + 108 写）/ catalog 与注册面一致（R5）/ 写工具身份注入（R4）/ 读工具与
- * {@code QueryService} 逐值 对拍 / 拒绝与冲突不留 revision。
+ * 工具集验收（M5 T5；D1–D5 后）：注册表 142 条命令（★★ 追加裁定 12：旧三条 gov.Set* 政策命令删除、新增 economy.SetGovernmentPolicy ⇒
+ * 144 → 142）/ catalog 与注册面一致（R5）/ 写工具身份注入（R4）/ 读工具与 {@code QueryService} 逐值 对拍 / 拒绝与冲突不留 revision。
  *
  * <p>夹具与 {@code QueryServiceTest}/{@code GuiApiTest} 同法：独立 store 种创世 {@code (main,1)} + 含
  * map/unit/social 三切片的创世 checkpoint（state 时间戳 {@code of(7)}）。写工具经真 {@link CoreSimos} 提交， 身份用**独立
@@ -520,7 +520,7 @@ class SimosToolsTest {
   private static final List<String> GM_TOOL_NAMES = concat(READ_TOOL_NAMES, WRITE_TOOL_NAMES);
 
   /**
-   * catalog 预期的 144 个已注册命令类型（与 Shell 注册的 handler 同源）。
+   * catalog 预期的 142 个已注册命令类型（与 Shell 注册的 handler 同源）。
    *
    * <p>★★ <b>2026-10-09 按实测补齐（128 → 136）</b>：A1/A2a/B2（2026-10-08 货币词表 + 官方汇率 + 市场区）落地的 8
    * 条命令当时没回填本表（{@code economy.DefineCurrency}/{@code RenameCurrency}/{@code
@@ -534,7 +534,9 @@ class SimosToolsTest {
    * 条 handler 实现，见 {@code SHELL_ASSEMBLED handler=142}）；★★ <b>W5.5（2026-10-11）</b> 补入 {@code
    * economy.SetMarketZoneLoanRateAlpha} ⇒ 142 → 143（实测来源同上：{@code SHELL_ASSEMBLED handler=143}）；★★
    * <b>W10（2026-10-11）</b> 补入 {@code economy.SetEconomyPolicy} ⇒ 143 → 144（实测来源同上：扫描面 144 条 handler
-   * 实现）。
+   * 实现）；★★ <b>追加裁定 12（2026-10-12 §21.9 D-1/D-3）</b>：删除旧三条 {@code gov.SetPortPolicy} / {@code
+   * gov.SetAdministrationPlan} / {@code gov.SetBudgetPolicy}、新增通用写口 {@code
+   * economy.SetGovernmentPolicy} ⇒ 144 → <b>142</b>（实测来源同上）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -586,6 +588,10 @@ class SimosToolsTest {
           "economy.SetOfficialRate",
           "economy.SwitchMode",
           "economy.SetGovServiceCommitment",
+          // ★★ 追加裁定 12（2026-10-12 §21.9 D-1/D-3）：口岸/预算/编制三类政策的**唯一通用写口**
+          //   （旧三条 gov.SetPortPolicy / gov.SetAdministrationPlan / gov.SetBudgetPolicy 已删除，不留别名）
+          //   —— 扫描面 144 → 142（-3 +1，实测见本类 catalogCoversEveryCommandHandlerImplementation）。
+          "economy.SetGovernmentPolicy",
           "economy.TransferAssetShare",
           "economy.UnitBorrow",
           "economy.UnitRepay",
@@ -593,9 +599,6 @@ class SimosToolsTest {
           "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
           "economy.UpsertIndustry",
-          "gov.SetPortPolicy",
-          "gov.SetAdministrationPlan",
-          "gov.SetBudgetPolicy",
           "map.CreateRegion",
           "map.DeleteRegion",
           "map.MergeRegions",
@@ -959,10 +962,10 @@ class SimosToolsTest {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
         .as(
-            "扫描必须恰为 144 个 *Handler.java 的 type()（W2 的 economy.SetMarketZonePriceAlpha 按实测补入本表 ⇒ 140 → 141；★★ W5-fix6 的 economy.SetGovernmentMintScale 按实测补入 ⇒ 141 → 142；★★ W5.5 的 economy.SetMarketZoneLoanRateAlpha 按实测补入 ⇒ 142 → 143；★★ W10 的 economy.SetEconomyPolicy 按实测补入 ⇒ 143 → 144）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
+            "扫描必须恰为 142 个 *Handler.java 的 type()（W2 的 economy.SetMarketZonePriceAlpha 按实测补入本表 ⇒ 140 → 141；★★ W5-fix6 的 economy.SetGovernmentMintScale 按实测补入 ⇒ 141 → 142；★★ W5.5 的 economy.SetMarketZoneLoanRateAlpha 按实测补入 ⇒ 142 → 143；★★ W10 的 economy.SetEconomyPolicy 按实测补入 ⇒ 143 → 144；★★ 追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
                 + "P1b1/P3/R3a 的区域清空与国库上缴，辖区阶段 5–12，D1/D3a/D4/D5 的 unit/sd/army 新命令，"
                 + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds；Z6 起纳入 simos-gov 的 2 条 handler；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）")
-        .hasSize(144);
+        .hasSize(142);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();

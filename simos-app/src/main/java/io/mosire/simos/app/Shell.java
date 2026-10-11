@@ -55,7 +55,6 @@ import io.mosire.simos.app.time.PopulationUnitTimeParticipant;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.world.GovJurisdictionGuard;
-import io.mosire.simos.app.world.GovPortPolicyGuard;
 import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.army.resolve.ArmyResolver;
 import io.mosire.simos.army.spi.AppendCombatStageHandler;
@@ -89,6 +88,7 @@ import io.mosire.simos.economy.spi.EconomySetCommodityFreightHandler;
 import io.mosire.simos.economy.spi.EconomySetEconomyPolicyHandler;
 import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetGovernmentMintScaleHandler;
+import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
@@ -106,9 +106,6 @@ import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
 import io.mosire.simos.gov.codec.GovCodec;
-import io.mosire.simos.gov.spi.SetAdministrationPlanHandler;
-import io.mosire.simos.gov.spi.SetBudgetPolicyHandler;
-import io.mosire.simos.gov.spi.SetPortPolicyHandler;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
@@ -771,17 +768,14 @@ public final class Shell implements AutoCloseable {
                 new EconomyMergeMarketZonesHandler(),
                 new EconomySetOfficialRateHandler(),
                 new EconomyRecordMoneyIssuanceHandler(),
-                // ── gov（Z2 2026-10-23，gov 首个 command handler 批）：行政编制计划 / 国库预算政策整体设置。
-                //   ★ GM-only（V1 冻结）：标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
-                //     GM 的 simos.command.submit 照常可用。Z3 接决策人工具 + 审批链时再按需打开。
-                //   ★ 不实现 CommandTargets：当前不在决策令路径，目标声明与工具面一并归 Z3（照 Z1a 先例）。
-                //   两者只写 gov 命名空间（GovState 两条源状态），变更集由 GovChangeSet.between 派生。──
-                new SetAdministrationPlanHandler(),
-                new SetBudgetPolicyHandler(),
-                //   ★★ R2（2026-10-09 口岸设计书 §4.2/§4.3）：gov.SetPortPolicy —— 逐政府 × 逐商品/逐币种的
-                //     口岸限制强度 s（‰）整体设置。它是**法律规定层**的持久载体（G9），不是"政府经济行为的政策层"
-                //     （I-P6 禁的是后者，见设计书 §4.5）。同样 GM-only（开放点 O4 留给 GOV 优化）。
-                new SetPortPolicyHandler(),
+                // ── economy（追加裁定 12，2026-10-12 §21.9 D-1/D-3）：三类政府政策（口岸/预算/编制）的
+                //   **唯一通用写口** —— 政策随 Government 记录走（EconomyData.governments），GOV 只调写口、不负责存。
+                //   旧三条 gov.SetPortPolicy / gov.SetBudgetPolicy / gov.SetAdministrationPlan
+                // 已删除（不留别名）。
+                //   ★ GM-only（D-4）：标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
+                //     GM 的 simos.command.submit 与两条窄工具照常可用。
+                //   ★ 实现 CommandTargets（D-4）：载荷用 governmentId 精确点名时自报该目标。──
+                new EconomySetGovernmentPolicyHandler(),
                 // ── P2-D：单位向放贷方借/还的债务腿两条（GM-only；放贷方 = 家户/政府家户）。
                 //   资金腿由组合根用 actor.TransferAccounts 与它们同批提交（单条命令只能落一个命名空间）；
                 //   见两个 handler 的类注与 P2-D 报告。──
@@ -938,9 +932,6 @@ public final class Shell implements AutoCloseable {
     //   它必须住在**组合根**：判据要同时看 map 的 Region→hexes 与 unit 的 Unit.jurisdiction()，
     //   而 simos-map 永远不知道 GOV 存在（铁律 3），simos-gov 也看不见区表（见类注）。
     coreSimos.register(new GovJurisdictionGuard());
-    // ★★ R2（2026-10-09 口岸设计书 §4.2 + N1）：口岸政策的**词表守卫** —— gov 模块编译期看不见经济词表
-    //   （模块边界），"未知商品/未知币种"只能在组合根判；写前拒 ⇒ 不留 revision，坏政策不进状态。
-    coreSimos.register(new GovPortPolicyGuard());
 
     ResolverRegistry resolverRegistry = new ResolverRegistry();
     resolverRegistry.register(new MapResolver());

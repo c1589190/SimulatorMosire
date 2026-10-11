@@ -2,9 +2,8 @@ package io.mosire.simos.app.household;
 
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
-import io.mosire.simos.gov.GovAdministrationPlan;
-import io.mosire.simos.gov.GovPostTier;
-import io.mosire.simos.gov.GovState;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.govpolicy.GovPostTier;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.GovernmentPostOfHousehold;
 import io.mosire.simos.unit.Unit;
@@ -21,20 +20,21 @@ import java.util.Set;
 
 /**
  * ★★ <b>Z4/C4 跨切片引物一致性：{@code GovernmentPostOfHousehold.tierId} 必须指向该 GOV 的 {@code
- * GovAdministrationPlan.postTiers()} 档位</b>（Z3d 起<b>内部 {@code householdPosts} 与外部 {@code
- * externalPosts} 同权覆盖</b>；两表互斥，遍历 = 两表并入）。
+ * economy.govpolicy.GovAdministrationPlan.postTiers()} 档位</b>（Z3d 起<b>内部 {@code householdPosts} 与外部
+ * {@code externalPosts} 同权覆盖</b>；两表互斥，遍历 = 两表并入）。
  *
  * <pre>
  * post.tierId 非空  ⇒  tierId ∈ administrationPlanOrDefault(unitId).postTiers().map(GovPostTier::tierId)
  * post.tierId 为空  ⇒  legacy/未指派（豁免；旧档零迁移）
  * </pre>
  *
- * <p>★★ <b>为什么放在 app 组合根</b>：岗位在 unit 切片、档位目录在 gov 切片（Z2 的 {@link GovAdministrationPlan}），
+ * <p>★★ <b>为什么放在 app 组合根</b>：岗位在 unit 切片、档位目录在 economy 切片（{@code
+ * economy.govpolicy.GovAdministrationPlan}；★★ 2026-10-12 追加裁定 12 §21.9 D-1 起从 gov 搬进 economy），
  * 两边互不可见（模块边界）；只有 app 同时看得见两片。unit 侧 {@code unit.AssignGovPost} 把 {@code tierId} 当不透明引用解析并以 {@code
  * Rejected} 兜字段形状；这里把"引用必须存在于目录"这条契约判死（GM 裸 {@code simos.command.submit} 也绕不过）。
  *
- * <p>★ <b>只读 + 纯函数</b>：不改入参；不一致以 {@link Mismatch} 具名列出，{@link #requireConsistent} 折成一条异常。 缺 gov 计划的
- * GOV 走 {@link GovState#administrationPlanOrDefault} 的中性默认（Z2：默认 3 档目录），因此 只有"目录确实不含该 tierId"才报。
+ * <p>★ <b>只读 + 纯函数</b>：不改入参；不一致以 {@link Mismatch} 具名列出，{@link #requireConsistent} 折成一条异常。 缺政府记录的
+ * GOV 走 {@code EconomyData.governmentOrDefault} 的中性默认（默认 3 档目录，I-B1），因此 只有"目录确实不含该 tierId"才报。
  */
 public final class GovernmentPostTierConsistency {
 
@@ -58,8 +58,8 @@ public final class GovernmentPostTierConsistency {
   }
 
   /** 全量只读校核（按 unit id 稳定序遍历；结果只依赖状态内容）。 */
-  public static List<Mismatch> mismatches(GovState govState, UnitState units) {
-    Objects.requireNonNull(govState, "govState");
+  public static List<Mismatch> mismatches(EconomyData economy, UnitState units) {
+    Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(units, "units");
     List<Unit> ordered = new ArrayList<>(units.units().values());
     ordered.sort(Comparator.comparing(unit -> unit.id().value()));
@@ -70,7 +70,9 @@ public final class GovernmentPostTierConsistency {
         continue;
       }
       Set<String> tierIds = new LinkedHashSet<>();
-      for (GovPostTier tier : govState.administrationPlanOrDefault(unit.id()).postTiers()) {
+      // ★ 目录来源 = 该 GOV 政府记录的编制计划（缺记录/没设过 ⇒ neutral() = 默认 3 档，I-B1）。
+      for (GovPostTier tier :
+          economy.governmentOrDefault(unit.id().value()).administrationPlan().postTiers()) {
         tierIds.add(tier.tierId());
       }
       for (GovernmentPostOfHousehold post : formation.allPosts().values()) {
@@ -97,8 +99,8 @@ public final class GovernmentPostTierConsistency {
   }
 
   /** 校核 + 具名 fail-closed（不一致 ⇒ 先 ERROR 一行、再 {@link IllegalStateException}，消息最多列 5 条）。 */
-  public static void requireConsistent(GovState govState, UnitState units) {
-    List<Mismatch> mismatches = mismatches(govState, units);
+  public static void requireConsistent(EconomyData economy, UnitState units) {
+    List<Mismatch> mismatches = mismatches(economy, units);
     if (!mismatches.isEmpty()) {
       // ★ AGENTS §一.9（2026-10-23）：契约/跨切片一致性故障 = ERROR 不降级；先落证据再 fail-closed。
       CONSISTENCY.error(
@@ -110,7 +112,7 @@ public final class GovernmentPostTierConsistency {
               "first",
               mismatches.get(0)));
       throw new IllegalStateException(
-          "GOV 岗位档位引用与 GovAdministrationPlan.postTiers 不一致（Z4/C4）："
+          "GOV 岗位档位引用与 economy 侧编制计划 postTiers 不一致（Z4/C4）："
               + mismatches.size()
               + " 处："
               + mismatches.subList(0, Math.min(5, mismatches.size())));

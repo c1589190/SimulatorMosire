@@ -107,7 +107,16 @@ public enum EconomyLogSource implements LogOrigin {
   ECONOMY_COMMODITY_FREIGHT(
       "economy-commodity-freight",
       "商品基础运费表：GM 设置商品基础运费及其具名拒（命令面）+ 载入边界值域契约违约 + 旧档撤销维摘除",
-      LogOriginKind.SYSTEM);
+      LogOriginKind.SYSTEM),
+  /**
+   * ★★ <b>追加裁定 12（2026-10-12 §21.9 D-1）：三类政府政策的通用写口 {@code economy.SetGovernmentPolicy}</b>—— 口岸 /
+   * 预算 / 编制三类政策随 {@code Government} 记录走（{@code EconomyData.governments}），GOV 只调写口、不负责存。
+   *
+   * <p>★ 命令面事件全部是 {@code SYSTEM}（方法签名无 day 上下文）：成功 INFO 一条"发生了什么 + 改了哪几类 + 具名计数"、 业务拒绝 INFO（业务拒绝 =
+   * INFO，用户 2026-10-23 裁定）、DEBUG 一条"为什么"（§一.9）。
+   */
+  ECONOMY_GOV_POLICY(
+      "economy-gov-policy", "政府政策通用写口：口岸/预算/编制三类政策的设置、幂等 no-op 与具名拒（命令面）", LogOriginKind.SYSTEM);
 
   private final String id;
   private final String description;

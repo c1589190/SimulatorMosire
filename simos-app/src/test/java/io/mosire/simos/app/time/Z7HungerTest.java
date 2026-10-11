@@ -77,12 +77,7 @@ class Z7HungerTest {
                 .module()
                 .orElseThrow();
     GovernmentServiceLaborBridge.Supply supply =
-        GovernmentServiceLaborBridge.supply(
-            economyAfterStarve,
-            CENTRAL,
-            formation,
-            GovZ6WorldFixture.govSlice(starved.state()).administrationPlans().get(CENTRAL),
-            1L);
+        GovernmentServiceLaborBridge.supply(economyAfterStarve, CENTRAL, formation, 1L);
     assertThat(supply.securityLaborMilli())
         .as("有效供给 = min(承诺, 实际) 必须低于承诺")
         .isLessThan(supply.committedSecurityLaborMilli());

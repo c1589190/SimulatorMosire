@@ -74,6 +74,8 @@
             <configuration>
               <rules>
                 <bannedDependencies>
+                  <!-- ★★ 2026-10-12 闭合（用户裁定「冻结各个模块的语义，确保下次改不越界」）：本仓的边界语义 = 「本模块不许**直接声明**某个依赖」；传递可见是 Maven 依赖图的事实、本模块控制不了 ⇒ 显式关掉传递检查（enforcer 3.6.3 `searchTransitive` 默认 true，字节码核实）。禁列全仓 simos 模块 − 自己 − 允许面，零例外。 -->
+                  <searchTransitive>false</searchTransitive>
                   <excludes>
                     <exclude>io.mosire:simos-unit</exclude>
                     <exclude>io.mosire:simos-core</exclude>
@@ -91,8 +93,21 @@
                          人群批次的**身份**（`PeopleLotId`）走契约层，不是 actor。
                          ★ `simos-actor-api` **不在此列**（契约层，与 `economy-api` 同待遇）。 -->
                     <exclude>io.mosire:simos-actor</exclude>
+                    <!-- ★★ 2026-10-12 模块语义冻结（docs/superpowers/specs/2026-10-12-module-boundaries-freeze.md §3）：
+                         `simos-ledger` 已退役、当前无同名模块，照冻结表列入，作历史留痕与未来防线。
+                         ★★ 同一冻结的 §4 I-F4（"禁掉自己 + 允许面之外的全部 simos 模块"）比 §3 的补进列更严：
+                         `app` / `army` / `gov` / `sd` 不在 §3 的补进列里，但都不在本模块的允许面
+                         （util/map/calendar/social-api/economy-api）⇒ 按 I-F4 一并列入（实测不落在传递链上）。
+                         ★ 上面那段"`simos-actor-api` 不在此列"仍然成立：它由 `economy-api → actor-api` 传递带出
+                         （实测链 social → economy-api → actor-api），按 I-F1 不能列入，见冻结批报告。 -->
+                    <exclude>io.mosire:simos-app</exclude>
+                    <exclude>io.mosire:simos-army</exclude>
+                    <exclude>io.mosire:simos-gov</exclude>
+                    <exclude>io.mosire:simos-sd</exclude>
+                    <exclude>io.mosire:simos-ledger</exclude>
+                    <exclude>io.mosire:simos-actor-api</exclude>
                   </excludes>
-                  <message>SocialSimos 与 UnitSimos 互不依赖（spec §3.1 / G8）；也不得依赖 simos-economy（R1 / spec §八.3；economy-api 例外，文档明文允许）与 simos-actor（兄弟切片，Task 10 回填）</message>
+                  <message>simos-social 是人口的唯一权威（生死/劳动/需求/家户工单与 SocialProvisioning）：只许依赖 util/map/calendar/social-api/economy-api；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 unit/core/app/sd/gov/army 与兄弟切片 economy/actor，以及已退役的 ledger）。★ 例外：simos-actor-api 由 economy-api 传递带出，按 I-F1 不入禁列。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

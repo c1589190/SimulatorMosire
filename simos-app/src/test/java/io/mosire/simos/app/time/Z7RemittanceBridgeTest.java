@@ -5,12 +5,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.app.testing.AppLogCapture;
 import io.mosire.simos.app.testing.GovZ6WorldFixture;
 import io.mosire.simos.economy.EconomyCommodities;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.govpolicy.GovBudgetLine;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
+import io.mosire.simos.economy.govpolicy.GovOfficialSalaryRule;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.time.AccountSession;
-import io.mosire.simos.gov.GovBudgetLine;
-import io.mosire.simos.gov.GovBudgetPolicy;
 import io.mosire.simos.gov.GovDaily;
-import io.mosire.simos.gov.GovOfficialSalaryRule;
 import io.mosire.simos.gov.GovRemittanceState;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.hex.HexCoord;
@@ -19,6 +23,7 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -35,7 +40,9 @@ import org.junit.jupiter.api.Test;
  *   <li>rate=0（抗税）：账户零动、无转移、累计仍清零（不跨周期重复计）；
  *   <li>省库不足 ⇒ 部分支付 + 具名 {@code ADMIN_REMITTANCE_SHORTFALL} + 守恒；不自动注资/调率；
  *   <li>关账后下一日重新累计（不把上一周期实收重复计）；
- *   <li>旧档：2 参 {@link GovBudgetPolicy} / 3 参 {@link GovState} 缺字段 ⇒ rate=0 / 全零读数。
+ *   <li>缺省中性：2 参 {@link GovBudgetPolicy} / 只有 {@code offices} 的 {@link GovState} ⇒ rate=0 / 全零读数； ★
+ *       2026-10-12 追加裁定 12 起政策权威 = {@code EconomyData.governments}（没有政府记录 ⇒ {@code
+ *       governmentOrDefault} 给中性预算 = rate 0‰）。
  * </ul>
  */
 class Z7RemittanceBridgeTest {
@@ -49,12 +56,12 @@ class Z7RemittanceBridgeTest {
   void rateFiveHundredPaysFullAmountAndConservesBothTreasuries() {
     SimulationState base = GovZ6WorldFixture.smallWorldState("Map1");
     UnitState units = GovZ6WorldFixture.unitSlice(base);
-    GovState gov = govWithRate(base, 500L);
+    World world = worldWithProvinceRate(base, 500L);
     AccountSession accounts = accounts(5_000_000L, 1_000_000L, 0L, 0L);
     long grainTotalBefore = totalGrain(accounts);
     long silverTotalBefore = totalSilver(accounts);
 
-    GovRemittanceBridge.Outcome outcome = advanceToClose(gov, units, accounts, 100_000L, 10_000L);
+    GovRemittanceBridge.Outcome outcome = advanceToClose(world, units, accounts, 100_000L, 10_000L);
 
     GovRemittanceState state = outcome.nextGov().remittanceStateOrDefault(PROVINCE);
     assertThat(state.lastCycleCloseDay()).isEqualTo(30L);
@@ -81,10 +88,11 @@ class Z7RemittanceBridgeTest {
     try (AppLogCapture log = AppLogCapture.appTime()) {
       SimulationState base = GovZ6WorldFixture.smallWorldState("Map1");
       UnitState units = GovZ6WorldFixture.unitSlice(base);
-      GovState gov = govWithRate(base, 0L);
+      World world = worldWithProvinceRate(base, 0L);
       AccountSession accounts = accounts(5_000_000L, 1_000_000L, 0L, 0L);
 
-      GovRemittanceBridge.Outcome outcome = advanceToClose(gov, units, accounts, 100_000L, 10_000L);
+      GovRemittanceBridge.Outcome outcome =
+          advanceToClose(world, units, accounts, 100_000L, 10_000L);
 
       assertThat(grainOf(accounts, PROVINCE_TREASURY)).isEqualTo(5_000_000L);
       assertThat(grainOf(accounts, CENTRAL_TREASURY)).isZero();
@@ -106,13 +114,13 @@ class Z7RemittanceBridgeTest {
   void insufficientProvinceTreasuryPaysPartiallyAndRaisesNamedShortfallAlert() {
     SimulationState base = GovZ6WorldFixture.smallWorldState("Map1");
     UnitState units = GovZ6WorldFixture.unitSlice(base);
-    GovState gov = govWithRate(base, 1_000L);
+    World world = worldWithProvinceRate(base, 1_000L);
     AccountSession accounts = accounts(100L, 50L, 0L, 0L);
     long grainTotalBefore = totalGrain(accounts);
     long silverTotalBefore = totalSilver(accounts);
 
     GovRemittanceBridge.Outcome outcome =
-        settleRange(gov, units, accounts, 1L, 3L, true, 100_000L, 10_000L);
+        settleRange(world, units, accounts, 1L, 3L, true, 100_000L, 10_000L);
 
     GovRemittanceState state = outcome.nextGov().remittanceStateOrDefault(PROVINCE);
     assertThat(state.lastDueGrainMilli()).isEqualTo(300_000L);
@@ -139,14 +147,15 @@ class Z7RemittanceBridgeTest {
   void afterCloseNextDayAccumulatesFromZeroNotFromPreviousCycle() {
     SimulationState base = GovZ6WorldFixture.smallWorldState("Map1");
     UnitState units = GovZ6WorldFixture.unitSlice(base);
-    GovState gov = govWithRate(base, 500L);
+    World world = worldWithProvinceRate(base, 500L);
     AccountSession accounts = accounts(5_000_000L, 1_000_000L, 0L, 0L);
 
-    GovRemittanceBridge.Outcome closed = advanceToClose(gov, units, accounts, 100_000L, 10_000L);
+    GovRemittanceBridge.Outcome closed = advanceToClose(world, units, accounts, 100_000L, 10_000L);
     GovRemittanceBridge.Outcome nextDay =
         GovRemittanceBridge.settle(
             closed.nextGov(),
             units,
+            world.economy(),
             Map.of(PROVINCE, 1_000L),
             Map.of(PROVINCE, 20L),
             accounts,
@@ -165,34 +174,55 @@ class Z7RemittanceBridgeTest {
   void legacyPolicyAndStateDefaultToZeroRateAndEmptyState() {
     GovBudgetPolicy legacyPolicy =
         new GovBudgetPolicy(List.<GovBudgetLine>of(), GovOfficialSalaryRule.zero());
-    assertThat(legacyPolicy.remittancePerMilleToSuperior()).as("旧 2 参构造器 / 旧档缺字段 = 0‰").isZero();
+    assertThat(legacyPolicy.remittancePerMilleToSuperior()).as("2 参构造器缺字段 = 0‰").isZero();
     assertThat(GovBudgetPolicy.neutral().remittancePerMilleToSuperior()).isZero();
 
     GovState legacyState = new GovState(Map.of());
     assertThat(legacyState.remittanceStateOrDefault(PROVINCE))
-        .as("旧 3 参状态缺 remittanceStates ⇒ 全零读数")
+        .as("gov 切片没有该 GOV 键 ⇒ 全零读数")
         .isEqualTo(GovRemittanceState.empty());
+
+    // ★★ 缺省中性的新宿主（§21.4 I-B1）：没有政府记录 ⇒ governmentOrDefault 给中性预算 ⇒ rate = 0‰。
+    assertThat(
+            EconomyData.empty()
+                .governmentOrDefault(PROVINCE.value())
+                .budgetPolicy()
+                .remittancePerMilleToSuperior())
+        .as("没有政府记录 ⇒ 中性预算 = 0‰（不是「静默收 0」，是「没设过」）")
+        .isZero();
   }
 
   // ── 夹具 ──
 
+  /**
+   * 一个世界切片对：{@code gov} = GOV 读数（{@code remittanceStates} 仍住 gov 切片，§21.10-1 不随迁）；{@code economy} =
+   * 政策权威（★★ 2026-10-12 追加裁定 12：上缴比例住在 {@code EconomyData.governments}）。
+   */
+  private record World(GovState gov, EconomyData economy) {}
+
   /** 真小世界 GOV 表 + 省 rate（其余字段沿用创世政策）。 */
-  private static GovState govWithRate(SimulationState base, long rate) {
-    GovState gov = GovZ6WorldFixture.govSlice(base);
-    GovBudgetPolicy province = gov.budgetPolicyOrDefault(PROVINCE);
-    return gov.withBudgetPolicy(
-        PROVINCE,
-        new GovBudgetPolicy(province.orderedCategories(), province.officialSalaryRule(), rate));
+  private static World worldWithProvinceRate(SimulationState base, long rate) {
+    EconomyData economy = GovZ6WorldFixture.economySlice(base);
+    GovernmentId id = GovernmentIds.ofUnit(PROVINCE.value());
+    Government province = economy.governments().get(id);
+    assertThat(province).as("创世必须已登记省 GOV（政策宿主 = 政府记录）").isNotNull();
+    GovBudgetPolicy current = province.budgetPolicy();
+    Government updated =
+        province.withBudgetPolicy(
+            new GovBudgetPolicy(current.orderedCategories(), current.officialSalaryRule(), rate));
+    Map<GovernmentId, Government> governments = new LinkedHashMap<>(economy.governments());
+    governments.put(id, updated);
+    return new World(GovZ6WorldFixture.govSlice(base), economy.withGovernments(governments));
   }
 
   /** 逐日调用桥（1..days），仅最后一天 cycleClosed=true；每天实收 = grainPerDay/silverPerDay。 */
   private static GovRemittanceBridge.Outcome advanceToClose(
-      GovState gov, UnitState units, AccountSession accounts, long grainPerDay, long silverPerDay) {
-    return settleRange(gov, units, accounts, 1L, 30L, true, grainPerDay, silverPerDay);
+      World world, UnitState units, AccountSession accounts, long grainPerDay, long silverPerDay) {
+    return settleRange(world, units, accounts, 1L, 30L, true, grainPerDay, silverPerDay);
   }
 
   private static GovRemittanceBridge.Outcome settleRange(
-      GovState gov,
+      World world,
       UnitState units,
       AccountSession accounts,
       long fromDay,
@@ -200,7 +230,7 @@ class Z7RemittanceBridgeTest {
       boolean closeOnLastDay,
       long grainPerDay,
       long silverPerDay) {
-    GovState current = gov;
+    GovState current = world.gov();
     GovRemittanceBridge.Outcome outcome = null;
     for (long day = fromDay; day <= toDay; day++) {
       boolean close = closeOnLastDay && day == toDay;
@@ -208,6 +238,7 @@ class Z7RemittanceBridgeTest {
           GovRemittanceBridge.settle(
               current,
               units,
+              world.economy(),
               Map.of(PROVINCE, grainPerDay, CENTRAL, 0L),
               Map.of(PROVINCE, silverPerDay, CENTRAL, 0L),
               accounts,

@@ -13,10 +13,13 @@ import io.mosire.simos.app.testing.GovZ6WorldFixture;
 import io.mosire.simos.app.world.SmallWorld;
 import io.mosire.simos.app.world.WorldRegistry;
 import io.mosire.simos.core.command.AdvanceTime;
-import io.mosire.simos.gov.GovBudgetPolicy;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.GovernmentIds;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.gov.GovRemittanceState;
-import io.mosire.simos.gov.GovSnapshot;
-import io.mosire.simos.gov.GovState;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.UnitId;
@@ -132,7 +135,7 @@ class Z7RemittanceE2ETest {
 
   // ── 夹具 ──
 
-  /** 真空库壳：零中央国库 + 省 rate 指定；bootstrap 后 head=1。 */
+  /** 真空库壳：零中央国库 + 省 rate 指定（政策改 economy 切片）；bootstrap 后 head=1。 */
   private static Shell shellWithProvinceRate(Path storeDir, long rate) {
     ShellConfig config =
         ShellConfig.defaults(storeDir).withPorts(0, 0, 0).withWorldId(WorldRegistry.SMALL_WORLD);
@@ -140,25 +143,35 @@ class Z7RemittanceE2ETest {
     try {
       SimulationState state = SmallWorld.state(config.mapId());
       state = withTreasuryEmptied(state, CENTRAL_TREASURY);
-      GovState gov = GovZ6WorldFixture.govSlice(state);
-      GovBudgetPolicy province = gov.budgetPolicyOrDefault(PROVINCE);
-      state =
-          GovZ6WorldFixture.withModule(
-              state,
-              "gov",
-              new GovSnapshot(
-                  state.meta().ref(),
-                  state.meta().timestamp(),
-                  gov.withBudgetPolicy(
-                      PROVINCE,
-                      new GovBudgetPolicy(
-                          province.orderedCategories(), province.officialSalaryRule(), rate))));
+      state = withProvinceRemittanceRate(state, rate);
       shell.coreSimos().bootstrapGenesis(state);
       return shell;
     } catch (RuntimeException e) {
       shell.close();
       throw e;
     }
+  }
+
+  /**
+   * ★★ <b>省上缴比例的唯一写入点（追加裁定 12 §21.9 D-1）</b>：政策权威 = {@code EconomyData.governments} 的政府记录 （创世由
+   * {@code economy.SetGovernmentPolicy} 写成 0‰），不再改 GOV 切片。
+   */
+  private static SimulationState withProvinceRemittanceRate(SimulationState state, long rate) {
+    EconomyData economy = GovZ6WorldFixture.economySlice(state);
+    GovernmentId id = GovernmentIds.ofUnit(PROVINCE.value());
+    Government province = economy.governments().get(id);
+    assertThat(province).as("创世必须已登记省 GOV（政策宿主 = 政府记录）").isNotNull();
+    GovBudgetPolicy current = province.budgetPolicy();
+    Map<GovernmentId, Government> governments = new LinkedHashMap<>(economy.governments());
+    governments.put(
+        id,
+        province.withBudgetPolicy(
+            new GovBudgetPolicy(current.orderedCategories(), current.officialSalaryRule(), rate)));
+    return GovZ6WorldFixture.withModule(
+        state,
+        "economy",
+        new EconomySnapshot(
+            state.meta().ref(), state.meta().timestamp(), economy.withGovernments(governments)));
   }
 
   private static void advance(Shell shell, long from, long to, String label) {

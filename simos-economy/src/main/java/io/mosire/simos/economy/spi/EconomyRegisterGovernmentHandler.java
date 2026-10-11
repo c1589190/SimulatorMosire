@@ -13,6 +13,9 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
+import io.mosire.simos.economy.govpolicy.GovPortPolicy;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -362,7 +365,14 @@ public final class EconomyRegisterGovernmentHandler
               previous == null ? java.util.Map.of() : previous.mintedLastCyclePerCycle(),
               // ★★ A2a：重复登记是同键 upsert（幂等，见 EconomySeedHandler 的注释）—— 已登记的政府若
               //   定过官方汇率，重登记必须原样带过（否则一次"补登记"会把政策价静默清零）。
-              previous == null ? java.util.Map.of() : previous.officialRates());
+              previous == null ? java.util.Map.of() : previous.officialRates(),
+              // ★★ 追加裁定 12（2026-10-12 §21.9 D-1）：三类政府政策（口岸/预算/编制）也住在政府记录上，
+              //   重登记<b>必须原样带过</b>——本命令的载荷面<b>不认识</b>政策（它们只有 economy.SetGovernmentPolicy
+              //   一条写口）⇒ 一次"补登记"若把它们重置成中性，等于<b>静默清空政策</b>（本仓最贵的那类 bug 的
+              //   政府版）。新登记（previous == null）走构造器的中性缺省（I-B1）。
+              previous == null ? GovPortPolicy.empty() : previous.portPolicy(),
+              previous == null ? GovBudgetPolicy.neutral() : previous.budgetPolicy(),
+              previous == null ? GovAdministrationPlan.neutral() : previous.administrationPlan());
       Map<GovernmentId, Government> governments = new LinkedHashMap<>(base.governments());
       governments.put(governmentId, government);
 

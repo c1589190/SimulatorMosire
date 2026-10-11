@@ -8,9 +8,9 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovPostTier;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.gov.GovAdministrationPlan;
-import io.mosire.simos.gov.GovPostTier;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovernmentFormation;
@@ -39,7 +39,9 @@ import java.util.Set;
  * 逐户承诺劳动 L_h          = 该 GOV 全部 service unit 上、household == h 的 GOV_SERVICE 承诺之和（毫小时/tick）
  *                            （只对有岗位的家户计；没有岗位的家户不进任何维，逐 GOV 一条具名 INFO）
  * 档位权重 (w_sec,w_pap,w_port) = h 在 GovernmentFormation 的 governmentPostsOfHousehold（内部）或 externalPosts
- *                            （外部，Z3d）里的 tierId → plan.postTiers 权重；两表同权、互斥（同一户只能在一张表里）；
+ *                            （外部，Z3d）里的 tierId → economy.governmentOrDefault(govUnitId.value()).administrationPlan()
+ *                            .postTiers() 的权重（★★ 2026-10-12 追加裁定 12 §21.9 D-1：目录来源从 gov 切片改到
+ *                            EconomyData.governments）；两表同权、互斥（同一户只能在一张表里）；
  *                            tierId 空（legacy/未指派）⇒ 按 role 的固有维度：YAMEN=(1000,0,0)，SCRIBE/POST=(0,1000,0)
  * W = w_sec + w_pap + w_port
  * 治安拆分 = ⌊L_h × w_sec ÷ W⌋；口岸拆分 = ⌊L_h × w_port ÷ W⌋；公文拆分 = L_h − 治安 − 口岸（余数归公文，Σ 不丢）
@@ -226,17 +228,12 @@ public final class GovernmentServiceLaborBridge {
    * @param govUnitId GOV 单位 id；不得为 null
    * @param formation 该 GOV 单位的编制（岗位目录 = 内部 {@code governmentPostsOfHousehold} + 外部 {@code
    *     externalPosts}，两张表同权）；不得为 null
-   * @param plan 该 GOV 的编制计划（档位权重目录）；不得为 null
    * @param day 世界日（只进日志上下文）
    */
   public static Supply supply(
-      EconomyData economy,
-      UnitId govUnitId,
-      GovernmentFormation formation,
-      GovAdministrationPlan plan,
-      long day) {
+      EconomyData economy, UnitId govUnitId, GovernmentFormation formation, long day) {
     Objects.requireNonNull(economy, "economy");
-    return supply(economy, economy.classes(), govUnitId, formation, plan, day);
+    return supply(economy, economy.classes(), govUnitId, formation, day);
   }
 
   /**
@@ -258,12 +255,15 @@ public final class GovernmentServiceLaborBridge {
       Map<HouseholdId, HouseholdEconomy> currentHouseholdRows,
       UnitId govUnitId,
       GovernmentFormation formation,
-      GovAdministrationPlan plan,
       long day) {
     Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(currentHouseholdRows, "currentHouseholdRows");
     Objects.requireNonNull(formation, "formation");
-    Objects.requireNonNull(plan, "plan");
+    // ★★ 2026-10-12 追加裁定 12 §21.9 D-1：档位目录的来源从 gov 切片改成 EconomyData.governments 的
+    //   Government.administrationPlan()（读侧唯一入口 economy.governmentOrDefault —— 缺省 = neutral()，I-B1）。
+    //   本方法只读它的 postTiers()，不写任何状态。
+    GovAdministrationPlan plan =
+        economy.governmentOrDefault(govUnitId.value()).administrationPlan();
     Map<HouseholdId, Long> committed = committedLaborByHousehold(economy, govUnitId, day);
     if (committed.isEmpty()) {
       return new Supply(0L, 0L, 0L, 0L, 0L, 0L, 0L);

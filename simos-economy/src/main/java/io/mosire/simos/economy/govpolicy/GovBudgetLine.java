@@ -1,4 +1,4 @@
-package io.mosire.simos.gov;
+package io.mosire.simos.economy.govpolicy;
 
 /**
  * 一条预算类别的下限/上限（Z2，设计书 §4.1 / §9）。

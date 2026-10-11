@@ -9,23 +9,22 @@ import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.CurrencyDef;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovBudgetCategory;
+import io.mosire.simos.economy.govpolicy.GovPostTier;
 import io.mosire.simos.economy.spi.EconomyDefineCurrencyHandler;
 import io.mosire.simos.economy.spi.EconomyRecordMoneyIssuanceHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
+import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertGovUnitHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
-import io.mosire.simos.gov.GovAdministrationPlan;
-import io.mosire.simos.gov.GovBudgetCategory;
-import io.mosire.simos.gov.GovPostTier;
-import io.mosire.simos.gov.codec.GovCodec;
-import io.mosire.simos.gov.spi.SetAdministrationPlanHandler;
-import io.mosire.simos.gov.spi.SetBudgetPolicyHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -87,8 +86,9 @@ import java.util.Set;
  * → unit.SetUnitHouseholds（hh-gov + hh-unit）→ economy.RegisterHousehold → actor.EnsureHouseholdAccount
  * → unit.AssignGovPost（POST / tier-3：两维各 50%）→ economy.SetHouseholdLabor（= Social 投影劳动）
  * → economy.SetGovServiceCommitment（GOV_SERVICE 全职）
- * → gov.SetAdministrationPlan（两维计划、默认 3 档、静态修正 1000‰、k=1）
- * → gov.SetBudgetPolicy（默认五类顺序 + 官吏工资规则 粮 10/银 1 毫·承诺小时）
+ * → economy.SetGovernmentPolicy（**一条**通用政府政策写口，同时给 policies.administration 与 policies.budget：
+ *   两维计划 + 默认 3 档 + 静态修正 1000‰ + k=1；默认五类顺序 + 官吏工资规则 粮 10/银 1 毫·承诺小时。
+ *   ★★ 2026-10-12 追加裁定 12 §21.9 D-3：旧两条 gov.SetAdministrationPlan / gov.SetBudgetPolicy 已删除）
  * …全部 GOV 之后（顺序不可换）：
  * ★ economy.DefineMarketZone × N（B3：逐 GOV 一区 —— 见下"落点"）
  * → actor.AdjustAccounts（逐 GOV 国库注入 粮/布/银 + 本区法定币）
@@ -776,17 +776,12 @@ public final class ThreePowersGovBootstrap {
     next =
         applier.apply(
             next,
-            SetAdministrationPlanHandler.TYPE,
-            new SetAdministrationPlanHandler(),
-            new GovCodec(),
-            administrationPlanPayload(spec, standardLaborMilli));
-    next =
-        applier.apply(
-            next,
-            SetBudgetPolicyHandler.TYPE,
-            new SetBudgetPolicyHandler(),
-            new GovCodec(),
-            budgetPolicyPayload(spec.govId()));
+            // ★★ 2026-10-12 追加裁定 12 §21.9 D-1/D-3：编制 + 预算两类政策合并成**同一条** economy 通用写口
+            //   （一批一条 revision；旧形状这里是两条 gov 命令）。
+            EconomySetGovernmentPolicyHandler.TYPE,
+            new EconomySetGovernmentPolicyHandler(),
+            new EconomyCodec(),
+            governmentPolicyPayload(spec, standardLaborMilli));
     return next;
   }
 
@@ -1019,7 +1014,23 @@ public final class ThreePowersGovBootstrap {
     return ToolSupport.json(payload);
   }
 
-  private static String administrationPlanPayload(GovSpec spec, long standardLaborMilli) {
+  /**
+   * ★★ <b>创世的两类政府政策载荷（追加裁定 12 §21.9 D-1/D-3）</b>：把旧形状的两条命令（{@code gov.SetAdministrationPlan} +
+   * {@code gov.SetBudgetPolicy}）合并成<b>同一条</b> {@code economy.SetGovernmentPolicy} 的载荷；逐字段与旧两份
+   * 载荷<b>逐字相同</b>（本方法只改"装进哪个信封"，不改任何数值，I-B7）。来源 = {@code GovernmentId}（D-2）。
+   */
+  private static String governmentPolicyPayload(GovSpec spec, long standardLaborMilli) {
+    Map<String, Object> policies = new LinkedHashMap<>();
+    policies.put("administration", administrationPolicyPayload(spec, standardLaborMilli));
+    policies.put("budget", budgetPolicyPayload());
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("governmentId", GovernmentIds.ofUnit(spec.govId()).value());
+    payload.put("policies", policies);
+    return ToolSupport.json(payload);
+  }
+
+  private static Map<String, Object> administrationPolicyPayload(
+      GovSpec spec, long standardLaborMilli) {
     List<Map<String, Object>> tiers =
         new ArrayList<>(GovAdministrationPlan.DEFAULT_POST_TIERS.size());
     for (GovPostTier tier : GovAdministrationPlan.DEFAULT_POST_TIERS) {
@@ -1029,27 +1040,26 @@ public final class ThreePowersGovBootstrap {
       row.put("paperworkWeightPerMille", tier.paperworkWeightPerMille());
       tiers.add(row);
     }
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("unitId", spec.govId());
+    Map<String, Object> policy = new LinkedHashMap<>();
     // ★ 三个 GOV 同形：两维计划各 = 1 个人当量（与 GovWorldBootstrap 的中央同制）；实际供给 = 2 名官吏 ⇒ 1000‰ 覆盖。
-    payload.put("securityPlannedLaborMilli", standardLaborMilli);
-    payload.put("paperworkPlannedLaborMilli", standardLaborMilli);
-    payload.put("postTiers", tiers);
-    payload.put(
+    policy.put("securityPlannedLaborMilli", standardLaborMilli);
+    policy.put("paperworkPlannedLaborMilli", standardLaborMilli);
+    policy.put("postTiers", tiers);
+    policy.put(
         "securitySupplyStaticModifierPerMille", GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
-    payload.put(
+    policy.put(
         "paperworkSupplyStaticModifierPerMille", GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
-    payload.put(
+    policy.put(
         "securityDemandStaticModifierPerMille", GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
-    payload.put(
+    policy.put(
         "paperworkDemandStaticModifierPerMille", GovAdministrationPlan.NEUTRAL_MODIFIER_PER_MILLE);
-    payload.put(
+    policy.put(
         "supernumerarySqrtCoefficient",
         GovAdministrationPlan.DEFAULT_SUPERNUMERARY_SQRT_COEFFICIENT);
-    return ToolSupport.json(payload);
+    return policy;
   }
 
-  private static String budgetPolicyPayload(String govId) {
+  private static Map<String, Object> budgetPolicyPayload() {
     List<Map<String, Object>> categories = new ArrayList<>(GovBudgetCategory.values().length);
     for (GovBudgetCategory category : GovBudgetCategory.values()) {
       Map<String, Object> line = new LinkedHashMap<>();
@@ -1061,12 +1071,11 @@ public final class ThreePowersGovBootstrap {
     Map<String, Object> salaryRule = new LinkedHashMap<>();
     salaryRule.put("grainMilliPerCommittedHour", SALARY_GRAIN_MILLI_PER_COMMITTED_HOUR);
     salaryRule.put("silverMilliPerCommittedHour", SALARY_SILVER_MILLI_PER_COMMITTED_HOUR);
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("unitId", govId);
-    payload.put("orderedCategories", categories);
-    payload.put("officialSalaryRule", salaryRule);
-    payload.put("remittancePerMilleToSuperior", 0L);
-    return ToolSupport.json(payload);
+    Map<String, Object> policy = new LinkedHashMap<>();
+    policy.put("orderedCategories", categories);
+    policy.put("officialSalaryRule", salaryRule);
+    policy.put("remittancePerMilleToSuperior", 0L);
+    return policy;
   }
 
   /** 逐 GOV 国库的初始 粮/布/币（{@code actor.AdjustAccounts} 的纯正增量；缺账由该命令建账）。 */

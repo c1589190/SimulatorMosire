@@ -23,6 +23,12 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.stock.DeductionReason;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovBudgetCategory;
+import io.mosire.simos.economy.govpolicy.GovBudgetLine;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
+import io.mosire.simos.economy.govpolicy.GovOfficialSalaryRule;
+import io.mosire.simos.economy.govpolicy.GovPostTier;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -34,16 +40,11 @@ import io.mosire.simos.economy.spi.EconomyGovUnitUpserts;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.FreezeIntent;
 import io.mosire.simos.economy.time.SettlementStage;
-import io.mosire.simos.gov.GovAdministrationPlan;
-import io.mosire.simos.gov.GovBudgetCategory;
-import io.mosire.simos.gov.GovBudgetLine;
-import io.mosire.simos.gov.GovBudgetPolicy;
+import io.mosire.simos.gov.AdministrationCoefficients;
 import io.mosire.simos.gov.GovDaily;
 import io.mosire.simos.gov.GovEfficiency;
 import io.mosire.simos.gov.GovEfficiencyModifier;
 import io.mosire.simos.gov.GovOfficeState;
-import io.mosire.simos.gov.GovOfficialSalaryRule;
-import io.mosire.simos.gov.GovPostTier;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
@@ -106,15 +107,15 @@ class GovAdminSalaryBudgetZ6Test {
   @Test
   void salaryFormulaIsCommittedLaborTimesRateOverThousand() {
     EconomyData economy = economyWithCommitment(16_000L, HH_UNIT);
-    GovState gov =
-        govState(
-            adminPlan(32_000L, 16_000L),
-            policy(
-                List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
-                new GovOfficialSalaryRule(10L, 1L)));
+    // 声明本用例政策（政策宿主 = economy 的政府记录；govState(...) 是夹具里政策的唯一拼写点）。
+    govState(
+        adminPlan(32_000L, 16_000L),
+        policy(
+            List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
+            new GovOfficialSalaryRule(10L, 1L)));
 
     GovSalaryRuleBridge.Report report =
-        GovSalaryRuleBridge.deriveReport(gov, unitState(), economy, DAY);
+        GovSalaryRuleBridge.deriveReport(unitState(), withFixturePolicy(economy), DAY);
     assertThat(report.rules()).as("16000 承诺 × 10/1000 = 160 粮、× 1/1000 = 16 银").hasSize(1);
     var rule = report.rules().get(0);
     assertThat(rule.id().value()).isEqualTo("gov-salary:u-1:hh-unit-u");
@@ -127,14 +128,14 @@ class GovAdminSalaryBudgetZ6Test {
     assertThat(report.committedHouseholds()).isEqualTo(1);
 
     // rate = 0/0 ⇒ 明确不发薪：不生成规则、不产生缺口（不是静默 0）。
-    GovState zeroRateGov =
-        govState(
-            adminPlan(32_000L, 16_000L),
-            policy(
-                List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
-                new GovOfficialSalaryRule(0L, 0L)));
+    // rate = 0/0 ⇒ 明确不发薪：不生成规则、不产生缺口（不是静默 0）。
+    govState(
+        adminPlan(32_000L, 16_000L),
+        policy(
+            List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
+            new GovOfficialSalaryRule(0L, 0L)));
     GovSalaryRuleBridge.Report noRule =
-        GovSalaryRuleBridge.deriveReport(zeroRateGov, unitState(), economy, DAY);
+        GovSalaryRuleBridge.deriveReport(unitState(), withFixturePolicy(economy), DAY);
     assertThat(noRule.rules()).isEmpty();
     assertThat(noRule.zeroAmounts()).isEmpty();
     assertThat(noRule.gaps()).isEmpty();
@@ -145,14 +146,13 @@ class GovAdminSalaryBudgetZ6Test {
     try (AppLogCapture log = AppLogCapture.appTime()) {
       // rate>0 但 laborMilli×rate/1000 折算到 0 ⇒ 具名 zeroAmounts，不生成规则。
       EconomyData tiny = economyWithCommitment(1L, HH_UNIT);
-      GovState gov =
-          govState(
-              adminPlan(32_000L, 16_000L),
-              policy(
-                  List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
-                  new GovOfficialSalaryRule(10L, 1L)));
+      govState(
+          adminPlan(32_000L, 16_000L),
+          policy(
+              List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
+              new GovOfficialSalaryRule(10L, 1L)));
       GovSalaryRuleBridge.Report report =
-          GovSalaryRuleBridge.deriveReport(gov, unitState(), tiny, DAY);
+          GovSalaryRuleBridge.deriveReport(unitState(), withFixturePolicy(tiny), DAY);
       assertThat(report.rules()).isEmpty();
       assertThat(report.zeroAmounts())
           .singleElement()
@@ -163,14 +163,14 @@ class GovAdminSalaryBudgetZ6Test {
 
       // 溢出：32000 × Long.MAX_VALUE ⇒ multiplyExact 溢出 ⇒ ERROR GOV_SALARY_CONTRACT_VIOLATION + ISE。
       EconomyData big = economyWithCommitment(32_000L, HH_UNIT);
-      GovState hugeRate =
-          govState(
-              adminPlan(32_000L, 16_000L),
-              policy(
-                  List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
-                  new GovOfficialSalaryRule(Long.MAX_VALUE, Long.MAX_VALUE)));
+      govState(
+          adminPlan(32_000L, 16_000L),
+          policy(
+              List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
+              new GovOfficialSalaryRule(Long.MAX_VALUE, Long.MAX_VALUE)));
       log.clear();
-      assertThatThrownBy(() -> GovSalaryRuleBridge.deriveReport(hugeRate, unitState(), big, DAY))
+      assertThatThrownBy(
+              () -> GovSalaryRuleBridge.deriveReport(unitState(), withFixturePolicy(big), DAY))
           .as("工资桥算术溢出 = 契约故障 ⇒ ISE")
           .isInstanceOf(IllegalStateException.class);
       assertThat(log.hasError("GOV_SALARY_CONTRACT_VIOLATION", "reason=salary-overflow"))
@@ -201,7 +201,7 @@ class GovAdminSalaryBudgetZ6Test {
             legGov,
             legUnits,
             social(),
-            economyWithoutCommitment(),
+            withFixturePolicy(economyWithoutCommitment()),
             accounts,
             Map.of(GOV, efficiency(new GovernmentServiceLaborBridge.Supply(0L, 0L))),
             Map.of(GOV, new GovernmentServiceLaborBridge.Supply(0L, 0L)),
@@ -234,7 +234,7 @@ class GovAdminSalaryBudgetZ6Test {
             reserveGov,
             units,
             social(),
-            economyWithCommitment(16_000L, HH_UNIT),
+            withFixturePolicy(economyWithCommitment(16_000L, HH_UNIT)),
             accounts(100L, 0L, 0L),
             Map.of(GOV, efficiency(new GovernmentServiceLaborBridge.Supply(0L, 16_000L))),
             Map.of(GOV, new GovernmentServiceLaborBridge.Supply(0L, 16_000L)),
@@ -297,7 +297,7 @@ class GovAdminSalaryBudgetZ6Test {
           GovEfficiency.of(
               formation,
               Map.of(),
-              adminPlan(32_000L, 16_000L),
+              coefficients(32_000L, 16_000L),
               0L,
               16_000L,
               1000L,
@@ -310,7 +310,7 @@ class GovAdminSalaryBudgetZ6Test {
               frozenGov,
               frozenUnits,
               social(),
-              economy,
+              withFixturePolicy(economy),
               frozen,
               Map.of(GOV, frozenEfficiency),
               Map.of(GOV, frozenSupply),
@@ -422,7 +422,7 @@ class GovAdminSalaryBudgetZ6Test {
         GovEfficiency.of(
             full,
             Map.of(),
-            adminPlan(16_000L, 16_000L),
+            coefficients(16_000L, 16_000L),
             16_000L,
             16_000L,
             1000L,
@@ -436,7 +436,7 @@ class GovAdminSalaryBudgetZ6Test {
             gov,
             units,
             social(),
-            economy,
+            withFixturePolicy(economy),
             accounts,
             Map.of(GOV, efficiency),
             Map.of(GOV, supply),
@@ -474,7 +474,7 @@ class GovAdminSalaryBudgetZ6Test {
         GovEfficiency.of(
             partial,
             Map.of(),
-            adminPlan(32_000L, 16_000L),
+            coefficients(32_000L, 16_000L),
             0L,
             16_000L,
             1000L,
@@ -487,7 +487,7 @@ class GovAdminSalaryBudgetZ6Test {
             gov,
             units,
             social(),
-            withCommitment,
+            withFixturePolicy(withCommitment),
             accounts(1000L, 0L, 1000L),
             Map.of(GOV, efficiency),
             Map.of(GOV, zero),
@@ -504,7 +504,7 @@ class GovAdminSalaryBudgetZ6Test {
             gov,
             units,
             social(),
-            economyWithoutCommitment(),
+            withFixturePolicy(economyWithoutCommitment()),
             accounts(1000L, 0L, 1000L),
             Map.of(GOV, efficiency),
             Map.of(GOV, zero),
@@ -538,7 +538,7 @@ class GovAdminSalaryBudgetZ6Test {
             govState(adminPlan(32_000L, 16_000L), GovBudgetPolicy.neutral()),
             units,
             social(),
-            economyWithoutCommitment(),
+            withFixturePolicy(economyWithoutCommitment()),
             accounts(1000L, 0L, 1000L),
             Map.of(GOV, efficiency),
             Map.of(GOV, zero),
@@ -564,7 +564,7 @@ class GovAdminSalaryBudgetZ6Test {
         GovEfficiency.of(
             full,
             Map.of(),
-            adminPlan(16_000L, 16_000L),
+            coefficients(16_000L, 16_000L),
             16_000L,
             16_000L,
             1000L,
@@ -576,7 +576,7 @@ class GovAdminSalaryBudgetZ6Test {
         GovEfficiency.of(
             full,
             Map.of(),
-            adminPlan(16_000L, 16_000L),
+            coefficients(16_000L, 16_000L),
             0L,
             0L,
             1000L,
@@ -592,7 +592,7 @@ class GovAdminSalaryBudgetZ6Test {
             gov,
             units,
             social(),
-            economy,
+            withFixturePolicy(economy),
             broke,
             Map.of(GOV, zeroCoverage),
             Map.of(GOV, new GovernmentServiceLaborBridge.Supply(0L, 0L)),
@@ -622,7 +622,7 @@ class GovAdminSalaryBudgetZ6Test {
             gov,
             units,
             social(),
-            economy,
+            withFixturePolicy(economy),
             rich,
             Map.of(GOV, efficient),
             Map.of(GOV, new GovernmentServiceLaborBridge.Supply(16_000L, 16_000L)),
@@ -652,13 +652,12 @@ class GovAdminSalaryBudgetZ6Test {
                 List.of(line(GovBudgetCategory.ADMIN_SALARY, 0L, Long.MAX_VALUE)),
                 new GovOfficialSalaryRule(10L, 1L)));
     GovernmentServiceLaborBridge.Supply supply =
-        GovernmentServiceLaborBridge.supply(
-            selfPay, GOV, formation, adminPlan(16_000L, 16_000L), DAY);
+        GovernmentServiceLaborBridge.supply(selfPay, GOV, formation, DAY);
     GovEfficiency.Efficiency efficiency =
         GovEfficiency.of(
             formation,
             Map.of(),
-            adminPlan(16_000L, 16_000L),
+            coefficients(16_000L, 16_000L),
             supply.securityLaborMilli(),
             supply.paperworkLaborMilli(),
             1000L,
@@ -671,7 +670,7 @@ class GovAdminSalaryBudgetZ6Test {
             gov,
             units,
             social(),
-            selfPay,
+            withFixturePolicy(selfPay),
             accounts(1000L, 0L, 1000L),
             Map.of(GOV, efficiency),
             Map.of(GOV, supply),
@@ -693,7 +692,7 @@ class GovAdminSalaryBudgetZ6Test {
         GovEfficiency.of(
             formationWithTier2(),
             Map.of(),
-            adminPlan(32_000L, 16_000L),
+            coefficients(32_000L, 16_000L),
             0L,
             16_000L,
             1000L,
@@ -719,28 +718,27 @@ class GovAdminSalaryBudgetZ6Test {
                     List.of(line(GovBudgetCategory.ADMIN_STIPEND, 0L, Long.MAX_VALUE)),
                     new GovOfficialSalaryRule(10L, 1L))));
 
-    // 旧档形态：GovState 的 budgetPolicies 表里根本没有该 GOV 的键 ⇒ budgetPolicyOrDefault = neutral()。
-    GovState legacyGovState =
-        new GovState(
-            Map.of(GOV, GovOfficeState.empty(GOV, 0L)),
-            Map.of(GOV, adminPlan(32_000L, 16_000L)),
-            Map.of());
+    // ★★ 缺省中性（§21.4 I-B1）：追加裁定 12 起"政府政策"随政府记录走，**没有"缺键"这一档** ——
+    //   没设过 = 记录的字段取 neutral()（本夹具的 economy 未套政策 ⇒ 该政府记录就是创世的中性值）
+    //   ⇒ 与旧形状"budgetPolicies 里没有该 GOV 的键"逐值同判：ADMIN_PLAN_MISSING + 不自动付。
+    govState(adminPlan(32_000L, 16_000L), GovBudgetPolicy.neutral());
+    GovState legacyGovState = new GovState(Map.of(GOV, GovOfficeState.empty(GOV, 0L)));
     AccountSession legacyAccounts = accounts(1000L, 0L, 1000L);
     GovBudgetExecutionBridge.DayBudget legacyBudget =
         GovBudgetExecutionBridge.plan(
             legacyGovState,
             units,
             social(),
-            economy,
+            withFixturePolicy(economy),
             legacyAccounts,
             Map.of(GOV, efficiency),
             Map.of(GOV, supply),
             DAY,
             365L);
     assertThat(alertKinds(legacyBudget))
-        .as("旧档缺 budgetPolicies ⇒ ADMIN_PLAN_MISSING")
+        .as("没设过预算政策（中性）= 计划未设 ⇒ ADMIN_PLAN_MISSING")
         .contains(GovDaily.KIND_ADMIN_PLAN_MISSING);
-    assertThat(legacyBudget.budgetedRules()).as("旧档中性默认 ⇒ 不自动付").isEmpty();
+    assertThat(legacyBudget.budgetedRules()).as("中性默认 ⇒ 不自动付").isEmpty();
 
     for (Variant variant : variants) {
       AccountSession accounts = accounts(1000L, 0L, 1000L);
@@ -750,7 +748,7 @@ class GovAdminSalaryBudgetZ6Test {
               gov,
               units,
               social(),
-              economy,
+              withFixturePolicy(economy),
               accounts,
               Map.of(GOV, efficiency),
               Map.of(GOV, supply),
@@ -796,12 +794,14 @@ class GovAdminSalaryBudgetZ6Test {
     long grainBefore = accounts.householdAccount(HH_GOV).goods().get(GRAIN);
     long silverBefore = accounts.householdAccount(HH_GOV).money().get(SILVER);
 
+    // ★ 交给 plan(...) 的那份 economy 也必须一字未动（政策挂在政府记录上 ⇒ 同一条"规划只读"判据覆盖政策面）。
+    EconomyData planningEconomy = withFixturePolicy(economy);
     GovBudgetExecutionBridge.DayBudget budget =
         GovBudgetExecutionBridge.plan(
             gov,
             units,
             social,
-            economy,
+            planningEconomy,
             accounts,
             Map.of(GOV, efficiency(new GovernmentServiceLaborBridge.Supply(0L, 16_000L))),
             Map.of(GOV, new GovernmentServiceLaborBridge.Supply(0L, 16_000L)),
@@ -812,6 +812,9 @@ class GovAdminSalaryBudgetZ6Test {
     assertThat(accounts.householdAccount(HH_GOV).goods().get(GRAIN)).isEqualTo(grainBefore);
     assertThat(accounts.householdAccount(HH_GOV).money().get(SILVER)).isEqualTo(silverBefore);
     assertThat(economy).isEqualTo(economyWithCommitment(16_000L, HH_UNIT));
+    assertThat(planningEconomy)
+        .as("规划只读：连交给它的那份（含政策的）economy 也逐值不变")
+        .isEqualTo(withFixturePolicy(economyWithCommitment(16_000L, HH_UNIT)));
     assertThat(social).isEqualTo(social());
     assertThat(units).isEqualTo(unitState());
     assertThat(budget.budgetedRules())
@@ -895,7 +898,7 @@ class GovAdminSalaryBudgetZ6Test {
         GovEfficiency.of(
             formation,
             Map.of(),
-            adminPlan(32_000L, 16_000L),
+            coefficients(32_000L, 16_000L),
             0L,
             16_000L,
             1000L,
@@ -908,7 +911,7 @@ class GovAdminSalaryBudgetZ6Test {
             gov,
             units,
             social(),
-            economy,
+            withFixturePolicy(economy),
             accounts,
             Map.of(GOV, efficiency),
             Map.of(GOV, supply),
@@ -942,9 +945,37 @@ class GovAdminSalaryBudgetZ6Test {
     return log.messages().stream().filter(line -> line.contains("GOV_ADMIN_SALARY_DAY")).toList();
   }
 
+  // ── 政策夹具（★★ 追加裁定 12 §21.9 D-1：政策权威 = EconomyData.governments 的政府记录）───────────
+  //
+  // 每条用例仍用与改前**逐字相同**的 `govState(plan, policy)` 声明"本用例的政府政策"（一个字面量都没改）；
+  // 夹具把它记在下面两个字段里，凡是把 economy 交给"读政策"的桥（GovSalaryRuleBridge /
+  // GovBudgetExecutionBridge）的地方，用 `withFixturePolicy(economy)` 把这份政策写进 economy 的政府记录。
+  // ⇒ 本类改的只是"政策存在哪、谁读它"，所有期望值与断言口径不变。
+
+  private static GovAdministrationPlan fixturePlan;
+  private static GovBudgetPolicy fixtureBudget;
+
+  /** 声明本用例的政府政策，并给出 GOV 读数位（{@code offices}；政策自本批起不住 gov 切片）。 */
   private static GovState govState(GovAdministrationPlan plan, GovBudgetPolicy policy) {
-    return new GovState(
-        Map.of(GOV, GovOfficeState.empty(GOV, 0L)), Map.of(GOV, plan), Map.of(GOV, policy));
+    fixturePlan = plan;
+    fixtureBudget = policy;
+    return new GovState(Map.of(GOV, GovOfficeState.empty(GOV, 0L)));
+  }
+
+  /** 缺省中性形态（没设过任何政策 ⇒ {@code neutral()}，§21.4 I-B1）。 */
+  private static GovState govState() {
+    return govState(GovAdministrationPlan.neutral(), GovBudgetPolicy.neutral());
+  }
+
+  /** 把 {@link #govState} 声明的政策写进 economy 的政府记录（唯一人工映射点；用生产的 {@code with*} 重建点）。 */
+  private static EconomyData withFixturePolicy(EconomyData economy) {
+    GovernmentId id = GovernmentIds.ofUnit(GOV.value());
+    Government government = economy.governments().get(id);
+    assertThat(government).as("夹具必须已登记 u-1 政府（政策宿主）").isNotNull();
+    Map<GovernmentId, Government> governments = new LinkedHashMap<>(economy.governments());
+    governments.put(
+        id, government.withAdministrationPlan(fixturePlan).withBudgetPolicy(fixtureBudget));
+    return economy.withGovernments(governments);
   }
 
   private static GovAdministrationPlan adminPlan(long security, long paperwork) {
@@ -960,6 +991,15 @@ class GovAdminSalaryBudgetZ6Test {
         1000L,
         1000L,
         1L);
+  }
+
+  /**
+   * {@code GovEfficiency} 的纯值入参（★★ §21.9 末段选 (a)：gov 不许 import economy ⇒ 编制计划改由组合根折成 {@code
+   * AdministrationCoefficients}）。逐字段与 {@link #adminPlan} 同值（口岸维取该构造器的缺省 0/1000‰/1000‰）。
+   */
+  private static AdministrationCoefficients coefficients(long security, long paperwork) {
+    return AdministrationCoefficients.of(
+        security, paperwork, 0L, 1000L, 1000L, 1000L, 1000L, 1000L, 1000L, 1L);
   }
 
   private static GovBudgetPolicy policy(
@@ -1016,7 +1056,7 @@ class GovAdminSalaryBudgetZ6Test {
     return GovEfficiency.of(
         formationWithTier2(),
         Map.of(),
-        adminPlan(32_000L, 16_000L),
+        coefficients(32_000L, 16_000L),
         supply.securityLaborMilli(),
         supply.paperworkLaborMilli(),
         GovEfficiencyModifier.NEUTRAL_PER_MILLE,

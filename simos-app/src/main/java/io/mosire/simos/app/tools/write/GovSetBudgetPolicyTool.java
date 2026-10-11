@@ -13,12 +13,11 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.gov.GovBudgetLine;
-import io.mosire.simos.gov.GovBudgetPolicy;
-import io.mosire.simos.gov.GovBudgetPolicyEditMode;
-import io.mosire.simos.gov.GovOfficialSalaryRule;
-import io.mosire.simos.gov.spi.GovAdministrationProjections;
-import io.mosire.simos.gov.spi.SetBudgetPolicyHandler;
+import io.mosire.simos.economy.govpolicy.GovBudgetLine;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicyEditMode;
+import io.mosire.simos.economy.govpolicy.GovOfficialSalaryRule;
+import io.mosire.simos.economy.spi.EconomyGovPolicyPayloads;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
@@ -30,7 +29,8 @@ import java.util.UUID;
 
 /**
  * ★★ <b>{@code simos.gov.setBudgetPolicy}（Z3c-2）：国库预算政策设置工具（GM + 该 GOV 决策人）</b> —— {@code
- * gov.SetBudgetPolicy} 的窄封装（preview / apply、payloadJson 逐字透传、expectedRevision）。
+ * economy.SetGovernmentPolicy} 的 {@code policies.budget} 子集窄封装（preview / apply、payloadJson
+ * 逐字透传、expectedRevision；★★ 2026-10-12 追加裁定 12 §21.9 D-3 起预算政策改由 economy 的通用政府政策写口承接）。
  *
  * <p>★★ <b>两面并列、门禁不同</b>：GM 桶调用走 {@code GmAutoApproveGate}；决策人桶调用走 {@code AutoApproveGate →
  * ConfirmGate → PendingApprovals}（需 GM 点头）。身份派生与越权拒见 {@link GovToolSupport}。
@@ -38,8 +38,8 @@ import java.util.UUID;
  * <p>★★ <b>命令仍是 GM-only 标记（控制方 2026-10-23 裁定）</b>：标记只影响令 / {@code RegisterEffect} / 决策人 catalog
  * 三条路径，不拦命令总线 ⇒ 决策人窄工具直接提交同一命令受控、且不放大任何路径。
  *
- * <p>★ <b>preview 与 apply 同源</b>：同一坐标、同一 {@link GovAdministrationProjections}（与 handler 共用字段解析 +
- * GOV 单位守卫）；逐值相同的重放 = noop（不落空 revision）。
+ * <p>★ <b>preview 与 apply 同源</b>：同一坐标、同一 {@link GovPolicyPlanSupport}（与 handler 共用字段解析 + GOV
+ * 单位守卫）；逐值相同的重放 = noop（不落空 revision）。
  */
 public final class GovSetBudgetPolicyTool implements AgentTool {
 
@@ -47,7 +47,7 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
   public static final String NAME = "simos.gov.setBudgetPolicy";
 
   /** 本工具提交的唯一命令类型（与 handler 的 TYPE 同一个拼写点）。 */
-  private static final String COMMAND_TYPE = SetBudgetPolicyHandler.TYPE;
+  private static final String COMMAND_TYPE = GovPolicyPlanSupport.COMMAND_TYPE;
 
   /** 资源声明 = unit 命名空间；断言锚点 = 目标 GOV 单位（口径同 {@link GovSetEstablishmentTool}）。 */
   private static final ResourceManifest GOV_WRITE =
@@ -70,7 +70,7 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
 
   @Override
   public String description() {
-    return "设置一个 GOV 的国库预算政策（gov.SetBudgetPolicy 窄封装）。payloadJson："
+    return "设置一个 GOV 的国库预算政策（economy.SetGovernmentPolicy 的 policies.budget 窄封装）。payloadJson："
         + "{unitId(GM 必填；决策人可省=自己的 GOV，给出必须等于自己的 GOV), orderedCategories?"
         + "[{category(ADMIN_STIPEND|MILITARY_STIPEND|ADMIN_SALARY|DEBT_SERVICE|OTHER), minPerCycle?,"
         + "capPerCycle?}](顺序即预算优先级), officialSalaryRule? "
@@ -89,7 +89,7 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
         "payloadJson",
         ToolSupport.prop(
             "string",
-            "预算政策 JSON 文本（逐字透传给 gov.SetBudgetPolicy）：{unitId,orderedCategories?["
+            "预算政策 JSON 文本（平铺；工具嵌成 economy.SetGovernmentPolicy 的 policies.budget）：{unitId,orderedCategories?["
                 + "{category,minPerCycle?,capPerCycle?}],officialSalaryRule?{grainMilliPerCommittedHour?,"
                 + "silverMilliPerCommittedHour?},remittancePerMilleToSuperior?(0..1000)，mode?(PATCH|REPLACE，缺省 PATCH)}；"
                 + "★ PATCH：缺省字段保留现值（orderedCategories:[] 才清空类别表；工资规则逐内层字段合并）；"
@@ -100,7 +100,7 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
             "string", "PATCH|REPLACE（缺省随 payloadJson；给出则覆盖 payloadJson 的 mode）。PATCH = 缺省字段保留现值"));
     props.put(
         "preview",
-        ToolSupport.prop("boolean", "true（缺省）= 只算前后差异、不写；false = 提交 gov.SetBudgetPolicy"));
+        ToolSupport.prop("boolean", "true（缺省）= 只算前后差异、不写；false = 提交 economy.SetGovernmentPolicy"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
@@ -148,17 +148,19 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
           modeArg == null ? null : GovBudgetPolicyEditMode.parse(modeArg);
       SimulationState state = GovToolSupport.stateAt(query, preview, expectedRevisionArg, branch);
       long expectedRevision = expectedRevisionArg == null ? -1L : expectedRevisionArg;
-      String declaredUnitId = GovAdministrationProjections.declaredUnitId(payloadJson);
+      String declaredUnitId = GovPolicyPlanSupport.declaredUnitId(payloadJson);
       GovToolSupport.GovTarget target = GovToolSupport.resolveGov(context, state, declaredUnitId);
       GovToolSupport.requireGovWrite(context, target);
-      String effectivePayload =
-          GovAdministrationProjections.withUnitId(payloadJson, target.govId().value());
+      String flatPayload = GovPolicyPlanSupport.withUnitId(payloadJson, target.govId().value());
       if (toolMode != null) {
-        effectivePayload = GovAdministrationProjections.withMode(effectivePayload, toolMode);
+        flatPayload = GovPolicyPlanSupport.withMode(flatPayload, toolMode);
       }
-      GovAdministrationProjections.BudgetProjection projection =
-          GovAdministrationProjections.budgetPolicy(state, effectivePayload);
-      Map<String, Object> view = projectionView(projection, effectivePayload, preview, target);
+      String effectivePayload =
+          GovPolicyPlanSupport.wrapAsCommand(flatPayload, EconomyGovPolicyPayloads.BUDGET, true);
+      GovPolicyPlanSupport.BudgetProjection projection =
+          GovPolicyPlanSupport.budgetPolicyProjection(state, effectivePayload);
+      Map<String, Object> view =
+          projectionView(projection, effectivePayload, flatPayload, preview, target);
       if (preview) {
         return ToolSupport.ok(view);
       }
@@ -191,8 +193,9 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
   }
 
   private static Map<String, Object> projectionView(
-      GovAdministrationProjections.BudgetProjection projection,
+      GovPolicyPlanSupport.BudgetProjection projection,
       String effectivePayload,
+      String flatPayload,
       boolean preview,
       GovToolSupport.GovTarget target) {
     Map<String, Object> view = new LinkedHashMap<>();
@@ -206,10 +209,10 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
     view.put("budgetBefore", policyView(projection.previous()));
     view.put("budgetAfter", policyView(projection.next()));
     view.put("at", target.at().map(ToolSupport::hexCoord).orElse(null));
-    Map<String, Object> command = new LinkedHashMap<>();
-    command.put("type", COMMAND_TYPE);
-    command.put("payloadJson", effectivePayload);
-    view.put("commandsPreview", List.of(command));
+    // ★ 两个视图都留：flatPayloadJson = 调用方原样给的那份（工具参数面未变）；
+    //   commandsPreview 里的 payloadJson = 真正提交的新命令载荷（含 governmentId + policies.budget）。
+    view.put("flatPayloadJson", flatPayload);
+    view.put("commandsPreview", List.of(GovPolicyPlanSupport.commandPreview(effectivePayload)));
     return view;
   }
 

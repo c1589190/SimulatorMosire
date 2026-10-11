@@ -4,7 +4,7 @@ package io.mosire.simos.gov;
  * ★★ <b>单个 GOV 的 remittance 周期账 + 最近一次关账执行读数</b>（Z7c 新增源状态，设计书 §4）。
  *
  * <p>它把两件同属"上缴"的事实放在一条 record 里（身份 = {@link GovState#remittanceStates()} 的键，<b>不内嵌 unitId</b>；与
- * {@link GovAdministrationPlan} / {@link GovBudgetPolicy} 同制）：
+ * {@code economy.govpolicy.GovAdministrationPlan} / {@code economy.govpolicy.GovBudgetPolicy} 同制）：
  *
  * <ul>
  *   <li><b>本周期累计</b>：{@link #cycleGrainCollectedMilli()} / {@link #cycleSilverCollectedMilli()} ——
@@ -12,8 +12,8 @@ package io.mosire.simos.gov;
  *       实收</b>加进来；只在周期末（关账日）结算应缴，<b>结算后清零</b>（不跨周期重复计）；
  *   <li><b>最近一次关账读数</b>：{@link #lastDueGrainMilli()} / {@link #lastPaidGrainMilli()} / {@link
  *       #lastShortfallGrainMilli()}（银同三件）与 {@link #lastCycleCloseDay()} —— 只落"事实"（应缴/实缴/缺口），
- *       <b>不</b>在 gov 侧重算任何比例或余额：比例在 {@link GovBudgetPolicy#remittancePerMilleToSuperior()}，
- *       可用额在账户会话里。
+ *       <b>不</b>在 gov 侧重算任何比例或余额：比例在 {@code
+ *       economy.govpolicy.GovBudgetPolicy#remittancePerMilleToSuperior()}， 可用额在账户会话里。
  * </ul>
  *
  * <p>★★ <b>不变量（构造期一律当场抛，fail-closed）</b>：所有量 ≥ 0；每维 {@code paid ≤ due} 且 {@code shortfall == due −

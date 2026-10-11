@@ -15,7 +15,7 @@ import org.slf4j.Logger;
  * <p>★★ <b>Z2 冻结公式（逐项）</b>：每维 {@code d ∈ {治安, 公文}}，{@code P_d} = 编制计划需求量（毫小时/tick）、{@code S_d} =
  * 实际承诺劳动（毫小时/tick）、{@code 定额} = {@link
  * io.mosire.simos.social.provisioning.SocialProvisioning#standardLaborMilliHoursPerTick()}（C8
- * 唯一权威）、 {@code k} = {@link GovAdministrationPlan#supernumerarySqrtCoefficient()}：
+ * 唯一权威）、 {@code k} = {@link AdministrationCoefficients#supernumerarySqrtCoefficient()}：
  *
  * <pre>{@code
  * 需求劳动_d = P_d × 需求静态_d‰ / 1000 × 需求动态_d‰ / 1000
@@ -41,8 +41,8 @@ import org.slf4j.Logger;
  *   <li><b>需求 = 0 维记 1000‰</b>（无需求 = 全额），但供给 = 0 时按上一条压回 0。
  * </ul>
  *
- * <p>★★ <b>新签名（Z3 消费者用）</b>：{@link #of(GovernmentFormation, Map, GovAdministrationPlan, long, long,
- * long, long, long, long, long)}。入参 = 编制（身份/兼容用，公式不读 {@code staff}）、逐格需求（<b>供建议值/日志</b>，
+ * <p>★★ <b>新签名（Z3 消费者用）</b>：{@link #of(GovernmentFormation, Map, AdministrationCoefficients, long,
+ * long, long, long, long, long, long)}。入参 = 编制（身份/兼容用，公式不读 {@code staff}）、逐格需求（<b>供建议值/日志</b>，
  * 公式按冻结口径只用计划 {@code P_d}）、编制计划、两维供给承诺劳动、两维动态修正（供给/需求各二，共 4 个）、标准劳动系数**值**（毫小时/tick；Z3 消费者从当前世界
  * {@code SocialData.provisioning()} 的 C8 唯一权威读出后传入——纯函数只拿值，不持有 provisioning 表）。
  *
@@ -71,7 +71,9 @@ public final class GovEfficiency {
    * @param governmentFormation 编制（<b>身份/兼容用</b>：新公式不读 {@code staff}，它是 Z3 对齐调用方与旧口径的载体）；不得为 null
    * @param suggestedDemand 逐格需求（{@link GovDemand#of} 的输出；<b>供建议值/DEBUG 日志</b>，公式按冻结口径只用计划 {@code
    *     P_d}）；不得为 null、键值不得为 null
-   * @param plan 行政编制计划（{@code P_d}/档位/四个静态修正/{@code k}）；不得为 null
+   * @param plan 行政编制系数（**纯值**：三维计划量 + 六个静态修正 + {@code k}，见 {@link AdministrationCoefficients}）——★★
+   *     2026-10-12 追加裁定 12 §21.9 末段选 (a)：编制计划类型已搬进 {@code simos-economy}，本模块<b>不许</b> import 它
+   *     （反向依赖），故由组合根折成纯值传入；不得为 null
    * @param securitySupplyLaborMilli 治安维实际承诺劳动（毫小时/tick；≥ 0）
    * @param paperworkSupplyLaborMilli 公文维实际承诺劳动（毫小时/tick；≥ 0）
    * @param securitySupplyDynamicModifierPerMille 治安供给动态修正（‰；≥ 0）
@@ -88,7 +90,7 @@ public final class GovEfficiency {
   public static Efficiency of(
       GovernmentFormation governmentFormation,
       Map<HexCoord, GovDemand.HexDemand> suggestedDemand,
-      GovAdministrationPlan plan,
+      AdministrationCoefficients plan,
       long securitySupplyLaborMilli,
       long paperworkSupplyLaborMilli,
       long securitySupplyDynamicModifierPerMille,
@@ -133,7 +135,7 @@ public final class GovEfficiency {
   public static Efficiency of(
       GovernmentFormation governmentFormation,
       Map<HexCoord, GovDemand.HexDemand> suggestedDemand,
-      GovAdministrationPlan plan,
+      AdministrationCoefficients plan,
       long securitySupplyLaborMilli,
       long paperworkSupplyLaborMilli,
       long portSupplyLaborMilli,
@@ -190,7 +192,7 @@ public final class GovEfficiency {
 
   /** 逐项计算（可能抛 {@link ArithmeticException}，由公开入口统一折成具名契约 ERROR）。 */
   private static Efficiency compute(
-      GovAdministrationPlan plan,
+      AdministrationCoefficients plan,
       long securitySupplyLaborMilli,
       long paperworkSupplyLaborMilli,
       long portSupplyLaborMilli,
@@ -365,8 +367,8 @@ public final class GovEfficiency {
 
   /**
    * ★ <b>R2 三维零供给判据</b>：任<b>三</b>维实际承诺劳动 = 0 ⇒ 该维最终效率被压成 0。★ 口岸维为 0 不压总效率（见 {@link
-   * #of(GovernmentFormation, Map, GovAdministrationPlan, long, long, long, long, long, long, long,
-   * long, long, long)} 的类注），它的后果是"没有管制力 ⇒ 全部放行"。
+   * #of(GovernmentFormation, Map, AdministrationCoefficients, long, long, long, long, long, long,
+   * long, long, long, long)} 的类注），它的后果是"没有管制力 ⇒ 全部放行"。
    */
   public static boolean anySupplyZero(
       long securitySupplyLaborMilli, long paperworkSupplyLaborMilli, long portSupplyLaborMilli) {
@@ -377,7 +379,7 @@ public final class GovEfficiency {
   /** DEBUG 汇总（默认关；不改变任何输出）。 */
   private static void logComputed(
       Map<HexCoord, GovDemand.HexDemand> suggestedDemand,
-      GovAdministrationPlan plan,
+      AdministrationCoefficients plan,
       Efficiency efficiency) {
     if (!LOG.isDebugEnabled()) {
       return;

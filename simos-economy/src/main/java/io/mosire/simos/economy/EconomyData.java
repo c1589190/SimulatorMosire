@@ -431,6 +431,78 @@ public record EconomyData(
   }
 
   /**
+   * ★★ <b>追加裁定 12（2026-10-12 §21.9 D-1/D-2）：某个 GOV 单位对应的政府记录</b>——身份派生走既有 {@link
+   * GovernmentIds#ofUnit(String)}（{@code gov-unit-<govUnitId>}，纯字符串换算，<b>不引入 unit 依赖</b>）。
+   *
+   * <p>★★ <b>为什么读侧要这一个方法</b>：三类政府政策（口岸 / 预算 / 编制）现在都挂在这条记录上，而<b>五个读口</b>（口岸管制折算桥 / 政府采购优先级桥 / 官吏工资桥
+   * / 预算执行桥 / 缴解桥）拿到的都是 {@code UnitId}。把"单位 id → 政府记录 → 政策"这条换算收在<b>一处</b>， 才能保证 I-B6（身份 = {@code
+   * GovernmentId}）与 I-B2（缺省语义唯一拼写点）都只有一个落点。
+   *
+   * <p>★ <b>fail-closed</b>：没有这条政府记录 ⇒ 当场抛（{@code
+   * IllegalArgumentException}）——"没有政府记录"与"这个政府存在但没设过政策" 是<b>两件事</b>：前者是状态缺失（不猜、不静默给中性默认），后者才走
+   * {@link #governmentOrDefault(String)} 的中性默认（I-B1）。
+   *
+   * @param govUnitId GOV 单位稳定 id 的<b>裸值</b>（**不是** {@code GovernmentId}；换算由 {@link
+   *     GovernmentIds#ofUnit(String)} 做）—— ★ 收 {@code String} 而不是 {@code
+   *     io.mosire.simos.unit.UnitId}： economy <b>不 import {@code
+   *     simos-unit}</b>（D-2/I-B5），这条换算本来就是纯字符串事实
+   * @throws IllegalArgumentException 单位 id 不能派生政府身份（空白/坏字符）、或该政府未登记
+   */
+  public Government governmentOf(String govUnitId) {
+    Objects.requireNonNull(govUnitId, "govUnitId");
+    GovernmentId governmentId;
+    try {
+      governmentId = GovernmentIds.ofUnit(govUnitId);
+    } catch (IllegalArgumentException bad) {
+      throw new IllegalArgumentException(
+          "GOV 单位 id 不能派生政府身份（GovernmentIds.ofUnit）: " + govUnitId, bad);
+    }
+    Government government = governments.get(governmentId);
+    if (government == null) {
+      throw new IllegalArgumentException(
+          "该 GOV 单位没有对应的政府记录（本世界没登记过它，或它不是 GOV 单位）: " + govUnitId + " ⇒ " + governmentId.value());
+    }
+    return government;
+  }
+
+  /**
+   * ★★ <b>该 GOV 单位的政府记录；没有这条记录 ⇒ 中性缺省</b>（口岸不限制 / 预算不自动付 / 编制中性，I-B1）。
+   *
+   * <p>★ <b>它是"缺省语义的唯一拼写点"</b>（I-B2）：缺省值不在这里现拼 —— 它就是 {@code Government} 记录自身携带的缺省 （{@code
+   * GovPortPolicy.empty()} / {@code GovBudgetPolicy.neutral()} / {@code
+   * GovAdministrationPlan.neutral()}，构造期 恒非 null），本方法只是"查不到就交一份全中性的政府壳"。
+   *
+   * <p>★ 为什么"查不到"要给中性而不是抛：读侧的口径是 {@code GovState.portPolicyOrDefault} 的既有语义（"没设过 = 不限制"），
+   * 且三不管/无政府的世界必须逐值退回改前行为（I-P1/I-C2/I-B1）。
+   */
+  public Government governmentOrDefault(String govUnitId) {
+    Objects.requireNonNull(govUnitId, "govUnitId");
+    GovernmentId governmentId;
+    try {
+      governmentId = GovernmentIds.ofUnit(govUnitId);
+    } catch (IllegalArgumentException bad) {
+      return neutralGovernment(govUnitId);
+    }
+    Government government = governments.get(governmentId);
+    return government == null ? neutralGovernment(govUnitId) : government;
+  }
+
+  /**
+   * 中性缺省政府壳（{@link #governmentOrDefault(String)} 专用）：三类政策都取各自的中性值，其余字段取"无主体"的合法占位。
+   *
+   * <p>★ 国库用 {@code GOVERNMENT/<govUnitId>} 的占位 actor（{@code Government.treasury} 的 ActorKind 判据只认
+   * {@code GOVERNMENT}/{@code HOUSEHOLD}）；{@code issuable} 空集 = 非发行人；铸币旋钮 0 =
+   * 不许铸币。它的<b>唯一用途</b>是承载中性政策值， 调用方只应读它的三个政策字段。
+   */
+  private static Government neutralGovernment(String govUnitId) {
+    return new Government(
+        new GovernmentId(GovernmentIds.UNIT_PREFIX + govUnitId),
+        "neutral",
+        new ActorRef(ActorKind.GOVERNMENT, govUnitId),
+        Set.of());
+  }
+
+  /**
    * ★★ <b>Z1 旧组件面的便捷构造器</b>（P4a 时期的 29 参 canonical 形状）：{@code outputQuantityOverrides} 与 {@code
    * productionEfficiency} 取空表 —— 历史调用点（含 {@code EconomyPayloads} 的播种载荷）不必为了新增两个组件逐个改动；所有 {@code
    * with*} 与 codec/changeset 路径都必须显式携带这两个组件。

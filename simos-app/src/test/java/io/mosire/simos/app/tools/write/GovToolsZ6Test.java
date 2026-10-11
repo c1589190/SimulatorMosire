@@ -39,19 +39,20 @@ import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovBudgetCategory;
+import io.mosire.simos.economy.govpolicy.GovBudgetPolicy;
+import io.mosire.simos.economy.govpolicy.GovOfficialSalaryRule;
+import io.mosire.simos.economy.govpolicy.GovPostTier;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.gov.GovAdministrationPlan;
-import io.mosire.simos.gov.GovBudgetCategory;
-import io.mosire.simos.gov.GovBudgetPolicy;
-import io.mosire.simos.gov.GovOfficialSalaryRule;
-import io.mosire.simos.gov.GovPostTier;
-import io.mosire.simos.gov.GovState;
-import io.mosire.simos.gov.spi.SetAdministrationPlanHandler;
-import io.mosire.simos.gov.spi.SetBudgetPolicyHandler;
+import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
@@ -202,8 +203,16 @@ class GovToolsZ6Test {
           .as("省略 unitId ⇒ 生效目标 = 自己所属 GOV")
           .isEqualTo("gov-central");
       assertThat(view.get("govDerivedFromIdentity").asBoolean()).as("身份派生标记").isTrue();
-      assertThat(view.get("commandsPreview").get(0).get("payloadJson").asText())
-          .as("生效载荷里的 unitId 是身份覆盖后的值，不是模型自报")
+      JsonNode command = view.get("commandsPreview").get(0);
+      assertThat(command.get("type").asText())
+          .as("窄工具内部走通用写口（§21.9 D-3：旧 gov.SetAdministrationPlan 已删除，不留别名）")
+          .isEqualTo(EconomySetGovernmentPolicyHandler.TYPE);
+      assertThat(command.get("payloadJson").asText())
+          .as("生效载荷里的来源是**身份覆盖后**的 GovernmentId（不是模型自报的那个 GOV）")
+          .contains("\"governmentId\":\"gov-unit-gov-central\"")
+          .doesNotContain("gov-province");
+      assertThat(view.get("flatPayloadJson").asText())
+          .as("调用方原样给的那份（平铺 unitId 载荷）同时可见，两个视图都不猜")
           .contains("\"unitId\":\"gov-central\"");
       assertThat(world.head()).as("决策人 preview 零写入").isEqualTo(1L);
     }
@@ -314,8 +323,11 @@ class GovToolsZ6Test {
           .isEqualTo(2L);
       assertThat(world.head()).isEqualTo(2L);
 
+      // ★★ 追加裁定 12（§21.9 D-1）：编制计划的权威 = EconomyData.governments 的政府记录（gov 切片不再承载政策）。
       GovAdministrationPlan plan =
-          GovZ6WorldFixture.govSlice(world.stateAt(2L)).administrationPlans().get(CENTRAL);
+          GovZ6WorldFixture.economySlice(world.stateAt(2L))
+              .governmentOrDefault(CENTRAL.value())
+              .administrationPlan();
       assertThat(plan).as("计划提交后必须有该 GOV 的显式源状态").isNotNull();
       assertThat(plan.securityPlannedLaborMilli()).isEqualTo(12_345L);
       assertThat(plan.paperworkPlannedLaborMilli()).isEqualTo(12_345L);
@@ -366,15 +378,12 @@ class GovToolsZ6Test {
     }
   }
 
-  // ── P0-4：两条 gov 命令仍是 GmOnlyCommand，且进不了决策人 catalog（z3c2 §8-6）────────
+  // ── P0-4：通用政府政策写口仍是 GmOnlyCommand，且进不了决策人 catalog（z3c2 §8-6）────────
 
   @Test
   void gmOnlyGovCommandsAreMarkedAndInvisibleInDecisionCatalog() throws Exception {
-    assertThat(new SetAdministrationPlanHandler())
-        .as("gov.SetAdministrationPlan 必须仍标 GmOnlyCommand（令/RegisterEffect/catalog 三条路径不放大）")
-        .isInstanceOf(GmOnlyCommand.class);
-    assertThat(new SetBudgetPolicyHandler())
-        .as("gov.SetBudgetPolicy 必须仍标 GmOnlyCommand")
+    assertThat(new EconomySetGovernmentPolicyHandler())
+        .as("economy.SetGovernmentPolicy 必须仍标 GmOnlyCommand（令/RegisterEffect/catalog 三条路径不放大）")
         .isInstanceOf(GmOnlyCommand.class);
 
     try (World world = start(tempDir.resolve("gm-only-catalog"), "gm-only-catalog")) {
@@ -385,11 +394,10 @@ class GovToolsZ6Test {
       List<String> gmTypes = new ArrayList<>();
       gmView.get("types").forEach(node -> gmTypes.add(node.asText()));
       assertThat(gmTypes)
-          .as("GM catalog 仍看得见两条 GM-only 命令（正向对照）")
-          .contains(SetAdministrationPlanHandler.TYPE, SetBudgetPolicyHandler.TYPE)
+          .as("GM catalog 仍看得见通用政府政策写口（正向对照）")
+          .contains(EconomySetGovernmentPolicyHandler.TYPE)
           .contains("unit.AssignGovPost");
-      assertThat(gmView.get("payloadHints").has(SetAdministrationPlanHandler.TYPE)).isTrue();
-      assertThat(gmView.get("payloadHints").has(SetBudgetPolicyHandler.TYPE)).isTrue();
+      assertThat(gmView.get("payloadHints").has(EconomySetGovernmentPolicyHandler.TYPE)).isTrue();
 
       DecisionCallerFactory factory = DecisionCallerFactory.defaults(shell.toolAuthorizer());
       ToolResult dmResult =
@@ -407,7 +415,7 @@ class GovToolsZ6Test {
       dmView.get("types").forEach(node -> dmTypes.add(node.asText()));
       assertThat(dmTypes)
           .as("GmOnlyCommand 不得进决策人 catalog（即令里不可嵌）")
-          .doesNotContain(SetAdministrationPlanHandler.TYPE, SetBudgetPolicyHandler.TYPE);
+          .doesNotContain(EconomySetGovernmentPolicyHandler.TYPE);
       assertThat(dmTypes)
           .as("非 GmOnly 的岗位命令仍在决策人 catalog（正向对照，证明过滤不是整体为空）")
           .contains("unit.AssignGovPost");
@@ -415,7 +423,7 @@ class GovToolsZ6Test {
       // ★ WHITELIST 放的是**工具名**不是命令类型；命令类型的不可嵌判据 = GmOnlyCommand + 上面的 DM catalog。
       assertThat(DecisionCallerFactory.WHITELIST)
           .as("工具白名单不得混入命令类型（口径说明）")
-          .doesNotContain(SetAdministrationPlanHandler.TYPE, SetBudgetPolicyHandler.TYPE);
+          .doesNotContain(EconomySetGovernmentPolicyHandler.TYPE);
       assertThat(DecisionCallerFactory.WHITELIST)
           .as("两条 GovOnly 命令对应的决策人窄工具仍必须有")
           .contains(GovSetEstablishmentTool.NAME, GovSetBudgetPolicyTool.NAME);
@@ -506,8 +514,7 @@ class GovToolsZ6Test {
       assertThat(afterFormation.staff()).as("stored staff 逐值不变（投影不写 staff）").isEqualTo(beforeStaff);
 
       GovernmentServiceLaborBridge.Supply supply =
-          GovernmentServiceLaborBridge.supply(
-              economyAfter, CENTRAL, afterFormation, plan(after, CENTRAL), 0L);
+          GovernmentServiceLaborBridge.supply(economyAfter, CENTRAL, afterFormation, 0L);
       assertThat(supply.securityLaborMilli())
           .as("tier-2 公文档：既有官方 tier-3 治安腿 = 32000×500/1000 = 16000")
           .isEqualTo(16_000L);
@@ -686,9 +693,9 @@ class GovToolsZ6Test {
           .as("CONFLICT 必须带真实 head")
           .isEqualTo(2L);
       assertThat(
-              GovZ6WorldFixture.govSlice(world.state())
-                  .administrationPlans()
-                  .get(CENTRAL)
+              GovZ6WorldFixture.economySlice(world.state())
+                  .governmentOrDefault(CENTRAL.value())
+                  .administrationPlan()
                   .securityPlannedLaborMilli())
           .as("冲突不覆盖已提交计划")
           .isEqualTo(12_345L);
@@ -743,7 +750,10 @@ class GovToolsZ6Test {
           gmExecute(tool, Map.of("payloadJson", valid, "preview", false, "expectedRevision", 1L));
       assertThat(applied.success()).as(applied.message()).isTrue();
       assertThat(world.head()).as("合法预算 = 一条 revision").isEqualTo(2L);
-      var policy = GovZ6WorldFixture.govSlice(world.stateAt(2L)).budgetPolicies().get(CENTRAL);
+      var policy =
+          GovZ6WorldFixture.economySlice(world.stateAt(2L))
+              .governmentOrDefault(CENTRAL.value())
+              .budgetPolicy();
       assertThat(policy).isNotNull();
       assertThat(policy.orderedCategories())
           .extracting(line -> line.category())
@@ -790,8 +800,8 @@ class GovToolsZ6Test {
       JsonNode hints =
           JSON.readTree(gmExecute(catalog, Map.of()).message())
               .get("payloadHints")
-              .get(SetBudgetPolicyHandler.TYPE);
-      assertThat(hints).as("catalog 必须给 gov.SetBudgetPolicy 提示").isNotNull();
+              .get(EconomySetGovernmentPolicyHandler.TYPE);
+      assertThat(hints).as("catalog 必须给 economy.SetGovernmentPolicy 提示").isNotNull();
       assertThat(hints.asText())
           .as("catalog 提示必须含新字段（读写目录同源）")
           .contains("remittancePerMilleToSuperior")
@@ -810,7 +820,9 @@ class GovToolsZ6Test {
     try (World world = start(tempDir.resolve("budget-patch"), "budget-patch")) {
       AgentTool tool = gmTool(world.shell(), GovSetBudgetPolicyTool.NAME);
       GovBudgetPolicy before =
-          GovZ6WorldFixture.govSlice(world.state()).budgetPolicies().get(CENTRAL);
+          GovZ6WorldFixture.economySlice(world.state())
+              .governmentOrDefault(CENTRAL.value())
+              .budgetPolicy();
       assertThat(before).as("创世必须已有中央预算政策").isNotNull();
       assertThat(before.orderedCategories()).hasSize(5);
 
@@ -844,7 +856,9 @@ class GovToolsZ6Test {
                   world.head()));
       assertThat(applied.success()).as(applied.message()).isTrue();
       GovBudgetPolicy after =
-          GovZ6WorldFixture.govSlice(world.state()).budgetPolicies().get(CENTRAL);
+          GovZ6WorldFixture.economySlice(world.state())
+              .governmentOrDefault(CENTRAL.value())
+              .budgetPolicy();
       assertThat(after.orderedCategories()).as("PATCH 不清预算（run7 回归）").hasSize(5);
       assertThat(after.officialSalaryRule().grainMilliPerCommittedHour()).isEqualTo(10L);
       assertThat(after.officialSalaryRule().silverMilliPerCommittedHour()).isEqualTo(1L);
@@ -865,7 +879,9 @@ class GovToolsZ6Test {
                   world.head()));
       assertThat(wiped.success()).as(wiped.message()).isTrue();
       GovBudgetPolicy wipedPolicy =
-          GovZ6WorldFixture.govSlice(world.state()).budgetPolicies().get(CENTRAL);
+          GovZ6WorldFixture.economySlice(world.state())
+              .governmentOrDefault(CENTRAL.value())
+              .budgetPolicy();
       assertThat(wipedPolicy.orderedCategories()).as("REPLACE：缺省 = 空表（旧语义）").isEmpty();
       assertThat(wipedPolicy.officialSalaryRule()).isEqualTo(GovOfficialSalaryRule.zero());
       assertThat(wipedPolicy.remittancePerMilleToSuperior()).isZero();
@@ -1346,10 +1362,10 @@ class GovToolsZ6Test {
   @Test
   void postTierConsistencyLogsFaultBeforeFailingClosed() {
     SimulationState state = GovZ6WorldFixture.smallWorldState("Map1");
-    GovState gov = GovZ6WorldFixture.govSlice(state);
+    EconomyData economy = GovZ6WorldFixture.economySlice(state);
     UnitState units = GovZ6WorldFixture.unitSlice(state);
 
-    GovernmentPostTierConsistency.requireConsistent(gov, units); // 真创世必须自洽
+    GovernmentPostTierConsistency.requireConsistent(economy, units); // 真创世必须自洽
 
     GovAdministrationPlan danglingPlan =
         new GovAdministrationPlan(
@@ -1364,7 +1380,14 @@ class GovToolsZ6Test {
             1_000L,
             1_000L,
             1L);
-    GovState dangling = new GovState(Map.of(), Map.of(CENTRAL, danglingPlan), Map.of());
+    // ★★ 追加裁定 12（§21.9 D-1）：档位目录的唯一权威 = economy 的政府记录 ⇒ 悬空目录也造在 economy 上。
+    //   GovState 只剩 offices/remittanceStates（本用例只需要一个"有该 GOV 记录、目录不含 tier-3"的 economy）。
+    io.mosire.simos.economy.api.id.GovernmentId centralId = GovernmentIds.ofUnit(CENTRAL.value());
+    Map<GovernmentId, Government> governments = new LinkedHashMap<>(economy.governments());
+    governments.put(
+        centralId,
+        economy.governmentOrDefault(CENTRAL.value()).withAdministrationPlan(danglingPlan));
+    EconomyData dangling = economy.withGovernments(governments);
     List<GovernmentPostTierConsistency.Mismatch> mismatches =
         GovernmentPostTierConsistency.mismatches(dangling, units);
     assertThat(mismatches).as("岗位 tier-3 不在该 GOV 计划目录（tier-1/tier-1b/tier-1c）里").hasSize(1);
@@ -1434,11 +1457,9 @@ class GovToolsZ6Test {
               GovZ6WorldFixture.economySlice(world.state()),
               CENTRAL,
               formation(world.state(), CENTRAL),
-              plan(world.state(), CENTRAL),
               1L);
       GovSalaryRuleBridge.Report beforeReport =
           GovSalaryRuleBridge.deriveReport(
-              GovZ6WorldFixture.govSlice(world.state()),
               GovZ6WorldFixture.unitSlice(world.state()),
               GovZ6WorldFixture.economySlice(world.state()),
               1L);
@@ -1473,19 +1494,14 @@ class GovToolsZ6Test {
 
       EconomyData economyAfter = GovZ6WorldFixture.economySlice(after);
       GovernmentServiceLaborBridge.Supply afterSupply =
-          GovernmentServiceLaborBridge.supply(
-              economyAfter, CENTRAL, afterFormation, plan(after, CENTRAL), 1L);
+          GovernmentServiceLaborBridge.supply(economyAfter, CENTRAL, afterFormation, 1L);
       assertThat(afterSupply).as("该户无承诺 ⇒ 供给桥不因外岗多出任何供给（bridge 读数逐值不变）").isEqualTo(beforeSupply);
       assertThat(GovernmentServiceLaborBridge.committedLaborByHousehold(economyAfter, CENTRAL, 1L))
           .as("裸挂外岗不写承诺")
           .doesNotContainKey(ghost);
 
       GovSalaryRuleBridge.Report afterReport =
-          GovSalaryRuleBridge.deriveReport(
-              GovZ6WorldFixture.govSlice(after),
-              GovZ6WorldFixture.unitSlice(after),
-              economyAfter,
-              1L);
+          GovSalaryRuleBridge.deriveReport(GovZ6WorldFixture.unitSlice(after), economyAfter, 1L);
       assertThat(afterReport.rules())
           .as("无承诺 ⇒ 不伪造工资规则")
           .noneMatch(
@@ -1686,10 +1702,6 @@ class GovToolsZ6Test {
   private static GovernmentFormation formation(SimulationState state, UnitId govId) {
     return (GovernmentFormation)
         GovZ6WorldFixture.unitSlice(state).units().get(govId).module().orElseThrow();
-  }
-
-  private static GovAdministrationPlan plan(SimulationState state, UnitId govId) {
-    return GovZ6WorldFixture.govSlice(state).administrationPlans().get(govId);
   }
 
   private static Map<UnitId, List<HouseholdId>> unitHouseholds(SimulationState state) {

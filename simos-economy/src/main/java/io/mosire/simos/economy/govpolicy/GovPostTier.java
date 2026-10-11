@@ -1,4 +1,4 @@
-package io.mosire.simos.gov;
+package io.mosire.simos.economy.govpolicy;
 
 /**
  * 一档行政岗位的<b>三维</b>权重（Z2 两维；R2 补第三维 = 口岸，2026-10-09 设计书 §4.2 / 上位文档 §10-3）。

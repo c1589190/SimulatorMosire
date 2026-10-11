@@ -140,7 +140,9 @@ class McpCoverageTest {
    * EXPECTED_COMMAND_TYPES} 也按实测更新，两处计数必须逐字相同）；★★ W5.5 新增 {@code
    * economy.SetMarketZoneLoanRateAlpha} ⇒ **143**（同源同上）；★★ W10 新增 {@code economy.SetEconomyPolicy}
    * ⇒ **144**（同源同上；★ 本条一开始就只报"catalog 集合 ≠ 表"这一个差异 —— 判据见 {@code CatalogTool} 已列该 type：属**本表陈旧**，不是
-   * main 侧缺口）。
+   * main 侧缺口）；★★ 追加裁定 12（2026-10-12 §21.9 D-1/D-3）删除旧三条 {@code gov.SetPortPolicy} / {@code
+   * gov.SetAdministrationPlan} / {@code gov.SetBudgetPolicy}、新增通用写口 {@code
+   * economy.SetGovernmentPolicy} ⇒ **142**（-3 +1，与 SimosToolsTest 的扫描面同源同数）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -199,9 +201,10 @@ class McpCoverageTest {
           "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
           "economy.UpsertIndustry",
-          "gov.SetPortPolicy",
-          "gov.SetAdministrationPlan",
-          "gov.SetBudgetPolicy",
+          // ★★ 追加裁定 12（2026-10-12 §21.9 D-1/D-3）：三类政府政策（口岸/预算/编制）的通用写口；
+          //   旧三条 gov.SetPortPolicy / gov.SetAdministrationPlan / gov.SetBudgetPolicy 已删除（不留别名）
+          //   ⇒ 扫描面 144 → 142（-3 +1）。
+          "economy.SetGovernmentPolicy",
           "map.CreateRegion",
           "map.DeleteRegion",
           "map.MergeRegions",
@@ -373,9 +376,7 @@ class McpCoverageTest {
           "economy.SetGovServiceCommitment",
           "economy.UpsertGovUnit",
           "economy.UpsertIndustry",
-          "gov.SetPortPolicy",
-          "gov.SetAdministrationPlan",
-          "gov.SetBudgetPolicy",
+          "economy.SetGovernmentPolicy",
           "unit.AssignExternalGovPost",
           "unit.AssignGovPost",
           "unit.SetUnitHouseholds",
@@ -538,23 +539,23 @@ class McpCoverageTest {
           Map.entry("economy.UpsertIndustry", "{\"id\": \"office_missing@0_0\"}"),
           Map.entry("economy.UpsertGovUnit", "{\"govUnitId\": \"g-missing\"}"),
           Map.entry("economy.SetGovServiceCommitment", "{\"govUnitId\": \"g-missing\"}"),
-          // ★★ P-T1a/P-T1d/P-T1e（2026-10-10）：口岸政策载荷 = **四元组**（每类 入口限制‰ / 出口限制‰ / 入口税 / 出口税），
-          //   商品表 + "币种 → 挂单类型"表 + marketControl 开关。旧形状（commodityRestrictionPerMille /
-          //   currencyRestrictionPerMille 两个标量表）已随旧设计整体删除（§一.11，不写兼容位）。
-          //   本夹具世界里的 u-1 不是 GOV 编制单位 ⇒ 形状合法但**缺前置 ⇒ 具名拒**（零 revision）；
-          //   成功路径见 simos-gov 的 GovCommandHandlersTest（同一个 handler、真状态）。
+          // ★★ 追加裁定 12（2026-10-12 §21.9 D-1/D-3）：三类政策（口岸/预算/编制）合成**一条**通用写口
+          //   economy.SetGovernmentPolicy（来源 = GovernmentId）。★ 本夹具世界是旧 12 hex 世界、**没有登记任何政府**
+          //   ⇒ 形状合法但**缺前置 ⇒ 具名拒 government-missing**（零 revision）；
+          //   成功路径见 simos-economy 的 EconomySetGovernmentPolicyHandler 用例与 app 的 GovToolsZ6Test。
           Map.entry(
-              "gov.SetPortPolicy",
-              "{\"unitId\": \"u-1\","
-                  + " \"commodityRules\": {\"grain\": {\"entryRestrictionPerMille\": 1000,"
+              "economy.SetGovernmentPolicy",
+              "{\"governmentId\": \"gov-unit-u-1\","
+                  + " \"policies\": {"
+                  + " \"port\": {\"commodityRules\": {\"grain\": {\"entryRestrictionPerMille\": 1000,"
                   + " \"exitRestrictionPerMille\": 250,"
                   + " \"entryTax\": {\"mode\": \"per_unit_milli\", \"amount\": 5},"
                   + " \"exitTax\": {\"mode\": \"ad_valorem_per_mille\", \"amount\": 100}}},"
                   + " \"currencyRules\": {\"silver\": {\"lending\": {\"entryRestrictionPerMille\": 1000},"
                   + " \"commodity\": {\"exitRestrictionPerMille\": 250}}},"
-                  + " \"marketControl\": true}"),
-          Map.entry("gov.SetAdministrationPlan", "{\"unitId\": \"u-1\"}"),
-          Map.entry("gov.SetBudgetPolicy", "{\"unitId\": \"u-1\"}"),
+                  + " \"marketControl\": true},"
+                  + " \"budget\": {\"remittancePerMilleToSuperior\": 0},"
+                  + " \"administration\": {\"securityPlannedLaborMilli\": 0}}}"),
           Map.entry(
               "unit.AssignGovPost",
               "{\"unitId\": \"u-1\", \"household\": \"hh-missing\", \"role\": \"POST\"}"),
@@ -1049,7 +1050,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 144 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144）")
+            "catalog 列出的 type 与 Shell 注册的 142 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);

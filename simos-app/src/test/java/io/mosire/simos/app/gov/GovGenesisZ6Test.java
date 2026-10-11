@@ -27,12 +27,12 @@ import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
+import io.mosire.simos.economy.govpolicy.GovBudgetCategory;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ProductionProcess;
-import io.mosire.simos.gov.GovAdministrationPlan;
-import io.mosire.simos.gov.GovBudgetCategory;
 import io.mosire.simos.gov.GovOfficeState;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.region.RegionId;
@@ -65,8 +65,9 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>★ <b>期望值来源</b>：Z5 探针（{@code /tmp/z5-probe}，85 checks 全绿）与设计书 §3/§6/§8/§9；数字是字面量，不拿被测实现当期望
  * （唯一例外是财政/公式的复算，用被测消费端同一份数据现算——见各断言注释）。
  *
- * <p>★ <b>效率非 0 的时点</b>：tick0 的 {@code gov} 切片只落"计划/预算源状态"，当日 {@code GovOfficeState} 读数是推进第 1
- * 天时由日循环写入的（设计书 §8："当日读数、不作次日输入"）。故 tick0 断言"源状态齐 + 承诺/单位/国库齐"，效率逐值断言在 tick1。
+ * <p>★ <b>效率非 0 的时点</b>：tick0 的 {@code gov} 切片只落"读数位"（{@code offices} 空；政策源状态自追加裁定 12 起住 {@code
+ * EconomyData.governments}，见 §21.9 D-1），当日 {@code GovOfficeState} 读数是推进第 1 天时由日循环写入的（设计书
+ * §8："当日读数、不作次日输入"）。故 tick0 断言"源状态齐 + 承诺/单位/国库齐"，效率逐值断言在 tick1。
  */
 class GovGenesisZ6Test {
 
@@ -89,7 +90,7 @@ class GovGenesisZ6Test {
       GovState gov = GovZ6WorldFixture.govSlice(state);
       var actor = GovZ6WorldFixture.actorSlice(state);
 
-      assertThat(gov.offices()).as("tick0 只落源状态（计划/预算）；当日读数是第 1 天日循环写的").isEmpty();
+      assertThat(gov.offices()).as("tick0 只有读数位（offices 空；政策住 economy，当日读数是第 1 天日循环写的）").isEmpty();
 
       assertThat(social.households()).as("社会家户表非空").isNotEmpty();
       assertThat(totalSocialPopulation(social)).as("社会总人口守恒 = 4800").isEqualTo(4800L);
@@ -158,7 +159,10 @@ class GovGenesisZ6Test {
             .as(id + " 承诺 ≤ 家户劳动预算")
             .isLessThanOrEqualTo(economyRow.laborMilli());
 
-        GovAdministrationPlan plan = gov.administrationPlans().get(govId);
+        // ★★ 追加裁定 12（§21.9 D-1）：编制计划与预算政策住 economy 的政府记录（GovState 不再承载政策表）。
+        Government registered = economy.governments().get(GovernmentIds.ofUnit(id));
+        assertThat(registered).as(id + " economy 政府登记存在").isNotNull();
+        GovAdministrationPlan plan = registered.administrationPlan();
         assertThat(plan).as(id + " 编制计划存在（explicit）").isNotNull();
         long expectedPlanned =
             govId.equals(CENTRAL) ? 16_000L : 32_000L; // 中央 1 人当量满覆盖 / 省 2 人当量半覆盖
@@ -171,7 +175,7 @@ class GovGenesisZ6Test {
         assertThat(plan.paperworkDemandStaticModifierPerMille()).isEqualTo(1000L);
         assertThat(plan.supernumerarySqrtCoefficient()).isEqualTo(1L);
 
-        var budget = gov.budgetPolicies().get(govId);
+        var budget = registered.budgetPolicy();
         assertThat(budget).as(id + " 预算政策存在（explicit）").isNotNull();
         assertThat(budget.orderedCategories())
             .extracting(line -> line.category())
@@ -184,9 +188,7 @@ class GovGenesisZ6Test {
         assertThat(budget.officialSalaryRule().grainMilliPerCommittedHour()).isEqualTo(10L);
         assertThat(budget.officialSalaryRule().silverMilliPerCommittedHour()).isEqualTo(1L);
 
-        Government government = economy.governments().get(GovernmentIds.ofUnit(id));
-        assertThat(government).as(id + " economy 政府登记存在").isNotNull();
-        assertThat(government.treasury()).isEqualTo(treasuryActor);
+        assertThat(registered.treasury()).as(id + " 国库 actor").isEqualTo(treasuryActor);
 
         HouseholdInventory treasury = actor.accounts().get(new HouseholdAccountKey(govHousehold));
         assertThat(treasury).as(id + " 国库账户存在").isNotNull();

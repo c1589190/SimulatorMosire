@@ -24,6 +24,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.govpolicy.GovAdministrationPlan;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -36,7 +37,7 @@ import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.MarketTopology;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
-import io.mosire.simos.gov.GovAdministrationPlan;
+import io.mosire.simos.gov.AdministrationCoefficients;
 import io.mosire.simos.gov.GovDaily;
 import io.mosire.simos.gov.GovDemand;
 import io.mosire.simos.gov.GovEfficiency;
@@ -448,7 +449,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     // ★★ Z4/C4：岗位 tierId 必须指向该 GOV 的 GovAdministrationPlan.postTiers 目录（unit 看不见 gov 计划，
     //   只有 app 同时看得见；裸命令提交的悬空 tierId 在这里具名 fail-closed，不静默带进日结算）。
     if (units != null) {
-      GovernmentPostTierConsistency.requireConsistent(bootstrappedGov, units);
+      GovernmentPostTierConsistency.requireConsistent(economy, units);
     }
     boolean govActive = !bootstrappedGov.offices().isEmpty();
     // ★ Z3b：把本轮基态的 office 集合记为"已知 GOV"（注入接口用它判未知 GOV；推进结束后会再刷成本轮结果）。
@@ -845,7 +846,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             //     ⇒ 家户估值不减项 ⇒ 旧世界逐值不变）。
             //   ★ N1：政策里的未知商品/未知币种 ⇒ 本调用内具名 ERROR + fail-closed 抛出（不静默忽略）。
             PortRegimeBridge.PortRegimeDay portRegime =
-                PortRegimeBridge.compute(currentGov, units, map, economy, computed.byUnit(), day);
+                PortRegimeBridge.compute(units, map, economy, computed.byUnit(), day);
             if (portRegime.active()) {
               stepper.updatePortEnforcement(portRegime.input());
               TIME.info(
@@ -900,7 +901,6 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             //   ★ I-C2：没有任何政府要求管控 ⇒ 空表 ⇒ 不注入 ⇒ 无置顶、无消耗 ⇒ 旧世界逐值不变。
             ProcurementPriorityBridge.ProcurementPriorityDay procurement =
                 ProcurementPriorityBridge.compute(
-                    currentGov,
                     computed.supplyByUnit(),
                     economy,
                     currentSocial.provisioning().standardLaborMilliHoursPerTick(),
@@ -956,6 +956,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 GovRemittanceBridge.settle(
                     currentGov,
                     units,
+                    economy,
                     tax.grainCollectedByUnit(),
                     tax.moneyCollectedByUnit(),
                     stepper.accounts(),
@@ -1487,10 +1488,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 }
               });
       Map<HexCoord, GovDemand.HexDemand> suggestedDemand = GovDemand.of(map, social, unit);
-      GovAdministrationPlan plan = govState.administrationPlanOrDefault(unitId);
+      // ★★ 2026-10-12 追加裁定 12 §21.9 D-1/(a)：编制政策现在住 EconomyData.governments 的 Government 记录
+      //   （读侧唯一入口 economy.governmentOf/OrDefault）；gov 模块自己不认识 economy，故这里把它的十个数值
+      //   折成 **纯值** AdministrationCoefficients 再交给 GovEfficiency（I-B5 反向依赖因此不成立）。
+      GovAdministrationPlan plan = economy.governmentOrDefault(unitId.value()).administrationPlan();
       GovernmentServiceLaborBridge.Supply supply =
           GovernmentServiceLaborBridge.supply(
-              economy, currentHouseholdRows, unitId, formation, plan, day);
+              economy, currentHouseholdRows, unitId, formation, day);
       GovEfficiencyModifier modifier = modifiers.get(unitId);
       long securitySupplyModifier =
           modifier == null
@@ -1521,7 +1525,17 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           GovEfficiency.of(
               formation,
               suggestedDemand,
-              plan,
+              AdministrationCoefficients.of(
+                  plan.securityPlannedLaborMilli(),
+                  plan.paperworkPlannedLaborMilli(),
+                  plan.portPlannedLaborMilli(),
+                  plan.securitySupplyStaticModifierPerMille(),
+                  plan.paperworkSupplyStaticModifierPerMille(),
+                  plan.portSupplyStaticModifierPerMille(),
+                  plan.securityDemandStaticModifierPerMille(),
+                  plan.paperworkDemandStaticModifierPerMille(),
+                  plan.portDemandStaticModifierPerMille(),
+                  plan.supernumerarySqrtCoefficient()),
               supply.securityLaborMilli(),
               supply.paperworkLaborMilli(),
               supply.portLaborMilli(),

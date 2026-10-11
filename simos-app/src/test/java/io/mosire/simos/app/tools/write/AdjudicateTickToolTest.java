@@ -888,6 +888,13 @@ class AdjudicateTickToolTest {
     samples.put(
         "economy.CancelGovernmentMarketOrder",
         List.of("{\"id\":\"gm:cov\",\"reason\":\"coverage\"}"));
+    // ★★ 追加裁定 12（2026-10-12 §21.9 D-1/D-3）：三类政府政策的唯一通用写口。它实现 CommandTargets
+    //   （载荷带 governmentId ⇒ 目标 = 该政府路径；只给 govUnitId ⇒ 空表，见 handler 的 targetPaths 注）
+    //   ⇒ 必须在本表在册（本表是"实现 CommandTargets 的命令"的手抄清单，缺一条当场红）。
+    samples.put(
+        "economy.SetGovernmentPolicy",
+        List.of(
+            "{\"governmentId\":\"gov-unit-gov-1\",\"policies\":{\"port\":{}}}", "gov-unit-gov-1"));
     samples.put(
         "economy.SetOfficialRate",
         List.of(
@@ -918,8 +925,10 @@ class AdjudicateTickToolTest {
           .containsExactlyInAnyOrderElementsOf(expected.subList(1, expected.size()));
     }
     assertThat(samples.keySet())
-        .as("96 条样本一条不漏（77 条有目标声明 + 19 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）")
-        .hasSize(96);
+        .as(
+            "97 条样本一条不漏（78 条有目标声明 + 19 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）"
+                + "（★★ 追加裁定 12：economy.SetGovernmentPolicy 有真目标声明 ⇒ 96 → 97）")
+        .hasSize(97);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

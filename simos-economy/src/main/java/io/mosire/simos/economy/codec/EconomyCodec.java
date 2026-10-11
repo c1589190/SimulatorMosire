@@ -52,6 +52,7 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.market.MarketMandateId;
+import io.mosire.simos.economy.api.market.MarketOrderKind;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -296,7 +297,33 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     //   只需读侧）。值 GovernmentMarketMandate 走 Jackson 的 record 字段显式绑定；旧档缺该组件键 ⇒ EconomyData
     //   构造期归一成空表（= 没有任何授权 ⇒ 国库户在商品市场上零订单，既有世界逐值不变）。
     module.addKeyDeserializer(MarketMandateId.class, keyDeserializer(MarketMandateId::parse));
+    // ★★ 追加裁定 12（2026-10-12 §21.9 D-1）：Government.portPolicy 的 currencyRules 是
+    //   "币种 → 挂单类型 → 四元组"的**嵌套**表 ⇒ 内层键 = MarketOrderKind。它是**枚举**，Jackson 对枚举键的
+    //   默认读写都走 name()（LENDING），而本仓的规范字面量是小写下划线（lending，与载荷/读数同字面）⇒
+    //   **读写两侧都注册**（写侧 value() / 读侧 MarketOrderKind#parse），让线格式与载荷逐字一致、写出来的档自己读得回。
+    //   （这一段与 gov 侧 GovCodec 原有的同款注册等价；政策搬进 economy 后那段随 gov 的删除一并消失。）
+    module.addKeyDeserializer(MarketOrderKind.class, keyDeserializer(MarketOrderKind::parse));
+    module.addKeySerializer(MarketOrderKind.class, orderKindKeySerializer());
     return module;
+  }
+
+  /**
+   * ★★ 写侧：枚举键按规范字面量（{@code lending}）而不是 {@code name()}（{@code LENDING}）落线格式。
+   *
+   * <p>★ 与 {@code GovCodec} 的旧同款实现逐字同制（政策搬进 economy 时一并搬来，不留第二份拼写点）。
+   */
+  private static com.fasterxml.jackson.databind.JsonSerializer<MarketOrderKind>
+      orderKindKeySerializer() {
+    return new com.fasterxml.jackson.databind.JsonSerializer<>() {
+      @Override
+      public void serialize(
+          MarketOrderKind value,
+          com.fasterxml.jackson.core.JsonGenerator generator,
+          com.fasterxml.jackson.databind.SerializerProvider serializers)
+          throws java.io.IOException {
+        generator.writeFieldName(value.value());
+      }
+    };
   }
 
   /** ★★ S1/H2/R3B.1 的值类型兼容层：旧形状整形成新形状之后交给 {@link #PLAIN} 绑定（避免递归）。 */

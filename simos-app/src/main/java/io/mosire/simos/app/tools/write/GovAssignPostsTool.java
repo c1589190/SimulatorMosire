@@ -16,10 +16,10 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.govpolicy.GovPostTier;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
-import io.mosire.simos.gov.GovPostTier;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.StaffRole;
@@ -304,14 +304,22 @@ public final class GovAssignPostsTool implements AgentTool {
     }
   }
 
-  /** {@code tierId} 非空时必须命中该 GOV 计划的 postTiers（unit 看不见 gov 计划，跨切片校验在 app 侧）。 */
+  /**
+   * {@code tierId} 非空时必须命中该 GOV 计划的 postTiers（unit 看不见编制计划，跨切片校验在 app 侧）。
+   *
+   * <p>★★ 2026-10-12 追加裁定 12 §21.9 D-1：目录来源从 gov 切片改成 {@code EconomyData.governments} 的政府记录 （{@code
+   * economy.governmentOrDefault(...).administrationPlan()}；缺记录 ⇒ neutral() = 默认 3 档，I-B1）。
+   */
   static void requireTierIfGiven(
       SimulationState state, GovToolSupport.GovTarget target, String tierId) {
     if (tierId == null) {
       return;
     }
     for (GovPostTier tier :
-        GovToolSupport.govState(state).administrationPlanOrDefault(target.govId()).postTiers()) {
+        GovToolSupport.economyData(state)
+            .governmentOrDefault(target.govId().value())
+            .administrationPlan()
+            .postTiers()) {
       if (tier.tierId().equals(tierId)) {
         return;
       }

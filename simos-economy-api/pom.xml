@@ -61,15 +61,28 @@
             <configuration>
               <rules>
                 <bannedDependencies>
+                  <!-- ★★ 2026-10-12 闭合（用户裁定「冻结各个模块的语义，确保下次改不越界」）：本仓的边界语义 = 「本模块不许**直接声明**某个依赖」；传递可见是 Maven 依赖图的事实、本模块控制不了 ⇒ 显式关掉传递检查（enforcer 3.6.3 `searchTransitive` 默认 true，字节码核实）。禁列全仓 simos 模块 − 自己 − 允许面，零例外。 -->
+                  <searchTransitive>false</searchTransitive>
                   <excludes>
                     <exclude>io.mosire:simos-social</exclude>
                     <exclude>io.mosire:simos-unit</exclude>
                     <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:simos-app</exclude>
+                    <!-- ★★ 2026-10-12 模块语义冻结（文档 §3）：对称闭合
+                         = 禁掉"本模块 + 允许面（actor-api/util/map/social-api）之外"的全部 simos 模块。
+                         ★ `simos-ledger` 已退役、当前无同名模块：照冻结表列入，作历史留痕与未来防线。
+                         ★★ 同一冻结的 §4 I-F4 比 §3 的补进列更严：`simos-actor` 不在允许面里 ⇒ 按 I-F4 一并列入
+                         （本模块只依赖 actor-api 契约，实测 actor 不在传递闭包上）。 -->
+                    <exclude>io.mosire:simos-actor</exclude>
+                    <exclude>io.mosire:simos-army</exclude>
+                    <exclude>io.mosire:simos-calendar</exclude>
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-gov</exclude>
+                    <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
                   </excludes>
-                  <message>economy-api 只放共用契约，不许反向依赖任何领域/编排模块（POLITICAL_ECONOMY_DESIGN §2/§10）：各领域只依赖 api/util/map，api 自己只依赖 actor-api/util/map + social-api 契约（★ actor-api 与 social-api 都是更底层的另一份契约，不是领域模块）。</message>
+                  <message>simos-economy-api 是经济切片共用的稳定契约（各类稳定 ID / CommodityId / 市场 / 货币 / 关系 / 转移形状；无 Snapshot、无存储、无公式）：只许依赖 actor-api/util/map/social-api（★ 三者都是更底层的另一份契约，不是领域模块）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含兄弟切片 economy/actor/gov/army、calendar 与已退役的 ledger）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

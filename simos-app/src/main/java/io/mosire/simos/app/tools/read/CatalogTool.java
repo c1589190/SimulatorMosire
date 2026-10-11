@@ -366,10 +366,12 @@ public final class CatalogTool implements AgentTool {
                   + " 可绕过该预检（已记录的残余边界）。内外岗位互斥；家户在 Unit.households ⇒ 具名拒并指路"
                   + " unit.AssignGovPost。决策人窄工具 simos.gov.openPostsToMarket 直接提交、另走审批链）"),
           Map.entry(
-              "gov.SetPortPolicy",
-              "unitId(必填；GOV 单位 id 且带 GovernmentFormation),"
-                  + " commodityRules?{商品→规则对象},"
-                  + " currencyRules?{币种→{挂单类型→规则对象}}"
+              "economy.SetGovernmentPolicy",
+              "governmentId(必填；政府稳定身份，GOV 单位走 governmentId = \"gov-unit-<govUnitId>\"；"
+                  + "本命令只改**已登记**的政府 —— 未登记 ⇒ 具名拒 government-missing 且零 revision),"
+                  + " policies(必填对象，三个子集至少给一个；空/缺 ⇒ 具名拒),"
+                  + " policies.port?{commodityRules?{商品→规则对象}, currencyRules?{币种→{挂单类型→规则对象}},"
+                  + " marketControl?(布尔，缺省 false)}"
                   + "（★ P-T1a 四元组：每类四个数 entryRestrictionPerMille(入口限制‰) /"
                   + " exitRestrictionPerMille(出口限制‰) / entryTax / exitTax，四个字段各自可缺省"
                   + "（缺省 = 0 = 不限制/不收税）；税从量从价都行：entryTax/exitTax ="
@@ -381,35 +383,32 @@ public final class CatalogTool implements AgentTool {
                   + "只作用在跨区流动上 —— 同区不受口岸管，也不是\"本币不得在境外使用\"）；"
                   + "币种手续费本批**只落形状+读数**（没有收款面，不搬钱）；两张表可缺省；"
                   + "缺省/显式空对象 = 空表 = 该类**不限制**（I-P1 用户「肯定0啊」）；同类型重复设置 = **整表替换**；"
-                  + "与既有政策逐值相同 ⇒ 幂等 no-op 不落 revision；负限制/负税/未知类/坏 JSON/未知单位 ⇒"
-                  + " 具名 Rejected 零 revision；★ 跨区过境按 entry/exit **两侧相乘**节流"
-                  + "（E_源出口 × E_目的入口）；商品过境税已真收（P-T1b）；★★ P-T1d："
-                  + " marketControl?(布尔，缺省 false = 不要求管控；true = 政府要求管控市场 ⇒ 该政府国库户"
-                  + "「hh-gov-<unitId>」的挂单在**行政力池余量内**强制置顶（最先卖/最先买），每超越一户消耗"
-                  + " 一份行政力、见底硬停；只改撮合顺序、不改价格；非布尔值 ⇒ 具名拒)；★ GmOnly 标记只挡住令/"
-                  + "RegisterEffect/决策人 catalog 三条路径，不拦命令总线）"),
-          Map.entry(
-              "gov.SetAdministrationPlan",
-              "unitId(必填；GOV 单位 id), securityPlannedLaborMilli?, paperworkPlannedLaborMilli?,"
-                  + " postTiers?[{tierId,securityWeightPerMille,paperworkWeightPerMille}](恰 3 档),"
-                  + " securitySupplyStaticModifierPerMille?,"
-                  + " paperworkSupplyStaticModifierPerMille?,"
-                  + " securityDemandStaticModifierPerMille?,"
-                  + " paperworkDemandStaticModifierPerMille?, supernumerarySqrtCoefficient?(k；≥0)（★"
-                  + " Z2：整体替换；缺省展开 计划0/默认3档/修正1000‰/k=1；单位必须存在且带 GovernmentFormation；逐值相同 = 幂等"
-                  + " no-op；★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog 三条路径，不拦命令总线 ——决策人窄工具"
-                  + " simos.gov.setEstablishment 直接提交同一命令并另走审批链）"),
-          Map.entry(
-              "gov.SetBudgetPolicy",
-              "unitId(必填),"
-                  + " orderedCategories?[{category(ADMIN_STIPEND|MILITARY_STIPEND|ADMIN_SALARY|"
+                  + "★ **写口这一层就判词表**：未知商品（不在 EconomyVocabulary）/未知币种（不在 currencies）⇒"
+                  + " 具名拒（2026-10-12 追加裁定 12 起政策住 economy，故不必再靠 app 的写前守卫）；"
+                  + " ★★ P-T1d：marketControl=true = 政府要求管控市场 ⇒ 该政府国库户"
+                  + "「hh-gov-<govUnitId>」的挂单在**行政力池余量内**强制置顶（最先卖/最先买），每超越一户消耗"
+                  + " 一份行政力、见底硬停；只改撮合顺序、不改价格；非布尔值 ⇒ 具名拒),"
+                  + " policies.budget?{orderedCategories?[{category(ADMIN_STIPEND|MILITARY_STIPEND|ADMIN_SALARY|"
                   + "DEBT_SERVICE|OTHER),minPerCycle?,capPerCycle?}](顺序即预算优先级),"
                   + " officialSalaryRule?{grainMilliPerCommittedHour?,silverMilliPerCommittedHour?},"
                   + " remittancePerMilleToSuperior?(0..1000‰；Z7c：周期末按本周期实收税上缴 superiorGov"
                   + " 国库，0=抗税/不转移；不足只告警), mode?(PATCH|REPLACE，缺省 PATCH：缺省字段保留现值——只改 remittance"
-                  + " 不清预算，orderedCategories:[] 才清空；REPLACE=旧整表替换：缺省 = 空表/0/0/0)（★ Z7e-3：双模；逐值相同 ="
-                  + " 幂等 no-op；capPerCycle 缺省 = 不封顶；★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog"
-                  + " 三条路径，不拦命令总线 ——决策人窄工具 simos.gov.setBudgetPolicy 直接提交同一命令并另走审批链）"),
+                  + " 不清预算，orderedCategories:[] 才清空；REPLACE=旧整表替换：缺省 = 空表/0/0/0)}"
+                  + "（★ Z7e-3：双模；capPerCycle 缺省 = 不封顶）,"
+                  + " policies.administration?{securityPlannedLaborMilli?, paperworkPlannedLaborMilli?,"
+                  + " portPlannedLaborMilli?, postTiers?[{tierId,securityWeightPerMille,paperworkWeightPerMille,"
+                  + "portWeightPerMille?}](恰 3 档), securitySupplyStaticModifierPerMille?,"
+                  + " paperworkSupplyStaticModifierPerMille?, portSupplyStaticModifierPerMille?,"
+                  + " securityDemandStaticModifierPerMille?, paperworkDemandStaticModifierPerMille?,"
+                  + " portDemandStaticModifierPerMille?, supernumerarySqrtCoefficient?(k；≥0)}"
+                  + "（★ 缺省展开 计划0/默认3档/修正1000‰/k=1）"
+                  + "（★★ 追加裁定 12（2026-10-12 §21.9 D-1~D-4）：三类政府政策（口岸/预算/编制）的**唯一通用写口** ——"
+                  + " 政策挂在 EconomyData.governments 的 Government 记录上（机制+规则+存储归 economy，决定权归 GOV："
+                  + "「GOV 只调用相关修改，不负责管理机制」/「GOV 不应该负责存」）。子集缺席 = 该类一个数都不动；"
+                  + " 三类同批 = **恰一条 revision**；与现值逐值相同 ⇒ 具名拒 policies-unchanged（不落空 revision）；"
+                  + " 旧三条 gov.SetPortPolicy / gov.SetBudgetPolicy / gov.SetAdministrationPlan 已**删除**（不留别名）；"
+                  + " ★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog 三条路径，不拦命令总线 ——决策人窄工具"
+                  + " simos.gov.setEstablishment / simos.gov.setBudgetPolicy 直接提交同一命令并另走审批链）"),
           Map.entry(
               "economy.MigrateHousehold",
               "household(家户 id 文本), toHex(目标格 q_r 文本)"

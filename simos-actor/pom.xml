@@ -77,6 +77,8 @@
             <configuration>
               <rules>
                 <bannedDependencies>
+                  <!-- ★★ 2026-10-12 闭合（用户裁定「冻结各个模块的语义，确保下次改不越界」）：本仓的边界语义 = 「本模块不许**直接声明**某个依赖」；传递可见是 Maven 依赖图的事实、本模块控制不了 ⇒ 显式关掉传递检查（enforcer 3.6.3 `searchTransitive` 默认 true，字节码核实）。禁列全仓 simos 模块 − 自己 − 允许面，零例外。 -->
+                  <searchTransitive>false</searchTransitive>
                   <excludes>
                     <!-- ★★ S1 阶段 2 裁定 R2 点名的两条：actor 切片**只允许类型依赖**
                          （可以 import CommodityId 这类契约类型），**不允许**运行时领域控制流反向流入
@@ -89,9 +91,18 @@
                     <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:simos-app</exclude>
+                    <!-- ★★ 2026-10-12 模块语义冻结（文档 §3）：本批补 `ledger`
+                         （已退役、当前无同名模块，照冻结表列入，作历史留痕与未来防线）。
+                         ★★ 同一冻结的 §4 I-F4（"禁掉自己 + 允许面之外的全部 simos 模块"）比 §3 的补进列更严：
+                         `army` / `calendar` / `gov` 不在 §3 的补进列里，但都不在本模块的允许面
+                         （actor-api/util/map/economy-api/social-api）⇒ 按 I-F4 一并列入（实测不落在传递链上）。 -->
+                    <exclude>io.mosire:simos-army</exclude>
+                    <exclude>io.mosire:simos-calendar</exclude>
+                    <exclude>io.mosire:simos-gov</exclude>
+                    <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
                   </excludes>
-                  <message>只允许类型依赖，不允许运行时领域控制流反向流入（S1 阶段 2 裁定）：actor 切片只依赖 actor-api / util / map / economy-api，不依赖 economy、ledger（同层切片）与 social/unit/sd/core/app/agentlib。</message>
+                  <message>simos-actor 是 actor 切片的聚合实现（Actor 身份 + 产权"到格" + 商品库存"到 CommodityId" + 状态树/落盘切片/变更集）：只许依赖 actor-api/util/map/economy-api/social-api，且只允许类型依赖、不允许运行时领域控制流反向流入（S1 阶段 2 裁定）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 social 实现、同层 economy、army/calendar/gov 与已退役的 ledger）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>
