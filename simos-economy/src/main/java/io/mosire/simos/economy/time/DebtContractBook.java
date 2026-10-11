@@ -53,6 +53,33 @@ public final class DebtContractBook {
   private DebtContractBook() {}
 
   /**
+   * ★★★ <b>自持合同（{@code debtor == creditor}）—— 唯一拼写点（W5-fix6，2026-10-11）</b>。
+   *
+   * <p>它的语义（不是"坏数据"，也不是"可执行的债权"）：<b>"发行额 = 政府负债"这一类记账事实</b>。铸币生产方式 （{@code
+   * MintSettlement.credit}）是它唯一的常态生产者 —— 债务人是发行政府的国库家户、债权人是铸币这一路的组织者， 两者在常态世界里<b>同一户</b> ⇒
+   * 合同的债权与债务落在同一个主体上，"清偿它"在经济上什么也没发生（自己还给自己），在 {@code Transfer} 层更是当场抛（"两端相等"不是一条发生额）。
+   *
+   * <p>★★ <b>同族先例（同一口径已存在于别处）</b>：{@code DebtPartyResolver.splitDebtAmounts} 的自债净额 （{@code
+   * capitalizeArrears} 用它，永不落自持合同）、{@code ModeMigrationSettlement.moveDebt} 的 {@code
+   * MIGRATION_DEBT_SELF_NETTED}、{@code EconomySettlement.repayDebts} 的 {@code
+   * DEBT_REPAY_SELF_HELD_SKIPPED}、 退出清算的 {@code ENTERPRISE_EXIT_SELF_HELD_DEBT_SKIPPED}。
+   *
+   * <p>★★ <b>它必须被排除在哪些结算语义之外（W5-fix6 收口的那两处 + 既有的两处）</b>：
+   *
+   * <ol>
+   *   <li>还债轮（{@code repayDebts}）与经营者退出清算 —— <b>W5-fix 已排除</b>；
+   *   <li><b>计息</b>（{@code chargeInterest}）—— 自持合同的未偿额必须<b>恰好等于累计发行额</b>；计息会让"政府负债" 每周期凭空长出一笔
+   *       <b>没有对应新钱</b> 的利息（500 → 1,624@d360 的真读数见 W5 验收报告 §3-D5）；
+   *   <li><b>违约压力与 {@code DEFAULTED} 标记</b>（{@code EconomyLiquidationSettlement}）—— 自持合同没有可执行的债权人，
+   *       把它计进"连续压力 ⇒ 清算/阶层滑落"或标成"违约中的政府债"都是<b>读口的假声明</b>。
+   * </ol>
+   */
+  public static boolean isSelfHeld(DebtContract debt) {
+    Objects.requireNonNull(debt, "debt");
+    return debt.debtor().equals(debt.creditor());
+  }
+
+  /**
    * ★★ <b>本金增加写口</b>：同一 {@code (debtor, creditor, unit, terms)} 命中同一条并累加本金；不存在则建条。
    *
    * <pre>

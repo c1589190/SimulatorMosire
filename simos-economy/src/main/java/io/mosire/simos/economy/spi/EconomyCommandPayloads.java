@@ -8,6 +8,8 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.map.hex.HexCoord;
@@ -225,6 +227,47 @@ final class EconomyCommandPayloads {
     }
     return new ActorRef(
         ActorKind.parse(requireText(command, node, "kind")), requireText(command, node, "id"));
+  }
+
+  /**
+   * ★★ <b>W5-fix6：政府寻址（唯一拼写点）</b> —— 两条命令（{@code economy.SetGovernmentMintScale} 与 {@code
+   * economy.RecordMoneyIssuance}）都按<b>政府 id</b> 找 {@code EconomyData.governments}
+   * 里的那一行，本方法把"载荷怎么写地址" 收成一处。
+   *
+   * <pre>
+   * {"governmentId":"world-silver"}   // 精确政府 id（世界级政府与 gov-unit-&lt;id&gt; 单位政府都收）
+   * {"govUnitId":"gov-central"}       // GOV 单位 id ⇒ 派生 gov-unit-gov-central（GovernmentIds.ofUnit）
+   * </pre>
+   *
+   * <p>★★ <b>为什么必须有"精确 id"这一路</b>：世界级政府（{@code world-silver}）<b>不是任何 GOV 单位</b>，故它没有 {@code
+   * gov-unit-} 派生形态（{@code GovernmentIds} 类注明写"世界级政府不在此列 …… 对它返回空（不猜）"）⇒ 只认 {@code govUnitId}
+   * 的写口<b>永远够不着</b>它（W5 验收报告 §3-D1 的 HTTP 422 原文就是这个后果）。
+   *
+   * <p>★ <b>两个地址恰给一个</b>：同时给 ⇒ 具名拒（两把地址若漂开，"改的是哪个政府"就没有唯一答案 —— 猜一个是最坏的一种"看起来成功了"）。 都不给 ⇒ 具名拒。★
+   * 不做任何归一/trim（身份不做规范化，与 {@code GovernmentIds} 同款）。
+   *
+   * @return 该政府在本世界的稳定身份（<b>不</b>校验它是否已登记 —— 那是 handler 的事，它才拿得到 {@code governments}）
+   */
+  static GovernmentId requireGovernmentAddress(String command, JsonNode payload) {
+    boolean hasGovernmentId = payload.hasNonNull("governmentId");
+    boolean hasGovUnitId = payload.hasNonNull("govUnitId");
+    if (hasGovernmentId && hasGovUnitId) {
+      throw new IllegalArgumentException(
+          command
+              + " 的 governmentId 与 govUnitId 只能给一个（两把地址漂开就没有唯一答案）: governmentId="
+              + requireText(command, payload, "governmentId")
+              + " govUnitId="
+              + requireText(command, payload, "govUnitId"));
+    }
+    if (hasGovernmentId) {
+      return GovernmentId.parse(requireText(command, payload, "governmentId"));
+    }
+    if (hasGovUnitId) {
+      return GovernmentIds.ofUnit(requireText(command, payload, "govUnitId"));
+    }
+    throw new IllegalArgumentException(
+        command
+            + " 必须给 governmentId（精确政府 id，如 world-silver）或 govUnitId（GOV 单位 id，派生 gov-unit-<id>）之一");
   }
 
   /**

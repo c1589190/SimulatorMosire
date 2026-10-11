@@ -442,6 +442,12 @@ public final class EconomySettlement {
   /** ★★ R1：政府市场授权的生命周期（market 分类 —— 与 {@code MarketSettlement} 的挂单/成交事件同一个 logger）。 */
   private static final Logger MANDATE = EconomyLog.market();
 
+  /**
+   * ★★ W5-fix6（D5）：<b>债务状态面</b>（debt 分类 —— 与 {@code DebtContractBook} / {@code
+   * EconomyLiquidationSettlement} 同一个 logger）—— 自持合同的"不计息"具名 DEBUG 走它。
+   */
+  private static final Logger DEBT = EconomyLog.debt();
+
   private EconomySettlement() {}
 
   /** 追踪日志辅助：家户 → 商品 → 数量的两层表求和（只在 DEBUG 打开时调用）。 */
@@ -7207,7 +7213,7 @@ public final class EconomySettlement {
           if (debt == null || !debt.debtor().equals(debtor)) {
             continue;
           }
-          if (debt.debtor().equals(debt.creditor())) {
+          if (DebtContractBook.isSelfHeld(debt)) {
             // ★★★ W5-fix（BLOCKED-2 同族，2026-10-11）：**自持合同（debtor == creditor）不是可执行的债权**（见
             //   `repayDebts` 里 DEBT_REPAY_SELF_HELD_SKIPPED 那一段的同一口径）⇒ 这里若照旧铸
             //   debtor → creditor 的清偿转移，`Transfer` 会因"两端相等"当场抛（退出清算把自持债算进去 = 同一个坑）。
@@ -7667,7 +7673,7 @@ public final class EconomySettlement {
         if (debt == null || debt.principal() <= 0L) {
           continue;
         }
-        if (debt.debtor().equals(debt.creditor())) {
+        if (DebtContractBook.isSelfHeld(debt)) {
           // ★★★ W5-fix（BLOCKED-2，2026-10-11）：**自持合同（debtor == creditor）不是可执行的债权** ——
           //   它是"发行额 = 政府负债"这一类**记账事实**（铸币生产方式是其唯一生产者：`MintSettlement.credit` 的
           //   债务人是发行政府的国库家户、债权人是铸币这一路的组织者，常态世界里两者同一户）。
@@ -10242,6 +10248,36 @@ public final class EconomySettlement {
         continue; // 当日新借（不在快照里）或本金本来就是 0 ⇒ 今天不计息
       }
       DebtContract debt = entry.getValue();
+      if (DebtContractBook.isSelfHeld(debt)) {
+        // ★★★ W5-fix6（D5，2026-10-11）：**自持合同不计息**（同族漏网之一；还债轮与退出清算已在 W5-fix 排除）。
+        //   它是"发行额 = 政府负债"的记账事实 ⇒ 未偿额必须恰好等于累计发行额；计息会让政府负债每周期凭空长出一笔
+        //   **没有对应新钱**的利息（W5 验收报告 §3-D5 的真读数：500 → 1,624@d360，全是利息）。
+        //   ★ 不静默：逐条 DEBUG 具名（谁 / 哪条合同 / 为什么不动它）。
+        if (DEBT.isDebugEnabled()) {
+          EventLog.channel(DEBT)
+              .debug(
+                  LogEvent.of(
+                      "DEBT_INTEREST_SELF_HELD_SKIPPED",
+                      EconomyLogSource.ECONOMY_DEBT_STATE,
+                      "day",
+                      day,
+                      "debtContract",
+                      id.value(),
+                      "debtor",
+                      debt.debtor().value(),
+                      "unit",
+                      debt.unit().key(),
+                      "startPrincipal",
+                      startPrincipal,
+                      "wouldCharge",
+                      startPrincipal * debt.terms().interestRatePerMillePerCycle() / 1000L,
+                      "outstandingPrincipal",
+                      debt.principal(),
+                      "why",
+                      "self-held-is-the-issuance-bookkeeping-fact-not-interest-bearing"));
+        }
+        continue;
+      }
       if (debt.terms().interestTiming() != InterestTiming.AFTER_REPAYMENT_ON_CLOSE) {
         throw new IllegalStateException(
             "E4a 尚未接线非 legacy 计息时点：合同="

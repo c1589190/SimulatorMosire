@@ -1320,3 +1320,414 @@ $ tools/mvn-lock.sh -q spotless:check -pl simos-economy,simos-app -DspotlessFile
 | D-1 | 变异轮**临时改过 `src/main`**（`MintSettlement.java` 两行 + `// MUTANT`） | 任务书 §2 明确要求"把 `limit` 改回 `min(旋钮, 上一轮)` ⇒ 新判据当场红"这条变异自证 | 已在同一节内**逐字节还原**（源 md5 + 编译后 class md5 双证）；除此之外 `src/main/**` 一字未改 |
 | D-2 | `spotless:apply` 用 `-DspotlessFiles`（**正则**）把作用面收在两个测试文件上 | 全模块 apply 可能误动别的批次正在写的 main 文件（§一.2 一个文件一个 owner） | 只重排 javadoc 折行；代码面零改动；md5 前后对照已证只有本批 2 个文件变 |
 | D-3 | 观察到 `git status` 里 `simos-economy/.../EconomySettlement.java` 由"未列出"变为"已修改" | 其 mtime = **11:25:29**，**早于本批开工的 12:22** ⇒ 是 W5 全链的既有未提交改动，被 git 索引刷新后显形（本批只写 2 个测试文件 + 一次已还原的变异） | 只报不改；本批未碰该文件（md5 对照可证） |
+
+---
+
+# W5-fix6（D1 政策写口 / D2 读数分类 / D4 创世审计 / D5 自持债语义）
+
+> 依据：W5 验收报告 `.superpowers/sdd/2026-10-11-w5-acceptance/report.md`（md5 `bf8ba248…`）§3 的 D1/D2/D4/D5 +
+> 设计书 v3.20 §7 的四条处置。★ **裁定归属（§一.8.1）**：D1 依据**既有口径**「政策旋钮必须 GM 可调」
+> （先例 = W2 的 `economy.SetMarketZonePriceAlpha` + `simos.economy.setMarketZonePriceAlpha`）；
+> **D2/D4/D5 是控制方口径**（不是用户原话），**随时可被用户推翻** —— 本账本按此如实标注。
+
+## ⓪ 结论一句话
+
+四条全部落地并**用真世界 + 真命令路径**自证：D1 世界级 `world-silver` 的旋钮可由 GM 2000→300（Δ=1 revision）⇒ 实铸 300 +
+`MINT_LIMIT_REJECTED(limit=300, rejected=200)`，调回 2000 ⇒ 实铸 500；D2 两个只读端点按枚举 `issuance()` 分类 ⇒
+`withdrawal` 空、`mintProduction={silver:300}`、`netIssuance == circulation`；D4 创世逐国库补 `GENESIS_ENDOWMENT`（2×100,000）
+且**货币总量/两国库余额逐值不变**；D5 自持合同本金 == Σ `MINT_PRODUCTION`、`status=NORMAL`、无利息腿，非自持合同读数**逐值不变**。
+
+## ① 改动文件清单（14 个；md5 = 本批落盘字节）
+
+| # | 文件 | md5 | 性质 |
+|---|---|---|---|
+| 1 | `simos-economy/src/main/java/io/mosire/simos/economy/spi/EconomySetGovernmentMintScaleHandler.java` | `3b03b515…` | **新增**（D1 命令 handler） |
+| 2 | `simos-app/src/main/java/io/mosire/simos/app/tools/write/EconomySetGovernmentMintScaleTool.java` | `b69ce925…` | **新增**（D1 GM 窄工具） |
+| 3 | `simos-app/src/main/java/io/mosire/simos/app/Shell.java` | `a4fb493d…` | D1 命令注册（桶①） |
+| 4 | `simos-app/src/main/java/io/mosire/simos/app/tools/SimosToolSource.java` | `5165e4d1…` | D1 GM 工具注册（桶②） |
+| 5 | `simos-app/src/main/java/io/mosire/simos/app/tools/read/CatalogTool.java` | `b59a293c…` | D1 载荷提示（桶③；构造期强制覆盖全部注册 type） |
+| 6 | `simos-economy/src/main/java/io/mosire/simos/economy/spi/EconomyCommandPayloads.java` | `8a8c4310…` | D1+D4 政府寻址唯一拼写点 |
+| 7 | `simos-economy-api/src/main/java/io/mosire/simos/economy/api/money/MoneyIssuanceKind.java` | `e515711b…` | D4 新类别 `GENESIS_ENDOWMENT` |
+| 8 | `simos-economy/src/main/java/io/mosire/simos/economy/spi/EconomyRecordMoneyIssuanceHandler.java` | `d69b0d0b…` | D4 精确政府 id 寻址 + kind 清单从枚举现取 |
+| 9 | `simos-app/src/main/java/io/mosire/simos/app/tools/write/GovWorldBootstrap.java` | `ef84e244…` | D4 两条审计腿（只加审计） |
+| 10 | `simos-app/src/main/java/io/mosire/simos/app/tools/write/GovIssueMoneyTool.java` | `7ac0d005…` | D4 连带：kind 清单与拒绝面同口径 |
+| 11 | `simos-app/src/main/java/io/mosire/simos/app/gui/ApiViews.java` | `101c4dd7…` | D2 分类唯一判据点 + 两个读口改写 |
+| 12 | `simos-economy/src/main/java/io/mosire/simos/economy/time/DebtContractBook.java` | `ff8dbb32…` | D5 自持合同唯一拼写点 `isSelfHeld` |
+| 13 | `simos-economy/src/main/java/io/mosire/simos/economy/time/EconomySettlement.java` | `e14b0924…` | D5 计息排除 + 两处既有排除改用拼写点 |
+| 14 | `simos-economy/src/main/java/io/mosire/simos/economy/time/EconomyLiquidationSettlement.java` | `1b1609bd…` | D5 到期即默认/压力判定排除自持 |
+
+## ② 编译真命令 + rc（**一次只有一个 Maven**）
+
+| 轮 | 命令 | rc | 备注 |
+|---|---|---|---|
+| 格式化 | `tools/mvn-lock.sh -q spotless:apply` | **0** | 全仓；改后 `git diff --name-only` = 本批 12 改 + 2 新（无越界文件） |
+| 编译①（本批） | `tools/mvn-lock.sh -DskipTests compile -am` | **0** | `[INFO] BUILD SUCCESS` |
+| 编译②（D4 变异轮） | 同上 | **0** | 变异体编译过（红在**读数**上，不是编译错） |
+| 编译③（D2+D5 变异轮） | 同上 | **0** | 同上 |
+| 编译④（还原轮） | 同上 | **0** | 三个变异文件 md5 与本批落盘字节**逐字节相同**（见 §⑧） |
+| 单条回归 | `tools/mvn-lock.sh test -pl simos-economy -am -Dtest='MintProductionSettlementTest' -Dsurefire.failIfNoSpecifiedTests=false` | **0** | `Tests run: 7, Failures: 0, Errors: 0` |
+
+★ **没跑** `verify` / `clean` / `package`（任务书禁止项，归控制方）。
+
+## ③ 四条逐条（现状 file:line → 改法 → 自证真读数 → 判据）
+
+### D1 —— 世界级政府的铸币旋钮 GM 写口（**新增命令 + 工具 + 三桶**）
+
+- **现状**：`Government.mintScalePerCycle` 的运行期唯一写点 = `EconomyRegisterGovernmentHandler:323/358`，只写
+  `gov-unit-<id>` 形态；小世界唯一会铸币的政府是世界级 `world-silver`（`EconomySeeder.GENESIS_GOVERNMENT_ID`）
+  ⇒ 以它调用 **HTTP 422**；`Government.withMintScalePerCycle` 全仓 main 无调用者。
+- **改法**：新增 `economy.SetGovernmentMintScale`（`GmOnlyCommand`，只写 `governments` 一个政府的一个字段，走
+  `base.withGovernments → EconomyChangeSet.between`）+ GM 窄工具 `simos.economy.setGovernmentMintScale` + 三桶注册。
+  地址两路恰给一个（唯一拼写点 `EconomyCommandPayloads.requireGovernmentAddress`）：
+  `governmentId`（精确 id —— 世界级政府只能走这一路）/ `govUnitId`（派生 `gov-unit-<id>`）。
+- **自证真读数**（真 Shell 小世界 + 真命令路径 `core().submitBatch`，探针 `/tmp/w5fix6/W5F6Probe.java`：
+  `c1f65cbf…`；日志 `after-final.log` `45667d88…`）：
+  ```
+  SUBMIT D1-knob300   head=1 -> COMMITTED rev=2   headAfter=2      ← Δ=1 revision
+  KNOBS after-D1 = world-silver=300,gov-unit-gov-central=123,gov-unit-gov-province=0
+  SUBMIT D1-unknown      -> REJECTED government-missing: 该政府未登记…: no-such-gov   headAfter=2（零 revision）
+  SUBMIT D1-negative     -> REJECTED bad-payload: mintScalePerCycle 不得为负…: -1
+  SUBMIT D1-noninteger   -> REJECTED bad-payload: …字段 mintScalePerCycle 必须是整数: 1.5
+  SUBMIT D1-missing-field-> REJECTED bad-payload: …必须是整数: null
+  SUBMIT D1-unchanged    -> REJECTED mint-scale-unchanged: 该政府的铸币规模已经是它，没变化   headAfter=2（幂等 ⇒ 零 revision）
+  SUBMIT D1-old-unit-form-> COMMITTED rev=3   headAfter=3          ← 旧 govUnitId 形态**不受影响**
+  ADVANCE (0,120]  ⇒ READ tick=120 mintProductionSum=300
+  INFO MINT_LIMIT_REJECTED  day=120 period=4 government=world-silver currency=silver unit=unit-mint@0_0-… industry=mint@0_0
+       scale=1 perUnit=500 requested=500 limit=300 previousCycleMinted=-1 mintScalePerCycle=300 rejected=200
+       reason=above-mint-scale-policy
+  SUBMIT D1-knob2000  head=5 -> COMMITTED rev=6   headAfter=6
+  ADVANCE (120,240] ⇒ READ tick=240 mintProductionSum=800        ← 本轮实铸 500（= 800−300），**不被 300 夹**
+  ```
+  INFO 写口日志（§一.9）：
+  `GOVERNMENT_MINT_SCALE_SET origin=economy-command government=world-silver from=2000 to=300 issuable=[silver] treasury=HOUSEHOLD/hh-gov-world-silver governments=3 effectiveFrom=next-mint-cycle-close`
+  （调回那轮同样一条 `from=300 to=2000`；具名拒 `GOVERNMENT_MINT_SCALE_REJECTED` ×5）。
+- **判据满足**：✅ 旋钮 2000→300 ⇒ 实铸 300 + `MINT_LIMIT_REJECTED(limit=300, rejected=200)`；✅ 调回 2000 ⇒ 实铸 500；
+  ✅ 旧单位级注册形态不受影响（同轮 `govUnitId=gov-central` 提交成功、`gov-unit-gov-central=123`）；✅ 幂等/Δ=1/具名拒齐全。
+
+### D2 —— 发行不能被当成回笼（**两个只读端点按枚举 `issuance()` 分类**）
+
+- **现状**：`ApiViews.governmentIssuanceView:1772-1790` 与 `moneyIssuanceView:4266-4290` 各自 `else → withdrawal`
+  ⇒ `MINT_PRODUCTION`（枚举 `issuance()==true`）被记成回笼。
+- **改法**：抽出**唯一判据点** `ApiViews.IssuanceTotals`（两个读口共用）：方向先由 `kind.issuance()` 分流、
+  再按 kind 落栏（`initialEndowment` / `genesisEndowment` / `mintProduction` / `fiscalIssue` / `withdrawal`）；
+  新增两栏 `genesisEndowment` / `mintProduction`（**只增键，不改既有键语义**）。
+- **自证真读数**（同一 tick 的两个端点）：
+  ```
+  D2 tick=120 govView world-silver = {recordCount=4, initialEndowment={silver=67200}, genesisEndowment={silver=200000},
+                                     mintProduction={silver=300}, withdrawal={}, netIssuance={silver=267500}}
+  D2 tick=120 overviewView = {initialEndowment={copper=100000, silver=67200}, genesisEndowment={silver=200000},
+                              mintProduction={silver=300}, fiscalIssue={}, cumulativeIssuance={copper=100000, silver=267500},
+                              cumulativeWithdrawal={}, netIssuance={copper=100000, silver=267500},
+                              circulation={copper=100000, silver=267500}}
+  ```
+  ⇒ `withdrawal` **不含** `MINT_PRODUCTION`（空表）；发行栏含 300；`netIssuance` 与 `circulation` **逐值相等**（267,500）——
+  即"方向与量一致（+300）"（改前：`circulation` 267,700 而 `netIssuance` 66,700，见 §⑥ 的变异读数）。
+- **负向自证**（单独探针 `W5F6D2Negative.java` `dcf1e729…`）：注入一条**回笼类**记录
+  `MoneyIssuanceRecord(id=probe-withdrawal-1, gov=world-silver, cur=silver, amount=777, kind=WITHDRAWAL)` ⇒
+  ```
+  D2NEG after = {… mintProduction={}, genesisEndowment={}, cumulativeIssuance={copper=100000, silver=267200},
+                 cumulativeWithdrawal={silver=777}, netIssuance={copper=100000, silver=266423}, circulation={copper=100000, silver=267200}}
+  ```
+  ⇒ **仍归 withdrawal**（266,423 = 267,200 − 777），发行栏一个数不动。
+- **判据满足**：✅ 正向、✅ 负向。
+
+### D4 —— 创世国库注资落审计腿（**只加审计，零数值改动**）
+
+- **现状**：`GovWorldBootstrap`（small-world 创世）用裸原语 `actor.AdjustAccounts` 给两国库各注 100,000 毫银
+  （合计 200,000 = 创世银 267,200 的 **74.9%**），**只有那笔铜**有 `MoneyIssuanceRecord`。
+- **改法**：同批追加**两条** `economy.RecordMoneyIssuance`（新 kind `GENESIS_ENDOWMENT`；`governmentId` = 世界里
+  **银的唯一发行者**，从 state 现取 `requireSilverIssuer`；收款国库写在 `reason`）。**余额腿一个字未改**。
+  ★ 为什么发行主体是 `world-silver` 而不是两个 GOV：`MoneyIssuanceRecord.governmentId` 的语义是**发行主体**
+  （handler 只在 `Government.issuable` 上判"谁能发"），而两个 GOV 的 `issuable` 不含银（中央只发铜、省不发钞）
+  ⇒ 记它们会当场被 `currency-not-issuable` 拒、且那句话本身是假的。
+- **自证真读数**（**前后逐值对照**，同一份探针字节）：
+  ```
+  改前 before.log（9c850ceb…）  D4 genesis moneyTotals={copper=100000, silver=267200}
+                                treasuryCentral={silver=100000, copper=100000}  treasuryProvince={silver=100000}
+                                issuanceCount=2  issuanceSum={copper:INITIAL_ENDOWMENT=100000, silver:INITIAL_ENDOWMENT=67200}
+  改后 after-final.log（45667d88…） moneyTotals={copper=100000, silver=267200}   ← **逐值相同**
+                                treasuryCentral={silver=100000, copper=100000}   ← **逐值相同**
+                                treasuryProvince={silver=100000}                 ← **逐值相同**
+                                issuanceCount=4
+                                REC id=gov-issue-world-silver-0-silver-1 kind=GENESIS_ENDOWMENT gov=world-silver cur=silver amount=100000
+                                REC id=gov-issue-world-silver-0-silver-2 kind=GENESIS_ENDOWMENT gov=world-silver cur=silver amount=100000
+                                issuanceSum={copper:INITIAL_ENDOWMENT=100000, silver:GENESIS_ENDOWMENT=200000, silver:INITIAL_ENDOWMENT=67200}
+  ```
+  ⇒ **两笔各 100,000（kind 具名、gov=world-silver、cur=silver）**；货币总量与两国库余额**逐值不变**；★ 连带读数变好：
+  `Σ发行 == circulation`（267,500 == 267,500）恒等式**闭合**（改前恒差 +200,000）。
+  ★ **id 反查**：`gov-issue-<gov>-<day>-<cur>-<seq>`（既有确定性形状，gov 与币种都能从 id 反查）。
+- **负向自证（变异体，任务书点名要求）**：把两条审计腿去掉（`for (String govId : List.<String>of())` + `// MUTANT`）
+  ⇒ 重编译 rc=0、跑同一探针（`mut1.log` `d212ea52…`）：
+  ```
+  D4 genesis issuanceCount=2   issuanceSum={copper:INITIAL_ENDOWMENT=100000, silver:INITIAL_ENDOWMENT=67200}
+  D2 overviewView netIssuance={copper=100000, silver=67500} vs circulation={copper=100000, silver=267500}
+  ```
+  ⇒ **当场红**（缺口 +200,000 复现）⇒ 还原（md5 `ef84e244…` 与本批落盘字节相同）。
+  ★ **另一条负向（更硬的 fail-closed）**：把 `requireSilverIssuer` 换成不存在的政府 ⇒ `currency-not-issuable`/`government-not-registered`
+  具名拒 ⇒ `applier.apply` 当场抛 ⇒ **整次创世失败**（不会静默落一个没有审计腿的世界）。本批**没有**跑这一条（未验证项，见 §⑦）。
+- **判据满足**：✅ 两笔；✅ 零数值变化；✅ 负向当场红。
+
+### D5 —— 自持铸币债不计息、不标违约（**同族最后两处漏网**）
+
+- **现状**：自持合同（`debtor == creditor`）被按 2%/周期计息（`EconomySettlement.chargeInterest:10244`）并恒标
+  `DEFAULTED`（`EconomyLiquidationSettlement.effectiveStatuses:1342`）；500 → 1,040@d240 → **1,624@d360**（W5 报告同值）。
+- **改法**：`DebtContractBook.isSelfHeld` 成**唯一拼写点**；四处用它：还债轮（既有 W5-fix）、退出清算（既有 W5-fix）、
+  **计息**（新增 DEBUG `DEBT_INTEREST_SELF_HELD_SKIPPED`）、**到期即默认 + 违约压力**（新增 DEBUG
+  `DEBT_STRESS_SELF_HELD_SKIPPED`）。
+- **自证真读数**（≥3 个关账轮；真世界）：
+  ```
+  轮次        Σ MINT_PRODUCTION   自持合同 principal   lastInterestDay    status    （非自持：total/defaulted/withInterestLeg/principalSum）
+  改前 d120       500（旋钮不可改）      500              empty          NORMAL      240/91/115/70258480
+  改前 d240      1,000                1,040              [240]        DEFAULTED     509/334/411/121021589
+  改前 d360      1,500                1,624              [360]        DEFAULTED     528/401/434/145389731
+  ─────────────────────────────────────────────────────────────────────────────────
+  改后 d120        300                  300              empty          NORMAL      240/91/115/70258480   ← 逐值相同
+  改后 d240        800                  800              empty          NORMAL      509/334/411/121021589 ← 逐值相同
+  改后 d360      1,300                1,300              empty          NORMAL      528/401/434/145389731 ← 逐值相同
+  ```
+  ★ **本金 == Σ `MINT_PRODUCTION` 逐值相等、无利息腿（`lastInterestDay` 空）、`status` 从未变 `DEFAULTED`**；
+  ★ **非自持对照逐值不变**（同一份读数与改前**完全一致**：`total/defaulted/withInterestLeg/principalSum` 四个数三轮全同）；
+  探针另造的非自持合同（真 GM 命令 `economy.UnitBorrow`：5,000 毫银 @20‰）三轮利息腿照旧：
+  `5,412@d120 → 5,856@d240 → 6,337@d360`（`lastInterestDay=[120]/[240]/[360]`）—— 改前改后**逐值相同**。
+  DEBUG 具名行（`-Dsimos.economy.logLevel=DEBUG`，`after-debug.log` `88fb2d23…`）：
+  ```
+  DEBT_INTEREST_SELF_HELD_SKIPPED day=150 debtor=hh-gov-world-silver unit=money:silver startPrincipal=300 wouldCharge=6
+        outstandingPrincipal=300 why=self-held-is-the-issuance-bookkeeping-fact-not-interest-bearing      （×8）
+  DEBT_STRESS_SELF_HELD_SKIPPED   day=120 cycle=4 household=hh-gov-world-silver unit=money:silver
+        outstandingPrincipal=300 why=self-held-not-executable                                          （×9）
+  DEBT_REPAY_SELF_HELD_SKIPPED    day=120 household=hh-gov-world-silver …（既有 W5-fix 行照旧 ×9）
+  ```
+- **负向自证（变异体，两处一起，读数面不相交 ⇒ 归因清晰）**：`chargeInterest` 与 `effectiveStatuses` 的排除改成
+  `if (false && isSelfHeld(...))`（`// MUTANT`）⇒ 重编译 rc=0、同一探针（`mut2.log` `ecafa6f5…`）：
+  ```
+  D5 d240 selfHeld={principal=824  lastInterestDay=OptionalLong[240] status=DEFAULTED}   ← ≠ Σ mint 800（利息 24）
+  D5 d360 selfHeld={principal=1390 lastInterestDay=OptionalLong[360] status=DEFAULTED}   ← ≠ Σ mint 1300（利息 90）
+  ```
+  ⇒ **当场红**（利息腿与 DEFAULTED 双双复现）⇒ 还原（md5 `e14b0924…` / `1b1609bd…` 与本批落盘字节相同）。
+- **判据满足**：✅ ≥3 关账轮；✅ 本金 == Σ 发行额；✅ `status != DEFAULTED`；✅ 无利息腿；✅ 非自持对照逐值不变。
+
+## ④ 新工具 / 新命令的注册落点（三桶 + 提示 + GmOnly）
+
+| 桶 | 落点 | 证据 |
+|---|---|---|
+| ① 命令注册 | `Shell.java:695` `new EconomySetGovernmentMintScaleHandler()` | 真提交 `COMMITTED rev=2`（未注册时是"未注册的命令类型"，见 before.log） |
+| ② GM 窄工具 | `SimosToolSource.java:803` `built.add(new EconomySetGovernmentMintScaleTool(...))` | 编译期在册；`SimosToolsTest` 的"同源判据"会把它计入（见 §⑤） |
+| ③ catalog 载荷提示 | `CatalogTool.PAYLOAD_HINTS` 新增 `economy.SetGovernmentMintScale` 条目 | **构造期强制**：缺项 ⇒ `CatalogTool` 构造抛（app 起不来）⇒ 已补 |
+| GmOnly | `EconomySetGovernmentMintScaleHandler implements CommandHandler, GmOnlyCommand` | 不进令白名单 / `RegisterEffect` / 决策人目录（照 W2 先例） |
+| 工具名 | `simos.economy.setGovernmentMintScale` | **不是**命令类型 ⇒ 不进 catalog/`PAYLOAD_HINTS`（与 W2 同款） |
+| 写面资源 | 只声明 `economy` 命名空间（handler 只产 `EconomyChangeSet`） | `ResourceManifest.of(ToolSupport.ECONOMY_NAMESPACE, UNRESTRICTED)` |
+
+## ⑤ 铁律 5 落点（D1/D4 是否碰形状）
+
+- **D1：零形状改动**。不新增/不删除任何持久组件；只改既有字段 `Government.mintScalePerCycle` 的**值**。
+  往返三件套 = 该字段**既有**的三件套（`MintSettlement.writeLastCycleReadout` 与 `economy.RegisterGovernment` 已在写它）：
+  `base.withGovernments(...)` → `EconomyChangeSet.between`（`FieldDelta.diff` 按 record 相等判变化）→ Codec（Jackson record 绑定）。
+  **往返证据**：真 Shell 世界写盘 → `world.state()`（真 replay，走 Codec 解码）读回 ⇒ 旋钮值 300/123/2000 逐个读回正确；
+  探针所有"改后读"的读数都是 replay 出来的（`READ`/`KNOBS` 行）。
+- **D4：零形状改动**。`MoneyIssuanceKind` 加一个枚举常量 = 值域扩大（不是"加组件"）；`MoneyIssuanceRecord` 的组件表一字未改；
+  `EconomyData.moneyIssuances` 这个组件一字未改。**往返证据**：两条 `GENESIS_ENDOWMENT` 记录在创世档里落盘、重启后由
+  `world.state()`（真 replay）逐字段读回（`id/kind/gov/cur/amount/day/period` 全部正确）。
+- 结论：**两处都没有新增"派生不完整"的面**，不存在需要新往返不变式测试的新形状。
+
+## ⑥ 会改变数值行为的清单（逐条具名）
+
+| # | 改动 | 会不会改数值 | 具名说明 |
+|---|---|---|---|
+| 1 | D1 新写口本身 | **零数值变化**（不写就不变） | 只改 `governments` 里一个字段的值；不碰余额/债务/发行/产业/市场 |
+| 2 | D1 生效后的铸币量 | **会**（这是修复的目的） | 旋钮被 GM 真改过才会变：本批自证 300（旋钮 300）/ 500（旋钮 2000）。**未改旋钮的世界逐值不变** |
+| 3 | D2 两个只读端点 | **零状态变化**（只读） | 只有读数口径变：`mintProduction`/`genesisEndowment` 两栏**新增键**；`withdrawal` 不再含发行类；`netIssuance` 改为含全部发行方向 |
+| 4 | D4 两条审计腿 | **零数值变化（只加审计）** | 金额/账户/余额/货币总量逐值不变（§③-D4 前后对照）；变化只有 `moneyIssuances` 多两条记录 + 两个只读端点的栏位 |
+| 5 | D4 连带：`RecordMoneyIssuance` 拒绝 `kind=MINT_PRODUCTION` | **零数值变化**（原本可写的伪记录现在具名拒） | 铸币审计唯一生产者是 `MintSettlement`（确定性 id）；`GovIssueMoneyTool` 同口径具名拒 |
+| 6 | D5 自持合同不计息 | **会**（这是修复的目的） | 只影响 `debtor == creditor` 的合同；**非自持合同读数逐值不变**（§③-D5 三轮对照四数全同） |
+| 7 | D5 自持合同不标 `DEFAULTED`/不计压力 | **会**（读口 + 阶层压力计数） | 同上：只影响自持合同；政府家户不再被自己的记账事实推着累积 `consecutiveDebtStressCycles` |
+| 8 | D5 `isSelfHeld` 替掉两处既有 inline 判据 | **零数值变化** | 纯机械替换（`debt.debtor().equals(debt.creditor())` → 同名谓词），语义逐字相同 |
+| 9 | `GovWorldBootstrap.requireSilverIssuer` | **零数值变化** | 只读 state；**取不到/多个 ⇒ 创世当场抛**（fail-closed：宁可不创世，也不落一个没有审计腿的世界） |
+
+★ **例外必须点出**：唯一"世界形态变了"的是 **small-world / three-powers 的创世档多两条记录**（D4）—— 按 §一.11，
+旧档一律作废（不写兼容位、旧档读不了就读不了）。
+
+## ⑦ 会让既有测试断言失效的清单（按类名，**只报不改**）
+
+| 类 | 断言 | 为什么红 | 修法（留给测试 Agent） |
+|---|---|---|---|
+| `io.mosire.simos.app.tools.SimosToolsTest` | `catalogListsExactlyTheRegisteredCommandTypes`：`hasSize(EXPECTED_COMMAND_TYPES.size())` + `containsExactlyInAnyOrderElementsOf` | 硬编码清单 `EXPECTED_COMMAND_TYPES`（`:517`）没有新 type | 清单加 `economy.SetGovernmentMintScale` |
+| 同上 | `catalogCoversEveryCommandHandlerImplementation`：`hasSize(141)`（`:936`） | handler 实现面 141 → **142** | 141 → 142 |
+| 同上 | `roleBucketsNeverCarryGenericWrite`：GM 桶 `hasSize(163)`（`:974`） | GM 桶 163 → **164**（新窄工具） | 163 → 164 |
+| 同上 | `everyNarrowWriteToolClassIsWiredIntoTheGmBucket`：`hasSize(67)`（`:1084`）+ `containsExactlyInAnyOrderElementsOf(NARROW_WRITE_NAMES)`（`:484` 的硬编码清单） | 窄写工具类 67 → **68** | 67 → 68 + 清单加 `simos.economy.setGovernmentMintScale` |
+| 同上 | `everyToolClassOnDiskIsRegisteredInSomeBucket`：`hasSize(173)`（`:1727`） | 磁盘 `*Tool.java` 的 NAME 173 → **174** | 173 → 174 |
+| `io.mosire.simos.app.McpCoverageTest` | `:999-1008`：`catalogTypes containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES)`（`:139` 硬编码清单）+ `MINIMAL_PAYLOADS.keySet()` 覆盖全部可提交 type（`:1005`） | 新 type 既不在清单里、也没有最小载荷 | 清单加新 type + `PRECONDITION_REJECT_TYPES` 加它 + `MINIMAL_PAYLOADS` 备一条"具名拒"载荷（夹具世界没有 `world-silver` 政府 ⇒ 走 `government-missing`） |
+| `io.mosire.simos.app.McpServerTest` / `McpPortTopologyTest` | 仅 `contains(...)`/`containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES)` 之类 | **可能**红——若它们的"外部联合工具名单"是硬编码全量清单 | 需测试 Agent 复核（我只做了静态核对：两处名单里都有 `simos.gov.issueMoney`，未见计数断言） |
+
+★ **没红的那一类（如实记）**：`MintProductionSettlementTest`（7/7 绿）—— 它在**单日夹具**里跑，自持合同既不到计息日也不到 `dueCycle`，
+故 D5 的两处排除对它无影响；这不是"覆盖到了"，只是"没被碰到"。
+
+## ⑧ 未完成 / 未验证项（如实）
+
+1. **没跑** `verify` / `clean` / `package`（任务书禁止项）；**没跑** `simos-app` 全量套件（`SimosToolsTest` / `McpCoverageTest` 的
+   红**是静态核出来的**，不是跑出来的 —— 见 §⑦）。
+2. **`three-powers` 的同族站点未做**（超出本批点名范围）：`ThreePowersGovBootstrap:637-666` 的 `recordIssuances` 只给**该 GOV 自己
+   发行的币种**记审计，两个省的 100,000 毫银**仍无发行记录**（该文件类注把这写成"如实的边界"）。设计与 D4 的目标
+   （"任何货币凭空出现都能在审计链上查到"）同族 ⇒ **建议同口径补两条**（发行主体 = 该世界声明发行银的那个 GOV）。
+   ★ 我没做，理由：本批点名的是 `GovWorldBootstrap`；且这会改另一个世界的创世档（已按 §一.11 作废，但需要控制方确认口径）。
+3. **没验**"`requireSilverIssuer` 找不到/多个发行者 ⇒ 创世当场抛"这条 fail-closed 路径（只做了代码面论证 + 变异体去掉整条腿的那一半）。
+4. **没验**多币种世界里的 D1（旋钮逐币种共用这条既有粗口径未变）与 `-Dsimos.economy.logLevel=TRACE` 那一档。
+5. **D2 只验了 `/api/economy/gov` 与 `/api/economy/overview` 两个 JSON 端点**；GUI 页面（`ApiViews` 背后的前端呈现）没看
+   （新增两栏是否要在前端露出，属 W6/前端面）。
+6. **D4 的 `reason` 文本**（收款国库名）只进了记录与日志，**没有**做"按 reason 反查"的读口；id 反查只到 gov/币种/日。
+7. **没验** `GovIssueMoneyTool` 的 `kind=GENESIS_ENDOWMENT`/`MINT_PRODUCTION` 拒绝面（改的是 app 侧工具的参数校验，
+   只做了编译与代码面核对；没跑 `GovToolsZ6Test` 一类）。
+8. **探针全部在 `/tmp/w5fix6/`，未落仓**（`W5F6Probe.java` `c1f65cbf…`、`W5F6D2Negative.java` `dcf1e729…`、
+   `run-probe.sh` `052de444…`、`digest.sh` `3c983082…`；日志 `before.log` `9c850ceb…`、`after-final.log` `45667d88…`、
+   `after-debug.log` `88fb2d23…`、`mut1.log` `d212ea52…`、`mut2.log` `ecafa6f5…`）。
+
+## ⑨ 偏离记录
+
+| # | 偏离 | 原因 | 影响 |
+|---|---|---|---|
+| D-1 | 变异轮**临时改过 `src/main`**（`GovWorldBootstrap` 1 处 + `ApiViews` 1 处 + `EconomySettlement` 1 处 + `EconomyLiquidationSettlement` 1 处，各带 `// MUTANT`） | 任务书点名要求 D4 负向"把该审计腿改坏/去掉 ⇒ 断言或探针当场红"；D2/D5 照 §三.2 一并做 | **逐字节还原**（4 个文件 md5 与本批落盘字节相同：`ef84e244…` / `101c4dd7…` / `e14b0924…` / `1b1609bd…`），还原后重编译 rc=0、探针读数与变异前**逐字节相同**（`after-final.digest.txt` vs `after.digest.txt` = IDENTICAL），全仓 `MUTANT` 0 命中 |
+| D-2 | D1 的地址面**新增** `governmentId`（精确 id），与既有 `govUnitId`（派生）**并存** | 世界级政府不是任何 GOV 单位、没有 `gov-unit-` 派生形态（`GovernmentIds` 类注明写"世界级政府不在此列"）⇒ 没有这一路就**永远够不着** `world-silver` | **不是兼容位**：两路各自服务一种政府形态、判据互斥（同时给 ⇒ 具名拒 `bad-payload`）；既有 `govUnitId` 语义与守卫一字未改 |
+| D-3 | 顺带把 `kind` 的**清单来源**从手抄改成 `MoneyIssuanceKind.values()`（`RecordMoneyIssuanceHandler` + `GovIssueMoneyTool`），并让两条写口都具名拒 `MINT_PRODUCTION` | 同一个"哪些类别可手写"的问题出现在两处；手抄清单在加 `GENESIS_ENDOWMENT` 时会**静默说谎**；`MINT_PRODUCTION` 的真生产者是 `MintSettlement`（确定性 id），手写它会造伪审计 | 零数值变化（拒绝面更严）；已记入 §⑥#5 与 §⑦ |
+| D-4 | **`GovWorldBootstrap` 的审计发行主体 = `world-silver`**（银的唯一发行者），不是收款的 GOV | 见 §③-D4 的理由（`governmentId` 语义 = 发行主体 + `issuable` 守卫 + 一币一发行人） | 两条记录的 `reason` 里写明收款国库；若控制方要求"记收款方"，需要给 `MoneyIssuanceRecord` 加"收款人"维（**碰形状**，本批不做） |
+
+## ⑩ 补测：三桶注册的**运行期**自证（W5F6ToolsProbe，`/tmp/w5fix6/`，不入库）
+
+```
+TOOLS shellStarted=true gmSize=164 dmSize=44
+TOOLS gmHasTool=true                     ← simos.economy.setGovernmentMintScale ∈ GM 桶（163 → 164）
+TOOLS dmHasTool=false                    ← 不在决策人桶（权限不放大；GmOnlyCommand 三条路径同样排除）
+TOOLS gmHasCommandSubmit=true            ← 对照：GM 桶确实有通用写（口径未变）
+TOOLS catalogToolConstructed=true        ← ★ 桶③ 的运行期证据：CatalogTool 构造**没抛** ⇒ PAYLOAD_HINTS 覆盖了全部注册 type
+TOOLS handlerIsGmOnly=true
+TOOLS handlerType=economy.SetGovernmentMintScale
+TOOLS typeIsTheRegisteredOne=true
+```
+
+★ **`gmSize=164` 是实测值**（不是推断）：它同时钉死 §⑦ 里"`SimosToolsTest` 的 `hasSize(163)` 会红"这一条。
+★ 探针文件 `W5F6ToolsProbe.java` md5 = `30d10378…`（当轮落盘）；它只起真 Shell 读工具桶，不改任何状态。
+
+### ⑩-补：§① 文件清单的第 15 个（§① 表已封，此处追加）
+
+| # | 文件 | md5 | 性质 |
+|---|---|---|---|
+| 15 | `simos-economy/src/main/java/io/mosire/simos/economy/model/Government.java` | `1509fc3f…` | **纯文档**：`@param` 上面的"政策可调 ⇒ GM 写口"那条从"唯一写口 = `economy.RegisterGovernment`"改成"两条写口各服务一种政府形态"（世界级政府那条 = 本批新增的 `economy.SetGovernmentMintScale`） |
+
+★ **它只改 javadoc、零代码**：改后重跑同一探针 ⇒ 关键读数 digest 与改前**逐字节相同**（`e3f2c8d0…`）。
+★ 为什么必改（§四「机制性描述一律回代码核」）：不改的话，`Government` 的类注会在本批之后**继续指着一条够不着世界级政府的写口**说"这就是写口"。
+
+---
+
+# W5d 工具面测试迁移
+
+> 依据：W5-fix6 账本 §⑦「会让既有测试断言失效的清单」（**静态核**）+ 本批任务书。★ 本节的每个数字都是**真跑出来的**
+> （7 轮 Maven，逐轮 rc 与关键输出见 §③）。
+> 纪律：只改 `simos-app/src/test/**`；**`src/main/**` 一字未动**（`git status --porcelain` 里本批只新增 4 个测试文件的
+> ` M`，其余 15 个 main 改动全是 W5-fix6 的原有工作树状态，未回退）。
+
+## ⓪ 结论一句话
+
+W5-fix6 新增的命令 `economy.SetGovernmentMintScale` + 窄工具 `simos.economy.setGovernmentMintScale` 让 **4 个**测试类同时红。
+★ W5-fix6 账本 §⑦ 静态核出的是「3 个会红 + 1 个『可能红』」；**真跑把那个『可能红』钉成了红**（`McpPortTopologyTest`），
+并且 `SimosToolsTest` 实际是 **7 条红**（§⑦ 只列了 5 条 —— 多出的两条同源，见 §② 注）。
+逐条按**实测值**更新后：四个类 **81 条全绿 / rc=0**；**全 `simos-app` 套件 906 条全绿**
+（子包 819 条 + 根包 87 条，0 failure / 0 error / 5 skipped（真 LLM 用例，与本批无关）/ rc=0）。
+
+## ① 改动文件清单（4 个，全是 `src/test`；md5 = 本批落盘字节）
+
+| # | 文件 | 改前 md5（= `git show HEAD:` 字节） | 改后 md5（本批落盘） | numstat（+ / −） |
+|---|---|---|---|---|
+| 1 | `simos-app/src/test/java/io/mosire/simos/app/tools/SimosToolsTest.java` | `4eff92fe…` | `4c3818ba…` | +31 / −21 |
+| 2 | `simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java` | `0cc600f3…` | `a0f0ff3f…` | +16 / −3 |
+| 3 | `simos-app/src/test/java/io/mosire/simos/app/McpServerTest.java` | `18f58ca7…` | `d55e5c1b…` | +6 / −3 |
+| 4 | `simos-app/src/test/java/io/mosire/simos/app/McpPortTopologyTest.java` | `16860755…` | `061cecfc…` | +9 / −7 |
+
+（`git diff --numstat -- simos-app/src/test` 合计 = **+62 / −34**；四个改后 md5 与"还原参照副本"逐字节相同 —— 见 §④。）
+
+## ② 逐条改动（旧值 → 新值 + 依据）
+
+| # | 类 : 落点（**改后行号**，逐条已回文件核过） | 旧值 | 新值 | 依据（W5-fix6 新增物 / 实测来源） |
+|---|---|---|---|---|
+| 1 | `SimosToolsTest` `ECONOMY_ZONE_WRITE_NAMES`（:338） | 5 条 | **6 条**（+`simos.economy.setGovernmentMintScale`） | 新工具继承 `AbstractNarrowWriteTool` ⇒ 窄写扫描器扫得到、只进 GM 桶 |
+| 2 | 同上 `ECONOMY_ZONE_WRITE_COMMAND_TYPES`（:354） | 4 条 | **5 条**（+`economy.SetGovernmentMintScale`） | 该表口径 = "工具名 ≠ 命令类型"那几条（新工具正是这一形，同 W2 的 `setMarketZonePriceAlpha`） |
+| 3 | 同上 `EXPECTED_COMMAND_TYPES`（:524）+ 其 javadoc | 141 条（javadoc 还写着过期的「136」） | **142 条** | 真跑 `catalogCoversEveryCommandHandlerImplementation` 实测 `Expected size: 141 but was: 142` |
+| 4 | 同上 `NARROW_WRITE_NAMES` javadoc（:484） | 「63 条（8 map + **3 economy zone** + 28 unit + 15 sd + 1 army + 1 social + 1 actor + 6 决策共用/其他）」 | 「**66 条**（8 map + **6 economy** + 28 unit + 15 sd + **9 决策共用/其他**——含 1 army + 1 social + 1 actor）」 | 逐表实测计数：8+6+28+15+9 = **66**（原注释的 63 与 3 早已与代码不符，本批按实测改正） |
+| 5 | 同上 `WRITE_TOOL_NAMES` javadoc（:503） | 123 条 = 60 非窄写 + 63 窄写 | **127 条 = 61 非窄写 + 66 窄写** | 同上实测（`NON_NARROW_WRITE_NAMES` 实测 61） |
+| 6 | 同上 `GM_TOOL_NAMES` javadoc（:507） | 37 读 + 123 写 = 160 | **37 读 + 127 写 = 164** | 新工具是写工具 ⇒ 写侧 +1 |
+| 7 | 同上 `catalogCoversEveryCommandHandlerImplementation`（:945） | `.hasSize(141)` | `.hasSize(142)` | 真跑实测 142（见 #3） |
+| 8 | 同上 `roleBucketsNeverCarryGenericWrite`（:984） | `.hasSize(163)` | `.hasSize(164)` | 真跑实测 `Expected size: 163 but was: 164`；★ 运行期同证：`SHELL_ASSEMBLED … handler=142 … tool=164`、MCP `外发工具 164 个`、`Registry 共 164 个，未外发 0 个` |
+| 9 | 同上 `everyNarrowWriteToolClassIsWiredIntoTheGmBucket`（:1094） | `.hasSize(67)` | `.hasSize(68)` | 磁盘 `tools/write/` 下继承 `AbstractNarrowWriteTool` 的类 +1（真跑实测 68；67 → 68 的两条差额 = 决策人桶那两条外交窄写，口径未变） |
+| 10 | 同上 `gmNarrow` 的 `.as(...)`（:1104） | 「65 条：9 + 8 map + **5 economy-zone** + 28 unit + 15 sd」 | 「**66 条**：9 + 8 map + **6 economy** + 28 unit + 15 sd」 | `NARROW_WRITE_NAMES` 实测 65 → 66 |
+| 11 | 同上 `everyToolClassOnDiskIsRegisteredInSomeBucket`（:1737） | `.hasSize(173)` | `.hasSize(174)` | 新增一个 `*Tool.java`（`EconomySetGovernmentMintScaleTool`）⇒ 磁盘 NAME 面 173 → 174 |
+| 12 | `McpCoverageTest` `EXPECTED_COMMAND_TYPES`（:140）+ javadoc + `:1014` 的 `.as(...)` | 141 条 | **142 条**（+`economy.SetGovernmentMintScale`） | 与 `SimosToolsTest` 同源（该文件自己写明"两处计数必须逐字相同"）；真跑实测红点名缺 `economy.SetGovernmentMintScale` |
+| 13 | 同上 `PRECONDITION_REJECT_TYPES`（:305） | 无此条 | **+`economy.SetGovernmentMintScale`** | ★ **夹具世界 `governments` 为空**（没有 `world-silver`，也没有 `gov-unit-*` 政府）⇒ 形状合法的载荷必然走**具名拒**，不能进"提交成功"那一段 |
+| 14 | 同上 `PRECONDITION_REJECT_PAYLOADS`（:372） | 无此条 | **+** `{"governmentId": "gov-missing", "mintScalePerCycle": 300, "reason": "coverage"}` | 走 `governmentId`（精确 id）那一路 —— 世界级政府只有这一路；拒因由 handler 的 `government == null` 分支给出 |
+| 15 | `McpServerTest` `EXTERNAL_UNION_GM_TOOL_NAMES`（:109）+ javadoc + `:332` 的 `.as(...)` | 163 条 | **164 条**（+`simos.economy.setGovernmentMintScale`） | 该表是**外部联合口（EXTERNAL ∪ GM）的硬编码全量名单**，`containsExactlyInAnyOrderElementsOf` 与真 MCP `tools/list` 逐条比对 ⇒ 必须同源 |
+| 16 | `McpPortTopologyTest` `ECONOMY_ZONE_WRITES`（:232）+ javadoc + `GM_NARROW_WRITES` javadoc（:242）+ J1 两处 `.as(...)`（:267/:277） | 6 条 / 「66 窄写 = 163」 | **7 条** / 「**67 窄写 = 164**」 | 同上：J1 与真 MCP 口 `containsExactlyInAnyOrderElementsOf` 逐条比对 |
+
+★ **口径（不许放宽语义）**：16 处里**没有一处**把 `containsExactlyInAnyOrderElementsOf` 改成 `contains`、也没有删任何判据
+—— 改的全是**名单内容**（+1 条真实存在的名字）与**计数**（+1）。唯一"新增判据"的是 #13/#14：那是 W5-fix6 的**新命令**
+本来就需要的覆盖位（该测试的形制要求"每个 catalog type 要么有成功载荷、要么在具名拒族里在册"）。
+
+★ **§⑦ 漏掉的两条红（本批真跑补出）**：`SimosToolsTest.registryContainsExactlyTheExternalUnionGmTools:709` 与
+`writesAreSensitiveAndAskWithTheToolNameAsClassKey:1854` —— 两者都断言 `GM_TOOL_NAMES`（= 读 ∪ 写名单）与**真工具面**逐条相等，
+新工具没进 `NARROW_WRITE_NAMES` ⇒ `GM_TOOL_NAMES` 少一条 ⇒ 一起红。**修法是同一处**（#1 加名单），不是两条独立改动。
+
+## ③ 实跑真命令 + rc + 关键输出（**一次只有一个 Maven**；7 轮）
+
+全部用 `tools/mvn-lock.sh test -pl simos-app -am -Dtest='…' -Dsurefire.failIfNoSpecifiedTests=false`。
+
+| 轮 | 目的 | `-Dtest` | rc | 关键输出（原文） |
+|---|---|---|---|---|
+| 1 | **改前基线** | `SimosToolsTest` | **1** | `Tests run: 71, Failures: 7, Errors: 0`；逐条点名：`catalogCoversEveryCommandHandlerImplementation:936 [Expected size: 141 but was: 142]`、`roleBucketsNeverCarryGenericWrite:974 [Expected size: 163 but was: 164]`、`everyNarrowWriteToolClassIsWiredIntoTheGmBucket:1084 [Expected size: 67 but was: 68]`、`everyToolClassOnDiskIsRegisteredInSomeBucket:1727 [Expected size: 173 but was: 174]`、`catalogListsExactlyTheRegisteredCommandTypes:854`、`registryContainsExactlyTheExternalUnionGmTools:701`、`writesAreSensitiveAndAskWithTheToolNameAsClassKey:1845` |
+| 2 | 四个类（修后） | `SimosToolsTest,McpCoverageTest,McpServerTest,McpPortTopologyTest` | **0** | `Tests run: 81, Failures: 0, Errors: 0` + `BUILD SUCCESS`；分项：SimosToolsTest 71/0、McpCoverageTest 1/0、McpServerTest 5/0、McpPortTopologyTest 4/0。★ 同轮日志里的**运行期真值**：`SHELL_ASSEMBLED … handler=142 participant=2 resolver=7 facet=2 tool=164`、`MCP streamable server 已启动 … 外发工具 164 个 … Registry 共 164 个，未外发 0 个` |
+| 3 | **全 app 子包**（一处不漏） | `io.mosire.simos.app.**.*Test` | **0** | `Tests run: 819, Failures: 0, Errors: 0, Skipped: 5` + `BUILD SUCCESS`（**112** 个测试类；含 `SimosToolsTest 71/0`、`AdjudicateTickToolTest 16/0`、`CatalogVisibilityTest 3/0`、`DecisionCallerFactoryTest 10/0`）。★ 该模式**不匹配根包**（见轮 4） |
+| 4 | **根包**（`**` 模式不匹配根包，补一轮） | `io.mosire.simos.app.*Test` | **0** | `Tests run: 87, Failures: 0, Errors: 0, Skipped: 0` + `BUILD SUCCESS`（**22** 个类；含 `McpCoverageTest 1/0`、`McpServerTest 5/0`、`McpPortTopologyTest 4/0`、`ShellEndToEndTest` 等） |
+| 5 | **变异轮**（3 个名单各拿掉新名字，带 `// MUTANT`） | 同上四类 | **1** | `Tests run: 81, Failures: 5, Errors: 0` + `BUILD FAILURE`；5 条红逐条见 §④；`McpPortTopologyTest 4/0` 未变异 ⇒ 照旧绿（对照） |
+| 6 | **还原后**（字节 = 轮 2 的字节） | 同上四类 | **0** | `Tests run: 81, Failures: 0, Errors: 0` + `BUILD SUCCESS` |
+| 7 | **改前字节真红**（把 3 个类的 `git show HEAD:<path>` 字节换回去） | `McpCoverageTest,McpServerTest,McpPortTopologyTest` | **1** | 三类**各 1 条红**：`McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect:1002`、`McpServerTest.initializeAndToolsListExposeExactlyTheExternalUnionGmTools:330`、`McpPortTopologyTest.theSingleMcpPortExposesTheGmToolFace:276`；每条 AssertJ 的缺项恰是 `["economy.SetGovernmentMintScale"]` / `["simos.economy.setGovernmentMintScale"]` |
+
+★ **`McpCoverageTest` 的新拒例真的走到了拒路径**（轮 2 日志原文）：
+`COMMAND_REJECTED … type=economy.SetGovernmentMintScale … caller=agent:t11-coverage reason=government-missing: 该政府未登记（本命令只改已登记的政府；要建政府请走 economy.RegisterGovernment）: gov-missing`
++ `[T11-COVERAGE] type=economy.SetGovernmentMintScale result=rejected` ⇒ 与 W5-fix6 账本 §⑦ 的预判（"夹具没有 `world-silver` ⇒ 走 `government-missing`"）**逐字一致**。
+
+## ④ 变异 / 负向自证（拿掉新名字 ⇒ 当场红 ⇒ 还原比 md5）
+
+- **变异体三处**（各自带 `// MUTANT` 注释，替换掉那一行名字）：
+  1. `SimosToolsTest`：`ECONOMY_ZONE_WRITE_NAMES` 拿掉 `"simos.economy.setGovernmentMintScale"`；
+  2. `McpCoverageTest`：`EXPECTED_COMMAND_TYPES` 拿掉 `"economy.SetGovernmentMintScale"`；
+  3. `McpServerTest`：`EXTERNAL_UNION_GM_TOOL_NAMES` 拿掉 `"simos.economy.setGovernmentMintScale"`。
+- **落盘确实变了字节**（变异前 → 变异后）：`4c3818ba` → `ac5d1f5f`、`a0f0ff3f` → `b3bb6767`、`d55e5c1b` → `39d8841b`。
+- **编译过**（日志无 `COMPILATION ERROR`）⇒ 红在**断言**上，不是"变异体编不过"那种假红。
+- **当场红 5 条**（逐条点名，且缺项就是被拿掉的那个名字）：
+  - `SimosToolsTest.everyNarrowWriteToolClassIsWiredIntoTheGmBucket:1104`；
+  - `SimosToolsTest.registryContainsExactlyTheExternalUnionGmTools:709`（缺 `["simos.economy.setGovernmentMintScale"]`）；
+  - `SimosToolsTest.writesAreSensitiveAndAskWithTheToolNameAsClassKey:1854`；
+  - `McpCoverageTest.everyCatalogTypeIsReachableThroughMcpAndTakesEffect:1014`（缺 `["economy.SetGovernmentMintScale"]`）；
+  - `McpServerTest.initializeAndToolsListExposeExactlyTheExternalUnionGmTools:332`（缺 `["simos.economy.setGovernmentMintScale"]`）。
+- **还原**：三个文件从参照副本恢复；四个文件的 md5 与参照**逐字节相同**
+  （`4c3818ba` / `a0f0ff3f` / `d55e5c1b` / `061cecfc`）；`grep -rn MUTANT simos-app/src simos-economy/src simos-social/src` = **0**；
+  还原后重跑（轮 6）rc=0。
+- **改前真红（更硬的一条）**：不满足于"变异体"，轮 7 用 `git show HEAD:<file>` 的**字面改前字节**换回三个类 ⇒
+  各类当场 1 条红、点名同一个缺项 ⇒ 证明这 16 处改动是"把 W5-fix6 **真实存在**的命令+工具补进名单"，
+  而不是"把断言放宽到能过"。
+
+## ⑤ 我没做 / 没验证的（如实）
+
+1. **没跑** `simos-economy` / `simos-social` 的**测试**：本批只改 `simos-app` 侧测试文件。`-am` 让这两个模块每轮都**编译**过，
+   但它们的测试没被执行。静态核对：全仓 test 里引用 `setMarketZonePriceAlpha`（W2 先例）的只有那 3 个 app 测试文件；
+   `MoneyIssuanceKind.values()` 无任何测试枚举其条数（只有逐常量断言），故判定无遗漏。
+2. **没跑** `verify` / `clean` / `package`（任务书禁止；归控制方门禁）。
+3. **没碰** `src/main/**`：因此"把新工具从 GM 桶真摘掉"的 **main 侧变异没做** —— 负向自证全在**测试名单侧**。
+4. `AdjudicateTickToolTest` 的 `hasSize(66)`（白名单）与 `hasSize(96)`（样本表）**没单独测改前**；只做了改后真跑
+   （轮 3 里 16 条全绿）+ 代码面论证：新 handler **不实现** `CommandTargets`，且它标 `GmOnlyCommand` ⇒
+   白名单与 `targets` 两侧都取不到它 ⇒ 两个数都不变。
+5. 轮 3 的 5 条 skipped 是 `RealLlmUnitDecisionLoopTest`(3) + `RealLlmGovScenarioTest`(2)（真 LLM 用例），**与本批无关**；
+   我没查它们 skip 的原因、也没动它们。
+6. **注释里仍有历史陈旧数字未一一订正**（与本批无关的旧账，例如 `McpCoverageTest` 里"除 5 条需要前置状态"、`96 条样本`
+   一类的旁注）：本批只订正了**目标列表自己的** javadoc/`.as` 计数，没做全仓注释考古。
+7. **`SimosToolsTest` 没做"字面改前字节"那一轮**（轮 7 只换回了另外三个类）：它的改前 md5 = `4eff92fe…`（`git show HEAD:` 现算），
+   改前状态由**轮 1 的真跑**（`71 条 / 7 红`，逐条点名）代替。★ 未测的那一类风险很小：它的 7 条红里 5 条是**计数**断言
+   （141/163/67/173 全部由同一批扫描器现算）、2 条是名单同源断言（`containsExactlyInAnyOrderElementsOf`）。
+
+## ⑥ 未完成 / BLOCKED
+
+**无 BLOCKED**。4 个类 + 全 app 套件全绿，变异自证与改前真红都落地，工作树未提交（按纪律：不 `git commit`）。

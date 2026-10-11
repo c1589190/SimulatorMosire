@@ -7,10 +7,14 @@ import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyCommodities;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.spi.EconomyDefineCurrencyHandler;
 import io.mosire.simos.economy.spi.EconomyRecordMoneyIssuanceHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
@@ -97,6 +101,7 @@ import java.util.Optional;
  * …两级之后（A1 追加，顺序不可换）：
  * economy.DefineCurrency（中央 GOV 定义第二币种 copper，scale 3、SPECIE、发行权归中央）
  * → actor.AdjustAccounts（一次给两国库注入初始 粮/布/银 + 给中央国库注入铜）
+ * → economy.RecordMoneyIssuance ×2（两国库各那笔银的 **GENESIS_ENDOWMENT** 审计；★ W5-fix6 补，发行主体 = 银的唯一发行者）
  * → economy.RecordMoneyIssuance（那笔铜的 INITIAL_ENDOWMENT 审计）
  * </pre>
  *
@@ -108,6 +113,11 @@ import java.util.Optional;
  * <p>★★ <b>国库注资</b>：{@code actor.AdjustAccounts}（既有裸账原语，GM-only）对两国库做纯正增量；金额见 {@link
  * #TREASURY_GRAIN_MILLI_PER_GOV} 等常量（≈ 2000 天粮 + 1800 天布 + 3000 天银的现行政策需求）。<b>不做 M1 铸币</b>、不接
  * world-silver 铸币收益（按设计书 §13）。
+ *
+ * <p>★★★ <b>W5-fix6（D4）：每一笔凭空进入国库的钱都在审计链上（零数值改动）</b>：改前两国库各 100,000 毫银<b>没有</b> {@code
+ * MoneyIssuanceRecord}（只有那笔铜有）⇒ 发行链与账户余额差 +200,000（= 创世银的 74.9%）。现在逐国库补一条 {@code
+ * GENESIS_ENDOWMENT}（发行主体 = 银的唯一发行者，收款国库写在 {@code reason} 里）。★ 它<b>只加审计</b>：金额、账户、
+ * 余额、货币总量<b>逐值不变</b>（余额腿仍是同一条 {@code actor.AdjustAccounts}，一个字没改）。
  *
  * <p>★ <b>不做什么</b>：不建决策人（GM/后续显式建）、不建军队/军俸、不自动招募/注资/调计划、不做队列/应募。本类只落"可运行的行政链"最小集。
  */
@@ -319,12 +329,98 @@ public final class GovWorldBootstrap {
             new AdjustAccountsHandler(),
             new ActorCodec(),
             treasuryInjectionPayload());
+    // ★★★ W5-fix6（D4）：**这笔银注资的审计腿**——改前只有铜那一笔有 `MoneyIssuanceRecord`，两国库各 100,000 毫银
+    //   （合计 200,000 = 创世银的 74.9%）在发行链上"查无此人"（W5 验收报告 §3-D4）。
+    //   ★ 发行主体 = 这个世界里**银的发行者**（`issuable` 含 silver 的那个政府；small-world = 世界级
+    //     `world-silver`）—— 从 state 现取（不新开参数、不手抄 id），取不到/多于一个就当场抛（说不出"谁发的银"
+    //     就不许给这笔钱编一个发行者）。★ 收款的国库写在 `reason` 里（记录类型没有"收款人"维）。
+    //   ★ 顺序不可换：审计腿要求余额已存在（上一条 `actor.AdjustAccounts` 刚建/加了这两本账）。
+    GovernmentId silverIssuer = requireSilverIssuer(next);
+    for (String govId : List.of(CENTRAL_GOV_ID, PROVINCE_GOV_ID)) {
+      next =
+          applier.apply(
+              next,
+              EconomyRecordMoneyIssuanceHandler.TYPE,
+              new EconomyRecordMoneyIssuanceHandler(),
+              new EconomyCodec(),
+              silverEndowmentPayload(silverIssuer, govId));
+    }
     return applier.apply(
         next,
         EconomyRecordMoneyIssuanceHandler.TYPE,
         new EconomyRecordMoneyIssuanceHandler(),
         new EconomyCodec(),
         copperEndowmentPayload());
+  }
+
+  /**
+   * ★★ <b>W5-fix6：世界里"银的发行主体"</b>（`issuable` 含 {@link MoneyVocabulary#SILVER_CURRENCY} 的那个政府）。
+   *
+   * <p>★ <b>为什么从 state 现取</b>：世界级政府（`world-silver`）不是任何 GOV 单位、id 也不是本类的常量； 手抄一份 id
+   * 就是在第二个地方拼身份（本仓最贵的那类漂移）。而"谁能发银"在 {@code EconomyData} 里有<b>唯一权威</b> （{@code Government.issuable}
+   * + "一币一发行人"守卫）⇒ 现取既准确又不用新增参数/跨包 import。
+   *
+   * @throws IllegalStateException 一个都没有（说不出"谁发的银"）或多个（守卫本应拦住 ⇒ 状态已被改坏）
+   */
+  private static GovernmentId requireSilverIssuer(SimulationState state) {
+    EconomyData data = economyData(state);
+    GovernmentId issuer = null;
+    for (Government government : data.governments().values()) {
+      if (!government.issuable().contains(MoneyVocabulary.SILVER_CURRENCY)) {
+        continue;
+      }
+      if (issuer != null) {
+        throw new IllegalStateException(
+            "世界里有多个政府声称发行银（一币一发行人守卫本应拦住）："
+                + issuer.value()
+                + " 与 "
+                + government.id().value()
+                + " ⇒ 这笔国库注资说不出唯一的发行主体");
+      }
+      issuer = government.id();
+    }
+    if (issuer == null) {
+      throw new IllegalStateException(
+          "世界里的银没有发行主体（没有任何政府的 issuable 含 "
+              + MoneyVocabulary.SILVER_CURRENCY.value()
+              + "）⇒ 两国库的银注资无法落审计腿（拒绝悄悄记一笔没有发行者的钱）");
+    }
+    return issuer;
+  }
+
+  /** economy 切片（创世装配期必须已在；缺 = 装配故障）。 */
+  private static EconomyData economyData(SimulationState state) {
+    return state
+        .module("economy")
+        .filter(EconomySnapshot.class::isInstance)
+        .map(EconomySnapshot.class::cast)
+        .map(EconomySnapshot::data)
+        .orElseThrow(() -> new IllegalStateException("GovWorldBootstrap 需要 economy 切片（创世装配故障）"));
+  }
+
+  /**
+   * ★★ <b>W5-fix6：一条 {@code GENESIS_ENDOWMENT} 审计</b>（{@code economy.RecordMoneyIssuance} 的载荷）——
+   * "创世把 {@link #TREASURY_SILVER_MILLI_PER_GOV} 毫银记进了 {@code hh-gov-<govId>} 国库"。
+   *
+   * <p>★ <b>为什么发行主体是 {@code silverIssuer} 而不是收款的 GOV</b>：{@code MoneyIssuanceRecord.governmentId()}
+   * 的语义是<b>发行主体</b>（{@code EconomyRecordMoneyIssuanceHandler} 只在 {@code Government.issuable}
+   * 上判"谁能发"）。 两个 GOV 的 {@code issuable} 都不含银（中央只发铜、省不发钞）⇒ 把它们记成"发行了银"会当场被 {@code
+   * currency-not-issuable} 拒，而且那句话本身就是假的。⇒ 记在银的唯一发行者名下，收款的国库写进 {@code reason}。
+   */
+  private static String silverEndowmentPayload(GovernmentId silverIssuer, String govId) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("governmentId", silverIssuer.value());
+    payload.put("currency", MoneyVocabulary.SILVER_CURRENCY.value());
+    payload.put("amountMilli", TREASURY_SILVER_MILLI_PER_GOV);
+    payload.put("kind", "GENESIS_ENDOWMENT");
+    payload.put(
+        "reason",
+        "small-world 创世：世界级政府向 "
+            + GovernmentHouseholds.of(govId).value()
+            + " 国库注资初始银 "
+            + TREASURY_SILVER_MILLI_PER_GOV
+            + " 毫（W5-fix6 GENESIS_ENDOWMENT 审计；余额腿在同批 actor.AdjustAccounts）");
+    return ToolSupport.json(payload);
   }
 
   /**

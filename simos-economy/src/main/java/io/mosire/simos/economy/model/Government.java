@@ -39,8 +39,12 @@ import java.util.Set;
  *
  * <ol>
  *   <li><b>0 = 不铸币</b>（缺省；判据：规模 0 ⇒ 新钱<b>恰好 0 毫</b>，货币总量守恒）；
- *   <li>它是<b>政策可调</b>的量（GM 写口 = {@code economy.RegisterGovernment} 的 {@code mintScalePerCycle} 字段，
- *       窄工具 {@code simos.economy.upsertGovUnit} 与 {@code simos.economy.registerGovernment} 一族）；
+ *   <li>它是<b>政策可调</b>的量，GM 写口有两条（各服务一种政府形态）：<b>GOV 单位政府</b> = {@code economy.RegisterGovernment} 的
+ *       {@code mintScalePerCycle} 字段（窄工具 {@code simos.economy.registerGovernment} / {@code
+ *       simos.economy.upsertGovUnit} 一族）；<b>世界级政府</b>（{@code world-silver} 这类不是任何 GOV 单位的发行主体）=
+ *       {@code economy.SetGovernmentMintScale}（窄工具 {@code simos.economy.setGovernmentMintScale}）——
+ *       ★ W5-fix6 补：改前世界级政府<b>没有任何写口</b>（前者的 {@code govUnitId} 会派生 {@code gov-unit-<id>}，够不着它；W5
+ *       验收报告 §3-D1 的 HTTP 422 原文）；
  *   <li>★ 它<b>就是</b>"本轮能新投入多少"的闸门本身（W5-fix5：**决策人预期即权威**，用户原话「铸币能进政府的家户， 按照决策人预期被发行就行」）—— 不再有第二条"≤
  *       上一市场轮印量"的 clamp。本字段回答"这个政府本周期最多铸多少"， 实铸 = {@code min(产出请求, 本字段)}。
  * </ol>

@@ -87,6 +87,7 @@ import io.mosire.simos.economy.spi.EconomyRenameCurrencyHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetCommodityFreightHandler;
 import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
+import io.mosire.simos.economy.spi.EconomySetGovernmentMintScaleHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
@@ -686,6 +687,13 @@ public final class Shell implements AutoCloseable {
                 //   排除出令白名单 / RegisterEffect / 决策人目录；窄工具 simos.economy.setMarketZonePriceAlpha
                 // 照常可用。──
                 new EconomySetMarketZonePriceAlphaHandler(),
+                // ── economy（W5-fix6，2026-10-11；W5 验收报告 §3-D1 + 设计书 v3.20 §7）：
+                //   GM 设置**某个政府**的铸币政策旋钮（Government.mintScalePerCycle；本周期最多铸多少毫，0 = 不许铸）。
+                //   地址两路恰给一个：governmentId（精确 id —— 世界级 world-silver 走这一路）| govUnitId（派生
+                //   gov-unit-<id>）。只写政府表那一个字段；下一关账日生效。★ GM-only（标 GmOnlyCommand）⇒
+                //   排除出令白名单 / RegisterEffect / 决策人目录；窄工具 simos.economy.setGovernmentMintScale
+                // 照常可用。──
+                new EconomySetGovernmentMintScaleHandler(),
                 new EconomyAddDemandHandler(),
                 new EconomyCancelDemandHandler(),
                 new EconomyRegisterCandidateHandler(),

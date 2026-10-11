@@ -6,7 +6,6 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
@@ -32,12 +31,18 @@ import java.util.Objects;
  * {@code moneyIssuances} 这一张表，<b>不</b>动任何余额。
  *
  * <pre>{@code
- * {"govUnitId":"u-central",     // 必填：发行主体（必须已在 governments 里、且 issuable 含该币种）
+ * {"governmentId":"world-silver", // 必填（二选一）：精确政府 id —— **世界级政府**（不是任何 GOV 单位）只能走这一路
+ *  "govUnitId":"u-central",       // 必填（二选一）：GOV 单位 id ⇒ 派生政府 id gov-unit-<govUnitId>
  *  "currency":"copper",         // 必填：币种（必须在该政府的 issuable 里）
  *  "amountMilli":100_000,       // 必填：金额（最小币值；> 0；方向由 kind 表达，不用负号）
- *  "kind"?: "FISCAL_ISSUE",     // 可选：缺省 FISCAL_ISSUE（运行期发行）；创世注资给 INITIAL_ENDOWMENT
+ *  "kind"?: "FISCAL_ISSUE",     // 可选：缺省 FISCAL_ISSUE（运行期发行）；创世注资给 INITIAL_ENDOWMENT / GENESIS_ENDOWMENT
  *  "reason"?: "…"}              // 可选：审计文本（进记录；缺省给本命令类型）
  * }</pre>
+ *
+ * <p>★★ <b>寻址（W5-fix6 追加，唯一拼写点 {@code EconomyCommandPayloads.requireGovernmentAddress}）</b>：改前本命令只认
+ * {@code govUnitId}（⇒ {@code gov-unit-<id>}），而世界级政府 {@code world-silver} <b>不是任何 GOV 单位</b> ⇒
+ * 它<b>永远够不着</b> —— 创世国库注资那笔钱因此没法记在真正的发行主体名下（W5 验收报告 §3-D4）。现在两条地址恰给一个：{@code governmentId} 精确
+ * id、{@code govUnitId} 派生 id（两者都给 ⇒ 具名拒，见助手方法）。
  *
  * <p>★★ <b>它是"裸审计原语"：审计与余额是同一批里的两条命令</b>。账户余额住在 {@code actor} 切片，而按铁律 3/4 一条命令只写 一个命名空间 ⇒ {@code
  * 国库余额增加} 是 {@code actor.AdjustAccounts} 的活，本命令只负责"账本上记下这次发行"。两者由组合工具 （{@code simos.gov.issueMoney}
@@ -94,7 +99,7 @@ public final class EconomyRecordMoneyIssuanceHandler
       if (base.meta().isEmpty()) {
         return rejected("economy-not-activated", issuance, "economy 切片尚未激活（先 economy.Seed 播种）");
       }
-      GovernmentId governmentId = GovernmentIds.ofUnit(issuance.govUnitId());
+      GovernmentId governmentId = issuance.governmentId();
       Government government = base.governments().get(governmentId);
       if (government == null) {
         return rejected(
@@ -148,7 +153,7 @@ public final class EconomyRecordMoneyIssuanceHandler
               "government",
               governmentId.value(),
               "govUnit",
-              issuance.govUnitId(),
+              issuance.address(),
               "currency",
               currency.value(),
               "amountMilli",
@@ -203,7 +208,7 @@ public final class EconomyRecordMoneyIssuanceHandler
             "reason",
             reason,
             "government",
-            issuance == null ? "" : issuance.govUnitId(),
+            issuance == null ? "" : issuance.address(),
             "currency",
             issuance == null ? "" : issuance.currency(),
             "kind",
@@ -224,7 +229,12 @@ public final class EconomyRecordMoneyIssuanceHandler
   /** 形状/边界解析。 */
   private static Issuance parse(String payloadJson) {
     JsonNode payload = EconomyCommandPayloads.parseObject(TYPE, payloadJson);
-    String govUnitId = EconomyCommandPayloads.requireText(TYPE, payload, "govUnitId");
+    // ★★ W5-fix6：两条地址恰给一个（governmentId 精确 / govUnitId 派生）——唯一拼写点在助手方法里。
+    GovernmentId governmentId = EconomyCommandPayloads.requireGovernmentAddress(TYPE, payload);
+    String address =
+        payload.hasNonNull("governmentId")
+            ? "governmentId:" + governmentId.value()
+            : "govUnitId:" + govUnitIdOf(payload);
     String currency = EconomyCommandPayloads.requireText(TYPE, payload, "currency");
     long amountMilli = EconomyCommandPayloads.requireLong(TYPE, payload, "amountMilli");
     String kindText =
@@ -235,42 +245,50 @@ public final class EconomyRecordMoneyIssuanceHandler
     try {
       kind = MoneyIssuanceKind.valueOf(kindText.trim().toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException e) {
+      // ★ 枚举自己就是"有哪些类别"的唯一权威（不手抄两份清单：加一个类别时这里不会静默说谎）。
       throw new IllegalArgumentException(
-          "kind 只认 "
-              + MoneyIssuanceKind.FISCAL_ISSUE.name()
-              + " | "
-              + MoneyIssuanceKind.INITIAL_ENDOWMENT.name()
-              + "（回笼 "
-              + MoneyIssuanceKind.WITHDRAWAL.name()
-              + " 属后续批次）: "
-              + kindText);
+          "kind 只认 " + java.util.Arrays.toString(MoneyIssuanceKind.values()) + ": " + kindText);
+    }
+    if (kind == MoneyIssuanceKind.WITHDRAWAL || kind == MoneyIssuanceKind.MINT_PRODUCTION) {
+      // ★ 这两类的生产者不是本命令：WITHDRAWAL 由回笼路径写（TreasuryWithdrawal），MINT_PRODUCTION 由 MintSettlement 写
+      //   （id 由 (政府, 日, 币种) 确定性派生）。手写它们 = 伪造一条与真生产路径无关的审计 ⇒ 具名拒。
+      throw new IllegalArgumentException(
+          "kind " + kind.name() + " 不是本命令可写的类别（回笼走回笼路径、铸币产出走 MintSettlement 的确定性 id）");
     }
     String reason =
         payload.hasNonNull("reason")
             ? EconomyCommandPayloads.requireText(TYPE, payload, "reason")
             : null;
-    return new Issuance(govUnitId, currency, amountMilli, kind, reason);
+    return new Issuance(governmentId, address, currency, amountMilli, kind, reason);
   }
 
-  /** 一条发行：发行主体 + 币种 + 金额 + 类别 + 可选审计文本（构造期判完边界）。 */
+  /** 只给日志用的 govUnitId 文本（形状已由 {@code requireGovernmentAddress} 判过）。 */
+  private static String govUnitIdOf(JsonNode payload) {
+    return payload.hasNonNull("govUnitId") ? payload.get("govUnitId").asText() : "";
+  }
+
+  /** 一条发行：发行主体（已解析的政府身份 + 地址原文，后者只进日志）+ 币种 + 金额 + 类别 + 可选审计文本（构造期判完边界）。 */
   private record Issuance(
-      String govUnitId, String currency, long amountMilli, MoneyIssuanceKind kind, String reason) {
+      GovernmentId governmentId,
+      String address,
+      String currency,
+      long amountMilli,
+      MoneyIssuanceKind kind,
+      String reason) {
 
     Issuance {
-      Objects.requireNonNull(govUnitId, "govUnitId");
+      Objects.requireNonNull(governmentId, "governmentId");
+      Objects.requireNonNull(address, "address");
       Objects.requireNonNull(currency, "currency");
       Objects.requireNonNull(kind, "kind");
-      if (govUnitId.isBlank()) {
-        throw new IllegalArgumentException("govUnitId 不得为空白");
+      if (address.isBlank()) {
+        throw new IllegalArgumentException("发行主体地址不得为空白");
       }
       if (currency.isBlank()) {
         throw new IllegalArgumentException("currency 不得为空白");
       }
       if (amountMilli <= 0L) {
         throw new IllegalArgumentException("amountMilli 必须 > 0（方向由 kind 表达，不用负号）: " + amountMilli);
-      }
-      if (kind == MoneyIssuanceKind.WITHDRAWAL) {
-        throw new IllegalArgumentException("本批只做发行/创世注资，不做回笼（WITHDRAWAL 属后续批次）");
       }
       if (reason != null && reason.isBlank()) {
         throw new IllegalArgumentException("reason 给了就必须非空白");

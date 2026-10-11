@@ -1757,38 +1757,86 @@ public final class ApiViews {
     return views;
   }
 
-  /** 单个政府的发行审计累计（逐币种；与 {@code moneyIssuanceView} 同一套 kind 判据，只是按 governmentId 过滤）。 */
+  /**
+   * ★★ <b>D2（W5-fix6）：发行审计记录分类的<b>唯一判据点</b></b>（{@code governmentIssuanceView} 与 {@code
+   * moneyIssuanceView} 共用这一份，不再各自写一条 if/else 链）。
+   *
+   * <p>★★ <b>方向由枚举自己回答</b>（{@link MoneyIssuanceKind#issuance()} —— "该类别是否让流通量增加"的唯一拼写点），
+   * 栏位只是"给人看的分类"。★ 改前的两处 {@code else} 把<b>没列举到的一切</b>当成回笼 ⇒ W5 新增的 {@code MINT_PRODUCTION}（枚举自己写着
+   * {@code issuance() == true}）被记成 withdrawal：同一份状态上 {@code circulation} 涨 500 而 {@code
+   * netIssuance} 反而少 500（W5 验收报告 §3-D2 的真读数）。
+   */
+  private static final class IssuanceTotals {
+
+    private final Map<String, Long> initialEndowment = new TreeMap<>();
+    private final Map<String, Long> genesisEndowment = new TreeMap<>();
+    private final Map<String, Long> mintProduction = new TreeMap<>();
+    private final Map<String, Long> fiscalIssue = new TreeMap<>();
+    private final Map<String, Long> withdrawal = new TreeMap<>();
+    private int recordCount;
+
+    private void add(MoneyIssuanceRecord record) {
+      recordCount++;
+      bucketOf(record.kind()).merge(record.currency().value(), record.amount(), Long::sum);
+    }
+
+    /** kind → 栏位。★ 方向先由 {@link MoneyIssuanceKind#issuance()} 分流（发行 / 回笼），栏位只是发行内部的分类。 */
+    private Map<String, Long> bucketOf(MoneyIssuanceKind kind) {
+      if (!kind.issuance()) {
+        return withdrawal;
+      }
+      return switch (kind) {
+        case INITIAL_ENDOWMENT -> initialEndowment;
+        case GENESIS_ENDOWMENT -> genesisEndowment;
+        case MINT_PRODUCTION -> mintProduction;
+        case FISCAL_ISSUE -> fiscalIssue;
+        case WITHDRAWAL ->
+            throw new IllegalStateException("发行方向不该走到回笼栏（issuance() 与 kind 漂开）: " + kind);
+      };
+    }
+
+    private Map<String, Long> cumulativeIssuance() {
+      Map<String, Long> sum = new TreeMap<>(initialEndowment);
+      mergeIssuance(sum, genesisEndowment);
+      mergeIssuance(sum, mintProduction);
+      mergeIssuance(sum, fiscalIssue);
+      return sum;
+    }
+
+    /** 净发行 = Σ 发行方向 − Σ 回笼方向（逐币种；与 {@code MoneyStock} 同一口径）。 */
+    private Map<String, Long> netIssuance() {
+      Map<String, Long> net = cumulativeIssuance();
+      for (Map.Entry<String, Long> entry : withdrawal.entrySet()) {
+        net.merge(entry.getKey(), -entry.getValue(), Long::sum);
+      }
+      return net;
+    }
+  }
+
+  /**
+   * 单个政府的发行审计累计（逐币种；分类判据 = {@link IssuanceTotals}，只按 governmentId 过滤）。
+   *
+   * <p>★ D2 起口径：{@code mintProduction} / {@code genesisEndowment} 各成一栏（发行方向），{@code withdrawal} 只装
+   * 回笼方向（枚举的 {@code issuance() == false} 那些）。
+   */
   private static Map<String, Object> governmentIssuanceView(
       EconomyData data, GovernmentId governmentId) {
-    Map<String, Long> initial = new TreeMap<>();
-    Map<String, Long> fiscal = new TreeMap<>();
-    Map<String, Long> withdrawal = new TreeMap<>();
-    int count = 0;
+    IssuanceTotals totals = new IssuanceTotals();
     for (MoneyIssuanceRecord record : data.moneyIssuances().values()) {
       if (!record.governmentId().equals(governmentId)) {
         continue;
       }
-      count++;
-      if (record.kind() == MoneyIssuanceKind.INITIAL_ENDOWMENT) {
-        initial.merge(record.currency().value(), record.amount(), Long::sum);
-      } else if (record.kind() == MoneyIssuanceKind.FISCAL_ISSUE) {
-        fiscal.merge(record.currency().value(), record.amount(), Long::sum);
-      } else {
-        withdrawal.merge(record.currency().value(), record.amount(), Long::sum);
-      }
-    }
-    Map<String, Long> net = new TreeMap<>(initial);
-    mergeIssuance(net, fiscal);
-    for (Map.Entry<String, Long> entry : withdrawal.entrySet()) {
-      net.merge(entry.getKey(), -entry.getValue(), Long::sum);
+      totals.add(record);
     }
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("window", "累计（EconomyMeta.activatedDay 至当前 revision；无按日窗口）");
-    view.put("recordCount", count);
-    view.put("initialEndowment", initial);
-    view.put("fiscalIssue", fiscal);
-    view.put("withdrawal", withdrawal);
-    view.put("netIssuance", net);
+    view.put("recordCount", totals.recordCount);
+    view.put("initialEndowment", totals.initialEndowment);
+    view.put("genesisEndowment", totals.genesisEndowment);
+    view.put("mintProduction", totals.mintProduction);
+    view.put("fiscalIssue", totals.fiscalIssue);
+    view.put("withdrawal", totals.withdrawal);
+    view.put("netIssuance", totals.netIssuance());
     return view;
   }
 
@@ -4247,45 +4295,38 @@ public final class ApiViews {
    *
    * <pre>
    * initialEndowment       Σ kind=INITIAL_ENDOWMENT 的 amount（逐币种，累计）
+   * genesisEndowment       Σ kind=GENESIS_ENDOWMENT 的 amount（逐币种，累计；★ W5-fix6 创世国库注资）
+   * mintProduction         Σ kind=MINT_PRODUCTION 的 amount（逐币种，累计；★ W5 铸币生产方式）
    * fiscalIssue            Σ kind=FISCAL_ISSUE 的 amount（逐币种，累计）
-   * cumulativeIssuance     = initialEndowment + fiscalIssue
-   * cumulativeWithdrawal   Σ kind=WITHDRAWAL 的 amount（逐币种，累计）
+   * cumulativeIssuance     = initialEndowment + genesisEndowment + mintProduction + fiscalIssue
+   * cumulativeWithdrawal   Σ 回笼方向（kind.issuance() == false）的 amount（逐币种，累计）
    * circulation            Σ 全部 actor HouseholdInventory.money 余额（逐币种时点）
    * netIssuance            = cumulativeIssuance − cumulativeWithdrawal（逐币种）
    * </pre>
+   *
+   * <p>★★ <b>D2（W5-fix6）：方向一律由 {@link MoneyIssuanceKind#issuance()} 回答</b>（唯一拼写点，两个读口共用 {@link
+   * IssuanceTotals}）—— 改前两处 {@code else} 把 {@code MINT_PRODUCTION} 记成回笼，于是同一 tick 里 {@code
+   * circulation} ↑500 而 {@code netIssuance} ↓500（自相矛盾的真读数见 W5 验收报告 §3-D2）。
    *
    * <p>★ 记录来自 {@code EconomyData.moneyIssuances}（可持久/回放），本层只求和、不伪造缺失字段；发行腿的实时差额由 {@code
    * FISCAL_ISSUE} 记录，创世钱包由 {@code INITIAL_ENDOWMENT} 记录。
    */
   private static Map<String, Object> moneyIssuanceView(
       EconomyData data, Map<String, Long> circulation) {
-    Map<String, Long> initial = new TreeMap<>();
-    Map<String, Long> fiscal = new TreeMap<>();
-    Map<String, Long> withdrawal = new TreeMap<>();
+    IssuanceTotals totals = new IssuanceTotals();
     for (MoneyIssuanceRecord record : data.moneyIssuances().values()) {
-      if (record.kind() == MoneyIssuanceKind.INITIAL_ENDOWMENT) {
-        initial.merge(record.currency().value(), record.amount(), Long::sum);
-      } else if (record.kind() == MoneyIssuanceKind.FISCAL_ISSUE) {
-        fiscal.merge(record.currency().value(), record.amount(), Long::sum);
-      } else {
-        withdrawal.merge(record.currency().value(), record.amount(), Long::sum);
-      }
-    }
-    Map<String, Long> cumulativeIssuance = new TreeMap<>();
-    mergeIssuance(cumulativeIssuance, initial);
-    mergeIssuance(cumulativeIssuance, fiscal);
-    Map<String, Long> net = new TreeMap<>(cumulativeIssuance);
-    for (Map.Entry<String, Long> entry : withdrawal.entrySet()) {
-      net.merge(entry.getKey(), -entry.getValue(), Long::sum);
+      totals.add(record);
     }
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("window", "累计（EconomyMeta.activatedDay 至当前 revision；无按日窗口）");
-    view.put("recordCount", data.moneyIssuances().size());
-    view.put("initialEndowment", initial);
-    view.put("fiscalIssue", fiscal);
-    view.put("cumulativeIssuance", cumulativeIssuance);
-    view.put("cumulativeWithdrawal", withdrawal);
-    view.put("netIssuance", net);
+    view.put("recordCount", totals.recordCount);
+    view.put("initialEndowment", totals.initialEndowment);
+    view.put("genesisEndowment", totals.genesisEndowment);
+    view.put("mintProduction", totals.mintProduction);
+    view.put("fiscalIssue", totals.fiscalIssue);
+    view.put("cumulativeIssuance", totals.cumulativeIssuance());
+    view.put("cumulativeWithdrawal", totals.withdrawal);
+    view.put("netIssuance", totals.netIssuance());
     view.put("circulation", new TreeMap<>(circulation));
     return view;
   }

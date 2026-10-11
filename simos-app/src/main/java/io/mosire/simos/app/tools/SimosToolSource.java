@@ -63,6 +63,7 @@ import io.mosire.simos.app.tools.write.EconomyDefineMarketZoneTool;
 import io.mosire.simos.app.tools.write.EconomyMergeMarketZonesTool;
 import io.mosire.simos.app.tools.write.EconomyReassignZoneHexesTool;
 import io.mosire.simos.app.tools.write.EconomySetCommodityFreightTool;
+import io.mosire.simos.app.tools.write.EconomySetGovernmentMintScaleTool;
 import io.mosire.simos.app.tools.write.EconomySetMarketZonePriceAlphaTool;
 import io.mosire.simos.app.tools.write.EconomyUpsertGovUnitTool;
 import io.mosire.simos.app.tools.write.EconomyUpsertIndustryTool;
@@ -793,6 +794,13 @@ public final class SimosToolSource implements ToolSource {
     //   令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；
     //   写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
     built.add(new EconomySetMarketZonePriceAlphaTool(core, initiator, mapId));
+    // ★★ W5-fix6（2026-10-11，D1）：**政府铸币规模旋钮的 GM 窄写**（economy.SetGovernmentMintScale 的薄封装）。
+    //   旋钮是"本政府每周期最多铸多少毫"的唯一闸门，而改前唯一能写它的命令只认 gov-unit-<id> 形态 ⇒ 世界级
+    //   world-silver（唯一会铸币的政府）够不着（W5 验收报告 §3-D1 的 HTTP 422）。本工具补这条写口。
+    //   **只在 GM 桶**：决策人桶没有它、DecisionCallerFactory.WHITELIST 也不含；命令标了 GmOnlyCommand ⇒
+    //   令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；
+    //   写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
+    built.add(new EconomySetGovernmentMintScaleTool(core, initiator, mapId));
     // ★★ S3a（2026-10-09 Unit/Gov 家户容纳 §4.3）：家户/人口 GM 窄写六条。**只在 GM 桶**；
     //   工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。四条 social 工具：创建 / 移动（HEX↔UNIT，跨 unit 时
     //   同批改 unit.households）/ 成员增删转移 / 出生死亡率；两条组合工具：assignHousehold（social.SetHouseholdLocation

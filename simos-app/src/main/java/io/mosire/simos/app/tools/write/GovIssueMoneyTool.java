@@ -109,7 +109,8 @@ public final class GovIssueMoneyTool implements AgentTool {
     return "DM 给自己所属 GOV 发行一笔新钱（国库余额 +amountMilli，并落一条 MoneyIssuance 审计；"
         + "一批两条命令 = 一条 revision，原子）：参数 "
         + "{govUnitId?(GM 必填；决策人省略=自己的 GOV，给了必须等于自己的), currency(必填：必须在该 GOV 的 issuable 里), "
-        + "amountMilli(必填，> 0), kind?(缺省 FISCAL_ISSUE；也可 INITIAL_ENDOWMENT), reason?, preview?(缺省 true=只读), "
+        + "amountMilli(必填，> 0), kind?(缺省 FISCAL_ISSUE；也可 INITIAL_ENDOWMENT / GENESIS_ENDOWMENT；"
+        + "回笼与 MINT_PRODUCTION 由各自的生产路径写、本工具具名拒), reason?, preview?(缺省 true=只读), "
         + "branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。"
@@ -126,7 +127,11 @@ public final class GovIssueMoneyTool implements AgentTool {
     props.put("amountMilli", ToolSupport.prop("integer", "发行金额（最小币值；必填；> 0；方向由 kind 表达，不用负号）"));
     props.put(
         "kind",
-        ToolSupport.prop("string", "发行类别（可选）：FISCAL_ISSUE（缺省，运行期发行）| INITIAL_ENDOWMENT（创世注资）"));
+        ToolSupport.prop(
+            "string",
+            "发行类别（可选）：FISCAL_ISSUE（缺省，运行期发行）| INITIAL_ENDOWMENT（创世发给家户/官署）"
+                + "| GENESIS_ENDOWMENT（创世国库注资）。★ WITHDRAWAL（回笼，走回笼路径）与 MINT_PRODUCTION"
+                + "（铸币产出，走 MintSettlement 的确定性账）具名拒"));
     props.put("reason", ToolSupport.prop("string", "审计原因（可选；给出则必须非空白；缺省 = gm:命令类型）"));
     props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只读预览；false = 提交一批（= 一条 revision）"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
@@ -271,16 +276,18 @@ public final class GovIssueMoneyTool implements AgentTool {
     try {
       kind = MoneyIssuanceKind.valueOf(text.trim().toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException e) {
+      // ★ W5-fix6：枚举自己是"有哪些类别"的唯一权威（不手抄两份清单 —— 加类别时这里不会静默说谎）。
       throw new IllegalArgumentException(
-          "参数 kind 只认 "
-              + MoneyIssuanceKind.FISCAL_ISSUE.name()
-              + " | "
-              + MoneyIssuanceKind.INITIAL_ENDOWMENT.name()
-              + ": "
-              + text);
+          "参数 kind 只认 " + java.util.Arrays.toString(MoneyIssuanceKind.values()) + ": " + text);
     }
     if (kind == MoneyIssuanceKind.WITHDRAWAL) {
-      throw new IllegalArgumentException("本批只做发行/创世注资，不做回笼（WITHDRAWAL 属后续批次）");
+      throw new IllegalArgumentException("回笼走回笼路径（本工具只做发行/创世注资）: " + kind);
+    }
+    if (kind == MoneyIssuanceKind.MINT_PRODUCTION) {
+      // ★ W5-fix6：铸币产出的审计由 MintSettlement 按 (政府, 日, 币种) 确定性落账 —— 手写它会造出一条与真生产路径
+      //   无关的"印过钱"记录（同一个 id 形状还会撞上确定性派生）。⇒ 具名拒。
+      throw new IllegalArgumentException(
+          "铸币产出由 MintSettlement 按 (政府, 日, 币种) 确定性落账（不接受手写）: " + kind);
     }
     return kind;
   }

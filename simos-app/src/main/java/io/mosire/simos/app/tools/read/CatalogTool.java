@@ -447,6 +447,17 @@ public final class CatalogTool implements AgentTool {
                   + "★ 生效时点 = 下一市场轮；★ GM-only：不进令/RegisterEffect/决策人目录，"
                   + "GM 的 simos.command.submit 与窄工具 simos.economy.setMarketZonePriceAlpha 可用）"),
           Map.entry(
+              "economy.SetGovernmentMintScale",
+              "governmentId | govUnitId(恰给一个：governmentId = 精确政府 id —— 世界级政府如 world-silver 只能走这一路；"
+                  + "govUnitId = GOV 单位 id ⇒ 派生 gov-unit-<id>), mintScalePerCycle(必填；≥ 0 的整数，单位 = 毫/产业大周期)"
+                  + "（★ W5-fix6：GM 设置某个政府的**铸币政策旋钮** Government.mintScalePerCycle —— 它是"
+                  + "「本政府每个产业大周期最多铸多少毫」的**唯一闸门**（实铸 = min(产出请求, 它)；0 = 政策不许铸币，是合法状态）"
+                  + "；★ 具名拒：government-missing（未登记）/ bad-payload（负数、非整数、缺字段、两个地址都给）/"
+                  + " mint-scale-unchanged（与现值相同 ⇒ 不落 revision）；★ 只写 governments 一个政府的这一个字段，"
+                  + "国库/发行权/上一轮印量读数/官方汇率/账户/债务/发行审计一个数都不动；★ 生效时点 = 下一个关账日；"
+                  + "★ GM-only：不进令/RegisterEffect/决策人目录，GM 的 simos.command.submit 与窄工具"
+                  + " simos.economy.setGovernmentMintScale 可用）"),
+          Map.entry(
               "economy.SetMarketNumeraire",
               "marketId, numeraire(币种 id，须在世界词表里)（★ W1：逐区；GM-only —— 把**某个市场**的计价币改成另一种币；"
                   + "市场必须已存在，否则拒 market-missing；币种不在词表 ⇒ 拒 unknown-currency；"

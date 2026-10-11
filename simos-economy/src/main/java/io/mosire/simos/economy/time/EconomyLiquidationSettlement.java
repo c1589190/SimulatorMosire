@@ -118,6 +118,12 @@ public final class EconomyLiquidationSettlement {
   /** 清算/阶层下滑日志（settlement 分类）。 */
   private static final org.slf4j.Logger LOG = EconomyLog.settlement();
 
+  /**
+   * ★★ W5-fix6（D5）：<b>债务状态面</b>（debt 分类 —— 与 {@code DebtContractBook} 的 {@code DEBT_UPSERT} 同一个
+   * logger）—— 自持合同的"不标违约/不计压力"具名 DEBUG 走它。
+   */
+  private static final org.slf4j.Logger DEBT = EconomyLog.debt();
+
   private EconomyLiquidationSettlement() {}
 
   /** ★ 本阶段是否接线：新表（mode/位置/归属/质押/政策/资产规则）任一非空即启用；全空 = 旧档 ⇒ 整段 no-op，旧路径逐值不变。 */
@@ -381,6 +387,33 @@ public final class EconomyLiquidationSettlement {
       int grainContracts = 0;
       int nonGrainContracts = 0;
       for (DebtContract debt : active) {
+        if (DebtContractBook.isSelfHeld(debt)) {
+          // ★★★ W5-fix6（D5）：**自持合同不计违约压力**（同族漏网之一）—— 它没有可执行的债权人，"压力/逾期/欠 F"
+          //   对它都不成立；把它计进 anyStress 会让政府的连续压力计数被自己的记账事实推着走（进而触发清算/阶层滑落）。
+          //   ★ 不静默：逐条 DEBUG 具名。
+          if (DEBT.isDebugEnabled()) {
+            EventLog.channel(DEBT)
+                .debug(
+                    LogEvent.of(
+                        "DEBT_STRESS_SELF_HELD_SKIPPED",
+                        EconomyLogSource.ECONOMY_DEBT_STATE,
+                        "day",
+                        context.day(),
+                        "cycle",
+                        context.currentCycle(),
+                        "household",
+                        household.value(),
+                        "debtContract",
+                        debt.id().value(),
+                        "unit",
+                        debt.unit().key(),
+                        "outstandingPrincipal",
+                        debt.principal(),
+                        "why",
+                        "self-held-not-executable"));
+          }
+          continue;
+        }
         long startPrincipal = context.principalAtDayStart().getOrDefault(debt.id(), 0L);
         long currentPrincipal = debt.principal();
         long cycleInterest = perMille(startPrincipal, debt.terms().interestRatePerMillePerCycle());
@@ -1338,6 +1371,11 @@ public final class EconomyLiquidationSettlement {
    * ★★ 到期即默认的有效状态：{@code principal > 0}、{@link #contractDueCycle(DebtContract)} 已到（合同滚动字段优先， 否则
    * terms 固定期限；legacy 两者都空 ⇒ 不触发）、且当前状态既非 {@code DEFAULTED}/{@code SETTLED}/{@code FORGIVEN} ⇒ 本轮视为
    * {@code DEFAULTED}，并由 {@code autoDefaults} 收集需在 apply 落状态的合同（稳定 id 序）。
+   *
+   * <p>★★ <b>W5-fix6（D5）自持合同（{@code debtor == creditor}）不在此列</b>：它是"发行额 = 政府负债"的记账事实、
+   * <b>没有可执行的债权</b>（{@link DebtContractBook#isSelfHeld} 是唯一拼写点）⇒ 给它标 {@code DEFAULTED}
+   * 是读口的假声明（改前铸币债在 d240 起就恒 {@code DEFAULTED}，真读数见 W5 验收报告 §3-D5）。状态原样保留、不进 {@code autoDefaults}（于是
+   * apply 阶段也不会写它）。
    */
   private static Map<DebtContractId, DebtStatus> effectiveStatuses(
       Context context, List<DebtContractId> autoDefaults) {
@@ -1348,7 +1386,11 @@ public final class EconomyLiquidationSettlement {
           status == DebtStatus.DEFAULTED
               || status == DebtStatus.SETTLED
               || status == DebtStatus.FORGIVEN;
-      if (debt.principal() > 0L && !terminal && contractDueCycle(debt) <= context.currentCycle()) {
+      if (DebtContractBook.isSelfHeld(debt)) {
+        statuses.put(debt.id(), status);
+      } else if (debt.principal() > 0L
+          && !terminal
+          && contractDueCycle(debt) <= context.currentCycle()) {
         statuses.put(debt.id(), DebtStatus.DEFAULTED);
         autoDefaults.add(debt.id());
       } else {
