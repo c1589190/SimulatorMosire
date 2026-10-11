@@ -7,11 +7,13 @@ import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.GovGenesisSeedAccess;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.testing.AppLogCapture;
 import io.mosire.simos.app.testing.GovZ6WorldFixture;
 import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.app.world.WorldRegistry;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
@@ -36,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -81,7 +84,10 @@ import org.junit.jupiter.api.io.TempDir;
  *       "绝对日 {@code day % 5 == 0} 例行开市 + 关账日保底 + 低库存追加"（见 {@link
  *       io.mosire.simos.economy.time.MarketSettlement} 的 {@code triggerFor}）， 30 天的倍数必然命中例行轮 ⇒ "报告日
  *       ≠ 当日"或"成交 0 笔"都说明市场<b>冻结</b>了 —— 这正是本仓历史缺陷（市场冻结 / 借贷不触发）复发时的第一征兆， 这条专防它复发。★ 要求"报告日 ==
- *       当日"而不是"最近一轮"，是为了排除"读到 25 天前的旧报告"这种假绿。
+ *       当日"而不是"最近一轮"，是为了排除"读到 25 天前的旧报告"这种假绿。 ★★ <b>W4b 加牙（2026-10-11 测试批）</b>：段末取样只有 8 个点，
+ *       "零成交轮恰好不在段末"时它会全绿 ⇒ 现在**另加**一条<b>逐市场轮</b>断言：96 个市场轮里<b>零成交轮次必须 = 0</b>，
+ *       且逐轮成交笔数的<b>整份分布指纹</b>与实测基线逐值相同（判别力说明见 {@link #assertEveryMarketRoundTraded(List)}）。★
+ *       加牙**只加不放宽**：段末那条"&gt; 0"断言原样保留。
  *   <li><b>⑤账目闭合</b>：每个段末 {@code state.meta().timestamp().tick()} 必须等于该段的目标 tick（无静默跳过）；head
  *       revision <b>严格递增</b>； 段数必须等于 {@code 240 / 30 = 8}（{@code AdvanceTime} 被拒/被吞会让段数或 tick
  *       对不上）。理由：时间推进是本仓唯一的"世界前进"入口， 它静默少走几天，后面所有读数都会错位而没人知道。
@@ -144,6 +150,63 @@ class EconomyCycleHealthTest {
    */
   private static final String MAP_ID = "econ-cycle-health";
 
+  /**
+   * ★★★ <b>W4b 加牙（2026-10-11 测试批）：市场轮总数基线</b>。
+   *
+   * <p>为什么要有它：{@code 0→240} 的市场轮 = "每 5 天例行 + 关账日 + 粮紧张追加" ⇒ 绝对日决定、**逐进程可复现** （W4 验收
+   * §2.1：两个独立进程连存档都逐字节相同）。钉住它有两个作用：① 让"零成交轮次 = 0"这条断言**知道自己扫了几轮** ——少扫到轮次（读侧漏采）会让判据静默变弱；②
+   * 轮数一变（例如市场触发口径被改）当场可见，而不是悄悄换个样本量。
+   */
+  private static final int BASELINE_MARKET_ROUNDS = 96;
+
+  /**
+   * ★★★ <b>W4b 加牙：逐市场轮成交笔数的分布指纹（笔数 → 轮次数）</b>。
+   *
+   * <p>实测来源：本测试自身的 {@code -Dsimos.economy.logLevel=DEBUG} 等价形态（进程内 {@link AppLogCapture} 把 {@code
+   * MARKET_REPORT} 逐轮收进内存）+ 逐轮解析，实得 <b>Σ = 96 轮</b>。
+   *
+   * <p>★★ <b>为什么钉整份分布，而不是只钉一个下界</b>：W4 初版的"市场冻结"回归里，96 轮中有 15 轮零成交（day 13/15/18/63/65/68/70/73/
+   * 75/78/80/83/85/88/90）却**只有落在段末（day 90）的那一轮**被旧断言逮到；另一次同族坏法里零成交轮恰好全落在非段末日 ⇒ 旧断言（每段 >
+   * 0）会**全绿**。只钉"最小值 ≥ 17"仍会漏掉"最小值没变、但中位/尾部整体塌下去"的形态；分布指纹对
+   * "任何一轮的成交笔数变了"都当场红（这是**基线守卫**：世界行为有意改变时必须显式重新基线化，不是放宽判据）。
+   */
+  private static Map<Long, Integer> baselineFillsDistribution() {
+    Map<Long, Integer> distribution = new TreeMap<>();
+    distribution.put(17L, 10);
+    distribution.put(18L, 1);
+    distribution.put(21L, 7);
+    distribution.put(22L, 9);
+    distribution.put(23L, 5);
+    distribution.put(24L, 12);
+    distribution.put(31L, 1);
+    distribution.put(34L, 1);
+    distribution.put(35L, 3);
+    distribution.put(36L, 4);
+    distribution.put(37L, 8);
+    distribution.put(38L, 1);
+    distribution.put(39L, 2);
+    distribution.put(40L, 13);
+    distribution.put(41L, 2);
+    distribution.put(44L, 1);
+    distribution.put(53L, 8);
+    distribution.put(54L, 1);
+    distribution.put(55L, 3);
+    distribution.put(56L, 2);
+    distribution.put(66L, 1);
+    distribution.put(131L, 1);
+    return distribution;
+  }
+
+  /** ★ W4b 加牙：分布指纹的最小 / 中位 / 最大成交笔数（验收实测 17 / 35 / 131）。 */
+  private static final long BASELINE_MIN_FILLS = 17L;
+
+  private static final double BASELINE_MEDIAN_FILLS = 35.0;
+
+  private static final long BASELINE_MAX_FILLS = 131L;
+
+  /** ★ W4b 加牙：市场例行轮的最大间隔（天）—— 用它守"读侧没漏采轮次"（每 5 天必有一轮例行开市）。 */
+  private static final long MAX_MARKET_ROUND_GAP_DAYS = 5L;
+
   @TempDir Path tempDir;
 
   @Test
@@ -162,7 +225,15 @@ class EconomyCycleHealthTest {
             ShellConfig.DEFAULT_BIND_ADDRESS,
             ShellConfig.DEFAULT_OPENING_SNAPSHOT,
             WorldRegistry.THREE_POWERS);
-    try (Shell shell = Shell.start(config)) {
+    // ★★ W4b 加牙的读数来源：{@code MARKET_REPORT} / {@code MARKET_FILL} 都发在 **settlement** 分类
+    //   （{@code EconomySettlement} 的 {@code TRACE = EconomyLog.settlement()}）—— 不是 {@code .trace}
+    // 那一档。
+    //   ★ 首轮实测踩过：挂错 logger ⇒ 采到 0 轮，被下面的"轮次数 == 96"自检当场拦下（判据没有静默变弱）。
+    try (AppLogCapture settlementLog =
+            AppLogCapture.logger(EconomyLog.SETTLEMENT_LOGGER_NAME, Level.DEBUG);
+        // ★ 逐笔 {@code MARKET_FILL} 是 **TRACE** 档、发在 {@code .trace} 分类上（交叉验证要用它）。
+        AppLogCapture traceLog = AppLogCapture.logger(EconomyLog.TRACE_LOGGER_NAME, Level.TRACE);
+        Shell shell = Shell.start(config)) {
       assertThat(GovGenesisSeedAccess.seed(shell))
           .as("空库创世必须成功（worldId=%s）", WorldRegistry.THREE_POWERS)
           .isTrue();
@@ -287,15 +358,187 @@ class EconomyCycleHealthTest {
           .as("摘要行数 = 1 表头 + 1 说明 + 1 创世 + %d 段（少一行说明有段被静默跳过）", SEGMENTS)
           .hasSize(2 + 1 + SEGMENTS);
 
+      // ── ④′ W4b 加牙：逐市场轮（不只段末）的"市场冻结"守卫 + 基线分布指纹 ──
+      List<String> marketLogLines = new ArrayList<>(settlementLog.messages());
+      marketLogLines.addAll(traceLog.messages());
+      summary.addAll(assertEveryMarketRoundTraded(marketLogLines));
+
       summary.add(
           "=== 体检通过："
               + SEGMENTS
               + " 段 / "
               + TOTAL_DAYS
-              + " 天，5 组不变量全部成立（货币守恒 · 非负 · 人口不爆不灭 · 市场在运转 · 账目闭合）===");
+              + " 天，5 组不变量全部成立（货币守恒 · 非负 · 人口不爆不灭 · 市场在运转 · 账目闭合）"
+              + " + W4b 加牙："
+              + BASELINE_MARKET_ROUNDS
+              + " 个市场轮逐轮零成交 = 0 且分布指纹与基线逐值相同 ===");
       writeSummary(summary);
       summary.forEach(System.out::println);
     }
+  }
+
+  // ── W4b 加牙：逐市场轮的"市场冻结"守卫 + 基线分布 ─────────────────────────────────────
+
+  /**
+   * ★★★ <b>W4b 加牙：逐市场轮断言"零成交轮次 = 0"+ 钉住实测分布指纹</b>（判据出处：设计书 v3.14 §7「老守卫加牙（测试批）」+ §6.3 判据 3 的负向面；W4
+   * 验收报告 §2.9 给的实测分布）。
+   *
+   * <p>★★ <b>它比原来的"每段成交 &gt; 0"硬在哪</b>：旧断言只在 8 个段末（day 30/60/…/240）取样 —— 它必须**恰好**在段末撞上零成交轮才会红。 W4
+   * 初版的坏法（买侧"预先切分"配给）实测 96 轮里 15 轮零成交，但零成交轮只有 day 90 落在段末 ⇒ 段 1/段 2 各自"恰好剩 1 笔"就放行了；
+   * 换成另一份时序（零成交轮全在非段末日）时它**全绿**。本方法扫**每一轮**（用 {@code MARKET_REPORT} 的逐轮读数）， 并把整份分布指纹钉住 ⇒ "任何一轮塌成
+   * 0"或"任何一轮的笔数变了"都当场红。
+   *
+   * <p>★ <b>读数来源与自检</b>：{@code MARKET_REPORT} 逐轮一条（DEBUG），字段 {@code day} / {@code fills}；本方法自带三条自检，
+   * 防止"读侧漏采"把判据悄悄变弱：① 轮次数 == {@link #BASELINE_MARKET_ROUNDS}；② 同一天不得有两轮；③ 相邻两轮的间隔 ≤ {@link
+   * #MAX_MARKET_ROUND_GAP_DAYS}（市场每 5 天必有一轮例行开市）；④ 逐轮 {@code fills} 之和 == {@code MARKET_FILL}
+   * 逐笔行数（两处独立读数交叉验证）。
+   *
+   * @return 给人看的分布摘要行（追加进 {@code summary.txt}）
+   */
+  private static List<String> assertEveryMarketRoundTraded(List<String> logLines) {
+    List<MarketRound> rounds = marketRounds(logLines);
+    long fillLines =
+        logLines.stream().filter(line -> "MARKET_FILL".equals(eventNameOf(line))).count();
+
+    // ── 自检：读到的轮次是不是"全部轮次" ──
+    assertThat(rounds)
+        .as("读到的市场轮次数必须 == 基线 %d（少了 ⇒ 读侧漏采，后面的判据会静默变弱；多了 ⇒ 市场触发口径变了）", BASELINE_MARKET_ROUNDS)
+        .hasSize(BASELINE_MARKET_ROUNDS);
+    assertThat(rounds)
+        .extracting(MarketRound::day)
+        .as("同一天不得有两轮（一天一轮是市场机制的结构事实）")
+        .doesNotHaveDuplicates();
+    for (int index = 1; index < rounds.size(); index++) {
+      long gap = rounds.get(index).day() - rounds.get(index - 1).day();
+      assertThat(gap)
+          .as(
+              "相邻市场轮的间隔必须 ≤ %d 天（例行轮 day%%5==0；间隔更大说明有轮次没被读到）：前轮 day=%d 后轮 day=%d",
+              MAX_MARKET_ROUND_GAP_DAYS, rounds.get(index - 1).day(), rounds.get(index).day())
+          .isBetween(1L, MAX_MARKET_ROUND_GAP_DAYS);
+    }
+
+    // ── ① 零成交的市场轮次数 = 0（本批加的那颗牙） ──
+    List<MarketRound> frozen = rounds.stream().filter(round -> round.fills() == 0L).toList();
+    assertThat(frozen)
+        .as(
+            "★ 零成交的市场轮次数必须 = 0 —— 出现零成交轮就是历史缺陷「市场冻结」复发（该轮没有一笔成交）。" + "零成交轮明细=%s；全部分布=%s",
+            frozen.stream().map(round -> "day" + round.day()).toList(), distributionText(rounds))
+        .isEmpty();
+
+    // ── ② 基线分布指纹（逐值钉住；不是区间、不是下界） ──
+    Map<Long, Integer> actualDistribution = distributionOf(rounds);
+    assertThat(actualDistribution)
+        .as(
+            "逐市场轮成交笔数的分布必须与验收实测基线逐值相同（世界行为有意改变时必须显式重新基线化，不许放宽）。" + "实测=%s 基线=%s",
+            distributionText(rounds), actualDistribution)
+        .isEqualTo(baselineFillsDistribution());
+
+    List<Long> sorted = rounds.stream().map(MarketRound::fills).sorted().toList();
+    double median = (sorted.get(sorted.size() / 2 - 1) + sorted.get(sorted.size() / 2)) / 2.0;
+    assertThat(sorted.get(0))
+        .as("最小成交笔数（基线 %d；实测分布=%s）", BASELINE_MIN_FILLS, distributionText(rounds))
+        .isEqualTo(BASELINE_MIN_FILLS);
+    assertThat(median).as("中位成交笔数（基线 %s）", BASELINE_MEDIAN_FILLS).isEqualTo(BASELINE_MEDIAN_FILLS);
+    assertThat(sorted.get(sorted.size() - 1))
+        .as("最大成交笔数（基线 %d）", BASELINE_MAX_FILLS)
+        .isEqualTo(BASELINE_MAX_FILLS);
+
+    // ── ③ 交叉验证：逐轮 fills 之和 == 逐笔 MARKET_FILL 行数（两个独立读数同源） ──
+    long totalFills = rounds.stream().mapToLong(MarketRound::fills).sum();
+    assertThat(totalFills)
+        .as("Σ 逐轮 fills 必须 == MARKET_FILL 逐笔行数（对不上说明两处读数之一漏了/多了）")
+        .isEqualTo(fillLines);
+
+    List<String> evidence = new ArrayList<>();
+    evidence.add(
+        "★ W4b 加牙（逐市场轮）：轮次="
+            + rounds.size()
+            + " 零成交轮次="
+            + frozen.size()
+            + " min/中位/max="
+            + sorted.get(0)
+            + "/"
+            + median
+            + "/"
+            + sorted.get(sorted.size() - 1)
+            + " Σfills="
+            + totalFills
+            + "（== MARKET_FILL "
+            + fillLines
+            + " 行）");
+    evidence.add("★ W4b 加牙（分布 笔数:轮数）：" + distributionText(rounds));
+    return evidence;
+  }
+
+  /** 一个市场轮的读数（只从 {@code MARKET_REPORT} 日志行解析）。 */
+  private record MarketRound(long day, long fills) {}
+
+  /** 逐轮读数（按 day 升序；同日多条 = 上游异常，交由断言暴露）。 */
+  private static List<MarketRound> marketRounds(List<String> logLines) {
+    List<MarketRound> rounds = new ArrayList<>();
+    for (String line : logLines) {
+      if (!"MARKET_REPORT".equals(eventNameOf(line))) {
+        continue;
+      }
+      rounds.add(new MarketRound(longFieldOf(line, "day"), longFieldOf(line, "fills")));
+    }
+    rounds.sort(Comparator.comparingLong(MarketRound::day));
+    return List.copyOf(rounds);
+  }
+
+  /** 事件名（{@code event=NAME} 那个 token；没有该字段 ⇒ 空串）。 */
+  private static String eventNameOf(String line) {
+    String marker = "event=";
+    int at = line.indexOf(marker);
+    if (at < 0) {
+      return "";
+    }
+    int start = at + marker.length();
+    int end = start;
+    while (end < line.length() && !Character.isWhitespace(line.charAt(end))) {
+      end++;
+    }
+    return line.substring(start, end);
+  }
+
+  /** 从事件行里取一个 long 字段；字段缺失或不是整数 ⇒ 当场抛（★ 不静默当 0 —— 那会让判据变钝）。 */
+  private static long longFieldOf(String line, String key) {
+    String marker = key + "=";
+    int at = line.indexOf(marker);
+    if (at < 0) {
+      throw new IllegalStateException("日志行缺少字段 " + marker + " : " + line);
+    }
+    int start = at + marker.length();
+    int end = start;
+    while (end < line.length()
+        && (Character.isDigit(line.charAt(end)) || line.charAt(end) == '-')) {
+      end++;
+    }
+    if (end == start) {
+      throw new IllegalStateException("日志行的字段不是整数 " + marker + " : " + line);
+    }
+    return Long.parseLong(line.substring(start, end));
+  }
+
+  /** 分布（笔数 → 轮次数；键升序）。 */
+  private static Map<Long, Integer> distributionOf(List<MarketRound> rounds) {
+    Map<Long, Integer> distribution = new TreeMap<>();
+    for (MarketRound round : rounds) {
+      distribution.merge(round.fills(), 1, Integer::sum);
+    }
+    return distribution;
+  }
+
+  /** 分布的可读形态：{@code 17×10, 18×1, …}（笔数升序）。 */
+  private static String distributionText(List<MarketRound> rounds) {
+    StringBuilder text = new StringBuilder();
+    for (Map.Entry<Long, Integer> entry : distributionOf(rounds).entrySet()) {
+      if (text.length() > 0) {
+        text.append(", ");
+      }
+      text.append(entry.getKey()).append('×').append(entry.getValue());
+    }
+    return text.toString();
   }
 
   // ── 推进 ────────────────────────────────────────────────────────────────────────────
