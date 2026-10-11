@@ -86,6 +86,13 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-army</artifactId>
     </dependency>
+    <!-- ★★ 2026-10-12 B2a（设计书 §4.1 / 用户原话②「app只负责组装」）：**运行框架**（工具运作 + 决策人运行）。
+         组合根是**唯一**认识它的模块：app 把宿主事实（工具名声明 AppDecisionToolNames、图片通路
+         DecisionToolImages、权限链执行 DecisionCallerFactory、mapId / 会话库 / 每轮 LLM 客户端）交给它，
+         它自己不依赖 app（反向依赖 = app → ga → app 环）。★ 同上面 actor/gov/army 一条纪律：显式声明。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-ga</artifactId>
+    </dependency>
     <!-- 工具 / 权限 / 审批 / MCP（T5~T7 消费；依赖先按 spec 声明）。
          SNAPSHOT——跨机重建见 CLAUDE.md「换设备后的自检清单」第 2 条。 -->
     <dependency>

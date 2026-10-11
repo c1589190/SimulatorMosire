@@ -20,6 +20,7 @@ import io.mosire.simos.app.tools.write.LevyRegionTool;
 import io.mosire.simos.app.tools.write.RaiseUnitTool;
 import io.mosire.simos.app.tools.write.SocialHouseholdMembersTool;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.decision.DecisionProposable;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;

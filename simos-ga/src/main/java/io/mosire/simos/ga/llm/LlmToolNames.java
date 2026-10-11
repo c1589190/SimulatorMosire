@@ -1,4 +1,4 @@
-package io.mosire.simos.app.llm;
+package io.mosire.simos.ga.llm;
 
 import io.mosire.agentlib.llm.ToolDef;
 import java.util.ArrayList;
@@ -29,9 +29,10 @@ import java.util.regex.Pattern;
  * GUI 的调色板，还与命令类型 {@code <namespace>.<Command>} 同名（T 系列的裁定）。为一个供应商的文法
  * 去改全平台的标识，等于把**线格式的约束**泄进领域标识里；而且换个供应商（文法不同）就得再改一次。
  *
- * <p>★ **为什么放在 {@code app.llm}**：这条约束是**供应商方言**的属性（OpenAI 兼容的函数名文法），不是"决策流程"的属性； {@code app.llm}
- * 本就是"我们怎么跟 provider 说话"的包（读路由、注密钥、定采样、观测用量）。放在 {@code decision/} 里，下一条要暴露工具给模型的路（GM agent
- * 循环、判决器接工具）就只能反向 import 一个 decision 专属包、或再抄一份——正是本仓反复 消掉的那种漂移。
+ * <p>★ **为什么放在 {@code ga.llm}**（2026-10-12 B2a 自 {@code app.llm} 迁入）：这条约束是**供应商方言**的属性（OpenAI
+ * 兼容的函数名文法），不是"决策流程"的属性；它属于用户原话⑤里的「**工具运作**」——"怎么把工具给模型"，正是 {@code simos-ga} 的职责。 放在 {@code
+ * ga.decision} 里，下一条要暴露工具给模型的路（GM agent 循环、判决器接工具）就只能反向 import 一个 decision 专属包、
+ * 或再抄一份——正是本仓反复消掉的那种漂移。★ 迁出 {@code app.llm} 的**唯一**理由就是模块边界（app → ga 单向，ga 不得依赖 app）。
  *
  * <p>★★ **双向且可判**：{@link #of} 建表时**当场**判两种碰撞，命中就抛（{@link IllegalStateException}，装配故障）：
  *

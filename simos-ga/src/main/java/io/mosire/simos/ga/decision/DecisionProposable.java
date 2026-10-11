@@ -1,4 +1,4 @@
-package io.mosire.simos.app.decision;
+package io.mosire.simos.ga.decision;
 
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.util.spi.CommandTarget;

@@ -25,6 +25,7 @@ class ArchitectureGuardsTest {
   private static final List<String> MODULES =
       List.of(
           "simos-util",
+          "simos-ga-spi",
           "simos-map",
           "simos-calendar",
           "simos-social-api",
@@ -38,6 +39,7 @@ class ArchitectureGuardsTest {
           "simos-economy",
           "simos-gov",
           "simos-army",
+          "simos-ga",
           "simos-app");
 
   /** 根 {@code pom.xml} 里的模块声明（构建面的权威清单）。 */
@@ -95,6 +97,10 @@ class ArchitectureGuardsTest {
    *
    * <p>★ <b>为什么钉"等于"而不是"包含"</b>：多一个（清单里有、构建面没有 ⇒ 拼错模块名，扫描其实是空的）与少一个同样是静默 失效方向；{@code
    * containsExactlyInAnyOrderElementsOf} 两个方向一起钉，顺带把清单里的**重复项**也判红。
+   *
+   * <p>★ <b>2026-10-12 补记（C1 测试迁移批）</b>：B1 新增 {@code simos-ga-spi}、B2a 新增 {@code simos-ga} 时根
+   * {@code pom.xml} 加了、本清单没加 ⇒ 本用例当场红（B1 落地后即已红）。本次按"清单与根 pom 必须同步"把两条补回，两个新模块随 之纳入扫描面；实测两片 {@code
+   * src/main} 里零 {@code implements ChangeSet} ⇒ 上面那条恰 9 个的判据不受影响（扫描面变大 = 覆盖变多，判据本身未改）。
    */
   @Test
   void theScannedModuleListMatchesTheOneTheBuildDeclares() throws IOException {

@@ -32,6 +32,7 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -418,7 +419,14 @@ class DecisionAgentRunnerTest {
           .containsExactly("user", "assistant", "tool", "assistant");
       conversations = reopened;
       llm.enqueue(LlmResponse.text("重启后继续"));
-      new DecisionAgentRunner(factory(), decisionRegistry(), llm, reopened, MAP_ID)
+      new DecisionAgentRunner(
+              factory(),
+              decisionRegistry(),
+              llm,
+              reopened,
+              MAP_ID,
+              AppDecisionToolNames.INSTANCE,
+              DecisionToolImages.INSTANCE)
           .run(DM_FRA, state());
 
       assertThat(roles(llm.requests().get(2).messages()))
@@ -749,7 +757,14 @@ class DecisionAgentRunnerTest {
 
     // ★ 默认构造器（不给显式上限）——测的就是 DEFAULT_MAX_LLM_CALLS 那个数
     DecisionAgentRunner.DecisionTurn turn =
-        new DecisionAgentRunner(factory(), decisionRegistry(), llm, conversations, MAP_ID)
+        new DecisionAgentRunner(
+                factory(),
+                decisionRegistry(),
+                llm,
+                conversations,
+                MAP_ID,
+                AppDecisionToolNames.INSTANCE,
+                DecisionToolImages.INSTANCE)
             .run(DM_FRA, state());
 
     assertThat(turn.llmCalls())
@@ -1016,12 +1031,18 @@ class DecisionAgentRunnerTest {
       int maxLlmCalls,
       boolean vision,
       DecisionAgentRunner.OpeningSnapshot openingSnapshot) {
+    // ★ B2a 起运行流住在 ga：「11 个工具名」与「图片通路」都是宿主（app）构造期注入的接缝。
+    //   这里给的是**生产用的那两个实现**——AppDecisionToolNames.INSTANCE（名字逐个取自各工具 NAME 常量，
+    //   与白名单同源）与 DecisionToolImages.INSTANCE（消息形状与迁出前 DecisionAgentRunner 内联的那段逐字相同）。
+    //   ⇒ 本类原先钉的回合语义与"图发不发"的断言都不因这次搬迁而改变判据。
     return new DecisionAgentRunner(
         factory(),
         registry,
         llm,
         conversations,
         MAP_ID,
+        AppDecisionToolNames.INSTANCE,
+        DecisionToolImages.INSTANCE,
         maxLlmCalls,
         DecisionAgentRunner.ProgressListener.NONE,
         vision,
@@ -1037,6 +1058,8 @@ class DecisionAgentRunnerTest {
         llm,
         conversations,
         MAP_ID,
+        AppDecisionToolNames.INSTANCE,
+        DecisionToolImages.INSTANCE,
         maxLlmCalls,
         DecisionAgentRunner.ProgressListener.NONE,
         false,

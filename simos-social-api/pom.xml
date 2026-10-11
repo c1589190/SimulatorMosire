@@ -91,6 +91,9 @@
                          `simos-calendar` 不在 §3 的补进列里，但本模块的允许面只有 map ⇒ 按 I-F4 一并列入
                          （实测不落在传递链上；`simos-util` 则由 `map → util` 传递带出，按 I-F1 不列，另注）。 -->
                     <exclude>io.mosire:simos-calendar</exclude>
+                    <!-- ★★ 2026-10-12 B2a（设计书 §4.1 / §5 I-G2）：运行框架 simos-ga（工具运作 + 决策人运行）——
+                         它永不依赖 app，其余模块也不得依赖它 ⇒ 列入禁列（组合根 simos-app 是唯一认识它的地方）。 -->
+                    <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <!-- ★★ 2026-10-12 闭合：原按 I-F1 作"传递依赖例外"未列的 util，在 `searchTransitive=false`
                          之后可以列入（`map → util` 只在本模块的传递闭包里，不再是本模块的直接声明）⇒ 零例外。 -->

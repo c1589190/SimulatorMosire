@@ -61,6 +61,12 @@
          做成纯派生视图（ArmyVision），不落盘、不算战力；方案 A 起允许直连 simos-social（人员/家户唯一域），
          连同 util/map/unit 一起是显式依赖面；仍不得依赖 sd/economy/actor/app/core 实现。 -->
     <module>simos-army</module>
+    <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
+         §1 用户原话 ⑤ / §4.1 目标依赖图 / §4.5 内容表）：**运行框架** —— 工具运作 + 决策人运行。
+         它依赖 core + sd + util + ga-spi + agentlib，**永不依赖 simos-app**（否则 app → ga → app 成环）；
+         凡运行流需要"宿主的东西"（工具名声明、权限链执行、图片通路…）一律构造期注入（接口在 ga、实现在 app）。
+         排在组合根 simos-app 之前：app 是唯一认识本模块的地方（"app 只负责组装"）。 -->
+    <module>simos-ga</module>
     <!-- ★ M5 T1：组合根。依赖全部领域模块 + AgentLib/MCP，是 reactor 末位；
          它不被任何模块依赖（父 POM 不引它 ⇒ 无反向依赖）。不设 enforcer（spec §2.2）。 -->
     <module>simos-app</module>
@@ -142,6 +148,11 @@
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-army</artifactId><version>${project.version}</version>
+      </dependency>
+      <!-- ★★ 2026-10-12 新增（设计书 §4.1/§4.5）：运行框架（工具运作 + 决策人运行）。
+           与其余模块同款在此集中版本；**唯一**声明它的是组合根 simos-app（其余模块一律禁）。 -->
+      <dependency>
+        <groupId>io.mosire</groupId><artifactId>simos-ga</artifactId><version>${project.version}</version>
       </dependency>
 
       <!-- 外部依赖 -->

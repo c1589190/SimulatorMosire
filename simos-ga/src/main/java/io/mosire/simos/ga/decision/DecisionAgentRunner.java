@@ -1,4 +1,4 @@
-package io.mosire.simos.app.decision;
+package io.mosire.simos.ga.decision;
 
 import io.mosire.agentlib.llm.ContentPart;
 import io.mosire.agentlib.llm.LlmClient;
@@ -9,22 +9,9 @@ import io.mosire.agentlib.llm.ToolDef;
 import io.mosire.agentlib.store.ConversationStore;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.app.AppLog;
-import io.mosire.simos.app.AppLogSource;
-import io.mosire.simos.app.access.DecisionCallerFactory;
-import io.mosire.simos.app.llm.LlmToolNames;
-import io.mosire.simos.app.render.ArtifactStore;
-import io.mosire.simos.app.tools.read.BranchListTool;
-import io.mosire.simos.app.tools.read.CatalogTool;
-import io.mosire.simos.app.tools.read.MapRenderTool;
-import io.mosire.simos.app.tools.read.SkillTool;
-import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
-import io.mosire.simos.app.tools.write.IssueDirectiveTool;
-import io.mosire.simos.app.tools.write.MyPacketTool;
-import io.mosire.simos.app.tools.write.PacketIntentTool;
-import io.mosire.simos.app.tools.write.ProposeCallTool;
-import io.mosire.simos.app.tools.write.SubmitPacketTool;
-import io.mosire.simos.app.tools.write.SubmitVerdictTool;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.llm.LlmToolNames;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
@@ -54,9 +41,15 @@ import java.util.Set;
  * 依赖的是 Brain 自己的类（{@code AgentConfig}/{@code ContextAssembler}/{@code Compactor}…）， 搬不动；AgentLib
  * 的定位本就是设施库、运行流属应用层。故这里自建一个**精简**循环（不做子 agent、技能、压缩档位、bash 工具）。
  *
- * <p>★★ **权限在这一层强制，且只能在这一层**：每次工具调用都经 {@link DecisionCallerFactory#execute} → AgentLib {@code
- * ToolCallAuthorizer}（判定链五段全走），上下文由 {@code callerFor} **每次现算**（世界变了范围就变）。 直接 {@code
- * tool.execute(ctx)} 是错的——资源判定者只在 authorizer 的第 ③ 段注入。
+ * <p>★★ **权限在这一层强制，且只能在这一层**：每次工具调用都经 {@link DecisionToolCaller#execute} → AgentLib {@code
+ * ToolCallAuthorizer}（判定链五段全走），上下文由调用方的 {@code callerFor} **每次现算**（世界变了范围就变）。 直接 {@code
+ * tool.execute(ctx)} 是错的——资源判定者只在 authorizer 的第 ③ 段注入。★ 执行面是**注入**的（{@link DecisionToolCaller}）：
+ * 它住在 {@code simos-app}（持有范围函数与审批编排器），而本类住在 {@code simos-ga}——{@code ga} 依赖 {@code app} 会成环。
+ *
+ * <p>★★ **本类在 2026-10-12（B2a）自 {@code simos-app} 迁入 {@code simos-ga}**（用户原话⑤「把工具运作、决策人运行放到ga模块」）：
+ * 迁移的硬约束是"运行流不得依赖组合根"，故凡"宿主的东西"一律改成**构造期注入**——工具执行面（{@link DecisionToolCaller}）、 工具名声明（{@link
+ * DecisionToolNames}）、图片通路（{@link ToolImages}）、日志门面（{@code GaLog}）； 地图 id / 决策人桶注册表 / 会话库 / 每轮 LLM
+ * 客户端本来就是入参。**行为与载荷逐字不变**（I-G1）。
  *
  * <p>★ **会话 id 由决策人 id 派生**（{@link #conversationIdOf}），**不隐式取全局状态**：同一决策人跨 tick（乃至跨进程重启， 因为 {@code
  * SqliteConversationStore} 落在 {@code <store>} 下）落到同一段会话上。
@@ -87,7 +80,7 @@ import java.util.Set;
  *   <li>有图且**该 provider 有视觉能力**（{@link DecisionAgentRunner} 的 {@code vision}，来自路由配置）⇒ 除 tool 消息外
  *       **另发一条 {@code user} 图片消息**（★ tool 角色带图是 AgentLib 的响亮 CONFIG 错，故必须另起一条）；
  *   <li>没有视觉能力 ⇒ **一张都不发**（发过去只会换一个 400；文本摘要本来就在 tool 消息里，且渲染工具的 {@code format=auto}
- *       会按同一个能力位回落成字符图，见 {@link MapRenderTool#VISION_CONFIG_KEY}）；
+ *       会按同一个能力位回落成字符图，见 {@link DecisionToolNames#visionConfigKey()}）；
  *   <li>**开场快照**（{@link OpeningSnapshot}，装配方按开关给）：空会话时在身份消息之后补一条图片消息，让决策人"先看一眼世界"。
  * </ul>
  *
@@ -96,11 +89,16 @@ import java.util.Set;
  */
 public final class DecisionAgentRunner {
 
-  /** 决策回合事件的发射通道（分类 = {@link AppLog#decision()}，来源 = {@link AppLogSource#DECISION_TURN}）。 */
-  private static final LogChannel DECISION = EventLog.channel(AppLog.decision());
+  /** 决策回合事件的发射通道（分类 = {@link GaLog#decision()}，来源 = {@link GaLogSource#GA_DECISION_TURN}）。 */
+  private static final LogChannel DECISION = EventLog.channel(GaLog.decision());
 
-  /** 会话 id 前缀（与 {@link DecisionCallerFactory#INSTANCE_ID_PREFIX} 同源：都按决策人派生）。 */
-  public static final String CONVERSATION_ID_PREFIX = DecisionCallerFactory.INSTANCE_ID_PREFIX;
+  /**
+   * 会话 id 前缀（{@code "decision-maker:"}）。
+   *
+   * <p>★★ **它同时是 {@code simos-app} 侧决策人身份 id 的前缀**（{@code DecisionCallerFactory.INSTANCE_ID_PREFIX}
+   * ——"决策人身份 ↔ 会话锚"必须逐字同源）：那处常量现在**引用本常量**（{@code app → ga} 是合法方向），故全仓只有这一处字面量。
+   */
+  public static final String CONVERSATION_ID_PREFIX = "decision-maker:";
 
   /**
    * **开场快照**（P4）：给某个决策人产出一条"世界长这样"的图片消息（空会话首轮注入）。
@@ -178,11 +176,20 @@ public final class DecisionAgentRunner {
     void progress(int llmCalls, List<ToolInvocation> toolInvocations);
   }
 
-  private final DecisionCallerFactory callerFactory;
+  /** **权限链执行面**（宿主注入，见 {@link DecisionToolCaller}）：范围每次现算，执行走 AgentLib 判定链。 */
+  private final DecisionToolCaller caller;
+
   private final ToolRegistry registry;
   private final LlmClient llmClient;
   private final ConversationStore conversations;
   private final String mapId;
+
+  /** **工具名声明**（宿主注入，见 {@link DecisionToolNames}）：冻结分类、提交拦截与开场消息都按它取名字。 */
+  private final DecisionToolNames toolNames;
+
+  /** **图片通路**（宿主注入，见 {@link ToolImages}）：ga 不认识工件库与媒体类型，只决定发不发、什么时候发。 */
+  private final ToolImages toolImages;
+
   private final int maxLlmCalls;
 
   /** 进度回调（默认 {@link ProgressListener#NONE}；见其类注：MCP 那条同步路不装，行为逐字不变）。 */
@@ -198,16 +205,16 @@ public final class DecisionAgentRunner {
    * **本次调用透传给工具的宿主编排配置**（P4）：目前只有一项——有没有视觉能力。
    *
    * <p>★ 它与 {@link #vision} **同源、在构造期算一次**：两处各拼一次（一处判断发不发图、一处拼给工具）就会出现"图不发、
-   * 工具却以为有视觉能力"（或反过来）这种无症状的错位。
+   * 工具却以为有视觉能力"（或反过来）这种无症状的错位。★ 键的拼写点在渲染工具那边，由 {@link DecisionToolNames#visionConfigKey()} 给。
    */
   private final Map<String, Object> toolConfig;
 
   /**
-   * **本 runner 构建工具面所用的白名单**（P6a）：生产路径 = {@code callerFactory.whitelistFor(dm)}（per-DM）， 旧构造器 =
-   * {@code callerFactory.whitelist()}（全局，兼容旧档/夹具）。
+   * **本 runner 构建工具面所用的白名单**（P6a）：生产路径 = {@code caller.whitelistFor(dm)}（per-DM）， 旧构造器 = {@code
+   * caller.whitelist()}（全局，兼容旧档/夹具）。
    *
-   * <p>★ 它与执行期 {@code callerFactory.permissionsFor(dm)} 用的是同一份 {@code whitelistFor(dm)} ⇒ "模型能看到的"与
-   * "权限组放行的"不会错位（spec §2.3 要点 1）。
+   * <p>★ 它与执行期 {@code caller.permissionsFor(dm)} 用的是同一份 {@code whitelistFor(dm)} ⇒ "模型能看到的"与
+   * "权限组放行的"不会错位（spec §2.3 要点 1）。两处都在装配方（{@code simos-app}）。
    */
   private final Set<String> toolWhitelist;
 
@@ -215,7 +222,7 @@ public final class DecisionAgentRunner {
   private final List<ToolDef> toolDefs;
 
   /** 线名 ↔ 真实名（装配期建好：碰撞或转义不合文法就**在这里**炸，而不是发一份坏请求出去换一个 400）。 */
-  private final LlmToolNames toolNames;
+  private final LlmToolNames wireNames;
 
   /** 同时决策冻结上下文；{@code null} = 旧（单人/顺序）模式。 */
   private final FrozenDecisionContext frozen;
@@ -224,45 +231,61 @@ public final class DecisionAgentRunner {
   private final Map<String, FrozenToolKind> frozenToolKinds;
 
   /**
-   * @param callerFactory 决策人调用者工厂（范围**每次现算**；本条旧构造器仍用其 {@code whitelist()}——全局白名单， 兼容旧档/夹具；per-DM
-   *     走显式白名单那条）
+   * @param caller 权限链执行面（宿主注入，见 {@link DecisionToolCaller}：范围**每次现算**）；本条旧构造器仍用其 {@code
+   *     whitelist()}——全局白名单，兼容旧档/夹具；per-DM 走显式白名单那条
    * @param registry **决策人桶**的注册表（{@code Shell.toolsFor(Role.DECISION_AGENT)}）——工具面与执行都从它取
    * @param llmClient 模型客户端（生产路径是真 LLM；用例给 {@code FakeLlmClient}）
    * @param conversations 会话存储（{@code SqliteConversationStore} 落 {@code <store>} 下 ⇒ 跨 tick / 跨重启沿用）
    * @param mapId 本世界的 map 称谓（范围函数要它拼资源前缀）
+   * @param toolNames 工具名声明（宿主注入，见 {@link DecisionToolNames}）
+   * @param toolImages 图片通路（宿主注入，见 {@link ToolImages}）
    */
   public DecisionAgentRunner(
-      DecisionCallerFactory callerFactory,
+      DecisionToolCaller caller,
       ToolRegistry registry,
       LlmClient llmClient,
       ConversationStore conversations,
-      String mapId) {
-    this(callerFactory, registry, llmClient, conversations, mapId, DEFAULT_MAX_LLM_CALLS);
+      String mapId,
+      DecisionToolNames toolNames,
+      ToolImages toolImages) {
+    this(
+        caller,
+        registry,
+        llmClient,
+        conversations,
+        mapId,
+        toolNames,
+        toolImages,
+        DEFAULT_MAX_LLM_CALLS);
   }
 
   /**
    * ★★ **显式白名单**的便利形态（P6a 的接缝）：其余分量全走缺省（回合上限 {@link #DEFAULT_MAX_LLM_CALLS}、无监听、无视觉、
    * 不快照），只有"给模型看的工具面"用调用方给的白名单。
    *
-   * <p>★ **旧构造器不受影响**：不带 {@code Set<String>} 的那几条仍在内部交 {@code callerFactory.whitelist()}（全局）。 生产
-   * {@code DecisionAgentService} 走全参并把 {@code callerFactory.whitelistFor(dm)} 传进来。
+   * <p>★ **旧构造器不受影响**：不带 {@code Set<String>} 的那几条仍在内部交 {@code caller.whitelist()}（全局）。 生产 {@code
+   * DecisionAgentService} 走全参并把 {@code caller.whitelistFor(dm)} 传进来。
    *
-   * @param toolWhitelist 本 runner 的工具面白名单（**非空校验**；空集合 = 给模型一个空工具面，不是"回落到全局"——回落由 构造方决定，见 {@link
-   *     DecisionCallerFactory#whitelistFor(DecisionMaker)}）
+   * @param toolWhitelist 本 runner 的工具面白名单（**非空校验**；空集合 = 给模型一个空工具面，不是"回落到全局"——回落由 构造方决定，即装配方的
+   *     {@code DecisionCallerFactory#whitelistFor(DecisionMaker)}）
    */
   public DecisionAgentRunner(
-      DecisionCallerFactory callerFactory,
+      DecisionToolCaller caller,
       ToolRegistry registry,
       LlmClient llmClient,
       ConversationStore conversations,
       String mapId,
+      DecisionToolNames toolNames,
+      ToolImages toolImages,
       Set<String> toolWhitelist) {
     this(
-        callerFactory,
+        caller,
         registry,
         llmClient,
         conversations,
         mapId,
+        toolNames,
+        toolImages,
         DEFAULT_MAX_LLM_CALLS,
         ProgressListener.NONE,
         false,
@@ -272,18 +295,22 @@ public final class DecisionAgentRunner {
 
   /** 显式给回合上限的形态（用例要测"跑飞会被中止"就得把它压小）。 */
   public DecisionAgentRunner(
-      DecisionCallerFactory callerFactory,
+      DecisionToolCaller caller,
       ToolRegistry registry,
       LlmClient llmClient,
       ConversationStore conversations,
       String mapId,
+      DecisionToolNames toolNames,
+      ToolImages toolImages,
       int maxLlmCalls) {
     this(
-        callerFactory,
+        caller,
         registry,
         llmClient,
         conversations,
         mapId,
+        toolNames,
+        toolImages,
         maxLlmCalls,
         ProgressListener.NONE);
   }
@@ -295,19 +322,23 @@ public final class DecisionAgentRunner {
    * <p>★ 这条走**无视觉能力、不开快照**的缺省（既有调用点的行为逐字不变）：要图片通路请走全参那条。
    */
   public DecisionAgentRunner(
-      DecisionCallerFactory callerFactory,
+      DecisionToolCaller caller,
       ToolRegistry registry,
       LlmClient llmClient,
       ConversationStore conversations,
       String mapId,
+      DecisionToolNames toolNames,
+      ToolImages toolImages,
       int maxLlmCalls,
       ProgressListener progressListener) {
     this(
-        callerFactory,
+        caller,
         registry,
         llmClient,
         conversations,
         mapId,
+        toolNames,
+        toolImages,
         maxLlmCalls,
         progressListener,
         false,
@@ -317,8 +348,8 @@ public final class DecisionAgentRunner {
   /**
    * **全参（旧调用点兼容形态）**（P4 生产路径）：另给"该 provider 有没有视觉能力"与开场快照来源。
    *
-   * <p>★ 这条**不带**显式白名单 ⇒ 交 {@code callerFactory.whitelist()}（全局白名单），逐字保留 P6a 之前的旧行为。 per-DM 的
-   * {@code allowedTools} 走下面那条十参重载。
+   * <p>★ 这条**不带**显式白名单 ⇒ 交 {@code caller.whitelist()}（全局白名单），逐字保留 P6a 之前的旧行为。 per-DM 的 {@code
+   * allowedTools} 走下面那条十一参重载。
    *
    * @param vision 该 provider 的模型有没有视觉能力（{@code
    *     LlmRouteLoader.capabilities(...).vision()}）：它**同时**决定 "工具结果里的图发不发"与"渲染工具的 {@code auto}
@@ -326,35 +357,39 @@ public final class DecisionAgentRunner {
    * @param openingSnapshot 空会话首轮要不要补一张世界图（装配方按开关给；{@link OpeningSnapshot#NONE} = 关）
    */
   public DecisionAgentRunner(
-      DecisionCallerFactory callerFactory,
+      DecisionToolCaller caller,
       ToolRegistry registry,
       LlmClient llmClient,
       ConversationStore conversations,
       String mapId,
+      DecisionToolNames toolNames,
+      ToolImages toolImages,
       int maxLlmCalls,
       ProgressListener progressListener,
       boolean vision,
       OpeningSnapshot openingSnapshot) {
     this(
-        callerFactory,
+        caller,
         registry,
         llmClient,
         conversations,
         mapId,
+        toolNames,
+        toolImages,
         maxLlmCalls,
         progressListener,
         vision,
         openingSnapshot,
-        globalWhitelistOf(callerFactory));
+        globalWhitelistOf(caller));
   }
 
   /**
-   * ★★ **全参 + 显式工具白名单**（P6a 生产路径）：给模型看的工具面用调用方给的白名单构建（生产 = {@code
-   * callerFactory.whitelistFor(maker)}）。
+   * ★★ **全参 + 显式工具白名单**（P6a 生产路径）：给模型看的工具面用调用方给的白名单构建（生产 = 装配方的 {@code
+   * DecisionCallerFactory#whitelistFor(maker)}）。
    *
    * <p>★ **"用哪份白名单建 face，就检查哪份白名单"**：{@link DecisionToolDefs#requireAll} 拿到的就是这里的 {@code
    * toolWhitelist} ⇒ 它里面每一条都必须在注册表里，缺一条**装配期当场炸**（per-DM 也 fail-closed，不静默少能力、 也不静默兜底到全局）。★
-   * 落在全局白名单之外的 {@code allowedTools} 条目不会出现在这里（交集在 {@link DecisionCallerFactory#whitelistFor}
+   * 落在全局白名单之外的 {@code allowedTools} 条目不会出现在这里（交集在装配方的 {@code DecisionCallerFactory#whitelistFor}
    * 里完成），故"未知项"只可能表现为**能力收窄**，不可能表现为提权。
    *
    * <p>★ 其余参数语义与上面那条旧全参**逐字相同**（同一个构造器体，不复制字段赋值）。
@@ -363,22 +398,26 @@ public final class DecisionAgentRunner {
    *     whitelistFor} 的空名单兼容语义）
    */
   public DecisionAgentRunner(
-      DecisionCallerFactory callerFactory,
+      DecisionToolCaller caller,
       ToolRegistry registry,
       LlmClient llmClient,
       ConversationStore conversations,
       String mapId,
+      DecisionToolNames toolNames,
+      ToolImages toolImages,
       int maxLlmCalls,
       ProgressListener progressListener,
       boolean vision,
       OpeningSnapshot openingSnapshot,
       Set<String> toolWhitelist) {
     this(
-        callerFactory,
+        caller,
         registry,
         llmClient,
         conversations,
         mapId,
+        toolNames,
+        toolImages,
         maxLlmCalls,
         progressListener,
         vision,
@@ -394,22 +433,26 @@ public final class DecisionAgentRunner {
    * sd.IssueDirective} / {@code GovPay} / 外交写等）既不发给模型，执行口也会拒绝。 世界写因此不可能在决策期发生——这正是"同时决策"的硬约束。
    */
   public DecisionAgentRunner(
-      DecisionCallerFactory callerFactory,
+      DecisionToolCaller caller,
       ToolRegistry registry,
       LlmClient llmClient,
       ConversationStore conversations,
       String mapId,
+      DecisionToolNames toolNames,
+      ToolImages toolImages,
       int maxLlmCalls,
       ProgressListener progressListener,
       boolean vision,
       OpeningSnapshot openingSnapshot,
       Set<String> toolWhitelist,
       FrozenDecisionContext frozen) {
-    this.callerFactory = Objects.requireNonNull(callerFactory, "callerFactory");
+    this.caller = Objects.requireNonNull(caller, "caller");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
     this.conversations = Objects.requireNonNull(conversations, "conversations");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.toolNames = Objects.requireNonNull(toolNames, "toolNames");
+    this.toolImages = Objects.requireNonNull(toolImages, "toolImages");
     if (maxLlmCalls <= 0) {
       throw new IllegalArgumentException("maxLlmCalls 必须为正: " + maxLlmCalls);
     }
@@ -417,7 +460,8 @@ public final class DecisionAgentRunner {
     this.progressListener = Objects.requireNonNull(progressListener, "progressListener");
     this.vision = vision;
     this.openingSnapshot = Objects.requireNonNull(openingSnapshot, "openingSnapshot");
-    this.toolConfig = Map.of(MapRenderTool.VISION_CONFIG_KEY, vision);
+    // ★ 键由宿主的工具名声明给（ga 不认识渲染工具），值与 vision 同源（见 toolConfig 的类注）。
+    this.toolConfig = Map.of(toolNames.visionConfigKey(), vision);
     this.toolWhitelist = Set.copyOf(Objects.requireNonNull(toolWhitelist, "toolWhitelist"));
     this.frozen = frozen;
     // ★★ 工具面在**装配期**建一次（不随世界变：它只取决于注册表与白名单），并当场建好名字映射：
@@ -427,14 +471,15 @@ public final class DecisionAgentRunner {
     List<ToolDef> face = DecisionToolDefs.requireAll(registry, this.toolWhitelist);
     // ★ 名字映射建在**全量白名单**上：冻结回合虽然不把世界写工具发给模型，但模型凭记忆叫到它们时，
     //   执行口还要把线名翻回真实名再给出具名 FORBIDDEN（否则会误报 TOOL_NOT_FOUND，把"本回合禁止"说成"没这个工具"）。
-    this.toolNames = LlmToolNames.of(face.stream().map(ToolDef::name).toList());
+    this.wireNames = LlmToolNames.of(face.stream().map(ToolDef::name).toList());
     Map<String, FrozenToolKind> kinds = Map.of();
     List<ToolDef> exposed = face;
     if (frozen != null) {
       LinkedHashMap<String, FrozenToolKind> allowed = new LinkedHashMap<>();
       List<ToolDef> filtered = new ArrayList<>(face.size());
       for (ToolDef def : face) {
-        FrozenToolKind kind = frozenKindOf(def);
+        FrozenToolKind kind =
+            frozenKindOf(def, toolNames.packetTools(), toolNames.statelessReads());
         if (kind != null) {
           allowed.put(def.name(), kind);
           filtered.add(def);
@@ -444,7 +489,7 @@ public final class DecisionAgentRunner {
       exposed = List.copyOf(filtered);
     }
     this.frozenToolKinds = kinds;
-    this.toolDefs = toolNames.wireDefs(exposed);
+    this.toolDefs = wireNames.wireDefs(exposed);
   }
 
   /**
@@ -457,9 +502,13 @@ public final class DecisionAgentRunner {
    *   <li>显式列出的无状态读口 ⇒ {@link FrozenToolKind#STATELESS_READ}；
    *   <li>其余 ⇒ {@code null}（安全默认：新工具若没被明确分类，同时决策回合里不出现）。
    * </ul>
+   *
+   * <p>★ 两组名字由宿主注入的 {@link DecisionToolNames} 派生（{@code packetTools()} / {@code statelessReads()}），
+   * 不在 ga 里写字面量：工具改名而这里没跟着改的话，症状是**静默**的（提交不再被延迟、新读口在冻结回合里消失）。
    */
-  private static FrozenToolKind frozenKindOf(ToolDef def) {
-    if (FROZEN_PACKET_TOOLS.contains(def.name())) {
+  private static FrozenToolKind frozenKindOf(
+      ToolDef def, Set<String> packetTools, Set<String> statelessReads) {
+    if (packetTools.contains(def.name())) {
       return FrozenToolKind.PACKET_WRITE;
     }
     Map<String, Object> schema = def.jsonSchema();
@@ -474,18 +523,18 @@ public final class DecisionAgentRunner {
         }
       }
     }
-    if (FROZEN_STATELESS_READS.contains(def.name())) {
+    if (statelessReads.contains(def.name())) {
       return FrozenToolKind.STATELESS_READ;
     }
     return null;
   }
 
   /**
-   * **缺省全局白名单的取值点**（旧构造器专用）：显式保留 {@code callerFactory} 的 null 校验语义，同时让旧构造器与 P6a 之前逐字同源（{@code
-   * callerFactory.whitelist()}）。
+   * **缺省全局白名单的取值点**（旧构造器专用）：显式保留 {@code caller} 的 null 校验语义，同时让旧构造器与 P6a 之前逐字同源（{@code
+   * caller.whitelist()}）。
    */
-  private static Set<String> globalWhitelistOf(DecisionCallerFactory callerFactory) {
-    return Objects.requireNonNull(callerFactory, "callerFactory").whitelist();
+  private static Set<String> globalWhitelistOf(DecisionToolCaller caller) {
+    return Objects.requireNonNull(caller, "caller").whitelist();
   }
 
   /**
@@ -530,13 +579,8 @@ public final class DecisionAgentRunner {
     STATELESS_READ
   }
 
-  /** 决策包四件套（写自己的 packet 前缀；冻结回合里唯一允许的写）。 */
-  private static final Set<String> FROZEN_PACKET_TOOLS =
-      Set.of(ProposeCallTool.NAME, PacketIntentTool.NAME, SubmitPacketTool.NAME, MyPacketTool.NAME);
-
-  /** 不读世界 revision、也不写世界的共享读口（目录/技能/分支列表/阶段列表）。 */
-  private static final Set<String> FROZEN_STATELESS_READS =
-      Set.of(CatalogTool.NAME, SkillTool.NAME, BranchListTool.NAME, TimelineRevisionsTool.NAME);
+  // ★ 决策包四件套与"无状态共享读口"两组名字**不再在这里写字面量**（B2a）：它们由宿主注入的
+  //   DecisionToolNames 派生（packetTools() / statelessReads()），见 frozenKindOf 的类注。
 
   /**
    * **会话 id 的唯一拼写点**（生产路径只走这个重载）：由**世界事实**（{@link DecisionMaker#id()} + {@link
@@ -609,17 +653,25 @@ public final class DecisionAgentRunner {
    * simos_command_catalog} 不是 {@code simos.command.catalog}（真 LLM 实测缺陷的修法，2026-09-22）。说了真名等于
    * 指示模型去叫一个它看不见的名字——最好的下场是白费一轮（{@code TOOL_NOT_FOUND}），最坏是它照做之后对工具面失去信任。
    * 转义点仍是**唯一**的（同一个函数），故"说的"与"发给模型的"永远同一个写法。
+   *
+   * <p>★ **公开可见性**（B2a）：装配方在"用户先说话"那条路上要先补这条身份消息（{@code
+   * DecisionAgentService#appendUserMessage}）；运行流与装配从 B2a 起分居两个模块（{@code ga} / {@code app}） ⇒
+   * 它不能再是包内可见，故为 {@code public}（语义与文本逐字未变，只是可见性放宽）。
    */
-  static LlmMessage openingUserMessage(DecisionMaker dm) {
-    return openingUserMessage(dm, null);
+  public static LlmMessage openingUserMessage(DecisionMaker dm, DecisionToolNames toolNames) {
+    return openingUserMessage(dm, null, toolNames);
   }
 
   /**
    * 空会话首轮注入的**user**消息：身份 + 权限 + 决策规范。★ 按用户 2026-10-22 裁定，system 角色不再承载任何内容； 请求里只保留一条 content
    * 为一个空格的 system 占位（供应商要求 system 必须存在），身份与规范全部走这条 user。
+   *
+   * <p>★ 工具名一律从宿主注入的 {@link DecisionToolNames} 取（不在这里写字面量）：改名时这条消息跟着走，"说的"与"注册的"不会错位。
    */
-  static LlmMessage openingUserMessage(DecisionMaker dm, FrozenDecisionContext frozen) {
+  static LlmMessage openingUserMessage(
+      DecisionMaker dm, FrozenDecisionContext frozen, DecisionToolNames toolNames) {
     Objects.requireNonNull(dm, "dm");
+    Objects.requireNonNull(toolNames, "toolNames");
     Affiliation affiliation = dm.affiliation();
     String where;
     if (affiliation instanceof Affiliation.Nation nation) {
@@ -631,12 +683,12 @@ public final class DecisionAgentRunner {
     } else {
       throw new IllegalStateException("未知的归属类型: " + affiliation.getClass().getName());
     }
-    String catalog = LlmToolNames.wireNameOf(CatalogTool.NAME);
-    String branches = LlmToolNames.wireNameOf(BranchListTool.NAME);
-    String intentTool = LlmToolNames.wireNameOf(PacketIntentTool.NAME);
-    String proposeTool = LlmToolNames.wireNameOf(ProposeCallTool.NAME);
-    String submitTool = LlmToolNames.wireNameOf(SubmitPacketTool.NAME);
-    String myPacketTool = LlmToolNames.wireNameOf(MyPacketTool.NAME);
+    String catalog = LlmToolNames.wireNameOf(toolNames.catalog());
+    String branches = LlmToolNames.wireNameOf(toolNames.branches());
+    String intentTool = LlmToolNames.wireNameOf(toolNames.packetIntent());
+    String proposeTool = LlmToolNames.wireNameOf(toolNames.propose());
+    String submitTool = LlmToolNames.wireNameOf(toolNames.packetSubmit());
+    String myPacketTool = LlmToolNames.wireNameOf(toolNames.myPacket());
     StringBuilder text = new StringBuilder();
     text.append("你是决策人「")
         .append(dm.id().value())
@@ -652,7 +704,7 @@ public final class DecisionAgentRunner {
         .append(" 给出你有途径触发的命令类型及其载荷字段；")
         .append(branches)
         .append(" 给出分支与当前 head；")
-        .append(LlmToolNames.wireNameOf(SkillTool.NAME))
+        .append(LlmToolNames.wireNameOf(toolNames.skill()))
         .append(" 是决策方法论，可按需阅读。\n")
         .append("\n")
         .append("【决策的两种表达】\n")
@@ -694,12 +746,12 @@ public final class DecisionAgentRunner {
         .append("\n");
     if (frozen == null) {
       text.append("【本轮为单人回合】旧的 ")
-          .append(LlmToolNames.wireNameOf(IssueDirectiveTool.NAME))
+          .append(LlmToolNames.wireNameOf(toolNames.issueDirective()))
           .append(" / ")
-          .append(LlmToolNames.wireNameOf(SubmitVerdictTool.NAME))
+          .append(LlmToolNames.wireNameOf(toolNames.submitVerdict()))
           .append(" 仍可按旧语义使用；但推荐优先用上面的决策包三件套表达。\n")
           .append("如果使用 ")
-          .append(LlmToolNames.wireNameOf(IssueDirectiveTool.NAME))
+          .append(LlmToolNames.wireNameOf(toolNames.issueDirective()))
           .append("：expectedRevision 必须填 ")
           .append(branches)
           .append(" 读到的当前 head；commands 里不得放 sd. 前缀的命令类型（防无限递归）。\n");
@@ -716,16 +768,17 @@ public final class DecisionAgentRunner {
   }
 
   /** 每轮不落盘的 user 规范提醒：保证老会话与新会话都按同一套回合结算规则跑。 */
-  private static LlmMessage decisionRoundNotice(DecisionMaker dm, FrozenDecisionContext frozen) {
+  private static LlmMessage decisionRoundNotice(
+      DecisionMaker dm, FrozenDecisionContext frozen, DecisionToolNames toolNames) {
     StringBuilder text = new StringBuilder();
     text.append("[本回合规则提醒] 决策人「")
         .append(dm.id().value())
         .append("」：自然语言决策用 ")
-        .append(LlmToolNames.wireNameOf(PacketIntentTool.NAME))
+        .append(LlmToolNames.wireNameOf(toolNames.packetIntent()))
         .append(" 或最后一段文本表达；结构命令用 ")
-        .append(LlmToolNames.wireNameOf(ProposeCallTool.NAME))
+        .append(LlmToolNames.wireNameOf(toolNames.propose()))
         .append("；最后用 ")
-        .append(LlmToolNames.wireNameOf(SubmitPacketTool.NAME))
+        .append(LlmToolNames.wireNameOf(toolNames.packetSubmit()))
         .append(" 提交。提交后又继续发命令会被保守合并；一直不提交就结束，系统会把整轮最后一段文本自动作为 NL 决策交 GM。")
         .append("提交后只说话不再发命令，则提交后的文本不再算新的 NL 决策。")
         .append("★ 预算：最多 4–6 次工具调用；只 propose 工具面列出的 proposeable 工具，args 里不要写 null，缺字段就省略。");
@@ -756,10 +809,18 @@ public final class DecisionAgentRunner {
 
   /** 回合结算信号：记录提交标记、提交后是否继续发命令、整轮最后一段文本与提交前最后一段文本。 */
   private static final class DecisionTurnSignals {
+
+    /** 工具名声明（宿主注入的那一份）：只用来认出"提交 / 提议 / 自然语言"三件套。 */
+    private final DecisionToolNames toolNames;
+
     private boolean submitSeen;
     private boolean commandsAfterSubmit;
     private Optional<String> lastAssistantText = Optional.empty();
     private Optional<String> lastTextBeforeSubmit = Optional.empty();
+
+    DecisionTurnSignals(DecisionToolNames toolNames) {
+      this.toolNames = Objects.requireNonNull(toolNames, "toolNames");
+    }
 
     void onAssistantText(Optional<String> text) {
       if (text == null || text.isEmpty() || text.get() == null || text.get().isBlank()) {
@@ -772,12 +833,12 @@ public final class DecisionAgentRunner {
     }
 
     void onToolCall(String toolName) {
-      if (SubmitPacketTool.NAME.equals(toolName)) {
+      if (toolNames.packetSubmit().equals(toolName)) {
         submitSeen = true;
         return;
       }
       if (submitSeen
-          && (ProposeCallTool.NAME.equals(toolName) || PacketIntentTool.NAME.equals(toolName))) {
+          && (toolNames.propose().equals(toolName) || toolNames.packetIntent().equals(toolName))) {
         commandsAfterSubmit = true;
       }
     }
@@ -816,7 +877,7 @@ public final class DecisionAgentRunner {
     DECISION.info(
         LogEvent.of(
             "DECISION_RUN_START",
-            AppLogSource.DECISION_TURN,
+            GaLogSource.GA_DECISION_TURN,
             "dm",
             dm.id().value(),
             "day",
@@ -831,7 +892,7 @@ public final class DecisionAgentRunner {
     //   的"修法"在**换进程/换 store 实例**之后又回到空会话，缺陷原样复现（见 openingUserMessage 的类注）。
     //   ★ 只在**空会话**上注入（"有没有历史"是纯函数，不看世界）：第二轮 `load` 里已经有它，故不会重复追加。
     if (history.isEmpty()) {
-      LlmMessage opening = openingUserMessage(dm, frozen);
+      LlmMessage opening = openingUserMessage(dm, frozen, toolNames);
       conversations.append(conversationId, opening);
       history.add(opening);
       // ★★ P4：身份之后补一条**开场快照**（世界长这样）。★ 顺序不可反——先有"你是谁"，再有"你在哪"；
@@ -843,8 +904,8 @@ public final class DecisionAgentRunner {
       }
     }
     // ★ 回合规范提醒**不落盘**、每轮现插：老会话（首轮身份消息里没有新口径）也必须被本轮规则覆盖。
-    history.add(decisionRoundNotice(dm, frozen));
-    DecisionTurnSignals signals = new DecisionTurnSignals();
+    history.add(decisionRoundNotice(dm, frozen, toolNames));
+    DecisionTurnSignals signals = new DecisionTurnSignals(toolNames);
     List<ToolInvocation> invocations = new ArrayList<>();
     int llmCalls = 0;
     while (true) {
@@ -853,7 +914,7 @@ public final class DecisionAgentRunner {
         DECISION.warn(
             LogEvent.of(
                 "DECISION_RUN_BUDGET_EXCEEDED",
-                AppLogSource.DECISION_TURN,
+                GaLogSource.GA_DECISION_TURN,
                 "dm",
                 dm.id().value(),
                 "day",
@@ -886,7 +947,7 @@ public final class DecisionAgentRunner {
         DECISION.info(
             LogEvent.of(
                 "DECISION_RUN_END",
-                AppLogSource.DECISION_TURN,
+                GaLogSource.GA_DECISION_TURN,
                 "dm",
                 dm.id().value(),
                 "day",
@@ -950,9 +1011,9 @@ public final class DecisionAgentRunner {
     //   真没这个工具 ⇒ `TOOL_NOT_FOUND`（正文是「工具不存在: <模型给的名字>」，模型据此看得见自己叫错了名）；
     //   工具真在注册表里、只是权限组不放它 ⇒ `PERMISSION_DENIED`。本层若抢先拒，后者就再也测不到了（工具面 = 白名单，
     //   凡是能过名字表的都在白名单里），等于用一个更弱的理由顶掉一个更强的判据。
-    String toolName = toolNames.realNameOf(call.name()).orElse(call.name());
+    String toolName = wireNames.realNameOf(call.name()).orElse(call.name());
     signals.onToolCall(toolName);
-    if (SubmitPacketTool.NAME.equals(toolName)) {
+    if (toolNames.packetSubmit().equals(toolName)) {
       // ★★ 回合统一结算：提交工具在决策回合里只登记，不立刻把 packet 锁成 PENDING——
       //   这样"提交后继续 propose / intent"仍然能写进同一个 DRAFT，回合结束时由 service 层合并提交一次。
       //   真工具本身不改：GM / 其他非回合路径直接调 simos.sd.packet.submit 仍是原语义。
@@ -978,7 +1039,7 @@ public final class DecisionAgentRunner {
                     + " 不允许工具 "
                     + toolName
                     + "：决策期只允许读同一世界快照与写自己的决策包；要改世界请用 "
-                    + ProposeCallTool.NAME
+                    + toolNames.propose()
                     + " 写成 call，由 GM 在所有包收齐后合并成一条 revision 执行。");
         return recordResult(dm, toolName, call, blocked, invocations);
       }
@@ -1005,10 +1066,10 @@ public final class DecisionAgentRunner {
     if (kind == FrozenToolKind.PACKET_WRITE) {
       // ★ 并发跑轮时"读快照并发、写包串行"：共享锁保证 packet 写各自取到当下 head，不相互冲突。
       synchronized (frozen.packetWriteLock()) {
-        result = callerFactory.execute(registry, toolName, dm, state, mapId, args, toolConfig);
+        result = caller.execute(registry, toolName, dm, state, mapId, args, toolConfig);
       }
     } else {
-      result = callerFactory.execute(registry, toolName, dm, state, mapId, args, toolConfig);
+      result = caller.execute(registry, toolName, dm, state, mapId, args, toolConfig);
     }
     return recordResult(dm, toolName, call, result, invocations);
   }
@@ -1031,7 +1092,7 @@ public final class DecisionAgentRunner {
     DECISION.debug(
         LogEvent.of(
             "DECISION_TOOL_CALL",
-            AppLogSource.DECISION_TURN,
+            GaLogSource.GA_DECISION_TURN,
             "dm",
             dm.id().value(),
             "tool",
@@ -1065,22 +1126,18 @@ public final class DecisionAgentRunner {
    *
    * <p>★★ **两条硬约束都在这里兑现**：① 图片**不能**附在 tool 消息上（AgentLib 的 {@code appendMessage} 对 {@code tool}
    * 角色带图**响亮抛 CONFIG**——它不静默丢图，所以我们也不能指望它替我们兜底）；② 没有视觉能力时**一张都不发**—— 发过去只会从供应商换一个 400，而工具结果的文本摘要在
-   * tool 消息里本来就有（渲染工具还会按同一个能力位回落成字符图， 见 {@code MapRenderTool.VISION_CONFIG_KEY}）。
+   * tool 消息里本来就有（渲染工具还会按同一个能力位回落成字符图， 见 {@link DecisionToolNames#visionConfigKey()}）。
    *
-   * <p>★ **媒体类型取 {@code ArtifactStore.PNG_MEDIA_TYPE}**：工件库当前只存 PNG（其类注写明"扩展时把类型写进 id/清单"）⇒
-   * 与"本库只存一种"这个既有事实同源，不在这里另立一张 id→类型 的表。
+   * <p>★★ **消息形状由宿主给**（{@link ToolImages}，B2a 起注入）：媒体类型（{@code ArtifactStore.PNG_MEDIA_TYPE}）
+   * 与工件库都住在 {@code simos-app} 的渲染层，{@code ga} 不认识它们 ⇒ 本方法只决定**发不发**（视觉能力 + 真有图资产）， 折消息那一步交给注入的实现。★
+   * 与 {@link OpeningSnapshot} 同一条道理：运行流的全部世界知识只该是 {@code SimulationState} 这个不透明句柄。
    */
   private Optional<LlmMessage> imagesMessage(ToolResult result) {
     List<String> assetIds = result.assetDocIds();
     if (!vision || assetIds.isEmpty()) {
       return Optional.empty();
     }
-    List<ContentPart> parts = new ArrayList<>(assetIds.size() + 1);
-    parts.add(new ContentPart.Text("（下面是上一次工具结果里的图片）"));
-    for (String assetId : assetIds) {
-      parts.add(new ContentPart.Image(ArtifactStore.PNG_MEDIA_TYPE, assetId));
-    }
-    return Optional.of(new LlmMessage(LlmMessage.ROLE_USER, parts));
+    return toolImages.messageFor(result);
   }
 
   /**
@@ -1100,7 +1157,7 @@ public final class DecisionAgentRunner {
       DECISION.warn(
           LogEvent.of(
               "OPENING_SNAPSHOT_SKIPPED",
-              AppLogSource.DECISION_TURN,
+              GaLogSource.GA_DECISION_TURN,
               "dm",
               dm.id().value(),
               "reason",

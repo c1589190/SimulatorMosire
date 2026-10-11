@@ -135,6 +135,9 @@
                          （app 在 reactor 末位、反向不进来，实测不落在传递链上）。 -->
                     <exclude>io.mosire:simos-gov</exclude>
                     <exclude>io.mosire:simos-app</exclude>
+                    <!-- ★★ 2026-10-12 B2a（设计书 §4.1 / §5 I-G2）：运行框架 simos-ga（工具运作 + 决策人运行）——
+                         它永不依赖 app，其余模块也不得依赖它 ⇒ 列入禁列（组合根 simos-app 是唯一认识它的地方）。 -->
+                    <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-calendar</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
@@ -161,7 +164,7 @@
                          ★ 判别力：把这条 include 删掉 ⇒ `simos-core` 的 `validate` 立刻红（本任务实测，红在 actor-api 那一行）。 -->
                     <include>io.mosire:simos-actor-api:*:*:test</include>
                   </includes>
-                  <message>simos-core 是组合与调度（**编译期看不见任何领域类型** —— 铁律 4 的结构化）：main 只许依赖 util（+ agentlib-mosire / jackson-databind / sqlite-jdbc），领域模块只在 test scope 出现，逐条口子见 includes（由 enforcer 自己逼出，不为对称提前开）；禁列 = 全仓 simos 模块 − 自己 − util（含 actor-api/army/gov/app 与已退役的 ledger）。★ 例外：calendar 与 social-api 由 test 路径 core(test) → social 传递带出，两条按 I-F1 不入禁列。</message>
+                  <message>simos-core 是组合与调度（**编译期看不见任何领域类型** —— 铁律 4 的结构化）：main 只许依赖 util（+ agentlib-mosire / jackson-databind / sqlite-jdbc），领域模块只在 test scope 出现，逐条口子见 includes（由 enforcer 自己逼出，不为对称提前开）；禁列 = 全仓 simos 模块 − 自己 − util（含 actor-api/army/gov/app 与运行框架 ga、已退役的 ledger）。★ 例外：calendar 与 social-api 由 test 路径 core(test) → social 传递带出，两条按 I-F1 不入禁列。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

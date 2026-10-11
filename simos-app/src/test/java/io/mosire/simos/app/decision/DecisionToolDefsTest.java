@@ -9,6 +9,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.ga.decision.DecisionToolDefs;
 import java.util.List;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
@@ -37,7 +38,12 @@ class DecisionToolDefsTest {
       registry.register(new StubTool(name));
     }
 
-    List<String> offered = DecisionToolDefs.of(registry).stream().map(ToolDef::name).toList();
+    // ★ 原先的 of(registry) 便捷重载已随 B2a 删除（ga 不认识 app 的 DecisionCallerFactory）⇒
+    //   这里显式交出**同一份**全局白名单，取交语义与删掉的那条重载逐字相同。
+    List<String> offered =
+        DecisionToolDefs.of(registry, DecisionCallerFactory.WHITELIST).stream()
+            .map(ToolDef::name)
+            .toList();
 
     assertThat(offered)
         .as("★ 恰好是白名单（有序），注册表里多出来的 GM 写工具**一条都不露**")

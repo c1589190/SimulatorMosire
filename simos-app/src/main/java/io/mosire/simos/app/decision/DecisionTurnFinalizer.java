@@ -7,6 +7,7 @@ import io.mosire.simos.app.tools.write.DecisionPacketPayloads;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.model.DecisionPacket;

@@ -2,7 +2,8 @@ package io.mosire.simos.app.decision;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.mosire.simos.app.decision.DecisionAgentRunner.ToolInvocation;
+import io.mosire.simos.ga.decision.DecisionAgentRunner.ToolInvocation;
+import io.mosire.simos.ga.decision.DecisionRunRegistry;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;

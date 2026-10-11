@@ -11,6 +11,7 @@ import io.mosire.simos.app.llm.LlmProviderResolver;
 import io.mosire.simos.app.llm.ProviderLlm;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
@@ -244,6 +245,9 @@ public final class DecisionAgentService {
             provider.client(),
             conversations,
             mapId,
+            // ★★ B2a：宿主事实由 app 注入 —— 工具名声明（各工具 NAME 常量的唯一拼写点）与图片通路（工件库/媒体类型在渲染层）。
+            AppDecisionToolNames.INSTANCE,
+            DecisionToolImages.INSTANCE,
             maxLlmCalls,
             listener,
             provider.vision(),
@@ -347,7 +351,9 @@ public final class DecisionAgentService {
     }
     String conversationId = DecisionAgentRunner.conversationIdOf(maker);
     if (conversations.load(conversationId).isEmpty()) {
-      conversations.append(conversationId, DecisionAgentRunner.openingUserMessage(maker));
+      conversations.append(
+          conversationId,
+          DecisionAgentRunner.openingUserMessage(maker, AppDecisionToolNames.INSTANCE));
     }
     conversations.append(conversationId, LlmMessage.user(text));
     return conversationId;

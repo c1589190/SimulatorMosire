@@ -38,10 +38,15 @@ class EconomyVocabularyGuardTest {
    * simos-actor} **静默漏掉**（清单没变、用例全绿、词表缺口无人守）——这正是本清单下面那条 {@link
    * #theScannedModuleListMatchesTheOneTheBuildDeclares()} 要拦住的事。新增模块时**两处一起加**（本清单 + 根 {@code
    * pom.xml}），只加一处当场红。
+   *
+   * <p>★ **2026-10-12 补记（C1 测试迁移批）**：B1 新增 {@code simos-ga-spi}、B2a 新增 {@code simos-ga} 时根 {@code
+   * pom.xml} 加了、本清单没加 ⇒ 本用例当场红（B1 落地后即已红，不是 B2a 引入的新问题）。本次按"两处一起加"把两条补回， 两个新模块随之纳入词表扫描面（扫描面变大 =
+   * 覆盖变多，判据本身未改）。
    */
   static final List<String> MODULES =
       List.of(
           "simos-util",
+          "simos-ga-spi",
           "simos-map",
           "simos-calendar",
           "simos-social-api",
@@ -55,6 +60,7 @@ class EconomyVocabularyGuardTest {
           "simos-economy",
           "simos-gov",
           "simos-army",
+          "simos-ga",
           "simos-app");
 
   /** 根 {@code pom.xml} 里的模块声明（构建面的权威清单）。 */

@@ -79,10 +79,13 @@
                     <exclude>io.mosire:simos-calendar</exclude>
                     <exclude>io.mosire:simos-economy</exclude>
                     <exclude>io.mosire:simos-gov</exclude>
+                    <!-- ★★ 2026-10-12 B2a（设计书 §4.1 / §5 I-G2）：运行框架 simos-ga（工具运作 + 决策人运行）——
+                         它永不依赖 app，其余模块也不得依赖它 ⇒ 列入禁列（组合根 simos-app 是唯一认识它的地方）。 -->
+                    <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
                   </excludes>
-                  <message>simos-economy-api 是经济切片共用的稳定契约（各类稳定 ID / CommodityId / 市场 / 货币 / 关系 / 转移形状；无 Snapshot、无存储、无公式）：只许依赖 actor-api/util/map/social-api（★ 三者都是更底层的另一份契约，不是领域模块）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含兄弟切片 economy/actor/gov/army、calendar 与已退役的 ledger）。</message>
+                  <message>simos-economy-api 是经济切片共用的稳定契约（各类稳定 ID / CommodityId / 市场 / 货币 / 关系 / 转移形状；无 Snapshot、无存储、无公式）：只许依赖 actor-api/util/map/social-api（★ 三者都是更底层的另一份契约，不是领域模块）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含兄弟切片 economy/actor/gov/army、calendar、运行框架 ga 与已退役的 ledger）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

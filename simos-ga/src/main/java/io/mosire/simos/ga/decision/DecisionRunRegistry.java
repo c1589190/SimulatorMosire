@@ -1,6 +1,6 @@
-package io.mosire.simos.app.decision;
+package io.mosire.simos.ga.decision;
 
-import io.mosire.simos.app.decision.DecisionAgentRunner.ToolInvocation;
+import io.mosire.simos.ga.decision.DecisionAgentRunner.ToolInvocation;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;

@@ -55,6 +55,11 @@
     <Property name="coreTraceLevel">${sys:simos.core.traceLevel:-INFO}</Property>
     <Property name="appLevel">${sys:simos.app.logLevel:-INFO}</Property>
     <Property name="appTraceLevel">${sys:simos.app.traceLevel:-INFO}</Property>
+    <!-- ★★ 2026-10-12 B2a：决策人运行流迁入 simos-ga（设计书 §4.5 / 用户原话⑤）⇒ 它的事件从
+         io.mosire.simos.app.decision 挪到 io.mosire.simos.ga，开关也随之独立（形态同其余模块）；
+         app 侧未迁走的装配/结算点（DecisionAgentService 等）仍随 simos.app.logLevel 升降。 -->
+    <Property name="gaLevel">${sys:simos.ga.logLevel:-INFO}</Property>
+    <Property name="gaTraceLevel">${sys:simos.ga.traceLevel:-INFO}</Property>
   </Properties>
   <Appenders>
     <Console name="Console" target="SYSTEM_OUT">
@@ -90,6 +95,9 @@
     <Logger name="io.mosire.simos.core.trace" level="${coreTraceLevel}"/>
     <Logger name="io.mosire.simos.app" level="${appLevel}"/>
     <Logger name="io.mosire.simos.app.trace" level="${appTraceLevel}"/>
+    <!-- ★★ B2a：运行框架 ga（决策人运行流）——根 + .trace 子 logger，同其余模块形态。 -->
+    <Logger name="io.mosire.simos.ga" level="${gaLevel}"/>
+    <Logger name="io.mosire.simos.ga.trace" level="${gaTraceLevel}"/>
     <Root level="info">
       <AppenderRef ref="Console"/>
     </Root>

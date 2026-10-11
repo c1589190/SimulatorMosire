@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.agentlib.llm.ToolDef;
 import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.ga.llm.LlmToolNames;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;

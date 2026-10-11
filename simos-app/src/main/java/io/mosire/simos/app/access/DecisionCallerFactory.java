@@ -56,6 +56,8 @@ import io.mosire.simos.app.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.app.tools.write.SimosSdReportTool;
 import io.mosire.simos.app.tools.write.SubmitPacketTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
+import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.decision.DecisionToolCaller;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.AccessLimit;
@@ -87,8 +89,12 @@ import java.util.TreeMap;
  * <p>★ **白名单与桶两处同源**：{@link #WHITELIST} 是**权限组**那一半，{@code SimosToolSource.addDecisionAgentWrites}
  * 是**注册面**那一半（用户 2026-09-22：「决策人不能直接改地图等数据」）。 只收窄一处等于留一条旁路，故两处都要通过 {@code
  * DecisionCallerFactoryTest} 的派生式用例。
+ *
+ * <p>★★ **它实现 {@link DecisionToolCaller}**（2026-10-12 B2a）：运行流已迁入 {@code simos-ga}，而权限链、
+ * 范围函数与审批编排器仍住 app（设计书 §4.5：范围函数**明确留 app**）⇒ 由本类兑现"经权限链执行一次工具调用"这个能力， {@code ga} 只依赖接口。★
+ * 方向单向（{@code app → ga}）：{@code ga} 不认识本类，也不该认识。
  */
-public final class DecisionCallerFactory {
+public final class DecisionCallerFactory implements DecisionToolCaller {
 
   /**
    * 决策人的工具白名单（spec §2.2）：**共享读工具 + 两条决策行为**（★ M4 起：读工具里标了 {@code GmOnlyRead} 的那些**不在**本白名单里——它们只进
@@ -191,8 +197,14 @@ public final class DecisionCallerFactory {
           // ★★ A2a（阶段 2 §3.3）：官方汇率是政府的政策价 ⇒ 决策人经审批链可定，但只能作用于自己的 GOV。
           GovSetFxRateTool.NAME);
 
-  /** 决策人身份的实例 id 前缀（与将来的会话 id 同源：按决策人派生，不隐式取全局状态）。 */
-  public static final String INSTANCE_ID_PREFIX = "decision-maker:";
+  /**
+   * 决策人身份的实例 id 前缀（与派生出的**会话 id** 同源：按决策人派生，不隐式取全局状态）。
+   *
+   * <p>★★ **唯一拼写点在 {@code simos-ga}**（B2a）：它引用的就是运行流派生会话 id 用的那个常量 （{@code
+   * DecisionAgentRunner#CONVERSATION_ID_PREFIX}，"决策人身份 ↔ 会话锚"必须逐字相同）——
+   * 故此处**不再抄一份字面量**（抄的那份不会跟着改，症状是"决策人失忆"而 不是报错）。方向是 {@code app → ga}，合法且单向。
+   */
+  public static final String INSTANCE_ID_PREFIX = DecisionAgentRunner.CONVERSATION_ID_PREFIX;
 
   /** {@code sd} 域里"决策人"这一类资源（spec §3.3：{@code sd: decision-maker/<id> · nation/<id> · …}）。 */
   public static final String DECISION_MAKER_KIND = "decision-maker";
@@ -247,6 +259,7 @@ public final class DecisionCallerFactory {
    * **per-DM 的运行路径不要直接用它**：给模型看的工具面与权限组都走 {@link #whitelistFor(DecisionMaker)}， 否则 {@code
    * allowedTools} 又退回"展示字段"。
    */
+  @Override
   public Set<String> whitelist() {
     return whitelist;
   }
@@ -512,6 +525,7 @@ public final class DecisionCallerFactory {
    * 同上，另给**宿主编排配置**（与 {@link #callerFor(DecisionMaker, SimulationState, String, Map)} 同一个 map，
    * 见其类注：目前唯一用途是让渲染工具按视觉能力选 {@code auto} 的落点）。
    */
+  @Override
   public ToolResult execute(
       ToolRegistry registry,
       String toolName,

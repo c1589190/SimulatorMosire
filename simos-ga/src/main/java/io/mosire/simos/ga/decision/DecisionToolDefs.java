@@ -1,10 +1,9 @@
-package io.mosire.simos.app.decision;
+package io.mosire.simos.ga.decision;
 
 import io.mosire.agentlib.llm.ToolDef;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolDefs;
 import io.mosire.agentlib.tool.ToolRegistry;
-import io.mosire.simos.app.access.DecisionCallerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -12,13 +11,18 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * **决策人可见的工具面 → AgentLib 的 {@link ToolDef}**（spec §2.3 要点 1）：给模型看的工具清单与 {@link
- * DecisionCallerFactory} 的**权限组白名单同源**。
+ * **决策人可见的工具面 → AgentLib 的 {@link ToolDef}**（spec §2.3 要点 1）：给模型看的工具清单与 {@link DecisionToolCaller}
+ * 的**权限组白名单同源**。
  *
  * <p>★ **为什么"看得见的"必须等于"调得动的"**：模型只会请求它看得见的工具；如果这里多给了（比如把 GM 的通用写也塞进来），
  * 模型会去调、然后在权限层被拒——一轮对话就此浪费且暴露了工具面的形状；如果这里少给了，能力静默消失、**不报错**。两种错位都没有症状， 故唯一的解法是**同一份数据**（生产路径 =
- * {@code callerFactory.whitelistFor(dm)}；静态缺省 = {@code DecisionCallerFactory.WHITELIST}，见 {@link
- * #of(ToolRegistry)}）。
+ * {@code callerFactory.whitelistFor(dm)}，由装配方**显式**传进 {@link #of(ToolRegistry, Set)} / {@link
+ * #requireAll(ToolRegistry, Set)}）。
+ *
+ * <p>★★ **白名单是入参、不是本类的缺省**（2026-10-12 B2a）：本类迁入 {@code simos-ga} 后不再持有"全局缺省白名单"—— 那份白名单是 {@code
+ * simos-app} 的装配事实（{@code DecisionCallerFactory.WHITELIST}，且它自己也要从 {@code roles()} 派生），{@code ga}
+ * 依赖 {@code app} 会成环。故原先那条 {@code of(registry)} 便捷重载**已删**：要静态缺省就在装配方
+ * 取那份白名单再显式传进来（值不变，只是不再有一个藏在运行框架里的第二拼写点）。
  *
  * <p>★ **交集形态 vs 响亮形态**：{@link #of} 取"白名单 ∩ 注册表"（静默取交）；{@link #requireAll}
  * 在此之上**要求白名单里每一条都在注册表里**，缺一条就抛。
@@ -36,17 +40,12 @@ public final class DecisionToolDefs {
 
   private DecisionToolDefs() {}
 
-  /** 决策人**默认**工具面（{@link DecisionCallerFactory#WHITELIST} ∩ 注册表）：静态缺省，不是 per-DM 路径。 */
-  public static List<ToolDef> of(ToolRegistry registry) {
-    return of(registry, DecisionCallerFactory.WHITELIST);
-  }
-
   /**
    * 白名单 ∩ 注册表。
    *
    * @param registry 工具注册表（生产路径给**决策人桶**）
-   * @param allowed 允许出现的工具名（生产路径给 {@code callerFactory.whitelistFor(dm)}；旧静态缺省见 {@link
-   *     #of(ToolRegistry)}）
+   * @param allowed 允许出现的工具名（生产路径给 {@code callerFactory.whitelistFor(dm)}；静态缺省由装配方取 {@code
+   *     DecisionCallerFactory.WHITELIST} 后传入）
    */
   public static List<ToolDef> of(ToolRegistry registry, Set<String> allowed) {
     Objects.requireNonNull(registry, "registry");
