@@ -296,6 +296,28 @@ W1 状态与账 ─→ W2 清算与价格 ─→ W3 人的进出 ─→ W4 家�
 
 ## 7. 修订记录
 
+- **v3.20**（2026-10-11 下午）：**W5 验收结果（10 项判据本体全绿）+ 五条缺口处置**。报告：`.superpowers/sdd/2026-10-11-w5-acceptance/report.md`（525 行；jar `5a3d080a…` = HEAD `24af7bf1` 现构）。
+  **绿**：①生产账逐值（`PRODUCTION_EFFICIENCY_HARVEST laborScale=1 satisfaction=1000 scale=1` + `MINT_CREDIT minted=500 requested=500 limit=2000 treasuryBefore=0 treasuryAfter=500`；
+  工具 8000→6000；`scale×perUnit==minted`）②旋钮 0 ⇒ 0 毫（`MINT_POLICY_ZERO`）③旋钮 300 ⇒ 实铸 300 + `MINT_LIMIT_REJECTED(limit=300,rejected=200)`，
+  **旋钮 2000 而上轮只印 300 ⇒ 实铸 500 不被夹**、`mintedLastCyclePerCycle={silver=500}` 非恒 0 ④钱落国库 0→500→…→2500（600 天）；无授权单时零投放
+  （`GOV_MARKET_AUTO_ORDERS_SUPPRESSED`）；★**真构造出"决策人下单 ⇒ 钱流入市场"**（GM 授权买粮 ⇒ day123 `GOV_MARKET_MANDATE_BUY_ORDER → FILLED → CLEARED`，国库银 500→498、粮 0→20、Σ货币不变）
+  ⑤5 条 `mi-mint-world-silver-{120..600}-silver` ×500、`kind=MINT_PRODUCTION` 逐值对账 ⑥`gov.issueMoney` 真 MCP 调用（`kind=FISCAL_ISSUE`、铜 100,000→100,777）
+  ⑦写档→新进程读→续跑逐字段相同、`360→361` vs `0→361` **差异叶 0/87,033** ⑧B2 三份 dump md5 全等、Δ=1/3/360、性能 +5.2%（红线内）⑨窗口恒等式精确、人口逐档相等 ⑩多币种现状（见 INV）。
+  **处置**：
+  - **D1（政策面真缺口，必修）**：`mintScalePerCycle` 在**唯一会铸币的政府**（world-silver）上**没有 GM 写口** —— 运行期唯一写点 `economy.RegisterGovernment` 只写 `gov-unit-<id>` 形态，
+    以 `world-silver` 调用 **HTTP 422**（同一家户不能同时是两届政府的国库）；`gov.issueMoney` 亦拒；`Government.withMintScalePerCycle` 全仓 main **无调用者**
+    ⇒ 判据②③只能用探针直接改字段验（**不算用 GM 工具验过**）。**必修**：补一条**世界级政府政策写口**（照 W2 `economy.SetMarketZonePriceAlpha` 先例：命令 + GM 窄工具 + 三桶齐）。
+  - **D2（W5 引入的读数矛盾，必修）**：`MINT_PRODUCTION` 在 `ApiViews.governmentIssuanceView` / `moneyIssuanceView` 的 `else` 分支被当成 **withdrawal**
+    （day120 `withdrawal={silver:500}` vs `circulation` +500、枚举 `issuance()==true`）⇒ 两个只读端点自相矛盾（**不影响状态与公式**）。**必修**：按枚举分类。
+  - **D3（账本断言与真世界不符，控制方更正）**：v3.17 写的"工具耗尽后第 5 轮停产 ⇒ 投入约束真实"**不成立** —— 0→600 实测 **5 条**记录；
+    根因是既存 **H6-lite 同格取材**：day481 无偿划走首都两户工具（Σ−19,600），其中 2,000 进铸币 unit ⇒ `satisfaction=1000`。
+    ⇒ 判据①只能说"**货物真被消耗**"，**不能**说"国库承担了投入"。**旧行不回头改，此处更正。**
+  - **D4（既存 · 创世期未审计的发钱路径，必修）**：创世 `GovWorldBootstrap` 用裸原语 `actor.AdjustAccounts` 给两国库各注 100,000 毫银（合计 **200,000 = 创世银的 74.9%**）**无 `MoneyIssuanceRecord`**
+    （只有那笔铜有审计）⇒ W5 账本 §⑥ 的排查表**漏了它**。**必修**：创世注资也落审计腿（具名 kind，如 `GENESIS_ENDOWMENT`），使"任何货币凭空出现"都能在审计链上查到。
+  - **D5（自持铸币债语义，必修）**：自持合同只增不减、按 **2%/周期计息**、**恒 `status=DEFAULTED`**（500→1,624@d360→2,940@d600）
+    —— 而它是"发行额 = 政府负债"的**记账事实**、**没有可执行的债权**（W5-fix 已把它从还债/退出清算里排除）。**必修**：自持合同**不计息、不计违约压力/不标 DEFAULTED**（保持未偿额 = 累计发行额）。
+  - **D8（口径界定，不改代码）**：GM 窄工具 `actor.AdjustAccounts` 本身可给任意家户**无审计**加钱 —— 按用户既有裁定「MCP 和 GM Agent 处于同一权限级，想改什么改什么」，这是**设计允许**的；
+    ⇒ 判据④③的字面读法限定为"**运行期结算路径**除铸币与 `gov.issueMoney` 外无第二条凭空加钱口"，并在文档里写清 GM 直改的例外。
 - **v3.19**（2026-10-11 下午）：**用户裁定：取缔借粮 + 货币市场（钱是市场里的一个商品）**。★ 已落 **S-12**（§2 表末）。
   ★ **用户原话（四段，逐字）**：
   ① 「**把借粮这条路给取缔掉，这条路才是真的不知道哪里冒出来的**；借货币可以把其环节放在最开始，如果家户的库存货币无法满足需求，先借钱再买货，然后后面不就有钱了？」
