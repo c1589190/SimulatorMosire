@@ -1,0 +1,620 @@
+package io.mosire.simos.social.tools.write;
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.mosire.agentlib.approval.AskKind;
+import io.mosire.agentlib.approval.ToolGate;
+import io.mosire.agentlib.permission.AccessToken;
+import io.mosire.agentlib.permission.Operation;
+import io.mosire.agentlib.permission.ResourceDeniedException;
+import io.mosire.agentlib.permission.ResourceId;
+import io.mosire.agentlib.permission.ResourceManifest;
+import io.mosire.agentlib.permission.ResourcePolicy;
+import io.mosire.agentlib.permission.ToolSpec;
+import io.mosire.agentlib.tool.AgentTool;
+import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolSchema;
+import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.population.HouseholdVitalRate;
+import io.mosire.simos.social.api.population.Sex;
+import io.mosire.simos.social.population.AgeBracket;
+import io.mosire.simos.social.provisioning.DemandPeriod;
+import io.mosire.simos.social.tools.SocialToolReads;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * ★★ <b>social 家户/人口 GM 窄写的共同基类</b>（2026-10-09 S3a 立，2026-10-12 B3 第四域随迁）：四件事在一条工具里——<b>preview /
+ * apply、reason、资源围栏、结局折叠</b>——形态照 {@code EconomyAdjustTool} 的 GM 窄写口径。
+ *
+ * <p>★★ <b>preview=true（缺省）一个字节都不写</b>：只用注入的读口读 base 状态并跑与落盘同源的纯推导（Social 侧走 {@code HouseholdBook}
+ * 的纯函数、Unit 侧走单位侧守卫 <b>经注入的端口</b>），把目标状态/前后差异/逐条命令预览放进结果；{@code preview=false} 才组命令走注入的写口（一批 = 一条
+ * revision，整批原子）。
+ *
+ * <p>★ <b>从哪来 / 改了什么</b>：本类是 app 侧同名基类的**social 分册**——逐条口径与原文案（含 {@code planOnly} 内部参数、
+ * 错误折叠文案、批拒绝视图的字段集）一字未改，只有三处"没搬"与两处注入：
+ *
+ * <ol>
+ *   <li>对 {@code CoreSimos} 的直连 → 构造期注入的 {@link ToolWritePort}；对 {@code QueryService} 的直连 → {@link
+ *       ToolReadPort}；
+ *   <li>{@code AppLog}/{@code AppLogSource} 的日志行不搬（域内工具改记 social 自己的来源表，见各工具类注）；
+ *   <li>unit 侧编制事实（{@code UnitState}/{@code UnitOperations}/{@code SetUnitHouseholdsHandler} 的守卫）→
+ *       注入的 {@code SocialUnitPort}：social 结构上够不着 unit（enforcer 禁 + 反向声明成环）。
+ * </ol>
+ *
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有这些工具；工具名不是命令类型 ⇒ 不进 catalog /
+ * {@code PAYLOAD_HINTS}（它们提交的命令类型由各自的 handler 注册进 catalog）。
+ *
+ * <p>★ <b>失败具名</b>：参数缺失/类型错/{@code preview=false} 缺 {@code expectedRevision}/域校验不过 ⇒ {@code
+ * BAD_REQUEST} （零 revision）；批被拒 ⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head。
+ */
+abstract class AbstractHouseholdGmTool implements AgentTool {
+
+  /** 家户类工具只写 social 命名空间（GM 侧 social unlimited ⇒ 逐条判通过）。 */
+  protected static final ResourceManifest SOCIAL_WRITE =
+      ResourceManifest.of(ToolResources.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+
+  /** 组合工具写 social + unit 两个命名空间（GM 侧两者都 unlimited）。 */
+  protected static final ResourceManifest SOCIAL_AND_UNIT_WRITE =
+      ResourceManifest.of(
+          Map.of(
+              ToolResources.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolResources.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+
+  protected final ToolWritePort writes;
+  protected final ToolReadPort reads;
+
+  @SuppressFBWarnings(
+      value = "CT_CONSTRUCTOR_THROW",
+      justification =
+          "本类是包内可见的 abstract 类（不可实例化、外部无法子类化），构造器只做 Objects.requireNonNull ⇒ finalizer 攻击面不存在，属 SpotBugs 对 abstract 的启发式误报")
+  protected AbstractHouseholdGmTool(ToolWritePort writes, ToolReadPort reads) {
+    this.writes = Objects.requireNonNull(writes, "writes");
+    this.reads = Objects.requireNonNull(reads, "reads");
+  }
+
+  /** 敏感写：GM 侧走 GmAutoApproveGate，与其余窄写同制。 */
+  @Override
+  public final ToolSpec spec() {
+    return ToolSpec.level(AccessToken.DEFAULT, true, false);
+  }
+
+  @Override
+  public final ResourceManifest resources() {
+    return resourceManifest();
+  }
+
+  @Override
+  public final ToolGate gate(ToolContext context) {
+    return new ToolGate.Ask(name(), summary(context.arguments()), AskKind.SENSITIVE);
+  }
+
+  /**
+   * 是否强制工具级 {@code reason}（缺省 true，既有家户工具口径不变）。
+   *
+   * <p>★ 参数工具（生死率等）里 {@code reason} 是**各自载荷的一部分**（有的必填、有的可选），不是所有动作都有统一的工具级审计理由 ⇒ 那些工具覆写本方法返回
+   * false，由各自的 {@code run} 按动作解析载荷。
+   */
+  protected boolean requiresReason() {
+    return true;
+  }
+
+  /** 审批摘要：子类可覆写加自己的关键参数；缺省给 preview/branch/reason 三件套。 */
+  protected String summary(Map<String, Object> args) {
+    return name()
+        + " preview="
+        + args.getOrDefault("preview", true)
+        + " branch="
+        + args.getOrDefault("branch", ToolResources.DEFAULT_BRANCH)
+        + " reason="
+        + args.get("reason");
+  }
+
+  @Override
+  public final ToolResult execute(ToolContext context) {
+    try {
+      ToolResources.requireAll(context, Operation.WRITE, writeResources());
+      Map<String, Object> args = context.arguments();
+      String reason =
+          requiresReason()
+              ? ToolSchema.requiredText(args, "reason")
+              : ToolSchema.optionalText(args, "reason", null);
+      boolean preview = ToolSchema.optionalBoolean(args, "preview").orElse(true);
+      // ★ D3 内部参数：不进 jsonSchema / 工具描述，只被系统执行器注入（见 #planOnly）。
+      boolean planOnly = !preview && ToolSchema.optionalBoolean(args, "planOnly").orElse(false);
+      BranchId branch =
+          new BranchId(ToolSchema.optionalText(args, "branch", ToolResources.DEFAULT_BRANCH));
+      Long expectedArg = ToolSchema.optionalLong(args, "expectedRevision");
+      if (expectedArg != null && expectedArg < 0L) {
+        throw new IllegalArgumentException("expectedRevision 不得为负: " + expectedArg);
+      }
+      if (!preview && expectedArg == null) {
+        throw new IllegalArgumentException(
+            "preview=false 时必须给 expectedRevision（提交的乐观并发 base revision）");
+      }
+      long expectedRevision = expectedArg == null ? -1L : expectedArg;
+      SimulationState state =
+          reads.stateAt(branch, expectedRevision < 0L ? null : new RevisionId(expectedRevision));
+      return run(new Request(state, branch, expectedRevision, preview, planOnly, reason, args));
+    } catch (IllegalArgumentException e) {
+      return ToolResult.error("BAD_REQUEST", e.getMessage());
+    } catch (ResourceDeniedException e) {
+      // ★ 资源拒因原样逃到 ToolCallAuthorizer 边界（与其余写工具同一条）。
+      throw e;
+    } catch (RuntimeException e) {
+      return ToolResult.error(
+          "TOOL_ERROR", name() + " 失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+    }
+  }
+
+  /** 一次工具调用的共同输入（preview 与 apply 共用同一份 base 状态与坐标）。 */
+  protected record Request(
+      SimulationState state,
+      BranchId branch,
+      long expectedRevision,
+      boolean preview,
+      boolean planOnly,
+      String reason,
+      Map<String, Object> args) {
+
+    public Request {
+      // ★ 参数树来自工具上下文，构造期做只读快照：run() 只读它，快照既不改值也不改迭代序（LinkedHashMap 保序）。
+      args = Collections.unmodifiableMap(new LinkedHashMap<>(Objects.requireNonNull(args, "args")));
+    }
+  }
+
+  /** 子类实现：读 base、跑纯推导、preview 出视图或提交命令批。 */
+  protected abstract ToolResult run(Request request);
+
+  protected abstract ResourceManifest resourceManifest();
+
+  protected abstract List<ResourceId> writeResources();
+
+  // ── 提交与折叠 ───────────────────────────────────────────────────────────────────────
+
+  /**
+   * 批内的一条命令：**只有** {@code type} 与裸载荷——分支/期望版本是**批级**的（{@code Request}），命令 id / 发起者由写口适配器补 （见 {@link
+   * ToolWritePort} 的适配规则）。
+   */
+  protected record PlannedCommand(String type, Map<String, Object> payload) {
+
+    public PlannedCommand {
+      Objects.requireNonNull(type, "type");
+      Objects.requireNonNull(payload, "payload");
+      // ★ 保序冻结在赋值处（本仓明文口径：不用 Map.copyOf —— 迭代序不是内容的纯函数；不共享可变引用）。
+      payload = Collections.unmodifiableMap(new LinkedHashMap<>(payload));
+    }
+  }
+
+  /**
+   * 批提交与三结局折叠（preview/apply 的结果视图由调用方先搭好）：{@code Committed → ok（带新坐标）}；{@code Conflict →
+   * CONFLICT（真实 head）}；{@code Rejected → REJECTED（逐条真拒因）}。
+   *
+   * <p>★ 批级 {@code correlationId} 与逐条 {@code commandId} 由写口适配器生成并回报（{@link
+   * ToolWritePort.BatchReceipt}） ⇒ 视图里报出去的 id 与落盘信封里的那一个逐字相同。
+   */
+  protected final ToolResult submitBatch(
+      Request request, List<PlannedCommand> batch, Map<String, Object> view) {
+    return submitBatch(request, batch, view, () -> {});
+  }
+
+  /**
+   * 同 {@link #submitBatch(Request, List, Map)}，但允许在**批真的提交成功**之后跑一个钩子（例如 assign/detach 的 {@code
+   * UNIT_HOUSEHOLD_*} 生命周期事件）——被拒/冲突不跑，日志不会说谎。
+   */
+  protected final ToolResult submitBatch(
+      Request request, List<PlannedCommand> batch, Map<String, Object> view, Runnable onCommitted) {
+    List<ToolWritePort.Request> requests = new ArrayList<>(batch.size());
+    for (PlannedCommand command : batch) {
+      requests.add(new ToolWritePort.Request(command.type(), ToolResults.json(command.payload())));
+    }
+    ToolWritePort.BatchReceipt receipt =
+        writes.submitBatchWithReceipt(
+            request.branch(), new RevisionId(request.expectedRevision()), requests);
+    view.put("preview", false);
+    view.put("submitted", true);
+    return switch (receipt.outcome()) {
+      case ToolWritePort.BatchOutcome.Committed committed -> {
+        onCommitted.run();
+        view.put(
+            "submission",
+            ToolResults.committedView(
+                committed.ref(), receipt.correlationId(), receipt.correlationId()));
+        yield ToolResults.ok(view);
+      }
+      case ToolWritePort.BatchOutcome.Conflict conflict -> {
+        Map<String, Object> submission = new LinkedHashMap<>();
+        submission.put("result", "conflict");
+        submission.put("current", ToolResults.stateRef(conflict.current()));
+        view.put("submission", submission);
+        yield ToolResult.error("CONFLICT", ToolResults.json(view));
+      }
+      case ToolWritePort.BatchOutcome.Rejected rejected -> {
+        Map<String, Object> submission = new LinkedHashMap<>();
+        submission.put("result", "rejected");
+        List<Map<String, Object>> rows = new ArrayList<>();
+        List<ToolWritePort.Outcome> outcomes = rejected.outcomes();
+        for (int i = 0; i < outcomes.size(); i++) {
+          Map<String, Object> row = new LinkedHashMap<>();
+          row.put("type", batch.get(i).type());
+          ToolWritePort.Outcome outcome = outcomes.get(i);
+          row.put(
+              "reason",
+              outcome instanceof ToolWritePort.Outcome.Rejected rejection
+                  ? rejection.reason()
+                  : outcome.toString());
+          rows.add(row);
+        }
+        submission.put("commands", rows);
+        view.put("submission", submission);
+        yield ToolResult.error("REJECTED", ToolResults.json(view));
+      }
+    };
+  }
+
+  /**
+   * 单条命令提交与三结局折叠（preview/apply 的结果视图由调用方先搭好）：只有一条命令的工具走这里，落盘的 {@code command_type}
+   * 就是命令类型本身（与批提交的批行区分开）。preview 一律不调本方法。
+   */
+  protected final ToolResult submitCommand(
+      Request request, String type, Map<String, Object> payload, Map<String, Object> view) {
+    ToolWritePort.Receipt receipt =
+        writes.submitWithReceipt(
+            request.branch(),
+            () -> new RevisionId(request.expectedRevision()),
+            type,
+            ToolResults.json(payload));
+    String commandId = receipt.commandId();
+    view.put("preview", false);
+    view.put("submitted", true);
+    view.put("commandId", commandId);
+    return switch (receipt.outcome()) {
+      case ToolWritePort.Outcome.Committed committed -> {
+        view.put("submission", ToolResults.committedView(committed.ref(), commandId, commandId));
+        yield ToolResults.ok(view);
+      }
+      case ToolWritePort.Outcome.Conflict conflict -> {
+        Map<String, Object> submission = new LinkedHashMap<>();
+        submission.put("result", "conflict");
+        submission.put("current", ToolResults.stateRef(conflict.current()));
+        view.put("submission", submission);
+        yield ToolResult.error("CONFLICT", ToolResults.json(view));
+      }
+      case ToolWritePort.Outcome.Rejected rejected -> {
+        Map<String, Object> submission = new LinkedHashMap<>();
+        submission.put("result", "rejected");
+        submission.put("reason", rejected.reason());
+        view.put("submission", submission);
+        yield ToolResult.error("REJECTED", ToolResults.json(view));
+      }
+    };
+  }
+
+  /** preview 结果（一个字节都没写）。 */
+  protected static ToolResult preview(Map<String, Object> view) {
+    view.put("preview", true);
+    view.put("submitted", false);
+    return ToolResults.ok(view);
+  }
+
+  /**
+   * D3 内部执行器专用：把这条工具本来要提交的命令组批返回，**一个字节都不写**（不调写口）。
+   *
+   * <p>★ 只在 {@code !preview && planOnly} 时被调用；{@code planOnly} 不进 jsonSchema / 工具描述。
+   */
+  protected static ToolResult planOnly(String type, Map<String, Object> payload) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("preview", false);
+    view.put("submitted", false);
+    view.put("planOnly", true);
+    // ★ 逐条只给 {type, payloadJson}——与 app 侧 ToolSupport.plannedCommandsView 的字段集逐字相同。
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("type", type);
+    row.put("payloadJson", ToolResults.json(payload));
+    view.put("plannedCommands", List.of(row));
+    return ToolResults.ok(view);
+  }
+
+  /** 无操作结果（幂等调用：不组命令、不落 revision）。 */
+  protected static ToolResult noop(Map<String, Object> view, String reason) {
+    view.put("preview", false);
+    view.put("submitted", false);
+    view.put("noop", true);
+    view.put("reason", reason);
+    return ToolResults.ok(view);
+  }
+
+  // ── 参数/视图小件 ───────────────────────────────────────────────────────────────────
+
+  /** 必填的 {@code location} 参数：{@code {type:HEX|UNIT, hex|unitId}}（大小写不敏感，缺 type 时按字段推断）。 */
+  protected static HouseholdLocation locationArg(Map<String, Object> args, String name) {
+    Object raw = args.get(name);
+    if (!(raw instanceof Map<?, ?> map)) {
+      throw new IllegalArgumentException("参数 " + name + " 必填且为 {type:HEX|UNIT, hex|unitId} 对象");
+    }
+    String type = locationTypeArg(map, name);
+    if ("hex".equalsIgnoreCase(type)) {
+      Object hexRaw = map.get("hex");
+      return new HouseholdLocation.Hex(hexArg(hexRaw, name + ".hex"));
+    }
+    if ("unit".equalsIgnoreCase(type)) {
+      return new HouseholdLocation.Unit(requiredTextArg(map, "unitId", name));
+    }
+    throw new IllegalArgumentException("参数 " + name + " 的 type 只认 HEX|UNIT（大小写不敏感）: " + type);
+  }
+
+  private static String locationTypeArg(Map<?, ?> map, String name) {
+    Object typeRaw = map.get("type");
+    if (typeRaw == null) {
+      typeRaw = map.get("@type");
+    }
+    if (typeRaw != null) {
+      if (!(typeRaw instanceof String text) || text.isBlank()) {
+        throw new IllegalArgumentException("参数 " + name + ".type 必须是非空文本");
+      }
+      return text;
+    }
+    boolean hasHex = map.get("hex") != null;
+    boolean hasUnit = map.get("unitId") != null;
+    if (hasHex && !hasUnit) {
+      return "hex";
+    }
+    if (hasUnit && !hasHex) {
+      return "unit";
+    }
+    throw new IllegalArgumentException("参数 " + name + " 必须给 type（HEX|UNIT）或二选一的 hex/unitId");
+  }
+
+  /** {@code {q,r}} 参数 ⇒ {@link HexCoord}。 */
+  protected static HexCoord hexArg(Object raw, String name) {
+    if (!(raw instanceof Map<?, ?> map)) {
+      throw new IllegalArgumentException("参数 " + name + " 必须是 {q,r} 对象");
+    }
+    return new HexCoord(
+        integralArg(map.get("q"), name + ".q"), integralArg(map.get("r"), name + ".r"));
+  }
+
+  private static int integralArg(Object value, String name) {
+    if (!(value instanceof Number number)) {
+      throw new IllegalArgumentException("参数 " + name + " 必须是整数");
+    }
+    long longValue = number.longValue();
+    if (longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE) {
+      throw new IllegalArgumentException("参数 " + name + " 超出 int 范围: " + longValue);
+    }
+    return (int) longValue;
+  }
+
+  private static String requiredTextArg(Map<?, ?> map, String key, String name) {
+    Object value = map.get(key);
+    if (!(value instanceof String text) || text.isBlank()) {
+      throw new IllegalArgumentException("参数 " + name + "." + key + " 必填且为非空文本");
+    }
+    return text;
+  }
+
+  /** 可选的字符串参数（缺席 ⇒ null；出现但非字符串/空白 ⇒ 抛）。 */
+  protected static String optionalTextArg(Map<?, ?> map, String key, String name) {
+    Object value = map.get(key);
+    if (value == null) {
+      return null;
+    }
+    if (!(value instanceof String text) || text.isBlank()) {
+      throw new IllegalArgumentException("参数 " + name + "." + key + " 若给出必须是非空文本");
+    }
+    return text;
+  }
+
+  /** {@code {键:字符串}} 参数 ⇒ 冻结表（缺席 ⇒ 空表）；值非字符串 ⇒ 抛。 */
+  protected static Map<String, String> stringMapArg(Map<String, Object> args, String name) {
+    Object raw = args.get(name);
+    if (raw == null) {
+      return Map.of();
+    }
+    if (!(raw instanceof Map<?, ?> map)) {
+      throw new IllegalArgumentException("参数 " + name + " 必须是 {键:字符串} 对象");
+    }
+    Map<String, String> out = new LinkedHashMap<>();
+    for (Map.Entry<?, ?> entry : map.entrySet()) {
+      if (!(entry.getKey() instanceof String key) || key.isBlank()) {
+        throw new IllegalArgumentException("参数 " + name + " 的键必须是非空文本");
+      }
+      if (!(entry.getValue() instanceof String value)) {
+        throw new IllegalArgumentException("参数 " + name + " 的值必须是字符串: " + key);
+      }
+      out.put(key, value);
+    }
+    return java.util.Collections.unmodifiableMap(out);
+  }
+
+  /** ★ 必填年龄档参数：只认 {@link AgeBracket#key()} 的三个稳定拼写 {@code 0-14|15-59|60+}（大小写一致，不做宽容匹配）。 */
+  protected static AgeBracket ageBracketArg(Map<String, Object> args, String name) {
+    String text = ToolSchema.requiredText(args, name);
+    for (AgeBracket bracket : AgeBracket.values()) {
+      if (bracket.key().equals(text)) {
+        return bracket;
+      }
+    }
+    throw new IllegalArgumentException("参数 " + name + " 必须是 0-14|15-59|60+: " + text);
+  }
+
+  /** ★ 必填性别参数：只认 {@code MALE|FEMALE}（与命令载荷同一份词表拼写）。 */
+  protected static Sex sexArg(Map<String, Object> args, String name) {
+    String text = ToolSchema.requiredText(args, name);
+    try {
+      return Sex.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("参数 " + name + " 必须是 MALE|FEMALE: " + text, e);
+    }
+  }
+
+  /** ★ 必填商品 id 参数：非空白裸值交给 {@code CommodityId.parse}（商品词表由 GM/展开显式给行）。 */
+  protected static CommodityId commodityArg(Map<String, Object> args, String name) {
+    return CommodityId.parse(ToolSchema.requiredText(args, name));
+  }
+
+  /**
+   * ★ 可选时间口径参数（{@code simos.social.demand}）：缺席 ⇒ {@code null}（= 从全局口径推断）； 给了只认 {@link DemandPeriod}
+   * 的两个稳定枚举名。
+   */
+  protected static DemandPeriod optionalDemandPeriodArg(Map<String, Object> args, String name) {
+    String text = ToolSchema.optionalText(args, name, null);
+    if (text == null) {
+      return null;
+    }
+    try {
+      return DemandPeriod.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "参数 " + name + " 必须是 PER_CYCLE_DAYS|PER_CALENDAR_YEAR: " + text, e);
+    }
+  }
+
+  /**
+   * 可选的率数组成员（{@code
+   * [{bracketId,sex,birthRatePerMillionPerTick?,deathRatePerMillionPerTick?}…]}；ppm/tick）。
+   */
+  protected static List<HouseholdVitalRate> vitalRatesArg(Map<String, Object> args, String name) {
+    Object raw = args.get(name);
+    if (raw == null) {
+      return List.of();
+    }
+    if (!(raw instanceof List<?> list)) {
+      throw new IllegalArgumentException("参数 " + name + " 必须是率对象数组");
+    }
+    List<HouseholdVitalRate> rates = new ArrayList<>(list.size());
+    for (Object item : list) {
+      if (!(item instanceof Map<?, ?> map)) {
+        throw new IllegalArgumentException("参数 " + name + " 的元素必须是率对象");
+      }
+      String bracketId = requiredTextArg(map, "bracketId", name);
+      String sexText = requiredTextArg(map, "sex", name);
+      Sex sex;
+      try {
+        sex = Sex.valueOf(sexText);
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException("参数 " + name + ".sex 必须是 MALE|FEMALE: " + sexText, e);
+      }
+      long birth = optionalLongArg(map, "birthRatePerMillionPerTick", name);
+      long death = optionalLongArg(map, "deathRatePerMillionPerTick", name);
+      rates.add(new HouseholdVitalRate(bracketId, sex, birth, death));
+    }
+    return List.copyOf(rates);
+  }
+
+  /** 可选的整数字段（缺席/JSON null ⇒ 0；非整数 ⇒ 抛）。 */
+  private static long optionalLongArg(Map<?, ?> map, String key, String name) {
+    Object value = map.get(key);
+    if (value == null) {
+      return 0L;
+    }
+    if (value instanceof Number number) {
+      return number.longValue();
+    }
+    if (value instanceof String text && !text.isBlank()) {
+      try {
+        return Long.parseLong(text.trim());
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("参数 " + name + "." + key + " 必须是整数: " + text, e);
+      }
+    }
+    throw new IllegalArgumentException("参数 " + name + "." + key + " 必须是整数");
+  }
+
+  /** {@link HouseholdLocation} ⇒ 命令载荷形状（与 {@code SocialPayloads.requireLocation} 同源）。 */
+  protected static Map<String, Object> locationPayload(HouseholdLocation location) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    if (location instanceof HouseholdLocation.Hex hex) {
+      payload.put("type", "HEX");
+      Map<String, Object> at = new LinkedHashMap<>();
+      at.put("q", hex.hex().q());
+      at.put("r", hex.hex().r());
+      payload.put("hex", at);
+      return payload;
+    }
+    if (location instanceof HouseholdLocation.Unit unit) {
+      payload.put("type", "UNIT");
+      payload.put("unitId", unit.unitId());
+      return payload;
+    }
+    throw new IllegalStateException("未知 HouseholdLocation 实现: " + location.getClass().getName());
+  }
+
+  /** {@link HouseholdLocation} ⇒ 只读视图形状。 */
+  protected static Map<String, Object> locationView(HouseholdLocation location) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    if (location instanceof HouseholdLocation.Hex hex) {
+      view.put("type", "HEX");
+      view.put("q", hex.hex().q());
+      view.put("r", hex.hex().r());
+      return view;
+    }
+    if (location instanceof HouseholdLocation.Unit unit) {
+      view.put("type", "UNIT");
+      view.put("unitId", unit.unitId());
+      return view;
+    }
+    throw new IllegalStateException("未知 HouseholdLocation 实现: " + location.getClass().getName());
+  }
+
+  /** 家户 id 列表 ⇒ 裸字符串列表（载荷/视图共用）。 */
+  protected static List<String> householdIds(List<HouseholdId> households) {
+    List<String> out = new ArrayList<>(households.size());
+    for (HouseholdId household : households) {
+      out.add(household.value());
+    }
+    return List.copyOf(out);
+  }
+
+  /** 家户必须存在（social 域自己的 handler 也会再判一遍）。 */
+  protected static void requireHousehold(SocialData base, HouseholdId id) {
+    if (!base.households().containsKey(id)) {
+      throw new IllegalArgumentException("家户不存在: " + id);
+    }
+  }
+
+  /** HEX 必须在本世界地图上（detach/移动的落点校验；与 map 读口同口径；map 在 social 的允许面内 ⇒ 域内直读）。 */
+  protected static void requireHexOnMap(SimulationState state, HexCoord hex) {
+    if (!SocialToolReads.gameMap(state).hexes().containsKey(hex)) {
+      throw new IllegalArgumentException("目标格不在本世界地图上: (" + hex.q() + "," + hex.r() + ")");
+    }
+  }
+
+  /** 一条命令预览（type + 裸载荷 + payloadJson；与写口组包同源）。 */
+  protected static Map<String, Object> commandPreview(String type, Map<String, Object> payload) {
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("type", type);
+    row.put("payload", payload);
+    row.put("payloadJson", ToolResults.json(payload));
+    return row;
+  }
+
+  /** 率表 ⇒ 载荷数组（保序；create / rates 两个工具共用）。 */
+  protected static List<Map<String, Object>> ratesPayload(List<HouseholdVitalRate> rates) {
+    List<Map<String, Object>> out = new ArrayList<>(rates.size());
+    for (HouseholdVitalRate rate : rates) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("bracketId", rate.bracketId());
+      row.put("sex", rate.sex().name());
+      row.put("birthRatePerMillionPerTick", rate.birthRatePerMillionPerTick());
+      row.put("deathRatePerMillionPerTick", rate.deathRatePerMillionPerTick());
+      out.add(row);
+    }
+    return out;
+  }
+}

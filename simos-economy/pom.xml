@@ -52,6 +52,13 @@
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
     </dependency>
+    <!-- ★★ 2026-10-12 B3 第三域（设计书 §4.3 / I-G5）：经济工具下放到 economy.tools.{read,write} 后，
+         本模块需要工具契约层 ga-spi（ToolWritePort / ToolReadPort / ToolSchema / ToolResources / ToolResults）。
+         ★ 禁列里本来就没有它（只有 util/map/calendar/social-api/actor-api 五模块按冻结文档 §4 I-F4 列了它）
+         ⇒ 只加依赖，不动禁列、不加 <includes>。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-ga-spi</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
     </dependency>
@@ -109,7 +116,7 @@
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-calendar</exclude>
                   </excludes>
-                  <message>simos-economy 是聚合式经济切片（产业/阶层行/债务/流水/市场/货币/政府政策），**机制与规则的归属地**：只许依赖 actor-api/util/economy-api/map/social-api/social（★ 方案 A 2026-10-09：允许直连 social —— 人员/家户唯一域）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 unit/sd/core/app、army/gov、运行框架 ga 与同层 actor、已退役的 ledger）。★ 例外：calendar 由 social 传递带出，按 I-F1 不入禁列（见上方注）。</message>
+                  <message>simos-economy 是聚合式经济切片（产业/阶层行/债务/流水/市场/货币/政府政策），**机制与规则的归属地**：只许依赖 actor-api/util/economy-api/map/social-api/social + 工具契约层 ga-spi（★ 方案 A 2026-10-09：允许直连 social —— 人员/家户唯一域；★★ 2026-10-12 B3 第三域：工具下放后加 ga-spi）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 unit/sd/core/app、army/gov、运行框架 ga 与同层 actor、已退役的 ledger）。★ 例外：calendar 由 social 传递带出，按 I-F1 不入禁列（见上方注）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

@@ -11,6 +11,8 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.time.CalendarService;
+import io.mosire.simos.app.tools.CoreSimosToolWritePort;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.write.GovDispatchTeamTool;
 import io.mosire.simos.app.tools.write.GovRecruitTool;
@@ -18,7 +20,6 @@ import io.mosire.simos.app.tools.write.GovRetireStaffTool;
 import io.mosire.simos.app.tools.write.GovSelectExamineesTool;
 import io.mosire.simos.app.tools.write.LevyRegionTool;
 import io.mosire.simos.app.tools.write.RaiseUnitTool;
-import io.mosire.simos.app.tools.write.SocialHouseholdMembersTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.decision.DecisionProposable;
 import io.mosire.simos.map.GameMap;
@@ -26,6 +27,7 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.household.Household;
+import io.mosire.simos.social.tools.write.SocialHouseholdMembersTool;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.ResourcePaths;
@@ -113,7 +115,12 @@ public final class ProposalCatalog {
                 Set.of(),
                 false),
             entry(new GovRetireStaffTool(core, query, initiator, mapId), Set.of(), false),
-            entry(new SocialHouseholdMembersTool(core, query, initiator), Set.of(), false),
+            entry(
+                new SocialHouseholdMembersTool(
+                    new CoreSimosToolWritePort(core, initiator),
+                    new QueryServiceToolReadPort(query)),
+                Set.of(),
+                false),
             entry(
                 new LevyRegionTool(core, query, initiator, mapId, calendarService),
                 Set.of(),

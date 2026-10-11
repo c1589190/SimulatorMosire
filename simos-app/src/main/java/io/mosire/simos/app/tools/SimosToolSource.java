@@ -13,6 +13,8 @@ import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.army.AppArmyToolPerspective;
+import io.mosire.simos.app.tools.economy.AppEconomyToolPerspective;
+import io.mosire.simos.app.tools.economy.AppEconomyToolViews;
 import io.mosire.simos.app.tools.map.AppMapPathPort;
 import io.mosire.simos.app.tools.map.AppMapRenderPort;
 import io.mosire.simos.app.tools.map.AppMapToolPerspective;
@@ -24,15 +26,12 @@ import io.mosire.simos.app.tools.read.DecisionDocsTool;
 import io.mosire.simos.app.tools.read.DecisionMakerTool;
 import io.mosire.simos.app.tools.read.DecisionMakersTool;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
-import io.mosire.simos.app.tools.read.EconomyHexTool;
-import io.mosire.simos.app.tools.read.EconomyOwnershipTool;
 import io.mosire.simos.app.tools.read.GmApprovalsTool;
 import io.mosire.simos.app.tools.read.GmPacketTool;
 import io.mosire.simos.app.tools.read.GmPacketsTool;
 import io.mosire.simos.app.tools.read.GmToolUsageTool;
 import io.mosire.simos.app.tools.read.GovInfoTool;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
-import io.mosire.simos.app.tools.read.PopulationTool;
 import io.mosire.simos.app.tools.read.ProvinceDivideTool;
 import io.mosire.simos.app.tools.read.SdCombatsTool;
 import io.mosire.simos.app.tools.read.SdDiplomacyTool;
@@ -47,6 +46,9 @@ import io.mosire.simos.app.tools.read.StateResolveTool;
 import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
 import io.mosire.simos.app.tools.read.UnitGetTool;
 import io.mosire.simos.app.tools.read.UnitListTool;
+import io.mosire.simos.app.tools.social.AppSocialToolPerspective;
+import io.mosire.simos.app.tools.social.AppSocialToolViews;
+import io.mosire.simos.app.tools.social.AppSocialUnitPort;
 import io.mosire.simos.app.tools.write.ActorAdjustAccountsTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
@@ -54,27 +56,12 @@ import io.mosire.simos.app.tools.write.AppArmyManpowerPort;
 import io.mosire.simos.app.tools.write.AppArmyToolViews;
 import io.mosire.simos.app.tools.write.CalendarConfigureTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
-import io.mosire.simos.app.tools.write.EconomyAdjustTool;
-import io.mosire.simos.app.tools.write.EconomyDefineMarketZoneTool;
-import io.mosire.simos.app.tools.write.EconomyMergeMarketZonesTool;
-import io.mosire.simos.app.tools.write.EconomyReassignZoneHexesTool;
-import io.mosire.simos.app.tools.write.EconomySetCommodityFreightTool;
-import io.mosire.simos.app.tools.write.EconomySetEconomyPolicyTool;
-import io.mosire.simos.app.tools.write.EconomySetGovernmentMintScaleTool;
-import io.mosire.simos.app.tools.write.EconomySetMarketZoneLoanRateAlphaTool;
-import io.mosire.simos.app.tools.write.EconomySetMarketZonePriceAlphaTool;
-import io.mosire.simos.app.tools.write.EconomyUpsertGovUnitTool;
-import io.mosire.simos.app.tools.write.EconomyUpsertIndustryTool;
 import io.mosire.simos.app.tools.write.ForkTool;
-import io.mosire.simos.app.tools.write.GmAdjustPopulationTool;
 import io.mosire.simos.app.tools.write.GmApproveTool;
 import io.mosire.simos.app.tools.write.GmDecidePacketTool;
-import io.mosire.simos.app.tools.write.GmGovMarketMandateTool;
 import io.mosire.simos.app.tools.write.GmMergedPlanApplyTool;
 import io.mosire.simos.app.tools.write.GmMergedPlanUpsertTool;
 import io.mosire.simos.app.tools.write.GmPacketExecuteTool;
-import io.mosire.simos.app.tools.write.GmPeriodicAdjustmentTool;
-import io.mosire.simos.app.tools.write.GmVitalRatesTool;
 import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.app.tools.write.GovApplyStaffingTool;
 import io.mosire.simos.app.tools.write.GovAssignPostsTool;
@@ -129,25 +116,16 @@ import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.app.tools.write.SetDecisionMakerAccessTool;
 import io.mosire.simos.app.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.app.tools.write.SimosSdReportTool;
-import io.mosire.simos.app.tools.write.SocialDemandTool;
-import io.mosire.simos.app.tools.write.SocialHouseholdCreateTool;
-import io.mosire.simos.app.tools.write.SocialHouseholdMembersTool;
-import io.mosire.simos.app.tools.write.SocialHouseholdMoveTool;
-import io.mosire.simos.app.tools.write.SocialHouseholdRatesTool;
-import io.mosire.simos.app.tools.write.SocialLaborTool;
-import io.mosire.simos.app.tools.write.SocialUpdateCityTool;
 import io.mosire.simos.app.tools.write.SpawnArmyTool;
 import io.mosire.simos.app.tools.write.StartDecisionTool;
 import io.mosire.simos.app.tools.write.SubmitPacketTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.app.tools.write.UnitAdjustCompositionTool;
 import io.mosire.simos.app.tools.write.UnitApplyCasualtiesTool;
-import io.mosire.simos.app.tools.write.UnitAssignHouseholdTool;
 import io.mosire.simos.app.tools.write.UnitAttachTool;
 import io.mosire.simos.app.tools.write.UnitCancelRouteTool;
 import io.mosire.simos.app.tools.write.UnitCreateCommandChainTool;
 import io.mosire.simos.app.tools.write.UnitCreateTool;
-import io.mosire.simos.app.tools.write.UnitDetachHouseholdTool;
 import io.mosire.simos.app.tools.write.UnitDetachTool;
 import io.mosire.simos.app.tools.write.UnitDisbandTool;
 import io.mosire.simos.app.tools.write.UnitMergeFormationTool;
@@ -184,6 +162,23 @@ import io.mosire.simos.army.tools.write.GmArmyPayPolicyTool;
 import io.mosire.simos.army.tools.write.ResolveCombatTool;
 import io.mosire.simos.army.tools.write.StartCombatTool;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.economy.tools.EconomyToolPerspective;
+import io.mosire.simos.economy.tools.EconomyToolViews;
+import io.mosire.simos.economy.tools.read.EconomyHexTool;
+import io.mosire.simos.economy.tools.read.EconomyOwnershipTool;
+import io.mosire.simos.economy.tools.write.EconomyAdjustTool;
+import io.mosire.simos.economy.tools.write.EconomyDefineMarketZoneTool;
+import io.mosire.simos.economy.tools.write.EconomyMergeMarketZonesTool;
+import io.mosire.simos.economy.tools.write.EconomyReassignZoneHexesTool;
+import io.mosire.simos.economy.tools.write.EconomySetCommodityFreightTool;
+import io.mosire.simos.economy.tools.write.EconomySetEconomyPolicyTool;
+import io.mosire.simos.economy.tools.write.EconomySetGovernmentMintScaleTool;
+import io.mosire.simos.economy.tools.write.EconomySetMarketZoneLoanRateAlphaTool;
+import io.mosire.simos.economy.tools.write.EconomySetMarketZonePriceAlphaTool;
+import io.mosire.simos.economy.tools.write.EconomyUpsertGovUnitTool;
+import io.mosire.simos.economy.tools.write.EconomyUpsertIndustryTool;
+import io.mosire.simos.economy.tools.write.GmGovMarketMandateTool;
+import io.mosire.simos.economy.tools.write.GmPeriodicAdjustmentTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.map.tools.MapPathPort;
@@ -205,6 +200,21 @@ import io.mosire.simos.map.tools.write.MapRenameRegionTool;
 import io.mosire.simos.map.tools.write.MapSetEdgeTool;
 import io.mosire.simos.map.tools.write.MapSetTerrainTool;
 import io.mosire.simos.map.tools.write.MapUpdateRegionTool;
+import io.mosire.simos.social.tools.SocialToolPerspective;
+import io.mosire.simos.social.tools.SocialToolViews;
+import io.mosire.simos.social.tools.SocialUnitPort;
+import io.mosire.simos.social.tools.read.PopulationTool;
+import io.mosire.simos.social.tools.write.GmAdjustPopulationTool;
+import io.mosire.simos.social.tools.write.GmVitalRatesTool;
+import io.mosire.simos.social.tools.write.SocialDemandTool;
+import io.mosire.simos.social.tools.write.SocialHouseholdCreateTool;
+import io.mosire.simos.social.tools.write.SocialHouseholdMembersTool;
+import io.mosire.simos.social.tools.write.SocialHouseholdMoveTool;
+import io.mosire.simos.social.tools.write.SocialHouseholdRatesTool;
+import io.mosire.simos.social.tools.write.SocialLaborTool;
+import io.mosire.simos.social.tools.write.SocialUpdateCityTool;
+import io.mosire.simos.social.tools.write.UnitAssignHouseholdTool;
+import io.mosire.simos.social.tools.write.UnitDetachHouseholdTool;
 import io.mosire.simos.util.spi.CommandTargets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -558,6 +568,14 @@ public final class SimosToolSource implements ToolSource {
       DecisionAgentService decisionAgent,
       PendingApprovals pendingApprovals,
       ApprovalCoordinator approvalCoordinator) {
+    // ★★ 2026-10-12 B3 第三/四域（economy + social）：经济/社会工具**已下放**（`economy.tools.write` /
+    //   `social.tools.write`），这里只做装配——注入窄写口 + 窄读口 + 各自域声明的端口：
+    //   ① 经济视角口（可见性围栏 + unit 编制预检 + 周期规则到期判据，唯一实现在 app）；
+    //   ② 社会单位编制口（家户归属的权威在 unit 侧，social 结构上看不见 unit）。
+    ToolWritePort toolWrites = new CoreSimosToolWritePort(core, initiator);
+    ToolReadPort toolReads = new QueryServiceToolReadPort(query);
+    EconomyToolPerspective economyPerspective = new AppEconomyToolPerspective();
+    SocialUnitPort socialUnits = new AppSocialUnitPort();
     built.add(new IssueDirectiveTool(core, initiator, mapId));
     built.add(new SubmitVerdictTool(core, initiator, mapId));
     built.add(new SetDecisionMakerAccessTool(core, initiator, mapId));
@@ -652,7 +670,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitSetTaxRateTool(core, initiator, mapId));
     // ★★ R2a（2026-10-01 行政区划修复计划 §1.2/§R4）：social 域窄写——改城市 name/props/region 的唯一窄面
     //   （region 键缺席=保持、字符串=设值、null=清空）。**只在 GM 桶**；命令 handler 的 targetPaths 仍为空。
-    built.add(new SocialUpdateCityTool(core, initiator, mapId));
+    built.add(new SocialUpdateCityTool(toolWrites, mapId));
     // 阶段 10a（2026-09-30 GOV/Army 计划）：两条"立编制"命令的窄封装（编制字段在 Unit.module ⇒ 是 unit 域命令）。
     //   **只在 GM 桶**；决策人侧要改编制仍走 sd.IssueDirective 的审批链（这两条命令非 GmOnly，可嵌入令）。
     built.add(new UnitSetGovernmentFormationTool(core, initiator, mapId));
@@ -739,8 +757,6 @@ public final class SimosToolSource implements ToolSource {
     //   ② 窄读口（QueryService 的三方法面，含 head 解析/创世等待/读缓存）；
     //   ③ 视图口（ApiViews / ToolSupport 的**同一份** view 函数，形状不另写第二份）；
     //   ④ 视角口 + 选人口（可见性围栏 + sd 侧 Army 事实 + MALE+ADULT 家户份额瀑布，实现都只有一份）。
-    ToolWritePort toolWrites = new CoreSimosToolWritePort(core, initiator);
-    ToolReadPort toolReads = new QueryServiceToolReadPort(query);
     ArmyToolViews armyViews = new AppArmyToolViews();
     ArmyToolPerspective armyPerspective = new AppArmyToolPerspective();
     ArmyManpowerPort armyManpower = new AppArmyManpowerPort(calendarService);
@@ -795,84 +811,84 @@ public final class SimosToolSource implements ToolSource {
     // ★★ E6b：GM 经济调整（economy.GmAdjust 的窄封装：预览 / 原因 / 前后差异 / 审计）。
     //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它，DecisionCallerFactory.WHITELIST 也没有它，
     //   且 economy.GmAdjust 本身标了 GmOnlyCommand（令/RegisterEffect/决策人 catalog 三条路径都排除）。
-    built.add(new EconomyAdjustTool(core, query, initiator, mapId));
+    built.add(new EconomyAdjustTool(toolWrites, toolReads, mapId));
     // ★★ Z1a（2026-10-23 政府专属生产方式设计 §5）：产业模板创建/修改（economy.UpsertIndustry 的窄封装：
     //   payloadJson 与 economy.Seed 的 industries[] 节点同形 + preview / apply + expectedRevision）。
     //   **只在 GM 桶**：决策人桶没有它，DecisionCallerFactory.WHITELIST 也不含它；命令本身标了 GmOnlyCommand
     //   ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new EconomyUpsertIndustryTool(core, query, initiator));
+    built.add(new EconomyUpsertIndustryTool(toolWrites, toolReads));
     // ★★ Z1c（2026-10-23 政府专属生产方式设计 §4.2/§5）：GOV 行政服务生产 unit 创建/补齐
     //   （economy.UpsertGovUnit 的窄封装：payloadJson + preview / apply + expectedRevision；一次写
     //   units + assetShares + relations，operator=hh-gov-<id>）。**只在 GM 桶**：决策人桶没有它，
     //   DecisionCallerFactory.WHITELIST 也不含它；命令本身标了 GmOnlyCommand ⇒ 令 / RegisterEffect /
     //   决策人 catalog 三条路径同样排除。★ app 侧预检 unit 存在 + module() 是 GovernmentFormation
     //   （preview/apply 两条路径；控制方 2026-10-23 裁定 A）。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new EconomyUpsertGovUnitTool(core, query, initiator));
+    built.add(new EconomyUpsertGovUnitTool(toolWrites, toolReads, economyPerspective));
     // ★★ B2（2026-10-08 阶段 2-B；约束设计书 §4.2 / 用户 §1.2「退让市场区、覆盖范围、合并」）：市场区持久状态的三条
     //   GM 窄写（定义 / 逐格改划 / 合并）。**只在 GM 桶**：决策人桶没有它们，DecisionCallerFactory.WHITELIST 也不含；
     //   三条命令本身都标了 GmOnlyCommand ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。
     //   ★ 三条工具都只透传 payloadJson（载荷形状的唯一权威 = handler 类注 + catalog 载荷提示）；
     //     工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
-    built.add(new EconomyDefineMarketZoneTool(core, initiator, mapId));
-    built.add(new EconomyReassignZoneHexesTool(core, initiator, mapId));
-    built.add(new EconomyMergeMarketZonesTool(core, initiator, mapId));
+    built.add(new EconomyDefineMarketZoneTool(toolWrites, mapId));
+    built.add(new EconomyReassignZoneHexesTool(toolWrites, mapId));
+    built.add(new EconomyMergeMarketZonesTool(toolWrites, mapId));
     // ★★ 商品基础运费表的 GM 窄写（2026-10-09 裁定「甲」后的纠正版；economy.SetCommodityFreight 的
     //   薄封装：payloadJson + branch + expectedRevision）。**只在 GM 桶**：决策人桶没有它，
     //   DecisionCallerFactory.WHITELIST 也不含；命令本身标了 GmOnlyCommand ⇒ 令 / RegisterEffect /
     //   决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；
     //   写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。──
-    built.add(new EconomySetCommodityFreightTool(core, initiator, mapId));
+    built.add(new EconomySetCommodityFreightTool(toolWrites, mapId));
     // ★★ W2（2026-10-11，S-8/§2.1）：**市场区动态价步长 α 的 GM 窄写**（economy.SetMarketZonePriceAlpha 的薄封装）。
     //   用户 2026-09-25 裁定「凡是行为一律做成 GM 可调的预设」⇒ α 不是编译期常量而是逐区状态，本工具是它的写口。
     //   **只在 GM 桶**：决策人桶没有它、DecisionCallerFactory.WHITELIST 也不含；命令标了 GmOnlyCommand ⇒
     //   令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；
     //   写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
-    built.add(new EconomySetMarketZonePriceAlphaTool(core, initiator, mapId));
+    built.add(new EconomySetMarketZonePriceAlphaTool(toolWrites, mapId));
     // ★★★ W5.5（2026-10-11，S-12⑤）：**市场区货币市场利率步长 α 的 GM 窄写**（economy.SetMarketZoneLoanRateAlpha 的
     //   薄封装）。利率 = 钱的价（与商品价同一套自适应算式：缺钱涨、钱多跌、下限 0），而"每轮最多动多少"必须是 GM 可调的
     //   预设（用户 2026-09-25 裁定）⇒ 这是它的写口。**只在 GM 桶**：决策人桶没有它、DecisionCallerFactory.WHITELIST
     //   也不含；命令标了 GmOnlyCommand ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
-    built.add(new EconomySetMarketZoneLoanRateAlphaTool(core, initiator, mapId));
+    built.add(new EconomySetMarketZoneLoanRateAlphaTool(toolWrites, mapId));
     // ★★ W5-fix6（2026-10-11，D1）：**政府铸币规模旋钮的 GM 窄写**（economy.SetGovernmentMintScale 的薄封装）。
     //   旋钮是"本政府每周期最多铸多少毫"的唯一闸门，而改前唯一能写它的命令只认 gov-unit-<id> 形态 ⇒ 世界级
     //   world-silver（唯一会铸币的政府）够不着（W5 验收报告 §3-D1 的 HTTP 422）。本工具补这条写口。
     //   **只在 GM 桶**：决策人桶没有它、DecisionCallerFactory.WHITELIST 也不含；命令标了 GmOnlyCommand ⇒
     //   令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；
     //   写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
-    built.add(new EconomySetGovernmentMintScaleTool(core, initiator, mapId));
+    built.add(new EconomySetGovernmentMintScaleTool(toolWrites, mapId));
     // ★★★ W10（2026-10-11）：**经济侧行为值的政策写口**（economy.SetEconomyPolicy 的薄封装）——
     //   用户 2026-09-25 裁定第 18 条「凡"行为"一律做成 GM 可调的预设」。缺省值与缺省中性由 EconomyPolicyKey 保证。
     //   **只在 GM 桶**（同上一行：命令标了 GmOnlyCommand ⇒ 令/RegisterEffect/决策人目录三条路径排除）。
-    built.add(new EconomySetEconomyPolicyTool(core, initiator, mapId));
+    built.add(new EconomySetEconomyPolicyTool(toolWrites, mapId));
     // ★★ S3a（2026-10-09 Unit/Gov 家户容纳 §4.3）：家户/人口 GM 窄写六条。**只在 GM 桶**；
     //   工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。四条 social 工具：创建 / 移动（HEX↔UNIT，跨 unit 时
     //   同批改 unit.households）/ 成员增删转移 / 出生死亡率；两条组合工具：assignHousehold（social.SetHouseholdLocation
     //   + unit.SetUnitHouseholds，一批一条 revision）与 detachHousehold（反向）。preview=true（缺省）一个字节都不写。
-    built.add(new SocialHouseholdCreateTool(core, query, initiator));
-    built.add(new SocialHouseholdMoveTool(core, query, initiator));
-    built.add(new SocialHouseholdMembersTool(core, query, initiator));
-    built.add(new SocialHouseholdRatesTool(core, query, initiator));
+    built.add(new SocialHouseholdCreateTool(toolWrites, toolReads, socialUnits));
+    built.add(new SocialHouseholdMoveTool(toolWrites, toolReads, socialUnits));
+    built.add(new SocialHouseholdMembersTool(toolWrites, toolReads));
+    built.add(new SocialHouseholdRatesTool(toolWrites, toolReads));
     // ★★ Batch 4（2026-10-09 家户结构修复计划）：Social 需求/劳动系数 GM 窄写两条。**只在 GM 桶**；
     //   各自封装一条 GmOnlyCommand（global 默认 + 单家户覆盖的 upsert/清除）；preview（缺省）走 SocialProvisioning
     //   的纯 copy-with，不写状态、不产生 revision；apply 才经 submitCommand 落一条 revision。
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS（命令类型本体已注册并登记载荷提示）。
-    built.add(new SocialDemandTool(core, query, initiator));
-    built.add(new SocialLaborTool(core, query, initiator));
-    built.add(new UnitAssignHouseholdTool(core, query, initiator));
-    built.add(new UnitDetachHouseholdTool(core, query, initiator));
+    built.add(new SocialDemandTool(toolWrites, toolReads));
+    built.add(new SocialLaborTool(toolWrites, toolReads));
+    built.add(new UnitAssignHouseholdTool(toolWrites, toolReads, socialUnits));
+    built.add(new UnitDetachHouseholdTool(toolWrites, toolReads, socialUnits));
     // ★★ D4（2026-10-22 决策包/家户可用性计划）：GM 参数工具四条（**只在 GM 桶**；工具名都不是命令类型 ⇒
     //   不进 catalog/PAYLOAD_HINTS）——周期扣增规则表（economy，复用 P4a 两条命令）、军俸政策（unit，
     //   复用 unit.SetArmyPayPolicy）、生死率（social，新增 social.SetGlobalVitalRates + 复用
     //   social.SetHouseholdVitalRates）、家户人口直调（逐字转发 simos.social.household.members）。
     //   四条都是 preview 缺省 true、apply 才落一条 revision 的窄写口径。
-    built.add(new GmPeriodicAdjustmentTool(core, query, initiator));
+    built.add(new GmPeriodicAdjustmentTool(toolWrites, toolReads, economyPerspective));
     // ★★ R1（2026-10-09）：政府市场授权（行政家户挂单）的 GM 窄工具 —— 只写一张授权表，订单仍由日结算的
     //   家户→订单→撮合→结算 生成（用户 §1.3：不加政策层）。
-    built.add(new GmGovMarketMandateTool(core, query, initiator));
+    built.add(new GmGovMarketMandateTool(toolWrites, toolReads));
     built.add(new GmArmyPayPolicyTool(toolWrites, toolReads));
-    built.add(new GmVitalRatesTool(core, query, initiator));
-    built.add(new GmAdjustPopulationTool(core, query, initiator));
+    built.add(new GmVitalRatesTool(toolWrites, toolReads));
+    built.add(new GmAdjustPopulationTool(toolWrites, toolReads));
     // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：GM 审批队列裁决口（控制面，不落世界 revision）。
     //   **只在 GM 桶**；与读口 simos.gm.approvals 共用同一份 PendingApprovals / ApprovalCoordinator。
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 NONE（不读写世界命名空间）。
@@ -985,6 +1001,15 @@ public final class SimosToolSource implements ToolSource {
     ToolReadPort armyReads = new QueryServiceToolReadPort(query);
     ArmyToolViews armyViews = new AppArmyToolViews();
     ArmyToolPerspective armyPerspective = new AppArmyToolPerspective();
+    // ★★ 2026-10-12 B3 第三/四域（economy + social）：两域读工具**已下放**（`economy.tools.read` /
+    //   `social.tools.read`），注入同一套接缝——窄读口（通用适配器）+ 视图口（ApiViews 的同一份函数）
+    //   + 视角口（可见性围栏唯一实现）。
+    ToolReadPort economyReads = new QueryServiceToolReadPort(query);
+    EconomyToolViews economyViews = new AppEconomyToolViews();
+    EconomyToolPerspective economyPerspective = new AppEconomyToolPerspective();
+    ToolReadPort socialReads = new QueryServiceToolReadPort(query);
+    SocialToolViews socialViews = new AppSocialToolViews(calendarService);
+    SocialToolPerspective socialPerspective = new AppSocialToolPerspective();
     return List.of(
         // ★★ E6b：catalog 的**命令清单**取完整注册面（含 GM-only），决策人可见性由显式"可嵌入令"白名单过滤
         //   （CatalogVisibility）—— GM 看得到 economy.SwitchMode / economy.GmAdjust，决策人看不到。
@@ -1016,7 +1041,7 @@ public final class SimosToolSource implements ToolSource {
         // ★ C6a：单位/人口的只读时间戳（movement.departedAt / at）要带日期 ⇒ 三件都传世界同一份 CalendarService。
         new UnitListTool(query, calendarService),
         new UnitGetTool(query, calendarService),
-        new PopulationTool(query, calendarService),
+        new PopulationTool(socialReads, socialViews, socialPerspective),
         // ★★ D1（2026-10-22 决策包计划）：家户聚合读口（GM 与决策人共用；scope=ALL 由工具内 social 面
         //   unrestricted 判定，不标 GmOnlyRead）。资源声明 map/social/unit/economy/actor 全 READ_ONLY。
         new SocialHouseholdsTool(query, calendarService, mapId),
@@ -1026,10 +1051,10 @@ public final class SimosToolSource implements ToolSource {
         new GovInfoTool(query, mapId),
         // ★ R2a（2026-09-25）：逐格经济读数（GUI `/api/economy/hex` 的对应读口；**四桶共享**——经济是世界状态，
         //   决策人该看得见辖地的产出与库存；视野由 ToolSupport.hexVisible 收窄）。
-        new EconomyHexTool(query, mapId),
+        new EconomyHexTool(economyReads, economyViews, economyPerspective, mapId),
         // ★ H0.6（2026-09-27）：产权读口 —— 行侧家户库存与 actor 侧 HouseholdInventory **并排**发（堵"把一本账读成全系统"）。
         //   只在 GM 桶（GmOnlyRead）：响应含 actor 切片的商品余额，而 actor 面在本仓的资源表态里是缺省拒。
-        new EconomyOwnershipTool(query, mapId),
+        new EconomyOwnershipTool(economyReads, economyViews, economyPerspective, mapId),
         // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）
         new MapRenderTool(mapReads, mapViews, mapRender),
         // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `sd.CreateDecisionMaker` 写、写完看不见。

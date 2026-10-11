@@ -36,8 +36,9 @@ import java.util.Optional;
  */
 final class ProvinceAssignCitiesPlan {
 
-  /** {@code social.UpdateCity} 的命令类型（与窄工具同一个拼写点）。 */
-  static final String UPDATE_CITY_TYPE = SocialUpdateCityTool.NAME;
+  /** {@code social.UpdateCity} 的命令类型（与窄工具同一个拼写点；工具已下放到 simos-social）。 */
+  static final String UPDATE_CITY_TYPE =
+      io.mosire.simos.social.tools.write.SocialUpdateCityTool.NAME;
 
   /** 省 id 标记（{@code ProvinceDivider} 建议形制的中段）。 */
   private static final String PROVINCE_MARKER = "__P";
