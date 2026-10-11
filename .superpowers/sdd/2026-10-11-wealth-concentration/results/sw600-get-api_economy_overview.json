@@ -1,0 +1,100 @@
+{
+ "activated": true,
+ "tick": 600,
+ "scope": "世界级：economy 切片与 actor 账本的全量聚合（三国合并）；不含逐格分解，逐格读 /api/economy/hex",
+ "moneyIssuance": {
+  "window": "累计（EconomyMeta.activatedDay 至当前 revision；无按日窗口）",
+  "recordCount": 9,
+  "initialEndowment": {
+   "copper": 100000,
+   "silver": 67200
+  },
+  "genesisEndowment": {
+   "silver": 200000
+  },
+  "mintProduction": {
+   "silver": 2500
+  },
+  "fiscalIssue": {},
+  "cumulativeIssuance": {
+   "copper": 100000,
+   "silver": 269700
+  },
+  "cumulativeWithdrawal": {},
+  "netIssuance": {
+   "copper": 100000,
+   "silver": 269700
+  },
+  "circulation": {
+   "copper": 100000,
+   "silver": 269700
+  }
+ },
+ "moneyByActorKind": {
+  "HOUSEHOLD": {
+   "copper": 100000,
+   "silver": 269700
+  }
+ },
+ "moneyByHouseholdClass": {
+  "artisan": {
+   "copper": 100000,
+   "silver": 258071
+  },
+  "landless_laborer": {
+   "silver": 4679
+  },
+  "landlord": {
+   "silver": 1511
+  },
+  "middle_peasant": {
+   "silver": 717
+  },
+  "poor_peasant": {
+   "silver": 3476
+  },
+  "rich_peasant": {
+   "silver": 1246
+  }
+ },
+ "moneyLayers": {
+  "privateCirculation": {
+   "copper": 100000,
+   "silver": 269700
+  },
+  "baseMoney": {
+   "copper": 100000,
+   "silver": 269700
+  },
+  "bankDeposits": {},
+  "unclassifiedCurrencies": []
+ },
+ "currencyDefs": [
+  {
+   "id": "silver",
+   "scale": 3,
+   "displayName": "银"
+  },
+  {
+   "id": "copper",
+   "scale": 3,
+   "displayName": "铜"
+  }
+ ],
+ "moneyInstruments": [
+  {
+   "id": "silver-specie",
+   "currency": "silver",
+   "kind": "SPECIE",
+   "issuer": null,
+   "redeemer": null
+  },
+  {
+   "id": "copper-specie",
+   "currency": "copper",
+   "kind": "SPECIE",
+   "issuer": null,
+   "redeemer": null
+  }
+ ]
+}

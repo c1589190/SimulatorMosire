@@ -1,0 +1,42 @@
+# 逐户运力池条目（本期 = day 601..689（89 个已完结日）；MERCHANT_CAPACITY_HOUSEHOLD，每市场轮一行/户）
+
+| 格 | 家户 | 轮数 | ΣcapacityMilli | 最大 | 非零轮数 | laborMilli | toolMilli | tier | askPerMille |
+|---|---|---|---|---|---|---|---|---|---|
+| -2_0 | hh--2_0-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -2_0 | hh--2_0-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -2_1 | hh--2_1-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -2_1 | hh--2_1-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -2_2 | hh--2_2-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -2_2 | hh--2_2-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -1_-1 | hh--1_-1-urban-landlord | 90 | 0 | 0 | 0 | 0 | 7262 | PORTER | 50 |
+| -1_-1 | hh--1_-1-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 11545 | PORTER | 50 |
+| -1_0 | hh--1_0-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -1_0 | hh--1_0-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -1_1 | hh--1_1-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -1_1 | hh--1_1-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -1_2 | hh--1_2-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| -1_2 | hh--1_2-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 0_-2 | hh-0_-2-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 0_-2 | hh-0_-2-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 0_-1 | hh-0_-1-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 0_-1 | hh-0_-1-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 0_0 | hh-0_0-urban-landlord | 90 | 7843338 | 93545 | 90 | 59200 | 11050 | PORTER | 50 |
+| 0_0 | hh-0_0-urban-rich_peasant | 90 | 0 | 0 | 0 | 573000 | 1435 | PORTER | 50 |
+| 0_1 | hh-0_1-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 0_1 | hh-0_1-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 0_2 | hh-0_2-urban-landlord | 90 | 0 | 0 | 0 | 0 | 0 | PORTER | 50 |
+| 0_2 | hh-0_2-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 5184 | PORTER | 50 |
+| 1_-2 | hh-1_-2-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 1_-2 | hh-1_-2-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 1_-1 | hh-1_-1-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 1_-1 | hh-1_-1-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 1_0 | hh-1_0-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 1_0 | hh-1_0-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 1_1 | hh-1_1-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 1_1 | hh-1_1-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 2_-2 | hh-2_-2-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 2_-2 | hh-2_-2-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 2_-1 | hh-2_-1-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 2_-1 | hh-2_-1-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 2_0 | hh-2_0-urban-landlord | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |
+| 2_0 | hh-2_0-urban-rich_peasant | 90 | 0 | 0 | 0 | 0 | 12000 | PORTER | 50 |

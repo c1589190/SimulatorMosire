@@ -1,0 +1,101 @@
+{
+ "tag": "sw600",
+ "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+ "jarMd5": "7d3d662d953a8009248ac1698a92177b",
+ "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/stores/sw600",
+ "guiPort": 10411,
+ "world": "small-world",
+ "config": "shell-sw.json",
+ "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/results/sw600.log",
+ "plan": "plan-sw.json",
+ "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=DEBUG -Dsimos.app.logLevel=DEBUG",
+ "pid": 373190,
+ "startedAt": "2026-10-11T17:17:38",
+ "logKeep": "event=(TAX_[A-Z_]*|GOV_[A-Z_]*|PERIODIC_ADJUSTMENT_[A-Z_]*|FAMINE_[A-Z_]*|MINT_[A-Z_]*|DEBT_[A-Z_]*|INTEREST|LIQUIDATION|REPAY|HARVEST|MIGRATION_[A-Z_]*|MODE_MIGRATION_[A-Z_]*|CLASS_SLIDE[A-Z_]*|RELIEF[A-Z_]*|TRANSFER[A-Z_]*|REMIT[A-Z_]*|SUBSID[A-Z_]*|WELFARE[A-Z_]*|WAGE[A-Z_]*|SALARY[A-Z_]*|ISSUANCE[A-Z_]*|DAY_START |DAY_END |MARKET |HAUL_[A-Z_]*|HOUSEHOLD_GAP_REPORTED|HOUSEHOLD_VITAL_WRITEBACK|PRODUCTION_MODIFIER_INJECTED|ARBITRAGE_ROUND|MONEY_MARKET_[A-Z_]*|ENGINE)",
+ "steps": [
+  {
+   "i": 0,
+   "op": "advance_daily",
+   "from": 0,
+   "to": 600,
+   "seconds": 140.673
+  },
+  {
+   "i": 1,
+   "op": "dump",
+   "label": "d600",
+   "revision": 601,
+   "file": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d600.json",
+   "md5": "70c8fed60a32b59222a4cf73f72d7f94",
+   "bytes": 6922823
+  },
+  {
+   "i": 2,
+   "op": "get",
+   "path": "/api/economy/gov",
+   "httpStatus": 200,
+   "file": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/results/sw600-get-api_economy_gov.json"
+  },
+  {
+   "i": 3,
+   "op": "get",
+   "path": "/api/economy/overview",
+   "httpStatus": 200,
+   "file": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/results/sw600-get-api_economy_overview.json"
+  }
+ ],
+ "grid": [
+  {
+   "day": 0,
+   "revision": 1,
+   "file": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d0.json",
+   "envMd5": "737001e8c9aa52eb05f4daeffa14f10b",
+   "bytes": 988762
+  },
+  {
+   "day": 120,
+   "revision": 121,
+   "file": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d120.json",
+   "envMd5": "c530548fcfcb89a258fed20b0805e174",
+   "bytes": 2764762
+  },
+  {
+   "day": 240,
+   "revision": 241,
+   "file": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d240.json",
+   "envMd5": "b3199a418a35a809fe3b5bfec0fb507d",
+   "bytes": 4692148
+  },
+  {
+   "day": 360,
+   "revision": 361,
+   "file": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d360.json",
+   "envMd5": "d8f0530e3acb6e819db0ae8308d83c1c",
+   "bytes": 5497661
+  },
+  {
+   "day": 480,
+   "revision": 481,
+   "file": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d480.json",
+   "envMd5": "ac046fdbbce03583cc60f253cba04ac1",
+   "bytes": 6380957
+  },
+  {
+   "day": 600,
+   "revision": 601,
+   "file": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d600.json",
+   "envMd5": "70c8fed60a32b59222a4cf73f72d7f94",
+   "bytes": 6922823
+  }
+ ],
+ "readySeconds": 1.704,
+ "genesis": {
+  "revision": 1,
+  "tick": 0
+ },
+ "exitCode": 143,
+ "endedAt": "2026-10-11T17:20:01",
+ "stdoutLines": 1583254,
+ "logKeptLines": 88245,
+ "elapsedSeconds": 143.3
+}

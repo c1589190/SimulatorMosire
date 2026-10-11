@@ -1,0 +1,8 @@
+[17:45:05] 续跑前 head=601 cp=/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/stores/tp-replay/checkpoints/main/601.json md5=d32692f46a778f8d3eb141dcda2a0d29
+[17:45:05] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/stores/tp-replay --world=three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-tp.json --gui-port 10821 --mcp-port 10822 --approval-port 10823
+[17:45:07] GUI 就绪（1.58s）
+[17:45:07] 续跑起点 rev=601 tick=600
+[17:45:17]   day=625 head=626 累计 10.5s
+[17:45:26]   day=650 head=651 累计 19.3s
+[17:45:30] 续跑完成 head=661（22.8s）
+[17:45:31] 收工 rc=143 elapsed=25.3s stdout=1469590 kept=1156689

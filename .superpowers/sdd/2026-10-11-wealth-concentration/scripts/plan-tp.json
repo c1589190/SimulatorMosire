@@ -1,0 +1,4 @@
+[ {"op":"advance_daily","from":0,"to":600},
+  {"op":"dump","label":"d600"},
+  {"op":"get","path":"/api/economy/gov"},
+  {"op":"get","path":"/api/economy/overview"} ]

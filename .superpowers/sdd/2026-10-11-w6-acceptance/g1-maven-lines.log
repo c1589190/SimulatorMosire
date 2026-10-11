@@ -1,0 +1,2213 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] SimulatorMosire                                                    [pom]
+[INFO] UtilSimos                                                          [jar]
+[INFO] MapSimos                                                           [jar]
+[INFO] CalendarSimos                                                      [jar]
+[INFO] SocialApiSimos                                                     [jar]
+[INFO] ActorApiSimos                                                      [jar]
+[INFO] EconomyApiSimos                                                    [jar]
+[INFO] SocialSimos                                                        [jar]
+[INFO] UnitSimos                                                          [jar]
+[INFO] CoreSimos                                                          [jar]
+[INFO] SDSimos                                                            [jar]
+[INFO] ActorSimos                                                         [jar]
+[INFO] EconomySimos                                                       [jar]
+[INFO] GovSimos                                                           [jar]
+[INFO] ArmySimos                                                          [jar]
+[INFO] SimosApp                                                           [jar]
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-parent >-----------------------
+[INFO] Building SimulatorMosire 0.1.0-SNAPSHOT                           [1/16]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-parent ---
+[INFO] Deleting /home/cna/SimulatorMosire/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-parent ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-parent ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-parent ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-parent >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-parent ---
+[WARNING] No files found to generate report on. Check if compile phase has been run.
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-parent <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-parent ---
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-util >------------------------
+[INFO] Building UtilSimos 0.1.0-SNAPSHOT                                 [2/16]
+[INFO]   from simos-util/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-util ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-util/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-util ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-util ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-util ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-util ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 62 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-util ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-util/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-util ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 27 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-util ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.util.state.StateRefTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.062 s -- in io.mosire.simos.util.state.StateRefTest
+[INFO] Running io.mosire.simos.util.state.SimulationStateTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in io.mosire.simos.util.state.SimulationStateTest
+[INFO] Running io.mosire.simos.util.state.SnapshotProtocolTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.util.state.SnapshotProtocolTest
+[INFO] Running io.mosire.simos.util.json.FieldDeltaJsonTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.131 s -- in io.mosire.simos.util.json.FieldDeltaJsonTest
+[INFO] Running io.mosire.simos.util.json.SimosObjectMapperTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.029 s -- in io.mosire.simos.util.json.SimosObjectMapperTest
+[INFO] Running io.mosire.simos.util.info.InMemoryInfoSystemTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in io.mosire.simos.util.info.InMemoryInfoSystemTest
+[INFO] Running io.mosire.simos.util.economy.ProportionalSplitTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.util.economy.ProportionalSplitTest
+[INFO] Running io.mosire.simos.util.economy.EconomyVocabularyTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.util.economy.EconomyVocabularyTest
+[INFO] Running io.mosire.simos.util.facet.FacetRegistryTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.util.facet.FacetRegistryTest
+[INFO] Running io.mosire.simos.util.resolve.ResolverRegistryTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.util.resolve.ResolverRegistryTest
+[INFO] Running io.mosire.simos.util.identity.ResolvedSubjectTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.util.identity.ResolvedSubjectTest
+[INFO] Running io.mosire.simos.util.identity.QueryResultTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.util.identity.QueryResultTest
+[INFO] Running io.mosire.simos.util.identity.SubjectIdTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.util.identity.SubjectIdTest
+[INFO] Running io.mosire.simos.util.time.TemporalSeriesTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.util.time.TemporalSeriesTest
+[INFO] Running io.mosire.simos.util.time.YearFractionTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.util.time.YearFractionTest
+[INFO] Running io.mosire.simos.util.time.TimeRangeTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.util.time.TimeRangeTest
+[INFO] Running io.mosire.simos.util.time.SimosTimestampTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.util.time.SimosTimestampTest
+[INFO] Running io.mosire.simos.util.address.AddressQuoteTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.util.address.AddressQuoteTest
+[INFO] Running io.mosire.simos.util.address.AddressParseTest
+[INFO] Tests run: 38, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.042 s -- in io.mosire.simos.util.address.AddressParseTest
+[INFO] Running io.mosire.simos.util.address.AddressTolerantParseTest
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.util.address.AddressTolerantParseTest
+[INFO] Running io.mosire.simos.util.spi.SpiShapesTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.util.spi.SpiShapesTest
+[INFO] Running io.mosire.simos.util.spi.WorldTimeProposalTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.util.spi.WorldTimeProposalTest
+[INFO] Running io.mosire.simos.util.verify.HaulParallelMachineRetirementGuardTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.795 s -- in io.mosire.simos.util.verify.HaulParallelMachineRetirementGuardTest
+[INFO] Running io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.util.verify.RoundTripAssertionsDriftTest
+[INFO] Running io.mosire.simos.util.verify.RoundTripAssertionsTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.193 s -- in io.mosire.simos.util.verify.RoundTripAssertionsTest
+[INFO] Running io.mosire.simos.util.verify.EconomyVocabularyGuardTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.586 s -- in io.mosire.simos.util.verify.EconomyVocabularyGuardTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 217, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-util ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-util/target/simos-util-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-util ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 89 files clean - 0 needs changes to be clean, 89 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-util >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-util ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-util <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-util ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-map >-------------------------
+[INFO] Building MapSimos 0.1.0-SNAPSHOT                                  [3/16]
+[INFO]   from simos-map/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-map ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-map/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-map ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-map ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-map ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 59 source files with javac [debug release 21] to target/classes
+[INFO] /home/cna/SimulatorMosire/simos-map/src/main/java/io/mosire/simos/map/codec/MapCodec.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-map/src/main/java/io/mosire/simos/map/codec/MapCodec.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-map ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-map/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-map ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 39 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-map ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.map.GameMapTest
+[INFO] Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.103 s -- in io.mosire.simos.map.GameMapTest
+[INFO] Running io.mosire.simos.map.generate.RiverBuilderTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.039 s -- in io.mosire.simos.map.generate.RiverBuilderTest
+[INFO] Running io.mosire.simos.map.generate.RegionRandomizerTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.054 s -- in io.mosire.simos.map.generate.RegionRandomizerTest
+[INFO] Running io.mosire.simos.map.generate.MapGeneratorTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.725 s -- in io.mosire.simos.map.generate.MapGeneratorTest
+[INFO] Running io.mosire.simos.map.generate.TerrainClassifierTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.map.generate.TerrainClassifierTest
+[INFO] Running io.mosire.simos.map.generate.GenerationSpecTest
+[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in io.mosire.simos.map.generate.GenerationSpecTest
+[INFO] Running io.mosire.simos.map.CityTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.map.CityTest
+[INFO] Running io.mosire.simos.map.terrain.TerrainHeightsTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.map.terrain.TerrainHeightsTest
+[INFO] Running io.mosire.simos.map.terrain.ImpassableSentinelTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.map.terrain.ImpassableSentinelTest
+[INFO] Running io.mosire.simos.map.terrain.TerrainCatalogTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.map.terrain.TerrainCatalogTest
+[INFO] Running io.mosire.simos.map.RegressionGuardsTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.203 s -- in io.mosire.simos.map.RegressionGuardsTest
+[INFO] Running io.mosire.simos.map.ops.RegionOperationsTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.map.ops.RegionOperationsTest
+[INFO] Running io.mosire.simos.map.ops.EdgeOperationsTest
+[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.map.ops.EdgeOperationsTest
+[INFO] Running io.mosire.simos.map.ops.RandomizeOperationsTest
+[T6-RANDOMIZE] seed7={desert=164, mountains=5, plains=162}
+[T6-RANDOMIZE] seed8={desert=171, mountains=5, plains=155}
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.053 s -- in io.mosire.simos.map.ops.RandomizeOperationsTest
+[INFO] Running io.mosire.simos.map.ops.TerrainOperationsTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.map.ops.TerrainOperationsTest
+[INFO] Running io.mosire.simos.map.region.RegionIndexTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.112 s -- in io.mosire.simos.map.region.RegionIndexTest
+[INFO] Running io.mosire.simos.map.region.RegionTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.map.region.RegionTest
+[INFO] Running io.mosire.simos.map.region.RegionIndexGuardTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.109 s -- in io.mosire.simos.map.region.RegionIndexGuardTest
+[INFO] Running io.mosire.simos.map.region.RegionBoundaryTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.region.RegionBoundaryTest
+[INFO] Running io.mosire.simos.map.HexCellTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.map.HexCellTest
+[INFO] Running io.mosire.simos.map.resolve.MapResolverTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in io.mosire.simos.map.resolve.MapResolverTest
+[INFO] Running io.mosire.simos.map.block.TerrainBlocksTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.map.block.TerrainBlocksTest
+[INFO] Running io.mosire.simos.map.pathway.PathwayTest
+[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in io.mosire.simos.map.pathway.PathwayTest
+[INFO] Running io.mosire.simos.map.pathway.EdgeRefTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in io.mosire.simos.map.pathway.EdgeRefTest
+[INFO] Running io.mosire.simos.map.pathway.EdgeTagsTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.map.pathway.EdgeTagsTest
+[INFO] Running io.mosire.simos.map.pathway.PathwayGroupTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.map.pathway.PathwayGroupTest
+[INFO] Running io.mosire.simos.map.codec.MapCodecTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.046 s -- in io.mosire.simos.map.codec.MapCodecTest
+[INFO] Running io.mosire.simos.map.codec.MapCodecLegacyTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.map.codec.MapCodecLegacyTest
+[INFO] Running io.mosire.simos.map.guard.RepresentationLeakGuardTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.061 s -- in io.mosire.simos.map.guard.RepresentationLeakGuardTest
+[INFO] Running io.mosire.simos.map.change.RoundTripComponentsTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.map.change.RoundTripComponentsTest
+[INFO] Running io.mosire.simos.map.change.MapChangeSetTest
+[INFO] Tests run: 21, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.map.change.MapChangeSetTest
+[INFO] Running io.mosire.simos.map.spi.SetTerrainHandlerTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.map.spi.SetTerrainHandlerTest
+[INFO] Running io.mosire.simos.map.spi.SetEdgeHandlerTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.map.spi.SetEdgeHandlerTest
+[INFO] Running io.mosire.simos.map.spi.RandomizeRegionHandlerTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.map.spi.RandomizeRegionHandlerTest
+[INFO] Running io.mosire.simos.map.spi.RegionHandlersTest
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.map.spi.RegionHandlersTest
+[INFO] Running io.mosire.simos.map.hex.HexVertexTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.map.hex.HexVertexTest
+[INFO] Running io.mosire.simos.map.hex.HexCoordTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in io.mosire.simos.map.hex.HexCoordTest
+[INFO] Running io.mosire.simos.map.hex.HexDirectionTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.map.hex.HexDirectionTest
+[INFO] Running io.mosire.simos.map.hex.HexGridTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.map.hex.HexGridTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 379, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-map ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-map/target/simos-map-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-map ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 98 files clean - 0 needs changes to be clean, 98 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-map >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-map ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-map <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-map ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ----------------------< io.mosire:simos-calendar >----------------------
+[INFO] Building CalendarSimos 0.1.0-SNAPSHOT                             [4/16]
+[INFO]   from simos-calendar/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-calendar ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-calendar/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-calendar ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-calendar ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-calendar ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-calendar ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-calendar/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-calendar ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 22 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-calendar ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-calendar/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-calendar ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 6 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-calendar ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.calendar.SeasonSystemTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.058 s -- in io.mosire.simos.calendar.SeasonSystemTest
+[INFO] Running io.mosire.simos.calendar.CalendarClockTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.calendar.CalendarClockTest
+[INFO] Running io.mosire.simos.calendar.JulianCalendarTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.021 s -- in io.mosire.simos.calendar.JulianCalendarTest
+[INFO] Running io.mosire.simos.calendar.CalendarDefaultsTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.calendar.CalendarDefaultsTest
+[INFO] Running io.mosire.simos.calendar.SolarTermsTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.calendar.SolarTermsTest
+[INFO] Running io.mosire.simos.calendar.CalendarAgeTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.calendar.CalendarAgeTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 33, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-calendar ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-calendar/target/simos-calendar-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-calendar ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 28 files clean - 0 needs changes to be clean, 28 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-calendar >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-calendar ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-calendar <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-calendar ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ---------------------< io.mosire:simos-social-api >---------------------
+[INFO] Building SocialApiSimos 0.1.0-SNAPSHOT                            [5/16]
+[INFO]   from simos-social-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-social-api ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-social-api/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social-api ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social-api ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social-api ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 14 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social-api ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 1 source file with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social-api ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.social.api.SocialApiBoundaryTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.233 s -- in io.mosire.simos.social.api.SocialApiBoundaryTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-social-api ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-social-api/target/simos-social-api-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-social-api ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 15 files clean - 0 needs changes to be clean, 15 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-social-api >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-social-api ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-social-api <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-social-api ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ---------------------< io.mosire:simos-actor-api >----------------------
+[INFO] Building ActorApiSimos 0.1.0-SNAPSHOT                             [6/16]
+[INFO]   from simos-actor-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-actor-api ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-actor-api/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-actor-api ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-actor-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-actor-api ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-actor-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-actor-api ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 5 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-actor-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-actor-api ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 1 source file with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-actor-api ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.actor.api.actor.ActorTypesTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.054 s -- in io.mosire.simos.actor.api.actor.ActorTypesTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-actor-api ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-actor-api/target/simos-actor-api-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-actor-api ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 6 files clean - 0 needs changes to be clean, 6 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-actor-api >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-actor-api ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-actor-api <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-actor-api ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] --------------------< io.mosire:simos-economy-api >---------------------
+[INFO] Building EconomyApiSimos 0.1.0-SNAPSHOT                           [7/16]
+[INFO]   from simos-economy-api/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-economy-api ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-economy-api/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-economy-api ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-economy-api ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-economy-api ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-economy-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy-api/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-economy-api ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 115 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-economy-api ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy-api/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-economy-api ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 8 source files with javac [debug release 21] to target/test-classes
+[INFO] /home/cna/SimulatorMosire/simos-economy-api/src/test/java/io/mosire/simos/economy/api/cohort/HouseholdActorsTest.java: /home/cna/SimulatorMosire/simos-economy-api/src/test/java/io/mosire/simos/economy/api/cohort/HouseholdActorsTest.java uses or overrides a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-economy-api/src/test/java/io/mosire/simos/economy/api/cohort/HouseholdActorsTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-economy-api ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.economy.api.cohort.CohortKeyTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.073 s -- in io.mosire.simos.economy.api.cohort.CohortKeyTest
+[INFO] Running io.mosire.simos.economy.api.cohort.HouseholdActorsTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.economy.api.cohort.HouseholdActorsTest
+[INFO] Running io.mosire.simos.economy.api.stock.DeductionReasonTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.084 s -- in io.mosire.simos.economy.api.stock.DeductionReasonTest
+[INFO] Running io.mosire.simos.economy.api.id.SocialClassIdTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.economy.api.id.SocialClassIdTest
+[INFO] Running io.mosire.simos.economy.api.EconomyIdsTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.economy.api.EconomyIdsTest
+[INFO] Running io.mosire.simos.economy.api.labor.HouseholdLaborCommitmentKindTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.031 s -- in io.mosire.simos.economy.api.labor.HouseholdLaborCommitmentKindTest
+[INFO] Running io.mosire.simos.economy.api.labor.LaborTypesTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.economy.api.labor.LaborTypesTest
+[INFO] Running io.mosire.simos.economy.api.money.MoneyIdentityTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.economy.api.money.MoneyIdentityTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 50, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-economy-api ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-economy-api/target/simos-economy-api-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-economy-api ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 123 files clean - 0 needs changes to be clean, 123 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-economy-api >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-economy-api ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-economy-api <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-economy-api ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-social >-----------------------
+[INFO] Building SocialSimos 0.1.0-SNAPSHOT                               [8/16]
+[INFO]   from simos-social/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-social ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-social/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-social ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-social ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-social ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-social ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 78 source files with javac [debug release 21] to target/classes
+[INFO] /home/cna/SimulatorMosire/simos-social/src/main/java/io/mosire/simos/social/spi/SocialPayloads.java: /home/cna/SimulatorMosire/simos-social/src/main/java/io/mosire/simos/social/spi/SocialPayloads.java uses or overrides a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-social/src/main/java/io/mosire/simos/social/spi/SocialPayloads.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-social ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-social/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-social ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 29 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-social ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.social.gen.SettlementGeneratorTest
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.045 s -- in io.mosire.simos.social.gen.SettlementGeneratorTest
+[INFO] Running io.mosire.simos.social.gen.TerrainViewTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.044 s -- in io.mosire.simos.social.gen.TerrainViewTest
+[INFO] Running io.mosire.simos.social.gen.WorldgenConfigTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.112 s -- in io.mosire.simos.social.gen.WorldgenConfigTest
+[INFO] Running io.mosire.simos.social.city.SocialCityTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.social.city.SocialCityTest
+[INFO] Running io.mosire.simos.social.facet.PopulationFacetTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in io.mosire.simos.social.facet.PopulationFacetTest
+[INFO] Running io.mosire.simos.social.resolve.SocialResolverTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.social.resolve.SocialResolverTest
+[INFO] Running io.mosire.simos.social.codec.SocialHouseholdCodecTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.102 s -- in io.mosire.simos.social.codec.SocialHouseholdCodecTest
+[INFO] Running io.mosire.simos.social.codec.SocialCodecTest
+[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.032 s -- in io.mosire.simos.social.codec.SocialCodecTest
+[INFO] Running io.mosire.simos.social.household.HouseholdBookTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.social.household.HouseholdBookTest
+[INFO] Running io.mosire.simos.social.household.FamineMortalityCountingTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.social.household.FamineMortalityCountingTest
+[INFO] Running io.mosire.simos.social.household.SocialHouseholdQueriesTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.social.household.SocialHouseholdQueriesTest
+[INFO] Running io.mosire.simos.social.household.HouseholdVitalEventsTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.social.household.HouseholdVitalEventsTest
+[INFO] Running io.mosire.simos.social.SocialDataTest
+[INFO] Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in io.mosire.simos.social.SocialDataTest
+[INFO] Running io.mosire.simos.social.population.UrbanRuralTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.social.population.UrbanRuralTest
+[INFO] Running io.mosire.simos.social.population.AgeBracketTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.social.population.AgeBracketTest
+[INFO] Running io.mosire.simos.social.population.PopulationSeriesTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.social.population.PopulationSeriesTest
+[INFO] Running io.mosire.simos.social.population.PopulationLotsTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.social.population.PopulationLotsTest
+[INFO] Running io.mosire.simos.social.population.PopulationGroupTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.social.population.PopulationGroupTest
+[INFO] Running io.mosire.simos.social.change.SocialRoundTripTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.social.change.SocialRoundTripTest
+[INFO] Running io.mosire.simos.social.change.SocialChangeSetTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.social.change.SocialChangeSetTest
+[INFO] Running io.mosire.simos.social.spi.SeedGroupsHandlerTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.social.spi.SeedGroupsHandlerTest
+[INFO] Running io.mosire.simos.social.spi.HouseholdCommandHandlersTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.social.spi.HouseholdCommandHandlersTest
+[INFO] Running io.mosire.simos.social.spi.SetPopulationHandlerTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.social.spi.SetPopulationHandlerTest
+[INFO] Running io.mosire.simos.social.spi.CreateCityHandlerTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.social.spi.CreateCityHandlerTest
+[INFO] Running io.mosire.simos.social.spi.UpdateCityHandlerTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.social.spi.UpdateCityHandlerTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 217, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-social ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-social/target/simos-social-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-social ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 107 files clean - 0 needs changes to be clean, 107 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-social >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-social ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-social <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-social ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-unit >------------------------
+[INFO] Building UnitSimos 0.1.0-SNAPSHOT                                 [9/16]
+[INFO]   from simos-unit/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-unit ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-unit/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-unit ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-unit ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-unit ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 76 source files with javac [debug release 21] to target/classes
+[INFO] /home/cna/SimulatorMosire/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: /home/cna/SimulatorMosire/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java uses or overrides a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-unit/src/main/java/io/mosire/simos/unit/spi/UnitPayloads.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-unit ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-unit/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-unit ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 31 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-unit ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.unit.ops.UnitJurisdictionOperationsTest
+[INFO] Tests run: 35, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.119 s -- in io.mosire.simos.unit.ops.UnitJurisdictionOperationsTest
+[INFO] Running io.mosire.simos.unit.ops.UnitModuleOperationsTest
+[INFO] Tests run: 32, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.032 s -- in io.mosire.simos.unit.ops.UnitModuleOperationsTest
+[INFO] Running io.mosire.simos.unit.ops.UnitOperationsTest
+[INFO] Tests run: 64, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.068 s -- in io.mosire.simos.unit.ops.UnitOperationsTest
+[INFO] Running io.mosire.simos.unit.facet.UnitsHereFacetTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.unit.facet.UnitsHereFacetTest
+[INFO] Running io.mosire.simos.unit.resolve.UnitResolverTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.unit.resolve.UnitResolverTest
+[INFO] Running io.mosire.simos.unit.UnitTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.unit.UnitTest
+[INFO] Running io.mosire.simos.unit.UnitModuleTest
+[INFO] Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.024 s -- in io.mosire.simos.unit.UnitModuleTest
+[INFO] Running io.mosire.simos.unit.codec.UnitCodecTest
+[INFO] Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.214 s -- in io.mosire.simos.unit.codec.UnitCodecTest
+[INFO] Running io.mosire.simos.unit.JurisdictionTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.unit.JurisdictionTest
+[INFO] Running io.mosire.simos.unit.RelativeOffsetTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.unit.RelativeOffsetTest
+[INFO] Running io.mosire.simos.unit.move.UnitMovesTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in io.mosire.simos.unit.move.UnitMovesTest
+[INFO] Running io.mosire.simos.unit.move.TerrainMovementCostTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.unit.move.TerrainMovementCostTest
+[INFO] Running io.mosire.simos.unit.move.PathFinderTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.unit.move.PathFinderTest
+[INFO] Running io.mosire.simos.unit.CommandChainTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.unit.CommandChainTest
+[INFO] Running io.mosire.simos.unit.UnitStatusTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.unit.UnitStatusTest
+[INFO] Running io.mosire.simos.unit.UnitHouseholdContainmentTest
+[INFO] Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in io.mosire.simos.unit.UnitHouseholdContainmentTest
+[INFO] Running io.mosire.simos.unit.change.UnitChangeSetTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.unit.change.UnitChangeSetTest
+[INFO] Running io.mosire.simos.unit.change.UnitRoundTripTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.unit.change.UnitRoundTripTest
+[INFO] Running io.mosire.simos.unit.spi.JurisdictionCommandHandlersTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.unit.spi.JurisdictionCommandHandlersTest
+[INFO] Running io.mosire.simos.unit.spi.GovFormationCommandHandlersTest
+[INFO] Tests run: 47, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.047 s -- in io.mosire.simos.unit.spi.GovFormationCommandHandlersTest
+[INFO] Running io.mosire.simos.unit.spi.UnitTimeParticipantTest
+[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in io.mosire.simos.unit.spi.UnitTimeParticipantTest
+[INFO] Running io.mosire.simos.unit.spi.RenameUnitHandlerTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.unit.spi.RenameUnitHandlerTest
+[INFO] Running io.mosire.simos.unit.spi.UnitRejoinDanglingTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in io.mosire.simos.unit.spi.UnitRejoinDanglingTest
+[INFO] Running io.mosire.simos.unit.spi.UnitCommandHandlersTest
+[INFO] Tests run: 87, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.056 s -- in io.mosire.simos.unit.spi.UnitCommandHandlersTest
+[INFO] Running io.mosire.simos.unit.spi.AdjustCompositionHandlerTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.unit.spi.AdjustCompositionHandlerTest
+[INFO] Running io.mosire.simos.unit.spi.SetStatusHandlerTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.unit.spi.SetStatusHandlerTest
+[INFO] Running io.mosire.simos.unit.UnitStateTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.unit.UnitStateTest
+[INFO] Running io.mosire.simos.unit.UnitVisionRadiusTest
+[INFO] Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.unit.UnitVisionRadiusTest
+[INFO] Running io.mosire.simos.unit.UnitIdTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.unit.UnitIdTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 518, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-unit ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-unit/target/simos-unit-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-unit ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 107 files clean - 0 needs changes to be clean, 107 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-unit >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-unit ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-unit <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-unit ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-core >------------------------
+[INFO] Building CoreSimos 0.1.0-SNAPSHOT                                [10/16]
+[INFO]   from simos-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[WARNING] The metadata /home/cna/.m2/repository/io/mosire/agentlib-mosire/0.1.0-SNAPSHOT/maven-metadata-local.xml is invalid: Snapshot information corrupted with remote repository data, please verify that no remote repository uses the id 'local'
+[WARNING] The metadata /home/cna/.m2/repository/io/mosire/agentlib-mosire/0.1.0-SNAPSHOT/maven-metadata-local.xml is invalid: Snapshot information corrupted with remote repository data, please verify that no remote repository uses the id 'local'
+[WARNING] The metadata /home/cna/.m2/repository/io/mosire/mosire-parent/0.1.0-SNAPSHOT/maven-metadata-local.xml is invalid: Snapshot information corrupted with remote repository data, please verify that no remote repository uses the id 'local'
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-core ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-core/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-core ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-core-boundaries) @ simos-core ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-core ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-core/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-core ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 29 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/cna/SimulatorMosire/simos-core/src/main/java/io/mosire/simos/core/store/Envelope.java: /home/cna/SimulatorMosire/simos-core/src/main/java/io/mosire/simos/core/store/Envelope.java uses or overrides a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-core/src/main/java/io/mosire/simos/core/store/Envelope.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-core ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-core/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-core ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 34 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-core ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.core.state.WorldChangeSetTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.057 s -- in io.mosire.simos.core.state.WorldChangeSetTest
+[INFO] Running io.mosire.simos.core.observe.EventTypesTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.core.observe.EventTypesTest
+[INFO] Running io.mosire.simos.core.observe.DigestTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in io.mosire.simos.core.observe.DigestTest
+[INFO] Running io.mosire.simos.core.timeline.TimelineTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.961 s -- in io.mosire.simos.core.timeline.TimelineTest
+[INFO] Running io.mosire.simos.core.advance.CoreAdvanceLoggingTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.253 s -- in io.mosire.simos.core.advance.CoreAdvanceLoggingTest
+[INFO] Running io.mosire.simos.core.advance.TimeProposalResolverTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.core.advance.TimeProposalResolverTest
+[INFO] Running io.mosire.simos.core.advance.TimeAdvanceTest
+[INFO] Tests run: 23, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.951 s -- in io.mosire.simos.core.advance.TimeAdvanceTest
+[INFO] Running io.mosire.simos.core.RealmEffectEndToEndTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.112 s -- in io.mosire.simos.core.RealmEffectEndToEndTest
+[INFO] Running io.mosire.simos.core.BranchingEndToEndTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.092 s -- in io.mosire.simos.core.BranchingEndToEndTest
+[INFO] Running io.mosire.simos.core.ArchitectureGuardsTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.066 s -- in io.mosire.simos.core.ArchitectureGuardsTest
+[INFO] Running io.mosire.simos.core.MapSetTerrainEndToEndTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.184 s -- in io.mosire.simos.core.MapSetTerrainEndToEndTest
+[INFO] Running io.mosire.simos.core.MapRandomizeEndToEndTest
+[T6-RANDOMIZE-E2E] seed7={low_hills=59, mountains=5, plateau=63}
+[T6-RANDOMIZE-E2E] seed8={low_hills=62, mountains=5, plateau=60}
+[T6-RANDOMIZE-E2E] hist={low_hills=59, mountains=5, plateau=63}
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.302 s -- in io.mosire.simos.core.MapRandomizeEndToEndTest
+[INFO] Running io.mosire.simos.core.StateValueEqualityTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.027 s -- in io.mosire.simos.core.StateValueEqualityTest
+[INFO] Running io.mosire.simos.core.command.OptimisticConcurrencyTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.326 s -- in io.mosire.simos.core.command.OptimisticConcurrencyTest
+[INFO] Running io.mosire.simos.core.command.CorrelationChainTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.225 s -- in io.mosire.simos.core.command.CorrelationChainTest
+[INFO] Running io.mosire.simos.core.command.CommandBusDispatchTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.478 s -- in io.mosire.simos.core.command.CommandBusDispatchTest
+[INFO] Running io.mosire.simos.core.command.CommandBusRestoreTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.135 s -- in io.mosire.simos.core.command.CommandBusRestoreTest
+[INFO] Running io.mosire.simos.core.command.CommandBusGuardTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.179 s -- in io.mosire.simos.core.command.CommandBusGuardTest
+[INFO] Running io.mosire.simos.core.command.CommandBusLoggingTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.312 s -- in io.mosire.simos.core.command.CommandBusLoggingTest
+[INFO] Running io.mosire.simos.core.command.CommandRegistryTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.core.command.CommandRegistryTest
+[INFO] Running io.mosire.simos.core.command.CommandBusBatchTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.364 s -- in io.mosire.simos.core.command.CommandBusBatchTest
+[INFO] Running io.mosire.simos.core.CoreSimosBatchEndToEndTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.226 s -- in io.mosire.simos.core.CoreSimosBatchEndToEndTest
+[INFO] Running io.mosire.simos.core.AgentLibAvailabilityTest
+[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.035 s -- in io.mosire.simos.core.AgentLibAvailabilityTest
+[INFO] Running io.mosire.simos.core.MapSetEdgeEndToEndTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.240 s -- in io.mosire.simos.core.MapSetEdgeEndToEndTest
+[INFO] Running io.mosire.simos.core.MapRegionEndToEndTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.192 s -- in io.mosire.simos.core.MapRegionEndToEndTest
+[INFO] Running io.mosire.simos.core.UnitCasualtyRevisionTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.137 s -- in io.mosire.simos.core.UnitCasualtyRevisionTest
+[INFO] Running io.mosire.simos.core.MapTerrainBlockEndToEndTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.039 s -- in io.mosire.simos.core.MapTerrainBlockEndToEndTest
+[INFO] Running io.mosire.simos.core.store.EnvelopeTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.core.store.EnvelopeTest
+[INFO] Running io.mosire.simos.core.store.SqliteStoreTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.639 s -- in io.mosire.simos.core.store.SqliteStoreTest
+[INFO] Running io.mosire.simos.core.store.StoreMetaTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.347 s -- in io.mosire.simos.core.store.StoreMetaTest
+[INFO] Running io.mosire.simos.core.store.CheckpointStoreTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.056 s -- in io.mosire.simos.core.store.CheckpointStoreTest
+[INFO] Running io.mosire.simos.core.store.ReplayTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.685 s -- in io.mosire.simos.core.store.ReplayTest
+[INFO] Running io.mosire.simos.core.CoreSimosTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.462 s -- in io.mosire.simos.core.CoreSimosTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 231, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-core ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-core/target/simos-core-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-core ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 63 files clean - 0 needs changes to be clean, 63 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-core >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-core ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-core <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-core ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] -------------------------< io.mosire:simos-sd >-------------------------
+[INFO] Building SDSimos 0.1.0-SNAPSHOT                                  [11/16]
+[INFO]   from simos-sd/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-sd ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-sd/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-sd ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-sd ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-sd ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-sd/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-sd ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 114 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/cna/SimulatorMosire/simos-sd/src/main/java/io/mosire/simos/sd/spi/SdPayloads.java: /home/cna/SimulatorMosire/simos-sd/src/main/java/io/mosire/simos/sd/spi/SdPayloads.java uses or overrides a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-sd/src/main/java/io/mosire/simos/sd/spi/SdPayloads.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-sd ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-sd/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-sd ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 27 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/cna/SimulatorMosire/simos-sd/src/test/java/io/mosire/simos/sd/model/SdModelTest.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-sd/src/test/java/io/mosire/simos/sd/model/SdModelTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-sd ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.sd.state.SdStateInvariantTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.084 s -- in io.mosire.simos.sd.state.SdStateInvariantTest
+[INFO] Running io.mosire.simos.sd.channel.ChannelAdmissionTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.102 s -- in io.mosire.simos.sd.channel.ChannelAdmissionTest
+[INFO] Running io.mosire.simos.sd.resolve.SdResolverTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.031 s -- in io.mosire.simos.sd.resolve.SdResolverTest
+[INFO] Running io.mosire.simos.sd.time.SdTimeParticipantTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.029 s -- in io.mosire.simos.sd.time.SdTimeParticipantTest
+[INFO] Running io.mosire.simos.sd.codec.SdCodecTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.181 s -- in io.mosire.simos.sd.codec.SdCodecTest
+[INFO] Running io.mosire.simos.sd.guard.RegionDeleteGuardTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.sd.guard.RegionDeleteGuardTest
+[INFO] Running io.mosire.simos.sd.adjudication.AdjudicationTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.sd.adjudication.AdjudicationTest
+[INFO] Running io.mosire.simos.sd.model.SdIdTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.sd.model.SdIdTest
+[INFO] Running io.mosire.simos.sd.model.SdModelTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in io.mosire.simos.sd.model.SdModelTest
+[INFO] Running io.mosire.simos.sd.change.SdRoundTripTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.sd.change.SdRoundTripTest
+[INFO] Running io.mosire.simos.sd.spi.PutInfoHandlerTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in io.mosire.simos.sd.spi.PutInfoHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.SetDecisionMakerAccessHandlerTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.sd.spi.SetDecisionMakerAccessHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.IssueDirectiveHandlerTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in io.mosire.simos.sd.spi.IssueDirectiveHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.SetDiplomaticRelationHandlerTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in io.mosire.simos.sd.spi.SetDiplomaticRelationHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.DecisionSignatureTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.sd.spi.DecisionSignatureTest
+[INFO] Running io.mosire.simos.sd.spi.RunDecisionHandlerTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.sd.spi.RunDecisionHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.ResetDecisionMakerConversationHandlerTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.sd.spi.ResetDecisionMakerConversationHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.CreateDecisionMakerHandlerTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.sd.spi.CreateDecisionMakerHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.SubmitVerdictHandlerTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.sd.spi.SubmitVerdictHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.CreateArmyHandlerTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.sd.spi.CreateArmyHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.SetDecisionMakerProviderHandlerTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.sd.spi.SetDecisionMakerProviderHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.RecordDiplomaticEventHandlerTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.sd.spi.RecordDiplomaticEventHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.CreateNationHandlerTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.sd.spi.CreateNationHandlerTest
+[INFO] Running io.mosire.simos.sd.spi.SdCombatHandlersTest
+[INFO] Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.024 s -- in io.mosire.simos.sd.spi.SdCombatHandlersTest
+[INFO] Running io.mosire.simos.sd.spi.StartDecisionHandlerTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.sd.spi.StartDecisionHandlerTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 232, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-sd ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-sd/target/simos-sd-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-sd ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 141 files clean - 0 needs changes to be clean, 141 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-sd >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-sd ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-sd <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-sd ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] -----------------------< io.mosire:simos-actor >------------------------
+[INFO] Building ActorSimos 0.1.0-SNAPSHOT                               [12/16]
+[INFO]   from simos-actor/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-actor ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-actor/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-actor ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-actor ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-actor ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-actor ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-actor ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 25 source files with javac [debug release 21] to target/classes
+[INFO] /home/cna/SimulatorMosire/simos-actor/src/main/java/io/mosire/simos/actor/spi/AccountPayloads.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-actor/src/main/java/io/mosire/simos/actor/spi/AccountPayloads.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-actor ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-actor/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-actor ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 9 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-actor ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.actor.resolve.ActorResolverTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.093 s -- in io.mosire.simos.actor.resolve.ActorResolverTest
+[INFO] Running io.mosire.simos.actor.ActorInvariantsTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.022 s -- in io.mosire.simos.actor.ActorInvariantsTest
+[INFO] Running io.mosire.simos.actor.codec.ActorCodecTest
+[INFO] Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.190 s -- in io.mosire.simos.actor.codec.ActorCodecTest
+[INFO] Running io.mosire.simos.actor.model.HouseholdInventoryTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.actor.model.HouseholdInventoryTest
+[INFO] Running io.mosire.simos.actor.change.ActorRoundTripTest
+[INFO] Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.actor.change.ActorRoundTripTest
+[INFO] Running io.mosire.simos.actor.spi.ActorSnapshotsTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.actor.spi.ActorSnapshotsTest
+[INFO] Running io.mosire.simos.actor.spi.AdjustAccountsHandlerTest
+[INFO] Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.027 s -- in io.mosire.simos.actor.spi.AdjustAccountsHandlerTest
+[INFO] Running io.mosire.simos.actor.spi.ActorSeedHandlerTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.actor.spi.ActorSeedHandlerTest
+[INFO] Running io.mosire.simos.actor.spi.ActorPayloadsTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in io.mosire.simos.actor.spi.ActorPayloadsTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 130, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-actor ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-actor/target/simos-actor-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-actor ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 34 files clean - 0 needs changes to be clean, 34 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-actor >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-actor ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-actor <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-actor ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ----------------------< io.mosire:simos-economy >-----------------------
+[INFO] Building EconomySimos 0.1.0-SNAPSHOT                             [13/16]
+[INFO]   from simos-economy/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-economy ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-economy/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-economy ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-economy ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-economy ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-economy ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-economy/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-economy ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 214 source files with javac [debug release 21] to target/classes
+[INFO] /home/cna/SimulatorMosire/simos-economy/src/main/java/io/mosire/simos/economy/codec/EconomyCodec.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-economy/src/main/java/io/mosire/simos/economy/codec/EconomyCodec.java: Recompile with -Xlint:deprecation for details.
+[INFO] /home/cna/SimulatorMosire/simos-economy/src/main/java/io/mosire/simos/economy/time/BufferedAccountTables.java: /home/cna/SimulatorMosire/simos-economy/src/main/java/io/mosire/simos/economy/time/BufferedAccountTables.java uses unchecked or unsafe operations.
+[INFO] /home/cna/SimulatorMosire/simos-economy/src/main/java/io/mosire/simos/economy/time/BufferedAccountTables.java: Recompile with -Xlint:unchecked for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-economy ---
+[INFO] Copying 2 resources from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-economy ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 60 source files with javac [debug release 21] to target/test-classes
+[INFO] /home/cna/SimulatorMosire/simos-economy/src/test/java/io/mosire/simos/economy/codec/EconomyCodecTest.java: /home/cna/SimulatorMosire/simos-economy/src/test/java/io/mosire/simos/economy/codec/EconomyCodecTest.java uses or overrides a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-economy/src/test/java/io/mosire/simos/economy/codec/EconomyCodecTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-economy ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.economy.market.CircularFlowCreditProbeTest
+[CIRCLE] round=1 pop=510 newIssuance=200000 repayment=0 debt=200000 money=200000 grainRef=100 clothRef=400
+[CIRCLE] round=2 pop=510 newIssuance=200000 repayment=200000 debt=200000 money=200000 grainRef=100 clothRef=400
+[CIRCLE] round=3 pop=510 newIssuance=200000 repayment=200000 debt=200000 money=200000 grainRef=100 clothRef=400
+[CIRCLE] round=500 pop=510 newIssuance=200000 repayment=200000 debt=200000 money=200000 grainRef=100 clothRef=400
+[CIRCLE] round=1000 pop=510 newIssuance=200000 repayment=200000 debt=200000 money=200000 grainRef=100 clothRef=400
+[CIRCLE] round=1500 pop=510 newIssuance=200000 repayment=200000 debt=200000 money=200000 grainRef=100 clothRef=400
+[CIRCLE] round=2000 pop=510 newIssuance=200000 repayment=200000 debt=200000 money=200000 grainRef=100 clothRef=400
+[CIRCLE] round=2500 pop=510 newIssuance=200000 repayment=200000 debt=200000 money=200000 grainRef=100 clothRef=400
+[CIRCLE] round=3000 pop=510 newIssuance=200000 repayment=200000 debt=200000 money=200000 grainRef=100 clothRef=400
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.083 s -- in io.mosire.simos.economy.market.CircularFlowCreditProbeTest
+[INFO] Running io.mosire.simos.economy.market.FoodLaborProductionProbeTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.economy.market.FoodLaborProductionProbeTest
+[INFO] Running io.mosire.simos.economy.market.RepaymentWaveProbeTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in io.mosire.simos.economy.market.RepaymentWaveProbeTest
+[INFO] Running io.mosire.simos.economy.market.ThreeHexTransportProbeTest
+[3HEX] trades=[Trade[buyerHex=H2-poor, sellerHex=H0-grain, good=GRAIN, basePrice=100, landedPrice=110, qty=30], Trade[buyerHex=H2-poor, sellerHex=H1-cloth, good=CLOTH, basePrice=200, landedPrice=220, qty=10]]
+[3HEX] refs={H0-grain={CLOTH=0, GRAIN=93, FIBER=0}, H1-cloth={CLOTH=182, GRAIN=0, FIBER=0}, H2-poor={CLOTH=220, GRAIN=110, FIBER=0}}
+[3HEX] transportEscrow=500
+[3HEX] round2 trades=[Trade[buyerHex=H2-poor, sellerHex=H0-grain, good=GRAIN, basePrice=83, landedPrice=91, qty=30], Trade[buyerHex=H2-poor, sellerHex=H1-cloth, good=CLOTH, basePrice=163, landedPrice=179, qty=10]]
+[3HEX] round2 refs={H0-grain={CLOTH=0, GRAIN=78, FIBER=0}, H1-cloth={CLOTH=148, GRAIN=0, FIBER=0}, H2-poor={CLOTH=179, GRAIN=91, FIBER=0}}
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.economy.market.ThreeHexTransportProbeTest
+[INFO] Running io.mosire.simos.economy.market.SevenHexCityMerchantProbeTest
+[7HEX2] pop=1455 deaths=0 R0->C=0->67 (ruralPenalty=100) R1->C=0->0 cityPoolMoved=1965 cityPoolProfit=-400 cityPoolCapacity=20750
+[7HEX2] city capacity=370 used=7549 expansions=18 builtAreaPerMille=360 arableC=2999 arableR0=3019 cumulativeTrade=7534716
+[7HEX2] radial: R1->C=0 R1->R2=14 afterRoad(level1)=0 outerRoad=0 outerOffRoad=70 C->O2(road)=0 C->O11(offroad)=20 outerBuyerDebt=11341500 migratedToCity=175 cityLaborer=175
+[7HEX2] workshopOutput=650 farmOutput=1370 rent=410 fiberHousehold=400 peripheralFiberStock=1104 refs={C={CLOTH=108, GRAIN=8, FIBER=9}, R0={CLOTH=120, GRAIN=7, FIBER=6}, R1={CLOTH=120, GRAIN=0, FIBER=14}, R2={CLOTH=120, GRAIN=0, FIBER=5}, R3={CLOTH=120, GRAIN=0, FIBER=17}, R4={CLOTH=120, GRAIN=0, FIBER=6}, R5={CLOTH=120, GRAIN=0, FIBER=5}, O0={CLOTH=0, GRAIN=0, FIBER=0}, O1={CLOTH=0, GRAIN=8, FIBER=0}, O2={CLOTH=0, GRAIN=0, FIBER=0}, O3={CLOTH=0, GRAIN=0, FIBER=0}, O4={CLOTH=0, GRAIN=0, FIBER=0}, O5={CLOTH=0, GRAIN=0, FIBER=0}, O6={CLOTH=0, GRAIN=0, FIBER=0}, O7={CLOTH=0, GRAIN=0, FIBER=0}, O8={CLOTH=0, GRAIN=0, FIBER=0}, O9={CLOTH=0, GRAIN=0, FIBER=0}, O10={CLOTH=0, GRAIN=0, FIBER=0}, O11={CLOTH=0, GRAIN=0, FIBER=0}}
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.357 s -- in io.mosire.simos.economy.market.SevenHexCityMerchantProbeTest
+[INFO] Running io.mosire.simos.economy.market.TwoRoundMarketProbeTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.economy.market.TwoRoundMarketProbeTest
+[INFO] Running io.mosire.simos.economy.market.DiversifiedEconomyProbeTest
+[D1] pop=1037 issued=242022459 repaid=192449561 debtDeleted=2601531 deaths=116 debt=46971367 money=49638898 escrow=0 refs={H0-rural={CLOTH=208, GRAIN=100, FIBER=25}, H1-town={CLOTH=157, GRAIN=133, FIBER=27}}
+[D1] workshopOutput=400 clothWage=60000 arrears=0 owner{cloth=400,fiber=0,money=2800} artisan{grain=0,eat=592/599,money=60000}
+[D1] farmOutput=1020 rent=410 farmer{grain=610,money=30400,eat=306/306} fiber{stock=400,money=10000}
+[D1] transport R->T moved=1002 fee=7422 T->R moved=400 fee=6800 carrierMoney=19963598
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.020 s -- in io.mosire.simos.economy.market.DiversifiedEconomyProbeTest
+[INFO] Running io.mosire.simos.economy.market.HomeModeMigrationProbeTest
+[MODEMIG] tick=0 TENANCY_FIXED(pop=700,debt=1400,households=3) WAGE_FARM(pop=400,debt=700,households=2) HANDICRAFT(pop=100,debt=100,households=1) MERCHANT(pop=50,debt=50,households=1) DISPLACED(pop=100,debt=200,households=1) cityPop=150 totalPop=1350 totalMoney=8200 totalDebt=2450 migrations=0 merges=0 creations=0 extinctions=0 displacedDebtGrowth=0
+[MODEMIG] tick=120 TENANCY_FIXED(pop=438,debt=1510,households=4) WAGE_FARM(pop=149,debt=298,households=2) HANDICRAFT(pop=424,debt=3270,households=3) MERCHANT(pop=339,debt=2422,households=2) cityPop=763 totalPop=1350 totalMoney=8200 totalDebt=7500 migrations=879 merges=856 creations=4 extinctions=1 displacedDebtGrowth=5050
+[MODEMIG] tick=1200 TENANCY_FIXED(pop=595,debt=2643,households=4) HANDICRAFT(pop=417,debt=2682,households=3) MERCHANT(pop=338,debt=2175,households=2) cityPop=755 totalPop=1350 totalMoney=8200 totalDebt=7500 migrations=1456 merges=1432 creations=5 extinctions=4 displacedDebtGrowth=5050
+[MODEMIG] tick=3650 TENANCY_FIXED(pop=595,debt=2643,households=4) HANDICRAFT(pop=417,debt=2682,households=3) MERCHANT(pop=338,debt=2175,households=2) cityPop=755 totalPop=1350 totalMoney=8200 totalDebt=7500 migrations=1456 merges=1432 creations=5 extinctions=4 displacedDebtGrowth=5050
+[MODEMIG] tick=0 TENANCY_FIXED(pop=700,debt=1400,households=3) WAGE_FARM(pop=400,debt=700,households=2) HANDICRAFT(pop=100,debt=100,households=1) MERCHANT(pop=50,debt=50,households=1) DISPLACED(pop=100,debt=200,households=1) cityPop=150 totalPop=1350 totalMoney=8200 totalDebt=2450 migrations=0 merges=0 creations=0 extinctions=0 displacedDebtGrowth=0
+[MODEMIG] tick=120 TENANCY_FIXED(pop=438,debt=1510,households=4) WAGE_FARM(pop=149,debt=298,households=2) HANDICRAFT(pop=424,debt=3270,households=3) MERCHANT(pop=339,debt=2422,households=2) cityPop=763 totalPop=1350 totalMoney=8200 totalDebt=7500 migrations=879 merges=856 creations=4 extinctions=1 displacedDebtGrowth=5050
+[MODEMIG] tick=1200 TENANCY_FIXED(pop=595,debt=2643,households=4) HANDICRAFT(pop=417,debt=2682,households=3) MERCHANT(pop=338,debt=2175,households=2) cityPop=755 totalPop=1350 totalMoney=8200 totalDebt=7500 migrations=1456 merges=1432 creations=5 extinctions=4 displacedDebtGrowth=5050
+[MODEMIG] tick=3650 TENANCY_FIXED(pop=595,debt=2643,households=4) HANDICRAFT(pop=417,debt=2682,households=3) MERCHANT(pop=338,debt=2175,households=2) cityPop=755 totalPop=1350 totalMoney=8200 totalDebt=7500 migrations=1456 merges=1432 creations=5 extinctions=4 displacedDebtGrowth=5050
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.126 s -- in io.mosire.simos.economy.market.HomeModeMigrationProbeTest
+[INFO] Running io.mosire.simos.economy.market.TransportTeamProbeTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.economy.market.TransportTeamProbeTest
+[INFO] Running io.mosire.simos.economy.market.LongRunMortalityProbeTest
+[LONG] round=1 pop=510 deaths=0 newIssuance=514500 repaid=0 debtDeleted=0 debt=514500 W.stock=0 W.eat=5000/5000 ref=96
+[LONG] round=2 pop=510 deaths=0 newIssuance=450000 repaid=100 debtDeleted=0 debt=964400 W.stock=0 W.eat=5000/5000 ref=87
+[LONG] round=3 pop=463 deaths=47 newIssuance=24300 repaid=0 debtDeleted=92938 debt=895762 W.stock=0 W.eat=300/5000 ref=93
+[LONG] round=4 pop=419 deaths=44 newIssuance=9700 repaid=0 debtDeleted=87948 debt=817514 W.stock=0 W.eat=100/4530 ref=113
+[LONG] round=5 pop=380 deaths=39 newIssuance=11800 repaid=0 debtDeleted=79079 debt=750235 W.stock=0 W.eat=100/4090 ref=137
+[LONG] round=6 pop=344 deaths=36 newIssuance=14300 repaid=0 debtDeleted=74388 debt=690147 W.stock=0 W.eat=100/3700 ref=167
+[LONG] round=7 pop=312 deaths=32 newIssuance=17500 repaid=0 debtDeleted=67799 debt=639848 W.stock=0 W.eat=100/3340 ref=204
+[LONG] round=8 pop=283 deaths=29 newIssuance=21400 repaid=0 debtDeleted=63498 debt=597750 W.stock=0 W.eat=100/3020 ref=249
+[LONG] round=9 pop=257 deaths=26 newIssuance=26100 repaid=0 debtDeleted=59415 debt=564435 W.stock=0 W.eat=100/2730 ref=303
+[LONG] round=10 pop=234 deaths=23 newIssuance=31800 repaid=0 debtDeleted=55520 debt=540715 W.stock=0 W.eat=100/2470 ref=369
+[LONG] round=500 pop=29 deaths=0 newIssuance=1050000 repaid=0 debtDeleted=0 debt=491378227 W.stock=0 W.eat=100/190 ref=10000
+[LONG] round=1000 pop=29 deaths=0 newIssuance=1050000 repaid=0 debtDeleted=0 debt=1016378227 W.stock=0 W.eat=100/190 ref=10000
+[LONG] round=1500 pop=29 deaths=0 newIssuance=1050000 repaid=0 debtDeleted=0 debt=1541378227 W.stock=0 W.eat=100/190 ref=10000
+[LONG] round=2000 pop=29 deaths=0 newIssuance=1050000 repaid=0 debtDeleted=0 debt=2066378227 W.stock=0 W.eat=100/190 ref=10000
+[LONG] round=2500 pop=29 deaths=0 newIssuance=1050000 repaid=0 debtDeleted=0 debt=2591378227 W.stock=0 W.eat=100/190 ref=10000
+[LONG] round=3000 pop=29 deaths=0 newIssuance=1050000 repaid=0 debtDeleted=0 debt=3116378227 W.stock=0 W.eat=100/190 ref=10000
+[LONG] earlyIssuance(200轮)=186745800
+[LONG] lateIssuance(200轮)=210000000
+[LONG] lateIssuance/round=1050000 lateDebt=3116378227
+[LONG] totalDeaths=481 totalDebtDeleted=10881973 totalRepaid=100 finalPopulation=29
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.017 s -- in io.mosire.simos.economy.market.LongRunMortalityProbeTest
+[INFO] Running io.mosire.simos.economy.market.ProductionExitOnLossProbeTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in io.mosire.simos.economy.market.ProductionExitOnLossProbeTest
+[INFO] Running io.mosire.simos.economy.market.ProductionModeEconomyProbeTest
+[MODE-fixed-kind] pop=1110 debt=320000 money=320000 L{grain=410,money=40000} P{grain=1500,money=120000,eat=300/300} W{grain=0,cloth=400,eat=1600/1600}
+[MODE-fixed-kind] output=1910 rentPaid=410 rentArrears=0 labor=191
+[SHOCK-wage-shock] finalPop=550 totalDeaths=560 finalDebt=2380612788 finalMoney=2297302376 L{grain=584882,money=0} P{grain=1038,money=9120,eat=300/300} W{pop=240,eat=480/480}
+[SHOCK-wage-shock] output=1910 grainWage=382 cashWage=9120 arrears=0/102680
+[SHOCK-wage-shock] grainWageAtShock=382 workerFoodAtShock=300/300 operatorGrainAtShock=382 maxCashArrearsDuringShock=111800 deathsDuringShock=559
+[SHOCK-fixed-shock] finalPop=550 totalDeaths=560 finalDebt=2297110036 finalMoney=2297302376 L{grain=810,money=0} P{grain=585110,money=9120,eat=300/300} W{pop=240,eat=480/480}
+[SHOCK-fixed-shock] output=1910 rentPaid=410 rentArrears=0
+[SHOCK-fixed-shock] rentAtShock=410 tenantFoodAtShock=300/300 deathsDuringShock=559
+[SHOCK-share-shock] finalPop=550 totalDeaths=560 finalDebt=2297248136 finalMoney=2297440476 L{grain=810,money=138100} P{grain=585110,money=9120,eat=300/300} W{pop=240,eat=480/480}
+[SHOCK-share-shock] output=1910 rentPaid=410 rentArrears=0
+[SHOCK-share-shock] rentAtShock=164 deathsDuringShock=559
+[MODE-wage] pop=1110 debt=320000 money=320000 L{grain=1528,money=40000} P{grain=382,money=120000,eat=300/300} W{grain=0,cloth=400,eat=1600/1600}
+[MODE-wage] output=1910 grainWage=382 cashWage=111800 arrears=0/0 labor=191
+[MODE-share] pop=1110 debt=320000 money=320000 L{grain=410,money=40000} P{grain=1500,money=120000,eat=300/300} W{grain=0,cloth=400,eat=1600/1600}
+[MODE-share] output=1910 rentPaid=410 rentArrears=0 labor=191
+[MODE-cash] pop=1110 debt=321000 money=321000 L{grain=0,money=41000} P{grain=1910,money=120000,eat=300/300} W{grain=0,cloth=400,eat=1600/1600}
+[MODE-cash] output=1910 rentPaid=41000 rentArrears=0 labor=191
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.055 s -- in io.mosire.simos.economy.market.ProductionModeEconomyProbeTest
+[INFO] Running io.mosire.simos.economy.market.NaturalMortalityProbeTest
+[NAT] pop=1020 deaths=100 births=120 foodEaten=1020/1020
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.economy.market.NaturalMortalityProbeTest
+[INFO] Running io.mosire.simos.economy.market.RuleCNoTransactionProbeTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.economy.market.RuleCNoTransactionProbeTest
+[INFO] Running io.mosire.simos.economy.market.LaborPriorityProbeTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.economy.market.LaborPriorityProbeTest
+[INFO] Running io.mosire.simos.economy.market.HandicraftProbeTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.economy.market.HandicraftProbeTest
+[INFO] Running io.mosire.simos.economy.time.MarketSettlementSingleHexLossTest
+[D027-LOSS] quantity=2905 lossMilli=5 payment=30 seller=200000->197095(delta=2905, 期望毛量=2905) buyer=0->2900(delta=2900, 期望净量=2900) ledgerLoss=5 conserved=200000 initial=200000
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.042 s -- in io.mosire.simos.economy.time.MarketSettlementSingleHexLossTest
+[INFO] Running io.mosire.simos.economy.time.DeathDebtWriteOffTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.019 s -- in io.mosire.simos.economy.time.DeathDebtWriteOffTest
+[INFO] Running io.mosire.simos.economy.time.MarketCurrencyReadoutTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.economy.time.MarketCurrencyReadoutTest
+[INFO] Running io.mosire.simos.economy.time.ModeMigrationGovServiceFailClosedTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.030 s -- in io.mosire.simos.economy.time.ModeMigrationGovServiceFailClosedTest
+[INFO] Running io.mosire.simos.economy.time.MoneyMarketSettlementTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.economy.time.MoneyMarketSettlementTest
+[INFO] Running io.mosire.simos.economy.time.DebtBasedClearingAcceptanceTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.013 s -- in io.mosire.simos.economy.time.DebtBasedClearingAcceptanceTest
+[INFO] Running io.mosire.simos.economy.time.ProductionEfficiencyBookTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.economy.time.ProductionEfficiencyBookTest
+[INFO] Running io.mosire.simos.economy.time.MintProductionSettlementTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.044 s -- in io.mosire.simos.economy.time.MintProductionSettlementTest
+[INFO] Running io.mosire.simos.economy.time.ExpectedProfitBookEmployerOfTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.economy.time.ExpectedProfitBookEmployerOfTest
+[INFO] Running io.mosire.simos.economy.time.MarketDemandBookTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.economy.time.MarketDemandBookTest
+[INFO] Running io.mosire.simos.economy.time.FxHouseholdRoundAcceptanceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.economy.time.FxHouseholdRoundAcceptanceTest
+[INFO] Running io.mosire.simos.economy.time.ExpectedProfitBookTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.economy.time.ExpectedProfitBookTest
+[INFO] Running io.mosire.simos.economy.time.ProcurementPriorityAcceptanceTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.economy.time.ProcurementPriorityAcceptanceTest
+[INFO] Running io.mosire.simos.economy.time.MarketPayCurrencyAcceptanceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.economy.time.MarketPayCurrencyAcceptanceTest
+[INFO] Running io.mosire.simos.economy.time.LotMigrationBookTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.economy.time.LotMigrationBookTest
+[INFO] Running io.mosire.simos.economy.time.Z7MarketExclusionTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.economy.time.Z7MarketExclusionTest
+[INFO] Running io.mosire.simos.economy.time.ProductionEfficiencySettlementTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.081 s -- in io.mosire.simos.economy.time.ProductionEfficiencySettlementTest
+[INFO] Running io.mosire.simos.economy.time.HaulServiceCommodityAcceptanceTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.022 s -- in io.mosire.simos.economy.time.HaulServiceCommodityAcceptanceTest
+[INFO] Running io.mosire.simos.economy.time.PortGateTaxAcceptanceTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.economy.time.PortGateTaxAcceptanceTest
+[INFO] Running io.mosire.simos.economy.time.MerchantCapacityAcceptanceTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.economy.time.MerchantCapacityAcceptanceTest
+[INFO] Running io.mosire.simos.economy.time.GovServiceCommitmentC7Test
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.economy.time.GovServiceCommitmentC7Test
+[INFO] Running io.mosire.simos.economy.time.CapacityTruncationPricingAcceptanceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.economy.time.CapacityTruncationPricingAcceptanceTest
+[INFO] Running io.mosire.simos.economy.time.ModeMigrationPolicyD024Test
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.020 s -- in io.mosire.simos.economy.time.ModeMigrationPolicyD024Test
+[INFO] Running io.mosire.simos.economy.time.PortPolicyMerchantLaneAcceptanceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.economy.time.PortPolicyMerchantLaneAcceptanceTest
+[INFO] Running io.mosire.simos.economy.time.ModeMigrationPolicyClaimedAssetsTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.economy.time.ModeMigrationPolicyClaimedAssetsTest
+[INFO] Running io.mosire.simos.economy.time.HexTradeCostTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.economy.time.HexTradeCostTest
+[INFO] Running io.mosire.simos.economy.time.FxPurchasingPowerAcceptanceTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.economy.time.FxPurchasingPowerAcceptanceTest
+[INFO] Running io.mosire.simos.economy.codec.EconomyCodecTest
+[INFO] Tests run: 28, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.235 s -- in io.mosire.simos.economy.codec.EconomyCodecTest
+[INFO] Running io.mosire.simos.economy.model.RegimeRelationsTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.economy.model.RegimeRelationsTest
+[INFO] Running io.mosire.simos.economy.model.RegimeOperatorsTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.economy.model.RegimeOperatorsTest
+[INFO] Running io.mosire.simos.economy.model.TransportTariffP4Test
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.economy.model.TransportTariffP4Test
+[INFO] Running io.mosire.simos.economy.model.CityLandP6Test
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.economy.model.CityLandP6Test
+[INFO] Running io.mosire.simos.economy.model.EconomyInvariantsTest
+[INFO] Tests run: 40, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in io.mosire.simos.economy.model.EconomyInvariantsTest
+[INFO] Running io.mosire.simos.economy.model.MerchantPolicyP6Test
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.economy.model.MerchantPolicyP6Test
+[INFO] Running io.mosire.simos.economy.change.EconomyRoundTripTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in io.mosire.simos.economy.change.EconomyRoundTripTest
+[INFO] Running io.mosire.simos.economy.spi.EconomySeedHandlerTest
+[INFO] Tests run: 27, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.025 s -- in io.mosire.simos.economy.spi.EconomySeedHandlerTest
+[INFO] Running io.mosire.simos.economy.spi.EconomyGmAdjustmentsOutputQuantityTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.economy.spi.EconomyGmAdjustmentsOutputQuantityTest
+[INFO] Running io.mosire.simos.economy.spi.EconomyClearRegionHandlerTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.economy.spi.EconomyClearRegionHandlerTest
+[INFO] Running io.mosire.simos.economy.ProbeGoldenReadingsFixtureTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.economy.ProbeGoldenReadingsFixtureTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 302, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-economy ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-economy/target/simos-economy-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-economy ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 274 files clean - 0 needs changes to be clean, 274 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-economy >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-economy ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-economy <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-economy ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-gov >-------------------------
+[INFO] Building GovSimos 0.1.0-SNAPSHOT                                 [14/16]
+[INFO]   from simos-gov/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-gov ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-gov/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-gov ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-gov ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-gov ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-gov ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-gov/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-gov ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 28 source files with javac [debug release 21] to target/classes
+[INFO] /home/cna/SimulatorMosire/simos-gov/src/main/java/io/mosire/simos/gov/spi/GovPayloads.java: /home/cna/SimulatorMosire/simos-gov/src/main/java/io/mosire/simos/gov/spi/GovPayloads.java uses or overrides a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-gov/src/main/java/io/mosire/simos/gov/spi/GovPayloads.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-gov ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-gov/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-gov ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 9 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-gov ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.gov.GovStateTest
+[INFO] Tests run: 23, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.244 s -- in io.mosire.simos.gov.GovStateTest
+[INFO] Running io.mosire.simos.gov.GovServiceFlowTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.gov.GovServiceFlowTest
+[INFO] Running io.mosire.simos.gov.GovDailyTest
+[INFO] Tests run: 21, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.030 s -- in io.mosire.simos.gov.GovDailyTest
+[INFO] Running io.mosire.simos.gov.GovDemandTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.020 s -- in io.mosire.simos.gov.GovDemandTest
+[INFO] Running io.mosire.simos.gov.GovOfficeStateTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.gov.GovOfficeStateTest
+[INFO] Running io.mosire.simos.gov.spi.GovCommandHandlersTest
+[INFO] Tests run: 19, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.023 s -- in io.mosire.simos.gov.spi.GovCommandHandlersTest
+[INFO] Running io.mosire.simos.gov.GovEfficiencyTest
+[INFO] Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.gov.GovEfficiencyTest
+[INFO] Running io.mosire.simos.gov.GovEfficiencyModifierTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.gov.GovEfficiencyModifierTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 111, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-gov ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-gov/target/simos-gov-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-gov ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 37 files clean - 0 needs changes to be clean, 37 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-gov >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-gov ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-gov <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-gov ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-army >------------------------
+[INFO] Building ArmySimos 0.1.0-SNAPSHOT                                [15/16]
+[INFO]   from simos-army/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-army ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-army/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-army ---
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-module-boundaries) @ simos-army ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.dependency.BannedDependencies passed
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-army ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-army ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-army/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-army ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 23 source files with javac [debug release 21] to target/classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-army ---
+[INFO] skip non existing resourceDirectory /home/cna/SimulatorMosire/simos-army/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-army ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 10 source files with javac [debug release 21] to target/test-classes
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-army ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.army.CombatRecordInvariantsTest
+[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.077 s -- in io.mosire.simos.army.CombatRecordInvariantsTest
+[INFO] Running io.mosire.simos.army.resolve.ArmyResolverTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.020 s -- in io.mosire.simos.army.resolve.ArmyResolverTest
+[INFO] Running io.mosire.simos.army.ArmyDataTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.army.ArmyDataTest
+[INFO] Running io.mosire.simos.army.codec.ArmyCodecTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.151 s -- in io.mosire.simos.army.codec.ArmyCodecTest
+[INFO] Running io.mosire.simos.army.CombatResolutionTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.army.CombatResolutionTest
+[INFO] Running io.mosire.simos.army.change.ArmyRoundTripTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.army.change.ArmyRoundTripTest
+[INFO] Running io.mosire.simos.army.spi.AppendCombatStageHandlerTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.army.spi.AppendCombatStageHandlerTest
+[INFO] Running io.mosire.simos.army.spi.ResolveCombatStageHandlerTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.army.spi.ResolveCombatStageHandlerTest
+[INFO] Running io.mosire.simos.army.spi.RecordCombatHandlerTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in io.mosire.simos.army.spi.RecordCombatHandlerTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 91, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-army ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-army/target/simos-army-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-army ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 33 files clean - 0 needs changes to be clean, 33 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-army >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-army ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-army <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-army ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] ------------------------< io.mosire:simos-app >-------------------------
+[INFO] Building SimosApp 0.1.0-SNAPSHOT                                 [16/16]
+[INFO]   from simos-app/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ simos-app ---
+[INFO] Deleting /home/cna/SimulatorMosire/simos-app/target
+[INFO] 
+[INFO] --- enforcer:3.6.3:enforce (enforce-java-and-maven) @ simos-app ---
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ simos-app ---
+[INFO] Starting audit...
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ simos-app ---
+[INFO] Copying 33 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ simos-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 332 source files with javac [debug release 21] to target/classes
+[INFO] Annotation processing is enabled because one or more processors were found
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[WARNING] /home/cna/SimulatorMosire/simos-app/src/main/java/io/mosire/simos/app/world/EconomySeeder.java:[4160,15] non-varargs call of varargs method with inexact argument type for last parameter;
+[WARNING] /home/cna/SimulatorMosire/simos-app/src/main/java/io/mosire/simos/app/world/EconomySeeder.java:[4186,15] non-varargs call of varargs method with inexact argument type for last parameter;
+[INFO] /home/cna/SimulatorMosire/simos-app/src/main/java/io/mosire/simos/app/world/TestConditions.java: /home/cna/SimulatorMosire/simos-app/src/main/java/io/mosire/simos/app/world/TestConditions.java uses or overrides a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-app/src/main/java/io/mosire/simos/app/world/TestConditions.java: Recompile with -Xlint:deprecation for details.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ simos-app ---
+[INFO] Copying 1 resource from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ simos-app ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 147 source files with javac [debug release 21] to target/test-classes
+[INFO] Annotation processing is enabled because one or more processors were found
+[INFO] org.pf4j.processor.ExtensionAnnotationProcessor init
+[INFO] Options {}
+[INFO] Processing @org.pf4j.Extension
+[INFO] /home/cna/SimulatorMosire/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Some input files use or override a deprecated API.
+[INFO] /home/cna/SimulatorMosire/simos-app/src/test/java/io/mosire/simos/app/McpCoverageTest.java: Recompile with -Xlint:deprecation for details.
+[INFO] /home/cna/SimulatorMosire/simos-app/src/test/java/io/mosire/simos/app/gui/ApiViewsUnitHouseholdTest.java: Some input files use unchecked or unsafe operations.
+[INFO] /home/cna/SimulatorMosire/simos-app/src/test/java/io/mosire/simos/app/gui/ApiViewsUnitHouseholdTest.java: Recompile with -Xlint:unchecked for details.
+[INFO] 
+[INFO] --- surefire:3.6.0:test (default-test) @ simos-app ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running io.mosire.simos.app.access.DecisionScopeFunctionsTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.142 s -- in io.mosire.simos.app.access.DecisionScopeFunctionsTest
+[INFO] Running io.mosire.simos.app.access.DecisionResultsShellEndToEndTest
+[decision-results e2e] {"results":[{"tick":8,"id":"sd:adjudication.8#0","status":"EFFECTIVE","tags":["dm-e2e"],"value":"{\"marker\":\"own@8\"}","at":{"branch":"main","revision":1}}],"count":1}
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.914 s -- in io.mosire.simos.app.access.DecisionResultsShellEndToEndTest
+[INFO] Running io.mosire.simos.app.access.CatalogVisibilityTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.app.access.CatalogVisibilityTest
+[INFO] Running io.mosire.simos.app.access.DecisionCallerFactoryTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.155 s -- in io.mosire.simos.app.access.DecisionCallerFactoryTest
+[INFO] Running io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest
+[INFO] Tests run: 21, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.726 s -- in io.mosire.simos.app.access.DecisionMakerScopeEndToEndTest
+[INFO] Running io.mosire.simos.app.access.NationScopeTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.app.access.NationScopeTest
+[INFO] Running io.mosire.simos.app.access.GovScopeTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.app.access.GovScopeTest
+[INFO] Running io.mosire.simos.app.access.ScopeFenceTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.app.access.ScopeFenceTest
+[INFO] Running io.mosire.simos.app.access.HexOwnerTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.app.access.HexOwnerTest
+[INFO] Running io.mosire.simos.app.access.NeighborNationsTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.app.access.NeighborNationsTest
+[INFO] Running io.mosire.simos.app.access.ArmyScopeTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.app.access.ArmyScopeTest
+[INFO] Running io.mosire.simos.app.ShellSmokeTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.357 s -- in io.mosire.simos.app.ShellSmokeTest
+[INFO] Running io.mosire.simos.app.decision.DecisionRunRegistryTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.app.decision.DecisionRunRegistryTest
+[INFO] Running io.mosire.simos.app.decision.RealLlmUnitDecisionLoopTest
+[WARNING] Tests run: 3, Failures: 0, Errors: 0, Skipped: 3, Time elapsed: 0 s -- in io.mosire.simos.app.decision.RealLlmUnitDecisionLoopTest
+[INFO] Running io.mosire.simos.app.decision.DecisionToolDefsTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.app.decision.DecisionToolDefsTest
+[INFO] Running io.mosire.simos.app.decision.RunDecisionEndToEndTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.501 s -- in io.mosire.simos.app.decision.RunDecisionEndToEndTest
+[INFO] Running io.mosire.simos.app.decision.ResetConversationEndToEndTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.106 s -- in io.mosire.simos.app.decision.ResetConversationEndToEndTest
+[INFO] Running io.mosire.simos.app.decision.DecisionAgentRunnerTest
+[INFO] Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.253 s -- in io.mosire.simos.app.decision.DecisionAgentRunnerTest
+[INFO] Running io.mosire.simos.app.decision.RealLlmGovScenarioTest
+[WARNING] Tests run: 2, Failures: 0, Errors: 0, Skipped: 2, Time elapsed: 0 s -- in io.mosire.simos.app.decision.RealLlmGovScenarioTest
+[INFO] Running io.mosire.simos.app.McpPortTopologyTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.325 s -- in io.mosire.simos.app.McpPortTopologyTest
+[INFO] Running io.mosire.simos.app.ShellApprovalTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.536 s -- in io.mosire.simos.app.ShellApprovalTest
+[INFO] Running io.mosire.simos.app.tools.AccessPathsTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.app.tools.AccessPathsTest
+[INFO] Running io.mosire.simos.app.tools.write.GovPayToolTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.183 s -- in io.mosire.simos.app.tools.write.GovPayToolTest
+[INFO] Running io.mosire.simos.app.tools.write.UnitHouseholdGmToolTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.259 s -- in io.mosire.simos.app.tools.write.UnitHouseholdGmToolTest
+[INFO] Running io.mosire.simos.app.tools.write.LevyRegionPlanTest
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.023 s -- in io.mosire.simos.app.tools.write.LevyRegionPlanTest
+[INFO] Running io.mosire.simos.app.tools.write.AdjudicateTickToolTest
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.300 s -- in io.mosire.simos.app.tools.write.AdjudicateTickToolTest
+[INFO] Running io.mosire.simos.app.tools.write.DiplomaticWriteToolsTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.233 s -- in io.mosire.simos.app.tools.write.DiplomaticWriteToolsTest
+[INFO] Running io.mosire.simos.app.tools.write.RaiseUnitPlanTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.020 s -- in io.mosire.simos.app.tools.write.RaiseUnitPlanTest
+[INFO] Running io.mosire.simos.app.tools.write.GovPayToolD5Test
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.291 s -- in io.mosire.simos.app.tools.write.GovPayToolD5Test
+[INFO] Running io.mosire.simos.app.tools.write.RejectDirectiveToolTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.512 s -- in io.mosire.simos.app.tools.write.RejectDirectiveToolTest
+[INFO] Running io.mosire.simos.app.tools.write.GovToolsZ6Test
+[INFO] Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.696 s -- in io.mosire.simos.app.tools.write.GovToolsZ6Test
+[INFO] Running io.mosire.simos.app.tools.write.CalendarConfigureToolTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.416 s -- in io.mosire.simos.app.tools.write.CalendarConfigureToolTest
+[INFO] Running io.mosire.simos.app.tools.write.FormatUnitToolTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.194 s -- in io.mosire.simos.app.tools.write.FormatUnitToolTest
+[INFO] Running io.mosire.simos.app.tools.write.StartCombatToolTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.277 s -- in io.mosire.simos.app.tools.write.StartCombatToolTest
+[INFO] Running io.mosire.simos.app.tools.write.RegionAllocationsTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.app.tools.write.RegionAllocationsTest
+[INFO] Running io.mosire.simos.app.tools.write.ResolveCombatToolTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.325 s -- in io.mosire.simos.app.tools.write.ResolveCombatToolTest
+[INFO] Running io.mosire.simos.app.tools.read.ArmyCombatReadToolsTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.189 s -- in io.mosire.simos.app.tools.read.ArmyCombatReadToolsTest
+[INFO] Running io.mosire.simos.app.tools.read.CalendarInfoToolTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.146 s -- in io.mosire.simos.app.tools.read.CalendarInfoToolTest
+[INFO] Running io.mosire.simos.app.tools.read.SkillToolTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.app.tools.read.SkillToolTest
+[INFO] Running io.mosire.simos.app.tools.read.DecisionResultsToolTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.228 s -- in io.mosire.simos.app.tools.read.DecisionResultsToolTest
+[INFO] Running io.mosire.simos.app.tools.read.DiplomacyReadToolsTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.233 s -- in io.mosire.simos.app.tools.read.DiplomacyReadToolsTest
+[INFO] Running io.mosire.simos.app.tools.read.DecisionDocsToolTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.222 s -- in io.mosire.simos.app.tools.read.DecisionDocsToolTest
+[INFO] Running io.mosire.simos.app.tools.ToolSurfaceGapTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.499 s -- in io.mosire.simos.app.tools.ToolSurfaceGapTest
+[INFO] Running io.mosire.simos.app.tools.SimosToolsTest
+[INFO] Tests run: 71, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.621 s -- in io.mosire.simos.app.tools.SimosToolsTest
+[INFO] Running io.mosire.simos.app.ActorResolveVisibilityTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.685 s -- in io.mosire.simos.app.ActorResolveVisibilityTest
+[INFO] Running io.mosire.simos.app.RaiseUnitToolTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.551 s -- in io.mosire.simos.app.RaiseUnitToolTest
+[INFO] Running io.mosire.simos.app.logging.UnitHouseholdLoggingTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.060 s -- in io.mosire.simos.app.logging.UnitHouseholdLoggingTest
+[INFO] Running io.mosire.simos.app.logging.SdLoggingTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.app.logging.SdLoggingTest
+[INFO] Running io.mosire.simos.app.logging.EconomyLoggingTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.app.logging.EconomyLoggingTest
+[INFO] Running io.mosire.simos.app.logging.MapLoggingTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.app.logging.MapLoggingTest
+[INFO] Running io.mosire.simos.app.logging.AppToolLoggingTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.app.logging.AppToolLoggingTest
+[INFO] Running io.mosire.simos.app.logging.GovLoggingTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in io.mosire.simos.app.logging.GovLoggingTest
+[INFO] Running io.mosire.simos.app.logging.ArmyLoggingTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.app.logging.ArmyLoggingTest
+[INFO] Running io.mosire.simos.app.logging.ActorLoggingTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in io.mosire.simos.app.logging.ActorLoggingTest
+[INFO] Running io.mosire.simos.app.logging.SocialLoggingTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.014 s -- in io.mosire.simos.app.logging.SocialLoggingTest
+[INFO] Running io.mosire.simos.app.logging.AppShellLoggingTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.272 s -- in io.mosire.simos.app.logging.AppShellLoggingTest
+[INFO] Running io.mosire.simos.app.logging.ApprovalLoggingTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.app.logging.ApprovalLoggingTest
+[INFO] Running io.mosire.simos.app.logging.CalendarLoggingTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.app.logging.CalendarLoggingTest
+[INFO] Running io.mosire.simos.app.ShellMainGenesisTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.479 s -- in io.mosire.simos.app.ShellMainGenesisTest
+[INFO] Running io.mosire.simos.app.UnitExtensionEndToEndTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.725 s -- in io.mosire.simos.app.UnitExtensionEndToEndTest
+[INFO] Running io.mosire.simos.app.query.RedactingQueryServiceTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.515 s -- in io.mosire.simos.app.query.RedactingQueryServiceTest
+[INFO] Running io.mosire.simos.app.query.DecisionResultsVisibilityGuardTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.126 s -- in io.mosire.simos.app.query.DecisionResultsVisibilityGuardTest
+[INFO] Running io.mosire.simos.app.query.QueryServiceTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.996 s -- in io.mosire.simos.app.query.QueryServiceTest
+[INFO] Running io.mosire.simos.app.SdSetDecisionMakerAccessEndToEndTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.082 s -- in io.mosire.simos.app.SdSetDecisionMakerAccessEndToEndTest
+[INFO] Running io.mosire.simos.app.gov.NationSummaryTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.app.gov.NationSummaryTest
+[INFO] Running io.mosire.simos.app.gov.GovGenesisZ6Test
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 37.12 s -- in io.mosire.simos.app.gov.GovGenesisZ6Test
+[INFO] Running io.mosire.simos.app.gov.Z7D1CapitalProvinceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.595 s -- in io.mosire.simos.app.gov.Z7D1CapitalProvinceTest
+[INFO] Running io.mosire.simos.app.gov.GovTerritoryTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.app.gov.GovTerritoryTest
+[INFO] Running io.mosire.simos.app.ShellMainSeedGuardTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.app.ShellMainSeedGuardTest
+[INFO] Running io.mosire.simos.app.SdPutInfoEndToEndTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.122 s -- in io.mosire.simos.app.SdPutInfoEndToEndTest
+[INFO] Running io.mosire.simos.app.docs.DecisionDocTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.app.docs.DecisionDocTest
+[INFO] Running io.mosire.simos.app.time.Z7FleeTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.205 s -- in io.mosire.simos.app.time.Z7FleeTest
+[INFO] Running io.mosire.simos.app.time.Z7RemittanceE2ETest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.671 s -- in io.mosire.simos.app.time.Z7RemittanceE2ETest
+[INFO] Running io.mosire.simos.app.time.CalendarServiceTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.327 s -- in io.mosire.simos.app.time.CalendarServiceTest
+[INFO] Running io.mosire.simos.app.time.EconomyCycleHealthTest
+[创世  ] tick=0   rev=1    人口=6,350 粮=512,337,500毫 布=300,000毫 债务本金=0毫 | 币: copper=136,600 gold=129,400 silver=424,600 | 市场=读不到报告
+[段1  ] tick=30  rev=2    人口=6,231 粮=73,222,982毫 布=299,652毫 债务本金=29,817毫 | 币: copper=136,600 gold=129,400 silver=424,600 | 市场 第30日(PERIODIC) 成交=21笔 未成交top3=[logistics_capacity×381笔/259,923,252毫 no_seller×170笔/433,105毫 no_buyer×89笔/130,589,373毫]
+[段2  ] tick=60  rev=3    人口=6,111 粮=68,942,397毫 布=299,292毫 债务本金=105,385毫 | 币: copper=136,600 gold=129,400 silver=424,600 | 市场 第60日(PERIODIC) 成交=23笔 未成交top3=[logistics_capacity×224笔/258,910,505毫 algorithm_uncovered×196笔/512,589毫 no_seller×170笔/414,264毫]
+[段3  ] tick=90  rev=4    人口=5,998 粮=65,480,778毫 布=298,932毫 债务本金=272,372毫 | 币: copper=136,600 gold=129,400 silver=424,600 | 市场 第90日(PERIODIC) 成交=25笔 未成交top3=[logistics_capacity×225笔/259,082,216毫 algorithm_uncovered×201笔/521,278毫 no_seller×170笔/403,975毫]
+[段4  ] tick=120 rev=5    人口=5,890 粮=901,643,092毫 布=1,840,441毫 债务本金=214,298,937毫 | 币: copper=136,600 gold=129,400 silver=424,600 | 市场 第120日(PERIODIC) 成交=140笔 未成交top3=[logistics_capacity×363笔/831,009,598毫 unsold_self_usable×117笔/796,262,051毫 algorithm_uncovered×112笔/1,654,708毫]
+[段5  ] tick=150 rev=6    人口=5,761 粮=718,976,753毫 布=1,641,016毫 债务本金=220,172,671毫 | 币: copper=136,600 gold=129,400 silver=424,600 | 市场 第150日(PERIODIC) 成交=46笔 未成交top3=[logistics_capacity×390笔/840,951,140毫 algorithm_uncovered×188笔/15,965,970毫 unsold_self_usable×97笔/702,296,751毫]
+[段6  ] tick=180 rev=7    人口=5,642 粮=715,246,957毫 布=1,532,568毫 债务本金=193,625,440毫 | 币: copper=136,600 gold=129,400 silver=424,600 | 市场 第180日(PERIODIC) 成交=45笔 未成交top3=[logistics_capacity×384笔/919,799,952毫 algorithm_uncovered×193笔/15,499,026毫 unsold_self_usable×98笔/689,812,611毫]
+[段7  ] tick=210 rev=8    人口=5,559 粮=711,412,490毫 布=1,436,169毫 债务本金=165,104,359毫 | 币: copper=136,600 gold=129,400 silver=424,600 | 市场 第210日(PERIODIC) 成交=47笔 未成交top3=[logistics_capacity×371笔/798,803,516毫 algorithm_uncovered×184笔/13,565,494毫 unsold_self_usable×119笔/856,669,862毫]
+[段8  ] tick=240 rev=9    人口=5,453 粮=1,147,129,386毫 布=2,952,938毫 债务本金=219,260,081毫 | 币: copper=136,600 gold=129,400 silver=424,600 | 市场 第240日(PERIODIC) 成交=92笔 未成交top3=[logistics_capacity×353笔/1,011,619,682毫 unsold_self_usable×135笔/1,162,980,835毫 algorithm_uncovered×125笔/26,893,001毫]
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 70.43 s -- in io.mosire.simos.app.time.EconomyCycleHealthTest
+[INFO] Running io.mosire.simos.app.time.Z7HungerTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.280 s -- in io.mosire.simos.app.time.Z7HungerTest
+[INFO] Running io.mosire.simos.app.time.Z7RemittanceBridgeTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.147 s -- in io.mosire.simos.app.time.Z7RemittanceBridgeTest
+[INFO] Running io.mosire.simos.app.time.Z7D4BudgetLedgerTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.app.time.Z7D4BudgetLedgerTest
+[INFO] Running io.mosire.simos.app.time.GovAdminSalaryBudgetZ6Test
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.084 s -- in io.mosire.simos.app.time.GovAdminSalaryBudgetZ6Test
+[INFO] Running io.mosire.simos.app.ShellLifecycleTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.099 s -- in io.mosire.simos.app.ShellLifecycleTest
+[INFO] Running io.mosire.simos.app.gui.SdCombatApiTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.859 s -- in io.mosire.simos.app.gui.SdCombatApiTest
+[INFO] Running io.mosire.simos.app.gui.SdDecisionDocsApiTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 18.19 s -- in io.mosire.simos.app.gui.SdDecisionDocsApiTest
+[INFO] Running io.mosire.simos.app.gui.MapBlockApiTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.396 s -- in io.mosire.simos.app.gui.MapBlockApiTest
+[INFO] Running io.mosire.simos.app.gui.WebuiAssetsTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.016 s -- in io.mosire.simos.app.gui.WebuiAssetsTest
+[INFO] Running io.mosire.simos.app.gui.SdRunDecisionApiTest
+[CONTEXT-CONTINUITY] 每轮第一个请求的 messages 条数：首轮=3 重跑=6 重置后=3
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.102 s -- in io.mosire.simos.app.gui.SdRunDecisionApiTest
+[INFO] Running io.mosire.simos.app.gui.MapHexEdgesApiTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.328 s -- in io.mosire.simos.app.gui.MapHexEdgesApiTest
+[INFO] Running io.mosire.simos.app.gui.SdDecisionMakerApiTest
+[INFO] Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 8.814 s -- in io.mosire.simos.app.gui.SdDecisionMakerApiTest
+[INFO] Running io.mosire.simos.app.gui.MapOverviewBlocksTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.app.gui.MapOverviewBlocksTest
+[INFO] Running io.mosire.simos.app.gui.GuiAccessLogTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.426 s -- in io.mosire.simos.app.gui.GuiAccessLogTest
+[INFO] Running io.mosire.simos.app.gui.GmToolUsageApiTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.471 s -- in io.mosire.simos.app.gui.GmToolUsageApiTest
+[INFO] Running io.mosire.simos.app.gui.SdDecisionScopeApiTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.979 s -- in io.mosire.simos.app.gui.SdDecisionScopeApiTest
+[INFO] Running io.mosire.simos.app.gui.GuiApiTest
+[INFO] Tests run: 34, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.695 s -- in io.mosire.simos.app.gui.GuiApiTest
+[INFO] Running io.mosire.simos.app.gui.RedactionApiTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.476 s -- in io.mosire.simos.app.gui.RedactionApiTest
+[INFO] Running io.mosire.simos.app.gui.SdDirectivesApiTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.540 s -- in io.mosire.simos.app.gui.SdDirectivesApiTest
+[INFO] Running io.mosire.simos.app.gui.SdDecisionResultsApiTest
+[decision-results sample] {"results":[{"tick":8,"id":"sd:adjudication.8#0","status":"EFFECTIVE","tags":["dm-a","dm-b"],"value":"{\"marker\":\"AB@8\"}","at":{"branch":"main","revision":1}},{"tick":7,"id":"sd:adjudication.7#0","status":"EFFECTIVE","tags":["dm-a"],"value":"{\"marker\":\"A@7\"}","at":{"branch":"main","revision":1}}],"count":2}
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.125 s -- in io.mosire.simos.app.gui.SdDecisionResultsApiTest
+[INFO] Running io.mosire.simos.app.gui.ApiViewsUnitHouseholdTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.app.gui.ApiViewsUnitHouseholdTest
+[INFO] Running io.mosire.simos.app.AppWritePathGuardTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.107 s -- in io.mosire.simos.app.AppWritePathGuardTest
+[INFO] Running io.mosire.simos.app.SdRegionDeleteGuardEndToEndTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.235 s -- in io.mosire.simos.app.SdRegionDeleteGuardEndToEndTest
+[INFO] Running io.mosire.simos.app.render.RenderCacheTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.204 s -- in io.mosire.simos.app.render.RenderCacheTest
+[INFO] Running io.mosire.simos.app.render.RenderModelBuilderTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.app.render.RenderModelBuilderTest
+[INFO] Running io.mosire.simos.app.render.MapTextRendererTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.app.render.MapTextRendererTest
+[INFO] Running io.mosire.simos.app.render.MapProjectionTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.app.render.MapProjectionTest
+[INFO] Running io.mosire.simos.app.render.MapImageRendererTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.039 s -- in io.mosire.simos.app.render.MapImageRendererTest
+[INFO] Running io.mosire.simos.app.render.ArtifactStoreTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in io.mosire.simos.app.render.ArtifactStoreTest
+[INFO] Running io.mosire.simos.app.skill.SkillLibraryTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.008 s -- in io.mosire.simos.app.skill.SkillLibraryTest
+[INFO] Running io.mosire.simos.app.GmPermissionGroupTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.064 s -- in io.mosire.simos.app.GmPermissionGroupTest
+[INFO] Running io.mosire.simos.app.household.GovernmentServiceLaborBridgeZ6Test
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.303 s -- in io.mosire.simos.app.household.GovernmentServiceLaborBridgeZ6Test
+[INFO] Running io.mosire.simos.app.determinism.CrossProcessDeterminismTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.948 s -- in io.mosire.simos.app.determinism.CrossProcessDeterminismTest
+[INFO] Running io.mosire.simos.app.ShellEndToEndTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.184 s -- in io.mosire.simos.app.ShellEndToEndTest
+[INFO] Running io.mosire.simos.app.SdProviderBindingEndToEndTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.159 s -- in io.mosire.simos.app.SdProviderBindingEndToEndTest
+[INFO] Running io.mosire.simos.app.llm.AdjudicationEndToEndTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.206 s -- in io.mosire.simos.app.llm.AdjudicationEndToEndTest
+[INFO] Running io.mosire.simos.app.llm.SimosApiKeySourceTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in io.mosire.simos.app.llm.SimosApiKeySourceTest
+[INFO] Running io.mosire.simos.app.llm.LlmToolNamesTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.app.llm.LlmToolNamesTest
+[INFO] Running io.mosire.simos.app.llm.AgentLibLlmConfigTest
+[INFO] Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.068 s -- in io.mosire.simos.app.llm.AgentLibLlmConfigTest
+[INFO] Running io.mosire.simos.app.llm.LlmProviderResolverTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.015 s -- in io.mosire.simos.app.llm.LlmProviderResolverTest
+[INFO] Running io.mosire.simos.app.binding.BindingRegistryTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.007 s -- in io.mosire.simos.app.binding.BindingRegistryTest
+[INFO] Running io.mosire.simos.app.sd.SdCommandDrainTest
+[C5] drain committed revision=9 equipment=45
+[C5] rejected-drain intermediate state: sd=FIRED equipment=50 rows=7
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.147 s -- in io.mosire.simos.app.sd.SdCommandDrainTest
+[INFO] Running io.mosire.simos.app.sd.SdTimeParticipantWiringTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.041 s -- in io.mosire.simos.app.sd.SdTimeParticipantWiringTest
+[INFO] Running io.mosire.simos.app.sd.channel.DecisionChannelTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.106 s -- in io.mosire.simos.app.sd.channel.DecisionChannelTest
+[INFO] Running io.mosire.simos.app.sd.AdjudicatorRunnerTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.109 s -- in io.mosire.simos.app.sd.AdjudicatorRunnerTest
+[INFO] Running io.mosire.simos.app.sd.SdCombatEndToEndTest
+[C6] condition-driven: rev8=s1 rev9=s2
+[C6] frozen: two replays byte-identical
+[C6] exactly-one: selected o2 then rejected second
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.079 s -- in io.mosire.simos.app.sd.SdCombatEndToEndTest
+[INFO] Running io.mosire.simos.app.sd.StartDecisionEndToEndTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.453 s -- in io.mosire.simos.app.sd.StartDecisionEndToEndTest
+[INFO] Running io.mosire.simos.app.LevyRegionToolTest
+[INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.031 s -- in io.mosire.simos.app.LevyRegionToolTest
+[INFO] Running io.mosire.simos.app.SdVerdictFreezeEndToEndTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.152 s -- in io.mosire.simos.app.SdVerdictFreezeEndToEndTest
+[INFO] Running io.mosire.simos.app.BindAddressTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.248 s -- in io.mosire.simos.app.BindAddressTest
+[INFO] Running io.mosire.simos.app.McpCoverageTest
+[T11-COVERAGE] type=unit.CreateUnit result=committed revision=2
+[T11-COVERAGE] type=unit.RenameUnit result=committed revision=3
+[T11-COVERAGE] type=unit.SetComposition result=committed revision=4
+[T11-COVERAGE] type=unit.PlanRoute result=committed revision=5
+[T11-COVERAGE] type=unit.PlanSparseRoute result=committed revision=6
+[T11-COVERAGE] type=unit.CancelRoute result=committed revision=7
+[T11-COVERAGE] type=unit.ReparentUnit result=committed revision=8
+[T11-COVERAGE] type=unit.PlaceAt result=committed revision=9
+[T11-COVERAGE] type=unit.SetStatus result=committed revision=10
+[T11-COVERAGE] type=unit.SetRejoinTarget result=committed revision=11
+[T11-COVERAGE] type=unit.ApplyCasualties result=committed revision=12
+[T11-COVERAGE] type=unit.CreateCommandChain result=committed revision=13
+[T11-COVERAGE] type=unit.UpdateCommandChain result=committed revision=14
+[T11-COVERAGE] type=unit.AttachUnit result=committed revision=15
+[T11-COVERAGE] type=unit.ReparentSubtree result=committed revision=16
+[T11-COVERAGE] type=unit.DetachUnit result=committed revision=17
+[T11-COVERAGE] type=unit.SplitFormation result=committed revision=18
+[T11-COVERAGE] type=unit.MergeFormation result=committed revision=19
+[T11-COVERAGE] type=unit.DisbandUnit result=committed revision=20
+[T11-COVERAGE] type=map.SetTerrain result=committed revision=21
+[T11-COVERAGE] type=map.CreateRegion result=committed revision=22
+[T11-COVERAGE] type=map.UpdateRegion result=committed revision=23
+[T11-COVERAGE] type=map.DeleteRegion result=committed revision=24
+[T11-COVERAGE] type=social.ClearRegion result=committed revision=25
+[T11-COVERAGE] type=economy.ClearRegion result=committed revision=26
+[T11-COVERAGE] type=actor.ClearRegion result=committed revision=27
+[T11-COVERAGE] type=map.SetEdge result=committed revision=28
+[T11-COVERAGE] type=map.RandomizeRegion result=committed revision=29
+[T11-COVERAGE] type=sd.CreateNation result=committed revision=30
+[T11-COVERAGE] type=sd.CreateArmy result=committed revision=31
+[T11-COVERAGE] type=sd.CreateDecisionMaker result=committed revision=32
+[T11-COVERAGE] type=sd.ResetDecisionMakerConversation result=committed revision=33
+[T11-COVERAGE] type=sd.PutInfo result=committed revision=34
+[T11-COVERAGE] type=sd.CreateCombat result=committed revision=35
+[T11-COVERAGE] type=sd.AddCombatStage result=committed revision=36
+[T11-COVERAGE] type=sd.SetStageOutcomeTable result=committed revision=37
+[T11-COVERAGE] type=sd.RecordCasualties result=committed revision=38
+[T11-COVERAGE] type=sd.CommitCombatOutcome result=committed revision=39
+[T11-COVERAGE] type=sd.RegisterEffect result=committed revision=40
+[T11-COVERAGE] type=sd.CancelEffect result=committed revision=41
+[T11-COVERAGE] type=sd.SetDecisionMakerAccess result=committed revision=42
+[T11-COVERAGE] type=sd.IssueDirective result=committed revision=43
+[T11-COVERAGE] type=sd.SubmitVerdict result=committed revision=44
+[T11-COVERAGE] type=map.RegisterPathwayGroup result=committed revision=45
+[T11-COVERAGE] type=sd.StartDecision result=committed revision=46
+[T11-COVERAGE] type=sd.SetDecisionMakerProvider result=committed revision=47
+[T11-COVERAGE] type=sd.RunDecision result=committed revision=48
+[T11-COVERAGE] type=sd.SetDirectiveStatus result=committed revision=49
+[T11-COVERAGE] type=social.SetPopulation result=committed revision=50
+[T11-COVERAGE] type=social.CreateCity result=committed revision=51
+[T11-COVERAGE] type=social.UpdateCity result=committed revision=52
+[T11-COVERAGE] type=economy.Seed result=committed revision=53
+[T11-COVERAGE] type=actor.Seed result=committed revision=54
+[T11-COVERAGE] type=economy.SetMarketPrice result=committed revision=55
+[T11-COVERAGE] type=economy.SetCommodityFreight result=committed revision=56
+[T11-COVERAGE] type=economy.AddDemand result=committed revision=57
+[T11-COVERAGE] type=economy.CancelDemand result=committed revision=58
+[T11-COVERAGE] type=economy.RegisterCandidate result=committed revision=59
+[T11-COVERAGE] type=economy.TransferAssetShare result=committed revision=60
+[T11-COVERAGE] type=unit.SetJurisdiction result=committed revision=61
+[T11-COVERAGE] type=unit.SetTaxRate result=committed revision=62
+[T11-COVERAGE] type=actor.AdjustAccounts result=committed revision=63
+[T11-COVERAGE] type=unit.SetGovFormation result=committed revision=64
+[T11-COVERAGE] type=unit.SetArmyFormation result=committed revision=65
+[T11-COVERAGE] type=unit.SetGovPolicy result=committed revision=66
+[T11-COVERAGE] type=unit.SetGovSuperior result=committed revision=67
+[T11-COVERAGE] type=unit.RecruitStaff result=committed revision=68
+[T11-COVERAGE] type=unit.DismissStaff result=committed revision=69
+[T11-COVERAGE] type=unit.SetStateDescription result=committed revision=70
+[T11-COVERAGE] type=unit.AdjustComposition result=committed revision=71
+[T11-COVERAGE] type=sd.SetDiplomaticRelation result=committed revision=72
+[T11-COVERAGE] type=sd.RecordDiplomaticEvent result=committed revision=73
+[T11-COVERAGE] type=army.RecordCombat result=committed revision=74
+[T11-COVERAGE] type=army.AppendCombatStage result=committed revision=75
+[T11-COVERAGE] type=army.ResolveCombatStage result=committed revision=76
+[T11-COVERAGE] type=map.RenameRegion result=committed revision=77
+[T11-COVERAGE] type=sd.SetArmyMasterGov result=committed revision=78
+[T11-COVERAGE] type=social.CreateHousehold result=committed revision=79
+[T11-COVERAGE] type=economy.RegisterHousehold result=committed revision=80
+[T11-COVERAGE] type=social.SubmitHouseholdWorkOrder result=committed revision=81
+[T11-COVERAGE] type=social.AddHouseholdMembers result=committed revision=82
+[T11-COVERAGE] type=social.SetHouseholdVitalRates result=committed revision=83
+[T11-COVERAGE] type=social.AdjustHouseholdPopulation result=committed revision=84
+[T11-COVERAGE] type=social.RemoveHouseholdMembers result=committed revision=85
+[T11-COVERAGE] type=actor.EnsureHouseholdAccount result=committed revision=86
+[T11-COVERAGE] type=economy.RegisterGovernment result=committed revision=87
+[T11-COVERAGE] type=social.SetGlobalVitalRates result=committed revision=88
+[T11-COVERAGE] type=economy.SetOfficialRate result=rejected
+[T11-COVERAGE] type=sd.DeleteNation result=rejected
+[T11-COVERAGE] type=social.MovePopulationLots result=rejected
+[T11-COVERAGE] type=unit.SetVisionRadius result=rejected
+[T11-COVERAGE] type=economy.MergeMarketZones result=rejected
+[T11-COVERAGE] type=economy.SetHouseholdClass result=rejected
+[T11-COVERAGE] type=unit.SetFormationOffset result=rejected
+[T11-COVERAGE] type=unit.SetUnitHouseholds result=rejected
+[T11-COVERAGE] type=economy.RemoveHouseholdPeriodicAdjustment result=rejected
+[T11-COVERAGE] type=economy.SetHouseholdLabor result=rejected
+[T11-COVERAGE] type=economy.UpdateDemand result=rejected
+[T11-COVERAGE] type=map.MergeRegions result=rejected
+[T11-COVERAGE] type=sd.DecideDecisionPacket result=rejected
+[T11-COVERAGE] type=sd.SubmitDecisionPacket result=rejected
+[T11-COVERAGE] type=gov.SetBudgetPolicy result=rejected
+[T11-COVERAGE] type=unit.AssignExternalGovPost result=rejected
+[T11-COVERAGE] type=economy.SetGovServiceCommitment result=rejected
+[T11-COVERAGE] type=sd.UpsertDecisionPacket result=rejected
+[T11-COVERAGE] type=economy.SetHouseholdParticipation result=rejected
+[T11-COVERAGE] type=economy.SetGovernmentMintScale result=rejected
+[T11-COVERAGE] type=economy.AuthorizeGovernmentMarketOrder result=rejected
+[T11-COVERAGE] type=economy.UnitBorrow result=rejected
+[T11-COVERAGE] type=actor.TransferAccounts result=rejected
+[T11-COVERAGE] type=gov.SetAdministrationPlan result=rejected
+[T11-COVERAGE] type=economy.RenameCurrency result=rejected
+[T11-COVERAGE] type=economy.SetMarketZonePriceAlpha result=rejected
+[T11-COVERAGE] type=sd.DeleteDecisionMaker result=rejected
+[T11-COVERAGE] type=economy.DefineMarketZone result=rejected
+[T11-COVERAGE] type=economy.SetMarketZoneLoanRateAlpha result=rejected
+[T11-COVERAGE] type=economy.GmAdjust result=rejected
+[T11-COVERAGE] type=actor.RemitGovTreasury result=rejected
+[T11-COVERAGE] type=social.DeleteCity result=rejected
+[T11-COVERAGE] type=social.SetHouseholdLocation result=rejected
+[T11-COVERAGE] type=social.SetDemandCoefficient result=rejected
+[T11-COVERAGE] type=social.TransferHouseholdMembers result=rejected
+[T11-COVERAGE] type=economy.DefineCurrency result=rejected
+[T11-COVERAGE] type=social.MoveCity result=rejected
+[T11-COVERAGE] type=economy.UnitRepay result=rejected
+[T11-COVERAGE] type=actor.DeductHouseholdStock result=rejected
+[T11-COVERAGE] type=gov.SetPortPolicy result=rejected
+[T11-COVERAGE] type=social.SeedGroups result=rejected
+[T11-COVERAGE] type=economy.CancelGovernmentMarketOrder result=rejected
+[T11-COVERAGE] type=economy.UpsertHouseholdPeriodicAdjustment result=rejected
+[T11-COVERAGE] type=unit.AssignGovPost result=rejected
+[T11-COVERAGE] type=map.SplitRegion result=rejected
+[T11-COVERAGE] type=economy.SetMarketNumeraire result=rejected
+[T11-COVERAGE] type=sd.UpsertMergedEffectPlan result=rejected
+[T11-COVERAGE] type=economy.UpsertGovUnit result=rejected
+[T11-COVERAGE] type=economy.MigrateHousehold result=rejected
+[T11-COVERAGE] type=economy.RecordMoneyIssuance result=rejected
+[T11-COVERAGE] type=economy.ReassignZoneHexes result=rejected
+[T11-COVERAGE] type=economy.UpsertIndustry result=rejected
+[T11-COVERAGE] type=map.ReassignHexes result=rejected
+[T11-COVERAGE] type=social.SetLaborCoefficient result=rejected
+[T11-COVERAGE] type=economy.SwitchMode result=rejected
+[T11-COVERAGE] type=unit.SetArmyPayPolicy result=rejected
+[T11-COVERAGE] tool=simos.fork result=committed branch=mcp-branch revision=1
+[T11-COVERAGE] reverse=bad-payload result=rejected
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.296 s -- in io.mosire.simos.app.McpCoverageTest
+[INFO] Running io.mosire.simos.app.world.HaulServiceCommoditySeedTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.026 s -- in io.mosire.simos.app.world.HaulServiceCommoditySeedTest
+[INFO] Running io.mosire.simos.app.world.S1Stage3TenancyTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in io.mosire.simos.app.world.S1Stage3TenancyTest
+[INFO] Running io.mosire.simos.app.world.CorridorWorldTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in io.mosire.simos.app.world.CorridorWorldTest
+[INFO] Running io.mosire.simos.app.world.ProductionRuntimeSeedSmokeTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.025 s -- in io.mosire.simos.app.world.ProductionRuntimeSeedSmokeTest
+[INFO] Running io.mosire.simos.app.world.PopulationSeederTest
+[INFO] Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.005 s -- in io.mosire.simos.app.world.PopulationSeederTest
+[INFO] Running io.mosire.simos.app.world.T12InfoRedlineTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.527 s -- in io.mosire.simos.app.world.T12InfoRedlineTest
+[INFO] Running io.mosire.simos.app.ShellMainParseTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in io.mosire.simos.app.ShellMainParseTest
+[INFO] Running io.mosire.simos.app.McpServerTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.618 s -- in io.mosire.simos.app.McpServerTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 906, Failures: 0, Errors: 0, Skipped: 5
+[INFO] 
+[INFO] 
+[INFO] --- exec:3.4.1:exec (frontend-unit-tests) @ simos-app ---
+[frontend-gate] OK tests=412 pass=412 fail=0
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ simos-app ---
+[INFO] Building jar: /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT.jar
+[INFO] 
+[INFO] --- shade:3.6.0:shade (shade-executable) @ simos-app ---
+[INFO] Including io.mosire:simos-core:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including org.xerial:sqlite-jdbc:jar:3.53.4.0 in the shaded jar.
+[INFO] Including io.mosire:simos-util:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including com.fasterxml.jackson.datatype:jackson-datatype-jdk8:jar:2.22.2 in the shaded jar.
+[INFO] Including org.slf4j:slf4j-api:jar:2.0.19 in the shaded jar.
+[INFO] Including io.mosire:simos-actor-api:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:simos-economy-api:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:simos-map:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:simos-calendar:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:simos-social-api:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including com.fasterxml.jackson.core:jackson-annotations:jar:2.22 in the shaded jar.
+[INFO] Including io.mosire:simos-social:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:simos-unit:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:simos-sd:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:simos-economy:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:simos-actor:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:simos-gov:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:simos-army:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including io.mosire:agentlib-mosire:jar:0.1.0-SNAPSHOT in the shaded jar.
+[INFO] Including com.networknt:json-schema-validator:jar:2.0.4 in the shaded jar.
+[INFO] Including com.ethlo.time:itu:jar:1.14.0 in the shaded jar.
+[INFO] Including com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:jar:2.22.2 in the shaded jar.
+[INFO] Including org.yaml:snakeyaml:jar:2.5 in the shaded jar.
+[INFO] Including org.pf4j:pf4j:jar:3.15.1 in the shaded jar.
+[INFO] Including com.github.zafarkhaja:java-semver:jar:0.10.2 in the shaded jar.
+[INFO] Including io.modelcontextprotocol.sdk:mcp-core:jar:2.0.1 in the shaded jar.
+[INFO] Including io.projectreactor:reactor-core:jar:3.7.0 in the shaded jar.
+[INFO] Including org.reactivestreams:reactive-streams:jar:1.0.4 in the shaded jar.
+[INFO] Including io.modelcontextprotocol.sdk:mcp-json-jackson2:jar:2.0.1 in the shaded jar.
+[INFO] Including com.fasterxml.jackson.core:jackson-databind:jar:2.22.2 in the shaded jar.
+[INFO] Including com.fasterxml.jackson.core:jackson-core:jar:2.22.2 in the shaded jar.
+[INFO] Including org.apache.logging.log4j:log4j-core:jar:2.26.1 in the shaded jar.
+[INFO] Including org.apache.logging.log4j:log4j-api:jar:2.26.1 in the shaded jar.
+[INFO] Including org.apache.logging.log4j:log4j-slf4j2-impl:jar:2.26.1 in the shaded jar.
+[WARNING] jackson-annotations-2.22.jar, jackson-core-2.22.2.jar, jackson-databind-2.22.2.jar, jackson-dataformat-yaml-2.22.2.jar, jackson-datatype-jdk8-2.22.2.jar, java-semver-0.10.2.jar, log4j-api-2.26.1.jar, log4j-core-2.26.1.jar, log4j-slf4j2-impl-2.26.1.jar define 1 overlapping resource: 
+[WARNING]   - META-INF/LICENSE
+[WARNING] agentlib-mosire-0.1.0-SNAPSHOT.jar, simos-app-0.1.0-SNAPSHOT.jar, simos-core-0.1.0-SNAPSHOT.jar, simos-sd-0.1.0-SNAPSHOT.jar define 1 overlapping resource: 
+[WARNING]   - META-INF/extensions.idx
+[WARNING] agentlib-mosire-0.1.0-SNAPSHOT.jar, itu-1.14.0.jar, jackson-annotations-2.22.jar, jackson-core-2.22.2.jar, jackson-databind-2.22.2.jar, jackson-dataformat-yaml-2.22.2.jar, jackson-datatype-jdk8-2.22.2.jar, java-semver-0.10.2.jar, json-schema-validator-2.0.4.jar, log4j-api-2.26.1.jar, log4j-core-2.26.1.jar, log4j-slf4j2-impl-2.26.1.jar, mcp-core-2.0.1.jar, mcp-json-jackson2-2.0.1.jar, pf4j-3.15.1.jar, reactive-streams-1.0.4.jar, reactor-core-3.7.0.jar, simos-actor-0.1.0-SNAPSHOT.jar, simos-actor-api-0.1.0-SNAPSHOT.jar, simos-app-0.1.0-SNAPSHOT.jar, simos-army-0.1.0-SNAPSHOT.jar, simos-calendar-0.1.0-SNAPSHOT.jar, simos-core-0.1.0-SNAPSHOT.jar, simos-economy-0.1.0-SNAPSHOT.jar, simos-economy-api-0.1.0-SNAPSHOT.jar, simos-gov-0.1.0-SNAPSHOT.jar, simos-map-0.1.0-SNAPSHOT.jar, simos-sd-0.1.0-SNAPSHOT.jar, simos-social-0.1.0-SNAPSHOT.jar, simos-social-api-0.1.0-SNAPSHOT.jar, simos-unit-0.1.0-SNAPSHOT.jar, simos-util-0.1.0-SNAPSHOT.jar, slf4j-api-2.0.19.jar, snakeyaml-2.5.jar, sqlite-jdbc-3.53.4.0.jar define 1 overlapping resource: 
+[WARNING]   - META-INF/MANIFEST.MF
+[WARNING] itu-1.14.0.jar, jackson-core-2.22.2.jar, jackson-databind-2.22.2.jar, jackson-dataformat-yaml-2.22.2.jar, jackson-datatype-jdk8-2.22.2.jar, json-schema-validator-2.0.4.jar, pf4j-3.15.1.jar, slf4j-api-2.0.19.jar, snakeyaml-2.5.jar, sqlite-jdbc-3.53.4.0.jar define 1 overlapping classes: 
+[WARNING]   - META-INF.versions.9.module-info
+[WARNING] log4j-api-2.26.1.jar, log4j-core-2.26.1.jar, log4j-slf4j2-impl-2.26.1.jar define 1 overlapping resource: 
+[WARNING]   - META-INF/DEPENDENCIES
+[WARNING] jackson-annotations-2.22.jar, jackson-core-2.22.2.jar, jackson-databind-2.22.2.jar, jackson-dataformat-yaml-2.22.2.jar, jackson-datatype-jdk8-2.22.2.jar, log4j-api-2.26.1.jar, log4j-core-2.26.1.jar, log4j-slf4j2-impl-2.26.1.jar define 1 overlapping resource: 
+[WARNING]   - META-INF/NOTICE
+[WARNING] maven-shade-plugin has detected that some files are
+[WARNING] present in two or more JARs. When this happens, only one
+[WARNING] single version of the file is copied to the uber jar.
+[WARNING] Usually this is not harmful and you can skip these warnings,
+[WARNING] otherwise try to manually exclude artifacts based on
+[WARNING] mvn dependency:tree -Ddetail=true and the above output.
+[WARNING] See https://maven.apache.org/plugins/maven-shade-plugin/
+[INFO] Attaching shaded artifact.
+[INFO] 
+[INFO] --- spotless:3.10.2:check (spotless-check) @ simos-app ---
+[INFO] Index file does not exist. Fallback to an empty index
+[INFO] Spotless.Java is keeping 479 files clean - 0 needs changes to be clean, 479 were already clean, 0 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] >>> spotbugs:4.10.4.1:check (spotbugs-check) > :spotbugs @ simos-app >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:spotbugs (spotbugs) @ simos-app ---
+[INFO] Done SpotBugs Analysis....
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.4.1:check (spotbugs-check) < :spotbugs @ simos-app <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.4.1:check (spotbugs-check) @ simos-app ---
+[INFO] BugInstance size is 0
+[INFO] Error size is 0
+[INFO] No errors/warnings found
+[INFO] 
+[INFO] --- exec:3.4.1:exec (shaded-jar-guard) @ simos-app ---
+[shaded-guard] OK   reactor/core/publisher/LambdaMonoSubscriber.class
+[shaded-guard] OK   reactor/core/publisher/Mono.class
+[shaded-guard] OK   io/modelcontextprotocol/spec/McpStreamableServerTransportProvider.class
+[shaded-guard] OK   io/modelcontextprotocol/server/McpSyncServer.class
+[shaded-guard] OK   org/apache/logging/log4j/message/ParameterizedMessage.class
+[shaded-guard] OK   org/slf4j/Logger.class
+[shaded-guard] OK   org/sqlite/JDBC.class
+[shaded-guard] OK   Main-Class=io.mosire.simos.app.ShellMain
+[shaded-guard] 结论：OK（7688 个条目；7 条运行期类 + Main-Class 全在）
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for SimulatorMosire 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] SimulatorMosire .................................... SUCCESS [  1.058 s]
+[INFO] UtilSimos .......................................... SUCCESS [  9.177 s]
+[INFO] MapSimos ........................................... SUCCESS [  7.124 s]
+[INFO] CalendarSimos ...................................... SUCCESS [  2.022 s]
+[INFO] SocialApiSimos ..................................... SUCCESS [  1.903 s]
+[INFO] ActorApiSimos ...................................... SUCCESS [  1.493 s]
+[INFO] EconomyApiSimos .................................... SUCCESS [  3.268 s]
+[INFO] SocialSimos ........................................ SUCCESS [  7.031 s]
+[INFO] UnitSimos .......................................... SUCCESS [  5.532 s]
+[INFO] CoreSimos .......................................... SUCCESS [ 11.829 s]
+[INFO] SDSimos ............................................ SUCCESS [  5.253 s]
+[INFO] ActorSimos ......................................... SUCCESS [  4.156 s]
+[INFO] EconomySimos ....................................... SUCCESS [ 19.360 s]
+[INFO] GovSimos ........................................... SUCCESS [  3.284 s]
+[INFO] ArmySimos .......................................... SUCCESS [  2.688 s]
+[INFO] SimosApp ........................................... SUCCESS [03:46 min]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  05:11 min
+[INFO] Finished at: 2026-10-11T16:51:26+08:00
+[INFO] ------------------------------------------------------------------------

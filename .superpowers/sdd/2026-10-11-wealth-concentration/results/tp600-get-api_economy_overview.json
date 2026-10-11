@@ -1,0 +1,127 @@
+{
+ "activated": true,
+ "tick": 600,
+ "scope": "世界级：economy 切片与 actor 账本的全量聚合（三国合并）；不含逐格分解，逐格读 /api/economy/hex",
+ "moneyIssuance": {
+  "window": "累计（EconomyMeta.activatedDay 至当前 revision；无按日窗口）",
+  "recordCount": 8,
+  "initialEndowment": {
+   "copper": 136600,
+   "gold": 129400,
+   "silver": 224600
+  },
+  "genesisEndowment": {
+   "silver": 200000
+  },
+  "mintProduction": {},
+  "fiscalIssue": {},
+  "cumulativeIssuance": {
+   "copper": 136600,
+   "gold": 129400,
+   "silver": 424600
+  },
+  "cumulativeWithdrawal": {},
+  "netIssuance": {
+   "copper": 136600,
+   "gold": 129400,
+   "silver": 424600
+  },
+  "circulation": {
+   "copper": 136600,
+   "gold": 129400,
+   "silver": 424600
+  }
+ },
+ "moneyByActorKind": {
+  "HOUSEHOLD": {
+   "copper": 136600,
+   "gold": 129400,
+   "silver": 424600
+  }
+ },
+ "moneyByHouseholdClass": {
+  "artisan": {
+   "copper": 100000,
+   "gold": 100000,
+   "silver": 342400
+  },
+  "landless_laborer": {
+   "copper": 2725,
+   "gold": 2643,
+   "silver": 52981
+  },
+  "landlord": {
+   "copper": 7059,
+   "gold": 7701,
+   "silver": 3711
+  },
+  "middle_peasant": {
+   "copper": 14049,
+   "gold": 4
+  },
+  "poor_peasant": {
+   "copper": 5300,
+   "gold": 250,
+   "silver": 25507
+  },
+  "rich_peasant": {
+   "copper": 7467,
+   "gold": 18802,
+   "silver": 1
+  }
+ },
+ "moneyLayers": {
+  "privateCirculation": {
+   "copper": 136600,
+   "gold": 129400,
+   "silver": 424600
+  },
+  "baseMoney": {
+   "copper": 136600,
+   "gold": 129400,
+   "silver": 424600
+  },
+  "bankDeposits": {},
+  "unclassifiedCurrencies": []
+ },
+ "currencyDefs": [
+  {
+   "id": "silver",
+   "scale": 3,
+   "displayName": "银"
+  },
+  {
+   "id": "copper",
+   "scale": 3,
+   "displayName": "铜"
+  },
+  {
+   "id": "gold",
+   "scale": 3,
+   "displayName": "金"
+  }
+ ],
+ "moneyInstruments": [
+  {
+   "id": "silver-specie",
+   "currency": "silver",
+   "kind": "SPECIE",
+   "issuer": null,
+   "redeemer": null
+  },
+  {
+   "id": "copper-specie",
+   "currency": "copper",
+   "kind": "SPECIE",
+   "issuer": null,
+   "redeemer": null
+  },
+  {
+   "id": "gold-specie",
+   "currency": "gold",
+   "kind": "SPECIE",
+   "issuer": null,
+   "redeemer": null
+  }
+ ]
+}

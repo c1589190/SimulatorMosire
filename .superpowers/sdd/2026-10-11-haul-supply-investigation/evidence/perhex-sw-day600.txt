@@ -1,0 +1,25 @@
+=== sw600-d600（时点快照）===
+   hex  rural  urban industries                   CATTLE  merchant 家户 (id, pop, laborMilli, 主业位置)
+  -2_0    135      0 farm,weave                        0  [('hh--2_0-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh--2_0-urban-landlord', 0, 0, 'merchant-principal')]
+  -2_1    133      0 farm,weave                        0  [('hh--2_1-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh--2_1-urban-landlord', 0, 0, 'merchant-principal')]
+  -2_2    127      0 farm,weave                        0  [('hh--2_2-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh--2_2-urban-landlord', 0, 0, 'merchant-principal')]
+ -1_-1    134      0 farm,weave                        0  [('hh--1_-1-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh--1_-1-urban-landlord', 0, 0, 'merchant-principal')]
+  -1_0    127      0 farm,weave                        0  [('hh--1_0-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh--1_0-urban-landlord', 0, 0, 'merchant-principal')]
+  -1_1    121      0 farm,weave                        0  [('hh--1_1-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh--1_1-urban-landlord', 0, 0, 'merchant-principal')]
+  -1_2    125      0 farm,weave                        0  [('hh--1_2-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh--1_2-urban-landlord', 0, 0, 'merchant-principal')]
+  0_-2    124      0 farm,weave                        0  [('hh-0_-2-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh-0_-2-urban-landlord', 0, 0, 'merchant-principal')]
+  0_-1    128      0 farm,weave                        0  [('hh-0_-1-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh-0_-1-urban-landlord', 0, 0, 'merchant-principal')]
+   0_0    208    728 craft,farm,mint,office,trade,weave    100  [('hh-0_0-urban-rich_peasant', 102, 784000, 'merchant-self-employed'), ('hh-0_0-urban-landlord', 66, 612000, 'merchant-principal')]
+   0_1    119      0 farm,office,weave                 0  [('hh-0_1-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh-0_1-urban-landlord', 0, 0, 'merchant-principal')]
+   0_2    114    192 craft,farm,trade,weave          100  [('hh-0_2-urban-rich_peasant', 26, 0, 'merchant-porter'), ('hh-0_2-urban-landlord', 9, 0, 'merchant-porter')]
+  1_-2    117      0 farm,weave                        0  [('hh-1_-2-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh-1_-2-urban-landlord', 0, 0, 'merchant-principal')]
+  1_-1    114      0 farm,weave                        0  [('hh-1_-1-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh-1_-1-urban-landlord', 0, 0, 'merchant-principal')]
+   1_0    114      0 farm,weave                        0  [('hh-1_0-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh-1_0-urban-landlord', 0, 0, 'merchant-principal')]
+   1_1    112      0 farm,weave                        0  [('hh-1_1-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh-1_1-urban-landlord', 0, 0, 'merchant-principal')]
+  2_-2    113      0 farm,weave                        0  [('hh-2_-2-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh-2_-2-urban-landlord', 0, 0, 'merchant-principal')]
+  2_-1    115      0 farm,weave                        0  [('hh-2_-1-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh-2_-1-urban-landlord', 0, 0, 'merchant-principal')]
+   2_0    112      0 farm,weave                        0  [('hh-2_0-urban-rich_peasant', 0, 0, 'merchant-self-employed'), ('hh-2_0-urban-landlord', 0, 0, 'merchant-principal')]
+
+全世界的运输服务货（haul）持有者（actor 账，day600）： {'hh-0_0-urban-landlord': 93545}
+trade 单位： ['unit-trade@0_0-HOUSEHOLD-hh-0_0-urban-landlord', 'unit-trade@0_2-HOUSEHOLD-hh-0_2-urban-landlord']
+trade 产业： ['trade@0_0', 'trade@0_2']

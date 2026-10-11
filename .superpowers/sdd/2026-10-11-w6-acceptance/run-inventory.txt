@@ -1,0 +1,86 @@
+# W6 运行清单（20 次运行；jar / store / 端口 / Δrev / PID / JVM 开关 / 日志 md5）
+
+tag | jar_md5 | store | gui_port | Δrev | head | tick | pid | jvmOpts | logKeptLines | logStrippedMd5
+ab-w5-1 | 5a3d080a7c4c20a62b3eafa9cd71305b | /tmp/w6acc/store/ab-w5-1 | 10301 | 1 | 2 | 360 | 370744 | -Dsimos.economy.logLevel=INFO | 38027 | a7b6216d8cb7514444b5dbc45a9da1a7
+    advance 0->360 HTTP 200 7.816s
+    ready 1.69s
+ab-w5-2 | 5a3d080a7c4c20a62b3eafa9cd71305b | /tmp/w6acc/store/ab-w5-2 | 10301 | 1 | 2 | 360 | 370858 | -Dsimos.economy.logLevel=INFO | 38027 | 2f62c4070b223fac2f791830a666e335
+    advance 0->360 HTTP 200 9.550s
+    ready 1.72s
+ab-w5-3 | 5a3d080a7c4c20a62b3eafa9cd71305b | /tmp/w6acc/store/ab-w5-3 | 10301 | 1 | 2 | 360 | 371033 | -Dsimos.economy.logLevel=INFO | 38027 | dd34f1dbfe469b8ff37c286cbe425a08
+    advance 0->360 HTTP 200 7.919s
+    ready 1.69s
+ab-w6-1 | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/ab-w6-1 | 10301 | 1 | 2 | 360 | 370802 | -Dsimos.economy.logLevel=INFO | 43879 | 72b1026fc1e12b2e49f5d39b29277379
+    advance 0->360 HTTP 200 7.687s
+    ready 1.70s
+ab-w6-2 | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/ab-w6-2 | 10301 | 1 | 2 | 360 | 370937 | -Dsimos.economy.logLevel=INFO | 43881 | 38d484b9916ebcd279674f56e6e4ca59
+    advance 0->360 HTTP 200 6.564s
+    ready 1.70s
+ab-w6-3 | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/ab-w6-3 | 10301 | 1 | 2 | 360 | 371090 | -Dsimos.economy.logLevel=INFO | 43881 | bd68d6417103a6307a3b1e61262e7bfd
+    advance 0->360 HTTP 200 8.644s
+    ready 1.70s
+devcheck-w5jar | 5a3d080a7c4c20a62b3eafa9cd71305b | /tmp/w6acc/store/devcheck | 10301 | 1 | 2 | 360 | 368645 | -Dsimos.economy.logLevel=INFO | 38027 | 8f642b7e50c2983bef2d7da14b6ef858
+    advance 0->360 HTTP 200 7.761s
+    ready 1.71s
+one360a | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/one360a | 10301 | 1 | 2 | 360 | 368732 | -Dsimos.economy.logLevel=INFO | 43881 | 30e36225dea36d292e8d876b05bbe643
+    advance 0->360 HTTP 200 6.723s
+    ready 1.70s
+one360b | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/one360b | 10301 | 1 | 2 | 360 | 368796 | -Dsimos.economy.logLevel=INFO | 43881 | e338be11ee74cbe0a5dd6d0aa2c140b0
+    advance 0->360 HTTP 200 6.743s
+    ready 1.72s
+one360c | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/one360c | 10301 | 1 | 2 | 360 | 368850 | -Dsimos.economy.logLevel=INFO | 43881 | 1f8b3912a3f2d82ada49b94334ffd631
+    advance 0->360 HTTP 200 6.738s
+    ready 1.71s
+one361 | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/one361 | 10321 | 1 | 2 | 361 | 368966 | -Dsimos.economy.logLevel=INFO | 43906 | 990cc5eda05cbb45565258bd0b995b89
+    advance 0->361 HTTP 200 7.946s
+    ready 1.73s
+rt | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/one360a | 10331 | 2 | 3 | 361 | 369023 | -Dsimos.economy.logLevel=INFO | 66 | 80a61b0db92d421254a9be72a360f978
+    advance 360->361 HTTP 200 0.443s
+    ready 1.45s
+sw600 | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/sw600 | 10351 | 600 | 601 | 600 | 369333 | -Dsimos.economy.logLevel=INFO -Dsimos.economy.traceLevel=TRACE | 268867 | b02052c2cf00a57a97ad3b5ef4cbb6b1
+    ready 1.70s
+sw600f | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/sw600f | 10351 | 600 | 601 | 600 | 370195 | -Dsimos.economy.logLevel=INFO -Dsimos.economy.traceLevel=INFO | 66039 | 8bc29a1a5d02a81579f3607249afbba2
+    ready 1.70s
+three360 | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/three360 | 10311 | 3 | 4 | 360 | 368904 | -Dsimos.economy.logLevel=INFO | 43907 | 43b037daaf2af3e4c905f1c1d784ed7b
+    advance 0->120 HTTP 200 3.010s
+    advance 120->240 HTTP 200 2.405s
+    advance 240->360 HTTP 200 1.819s
+    ready 1.71s
+tickA | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/swtick | 10341 | 360 | 361 | 360 | 369108 | -Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=INFO | 219645 | 8df9ed8bf9fc565ab2ff889b2de0abc0
+    ready 1.69s
+tickB | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/swtick | 10341 | 360 | 361 | 360 | 369239 | -Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=INFO | 219645 | 040231f2a82cf04778abe1b590143436
+    ready 2.61s
+tp600 | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/tp600 | 10361 | 600 | 601 | 600 | 369631 | -Dsimos.economy.logLevel=INFO -Dsimos.economy.traceLevel=TRACE | 512150 | e7bd445c58b52497fa6313b5c8510b9e
+    ready 1.71s
+tp600f | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/tp600f | 10361 | 600 | 601 | 600 | 370401 | -Dsimos.economy.logLevel=INFO -Dsimos.economy.traceLevel=INFO | 3697506 | 8bb3554eb72f201f5bf7ac62d65e3035
+    ready 1.72s
+tr120 | 7d3d662d953a8009248ac1698a92177b | /tmp/w6acc/store/tr120 | 10371 | 1 | 2 | 120 | 370689 | -Dsimos.economy.logLevel=TRACE -Dsimos.economy.traceLevel=TRACE | 597 | 183e7d1f316fae1494e377240ecc4980
+    advance 0->120 HTTP 200 4.201s
+    ready 1.74s
+
+=== 日志 md5（去时间戳前缀的全文）===
+ab-w5-1.log.stripped.md5                     a7b6216d8cb7514444b5dbc45a9da1a7
+ab-w5-2.log.stripped.md5                     2f62c4070b223fac2f791830a666e335
+ab-w5-3.log.stripped.md5                     dd34f1dbfe469b8ff37c286cbe425a08
+ab-w6-1.log.stripped.md5                     72b1026fc1e12b2e49f5d39b29277379
+ab-w6-2.log.stripped.md5                     38d484b9916ebcd279674f56e6e4ca59
+ab-w6-3.log.stripped.md5                     bd68d6417103a6307a3b1e61262e7bfd
+devcheck-w5jar.log.stripped.md5              8f642b7e50c2983bef2d7da14b6ef858
+one360a.log.stripped.md5                     30e36225dea36d292e8d876b05bbe643
+one360b.log.stripped.md5                     e338be11ee74cbe0a5dd6d0aa2c140b0
+one360c.log.stripped.md5                     1f8b3912a3f2d82ada49b94334ffd631
+one361.log.stripped.md5                      990cc5eda05cbb45565258bd0b995b89
+rt.log.stripped.md5                          80a61b0db92d421254a9be72a360f978
+sw600.log.stripped.md5                       b02052c2cf00a57a97ad3b5ef4cbb6b1
+sw600f.log.stripped.md5                      8bc29a1a5d02a81579f3607249afbba2
+three360.log.stripped.md5                    43b037daaf2af3e4c905f1c1d784ed7b
+tickA.log.stripped.md5                       8df9ed8bf9fc565ab2ff889b2de0abc0
+tickB.log.stripped.md5                       040231f2a82cf04778abe1b590143436
+tp600.log.stripped.md5                       e7bd445c58b52497fa6313b5c8510b9e
+tp600f.log.stripped.md5                      8bb3554eb72f201f5bf7ac62d65e3035
+tr120.log.stripped.md5                       183e7d1f316fae1494e377240ecc4980
+
+=== 说明 ===
+- 全部 20 次运行由 /tmp/w6acc/w6run.py 驱动；每次运行结束由装置对**该次 PID** 发 SIGTERM（未用 pkill -f）。
+- `results/tp600f.log`（1,128 MB，INFO 全量）在取完 flows 读数后删除以保盘；其 md5（未去时间戳）= ec4cfd13de50d9a4b96fbc9ce6a4a487。
+- `tickA/tickB` 用同一 store 路径与同一端口（10341），保证跨进程日志可比。

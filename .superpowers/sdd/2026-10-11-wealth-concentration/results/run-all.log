@@ -1,0 +1,77 @@
+=== jar md5 ===
+7d3d662d953a8009248ac1698a92177b  /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar
+=== [1/2] small-world 0->600 逐日（端口 10411） ===
+[17:17:38] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/stores/sw600 --world=small-world --config shell-sw.json --gui-port 10411 --mcp-port 10412 --approval-port 10413
+[17:17:40] GUI 就绪（1.70s）
+[17:17:40] 创世后 head rev=1 tick=0
+[17:17:40] grid dump day=0 rev=1 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d0.json
+[17:17:47]   day=60 head=61 累计 7.8s
+[17:17:56] grid dump day=120 rev=121 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d120.json
+[17:17:56]   day=120 head=121 累计 16.5s
+[17:18:09]   day=180 head=181 累计 29.3s
+[17:18:21] grid dump day=240 rev=241 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d240.json
+[17:18:21]   day=240 head=241 累计 41.4s
+[17:18:35]   day=300 head=301 累计 55.5s
+[17:18:51] grid dump day=360 rev=361 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d360.json
+[17:18:51]   day=360 head=361 累计 71.3s
+[17:19:07]   day=420 head=421 累计 86.9s
+[17:19:24] grid dump day=480 rev=481 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d480.json
+[17:19:24]   day=480 head=481 累计 104.7s
+[17:19:42]   day=540 head=541 累计 122.4s
+[17:20:00] grid dump day=600 rev=601 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d600.json
+[17:20:00]   day=600 head=601 累计 140.7s
+[17:20:00] advance_daily 0->600 完成 head=601（140.7s）
+[17:20:00] dump d600 -> /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/sw600-d600.json
+[17:20:00] get /api/economy/gov HTTP 200
+[17:20:00] get /api/economy/overview HTTP 200
+[17:20:01] 收工 rc=143 pid=373190 elapsed=143.3s stdout=1583254 kept=88245
+=== [2/2] three-powers 0->600 逐日（端口 10421） ===
+[17:20:01] 起服务: bash /home/cna/SimulatorMosire/tools/run-shaded.sh /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/stores/tp600 --world=three-powers --config shell-tp.json --gui-port 10421 --mcp-port 10422 --approval-port 10423
+[17:20:03] GUI 就绪（1.71s）
+[17:20:03] 创世后 head rev=1 tick=0
+[17:20:03] grid dump day=0 rev=1 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/tp600-d0.json
+[17:20:23]   day=60 head=61 累计 20.4s
+[17:20:40] grid dump day=120 rev=121 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/tp600-d120.json
+[17:20:40]   day=120 head=121 累计 36.8s
+[17:21:09]   day=180 head=181 累计 66.2s
+[17:21:41] grid dump day=240 rev=241 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/tp600-d240.json
+[17:21:41]   day=240 head=241 累计 98.2s
+[17:22:17]   day=300 head=301 累计 134.2s
+[17:22:58] grid dump day=360 rev=361 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/tp600-d360.json
+[17:22:58]   day=360 head=361 累计 175.2s
+[17:23:41]   day=420 head=421 累计 217.9s
+[17:24:20] grid dump day=480 rev=481 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/tp600-d480.json
+[17:24:20]   day=480 head=481 累计 257.3s
+[17:25:00]   day=540 head=541 累计 297.2s
+[17:25:40] grid dump day=600 rev=601 → /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/tp600-d600.json
+[17:25:40]   day=600 head=601 累计 336.5s
+[17:25:40] advance_daily 0->600 完成 head=601（336.5s）
+[17:25:40] dump d600 -> /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps/tp600-d600.json
+[17:25:40] get /api/economy/gov HTTP 200
+[17:25:40] get /api/economy/overview HTTP 200
+[17:25:40] 收工 rc=143 pid=374033 elapsed=339.0s stdout=15998275 kept=170994
+=== 收工 ===
+375171 python3 /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/scripts/dd_run.py --jar /home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar --tag tp600 --store /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/stores/tp600 --gui-port 10521 --world three-powers --config /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/scripts/shell-tp.json --plan /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/scripts/plan-tp600.json --out /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/results --dump-dir /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/dumps --daily-out /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/daily/tp600.agg.jsonl.gz --hh-out /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/daily/tp600.hh.jsonl.gz --debt-out /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/daily/tp600.debt.jsonl.gz --cp-out /home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/daily/tp600.cp.jsonl --log-level DEBUG --log-keep event=(DEBT_FORGIVE|POPULATION_CHANGE_APPLIED|HOUSEHOLD_VITAL_WRITEBACK|DEBT_REPAY_SELF_HELD_SKIPPED|HOUSEHOLD_POPULATION_DELTA_REJECTED|MIGRATION_DEBT_SELF_NETTED|DEBT_INTEREST_SELF_HELD_SKIPPED)
+/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/daily:
+total 169808
+drwxr-xr-x 2 cna cna      4096 Oct 11 17:20 .
+drwxr-xr-x 8 cna cna      4096 Oct 11 17:16 ..
+-rw-r--r-- 1 cna cna  59796856 Oct 11 17:20 hh-sw600.jsonl
+-rw-r--r-- 1 cna cna 114069332 Oct 11 17:25 hh-tp600.jsonl
+
+/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-wealth-concentration/dumps:
+total 72876
+drwxr-xr-x 2 cna cna     4096 Oct 11 17:25 .
+drwxr-xr-x 8 cna cna     4096 Oct 11 17:16 ..
+-rw-r--r-- 1 cna cna   988762 Oct 11 17:17 sw600-d0.json
+-rw-r--r-- 1 cna cna  2764762 Oct 11 17:17 sw600-d120.json
+-rw-r--r-- 1 cna cna  4692148 Oct 11 17:18 sw600-d240.json
+-rw-r--r-- 1 cna cna  5497661 Oct 11 17:18 sw600-d360.json
+-rw-r--r-- 1 cna cna  6380957 Oct 11 17:19 sw600-d480.json
+-rw-r--r-- 1 cna cna  6922823 Oct 11 17:20 sw600-d600.json
+-rw-r--r-- 1 cna cna  1748206 Oct 11 17:20 tp600-d0.json
+-rw-r--r-- 1 cna cna  4865162 Oct 11 17:20 tp600-d120.json
+-rw-r--r-- 1 cna cna  8909388 Oct 11 17:21 tp600-d240.json
+-rw-r--r-- 1 cna cna 10257862 Oct 11 17:22 tp600-d360.json
+-rw-r--r-- 1 cna cna 10620105 Oct 11 17:24 tp600-d480.json
+-rw-r--r-- 1 cna cna 10916823 Oct 11 17:25 tp600-d600.json

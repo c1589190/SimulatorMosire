@@ -1,0 +1,10543 @@
+{
+  "days": 600,
+  "debtSeries": [
+    {
+      "day": 0,
+      "open": 0,
+      "principal": {},
+      "settled": 0
+    },
+    {
+      "day": 30,
+      "open": 57,
+      "principal": {
+        "money:silver": 766
+      },
+      "settled": 45
+    },
+    {
+      "day": 60,
+      "open": 96,
+      "principal": {
+        "money:silver": 4321
+      },
+      "settled": 80
+    },
+    {
+      "day": 90,
+      "open": 115,
+      "principal": {
+        "money:silver": 8777
+      },
+      "settled": 165
+    },
+    {
+      "day": 120,
+      "open": 159,
+      "principal": {
+        "commodity:fiber": 61592553,
+        "money:silver": 99241
+      },
+      "settled": 301
+    },
+    {
+      "day": 150,
+      "open": 183,
+      "principal": {
+        "commodity:fiber": 62824392,
+        "money:silver": 754670
+      },
+      "settled": 454
+    },
+    {
+      "day": 180,
+      "open": 264,
+      "principal": {
+        "commodity:fiber": 58341123,
+        "money:silver": 2330561
+      },
+      "settled": 498
+    },
+    {
+      "day": 210,
+      "open": 313,
+      "principal": {
+        "commodity:fiber": 53538613,
+        "money:silver": 3187533
+      },
+      "settled": 513
+    },
+    {
+      "day": 240,
+      "open": 354,
+      "principal": {
+        "commodity:fiber": 71316684,
+        "money:silver": 3074481
+      },
+      "settled": 564
+    },
+    {
+      "day": 270,
+      "open": 388,
+      "principal": {
+        "commodity:fiber": 69225064,
+        "money:silver": 4486178
+      },
+      "settled": 585
+    },
+    {
+      "day": 300,
+      "open": 421,
+      "principal": {
+        "commodity:fiber": 67028415,
+        "money:silver": 5113834
+      },
+      "settled": 587
+    },
+    {
+      "day": 330,
+      "open": 462,
+      "principal": {
+        "commodity:fiber": 65766272,
+        "money:silver": 5478319
+      },
+      "settled": 573
+    },
+    {
+      "day": 360,
+      "open": 500,
+      "principal": {
+        "commodity:fiber": 85437789,
+        "money:silver": 5918708
+      },
+      "settled": 586
+    },
+    {
+      "day": 390,
+      "open": 530,
+      "principal": {
+        "commodity:fiber": 87107658,
+        "money:silver": 7934679
+      },
+      "settled": 570
+    },
+    {
+      "day": 420,
+      "open": 560,
+      "principal": {
+        "commodity:fiber": 87284109,
+        "money:silver": 19183631
+      },
+      "settled": 571
+    },
+    {
+      "day": 450,
+      "open": 610,
+      "principal": {
+        "commodity:fiber": 88998470,
+        "money:silver": 108213713
+      },
+      "settled": 574
+    },
+    {
+      "day": 480,
+      "open": 700,
+      "principal": {
+        "commodity:fiber": 110984845,
+        "money:silver": 1079767114
+      },
+      "settled": 579
+    },
+    {
+      "day": 510,
+      "open": 766,
+      "principal": {
+        "commodity:fiber": 113204523,
+        "money:silver": 15491124190
+      },
+      "settled": 586
+    },
+    {
+      "day": 540,
+      "open": 792,
+      "principal": {
+        "commodity:fiber": 115468605,
+        "money:silver": 303399615981
+      },
+      "settled": 586
+    },
+    {
+      "day": 570,
+      "open": 792,
+      "principal": {
+        "commodity:fiber": 117777970,
+        "money:silver": 8062178983755
+      },
+      "settled": 586
+    },
+    {
+      "day": 600,
+      "open": 792,
+      "principal": {
+        "commodity:fiber": 127711160,
+        "money:silver": 292675039951832
+      },
+      "settled": 588
+    }
+  ],
+  "eventCounts": {
+    "CLASS_SLIDE": 41,
+    "CLASS_SLIDE_ROUND": 240,
+    "DAY_END": 600,
+    "DAY_START": 600,
+    "FAMINE_MORTALITY": 600,
+    "FAMINE_MORTALITY_BRIDGED": 600,
+    "HOUSEHOLD_GAP": 47398,
+    "HOUSEHOLD_GAP_REPORTED": 600,
+    "MARKET": 240,
+    "MARKET_BUYER_OUTCOME": 80182,
+    "MARKET_DEFERRED_PAYMENT": 1111,
+    "MARKET_DEFERRED_PAYMENTS_SETTLED": 203,
+    "MARKET_DEFERRED_PAYMENT_LEG": 1111,
+    "MARKET_FILL": 2525,
+    "MARKET_HOUSEHOLD_ROSTER": 240,
+    "MARKET_ORDER_APPLIED": 240,
+    "MARKET_ROUND_STATS_RECORDED": 240,
+    "MARKET_SELF_MATCH_SKIPPED": 2,
+    "MARKET_SELLER_OUTCOME": 34667,
+    "MARKET_SUBJECT_COLLECTIVE_UNRESOLVED": 4366,
+    "MARKET_UNFILLED": 92310,
+    "MIGRATION_APPLIED": 20,
+    "MIGRATION_DEBT_SELF_NETTED": 4,
+    "MIGRATION_MOVE": 201,
+    "MIGRATION_PLAN": 20,
+    "MINT_LAST_CYCLE_READOUT": 1,
+    "MINT_SETTLED": 5,
+    "MODE_MIGRATION_BRIDGED": 20,
+    "MONEY_MARKET_RATE_WRITTEN": 240,
+    "MONEY_MARKET_ROUND": 240
+  },
+  "famineDetail": {
+    "faminePpm=1000": 1809,
+    "faminePpm=184": 1,
+    "faminePpm=540": 1,
+    "faminePpm=699": 1,
+    "faminePpm=705": 2,
+    "faminePpm=779": 2,
+    "faminePpm=837": 1,
+    "faminePpm=839": 1,
+    "faminePpm=840": 1,
+    "faminePpm=893": 1,
+    "faminePpm=951": 1,
+    "faminePpm=962": 1,
+    "faminePpm=968": 2,
+    "faminePpm=982": 1,
+    "faminePpm=984": 2,
+    "faminePpm=989": 1,
+    "faminePpm=995": 1,
+    "faminePpm=997": 1,
+    "faminePpm=998": 1,
+    "faminePpm=999": 13,
+    "starvationRatio=1000": 1809,
+    "starvationRatio=184": 1,
+    "starvationRatio=540": 1,
+    "starvationRatio=699": 1,
+    "starvationRatio=705": 2,
+    "starvationRatio=779": 2,
+    "starvationRatio=837": 1,
+    "starvationRatio=839": 1,
+    "starvationRatio=840": 1,
+    "starvationRatio=893": 1,
+    "starvationRatio=951": 1,
+    "starvationRatio=962": 1,
+    "starvationRatio=968": 2,
+    "starvationRatio=982": 1,
+    "starvationRatio=984": 2,
+    "starvationRatio=989": 1,
+    "starvationRatio=995": 1,
+    "starvationRatio=997": 1,
+    "starvationRatio=998": 1,
+    "starvationRatio=999": 13
+  },
+  "flowsCumulative": {
+    "consumed": {
+      "cloth": 83149931,
+      "fiber": 1872000000,
+      "grain": 51720074059,
+      "tool": 26136840
+    },
+    "income": {
+      "cloth": 521790,
+      "fiber": 72930420,
+      "grain": 178230012
+    },
+    "interestDue": 511345415149241,
+    "netSurplus": -511415253321950,
+    "repaid": 7069949692,
+    "repaidMoney": {
+      "silver": 3296153
+    },
+    "taxPaid": 18296328662
+  },
+  "gap": {
+    "days": 600,
+    "gapMax": 240966,
+    "gapMedian": 179656.0,
+    "gapMin": 121754,
+    "hwMax": 90,
+    "hwMedian": 73.0,
+    "hwMin": 44
+  },
+  "marketActivity": {
+    "fills": {
+      "min": 3,
+      "p100": 68,
+      "p25": 8,
+      "p50": 10,
+      "p75": 12,
+      "p90": 13
+    },
+    "median": 10.0,
+    "rounds": 240,
+    "unfilled": {
+      "min": 357,
+      "p100": 429,
+      "p25": 368,
+      "p50": 375,
+      "p75": 403,
+      "p90": 426
+    },
+    "zeroFillRounds": 0
+  },
+  "mint": {
+    "days": [
+      120,
+      240,
+      360,
+      480,
+      600
+    ],
+    "records": [
+      {
+        "amt": 500,
+        "cur": "silver",
+        "day": 120,
+        "gov": "world-silver",
+        "kind": "MINT_PRODUCTION"
+      },
+      {
+        "amt": 500,
+        "cur": "silver",
+        "day": 240,
+        "gov": "world-silver",
+        "kind": "MINT_PRODUCTION"
+      },
+      {
+        "amt": 500,
+        "cur": "silver",
+        "day": 360,
+        "gov": "world-silver",
+        "kind": "MINT_PRODUCTION"
+      },
+      {
+        "amt": 500,
+        "cur": "silver",
+        "day": 480,
+        "gov": "world-silver",
+        "kind": "MINT_PRODUCTION"
+      },
+      {
+        "amt": 500,
+        "cur": "silver",
+        "day": 600,
+        "gov": "world-silver",
+        "kind": "MINT_PRODUCTION"
+      }
+    ]
+  },
+  "moneyMarket": {
+    "borrowers": [
+      4,
+      2,
+      5,
+      4,
+      5,
+      4,
+      5,
+      4,
+      4,
+      4,
+      4,
+      4,
+      1,
+      1,
+      4,
+      4,
+      4,
+      4,
+      5,
+      6,
+      3,
+      6,
+      3,
+      7,
+      1,
+      1,
+      6,
+      8,
+      5,
+      10,
+      7,
+      9,
+      6,
+      7,
+      2,
+      7,
+      1,
+      1,
+      7,
+      7,
+      2,
+      8,
+      3,
+      7,
+      2,
+      6,
+      2,
+      20,
+      9,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      17,
+      16,
+      14,
+      7,
+      4,
+      5,
+      3,
+      4,
+      3,
+      3,
+      2,
+      3,
+      4,
+      2,
+      4,
+      5,
+      3,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      3,
+      3,
+      3,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      2,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      2,
+      1,
+      3,
+      1,
+      1,
+      1,
+      1,
+      1,
+      4,
+      2,
+      3,
+      2,
+      2,
+      1,
+      3,
+      2,
+      1,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      3,
+      3,
+      3,
+      1,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      2,
+      6,
+      6,
+      6,
+      5,
+      6,
+      6,
+      7,
+      7,
+      8,
+      2,
+      8,
+      3,
+      2,
+      1,
+      1,
+      1,
+      1,
+      2,
+      2,
+      2,
+      3,
+      5,
+      8,
+      5,
+      5,
+      1,
+      2,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "days": [
+      3,
+      5,
+      8,
+      10,
+      13,
+      15,
+      18,
+      20,
+      23,
+      25,
+      28,
+      30,
+      33,
+      35,
+      38,
+      40,
+      43,
+      45,
+      48,
+      50,
+      53,
+      55,
+      58,
+      60,
+      63,
+      65,
+      68,
+      70,
+      73,
+      75,
+      78,
+      80,
+      83,
+      85,
+      88,
+      90,
+      93,
+      95,
+      98,
+      100,
+      103,
+      105,
+      108,
+      110,
+      113,
+      115,
+      118,
+      120,
+      123,
+      125,
+      128,
+      130,
+      133,
+      135,
+      138,
+      140,
+      143,
+      145,
+      148,
+      150,
+      153,
+      155,
+      158,
+      160,
+      163,
+      165,
+      168,
+      170,
+      173,
+      175,
+      178,
+      180,
+      183,
+      185,
+      188,
+      190,
+      193,
+      195,
+      198,
+      200,
+      203,
+      205,
+      208,
+      210,
+      213,
+      215,
+      218,
+      220,
+      223,
+      225,
+      228,
+      230,
+      233,
+      235,
+      238,
+      240,
+      243,
+      245,
+      248,
+      250,
+      253,
+      255,
+      258,
+      260,
+      263,
+      265,
+      268,
+      270,
+      273,
+      275,
+      278,
+      280,
+      283,
+      285,
+      288,
+      290,
+      293,
+      295,
+      298,
+      300,
+      303,
+      305,
+      308,
+      310,
+      313,
+      315,
+      318,
+      320,
+      323,
+      325,
+      328,
+      330,
+      333,
+      335,
+      338,
+      340,
+      343,
+      345,
+      348,
+      350,
+      353,
+      355,
+      358,
+      360,
+      363,
+      365,
+      368,
+      370,
+      373,
+      375,
+      378,
+      380,
+      383,
+      385,
+      388,
+      390,
+      393,
+      395,
+      398,
+      400,
+      403,
+      405,
+      408,
+      410,
+      413,
+      415,
+      418,
+      420,
+      423,
+      425,
+      428,
+      430,
+      433,
+      435,
+      438,
+      440,
+      443,
+      445,
+      448,
+      450,
+      453,
+      455,
+      458,
+      460,
+      463,
+      465,
+      468,
+      470,
+      473,
+      475,
+      478,
+      480,
+      483,
+      485,
+      488,
+      490,
+      493,
+      495,
+      498,
+      500,
+      503,
+      505,
+      508,
+      510,
+      513,
+      515,
+      518,
+      520,
+      523,
+      525,
+      528,
+      530,
+      533,
+      535,
+      538,
+      540,
+      543,
+      545,
+      548,
+      550,
+      553,
+      555,
+      558,
+      560,
+      563,
+      565,
+      568,
+      570,
+      573,
+      575,
+      578,
+      580,
+      583,
+      585,
+      588,
+      590,
+      593,
+      595,
+      598,
+      600
+    ],
+    "demandCensoredRounds": 210,
+    "demandMilli": [
+      104311,
+      235172,
+      348535,
+      478547,
+      612391,
+      745100,
+      879563,
+      1012720,
+      1149107,
+      1282613,
+      1417415,
+      1550798,
+      1747436,
+      1878383,
+      1961197,
+      2088605,
+      2222273,
+      2354955,
+      2488463,
+      2621185,
+      2754172,
+      2886207,
+      3019282,
+      3151468,
+      3437512,
+      3570829,
+      3551301,
+      3678946,
+      3811021,
+      3942677,
+      4073984,
+      4205324,
+      4337831,
+      4470398,
+      4605499,
+      4738216,
+      5160603,
+      5298228,
+      5144438,
+      5274665,
+      5540098,
+      5805117,
+      6069638,
+      6332836,
+      6597565,
+      6861228,
+      7126736,
+      6269050,
+      7315632,
+      6655899,
+      6411808,
+      6274791,
+      6157898,
+      6021316,
+      5902800,
+      5765463,
+      5645945,
+      5508463,
+      5388877,
+      5263666,
+      6893448,
+      6798258,
+      6234423,
+      6190413,
+      6147878,
+      5492506,
+      5468242,
+      5678507,
+      5963403,
+      6194863,
+      6475997,
+      6703708,
+      10746839,
+      10754834,
+      10387535,
+      10152312,
+      10418853,
+      10750421,
+      11398934,
+      12010465,
+      12663747,
+      13279309,
+      13935737,
+      14555920,
+      18948304,
+      19690380,
+      19219773,
+      19974856,
+      20923830,
+      21841240,
+      23006640,
+      24141753,
+      25311331,
+      26451724,
+      27838683,
+      27736337,
+      17208589,
+      16726538,
+      16362934,
+      15466585,
+      15229890,
+      15207179,
+      15221133,
+      15183823,
+      15178702,
+      15128277,
+      15105678,
+      15045365,
+      17139551,
+      16770354,
+      16362967,
+      16192560,
+      16115561,
+      16015927,
+      15930446,
+      15824310,
+      15732304,
+      15620555,
+      15517417,
+      15398348,
+      16707274,
+      16783032,
+      16883920,
+      17036825,
+      17212288,
+      17375721,
+      17542382,
+      17700548,
+      17857450,
+      18010114,
+      18163566,
+      18315805,
+      19167409,
+      19274158,
+      19437576,
+      19596312,
+      19759534,
+      19915580,
+      20072052,
+      20224150,
+      20377809,
+      20529385,
+      20682573,
+      20700089,
+      1935978,
+      1829016,
+      1743650,
+      1671119,
+      1598464,
+      1525991,
+      1452756,
+      1394696,
+      1335976,
+      1273992,
+      1213440,
+      1152287,
+      1080654,
+      1026043,
+      984084,
+      940044,
+      896570,
+      853810,
+      810700,
+      782171,
+      753656,
+      724482,
+      695307,
+      667027,
+      646492,
+      609890,
+      581577,
+      553365,
+      525100,
+      511000,
+      496852,
+      482634,
+      468718,
+      454413,
+      440316,
+      426098,
+      417653,
+      397561,
+      383462,
+      369397,
+      355214,
+      341042,
+      327133,
+      312955,
+      298986,
+      284947,
+      270960,
+      256822,
+      247462,
+      229498,
+      215696,
+      201740,
+      187936,
+      174121,
+      160208,
+      146450,
+      132924,
+      119360,
+      105706,
+      92063,
+      81404,
+      65212,
+      51953,
+      38773,
+      25718,
+      12673,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "lenders": [
+      4,
+      16,
+      5,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      6,
+      6,
+      5,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      5,
+      4,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      4,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      5,
+      7,
+      4,
+      4,
+      4,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      5,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      6,
+      3,
+      4,
+      3,
+      3,
+      3,
+      3,
+      4,
+      4,
+      4,
+      4,
+      4,
+      8,
+      4,
+      4,
+      3,
+      3,
+      3,
+      2,
+      4,
+      4,
+      4,
+      4,
+      6,
+      8,
+      5,
+      5,
+      2,
+      2,
+      2,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      10,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      11,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      7,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      4,
+      9,
+      2,
+      3,
+      2,
+      2,
+      2,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      8,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      10,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      8,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      4,
+      4,
+      3,
+      10,
+      2,
+      2,
+      2,
+      2,
+      2,
+      3,
+      3,
+      7,
+      7,
+      6,
+      4,
+      10,
+      2,
+      2,
+      2,
+      2,
+      3,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "lentMilli": [
+      9201,
+      2879,
+      1922,
+      129,
+      192,
+      303,
+      382,
+      460,
+      442,
+      537,
+      501,
+      628,
+      6124,
+      178,
+      6005,
+      803,
+      671,
+      892,
+      730,
+      978,
+      790,
+      953,
+      807,
+      976,
+      4873,
+      206,
+      5149,
+      1372,
+      1123,
+      1471,
+      1216,
+      1360,
+      1332,
+      1490,
+      1055,
+      1257,
+      3755,
+      153,
+      3961,
+      1792,
+      1310,
+      1691,
+      1487,
+      1712,
+      1533,
+      1766,
+      1407,
+      1883,
+      4330,
+      378,
+      204,
+      144,
+      192,
+      131,
+      192,
+      131,
+      192,
+      131,
+      192,
+      130,
+      8554,
+      465,
+      8650,
+      954,
+      754,
+      880,
+      779,
+      906,
+      799,
+      792,
+      826,
+      955,
+      6022,
+      184,
+      198,
+      131,
+      192,
+      131,
+      192,
+      319,
+      508,
+      635,
+      824,
+      950,
+      4877,
+      154,
+      197,
+      129,
+      203,
+      129,
+      189,
+      307,
+      500,
+      629,
+      821,
+      3795,
+      3074,
+      229,
+      204,
+      127,
+      189,
+      127,
+      201,
+      127,
+      189,
+      127,
+      189,
+      127,
+      4705,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      3673,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      2468,
+      181,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      142,
+      3936,
+      127,
+      201,
+      127,
+      189,
+      127,
+      201,
+      127,
+      189,
+      127,
+      189,
+      127,
+      3470,
+      157,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      3182,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      2972,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      129,
+      191,
+      128,
+      2917,
+      127,
+      189,
+      127,
+      189,
+      127,
+      242,
+      151,
+      287,
+      438,
+      462,
+      373,
+      3069,
+      127,
+      189,
+      127,
+      189,
+      140,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "loans": [
+      7,
+      17,
+      9,
+      6,
+      7,
+      6,
+      7,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      8,
+      6,
+      6,
+      6,
+      7,
+      8,
+      5,
+      8,
+      4,
+      9,
+      5,
+      4,
+      8,
+      10,
+      7,
+      12,
+      9,
+      11,
+      8,
+      9,
+      4,
+      9,
+      4,
+      3,
+      9,
+      9,
+      4,
+      10,
+      5,
+      9,
+      4,
+      8,
+      4,
+      24,
+      15,
+      13,
+      13,
+      13,
+      12,
+      12,
+      12,
+      12,
+      12,
+      12,
+      12,
+      12,
+      21,
+      19,
+      17,
+      10,
+      7,
+      8,
+      6,
+      7,
+      6,
+      6,
+      5,
+      6,
+      9,
+      4,
+      7,
+      7,
+      5,
+      5,
+      4,
+      5,
+      5,
+      5,
+      5,
+      5,
+      10,
+      5,
+      5,
+      4,
+      4,
+      4,
+      3,
+      5,
+      5,
+      5,
+      5,
+      8,
+      10,
+      7,
+      5,
+      2,
+      2,
+      2,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      11,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      3,
+      2,
+      13,
+      2,
+      2,
+      2,
+      2,
+      2,
+      5,
+      3,
+      4,
+      3,
+      3,
+      2,
+      9,
+      4,
+      2,
+      2,
+      2,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      5,
+      9,
+      2,
+      3,
+      2,
+      2,
+      2,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      8,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      12,
+      4,
+      4,
+      2,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      3,
+      13,
+      7,
+      7,
+      6,
+      7,
+      7,
+      8,
+      8,
+      9,
+      5,
+      11,
+      5,
+      11,
+      2,
+      2,
+      2,
+      2,
+      3,
+      4,
+      4,
+      9,
+      11,
+      13,
+      8,
+      14,
+      2,
+      3,
+      2,
+      2,
+      3,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "poolEmptyRounds": 0,
+    "rateChanges": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "rateWritten": [
+      {
+        "day": "3",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=20->21",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "5",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=21->22",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "8",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=22->23",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "10",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=23->24",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "13",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=24->25",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "15",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=25->26",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "18",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=26->27",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "20",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=27->28",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "23",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=28->29",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "25",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=29->30",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "28",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=30->31",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "30",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=31->32",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "33",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=32->33",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "35",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=33->34",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "38",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=34->35",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "40",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=35->36",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "43",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=36->37",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "45",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=37->38",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "48",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=38->39",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "50",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=39->40",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "53",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=40->42",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "55",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=42->44",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "58",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=44->46",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "60",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=46->48",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "63",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=48->50",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "65",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=50->52",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "68",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=52->54",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "70",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=54->56",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "73",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=56->58",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "75",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=58->60",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "78",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=60->63",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "80",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=63->66",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "83",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=66->69",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "85",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=69->72",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "88",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=72->75",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "90",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=75->78",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "93",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=78->81",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "95",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=81->85",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "98",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=85->89",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "100",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=89->93",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "103",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=93->97",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "105",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=97->101",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "108",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=101->106",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "110",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=106->111",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "113",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=111->116",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "115",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=116->121",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "118",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=121->127",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "120",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=127->133",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "123",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=133->139",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "125",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=139->145",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "128",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=145->152",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "130",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=152->159",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "133",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=159->166",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "135",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=166->174",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "138",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=174->182",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "140",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=182->191",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "143",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=191->200",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "145",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=200->210",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "148",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=210->220",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "150",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=220->231",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "153",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=231->242",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "155",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=242->254",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "158",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=254->266",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "160",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=266->279",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "163",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=279->292",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "165",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=292->306",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "168",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=306->321",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "170",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=321->337",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "173",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=337->353",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "175",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=353->370",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "178",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=370->388",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "180",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=388->407",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "183",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=407->427",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "185",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=427->448",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "188",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=448->470",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "190",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=470->493",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "193",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=493->517",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "195",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=517->542",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "198",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=542->569",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "200",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=569->597",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "203",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=597->626",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "205",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=626->657",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "208",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=657->689",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "210",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=689->723",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "213",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=723->759",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "215",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=759->796",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "218",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=796->835",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "220",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=835->876",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "223",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=876->919",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "225",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=919->964",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "228",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=964->1012",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "230",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1012->1062",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "233",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1062->1115",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "235",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1115->1170",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "238",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1170->1228",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "240",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1228->1289",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "243",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1289->1353",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "245",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1353->1420",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "248",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1420->1491",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "250",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1491->1565",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "253",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1565->1643",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "255",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1643->1725",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "258",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1725->1811",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "260",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1811->1901",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "263",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1901->1996",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "265",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=1996->2095",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "268",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=2095->2199",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "270",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=2199->2308",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "273",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=2308->2423",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "275",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=2423->2544",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "278",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=2544->2671",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "280",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=2671->2804",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "283",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=2804->2944",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "285",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=2944->3091",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "288",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=3091->3245",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "290",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=3245->3407",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "293",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=3407->3577",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "295",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=3577->3755",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "298",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=3755->3942",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "300",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=3942->4139",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "303",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=4139->4345",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "305",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=4345->4562",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "308",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=4562->4790",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "310",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=4790->5029",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "313",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=5029->5280",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "315",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=5280->5544",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "318",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=5544->5821",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "320",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=5821->6112",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "323",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=6112->6417",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "325",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=6417->6737",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "328",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=6737->7073",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "330",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=7073->7426",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "333",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=7426->7797",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "335",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=7797->8186",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "338",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=8186->8595",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "340",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=8595->9024",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "343",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=9024->9475",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "345",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=9475->9948",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "348",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=9948->10445",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "350",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=10445->10967",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "353",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=10967->11515",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "355",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=11515->12090",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "358",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=12090->12694",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "360",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=12694->13328",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "363",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=13328->13994",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "365",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=13994->14693",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "368",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=14693->15427",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "370",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=15427->16198",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "373",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=16198->17007",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "375",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=17007->17857",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "378",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=17857->18749",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "380",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=18749->19686",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "383",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=19686->20670",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "385",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=20670->21703",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "388",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=21703->22788",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "390",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=22788->23927",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "393",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=23927->25123",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "395",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=25123->26379",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "398",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=26379->27697",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "400",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=27697->29081",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "403",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=29081->30535",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "405",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=30535->32061",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "408",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=32061->33664",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "410",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=33664->35347",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "413",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=35347->37114",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "415",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=37114->38969",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "418",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=38969->40917",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "420",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=40917->42962",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "423",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=42962->45110",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "425",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=45110->47365",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "428",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=47365->49733",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "430",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=49733->52219",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "433",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=52219->54829",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "435",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=54829->57570",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "438",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=57570->60448",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "440",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=60448->63470",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "443",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=63470->66643",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "445",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=66643->69975",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "448",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=69975->73473",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "450",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=73473->77146",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "453",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=77146->81003",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "455",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=81003->85053",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "458",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=85053->89305",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "460",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=89305->93770",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "463",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=93770->98458",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "465",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=98458->103380",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "468",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=103380->108549",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "470",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=108549->113976",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "473",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=113976->119674",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "475",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=119674->125657",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "478",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=125657->131939",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "480",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=131939->138535",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "483",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=138535->145461",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "485",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=145461->152734",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "488",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=152734->160370",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "490",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=160370->168388",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "493",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=168388->176807",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "495",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=176807->185647",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "498",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=185647->194929",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "500",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=194929->204675",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "503",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=204675->214908",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "505",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=214908->225653",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "508",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=225653->236935",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "510",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=236935->248781",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "513",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=248781->261220",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "515",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=261220->274281",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "518",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=274281->287995",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "520",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=287995->302394",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "523",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=302394->317513",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "525",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=317513->333388",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "528",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=333388->316719",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "530",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=316719->300884",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "533",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=300884->285840",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "535",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=285840->271548",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "538",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=271548->257971",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "540",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=257971->245073",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "543",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=245073->232820",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "545",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=232820->221179",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "548",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=221179->210121",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "550",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=210121->199615",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "553",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=199615->189635",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "555",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=189635->180154",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "558",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=180154->171147",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "560",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=171147->162590",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "563",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=162590->154461",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "565",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=154461->146738",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "568",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=146738->139402",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "570",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=139402->132432",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "573",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=132432->125811",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "575",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=125811->119521",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "578",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=119521->113545",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "580",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=113545->107868",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "583",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=107868->102475",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "585",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=102475->97352",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "588",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=97352->92485",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "590",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=92485->87861",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "593",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=87861->83468",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "595",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=83468->79295",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "598",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=79295->75331",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      },
+      {
+        "day": "600",
+        "effectiveFrom": "next-market-round",
+        "event": "MONEY_MARKET_RATE_WRITTEN",
+        "markets": "1",
+        "origin": "economy-debt",
+        "originKind": "tick",
+        "ratesPerMille": "single-region=75331->71565",
+        "reason": "loan-rate-adapts-to-money-supply-and-demand-S-12-5"
+      }
+    ],
+    "rounds": 240,
+    "supplyMilli": [
+      9201,
+      2879,
+      1922,
+      129,
+      192,
+      303,
+      382,
+      460,
+      442,
+      537,
+      501,
+      628,
+      6124,
+      178,
+      6005,
+      803,
+      671,
+      892,
+      730,
+      978,
+      790,
+      953,
+      807,
+      976,
+      4873,
+      206,
+      5149,
+      1372,
+      1123,
+      1471,
+      1216,
+      1360,
+      1332,
+      1490,
+      1055,
+      1257,
+      3755,
+      153,
+      3961,
+      1792,
+      1310,
+      1691,
+      1487,
+      1712,
+      1533,
+      1766,
+      1407,
+      1883,
+      4330,
+      378,
+      204,
+      144,
+      192,
+      131,
+      192,
+      131,
+      192,
+      131,
+      192,
+      130,
+      8554,
+      465,
+      8650,
+      954,
+      754,
+      880,
+      779,
+      906,
+      799,
+      792,
+      826,
+      955,
+      6022,
+      184,
+      198,
+      131,
+      192,
+      131,
+      192,
+      319,
+      508,
+      635,
+      824,
+      950,
+      4877,
+      154,
+      197,
+      129,
+      203,
+      129,
+      189,
+      307,
+      500,
+      629,
+      821,
+      3795,
+      3074,
+      229,
+      204,
+      127,
+      189,
+      127,
+      201,
+      127,
+      189,
+      127,
+      189,
+      127,
+      4705,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      3673,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      2468,
+      181,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      142,
+      3936,
+      127,
+      201,
+      127,
+      189,
+      127,
+      201,
+      127,
+      189,
+      127,
+      189,
+      127,
+      3470,
+      157,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      3182,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      2972,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      127,
+      189,
+      129,
+      191,
+      128,
+      2917,
+      127,
+      189,
+      127,
+      189,
+      127,
+      242,
+      151,
+      287,
+      438,
+      462,
+      373,
+      3069,
+      127,
+      189,
+      127,
+      189,
+      140,
+      275,
+      398,
+      576,
+      691,
+      860,
+      969,
+      3385,
+      3447,
+      3540,
+      3602,
+      3681,
+      3744,
+      3840,
+      3904,
+      4000,
+      4062,
+      4157,
+      4221,
+      4314,
+      4376,
+      4469,
+      4531,
+      4624,
+      4684,
+      4778,
+      4842,
+      4938,
+      5002,
+      5098,
+      5162
+    ]
+  },
+  "population": {
+    "births": 432,
+    "day0": {
+      "economy_total": 4800,
+      "households": 178,
+      "mismatch_hh": 4,
+      "social_groups_total": 4800,
+      "social_total": 4800
+    },
+    "dayN": {
+      "economy_total": 3312,
+      "households": 178,
+      "mismatch_hh": 0,
+      "social_groups_total": 3312,
+      "social_total": 3312
+    },
+    "deathsBase": 76,
+    "deathsFamine": 1844
+  },
+  "pricePaths": {
+    "cloth": [
+      [
+        3,
+        6
+      ],
+      [
+        5,
+        7
+      ],
+      [
+        8,
+        8
+      ],
+      [
+        10,
+        9
+      ],
+      [
+        13,
+        10
+      ],
+      [
+        15,
+        11
+      ],
+      [
+        18,
+        12
+      ],
+      [
+        20,
+        13
+      ],
+      [
+        23,
+        14
+      ],
+      [
+        25,
+        15
+      ],
+      [
+        28,
+        16
+      ],
+      [
+        30,
+        17
+      ],
+      [
+        33,
+        18
+      ],
+      [
+        35,
+        19
+      ],
+      [
+        38,
+        20
+      ],
+      [
+        40,
+        21
+      ],
+      [
+        43,
+        22
+      ],
+      [
+        45,
+        23
+      ],
+      [
+        48,
+        24
+      ],
+      [
+        50,
+        25
+      ],
+      [
+        53,
+        26
+      ],
+      [
+        55,
+        27
+      ],
+      [
+        58,
+        28
+      ],
+      [
+        60,
+        29
+      ],
+      [
+        63,
+        30
+      ],
+      [
+        65,
+        31
+      ],
+      [
+        68,
+        32
+      ],
+      [
+        70,
+        33
+      ],
+      [
+        73,
+        34
+      ],
+      [
+        75,
+        35
+      ],
+      [
+        78,
+        36
+      ],
+      [
+        80,
+        37
+      ],
+      [
+        83,
+        38
+      ],
+      [
+        85,
+        39
+      ],
+      [
+        88,
+        40
+      ],
+      [
+        90,
+        42
+      ],
+      [
+        93,
+        44
+      ],
+      [
+        95,
+        46
+      ],
+      [
+        98,
+        48
+      ],
+      [
+        100,
+        50
+      ],
+      [
+        103,
+        52
+      ],
+      [
+        105,
+        54
+      ],
+      [
+        108,
+        56
+      ],
+      [
+        110,
+        58
+      ],
+      [
+        113,
+        60
+      ],
+      [
+        115,
+        63
+      ],
+      [
+        118,
+        66
+      ],
+      [
+        120,
+        63
+      ],
+      [
+        123,
+        60
+      ],
+      [
+        125,
+        57
+      ],
+      [
+        128,
+        55
+      ],
+      [
+        130,
+        53
+      ],
+      [
+        133,
+        51
+      ],
+      [
+        135,
+        49
+      ],
+      [
+        138,
+        47
+      ],
+      [
+        140,
+        45
+      ],
+      [
+        143,
+        43
+      ],
+      [
+        145,
+        41
+      ],
+      [
+        148,
+        39
+      ],
+      [
+        150,
+        38
+      ],
+      [
+        153,
+        37
+      ],
+      [
+        155,
+        36
+      ],
+      [
+        158,
+        35
+      ],
+      [
+        160,
+        34
+      ],
+      [
+        163,
+        33
+      ],
+      [
+        165,
+        32
+      ],
+      [
+        168,
+        31
+      ],
+      [
+        170,
+        30
+      ],
+      [
+        173,
+        29
+      ],
+      [
+        175,
+        28
+      ],
+      [
+        178,
+        27
+      ],
+      [
+        180,
+        26
+      ],
+      [
+        183,
+        25
+      ],
+      [
+        185,
+        24
+      ],
+      [
+        188,
+        23
+      ],
+      [
+        190,
+        22
+      ],
+      [
+        193,
+        21
+      ],
+      [
+        195,
+        20
+      ],
+      [
+        198,
+        19
+      ],
+      [
+        200,
+        18
+      ],
+      [
+        203,
+        17
+      ],
+      [
+        205,
+        16
+      ],
+      [
+        208,
+        15
+      ],
+      [
+        210,
+        14
+      ],
+      [
+        213,
+        13
+      ],
+      [
+        215,
+        12
+      ],
+      [
+        218,
+        11
+      ],
+      [
+        220,
+        10
+      ],
+      [
+        223,
+        9
+      ],
+      [
+        225,
+        8
+      ],
+      [
+        228,
+        7
+      ],
+      [
+        230,
+        6
+      ],
+      [
+        233,
+        5
+      ],
+      [
+        235,
+        4
+      ],
+      [
+        238,
+        3
+      ],
+      [
+        240,
+        2
+      ],
+      [
+        243,
+        1
+      ],
+      [
+        245,
+        0
+      ],
+      [
+        248,
+        0
+      ],
+      [
+        250,
+        0
+      ],
+      [
+        253,
+        0
+      ],
+      [
+        255,
+        0
+      ],
+      [
+        258,
+        0
+      ],
+      [
+        260,
+        0
+      ],
+      [
+        263,
+        0
+      ],
+      [
+        265,
+        0
+      ],
+      [
+        268,
+        0
+      ],
+      [
+        270,
+        0
+      ],
+      [
+        273,
+        0
+      ],
+      [
+        275,
+        0
+      ],
+      [
+        278,
+        0
+      ],
+      [
+        280,
+        0
+      ],
+      [
+        283,
+        0
+      ],
+      [
+        285,
+        0
+      ],
+      [
+        288,
+        0
+      ],
+      [
+        290,
+        0
+      ],
+      [
+        293,
+        0
+      ],
+      [
+        295,
+        0
+      ],
+      [
+        298,
+        0
+      ],
+      [
+        300,
+        0
+      ],
+      [
+        303,
+        0
+      ],
+      [
+        305,
+        0
+      ],
+      [
+        308,
+        0
+      ],
+      [
+        310,
+        0
+      ],
+      [
+        313,
+        0
+      ],
+      [
+        315,
+        0
+      ],
+      [
+        318,
+        0
+      ],
+      [
+        320,
+        0
+      ],
+      [
+        323,
+        0
+      ],
+      [
+        325,
+        0
+      ],
+      [
+        328,
+        0
+      ],
+      [
+        330,
+        0
+      ],
+      [
+        333,
+        0
+      ],
+      [
+        335,
+        0
+      ],
+      [
+        338,
+        0
+      ],
+      [
+        340,
+        0
+      ],
+      [
+        343,
+        0
+      ],
+      [
+        345,
+        0
+      ],
+      [
+        348,
+        0
+      ],
+      [
+        350,
+        0
+      ],
+      [
+        353,
+        0
+      ],
+      [
+        355,
+        0
+      ],
+      [
+        358,
+        0
+      ],
+      [
+        360,
+        0
+      ],
+      [
+        363,
+        0
+      ],
+      [
+        365,
+        0
+      ],
+      [
+        368,
+        0
+      ],
+      [
+        370,
+        0
+      ],
+      [
+        373,
+        0
+      ],
+      [
+        375,
+        0
+      ],
+      [
+        378,
+        0
+      ],
+      [
+        380,
+        0
+      ],
+      [
+        383,
+        0
+      ],
+      [
+        385,
+        0
+      ],
+      [
+        388,
+        0
+      ],
+      [
+        390,
+        0
+      ],
+      [
+        393,
+        0
+      ],
+      [
+        395,
+        0
+      ],
+      [
+        398,
+        0
+      ],
+      [
+        400,
+        0
+      ],
+      [
+        403,
+        0
+      ],
+      [
+        405,
+        0
+      ],
+      [
+        408,
+        0
+      ],
+      [
+        410,
+        0
+      ],
+      [
+        413,
+        0
+      ],
+      [
+        415,
+        0
+      ],
+      [
+        418,
+        0
+      ],
+      [
+        420,
+        0
+      ],
+      [
+        423,
+        0
+      ],
+      [
+        425,
+        0
+      ],
+      [
+        428,
+        0
+      ],
+      [
+        430,
+        0
+      ],
+      [
+        433,
+        0
+      ],
+      [
+        435,
+        0
+      ],
+      [
+        438,
+        0
+      ],
+      [
+        440,
+        0
+      ],
+      [
+        443,
+        0
+      ],
+      [
+        445,
+        0
+      ],
+      [
+        448,
+        0
+      ],
+      [
+        450,
+        0
+      ],
+      [
+        453,
+        0
+      ],
+      [
+        455,
+        0
+      ],
+      [
+        458,
+        0
+      ],
+      [
+        460,
+        0
+      ],
+      [
+        463,
+        0
+      ],
+      [
+        465,
+        0
+      ],
+      [
+        468,
+        0
+      ],
+      [
+        470,
+        0
+      ],
+      [
+        473,
+        0
+      ],
+      [
+        475,
+        0
+      ],
+      [
+        478,
+        0
+      ],
+      [
+        480,
+        0
+      ],
+      [
+        483,
+        0
+      ],
+      [
+        485,
+        0
+      ],
+      [
+        488,
+        0
+      ],
+      [
+        490,
+        0
+      ],
+      [
+        493,
+        0
+      ],
+      [
+        495,
+        0
+      ],
+      [
+        498,
+        0
+      ],
+      [
+        500,
+        0
+      ],
+      [
+        503,
+        0
+      ],
+      [
+        505,
+        0
+      ],
+      [
+        508,
+        0
+      ],
+      [
+        510,
+        0
+      ],
+      [
+        513,
+        0
+      ],
+      [
+        515,
+        0
+      ],
+      [
+        518,
+        0
+      ],
+      [
+        520,
+        0
+      ],
+      [
+        523,
+        0
+      ],
+      [
+        525,
+        0
+      ],
+      [
+        528,
+        0
+      ],
+      [
+        530,
+        0
+      ],
+      [
+        533,
+        0
+      ],
+      [
+        535,
+        0
+      ],
+      [
+        538,
+        0
+      ],
+      [
+        540,
+        0
+      ],
+      [
+        543,
+        0
+      ],
+      [
+        545,
+        0
+      ],
+      [
+        548,
+        0
+      ],
+      [
+        550,
+        0
+      ],
+      [
+        553,
+        0
+      ],
+      [
+        555,
+        0
+      ],
+      [
+        558,
+        0
+      ],
+      [
+        560,
+        0
+      ],
+      [
+        563,
+        0
+      ],
+      [
+        565,
+        0
+      ],
+      [
+        568,
+        0
+      ],
+      [
+        570,
+        0
+      ],
+      [
+        573,
+        0
+      ],
+      [
+        575,
+        0
+      ],
+      [
+        578,
+        0
+      ],
+      [
+        580,
+        0
+      ],
+      [
+        583,
+        0
+      ],
+      [
+        585,
+        0
+      ],
+      [
+        588,
+        0
+      ],
+      [
+        590,
+        0
+      ],
+      [
+        593,
+        0
+      ],
+      [
+        595,
+        0
+      ],
+      [
+        598,
+        0
+      ],
+      [
+        600,
+        0
+      ]
+    ],
+    "fiber": [
+      [
+        3,
+        0
+      ],
+      [
+        5,
+        0
+      ],
+      [
+        8,
+        0
+      ],
+      [
+        10,
+        0
+      ],
+      [
+        13,
+        0
+      ],
+      [
+        15,
+        0
+      ],
+      [
+        18,
+        0
+      ],
+      [
+        20,
+        0
+      ],
+      [
+        23,
+        0
+      ],
+      [
+        25,
+        0
+      ],
+      [
+        28,
+        0
+      ],
+      [
+        30,
+        0
+      ],
+      [
+        33,
+        0
+      ],
+      [
+        35,
+        0
+      ],
+      [
+        38,
+        0
+      ],
+      [
+        40,
+        0
+      ],
+      [
+        43,
+        0
+      ],
+      [
+        45,
+        0
+      ],
+      [
+        48,
+        0
+      ],
+      [
+        50,
+        0
+      ],
+      [
+        53,
+        0
+      ],
+      [
+        55,
+        0
+      ],
+      [
+        58,
+        0
+      ],
+      [
+        60,
+        0
+      ],
+      [
+        63,
+        0
+      ],
+      [
+        65,
+        0
+      ],
+      [
+        68,
+        0
+      ],
+      [
+        70,
+        0
+      ],
+      [
+        73,
+        0
+      ],
+      [
+        75,
+        0
+      ],
+      [
+        78,
+        0
+      ],
+      [
+        80,
+        0
+      ],
+      [
+        83,
+        0
+      ],
+      [
+        85,
+        0
+      ],
+      [
+        88,
+        0
+      ],
+      [
+        90,
+        0
+      ],
+      [
+        93,
+        0
+      ],
+      [
+        95,
+        0
+      ],
+      [
+        98,
+        0
+      ],
+      [
+        100,
+        0
+      ],
+      [
+        103,
+        0
+      ],
+      [
+        105,
+        0
+      ],
+      [
+        108,
+        0
+      ],
+      [
+        110,
+        0
+      ],
+      [
+        113,
+        0
+      ],
+      [
+        115,
+        0
+      ],
+      [
+        118,
+        0
+      ],
+      [
+        120,
+        0
+      ],
+      [
+        123,
+        0
+      ],
+      [
+        125,
+        0
+      ],
+      [
+        128,
+        0
+      ],
+      [
+        130,
+        0
+      ],
+      [
+        133,
+        0
+      ],
+      [
+        135,
+        0
+      ],
+      [
+        138,
+        0
+      ],
+      [
+        140,
+        0
+      ],
+      [
+        143,
+        0
+      ],
+      [
+        145,
+        0
+      ],
+      [
+        148,
+        0
+      ],
+      [
+        150,
+        0
+      ],
+      [
+        153,
+        0
+      ],
+      [
+        155,
+        0
+      ],
+      [
+        158,
+        0
+      ],
+      [
+        160,
+        0
+      ],
+      [
+        163,
+        0
+      ],
+      [
+        165,
+        0
+      ],
+      [
+        168,
+        0
+      ],
+      [
+        170,
+        0
+      ],
+      [
+        173,
+        0
+      ],
+      [
+        175,
+        0
+      ],
+      [
+        178,
+        0
+      ],
+      [
+        180,
+        0
+      ],
+      [
+        183,
+        0
+      ],
+      [
+        185,
+        0
+      ],
+      [
+        188,
+        0
+      ],
+      [
+        190,
+        0
+      ],
+      [
+        193,
+        0
+      ],
+      [
+        195,
+        0
+      ],
+      [
+        198,
+        0
+      ],
+      [
+        200,
+        0
+      ],
+      [
+        203,
+        0
+      ],
+      [
+        205,
+        0
+      ],
+      [
+        208,
+        0
+      ],
+      [
+        210,
+        0
+      ],
+      [
+        213,
+        0
+      ],
+      [
+        215,
+        0
+      ],
+      [
+        218,
+        0
+      ],
+      [
+        220,
+        0
+      ],
+      [
+        223,
+        0
+      ],
+      [
+        225,
+        0
+      ],
+      [
+        228,
+        0
+      ],
+      [
+        230,
+        0
+      ],
+      [
+        233,
+        0
+      ],
+      [
+        235,
+        0
+      ],
+      [
+        238,
+        0
+      ],
+      [
+        240,
+        0
+      ],
+      [
+        243,
+        0
+      ],
+      [
+        245,
+        0
+      ],
+      [
+        248,
+        0
+      ],
+      [
+        250,
+        0
+      ],
+      [
+        253,
+        0
+      ],
+      [
+        255,
+        0
+      ],
+      [
+        258,
+        0
+      ],
+      [
+        260,
+        0
+      ],
+      [
+        263,
+        0
+      ],
+      [
+        265,
+        0
+      ],
+      [
+        268,
+        0
+      ],
+      [
+        270,
+        0
+      ],
+      [
+        273,
+        0
+      ],
+      [
+        275,
+        0
+      ],
+      [
+        278,
+        0
+      ],
+      [
+        280,
+        0
+      ],
+      [
+        283,
+        0
+      ],
+      [
+        285,
+        0
+      ],
+      [
+        288,
+        0
+      ],
+      [
+        290,
+        0
+      ],
+      [
+        293,
+        0
+      ],
+      [
+        295,
+        0
+      ],
+      [
+        298,
+        0
+      ],
+      [
+        300,
+        0
+      ],
+      [
+        303,
+        0
+      ],
+      [
+        305,
+        0
+      ],
+      [
+        308,
+        0
+      ],
+      [
+        310,
+        0
+      ],
+      [
+        313,
+        0
+      ],
+      [
+        315,
+        0
+      ],
+      [
+        318,
+        0
+      ],
+      [
+        320,
+        0
+      ],
+      [
+        323,
+        0
+      ],
+      [
+        325,
+        0
+      ],
+      [
+        328,
+        0
+      ],
+      [
+        330,
+        0
+      ],
+      [
+        333,
+        0
+      ],
+      [
+        335,
+        0
+      ],
+      [
+        338,
+        0
+      ],
+      [
+        340,
+        0
+      ],
+      [
+        343,
+        0
+      ],
+      [
+        345,
+        0
+      ],
+      [
+        348,
+        0
+      ],
+      [
+        350,
+        0
+      ],
+      [
+        353,
+        0
+      ],
+      [
+        355,
+        0
+      ],
+      [
+        358,
+        0
+      ],
+      [
+        360,
+        0
+      ],
+      [
+        363,
+        0
+      ],
+      [
+        365,
+        0
+      ],
+      [
+        368,
+        0
+      ],
+      [
+        370,
+        0
+      ],
+      [
+        373,
+        0
+      ],
+      [
+        375,
+        0
+      ],
+      [
+        378,
+        0
+      ],
+      [
+        380,
+        0
+      ],
+      [
+        383,
+        0
+      ],
+      [
+        385,
+        0
+      ],
+      [
+        388,
+        0
+      ],
+      [
+        390,
+        0
+      ],
+      [
+        393,
+        0
+      ],
+      [
+        395,
+        0
+      ],
+      [
+        398,
+        0
+      ],
+      [
+        400,
+        0
+      ],
+      [
+        403,
+        0
+      ],
+      [
+        405,
+        0
+      ],
+      [
+        408,
+        0
+      ],
+      [
+        410,
+        0
+      ],
+      [
+        413,
+        0
+      ],
+      [
+        415,
+        0
+      ],
+      [
+        418,
+        0
+      ],
+      [
+        420,
+        0
+      ],
+      [
+        423,
+        0
+      ],
+      [
+        425,
+        0
+      ],
+      [
+        428,
+        0
+      ],
+      [
+        430,
+        0
+      ],
+      [
+        433,
+        0
+      ],
+      [
+        435,
+        0
+      ],
+      [
+        438,
+        0
+      ],
+      [
+        440,
+        0
+      ],
+      [
+        443,
+        0
+      ],
+      [
+        445,
+        0
+      ],
+      [
+        448,
+        0
+      ],
+      [
+        450,
+        0
+      ],
+      [
+        453,
+        0
+      ],
+      [
+        455,
+        0
+      ],
+      [
+        458,
+        0
+      ],
+      [
+        460,
+        0
+      ],
+      [
+        463,
+        0
+      ],
+      [
+        465,
+        0
+      ],
+      [
+        468,
+        0
+      ],
+      [
+        470,
+        0
+      ],
+      [
+        473,
+        0
+      ],
+      [
+        475,
+        0
+      ],
+      [
+        478,
+        0
+      ],
+      [
+        480,
+        0
+      ],
+      [
+        483,
+        0
+      ],
+      [
+        485,
+        0
+      ],
+      [
+        488,
+        0
+      ],
+      [
+        490,
+        0
+      ],
+      [
+        493,
+        0
+      ],
+      [
+        495,
+        0
+      ],
+      [
+        498,
+        0
+      ],
+      [
+        500,
+        0
+      ],
+      [
+        503,
+        0
+      ],
+      [
+        505,
+        0
+      ],
+      [
+        508,
+        0
+      ],
+      [
+        510,
+        0
+      ],
+      [
+        513,
+        0
+      ],
+      [
+        515,
+        0
+      ],
+      [
+        518,
+        0
+      ],
+      [
+        520,
+        0
+      ],
+      [
+        523,
+        0
+      ],
+      [
+        525,
+        0
+      ],
+      [
+        528,
+        0
+      ],
+      [
+        530,
+        0
+      ],
+      [
+        533,
+        0
+      ],
+      [
+        535,
+        0
+      ],
+      [
+        538,
+        0
+      ],
+      [
+        540,
+        0
+      ],
+      [
+        543,
+        0
+      ],
+      [
+        545,
+        0
+      ],
+      [
+        548,
+        0
+      ],
+      [
+        550,
+        0
+      ],
+      [
+        553,
+        0
+      ],
+      [
+        555,
+        0
+      ],
+      [
+        558,
+        0
+      ],
+      [
+        560,
+        0
+      ],
+      [
+        563,
+        0
+      ],
+      [
+        565,
+        0
+      ],
+      [
+        568,
+        0
+      ],
+      [
+        570,
+        0
+      ],
+      [
+        573,
+        0
+      ],
+      [
+        575,
+        0
+      ],
+      [
+        578,
+        0
+      ],
+      [
+        580,
+        0
+      ],
+      [
+        583,
+        0
+      ],
+      [
+        585,
+        0
+      ],
+      [
+        588,
+        0
+      ],
+      [
+        590,
+        0
+      ],
+      [
+        593,
+        0
+      ],
+      [
+        595,
+        0
+      ],
+      [
+        598,
+        0
+      ],
+      [
+        600,
+        0
+      ]
+    ],
+    "grain": [
+      [
+        3,
+        2
+      ],
+      [
+        5,
+        3
+      ],
+      [
+        8,
+        4
+      ],
+      [
+        10,
+        5
+      ],
+      [
+        13,
+        6
+      ],
+      [
+        15,
+        7
+      ],
+      [
+        18,
+        8
+      ],
+      [
+        20,
+        9
+      ],
+      [
+        23,
+        10
+      ],
+      [
+        25,
+        11
+      ],
+      [
+        28,
+        12
+      ],
+      [
+        30,
+        13
+      ],
+      [
+        33,
+        14
+      ],
+      [
+        35,
+        15
+      ],
+      [
+        38,
+        16
+      ],
+      [
+        40,
+        17
+      ],
+      [
+        43,
+        18
+      ],
+      [
+        45,
+        19
+      ],
+      [
+        48,
+        20
+      ],
+      [
+        50,
+        21
+      ],
+      [
+        53,
+        22
+      ],
+      [
+        55,
+        23
+      ],
+      [
+        58,
+        24
+      ],
+      [
+        60,
+        25
+      ],
+      [
+        63,
+        26
+      ],
+      [
+        65,
+        27
+      ],
+      [
+        68,
+        28
+      ],
+      [
+        70,
+        29
+      ],
+      [
+        73,
+        30
+      ],
+      [
+        75,
+        31
+      ],
+      [
+        78,
+        32
+      ],
+      [
+        80,
+        33
+      ],
+      [
+        83,
+        34
+      ],
+      [
+        85,
+        35
+      ],
+      [
+        88,
+        36
+      ],
+      [
+        90,
+        37
+      ],
+      [
+        93,
+        38
+      ],
+      [
+        95,
+        39
+      ],
+      [
+        98,
+        40
+      ],
+      [
+        100,
+        42
+      ],
+      [
+        103,
+        44
+      ],
+      [
+        105,
+        46
+      ],
+      [
+        108,
+        48
+      ],
+      [
+        110,
+        50
+      ],
+      [
+        113,
+        52
+      ],
+      [
+        115,
+        54
+      ],
+      [
+        118,
+        56
+      ],
+      [
+        120,
+        54
+      ],
+      [
+        123,
+        52
+      ],
+      [
+        125,
+        50
+      ],
+      [
+        128,
+        49
+      ],
+      [
+        130,
+        48
+      ],
+      [
+        133,
+        47
+      ],
+      [
+        135,
+        46
+      ],
+      [
+        138,
+        45
+      ],
+      [
+        140,
+        44
+      ],
+      [
+        143,
+        43
+      ],
+      [
+        145,
+        42
+      ],
+      [
+        148,
+        41
+      ],
+      [
+        150,
+        40
+      ],
+      [
+        153,
+        41
+      ],
+      [
+        155,
+        42
+      ],
+      [
+        158,
+        43
+      ],
+      [
+        160,
+        44
+      ],
+      [
+        163,
+        45
+      ],
+      [
+        165,
+        46
+      ],
+      [
+        168,
+        47
+      ],
+      [
+        170,
+        48
+      ],
+      [
+        173,
+        49
+      ],
+      [
+        175,
+        50
+      ],
+      [
+        178,
+        51
+      ],
+      [
+        180,
+        52
+      ],
+      [
+        183,
+        53
+      ],
+      [
+        185,
+        55
+      ],
+      [
+        188,
+        57
+      ],
+      [
+        190,
+        59
+      ],
+      [
+        193,
+        61
+      ],
+      [
+        195,
+        64
+      ],
+      [
+        198,
+        67
+      ],
+      [
+        200,
+        70
+      ],
+      [
+        203,
+        73
+      ],
+      [
+        205,
+        76
+      ],
+      [
+        208,
+        79
+      ],
+      [
+        210,
+        82
+      ],
+      [
+        213,
+        86
+      ],
+      [
+        215,
+        90
+      ],
+      [
+        218,
+        94
+      ],
+      [
+        220,
+        98
+      ],
+      [
+        223,
+        102
+      ],
+      [
+        225,
+        107
+      ],
+      [
+        228,
+        112
+      ],
+      [
+        230,
+        117
+      ],
+      [
+        233,
+        122
+      ],
+      [
+        235,
+        128
+      ],
+      [
+        238,
+        134
+      ],
+      [
+        240,
+        135
+      ],
+      [
+        243,
+        134
+      ],
+      [
+        245,
+        133
+      ],
+      [
+        248,
+        132
+      ],
+      [
+        250,
+        131
+      ],
+      [
+        253,
+        130
+      ],
+      [
+        255,
+        129
+      ],
+      [
+        258,
+        128
+      ],
+      [
+        260,
+        127
+      ],
+      [
+        263,
+        126
+      ],
+      [
+        265,
+        125
+      ],
+      [
+        268,
+        124
+      ],
+      [
+        270,
+        123
+      ],
+      [
+        273,
+        122
+      ],
+      [
+        275,
+        121
+      ],
+      [
+        278,
+        120
+      ],
+      [
+        280,
+        119
+      ],
+      [
+        283,
+        118
+      ],
+      [
+        285,
+        117
+      ],
+      [
+        288,
+        116
+      ],
+      [
+        290,
+        115
+      ],
+      [
+        293,
+        114
+      ],
+      [
+        295,
+        113
+      ],
+      [
+        298,
+        112
+      ],
+      [
+        300,
+        111
+      ],
+      [
+        303,
+        112
+      ],
+      [
+        305,
+        113
+      ],
+      [
+        308,
+        114
+      ],
+      [
+        310,
+        115
+      ],
+      [
+        313,
+        116
+      ],
+      [
+        315,
+        117
+      ],
+      [
+        318,
+        118
+      ],
+      [
+        320,
+        119
+      ],
+      [
+        323,
+        120
+      ],
+      [
+        325,
+        121
+      ],
+      [
+        328,
+        122
+      ],
+      [
+        330,
+        123
+      ],
+      [
+        333,
+        124
+      ],
+      [
+        335,
+        125
+      ],
+      [
+        338,
+        126
+      ],
+      [
+        340,
+        127
+      ],
+      [
+        343,
+        128
+      ],
+      [
+        345,
+        129
+      ],
+      [
+        348,
+        130
+      ],
+      [
+        350,
+        131
+      ],
+      [
+        353,
+        132
+      ],
+      [
+        355,
+        133
+      ],
+      [
+        358,
+        134
+      ],
+      [
+        360,
+        131
+      ],
+      [
+        363,
+        125
+      ],
+      [
+        365,
+        119
+      ],
+      [
+        368,
+        114
+      ],
+      [
+        370,
+        109
+      ],
+      [
+        373,
+        104
+      ],
+      [
+        375,
+        99
+      ],
+      [
+        378,
+        95
+      ],
+      [
+        380,
+        91
+      ],
+      [
+        383,
+        87
+      ],
+      [
+        385,
+        83
+      ],
+      [
+        388,
+        79
+      ],
+      [
+        390,
+        76
+      ],
+      [
+        393,
+        73
+      ],
+      [
+        395,
+        70
+      ],
+      [
+        398,
+        67
+      ],
+      [
+        400,
+        64
+      ],
+      [
+        403,
+        61
+      ],
+      [
+        405,
+        58
+      ],
+      [
+        408,
+        56
+      ],
+      [
+        410,
+        54
+      ],
+      [
+        413,
+        52
+      ],
+      [
+        415,
+        50
+      ],
+      [
+        418,
+        48
+      ],
+      [
+        420,
+        46
+      ],
+      [
+        423,
+        44
+      ],
+      [
+        425,
+        42
+      ],
+      [
+        428,
+        40
+      ],
+      [
+        430,
+        38
+      ],
+      [
+        433,
+        37
+      ],
+      [
+        435,
+        36
+      ],
+      [
+        438,
+        35
+      ],
+      [
+        440,
+        34
+      ],
+      [
+        443,
+        33
+      ],
+      [
+        445,
+        32
+      ],
+      [
+        448,
+        31
+      ],
+      [
+        450,
+        30
+      ],
+      [
+        453,
+        29
+      ],
+      [
+        455,
+        28
+      ],
+      [
+        458,
+        27
+      ],
+      [
+        460,
+        26
+      ],
+      [
+        463,
+        25
+      ],
+      [
+        465,
+        24
+      ],
+      [
+        468,
+        23
+      ],
+      [
+        470,
+        22
+      ],
+      [
+        473,
+        21
+      ],
+      [
+        475,
+        20
+      ],
+      [
+        478,
+        19
+      ],
+      [
+        480,
+        18
+      ],
+      [
+        483,
+        17
+      ],
+      [
+        485,
+        16
+      ],
+      [
+        488,
+        15
+      ],
+      [
+        490,
+        14
+      ],
+      [
+        493,
+        13
+      ],
+      [
+        495,
+        12
+      ],
+      [
+        498,
+        11
+      ],
+      [
+        500,
+        10
+      ],
+      [
+        503,
+        9
+      ],
+      [
+        505,
+        8
+      ],
+      [
+        508,
+        7
+      ],
+      [
+        510,
+        6
+      ],
+      [
+        513,
+        5
+      ],
+      [
+        515,
+        4
+      ],
+      [
+        518,
+        3
+      ],
+      [
+        520,
+        2
+      ],
+      [
+        523,
+        1
+      ],
+      [
+        525,
+        0
+      ],
+      [
+        528,
+        0
+      ],
+      [
+        530,
+        0
+      ],
+      [
+        533,
+        0
+      ],
+      [
+        535,
+        0
+      ],
+      [
+        538,
+        0
+      ],
+      [
+        540,
+        0
+      ],
+      [
+        543,
+        0
+      ],
+      [
+        545,
+        0
+      ],
+      [
+        548,
+        0
+      ],
+      [
+        550,
+        0
+      ],
+      [
+        553,
+        0
+      ],
+      [
+        555,
+        0
+      ],
+      [
+        558,
+        0
+      ],
+      [
+        560,
+        0
+      ],
+      [
+        563,
+        0
+      ],
+      [
+        565,
+        0
+      ],
+      [
+        568,
+        0
+      ],
+      [
+        570,
+        0
+      ],
+      [
+        573,
+        0
+      ],
+      [
+        575,
+        0
+      ],
+      [
+        578,
+        0
+      ],
+      [
+        580,
+        0
+      ],
+      [
+        583,
+        0
+      ],
+      [
+        585,
+        0
+      ],
+      [
+        588,
+        0
+      ],
+      [
+        590,
+        0
+      ],
+      [
+        593,
+        0
+      ],
+      [
+        595,
+        0
+      ],
+      [
+        598,
+        0
+      ],
+      [
+        600,
+        0
+      ]
+    ],
+    "haul": [
+      [
+        3,
+        4
+      ],
+      [
+        5,
+        4
+      ],
+      [
+        8,
+        4
+      ],
+      [
+        10,
+        4
+      ],
+      [
+        13,
+        4
+      ],
+      [
+        15,
+        4
+      ],
+      [
+        18,
+        4
+      ],
+      [
+        20,
+        4
+      ],
+      [
+        23,
+        4
+      ],
+      [
+        25,
+        4
+      ],
+      [
+        28,
+        4
+      ],
+      [
+        30,
+        4
+      ],
+      [
+        33,
+        4
+      ],
+      [
+        35,
+        4
+      ],
+      [
+        38,
+        4
+      ],
+      [
+        40,
+        4
+      ],
+      [
+        43,
+        4
+      ],
+      [
+        45,
+        4
+      ],
+      [
+        48,
+        4
+      ],
+      [
+        50,
+        4
+      ],
+      [
+        53,
+        4
+      ],
+      [
+        55,
+        4
+      ],
+      [
+        58,
+        4
+      ],
+      [
+        60,
+        4
+      ],
+      [
+        63,
+        4
+      ],
+      [
+        65,
+        4
+      ],
+      [
+        68,
+        4
+      ],
+      [
+        70,
+        4
+      ],
+      [
+        73,
+        4
+      ],
+      [
+        75,
+        4
+      ],
+      [
+        78,
+        4
+      ],
+      [
+        80,
+        4
+      ],
+      [
+        83,
+        4
+      ],
+      [
+        85,
+        4
+      ],
+      [
+        88,
+        4
+      ],
+      [
+        90,
+        4
+      ],
+      [
+        93,
+        4
+      ],
+      [
+        95,
+        4
+      ],
+      [
+        98,
+        4
+      ],
+      [
+        100,
+        4
+      ],
+      [
+        103,
+        4
+      ],
+      [
+        105,
+        4
+      ],
+      [
+        108,
+        4
+      ],
+      [
+        110,
+        4
+      ],
+      [
+        113,
+        4
+      ],
+      [
+        115,
+        4
+      ],
+      [
+        118,
+        4
+      ],
+      [
+        120,
+        4
+      ],
+      [
+        123,
+        4
+      ],
+      [
+        125,
+        4
+      ],
+      [
+        128,
+        4
+      ],
+      [
+        130,
+        4
+      ],
+      [
+        133,
+        4
+      ],
+      [
+        135,
+        4
+      ],
+      [
+        138,
+        4
+      ],
+      [
+        140,
+        4
+      ],
+      [
+        143,
+        4
+      ],
+      [
+        145,
+        4
+      ],
+      [
+        148,
+        4
+      ],
+      [
+        150,
+        4
+      ],
+      [
+        153,
+        4
+      ],
+      [
+        155,
+        4
+      ],
+      [
+        158,
+        4
+      ],
+      [
+        160,
+        4
+      ],
+      [
+        163,
+        4
+      ],
+      [
+        165,
+        4
+      ],
+      [
+        168,
+        4
+      ],
+      [
+        170,
+        4
+      ],
+      [
+        173,
+        4
+      ],
+      [
+        175,
+        4
+      ],
+      [
+        178,
+        4
+      ],
+      [
+        180,
+        4
+      ],
+      [
+        183,
+        4
+      ],
+      [
+        185,
+        4
+      ],
+      [
+        188,
+        4
+      ],
+      [
+        190,
+        4
+      ],
+      [
+        193,
+        4
+      ],
+      [
+        195,
+        4
+      ],
+      [
+        198,
+        4
+      ],
+      [
+        200,
+        4
+      ],
+      [
+        203,
+        4
+      ],
+      [
+        205,
+        4
+      ],
+      [
+        208,
+        4
+      ],
+      [
+        210,
+        4
+      ],
+      [
+        213,
+        4
+      ],
+      [
+        215,
+        4
+      ],
+      [
+        218,
+        4
+      ],
+      [
+        220,
+        4
+      ],
+      [
+        223,
+        4
+      ],
+      [
+        225,
+        4
+      ],
+      [
+        228,
+        4
+      ],
+      [
+        230,
+        4
+      ],
+      [
+        233,
+        4
+      ],
+      [
+        235,
+        4
+      ],
+      [
+        238,
+        4
+      ],
+      [
+        240,
+        4
+      ],
+      [
+        243,
+        4
+      ],
+      [
+        245,
+        4
+      ],
+      [
+        248,
+        4
+      ],
+      [
+        250,
+        4
+      ],
+      [
+        253,
+        4
+      ],
+      [
+        255,
+        4
+      ],
+      [
+        258,
+        4
+      ],
+      [
+        260,
+        4
+      ],
+      [
+        263,
+        4
+      ],
+      [
+        265,
+        4
+      ],
+      [
+        268,
+        4
+      ],
+      [
+        270,
+        4
+      ],
+      [
+        273,
+        4
+      ],
+      [
+        275,
+        4
+      ],
+      [
+        278,
+        4
+      ],
+      [
+        280,
+        4
+      ],
+      [
+        283,
+        4
+      ],
+      [
+        285,
+        4
+      ],
+      [
+        288,
+        4
+      ],
+      [
+        290,
+        4
+      ],
+      [
+        293,
+        4
+      ],
+      [
+        295,
+        4
+      ],
+      [
+        298,
+        4
+      ],
+      [
+        300,
+        4
+      ],
+      [
+        303,
+        4
+      ],
+      [
+        305,
+        4
+      ],
+      [
+        308,
+        4
+      ],
+      [
+        310,
+        4
+      ],
+      [
+        313,
+        4
+      ],
+      [
+        315,
+        4
+      ],
+      [
+        318,
+        4
+      ],
+      [
+        320,
+        4
+      ],
+      [
+        323,
+        4
+      ],
+      [
+        325,
+        4
+      ],
+      [
+        328,
+        4
+      ],
+      [
+        330,
+        4
+      ],
+      [
+        333,
+        4
+      ],
+      [
+        335,
+        4
+      ],
+      [
+        338,
+        4
+      ],
+      [
+        340,
+        4
+      ],
+      [
+        343,
+        4
+      ],
+      [
+        345,
+        4
+      ],
+      [
+        348,
+        4
+      ],
+      [
+        350,
+        4
+      ],
+      [
+        353,
+        4
+      ],
+      [
+        355,
+        4
+      ],
+      [
+        358,
+        4
+      ],
+      [
+        360,
+        4
+      ],
+      [
+        363,
+        4
+      ],
+      [
+        365,
+        4
+      ],
+      [
+        368,
+        4
+      ],
+      [
+        370,
+        4
+      ],
+      [
+        373,
+        4
+      ],
+      [
+        375,
+        4
+      ],
+      [
+        378,
+        4
+      ],
+      [
+        380,
+        4
+      ],
+      [
+        383,
+        4
+      ],
+      [
+        385,
+        4
+      ],
+      [
+        388,
+        4
+      ],
+      [
+        390,
+        4
+      ],
+      [
+        393,
+        4
+      ],
+      [
+        395,
+        4
+      ],
+      [
+        398,
+        4
+      ],
+      [
+        400,
+        4
+      ],
+      [
+        403,
+        4
+      ],
+      [
+        405,
+        4
+      ],
+      [
+        408,
+        4
+      ],
+      [
+        410,
+        4
+      ],
+      [
+        413,
+        4
+      ],
+      [
+        415,
+        4
+      ],
+      [
+        418,
+        4
+      ],
+      [
+        420,
+        4
+      ],
+      [
+        423,
+        4
+      ],
+      [
+        425,
+        4
+      ],
+      [
+        428,
+        4
+      ],
+      [
+        430,
+        4
+      ],
+      [
+        433,
+        4
+      ],
+      [
+        435,
+        4
+      ],
+      [
+        438,
+        4
+      ],
+      [
+        440,
+        4
+      ],
+      [
+        443,
+        4
+      ],
+      [
+        445,
+        4
+      ],
+      [
+        448,
+        4
+      ],
+      [
+        450,
+        4
+      ],
+      [
+        453,
+        4
+      ],
+      [
+        455,
+        4
+      ],
+      [
+        458,
+        4
+      ],
+      [
+        460,
+        4
+      ],
+      [
+        463,
+        4
+      ],
+      [
+        465,
+        4
+      ],
+      [
+        468,
+        4
+      ],
+      [
+        470,
+        4
+      ],
+      [
+        473,
+        4
+      ],
+      [
+        475,
+        4
+      ],
+      [
+        478,
+        4
+      ],
+      [
+        480,
+        4
+      ],
+      [
+        483,
+        4
+      ],
+      [
+        485,
+        4
+      ],
+      [
+        488,
+        4
+      ],
+      [
+        490,
+        4
+      ],
+      [
+        493,
+        4
+      ],
+      [
+        495,
+        4
+      ],
+      [
+        498,
+        4
+      ],
+      [
+        500,
+        4
+      ],
+      [
+        503,
+        4
+      ],
+      [
+        505,
+        4
+      ],
+      [
+        508,
+        4
+      ],
+      [
+        510,
+        4
+      ],
+      [
+        513,
+        4
+      ],
+      [
+        515,
+        4
+      ],
+      [
+        518,
+        4
+      ],
+      [
+        520,
+        4
+      ],
+      [
+        523,
+        4
+      ],
+      [
+        525,
+        4
+      ],
+      [
+        528,
+        4
+      ],
+      [
+        530,
+        4
+      ],
+      [
+        533,
+        4
+      ],
+      [
+        535,
+        4
+      ],
+      [
+        538,
+        4
+      ],
+      [
+        540,
+        4
+      ],
+      [
+        543,
+        4
+      ],
+      [
+        545,
+        4
+      ],
+      [
+        548,
+        4
+      ],
+      [
+        550,
+        4
+      ],
+      [
+        553,
+        4
+      ],
+      [
+        555,
+        4
+      ],
+      [
+        558,
+        4
+      ],
+      [
+        560,
+        4
+      ],
+      [
+        563,
+        4
+      ],
+      [
+        565,
+        4
+      ],
+      [
+        568,
+        4
+      ],
+      [
+        570,
+        4
+      ],
+      [
+        573,
+        4
+      ],
+      [
+        575,
+        4
+      ],
+      [
+        578,
+        4
+      ],
+      [
+        580,
+        4
+      ],
+      [
+        583,
+        4
+      ],
+      [
+        585,
+        4
+      ],
+      [
+        588,
+        4
+      ],
+      [
+        590,
+        4
+      ],
+      [
+        593,
+        4
+      ],
+      [
+        595,
+        4
+      ],
+      [
+        598,
+        4
+      ],
+      [
+        600,
+        4
+      ]
+    ],
+    "iron": [
+      [
+        3,
+        9
+      ],
+      [
+        5,
+        8
+      ],
+      [
+        8,
+        7
+      ],
+      [
+        10,
+        6
+      ],
+      [
+        13,
+        5
+      ],
+      [
+        15,
+        4
+      ],
+      [
+        18,
+        3
+      ],
+      [
+        20,
+        2
+      ],
+      [
+        23,
+        1
+      ],
+      [
+        25,
+        0
+      ],
+      [
+        28,
+        0
+      ],
+      [
+        30,
+        0
+      ],
+      [
+        33,
+        0
+      ],
+      [
+        35,
+        0
+      ],
+      [
+        38,
+        0
+      ],
+      [
+        40,
+        0
+      ],
+      [
+        43,
+        0
+      ],
+      [
+        45,
+        0
+      ],
+      [
+        48,
+        0
+      ],
+      [
+        50,
+        0
+      ],
+      [
+        53,
+        0
+      ],
+      [
+        55,
+        0
+      ],
+      [
+        58,
+        0
+      ],
+      [
+        60,
+        0
+      ],
+      [
+        63,
+        0
+      ],
+      [
+        65,
+        0
+      ],
+      [
+        68,
+        0
+      ],
+      [
+        70,
+        0
+      ],
+      [
+        73,
+        0
+      ],
+      [
+        75,
+        0
+      ],
+      [
+        78,
+        0
+      ],
+      [
+        80,
+        0
+      ],
+      [
+        83,
+        0
+      ],
+      [
+        85,
+        0
+      ],
+      [
+        88,
+        0
+      ],
+      [
+        90,
+        0
+      ],
+      [
+        93,
+        0
+      ],
+      [
+        95,
+        0
+      ],
+      [
+        98,
+        0
+      ],
+      [
+        100,
+        0
+      ],
+      [
+        103,
+        0
+      ],
+      [
+        105,
+        0
+      ],
+      [
+        108,
+        0
+      ],
+      [
+        110,
+        0
+      ],
+      [
+        113,
+        0
+      ],
+      [
+        115,
+        0
+      ],
+      [
+        118,
+        0
+      ],
+      [
+        120,
+        0
+      ],
+      [
+        123,
+        0
+      ],
+      [
+        125,
+        0
+      ],
+      [
+        128,
+        0
+      ],
+      [
+        130,
+        0
+      ],
+      [
+        133,
+        0
+      ],
+      [
+        135,
+        0
+      ],
+      [
+        138,
+        0
+      ],
+      [
+        140,
+        0
+      ],
+      [
+        143,
+        0
+      ],
+      [
+        145,
+        0
+      ],
+      [
+        148,
+        0
+      ],
+      [
+        150,
+        0
+      ],
+      [
+        153,
+        0
+      ],
+      [
+        155,
+        0
+      ],
+      [
+        158,
+        0
+      ],
+      [
+        160,
+        0
+      ],
+      [
+        163,
+        0
+      ],
+      [
+        165,
+        0
+      ],
+      [
+        168,
+        0
+      ],
+      [
+        170,
+        0
+      ],
+      [
+        173,
+        0
+      ],
+      [
+        175,
+        0
+      ],
+      [
+        178,
+        0
+      ],
+      [
+        180,
+        0
+      ],
+      [
+        183,
+        0
+      ],
+      [
+        185,
+        0
+      ],
+      [
+        188,
+        0
+      ],
+      [
+        190,
+        0
+      ],
+      [
+        193,
+        0
+      ],
+      [
+        195,
+        0
+      ],
+      [
+        198,
+        0
+      ],
+      [
+        200,
+        0
+      ],
+      [
+        203,
+        0
+      ],
+      [
+        205,
+        0
+      ],
+      [
+        208,
+        0
+      ],
+      [
+        210,
+        0
+      ],
+      [
+        213,
+        0
+      ],
+      [
+        215,
+        0
+      ],
+      [
+        218,
+        0
+      ],
+      [
+        220,
+        0
+      ],
+      [
+        223,
+        0
+      ],
+      [
+        225,
+        0
+      ],
+      [
+        228,
+        0
+      ],
+      [
+        230,
+        0
+      ],
+      [
+        233,
+        0
+      ],
+      [
+        235,
+        0
+      ],
+      [
+        238,
+        0
+      ],
+      [
+        240,
+        0
+      ],
+      [
+        243,
+        0
+      ],
+      [
+        245,
+        0
+      ],
+      [
+        248,
+        0
+      ],
+      [
+        250,
+        0
+      ],
+      [
+        253,
+        0
+      ],
+      [
+        255,
+        0
+      ],
+      [
+        258,
+        0
+      ],
+      [
+        260,
+        0
+      ],
+      [
+        263,
+        0
+      ],
+      [
+        265,
+        0
+      ],
+      [
+        268,
+        0
+      ],
+      [
+        270,
+        0
+      ],
+      [
+        273,
+        0
+      ],
+      [
+        275,
+        0
+      ],
+      [
+        278,
+        0
+      ],
+      [
+        280,
+        0
+      ],
+      [
+        283,
+        0
+      ],
+      [
+        285,
+        0
+      ],
+      [
+        288,
+        0
+      ],
+      [
+        290,
+        0
+      ],
+      [
+        293,
+        0
+      ],
+      [
+        295,
+        0
+      ],
+      [
+        298,
+        0
+      ],
+      [
+        300,
+        0
+      ],
+      [
+        303,
+        0
+      ],
+      [
+        305,
+        0
+      ],
+      [
+        308,
+        0
+      ],
+      [
+        310,
+        0
+      ],
+      [
+        313,
+        0
+      ],
+      [
+        315,
+        0
+      ],
+      [
+        318,
+        0
+      ],
+      [
+        320,
+        0
+      ],
+      [
+        323,
+        0
+      ],
+      [
+        325,
+        0
+      ],
+      [
+        328,
+        0
+      ],
+      [
+        330,
+        0
+      ],
+      [
+        333,
+        0
+      ],
+      [
+        335,
+        0
+      ],
+      [
+        338,
+        0
+      ],
+      [
+        340,
+        0
+      ],
+      [
+        343,
+        0
+      ],
+      [
+        345,
+        0
+      ],
+      [
+        348,
+        0
+      ],
+      [
+        350,
+        0
+      ],
+      [
+        353,
+        0
+      ],
+      [
+        355,
+        0
+      ],
+      [
+        358,
+        0
+      ],
+      [
+        360,
+        0
+      ],
+      [
+        363,
+        0
+      ],
+      [
+        365,
+        0
+      ],
+      [
+        368,
+        0
+      ],
+      [
+        370,
+        0
+      ],
+      [
+        373,
+        0
+      ],
+      [
+        375,
+        0
+      ],
+      [
+        378,
+        0
+      ],
+      [
+        380,
+        0
+      ],
+      [
+        383,
+        0
+      ],
+      [
+        385,
+        0
+      ],
+      [
+        388,
+        0
+      ],
+      [
+        390,
+        0
+      ],
+      [
+        393,
+        0
+      ],
+      [
+        395,
+        0
+      ],
+      [
+        398,
+        0
+      ],
+      [
+        400,
+        0
+      ],
+      [
+        403,
+        0
+      ],
+      [
+        405,
+        0
+      ],
+      [
+        408,
+        0
+      ],
+      [
+        410,
+        0
+      ],
+      [
+        413,
+        0
+      ],
+      [
+        415,
+        0
+      ],
+      [
+        418,
+        0
+      ],
+      [
+        420,
+        0
+      ],
+      [
+        423,
+        0
+      ],
+      [
+        425,
+        0
+      ],
+      [
+        428,
+        0
+      ],
+      [
+        430,
+        0
+      ],
+      [
+        433,
+        0
+      ],
+      [
+        435,
+        0
+      ],
+      [
+        438,
+        0
+      ],
+      [
+        440,
+        0
+      ],
+      [
+        443,
+        0
+      ],
+      [
+        445,
+        0
+      ],
+      [
+        448,
+        0
+      ],
+      [
+        450,
+        0
+      ],
+      [
+        453,
+        0
+      ],
+      [
+        455,
+        0
+      ],
+      [
+        458,
+        0
+      ],
+      [
+        460,
+        0
+      ],
+      [
+        463,
+        0
+      ],
+      [
+        465,
+        0
+      ],
+      [
+        468,
+        0
+      ],
+      [
+        470,
+        0
+      ],
+      [
+        473,
+        0
+      ],
+      [
+        475,
+        0
+      ],
+      [
+        478,
+        0
+      ],
+      [
+        480,
+        0
+      ],
+      [
+        483,
+        0
+      ],
+      [
+        485,
+        0
+      ],
+      [
+        488,
+        0
+      ],
+      [
+        490,
+        0
+      ],
+      [
+        493,
+        0
+      ],
+      [
+        495,
+        0
+      ],
+      [
+        498,
+        0
+      ],
+      [
+        500,
+        0
+      ],
+      [
+        503,
+        0
+      ],
+      [
+        505,
+        0
+      ],
+      [
+        508,
+        0
+      ],
+      [
+        510,
+        0
+      ],
+      [
+        513,
+        0
+      ],
+      [
+        515,
+        0
+      ],
+      [
+        518,
+        0
+      ],
+      [
+        520,
+        0
+      ],
+      [
+        523,
+        0
+      ],
+      [
+        525,
+        0
+      ],
+      [
+        528,
+        0
+      ],
+      [
+        530,
+        0
+      ],
+      [
+        533,
+        0
+      ],
+      [
+        535,
+        0
+      ],
+      [
+        538,
+        0
+      ],
+      [
+        540,
+        0
+      ],
+      [
+        543,
+        0
+      ],
+      [
+        545,
+        0
+      ],
+      [
+        548,
+        0
+      ],
+      [
+        550,
+        0
+      ],
+      [
+        553,
+        0
+      ],
+      [
+        555,
+        0
+      ],
+      [
+        558,
+        0
+      ],
+      [
+        560,
+        0
+      ],
+      [
+        563,
+        0
+      ],
+      [
+        565,
+        0
+      ],
+      [
+        568,
+        0
+      ],
+      [
+        570,
+        0
+      ],
+      [
+        573,
+        0
+      ],
+      [
+        575,
+        0
+      ],
+      [
+        578,
+        0
+      ],
+      [
+        580,
+        0
+      ],
+      [
+        583,
+        0
+      ],
+      [
+        585,
+        0
+      ],
+      [
+        588,
+        0
+      ],
+      [
+        590,
+        0
+      ],
+      [
+        593,
+        0
+      ],
+      [
+        595,
+        0
+      ],
+      [
+        598,
+        0
+      ],
+      [
+        600,
+        0
+      ]
+    ],
+    "tool": [
+      [
+        3,
+        19
+      ],
+      [
+        5,
+        18
+      ],
+      [
+        8,
+        17
+      ],
+      [
+        10,
+        16
+      ],
+      [
+        13,
+        15
+      ],
+      [
+        15,
+        14
+      ],
+      [
+        18,
+        13
+      ],
+      [
+        20,
+        12
+      ],
+      [
+        23,
+        11
+      ],
+      [
+        25,
+        10
+      ],
+      [
+        28,
+        9
+      ],
+      [
+        30,
+        8
+      ],
+      [
+        33,
+        7
+      ],
+      [
+        35,
+        6
+      ],
+      [
+        38,
+        5
+      ],
+      [
+        40,
+        4
+      ],
+      [
+        43,
+        3
+      ],
+      [
+        45,
+        2
+      ],
+      [
+        48,
+        1
+      ],
+      [
+        50,
+        0
+      ],
+      [
+        53,
+        0
+      ],
+      [
+        55,
+        0
+      ],
+      [
+        58,
+        0
+      ],
+      [
+        60,
+        0
+      ],
+      [
+        63,
+        0
+      ],
+      [
+        65,
+        0
+      ],
+      [
+        68,
+        0
+      ],
+      [
+        70,
+        0
+      ],
+      [
+        73,
+        0
+      ],
+      [
+        75,
+        0
+      ],
+      [
+        78,
+        0
+      ],
+      [
+        80,
+        0
+      ],
+      [
+        83,
+        0
+      ],
+      [
+        85,
+        0
+      ],
+      [
+        88,
+        0
+      ],
+      [
+        90,
+        0
+      ],
+      [
+        93,
+        0
+      ],
+      [
+        95,
+        0
+      ],
+      [
+        98,
+        0
+      ],
+      [
+        100,
+        0
+      ],
+      [
+        103,
+        0
+      ],
+      [
+        105,
+        0
+      ],
+      [
+        108,
+        0
+      ],
+      [
+        110,
+        0
+      ],
+      [
+        113,
+        0
+      ],
+      [
+        115,
+        0
+      ],
+      [
+        118,
+        0
+      ],
+      [
+        120,
+        0
+      ],
+      [
+        123,
+        0
+      ],
+      [
+        125,
+        0
+      ],
+      [
+        128,
+        0
+      ],
+      [
+        130,
+        0
+      ],
+      [
+        133,
+        0
+      ],
+      [
+        135,
+        0
+      ],
+      [
+        138,
+        0
+      ],
+      [
+        140,
+        0
+      ],
+      [
+        143,
+        0
+      ],
+      [
+        145,
+        0
+      ],
+      [
+        148,
+        0
+      ],
+      [
+        150,
+        0
+      ],
+      [
+        153,
+        0
+      ],
+      [
+        155,
+        0
+      ],
+      [
+        158,
+        0
+      ],
+      [
+        160,
+        0
+      ],
+      [
+        163,
+        0
+      ],
+      [
+        165,
+        0
+      ],
+      [
+        168,
+        0
+      ],
+      [
+        170,
+        0
+      ],
+      [
+        173,
+        0
+      ],
+      [
+        175,
+        0
+      ],
+      [
+        178,
+        0
+      ],
+      [
+        180,
+        0
+      ],
+      [
+        183,
+        0
+      ],
+      [
+        185,
+        0
+      ],
+      [
+        188,
+        0
+      ],
+      [
+        190,
+        0
+      ],
+      [
+        193,
+        0
+      ],
+      [
+        195,
+        0
+      ],
+      [
+        198,
+        0
+      ],
+      [
+        200,
+        0
+      ],
+      [
+        203,
+        0
+      ],
+      [
+        205,
+        0
+      ],
+      [
+        208,
+        0
+      ],
+      [
+        210,
+        0
+      ],
+      [
+        213,
+        0
+      ],
+      [
+        215,
+        0
+      ],
+      [
+        218,
+        0
+      ],
+      [
+        220,
+        0
+      ],
+      [
+        223,
+        0
+      ],
+      [
+        225,
+        0
+      ],
+      [
+        228,
+        0
+      ],
+      [
+        230,
+        0
+      ],
+      [
+        233,
+        0
+      ],
+      [
+        235,
+        0
+      ],
+      [
+        238,
+        0
+      ],
+      [
+        240,
+        0
+      ],
+      [
+        243,
+        0
+      ],
+      [
+        245,
+        0
+      ],
+      [
+        248,
+        0
+      ],
+      [
+        250,
+        0
+      ],
+      [
+        253,
+        0
+      ],
+      [
+        255,
+        0
+      ],
+      [
+        258,
+        0
+      ],
+      [
+        260,
+        0
+      ],
+      [
+        263,
+        0
+      ],
+      [
+        265,
+        0
+      ],
+      [
+        268,
+        0
+      ],
+      [
+        270,
+        0
+      ],
+      [
+        273,
+        0
+      ],
+      [
+        275,
+        0
+      ],
+      [
+        278,
+        0
+      ],
+      [
+        280,
+        0
+      ],
+      [
+        283,
+        0
+      ],
+      [
+        285,
+        0
+      ],
+      [
+        288,
+        0
+      ],
+      [
+        290,
+        0
+      ],
+      [
+        293,
+        0
+      ],
+      [
+        295,
+        0
+      ],
+      [
+        298,
+        0
+      ],
+      [
+        300,
+        0
+      ],
+      [
+        303,
+        0
+      ],
+      [
+        305,
+        0
+      ],
+      [
+        308,
+        0
+      ],
+      [
+        310,
+        0
+      ],
+      [
+        313,
+        0
+      ],
+      [
+        315,
+        0
+      ],
+      [
+        318,
+        0
+      ],
+      [
+        320,
+        0
+      ],
+      [
+        323,
+        0
+      ],
+      [
+        325,
+        0
+      ],
+      [
+        328,
+        0
+      ],
+      [
+        330,
+        0
+      ],
+      [
+        333,
+        0
+      ],
+      [
+        335,
+        0
+      ],
+      [
+        338,
+        0
+      ],
+      [
+        340,
+        0
+      ],
+      [
+        343,
+        0
+      ],
+      [
+        345,
+        0
+      ],
+      [
+        348,
+        0
+      ],
+      [
+        350,
+        0
+      ],
+      [
+        353,
+        0
+      ],
+      [
+        355,
+        0
+      ],
+      [
+        358,
+        0
+      ],
+      [
+        360,
+        0
+      ],
+      [
+        363,
+        0
+      ],
+      [
+        365,
+        0
+      ],
+      [
+        368,
+        0
+      ],
+      [
+        370,
+        0
+      ],
+      [
+        373,
+        0
+      ],
+      [
+        375,
+        0
+      ],
+      [
+        378,
+        0
+      ],
+      [
+        380,
+        0
+      ],
+      [
+        383,
+        0
+      ],
+      [
+        385,
+        0
+      ],
+      [
+        388,
+        0
+      ],
+      [
+        390,
+        0
+      ],
+      [
+        393,
+        0
+      ],
+      [
+        395,
+        0
+      ],
+      [
+        398,
+        0
+      ],
+      [
+        400,
+        0
+      ],
+      [
+        403,
+        0
+      ],
+      [
+        405,
+        0
+      ],
+      [
+        408,
+        0
+      ],
+      [
+        410,
+        0
+      ],
+      [
+        413,
+        0
+      ],
+      [
+        415,
+        0
+      ],
+      [
+        418,
+        0
+      ],
+      [
+        420,
+        0
+      ],
+      [
+        423,
+        0
+      ],
+      [
+        425,
+        0
+      ],
+      [
+        428,
+        0
+      ],
+      [
+        430,
+        0
+      ],
+      [
+        433,
+        0
+      ],
+      [
+        435,
+        0
+      ],
+      [
+        438,
+        0
+      ],
+      [
+        440,
+        0
+      ],
+      [
+        443,
+        0
+      ],
+      [
+        445,
+        0
+      ],
+      [
+        448,
+        0
+      ],
+      [
+        450,
+        0
+      ],
+      [
+        453,
+        0
+      ],
+      [
+        455,
+        0
+      ],
+      [
+        458,
+        0
+      ],
+      [
+        460,
+        0
+      ],
+      [
+        463,
+        0
+      ],
+      [
+        465,
+        0
+      ],
+      [
+        468,
+        0
+      ],
+      [
+        470,
+        0
+      ],
+      [
+        473,
+        0
+      ],
+      [
+        475,
+        0
+      ],
+      [
+        478,
+        0
+      ],
+      [
+        480,
+        0
+      ],
+      [
+        483,
+        0
+      ],
+      [
+        485,
+        0
+      ],
+      [
+        488,
+        0
+      ],
+      [
+        490,
+        0
+      ],
+      [
+        493,
+        0
+      ],
+      [
+        495,
+        0
+      ],
+      [
+        498,
+        0
+      ],
+      [
+        500,
+        0
+      ],
+      [
+        503,
+        0
+      ],
+      [
+        505,
+        0
+      ],
+      [
+        508,
+        0
+      ],
+      [
+        510,
+        0
+      ],
+      [
+        513,
+        0
+      ],
+      [
+        515,
+        0
+      ],
+      [
+        518,
+        0
+      ],
+      [
+        520,
+        0
+      ],
+      [
+        523,
+        0
+      ],
+      [
+        525,
+        0
+      ],
+      [
+        528,
+        0
+      ],
+      [
+        530,
+        0
+      ],
+      [
+        533,
+        0
+      ],
+      [
+        535,
+        0
+      ],
+      [
+        538,
+        0
+      ],
+      [
+        540,
+        0
+      ],
+      [
+        543,
+        0
+      ],
+      [
+        545,
+        0
+      ],
+      [
+        548,
+        0
+      ],
+      [
+        550,
+        0
+      ],
+      [
+        553,
+        0
+      ],
+      [
+        555,
+        0
+      ],
+      [
+        558,
+        0
+      ],
+      [
+        560,
+        0
+      ],
+      [
+        563,
+        0
+      ],
+      [
+        565,
+        0
+      ],
+      [
+        568,
+        0
+      ],
+      [
+        570,
+        0
+      ],
+      [
+        573,
+        0
+      ],
+      [
+        575,
+        0
+      ],
+      [
+        578,
+        0
+      ],
+      [
+        580,
+        0
+      ],
+      [
+        583,
+        0
+      ],
+      [
+        585,
+        0
+      ],
+      [
+        588,
+        0
+      ],
+      [
+        590,
+        0
+      ],
+      [
+        593,
+        0
+      ],
+      [
+        595,
+        0
+      ],
+      [
+        598,
+        0
+      ],
+      [
+        600,
+        0
+      ]
+    ]
+  },
+  "rows": 601,
+  "slide": {
+    "events": 41,
+    "households": 40,
+    "levels": {
+      "1": 41
+    },
+    "movers": 40,
+    "perHousehold": {
+      "hh--1_-1-rural-landless_laborer-displaced": 1,
+      "hh--1_0-rural-landless_laborer-displaced": 1,
+      "hh--1_0-rural-landlord": 1,
+      "hh--1_1-rural-landless_laborer-displaced": 1,
+      "hh--1_1-rural-landlord": 1,
+      "hh--1_2-rural-landless_laborer-displaced": 1,
+      "hh--1_2-rural-landlord": 1,
+      "hh--2_0-rural-landless_laborer-displaced": 1,
+      "hh--2_0-rural-landlord": 1,
+      "hh--2_1-rural-landless_laborer-displaced": 1,
+      "hh--2_2-rural-landless_laborer-displaced": 1,
+      "hh--2_2-rural-landlord": 1,
+      "hh-0_-1-rural-landless_laborer-displaced": 1,
+      "hh-0_-2-rural-landless_laborer-displaced": 1,
+      "hh-0_0-rural-landless_laborer-displaced": 1,
+      "hh-0_0-rural-landlord": 1,
+      "hh-0_0-urban-landless_laborer-displaced": 1,
+      "hh-0_2-urban-landlord": 2,
+      "hh-0_2-urban-middle_peasant": 1,
+      "hh-0_2-urban-rich_peasant": 1
+    },
+    "positionCount": {
+      "1": 133,
+      "2": 39,
+      "3": 1
+    },
+    "rounds": 240
+  },
+  "unfilledReasons": {
+    "ALGORITHM_UNCOVERED": 44378,
+    "ALL_RESERVED": 799,
+    "CANNOT_REPRODUCE": 864,
+    "INPUT_SHORTFALL": 184,
+    "LOGISTICS_CAPACITY": 17325,
+    "NO_ADJACENT_SUPPLY": 4000,
+    "NO_BUYER": 6624,
+    "OUTCOMPETED": 1168,
+    "UNSOLD_SELF_USABLE": 16968
+  },
+  "world": "small-world"
+}

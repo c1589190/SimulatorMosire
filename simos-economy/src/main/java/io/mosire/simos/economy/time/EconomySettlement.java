@@ -367,6 +367,17 @@ public final class EconomySettlement {
   public static final String DEATH_DEBT_WRITE_OFF_REASON = "death:proportionalWriteOff";
 
   /**
+   * ★★ <b>W8（2026-10-11）：户绝时消除"死者作为债权人"的应收的具名原因</b>（唯一拼写点）。
+   *
+   * <p>★ <b>它是控制方口径，可被用户推翻</b>（用户原话只说了"死了账一并消除"，没说方向）：本批按"户绝 ⇒ 该户作为 <b>债务人</b>的债 +
+   * 作为<b>债权人</b>的应收<b>一并消除</b>"实现，理由是户绝后该户没有任何主体能主张/被主张这笔账， 留着只会让"死者是 1.04×10¹² silver
+   * 的债权人、而活着的债务人还在为它复利"这种读数继续存在（调查报告 §2.5）。 ★ 与 {@link #DEATH_DEBT_WRITE_OFF_REASON}
+   * 分开命名，便于读口/审计把两个方向分开统计，也便于用户日后只推翻一侧。
+   */
+  public static final String CREDITOR_EXTINCT_DEBT_WRITE_OFF_REASON =
+      "death:creditorExtinctReceivableWriteOff";
+
+  /**
    * ★★ **播种是否先于当日消费扣种**（v2 spec §3.2 的行为预设；用户 2026-09-25 定案：先用常量，默认 {@code true}）。
    *
    * <p>★ **V7 参数目录（spec §四）落地后，它迁入 {@code economy} 切片的参数表并成为 GM 可调**（spec §3.2：
@@ -2873,7 +2884,7 @@ public final class EconomySettlement {
     //     "今天有产业关账"这个**日级**事实上，不在那个逐产业的 for 里（否则同格的 farm + craft 会各计一遍）。
     //   ★ 次序：**偿还先于计息**（还掉的那部分本金不再生息 —— 这是"先还后计"的标准序，也是改后债务曲线下降的一半原因）。
     if (anyCycleClosed) {
-      chargeInterest(debts, principalAtDayStart, interestToday, day);
+      chargeInterest(debts, principalAtDayStart, interestToday, householdEconomies, day);
       long interestTotal = traceTotalLongs(interestToday);
       if (interestTotal > 0L) {
         EventLog.channel(TRACE)
@@ -4528,6 +4539,10 @@ public final class EconomySettlement {
    * <p>★ <b>拒绝语义</b>：null 键/值、0 delta、缺经济行、结果为负都具名拒（ERROR 日志 + 异常）；空表是合法输入 （当天无生死）。★ 汇总只记
    * DEBUG（逐户明细由 Social 侧事件日志承担）。
    *
+   * <p>★★ <b>W8（2026-10-11）：本重载是"迁移把某户搬空"的入口</b> —— 两表恒空 ⇒ 五参重载里的户绝判据②（社会报来的死亡 &gt; 0）**恒不成立** ⇒
+   * 只管到"债务保留"那一条具名 INFO（{@code HOUSEHOLD_EMPTIED_DEBT_RETAINED}），
+   * <b>绝不销账</b>。这正是"迁移不销账、只有死亡导致的归零才销账"那条判据的落点。
+   *
    * <p>★ <b>D4（W3-fix2，2026-10-11）：本重载不带世界日</b>——它的两表恒空 ⇒ {@code HOUSEHOLD_VITAL_WRITEBACK}
    * 永不发射（见下面的守卫），故 {@link #NO_WORLD_DAY} 不进任何输出。真发生生死的路径必须给真日。
    */
@@ -4549,6 +4564,8 @@ public final class EconomySettlement {
    * ① row.population += delta                            // 净变化（出生 − 死亡）
    * ② FlowRow.births += birthsByHousehold[household]     // 社会报来的出生原值 → 流水
    *    FlowRow.deaths += deathsByHousehold[household]     // 社会报来的死亡原值 → 流水（含饥荒那一份）
+   * ③ ★★ W8：本行人口由 &gt; 0 变 0 且**社会报来的死亡 &gt; 0** ⇒ 户绝 ⇒ 该户作为债务人/债权人的账**双向销账**
+   *         （{@link #writeOffExtinctHouseholdDebts}）；由**迁移**归零的只具名记"债务保留"，不销账。
    * </pre>
    *
    * <p>★★ <b>为什么要有 ②</b>：净变化读不出"死了多少人"（一户同时生死时只报差），而经济侧的危机读数与流水要的正是死亡原值； 只报净变化 ⇒ {@code
@@ -4557,7 +4574,9 @@ public final class EconomySettlement {
    * VitalSettlementResult#famineDeaths()} ≤ 这里的死亡人数</b>（它是"cause 含饥荒的死亡人数"，W3-fix2 / D2 + W3-fix3
    * 裁定），故"饿死多少"在经济读数里也读得到；明细仍在 Social 的 {@code FAMINE_MORTALITY} 日志里。
    *
-   * <p>★ <b>不做</b>：不摊批次、不缩劳动（劳动权威是结算后的 Social，调用方已刷新）、不删债、不改 {@code naturalNeeds}。
+   * <p>★ <b>不做</b>：不摊批次、不缩劳动（劳动权威是结算后的 Social，调用方已刷新）、不改 {@code naturalNeeds}。 ★★ <b>W8
+   * 改口（2026-10-11）：本方法<b>现在会删债</b></b> —— 改前这里的 javadoc 写着"不删债"，那正是调查报告 D1 指出的缺陷（活路径不核销、核销路径不可达）。现在
+   * ③ 只在"**死亡**把本行打到 0"时删债（双向），迁移归零照旧不删。
    *
    * <p>★★ <b>拒绝语义（fail-closed，全部在写任何一行之前）</b>：三张表的 null 键/值、0 值、值 &lt; 0、缺经济行，以及 "净变化 ≠ 出生 −
    * 死亡"（逐户交叉核对）都具名拒（ERROR 日志 + 异常）。★ 三张表都空是合法输入（当天无生死、无人搬家）。
@@ -4782,6 +4801,190 @@ public final class EconomySettlement {
                   "unit",
                   "person"));
     }
+    // ④ ★★★ W8（2026-10-11 用户裁定「穷人的话，死了账一并消除」）：**户绝核销接通到活路径**。
+    //   改前：核销只在批次入口 applyPopulationChangeInto（死代码）里，活路径一个字都不动 ⇒ 两个世界 × 600 天
+    //   DEBT_FORGIVE = 0，唯一一例死亡户绝（hh-2_-2-rural-landlord，d550）的债到 d600 变成 ×153.93（调查报告 D1/D2）。
+    //   ★ 判据（唯一，且必须用**社会侧权威**）：
+    //     ① 本行人口**由 > 0 变 0**（populationBefore = −delta > 0 且写后 == 0）；
+    //     ② 且**社会报来的死亡 > 0**（deathsByHousehold）⇒ 这是"人死光了"，不是"人搬走了"。
+    //   ★ 为什么②必须有（调查报告 §2.2 的口径陷阱）：本世界里"人口 → 0"里 **19/21 是迁移**。迁移时债务按比例
+    //     随人走（LotMigrationBook.moveDebts / ModeMigrationSettlement.moveDebt，目标恰是债权人时走自债净额）
+    //     ⇒ 迁移归零**不销账**（用户口径），只具名记一条"空了、债务保留"。区分落在这条 if 上，不靠形态学猜。
+    //   ★ 键序 = 家户行序（deltas 只用来查"这一行今天动没动"）—— 与 ③ 的流水键序同一规则 ⇒ 确定性 I7
+    //     （不引入 Map.copyOf/Set.copyOf，也不按调用方给的表序走）。
+    //   ★ 两个分支都真实可达：迁移走二参重载（births/deaths 两表恒空 ⇒ deaths == 0），生死走五参重载。
+    for (Map.Entry<HouseholdId, HouseholdEconomy> entry : householdEconomies.entrySet()) {
+      HouseholdId household = entry.getKey();
+      Long delta = deltas.get(household);
+      if (delta == null || entry.getValue().population() != 0L) {
+        continue; // 这一行今天没动、或没归零 ⇒ 与户绝无关
+      }
+      long populationBefore = Math.negateExact(delta);
+      if (populationBefore <= 0L) {
+        continue; // 本来就是空户（空槽位）⇒ 不是"归零"事件，不销账
+      }
+      long deaths = deathsByHousehold.getOrDefault(household, 0L);
+      if (deaths > 0L) {
+        writeOffExtinctHouseholdDebts(session, household, populationBefore, deaths, day);
+      } else {
+        logEmptiedHouseholdDebtRetained(session, household, populationBefore, day);
+      }
+    }
+  }
+
+  /**
+   * ★★★ <b>W8：户绝 ⇒ <b>双向</b>销账（用户裁定「穷人的话，死了账一并消除」）</b>。
+   *
+   * <pre>
+   * ① 债务人侧：复用 P5 既有语义（{@link #writeOffDebtsForDeaths}，population = 死亡前人口、deaths = 社会报来的死亡）
+   *    —— 本分支只在"写后人口 == 0"时进入 ⇒ deaths ≥ populationBefore ⇒ survivors = populationBefore − deaths ≤ 0
+   *    ⇒ 逐笔**全额减免**（forgive 到 0 ⇒ 状态 FORGIVEN），写口仍是 {@link DebtContractBook#forgive}。
+   * ② 债权人侧：该户作为**债权人**的全部应收一并减免（同一条写口，原因 {@link #CREDITOR_EXTINCT_DEBT_WRITE_OFF_REASON}）。
+   * </pre>
+   *
+   * <p>★★ <b>为什么②是控制方口径、可被用户推翻</b>：用户原话只说了"死了账一并消除"，没说方向。本批按双向实现， 理由是户绝后<b>没有任何主体</b>能主张或承担这笔账 ——
+   * 留着它就会出现调查报告 §2.5 那种读数："一个 0 人口的家户 仍是 1.04×10¹² silver 的债权人，而活着的债务人还在为它复利"。★ 两个方向用**不同**的 reason
+   * 常量命名 ⇒ 用户日后 只推翻一侧时，审计/读口能把它们分开。★ 见实现账本的"偏离记录"。
+   *
+   * <p>★★ <b>只动本金与状态</b>：不碰账户、库存、发行审计、转移流水（调查报告 §2.8 已证 {@code forgive} 的语义如此） ⇒ 货币守恒读数逐值不变；变的是
+   * {@code debtContracts} 本金合计、{@code DebtStock.totalPrincipal} 与会话瞬态 {@code debtWriteOffs}。
+   *
+   * <p>★ <b>{@code debtWriteOffs} 的键仍是债务人</b>（那是 {@link EconomySession#debtWriteOffs()} 的既有契约： "键 =
+   * 本金被删掉的债务人"）。债权人侧消除的受益人是**债务人**（它的本金掉了）⇒ 记在债务人名下，方向由本方法的 具名 INFO 的 {@code
+   * creditorPrincipalByUnit} 字段区分，不靠累加器的键。
+   *
+   * @param session 经济会话（就地更新合同表工作副本与瞬态删债累加器）
+   * @param household 户绝的家户（= 债务人侧与债权人侧的两个身份）
+   * @param populationBefore 户绝前人口（&gt; 0）
+   * @param deaths 社会报来的死亡数（&gt; 0；本分支保证 ≥ populationBefore）
+   * @param day 世界日（具名 INFO 的 day 字段）
+   */
+  private static void writeOffExtinctHouseholdDebts(
+      EconomySession session, HouseholdId household, long populationBefore, long deaths, long day) {
+    Objects.requireNonNull(session, "session");
+    Objects.requireNonNull(household, "household");
+    LinkedHashMap<DebtContractId, DebtContract> debts = session.sheet().debtContracts();
+    LinkedHashMap<HouseholdId, Long> debtWriteOffs = session.debtWriteOffs();
+    // ★ 先量后删：本分支保证 survivors ≤ 0 ⇒ 逐笔全额减免，故"删前本金"逐值等于"被减免额"（不重写 P5 的算式）。
+    Map<HouseholdId, List<DebtContractId>> debtsByDebtor =
+        debts.isEmpty() ? Map.of() : DebtIndex.byDebtor(debts);
+    LinkedHashMap<String, Long> debtorPrincipalByUnit = new LinkedHashMap<>();
+    long debtorContracts = 0L;
+    for (DebtContractId id : debtsByDebtor.getOrDefault(household, List.of())) {
+      DebtContract debt = debts.get(id);
+      if (debt == null || !debt.debtor().equals(household) || debt.principal() <= 0L) {
+        continue;
+      }
+      debtorPrincipalByUnit.merge(debt.unit().key(), debt.principal(), Math::addExact);
+      debtorContracts++;
+    }
+    // ① 债务人侧（复用 P5：population=死亡前人口、deaths=社会报来的死亡 ⇒ survivors=0 ⇒ 全额减免）。
+    writeOffDebtsForDeaths(
+        debts,
+        debtsByDebtor.getOrDefault(household, List.of()),
+        household,
+        populationBefore,
+        deaths,
+        debtWriteOffs);
+    // ② 债权人侧（控制方口径）：户绝后没有主体能主张这笔应收。
+    LinkedHashMap<String, Long> creditorPrincipalByUnit = new LinkedHashMap<>();
+    long creditorContracts = 0L;
+    if (!debts.isEmpty()) {
+      for (Map.Entry<HouseholdId, List<DebtContractId>> side :
+          DebtIndex.byCreditor(debts).entrySet()) {
+        if (!side.getKey().equals(household)) {
+          continue;
+        }
+        for (DebtContractId id : side.getValue()) {
+          DebtContract debt = debts.get(id);
+          if (debt == null || !debt.creditor().equals(household)) {
+            continue;
+          }
+          long principal = debt.principal();
+          if (principal <= 0L) {
+            continue; // 含自持合同（debtor == creditor == 本户）：① 已把它全额减免 ⇒ 这里本金已是 0，不重复计
+          }
+          DebtContractBook.forgive(debts, id, principal, CREDITOR_EXTINCT_DEBT_WRITE_OFF_REASON);
+          debtWriteOffs.merge(debt.debtor(), principal, Math::addExact);
+          creditorPrincipalByUnit.merge(debt.unit().key(), principal, Math::addExact);
+          creditorContracts++;
+        }
+      }
+    }
+    EventLog.channel(EconomyLog.population())
+        .info(
+            LogEvent.of(
+                "HOUSEHOLD_EXTINCT_DEBT_WRITTEN_OFF",
+                EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                "day",
+                day,
+                "household",
+                household.value(),
+                "populationBefore",
+                populationBefore,
+                "deaths",
+                deaths,
+                "cause",
+                "death",
+                "debtorSideContracts",
+                debtorContracts,
+                "debtorPrincipalByUnit",
+                debtorPrincipalByUnit,
+                "creditorSideContracts",
+                creditorContracts,
+                "creditorPrincipalByUnit",
+                creditorPrincipalByUnit,
+                "why",
+                "w8:extinct-household-debt-and-receivable-eliminated (social-authoritative deaths>0)"));
+  }
+
+  /**
+   * ★★ <b>W8：某户人口归零但<b>不是死亡</b>（迁移/搬走）⇒ 具名记"债务保留"</b>——这是"迁移不销账"那条判据的 可观测面（与 {@link
+   * #writeOffExtinctHouseholdDebts} 的 INFO 成对；调查报告 D6：不加分辨就会把阶层/户籍流动读成户绝）。
+   *
+   * <p>★ 债务按比例随人走（{@code LotMigrationBook.moveDebts} / {@code ModeMigrationSettlement.moveDebt}），
+   * 留在空户名下的那部分**不减记**、但也不再计息（W8 ③：{@code chargeInterest} 跳过 population ≤ 0 的行）。
+   *
+   * <p>★ <b>day 字段只在知道世界日时写</b>（D4 纪律：绝不拿假日凑数）—— 迁移走二参重载时调用方给的是 {@link #NO_WORLD_DAY}，此时本事件**不带
+   * day**（与 {@code HOUSEHOLD_VITAL_WRITEBACK} 的守卫同一口径）。
+   */
+  private static void logEmptiedHouseholdDebtRetained(
+      EconomySession session, HouseholdId household, long populationBefore, long day) {
+    Objects.requireNonNull(session, "session");
+    Objects.requireNonNull(household, "household");
+    LinkedHashMap<DebtContractId, DebtContract> debts = session.sheet().debtContracts();
+    LinkedHashMap<String, Long> retainedPrincipalByUnit = new LinkedHashMap<>();
+    long contracts = 0L;
+    for (DebtContract debt : debts.values()) {
+      if (!debt.debtor().equals(household) || debt.principal() <= 0L) {
+        continue;
+      }
+      retainedPrincipalByUnit.merge(debt.unit().key(), debt.principal(), Math::addExact);
+      contracts++;
+    }
+    List<Object> fields = new ArrayList<>();
+    if (day >= 0L) {
+      fields.add("day");
+      fields.add(day);
+    }
+    fields.add("household");
+    fields.add(household.value());
+    fields.add("populationBefore");
+    fields.add(populationBefore);
+    fields.add("cause");
+    fields.add("relocation-not-death");
+    fields.add("contracts");
+    fields.add(contracts);
+    fields.add("retainedPrincipalByUnit");
+    fields.add(retainedPrincipalByUnit);
+    fields.add("why");
+    fields.add("w8:empty-household-without-deaths-keeps-debt (migration-carries-its-share)");
+    EventLog.channel(EconomyLog.population())
+        .info(
+            LogEvent.of(
+                "HOUSEHOLD_EMPTIED_DEBT_RETAINED",
+                EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                fields.toArray()));
   }
 
   /**
@@ -9707,15 +9910,21 @@ public final class EconomySettlement {
    * {@code 本金_今 = 昨 + 放出 − 偿还 + ⌊昨 × 率 ÷ 1000⌋} 逐值一致。★ 快照由 {@code settleOneDayInto} 在任何 lend/repay
    * 之前建好传入。
    *
+   * <p>★★ <b>W8（2026-10-11）：户已绝（债务人行人口 ≤ 0）⇒ 不计息</b>（见 body 里的 {@code
+   * DEBT_INTEREST_EXTINCT_HOUSEHOLD_SKIPPED}）。判据取社会侧权威（行人口），与"迁移不销账、死亡才销账"那条口径配套： 这里对**任何**成因为 0
+   * 的空户都停息（②只处理死亡户绝的本金消除，③兜住迁移归零与历史空户）。
+   *
    * @param debts 债务表（就地更新：本金并入利息）
    * @param principalAtDayStart 当日起始的逐债本金快照（当日新借的债不在快照里 ⇒ 今天不计息）
    * @param interest 本日利息的逐行累加器（**只记债务人**那一侧）
+   * @param householdEconomies 经济家户行工作表（★ W8：只读它判"债务人户是否已绝"）
    * @param day 本结算日（真的并入利息时写进 {@code lastInterestDay}）
    */
   private static void chargeInterest(
       LinkedHashMap<DebtContractId, DebtContract> debts,
       Map<DebtContractId, Long> principalAtDayStart,
       LinkedHashMap<HouseholdId, Long> interest,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       long day) {
     for (Map.Entry<DebtContractId, DebtContract> entry : new ArrayList<>(debts.entrySet())) {
       DebtContractId id = entry.getKey();
@@ -9761,6 +9970,48 @@ public final class EconomySettlement {
                 + " timing="
                 + debt.terms().interestTiming()
                 + "（E4b 接线；此处 fail-closed，不静默当成默认档）");
+      }
+      // ★★★ W8（2026-10-11 用户裁定「穷人的话，死了账一并消除」）：**户已绝（人口 ≤ 0）⇒ 不计息**。
+      //   判据取**社会侧权威**：经济家户行的 population 是 app 每日从 Social 展开后注入的当日物化视图
+      //   （AGENTS §〇 的 social 权威条款），不是"债务表里有没有对应的 classes 行"这类间接形态判据。
+      //   ★ 为什么必须在这里兜底（调查报告 D2）：活路径的户绝核销（applyHouseholdPopulationDeltasInto 的
+      //     W8 双向销账）只在"**死亡**把人口打到 0"的那一天触发；而"人口 → 0"里绝大多数是**迁移**（sw 21 例里
+      //     19 例），迁移不销账（用户口径）⇒ 那些空户名下的余额若不在这里跳过，就会继续无限复利
+      //     （真读数：hh-2_-2-rural-landlord 户绝后 50 天 ×153.93）。
+      //   ★ 与"先销账还是先跳过"的次序（W8 实现账本）：两者**不在同一相位** —— ③ 在日结算的周期末计息（step 内），
+      //     ② 在 step **之后**的社会生死回写里；经济侧先关账、Social 后判死是 W3 两段式裁定。所以日序上 ③ 必然
+      //     先于 ②，而 ③ **不依赖** ②：② 把本金删成 0 之后 ③ 对那条合同本就无事可做（上面的 startPrincipal ≤ 0 已 continue）。
+      //     反过来 ③ 也不是 ② 的替代：③ 只"停止增长"，② 才"消除这笔账"。
+      //   ★ 行缺席（拿不到该债务人的人口）⇒ **照旧计息**：说不出"已绝"就不许当作已绝（fail-closed 取"不改行为"那一侧）；
+      //     非家户端点（政府/单位户）本来就没有经济家户行，行为与改前逐值相同。
+      HouseholdEconomy debtorEconomy = householdEconomies.get(debt.debtor());
+      if (debtorEconomy != null && debtorEconomy.population() <= 0L) {
+        if (DEBT.isDebugEnabled()) {
+          EventLog.channel(DEBT)
+              .debug(
+                  LogEvent.of(
+                      "DEBT_INTEREST_EXTINCT_HOUSEHOLD_SKIPPED",
+                      EconomyLogSource.ECONOMY_DEBT_STATE,
+                      "day",
+                      day,
+                      "debtContract",
+                      id.value(),
+                      "debtor",
+                      debt.debtor().value(),
+                      "creditor",
+                      debt.creditor().value(),
+                      "unit",
+                      debt.unit().key(),
+                      "startPrincipal",
+                      startPrincipal,
+                      "outstandingPrincipal",
+                      debt.principal(),
+                      "debtorPopulation",
+                      debtorEconomy.population(),
+                      "why",
+                      "w8:household-extinct-population<=0-no-interest (social-side-authority)"));
+        }
+        continue;
       }
       long charged = startPrincipal * debt.terms().interestRatePerMillePerCycle() / 1000L;
       if (charged <= 0L) {

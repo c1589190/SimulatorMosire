@@ -1,0 +1,179 @@
+{
+ "byCause": {
+  "transfer": 11,
+  "unexplained": 3
+ },
+ "cp": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/stores/tp600/checkpoints/main/601.json",
+ "extinct": 14,
+ "hhGz": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/daily/tp600.hh.jsonl.gz",
+ "rows": [
+  {
+   "cause": "unexplained",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 0,
+   "deathCauses": {},
+   "hh": "hh--1_-1-rural-landlord",
+   "loss": 1,
+   "popBefore": 1,
+   "zeroDay": 270
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 46,
+   "deathCauses": {},
+   "hh": "hh--1_-1-rural-middle_peasant",
+   "loss": 46,
+   "popBefore": 46,
+   "zeroDay": 150
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 42,
+   "deathCauses": {},
+   "hh": "hh--1_-2-rural-middle_peasant",
+   "loss": 42,
+   "popBefore": 42,
+   "zeroDay": 210
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 1,
+   "deathCauses": {},
+   "hh": "hh--2_3-rural-landlord",
+   "loss": 1,
+   "popBefore": 1,
+   "zeroDay": 270
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 1,
+   "deathCauses": {},
+   "hh": "hh--3_1-rural-landlord",
+   "loss": 1,
+   "popBefore": 1,
+   "zeroDay": 270
+  },
+  {
+   "cause": "unexplained",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 0,
+   "deathCauses": {},
+   "hh": "hh--3_3-urban-landlord",
+   "loss": 104,
+   "popBefore": 104,
+   "zeroDay": 300
+  },
+  {
+   "cause": "unexplained",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 0,
+   "deathCauses": {},
+   "hh": "hh--3_3-urban-middle_peasant",
+   "loss": 108,
+   "popBefore": 108,
+   "zeroDay": 330
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 1,
+   "deathCauses": {},
+   "hh": "hh-0_-1-rural-landlord",
+   "loss": 1,
+   "popBefore": 1,
+   "zeroDay": 270
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 1,
+   "deathCauses": {},
+   "hh": "hh-0_2-rural-landlord",
+   "loss": 1,
+   "popBefore": 1,
+   "zeroDay": 270
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 98,
+   "deathCauses": {},
+   "hh": "hh-1_0-rural-poor_peasant",
+   "loss": 98,
+   "popBefore": 98,
+   "zeroDay": 240
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 1,
+   "deathCauses": {},
+   "hh": "hh-3_-3-rural-landlord",
+   "loss": 1,
+   "popBefore": 1,
+   "zeroDay": 270
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 70,
+   "deathCauses": {},
+   "hh": "hh-3_0-rural-poor_peasant",
+   "loss": 70,
+   "popBefore": 70,
+   "zeroDay": 240
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 1,
+   "deathCauses": {},
+   "hh": "hh-3_0-urban-landlord",
+   "loss": 1,
+   "popBefore": 1,
+   "zeroDay": 240
+  },
+  {
+   "cause": "transfer",
+   "dayBirths": 0,
+   "dayDeaths": 0,
+   "dayTransferIn": 0,
+   "dayTransferOut": 126,
+   "deathCauses": {},
+   "hh": "hh-3_0-urban-middle_peasant",
+   "loss": 126,
+   "popBefore": 126,
+   "zeroDay": 270
+  }
+ ]
+}

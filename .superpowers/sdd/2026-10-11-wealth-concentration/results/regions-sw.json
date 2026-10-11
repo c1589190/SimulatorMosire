@@ -1,0 +1,21 @@
+{
+ "-2_0": "small-world",
+ "-2_1": "small-world",
+ "-2_2": "small-world",
+ "-1_-1": "small-world",
+ "-1_0": "small-world",
+ "-1_1": "small-world",
+ "-1_2": "small-world",
+ "0_-2": "small-world",
+ "0_-1": "small-world",
+ "0_1": "small-world",
+ "0_2": "small-world",
+ "1_-2": "small-world",
+ "1_-1": "small-world",
+ "1_0": "small-world",
+ "1_1": "small-world",
+ "2_-2": "small-world",
+ "2_-1": "small-world",
+ "2_0": "small-world",
+ "0_0": "capital-province"
+}

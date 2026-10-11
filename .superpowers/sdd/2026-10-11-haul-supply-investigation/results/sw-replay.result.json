@@ -1,0 +1,567 @@
+{
+ "tag": "sw-replay",
+ "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+ "jarMd5": "7d3d662d953a8009248ac1698a92177b",
+ "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/stores/sw-replay",
+ "guiPort": 10711,
+ "world": "small-world",
+ "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json",
+ "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/results/sw-replay.log",
+ "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=INFO -Dsimos.app.logLevel=INFO",
+ "pid": 378196,
+ "before": {
+  "headRevision": 601,
+  "cpMd5": "70c8fed60a32b59222a4cf73f72d7f94",
+  "cpBytes": 6922823
+ },
+ "startedAt": "2026-10-11T17:40:36",
+ "logKeep": "event=(MERCHANT_[A-Z_]*|CAPACITY_[A-Z_]*|LOGISTICS_[A-Z_]*|MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET |HAUL_[A-Z_]*|PRIMARY_MODE[A-Z_]*|DAY_START |DAY_END )",
+ "days": [
+  {
+   "day": 601,
+   "revision": 602,
+   "seconds": 0.458,
+   "postOk": true
+  },
+  {
+   "day": 602,
+   "revision": 603,
+   "seconds": 0.193,
+   "postOk": true
+  },
+  {
+   "day": 603,
+   "revision": 604,
+   "seconds": 0.275,
+   "postOk": true
+  },
+  {
+   "day": 604,
+   "revision": 605,
+   "seconds": 0.227,
+   "postOk": true
+  },
+  {
+   "day": 605,
+   "revision": 606,
+   "seconds": 0.147,
+   "postOk": true
+  },
+  {
+   "day": 606,
+   "revision": 607,
+   "seconds": 0.132,
+   "postOk": true
+  },
+  {
+   "day": 607,
+   "revision": 608,
+   "seconds": 0.128,
+   "postOk": true
+  },
+  {
+   "day": 608,
+   "revision": 609,
+   "seconds": 0.145,
+   "postOk": true
+  },
+  {
+   "day": 609,
+   "revision": 610,
+   "seconds": 0.121,
+   "postOk": true
+  },
+  {
+   "day": 610,
+   "revision": 611,
+   "seconds": 0.139,
+   "postOk": true
+  },
+  {
+   "day": 611,
+   "revision": 612,
+   "seconds": 0.128,
+   "postOk": true
+  },
+  {
+   "day": 612,
+   "revision": 613,
+   "seconds": 0.132,
+   "postOk": true
+  },
+  {
+   "day": 613,
+   "revision": 614,
+   "seconds": 0.133,
+   "postOk": true
+  },
+  {
+   "day": 614,
+   "revision": 615,
+   "seconds": 0.119,
+   "postOk": true
+  },
+  {
+   "day": 615,
+   "revision": 616,
+   "seconds": 0.135,
+   "postOk": true
+  },
+  {
+   "day": 616,
+   "revision": 617,
+   "seconds": 0.12,
+   "postOk": true
+  },
+  {
+   "day": 617,
+   "revision": 618,
+   "seconds": 0.122,
+   "postOk": true
+  },
+  {
+   "day": 618,
+   "revision": 619,
+   "seconds": 0.127,
+   "postOk": true
+  },
+  {
+   "day": 619,
+   "revision": 620,
+   "seconds": 0.122,
+   "postOk": true
+  },
+  {
+   "day": 620,
+   "revision": 621,
+   "seconds": 0.137,
+   "postOk": true
+  },
+  {
+   "day": 621,
+   "revision": 622,
+   "seconds": 0.116,
+   "postOk": true
+  },
+  {
+   "day": 622,
+   "revision": 623,
+   "seconds": 0.118,
+   "postOk": true
+  },
+  {
+   "day": 623,
+   "revision": 624,
+   "seconds": 0.119,
+   "postOk": true
+  },
+  {
+   "day": 624,
+   "revision": 625,
+   "seconds": 0.108,
+   "postOk": true
+  },
+  {
+   "day": 625,
+   "revision": 626,
+   "seconds": 0.122,
+   "postOk": true
+  },
+  {
+   "day": 626,
+   "revision": 627,
+   "seconds": 0.115,
+   "postOk": true
+  },
+  {
+   "day": 627,
+   "revision": 628,
+   "seconds": 0.115,
+   "postOk": true
+  },
+  {
+   "day": 628,
+   "revision": 629,
+   "seconds": 0.127,
+   "postOk": true
+  },
+  {
+   "day": 629,
+   "revision": 630,
+   "seconds": 0.107,
+   "postOk": true
+  },
+  {
+   "day": 630,
+   "revision": 631,
+   "seconds": 0.307,
+   "postOk": true
+  },
+  {
+   "day": 631,
+   "revision": 632,
+   "seconds": 0.142,
+   "postOk": true
+  },
+  {
+   "day": 632,
+   "revision": 633,
+   "seconds": 0.113,
+   "postOk": true
+  },
+  {
+   "day": 633,
+   "revision": 634,
+   "seconds": 0.122,
+   "postOk": true
+  },
+  {
+   "day": 634,
+   "revision": 635,
+   "seconds": 0.112,
+   "postOk": true
+  },
+  {
+   "day": 635,
+   "revision": 636,
+   "seconds": 0.121,
+   "postOk": true
+  },
+  {
+   "day": 636,
+   "revision": 637,
+   "seconds": 0.118,
+   "postOk": true
+  },
+  {
+   "day": 637,
+   "revision": 638,
+   "seconds": 0.116,
+   "postOk": true
+  },
+  {
+   "day": 638,
+   "revision": 639,
+   "seconds": 0.128,
+   "postOk": true
+  },
+  {
+   "day": 639,
+   "revision": 640,
+   "seconds": 0.12,
+   "postOk": true
+  },
+  {
+   "day": 640,
+   "revision": 641,
+   "seconds": 0.132,
+   "postOk": true
+  },
+  {
+   "day": 641,
+   "revision": 642,
+   "seconds": 0.114,
+   "postOk": true
+  },
+  {
+   "day": 642,
+   "revision": 643,
+   "seconds": 0.113,
+   "postOk": true
+  },
+  {
+   "day": 643,
+   "revision": 644,
+   "seconds": 0.116,
+   "postOk": true
+  },
+  {
+   "day": 644,
+   "revision": 645,
+   "seconds": 0.107,
+   "postOk": true
+  },
+  {
+   "day": 645,
+   "revision": 646,
+   "seconds": 0.139,
+   "postOk": true
+  },
+  {
+   "day": 646,
+   "revision": 647,
+   "seconds": 0.12,
+   "postOk": true
+  },
+  {
+   "day": 647,
+   "revision": 648,
+   "seconds": 0.126,
+   "postOk": true
+  },
+  {
+   "day": 648,
+   "revision": 649,
+   "seconds": 0.128,
+   "postOk": true
+  },
+  {
+   "day": 649,
+   "revision": 650,
+   "seconds": 0.108,
+   "postOk": true
+  },
+  {
+   "day": 650,
+   "revision": 651,
+   "seconds": 0.112,
+   "postOk": true
+  },
+  {
+   "day": 651,
+   "revision": 652,
+   "seconds": 0.115,
+   "postOk": true
+  },
+  {
+   "day": 652,
+   "revision": 653,
+   "seconds": 0.114,
+   "postOk": true
+  },
+  {
+   "day": 653,
+   "revision": 654,
+   "seconds": 0.131,
+   "postOk": true
+  },
+  {
+   "day": 654,
+   "revision": 655,
+   "seconds": 0.104,
+   "postOk": true
+  },
+  {
+   "day": 655,
+   "revision": 656,
+   "seconds": 0.12,
+   "postOk": true
+  },
+  {
+   "day": 656,
+   "revision": 657,
+   "seconds": 0.11,
+   "postOk": true
+  },
+  {
+   "day": 657,
+   "revision": 658,
+   "seconds": 0.121,
+   "postOk": true
+  },
+  {
+   "day": 658,
+   "revision": 659,
+   "seconds": 0.129,
+   "postOk": true
+  },
+  {
+   "day": 659,
+   "revision": 660,
+   "seconds": 0.176,
+   "postOk": true
+  },
+  {
+   "day": 660,
+   "revision": 661,
+   "seconds": 0.278,
+   "postOk": true
+  },
+  {
+   "day": 661,
+   "revision": 662,
+   "seconds": 0.122,
+   "postOk": true
+  },
+  {
+   "day": 662,
+   "revision": 663,
+   "seconds": 0.11,
+   "postOk": true
+  },
+  {
+   "day": 663,
+   "revision": 664,
+   "seconds": 0.135,
+   "postOk": true
+  },
+  {
+   "day": 664,
+   "revision": 665,
+   "seconds": 0.14,
+   "postOk": true
+  },
+  {
+   "day": 665,
+   "revision": 666,
+   "seconds": 0.134,
+   "postOk": true
+  },
+  {
+   "day": 666,
+   "revision": 667,
+   "seconds": 0.119,
+   "postOk": true
+  },
+  {
+   "day": 667,
+   "revision": 668,
+   "seconds": 0.119,
+   "postOk": true
+  },
+  {
+   "day": 668,
+   "revision": 669,
+   "seconds": 0.124,
+   "postOk": true
+  },
+  {
+   "day": 669,
+   "revision": 670,
+   "seconds": 0.119,
+   "postOk": true
+  },
+  {
+   "day": 670,
+   "revision": 671,
+   "seconds": 0.137,
+   "postOk": true
+  },
+  {
+   "day": 671,
+   "revision": 672,
+   "seconds": 0.121,
+   "postOk": true
+  },
+  {
+   "day": 672,
+   "revision": 673,
+   "seconds": 0.115,
+   "postOk": true
+  },
+  {
+   "day": 673,
+   "revision": 674,
+   "seconds": 0.145,
+   "postOk": true
+  },
+  {
+   "day": 674,
+   "revision": 675,
+   "seconds": 0.132,
+   "postOk": true
+  },
+  {
+   "day": 675,
+   "revision": 676,
+   "seconds": 0.136,
+   "postOk": true
+  },
+  {
+   "day": 676,
+   "revision": 677,
+   "seconds": 0.15,
+   "postOk": true
+  },
+  {
+   "day": 677,
+   "revision": 678,
+   "seconds": 0.136,
+   "postOk": true
+  },
+  {
+   "day": 678,
+   "revision": 679,
+   "seconds": 0.144,
+   "postOk": true
+  },
+  {
+   "day": 679,
+   "revision": 680,
+   "seconds": 0.118,
+   "postOk": true
+  },
+  {
+   "day": 680,
+   "revision": 681,
+   "seconds": 0.146,
+   "postOk": true
+  },
+  {
+   "day": 681,
+   "revision": 682,
+   "seconds": 0.111,
+   "postOk": true
+  },
+  {
+   "day": 682,
+   "revision": 683,
+   "seconds": 0.13,
+   "postOk": true
+  },
+  {
+   "day": 683,
+   "revision": 684,
+   "seconds": 0.115,
+   "postOk": true
+  },
+  {
+   "day": 684,
+   "revision": 685,
+   "seconds": 0.128,
+   "postOk": true
+  },
+  {
+   "day": 685,
+   "revision": 686,
+   "seconds": 0.12,
+   "postOk": true
+  },
+  {
+   "day": 686,
+   "revision": 687,
+   "seconds": 0.139,
+   "postOk": true
+  },
+  {
+   "day": 687,
+   "revision": 688,
+   "seconds": 0.117,
+   "postOk": true
+  },
+  {
+   "day": 688,
+   "revision": 689,
+   "seconds": 0.159,
+   "postOk": true
+  },
+  {
+   "day": 689,
+   "revision": 690,
+   "seconds": 0.135,
+   "postOk": true
+  }
+ ],
+ "after": null,
+ "readySeconds": 1.464,
+ "failedAt": {
+  "day": 690,
+  "httpStatus": 500,
+  "response": "{\"error\":\"internal error\"}"
+ },
+ "exitCode": 143,
+ "endedAt": "2026-10-11T17:40:50",
+ "stdoutLines": 88810,
+ "logKeptLines": 5476,
+ "elapsedSeconds": 14.7
+}

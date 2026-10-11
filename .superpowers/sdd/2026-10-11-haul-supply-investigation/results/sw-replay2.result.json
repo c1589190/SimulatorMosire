@@ -1,0 +1,33 @@
+{
+ "tag": "sw-replay2",
+ "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+ "jarMd5": "7d3d662d953a8009248ac1698a92177b",
+ "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/stores/sw-replay",
+ "guiPort": 10711,
+ "world": "small-world",
+ "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/scripts/shell-sw.json",
+ "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/results/sw-replay2.log",
+ "jvmOpts": "-Dsimos.economy.logLevel=DEBUG -Dsimos.economy.traceLevel=TRACE -Dsimos.social.logLevel=INFO -Dsimos.app.logLevel=INFO",
+ "pid": 378293,
+ "before": {
+  "headRevision": 690,
+  "cpMd5": "881e971efb19b8d6d49d5c78839ea18b",
+  "cpBytes": 7090199
+ },
+ "startedAt": "2026-10-11T17:41:33",
+ "logKeep": "event=(MERCHANT_[A-Z_]*|CAPACITY_[A-Z_]*|LOGISTICS_[A-Z_]*|MIGRATION_[A-Z_]*|MODE_MIGRATION[A-Z_]*|MARKET |HAUL_[A-Z_]*|PRIMARY_MODE[A-Z_]*|DAY_START |DAY_END )",
+ "fullLog": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-haul-supply-investigation/results/sw-replay2.full.log",
+ "days": [],
+ "after": null,
+ "readySeconds": 1.497,
+ "failedAt": {
+  "day": 690,
+  "httpStatus": 500,
+  "response": "{\"error\":\"internal error\"}"
+ },
+ "exitCode": 143,
+ "endedAt": "2026-10-11T17:41:36",
+ "stdoutLines": 2581,
+ "logKeptLines": 78,
+ "elapsedSeconds": 3.6
+}

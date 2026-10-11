@@ -561,7 +561,9 @@ public final class EconomyDayStepper implements AutoCloseable {
    * ——在这里再按人口比例缩一遍会把 Social 的当日权威缩两次。
    *
    * <p>★★ <b>本重载不带生死流水</b>：调用方是"人在户与户之间搬"的两条路（P0 迁移桥 outbox、Z7d-2 逃亡）—— 搬人不产生出生/死亡。 逐 tick 的生死走三参重载
-   * {@link #applyHouseholdPopulationDeltas(Map, Map, Map)}。
+   * {@link #applyHouseholdPopulationDeltas(Map, Map, Map)}。★ <b>W8（2026-10-11）</b>：两表恒空 ⇒ 五参重载的户绝判据
+   * （社会报来的死亡 &gt; 0）不成立 ⇒ 本路<b>不销账</b>，只在把某户搬空时记一条"债务保留" （{@code
+   * HOUSEHOLD_EMPTIED_DEBT_RETAINED}）—— 这就是"迁移不销账"那条口径的落点。
    *
    * @param deltas 逐家户净人口变化（出生 − 死亡；只含非 0 项）；不得为 null
    */
@@ -576,7 +578,10 @@ public final class EconomyDayStepper implements AutoCloseable {
    *
    * <p>★★ <b>为什么要把出生/死亡原值也传进来</b>：只传净变化时 {@code FlowRow.births}/{@code FlowRow.deaths} 永远是 0，
    * 经济侧的危机读数（{@code CrisisMonitor} 的 MORTALITY 灯）与人口守恒读数因此没有输入；净变化在一户同时生死时只报差， 反推不出死亡数。★
-   * 经济侧收到后**只落账**（唯一写口 {@code EconomySettlement.withLifecycle}），**不判定死亡、不缩劳动**。
+   * 经济侧收到后**只落账**（唯一写口 {@code EconomySettlement.withLifecycle}），**不判定死亡、不缩劳动**。 ★★
+   * <b>W8（2026-10-11）</b>：若某户因**死亡**人口归零（{@code deathsByHousehold} &gt; 0 且写后人口 == 0）⇒ 追加
+   * <b>双向销账</b>（{@code EconomySettlement.writeOffExtinctHouseholdDebts}，复用 P5 写口与 {@code
+   * debtWriteOffs} 累加器）与具名 INFO {@code HOUSEHOLD_EXTINCT_DEBT_WRITTEN_OFF}。
    *
    * <p>★ <b>拒绝语义</b>：三张表的 null 键/值、0 值、缺经济行，以及"净变化 ≠ 出生 − 死亡"都具名拒（ERROR + 异常，写任何一行之前）。
    *

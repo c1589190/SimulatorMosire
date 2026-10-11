@@ -1,0 +1,24 @@
+=== sw600-d0（创世 rev1，时点快照）===
+   hex  rural  urban  hh industries                 CATTLE  merchantHH(pop)
+  -2_0    200      0   9 farm,weave                      0  [('hh--2_0-urban-rich_peasant', 0), ('hh--2_0-urban-landlord', 0)]
+  -2_1    200      0   9 farm,weave                      0  [('hh--2_1-urban-rich_peasant', 0), ('hh--2_1-urban-landlord', 0)]
+  -2_2    200      0   9 farm,weave                      0  [('hh--2_2-urban-rich_peasant', 0), ('hh--2_2-urban-landlord', 0)]
+ -1_-1    200      0   9 farm,weave                      0  [('hh--1_-1-urban-rich_peasant', 0), ('hh--1_-1-urban-landlord', 0)]
+  -1_0    200      0   9 farm,weave                      0  [('hh--1_0-urban-rich_peasant', 0), ('hh--1_0-urban-landlord', 0)]
+  -1_1    200      0   9 farm,weave                      0  [('hh--1_1-urban-rich_peasant', 0), ('hh--1_1-urban-landlord', 0)]
+  -1_2    200      0   9 farm,weave                      0  [('hh--1_2-urban-rich_peasant', 0), ('hh--1_2-urban-landlord', 0)]
+  0_-2    200      0   9 farm,weave                      0  [('hh-0_-2-urban-rich_peasant', 0), ('hh-0_-2-urban-landlord', 0)]
+  0_-1    200      0   9 farm,weave                      0  [('hh-0_-1-urban-rich_peasant', 0), ('hh-0_-1-urban-landlord', 0)]
+   0_0    200    700  13 craft,farm,mint,office,trade,weave    100  [('hh-0_0-urban-rich_peasant', 105), ('hh-0_0-urban-landlord', 35)]
+   0_1    200      0  11 farm,office,weave               0  [('hh-0_1-urban-rich_peasant', 0), ('hh-0_1-urban-landlord', 0)]
+   0_2    200    300  10 craft,farm,trade,weave        100  [('hh-0_2-urban-rich_peasant', 45), ('hh-0_2-urban-landlord', 15)]
+  1_-2    200      0   9 farm,weave                      0  [('hh-1_-2-urban-rich_peasant', 0), ('hh-1_-2-urban-landlord', 0)]
+  1_-1    200      0   9 farm,weave                      0  [('hh-1_-1-urban-rich_peasant', 0), ('hh-1_-1-urban-landlord', 0)]
+   1_0    200      0   9 farm,weave                      0  [('hh-1_0-urban-rich_peasant', 0), ('hh-1_0-urban-landlord', 0)]
+   1_1    200      0   9 farm,weave                      0  [('hh-1_1-urban-rich_peasant', 0), ('hh-1_1-urban-landlord', 0)]
+  2_-2    200      0   9 farm,weave                      0  [('hh-2_-2-urban-rich_peasant', 0), ('hh-2_-2-urban-landlord', 0)]
+  2_-1    200      0   9 farm,weave                      0  [('hh-2_-1-urban-rich_peasant', 0), ('hh-2_-1-urban-landlord', 0)]
+   2_0    200      0   9 farm,weave                      0  [('hh-2_0-urban-rich_peasant', 0), ('hh-2_0-urban-landlord', 0)]
+
+cities: {'0_0': 'c-small-capital', '0_2': 'c-small-town'}
+trade industries: ['trade@0_0', 'trade@0_2']

@@ -1,0 +1,98 @@
+{
+  "config": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/scripts/shell-sw.json",
+  "configMd5": "7c1a82f8507e27d74287e8d1f558158b",
+  "dailyRows": {
+    "agg": 6,
+    "debt": 63,
+    "hh": 1068
+  },
+  "genesis": {
+    "branch": "main",
+    "changesetBytes": 67,
+    "commandType": "core.Bootstrap",
+    "revision": 1,
+    "tick": 0
+  },
+  "guiPort": 10501,
+  "headRevision": 6,
+  "jar": "/home/cna/SimulatorMosire/simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar",
+  "jarMd5": "7d3d662d953a8009248ac1698a92177b",
+  "jvmOpts": "-Dsimos.economy.logLevel=DEBUG",
+  "log": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/results/smoke.log",
+  "logKeptLines": 5,
+  "logLines": 5,
+  "logStrippedMd5": "15534953ab5c57f38ad5a9ab1e403ad2",
+  "outputs": {
+    "agg": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/daily/smoke.agg.jsonl.gz",
+    "cp": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/daily/smoke.cp.jsonl",
+    "debt": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/daily/smoke.debt.jsonl.gz",
+    "hh": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/daily/smoke.hh.jsonl.gz"
+  },
+  "pid": 374195,
+  "plan": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/scripts/plan-smoke.json",
+  "readySeconds": 1.714,
+  "revisionDelta": 5,
+  "revisions": [
+    {
+      "branch": "main",
+      "changesetBytes": 67,
+      "commandType": "core.Bootstrap",
+      "revision": 1,
+      "tick": 0
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 522725,
+      "commandType": "core.AdvanceTime",
+      "revision": 2,
+      "tick": 1
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 301252,
+      "commandType": "core.AdvanceTime",
+      "revision": 3,
+      "tick": 2
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 378649,
+      "commandType": "core.AdvanceTime",
+      "revision": 4,
+      "tick": 3
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 292853,
+      "commandType": "core.AdvanceTime",
+      "revision": 5,
+      "tick": 4
+    },
+    {
+      "branch": "main",
+      "changesetBytes": 399333,
+      "commandType": "core.AdvanceTime",
+      "revision": 6,
+      "tick": 5
+    }
+  ],
+  "startedAt": "2026-10-11T17:20:23",
+  "steps": [
+    {
+      "from": 0,
+      "i": 0,
+      "op": "advance_daily",
+      "rows": {
+        "agg": 6,
+        "debt": 63,
+        "hh": 1068
+      },
+      "seconds": 0.971,
+      "to": 5
+    }
+  ],
+  "store": "/home/cna/SimulatorMosire/.superpowers/sdd/2026-10-11-death-debt-writeoff/stores/smoke",
+  "tag": "smoke",
+  "tick": 5,
+  "world": "small-world"
+}

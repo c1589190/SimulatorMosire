@@ -2,6 +2,8 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyCommodities;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
+import org.slf4j.Logger;
 
 /**
  * ★★ <b>P11.1 / D-023 / D-030：债务估值的纯 helper（不改状态、不铸转移、不认识 AccountSession）</b>。
@@ -577,23 +580,31 @@ public final class DebtValuation {
 
   // ── 整数换算（全部 floor；绝不用 double）────────────────────────────────────────────────────
 
-  /** {@code ⌊quantity × numerator ÷ denominator⌋}；任何非正输入（或分母为 0）⇒ 0。 */
+  /** 饱和记账的日志门面（与 {@link DebtContractBook} 同一分类 {@code simos.economy.debt}）。 */
+  private static final Logger DEBT = EconomyLog.debt();
+
+  /**
+   * {@code ⌊quantity × numerator ÷ denominator⌋}；任何非正输入（或分母为 0）⇒ 0。
+   *
+   * <p>★★ <b>W8（2026-10-11 用户裁定「修：溢出不再致命（世界能继续跑）」）：128 位中间量确实超界 ⇒ <b>饱和</b>到 {@link
+   * Long#MAX_VALUE}，不再具名抛。</b>
+   *
+   * <p>★ <b>原有纪律保留</b>：原实现刻意"拒绝回退到 double"（保精度）—— 本方法仍然<b>全程整数</b>（{@link SaturatedArithmetic} 用
+   * {@link Math#multiplyHigh} 做 128÷64），<b>不引入任何浮点、不做近似</b>；变的只是"确实超界"时的 失败语义：从"具名拒绝推进（世界硬停）"改成"夹到
+   * {@code Long.MAX_VALUE} + <b>具名记录</b>"（{@code ARITHMETIC_SATURATED}，含 quantity / 单价 {@code
+   * numerator} / {@code denominator} / 夹取前的量级）⇒ <b>绝不静默算错</b>。
+   *
+   * <p>★ <b>正常路径逐值不变</b>：乘积放得下 {@code long} 时走的就是原来那一句 {@code Math.multiplyExact(…)/denominator}，
+   * 逐值、逐序与改前相同；只有 {@code Math.multiplyExact} 抛出的那一条路径才走新分支。
+   */
   private static long convert(long quantity, long numerator, long denominator) {
-    if (quantity <= 0L || numerator <= 0L || denominator <= 0L) {
-      return 0L;
-    }
-    try {
-      return Math.multiplyExact(quantity, numerator) / denominator;
-    } catch (ArithmeticException overflow) {
-      throw new IllegalStateException(
-          "偿还估值整数溢出的具名失败（拒绝回退到 double）: quantity="
-              + quantity
-              + " numerator="
-              + numerator
-              + " denominator="
-              + denominator,
-          overflow);
-    }
+    return SaturatedArithmetic.floorMultiplyDivide(
+        quantity,
+        numerator,
+        denominator,
+        DEBT,
+        EconomyLogSource.ECONOMY_DEBT_STATE,
+        "debt-valuation-convert");
   }
 
   /**
@@ -601,6 +612,10 @@ public final class DebtValuation {
    *
    * <p>★ 这不是"(target × denominator ÷ numerator) 再 floor"的近似：那个写法在整数网格上会少用 1 毫资产（如
    * target=10、num=3、den=2 时只取 6 而正解是 7）。正解：{@code q ≤ ⌊(((target+1) × den − 1)) ÷ num⌋}。
+   *
+   * <p>★★ <b>W8：{@code (target+1) × den} 超界 ⇒ 用 128 位算<b>精确</b>商</b>（同 {@link #convert}
+   * 的饱和纪律；不再具名抛）。 ★ 调用方不变式（{@code target < maxPayable}，见 {@link #choosePayment}）已保证这里的真商 {@code <
+   * available ≤ Long.MAX_VALUE} ⇒ 正常世界<b>不会</b>真的夹取，这条分支只是"超界即不致命"的兜底。
    */
   private static long maxAssetQuantity(
       long targetUnits, long numerator, long denominator, long available, long maxPayable) {
@@ -610,20 +625,35 @@ public final class DebtValuation {
     if (targetUnits >= maxPayable) {
       return available;
     }
+    long factor = targetUnits == Long.MAX_VALUE ? Long.MAX_VALUE : targetUnits + 1L;
     long bound;
     try {
-      bound =
-          Math.subtractExact(Math.multiplyExact(Math.addExact(targetUnits, 1L), denominator), 1L)
-              / numerator;
+      bound = Math.subtractExact(Math.multiplyExact(factor, denominator), 1L) / numerator;
     } catch (ArithmeticException overflow) {
-      throw new IllegalStateException(
-          "偿还估值整数溢出的具名失败（拒绝回退到 double）: target="
-              + targetUnits
-              + " numerator="
-              + numerator
-              + " denominator="
-              + denominator,
-          overflow);
+      long high = Math.multiplyHigh(factor, denominator);
+      long low = factor * denominator;
+      if (low != 0L) {
+        low -= 1L; // X − 1：低位够减
+      } else {
+        low = -1L; // X 的低 64 位为 0 ⇒ 向高位借 1（此时 high ≥ 1）
+        high -= 1L;
+      }
+      bound =
+          SaturatedArithmetic.divide128Saturated(
+              high,
+              low,
+              numerator,
+              DEBT,
+              EconomyLogSource.ECONOMY_DEBT_STATE,
+              "debt-valuation-max-asset-quantity",
+              factor,
+              denominator,
+              "targetUnits",
+              targetUnits,
+              "available",
+              available,
+              "maxPayable",
+              maxPayable);
     }
     return Math.max(0L, Math.min(available, bound));
   }

@@ -353,11 +353,57 @@ final class OperatorSettlement {
       if (household != null) {
         // ★ R4-B.3a-perf：debtor → debts 在日结算入口/债务阶段边界建好，只查本户的债，不再每次扫全表。
         for (DebtContract debt : index.debtsByDebtor().getOrDefault(household, List.of())) {
+          // ★★ W8（2026-10-11 用户裁定「修：溢出不再致命（世界能继续跑）」）：本息合计改走**饱和**。
+          //   改前是两处**裸** long 运算（`principal * rate` 与两处 `+=`）⇒ 超界时**静默回绕成负数**，
+          //   再被 OperatorCondition 的"不得为负"守卫拒 ⇒ 世界在 day 720 硬停。真读数（W8 装置，从 d690
+          //   存档续跑）：`OperatorCondition.debtServiceDueMilli 不得为负: -20183298549694382`。
+          //   ★ 仍**不许回退到 double**：⌊本金 × 利率‰ ÷ 1000⌋ 由 SaturatedArithmetic 用 128 位整数算，只有商
+          //     **真的**超过 Long.MAX_VALUE 才夹取 + 具名记录（ARITHMETIC_SATURATED）。正常世界逐值不变。
+          long interest =
+              SaturatedArithmetic.floorMultiplyDivide(
+                  debt.principal(),
+                  debt.terms().interestRatePerMillePerCycle(),
+                  1_000L,
+                  LOG,
+                  EconomyLogSource.ECONOMY_OPERATOR_STATE,
+                  "operator-debt-service-due-interest",
+                  "debtContract",
+                  debt.id().value(),
+                  "debtor",
+                  household.value());
           long due =
-              debt.principal()
-                  + debt.principal() * debt.terms().interestRatePerMillePerCycle() / 1_000L;
-          debtPrincipal += debt.principal();
-          debtServiceDue += due;
+              SaturatedArithmetic.add(
+                  debt.principal(),
+                  interest,
+                  LOG,
+                  EconomyLogSource.ECONOMY_OPERATOR_STATE,
+                  "operator-debt-service-due",
+                  "debtContract",
+                  debt.id().value(),
+                  "debtor",
+                  household.value());
+          debtPrincipal =
+              SaturatedArithmetic.add(
+                  debtPrincipal,
+                  debt.principal(),
+                  LOG,
+                  EconomyLogSource.ECONOMY_OPERATOR_STATE,
+                  "operator-debt-principal-total",
+                  "debtor",
+                  household.value(),
+                  "industry",
+                  industry.id().value());
+          debtServiceDue =
+              SaturatedArithmetic.add(
+                  debtServiceDue,
+                  due,
+                  LOG,
+                  EconomyLogSource.ECONOMY_OPERATOR_STATE,
+                  "operator-debt-service-due-total",
+                  "debtor",
+                  household.value(),
+                  "industry",
+                  industry.id().value());
           // ★★ A2b（I24 / M7-③）：**逐币种分别算** —— 实物债看该商品的库存、货币债看**该债币种**的现金。
           //   改前是 `case DebtUnit.Money ignored -> cashOf(household, householdMoney)`：把该户**全部币种**的余额
           //   1:1 加总当作"能还这笔钱的钱" ⇒ 一户只有铜也能被读成"银债还得起"。现在"能还多少"只由**债的那一种钱**回答。
