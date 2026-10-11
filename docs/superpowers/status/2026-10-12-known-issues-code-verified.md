@@ -210,3 +210,10 @@ WebUI 412/412；大地图性能；`unit.SetVisionRadius`；P4a/P4b（军俸政�
 
 **顺带记一条教训**：`pkill -f 'pack-objects'` 会**匹配到自己的命令行**并把自身杀掉 ——
 要杀进程用 `pkill -f 'pack[-]objects'` 这种不自匹配的写法。
+
+**推送结果（2026-10-12 收口）**：`git push origin main` → **成功**，
+`852d3064..094a7bd0  main -> main`（41 个提交；`094a7bd0` = 本记录所在提交）。
+`push_rc=0`。服务端另给了 **16 条 `warning: … larger than GitHub's recommended maximum file size of 50.00 MB`**
+（最大的 86.07 MB，全部 **< 100 MB 硬上限**、已被接受）—— 若要连这类 50–100 MB 的运行产物也清掉，
+需要**再重写一次历史**（另开一批；`backup/pre-largefile-clean` 仍在本地可作对照）。
+本地 `backup/pre-largefile-clean`（= 重写前 `4663a970`）**保留**，未推送。
