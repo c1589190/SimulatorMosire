@@ -14,16 +14,22 @@ import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.CoreSimosToolWritePort;
 import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.tools.gov.AppGovToolCommandTypes;
+import io.mosire.simos.app.tools.gov.AppGovToolEconomy;
+import io.mosire.simos.app.tools.gov.AppGovToolPerspective;
+import io.mosire.simos.app.tools.gov.AppGovToolViews;
+import io.mosire.simos.app.tools.write.AppGovToolManpower;
 import io.mosire.simos.app.tools.write.AppUnitToolAllocations;
 import io.mosire.simos.app.tools.write.AppUnitToolCommandTypes;
 import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
 import io.mosire.simos.app.tools.write.AppUnitToolViews;
-import io.mosire.simos.app.tools.write.GovDispatchTeamTool;
-import io.mosire.simos.app.tools.write.GovRecruitTool;
-import io.mosire.simos.app.tools.write.GovRetireStaffTool;
-import io.mosire.simos.app.tools.write.GovSelectExamineesTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.decision.DecisionProposable;
+import io.mosire.simos.gov.tools.GovToolSupport;
+import io.mosire.simos.gov.tools.write.GovDispatchTeamTool;
+import io.mosire.simos.gov.tools.write.GovRecruitTool;
+import io.mosire.simos.gov.tools.write.GovRetireStaffTool;
+import io.mosire.simos.gov.tools.write.GovSelectExamineesTool;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -108,6 +114,17 @@ public final class ProposalCatalog {
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(initiator, "initiator");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
+    // ★★ 2026-10-12 B3 第六域（gov）：四条可 propose 的 gov 工具**已下放**（`gov.tools.write`），
+    //   这里注入同一个接缝束（与 SimosToolSource 的装配同形：写口/读口/视图口/视角口/经济口/命令类型口/人力口）。
+    GovToolSupport gov =
+        new GovToolSupport(
+            new CoreSimosToolWritePort(core, initiator),
+            new QueryServiceToolReadPort(query),
+            new AppGovToolViews(),
+            new AppGovToolPerspective(),
+            new AppGovToolEconomy(),
+            new AppGovToolCommandTypes(),
+            new AppGovToolManpower(calendarService));
     List<Entry> entries =
         List.of(
             entry(
@@ -120,11 +137,8 @@ public final class ProposalCatalog {
                     new AppUnitToolCommandTypes()),
                 Set.of("newUnitId"),
                 true),
-            entry(
-                new GovRecruitTool(core, query, initiator, mapId, calendarService),
-                Set.of(),
-                false),
-            entry(new GovRetireStaffTool(core, query, initiator, mapId), Set.of(), false),
+            entry(new GovRecruitTool(gov, mapId), Set.of(), false),
+            entry(new GovRetireStaffTool(gov, mapId), Set.of(), false),
             entry(
                 new SocialHouseholdMembersTool(
                     new CoreSimosToolWritePort(core, initiator),
@@ -140,14 +154,8 @@ public final class ProposalCatalog {
                     new AppUnitToolAllocations(calendarService)),
                 Set.of(),
                 false),
-            entry(
-                new GovSelectExamineesTool(core, query, initiator, mapId, calendarService),
-                Set.of("newUnitId"),
-                true),
-            entry(
-                new GovDispatchTeamTool(core, query, initiator, mapId, calendarService),
-                Set.of("newUnitId"),
-                true));
+            entry(new GovSelectExamineesTool(gov, mapId), Set.of("newUnitId"), true),
+            entry(new GovDispatchTeamTool(gov, mapId), Set.of("newUnitId"), true));
     Map<String, Entry> byName = new LinkedHashMap<>();
     for (Entry value : entries) {
       byName.put(value.toolName(), value);

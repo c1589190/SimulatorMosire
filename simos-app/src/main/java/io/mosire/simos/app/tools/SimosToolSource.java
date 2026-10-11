@@ -15,6 +15,10 @@ import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.army.AppArmyToolPerspective;
 import io.mosire.simos.app.tools.economy.AppEconomyToolPerspective;
 import io.mosire.simos.app.tools.economy.AppEconomyToolViews;
+import io.mosire.simos.app.tools.gov.AppGovToolCommandTypes;
+import io.mosire.simos.app.tools.gov.AppGovToolEconomy;
+import io.mosire.simos.app.tools.gov.AppGovToolPerspective;
+import io.mosire.simos.app.tools.gov.AppGovToolViews;
 import io.mosire.simos.app.tools.map.AppMapPathPort;
 import io.mosire.simos.app.tools.map.AppMapRenderPort;
 import io.mosire.simos.app.tools.map.AppMapToolPerspective;
@@ -30,9 +34,7 @@ import io.mosire.simos.app.tools.read.GmApprovalsTool;
 import io.mosire.simos.app.tools.read.GmPacketTool;
 import io.mosire.simos.app.tools.read.GmPacketsTool;
 import io.mosire.simos.app.tools.read.GmToolUsageTool;
-import io.mosire.simos.app.tools.read.GovInfoTool;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
-import io.mosire.simos.app.tools.read.ProvinceDivideTool;
 import io.mosire.simos.app.tools.read.SdCombatsTool;
 import io.mosire.simos.app.tools.read.SdDiplomacyTool;
 import io.mosire.simos.app.tools.read.SdDiplomaticEventsTool;
@@ -52,6 +54,7 @@ import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
 import io.mosire.simos.app.tools.write.AppArmyManpowerPort;
 import io.mosire.simos.app.tools.write.AppArmyToolViews;
+import io.mosire.simos.app.tools.write.AppGovToolManpower;
 import io.mosire.simos.app.tools.write.AppUnitToolAllocations;
 import io.mosire.simos.app.tools.write.AppUnitToolCommandTypes;
 import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
@@ -64,35 +67,12 @@ import io.mosire.simos.app.tools.write.GmDecidePacketTool;
 import io.mosire.simos.app.tools.write.GmMergedPlanApplyTool;
 import io.mosire.simos.app.tools.write.GmMergedPlanUpsertTool;
 import io.mosire.simos.app.tools.write.GmPacketExecuteTool;
-import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
-import io.mosire.simos.app.tools.write.GovApplyStaffingTool;
-import io.mosire.simos.app.tools.write.GovAssignPostsTool;
-import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
-import io.mosire.simos.app.tools.write.GovDefineCurrencyTool;
-import io.mosire.simos.app.tools.write.GovDismissTool;
-import io.mosire.simos.app.tools.write.GovDispatchTeamTool;
-import io.mosire.simos.app.tools.write.GovExpandHouseholdTool;
-import io.mosire.simos.app.tools.write.GovIssueMoneyTool;
-import io.mosire.simos.app.tools.write.GovOpenPostsToMarketTool;
-import io.mosire.simos.app.tools.write.GovPayTool;
-import io.mosire.simos.app.tools.write.GovRecruitTool;
-import io.mosire.simos.app.tools.write.GovRemitTool;
-import io.mosire.simos.app.tools.write.GovRenameCurrencyTool;
-import io.mosire.simos.app.tools.write.GovRetireStaffTool;
-import io.mosire.simos.app.tools.write.GovSelectExamineesTool;
-import io.mosire.simos.app.tools.write.GovSetBudgetPolicyTool;
-import io.mosire.simos.app.tools.write.GovSetEstablishmentTool;
-import io.mosire.simos.app.tools.write.GovSetFxRateTool;
-import io.mosire.simos.app.tools.write.GovTransferTreasuryTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.MyPacketTool;
 import io.mosire.simos.app.tools.write.PacketIntentTool;
 import io.mosire.simos.app.tools.write.ProposeCallTool;
-import io.mosire.simos.app.tools.write.ProvinceApplyTool;
-import io.mosire.simos.app.tools.write.ProvinceAssignCitiesTool;
 import io.mosire.simos.app.tools.write.RecordDiplomaticEventTool;
 import io.mosire.simos.app.tools.write.RegionClearDataTool;
-import io.mosire.simos.app.tools.write.RegionClearStructuresTool;
 import io.mosire.simos.app.tools.write.RegionSeedTool;
 import io.mosire.simos.app.tools.write.RejectDirectiveTool;
 import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
@@ -152,6 +132,32 @@ import io.mosire.simos.economy.tools.write.GmGovMarketMandateTool;
 import io.mosire.simos.economy.tools.write.GmPeriodicAdjustmentTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.gov.tools.GovToolSupport;
+import io.mosire.simos.gov.tools.read.GovInfoTool;
+import io.mosire.simos.gov.tools.read.ProvinceDivideTool;
+import io.mosire.simos.gov.tools.write.GovAbsorbUnitTool;
+import io.mosire.simos.gov.tools.write.GovApplyStaffingTool;
+import io.mosire.simos.gov.tools.write.GovAssignPostsTool;
+import io.mosire.simos.gov.tools.write.GovCreateOfficeTool;
+import io.mosire.simos.gov.tools.write.GovDefineCurrencyTool;
+import io.mosire.simos.gov.tools.write.GovDismissTool;
+import io.mosire.simos.gov.tools.write.GovDispatchTeamTool;
+import io.mosire.simos.gov.tools.write.GovExpandHouseholdTool;
+import io.mosire.simos.gov.tools.write.GovIssueMoneyTool;
+import io.mosire.simos.gov.tools.write.GovOpenPostsToMarketTool;
+import io.mosire.simos.gov.tools.write.GovPayTool;
+import io.mosire.simos.gov.tools.write.GovRecruitTool;
+import io.mosire.simos.gov.tools.write.GovRemitTool;
+import io.mosire.simos.gov.tools.write.GovRenameCurrencyTool;
+import io.mosire.simos.gov.tools.write.GovRetireStaffTool;
+import io.mosire.simos.gov.tools.write.GovSelectExamineesTool;
+import io.mosire.simos.gov.tools.write.GovSetBudgetPolicyTool;
+import io.mosire.simos.gov.tools.write.GovSetEstablishmentTool;
+import io.mosire.simos.gov.tools.write.GovSetFxRateTool;
+import io.mosire.simos.gov.tools.write.GovTransferTreasuryTool;
+import io.mosire.simos.gov.tools.write.ProvinceApplyTool;
+import io.mosire.simos.gov.tools.write.ProvinceAssignCitiesTool;
+import io.mosire.simos.gov.tools.write.RegionClearStructuresTool;
 import io.mosire.simos.map.tools.MapPathPort;
 import io.mosire.simos.map.tools.MapRenderPort;
 import io.mosire.simos.map.tools.MapToolPerspective;
@@ -497,6 +503,7 @@ public final class SimosToolSource implements ToolSource {
                     core,
                     calendarService,
                     query,
+                    initiator,
                     mapId,
                     commandTypes,
                     embeddableCommandTypes,
@@ -620,17 +627,35 @@ public final class SimosToolSource implements ToolSource {
     // ★★ P1b1（2026-10-01）：区域数据清空（social/actor/economy 三类，固定批序 + 只对有命中域下单）。**只在 GM 桶**；
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；map 只读（校验 region 存在），写面声明 social/actor/economy/sd。
     built.add(new RegionClearDataTool(core, query, initiator, mapId));
+    // ★★ 2026-10-12 B3 第六域（gov）：36 个 gov 工具 + 省份划分器**已下放**
+    //   （`io.mosire.simos.gov.tools.{read,write}`），这里只做装配——注入 ga-spi 的窄写口/窄读口 + gov 自己声明的
+    //   六条接缝（一个接缝束 `GovToolSupport`）：
+    //   ① 视图口（ApiViews.economyGovernment / 供给桥 / tick 流量表 / AvailableStock 三项唯一实现）；
+    //   ② 视角口（身份派生 + 区域围栏 + sd 决策人事实 + 国库家户解析 + 逃亡档位；围栏不抄第二份）；
+    //   ③ 经济口（政府政策现值/解析/合并 + 币种/政府记录/经济行/危机信号；economy 实现不在 gov 允许面）；
+    //   ④ 跨域命令类型口（economy/actor/sd 的 handler 拼写点）；
+    //   ⑤ 人力口（选人瀑布 + 家户劳动量；历法时钟由适配器持有）；
+    //   ⑥ 命令类型/写口/读口同上（命令 id / 发起者 / 信封由 app 装配）。
+    GovToolSupport gov =
+        new GovToolSupport(
+            new CoreSimosToolWritePort(core, initiator),
+            new QueryServiceToolReadPort(query),
+            new AppGovToolViews(),
+            new AppGovToolPerspective(),
+            new AppGovToolEconomy(),
+            new AppGovToolCommandTypes(),
+            new AppGovToolManpower(calendarService));
     // ★★ P1b2（2026-10-01）：区域结构清空（GOV 单位/对应决策人/建议命名形制的省 Region，固定批序 + 开关 + 只读
     //   pre-scan）。**只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面声明 map/unit/sd。
-    built.add(new RegionClearStructuresTool(core, query, initiator, mapId));
+    built.add(new RegionClearStructuresTool(gov, mapId));
     // ★★ P3（2026-10-01）：省份一键落盘（复用 simos.province.divide 的同一份只读建议；固定批序落
     //   Region + GOV Unit + 决策人；相关结构门 NEEDS_CLEAR / 重叠门 OVERLAP_OVERRIDE_REQUIRED，零 revision）。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面声明 map/unit/sd。
-    built.add(new ProvinceApplyTool(core, query, initiator, mapId));
+    built.add(new ProvinceApplyTool(gov, mapId));
     // ★★ R2a（2026-10-01 行政区划修复计划 §1.2/§R4）：按 SocialCity.at 批量归省——候选省/首都区取
     //   hexCount 最小、并列按 regionId 字典序；一批 social.UpdateCity 共享 batchId ⇒ 恰一条 revision。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 social。
-    built.add(new ProvinceAssignCitiesTool(core, query, initiator));
+    built.add(new ProvinceAssignCitiesTool(gov));
     // ★★ 2026-10-12 B3 试点（设计书 §4.3 / 台账 §5）：地图的 8 条窄写**已下放到 simos-map**
     //   （`io.mosire.simos.map.tools.write`），这里只剩装配——注入 ga-spi 的窄写口（适配器在 app，见
     //   `CoreSimosToolWritePort`：命令 id / 发起者 / 信封由它装配，工具不再直连 CoreSimos）。
@@ -705,9 +730,9 @@ public final class SimosToolSource implements ToolSource {
     // 阶段 10b-ii（2026-10-01 GOV 计划）：三条 GOV 组合工具（建 GOV+绑决策人 / 招募 / 离编+退休待遇）。
     //   **只在 GM 桶**；★ 三个工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；各自走 CoreSimos.submitBatch
     //   一批一条 revision（批内固定顺序与载荷见各自 *Plan 类）。
-    built.add(new GovCreateOfficeTool(core, query, initiator, mapId));
-    built.add(new GovRecruitTool(core, query, initiator, mapId, calendarService));
-    built.add(new GovDismissTool(core, query, initiator, mapId));
+    built.add(new GovCreateOfficeTool(gov, mapId));
+    built.add(new GovRecruitTool(gov, mapId));
+    built.add(new GovDismissTool(gov, mapId));
     // 阶段 13A（2026-10-01 GOV/Army 计划 §2.6 人员流转）：四条 GOV 组合工具——
     //   selectExaminees（辖区选人 → 无标签纯人员单位，可规划到目的 GOV）、dispatchTeam（GOV 编制出人 → 纯人员单位，
     //   armed 时加 ArmyFormation）、absorbUnit（吸收纯人员单位进编制，可解散已空源）、retireStaff（离编 + 退休待遇 +
@@ -715,11 +740,11 @@ public final class SimosToolSource implements ToolSource {
     //   CoreSimos.submitBatch 一批一条 revision（批内固定顺序与载荷见各自 *Plan 类）。
     //   ★★ P1.5（2026-10-16）：selectExaminees / dispatchTeam 已接完整 Social 工单路径（新人口家户 hh-unit:<id>），
     //   两个计划类都需要生产历法时钟判定 MALE+ADULT 年龄档。
-    built.add(new GovSelectExamineesTool(core, query, initiator, mapId, calendarService));
-    built.add(new GovDispatchTeamTool(core, query, initiator, mapId, calendarService));
+    built.add(new GovSelectExamineesTool(gov, mapId));
+    built.add(new GovDispatchTeamTool(gov, mapId));
     // ★ 2026-10-19 absorbUnit 接 Social 家户真转移：来源选人层要按生产历法判 MALE+ADULT 年龄档 ⇒ 同传 calendarService。
-    built.add(new GovAbsorbUnitTool(core, query, initiator, mapId, calendarService));
-    built.add(new GovRetireStaffTool(core, query, initiator, mapId));
+    built.add(new GovAbsorbUnitTool(gov, mapId));
+    built.add(new GovRetireStaffTool(gov, mapId));
     // 辖区阶段 6（2026-09-30 / 计划 §6.2）：actor 净增量账原语（app 级抽取/组军组合工具的落账腿）。
     //   **只在 GM 桶**：命令类型固定，模型只能给载荷；整条原子由域层判。
     built.add(new ActorAdjustAccountsTool(core, initiator, mapId));
@@ -727,37 +752,37 @@ public final class SimosToolSource implements ToolSource {
     //   两个 GOV 当刻有效位置的国库账之间一条 actor.RemitGovTreasury（源扣目标加、一条 revision、整条原子）。
     //   **只在 GM 桶**；允许任意两个 GOV（不要求 to 是 from.superiorGov）；工具名不是命令类型 ⇒ 不进 catalog。
     //   写面只声明 actor 命名空间（GM 侧 unlimited）。
-    built.add(new GovRemitTool(core, query, initiator));
+    built.add(new GovRemitTool(gov));
     // ★★ Z3c-2（2026-10-23 政府服务模式，GM + 决策人两面并列）：五条政府配置窄写 + 一条国库转账 GM 窄写。
     //   五条配置工具在 GM 桶与决策人桶**同名两处注册**（决策人侧另加白名单与审批链）；GM 侧走 GmAutoApproveGate。
     //   身份派生见 GovToolSupport：决策人只能自己的 GOV，载荷指定别的 GOV ⇒ 具名 REJECTED。
     //   ★ 两 gov 命令仍是 GmOnlyCommand（Shell 只用它派生令/RegisterEffect/catalog 白名单，命令总线不拦）：
     //     决策人窄工具直接提交同一命令受控，而令/RegisterEffect/catalog 四条路径不放大。
-    built.add(new GovSetEstablishmentTool(core, query, initiator));
-    built.add(new GovSetBudgetPolicyTool(core, query, initiator));
-    built.add(new GovAssignPostsTool(core, query, calendarService, initiator));
-    built.add(new GovExpandHouseholdTool(core, query, calendarService, initiator));
+    built.add(new GovSetEstablishmentTool(gov));
+    built.add(new GovSetBudgetPolicyTool(gov));
+    built.add(new GovAssignPostsTool(gov));
+    built.add(new GovExpandHouseholdTool(gov));
     //   ★★ Z3d（2026-10-23）：外部户承接行政任务（B 路 V1=显式选户）——只写 externalPosts + GOV_SERVICE 承诺，
     //     绝不改 Unit.households / Social 位置；GM 与决策人同名两处注册 + 审批链（同上面五条配置工具）。
-    built.add(new GovOpenPostsToMarketTool(core, query, calendarService, initiator));
+    built.add(new GovOpenPostsToMarketTool(gov));
     //   ★ 国库注资 / 政府间转账（F2 前置 G1）：只在 GM 桶；决策人路径走既有 simos.gov.pay。
-    built.add(new GovTransferTreasuryTool(core, query, initiator));
+    built.add(new GovTransferTreasuryTool(gov));
     //   ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套（定义币种 / 改名 / DM 发行）——**GM 桶 + 决策人桶
     //     同名两处注册**（决策人侧另加白名单与审批链，见 addDecisionAgentWrites 与 DecisionCallerFactory.WHITELIST）。
     //     GM 侧走 GmAutoApproveGate 且必须显式给 govUnitId；决策人侧身份派生、只能自己的 GOV（越权 ⇒ 具名 REJECTED）。
     //     ★ 三条命令（economy.DefineCurrency / RenameCurrency / RecordMoneyIssuance）标 GmOnlyCommand ⇒
     //       令 / RegisterEffect / 决策人命令目录三条路径不放大；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new GovDefineCurrencyTool(core, query, initiator));
-    built.add(new GovRenameCurrencyTool(core, query, initiator));
-    built.add(new GovIssueMoneyTool(core, query, initiator));
+    built.add(new GovDefineCurrencyTool(gov));
+    built.add(new GovRenameCurrencyTool(gov));
+    built.add(new GovIssueMoneyTool(gov));
     //   ★★ A2a（2026-10-08 汇率阶段 2 §3.3）：官方汇率 —— 同一形制（GM 桶 + 决策人桶同名两处注册 +
     //     决策人侧白名单/审批链）。★ 定下它就是"激活这个币对的外汇市场"（没定过 ⇒ 没有外汇面，逐值退回）。
-    built.add(new GovSetFxRateTool(core, query, initiator));
+    built.add(new GovSetFxRateTool(gov));
     // ★★ R4 / R5 步骤 4（2026-10-01 行政区划修复计划）：GM 按辖区行政需求精确配满编组合工具——逐 GOV 调
     //   GovDemand.of 求 security/paperwork 总量，目标 staff{YAMEN=security, SCRIBE=paperwork}，每个要改的 GOV
     //   一条 unit.SetGovFormation（policy 五字段原样带全），一批共享 batchId ⇒ 恰一条 revision。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 unit。
-    built.add(new GovApplyStaffingTool(core, query, initiator));
+    built.add(new GovApplyStaffingTool(gov));
     // 辖区阶段 6（2026-09-30 / 计划 §6.1）：GM 组合工具——一次抽粮/钱/人力，三条命令同批落一条 revision。
     //   **只在 GM 桶**；★ 它不是一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。actor.AdjustAccounts 已标
     //   GmOnlyCommand ⇒ 这条组合工具的上限/管辖区口径不会被"嵌进决策令"绕过。
@@ -959,30 +984,39 @@ public final class SimosToolSource implements ToolSource {
     //   **桶**（本方法）与 **权限组白名单**（DecisionCallerFactory.WHITELIST）必须同源——只改一处 = 留旁路。
     built.add(new SetDiplomaticRelationTool(core, query, initiator, mapId));
     built.add(new RecordDiplomaticEventTool(core, query, initiator, mapId));
-    built.add(new GovPayTool(core, query, initiator));
+    GovToolSupport gov =
+        new GovToolSupport(
+            new CoreSimosToolWritePort(core, initiator),
+            new QueryServiceToolReadPort(query),
+            new AppGovToolViews(),
+            new AppGovToolPerspective(),
+            new AppGovToolEconomy(),
+            new AppGovToolCommandTypes(),
+            new AppGovToolManpower(calendarService));
+    built.add(new GovPayTool(gov));
     // ★★ Z3c-2（2026-10-23 政府服务模式）：五条政府配置窄写——与 GM 桶**同名注册**（同一份实现按身份派生：
     //   GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 越权 REJECTED）。敏感工具 ⇒
     //   AutoApproveGate → ConfirmGate → PendingApprovals（需 GM 点头）。
     //   **桶**（本方法）与 **权限组白名单**（DecisionCallerFactory.WHITELIST）必须同源。
-    built.add(new GovSetEstablishmentTool(core, query, initiator));
-    built.add(new GovSetBudgetPolicyTool(core, query, initiator));
-    built.add(new GovAssignPostsTool(core, query, calendarService, initiator));
-    built.add(new GovExpandHouseholdTool(core, query, calendarService, initiator));
+    built.add(new GovSetEstablishmentTool(gov));
+    built.add(new GovSetBudgetPolicyTool(gov));
+    built.add(new GovAssignPostsTool(gov));
+    built.add(new GovExpandHouseholdTool(gov));
     // ★★ Z3d（2026-10-23）：外部户承接行政任务（B 路 V1=显式选户）——与 GM 桶同名注册；只写 externalPosts +
     //   GOV_SERVICE 承诺，不改归属/位置；敏感工具 ⇒ AutoApproveGate → ConfirmGate → PendingApprovals。
     //   **桶**（本方法）与 **权限组白名单**（DecisionCallerFactory.WHITELIST）必须同源。
-    built.add(new GovOpenPostsToMarketTool(core, query, calendarService, initiator));
+    built.add(new GovOpenPostsToMarketTool(gov));
     // ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套的**决策人侧注册面**——与 GM 桶同名注册（同一份实现按身份
     //   派生：GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 具名 REJECTED）。三条都是敏感工具 ⇒
     //   AutoApproveGate → ConfirmGate → PendingApprovals（需 GM 在审批面点头）。
     //   ★★ **桶（本方法）与权限组白名单（DecisionCallerFactory.WHITELIST）必须同源**——本批只落成本方法这一半，
     //      白名单那三行归 app/access 的 owner（A1 的文件所有权不含它；缺了它决策人侧会停在权限组，见账本）。
-    built.add(new GovDefineCurrencyTool(core, query, initiator));
-    built.add(new GovRenameCurrencyTool(core, query, initiator));
-    built.add(new GovIssueMoneyTool(core, query, initiator));
+    built.add(new GovDefineCurrencyTool(gov));
+    built.add(new GovRenameCurrencyTool(gov));
+    built.add(new GovIssueMoneyTool(gov));
     //   ★★ A2a（2026-10-08 汇率阶段 2 §3.3）：官方汇率 —— 同一形制（GM 桶 + 决策人桶同名两处注册 +
     //     决策人侧白名单/审批链）。★ 定下它就是"激活这个币对的外汇市场"（没定过 ⇒ 没有外汇面，逐值退回）。
-    built.add(new GovSetFxRateTool(core, query, initiator));
+    built.add(new GovSetFxRateTool(gov));
     // ★★ D2（2026-10-22 决策包计划）：决策包四件套——propose / submit / intent / my。
     //   **只在决策人桶**；白名单（DecisionCallerFactory.WHITELIST）必须同源。
     //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；submit/intent 走 own-packet 围栏。
@@ -1002,6 +1036,7 @@ public final class SimosToolSource implements ToolSource {
       CoreSimos core,
       CalendarService calendarService,
       QueryService query,
+      String initiator,
       String mapId,
       Set<String> commandTypes,
       Set<String> embeddableCommandTypes,
@@ -1041,6 +1076,17 @@ public final class SimosToolSource implements ToolSource {
     ToolReadPort unitReads = new QueryServiceToolReadPort(query);
     UnitToolViews unitViews = new AppUnitToolViews(calendarService);
     UnitToolPerspective unitPerspective = new AppUnitToolPerspective();
+    // ★★ 2026-10-12 B3 第六域（gov）：两条 gov 读工具（province.divide / gov.info）**已下放**
+    //   （`gov.tools.read`），注入同一个接缝束（与写侧同一形制）。
+    GovToolSupport gov =
+        new GovToolSupport(
+            new CoreSimosToolWritePort(core, initiator),
+            new QueryServiceToolReadPort(query),
+            new AppGovToolViews(),
+            new AppGovToolPerspective(),
+            new AppGovToolEconomy(),
+            new AppGovToolCommandTypes(),
+            new AppGovToolManpower(calendarService));
     return List.of(
         // ★★ E6b：catalog 的**命令清单**取完整注册面（含 GM-only），决策人可见性由显式"可嵌入令"白名单过滤
         //   （CatalogVisibility）—— GM 看得到 economy.SwitchMode / economy.GmAdjust，决策人看不到。
@@ -1064,7 +1110,7 @@ public final class SimosToolSource implements ToolSource {
         new MapOverlapsTool(mapReads, mapViews, mapPerspective, mapId),
         // ★ P3（2026-10-01）：省份划分建议（只出建议、零写入）——递归主轴二分 + 可选首都圈 + 相交 Region 清单。
         //   只给 GM 桶（GmOnlyRead）：划分是 GM 的规划动作，决策人不做行政区划。
-        new ProvinceDivideTool(query, mapId),
+        new ProvinceDivideTool(gov, mapId),
         new MapPathTool(mapReads, mapViews, mapPaths),
         // ★ 工具面补齐（2026-09-25）：GUI `/api/map/block` 的对应读口——某格所在的**整块地形**（成员格清单）。
         //   与 hex（单格）/ overview（全块多边形）不同形；GUI 该端点拒 as= ⇒ 只给 GM 桶（GmOnlyRead）。
@@ -1079,7 +1125,7 @@ public final class SimosToolSource implements ToolSource {
         // ★★ Z3c-2（2026-10-23）：GOV 行政运行只读读口（GM + 该 GOV 决策人；决策人视野收窄到自己 GOV）。
         //   四桶共享（不标 GmOnlyRead）；资源断言 = unit:<govId> + 座位 map/social/actor；
         //   DecisionCallerFactory.WHITELIST 必须同源。
-        new GovInfoTool(query, mapId),
+        new GovInfoTool(gov, mapId),
         // ★ R2a（2026-09-25）：逐格经济读数（GUI `/api/economy/hex` 的对应读口；**四桶共享**——经济是世界状态，
         //   决策人该看得见辖地的产出与库存；视野由 ToolSupport.hexVisible 收窄）。
         new EconomyHexTool(economyReads, economyViews, economyPerspective, mapId),

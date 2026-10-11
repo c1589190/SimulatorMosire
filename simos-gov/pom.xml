@@ -24,6 +24,12 @@
        ★ actor-api 只在真用 ActorRef 时才该声明：本阶段没有 ActorRef，故不加（任务书口径）。
        ★ 不得依赖 core / app（铁律 3：领域模块不认识组合与调度）——由下面的 enforcer 构建期强制。 -->
   <dependencies>
+    <!-- ★ 2026-10-12 B3 第六域：门禁若在本地类型上报 EI_EXPOSE_REP / BC_UNCONFIRMED_CAST 类误报，
+         @SuppressFBWarnings 注解住在这里（version 与 spotbugs 插件同代；照 unit/social-api/economy-api 的先例）。 -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
     </dependency>
@@ -38,6 +44,14 @@
     </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
+    </dependency>
+    <!-- ★★ 2026-10-12 B3 第六域（gov 工具下放）：工具契约层 ga-spi —— SimosTool 的标签面（GmOnlyRead）、窄写口
+         ToolWritePort、窄读口 ToolReadPort 与 ToolResources/ToolSchema/ToolResults 三件纯助手。
+         ★ 允许面因此扩为 util/map/unit/social/economy-api/ga-spi（设计书 §4.1：域模块依赖 ga-spi 而不是 ga —— 反过来会成环）。
+         ★ agentlib-mosire 仍在禁列：工具所需 agentlib 类型（AgentTool/ToolContext/ResourceManifest…）走 ga-spi 传递引入
+           （`searchTransitive=false` 只拦直接声明，与 map/army/economy/social/unit 五批的 D3 同款）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-ga-spi</artifactId>
     </dependency>
     <!-- GovCodec 真的 import Jackson（ObjectMapper / SimpleModule / KeyDeserializer）。版本由父 POM 已
          import 的 jackson-bom 提供。 -->
@@ -99,7 +113,11 @@
                     <exclude>io.mosire:simos-calendar</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
                   </excludes>
-                  <message>simos-gov 是政府：行政编制、国库预算、区划服务 + **外交**（Nation / 关系 / 事件；2026-10-12 用户裁定"外交是 gov 的事"）：只许依赖 util/map/unit/social/economy-api（计划 §2.2）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 core/app/agentlib、sd、运行框架 ga、兄弟切片 economy/actor/army 与已退役的 ledger）。★ 例外：social-api / calendar / actor-api 由 social 与 economy-api 传递带出，三条按 I-F1 不入禁列。</message>
+                  <!-- ★★ 2026-10-12 B3 第六域：允许面扩为 util/map/unit/social/economy-api/**ga-spi**（工具契约层）。
+                       ★ ga-spi **不入禁列**：它是域模块写工具的唯一契约面（设计书 §4.1），且它自己不依赖 core/域。
+                       ★ 传依赖的契约层（social-api / calendar / actor-api）仍在禁列里：`searchTransitive=false` 只拦
+                         **直接声明**，传递可见不受影响（这三条一直由 social / economy-api 传递带出）。 -->
+                  <message>simos-gov 是政府：行政编制、国库预算、区划服务 + **外交**（Nation / 关系 / 事件；2026-10-12 用户裁定"外交是 gov 的事"）：只许依赖 util/map/unit/social/economy-api + 工具契约层 ga-spi（2026-10-12 B3 第六域下放后）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 core/app/agentlib、sd、运行框架 ga、兄弟切片 economy/actor/army 与已退役的 ledger）。★ 留痕：social-api / calendar / actor-api 三条由 social 与 economy-api **传递**带出（旧口径"按 I-F1 不入禁列"已被 2026-10-12 冻结批取代 —— 它们在禁列里，但 searchTransitive=false 使传递可见不触禁）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

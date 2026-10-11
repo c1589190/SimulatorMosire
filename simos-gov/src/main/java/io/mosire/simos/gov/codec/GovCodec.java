@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.gov.GovLog;
@@ -123,6 +124,18 @@ public final class GovCodec implements ModuleCodec, ModuleDiffer {
     return readJson(json, GovChangeSet.class);
   }
 
+  /**
+   * ★★ <b>本方法上的 {@code @SuppressFBWarnings} 是**规模敏感误报**的精确豁免</b>（2026-10-12 B3 第六域）： {@code tools/}
+   * 子树下放进来之后，SpotBugs 的下转型检测不再能证明"{@code ChangeSet} 在本模块只有 {@code GovChangeSet} 一个实现" ⇒
+   * 在**未改动的本文件**上报 {@code BC_UNCONFIRMED_CAST}。对照实验（照搬 AGENTS 的处置口径）：把 {@code
+   * simos-gov/src/main/java/io/mosire/simos/gov/tools/} 整棵移出后 {@code BugInstance size is 0}，移回即复现 ⇒
+   * 与代码正确性无关。★ 同款裸下转型在 {@code MapCodec} （{@code :138} / {@code :179}）一直存在且从未报过。豁免**只加在这两处**，不改任何行为
+   * （{@code ChangeSet} 的合法实参由 {@code ModuleCodec} 的分发面保证：按 {@link #namespace()} 选 codec）。
+   */
+  @SuppressFBWarnings(
+      value = "BC_UNCONFIRMED_CAST",
+      justification =
+          "规模敏感误报：tools/ 子树加入后 SpotBugs 无法证明 ChangeSet 只有 GovChangeSet 一个实现；移出该子树即 0 finding（对照实验见类注）")
   @Override
   public String encodeChangeSet(ChangeSet changeSet) {
     return writeJson((GovChangeSet) changeSet);
@@ -138,7 +151,15 @@ public final class GovCodec implements ModuleCodec, ModuleDiffer {
     return writeJson(asGovSnapshot(snapshot));
   }
 
-  /** 施加变更集，返回<b>新的</b>快照：ref/timestamp 来自 {@code newMeta}（C28），不是 base 的。 */
+  /**
+   * 施加变更集，返回<b>新的</b>快照：ref/timestamp 来自 {@code newMeta}（C28），不是 base 的。
+   *
+   * <p>★ {@code @SuppressFBWarnings} 与 {@link #encodeChangeSet} 同一条（规模敏感误报 + 对照实验），不重复叙述。
+   */
+  @SuppressFBWarnings(
+      value = "BC_UNCONFIRMED_CAST",
+      justification =
+          "规模敏感误报：tools/ 子树加入后 SpotBugs 无法证明 ChangeSet 只有 GovChangeSet 一个实现；移出该子树即 0 finding（对照实验见 encodeChangeSet 的类注）")
   @Override
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
     GovSnapshot govBase = asGovSnapshot(base);

@@ -4,6 +4,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.gov.tools.write.GovSelectExamineesPlan;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.social.SocialData;
