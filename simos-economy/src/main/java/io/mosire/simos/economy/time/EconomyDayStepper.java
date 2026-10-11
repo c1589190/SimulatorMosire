@@ -61,9 +61,12 @@ public final class EconomyDayStepper implements AutoCloseable {
   private Map<HouseholdId, Map<PeopleLotId, Long>> composition = Map.of();
 
   /**
-   * ★★ <b>退出商品市场的单位户集合</b>（由 app 组合根从 {@code Unit.households()} 现算后注入；R1 起**只**含单位户 —— 政府国库户
-   * 回到市场且只按授权下单，见 {@code GovernmentMarketMandatePlan}；economy 侧在日结算里并入 {@code
-   * EconomyData.governments()} 的国库户）。缺省空集 = 只排政府国库户；不进任何 Economy 状态、不进变更集。
+   * ★★ <b>Z7b 的单位户集合</b>（由 app 组合根从 {@code Unit.households()} 现算后注入）。
+   *
+   * <p>★★ <b>控制方裁定 R2（2026-10-11）起它<b>不再是"退出商品市场"</b>，而是"<b>只买不卖</b>"名单</b>：军户/官吏户按普通家户参与
+   * 买盘（口粮通道），卖侧维持 Z7b 原口径（其实物供给不得被当余量清仓）；政府国库户另按 {@code GovernmentMarketMandatePlan}（权威 = {@code
+   * EconomyData.governments()}）走"只按授权下单"，**不再由本集合承担**。 分类的唯一拼写点 = {@code
+   * MarketSettlement.MarketRound.householdMarketRole}。缺省空集 = 没有单位户要按只买处理。 不进任何 Economy 状态、不进变更集。
    */
   private Set<HouseholdId> marketExcludedHouseholds = Set.of();
 
@@ -192,11 +195,13 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
-   * ★★ <b>Z7b：替换本轮“退出商品市场”的单位户集合</b>（app 组合根在推进前从 {@code Unit.households()} 现算注入；与 {@link
+   * ★★ <b>Z7b：替换本轮的单位户集合</b>（app 组合根在推进前从 {@code Unit.households()} 现算注入；与 {@link
    * #updateComposition(Map)} 同一条“只读投影、不进状态”的纪律）。
    *
-   * <p>★ 语义是<b>替换</b>：单位/家户在 revision 边界才可能变，本轮推进内不变；政府国库户由 economy 在每个日结算里从 {@code
-   * base.governments()} 自行并入，本方法只负责 economy 编译期看不见的 unit 切片。
+   * <p>★★ <b>R2（2026-10-11）</b>：集合的消费口径已收窄为"<b>只买不卖</b>"（军户/官吏户回到买盘；政府国库户由 economy
+   * 的"只按授权下单"名单单独管）—— 判据的唯一拼写点 = {@code MarketRound.householdMarketRole}，本方法只管注入。
+   *
+   * <p>★ 语义是<b>替换</b>：单位/家户在 revision 边界才可能变，本轮推进内不变。
    */
   public void updateMarketExcludedHouseholds(Set<HouseholdId> next) {
     Objects.requireNonNull(next, "next");
@@ -210,7 +215,7 @@ public final class EconomyDayStepper implements AutoCloseable {
     this.marketExcludedHouseholds = java.util.Collections.unmodifiableSet(frozen);
   }
 
-  /** ★ Z7b：当前注入的单位户排除集（只读；政府国库户由日结算另并入）。 */
+  /** ★ Z7b/R2：当前注入的单位户集合（只读；判定一律走 {@code MarketRound.householdMarketRole}）。 */
   public Set<HouseholdId> marketExcludedHouseholds() {
     return marketExcludedHouseholds;
   }

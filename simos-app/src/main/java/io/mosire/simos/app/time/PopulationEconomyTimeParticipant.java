@@ -601,9 +601,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         //   不进变更集）。日循环里每 tick 在生死结算后再用新 Social 刷新一次。
         stepper.updateComposition(compositionOf(social));
         stepper.recomputeLaborBudgets(laborBudgetsOf(social, range.from().tick()));
-        // ★★ Z7b：国库/单位户退出商品市场 —— economy 编译期看不见 unit 切片，组合根在这里把
-        //   Unit.households() 的唯一投影注入（政府国库户由 economy 自己从 governments 并入；两来源在
-        //   MarketRound 合成有效排除集）。单位列表在 revision 内不变，推进前注入一次即可。
+        // ★★ Z7b / R2：单位户集合（economy 编译期看不见 unit 切片，组合根在这里注入 Unit.households() 的唯一投影）。
+        //   ★★ 控制方裁定 R2（2026-10-11）起它的消费口径是"**只买不卖**"：军户/官吏户回到市场买盘（= 它们的口粮
+        //   通道），卖侧维持 Z7b 原口径；政府国库户由 economy 自己按 GovernmentMarketMandatePlan（"只按授权下单"）
+        //   管。分类的唯一拼写点 = MarketRound.householdMarketRole。单位列表在 revision 内不变，推进前注入一次即可。
         stepper.updateMarketExcludedHouseholds(unitHouseholdExclusions(units));
         ActorData currentBooks = migratedBooks;
         SocialData currentSocial = social;

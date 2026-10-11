@@ -2751,6 +2751,43 @@ public final class EconomySeeder {
   }
 
   /**
+   * ★★★ <b>W5.5-fix2：单位户（{@code hh-unit:<unitId>} —— 官吏户 / 军户）的创世口粮天数</b> —— 与**创世流民户**
+   * 同一个口径：查**同一张** {@link #INITIAL_RATION_DAYS_BY_CLASS}、槽位取**最贫一档**（{@link #CLASS_IDS}{@code
+   * [0]}）。
+   *
+   * <p>★★ <b>为什么不查该户自己的阶层槽位（回代码核过）</b>：单位户在经济行里的 {@code stratum} 是 {@code official} （官吏户，{@code
+   * GovWorldBootstrap.registerHouseholdPayload}）或 {@code landless_laborer}（军户，{@code
+   * RaiseUnitPlan}/{@code SpawnArmyPlan}）—— <b>两者都不在初始口粮天数表里</b> ⇒ {@link
+   * #initialRationDays(String)} 对它们 fail-closed（"拒绝臆造"，不是能查到 0 天）。而"**没有阶层槽位的家户怎么给
+   * 创世粮**"在本类里已经有**唯一先例**：{@link #DISPLACED_SLOT} 的流民户走 {@code initialRationDays(CLASS_IDS[0])} （见
+   * {@code classRows}）⇒ 本方法沿用它，**不新造常数、不改那张表、不动任何时点/相位**。
+   */
+  public static String unitHouseholdRationSlot() {
+    return CLASS_IDS[0];
+  }
+
+  /** 上一条的"每人几天"（走 {@link #initialRationDays(String)} 的同一张表与同一个倍数）。 */
+  public static int unitHouseholdRationDays() {
+    return initialRationDays(unitHouseholdRationSlot());
+  }
+
+  /**
+   * ★★★ <b>W5.5-fix2：一个单位户的创世粮（毫粮）</b> —— 与普通家户**逐字同一条算式**（{@link #rationMilli}： {@code
+   * cumulativeRationMilli(人口, 该阶层天数)}，普通家户的落点是 {@code openingStock} 的第一项），只是阶层槽位按 {@link
+   * #unitHouseholdRationSlot()} 取（理由见上）。
+   *
+   * <p>★ <b>为什么需要它（真根因）</b>：单位户由 {@code GovWorldBootstrap}/{@code ThreePowersGovBootstrap} 在 {@code
+   * actor.Seed} **之后**才建户建账（创世只给国库注入粮）⇒ 第 1 天它们手里一本空账；而当日消费（吃粮段）发生在当天 **俸禄日结之前**、且第 1 天结构上没有市场轮 ⇒ 第
+   * 1 天整日需求全落空（satiety −150‰）⇒ 饥饿逃亡率逐日累加到 day8 ⇒ 逃 1 人 ⇒ {@code GOV_SERVICE}
+   * 承诺永久腰斩。本方法把**创世口径的一致性**补上（不是逐日给养通道，那是 P4c）。
+   *
+   * @param population 该户当前人口（取 Social 权威，不是调用方手里那个预期值）；&lt; 0 ⇒ 拒
+   */
+  public static long unitHouseholdGenesisGrainMilli(long population) {
+    return rationMilli(population, unitHouseholdRationSlot());
+  }
+
+  /**
    * 把 {@code total} 按 **千分比例表** 切成同长子表（§十 的"初始阶层比例"）。
    *
    * <p>★★ **分母恒为 1000‰，绝不用 Σ比例 归一化**：{@code 450/350/150/50} 之和恰为 1000，故正常情形下 {@code Σ 结果 ==

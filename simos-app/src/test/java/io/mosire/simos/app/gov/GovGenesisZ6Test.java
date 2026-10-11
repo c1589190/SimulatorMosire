@@ -37,6 +37,7 @@ import io.mosire.simos.gov.GovOfficeState;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -224,7 +225,9 @@ class GovGenesisZ6Test {
   @Test
   void firstDaySettlesEfficiencyStipendAndSalaryWithoutShortfall() {
     try (World world = GovZ6WorldFixture.smallWorldGenesis(tempDir.resolve("day1"), "day1");
-        AppLogCapture log = AppLogCapture.appTime()) {
+        AppLogCapture log = AppLogCapture.appTime();
+        // ★ W5.5 测试批：人口算式的两个读数（出生/死亡）只在 Social 的 POPULATION_SETTLE 里 ⇒ 同时采集它。
+        AppLogCapture socialLog = AppLogCapture.logger(SocialLog.SETTLE_LOGGER_NAME)) {
       world.advance(0L, 1L);
       SimulationState before = world.stateAt(1L);
       SimulationState after = world.stateAt(2L);
@@ -346,9 +349,29 @@ class GovGenesisZ6Test {
           .as("两 GOV 官俸 332 粮/8 布 + 工资 640 粮/64 银，逐项零缺口")
           .isTrue();
 
-      // 第 1 天人口 4800 → 4801（当日 1 例出生，见 DAY_END population=4801）；hh-gov 仍 0。
+      // ★★★ W5.5 测试批（2026-10-11，显式重新基线化 + 加牙）：这条断言原为裸数字 `4801`，而实测是 **4799**
+      //   —— 且**改动前就已经是 4799**（判别实验见 W5.5-fix2 账本 ③-3：改前/改后 day1 的 POPULATION_SETTLE
+      //   逐值同一行 `births=1 deaths=2 famineDeaths=2`；那一轮测试在 `:239` 就红了、没跑到这里，所以旧数字一直没被发现）。
+      //   ⇒ 按"不许留僵死数字"的口径改成**能自证的算式**：人口' == 创世人口 + 当日出生 − 当日死亡。
+      //   三个量全部是当场读到的真值（人口 = Social 家户表求和；出生/死亡 = Social 唯一结算口 POPULATION_SETTLE 的真日志）
+      //   ⇒ 世界再变时这条断言会指出**是哪一项变了**，而不是只喊"数字不对"。
       SocialData socialAfter = GovZ6WorldFixture.socialSlice(after);
-      assertThat(totalSocialPopulation(socialAfter)).isEqualTo(4801L);
+      long genesisPopulation = totalSocialPopulation(GovZ6WorldFixture.socialSlice(before));
+      String populationSettle = theOnlyPopulationSettleLine(socialLog);
+      assertThat(longFieldOf(populationSettle, "day")).as("当天那一行结算日志属于第 1 天").isEqualTo(1L);
+      long day1Births = longFieldOf(populationSettle, "births");
+      long day1Deaths = longFieldOf(populationSettle, "deaths");
+      assertThat(genesisPopulation).as("创世人口（算式左项；与 tick0 用例同一口径）").isEqualTo(4800L);
+      assertThat(day1Births).as("第 1 天出生 = 1（真日志读数）").isEqualTo(1L);
+      assertThat(day1Deaths).as("第 1 天死亡 = 2（含 famineDeaths=2；真日志读数）").isEqualTo(2L);
+      assertThat(totalSocialPopulation(socialAfter))
+          .as(
+              "人口 == 创世人口 %d + 出生 %d − 死亡 %d = %d（算式自证；原裸数字 4801 改动前即已失效）",
+              genesisPopulation,
+              day1Births,
+              day1Deaths,
+              genesisPopulation + day1Births - day1Deaths)
+          .isEqualTo(genesisPopulation + day1Births - day1Deaths);
       assertThat(
               socialAfter
                   .households()
@@ -520,6 +543,43 @@ class GovGenesisZ6Test {
       }
     }
     return total;
+  }
+
+  /**
+   * ★ W5.5 测试批：取本轮唯一的 {@code POPULATION_SETTLE} 事件行（Social 的唯一人口结算口）。
+   *
+   * <p>★ 找不到 / 不止一条 ⇒ 当场抛（**不静默当 0**：读侧漏采会让"人口 == 创世 + 出生 − 死亡"退化成恒真的假绿）。
+   */
+  private static String theOnlyPopulationSettleLine(AppLogCapture socialLog) {
+    List<String> lines =
+        socialLog.messages().stream()
+            // ★ 事件名后必须跟空白：同一 tick 还有 POPULATION_SETTLE_START（前缀相同）——只按子串过滤会采到 2 行。
+            .filter(line -> line.contains("event=POPULATION_SETTLE "))
+            .toList();
+    if (lines.size() != 1) {
+      throw new AssertionError(
+          "第 1 天必须恰有一条 POPULATION_SETTLE 真日志（实得 " + lines.size() + " 条）：" + lines);
+    }
+    return lines.get(0);
+  }
+
+  /** 从事件行里取一个整数（{@code k=v} 形态，读到空白为止）；缺失/非整数 ⇒ 当场抛（★ 不静默当 0）。 */
+  private static long longFieldOf(String line, String key) {
+    String marker = key + "=";
+    int at = line.indexOf(marker);
+    if (at < 0) {
+      throw new AssertionError("事件行缺少字段 " + marker + " : " + line);
+    }
+    int start = at + marker.length();
+    int end = start;
+    while (end < line.length()
+        && (Character.isDigit(line.charAt(end)) || line.charAt(end) == '-')) {
+      end++;
+    }
+    if (end == start) {
+      throw new AssertionError("事件行的字段不是整数 " + marker + " : " + line);
+    }
+    return Long.parseLong(line.substring(start, end));
   }
 
   private static List<HexCrisisSignal.Kind> kindsAt(

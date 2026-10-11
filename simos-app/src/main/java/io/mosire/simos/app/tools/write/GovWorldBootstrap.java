@@ -5,6 +5,7 @@ import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.spi.AdjustAccountsHandler;
 import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.world.HouseholdSeeder;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
@@ -103,6 +104,8 @@ import java.util.Optional;
  * → actor.AdjustAccounts（一次给两国库注入初始 粮/布/银 + 给中央国库注入铜）
  * → economy.RecordMoneyIssuance ×2（两国库各那笔银的 **GENESIS_ENDOWMENT** 审计；★ W5-fix6 补，发行主体 = 银的唯一发行者）
  * → economy.RecordMoneyIssuance（那笔铜的 INITIAL_ENDOWMENT 审计）
+ * → ★★★ W5.5-fix2（追加在末尾）：actor.AdjustAccounts（逐官吏户注入**创世口粮**，口径 = 普通家户创世粮；
+ *   见 {@code EconomySeeder.unitHouseholdGenesisGrainMilli} 与 {@code HouseholdSeeder.unitHouseholdRationPayload}）
  * </pre>
  *
  * <p>★★ <b>官吏规模口径（部分配员，目标 vs 实际）</b>：每 GOV 恰一个官吏户 {@code hh-unit:<govId>}，2 名成年男性（劳动 = 2 ×
@@ -345,13 +348,31 @@ public final class GovWorldBootstrap {
               new EconomyCodec(),
               silverEndowmentPayload(silverIssuer, govId));
     }
+    next =
+        applier.apply(
+            next,
+            EconomyRecordMoneyIssuanceHandler.TYPE,
+            new EconomyRecordMoneyIssuanceHandler(),
+            new EconomyCodec(),
+            copperEndowmentPayload());
+    // ★★★ W5.5-fix2（控制方裁定 (b)：给"单位户"补创世粮，口径与普通家户一致）——**追加**在既有命令序末尾
+    //   （既有各条的相对顺序一字不动）。补的是真根因：官吏户在创世期**没有粮**（本批之前只有国库被注资），
+    //   而当日消费发生在当天俸禄日结**之前**、且第 1 天结构上没有市场轮 ⇒ 第 1 天整日需求落空（satiety −150‰）
+    //   ⇒ 饥饿逃亡率累加到 day8 ⇒ 逃 1 人 ⇒ `GOV_SERVICE` 承诺永久腰斩（32,000→16,000）。
+    //   ★ 量的口径唯一拼写点在 `EconomySeeder.unitHouseholdGenesisGrainMilli`（与普通家户同一条算式）；
+    //     载荷与 INFO 日志的唯一拼写点在 `HouseholdSeeder.unitHouseholdRationPayload`（两条创世路径共用）。
+    //   ★ 不新增逐日给养通道、不动俸禄时点、不动市场相位、不动逃亡规则。
     return applier.apply(
         next,
-        EconomyRecordMoneyIssuanceHandler.TYPE,
-        new EconomyRecordMoneyIssuanceHandler(),
-        new EconomyCodec(),
-        copperEndowmentPayload());
+        ActorAdjustAccountsTool.NAME,
+        new AdjustAccountsHandler(),
+        new ActorCodec(),
+        HouseholdSeeder.unitHouseholdRationPayload(
+            WORLD_LABEL, next, List.of(CENTRAL_GOV_ID, PROVINCE_GOV_ID)));
   }
+
+  /** ★ W5.5-fix2：本创世路径的世界标签（只进日志；本类只服务 {@code small-world}）。 */
+  private static final String WORLD_LABEL = "small-world";
 
   /**
    * ★★ <b>W5-fix6：世界里"银的发行主体"</b>（`issuable` 含 {@link MoneyVocabulary#SILVER_CURRENCY} 的那个政府）。

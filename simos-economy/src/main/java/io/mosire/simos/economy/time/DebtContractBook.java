@@ -10,11 +10,9 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalLong;
-import java.util.function.Predicate;
 
 /**
  * ★★ <b>E4c：债务合同的唯一写口</b>（理想架构 §2.7；计划 §4「债务只走 upsertDebt」）。本类之外，生产代码 <b>不得再对债务工作表调用 {@code
@@ -26,7 +24,6 @@ import java.util.function.Predicate;
  * upsert 本金增加：借入 / 欠租欠薪资本化 / 利息并入（利息走 compoundInterest，多写 lastInterestDay）
  * reduce 本金减少：偿还 / 减免（部分）；剩余为 0 且未违约 ⇒ SETTLED
  * forgive 本金减少：全额到 0 ⇒ FORGIVEN；部分 ⇒ 状态原样保留（原因在返回值里具名）
- * absorb 并行分区结果的落回口：按分区终值替换快照，不重新计算本金
  * </pre>
  *
  * <p>★★ <b>再借语义（显式）</b>：同一四元组在 {@link DebtStatus#SETTLED}/{@link DebtStatus#FORGIVEN} 之后再次借入 ⇒ 本金在
@@ -34,8 +31,8 @@ import java.util.function.Predicate;
  * lastInterestDay} 原样保留）。{@link DebtStatus#DEFAULTED}/{@link DebtStatus#DELINQUENT}
  * 的条在追加借入时<b>状态不变</b>：追加本金不洗白违约/逾期；要洗白必须由明确的状态写口做。
  *
- * <p>★★ <b>到期周期 ({@code dueCycle}) 的覆盖规则（显式）</b>：调用方传入非空 ⇒ <b>覆盖</b>合同当前 {@code
- * dueCycle}（借粮路径的最新一笔到期）；传入空 ⇒ <b>保留</b>原值（条款自身写死了期限的合同不被滚动字段改掉）。
+ * <p>★★ <b>到期周期 ({@code dueCycle}) 的覆盖规则（显式）</b>：调用方传入非空 ⇒ <b>覆盖</b>合同当前 {@code dueCycle}；传入空 ⇒
+ * <b>保留</b>原值（条款自身写死了期限的合同不被滚动字段改掉）。
  *
  * <p>★★ <b>它不搬任何粮/钱、不碰任何库存</b>：所有方法只写传入的债务工作表。利息/资本化/减免都只是本金与状态的变化； 真实的粮/钱换手仍只走 {@code 旧结算引擎（R3a
  * 已删除）.applyTransfer}。
@@ -518,52 +515,6 @@ public final class DebtContractBook {
     Objects.requireNonNull(unit, "unit 不得为 null");
     Objects.requireNonNull(terms, "terms 不得为 null");
     return forgive(contracts, DebtContractId.idOf(debtor, creditor, unit, terms), amount, reason);
-  }
-
-  /**
-   * ★★ <b>并行分区结果的唯一落回口</b>（包内可见：只服务 {@code 旧结算引擎（R3a 已删除）} 的并行借粮分区）。
-   *
-   * <p>★ 它<b>不是</b>本金递增语义：不做 addExact、不重置状态；只负责「分区 worker 的终值 → 协调器」这一步， 所以每个分区只允许碰自己债务人集合内的合同（同
-   * key 不会由两个分区同时写）。值与原值逐字相同 ⇒ 不产生写入。 键/值身份守卫照 {@link #requireSameIdentity} 走。
-   *
-   * @param target 协调器债务工作表（就地更新）；不得为 null
-   * @param partitionResult 分区 worker 的终值表；不得为 null
-   */
-  static void absorb(
-      Map<DebtContractId, DebtContract> target, Map<DebtContractId, DebtContract> partitionResult) {
-    Objects.requireNonNull(target, "target 不得为 null");
-    Objects.requireNonNull(partitionResult, "partitionResult 不得为 null");
-    for (Map.Entry<DebtContractId, DebtContract> entry : partitionResult.entrySet()) {
-      DebtContractId id = entry.getKey();
-      DebtContract value = entry.getValue();
-      if (id == null || value == null) {
-        throw new IllegalArgumentException("partitionResult 的键与值都不得为 null: " + id);
-      }
-      requireSameIdentity(id, value);
-      DebtContract existing = target.get(id);
-      if (existing == null || !existing.equals(value)) {
-        target.put(id, value);
-      }
-    }
-  }
-
-  /**
-   * ★ 为并行分区复制一份「只含指定债务人合同」的工作表快照（包内可见：复制口的写入仍在本类内；worker 之后用 {@link #absorb} 落回）。
-   *
-   * @param contracts 权威债务表（只读）；不得为 null
-   * @param debtorFilter 该分区的债务人归属判据；不得为 null
-   */
-  static LinkedHashMap<DebtContractId, DebtContract> subset(
-      Map<DebtContractId, DebtContract> contracts, Predicate<DebtContract> debtorFilter) {
-    Objects.requireNonNull(contracts, "contracts 不得为 null");
-    Objects.requireNonNull(debtorFilter, "debtorFilter 不得为 null");
-    LinkedHashMap<DebtContractId, DebtContract> copy = new LinkedHashMap<>();
-    for (Map.Entry<DebtContractId, DebtContract> entry : contracts.entrySet()) {
-      if (debtorFilter.test(entry.getValue())) {
-        copy.put(entry.getKey(), entry.getValue());
-      }
-    }
-    return copy;
   }
 
   /** 取合同；缺席 ⇒ 具名抛（不允许"减少一条不存在的合同"这种静默 no-op）。 */

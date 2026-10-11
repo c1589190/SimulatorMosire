@@ -64,6 +64,7 @@ import io.mosire.simos.app.tools.write.EconomyMergeMarketZonesTool;
 import io.mosire.simos.app.tools.write.EconomyReassignZoneHexesTool;
 import io.mosire.simos.app.tools.write.EconomySetCommodityFreightTool;
 import io.mosire.simos.app.tools.write.EconomySetGovernmentMintScaleTool;
+import io.mosire.simos.app.tools.write.EconomySetMarketZoneLoanRateAlphaTool;
 import io.mosire.simos.app.tools.write.EconomySetMarketZonePriceAlphaTool;
 import io.mosire.simos.app.tools.write.EconomyUpsertGovUnitTool;
 import io.mosire.simos.app.tools.write.EconomyUpsertIndustryTool;
@@ -794,6 +795,12 @@ public final class SimosToolSource implements ToolSource {
     //   令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；
     //   写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
     built.add(new EconomySetMarketZonePriceAlphaTool(core, initiator, mapId));
+    // ★★★ W5.5（2026-10-11，S-12⑤）：**市场区货币市场利率步长 α 的 GM 窄写**（economy.SetMarketZoneLoanRateAlpha 的
+    //   薄封装）。利率 = 钱的价（与商品价同一套自适应算式：缺钱涨、钱多跌、下限 0），而"每轮最多动多少"必须是 GM 可调的
+    //   预设（用户 2026-09-25 裁定）⇒ 这是它的写口。**只在 GM 桶**：决策人桶没有它、DecisionCallerFactory.WHITELIST
+    //   也不含；命令标了 GmOnlyCommand ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。
+    //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
+    built.add(new EconomySetMarketZoneLoanRateAlphaTool(core, initiator, mapId));
     // ★★ W5-fix6（2026-10-11，D1）：**政府铸币规模旋钮的 GM 窄写**（economy.SetGovernmentMintScale 的薄封装）。
     //   旋钮是"本政府每周期最多铸多少毫"的唯一闸门，而改前唯一能写它的命令只认 gov-unit-<id> 形态 ⇒ 世界级
     //   world-silver（唯一会铸币的政府）够不着（W5 验收报告 §3-D1 的 HTTP 422）。本工具补这条写口。

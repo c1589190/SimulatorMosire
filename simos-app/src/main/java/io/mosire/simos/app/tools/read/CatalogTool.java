@@ -447,6 +447,15 @@ public final class CatalogTool implements AgentTool {
                   + "★ 生效时点 = 下一市场轮；★ GM-only：不进令/RegisterEffect/决策人目录，"
                   + "GM 的 simos.command.submit 与窄工具 simos.economy.setMarketZonePriceAlpha 可用）"),
           Map.entry(
+              "economy.SetMarketZoneLoanRateAlpha",
+              "marketId, alphaPerMille(≥ 0 的整数；‰/轮)（★ W5.5（S-12⑤）：GM 设置某个市场区的**货币市场利率步长 α**"
+                  + "（MarketZone.loanRateAlphaPerMille；缺省 50‰/轮，不设上下限 —— 可以远大于 50，也可以取 0 ="
+                  + " 该区利率不再随供需变动）；利率 = 钱的价：缺钱每轮最多涨 α‰、钱多每轮最多跌 α‰，下限 0（白借合法），"
+                  + "规模只决定多快打满 α；区不存在（含派生市场）⇒ 拒 zone-missing；与现值相同 ⇒ 拒 alpha-unchanged；"
+                  + "α < 0 ⇒ 拒 bad-payload；★ 只写 marketZones 一个区的这一个字段，价表/成员格/法定币/价格步长/本轮清算"
+                  + "利率/账户/债务一个数都不动；★ 生效时点 = 下一市场轮；★ GM-only：不进令/RegisterEffect/决策人目录，"
+                  + "GM 的 simos.command.submit 与窄工具 simos.economy.setMarketZoneLoanRateAlpha 可用）"),
+          Map.entry(
               "economy.SetGovernmentMintScale",
               "governmentId | govUnitId(恰给一个：governmentId = 精确政府 id —— 世界级政府如 world-silver 只能走这一路；"
                   + "govUnitId = GOV 单位 id ⇒ 派生 gov-unit-<id>), mintScalePerCycle(必填；≥ 0 的整数，单位 = 毫/产业大周期)"

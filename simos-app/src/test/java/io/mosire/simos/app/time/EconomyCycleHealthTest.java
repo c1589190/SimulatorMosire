@@ -32,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -175,40 +176,81 @@ class EconomyCycleHealthTest {
    * 75/78/80/83/85/88/90）却**只有落在段末（day 90）的那一轮**被旧断言逮到；另一次同族坏法里零成交轮恰好全落在非段末日 ⇒ 旧断言（每段 >
    * 0）会**全绿**。只钉"最小值 ≥ 17"仍会漏掉"最小值没变、但中位/尾部整体塌下去"的形态；分布指纹对
    * "任何一轮的成交笔数变了"都当场红（这是**基线守卫**：世界行为有意改变时必须显式重新基线化，不是放宽判据）。
+   *
+   * <p>★★★ <b>W5.5 测试批（2026-10-11）：显式重新基线化（旧值 → 新值 + 依据）</b>：
+   *
+   * <pre>
+   * 旧指纹（W4b 基线，改前世界）：
+   *   {17=10, 18=1, 21=7, 22=9, 23=5, 24=12, 31=1, 34=1, 35=3, 36=4, 37=8, 38=1,
+   *    39=2, 40=13, 41=2, 44=1, 53=8, 54=1, 55=3, 56=2, 66=1, 131=1}      min/中位/max = 17 / 35.0 / 131
+   * 新指纹（W5.5 全链 + fix2 之后的真值；★ 单一形态）：
+   *   {15=1, 21=11, 22=8, 23=4, 24=6, 25=5, 26=10, 30=1, 41=1, 43=4, 44=5, 45=24,
+   *    46=2, 47=5, 48=1, 49=1, 50=1, 51=1, 56=1, 57=1, 66=1, 92=1, 140=1}   min/中位/max = 15 / 43.0 / 140
+   *   （轮数 96、零成交轮次 0；Σfills = 3522 由本分布唯一决定，并与 MARKET_FILL 逐笔行数交叉验证。）
+   * </pre>
+   *
+   * <p>★★ <b>依据（三条一起，逐条具名）</b>：
+   *
+   * <ol>
+   *   <li><b>W5.5 的货币腿</b>（S-12：「先借钱再买货」）：现金不足的家户先借入再成交 ⇒ <b>每轮成交笔数整体上移</b> （20 及以下的轮次从 11 轮降到 1
+   *       轮、40+ 的轮次从 21 轮升到 30 轮以上）；
+   *   <li><b>R2 的参与者收窄</b>（军户/官吏户只买不卖）：单位户回到买盘 ⇒ 它们的买单进入逐轮成交（W5.5-fix 账本 ⑤-③ 实测 120 天 43 条 {@code
+   *       MARKET_HOUSEHOLD_BUY_ORDER}、全部现金付清）；
+   *   <li><b>W5.5-fix2 的单位户创世粮</b>（每户 75000 毫粮）：单位户首日不再断顿 ⇒ 它们的卖/买行为不因饥饿缩量。
+   * </ol>
+   *
+   * <p>★★★ <b>W5.5-fix3 的诊断结论：这里没有非确定性 —— 曾经读到的"第二个形态"是 {@code target/classes} 陈旧造成的另一份编译产物</b>
+   * （权威：W5.5-fix3 账本 §②；纪律：AGENTS §三.5「"同一个输入跑出两个结果"的第一嫌疑是产物陈旧，不是非确定性」）。诊断链： ① 那个"第二形态"与 W5.5-fix2
+   * <b>之前</b>的读数<b>逐值相同</b> ⇒ 它是"fix2 的创世粮没生效"的世界； ② <b>判别实验（决定性）</b>：把 <b>pre-fix2</b> 的 {@code
+   * ThreePowersGovBootstrap.class} 放在 classpath 最前（其余全用当前字节）⇒ 分布<b>当场变成那一族</b>；③ 反面对照：同 JVM
+   * 内先后两个世界<b>逐字节相同</b>（排除逐对象 identity hash）、 {@code ImmutableCollections.SALT32L} 钉 12 个盐的实验与
+   * identity-hash 位移 12 个步数的实验<b>全部落同一形态</b>（排除盐化迭代序与哈希序）、 独立 JVM 采样 16 次全等 ⇒ 无运行期非确定源。修完后 56 次实跑（含
+   * 5 次单类 + 3 次合并命令）<b>全部落在这一个形态</b> ⇒ 守卫<b>收回单一期望</b>（逐值指纹 + min/中位/max），任何第三个值即红。
+   *
+   * <p>★ <b>没动的那条牙</b>：{@code assertEveryMarketRoundTraded} 的"<b>零成交轮次 = 0</b>"与三条读侧自检 （轮次数 96 /
+   * 同日不得两轮 / 相邻轮间隔 ≤ 5 天）<b>一字未动</b>；{@code Σfills == MARKET_FILL 行数}的交叉验证也原样保留。 ★ 实测命令与读数见账本
+   * {@code .superpowers/sdd/2026-10-11-w5.5-test-batch/impl-ledger.md} 的 {@code # W5.5e} 节。
    */
-  private static Map<Long, Integer> baselineFillsDistribution() {
-    Map<Long, Integer> distribution = new TreeMap<>();
-    distribution.put(17L, 10);
-    distribution.put(18L, 1);
-    distribution.put(21L, 7);
-    distribution.put(22L, 9);
-    distribution.put(23L, 5);
-    distribution.put(24L, 12);
-    distribution.put(31L, 1);
-    distribution.put(34L, 1);
-    distribution.put(35L, 3);
-    distribution.put(36L, 4);
-    distribution.put(37L, 8);
-    distribution.put(38L, 1);
-    distribution.put(39L, 2);
-    distribution.put(40L, 13);
-    distribution.put(41L, 2);
-    distribution.put(44L, 1);
-    distribution.put(53L, 8);
-    distribution.put(54L, 1);
-    distribution.put(55L, 3);
-    distribution.put(56L, 2);
-    distribution.put(66L, 1);
-    distribution.put(131L, 1);
-    return distribution;
+  private static final FillRegime BASELINE_FILLS = baselineFills();
+
+  /** 本世界 96 轮市场成交笔数分布的<b>单一</b>实测基线（指纹 + min/中位/max 三个读数）。 */
+  private record FillRegime(
+      Map<Long, Integer> distribution, long minFills, double medianFills, long maxFills) {
+
+    FillRegime {
+      // ★ 保序不可变（禁 Map.copyOf：迭代序不是内容的纯函数；I7）。
+      distribution = Collections.unmodifiableMap(new TreeMap<>(distribution));
+    }
   }
 
-  /** ★ W4b 加牙：分布指纹的最小 / 中位 / 最大成交笔数（验收实测 17 / 35 / 131）。 */
-  private static final long BASELINE_MIN_FILLS = 17L;
-
-  private static final double BASELINE_MEDIAN_FILLS = 35.0;
-
-  private static final long BASELINE_MAX_FILLS = 131L;
+  /** ★ 本世界 96 轮成交笔数分布（min/中位/max = 15 / 43.0 / 140；96 轮的中间两项都是 43）。 */
+  private static FillRegime baselineFills() {
+    Map<Long, Integer> distribution = new TreeMap<>();
+    distribution.put(15L, 1);
+    distribution.put(21L, 11);
+    distribution.put(22L, 8);
+    distribution.put(23L, 4);
+    distribution.put(24L, 6);
+    distribution.put(25L, 5);
+    distribution.put(26L, 10);
+    distribution.put(30L, 1);
+    distribution.put(41L, 1);
+    distribution.put(43L, 4);
+    distribution.put(44L, 5);
+    distribution.put(45L, 24);
+    distribution.put(46L, 2);
+    distribution.put(47L, 5);
+    distribution.put(48L, 1);
+    distribution.put(49L, 1);
+    distribution.put(50L, 1);
+    distribution.put(51L, 1);
+    distribution.put(56L, 1);
+    distribution.put(57L, 1);
+    distribution.put(66L, 1);
+    distribution.put(92L, 1);
+    distribution.put(140L, 1);
+    return new FillRegime(distribution, 15L, 43.0, 140L);
+  }
 
   /** ★ W4b 加牙：市场例行轮的最大间隔（天）—— 用它守"读侧没漏采轮次"（每 5 天必有一轮例行开市）。 */
   private static final long MAX_MARKET_ROUND_GAP_DAYS = 5L;
@@ -377,7 +419,7 @@ class EconomyCycleHealthTest {
               + " 天，5 组不变量全部成立（货币守恒 · 非负 · 人口不爆不灭 · 市场在运转 · 账目闭合）"
               + " + W4b 加牙："
               + BASELINE_MARKET_ROUNDS
-              + " 个市场轮逐轮零成交 = 0 且分布指纹与基线逐值相同 ===");
+              + " 个市场轮逐轮零成交 = 0 且分布指纹与实测基线逐值相同（单一形态；第三个值即红）===");
       writeSummary(summary);
       summary.forEach(System.out::println);
     }
@@ -432,22 +474,27 @@ class EconomyCycleHealthTest {
         .isEmpty();
 
     // ── ② 基线分布指纹（逐值钉住；不是区间、不是下界） ──
+    //   ★★ W5.5e（2026-10-11）：守卫**收回单一形态**。早前"两个已实测形态之一"的折中是 W5.5d 在
+    //   "疑似非确定性"下写的；W5.5-fix3 的判别实验证明那是 **target/classes 陈旧**（另一份编译产物），
+    //   不是运行期非确定性（证据与实验见 BASELINE_FILLS 的注释）⇒ 现在整份分布 + min/中位/max 逐值 isEqualTo。
     Map<Long, Integer> actualDistribution = distributionOf(rounds);
     assertThat(actualDistribution)
         .as(
-            "逐市场轮成交笔数的分布必须与验收实测基线逐值相同（世界行为有意改变时必须显式重新基线化，不许放宽）。" + "实测=%s 基线=%s",
-            distributionText(rounds), actualDistribution)
-        .isEqualTo(baselineFillsDistribution());
+            "逐市场轮成交笔数的分布必须与实测基线**逐值相同**（任何一轮的笔数变了都当场红；" + "世界行为有意改变时必须显式重新基线化，不许放宽）。基线=%s 实测=%s",
+            distributionText(BASELINE_FILLS.distribution()), distributionText(rounds))
+        .isEqualTo(BASELINE_FILLS.distribution());
 
     List<Long> sorted = rounds.stream().map(MarketRound::fills).sorted().toList();
     double median = (sorted.get(sorted.size() / 2 - 1) + sorted.get(sorted.size() / 2)) / 2.0;
     assertThat(sorted.get(0))
-        .as("最小成交笔数（基线 %d；实测分布=%s）", BASELINE_MIN_FILLS, distributionText(rounds))
-        .isEqualTo(BASELINE_MIN_FILLS);
-    assertThat(median).as("中位成交笔数（基线 %s）", BASELINE_MEDIAN_FILLS).isEqualTo(BASELINE_MEDIAN_FILLS);
+        .as("最小成交笔数（基线 %d；实测分布=%s）", BASELINE_FILLS.minFills(), distributionText(rounds))
+        .isEqualTo(BASELINE_FILLS.minFills());
+    assertThat(median)
+        .as("中位成交笔数（基线 %s）", BASELINE_FILLS.medianFills())
+        .isEqualTo(BASELINE_FILLS.medianFills());
     assertThat(sorted.get(sorted.size() - 1))
-        .as("最大成交笔数（基线 %d）", BASELINE_MAX_FILLS)
-        .isEqualTo(BASELINE_MAX_FILLS);
+        .as("最大成交笔数（基线 %d）", BASELINE_FILLS.maxFills())
+        .isEqualTo(BASELINE_FILLS.maxFills());
 
     // ── ③ 交叉验证：逐轮 fills 之和 == 逐笔 MARKET_FILL 行数（两个独立读数同源） ──
     long totalFills = rounds.stream().mapToLong(MarketRound::fills).sum();
@@ -537,8 +584,13 @@ class EconomyCycleHealthTest {
 
   /** 分布的可读形态：{@code 17×10, 18×1, …}（笔数升序）。 */
   private static String distributionText(List<MarketRound> rounds) {
+    return distributionText(distributionOf(rounds));
+  }
+
+  /** 分布的可读形态（指纹 Map 版；键已按笔数升序 ⇒ 打印稳定）。 */
+  private static String distributionText(Map<Long, Integer> distribution) {
     StringBuilder text = new StringBuilder();
-    for (Map.Entry<Long, Integer> entry : distributionOf(rounds).entrySet()) {
+    for (Map.Entry<Long, Integer> entry : distribution.entrySet()) {
       if (text.length() > 0) {
         text.append(", ");
       }

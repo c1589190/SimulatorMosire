@@ -135,7 +135,8 @@ class McpCoverageTest {
    * ⇒ 91；Z1a/Z1c/Z2/Z3a/Z3d 再 +7 条 ⇒ 128；★★ 2026-10-09 按实测补入 A1/A2a/B2（2026-10-08 货币词表 + 官方汇率 +
    * 市场区）的 8 条 ⇒ 136，W2 新增 {@code economy.SetMarketZonePriceAlpha} ⇒ **141**，★★ W5-fix6 新增 {@code
    * economy.SetGovernmentMintScale} ⇒ **142**（与 SimosToolsTest 同源：那边的 {@code
-   * EXPECTED_COMMAND_TYPES} 也按实测更新，两处计数必须逐字相同）。
+   * EXPECTED_COMMAND_TYPES} 也按实测更新，两处计数必须逐字相同）；★★ W5.5 新增 {@code
+   * economy.SetMarketZoneLoanRateAlpha} ⇒ **143**（同源同上）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -177,6 +178,8 @@ class McpCoverageTest {
           "economy.SetMarketZonePriceAlpha",
           // ★★ W5-fix6（2026-10-11）：政府铸币政策旋钮的 GM 写口（141 → 142）
           "economy.SetGovernmentMintScale",
+          // ★★ W5.5（2026-10-11，S-12⑤）：货币市场利率的自适应步长 α 的 GM 写口（142 → 143）
+          "economy.SetMarketZoneLoanRateAlpha",
           "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
           "economy.SetOfficialRate",
@@ -324,6 +327,10 @@ class McpCoverageTest {
           //   governments 为空（没有 world-silver，也没有 gov-unit-* 政府）⇒ 载荷形状合法但必须具名拒
           //   government-missing（与同批的 gov-missing 那一族同款；拒因由 handler 的 `government == null` 分支给出）。
           "economy.SetGovernmentMintScale",
+          // ★★ W5.5（2026-10-11）：货币市场利率 α 与逐区价格 α 同款 —— 只作用于**已存在的持久价表**；本夹具的
+          //   市场是派生形态（marketZones 为空、价表键 = 派生市场 id）⇒ 载荷形状合法但必须具名拒 table-missing
+          //   （拒因由 handler 的 `base.marketTables().get(marketId) == null` 分支给出）。
+          "economy.SetMarketZoneLoanRateAlpha",
           // ★ R1（2026-10-09）：政府市场授权要"已登记政府 + 其国库是家户"（本夹具没有）⇒ 走具名拒路径。
           "economy.AuthorizeGovernmentMarketOrder",
           "economy.CancelGovernmentMarketOrder",
@@ -419,6 +426,11 @@ class McpCoverageTest {
               //   **不存在**的政府 ⇒ 拒 government-missing。★ 用 governmentId 而不是 govUnitId：世界级政府只能走
               //   精确 id 这一路（govUnitId 只是另一条被支持的路，不在这里当被测对象）。
               "{\"governmentId\": \"gov-missing\", \"mintScalePerCycle\": 300, \"reason\": \"coverage\"}"),
+          Map.entry(
+              "economy.SetMarketZoneLoanRateAlpha",
+              // ★★ W5.5：载荷形状逐字段合法（marketId + alphaPerMille 都在），点名一个**不存在**的市场 ⇒ 拒
+              //   table-missing（与同批的 SetMarketZonePriceAlpha 的 zone-missing 同款；两者都要求"表已存在"）。
+              "{\"marketId\": \"zone-missing\", \"alphaPerMille\": 100, \"reason\": \"coverage\"}"),
           Map.entry(
               "economy.SetMarketNumeraire",
               // ★★ W1g（W1 契约迁移）：载荷从逐格 {q,r,numeraire} 改成 {marketId,numeraire}。本夹具里它仍必须是具名拒

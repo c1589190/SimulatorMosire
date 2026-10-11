@@ -328,8 +328,8 @@ class SimosToolsTest {
           "simos.worldgen.initialize");
 
   /**
-   * ★★ <b>economy 侧的 6 条窄写工具名</b>（B2 的市场区 3 条 + F 的运费 + W2 的逐区 α + W5-fix6 的铸币旋钮）：**只进 GM 组**，都继承
-   * {@code AbstractNarrowWriteTool}（⇒ 窄写扫描器按 {@code tools/write} 扫得到）。
+   * ★★ <b>economy 侧的 7 条窄写工具名</b>（B2 的市场区 3 条 + F 的运费 + W2 的逐区 α + W5-fix6 的铸币旋钮 + ★ W5.5 的逐市场利率
+   * α）：**只进 GM 组**，都继承 {@code AbstractNarrowWriteTool}（⇒ 窄写扫描器按 {@code tools/write} 扫得到）。
    *
    * <p>★ 工具名与命令类型**不同名**（{@code simos.economy.defineMarketZone} ↔ {@code
    * economy.DefineMarketZone}）， 故命令类型另列在 {@link #ECONOMY_ZONE_WRITE_COMMAND_TYPES}；与 {@code
@@ -345,11 +345,14 @@ class SimosToolsTest {
           // ★★ W2（2026-10-11）：逐区价格步长 α 的窄写工具（GM 把某区价格钉死/调快调慢）
           "simos.economy.setMarketZonePriceAlpha",
           // ★★ W5-fix6（2026-10-11）：政府铸币政策旋钮的 GM 窄写（工具名 ≠ 命令类型，同 W2 那款）
-          "simos.economy.setGovernmentMintScale");
+          "simos.economy.setGovernmentMintScale",
+          // ★★ W5.5（2026-10-11，S-12⑤）：货币市场利率的自适应步长 α 的 GM 窄写（与 W2 的逐区价格 α 同形）
+          "simos.economy.setMarketZoneLoanRateAlpha");
 
   /**
    * {@link #ECONOMY_ZONE_WRITE_NAMES} 里"工具名 ≠ 命令类型"的那几条对应的命令类型（catalog 与 handler 面认的键）：
-   * 立区/改划/合并三区命令 + W2 的逐区 α + W5-fix6 的铸币旋钮（{@code economy.SetCommodityFreight} 与它同名，故不重列）。
+   * 立区/改划/合并三区命令 + W2 的逐区 α + W5-fix6 的铸币旋钮 + W5.5 的逐市场利率 α（{@code economy.SetCommodityFreight}
+   * 与它同名，故不重列）。
    */
   private static final List<String> ECONOMY_ZONE_WRITE_COMMAND_TYPES =
       List.of(
@@ -357,7 +360,8 @@ class SimosToolsTest {
           "economy.ReassignZoneHexes",
           "economy.MergeMarketZones",
           "economy.SetMarketZonePriceAlpha",
-          "economy.SetGovernmentMintScale");
+          "economy.SetGovernmentMintScale",
+          "economy.SetMarketZoneLoanRateAlpha");
 
   /** M1 的 8 条 map 窄写：**只进 GM 组**（= MCP 口），**不进**决策人组（决策人不能直接改数据）。 */
   private static final List<String> MAP_WRITE_NAMES =
@@ -481,9 +485,9 @@ class SimosToolsTest {
           "sd.SetDecisionMakerProvider");
 
   /**
-   * GM 桶的 66 条窄写（8 map + 6 economy + 28 unit + 15 sd + 9 决策共用/其他——后者含 1 army + 1 social + 1
+   * GM 桶的 67 条窄写（8 map + 7 economy + 28 unit + 15 sd + 9 决策共用/其他——后者含 1 army + 1 social + 1
    * actor）。★ 按实测更新：W5-fix6 的 {@code simos.economy.setGovernmentMintScale} 是第 6 条 economy 窄写 ⇒ 65 →
-   * 66。
+   * 66；★★ W5.5 的 {@code simos.economy.setMarketZoneLoanRateAlpha} 是第 7 条 ⇒ 66 → 67。
    */
   private static final List<String> NARROW_WRITE_NAMES =
       concat(
@@ -501,11 +505,11 @@ class SimosToolsTest {
               "social.UpdateCity",
               "actor.AdjustAccounts"));
 
-  /** 写工具全集（127 条 = 61 非窄写 + 66 窄写）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
+  /** 写工具全集（128 条 = 61 非窄写 + 67 窄写）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
   private static final List<String> WRITE_TOOL_NAMES =
       concat(NON_NARROW_WRITE_NAMES, NARROW_WRITE_NAMES);
 
-  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 37 读 + 127 写 = 164（**61 非窄写** + **66 窄写**）。 */
+  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 37 读 + 128 写 = 165（**61 非窄写** + **67 窄写**）。 */
   private static final List<String> GM_TOOL_NAMES = concat(READ_TOOL_NAMES, WRITE_TOOL_NAMES);
 
   /**
@@ -520,7 +524,8 @@ class SimosToolsTest {
    *
    * <p>★★ <b>W2（2026-10-11）</b>补入 {@code economy.SetMarketZonePriceAlpha} ⇒ 140 → 141；★★
    * <b>W5-fix6（2026-10-11）</b> 补入 {@code economy.SetGovernmentMintScale} ⇒ 141 → 142（实测来源同上：扫描面 142
-   * 条 handler 实现，见 {@code SHELL_ASSEMBLED handler=142}）。
+   * 条 handler 实现，见 {@code SHELL_ASSEMBLED handler=142}）；★★ <b>W5.5（2026-10-11）</b> 补入 {@code
+   * economy.SetMarketZoneLoanRateAlpha} ⇒ 142 → 143（实测来源同上：{@code SHELL_ASSEMBLED handler=143}）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -562,6 +567,8 @@ class SimosToolsTest {
           "economy.SetMarketZonePriceAlpha",
           // ★★ W5-fix6（2026-10-11）：政府铸币政策旋钮的 GM 写口（世界级政府只有这一路够得着）—— 141 → 142
           "economy.SetGovernmentMintScale",
+          // ★★ W5.5（2026-10-11，S-12⑤）：货币市场利率的自适应步长 α 的 GM 写口 —— 142 → 143
+          "economy.SetMarketZoneLoanRateAlpha",
           "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
           "economy.SetOfficialRate",
@@ -940,10 +947,10 @@ class SimosToolsTest {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
         .as(
-            "扫描必须恰为 142 个 *Handler.java 的 type()（W2 的 economy.SetMarketZonePriceAlpha 按实测补入本表 ⇒ 140 → 141；★★ W5-fix6 的 economy.SetGovernmentMintScale 按实测补入 ⇒ 141 → 142）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
+            "扫描必须恰为 143 个 *Handler.java 的 type()（W2 的 economy.SetMarketZonePriceAlpha 按实测补入本表 ⇒ 140 → 141；★★ W5-fix6 的 economy.SetGovernmentMintScale 按实测补入 ⇒ 141 → 142；★★ W5.5 的 economy.SetMarketZoneLoanRateAlpha 按实测补入 ⇒ 142 → 143）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
                 + "P1b1/P3/R3a 的区域清空与国库上缴，辖区阶段 5–12，D1/D3a/D4/D5 的 unit/sd/army 新命令，"
                 + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds；Z6 起纳入 simos-gov 的 2 条 handler；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）")
-        .hasSize(142);
+        .hasSize(143);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -981,8 +988,9 @@ class SimosToolsTest {
         .containsAll(UNIT_WRITE_NAMES)
         .as(
             "★ W2 后：GM 桶 = 37 读 + 126 写 = 163（61 非窄写 + 65 窄写；W2 的 simos.economy.setMarketZonePriceAlpha 是窄写 ⇒ 163）；"
-                + "★★ W5-fix6 的 simos.economy.setGovernmentMintScale 同样是窄写 ⇒ 163 → 164（实测：SHELL_ASSEMBLED tool=164、MCP 外发工具 164 个）")
-        .hasSize(164);
+                + "★★ W5-fix6 的 simos.economy.setGovernmentMintScale 同样是窄写 ⇒ 163 → 164（实测：SHELL_ASSEMBLED tool=164、MCP 外发工具 164 个）；"
+                + "★★ W5.5 的 simos.economy.setMarketZoneLoanRateAlpha 同样是窄写 ⇒ 164 → 165（实测：本轮真跑该类的 tool 面计数）")
+        .hasSize(165);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1090,9 +1098,10 @@ class SimosToolsTest {
     Set<String> implemented = narrowWriteToolNamesFromSources();
     assertThat(implemented)
         .as(
-            "扫描必须恰为 68 个窄写工具类（W2 的 simos.economy.setMarketZonePriceAlpha 继承 AbstractNarrowWriteTool ⇒ "
-                + "66 → 67；★★ W5-fix6 的 simos.economy.setGovernmentMintScale 同样继承它 ⇒ 67 → 68；扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
-        .hasSize(68);
+            "扫描必须恰为 69 个窄写工具类（W2 的 simos.economy.setMarketZonePriceAlpha 继承 AbstractNarrowWriteTool ⇒ "
+                + "66 → 67；★★ W5-fix6 的 simos.economy.setGovernmentMintScale 同样继承它 ⇒ 67 → 68；"
+                + "★★ W5.5 的 simos.economy.setMarketZoneLoanRateAlpha 同样继承它 ⇒ 68 → 69；扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
+        .hasSize(69);
 
     // 真工具面派生的 GM 窄写 = GM 桶 ∖ 读名单 ∖ 非窄写写工具。
     List<String> gmNarrow =
@@ -1102,7 +1111,7 @@ class SimosToolsTest {
             .filter(name -> !NON_NARROW_WRITE_NAMES.contains(name))
             .toList();
     assertThat(gmNarrow)
-        .as("GM 窄写必须逐条等于 NARROW_WRITE_NAMES（66 条：9 + 8 map + 6 economy + 28 unit + 15 sd）")
+        .as("GM 窄写必须逐条等于 NARROW_WRITE_NAMES（67 条：9 + 8 map + 7 economy + 28 unit + 15 sd）")
         .containsExactlyInAnyOrderElementsOf(NARROW_WRITE_NAMES);
 
     // ★ D5：决策人桶里也有窄写（两条外交命令型窄工具）——它们同样必须在册，不能成为"扫描器盲区"。
@@ -1733,9 +1742,10 @@ class SimosToolsTest {
     Set<String> onDisk = toolNamesFromSources();
     assertThat(onDisk)
         .as(
-            "扫描必须恰为 174 个 *Tool.java 的 NAME（W2 新增 simos.economy.setMarketZonePriceAlpha ⇒ 172 → 173；"
-                + "★★ W5-fix6 新增 simos.economy.setGovernmentMintScale ⇒ 173 → 174；扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(174);
+            "扫描必须恰为 175 个 *Tool.java 的 NAME（W2 新增 simos.economy.setMarketZonePriceAlpha ⇒ 172 → 173；"
+                + "★★ W5-fix6 新增 simos.economy.setGovernmentMintScale ⇒ 173 → 174；"
+                + "★★ W5.5 新增 simos.economy.setMarketZoneLoanRateAlpha ⇒ 174 → 175；扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(175);
 
     List<String> union =
         Stream.concat(

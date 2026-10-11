@@ -69,12 +69,50 @@ import java.util.Set;
  * 不能直接用在<b>参数</b>上（那会改掉参数绑定的类型），故这里用"先拷进不可变副本、再重新绑定"的同一形制。★ 成员格取 <b>规范序</b>（{@code (q, r)}
  * 升序）：迭代序是内容的纯函数（I7；禁 {@code Set.copyOf}）。
  *
+ * <p>★★ <b>W5.5（2026-10-11，S-12⑤）：本表同时承载<b>货币市场</b>的两个数</b> —— {@link #loanRatePerMille()}（本市场"钱的价"
+ * = 逐市场轮清算出的利率）与 {@link #loanRateAlphaPerMille()}（利率的自适应步长 α，GM 可调）。用户原话「**钱是市场里的一个商品**」
+ * 「相当于是同一个市场体系里的改造」⇒ 钱的价与货的价挂在<b>同一张市场表</b>上。
+ *
+ * <p>★★ <b>为什么挂在本表而不是 {@code MarketZone}（判据：哪一种世界形态能承载它）</b>：本表是<b>逐市场持久状态</b>， 而 {@code
+ * MarketZone} 只在"显式立区"的世界里有 —— 派生形态的世界（小世界 {@code world-silver} 等：{@code marketZones} 为空、 区按"城市 +
+ * tier 半径"现算、<b>但价表是持久的</b>）<b>没有区记录可挂</b>。挂在区记录上的话，那些世界的利率会**每轮从出厂缺省重新起算 ⇒ 永远冻结在 20‰**（实测：小世界 120
+ * 天 48 个市场轮，{@code rateChanges=0}）——那正是"静默死分支"。挂在本表上，两种世界形态都能持久化、 都能逐轮自适应。★ 缺省 = {@value
+ * #DEFAULT_LOAN_RATE_PER_MILLE}‰/周期与 {@value #DEFAULT_LOAN_RATE_ALPHA_PER_MILLE}‰/轮
+ * （三参构造器给；"没设过"的世界走这两个数，缺省语义中性）。
+ *
  * @param numeraire 本市场的计价币；不得为 null
  * @param hexes 本市场的成员格（派生形态的唯一权威；持久形态必须为空表）；不得为 null；逐值非 null、规范序、不可变
  * @param prices 商品 → 单价（毫计价货币 / 商品单位；**逐值 ≥ 0**，0 = 明确免费）；不得为 null（没有价格就请给空表）
+ * @param loanRatePerMille ★★ W5.5：本市场货币市场的清算利率（‰/周期；≥ 0；0 = 白借）
+ * @param loanRateAlphaPerMille ★★ W5.5：本市场利率的自适应步长 α（‰/轮；≥ 0；0 = 利率不随供需变动）
  */
 public record MarketTable(
-    CurrencyId numeraire, Set<HexCoord> hexes, Map<CommodityId, Long> prices) {
+    CurrencyId numeraire,
+    Set<HexCoord> hexes,
+    Map<CommodityId, Long> prices,
+    long loanRatePerMille,
+    long loanRateAlphaPerMille) {
+
+  /**
+   * ★★ <b>W5.5：货币市场清算利率的出厂缺省（‰/周期）</b> = {@code 20}。
+   *
+   * <p>它 = 全仓既有的借款利率常量（{@code DebtTerms.LEGACY_INTEREST_RATE_PER_MILLE_PER_CYCLE} / {@code
+   * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE}）的同值缺省：没设过利率的世界，第一轮市场就按 20‰ 借出，
+   * 与改前"借粮/赊购"的利率口径<b>逐值对齐</b>（换标的：粮 → 钱）。★ 不是上限：利率由供需逐轮自适应（S-12⑤），缺钱时可涨到任意大； 下限恒 0（白借合法）。
+   */
+  public static final long DEFAULT_LOAN_RATE_PER_MILLE = 20L;
+
+  /**
+   * ★★ <b>W5.5：利率自适应步长 α 的出厂缺省（‰/轮）</b> = {@code 50}（与价格 α 同一个出厂值）。
+   *
+   * <p>它是"没有政策指令时"的值，不是上限；{@code 0} = 该市场利率被钉死（合法状态，判据 6 的"α=0 ⇒ 冻结"）。
+   */
+  public static final long DEFAULT_LOAN_RATE_ALPHA_PER_MILLE = 50L;
+
+  /** ★ 三参形态 = 货币市场两项取缺省：<b>立区/播种/夹具等"不表态"的写入形态</b>（缺省语义中性，不是旧档兼容位）。 */
+  public MarketTable(CurrencyId numeraire, Set<HexCoord> hexes, Map<CommodityId, Long> prices) {
+    this(numeraire, hexes, prices, DEFAULT_LOAN_RATE_PER_MILLE, DEFAULT_LOAN_RATE_ALPHA_PER_MILLE);
+  }
 
   public MarketTable {
     Objects.requireNonNull(numeraire, "MarketTable.numeraire 不得为 null（一个市场恰一种计价币）");
@@ -93,6 +131,14 @@ public record MarketTable(
     hexes = Collections.unmodifiableSet(new LinkedHashSet<>(sorted)); // ★ 冻在赋值处
     if (prices == null) {
       throw new IllegalArgumentException("MarketTable.prices 不得为 null（没有价格请给空表）");
+    }
+    if (loanRatePerMille < 0L) {
+      throw new IllegalArgumentException(
+          "MarketTable.loanRatePerMille 不得为负（0 = 白借，是合法状态）: " + loanRatePerMille);
+    }
+    if (loanRateAlphaPerMille < 0L) {
+      throw new IllegalArgumentException(
+          "MarketTable.loanRateAlphaPerMille 不得为负（0 = 利率不随供需变动，是合法状态）: " + loanRateAlphaPerMille);
     }
     Map<CommodityId, Long> copy = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : prices.entrySet()) {
@@ -115,7 +161,12 @@ public record MarketTable(
   public static MarketTable singleHex(
       CurrencyId numeraire, HexCoord hex, Map<CommodityId, Long> prices) {
     Objects.requireNonNull(hex, "hex");
-    return new MarketTable(numeraire, new LinkedHashSet<>(List.of(hex)), prices);
+    return new MarketTable(
+        numeraire,
+        new LinkedHashSet<>(List.of(hex)),
+        prices,
+        DEFAULT_LOAN_RATE_PER_MILLE,
+        DEFAULT_LOAN_RATE_ALPHA_PER_MILLE);
   }
 
   /** 该商品的单价（毫计价货币 / 商品单位）；**没有定价的商品 ⇒ 0 = 本市场不交易它**（合法状态，不抛）。 */
@@ -164,7 +215,9 @@ public record MarketTable(
 
   /** ★ 只换整张价格表的拷贝（计价币与成员格逐值不变）：自适应写回与 GM 定价的唯一构造形态。 */
   public MarketTable withPrices(Map<CommodityId, Long> nextPrices) {
-    return new MarketTable(numeraire, hexes, nextPrices);
+    // ★★ W5.5：货币市场两项逐值带过 —— 自适应改价**每个市场轮**都会走本方法，漏了它 ⇒ 利率每轮被重置回出厂 20‰
+    //   （"静默丢字段"的同族；本仓最贵的那类 bug）。
+    return new MarketTable(numeraire, hexes, nextPrices, loanRatePerMille, loanRateAlphaPerMille);
   }
 
   /** ★ 只换一条价格行（其余逐值不变）：GM 逐商品定价的最小写入形态。 */
@@ -172,17 +225,35 @@ public record MarketTable(
     Objects.requireNonNull(commodity, "commodity");
     Map<CommodityId, Long> next = new LinkedHashMap<>(prices);
     next.put(commodity, price);
-    return new MarketTable(numeraire, hexes, next);
+    return new MarketTable(numeraire, hexes, next, loanRatePerMille, loanRateAlphaPerMille);
   }
 
   /** ★ 只换计价币（价格表与成员格逐值不变）：GM 改本区计价币的最小写入形态。 */
   public MarketTable withNumeraire(CurrencyId nextNumeraire) {
-    return new MarketTable(nextNumeraire, hexes, prices);
+    return new MarketTable(nextNumeraire, hexes, prices, loanRatePerMille, loanRateAlphaPerMille);
   }
 
   /** ★ 只换成员格（计价币与价格表逐值不变）：派生形态的划界/退让写入形态。 */
   public MarketTable withHexes(Set<HexCoord> nextHexes) {
-    return new MarketTable(numeraire, nextHexes, prices);
+    return new MarketTable(numeraire, nextHexes, prices, loanRatePerMille, loanRateAlphaPerMille);
+  }
+
+  /**
+   * ★★ <b>W5.5：只换本市场的货币市场清算利率</b>（其余逐值不变）—— 市场轮结束时把本轮算出的利率写回（下一轮生效）。
+   *
+   * @param nextLoanRatePerMille 新的清算利率（‰/周期；≥ 0；0 = 白借）；不设上限
+   */
+  public MarketTable withLoanRatePerMille(long nextLoanRatePerMille) {
+    return new MarketTable(numeraire, hexes, prices, nextLoanRatePerMille, loanRateAlphaPerMille);
+  }
+
+  /**
+   * ★★ <b>W5.5：只换本市场利率的自适应步长 α</b>（其余逐值不变）—— {@code economy.SetMarketZoneLoanRateAlpha} 的写入口。
+   *
+   * @param nextLoanRateAlphaPerMille 新的步长（‰/轮；≥ 0；0 = 利率不随供需变动）；不设上限
+   */
+  public MarketTable withLoanRateAlphaPerMille(long nextLoanRateAlphaPerMille) {
+    return new MarketTable(numeraire, hexes, prices, loanRatePerMille, nextLoanRateAlphaPerMille);
   }
 
   /**

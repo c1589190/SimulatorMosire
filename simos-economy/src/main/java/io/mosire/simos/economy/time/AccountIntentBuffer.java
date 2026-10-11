@@ -50,7 +50,7 @@ public final class AccountIntentBuffer {
 
   /**
    * ★★ <b>本分区拥有哪些账户</b>：默认 = 账户 canonical 串哈希到本 {@code partitionIndex}（到货那类按账户分区的阶段）； {@link
-   * #onHexPartition} 时 = 账户所在格哈希到本分区（消费/投入/收获/借粮那类按 hex 分区的阶段）。
+   * #onHexPartition} 时 = 账户所在格哈希到本分区（消费/投入/收获那类按 hex 分区的阶段）。
    *
    * <p>★ 这条谓词是"worker 只写自己分区"的<b>结构守卫</b>：换分区依据时只换谓词一处，不再散落 if。
    */
@@ -105,7 +105,7 @@ public final class AccountIntentBuffer {
   }
 
   /**
-   * ★★ <b>按 hex 分区的产出点</b>（消费/投入/收获/借粮）：账户归哪个分区由<b>它所在格</b>的 canonical 串 （{@code
+   * ★★ <b>按 hex 分区的产出点</b>（消费/投入/收获）：账户归哪个分区由<b>它所在格</b>的 canonical 串 （{@code
    * HexCoord.toString()}，与 {@link PartitionPlan} 的 hex 键逐字同源）决定 —— 同一格的多个主体
    * （农场、作坊、城镇家户）因此必然落同一分区、串行执行；跨格不可能写同一本账（冲突表的结论）。
    *

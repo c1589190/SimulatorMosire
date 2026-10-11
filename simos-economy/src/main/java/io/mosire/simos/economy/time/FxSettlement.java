@@ -349,12 +349,11 @@ final class FxSettlement {
       MarketRegion ownRegion = topology.contains(hex) ? topology.regionOf(hex) : null;
       String regionId = ownRegion == null ? "" : ownRegion.node().nodeId();
       for (HouseholdId household : rows) {
+        // ★★ R2（2026-10-11）**口径边界**：家户外汇单（弱换强）不在 R2 的放行面里 —— R2 放开的是**商品市场买盘**
+        //   （口粮通道），故除普通家户外一律不挂家户外汇单：国库户（只按授权/只走 GOV 外汇窗口）与单位户（军户/官吏户，
+        //   卖侧原口径）都照旧跳过。★ 这是**比 R2 字面更窄**的 fail-closed 选择，已记进实现账本待裁定。
         if (household == null
-            || round.marketExcludedHouseholds().contains(household)
-            // ★★ R1：国库户也不生成**家户外汇单** —— 改前它在 Z7b 排除集里（同一个集合兼着这两件事），
-            //   本轮把商品市场参与与自动下单拆开后，这里必须显式保住原来那一半：国库户的外汇行为
-            //   只走 GOV 外汇窗口（FxRoundInput 的 window），不额外挂家户单。
-            || round.govMandates().isAuthorizationOnly(household)) {
+            || round.householdMarketRole(household) != MarketSettlement.HouseholdMarketRole.FULL) {
           continue;
         }
         HouseholdEconomy row = round.householdEconomies().get(household);

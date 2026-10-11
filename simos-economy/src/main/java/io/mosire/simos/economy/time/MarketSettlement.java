@@ -284,6 +284,26 @@ final class MarketSettlement {
   private MarketSettlement() {}
 
   /**
+   * ★★ <b>控制方裁定 R2（2026-10-11）：家户在本轮<b>商品市场</b>上的角色</b> —— "谁自动买卖 / 谁只买不卖 /
+   * 谁只按授权下单"的<b>唯一拼写点</b>（判定见 {@link MarketRound#householdMarketRole})。
+   *
+   * <p>★★ <b>为什么需要它</b>：Z7b 原来把{@code Unit.households()}（军户/官吏户/国库户）**整体**挡在市场之外
+   * （买卖都不生成），借粮腿一退役，这些家户就失去了**唯一**的口粮通道 ⇒ {@code hh-unit:gov-central} 结构性饥饿 （W5.5 的 BLOCKED 点）。R2
+   * 把这条排除**收窄**：卖侧维持原口径（公家/单位实物不得被当余量清仓，Z7b 的根因守护）， <b>买侧放开</b>（买口粮是家户消费，不是政策层/补贴层）；国库户（{@code
+   * hh-gov-*}）两侧都不自动下单。
+   */
+  enum HouseholdMarketRole {
+    /** 普通家户：买卖两侧都按自动订单参与。 */
+    FULL,
+    /** 单位户（官吏户/军户…）：<b>只买不卖</b> —— 买盘正常进（含既有的赊购），实物供给不被自动清仓。 */
+    BUY_ONLY,
+    /**
+     * 政府国库户（{@code hh-gov-*}）：两侧都<b>不生成自动订单</b>，只按 {@code EconomyData.govMarketMandates()} 的明确授权。
+     */
+    AUTHORIZATION_ONLY
+  }
+
+  /**
    * ★★ <b>一个市场轮次的只读会话视图</b>（包内可见的施工坞；类注见 {@link MarketSettlement}）。
    *
    * <p>★ <b>为什么不是 record</b>（形态由实现裁，理由记在这里）：它装的是**就地可变的会话副本**（{@code applyTransfer} 要写它们）—— 用
@@ -344,13 +364,17 @@ final class MarketSettlement {
     private final Map<DebtContractId, DebtContract> debts;
 
     /**
-     * ★★ <b>本轮的“退出商品市场”家户集合</b>（保序不可变；判定只用 {@code contains}）——R1 起**只含单位户**（由 {@code simos-app}
-     * 组合根从 {@code Unit.households()} 算好传入，economy 看不见 unit 切片）。★ 政府国库户<b>不再</b>由 {@code
-     * EconomySettlement} 并入：它回到市场，但只按授权下单（见 {@link #govMandates()}）。
+     * ★★ <b>Z7b 的单位户集合</b>（保序不可变；由 {@code simos-app} 组合根从 {@code Unit.households()} 算好传入，economy
+     * 编译期看不见 unit 切片）。
      *
-     * <p>★★ <b>口径（用户 2026-10-23 税制/财政闭环设计书 §3.1）</b>：这些家户<b>买卖都不生成</b> —— 0 人口国库户不得被当卖家 清仓（run6
-     * day50 中央粮 271,393→0 的根因），官吏户/军户的实物供给也不得被市场当余量卖掉。★ 本集合只排除<b>市场订单/参与</b>：
-     * 税、预算、转移照常动账，账户与冻结语义一个字不改。
+     * <p>★★ <b>控制方裁定 R2（2026-10-11）起它<b>不再是"退出商品市场"</b>，而是"<b>只买不卖</b>"名单</b>：军户/官吏户按普通家户
+     * 参与市场<b>买盘</b>（它们的钱来自俸禄/军俸，买口粮是<b>家户消费</b>，不是政策层/补贴层），但它们的实物供给仍不得被市场当余量 卖掉（Z7b
+     * 的卖出侧原口径不变）。政府国库户（{@code hh-gov-*}）另按 {@link #govMandates()} 走"只按授权下单"。
+     *
+     * <p>★ <b>唯一判据</b>：本字段只允许经 {@link #householdMarketRole(HouseholdId)} 消费 —— 那一处同时回答"是不是单位户"与
+     * "是不是国库户"（后者优先，fail-closed）。直接 {@code contains} 就是在拼第二份口径。
+     *
+     * <p>★ 本集合只影响<b>市场订单/参与</b>：税、预算、转移照常动账，账户与冻结语义一个字不改。
      */
     private final Set<HouseholdId> marketExcludedHouseholds;
 
@@ -438,7 +462,7 @@ final class MarketSettlement {
      * 放贷人可借头寸、借款人额度）随市场信用撮合整段退役 ⇒ 现在它只剩一个字段，服务 {@link #recordDeferredPaymentDebt} 那一条通道（未付价款 ⇒
      * 对该卖方的债务）。
      *
-     * @param dueCycle 新合同的到期周期（本批 = 当前周期 + 1；与 {@code lendDeficitsInHex} 同源）
+     * @param dueCycle 新合同的到期周期（本批 = 当前周期 + 1；与货币腿的借款合同同源，见 {@code MoneyMarketSettlement}）
      */
     record DeferredPaymentConfig(long dueCycle) {
       DeferredPaymentConfig {
@@ -592,12 +616,13 @@ final class MarketSettlement {
     }
 
     /**
-     * ★★ <b>Z7b：带市场排除集的完整构造器</b>（生产/只读计划轮/读口的唯一入口；旧构造器委托 {@code Set.of()}）。
+     * ★★ <b>Z7b：带单位户集合的完整构造器</b>（生产/只读计划轮/读口的唯一入口；旧构造器委托 {@code Set.of()}）。
      *
      * <p>★ {@code debts} 是<b>引用</b>：市场信用经 {@link DebtContractBook#upsert} 就地累加，不复制成第二份债务表。
      *
-     * @param marketExcludedHouseholds 本轮不生成任何买单/卖单的家户（非 null、不得含 null）；由 {@code EconomySettlement}
-     *     把 {@code governments} 国库户并入调用方传入的单位户集合
+     * @param marketExcludedHouseholds 组合根传入的<b>单位户集合</b>（非 null、不得含 null）。★★ R2（2026-10-11）起它
+     *     <b>不再表示"不生成任何订单"</b>：其中的家户按 {@link #householdMarketRole} 分为"只买不卖"（军户/官吏户）与
+     *     "只按授权下单"（政府国库户，取自 {@code govMandates}）；本构造器<b>不再</b>并入任何国库户（那是第二个拼法）
      */
     MarketRound(
         long day,
@@ -667,9 +692,39 @@ final class MarketSettlement {
       return debts;
     }
 
-    /** ★★ Z7b：本轮退出商品市场的家户集合（只读；只用于订单/参与生成处的 {@code contains}）。 */
+    /** ★★ Z7b 的单位户集合（只读；★ R2 起**只允许经** {@link #householdMarketRole} 消费）。 */
     Set<HouseholdId> marketExcludedHouseholds() {
       return marketExcludedHouseholds;
+    }
+
+    /**
+     * ★★★ <b>控制方裁定 R2（2026-10-11）：本户在本轮商品市场上的角色 —— 唯一判据（唯一拼写点）</b>。
+     *
+     * <pre>
+     * ① 国库户（{@code GovernmentMarketMandatePlan.isAuthorizationOnly}，权威 = {@code Government.treasury()}）
+     *      ⇒ AUTHORIZATION_ONLY：**两侧都不生成自动订单**（改前口径一字不动）
+     * ② 其余在组合根注入的单位户集合里（Z7b 集合）
+     *      ⇒ BUY_ONLY：**买盘照常、卖盘不生成**（R2 的收窄点）
+     * ③ 其余 ⇒ FULL：买卖两侧照旧
+     * </pre>
+     *
+     * <p>★★ <b>为什么国库优先</b>：两处来源（{@code governments} 与 {@code Unit.households()}）在 GOV 单位形态下会同时命中
+     * 同一个家户（国库就是该单位的账房）⇒ 判据必须是"更严的那一条赢"（fail-closed），否则公家库存会被自动清仓 —— 那正是 Z7b 的根因（run6 day50 中央粮
+     * 271,393 → 0）。
+     *
+     * <p>★ <b>不适用面</b>：{@code household == null} 的参与者是**经营者/组织**（不是家户，没有口粮需求、也不在 {@code
+     * Unit.households()} 里）⇒ 恒判 {@link HouseholdMarketRole#FULL}，走改前的普通经营者路径。
+     */
+    HouseholdMarketRole householdMarketRole(HouseholdId household) {
+      if (household == null) {
+        return HouseholdMarketRole.FULL; // 经营者/组织：本条判据的适用面之外
+      }
+      if (govMandates.isAuthorizationOnly(household)) {
+        return HouseholdMarketRole.AUTHORIZATION_ONLY;
+      }
+      return marketExcludedHouseholds.contains(household)
+          ? HouseholdMarketRole.BUY_ONLY
+          : HouseholdMarketRole.FULL;
     }
 
     /**
@@ -1029,7 +1084,7 @@ final class MarketSettlement {
       return next;
     }
 
-    /** ★ 排除集是身份集合：逐元素查 null、保序冻结（绝不用 {@code Set.copyOf}——不承诺保序）。 */
+    /** ★ 单位户集合是身份集合：逐元素查 null、保序冻结（绝不用 {@code Set.copyOf}——不承诺保序）。 */
     private static Set<HouseholdId> freezeExcludedHouseholds(Set<HouseholdId> excluded) {
       Objects.requireNonNull(excluded, "marketExcludedHouseholds 不得为 null（无排除给空集）");
       LinkedHashSet<HouseholdId> copy = new LinkedHashSet<>();
@@ -1223,6 +1278,8 @@ final class MarketSettlement {
       HaulServiceRound haulService,
       // ★★ W1（第 5 个组件）：本轮的市场轮统计读数（逐市场的"单轮形态"统计簿；键 = 市场 id）。
       //   ★ 它是**纯读数**：不参与任何撮合/定价判定，只被 EconomySettlement 折进 EconomyData.marketRoundStats。
+      //   ★★ W5.5：货币腿算出的**下一轮清算利率**不再单列组件 —— 它是 {@code MarketTable} 的一个字段，
+      //     随第 2 个组件 {@code marketTables} 一起交回（"本轮成交用本轮价、写回下一轮生效"的既有那条路）。
       Map<MarketZoneId, MarketRoundStats> roundStats) {
 
     MarketOutcome {
@@ -1675,6 +1732,9 @@ final class MarketSettlement {
     //   ★ 它放在"本轮不开市"的早退之后：不开市的日子不发"这一轮谁用外币付"的 INFO，也不白算一遍。
     MarketPayChoice payChoice =
         MarketPayChoice.of(round, marketTables, topology, rowsByHex, currencyValuation, true);
+    // ★★★ R2（2026-10-11）：本轮的"谁能买 / 谁只按授权下单"全局名册（INFO，每轮一条；空名册 ⇒ 一条不发）。
+    //   位置 = "本轮真的开市"的早退之后、下单之前：与 {@code MarketPayChoice} 同一条"开市才发"的纪律。
+    logHouseholdRoster(round);
 
     // ── 1. 逐格建计划与订单；参与表按 actor 去重（订单生成与撮合的唯一来源）──────────────────────
     //   ★★ R2：按市场区并行构建，再按 hex (q,r) 序拼回 —— 与原串行序逐字相同（见方法注释）。
@@ -1843,6 +1903,24 @@ final class MarketSettlement {
     //   ★ 位置必须在 MarketIndexes 之后（簿 = 索引的 (区 × 商品) 桶）且在撮合之前（顺序是撮合的输入）。
     applyProcurementPriority(ctx, indexes);
 
+    // ── 1d. ★★★ W5.5（2026-10-11，S-12）：**货币腿 —— 挂钱供给 → 借钱**（在冻结与撮合**之前**）─────
+    //   ★★ 用户原话（次序就是判据）：「供给这一轮不是在需求挂单之前吗？应当是，**在挂商品的时候最后挂钱，
+    //     买东西的时候先借钱**」「如果家户的库存货币无法满足需求，**先借钱再买货**，然后后面不就有钱了？」
+    //   ⇒ 本轮的次序 = ① 挂商品（上面计划段：买卖槽 + 结算序）→ ② 挂钱供给 + ③ 借钱（本段）→
+    //     ④ 买商品（下面的 commitFreezes + 区内/跨区撮合 + 未付价款记债）。
+    //   ★ 位置为什么必须在 commitFreezes **之前**：买方的"冻结/可付现金"读的是**当刻**余额
+    //     （spendableMoneyOf / payableMoneyOf）⇒ 借到的钱必须先真的进到借方账户，现金腿才可能通过；
+    //     放在撮合之后等于"借了钱却不能用它买货"。
+    //   ★ 它是**协调器单线程**段（在 worker 账户副本构造之前）⇒ 借贷写的是唯一的活账户表，worker 看到的是借完之后的余额。
+    //   ★ 没有债务工作副本（{@code deferredPaymentsEnabled()} 为假）⇒ 货币腿一步都不做（借出的钱没有债权凭证）。
+    //   ★ 钱腿**只搬钱**（不碰任何商品、不建 lane、不动运力/税）—— 货一律仍走下面的正规撮合。
+    MoneyMarketSettlement.Round moneyRound =
+        MoneyMarketSettlement.settle(round, moneyMarketInput(ctx));
+    MoneyMarketSettlement.logRound(round.day, moneyRound);
+    //   ★★ 借到的钱必须能花：订单预算是**下单当刻**的快照（在下单之后才借的钱不在里面）⇒ 把借方那一笔补进
+    //     它名下（同币）买槽的预算余额，否则"先借钱再买货"在现金腿上依然不可用（整条腿空转）。
+    applyMoneyMarketBudgetTopUps(ctx, moneyRound);
+
     // ── 2. 冻结（M1.2 的写者接上）：挂单即占用；成交/发运/轮末释放 ────────────────────────
     commitFreezes(ctx);
     try {
@@ -1958,6 +2036,11 @@ final class MarketSettlement {
     //   在撮合之后改下一轮的参考价。★ 开关判据收在 adaptPrices 内部、这里**无条件调用** ——
     //   ★ 开关判据收在 adaptPrices 内部、这里**无条件调用**；即使将来把常量改回 false，也能保证方法在字节码里存在。
     AdaptivePrices adapted = adaptPrices(marketTables, ctx);
+    // ★★★ W5.5（2026-10-11，S-12⑤）：**货币腿的利率写回**（本轮算出的清算利率 ⇒ 下一轮生效，与价表同一条纪律）。
+    //   ★ 位置：价表已自适应改完、即将作为交出物离开本类 —— 利率与商品价是**同一张表**上的两个字段 ⇒ 只有一处写回口、
+    //     一次 {@code with*}；撮合已全部结束，本轮已签的合同仍带**本轮**利率（轮内价格不变）。
+    Map<MarketZoneId, MarketTable> tablesWithLoanRates =
+        applyMoneyMarketLoanRates(adapted.marketTables(), moneyRound, round.day);
     // ★★ W2（§一.9）：本轮"未付价款记为债务"的轮级 INFO（发生了什么 + 具名计数）—— 逐笔明细在
     //   {@link #recordDeferredPaymentDebt} 的 INFO/DEBUG/TRACE 三档里；这里只给"这一轮一共赊了多少"。
     if (ctx.deferredPaymentFills > 0 && MARKET.isInfoEnabled()) {
@@ -2010,7 +2093,7 @@ final class MarketSettlement {
             fx,
             // ★★ P-T1b：三层税的逐项账目（层/金额/币种/收款政府）—— 读口 taxItems()/taxByCurrency() 的唯一来源。
             ctx.taxItems),
-        adapted.marketTables(),
+        tablesWithLoanRates,
         mandateFills,
         haulService,
         roundStatsOf(ctx, adapted));
@@ -2029,7 +2112,8 @@ final class MarketSettlement {
     Map<MarketMandateId, Long> fills = new LinkedHashMap<>();
     for (BuySlot buy : ctx.buys) {
       if (buy.buyer.household == null
-          || !round.govMandates().isAuthorizationOnly(buy.buyer.household)) {
+          || round.householdMarketRole(buy.buyer.household)
+              != HouseholdMarketRole.AUTHORIZATION_ONLY) {
         continue;
       }
       long filled = Math.max(0L, buy.order.quantity() - buy.remaining);
@@ -2046,7 +2130,8 @@ final class MarketSettlement {
     }
     for (SellSlot sell : ctx.sells) {
       if (sell.seller.household == null
-          || !round.govMandates().isAuthorizationOnly(sell.seller.household)) {
+          || round.householdMarketRole(sell.seller.household)
+              != HouseholdMarketRole.AUTHORIZATION_ONLY) {
         continue;
       }
       long filled = Math.max(0L, sell.order.sellable() - sell.remaining);
@@ -2715,22 +2800,21 @@ final class MarketSettlement {
     List<SellOrder> sells = new ArrayList<>();
     long deadline = round.day + MARKET_BUY_DEADLINE_DAYS;
     for (Participant participant : plan.participants) {
-      // ★★ Z7b：单位户退出商品市场 —— participantsFor 已排除；这里再守一道，保证即使上游计划里混入
-      //   排除户也绝不生成买单/卖单（两层防线都指向同一集合，判定无条件）。
-      //   ★ R1（2026-10-09）：本集合**不再并入政府国库户**（那是本轮撤销的那一半）；国库户改走下面的
-      //   "只按授权下单"分支。单位户那一半一个字不改。
-      if (participant.household != null
-          && round.marketExcludedHouseholds().contains(participant.household)) {
-        continue;
-      }
+      // ★★★ R2（2026-10-11，控制方裁定）：本参与者的角色 —— **唯一判据**（{@link MarketRound#householdMarketRole}）。
+      //   ★ 改前这里是 Z7b 的两层防线之一："单位户 ⇒ 不生成任何订单"；R2 把它收窄成"**只买不卖**"：
+      //     军户/官吏户的买盘走下面**原样的**普通家户路径（同一个买盘目标 = 本期生产花费 + 口粮前瞻、同一份牌价、
+      //     同一条现金腿/赊购腿），只有卖单不生成。国库户（hh-gov-*）两侧都不生成，走授权分支（改前口径一字不动）。
+      HouseholdMarketRole role =
+          participant.household == null
+              ? HouseholdMarketRole.FULL
+              : round.householdMarketRole(participant.household);
       // ── ★★ R1：政府国库户 = "只按授权下单"：**不生成任何自动订单**（需求/库存差异一概不产生买卖）──────
       //   它今天能出现在市场上的订单**全部**来自 EconomyData.govMarketMandates() 的明确授权
       //   （用户 2026-10-09 §1.3：政府经济行为 = 行政家户挂单，不加政策层）。
       //   ★ 为什么必须显式挡在这里、而不是"反正它没有需求"：国库户持有税收实收的粮/银，而下面的卖单判据是
       //     max(0, 持有 − 冻结 − 必要投入 − 生活保留 − 需求目标)，0 人口的国库户后四项全是 0 ⇒
       //     它会被当成卖家**清仓**（Z7b 的根因：run6 day50 中央粮 271,393 → 0）。
-      if (participant.household != null
-          && round.govMandates().isAuthorizationOnly(participant.household)) {
+      if (role == HouseholdMarketRole.AUTHORIZATION_ONLY) {
         planGovMandateOrders(
             round,
             plan,
@@ -2747,6 +2831,8 @@ final class MarketSettlement {
             payChoice);
         continue;
       }
+      // ★★ R2：单位户 = 卖侧维持 Z7b 原口径（下面 `sells.add` 那一处唯一消费本判据）。
+      boolean buyOnly = role == HouseholdMarketRole.BUY_ONLY;
       long necessary =
           plan.necessaryInputs
               .getOrDefault(participant.actor, Map.of())
@@ -2782,10 +2868,32 @@ final class MarketSettlement {
       long productionCostHere = productionCost.getOrDefault(commodity, 0L);
       long retention = Math.addExact(productionCostHere, demandTarget);
       long sellable = Math.max(0L, stock - frozen - retention);
-      if (sellable > 0L) {
+      if (sellable > 0L && !buyOnly) {
         sells.add(
             new SellOrder(
                 participant.actor, hex, commodity, sellable, bid, round.day, orderCurrency));
+      } else if (sellable > 0L && MARKET.isTraceEnabled()) {
+        // ★★ R2 具名日志（§一.9 TRACE = 逐笔明细）：**这条卖单被 R2 的卖出侧口径挡下**（改前它会被挂出去）。
+        //   ★ 有它才回答得了"为什么这一户明明有粮却没有卖单" —— 也是 Z7b 根因守护仍然生效的证据。
+        EventLog.channel(MARKET)
+            .trace(
+                LogEvent.of(
+                    "MARKET_HOUSEHOLD_SELL_SUPPRESSED",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    round.day,
+                    "household",
+                    participant.household.value(),
+                    "commodity",
+                    commodity.value(),
+                    "hex",
+                    hex.toString(),
+                    "wouldBeSellMilli",
+                    sellable,
+                    "role",
+                    role.name(),
+                    "reason",
+                    "r2-sell-side-keeps-z7b-scope-unit-household-holdings-are-not-cleared-as-surplus"));
       }
       // ── 买：家户补到**生产花费（内含口粮）** + 有效需求目标；经营者补到必要生产投入 ─────────────
       //   ★ M2.4：目标缺口 = target − 可用 − **该时限前确定到货**（在途批次里买方那一份；M2.1 的原文）。
@@ -2895,6 +3003,44 @@ final class MarketSettlement {
               deadline,
               new Budget(budget, orderCurrency),
               orderCurrency));
+      if (buyOnly && MARKET.isDebugEnabled()) {
+        // ★★ R2 具名日志（§一.9 DEBUG = 逐条池子/理由）：**单位户这一轮的买盘**（谁、买什么、多少、什么价、
+        //   手里有多少钱、缺口会不会走赊购）—— R2 之后这些户的买入不再需要反读代码才能确认。
+        //   ★ 逐笔成交的"实付/赊购"由既有的 {@code MARKET_DEFERRED_PAYMENT}（INFO）给出。
+        EventLog.channel(MARKET)
+            .debug(
+                LogEvent.of(
+                    "MARKET_HOUSEHOLD_BUY_ORDER",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    round.day,
+                    "household",
+                    participant.household.value(),
+                    "commodity",
+                    commodity.value(),
+                    "hex",
+                    hex.toString(),
+                    "quantityMilli",
+                    quantity,
+                    "targetMilli",
+                    baseTarget,
+                    "availableMilli",
+                    available,
+                    "incomingMilli",
+                    incoming,
+                    "budgetMilli",
+                    budget,
+                    "currency",
+                    orderCurrency.value(),
+                    "referenceMilli",
+                    reference,
+                    "deferralEnabled",
+                    deferredPaymentDemand,
+                    "role",
+                    role.name(),
+                    "reason",
+                    "r2-unit-household-buys-as-an-ordinary-household"));
+      }
     }
     return new PlannedOrders(buys, sells);
   }
@@ -3477,7 +3623,10 @@ final class MarketSettlement {
     }
     long goods =
         ceilDiv(buy.order.quantity() * buy.limitInPayCurrency, EconomySettlement.MILLI_PER_GRAIN);
-    return Math.min(buy.order.budget().amountMilli(), goods);
+    // ★★ W5.5：订单预算 + **本槽从货币市场借到的那一笔**（见 BuySlot#borrowedBudgetTopUpMilli 的注：
+    //   借钱按用户裁定的次序发生在下单之后，不补这一笔 ⇒ 借来的钱在冻结/现金腿上不可用）。
+    return Math.min(
+        Math.addExact(buy.order.budget().amountMilli(), buy.borrowedBudgetTopUpMilli), goods);
   }
 
   private static void releaseAllFreezes(MatchContext ctx) {
@@ -3551,8 +3700,9 @@ final class MarketSettlement {
   // ── W2 债务式清算：未付价款 ⇒ 对该卖方的债务（{@link #recordDeferredPaymentDebt}）──────────────
 
   /**
-   * ★★ <b>W2：未付价款记债的条款</b>（与 {@code EconomySettlement.lendDeficitsInHex} 同一利率常量、同一 legacy 维； 身份 ⇒
-   * 同一 (债务人, 债权人, 标的, 条款) 的欠款自动累加成一条未偿额 —— D-023 §3"不做分别核算"）。
+   * ★★ <b>W2：未付价款记债的条款</b>（利率 = 出厂借款利率常量、legacy 维；★ W5.5 起货币腿的借款合同**不再**用它 ——
+   * 那种合同的利率是<b>逐区逐市场轮清算出的</b>动态利率，见 {@code MoneyMarketSettlement}。身份 ⇒ 同一 (债务人, 债权人, 标的, 条款)
+   * 的欠款自动累加成一条未偿额 —— D-023 §3"不做分别核算"）。
    *
    * <p>★ W2-fix4 前它是市场信用撮合的条款（名字 {@code MARKET_CREDIT_TERMS}）；信用撮合退役后它只服务 {@link
    * #recordDeferredPaymentDebt}（{@code executeTrade} 的未付价款腿），**值一字未改**。
@@ -3794,6 +3944,213 @@ final class MarketSettlement {
    */
   private static long[] buyPartsByPriority(long[] weights) {
     return weights;
+  }
+
+  /**
+   * ★★★ <b>W5.5（2026-10-11，S-12⑤）：把货币腿算出的清算利率写进交回的价表</b>（下一轮生效）。
+   *
+   * <pre>
+   * 逐 (市场, 新利率): table = marketTables[市场] ⇒ 交回 withLoanRatePerMille(新利率)（其余字段逐值不变）
+   * 没有变化（{@code loanRateNext} 为空）⇒ **原样返回入参那一份实例**（调用点按"换了实例才重写工作副本"判）
+   * </pre>
+   *
+   * <p>★ 为什么利率挂价表：见 {@code MarketTable} 的类注（派生形态的世界没有 {@code MarketZone} 记录、但价表持久）。 ★
+   * 本方法只改一个字段，且价表没有第二个改价出口（W1 起的既有纪律）。
+   */
+  private static Map<MarketZoneId, MarketTable> applyMoneyMarketLoanRates(
+      Map<MarketZoneId, MarketTable> marketTables,
+      MoneyMarketSettlement.Round moneyRound,
+      long day) {
+    if (moneyRound.loanRateNext().isEmpty()) {
+      return marketTables;
+    }
+    Map<MarketZoneId, MarketTable> next = new LinkedHashMap<>(marketTables);
+    long rewritten = 0L;
+    StringBuilder rates = new StringBuilder();
+    for (Map.Entry<MarketZoneId, Long> entry : moneyRound.loanRateNext().entrySet()) {
+      MarketTable table = next.get(entry.getKey());
+      if (table == null) {
+        continue; // 该市场本轮没有价表（被撤/缺表）⇒ 利率无处可写，不静默建表。
+      }
+      next.put(entry.getKey(), table.withLoanRatePerMille(entry.getValue()));
+      rewritten++;
+      if (rates.length() > 0) {
+        rates.append(',');
+      }
+      rates
+          .append(entry.getKey().value())
+          .append('=')
+          .append(table.loanRatePerMille())
+          .append("->")
+          .append(entry.getValue());
+    }
+    if (rewritten > 0L && MARKET.isInfoEnabled()) {
+      EventLog.channel(MARKET)
+          .info(
+              LogEvent.of(
+                  "MONEY_MARKET_RATE_WRITTEN",
+                  EconomyLogSource.ECONOMY_DEBT,
+                  "day",
+                  day,
+                  "markets",
+                  rewritten,
+                  "ratesPerMille",
+                  rates.toString(),
+                  "effectiveFrom",
+                  "next-market-round",
+                  "reason",
+                  "loan-rate-adapts-to-money-supply-and-demand-S-12-5"));
+    }
+    return next;
+  }
+
+  /**
+   * ★★★ <b>W5.5（S-12②）：把借到的钱补进买槽的订单预算</b>（{@link BuySlot#borrowedBudgetTopUpMilli} 的唯一写点）。
+   *
+   * <pre>
+   * 逐买槽: topUp = borrowedByHousehold[买方][本槽支付币]        // 逐 (户, 币) 的借款本金之和
+   *         （0 = 这一户这一币没借到 ⇒ 一格都不动；缺省世界逐值退回改前）
+   * </pre>
+   *
+   * <p>★ <b>为什么按 (户, 币) 而不是"这一户借到的总额"</b>：货币腿逐区、以该区计价币清算，而一个家户的买槽可能用别的 币支付（{@link MarketPayChoice}
+   * 的"最强持有币"）—— 不是同一种钱就不能混着花（跨币折算本批不做）。
+   *
+   * <p>★ <b>它不是第二处判据</b>：补进额只进 {@code requestedMoneyOf}（冻结上限）与 {@code payableMoneyOf}（现金腿可付额）
+   * 这两个**同一个算式的两个读点**，不新建任何"能不能买"的判定；账户余额那一侧仍由唯一写口落账。
+   */
+  private static void applyMoneyMarketBudgetTopUps(
+      MatchContext ctx, MoneyMarketSettlement.Round moneyRound) {
+    Map<HouseholdId, Map<CurrencyId, Long>> borrowed = moneyRound.borrowedByHousehold();
+    if (borrowed.isEmpty()) {
+      return;
+    }
+    long toppedUp = 0L;
+    long slots = 0L;
+    for (BuySlot buy : ctx.buys) {
+      HouseholdId household = buy.buyer.household;
+      if (household == null) {
+        continue;
+      }
+      long amount = borrowed.getOrDefault(household, Map.of()).getOrDefault(buy.currency, 0L);
+      if (amount <= 0L) {
+        continue;
+      }
+      buy.borrowedBudgetTopUpMilli = Math.addExact(buy.borrowedBudgetTopUpMilli, amount);
+      toppedUp = Math.addExact(toppedUp, amount);
+      slots++;
+    }
+    if (MARKET.isDebugEnabled() && slots > 0L) {
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "MONEY_MARKET_BUDGET_TOPUP",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  ctx.round.day,
+                  "slots",
+                  slots,
+                  "borrowedBudgetTotalMilli",
+                  toppedUp,
+                  "reason",
+                  "order-budget-is-a-planning-time-snapshot; borrowed-money-must-be-spendable-before-freezing"));
+    }
+  }
+
+  /**
+   * ★★★ <b>W5.5：货币腿的输入装配</b>（S-12③ 的"本期生产花费所需现金"这个量<b>只有这里</b>能算对）。
+   *
+   * <pre>
+   * 计价币：本区价表的 numeraire（持久形态下它逐值等于 MarketZone.legalTender —— W1 的单一权威）
+   * 需求  ：need(户, 区) = Σ 该户在本区的买槽 ⌈数量 × 本区当前牌价 ÷ 1000⌉      // 毫本区计价币
+   * 参与户：本区市场轮的家户（{@code ctx.participants} 里 household 非空那些；单位户已被排除）
+   * </pre>
+   *
+   * <p>★★ <b>为什么不用 {@code requestedMoneyOf(buy)}（本仓已有的"这条买单最多花多少钱"）</b>：那个算式是 {@code min(订单预算,
+   * 货值)}，而订单预算是<b>下单当刻</b>的可花额 —— 现金 0 的家户那里它恒为 0，而"现金 0"正是
+   * <b>必须先借钱</b>的那一户（用户原话②「先拿空气购买货币——也就是借钱」）⇒ 用它算需求会让整条腿恒等于
+   * "没有人缺钱"（死分支）。故这里取<b>货值本身</b>（按本区牌价、与买盘目标同一个量），不按现金折回。
+   *
+   * <p>★★ <b>只统计"用本区计价币支付"的买槽</b>（fail-closed，本批的具名口径）：货币市场逐区、以该区计价币清算； 用别的币支付的买槽需要一条本批不存在的折算通道 ⇒
+   * 不计入（该户退到"未付价款记债"）。单币世界/同币支付的买槽 （绝大多数）逐值不受影响。
+   *
+   * <p>★ 缺表的区（"该区不交易任何商品"）不借钱：没有牌价就折不出"本期生产花费所需现金"。
+   */
+  private static MoneyMarketSettlement.Input moneyMarketInput(MatchContext ctx) {
+    Map<MarketZoneId, CurrencyId> zoneCurrency = new LinkedHashMap<>();
+    Map<MarketZoneId, MarketTable> zoneTables = new LinkedHashMap<>();
+    List<MarketZoneId> orderedZones = new ArrayList<>();
+    for (MarketRegion region : ctx.orderedRegions) {
+      MarketZoneId zoneId = new MarketZoneId(region.node().nodeId());
+      MarketTable table = ctx.tableOf(region);
+      if (table == null) {
+        continue;
+      }
+      // ★ 计价币取价表的 numeraire：持久形态下它逐值等于区法定币（W1 的构造期跨表守卫判死漂开），
+      //   派生形态（没有区记录）下它是唯一的货币事实 —— 两种形态都是"这个市场按哪种钱报价"。
+      zoneCurrency.put(zoneId, table.numeraire());
+      // ★★ W5.5：利率/α 的唯一权威是**价表**（逐市场持久；派生形态的世界也有它，见 MarketTable 的类注）。
+      zoneTables.put(zoneId, table);
+      orderedZones.add(zoneId);
+    }
+    // ── 参与户按区归组（谁是放贷人不需要买槽：只要在本区市场里、有闲钱）────────────────────────
+    Map<MarketZoneId, List<HouseholdId>> zoneHouseholds = new LinkedHashMap<>();
+    Map<HouseholdId, HexCoord> householdHex = new LinkedHashMap<>();
+    for (Map.Entry<ActorRef, Participant> entry : ctx.participants.entrySet()) {
+      Participant participant = entry.getValue();
+      HouseholdId household = participant.household;
+      if (household == null) {
+        continue; // 经营者/组织没有家户账户可借可贷（DebtContract 两端只能是家户）
+      }
+      HexCoord hex = ctx.participantHex.get(entry.getKey());
+      if (hex == null || ctx.topology == null || !ctx.topology.contains(hex)) {
+        continue;
+      }
+      MarketZoneId zoneId = new MarketZoneId(ctx.topology.regionOf(hex).node().nodeId());
+      if (!zoneCurrency.containsKey(zoneId)) {
+        continue;
+      }
+      zoneHouseholds.computeIfAbsent(zoneId, ignored -> new ArrayList<>()).add(household);
+      householdHex.putIfAbsent(household, hex);
+    }
+    // ★ 规范序（家户 id 升序）：两簿的配对序另有结算序（区内按净值），这里只保证"逐区家户表"是内容的纯函数（I7）。
+    for (List<HouseholdId> households : zoneHouseholds.values()) {
+      households.sort(Comparator.comparing(HouseholdId::value));
+    }
+    // ── ② 需求侧：逐买槽按本区当前牌价折成"毫本区计价币"（与货款算式同源：⌈数量 × 单价 ÷ 1000⌉）──────
+    Map<MarketZoneId, Map<HouseholdId, Long>> needByZone = new LinkedHashMap<>();
+    for (BuySlot buy : ctx.buys) {
+      HouseholdId household = buy.buyer.household;
+      if (household == null) {
+        continue;
+      }
+      MarketZoneId zoneId = new MarketZoneId(buy.region.node().nodeId());
+      CurrencyId currency = zoneCurrency.get(zoneId);
+      if (currency == null || !currency.equals(buy.currency)) {
+        continue;
+      }
+      MarketTable table = ctx.tableOf(buy.region);
+      if (table == null) {
+        continue;
+      }
+      // ★ 0 价（白送）= 不需要现金；未定价的商品根本不会生成买槽。
+      long need = paymentForQuantity(buy.order.quantity(), table.priceOf(buy.order.commodity()));
+      if (need <= 0L) {
+        continue;
+      }
+      needByZone
+          .computeIfAbsent(zoneId, ignored -> new LinkedHashMap<>())
+          .merge(household, need, Long::sum);
+    }
+    long dueCycle = ctx.deferredPaymentConfig == null ? 0L : ctx.deferredPaymentConfig.dueCycle();
+    return new MoneyMarketSettlement.Input(
+        zoneTables,
+        orderedZones,
+        ctx.ordering,
+        zoneCurrency,
+        zoneHouseholds,
+        needByZone,
+        householdHex,
+        dueCycle);
   }
 
   /** 每个商品一条按 {@code (q, r)} 升序的 distinct hex 表（与串行路径的 sort 口径逐字相同）。 */
@@ -7294,7 +7651,7 @@ final class MarketSettlement {
    * 债权人 = 卖方家户（{@code sell.seller.household}）
    * 单位   = 买方支付币（{@code DebtUnit.Money(buy.currency)}）—— 与现金腿同一种钱，不做任何折算
    * 本金   = 未付价款（{@code payment − paidCash}）
-   * 条款   = {@link #DEFERRED_PAYMENT_TERMS}（与 {@code lendDeficitsInHex} 同一利率、同一 legacy 维）
+   * 条款   = {@link #DEFERRED_PAYMENT_TERMS}（出厂借款利率、legacy 维；货币腿的借款合同另用逐轮清算利率）
    * 落点   = {@code ctx.debts}（= {@code EconomyData.debtContracts} 的当日工作副本）—— ★ <b>同一本债账</b>：
    *          约束设计书 §4.1 的 D-023 §3「不做分别核算、合同只有一个未偿额」；不存在第二本债务表。
    * </pre>
@@ -8241,7 +8598,12 @@ final class MarketSettlement {
    */
   private static long payableMoneyOf(MatchContext ctx, BuySlot buy) {
     long money = spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
-    long budgetLeft = Math.max(0L, buy.order.budget().amountMilli() - buy.spentMilli);
+    // ★★ W5.5：预算余额 = 订单预算 + **本槽借到的那一笔**（同 BuySlot#borrowedBudgetTopUpMilli 的注）− 已花。
+    long budgetLeft =
+        Math.max(
+            0L,
+            Math.addExact(buy.order.budget().amountMilli(), buy.borrowedBudgetTopUpMilli)
+                - buy.spentMilli);
     return Math.min(money, budgetLeft + buy.frozenRemaining);
   }
 
@@ -8262,7 +8624,8 @@ final class MarketSettlement {
     return ctx.debts != null
         && buy.buyer.household != null
         && sell.seller.household != null
-        && !ctx.round.govMandates().isAuthorizationOnly(buy.buyer.household);
+        && ctx.round.householdMarketRole(buy.buyer.household)
+            != HouseholdMarketRole.AUTHORIZATION_ONLY;
   }
 
   /**
@@ -9080,6 +9443,78 @@ final class MarketSettlement {
 
   // ── 参与者 / 订单预计算（M2.1/M2.2 的既有算式，逐字保留）────────────────────────────
 
+  /**
+   * ★ R2：角色名单在日志里的<b>最多列出条数</b>（超出部分只报条数，不静默丢 —— 串尾写明 {@code (+N more)}）。
+   *
+   * <p>★ 它是<b>日志专用</b>常量：不参与任何判据/写路径（名单本身是身份集合，与它无关）。
+   */
+  private static final int ROSTER_LOG_LIMIT = 16;
+
+  /** 名册的规范串（id 升序；超过 {@value #ROSTER_LOG_LIMIT} 条 ⇒ 截断并给出被截掉的条数）。 */
+  private static String rosterSummary(List<String> ids) {
+    if (ids.isEmpty()) {
+      return "[]";
+    }
+    List<String> sorted = new ArrayList<>(ids);
+    Collections.sort(sorted);
+    int shown = Math.min(sorted.size(), ROSTER_LOG_LIMIT);
+    StringBuilder text = new StringBuilder("[");
+    for (int index = 0; index < shown; index++) {
+      if (index > 0) {
+        text.append(',');
+      }
+      text.append(sorted.get(index));
+    }
+    text.append(']');
+    if (sorted.size() > shown) {
+      text.append("(+").append(sorted.size() - shown).append(" more)");
+    }
+    return text.toString();
+  }
+
+  /**
+   * ★★★ <b>R2 具名日志：本轮（逐市场轮、每轮一条）的"谁能买 / 谁只按授权下单"全局名册</b>（INFO）。
+   *
+   * <p>★ <b>为什么必须有它</b>（用户/控制方口径："避免下次再从日志里看不出"）：R2 之后"军户/官吏户能不能买、
+   * 国库户为什么不挂单"必须**在默认日志级别**就能回答；这一条给出逐角色的户数与被截断的名册，逐户的理由在 {@code
+   * MARKET_HOUSEHOLD_ROLE}（TRACE）、逐格的名单在 {@code MARKET_HOUSEHOLD_ROSTER_BY_HEX}（DEBUG）、 被挡下的卖单在
+   * {@code MARKET_HOUSEHOLD_SELL_SUPPRESSED}（TRACE）、单位户的买盘在 {@code
+   * MARKET_HOUSEHOLD_BUY_ORDER}（DEBUG）。
+   *
+   * <p>★ 名册来源 = 组合根注入的 Z7b 集合 ∪ 政府国库户名单（两者都按角色现算）—— 空表（没有单位户/政府的世界） ⇒ **一条都不发**（缺省中性：旧世界日志面一个字不改）。
+   */
+  private static void logHouseholdRoster(MarketRound round) {
+    List<String> buyOnly = new ArrayList<>();
+    List<String> authorizationOnly = new ArrayList<>();
+    for (HouseholdId household : round.marketExcludedHouseholds()) {
+      if (round.householdMarketRole(household) == HouseholdMarketRole.BUY_ONLY) {
+        buyOnly.add(household.value());
+      }
+    }
+    // ★ 国库侧的名单直接取"只按授权下单"计划的权威名单（不按"哪一户有经济行"重算，避免漏报）。
+    authorizationOnly.addAll(round.govMandates().authorizationOnlyRoster());
+    if (buyOnly.isEmpty() && authorizationOnly.isEmpty()) {
+      return; // 缺省中性：没有单位户/国库户的世界不发这一条
+    }
+    EventLog.channel(MARKET)
+        .info(
+            LogEvent.of(
+                "MARKET_HOUSEHOLD_ROSTER",
+                EconomyLogSource.ECONOMY_MARKET,
+                "day",
+                round.day,
+                "buyOnlyHouseholds",
+                buyOnly.size(),
+                "buyOnlyRoster",
+                rosterSummary(buyOnly),
+                "authorizationOnlyHouseholds",
+                authorizationOnly.size(),
+                "authorizationOnlyRoster",
+                rosterSummary(authorizationOnly),
+                "reason",
+                "r2-unit-households-buy-only-treasury-households-orders-only-by-explicit-authorization"));
+  }
+
   /** 一个格的参与者：家户（按行）在前，经营者（该格 unit 的 operator，逐 actor 去重）在后。 */
   private static List<Participant> participantsFor(
       MarketRound round, HexCoord hex, List<HouseholdId> keys) {
@@ -9094,26 +9529,47 @@ final class MarketSettlement {
       unitsByOperator.computeIfAbsent(unit.operator(), ignored -> new ArrayList<>()).add(id);
     }
     LinkedHashMap<ActorRef, Participant> byActor = new LinkedHashMap<>();
+    int fullHouseholds = 0;
+    int buyOnlyHouseholds = 0;
+    int authorizationOnlyHouseholds = 0;
+    List<String> buyOnlyRoster = new ArrayList<>();
+    List<String> authorizationOnlyRoster = new ArrayList<>();
     for (HouseholdId key : keys) {
-      // ★★ Z7b：国库/单位户不生成任何订单 ⇒ 直接从参与者集合里排除（不买、不卖、不挂信用）。
-      if (round.marketExcludedHouseholds().contains(key)) {
-        if (MARKET.isTraceEnabled()) {
-          EventLog.channel(MARKET)
-              .trace(
-                  LogEvent.of(
-                      "MARKET_HOUSEHOLD_EXCLUDED",
-                      EconomyLogSource.ECONOMY_MARKET,
-                      "day",
-                      round.day,
-                      "household",
-                      key.value(),
-                      "hex",
-                      hex,
-                      "reason",
-                      // ★ R1：本集合现在**只含单位户**（国库户回市场、只按授权下单）。
-                      "unit-household"));
+      // ★★★ R2（2026-10-11）：本格这一户的市场角色 —— **唯一判据**（{@link MarketRound#householdMarketRole}）。
+      //   ★ 改前这里是 Z7b 的"单位户 ⇒ 直接 continue（不买、不卖、不挂信用）"；R2 把"排除"收窄成"只买不卖"：
+      //     军户/官吏户回到参与表与买盘（口粮通道），卖侧仍不生成（公家/单位实物不被清仓）。
+      //   ★ 国库户本来就在参与表里（R1 起它要能按授权挂单）—— 本条一个 continue 都没有，角色只决定"生成哪些订单"。
+      HouseholdMarketRole role = round.householdMarketRole(key);
+      switch (role) {
+        case FULL -> fullHouseholds++;
+        case BUY_ONLY -> {
+          buyOnlyHouseholds++;
+          buyOnlyRoster.add(key.value());
         }
-        continue;
+        case AUTHORIZATION_ONLY -> {
+          authorizationOnlyHouseholds++;
+          authorizationOnlyRoster.add(key.value());
+        }
+      }
+      if (role != HouseholdMarketRole.FULL && MARKET.isTraceEnabled()) {
+        // ★§一.9 TRACE 逐户"为什么"：这一户是谁、凭什么拿到这个角色（同一份判据的另一半在 ordersFor 的订单生成处）。
+        EventLog.channel(MARKET)
+            .trace(
+                LogEvent.of(
+                    "MARKET_HOUSEHOLD_ROLE",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    round.day,
+                    "household",
+                    key.value(),
+                    "hex",
+                    hex,
+                    "role",
+                    role.name(),
+                    "reason",
+                    role == HouseholdMarketRole.BUY_ONLY
+                        ? "unit-household-buys-but-does-not-auto-sell"
+                        : "government-treasury-orders-only-by-explicit-authorization"));
       }
       ActorRef actor = HouseholdActors.of(key);
       List<ProductionUnitId> units = unitsByOperator.remove(actor);
@@ -9128,6 +9584,34 @@ final class MarketSettlement {
               key,
               round.householdEconomies.get(key).view(),
               units == null ? List.of() : units));
+    }
+    if ((buyOnlyHouseholds > 0 || authorizationOnlyHouseholds > 0) && MARKET.isDebugEnabled()) {
+      // ★★ R2 具名日志（§一.9 DEBUG = 逐格池子/理由，"谁在这一格、凭什么角色"）：本格的角色名单 ——
+      //   与 {@code MARKET_LIFE_RESERVE} 同族（逐 hex、汇总串）；逐户的理由在 {@code MARKET_HOUSEHOLD_ROLE}（TRACE），
+      //   全局名单在每个市场轮一条 {@code MARKET_HOUSEHOLD_ROSTER}（INFO，见 {@code clearOncePerCycle}）。
+      //   名单按 id 升序（只日志、不改状态），过长时截断并给出被截掉的条数（不静默丢）。
+      //   ★ 事件名与那条 INFO **不同名**：两者的形状不同（本条逐 hex、INFO 那条逐轮），同名会让读者把两种形状当成一种。
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "MARKET_HOUSEHOLD_ROSTER_BY_HEX",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  round.day,
+                  "hex",
+                  hex,
+                  "fullHouseholds",
+                  fullHouseholds,
+                  "buyOnlyHouseholds",
+                  buyOnlyHouseholds,
+                  "buyOnlyRoster",
+                  rosterSummary(buyOnlyRoster),
+                  "authorizationOnlyHouseholds",
+                  authorizationOnlyHouseholds,
+                  "authorizationOnlyRoster",
+                  rosterSummary(authorizationOnlyRoster),
+                  "reason",
+                  "r2-buy-side-open-for-unit-households-sell-side-suppressed-treasury-orders-only-by-authorization"));
     }
     for (List<ProductionUnitId> units : unitsByOperator.values()) {
       units.sort(Comparator.comparing(ProductionUnitId::value));
@@ -9231,32 +9715,59 @@ final class MarketSettlement {
           continue;
         }
         HouseholdId household = single.get();
-        // ★★ Z7b：unit 的经营者解析到国库/单位户 ⇒ 这个 unit 也不入市（其库存随单位户一起退出）。
-        if (round.marketExcludedHouseholds().contains(household)) {
-          if (MARKET.isTraceEnabled()) {
-            EventLog.channel(MARKET)
-                .trace(
-                    LogEvent.of(
-                        "MARKET_HOUSEHOLD_EXCLUDED",
-                        EconomyLogSource.ECONOMY_MARKET,
-                        "day",
-                        round.day,
-                        "household",
-                        household.value(),
-                        "unit",
-                        unitId.value(),
-                        "reason",
-                        "operator-is-unit-household"));
-          }
-          continue;
+        // ★★★ R2（2026-10-11）：经营 unit 解析到**单位户/国库户**时不再把 unit 挡在市场之外 —— 它照旧挂到那个家户的
+        //   参与者上（这样"本期生产花费所需现金/口粮前瞻"这条买盘目标**含它的必要投入**，与普通家户同一条算式）；
+        //   它不会被自动清仓，靠的是参与者角色的那条判据（{@link MarketRound#householdMarketRole}）：
+        //     · BUY_ONLY        ⇒ 这一户（含它的 unit 库存）**不生成任何卖单**；
+        //     · AUTHORIZATION_ONLY ⇒ 这一户（含它的 unit）**两侧都不生成自动订单**。
+        HouseholdMarketRole operatorRole = round.householdMarketRole(household);
+        if (operatorRole != HouseholdMarketRole.FULL && MARKET.isTraceEnabled()) {
+          EventLog.channel(MARKET)
+              .trace(
+                  LogEvent.of(
+                      "MARKET_HOUSEHOLD_ROLE",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      round.day,
+                      "household",
+                      household.value(),
+                      "unit",
+                      unitId.value(),
+                      "hex",
+                      round.index.hexOf(unitId) == null ? "none" : round.index.hexOf(unitId),
+                      "role",
+                      operatorRole.name(),
+                      "reason",
+                      "unit-operator-household-role-decides-which-orders-are-generated"));
         }
         HouseholdEconomy householdEconomy = round.householdEconomies.get(household);
         if (householdEconomy == null) {
-          throw new IllegalStateException(
-              "市场参与者的组织者家户没有 ClassRow（解析结果必须是现存家户）：household="
-                  + household
-                  + " unit="
-                  + unitId.value());
+          // ★ fail-closed 边界：普通家户解析不到 ClassRow = 真坏数据 ⇒ 具名抛（改前口径一字不动）。
+          //   ★ 单位户/国库户没有经济行时**不能**建参与者（Participant 要那一行的人口/需求视图）⇒ 具名 WARN 跳过：
+          //     这与改前"这些户整个被排除"对它们**逐值相同**（它照样不生成订单），但不再静默。
+          if (operatorRole == HouseholdMarketRole.FULL) {
+            throw new IllegalStateException(
+                "市场参与者的组织者家户没有 ClassRow（解析结果必须是现存家户）：household="
+                    + household
+                    + " unit="
+                    + unitId.value());
+          }
+          EventLog.channel(MARKET)
+              .warn(
+                  LogEvent.of(
+                      "MARKET_SUBJECT_UNIT_HOUSEHOLD_WITHOUT_ROW",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      round.day,
+                      "unit",
+                      unitId.value(),
+                      "household",
+                      household.value(),
+                      "role",
+                      operatorRole.name(),
+                      "reason",
+                      "operator-household-has-no-economy-row-so-the-unit-cannot-become-a-market-participant"));
+          continue;
         }
         Participant existing = byActor.get(HouseholdActors.of(household));
         if (existing == null) {
@@ -9740,6 +10251,22 @@ final class MarketSettlement {
     MarketUnfilledReason blocked;
 
     /**
+     * ★★★ <b>W5.5（2026-10-11，S-12②）：本槽从<b>货币市场借到的钱</b>补进订单预算的那一份</b>（毫本槽支付币）。
+     *
+     * <pre>
+     * 为什么必须有它：订单里的 {@code Budget} 是**下单当刻**的快照，而按用户裁定的次序（「在挂商品的时候最后挂钱，
+     * 买东西的时候先借钱」）**借钱发生在下单之后** ⇒ 若不把借到的那一笔补进预算，{@code payableMoneyOf} 里的
+     * "订单预算余额"那一项对现金为 0 的家户恒为 0 ⇒ **借到的钱在现金腿上不可用**，整条货币腿空转
+     * （而这正是用户要的那件事：「先借钱再买货，然后后面不就有钱了？」）。
+     * </pre>
+     *
+     * <p>★ 由货币腿交出物（{@link MoneyMarketSettlement.Round#borrowedByHousehold()}）经 {@link
+     * #applyMoneyMarketBudgetTopUps} 写一次；此后只读。★ <b>它不是第二本账</b>：金额就是借方那一笔借款的
+     * 本金（同一事实的槽位视图），借方的账户余额那一侧由唯一写口 {@code applyTransfer} 落账。
+     */
+    long borrowedBudgetTopUpMilli;
+
+    /**
      * ★★ <b>F-2（2026-10-10）：本槽"卡在运力"的**具名归因档**</b>（{@link MerchantCapacityPool.LogisticsBlock}
      * 的具名字面量）—— 与 {@link #blocked}{@code == LOGISTICS_CAPACITY} **同一写点**落定（两者不可能漂开）。{@code null} =
      * 不适用。
@@ -9834,6 +10361,8 @@ final class MarketSettlement {
       this.baseFrozenMoney = other.baseFrozenMoney;
       this.requestedMoney = other.requestedMoney;
       this.spentMilli = other.spentMilli;
+      // ★★ W5.5：借款补进的预算逐值照抄（worker 与协调器必须给出同一个可付额，否则回放对不上）。
+      this.borrowedBudgetTopUpMilli = other.borrowedBudgetTopUpMilli;
       this.noMoney = other.noMoney;
       this.blocked = other.blocked;
       this.capacityTruncatedMilli = other.capacityTruncatedMilli;

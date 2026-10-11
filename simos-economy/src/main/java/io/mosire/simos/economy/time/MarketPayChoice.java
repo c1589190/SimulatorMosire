@@ -148,9 +148,12 @@ final class MarketPayChoice {
       MarketRegion ownRegion = topology.contains(hex) ? topology.regionOf(hex) : null;
       for (HouseholdId household :
           rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of())) {
+        // ★★ R2（2026-10-11）：只有**国库户**（只按授权下单）不参与"最强持有币"的选择 —— 它的订单全部来自授权
+        //   （授权自带币/价），自动挑币对它没有消费者。★ 单位户（军户/官吏户）R2 起**回到买盘** ⇒ 必须在这里
+        //   一起选币，否则它们的买单会退回"本格计价币"（手里是别的币时被迫走赊购 = 结构性多欠一笔债）。
         if (household == null
-            || round.marketExcludedHouseholds().contains(household)
-            || round.govMandates().isAuthorizationOnly(household)) {
+            || round.householdMarketRole(household)
+                == MarketSettlement.HouseholdMarketRole.AUTHORIZATION_ONLY) {
           excluded++;
           continue;
         }
@@ -228,6 +231,7 @@ final class MarketPayChoice {
     }
     if (emitLog && MARKET.isDebugEnabled()) {
       // ★ 判据档（§一.9 的 DEBUG）：为什么没有更多户选币 —— 逐档具名计数，不写成"没发生"。
+      //   ★ R2：`excluded` 现在**只数国库户**（只按授权下单，订单自带币/价）；单位户 R2 起在选币名单里。
       EventLog.channel(MARKET)
           .debug(
               LogEvent.of(
@@ -237,7 +241,7 @@ final class MarketPayChoice {
                   round.day(),
                   "chosen",
                   chosen.size(),
-                  "excluded",
+                  "excludedAuthorizationOnlyTreasuries",
                   excluded,
                   "noNaturalNeeds",
                   noNeeds,

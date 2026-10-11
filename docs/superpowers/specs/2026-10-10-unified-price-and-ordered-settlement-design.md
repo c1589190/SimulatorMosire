@@ -296,6 +296,44 @@ W1 状态与账 ─→ W2 清算与价格 ─→ W3 人的进出 ─→ W4 家�
 
 ## 7. 修订记录
 
+- **v3.23**（2026-10-11 下午）：**W5.5d 测试批交账 + 两条 main 侧发现（一条判为必修的非确定性）**。
+  **落地**：两处**显式重基线化**（`GovGenesisZ6Test:351` 裸数字 `4801` → **能自证的算式**「人口 == 创世人口 + 当日出生 − 当日死亡」= 4799；
+  `EconomyCycleHealthTest` 指纹 17·35.0·131 → **15·43.0·140**，**"零成交轮次 = 0"这条牙一字未动**）；工具面计数按实跑 +1（GM 桶 165、窄写 69、handler 143、`*Tool.java` 175）；
+  新增 `MoneyMarketSettlementTest`（**7 条**覆盖 S-12 的放贷池算式/无上限池空即止/利率五分支/国库不挂钱/守恒与身份/端到端"借钱真买到货"/池空退赊购）+ **5 个变异自证**（各自红在被保护那行）；
+  建议清单复跑全绿（`Z7FleeTest`/`GovAdminSalaryBudgetZ6Test`/`Z7D4BudgetLedgerTest`/`RaiseUnitToolTest`/`Z7MarketExclusionTest`/`GovGenesisZ6Test`/工具面四类/`EconomyCycleHealthTest`）。
+  ★★ **发现 1（非确定性，控制方裁定：必修，不许守卫两形态）**：同一条命令、同一份字节，`EconomyCycleHealthTest` 的逐轮成交分布跑出**两个值**（A 4/5、B 1/5；B 与 W5.5-fix2 前那次逐值相同）。
+  ＊已排除：无并发写 main（mtime 早于首轮）、模拟路径无墙钟/随机源、本世界单线程经济 worker、且"同一条命令两次分别给 B 与 A"。
+  ＊**判为必修的理由**：① 确定性是本仓的硬约束（I7 集合顺序 = 内容的纯函数、B2 分段等价、跨进程确定性、用户"两条推进路径同一天必须逐值相同"的既有裁定）；
+  ② 它会让**每一次标定与验收读数不可复现**（W6 的 600 天曲线正是标定批）⇒ 守卫"落在两形态之一"只是把症状写进基线。
+  ＊**排查方向（已具名的同族先例）**：`Map.copyOf`/`Set.copyOf` 盐化序（AGENTS §三 的判别力条目）、`HashMap`/`HashSet` 迭代序（**key 的 identity hashCode 跨 JVM 运行变化**）、并列裁决的 tie-break 不稳定。
+  ③ 修好后应把守卫**收回单一形态**（测试批）。
+  ★ **发现 2（纯读数不对称，必修·小）**：放贷池**全空**时 `MONEY_MARKET_UNFILLED` 不发、`ZoneRound.unmetMilli` 读 **0**（配对段整段在 `if (demandTotal>0 && supplyTotal>0)` 内，`MoneyMarketSettlement:375`）
+  ⇒"需求 30 全落空"却读 0，只能从 `MONEY_MARKET_WHY` 的三个数反推。不参与判定/金额，但**读数说谎**（用户直接用日志排查）⇒ 修：供给为 0 而需求 >0 时也要落 `unfilled` 与 `unmetMilli`。
+- **v3.22**（2026-10-11 下午）：**★ 根因更正：W5.5 的"被市场排除 ⇒ 结构性饥饿"判断被判别实验证伪；真根因 = 第 1 天的给养时机（P4c）**。
+  **判别实验（决定性）**：把 `MarketSettlement` 的 `BUY_ONLY` 临时变异回 `AUTHORIZATION_ONLY`（= 改前"单位户零订单"语义）重跑 `GovGenesisZ6Test`
+  ⇒ `GOV_SERVICE_UNDERFED` 逐日序列与 R2 **完全一致**（27200…31680）、同样 3 红、还原后 md5 逐字节相同。
+  **真根因（三条一起）**：① 官吏户**创世无粮**（创世只给国库注入粮，`ThreePowersGovBootstrap:134`）；
+  ② **当日消费发生在那天的俸禄日结之前**（日志序 `HOUSEHOLD_GAP_REPORTED` → `PERIODIC_ADJUSTMENT_DAY`）；
+  ③ **第 1 天结构上无市场轮**（例行轮 `day%5==0`；低库存追加轮在 `MARKET_LOW_STOCK_EXTRA_PHASE_DAYS=3`）
+  ⇒ 第 1 天整日需求落空 → satiety −150‰ → 饥饿逃亡率累加到 **92‰（day8）** → **逃 1 人** → 承诺**永久腰斩**（32,000→16,000）
+  ⇒ 三条断言（效率 1000→850、securityLabor 16,000→13,600、承诺 32,000→16,000）**全是同一个第 1 天事件的下游**。
+  ★ 官吏户的**口粮通道本来就是俸禄**（`stipendShortfallMilli=0`，逐日 +640、satiety 850→990→1000@day13）—— **不是市场购买**。
+  **控制方裁定**：采用 **(b) 给单位户创世粮**（口径与普通家户一致）；**(a) 挪俸禄时点** 会改"gov 效率读结算后劳动"的语义、
+  **(c) 允许任意日追加市场轮** 会动 M0.1 的绝对相位（影响所有世界）、**(d) R3 改基线** 等于把结构缺口写成正常读数 —— 三者都不取。
+  **R2 仍然保留**（军户/官吏户按普通家户买口粮：它们本就该能买、且实测 120 天 43 条买单；只是它**不是**那三条红的原因，也不是它们的替代品）。
+  ★ **记 INV（P4c）**：**"消费早于俸禄日结"** 这个时序缺口对**任何**在创世/周期首日无粮但有俸禄的家户都成立 —— 列待调查清单，等财政闭环批次处理。
+  ★ 顺带保留两处偏离：`FxSettlement` 仍排除单位户的家户外汇单（比 R2 字面更窄，fail-closed）；`marketExcludedHouseholds` **不改名**（改名会动组合根注入口与 22 参构造器，测试夹具在用 ⇒ 语义已在三处注释写明）。
+- **v3.21**（2026-10-11 下午）：**W5.5（取缔借粮 + 货币市场）落地 + 一条控制方裁定（R2）**。
+  **落地**（编译绿、未提交）：新增 `MoneyMarketSettlement`（货币腿本体）+ GM 写口 `economy.SetMarketZoneLoanRateAlpha`；删除**同格借粮腿全族**（`lendDeficitsPartitioned`/粮口径 `lendableOf`/`LENDER_SUBSISTENCE_RESERVE_PER_MILLE`/`DEFICIT_LENDING` 日志/`SettlementStage.LENDING`）；
+  次序 = **挂商品 → 挂钱 → 借钱 → 买货**（借钱在 `commitFreezes` 与撮合之前，同一轮）；利率 = **复用 §2.1 的 `adaptiveNextPrice`**（缺钱升、钱多降、α=0 冻结、下限 0 = 白借），
+  持久挂点 = **`MarketTable`（逐市场价表）** —— ★ 不挂 `MarketZone`（派生形态世界没有区记录 ⇒ 实测 48 轮 0 次写回，利率永远 20‰）；出借额 = `max(0, 可用现金 − 生活储备(12/人) − 本轮自己的生产花费所需现金)`；
+  借款人无上限、唯一上限 = 放贷池；赊购保留；国库默认不挂钱；`ThreePowersGovBootstrap` 补齐同族创世审计（只加审计、余额不动）。
+  ★ **BLOCKED 点（真缺口）**：删掉同格借粮后，**被市场排除的家户**（`Unit.households()`：军户 / 官吏户 / 国库户）**失去唯一口粮通道** ⇒ `hh-unit:gov-central` 结构性饥饿
+  （`GOV_SERVICE_UNDERFED effectiveLaborMilli=27200/32000`、`satietyPerMille=850`）⇒ `GovGenesisZ6Test` 3/5 红。
+  ★★ **控制方裁定 R2**：**把 Z7b 的"不自动下单"收窄到国库户（`hh-gov-*`，= 政府自己的账户）**；**军户 / 官吏户按普通家户参与市场买盘**（它们的钱来自俸禄/军俸，买口粮是**家户消费**，不是"政策层/补贴层"）；
+  **卖出侧维持原口径**（政府不自动卖）。理由：① 用户裁定的对象是"**国库**不自动下单"（防政府拿市场当政策工具），不是"给政府干活的人不许吃饭"；
+  ② 借粮那条腿之所以在悄悄喂它们，正是因为它顶替了一条**本该由市场承担**的通道；③ R1（新增逐日给养通道）与 R3（接受饥饿改基线）都不是本次口径的选项 —— R1 是新机制、R3 把结构缺口写成正常读数。
+  ★ 若 R2 之后它们**买不起**（俸禄不足/无收入），那是**财政闭环（P4c）**的缺口，如实上报、**不许**自造补贴。
 - **v3.20**（2026-10-11 下午）：**W5 验收结果（10 项判据本体全绿）+ 五条缺口处置**。报告：`.superpowers/sdd/2026-10-11-w5-acceptance/report.md`（525 行；jar `5a3d080a…` = HEAD `24af7bf1` 现构）。
   **绿**：①生产账逐值（`PRODUCTION_EFFICIENCY_HARVEST laborScale=1 satisfaction=1000 scale=1` + `MINT_CREDIT minted=500 requested=500 limit=2000 treasuryBefore=0 treasuryAfter=500`；
   工具 8000→6000；`scale×perUnit==minted`）②旋钮 0 ⇒ 0 毫（`MINT_POLICY_ZERO`）③旋钮 300 ⇒ 实铸 300 + `MINT_LIMIT_REJECTED(limit=300,rejected=200)`，

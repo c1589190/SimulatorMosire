@@ -193,6 +193,20 @@ final class GovernmentMarketMandatePlan {
     return byTreasury.size();
   }
 
+  /**
+   * ★ R2：只按授权下单的国库家户 id（**升序**）—— 只服务日志/诊断（"哪些户为什么不下单"要看得出）。
+   *
+   * <p>★ 唯一来源仍是本计划的 {@code byTreasury}（权威 = {@code Government.treasury()}），这里不新增判据。
+   */
+  List<String> authorizationOnlyRoster() {
+    List<String> ids = new ArrayList<>(byTreasury.size());
+    for (HouseholdId household : byTreasury.keySet()) {
+      ids.add(household.value());
+    }
+    Collections.sort(ids);
+    return ids;
+  }
+
   /** 本日生效的授权总条数。 */
   int liveMandates() {
     int total = 0;

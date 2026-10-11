@@ -14,8 +14,8 @@ import java.util.List;
  * {@code parse} 只认它、<b>不做归一</b>）—— 归一是"猜"，写错一个档必须<b>当场炸</b>并看得见全部合法值。
  *
  * <p>★★ <b>本批（H4）真正被写出来的有五档</b>： {@link #RELATION_PAYMENT}（关系实付：实物与<b>货币</b>两族）· {@link
- * #INPUT_REQUISITION}（投入征调）· {@link #LOAN_PRINCIPAL}（同格借粮）· {@link #MARKET_TRADE}（同格市场成交： 一笔买卖 =
- * <b>一对</b>转移，货一条、钱一条 —— 见 {@code Transfer} 的货币腿口径）。 其余两档是<b>留位</b>（如实记，不假装已经用上）：
+ * #INPUT_REQUISITION}（投入征调）· {@link #LOAN_PRINCIPAL}（货币市场借款：钱腿只搬钱）· {@link #MARKET_TRADE}（市场成交：
+ * 一笔买卖 = <b>一对</b>转移，货一条、钱一条 —— 见 {@code Transfer} 的货币腿口径）。 其余两档是<b>留位</b>（如实记，不假装已经用上）：
  *
  * <ul>
  *   <li>{@link #PRODUCTION_OUTPUT} —— "净产入 operator"。★ 今天它<b>不是一条转移</b>：产出是<b>造出来</b>的， 没有对端（{@code
@@ -36,7 +36,13 @@ public enum TransferReason {
   /** 同格按需取材（生产投入的征调：田里的纤维 → 同格织机）。 */
   INPUT_REQUISITION("input_requisition"),
 
-  /** 借粮的本金（要还的信用：债权人 → 债务人）。 */
+  /**
+   * ★★★ <b>货币市场借款的本金</b>（要还的信用：<b>放贷家户 → 借款家户</b>；W5.5 起标的 = 货币，不再是粮）。
+   *
+   * <p>★★ <b>W5.5（2026-10-11，S-12①）换标的（如实记）</b>：S-12 之前这一档是<b>同格借粮</b>的粮腿（它随借粮腿一并退役）；
+   * 现在它是市场轮内<b>货币腿</b>的唯一原因字面量（{@code MoneyMarketSettlement} 逐笔铸 {@code Map.of(currency, amount)}，
+   * <b>只有钱、没有货</b>）。★ 字面量 {@code "loan_principal"} 一字未改：改它等于改线格式与历史账的读法。
+   */
   LOAN_PRINCIPAL("loan_principal"),
 
   /** ★★ 偿还本金（H5 起**真的有写者**：{@code 旧结算引擎（R3a 已删除）.repayDebts} 铸 {@code 债务人 → 债权人} 的粮腿）。 */

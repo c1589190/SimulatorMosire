@@ -1,6 +1,5 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
@@ -105,13 +104,12 @@ import org.slf4j.Logger;
  *   <li>**消费**：每行扣当天口粮 = app 在本日 step 之前注入的 {@link HouseholdEconomy#naturalNeeds()}（2026-10-09
  *       家户结构修复 Batch 3：逐户、逐商品、按 Social 成员展开，经济侧不再按 {@code population} 反推），消费开始时把粮需求 累加进 {@link
  *       HouseholdEconomy#cycleNaturalNeedMilli()}（一天一次，见 {@link #consumeOneHousehold}）。
- *   <li>**缺口**：库存不够 ⇒ 先在同格内借粮（**按可贷余粮降序**放贷 —— 旧"地主 → 富农 → 中农"的阶层白名单已由可观察余粮取代，见 {@link
- *       #lendDeficitsInHex}；从有粮的行的**余粮**划转 —— 余粮 = 库存 − **本周期自需** × {@link
- *       #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000，见 {@link
- *       #lendableOf}，**不是**"消费后的全部库存"，也不是"当日盈余"）；借到的**累加进同一条** {@link DebtContract}（同一 (债务人, 债权人,
- *       unit, terms) 跨周期恒同一条，见 {@link DebtContractId#idOf}，本金递增）；**借完仍补不上**的部分记入本行流水的 {@code
- *       unmetNeed}（毫粮、逐日累加；★ W3 起它同时是**报给 Social 的口粮缺口那一支**的当日分子 —— 见 {@link
- *       EconomyHouseholdGap}，经济侧自己不据此判死）。
+ *   <li>**缺口**：库存不够 ⇒ 记入本行流水的 {@code unmetNeed}（毫粮、逐日累加；★ W3 起它同时是**报给 Social 的口粮缺口那一支**的当日分子 —— 见
+ *       {@link EconomyHouseholdGap}，经济侧自己不据此判死）。 ★★★
+ *       <b>W5.5（2026-10-11，S-12①）：这里原有"同格借粮"那一档</b>（借到的粮当日吃掉、并累加进同一条 {@link DebtContract}）——
+ *       用户原话「把借粮这条路给取缔掉，这条路才是真的不知道哪里冒出来的」⇒ <b>整段退役</b>。 取代它的是<b>市场轮内的货币腿</b>（挂商品 → 挂钱 → 借钱 → 买货，见
+ *       {@code MoneyMarketSettlement}）：缺现金的家户在 <b>买货之前</b>借到钱，买货时现金腿自然通过；借不到的那部分仍由「未付价款 ⇒
+ *       对卖方的债务」兜底（S-12⑦）。 ⇒ 消费这一步只把缺口记成读数，<b>不再有任何借贷</b>。
  *   <li>**进度**：每个产业 {@code progressDays + 1}。
  *   <li>**劳动投入**：本产业当日实际劳动 = **该产业名下全部 {@code HouseholdLaborCommitment} 的 {@code laborMilli}
  *       之和**（R2 改口径；改前是"Σ(行 {@code laborMilli × participationPerMille / 1000})"，两者在创世逐值相同）—— 累加进
@@ -346,34 +344,6 @@ public final class EconomySettlement {
    * 迁入参数表、GM 可调（与上面那条同处置）。
    */
   public static final int DEBT_REPAYMENT_SHARE_PER_MILLE = 1000;
-
-  /**
-   * ★★ **放贷方必须留口粮的千分比**（相对**本周期自需**；v2 spec §7.1 第一处，V6 落地）：**默认 1000‰**。
-   *
-   * <pre>
-   * 保留额 = lender.expectedNeedMilli(GRAIN, 该行产业的 cycleDays) × 本常量 ÷ 1000   // 毫粮
-   * 可贷额 = max(0, 放贷行库存 − 保留额)
-   * </pre>
-   *
-   * <p>★★ **2026-10-09 Batch 3：保留额来源 = 本户 app 注入的 {@code naturalNeeds[grain]}**（逐户）， <b>不再</b>按
-   * {@code population × 人均口粮定额} 现算。
-   *
-   * <p>★★ **1000‰ 不是"不贷"，是"只贷余粮"**：放贷方先扣下**整周期**的口粮，剩下的才是余粮 —— 地主 250 天储备 − 120 天自需 = 130
-   * 天的余粮照样贷得出去。取 {@code 0} 即 V1 的现状（消费后的**全部**库存都能借出 ⇒ 地主一次把 250 天存粮全借出去、次日自己变成缺口行 ⇒ 设计意图"地主最厚 =
-   * 同格主要债权人"被反转成"**地主先破产**"）。
-   *
-   * <p>★ **一个可读的后果**：保留额按**整周期**算，却只在"借贷发生的那一天"被读 ⇒ 周期后半段会**多留** （=
-   * 那时已经用不到的那部分），周期末缸里因此可能剩粮；端到端用例按新口径逐值钉住这个数。
-   *
-   * <p>★ 它是**制度层参数**（spec §4.1：借贷规则由生产关系双方决定），但**参数目录属 V7** ⇒ 与致死率、口粮系数、 播种次序同处置：先做**具名常量**，注释写明"V7
-   * 迁入 {@code economy} 切片的参数表、成为 GM 可调、作用域 全局→国家→格/产业"。**不造半套目录**。
-   *
-   * <p>★★ <b>M1.2 边界：保留策略留在本层，账户层的 {@code frozen} 只表达"已明确的占用"</b> —— 本常量与 {@code lendableOf}
-   * 都是<b>只读算式</b>（"保留额不是冻结起来的一笔粮"，见 {@code lendableOf} 的注释）， <b>不许</b>把它折进 {@code
-   * HouseholdInventory.frozenBalances}。★ 两者的差别是<b>语义</b>的：这里是"<b>打算</b>留着的下界"（每天都可能变），
-   * 冻结是"<b>已经</b>承诺出去的占用"（挂单/交付）——M2 的算式把它们当作**两项**、互不重复地各减一次。
-   */
-  public static final int LENDER_SUBSISTENCE_RESERVE_PER_MILLE = 1000;
 
   /*
    * ★★ W3（2026-10-11）：`FAMINE_MORTALITY_PER_MILLE`（饿死判据的致死率默认值，旧值 0‰）**已删**。
@@ -998,9 +968,10 @@ public final class EconomySettlement {
    * ★★ <b>P10.2：带周期利润累加器的入口</b>（{@code profitCycle == null} 时与上一个重载逐值相同）—— 关账日在本方法末尾按 ⑦真实利润汇总 →
    * ⑧迁移计划 → ⑨迁移执行 接线；保证在<b>下一周期投入开扣之前</b>完成（下一次 {@code step()} 才开扣）。
    *
-   * <p>★★ <b>Z7b：{@code marketExcludedHouseholds} 是国库/单位户退出商品市场的组合根入参</b>（单位户 economy 看不见， 由 app 从
-   * {@code Unit.households()} 算好；政府国库户本方法再从 {@code base.governments()} 并入，任何调用方都不会漏掉）。
-   * 它只影响市场订单/参与者生成，不改账户、冻结、税/预算/转移语义。
+   * <p>★★ <b>Z7b / R2：{@code marketExcludedHouseholds} 是组合根传入的<b>单位户集合</b></b>（单位户 economy 编译期看不见，
+   * 由 app 从 {@code Unit.households()} 算好）。★★ <b>控制方裁定 R2（2026-10-11）起它不再表示"退出商品市场"</b>： 那些家户按{@link
+   * MarketSettlement.MarketRound#householdMarketRole}分成"只买不卖"（军户/官吏户）与"只按授权下单" （政府国库户，权威 = {@code
+   * governments}）；本方法<b>原样照收</b>，不做任何再分类。 它只影响市场订单/参与者生成，不改账户、冻结、税/预算/转移语义。
    */
   static void settleOneDayInto(
       EconomySession session,
@@ -1140,23 +1111,14 @@ public final class EconomySettlement {
     //     而 base 是段首快照 —— 段内第 2 天起再读 base 就是读"上一天以前的旧世界"（这正是路径效应的根因）。
     //   ★ 为什么不是"构造时把表拍进字段"：工作副本是惰性物化的，拍快照会在它物化的那一刻变成过期引用。
     EconomyDayView dayView = new WorkingDayView(session.sheet());
-    // ★★ R1（2026-10-09，约束设计书 §4.5 G8 / 不变量 I-P6）：**撤销 Z7b 对"国库户"的那一半** ——
-    //   有效排除集回到"组合根传入的单位户**减** 已登记政府国库户"（单位户那一半的实质一个字不改：官吏户/军户的
-    //   实物供给不得被市场当余量卖掉；被摘出来的只有"是政府国库户"的那些单位户，见下面 C9 那一段）。
-    //   ★ 国库户（hh-gov-*）从此**回到商品市场**：它是参与者、能挂单、能被撮合；但它**不生成任何自动订单**
-    //     （需求/库存差异一概不产生买卖），能出现的订单全部来自明确授权 —— 见下面 marketRound 的
-    //     withGovMandates 与 MarketSettlement 的"只按授权下单"分支。
-    //   ★★ 但**组合根注入的单位户集合里本来就含政府国库户**：GOV 单位的 {@code Unit.households()} 把它的国库家户
-    //     也列了进去（官吏户 + 国库户；small-world 实测：{@code hh-gov-gov-central} / {@code hh-gov-gov-province}
-    //     都在里面）⇒ 若原样照收，本轮撤销就被单位户那一半**悄悄抵消**（两个主政府的国库户仍不进市场，
-    //     R1 的"行政家户回到市场"对它们落空）。故这里按**身份**重新分类：
-    //       单位户 ∩ 已登记政府国库户  ⇒ 走国库户口径（回市场、只按授权下单）
-    //       其余单位户（官吏户/军户…）  ⇒ 照旧排除（这一半一个字不改）
-    //   ★ 这么做不改单位那一半的实质：国库户参与后**不生成任何自动订单**（含它的 GOV unit 经营者解析出来的
-    //     必要投入/卖单），公家库存不会被自动清仓；FX 与市场信用同样不放行（见 MarketSettlement 的两处守卫）。
-    Set<HouseholdId> effectiveMarketExcludedHouseholds =
-        unitExclusionsMinusGovernmentTreasuries(marketExcludedHouseholds, dayView.governments());
-    Objects.requireNonNull(effectiveMarketExcludedHouseholds, "marketExcludedHouseholds");
+    // ★★★ R2（2026-10-11，控制方裁定）：**组合根注入的 Z7b 集合原样照收** —— 分类只发生在**一处**：
+    //   {@code MarketRound.householdMarketRole}（国库户 ⇒ 只按授权下单；其余单位户 ⇒ 只买不卖；其余 ⇒ 普通家户）。
+    //   ★ 改前这里有第二处分类：`unitExclusionsMinusGovernmentTreasuries`（把"是政府国库户"的单位户从集合里摘出来）。
+    //     它随 R2 删除 —— 角色的权威是 {@code Government.treasury()}（经 {@code govMandates} 注入），在角色判据里
+    //     **优先于**单位户集合判定（更严的一条赢，fail-closed）⇒ 摘不摘都得到同一个角色；留着就是"谁被排除"的第二个拼法。
+    //   ★ 语义（R2 冻结）：军户/官吏户按普通家户参与**买盘**（口粮通道），**卖侧维持 Z7b 原口径**（公家/单位实物不得被
+    //     当余量清仓 —— run6 day50 中央粮 271,393 → 0 的根因守护）；国库户（hh-gov-*）两侧都不生成自动订单。
+    Set<HouseholdId> effectiveMarketExcludedHouseholds = marketExcludedHouseholds;
     // ★★ E3：发行主体的权威答案是当前世界状态（governments），不是进程里的旧登记。
     //   日结算开始按**当日视图**重建登记表：旧世界/旧档 governments 为空 ⇒ 清空登记 ⇒ requireIssuerOf 逐字保留旧 fail-closed 行为。
     //   ★ B2：这是**逐日**读者（每天都可能因 GM 命令/发行腿改政府表）⇒ 读当刻值，不读段首 base。
@@ -1426,7 +1388,10 @@ public final class EconomySettlement {
 
     // 逐行当日发生额（流水的事后组装）。★ R3 起两张实物表都是**逐商品**的（{@link FlowRow#income()} 由标量改成 Map）。
     LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods = new LinkedHashMap<>();
-    LinkedHashMap<HouseholdId, Long> borrowing = new LinkedHashMap<>();
+    // ★★★ W5.5（2026-10-11）：这里原有 {@code borrowing}（逐户"本日新借入粮"的累加器）—— 它**只服务借粮腿**，
+    //   随该腿整段删除（AGENTS §一.11）。★ 后果具名：{@code FlowRow.newBorrowing}（毫粮口径的持久读数）从此由
+    //   结算路径**恒写 0**，而货币腿借入的是**钱**（不是粮）⇒ 换标的会让那个字段的量纲变成谎话，故本批不喂它。
+    //   需要"这一户这一周期借了多少钱"的读者应从 {@code debtContracts}（{@code DebtUnit.Money}）取 —— 见账本"连带物"。
     LinkedHashMap<HouseholdId, Map<CommodityId, Long>> income = new LinkedHashMap<>();
     // ★★ **R5/T4：生产损耗不再有"逐行累加器"** —— 损耗不是"谁消费了"，是"蒸发了"，它只进 {@link
     //   ProductionLedger#losses()}（守恒式里自成一项，见类注 §6.1 的新式）。留一个"分了损耗但没人收"的中间残留
@@ -1442,8 +1407,8 @@ public final class EconomySettlement {
     LinkedHashMap<DebtContractId, Long> repaidPrincipalByDebt = new LinkedHashMap<>();
     // ★★ E4c：本日资本化的欠租/欠薪（按 unit.key() 分组；资本化不搬库存/货币，故只进 FlowRow.capitalizedArrears）。
     LinkedHashMap<HouseholdId, Map<String, Long>> capitalizedArrearsToday = new LinkedHashMap<>();
-    // ★★ **H5：当日的缺口**（"今天这一顿没吃上多少"）—— 它先被记下、**不在吃饭那一步就借**
-    //   （借是最后手段：自产/分配 → 市场 → 救济(留位) → 借；见 {@link #lendDeficitsInHex}）。
+    // ★★ **当日的缺口**（"今天这一顿没吃上多少"）—— 它只是**读数**（进 unmetNeed / 报 Social 的口粮缺口）。
+    //   ★★★ W5.5 起它不再触发任何借贷：借粮腿已按 S-12① 整段退役；借钱发生在市场轮里、买货之前。
     LinkedHashMap<HouseholdId, Long> deficitToday = new LinkedHashMap<>();
     // ── 0-entry.4. ★★ E6a 模式变迁执行（理想架构 §4.4；计划 E6a）────────────────────────────────
     //   ★★ 位置：**必须在自动组织阶段之前** —— 变迁写回 EXITING/ACTIVE 组织、同一 unit 的新 modeKey 与新
@@ -1678,9 +1643,9 @@ public final class EconomySettlement {
       settlementIndex = settlementIndex.withLabor(units, householdEconomies, laborCommitments);
     }
 
-    // ── 1~2. 消费（各自吃自己的库存；缺口**先记下不借** —— 借是最后手段，见 4b）──────────────
-    //   ★ H4：每条家户行的 cycleDays 提成局部量 —— 它同时喂"放贷余粮"（lendDeficits）与"市场自留"（MarketSettlement），
-    //     两处各算一遍就是同一个量的第二处拼写点（算错不会报错，只会让两处口径悄悄漂开）。
+    // ── 1~2. 消费（各自吃自己的库存；缺口**先记下不借**）──────────────────────────────
+    //   ★ H4：每条家户行的 cycleDays 提成局部量 —— 它喂"市场自留"（MarketSettlement），
+    //     别处各算一遍就是同一个量的第二处拼写点（算错不会报错，只会让两处口径悄悄漂开）。
     Map<HouseholdId, Long> cycleDaysByHousehold =
         cycleDaysByHousehold(
             householdEconomies,
@@ -2085,7 +2050,8 @@ public final class EconomySettlement {
     //   ★★ M2.1 起这一支不再按"本周期缺口/余量"就地配对，而是**主体各自生成订单**（家户 + 经营者，见
     //     {@link MarketSettlement} 的类注）：生活保留 = 5 天撮合间隔 + 30 天安全库存，旧 1000‰ 整周期自留已退休。
     //   ★★ M2 的冻结写者从这里接上：挂单冻结 → 成交/发运/轮末释放（冻结表随后原样带出，净额必然回到基值）。
-    //   ★★ **H5 ②：市场排在借粮之前**（自产/分配 → 市场 → 救济(留位) → 借）—— 见下面的 {@link #lendDeficitsInHex}。
+    //   ★★★ W5.5（2026-10-11，S-12②）：**货币腿在撮合之前**（挂商品 → 挂钱 → 借钱 → 买货）——
+    //     见 {@code MarketSettlement} 的 1d 段与 {@code MoneyMarketSettlement}；借粮腿已整段退役（S-12①）。
     MarketSettlement.MarketRound marketRound =
         new MarketSettlement.MarketRound(
             day,
@@ -2341,6 +2307,8 @@ public final class EconomySettlement {
               pureMerchantHouseholds,
               // ★★ W2：本轮的持久市场区表（自适应定价逐区读步长 α = MarketZone.priceAlphaPerMille）。
               //   ★ B2 保留段首 base：α 是命令面组件，段内无工作副本（改 α ⇒ 下一段/下一轮生效）。
+              //   ★★ W5.5：货币市场的利率/α **不在区表上**，在价表上（逐市场持久，派生形态的世界也有它）——
+              //     它随 {@code outcome.marketTables()} 交回、由上面那段既有的价表写回落到会话工作副本。
               base.marketZones(),
               // ★★ W4：结算序快照（盘前构造、不可变；撮合期间不回读任何当轮量）。
               ordering);
@@ -2756,82 +2724,19 @@ public final class EconomySettlement {
     DebtCapacityBook.DebtUnitValueLookup debtUnitValueLookup =
         DebtCapacityBook.marketPriceLookup(marketByHousehold);
 
-    // ── 4b. 借粮（★ H5：**最后手段** —— 自产/分配 → 市场 → 救济(留位) → 借）──────────────────
-    //   ★★ 它为什么必须晚于市场：关账日集市之后**手上真的还有粮**的家户不该再借（"只在未来有收入时借"）——
-    //     改前借粮与消费挤在同一步（并行），市场买到的粮既不能顶当天的饭、也不能减少债务。
-    //   ★ 非关账日没有集市 ⇒ 这一步就紧接着"吃饭"那一支（与改前的次序逐值相同）。
-    //   ★ 救济是**留位**：本批没有任何救济制度（谁救济、救济多少都是判断 ⇒ 属 GM/参数目录），
-    //     故这一步的次序是具名的四档，而第③档今天空着（如实记，不假装）。
-    if (!deficitToday.isEmpty()) {
-      // ★★ R2：同格借粮按 hex 并行 —— 借贷双方同格（rowsByHex 分组 + requireSupplierHex 同源口径），
-      //   债务键含债务人与债权人 ⇒ 跨格不可能撞同一条；每个分区用线程本地债务/行/流水副本，
-      //   交出后由协调器按分区序合并（转移仍走唯一写口 applyTransfer，落账走 AccountSession.commit）。
-      // ★★ D-031：同格借粮也不再有借款人额度门 —— 缺口户有多少缺口就借多少，直到本格放贷人的
-      //   `lendableOf` 余粮被借空为止；债务风险由债权人承担，抵押物不再是前置条件。
-      lendDeficitsPartitioned(
-          householdEconomies,
-          debts,
-          accounts,
-          consumedGoods,
-          borrowing,
-          unmetToday,
-          deficitToday,
-          dueCycle,
-          cycleDaysByHousehold,
-          householdOfActor,
-          ledger,
-          day,
-          parallelism);
-      ProductionLedger borrowed = ledger.toLedger();
-      long loanTransfers = 0L;
-      long lentTotal = 0L;
-      for (Transfer transfer : borrowed.transfers()) {
-        if (transfer.reason() == TransferReason.LOAN_PRINCIPAL) {
-          loanTransfers++;
-          lentTotal += transfer.goods().getOrDefault(GRAIN, 0L);
-        }
-      }
-      if (loanTransfers > 0L) {
-        EventLog.channel(TRACE)
-            .info(
-                LogEvent.of(
-                    "DEFICIT_LENDING",
-                    EconomyLogSource.ECONOMY_DEBT,
-                    "day",
-                    day,
-                    "deficitHouseholds",
-                    deficitToday.size(),
-                    "loanTransfers",
-                    loanTransfers,
-                    "lentGrainMilli",
-                    lentTotal,
-                    "borrowingTotalMilli",
-                    traceTotalLongs(borrowing),
-                    "debtContracts",
-                    debts.size(),
-                    "unmetAfter",
-                    traceTotalGoods(unmetToday)));
-      }
-      if (TRACE.isDebugEnabled()) {
-        EventLog.channel(TRACE)
-            .debug(
-                LogEvent.of(
-                    "DEFICIT_LENDING_DETAIL",
-                    EconomyLogSource.ECONOMY_DEBT,
-                    "day",
-                    day,
-                    "deficitHouseholds",
-                    deficitToday.size(),
-                    "borrowingTotal",
-                    traceTotalLongs(borrowing),
-                    "loanTransfersToday",
-                    loanTransfers,
-                    "debtContracts",
-                    debts.size(),
-                    "unmetAfter",
-                    traceTotalGoods(unmetToday)));
-      }
-    }
+    // ── 4b. ★★★ W5.5（2026-10-11，S-12①）：这里原有**同格借粮腿**（{@code lendDeficitsPartitioned} /
+    //   {@code lendDeficitsInHex} / {@code lendableOf} / {@code
+    // LENDER_SUBSISTENCE_RESERVE_PER_MILLE} /
+    //   {@code DEFICIT_LENDING} 日志）—— **整段退役**（AGENTS §一.11：旧设计直接删，不留兼容位）。
+    //   ★ 用户原话：「**把借粮这条路给取缔掉，这条路才是真的不知道哪里冒出来的**」—— 它**不是**用户裁定：
+    //     它来自 2026-09-25 那批聚合经济引擎计划，代码注释里引用的「D-031（2026-10-04 用户裁定）」在用户设计原稿
+    //     （`2026-10-02-architecture-design-source.md`，只到 D-030）里**不存在** ⇒ 该腿连同它的自造编号一并退役
+    //     （约束设计书 §7 v3.19 已留痕；§五.5：自造的规矩不得冒充用户裁定）。
+    //   ★ 取代它的是**货币腿**：钱在**市场轮内**（挂商品 → 挂钱 → 借钱 → 买货）由放贷人以真钱出借，
+    //     借到的钱当天就能买货（{@code MarketSettlement} 的 1d 段 → {@code MoneyMarketSettlement}）；
+    //     借不到的那部分仍由买货时的「未付价款 ⇒ 对卖方的债务」兜底（S-12⑦，同一本 {@code debtContracts}）。
+    //   ★ 这里不再有那支"先再吃一口"：它服务的正是借粮腿（"关账日买到粮就不该再借"），而买货已在市场轮里
+    //     发生、借钱发生在**买货之前** ⇒ 该分支没有存在的理由（它不再搬粮，也不再动 consumed/unmet 读数）。
 
     // ── 4c. 偿还（★ P11.1 / D-023 / D-030：所得到账后、计息前，“有啥付啥”的任意介质偿还）────────────
     //   ★★ 它挂在"今天有产业关账"上（利息／市场的同一处日级事实）：所得是**整周期**结算出来的
@@ -3275,7 +3180,7 @@ public final class EconomySettlement {
       //   · `income`   = **实物入账**（关系给本行的 cohort 入账 + 同格取材的**转入**）—— **不再是**毛产分成。
       Map<CommodityId, Long> consumed = consumedGoods.getOrDefault(key, Map.of());
       Map<CommodityId, Long> earned = income.getOrDefault(key, Map.of());
-      long borrowed = borrowing.getOrDefault(key, 0L);
+      // ★★ W5.5：`borrowed`（本日新借入粮）随借粮腿一并删除 ⇒ 本行只把上期累计原样带过（见下面 FlowRow 的构造）。
       long repaid = repaidToday.getOrDefault(key, 0L);
       long interest = interestToday.getOrDefault(key, 0L);
       // ★ netSurplus = income[grain] − 消费[grain] − 税(0) − 利息（§3.3 的口径；税要等 government 切片）。
@@ -3312,7 +3217,8 @@ public final class EconomySettlement {
               mergeGoods(acc == null ? null : acc.consumed(), consumed),
               acc == null ? 0L : acc.taxPaid(),
               (acc == null ? 0L : acc.interestDue()) + interest,
-              (acc == null ? 0L : acc.newBorrowing()) + borrowed,
+              // ★★ W5.5：借粮腿已删 ⇒ 本日新借入粮恒 0（货币腿的借入是**钱**，量纲不同，不塞进这个粮字段）。
+              acc == null ? 0L : acc.newBorrowing(),
               acc == null ? 0L : acc.repaid() + repaid,
               (acc == null ? 0L : acc.netSurplus()) + netSurplus,
               mergeGoods(acc == null ? null : acc.unmetNeed(), dayUnmet),
@@ -3523,7 +3429,7 @@ public final class EconomySettlement {
                 "unmet",
                 traceTotalGoods(unmetToday),
                 "borrowedGrainMilli",
-                traceTotalLongs(borrowing),
+                0L, // ★ W5.5：借粮腿已删 ⇒ 本日新借入粮恒 0（货币腿的借入额见 MONEY_MARKET_ROUND / debtContracts）。
                 "repaidGrainMilli",
                 traceTotalLongs(repaidToday),
                 "repaidMoneyByCurrency",
@@ -3764,7 +3670,7 @@ public final class EconomySettlement {
       Map<HouseholdId, Long> deficits) {}
 
   /**
-   * ★★ <b>消费 + 同格借贷的第一步：吃自家库存</b>（按 hex 并行）。
+   * ★★ <b>消费：吃自家库存</b>（按 hex 并行；缺口的借贷已按 S-12① 移到市场轮的货币腿）。
    *
    * <p>每个分区处理若干 hex；同 hex 内按 {@link #rowsByHex} 的既有行序逐户消费（户与户之间无共享账户），
    * 写的是线程本地意向。缺口/消费/未满足三个累加器随分区返回，协调器按分区序合并（整数加法可交换）。
@@ -4241,156 +4147,6 @@ public final class EconomySettlement {
     for (HarvestPartition partition : partitions) {
       mergeGoodsInto(income, partition.income());
       // ★★ M7：同投入阶段 —— 列表序由协调器的分区遍历序决定；跨代码态比较按业务键排序后比较集合（见投入阶段的注释）。
-      ledger.absorb(partition.ledger());
-    }
-  }
-
-  /** 借粮阶段一个分区的产出（意向 + 本地债务/行/读数副本 + 分区账本 + 本分区家户键）。 */
-  private record LendingPartition(
-      List<OrderedAccountIntent> intents,
-      Map<DebtContractId, DebtContract> debts,
-      Map<HouseholdId, HouseholdEconomy> householdEconomyUpdates,
-      Map<HouseholdId, Map<CommodityId, Long>> consumed,
-      Map<HouseholdId, Long> borrowing,
-      Map<HouseholdId, Map<CommodityId, Long>> unmet,
-      ProductionLedger.Accumulator ledger,
-      List<HouseholdId> keys) {}
-
-  /**
-   * ★★ <b>同格借粮按 hex 并行</b>（{@link #lendDeficitsInHex} 的并行外壳）。
-   *
-   * <p>借贷双方必须同格（id 只含 debtor/creditor；跨格借粮不在本阶段）；每个分区只碰自己 hex 的债务条 （按 debtor
-   * 归属）、行、未满足读数，交出后由协调器按分区序合并。账户/转移仍走意向 + 唯一写口。
-   */
-  private static void lendDeficitsPartitioned(
-      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
-      LinkedHashMap<DebtContractId, DebtContract> debts,
-      AccountSession accounts,
-      LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
-      LinkedHashMap<HouseholdId, Long> borrowing,
-      LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetNeed,
-      LinkedHashMap<HouseholdId, Long> deficitToday,
-      long dueCycle,
-      Map<HouseholdId, Long> cycleDaysByHousehold,
-      Map<ActorRef, HouseholdId> householdOfActor,
-      ProductionLedger.Accumulator ledger,
-      long day,
-      EconomyParallelism parallelism) {
-    Map<String, List<HouseholdId>> hexToRows = rowsByHex(householdEconomies);
-    TreeMap<String, List<HouseholdId>> active = new TreeMap<>();
-    for (Map.Entry<String, List<HouseholdId>> hex : hexToRows.entrySet()) {
-      for (HouseholdId key : hex.getValue()) {
-        if (deficitToday.containsKey(key)) {
-          active.put(hex.getKey(), hex.getValue());
-          break;
-        }
-      }
-    }
-    if (active.isEmpty()) {
-      return;
-    }
-    AccountSnapshot snapshot = accounts.snapshot();
-    PartitionPlan plan =
-        PartitionPlan.of(SettlementStage.LENDING, active.keySet(), parallelism.partitionCount());
-    List<LendingPartition> partitions =
-        SettlementExecutor.execute(
-            plan,
-            partition -> {
-              AccountIntentBuffer buffer =
-                  AccountIntentBuffer.onHexPartition(
-                      snapshot,
-                      SettlementStage.LENDING,
-                      partition.partitionIndex(),
-                      plan.partitionCount());
-              BufferedAccountTables tables = new BufferedAccountTables(snapshot, buffer);
-              List<HouseholdId> keys = new ArrayList<>();
-              LinkedHashMap<HouseholdId, Long> deficit = new LinkedHashMap<>();
-              LinkedHashMap<HouseholdId, Map<CommodityId, Long>> localUnmet = new LinkedHashMap<>();
-              for (String hex : partition.canonicalKeys()) {
-                for (HouseholdId key : active.get(hex)) {
-                  keys.add(key);
-                  if (deficitToday.containsKey(key)) {
-                    deficit.put(key, deficitToday.get(key));
-                  }
-                  Map<CommodityId, Long> recorded = unmetNeed.getOrDefault(key, Map.of());
-                  if (!recorded.isEmpty()) {
-                    localUnmet.put(key, new LinkedHashMap<>(recorded));
-                  }
-                }
-              }
-              // ★ 债务条按 debtor 归属本分区 —— 读的是“快照 + 本分区本地写”的一致性副本。
-              // ★★ E4c：复制口也收在 DebtContractBook（本方法不再直接对债务表 put）；worker 的写走 upsert，
-              //   协调器用 absorb 落回。
-              LinkedHashMap<DebtContractId, DebtContract> localDebts =
-                  DebtContractBook.subset(debts, contract -> keys.contains(contract.debtor()));
-              LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomyUpdates =
-                  new LinkedHashMap<>();
-              LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumed = new LinkedHashMap<>();
-              LinkedHashMap<HouseholdId, Long> localBorrowing = new LinkedHashMap<>();
-              ProductionLedger.Accumulator partitionLedger =
-                  new ProductionLedger.Accumulator(day, partition.partitionIndex());
-              for (String hex : partition.canonicalKeys()) {
-                List<HouseholdId> hexKeys = new ArrayList<>();
-                LinkedHashMap<HouseholdId, Long> hexDeficit = new LinkedHashMap<>();
-                for (HouseholdId key : active.get(hex)) {
-                  hexKeys.add(key);
-                  if (deficit.containsKey(key)) {
-                    hexDeficit.put(key, deficit.get(key));
-                  }
-                }
-                if (hexDeficit.isEmpty()) {
-                  continue;
-                }
-                lendDeficitsInHex(
-                    hexKeys,
-                    householdEconomies,
-                    householdEconomyUpdates,
-                    localDebts,
-                    tables.householdGoods,
-                    tables.householdMoney,
-                    consumed,
-                    localBorrowing,
-                    localUnmet,
-                    hexDeficit,
-                    day,
-                    dueCycle,
-                    cycleDaysByHousehold,
-                    householdOfActor,
-                    partitionLedger);
-              }
-              return new LendingPartition(
-                  buffer.drainIntents(),
-                  localDebts,
-                  householdEconomyUpdates,
-                  consumed,
-                  localBorrowing,
-                  localUnmet,
-                  partitionLedger,
-                  keys);
-            },
-            parallelism.poolOrNull());
-    List<OrderedAccountIntent> intents = new ArrayList<>();
-    for (LendingPartition partition : partitions) {
-      intents.addAll(partition.intents());
-    }
-    accounts.commit(intents);
-    for (LendingPartition partition : partitions) {
-      DebtContractBook.absorb(debts, partition.debts());
-      householdEconomies.putAll(partition.householdEconomyUpdates());
-      mergeGoodsInto(consumedGoods, partition.consumed());
-      for (Map.Entry<HouseholdId, Long> entry : partition.borrowing().entrySet()) {
-        borrowing.merge(entry.getKey(), entry.getValue(), Long::sum);
-      }
-      // 未满足读数可能被 trim 到 0 ⇒ 必须按“本分区键的最终值”替换（而不是只累加），否则旧缺口会留在读数里。
-      for (HouseholdId key : partition.keys()) {
-        Map<CommodityId, Long> updated = partition.unmet().get(key);
-        if (updated == null || updated.isEmpty()) {
-          unmetNeed.remove(key);
-        } else {
-          unmetNeed.put(key, new LinkedHashMap<>(updated));
-        }
-      }
-      // ★ M7：同投入/收获阶段 —— 分区序决定列表序与转移 id 的 p 段；跨代码态比较按业务键排序后比较集合。
       ledger.absorb(partition.ledger());
     }
   }
@@ -6615,10 +6371,15 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>每条家户行的 {@code cycleDays}</b>（{@link #lendableOf} 的"本周期自需"要用它）：取**它供给的那些产业的最长周期**。
+   * ★★ <b>每条家户行的 {@code cycleDays}</b>：取**它供给的那些产业的最长周期**。
    *
-   * <p>★ <b>为什么取 max</b>：保留额是"这一周期自己要吃的口粮"，多产业的家户没有一个自己的周期 ⇒ 取**最长**的那个是保守方向
-   * （不会把它这一周期的口粮当余粮贷出去）。真档三个产业的 {@code cycleDays} 都是 120 ⇒ 与改前逐值相同。
+   * <p>★★ <b>W5.5 后的用途收窄（如实记）</b>：它原先服务两处 —— ① 借粮腿放贷方的"本周期自需"（{@code lendableOf}， 已随该腿删除）；②
+   * 各行流水的"本期"何时翻篇（{@link FlowRow} 的清零窗口，**仍在用**）。⇒ 本方法保留，但它的 {@code max} 口径现在只服务流水翻篇；{@code
+   * DebtCapacityBook}（质押/headroom 的唯一算法，服务清算与只读诊断） 仍按同一份口径自算一次（它有自己的 {@code
+   * cycleDaysByHousehold(EconomyData)}）。
+   *
+   * <p>★ <b>为什么取 max</b>：多产业的家户没有一个自己的周期 ⇒ 取**最长**的那个是保守方向（不会把它这一周期的口粮当余粮）。 真档三个产业的 {@code
+   * cycleDays} 都是 120 ⇒ 与改前逐值相同。
    *
    * <p>★ <b>没有配额的家户</b>（供给集合为空）：退回**本格产业的最长周期**（那格至少有一个产业 —— 见 {@code EconomyData} 的
    * 构造期守卫）；连产业都没有的格 ⇒ 记 0（保留额 0，与改前的隐含口径同侧：没有周期就没有"整周期自需"）。
@@ -6693,41 +6454,8 @@ public final class EconomySettlement {
         industriesByHex);
   }
 
-  // ── 消费 + 同格借粮 ─────────────────────────────────────────────────────────────────
+  // ── 消费（缺现金的家户在**市场轮**里先借钱再买货；本段不再有任何借贷）──────────────────────
 
-  /**
-   * 每个格一次：先各自吃自己的库存，库存不够的**在同格内借**（**按可贷余粮降序**找放贷人 —— 见 {@link #lendableOf}）；借到的**累加进同一条** {@link
-   * DebtContract}（§7.2 的聚合）；**仍补不上的** 记入未满足需求（{@code unmetNeed}，★ W3 起它是报给 Social 的 口粮缺口那一支的当日分子）。
-   *
-   * <p>★ **借到的粮当日即被吃掉** ⇒ 缺口行 {@code consumed} 记足额（借入量并入当日消费），行库存归零；放贷行的库存相应减少（债权体现在债务表， **不进放贷行的
-   * {@code consumed}** —— 它出去的是"债权"不是"消费"）。故 §6.1 的守恒式在**格/全局**上成立、**逐行不成立**。
-   *
-   * <p>★★ <b>H2：那一笔"放贷行扣库存、却不进它的 consumed"现在有一条转移记录相伴</b>（{@code from=放贷家户, to=借款家户}，原因 {@link
-   * TransferReason#LOAN_PRINCIPAL}）—— 改前那条**刻意的不对称**在账上无从对账（库存少了，
-   * 既不是消费、也不是转移），正是"任何库存变动必有对应转移记录"这条不变量要钉的东西。★ 借入方当天吃掉那一笔走 {@link #consumeFromHousehold}（转移 +
-   * 消费两条痕，余额净 0 —— 与改前逐值相同）。
-   *
-   * <p>★★ **E4a 连续债务身份**：id 由 {@code (债务人, 债权人, unit, terms)} 的纯函数 {@link DebtContractId#idOf} 给出 ⇒
-   * 同一对主体**跨周期命中同一条** {@link DebtContract}（本金递增），不同 unit/terms 必然分开；旧“周期在 id
-   * 里、新周期开新条”的行为到此结束（这是本阶段的**有意**行为变化，见交付报告）。
-   *
-   * <p>★★ **当日需求来自 app 注入的物化读模型**（2026-10-09 家户结构修复 Batch 3；V5/§八.8）：
-   *
-   * <pre>
-   * need = row.naturalNeeds[grain]                    // app 逐户按 Social 成员展开后注入（唯一来源）
-   * row.naturalNeeds 由 applyNaturalNeedsInto 写      // 结算不再按 population 反推、也不再重写
-   * eaten = min(家户账余额, need)；差额进 deficit（借粮/缺口）
-   * </pre>
-   *
-   * <p>★★ **H1：库存在会话工作副本里**（裁定 K1）：日耗从 {@code householdGoods} 读、**就地扣**（改前读写 {@code
-   * HouseholdEconomy.goods}）；{@code population == 0} 的家户**跳过消费**（它们不吃饭、不穿衣 —— 需求本来也是 0，这里显式挡一次
-   * 免得读一个不存在的账）。
-   *
-   * @param cycleDaysByHousehold 每条家户行的 {@code cycleDays}（放贷行**本周期自需**的输入，见 {@link
-   *     #cycleDaysByHousehold}；H0 之前这一项藏在"行 → 产业"的键里，现在行没有产业了）
-   * @param day 借入发生日（进 {@code DebtContract.openedDay}；首次建条用）
-   * @param dueCycle 借粮的到期周期 = 当前周期 + 1（滚动写进合同；连续余额只保留最新一笔的到期）
-   */
   /**
    * ★ <b>本日关账的一个 unit</b>（H5/R3B.2）：它的 id、产业模板 id、它名下的家户行 —— 关账日的结算与读数要等
    * <b>市场与借粮</b>走完才跑，故先把这几样收起来。
@@ -6738,233 +6466,6 @@ public final class EconomySettlement {
    */
   private record ClosedUnit(
       ProductionUnitId unit, IndustryId industry, List<HouseholdId> keys, boolean inputShortfall) {}
-
-  /**
-   * ★★ <b>同格借粮：最后手段</b>（H5 ②；改前的 {@code settleHexes} 的第二半）—— 逐格：缺口行向**本格可贷余粮** （按余粮降序，见 {@link
-   * #lendableOf}）借，借到的**累加进同一条** {@link DebtContract}（E4a 连续身份）； **仍补不上的** 记入未满足需求（{@code
-   * unmetNeed}，★ W3 起经 4d 报给 Social 当饥荒输入）。
-   *
-   * <p>★★ <b>四档次序（判据就是它）</b>：<b>① 自产/分配</b>（{@link #consumeOwnStockPartitioned} 吃自有库存，收获与分配在它之前） →
-   * <b>② 市场购买</b>（{@link MarketSettlement}，在关账日、本步之前）→ <b>③ 救济</b>（★ <b>留位</b>：本批没有任何救济制度，
-   * 谁救济、救济多少都是判断 ⇒ 属 GM 参数目录，今天这一档空着）→ <b>④ 借</b>（本方法）。
-   *
-   * <p>★★ <b>本步开头先"再吃一口"</b>：① 之后、本步之前，家户可能**又拿到了粮**（关账日的收获与分配、集市上买到的）—— 手里有粮就不该动信用。故先把 {@code
-   * min(现在的库存, 当日缺口)} 吃掉（记进 {@code consumed}、冲减当日缺口读数）， 剩下的才借。★ 非关账日没有集市、也没有收获 ⇒ 这一口恒为 0 ⇒ 与改前逐值相同。
-   *
-   * <p>★ **借到的粮当日即被吃掉** ⇒ 缺口行 {@code consumed} 记足额（借入量并入当日消费），行库存归零；放贷行的库存相应减少（债权体现在债务表， **不进放贷行的
-   * {@code consumed}** —— 它出去的是"债权"不是"消费"）。故 §6.1 的守恒式在**格/全局**上成立、**逐行不成立**。
-   *
-   * <p>★★ <b>H2：那一笔"放贷行扣库存、却不进它的 consumed"现在有一条转移记录相伴</b>（{@code from=放贷家户, to=借款家户}，原因 {@link
-   * TransferReason#LOAN_PRINCIPAL}）。★ 借入方当天吃掉那一笔走 {@link #consumeFromHousehold}（转移 + 消费两条痕，余额净 0）。
-   *
-   * <p>★★ <b>E4a 连续债务身份</b>：id 由 {@code (债务人, 债权人, unit, terms)} 的纯函数 {@link DebtContractId#idOf}
-   * 给出 ⇒ 同一对主体**跨周期命中同一条** {@link DebtContract}（本金递增），不同 unit/terms 必然分开；旧“周期在 id
-   * 里、新周期开新条”的行为到此结束（这是本阶段的**有意**行为变化，见交付报告）。
-   *
-   * <p>★★ <b>D-031：借款人侧无额度上限</b>：借出量 = {@code min(剩余缺口, 各放贷方实际余粮之和)}；放贷方余粮按 {@link #lendableOf}
-   * 逐债权人递减，借空即止。不再读 {@code DebtCapacity}/headroom，也不要求抵押物。债务风险由债权人 承担；坏账留给既有清算/违约/迁移规则。
-   *
-   * <p>★★ <b>放贷人不再按阶层白名单选</b>（R3 续修；制度选择，理由与边界写明）：旧实现只认 {@code landlord/rich/middle} 三档当前 view，而 S3
-   * 阶层写回把真档绝大多数行改成派生阶层后，"有粮可贷"的家户只要不在白名单里就借不出去，信贷集中到 799 个地主。 本版改为<strong>按可观察余粮选人</strong>：凡
-   * {@code lendableOf(row, 库存, cycleDays) > 0} 的家户都可放贷（不按阶层名、不按旧档反推）， 并按可贷额降序、同额按 {@link
-   * HouseholdId#value()} 升序作确定性 tie-break。★ 边界：这<b>不</b>凭空造粮；它只回答"谁有粮谁能贷"。
-   *
-   * @param cycleDaysByHousehold 每条家户行的 {@code cycleDays}（放贷方**本周期自需**的输入）
-   * @param day 借入发生日（进 {@code DebtContract.openedDay}；首次建条用）
-   * @param dueCycle 借粮的到期周期 = 当前周期 + 1（滚动写进合同；连续余额只保留最新一笔的到期）
-   */
-  private static void lendDeficitsInHex(
-      List<HouseholdId> keys,
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<HouseholdId, HouseholdEconomy> householdEconomyUpdates,
-      Map<DebtContractId, DebtContract> debts,
-      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
-      Map<HouseholdId, Map<CommodityId, Long>> consumedGoods,
-      Map<HouseholdId, Long> borrowing,
-      Map<HouseholdId, Map<CommodityId, Long>> unmetNeed,
-      Map<HouseholdId, Long> deficit,
-      long day,
-      long dueCycle,
-      Map<HouseholdId, Long> cycleDaysByHousehold,
-      Map<ActorRef, HouseholdId> householdOfActor,
-      ProductionLedger.TransferMint mint) {
-    {
-      // ② 放贷序列：按可观察余粮降序（R3 续修；制度选择，理由与边界见方法注释）。
-      //   ★★ **可取的不是"全部库存"、也不是"当日盈余"**（V1 的注释与代码相反，V6 一并修）：可取的是
-      //     **余粮 = 余额 − 本周期自需 × {@link #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000**（{@link
-      // #lendableOf}）。
-      //   ★ 付款路径**不按人口过滤**（H1 明文）：人口为 0 的家户照样可以是债权人（它有存粮、它借得出）。
-      Map<HouseholdId, Long> lendableByLender = new LinkedHashMap<>();
-      for (HouseholdId key : keys) {
-        long available =
-            lendableOf(
-                householdEconomies.get(key), grainOf(householdGoods, key), cycleDaysByHousehold);
-        if (available > 0L) {
-          lendableByLender.put(key, available);
-        }
-      }
-      List<HouseholdId> lenders = new ArrayList<>(lendableByLender.keySet());
-      lenders.sort(
-          Comparator.<HouseholdId, Long>comparing(lendableByLender::get, Comparator.reverseOrder())
-              .thenComparing(HouseholdId::value));
-      if (TRACE.isDebugEnabled()) {
-        long lendableTotal = 0L;
-        for (long available : lendableByLender.values()) {
-          lendableTotal += available;
-        }
-        long debtorsWithGrainStock = 0L;
-        for (HouseholdId debtor : deficit.keySet()) {
-          if (grainOf(householdGoods, debtor) > 0L) {
-            debtorsWithGrainStock++;
-          }
-        }
-        EventLog.channel(TRACE)
-            .debug(
-                LogEvent.of(
-                    "DEFICIT_POOL",
-                    EconomyLogSource.ECONOMY_DEBT,
-                    "day",
-                    day,
-                    "lendableLenders",
-                    lendableByLender.size(),
-                    "lendableTotalGrainMilli",
-                    lendableTotal,
-                    "debtors",
-                    deficit.size(),
-                    "debtorsWithGrainStock",
-                    debtorsWithGrainStock));
-      }
-      // ③ 逐缺口行（阶层 id 序 → 居住类型）借：借到多少累加多少债；没人有**余粮** ⇒ 剩下的只留作未满足的自然需求。
-      List<HouseholdId> debtors = new ArrayList<>(deficit.keySet());
-      debtors.sort(
-          Comparator.comparing(
-                  (HouseholdId k) -> householdEconomies.get(k).view().stratum().value())
-              .thenComparing(k -> householdEconomies.get(k).view().residence()));
-      for (HouseholdId debtor : debtors) {
-        long remaining = deficit.get(debtor);
-        // ★★ **先再吃一口**（H5）：① 之后拿到手的粮（关账日的收获/分配、集市上买到的）先顶当天的饭 —— 不动信用。
-        long jar = grainOf(householdGoods, debtor);
-        long secondMeal = Math.min(jar, remaining);
-        if (secondMeal > 0L) {
-          consumeFromHousehold(householdGoods, consumedGoods, debtor, GRAIN, secondMeal);
-          trimUnmet(unmetNeed, debtor, GRAIN, secondMeal);
-          remaining -= secondMeal;
-        }
-        // ★★ **D-031：借款人侧无额度上限** —— 缺口户按剩余缺口借，直到本轮放贷人余粮全部借空。
-        for (HouseholdId lender : lenders) {
-          if (remaining <= 0L) {
-            break;
-          }
-          long available = lendableByLender.getOrDefault(lender, 0L);
-          if (available <= 0L) {
-            continue; // 只剩口粮/已经没有余粮 ⇒ 不贷（V1 是在这里把全部库存贷出去）
-          }
-          long lent = Math.min(remaining, available);
-          // ★ 放贷人的可贷额随本笔转移递减（本轮内只有这里会动它的库存）⇒ 后续债务人看到的余粮与
-          //   "每次现算 lendableOf"逐值相同，但不重算。
-          lendableByLender.put(lender, available - lent);
-          // ★★ **H2：借粮 = 一条转移（债权人 → 债务人），再由唯一的 applier 落到副本上**。
-          //   改前只写"放贷行扣库存"这一腿 —— 那条**刻意的不对称**正是"任何库存变动必有对应转移记录"
-          //   这条不变量要钉的东西（借入方当天就吃掉，账面上只有消费与债务两条痕，看不出粮从谁那里来）。
-          Transfer loan =
-              mint.mint(
-                  HouseholdActors.of(lender),
-                  HouseholdActors.of(debtor),
-                  householdEconomies.get(debtor).view().hex(),
-                  Map.of(GRAIN, lent),
-                  TransferReason.LOAN_PRINCIPAL);
-          applyTransfer(householdGoods, householdMoney, householdOfActor, loan);
-          // ★★ **借到的粮当日即被吃掉**：紧接在转移之后从借方副本扣掉同一笔（⇒ 借方余额净 0，
-          //   与改前逐值相同：改前根本不写借方库存，只记 consumed 与债务）。⇒ 两条痕都在：转移（粮从谁来）
-          //   与消费（粮到哪去）。
-          consumeFromHousehold(householdGoods, consumedGoods, debtor, GRAIN, lent);
-          // ★ 借到的那一笔当日即被吃掉 ⇒ 冲减当日缺口读数（缺口在吃饭那一步已经整笔记进去了 —— 见 consumeOwnStock）。
-          trimUnmet(unmetNeed, debtor, GRAIN, lent);
-          // ★★ E4a 连续身份：id 是 (债务人, 债权人, unit, terms) 的**纯函数** ⇒ 同一对主体跨周期命中同一条，
-          //   本金递增；terms 不同（利率/规则/期限维）必然分开，不允许静默合并。
-          // ★★ E4c：唯一写口 —— 新条/续借/再借激活/到期覆盖全部在 DebtContractBook.upsert 里；本方法不再碰债务表。
-          // ★ 返回值（新/合并后的 DebtContract）**刻意不接**：拆表后债务行的派生引用由 EconomyData 构造期的
-          //   DebtReferenceReconciler 整表重建（见下面一段），本方法拿不到也不需要那条合同的句柄
-          //   —— 接了就只是 DLS_DEAD_LOCAL_STORE（SpotBugs）。调用本身（写入副作用）原样保留。
-          DebtContractBook.upsert(
-              debts,
-              debtor,
-              lender,
-              DebtUnit.commodity(GRAIN),
-              DebtTerms.legacyDefault(BORROW_RATE_PER_MILLE_PER_CYCLE),
-              lent,
-              day,
-              OptionalLong.of(dueCycle));
-          // ★★ 2026-10-09 选项 A：改前这里把新合同的派生引用补进债务人行（householdEconomyUpdates）；
-          //   拆表后引用表由 EconomyData 构造期的 DebtReferenceReconciler 按 debts 工作表整表重建 ⇒ 不必再补。
-          // ★ 借到的粮当日吃掉 ⇒ 已在上面（转移之后）计入当日消费 —— 那里是**唯一**写这一笔的地方。
-          borrowing.merge(debtor, lent, Long::sum);
-          remaining -= lent;
-        }
-        // remaining > 0 ⇒ 本格放贷人的**余粮**已经借空（D-031 起不再有借款人额度门）：不造粮、不造债。
-        // ★★ **H5：这里不再写 unmetNeed** —— 缺口在吃饭那一步（{@link #consumeOwnStockPartitioned}）已经整笔记进去了，
-        //   本步每借到一笔/每吃一口自家粮就 {@link #trimUnmet} 冲减一笔 ⇒ 走到这里剩下的那些**已经**留在读数里
-        //   （终值 = 改前那个"借完还剩多少"的残差）。★ 少了这条"不写"的说明，后来者会以为漏了一笔，
-        //   然后在两处各记一遍 —— 读数翻倍，而没有任何一处报错。
-      }
-    }
-  }
-
-  /**
-   * ★★ **放贷行的可贷额（余粮）**（v2 spec §7.1 第一处；V6 落地）：
-   *
-   * <pre>
-   * reserve  = lender.expectedNeedMilli(GRAIN, 该家户的 cycleDays)
-   *            × {@link #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000        // 毫粮
-   * lendable = max(0, 余额 − reserve)
-   * </pre>
-   *
-   * <p>★ <b>H0 起"该家户的 cycleDays"来自它供给的那些产业</b>（行里已经没有产业段了；取最长，见 {@link
-   * #cycleDaysByHousehold}）。真档三个产业都是 120 天 ⇒ 与改前逐值相同。 ★ <b>H1 起"余额"由调用方从会话工作副本读好传进来</b> （{@code
-   * stock}；行里已经没有库存了）。
-   *
-   * <p>★★ **"本周期自需"取的是整周期**（{@code expectedNeedMilli(GRAIN, cycleDays)}），不是"今日一餐"、也不是
-   * "消费后的全部库存"：放贷方先把这一周期自己**全部**的口粮扣下来，剩下的才是余粮。默认千分比 1000 ⇒ 保留额就是整周期口粮（"地主 250 天储备 − 120 天自需 = 130
-   * 天余粮仍贷得出去"）。
-   *
-   * <p>★★ **来源口径（2026-10-09 Batch 3）**：前瞻需求 = 该户<b>当前注入</b>的 {@code naturalNeeds[grain]} ×
-   * 周期天数；逐户读取、逐户保留，<b>不再</b>按 {@code population × 人均定额} 现算（人口/系数变化由下一次 app 注入刷新，见 {@link
-   * HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}）。
-   *
-   * <p>★ **它只读、不写**：保留额不是"冻结起来的一笔粮"，放贷行自己每天照吃不误 —— 它只是"可贷额"的下界。 ⇒
-   * 周期后半段会**多留**（那时已经用不到整周期的口粮了），这是本口径的可读后果，端到端用例逐值钉着它。
-   *
-   * <p>★★ <b>E4b 修正（如实记）</b>：S1 把行键从 {@code CohortKey} 换成 {@code HouseholdId} 之后，本方法一直用 {@code
-   * lender.key()}（= {@code HouseholdEconomy.view()}，视图）去查 {@code HouseholdId} 键的 {@code
-   * cycleDaysByHousehold} ⇒ <b>查表恒不命中、保留额实际为 0</b>（与本节类注承诺的"整周期自留"相反）。E4b 的实现要按 {@code max(0, 库存 −
-   * 本周期自需)} 算可质押余粮（{@link DebtCapacityBook}），故这里改用 {@code lender.id()} 取同一份 {@code
-   * cycleDaysByHousehold}；<b>放贷方的可贷额因此真正开始扣整周期口粮</b>（这是 E4b 报告里逐条列出的有意行为变化， 不是隐藏改动）。
-   */
-  static long lendableOf(HouseholdEconomy lenderHouseholdEconomy, long stock, long cycleDays) {
-    if (stock <= 0L) {
-      return 0L;
-    }
-    long reserve =
-        lenderHouseholdEconomy.expectedNeedMilli(GRAIN, cycleDays)
-            * LENDER_SUBSISTENCE_RESERVE_PER_MILLE
-            / 1000L;
-    return Math.max(0L, stock - reserve);
-  }
-
-  /**
-   * ★ 带查表的旧签名：键 = {@code lender.id()}（E4b 修正；见 {@link #lendableOf(HouseholdEconomy, long, long)}
-   * 的边界说明）。
-   */
-  static long lendableOf(
-      HouseholdEconomy lenderHouseholdEconomy,
-      long stock,
-      Map<HouseholdId, Long> cycleDaysByHousehold) {
-    return lendableOf(
-        lenderHouseholdEconomy,
-        stock,
-        cycleDaysByHousehold.getOrDefault(lenderHouseholdEconomy.id(), 0L));
-  }
 
   /**
    * ★★ <b>E4b：本日借粮用的 {@link DebtCapacity} 映射</b>（唯一算法在 {@link DebtCapacityBook}）。
@@ -7073,31 +6574,6 @@ public final class EconomySettlement {
     }
     // ★ W1：本格价表 = 本格所属市场的那一张（区内任何格同一张；区 id = 拓扑节点 id）。
     return markets.get(new MarketZoneId(topology.regionOf(hex).node().nodeId()));
-  }
-
-  /**
-   * ★ 把某个"逐行 × 逐商品"缺口累加器里的一笔**冲减**掉（封顶 = 已记的量，绝不改成负数、也不凭空抵消历史缺口）。
-   *
-   * <p>★ 用途（H5）：家户在"吃饭"那一步记下的当日缺口，可能当天又被补上 —— ② 关账日集市上买到的粮、 ③
-   * 借粮前"再吃一口"自家新到手的粮（收获/分配）。两处都只冲减**记过的那一笔**。
-   */
-  private static void trimUnmet(
-      Map<HouseholdId, Map<CommodityId, Long>> unmet,
-      HouseholdId key,
-      CommodityId commodity,
-      long amount) {
-    long recorded = unmet.getOrDefault(key, Map.of()).getOrDefault(commodity, 0L);
-    long reduced = Math.min(recorded, amount);
-    if (reduced <= 0L) {
-      return;
-    }
-    Map<CommodityId, Long> updated = new LinkedHashMap<>(unmet.getOrDefault(key, Map.of()));
-    if (recorded - reduced <= 0L) {
-      updated.remove(commodity);
-    } else {
-      updated.put(commodity, recorded - reduced);
-    }
-    unmet.put(key, updated);
   }
 
   /**
@@ -10620,59 +10096,13 @@ public final class EconomySettlement {
     }
   }
 
-  // ── Z7b：国库/单位户退出商品市场的排除集 ──────────────────────────────────────────
+  // ★★★ R2（2026-10-11，控制方裁定）：原 `unitExclusionsMinusGovernmentTreasuries` /
+  //   `governmentTreasuryHouseholds` 一对助手**已删除** —— 它们做的"把政府国库户从单位户集合里摘出来"这一步，
+  //   现在由**唯一判据** `MarketRound.householdMarketRole` 承担（国库户口径优先于单位户集合判定，更严的一条赢）。
+  //   ★ 删掉而不是留着：多一份"谁退出/谁只买"的拼法就是第二个权威（与 R1 删 `mergeMarketExclusions` 同一条理由）。
+  //   ★ 组合根注入的 Z7b 集合自本批起**原样照收**（`settleOneDayInto` 的 `effectiveMarketExcludedHouseholds`）。
 
-  /**
-   * ★★ <b>政府国库户集合</b>（R1 起 = "只按授权下单"的名单来源）：{@code base.governments()} 里国库 actor 是 HOUSEHOLD 的那些
-   * 稳定家户身份。★ 权威来自经济状态自己的 {@code Government.treasury}，不按 {@code hh-gov-} 前缀猜（前缀只是身份拼法，见 {@code
-   * GovernmentHouseholds}）；非家户国库（{@code GOVERNMENT} actor）本来就不在市场参与者行里。
-   *
-   * <p>★★ <b>R1 的语义变更</b>：本集合原来被并进"退出商品市场"的排除集（Z7b）。现在它<b>不再是排除集</b>：这些家户回到商品市场， 但只按 {@code
-   * EconomyData.govMarketMandates()} 的明确授权下单（自动买卖/放贷/家户外汇单全部不生成）—— 名单的实际消费点是 {@link
-   * GovernmentMarketMandatePlan}。
-   */
-  /**
-   * ★★ <b>R1：单位户排除集 − 已登记政府国库户</b>（保序、不可变）—— 把"是政府国库户"的单位户从排除集里摘出来。
-   *
-   * <p>★★ <b>为什么需要它</b>：GOV 单位的 {@code Unit.households()} 同时列出**官吏户与国库户**（国库是 GOV 单位的
-   * 账房），而组合根注入的"退出商品市场的单位户集合" = {@code Σ Unit.households()} ⇒ 若不摘，Z7b 的"国库户退出" 会从单位户那一半**原路回来**：R1
-   * 撤销了 economy 侧的并入，却仍被单位侧挡住（small-world 实测：{@code hh-gov-gov-central} 与 {@code
-   * hh-gov-gov-province} 都在 {@code Unit.households()} 里，只有 {@code hh-gov-world-silver} 不在 ⇒
-   * 撤销只对后者生效）。
-   *
-   * <p>★ <b>摘出来不等于放开</b>：摘出的家户改走"只按授权下单"（{@link GovernmentMarketMandatePlan}）—— 不生成任何自动订单、
-   * 不放贷、不挂家户外汇单，公家库存与单位库存都不会被自动清仓。其余单位户（官吏户/军户…）**逐值不动**。
-   */
-  static Set<HouseholdId> unitExclusionsMinusGovernmentTreasuries(
-      Set<HouseholdId> unitHouseholds, Map<GovernmentId, Government> governments) {
-    Objects.requireNonNull(unitHouseholds, "unitHouseholds");
-    Set<HouseholdId> treasuries = governmentTreasuryHouseholds(governments);
-    LinkedHashSet<HouseholdId> remaining = new LinkedHashSet<>();
-    for (HouseholdId household : unitHouseholds) {
-      if (household == null) {
-        throw new IllegalArgumentException("marketExcludedHouseholds 不得含 null");
-      }
-      if (!treasuries.contains(household)) {
-        remaining.add(household);
-      }
-    }
-    return Collections.unmodifiableSet(remaining);
-  }
-
-  static Set<HouseholdId> governmentTreasuryHouseholds(Map<GovernmentId, Government> governments) {
-    Objects.requireNonNull(governments, "governments");
-    LinkedHashSet<HouseholdId> households = new LinkedHashSet<>();
-    for (Map.Entry<GovernmentId, Government> entry : governments.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("governments 的键/值不得为 null");
-      }
-      Government government = entry.getValue();
-      if (government.treasury().kind() == ActorKind.HOUSEHOLD) {
-        households.add(HouseholdActors.householdOf(government.treasury()));
-      }
-    }
-    return Collections.unmodifiableSet(households);
-  }
+  // ── 家户账（会话工作副本）的读写助手 ────────────────────────────────────────────────
 
   // ★★ R1（2026-10-09）：{@code mergeMarketExclusions}（"单位户 ∪ 政府国库户"的有效排除集）**已删除** ——
   //   本批撤销的正是"国库户退出商品市场"那一半。国库户现在的身份是"只按授权下单的市场参与者"（见

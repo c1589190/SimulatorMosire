@@ -165,6 +165,25 @@ public final class EconomyMergeMarketZonesHandler
                 + "‰；合并后只能有一个）—— 先 economy.SetMarketZonePriceAlpha 统一，再合并",
             base);
       }
+      // ★★ W5.5（2026-10-11，S-12）：货币市场利率的自适应步长 α 是**逐市场政策**（挂在价表上）⇒ 与上面
+      //   `prices-differ` 同款处置（两区不同值 ⇒ 合并会静默丢掉一个）。★ 清算利率本身（loanRatePerMille）**不**做
+      //   冲突判据：它是每市场轮由供需重算的**市场状态**，两区不同是常态，要求相等等于让合并几乎不可用
+      //   ⇒ 取存活区（target）那张表的本轮清算价（合并后它按整个新区的供需重算；账本"偏离记录"里具名）。
+      if (sourceTable != null
+          && targetTable != null
+          && sourceTable.loanRateAlphaPerMille() != targetTable.loanRateAlphaPerMille()) {
+        return rejected(
+            "loan-rate-alpha-conflict",
+            definition,
+            source,
+            target,
+            "两区的货币市场利率步长 α 不同（源="
+                + sourceTable.loanRateAlphaPerMille()
+                + "‰ 目标="
+                + targetTable.loanRateAlphaPerMille()
+                + "‰；合并后只能有一个）—— 先 economy.SetMarketZoneLoanRateAlpha 统一，再合并",
+            base);
+      }
       for (Map.Entry<String, OfficialRate> entry : source.officialRates().entrySet()) {
         OfficialRate existing = mergedRates.get(entry.getKey());
         if (existing != null && !existing.equals(entry.getValue())) {

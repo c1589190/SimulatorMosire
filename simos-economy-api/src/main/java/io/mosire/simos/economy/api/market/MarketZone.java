@@ -29,6 +29,12 @@ import java.util.Set;
  *   priceAlphaPerMille  ★★ 本区每市场轮价格调整步长 α（‰/轮；W2，见下）
  * </pre>
  *
+ * <p>★★ <b>W5.5（2026-10-11，S-12）留痕：货币市场的两个数<b>不在本记录上</b></b> —— 它们（清算利率 {@code loanRatePerMille}
+ * 与它的步长 α {@code loanRateAlphaPerMille}）挂在 {@code MarketTable} 上。 ★
+ * <b>判据（哪种世界形态能承载它）</b>：本记录只在"显式立区"的世界里有，而派生形态的世界（{@code marketZones} 为空、区按"城市 + tier
+ * 半径"现算、<b>价表仍持久</b>）<b>没有本记录可挂</b> ⇒ 挂在区记录上会让那些世界的利率每轮从 出厂缺省重新起算、永不收敛（实测：小世界 120 天 48 个市场轮，{@code
+ * rateChanges=0}）。 详见 {@code MarketTable} 的类注（同一个市场里"钱的价"与"货的价"挂同一张表 —— S-12 的"钱是市场里的一个商品"）。
+ *
  * <p>★★ <b>W2（2026-10-11）：{@code priceAlphaPerMille} —— 动态价的步长，逐区、GM 可调</b>。它是约束设计书 §2.1 的
  * α：缺货每轮最多涨 α‰、滞销每轮最多跌 α‰（规模只决定"多快打满 α"，见 {@code MarketSettlement} 的 自适应算式）。<b>不设上下限</b>（除 α ≥ 0）——
  * 用户 2026-09-25 裁定「凡行为一律做成 GM 可调的预设」， 故它必须可被政策改写（{@code economy.SetMarketZonePriceAlpha}），而不是编译期常量。
@@ -100,7 +106,7 @@ public record MarketZone(
   /**
    * ★ 六参形态 = α 取缺省（{@value #DEFAULT_PRICE_ALPHA_PER_MILLE}‰/轮）：<b>立区/合并区等"不表态 α"的写入形态</b>。
    *
-   * <p>★ 它是"缺省语义中性"的落点（AGENTS §一.11：未设新东西 ⇒ 走缺省），<b>不是</b>旧档兼容位：任何一条 命令都可以改用七参构造器显式给 α。
+   * <p>★ 它是"缺省语义中性"的落点（AGENTS §一.11：未设新东西 ⇒ 走缺省），<b>不是</b>旧档兼容位：任何一条 命令都可以改用九参构造器显式给它们。
    */
   public MarketZone(
       MarketZoneId zoneId,
@@ -193,27 +199,41 @@ public record MarketZone(
    *
    * <p>★ 为什么必须有它：手写 {@code new MarketZone(...)} 会在下一次新增组件时静默丢掉那个组件（本仓最贵的那类 bug）。 ★
    * 半径不在此列：成员格变了之后半径仍由命令显式给（{@link #withHexes(Set, HexCoord, int)}）。
+   *
+   * <p>★★ <b>W5.5 更正（如实记）</b>：本方法（与 {@link #withLegalTender}）原先走六参构造器 ⇒ <b>把价格步长 α 静默重置成出厂
+   * 50‰</b>（W2 引入 α 时漏的两处，"其余字段原样带过"这句话当时是假的）。现在两者都走 canonical 构造器：α 逐值带过。
    */
   public MarketZone withHexes(Set<HexCoord> nextHexes, HexCoord nextAnchor, int nextRadiusHex) {
-    return new MarketZone(zoneId, nextAnchor, nextRadiusHex, nextHexes, legalTender, officialRates);
+    return new MarketZone(
+        zoneId,
+        nextAnchor,
+        nextRadiusHex,
+        nextHexes,
+        legalTender,
+        officialRates,
+        priceAlphaPerMille);
   }
 
   /**
-   * ★★ <b>W1：只换本区法定币</b>（成员格、锚、半径、官方汇率表逐值不变）。
+   * ★★ <b>W1：只换本区法定币</b>（成员格、锚、半径、官方汇率表、价格步长 α 逐值不变）。
    *
    * <p>★ 它是"本区按什么钱报价"的<b>唯一写入形态</b>（{@code economy.SetMarketNumeraire} 的持久形态分支用它）：
    * 法定币是区级唯一货币权威，价表里的 {@code numeraire} 是它的投影 —— 两者必须同值（{@code EconomyData} 的构造期
    * 跨表守卫判死漂开），故调用方必须在<b>同一次变更集</b>里把价表那一栏一起改。
    *
+   * <p>★★ <b>W5.5：换币<b>不</b>重置本区的价格步长 α</b>（与 {@link #withHexes} 同一条更正：两者原先走六参构造器、 把 α 静默打回出厂 50‰
+   * —— "其余字段逐值不变"当时是假的）。
+   *
    * @param nextLegalTender 新的法定币；不得为 null
    */
   public MarketZone withLegalTender(CurrencyId nextLegalTender) {
     Objects.requireNonNull(nextLegalTender, "nextLegalTender");
-    return new MarketZone(zoneId, anchor, radiusHex, hexes, nextLegalTender, officialRates);
+    return new MarketZone(
+        zoneId, anchor, radiusHex, hexes, nextLegalTender, officialRates, priceAlphaPerMille);
   }
 
   /**
-   * ★★ <b>只换官方汇率覆盖里的一条</b>（法定币、成员格逐值不变）。
+   * ★★ <b>只换官方汇率覆盖里的一条</b>（法定币、成员格、价格步长 α 逐值不变）。
    *
    * <p>★ 它是"本区官方汇率"的唯一写入形态 —— 调用方拿不到"顺手把法定币也改了"的口子（{@code Government.withOfficialRate} 的同款）。
    */
@@ -221,11 +241,11 @@ public record MarketZone(
     Objects.requireNonNull(rate, "rate");
     LinkedHashMap<String, OfficialRate> rates = new LinkedHashMap<>(officialRates);
     rates.put(rate.key(), rate);
-    return new MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, rates);
+    return new MarketZone(zoneId, anchor, radiusHex, hexes, legalTender, rates, priceAlphaPerMille);
   }
 
   /**
-   * ★★ <b>只换整张区级官方汇率表</b>（成员格、法定币逐值不变）。
+   * ★★ <b>只换整张区级官方汇率表</b>（成员格、法定币、价格步长 α 逐值不变）。
    *
    * <p>★ 合并两区（{@code economy.MergeMarketZones}）要的正是"整张表取并集"这一个动作；逐条 {@link #withOfficialRate} 拼
    * 也可以，但那样"并集"这件事就散落在命令层（两处拼写 = 两处会漂）。冲突（同币对不同价）由**调用方**在合并之前判掉， 本方法只做形状守卫（键 == 值内币对）。
@@ -236,7 +256,7 @@ public record MarketZone(
   }
 
   /**
-   * ★★ <b>W2：只换本区动态价步长 α</b>（成员格、锚、半径、法定币、官方汇率全部逐值不变）。
+   * ★★ <b>W2：只换本区动态价步长 α</b>（成员格、锚、半径、法定币、官方汇率、货币市场两项全部逐值不变）。
    *
    * <p>★ 它是"本区价格每轮最多动多少"的<b>唯一写入形态</b>（{@code economy.SetMarketZonePriceAlpha} 用它）： 一条命令只动这一个字段 ⇒
    * 其余组件结构上不可能被顺手改掉（本仓最贵的那类 bug 是"手写构造器漏字段"）。

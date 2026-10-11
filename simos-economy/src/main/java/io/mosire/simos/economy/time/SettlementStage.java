@@ -38,8 +38,11 @@ public enum SettlementStage {
   LOCAL_MARKET(PartitionBasis.MARKET_REGION, "区内市场"),
   /** 跨区市场（所有邻接区买卖单与在途；P1.2 索引 + 协调器稳定序一次算完，按 buyerRegion 的分区留 R3 的 P3）。 */
   CROSS_REGION_MARKET(PartitionBasis.COORDINATOR, "跨区市场"),
-  /** 借粮（按 hex 并行；同格内家户之间串行；跨格借贷不在此阶段）。 */
-  LENDING(PartitionBasis.HEX, "借粮"),
+  // ★★★ W5.5（2026-10-11，S-12①）：这里原有 {@code LENDING(PartitionBasis.HEX, "借粮")}（同格借粮的并行分区档）——
+  //   **已随借粮腿整段删除**（AGENTS §一.11）。★ 货币腿**不需要**阶段档：它在市场轮内单线程跑（在
+  //   {@code commitFreezes} 之前），不产生分区意向、不参与 {@link PartitionPlan}/{@link CommitOrder}。
+  //   ★ 删档会移动后续各档的 ordinal，但 {@link CommitOrder} 只用它做**相对**排序（不存在按 ordinal 落盘的东西）
+  //   ⇒ 相对次序逐值不变。
   /** 偿还债务（按 debtor account 分组；债权人可能在别格 ⇒ R3 的跨区协调阶段）。 */
   REPAYMENT(PartitionBasis.COORDINATOR, "偿还"),
   /**

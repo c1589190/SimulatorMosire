@@ -223,11 +223,12 @@ class McpPortTopologyTest {
       List.of("simos.army.recordCombat", "social.UpdateCity", "actor.AdjustAccounts");
 
   /**
-   * ★★ <b>economy 侧 + 政府挂单的 7 条窄写工具名</b>（都继承 {@code AbstractNarrowWriteTool}；工具名 ≠ 命令类型）。
+   * ★★ <b>economy 侧 + 政府挂单的 8 条窄写工具名</b>（都继承 {@code AbstractNarrowWriteTool}；工具名 ≠ 命令类型）。
    *
    * <p>2026-10-09 按实测补入 B2 的 3 条（当时没进任何名单 ⇒ GM 桶与 {@code GM_NARROW_WRITES} 对不上而红）； ★★
    * W2（2026-10-11）按实测补入 {@code simos.economy.setMarketZonePriceAlpha}（逐区价格步长 α 的 GM 窄写）；★★
-   * W5-fix6（2026-10-11）按实测补入 {@code simos.economy.setGovernmentMintScale}（铸币政策旋钮的 GM 窄写）。
+   * W5-fix6（2026-10-11）按实测补入 {@code simos.economy.setGovernmentMintScale}（铸币政策旋钮的 GM 窄写）；★★
+   * W5.5（2026-10-11）按实测补入 {@code simos.economy.setMarketZoneLoanRateAlpha}（货币市场利率 α 的 GM 窄写）。
    */
   private static final List<String> ECONOMY_ZONE_WRITES =
       List.of(
@@ -237,9 +238,10 @@ class McpPortTopologyTest {
           "simos.economy.setCommodityFreight",
           "simos.gm.govMarketMandate",
           "simos.economy.setMarketZonePriceAlpha",
-          "simos.economy.setGovernmentMintScale");
+          "simos.economy.setGovernmentMintScale",
+          "simos.economy.setMarketZoneLoanRateAlpha");
 
-  /** GM 组的 67 条窄写：21 sd + 8 map + 7 economy zone/govMandate + 28 unit + 3 其他；**都不是**通用写。 */
+  /** GM 组的 68 条窄写：21 sd + 8 map + 8 economy zone/govMandate + 28 unit + 3 其他；**都不是**通用写。 */
   private static final List<String> GM_NARROW_WRITES =
       concat(
           concat(SD_NARROW_WRITES, MAP_WRITES),
@@ -264,8 +266,9 @@ class McpPortTopologyTest {
   }
 
   /**
-   * J1：**唯一的 MCP 口 = GM 组**（读 37 + 非窄写 60 + 窄写 67 = 164；W2 按实测补入
-   * simos.economy.setMarketZonePriceAlpha，W5-fix6 按实测补入 simos.economy.setGovernmentMintScale）。
+   * J1：**唯一的 MCP 口 = GM 组**（读 37 + 非窄写 60 + 窄写 68 = 165；W2 按实测补入
+   * simos.economy.setMarketZonePriceAlpha，W5-fix6 按实测补入 simos.economy.setGovernmentMintScale， W5.5
+   * 按实测补入 simos.economy.setMarketZoneLoanRateAlpha）。
    */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
@@ -274,7 +277,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（37 读 + 60 非窄写 + 67 窄写 = 164）")
+          .as("J1：唯一口 = GM 组（37 读 + 60 非窄写 + 68 窄写 = 165）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

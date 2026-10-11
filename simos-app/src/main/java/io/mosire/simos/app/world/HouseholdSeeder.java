@@ -6,18 +6,33 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.Actor;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.economy.EconomyVocabulary;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
+import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>家户 actor 的播种器</b>（H1；裁定 D1-A / D3-C / K1 / S1）：把"每格两组四行"的家户主体（{@link ActorKind#HOUSEHOLD}）
@@ -66,6 +81,9 @@ public final class HouseholdSeeder {
    * <p>★ 它是**载荷字段**（{@code actor.Seed} 要求非空白）：本类只决定"新世界打哪个标"，不参与任何公式。
    */
   public static final String RULES_VERSION = "actor-v1";
+
+  /** 本类唯一日志口（§一.9；logger 名从 {@link AppLog} 取，不自己拼）。 */
+  private static final LogChannel LOG = EventLog.channel(AppLog.shell());
 
   private HouseholdSeeder() {}
 
@@ -296,5 +314,129 @@ public final class HouseholdSeeder {
     }
     node.put("money", wallet);
     return node;
+  }
+
+  /**
+   * ★★★ <b>W5.5-fix2：{@code actor.AdjustAccounts} 的载荷 —— 逐"单位户"的<b>创世口粮</b></b>（纯正增量；一条命令可含多户，
+   * 仍只落一条 revision）。
+   *
+   * <p>★★ <b>"单位户"是哪个集合（控制方裁定的定义，本方法就是它的唯一拼写点）</b>：逐 GOV 单位的 {@code Unit.households()} <b>减去国库户</b>
+   * —— 国库口径的唯一权威 = {@code EconomyData.governments()} 的 {@code Government.treasury()}（经 {@link
+   * HouseholdActors#householdOf} 折成家户 id，与 {@code GovernmentMarketMandatePlan}
+   * 的"只按授权下单"名单同源）。今天这两个创世路径里它就是<b>官吏户</b>（{@code hh-unit:<govId>}；军户同形，见 {@code
+   * RaiseUnitPlan.householdIdFor}）。★ 国库户<b>不</b>在这里：它的创世给养是同一批里的 国库注资（粮/布/币），再给一份就是重复计。
+   *
+   * <p>★★ <b>它补的是哪个缺口</b>（真根因；判别实验见 W5.5-fix 台账 ③-1 与设计书 v3.22 §7）：单位户（{@code hh-unit:<unitId>} ——
+   * 官吏户/军户）由 {@code GovWorldBootstrap}/{@code ThreePowersGovBootstrap} 在 {@code actor.Seed}
+   * <b>之后</b>才建户建账，而创世只给<b>国库</b>注入粮 ⇒ 它们第 1 天手里是一本空账；当日消费（吃粮段）又发生在 当天<b>俸禄日结之前</b>、且第 1
+   * 天结构上<b>没有市场轮</b> ⇒ 第 1 天整日需求全落空（satiety −150‰）⇒ 饥饿逃亡率逐日 累加到 day8（92‰）⇒ 逃 1 人 ⇒ {@code
+   * GOV_SERVICE} 承诺永久腰斩。★ 本方法只补**创世口径的一致性**：量走 {@link
+   * EconomySeeder#unitHouseholdGenesisGrainMilli}(人口)（与普通家户**逐字同一条算式**），**不新增逐日给养通道、不动俸禄
+   * 时点、不动市场相位、不动逃亡规则**。
+   *
+   * <p>★★ <b>人口从 Social 权威现取</b>（不是调用方手里的预期值）：家户不存在 / 人口 ≤ 0 ⇒ <b>具名抛</b>（创世装配故障； 且载荷的值不得为 0 ——
+   * {@code ActorPayloads.adjustments} 的"无操作条目请删"，这里先断掉，不发出一个 0）。
+   *
+   * <p>★★ <b>具名 INFO</b>（§一.9）：逐户一条"谁、多少、依据哪个口径"（{@code GENESIS_UNIT_HOUSEHOLD_RATION}）。
+   *
+   * <p>★ <b>为什么落在本类</b>：与普通家户的开缸库存同一条分工 —— {@link EconomySeeder} 出**量**（口径的唯一拼写点）， 本类出
+   * **载荷**（"怎么把它播进 actor 账本"）；两条创世路径（small-world / three-powers）共用这一份，不各写一遍。
+   *
+   * @param world 世界标签（{@code small-world} / {@code three-powers}；只进日志，不参与任何数值）
+   * @param state 创世候选状态（必须已有 unit / economy / social 切片；缺 ⇒ 具名抛）
+   * @param governmentUnitIds 本批创世的 GOV 单位 id（顺序即载荷 {@code entries} 顺序；调用方给确定性序）
+   * @throws IllegalStateException 某个 GOV 单位不在 unit 切片里、它没有非国库的单位户、或某单位户人口 ≤ 0
+   */
+  public static String unitHouseholdRationPayload(
+      String world, SimulationState state, List<String> governmentUnitIds) {
+    Objects.requireNonNull(world, "world");
+    Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(governmentUnitIds, "governmentUnitIds");
+    if (world.isBlank()) {
+      throw new IllegalArgumentException("world 不得为空白");
+    }
+    if (governmentUnitIds.isEmpty()) {
+      throw new IllegalArgumentException("governmentUnitIds 不得为空（没有 GOV 就没有单位户）");
+    }
+    SocialData social = ToolSupport.socialData(state);
+    UnitState units = ToolSupport.unitState(state);
+    Set<HouseholdId> treasuries = treasuryHouseholds(ToolSupport.economyData(state));
+    List<HouseholdId> households = new ArrayList<>();
+    for (String unitId : governmentUnitIds) {
+      Unit unit = units.units().get(UnitId.parse(unitId));
+      if (unit == null) {
+        throw new IllegalStateException(
+            "GOV 单位 " + unitId + " 不在 unit 切片里（创世装配故障：说不出它的 Unit.households()）");
+      }
+      for (HouseholdId household : unit.households()) {
+        if (treasuries.contains(household)) {
+          continue; // 国库户：创世给养是同一批的国库注资（"非国库的家户"才是单位户）
+        }
+        households.add(household);
+      }
+    }
+    if (households.isEmpty()) {
+      throw new IllegalStateException(
+          "GOV 单位 "
+              + governmentUnitIds
+              + " 都没有非国库的单位户（创世装配故障：官吏户/军户应在 unit.CreateUnit →"
+              + " unit.SetUnitHouseholds 之后就在 Unit.households() 里）");
+    }
+    List<Map<String, Object>> entries = new ArrayList<>(households.size());
+    for (HouseholdId household : households) {
+      long population = social.householdPopulation(household);
+      if (population <= 0L) {
+        throw new IllegalStateException(
+            "单位户 "
+                + household.value()
+                + " 在 Social 权威里的人口 = "
+                + population
+                + "（创世装配故障：说不出这户有几口人，就无法按普通家户口径给它创世粮；拒绝静默少给）");
+      }
+      long grainMilli = EconomySeeder.unitHouseholdGenesisGrainMilli(population);
+      Map<String, Object> goods = new LinkedHashMap<>();
+      goods.put(EconomyVocabulary.GRAIN_COMMODITY_ID, grainMilli);
+      Map<String, Object> entry = new LinkedHashMap<>();
+      entry.put("household", household.value());
+      entry.put("goods", goods);
+      entries.add(entry);
+      LOG.info(
+          LogEvent.of(
+              "GENESIS_UNIT_HOUSEHOLD_RATION",
+              AppLogSource.GENESIS_SEED,
+              "world",
+              world,
+              "household",
+              household.value(),
+              "population",
+              population,
+              "rationSlot",
+              EconomySeeder.unitHouseholdRationSlot(),
+              "rationDays",
+              EconomySeeder.unitHouseholdRationDays(),
+              "grainMilli",
+              grainMilli,
+              "basis",
+              "same-algorithm-as-ordinary-household-genesis-ration"));
+    }
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("entries", entries);
+    return ToolSupport.json(payload);
+  }
+
+  /**
+   * ★ W5.5-fix2：国库户集合（"非国库"判据的唯一权威）= {@code EconomyData.governments()} 里每个政府的 {@code
+   * Government.treasury()}，经 {@link HouseholdActors#householdOf} 折成家户 id。★ 非家户国库（{@code GOVERNMENT}
+   * actor）不进集合（它本来就不是家户）。
+   */
+  private static Set<HouseholdId> treasuryHouseholds(EconomyData economy) {
+    Set<HouseholdId> treasuries = new LinkedHashSet<>();
+    for (Government government : economy.governments().values()) {
+      if (government.treasury().kind() != ActorKind.HOUSEHOLD) {
+        continue;
+      }
+      treasuries.add(HouseholdActors.householdOf(government.treasury()));
+    }
+    return treasuries;
   }
 }

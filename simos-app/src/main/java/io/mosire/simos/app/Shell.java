@@ -93,6 +93,7 @@ import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketNumeraireHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
+import io.mosire.simos.economy.spi.EconomySetMarketZoneLoanRateAlphaHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketZonePriceAlphaHandler;
 import io.mosire.simos.economy.spi.EconomySetOfficialRateHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
@@ -687,6 +688,12 @@ public final class Shell implements AutoCloseable {
                 //   排除出令白名单 / RegisterEffect / 决策人目录；窄工具 simos.economy.setMarketZonePriceAlpha
                 // 照常可用。──
                 new EconomySetMarketZonePriceAlphaHandler(),
+                // ── economy（W5.5，2026-10-11；S-12⑤ + 口径溯源 §4.1「α 必须可政策调」）：
+                //   GM 设置**某个市场区**的货币市场利率步长 α（MarketZone.loanRateAlphaPerMille；‰/轮，缺省 50，
+                //   不设上下限，0 = 该区利率钉死）。只写 marketZones 一个区的一个字段；下一市场轮生效。
+                //   ★ GM-only（标 GmOnlyCommand）⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
+                //   窄工具 simos.economy.setMarketZoneLoanRateAlpha 照常可用。──
+                new EconomySetMarketZoneLoanRateAlphaHandler(),
                 // ── economy（W5-fix6，2026-10-11；W5 验收报告 §3-D1 + 设计书 v3.20 §7）：
                 //   GM 设置**某个政府**的铸币政策旋钮（Government.mintScalePerCycle；本周期最多铸多少毫，0 = 不许铸）。
                 //   地址两路恰给一个：governmentId（精确 id —— 世界级 world-silver 走这一路）| govUnitId（派生

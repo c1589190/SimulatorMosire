@@ -44,7 +44,13 @@ public enum AppLogSource implements LogOrigin {
    * <p>★ 装配发生在市场轮（tick 算法）与读数路径上 ⇒ 归 {@link LogOriginKind#TICK}；只落 DEBUG（默认关闭，不刷日志）。
    */
   APP_MARKET_TOPOLOGY(
-      "market-topology", "市场区拓扑装配：持久区 vs 派生区、锚格缺市场与逐格币种漂移（算法执行）", LogOriginKind.TICK);
+      "market-topology", "市场区拓扑装配：持久区 vs 派生区、锚格缺市场与逐格币种漂移（算法执行）", LogOriginKind.TICK),
+  /**
+   * ★★ <b>W5.5-fix2（2026-10-11）：创世播种期的给养注入</b> —— 目前只有一条：<b>单位户（官吏户/军户）的创世口粮</b> （{@code
+   * GENESIS_UNIT_HOUSEHOLD_RATION}：谁 / 多少 / 依据哪个口径）。★ 它发生在 {@code ShellMain.seedGenesisIfEmpty} →
+   * {@code bootstrapGenesis} 的**创世装配期**（不是 tick、不是任何工具）⇒ 归 {@link LogOriginKind#SYSTEM}，只落 INFO。
+   */
+  GENESIS_SEED("genesis-seed", "创世播种期的给养注入（单位户创世口粮：口径 = 普通家户创世粮；装配期，非 tick）", LogOriginKind.SYSTEM);
 
   private final String id;
   private final String description;

@@ -93,6 +93,8 @@ import java.util.Set;
  * ★ economy.DefineMarketZone × N（B3：逐 GOV 一区 —— 见下"落点"）
  * → actor.AdjustAccounts（逐 GOV 国库注入 粮/布/银 + 本区法定币）
  * → economy.RecordMoneyIssuance（逐 GOV × 逐币种一条 INITIAL_ENDOWMENT 审计）
+ * → ★★★ W5.5-fix2（追加在末尾）：actor.AdjustAccounts（逐官吏户注入**创世口粮**，口径 = 普通家户创世粮；
+ *   见 {@code EconomySeeder.unitHouseholdGenesisGrainMilli} 与 {@code HouseholdSeeder.unitHouseholdRationPayload}）
  * </pre>
  *
  * <p>★★ <b>B3（2026-10-08 阶段 2-B 第三批）：持久市场区的落点与理由</b>。三个行政区的市场区由 {@code
@@ -345,7 +347,159 @@ public final class ThreePowersGovBootstrap {
     for (GovSpec spec : ordered) {
       next = recordIssuances(next, applier, spec);
     }
+    // ★★★ W5.5（2026-10-11）：**"说不出自己是发行人"的那部分国库注资也要有审计腿**。
+    //   ★ 缺口（回代码核过）：{@code recordIssuances} 只给"本 GOV 自己声明发行"的币种记审计 —— 而**省国库**的银
+    //     不是省发行的（银的唯一发行者是中央）⇒ 两个省国库各 100,000 毫银（合计 200,000）**没有任何发行记录**
+    //     （与 W5-fix6 修掉的 {@code GovWorldBootstrap} 是同一个洞，那批只补了 small-world 一条）。
+    //   ★ 口径与 {@code GovWorldBootstrap} 逐字相同（W5 验收报告 §3-D4 的处置）：发行主体 = **该币在本世界的声明
+    //     发行政府**（不是收款的省 —— 把它记成"省发行了银"既是越权也是假话，命令面会以 currency-not-issuable 拒），
+    //     收款的国库写进 {@code reason}。★ **只加审计、数值逐值不变**：金额、账户、国库余额、铸币、价格一个数都不动。
+    next = recordForeignTreasuryEndowments(next, applier, ordered);
+    // ★★★ W5.5-fix2（控制方裁定 (b)：给"单位户"补创世粮，口径与普通家户一致）——**追加**在既有命令序末尾
+    //   （既有各条的相对顺序一字不动）。补的是真根因：官吏户在创世期**没有粮**（创世只给国库注入粮），
+    //   而当日消费发生在当天俸禄日结**之前**、且第 1 天结构上没有市场轮 ⇒ 第 1 天整日需求落空（satiety −150‰）
+    //   ⇒ 饥饿逃亡率累加到 day8 ⇒ 逃 1 人 ⇒ `GOV_SERVICE` 承诺永久腰斩。
+    //   ★ 量的口径唯一拼写点在 `EconomySeeder.unitHouseholdGenesisGrainMilli`（与普通家户同一条算式）；
+    //     载荷与 INFO 日志的唯一拼写点在 `HouseholdSeeder.unitHouseholdRationPayload`（两条创世路径共用）。
+    //   ★ 不新增逐日给养通道、不动俸禄时点、不动市场相位、不动逃亡规则。
+    return applier.apply(
+        next,
+        io.mosire.simos.app.tools.write.ActorAdjustAccountsTool.NAME,
+        new AdjustAccountsHandler(),
+        new ActorCodec(),
+        HouseholdSeeder.unitHouseholdRationPayload(WORLD_LABEL, next, governmentUnitIds(ordered)));
+  }
+
+  /** ★ W5.5-fix2：本创世路径的世界标签（只进日志；本类只服务 {@code three-powers}）。 */
+  private static final String WORLD_LABEL = "three-powers";
+
+  /**
+   * ★ W5.5-fix2：本批创世的 GOV 单位 id（顺序 = {@code ordered} 的顺序，确定性）。★ 单位户集合（= 这些单位的 {@code
+   * Unit.households()} 减国库户）由 {@code HouseholdSeeder.unitHouseholdRationPayload} 现算 —— 本方法只交单位 id，
+   * 不再手拼 {@code hh-unit:<govId>}（那是"单位户是谁"的第二个拼写点）。
+   */
+  private static List<String> governmentUnitIds(List<GovSpec> specs) {
+    List<String> ids = new ArrayList<>(specs.size());
+    for (GovSpec spec : specs) {
+      ids.add(spec.govId());
+    }
+    return ids;
+  }
+
+  /**
+   * ★★★ <b>W5.5：给"非本 GOV 发行"的国库币种补 {@code GENESIS_ENDOWMENT} 审计</b>（只加审计，数值逐值不变）。
+   *
+   * <pre>
+   * 逐 spec × 逐 treasuryMoney 币种:
+   *   该币 ∈（spec.declaredIssuable ∪ spec.newCurrency）⇒ 已由 recordIssuances 记过 ⇒ 跳过（不重复记）
+   *   否则 ⇒ 在世界里找**唯一**声明发行该币的 GOV：issuer = 某个 spec（declaredIssuable ∪ newCurrency 含该币）
+   *          ⇒ economy.RecordMoneyIssuance(governmentId=issuer, currency, amountMilli=该笔, kind=GENESIS_ENDOWMENT,
+   *                                        reason="… 向 <收款国库家户> 国库注资 …")
+   *          ⇒ 世界里没有任何 GOV 声明发行该币 ⇒ **具名抛**（拒绝悄悄记一笔没有发行者的钱 —— 与 GovWorldBootstrap
+   *            的 silverIssuer 守卫同款；创世整次失败，不落半截世界）
+   * </pre>
+   *
+   * <p>★ <b>为什么"发行主体"不能省</b>：{@code MoneyIssuanceRecord.governmentId()} 的语义是发行主体 （{@code
+   * EconomyRecordMoneyIssuanceHandler} 只在 {@code Government.issuable} 上判"谁能发"）⇒ 记在收款省名下 会当场被 {@code
+   * currency-not-issuable} 拒，而且那句话本身就是假的。
+   *
+   * <p>★ <b>地址维（实测踩到）</b>：本世界的发行主体是 GOV 单位 ⇒ 载荷走 {@code govUnitId}（命令面派生 {@code gov-unit-<id>}）；用
+   * {@code governmentId} 传单位 id 会以 {@code government-not-registered} 拒（命令面只在 精确的政府 id 上查表），而创世命令被拒
+   * = 整次创世失败。
+   *
+   * <p>★ <b>一币一发行人</b>由 {@link #requireCurrenciesDefinable} 的既有自检保证（"币种被两个 GOV 声明为可发行 ⇒ 具名抛"） ⇒
+   * 本方法找到的 issuer 唯一；真出现多个（自检被绕过）⇒ 具名抛，不做"取第一个"这种猜。
+   */
+  private static SimulationState recordForeignTreasuryEndowments(
+      SimulationState state, CommandApplier applier, List<GovSpec> specs) {
+    SimulationState next = state;
+    for (GovSpec spec : specs) {
+      Set<String> ownIssuable = new LinkedHashSet<>();
+      for (CurrencyId currency : spec.declaredIssuable()) {
+        ownIssuable.add(currency.value());
+      }
+      spec.newCurrency().ifPresent(currency -> ownIssuable.add(currency.currencyId()));
+      for (Map.Entry<CurrencyId, Long> entry : spec.treasuryMoney().entrySet()) {
+        CurrencyId currency = entry.getKey();
+        long amount = entry.getValue();
+        if (ownIssuable.contains(currency.value()) || amount <= 0L) {
+          continue; // 自己发行的（已记过）/ 没有注资 ⇒ 不重复记、也不记"发行 0"
+        }
+        GovSpec issuer = null;
+        for (GovSpec candidate : specs) {
+          Set<String> issuable = new LinkedHashSet<>();
+          for (CurrencyId declared : candidate.declaredIssuable()) {
+            issuable.add(declared.value());
+          }
+          candidate.newCurrency().ifPresent(created -> issuable.add(created.currencyId()));
+          if (!issuable.contains(currency.value())) {
+            continue;
+          }
+          if (issuer != null && !issuer.govId().equals(candidate.govId())) {
+            throw new IllegalStateException(
+                "币种 "
+                    + currency.value()
+                    + " 在本世界里有多个声明发行者（"
+                    + issuer.govId()
+                    + " 与 "
+                    + candidate.govId()
+                    + "）⇒ 这笔国库注资说不出唯一的发行主体（一币一发行人自检本应拦住）");
+          }
+          issuer = candidate;
+        }
+        if (issuer == null) {
+          throw new IllegalStateException(
+              "GOV "
+                  + spec.govId()
+                  + " 的国库持有 "
+                  + currency.value()
+                  + " "
+                  + amount
+                  + " 毫，但世界里没有任何 GOV 声明发行该币 ⇒ 拒绝悄悄记一笔没有发行者的钱（与"
+                  + " GovWorldBootstrap 的 silverIssuer 守卫同款）");
+        }
+        next =
+            applier.apply(
+                next,
+                EconomyRecordMoneyIssuanceHandler.TYPE,
+                new EconomyRecordMoneyIssuanceHandler(),
+                new EconomyCodec(),
+                foreignEndowmentPayload(issuer.govId(), spec, currency, amount));
+      }
+    }
     return next;
+  }
+
+  /**
+   * ★★ <b>W5.5：一条"代发行人"的 {@code GENESIS_ENDOWMENT} 审计载荷</b>（与 {@code GovWorldBootstrap} 的 {@code
+   * silverEndowmentPayload} 同口径）：发行主体 = 该币在本世界的声明发行政府，**收款的国库写进 {@code reason}**。
+   */
+  private static String foreignEndowmentPayload(
+      String issuerGovId, GovSpec receiver, CurrencyId currency, long amount) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    // ★ 地址维（唯一拼写点 {@code EconomyCommandPayloads.requireGovernmentAddress}）：本世界的发行主体是 **GOV 单位**
+    //   （{@code GovSpec.govId()}）⇒ 走 {@code govUnitId}（命令面派生 {@code gov-unit-<id>}）；精确 {@code
+    // governmentId}
+    //   那一支留给"不是任何 GOV 单位"的世界级政府（{@code GovWorldBootstrap} 那种世界）。
+    //   ★ 实测踩到：用 {@code governmentId} 传单位 id ⇒ 具名拒 {@code government-not-registered}，而创世命令被拒 =
+    //     整次创世失败（本世界 3 个 GOV 的国库审计都会走这一路）。
+    payload.put("govUnitId", issuerGovId);
+    payload.put("currency", currency.value());
+    payload.put("amountMilli", amount);
+    payload.put("kind", "GENESIS_ENDOWMENT");
+    payload.put(
+        "reason",
+        "three-powers 创世："
+            + issuerGovId
+            + " 向 "
+            + receiver.governmentHouseholdId().value()
+            + " 国库注资初始 "
+            + currency.value()
+            + " "
+            + amount
+            + " 毫（W5.5 GENESIS_ENDOWMENT 审计；发行主体 = 该币在本世界的声明发行政府；"
+            + "余额腿在同批 actor.AdjustAccounts，本命令只写审计、不动任何数值）");
+    return ToolSupport.json(payload);
   }
 
   /** 座位在图上、辖区存在且**含座位**、座位格有市场（否则 GOV 服务与征税都没有可作用的格）。 */
