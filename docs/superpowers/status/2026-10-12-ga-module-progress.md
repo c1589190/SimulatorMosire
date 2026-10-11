@@ -112,8 +112,11 @@ ga 归属工具**留 app**，属 **B2b/B3**。`simos-ga` 现**无 `src/test`**�
 | 领域取数助手能否搬 `ga-spi` | `hexCoord` / `stateRef` / `unitState` / `socialData` / `sdState` / `gameMap` **都只从 `SimulationState` 按 namespace 取快照**（无 app 依赖） | ✅ 可搬 `ga-spi`（`ToolResources`/新 `ToolReads`） |
 | **搬不动的** | ① 可见性谓词（`hexVisible`/`unitVisible`/…，依赖 `ApiViews` + `QueryService`）；② `target(...)`（返回 app 的 `QueryService.QueryTarget`）；③ `economyData(...)`（内部走 `ApiViews.economyData`） | ⇒ 这三族**留 app**；域工具若需要"按坐标查世界"，走**注入的读口**（`QueryTarget` 的构造也须由 app 提供或改为 `(branch, revision)` 值参） |
 
-**⇒ B3 的执行顺序（建议，未派）**：
-1. **写口**：`ga` 里给 `ga-spi.ToolWritePort` 写 core 适配器（`CoreSimos` → 端口），域工具把 `core.submit(...)` 换成端口调用；
+**⇒ B3 的执行顺序（建议，未派）；★ 适配器落点已定（控制方 2026-10-12 裁定）**：
+1. **写口**：**适配器写在本 crate 的 `simos-app`（组合根），不写进 `ga`** —— 依据：搬进域后的工具由 **app 装配**
+   （app 是唯一同时认识 `core` 与各域的模块），端口实现必须能被 app 注入工具的构造器；写进 `ga` 既无必要
+   （`ga` 看不见域工具）又会把 `ga` 的依赖面撑大。域工具把 `core.submit(...)` 换成**构造期注入的
+   `ga-spi.ToolWritePort`**，app 在装配处传 `CoreSimos` 适配器；
 2. **读口**：`ga-spi` 新增窄读接口（`stateAt` 三方法面）+ `ToolReads` 助手；域工具改用它（`QueryTarget` 的构造由 app 以值参或注入解决）；
 3. **`ToolSupport` 收口**：把已搬 `ga-spi` 的助手从 app 的 `ToolSupport` 删掉、留可见性谓词与 `target`/`economyData`；
 4. **按域搬工具**（建议 **先 `simos-map` 15 个做试点**，它是纯读+纯 map 域、依赖面最小），再 unit/gov/social/economy/army/sd/ga。
