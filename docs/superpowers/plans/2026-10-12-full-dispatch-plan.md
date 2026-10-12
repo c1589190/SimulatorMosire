@@ -1126,3 +1126,92 @@ D 工具面冻结计数陈旧（166 vs 161、142 vs 141）· E 其余冻结节�
 **没证明**：★★ **装配链走通 ≠ GUI 业务面可用** —— 不建世界、不跑 tick、不发 HTTP、不跑决策人 ⇒
 对 `api.js` 那类**前端**缺陷、`/api/*` 路由、世界生成、命令提交、决策运行流**零覆盖**，
 也**发现不了"装配成功但算错"**的缺陷。★ 第二个真缺陷（`window.SimosaApi` 不发布）它**同样拦不住** —— **那需要前端门禁**。
+
+---
+
+# §35 ★★★ 架构调整轮 · 关账（2026-10-13）
+
+## 35.1 最终验收判据（控制方复核 + 代理实测）
+| 判据 | 结果 |
+|---|---|
+| **`tools/mvn-lock.sh clean verify`**（**不带任何 skip**：`test` + 前端门禁 + `spotless:check` + `checkstyle` + `spotbugs:check` + `shade` 全真跑） | **rc=0 / `[INFO] BUILD SUCCESS`**（父 + 16 模块全 SUCCESS，05:45 min） |
+| 测试 | **392 个测试类 / 3199 条 / 0 F / 0 E / 5 S**（5 skipped = 缺 key 的真 LLM 类，基线即如此） |
+| `simos-app` | **915 / 0 F / 0 E / 5 S**（基线曾 915 / 135 F / 6 E） |
+| **前端 JS 门禁** | **412 tests / 412 pass / 0 fail**（★ `-Dexec.skip=true` 已撤掉） |
+| `spotbugs:check` | **`BugInstance size is 0` × 16** |
+| `validate` | **`BannedDependencies passed` × 15**（`simos-app` 不设 enforcer） |
+| ★ **两次独立全量运行** | 变异还原后**再跑一次**：rc=0 / 逐模块计数**逐条相同** / ×16、×15、412/412 全部复现，**且两次日志 md5 不同** ⇒ 不是同一次运行的错觉 |
+| ★ **收尾硬判据** | `git status --porcelain` **空** · `git diff -- '*/src/main/*' '*/pom.xml'` **空** · `git diff --stat` 全仓空 · HEAD = origin/main = `aada7096` · 无残留 Maven 进程 / 无残留 `.mvn-lock.d` |
+
+## 35.2 四类关键项变异自证（**7 个变异点，7/7 `md5sum -c` 逐字节还原**）
+| 类 | 变异点 | 红的真实输出 | 还原 |
+|---|---|---|---|
+| **铁律 5** | `GaChangeSet:88` / `GovChangeSet:105` / `ArmyChangeSet:53` 各 `FieldDelta.diff(...)` ⇒ `new FieldDelta.Unchanged<>()`（**"静默漂移"本体**） | **rc=1 / BUILD FAILURE**；`GovRoundTripTest 10/4F`〔组件必须进变更集 + 往返不变式破裂〕· `ArmyRoundTripTest 12/5F` · `GaRoundTripTest 11/2F+2E` | 3 份逐字节一致 |
+| **权限单调性** | `SetTerrainHandler` 给批次 4 摘掉的 `map.SetTerrain` **加回** `DmUsableCommand` | **rc=1**；`AdjudicateTickToolTest 16/1F`，actual 列表**出现 `"map.SetTerrain"`**（可嵌令/可入队/声明面 **17→18，只放大 ⇒ 当场红**） | `ffaf71cf…` 一致 |
+| **deny-all (a)** | `AppDecisionMakerAffiliations:132` ⇒ `String ref = null;`（归属解析**恒定空**） | **rc=1，五类 28 条红**，含 **`[正向锚点：国家归属确实算出了区域前缀（否则下面的 isNotEqualTo 在「两边都空」时也成立）]`** ⇒ ★ **正向锚点不是恒真式** | `b0ab62f2…` 一致 |
+| **deny-all (b) 反向** | `DecisionScopeFunctions:117-122` 的 `denyAll()` 四个 `none()` ⇒ `unlimited()` | **rc=1**；`GovScopeTest:204 [g-ghost：map deny-all] expected unrestricted=false but was true` ⇒ ★ **"读不到归属 ⇒ deny-all 不许静默变全量" 有牙** | `2169b421…` 一致 |
+| **环禁令** | `simos-map/pom.xml` 注入禁列依赖 `simos-actor-api`（**本批唯一被授权的 pom 触碰**） | **rc=1**；`…on project simos-map` + `io.mosire:simos-actor-api… <--- banned via the exclude/include list` | `1aa96e6a…` 一致，`git diff -- '*/pom.xml'` 空 |
+★ **deny-all 做了两个方向**（恒定空 + 反向给全量）—— 这比单向变异强得多：它同时证明了"**归属解析是承重的**"与"**空归属不会被静默放大成全量**"。
+
+## 35.3 本轮的总账（39 个提交：`c3c75aef` → `aada7096`）
+| 维度 | 起点 | 终点 |
+|---|---|---|
+| 模块数 | 18 | **16**（`simos-sd` 整模块退役） |
+| `simos-sd` 组件 / 命令类型 | 14 / 28 | **0 / 0** |
+| **catalog** | 142 | **141** |
+| **可嵌令（DM 可用）/ 可入队 / 声明面** | 66 | **17**（摘 49 / **新增 0**，只收紧零放松） |
+| 落点面 | 2 | **2**（`ga.IssueDirective` / `ga.SubmitVerdict`） |
+| `simos-ga` 状态组件 | 0 | **7** |
+| `ga → core` 依赖 | 有 | **0**（进禁列） |
+| `ga → map` / `ga → unit` | 禁 | **允许**（用户裁定） |
+| 测试 | 519 红 | **0 红**（3199 条 / 392 类） |
+
+## 35.4 ★★ 本轮最值钱的东西：五个"证据链"级别的发现
+1. **三个真缺陷同形 = "第二个拼写点"**：
+   | 缺陷 | 第二个拼写点 | 门禁读的是 |
+   |---|---|---|
+   | `api.js:535` 悬空导出（**GUI 整个不发布**） | 函数名 vs 导出键 | 读导出键，**函数已删** |
+   | `roles()` 装配声明（**`Shell` 构造函数当场抛**） | `roles()` vs 注册桶 | 读**错的那一个** |
+   | `SimosToolsTest` 旧扫描器 | `NAME` 常量 vs `name()` | 读 `NAME`，**真名是 `name()`** |
+   ⇒ ★★ **纪律**：**凡"扫描器/审计器"必须镜像生产代码的真实取值链**，且必须有"**改坏生产侧 ⇒ 审计当场红**"的变异自证；否则**审计器本身就是下一个盲区**。
+2. **门禁被"绕过"的两种形态**（都活过了 20 个批次）：
+   - `-Dexec.skip=true` 停掉**前端门禁**（为绕过 1 条旧断言）⇒ 于是 `api.js` 的悬空引用**活了 5 个提交**；
+   - **`clean verify` 从没在架构轮中途真跑过**（`-DskipTests` + `-DskipTests package spotbugs:check`）⇒ 于是**没有任何机制构造真 `Shell`** ⇒ `roles()` 缺缺陷**活了 5 个提交、GUI 完全起不来**。
+   ⇒ ★★ **纪律（§29.2）**：**每批门禁必须至少包含一条"会真的构造出组合根"的检查** —— 已落地为 `ShellAssemblySmokeTest`（164 行、0.8 s、裸 `@Test`）。
+3. **`-pl <module>` 验的是 `~/.m2` 的上游 jar，不是工作树** ⇒ 上游有未 `install` 的改动时，聚焦跑验的是**旧字节码**。
+   ⇒ ★★ **纪律**：聚焦跑必须 **`-am`** 或**先 install 上游**，**并在报告里写明用的是哪一种**。
+   ★ **后果如实记**：架构轮里跑的所有聚焦护栏，其"绿"的强度**被我高估了**（同批改动多在被测模块内、且各模块 `compile` 覆盖，故结论大体不误，但证据等级要下调）。
+4. **台账计数是"观测下界"，不是记错**：**带 import 断的文件，javac 不报函数体里的错** ⇒ 编译断**分层暴露**（第 1 层在 app 上迭代 12 轮）。
+   ⇒ 台账"54 个 app 测试文件"实测 **15**、"71 个"实测**三者各 0**、"GaRoundTripTest 23 条"实测 **22** ⇒ **都是观测下界问题**，不是笔误。
+5. **"测试留到最后"的真实代价被量化了**：不只是"测试没跟上"，而是**整个尾段没有任何机制验证 app 能跑** ——
+   两个真缺陷（GUI 不发布 + 组合根构造即抛）**同时**活在 5 个提交里。
+   ⇒ ★ 这与 §三.0 的裁定**不矛盾**（测试确实该最后做），**但它要求"跳过的门禁"必须被换成一个更便宜的运行时检查**
+   （= 那条 `Shell` 冒烟 + 前端门禁不许 skip），否则"延后"就变成"没有"。
+
+## 35.5 挂账（本轮**未做**，供后续批裁决）
+1. **前端批**（用户口径：**后端完善后再做前端**）：`renderer.js:2902 paintBorders`（同族悬空引用，只炸微基准路径；
+   ★ 处置倾向 = **改指 `paintRegionOutlines(ctx)`**，因为"什么都不测的基准比测错函数更坏"）·
+   `panels.js:767/769-772` 与 `renderer.js:630-632` 的**陈旧字段读**（hex 详情渲染成 "—"）· **真浏览器验证**（`window.SimosaApi`）。
+2. **批次 5（工具面资源声明正名）**：`ToolResources.SD_NAMESPACE` / `ResourcePaths.sd` / `ToolSupport.SD_NAMESPACE`
+   （**126 处**）+ 工具 `NAME` 常量（`sd.` 前缀，与 `commandType()` 分叉的那一族）⇒
+   ★ **要求逐工具资源键 A/B 证据**（"计数不变 ≠ 每条键逐条相同"），不能只对总数；
+   ★ 另含 `ProposalCatalog:131/149` 把两条 GM-only 工具装进**决策人可提议目录**的可达性核查。
+3. **三条同族的"装配故障伪装成身份错误"**（生产侧误导性拒因，**只登记未改**）：
+   `GovPayTool.resolvePayer` · **`GovToolSupport:169-171`（gov 工具共同路径）** · `GovInfoTool:180-182`
+   —— 都把 `ToolSupport.gaState` 的缺切片装配故障改写成「调用者身份里的决策人 id 非法」**且不链 cause**。
+   ★ 反面对照（不是"凡 catch 都算"）：`DiplomaticWriteSignature:80-84` 只包真坏 id，世界读取故障有诚实的 catch。
+4. **`awaitPending` 的误导性文案**（测试侧诊断缺陷）：把「调用**已失败结束**」与「什么都没发生」**合成一句**
+   （不看 `call.isDone()`）⇒ 盖住真实拒因（§33.3 #2 的误判根源）。本层未改。
+5. **"跨命名空间"维度损失**：`AdjudicateTickToolTest` 的那一维在本夹具下不可取（17 条 DM 面上唯一的非 unit 命名空间命令都要
+   **国库账 / 职业表**）⇒ 已用"head 恰 +1 + revision 含 unit/ga + 两个决策人效果逐字段"替代。要那一维须另搭夹具。
+6. **真 LLM 类 5 条 skipped**（缺 key）⇒ **运行时零证据**；`RealLlmGovScenarioTest` / `RealLlmUnitDecisionLoopTest` 只做了静态一致性改动。
+7. **`worlds/v17levant.json` 未动**（§一.11：旧档不兼容、随仓世界暂不动）。
+8. **`docs/**` 的历史叙述未篡改**（§五.4 留痕），其中 30 处 `simos-sd` 是历史语；`AGENTS.md` 模块表与冻结文档已更新为"已退役"。
+
+## 35.6 控制方自身的三条纪律失败（写死，防止再犯）
+1. ★★ **`git add -A` 犯三次**（`79f9bb0e` / `68f56d24` / `c5b0c203`）—— 后两次都扫进了**在飞 Agent 的文件**。
+   ⇒ **纪律：永远不用 `git add -A`，一律显式点名路径**（已执行：后续提交全部点名，并核 `git show --stat`）。
+2. ★ **长提交信息用 `-m "…"` 会被内嵌引号截断** ⇒ git 把后半句当 pathspec、**提交失败而人以为成功**。
+   ⇒ **纪律：长信息一律 `-F <文件>`；提交后必须复核 `git log --oneline -1`**。
+3. ★ **派单书多处"比设计书更窄"**（3.0 的 `SimosToolSource`、3b-2 的 gov/army/unit、3d-2 的写权）⇒ 代理被迫越界或停手。
+   ⇒ **纪律：派单前对照设计书 §5 文件所有权表核一遍**，宁宽勿窄（越窄 = 越容易挡死目标）。
