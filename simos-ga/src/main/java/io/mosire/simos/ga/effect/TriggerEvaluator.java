@@ -1,6 +1,5 @@
-package io.mosire.simos.sd.time;
+package io.mosire.simos.ga.effect;
 
-import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.Objects;
@@ -20,6 +19,11 @@ import java.util.Objects;
  * "为什么不给另一条路"见 {@link Trigger} 的类注。★ 直接后果：<b>本方法不再需要 {@code SdState} 参数</b>（那两档是它唯一的读者） ⇒ 签名由 5 参收成
  * 4 参，四条存活档（{@code AtOrAfterTick} / {@code AfterTicks} / {@code UnitAtHex} / {@code And} / {@code
  * Or}）的语义一字未改。★ 顺带删掉的 {@code cumulativeKills(SdState)} 也一并消失——它全仓只有本类的 {@code ThresholdKills} 一个读者。
+ *
+ * <p>★★ <b>2026-10-12 批次 3b-4：本类自 {@code io.mosire.simos.sd.time} <b>整类迁入本包</b></b>（与 {@link
+ * Trigger} 同一个家）——{@code Trigger} 住 ga 之后，留在 sd 的求值器会立刻造出 {@code sd → ga} 的禁边。★ 它是 {@code ga →
+ * unit} 那条边的第一个读者（{@code UnitAtHex} 走 {@link UnitState#effectivePosition}）；<b>四条存活档的语义
+ * 与签名一字未改</b>（仍是纯函数：{@code (trigger, at, units, sinceTick)}）。
  */
 public final class TriggerEvaluator {
 

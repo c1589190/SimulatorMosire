@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
  *   <tr><td>{@link #tool()}</td><td>{@code .tool}</td><td>工具面的每一次实际执行（工具名 + 结果码 + 时刻；GM 口留痕与日志共用一个装饰器）</td></tr>
  *   <tr><td>{@link #approval()}</td><td>{@code .approval}</td><td>审批控制面（待裁决清单、裁决结果、未接入）</td></tr>
  *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>ga 切片的编解码与施加（⭐ 2026-10-12 批次 3a：本模块首次持状态）</td></tr>
+ *   <tr><td>{@link #time()}</td><td>{@code .time}</td><td>ga 时间推进：effect 逐日触发（⭐ 2026-10-12 批次 3b-4：{@code SdTimeParticipant} 迁入为 {@link io.mosire.simos.ga.effect.GaTimeParticipant}）</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td>逐轮逐工具的明细（默认关；与 decision 同级但可单独升降）</td></tr>
  * </table>
  *
@@ -55,11 +56,13 @@ public final class GaLog {
   public static final String TOOL_LOGGER_NAME = ROOT_LOGGER_NAME + ".tool";
   public static final String APPROVAL_LOGGER_NAME = ROOT_LOGGER_NAME + ".approval";
   public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
+  public static final String TIME_LOGGER_NAME = ROOT_LOGGER_NAME + ".time";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger DECISION = LoggerFactory.getLogger(DECISION_LOGGER_NAME);
   private static final Logger TOOL = LoggerFactory.getLogger(TOOL_LOGGER_NAME);
   private static final Logger APPROVAL = LoggerFactory.getLogger(APPROVAL_LOGGER_NAME);
   private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
+  private static final Logger TIME = LoggerFactory.getLogger(TIME_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private GaLog() {}
@@ -99,6 +102,18 @@ public final class GaLog {
    */
   public static Logger codec() {
     return CODEC;
+  }
+
+  /**
+   * ga 时间推进：{@code effects} 的逐日触发（照 {@code SdLog.time()} 的同形制）。
+   *
+   * <p>★★ 2026-10-12 批次 3b-4：{@code SdTimeParticipant} 迁入本模块为 {@link
+   * io.mosire.simos.ga.effect.GaTimeParticipant}（{@code effects} 表随它搬进 {@code GaState}）⇒ 它的事件从
+   * {@code io.mosire.simos.sd.time} 挪到这里，开关随之从 {@code -Dsimos.sd.logLevel} 换成 {@code
+   * -Dsimos.ga.logLevel}（**只影响输出的 logger 名与开关，不改任何状态/载荷/拒绝码**；事件名与字段逐字保留）。
+   */
+  public static Logger time() {
+    return TIME;
   }
 
   /** 逐轮逐工具的明细（默认关；与 {@link #decision()} 同级但可单独升降）。 */

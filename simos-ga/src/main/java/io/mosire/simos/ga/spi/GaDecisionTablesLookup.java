@@ -1,15 +1,10 @@
 package io.mosire.simos.ga.spi;
 
-import io.mosire.simos.ga.GaState;
-import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.spi.DecisionTablesLookup;
 import io.mosire.simos.util.spi.DecisionMakerId;
-import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.SimulationState;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -18,20 +13,19 @@ import java.util.Objects;
  * {@code directives} 一支）：sd 侧的读写口由本模块兑现——{@code ga → sd} 是<b>既有</b>方向（{@code GaState} 的组件值类型都住
  * sd），不新增模块边、零 pom 改动。
  *
- * <p>★ <b>只读三支无状态</b>（铁律 3）：每次调用现从 {@link SimulationState} 取 ga 切片（{@link GaSnapshots#state}）， 不
+ * <p>★ <b>只读两支、无状态</b>（铁律 3）：每次调用现从 {@link SimulationState} 取 ga 切片（{@link GaSnapshots#state}）， 不
  * cache、不改写。ga 切片缺席 / 类型不对 ⇒ {@code GaSnapshots} 当场抛（装配故障，<b>不</b>折成"不存在"）。
- *
- * <p>★ <b>{@link #replaceInfo} 是唯一的写支</b>：它只<b>算</b>差异（{@link GaChangeSet#between}）并把变更集交给调用方，
- * <b>自己不改任何切片</b>——真正的落盘由 {@code TimeAdvance} 的提案解算与 codec 施加完成（铁律 2：不存在绕过 {@code Command →
- * ChangeSet → Revision} 的写入口；时间推进的多切片提案正是那条路径的一部分）。
- *
- * <p>★ <b>返回的是那一份表，不是副本</b>：调用方（{@code SdResolver}）只读；{@code SdTimeParticipant} 拿到 {@code info}
- * 后建的是自己的 {@code LinkedHashMap} 副本再改（与搬迁前逐字同形）。
  *
  * <p>★★ <b>2026-10-12 批次 3c：{@code gov.DeleteNation} 不再是本口的调用方</b>——那条命令随外交三表搬进 {@code simos-gov}，而
  * gov <b>既禁 sd 也禁 ga</b> ⇒ 它改问 gov 自己的窄口 {@code
- * io.mosire.simos.gov.spi.NationAffiliationLookup}（端口在 gov、实现在 app）。本口今天的调用方 = {@code SdResolver} 与
- * {@code SdTimeParticipant}。
+ * io.mosire.simos.gov.spi.NationAffiliationLookup}（端口在 gov、实现在 app）。
+ *
+ * <p>★★ <b>2026-10-12 批次 3b-4：本口由"三读一写"收成"两读"（如实记）</b>——{@code info(SimulationState)} 与 {@code
+ * replaceInfo(SimulationState, Map)} 是批次 3b-2 为跨切片写引入的（sd 的推进器要在**另一个模块**的 {@code info} 表上落地 {@code
+ * Action.PutInfo}）；{@code SdTimeParticipant} 迁入 {@code simos-ga} 且 {@code effects} 与 {@code info}
+ * 同住 {@code GaState} 之后，那条写路径改走 {@code GaState.withInfo(...)}（同一个变更集里）， 这两个方法<b>失去全部调用者</b> ⇒
+ * 同批整条删除（"看着能注入、其实无人注入"的接缝不留）。★ 今天的调用方 = {@code SdResolver} 的 {@code directive} / {@code
+ * decision-maker} 两支存在性判据。
  */
 public final class GaDecisionTablesLookup implements DecisionTablesLookup {
 
@@ -46,19 +40,5 @@ public final class GaDecisionTablesLookup implements DecisionTablesLookup {
   public Map<DecisionMakerId, DecisionMaker> decisionMakers(SimulationState state) {
     Objects.requireNonNull(state, "state");
     return GaSnapshots.state(state).decisionMakers();
-  }
-
-  @Override
-  public Map<String, List<SdInfoEntry>> info(SimulationState state) {
-    Objects.requireNonNull(state, "state");
-    return GaSnapshots.state(state).info();
-  }
-
-  @Override
-  public ChangeSet replaceInfo(SimulationState state, Map<String, List<SdInfoEntry>> info) {
-    Objects.requireNonNull(state, "state");
-    Objects.requireNonNull(info, "info");
-    GaState base = GaSnapshots.state(state);
-    return GaChangeSet.between(base, base.withInfo(info));
   }
 }

@@ -634,3 +634,27 @@ army 做裁定方（`ArmyAffiliations` + `ArmyAffiliationPort` 端口在 army + 
 | D5 | 两处 ga javadoc 例句 `sd:combat.c1` → `army:combat.c1` | ✅ **追认** |
 | D6 | 不补第四段 `:outcome.<oid>` | ✅ **追认** —— 见上文（复活被废档 = 违背用户裁定） |
 | D7 | 未实现"按 revision 自拟 id"的 army 工具（id 形态属**工具层**另批） | ✅ **追认** —— 域类型不替调用方定 id 形态 |
+
+---
+
+## §22 批次 3b-4 收工：`effects` 搬 ga，**`SdState` 归零**（控制方追认 + 2 项裁决）
+
+**结果**：38 项（27 M / 9 D / 3 新增目录 → 46 项）、tracked +714/−1445、新增 +1047、**零 worlds**、**1 处 pom**（= 用户批准的 `ga → map + unit`）。
+`GaState` 6 → **7**（`effects` 放**末位** ⇒ 既有六键**线格式键序未动**）；**`SdState` → `record SdState()`（0 组件）**；
+`sd.RegisterEffect`/`sd.CancelEffect` → **`ga.*`**；**`SdTimeParticipant` → `GaTimeParticipant`**（选①整类搬 ga，顺带把 3b-2 为跨切片写引入的注入口**整条删除**，参与者收成**单切片**）。
+★ **行为等价的硬证据**：逐日主循环**归一化 diff = 72 行 → 72 行，仅 3 处有意差异**（`todayBegin` 两件都带 —— 触发器求值不读 info ⇒ 零影响；2 处日志来源 id `SD_TICK→GA_TICK`）⇒ 触发/落地逻辑**一行未改**。
+★ **`ga → map+unit` 无环证据**：`unit`/`map` 各自**禁 `ga` 本体**且只声明 `ga-spi`；全仓**声明 `simos-ga` 的只有 `simos-app`** ⇒ `app → ga → {map,unit} → ga-spi → util` 单向。**负向验证**：给 ga 加回 gov ⇒ `validate` rc=1；还原 md5 逐字节一致。
+**权限四面**：catalog **138→138**（对称差 = 2 条改名）· 可嵌令 **66（∅）** · 可入队 **66（∅）** · 落点 **2（∅）** · 声明面 **66（∅）**。**`sd.*` 命令类型数 2 → 0**。
+**门禁**：compile/spotless/spotbugs（17/17）/validate（×16）全 rc=0；`GaRoundTripTest` **11/11**；变异自证：加第 8 组件 ⇒ **红 4 处**，还原 md5 `017f9da0…` 逐字节一致。
+★ 补充冒烟（入仓外）：**空 `SdState` 的 codec 往返**通过（快照 `"state":{}` 解码相等、变更集 `{}` 解码相等、`apply` 正常）⇒ 挡住"0 组件 record 读不回来"的铁律 5 风险。
+
+### 22.1 控制方裁决 2 项
+| # | 事项 | 裁定 |
+|---|---|---|
+| 1 | **`sd:effect.<id>` 地址族现为空候选**，本批**不补 `ga:effect.<id>`** | ✅ **同意不补** —— 与 3d-1 给 army 补 `army:army.<id>` 的判据对照：**army 的身份读面只有 resolver 这一条**（删而不补 = 功能净损失），而 **effects 全仓零生产读者按地址取它**（唯一消费点是 GUI 在令视图里列 `Directive.effects` 的 id 串）⇒ 不满足"必须补"的条件。**留 3e 一并裁**（`sd` 退役时该支整体消失） |
+| 2 | **`Directive.effects()` 外键有意不回迁构造期**（effects 已同树、技术上可以） | ✅ **同意** —— 本批红线是行为等价；回迁会新开"**搬迁前能构造、搬迁后当场抛**"的失败面（属行为变化）。留 3e/后续批 |
+
+### 22.2 ★ 代理第三次纠正派单书事实
+① **`SdSpec` 不存在**（我派单里写的；实际同步的是 `SdSnapshots`）；② 我写"`allowedCommandTypes = CommandFaces.drainableTypes()`"是语义描述，**实际注入点是 `declarations.dmUsableTypes()`（内容相同）且未改**；
+③ **`GaRoundTripTest` 自 3d-1 起就编译不过**（3 处 import 指向已搬走的 id 类型 + `Affiliation.Army(String)`）⇒ 本批一并修正，否则护栏跑不起来。
+★ 另：它发现**台账的最后一节是 3d-1，3d-2 从未追加**（3d-2 那批自称追加了）⇒ 它按"3d-1 + 规划 §21"为基准记账并注明。**控制方已知悉，3d-2 的台账增量以规划 §21 为准。**

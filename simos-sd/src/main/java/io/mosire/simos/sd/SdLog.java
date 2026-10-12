@@ -95,7 +95,14 @@ public final class SdLog {
     return DIPLOMACY;
   }
 
-  /** sd 时间推进（effect 触发）。 */
+  /**
+   * sd 时间推进（effect 触发）。
+   *
+   * <p>★★ <b>2026-10-12 批次 3b-4 起无调用方（如实记）</b>：{@code SdTimeParticipant} 随 {@code effects} 表迁入
+   * {@code simos-ga}（{@code io.mosire.simos.ga.effect.GaTimeParticipant}），它的日志面换成 {@code
+   * GaLog.time()}（{@code io.mosire.simos.ga.time}）。★ 门面方法<b>本批不删</b>（同 {@link #combat()} 的处置）：
+   * 删它会连带改模块的日志来源表，属"批次 3e（sd 空壳退役）连同 {@code SdLogSource.SD_TICK} 一起收口"的活； <b>本批只改注释，零行为</b>。
+   */
   public static Logger time() {
     return TIME;
   }

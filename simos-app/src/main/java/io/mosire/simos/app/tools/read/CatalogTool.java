@@ -783,11 +783,14 @@ public final class CatalogTool implements SimosTool {
               "eventId?, tick?, participants[字符串...], text（★ D5 / D-005：追加一条外交事件记录；"
                   + "participants ≥2 且不得重复；text 非空白自然语言；tick 缺省=世界当前 tick、不得记在未来；"
                   + "eventId 缺省按 tick 合成（diplomatic-event:<tick>#<该 tick 已有事件数>），撞车 ⇒ 拒）"),
+          // ★★ 2026-10-12 批次 3b-4：两条效果命令自 sd.* 改名 ga.*（effects 表搬进 GaState；命令类型前缀决定
+          //   变更集喂给哪个 codec）⇒ 本表的键随之改名。★ 条数一字不变（138 条：2 条改名不改数），
+          //   且构造期的"覆盖全部已注册 type"断言仍原样把守（缺项即抛）。
           Map.entry(
-              "sd.RegisterEffect",
+              "ga.RegisterEffect",
               "effectId, kind(SCHEDULED|ON_CALL|BE_PREPARED|BRANCH|SEQUEL), trigger, action,"
                   + " createdTick?"),
-          Map.entry("sd.CancelEffect", "effectId"),
+          Map.entry("ga.CancelEffect", "effectId"),
           Map.entry(
               "ga.IssueDirective",
               "directiveId, decisionMakerId, tick, target?, intentInfo,"

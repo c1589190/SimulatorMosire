@@ -1,4 +1,4 @@
-package io.mosire.simos.sd.model;
+package io.mosire.simos.ga.effect;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -31,8 +31,13 @@ import java.util.List;
  * {@code And} / {@code Or}。
  *
  * <p>★ <b>线格式的后果（如实记）</b>：{@code @class} 里的 {@code threshold_kills} / {@code outcome_selected}
- * 两个取值不再被认领（Jackson 对未知子类型抛 ⇒ 该载荷在 {@code sd.RegisterEffect} 的命令期被<b>具名拒</b>，不是静默当假）。 这是 retired
+ * 两个取值不再被认领（Jackson 对未知子类型抛 ⇒ 该载荷在 {@code ga.RegisterEffect} 的命令期被<b>具名拒</b>，不是静默当假）。 这是 retired
  * 能力的预期失败方向，不是兼容缺口（§一.11：Alpha 不背旧档）。
+ *
+ * <p>★★ <b>2026-10-12 批次 3b-4：本类型自 {@code io.mosire.simos.sd.model} <b>整族迁入本包</b></b>（用户裁定「<b>sd
+ * 整个弃用！</b>」）：<b>{@code @class} 取值、五档存活的语义、四条构造期判据与线格式一字未改</b>。★ 本档是 <b>{@code ga → unit} + {@code
+ * ga → map} 两条新依赖边的唯一依据</b>——{@code UnitAtHex(UnitId, HexCoord)}
+ * 的类型本身就来自那两个模块（用户原话：「<b>那让它依赖unit呗，这不是Army模块管理的吗？照道理来说Army和Nation都得依赖Unit作为地图实体</b>」）。
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "@class")
 @JsonSubTypes({

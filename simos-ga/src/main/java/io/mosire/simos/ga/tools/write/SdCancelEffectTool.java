@@ -12,15 +12,21 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.CancelEffect} 窄工具（M3，spec §八.3）：**取消效果**的唯一窄写面。
+ * {@code ga.CancelEffect} 窄工具（M3，spec §八.3）：**取消效果**的唯一窄写面。
  *
  * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
  * <p>★ 只有**可取消状态**（{@code PLANNED} / {@code COMMITTED}）的效果才允许；已触发 / 已取消 / 已过期的被域层拒。
+ *
+ * <p>★★ <b>2026-10-12 批次 3b-4：工具名与命令类型 {@code sd.CancelEffect → ga.CancelEffect}</b>（同 {@link
+ * SdRegisterEffectTool} 的类注：用户裁定「sd 整个弃用！」＋"命令必须与切片同名"）。★ 类名保持 {@code SdCancelEffectTool}（留待批次 3e 随
+ * sd 空壳一起正名）。★ <b>已知债</b>：资源声明仍写 {@code sd} 命名空间而实际写 ga ——理由、影响与收口时点见 {@link SdRegisterEffectTool}
+ * 的类注（与 3c §E.1 / 3d-1 §D.1 同族，留给批次 5）。
  */
 public final class SdCancelEffectTool extends AbstractNarrowWriteTool implements SimosTool {
 
-  public static final String NAME = "sd.CancelEffect";
+  /** ★ 本批起 = 命令类型（{@code ga.CancelEffect}）。 */
+  public static final String NAME = "ga.CancelEffect";
 
   public SdCancelEffectTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
@@ -38,7 +44,7 @@ public final class SdCancelEffectTool extends AbstractNarrowWriteTool implements
 
   @Override
   public String description() {
-    return "取消效果：固定 sd.CancelEffect，载荷 {effectId}（★ 只有可取消状态的效果才允许）";
+    return "取消效果：固定 ga.CancelEffect，载荷 {effectId}（★ 只有可取消状态的效果才允许）";
   }
 
   @Override
@@ -46,10 +52,7 @@ public final class SdCancelEffectTool extends AbstractNarrowWriteTool implements
     return SD_NAMESPACE_WRITE;
   }
 
-  /**
-   * ★ P0 资源对齐：本工具钉死的 {@code sd.*} 命令只产 {@code SdChangeSet}（实际只写 sd 命名空间），故写断言取 {@code sd:*}（GM 侧
-   * unlimited），不再沿用基类的三命名空间粗断言。
-   */
+  /** ★ P0 资源对齐（**本批起为已知债**，见类注）：写断言仍取 {@code sd:*}；本命令实际写 ga 命名空间（GM 侧 unlimited ⇒ 放行结果不变）。 */
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return sdNamespaceWriteResources();

@@ -5,12 +5,9 @@ import io.mosire.simos.ga.spi.GaSnapshots;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolSchema;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
-import io.mosire.simos.util.state.Snapshot;
 import java.util.Map;
 
 /**
@@ -76,22 +73,16 @@ public final class GaToolReads {
     return expected == null ? null : new RevisionId(expected);
   }
 
-  /** sd 切片（{@code state.module("sd")}）：缺切片 / 类型不对 = 装配故障，当场炸。 */
-  public static SdState sd(SimulationState state) {
-    Snapshot snapshot =
-        state.module("sd").orElseThrow(() -> new IllegalArgumentException("状态里没有 sd 模块切片——装配故障"));
-    if (!(snapshot instanceof SdSnapshot sdSnapshot)) {
-      throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
-    }
-    return sdSnapshot.state();
-  }
-
   /**
    * ★★ <b>ga 切片</b>（{@code state.module("ga")}）：缺切片 / 类型不对 = 装配故障，当场炸。
    *
    * <p>★ 2026-10-12 批次 3a：决策包 / 合并效果集两张表从 {@code sd} 搬进 {@code ga} ⇒ 决策包族工具改从这里取数。 语义委托 {@link
    * io.mosire.simos.ga.spi.GaSnapshots#state(SimulationState)}（切片提取的<b>唯一拼写点</b>在那边，
    * 本方法只是工具面的入口别名）。
+   *
+   * <p>★★ <b>2026-10-12 批次 3b-4：本类删掉 {@code sd(SimulationState)}（如实记）</b>——它是 3a 起遗留的 sd 切片取数口， 批次
+   * 3b-4 把 {@code effects} 迁走后它<b>既无调用者、也不再有任何用途</b>（ga 侧的读一律走本方法；sd 切片本批起是 0 组件的空壳） ⇒ 整条删除，与
+   * {@code GaSnapshots.sd(...)} 同批同款处置。
    */
   public static GaState ga(SimulationState state) {
     return GaSnapshots.state(state);

@@ -16,7 +16,10 @@ import io.mosire.simos.util.log.LogOriginKind;
  *       整族退役（用户裁定「战斗模块，包括阶段之类的，归 Army 模块管」＋「sd 整个弃用！」），交战记录归 army。表项 id 是稳定 id
  *       （发布后不改），故<b>本批不删</b>该档，否则等于悄悄改模块的日志来源表；留到批次 3e（sd 空壳退役）与 {@code SdLog.combat()} 一并收口；
  *   <li>{@link #SD_DIPLOMACY}：外交关系与外交事件（命令面）；
- *   <li>{@link #SD_TICK}：每 tick 推进——effect 触发、逐日结算（tick 算法，必带 {@code day}）；
+ *   <li>{@link #SD_TICK}：每 tick 推进——effect 触发、逐日结算（tick 算法，必带 {@code day}）——★ <b>2026-10-12 批次 3b-4
+ *       起无生产者</b>：{@code SdTimeParticipant} 随 {@code effects} 表迁入 {@code simos-ga} （{@code
+ *       GaTimeParticipant}，来源换 {@code ga-tick}）。同 {@link #SD_COMBAT} 的处置：表项 id 是稳定 id（发布后不改），
+ *       <b>本批不删</b>该档，留到批次 3e（sd 空壳退役）与 {@code SdLog.time()} 一并收口；
  *   <li>{@link #SD_CODEC}：SdCodec 编解码、变更集施加与旧形状迁移（只记元信息，不记 JSON 原文）；
  *   <li>{@link #SD_RESOLVE}：SdResolver 候选装配与空结果诊断（不逐次记成功查询）。
  * </ul>
@@ -29,6 +32,10 @@ public enum SdLogSource implements LogOrigin {
   /** ★ 2026-10-12 批次 3d-2 起<b>无生产者</b>（旧战斗族退役）；表项保留的理由见类注。 */
   SD_COMBAT("sd-combat", "交战记录/阶段/伤亡写命令（命令面）", LogOriginKind.SYSTEM),
   SD_DIPLOMACY("sd-diplomacy", "外交关系与外交事件（命令面）", LogOriginKind.SYSTEM),
+  /**
+   * ★ <b>2026-10-12 批次 3b-4 起无生产者</b>（{@code SdTimeParticipant} 迁入 ga 为 {@code GaTimeParticipant}，
+   * 来源换 {@code ga-tick}）；表项保留的理由见类注。
+   */
   SD_TICK("sd-tick", "每 tick 推进：effect 触发、逐日结算（tick 算法，必带 day）", LogOriginKind.TICK),
   SD_CODEC("sd-codec", "SdCodec 编解码、变更集施加与旧形状迁移", LogOriginKind.SYSTEM),
   SD_RESOLVE("sd-resolve", "SdResolver 候选装配与空结果诊断", LogOriginKind.SYSTEM);

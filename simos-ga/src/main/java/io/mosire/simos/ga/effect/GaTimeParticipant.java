@@ -1,19 +1,14 @@
-package io.mosire.simos.sd.time;
+package io.mosire.simos.ga.effect;
 
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.EffectId;
-import io.mosire.simos.sd.model.Action;
-import io.mosire.simos.sd.model.Effect;
-import io.mosire.simos.sd.model.EffectStatus;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.model.Trigger;
-import io.mosire.simos.sd.spi.DecisionTablesLookup;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
@@ -24,8 +19,6 @@ import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.TimeProposal;
-import io.mosire.simos.util.spi.WorldTimeProposal;
-import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -41,56 +34,80 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * sd 侧的时间推进参与者（spec §五.2，C4）：**每个 sd 命名空间只有一个**（{@code putIfAbsent} 重复即抛）。
+ * ga 侧的时间推进参与者（spec §五.2，C4）：**每个世界日求值一次 {@code Effect.trigger}，满足则执行动作并标 {@code FIRED}**（R6 延期效果）。
  *
- * <p>★ {@code simulateWorld} 是**纯函数**：**从 {@code range.from} 逐日推到 {@code range.to}**，逐日求值 {@code
- * Effect.trigger}（R6 延期效果），产出**本模块** {@code SdChangeSet}（§十一：一次推进 N 天，内部逐日，避免一次跳日把中间该发生的触发整段跳过）。
- * **绝不放进 ③Resolve**。
+ * <p>★ {@code simulate} 是**纯函数**：**从 {@code range.from} 逐日推到 {@code range.to}**，产出**本模块** {@code
+ * GaChangeSet}（§十一：一次推进 N 天，内部逐日，避免一次跳日把中间该发生的触发整段跳过）。 **绝不放进 ③Resolve**。
  *
  * <p>★ **时间量纲（2026-09-24 日制裁定）**：{@code range.to.tick()} 是**世界日**（全局 1 tick = 1 天）⇒ 求值里 {@code
  * at.tick()} 与参照点的差值即**日数**。
  *
- * <p>★ **能力边界**：只写 sd（跨模块效果落成 {@code Action.EnqueueUnitCommand}，由 app 层 {@code SdCommandDrain} 落真
- * revision，spec §五.3）；只读 unit 切片。
+ * <p>★ **能力边界**：<b>只写 ga</b>——{@code effects} 与 {@code info} 两张表<b>同住 {@code GaState}</b>（本批起）；
+ * 跨模块效果仍落成 {@code Action.EnqueueUnitCommand}，由 app 层 {@code SdCommandDrain} 落真 revision（spec §五.3）；
+ * 只读 unit 切片（{@code Trigger.UnitAtHex}）。
  *
- * <p>★★ <b>2026-10-12 批次 3b-2：本参与者成了<b>多切片参与者</b>（{@link WorldTimeProposal}）</b>——{@code
- * Action.PutInfo} 写的 INFO 覆盖层搬进了 {@code GaState.info}，而 sd 不得依赖 ga（成环）⇒ 那一半经注入的 {@link
- * DecisionTablesLookup#replaceInfo} 产出 <b>ga 命名空间的变更集</b>（不透明 {@link ChangeSet}），与 sd 的 effects
- * 变更集装在**同一次推进的同一个提案**里（{@code TimeProposalResolver} 的读写集仍按参与者整体声明， 语义与搬迁前逐字相同：INFO
- * 仍是本参与者在本次推进里"写"的地址）。★ <b>没有 INFO 写入时不带 ga 分量</b>——不让每次推进都给 ga 切片换一次坐标（与"不写就不动"同口径）。
+ * <p>★★ <b>2026-10-12 批次 3b-4：本类自 {@code io.mosire.simos.sd.time.SdTimeParticipant} 整类迁入本包（{@code
+ * SdTimeParticipant → GaTimeParticipant}）</b>（用户裁定「<b>sd 整个弃用！</b>」＋「<b>那让它依赖unit呗</b>」）。
+ * 迁入时<b>由多切片参与者收成单切片参与者</b>：{@code Action.PutInfo} 写的 INFO 覆盖层（批次 3b-2 起住 {@code GaState.info}）与
+ * {@code effects} 表<b>现在同在一棵树里</b> ⇒ 3b-2 为跨切片写而引入的注入口（{@code
+ * io.mosire.simos.sd.spi.DecisionTablesLookup} 的 {@code info()}/{@code replaceInfo()}）与 {@code
+ * WorldTimeProposal} 的 {@code "sd"}／{@code "ga"} 双分量<b>整条删除</b>——本类回到"只改自己一个模块"的窄形态 （{@code
+ * TimeProposal}），与 {@code UnitTimeParticipant} 等单切片参与者同形。
  *
- * <p>★★ <b>2026-10-12 批次 3d-2：本参与者只剩「effect 逐日触发」一件活（如实记）</b>——原来还有第二段：逐日求值 {@code
- * CombatStage.exit} 并推进 {@code CombatState.currentStage}（N1 阶段推进）。旧的 {@code combatStates} 表随旧战斗族
- * <b>退役</b>，而那一段整体依赖 sd 自己的战斗 id（{@code CombatId} / {@code CombatStageId} / {@code CombatStateId}）⇒
- * 编译期已不可能保留，本批整段删除（<b>不是</b>搬进 army：army 的阶段推进是它自己的命令 {@code army.AppendCombatStage} / {@code
- * ArmyResolveCombatStage}，不走 sd 的触发器状态机 —— 用户已裁「1（触发器状态机）废除」）。
+ * <p>★★ <b>"每世界日推进 effect"的行为如何逐字保住（逐条对照搬迁前）</b>：
  *
- * <p>★ <b>连带删掉的三条日志字段（如实记）</b>：{@code SD_ADVANCE_START} / {@code SD_ADVANCE_END} 的 {@code
- * combatStates=}、{@code SD_ADVANCE_DAY} 的 {@code stagesChecked=} / {@code stagesAdvanced=} / {@code
- * stageExitsFalse=}，以及 {@code SD_COMBAT_STAGE_ADVANCED} 这条 TRACE —— 它们记的是已退役的那张表。★
- * <b>不是</b>"换了家"（army 有它自己的阶段日志），故本批不声称由别的读数接手。其余字段与文案逐字不变。
+ * <ol>
+ *   <li><b>逐日循环</b>：{@code for (day = range.from.tick() + 1; day <= range.to.tick();
+ *       day++)}，每天用**该日开始时的状态** （{@code effects}/{@code info} 已含前几天累计结果）求值 ⇒ 与"N
+ *       次单日推进"逐步等价（这条是等价性的根，一字未改）；
+ *   <li><b>参与求值的档</b>：状态为 {@code PLANNED}/{@code COMMITTED} 的效果才求值（其余计入 {@code
+ *       effectsStatusSkipped}），<b>按 {@code effectId} 字典序</b>遍历（{@code sortedEffects}）；
+ *   <li><b>求值本体</b>：{@link TriggerEvaluator#evaluate} 逐字照用（五档存活语义未动）；
+ *   <li><b>触发</b>：达标即整条替换成 {@code status = FIRED}（其余五个字段原样带过）、记 TRACE {@code SD_EFFECT_FIRED}，
+ *       并执行动作；
+ *   <li><b>动作落地</b>：{@code Action.PutInfo} → 往 {@code info} 的同地址条目表<b>追加</b>一条 {@code SdInfoEntry}
+ *       （序号 = 追加前条目数、tick = 当日的 {@code at.tick()}、tags/affiliations 空集、note/sourceDirective/
+ *       adjudicationStatus 皆空、{@code atRevision} = 本次推进的 base revision）；{@code
+ *       Action.EnqueueUnitCommand} → <b>有意不处理</b>（跨模块写，交 app 层 drain）；
+ *   <li><b>读写声明</b>：{@code reads} 收 {@code ga:effect.<id>} 与触发条件引用的 {@code unit:<id>}／{@code
+ *       map:<mapId>:hex.<q>_<r>}；{@code writes} 收 {@code ga:effect.<id>} 与被写 INFO 的 {@code
+ *       ga:info.<key>} ——★ <b>唯一有意的字符串变化</b>：命名空间由 {@code sd} 换成 {@code ga}（表换了家，地址族随之；见 §"如实记"）；
+ *   <li><b>空范围</b>：{@code range.to} 缺省 ⇒ **零变更提案、不抛**（照 {@code UnitTimeParticipant} 的边界），只记一条 DEBUG
+ *       {@code SD_ADVANCE_SKIPPED}。
+ * </ol>
  *
- * <p>★ {@code range.to} 缺省（无上界推进）⇒ **零变更提案、不抛**（照 {@code UnitTimeParticipant} 的边界）。
+ * <p>★ <b>如实记：本批的一处可观测面变化</b>——搬迁前，本次推进若一天都没写 INFO，提案里<b>只有 sd 分量</b>（ga 切片不在 {@code moduleChanges}
+ * 里）；按 {@code TimeAdvance} 的"变更集里没提到的模块保持原样、不推进坐标"口径，ga 切片的 {@code ref}/{@code timestamp}
+ * 那时<b>不前进</b>。本类成为 ga 自己的参与者后，每次世界推进 ga 分量<b>总在</b>提案里 ⇒ ga
+ * 切片每次推进都换到新坐标——这与"有参与者的模块每次推进都换坐标"的既有口径一致（unit/social/economy 等逐字如此）， 也与 {@code Replay.applyWorld}
+ * 的语义不冲突（现在每次都"提到"了它）。★ <b>effect 的求值/触发/落地语义不受此影响</b> （逐字未变）。
+ *
+ * <p>★ <b>日志面（如实记）</b>：事件名（{@code SD_ADVANCE_START} / {@code SD_ADVANCE_END} / {@code
+ * SD_ADVANCE_DAY} / {@code SD_ADVANCE_SKIPPED} / {@code SD_EFFECT_FIRED}）与全部字段<b>逐字保留</b>；变的只有
+ * logger 名（{@code io.mosire.simos.sd.time} → {@code io.mosire.simos.ga.time}，开关随之从 {@code
+ * -Dsimos.sd.logLevel} 换成 {@code -Dsimos.ga.logLevel}）与来源表（{@code sd-tick} → {@code ga-tick}）， 与批次
+ * 3a/3b′ 迁移的其余 handler 同款口径。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2 的那次收缩仍然成立（历史留痕）</b>：本类原先还有第二段"逐日求值 {@code CombatStage.exit} 并推进
+ * {@code CombatState.currentStage}"，随旧战斗族退役整段删除——那是<b>退役</b>不是搬迁（army 的阶段推进走它自己的命令 {@code
+ * army.AppendCombatStage} / {@code army.ResolveCombatStage}，不走触发器状态机）。
  */
-public final class SdTimeParticipant implements TimeParticipant {
+public final class GaTimeParticipant implements TimeParticipant {
 
-  private static final LogChannel TIME = EventLog.channel(SdLog.time());
+  private static final LogChannel TIME = EventLog.channel(GaLog.time());
 
-  private static final LogChannel TRACE = EventLog.channel(SdLog.trace());
+  private static final LogChannel TRACE = EventLog.channel(GaLog.trace());
 
-  private static final String NAMESPACE = "sd";
+  /** 参与者身份 == 本参与者所写模块的命名空间（单切片参与者，与 {@code UnitTimeParticipant} 同形）。 */
+  private static final String NAMESPACE = "ga";
 
   private final String mapId;
 
-  private final DecisionTablesLookup decisionTables;
-
   /**
-   * @param mapId 地图 id（触发器的 {@code unit:*} / hex 地址需要它）
-   * @param decisionTables ga 侧 {@code info} 覆盖层的读写口（装配期注入；非 null——缺了它 {@code Action.PutInfo} 无从落地）
+   * @param mapId 地图 id（触发器的 {@code unit:*} / hex 地址需要它——{@code reads} 声明里的 {@code map:<id>:hex.*}）
    */
-  public SdTimeParticipant(String mapId, DecisionTablesLookup decisionTables) {
+  public GaTimeParticipant(String mapId) {
     this.mapId = Objects.requireNonNull(mapId, "mapId");
-    this.decisionTables = Objects.requireNonNull(decisionTables, "decisionTables");
   }
 
   @Override
@@ -98,23 +115,18 @@ public final class SdTimeParticipant implements TimeParticipant {
     return NAMESPACE;
   }
 
-  /**
-   * ★★ <b>多切片提案</b>（2026-10-12 批次 3b-2）：sd 分量（effects）+ ga 分量（{@code Action.PutInfo} 写的 INFO
-   * 覆盖层）。{@link TimeParticipant} 的契约里，改多个模块的参与者实现本方法、**不**实现 {@code simulate}（后者的默认实现会抛，指路到这里） ——与
-   * {@code PopulationUnitTimeParticipant} / {@code PopulationEconomyTimeParticipant} 同款。
-   */
   @Override
-  public WorldTimeProposal simulateWorld(SimulationState state, TimeRange range) {
+  public TimeProposal simulate(SimulationState state, TimeRange range) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(range, "range");
-    SdState base = sdOf(state);
+    GaState base = gaOf(state);
     Optional<SimosTimestamp> to = range.to();
     if (to.isEmpty()) {
       if (TIME.isDebugEnabled()) {
         TIME.debug(
             LogEvent.of(
                 "SD_ADVANCE_SKIPPED",
-                SdLogSource.SD_TICK,
+                GaLogSource.GA_TICK,
                 "day",
                 range.from().tick(),
                 "from",
@@ -122,18 +134,17 @@ public final class SdTimeParticipant implements TimeParticipant {
                 "reason",
                 "range.to 缺省（无上界推进）"));
       }
-      return WorldTimeProposal.single(
-          new TimeProposal(NAMESPACE, SdChangeSet.between(base, base), Set.of(), Set.of()));
+      return new TimeProposal(NAMESPACE, GaChangeSet.between(base, base), Set.of(), Set.of());
     }
     SimosTimestamp end = to.get();
     long startDay = range.from().tick();
     long endDay = end.tick();
     long days = endDay - startDay;
-    EventLog.channel(SdLog.time())
+    EventLog.channel(GaLog.time())
         .info(
             LogEvent.of(
                 "SD_ADVANCE_START",
-                SdLogSource.SD_TICK,
+                GaLogSource.GA_TICK,
                 "day",
                 startDay,
                 "from",
@@ -154,7 +165,7 @@ public final class SdTimeParticipant implements TimeParticipant {
     Set<String> writes = new LinkedHashSet<>();
 
     Map<EffectId, Effect> effects = new LinkedHashMap<>(base.effects());
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>(decisionTables.info(state));
+    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>(base.info());
 
     // ★★ §十一（2026-09-25）：一次推进 N 天 ⇒ **从 from 逐日推到 to**——AfterTicks/AtOrAfterTick、effect 触发
     //   都按**日**推进。一次跳 100 天只按 to 求值，会把中间该发生的触发整段跳过（等价性当场破）。
@@ -162,8 +173,8 @@ public final class SdTimeParticipant implements TimeParticipant {
     //     的逐步语义逐字一致——这就是等价性的根。
     for (long day = startDay + 1L; day <= endDay; day++) {
       SimosTimestamp at = SimosTimestamp.of(day);
-      // ★ {@code info} 不在 sd 树里 ⇒ todayBegin 只带 sd 自己的唯一组件；info 的累计仍在本方法内（第 2 个可变局部）。
-      SdState todayBegin = base.withEffects(effects);
+      // ★ effects 与 info 现在同住 GaState ⇒ todayBegin 两件都带（搬迁前 info 在另一个模块，只能靠第二个可变局部累计）。
+      GaState todayBegin = base.withEffects(effects).withInfo(info);
       long firedToday = 0L;
       long evaluatedToday = 0L;
       long statusSkippedToday = 0L;
@@ -196,7 +207,7 @@ public final class SdTimeParticipant implements TimeParticipant {
           TRACE.trace(
               LogEvent.of(
                   "SD_EFFECT_FIRED",
-                  SdLogSource.SD_TICK,
+                  GaLogSource.GA_TICK,
                   "day",
                   day,
                   "id",
@@ -217,7 +228,7 @@ public final class SdTimeParticipant implements TimeParticipant {
         TIME.debug(
             LogEvent.of(
                 "SD_ADVANCE_DAY",
-                SdLogSource.SD_TICK,
+                GaLogSource.GA_TICK,
                 "day",
                 day,
                 "effectsEvaluated",
@@ -231,12 +242,12 @@ public final class SdTimeParticipant implements TimeParticipant {
       }
     }
 
-    SdState target = base.withEffects(effects);
-    EventLog.channel(SdLog.time())
+    GaState target = base.withEffects(effects).withInfo(info);
+    EventLog.channel(GaLog.time())
         .info(
             LogEvent.of(
                 "SD_ADVANCE_END",
-                SdLogSource.SD_TICK,
+                GaLogSource.GA_TICK,
                 "day",
                 endDay,
                 "from",
@@ -255,26 +266,14 @@ public final class SdTimeParticipant implements TimeParticipant {
                 triggersFalse,
                 "effects",
                 effects.size()));
-    SdChangeSet sdChangeSet = SdChangeSet.between(base, target);
-    if (info.equals(decisionTables.info(state))) {
-      // ★ 本次一天都没写 INFO ⇒ 单切片提案（形态与搬迁前逐字相同）：不让每次推进都给 ga 切片换一次坐标。
-      return WorldTimeProposal.single(new TimeProposal(NAMESPACE, sdChangeSet, reads, writes));
-    }
-    // ★★ 多切片提案：sd 分量 + ga 分量（INFO 覆盖层）。ga 分量由注入的口子算（sd 不认识 GaChangeSet）。
-    ChangeSet gaChangeSet = decisionTables.replaceInfo(state, info);
-    Map<String, ChangeSet> moduleChanges = new LinkedHashMap<>();
-    moduleChanges.put(NAMESPACE, sdChangeSet);
-    moduleChanges.put("ga", gaChangeSet);
-    return new WorldTimeProposal(NAMESPACE, moduleChanges, reads, writes);
+    return new TimeProposal(NAMESPACE, GaChangeSet.between(base, target), reads, writes);
   }
 
   /**
-   * 触发器的动作落地（★ 2026-10-12 批次 3d-2：由 switch 收成单支）。
+   * 触发器的动作落地（★ 2026-10-12 批次 3d-2：由 switch 收成单支；本批起写的是**本模块**的 {@code info} 表）。
    *
-   * <p>原来还有 {@code Action.SetStage}（推进 sd 自己的 {@code combatStates}）与一条静默吞掉 {@code
-   * Action.RecordCasualties} 的 {@code default -> {}}；两者随旧战斗族退役。今天 {@link Action} 只剩 {@code PutInfo}
-   * 与 {@code EnqueueUnitCommand} 两档，后者由 app 层 {@code SdCommandDrain} 处理（本方法**有意**
-   * 不处理它——那是跨模块写，不是本参与者的活），故这里就是一支 + 一条明确的空分支。
+   * <p>今天 {@link Action} 只剩 {@code PutInfo} 与 {@code EnqueueUnitCommand} 两档，后者由 app 层 {@code
+   * SdCommandDrain} 处理（本方法**有意**不处理它——那是跨模块写，不是本参与者的活），故这里是穷尽两支。
    */
   private void applyAction(
       Action action,
@@ -308,7 +307,7 @@ public final class SdTimeParticipant implements TimeParticipant {
     }
   }
 
-  private List<Effect> sortedEffects(SdState base) {
+  private static List<Effect> sortedEffects(GaState base) {
     List<Effect> out = new ArrayList<>(base.effects().values());
     out.sort((left, right) -> left.id().value().compareTo(right.id().value()));
     return out;
@@ -341,6 +340,7 @@ public final class SdTimeParticipant implements TimeParticipant {
         .canonical();
   }
 
+  /** ★ {@code info} 表已住本模块 ⇒ 写声明也落 {@code ga} 命名空间（搬迁前是 {@code sd:info.<key>}）。 */
   private static String infoAddress(String key) {
     return new Address(List.of(new Namespace(NAMESPACE), Entity.of("info", key))).canonical();
   }
@@ -351,18 +351,20 @@ public final class SdTimeParticipant implements TimeParticipant {
         .canonical();
   }
 
-  private static SdState sdOf(SimulationState state) {
+  /** ga 切片（本参与者所写的模块）：缺席 / 类型不对 = **装配故障**，当场炸（不折成"今天没有效果"）。 */
+  private static GaState gaOf(SimulationState state) {
     Snapshot snapshot =
         state
             .module(NAMESPACE)
-            .orElseThrow(() -> new IllegalStateException("state 里没有 sd 切片（装配故障）"));
-    if (!(snapshot instanceof SdSnapshot sdSnapshot)) {
+            .orElseThrow(() -> new IllegalStateException("state 里没有 ga 切片（装配故障）"));
+    if (!(snapshot instanceof GaSnapshot gaSnapshot)) {
       throw new IllegalStateException(
-          "state 的 sd 切片不是 SdSnapshot: " + snapshot.getClass().getName());
+          "state 的 ga 切片不是 GaSnapshot: " + snapshot.getClass().getName());
     }
-    return sdSnapshot.state();
+    return gaSnapshot.state();
   }
 
+  /** unit 切片（只读；{@code Trigger.UnitAtHex} 求值用）：缺席 / 类型不对 = 装配故障，当场炸。 */
   private static UnitState unitsOf(SimulationState state) {
     Snapshot snapshot =
         state

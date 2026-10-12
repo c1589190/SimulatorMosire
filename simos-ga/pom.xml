@@ -11,18 +11,19 @@
 
   <artifactId>simos-ga</artifactId>
   <name>GaSimos</name>
-  <description>推演框架（运行流）：工具运作 + 决策人运行（LLM 回合、工具面装配、冻结回合裁决）。依赖 util + ga-spi + sd + agentlib（★ 2026-10-12 A1 起**不依赖 core**：写面一律走 ga-spi.ToolWritePort）；宿主事实（工具名、图片通路、权限链执行）一律构造期注入，不依赖 simos-app。</description>
+  <description>推演框架（运行流）：工具运作 + 决策人运行（LLM 回合、工具面装配、冻结回合裁决）+ 决策层效果队列（effects）。依赖 util + ga-spi + sd + map + unit + agentlib（★ 2026-10-12 A1 起**不依赖 core**：写面一律走 ga-spi.ToolWritePort；★★ 2026-10-12 批次 3b-4 起**可依赖 map + unit**：用户裁定「那让它依赖unit呗，这不是Army模块管理的吗？照道理来说Army和Nation都得依赖Unit作为地图实体」）；宿主事实（工具名、图片通路、权限链执行）一律构造期注入，不依赖 simos-app。</description>
 
   <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
        §1 用户原话 ⑤「把工具运作、决策人运行放到ga模块」/ §4.1 目标依赖图 / §4.5 ga 的内容 / §5 I-G2）：
        本模块 = **运行框架** —— "怎么跑"（工具运作 + 决策人运行），不知道"有哪些域"。
-       ★ 依赖方向是单向的：`app ──▶ ga ──▶ { sd, util, ga-spi, agentlib }`（★★ 2026-10-12 A1 起 **core 已摘掉**，
-         见下方 dependency 注释与禁列里的 `io.mosire:simos-core`）；
+       ★ 依赖方向是单向的：`app ──▶ ga ──▶ { sd, util, ga-spi, map, unit, agentlib }`
+         （★★ 2026-10-12 A1 起 **core 已摘掉**，见下方 dependency 注释与禁列里的 `io.mosire:simos-core`；
+          ★★ 2026-10-12 批次 3b-4 起 **map + unit 由禁列移入允许面** —— 用户裁定见规划 §15.2 第 1 条）；
          **ga 不得依赖 simos-app**（否则 app → ga → app 成环），故凡运行流需要"宿主的东西"
          （工具名声明、权限链执行、图片通路、地图 id、宿主编排配置…）一律由构造期注入 ——
          接口定义在本模块，实现在 app。
-       ★ 本批（B2a）只落地"决策人运行流"那一半（§4.5 的 decision/ 四件）；工具下放（B3）、
-         审批链与 SimosToolSource 迁入（B2b）随后。 -->
+       ★ B2a 落地"决策人运行流"那一半（§4.5 的 decision/ 四件）；工具下放（B3）、审批链与
+         SimosToolSource 迁入（B2b）、决策族状态（3a/3b-1/3b-2）、效果族（3b-4）随后。 -->
   <dependencies>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
@@ -38,10 +39,25 @@
          RejectDirective / SubmitPacket / SimosSdReport / ProposeCall / PacketIntent / GmMergedPlanUpsert /
          GmDecidePacket / DecisionPacketPayloads）全部改吃 `ga-spi.ToolWritePort` ⇒ 本模块**编译期再也看不见 Core**，
          与其余 8 个持状态模块同待遇（铁律 3/4 的结构化）。
-         ★ 结果：依赖面 = util + ga-spi + sd（`sd` 将在批次 3e 退役）；
+         ★ 结果：依赖面 = util + ga-spi + sd（`sd` 将在批次 3e 退役）+ map + unit（见下）；
          ★ 不成环：没有任何模块依赖 ga（15 个模块的禁列里都有它）。 -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-sd</artifactId>
+    </dependency>
+    <!-- ★★ 2026-10-12 批次 3b-4（用户裁定，规划 §15.2 第 1 条）：**map + unit 由禁列移入允许面**。
+         依据 = 用户原话「**那让它依赖unit呗，这不是Army模块管理的吗？照道理来说Army和Nation都得依赖Unit作为地图实体**」
+         —— unit 是"地图实体基础设施"，map 供 `HexCoord`。
+         ★ 用途只有一个但是硬需求：`Trigger.UnitAtHex(UnitId, HexCoord)`（决策层效果队列的触发条件
+           `io.mosire.simos.ga.effect.Trigger`）——它的两个字段类型分别来自 unit 与 map；`TriggerEvaluator`
+           求值走 `UnitState#effectivePosition`、`ga.RegisterEffect` 的存在性判据走 unit 切片。
+         ⇒ 这两条边**不是破例**，是用户已批的依赖面扩张。
+         ★★ 无环已核：`unit` / `map` 的 pom 都**显式声明** `simos-ga-spi`（不是 ga 本体），而**没有任何模块
+           允许依赖 `simos-ga` 本体**（15 个模块的禁列里都有它）⇒ 单向无环，Maven 建图期不会成环。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-unit</artifactId>
     </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>agentlib-mosire</artifactId>
@@ -82,17 +98,16 @@
                          它是本模块今天最要紧的一条"看不见"：ga 将来要持状态 + 拿 handler（批次 3a），
                          若能编译期看见 CoreSimos 的提交面，它的 handler 就能在处理中途再提交一条命令
                          （commitLock 是可重入锁 ⇒ 跑得起来、静默绕过"一条命令一条 revision"）。
-                         设计书 §4.1 / §5 I-G2（**本模块的硬约束**）：允许面 = util + ga-spi + sd
-                         （+ agentlib-mosire，它不是 simos 模块故不在禁列）。禁列 = 全仓 17 个 simos 模块
-                         − 自己 − 允许面（13 条）+ 已退役 ledger 留痕（1 条）。
+                         设计书 §4.1 / §5 I-G2（**本模块的硬约束**）：允许面 = util + ga-spi + sd + map + unit
+                         （+ agentlib-mosire，它不是 simos 模块故不在禁列；★★ map/unit 由批次 3b-4 按用户裁定
+                         移入，见上方 dependency 注释）。禁列 = 全仓 17 个 simos 模块
+                         − 自己 − 允许面（11 条）+ 已退役 ledger 留痕（1 条）。
                          ★ 最要紧的一条是 `simos-app`：ga 依赖 app 就是 `app → ga → app` 环（Maven 建图期直接拒），
                            也是设计书 §1 用户原话②「app只负责组装」的反面。 -->
                     <exclude>io.mosire:simos-core</exclude>
-                    <exclude>io.mosire:simos-map</exclude>
                     <exclude>io.mosire:simos-calendar</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
                     <exclude>io.mosire:simos-social</exclude>
-                    <exclude>io.mosire:simos-unit</exclude>
                     <exclude>io.mosire:simos-actor-api</exclude>
                     <exclude>io.mosire:simos-actor</exclude>
                     <exclude>io.mosire:simos-economy-api</exclude>
@@ -104,7 +119,7 @@
                          作历史留痕与未来防线（与其余模块的禁列口径一致）。 -->
                     <exclude>io.mosire:simos-ledger</exclude>
                   </excludes>
-                  <message>simos-ga 是推演框架（工具运作 + 决策人运行，"怎么跑"、不知道"有哪些域"）：只许依赖 simos-util / simos-ga-spi / simos-sd（+ agentlib-mosire，不在禁列）。★ 禁列 = 全仓 17 个 simos 模块 − 自己 − 允许面（含 simos-core、全部领域切片与已退役的 ledger 留痕），零例外；★ 尤其**不许依赖 simos-app**：那就是 `app → ga → app` 环（设计书 §4.1 / I-G2），宿主事实一律构造期注入。</message>
+                  <message>simos-ga 是推演框架（工具运作 + 决策人运行 + 决策层效果队列，"怎么跑"、不知道"有哪些域"）：只许依赖 simos-util / simos-ga-spi / simos-sd / simos-map / simos-unit（+ agentlib-mosire，不在禁列；★ map/unit 是 2026-10-12 批次 3b-4 按用户裁定「那让它依赖unit呗…Army和Nation都得依赖Unit作为地图实体」移入的，用于 Trigger.UnitAtHex(UnitId, HexCoord)）。★ 禁列 = 全仓 17 个 simos 模块 − 自己 − 允许面（含 simos-core、全部领域切片与已退役的 ledger 留痕），零例外；★ 尤其**不许依赖 simos-app**：那就是 `app → ga → app` 环（设计书 §4.1 / I-G2），宿主事实一律构造期注入。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

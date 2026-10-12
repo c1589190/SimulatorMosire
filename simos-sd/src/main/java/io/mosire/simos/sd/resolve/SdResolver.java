@@ -3,10 +3,8 @@ package io.mosire.simos.sd.resolve;
 import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.id.DirectiveId;
-import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.spi.DecisionTablesLookup;
 import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.AddressSegment;
 import io.mosire.simos.util.address.Entity;
@@ -63,7 +61,17 @@ import java.util.Optional;
  * ga、组合根 {@code Shell} 接线）。★ <b>地址族串一字不改</b> （{@code sd:directive.<id>} / {@code
  * sd:decision-maker.<id>} 仍是本解析器的 对外形态；地址族的裁量属批次 3e）——变的只是"表住哪个切片"。
  *
- * <p>★ 余下一支 {@code effect} 仍读 sd 切片，一字未动（随 3b-4 搬进 ga）。
+ * <p>★★ <b>2026-10-12 批次 3b-4：{@code effect} 支<b>整支删除</b></b>（与 3c 的 {@code nation}、3d-1 的 {@code
+ * army}、 3d-2 的 {@code combat} 三支同款处置）——{@code effects} 表随整族值类型搬进 {@code simos-ga}，而 {@code sd}
+ * 不得依赖 {@code ga} ⇒ 本解析器<b>判不了它的存在性</b>（{@code EffectId} 类型还在 sd，但表已经不在了）⇒ 今天 {@code
+ * sd:effect.<id>} 一律走 {@code default -> empty()}（<b>空候选</b>，不是抛：那是"这个地址不存在"，与"路径形状非法"同一档）。 ★
+ * <b>如实记（本批的一处功能净损失，已上报）</b>：{@code ga} 侧本批<b>没有</b>补建等价的 {@code ga:effect.<id>} 解析器 ——{@code
+ * effects} 今天全仓没有任何生产读者按地址取它（除本支外零消费点：GUI 只在"令"视图里列出 {@code Directive.effects} 的 id
+ * 串），且"新开一个地址族"属另一次决定（3e 或后续批次复核；先例 = 3d-1 给 army 补 {@code army:army.<id>} 是因为身份读面只有 resolver 这一条）。
+ *
+ * <p>★ <b>本批起本解析器仍要求 sd 切片存在</b>（{@link #requireSdSlice}）：那是<b>装配期</b>判据（"命名空间在、切片得在、
+ * 类型得对"），与搬迁前逐字一致——它挡的是"忘了注册 {@code SdCodec}"这类装配错，不是数据；★ 两支存活地址的数据都经 {@link DecisionTablesLookup}
+ * 取自 ga。
  */
 public final class SdResolver implements Resolver {
 
@@ -93,22 +101,7 @@ public final class SdResolver implements Resolver {
     if (!NAMESPACE.equals(address.namespace())) {
       return empty();
     }
-    SdState state;
-    try {
-      state = stateOf(ctx);
-    } catch (IllegalArgumentException e) {
-      if (RESOLVE.isDebugEnabled()) {
-        RESOLVE.debug(
-            LogEvent.of(
-                "SD_RESOLVE_UNAVAILABLE",
-                SdLogSource.SD_RESOLVE,
-                "reason",
-                "sd 切片缺席或类型不对（装配故障）",
-                "address",
-                address.canonical()));
-      }
-      throw e;
-    }
+    requireSdSlice(ctx, address);
     List<AddressSegment> segments = address.segments();
     if (!(segments.get(1) instanceof Entity root) || root.kind().isEmpty()) {
       if (RESOLVE.isDebugEnabled()) {
@@ -155,9 +148,8 @@ public final class SdResolver implements Resolver {
                   SdResolver::parseDirective,
                   id -> decisionTables.containsDirective(ctx.state(), id),
                   "Directive");
-          case "effect" ->
-              rootOnly(
-                  segments, root, SdResolver::parseEffect, state.effects()::containsKey, "Effect");
+          // ★ 2026-10-12 批次 3b-4：`effect` 支已整支删除（effects 表搬进 simos-ga，本解析器判不了它的存在性）
+          //   ⇒ 落到 default -> empty()（空候选）。理由与"为什么不补 ga:effect"见类注。
           default -> empty();
         };
     if (result.candidates().isEmpty() && RESOLVE.isDebugEnabled()) {
@@ -202,10 +194,6 @@ public final class SdResolver implements Resolver {
     return safe(() -> DirectiveId.parse(text));
   }
 
-  private static Optional<EffectId> parseEffect(String text) {
-    return safe(() -> EffectId.parse(text));
-  }
-
   private static <T> Optional<T> safe(java.util.function.Supplier<T> supplier) {
     try {
       return Optional.of(supplier.get());
@@ -229,18 +217,36 @@ public final class SdResolver implements Resolver {
     return new QueryResult(List.of());
   }
 
-  /** 切片只能从 sd 模块拿（铁律 3/4）：缺席或类型不对都是装配故障。 */
-  private static SdState stateOf(ResolveContext ctx) {
-    Snapshot snapshot =
-        ctx.state()
-            .module(NAMESPACE)
-            .orElseThrow(
-                () ->
-                    new IllegalArgumentException(
-                        "状态里没有 sd 模块切片——SdResolver 需要 SdSnapshot（装配故障，不是\"没有候选\"）"));
-    if (!(snapshot instanceof SdSnapshot sdSnapshot)) {
-      throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
+  /**
+   * 装配期判据（**返回 void**）：sd 切片必须在、且类型必须是 {@link SdSnapshot}，否则当场抛。★ 本批起本类不再读它的任何组件 （树已是 0
+   * 组件），这条检查只为保住"忘了注册 {@code SdCodec} = 装配故障"这条既有语义（与搬迁前逐字同口径）； 诊断日志 {@code SD_RESOLVE_UNAVAILABLE}
+   * 也一并保留。
+   */
+  private static void requireSdSlice(ResolveContext ctx, Address address) {
+    Snapshot snapshot;
+    try {
+      snapshot =
+          ctx.state()
+              .module(NAMESPACE)
+              .orElseThrow(
+                  () ->
+                      new IllegalArgumentException(
+                          "状态里没有 sd 模块切片——SdResolver 需要 SdSnapshot（装配故障，不是\"没有候选\"）"));
+      if (!(snapshot instanceof SdSnapshot)) {
+        throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
+      }
+    } catch (IllegalArgumentException e) {
+      if (RESOLVE.isDebugEnabled()) {
+        RESOLVE.debug(
+            LogEvent.of(
+                "SD_RESOLVE_UNAVAILABLE",
+                SdLogSource.SD_RESOLVE,
+                "reason",
+                "sd 切片缺席或类型不对（装配故障）",
+                "address",
+                address.canonical()));
+      }
+      throw e;
     }
-    return sdSnapshot.state();
   }
 }

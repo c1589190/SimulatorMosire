@@ -218,3 +218,76 @@ economy 6 / gov 1 / unit 1 / util 1 个文件提及旧命令名 —— 留给对
 1. **`army` 两条命令的工具面资源声明仍写 `sd` 命名空间**（`SdCreateArmyTool` / `SdSetArmyMasterGovTool` 的 `SD_NAMESPACE_WRITE` / `sdNamespaceWriteResources()`；而这两条命令的 handler 只产 `ArmyChangeSet` ⇒ **实际写的是 `army` 命名空间**）：★ 技术上加这个口子**只需动 `simos-ga/src/main`**（基类加一对 `ARMY_NAMESPACE_WRITE` / `armyNamespaceWriteResources()`，形制与 army 模块自己的 `AbstractNarrowWriteTool:54-60` 逐字相同，**不必碰 `simos-ga-spi`**）。**本批仍选择不动**，理由是避免在「军队身份」这一批里同时改两条：① 资源**声明**（`resources()`，审批面可见）；② 资源**断言**（`writeResources()`，权限判定）——两者一起改，一旦某条 GM 路径的声明面与断言面不同步，失效方向是「该拒的放行」。本批红线是「2 条改名不改数、四面逐条不变」，动它就要额外证明 GM 面零变化 ⇒ 属同 3c §E.1 的「资源面正名」，**留给批次 5 一并收口**（那时连带 gov / 军队 / 战斗族的资源面一起正名）。运行时影响：GM 侧 `sd` 与 `army` 都是 `unlimited()`（`Shell#gmPermissionSet`），DM 侧两条命令本就不可用 ⇒ **零行为变化**。
 2. **`AffiliationTargets` 的 Army 那一路从"创建期具名拒"变为"放行 + 读面 deny-all"**（见 C⑥）：3c 已对 Nation 做过同一处置（台账 3c §D3 追认），本批逐字沿用；乙第 4 步在 army 自己的 `army.Assign*DecisionMaker` 命令里把存在性校验补回。
 3. **javadoc 债 3 处（本批写权外）**：`simos-social/src/main/.../CreateCityHandler.java`（3c §E.3 已记的那处）之外，本批**没有新增**写权外的旧串（`simos-sd` 内 8 处"历史叙述"式 `sd.CreateArmy`/`sd.SetArmyMasterGov` 提及已逐条改读 `army.*` 或明确标注为"迁入前叫 sd.*"的留痕）。
+
+---
+
+### 批次 3b-4（`effects` 整族搬进 `ga`：`SdState` 1→0 / `GaState` 6→7 / 2 条命令 `sd.*`→`ga.*` / 开 `ga → map+unit`）
+
+> 提交面：**未提交**（实现代理**不 commit**，§一.5：控制方审后提交）。工作树 38 项（28 M / 9 D / 10 ??，其中 1 ?? 是重建的 `GaRoundTripTest`）。
+> 证据目录 `.superpowers/sdd/2026-10-12-sd-abolition-3b4/evidence/`（compile / spotless / spotbugs / validate / validate-negative / faces / literal-scan / reds-scan / mutation / sd-empty-codec-smoke）。
+> ★★ **本节的"新增"基准如实说明**：本台账的**最后一节是 3d-1**（**3d-2 那一批从未追加进本台账**——它的证据在
+> `.superpowers/sdd/2026-10-12-sd-abolition-3d2/`，口径见规划 §21）。故本节相对 **3d-1 节 + 规划 §21（3d-2）** 记账。
+> ★ 方法说明（为什么是静态推理而不是机械 A/B）：`-fae test-compile` 实测 baseline 与 head 的 sd 模块报错**都恰好 100 处**
+> （javac `-Xmaxerrs` 默认上限）⇒ 机械 diff 被截断、不可用。改用"基线里该文件是否已断"的静态分类（脚本按 import 是否在
+> 基线树里可解析判定），清单见 `evidence/reds-scan.txt`。
+
+**A. 编译断（★ 本批**新增**的，3d-2 时未断 —— 只有 2 个文件）**
+| # | file | 形态 | 处置方向 |
+|---|---|---|---|
+| A1 | `simos-app/src/test/.../sd/SdCommandDrainTest.java:12,15,122,124` | `import io.mosire.simos.sd.spi.RegisterEffectHandler` + `sd.time.SdTimeParticipant` ⇒ **类搬家**；`new RegisterEffectHandler(...)` / `new SdTimeParticipant(MAP_ID)` | import 改 `io.mosire.simos.ga.spi` / `io.mosire.simos.ga.effect`；`new GaTimeParticipant(MAP_ID)`；★ 夹具还要补 **ga 切片**（drain 现在读 ga，`evidence/reds-scan.txt` 的 `gaOf` 断言） |
+| A2 | `simos-app/src/test/.../sd/SdTimeParticipantWiringTest.java:11,52,53` | 同上（整类的被测对象搬走） | 迁到 `simos-ga` 或改 import + 类名（`GaTimeParticipant`）；★ 它的"同 namespace 重复注册 ⇒ 抛"用例语义不变（参与者身份仍是单值） |
+
+**B. 编译断（本批**新增断点**，但这些文件在 3d-2 就已因更早的类型搬家而断 —— `reds-scan.txt` B 节）**
+`simos-app/.../logging/SdLoggingTest.java`（`Action`/`Effect`/`EffectKind`/`EffectStatus`/`Trigger`/`SdTimeParticipant` 6 条 import）·
+`simos-app/.../sd/SdCombatEndToEndTest.java`（`SdTimeParticipant`）· `simos-sd/.../testing/SdFixtures.java`（5 条效果 import + `effect(...)`/`E1` 夹具）·
+`simos-sd/.../time/SdTimeParticipantTest.java`（5 条效果 import + `new SdTimeParticipant(...)`）· `simos-sd/.../state/SdStateInvariantTest.java`（`Trigger` import）·
+`simos-sd/.../spi/SdCombatHandlersTest.java`（`Trigger` import）。
+**处置**：§一.10「老架构老测试、新架构新测试」⇒ 收尾期**删/迁移**（`effects` 已不在 sd）：sd 侧的效果用例迁到
+`simos-ga`（`GaTimeParticipant` + `GaState.effects`），或按新契约重写。
+
+**C. 编译断/断言红：`SdState` 1→0 的成员（`effects()` / `withEffects(...)` / 构造器元数）**
+`SdFixtures:129,183-185` · `SdTimeParticipantTest:67,75,124,127,140,158,240` · `SdRoundTripTest:263` · `SdStateInvariantTest` ·
+`SdCodecTest`（键集/`withEffects`） · `IssueDirectiveHandlerTest:229` · `SetDiplomaticRelationHandlerTest:188` ·
+`RecordDiplomaticEventHandlerTest:185` · `ResetDecisionMakerConversationHandlerTest:106` · `SdLoggingTest:362` ·
+`SdCommandDrainTest:209`。
+**处置**：`effects` 的读写一律改 `GaState`（`withEffects`/`effects()` 同名同形，只换家）；`SdChangeSet` 的组件数断言改 **0**。
+
+**D. 断言红：两条旧命令串（7 个 app 测试文件，共 17 处）**
+`DecisionAgentRunnerTest` · `SimosToolsTest` · `GovPolicyIntoEconomyZ6Test` · `McpServerTest` · `SdCommandDrainTest` ·
+`McpPortTopologyTest` · `McpCoverageTest`（`"sd.RegisterEffect"` / `"sd.CancelEffect"`）。
+**处置**：收尾期**改为新串**（不是删）；★ 计数表（catalog 138 / 66 / 97 / 142-143）**本批一处未变**（2 条改名不改数）
+⇒ 3b-1/3b-2/3c/3d-1/3d-2 台账里那些计数红点**不受本批影响**。
+
+**E. 断言红：`sd:effect.<id>` 地址族（本批删除该支）**
+`SdResolverTest:38`（`one("sd:effect.e1").typeName()=="Effect"`）· `SdTimeParticipantTest:89,90`（`proposal.reads()/writes()`
+断言 `sd:effect.e1`）。
+**处置**：`sd:effect.<id>` ⇒ **空候选**（新契约）；读写声明串换成 `ga:effect.<id>` / `ga:info.<key>`（本批只有命名空间变，
+结构一字未改）。★ **本批不补 `ga:effect.<id>` 解析器**（全仓零生产读者按地址取 effects）——见账本 §4.2，留 3e 裁定。
+
+**F. 护栏（§12.3 例外，当场修，不攒台账）**
+`simos-ga/src/test/.../GaRoundTripTest.java`：同批扩到 **7 组件**（`hasSize(7)` + `containsExactly(…,"effects")` + `mutate`/`changedOf`
+两支 + 七张表非空的逐字段/JSON 往返 + `Family` 两处元数）。★ **该文件自 3d-1 起就编译不过**（台账 3d-1 §A2 已列：`sd.id.ArmyId`/
+`sd.id.NationId`/`sd.id.DecisionMakerId` 三个 import 指向已搬走的类型）⇒ 本批一并修正 import 与 `Affiliation.Army(String)` 收窄
+（它是本批唯一允许改的测试文件）。**结果 11/11 绿**；变异自证：`GaState` 加第 8 组件 ⇒ **红 4 处**，还原 md5 逐字节一致并重跑绿。
+
+**G. 本批新增行为尚无测试（收尾期按规划 §18.2 / §15 的判据补）**
+① `ga.RegisterEffect` 正向落盘（`GaChangeSet.effects` 非空）+ 旧串 `sd.RegisterEffect` ⇒ `Rejected` 且 **head 不变**；
+② `ga.CancelEffect` 的可取消状态真值表（`PLANNED`/`COMMITTED` 可取消，`FIRED`/`CANCELLED`/`EXPIRED` 具名拒）；
+③ `Trigger.UnitAtHex` 的存在性判据走 **unit 切片**（`ga → unit` 的运行时用途）；
+④ `GaTimeParticipant` 逐日等价性（`advance(from, from+N)` 终态 == N 次单日 advance）与 `Action.PutInfo` 写 `GaState.info` 的
+序号/tick/atRevision 三件套；⑤ `GaCodec` 第 6 个键读侧（漏 `EffectId` 则 `effects` **非空即解码炸**，空表测不到）；
+⑥ `Effect` 的 sealed 多态往返（三档 `Trigger` / 两档 `Action`）与 `Action.PutInfo.value` 的标量往返边界。
+
+**H. 已知债（如实记，本批**有意**未做）**
+1. **两个效果工具的资源声明仍写 `sd` 命名空间**（`SdRegisterEffectTool` / `SdCancelEffectTool` 的 `SD_NAMESPACE_WRITE` /
+   `sdNamespaceWriteResources()`；而这两条命令本批起**实际写 ga 命名空间**）：★ 技术上正名要动
+   **`simos-ga-spi/ToolResources`（本批禁碰）**，且 `Shell#gmPermissionSet` 的逐命名空间表态里**没有 `ga` 档**
+   ⇒ 硬改会把 GM 面推到"未表态"分支。**留给批次 5**（与 3c §E.1 / 3d-1 §D.1 合并收口）。运行时影响为零
+   （两条工具只在 GM 桶；GM 侧 `sd` 是 `unlimited()`，断言只决定放行、不决定命令落哪个切片）。
+2. **`sd:effect.<id>` 地址族无替代**（见 E 节）；`SdResolver` 仍要求 sd 切片存在（装配期有牙）但已不读它的任何组件。
+3. **类名/包名保留**：`SdRegisterEffectTool` / `SdCancelEffectTool`（工具名不是命令类型）/ `SdCommandDrain` + 包 `app.sd`
+   ⇒ 留 3e 随 sd 空壳正名。
+4. **`SdLogSource.SD_TICK` 与 `SdLog.time()` 无生产者**（先例 = 3d-2 的 `SD_COMBAT`：稳定 id 不悄悄改）⇒ 随 3e 收口；
+   ga 侧新增 `GaLogSource.GA_TICK` + `GaLog.time()`（表项新增，非改名）。
+5. **`Directive.effects()` 外键仍只在命令期判**（`effects` 已同树 ⇒ 技术上可回构造期）：本批有意不回迁
+   （会新开一个"搬迁前能构造、搬迁后当场抛"的失败面），见账本 §3.3，留 3e/后续批次复核。

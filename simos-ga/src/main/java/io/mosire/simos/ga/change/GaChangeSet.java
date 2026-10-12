@@ -2,8 +2,10 @@ package io.mosire.simos.ga.change;
 
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.effect.Effect;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.DirectiveId;
+import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.DecisionMaker;
@@ -22,9 +24,10 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * ★★ <b>ga 切片的变更集</b>（2026-10-12 批次 3a 首建两组件；同批后续收为四组件；批次 3b-2 <b>再收为六组件</b>）。<b>组件与 {@link
- * GaState} 的 record 组件一一对应</b>： {@code decisionPackets} / {@code mergedEffectPlans} / {@code
- * directives} / {@code verdicts} / {@code decisionMakers} / {@code info}（恰六个）。
+ * ★★ <b>ga 切片的变更集</b>（2026-10-12 批次 3a 首建两组件；同批后续收为四组件；批次 3b-2 <b>再收为六组件</b>；<b>本批 3b-4
+ * 再收为七组件</b>）。<b>组件与 {@link GaState} 的 record 组件一一对应</b>： {@code decisionPackets} / {@code
+ * mergedEffectPlans} / {@code directives} / {@code verdicts} / {@code decisionMakers} / {@code
+ * info} / {@code effects}（恰七个）。
  *
  * <p>★ 铁律 5：变更集从完整状态类型派生——{@link #between(GaState, GaState)} 是唯一生产者，差异/重建语义一律委托 {@link
  * FieldDelta#diff} / {@link FieldDelta#rebuild}（与 Map/Social/Unit/Sd/Economy/Actor/Gov 共用同一份机制，
@@ -45,7 +48,8 @@ public record GaChangeSet(
     FieldDelta<Directive> directives,
     FieldDelta<Verdict> verdicts,
     FieldDelta<DecisionMaker> decisionMakers,
-    FieldDelta<List<SdInfoEntry>> info)
+    FieldDelta<List<SdInfoEntry>> info,
+    FieldDelta<Effect> effects)
     implements ChangeSet {
 
   public GaChangeSet {
@@ -67,6 +71,9 @@ public record GaChangeSet(
     if (info == null) {
       info = new FieldDelta.Unchanged<>();
     }
+    if (effects == null) {
+      effects = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ <b>全 Unchanged</b>（不是空对象）。 */
@@ -79,7 +86,8 @@ public record GaChangeSet(
         FieldDelta.diff(base.directives(), target.directives()),
         FieldDelta.diff(base.verdicts(), target.verdicts()),
         FieldDelta.diff(base.decisionMakers(), target.decisionMakers()),
-        FieldDelta.diff(base.info(), target.info()));
+        FieldDelta.diff(base.info(), target.info()),
+        FieldDelta.diff(base.effects(), target.effects()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -99,8 +107,10 @@ public record GaChangeSet(
         FieldDelta.rebuild(base.decisionMakers(), cs.decisionMakers(), DecisionMakerId::parse);
     Map<String, List<SdInfoEntry>> info =
         FieldDelta.rebuild(base.info(), cs.info(), Function.identity());
+    Map<EffectId, Effect> effects =
+        FieldDelta.rebuild(base.effects(), cs.effects(), EffectId::parse);
     return new GaState(
-        decisionPackets, mergedEffectPlans, directives, verdicts, decisionMakers, info);
+        decisionPackets, mergedEffectPlans, directives, verdicts, decisionMakers, info, effects);
   }
 
   /**
@@ -120,6 +130,7 @@ public record GaChangeSet(
         && !directives.changed()
         && !verdicts.changed()
         && !decisionMakers.changed()
-        && !info.changed();
+        && !info.changed()
+        && !effects.changed();
   }
 }

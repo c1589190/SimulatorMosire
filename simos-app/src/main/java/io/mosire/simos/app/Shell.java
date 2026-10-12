@@ -109,12 +109,15 @@ import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.command.CommandFaces;
 import io.mosire.simos.ga.command.CommandPermissionRules;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.effect.GaTimeParticipant;
+import io.mosire.simos.ga.spi.CancelEffectHandler;
 import io.mosire.simos.ga.spi.CreateDecisionMakerHandler;
 import io.mosire.simos.ga.spi.DecideDecisionPacketHandler;
 import io.mosire.simos.ga.spi.DeleteDecisionMakerHandler;
 import io.mosire.simos.ga.spi.GaDecisionTablesLookup;
 import io.mosire.simos.ga.spi.IssueDirectiveHandler;
 import io.mosire.simos.ga.spi.PutInfoHandler;
+import io.mosire.simos.ga.spi.RegisterEffectHandler;
 import io.mosire.simos.ga.spi.ResetDecisionMakerConversationHandler;
 import io.mosire.simos.ga.spi.RunDecisionHandler;
 import io.mosire.simos.ga.spi.SetDecisionMakerAccessHandler;
@@ -155,10 +158,7 @@ import io.mosire.simos.sd.channel.ChannelAdmission;
 import io.mosire.simos.sd.channel.DecisionChannel;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.resolve.SdResolver;
-import io.mosire.simos.sd.spi.CancelEffectHandler;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
-import io.mosire.simos.sd.spi.RegisterEffectHandler;
-import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
@@ -350,9 +350,10 @@ public final class Shell implements AutoCloseable {
   private final List<DecisionChannel> decisionChannels;
 
   /**
-   * **完整注册面**（= {@code CommandFaces.catalogTypes()}，含 GM-only 命令与装配自身新增的 {@code sd.RegisterEffect}
-   * 与 5 条 sd 决策命令）：按角色重建工具面时供 catalog 读。★ 决策人侧仍由 {@code CatalogVisibility} 按权限过滤 —— GM-only
-   * 命令不在其"可嵌入令"白名单里，故决策人看不到。
+   * **完整注册面**（= {@code CommandFaces.catalogTypes()}，含 GM-only 命令与装配自身新增的 {@code ga.RegisterEffect}
+   * 与 5 条 ga 决策命令）：按角色重建工具面时供 catalog 读。★ 决策人侧仍由 {@code CatalogVisibility} 按权限过滤 —— GM-only
+   * 命令不在其"可嵌入令"白名单里，故决策人看不到。★ 2026-10-12 批次 3b-4：{@code sd.RegisterEffect → ga.RegisterEffect}
+   * （命令类型随 {@code effects} 表搬进 ga；**条数不变**）。
    */
   private final Set<String> commandTypes;
 
@@ -900,8 +901,12 @@ public final class Shell implements AutoCloseable {
     //     整体退役 ⇒ 现在"不打 `DmUsableCommand`"就是 GM-only 的声明，不再有第二个标记。
     //   ① 先收声明 —— 唯一读标记的地方在 ga 的规则层，不在组合根：
     CommandPermissionRules.Declarations declarations = CommandPermissionRules.declare(handlers);
-    //   ② 用派生面构造"装配自身新增"的 6 条 handler（sd.RegisterEffect + 5 条 sd 决策命令）：它们**都不打声明**
-    //     ⇒ 既不进可嵌令面、也不进可入队面（与迁移前"被 sd. 前缀剔掉"逐条等价）。
+    //   ② 用派生面构造"装配自身新增"的 6 条 handler（★ 2026-10-12 批次 3b-4 起是 ga.RegisterEffect + 5 条 ga
+    //     决策命令；改名不改数、不改注入内容）：它们**都不打声明** ⇒ 既不进可嵌令面、也不进可入队面
+    //     （与迁移前"被 sd. 前缀剔掉"逐条等价）。
+    //   ★ 注入点本体**一字未改**：仍是 {@code declarations.dmUsableTypes()}（内容 ==
+    // CommandFaces.drainableTypes()，
+    //     见该类注：可入队面与可嵌令面是同一份声明的两种用法）⇒ 本批"可入队面仍恰 66"由这一处保证。
     //   ★ 可入队面与可嵌令面在本批口径下是**同一份声明**的两种用法（见 CommandFaces 的类注），故共用这一个集合。
     Set<String> dmUsableTypes = declarations.dmUsableTypes();
     handlers.add(new RegisterEffectHandler(dmUsableTypes));
@@ -919,8 +924,8 @@ public final class Shell implements AutoCloseable {
     handlers.add(setDecisionMakerAccessHandler);
     handlers.add(setDecisionMakerProviderHandler);
     handlers.add(resetDecisionMakerConversationHandler);
-    //   ③ 注册：顺序与迁移前逐条相同（★ 2026-10-12 批次 2 加 map.SetHexArea 后：137 条领域 handler →
-    //      sd.RegisterEffect → 5 条 sd 决策命令 = 143 条）。
+    //   ③ 注册：顺序与迁移前逐条相同（★ 2026-10-12 批次 2 加 map.SetHexArea、批次 3d-2 退役旧战斗族 5 条后：
+    //      132 条领域 handler → ga.RegisterEffect → 5 条 ga 决策命令 = 138 条；★ 批次 3b-4 只改名不改数）。
     for (CommandHandler handler : handlers) {
       coreSimos.register(handler);
     }
@@ -957,7 +962,9 @@ public final class Shell implements AutoCloseable {
             //   ⇒ 组合参与者把 UnitTimeParticipant 与 PopulationEconomyTimeParticipant 合成一份提案；
             //   内部次序固定：population（含逃亡 outbox）→ unit 移动 → unit 摘除。
             new PopulationUnitTimeParticipant(config.mapId()),
-            new SdTimeParticipant(config.mapId(), decisionTables));
+            // ★★ 2026-10-12 批次 3b-4：sd 的推进器随 effects 整族搬进 simos-ga（GaTimeParticipant，单切片参与者：
+            //   effects 与 info 现在同住 GaState）⇒ 它不再需要注入 DecisionTablesLookup（那条跨切片写口已删）。
+            new GaTimeParticipant(config.mapId()));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }

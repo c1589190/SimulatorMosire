@@ -14,7 +14,6 @@ import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.SdPayloads;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -102,9 +101,9 @@ public final class IssueDirectiveHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GaState base = GaSnapshots.state(state);
-    // ★ 决策人表已在 ga（本批搬入）⇒ 上面那条外键在状态期也判（GaState 构造期）；此处仍逐条判是为了给具名拒因。
-    //   效果表仍住 sd（3b-4 才搬）⇒ 引用完整性在命令期读 sd 切片（既有的 ga → sd 方向）。
-    SdState sd = GaSnapshots.sd(state);
+    // ★ 决策人表已在 ga（3b-2 搬入）⇒ 上面那条外键在状态期也判（GaState 构造期）；此处仍逐条判是为了给具名拒因。
+    //   ★★ 2026-10-12 批次 3b-4：效果表也搬进本模块（GaState 第 7 组件）⇒ 下面那条判据从"读 sd 切片"改成
+    //      读同一棵树（GaSnapshots.sd 已随本批删除：它失去了唯一调用者）。
     String directiveForLog = null;
     String dmForLog = null;
     try {
@@ -156,7 +155,7 @@ public final class IssueDirectiveHandler implements CommandHandler {
             commands.size());
       }
       for (EffectId effectId : effects) {
-        if (!sd.effects().containsKey(effectId)) {
+        if (!base.effects().containsKey(effectId)) {
           return rejected(
               "效果不存在: " + effectId.value(),
               "directive",

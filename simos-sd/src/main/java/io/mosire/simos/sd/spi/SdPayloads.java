@@ -5,17 +5,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Action;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.CallStatus;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DisclosurePolicy;
-import io.mosire.simos.sd.model.EffectKind;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.MergedEffect;
 import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -64,7 +61,15 @@ import org.slf4j.Logger;
  * requireLossClass}，以及随之失去唯一调用者的 {@code optionalInt} / {@code optionalIntMap} / {@code
  * optionalStageId}（<b>不是</b>搬去 army：army 有自己的 {@code ArmyPayloads}，同族方法名在那里另有实现 ⇒
  * 抄一份过来才是"同一形状两处拼写"）。 这 11 个方法全仓 {@code src/main} 的调用者<b>只有</b> 那 5 个已删除的 handler ⇒ 删除后无第二读者。★
- * 载荷形状的<b>存活面</b>（{@code trigger} / {@code action} / 决策人与 决策包各族）一字未改。
+ * 载荷形状的<b>存活面</b>（决策人与 决策包各族）一字未改。
+ *
+ * <p>★★ <b>2026-10-12 批次 3b-4：本类再删 3 个"只服务效果族"的解析器（如实记）</b>——{@code requireEffectKind} / {@code
+ * requireTrigger} / {@code requireAction}：它们的<b>返回类型</b>（{@code EffectKind} / {@code Trigger} /
+ * {@code Action}）随 {@code effects} 整族搬进 {@code simos-ga}（{@code
+ * io.mosire.simos.ga.effect}），留在本类会立刻造出 {@code sd → ga} 的禁边 ⇒ 同一条判据、同一段文案<b>搬到 ga 侧</b>的 {@code
+ * io.mosire.simos.ga.effect.EffectPayloads} （<b>不是</b>"第二份解析"：搬走后本类再无同名方法，全仓仍只有一处拼写）。★ 这三个方法全仓
+ * {@code src/main} 的调用者 <b>只有</b> {@code RegisterEffectHandler}（已随族搬进 {@code simos-ga}）⇒ 删除后无第二读者。★
+ * 载荷形状的<b>其余存活面</b> （决策人 / 决策包 / 令 / 判决各族）一字未改。
  */
 public final class SdPayloads {
 
@@ -311,31 +316,6 @@ public final class SdPayloads {
       default ->
           throw new IllegalArgumentException("affiliation.kind 必须是 nation|army|gov: " + kind);
     };
-  }
-
-  static EffectKind requireEffectKind(JsonNode payload, String field) {
-    String text = requireText(payload, field);
-    try {
-      return EffectKind.valueOf(text);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("effect kind 非法: " + text);
-    }
-  }
-
-  static Trigger requireTrigger(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull() || !value.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是条件对象: " + payload);
-    }
-    return MAPPER.convertValue(value, Trigger.class);
-  }
-
-  static Action requireAction(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull() || !value.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是动作对象: " + payload);
-    }
-    return MAPPER.convertValue(value, Action.class);
   }
 
   public static long optionalLong(JsonNode payload, String field, long fallback) {
