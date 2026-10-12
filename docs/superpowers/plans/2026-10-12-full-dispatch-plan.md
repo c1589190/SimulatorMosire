@@ -875,3 +875,41 @@ D4 受众标签定为 `kind:ref` 串（代价 = 视图/载荷形状变化 O5/O6/
 ★ **纪律**：★ **`subagent` 只在"确实要它独立跑完、不需要中途改主意"时用**；
 需要**可中断/可转向**的协作一律走 `spawn_teammate`（durable teammate）。
 ★ **并发前先确认"这两个目标真的不相交"** —— 因为**发现相交时控制方没有急停按钮**。
+
+---
+
+## §29 ★★★ 第二个真生产缺陷：`Shell` 装配当场抛（乙收尾引入，5 个提交里 app 起不来）
+
+### 29.1 事实（控制方六条独立复核，全部成立）
+| # | 核验 | 结果 |
+|---|---|---|
+| ① | `SimosSdReportsTool.roles()` | `return Set.of(ToolRole.GM);` |
+| ② | 类注（`:33`） | 「`simos.sd.reports`（D4）：**跨区上报的共享读口**（决策人桶 + GM 桶）」 |
+| ③ | 注册面（`SimosToolSource:1208-1211`） | 在**共享读列表**里；注释「**两桶共享**（决策人桶 + GM 桶；**不标** `GmOnlyRead`）」 |
+| ④ | 实现 `GmOnlyRead` 吗 | **0**（不实现 ⇒ `readToolsFor(all, Role.DM)` 必把它放进 DM 桶）⇒ 与 `roles()` **当场矛盾** |
+| ⑤ | **归因** | `git log -S "Set.of(ToolRole.GM)"` ⇒ **`3ee4aea5`（乙收尾）**：`- Set.of(ToolRole.DM, ToolRole.GM)` / `+ Set.of(ToolRole.GM)`；**同批没改注册面、没改类注**（B4 `6e04849a` 原本写的是 `{DM, GM}`，是对的） |
+| ⑥ | 抛出点 | `ToolRoleAudit.requireFace`：`if (!roles.contains(face)) throw new IllegalStateException("工具面装配故障：… 声明 [GM]（不含 DM），却注册在 DM 桶里 …")`；由 `SimosToolSource:568` 与 `Shell:1194` 在**装配完成处**调用 |
+
+**后果**：**`Shell` 构造函数当场抛** ⇒ 从 `3ee4aea5` 起 **5 个提交（乙收尾 · 3e · 4 · 4b · 第 1 层）里 GUI 根本起不来**；
+叠加同期 `api.js:535` 的悬空引用（`window.SimosaApi` 不发布）⇒ **app 在这段时间内完全不可用**。
+**测试面量化**：全反应堆 `test` 基线 = `simos-app` 914 跑 / 59 F / **445 E**，其中 **378 E 同此一因**（另有 `CatalogConfiguration`
+静态初始化级联）。
+
+### 29.2 ★★★ 根因（三层，都要写死）
+1. **四道门禁没有一道会构造真 `Shell`**：`compile` / `spotless` / `spotbugs` / `validate` 全过 ——
+   一条"角色声明"写错，四道全过。⇒ **批次 4 报告里那句「真 Shell 起得来 = 最强证据」按此不成立**（那批也没跑测试）。
+2. **§12.1「测试留到最后」的真实代价**：不只是"测试没跟上"，而是**整个尾段没有任何机制验证 app 能跑**。
+3. **§28.1 的同类**：`-Dexec.skip=true` 让前端门禁停摆，`-DskipTests` 让装配期自审停摆 ——
+   **两道"运行时"门禁同时被跳过**，于是一个"构造函数就抛"的缺陷活了 5 个提交。
+
+★★ **纪律（写死，2026-10-13）**：**每批的门禁必须至少包含一条"会真的构造出组合根"的检查** ——
+最小形态 = **一个 `Shell` 冒烟测试**（`new Shell(config)` + `close()`），跑在 `test` 阶段。
+★ **理由**：`compile` 只能证明"每个类各自能编译"，**证明不了"它们能装在一起"**；
+装配期自审（`ToolRoleAudit`）是**本仓已有的最强判据之一**，**跳过它 = 放弃了一道已建好的防线**。
+
+### 29.3 处置（控制方）
+- **不在测试 Agent 跑 Maven 的窗口里改 Java**（§一.4：会污染它的基线）；
+- **控制方不写代码**（§一.5）；
+- **用户已裁定不再并行** ⇒ 不新起 Agent；
+- ⇒ **等该 Agent 落定后，由控制方**（或其后单独派的最小批）**应用这一行修复并重测**。
+  修复内容 = `SimosSdReportsTool.roles()` 恢复 `Set.of(ToolRole.DM, ToolRole.GM)`（三处证据一致指向它）。

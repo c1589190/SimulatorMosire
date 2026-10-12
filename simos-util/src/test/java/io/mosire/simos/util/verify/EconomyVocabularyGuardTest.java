@@ -42,6 +42,12 @@ class EconomyVocabularyGuardTest {
    * <p>★ **2026-10-12 补记（C1 测试迁移批）**：B1 新增 {@code simos-ga-spi}、B2a 新增 {@code simos-ga} 时根 {@code
    * pom.xml} 加了、本清单没加 ⇒ 本用例当场红（B1 落地后即已红，不是 B2a 引入的新问题）。本次按"两处一起加"把两条补回， 两个新模块随之纳入词表扫描面（扫描面变大 =
    * 覆盖变多，判据本身未改）。
+   *
+   * <p>★★ <b>2026-10-13 收尾测试第 2 层</b>：{@code simos-sd} <b>已整模块退役</b>（批次 3e，用户裁定「sd 整个弃用！」＋「直接扔」）
+   * —— 目录已不存在，而本清单还留着它 ⇒ ①{@link #theScannedModuleListMatchesTheOneTheBuildDeclares()} 判红（清单 17 ≠ 根 pom 的
+   * 16）；②{@link #occurrencesByFile} 对不存在的目录抛 {@code 不是目录（或不存在）}。<b>处置 = 从扫描面摘掉它</b>——不是放宽判据：
+   * 那条"清单必须恰等于根 pom"的断言<b>一字未改</b>，仍是双向全量钉死；摘的只是"一个已经不存在的模块"（旧架构老测试，§一.10：
+   * 被扫的本体没了 ⇒ 这一条扫描项<b>机制已不存在</b>）。
    */
   static final List<String> MODULES =
       List.of(
@@ -53,7 +59,6 @@ class EconomyVocabularyGuardTest {
           "simos-social",
           "simos-unit",
           "simos-core",
-          "simos-sd",
           "simos-actor-api",
           "simos-actor",
           "simos-economy-api",
