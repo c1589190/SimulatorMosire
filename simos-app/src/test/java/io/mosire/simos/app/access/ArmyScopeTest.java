@@ -25,17 +25,24 @@ class ArmyScopeTest {
   private static final HexCoord H22 = new HexCoord(2, 2);
   private static final HexCoord H33 = new HexCoord(3, 3);
 
+  /**
+   * ★★ <b>归属行与世界必须一起给</b>（2026-10-13 收尾测试第 2 层）："这个决策人带哪支军队"住在 {@code ArmyData.armyAffiliations()}
+   * 里、按 dmId 索引 ⇒ 夹具先建 dm、再带着它建世界。下面每个 {@code state(...)} 都显式带上 {@code a1} 的归属行（没有它 ⇒ {@code
+   * ArmyScope} 一律 deny-all，可见性断言全部退化成恒真式）。
+   */
+  private static final ScopeFixtures.Affiliated DM_A1 = ScopeFixtures.armyDm("dm-a1", "a1");
+
   private static SimulationState stateWith(Unit root, Unit... others) {
     GameMap map = ScopeFixtures.mapOf(ScopeFixtures.nationRegion("701", "FRA", H11));
     return ScopeFixtures.state(
         map,
         ScopeFixtures.units(root, others),
-        ScopeFixtures.sdWithArmy("a1", "FRA", root.id().value()));
+        ScopeFixtures.sdWithArmy("a1", "FRA", root.id().value()),
+        DM_A1);
   }
 
   private static ResourceScopeMap scopesOf(SimulationState state) {
-    return DecisionScopeFunctions.defaults()
-        .scopesFor(ScopeFixtures.armyDm("dm-a1", "a1"), state, ScopeFixtures.MAP_ID);
+    return DecisionScopeFunctions.defaults().scopesFor(DM_A1.maker(), state, ScopeFixtures.MAP_ID);
   }
 
   @Test
@@ -90,7 +97,7 @@ class ArmyScopeTest {
   /** ★ J4：同一决策人、同一世界**除军队位置外**，范围必须随**现算**变化（缓存/落盘即失效）。 */
   @Test
   void movingTheArmyChangesTheVisibleSet() {
-    DecisionMaker dm = ScopeFixtures.armyDm("dm-a1", "a1");
+    DecisionMaker dm = DM_A1.maker();
     DecisionScopeFunctions functions = DecisionScopeFunctions.defaults();
 
     ResourceScopeMap before =
@@ -140,17 +147,25 @@ class ArmyScopeTest {
         .doesNotContain("demo/hex/3_3");
   }
 
+  /**
+   * ★ 判据：<b>归属指向一支不存在的军队</b> ⇒ 显式 deny-all。
+   *
+   * <p>★ 夹具如实造出这条路径：归属行 {@code dm-ghost → ghost} <b>确实写进了表</b>，而 {@code armies} 里只有 {@code a1} ⇒
+   * {@code ArmyAffiliations.resolve} 把那一行裁掉（fail-closed）⇒ 读不到归属 ⇒ 四命名空间 {@code none()}。 （★
+   * 这与"压根没写那一行"是同一条读侧出口，但夹具走的是"写了但裁掉"这一支，判别力更强。）
+   */
   @Test
   void anUnknownArmyIsAnExplicitDenyAll() {
+    ScopeFixtures.Affiliated ghost = ScopeFixtures.armyDm("dm-ghost", "ghost");
     SimulationState state =
         ScopeFixtures.state(
             ScopeFixtures.mapOf(ScopeFixtures.nationRegion("701", "FRA", H11)),
             ScopeFixtures.units(ScopeFixtures.unitWithVision("u-1", H11, 1)),
-            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"),
+            ghost);
 
     ResourceScopeMap scopes =
-        DecisionScopeFunctions.defaults()
-            .scopesFor(ScopeFixtures.armyDm("dm-ghost", "ghost"), state, ScopeFixtures.MAP_ID);
+        DecisionScopeFunctions.defaults().scopesFor(ghost.maker(), state, ScopeFixtures.MAP_ID);
 
     assertThat(scopes.namespaces())
         .as("★ 三个命名空间都要**表过态**（T10 起 unit/social 也配了前缀：不表态 ⇒ 回落到工具缺省 ⇒ 静默全放行）")
@@ -177,7 +192,8 @@ class ArmyScopeTest {
         ScopeFixtures.state(
             ScopeFixtures.mapOf(ScopeFixtures.nationRegion("701", "FRA", H11)),
             units,
-            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"),
+            DM_A1);
 
     ResourceScopeMap scopes = scopesOf(state);
 
@@ -210,21 +226,22 @@ class ArmyScopeTest {
     GameMap map = ScopeFixtures.mapOf(ScopeFixtures.nationRegion("701", "FRA", H11));
     DecisionScopeFunctions functions = DecisionScopeFunctions.defaults();
 
+    ScopeFixtures.Affiliated firstDm = ScopeFixtures.armyDm("dm-a1", "a1");
+    ScopeFixtures.Affiliated secondDm = ScopeFixtures.armyDm("dm-a2", "a2");
+
     SimulationState first =
-        ScopeFixtures.state(map, units, ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+        ScopeFixtures.state(map, units, ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"), firstDm);
     SimulationState second =
-        ScopeFixtures.state(map, units, ScopeFixtures.sdWithArmy("a2", "FRA", "u-2"));
+        ScopeFixtures.state(map, units, ScopeFixtures.sdWithArmy("a2", "FRA", "u-2"), secondDm);
 
     assertThat(
             ScopeFixtures.prefixes(
-                functions.scopesFor(
-                    ScopeFixtures.armyDm("dm-a1", "a1"), first, ScopeFixtures.MAP_ID)))
+                functions.scopesFor(firstDm.maker(), first, ScopeFixtures.MAP_ID)))
         .contains("demo/hex/1_1")
         .doesNotContain("demo/hex/2_2");
     assertThat(
             ScopeFixtures.prefixes(
-                functions.scopesFor(
-                    ScopeFixtures.armyDm("dm-a2", "a2"), second, ScopeFixtures.MAP_ID)))
+                functions.scopesFor(secondDm.maker(), second, ScopeFixtures.MAP_ID)))
         .contains("demo/hex/2_2")
         .doesNotContain("demo/hex/1_1");
   }

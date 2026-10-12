@@ -21,6 +21,7 @@ import io.mosire.simos.app.tools.ga.AppGaToolIdentity;
 import io.mosire.simos.app.tools.ga.AppGaToolQueries;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.GaSnapshot;
@@ -32,6 +33,7 @@ import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.read.DecisionDocsTool;
 import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.gov.nation.Nation;
 import io.mosire.simos.gov.nation.NationAffiliations;
 import io.mosire.simos.gov.nation.NationId;
@@ -114,6 +116,9 @@ class DecisionDocsToolTest {
     core.register(new MapCodec());
     core.register(new UnitCodec());
     core.register(new GaCodec());
+    // ★★ 2026-10-13 收尾测试第 2 层：乙收尾起 `nations` 住 `gov`、`armies` 住 `army` ⇒ 信封必须有对应 codec。
+    core.register(new GovCodec());
+    core.register(new ArmyCodec());
     core.bootstrapGenesis(genesis());
     queryService = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
   }

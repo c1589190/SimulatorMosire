@@ -55,12 +55,12 @@ class DecisionChannelTest {
     CoreSimos core = start();
     DecisionChannel channel = new GuiDecisionChannel(core, () -> Set.of(DM1));
 
-    channel.submit(DM1, request("sd.IssueDirective", directivePayload()));
+    channel.submit(DM1, request("ga.IssueDirective", directivePayload()));
 
     assertThat(core.head(MAIN).orElseThrow()).isEqualTo(new RevisionId(2));
     List<RevisionRow> rows = core.revisions(MAIN);
     RevisionRow written = rows.get(rows.size() - 1);
-    assertThat(written.commandType()).isEqualTo("sd.IssueDirective");
+    assertThat(written.commandType()).isEqualTo("ga.IssueDirective");
     assertThat(written.initiator()).as("N18：渠道 id + actor 留痕").isEqualTo("player:gui:dm1");
     assertThat(channel.available()).isTrue();
   }
@@ -73,7 +73,7 @@ class DecisionChannelTest {
     assertThatThrownBy(
             () ->
                 channel.submit(
-                    new ActorId("ghost"), request("sd.IssueDirective", directivePayload())))
+                    new ActorId("ghost"), request("ga.IssueDirective", directivePayload())))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("N16");
     assertThat(core.head(MAIN).orElseThrow()).isEqualTo(new RevisionId(1));
@@ -96,7 +96,7 @@ class DecisionChannelTest {
     core.register(new GaCodec());
     core.register(
         new IssueDirectiveHandler(
-            new DirectiveWhitelist(Set.of("unit.RenameUnit", "sd.IssueDirective"))));
+            new DirectiveWhitelist(Set.of("unit.RenameUnit", "ga.IssueDirective"))));
     core.bootstrapGenesis(genesis());
     return core;
   }

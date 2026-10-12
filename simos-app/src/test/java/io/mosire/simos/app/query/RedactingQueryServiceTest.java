@@ -20,6 +20,7 @@ import io.mosire.simos.app.tools.map.AppMapToolPerspective;
 import io.mosire.simos.app.tools.map.AppMapToolViews;
 import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
 import io.mosire.simos.app.tools.write.AppUnitToolViews;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.codec.GaCodec;
@@ -30,6 +31,7 @@ import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DisclosurePolicy;
 import io.mosire.simos.ga.model.Verdict;
 import io.mosire.simos.ga.model.VerdictMeta;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
@@ -343,6 +345,9 @@ class RedactingQueryServiceTest {
     core.register(new MapCodec());
     core.register(new UnitCodec());
     core.register(new GaCodec());
+    // ★★ 2026-10-13 收尾测试第 2 层：乙收尾起 `nations` 住 gov、`armies` 住 army ⇒ 信封必须有对应 codec。
+    core.register(new GovCodec());
+    core.register(new ArmyCodec());
     // ★ S3a：unit 读口（RedactingQueryService.units/UnitGetTool）现在经 SocialLookupAdapter 取
     // households/population
     //   ⇒ 夹具必须有 social 切片，否则会按"装配故障"抛（生产状态恒有该切片）。
@@ -438,7 +443,7 @@ class RedactingQueryServiceTest {
   }
 
   private static Verdict verdict(String id) {
-    Address subject = new Address(List.of(new Namespace("sd"), Entity.of("combat", "c1")));
+    Address subject = new Address(List.of(new Namespace("army"), Entity.of("combat", "c1")));
     return new Verdict(
         new VerdictId(id),
         new AdjudicationBreakpoint("D1"),

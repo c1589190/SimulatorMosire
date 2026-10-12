@@ -31,6 +31,7 @@ import io.mosire.simos.army.Army;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -49,6 +50,7 @@ import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.gov.nation.Nation;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.gov.nation.NationTag;
@@ -362,14 +364,14 @@ class DecisionMakerScopeEndToEndTest {
   void aDecisionMakerCanActuallyIssueADirective() throws Exception {
     long headBefore = head();
     ToolResult result =
-        dmCall("sd.IssueDirective", DM_FRA, directiveArgs(headBefore, "d1", "dm-fra"));
+        dmCall("ga.IssueDirective", DM_FRA, directiveArgs(headBefore, "d1", "dm-fra"));
 
     assertThat(result.success()).as("出令必须成（拒因：%s）", result.message()).isTrue();
     assertThat(JSON.readTree(result.message()).get("result").asText()).isEqualTo("committed");
     assertThat(head()).as("落了真 revision").isEqualTo(headBefore + 1);
 
     RevisionRow row = latestRevision();
-    assertThat(row.commandType()).isEqualTo("sd.IssueDirective");
+    assertThat(row.commandType()).isEqualTo("ga.IssueDirective");
     assertThat(row.initiator()).as("发起者仍是装配期定的那个（决策人不自报身份）").isEqualTo(INITIATOR);
   }
 
@@ -384,7 +386,7 @@ class DecisionMakerScopeEndToEndTest {
   void aDecisionMakerCannotSignSomeoneElsesName() throws Exception {
     long headBefore = head();
     ToolResult result =
-        dmCall("sd.IssueDirective", DM_FRA, directiveArgs(headBefore, "d-forged", "dm-ger"));
+        dmCall("ga.IssueDirective", DM_FRA, directiveArgs(headBefore, "d-forged", "dm-ger"));
 
     assertThat(result.success()).as("以别人名义落决策 ⇒ 拒").isFalse();
     assertThat(result.code()).isEqualTo("REJECTED");
@@ -401,7 +403,7 @@ class DecisionMakerScopeEndToEndTest {
   void anUnlimitedCallerMaySignForAnyDecisionMaker() throws Exception {
     long headBefore = head();
     ToolResult result =
-        callAsUnlimited("sd.IssueDirective", directiveArgs(headBefore, "d-by-gm", "dm-fra"));
+        callAsUnlimited("ga.IssueDirective", directiveArgs(headBefore, "d-by-gm", "dm-fra"));
 
     assertThat(result.success()).as("GM 为 dm-fra 落决策：照旧放行（拒因：%s）", result.message()).isTrue();
     assertThat(head()).isEqualTo(headBefore + 1);
@@ -412,7 +414,7 @@ class DecisionMakerScopeEndToEndTest {
   void anUnlimitedCallerCanStillIssueADirective() throws Exception {
     long headBefore = head();
     ToolResult result =
-        callAsUnlimited("sd.IssueDirective", directiveArgs(headBefore, "d2", "dm-fra"));
+        callAsUnlimited("ga.IssueDirective", directiveArgs(headBefore, "d2", "dm-fra"));
 
     assertThat(result.success()).as("GM 侧不得因为改细而变窄（拒因：%s）", result.message()).isTrue();
     assertThat(head()).isEqualTo(headBefore + 1);
@@ -439,7 +441,7 @@ class DecisionMakerScopeEndToEndTest {
             directiveArgs(headBefore, "d3", "dm-fra"),
             own.identity());
 
-    ToolResult result = factory.execute(shell.toolRegistry(), "sd.IssueDirective", narrowed);
+    ToolResult result = factory.execute(shell.toolRegistry(), "ga.IssueDirective", narrowed);
 
     assertThat(result.success()).as("决策域被收紧 ⇒ 拒").isFalse();
     assertThat(result.code())
@@ -513,7 +515,7 @@ class DecisionMakerScopeEndToEndTest {
   @Test
   void bothDecisionWritesDeclareOnlyTheDecisionNamespaceAndFailClosedWithoutIt() throws Exception {
     DecisionCallerFactory factory = factory();
-    for (String name : List.of("sd.IssueDirective", "sd.SubmitVerdict")) {
+    for (String name : List.of("ga.IssueDirective", "ga.SubmitVerdict")) {
       AgentTool tool = shell.toolRegistry().find(name).orElseThrow();
       assertThat(tool.resources().namespaces())
           .as("%s 只碰 sd（不是三命名空间粗声明——那样受限调用者会整调被拒）", name)
@@ -829,7 +831,11 @@ class DecisionMakerScopeEndToEndTest {
                     new SocialCodec(),
                     new UnitCodec(),
                     new GaCodec(),
-                    new EconomyCodec())));
+                    new EconomyCodec(),
+                    // ★★ 2026-10-13 收尾测试第 2 层：乙收尾起 `nations` 住 gov、`armies` 住 army
+                    //   ⇒ 信封里有这两片就必须有对应 codec（CheckpointEncoder 缺一个当场抛）。
+                    new GovCodec(),
+                    new ArmyCodec())));
   }
 
   /** 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1）+ 两个决策人（国家 / 军队各一）。 */

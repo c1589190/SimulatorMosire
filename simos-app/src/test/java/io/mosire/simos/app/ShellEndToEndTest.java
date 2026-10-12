@@ -257,14 +257,14 @@ class ShellEndToEndTest {
           .as(
               "推进日志的参与者清单（Z7d-2 起 unit 与 population 合成一个组合参与者"
                   + " PopulationUnitTimeParticipant；unit 只作为模块键出现）")
-          .containsExactlyInAnyOrder("sd", "population");
+          .containsExactlyInAnyOrder("ga", "population");
 
       JsonNode changeset = JSON.readTree(advanceRow.changesetJson());
       List<String> moduleKeys = new ArrayList<>();
       changeset.get("modules").fieldNames().forEachRemaining(moduleKeys::add);
       assertThat(moduleKeys)
           .as("changeset 的模块键（population 参与者带 economy + social + **actor** 三个模块键）")
-          .containsExactlyInAnyOrder("unit", "sd", "economy", "social", "actor");
+          .containsExactlyInAnyOrder("unit", "ga", "economy", "social", "actor");
 
       // ③ 本壳的世界没有人口批次、经济也未激活 ⇒ **两份变更集都是不变的**（交不变变更集，不是空提案）。
       //   ★ R4 起 social 会真的变（生理压力/出生/死亡）—— 但**前提是有批次可算**；本壳是"世界还没初始化"那一形态，

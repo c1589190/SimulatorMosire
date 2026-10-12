@@ -3,9 +3,9 @@ package io.mosire.simos.app.access;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.simos.app.testing.WorldSlices;
 import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyAffiliations;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmyId;
-import io.mosire.simos.army.ArmyAffiliations;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
@@ -55,8 +55,8 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * 范围函数用例的共享夹具（Task 3/4）：造**合成**小世界（{@code map} / {@code unit} / {@code gov} / {@code army} / {@code ga}
- * 五片）。
+ * 范围函数用例的共享夹具（Task 3/4）：造**合成**小世界（{@code map} / {@code unit} / {@code gov} / {@code army} / {@code
+ * ga} 五片）。
  *
  * <p>★ **不借用生产代码当期望值**：这里的区域 tag、hex 集合、视野半径都是**字面量**，用例那边逐字断言—— 拿被测实现（或它的同源工具）生成期望值等于自己印证自己。
  *
@@ -110,14 +110,14 @@ public final class ScopeFixtures {
   }
 
   /**
-   * ★★ 把每条归属<b>落进它那个模块的表</b>（{@code nation}/{@code gov} → {@code GovState}；{@code army} →
-   * {@code ArmyData}），其余字段原样带过。
+   * ★★ 把每条归属<b>落进它那个模块的表</b>（{@code nation}/{@code gov} → {@code GovState}；{@code army} → {@code
+   * ArmyData}），其余字段原样带过。
    *
    * <p>★ <b>未注册的 kind ⇒ 当场抛</b>（不是静默丢弃）：夹具写错种类名必须响亮失败，否则"有归属"会悄悄变成"没归属"。
    *
-   * <p>★ 这里直接写表、<b>不走</b> {@code gov.AssignDecisionMakerNation} 那三条命令：本文件造的是**合成小世界**
-   * （不启 {@code Shell}、不落 revision），三条赋权命令自己的落盘/具名拒由它们各自的用例把守。语义上等价——表里那一行的形状与
-   * 那三条命令写出来的**逐字相同**（{@code DecisionMakerId → NationId/GovUnitId/ArmyId}）。
+   * <p>★ 这里直接写表、<b>不走</b> {@code gov.AssignDecisionMakerNation} 那三条命令：本文件造的是**合成小世界** （不启 {@code
+   * Shell}、不落 revision），三条赋权命令自己的落盘/具名拒由它们各自的用例把守。语义上等价——表里那一行的形状与 那三条命令写出来的**逐字相同**（{@code
+   * DecisionMakerId → NationId/GovUnitId/ArmyId}）。
    */
   public static WorldSlices affiliates(WorldSlices slices, Affiliated... affiliated) {
     GovState gov = slices.gov();
@@ -125,11 +125,17 @@ public final class ScopeFixtures {
     for (Affiliated one : affiliated) {
       switch (one.kind()) {
         case NationAffiliations.KIND ->
-            gov = gov.withNationAffiliations(put(gov.nationAffiliations(), one.id(), new NationId(one.ref())));
+            gov =
+                gov.withNationAffiliations(
+                    put(gov.nationAffiliations(), one.id(), new NationId(one.ref())));
         case GovAffiliations.KIND ->
-            gov = gov.withGovAffiliations(put(gov.govAffiliations(), one.id(), new UnitId(one.ref())));
+            gov =
+                gov.withGovAffiliations(
+                    put(gov.govAffiliations(), one.id(), new UnitId(one.ref())));
         case ArmyAffiliations.KIND ->
-            army = army.withArmyAffiliations(put(army.armyAffiliations(), one.id(), new ArmyId(one.ref())));
+            army =
+                army.withArmyAffiliations(
+                    put(army.armyAffiliations(), one.id(), new ArmyId(one.ref())));
         default ->
             throw new IllegalArgumentException(
                 "未注册的归属种类（夹具写错了？）: " + one.kind() + "，已知 = nation/gov/army");
@@ -144,7 +150,6 @@ public final class ScopeFixtures {
     next.put(key, value);
     return next;
   }
-
 
   /** 以 (1,1) 为中心、半径 2 的**全格**世界（19 格），另可叠加区域。 */
   public static GameMap mapOf(Region... regions) {
@@ -283,13 +288,13 @@ public final class ScopeFixtures {
   // ── 决策人与军队 ────────────────────────────────────────────────────────────────────
 
   /**
-   * ★★ <b>一个「带归属的决策人」</b>（2026-10-13 收尾测试第 2 层）：裸 {@link DecisionMaker} + 它在<b>世界表</b>里的那一行
-   * （{@link #kind()} + {@link #ref()}）。
+   * ★★ <b>一个「带归属的决策人」</b>（2026-10-13 收尾测试第 2 层）：裸 {@link DecisionMaker} + 它在<b>世界表</b>里的那一行 （{@link
+   * #kind()} + {@link #ref()}）。
    *
-   * <p>★★ <b>为什么必须成对</b>：2026-10-12 乙收尾（用户裁定「<b>归属肯定归模块</b>」）把 {@code affiliation} 字段从
-   * {@code DecisionMaker} 上删掉 ⇒ 归属改住各模块自己的表（{@code GovState.nationAffiliations()} /
-   * {@code GovState.govAffiliations()} / {@code ArmyData.armyAffiliations()}），<b>按 dmId 索引</b>。 ⇒ 只造裸决策人
-   * = 一个任何人都够不着的决策人（{@code DecisionScopeFunctions} 给四命名空间 deny-all）⇒ 一切"看得见/看不见"的断言都会
+   * <p>★★ <b>为什么必须成对</b>：2026-10-12 乙收尾（用户裁定「<b>归属肯定归模块</b>」）把 {@code affiliation} 字段从 {@code
+   * DecisionMaker} 上删掉 ⇒ 归属改住各模块自己的表（{@code GovState.nationAffiliations()} / {@code
+   * GovState.govAffiliations()} / {@code ArmyData.armyAffiliations()}），<b>按 dmId 索引</b>。 ⇒ 只造裸决策人 =
+   * 一个任何人都够不着的决策人（{@code DecisionScopeFunctions} 给四命名空间 deny-all）⇒ 一切"看得见/看不见"的断言都会
    * 退化成"什么都看不见"的恒真式。<b>本类型把那两半绑在一起，让夹具不可能只给一半。</b>
    */
   public record Affiliated(DecisionMaker maker, String kind, String ref) {
@@ -323,10 +328,10 @@ public final class ScopeFixtures {
   /**
    * 国家决策人（**带归属行**：{@code GovState.nationAffiliations()} 里 {@code dmId → nationId}）。
    *
-   * <p>★★ <b>2026-10-13 收尾测试第 2 层修复</b>：本方法此前（第 1 层）只产<b>裸决策人</b>，并在类注里把后果登记成"第 2 层的红点"
-   * —— 那是**夹具语义失真**：旧归属跟着 {@code DecisionMaker} 值走，新归属住在世界的表里且按 dmId 索引，而 {@code state(...)} 在
-   * {@code nationDm(...)} <b>之前</b>求值 ⇒ 夹具拿不到 dm id。本层把两半合成 {@link Affiliated} 并让
-   * {@link #state(GameMap, UnitState, WorldSlices, Affiliated...)} 落表 ⇒ 调用点只需<b>重排求值顺序</b>（先建 dm，再建世界）。
+   * <p>★★ <b>2026-10-13 收尾测试第 2 层修复</b>：本方法此前（第 1 层）只产<b>裸决策人</b>，并在类注里把后果登记成"第 2 层的红点" ——
+   * 那是**夹具语义失真**：旧归属跟着 {@code DecisionMaker} 值走，新归属住在世界的表里且按 dmId 索引，而 {@code state(...)} 在 {@code
+   * nationDm(...)} <b>之前</b>求值 ⇒ 夹具拿不到 dm id。本层把两半合成 {@link Affiliated} 并让 {@link #state(GameMap,
+   * UnitState, WorldSlices, Affiliated...)} 落表 ⇒ 调用点只需<b>重排求值顺序</b>（先建 dm，再建世界）。
    */
   public static Affiliated nationDm(String dmId, String nationId) {
     return new Affiliated(maker(dmId), NationAffiliations.KIND, nationId);
@@ -364,16 +369,24 @@ public final class ScopeFixtures {
    *
    * <p>★★ <b>2026-10-13 收尾测试第 1 层（机械修复）</b>：乙收尾起 {@code nations} 住 {@code gov}、{@code armies} 住
    * {@code army}（都不再住 {@code GaState}）⇒ 本方法改返回三切片载体 {@link WorldSlices}。★★ <b>第 2 层</b>：归属行由调用方经
-   * {@link #affiliates(WorldSlices, Affiliated...)} / {@link #state(GameMap, UnitState, WorldSlices, Affiliated...)}
-   * 落表 —— 本方法只负责"国家与军队存在"，<b>不猜</b>谁归属谁。
+   * {@link #affiliates(WorldSlices, Affiliated...)} / {@link #state(GameMap, UnitState,
+   * WorldSlices, Affiliated...)} 落表 —— 本方法只负责"国家与军队存在"，<b>不猜</b>谁归属谁。
    */
-  public static WorldSlices sdWithArmy(String armyId, String nationId, String rootUnitId) {
+  public static WorldSlices sdWithArmy(
+      String armyId, String nationId, String rootUnitId, String... otherNations) {
     Map<ArmyId, Army> armies = new LinkedHashMap<>();
     ArmyId id = new ArmyId(armyId);
     armies.put(id, new Army(id, Optional.empty(), new UnitId(rootUnitId), "军队 " + armyId));
     Map<NationId, Nation> nations = new LinkedHashMap<>();
     NationId nation = new NationId(nationId);
     nations.put(nation, new Nation(nation, "国家 " + nationId, new RegionId("701"), 0));
+    // ★★ 2026-10-13 收尾测试第 2 层：**区域 tag 指向的国家必须真的存在** —— `NationAffiliations.resolve`
+    //   会按 `nations` 裁掉"指向不存在国家"的归属行（fail-closed 的既定语义）⇒ 只造一个国家的夹具会让
+    //   "别国决策人"退化成 deny-all（本层之前那些"看不见"的断言因此恒真）。要几个国家就在这里一并造出来。
+    for (String extra : otherNations) {
+      NationId other = new NationId(extra);
+      nations.put(other, new Nation(other, "国家 " + extra, new RegionId("701"), 0));
+    }
     return WorldSlices.of(
         new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
         ArmyData.empty().withArmies(armies),

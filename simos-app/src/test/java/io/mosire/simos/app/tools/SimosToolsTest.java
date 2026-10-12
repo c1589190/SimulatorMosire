@@ -88,6 +88,7 @@ import io.mosire.simos.map.tools.write.MapRandomizeRegionTool;
 import io.mosire.simos.map.tools.write.MapRegisterPathwayGroupTool;
 import io.mosire.simos.map.tools.write.MapRenameRegionTool;
 import io.mosire.simos.map.tools.write.MapSetEdgeTool;
+import io.mosire.simos.map.tools.write.MapSetHexAreaTool;
 import io.mosire.simos.map.tools.write.MapSetTerrainTool;
 import io.mosire.simos.map.tools.write.MapUpdateRegionTool;
 import io.mosire.simos.social.SocialData;
@@ -213,7 +214,6 @@ class SimosToolsTest {
           "simos.map.region",
           "simos.map.render",
           "simos.province.divide",
-          "simos.sd.combats",
           "simos.sd.decision-maker",
           "simos.sd.decision-makers",
           "simos.sd.diplomacy",
@@ -290,23 +290,19 @@ class SimosToolsTest {
           "simos.gov.applyStaffing",
           "simos.gov.assignPosts",
           "simos.gov.createOffice",
-          // ★★ A1（2026-10-08）：币种词表的定义/改名（非窄写）
           "simos.gov.defineCurrency",
           "simos.gov.dismiss",
           "simos.gov.dispatchTeam",
           "simos.gov.expandHousehold",
-          // ★★ A1：铸币/发行（载荷带 actor.AdjustAccounts 审计腿 ⇒ 不走窄写基类）
           "simos.gov.issueMoney",
           "simos.gov.openPostsToMarket",
           "simos.gov.recruit",
           "simos.gov.remit",
-          // ★★ A1：币种显示名改名
           "simos.gov.renameCurrency",
           "simos.gov.retireStaff",
           "simos.gov.selectExaminees",
           "simos.gov.setBudgetPolicy",
           "simos.gov.setEstablishment",
-          // ★★ A2a（2026-10-08）：区级官方汇率
           "simos.gov.setFxRate",
           "simos.gov.transferTreasury",
           "simos.province.apply",
@@ -380,7 +376,8 @@ class SimosToolsTest {
           "map.RenameRegion",
           "map.DeleteRegion",
           "map.RandomizeRegion",
-          "map.RegisterPathwayGroup");
+          "map.RegisterPathwayGroup",
+          "map.SetHexArea");
 
   /**
    * unit 的 28 条窄写：**只进 GM 组**。前 24 条 {@code name() == commandType()}；D3a/D1 新增的三条 （set-composition
@@ -455,41 +452,30 @@ class SimosToolsTest {
    */
   private static final List<String> SD_WRITE_NAMES =
       List.of(
-          "sd.CreateNation",
-          "sd.CreateArmy",
-          "sd.SetArmyMasterGov",
-          "sd.CreateDecisionMaker",
-          "sd.PutInfo",
-          // ★★ D5：外交关系边 + 外交事件的 GM 窄写（工具名不是命令类型）。
+          "gov.CreateNation",
+          "army.CreateArmy",
+          "army.SetArmyMasterGov",
+          "ga.CreateDecisionMaker",
+          "ga.PutInfo",
           "simos.sd.set-diplomatic-relation",
           "simos.sd.record-diplomatic-event",
-          "sd.CreateCombat",
-          "sd.AddCombatStage",
-          "sd.SetStageOutcomeTable",
-          "sd.CommitCombatOutcome",
-          "sd.RecordCasualties",
-          "sd.RegisterEffect",
-          "sd.CancelEffect",
-          "sd.SetDecisionMakerProvider");
+          "ga.RegisterEffect",
+          "ga.CancelEffect",
+          "ga.SetDecisionMakerProvider");
 
   /** {@link #SD_WRITE_NAMES} 对应的 15 个命令类型。 */
   private static final List<String> SD_WRITE_COMMAND_TYPES =
       List.of(
-          "sd.CreateNation",
-          "sd.CreateArmy",
-          "sd.SetArmyMasterGov",
-          "sd.CreateDecisionMaker",
-          "sd.PutInfo",
-          "sd.SetDiplomaticRelation",
-          "sd.RecordDiplomaticEvent",
-          "sd.CreateCombat",
-          "sd.AddCombatStage",
-          "sd.SetStageOutcomeTable",
-          "sd.CommitCombatOutcome",
-          "sd.RecordCasualties",
-          "sd.RegisterEffect",
-          "sd.CancelEffect",
-          "sd.SetDecisionMakerProvider");
+          "gov.CreateNation",
+          "army.CreateArmy",
+          "army.SetArmyMasterGov",
+          "ga.CreateDecisionMaker",
+          "ga.PutInfo",
+          "gov.SetDiplomaticRelation",
+          "gov.RecordDiplomaticEvent",
+          "ga.RegisterEffect",
+          "ga.CancelEffect",
+          "ga.SetDecisionMakerProvider");
 
   /**
    * GM 桶的 68 条窄写（8 map + 8 economy + 28 unit + 15 sd + 9 决策共用/其他——后者含 1 army + 1 social + 1
@@ -498,20 +484,71 @@ class SimosToolsTest {
    * simos.economy.setEconomyPolicy} 是第 8 条 ⇒ 67 → 68。
    */
   private static final List<String> NARROW_WRITE_NAMES =
-      concat(
-          concat(
-              MAP_WRITE_NAMES,
-              concat(ECONOMY_ZONE_WRITE_NAMES, concat(UNIT_WRITE_NAMES, SD_WRITE_NAMES))),
-          List.of(
-              "sd.IssueDirective",
-              "sd.SubmitVerdict",
-              "sd.SetDecisionMakerAccess",
-              "sd.ResetDecisionMakerConversation",
-              "sd.StartDecision",
-              "sd.RunDecision",
-              "simos.army.recordCombat",
-              "social.UpdateCity",
-              "actor.AdjustAccounts"));
+      List.of(
+          "actor.AdjustAccounts",
+          "army.CreateArmy",
+          "army.SetArmyMasterGov",
+          "ga.CancelEffect",
+          "ga.CreateDecisionMaker",
+          "ga.IssueDirective",
+          "ga.PutInfo",
+          "ga.RegisterEffect",
+          "ga.ResetDecisionMakerConversation",
+          "ga.RunDecision",
+          "ga.SetDecisionMakerAccess",
+          "ga.SetDecisionMakerProvider",
+          "ga.StartDecision",
+          "ga.SubmitVerdict",
+          "gov.CreateNation",
+          "map.CreateRegion",
+          "map.DeleteRegion",
+          "map.RandomizeRegion",
+          "map.RegisterPathwayGroup",
+          "map.RenameRegion",
+          "map.SetEdge",
+          "map.SetHexArea",
+          "map.SetTerrain",
+          "map.UpdateRegion",
+          "simos.army.recordCombat",
+          "simos.economy.defineMarketZone",
+          "simos.economy.mergeMarketZones",
+          "simos.economy.reassignZoneHexes",
+          "simos.economy.setCommodityFreight",
+          "simos.economy.setEconomyPolicy",
+          "simos.economy.setGovernmentMintScale",
+          "simos.economy.setMarketZoneLoanRateAlpha",
+          "simos.economy.setMarketZonePriceAlpha",
+          "simos.sd.record-diplomatic-event",
+          "simos.sd.set-diplomatic-relation",
+          "simos.unit.adjust-composition",
+          "simos.unit.set-composition",
+          "simos.unit.set-state-description",
+          "social.UpdateCity",
+          "unit.ApplyCasualties",
+          "unit.AttachUnit",
+          "unit.CancelRoute",
+          "unit.CreateCommandChain",
+          "unit.CreateUnit",
+          "unit.DetachUnit",
+          "unit.DisbandUnit",
+          "unit.MergeFormation",
+          "unit.PlaceAt",
+          "unit.PlanRoute",
+          "unit.PlanSparseRoute",
+          "unit.RenameUnit",
+          "unit.ReparentSubtree",
+          "unit.ReparentUnit",
+          "unit.SetArmyFormation",
+          "unit.SetFormationOffset",
+          "unit.SetGovFormation",
+          "unit.SetGovPolicy",
+          "unit.SetGovSuperior",
+          "unit.SetJurisdiction",
+          "unit.SetRejoinTarget",
+          "unit.SetStatus",
+          "unit.SetTaxRate",
+          "unit.SplitFormation",
+          "unit.UpdateCommandChain");
 
   /** 写工具全集（129 条 = 61 非窄写 + 68 窄写）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
   private static final List<String> WRITE_TOOL_NAMES =
@@ -549,14 +586,17 @@ class SimosToolsTest {
           "actor.Seed",
           "actor.TransferAccounts",
           "army.AppendCombatStage",
+          "army.AssignDecisionMakerArmy",
+          "army.CreateArmy",
           "army.RecordCombat",
           "army.ResolveCombatStage",
+          "army.SetArmyMasterGov",
           "economy.AddDemand",
+          "economy.AuthorizeGovernmentMarketOrder",
           "economy.CancelDemand",
+          "economy.CancelGovernmentMarketOrder",
           "economy.ClearRegion",
-          // ★★ A1：币种词表（定义 / 改名）
           "economy.DefineCurrency",
-          // ★★ B2：市场区（定义 / 重挂格 / 合并）+ A2a：市场格计价币
           "economy.DefineMarketZone",
           "economy.GmAdjust",
           "economy.MergeMarketZones",
@@ -569,30 +609,20 @@ class SimosToolsTest {
           "economy.RemoveHouseholdPeriodicAdjustment",
           "economy.RenameCurrency",
           "economy.Seed",
+          "economy.SetCommodityFreight",
+          "economy.SetEconomyPolicy",
+          "economy.SetGovServiceCommitment",
+          "economy.SetGovernmentMintScale",
+          "economy.SetGovernmentPolicy",
           "economy.SetHouseholdClass",
           "economy.SetHouseholdLabor",
           "economy.SetHouseholdParticipation",
-          "economy.AuthorizeGovernmentMarketOrder",
-          "economy.CancelGovernmentMarketOrder",
-          "economy.SetCommodityFreight",
-          // ★★ W2（2026-10-11）：逐区价格步长 α（GM 把某区价格钉死/调快调慢）—— 140 → 141
-          "economy.SetMarketZonePriceAlpha",
-          // ★★ W5-fix6（2026-10-11）：政府铸币政策旋钮的 GM 写口（世界级政府只有这一路够得着）—— 141 → 142
-          "economy.SetGovernmentMintScale",
-          // ★★ W5.5（2026-10-11，S-12⑤）：货币市场利率的自适应步长 α 的 GM 写口 —— 142 → 143
-          "economy.SetMarketZoneLoanRateAlpha",
-          // ★★ W10（2026-10-11，用户裁定「凡"行为"一律做成 GM 可调的预设」）：经济侧行为值政策预设的 GM 写口
-          //   —— 143 → 144（实测来源同上：扫描面 144 条 handler 实现，见 SHELL_ASSEMBLED handler=144）
-          "economy.SetEconomyPolicy",
           "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
+          "economy.SetMarketZoneLoanRateAlpha",
+          "economy.SetMarketZonePriceAlpha",
           "economy.SetOfficialRate",
           "economy.SwitchMode",
-          "economy.SetGovServiceCommitment",
-          // ★★ 追加裁定 12（2026-10-12 §21.9 D-1/D-3）：口岸/预算/编制三类政策的**唯一通用写口**
-          //   （旧三条 gov.SetPortPolicy / gov.SetAdministrationPlan / gov.SetBudgetPolicy 已删除，不留别名）
-          //   —— 扫描面 144 → 142（-3 +1，实测见本类 catalogCoversEveryCommandHandlerImplementation）。
-          "economy.SetGovernmentPolicy",
           "economy.TransferAssetShare",
           "economy.UnitBorrow",
           "economy.UnitRepay",
@@ -600,6 +630,29 @@ class SimosToolsTest {
           "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
           "economy.UpsertIndustry",
+          "ga.CancelEffect",
+          "ga.CreateDecisionMaker",
+          "ga.DecideDecisionPacket",
+          "ga.DeleteDecisionMaker",
+          "ga.IssueDirective",
+          "ga.PutInfo",
+          "ga.RegisterEffect",
+          "ga.ResetDecisionMakerConversation",
+          "ga.RunDecision",
+          "ga.SetDecisionMakerAccess",
+          "ga.SetDecisionMakerProvider",
+          "ga.SetDirectiveStatus",
+          "ga.StartDecision",
+          "ga.SubmitDecisionPacket",
+          "ga.SubmitVerdict",
+          "ga.UpsertDecisionPacket",
+          "ga.UpsertMergedEffectPlan",
+          "gov.AssignDecisionMakerGov",
+          "gov.AssignDecisionMakerNation",
+          "gov.CreateNation",
+          "gov.DeleteNation",
+          "gov.RecordDiplomaticEvent",
+          "gov.SetDiplomaticRelation",
           "map.CreateRegion",
           "map.DeleteRegion",
           "map.MergeRegions",
@@ -608,37 +661,10 @@ class SimosToolsTest {
           "map.RegisterPathwayGroup",
           "map.RenameRegion",
           "map.SetEdge",
+          "map.SetHexArea",
           "map.SetTerrain",
           "map.SplitRegion",
           "map.UpdateRegion",
-          "sd.AddCombatStage",
-          "sd.CancelEffect",
-          "sd.CommitCombatOutcome",
-          "sd.CreateArmy",
-          "sd.CreateCombat",
-          "sd.CreateDecisionMaker",
-          "sd.CreateNation",
-          "sd.DecideDecisionPacket",
-          "sd.DeleteDecisionMaker",
-          "sd.DeleteNation",
-          "sd.IssueDirective",
-          "sd.PutInfo",
-          "sd.RecordCasualties",
-          "sd.RecordDiplomaticEvent",
-          "sd.RegisterEffect",
-          "sd.ResetDecisionMakerConversation",
-          "sd.RunDecision",
-          "sd.SetArmyMasterGov",
-          "sd.SetDecisionMakerAccess",
-          "sd.SetDecisionMakerProvider",
-          "sd.SetDiplomaticRelation",
-          "sd.SetDirectiveStatus",
-          "sd.SetStageOutcomeTable",
-          "sd.StartDecision",
-          "sd.SubmitDecisionPacket",
-          "sd.SubmitVerdict",
-          "sd.UpsertDecisionPacket",
-          "sd.UpsertMergedEffectPlan",
           "social.AddHouseholdMembers",
           "social.AdjustHouseholdPopulation",
           "social.ClearRegion",
@@ -757,7 +783,10 @@ class SimosToolsTest {
             new MapRenameRegionTool(mapWrites, mapId),
             new MapDeleteRegionTool(mapWrites, mapId),
             new MapRandomizeRegionTool(mapWrites, mapId),
-            new MapRegisterPathwayGroupTool(mapWrites, mapId));
+            new MapRegisterPathwayGroupTool(mapWrites, mapId),
+            // ★★ 2026-10-13 收尾测试第 2 层：批次 2（hex 属性表）新增的窄写工具此前**没进本列表**
+            //   ⇒ MAP_WRITE_NAMES 也漏了它（"8 条"是陈旧的）。补上后与生产装配（SimosToolSource）逐条对齐。
+            new MapSetHexAreaTool(mapWrites, mapId));
 
     assertThat(toolNames(mapTools))
         .as("8 条 map 窄工具的 name() == 它们各自钉死的命令类型")
@@ -972,7 +1001,7 @@ class SimosToolsTest {
             "扫描必须恰为 142 个 *Handler.java 的 type()（W2 的 economy.SetMarketZonePriceAlpha 按实测补入本表 ⇒ 140 → 141；★★ W5-fix6 的 economy.SetGovernmentMintScale 按实测补入 ⇒ 141 → 142；★★ W5.5 的 economy.SetMarketZoneLoanRateAlpha 按实测补入 ⇒ 142 → 143；★★ W10 的 economy.SetEconomyPolicy 按实测补入 ⇒ 143 → 144；★★ 追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
                 + "P1b1/P3/R3a 的区域清空与国库上缴，辖区阶段 5–12，D1/D3a/D4/D5 的 unit/sd/army 新命令，"
                 + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds；Z6 起纳入 simos-gov 的 2 条 handler；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）")
-        .hasSize(142);
+        .hasSize(141);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -997,12 +1026,12 @@ class SimosToolsTest {
                 + " ⇒ 通用写**在**其中，且 sd/map/unit 三族窄写逐条都在")
         .contains("simos.command.submit", "simos.advance", "simos.fork")
         .contains(
-            "sd.IssueDirective",
-            "sd.SubmitVerdict",
-            "sd.SetDecisionMakerAccess",
-            "sd.ResetDecisionMakerConversation",
-            "sd.StartDecision",
-            "sd.RunDecision",
+            "ga.IssueDirective",
+            "ga.SubmitVerdict",
+            "ga.SetDecisionMakerAccess",
+            "ga.ResetDecisionMakerConversation",
+            "ga.StartDecision",
+            "ga.RunDecision",
             "sd.AdjudicateTick",
             "sd.RejectDirective")
         .containsAll(SD_WRITE_NAMES)
@@ -1013,7 +1042,7 @@ class SimosToolsTest {
                 + "★★ W5-fix6 的 simos.economy.setGovernmentMintScale 同样是窄写 ⇒ 163 → 164（实测：SHELL_ASSEMBLED tool=164、MCP 外发工具 164 个）；"
                 + "★★ W5.5 的 simos.economy.setMarketZoneLoanRateAlpha 同样是窄写 ⇒ 164 → 165（实测：本轮真跑该类的 tool 面计数）；"
                 + "★★ W10 的 simos.economy.setEconomyPolicy 同样是窄写 ⇒ 165 → 166（实测：本轮真跑该类的 tool 面计数 166 = 37 读 + 129 写）")
-        .hasSize(166);
+        .hasSize(161);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1021,23 +1050,23 @@ class SimosToolsTest {
                 + "（第 3 波第 3 步的 sd.DecisionResults、Docs 系统的 sd.DecisionDocs）")
         .doesNotContain("simos.command.submit", "simos.advance", "simos.fork")
         .doesNotContain(
-            "sd.SetDecisionMakerAccess",
-            "sd.ResetDecisionMakerConversation",
-            "sd.StartDecision",
-            "sd.RunDecision",
+            "ga.SetDecisionMakerAccess",
+            "ga.ResetDecisionMakerConversation",
+            "ga.StartDecision",
+            "ga.RunDecision",
             "sd.AdjudicateTick",
             "sd.RejectDirective")
-        .contains("sd.IssueDirective", "sd.SubmitVerdict", "sd.DecisionResults", "sd.DecisionDocs")
+        .contains("ga.IssueDirective", "ga.SubmitVerdict", "sd.DecisionResults", "sd.DecisionDocs")
         // ★ D5：决策人侧的三条受限写（两条外交 + 给 XXX 政府钱）必须恰在此桶（GM 桶另有同名命令型的
         //   simos.sd.* 工具，不在本桶）。
-        .contains("sd.SetDiplomaticRelation", "sd.RecordDiplomaticEvent", "simos.gov.pay")
+        .contains("gov.SetDiplomaticRelation", "gov.RecordDiplomaticEvent", "simos.gov.pay")
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
         .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
         .doesNotContainAnyElementsOf(GM_ONLY_READ_NAMES)
         .as(
             "★ Z6 后：决策人桶 = 30 共享读 + 14 写（含 Z2/Z3 双桶 gov 工具，以及 2026-10-09 按实测补入的 4 条 A1/A2a 货币工具）= 44")
-        .hasSize(44);
+        .hasSize(43);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -1130,7 +1159,7 @@ class SimosToolsTest {
                 + "social 1 / unit 28 / ga 23；扫描根见 narrowWriteSourceRoots()）——下放只移动落点、不增减工具 ⇒ "
                 + "总数仍是 70（扫描根没跟上就会静默掉数，这里当场红）；"
                 + "扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
-        .hasSize(70);
+        .hasSize(66);
 
     // 真工具面派生的 GM 窄写 = GM 桶 ∖ 读名单 ∖ 非窄写写工具。
     List<String> gmNarrow =
@@ -1149,10 +1178,10 @@ class SimosToolsTest {
     assertThat(decisionNarrow)
         .as("决策人桶里的窄写恰为四条：两条决策共用窄写（IssueDirective/SubmitVerdict）+ D5 的两条外交命令型窄工具")
         .containsExactlyInAnyOrder(
-            "sd.IssueDirective",
-            "sd.SubmitVerdict",
-            "sd.SetDiplomaticRelation",
-            "sd.RecordDiplomaticEvent");
+            "ga.IssueDirective",
+            "ga.SubmitVerdict",
+            "gov.SetDiplomaticRelation",
+            "gov.RecordDiplomaticEvent");
     Set<String> union = new LinkedHashSet<>(gmNarrow);
     union.addAll(decisionNarrow);
     assertThat(union)
@@ -1180,6 +1209,31 @@ class SimosToolsTest {
           String source = Files.readString(file);
           if (!source.contains("extends AbstractNarrowWriteTool")) {
             continue;
+          }
+          // ★★ 2026-10-13 收尾测试第 2 层：扫描必须**镜像运行时的名字来源**（{@code AbstractNarrowWriteTool.name()}）——
+          //   基类的 {@code name()} 返回 {@code toolName()}，而 {@code toolName()} 的缺省实现是
+          //   {@code return commandType();}。**只有覆写了 toolName() 的类**才用 NAME 常量当工具名。
+          //   ⇒ 未覆写时读 {@code COMMAND_TYPE}（或 {@code NAME = XxxHandler.TYPE} 解析出的命令类型）；
+          //     覆写时读 NAME 字面量。
+          //   ★ 这条修的是**真红**：{@code SdCreateArmyTool}/{@code SdSetArmyMasterGovTool} 的 NAME 常量
+          //     有意保留 {@code sd.} 前缀（工具面身份另批正名），但它们的 {@code name()} 实际返回
+          //     {@code army.CreateArmy}/{@code army.SetArmyMasterGov} —— 旧扫描读 NAME 常量 ⇒
+          // 与真工具面**对不上**，
+          //     且 NAME/commandType 分叉这种缺陷本扫描器**看不见**。改正后两类名字都能还原。
+          boolean overridesToolName = source.contains("protected String toolName()");
+          if (overridesToolName) {
+            Matcher matcher = nameConstant.matcher(source);
+            if (matcher.find()) {
+              names.add(matcher.group(1));
+              continue;
+            }
+          } else {
+            Matcher commandType =
+                Pattern.compile("String COMMAND_TYPE = \"([^\"]+)\"").matcher(source);
+            if (commandType.find()) {
+              names.add(commandType.group(1));
+              continue;
+            }
           }
           Matcher matcher = nameConstant.matcher(source);
           if (matcher.find()) {
@@ -1277,7 +1331,9 @@ class SimosToolsTest {
             // ★ H0.6：产权读口的最小形状 = 三个键之一（accounts 可以为空数组 —— 那正是本轮的正确状态）。
             new Case("simos.economy.ownership", Map.of("q", 1L, "r", 1L), "accounts"),
             new Case("simos.sd.decision-makers", Map.of(), "decisionMakers"),
-            new Case("simos.sd.combats", Map.of(), "combats"),
+            // ★★ 2026-10-13 收尾测试第 2 层：旧 {@code simos.sd.combats} 读工具**已随旧战斗族退役**
+            //   （批次 3d-2：唯一的交战读口是 {@code simos.army.combats}，见下面那条）⇒ 本表删掉该行。
+            //   ★ 不是漏测：它守的"交战读口最小形状"由 {@code simos.army.combats} 那一行原样承担。
             // ★ P7c（2026-10-01）：决策记录清单（只给 GM 桶）。
             new Case("simos.sd.directives", Map.of(), "directives"),
             // ★★ D5（2026-10-02 / R6）：外交关系边 + 外交事件（四桶共享）。
@@ -1837,7 +1893,7 @@ class SimosToolsTest {
                 + "social 12 / unit 36 / gov 36 / ga 49；扫描根见 toolSourceRoots()）——下放只移动落点、不增减工具 ⇒ "
                 + "总数仍是 176（扫描根没跟上就会静默掉数）；"
                 + "扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(176);
+        .hasSize(171);
 
     List<String> union =
         Stream.concat(
@@ -1894,6 +1950,21 @@ class SimosToolsTest {
       try (Stream<Path> files = Files.walk(root)) {
         for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
           String source = Files.readString(file);
+          // ★★ 2026-10-13 收尾测试第 2 层：窄写工具的**运行时名字**是 {@code AbstractNarrowWriteTool.name()}
+          //   = {@code toolName()}，其缺省实现返回 {@code commandType()}。未覆写 toolName() 的类即使留着
+          //   一个 {@code NAME} 常量，那个常量**也不是**它在桶里的名字（{@code SdCreateArmyTool} /
+          //   {@code SdSetArmyMasterGovTool} 就是这一形态：NAME 有意保留 {@code sd.} 前缀，name() 却是
+          //   {@code army.*}）⇒ 这里先读 {@code COMMAND_TYPE}，否则下面那条"GM 桶不得有源码里不存在的名字"
+          //   会与真工具面**对不上**（旧写法正是如此）。
+          if (source.contains("extends AbstractNarrowWriteTool")
+              && !source.contains("protected String toolName()")) {
+            Matcher commandType =
+                Pattern.compile("String COMMAND_TYPE = \"([^\"]+)\"").matcher(source);
+            if (commandType.find()) {
+              names.add(commandType.group(1));
+              continue;
+            }
+          }
           Matcher literal = nameLiteral.matcher(source);
           if (literal.find()) {
             names.add(literal.group(1));
@@ -1933,17 +2004,28 @@ class SimosToolsTest {
     return types;
   }
 
-  /** 全仓实现 {@code CommandHandler} 的模块源码根（handler 类型扫描共用一份，避免两处漂移）。 */
+  /**
+   * 全仓实现 {@code CommandHandler} 的模块源码根（handler 类型扫描共用一份，避免两处漂移）。
+   *
+   * <p>★★ <b>2026-10-13 收尾测试第 2 层</b>：两处随架构轮更正 ——
+   *
+   * <ol>
+   *   <li><b>摘掉 {@code simos-sd}</b>：模块已整模块退役（批次 3e，用户裁定「sd 整个弃用！」）⇒ 目录不存在， {@code Files.walk}
+   *       对不存在的根抛 {@code NoSuchFileException}（这是**当前红点**的直接原因）；
+   *   <li><b>补上 {@code simos-ga}</b>：决策族 7 组件自 sd 迁入，它的 handler（{@code ga.CreateDecisionMaker} 等 9
+   *       条）此前**不在扫描面里**——不补就是"扫描器静默"（新模块的实现面没人守）。
+   * </ol>
+   */
   private static List<Path> commandHandlerSourceRoots() {
     return List.of(
         Paths.get("..", "simos-unit", "src", "main", "java"),
         Paths.get("..", "simos-map", "src", "main", "java"),
         Paths.get("..", "simos-social", "src", "main", "java"),
-        Paths.get("..", "simos-sd", "src", "main", "java"),
         Paths.get("..", "simos-economy", "src", "main", "java"),
         Paths.get("..", "simos-actor", "src", "main", "java"),
         Paths.get("..", "simos-army", "src", "main", "java"),
-        Paths.get("..", "simos-gov", "src", "main", "java"));
+        Paths.get("..", "simos-gov", "src", "main", "java"),
+        Paths.get("..", "simos-ga", "src", "main", "java"));
   }
 
   /** 夹具里那个 hex 的规范地址（{@code resolve}/{@code facets} 用）。 */
@@ -2422,15 +2504,23 @@ class SimosToolsTest {
    */
   @Test
   void sdCreateArmyToolSurfacesTheNamedRejectionForTheRemovedNationId() throws Exception {
+    // ★★ 2026-10-13 收尾测试第 2 层：本工具在注册表里的名字是**运行时名字** ——
+    //   `AbstractNarrowWriteTool.name()` 返回 `toolName()`，而 `SdCreateArmyTool` **没有覆写**它
+    //   ⇒ 名字 = `commandType()` = `army.CreateArmy`。它的 `NAME` 常量有意保留 `sd.` 前缀（工具面身份，
+    //   正名另批）⇒ **那个常量不是它的注册名**，拿它去 call 会 NoSuchElement。
     assertDomainRejectedAndHeadUnchanged(
-        SdCreateArmyTool.NAME,
+        SdCreateArmyTool.COMMAND_TYPE,
         "{\"armyId\":\"a1\",\"nationId\":\"n1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}",
         "不再接受 nationId");
   }
 
   /**
-   * ★ 坏载荷 = **allowedTools 里含通用写**（N9）：先经真窄写造出 `nation:n1` tag 的区域与国家，使 affiliation 检查通过——
-   * 否则断言会退化成判「affiliation 目标不存在」。
+   * ★ 坏载荷 = **allowedTools 里含通用写**（N9）。
+   *
+   * <p>★★ <b>2026-10-13 收尾测试第 2 层</b>：旧载荷还带一个 {@code affiliation} 键（当年要靠它过归属检查，
+   * 否则断言会退化成判「affiliation 目标不存在」）。乙收尾（用户裁定「<b>归属肯定归模块</b>」）把归属从 {@code DecisionMaker} 上删掉、改走三条赋权命令
+   * ⇒ 该键现在会**先**被具名拒（"不再接受 affiliation"）， 本用例就再也走不到 allowedTools 那条判据。故载荷删掉该键 ——
+   * <b>断言一个字未放宽</b>（仍是"通用写 ⇒ 域层具名拒"）， 只是让它落回它要测的那条判据上。★ 上面两步（建区域 / 建国）保留：世界齐备时仍然拒，判别力更强。
    */
   @Test
   void sdCreateDecisionMakerToolSurfacesTheDomainRejectionForAGenericWriteInAllowedTools()
@@ -2454,8 +2544,7 @@ class SimosToolsTest {
 
     assertDomainRejectedAndHeadUnchanged(
         SdCreateDecisionMakerTool.NAME,
-        "{\"id\":\"dm-1\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
-            + "\"allowedTools\":[\"simos.command.submit\"],\"cadence\":5}",
+        "{\"id\":\"dm-1\"," + "\"allowedTools\":[\"simos.command.submit\"],\"cadence\":5}",
         "不得含通用写");
   }
 

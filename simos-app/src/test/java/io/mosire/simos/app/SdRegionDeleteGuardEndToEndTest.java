@@ -103,7 +103,7 @@ class SdRegionDeleteGuardEndToEndTest {
                     "agent:test",
                     MAIN,
                     new RevisionId(1),
-                    "sd.PutInfo",
+                    "ga.PutInfo",
                     "{\"address\":\"map:Map1\",\"key\":\"k\",\"value\":\"v\"}"));
     assertThat(result).isInstanceOf(CommandResult.Committed.class);
   }

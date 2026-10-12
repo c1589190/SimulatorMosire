@@ -215,11 +215,18 @@ class SdCombatApiTest {
 
   // ────────────────────────────── 夹具 ──────────────────────────────
 
-  /** 经真命令路径种一场交战：{@code c1/甲战役}（participants=[u-1]），首阶段 {@code s1} 落在 {@code hex}。 */
+  /** 经真命令路径种一场交战：{@code c1}（participants=[u-1]），首阶段 {@code s1} 落在 {@code hex}。 */
   private void createCombatAt(HexCoord hex) throws Exception {
-    submit("sd.CreateCombat", "{\"combatId\":\"c1\",\"name\":\"甲战役\",\"participants\":[\"u-1\"]}");
+    // ★★ 2026-10-13 收尾测试第 2 层：旧战斗族的 `sd.CreateCombat` 已随批次 3d-2 退役（用户裁定「把 1、2、3、5
+    //   给废除掉」）⇒ 建记录的写口是 `army.RecordCombat`（同一批里 `army.AppendCombatStage` 也已改名）。
     submit(
-        "sd.AddCombatStage",
+        "army.RecordCombat",
+        "{\"id\":\"c1\",\"kind\":\"野战\",\"hex\":{\"q\":1,\"r\":1},"
+            + "\"participants\":[\"u-1\"],\"text\":\"甲战役\","
+            + "\"initialStage\":{\"id\":\"s1\",\"name\":\"遭遇战\",\"text\":\"遭遇战\","
+            + "\"outcomes\":[{\"id\":\"o1\",\"label\":\"胜\",\"weight\":1}]}}");
+    submit(
+        "army.AppendCombatStage",
         "{\"combatId\":\"c1\",\"combatStateId\":\"cs1\",\"hex\":{\"q\":"
             + hex.q()
             + ",\"r\":"

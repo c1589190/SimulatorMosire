@@ -417,7 +417,7 @@ class RedactionApiTest {
   }
 
   private static Verdict verdict(String id) {
-    Address subject = new Address(List.of(new Namespace("sd"), Entity.of("combat", "c1")));
+    Address subject = new Address(List.of(new Namespace("army"), Entity.of("combat", "c1")));
     return new Verdict(
         new VerdictId(id),
         new AdjudicationBreakpoint("D1"),

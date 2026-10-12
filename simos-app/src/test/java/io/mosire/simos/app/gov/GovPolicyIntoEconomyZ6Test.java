@@ -228,7 +228,7 @@ class GovPolicyIntoEconomyZ6Test {
               + ",\"intentInfo\":\"越权尝试写政府政策\",\"commands\":[{\"type\":\""
               + EconomySetGovernmentPolicyHandler.TYPE
               + "\",\"payloadJson\":\"{}\"}]}";
-      CommandResult viaDirective = submit(shell, head, "sd.IssueDirective", directive);
+      CommandResult viaDirective = submit(shell, head, "ga.IssueDirective", directive);
       assertThat(viaDirective).as("令里嵌 GmOnly 命令必须被拒").isInstanceOf(CommandResult.Rejected.class);
       assertThat(((CommandResult.Rejected) viaDirective).reason())
           .as("拒因 = 白名单（不是别的校验先拦下）")
@@ -243,7 +243,7 @@ class GovPolicyIntoEconomyZ6Test {
               + "\"action\":{\"@class\":\"enqueue_unit_command\",\"type\":\""
               + EconomySetGovernmentPolicyHandler.TYPE
               + "\",\"payloadJson\":\"{}\"}}";
-      CommandResult viaEffect = submit(shell, head, "sd.RegisterEffect", effect);
+      CommandResult viaEffect = submit(shell, head, "ga.RegisterEffect", effect);
       assertThat(viaEffect)
           .as("RegisterEffect 里塞 GmOnly 命令必须被拒")
           .isInstanceOf(CommandResult.Rejected.class);

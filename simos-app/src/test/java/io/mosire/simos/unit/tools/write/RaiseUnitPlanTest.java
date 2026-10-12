@@ -298,7 +298,7 @@ class RaiseUnitPlanTest {
             "economy.RegisterHousehold",
             "actor.EnsureHouseholdAccount",
             "actor.AdjustAccounts",
-            "sd.PutInfo");
+            "ga.PutInfo");
 
     // 粮：hh1 可支配 100−20=80 先扣满，再 hh2 的 40；悬空家户 / 区外 / 可用 0 不进来源表。
     assertThat(plan.grain().requested()).isEqualTo(120L);
@@ -423,7 +423,7 @@ class RaiseUnitPlanTest {
             "unit.CreateUnit",
             "economy.RegisterHousehold",
             "actor.EnsureHouseholdAccount",
-            "sd.PutInfo");
+            "ga.PutInfo");
     assertThat(manpowerOnly.hasGrainOrMoney()).isFalse();
     assertThat(manpowerOnly.grain())
         .as("requested=0 = 整段跳过（不是『恰好没有来源』）")

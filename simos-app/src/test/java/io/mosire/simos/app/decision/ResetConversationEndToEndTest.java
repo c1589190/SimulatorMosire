@@ -219,7 +219,7 @@ class ResetConversationEndToEndTest {
     assertThat(head()).as("head 前进 1（世界事实变了）").isEqualTo(beforeReset + 1);
     assertThat(revisionRowCommandType(head()))
         .as("★ 铁律 2：连「换会话」也走 Command → ChangeSet → Revision（AAR 看得见谁在什么时候重开过）")
-        .isEqualTo("sd.ResetDecisionMakerConversation");
+        .isEqualTo("ga.ResetDecisionMakerConversation");
 
     // ── 第 3 轮：**从空上下文重新开始** ──
     llm.enqueue(LlmResponse.text("新会话第一句"));

@@ -208,7 +208,7 @@ class DecisionAgentRunnerTest {
     assertThat(turn.usedTools()).isTrue();
     assertThat(turn.toolInvocations())
         .extracting(DecisionAgentRunner.ToolInvocation::toolName)
-        .containsExactly("simos.map.hex", "sd.IssueDirective");
+        .containsExactly("simos.map.hex", "ga.IssueDirective");
     assertThat(turn.toolInvocations())
         .as("两次都真的跑通了（被权限拒也会出现在这里，但 success=false）")
         .allMatch(DecisionAgentRunner.ToolInvocation::success);
@@ -553,7 +553,7 @@ class DecisionAgentRunnerTest {
         .contains("simos_command_catalog")
         .contains("simos_timeline_branches")
         .contains("expectedRevision")
-        .doesNotContain("sd.IssueDirective")
+        .doesNotContain("ga.IssueDirective")
         .doesNotContain("simos.command.catalog");
     assertThat(roles(conversations.load(conversationId())))
         .as("★ 注入的 user 身份消息**同时落盘**（否则进程重启后会话又空、真 provider 再次 400）")
@@ -604,7 +604,7 @@ class DecisionAgentRunnerTest {
         .contains("sd.");
     assertThat(text)
         .as("★ 但**不许**把禁令写成真名（模型眼里的工具名一律是线格式，见身份消息的类注）")
-        .doesNotContain("sd.RegisterEffect");
+        .doesNotContain("ga.RegisterEffect");
   }
 
   /**

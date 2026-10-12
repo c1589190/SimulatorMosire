@@ -196,27 +196,23 @@ class McpPortTopologyTest {
   /** sd 的 21 条窄写（进 GM 桶；D5 两条外交工具名不是命令类型）。 */
   private static final List<String> SD_NARROW_WRITES =
       List.of(
-          "sd.IssueDirective",
-          "sd.SubmitVerdict",
-          "sd.SetDecisionMakerAccess",
-          "sd.ResetDecisionMakerConversation",
-          "sd.StartDecision",
-          "sd.RunDecision",
-          "sd.CreateNation",
-          "sd.CreateArmy",
-          "sd.SetArmyMasterGov",
-          "sd.CreateDecisionMaker",
-          "sd.PutInfo",
+          "ga.IssueDirective",
+          "ga.SubmitVerdict",
+          "ga.SetDecisionMakerAccess",
+          "ga.ResetDecisionMakerConversation",
+          "ga.StartDecision",
+          "ga.RunDecision",
+          "gov.CreateNation",
+          "army.CreateArmy",
+          "army.SetArmyMasterGov",
+          "ga.CreateDecisionMaker",
+          "ga.PutInfo",
           "simos.sd.set-diplomatic-relation",
           "simos.sd.record-diplomatic-event",
-          "sd.CreateCombat",
-          "sd.AddCombatStage",
-          "sd.SetStageOutcomeTable",
-          "sd.CommitCombatOutcome",
-          "sd.RecordCasualties",
-          "sd.RegisterEffect",
-          "sd.CancelEffect",
-          "sd.SetDecisionMakerProvider");
+          "army.AppendCombatStage",
+          "ga.RegisterEffect",
+          "ga.CancelEffect",
+          "ga.SetDecisionMakerProvider");
 
   /** 其余 3 条窄写：D1 的 army 记录 + social 城市 + actor 账。 */
   private static final List<String> OTHER_NARROW_WRITES =
@@ -269,7 +265,7 @@ class McpPortTopologyTest {
   }
 
   /**
-   * J1：**唯一的 MCP 口 = GM 组**（读 37 + 非窄写 60 + 窄写 69 = 166；W2 按实测补入
+   * J1：**唯一的 MCP 口 = GM 组**（读 37 + 非窄写 60 + 窄写 69 = 161；W2 按实测补入
    * simos.economy.setMarketZonePriceAlpha，W5-fix6 按实测补入 simos.economy.setGovernmentMintScale， W5.5
    * 按实测补入 simos.economy.setMarketZoneLoanRateAlpha，W10 按实测补入 simos.economy.setEconomyPolicy）。
    */
@@ -280,7 +276,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（37 读 + 60 非窄写 + 69 窄写 = 166）")
+          .as("J1：唯一口 = GM 组（37 读 + 60 非窄写 + 69 窄写 = 161）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }
@@ -314,7 +310,7 @@ class McpPortTopologyTest {
 
     try (McpSyncClient client = newClient(mcpPort)) {
       client.initialize();
-      assertThat(toolNames(client)).contains("sd.SetDecisionMakerAccess");
+      assertThat(toolNames(client)).contains("ga.SetDecisionMakerAccess");
     }
 
     shell.close();

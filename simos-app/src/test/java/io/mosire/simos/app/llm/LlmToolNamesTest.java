@@ -56,7 +56,7 @@ class LlmToolNamesTest {
   @Test
   void escapingReplacesIllegalCharactersInsteadOfDroppingThem() {
     assertThat(LlmToolNames.wireNameOf("simos.map.hex")).isEqualTo("simos_map_hex");
-    assertThat(LlmToolNames.wireNameOf("sd.IssueDirective")).isEqualTo("sd_IssueDirective");
+    assertThat(LlmToolNames.wireNameOf("ga.IssueDirective")).isEqualTo("sd_IssueDirective");
     assertThat(LlmToolNames.wireNameOf("a b/c.d-e_f"))
         .as("空格、斜杠、点各转一个下划线；连字符与下划线原样保留")
         .isEqualTo("a_b_c_d-e_f");
@@ -140,10 +140,10 @@ class LlmToolNamesTest {
     LlmToolNames names = LlmToolNames.of(List.of("simos.map.hex"));
 
     assertThatThrownBy(
-            () -> names.wireDefs(List.of(new ToolDef("sd.IssueDirective", "出令", Map.of()))))
+            () -> names.wireDefs(List.of(new ToolDef("ga.IssueDirective", "出令", Map.of()))))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("装配故障")
-        .hasMessageContaining("sd.IssueDirective");
+        .hasMessageContaining("ga.IssueDirective");
   }
 
   /** ★ 建表**保序可复现**：同一个坏输入两次报同一段文本（诊断要能对照，不要每次换一个顺序）。 */

@@ -31,13 +31,23 @@ import org.junit.jupiter.api.Test;
  */
 class ScopeFenceTest {
 
+  /** ★★ <b>先建 dm、再建世界</b>（2026-10-13 收尾测试第 2 层）：归属住表里、按 dmId 索引，夹具必须两半一起给。 */
+  private static final ScopeFixtures.Affiliated DM_FRA = ScopeFixtures.nationDm("dm-FRA", "FRA");
+
+  private static final ScopeFixtures.Affiliated DM_GER = ScopeFixtures.nationDm("dm-GER", "GER");
+
+  private static final ScopeFixtures.Affiliated DM_A1 = ScopeFixtures.armyDm("dm-a1", "a1");
+
   private static final SimulationState STATE =
       ScopeFixtures.state(
           ScopeFixtures.mapOf(
               ScopeFixtures.nationRegion("701", "FRA", new HexCoord(1, 1)),
               ScopeFixtures.nationRegion("201", "GER", new HexCoord(1, 2))),
           ScopeFixtures.units(ScopeFixtures.unitWithVision("u-1", new HexCoord(1, 1), 1)),
-          ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+          ScopeFixtures.sdWithArmy("a1", "FRA", "u-1", "GER"),
+          DM_FRA,
+          DM_GER,
+          DM_A1);
 
   /** 一个决策人的权限集：白名单不设限，只有**资源维**在说话（这样红的就一定是范围）。 */
   private static ResourceAuthorizer authorizerFor(ResourceScopeMap scopes) {
@@ -55,7 +65,10 @@ class ScopeFenceTest {
 
   private static ResourceScopeMap nationScopes(String nationId) {
     return DecisionScopeFunctions.defaults()
-        .scopesFor(ScopeFixtures.nationDm("dm-" + nationId, nationId), STATE, ScopeFixtures.MAP_ID);
+        .scopesFor(
+            ScopeFixtures.nationDm("dm-" + nationId, nationId).maker(),
+            STATE,
+            ScopeFixtures.MAP_ID);
   }
 
   @Test
@@ -77,7 +90,7 @@ class ScopeFenceTest {
     ResourceAuthorizer army =
         authorizerFor(
             DecisionScopeFunctions.defaults()
-                .scopesFor(ScopeFixtures.armyDm("dm-a1", "a1"), STATE, ScopeFixtures.MAP_ID));
+                .scopesFor(DM_A1.maker(), STATE, ScopeFixtures.MAP_ID));
 
     assertThat(army.allows(Operation.READ, ToolSupport.resourceHex("demo", 1, 1))).isTrue();
     assertThat(army.allows(Operation.READ, ToolSupport.resourceHex("demo", 2, 1)))

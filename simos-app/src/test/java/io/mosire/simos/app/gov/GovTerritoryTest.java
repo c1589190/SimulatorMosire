@@ -151,7 +151,14 @@ class GovTerritoryTest {
                 Optional.of(G1),
                 GovernmentLevel.PROVINCE,
                 new RegionId[] {new RegionId("r-child")}));
-    SimulationState state = ScopeFixtures.state(map, units, GaState.empty());
+    // ★★ 2026-10-13 收尾测试第 2 层：GovScope 的入口是 `GovAffiliations.resolve(gov.govAffiliations(), …)`
+    //   ⇒ 不写归属行时它给四命名空间 deny-all，"own 的格照常可见"会退化成恒真式。这里把 dm-g1 → G1 落表。
+    SimulationState state =
+        ScopeFixtures.state(
+            map,
+            units,
+            io.mosire.simos.app.testing.WorldSlices.gaOnly(GaState.empty()),
+            ScopeFixtures.govDm("dm-g1", G1.value()));
 
     // 名义全境：中央的 GOV 子树包含下级的 r-child。
     assertThat(GovTerritory.nominalRegions(units, G1))

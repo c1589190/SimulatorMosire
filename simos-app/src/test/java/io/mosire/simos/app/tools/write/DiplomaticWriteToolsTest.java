@@ -257,7 +257,12 @@ class DiplomaticWriteToolsTest {
       CoreSimos core =
           new CoreSimos(
               new CoreConfig(storeDir, 100, new com.fasterxml.jackson.databind.ObjectMapper()));
-      core.register(new MapCodec()).register(new GaCodec());
+      core.register(new MapCodec())
+          .register(new GaCodec())
+          // ★★ 2026-10-13 收尾测试第 2 层：乙收尾起 `nations` 住 gov ⇒ 信封必须有 GovCodec（缺 ⇒ 创世当场抛）。
+          .register(new io.mosire.simos.gov.codec.GovCodec())
+          // ★ 同批：`armies` 住 army 片 ⇒ 信封也要 ArmyCodec（两个都缺一不可）。
+          .register(new io.mosire.simos.army.codec.ArmyCodec());
       Fixture fixture = new Fixture(core);
       core.bootstrapGenesis(genesis());
       return fixture;

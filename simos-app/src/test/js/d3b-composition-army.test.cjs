@@ -129,7 +129,7 @@ test("api-cachedArmyCombats-hits-the-relative-current-tick-endpoint-once", async
   );
 });
 
-test("map-combat-layer-treats-army-as-truth-and-falls-back-to-sd-only-when-army-is-empty", () => {
+test("map-combat-layer-takes-army-records-as-the-only-truth", () => {
   const map = readWebui("map.js");
 
   assert.match(
@@ -139,10 +139,18 @@ test("map-combat-layer-treats-army-as-truth-and-falls-back-to-sd-only-when-army-
   );
   assert.match(
     map,
-    /armyCombats\.length\s*>\s*0\s*\?\s*armyCombats\.map\(armyCombatForRenderer\)/,
-    "Army 非空 ⇒ 只能走 Army→renderer 映射"
+    /armyCombats\.map\(armyCombatForRenderer\)\.filter\(/,
+    "Army 记录逐条经 armyCombatForRenderer 归一后才进 renderer（缺 hex 的丢掉、不编坐标）"
   );
-  assert.match(map, /:\s*sdCombats/, "Army 为空才允许回退旧 sd 列表（老世界兼容）");
+  // ★★ 2026-10-13 收尾测试第 2 层：批次 3d-2 把旧战斗族与 `/api/sd/combats` 端点**整路删除**
+  //   ⇒「Army 为空就回退旧 sd 列表」那条兜底**没有数据源了**（留着就是一条永远取不到东西的请求）。
+  //   判据由「断言回退存在」改成「断言回退不存在」——方向反了，强度不降：复活它才是缺陷。
+  assert.equal(/sdCombats/.test(map), false, "旧 sd 战斗列表的兜底已随端点一起删除（不得复活）");
+  assert.equal(
+    /api\s*\.\s*cachedCombats\(/.test(map),
+    false,
+    "旧 cachedCombats 端点不得复活（它在 api.js 里的实现已删）"
+  );
   assert.ok(
     map.indexOf("armyCombatForRenderer: armyCombatForRenderer") >= 0,
     "纯函数必须挂出（门禁/e2e 直接断言）"

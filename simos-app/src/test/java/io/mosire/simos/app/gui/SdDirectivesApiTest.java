@@ -121,14 +121,14 @@ class SdDirectivesApiTest {
   void directivesExposeTheIntentTextAndTheCommandListNewestFirst() throws Exception {
     createFixture();
     submit(
-        "sd.IssueDirective",
+        "ga.IssueDirective",
         "{\"directiveId\":\"d-1\",\"decisionMakerId\":\"dm-1\",\"tick\":4,"
             + "\"target\":\""
             + TARGET
             + "\",\"intentInfo\":\"沿河谷向北推进（补给吃紧）\","
             + "\"commands\":[{\"type\":\"unit.PlanRoute\",\"payloadJson\":\"{\\\"unitId\\\":\\\"u-1\\\"}\"}]}");
     submit(
-        "sd.IssueDirective",
+        "ga.IssueDirective",
         "{\"directiveId\":\"d-2\",\"decisionMakerId\":\"dm-1\",\"tick\":5,"
             + "\"intentInfo\":\"就地固守，等援军\",\"commands\":[]}");
 
@@ -190,10 +190,10 @@ class SdDirectivesApiTest {
   /** 经真命令路径种入：一个国家 + 一个决策人。 */
   private void createFixture() throws Exception {
     submit(
-        "sd.CreateNation",
+        "gov.CreateNation",
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"r-nation\",\"adminBudgetPerTick\":10}");
     submit(
-        "sd.CreateDecisionMaker",
+        "ga.CreateDecisionMaker",
         "{\"id\":\"dm-1\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
             + "\"allowedTools\":[],\"cadence\":3}");
   }

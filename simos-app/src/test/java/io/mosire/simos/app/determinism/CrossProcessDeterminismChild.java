@@ -59,7 +59,7 @@ public final class CrossProcessDeterminismChild {
 
   /** 参与比较的模块 namespace，与 {@link CheckpointEncoder} 的逐段载荷一一对应。 */
   static final List<String> MODULES =
-      List.of("map", "social", "unit", "sd", "economy", "actor", "gov", "army");
+      List.of("map", "social", "unit", "ga", "economy", "actor", "gov", "army");
 
   /** 8 个模块的 codec（namespace → codec），与生产装配同序。 */
   static Map<String, ModuleCodec> codecs() {

@@ -333,7 +333,7 @@ class SdDecisionResultsApiTest {
             + id
             + "\"}";
     Map<String, Object> request = new LinkedHashMap<>();
-    request.put("type", "sd.PutInfo");
+    request.put("type", "ga.PutInfo");
     request.put("payloadJson", payload);
     request.put("branch", "main");
     request.put("expectedRevision", head());

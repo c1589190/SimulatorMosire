@@ -72,7 +72,7 @@ class CrossProcessDeterminismTest {
           "checkpoint",
           "social",
           "unit",
-          "sd",
+          "ga",
           "actor",
           "gov",
           "army");

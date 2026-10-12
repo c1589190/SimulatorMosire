@@ -18,6 +18,7 @@ import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.tools.ga.AppGaToolIdentity;
 import io.mosire.simos.app.tools.ga.AppGaToolQueries;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.GaSnapshot;
@@ -29,6 +30,7 @@ import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.codec.UnitCodec;
@@ -100,6 +102,10 @@ class DecisionResultsToolTest {
     core.register(new MapCodec());
     core.register(new UnitCodec());
     core.register(new GaCodec());
+    // ★★ 2026-10-13 收尾测试第 2 层：乙收尾起 `nations` 住 `gov`、`armies` 住 `army`（都不再住 sd/ga 片）
+    //   ⇒ 本夹具的世界里有这两片，checkpoint 的信封就必须有对应 codec（漏一个 = 创世当场抛，见 CheckpointEncoder）。
+    core.register(new GovCodec());
+    core.register(new ArmyCodec());
     core.bootstrapGenesis(genesis());
     queryService = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
   }

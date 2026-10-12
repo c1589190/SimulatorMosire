@@ -146,7 +146,7 @@ class SdVerdictFreezeEndToEndTest {
         "agent:test",
         MAIN,
         new RevisionId(expectedRevision),
-        "sd.SubmitVerdict",
+        "ga.SubmitVerdict",
         payload);
   }
 

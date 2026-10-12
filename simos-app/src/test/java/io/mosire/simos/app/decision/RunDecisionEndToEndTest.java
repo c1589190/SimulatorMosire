@@ -225,7 +225,7 @@ class RunDecisionEndToEndTest {
     assertThat(calls).hasSize(2);
     assertThat(calls.get(0).get("tool").asText()).isEqualTo("simos.map.hex");
     assertThat(calls.get(0).get("ok").asBoolean()).isTrue();
-    assertThat(calls.get(1).get("tool").asText()).isEqualTo("sd.IssueDirective");
+    assertThat(calls.get(1).get("tool").asText()).isEqualTo("ga.IssueDirective");
     assertThat(calls.get(1).get("ok").asBoolean()).isTrue();
 
     // ★★ 判据 2：轨迹里带着**真世界**的值（读工具的返回原文）——"决策人看见了什么"的载体。
@@ -242,13 +242,13 @@ class RunDecisionEndToEndTest {
       Timeline timeline = new Timeline(store, CHECKPOINT_INTERVAL);
       assertThat(timeline.row(ref("main", 3)).orElseThrow().commandType())
           .as("★ 铁律 2：决策不是「记在对话里」，它是一条真 revision（可回放、可回退分岔）")
-          .isEqualTo("sd.IssueDirective");
+          .isEqualTo("ga.IssueDirective");
       assertThat(timeline.row(ref("main", 4)).orElseThrow().commandType())
           .as("回合结束后统一结算把最后一段自然语言写成 NL 决策包（同批落盘 ⇒ 行类型是 core.SubmitBatch）")
           .isEqualTo("core.SubmitBatch");
       assertThat(timeline.row(ref("main", 2)).orElseThrow().commandType())
           .as("触发事实本身也是世界事实（AAR 看得见「谁让谁跑了一轮」）")
-          .isEqualTo("sd.RunDecision");
+          .isEqualTo("ga.RunDecision");
     }
 
     // ★ 可观察副作用之二：这一轮的每条消息都落了会话（跨 tick 的锚）。
@@ -261,7 +261,7 @@ class RunDecisionEndToEndTest {
 
     // ★★ 审批面（2026-09-24 用户裁定后的口径）：**决策人自己出的令仍要审批**（不是"在运行流里偷偷写"），
     //   而**外层触发（GM 面）不再审批**（无脑过）——两条链的区别在这一行里看得见。
-    assertThat(approvals).as("内层决策人的 sd.IssueDirective 进了审批").contains("sd.IssueDirective");
+    assertThat(approvals).as("内层决策人的 sd.IssueDirective 进了审批").contains("ga.IssueDirective");
     assertThat(approvals).as("外层 GM 触发不进审批（无脑过）").doesNotContain(RunDecisionTool.NAME);
   }
 
@@ -302,7 +302,7 @@ class RunDecisionEndToEndTest {
         .as("世界读被钉在冻结快照上：模型填的 not-main@999 不生效，仍能成功读到真世界")
         .isTrue();
     assertThat(calls.get(0).get("summary").asText()).contains("desert");
-    assertThat(calls.get(1).get("tool").asText()).isEqualTo("sd.IssueDirective");
+    assertThat(calls.get(1).get("tool").asText()).isEqualTo("ga.IssueDirective");
     assertThat(calls.get(1).get("ok").asBoolean()).as("世界写工具在冻结回合必须被拒（即使模型凭记忆叫到）").isFalse();
     assertThat(calls.get(1).get("summary").asText()).contains("FORBIDDEN");
     assertThat(calls.get(2).get("tool").asText()).isEqualTo("simos.sd.packet.intent");
@@ -315,7 +315,7 @@ class RunDecisionEndToEndTest {
       Timeline timeline = new Timeline(store, CHECKPOINT_INTERVAL);
       assertThat(timeline.row(ref("main", before + 2L)).orElseThrow().commandType())
           .as("packet.intent 先落 DRAFT")
-          .isEqualTo("sd.UpsertDecisionPacket");
+          .isEqualTo("ga.UpsertDecisionPacket");
       assertThat(timeline.row(ref("main", before + 3L)).orElseThrow().commandType())
           .as("回合结束后统一结算：最后一段自然语言并入包并提交（同批 ⇒ core.SubmitBatch）")
           .isEqualTo("core.SubmitBatch");

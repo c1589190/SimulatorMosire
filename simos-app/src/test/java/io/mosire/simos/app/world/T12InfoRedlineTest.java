@@ -73,7 +73,7 @@ class T12InfoRedlineTest {
       // 装置自证：先证明这个状态**真的装着世界**，否则"info 为空"可能只是"没读到任何东西"。
       assertThat(replayed.modules().keySet())
           .containsExactlyInAnyOrder(
-              "map", "social", "unit", "sd", "economy", "actor", "gov", "army");
+              "map", "social", "unit", "ga", "economy", "actor", "gov", "army");
 
       InfoSystem info = replayed.info();
       assertThat(info).as("C26：全局 Info 段（InfoSystem）一条都没有").isEqualTo(InMemoryInfoSystem.empty());

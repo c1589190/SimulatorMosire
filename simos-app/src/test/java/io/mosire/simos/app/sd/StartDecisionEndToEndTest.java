@@ -167,7 +167,7 @@ class StartDecisionEndToEndTest {
     try (SqliteStore store = SqliteStore.open(dbFile())) {
       RevisionRow row = new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", 2)).orElseThrow();
       assertThat(row.initiator()).as("C18①：GUI 身份恰是 player:gui").isEqualTo("player:gui");
-      assertThat(row.commandType()).isEqualTo("sd.StartDecision");
+      assertThat(row.commandType()).isEqualTo("ga.StartDecision");
     }
     assertThat(sdState(2).info().get("sd:decision.dm-t10"))
         .as("发起记录落进 sd INFO 覆盖层（随 revision 重放）")
@@ -217,7 +217,7 @@ class StartDecisionEndToEndTest {
     try (SqliteStore store = SqliteStore.open(dbFile())) {
       RevisionRow row = new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", 2)).orElseThrow();
       assertThat(row.initiator()).as("GM MCP 写命令的 initiator 恰是配置值").isEqualTo(TEST_INITIATOR);
-      assertThat(row.commandType()).isEqualTo("sd.StartDecision");
+      assertThat(row.commandType()).isEqualTo("ga.StartDecision");
     }
     assertThat(sdState(2).info().get("sd:decision.dm-t10")).hasSize(1);
 
@@ -394,7 +394,7 @@ class StartDecisionEndToEndTest {
 
   private static DecisionMaker decisionMaker() {
     return new DecisionMaker(
-        DM, Set.of("sd.SubmitVerdict"), AccessLimit.empty(), 3, Optional.of("stub"), 0L);
+        DM, Set.of("ga.SubmitVerdict"), AccessLimit.empty(), 3, Optional.of("stub"), 0L);
   }
 
   private static Unit unit() {

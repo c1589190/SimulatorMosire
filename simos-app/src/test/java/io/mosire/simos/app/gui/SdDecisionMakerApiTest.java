@@ -175,7 +175,7 @@ class SdDecisionMakerApiTest {
     assertThat(nation.get("affiliation").get("nationId").asText()).isEqualTo("n1");
     assertThat(nation.get("affiliation").get("rootUnit").isNull()).as("国家归属无根单位").isTrue();
     assertThat(nation.get("cadence").asLong()).isEqualTo(3L);
-    assertThat(nation.get("allowedTools").get(0).asText()).isEqualTo("sd.SubmitVerdict");
+    assertThat(nation.get("allowedTools").get(0).asText()).isEqualTo("ga.SubmitVerdict");
   }
 
   @Test
@@ -274,7 +274,7 @@ class SdDecisionMakerApiTest {
     assertThat(body.get("id").asText()).isEqualTo(expected.id().value());
     assertThat(body.get("cadence").asLong()).isEqualTo(expected.decisionCadenceTicks());
     assertThat(body.get("allowedTools")).hasSize(expected.allowedTools().size());
-    assertThat(body.get("allowedTools").get(0).asText()).isEqualTo("sd.SubmitVerdict");
+    assertThat(body.get("allowedTools").get(0).asText()).isEqualTo("ga.SubmitVerdict");
     assertThat(body.get("affiliation").get("kind").asText()).isEqualTo("nation");
     assertThat(body.get("affiliation").get("id").asText()).isEqualTo("n1");
     assertThat(body.get("providerId").asText())
@@ -443,9 +443,9 @@ class SdDecisionMakerApiTest {
    */
   private void pendingFixture() throws Exception {
     submit(
-        "sd.CreateNation",
+        "gov.CreateNation",
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"r-nation\",\"adminBudgetPerTick\":10}");
-    submit("sd.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
+    submit("army.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
     createMaker("dm-first", 5);
     createMaker("dm-wait", 5);
     createMaker("dm-due", 2);
@@ -458,7 +458,7 @@ class SdDecisionMakerApiTest {
 
   private void createMaker(String id, long cadence) throws Exception {
     submit(
-        "sd.CreateDecisionMaker",
+        "ga.CreateDecisionMaker",
         "{\"id\":\""
             + id
             + "\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},\"allowedTools\":[],\"cadence\":"
@@ -469,7 +469,7 @@ class SdDecisionMakerApiTest {
   private void issueDirective(String directiveId, String decisionMakerId, long tick)
       throws Exception {
     submit(
-        "sd.IssueDirective",
+        "ga.IssueDirective",
         "{\"directiveId\":\""
             + directiveId
             + "\",\"decisionMakerId\":\""
@@ -504,24 +504,24 @@ class SdDecisionMakerApiTest {
   /** 经真命令路径种入：n1 国 + a1 军（根单位 u-1）+ 两个决策人 + 给国家决策人配权。 */
   private void createFixture() throws Exception {
     submit(
-        "sd.CreateNation",
+        "gov.CreateNation",
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"r-nation\",\"adminBudgetPerTick\":10}");
-    submit("sd.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
+    submit("army.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
     submit(
-        "sd.CreateDecisionMaker",
+        "ga.CreateDecisionMaker",
         "{\"id\":\"dm-nation\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
             + "\"allowedTools\":[\"sd.SubmitVerdict\"],\"cadence\":3}");
     submit(
-        "sd.CreateDecisionMaker",
+        "ga.CreateDecisionMaker",
         "{\"id\":\"dm-army\",\"affiliation\":{\"kind\":\"army\",\"id\":\"a1\"},"
             + "\"allowedTools\":[\"sd.IssueDirective\",\"sd.SubmitVerdict\"],\"cadence\":5}");
     submit(
-        "sd.SetDecisionMakerAccess",
+        "ga.SetDecisionMakerAccess",
         "{\"decisionMakerId\":\"dm-nation\","
             + "\"accessLimit\":{\"map\":[\"Map1/region/r-nation\",\"Map1/region/r-extra\"]},"
             + "\"adjudicationDisclosure\":\"PERCEPTION_ONLY\",\"redactedFields\":[\"position\"]}");
     submit(
-        "sd.SetDecisionMakerProvider",
+        "ga.SetDecisionMakerProvider",
         "{\"decisionMakerId\":\"dm-nation\",\"providerId\":\"p-nation\"}");
   }
 

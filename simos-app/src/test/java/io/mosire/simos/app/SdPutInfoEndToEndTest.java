@@ -118,7 +118,7 @@ class SdPutInfoEndToEndTest {
         "agent:test",
         MAIN,
         new RevisionId(expectedRevision),
-        "sd.PutInfo",
+        "ga.PutInfo",
         payload);
   }
 

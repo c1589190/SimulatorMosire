@@ -61,17 +61,28 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class DecisionCallerFactoryTest {
 
-  /** 合成小世界的 map 里两个区域（{@code ScopeFixtures}）：FRA=701 在 (1,1)、GER=201 在 (1,2)。 */
+  /**
+   * 合成小世界的 map 里两个区域（{@code ScopeFixtures}）：FRA=701 在 (1,1)、GER=201 在 (1,2)。
+   *
+   * <p>★★ <b>2026-10-13 收尾测试第 2 层：先建决策人、再建世界</b>——归属住 {@code GovState.nationAffiliations()} 里、按
+   * dmId 索引，世界构造时必须拿到 dm 才能落表（只产裸决策人 ⇒ 一律 deny-all ⇒ 本类所有"放过/拒"的对照全部失效）。
+   */
+  private static final ScopeFixtures.Affiliated DM_FRA = ScopeFixtures.nationDm("dm-FRA", "FRA");
+
+  private static final ScopeFixtures.Affiliated DM_GER = ScopeFixtures.nationDm("dm-GER", "GER");
+
   private static final SimulationState STATE =
       ScopeFixtures.state(
           ScopeFixtures.mapOf(
               ScopeFixtures.nationRegion("701", "FRA", new HexCoord(1, 1)),
               ScopeFixtures.nationRegion("201", "GER", new HexCoord(1, 2))),
           ScopeFixtures.units(ScopeFixtures.unitWithVision("u-1", new HexCoord(1, 1), 1)),
-          ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+          ScopeFixtures.sdWithArmy("a1", "FRA", "u-1", "GER"),
+          DM_FRA,
+          DM_GER);
 
-  private static final DecisionMaker FRA = ScopeFixtures.nationDm("dm-FRA", "FRA");
-  private static final DecisionMaker GER = ScopeFixtures.nationDm("dm-GER", "GER");
+  private static final DecisionMaker FRA = DM_FRA.maker();
+  private static final DecisionMaker GER = DM_GER.maker();
 
   @TempDir java.nio.file.Path tempDir;
 
@@ -313,7 +324,8 @@ class DecisionCallerFactoryTest {
   @Test
   void theScopeIsRecomputedPerCallSoWorldChangesMoveTheFence() {
     DecisionCallerFactory factory = factory();
-    DecisionMaker ger = ScopeFixtures.nationDm("dm-GER2", "GER");
+    ScopeFixtures.Affiliated gerDm = ScopeFixtures.nationDm("dm-GER", "GER");
+    DecisionMaker ger = gerDm.maker();
 
     SimulationState before = STATE;
     SimulationState after =
@@ -322,7 +334,8 @@ class DecisionCallerFactoryTest {
                 ScopeFixtures.nationRegion("701", "GER", new HexCoord(1, 1)),
                 ScopeFixtures.nationRegion("201", "GER", new HexCoord(1, 2))),
             ScopeFixtures.units(ScopeFixtures.unitWithVision("u-1", new HexCoord(1, 1), 1)),
-            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1", "GER"),
+            gerDm);
 
     ToolContext ctxBefore = factory.callerFor(ger, before, ScopeFixtures.MAP_ID);
     ToolContext ctxAfter = factory.callerFor(ger, after, ScopeFixtures.MAP_ID);
@@ -356,10 +369,10 @@ class DecisionCallerFactoryTest {
   void theGmSuppliedLimitIsIntersectedNotReplaced() {
     DecisionCallerFactory factory = factory();
     DecisionMaker narrowedDm =
-        ScopeFixtures.nationDmWithLimit(
-            "dm-FRA-narrowed",
-            "FRA",
-            AccessLimit.ofPrefixes(Map.of("map", Set.of(ScopeFixtures.MAP_ID + "/region/201"))));
+        DM_FRA
+            .withLimit(
+                AccessLimit.ofPrefixes(Map.of("map", Set.of(ScopeFixtures.MAP_ID + "/region/201"))))
+            .maker();
 
     ToolContext narrowed = factory.callerFor(narrowedDm, STATE, ScopeFixtures.MAP_ID);
 
@@ -382,10 +395,9 @@ class DecisionCallerFactoryTest {
   void aBroaderGmLimitDoesNotWidenTheComputedScope() {
     DecisionCallerFactory factory = factory();
     DecisionMaker widerDm =
-        ScopeFixtures.nationDmWithLimit(
-            "dm-FRA-wide",
-            "FRA",
-            AccessLimit.ofPrefixes(Map.of("map", Set.of(ScopeFixtures.MAP_ID))));
+        DM_FRA
+            .withLimit(AccessLimit.ofPrefixes(Map.of("map", Set.of(ScopeFixtures.MAP_ID))))
+            .maker();
 
     ToolContext wide = factory.callerFor(widerDm, STATE, ScopeFixtures.MAP_ID);
 

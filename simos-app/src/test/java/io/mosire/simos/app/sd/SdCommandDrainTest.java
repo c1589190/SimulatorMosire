@@ -139,7 +139,7 @@ class SdCommandDrainTest {
             + "\"payloadJson\":"
             + jsonString(payloadJson)
             + "}}";
-    return envelope(expectedRevision, "sd.RegisterEffect", payload);
+    return envelope(expectedRevision, "ga.RegisterEffect", payload);
   }
 
   private static String boundPayload() {

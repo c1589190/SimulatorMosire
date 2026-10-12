@@ -68,7 +68,7 @@ class SdProviderBindingEndToEndTest {
         core.submit(
             envelope(
                 1,
-                "sd.SetDecisionMakerProvider",
+                "ga.SetDecisionMakerProvider",
                 "{\"decisionMakerId\":\"dm1\",\"providerId\":\"p-a\"}"));
     assertThat(result).isInstanceOf(CommandResult.Committed.class);
     assertThat(((CommandResult.Committed) result).ref())
@@ -91,7 +91,7 @@ class SdProviderBindingEndToEndTest {
         core.submit(
             envelope(
                 1,
-                "sd.SetDecisionMakerProvider",
+                "ga.SetDecisionMakerProvider",
                 "{\"decisionMakerId\":\"dm1\",\"providerId\":\"p-never-registered\"}"));
 
     assertThat(result)
@@ -107,13 +107,13 @@ class SdProviderBindingEndToEndTest {
     core.submit(
         envelope(
             1,
-            "sd.SetDecisionMakerProvider",
+            "ga.SetDecisionMakerProvider",
             "{\"decisionMakerId\":\"dm1\",\"providerId\":\"p-a\"}"));
     CommandResult scope =
         core.submit(
             envelope(
                 2,
-                "sd.SetDecisionMakerAccess",
+                "ga.SetDecisionMakerAccess",
                 "{\"decisionMakerId\":\"dm1\",\"accessLimit\":{\"map\":[\"Map1/region/r1\"]}}"));
     assertThat(scope).isInstanceOf(CommandResult.Committed.class);
 
@@ -131,7 +131,7 @@ class SdProviderBindingEndToEndTest {
         core.submit(
             envelope(
                 1,
-                "sd.SetDecisionMakerProvider",
+                "ga.SetDecisionMakerProvider",
                 "{\"decisionMakerId\":\"ghost\",\"providerId\":\"p\"}"));
     assertThat(result).isInstanceOf(CommandResult.Rejected.class);
     assertThat(((CommandResult.Rejected) result).reason()).contains("决策人不存在");
@@ -142,6 +142,10 @@ class SdProviderBindingEndToEndTest {
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new GaCodec());
+    // ★★ 2026-10-13 收尾测试第 2 层：乙收尾起 `armies` 住 army 片 ⇒ 信封必须有 ArmyCodec（缺 ⇒ 创世当场抛）。
+    core.register(new io.mosire.simos.army.codec.ArmyCodec());
+    // ★ 同批：`nations` 住 gov 片 ⇒ 信封也要 GovCodec。
+    core.register(new io.mosire.simos.gov.codec.GovCodec());
     core.register(new SetDecisionMakerProviderHandler());
     core.register(new SetDecisionMakerAccessHandler());
     core.bootstrapGenesis(genesis());

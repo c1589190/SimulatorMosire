@@ -189,7 +189,10 @@ class GovScopeTest {
             io.mosire.simos.app.testing.WorldSlices.of(
                 io.mosire.simos.gov.GovState.empty(),
                 io.mosire.simos.army.ArmyData.empty().withArmies(Map.of(army.id(), army)),
-                GaState.empty()));
+                GaState.empty()),
+            ScopeFixtures.govDm("dm-g-ghost", "g-ghost"),
+            ScopeFixtures.govDm("dm-g-plain", "g-plain"),
+            ScopeFixtures.govDm("dm-g-army", "g-army"));
 
     for (String govId : List.of("g-ghost", "g-plain", "g-army")) {
       ResourceScopeMap scopes = scopesFor(govId, state);
@@ -257,8 +260,22 @@ class GovScopeTest {
 
   // ── 装置 / 夹具 ────────────────────────────────────────────────
 
+  /**
+   * ★★ <b>把待测 GOV 的归属行一起落表</b>（2026-10-13 收尾测试第 2 层）：{@code GovScope} 的入口是 {@code
+   * GovAffiliations.resolve(gov.govAffiliations(), units)} ⇒ 表里没有那一行时它给四命名空间 deny-all，本类所有"看得见"
+   * 的断言都会退化成恒真式。★ 待测 id 由 {@link #scopesFor} 决定（{@code dm-<govUnitId>}），故在世界构造处一次把三个 id 都写上 —— 其中
+   * {@code g-ghost} 不在 {@code units} 里、{@code g-plain}/{@code g-army} 不是 GOV，三行都会被模块自己的 {@code
+   * resolve} 裁掉（这正是 {@code missingOrNonGovUnitsAreDenyAllInAllThreeNamespaces} 要测的）。
+   */
   private static SimulationState world(UnitState units) {
-    return ScopeFixtures.state(map(), units, GaState.empty());
+    return ScopeFixtures.state(
+        map(),
+        units,
+        io.mosire.simos.app.testing.WorldSlices.gaOnly(GaState.empty()),
+        ScopeFixtures.govDm("dm-g-1", "g-1"),
+        ScopeFixtures.govDm("dm-g-ghost", "g-ghost"),
+        ScopeFixtures.govDm("dm-g-plain", "g-plain"),
+        ScopeFixtures.govDm("dm-g-army", "g-army"));
   }
 
   private static ResourceScopeMap scopesFor(String govUnitId, SimulationState state) {

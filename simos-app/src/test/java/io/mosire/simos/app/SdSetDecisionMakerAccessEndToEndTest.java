@@ -99,7 +99,7 @@ class SdSetDecisionMakerAccessEndToEndTest {
         "gm:test",
         MAIN,
         new RevisionId(expectedRevision),
-        "sd.SetDecisionMakerAccess",
+        "ga.SetDecisionMakerAccess",
         payload);
   }
 

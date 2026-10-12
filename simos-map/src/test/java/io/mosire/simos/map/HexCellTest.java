@@ -47,8 +47,8 @@ class HexCellTest {
    *
    * <p>★★ <b>2026-10-13 收尾测试第 2 层</b>：{@code areas} 是批次 2（hex 属性表：城市面积 / 乡村面积 + 可扩展自定义字段，用户原话
    * 「已有默认字段分别是城市面积和乡村面积」）新增的第 2 个组件 ⇒ 清单由 {@code [height]} 变 {@code [height, areas]}。★ 判别力
-   * <b>未削弱</b>：仍是"逐字相等"的冻结清单，且下一条 {@code doesNotContain("terrain","edgeTags","riverMask")}
-   * 一字未改 —— 那条才是本条真正要守的事（"无连通性字段、无 terrain"）。
+   * <b>未削弱</b>：仍是"逐字相等"的冻结清单，且下一条 {@code doesNotContain("terrain","edgeTags","riverMask")} 一字未改 ——
+   * 那条才是本条真正要守的事（"无连通性字段、无 terrain"）。
    */
   @Test
   void hasNoConnectivityFieldAndNoTerrain() {

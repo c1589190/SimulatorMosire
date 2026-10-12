@@ -89,8 +89,8 @@ test("resultText-marks-success-and-failure", () => {
 });
 
 test("formatEntry-includes-tool-and-result", () => {
-  const line = G.formatEntry({ tool: "sd.IssueDirective", ok: true, atEpochMs: 0 });
-  assert.ok(line.includes("sd.IssueDirective"));
+  const line = G.formatEntry({ tool: "ga.IssueDirective", ok: true, atEpochMs: 0 });
+  assert.ok(line.includes("ga.IssueDirective"));
   assert.ok(line.includes("成功"));
   assert.ok(line.includes("·"));
 });
@@ -151,7 +151,7 @@ test("renderInto-renders-server-entries-from-the-response", async () => {
     gmToolUsage: () =>
       Promise.resolve({
         entries: [
-          { tool: "sd.IssueDirective", ok: true, code: null, atEpochMs: 5 },
+          { tool: "ga.IssueDirective", ok: true, code: null, atEpochMs: 5 },
           { tool: "simos.advance", ok: false, code: "CONFLICT", atEpochMs: 6 },
         ],
       }),
@@ -165,7 +165,7 @@ test("renderInto-renders-server-entries-from-the-response", async () => {
   assert.equal(body.children.length, 1);
   assert.equal(body.children[0].tagName, "ul");
   assert.equal(body.children[0].children.length, 2);
-  assert.equal(body.children[0].children[0].textContent.includes("sd.IssueDirective"), true);
+  assert.equal(body.children[0].children[0].textContent.includes("ga.IssueDirective"), true);
   assert.ok(body.children[0].children[1].className.includes("gm-usage-failed"));
   assert.ok(status.textContent.includes("2"));
 });

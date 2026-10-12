@@ -164,8 +164,8 @@ class RegressionGuardsTest {
    * <p>★ P1 之后 {@code terrain} 也**不在**这里（地形进了权威块 {@code GameMap.terrainBlocks}）——故本断言同时钉住"无连通性字段"与
    * "无 terrain"两件事，**没有改成恒真**（改成 {@code doesNotContain("edgeTags")} 才是松口）。
    *
-   * <p>★★ <b>2026-10-13 收尾测试第 2 层</b>：批次 2 的 hex 属性表新增第 2 组件 {@code areas}（城市面积 / 乡村面积 +
-   * 可扩展自定义字段）⇒ 冻结清单由 {@code [height]} 变 {@code [height, areas]}。判据仍是逐字相等，判别力未削弱。
+   * <p>★★ <b>2026-10-13 收尾测试第 2 层</b>：批次 2 的 hex 属性表新增第 2 组件 {@code areas}（城市面积 / 乡村面积 + 可扩展自定义字段）⇒
+   * 冻结清单由 {@code [height]} 变 {@code [height, areas]}。判据仍是逐字相等，判别力未削弱。
    */
   @Test
   void L2_hexCellHasNoConnectivityField() {

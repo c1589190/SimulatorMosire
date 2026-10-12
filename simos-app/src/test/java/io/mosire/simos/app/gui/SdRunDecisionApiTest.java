@@ -219,7 +219,7 @@ class SdRunDecisionApiTest {
                   .row(ref("main", 2))
                   .orElseThrow()
                   .commandType())
-          .isEqualTo("sd.RunDecision");
+          .isEqualTo("ga.RunDecision");
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
         .as("触发事实 + 回合结束统一结算（最后一段自然语言自动作为 NL 决策包）")

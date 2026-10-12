@@ -32,13 +32,13 @@ class CommandPermissionRulesTest {
 
   /** 合成注册面：两条打了标记、一条落点（不打标记）、一条"新加进来的"（不打任何标记）。 */
   private static final Set<String> REGISTERED =
-      Set.of("unit.RenameUnit", "map.CreateRegion", "sd.IssueDirective", "new.UntaggedCommand");
+      Set.of("unit.RenameUnit", "map.CreateRegion", "ga.IssueDirective", "new.UntaggedCommand");
 
   /** 只有它们打了 {@link DmUsableCommand}（= 显式声明"可 DM"）。 */
   private static final Set<String> DM_USABLE = Set.of("unit.RenameUnit", "map.CreateRegion");
 
   /** 决策落点（{@code Shell} 送 {@code ChannelAdmission.LANDING_POINTS}；本轮审计要求它 ⊆ 注册面）。 */
-  private static final Set<String> LANDING = Set.of("sd.IssueDirective");
+  private static final Set<String> LANDING = Set.of("ga.IssueDirective");
 
   @Test
   void aNewCommandWithoutAnyMarkerIsInTheCatalogButInNeitherDmFace() {
@@ -63,13 +63,13 @@ class CommandPermissionRulesTest {
         .contains("unit.RenameUnit", "map.CreateRegion");
 
     // ★ 落点（sd.IssueDirective）与"不打标记"同待遇：不在 DM 两面里。
-    assertThat(faces.directiveTypes()).doesNotContain("sd.IssueDirective");
-    assertThat(faces.drainableTypes()).doesNotContain("sd.IssueDirective");
+    assertThat(faces.directiveTypes()).doesNotContain("ga.IssueDirective");
+    assertThat(faces.drainableTypes()).doesNotContain("ga.IssueDirective");
 
     // ★ 口径钉死：②③ 是**同一份声明**的两种用法（内容逐条相同），本轮不得分家。
     assertThat(faces.directiveTypes()).containsExactlyInAnyOrderElementsOf(faces.drainableTypes());
     assertThat(faces.directiveTypes()).as("66 条声明面在这个合成面上就是这 2 条，不多不少").hasSize(2);
-    assertThat(faces.landingPoints()).containsExactly("sd.IssueDirective");
+    assertThat(faces.landingPoints()).containsExactly("ga.IssueDirective");
   }
 
   /**

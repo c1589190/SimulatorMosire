@@ -98,24 +98,30 @@ test("unit-allows-route-and-editor-writes", () => {
 
 test("decision-allows-exactly-start-decision", () => {
   // ★★ T10（spec §四.2，D5 已裁"新命令"）：决策模式的命令写；2026-09-23 起**三条**
-  //   （+ sd.RunDecision「让它跑一轮」走 POST /api/sd/run-decision、+ sd.ResetDecisionMakerConversation
+  //   （+ ga.RunDecision「让它跑一轮」走 POST /api/sd/run-decision、+ ga.ResetDecisionMakerConversation
   //   「上下文重置」走 POST /api/sd/reset-decision-maker-conversation）。
   //   审批的「批准/驳回」打 POST /api/approvals/{id}（审批裁决，非命令写）⇒ **不进**本表。
+  //
+  //   ★★ 2026-10-13 收尾测试第 2 层：**命令类型串从 sd.* 迁到 ga.***（2026-10-12 架构轮「sd 整个弃用！」
+  //   ⇒ 决策族命令整体改挂 ga 命名空间，生产侧的 `modes.js` 已同批改好）。这里跟的是**命令类型**（不是工具
+  //   NAME）——`StartDecisionTool.NAME` 也是 `ga.StartDecision`，两个身份在本例中同字面。
+  //   ★ 下面那条负向清单同样必须换成**现行**类型名：留旧名 = 拿一个不存在的类型去断言"不允许"，
+  //     判别力归零（它本来就永远不在表里）。
   assert.deepEqual(M.allowedWrites("decision"), [
-    "sd.StartDecision",
-    "sd.RunDecision",
-    "sd.ResetDecisionMakerConversation",
+    "ga.StartDecision",
+    "ga.RunDecision",
+    "ga.ResetDecisionMakerConversation",
   ]);
-  assert.equal(M.isWriteAllowed("decision", "sd.StartDecision"), true);
+  assert.equal(M.isWriteAllowed("decision", "ga.StartDecision"), true);
   assert.equal(
-    M.isWriteAllowed("decision", "sd.ResetDecisionMakerConversation"),
+    M.isWriteAllowed("decision", "ga.ResetDecisionMakerConversation"),
     true,
     "「上下文重置」是工作台真发出的写（窄端点，命令类型服务端写死）"
   );
   for (const type of [
-    "sd.IssueDirective",
-    "sd.SubmitVerdict",
-    "sd.SetDecisionMakerAccess",
+    "ga.IssueDirective",
+    "ga.SubmitVerdict",
+    "ga.SetDecisionMakerAccess",
     "map.SetTerrain",
     "unit.PlanRoute",
   ]) {

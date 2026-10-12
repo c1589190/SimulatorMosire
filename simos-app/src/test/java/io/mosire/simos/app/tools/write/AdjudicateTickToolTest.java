@@ -188,8 +188,8 @@ class AdjudicateTickToolTest {
 
     Set<String> namespaces = namespacesOfRevision(after);
     assertThat(namespaces)
-        .as("各命令所属命名空间的键 + sd（决策结果）都在同一条 revision 里")
-        .contains("unit", "map", "sd");
+        .as("各命令所属命名空间的键 + ga（决策结果）都在同一条 revision 里")
+        .contains("unit", "map", "ga");
 
     JsonNode value = decisionResult(after, WORLD_TICK);
     assertThat(value.get("tick").asLong()).isEqualTo(WORLD_TICK);
@@ -226,7 +226,7 @@ class AdjudicateTickToolTest {
     assertThat(result.success()).as("裁决必须成（实际：%s）", result.message()).isTrue();
     long after = head();
     assertThat(after).as("★ 仍只有一条 revision（被拒的那条被剔出后重试，不是另落一条）").isEqualTo(before + 1 + 1);
-    assertThat(namespacesOfRevision(after)).contains("unit", "sd");
+    assertThat(namespacesOfRevision(after)).contains("unit", "ga");
 
     JsonNode value = decisionResult(after, WORLD_TICK);
     assertThat(value.get("commands")).hasSize(2);
@@ -303,7 +303,7 @@ class AdjudicateTickToolTest {
         commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"不该生效\"}"));
     assertThat(
             submit(
-                "sd.SetDirectiveStatus",
+                "ga.SetDirectiveStatus",
                 "{\"directiveId\":\"d-rejected\",\"status\":\"CANCELLED\"}"))
         .as("先把它打回（造出 CANCELLED 的前置）")
         .isInstanceOf(CommandResult.Committed.class);
@@ -821,19 +821,19 @@ class AdjudicateTickToolTest {
             MAP_ID + "/region/r-part",
             MAP_ID + "/hex/1_1"));
     samples.put(
-        "sd.DecideDecisionPacket",
+        "ga.DecideDecisionPacket",
         List.of(
             "{\"id\":\"pkt-x\",\"decision\":\"APPROVE\",\"decidedBy\":\"external-mcp\"}",
             "decision-packet/pkt-x"));
-    samples.put("sd.DeleteNation", List.of("{\"nationId\":\"n-x\"}", "nation/n-x"));
+    samples.put("gov.DeleteNation", List.of("{\"nationId\":\"n-x\"}", "nation/n-x"));
     samples.put(
-        "sd.SubmitDecisionPacket",
+        "ga.SubmitDecisionPacket",
         List.of("{\"id\":\"pkt-x\",\"proposerId\":\"dm-x\"}", "decision-packet/dm-x"));
     samples.put(
-        "sd.UpsertDecisionPacket",
+        "ga.UpsertDecisionPacket",
         List.of("{\"id\":\"pkt-x\",\"proposerId\":\"dm-x\"}", "decision-packet/dm-x"));
     samples.put(
-        "sd.UpsertMergedEffectPlan", List.of("{\"id\":\"merge-x\"}", "merged-plan/merge-x"));
+        "ga.UpsertMergedEffectPlan", List.of("{\"id\":\"merge-x\"}", "merged-plan/merge-x"));
     samples.put("social.DeleteCity", List.of("{\"id\":\"c-missing\"}"));
     samples.put(
         "social.MoveCity", List.of("{\"id\":\"c-missing\",\"at\":{\"q\":1,\"r\":1}}", "1_1"));
@@ -1041,7 +1041,7 @@ class AdjudicateTickToolTest {
 
     // 正向：ISSUED → EXECUTED 成；落地可重放。
     CommandResult first =
-        submit("sd.SetDirectiveStatus", "{\"directiveId\":\"d-army\",\"status\":\"EXECUTED\"}");
+        submit("ga.SetDirectiveStatus", "{\"directiveId\":\"d-army\",\"status\":\"EXECUTED\"}");
     assertThat(first).isInstanceOf(CommandResult.Committed.class);
     assertThat(sdAt(head()).directives().get(new DirectiveId("d-army")).status())
         .isEqualTo(DirectiveStatus.EXECUTED);
@@ -1049,7 +1049,7 @@ class AdjudicateTickToolTest {
     // ① 重复翻转（已终态，且还换了另一个终态）⇒ 拒，拒因写明**当前态与目标态**。
     long headBeforeRepeat = head();
     CommandResult repeat =
-        submit("sd.SetDirectiveStatus", "{\"directiveId\":\"d-army\",\"status\":\"CANCELLED\"}");
+        submit("ga.SetDirectiveStatus", "{\"directiveId\":\"d-army\",\"status\":\"CANCELLED\"}");
     assertThat(repeat).isInstanceOf(CommandResult.Rejected.class);
     assertThat(((CommandResult.Rejected) repeat).reason())
         .as("★ 重复翻转被拒且拒因可读（点名当前 EXECUTED、目标 CANCELLED）")
@@ -1060,7 +1060,7 @@ class AdjudicateTickToolTest {
 
     // ② 目标值非法（只允许两个终态；PLANNED 也不行）⇒ 拒。
     CommandResult illegal =
-        submit("sd.SetDirectiveStatus", "{\"directiveId\":\"d-fra\",\"status\":\"PLANNED\"}");
+        submit("ga.SetDirectiveStatus", "{\"directiveId\":\"d-fra\",\"status\":\"PLANNED\"}");
     assertThat(illegal).isInstanceOf(CommandResult.Rejected.class);
     assertThat(((CommandResult.Rejected) illegal).reason()).contains("目标状态非法").contains("PLANNED");
     assertThat(sdAt(head()).directives().get(new DirectiveId("d-fra")).status())
@@ -1069,7 +1069,7 @@ class AdjudicateTickToolTest {
 
     // ③ 令不存在 ⇒ 拒。
     CommandResult missing =
-        submit("sd.SetDirectiveStatus", "{\"directiveId\":\"ghost\",\"status\":\"EXECUTED\"}");
+        submit("ga.SetDirectiveStatus", "{\"directiveId\":\"ghost\",\"status\":\"EXECUTED\"}");
     assertThat(missing).isInstanceOf(CommandResult.Rejected.class);
     assertThat(((CommandResult.Rejected) missing).reason()).contains("决策不存在").contains("ghost");
   }
@@ -1086,7 +1086,7 @@ class AdjudicateTickToolTest {
     long tick = 5L;
     issueDirective(tick, DM_ARMY, "d-pre", commands());
     assertThat(
-            submit("sd.SetDirectiveStatus", "{\"directiveId\":\"d-pre\",\"status\":\"EXECUTED\"}"))
+            submit("ga.SetDirectiveStatus", "{\"directiveId\":\"d-pre\",\"status\":\"EXECUTED\"}"))
         .as("先把 d-pre 手工翻到终态（造出『翻转必然被拒』的前置）")
         .isInstanceOf(CommandResult.Committed.class);
     long before = head();
@@ -1220,7 +1220,7 @@ class AdjudicateTickToolTest {
                     INITIATOR,
                     main(),
                     new RevisionId(head()),
-                    "sd.IssueDirective",
+                    "ga.IssueDirective",
                     payload));
     assertThat(result).as("出令必须成: %s", result).isInstanceOf(CommandResult.Committed.class);
   }

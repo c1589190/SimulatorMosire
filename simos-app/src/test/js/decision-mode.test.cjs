@@ -572,7 +572,7 @@ test("say-and-context-reset-are-two-separate-explicit-actions", async () => {
 
 test("merged-button-sends-the-text-first-then-starts-and-runs", async () => {
   // ★★ 2026-09-23 用户裁定：「发送」/「让它跑一轮」/「开始决策」**三个按钮合并成一个**。
-  //   文本框有内容 ⇒ 点一下 = ① 先 say（进它的会话）→ ② sd.StartDecision → ③ 跑一轮，**顺序固定**。
+  //   文本框有内容 ⇒ 点一下 = ① 先 say（进它的会话）→ ② ga.StartDecision → ③ 跑一轮，**顺序固定**。
   //   判别力：去掉 ①、或把顺序换成"先发起再 say"，本条即红——而界面上那两种做法**看不出任何差别**。
   const h = renderHarness([DUE_MAKER]);
   h.P2.renderDecisionLeft({ mode: "decision", selection: { kind: "unit", id: "u-root" } });
@@ -588,7 +588,7 @@ test("merged-button-sends-the-text-first-then-starts-and-runs", async () => {
     [{ decisionMakerId: "dm-due", text: "守住北面的渡口", branch: "main", revision: null }],
     "① 先把补充指示发进会话（两端空白裁掉）"
   );
-  assert.equal(h.calls.startDecision.length, 1, "② 再发起（sd.StartDecision）");
+  assert.equal(h.calls.startDecision.length, 1, "② 再发起（ga.StartDecision）");
   assert.equal(h.calls.run.length, 1, "③ 最后跑一轮");
   assert.equal(h.app.byId("decision-say-text").value, "", "发送成功 ⇒ 清空文本框");
 
@@ -637,7 +637,8 @@ test("decision-maker-fields-project-the-server-shape", () => {
   const maker = {
     id: "dm-1",
     affiliation: { kind: "nation", id: "n1", displayName: "甲国", nationId: "n1", rootUnit: null },
-    allowedTools: ["sd.SubmitVerdict", "sd.IssueDirective"],
+    // ★★ 2026-10-13 收尾测试第 2 层：工具名从 sd.* 迁到 ga.*（决策族工具随模块改名，见 SimosToolsTest）。
+    allowedTools: ["ga.SubmitVerdict", "ga.IssueDirective"],
     cadence: 3,
     // ★ T9：`viewScope` → `accessLimit`（语义变了：不再是"绝对可见集合"，而是 GM 配的**额外限制**）
     accessLimit: {
@@ -651,7 +652,7 @@ test("decision-maker-fields-project-the-server-shape", () => {
   assert.equal(fields.id, "dm-1");
   assert.equal(fields.affiliation, "国家：甲国（n1）");
   assert.equal(fields.cadence, 3);
-  assert.equal(fields.allowedTools, "sd.SubmitVerdict、sd.IssueDirective");
+  assert.equal(fields.allowedTools, "ga.SubmitVerdict、ga.IssueDirective");
   assert.equal(fields.accessLimit.prefixesByNamespace, "map=2、unit=1");
   assert.equal(fields.accessLimit.adjudicationDisclosure, "FULL");
   assert.equal(fields.accessLimit.redactedFields, "position");
@@ -990,7 +991,7 @@ test("panels-js-and-app-js-delegate-subpage-visibility", () => {
   // T10 起「开始决策」由决策面板经 api.startDecision（窄端点）发出；命令类型由服务端写死（前端不传 type）。
   assert.match(panels, /api\s*\.\s*startDecision\(/, "panels.js 必须经 api.startDecision 发起");
   assert.ok(panels.includes('addEventListener("click", decideStartDecision)'), "按钮必须绑定发起动作");
-  assert.equal(app.includes("sd.StartDecision"), false, "app.js 仍不得含 StartDecision（窄端点专用）");
+  assert.equal(app.includes("ga.StartDecision"), false, "app.js 仍不得含 StartDecision（窄端点专用）");
 });
 
 // ── 子页 tab 条（2026-09-23 用户裁定：radio 组 → 横排 tab 条）──────────────────

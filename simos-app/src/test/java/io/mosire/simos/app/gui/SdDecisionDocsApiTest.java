@@ -246,7 +246,7 @@ class SdDecisionDocsApiTest {
       payload.append(",\"affiliations\":").append(affiliationsJson);
     }
     payload.append('}');
-    submit("sd.PutInfo", payload.toString());
+    submit("ga.PutInfo", payload.toString());
   }
 
   /** JSON 字符串里再嵌 JSON 文本：只需转义反斜杠与引号（夹具里的正文不含别的特殊字符）。 */
@@ -278,12 +278,12 @@ class SdDecisionDocsApiTest {
         "map.UpdateRegion",
         "{\"regionId\":\"" + regions.get(1) + "\",\"meta\":{\"tag\":\"nation:n2\"}}");
     submit(
-        "sd.CreateNation",
+        "gov.CreateNation",
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\""
             + regions.get(0)
             + "\",\"adminBudgetPerTick\":10}");
     submit(
-        "sd.CreateNation",
+        "gov.CreateNation",
         "{\"nationId\":\"n2\",\"name\":\"乙国\",\"homeRegionId\":\""
             + regions.get(1)
             + "\",\"adminBudgetPerTick\":10}");
@@ -292,7 +292,7 @@ class SdDecisionDocsApiTest {
           {"dm-a", "nation", "n1"}, {"dm-c", "nation", "n1"}, {"dm-b", "nation", "n2"}
         }) {
       submit(
-          "sd.CreateDecisionMaker",
+          "ga.CreateDecisionMaker",
           "{\"id\":\""
               + dm[0]
               + "\",\"affiliation\":{\"kind\":\""

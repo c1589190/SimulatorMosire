@@ -230,6 +230,10 @@ class AdjudicationEndToEndTest {
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new GaCodec());
+    // ★★ 2026-10-13 收尾测试第 2 层：乙收尾起 `armies` 住 army 片 ⇒ 信封必须有 ArmyCodec（缺 ⇒ 创世当场抛）。
+    core.register(new io.mosire.simos.army.codec.ArmyCodec());
+    // ★ 同批：`nations` 住 gov 片 ⇒ 信封也要 GovCodec。
+    core.register(new io.mosire.simos.gov.codec.GovCodec());
     core.register(new SubmitVerdictHandler());
     core.bootstrapGenesis(genesis());
     return core;

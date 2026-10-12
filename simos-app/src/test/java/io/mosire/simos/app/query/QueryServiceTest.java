@@ -220,7 +220,7 @@ class QueryServiceTest {
         .as("就地修改尝试之后，缓存仍在且未被污染")
         .isSameAs(first);
     assertThat(queryService.stateAt(QueryTarget.head(main())).modules().keySet())
-        .containsExactlyInAnyOrder("map", "unit", "social", "sd");
+        .containsExactlyInAnyOrder("map", "unit", "social", "ga");
   }
 
   @Test

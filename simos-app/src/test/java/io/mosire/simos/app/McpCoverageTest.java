@@ -42,6 +42,8 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
@@ -152,14 +154,17 @@ class McpCoverageTest {
           "actor.Seed",
           "actor.TransferAccounts",
           "army.AppendCombatStage",
+          "army.AssignDecisionMakerArmy",
+          "army.CreateArmy",
           "army.RecordCombat",
           "army.ResolveCombatStage",
+          "army.SetArmyMasterGov",
           "economy.AddDemand",
+          "economy.AuthorizeGovernmentMarketOrder",
           "economy.CancelDemand",
+          "economy.CancelGovernmentMarketOrder",
           "economy.ClearRegion",
-          // ★★ A1：币种词表（定义 / 改名）
           "economy.DefineCurrency",
-          // ★★ B2：市场区（定义 / 重挂格 / 合并）+ A2a：市场格计价币
           "economy.DefineMarketZone",
           "economy.GmAdjust",
           "economy.MergeMarketZones",
@@ -172,26 +177,20 @@ class McpCoverageTest {
           "economy.RemoveHouseholdPeriodicAdjustment",
           "economy.RenameCurrency",
           "economy.Seed",
+          "economy.SetCommodityFreight",
+          "economy.SetEconomyPolicy",
+          "economy.SetGovServiceCommitment",
+          "economy.SetGovernmentMintScale",
+          "economy.SetGovernmentPolicy",
           "economy.SetHouseholdClass",
           "economy.SetHouseholdLabor",
           "economy.SetHouseholdParticipation",
-          "economy.AuthorizeGovernmentMarketOrder",
-          "economy.CancelGovernmentMarketOrder",
-          "economy.SetCommodityFreight",
-          // ★★ W2（2026-10-11）：逐区动态价步长 α 的 GM 写口（140 → 141）
-          "economy.SetMarketZonePriceAlpha",
-          // ★★ W5-fix6（2026-10-11）：政府铸币政策旋钮的 GM 写口（141 → 142）
-          "economy.SetGovernmentMintScale",
-          // ★★ W5.5（2026-10-11，S-12⑤）：货币市场利率的自适应步长 α 的 GM 写口（142 → 143）
-          "economy.SetMarketZoneLoanRateAlpha",
-          // ★★ W10（2026-10-11，用户裁定「凡"行为"一律做成 GM 可调的预设」）：经济侧行为值政策预设的 GM 写口
-          //   （143 → 144；★ catalog 早已列出它，本表当时没跟上 ⇒ 本条红属**基线陈旧**）
-          "economy.SetEconomyPolicy",
           "economy.SetMarketNumeraire",
           "economy.SetMarketPrice",
+          "economy.SetMarketZoneLoanRateAlpha",
+          "economy.SetMarketZonePriceAlpha",
           "economy.SetOfficialRate",
           "economy.SwitchMode",
-          "economy.SetGovServiceCommitment",
           "economy.TransferAssetShare",
           "economy.UnitBorrow",
           "economy.UnitRepay",
@@ -199,10 +198,29 @@ class McpCoverageTest {
           "economy.UpsertGovUnit",
           "economy.UpsertHouseholdPeriodicAdjustment",
           "economy.UpsertIndustry",
-          // ★★ 追加裁定 12（2026-10-12 §21.9 D-1/D-3）：三类政府政策（口岸/预算/编制）的通用写口；
-          //   旧三条 gov.SetPortPolicy / gov.SetAdministrationPlan / gov.SetBudgetPolicy 已删除（不留别名）
-          //   ⇒ 扫描面 144 → 142（-3 +1）。
-          "economy.SetGovernmentPolicy",
+          "ga.CancelEffect",
+          "ga.CreateDecisionMaker",
+          "ga.DecideDecisionPacket",
+          "ga.DeleteDecisionMaker",
+          "ga.IssueDirective",
+          "ga.PutInfo",
+          "ga.RegisterEffect",
+          "ga.ResetDecisionMakerConversation",
+          "ga.RunDecision",
+          "ga.SetDecisionMakerAccess",
+          "ga.SetDecisionMakerProvider",
+          "ga.SetDirectiveStatus",
+          "ga.StartDecision",
+          "ga.SubmitDecisionPacket",
+          "ga.SubmitVerdict",
+          "ga.UpsertDecisionPacket",
+          "ga.UpsertMergedEffectPlan",
+          "gov.AssignDecisionMakerGov",
+          "gov.AssignDecisionMakerNation",
+          "gov.CreateNation",
+          "gov.DeleteNation",
+          "gov.RecordDiplomaticEvent",
+          "gov.SetDiplomaticRelation",
           "map.CreateRegion",
           "map.DeleteRegion",
           "map.MergeRegions",
@@ -211,37 +229,10 @@ class McpCoverageTest {
           "map.RegisterPathwayGroup",
           "map.RenameRegion",
           "map.SetEdge",
+          "map.SetHexArea",
           "map.SetTerrain",
           "map.SplitRegion",
           "map.UpdateRegion",
-          "sd.AddCombatStage",
-          "sd.CancelEffect",
-          "sd.CommitCombatOutcome",
-          "sd.CreateArmy",
-          "sd.CreateCombat",
-          "sd.CreateDecisionMaker",
-          "sd.CreateNation",
-          "sd.DecideDecisionPacket",
-          "sd.DeleteDecisionMaker",
-          "sd.DeleteNation",
-          "sd.IssueDirective",
-          "sd.PutInfo",
-          "sd.RecordCasualties",
-          "sd.RecordDiplomaticEvent",
-          "sd.RegisterEffect",
-          "sd.ResetDecisionMakerConversation",
-          "sd.RunDecision",
-          "sd.SetArmyMasterGov",
-          "sd.SetDecisionMakerAccess",
-          "sd.SetDecisionMakerProvider",
-          "sd.SetDiplomaticRelation",
-          "sd.SetDirectiveStatus",
-          "sd.SetStageOutcomeTable",
-          "sd.StartDecision",
-          "sd.SubmitDecisionPacket",
-          "sd.SubmitVerdict",
-          "sd.UpsertDecisionPacket",
-          "sd.UpsertMergedEffectPlan",
           "social.AddHouseholdMembers",
           "social.AdjustHouseholdPopulation",
           "social.ClearRegion",
@@ -315,6 +306,9 @@ class McpCoverageTest {
    */
   private static final Set<String> PRECONDITION_REJECT_TYPES =
       Set.of(
+          // ★★ 2026-10-13 收尾测试第 2 层：乙收尾三条赋权命令里 gov 那条要一个**存在的 GOV 单位**
+          //   （本夹具世界没有 ⇒ 载荷形状合法但必须具名拒）；另两条（nation/army）的目标建得出来 ⇒ 走正常覆盖。
+          "gov.AssignDecisionMakerGov",
           "economy.SwitchMode",
           "economy.GmAdjust",
           "economy.MigrateHousehold",
@@ -344,7 +338,7 @@ class McpCoverageTest {
           "economy.CancelGovernmentMarketOrder",
           "actor.RemitGovTreasury",
           "unit.SetFormationOffset",
-          "sd.DeleteDecisionMaker",
+          "ga.DeleteDecisionMaker",
           "actor.DeductHouseholdStock",
           "actor.TransferAccounts",
           "economy.RemoveHouseholdPeriodicAdjustment",
@@ -358,11 +352,11 @@ class McpCoverageTest {
           "map.MergeRegions",
           "map.ReassignHexes",
           "map.SplitRegion",
-          "sd.DecideDecisionPacket",
-          "sd.DeleteNation",
-          "sd.SubmitDecisionPacket",
-          "sd.UpsertDecisionPacket",
-          "sd.UpsertMergedEffectPlan",
+          "ga.DecideDecisionPacket",
+          "gov.DeleteNation",
+          "ga.SubmitDecisionPacket",
+          "ga.UpsertDecisionPacket",
+          "ga.UpsertMergedEffectPlan",
           "social.DeleteCity",
           "social.MoveCity",
           "social.MovePopulationLots",
@@ -384,6 +378,11 @@ class McpCoverageTest {
   /** 每条 {@link #PRECONDITION_REJECT_TYPES} 的载荷：形状合法，但在本夹具必然具名拒（缺前置 / 已退役）且不推 revision。 */
   private static final Map<String, String> PRECONDITION_REJECT_PAYLOADS =
       Map.ofEntries(
+          // ★★ 2026-10-13 收尾测试第 2 层：乙收尾的 gov 赋权命令 —— 载荷形状合法，但本夹具世界没有 GOV 单位
+          //   ⇒ 走具名拒路径（与下面那批同款）。
+          Map.entry(
+              "gov.AssignDecisionMakerGov",
+              "{\"decisionMakerId\":\"dm-cov\",\"govUnitId\":\"g-missing\"}"),
           Map.entry(
               "economy.SwitchMode",
               "{\"organizationId\":\"org-missing\",\"toModeId\":\"mode-missing\",\"retainOriginalPerMille\":1000,\"effectiveDay\":7,\"reason\":\"coverage\"}"),
@@ -449,7 +448,7 @@ class McpCoverageTest {
               "actor.RemitGovTreasury",
               "{\"household\":\"hh-missing\",\"fromHousehold\":\"hh-missing\",\"toHousehold\":\"hh-missing2\",\"grain\":1}"),
           Map.entry("unit.SetFormationOffset", "{\"id\":\"u-2\",\"dq\":1,\"dr\":0}"),
-          Map.entry("sd.DeleteDecisionMaker", "{\"decisionMakerId\":\"dm-ghost\"}"),
+          Map.entry("ga.DeleteDecisionMaker", "{\"decisionMakerId\":\"dm-ghost\"}"),
           Map.entry(
               "actor.DeductHouseholdStock",
               "{\"entries\": [{\"household\": \"hh-missing\", \"goods\": {\"grain\": 1}, \"reason\": \"jurisdiction_tax\"}]}"),
@@ -489,17 +488,17 @@ class McpCoverageTest {
               "map.SplitRegion",
               "{\"sourceRegionId\": \"r-missing\", \"keepSource\": false, \"parts\": [{\"regionId\": \"r-p1\", \"name\": \"p1\", \"hexes\": [{\"q\": 0, \"r\": 0}]}]}"),
           Map.entry(
-              "sd.DecideDecisionPacket",
+              "ga.DecideDecisionPacket",
               "{\"id\": \"pkt-missing\", \"decision\": \"APPROVE\", \"decidedBy\": \"external-mcp\"}"),
-          Map.entry("sd.DeleteNation", "{\"nationId\": \"n-missing\"}"),
+          Map.entry("gov.DeleteNation", "{\"nationId\": \"n-missing\"}"),
           Map.entry(
-              "sd.SubmitDecisionPacket",
+              "ga.SubmitDecisionPacket",
               "{\"id\": \"pkt-missing\", \"proposerId\": \"dm-missing\"}"),
           Map.entry(
-              "sd.UpsertDecisionPacket",
+              "ga.UpsertDecisionPacket",
               "{\"id\": \"\", \"branch\": \"main\", \"tick\": 7, \"proposerId\": \"dm-missing\"}"),
           Map.entry(
-              "sd.UpsertMergedEffectPlan",
+              "ga.UpsertMergedEffectPlan",
               "{\"id\": \"\", \"tick\": 7, \"participantIds\": [], \"orderedEffects\": [], \"sources\": []}"),
           Map.entry("social.DeleteCity", "{\"id\": \"c-missing\"}"),
           Map.entry("social.MoveCity", "{\"id\": \"c-missing\", \"at\": {\"q\": 0, \"r\": 0}}"),
@@ -678,63 +677,52 @@ class McpCoverageTest {
         "map.RandomizeRegion",
         "{\"hexes\":[{\"q\":1,\"r\":1}],\"terrainA\":\"plains\",\"terrainB\":\"desert\",\"seed\":7}");
     MINIMAL_PAYLOADS.put(
-        "sd.CreateNation",
+        "gov.CreateNation",
         "{\"nationId\":\"n-cov\",\"name\":\"覆盖国\",\"homeRegionId\":\"r-nation\","
             + "\"adminBudgetPerTick\":1}");
     // ★ 阶段 12：sd.CreateArmy 去掉 nationId（发 nationId 会被具名拒）；masterGovUnitId 可省略 = 未认主子。
     MINIMAL_PAYLOADS.put(
-        "sd.CreateArmy", "{\"armyId\":\"a-cov\",\"rootUnitId\":\"u-2\",\"name\":\"覆盖军\"}");
+        "army.CreateArmy", "{\"armyId\":\"a-cov\",\"rootUnitId\":\"u-2\",\"name\":\"覆盖军\"}");
     MINIMAL_PAYLOADS.put(
-        "sd.CreateDecisionMaker",
-        "{\"id\":\"dm-cov\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n-cov\"},"
-            + "\"allowedTools\":[\"sd.SubmitVerdict\"],\"cadence\":1}");
+        "ga.CreateDecisionMaker",
+        // ★★ 2026-10-13 收尾测试第 2 层：乙收尾起 ga.CreateDecisionMaker **不再接受 affiliation**
+        //   （「归属肯定归模块」⇒ 先建裸决策人，再用 gov./army.AssignDecisionMaker* 赋归属）⇒ 旧载荷会被具名拒。
+        "{\"id\":\"dm-cov\"," + "\"allowedTools\":[\"ga.SubmitVerdict\"],\"cadence\":1}");
     // 「把会话换一段新的」：放在 CreateDecisionMaker **之后**（此刻 dm-cov 已存在），
     // 且**不挪动任何已有命令的位置**——本用例逐条断言 revision 号，位置敏感。
-    MINIMAL_PAYLOADS.put("sd.ResetDecisionMakerConversation", "{\"decisionMakerId\":\"dm-cov\"}");
-    MINIMAL_PAYLOADS.put("sd.PutInfo", "{\"address\":\"map:Map1\",\"key\":\"k\",\"value\":\"v\"}");
+    MINIMAL_PAYLOADS.put("ga.ResetDecisionMakerConversation", "{\"decisionMakerId\":\"dm-cov\"}");
+    MINIMAL_PAYLOADS.put("ga.PutInfo", "{\"address\":\"map:Map1\",\"key\":\"k\",\"value\":\"v\"}");
+    // ★★ 2026-10-13 收尾测试第 2 层：旧战斗族 4 条命令已随批次 3d-2 退役（用户裁定「把 1、2、3、5 给废除掉」）
+    //   ⇒ 它们既不进 catalog 也不进本表。现存的交战写口 = army.RecordCombat / army.AppendCombatStage /
+    //   army.ResolveCombatStage。
+    //   ★ 这里原本还有一条 `army.AppendCombatStage`（旧 sd 时代指向 `c-cov`）——它引用的交战记录
+    //     已随退役消失，且**位置在 `army.RecordCombat` 之前** ⇒ 必然具名拒。整条删除（同名键在下面
+    //     由 `army.RecordCombat` 建出 `c-army` 之后再补阶段，那才是本仓现在的顺序）。
     MINIMAL_PAYLOADS.put(
-        "sd.CreateCombat", "{\"combatId\":\"c-cov\",\"name\":\"覆盖交战\",\"participants\":[\"u-4\"]}");
-    MINIMAL_PAYLOADS.put(
-        "sd.AddCombatStage",
-        "{\"combatId\":\"c-cov\",\"combatStateId\":\"cs-cov\",\"hex\":{\"q\":1,\"r\":1},"
-            + "\"stage\":{\"stageId\":\"s-cov\",\"name\":\"阶段一\",\"participants\":[\"u-4\"],"
-            + "\"entry\":[{\"@class\":\"at_or_after_tick\",\"tick\":0}],"
-            + "\"exit\":[{\"@class\":\"at_or_after_tick\",\"tick\":9}],"
-            + "\"outcomes\":{\"options\":[{\"id\":\"o-cov\",\"label\":\"胜\",\"weight\":1}]}}}");
-    MINIMAL_PAYLOADS.put(
-        "sd.SetStageOutcomeTable",
-        "{\"combatId\":\"c-cov\",\"stageId\":\"s-cov\","
-            + "\"outcomes\":{\"options\":[{\"id\":\"o-cov\",\"label\":\"胜\",\"weight\":2}]}}");
-    MINIMAL_PAYLOADS.put(
-        "sd.RecordCasualties",
-        // ★ S3b：人员战损的唯一上界 = Social 家户现算人口；本夹具的 u-4 没有人口家户 ⇒ 只记装备损失。
-        "{\"combatId\":\"c-cov\",\"stageId\":\"s-cov\","
-            + "\"deltas\":[{\"unit\":\"u-4\",\"equipment\":{\"步枪\":-1},"
-            + "\"lossClass\":\"PERMANENT\"}]}");
-    MINIMAL_PAYLOADS.put(
-        "sd.CommitCombatOutcome",
-        "{\"combatId\":\"c-cov\",\"stageId\":\"s-cov\",\"selectedOutcomeId\":\"o-cov\"}");
-    MINIMAL_PAYLOADS.put(
-        "sd.RegisterEffect",
+        "ga.RegisterEffect",
         "{\"effectId\":\"e-cov\",\"kind\":\"SCHEDULED\","
             + "\"trigger\":{\"@class\":\"at_or_after_tick\",\"tick\":9},"
-            + "\"action\":{\"@class\":\"enqueue_unit_command\",\"type\":\"unit.ApplyCasualties\","
-            + "\"payloadJson\":\"{\\\"id\\\":\\\"u-4\\\","
-            + "\\\"manpower\\\":[{\\\"type\\\":\\\"步兵\\\",\\\"amount\\\":-1}],"
-            + "\\\"equipment\\\":[{\\\"type\\\":\\\"步枪\\\",\\\"amount\\\":-1}]}\"}}");
-    MINIMAL_PAYLOADS.put("sd.CancelEffect", "{\"effectId\":\"e-cov\"}");
+            // ★★ 2026-10-13 收尾测试第 2 层：批次 4 的权限收紧把 `unit.ApplyCasualties` 摘出了
+            //   可入队面（DmUsableCommand 66 → 17）⇒ 旧 action 会被具名拒（"action 引用的命令不在白名单"）。
+            //   换成**仍在面上**的 `unit.CancelRoute`（同样是 unit 命名空间的写），判据（"效果真入队且落地"）不变。
+            + "\"action\":{\"@class\":\"enqueue_unit_command\",\"type\":\"unit.CancelRoute\","
+            + "\"payloadJson\":\"{\\\"id\\\":\\\"u-4\\\"}\"}}");
+    MINIMAL_PAYLOADS.put("ga.CancelEffect", "{\"effectId\":\"e-cov\"}");
     // ── D 阶段新增的 3 条（语义合法序：SetDecisionMakerAccess 与 IssueDirective 需 dm-cov，SubmitVerdict 只查地址形态）──
     MINIMAL_PAYLOADS.put(
-        "sd.SetDecisionMakerAccess",
+        "ga.SetDecisionMakerAccess",
         "{\"decisionMakerId\":\"dm-cov\",\"accessLimit\":{\"map\":[\"Map1/region/r1\"]},"
             + "\"adjudicationDisclosure\":\"FULL\"}");
     MINIMAL_PAYLOADS.put(
-        "sd.IssueDirective",
+        "ga.IssueDirective",
         "{\"directiveId\":\"d-cov\",\"decisionMakerId\":\"dm-cov\",\"tick\":0,"
             + "\"intentInfo\":\"推进\",\"commands\":[]}");
     MINIMAL_PAYLOADS.put(
-        "sd.SubmitVerdict",
-        "{\"verdictId\":\"v-cov\",\"breakpoint\":\"D1\",\"subject\":\"sd:combat.c-cov\","
+        "ga.SubmitVerdict",
+        // ★★ 2026-10-13 收尾测试第 2 层：D1 的判决主体地址族已由 `sd:combat.*` 改挂
+        //   `army:combat.*`（批次 3d-2，`Breakpoints.acceptsVerdictSubject` 按断点分别判命名空间）⇒ 旧 subject
+        //   会被具名拒。§①.2 的"地址族命名空间"那一类：**改**。
+        "{\"verdictId\":\"v-cov\",\"breakpoint\":\"D1\",\"subject\":\"army:combat.c-cov\","
             + "\"payload\":\"{\\\"stageId\\\":\\\"s-cov\\\",\\\"selectedOutcomeId\\\":\\\"o-cov\\\","
             + "\\\"casualtyDeltas\\\":[],\\\"rationaleText\\\":\\\"推进\\\"}\","
             + "\"meta\":{\"model\":\"m\",\"promptVersion\":\"p\",\"inputBriefDigest\":\"d\"}}");
@@ -743,17 +731,17 @@ class McpCoverageTest {
         "map.RegisterPathwayGroup",
         "{\"id\":\"canal\",\"name\":\"运河\",\"color\":\"#3A7BD5\",\"description\":\"人工水道\"}");
     // T10：「开始决策」——同样放最后（dm-cov 已在 sd.CreateDecisionMaker 建好）⇒ 不移动前面各命令的 revision 号。
-    MINIMAL_PAYLOADS.put("sd.StartDecision", "{\"decisionMakerId\":\"dm-cov\",\"note\":\"覆盖\"}");
+    MINIMAL_PAYLOADS.put("ga.StartDecision", "{\"decisionMakerId\":\"dm-cov\",\"note\":\"覆盖\"}");
     // M11：决策人绑定 provider（同样放最后；dm-cov 已在 sd.CreateDecisionMaker 建好）⇒ 不移动前面的 revision 号。
     MINIMAL_PAYLOADS.put(
-        "sd.SetDecisionMakerProvider", "{\"decisionMakerId\":\"dm-cov\",\"providerId\":\"p-cov\"}");
+        "ga.SetDecisionMakerProvider", "{\"decisionMakerId\":\"dm-cov\",\"providerId\":\"p-cov\"}");
     // T11C：触发一轮决策人 agent 的那条**命令**（窄工具走的是另一条路：命令落盘之后才真跑 LLM）。
     //   同样放最后（dm-cov 早已建好）⇒ 不移动前面各命令的 revision 号。
-    MINIMAL_PAYLOADS.put("sd.RunDecision", "{\"decisionMakerId\":\"dm-cov\"}");
+    MINIMAL_PAYLOADS.put("ga.RunDecision", "{\"decisionMakerId\":\"dm-cov\"}");
     // 第 3 波最后一块：令的状态翻转（sd.SetDirectiveStatus）。放最后，且必须排在 sd.IssueDirective 之后
     //   （d-cov 此刻已存在、状态 ISSUED）⇒ 不移动前面各命令的 revision 号。它是裁决内部编排用的命令类型。
     MINIMAL_PAYLOADS.put(
-        "sd.SetDirectiveStatus", "{\"directiveId\":\"d-cov\",\"status\":\"EXECUTED\"}");
+        "ga.SetDirectiveStatus", "{\"directiveId\":\"d-cov\",\"status\":\"EXECUTED\"}");
     // social（3 条）：逐格农村人口 + 城市节点。放最后 ⇒ 不移动前面各命令的 revision 号；
     //   三条都必须产生**非空**变更集（SetPopulation 设一格人口、CreateCity 建城、UpdateCity 改它）。
     MINIMAL_PAYLOADS.put(
@@ -763,6 +751,16 @@ class McpCoverageTest {
         "social.CreateCity", "{\"id\":\"city-cov\",\"name\":\"覆盖城\",\"at\":{\"q\":1,\"r\":1}}");
     MINIMAL_PAYLOADS.put(
         "social.UpdateCity", "{\"id\":\"city-cov\",\"name\":\"覆盖城改\",\"props\":{\"tier\":1}}");
+    // ★★ 2026-10-13 收尾测试第 2 层新增的 3 条（批次 2 的 hex 属性表 + 乙收尾的三条赋权命令之中
+    //   目标建得出来的两条）。一律**放最后** ⇒ 不移动前面各命令的 revision 号（本用例逐条断言 revision）。
+    //   ★ 三条的前置（dm-cov / n-cov / a-cov）都已在前面几条命令里建好。
+    MINIMAL_PAYLOADS.put(
+        "map.SetHexArea",
+        "{\"hex\":{\"q\":1,\"r\":1},\"key\":\"urban\",\"op\":\"set\",\"value\":10}");
+    MINIMAL_PAYLOADS.put(
+        "gov.AssignDecisionMakerNation", "{\"decisionMakerId\":\"dm-cov\",\"nationId\":\"n-cov\"}");
+    MINIMAL_PAYLOADS.put(
+        "army.AssignDecisionMakerArmy", "{\"decisionMakerId\":\"dm-cov\",\"armyId\":\"a-cov\"}");
     // ★ R2a（2026-09-25）：经济播种。放最后 ⇒ 不移动前面各命令的 revision 号；
     //   一格一产业一行（必须产生**非空**变更集）。
     //   ★ R3（V7）：配方多了两个分量（`capacityPerUnit` = "单位规模"的锚、`laborPerUnit` = 劳动那一路），
@@ -903,16 +901,19 @@ class McpCoverageTest {
         "unit.AdjustComposition",
         "{\"id\":\"u-2\",\"equipment\":[{\"type\":\"步枪\",\"amount\":1}]}");
     MINIMAL_PAYLOADS.put(
-        "sd.SetDiplomaticRelation",
+        "gov.SetDiplomaticRelation",
         "{\"from\":\"n-cov\",\"to\":\"n-seed\",\"kind\":\"称臣纳贡\",\"text\":\"覆盖关系\"}");
     MINIMAL_PAYLOADS.put(
-        "sd.RecordDiplomaticEvent", "{\"participants\":[\"n-cov\",\"n-seed\"],\"text\":\"覆盖谈判\"}");
+        "gov.RecordDiplomaticEvent", "{\"participants\":[\"n-cov\",\"n-seed\"],\"text\":\"覆盖谈判\"}");
     MINIMAL_PAYLOADS.put(
         "army.RecordCombat",
         "{\"id\":\"c-army\",\"kind\":\"野战\",\"hex\":{\"q\":1,\"r\":1},"
             + "\"participants\":[\"u-2\"],\"text\":\"覆盖交战\","
             + "\"initialStage\":{\"id\":\"s1\",\"name\":\"初始\",\"text\":\"覆盖阶段\","
             + "\"outcomes\":[{\"id\":\"o1\",\"label\":\"胜\",\"weight\":1}]}}");
+    // ★★ 2026-10-13 收尾测试第 2 层：旧战斗族 4 条命令已随批次 3d-2 退役（用户裁定「把 1、2、3、5 给废除掉」）
+    //   ⇒ 它们既不进 catalog 也不进本表。现存的交战写口 = army.RecordCombat / army.AppendCombatStage /
+    //   army.ResolveCombatStage。
     MINIMAL_PAYLOADS.put(
         "army.AppendCombatStage",
         "{\"combatId\":\"c-army\",\"stage\":{\"id\":\"s2\",\"name\":\"第二阶段\","
@@ -923,7 +924,7 @@ class McpCoverageTest {
     //   上面的具名拒分支（不推 revision）。
     MINIMAL_PAYLOADS.put("map.RenameRegion", "{\"regionId\":\"r-nation\",\"name\":\"覆盖改名\"}");
     MINIMAL_PAYLOADS.put(
-        "sd.SetArmyMasterGov", "{\"armyId\":\"a-cov\",\"masterGovUnitId\":\"u-2\"}");
+        "army.SetArmyMasterGov", "{\"armyId\":\"a-cov\",\"masterGovUnitId\":\"u-2\"}");
 
     // ── S3a（2026-10-09）的 8 条家户/人口命令：追加在最后 ⇒ 不移动上面任何命令的 revision 号。──
     //   语义序：先建家户 hh-cov（HEX）→ 加成员 → 设率 → 调人口 → 减员 → 转移给 social.SeedGroups
@@ -1048,7 +1049,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 142 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142）")
+            "catalog 列出的 type 与 Shell 注册的 141 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = **141**）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);
@@ -1326,6 +1327,10 @@ class McpCoverageTest {
                 "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty()),
                 // ★ D1/D4：army 切片在场（army.RecordCombat 等三条命令要往它上面施加变更集）。
                 "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty()),
+                // ★★ 2026-10-13 收尾测试第 2 层：**ga 切片在场**（决策族 7 组件 3e 起住它）——
+                //   上面 codec 表里一直有 GaCodec，但状态里**少这一片** ⇒ 第一条 ga.* 命令就撞
+                //   "state 里没有 ga 切片（装配故障）"。这是第 1 层机械改名时漏掉的一片。
+                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty()),
                 // ★ P2-C：gov 切片在场（worldgen 建 GOV 编制后 advance 要写行政读数）。
                 // ★ 2026-10-13 收尾测试第 1 层（机械修复）：D5 预置的**第二个 Nation**（n-seed）自乙收尾起
                 //   住 gov 片（原先住 sd 片）——gov.SetDiplomaticRelation / RecordDiplomaticEvent 的

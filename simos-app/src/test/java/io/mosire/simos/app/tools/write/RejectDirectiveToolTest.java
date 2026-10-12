@@ -194,8 +194,8 @@ class RejectDirectiveToolTest {
     long after = head();
     assertThat(after).as("★ 打回恰好一条 revision（状态翻转 + 审计同批）").isEqualTo(beforeReject + 1);
 
-    // ★ 世界观无变更：那一条 revision 只碰 sd 命名空间；单位名一字未动。
-    assertThat(namespacesOfRevision(after)).as("打回只改 sd 域（不执行令、不动世界观）").containsExactly("sd");
+    // ★ 世界观无变更：那一条 revision 只碰 ga 命名空间（决策族切片；`sd` 已随批次 3e 退役）；单位名一字未动。
+    assertThat(namespacesOfRevision(after)).as("打回只改 ga 域（不执行令、不动世界观）").containsExactly("ga");
     assertThat(unitName(after, U1)).isEqualTo("第一连");
 
     assertThat(sdAt(after).directives().get(new DirectiveId("d-shanghai-0001")).status())
@@ -392,7 +392,7 @@ class RejectDirectiveToolTest {
                 INITIATOR,
                 main(),
                 new RevisionId(head()),
-                "sd.IssueDirective",
+                "ga.IssueDirective",
                 payload));
   }
 

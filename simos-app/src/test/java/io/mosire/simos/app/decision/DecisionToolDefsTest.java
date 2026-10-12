@@ -30,7 +30,7 @@ class DecisionToolDefsTest {
    * 它**不是**生产白名单的副本——生产里一份清单都没有。
    */
   private static final Set<String> FIXTURE_FACE =
-      Set.of("simos.command.catalog", "simos.map.hex", "simos.map.overview", "sd.IssueDirective");
+      Set.of("simos.command.catalog", "simos.map.hex", "simos.map.overview", "ga.IssueDirective");
 
   /** 白名单之外的 GM 工具（真的注册着，用来证明"注册了就一定露出来"是不成立的）。 */
   private static final List<String> GM_ONLY_TOOLS =

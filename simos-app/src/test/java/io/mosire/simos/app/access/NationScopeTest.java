@@ -16,6 +16,18 @@ import org.junit.jupiter.api.Test;
  */
 class NationScopeTest {
 
+  /**
+   * ★★ <b>每个国家一条归属行</b>（2026-10-13 收尾测试第 2 层）：{@link ScopeFixtures#scopesFor} 的入参是 nationId，而"这个决策人
+   * 归属哪个国家"住在 {@code GovState.nationAffiliations()} 里、按 dmId 索引 ⇒ 夹具必须<b>先把 dm 建出来、再带着它建世界</b>。
+   */
+  private static final ScopeFixtures.Affiliated DM_FRA = ScopeFixtures.nationDm("dm-FRA", "FRA");
+
+  private static final ScopeFixtures.Affiliated DM_GER = ScopeFixtures.nationDm("dm-GER", "GER");
+
+  private static final ScopeFixtures.Affiliated DM_FRAX = ScopeFixtures.nationDm("dm-FRAX", "FRAX");
+
+  private static final ScopeFixtures.Affiliated DM_XXX = ScopeFixtures.nationDm("dm-XXX", "XXX");
+
   private static final SimulationState STATE =
       ScopeFixtures.state(
           ScopeFixtures.mapOf(
@@ -25,11 +37,18 @@ class NationScopeTest {
               ScopeFixtures.nationRegion("702", "FRAX", new HexCoord(2, 1)),
               ScopeFixtures.taggedRegion("900", null, new HexCoord(2, 2))),
           ScopeFixtures.units(),
-          ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+          ScopeFixtures.sdWithArmy("a1", "FRA", "u-1", "GER", "FRAX", "XXX"),
+          DM_FRA,
+          DM_GER,
+          DM_FRAX,
+          DM_XXX);
 
   private static ResourceScopeMap scopesFor(String nationId) {
     return DecisionScopeFunctions.defaults()
-        .scopesFor(ScopeFixtures.nationDm("dm-" + nationId, nationId), STATE, ScopeFixtures.MAP_ID);
+        .scopesFor(
+            ScopeFixtures.nationDm("dm-" + nationId, nationId).maker(),
+            STATE,
+            ScopeFixtures.MAP_ID);
   }
 
   @Test
@@ -104,11 +123,11 @@ class NationScopeTest {
                 ScopeFixtures.unit("u-1", new HexCoord(1, 1)),
                 ScopeFixtures.unit("u-2", new HexCoord(1, 2)),
                 ScopeFixtures.positionlessUnit("u-3")),
-            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1", "GER"),
+            DM_FRA);
 
     ResourceScopeMap scopes =
-        DecisionScopeFunctions.defaults()
-            .scopesFor(ScopeFixtures.nationDm("dm-FRA", "FRA"), state, ScopeFixtures.MAP_ID);
+        DecisionScopeFunctions.defaults().scopesFor(DM_FRA.maker(), state, ScopeFixtures.MAP_ID);
 
     ResourceScope unitScope = scopes.declaredScope("unit");
     assertThat(unitScope.unrestricted()).as("受限范围不得退化成 unlimited()").isFalse();
@@ -126,11 +145,11 @@ class NationScopeTest {
                 ScopeFixtures.nationRegion("701", "FRA", new HexCoord(1, 1), new HexCoord(2, 1)),
                 ScopeFixtures.nationRegion("201", "GER", new HexCoord(1, 2))),
             ScopeFixtures.units(),
-            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1", "GER"),
+            DM_FRA);
 
     ResourceScopeMap scopes =
-        DecisionScopeFunctions.defaults()
-            .scopesFor(ScopeFixtures.nationDm("dm-FRA", "FRA"), state, ScopeFixtures.MAP_ID);
+        DecisionScopeFunctions.defaults().scopesFor(DM_FRA.maker(), state, ScopeFixtures.MAP_ID);
 
     ResourceScope socialScope = scopes.declaredScope("social");
     assertThat(socialScope.unrestricted()).isFalse();
@@ -145,11 +164,11 @@ class NationScopeTest {
         ScopeFixtures.state(
             ScopeFixtures.mapOf(ScopeFixtures.nationRegion("201", "GER", new HexCoord(1, 2))),
             ScopeFixtures.units(),
-            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1"));
+            ScopeFixtures.sdWithArmy("a1", "FRA", "u-1", "GER"),
+            DM_FRA);
 
     ResourceScopeMap scopes =
-        DecisionScopeFunctions.defaults()
-            .scopesFor(ScopeFixtures.nationDm("dm-fra", "FRA"), bare, ScopeFixtures.MAP_ID);
+        DecisionScopeFunctions.defaults().scopesFor(DM_FRA.maker(), bare, ScopeFixtures.MAP_ID);
 
     assertThat(scopes.declaredScope("map")).isEqualTo(ResourceScope.none());
   }

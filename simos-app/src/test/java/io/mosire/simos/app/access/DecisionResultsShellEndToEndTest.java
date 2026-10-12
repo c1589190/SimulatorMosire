@@ -12,6 +12,9 @@ import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -28,6 +31,9 @@ import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
@@ -250,14 +256,27 @@ class DecisionResultsShellEndToEndTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "ga", new GaSnapshot(ref("main", 1), T7, sdState())),
+                "ga", new GaSnapshot(ref("main", 1), T7, sdState()),
+                // ★★ 2026-10-13 收尾测试第 2 层：决策族读面经 ToolSupport 取 gov/army 切片（归属归模块后
+                //   两条读路径都要它们）⇒ 世界必须齐备，否则 "状态里没有 gov 模块切片——装配故障"。
+                //   ★ 本用例的决策人**没有归属行**（它是"裸决策人"），可见性走 INFO 条目的 tags 轴
+                //     （见 sdState 里的 entry(..., Set.of(DM), ...)）——那条判据与归属无关，故这里只补空片。
+                "gov", new GovSnapshot(ref("main", 1), T7, GovState.empty()),
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new GaCodec(),
+                    // ★ 同批：两个新切片各有 codec（漏一个 ⇒ 创世当场抛）。
+                    new GovCodec(),
+                    new ArmyCodec())));
   }
 
   private static GaState sdState() {

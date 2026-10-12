@@ -202,32 +202,32 @@ class SdDecisionScopeApiTest {
   /** 经真命令路径种入：甲乙两国（各一片区域）+ a1 军（根单位 u-1）+ 三个决策人 + 两处配权。 */
   private void createFixture() throws Exception {
     submit(
-        "sd.CreateNation",
+        "gov.CreateNation",
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"r-nation\",\"adminBudgetPerTick\":10}");
     submit(
-        "sd.CreateNation",
+        "gov.CreateNation",
         "{\"nationId\":\"n2\",\"name\":\"乙国\",\"homeRegionId\":\"r-other\",\"adminBudgetPerTick\":10}");
-    submit("sd.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
+    submit("army.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
     submit(
-        "sd.CreateDecisionMaker",
+        "ga.CreateDecisionMaker",
         "{\"id\":\"dm-nation\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
             + "\"allowedTools\":[],\"cadence\":3}");
     submit(
-        "sd.CreateDecisionMaker",
+        "ga.CreateDecisionMaker",
         "{\"id\":\"dm-army\",\"affiliation\":{\"kind\":\"army\",\"id\":\"a1\"},"
             + "\"allowedTools\":[],\"cadence\":5}");
     submit(
-        "sd.CreateDecisionMaker",
+        "ga.CreateDecisionMaker",
         "{\"id\":\"dm-narrow\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
             + "\"allowedTools\":[],\"cadence\":3}");
     // 交集演示：一个含本国区域（+ 一个不存在的），一个只含**别国**的区域。
     submit(
-        "sd.SetDecisionMakerAccess",
+        "ga.SetDecisionMakerAccess",
         "{\"decisionMakerId\":\"dm-nation\","
             + "\"accessLimit\":{\"map\":[\"Map1/region/r-nation\",\"Map1/region/r-extra\"]},"
             + "\"adjudicationDisclosure\":\"PERCEPTION_ONLY\",\"redactedFields\":[]}");
     submit(
-        "sd.SetDecisionMakerAccess",
+        "ga.SetDecisionMakerAccess",
         "{\"decisionMakerId\":\"dm-narrow\","
             + "\"accessLimit\":{\"map\":[\"Map1/region/r-other\"]},"
             + "\"adjudicationDisclosure\":\"PERCEPTION_ONLY\",\"redactedFields\":[]}");

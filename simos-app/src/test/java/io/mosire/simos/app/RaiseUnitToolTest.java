@@ -246,7 +246,7 @@ class RaiseUnitToolTest {
             "economy.RegisterHousehold",
             "actor.EnsureHouseholdAccount",
             "actor.AdjustAccounts",
-            "sd.PutInfo");
+            "ga.PutInfo");
 
     assertThat(head()).as("preview 不得推 head").isEqualTo(headBefore);
     assertThat(revisionRowCount()).as("preview 不得留 revision").isEqualTo(rowsBefore);
@@ -285,7 +285,7 @@ class RaiseUnitToolTest {
             "economy.RegisterHousehold",
             "actor.EnsureHouseholdAccount",
             "actor.AdjustAccounts",
-            "sd.PutInfo");
+            "ga.PutInfo");
 
     assertThat(head()).as("一批只前进一格").isEqualTo(2L);
     assertThat(revisionRowCount()).as("一批只多一行 revision").isEqualTo(rowsBefore + 1L);
@@ -353,7 +353,7 @@ class RaiseUnitToolTest {
             "unit.CreateUnit",
             "economy.RegisterHousehold",
             "actor.EnsureHouseholdAccount",
-            "sd.PutInfo");
+            "ga.PutInfo");
     assertThat(head()).isEqualTo(2L);
 
     SimulationState after = stateAt(2L);
@@ -433,10 +433,10 @@ class RaiseUnitToolTest {
             "economy.RegisterHousehold",
             "actor.EnsureHouseholdAccount",
             "actor.AdjustAccounts",
-            "sd.PutInfo");
+            "ga.PutInfo");
     JsonNode commands = submission.get("commands");
     assertThat(commands).hasSize(6);
-    assertThat(commands.get(5).get("type").asText()).isEqualTo("sd.PutInfo");
+    assertThat(commands.get(5).get("type").asText()).isEqualTo("ga.PutInfo");
     assertThat(commands.get(5).get("reason").asText())
         .as("逼整批拒的那条必须报真拒因")
         .contains("INFO 条目 id 已存在")
@@ -813,7 +813,7 @@ class RaiseUnitToolTest {
     payload.put("value", "decoy");
     payload.put("id", DECOY_INFO_ID);
     Map<String, Object> args = new LinkedHashMap<>();
-    args.put("type", "sd.PutInfo");
+    args.put("type", "ga.PutInfo");
     args.put("payloadJson", JSON.writeValueAsString(payload));
     args.put("branch", "main");
     args.put("expectedRevision", head());

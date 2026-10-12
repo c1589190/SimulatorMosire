@@ -67,12 +67,12 @@ public final class DecisionFaceGolden {
           // ★ 第 12 条：Skill 系统——方法论与常识（两桶共享，读外部 Markdown）。
           "simos.skill",
           // ── 决策行为（两条，语义就靠它们）────────────────────────────────────────────
-          "sd.IssueDirective",
-          "sd.SubmitVerdict",
+          "ga.IssueDirective",
+          "ga.SubmitVerdict",
           // ── 受限窄写（身份派生 + 审批链；进了白名单也**不放大**权限）──────────────────────
           // ★★ D5（D-003 / D-004 / D-005 / R5 / R6）：外交边 / 外交事件 / 向本 GOV 付款。
-          "sd.SetDiplomaticRelation",
-          "sd.RecordDiplomaticEvent",
+          "gov.SetDiplomaticRelation",
+          "gov.RecordDiplomaticEvent",
           "simos.gov.pay",
           // ★★ A1 / A2a：货币身份三件套 + 官方汇率（只能作用于自己的 GOV）。
           "simos.gov.defineCurrency",
