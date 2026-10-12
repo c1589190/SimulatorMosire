@@ -159,16 +159,19 @@ class RegressionGuardsTest {
 
   /**
    * L2（GSimulator 的 {@code HexCell.edgeTags}/{@code riverMask} 是第二份连通性存储，Java 侧只读不写、 前端一存就把所有边的
-   * props 抹平）：{@code HexCell} 的组件清单**恰为** {@code [height]}（冻结字面量）。
+   * props 抹平）：{@code HexCell} 的组件清单**恰为** {@code [height, areas]}（冻结字面量）。
    *
    * <p>★ P1 之后 {@code terrain} 也**不在**这里（地形进了权威块 {@code GameMap.terrainBlocks}）——故本断言同时钉住"无连通性字段"与
    * "无 terrain"两件事，**没有改成恒真**（改成 {@code doesNotContain("edgeTags")} 才是松口）。
+   *
+   * <p>★★ <b>2026-10-13 收尾测试第 2 层</b>：批次 2 的 hex 属性表新增第 2 组件 {@code areas}（城市面积 / 乡村面积 +
+   * 可扩展自定义字段）⇒ 冻结清单由 {@code [height]} 变 {@code [height, areas]}。判据仍是逐字相等，判别力未削弱。
    */
   @Test
   void L2_hexCellHasNoConnectivityField() {
     assertThat(recordComponentNames(HexCell.class))
-        .as("HexCell 只剩 height：既不含量地形（P1），也不含任何连通性字段（主存储只有 GameMap.edges 一份）")
-        .containsExactly("height")
+        .as("HexCell 只剩 height + areas：既不含量地形（P1），也不含任何连通性字段（主存储只有 GameMap.edges 一份）")
+        .containsExactly("height", "areas")
         .doesNotContain("terrain", "edgeTags", "riverMask");
   }
 

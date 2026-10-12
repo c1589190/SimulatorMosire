@@ -532,7 +532,6 @@
     mapPath: mapPath,
     units: units,
     unit: unit,
-    combats: combats,
     decisionMakers: decisionMakers,
     decisionMaker: decisionMaker,
     decisionMakerScope: decisionMakerScope,
