@@ -8,9 +8,9 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
-import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.spi.ModuleCodec;
@@ -69,7 +69,7 @@ public final class CrossProcessDeterminismChild {
             new MapCodec(),
             new SocialCodec(),
             new UnitCodec(),
-            new SdCodec(),
+            new GaCodec(),
             new ActorCodec(),
             new EconomyCodec(),
             new GovCodec(),

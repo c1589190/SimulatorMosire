@@ -8,11 +8,11 @@ import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.core.store.SqliteStore;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.spi.RegisterEffectHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
-import io.mosire.simos.sd.time.SdTimeParticipant;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.effect.GaTimeParticipant;
+import io.mosire.simos.ga.spi.RegisterEffectHandler;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -117,11 +117,11 @@ class SdCommandDrainTest {
 
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     core.register(new UnitCodec());
     core.register(new RegisterEffectHandler(Set.of("unit.ApplyCasualties")));
     core.register(new io.mosire.simos.unit.spi.ApplyCasualtiesHandler());
-    core.register(new SdTimeParticipant(MAP_ID));
+    core.register(new GaTimeParticipant(MAP_ID));
     core.bootstrapGenesis(genesis());
     return core;
   }
@@ -207,7 +207,7 @@ class SdCommandDrainTest {
   private static String effectStatus(CoreSimos core, long revision, String effectId) {
     return sdState(core, revision)
         .effects()
-        .get(new io.mosire.simos.sd.id.EffectId(effectId))
+        .get(new io.mosire.simos.ga.id.EffectId(effectId))
         .status()
         .name();
   }
@@ -221,11 +221,11 @@ class SdCommandDrainTest {
     return slice.state();
   }
 
-  private static SdState sdState(CoreSimos core, long revision) {
-    SdSnapshot slice =
-        (SdSnapshot)
+  private static GaState sdState(CoreSimos core, long revision) {
+    GaSnapshot slice =
+        (GaSnapshot)
             core.replay(new StateRef(MAIN, new RevisionId(revision)))
-                .module("sd")
+                .module("ga")
                 .orElseThrow(() -> new AssertionError("没有 sd 切片"));
     return slice.state();
   }
@@ -251,7 +251,7 @@ class SdCommandDrainTest {
         new StateMeta(ref, T),
         Map.of(
             "unit", new UnitSnapshot(ref, T, units),
-            "sd", new SdSnapshot(ref, T, SdState.empty())),
+            "ga", new GaSnapshot(ref, T, GaState.empty())),
         InMemoryInfoSystem.empty());
   }
 }

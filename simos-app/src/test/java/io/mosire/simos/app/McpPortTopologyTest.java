@@ -6,7 +6,7 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
-import io.mosire.simos.sd.channel.DecisionChannel;
+import io.mosire.simos.ga.channel.DecisionChannel;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;

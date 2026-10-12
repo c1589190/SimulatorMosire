@@ -6,12 +6,12 @@ import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.SdInfoId;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.spi.PutInfoHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.id.SdInfoId;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
@@ -60,7 +60,7 @@ class SdPutInfoEndToEndTest {
     assertThat(((CommandResult.Committed) result).ref())
         .isEqualTo(new StateRef(MAIN, new RevisionId(2)));
 
-    SdState replayed = sdState(core, 2);
+    GaState replayed = sdState(core, 2);
     assertThat(replayed.info().get("map:Map1:region.r1"))
         .containsExactly(
             new SdInfoEntry(
@@ -98,16 +98,16 @@ class SdPutInfoEndToEndTest {
 
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     core.register(new PutInfoHandler());
     core.bootstrapGenesis(genesis());
     return core;
   }
 
-  private static SdState sdState(CoreSimos core, long revision) {
+  private static GaState sdState(CoreSimos core, long revision) {
     SimulationState state = core.replay(new StateRef(MAIN, new RevisionId(revision)));
-    SdSnapshot slice =
-        (SdSnapshot) state.module("sd").orElseThrow(() -> new AssertionError("状态里没有 sd 切片"));
+    GaSnapshot slice =
+        (GaSnapshot) state.module("ga").orElseThrow(() -> new AssertionError("状态里没有 ga 切片"));
     return slice.state();
   }
 
@@ -130,7 +130,7 @@ class SdPutInfoEndToEndTest {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),
-        Map.of("sd", new SdSnapshot(ref, SimosTimestamp.of(0), SdState.empty())),
+        Map.of("ga", new GaSnapshot(ref, SimosTimestamp.of(0), GaState.empty())),
         InMemoryInfoSystem.empty());
   }
 }

@@ -40,15 +40,15 @@ import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -442,11 +442,11 @@ class ResolveCombatToolTest {
     for (CombatRecord record : records) {
       byId.put(record.id(), record);
     }
-    return new ArmyData(byId);
+    return new ArmyData(Map.of(), byId, Map.of());
   }
 
   private static CombatRecord record(List<UnitId> participants, List<CombatStage> stages) {
-    return new CombatRecord(C1, "野战", 7L, H11, participants, "自然语言过程", stages);
+    return new CombatRecord(C1, "野战", 7L, H11, participants, "自然语言过程", stages, new RevisionId(1));
   }
 
   private static CombatStage stage(
@@ -539,7 +539,7 @@ class ResolveCombatToolTest {
       core.register(new MapCodec())
           .register(new SocialCodec())
           .register(new UnitCodec())
-          .register(new SdCodec())
+          .register(new GaCodec())
           .register(new ArmyCodec())
           .register(new EconomyCodec())
           .register(new ActorCodec());
@@ -613,7 +613,7 @@ class ResolveCombatToolTest {
             "map", new MapSnapshot(ref, T7, GameMap.empty()),
             "social", new SocialSnapshot(ref, T7, SocialData.empty()),
             "unit", new UnitSnapshot(ref, T7, units),
-            "sd", new SdSnapshot(ref, T7, SdState.empty()),
+            "ga", new GaSnapshot(ref, T7, GaState.empty()),
             "army", new ArmySnapshot(ref, T7, army),
             "economy", new EconomySnapshot(ref, T7, EconomyData.empty()),
             "actor", new ActorSnapshot(ref, T7, ActorData.empty())),

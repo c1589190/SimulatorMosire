@@ -4,15 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.sd.adjudication.Breakpoints;
-import io.mosire.simos.sd.adjudication.Judgement;
-import io.mosire.simos.sd.adjudication.LlmClient;
-import io.mosire.simos.sd.adjudication.LlmDecisionAdjudicator;
-import io.mosire.simos.sd.adjudication.LlmRequest;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.spi.SubmitVerdictHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.adjudication.Breakpoints;
+import io.mosire.simos.ga.adjudication.Judgement;
+import io.mosire.simos.ga.adjudication.LlmClient;
+import io.mosire.simos.ga.adjudication.LlmDecisionAdjudicator;
+import io.mosire.simos.ga.adjudication.LlmRequest;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.spi.SubmitVerdictHandler;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
@@ -115,22 +115,22 @@ class AdjudicatorRunnerTest {
 
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     core.register(new SubmitVerdictHandler());
     core.bootstrapGenesis(genesis());
     return core;
   }
 
-  private static SdState sdState(CoreSimos core, long revision) {
+  private static GaState sdState(CoreSimos core, long revision) {
     SimulationState state = core.replay(new StateRef(MAIN, new RevisionId(revision)));
-    return ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    return ((GaSnapshot) state.module("ga").orElseThrow()).state();
   }
 
   private static SimulationState genesis() {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),
-        Map.of("sd", new SdSnapshot(ref, SimosTimestamp.of(0), SdState.empty())),
+        Map.of("ga", new GaSnapshot(ref, SimosTimestamp.of(0), GaState.empty())),
         InMemoryInfoSystem.empty());
   }
 

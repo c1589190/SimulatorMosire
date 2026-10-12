@@ -794,3 +794,45 @@ D4 受众标签定为 `kind:ref` 串（代价 = 视图/载荷形状变化 O5/O6/
 ### 26.2 测试影响更新（相对批次 4 的三处预期红）
 `AdjudicateTickToolTest:549` `hasSize` 新值 = **17**（不是 18）· `:520-546` 缺口 10 条不变 ·
 `samples` 红 **38 → 39**（新增 `:769` 那条 `social.SubmitHouseholdWorkOrder`）⇒ 收尾期按台账处置。
+
+---
+
+## §27 收尾测试阶段 · 第 1 层（机械修复）收工
+
+**核心判据达标**：`tools/mvn-lock.sh -DskipTests test-compile` **rc=1 → rc=0**（16 模块 SUCCESS / **0 `[ERROR]` 行**）——
+架构轮里"注定红"的那一项**关掉了**。
+**改动面**：80 项（78 M / 1 D / 1 新增测试支持类 `app/testing/WorldSlices.java`）、+1155/−1475、
+**零 `src/main` / 零 `pom.xml` / 零 `worlds/**` / 零 `docs/**`**；`io.mosire.simos.sd.` 残留 **74 → 0**。
+**四个护栏全绿 + 变异自证**：`GaRoundTripTest` **11/11**（变异 ⇒ 红 4）· `GovRoundTripTest` **10/10**（红 4）·
+`ArmyRoundTripTest` **12/12**（红 4）· `ArchitectureGuardsTest` **2/2**（红 1+1）；四次还原 **md5 逐字节一致**。
+★ **它们自己是绿的 ⇒ 生产代码没有漏**（派单书"停手上报"条件未触发）。
+**门禁**：`compile` rc=0 · `spotless:check` rc=0 · `spotbugs:check` **16/16 归零** · `validate` **×15**；
+额外 `simos-army` 92/92 · `simos-ga` 33/33 · `simos-gov` 13/13。
+
+### 27.1 ★★ `GaRoundTripTest` —— 最高优先项关闭
+23（**实测 22**）条 import 断 → 一行 `sd`→`ga` 改名 + import 字典序 → **11/11 绿**。
+**变异自证选得好**：改 `FieldDelta.diff(base.effects(), …)` ⇒ `Unchanged<>()`（**"静默漂移"本体**）⇒ **红 4 条**；
+代理明确说明"不选'给 record 加组件'"的理由 = **加组件会让所有构造点编译断、噪声盖过信号** ⇒ 还原 md5 `5d396a72…` 一致。
+
+### 27.2 ★ 代理修正台账 6 处（记功）
+① `GaRoundTripTest` import 断口 **23 → 实测 22**；② §3e A2「71 个测试文件引用 `SdChangeSet`/`DecisionTablesLookup`/`GaDecisionTablesLookup`」
+⇒ 实测**三者各 0**（高估）；③ §3a §E「54 个 app 测试文件手工列 codec 表」⇒ **实测 15 个**；
+④ 那 71 的计数口径重叠（`SdState` 66 / `SdSnapshot` 60 / `SdCodec` 55）；⑤/⑥ §3a §E 的"14 个装配红候选"**远小于真实面**（全仓 74 个）。
+★ **并且它给出了根因**：**带 import 断的文件 javac 不报函数体里的错** ⇒ 编译断是**分层暴露**的（它在 app 上迭代了 12 轮）。
+这解释了为什么架构轮的台账计数普遍偏低——**不是记错，是分层暴露导致的观测下界**。
+
+### 27.3 ★ 两条测量诚实项
+① app 的基线报错数 **100 是 javac `-Xmaxerrs` 截断的下界**（该插件版本**无 `maxErrors` 参数**，`-D` 抬不动）⇒ 如实记为下界；
+② `GovernanceScopes` 的归属行**没有"顺手修"** —— 夹具求值顺序决定了它属于第 2 层（控制方同意，见 §28）。
+
+### 27.4 第 2/3 层的输入（**一字未改，已登记**）
+1. **旧命令串 `"sd.*"`：33 种 / 34 个文件**（`sd.IssueDirective` 40 处 · `sd.PutInfo` 22 · `sd.SubmitVerdict` 18 · `sd.CreateDecisionMaker` 17 …含 `hasSize`/`EXPECTED_COMMAND_TYPES`/`MINIMAL_PAYLOADS`/`DecisionFaceGolden`）
+2. **命名空间串断言 `"sd"`：14 处**
+3. ★★ **夹具语义失真（最大一类，≥16 文件）**：`ScopeFixtures.nationDm/armyDm/nationDmWithLimit` 现在只产**裸决策人**
+   ⇒ 经它们的可见性断言在 `DecisionScopeFunctions` 下**一律 deny-all**。
+   **根因**：旧归属跟着 `DecisionMaker` 值走，新归属住在世界的表里且按 `dmId` 索引；而 `ScopeFixtures.state(...)` 在 `nationDm(...)`
+   **之前**求值（`private static final`）⇒ 夹具拿不到 dm id ⇒ 要写表就必须**重排每个用例的求值顺序**（= 第 2 层）
+4. **计数表/金样本**（`AdjudicateTickToolTest` 各 `hasSize` 含 `:549` · `SimosToolsTest` 142/166/176/70 · `McpCoverageTest` 的
+   `EXPECTED_COMMAND_TYPES`/`MINIMAL_PAYLOADS` · `DecisionFaceGolden`）
+5. **本层新引入的 3 处失真**：`SimosToolsTest` 的 `SD_WRITE_NAMES` 仍留 5 个旧战斗工具**字符串**（`containsExactlyElementsOf` 必红）·
+   `ToolSurfaceGapTest` 的 verdicts 用例失去交战前置 · `AdjudicationEndToEndTest` 不再覆盖"有交战的世界"这一维

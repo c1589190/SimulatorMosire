@@ -151,7 +151,8 @@ class ResolveCombatStageHandlerTest {
                         "接触",
                         List.of(ArmyFixtures.U1, ArmyFixtures.U2),
                         "阶段过程",
-                        List.of()))));
+                        List.of())),
+                ArmyFixtures.AT));
 
     HandlerOutcome rolled = handle(noOutcomes, "{\"combatId\":\"c-1\",\"stageId\":\"s1\"}");
     HandlerOutcome explicit =

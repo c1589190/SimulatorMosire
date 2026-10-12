@@ -13,6 +13,18 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.id.VerdictId;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.AdjudicationBreakpoint;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.DisclosurePolicy;
+import io.mosire.simos.ga.model.Verdict;
+import io.mosire.simos.ga.model.VerdictMeta;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -26,20 +38,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.id.VerdictId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.AdjudicationBreakpoint;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DisclosurePolicy;
-import io.mosire.simos.sd.model.Verdict;
-import io.mosire.simos.sd.model.VerdictMeta;
-import io.mosire.simos.sd.spi.NationTag;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -53,6 +51,7 @@ import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -323,14 +322,14 @@ class RedactionApiTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "sd", new SdSnapshot(ref("main", 1), T7, sdState())),
+                "ga", new GaSnapshot(ref("main", 1), T7, sdState())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
   }
 
   private static GameMap map() {
@@ -377,7 +376,7 @@ class RedactionApiTest {
     return new UnitState(new LinkedHashMap<>(Map.of(U1, unit)));
   }
 
-  private static SdState sdState() {
+  private static GaState sdState() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     // ★ 全部是 Nation(n1)（本国 = r1）——区别只在额外限制上，故"不同 as= ⇒ 不同数据"证的是**限制**那一维。
     makers.put(
@@ -405,7 +404,7 @@ class RedactionApiTest {
         maker(DM_WIDEN_ATTEMPT, "n1", AccessLimit.ofPrefixes(Map.of("map", Set.of(MAP_ID)))));
     Map<VerdictId, Verdict> verdicts = new LinkedHashMap<>();
     verdicts.put(new VerdictId("v-1"), verdict("v-1"));
-    return SdState.empty().withDecisionMakers(makers).withVerdicts(verdicts);
+    return GaState.empty().withDecisionMakers(makers).withVerdicts(verdicts);
   }
 
   /** 只改披露口径 / 字段剔除、**不额外收紧资源**（空前缀图 = 不表态）。 */
@@ -414,12 +413,7 @@ class RedactionApiTest {
   }
 
   private static DecisionMaker maker(String id, String nationId, AccessLimit limit) {
-    return new DecisionMaker(
-        new DecisionMakerId(id),
-        new Affiliation.Nation(new NationId(nationId)),
-        Set.of(),
-        limit,
-        1);
+    return new DecisionMaker(new DecisionMakerId(id), Set.of(), limit, 1);
   }
 
   private static Verdict verdict(String id) {

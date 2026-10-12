@@ -12,43 +12,48 @@ import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.testing.WorldSlices;
 import io.mosire.simos.app.tools.CoreSimosToolWritePort;
 import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.ga.AppGaToolIdentity;
+import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyId;
+import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.write.RecordDiplomaticEventTool;
 import io.mosire.simos.ga.tools.write.SetDiplomaticRelationTool;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.DiplomaticEvent;
+import io.mosire.simos.gov.nation.DiplomaticRelation;
+import io.mosire.simos.gov.nation.DiplomaticRelationKey;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.spi.RecordDiplomaticEventHandler;
+import io.mosire.simos.gov.spi.SetDiplomaticRelationHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.ArmyId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.Army;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DiplomaticEvent;
-import io.mosire.simos.sd.model.DiplomaticRelation;
-import io.mosire.simos.sd.model.DiplomaticRelationKey;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.spi.RecordDiplomaticEventHandler;
-import io.mosire.simos.sd.spi.SetDiplomaticRelationHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.resolve.ResolverRegistry;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.MutationGuard;
 import io.mosire.simos.util.state.BranchId;
@@ -140,15 +145,15 @@ class DiplomaticWriteToolsTest {
 
       assertThat(result.success()).as(result.message()).isTrue();
       assertThat(fx.head()).as("一条命令 = 一条 revision").isEqualTo(2L);
-      SdState sd = fx.sd(fx.stateAt(2L));
+      GovState gov = fx.gov(fx.stateAt(2L));
       DiplomaticRelation relation =
-          sd.diplomaticRelations()
+          gov.diplomaticRelations()
               .get(new DiplomaticRelationKey(new NationId(FRA), new NationId(GER)));
       assertThat(relation).isNotNull();
       assertThat(relation.kind()).contains("称臣纳贡");
       assertThat(relation.text()).isEqualTo("自然语言关系描述");
       assertThat(relation.updatedTick()).as("tick 缺省 = 世界当前 tick（7）").isEqualTo(7L);
-      assertThat(sd.diplomaticRelations()).hasSize(1);
+      assertThat(gov.diplomaticRelations()).hasSize(1);
     }
   }
 
@@ -192,9 +197,9 @@ class DiplomaticWriteToolsTest {
 
       assertThat(result.success()).as(result.message()).isTrue();
       assertThat(fx.head()).isEqualTo(2L);
-      SdState sd = fx.sd(fx.stateAt(2L));
-      assertThat(sd.diplomaticEvents()).hasSize(1);
-      DiplomaticEvent event = sd.diplomaticEvents().values().iterator().next();
+      GovState gov = fx.gov(fx.stateAt(2L));
+      assertThat(gov.diplomaticEvents()).hasSize(1);
+      DiplomaticEvent event = gov.diplomaticEvents().values().iterator().next();
       assertThat(event.id().value()).isEqualTo("e-1");
       assertThat(event.tick()).isEqualTo(7L);
       assertThat(event.participants())
@@ -223,8 +228,12 @@ class DiplomaticWriteToolsTest {
       ToolWritePort writes = new CoreSimosToolWritePort(core, "agent:t2b-diplo");
       ToolReadPort reads = new QueryServiceToolReadPort(query);
       GaToolIdentity identity = new AppGaToolIdentity();
-      this.relationTool = new SetDiplomaticRelationTool(writes, reads, identity, "Map1");
-      this.eventTool = new RecordDiplomaticEventTool(writes, reads, identity, "Map1");
+      this.relationTool =
+          new SetDiplomaticRelationTool(
+              writes, reads, identity, AppDecisionMakerAffiliations.INSTANCE, "Map1");
+      this.eventTool =
+          new RecordDiplomaticEventTool(
+              writes, reads, identity, AppDecisionMakerAffiliations.INSTANCE, "Map1");
       core.register(recording(new SetDiplomaticRelationHandler()));
       core.register(recording(new RecordDiplomaticEventHandler()));
       core.register(
@@ -248,7 +257,7 @@ class DiplomaticWriteToolsTest {
       CoreSimos core =
           new CoreSimos(
               new CoreConfig(storeDir, 100, new com.fasterxml.jackson.databind.ObjectMapper()));
-      core.register(new MapCodec()).register(new SdCodec());
+      core.register(new MapCodec()).register(new GaCodec());
       Fixture fixture = new Fixture(core);
       core.bootstrapGenesis(genesis());
       return fixture;
@@ -270,8 +279,13 @@ class DiplomaticWriteToolsTest {
       return core.replay(new StateRef(main(), new RevisionId(revision)));
     }
 
-    SdState sd(SimulationState state) {
-      return ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    GaState sd(SimulationState state) {
+      return ((GaSnapshot) state.module("ga").orElseThrow()).state();
+    }
+
+    /** ★ 2026-10-13 收尾测试第 1 层（机械修复）：外交三表自 3c 起住 gov 片（原先住 sd 片）。 */
+    GovState gov(SimulationState state) {
+      return ((GovSnapshot) state.module("gov").orElseThrow()).state();
     }
 
     private CommandHandler recording(CommandHandler delegate) {
@@ -327,31 +341,32 @@ class DiplomaticWriteToolsTest {
       NationId id = new NationId(nation);
       nations.put(id, new Nation(id, "国家 " + nation, new RegionId("r-" + nation), 0));
     }
-    Map<io.mosire.simos.sd.id.DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
-    makers.put(
-        new DecisionMakerId("dm-fra"), maker("dm-fra", new Affiliation.Nation(new NationId(FRA))));
-    makers.put(
-        new DecisionMakerId("dm-ger"), maker("dm-ger", new Affiliation.Nation(new NationId(GER))));
-    makers.put(
-        new DecisionMakerId("dm-army"),
-        maker("dm-army", new Affiliation.Army(new ArmyId("army-1"))));
+    Map<io.mosire.simos.util.spi.DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
+    makers.put(new DecisionMakerId("dm-fra"), maker("dm-fra"));
+    makers.put(new DecisionMakerId("dm-ger"), maker("dm-ger"));
+    makers.put(new DecisionMakerId("dm-army"), maker("dm-army"));
     Map<ArmyId, Army> armies = new LinkedHashMap<>();
     armies.put(
         new ArmyId("army-1"),
         new Army(
             new ArmyId("army-1"), Optional.empty(), new io.mosire.simos.unit.UnitId("u-1"), "军队一"));
-    SdState sd = SdState.empty().withNations(nations).withArmies(armies).withDecisionMakers(makers);
+    WorldSlices slices =
+        WorldSlices.of(
+            new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+            ArmyData.empty().withArmies(armies),
+            GaState.empty().withDecisionMakers(makers));
     return new SimulationState(
         new StateMeta(ref, T7),
         Map.of(
             "map", new MapSnapshot(ref, T7, GameMap.empty()),
-            "sd", new SdSnapshot(ref, T7, sd)),
+            "gov", new GovSnapshot(ref, T7, slices.gov()),
+            "army", new ArmySnapshot(ref, T7, slices.army()),
+            "ga", new GaSnapshot(ref, T7, slices.ga())),
         InMemoryInfoSystem.empty());
   }
 
-  private static DecisionMaker maker(String id, Affiliation affiliation) {
-    return new DecisionMaker(
-        new DecisionMakerId(id), affiliation, Set.of(), AccessLimit.empty(), 1);
+  private static DecisionMaker maker(String id) {
+    return new DecisionMaker(new DecisionMakerId(id), Set.of(), AccessLimit.empty(), 1);
   }
 
   private static BranchId main() {

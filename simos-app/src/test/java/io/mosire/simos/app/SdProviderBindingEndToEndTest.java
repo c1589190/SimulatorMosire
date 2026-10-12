@@ -2,24 +2,28 @@ package io.mosire.simos.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.app.testing.WorldSlices;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.spi.SetDecisionMakerAccessHandler;
+import io.mosire.simos.ga.spi.SetDecisionMakerProviderHandler;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler;
-import io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -37,7 +41,7 @@ import org.junit.jupiter.api.io.TempDir;
  * M11 端到端：{@code sd.SetDecisionMakerProvider} 经**真** {@code CoreSimos.submit} **写进 revision**、 可
  * replay、可分岔；与 {@code sd.SetDecisionMakerAccess} 组合时绑定不丢。
  *
- * <p>★ 这是"绑定是**世界事实**"（铁律 2）的端到端证据：判据落在 `revisions` 行与重放出的 {@link SdState} 上，不是回显。
+ * <p>★ 这是"绑定是**世界事实**"（铁律 2）的端到端证据：判据落在 `revisions` 行与重放出的 {@link GaState} 上，不是回显。
  */
 class SdProviderBindingEndToEndTest {
 
@@ -71,7 +75,7 @@ class SdProviderBindingEndToEndTest {
         .isEqualTo(new StateRef(MAIN, new RevisionId(2)));
     assertThat(core.revisions(MAIN)).as("绑定产生一条 revision 行").hasSize(2);
 
-    SdState replayed = sdState(core, 2);
+    GaState replayed = sdState(core, 2);
     assertThat(replayed.decisionMakers().get(DM1).providerId()).contains("p-a");
     assertThat(sdState(core, 2)).as("同一 revision 两次 replay 逐值相等").isEqualTo(replayed);
   }
@@ -137,17 +141,17 @@ class SdProviderBindingEndToEndTest {
 
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     core.register(new SetDecisionMakerProviderHandler());
     core.register(new SetDecisionMakerAccessHandler());
     core.bootstrapGenesis(genesis());
     return core;
   }
 
-  private static SdState sdState(CoreSimos core, long revision) {
+  private static GaState sdState(CoreSimos core, long revision) {
     SimulationState state = core.replay(new StateRef(MAIN, new RevisionId(revision)));
-    SdSnapshot slice =
-        (SdSnapshot) state.module("sd").orElseThrow(() -> new AssertionError("状态里没有 sd 切片"));
+    GaSnapshot slice =
+        (GaSnapshot) state.module("ga").orElseThrow(() -> new AssertionError("状态里没有 ga 切片"));
     return slice.state();
   }
 
@@ -164,19 +168,27 @@ class SdProviderBindingEndToEndTest {
 
   private static SimulationState genesis() {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
-    DecisionMaker dm =
-        new DecisionMaker(
-            DM1, new Affiliation.Nation(new NationId("n1")), Set.of(), AccessLimit.empty(), 1);
-    SdState sd =
-        SdState.empty()
-            .withNations(
+    DecisionMaker dm = new DecisionMaker(DM1, Set.of(), AccessLimit.empty(), 1);
+    WorldSlices slices =
+        WorldSlices.of(
+            new GovState(
+                Map.of(),
+                Map.of(),
                 Map.of(
                     new NationId("n1"),
-                    new Nation(new NationId("n1"), "甲国", new RegionId("r1"), 1)))
-            .withDecisionMakers(Map.of(DM1, dm));
+                    new Nation(new NationId("n1"), "甲国", new RegionId("r1"), 1)),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of()),
+            ArmyData.empty(),
+            GaState.empty().withDecisionMakers(Map.of(DM1, dm)));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),
-        Map.of("sd", new SdSnapshot(ref, SimosTimestamp.of(0), sd)),
+        Map.of(
+            "gov", new GovSnapshot(ref, SimosTimestamp.of(0), slices.gov()),
+            "army", new ArmySnapshot(ref, SimosTimestamp.of(0), slices.army()),
+            "ga", new GaSnapshot(ref, SimosTimestamp.of(0), slices.ga())),
         InMemoryInfoSystem.empty());
   }
 }

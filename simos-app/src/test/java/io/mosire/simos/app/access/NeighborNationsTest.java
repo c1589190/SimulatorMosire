@@ -2,9 +2,9 @@ package io.mosire.simos.app.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.id.NationId;
 import org.junit.jupiter.api.Test;
 
 /**

@@ -241,7 +241,7 @@ class ArmyCombatReadToolsTest {
     records.put(new CombatRecordId("c-1"), record("c-1", 7L, H11, List.of(U1), "过程 c-1"));
     records.put(new CombatRecordId("c-2"), record("c-2", 8L, H12, List.of(U2), "过程 c-2"));
     records.put(new CombatRecordId("c-3"), record("c-3", 8L, H11, List.of(U1, U2), "过程 c-3"));
-    return new ArmyData(records);
+    return new ArmyData(Map.of(), records, Map.of());
   }
 
   private static CombatRecord record(
@@ -261,7 +261,8 @@ class ArmyCombatReadToolsTest {
                 text,
                 List.of(),
                 Optional.empty(),
-                Optional.empty())));
+                Optional.empty())),
+        new RevisionId(1));
   }
 
   /** 读上下文：{@code mapScopePrefix} = "Map1"（全域）或 "Map1/hex/1_2"（只有一格可见）。 */

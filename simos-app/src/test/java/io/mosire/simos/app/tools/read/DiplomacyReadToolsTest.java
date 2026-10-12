@@ -18,14 +18,14 @@ import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.tools.GaToolViews;
 import io.mosire.simos.ga.tools.read.SdDiplomacyTool;
 import io.mosire.simos.ga.tools.read.SdDiplomaticEventsTool;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DiplomaticEventId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.DiplomaticEvent;
-import io.mosire.simos.sd.model.DiplomaticRelation;
-import io.mosire.simos.sd.model.DiplomaticRelationKey;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
+import io.mosire.simos.gov.nation.DiplomaticEvent;
+import io.mosire.simos.gov.nation.DiplomaticEventId;
+import io.mosire.simos.gov.nation.DiplomaticRelation;
+import io.mosire.simos.gov.nation.DiplomaticRelationKey;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.resolve.ResolverRegistry;
@@ -175,13 +175,13 @@ class DiplomacyReadToolsTest {
 
     static Fixture open(Path storeDir) {
       CoreSimos core = new CoreSimos(new CoreConfig(storeDir, 100, new ObjectMapper()));
-      core.register(new SdCodec());
+      core.register(new GovCodec());
       Fixture fixture = new Fixture(core);
       StateRef ref = new StateRef(main(), new RevisionId(1));
       SimulationState genesis =
           new SimulationState(
               new StateMeta(ref, T7),
-              Map.of("sd", new SdSnapshot(ref, T7, sdState())),
+              Map.of("gov", new GovSnapshot(ref, T7, govState())),
               InMemoryInfoSystem.empty());
       core.bootstrapGenesis(genesis);
       return fixture;
@@ -201,7 +201,7 @@ class DiplomacyReadToolsTest {
     }
   }
 
-  private static SdState sdState() {
+  private static GovState govState() {
     Map<DiplomaticRelationKey, DiplomaticRelation> relations = new LinkedHashMap<>();
     relations.put(key("FRA", "GER"), new DiplomaticRelation(Optional.of("称臣纳贡"), "r1 自然语言", 7L));
     relations.put(key("GER", "FRA"), new DiplomaticRelation(Optional.empty(), "r2 自然语言", 8L));
@@ -230,7 +230,7 @@ class DiplomacyReadToolsTest {
             7L,
             List.of(new NationId("AAA"), new NationId("FRA")),
             "ev3 内容"));
-    return SdState.empty().withDiplomaticRelations(relations).withDiplomaticEvents(events);
+    return GovState.empty().withDiplomaticRelations(relations).withDiplomaticEvents(events);
   }
 
   private static DiplomaticRelationKey key(String from, String to) {

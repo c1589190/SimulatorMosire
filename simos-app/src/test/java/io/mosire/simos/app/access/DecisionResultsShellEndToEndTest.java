@@ -19,8 +19,17 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -34,17 +43,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.spi.NationTag;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -56,6 +54,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -135,7 +134,7 @@ class DecisionResultsShellEndToEndTest {
 
     SimulationState state = shell.queryService().stateAt(QueryTarget.head(new BranchId("main")));
     DecisionMaker dm =
-        ((SdSnapshot) state.module("sd").orElseThrow()).state().decisionMakers().get(DM);
+        ((GaSnapshot) state.module("ga").orElseThrow()).state().decisionMakers().get(DM);
     assertThat(dm).as("前提：决策人确实在真状态里").isNotNull();
 
     // ★ 真 DecisionCallerFactory（与 Shell 装配期同一条路：白名单从**决策人桶**派生）——唯一入口。
@@ -182,7 +181,7 @@ class DecisionResultsShellEndToEndTest {
             .execute(
                 decisionRegistry,
                 DecisionResultsTool.NAME,
-                ((SdSnapshot) state.module("sd").orElseThrow()).state().decisionMakers().get(DM),
+                ((GaSnapshot) state.module("ga").orElseThrow()).state().decisionMakers().get(DM),
                 state,
                 shell.config().mapId(),
                 Map.of("tick", 9L));
@@ -202,7 +201,7 @@ class DecisionResultsShellEndToEndTest {
   private static List<String> infoIds(SimulationState state) {
     List<String> out = new java.util.ArrayList<>();
     for (List<SdInfoEntry> entries :
-        ((SdSnapshot) state.module("sd").orElseThrow()).state().info().values()) {
+        ((GaSnapshot) state.module("ga").orElseThrow()).state().info().values()) {
       for (SdInfoEntry entry : entries) {
         out.add(entry.id().value());
       }
@@ -251,26 +250,23 @@ class DecisionResultsShellEndToEndTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "sd", new SdSnapshot(ref("main", 1), T7, sdState())),
+                "ga", new GaSnapshot(ref("main", 1), T7, sdState())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
   }
 
-  private static SdState sdState() {
+  private static GaState sdState() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
-    makers.put(
-        DM,
-        new DecisionMaker(
-            DM, new Affiliation.Nation(new NationId("n-e2e")), Set.of(), AccessLimit.empty(), 1));
+    makers.put(DM, new DecisionMaker(DM, Set.of(), AccessLimit.empty(), 1));
     Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
     info.put(ADDR_8, List.of(entry(ADDR_8, 0, 8, Set.of(DM), "own@8")));
     info.put(ADDR_9, List.of(entry(ADDR_9, 0, 9, Set.of(), "unowned@9")));
-    return SdState.empty().withDecisionMakers(makers).withInfo(info);
+    return GaState.empty().withDecisionMakers(makers).withInfo(info);
   }
 
   private static SdInfoEntry entry(

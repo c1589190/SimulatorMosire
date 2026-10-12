@@ -6,21 +6,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.timeline.RevisionRow;
-import io.mosire.simos.sd.channel.ActorId;
-import io.mosire.simos.sd.channel.DecisionChannel;
-import io.mosire.simos.sd.channel.DecisionRequest;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.spi.DirectiveWhitelist;
-import io.mosire.simos.sd.spi.IssueDirectiveHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.channel.ActorId;
+import io.mosire.simos.ga.channel.DecisionChannel;
+import io.mosire.simos.ga.channel.DecisionRequest;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.spi.DirectiveWhitelist;
+import io.mosire.simos.ga.spi.IssueDirectiveHandler;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -95,7 +93,7 @@ class DecisionChannelTest {
 
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     core.register(
         new IssueDirectiveHandler(
             new DirectiveWhitelist(Set.of("unit.RenameUnit", "sd.IssueDirective"))));
@@ -115,13 +113,11 @@ class DecisionChannelTest {
   private static SimulationState genesis() {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     DecisionMakerId dm1 = new DecisionMakerId("dm1");
-    DecisionMaker maker =
-        new DecisionMaker(
-            dm1, new Affiliation.Nation(new NationId("n1")), Set.of(), AccessLimit.empty(), 1);
-    SdState sd = SdState.empty().withDecisionMakers(Map.of(dm1, maker));
+    DecisionMaker maker = new DecisionMaker(dm1, Set.of(), AccessLimit.empty(), 1);
+    GaState sd = GaState.empty().withDecisionMakers(Map.of(dm1, maker));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),
-        Map.of("sd", new SdSnapshot(ref, SimosTimestamp.of(0), sd)),
+        Map.of("ga", new GaSnapshot(ref, SimosTimestamp.of(0), sd)),
         InMemoryInfoSystem.empty());
   }
 }

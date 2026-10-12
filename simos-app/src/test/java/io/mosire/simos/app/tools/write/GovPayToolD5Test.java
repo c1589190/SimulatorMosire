@@ -48,20 +48,16 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.gov.tools.GovToolSupport;
 import io.mosire.simos.gov.tools.write.GovPayTool;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.ArmyId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -81,6 +77,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -389,7 +386,7 @@ class GovPayToolD5Test {
                 "map", new MapSnapshot(ref(1L), T7, ScopeFixtures.mapOf()),
                 "social", new SocialSnapshot(ref(1L), T7, SocialData.empty()),
                 "unit", new UnitSnapshot(ref(1L), T7, units()),
-                "sd", new SdSnapshot(ref(1L), T7, sdState()),
+                "ga", new GaSnapshot(ref(1L), T7, sdState()),
                 "economy", new EconomySnapshot(ref(1L), T7, EconomyData.empty()),
                 "actor", new ActorSnapshot(ref(1L), T7, actors())),
             InMemoryInfoSystem.empty());
@@ -401,7 +398,7 @@ class GovPayToolD5Test {
           new MapCodec(),
           new SocialCodec(),
           new UnitCodec(),
-          new SdCodec(),
+          new GaCodec(),
           new EconomyCodec(),
           new ActorCodec());
 
@@ -477,22 +474,16 @@ class GovPayToolD5Test {
         households);
   }
 
-  private static SdState sdState() {
+  private static GaState sdState() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
-    makers.put(
-        new DecisionMakerId("dm-gov"), maker("dm-gov", new Affiliation.Gov(new UnitId(GOV_A))));
-    makers.put(
-        new DecisionMakerId("dm-nation"),
-        maker("dm-nation", new Affiliation.Nation(new NationId("FRA"))));
-    makers.put(
-        new DecisionMakerId("dm-army"),
-        maker("dm-army", new Affiliation.Army(new ArmyId("army-1"))));
-    return SdState.empty().withDecisionMakers(makers);
+    makers.put(new DecisionMakerId("dm-gov"), maker("dm-gov"));
+    makers.put(new DecisionMakerId("dm-nation"), maker("dm-nation"));
+    makers.put(new DecisionMakerId("dm-army"), maker("dm-army"));
+    return GaState.empty().withDecisionMakers(makers);
   }
 
-  private static DecisionMaker maker(String id, Affiliation affiliation) {
-    return new DecisionMaker(
-        new DecisionMakerId(id), affiliation, Set.of(), AccessLimit.empty(), 1);
+  private static DecisionMaker maker(String id) {
+    return new DecisionMaker(new DecisionMakerId(id), Set.of(), AccessLimit.empty(), 1);
   }
 
   private static ActorData actors() {

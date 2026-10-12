@@ -3,6 +3,9 @@ package io.mosire.simos.app.testing;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -12,9 +15,6 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -77,7 +77,7 @@ public final class UnitHouseholdWorldFixture {
     core.register(new MapCodec());
     core.register(new UnitCodec());
     core.register(new SocialCodec());
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     // ★ S3a 组合工具同批提交的两条命令（只注册本夹具真的会用到的 handler；不是全量 Shell 注册面）。
     core.register(new SetHouseholdLocationHandler());
     core.register(new SetUnitHouseholdsHandler());
@@ -89,7 +89,7 @@ public final class UnitHouseholdWorldFixture {
                 "map", new MapSnapshot(ref, T0, map()),
                 "unit", new UnitSnapshot(ref, T0, units),
                 "social", new SocialSnapshot(ref, T0, social),
-                "sd", new SdSnapshot(ref, T0, SdState.empty())),
+                "ga", new GaSnapshot(ref, T0, GaState.empty())),
             InMemoryInfoSystem.empty()));
     return core;
   }

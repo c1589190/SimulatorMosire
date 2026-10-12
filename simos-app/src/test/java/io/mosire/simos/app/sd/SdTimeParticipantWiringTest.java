@@ -4,11 +4,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.effect.GaTimeParticipant;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
-import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -47,10 +47,10 @@ class SdTimeParticipantWiringTest {
   void secondSdParticipantIsRejectedAtSeal() {
     CoreSimos core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     try {
-      core.register(new SdCodec());
+      core.register(new GaCodec());
       core.register(new UnitCodec());
-      core.register(new SdTimeParticipant("Map1"));
-      core.register(new SdTimeParticipant("Map1"));
+      core.register(new GaTimeParticipant("Map1"));
+      core.register(new GaTimeParticipant("Map1"));
       core.bootstrapGenesis(genesis());
       assertThatThrownBy(() -> core.replay(new StateRef(MAIN, new RevisionId(1))))
           .isInstanceOf(IllegalArgumentException.class)
@@ -80,7 +80,7 @@ class SdTimeParticipantWiringTest {
         new StateMeta(ref, T),
         Map.of(
             "unit", new UnitSnapshot(ref, T, units),
-            "sd", new SdSnapshot(ref, T, SdState.empty())),
+            "ga", new GaSnapshot(ref, T, GaState.empty())),
         InMemoryInfoSystem.empty());
   }
 }

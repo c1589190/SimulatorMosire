@@ -29,17 +29,17 @@ import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.spi.PutInfoHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -332,7 +332,7 @@ class FormatUnitToolTest {
       core.register(new MapCodec())
           .register(new SocialCodec())
           .register(new UnitCodec())
-          .register(new SdCodec())
+          .register(new GaCodec())
           .register(new ArmyCodec())
           .register(new EconomyCodec())
           .register(new ActorCodec());
@@ -386,7 +386,7 @@ class FormatUnitToolTest {
 
   /** 从 replay 态读同批 PutInfo 的条目（地址 = 单位 canonical、key = formatUnit）。 */
   private static SdInfoEntry infoEntry(SimulationState state) {
-    SdState sd = ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
     // ★★ 2026-10-12 B3 收尾（C3）：`unitAddress` 是 unit 侧的**跨批次共享拼写点**
     //   （unit 批 D8：从 RaiseUnitPlan 移到 UnitToolReads，public）⇒ 改调该唯一拼写点。
     List<SdInfoEntry> entries = sd.info().get(UnitToolReads.unitAddress("u-1"));
@@ -402,7 +402,7 @@ class FormatUnitToolTest {
             "map", new MapSnapshot(ref, T7, GameMap.empty()),
             "social", new SocialSnapshot(ref, T7, SocialData.empty()),
             "unit", new UnitSnapshot(ref, T7, unitState()),
-            "sd", new SdSnapshot(ref, T7, SdState.empty()),
+            "ga", new GaSnapshot(ref, T7, GaState.empty()),
             "army", new ArmySnapshot(ref, T7, ArmyData.empty()),
             "economy", new EconomySnapshot(ref, T7, EconomyData.empty()),
             "actor", new ActorSnapshot(ref, T7, ActorData.empty())),

@@ -43,6 +43,12 @@ public final class ArmyFixtures {
 
   public static final SimosTimestamp T7 = SimosTimestamp.of(7);
 
+  /**
+   * ★ 批次 3d-2 新增的 {@code CombatRecord.atRevision} 的夹具值（命令层从 {@code state.meta().ref().revision()}
+   * 取；域级夹具给 {@link #REF} 的那一次 revision）。
+   */
+  public static final RevisionId AT = REF.revision();
+
   public static final CombatRecordId C1 = new CombatRecordId("c-1");
   public static final CombatRecordId C2 = new CombatRecordId("c-2");
   public static final CombatRecordId C3 = new CombatRecordId("c-3");
@@ -70,7 +76,7 @@ public final class ArmyFixtures {
     for (CombatRecord record : records) {
       combats.put(record.id(), record);
     }
-    return new ArmyData(combats);
+    return new ArmyData(Map.of(), combats, Map.of());
   }
 
   /** 无损失的结局（概率表里的一个选项）。 */
@@ -119,7 +125,8 @@ public final class ArmyFixtures {
                 "接触",
                 List.of(U1, U2),
                 "阶段过程 " + id.value(),
-                List.of(outcome(O1, "胜", 1L), outcome(O2, "负", 1L)))));
+                List.of(outcome(O1, "胜", 1L), outcome(O2, "负", 1L)))),
+        AT);
   }
 
   /** 一条最小记录：只有一个结局的阶段（边界落点用）。 */
@@ -131,7 +138,8 @@ public final class ArmyFixtures {
         HEX,
         List.of(U1),
         "记录级过程 " + id.value(),
-        List.of(stage(S1, "接触", List.of(U1), "阶段过程 " + id.value(), List.of(outcome(O1, "胜", 1L)))));
+        List.of(stage(S1, "接触", List.of(U1), "阶段过程 " + id.value(), List.of(outcome(O1, "胜", 1L)))),
+        AT);
   }
 
   /** 一份非平凡切片：两条记录、三条阶段、四个结局（含 losses），插入序见类注。 */
@@ -158,7 +166,8 @@ public final class ArmyFixtures {
                     "续战",
                     List.of(U1),
                     "阶段二：追歼",
-                    List.of(outcomeWithLoss(O3, "城破", 100L, loss(U1, "士兵", -5L, "火炮", -1L))))));
+                    List.of(outcomeWithLoss(O3, "城破", 100L, loss(U1, "士兵", -5L, "火炮", -1L))))),
+            AT);
     CombatRecord c2 =
         new CombatRecord(
             C2,
@@ -167,7 +176,8 @@ public final class ArmyFixtures {
             OTHER_HEX,
             List.of(U1),
             "记录级过程：炮击城池",
-            List.of(stage(S1, "炮击", List.of(U1), "阶段一：轰城", List.of(outcome(O1, "城破", 100L)))));
+            List.of(stage(S1, "炮击", List.of(U1), "阶段一：轰城", List.of(outcome(O1, "城破", 100L)))),
+            AT);
     // ★ 插入序 c-2 → c-1（不是 id 升序）：JSON 保序断言据此有判别力。
     return data(c2, c1);
   }

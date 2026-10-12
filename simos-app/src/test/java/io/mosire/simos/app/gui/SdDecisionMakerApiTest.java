@@ -20,6 +20,10 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -33,11 +37,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -48,6 +47,7 @@ import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -82,7 +82,7 @@ import org.junit.jupiter.api.io.TempDir;
  * sd.SetDecisionMakerAccess}——列表/过滤/详情读的就是**真命令写出来的状态**，不是手搭的 sd 实体。
  *
  * <p>★ **覆盖三条主判据**（T5）：① 空库 ⇒ {@code 200 {"decisionMakers":[]}}（非 404/500）；② {@code
- * ?affiliation=nation:<id>} / {@code army:<id>} 过滤逐值；③ 详情字段与重放出的 {@link SdState} 逐值一致。
+ * ?affiliation=nation:<id>} / {@code army:<id>} 过滤逐值；③ 详情字段与重放出的 {@link GaState} 逐值一致。
  *
  * <p>★ **fail-closed 的判别力**：坏过滤串（未知 kind / 缺冒号 / 空 id）⇒ **400**，与"合法但不存在的 id ⇒ 200 空列表"是**不同**结果
  * ——把前者折成空列表会让"查询坏掉"与"确实没有决策人"不可区分。
@@ -538,9 +538,9 @@ class SdDecisionMakerApiTest {
     return response.body();
   }
 
-  private SdState replayedSdState() {
+  private GaState replayedSdState() {
     SimulationState state = shell.queryService().stateAt(QueryTarget.head(main()));
-    return ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    return ((GaSnapshot) state.module("ga").orElseThrow()).state();
   }
 
   private JsonNode detailJson(String id) throws Exception {
@@ -605,7 +605,7 @@ class SdDecisionMakerApiTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
+                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty()),
                 // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
                 "economy",
                     new EconomySnapshot(
@@ -623,7 +623,7 @@ class SdDecisionMakerApiTest {
                     new MapCodec(),
                     new SocialCodec(),
                     new UnitCodec(),
-                    new SdCodec(),
+                    new GaCodec(),
                     new EconomyCodec(),
                     new ActorCodec())));
   }

@@ -8,11 +8,11 @@ import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.world.RichWorld;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -189,7 +189,7 @@ class SdDecisionDocsApiTest {
     SimulationState state = shell.queryService().stateAt(QueryTarget.head(main()));
     List<String> out = new ArrayList<>();
     for (List<SdInfoEntry> entries :
-        ((SdSnapshot) state.module("sd").orElseThrow()).state().info().values()) {
+        ((GaSnapshot) state.module("ga").orElseThrow()).state().info().values()) {
       for (SdInfoEntry entry : entries) {
         out.add(entry.id().value());
       }

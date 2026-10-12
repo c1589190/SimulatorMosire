@@ -5,8 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
+import io.mosire.simos.army.ArmyAffiliations;
+import io.mosire.simos.gov.nation.NationAffiliations;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Map;
@@ -48,7 +49,7 @@ class DecisionScopeFunctionsTest {
   @Test
   void anUnregisteredAffiliationTypeFailsLoudly() {
     DecisionScopeFunctions onlyNations =
-        new DecisionScopeFunctions(Map.of(Affiliation.Nation.class, NationScope.INSTANCE));
+        new DecisionScopeFunctions(Map.of(NationAffiliations.KIND, NationScope.INSTANCE));
 
     assertThatThrownBy(
             () ->
@@ -78,7 +79,7 @@ class DecisionScopeFunctionsTest {
         (dm, state, mapId) -> ResourceScopeMap.of("map", ResourceScope.of("demo/region/custom"));
     DecisionScopeFunctions functions =
         new DecisionScopeFunctions(
-            Map.of(Affiliation.Nation.class, custom, Affiliation.Army.class, ArmyScope.INSTANCE));
+            Map.of(NationAffiliations.KIND, custom, ArmyAffiliations.KIND, ArmyScope.INSTANCE));
 
     assertThat(
             ScopeFixtures.prefixes(

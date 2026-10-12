@@ -36,7 +36,8 @@ class CombatRecordInvariantsTest {
                     ArmyFixtures.HEX,
                     List.of(ArmyFixtures.U1),
                     "文本",
-                    List.of(stage)))
+                    List.of(stage),
+                    ArmyFixtures.AT))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("kind");
     assertThatThrownBy(
@@ -48,7 +49,8 @@ class CombatRecordInvariantsTest {
                     ArmyFixtures.HEX,
                     List.of(ArmyFixtures.U1),
                     " ",
-                    List.of(stage)))
+                    List.of(stage),
+                    ArmyFixtures.AT))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("text");
   }
@@ -67,7 +69,8 @@ class CombatRecordInvariantsTest {
                     ArmyFixtures.HEX,
                     List.of(ArmyFixtures.U1),
                     "文本",
-                    List.of(stage)))
+                    List.of(stage),
+                    ArmyFixtures.AT))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("tick");
     assertThatThrownBy(
@@ -79,7 +82,8 @@ class CombatRecordInvariantsTest {
                     null,
                     List.of(ArmyFixtures.U1),
                     "文本",
-                    List.of(stage)))
+                    List.of(stage),
+                    ArmyFixtures.AT))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("hex");
   }
@@ -92,7 +96,14 @@ class CombatRecordInvariantsTest {
     assertThatThrownBy(
             () ->
                 new CombatRecord(
-                    ArmyFixtures.C1, "野战", 1L, ArmyFixtures.HEX, List.of(), "文本", List.of(stage)))
+                    ArmyFixtures.C1,
+                    "野战",
+                    1L,
+                    ArmyFixtures.HEX,
+                    List.of(),
+                    "文本",
+                    List.of(stage),
+                    ArmyFixtures.AT))
         .as("D-009：单方入场可判，但空表不是一种记录")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("至少");
@@ -105,7 +116,8 @@ class CombatRecordInvariantsTest {
                     ArmyFixtures.HEX,
                     List.of(ArmyFixtures.U1, ArmyFixtures.U1),
                     "文本",
-                    List.of(stage)))
+                    List.of(stage),
+                    ArmyFixtures.AT))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("不得重复");
     assertThatThrownBy(
@@ -117,7 +129,8 @@ class CombatRecordInvariantsTest {
                     ArmyFixtures.HEX,
                     Arrays.asList(ArmyFixtures.U1, null),
                     "文本",
-                    List.of(stage)))
+                    List.of(stage),
+                    ArmyFixtures.AT))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("null");
   }
@@ -138,7 +151,8 @@ class CombatRecordInvariantsTest {
                     ArmyFixtures.HEX,
                     List.of(ArmyFixtures.U1),
                     "文本",
-                    List.of()))
+                    List.of(),
+                    ArmyFixtures.AT))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("至少");
     assertThatThrownBy(
@@ -150,7 +164,8 @@ class CombatRecordInvariantsTest {
                     ArmyFixtures.HEX,
                     List.of(ArmyFixtures.U1),
                     "文本",
-                    List.of(s1, s2, s1)))
+                    List.of(s1, s2, s1),
+                    ArmyFixtures.AT))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("不得重复阶段 id");
   }

@@ -4,15 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
+import io.mosire.simos.army.Army;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.Army;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.ArmyFormation;
@@ -27,6 +25,7 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
@@ -177,14 +176,20 @@ class GovScopeTest {
   void missingOrNonGovUnitsAreDenyAllInAllThreeNamespaces() {
     Army army =
         new Army(
-            new io.mosire.simos.sd.id.ArmyId("a-1"), Optional.empty(), new UnitId("g-army"), "第一军");
+            new io.mosire.simos.army.ArmyId("a-1"), Optional.empty(), new UnitId("g-army"), "第一军");
     UnitState units =
         ScopeFixtures.units(
             plainUnit("g-plain", H11),
             withModule(
                 "g-army", H11, Optional.of(new ArmyFormation(Optional.empty(), "garrison"))));
     SimulationState state =
-        ScopeFixtures.state(map(), units, SdState.empty().withArmies(Map.of(army.id(), army)));
+        ScopeFixtures.state(
+            map(),
+            units,
+            io.mosire.simos.app.testing.WorldSlices.of(
+                io.mosire.simos.gov.GovState.empty(),
+                io.mosire.simos.army.ArmyData.empty().withArmies(Map.of(army.id(), army)),
+                GaState.empty()));
 
     for (String govId : List.of("g-ghost", "g-plain", "g-army")) {
       ResourceScopeMap scopes = scopesFor(govId, state);
@@ -253,17 +258,12 @@ class GovScopeTest {
   // ── 装置 / 夹具 ────────────────────────────────────────────────
 
   private static SimulationState world(UnitState units) {
-    return ScopeFixtures.state(map(), units, SdState.empty());
+    return ScopeFixtures.state(map(), units, GaState.empty());
   }
 
   private static ResourceScopeMap scopesFor(String govUnitId, SimulationState state) {
     DecisionMaker dm =
-        new DecisionMaker(
-            new DecisionMakerId("dm-" + govUnitId),
-            new Affiliation.Gov(new UnitId(govUnitId)),
-            Set.of(),
-            AccessLimit.empty(),
-            1);
+        new DecisionMaker(new DecisionMakerId("dm-" + govUnitId), Set.of(), AccessLimit.empty(), 1);
     return DecisionScopeFunctions.defaults().scopesFor(dm, state, ScopeFixtures.MAP_ID);
   }
 

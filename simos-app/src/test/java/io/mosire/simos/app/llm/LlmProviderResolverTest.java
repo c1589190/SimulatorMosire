@@ -4,10 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.agentlib.config.ConfigException;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.Set;
@@ -94,12 +93,6 @@ class LlmProviderResolverTest {
 
   private static DecisionMaker maker(Optional<String> providerId) {
     return new DecisionMaker(
-        new DecisionMakerId("dm1"),
-        new Affiliation.Nation(new io.mosire.simos.sd.id.NationId("n1")),
-        Set.of(),
-        AccessLimit.empty(),
-        1L,
-        providerId,
-        0L);
+        new DecisionMakerId("dm1"), Set.of(), AccessLimit.empty(), 1L, providerId, 0L);
   }
 }

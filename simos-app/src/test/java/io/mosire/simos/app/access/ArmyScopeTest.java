@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;

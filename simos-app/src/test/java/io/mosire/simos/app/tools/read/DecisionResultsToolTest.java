@@ -20,25 +20,23 @@ import io.mosire.simos.app.tools.ga.AppGaToolQueries;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.AdjudicationStatus;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.AdjudicationStatus;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.resolve.ResolverRegistry;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
@@ -101,7 +99,7 @@ class DecisionResultsToolTest {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new MapCodec());
     core.register(new UnitCodec());
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     core.bootstrapGenesis(genesis());
     queryService = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
   }
@@ -220,8 +218,8 @@ class DecisionResultsToolTest {
             registry,
             DecisionResultsTool.NAME,
             state
-                .module("sd")
-                .map(slice -> ((SdSnapshot) slice).state())
+                .module("ga")
+                .map(slice -> ((GaSnapshot) slice).state())
                 .orElseThrow()
                 .decisionMakers()
                 .get(dm),
@@ -254,8 +252,8 @@ class DecisionResultsToolTest {
     return out;
   }
 
-  private SdState sdState() {
-    return ((SdSnapshot) stateAtGenesis().module("sd").orElseThrow()).state();
+  private GaState sdState() {
+    return ((GaSnapshot) stateAtGenesis().module("ga").orElseThrow()).state();
   }
 
   private SimulationState stateAtGenesis() {
@@ -272,8 +270,7 @@ class DecisionResultsToolTest {
   }
 
   private static DecisionMaker nationDm(DecisionMakerId id, String nationId) {
-    return new DecisionMaker(
-        id, new Affiliation.Nation(new NationId(nationId)), Set.of(), AccessLimit.empty(), 1);
+    return new DecisionMaker(id, Set.of(), AccessLimit.empty(), 1);
   }
 
   /** 决策人路径的执行器（本用例证的是可见性，不是审批链）：走真壳那套审批装配。 */
@@ -316,12 +313,11 @@ class DecisionResultsToolTest {
     info.put(ADDR_10, List.of(voidedEntry(ADDR_10, 0, 10, Set.of(DM_A))));
     info.put(DIRECTIVE_ADDR, List.of(entry(DIRECTIVE_ADDR, 0, 7, Set.of(DM_A), "directive@7")));
 
-    SdState sd =
-        ScopeFixtures.sdWithArmy("a1", "alpha", "u-a").withDecisionMakers(makers).withInfo(info);
+    var base = ScopeFixtures.sdWithArmy("a1", "alpha", "u-a");
     return ScopeFixtures.state(
         ScopeFixtures.mapOf(ScopeFixtures.nationRegion("r1", "alpha", H11)),
         ScopeFixtures.units(ScopeFixtures.unitWithVision("u-a", H11, 1)),
-        sd);
+        base.withGa(base.ga().withDecisionMakers(makers).withInfo(info)));
   }
 
   /** 一条**作废**的裁决条目：tags 照给，但状态是 VOIDED（读面必须把它挡在"结果"之外）。 */

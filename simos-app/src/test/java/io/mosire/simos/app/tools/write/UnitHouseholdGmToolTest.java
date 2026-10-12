@@ -21,7 +21,6 @@ import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
@@ -297,7 +296,6 @@ class UnitHouseholdGmToolTest {
             UnitHouseholdWorldFixture.unitSlice(UnitHouseholdWorldFixture.replay(core, 1)),
             UnitHouseholdWorldFixture.T0,
             UnitHouseholdWorldFixture.map(),
-            SdState.empty(),
             CalendarService.defaults(),
             lookup,
             lookup);

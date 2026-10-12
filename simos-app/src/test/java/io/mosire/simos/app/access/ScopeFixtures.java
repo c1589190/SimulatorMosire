@@ -1,6 +1,20 @@
 package io.mosire.simos.app.access;
 
 import io.mosire.agentlib.permission.ResourceScopeMap;
+import io.mosire.simos.app.testing.WorldSlices;
+import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyId;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -13,23 +27,13 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.id.ArmyId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.Army;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.spi.NationTag;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -61,14 +65,28 @@ public final class ScopeFixtures {
 
   // ── 世界装配 ────────────────────────────────────────────────────────────────────────
 
-  public static SimulationState state(GameMap map, UnitState units, SdState sd) {
+  /** 只关心 {@code map}/{@code unit}/{@code ga} 的用例：{@code gov}/{@code army} 给空片。 */
+  public static SimulationState state(GameMap map, UnitState units, GaState sd) {
+    return state(map, units, WorldSlices.gaOnly(sd));
+  }
+
+  /**
+   * ★★ <b>2026-10-13 收尾测试第 1 层（机械修复）</b>：把三片一起装进世界 —— 乙收尾起国家住 {@code gov}、军队住 {@code army}、 决策人住
+   * {@code ga}（原先 {@code sd} 一片装三者）。
+   *
+   * <p>★ 切片键 = {@code gov} / {@code army} / {@code ga}，与各自的 {@code XxxSnapshot.namespace()}
+   * 同字面（{@code SimulationState} 构造期会校验，键写错当场抛——不会静默少一片）。
+   */
+  public static SimulationState state(GameMap map, UnitState units, WorldSlices slices) {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     return new SimulationState(
         new StateMeta(ref, T0),
         Map.of(
             "map", new MapSnapshot(ref, T0, map),
             "unit", new UnitSnapshot(ref, T0, units),
-            "sd", new SdSnapshot(ref, T0, sd)),
+            "gov", new GovSnapshot(ref, T0, slices.gov()),
+            "army", new ArmySnapshot(ref, T0, slices.army()),
+            "ga", new GaSnapshot(ref, T0, slices.ga())),
         InMemoryInfoSystem.empty());
   }
 
@@ -208,14 +226,22 @@ public final class ScopeFixtures {
 
   // ── 决策人与军队 ────────────────────────────────────────────────────────────────────
 
-  /** 国家决策人（{@code affiliation = Nation(nationId)}）。 */
+  /**
+   * 国家决策人。
+   *
+   * <p>★★ <b>2026-10-13 收尾测试第 1 层（机械修复）</b>：{@code DecisionMaker} 自乙收尾起<b>不再带归属字段</b>（归属改住各模块的表：
+   * {@code GovState.nationAffiliations()} / {@code ArmyData.armyAffiliations()}）⇒ 本方法只产<b>裸决策人</b>。
+   *
+   * <p>★ <b>已知红点（登记给第 2 层，本层不改断言）</b>：本夹具<b>尚未</b>把归属行写进切片（决策人 id 由用例稍后决定，写下标要重排用例）， 故经本方法造的决策人在
+   * {@code DecisionScopeFunctions} 下<b>一律 deny-all</b> ⇒ 依赖归属的可见性断言在夹具重写前必红。
+   */
   public static DecisionMaker nationDm(String dmId, String nationId) {
-    return maker(dmId, new Affiliation.Nation(new NationId(nationId)));
+    return maker(dmId);
   }
 
-  /** 军队决策人（{@code affiliation = Army(armyId)}）。 */
+  /** 军队决策人（同上：只产裸决策人，归属行待第 2 层写进 {@code ArmyData.armyAffiliations()}）。 */
   public static DecisionMaker armyDm(String dmId, String armyId) {
-    return maker(dmId, new Affiliation.Army(new ArmyId(armyId)));
+    return maker(dmId);
   }
 
   /**
@@ -225,35 +251,35 @@ public final class ScopeFixtures {
    * ViewScope.empty()}（deny-all），名字像、语义**相反**，照抄会把每个决策人配成瞎子。
    */
   public static DecisionMaker nationDmWithLimit(String dmId, String nationId, AccessLimit limit) {
-    return new DecisionMaker(
-        new DecisionMakerId(dmId),
-        new Affiliation.Nation(new NationId(nationId)),
-        Set.of(),
-        limit,
-        1);
+    return new DecisionMaker(new DecisionMakerId(dmId), Set.of(), limit, 1);
   }
 
-  private static DecisionMaker maker(String dmId, Affiliation affiliation) {
-    // ★ accessLimit 与本轮的范围函数**无关**（范围函数只读 affiliation）——它是 GM 的**额外限制**，
-    // 这里取"不收紧"；范围函数本身的判别力由配置了真限制/不同归属的用例覆盖。
-    return new DecisionMaker(
-        new DecisionMakerId(dmId), affiliation, Set.of(), AccessLimit.empty(), 1);
+  private static DecisionMaker maker(String dmId) {
+    // ★ accessLimit 与本轮的范围函数**无关**——它是 GM 的**额外限制**，这里取"不收紧"。
+    return new DecisionMaker(new DecisionMakerId(dmId), Set.of(), AccessLimit.empty(), 1);
   }
 
   /**
-   * sd 切片：一个国家 + 一条军队归属（军队 → 单位根）。
+   * 一个国家（住 {@code gov} 片）+ 一条军队（住 {@code army} 片，指向单位根）。
    *
-   * <p>★ 国家不是装饰：{@code SdState} 的不变量 2（引用完整性）会拒掉"军队指向不存在的国家"， 故夹具必须**先把国家放进切片**（顺序也重要：先 {@code
-   * withNations} 再 {@code withArmies}）。
+   * <p>★ 国家不是装饰：军队指向的国家必须存在（{@code Army} 的引用完整性）。
+   *
+   * <p>★★ <b>2026-10-13 收尾测试第 1 层（机械修复）</b>：乙收尾起 {@code nations} 住 {@code gov}、{@code armies} 住
+   * {@code army}（都不再住 {@code GaState}）⇒ 本方法改返回三切片载体 {@link WorldSlices}。★ <b>归属行（{@code
+   * nationAffiliations}/{@code armyAffiliations}）本层未写</b>——决策人 id 由调用方稍后决定，见 {@link #nationDm}
+   * 的已知红点。
    */
-  public static SdState sdWithArmy(String armyId, String nationId, String rootUnitId) {
+  public static WorldSlices sdWithArmy(String armyId, String nationId, String rootUnitId) {
     Map<ArmyId, Army> armies = new LinkedHashMap<>();
     ArmyId id = new ArmyId(armyId);
-    armies.put(id, new Army(id, new NationId(nationId), new UnitId(rootUnitId), "军队 " + armyId));
+    armies.put(id, new Army(id, Optional.empty(), new UnitId(rootUnitId), "军队 " + armyId));
     Map<NationId, Nation> nations = new LinkedHashMap<>();
     NationId nation = new NationId(nationId);
     nations.put(nation, new Nation(nation, "国家 " + nationId, new RegionId("701"), 0));
-    return SdState.empty().withNations(nations).withArmies(armies);
+    return WorldSlices.of(
+        new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+        ArmyData.empty().withArmies(armies),
+        GaState.empty());
   }
 
   // ── 断言助手 ────────────────────────────────────────────────────────────────────────

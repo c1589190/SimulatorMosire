@@ -8,19 +8,19 @@ import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
-import io.mosire.simos.sd.adjudication.AdjudicationRequest;
-import io.mosire.simos.sd.adjudication.AdjudicationSchemas;
-import io.mosire.simos.sd.adjudication.Breakpoints;
-import io.mosire.simos.sd.adjudication.DecisionAdjudicator;
-import io.mosire.simos.sd.adjudication.Judgement;
-import io.mosire.simos.sd.adjudication.LlmClient;
-import io.mosire.simos.sd.adjudication.LlmDecisionAdjudicator;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.VerdictId;
-import io.mosire.simos.sd.model.Verdict;
-import io.mosire.simos.sd.spi.SubmitVerdictHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.adjudication.AdjudicationRequest;
+import io.mosire.simos.ga.adjudication.AdjudicationSchemas;
+import io.mosire.simos.ga.adjudication.Breakpoints;
+import io.mosire.simos.ga.adjudication.DecisionAdjudicator;
+import io.mosire.simos.ga.adjudication.Judgement;
+import io.mosire.simos.ga.adjudication.LlmClient;
+import io.mosire.simos.ga.adjudication.LlmDecisionAdjudicator;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.id.VerdictId;
+import io.mosire.simos.ga.model.Verdict;
+import io.mosire.simos.ga.spi.SubmitVerdictHandler;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
@@ -88,7 +88,7 @@ class SdVerdictFreezeEndToEndTest {
     assertThat(((CommandResult.Committed) result).ref())
         .isEqualTo(new StateRef(MAIN, new RevisionId(2)));
 
-    SdState replayed = sdState(core, 2);
+    GaState replayed = sdState(core, 2);
     Verdict verdict = replayed.verdicts().get(new VerdictId("v1"));
     assertThat(verdict.payloadJson()).as("判决载荷逐字节冻结").isEqualTo(VALID_D1);
     assertThat(verdict.atRevision()).isEqualTo(new RevisionId(1));
@@ -126,16 +126,16 @@ class SdVerdictFreezeEndToEndTest {
 
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     core.register(new SubmitVerdictHandler());
     core.bootstrapGenesis(genesis());
     return core;
   }
 
-  private static SdState sdState(CoreSimos core, long revision) {
+  private static GaState sdState(CoreSimos core, long revision) {
     SimulationState state = core.replay(new StateRef(MAIN, new RevisionId(revision)));
-    SdSnapshot slice =
-        (SdSnapshot) state.module("sd").orElseThrow(() -> new AssertionError("状态里没有 sd 切片"));
+    GaSnapshot slice =
+        (GaSnapshot) state.module("ga").orElseThrow(() -> new AssertionError("状态里没有 ga 切片"));
     return slice.state();
   }
 
@@ -173,7 +173,7 @@ class SdVerdictFreezeEndToEndTest {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),
-        Map.of("sd", new SdSnapshot(ref, SimosTimestamp.of(0), SdState.empty())),
+        Map.of("ga", new GaSnapshot(ref, SimosTimestamp.of(0), GaState.empty())),
         InMemoryInfoSystem.empty());
   }
 }

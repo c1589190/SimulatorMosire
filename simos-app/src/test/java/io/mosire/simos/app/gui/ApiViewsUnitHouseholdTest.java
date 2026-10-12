@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.app.testing.UnitHouseholdWorldFixture;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.calendar.CalendarClock;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
@@ -58,7 +57,6 @@ class ApiViewsUnitHouseholdTest {
             units,
             T0,
             UnitHouseholdWorldFixture.map(),
-            SdState.empty(),
             CalendarService.defaults(),
             lookup,
             lookup);
@@ -86,13 +84,7 @@ class ApiViewsUnitHouseholdTest {
 
     List<Map<String, Object>> list =
         ApiViews.units(
-            units,
-            T0,
-            UnitHouseholdWorldFixture.map(),
-            SdState.empty(),
-            CalendarService.defaults(),
-            lookup,
-            lookup);
+            units, T0, UnitHouseholdWorldFixture.map(), CalendarService.defaults(), lookup, lookup);
     assertThat(list).hasSize(2);
     Map<String, Object> listGov =
         list.stream().filter(row -> GOV.value().equals(row.get("id"))).findFirst().orElseThrow();
@@ -116,7 +108,6 @@ class ApiViewsUnitHouseholdTest {
             units,
             T0,
             UnitHouseholdWorldFixture.map(),
-            SdState.empty(),
             CalendarService.defaults());
 
     assertThat(detail.get("population")).isNull();
@@ -125,12 +116,7 @@ class ApiViewsUnitHouseholdTest {
     assertThat(households.get(0).keySet()).as("旧无 lookup 重载只发 id").containsExactly("id");
 
     List<Map<String, Object>> list =
-        ApiViews.units(
-            units,
-            T0,
-            UnitHouseholdWorldFixture.map(),
-            SdState.empty(),
-            CalendarService.defaults());
+        ApiViews.units(units, T0, UnitHouseholdWorldFixture.map(), CalendarService.defaults());
     Map<String, Object> govRow =
         list.stream().filter(row -> GOV.value().equals(row.get("id"))).findFirst().orElseThrow();
     assertThat(govRow.get("population")).isNull();

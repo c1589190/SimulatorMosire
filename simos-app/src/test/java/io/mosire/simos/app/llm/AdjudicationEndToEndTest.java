@@ -6,25 +6,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.mosire.simos.app.sd.DecisionAdjudicationService;
+import io.mosire.simos.app.testing.WorldSlices;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.adjudication.Judgement;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.Verdict;
+import io.mosire.simos.ga.spi.SubmitVerdictHandler;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.adjudication.Judgement;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.CombatId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.Combat;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.Verdict;
-import io.mosire.simos.sd.spi.SubmitVerdictHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -114,7 +116,7 @@ class AdjudicationEndToEndTest {
     AtomicReference<String> seenBody = new AtomicReference<>();
     startStub(seenModel, seenAuth, seenBody);
 
-    CoreSimos core = start(false); // ★ 无战斗的世界
+    CoreSimos core = start();
     AgentLibLlmConfig config = AgentLibLlmConfig.open(tempDir);
     config.upsertRoute("stub", baseUrl(), "deepseek-flash", "keys.stub", 5_000L);
     config.putKey("stub", "sk-test-key");
@@ -226,53 +228,48 @@ class AdjudicationEndToEndTest {
   }
 
   private CoreSimos start() {
-    return start(true);
-  }
-
-  private CoreSimos start(boolean withCombat) {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     core.register(new SubmitVerdictHandler());
-    core.bootstrapGenesis(genesis(withCombat));
+    core.bootstrapGenesis(genesis());
     return core;
   }
 
-  private static SdState sdState(CoreSimos core, long revision) {
+  private static GaState sdState(CoreSimos core, long revision) {
     SimulationState state = core.replay(new StateRef(MAIN, new RevisionId(revision)));
-    return ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    return ((GaSnapshot) state.module("ga").orElseThrow()).state();
   }
 
-  private static SimulationState genesis(boolean withCombat) {
+  private static SimulationState genesis() {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     DecisionMaker dm = maker(Optional.of("stub"));
-    SdState sd =
-        SdState.empty()
-            .withNations(
+    // ★ 2026-10-13 收尾测试第 1 层（机械修复）：旧战斗族（`Combat`）自批次 3d-2 起整族退役 ⇒ 本夹具的
+    //   `withCombat` 支**删除**（它只是给世界多塞一条旧 `Combat` 装饰，判决的判据不读它）；
+    //   国家自乙收尾起住 gov 片。
+    WorldSlices slices =
+        WorldSlices.of(
+            new GovState(
+                Map.of(),
+                Map.of(),
                 Map.of(
                     new NationId("n1"),
-                    new Nation(new NationId("n1"), "甲国", new RegionId("r1"), 1)))
-            .withDecisionMakers(Map.of(DM1, dm));
-    if (withCombat) {
-      sd =
-          sd.withCombats(
-              Map.of(
-                  new CombatId("c1"),
-                  new Combat(new CombatId("c1"), "战斗一", List.of(), Set.of(), Optional.empty())));
-    }
+                    new Nation(new NationId("n1"), "甲国", new RegionId("r1"), 1)),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of()),
+            ArmyData.empty(),
+            GaState.empty().withDecisionMakers(Map.of(DM1, dm)));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),
-        Map.of("sd", new SdSnapshot(ref, SimosTimestamp.of(0), sd)),
+        Map.of(
+            "gov", new GovSnapshot(ref, SimosTimestamp.of(0), slices.gov()),
+            "army", new ArmySnapshot(ref, SimosTimestamp.of(0), slices.army()),
+            "ga", new GaSnapshot(ref, SimosTimestamp.of(0), slices.ga())),
         InMemoryInfoSystem.empty());
   }
 
   private static DecisionMaker maker(Optional<String> providerId) {
-    return new DecisionMaker(
-        DM1,
-        new Affiliation.Nation(new NationId("n1")),
-        Set.of(),
-        AccessLimit.empty(),
-        1L,
-        providerId,
-        0L);
+    return new DecisionMaker(DM1, Set.of(), AccessLimit.empty(), 1L, providerId, 0L);
   }
 }

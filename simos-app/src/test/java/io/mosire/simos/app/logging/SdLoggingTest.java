@@ -3,22 +3,27 @@ package io.mosire.simos.app.logging;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.app.testing.WorldSlices;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.channel.ActorId;
+import io.mosire.simos.ga.channel.ChannelAdmission;
+import io.mosire.simos.ga.effect.Action;
+import io.mosire.simos.ga.effect.Effect;
+import io.mosire.simos.ga.effect.EffectKind;
+import io.mosire.simos.ga.effect.EffectStatus;
+import io.mosire.simos.ga.effect.GaTimeParticipant;
+import io.mosire.simos.ga.effect.Trigger;
+import io.mosire.simos.ga.id.EffectId;
+import io.mosire.simos.ga.spi.CreateDecisionMakerHandler;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.channel.ActorId;
-import io.mosire.simos.sd.channel.ChannelAdmission;
-import io.mosire.simos.sd.id.EffectId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.Action;
-import io.mosire.simos.sd.model.Effect;
-import io.mosire.simos.sd.model.EffectKind;
-import io.mosire.simos.sd.model.EffectStatus;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.Trigger;
-import io.mosire.simos.sd.spi.CreateDecisionMakerHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
-import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
@@ -55,8 +60,8 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li>至少一条真实 INFO 成功事件带事件名 + 关键字段 + {@code origin=} + 小写 {@code originKind=}；
  *   <li>具名拒绝（{@link ChannelAdmission}）必须是 {@code INFO|} 行，带 reason 与来源；
- *   <li>{@link SdLog#ROOT_LOGGER_NAME} 调到 WARN 后 INFO 消失、调回 INFO 后回来；
- *   <li>{@link SdLog#TRACE_LOGGER_NAME} 关闭时逐条 {@code SD_EFFECT_FIRED} 不出现、打开后出现；
+ *   <li>{@link GaLog#ROOT_LOGGER_NAME} 调到 WARN 后 INFO 消失、调回 INFO 后回来；
+ *   <li>{@link GaLog#TRACE_LOGGER_NAME} 关闭时逐条 {@code SD_EFFECT_FIRED} 不出现、打开后出现；
  *   <li>TICK 类事件（{@code SD_ADVANCE_START/DAY/END}）带 {@code day} 与 {@code origin=sd-tick
  *       originKind=tick}。
  * </ul>
@@ -75,7 +80,7 @@ class SdLoggingTest {
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final EffectId E1 = new EffectId("e1");
   private static final NationId N1 = new NationId("n1");
-  private static final SdTimeParticipant PARTICIPANT = new SdTimeParticipant(MAP_ID);
+  private static final GaTimeParticipant PARTICIPANT = new GaTimeParticipant(MAP_ID);
 
   private LoggerContext context;
   private AbstractConfiguration configuration;
@@ -87,8 +92,8 @@ class SdLoggingTest {
   void installCapture() {
     context = (LoggerContext) LogManager.getContext(false);
     configuration = (AbstractConfiguration) context.getConfiguration();
-    originalRootLevel = configuration.getLoggerConfig(SdLog.ROOT_LOGGER_NAME).getLevel();
-    originalTraceLevel = configuration.getLoggerConfig(SdLog.TRACE_LOGGER_NAME).getLevel();
+    originalRootLevel = configuration.getLoggerConfig(GaLog.ROOT_LOGGER_NAME).getLevel();
+    originalTraceLevel = configuration.getLoggerConfig(GaLog.TRACE_LOGGER_NAME).getLevel();
 
     appender = new CollectingAppender();
     appender.start();
@@ -99,11 +104,11 @@ class SdLoggingTest {
 
   @AfterEach
   void removeCapture() {
-    Configurator.setLevel(SdLog.ROOT_LOGGER_NAME, originalRootLevel);
-    Configurator.setLevel(SdLog.TRACE_LOGGER_NAME, originalTraceLevel);
+    Configurator.setLevel(GaLog.ROOT_LOGGER_NAME, originalRootLevel);
+    Configurator.setLevel(GaLog.TRACE_LOGGER_NAME, originalTraceLevel);
     attachAppender();
     context.updateLoggers();
-    configuration.getLoggerConfig(SdLog.ROOT_LOGGER_NAME).removeAppender(APPENDER_NAME);
+    configuration.getLoggerConfig(GaLog.ROOT_LOGGER_NAME).removeAppender(APPENDER_NAME);
     configuration.removeAppender(APPENDER_NAME);
     context.updateLoggers();
     appender.stop();
@@ -190,7 +195,7 @@ class SdLoggingTest {
         "reason=landing-point-not-allowed");
   }
 
-  /** 根开关：{@code SdLog.ROOT_LOGGER_NAME} 调到 WARN ⇒ INFO 消失，调回 INFO ⇒ 同一事件回来。 */
+  /** 根开关：{@code GaLog.ROOT_LOGGER_NAME} 调到 WARN ⇒ INFO 消失，调回 INFO ⇒ 同一事件回来。 */
   @Test
   void rootLevelSwitchTogglesInfoEvents() {
     setSdLevel(Level.INFO);
@@ -220,12 +225,12 @@ class SdLoggingTest {
   }
 
   /**
-   * TRACE 开关：{@code SdLog.TRACE_LOGGER_NAME} 关闭时逐条 effect 明细不出现；打开后同一推进出 {@code TRACE|} 的 {@code
+   * TRACE 开关：{@code GaLog.TRACE_LOGGER_NAME} 关闭时逐条 effect 明细不出现；打开后同一推进出 {@code TRACE|} 的 {@code
    * SD_EFFECT_FIRED}。两次都断言 INFO 的 {@code SD_ADVANCE_START}，保证夹具真的推进过。
    */
   @Test
   void traceLoggerSwitchTogglesEffectFiredDetail() {
-    SdState base = effectState(new Trigger.AtOrAfterTick(1));
+    GaState base = effectState(new Trigger.AtOrAfterTick(1));
     setSdLevel(Level.INFO);
     setTraceLevel(Level.INFO);
 
@@ -256,7 +261,7 @@ class SdLoggingTest {
   }
 
   /**
-   * TICK 事件：{@code SdTimeParticipant} 推 0→2 天，START/DAY/END 都必须带 {@code day} 且来源是 {@code
+   * TICK 事件：{@code GaTimeParticipant} 推 0→2 天，START/DAY/END 都必须带 {@code day} 且来源是 {@code
    * origin=sd-tick originKind=tick}（DEBUG 的 DAY 行一并证明判据级明细）。
    */
   @Test
@@ -264,7 +269,7 @@ class SdLoggingTest {
     setSdLevel(Level.DEBUG);
     appender.clear();
 
-    SdState base = effectState(new Trigger.AtOrAfterTick(1));
+    GaState base = effectState(new Trigger.AtOrAfterTick(1));
     PARTICIPANT.simulate(tickWorld(base), range(0, 2));
 
     assertEvent(
@@ -309,48 +314,55 @@ class SdLoggingTest {
   }
 
   private void setSdLevel(Level level) {
-    Configurator.setLevel(SdLog.ROOT_LOGGER_NAME, level);
+    Configurator.setLevel(GaLog.ROOT_LOGGER_NAME, level);
     attachAppender();
     context.updateLoggers();
   }
 
   private void setTraceLevel(Level level) {
-    Configurator.setLevel(SdLog.TRACE_LOGGER_NAME, level);
+    Configurator.setLevel(GaLog.TRACE_LOGGER_NAME, level);
     attachAppender();
     context.updateLoggers();
   }
 
   /** {@code Configurator.setLevel} 会替换 LoggerConfig ⇒ 每次改级别后把采集 appender 重新挂上。 */
   private void attachAppender() {
-    LoggerConfig current = configuration.getLoggerConfig(SdLog.ROOT_LOGGER_NAME);
+    LoggerConfig current = configuration.getLoggerConfig(GaLog.ROOT_LOGGER_NAME);
     if (!current.getAppenders().containsKey(APPENDER_NAME)) {
       current.addAppender(appender, null, null);
     }
   }
 
-  private static SimulationState sdWorld(SdState sd) {
+  private static SimulationState sdWorld(WorldSlices slices) {
     return new SimulationState(
         new StateMeta(REF, T0),
-        Map.of("sd", new SdSnapshot(REF, T0, sd)),
+        Map.of(
+            "gov", new GovSnapshot(REF, T0, slices.gov()),
+            "army", new ArmySnapshot(REF, T0, slices.army()),
+            "ga", new GaSnapshot(REF, T0, slices.ga())),
         InMemoryInfoSystem.empty());
   }
 
   /** sd 时间参与者只读 sd + unit 两个切片；空 unit 表即可（effect 触发条件不引用单位）。 */
-  private static SimulationState tickWorld(SdState sd) {
+  private static SimulationState tickWorld(GaState sd) {
     return new SimulationState(
         new StateMeta(REF, T0),
         Map.of(
-            "sd", new SdSnapshot(REF, T0, sd),
+            "ga", new GaSnapshot(REF, T0, sd),
             "unit", new UnitSnapshot(REF, T0, UnitState.empty())),
         InMemoryInfoSystem.empty());
   }
 
-  private static SdState nationBase() {
+  private static WorldSlices nationBase() {
     Nation nation = new Nation(N1, "甲国", new RegionId("r1"), 5);
-    return SdState.empty().withNations(Map.of(N1, nation));
+    return WorldSlices.of(
+        new GovState(
+            Map.of(), Map.of(), Map.of(N1, nation), Map.of(), Map.of(), Map.of(), Map.of()),
+        ArmyData.empty(),
+        GaState.empty());
   }
 
-  private static SdState effectState(Trigger trigger) {
+  private static GaState effectState(Trigger trigger) {
     Effect effect =
         new Effect(
             E1,
@@ -359,7 +371,7 @@ class SdLoggingTest {
             new Action.PutInfo(Address.parse("map:Map1"), "k", "v"),
             EffectStatus.PLANNED,
             0L);
-    return SdState.empty().withEffects(Map.of(E1, effect));
+    return GaState.empty().withEffects(Map.of(E1, effect));
   }
 
   private static TimeRange range(long fromTick, long toTick) {

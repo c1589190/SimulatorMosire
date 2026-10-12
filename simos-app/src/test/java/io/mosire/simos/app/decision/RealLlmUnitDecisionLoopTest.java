@@ -24,9 +24,14 @@ import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.docs.DecisionDoc;
+import io.mosire.simos.app.testing.WorldSlices;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
+import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyId;
+import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -37,8 +42,24 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.id.DirectiveId;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.Directive;
+import io.mosire.simos.ga.model.DirectiveCommand;
+import io.mosire.simos.ga.model.DirectiveStatus;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
 import io.mosire.simos.ga.tools.write.RunDecisionTool;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -51,24 +72,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.ArmyId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.DirectiveId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.Army;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.Directive;
-import io.mosire.simos.sd.model.DirectiveCommand;
-import io.mosire.simos.sd.model.DirectiveStatus;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.spi.NationTag;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.population.Sex;
@@ -86,6 +89,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -1082,8 +1086,8 @@ class RealLlmUnitDecisionLoopTest {
     return shell.coreSimos().replay(ref("main", revision));
   }
 
-  private SdState sdAt(long revision) {
-    return ((SdSnapshot) stateAt(revision).module("sd").orElseThrow()).state();
+  private GaState sdAt(long revision) {
+    return ((GaSnapshot) stateAt(revision).module("ga").orElseThrow()).state();
   }
 
   private static UnitState unitStateAt(SimulationState state) {
@@ -1182,6 +1186,7 @@ class RealLlmUnitDecisionLoopTest {
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, coreUnit(), U_OUT, outUnit())));
     SocialData social = socialData();
+    WorldSlices slices = sdState();
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
@@ -1189,7 +1194,9 @@ class RealLlmUnitDecisionLoopTest {
                 "map", new MapSnapshot(ref("main", 1), T7, twoRegionMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, sdState()),
+                "gov", new GovSnapshot(ref("main", 1), T7, slices.gov()),
+                "army", new ArmySnapshot(ref("main", 1), T7, slices.army()),
+                "ga", new GaSnapshot(ref("main", 1), T7, slices.ga()),
                 "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty()),
                 "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty())),
             InMemoryInfoSystem.empty());
@@ -1202,7 +1209,7 @@ class RealLlmUnitDecisionLoopTest {
                     new MapCodec(),
                     new SocialCodec(),
                     new UnitCodec(),
-                    new SdCodec(),
+                    new GaCodec(),
                     new EconomyCodec(),
                     new ActorCodec())));
   }
@@ -1320,11 +1327,11 @@ class RealLlmUnitDecisionLoopTest {
   }
 
   /** 国家 FRA + 军队 a1（rootUnit=u-1）+ 决策人 dm-u1 + 一条发给它的任务简报。 */
-  private static SdState sdState() {
+  private static WorldSlices sdState() {
     Map<NationId, Nation> nations = new LinkedHashMap<>();
     nations.put(FRA, new Nation(FRA, "国家 FRA", R_CORE, 0));
     Map<ArmyId, Army> armies = new LinkedHashMap<>();
-    armies.put(A1, new Army(A1, FRA, U1, "军队 a1"));
+    armies.put(A1, new Army(A1, Optional.empty(), U1, "军队 a1"));
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(DM, decisionMaker());
 
@@ -1343,11 +1350,10 @@ class RealLlmUnitDecisionLoopTest {
             Optional.empty());
     Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
     info.put(docAddress, List.of(brief));
-    return SdState.empty()
-        .withNations(nations)
-        .withArmies(armies)
-        .withDecisionMakers(makers)
-        .withInfo(info);
+    return WorldSlices.of(
+        new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+        ArmyData.empty().withArmies(armies),
+        GaState.empty().withDecisionMakers(makers).withInfo(info));
   }
 
   /**
@@ -1376,8 +1382,7 @@ class RealLlmUnitDecisionLoopTest {
   }
 
   private static DecisionMaker decisionMaker() {
-    return new DecisionMaker(
-        DM, new Affiliation.Army(A1), Set.of(), accessLimit(), 1, Optional.of(PROVIDER_ID), 0L);
+    return new DecisionMaker(DM, Set.of(), accessLimit(), 1, Optional.of(PROVIDER_ID), 0L);
   }
 
   /**

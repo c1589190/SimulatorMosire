@@ -21,8 +21,9 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
-import io.mosire.simos.ga.tools.write.SdAddCombatStageTool;
-import io.mosire.simos.ga.tools.write.SdCreateCombatTool;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.tools.write.SdCreateDecisionMakerTool;
 import io.mosire.simos.ga.tools.write.SdCreateNationTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
@@ -38,9 +39,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -112,31 +110,6 @@ class ToolSurfaceGapTest {
     }
   }
 
-  // ── simos.sd.combats：世界状态 ⇒ 四桶共享 ─────────────────────────────
-
-  @Test
-  void combatsToolReportsTheRecordedHexStageAndParticipants() throws Exception {
-    seedCombatAt(new HexCoord(1, 2));
-
-    JsonNode body = read("simos.sd.combats", Map.of());
-    JsonNode combats = body.get("combats");
-
-    assertThat(combats).as("恰一场交战").hasSize(1);
-    JsonNode combat = combats.get(0);
-    assertThat(combat.get("combatId").asText()).isEqualTo("c1");
-    assertThat(combat.get("combatStateId").asText()).isEqualTo("cs1");
-    assertThat(combat.get("name").asText()).isEqualTo("甲战役");
-    assertThat(combat.get("hex").get("q").asInt()).as("交战格以记录为准").isEqualTo(1);
-    assertThat(combat.get("hex").get("r").asInt()).isEqualTo(2);
-    assertThat(combat.get("currentStage").asText()).isEqualTo("s1");
-    assertThat(combat.get("currentStageName").asText()).isEqualTo("遭遇战");
-    assertThat(combat.get("selectedOutcome").isNull()).as("尚未选结局 ⇒ null").isTrue();
-    assertThat(combat.get("participants").get(0).asText()).isEqualTo("u-1");
-    assertThat(combat.get("participantCount").asInt()).isEqualTo(1);
-    assertThat(combat.get("participantsAtHex")).as("u-1 在 (1,1)，不在交战格 (1,2)").isEmpty();
-    assertThat(combat.get("participantsAtHexCount").asInt()).isEqualTo(0);
-  }
-
   // ── simos.map.block：整块成员格（GM-only）────────────────────────────
 
   @Test
@@ -163,7 +136,6 @@ class ToolSurfaceGapTest {
 
   @Test
   void verdictsToolIsFullWithoutActorAndWithheldWithActor() throws Exception {
-    seedCombatAt(new HexCoord(1, 2));
     seedNationAndDecisionMaker();
     submitVerdict();
 
@@ -292,32 +264,6 @@ class ToolSurfaceGapTest {
         .build();
   }
 
-  private void seedCombatAt(HexCoord hex) {
-    long head = head();
-    assertThat(
-            callNarrowWrite(
-                    SdCreateCombatTool.NAME,
-                    "{\"combatId\":\"c1\",\"name\":\"甲战役\",\"participants\":[\"u-1\"]}",
-                    head)
-                .success())
-        .isTrue();
-    assertThat(
-            callNarrowWrite(
-                    SdAddCombatStageTool.NAME,
-                    "{\"combatId\":\"c1\",\"combatStateId\":\"cs1\",\"hex\":{\"q\":"
-                        + hex.q()
-                        + ",\"r\":"
-                        + hex.r()
-                        + "},\"stage\":{\"stageId\":\"s1\",\"name\":\"遭遇战\",\"participants\":[\"u-1\"],"
-                        + "\"entry\":[{\"@class\":\"at_or_after_tick\",\"tick\":0}],"
-                        + "\"exit\":[{\"@class\":\"at_or_after_tick\",\"tick\":5}],"
-                        + "\"minDurationTicks\":0,\"maxDurationTicks\":10,"
-                        + "\"outcomes\":{\"options\":[{\"id\":\"o1\",\"label\":\"胜\",\"weight\":1}]}}}",
-                    head + 1)
-                .success())
-        .isTrue();
-  }
-
   private void seedNationAndDecisionMaker() {
     long head = head();
     assertThat(
@@ -411,14 +357,14 @@ class ToolSurfaceGapTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
+                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
   }
 
   private static GameMap corridorMap() {

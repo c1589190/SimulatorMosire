@@ -12,6 +12,8 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -23,6 +25,10 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -36,8 +42,6 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.gen.WorldgenConfig;
@@ -191,7 +195,7 @@ public final class CompactThreeNationsWorld {
             "map", new MapSnapshot(ref, t0, map()),
             "social", new SocialSnapshot(ref, t0, new SocialData(Map.of(), Map.of(), Map.of())),
             "unit", new UnitSnapshot(ref, t0, UnitState.empty()),
-            "sd", new SdSnapshot(ref, t0, SdState.empty()),
+            "ga", new GaSnapshot(ref, t0, GaState.empty()),
             "economy", new EconomySnapshot(ref, t0, EconomyData.empty()),
             "actor", new ActorSnapshot(ref, t0, ActorData.empty())),
         InMemoryInfoSystem.empty());
@@ -585,7 +589,7 @@ public final class CompactThreeNationsWorld {
     out.put("mapHexes", (long) map.hexes().size());
     out.put("landHexes", map.hexes().size() - oceanHexCount(map));
     out.put("regions", (long) map.regions().size());
-    out.put("nations", (long) sdOf(state).nations().size());
+    out.put("nations", (long) govOf(state).nations().size());
     out.put("cities", (long) social.cities().size());
     out.put("populationGroups", (long) social.groups().size());
     out.put("ruralPopulation", rural);
@@ -647,7 +651,7 @@ public final class CompactThreeNationsWorld {
     out.put("shipments", (long) economy.shipments().size());
     out.put("units", (long) unitOf(state).units().size());
     out.put("commandChains", (long) unitOf(state).commandChains().size());
-    out.put("armies", (long) sdOf(state).armies().size());
+    out.put("armies", (long) armyOf(state).armies().size());
     out.put("lastClosedCycle", lastClosedCycleOf(economy));
     out.put("cycleConsumed", consumed);
     out.put("cycleIncome", income);
@@ -746,8 +750,21 @@ public final class CompactThreeNationsWorld {
     return ((ActorSnapshot) module(state, "actor")).data();
   }
 
-  public static SdState sdOf(SimulationState state) {
-    return ((SdSnapshot) module(state, "sd")).state();
+  public static GaState sdOf(SimulationState state) {
+    return ((GaSnapshot) module(state, "ga")).state();
+  }
+
+  /**
+   * ★ 2026-10-13 收尾测试第 1 层（机械修复）：国家自乙收尾起住 {@code gov} 片、军队住 {@code army} 片（原先同住 {@code sd}
+   * 片）——本类的汇总读数按新家读。
+   */
+  public static GovState govOf(SimulationState state) {
+    return ((GovSnapshot) module(state, "gov")).state();
+  }
+
+  /** 同 {@link #govOf}：军队身份自乙收尾起住 {@code army} 片。 */
+  public static ArmyData armyOf(SimulationState state) {
+    return ((ArmySnapshot) module(state, "army")).data();
   }
 
   public static UnitState unitOf(SimulationState state) {

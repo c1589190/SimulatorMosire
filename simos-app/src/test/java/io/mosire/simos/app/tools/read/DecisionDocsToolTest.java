@@ -16,31 +16,34 @@ import io.mosire.simos.app.access.DecisionFaceGolden;
 import io.mosire.simos.app.access.ScopeFixtures;
 import io.mosire.simos.app.docs.DecisionDoc;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.testing.WorldSlices;
 import io.mosire.simos.app.tools.ga.AppGaToolIdentity;
 import io.mosire.simos.app.tools.ga.AppGaToolQueries;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
+import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.read.DecisionDocsTool;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationAffiliations;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.resolve.ResolverRegistry;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
@@ -110,7 +113,7 @@ class DecisionDocsToolTest {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new MapCodec());
     core.register(new UnitCodec());
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     core.bootstrapGenesis(genesis());
     queryService = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
   }
@@ -216,8 +219,8 @@ class DecisionDocsToolTest {
             registry,
             DecisionDocsTool.NAME,
             state
-                .module("sd")
-                .map(slice -> ((SdSnapshot) slice).state())
+                .module("ga")
+                .map(slice -> ((GaSnapshot) slice).state())
                 .orElseThrow()
                 .decisionMakers()
                 .get(dm),
@@ -259,8 +262,8 @@ class DecisionDocsToolTest {
     return out;
   }
 
-  private SdState sdState() {
-    return ((SdSnapshot) stateAtGenesis().module("sd").orElseThrow()).state();
+  private GaState sdState() {
+    return ((GaSnapshot) stateAtGenesis().module("ga").orElseThrow()).state();
   }
 
   private SimulationState stateAtGenesis() {
@@ -287,7 +290,7 @@ class DecisionDocsToolTest {
   // ────────────────────────────── 夹具 ──────────────────────────────
 
   /**
-   * 世界：两个国家 {@code alpha} / {@code beta}（region {@code r1} 的归属只在 nation 记录里，SdState 看不见地图）。
+   * 世界：两个国家 {@code alpha} / {@code beta}（region {@code r1} 的归属只在 nation 记录里，GaState 看不见地图）。
    *
    * <p>INFO 层见类注的表格。
    */
@@ -335,20 +338,28 @@ class DecisionDocsToolTest {
         ADJUDICATION_ADDR,
         List.of(doc(ADJUDICATION_ADDR, 0, 7, Set.of(DM_A), Set.of(), "{\"tick\":7,\"steps\":[]}")));
 
-    SdState sd = SdState.empty().withNations(nations).withDecisionMakers(makers).withInfo(info);
+    WorldSlices slices =
+        WorldSlices.of(
+            new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+            ArmyData.empty(),
+            GaState.empty().withDecisionMakers(makers).withInfo(info));
     return ScopeFixtures.state(
         ScopeFixtures.mapOf(ScopeFixtures.nationRegion("r1", "alpha", H11)),
         ScopeFixtures.units(),
-        sd);
+        slices);
   }
 
   private static DecisionMaker nationDm(DecisionMakerId id, String nationId) {
-    return new DecisionMaker(
-        id, new Affiliation.Nation(new NationId(nationId)), Set.of(), AccessLimit.empty(), 1);
+    return new DecisionMaker(id, Set.of(), AccessLimit.empty(), 1);
   }
 
-  private static Affiliation nation(String nationId) {
-    return new Affiliation.Nation(new NationId(nationId));
+  /**
+   * ★★ <b>2026-10-13 收尾测试第 1 层（机械修复）</b>：{@code SdInfoEntry.affiliations} 自乙收尾起是<b>不透明受众标签集</b>
+   * （{@code String}，形如 {@code nation:alpha}；唯一拼写点 = {@code AppDecisionMakerAffiliations.label(kind,
+   * ref)}）。
+   */
+  private static String nation(String nationId) {
+    return NationAffiliations.KIND + ":" + nationId;
   }
 
   private static SdInfoEntry doc(
@@ -356,7 +367,7 @@ class DecisionDocsToolTest {
       int ordinal,
       long tick,
       Set<DecisionMakerId> tags,
-      Set<Affiliation> affiliations,
+      Set<String> affiliations,
       String value) {
     return new SdInfoEntry(
         SdInfoIds.synthesize(canonicalAddress, ordinal),

@@ -15,6 +15,15 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.SdInfoIds;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -28,17 +37,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.spi.NationTag;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -50,6 +48,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -381,7 +380,7 @@ class SdDecisionResultsApiTest {
     SimulationState state = shell.queryService().stateAt(QueryTarget.head(new BranchId("main")));
     List<String> out = new ArrayList<>();
     for (List<SdInfoEntry> entries :
-        ((SdSnapshot) state.module("sd").orElseThrow()).state().info().values()) {
+        ((GaSnapshot) state.module("ga").orElseThrow()).state().info().values()) {
       for (SdInfoEntry entry : entries) {
         out.add(entry.id().value());
       }
@@ -440,17 +439,17 @@ class SdDecisionResultsApiTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "sd", new SdSnapshot(ref("main", 1), T7, sdState())),
+                "ga", new GaSnapshot(ref("main", 1), T7, sdState())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
   }
 
-  private static SdState sdState() {
+  private static GaState sdState() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(DM_A, maker(DM_A));
     makers.put(DM_B, maker(DM_B));
@@ -463,7 +462,7 @@ class SdDecisionResultsApiTest {
             entry(ADDR_7, 0, 7, Set.of(DM_A), "A@7"), entry(ADDR_7, 1, 7, Set.of(DM_B), "B@7")));
     info.put(ADDR_8, List.of(entry(ADDR_8, 0, 8, Set.of(DM_A, DM_B), "AB@8")));
     info.put(ADDR_9, List.of(entry(ADDR_9, 0, 9, Set.of(), "unowned@9")));
-    return SdState.empty().withDecisionMakers(makers).withInfo(info);
+    return GaState.empty().withDecisionMakers(makers).withInfo(info);
   }
 
   private static SdInfoEntry entry(
@@ -482,8 +481,7 @@ class SdDecisionResultsApiTest {
   }
 
   private static DecisionMaker maker(DecisionMakerId id) {
-    return new DecisionMaker(
-        id, new Affiliation.Nation(new NationId("n1")), Set.of(), AccessLimit.empty(), 1);
+    return new DecisionMaker(id, Set.of(), AccessLimit.empty(), 1);
   }
 
   /** 一格 + 一片区域（区域表是壳装配所需；本端点不读地图，故只需最小的合法世界）。 */

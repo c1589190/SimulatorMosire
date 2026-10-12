@@ -42,9 +42,12 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -58,11 +61,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -1322,22 +1320,6 @@ class McpCoverageTest {
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                // ★ D5：sd 切片预置**第二个 Nation**（n-seed）——sd.SetDiplomaticRelation /
-                // RecordDiplomaticEvent
-                //   的 "对方国家" 必须真实存在，否则覆盖里只能撞具名拒、证不到命令真的落地。
-                "sd",
-                    new SdSnapshot(
-                        ref("main", 1),
-                        T7,
-                        SdState.empty()
-                            .withNations(
-                                Map.of(
-                                    new NationId("n-seed"),
-                                    new Nation(
-                                        new NationId("n-seed"),
-                                        "种子国二号",
-                                        new RegionId("r-nation"),
-                                        0)))),
                 // ★ R2a：经济切片在场（economy.Seed 要往它上面施加变更集）。
                 "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty()),
                 // ★ S1 阶段 2：actor 切片在场（actor.Seed 要往它上面施加变更集；同 economy 的先例）。
@@ -1345,7 +1327,22 @@ class McpCoverageTest {
                 // ★ D1/D4：army 切片在场（army.RecordCombat 等三条命令要往它上面施加变更集）。
                 "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty()),
                 // ★ P2-C：gov 切片在场（worldgen 建 GOV 编制后 advance 要写行政读数）。
-                "gov", new GovSnapshot(ref("main", 1), T7, GovState.empty())),
+                // ★ 2026-10-13 收尾测试第 1 层（机械修复）：D5 预置的**第二个 Nation**（n-seed）自乙收尾起
+                //   住 gov 片（原先住 sd 片）——gov.SetDiplomaticRelation / RecordDiplomaticEvent 的
+                //   "对方国家" 必须真实存在，否则覆盖里只能撞具名拒、证不到命令真的落地。
+                "gov",
+                    new GovSnapshot(
+                        ref("main", 1),
+                        T7,
+                        GovState.empty()
+                            .withNations(
+                                Map.of(
+                                    new NationId("n-seed"),
+                                    new Nation(
+                                        new NationId("n-seed"),
+                                        "种子国二号",
+                                        new RegionId("r-nation"),
+                                        0))))),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
@@ -1356,7 +1353,7 @@ class McpCoverageTest {
                     new MapCodec(),
                     new SocialCodec(),
                     new UnitCodec(),
-                    new SdCodec(),
+                    new GaCodec(),
                     new EconomyCodec(),
                     new ActorCodec(),
                     new GovCodec(),

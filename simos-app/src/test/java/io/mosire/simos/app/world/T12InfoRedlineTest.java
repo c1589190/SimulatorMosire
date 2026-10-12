@@ -7,11 +7,11 @@ import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -34,7 +34,7 @@ import org.junit.jupiter.api.Test;
  *
  * <ol>
  *   <li><b>状态层不变量（runtime）</b>：把富世界经真引擎种入、再真读回，断言 {@code info == InMemoryInfoSystem.empty()}、{@code
- *       SdState.info()} 为空；并证明**它本来就不是空的**（世界非空 ⇒ "空"是实测 不是"没读到"）。
+ *       GaState.info()} 为空；并证明**它本来就不是空的**（世界非空 ⇒ "空"是实测 不是"没读到"）。
  *   <li><b>路径层不变量（structural / fail-closed）</b>：直接检查产生文档与富世界的**全部文件**里**没有 Info 写路径**——{@code
  *       docs/worlds/**} 下只有 {@code .md}、导出器与文档里不出现 {@code InfoSystem/InfoEntry/SdInfoEntry}
  *       的**类型名**、rich-world 资源信封的 {@code info} 段为空。它覆盖"将来有人把文档灌进 Info"这类回归，且**不依赖**任何一个 方法被调用。
@@ -54,7 +54,7 @@ class T12InfoRedlineTest {
       core.register(new MapCodec());
       core.register(new SocialCodec());
       core.register(new UnitCodec());
-      core.register(new SdCodec());
+      core.register(new GaCodec());
       core.register(new EconomyCodec());
       // ★ S1 阶段 2：RichWorld.state() 带 actor 切片 ⇒ codec 表必须随之长（否则 bootstrapGenesis 当场抛）。
       core.register(new ActorCodec());
@@ -81,16 +81,16 @@ class T12InfoRedlineTest {
           .as("C26：bySubject 空表（读写两条路径都没碰过它）")
           .isEmpty();
 
-      SdSnapshot sd = (SdSnapshot) replayed.module("sd").orElseThrow();
-      assertThat(sd.state().info()).as("C26：SdState.info 不得有新增条目").isEmpty();
-      assertThat(sd.state()).isEqualTo(SdState.empty());
+      GaSnapshot sd = (GaSnapshot) replayed.module("ga").orElseThrow();
+      assertThat(sd.state().info()).as("C26：GaState.info 不得有新增条目").isEmpty();
+      assertThat(sd.state()).isEqualTo(GaState.empty());
 
       writeInfoProbe(replayed, (InMemoryInfoSystem) info, sd.state());
     }
   }
 
   /** 把运行时实测值落盘，供 `tools/check_v17levant_docs.py` 的第 4 段读取（证据自指）。 */
-  private static void writeInfoProbe(SimulationState state, InMemoryInfoSystem info, SdState sd)
+  private static void writeInfoProbe(SimulationState state, InMemoryInfoSystem info, GaState sd)
       throws IOException {
     Path out = infoProbePath();
     if (out == null) {

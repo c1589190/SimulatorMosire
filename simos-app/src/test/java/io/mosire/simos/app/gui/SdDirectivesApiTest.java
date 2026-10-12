@@ -13,6 +13,9 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -26,9 +29,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -70,7 +70,7 @@ import org.junit.jupiter.api.io.TempDir;
  * ticksSinceLast}——"最近一次在第几 tick"看得见，**令的内容一个字都看不见**。而 {@code Directive}（执行原文 +
  * 结构化命令清单）本来就在世界状态里、本来就可回放，缺的只是这一个读口（铁律 1：界面是视图，不是真相的第二份）。
  *
- * <p>★ 夹具经**真命令路径**（{@code sd.IssueDirective}）种入，不走"直接构造 SdState"：这样"写侧写的"与"读侧读的"
+ * <p>★ 夹具经**真命令路径**（{@code sd.IssueDirective}）种入，不走"直接构造 GaState"：这样"写侧写的"与"读侧读的"
  * 走同一条链——直接造状态的话，两侧各错一半也照样全绿。
  *
  * <p>★ **本轮只留两条**（用户 2026-09-23：少做测试，写完直接编译、我直接看）：一条钉返回形状 + 降序 + 过滤，一条钉 fail-closed 的两个方向（未知 id ⇒
@@ -268,14 +268,14 @@ class SdDirectivesApiTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty())),
+                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
   }
 
   private static GameMap twoNationMap() {

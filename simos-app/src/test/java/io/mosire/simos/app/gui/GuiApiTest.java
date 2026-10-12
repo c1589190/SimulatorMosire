@@ -55,6 +55,9 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -68,9 +71,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -1333,7 +1333,7 @@ class GuiApiTest {
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
+                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty()),
                 // ★ R2a：经济切片带一份可断言的读数（一格一产业一阶层行）。
                 "economy", new EconomySnapshot(ref("main", 1), T7, economyData()),
                 // ★★ H1：actor 切片（家户 actor + 账本）—— /api/economy/hex 的 goods 与
@@ -1349,7 +1349,7 @@ class GuiApiTest {
                     new MapCodec(),
                     new SocialCodec(),
                     new UnitCodec(),
-                    new SdCodec(),
+                    new GaCodec(),
                     new EconomyCodec(),
                     // ★ H1：actor 切片在场 ⇒ 编码器表必须跟着长（否则 CheckpointEncoder 当场抛）。
                     new ActorCodec())));

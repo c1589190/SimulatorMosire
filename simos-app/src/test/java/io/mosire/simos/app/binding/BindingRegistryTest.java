@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.agentlib.permission.AgentPermissionSet;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -16,8 +18,6 @@ import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.MapAgentAttachPolicy;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -260,7 +260,7 @@ class BindingRegistryTest {
         Map.of(
             "map", new MapSnapshot(REF, T0, map()),
             "unit", new UnitSnapshot(REF, T0, units),
-            "sd", new SdSnapshot(REF, T0, SdState.empty())),
+            "ga", new GaSnapshot(REF, T0, GaState.empty())),
         InMemoryInfoSystem.empty());
   }
 

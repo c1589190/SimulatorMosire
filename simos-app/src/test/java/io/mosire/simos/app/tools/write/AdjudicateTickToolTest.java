@@ -15,6 +15,8 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
@@ -24,6 +26,18 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.id.DirectiveId;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.AdjudicationStatus;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.DirectiveStatus;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -36,22 +50,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.ArmyId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.DirectiveId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.AdjudicationStatus;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.Army;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DirectiveStatus;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.spi.NationTag;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -64,6 +62,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -459,7 +458,7 @@ class AdjudicateTickToolTest {
     assertThat(result.success()).as("补记的令必须可裁决（实际：%s）", result.message()).isTrue();
     long after = head();
     SimulationState state = core().replay(ref("main", after));
-    SdState sd = ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
     List<SdInfoEntry> entries = sd.info().get(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + past);
     assertThat(entries).as("按 tick 归档 ⇒ 地址里带的就是那个 tick").isNotNull().hasSize(1);
     assertThat(entries.get(0).tick()).as("★ 条目带**过去**那个 tick（不是世界 tick）").isEqualTo(past);
@@ -496,7 +495,7 @@ class AdjudicateTickToolTest {
 
     String address = AdjudicateTickTool.RESULT_ADDRESS_PREFIX + WORLD_TICK;
     SimulationState state = core().replay(ref("main", head()));
-    SdState sd = ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
     List<SdInfoEntry> entries = sd.info().get(address);
     assertThat(entries).as("同 tick 两条记录都在（留痕）").hasSize(2);
     assertThat(entries.stream().map(e -> e.id().value()))
@@ -504,7 +503,7 @@ class AdjudicateTickToolTest {
         .containsExactly(address + "#0", address + "#1");
     assertThat(entries.get(1).adjudicationStatus())
         .as("★ 新落的那条是**生效**裁决（旧的那条的作废由 void 路径负责，不在本工具职责内）")
-        .contains(io.mosire.simos.sd.model.AdjudicationStatus.EFFECTIVE);
+        .contains(io.mosire.simos.ga.model.AdjudicationStatus.EFFECTIVE);
   }
 
   // ── 判据九：目标声明清单（缺口可见，不静默）────────────────────────────────────────────
@@ -971,7 +970,7 @@ class AdjudicateTickToolTest {
     assertThat(after).as("★ 两条令 + 一条决策结果 + 两条状态翻转仍**只落一条** revision").isEqualTo(before + 1);
 
     // ★ 重放往返：终态是**落盘变更**（不是内存副作用），且两种终态可区分。
-    SdState replayed = sdAt(after);
+    GaState replayed = sdAt(after);
     assertThat(replayed.directives().get(new DirectiveId("d-army")).status())
         .as("命令全部被接受 ⇒ EXECUTED")
         .isEqualTo(DirectiveStatus.EXECUTED);
@@ -1130,7 +1129,7 @@ class AdjudicateTickToolTest {
     long afterVoid = head();
     assertThat(afterVoid).as("① 追加一条逆变更 revision（时间线只追加，不截断）").isGreaterThan(afterAdjudication);
     assertThat(unitName(afterVoid, U1)).as("② 世界真的回到裁决之前").isNotEqualTo("第一连改");
-    SdState sd = sdAt(afterVoid);
+    GaState sd = sdAt(afterVoid);
     assertThat(sd.directives().get(new DirectiveId("d-army")).status())
         .as("③ 被它翻过的令退回待裁决（于是可以改判/重裁）")
         .isEqualTo(DirectiveStatus.ISSUED);
@@ -1244,7 +1243,7 @@ class AdjudicateTickToolTest {
 
   private JsonNode decisionResult(long revision, long tick) throws Exception {
     SimulationState state = core().replay(ref("main", revision));
-    SdState sd = ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
     List<SdInfoEntry> entries = sd.info().get(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + tick);
     assertThat(entries).as("tick %s 的决策结果条目", tick).isNotNull().hasSize(1);
     SdInfoEntry entry = entries.get(0);
@@ -1281,9 +1280,9 @@ class AdjudicateTickToolTest {
   }
 
   /** 重放某个 revision 得到的 sd 状态——状态翻转是否**真落盘**的判据面（往返）。 */
-  private SdState sdAt(long revision) {
+  private GaState sdAt(long revision) {
     SimulationState state = core().replay(ref("main", revision));
-    return ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    return ((GaSnapshot) state.module("ga").orElseThrow()).state();
   }
 
   /** 经**真命令面**提交一条命令（期望坐标 = 当前 head）——用于转移守卫的端到端样本。 */
@@ -1372,39 +1371,34 @@ class AdjudicateTickToolTest {
                 "map", new MapSnapshot(ref("main", 1), T7, fourHexMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, sdWithNationArmyAndMakers())),
+                "ga", new GaSnapshot(ref("main", 1), T7, sdWithNationArmyAndMakers())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
   }
 
   /** 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1，视野 1）+ 三个决策人（国家 / 军队 / 被收紧的国家）。 */
-  private static SdState sdWithNationArmyAndMakers() {
+  private static GaState sdWithNationArmyAndMakers() {
     NationId fra = new NationId("FRA");
     Map<NationId, Nation> nations = new LinkedHashMap<>();
     nations.put(fra, new Nation(fra, "国家 FRA", new RegionId("701"), 0));
     ArmyId a1 = new ArmyId("a1");
     Map<ArmyId, Army> armies = new LinkedHashMap<>();
-    armies.put(a1, new Army(a1, fra, U1, "军队 a1"));
+    armies.put(a1, new Army(a1, Optional.empty(), U1, "军队 a1"));
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
-    makers.put(DM_FRA, maker(DM_FRA, new Affiliation.Nation(fra), AccessLimit.empty()));
-    makers.put(DM_ARMY, maker(DM_ARMY, new Affiliation.Army(a1), AccessLimit.empty()));
+    makers.put(DM_FRA, maker(DM_FRA, AccessLimit.empty()));
+    makers.put(DM_ARMY, maker(DM_ARMY, AccessLimit.empty()));
     makers.put(
-        DM_NARROW,
-        maker(
-            DM_NARROW,
-            new Affiliation.Nation(fra),
-            AccessLimit.ofPrefixes(Map.of("unit", Set.<String>of()))));
-    return SdState.empty().withNations(nations).withArmies(armies).withDecisionMakers(makers);
+        DM_NARROW, maker(DM_NARROW, AccessLimit.ofPrefixes(Map.of("unit", Set.<String>of()))));
+    return GaState.empty().withDecisionMakers(makers);
   }
 
-  private static DecisionMaker maker(
-      DecisionMakerId id, Affiliation affiliation, AccessLimit accessLimit) {
-    return new DecisionMaker(id, affiliation, Set.of(), accessLimit, 1);
+  private static DecisionMaker maker(DecisionMakerId id, AccessLimit accessLimit) {
+    return new DecisionMaker(id, Set.of(), accessLimit, 1);
   }
 
   /** 四格世界 + 两个区域（FRA 覆盖 (1,1)/(1,2)、GER 覆盖 (1,3)）；(2,1) 无归属（中立格）。 */

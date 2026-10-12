@@ -17,7 +17,7 @@ class ArmyDataTest {
 
   @Test
   void treatsAMissingTableAsEmpty() {
-    ArmyData data = new ArmyData(null);
+    ArmyData data = new ArmyData(null, null, null);
 
     assertThat(data.combats()).as("旧档缺 combats 键 ⇒ 空表（fail-closed，不抛）").isEmpty();
     assertThat(data).as("与显式空表逐字相等").isEqualTo(ArmyData.empty());
@@ -30,10 +30,10 @@ class ArmyDataTest {
     Map<CombatRecordId, CombatRecord> nullValue = new LinkedHashMap<>();
     nullValue.put(ArmyFixtures.C1, null);
 
-    assertThatThrownBy(() -> new ArmyData(nullKey))
+    assertThatThrownBy(() -> new ArmyData(Map.of(), nullKey, Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("不得为 null");
-    assertThatThrownBy(() -> new ArmyData(nullValue))
+    assertThatThrownBy(() -> new ArmyData(Map.of(), nullValue, Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("不得为 null");
   }
@@ -43,7 +43,7 @@ class ArmyDataTest {
     Map<CombatRecordId, CombatRecord> wrongKey = new LinkedHashMap<>();
     wrongKey.put(ArmyFixtures.C2, ArmyFixtures.duelRecord(ArmyFixtures.C1, 12L));
 
-    assertThatThrownBy(() -> new ArmyData(wrongKey))
+    assertThatThrownBy(() -> new ArmyData(Map.of(), wrongKey, Map.of()))
         .as("★ 同一个聚合键有第二个拼写点正是这条守卫要消灭的")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("键必须与")
@@ -77,8 +77,8 @@ class ArmyDataTest {
       backwardMap.put(records[forward[index]].id(), records[forward[index]]);
     }
 
-    ArmyData forwardData = new ArmyData(forwardMap);
-    ArmyData backwardData = new ArmyData(backwardMap);
+    ArmyData forwardData = new ArmyData(Map.of(), forwardMap, Map.of());
+    ArmyData backwardData = new ArmyData(Map.of(), backwardMap, Map.of());
 
     assertThat(forwardData.combats().keySet())
         .as("插入序 [c-3,c-1,c-5,c-2,c-4] 逐位保留")
@@ -94,7 +94,7 @@ class ArmyDataTest {
   void freezesTheTableAndCopiesTheInput() {
     Map<CombatRecordId, CombatRecord> source = new LinkedHashMap<>();
     source.put(ArmyFixtures.C1, ArmyFixtures.duelRecord(ArmyFixtures.C1, 12L));
-    ArmyData data = new ArmyData(source);
+    ArmyData data = new ArmyData(Map.of(), source, Map.of());
 
     assertThatThrownBy(
             () ->

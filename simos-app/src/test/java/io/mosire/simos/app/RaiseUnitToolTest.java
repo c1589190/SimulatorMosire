@@ -30,6 +30,10 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -42,10 +46,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -150,7 +150,7 @@ class RaiseUnitToolTest {
           new MapCodec(),
           new SocialCodec(),
           new UnitCodec(),
-          new SdCodec(),
+          new GaCodec(),
           new EconomyCodec(),
           new ActorCodec());
 
@@ -851,7 +851,7 @@ class RaiseUnitToolTest {
                 "map", new MapSnapshot(ref(1L), T7, map()),
                 "unit", new UnitSnapshot(ref(1L), T7, unitState()),
                 "social", new SocialSnapshot(ref(1L), T7, social()),
-                "sd", new SdSnapshot(ref(1L), T7, SdState.empty()),
+                "ga", new GaSnapshot(ref(1L), T7, GaState.empty()),
                 "economy", new EconomySnapshot(ref(1L), T7, EconomyData.empty()),
                 "actor", new ActorSnapshot(ref(1L), T7, actors())),
             InMemoryInfoSystem.empty());
@@ -1030,8 +1030,8 @@ class RaiseUnitToolTest {
     return ((SocialSnapshot) state.module("social").orElseThrow()).data();
   }
 
-  private static SdState sdState(SimulationState state) {
-    return ((SdSnapshot) state.module("sd").orElseThrow()).state();
+  private static GaState sdState(SimulationState state) {
+    return ((GaSnapshot) state.module("ga").orElseThrow()).state();
   }
 
   private static long grainOf(ActorData data, HouseholdAccountKey key) {

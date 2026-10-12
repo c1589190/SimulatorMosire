@@ -48,24 +48,22 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.spi.EconomyGmAdjustments;
 import io.mosire.simos.economy.tools.write.EconomyAdjustTool;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
-import io.mosire.simos.ga.tools.write.SdAddCombatStageTool;
 import io.mosire.simos.ga.tools.write.SdCancelEffectTool;
-import io.mosire.simos.ga.tools.write.SdCommitCombatOutcomeTool;
 import io.mosire.simos.ga.tools.write.SdCreateArmyTool;
-import io.mosire.simos.ga.tools.write.SdCreateCombatTool;
 import io.mosire.simos.ga.tools.write.SdCreateDecisionMakerTool;
 import io.mosire.simos.ga.tools.write.SdCreateNationTool;
 import io.mosire.simos.ga.tools.write.SdPutInfoTool;
-import io.mosire.simos.ga.tools.write.SdRecordCasualtiesTool;
 import io.mosire.simos.ga.tools.write.SdRecordDiplomaticEventTool;
 import io.mosire.simos.ga.tools.write.SdRegisterEffectTool;
 import io.mosire.simos.ga.tools.write.SdSetArmyMasterGovTool;
 import io.mosire.simos.ga.tools.write.SdSetDecisionMakerProviderTool;
 import io.mosire.simos.ga.tools.write.SdSetDiplomaticRelationTool;
-import io.mosire.simos.ga.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -92,9 +90,6 @@ import io.mosire.simos.map.tools.write.MapRenameRegionTool;
 import io.mosire.simos.map.tools.write.MapSetEdgeTool;
 import io.mosire.simos.map.tools.write.MapSetTerrainTool;
 import io.mosire.simos.map.tools.write.MapUpdateRegionTool;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -867,11 +862,6 @@ class SimosToolsTest {
             new SdPutInfoTool(gaWrites, gaIdentity, mapId),
             new SdSetDiplomaticRelationTool(gaWrites, gaIdentity, mapId),
             new SdRecordDiplomaticEventTool(gaWrites, gaIdentity, mapId),
-            new SdCreateCombatTool(gaWrites, gaIdentity, mapId),
-            new SdAddCombatStageTool(gaWrites, gaIdentity, mapId),
-            new SdSetStageOutcomeTableTool(gaWrites, gaIdentity, mapId),
-            new SdCommitCombatOutcomeTool(gaWrites, gaIdentity, mapId),
-            new SdRecordCasualtiesTool(gaWrites, gaIdentity, mapId),
             new SdRegisterEffectTool(gaWrites, gaIdentity, mapId),
             new SdCancelEffectTool(gaWrites, gaIdentity, mapId),
             new SdSetDecisionMakerProviderTool(gaWrites, gaIdentity, mapId));
@@ -2476,88 +2466,6 @@ class SimosToolsTest {
         SdPutInfoTool.NAME, "{\"address\":\"nope\",\"key\":\"k\",\"value\":\"v\"}", "地址至少两段");
   }
 
-  /** ★ 坏载荷 = **combatId 已存在**：先经同一条窄工具真建一个交战，再用同一个 id 建第二次。 */
-  @Test
-  void sdCreateCombatToolSurfacesTheDomainRejectionForADuplicateId() throws Exception {
-    String payload = "{\"combatId\":\"c1\",\"name\":\"战役甲\",\"participants\":[\"u-1\"]}";
-    ToolResult created = callNarrowWrite(SdCreateCombatTool.NAME, payload, 1L);
-    assertThat(created.success()).as(created.message()).isTrue();
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("第一次建交战成功 ⇒ head 前进一步")
-        .isEqualTo(2L);
-
-    assertDomainRejectedAndHeadUnchanged(SdCreateCombatTool.NAME, payload, "交战已存在");
-  }
-
-  /** ★ 坏载荷 = **combatId 不存在**：`stage` 本身**必须合法**（载荷解析在交战查询之前），否则拒的是载荷层而不是这一关。 */
-  @Test
-  void sdAddCombatStageToolSurfacesTheDomainRejectionForAnUnknownCombat() throws Exception {
-    assertDomainRejectedAndHeadUnchanged(
-        SdAddCombatStageTool.NAME,
-        "{\"combatId\":\"c-nope\",\"stage\":{\"stageId\":\"s1\",\"name\":\"阶段一\","
-            + "\"outcomes\":{\"options\":[{\"id\":\"opt-a\",\"label\":\"甲\",\"weight\":1}]}}}",
-        "交战不存在");
-  }
-
-  /** ★ 坏载荷 = **stageId 不在该交战里**：先造出「有交战、有首阶段」的状态。 */
-  @Test
-  void sdSetStageOutcomeTableToolSurfacesTheDomainRejectionForAnUnknownStage() throws Exception {
-    seedCombatWithFirstStage();
-
-    assertDomainRejectedAndHeadUnchanged(
-        SdSetStageOutcomeTableTool.NAME,
-        "{\"combatId\":\"c1\",\"stageId\":\"s-nope\","
-            + "\"outcomes\":{\"options\":[{\"id\":\"opt-b\",\"label\":\"乙\",\"weight\":1}]}}",
-        "阶段不存在");
-  }
-
-  /** ★ 坏载荷 = **结局不在该阶段的 outcomeTable 里**（N2）：首阶段的表里只有 `opt-a`，提交 `opt-b`。 */
-  @Test
-  void sdCommitCombatOutcomeToolSurfacesTheDomainRejectionForAnOutcomeOutsideTheTable()
-      throws Exception {
-    seedCombatWithFirstStage();
-
-    assertDomainRejectedAndHeadUnchanged(
-        SdCommitCombatOutcomeTool.NAME,
-        "{\"combatId\":\"c1\",\"stageId\":\"s1\",\"selectedOutcomeId\":\"opt-b\"}",
-        "结局不在该阶段的 outcomeTable 里");
-  }
-
-  /** ★ 坏载荷 = **未知装备类型**（P14：不视作 0）；`personnel` 给 0 确保先撞的是装备那一关。 */
-  @Test
-  void sdRecordCasualtiesToolSurfacesTheDomainRejectionForAnUnknownEquipmentKey() throws Exception {
-    seedCombatWithFirstStage();
-
-    assertDomainRejectedAndHeadUnchanged(
-        SdRecordCasualtiesTool.NAME,
-        "{\"combatId\":\"c1\",\"stageId\":\"s1\",\"deltas\":[{\"unit\":\"u-1\",\"personnel\":0,"
-            + "\"equipment\":{\"没这个装备\":-1},\"lossClass\":\"PERMANENT\"}]}",
-        "未知装备类型");
-  }
-
-  /**
-   * ★ 坏载荷 = **action 引用的阶段不存在**：`Action.SetStage` 先查 CombatState（首阶段兼建的那个 `cs-1` 在），再查阶段——所以 `cs-1`
-   * 必须真存在，否则拒的是「CombatState 不存在」那一关。
-   *
-   * <p>★★ **两个内层 id 必须写成对象形态 `{"value":"…"}`、不能写标量**——这是**当场实测**的线格式约束，不是笔误：
-   * `CombatStateId`/`CombatStageId` 是单 `String` record 且无 `@JsonCreator`，写成 `"cs-1"` 时 Jackson
-   * 在**载荷层** 就报 {@code no String-argument constructor/factory method to deserialize from String
-   * value ('cs-1')}， 于是拒绝理由变成载荷层那句、断言会退化成判另一个前置（改回标量即红在此）。★ 该缺口属 **sd 域**（本任务不改
-   * `simos-sd`），已记入报告「我未能核实的」。
-   */
-  @Test
-  void sdRegisterEffectToolSurfacesTheDomainRejectionForAStageThatDoesNotExist() throws Exception {
-    seedCombatWithFirstStage();
-
-    assertDomainRejectedAndHeadUnchanged(
-        SdRegisterEffectTool.NAME,
-        "{\"effectId\":\"e-1\",\"kind\":\"SCHEDULED\","
-            + "\"trigger\":{\"@class\":\"at_or_after_tick\",\"tick\":5},"
-            + "\"action\":{\"@class\":\"set_stage\",\"combatState\":{\"value\":\"cs-1\"},"
-            + "\"stage\":{\"value\":\"s-nope\"}}}",
-        "action 引用的阶段不存在");
-  }
-
   /** ★ 坏载荷 = **effectId 不存在**（无需前置：效果表本来就是空的）。 */
   @Test
   void sdCancelEffectToolSurfacesTheDomainRejectionForAnUnknownEffect() throws Exception {
@@ -2579,29 +2487,6 @@ class SimosToolsTest {
         SdSetDecisionMakerProviderTool.NAME,
         "{\"decisionMakerId\":\"dm-nope\",\"providerId\":\"p-never-registered\"}",
         "决策人不存在");
-  }
-
-  /**
-   * M3 判据 4 的共用前置：经**真窄写**建一个交战 + 它的第一个阶段（首阶段兼建 {@code CombatState cs-1}，见 C1-a 的取代说明）。
-   *
-   * <p>★ 只用同一条工具链造状态、不塞夹具——这样「前置可达」本身也被走到（与 M1 的 {@code
-   * mapCreateRegionToolSurfacesTheDomainRejectionForADuplicateId} 同法）。
-   */
-  private void seedCombatWithFirstStage() throws Exception {
-    ToolResult combat =
-        callNarrowWrite(SdCreateCombatTool.NAME, "{\"combatId\":\"c1\",\"name\":\"战役甲\"}", 1L);
-    assertThat(combat.success()).as(combat.message()).isTrue();
-    ToolResult stage =
-        callNarrowWrite(
-            SdAddCombatStageTool.NAME,
-            "{\"combatId\":\"c1\",\"combatStateId\":\"cs-1\",\"hex\":{\"q\":1,\"r\":1},"
-                + "\"stage\":{\"stageId\":\"s1\",\"name\":\"阶段一\","
-                + "\"outcomes\":{\"options\":[{\"id\":\"opt-a\",\"label\":\"甲\",\"weight\":1}]}}}",
-            2L);
-    assertThat(stage.success()).as(stage.message()).isTrue();
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("交战 + 首阶段各留一条 revision")
-        .isEqualTo(3L);
   }
 
   /**
@@ -2843,7 +2728,7 @@ class SimosToolsTest {
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, SdState.empty()),
+                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty()),
                 // ★ D1/D4：army 切片在场（读取口 simos.army.combats/combat 与交战目标检查都需要它；
                 //   本夹具为空表 ⇒ 读口给空数组 / 单条详情给 NOT_FOUND）。
                 "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty()),
@@ -2867,7 +2752,7 @@ class SimosToolsTest {
                     new MapCodec(),
                     new SocialCodec(),
                     new UnitCodec(),
-                    new SdCodec(),
+                    new GaCodec(),
                     new EconomyCodec(),
                     new ActorCodec(),
                     new ArmyCodec(),

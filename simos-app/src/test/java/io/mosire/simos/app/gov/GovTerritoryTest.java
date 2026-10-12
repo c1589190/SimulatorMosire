@@ -7,14 +7,12 @@ import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.ScopeFixtures;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovernmentFormation;
@@ -27,6 +25,7 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
@@ -152,7 +151,7 @@ class GovTerritoryTest {
                 Optional.of(G1),
                 GovernmentLevel.PROVINCE,
                 new RegionId[] {new RegionId("r-child")}));
-    SimulationState state = ScopeFixtures.state(map, units, SdState.empty());
+    SimulationState state = ScopeFixtures.state(map, units, GaState.empty());
 
     // 名义全境：中央的 GOV 子树包含下级的 r-child。
     assertThat(GovTerritory.nominalRegions(units, G1))
@@ -161,12 +160,7 @@ class GovTerritoryTest {
 
     // 直辖：中央自己 jurisdiction 为空 ⇒ 只 own(H11)，绝不因名义全境放宽。
     DecisionMaker dm =
-        new DecisionMaker(
-            new DecisionMakerId("dm-g1"),
-            new Affiliation.Gov(G1),
-            Set.of(),
-            AccessLimit.empty(),
-            1);
+        new DecisionMaker(new DecisionMakerId("dm-g1"), Set.of(), AccessLimit.empty(), 1);
     ResourceScopeMap scopes =
         DecisionScopeFunctions.defaults().scopesFor(dm, state, ScopeFixtures.MAP_ID);
 

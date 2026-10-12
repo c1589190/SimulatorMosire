@@ -48,7 +48,19 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.id.DecisionPacketId;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.Directive;
+import io.mosire.simos.ga.model.DirectiveCommand;
+import io.mosire.simos.ga.model.FormattedCall;
+import io.mosire.simos.ga.model.PacketStatus;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.spi.IssueDirectiveHandler;
 import io.mosire.simos.ga.tools.write.GmDecidePacketTool;
 import io.mosire.simos.ga.tools.write.GmPacketExecuteTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
@@ -67,19 +79,6 @@ import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.DecisionPacketId;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DecisionPacket;
-import io.mosire.simos.sd.model.Directive;
-import io.mosire.simos.sd.model.DirectiveCommand;
-import io.mosire.simos.sd.model.FormattedCall;
-import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.spi.IssueDirectiveHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -96,6 +95,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.tools.write.UnitSetJurisdictionTool;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -550,7 +550,7 @@ class RealLlmGovScenarioTest {
   }
 
   private List<DecisionPacket> packetsForTick(long tick, List<String> dmIds) {
-    SdState sd = sdAt(head());
+    GaState sd = sdAt(head());
     List<DecisionPacket> out = new ArrayList<>();
     for (String dmId : dmIds) {
       DecisionPacketId id = DecisionPacketId.parse("pkt-" + dmId + "-" + tick);
@@ -2086,10 +2086,10 @@ class RealLlmGovScenarioTest {
       DecisionMaker provinceDm = sdAt(head()).decisionMakers().get(nf.provinceDm);
       assertThat(centralDm).isNotNull();
       assertThat(provinceDm).isNotNull();
-      assertThat(centralDm.affiliation())
-          .isInstanceOf(io.mosire.simos.sd.model.Affiliation.Gov.class);
-      assertThat(provinceDm.affiliation())
-          .isInstanceOf(io.mosire.simos.sd.model.Affiliation.Gov.class);
+      assertThat(io.mosire.simos.app.tools.ToolSupport.govState(state).govAffiliations())
+          .as("★ 乙收尾起归属住 gov 的 govAffiliations 表（原先在 DecisionMaker.affiliation 字段上）")
+          .containsEntry(nf.centralDm, nf.centralGov)
+          .containsEntry(nf.provinceDm, nf.provinceGov);
       assertThat(centralDm.providerId()).contains(PROVIDER_ID);
       assertThat(provinceDm.providerId()).contains(PROVIDER_ID);
       assertThat(treasurySilver(state, nf.centralGov)).as("中央国库预充银").isPositive();
@@ -2156,8 +2156,8 @@ class RealLlmGovScenarioTest {
     return shell.coreSimos().replay(new StateRef(MAIN, new RevisionId(revision)));
   }
 
-  private SdState sdAt(long revision) {
-    return ((SdSnapshot) stateAt(revision).module("sd").orElseThrow()).state();
+  private GaState sdAt(long revision) {
+    return ((GaSnapshot) stateAt(revision).module("ga").orElseThrow()).state();
   }
 
   private ResourceScopeMap scopeOf(DecisionMakerId dmId) {
@@ -2197,8 +2197,8 @@ class RealLlmGovScenarioTest {
 
   private List<DirectiveInfo> freshDirectiveInfos(
       long headBefore, long headAfter, String dmId, List<ToolTrace> traces) {
-    SdState before = sdAt(headBefore);
-    SdState after = sdAt(headAfter);
+    GaState before = sdAt(headBefore);
+    GaState after = sdAt(headAfter);
     Map<String, String> intents = new LinkedHashMap<>();
     for (ToolTrace trace : traces) {
       if (!IssueDirectiveTool.NAME.equals(realToolName(trace.tool()))) {
@@ -2230,7 +2230,7 @@ class RealLlmGovScenarioTest {
     return out;
   }
 
-  private static String stateIntent(SdState sd, Directive directive) {
+  private static String stateIntent(GaState sd, Directive directive) {
     List<SdInfoEntry> entries = sd.info().get("sd:directive." + directive.id().value());
     if (entries == null) {
       return "";
@@ -2595,7 +2595,7 @@ class RealLlmGovScenarioTest {
                 "map", new io.mosire.simos.map.MapSnapshot(ref, T0, CompactThreeNationsWorld.map()),
                 "social", new SocialSnapshot(ref, T0, new SocialData(Map.of(), Map.of(), Map.of())),
                 "unit", new UnitSnapshot(ref, T0, UnitState.empty()),
-                "sd", new SdSnapshot(ref, T0, SdState.empty()),
+                "ga", new GaSnapshot(ref, T0, GaState.empty()),
                 "economy", new EconomySnapshot(ref, T0, EconomyData.empty()),
                 "actor", new ActorSnapshot(ref, T0, ActorData.empty()),
                 "gov", new GovSnapshot(ref, T0, GovState.empty())),
@@ -2609,7 +2609,7 @@ class RealLlmGovScenarioTest {
                     new MapCodec(),
                     new SocialCodec(),
                     new UnitCodec(),
-                    new SdCodec(),
+                    new GaCodec(),
                     new EconomyCodec(),
                     new ActorCodec(),
                     new GovCodec())));

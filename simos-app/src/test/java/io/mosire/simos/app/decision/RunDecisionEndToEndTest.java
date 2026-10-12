@@ -20,7 +20,13 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.llm.ProviderLlm;
+import io.mosire.simos.app.testing.WorldSlices;
 import io.mosire.simos.app.tools.SimosToolSource;
+import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyId;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -28,9 +34,23 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.id.DecisionPacketId;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.PacketStatus;
 import io.mosire.simos.ga.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.ga.tools.write.RunDecisionTool;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -43,21 +63,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.ArmyId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.DecisionPacketId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.Army;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DecisionPacket;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.spi.NationTag;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -70,6 +75,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.tools.write.UnitRenameTool;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -139,7 +145,6 @@ class RunDecisionEndToEndTest {
   private static final DecisionMaker DM_FRA =
       new DecisionMaker(
           new DecisionMakerId(DM_ID),
-          new Affiliation.Nation(new NationId("FRA")),
           Set.of(),
           AccessLimit.empty(),
           1,
@@ -150,13 +155,7 @@ class RunDecisionEndToEndTest {
   /** 未绑定 provider 的同一个人（fail-closed 的靶子）。 */
   private static final DecisionMaker DM_NO_PROVIDER =
       new DecisionMaker(
-          new DecisionMakerId(DM_ID),
-          new Affiliation.Nation(new NationId("FRA")),
-          Set.of(),
-          AccessLimit.empty(),
-          1,
-          Optional.empty(),
-          0L);
+          new DecisionMakerId(DM_ID), Set.of(), AccessLimit.empty(), 1, Optional.empty(), 0L);
 
   @TempDir Path tempDir;
 
@@ -420,7 +419,7 @@ class RunDecisionEndToEndTest {
   /** 当前 head 上该决策人本 tick 的 packet（用于结算断言）。 */
   private DecisionPacket packetOf(String dmId) {
     SimulationState state = shell.coreSimos().replay(ref("main", head()));
-    SdState sd = ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
     return sd.decisionPackets()
         .get(DecisionPacketId.parse("pkt-" + dmId + "-" + state.meta().timestamp().tick()));
   }
@@ -652,6 +651,7 @@ class RunDecisionEndToEndTest {
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, genesisUnit(U1, "第一连", H11))));
     SocialData social =
         new SocialData(new LinkedHashMap<>(Map.of(H12, populationSeries())), Map.of(), Map.of());
+    WorldSlices slices = sdWithOneNationOneArmy(maker);
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
@@ -659,27 +659,38 @@ class RunDecisionEndToEndTest {
                 "map", new MapSnapshot(ref("main", 1), T7, twoHexMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, sdWithOneNationOneArmy(maker))),
+                "gov", new GovSnapshot(ref("main", 1), T7, slices.gov()),
+                "army", new ArmySnapshot(ref("main", 1), T7, slices.army()),
+                "ga", new GaSnapshot(ref("main", 1), T7, slices.ga())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(storeDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new GovCodec(),
+                    new ArmyCodec(),
+                    new GaCodec())));
   }
 
   /** 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1）+ 一个**国家**决策人。 */
-  private static SdState sdWithOneNationOneArmy(DecisionMaker maker) {
+  private static WorldSlices sdWithOneNationOneArmy(DecisionMaker maker) {
     NationId fra = new NationId("FRA");
     Map<NationId, Nation> nations = new LinkedHashMap<>();
     nations.put(fra, new Nation(fra, "国家 FRA", new RegionId("701"), 0));
     ArmyId a1 = new ArmyId("a1");
     Map<ArmyId, Army> armies = new LinkedHashMap<>();
-    armies.put(a1, new Army(a1, fra, U1, "军队 a1"));
+    armies.put(a1, new Army(a1, Optional.empty(), U1, "军队 a1"));
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(maker.id(), maker);
-    return SdState.empty().withNations(nations).withArmies(armies).withDecisionMakers(makers);
+    return WorldSlices.of(
+        new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+        ArmyData.empty().withArmies(armies),
+        GaState.empty().withDecisionMakers(makers));
   }
 
   /** 两格世界（{@code (1,1)/(1,2)}，desert），区域 701（{@code nation:FRA}）覆盖两格。 */

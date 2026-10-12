@@ -6,18 +6,16 @@ import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DisclosurePolicy;
-import io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.DisclosurePolicy;
+import io.mosire.simos.ga.spi.SetDecisionMakerAccessHandler;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -63,7 +61,7 @@ class SdSetDecisionMakerAccessEndToEndTest {
         .isEqualTo(new StateRef(MAIN, new RevisionId(2)));
     assertThat(core.revisions(MAIN)).as("写入产生一条 revision 行").hasSize(2);
 
-    SdState replayed = sdState(core, 2);
+    GaState replayed = sdState(core, 2);
     AccessLimit limit = replayed.decisionMakers().get(new DecisionMakerId("dm1")).accessLimit();
     assertThat(limit.prefixesByNamespace().get("map"))
         .as("前缀逐值活过落盘-重放（铁律 2/5）")
@@ -83,15 +81,15 @@ class SdSetDecisionMakerAccessEndToEndTest {
 
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     core.register(new SetDecisionMakerAccessHandler());
     core.bootstrapGenesis(genesis());
     return core;
   }
 
-  private static SdState sdState(CoreSimos core, long revision) {
+  private static GaState sdState(CoreSimos core, long revision) {
     SimulationState state = core.replay(new StateRef(MAIN, new RevisionId(revision)));
-    return ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    return ((GaSnapshot) state.module("ga").orElseThrow()).state();
   }
 
   private static CommandEnvelope envelope(long expectedRevision, String payload) {
@@ -115,13 +113,11 @@ class SdSetDecisionMakerAccessEndToEndTest {
   private static SimulationState genesis() {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     DecisionMakerId dm1 = new DecisionMakerId("dm1");
-    DecisionMaker maker =
-        new DecisionMaker(
-            dm1, new Affiliation.Nation(new NationId("n1")), Set.of(), AccessLimit.empty(), 1);
-    SdState sd = SdState.empty().withDecisionMakers(Map.of(dm1, maker));
+    DecisionMaker maker = new DecisionMaker(dm1, Set.of(), AccessLimit.empty(), 1);
+    GaState sd = GaState.empty().withDecisionMakers(Map.of(dm1, maker));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),
-        Map.of("sd", new SdSnapshot(ref, SimosTimestamp.of(0), sd)),
+        Map.of("ga", new GaSnapshot(ref, SimosTimestamp.of(0), sd)),
         InMemoryInfoSystem.empty());
   }
 }

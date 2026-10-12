@@ -15,12 +15,12 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.read.CatalogTool;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.channel.ChannelAdmission;
 import io.mosire.simos.ga.command.CommandFaces;
 import io.mosire.simos.ga.command.CommandPermissionRules;
-import io.mosire.simos.sd.channel.ChannelAdmission;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -175,7 +175,7 @@ class CatalogVisibilityTest {
    */
   private static ToolContext dmContext() {
     DecisionMaker dm = ScopeFixtures.nationDm("dm-a", "alpha");
-    SdState sd = SdState.empty().withDecisionMakers(Map.of(new DecisionMakerId("dm-a"), dm));
+    GaState sd = GaState.empty().withDecisionMakers(Map.of(new DecisionMakerId("dm-a"), dm));
     SimulationState state = ScopeFixtures.state(ScopeFixtures.mapOf(), ScopeFixtures.units(), sd);
     return DecisionCallerFactory.defaults(authorizer(), DecisionFaceGolden.ALL)
         .callerFor(dm, state, ScopeFixtures.MAP_ID);

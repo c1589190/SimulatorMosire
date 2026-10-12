@@ -53,6 +53,10 @@ import io.mosire.simos.economy.govpolicy.GovPostTier;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.gov.tools.read.GovInfoTool;
 import io.mosire.simos.gov.tools.write.GovAssignPostsTool;
@@ -62,14 +66,6 @@ import io.mosire.simos.gov.tools.write.GovSetBudgetPolicyTool;
 import io.mosire.simos.gov.tools.write.GovSetEstablishmentTool;
 import io.mosire.simos.gov.tools.write.GovTransferTreasuryTool;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.id.ArmyId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -89,6 +85,7 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.spi.AssignExternalGovPostHandler;
 import io.mosire.simos.unit.tools.write.UnitSetJurisdictionTool;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -1545,11 +1542,11 @@ class GovToolsZ6Test {
       state =
           GovZ6WorldFixture.withModule(
               state,
-              "sd",
-              new SdSnapshot(
+              "ga",
+              new GaSnapshot(
                   meta.ref(),
                   meta.timestamp(),
-                  SdState.empty().withDecisionMakers(decisionMakers())));
+                  GaState.empty().withDecisionMakers(decisionMakers())));
       state = mutate.apply(state);
       shell.coreSimos().bootstrapGenesis(state);
       return new World(shell, config.mapId(), label);
@@ -1561,22 +1558,15 @@ class GovToolsZ6Test {
 
   private static Map<DecisionMakerId, DecisionMaker> decisionMakers() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
-    makers.put(
-        new DecisionMakerId("dm-central"), maker("dm-central", new Affiliation.Gov(CENTRAL)));
-    makers.put(
-        new DecisionMakerId("dm-province"), maker("dm-province", new Affiliation.Gov(PROVINCE)));
-    makers.put(
-        new DecisionMakerId("dm-nation"),
-        maker("dm-nation", new Affiliation.Nation(new NationId("FRA"))));
-    makers.put(
-        new DecisionMakerId("dm-army"),
-        maker("dm-army", new Affiliation.Army(new ArmyId("army-1"))));
+    makers.put(new DecisionMakerId("dm-central"), maker("dm-central"));
+    makers.put(new DecisionMakerId("dm-province"), maker("dm-province"));
+    makers.put(new DecisionMakerId("dm-nation"), maker("dm-nation"));
+    makers.put(new DecisionMakerId("dm-army"), maker("dm-army"));
     return makers;
   }
 
-  private static DecisionMaker maker(String id, Affiliation affiliation) {
-    return new DecisionMaker(
-        new DecisionMakerId(id), affiliation, Set.of(), AccessLimit.empty(), 1);
+  private static DecisionMaker maker(String id) {
+    return new DecisionMaker(new DecisionMakerId(id), Set.of(), AccessLimit.empty(), 1);
   }
 
   /** 一座真壳小世界：创世已落在 (main, 1)。 */
@@ -1627,7 +1617,7 @@ class GovToolsZ6Test {
     }
 
     DecisionMaker dm(String id) {
-      return ((SdSnapshot) state().module("sd").orElseThrow())
+      return ((GaSnapshot) state().module("ga").orElseThrow())
           .state()
           .decisionMakers()
           .get(new DecisionMakerId(id));

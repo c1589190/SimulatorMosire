@@ -22,22 +22,18 @@ import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
 import io.mosire.simos.app.tools.write.AppUnitToolViews;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.id.VerdictId;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.AdjudicationBreakpoint;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.DisclosurePolicy;
+import io.mosire.simos.ga.model.Verdict;
+import io.mosire.simos.ga.model.VerdictMeta;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.tools.read.MapHexTool;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.id.VerdictId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.AdjudicationBreakpoint;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DisclosurePolicy;
-import io.mosire.simos.sd.model.Verdict;
-import io.mosire.simos.sd.model.VerdictMeta;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -50,6 +46,7 @@ import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.resolve.ResolverRegistry;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -345,7 +342,7 @@ class RedactingQueryServiceTest {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new MapCodec());
     core.register(new UnitCodec());
-    core.register(new SdCodec());
+    core.register(new GaCodec());
     // ★ S3a：unit 读口（RedactingQueryService.units/UnitGetTool）现在经 SocialLookupAdapter 取
     // households/population
     //   ⇒ 夹具必须有 social 切片，否则会按"装配故障"抛（生产状态恒有该切片）。
@@ -357,7 +354,7 @@ class RedactingQueryServiceTest {
 
   /** 从夹具 sd 切片取决策人（工具路径要的是对象，不是 id）。 */
   private static DecisionMaker decisionMakerOf(DecisionMakerId id) {
-    return sdState().decisionMakers().get(id);
+    return sdState().ga().decisionMakers().get(id);
   }
 
   /** 创世状态（坐标形如 {@code (main, 1)}）。 */
@@ -397,7 +394,7 @@ class RedactingQueryServiceTest {
     return new SimulationState(base.meta(), slices, base.info());
   }
 
-  private static SdState sdState() {
+  private static io.mosire.simos.app.testing.WorldSlices sdState() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(DM_ALPHA, nationDm("dm-alpha", "alpha", AccessLimit.empty()));
     makers.put(DM_BETA, nationDm("dm-beta", "beta", AccessLimit.empty()));
@@ -409,14 +406,7 @@ class RedactingQueryServiceTest {
         DM_EMPTY_INTERSECTION,
         nationDm("dm-empty", "alpha", Map.of("map", Set.of(MAP_ID + "/region/r2"))));
     makers.put(DM_NO_UNIT, nationDm("dm-no-unit", "alpha", Map.of("unit", Set.of())));
-    makers.put(
-        DM_ARMY,
-        new DecisionMaker(
-            DM_ARMY,
-            new Affiliation.Army(new io.mosire.simos.sd.id.ArmyId("a1")),
-            Set.of(),
-            AccessLimit.empty(),
-            1));
+    makers.put(DM_ARMY, new DecisionMaker(DM_ARMY, Set.of(), AccessLimit.empty(), 1));
     makers.put(DM_FULL, nationDm("dm-full", "alpha", disclosure(DisclosurePolicy.FULL, Set.of())));
     makers.put(
         DM_PERCEPTION,
@@ -429,9 +419,8 @@ class RedactingQueryServiceTest {
         nationDm("dm-redact", "alpha", disclosure(DisclosurePolicy.FULL, Set.of("position"))));
     Map<VerdictId, Verdict> verdicts = new LinkedHashMap<>();
     verdicts.put(V1, verdict("v-1"));
-    return ScopeFixtures.sdWithArmy("a1", "alpha", "u-a")
-        .withDecisionMakers(makers)
-        .withVerdicts(verdicts);
+    var base = ScopeFixtures.sdWithArmy("a1", "alpha", "u-a");
+    return base.withGa(base.ga().withDecisionMakers(makers).withVerdicts(verdicts));
   }
 
   /** 只改披露口径与字段剔除、**不额外收紧资源**（空前缀图 = 不表态）。 */
@@ -445,12 +434,7 @@ class RedactingQueryServiceTest {
   }
 
   private static DecisionMaker nationDm(String id, String nationId, AccessLimit limit) {
-    return new DecisionMaker(
-        new DecisionMakerId(id),
-        new Affiliation.Nation(new NationId(nationId)),
-        Set.of(),
-        limit,
-        1);
+    return new DecisionMaker(new DecisionMakerId(id), Set.of(), limit, 1);
   }
 
   private static Verdict verdict(String id) {

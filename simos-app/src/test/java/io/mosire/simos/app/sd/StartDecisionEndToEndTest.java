@@ -23,6 +23,13 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.ga.id.SdInfoId;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.tools.write.StartDecisionTool;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -33,16 +40,6 @@ import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.id.SdInfoId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -54,6 +51,7 @@ import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -336,11 +334,11 @@ class StartDecisionEndToEndTest {
     return shell.coreSimos().head(main()).orElseThrow().value();
   }
 
-  private SdState sdState(long revision) {
+  private GaState sdState(long revision) {
     SimulationState state =
         shell.coreSimos().replay(new StateRef(main(), new RevisionId(revision)));
-    SdSnapshot slice =
-        (SdSnapshot) state.module("sd").orElseThrow(() -> new AssertionError("状态里没有 sd 切片"));
+    GaSnapshot slice =
+        (GaSnapshot) state.module("ga").orElseThrow(() -> new AssertionError("状态里没有 ga 切片"));
     return slice.state();
   }
 
@@ -362,18 +360,13 @@ class StartDecisionEndToEndTest {
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
     SocialData social =
         new SocialData(new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), Map.of());
-    SdState sd =
-        new SdState(
+    GaState sd =
+        new GaState(
             Map.of(),
             Map.of(),
             Map.of(),
             Map.of(),
             Map.of(DM, decisionMaker()),
-            Map.of(),
-            Map.of(),
-            Map.of(),
-            Map.of(),
-            Map.of(),
             Map.of(),
             Map.of());
     SimulationState genesis =
@@ -383,14 +376,14 @@ class StartDecisionEndToEndTest {
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "sd", new SdSnapshot(ref("main", 1), T7, sd)),
+                "ga", new GaSnapshot(ref("main", 1), T7, sd)),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new SdCodec())));
+                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
     // ★ 2026-09-22（裁决：无战斗也要走判决）：DM 绑定一个**不可达** provider ⇒ 判决走 N13 可降级失败
     //   （Judgement.Failed，不落 verdict、不落 revision）。本用例只验 C18 的命令/权限面；成功判决路径
     //   见 AdjudicationEndToEndTest（本地 stub）与真 e2e。
@@ -401,13 +394,7 @@ class StartDecisionEndToEndTest {
 
   private static DecisionMaker decisionMaker() {
     return new DecisionMaker(
-        DM,
-        new Affiliation.Nation(new NationId("n-t10")),
-        Set.of("sd.SubmitVerdict"),
-        AccessLimit.empty(),
-        3,
-        Optional.of("stub"),
-        0L);
+        DM, Set.of("sd.SubmitVerdict"), AccessLimit.empty(), 3, Optional.of("stub"), 0L);
   }
 
   private static Unit unit() {

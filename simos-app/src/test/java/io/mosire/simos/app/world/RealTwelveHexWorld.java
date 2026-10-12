@@ -8,6 +8,8 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -21,8 +23,6 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -183,7 +183,7 @@ public final class RealTwelveHexWorld {
             "map", new MapSnapshot(ref, T0, map()),
             "social", new SocialSnapshot(ref, T0, new SocialData(Map.of(), Map.of(), Map.of())),
             "unit", new UnitSnapshot(ref, T0, UnitState.empty()),
-            "sd", new SdSnapshot(ref, T0, SdState.empty()),
+            "ga", new GaSnapshot(ref, T0, GaState.empty()),
             "economy", new EconomySnapshot(ref, T0, EconomyData.empty()),
             "actor", new ActorSnapshot(ref, T0, ActorData.empty())),
         InMemoryInfoSystem.empty());

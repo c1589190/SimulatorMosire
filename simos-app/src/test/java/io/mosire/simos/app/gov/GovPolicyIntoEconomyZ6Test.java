@@ -36,20 +36,19 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
 import io.mosire.simos.economy.time.PortEnforcementInput;
 import io.mosire.simos.economy.time.ProcurementPriorityInput;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -460,11 +459,11 @@ class GovPolicyIntoEconomyZ6Test {
       state =
           GovZ6WorldFixture.withModule(
               state,
-              "sd",
-              new SdSnapshot(
+              "ga",
+              new GaSnapshot(
                   meta.ref(),
                   meta.timestamp(),
-                  SdState.empty().withDecisionMakers(decisionMakers())));
+                  GaState.empty().withDecisionMakers(decisionMakers())));
       shell.coreSimos().bootstrapGenesis(state);
       return new Harness(shell, label);
     } catch (RuntimeException e) {
@@ -477,17 +476,12 @@ class GovPolicyIntoEconomyZ6Test {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(
         new DecisionMakerId("dm-central"),
-        new DecisionMaker(
-            new DecisionMakerId("dm-central"),
-            new Affiliation.Gov(CENTRAL),
-            Set.of(),
-            AccessLimit.empty(),
-            1));
+        new DecisionMaker(new DecisionMakerId("dm-central"), Set.of(), AccessLimit.empty(), 1));
     return makers;
   }
 
   private static String firstDecisionMakerId(SimulationState state) {
-    SdState sd = ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
     assertThat(sd.decisionMakers()).as("夹具世界必须至少有一个决策人（令的落点）").isNotEmpty();
     return sd.decisionMakers().keySet().iterator().next().value();
   }
