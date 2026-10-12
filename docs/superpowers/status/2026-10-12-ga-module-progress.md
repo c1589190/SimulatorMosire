@@ -229,6 +229,13 @@ map 侧 18 个文件含基类/助手）；`simos-map/src/main` 对 `core`/`app` 
    **不硬搬、不造"域里只剩 schema"的假接缝**；
 7. **每批跑 `-pl <域> -am verify`（含 spotbugs）** —— 只跑 compile/validate 会漏掉 verify 阶段的门禁（试点教训）。
 
+### 7.2.1 终审（控制方亲跑，冻结树上）
+
+`tools/mvn-lock.sh clean verify` ⇒ **BUILD SUCCESS，18/18 模块，5:57**（2026-10-12 18:17，含 spotless / spotbugs /
+前端门禁 / shade 守卫）；**surefire 合计 3409 / 0 失败 / 0 错误 / 5 跳过**（跳过 = 既有真 LLM 门控）；
+前端门禁 **412/412**；spotbugs **18 模块 `BugInstance size is 0`**（含修掉死变量后的 `simos-app`）。
+**已提交并推送**：`0d23489b`（`main` = `origin/main`，0 未推送）。
+
 ### 7.3 仍未做（下一步）
 
 | # | 事项 | 说明 |
@@ -237,3 +244,27 @@ map 侧 18 个文件含基类/助手）；`simos-map/src/main` 对 `core`/`app` 
 | 2 | **B4 `roles()` 收口** | `SimosTool`/`roles()` 尚未被任何工具实现；两个桶与 `DecisionCallerFactory.WHITELIST` 仍是手抄（设计书 §4.4） |
 | 3 | **`simos-ga`/`simos-ga-spi` 无 `src/test`** | 其工具与新接缝零测试覆盖（既有测试全在 app） |
 | 4 | 外交类型迁 gov、`AdjudicateTickTool`/`VoidAdjudicationTool` 的归属 | 均属后续批（前者要先迁 `Nation`/关系/事件类型） |
+
+---
+
+## 8. ★★ B3 收尾之二：enforcer 补列（`simos-ga-spi` 的真缺口，已关闭）
+
+**怎么发现的**（逐模块算"应禁 vs 实禁"，不是靠肉眼）：写了个脚本对 16 个设 enforcer 的模块
+逐条算 `应禁 = 全仓模块 − 自己 − 允许面 − ledger留痕`，与实禁做差集 ⇒ **只有 4 个模块缺 `ga-spi`**。
+
+| 模块 | 缺什么 | 为什么之前漏了 |
+|---|---|---|
+| `simos-actor` / `simos-core` / `simos-economy-api` / `simos-sd` | `io.mosire:simos-ga-spi` 一条 | 冻结批按 I-F4 只给 **util/map/calendar/social-api/actor-api** 五个最底层模块补了它；**其余模块当时没补**，B1/B2a/B3 又各自只动自己的允许面 ⇒ 长期没合上 |
+
+**口径（写死，后续补列照此判）**：`ga-spi` 的禁列 = **"谁直接声明谁除外"** ——
+`army / economy / gov / map / social / unit` 六个域模块 + `ga` 自己**声明**了它 ⇒ 必须**除名**（写注释说明）；
+其余模块（不声明、只可能传递可见）**一律列入**。`searchTransitive=false` 保证"列入"不会与传递链冲突。
+
+**证据**：
+- `tools/mvn-lock.sh -DskipTests validate` ⇒ **rc=0**、`BannedDependencies passed` **×16**、BUILD SUCCESS；
+- **负向验证**：给 `simos-sd` 注入 `<dependency>simos-ga-spi</dependency>` ⇒ **rc=1**，原文
+  `Failed to execute goal … maven-enforcer-plugin … (enforce-module-boundaries) on project simos-sd:` +
+  `io.mosire:simos-ga-spi:jar:0.1.0-SNAPSHOT <--- banned via the exclude/include list`；
+  还原后 `md5sum simos-sd/pom.xml` = `97fa84dd45708b841510c570db972835` **前后逐字节一致**。
+- ★ 脚本坑（如实记）：第一版只插了注释、**漏插 `<exclude>` 那一行**（`raise SystemExit` 分支外的路径没走到），
+  复核时发现"条数没变"才抓到 ⇒ 已补齐并逐个复验条数 +1。**"改完立刻复核条数"这一步不能省**。
