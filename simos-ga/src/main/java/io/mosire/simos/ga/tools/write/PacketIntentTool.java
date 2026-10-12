@@ -10,14 +10,12 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.command.CommandEnvelope;
-import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.DecisionMakerId;
@@ -36,7 +34,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
-import java.util.UUID;
 
 /**
  * {@code simos.sd.packet.intent}（D2 决策包计划 §3.2）：把自然语言意图写进本 tick 的 DRAFT 决策包。
@@ -54,16 +51,18 @@ public final class PacketIntentTool implements SimosTool {
   private static final ResourceManifest SD_WRITE =
       ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
-  private final CoreSimos core;
+  private final ToolWritePort writes;
   private final ToolReadPort reads;
-  private final String initiator;
   private final GaToolIdentity identity;
 
-  public PacketIntentTool(
-      CoreSimos core, ToolReadPort reads, String initiator, GaToolIdentity identity) {
-    this.core = Objects.requireNonNull(core, "core");
+  /**
+   * @param writes 窄写口（命令 id / 发起者 / 信封由装配面的适配器装配，见 {@link ToolWritePort} 类注的适配规则）
+   * @param reads 窄读口
+   * @param identity 身份口（决策人 id 从调用者身份派生，不采信载荷）
+   */
+  public PacketIntentTool(ToolWritePort writes, ToolReadPort reads, GaToolIdentity identity) {
+    this.writes = Objects.requireNonNull(writes, "writes");
     this.reads = Objects.requireNonNull(reads, "reads");
-    this.initiator = Objects.requireNonNull(initiator, "initiator");
     this.identity = Objects.requireNonNull(identity, "identity");
   }
 
@@ -154,22 +153,18 @@ public final class PacketIntentTool implements SimosTool {
                   Optional.empty(),
                   Optional.empty())
               : existing.withIntent(text);
-      String commandId = UUID.randomUUID().toString();
-      CommandEnvelope envelope =
-          new CommandEnvelope(
-              commandId,
-              commandId,
-              initiator,
+      // ★ 命令 id 由窄写口的装配面生成并**回报**（见 ToolWritePort.Receipt）——视图里报的 id 与落盘信封的是同一个。
+      ToolWritePort.Receipt receipt =
+          writes.submitWithReceipt(
               branch,
-              new RevisionId(state.meta().ref().revision().value()),
+              () -> new RevisionId(state.meta().ref().revision().value()),
               UpsertDecisionPacketHandler.TYPE,
               DecisionPacketPayloads.upsert(packet));
-      CommandResult result = core.submit(envelope);
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("packetId", packetId.value());
       view.put("status", PacketStatus.DRAFT.name());
       view.put("intent", text);
-      return DecisionPacketPayloads.fold(result, view, commandId);
+      return DecisionPacketPayloads.fold(receipt.outcome(), view, receipt.commandId());
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {

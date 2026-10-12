@@ -639,7 +639,10 @@ public final class SimosToolSource implements ToolSource {
     //   不做自动筛选/自动派出：due 只读展示、不参与选择；名单由调用方显式给。先同批落 N 条 sd.RunDecision 触发事实
     //   （一条 revision），批成功后按名单顺序逐个调运行流跑真轮；批拒/冲突零 revision 且不跑 LLM。
     //   本工具不做跨调用锁、不做自动重试；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
-    built.add(new RunDecisionMakersTool(core, initiator, gaDecision, gaQueries));
+    //   ★★ 2026-10-12 A1（ga 摘掉 core 依赖）：本行起共 8 处装配改吃同一只窄写口 `gaWrites` —— 已下放到 ga 的
+    //      工具不再看得见 `CoreSimos`（命令 id / correlationId / initiator 仍由 `CoreSimosToolWritePort`
+    // 装配并回报）。
+    built.add(new RunDecisionMakersTool(gaWrites, gaDecision, gaQueries));
     // 第 3 波第 2 步：把某 tick 里所有决策人的令**一起**判效果、一次落一条 revision（原子）。
     //   ★ **只在 GM 桶**（裁决是 GM 的活）；★ 它**不是**一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     //   ★★ E6b：它吃的是**可嵌入令**白名单（注册面 − GM-only）——economy.SwitchMode / economy.GmAdjust
@@ -651,7 +654,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new VoidAdjudicationTool(core, initiator));
     // 2026-09-23 用户裁定（"决策人一般流程"第 2 件）：GM 打回一条令 —— 理由原样**投进该决策人的会话**（复用 say 通道）
     //   + 该令标 CANCELLED，同批留审计条目。★ 只在 GM 桶；★ 也不是命令类型 ⇒ 不进 catalog。
-    built.add(new RejectDirectiveTool(core, initiator, gaDecision, gaIdentity));
+    built.add(new RejectDirectiveTool(gaWrites, gaDecision, gaIdentity));
     // 2026-09-23：GM 世界初始化 —— 把聚落生成器接到真写路径（1 条 SetPopulation + N 条 CreateCity + 1 条 economy.Seed，
     //   一批一条 revision；dryRun 只算不写）。★ 它不是某一条命令的窄封装 ⇒ 不继承 AbstractNarrowWriteTool；★
     //   也不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。只在 GM 桶。
@@ -864,7 +867,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SdPutInfoTool(gaWrites, gaIdentity, mapId));
     // ★★ D2（2026-10-22 决策包计划）：GM 裁决决策包（写）。**只在 GM 桶**；工具名不是命令类型
     //   ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）。
-    built.add(new GmDecidePacketTool(core, gaReads, initiator));
+    built.add(new GmDecidePacketTool(gaWrites, gaReads));
     // ★★ D3（2026-10-22 合并计划契约 §9）：三条 GM 决策效果工具——建计划 / 执行计划 / 执行已批准 call。
     //   **只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）；
     //   执行器复用决策人桶同源的 ProposalCatalog（真工具实例 + 目标清单 fail-closed）。
@@ -872,7 +875,7 @@ public final class SimosToolSource implements ToolSource {
         new ProposalCatalog(core, calendarService, query, initiator, mapId);
     GaProposalHost gaProposal = new AppGaProposalHost(gmProposalCatalog);
     GaEffectExecution gaEffects = new AppGaEffectExecution(core, gmProposalCatalog);
-    built.add(new GmMergedPlanUpsertTool(core, gaReads, initiator, gaProposal));
+    built.add(new GmMergedPlanUpsertTool(gaWrites, gaReads, gaProposal));
     built.add(new GmMergedPlanApplyTool(gaReads, initiator, gaEffects));
     built.add(new GmPacketExecuteTool(gaReads, initiator, gaEffects));
     // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件的 GM 窄写。
@@ -1071,14 +1074,14 @@ public final class SimosToolSource implements ToolSource {
     ProposalCatalog proposalCatalog =
         new ProposalCatalog(core, calendarService, query, initiator, mapId);
     GaProposalHost gaProposal = new AppGaProposalHost(proposalCatalog);
-    built.add(new ProposeCallTool(core, gaReads, initiator, mapId, gaProposal, gaIdentity));
-    built.add(new SubmitPacketTool(core, gaReads, initiator, gaIdentity));
-    built.add(new PacketIntentTool(core, gaReads, initiator, gaIdentity));
+    built.add(new ProposeCallTool(gaWrites, gaReads, mapId, gaProposal, gaIdentity));
+    built.add(new SubmitPacketTool(gaWrites, gaReads, gaIdentity));
+    built.add(new PacketIntentTool(gaWrites, gaReads, gaIdentity));
     built.add(new MyPacketTool(gaReads, gaIdentity));
     // ★★ D4（2026-10-22）：跨区上报写口——发送人=调用者身份（context.identity()），只写自己的
     //   sd:decision-maker/<自己> 自指域；落一条 sd.PutInfo（key=report）= 一条 revision。
     //   **只在决策人桶**；白名单即由该桶派生。
-    built.add(new SimosSdReportTool(core, gaReads, initiator, gaIdentity));
+    built.add(new SimosSdReportTool(gaWrites, gaReads, gaIdentity));
   }
 
   private static List<AgentTool> readTools(

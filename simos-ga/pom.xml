@@ -11,12 +11,13 @@
 
   <artifactId>simos-ga</artifactId>
   <name>GaSimos</name>
-  <description>推演框架（运行流）：工具运作 + 决策人运行（LLM 回合、工具面装配、冻结回合裁决）。依赖 core + sd + util + ga-spi + agentlib；宿主事实（工具名、图片通路、权限链执行）一律构造期注入，不依赖 simos-app。</description>
+  <description>推演框架（运行流）：工具运作 + 决策人运行（LLM 回合、工具面装配、冻结回合裁决）。依赖 util + ga-spi + sd + agentlib（★ 2026-10-12 A1 起**不依赖 core**：写面一律走 ga-spi.ToolWritePort）；宿主事实（工具名、图片通路、权限链执行）一律构造期注入，不依赖 simos-app。</description>
 
   <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
        §1 用户原话 ⑤「把工具运作、决策人运行放到ga模块」/ §4.1 目标依赖图 / §4.5 ga 的内容 / §5 I-G2）：
        本模块 = **运行框架** —— "怎么跑"（工具运作 + 决策人运行），不知道"有哪些域"。
-       ★ 依赖方向是单向的：`app ──▶ ga ──▶ { core, sd, util, ga-spi, agentlib }`；
+       ★ 依赖方向是单向的：`app ──▶ ga ──▶ { sd, util, ga-spi, agentlib }`（★★ 2026-10-12 A1 起 **core 已摘掉**，
+         见下方 dependency 注释与禁列里的 `io.mosire:simos-core`）；
          **ga 不得依赖 simos-app**（否则 app → ga → app 成环），故凡运行流需要"宿主的东西"
          （工具名声明、权限链执行、图片通路、地图 id、宿主编排配置…）一律由构造期注入 ——
          接口定义在本模块，实现在 app。
@@ -26,21 +27,19 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
     </dependency>
-    <!-- ★ 工具契约层（设计书 §4.1：`ga ── { 工具运作 + 决策人运行 }，依赖 core + sd + util + ga-spi + agentlib`）。
-         ★ 如实记：B2a 的四件（决策运行流）尚未 import ga-spi 的任何类型 —— 第一处真实使用落在
-           B2b 的工具运作（SimosToolSource / GmAutoApproveGate / 窄写口适配）。声明在此 = 设计书的允许面。 -->
+    <!-- ★ 工具契约层（设计书 §4.1 的 `ga ── { 工具运作 + 决策人运行 }`）。★ A1 起它是本模块**唯一**的写面：
+         9 个工具的世界写全走 `ga-spi.ToolWritePort`（适配器在 app 的组合根，见端口类注的适配规则）。 -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-ga-spi</artifactId>
     </dependency>
-    <!-- ★★ 2026-10-12 B3 第七域（工具下放）：本模块现**真实**使用 core —— 决策包族/触发族/打回族的工具直接构造
-         `CommandEnvelope` 并调 `CoreSimos.submit/submitBatch/head/replay`（它们的载荷里嵌了本工具自己生成的
-         commandId/correlationId，走窄写口会改载荷字节 ⇒ 按既有形制保留内联折叠）。
-         ★ core 本就在设计书 §4.1 给 ga 的允许面里（`ga ── { 工具运作 + 决策人运行 }，依赖 core + sd + util + ga-spi +
-           agentlib`），只是 B2a 零 import 时按"按实际 import 增删"未声明（台账 §3 第 3 条）——本批补上。
+    <!-- ★★ 2026-10-12 A1（用户裁定「那让ga不依赖core就行，按你说的做」）：**本模块不再依赖 core**。
+         B3 第七域下放时本模块曾真实使用 core（决策包族工具直接构造 `CommandEnvelope` 并调
+         `CoreSimos.submit/submitBatch/head/replay`）；A1 把最后 9 个这样的工具（RunDecisionMakers /
+         RejectDirective / SubmitPacket / SimosSdReport / ProposeCall / PacketIntent / GmMergedPlanUpsert /
+         GmDecidePacket / DecisionPacketPayloads）全部改吃 `ga-spi.ToolWritePort` ⇒ 本模块**编译期再也看不见 Core**，
+         与其余 8 个持状态模块同待遇（铁律 3/4 的结构化）。
+         ★ 结果：依赖面 = util + ga-spi + sd（`sd` 将在批次 3e 退役）；
          ★ 不成环：没有任何模块依赖 ga（15 个模块的禁列里都有它）。 -->
-    <dependency>
-      <groupId>io.mosire</groupId><artifactId>simos-core</artifactId>
-    </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-sd</artifactId>
     </dependency>
@@ -79,11 +78,16 @@
                        （enforcer 3.6.3 的 `searchTransitive` 默认 true，逐字节码核实）。 -->
                   <searchTransitive>false</searchTransitive>
                   <excludes>
-                    <!-- ★★ 设计书 §4.1 / §5 I-G2（**本模块的硬约束**）：允许面 = util + ga-spi + core + sd
+                    <!-- ★★ A1（2026-10-12）：`core` 由**允许面移入禁列**（用户裁定「那让ga不依赖core就行」）——
+                         它是本模块今天最要紧的一条"看不见"：ga 将来要持状态 + 拿 handler（批次 3a），
+                         若能编译期看见 CoreSimos 的提交面，它的 handler 就能在处理中途再提交一条命令
+                         （commitLock 是可重入锁 ⇒ 跑得起来、静默绕过"一条命令一条 revision"）。
+                         设计书 §4.1 / §5 I-G2（**本模块的硬约束**）：允许面 = util + ga-spi + sd
                          （+ agentlib-mosire，它不是 simos 模块故不在禁列）。禁列 = 全仓 17 个 simos 模块
-                         − 自己 − 允许面（12 条）+ 已退役 ledger 留痕（1 条）。
+                         − 自己 − 允许面（13 条）+ 已退役 ledger 留痕（1 条）。
                          ★ 最要紧的一条是 `simos-app`：ga 依赖 app 就是 `app → ga → app` 环（Maven 建图期直接拒），
                            也是设计书 §1 用户原话②「app只负责组装」的反面。 -->
+                    <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:simos-map</exclude>
                     <exclude>io.mosire:simos-calendar</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
@@ -100,7 +104,7 @@
                          作历史留痕与未来防线（与其余模块的禁列口径一致）。 -->
                     <exclude>io.mosire:simos-ledger</exclude>
                   </excludes>
-                  <message>simos-ga 是推演框架（工具运作 + 决策人运行，"怎么跑"、不知道"有哪些域"）：只许依赖 simos-util / simos-ga-spi / simos-core / simos-sd（+ agentlib-mosire，不在禁列）。★ 禁列 = 全仓 17 个 simos 模块 − 自己 − 允许面（含全部领域切片与已退役的 ledger 留痕），零例外；★ 尤其**不许依赖 simos-app**：那就是 `app → ga → app` 环（设计书 §4.1 / I-G2），宿主事实一律构造期注入。</message>
+                  <message>simos-ga 是推演框架（工具运作 + 决策人运行，"怎么跑"、不知道"有哪些域"）：只许依赖 simos-util / simos-ga-spi / simos-sd（+ agentlib-mosire，不在禁列）。★ 禁列 = 全仓 17 个 simos 模块 − 自己 − 允许面（含 simos-core、全部领域切片与已退役的 ledger 留痕），零例外；★ 尤其**不许依赖 simos-app**：那就是 `app → ga → app` 环（设计书 §4.1 / I-G2），宿主事实一律构造期注入。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

@@ -11,14 +11,12 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.command.CommandEnvelope;
-import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
@@ -39,7 +37,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 /**
  * {@code simos.gm.packet.decide}（D2 决策包计划 §4）：GM 对 PENDING 决策包做整包/逐 call 的 true/false 裁决。
@@ -63,14 +60,16 @@ public final class GmDecidePacketTool implements SimosTool {
   private static final ResourceManifest SD_WRITE =
       ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
-  private final CoreSimos core;
+  private final ToolWritePort writes;
   private final ToolReadPort reads;
-  private final String initiator;
 
-  public GmDecidePacketTool(CoreSimos core, ToolReadPort reads, String initiator) {
-    this.core = Objects.requireNonNull(core, "core");
+  /**
+   * @param writes 窄写口（命令 id / 发起者 / 信封由装配面的适配器装配，见 {@link ToolWritePort} 类注的适配规则）
+   * @param reads 窄读口
+   */
+  public GmDecidePacketTool(ToolWritePort writes, ToolReadPort reads) {
+    this.writes = Objects.requireNonNull(writes, "writes");
     this.reads = Objects.requireNonNull(reads, "reads");
-    this.initiator = Objects.requireNonNull(initiator, "initiator");
   }
 
   @Override
@@ -182,18 +181,14 @@ public final class GmDecidePacketTool implements SimosTool {
       }
       ToolResources.requireAll(
           context, Operation.WRITE, List.of(ResourceId.of(ToolResources.SD_NAMESPACE, "*")));
-      String commandId = UUID.randomUUID().toString();
-      CommandEnvelope envelope =
-          new CommandEnvelope(
-              commandId,
-              commandId,
-              initiator,
+      // ★ 命令 id 由窄写口的装配面生成并**回报**（见 ToolWritePort.Receipt）。
+      ToolWritePort.Receipt receipt =
+          writes.submitWithReceipt(
               branch,
-              new RevisionId(state.meta().ref().revision().value()),
+              () -> new RevisionId(state.meta().ref().revision().value()),
               DecideDecisionPacketHandler.TYPE,
               DecisionPacketPayloads.decide(
                   packetId, decision, note, callIndexes, decidedBy, mergedPlanIdArg));
-      CommandResult result = core.submit(envelope);
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("packetId", packetId);
       view.put("decision", decision);
@@ -203,7 +198,7 @@ public final class GmDecidePacketTool implements SimosTool {
           "callStatuses",
           callStatuses(packet, decision, callIndexes, mergedPlanIdArg.orElse(null)));
       mergedPlanIdArg.ifPresent(value -> view.put("mergedPlanId", value));
-      return DecisionPacketPayloads.fold(result, view, commandId);
+      return DecisionPacketPayloads.fold(receipt.outcome(), view, receipt.commandId());
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {

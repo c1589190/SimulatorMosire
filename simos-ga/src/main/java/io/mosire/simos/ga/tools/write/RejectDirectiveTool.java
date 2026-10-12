@@ -11,16 +11,12 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.command.BatchResult;
-import io.mosire.simos.core.command.CommandEnvelope;
-import io.mosire.simos.core.command.CommandOutcome;
-import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaDecisionHost;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolReads;
@@ -66,7 +62,7 @@ import java.util.UUID;
  *
  * <p>★★ **一条 revision 同时留痕三件事**（铁律 2 的"打回也是世界事实"）：状态翻转（{@code sd.SetDirectiveStatus}）+ 审计条目（ {@code
  * sd.PutInfo}，地址 {@code sd:rejection.<directiveId>}：谁的令 / 第几版 / 理由文本 / 落在哪条 revision）**同批**落一条
- * revision（{@link CoreSimos#submitBatch}，原子）。
+ * revision（{@link ToolWritePort#submitBatchWithReceipt}，原子）。
  *
  * <p>★ **审计条目**有意**不带 tags**（无主）：它是治理/审计记录，不是"裁决结果"（{@code sd:adjudication.<tick>} 那一族）—— 挂上决策人的
  * tag 会让它混进决策结果的读口（{@code sd.DecisionResults} 的判据是"tags 含自己"），而两者 {@code value} 的形状不同。
@@ -96,20 +92,19 @@ public final class RejectDirectiveTool implements SimosTool {
   private static final ResourceManifest SD_WRITE =
       ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
 
-  private final CoreSimos core;
-  private final String initiator;
+  private final ToolWritePort writes;
   private final GaDecisionHost decisionAgent;
   private final GaToolIdentity identity;
 
   /**
-   * @param core 唯一写入口（本工具走 {@code submitBatch}：状态翻转 + 审计条目**同批**落一条 revision）
-   * @param initiator 本工具落盘时的发起者（GM 的裁决/打回动作）
+   * @param writes 唯一写入口（本工具走 {@link ToolWritePort#submitBatchWithReceipt}：状态翻转 + 审计条目**同批**落一条
+   *     revision）
    * @param decisionAgent 决策人运行流（打回理由要落进该决策人的**会话**——复用 {@code say} 的同一段实现）
+   * @param identity 身份口（资源声明按调用者身份派生）
    */
   public RejectDirectiveTool(
-      CoreSimos core, String initiator, GaDecisionHost decisionAgent, GaToolIdentity identity) {
-    this.core = Objects.requireNonNull(core, "core");
-    this.initiator = Objects.requireNonNull(initiator, "initiator");
+      ToolWritePort writes, GaDecisionHost decisionAgent, GaToolIdentity identity) {
+    this.writes = Objects.requireNonNull(writes, "writes");
     this.decisionAgent = Objects.requireNonNull(decisionAgent, "decisionAgent");
     this.identity = Objects.requireNonNull(identity, "identity");
   }
@@ -177,7 +172,7 @@ public final class RejectDirectiveTool implements SimosTool {
       if (reason.isBlank()) {
         return ToolResult.error("BAD_REQUEST", "reason 不得为空白（打回必须有话可说——它要落进该决策人的会话）");
       }
-      Optional<RevisionId> head = core.head(branch);
+      Optional<RevisionId> head = writes.head(branch);
       if (head.isEmpty()) {
         return ToolResult.error("REJECTED", "分支不存在: " + branch.value());
       }
@@ -186,7 +181,7 @@ public final class RejectDirectiveTool implements SimosTool {
         return conflict(new StateRef(branch, head.get()), rejectionId);
       }
       StateRef base = new StateRef(branch, head.get());
-      SdState sd = GaToolReads.sd(core.replay(base));
+      SdState sd = GaToolReads.sd(writes.replay(base));
       Directive directive = sd.directives().get(directiveId);
       if (directive == null) {
         return ToolResult.error("REJECTED", "决策不存在: " + directiveId.value());
@@ -220,19 +215,20 @@ public final class RejectDirectiveTool implements SimosTool {
       StateRef base, String rejectionId, SdState sd, Directive directive, String reason) {
     int version = versionOf(sd, directive);
     long resultRevision = base.revision().value() + 1;
-    List<CommandEnvelope> batch =
+    List<ToolWritePort.Request> batch =
         List.of(
-            flipEnvelope(rejectionId, base, directive.id()),
-            auditEnvelope(rejectionId, base, directive, version, reason, resultRevision));
-    BatchResult result = core.submitBatch(batch);
-    if (result instanceof BatchResult.Conflict conflict) {
+            flipRequest(directive.id()), auditRequest(directive, version, reason, resultRevision));
+    // ★ 批级 correlationId 由本工具**预先指定** = rejectionId（既有口径：两条信封共享它，视图与日志也报它）。
+    ToolWritePort.BatchReceipt receipt =
+        writes.submitBatchWithReceipt(base.branch(), base.revision(), batch, rejectionId);
+    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Conflict conflict) {
       return conflict(conflict.current(), rejectionId);
     }
-    if (result instanceof BatchResult.Rejected rejected) {
+    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Rejected rejected) {
       // ★ 不静默成功：令不存在 / 已终态（打回两次、打回一条已执行的令）的**真拒因**原样带出去。
-      return ToolResult.error("REJECTED", firstRejectionReason(rejected));
+      return ToolResult.error("REJECTED", firstRejectionReason(rejected.outcomes()));
     }
-    StateRef ref = ((BatchResult.Committed) result).ref();
+    StateRef ref = ((ToolWritePort.BatchOutcome.Committed) receipt.outcome()).ref();
     String conversationId = null;
     String conversationError = null;
     try {
@@ -259,18 +255,11 @@ public final class RejectDirectiveTool implements SimosTool {
   }
 
   /** 状态翻转命令：{@code sd.SetDirectiveStatus(directiveId, CANCELLED)}——目标态由**既有守卫**裁定合法性。 */
-  private CommandEnvelope flipEnvelope(String rejectionId, StateRef base, DirectiveId directiveId) {
+  private static ToolWritePort.Request flipRequest(DirectiveId directiveId) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("directiveId", directiveId.value());
     payload.put("status", "CANCELLED");
-    return new CommandEnvelope(
-        UUID.randomUUID().toString(),
-        rejectionId,
-        initiator,
-        base.branch(),
-        base.revision(),
-        STATUS_COMMAND_TYPE,
-        ToolResults.json(payload));
+    return new ToolWritePort.Request(STATUS_COMMAND_TYPE, ToolResults.json(payload));
   }
 
   /**
@@ -281,13 +270,8 @@ public final class RejectDirectiveTool implements SimosTool {
    * tick} 取**令自带的 tick**（归属正确，与 {@code AdjudicateTickTool} 的决策结果同口径）。 ★ **tags
    * 故意留空**（无主）——见类注：它不是决策结果。
    */
-  private CommandEnvelope auditEnvelope(
-      String rejectionId,
-      StateRef base,
-      Directive directive,
-      int version,
-      String reason,
-      long resultRevision) {
+  private static ToolWritePort.Request auditRequest(
+      Directive directive, int version, String reason, long resultRevision) {
     Address address = Address.parse(REJECTION_ADDRESS_PREFIX + directive.id().value());
     String canonical = address.canonical();
     Map<String, Object> value = new LinkedHashMap<>();
@@ -304,21 +288,14 @@ public final class RejectDirectiveTool implements SimosTool {
     payload.put("value", ToolResults.json(value));
     payload.put("id", SdInfoIds.synthesize(canonical, 0).value());
     payload.put("tick", directive.tick());
-    return new CommandEnvelope(
-        UUID.randomUUID().toString(),
-        rejectionId,
-        initiator,
-        base.branch(),
-        base.revision(),
-        "sd.PutInfo",
-        ToolResults.json(payload));
+    return new ToolWritePort.Request("sd.PutInfo", ToolResults.json(payload));
   }
 
   /** 整批被拒时取**第一条真拒因**（批内顺序 = 状态翻转在前 ⇒ 打回不合法时取到的就是转移守卫/命令期的原文）。 */
-  private static String firstRejectionReason(BatchResult.Rejected rejected) {
+  private static String firstRejectionReason(List<ToolWritePort.Outcome> outcomes) {
     List<String> reasons = new ArrayList<>();
-    for (CommandOutcome outcome : rejected.outcomes()) {
-      if (outcome.result() instanceof CommandResult.Rejected rejection) {
+    for (ToolWritePort.Outcome outcome : outcomes) {
+      if (outcome instanceof ToolWritePort.Outcome.Rejected rejection) {
         reasons.add(rejection.reason());
       }
     }

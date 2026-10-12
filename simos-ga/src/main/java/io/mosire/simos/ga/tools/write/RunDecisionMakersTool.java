@@ -12,17 +12,13 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.agentlib.tool.ToolResultTruncator;
-import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.command.BatchResult;
-import io.mosire.simos.core.command.CommandEnvelope;
-import io.mosire.simos.core.command.CommandOutcome;
-import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaDecisionHost;
 import io.mosire.simos.ga.tools.GaToolQueries;
 import io.mosire.simos.ga.tools.GaToolReads;
@@ -59,8 +55,8 @@ import java.util.concurrent.ThreadFactory;
  *
  * <ol>
  *   <li><b>先落触发事实</b>：每个 DM 一条 {@code sd.RunDecision}（载荷 {@code {decisionMakerId}}），全部共享同一 {@code
- *       branch/expectedRevision/batchId}，经 {@link CoreSimos#submitBatch} 原子提交 —— 全部成功 ⇒ 一条
- *       revision； 批内任一被拒 ⇒ 整批零 revision、逐条报真拒因、<b>不跑任何 LLM</b>；冲突 ⇒ 报真实 head、同样不跑 LLM。
+ *       branch/expectedRevision/batchId}，经 {@link ToolWritePort#submitBatchWithReceipt} 原子提交 ——
+ *       全部成功 ⇒ 一条 revision； 批内任一被拒 ⇒ 整批零 revision、逐条报真拒因、<b>不跑任何 LLM</b>；冲突 ⇒ 报真实 head、同样不跑 LLM。
  *   <li><b>再逐个跑轮</b>：对批的新坐标 {@code ref}，按输入顺序调用 {@code DecisionAgentService.runRound(BranchId,
  *       RevisionId, DecisionMakerId)}。每个 DM 独立：一个失败（运行时异常 / provider 未绑定 /
  *       预算中止）如实记进该人的结果，不静默；{@code continueOnError=false} 时在第一个失败处停止， 并用 {@code stoppedAfter} 记下是谁。
@@ -106,21 +102,18 @@ public final class RunDecisionMakersTool implements SimosTool {
   private static final String DUE_NOTE =
       "due 仅展示：本工具按调用方显式给的 decisionMakerIds 派发，不按 due 自动筛选/自动派出；" + "due 与前置行政能力/军令门均不作为本工具的选择条件";
 
-  private final CoreSimos core;
+  private final ToolWritePort writes;
   private final GaDecisionHost decisionAgent;
   private final GaToolQueries queries;
-  private final String initiator;
 
   /**
-   * @param core 唯一写入口（触发批走 {@code submitBatch}；preview=true 零写）
+   * @param writes 唯一写入口（触发批走 {@link ToolWritePort#submitBatchWithReceipt}；preview=true 零写）
    * @param queries 决策人查询口（due/allowedTools 信号 + base state 读取的唯一实现）
-   * @param initiator 触发事实的发起者（{@code <kind>:<id>} 形态）
    * @param decisionAgent 决策人运行流入口（批提交成功后逐人真跑一轮）
    */
   public RunDecisionMakersTool(
-      CoreSimos core, String initiator, GaDecisionHost decisionAgent, GaToolQueries queries) {
-    this.core = Objects.requireNonNull(core, "core");
-    this.initiator = Objects.requireNonNull(initiator, "initiator");
+      ToolWritePort writes, GaDecisionHost decisionAgent, GaToolQueries queries) {
+    this.writes = Objects.requireNonNull(writes, "writes");
     this.decisionAgent = Objects.requireNonNull(decisionAgent, "decisionAgent");
     this.queries = Objects.requireNonNull(queries, "queries");
   }
@@ -366,7 +359,13 @@ public final class RunDecisionMakersTool implements SimosTool {
 
   // ── apply：触发批 → 逐人跑轮 ───────────────────────────────────────────────────────
 
-  /** apply：先组批并原子提交触发事实；只有 committed 才继续逐人跑轮。 */
+  /**
+   * apply：先组批并原子提交触发事实；只有 committed 才继续逐人跑轮。
+   *
+   * <p>★ 批级 {@code correlationId} 由本工具**预先指定**（= {@code batchId}，见 {@link
+   * ToolWritePort#submitBatchWithReceipt} 的 4 参重载）：既有口径就是"批内所有信封共享这个 batchId"，端口实现会把它逐条写进信封 的
+   * {@code correlationId} 并原样回报。
+   */
   private ToolResult apply(
       BranchId branch,
       long expectedRevision,
@@ -376,22 +375,21 @@ public final class RunDecisionMakersTool implements SimosTool {
       int concurrency) {
     RevisionId expected = new RevisionId(expectedRevision);
     String batchId = UUID.randomUUID().toString();
-    List<CommandEnvelope> batch = buildTriggerBatch(batchId, branch, expected, decisionMakerIds);
-    BatchResult result = core.submitBatch(batch);
-    if (result instanceof BatchResult.Conflict conflict) {
+    List<ToolWritePort.Request> batch = buildTriggerBatch(decisionMakerIds);
+    ToolWritePort.BatchReceipt receipt =
+        writes.submitBatchWithReceipt(branch, expected, batch, batchId);
+    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Conflict conflict) {
       // ★ 冲突：批未提交、零 revision，不跑任何 LLM；报真实 head。
       return ToolResult.error(
           "CONFLICT",
           ToolResults.json(conflictView(batchId, decisionMakerIds, reason, conflict.current())));
     }
-    if (result instanceof BatchResult.Rejected rejected) {
+    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Rejected rejected) {
       // ★ 整批拒：逐条真拒因（含"随整批复原"的那些），零 revision，不跑任何 LLM。
       return ToolResult.error(
-          "REJECTED",
-          ToolResults.json(rejectedView(batchId, batch, decisionMakerIds, reason, rejected)));
+          "REJECTED", ToolResults.json(rejectedView(batchId, decisionMakerIds, reason, rejected)));
     }
-    BatchResult.Committed committed = (BatchResult.Committed) result;
-    StateRef triggerRef = committed.ref();
+    StateRef triggerRef = ((ToolWritePort.BatchOutcome.Committed) receipt.outcome()).ref();
     // ★ 同时决策硬约束：所有 DM 共用一把 packet 写锁（读快照可并发，写自己的 packet 串行）。
     Object packetWriteLock = new Object();
     List<Map<String, Object>> results =
@@ -413,20 +411,14 @@ public final class RunDecisionMakersTool implements SimosTool {
     return ToolResult.ok(ToolResults.json(view));
   }
 
-  /** 组批：每人一条 {@code sd.RunDecision}，共享 batchId/branch/expectedRevision；命令 id 各自新生成。 */
-  private List<CommandEnvelope> buildTriggerBatch(
-      String batchId, BranchId branch, RevisionId expectedRevision, List<String> decisionMakerIds) {
-    List<CommandEnvelope> batch = new ArrayList<>(decisionMakerIds.size());
+  /**
+   * 组批：每人一条 {@code sd.RunDecision}，批级 {@code branch/expectedRevision/correlationId} 由端口调用给（见 {@link
+   * #apply}），命令 id 由装配面逐条生成 —— 工具只给"我这条命令是什么"（{@code type} + 逐字节转交的载荷）。
+   */
+  private static List<ToolWritePort.Request> buildTriggerBatch(List<String> decisionMakerIds) {
+    List<ToolWritePort.Request> batch = new ArrayList<>(decisionMakerIds.size());
     for (String id : decisionMakerIds) {
-      batch.add(
-          new CommandEnvelope(
-              UUID.randomUUID().toString(),
-              batchId,
-              initiator,
-              branch,
-              expectedRevision,
-              TRIGGER_TYPE,
-              ToolResults.json(triggerPayload(id))));
+      batch.add(new ToolWritePort.Request(TRIGGER_TYPE, ToolResults.json(triggerPayload(id))));
     }
     return List.copyOf(batch);
   }
@@ -445,29 +437,33 @@ public final class RunDecisionMakersTool implements SimosTool {
     return view;
   }
 
-  /** 批拒视图：逐条真因（outcome 与 batch 逐位对应），不跑任何轮次。 */
+  /**
+   * 批拒视图：逐条真因（outcome 与入参批次逐位对应），不跑任何轮次。
+   *
+   * <p>★ 逐条 {@code type} 取自**入参批次**（{@code Request#type()}）——端口不变式保证 outcomes 与入参**逐位对应、条数相同**，
+   * 故这里不需要（也拿不到）信封对象。
+   */
   private static Map<String, Object> rejectedView(
       String batchId,
-      List<CommandEnvelope> batch,
       List<String> decisionMakerIds,
       String reason,
-      BatchResult.Rejected rejected) {
+      ToolWritePort.BatchOutcome.Rejected rejected) {
     Map<String, Object> view =
         baseApplyFailureView(decisionMakerIds, reason, "触发批被拒：整批零 revision，未跑任何决策人轮次");
     Map<String, Object> submission = new LinkedHashMap<>();
     submission.put("result", "rejected");
     submission.put("batchId", batchId);
     submission.put("correlationId", batchId);
-    List<Map<String, Object>> rows = new ArrayList<>(batch.size());
-    List<CommandOutcome> outcomes = rejected.outcomes();
-    for (int i = 0; i < batch.size(); i++) {
+    List<Map<String, Object>> rows = new ArrayList<>(decisionMakerIds.size());
+    List<ToolWritePort.Outcome> outcomes = rejected.outcomes();
+    for (int i = 0; i < decisionMakerIds.size(); i++) {
       Map<String, Object> row = new LinkedHashMap<>();
-      row.put("type", batch.get(i).type());
+      row.put("type", TRIGGER_TYPE);
       row.put("decisionMakerId", decisionMakerIds.get(i));
-      CommandResult outcome = outcomes.get(i).result();
+      ToolWritePort.Outcome outcome = outcomes.get(i);
       row.put(
           "reason",
-          outcome instanceof CommandResult.Rejected rejection
+          outcome instanceof ToolWritePort.Outcome.Rejected rejection
               ? rejection.reason()
               : outcome.toString());
       rows.add(row);
@@ -499,8 +495,9 @@ public final class RunDecisionMakersTool implements SimosTool {
    * 跑轮：{@code concurrency == 1} 时按名单顺序逐个跑（continueOnError=false 首败即停，既有行为逐字不变）； {@code concurrency
    * > 1} 时用固定线程池并发跑到每个人，结果仍按名单顺序回收。
    *
-   * <p>★ 并发只发生在这一层：每个 DM 的冻结回合各自 {@code core.replay(triggerRef)}、各自会话 id、各自范围；触发批已在前面同一条 revision
-   * 落盘。packet 写在 runner 里共享锁串行；回合结束的最终化在 service 的 finalizer 锁内串行，保证“读 head + 落最终包 + 审计”不会互相顶掉。
+   * <p>★ 并发只发生在这一层：每个 DM 的冻结回合各自 {@code ToolWritePort#replay(triggerRef)}、各自会话 id、各自范围；触发批已在前面同一条
+   * revision 落盘。packet 写在 runner 里共享锁串行；回合结束的最终化在 service 的 finalizer 锁内串行，保证“读 head + 落最终包 +
+   * 审计”不会互相顶掉。
    */
   private List<Map<String, Object>> runRounds(
       StateRef triggerRef,

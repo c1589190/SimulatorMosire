@@ -13,14 +13,12 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.command.CommandEnvelope;
-import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaProposalHost;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.DecisionMakerId;
@@ -40,7 +38,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 /**
  * {@code simos.gm.mergedPlan.upsert}（D3 契约 §8）：GM 建/改一个 {@link MergedEffectPlan}——冲突决策包的**有序效果计划**。
@@ -67,16 +64,18 @@ public final class GmMergedPlanUpsertTool implements SimosTool {
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
-  private final CoreSimos core;
+  private final ToolWritePort writes;
   private final ToolReadPort reads;
-  private final String initiator;
   private final GaProposalHost catalog;
 
-  public GmMergedPlanUpsertTool(
-      CoreSimos core, ToolReadPort reads, String initiator, GaProposalHost catalog) {
-    this.core = Objects.requireNonNull(core, "core");
+  /**
+   * @param writes 窄写口（命令 id / 发起者 / 信封由装配面的适配器装配，见 {@link ToolWritePort} 类注的适配规则）
+   * @param reads 窄读口
+   * @param catalog 可执行工具清单口（效果工具必须在初始清单里）
+   */
+  public GmMergedPlanUpsertTool(ToolWritePort writes, ToolReadPort reads, GaProposalHost catalog) {
+    this.writes = Objects.requireNonNull(writes, "writes");
     this.reads = Objects.requireNonNull(reads, "reads");
-    this.initiator = Objects.requireNonNull(initiator, "initiator");
     this.catalog = Objects.requireNonNull(catalog, "catalog");
   }
 
@@ -189,19 +188,15 @@ public final class GmMergedPlanUpsertTool implements SimosTool {
               sources,
               Optional.empty(),
               Optional.empty());
-      String commandId = UUID.randomUUID().toString();
-      CommandEnvelope envelope =
-          new CommandEnvelope(
-              commandId,
-              commandId,
-              initiator,
+      // ★ 命令 id 由窄写口的装配面生成并**回报**（见 ToolWritePort.Receipt）。
+      ToolWritePort.Receipt receipt =
+          writes.submitWithReceipt(
               branch,
-              new RevisionId(state.meta().ref().revision().value()),
+              () -> new RevisionId(state.meta().ref().revision().value()),
               UpsertMergedEffectPlanHandler.TYPE,
               DecisionPacketPayloads.mergedPlan(plan));
-      CommandResult result = core.submit(envelope);
       Map<String, Object> view = planView(plan, branch, state.meta().ref().revision().value());
-      return DecisionPacketPayloads.fold(result, view, commandId);
+      return DecisionPacketPayloads.fold(receipt.outcome(), view, receipt.commandId());
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {

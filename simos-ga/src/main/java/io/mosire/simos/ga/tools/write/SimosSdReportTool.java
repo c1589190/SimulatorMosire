@@ -10,15 +10,13 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.command.CommandEnvelope;
-import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.DecisionMakerId;
@@ -37,7 +35,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 /**
  * ★★ {@code simos.sd.report}（D4，2026-10-22）：<b>决策人向 GOV / NATION / GM 跨区上报</b>。
@@ -77,16 +74,18 @@ public final class SimosSdReportTool implements SimosTool {
   private static final ResourceManifest SD_WRITE =
       ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
-  private final CoreSimos core;
+  private final ToolWritePort writes;
   private final ToolReadPort reads;
-  private final String initiator;
   private final GaToolIdentity identity;
 
-  public SimosSdReportTool(
-      CoreSimos core, ToolReadPort reads, String initiator, GaToolIdentity identity) {
-    this.core = Objects.requireNonNull(core, "core");
+  /**
+   * @param writes 窄写口（命令 id / 发起者 / 信封由装配面的适配器装配，见 {@link ToolWritePort} 类注的适配规则）
+   * @param reads 窄读口
+   * @param identity 身份口（发送人从调用者身份派生，不采信载荷）
+   */
+  public SimosSdReportTool(ToolWritePort writes, ToolReadPort reads, GaToolIdentity identity) {
+    this.writes = Objects.requireNonNull(writes, "writes");
     this.reads = Objects.requireNonNull(reads, "reads");
-    this.initiator = Objects.requireNonNull(initiator, "initiator");
     this.identity = Objects.requireNonNull(identity, "identity");
   }
 
@@ -199,17 +198,14 @@ public final class SimosSdReportTool implements SimosTool {
       payload.put("value", ToolResults.json(report));
       to.affiliations().ifPresent(affiliations -> payload.put("affiliations", affiliations));
       String payloadJson = ToolResults.json(payload);
-      String commandId = UUID.randomUUID().toString();
-      CommandEnvelope envelope =
-          new CommandEnvelope(
-              commandId,
-              commandId,
-              initiator,
+      // ★ 命令 id 由窄写口的装配面生成并**回报**（见 ToolWritePort.Receipt）——视图里报的 id 与落盘信封的是同一个。
+      ToolWritePort.Receipt receipt =
+          writes.submitWithReceipt(
               branch,
-              new RevisionId(state.meta().ref().revision().value()),
+              () -> new RevisionId(state.meta().ref().revision().value()),
               PutInfoHandler.TYPE,
               payloadJson);
-      CommandResult result = core.submit(envelope);
+      String commandId = receipt.commandId();
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("address", address.canonical());
       view.put("key", "report");
@@ -221,19 +217,19 @@ public final class SimosSdReportTool implements SimosTool {
       view.put("preview", false);
       view.put("submitted", true);
       view.put("commandId", commandId);
-      return switch (result) {
-        case CommandResult.Committed committed -> {
+      return switch (receipt.outcome()) {
+        case ToolWritePort.Outcome.Committed committed -> {
           view.put("submission", ToolResults.committedView(committed.ref(), commandId, commandId));
           yield ToolResults.ok(view);
         }
-        case CommandResult.Conflict conflict -> {
+        case ToolWritePort.Outcome.Conflict conflict -> {
           Map<String, Object> submission = new LinkedHashMap<>();
           submission.put("result", "conflict");
           submission.put("current", ToolResults.stateRef(conflict.current()));
           view.put("submission", submission);
           yield ToolResult.error("CONFLICT", ToolResults.json(view));
         }
-        case CommandResult.Rejected rejected -> {
+        case ToolWritePort.Outcome.Rejected rejected -> {
           Map<String, Object> submission = new LinkedHashMap<>();
           submission.put("result", "rejected");
           submission.put("reason", rejected.reason());

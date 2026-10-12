@@ -1,8 +1,8 @@
 package io.mosire.simos.ga.tools.write;
 
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.MergedEffect;
@@ -23,6 +23,9 @@ import java.util.Optional;
  * propose/intent/GM/执行器各拼一份、加字段时静默丢一个。
  *
  * <p>★ D3 起本类对 {@code app.decision.DecisionEffectExecutor} 公开（outcome 回写要在同一批里重建整包载荷）。
+ *
+ * <p>★ 2026-10-12 A1：{@link #fold} 的结局类型由 core 的 {@code CommandResult} 换成 {@link
+ * ToolWritePort.Outcome} （本模块摘掉 {@code simos-core} 依赖）；载荷拼装（本类的其余方法）与结局语义**一字未改**。
  */
 public final class DecisionPacketPayloads {
 
@@ -132,14 +135,32 @@ public final class DecisionPacketPayloads {
     return row;
   }
 
-  /** 命令三结局的统一折叠（propose/submit/intent/GM decide 共用一份，避免四处各写一遍）。 */
-  static ToolResult fold(CommandResult result, Map<String, Object> view, String commandId) {
-    return switch (result) {
-      case CommandResult.Committed committed -> {
+  /**
+   * 命令三结局的统一折叠（propose/submit/intent/GM decide 共用一份，避免四处各写一遍）。
+   *
+   * <p>★★ <b>2026-10-12 A1：改吃 {@link ToolWritePort.Outcome}</b>（core 的 {@code CommandResult}
+   * 的镜像）——本模块的 9 个工具改走 {@link ToolWritePort} 后不再看得见 core 类型。结局语义逐条同形（{@code Committed}/{@code
+   * Conflict}/{@code Rejected}），且折叠出的 {@code submission} 块与 {@link ToolResults#fold} **逐字段逐序相同**
+   * （{@code result}/{@code ref}|{@code current}/{@code reason}/{@code commandId}/{@code
+   * correlationId}）。
+   *
+   * <p>★ <b>为什么本类还留着自己这一份、不直接调 {@link ToolResults#fold}</b>：两者的差别只有一处 —— {@code Committed} 时本类要把
+   * {@code submission} 键**追加在工具自己的视图之后**（{@code ToolResults.fold} 折的是一份只有结局的独立 视图）⇒
+   * 保留本方法才能让这五个工具的返回字段**顺序**逐字不变（{@code packetId/status/callIndex/tool/targets/ preview} 在前、{@code
+   * submission} 在后）。
+   *
+   * @param outcome 窄写口给的三结局之一（分支/命令 id 由装配面按端口适配规则生成）
+   * @param view 工具自己的视图（本方法在它之上追加 {@code submission} 键）
+   * @param commandId 本次提交的命令 id（单命令链 ⇒ {@code correlationId} 同值，与今天同口径）
+   */
+  static ToolResult fold(
+      ToolWritePort.Outcome outcome, Map<String, Object> view, String commandId) {
+    return switch (outcome) {
+      case ToolWritePort.Outcome.Committed committed -> {
         view.put("submission", ToolResults.committedView(committed.ref(), commandId, commandId));
         yield ToolResults.ok(view);
       }
-      case CommandResult.Conflict conflict -> {
+      case ToolWritePort.Outcome.Conflict conflict -> {
         Map<String, Object> submission = new LinkedHashMap<>();
         submission.put("result", "conflict");
         submission.put("current", ToolResults.stateRef(conflict.current()));
@@ -148,7 +169,7 @@ public final class DecisionPacketPayloads {
         view.put("submission", submission);
         yield ToolResult.error("CONFLICT", ToolResults.json(view));
       }
-      case CommandResult.Rejected rejected -> {
+      case ToolWritePort.Outcome.Rejected rejected -> {
         Map<String, Object> submission = new LinkedHashMap<>();
         submission.put("result", "rejected");
         submission.put("reason", rejected.reason());

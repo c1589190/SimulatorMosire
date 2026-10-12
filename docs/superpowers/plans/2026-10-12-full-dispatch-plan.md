@@ -363,3 +363,27 @@ UtilSimos .......................................... FAILURE [  6.698 s]
 **`GovRoundTripTest` / `ArmyRecordCombatRevisionTest` 这类"铁律 5 / 铁律 2 的护栏"**（批次 0a/0c 已建）
 是**新架构的护栏**，不是"老测试"：后续批次若给 `GovState`/`ArmyData` 加组件，**它们红 = 必须当场处理**（不是攒台账）。
 ⇒ 判据：**护栏（防静默漂移）当场修；旧测试（钉旧机制）攒台账**。
+
+---
+
+## §13 批次 3.0 收工：`ga` 摘掉 core 依赖（A1 落地，2026-10-12 晚）
+
+**结果**（提交面 11 文件 / +219 −244）：`grep -rn "io.mosire.simos.core" simos-ga/src/main` **29 行 → 0 行**；
+`simos-ga/pom.xml` 删 core dependency + **把 core 加进禁列** + `<message>`/`<description>`/头部依赖图同步；
+9 个 ga 工具全部改吃 `ga-spi.ToolWritePort`（`BatchOutcome{Committed(ref,outcomes)|Rejected(outcomes)|Conflict(current,outcomes)}`
+是 core 三结局的**逐字段镜像**；`Receipt`/`BatchReceipt` 回报 commandId）。
+**四件门禁**（控制方自跑复核）：compile rc=0（18/18）· spotless rc=0 · spotbugs rc=0（**17/17 归零**）· `-pl simos-ga -am validate` rc=0（`BannedDependencies passed`）。
+**负向验证**：加回 core dependency ⇒ validate **rc=1** + `<--- banned via the exclude/include list`；还原 **md5 逐字节一致**（`63444495c9b6854dfdd27a7c4db6a3b2`）并重跑全绿。
+
+### 13.1 ★ 控制方派单书自相矛盾（代理越界，控制方**追认**）
+任务书 ⑤ 把 `SimosToolSource.java` 列为禁碰，但把工具构造器从 `CoreSimos` 换成 `ToolWritePort` 后
+**app 侧 8 处 `new XxxTool(core, …)` 必然编译不过** ⇒ **目标与文件所有权二选一**。
+代理按 §一.8「纯技术分歧 ⇒ 控制方当场裁定」**自行裁定"必须改"**并做了最小改动（8 行 + 1 条注释），
+**形制与同文件既有的 6 处（`toolWrites`/`gaWrites`/`mapWrites`/`unitWrites`）完全同款**。
+**裁定：追认**，且它反而让「app 只负责组装」**更成立**（命令 id / `initiator` / `correlationId` 的生成进一步集中到 app 适配器）。
+★ **§5 文件所有权表更正**：批次 3 系（含 3.0/3a…3e）的写权栏**必须包含 `simos-app/.../tools/SimosToolSource.java` 与 `Shell.java`**（共用装配面）。
+
+### 13.2 ★ 它顺手修掉一个潜在错值 + 保住一处易碎契约
+1. **`correlationId` 此前是"假定等于 commandId"**；改后由装配面生成并**经 `Receipt` 回报真实值** ⇒ 不再有错值可能。
+2. **没有**把 `DecisionPacketPayloads.fold` 换成 `ToolResults.fold` —— 后者折的是"只有结局"的独立视图，会把 `submission`
+   排到 JSON 最前、**改掉这 5 个工具返回的键序**。保留原折叠体 ⇒ 键序逐字不变。
