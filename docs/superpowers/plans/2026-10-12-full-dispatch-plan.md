@@ -479,3 +479,34 @@ gov/army/app 另有十余个工具的文案写着"进 `sd.PutInfo` 行动记录"
 ### 16.5 批准代理的另一条自行处置
 `SdResolver:116-122`（`sd:directive.<id>` 存在性）与 `DeleteDecisionMakerHandler:112-118`（删决策人前的"仍被 Directive 引用"守卫）
 走「**端口在 sd、实现在 ga、app 装配注入**」（`ga → sd` 是既有方向），**地址族串一字不改** ✓ 与 3a 的成环禁令一致。
+
+---
+
+## §17 批次 3b-2 早期裁定 + 跨模块 `sd.*` 字面量地图
+
+### 17.1 ★ 控制方派单书又一处"比设计书更窄"（代理越界，控制方**追认**）
+**问题**：`sd.PutInfo` → `ga.PutInfo` 改名，而该字面量在**三个被本批派单书禁碰的模块**里硬编码，且都进真批次提交：
+- `simos-gov/**`：`GovRecruitPlan:92` · `GovDismissPlan:63` · `GovAbsorbUnitPlan:80` · `GovRetireStaffPlan:84` ·
+  `GovCreateOfficePlan:97/100/103/106` · `RegionClearStructuresPlan:58`（被 7 个工具装进 `submitBatch`）
+- `simos-army/**`：`AssignArmyGovPlan:71` · `FormatUnitPlan:57`
+- `simos-unit/**`：`LevyRegionTool:106` · `SpawnArmyPlan:84` · `RaiseUnitPlan:96`
+**不改的后果 = 运行时行为破坏**（批内一条未注册命令 ⇒ **整批原子回滚**），**不是编译错** ⇒ 这类比编译断更难发现。
+**裁定：追认**（纯字面量改名，零逻辑/零 import/零 pom）。依据：
+① **设计书 §5 的文件所有权表本来就`simos-gov/**`、`simos-army/**` 划进批次 3 的独占写权** —— **派单书 ⑤ 比设计书更窄**；
+② §13.1 同款先例（目标 ⊥ 文件所有权 ⇒ 最小改动 + 追认）；③ 用户「sd整个弃用」要求 `sd.*` 字符串最终清零。
+★ **§5 写权更正**：批次 3 系（3b/3c/3d/3e）的写权**必须包含 `simos-gov/**`、`simos-army/**`、`simos-unit/**`**
+（用于命令类型串同步）—— 命令改名**从来不只是改名字**。
+
+### 17.2 ★★ 跨模块 `sd.*` 硬编码字面量地图（控制方扫描，供 3c/3d/3e 当输入）
+| 模块 | 硬编码的 `sd.*` 命令 | 归属批次 |
+|---|---|---|
+| **gov** | `sd.CreateDecisionMaker` · `sd.DeleteDecisionMaker` · `sd.SetDecisionMakerAccess` · `sd.SetDecisionMakerProvider` · **`sd.PutInfo`** | **3b-2（本批）** |
+| **army** | **`sd.PutInfo`**（→3b-2）· `sd.SetArmyMasterGov`（→**3d**） | 3b-2 / 3d |
+| **unit** | **`sd.PutInfo`**（→3b-2）· `sd.CreateArmy`（→**3d**） | 3b-2 / 3d |
+| **ga** | `sd.AddCombatStage` `sd.CommitCombatOutcome` `sd.CreateArmy` `sd.CreateCombat` `sd.RecordCasualties` `sd.SetArmyMasterGov` `sd.SetStageOutcomeTable`（→**3d**）· `sd.CreateNation` `sd.SetDiplomaticRelation` `sd.RecordDiplomaticEvent`（→**3c**）· `sd.RegisterEffect` `sd.CancelEffect`（→**3b-4**）· `sd.CreateDecisionMaker` `sd.DeleteDecisionMaker` `sd.SetDecisionMakerAccess` `sd.SetDecisionMakerProvider` `sd.PutInfo` `sd.ResetDecisionMakerConversation` `sd.RunDecision` `sd.StartDecision`（→**3b-2**）· `sd.RejectDirective` `sd.DecisionDocs` `sd.DecisionResults`（工具名，随所属域） | 分批 |
+| **app** | 23 个不同串（全谱）：`sd.AddCombatStage` `sd.AdjudicateTick` `sd.CancelEffect` `sd.CommitCombatOutcome` `sd.CreateArmy` `sd.CreateCombat` `sd.CreateDecisionMaker` `sd.CreateNation` `sd.DeleteDecisionMaker` `sd.DeleteNation` `sd.PutInfo` `sd.RecordCasualties` `sd.RecordDiplomaticEvent` `sd.RegisterEffect` `sd.ResetDecisionMakerConversation` `sd.RunDecision` `sd.SetArmyMasterGov` `sd.SetDecisionMakerAccess` `sd.SetDecisionMakerProvider` `sd.SetDiplomaticRelation` `sd.SetStageOutcomeTable` `sd.StartDecision` `sd.VoidAdjudication` | 分批 |
+
+★ **系统性问题**：命令改名**必须同步全仓所有硬编码字面量**（含**其他模块**的），否则**运行时整批回滚且无症状**。
+⇒ **每一批改名前，先跑这张表的扫描**（`grep -rhoE '"sd\.[A-Za-z]+"' --include=*.java <模块>/src/main | sort -u`）。
+★ 次要债：这些是**各模块自己维护的常量**（一条命令在 N 个模块各有一份字面量）—— 与"一处声明"有张力；
+但把它们收进 `ga-spi`/`util` 常量会让域模块引用框架常量，**本批不动**，记一条债（收尾期评估）。
