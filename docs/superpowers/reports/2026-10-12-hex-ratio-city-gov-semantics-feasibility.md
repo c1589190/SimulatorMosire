@@ -188,3 +188,66 @@
 |---|---|---|
 | `specs/2026-10-12-module-boundaries-freeze.md:78` | 「外交迁移前置：**`simos-map` 现用了 `Nation`**」 | **假**：`grep -rn "io.mosire.simos.sd" simos-map/src` = **0 命中**；`simos-map/pom.xml` 只声明 util + ga-spi。map 里的 `Nation` 全是 Javadoc/测试 tag 字符串。**真前置是 `NationId` 落点 + `HandlerOutcome` 只回本模块变更集**（前一轮报告 §4.2/§4.3）。 |
 | `specs/2026-10-12-module-boundaries-freeze.md:68`（sd 行） | 「`simos-sd` = **推演框架层**：决策流程、权限范围、工具协议与两个工具面」 | **已过期**：决策流程与两个工具面在 B2a/B3 已搬 `simos-ga`；`sd` 现在是**决策/军事/外交的域状态 + handler**。 |
+
+---
+
+## 9. 两路深查结论（2026-10-12 追加）
+
+### 9.1 工单/审计元数据：现状 + 通用化的四道门
+
+**★ 先说口径溯源（§一.12）：「工单」这件事用户 2026-10-09 已经裁过**
+> 用户原话（`specs/2026-10-09-social-direct-boundary-and-substantive-naming.md:172-178`）：
+> 「Unit/Eco 要改一个家户的人口属性，**直接向 Social 提交"更改理由 + 更改方案 + 更改对象"的 Social 工单**」
+> + 「**不要为此普遍搞多模块聚合**」
+
+⇒ **本次 R4「做个通用化」与那条裁定存在读法张力**：若"通用化"= **统一工单的元数据形态**（谁+为什么），与 2026-10-09 相容；
+若"通用化"= **把所有域的动作收进一个跨模块工单聚合器**，则**与那条裁定相反**。**必须先确认是哪一种。**
+
+**现状量化（实测）**
+| 维度 | 现状 |
+|---|---|
+| 「谁干的」 | **已贯穿到底**：`CommandEnvelope.initiator` → `revisions.initiator` → `events.agent`；形态 = C21（`String`，`<kind>:<id>`，不设枚举，`specs/2026-09-18-core-simos-design.md:41`） |
+| 「为了什么」 | **按模块各写各的**：**必填 18 个命令类型**（social 12 + unit 2 + economy 4，**不是 3** —— 控制方起点按 `requireText(payload,"reason")` 字面数漏了 `SocialPayloads.requireReason` 一族）；可选 17 个；**工具面必填 32 个工具**；日志 kv 716 处 |
+| 唯一"真工单"实体 | `social.HouseholdWorkOrder(orderId?, target, **reason**, **source**, plan)` —— 四件齐（谁自报+为什么+改什么+幂等键），**只活在 social 一个域**；类注自认「来源是**调用方自报**…不宣称它是可信身份」 |
+| 其余候选实体 | `Directive`/`DecisionPacket`/`MergedEffectPlan`/`Effect`/`SdInfoEntry` **不是同一抽象**（分四层：请求/决策/调度/记录） |
+| `reason` 是**重载词** | ≥6 义：人类审计理由 / **拒绝原因**（`CommandResult.Rejected.reason()`）/ 审批摘要字段 / **封闭词表**（`DeductionReason` 6 档）/ 状态内持久字段 / 注释 |
+
+**三条硬约束（决定"标准放哪层"）**
+1. **handler 结构性看不见调用者**：`CommandHandler.handle(SimulationState, String)` 无调用者入参（`DecisionSignature.java:20-23` 逐字承认）⇒ 域层自记身份只能是**自报**；可信身份只在 `revisions.initiator`/`events.agent`。
+2. **Core 不能解析载荷**（C26）⇒ "顶层必须有 reason"的中央校验**只能落在 app 装配层**，且**拦不住直接构造信封的路径**（`sd.IssueDirective` 内嵌命令、`AdjudicateTickTool` 批）。
+3. **批路径**：`CommandBus.java:468-477` `commitBatch` **只取首条命令的 initiator**，且**批不写事件** ⇒ 同批多命令只能共用一个 reason。（与清单待裁定第 5 条「批工具审计缺口」是同一个洞。）
+
+**五种形态对照（详见调查原文）**：(a) 信封必填 = 可验证性最强（72 构造点 + 旧库读不了，§一.11 允许）；(b) 信封可选 = 最弱且与「空串当场炸」口径自相矛盾；(c) 装配层声明表 = 不破旧档但拦不住直接构造；(d) 域内工单 = **与 2026-10-09 裁定相反**；(e) 只做日志 = 弱（`events.payload` 只留 digest）。
+★ **若只加可选字段（overload/工厂），测试红点可压到 ≈0；加必填则 `McpCoverageTest` 的 88 条最小载荷要逐条补。**
+
+### 9.2 国家语义搬 GOV：三条新发现 + 谁该搬谁不该搬
+
+**★ 新发现①：命令改名会「自动放权」**（前两轮未列，直接改变做法）
+`Shell.java:863,876-884`：令白名单 = 注册面 − **`sd.*`** − `GmOnlyCommand`；`DirectiveWhitelist.java:38-40` 同款。
+⇒ `sd.CreateNation` 今天**靠 `sd.` 前缀**才被挡在"可嵌决策令"外；**一旦改名 `gov.CreateNation`，它自动进入令白名单与 Effect 可入队集合** ⇒ **必须显式 `implements GmOnlyCommand`**（先例：`DeleteNationHandler:62`、`SetArmyMasterGovHandler:46`），否则是**静默权限扩张**。
+
+**★ 新发现②：`simos-gov` 是全仓唯一没有铁律 5 往返护栏的切片**
+`find simos-gov/src/test -name '*RoundTrip*'` = **0**；gov 只有 4 个测试文件；`getRecordComponents()` 组件数钉子有 actor/army/economy/sd/map，**没有 gov**。
+⇒ **给 `GovState` 加第 3 个组件而忘了改 `GovChangeSet`，今天没有任何测试会红** —— 正是铁律 5 要防的 G漂移。**必须先补护栏再加组件。**
+
+**★ 新发现③：`state.module("gov")` 是 untyped，救不了跨模块读**
+`SimulationState.module(String)` 返回 `Optional<Snapshot>`（只有 ref/timestamp/namespace）；全仓 `*-api` 里**零 Snapshot**，既有形制全是 `instanceof` 强转 ⇒ sd 要读 gov 状态**必须 import gov 的类型** ⇒ **必须解 gov/sd 互禁**（`gov/pom.xml:95` + `sd/pom.xml:78`，两侧都要动）。
+
+**阻塞②的机械形状（比前一轮更硬）**：`CommandBus.java:414` `namespaceOf(type)` = `type.substring(0, indexOf('.'))`；`:506-512` 用**命令类型前缀**决定把 handler 的 ChangeSet 应用到哪个命名空间 ⇒ **一个 handler 只能回自己模块的变更集**；跨模块写只能靠 `submitBatch`（多条命令同批）或多模块 tick 提案。
+
+**组件归属（14 个逐条判定）**：**3 个属国家/政府**（`nations`/`diplomaticRelations`/`diplomaticEvents`）；**11 个属决策/推演**。
+★ **战斗四件（`armies`/`combats`/`combatStates`/`lossRecords`）不归 gov**：**D-012 用户口述已裁定**「交战的具体记录**移到 Army 模块**记录与处理」「旧 sd 战斗命令族**不再作为交战记录的载体**，命令本身本阶段不动，清理另批」（`architecture-design-source.md:141-148`），且 `simos-army` **已有平行实现与数据**（`ArmyData(Map<CombatRecordId,CombatRecord>)`，army 对 sd 的 import = 0）⇒ 去向是"**退役或归 army**"，把 gov 当 sd 剩余组件的回收站会与 D-012 撞车。
+
+**`nations` 读者 20 处**：sd 内 **13**（`SdResolver:106`/`SdCodec:181,211,242,264`/`SdChangeSet:123,144`/`RegionDeleteGuard:62`/`CreateDecisionMakerHandler:124`/`SetDiplomaticRelationHandler:87,91`/`CreateNationHandler:56,73`/`DeleteNationHandler:90,139`）、app **4**、ga **3**（经 `SdState` 间接）。测试面：sd 13 文件/49 处、app 34 文件/180 处。
+
+**★ `Affiliation.Nation` 判为"留 sd"**：它是**权限边界**（`NationScope.java:60` 的 `instanceof Affiliation.Nation` 决定国家决策人可见范围；`ChannelAdmission:82-85` 渠道准入）⇒ 属 dm-gm 总实现，**不是国家语义**。⚠️ 但这与「国家语义直接搬 GOV」的**字面**冲突 ⇒ 按 §一.8.1 **必须用户裁**。
+
+**「GOV 随便引用 ga」控制方判定**：`gov → ga` **无环但没必要** —— gov 已引 `ga` **141 处、全部是 `ga.spi.*`**（非 spi = 0）；`simos-ga/pom.xml:96` 禁 gov；gov 自己的 pom 注释写「域模块依赖 **ga-spi 而不是 ga** —— 反过来会成环」⇒ **应解读为"GOV 可引用 ga 的工具契约层（ga-spi）"，现状已满足**。
+
+**会破的既有裁定/文档（4 条）**：① R6（2026-10-02「外交关系边表落 **sd 新组件**」）与「外交是 gov 的事」冲突，须按 §四.1 标注取代；② D-012（战斗归 army）；③ D-002（`NationScope` 是"不给中央开天眼"的判据载体）；④ 冻结表 §3 的 gov/sd 两行 + `AGENTS.md` gov 行。
+★ 顺带更正：冻结表 `:78`/`AGENTS.md:72` 写的迁移前置「`simos-map` 现用了 `Nation`」**实测为假**（`NationTag` 在 map/gov 里只是 `{@link}` javadoc，无 import）⇒ **真前置是 `NationId` 落点 + gov/sd 互禁 + gov 缺往返护栏**。
+
+**不可逆点三处**：`sd:nation.<id>` 地址族（`AccessPathsTest:54` 钉住；地址不是"档"，是对外接口）· 命令类型串 `sd.CreateNation`（决策人 prompt/白名单、GM catalog、12 处测试夹具）· gov/sd 互禁解除。
+
+**最小可行切片（绕开全部阻塞）**：第 0 步给 gov 补 `GovRoundTripTest`（反射枚举 + `hasSize(2)` + 排除集为空）；第 1 步建 `simos-gov-api` **只装 `NationId`**（零主依赖，照 `actor-api` 先例）+ 回填 7 类同步点。
+**负向判据（今天必绿 ⇒ 判别力缺失）**：往 `GovState` 加组件而不改 `GovChangeSet` ⇒ **应红**。
