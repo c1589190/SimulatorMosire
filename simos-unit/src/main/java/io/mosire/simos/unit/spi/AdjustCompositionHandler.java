@@ -36,8 +36,7 @@ import java.util.Objects;
  *
  * <p>★ 目标声明（{@link CommandTargets}）：载荷点名的**那一个单位**。
  */
-public final class AdjustCompositionHandler
-    implements CommandHandler, CommandTargets {
+public final class AdjustCompositionHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（信封上的 {@code type}，也是 catalog / 窄工具引用的唯一拼写点）。 */
   public static final String TYPE = "unit.AdjustComposition";

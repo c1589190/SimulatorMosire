@@ -42,8 +42,7 @@ import org.slf4j.Logger;
  * <p>★ <b>目标声明</b>：家户账户键不含格（P2-A §13.3），本命令没有 {@link io.mosire.simos.util.spi.ResourcePaths}
  * 可声明的格目标，故返回空列表（GM-only、不进决策令）。
  */
-public final class EnsureHouseholdAccountHandler
-    implements CommandHandler, CommandTargets {
+public final class EnsureHouseholdAccountHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "actor.EnsureHouseholdAccount";

@@ -22,8 +22,8 @@ import java.util.Set;
  * EconomySetMarketZonePriceAlphaTool} 同款：只透传 {@code payloadJson}， 载荷形状的唯一权威 = handler 的类注与 catalog
  * 的载荷提示）。
  *
- * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}；命令本身不打 {@code DmUsableCommand} ⇒
- * 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；决策人白名单（派生自决策人桶） 也不含本工具。
+ * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}；命令本身不打 {@code DmUsableCommand}
+ * ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；决策人白名单（派生自决策人桶） 也不含本工具。
  *
  * <p>★ <b>写面只声明 economy 命名空间</b>：handler 只产 {@code EconomyChangeSet}（区表是经济切片的组件）。
  */

@@ -45,8 +45,7 @@ import java.util.Objects;
  * <p>★ <b>旧档作废、不迁移</b>（用户 2026-10-09 裁定"一切从新"）：本命令只认带第 6 组件 {@code provisioning} 的新档； 旧档缺该组件在
  * {@link SocialData} / {@link SocialChangeSet} 构造期即具名拒，本命令不补默认值、不做双读。
  */
-public final class SetLaborCoefficientHandler
-    implements CommandHandler, CommandTargets {
+public final class SetLaborCoefficientHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、窄工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.SetLaborCoefficient";

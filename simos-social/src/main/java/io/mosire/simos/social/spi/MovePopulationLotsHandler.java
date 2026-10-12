@@ -61,8 +61,7 @@ import java.util.Set;
  * 可能给家户 id 或格：家户 ⇒ 该家户 SocialData 现值（social / unit）；格 ⇒ {@code social:<q>_<r>}。
  * 同一侧两个字段都给时两条都列出（更严，不静默漏判）；一侧都没给 ⇒ 该侧无目标；整条都没有可寻址目标 ⇒ 空列表（调用方 fail-closed 拒，与升级前同方向）。
  */
-public final class MovePopulationLotsHandler
-    implements CommandHandler, CommandTargets {
+public final class MovePopulationLotsHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "social.MovePopulationLots";

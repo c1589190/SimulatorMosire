@@ -37,8 +37,8 @@ import java.util.Set;
  * <p>★★ <b>两面并列、门禁不同</b>（照 {@link GovDefineCurrencyTool}）：GM 桶调用走 {@code GmAutoApproveGate}
  * （直接批准）、必须显式给 {@code govUnitId}；决策人桶调用走 {@code AutoApproveGate → ConfirmGate →
  * PendingApprovals}（<b>需 GM 点头</b>），{@code govUnitId} 由身份派生、给别的 GOV ⇒ 具名 {@code REJECTED} （见 {@link
- * GovToolSupport}）。★ 本工具是<b>工具层</b>的（{@code DmUsableCommand} 是**命令层**标记，工具层没有它）：
- * 决策人用得了它，权限由审批链 + 身份派生兜。
+ * GovToolSupport}）。★ 本工具是<b>工具层</b>的（{@code DmUsableCommand} 是**命令层**标记，工具层没有它）： 决策人用得了它，权限由审批链 +
+ * 身份派生兜。
  *
  * <p>★ <b>写什么</b>：只写该政府的 {@code officialRates} 里的一条（{@code base|quote} 键）。★ <b>只作用于自己所属 GOV</b> （与
  * {@code gov.defineCurrency} 同一条权限口径）。

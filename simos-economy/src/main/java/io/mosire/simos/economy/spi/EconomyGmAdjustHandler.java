@@ -55,7 +55,8 @@ import org.slf4j.Logger;
  *   <li><b>Z1 产品产出数量覆盖（两）</b>：{@code setOutputQuantity}（{@code
  *       {industryId,commodityId,quantity}}；quantity 必须是 [0, 1000000] 整数）、{@code
  *       clearOutputQuantity}（{@code {industryId,commodityId}}；没有既有覆盖 ⇒ 拒）；守卫与具名 reason 见 {@link
- *       EconomyGmAdjustments#project}。 本批保持仅 GM（不打 {@code DmUsableCommand}）、{@code targetPaths} 返回空列表、不进决策令桶。
+ *       EconomyGmAdjustments#project}。 本批保持仅 GM（不打 {@code DmUsableCommand}）、{@code targetPaths}
+ *       返回空列表、不进决策令桶。
  * </ul>
  *
  * <p>★★ <b>派生读数不可直写</b>：{@code flows} / {@code demandBook} / {@code crisisSignals} / {@code
@@ -66,8 +67,8 @@ import org.slf4j.Logger;
  * 只做"装配状态 → project → {@code Applied(changeSet)}"，工具只做"读状态 → 同一个 project → 预览/提交"。 同一 payload
  * 重放确定性由该纯函数保证（保序复制、稳定 ID、无时钟/随机数）。
  *
- * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 仍注册到 Core、仍进 {@code commandTargets}、GM 的 {@code
- * simos.command.submit} 可提交；但组合根构造 {@code DirectiveWhitelist} / {@code RegisterEffect} 白名单 /
+ * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 仍注册到 Core、仍进 {@code commandTargets}、GM 的
+ * {@code simos.command.submit} 可提交；但组合根构造 {@code DirectiveWhitelist} / {@code RegisterEffect} 白名单 /
  * 决策人工具目录时 排除它，普通 GOV Agent 无法把它写进令里执行（E6a 的 {@code directiveCommandTypes} 过滤口径不变）。
  *
  * <p>★ <b>{@link CommandTargets} 的诚实边界</b>：{@code targetPaths(mapId, payloadJson)}

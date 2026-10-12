@@ -40,8 +40,7 @@ import org.slf4j.Logger;
  * <p>★★ <b>目标声明</b>：家户账户没有格 ⇒ 本命令返回空目标清单（{@link CommandTargets} 的"没有可寻址目标"档）。 它是 GM-only
  * 命令，不走决策令的资源围栏；这是 P2-A 的具名缺口（政府家户的采购/上缴路径在 P2-C 重建）。
  */
-public final class TransferAccountsHandler
-    implements CommandHandler, CommandTargets {
+public final class TransferAccountsHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "actor.TransferAccounts";

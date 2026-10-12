@@ -36,9 +36,8 @@ import java.util.Set;
  * GOV；载荷若带别的 {@code govUnitId} ⇒ 具名 {@code REJECTED}。
  *
  * <p>★★ <b>命令仍是 GM-only（控制方 2026-10-23 裁定，口径按批次 1 收尾更新）</b>：{@code economy.SetGovernmentPolicy}
- * <b>不打</b> {@code DmUsableCommand}（反默认 ⇒ 仅 GM），声明只影响 ga 规则层派生的令 / {@code RegisterEffect} /
- * 决策人 catalog 三条路径；命令总线不认该标记，
- * 因此决策人窄工具直接提交同一命令是受控的（审批链承担门禁）。标记不删 ⇒ 权限面不放大。
+ * <b>不打</b> {@code DmUsableCommand}（反默认 ⇒ 仅 GM），声明只影响 ga 规则层派生的令 / {@code RegisterEffect} / 决策人
+ * catalog 三条路径；命令总线不认该标记， 因此决策人窄工具直接提交同一命令是受控的（审批链承担门禁）。标记不删 ⇒ 权限面不放大。
  *
  * <p>★ <b>preview 与 apply 同源</b>：两者都读同一坐标的 base 状态、跑 {@link GovPolicyPlanSupport}（与 handler 共用
  * {@code EconomyGovPolicyPayloads} 解析与 GOV 单位守卫），preview 不写状态、不发"已应用"日志；逐值相同的重放 = noop（不落空

@@ -60,8 +60,7 @@ import java.util.Set;
  * {@code economy.SetGovernmentPolicy} 的既有形制同源（★★ 2026-10-12 追加裁定 12 前是 {@code
  * gov.SetAdministrationPlan}，该命令已删除）。★ 不声明格资源（世界级词表没有格）⇒ {@link CommandTargets#targetPaths} 恒空。
  */
-public final class EconomyDefineCurrencyHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomyDefineCurrencyHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.DefineCurrency";

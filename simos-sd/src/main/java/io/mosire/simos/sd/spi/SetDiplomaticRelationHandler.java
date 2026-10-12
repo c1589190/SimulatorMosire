@@ -35,8 +35,8 @@ import java.util.Optional;
  *       sd.IssueDirective} 同口径）；过去合法（补记/滞后），存进 {@code updatedTick}。
  * </ul>
  *
- * <p>★ **不在 DM 两面**（不打 {@code DmUsableCommand}）：命令本身不做调用者身份判定——"不许以别国名义写"由**决策人窄工具**的 signature 层拒绝（命令结构性看不见调用者）； GM 走 {@code
- * simos.command.submit} / GM 窄工具。{@code sd.*} 本就不进指令白名单（禁自指），不担心嵌令递归。
+ * <p>★ **不在 DM 两面**（不打 {@code DmUsableCommand}）：命令本身不做调用者身份判定——"不许以别国名义写"由**决策人窄工具**的 signature
+ * 层拒绝（命令结构性看不见调用者）； GM 走 {@code simos.command.submit} / GM 窄工具。{@code sd.*} 本就不进指令白名单（禁自指），不担心嵌令递归。
  */
 public final class SetDiplomaticRelationHandler implements CommandHandler {
 

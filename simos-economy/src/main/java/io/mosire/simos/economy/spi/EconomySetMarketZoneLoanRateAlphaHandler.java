@@ -54,8 +54,7 @@ import org.slf4j.Logger;
  * EconomyData.withMarketZones} → {@code EconomyChangeSet.between}（{@code FieldDelta.diff} 按 record
  * 相等判变化） → Codec（Jackson record 绑定）三件套齐备；往返不变式由同一批构造器保证。
  */
-public final class EconomySetMarketZoneLoanRateAlphaHandler
-    implements CommandHandler {
+public final class EconomySetMarketZoneLoanRateAlphaHandler implements CommandHandler {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册与 catalog 载荷提示都取它）。 */
   public static final String TYPE = "economy.SetMarketZoneLoanRateAlpha";

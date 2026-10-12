@@ -17,16 +17,14 @@ import java.util.Set;
  * <p>★★ **{@code sd.} 前缀规则已删**（用户 2026-10-12 裁定「一条不留」）：自指保护不再靠前缀，改由 <b>"决策族命令不打 {@code
  * io.mosire.simos.util.spi.DmUsableCommand}"</b> 承担 —— 本类的输入集现在就是 ga 规则层 ({@code
  * io.mosire.simos.ga.command.CommandPermissionRules}) 派生的**可嵌令面**，里面本就没有一条 {@code sd.*}（它们全是
- * GM-only 或干脆未声明）。★ 于是本类退化为"对**已派生面**的一道保序收口"：不再有第二处"哪些命令能被 DM 嵌进令"的拼写。 ★
- * 同名规则的删除必须与 {@code Shell} 里那 5 条**无条件 add**（`sd.IssueDirective` 等）同时做 —— 不删那 5 条，前缀规则一撤，
- * 它们就复活成"自指可嵌令"的后门。
+ * GM-only 或干脆未声明）。★ 于是本类退化为"对**已派生面**的一道保序收口"：不再有第二处"哪些命令能被 DM 嵌进令"的拼写。 ★ 同名规则的删除必须与 {@code Shell}
+ * 里那 5 条**无条件 add**（`sd.IssueDirective` 等）同时做 —— 不删那 5 条，前缀规则一撤， 它们就复活成"自指可嵌令"的后门。
  *
  * <p>★ {@link #isSdSelfReference} **保留**：它是**拒因措辞**用的纯谓词（{@code IssueDirectiveHandler} 与 {@code
- * sd.AdjudicateTick} 借它把"自指"与"白名单外"两种拒绝理由分开报），不是判据本身 —— 删了它，拒绝理由会退化成含糊的一句
- * "不在白名单里"。
+ * sd.AdjudicateTick} 借它把"自指"与"白名单外"两种拒绝理由分开报），不是判据本身 —— 删了它，拒绝理由会退化成含糊的一句 "不在白名单里"。
  *
- * <p>★ **不是恒真/恒假的装饰**：白名单是构造期从**调用方给的集合**推导的 —— 未注册的类型进不来（调用方只可能给它自己派生的面）、
- * 通用写被拒；与 {@code DirectiveCommand} 的 shapes 校验分工是"白名单判合法性、record 判形状"。
+ * <p>★ **不是恒真/恒假的装饰**：白名单是构造期从**调用方给的集合**推导的 —— 未注册的类型进不来（调用方只可能给它自己派生的面）、 通用写被拒；与 {@code
+ * DirectiveCommand} 的 shapes 校验分工是"白名单判合法性、record 判形状"。
  */
 public final class DirectiveWhitelist {
 

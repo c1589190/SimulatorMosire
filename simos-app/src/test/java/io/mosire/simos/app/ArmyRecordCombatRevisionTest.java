@@ -30,16 +30,19 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * ★★ {@code army.RecordCombat} 的 <b>revision 级判据</b>（本仓原先只有域级证据：{@code RecordCombatHandlerTest} 直接调
- * handler 折 {@code HandlerOutcome} 再 {@code ArmyChangeSet.apply}，**从不经过 core**，因此"这条命令到底落不落 revision、落几条"
- * 没有护栏）。
+ * handler 折 {@code HandlerOutcome} 再 {@code ArmyChangeSet.apply}，**从不经过 core**，因此"这条命令到底落不落
+ * revision、落几条" 没有护栏）。
  *
- * <p>形制照 {@link SdPutInfoEndToEndTest}（本仓现成的"经 core 提交并断言 revision"形态，{@code simos-app/src/test} 下同包）：真 {@link
- * CoreSimos} + 真 {@code bootstrapGenesis} + {@link CommandEnvelope} → 断言 {@link CommandResult.Committed} 的新坐标 +
- * {@code core.head} + {@code core.revisions} 行数 + {@code core.replay} 回读。**不自创第二套提交夹具。**
+ * <p>形制照 {@link SdPutInfoEndToEndTest}（本仓现成的"经 core 提交并断言 revision"形态，{@code simos-app/src/test}
+ * 下同包）：真 {@link CoreSimos} + 真 {@code bootstrapGenesis} + {@link CommandEnvelope} → 断言 {@link
+ * CommandResult.Committed} 的新坐标 + {@code core.head} + {@code core.revisions} 行数 + {@code
+ * core.replay} 回读。**不自创第二套提交夹具。**
  *
  * <ul>
- *   <li><b>①</b> 提交一条 ⇒ head <b>+1</b>（恰一张新 revision），且 {@code ArmySnapshot.data().combats()} <b>恰 1 条</b>、逐字段可回放；
- *   <li><b>②</b> 同 id 再提交 ⇒ {@link CommandResult.Rejected}（具名：含 id）+ <b>head 不变</b>（零 revision：时间线不多一行）；
+ *   <li><b>①</b> 提交一条 ⇒ head <b>+1</b>（恰一张新 revision），且 {@code ArmySnapshot.data().combats()} <b>恰
+ *       1 条</b>、逐字段可回放；
+ *   <li><b>②</b> 同 id 再提交 ⇒ {@link CommandResult.Rejected}（具名：含 id）+ <b>head 不变</b>（零
+ *       revision：时间线不多一行）；
  *   <li>★ 另附 tick 语义的两条 revision 级对照：过去可补记（仍恰一张 revision）、未来具名拒（零 revision）。
  * </ul>
  *
@@ -95,8 +98,7 @@ class ArmyRecordCombatRevisionTest {
     assertThat(record.participants()).as("参与者保序").containsExactly(U1, U2);
     assertThat(record.text()).isEqualTo("记录级过程");
     assertThat(record.stages()).as("初始阶段由 handler 合成").hasSize(1);
-    assertThat(record.stages().get(0).id().value())
-        .isEqualTo(RecordCombatHandler.INITIAL_STAGE_ID);
+    assertThat(record.stages().get(0).id().value()).isEqualTo(RecordCombatHandler.INITIAL_STAGE_ID);
 
     assertThat(armyState(core, headBefore).combats())
         .as("旧 revision 上没有这条记录（新坐标只落在新 revision 上，历史可回放）")
@@ -108,7 +110,8 @@ class ArmyRecordCombatRevisionTest {
   @Test
   void aSecondCombatWithTheSameIdIsRejectedAndLeavesTheHeadUntouched() {
     CoreSimos core = start();
-    assertThat(core.submit(envelope(1, payload("c-1")))).isInstanceOf(CommandResult.Committed.class);
+    assertThat(core.submit(envelope(1, payload("c-1"))))
+        .isInstanceOf(CommandResult.Committed.class);
     long headAfterFirst = head(core);
     int revisionsAfterFirst = core.revisions(MAIN).size();
 
@@ -121,9 +124,7 @@ class ArmyRecordCombatRevisionTest {
         .contains("c-1");
     assertThat(head(core)).as("★ 具名拒 ⇒ 零 revision：head 一个号都不动").isEqualTo(headAfterFirst);
     assertThat(core.revisions(MAIN)).as("时间线上不多一行").hasSize(revisionsAfterFirst);
-    assertThat(armyState(core, headAfterFirst).combats())
-        .as("仍恰 1 条、内容未被覆写")
-        .hasSize(1);
+    assertThat(armyState(core, headAfterFirst).combats()).as("仍恰 1 条、内容未被覆写").hasSize(1);
   }
 
   // ── ★ tick 语义的 revision 级对照（过去可补记 / 未来具名拒）────────────────────────────
@@ -206,8 +207,7 @@ class ArmyRecordCombatRevisionTest {
   private static ArmyData armyState(CoreSimos core, long revision) {
     SimulationState state = core.replay(new StateRef(MAIN, new RevisionId(revision)));
     ArmySnapshot slice =
-        (ArmySnapshot)
-            state.module("army").orElseThrow(() -> new AssertionError("状态里没有 army 切片"));
+        (ArmySnapshot) state.module("army").orElseThrow(() -> new AssertionError("状态里没有 army 切片"));
     return slice.data();
   }
 
@@ -220,6 +220,8 @@ class ArmyRecordCombatRevisionTest {
   }
 
   private static String describe(CommandResult result) {
-    return result instanceof CommandResult.Rejected rejected ? rejected.reason() : String.valueOf(result);
+    return result instanceof CommandResult.Rejected rejected
+        ? rejected.reason()
+        : String.valueOf(result);
   }
 }

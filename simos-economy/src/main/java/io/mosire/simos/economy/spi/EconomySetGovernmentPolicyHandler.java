@@ -81,8 +81,7 @@ import org.slf4j.Logger;
  * INFO（{@code GOVERNMENT_POLICY_REJECTED}，经 {@code EconomyCommandPayloads.logReason} 脱敏）、DEBUG
  * 一条"为什么"。
  */
-public final class EconomySetGovernmentPolicyHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomySetGovernmentPolicyHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册、catalog 提示与窄工具都取它）。 */
   public static final String TYPE = "economy.SetGovernmentPolicy";

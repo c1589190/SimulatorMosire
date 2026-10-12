@@ -35,8 +35,8 @@ import java.util.Set;
  * {@link SocialProvisioning} 的不可变 copy-with 算出目标 provisioning（零状态写入、零 revision）；若 {@code
  * preview=false} 才把同一份载荷提交给 {@code ToolWritePort.submitBatchWithReceipt}。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；命令本身不打 {@code DmUsableCommand}，工具名不是命令类型 ⇒
- * 不进 catalog / {@code PAYLOAD_HINTS}。只写 social 命名空间。
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；命令本身不打 {@code DmUsableCommand}，工具名不是命令类型
+ * ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。只写 social 命名空间。
  *
  * <p>★ <b>旧档作废、不迁移</b>：只认带第 6 组件 {@code provisioning} 的新档；旧档在状态构造期即具名拒。
  */

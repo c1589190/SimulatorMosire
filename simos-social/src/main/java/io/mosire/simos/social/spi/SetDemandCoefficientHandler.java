@@ -65,15 +65,14 @@ import java.util.Objects;
  *   <li>条数上限与"批内目标键不得重复"由 {@link SocialProvisioningEdits#editDemands} 收口（唯一拼写点）。
  * </ul>
  *
- * <p>★★ <b>GM-only</b>（不打 {@code DmUsableCommand}）：本命令仍注册到 Core、仍进 {@code commandTargets}、GM 的 {@code
- * simos.command.submit} 与窄工具照常可用；但不得作为决策人令 / {@code RegisterEffect} 嵌入， 也不进决策人目录——
+ * <p>★★ <b>GM-only</b>（不打 {@code DmUsableCommand}）：本命令仍注册到 Core、仍进 {@code commandTargets}、GM 的
+ * {@code simos.command.submit} 与窄工具照常可用；但不得作为决策人令 / {@code RegisterEffect} 嵌入， 也不进决策人目录——
  * 需求系数是全世界/全户的调参面，不是普通 GOV 的政治能力。★ 批量的加入**没有**新增命令类型、没有新增工具名、没有 新增写资源 ⇒ GM/决策人两桶的权限面一字未变（权限单调性）。
  *
  * <p>★ <b>旧档作废、不迁移</b>（用户 2026-10-09 裁定"一切从新"）：本命令只认已经带第 6 组件 {@code provisioning} 的新档；旧档缺该组件在
  * {@link SocialData} / {@link SocialChangeSet} 构造期即具名拒，本命令不补默认值、不做双读。
  */
-public final class SetDemandCoefficientHandler
-    implements CommandHandler, CommandTargets {
+public final class SetDemandCoefficientHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、窄工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.SetDemandCoefficient";

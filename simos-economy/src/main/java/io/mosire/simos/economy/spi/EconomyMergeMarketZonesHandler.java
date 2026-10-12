@@ -57,8 +57,7 @@ import java.util.Set;
  * <p>★ <b>GM-only</b>：同 {@code economy.DefineMarketZone}（世界级区表没有单格资源目标 ⇒ {@link
  * CommandTargets#targetPaths} 恒空）。
  */
-public final class EconomyMergeMarketZonesHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomyMergeMarketZonesHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册与 catalog 载荷提示都取它）。 */
   public static final String TYPE = "economy.MergeMarketZones";

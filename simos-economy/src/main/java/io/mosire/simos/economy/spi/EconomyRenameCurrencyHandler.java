@@ -44,8 +44,7 @@ import java.util.Objects;
  * <p>★ <b>GM-only</b>（同 {@link EconomyDefineCurrencyHandler}）：决策人侧的受控入口是窄工具 {@code
  * simos.gov.renameCurrency}（身份派生 + 只能自己的 GOV + GM 审批链）。
  */
-public final class EconomyRenameCurrencyHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomyRenameCurrencyHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.RenameCurrency";

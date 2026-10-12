@@ -26,8 +26,9 @@ import java.util.Objects;
  * {"regionId":"r1","name":"新的区域名"}
  * }</pre>
  *
- * <p>★ <b>GM-only</b>（不打 {@code DmUsableCommand}）：决策人只能提出改名诉求，实际执行由 GM 走 {@code simos.command.submit} 或
- * GM 窄工具；该标记会自动把它排除出令白名单 / {@code RegisterEffect} / 决策人 catalog，GM 的提交面与窄工具照常可用。
+ * <p>★ <b>GM-only</b>（不打 {@code DmUsableCommand}）：决策人只能提出改名诉求，实际执行由 GM 走 {@code
+ * simos.command.submit} 或 GM 窄工具；该标记会自动把它排除出令白名单 / {@code RegisterEffect} / 决策人 catalog，GM
+ * 的提交面与窄工具照常可用。
  *
  * <p>★ <b>为什么单开一条命令而不复用 {@code map.UpdateRegion}</b>：{@code map.UpdateRegion} 的 {@code name}
  * 不在载荷里（它改 hexes/meta），且 GM 改名的语义是"只动 name"——复用会把"改名"与"改内容"混成一条既 能改边界又能改名的命令。{@link

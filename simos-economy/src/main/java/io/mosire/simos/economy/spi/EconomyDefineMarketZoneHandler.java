@@ -76,8 +76,7 @@ import java.util.Set;
  * <p>★ <b>不实现 {@link CommandTargets}</b>：区表是<b>世界级</b>表（一份区表横跨多个格，但"区"本身不是格资源），且本命令 GM-only ⇒
  * 不进决策令桶（与 {@code SetOfficialRate} / {@code DefineCurrency} 同款，{@code targetPaths} 恒空）。
  */
-public final class EconomyDefineMarketZoneHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomyDefineMarketZoneHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册与 catalog 载荷提示都取它）。 */
   public static final String TYPE = "economy.DefineMarketZone";

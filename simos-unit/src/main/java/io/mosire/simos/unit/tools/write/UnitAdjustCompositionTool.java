@@ -15,8 +15,9 @@ import java.util.Set;
  * {@code unit.AdjustComposition}）。
  *
  * <p>★ 载荷 {@code manpower/equipment = [{type,amount}]}，{@code amount} 有符号：正增量可**新建
- * type**（追加表尾）、负增量要求 type 已存在且 {@code |Δ| ≤ 当前值}；同表重复 type、long 溢出、越界都由域层具名拒。命令本身**仅 GM**（{@code unit.AdjustComposition} 不打 {@code DmUsableCommand}，是 GM 调试直改原语，
- * 与 {@code unit.SetComposition} 的"可嵌令"不同待遇）， 但本工具只在 GM 桶注册（与其余窄写同制）。
+ * type**（追加表尾）、负增量要求 type 已存在且 {@code |Δ| ≤ 当前值}；同表重复 type、long 溢出、越界都由域层具名拒。命令本身**仅 GM**（{@code
+ * unit.AdjustComposition} 不打 {@code DmUsableCommand}，是 GM 调试直改原语， 与 {@code unit.SetComposition}
+ * 的"可嵌令"不同待遇）， 但本工具只在 GM 桶注册（与其余窄写同制）。
  *
  * <p>★ 标 sensitive ⇒ 走审批门链（GM 侧 GmAutoApproveGate 无脑过）。
  */

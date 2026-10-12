@@ -57,8 +57,7 @@ import org.slf4j.Logger;
  *
  * <p>★ <b>目标声明</b>：家户账户键不含格（P2-A）⇒ 本命令返回空目标清单（与 {@code actor.TransferAccounts} 同款）。
  */
-public final class DeductHouseholdStockHandler
-    implements CommandHandler, CommandTargets {
+public final class DeductHouseholdStockHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "actor.DeductHouseholdStock";

@@ -36,8 +36,7 @@ import java.util.Objects;
  * {@code simos.gm.vitalRates} 与 {@code simos.command.submit} 照常可用；但排除出令白名单 / RegisterEffect / 决策人目录
  * ——全局参数是 GM 的活（与 {@code social.SetDemandCoefficient} / {@code social.SetLaborCoefficient} 同族）。
  */
-public final class SetGlobalVitalRatesHandler
-    implements CommandHandler, CommandTargets {
+public final class SetGlobalVitalRatesHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、窄工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.SetGlobalVitalRates";

@@ -112,8 +112,7 @@ import org.slf4j.Logger;
  * <p>★ <b>{@link CommandTargets} 的诚实边界</b>：签名拿不到 state；逐格 economy 资源路径要读目标 Region 的 hex 集才能展开， 本命令
  * GM-only、不进入决策令/裁决目标检查 ⇒ 返回空列表（fail-closed）。
  */
-public final class EconomyClearRegionHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomyClearRegionHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：catalog 提示、Shell 注册与组合工具都从这里取/对齐）。 */
   public static final String TYPE = "economy.ClearRegion";

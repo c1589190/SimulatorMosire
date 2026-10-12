@@ -30,9 +30,9 @@ public final class ChannelAdmission {
   /**
    * 决策唯一允许的两条落点（R9）。
    *
-   * <p>★★ <b>2026-10-12 批次 1（权限统一）：本常量同时是 ga 规则层的**输入声明**</b> —— 组合根 {@code Shell} 把它送进
-   * {@code io.mosire.simos.ga.command.CommandPermissionRules.resolve(...)}，由规则层审计"这两条**是注册面成员**且
-   * **不是 DM 可用命令**（落点本身不能被嵌进令）。⇒ 命令改名（例如批次 3 把决策族搬出 sd）会**在装配期当场炸**， 而不是留下一个
+   * <p>★★ <b>2026-10-12 批次 1（权限统一）：本常量同时是 ga 规则层的**输入声明**</b> —— 组合根 {@code Shell} 把它送进 {@code
+   * io.mosire.simos.ga.command.CommandPermissionRules.resolve(...)}，由规则层审计"这两条**是注册面成员**且 **不是 DM
+   * 可用命令**（落点本身不能被嵌进令）。⇒ 命令改名（例如批次 3 把决策族搬出 sd）会**在装配期当场炸**， 而不是留下一个
    * "永远拒所有决策提交"的静默缺口。拒绝的实现在本类（模块侧强制），规则层不替它判。
    */
   public static final Set<String> LANDING_POINTS = Set.of("sd.IssueDirective", "sd.SubmitVerdict");

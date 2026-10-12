@@ -351,15 +351,17 @@ public final class Shell implements AutoCloseable {
   private final List<DecisionChannel> decisionChannels;
 
   /**
-   * **完整注册面**（= {@code CommandFaces.catalogTypes()}，含 GM-only 命令与装配自身新增的 {@code sd.RegisterEffect} 与 5 条
-   * sd 决策命令）：按角色重建工具面时供 catalog 读。★ 决策人侧仍由 {@code CatalogVisibility} 按权限过滤 —— GM-only 命令不在其"可嵌入令"白名单里，故决策人看不到。
+   * **完整注册面**（= {@code CommandFaces.catalogTypes()}，含 GM-only 命令与装配自身新增的 {@code sd.RegisterEffect}
+   * 与 5 条 sd 决策命令）：按角色重建工具面时供 catalog 读。★ 决策人侧仍由 {@code CatalogVisibility} 按权限过滤 —— GM-only
+   * 命令不在其"可嵌入令"白名单里，故决策人看不到。
    */
   private final Set<String> commandTypes;
 
   /**
-   * **可嵌入令面**（= {@code CommandFaces.directiveTypes()}，由 handler 上的 {@code DmUsableCommand} 声明派生）： {@code
-   * IssueDirectiveHandler} 的 {@code DirectiveWhitelist}、{@code sd.AdjudicateTick} 重建的白名单、决策人工具目录共用这一份。
-   * ★ GM-only 命令仍注册在 Core、仍进 {@code commandTargets}，GM 的 {@code simos.command.submit} 不受影响。
+   * **可嵌入令面**（= {@code CommandFaces.directiveTypes()}，由 handler 上的 {@code DmUsableCommand} 声明派生）：
+   * {@code IssueDirectiveHandler} 的 {@code DirectiveWhitelist}、{@code sd.AdjudicateTick}
+   * 重建的白名单、决策人工具目录共用这一份。 ★ GM-only 命令仍注册在 Core、仍进 {@code commandTargets}，GM 的 {@code
+   * simos.command.submit} 不受影响。
    */
   private final Set<String> directiveCommandTypes;
 
@@ -539,7 +541,8 @@ public final class Shell implements AutoCloseable {
                 new MergeRegionsHandler(),
                 new SplitRegionHandler(),
                 new ReassignHexesHandler(),
-                // ★ R4（行政区划修复计划 §1.4）：GM 改区域名。不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect /
+                // ★ R4（行政区划修复计划 §1.4）：GM 改区域名。不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect
+                // /
                 //   决策人目录；GM 直接提交照常可用。──
                 new RenameRegionHandler(),
                 new DeleteRegionHandler(),
@@ -557,7 +560,8 @@ public final class Shell implements AutoCloseable {
                 new SetStatusHandler(),
                 // ★★ P1.2 / A6：视野半径命令（字段早已存在，本次补写路径；打 {@code DmUsableCommand}，目标声明见 handler）。
                 new SetVisionRadiusHandler(),
-                // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的 upsert / 删除。★ 打 {@code DmUsableCommand} ⇒
+                // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的 upsert / 删除。★ 打 {@code
+                // DmUsableCommand} ⇒
                 //   与既有 unit 命令同待遇（可嵌进决策令，目标声明见 handler 自己的 CommandTargets）；
                 //   GM 侧的窄写工具 simos.unit.set-state-description 走这一条 handler。
                 new SetStateDescriptionHandler(),
@@ -573,23 +577,28 @@ public final class Shell implements AutoCloseable {
                 new UpdateCommandChainHandler(),
                 new ApplyCasualtiesHandler(),
                 // ★★ D3a（2026-10-02 / D-009 补裁）：单单位人力/装备的 GM 调试直改原语（有符号增量，一条命令原子）。
-                //   不打 {@code DmUsableCommand}（控制器 2026-10-02 收紧）⇒ 不进决策令 / RegisterEffect 白名单；GM 直通口是窄工具
+                //   不打 {@code DmUsableCommand}（控制器 2026-10-02 收紧）⇒ 不进决策令 / RegisterEffect 白名单；GM
+                // 直通口是窄工具
                 //   simos.unit.adjust-composition（只在 GM 桶），以及 GM 的 simos.command.submit。──
                 new AdjustCompositionHandler(),
-                // ── S3a（2026-10-09）：单个 unit 容纳的家户列表整体替换（unit 侧唯一写口；打 {@code DmUsableCommand} ⇒ 与既有 unit
+                // ── S3a（2026-10-09）：单个 unit 容纳的家户列表整体替换（unit 侧唯一写口；打 {@code DmUsableCommand} ⇒ 与既有
+                // unit
                 //   命令同待遇；"加入/移出 Unit"的两侧一致性由 app 组合工具同批保证）。──
                 new SetUnitHouseholdsHandler(),
-                // ── 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率两条窄写。打 {@code DmUsableCommand} ⇒ 与既有 unit 命令同待遇
+                // ── 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率两条窄写。打 {@code DmUsableCommand} ⇒ 与既有 unit
+                // 命令同待遇
                 //   （仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
                 new SetJurisdictionHandler(),
                 new SetTaxRateHandler(),
-                // ── 阶段 10a（2026-09-30）：两条"立编制"命令（编制字段在 Unit.module ⇒ unit 域命令）。打 {@code DmUsableCommand}
+                // ── 阶段 10a（2026-09-30）：两条"立编制"命令（编制字段在 Unit.module ⇒ unit 域命令）。打 {@code
+                // DmUsableCommand}
                 //   ⇒ 与既有 unit 命令同待遇（仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
                 new SetGovernmentFormationHandler(),
                 new SetArmyFormationHandler(),
                 // ── P4b（2026-10-15）：军俸政策整体替换（打 {@code DmUsableCommand}；unit 域日常政策命令，未来决策人可嵌令）。──
                 new SetArmyPayPolicyHandler(),
-                // ── 阶段 10b-i（2026-10-01）：GOV 政策 / 层级 / 入编 / 离编四条 unit 命令。全部打 {@code DmUsableCommand}
+                // ── 阶段 10b-i（2026-10-01）：GOV 政策 / 层级 / 入编 / 离编四条 unit 命令。全部打 {@code
+                // DmUsableCommand}
                 //   ⇒ 与既有 unit 命令同待遇（可嵌入决策令）。★ Recruit/Dismiss 有意**不配** GM 窄工具
                 //   （那会变成"凭空造人/跳过支付"的直通口）：它们只作为命令，由 10b-ii 的配套工具批/决策令批使用。──
                 new SetGovPolicyHandler(),
@@ -597,7 +606,8 @@ public final class Shell implements AutoCloseable {
                 new RecruitStaffHandler(),
                 new DismissStaffHandler(),
                 // ── Z4（2026-10-23）：岗位指派窄写口（只写 GovernmentFormation.householdPosts，绝不碰
-                //   staff；C4 一处真相）。打 {@code DmUsableCommand} ⇒ 与既有 unit 命令同待遇，Z3 的 simos.gov.assignPosts
+                //   staff；C4 一处真相）。打 {@code DmUsableCommand} ⇒ 与既有 unit 命令同待遇，Z3 的
+                // simos.gov.assignPosts
                 //   工具/决策令批将复用它。──
                 new AssignGovPostHandler(),
                 // ── Z3d（2026-10-23）：外部岗位窄写口（只写 GovernmentFormation.externalPosts，绝不碰
@@ -624,7 +634,8 @@ public final class Shell implements AutoCloseable {
                 new RemoveHouseholdMembersHandler(),
                 new TransferHouseholdMembersHandler(),
                 new SetHouseholdVitalRatesHandler(),
-                // ── D4（2026-10-22）：全局默认生死率整体替换（不打 DmUsableCommand ⇒ 仅 GM；配套窄工具 simos.gm.vitalRates）。
+                // ── D4（2026-10-22）：全局默认生死率整体替换（不打 DmUsableCommand ⇒ 仅 GM；配套窄工具
+                // simos.gm.vitalRates）。
                 new SetGlobalVitalRatesHandler(),
                 new AdjustHouseholdPopulationHandler(),
                 // ── Batch 4（2026-10-09 家户结构修复计划）：Social 需求/劳动系数两条 GM 命令——全局默认 + 单家户
@@ -671,7 +682,8 @@ public final class Shell implements AutoCloseable {
                 // ── economy（R4-E2a）：价格 / 需求账本 / 候选预设 —— GM simos.command.submit 路径可用；
                 //   进入采用算法（E2b）不在本片。──
                 new EconomySetMarketPriceHandler(),
-                // ── economy（A2b）：把某一格市场的计价币改成词表里的另一种币（不打 {@code DmUsableCommand} ⇒ 仅 GM）。这是 A2a 账本 BLOCKED-1
+                // ── economy（A2b）：把某一格市场的计价币改成词表里的另一种币（不打 {@code DmUsableCommand} ⇒ 仅 GM）。这是 A2a 账本
+                // BLOCKED-1
                 //   的最小前置命令面（否则"买持铜/卖只收银"的多计价币世界造不出来），也是 B2「市场区法定币」要面对的那一维。
                 //   只写 markets 一格；**不折算**任何余额与价格（世界无汇率）。──
                 new EconomySetMarketNumeraireHandler(),
@@ -729,12 +741,14 @@ public final class Shell implements AutoCloseable {
                 //   catalogCommandTypes 与 directiveCommandTypes 的拆分）。──
                 new EconomyGmAdjustHandler(),
                 // ── economy（Z1a 2026-10-23）：创建/修改产业模板（新版本 = 新 kind 后缀 id；原地改仅限无
-                //   units/assetShares/relations 引用）。★ GM-only：不打 {@code DmUsableCommand} ⇒ 排除出令白名单 /
+                //   units/assetShares/relations 引用）。★ GM-only：不打 {@code DmUsableCommand} ⇒ 排除出令白名单
+                // /
                 //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
                 //   simos.economy.upsertIndustry 照常可用。★ 不实现 CommandTargets（不进决策令桶）。──
                 new EconomyUpsertIndustryHandler(),
                 // ── economy（Z1c 2026-10-23）：为 GOV 单位创建/补齐 office 行政服务生产 unit（units +
-                //   assetShares + relations；operator=hh-gov-<id>）。★ GM-only：不打 {@code DmUsableCommand} ⇒
+                //   assetShares + relations；operator=hh-gov-<id>）。★ GM-only：不打 {@code
+                // DmUsableCommand} ⇒
                 // 排除出令白名单 /
                 //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
                 //   simos.economy.upsertGovUnit 照常可用。★ 不实现 CommandTargets（不进决策令桶）。
@@ -818,22 +832,26 @@ public final class Shell implements AutoCloseable {
                 new DeleteNationHandler(),
                 new CreateArmyHandler(),
                 // ── 阶段 12 后续赋值（2026-10-01 Army 主子改派缺口）：Army 创建后的主子改派/解除。★ GM-only
-                //   （handler 不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用）。──
+                //   （handler 不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM
+                // 直接提交照常可用）。──
                 new SetArmyMasterGovHandler(),
                 new CreateDecisionMakerHandler(),
                 // ── P1b2（2026-10-01）：GM-only 决策人身份删除（只删 decisionMakers 的一条；不级联历史 Directive /
-                //   文档 / 会话）。不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
+                //   文档 / 会话）。不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM
+                // 直接提交照常可用。──
                 new DeleteDecisionMakerHandler(),
                 new PutInfoHandler(),
                 // ★★ D2（2026-10-22 决策包计划）：三条决策包命令——整包 upsert（propose/intent）、提交、GM 裁决。
-                //   都**不**打 {@code DmUsableCommand} ⇒ 仅 GM（Upsert/Submit 由决策人工具内部提交；Decide 只被 GM 工具调用）。
+                //   都**不**打 {@code DmUsableCommand} ⇒ 仅 GM（Upsert/Submit 由决策人工具内部提交；Decide 只被 GM
+                // 工具调用）。
                 new UpsertDecisionPacketHandler(),
                 new SubmitDecisionPacketHandler(),
                 new DecideDecisionPacketHandler(),
                 // ★★ D3（2026-10-22 合并计划契约 §9）：合并效果计划整包 upsert（GM 建计划 / 执行器 outcome 回写）。
                 //   同 D2 三条：不打 DmUsableCommand ⇒ 仅 GM（执行器在系统上下文同批回写 outcome）。
                 new UpsertMergedEffectPlanHandler(),
-                // ★★ D5（2026-10-02 / D-003、D-005、R6）：sd 的两条外交命令（不打 DmUsableCommand ⇒ 不在 DM 两面；sd. 前缀规则已删）。
+                // ★★ D5（2026-10-02 / D-003、D-005、R6）：sd 的两条外交命令（不打 DmUsableCommand ⇒ 不在 DM 两面；sd.
+                // 前缀规则已删）。
                 //   变更集走 SdChangeSet 的第 11/12 个组件（diplomaticRelations / diplomaticEvents），
                 //   旧档缺这两个组件 ⇒ 空表（见 SdState / SdChangeSet 的构造期兼容）。
                 new SetDiplomaticRelationHandler(),

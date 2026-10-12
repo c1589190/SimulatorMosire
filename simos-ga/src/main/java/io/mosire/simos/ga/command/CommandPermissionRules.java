@@ -11,15 +11,14 @@ import java.util.Set;
 /**
  * ★★ <b>命令权限的规则层 + 装配期 fail-closed 审计</b>（2026-10-12 批次 1，用户裁定「让 ga 统一鉴权，这本来就是规范问题」）。
  *
- * <p>★ <b>为什么是"派生 + 审计"而不是"直接决定注册进哪一面"</b>：本仓的命令是**显式 {@code new} 装配**的（{@code Shell}
- * 里逐条 {@code new XxxHandler()}），不是从磁盘发现的。若让声明直接决定"进哪个面"，那么<b>漏标一个 = 权限面静默变化</b>
+ * <p>★ <b>为什么是"派生 + 审计"而不是"直接决定注册进哪一面"</b>：本仓的命令是**显式 {@code new} 装配**的（{@code Shell} 里逐条 {@code
+ * new XxxHandler()}），不是从磁盘发现的。若让声明直接决定"进哪个面"，那么<b>漏标一个 = 权限面静默变化</b>
  * ——这正是迁移前的老毛病（"默认放行"：不打标记就自动进令白名单）。⇒ 本层与 {@code ToolRoleAudit} 同款口径：
  * <b>声明是唯一的权限拼写点，装配面照旧显式写死，两者在装配完成处做一致性审计，不一致当场抛</b>。
  *
- * <p>★★ <b>权限方向 = 反默认</b>（用户裁定）：<b>默认仅 GM</b>；只有<b>显式</b>标了 {@link DmUsableCommand} 的命令
- * 才进 DM 面（可嵌令 / 可入队）。★ <b>"不打标记"本身就是 GM-only 的声明</b> —— 故本仓**只有这一个**权限标记：
- * 2026-10-12 批次 1 收尾（甲组第 2 条）已把旧的反向标记 {@code GmOnlyCommand} 整体退役，"两个标记说同一件事、
- * 读者要查两处"的形态随之消失；"一条命令同时标两个互斥标记"这类自相矛盾<b>在类型上已不可表达</b>，
+ * <p>★★ <b>权限方向 = 反默认</b>（用户裁定）：<b>默认仅 GM</b>；只有<b>显式</b>标了 {@link DmUsableCommand} 的命令 才进 DM 面（可嵌令
+ * / 可入队）。★ <b>"不打标记"本身就是 GM-only 的声明</b> —— 故本仓**只有这一个**权限标记： 2026-10-12 批次 1 收尾（甲组第 2 条）已把旧的反向标记
+ * {@code GmOnlyCommand} 整体退役，"两个标记说同一件事、 读者要查两处"的形态随之消失；"一条命令同时标两个互斥标记"这类自相矛盾<b>在类型上已不可表达</b>，
  * 相应的那条审计随之废止。
  *
  * <p>★ <b>两条审计</b>（全部 {@link IllegalStateException}，都在装配期、不静默）：
@@ -29,8 +28,7 @@ import java.util.Set;
  *   <li><b>结果集为空</b>：四个面任一为空 ⇒ 抛（空 = 谁都看不见 = 装配故障，不是"合法形态"）。
  * </ol>
  *
- * <p>★ <b>两段用法</b>（装配顺序逼出来的：{@code sd.RegisterEffect} 与 5 条 sd 决策命令要用派生结果才能构造，
- * 而它们本身又在注册面上）：
+ * <p>★ <b>两段用法</b>（装配顺序逼出来的：{@code sd.RegisterEffect} 与 5 条 sd 决策命令要用派生结果才能构造， 而它们本身又在注册面上）：
  *
  * <pre>
  *   Declarations decl = CommandPermissionRules.declare(domainHandlers);   // ① 收声明（唯一读标记的地方）
@@ -38,9 +36,8 @@ import java.util.Set;
  *   CommandFaces faces = CommandPermissionRules.resolve(decl, allHandlers, landingPoints); // ② 四个面 + 审计
  * </pre>
  *
- * <p>★★ <b>不可协商</b>：本层只回答"令里能不能出现这个 type"，<b>一个字都不放松授权判据</b>——
- * <b>读不到归属 ⇒ deny-all</b>（{@code DecisionScopeFunctions} 未注册类型 = deny-all、{@code NationScope} 类型不符即抛）
- * 仍在各自的权限面里，一个字不改。
+ * <p>★★ <b>不可协商</b>：本层只回答"令里能不能出现这个 type"，<b>一个字都不放松授权判据</b>—— <b>读不到归属 ⇒ deny-all</b>（{@code
+ * DecisionScopeFunctions} 未注册类型 = deny-all、{@code NationScope} 类型不符即抛） 仍在各自的权限面里，一个字不改。
  */
 public final class CommandPermissionRules {
 
@@ -75,7 +72,9 @@ public final class CommandPermissionRules {
    * @throws IllegalStateException 两条审计任一不过，或装配面在声明收集之后又混进了带标记的 handler
    */
   public static CommandFaces resolve(
-      Declarations declarations, List<CommandHandler> registeredHandlers, Set<String> landingPoints) {
+      Declarations declarations,
+      List<CommandHandler> registeredHandlers,
+      Set<String> landingPoints) {
     Objects.requireNonNull(declarations, "declarations");
     Objects.requireNonNull(registeredHandlers, "registeredHandlers");
     // ★ 装配面新增的 handler（sd.RegisterEffect 与 5 条 sd 决策命令）在 ① 之后才进列表 ⇒ 它们的标记不会被 ① 看到。
@@ -94,8 +93,8 @@ public final class CommandPermissionRules {
   }
 
   /**
-   * 等价形态：直接喂 {@code type} + 声明（不经 handler 列表）。装配面用的是 {@link #resolve}，本形供装配期审计与用例
-   * 直接构造声明面（"type + 声明的等价形式"）。
+   * 等价形态：直接喂 {@code type} + 声明（不经 handler 列表）。装配面用的是 {@link #resolve}，本形供装配期审计与用例 直接构造声明面（"type +
+   * 声明的等价形式"）。
    *
    * @param registeredTypes 注册面（全部已注册命令类型）
    * @param dmUsableTypes 标了 {@link DmUsableCommand} 的类型（★ 未列入者 = 仅 GM）
@@ -122,8 +121,7 @@ public final class CommandPermissionRules {
     unknown.addAll(landing);
     unknown.removeAll(registered);
     if (!unknown.isEmpty()) {
-      throw new IllegalStateException(
-          "命令权限装配故障：声明了未注册的命令类型（声明面必须 ⊆ 注册面，否则声明的是执行不了的东西）：" + unknown);
+      throw new IllegalStateException("命令权限装配故障：声明了未注册的命令类型（声明面必须 ⊆ 注册面，否则声明的是执行不了的东西）：" + unknown);
     }
 
     // 四个面：注册面 = catalog；后两个面 = 同一份声明的"可嵌令 / 可入队"两种用法
@@ -180,10 +178,9 @@ public final class CommandPermissionRules {
   /**
    * ① 的产物：注册面上读到的<b>唯一</b>声明集合（{@link DmUsableCommand}）。
    *
-   * <p>★ <b>未列入 {@code dmUsableTypes} 的类型 = 仅 GM</b>（反向标记已随批次 1 收尾整体退役 ⇒ 不需要第二个集合）。
-   * ★ {@code dmUsableTypes} 同时是"可嵌令面"与"可入队面"的来源（{@code DmUsableCommand} 的语义覆盖两者，
-   * 见 {@link CommandFaces} 的类注）——装配期在 ② 之前要用它构造 {@code sd.RegisterEffect} 与
-   * {@code sd.IssueDirective}，故这里先把它露出来。
+   * <p>★ <b>未列入 {@code dmUsableTypes} 的类型 = 仅 GM</b>（反向标记已随批次 1 收尾整体退役 ⇒ 不需要第二个集合）。 ★ {@code
+   * dmUsableTypes} 同时是"可嵌令面"与"可入队面"的来源（{@code DmUsableCommand} 的语义覆盖两者， 见 {@link CommandFaces}
+   * 的类注）——装配期在 ② 之前要用它构造 {@code sd.RegisterEffect} 与 {@code sd.IssueDirective}，故这里先把它露出来。
    *
    * @param dmUsableTypes 标了 {@link DmUsableCommand} 的命令类型（保序）
    */

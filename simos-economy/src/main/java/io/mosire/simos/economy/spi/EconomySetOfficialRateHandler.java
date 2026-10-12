@@ -73,8 +73,7 @@ import java.util.Objects;
  * 区级报价的作用域（"本行政区下辖的本国市场区部分"）要按身份派生，与口岸政策一起做（阶段 3），权限不得因为参数新增而放大。 ★ 不声明格资源（政府表/区表都没有单格路径）⇒ {@link
  * CommandTargets#targetPaths} 恒空。
  */
-public final class EconomySetOfficialRateHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomySetOfficialRateHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.SetOfficialRate";

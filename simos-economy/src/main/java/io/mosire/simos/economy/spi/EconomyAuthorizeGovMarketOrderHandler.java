@@ -72,8 +72,7 @@ import org.slf4j.Logger;
  * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 的 {@code
  * simos.command.submit} 与窄工具 {@code simos.gm.govMarketMandate} 照常可用。
  */
-public final class EconomyAuthorizeGovMarketOrderHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomyAuthorizeGovMarketOrderHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.AuthorizeGovernmentMarketOrder";

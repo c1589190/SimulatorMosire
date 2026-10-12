@@ -43,9 +43,9 @@ import org.slf4j.Logger;
  * 空表（概率表随后用 {@code army.AppendCombatStage} 追加）。给了 ⇒ 用给的（其中 {@code participants} 仍可省略、缺省沿用记录级
  * participants；阶段载荷不得携带 {@code selectedOutcomeId}/{@code rollSeed}）。
  *
- * <p>★★ <b>不打 {@code DmUsableCommand}</b>（用户 D-012 的落点）：裁定战果是 GM 的活，**决策人不得凭空写交战记录**——标了它，本命令仍可由 GM 的
- * {@code simos.command.submit} 直接提交（handler 照常注册、照进 catalog），但排除出令白名单 / {@code sd.RegisterEffect} /
- * 决策人目录三条路径。
+ * <p>★★ <b>不打 {@code DmUsableCommand}</b>（用户 D-012 的落点）：裁定战果是 GM 的活，**决策人不得凭空写交战记录**——标了它，本命令仍可由 GM
+ * 的 {@code simos.command.submit} 直接提交（handler 照常注册、照进 catalog），但排除出令白名单 / {@code sd.RegisterEffect}
+ * / 决策人目录三条路径。
  *
  * <p>★ <b>tick 口径</b>（与 {@code sd.PutInfo} 同族）：缺省 = **世界当前 tick**；显式给 ⇒ 用它；**未来 tick
  * 拒**，过去合法（补记历史）。 命令的**效果**仍落在当下（世界不随时间字段改动）。

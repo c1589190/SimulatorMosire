@@ -31,8 +31,7 @@ import org.slf4j.Logger;
  *
  * <p>★ 撤销只删状态行，<b>不</b>回滚任何已成交的货/钱（已发生的事不篡改）：成交量是历史，撤销只终止后续挂单。
  */
-public final class EconomyCancelGovMarketOrderHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomyCancelGovMarketOrderHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.CancelGovernmentMarketOrder";

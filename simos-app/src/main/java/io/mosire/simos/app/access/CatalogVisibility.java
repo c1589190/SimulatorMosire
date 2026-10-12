@@ -42,8 +42,8 @@ public final class CatalogVisibility {
 
   /**
    * @param embeddableCommandTypes **可嵌入令的领域命令类型**（2026-10-12 批次 1 起 = {@code
-   *     CommandPermissionRules} 从 handler 声明派生的可嵌令面；迁移前这里收的是完整注册面，靠 {@code sd.} 前缀与
-   *     GM-only 标记现场过滤 —— 那条"第二处拼写"已归 ga 规则层）
+   *     CommandPermissionRules} 从 handler 声明派生的可嵌令面；迁移前这里收的是完整注册面，靠 {@code sd.} 前缀与 GM-only 标记现场过滤
+   *     —— 那条"第二处拼写"已归 ga 规则层）
    * @throws NullPointerException {@code embeddableCommandTypes} 为 null
    */
   public CatalogVisibility(Set<String> embeddableCommandTypes) {

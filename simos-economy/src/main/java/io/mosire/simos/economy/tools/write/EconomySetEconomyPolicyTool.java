@@ -21,7 +21,8 @@ import java.util.Set;
  * FamineMortality.FAMINE_MAX_PPM_PER_TICK} / {@code ClassSlideSettlement} 三常量 / 借贷基准利率 / 转业上限与斜率 /
  * 铸币产出率），要改就得重编译；而它们正是 W6 标定批交给用户拍板的旋钮。本工具是那条缺的写口。
  *
- * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}（命令类型本身进）；命令不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；{@code 决策人白名单} 也不含本工具。
+ * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}（命令类型本身进）；命令不打 {@code
+ * DmUsableCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；{@code 决策人白名单} 也不含本工具。
  *
  * <p>★ <b>写面只声明 economy 命名空间</b>：handler 只产 {@code EconomyChangeSet}（政策表住在 {@code economy.meta} 里）。
  */

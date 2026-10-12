@@ -72,8 +72,8 @@ import java.util.UUID;
  * {@code levy*CapPerCommand}，本工具不为布发明第四条上限；布的总量不足 ⇒ 仍按统一口径<b>整条拒</b>（不是部分抽、不是截断）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字也不是命令类型 ⇒ 不进 catalog / {@code
- * PAYLOAD_HINTS}。★ {@code actor.AdjustAccounts} 不打 {@code DmUsableCommand}，令 / {@code RegisterEffect}
- * / 决策人 catalog 三条路径到不了那本裸账。
+ * PAYLOAD_HINTS}。★ {@code actor.AdjustAccounts} 不打 {@code DmUsableCommand}，令 / {@code
+ * RegisterEffect} / 决策人 catalog 三条路径到不了那本裸账。
  *
  * <p>★ <b>资源声明</b>：只写 {@code actor}/{@code social}/{@code sd} 三个命名空间（{@link
  * ResourcePolicy#UNRESTRICTED}， GM 侧三者 unlimited）；{@code requireAll(Operation.WRITE, …)} 与其余 GM

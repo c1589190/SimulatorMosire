@@ -42,14 +42,13 @@ import org.slf4j.Logger;
  * IllegalStateException} 当场炸，不走拒绝路径）；payload 里的 regionId 查不到才是 {@link HandlerOutcome.Rejected}（零
  * revision）。
  *
- * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 仍注册到 Core、仍进 {@code commandTargets}，GM 的 {@code
- * simos.command.submit} 可提交；组合根构造令白名单/RegisterEffect/决策人目录时排除它。
+ * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 仍注册到 Core、仍进 {@code commandTargets}，GM 的
+ * {@code simos.command.submit} 可提交；组合根构造令白名单/RegisterEffect/决策人目录时排除它。
  *
  * <p>★ <b>{@link CommandTargets} 的诚实边界</b>：签名拿不到 state，逐格 actor 资源路径要读目标 Region 的 hex 集才能展开；本命令
  * GM-only、不进入决策令/裁决目标检查 ⇒ 返回空列表（fail-closed）。
  */
-public final class ActorClearRegionHandler
-    implements CommandHandler, CommandTargets {
+public final class ActorClearRegionHandler implements CommandHandler, CommandTargets {
 
   private static final Logger LOG = ActorLog.seed();
 

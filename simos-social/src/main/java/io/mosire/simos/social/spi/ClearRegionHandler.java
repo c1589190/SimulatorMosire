@@ -59,8 +59,8 @@ import java.util.Set;
  * IllegalStateException} 当场炸，不走拒绝路径）；payload 里的 regionId 在 map 里查不到才是 {@link
  * HandlerOutcome.Rejected}（零 revision）。
  *
- * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 仍注册到 Core、仍进 {@code commandTargets}，GM 的 {@code
- * simos.command.submit} 可提交；但组合根构造 {@code DirectiveWhitelist}/{@code RegisterEffect}
+ * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 仍注册到 Core、仍进 {@code commandTargets}，GM 的
+ * {@code simos.command.submit} 可提交；但组合根构造 {@code DirectiveWhitelist}/{@code RegisterEffect}
  * 白名单/决策人工具目录时排除它。理由同其余 GM-only 原语：这是"清空"这种破坏性动作，不能由决策人间接触发。
  *
  * <p>★ <b>{@link CommandTargets} 的诚实边界</b>：{@code targetPaths(mapId, payloadJson)} 的签名拿不到 state，

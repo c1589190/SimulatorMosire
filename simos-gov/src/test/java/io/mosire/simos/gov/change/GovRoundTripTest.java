@@ -18,23 +18,22 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * ★ <b>铁律 5 在 gov 切片的机械化落地</b>（本仓原先唯一没有往返护栏的切片：{@code find simos-gov/src/test -name
- * '*RoundTrip*'} = 0）。形制照 {@code SdRoundTripTest} / {@code MapRoundTripComponentsTest}
- * （反射枚举状态组件 → 逐组件造差异 → 三条断言），不另创一套。
+ * ★ <b>铁律 5 在 gov 切片的机械化落地</b>（本仓原先唯一没有往返护栏的切片：{@code find simos-gov/src/test -name '*RoundTrip*'}
+ * = 0）。形制照 {@code SdRoundTripTest} / {@code MapRoundTripComponentsTest} （反射枚举状态组件 → 逐组件造差异 →
+ * 三条断言），不另创一套。
  *
- * <p>★★ <b>判别力来自"反射枚举 + 两个 switch 的 default 抛"</b>：往 {@link GovState} 加一个组件而<b>不</b>同步
- * {@link GovChangeSet} 时，{@link #mutate} 与 {@link #changedOf} 的 {@code default -> throw} 当场响，且
- * {@link #stateHasExactlyTwoComponentsOfficesAndRemittanceStates} 的
- * {@code containsExactly} 与 {@link #changeSetCoversEveryStateComponentWithNoExemptions} 的"并集相等"同时红 —— 三处
- * 各自独立，不靠"人记得改"。
+ * <p>★★ <b>判别力来自"反射枚举 + 两个 switch 的 default 抛"</b>：往 {@link GovState} 加一个组件而<b>不</b>同步 {@link
+ * GovChangeSet} 时，{@link #mutate} 与 {@link #changedOf} 的 {@code default -> throw} 当场响，且 {@link
+ * #stateHasExactlyTwoComponentsOfficesAndRemittanceStates} 的 {@code containsExactly} 与 {@link
+ * #changeSetCoversEveryStateComponentWithNoExemptions} 的"并集相等"同时红 —— 三处 各自独立，不靠"人记得改"。
  *
- * <p>★★ <b>为什么夹具两张表都必须非空</b>：{@link FieldDelta#diff} 把表键经 {@code toString()} 写成规范串、
- * {@link FieldDelta#rebuild} 再用 {@code UnitId::parse} 读回 —— 空表<b>根本不经过键的字面量往返</b>， 于是"键读侧缺失"这一类缺陷在空夹具下永远看不见（{@code
- * apply(between(empty, empty), empty)} 恒真）。本类因此一律用<b>非空</b> {@code offices} / {@code
- * remittanceStates} 造差异。
+ * <p>★★ <b>为什么夹具两张表都必须非空</b>：{@link FieldDelta#diff} 把表键经 {@code toString()} 写成规范串、 {@link
+ * FieldDelta#rebuild} 再用 {@code UnitId::parse} 读回 —— 空表<b>根本不经过键的字面量往返</b>，
+ * 于是"键读侧缺失"这一类缺陷在空夹具下永远看不见（{@code apply(between(empty, empty), empty)} 恒真）。本类因此一律用<b>非空</b> {@code
+ * offices} / {@code remittanceStates} 造差异。
  *
- * <p>★ <b>豁免集为空且被单独钉死</b>：{@code GovState} 的两个组件都必须进变更集，本类<b>不设</b>任何豁免项；写成一个被
- * {@link #theExclusionListIsEmpty} 单独断言的集合，加名字是一次显式动作、在 diff 里现形（照 {@code RoundTripComponentsTest} 的
+ * <p>★ <b>豁免集为空且被单独钉死</b>：{@code GovState} 的两个组件都必须进变更集，本类<b>不设</b>任何豁免项；写成一个被 {@link
+ * #theExclusionListIsEmpty} 单独断言的集合，加名字是一次显式动作、在 diff 里现形（照 {@code RoundTripComponentsTest} 的
  * "豁免口必须自己现形"口径）。
  */
 class GovRoundTripTest {
@@ -121,8 +120,8 @@ class GovRoundTripTest {
    * ★★ <b>非空 → 非空</b>的逐字段往返：目标态对两张表**各删一个键、各改一个键、各加一个键**（{@link FieldDelta.Patch}
    * 的两侧），于是"键读侧"（{@code toString → parse}）、"值覆盖"、"键删除"三条路径全部走到，而不是只走"从空表往里加"。
    *
-   * <p>★ 判别力：若 {@code GovChangeSet.apply} 漏重建任一张表、或把 {@code Patch} 的某一侧丢掉，{@code rebuilt.equals(target)} 与
-   * 下面逐字段的断言都会红（整态 equals 只是最后一条，**不能**是唯一一条 —— 两个空对象也相等）。
+   * <p>★ 判别力：若 {@code GovChangeSet.apply} 漏重建任一张表、或把 {@code Patch} 的某一侧丢掉，{@code
+   * rebuilt.equals(target)} 与 下面逐字段的断言都会红（整态 equals 只是最后一条，**不能**是唯一一条 —— 两个空对象也相等）。
    */
   @Test
   void bothNonEmptyTablesRoundTripFieldByFieldWithRemovalsAndOverwrites() {
@@ -146,9 +145,7 @@ class GovRoundTripTest {
     GovChangeSet cs = GovChangeSet.between(base, target);
 
     assertThat(cs.isEmpty()).isFalse();
-    assertThat(cs.offices())
-        .as("两张表各自又删又改 ⇒ Patch（两侧都不许丢）")
-        .isInstanceOf(FieldDelta.Patch.class);
+    assertThat(cs.offices()).as("两张表各自又删又改 ⇒ Patch（两侧都不许丢）").isInstanceOf(FieldDelta.Patch.class);
     assertThat(cs.remittanceStates()).isInstanceOf(FieldDelta.Patch.class);
 
     GovState rebuilt = GovChangeSet.apply(cs, base);
@@ -173,7 +170,9 @@ class GovRoundTripTest {
     assertThat(rebuilt.remittanceStates().get(U3).cycleSilverCollectedMilli()).isEqualTo(8L);
     assertThat(rebuilt.remittanceStates()).doesNotContainKey(U2);
 
-    assertThat(rebuilt).as("铁律 5 的原文：apply(between(base, target), base) 逐字段重建出 target").isEqualTo(target);
+    assertThat(rebuilt)
+        .as("铁律 5 的原文：apply(between(base, target), base) 逐字段重建出 target")
+        .isEqualTo(target);
   }
 
   /** ★ 通用往返断言（util 的 {@code RoundTripAssertions}）：空夹具 → 满夹具（照 {@code SdRoundTripTest} 同款）。 */
@@ -200,8 +199,8 @@ class GovRoundTripTest {
   /**
    * ★ 变更集里<b>缺组件键</b>（Jackson 绑成 null）⇒ 归一成 {@link FieldDelta.Unchanged}，**此处不抛**。
    *
-   * <p>钉的是 {@link GovChangeSet} 紧凑构造器里那条 fail-closed 归一（"没提该组件 = 没动它"）；重建时 {@code Unchanged}
-   * 直接返回 base、连键解析器都不会被调用。
+   * <p>钉的是 {@link GovChangeSet} 紧凑构造器里那条 fail-closed 归一（"没提该组件 = 没动它"）；重建时 {@code Unchanged} 直接返回
+   * base、连键解析器都不会被调用。
    */
   @Test
   void aChangeSetWithMissingComponentKeysIsNormalizedToUnchanged() {
@@ -210,9 +209,7 @@ class GovRoundTripTest {
     assertThat(fromMissingKeys.isEmpty()).as("缺键 ⇒ 两个组件都是 Unchanged").isTrue();
     assertThat(fromMissingKeys.offices()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(fromMissingKeys.remittanceStates()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(GovChangeSet.apply(fromMissingKeys, full()))
-        .as("一字未动的往返必须恒等（不抛）")
-        .isEqualTo(full());
+    assertThat(GovChangeSet.apply(fromMissingKeys, full())).as("一字未动的往返必须恒等（不抛）").isEqualTo(full());
   }
 
   // ── 夹具与反射小工具 ────────────────────────────────────────────────────────────────
@@ -231,8 +228,8 @@ class GovRoundTripTest {
   /**
    * 造一个"只在 {@code name} 这个组件上与 {@code base} 不同"的状态。
    *
-   * <p>★ <b>{@code default} 必须抛</b>：往 {@link GovState} 加组件时这个 {@code switch} 当场响，**这正是想要的**
-   * —— 它迫使加字段的人来读这个测试（照 {@code RoundTripComponentsTest} 的同一条纪律）。
+   * <p>★ <b>{@code default} 必须抛</b>：往 {@link GovState} 加组件时这个 {@code switch} 当场响，**这正是想要的** ——
+   * 它迫使加字段的人来读这个测试（照 {@code RoundTripComponentsTest} 的同一条纪律）。
    */
   private static GovState mutate(GovState base, String name) {
     return switch (name) {
@@ -284,8 +281,15 @@ class GovRoundTripTest {
 
   /** 一条 remittance 周期账（9 个字段全给，便于逐字段判往返丢了哪一个）。 */
   private static GovRemittanceState remittance(
-      long cycleGrain, long cycleSilver, long dueGrain, long paidGrain, long shortGrain,
-      long dueSilver, long paidSilver, long shortSilver, long closeDay) {
+      long cycleGrain,
+      long cycleSilver,
+      long dueGrain,
+      long paidGrain,
+      long shortGrain,
+      long dueSilver,
+      long paidSilver,
+      long shortSilver,
+      long closeDay) {
     return new GovRemittanceState(
         cycleGrain,
         cycleSilver,

@@ -59,8 +59,7 @@ import org.slf4j.Logger;
  *
  * <p>★ <b>目标声明</b>：本命令是 GM-only 身份原语，与 {@code economy.RegisterGovernment} 同款只做载荷形状校验，返回空列表。
  */
-public final class EconomyRegisterHouseholdHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomyRegisterHouseholdHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.RegisterHousehold";

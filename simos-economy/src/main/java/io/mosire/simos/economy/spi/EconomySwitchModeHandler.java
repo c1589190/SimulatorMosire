@@ -48,8 +48,7 @@ import org.slf4j.Logger;
  * ProductionOrganizationId#idOf} 已经写进稳定身份末尾的同一个格键（唯一拼写点，不内联切串）。旧档/手写 org id 末尾不是 {@code q_r} ⇒
  * 返回空目标（裁决侧 fail-closed 拒绝"无目标声明"），不伪造坐标。
  */
-public final class EconomySwitchModeHandler
-    implements CommandHandler, CommandTargets {
+public final class EconomySwitchModeHandler implements CommandHandler, CommandTargets {
 
   private static final String COMMAND = "economy.SwitchMode";
 

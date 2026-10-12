@@ -744,7 +744,8 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitUpdateCommandChainTool(unitWrites, mapId));
     built.add(new UnitApplyCasualtiesTool(unitWrites, mapId));
     // ★★ D3a（2026-10-02 / D-009 补裁）：GM 对单独 Unit 人力/装备直接变动的调试直通口（有符号增量，一条命令原子）。
-    //   **只在 GM 桶**；命令本身打 {@code DmUsableCommand}（与既有 unit 命令同待遇）。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    //   **只在 GM 桶**；命令本身打 {@code DmUsableCommand}（与既有 unit 命令同待遇）。★ 工具名不是命令类型 ⇒ 不进
+    // catalog/PAYLOAD_HINTS。
     built.add(new UnitAdjustCompositionTool(unitWrites, mapId));
     // 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率。**只在 GM 桶**（与既有 unit 窄写同待遇）。
     built.add(new UnitSetJurisdictionTool(unitWrites, mapId));
@@ -758,7 +759,8 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitSetArmyFormationTool(unitWrites, mapId));
     // 阶段 10b-i（2026-10-01 GOV 计划）：GOV 政策 / 上级层级两条窄工具。**只在 GM 桶**。
     //   ★ **有意不为 unit.RecruitStaff / unit.DismissStaff 配窄工具**：那会变成"凭空造人 / 跳过退休支付"的
-    //   直通口。两条命令本身已注册且打 {@code DmUsableCommand}，由阶段 10b-ii 的三条配套工具批（createOffice / recruit / dismiss）
+    //   直通口。两条命令本身已注册且打 {@code DmUsableCommand}，由阶段 10b-ii 的三条配套工具批（createOffice / recruit /
+    // dismiss）
     //   或决策令批使用；★ 离编人员的**社会回写**明确留阶段 13（见 GovDismissTool/GovDismissPlan 类注的具名缺口）。
     built.add(new UnitSetGovPolicyTool(unitWrites, mapId));
     built.add(new UnitSetGovSuperiorTool(unitWrites, mapId));
@@ -805,7 +807,8 @@ public final class SimosToolSource implements ToolSource {
     //   ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套（定义币种 / 改名 / DM 发行）——**GM 桶 + 决策人桶
     //     同名两处注册**（决策人侧另加审批链，见 addDecisionAgentWrites；决策人白名单即由那个桶派生）。
     //     GM 侧走 GmAutoApproveGate 且必须显式给 govUnitId；决策人侧身份派生、只能自己的 GOV（越权 ⇒ 具名 REJECTED）。
-    //     ★ 三条命令（economy.DefineCurrency / RenameCurrency / RecordMoneyIssuance）不打 {@code DmUsableCommand} ⇒
+    //     ★ 三条命令（economy.DefineCurrency / RenameCurrency / RecordMoneyIssuance）不打 {@code
+    // DmUsableCommand} ⇒
     //       令 / RegisterEffect / 决策人命令目录三条路径不放大；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new GovDefineCurrencyTool(gov));
     built.add(new GovRenameCurrencyTool(gov));
@@ -957,7 +960,8 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SocialHouseholdMembersTool(toolWrites, toolReads));
     built.add(new SocialHouseholdRatesTool(toolWrites, toolReads));
     // ★★ Batch 4（2026-10-09 家户结构修复计划）：Social 需求/劳动系数 GM 窄写两条。**只在 GM 桶**；
-    //   各自封装一条 GM-only 命令（不打 DmUsableCommand；global 默认 + 单家户覆盖的 upsert/清除）；preview（缺省）走 SocialProvisioning
+    //   各自封装一条 GM-only 命令（不打 DmUsableCommand；global 默认 + 单家户覆盖的 upsert/清除）；preview（缺省）走
+    // SocialProvisioning
     //   的纯 copy-with，不写状态、不产生 revision；apply 才经 submitCommand 落一条 revision。
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS（命令类型本体已注册并登记载荷提示）。
     built.add(new SocialDemandTool(toolWrites, toolReads));
@@ -1002,7 +1006,8 @@ public final class SimosToolSource implements ToolSource {
    * 口用）——两处都收窄才算"改不掉"，只改一处等于留一条旁路。
    *
    * <p>★★ <b>E6b 负向证明：{@code simos.economy.adjust} 不在决策人可达面上</b>——它只在上面的 {@link #addGmWrites}
-   * 里注册（本桶没有）；决策人白名单（派生自那个桶）也不含 {@link EconomyAdjustTool#NAME}；它封装 {@code economy.GmAdjust}，而该命令不打 {@code DmUsableCommand} ⇒ 令白名单 / {@code RegisterEffect} / 决策人 catalog
+   * 里注册（本桶没有）；决策人白名单（派生自那个桶）也不含 {@link EconomyAdjustTool#NAME}；它封装 {@code economy.GmAdjust}，而该命令不打
+   * {@code DmUsableCommand} ⇒ 令白名单 / {@code RegisterEffect} / 决策人 catalog
    * 三条路径同样排除。三层同源收窄，缺一层就等于留一条绕过政治能力的入口。
    */
   private static void addDecisionAgentWrites(
