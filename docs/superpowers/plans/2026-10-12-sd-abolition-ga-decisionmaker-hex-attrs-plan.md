@@ -117,3 +117,60 @@
 4. **Jackson「record creator 属性缺失 ⇒ null 而非抛」是反推**（从 `DiplomaticRelation`/`Army` 的注释与代码 + jackson 2.22.2 默认），**未跑探针** ⇒ 批次 2 建议加 3 行解码探针。
 5. **`EconomySeeder`（5474 行）只读类注与入口** ⇒ B1 的"权威归一"成本可能偏乐观。
 6. **`.claude/worktrees/**` 下 30+ 平行工作树未核**。
+
+---
+
+## 5. 用户第五轮裁定（归属归模块 + ga 不依赖 core + hex 属性表）
+
+### 5.1 原话（逐字，§一.8.1）
+> 「那让ga不依赖core就行，按你说的做；剩下的A2、A3、B2、B3、B4还需要我决策吗？看看你的新想法」
+> 「归属肯定归模块啊，后面新加模块ga还得显式地重新添加？不可能的，因此是乙」
+> 「形状按A / 工具两者都要，走工单，Map额外实现工具 / 自定义字段必须是一个String，应当明确标注为"自定义字段"，已有的城市/乡村走enum标签声明 / 这个可用地面积如果没有，那么读的时候就走默认，也就是单个地形的默认可用面积，以乡村类型显示」
+
+### 5.2 八条待裁的最终处置
+
+| # | 处置 | 依据 |
+|---|---|---|
+| **A1** | ✅ **用户批准**：`ga` **不依赖 core** | 实测 `ga` 用 core 只有 **9 个文件（全是 `ga/tools/write/*`）**、只用 4 个类型（`CommandEnvelope`/`CoreSimos`/`BatchResult`/`CommandResult`）；**运行流零 core import**。而 `ga-spi.ToolWritePort` **早就够用**（`BatchOutcome` 已有 `Committed/Rejected/Conflict` **且带逐条 `outcomes`**；`BatchReceipt` 回 `commandId` 列表；`head`/`replay` 都有）⇒ **9 个工具改吃端口 → ga 的 pom 删 core + 把 core 加进 ga 的禁列** ⇒ 与其余 8 个持状态模块同待遇，**铁律 3/4 无破例、新不变量不用立** |
+| **A2** | ✅ **用户裁定 = 乙：归属归模块** | 原话理由：「后面新加模块ga还得显式地重新添加？不可能的」⇒ **ga 不得枚举归属种类**，否则加模块要改 ga |
+| **A3** | ✅ **消失** | A2 选乙后 `ga` 不需要 `NationId`（它不再持归属）⇒ `ga → gov` 永不出现 |
+| **B2** | ✅ **控制方技术裁定**：地形默认表落 **`TerrainCatalog` 旁表** | 零签名改动、不进快照；并满足硬约束（`RegressionGuardsTest:371-383` 禁那 4 个地形 key 出现在 map 除 `TerrainCatalog` 外任何文件） |
+| **B3** | ✅ **消失** | 用户已**取消城市化率**整个概念 |
+| **B4** | ✅ **消失** | 用户总口径「**其他工具都是 GM 专有**」⇒ `PlaceAt`/`SetStatus`/`SetStateDescription`/`SetVisionRadius` 一律收紧；只有"自然文本战术"与"移动到哪"（`PlanRoute`/`PlanSparseRoute`/`CancelRoute`）留给 DM |
+| 甲组 4 条 | ✅ **已结**（前一轮）：`DmUsableCommand` 命名 · `GmOnlyCommand` 退役 · `sd.` 前缀删除 · 切片 A/B 分批 | ★ 用户追加裁定：**权限由各模块自主声明 + 模块自交 handler 清单 + ga 统一默认规则与装配期审计 + app 只做注册** |
+| hex 4 条 | ✅ **已结**（见 5.1） | |
+
+### 5.3 A2 = 乙 的波及面（实测）与形状
+
+**波及面**：`Affiliation` 在 main 的分布 = **sd 41 / ga 18 / app 81 / gov 10**（约 150 处），集中在 12 个文件：
+`SdQueryService` 23 · `DecisionScopeFunctions` 12 · `SdPayloads` 11 · `RedactingQueryService` 9 · `SimosSdReportsTool` 8 · `Affiliation` 本身 7 · `CreateDecisionMakerHandler` 6 · `SdInfoEntry` 5 · `DecisionAgentRunner` 5 · `DecisionAdjudicationService` 4 · `AppGaToolQueries` 3 · `NationOpeningSnapshot` 3。
+★ `DecisionScopeFunctions` 的注册表是**按 `Class<? extends Affiliation>` 键**的（`:26/:34`）⇒ 乙要求**改键**。
+
+**形状（六步）**：
+1. **`ga` 的 `DecisionMaker` 去掉 `affiliation`** ⇒ 只剩「裸身份 + 通用上下文」= `{id, allowedTools, accessLimit, decisionCadenceTicks, providerId, conversationGeneration}`（正是用户「允许创建没有更多附加状态的单个决策人」）；
+2. **各模块持自己的归属表 + 自己的赋予命令**（走既有命令/工单路径）：
+   - `gov` 持 **nation DMs**（`Map<DecisionMakerId, NationId>`）与 **gov DMs**（`Map<DecisionMakerId, UnitId>`，gov 已依赖 unit ✓）
+   - `army` 持 **army DMs**（`Map<DecisionMakerId, ArmyId>`）
+   - 三条 `*.Assign*DecisionMaker` 命令各自在自己模块内校验 id 存在性（今天 `CreateDecisionMakerHandler` 的那段校验随之删除）
+3. **端口放 `ga-spi`**（**不是 util**，也不是 ga 本体）：一个"归属解析"契约（`kind()` + 按 DM 查归属）；**各模块实现、app 装配注册**；
+4. **`DecisionScopeFunctions` 的键从 `Class<? extends Affiliation>` 改成 kind 字符串**（由各模块自报）⇒ **加模块 = 加一个实现 + app 注册一行，ga 一字不改** ✓（这正是用户要的）；
+5. **`SdInfoEntry.affiliations` → 不透明的"受众标签集"**（`Set<String>`，写入方自报），**可见性判定搬 app**（app 认识各模块）⇒ ga 只存标签、不解释；
+6. **删 `Affiliation` 类型 + `DecisionMaker.affiliation` + `SdPayloads.requireAffiliation`**；`DecisionAgentRunner`（会话/提示语的归属）与 `DiplomaticWriteSignature`（外交写权限 = 必须是 nation DM）**改走第 3 步的端口**。
+
+**必须保持的不可协商项**：**读不到归属 ⇒ deny-all**（今天 `DecisionScopeFunctions:62-76` 的未注册类型路径 + `NationScope` 的"类型不符就抛"口径，一字不能松）。
+
+### 5.4 hex 属性表的最终形状
+
+```java
+sealed interface HexAreaKey {
+  enum Builtin implements HexAreaKey { URBAN, RURAL }   // 内置：enum 标签声明
+  record Custom(String name) implements HexAreaKey {}    // 自定义：String，类型上标注"自定义字段"
+}
+record HexCell(double height, Map<HexAreaKey, Long> areas)   // (A)：塞 HexCell；加便捷构造器 ⇒ 240 处零编译改动
+```
+- **初始化**：创世按**地形**给 `RURAL` 一个固定值（表落 `TerrainCatalog`，按 `TerrainType.food` 派生）；
+- **缺省读法**：**没有值 ⇒ 读回该地形默认可用面积，以 RURAL 类型显示**；
+- **操作**：**增量（±）与全量赋值都要**，走既有命令路径（工单）；**Map 模块自己实现工具**；
+- **暂不与任何模块联动**（economy 的 `Industry.capacity["LAND"]` 原样不动）；
+  ★ 记一条将来会撞的口子：两者名义上是同一个物理量，**将来要联动时必须定谁权威**；
+- 唯一必修的语义点仍是 `TerrainOperations:115`（涂地形会**静默抹平**编辑值 ⇒ 改 `existing.withHeight(...)`）。
