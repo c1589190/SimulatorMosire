@@ -445,3 +445,37 @@ UtilSimos .......................................... FAILURE [  6.698 s]
 ### 15.3 排期
 `effects` 的执行顺位挪到 **3b-4**（它要动 `simos-ga/pom.xml`：允许面 +2、禁列 −2）；
 正在跑的 **3b-1（`directives`+`verdicts`）零 pom 改动，不受影响**。
+
+---
+
+## §16 批次 3b-1 中期裁定：`IssueDirective` 的跨命名空间写（控制方选 (A)）
+
+### 16.1 问题（代理实测，控制方复核成立）
+`CommandBus` 一条命令**只写一个命名空间**（`:414 namespaceOf(type)` → `:506-512 applyToCandidate` 只交给该 namespace 的 codec）。
+而 `IssueDirectiveHandler` 今天**一条命令写两个组件**（都在 sd 所以合法）：`directives` 表 + sd 侧 INFO 覆盖层的
+**执行原文**（`sd:directive.<id>` / key=`intent` / `sourceDirective=<id>`，`:141-176`）。
+改名 `ga.IssueDirective` 后 `namespaceOf` = `"ga"` ⇒ handler 只能回 `GaChangeSet`，而 `info` 本批不搬 ⇒ **朴素搬法编译过、提交时炸**。
+
+### 16.2 ★ 口径溯源（§一.12）
+「单条 Command 必须自带 INFO 作为执行原文」出自 **sd 自己的设计文档**
+（`specs/2026-09-20-sd-simos-brainstorm.md:70`、`specs/2026-09-20-sd-simos-design.md:179/307/392`），
+★ **不在用户设计原稿 `2026-10-02-architecture-design-source.md` 里（零命中）** ⇒ **是模块级设计约定，不是用户裁定**。
+且「同批第二条命令补 `sd.PutInfo`」**是本仓既有成例**：`RejectDirectiveTool:291` 实证 `new ToolWritePort.Request("sd.PutInfo", …)`；
+gov/army/app 另有十余个工具的文案写着"进 `sd.PutInfo` 行动记录"。
+
+### 16.3 裁定：**选 (A)**（控制方技术裁定，非用户问题）
+`ga.IssueDirective` 只写 `directives`；**执行原文改由同批第二条命令 `sd.PutInfo` 落**（增一个**可选**载荷字段 `sourceDirective`）。
+三个生产写路径同批提交：`IssueDirectiveTool`（DM+GM）· 三条决策渠道 `AbstractCoreDecisionChannel` · GM 的 `simos.command.submit`。
+**理由**：① 该约定的实质是"**一次决策 = 一条 revision = 执行原文与令不可分割**"，同批两条命令落同一条 revision、**原子生效** ⇒ 语义成立；
+② (B) 对**所有**路径有损，(A) 只在一条窄路径有损；③ ★ **(A) 的缺口是过渡态**：`info` 搬进 ga（3b-3）后
+`ga.IssueDirective` 即可**一条命令写两组件** ⇒ **缺口自动关闭**。
+**目录面仍 143**（不新增命令类型）、`GaState` 仍 4 组件、地址族不变、权限四面不变。
+
+### 16.4 ★ 记入台账的**暂时性缺口**（收口时点 = `info` 搬进 ga）
+绕过工具/渠道、**直接 `CoreSimos.submit("ga.IssueDirective", …)`** ⇒ **只落令、不落执行原文**（今天这条路径两者都落）。
+受影响面（代理实测）：`SdQueryService:156-168,192-201`（`/api/sd/directives` 的 intentInfo、决策人文档面、`ApiViews:5955-5956`）、
+`VoidAdjudicationTool:237-244` 的 restore。
+
+### 16.5 批准代理的另一条自行处置
+`SdResolver:116-122`（`sd:directive.<id>` 存在性）与 `DeleteDecisionMakerHandler:112-118`（删决策人前的"仍被 Directive 引用"守卫）
+走「**端口在 sd、实现在 ga、app 装配注入**」（`ga → sd` 是既有方向），**地址族串一字不改** ✓ 与 3a 的成环禁令一致。
