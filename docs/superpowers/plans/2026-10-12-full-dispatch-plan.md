@@ -172,3 +172,27 @@ record HexCell(double height, Map<HexAreaKey, Long> areas)
 3. **前端未逐文件核**（`webui/**` 对 `/api/*` 的消费点只数了量）。
 4. **`.claude/worktrees/**` 下 30+ 平行工作树未核**。
 5. **`EconomySeeder`（5474 行）只读入口与类注** ⇒ 若将来联动，成本可能偏乐观。
+
+---
+
+## §7 控制方工作方式（用户 2026-10-12 裁定，替换"盲睡轮询"）
+
+> 用户原话：「那要不就这样，**你派单完就停下，子Agent做完应该会自己给你发消息**」
+> 前一句：「能用主动检测的类似命令等待子Agent吗？Sleep很容易一睡睡过头」
+
+**规矩**：**派单后控制方直接停轮**，等 harness 的落定通知（后台子 Agent 完成时会主动推消息）。
+**不要**用固定 `sleep` 轮询 —— 盲睡 N 秒通常白等 N−3 秒。
+
+**实测事实（2026-10-12）**：
+- `list_agents` **看不到** `subagent` 起的子 Agent（只列 durable teammate）；
+- `job_list` **看不到**（只列控制方自己的 bash 后台作业）；
+⇒ **没有"查子 Agent 状态"的直接 API**，只能靠通知。
+
+**兜底手段（仅在确实需要主动探测时用）**：**带谓词的轮询 + 提前退出**，而不是睡满：
+```bash
+for i in $(seq 1 40); do
+  if <可观测谓词>; then echo "第 $((i*3)) 秒命中"; break; fi
+  sleep 3
+done
+```
+实测：探测 `simos-army/pom.xml` 是否已改 + Maven 进程数 ⇒ **第 3 秒命中**（vs 盲睡 120 秒 = 白等 117 秒）。
