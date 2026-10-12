@@ -196,3 +196,39 @@ for i in $(seq 1 40); do
 done
 ```
 实测：探测 `simos-army/pom.xml` 是否已改 + Maven 进程数 ⇒ **第 3 秒命中**（vs 盲睡 120 秒 = 白等 117 秒）。
+
+---
+
+## §8 批次 0 收工记录与教训（2026-10-12 晚）
+
+### 8.1 交付（已提交）
+| 项 | 提交 | 内容 | 控制方自跑验收 |
+|---|---|---|---|
+| **0b** | `b96c6af3` | `simos-army/pom.xml` 删 gov 禁列 + 加 dependency + 4 处文案；**gov 侧禁 army 一字未动** | `validate` rc=0、`BannedDependencies passed` ×11、BUILD SUCCESS、`[ERROR]`=0 |
+| **0d** | `e3cb2b02` | 5 处文档更正（freeze.md ×2、AGENTS.md ×3、unit-integration-p2.md ×1） | 逐处 grep 复核 |
+| **0a** | 随下一提交 | `simos-gov/src/test/.../change/GovRoundTripTest.java`（9 个 @Test） | **9/9 绿**；变异：给 `GovState` 加第 3 组件而不改 `GovChangeSet` ⇒ **红在 4 处**（`:80` 组件数 / `:95` 变更集多元素 / `:115` 并集缺项 / 构造期 `IllegalStateException: 未登记的组件`），还原 md5 逐字节一致 |
+| **0c** | 随下一提交 | `simos-app/src/test/.../ArmyRecordCombatRevisionTest.java`（4 个 @Test） | **4/4 绿**；变异①改坏写口 ⇒ 红在"combats 恰 1 条"；变异②删同 id 具名拒 ⇒ 红在"第二次提交变 Committed" |
+
+### 8.2 ★ 三处对派单模板的更正（**后续派单一律照此**）
+1. **`-DfailIfNoTests=false` 在 surefire 3.6.0 下无效**（会让 `-pl` 里没匹配测试的模块 0.8s 假红）。
+   正确开关 = **`-Dsurefire.failIfNoSpecifiedTests=false`**。
+2. **变异自证的"还原重跑"必须让 mtime 前进**：`cp -p` 保留源文件旧 mtime ⇒ maven-compiler 判定"没变"、
+   继续跑旧 class ⇒ **会误判"还原失败"**。用不带 `-p` 的 `cp` 或 `touch`（内容 md5 不变）。
+3. **"写口坏了 head 照样 +1"**（实测）：`CommandBus.commit` **不判变更集是否为空** ⇒
+   **revision 级判据必须同时断状态**，只断 head 是装饰。这一条对后续所有"revision 级判据"通用。
+
+### 8.3 0c 落点更正（代理上报，控制方采纳）
+`simos-army` 的 enforcer **禁 `simos-core`，且连 test scope 也查**（证据：`simos-core/pom.xml` 自己把
+test-scope 声明仍列入禁列 + 用 `io.mosire:simos-map:*:*:test` 窄 `<include>` 开口子）
+⇒ **"经 core 提交"在 `simos-army` 里结构上做不到**。0c 因此落在**组合根** `simos-app/src/test/.../`，
+形制照抄同包既有 [SdPutInfoEndToEndTest](simos-app/src/test/java/io/mosire/simos/app/SdPutInfoEndToEndTest.java)
+（真 `CoreSimos` + `bootstrapGenesis` + 断 `CommandResult.Committed(StateRef(main, rev+1))` + `head` + `replay`）。
+⇒ **§5 文件所有权表更正**：凡"经 core 提交并断言 revision"的测试，一律落 `simos-app/src/test/**`。
+
+### 8.4 控制方自身失误（已修）
+`git add -A` 把在飞的 `simos-army/pom.xml` 卷进了文档提交（`79f9bb0e`）⇒ 已 `reset --soft` **拆成两个提交**
+（`b96c6af3` pom / `ac596d84` 文档）。**教训：派单在飞时提交自己那一份，必须显式点名文件，不许 `git add -A`。**
+
+### 8.5 批次 1 拆分（据 §一.5"按可独立编译的层拆"）
+- **批次 1**：**权限声明与规则统一**（`ga-spi` 标记 + `ga` 规则/审计 + 各域打标签 + `Shell` 改判 + 删 `sd.` 前缀 + 删 `:903-914` 无条件 add）—— **行为等价**（66 集对称差 = ∅）
+- **批次 1.5**：**模块自交 handler 清单**（把 `Shell` 里 142 个 `new XxxHandler()` 下放到各模块，app 只 `concat`）—— 结构性，零行为变化；独立可验收
