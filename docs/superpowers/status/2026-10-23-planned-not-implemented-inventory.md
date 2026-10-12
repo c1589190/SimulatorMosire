@@ -96,8 +96,8 @@
 |---|---|
 | **~~SpotBugs 基线债~~** | ✅ **2026-10-23 已关闭**：L4b 把全仓 124 条 finding（map 6 / sd 3 / economy 71 / app 44）处置为 0（真修 57 + 就地抑制 67，无行为变更）；`clean verify` 15/15 模块 `BugInstance size is 0` |
 | **~~其他模块 Log 调用点覆盖与测试迁移~~** | ✅ **2026-10-23 已收口**：L1~L4b 批次完成（用户 2026-10-23 指定先做）；util 类型架构 + 11 模块来源表 + 全部 handler 覆盖 + `origin`/`originKind` 全量 + 拒绝 INFO/故障 ERROR 规则；剩余 4 条小缺口见 `plans/2026-10-23-all-module-logging-rollout.md` §13 |
-| **工具面下沉到模块** | 用户 2026-10-23 设计意图：app 只是前端包装/启动项，**工具归各模块管 + 统一工具协议**；现状 183 个工具文件全在 app、领域模块 0 个工具类（未立项，见 `plans/2026-10-02-undeveloped-features.md` 末尾节） |
-| **enforcer 回填** | `util/map/unit` 仍不拦 `economy/economy-api/ledger`；`simos-app` 未显式声明 `util`、`economy-api`（靠传递依赖） |
+| **~~工具面下沉到模块~~** | ✅ **2026-10-12 已关闭**（B1/B2a/B3/B4 四批，提交 `64259f9d`→`02050bd4`）：新建 `simos-ga-spi`（工具契约：`SimosTool.roles()` / `ToolWritePort` / `ToolResources` / `ToolSchema`）与 `simos-ga`（工具运作 + 决策人运行）；**165 个工具类下放到 7 个域**（map 16 / army 9 / economy 17 / social 14 / unit 34 / gov 25 / ga 50），**app 只剩 20 个**按设计书该留的（系统/核心面、创世三件套、`SocialHouseholdsTool`、两条结构上搬不动的裁决工具）；**176 个工具实现 `roles()`**（一处声明），白名单成为纯派生量、生产零清单；每域 `dependency:tree` 实测无 `core`/`app`/兄弟域。详见 `docs/superpowers/status/2026-10-12-ga-module-progress.md` §6~§9。 |
+| **~~enforcer 回填~~** | ✅ **2026-10-12 已关闭**：17 个模块禁列全部闭合（= 全仓 simos 模块 − 自己 − 允许面，零例外），`<searchTransitive>false</searchTransitive>` 关掉传递检查后 19 条假例外归零；实测 `util/map/unit` **已禁** `economy`/`economy-api`/`ledger`（2026-10-12 复核）；`simos-app/pom.xml` 已显式声明 `util`/`actor-api`/`economy-api`/`ga-spi`/`ga`。**残留一条**：`simos-ga`/`simos-ga-spi` 自身无 `src/test`。 |
 | **provider 互操作** | 真模型偶产 `tool_calls.arguments` 含 JSON `null`，runner 层不能完全消除 |
 | **`RealLlmGovScenarioTest` 的 GM 确定性补执行** | 测试方法学债：模型侧只要求 ≥1 类工具从包路径执行 |
 | **真世界 Social+Economy 长期联合校准/联合逐 tick 表** | 目前只有 7hex 探针世界（人口被构造为恒定），不证明出生/死亡下的长期人口平衡 |
@@ -234,3 +234,40 @@
 | §2.1「经济数值/验收债（P2-E）」「家户结构修复剩余」 | **逐条核实仍成立**（5 + 5 条，`file:line` 见新 status 页 §3） |
 | §5 待裁定 | 第 9 条「铸币 M1 的待决问题」**基本消解**（形状已定形：挂 `moneyOutputPerUnit`、系数 500/单位、规模随身、上限 = 政策旋钮；只剩"无 GUI 写面"）；其余 13 条不变 |
 | **缺失条目** | 「**城市化 / 用地池 / 矿业**（Q1–Q11 待裁定 + U1–U7 待做）」本文**没有**条目，应回填（现只在 `AGENTS.md` 与 `specs/2026-10-10-urbanization-and-industry-pool-design.md`） |
+
+---
+
+## 9. 2026-10-12 工具面迁移批次的收口（追加，不改上文）
+
+> **背景**：用户 2026-10-12 追令「把各个工具的实现都下放到各个具体的功能模块」「app只负责组装」，
+> 并给出「把工具运作、决策人运行放到ga模块」「一处声明」两条设计意图。
+> **口径以 `docs/superpowers/status/2026-10-12-ga-module-progress.md` 为准**（逐批提交 + 证据 + 偏离）。
+
+### 9.1 本批次关闭的条目
+
+| 原条目 | 处置 |
+|---|---|
+| §1.5「工具面下沉到模块」 | ✅ 已关闭（见 §1.5 更正行） |
+| §1.5「enforcer 回填」 | ✅ 已关闭（见 §1.5 更正行） |
+| §1.1「铸币生产方式 M1」 | 已由 §8 更正为完成（W5）——期间**未回退** |
+| `simos-ga-spi`/`simos-ga` 的模块边界 | ✅ 归入冻结表；17 模块禁列补列（B4b 后又补 4 个模块的 `ga-spi`） |
+
+### 9.2 本批次**新开出**的开口（原清单没有；另开批，非阻塞）
+
+| # | 开口 | 说明 |
+|---|---|---|
+| G1 | `simos-ga` / `simos-ga-spi` **自身无 `src/test`** | 其工具与新接缝零测试覆盖（既有测试全在 app，且依赖 app 的适配器） |
+| G2 | **外交类型迁 gov 未做** | 冻结文档 §3 已把 `Nation`/`DiplomaticRelation`/`DiplomaticEvent` 写进 `simos-gov` 语义，但**类型迁移是后续批**（前置：`simos-map` 现用 `Nation`，需先解该引用）。★ 期间 4 条外交写工具按设计书 §4.3「全部 `Sd*`」落在 `simos-ga`，**归属语义未改** |
+| G3 | `AdjudicateTickTool` / `VoidAdjudicationTool` **留 app** | 前者直读 map/unit/actor + `DecisionScopeFunctions`；后者载荷/返回是 `core.state.WorldChangeSet`（B1 已核实进不了 `ga-spi`）⇒ 结构上只能留组合根 |
+| G4 | **测试侧两份规格并存** | `SimosToolsTest` 的 `ALL_READ_NAMES`/`GM_ONLY_READ_NAMES`/`hasSize(44)` 与 B4b 新建的 `DecisionFaceGolden` 是两份测试侧名单（**不影响生产**，可另开批收口） |
+| G5 | `ToolSupport` 未做三分收口 | B1 已把纯助手拆进 `ga-spi`，但 app 的 `ToolSupport` 仍在（其余工具与各域端口在用）；"删干净"是可选收尾 |
+
+### 9.3 回填 §8 点名的漏记条目：**城市化 / 用地池 / 矿业**
+
+> §8 末行指出「本文**没有**这条，应回填」。其全貌在
+> `docs/superpowers/specs/2026-10-10-urbanization-and-industry-pool-design.md`（27.9KB）。
+
+- **状态**：**未开工** —— §6 是「**待裁定清单（未答不得派单）**」：**Q1~Q11 十一条**（池子粒度、上限来源、
+  加成形态、投资主体与收款方、排序键/确定性、与商户阶梯/口岸管制的先后 …；控制方给了**建议**，但**不是用户裁定**）；
+  §7 是「**仅预案，未派单**」的 U0~U6 批次。
+- ⇒ **要开工必须先拿到 Q1~Q11 的裁定**（AGENTS §一.12：控制方不得自造裁定、不得拿"建议"当裁定派单）。
