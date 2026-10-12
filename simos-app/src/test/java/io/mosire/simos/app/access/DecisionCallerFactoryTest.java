@@ -1,6 +1,7 @@
 package io.mosire.simos.app.access;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.agentlib.approval.ApprovalCoordinator;
 import io.mosire.agentlib.approval.AutoApproveGate;
@@ -22,6 +23,7 @@ import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.read.DecisionDocsTool;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
@@ -185,7 +187,7 @@ class DecisionCallerFactoryTest {
       ToolRegistry registry = new ToolRegistry();
       // ★★ 2026-10-12 B3 收尾（C3）：两条 unit 窄写已下放到 simos-unit（io.mosire.simos.unit.tools.write）
       //   ⇒ 构造器改吃注入的窄写口，与生产装配（SimosToolSource:717+）同源。★ 本用例的断言（决策人**不能**
-      //   调这两条域写命令）一字未改；WHITELIST 内容与顺序也一字未改。
+      //   调这两条域写命令）一字未改；决策人白名单（已由 B4b 改为从决策人桶派生）的内容与顺序也一字未改。
       ToolWritePort unitWrites = new CoreSimosToolWritePort(shell.coreSimos(), "agent:test");
       registry.register(new UnitRenameTool(unitWrites, ScopeFixtures.MAP_ID));
       registry.register(new UnitPlaceAtTool(unitWrites, ScopeFixtures.MAP_ID));
@@ -212,26 +214,33 @@ class DecisionCallerFactoryTest {
    * ★ J3 的**结构性**那一半：决策人白名单 = 10 读（第 3 波第 3 步起含 {@code sd.DecisionResults}）+ 两条决策窄写；**GM
    * 面上的其他写工具一个都不许在**。
    *
-   * <p>★ 名单从**真 GM 面**派生（不是手抄的期望表）⇒ 任何人往 GM 组加一条写工具而不同步这里，用例当场红。
+   * <p>★★ 2026-10-12 B4b：判别力的载体换成了**测试侧金名单**（{@link DecisionFaceGolden#ALL}）——生产里那份静态 44 条白名单已删
+   * （"能被谁用"只写在 {@code SimosTool.roles()} 里，白名单是决策人桶的纯派生量）。本用例现在把**真装配派生出来的**决策人面钉在
+   * 金名单上：往决策人桶加/删任何一条工具而不同步规格 ⇒ 当场红；改了规格而没改 {@code roles()} / 没挂桶 ⇒ 装配期 {@code
+   * ToolRoleAudit.requireFaces} 当场抛。
    */
   @Test
   void theWhitelistIsExactlyTheReadToolsPlusTheTwoDecisionWrites() {
     try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0))) {
       List<String> gmFace =
           shell.toolsFor(SimosToolSource.Role.GM).stream().map(AgentTool::name).toList();
+      // ★ 派生方式与生产路径**同一个纯函数**（Shell 就是这么算出权限组白名单的）。
       Set<String> decisionFace =
-          Set.copyOf(
-              shell.toolsFor(SimosToolSource.Role.DECISION_AGENT).stream()
-                  .map(AgentTool::name)
-                  .toList());
+          ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
       assertThat(gmFace).as("GM 面非空").isNotEmpty();
+
+      // ★★ 核心判据（B4b，独立规格）：**决策人面 == 金名单 44 条**。规格从生产搬进测试后判别力不降反升——
+      //   它不再"跟着实现走"，而是钉住实现：漏一条/多一条都必须有人显式改规格。
+      assertThat(decisionFace)
+          .as("★ 决策人面 == 测试侧金名单（44 条，独立规格）")
+          .containsExactlyInAnyOrderElementsOf(DecisionFaceGolden.ALL);
 
       Set<String> whitelist =
           factory().callerFor(FRA, STATE, ScopeFixtures.MAP_ID).permissions().allowedTools();
-      // ★ T1c 生产缺陷 DEF-T1c-01 已修（DecisionCallerFactory.WHITELIST 补齐两条 army 读口）：
-      //   白名单与决策人桶**逐条精确相等**，不再有豁免。
+      // ★ T1c 生产缺陷 DEF-T1c-01 的回归位：白名单与决策人桶**逐条精确相等**，不再有豁免。
+      //   B4b 起白名单本就是那个桶的派生量（同一份数据）⇒ 这一条钉的是"权限组装配一个名字都不吞"。
       assertThat(whitelist)
-          .as("白名单 == 决策人桶的工具面（逐条精确相等；桶与白名单两处同源）")
+          .as("权限组白名单 == 决策人桶的工具面（逐条精确相等；白名单是派生量，不是第二处声明）")
           .containsExactlyInAnyOrderElementsOf(decisionFace);
       assertThat(whitelist)
           .as("★ 判据 J3：GM 面上**除决策人桶之外的每一条**工具都不在白名单里（写工具一条都不给）")
@@ -256,6 +265,27 @@ class DecisionCallerFactoryTest {
           .as("两条决策窄写必须在（语义就靠它们）")
           .contains(IssueDirectiveTool.NAME, SubmitVerdictTool.NAME);
     }
+  }
+
+  /**
+   * ★★ B4b 的 fail-closed：**派生出来的白名单是空集 ⇒ 当场抛**（不静默放行）。
+   *
+   * <p>★ 为什么必须炸：空面 = 决策人一条工具都看不见，而那种失效**没有任何症状**（模型只会"什么都不做"，不报错，也没有日志）—— 与 {@code
+   * DecisionToolDefs.requireAll} 的"装配故障当场炸"同一条口径。
+   */
+  @Test
+  void anEmptyDerivedDecisionFaceIsAnAssemblyFault() {
+    PendingApprovals pending = new PendingApprovals();
+    ApprovalCoordinator coordinator =
+        new ApprovalCoordinator(
+            List.of(new AutoApproveGate(pending)), List.of(), pending, Duration.ofMinutes(1), null);
+    ToolCallAuthorizer authorizer = ToolCallAuthorizer.of(new ToolExecutionGuard(), coordinator);
+
+    assertThatThrownBy(() -> DecisionCallerFactory.forDecisionFace(authorizer, Set.of()))
+        .isInstanceOf(IllegalStateException.class)
+        .as("空集 = 装配故障，不是「合法的空面」")
+        .hasMessageContaining("装配故障")
+        .hasMessageContaining("空集");
   }
 
   // ── 身份 / 现算 ──────────────────────────────────────────────────────────────────
@@ -403,7 +433,7 @@ class DecisionCallerFactoryTest {
     ApprovalCoordinator coordinator =
         new ApprovalCoordinator(
             List.of(new AutoApproveGate(pending)), List.of(), pending, Duration.ofMinutes(1), null);
-    Set<String> whitelist = new java.util.LinkedHashSet<>(DecisionCallerFactory.WHITELIST);
+    Set<String> whitelist = new java.util.LinkedHashSet<>(DecisionFaceGolden.ALL);
     whitelist.addAll(List.of(extraTools));
     return new DecisionCallerFactory(
         DecisionScopeFunctions.defaults(),

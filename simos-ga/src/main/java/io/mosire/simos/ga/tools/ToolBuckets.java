@@ -45,8 +45,8 @@ public final class ToolBuckets {
   }
 
   /**
-   * ★★ <b>从一份（已由 {@link ToolRoleAudit} 校验过的）工具面派生工具名集合</b>（2026-10-12 B4）：这就是生产路径的 {@code
-   * DecisionCallerFactory.WHITELIST} 的来源 —— 白名单不再手抄 44 条，而是"决策人桶里有哪些工具"的纯函数。
+   * ★★ <b>从一份（已由 {@link ToolRoleAudit} 校验过的）工具面派生工具名集合</b>（2026-10-12 B4）：这就是生产路径**决策人白名单**的来源 ——
+   * 白名单不手抄任何条数，而是"决策人桶里有哪些工具"的纯函数（B4b 起生产里已无任何手写清单）。
    *
    * <p>★ <b>保序</b>：{@link LinkedHashSet} 按工具面的注册顺序收（与白名单冻结在赋值处的既有口径一致—— 迭代序是内容的纯函数，不做排序、也不依赖 {@code
    * Set.copyOf} 的未定义序）。

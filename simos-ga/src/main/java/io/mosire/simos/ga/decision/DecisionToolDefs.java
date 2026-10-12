@@ -20,9 +20,9 @@ import java.util.TreeSet;
  * #requireAll(ToolRegistry, Set)}）。
  *
  * <p>★★ **白名单是入参、不是本类的缺省**（2026-10-12 B2a）：本类迁入 {@code simos-ga} 后不再持有"全局缺省白名单"—— 那份白名单是 {@code
- * simos-app} 的装配事实（{@code DecisionCallerFactory.WHITELIST}，且它自己也要从 {@code roles()} 派生），{@code ga}
- * 依赖 {@code app} 会成环。故原先那条 {@code of(registry)} 便捷重载**已删**：要静态缺省就在装配方
- * 取那份白名单再显式传进来（值不变，只是不再有一个藏在运行框架里的第二拼写点）。
+ * simos-app} 的装配事实（由 {@code Shell} 从**决策人桶**派生后注入 {@code
+ * DecisionCallerFactory.forDecisionFace}），{@code ga} 依赖 {@code app} 会成环。故原先那条 {@code of(registry)}
+ * 便捷重载**已删**：要静态缺省就在装配方 取那份白名单再显式传进来（值不变，只是不再有一个藏在运行框架里的第二拼写点）。
  *
  * <p>★ **交集形态 vs 响亮形态**：{@link #of} 取"白名单 ∩ 注册表"（静默取交）；{@link #requireAll}
  * 在此之上**要求白名单里每一条都在注册表里**，缺一条就抛。
@@ -45,7 +45,7 @@ public final class DecisionToolDefs {
    *
    * @param registry 工具注册表（生产路径给**决策人桶**）
    * @param allowed 允许出现的工具名（生产路径给 {@code callerFactory.whitelistFor(dm)}；静态缺省由装配方取 {@code
-   *     DecisionCallerFactory.WHITELIST} 后传入）
+   *     {@code DecisionCallerFactory.forDecisionFace} 的**派生集合**后传入）
    */
   public static List<ToolDef> of(ToolRegistry registry, Set<String> allowed) {
     Objects.requireNonNull(registry, "registry");

@@ -24,8 +24,7 @@ import java.util.Set;
  * {@code payloadJson}，载荷形状的唯一权威 = handler 的类注与 catalog 的载荷提示）。
  *
  * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}（命令类型本身进）；命令标了 {@code
- * GmOnlyCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；{@code
- * DecisionCallerFactory.WHITELIST} 也不含本工具。
+ * GmOnlyCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；{@code 决策人白名单} 也不含本工具。
  *
  * <p>★ <b>写面只声明 economy 命名空间</b>：handler 只产 {@code EconomyChangeSet}（政府表是经济切片的组件）。
  */

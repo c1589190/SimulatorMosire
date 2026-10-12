@@ -11,14 +11,13 @@ import java.util.Set;
  * <ol>
  *   <li>GM 桶 —— 今天 {@code SimosToolSource} 里一份 {@code built.add(...)} 清单；
  *   <li>决策人桶 —— 同一份工具在 {@code SimosToolSource} 里**再注册一次**（同一工具两个桶各写一遍）；
- *   <li>{@code DecisionCallerFactory.WHITELIST} —— 44 条工具名字面量。
+ *   <li>权限组白名单 —— 同一批工具名**再抄一遍**（44 条字面量；B4b 已删，改为从决策人桶派生）。
  * </ol>
  *
  * <p>{@code SimosToolSource} 自己的注释已写明"只改一处 = 留旁路"——本接口就是那个"一处"： 桶与白名单**从 {@link #roles()} 派生**（B4
  * 收口），不许再有第 2/3 处手抄（不变量 I-G3）。
  *
- * <p>★ <b>本批（B1）只立契约</b>：现有 176 个工具类**尚未实现**本接口（它们仍住 {@code app}、 仍靠两桶清单注册）；工具类逐個下放到各域模块时（B3）才实现
- * {@code SimosTool}，收口在 B4 （设计书 §6 批次表）。
+ * <p>★ <b>B1 只立契约</b>；B3 下放 + B4 收口已把 176 个工具类**全部接上**本接口（设计书 §6 批次表），B4b 删掉了最后一份手抄白名单。
  *
  * <p>★ <b>为什么不在这里声明审批相关的方法</b>：审批链按**装配**决定（GM 面 {@code GmAutoApproveGate}、 DM 面 {@code
  * ConfirmGate}），工具只声明"谁能用"（设计书 §4.4 第 4 条）。把它写进接口 = 第二处真相。

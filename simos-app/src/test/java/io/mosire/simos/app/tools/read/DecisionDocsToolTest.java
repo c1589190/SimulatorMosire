@@ -12,6 +12,7 @@ import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.access.DecisionFaceGolden;
 import io.mosire.simos.app.access.ScopeFixtures;
 import io.mosire.simos.app.docs.DecisionDoc;
 import io.mosire.simos.app.query.QueryService;
@@ -210,7 +211,7 @@ class DecisionDocsToolTest {
     //   ⇒ 构造器改吃两条 ga 端口，与生产装配（SimosToolSource:1053-1054）同源。
     registry.register(
         new DecisionDocsTool(new AppGaToolQueries(queryService, MAP_ID), new AppGaToolIdentity()));
-    return DecisionCallerFactory.defaults(authorizer())
+    return DecisionCallerFactory.defaults(authorizer(), DecisionFaceGolden.ALL)
         .execute(
             registry,
             DecisionDocsTool.NAME,

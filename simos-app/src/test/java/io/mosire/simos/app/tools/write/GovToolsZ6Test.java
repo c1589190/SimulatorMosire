@@ -20,6 +20,7 @@ import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.access.DecisionFaceGolden;
 import io.mosire.simos.app.household.GovernmentHouseholdWiring;
 import io.mosire.simos.app.household.GovernmentPostTierConsistency;
 import io.mosire.simos.app.household.GovernmentServiceLaborBridge;
@@ -52,6 +53,7 @@ import io.mosire.simos.economy.govpolicy.GovPostTier;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
+import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.gov.tools.read.GovInfoTool;
 import io.mosire.simos.gov.tools.write.GovAssignPostsTool;
 import io.mosire.simos.gov.tools.write.GovExpandHouseholdTool;
@@ -167,7 +169,7 @@ class GovToolsZ6Test {
   void dmEstablishmentRejectsCrossGovAndDerivesOwnGovWhenUnitIdOmitted() throws Exception {
     try (World world = start(tempDir.resolve("dm-establishment"), "dm-establishment")) {
       Shell shell = world.shell();
-      DecisionCallerFactory factory = DecisionCallerFactory.defaults(shell.toolAuthorizer());
+      DecisionCallerFactory factory = dmFactory(shell);
       AgentTool tool = dmTool(shell, GovSetEstablishmentTool.NAME);
 
       ToolResult cross =
@@ -231,7 +233,7 @@ class GovToolsZ6Test {
   void nonGovDecisionMakerCallingAnyGovWriteToolIsRejectedByName() {
     try (World world = start(tempDir.resolve("non-gov"), "non-gov")) {
       Shell shell = world.shell();
-      DecisionCallerFactory factory = DecisionCallerFactory.defaults(shell.toolAuthorizer());
+      DecisionCallerFactory factory = dmFactory(shell);
 
       Map<String, Map<String, Object>> calls = new LinkedHashMap<>();
       calls.put(GovSetEstablishmentTool.NAME, Map.of("payloadJson", "{}"));
@@ -286,7 +288,7 @@ class GovToolsZ6Test {
       throws Exception {
     try (World world = start(tempDir.resolve("dm-approval"), "dm-approval")) {
       Shell shell = world.shell();
-      DecisionCallerFactory factory = DecisionCallerFactory.defaults(shell.toolAuthorizer());
+      DecisionCallerFactory factory = dmFactory(shell);
       AgentTool tool = dmTool(shell, GovSetEstablishmentTool.NAME);
       ToolRegistry dmRegistry = new ToolRegistry();
       dmRegistry.register(tool);
@@ -356,8 +358,10 @@ class GovToolsZ6Test {
       List<String> dmNames =
           shell.toolsFor(Role.DECISION_AGENT).stream().map(AgentTool::name).toList();
 
-      assertThat(DecisionCallerFactory.WHITELIST)
-          .as("白名单里放的是工具名：transferTreasury 不得入列")
+      // ★ B4b：这一条断的是**测试侧金名单**（独立规格），与下面那条"装配派生的 dmNames"是两条独立腿；
+      //   两者合起来等价于旧的"静态白名单 ∌ transferTreasury"（且不再需要一份生产清单）。
+      assertThat(DecisionFaceGolden.ALL)
+          .as("金名单里放的是工具名：transferTreasury 不得入列")
           .doesNotContain(GovTransferTreasuryTool.NAME);
       assertThat(dmNames)
           .as("决策人桶不得有 transferTreasury")
@@ -380,7 +384,7 @@ class GovToolsZ6Test {
               GovInfoTool.NAME)) {
         assertThat(gmNames).as("GM 桶缺 " + name).contains(name);
         assertThat(dmNames).as("GM/DM 双桶缺 " + name).contains(name);
-        assertThat(DecisionCallerFactory.WHITELIST).as("白名单缺 " + name).contains(name);
+        assertThat(DecisionFaceGolden.ALL).as("金名单缺 " + name).contains(name);
       }
     }
   }
@@ -406,7 +410,7 @@ class GovToolsZ6Test {
           .contains("unit.AssignGovPost");
       assertThat(gmView.get("payloadHints").has(EconomySetGovernmentPolicyHandler.TYPE)).isTrue();
 
-      DecisionCallerFactory factory = DecisionCallerFactory.defaults(shell.toolAuthorizer());
+      DecisionCallerFactory factory = dmFactory(shell);
       ToolResult dmResult =
           catalog.execute(
               dmContext(
@@ -427,11 +431,11 @@ class GovToolsZ6Test {
           .as("非 GmOnly 的岗位命令仍在决策人 catalog（正向对照，证明过滤不是整体为空）")
           .contains("unit.AssignGovPost");
 
-      // ★ WHITELIST 放的是**工具名**不是命令类型；命令类型的不可嵌判据 = GmOnlyCommand + 上面的 DM catalog。
-      assertThat(DecisionCallerFactory.WHITELIST)
-          .as("工具白名单不得混入命令类型（口径说明）")
+      // ★ 决策人面（金名单）放的是**工具名**不是命令类型；命令类型的不可嵌判据 = GmOnlyCommand + 上面的 DM catalog。
+      assertThat(DecisionFaceGolden.ALL)
+          .as("金名单不得混入命令类型（口径说明）")
           .doesNotContain(EconomySetGovernmentPolicyHandler.TYPE);
-      assertThat(DecisionCallerFactory.WHITELIST)
+      assertThat(DecisionFaceGolden.ALL)
           .as("两条 GovOnly 命令对应的决策人窄工具仍必须有")
           .contains(GovSetEstablishmentTool.NAME, GovSetBudgetPolicyTool.NAME);
     }
@@ -1126,7 +1130,7 @@ class GovToolsZ6Test {
     try (World world = start(tempDir.resolve("gov-info"), "gov-info")) {
       Shell shell = world.shell();
       AgentTool info = gmTool(shell, GovInfoTool.NAME);
-      DecisionCallerFactory factory = DecisionCallerFactory.defaults(shell.toolAuthorizer());
+      DecisionCallerFactory factory = dmFactory(shell);
 
       JsonNode all = JSON.readTree(gmExecute(info, Map.of()).message());
       assertThat(all.get("governmentCount").asInt()).as("GM 省略 govUnitId = 全部 GOV").isEqualTo(2);
@@ -1641,6 +1645,17 @@ class GovToolsZ6Test {
   }
 
   /** 决策人直调（不走审批）：身份 + 权限组 + 资源判定者，与生产调用同源。 */
+  /**
+   * 决策人调用者工厂：白名单**从这套装配的决策人桶派生**（生产路径的同一个纯函数；B4b 起生产里没有手抄清单）。
+   *
+   * <p>★ 以前这里写 {@code defaults(shell.toolAuthorizer())}，靠 {@code DecisionCallerFactory} 里的静态 44
+   * 条清单取名字； 那份清单已删，故测试自己把"从桶派生"这一步显式写出来（与 {@code Shell} 的装配逐字同形）。
+   */
+  private static DecisionCallerFactory dmFactory(Shell shell) {
+    return DecisionCallerFactory.defaults(
+        shell.toolAuthorizer(), ToolBuckets.namesOf(shell.toolsFor(Role.DECISION_AGENT)));
+  }
+
   private static ToolContext dmContext(
       DecisionCallerFactory factory,
       DecisionMaker dm,

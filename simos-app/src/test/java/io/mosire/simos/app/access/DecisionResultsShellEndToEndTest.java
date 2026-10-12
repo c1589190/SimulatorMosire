@@ -19,6 +19,7 @@ import io.mosire.simos.core.store.CheckpointStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -76,8 +77,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * ★ **决策人端到端**（第 3 波第 3 步如实记下的缺口）：从**真 {@link Shell} 的决策人桶**里取出 {@code sd.DecisionResults}， 经**真
- * {@link DecisionCallerFactory}**（与壳装配期那一个同源：{@code
- * DecisionCallerFactory.defaults(toolAuthorizer)}） 调一次，拿到数据。
+ * {@link DecisionCallerFactory}**（与壳装配期同一条路：白名单**从决策人桶派生**—— {@code defaults(toolAuthorizer,
+ * ToolBuckets.namesOf(shell.toolsFor(DECISION_AGENT)))}） 调一次，拿到数据。
  *
  * <p>★ **为什么必须有这一条**：{@code DecisionResultsToolTest} 证的是"可见性判据"（手工 new 一个工具、手工装夹具世界）——
  * 它证不了"壳真的把这条工具挂进了决策人桶"、"真权限组真的放它过去"、"工具从真状态里真的读得到那几条"。三件事任一装配错， 那个用例照样全绿。
@@ -137,9 +138,11 @@ class DecisionResultsShellEndToEndTest {
         ((SdSnapshot) state.module("sd").orElseThrow()).state().decisionMakers().get(DM);
     assertThat(dm).as("前提：决策人确实在真状态里").isNotNull();
 
-    // ★ 真 DecisionCallerFactory（与 Shell 装配期同一个：defaults(真 toolAuthorizer)）——唯一入口。
+    // ★ 真 DecisionCallerFactory（与 Shell 装配期同一条路：白名单从**决策人桶**派生）——唯一入口。
     ToolResult result =
-        DecisionCallerFactory.defaults(shell.toolAuthorizer())
+        DecisionCallerFactory.defaults(
+                shell.toolAuthorizer(),
+                ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)))
             .execute(
                 decisionRegistry,
                 DecisionResultsTool.NAME,
@@ -173,7 +176,9 @@ class DecisionResultsShellEndToEndTest {
     assertThat(infoIds(state)).as("前提：无主条目确实在真状态里").contains(idOf(ADDR_9, 0));
 
     ToolResult result =
-        DecisionCallerFactory.defaults(shell.toolAuthorizer())
+        DecisionCallerFactory.defaults(
+                shell.toolAuthorizer(),
+                ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)))
             .execute(
                 decisionRegistry,
                 DecisionResultsTool.NAME,

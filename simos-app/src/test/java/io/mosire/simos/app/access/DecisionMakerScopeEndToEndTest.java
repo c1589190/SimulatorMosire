@@ -24,6 +24,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
@@ -35,6 +36,7 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -443,11 +445,15 @@ class DecisionMakerScopeEndToEndTest {
     assertThat(head()).as("被拒的写不留 revision").isEqualTo(headBefore);
   }
 
-  /** 换掉某调用者的 sd 可达面（其余分量逐字保留）。 */
+  /**
+   * 换掉某调用者的 sd 可达面（其余分量逐字保留）。
+   *
+   * <p>★ B4b：工具名沿用**该调用者自己那套权限面**里的（{@code base.allowedTools()}）——白名单不再有第二处声明， 也没必要在夹具里另抄一份名字。
+   */
   private static AgentPermissionSet withDecisionScope(
       AgentPermissionSet base, String decisionDomain) {
     return AgentPermissionSet.builder(base.grantedToken())
-        .allow(DecisionCallerFactory.WHITELIST.toArray(String[]::new))
+        .allow(base.allowedTools().toArray(String[]::new))
         .sensitiveAllowed(true)
         .resourceScopes(
             base.resourceScopes()
@@ -525,7 +531,7 @@ class DecisionMakerScopeEndToEndTest {
   private ToolContext withoutSdScope() {
     AgentPermissionSet noSd =
         AgentPermissionSet.builder(AccessToken.DEFAULT)
-            .allow(DecisionCallerFactory.WHITELIST.toArray(String[]::new))
+            .allow(decisionFaceNames().toArray(String[]::new))
             .sensitiveAllowed(true)
             .build();
     ToolContext bare =
@@ -626,11 +632,20 @@ class DecisionMakerScopeEndToEndTest {
    * 带审批编排器的调用者工厂（**不是** {@code standard()}：那条路遇到 {@code Ask} 一律拒）——两条决策窄写是敏感工具，
    * 没有编排器就永远进不了工具体，测到的只会是 {@code APPROVAL_DENIED} 而**不是**资源维。
    */
-  private static DecisionCallerFactory factory() {
+  private DecisionCallerFactory factory() {
     return factoryWithExtraTools();
   }
 
-  private static DecisionCallerFactory factoryWithExtraTools(String... extraTools) {
+  /**
+   * 这套装配里决策人面的工具名 —— 与生产路径**同一个纯函数**（{@code Shell} 就是这么算出权限组白名单的）。
+   *
+   * <p>★ B4b 起生产里没有手抄清单，故夹具自己把"从桶派生"这一步显式写出来。
+   */
+  private Set<String> decisionFaceNames() {
+    return ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
+  }
+
+  private DecisionCallerFactory factoryWithExtraTools(String... extraTools) {
     PendingApprovals pending = new PendingApprovals();
     ApprovalCoordinator coordinator =
         new ApprovalCoordinator(
@@ -639,7 +654,7 @@ class DecisionMakerScopeEndToEndTest {
             pending,
             Duration.ofSeconds(5),
             null);
-    Set<String> whitelist = new LinkedHashSet<>(DecisionCallerFactory.WHITELIST);
+    Set<String> whitelist = new LinkedHashSet<>(decisionFaceNames());
     whitelist.addAll(List.of(extraTools));
     return new DecisionCallerFactory(
         DecisionScopeFunctions.defaults(),

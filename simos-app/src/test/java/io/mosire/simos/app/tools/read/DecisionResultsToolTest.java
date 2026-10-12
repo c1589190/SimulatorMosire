@@ -12,6 +12,7 @@ import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.access.DecisionFaceGolden;
 import io.mosire.simos.app.access.ScopeFixtures;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.tools.ga.AppGaToolIdentity;
@@ -214,7 +215,7 @@ class DecisionResultsToolTest {
     registry.register(
         new DecisionResultsTool(
             new AppGaToolQueries(queryService, MAP_ID), new AppGaToolIdentity()));
-    return DecisionCallerFactory.defaults(authorizer())
+    return DecisionCallerFactory.defaults(authorizer(), DecisionFaceGolden.ALL)
         .execute(
             registry,
             DecisionResultsTool.NAME,

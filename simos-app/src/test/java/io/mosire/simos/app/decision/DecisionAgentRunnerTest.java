@@ -22,7 +22,6 @@ import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.access.DecisionCallerFactory;
-import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.core.CoreSimos;
@@ -33,6 +32,7 @@ import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -256,7 +256,10 @@ class DecisionAgentRunnerTest {
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
 
     List<String> sent = llm.requests().get(0).tools().stream().map(ToolDef::name).toList();
-    assertThat(sent).as("工具面一条不少（转义不得把工具弄丢）").hasSize(DecisionCallerFactory.WHITELIST.size());
+    // ★ B4b：不再有生产常量可读 ⇒ 期望条数取自**本用例自己的装配**（决策人桶）；"转义不得把工具弄丢"的判据不变。
+    assertThat(sent)
+        .as("工具面一条不少（转义不得把工具弄丢）")
+        .hasSize(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT).size());
     assertThat(sent)
         .as("★★ 每一条都匹配供应商的函数名文法——旧形态（含 .）在这里必红")
         .allMatch(name -> name.matches("^[a-zA-Z0-9_-]+$"));
@@ -1095,8 +1098,11 @@ class DecisionAgentRunnerTest {
   /**
    * 带审批编排器的调用者工厂（**不是** {@code standard()}：那条路遇到 {@code Ask} 一律拒）。两条决策窄写是敏感工具，
    * 没有编排器就永远进不了工具体，测到的只会是 {@code APPROVAL_DENIED} 而**不是**工具是否真的执行。
+   *
+   * <p>★ B4b：走**生产入口** {@link DecisionCallerFactory#forDecisionFace}，白名单**从本用例装配的决策人桶派生**
+   * （生产里已无手抄清单；旧写法是 2 参构造器 + 静态常量，那条路已删）。
    */
-  private static DecisionCallerFactory factory() {
+  private DecisionCallerFactory factory() {
     PendingApprovals pending = new PendingApprovals();
     ApprovalCoordinator coordinator =
         new ApprovalCoordinator(
@@ -1105,9 +1111,9 @@ class DecisionAgentRunnerTest {
             pending,
             Duration.ofSeconds(5),
             null);
-    return new DecisionCallerFactory(
-        DecisionScopeFunctions.defaults(),
-        ToolCallAuthorizer.of(new ToolExecutionGuard(), coordinator));
+    return DecisionCallerFactory.forDecisionFace(
+        ToolCallAuthorizer.of(new ToolExecutionGuard(), coordinator),
+        ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)));
   }
 
   /** 测试用的审批通道：登记后立刻按人答"批一次"（与 {@code DecisionMakerScopeEndToEndTest} 同法）。 */

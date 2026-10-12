@@ -803,7 +803,7 @@ public final class SimosToolSource implements ToolSource {
     //   ★ 国库注资 / 政府间转账（F2 前置 G1）：只在 GM 桶；决策人路径走既有 simos.gov.pay。
     built.add(new GovTransferTreasuryTool(gov));
     //   ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套（定义币种 / 改名 / DM 发行）——**GM 桶 + 决策人桶
-    //     同名两处注册**（决策人侧另加白名单与审批链，见 addDecisionAgentWrites 与 DecisionCallerFactory.WHITELIST）。
+    //     同名两处注册**（决策人侧另加审批链，见 addDecisionAgentWrites；决策人白名单即由那个桶派生）。
     //     GM 侧走 GmAutoApproveGate 且必须显式给 govUnitId；决策人侧身份派生、只能自己的 GOV（越权 ⇒ 具名 REJECTED）。
     //     ★ 三条命令（economy.DefineCurrency / RenameCurrency / RecordMoneyIssuance）标 GmOnlyCommand ⇒
     //       令 / RegisterEffect / 决策人命令目录三条路径不放大；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
@@ -896,23 +896,23 @@ public final class SimosToolSource implements ToolSource {
     //   同批写 sd.PutInfo（含生效 seed，可复现证据）。**只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new FormatUnitTool(toolWrites, toolReads, armyViews));
     // ★★ E6b：GM 经济调整（economy.GmAdjust 的窄封装：预览 / 原因 / 前后差异 / 审计）。
-    //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它，DecisionCallerFactory.WHITELIST 也没有它，
+    //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它（白名单派生自那个桶，故也不会有它），
     //   且 economy.GmAdjust 本身标了 GmOnlyCommand（令/RegisterEffect/决策人 catalog 三条路径都排除）。
     built.add(new EconomyAdjustTool(toolWrites, toolReads, mapId));
     // ★★ Z1a（2026-10-23 政府专属生产方式设计 §5）：产业模板创建/修改（economy.UpsertIndustry 的窄封装：
     //   payloadJson 与 economy.Seed 的 industries[] 节点同形 + preview / apply + expectedRevision）。
-    //   **只在 GM 桶**：决策人桶没有它，DecisionCallerFactory.WHITELIST 也不含它；命令本身标了 GmOnlyCommand
+    //   **只在 GM 桶**：决策人桶没有它（白名单派生自那个桶）⇒ 也不会含它；命令本身标了 GmOnlyCommand
     //   ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new EconomyUpsertIndustryTool(toolWrites, toolReads));
     // ★★ Z1c（2026-10-23 政府专属生产方式设计 §4.2/§5）：GOV 行政服务生产 unit 创建/补齐
     //   （economy.UpsertGovUnit 的窄封装：payloadJson + preview / apply + expectedRevision；一次写
     //   units + assetShares + relations，operator=hh-gov-<id>）。**只在 GM 桶**：决策人桶没有它，
-    //   DecisionCallerFactory.WHITELIST 也不含它；命令本身标了 GmOnlyCommand ⇒ 令 / RegisterEffect /
+    //   白名单派生自那个桶 ⇒ 也不含它；命令本身标了 GmOnlyCommand ⇒ 令 / RegisterEffect /
     //   决策人 catalog 三条路径同样排除。★ app 侧预检 unit 存在 + module() 是 GovernmentFormation
     //   （preview/apply 两条路径；控制方 2026-10-23 裁定 A）。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new EconomyUpsertGovUnitTool(toolWrites, toolReads, economyPerspective));
     // ★★ B2（2026-10-08 阶段 2-B；约束设计书 §4.2 / 用户 §1.2「退让市场区、覆盖范围、合并」）：市场区持久状态的三条
-    //   GM 窄写（定义 / 逐格改划 / 合并）。**只在 GM 桶**：决策人桶没有它们，DecisionCallerFactory.WHITELIST 也不含；
+    //   GM 窄写（定义 / 逐格改划 / 合并）。**只在 GM 桶**：决策人桶没有它们（白名单派生自那个桶）；
     //   三条命令本身都标了 GmOnlyCommand ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。
     //   ★ 三条工具都只透传 payloadJson（载荷形状的唯一权威 = handler 类注 + catalog 载荷提示）；
     //     工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
@@ -921,26 +921,26 @@ public final class SimosToolSource implements ToolSource {
     built.add(new EconomyMergeMarketZonesTool(toolWrites, mapId));
     // ★★ 商品基础运费表的 GM 窄写（2026-10-09 裁定「甲」后的纠正版；economy.SetCommodityFreight 的
     //   薄封装：payloadJson + branch + expectedRevision）。**只在 GM 桶**：决策人桶没有它，
-    //   DecisionCallerFactory.WHITELIST 也不含；命令本身标了 GmOnlyCommand ⇒ 令 / RegisterEffect /
+    //   白名单派生自那个桶 ⇒ 也不含；命令本身标了 GmOnlyCommand ⇒ 令 / RegisterEffect /
     //   决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；
     //   写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。──
     built.add(new EconomySetCommodityFreightTool(toolWrites, mapId));
     // ★★ W2（2026-10-11，S-8/§2.1）：**市场区动态价步长 α 的 GM 窄写**（economy.SetMarketZonePriceAlpha 的薄封装）。
     //   用户 2026-09-25 裁定「凡是行为一律做成 GM 可调的预设」⇒ α 不是编译期常量而是逐区状态，本工具是它的写口。
-    //   **只在 GM 桶**：决策人桶没有它、DecisionCallerFactory.WHITELIST 也不含；命令标了 GmOnlyCommand ⇒
+    //   **只在 GM 桶**：决策人桶没有它（白名单派生自那个桶）；命令标了 GmOnlyCommand ⇒
     //   令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；
     //   写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
     built.add(new EconomySetMarketZonePriceAlphaTool(toolWrites, mapId));
     // ★★★ W5.5（2026-10-11，S-12⑤）：**市场区货币市场利率步长 α 的 GM 窄写**（economy.SetMarketZoneLoanRateAlpha 的
     //   薄封装）。利率 = 钱的价（与商品价同一套自适应算式：缺钱涨、钱多跌、下限 0），而"每轮最多动多少"必须是 GM 可调的
-    //   预设（用户 2026-09-25 裁定）⇒ 这是它的写口。**只在 GM 桶**：决策人桶没有它、DecisionCallerFactory.WHITELIST
-    //   也不含；命令标了 GmOnlyCommand ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。
+    //   预设（用户 2026-09-25 裁定）⇒ 这是它的写口。**只在 GM 桶**：决策人桶没有它（白名单派生自那个桶）
+    //   ⇒ 也不含；命令标了 GmOnlyCommand ⇒ 令 / RegisterEffect / 决策人 catalog 三条路径同样排除。
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
     built.add(new EconomySetMarketZoneLoanRateAlphaTool(toolWrites, mapId));
     // ★★ W5-fix6（2026-10-11，D1）：**政府铸币规模旋钮的 GM 窄写**（economy.SetGovernmentMintScale 的薄封装）。
     //   旋钮是"本政府每周期最多铸多少毫"的唯一闸门，而改前唯一能写它的命令只认 gov-unit-<id> 形态 ⇒ 世界级
     //   world-silver（唯一会铸币的政府）够不着（W5 验收报告 §3-D1 的 HTTP 422）。本工具补这条写口。
-    //   **只在 GM 桶**：决策人桶没有它、DecisionCallerFactory.WHITELIST 也不含；命令标了 GmOnlyCommand ⇒
+    //   **只在 GM 桶**：决策人桶没有它（白名单派生自那个桶）；命令标了 GmOnlyCommand ⇒
     //   令 / RegisterEffect / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；
     //   写面只声明 economy 命名空间（handler 只产 EconomyChangeSet）。
     built.add(new EconomySetGovernmentMintScaleTool(toolWrites, mapId));
@@ -1002,8 +1002,8 @@ public final class SimosToolSource implements ToolSource {
    * 口用）——两处都收窄才算"改不掉"，只改一处等于留一条旁路。
    *
    * <p>★★ <b>E6b 负向证明：{@code simos.economy.adjust} 不在决策人可达面上</b>——它只在上面的 {@link #addGmWrites}
-   * 里注册（本桶没有）；{@code DecisionCallerFactory.WHITELIST} 也不含 {@link EconomyAdjustTool#NAME}；它封装 {@code
-   * economy.GmAdjust}，而该命令标了 {@code GmOnlyCommand} ⇒ 令白名单 / {@code RegisterEffect} / 决策人 catalog
+   * 里注册（本桶没有）；决策人白名单（派生自那个桶）也不含 {@link EconomyAdjustTool#NAME}；它封装 {@code economy.GmAdjust}，而该命令标了
+   * {@code GmOnlyCommand} ⇒ 令白名单 / {@code RegisterEffect} / 决策人 catalog
    * 三条路径同样排除。三层同源收窄，缺一层就等于留一条绕过政治能力的入口。
    */
   private static void addDecisionAgentWrites(
@@ -1021,7 +1021,7 @@ public final class SimosToolSource implements ToolSource {
     // ★★ D5（2026-10-02 / D-003、D-005、R5、R6）：决策人侧的三条新增窄写——
     //   外交关系边（from 必须是调用者 Nation）、外交事件（participants 必须含调用者 Nation）、
     //   "给 XXX 政府钱"（付款人 = 调用者所属 GOV，身份派生；任意收款 GOV 由既有审批链把关）。
-    //   **桶**（本方法）与 **权限组白名单**（DecisionCallerFactory.WHITELIST）必须同源——只改一处 = 留旁路。
+    //   **桶**（本方法）就是 **权限组白名单**的来源——{@code Shell} 从本桶派生工具名，{@code roles()} 是唯一声明。
     built.add(new SetDiplomaticRelationTool(gaWrites, gaReads, gaIdentity, mapId));
     built.add(new RecordDiplomaticEventTool(gaWrites, gaReads, gaIdentity, mapId));
     GovToolSupport gov =
@@ -1037,20 +1037,20 @@ public final class SimosToolSource implements ToolSource {
     // ★★ Z3c-2（2026-10-23 政府服务模式）：五条政府配置窄写——与 GM 桶**同名注册**（同一份实现按身份派生：
     //   GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 越权 REJECTED）。敏感工具 ⇒
     //   AutoApproveGate → ConfirmGate → PendingApprovals（需 GM 点头）。
-    //   **桶**（本方法）与 **权限组白名单**（DecisionCallerFactory.WHITELIST）必须同源。
+    //   **桶**（本方法）就是权限组白名单的来源（由 {@code Shell} 派生，不另立清单）。
     built.add(new GovSetEstablishmentTool(gov));
     built.add(new GovSetBudgetPolicyTool(gov));
     built.add(new GovAssignPostsTool(gov));
     built.add(new GovExpandHouseholdTool(gov));
     // ★★ Z3d（2026-10-23）：外部户承接行政任务（B 路 V1=显式选户）——与 GM 桶同名注册；只写 externalPosts +
     //   GOV_SERVICE 承诺，不改归属/位置；敏感工具 ⇒ AutoApproveGate → ConfirmGate → PendingApprovals。
-    //   **桶**（本方法）与 **权限组白名单**（DecisionCallerFactory.WHITELIST）必须同源。
+    //   **桶**（本方法）就是权限组白名单的来源（由 {@code Shell} 派生，不另立清单）。
     built.add(new GovOpenPostsToMarketTool(gov));
     // ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套的**决策人侧注册面**——与 GM 桶同名注册（同一份实现按身份
     //   派生：GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 具名 REJECTED）。三条都是敏感工具 ⇒
     //   AutoApproveGate → ConfirmGate → PendingApprovals（需 GM 在审批面点头）。
-    //   ★★ **桶（本方法）与权限组白名单（DecisionCallerFactory.WHITELIST）必须同源**——本批只落成本方法这一半，
-    //      白名单那三行归 app/access 的 owner（A1 的文件所有权不含它；缺了它决策人侧会停在权限组，见账本）。
+    //   ★★ **桶（本方法）就是决策人白名单的来源**——{@code roles()} 是唯一声明，白名单由 {@code Shell}
+    //      从这个桶派生（B4 起生产路径不再有手抄清单）。
     built.add(new GovDefineCurrencyTool(gov));
     built.add(new GovRenameCurrencyTool(gov));
     built.add(new GovIssueMoneyTool(gov));
@@ -1058,7 +1058,7 @@ public final class SimosToolSource implements ToolSource {
     //     决策人侧白名单/审批链）。★ 定下它就是"激活这个币对的外汇市场"（没定过 ⇒ 没有外汇面，逐值退回）。
     built.add(new GovSetFxRateTool(gov));
     // ★★ D2（2026-10-22 决策包计划）：决策包四件套——propose / submit / intent / my。
-    //   **只在决策人桶**；白名单（DecisionCallerFactory.WHITELIST）必须同源。
+    //   **只在决策人桶**；白名单即由该桶派生。
     //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；submit/intent 走 own-packet 围栏。
     ProposalCatalog proposalCatalog =
         new ProposalCatalog(core, calendarService, query, initiator, mapId);
@@ -1069,7 +1069,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new MyPacketTool(gaReads, gaIdentity));
     // ★★ D4（2026-10-22）：跨区上报写口——发送人=调用者身份（context.identity()），只写自己的
     //   sd:decision-maker/<自己> 自指域；落一条 sd.PutInfo（key=report）= 一条 revision。
-    //   **只在决策人桶**；DecisionCallerFactory.WHITELIST 必须同源。
+    //   **只在决策人桶**；白名单即由该桶派生。
     built.add(new SimosSdReportTool(core, gaReads, initiator, gaIdentity));
   }
 
@@ -1174,7 +1174,7 @@ public final class SimosToolSource implements ToolSource {
         new SocialHouseholdsTool(query, calendarService, mapId),
         // ★★ Z3c-2（2026-10-23）：GOV 行政运行只读读口（GM + 该 GOV 决策人；决策人视野收窄到自己 GOV）。
         //   四桶共享（不标 GmOnlyRead）；资源断言 = unit:<govId> + 座位 map/social/actor；
-        //   DecisionCallerFactory.WHITELIST 必须同源。
+        //   白名单即由该桶派生（{@code roles()} 是唯一声明）。
         new GovInfoTool(gov, mapId),
         // ★ R2a（2026-09-25）：逐格经济读数（GUI `/api/economy/hex` 的对应读口；**四桶共享**——经济是世界状态，
         //   决策人该看得见辖地的产出与库存；视野由 ToolSupport.hexVisible 收窄）。

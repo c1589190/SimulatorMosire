@@ -9,6 +9,7 @@ import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.access.DecisionFaceGolden;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.ScopeFixtures;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
@@ -128,7 +129,8 @@ class RedactingQueryServiceTest {
             new QueryServiceToolReadPort(query),
             new AppUnitToolViews(CalendarService.defaults()),
             new AppUnitToolPerspective()));
-    DecisionCallerFactory factory = DecisionCallerFactory.defaults(authorizer());
+    DecisionCallerFactory factory =
+        DecisionCallerFactory.defaults(authorizer(), DecisionFaceGolden.ALL);
     SimulationState state = stateAt(1);
     var map = ToolSupport.gameMap(state);
 

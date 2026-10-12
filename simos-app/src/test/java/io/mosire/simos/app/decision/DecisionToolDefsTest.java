@@ -8,9 +8,9 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.ga.decision.DecisionToolDefs;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
 
@@ -20,9 +20,17 @@ import org.junit.jupiter.api.Test;
  * <p>★ 这一条的要害是**同源**：给模型看的工具清单与权限层放行的白名单若是两份数据，就会有"模型看得见、调了却被拒"或"能调却看不见"的错位，
  * 而**两种错位都不报错**。故用例的两条分别是"只有白名单里的工具会被交出去"与"白名单漏一条要响亮失败"。
  *
- * <p>★ 期望值取自 {@link DecisionCallerFactory#WHITELIST}（它自己有派生式用例钉着），不另抄一份字面量——抄一份就多一处漂移。
+ * <p>★ 2026-10-12 B4b：期望值改为**本用例自己的局部夹具白名单**（{@link #FIXTURE_FACE}）——生产里那份静态 44 条白名单已删 （"能被谁用"只写在
+ * {@code SimosTool.roles()} 里，白名单是决策人桶的纯派生量）。本类只喂**替身工具**，故这里只需几个真名字。
  */
 class DecisionToolDefsTest {
+
+  /**
+   * 本用例的**局部夹具白名单**（2026-10-12 B4b）：只服务本类，条目是"真会出现在决策人面上的名字"（否则"白名单漏一条要响亮失败" 那条会退化成自造场景）。★
+   * 它**不是**生产白名单的副本——生产里一份清单都没有。
+   */
+  private static final Set<String> FIXTURE_FACE =
+      Set.of("simos.command.catalog", "simos.map.hex", "simos.map.overview", "sd.IssueDirective");
 
   /** 白名单之外的 GM 工具（真的注册着，用来证明"注册了就一定露出来"是不成立的）。 */
   private static final List<String> GM_ONLY_TOOLS =
@@ -31,23 +39,21 @@ class DecisionToolDefsTest {
   @Test
   void theOfferedToolFaceIsExactlyTheWhitelistNotTheWholeRegistry() {
     ToolRegistry registry = new ToolRegistry();
-    for (String name : DecisionCallerFactory.WHITELIST) {
+    for (String name : FIXTURE_FACE) {
       registry.register(new StubTool(name));
     }
     for (String name : GM_ONLY_TOOLS) {
       registry.register(new StubTool(name));
     }
 
-    // ★ 原先的 of(registry) 便捷重载已随 B2a 删除（ga 不认识 app 的 DecisionCallerFactory）⇒
-    //   这里显式交出**同一份**全局白名单，取交语义与删掉的那条重载逐字相同。
+    // ★ 原先的 of(registry) 便捷重载已随 B2a 删除（ga 不认识 app 的装配面）⇒ 这里显式交出本用例的夹具白名单，
+    //   取交语义与删掉的那条重载逐字相同。
     List<String> offered =
-        DecisionToolDefs.of(registry, DecisionCallerFactory.WHITELIST).stream()
-            .map(ToolDef::name)
-            .toList();
+        DecisionToolDefs.of(registry, FIXTURE_FACE).stream().map(ToolDef::name).toList();
 
     assertThat(offered)
         .as("★ 恰好是白名单（有序），注册表里多出来的 GM 写工具**一条都不露**")
-        .containsExactlyElementsOf(new TreeSet<>(DecisionCallerFactory.WHITELIST));
+        .containsExactlyElementsOf(new TreeSet<>(FIXTURE_FACE));
     assertThat(offered).doesNotContainAnyElementsOf(GM_ONLY_TOOLS);
   }
 
@@ -57,7 +63,7 @@ class DecisionToolDefsTest {
     ToolRegistry registry = new ToolRegistry();
     registry.register(new StubTool("simos.map.hex"));
 
-    List<ToolDef> defs = DecisionToolDefs.of(registry, java.util.Set.of("simos.map.hex"));
+    List<ToolDef> defs = DecisionToolDefs.of(registry, Set.of("simos.map.hex"));
 
     assertThat(defs).hasSize(1);
     assertThat(defs.get(0).name()).isEqualTo("simos.map.hex");
@@ -71,12 +77,12 @@ class DecisionToolDefsTest {
     ToolRegistry partial = new ToolRegistry();
     partial.register(new StubTool("simos.map.hex"));
 
-    assertThatThrownBy(() -> DecisionToolDefs.requireAll(partial, DecisionCallerFactory.WHITELIST))
+    assertThatThrownBy(() -> DecisionToolDefs.requireAll(partial, FIXTURE_FACE))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("装配故障")
         .hasMessageContaining("simos.map.overview"); // 消息里逐条列出缺了哪些
 
-    assertThat(DecisionToolDefs.of(partial, DecisionCallerFactory.WHITELIST))
+    assertThat(DecisionToolDefs.of(partial, FIXTURE_FACE))
         .as("对照组：取交形态**不抛**（它有意允许部分工具面）⇒ 两条路的差别就是这条用例在钉的东西")
         .hasSize(1);
   }

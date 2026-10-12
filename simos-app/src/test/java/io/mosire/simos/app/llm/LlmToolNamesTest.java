@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.agentlib.llm.ToolDef;
-import io.mosire.simos.app.access.DecisionCallerFactory;
+import io.mosire.simos.app.access.DecisionFaceGolden;
 import io.mosire.simos.ga.llm.LlmToolNames;
 import java.util.List;
 import java.util.Map;
@@ -21,13 +21,14 @@ import org.junit.jupiter.api.Test;
  * <p>★ **四条各钉一件事**：① 送出去的名字合文法；② 名字**往返**（模型说的线名能映射回真实名——只转义不映射回来，模型就永远叫不动工具）； ③ 未知名字**可读拒绝**；④
  * 碰撞**响亮失败**（静默挑一个 = 可能执行了另一个工具）。
  *
- * <p>★ 样本取 {@link DecisionCallerFactory#WHITELIST}（真在用的那 11 条），不另抄一份字面量——抄一份就多一处漂移。
+ * <p>★ 样本取**决策人面金名单**（{@link DecisionFaceGolden#ALL}，44 条 = 真装配上决策人能看到的那些），不另抄一份字面量—— 抄一份就多一处漂移。★
+ * 本注曾写作"真在用的那 11 条"：那是白名单还只有 11 条时的旧话（早已过期，现为 44 条）。 ★ B4b 起生产里**没有**白名单常量（它派生自决策人桶），故样本只能来自测试侧规格。
  */
 class LlmToolNamesTest {
 
   @Test
   void everyWireNameMatchesTheProviderPattern() {
-    Set<String> real = DecisionCallerFactory.WHITELIST;
+    Set<String> real = DecisionFaceGolden.ALL;
 
     List<String> wire = real.stream().map(LlmToolNames::wireNameOf).toList();
 
@@ -42,10 +43,10 @@ class LlmToolNamesTest {
   /** ★★ **往返**：模型说线名 ⇒ 能拿回真实名。只转义、不映射回来的实现**在这里必红**（那是"模型永远叫不动工具"）。 */
   @Test
   void everyWireNameMapsBackToItsRealName() {
-    LlmToolNames names = LlmToolNames.of(DecisionCallerFactory.WHITELIST);
+    LlmToolNames names = LlmToolNames.of(DecisionFaceGolden.ALL);
 
-    // 逐条往返即"一条不漏"的证明：白名单 11 条各有各的线名，且都能映射回自己。
-    for (String real : DecisionCallerFactory.WHITELIST) {
+    // 逐条往返即"一条不漏"的证明：决策人面的 44 条各有各的线名，且都能映射回自己。
+    for (String real : DecisionFaceGolden.ALL) {
       String wire = LlmToolNames.wireNameOf(real);
       assertThat(names.realNameOf(wire)).as("线名 " + wire + " 必须映射回 " + real).contains(real);
     }
@@ -111,7 +112,7 @@ class LlmToolNamesTest {
    */
   @Test
   void anUnknownWireNameIsEmpty() {
-    LlmToolNames names = LlmToolNames.of(DecisionCallerFactory.WHITELIST);
+    LlmToolNames names = LlmToolNames.of(DecisionFaceGolden.ALL);
 
     assertThat(names.realNameOf("simos.made.up")).isEmpty();
     assertThat(names.realNameOf("simos.map.hex")).as("真实名不是线名").isEmpty();

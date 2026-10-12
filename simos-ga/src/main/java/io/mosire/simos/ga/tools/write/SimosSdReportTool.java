@@ -59,8 +59,8 @@ import java.util.UUID;
  *
  * <p>★★ <b>不因上报给决策人任何跨区原始数据读权</b>：本工具只写 sd 感知层，报告内容由发送方负责；读侧过滤见 {@code SimosSdReportsTool}。
  *
- * <p>★ <b>只在决策人桶</b>（{@code SimosToolSource.addDecisionAgentWrites} + {@code
- * DecisionCallerFactory.WHITELIST} 两处同源）。
+ * <p>★ <b>只在决策人桶</b>（{@code SimosToolSource.addDecisionAgentWrites}）——决策人白名单即由那个桶派生（{@code roles()}
+ * 是唯一声明），不另立清单。
  */
 public final class SimosSdReportTool implements SimosTool {
 

@@ -236,7 +236,7 @@ public final class DecisionAgentService {
     ProviderLlm provider = llmClients.providerFor(requireProviderId(maker));
     // ★★ P4：vision 与快照都从这一个值里出（能力与客户端同源，见 LlmClients 的类注）——图发不发、
     //   渲染工具的 auto 落在图还是字符图、开场快照注不注，三处**同一位**说了算。
-    // ★★ P6a / N9：工具面按**这个决策人**的 allowedTools 收窄（空名单 = 沿用全局 WHITELIST）。
+    // ★★ P6a / N9：工具面按**这个决策人**的 allowedTools 收窄（空名单 = 沿用全局白名单）。
     //   执行期权限组由 callerFactory.permissionsFor(maker) 现算，两边都走 whitelistFor(maker) ⇒ 同源。
     DecisionAgentRunner runner =
         new DecisionAgentRunner(

@@ -131,36 +131,6 @@ public final class ToolRoleAudit {
     }
   }
 
-  /**
-   * 静态白名单（{@code DecisionCallerFactory.WHITELIST} 这类**声明式清单**）必须与**从工具面派生的集合**逐条相等。
-   *
-   * <p>★ 为什么还需要它：白名单是**静态常量**（{@code DecisionToolDefsTest} 在不启 Shell 的静态初始化期就要它非空且逐条正确），
-   * 而工具面的角色是**实例声明** —— 两者只能靠装配期的这一比来钉死。缺了它，"往决策人桶加一条工具却忘了加白名单"（或反之） 不会有任何症状：模型看得见却调不动，或调得动却看不见。
-   *
-   * @param what 被校验对象的中文名（进报错消息）
-   * @param declared 声明式清单（如静态白名单）
-   * @param derived 从工具面派生的集合（如决策人桶的工具名）
-   */
-  public static void requireSameNames(String what, Set<String> declared, Set<String> derived) {
-    Objects.requireNonNull(what, "what");
-    Objects.requireNonNull(declared, "declared");
-    Objects.requireNonNull(derived, "derived");
-    Set<String> missing = new LinkedHashSet<>(derived);
-    missing.removeAll(declared);
-    Set<String> extra = new LinkedHashSet<>(declared);
-    extra.removeAll(derived);
-    if (!missing.isEmpty() || !extra.isEmpty()) {
-      throw new IllegalStateException(
-          "工具面装配故障："
-              + what
-              + "与工具面派生集合不一致（设计书 §4.4 / I-G3）—— 派生集合里有而清单缺 "
-              + missing
-              + "；清单里有而派生集合没有 "
-              + extra
-              + "。两处必须同源：只改一处 = 留一条旁路。");
-    }
-  }
-
   /** {@code roles()} 的契约守卫：非 null、非空（空集 = 谁都看不见 = 装配故障，不是"合法形态"）。 */
   private static Set<ToolRole> rolesOf(SimosTool tool, String name) {
     Set<ToolRole> roles = tool.roles();

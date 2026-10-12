@@ -128,12 +128,19 @@ class CatalogVisibilityTest {
         AgentIdentity.external());
   }
 
-  /** **真**决策人权限组（白名单 + 现算范围）：走 {@link DecisionCallerFactory} 的唯一入口，不手工拼。 */
+  /**
+   * **真**决策人权限组（白名单 + 现算范围）：走 {@link DecisionCallerFactory} 的唯一入口，不手工拼。
+   *
+   * <p>★ B4b：白名单改用**测试侧金名单**（{@link DecisionFaceGolden#ALL}）——生产里那份静态 44 条已删，而本用例不启 {@code
+   * Shell}（它要的是"同一份注册面、两个调用者"，不是真壳），故取规格本身。catalog 的可见类型由权限面驱动
+   * （见类注），所以这里必须是**完整**的决策人面，不能只放本用例用到的那条工具。
+   */
   private static ToolContext dmContext() {
     DecisionMaker dm = ScopeFixtures.nationDm("dm-a", "alpha");
     SdState sd = SdState.empty().withDecisionMakers(Map.of(new DecisionMakerId("dm-a"), dm));
     SimulationState state = ScopeFixtures.state(ScopeFixtures.mapOf(), ScopeFixtures.units(), sd);
-    return DecisionCallerFactory.defaults(authorizer()).callerFor(dm, state, ScopeFixtures.MAP_ID);
+    return DecisionCallerFactory.defaults(authorizer(), DecisionFaceGolden.ALL)
+        .callerFor(dm, state, ScopeFixtures.MAP_ID);
   }
 
   /** 决策人路径的执行器（本用例证的是可见性，不是审批链）：走真壳那套审批装配。 */

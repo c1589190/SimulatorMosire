@@ -55,10 +55,9 @@ import java.util.Set;
  * assetShares}/{@code relations} 引用时原地全量替换，被引用 ⇒ {@code REJECTED} 并指路新版本 id。 新版本 = 新的 kind 后缀
  * id（{@code office@0_0 → office_v2@0_0}）。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有本工具，{@code
- * DecisionCallerFactory.WHITELIST} 也不含它；命令本身标了 {@code GmOnlyCommand} ⇒ 令 / {@code RegisterEffect} /
- * 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 {@code CatalogTool} 的 PAYLOAD_HINTS（命令类型 {@code
- * economy.UpsertIndustry} 本体由 catalog 单独列出）。
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有本工具，{@code 决策人白名单} 也不含它；命令本身标了
+ * {@code GmOnlyCommand} ⇒ 令 / {@code RegisterEffect} / 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 {@code
+ * CatalogTool} 的 PAYLOAD_HINTS（命令类型 {@code economy.UpsertIndustry} 本体由 catalog 单独列出）。
  */
 public final class EconomyUpsertIndustryTool implements SimosTool {
 

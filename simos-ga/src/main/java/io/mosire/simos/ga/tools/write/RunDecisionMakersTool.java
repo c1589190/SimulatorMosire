@@ -306,7 +306,7 @@ public final class RunDecisionMakersTool implements SimosTool {
         row.put("ticksSinceLast", info.ticksSinceLast());
         row.put("allowedTools", allowedTools);
         row.put("allowedToolsCount", allowedTools.size());
-        // 空 = 沿用全局 WHITELIST；非空 = WHITELIST ∩ allowedTools（P6a 裁定）。
+        // 空 = 沿用全局白名单；非空 = 全局白名单 ∩ allowedTools（P6a 裁定）。
         row.put(
             "allowedToolsMode",
             info.allowedTools().isEmpty() ? "global-whitelist" : "explicit-subset");
