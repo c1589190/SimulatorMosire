@@ -22,7 +22,7 @@ import java.util.Set;
  * {@code simos.sd.directives}（P7c，2026-10-01 后端 + MCP 稳定化计划）：**决策记录 GM-only MCP 读口**。
  *
  * <p>补的是 GUI 已有 {@code GET /api/sd/directives[?decisionMakerId=<id>]}、MCP 侧没有的缺口：Agent 能写 {@code
- * sd.IssueDirective}，却看不到"这个决策人到底下了什么令"（目标、结构化命令、执行原文、裁决状态本来就在 {@code SdState.directives()}
+ * ga.IssueDirective}，却看不到"这个决策人到底下了什么令"（目标、结构化命令、执行原文、裁决状态本来就在 {@code SdState.directives()}
  * 里，缺的只是读口）。
  *
  * <p>★ **形状与 GUI 完全同形**：数据源与投影都只走 GUI 同一对函数——{@code SdQueryService.listDirectives}（全量）/ {@code

@@ -32,10 +32,10 @@ import java.util.Set;
  * DecisionCallerFactory.decisionMakerIdOf}）——**不由载荷自报**（载荷是模型写的）。解不出决策人 ⇒ 明确失败，不给数据。
  *
  * <p>★ **资源声明 = sd 只读**：本工具读 sd 的 INFO 覆盖层。取 {@link ResourcePolicy#READ_ONLY} 而非 {@code
- * UNRESTRICTED}——后者的失效方向是"调用者没表态 sd 时反而放行"（台账记过 {@code sd.IssueDirective} 的 fail-open 教训）；{@code
- * READ_ONLY} 下"未表态"在写操作上被拒，失效方向是 fail-closed。★ 本工具**不**对具体 INFO 条目拉资源断言：条目的地址（{@code
- * sd:adjudication.<tick>}）不在任何决策人的可达面（其 sd 域只是 {@code decision-maker/<自己>}）⇒ 拉断言会把全部结果判成不可见； 归属由上面的
- * tags 判据承担。
+ * UNRESTRICTED}——后者的失效方向是"调用者没表态 sd 时反而放行"（台账记过 {@code sd.IssueDirective} 的 fail-open 教训——★
+ * 该事故发生时这两条命令还叫 {@code sd.*}，留痕不改）；{@code READ_ONLY} 下"未表态"在写操作上被拒，失效方向是 fail-closed。★ 本工具**不**对具体
+ * INFO 条目拉资源断言：条目的地址（{@code sd:adjudication.<tick>}）不在任何决策人的可达面（其 sd 域只是 {@code
+ * decision-maker/<自己>}）⇒ 拉断言会把全部结果判成不可见； 归属由上面的 tags 判据承担。
  *
  * <p>★ **载荷有界**：{@code limit} 恒有界（缺省 {@value #DEFAULT_LIMIT}，上限 {@value
  * #MAX_LIMIT}，超限**明确拒**而非静默截断）； {@code tick} 或 {@code [fromTick, toTick]}

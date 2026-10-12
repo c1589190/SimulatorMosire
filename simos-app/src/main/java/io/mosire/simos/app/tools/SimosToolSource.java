@@ -291,7 +291,7 @@ public final class SimosToolSource implements ToolSource {
      */
     GM,
     /**
-     * **决策人组**（spec §2.2/§四.3）：**只有决策行为**（{@code sd.IssueDirective} / {@code sd.SubmitVerdict}）+
+     * **决策人组**（spec §2.2/§四.3）：**只有决策行为**（{@code ga.IssueDirective} / {@code ga.SubmitVerdict}）+
      * 读工具。**无通用写、无 map/unit/sd 的写工具**（用户 2026-09-22：「决策人不能直接改地图等数据， 只能获取有限的、被 GM 权限层限制范围的信息」）——旧
      * D-1 裁定把 unit 域 20 条窄写挂进本桶，**已撤销**。
      */
@@ -737,7 +737,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitDisbandTool(unitWrites, mapId));
     built.add(new UnitSetStatusTool(unitWrites, mapId));
     // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的窄写。**只在 GM 桶**（命令本身打 {@code DmUsableCommand}，
-    //   决策人仍可经 sd.IssueDirective 审批链写）；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    //   决策人仍可经 ga.IssueDirective 审批链写）；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new UnitSetStateDescriptionTool(unitWrites, mapId));
     built.add(new UnitAttachTool(unitWrites, mapId));
     built.add(new UnitDetachTool(unitWrites, mapId));
@@ -761,7 +761,7 @@ public final class SimosToolSource implements ToolSource {
     //   （region 键缺席=保持、字符串=设值、null=清空）。**只在 GM 桶**；命令 handler 的 targetPaths 仍为空。
     built.add(new SocialUpdateCityTool(toolWrites, mapId));
     // 阶段 10a（2026-09-30 GOV/Army 计划）：两条"立编制"命令的窄封装（编制字段在 Unit.module ⇒ 是 unit 域命令）。
-    //   **只在 GM 桶**；决策人侧要改编制仍走 sd.IssueDirective 的审批链（这两条命令打 {@code DmUsableCommand}，可嵌入令）。
+    //   **只在 GM 桶**；决策人侧要改编制仍走 ga.IssueDirective 的审批链（这两条命令打 {@code DmUsableCommand}，可嵌入令）。
     built.add(new UnitSetGovernmentFormationTool(unitWrites, mapId));
     built.add(new UnitSetArmyFormationTool(unitWrites, mapId));
     // 阶段 10b-i（2026-10-01 GOV 计划）：GOV 政策 / 上级层级两条窄工具。**只在 GM 桶**。
@@ -1001,12 +1001,12 @@ public final class SimosToolSource implements ToolSource {
 
   /**
    * 决策人组的写面（N9 + 用户 2026-09-22 的收窄 + D5 的三条新增）：**决策行为 + 外交/支付两条受限写入** —— {@code
-   * sd.IssueDirective}（出令）、{@code sd.SubmitVerdict}（裁决者冻结判决）、{@code sd.SetDiplomaticRelation} （以调用者
+   * ga.IssueDirective}（出令）、{@code ga.SubmitVerdict}（裁决者冻结判决）、{@code sd.SetDiplomaticRelation} （以调用者
    * Nation 名义写外交边）、{@code sd.RecordDiplomaticEvent}（参与者必须含调用者 Nation）、 {@code simos.gov.pay}（付款人 =
    * 调用者所属 GOV，身份派生；收款方由既有审批链把关）。
    *
    * <p>★ **无** `sd.SetDecisionMakerAccess`（配权是 GM 的活）、**无**通用写、**无** map/unit/sd
-   * 的任何其他写工具：用户原话「决策人不能直接改地图等数据， 只能获取有限的、被 GM 权限层限制范围的信息」。指挥一律走 `sd.IssueDirective`（spec §八.2 的 D2
+   * 的任何其他写工具：用户原话「决策人不能直接改地图等数据， 只能获取有限的、被 GM 权限层限制范围的信息」。指挥一律走 `ga.IssueDirective`（spec §八.2 的 D2
    * 原设计）。★ D5 新增的三条也都是**受限面**：两条外交写只以自己的 Nation 名义、支付只能花自己所属 GOV 的国库， 且都走同一条敏感审批链。
    *
    * <p>★ **本清单要与 {@code DecisionCallerFactory} 的白名单同源**：那边给的是**权限组**（工具名白名单），这里给的是**桶**（注册进 MCP

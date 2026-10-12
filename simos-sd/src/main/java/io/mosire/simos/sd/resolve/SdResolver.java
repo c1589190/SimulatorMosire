@@ -13,6 +13,7 @@ import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.OutcomeOption;
+import io.mosire.simos.sd.spi.DirectiveLookup;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
@@ -48,12 +49,29 @@ import java.util.Optional;
  *
  * <p>★ <b>日志（2026-10-23 L2）</b>：只记空候选与装配故障（DEBUG，{@code SD_RESOLVE_*}/{@code
  * SD_RESOLVE_UNAVAILABLE}），**不逐次记成功查询**；地址串是领域 id，不是载荷原文。
+ *
+ * <p>★★ <b>{@code directive} 那一支的存在性判据住 ga</b>（2026-10-12 批次 3b′）：{@code directives} 表随该批搬进 {@code
+ * simos-ga}（{@code GaState} 第三个组件），而 {@code simos-sd} <b>不得</b>依赖 {@code simos-ga}（成环）⇒ 本类经构造期注入的
+ * {@link DirectiveLookup} 问它（实现 {@code GaDirectiveLookup} 在 ga、组合根 {@code Shell} 接线）。★
+ * <b>地址族串一字不改</b> （{@code sd:directive.<id>} 仍是本解析器的对外形态；地址族的裁量属批次 3e）——变的只是"表住哪个切片"。
+ *
+ * <p>★ 其余四支（{@code nation}/{@code army}/{@code decision-maker}/{@code effect}/{@code combat}）仍读 sd
+ * 切片，一字未动。
  */
 public final class SdResolver implements Resolver {
 
   private static final String NAMESPACE = "sd";
 
   private static final LogChannel RESOLVE = EventLog.channel(SdLog.resolve());
+
+  private final DirectiveLookup directives;
+
+  /**
+   * @param directives ga 侧 {@code directives} 表的只读口（装配期注入；非 null——缺了它 {@code direct} 支无从判存在性）
+   */
+  public SdResolver(DirectiveLookup directives) {
+    this.directives = Objects.requireNonNull(directives, "directives");
+  }
 
   @Override
   public String namespace() {
@@ -118,7 +136,7 @@ public final class SdResolver implements Resolver {
                   segments,
                   root,
                   SdResolver::parseDirective,
-                  state.directives()::containsKey,
+                  id -> directives.contains(ctx.state(), id),
                   "Directive");
           case "effect" ->
               rootOnly(

@@ -13,7 +13,7 @@ import java.util.Optional;
  *   <li>{@link #text}——自然语言描述；**谈判/联动裁决的状态与情况就记在这里**（D-005），再调 {@code sd.SetDiplomaticRelation}
  *       就是更新它；
  *   <li>{@link #updatedTick}——该边最后一次写入所用的 tick（单位：日；允许补记过去，但命令期拒绝未来，与 {@code sd.PutInfo}/{@code
- *       sd.IssueDirective} 同口径）。
+ *       ga.IssueDirective} 同口径）。
  * </ul>
  *
  * <p>★ 两端（from/to）在 {@link DiplomaticRelationKey} 里，值不重复存一份：端点身份属于边的键，不是边的属性。

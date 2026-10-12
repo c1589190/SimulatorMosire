@@ -5,11 +5,9 @@ import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
-import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
 import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatState;
@@ -17,12 +15,10 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DiplomaticEvent;
 import io.mosire.simos.sd.model.DiplomaticRelation;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
-import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.Effect;
 import io.mosire.simos.sd.model.LossRecord;
 import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.Verdict;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
@@ -31,10 +27,10 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * sd 状态的变更集（spec §五.1）：**组件与 {@link SdState} 的 record 组件一一对应**（★★ 2026-10-12 批次 3a 起 <b>12 个</b>；D5
- * / R6 追加 {@code diplomaticRelations} 与 {@code diplomaticEvents}；D2 追加的 {@code decisionPackets} 与
- * {@code mergedEffectPlans} 已随批次 3a <b>整表搬进 {@code simos-ga}</b>（{@code GaChangeSet}
- * 的两组件），值类型仍住本模块）。
+ * sd 状态的变更集（spec §五.1）：**组件与 {@link SdState} 的 record 组件一一对应**（★★ 2026-10-12 批次 3a 起 <b>12 个</b>，
+ * 同批后续（3b′）起 <b>10 个</b>；D5 / R6 追加 {@code diplomaticRelations} 与 {@code diplomaticEvents}；D2 追加的
+ * {@code decisionPackets} 与 {@code mergedEffectPlans} 已随批次 3a <b>整表搬进 {@code simos-ga}</b>，{@code
+ * directives} 与 {@code verdicts} 已随批次 3b′ 同样搬走（{@code GaChangeSet} 的四组件），值类型仍住本模块）。
  *
  * <p>★ 铁律 5：变更集从完整状态类型派生，由 {@code SdRoundTripTest} 的反射枚举把守——新增状态组件若不进变更集，那个测试自动红。
  *
@@ -52,9 +48,7 @@ public record SdChangeSet(
     FieldDelta<Combat> combats,
     FieldDelta<CombatState> combatStates,
     FieldDelta<DecisionMaker> decisionMakers,
-    FieldDelta<Directive> directives,
     FieldDelta<Effect> effects,
-    FieldDelta<Verdict> verdicts,
     FieldDelta<LossRecord> lossRecords,
     FieldDelta<List<SdInfoEntry>> info,
     FieldDelta<DiplomaticRelation> diplomaticRelations,
@@ -80,9 +74,7 @@ public record SdChangeSet(
         FieldDelta.diff(base.combats(), target.combats()),
         FieldDelta.diff(base.combatStates(), target.combatStates()),
         FieldDelta.diff(base.decisionMakers(), target.decisionMakers()),
-        FieldDelta.diff(base.directives(), target.directives()),
         FieldDelta.diff(base.effects(), target.effects()),
-        FieldDelta.diff(base.verdicts(), target.verdicts()),
         FieldDelta.diff(base.lossRecords(), target.lossRecords()),
         FieldDelta.diff(base.info(), target.info()),
         FieldDelta.diff(base.diplomaticRelations(), target.diplomaticRelations()),
@@ -99,9 +91,7 @@ public record SdChangeSet(
         FieldDelta.rebuild(base.combats(), cs.combats(), CombatId::parse),
         FieldDelta.rebuild(base.combatStates(), cs.combatStates(), CombatStateId::parse),
         FieldDelta.rebuild(base.decisionMakers(), cs.decisionMakers(), DecisionMakerId::parse),
-        FieldDelta.rebuild(base.directives(), cs.directives(), DirectiveId::parse),
         FieldDelta.rebuild(base.effects(), cs.effects(), EffectId::parse),
-        FieldDelta.rebuild(base.verdicts(), cs.verdicts(), VerdictId::parse),
         FieldDelta.rebuild(base.lossRecords(), cs.lossRecords(), LossRecordId::parse),
         FieldDelta.rebuild(base.info(), cs.info(), Function.identity()),
         FieldDelta.rebuild(
@@ -117,9 +107,7 @@ public record SdChangeSet(
         && !combats.changed()
         && !combatStates.changed()
         && !decisionMakers.changed()
-        && !directives.changed()
         && !effects.changed()
-        && !verdicts.changed()
         && !lossRecords.changed()
         && !info.changed()
         && !diplomaticRelations.changed()

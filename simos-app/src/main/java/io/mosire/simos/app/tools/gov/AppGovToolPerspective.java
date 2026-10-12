@@ -88,7 +88,7 @@ public final class AppGovToolPerspective implements GovToolPerspective {
     Objects.requireNonNull(decisionMakerId, "decisionMakerId");
     DecisionMakerId id = sdId(decisionMakerId);
     List<String> ids = new ArrayList<>();
-    for (Directive directive : sdState(state).directives().values()) {
+    for (Directive directive : ToolSupport.gaState(state).directives().values()) {
       if (directive.decisionMakerId().equals(id)) {
         ids.add(directive.id().value());
       }
@@ -111,6 +111,12 @@ public final class AppGovToolPerspective implements GovToolPerspective {
     return new DecisionMakerId(decisionMakerId);
   }
 
+  /**
+   * sd 切片（决策人 / 国家 / 军队三张表仍住 sd）。
+   *
+   * <p>★ {@code directives} 表自 2026-10-12 批次 3b′ 起住 {@code simos-ga} ⇒ {@link
+   * #directiveIdsReferencing} 直接走 {@code ToolSupport.gaState}，不经本方法。
+   */
   private static SdState sdState(SimulationState state) {
     return ToolSupport.sdState(state);
   }

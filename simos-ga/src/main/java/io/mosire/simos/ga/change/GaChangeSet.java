@@ -3,9 +3,13 @@ package io.mosire.simos.ga.change;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.sd.id.DecisionPacketId;
+import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
+import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.DecisionPacket;
+import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.MergedEffectPlan;
+import io.mosire.simos.sd.model.Verdict;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.StateMeta;
@@ -13,8 +17,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * ★★ <b>ga 切片的变更集</b>（2026-10-12 批次 3a）。<b>组件与 {@link GaState} 的 record 组件一一对应</b>： {@code
- * decisionPackets} / {@code mergedEffectPlans}（恰两个）。
+ * ★★ <b>ga 切片的变更集</b>（2026-10-12 批次 3a 首建两组件；同批后续收为四组件）。<b>组件与 {@link GaState} 的 record 组件一一对应</b>：
+ * {@code decisionPackets} / {@code mergedEffectPlans} / {@code directives} / {@code verdicts}（恰四个）。
  *
  * <p>★ 铁律 5：变更集从完整状态类型派生——{@link #between(GaState, GaState)} 是唯一生产者，差异/重建语义一律委托 {@link
  * FieldDelta#diff} / {@link FieldDelta#rebuild}（与 Map/Social/Unit/Sd/Economy/Actor/Gov 共用同一份机制，
@@ -27,7 +31,10 @@ import java.util.Objects;
  * ref} / {@code timestamp} 装上去（模块状态类型本身不带坐标）。
  */
 public record GaChangeSet(
-    FieldDelta<DecisionPacket> decisionPackets, FieldDelta<MergedEffectPlan> mergedEffectPlans)
+    FieldDelta<DecisionPacket> decisionPackets,
+    FieldDelta<MergedEffectPlan> mergedEffectPlans,
+    FieldDelta<Directive> directives,
+    FieldDelta<Verdict> verdicts)
     implements ChangeSet {
 
   public GaChangeSet {
@@ -37,6 +44,12 @@ public record GaChangeSet(
     if (mergedEffectPlans == null) {
       mergedEffectPlans = new FieldDelta.Unchanged<>();
     }
+    if (directives == null) {
+      directives = new FieldDelta.Unchanged<>();
+    }
+    if (verdicts == null) {
+      verdicts = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ <b>全 Unchanged</b>（不是空对象）。 */
@@ -45,7 +58,9 @@ public record GaChangeSet(
     Objects.requireNonNull(target, "target");
     return new GaChangeSet(
         FieldDelta.diff(base.decisionPackets(), target.decisionPackets()),
-        FieldDelta.diff(base.mergedEffectPlans(), target.mergedEffectPlans()));
+        FieldDelta.diff(base.mergedEffectPlans(), target.mergedEffectPlans()),
+        FieldDelta.diff(base.directives(), target.directives()),
+        FieldDelta.diff(base.verdicts(), target.verdicts()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -57,7 +72,11 @@ public record GaChangeSet(
     Map<MergedEffectPlanId, MergedEffectPlan> mergedEffectPlans =
         FieldDelta.rebuild(
             base.mergedEffectPlans(), cs.mergedEffectPlans(), MergedEffectPlanId::parse);
-    return new GaState(decisionPackets, mergedEffectPlans);
+    Map<DirectiveId, Directive> directives =
+        FieldDelta.rebuild(base.directives(), cs.directives(), DirectiveId::parse);
+    Map<VerdictId, Verdict> verdicts =
+        FieldDelta.rebuild(base.verdicts(), cs.verdicts(), VerdictId::parse);
+    return new GaState(decisionPackets, mergedEffectPlans, directives, verdicts);
   }
 
   /**
@@ -72,6 +91,9 @@ public record GaChangeSet(
 
   /** 是否所有组件都未变。 */
   public boolean isEmpty() {
-    return !decisionPackets.changed() && !mergedEffectPlans.changed();
+    return !decisionPackets.changed()
+        && !mergedEffectPlans.changed()
+        && !directives.changed()
+        && !verdicts.changed();
   }
 }

@@ -38,7 +38,7 @@ import java.util.Set;
  * "决策人从没写过、却被标记为被打回前的第 1 版"的记录（**症状是无害的错账，不是报错**）。**故本命令不写 {@code Directive}**：它写的是"发起/授权"这一事实（INFO
  * 覆盖层），与决策人的出令**在数据上完全分离**。
  *
- * <p>★ **落点（INFO 覆盖层）**：地址 {@code sd:decision.<dmId>}（同 {@code sd.IssueDirective} 的 {@code
+ * <p>★ **落点（INFO 覆盖层）**：地址 {@code sd:decision.<dmId>}（同 {@code ga.IssueDirective} 的 {@code
  * sd:directive.<id>} 形制），key 固定 {@value #START_INFO_KEY}，{@code value} 记本命令所在 tick（**标量串**—— {@link
  * SdInfoEntry#value()} 是裸 {@code Object}，数值类型跨 JSON 往返会 Long↔Integer 漂移，故取串），{@code note}
  * 记可选说明。这是**感知层**（供 UI / AAR 展示）记录，不影响 `due` 计算（`due` 只扫 {@code Directive}）。

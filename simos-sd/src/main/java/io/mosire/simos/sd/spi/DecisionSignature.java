@@ -7,7 +7,7 @@ import java.util.Optional;
 /**
  * **决策的署名规则**（T11B，控制器裁定要修的洞）：<b>决策人只能以自己名义落决策</b>。
  *
- * <p>★ **洞的形态**（T10 报告 §六 第 4 条）：{@code sd.IssueDirective} 的载荷里有一个模型可自由填的 {@code
+ * <p>★ **洞的形态**（T10 报告 §六 第 4 条）：{@code ga.IssueDirective} 的载荷里有一个模型可自由填的 {@code
  * decisionMakerId}，而命令路径上**没有任何地方**拿它与"这次调用到底是谁在做"对一遍 ⇒ 决策人 A 可以落一条**署名 B** 的 directive。 这与 spec
  * **N16**「渠道**不得冒称**任意 actor」是同一族的安全边界。
  *

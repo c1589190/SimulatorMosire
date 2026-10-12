@@ -1,13 +1,14 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveStatus;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -19,7 +20,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * {@code sd.SetDirectiveStatus} 命令的处理器（第 3 波最后一块）：把一条令的 {@code Directive.status} 从 {@code ISSUED}
+ * {@code ga.SetDirectiveStatus} 命令的处理器（第 3 波最后一块；<b>★ 2026-10-12 批次 3b′ 自 {@code simos-sd/sd.spi}
+ * 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：把一条令的 {@code Directive.status} 从 {@code ISSUED}
  * 翻到两个**终态**之一。
  *
  * <pre>{@code
@@ -39,7 +41,7 @@ import java.util.Optional;
  *   <li><b>只允许 {@code ISSUED → 终态}</b>：当前不是 {@code ISSUED} ⇒ 拒——这条同时堵住"重复翻转"（已 {@code EXECUTED} /
  *       {@code CANCELLED} 的令**不得改回**，两个终态之间也不得互改）与"翻一条还没发出的 {@code PLANNED} 令"。★ 它**也**堵住 {@code
  *       SUPERSEDED} 那一档：它既是终态（当前不是 {@code ISSUED} ⇒ 拒），也不在目标集里（见第 2 条）—— 该档只由 {@code
- *       sd.IssueDirective} 内部"顶掉旧令"产生，**不是外部可设的目标**。
+ *       ga.IssueDirective} 内部"顶掉旧令"产生，**不是外部可设的目标**。
  * </ol>
  *
  * <p>★ 拒因写明**当前态与目标态**（可读、可核对），不写一句笼统的"状态不对"。
@@ -52,18 +54,18 @@ public final class SetDirectiveStatusHandler implements CommandHandler {
    * <p>★ {@link #type()} 里仍写**字面量**而不是引用本常量：{@code SimosToolsTest} 从源码抽 {@code type()} 的返回串做"注册面 ==
    * 实现面"的强判据，扫描器只认 {@code return "…"} 形态（引用常量会被漏掉）。两处同值由下方注释钉住。
    */
-  public static final String TYPE = "sd.SetDirectiveStatus";
+  public static final String TYPE = "ga.SetDirectiveStatus";
 
   @Override
   public String type() {
-    return "sd.SetDirectiveStatus"; // ★ 必须与 TYPE 同值：扫描器要求字面量（见 TYPE 的注）
+    return "ga.SetDirectiveStatus"; // ★ 必须与 TYPE 同值：扫描器要求字面量（见 TYPE 的注）
   }
 
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
     String directiveForLog = null;
     String targetForLog = null;
     try {
@@ -90,11 +92,11 @@ public final class SetDirectiveStatusHandler implements CommandHandler {
       }
       Map<DirectiveId, Directive> next = new LinkedHashMap<>(base.directives());
       next.put(id, directive.withStatus(target));
-      EventLog.channel(SdLog.decision())
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_SET_DIRECTIVE_STATUS_APPLIED",
-                  SdLogSource.SD_DECISION,
+                  GaLogSource.GA_DECISION,
                   "directive",
                   id.value(),
                   "fromStatus",
@@ -103,7 +105,7 @@ public final class SetDirectiveStatusHandler implements CommandHandler {
                   target,
                   "directives",
                   next.size()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDirectives(next)));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, base.withDirectives(next)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "directive", directiveForLog, "targetStatus", targetForLog);
     }
@@ -115,8 +117,8 @@ public final class SetDirectiveStatusHandler implements CommandHandler {
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(),
-        SdLogSource.SD_DECISION,
+        GaLog.decision(),
+        GaLogSource.GA_DECISION,
         "SD_SET_DIRECTIVE_STATUS_REJECTED",
         reason,
         idKeyValues);

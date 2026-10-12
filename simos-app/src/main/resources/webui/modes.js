@@ -80,7 +80,7 @@
       //   ★ 2026-09-23 起为**两条**：加「让它跑一轮」（sd.RunDecision）——它同样先落一条真触发事实（revision），
       //     再由服务端跑那一轮（POST /api/sd/run-decision，api.runDecision）。此前它只存在于 GM 的 MCP 工具面
       //     ⇒ 界面上点不出来（"决策能生成"这件事只有 agent 做得到）。
-      //     ★ 它**不是**"直接出令"：出令仍由决策人自己的 sd.IssueDirective 落（各进一次审批），本条只发起那一轮。
+      //     ★ 它**不是**"直接出令"：出令仍由决策人自己的 ga.IssueDirective 落（各进一次审批），本条只发起那一轮。
       //   ★ 2026-09-23 起为**三条**：加「上下文重置」（sd.ResetDecisionMakerConversation）——它也是真命令
       //     （落 revision、会话世代 +1），由窄端点 POST /api/sd/reset-decision-maker-conversation 发出
       //     （api.resetDecisionConversation）。用户要的"重跑沿用上下文、只有点重置才清"里的那个"重置"就是它。

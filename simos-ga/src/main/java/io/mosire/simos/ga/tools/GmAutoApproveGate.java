@@ -12,7 +12,7 @@ import java.util.Optional;
  * 口持有者本来就能 {@code simos.command.submit} 任意命令（用户 2026-09-22 裁定 D2：GM 组保留通用写是
  * 有意取舍），再要求逐条点批准只是摩擦、不构成边界。
  *
- * <p>★ **决策人那条链一个字不改**：出令（{@code sd.IssueDirective} 等）仍走 {@code AutoApproveGate → ConfirmGate}，GM
+ * <p>★ **决策人那条链一个字不改**：出令（{@code ga.IssueDirective} 等）仍走 {@code AutoApproveGate → ConfirmGate}，GM
  * 照旧在「决策 → 审批」里点头。证据在别处：{@code DecisionMakerScopeEndToEndTest} / {@code RunDecisionEndToEndTest} /
  * {@code DecisionAgentRunnerTest} 都在决策人一轮里读 {@code pendingApprovals().pending()}（那正是"决策人仍要审批"的判据）。
  *

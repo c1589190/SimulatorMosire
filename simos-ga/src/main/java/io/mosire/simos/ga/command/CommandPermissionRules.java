@@ -33,7 +33,7 @@ import java.util.Set;
  *
  * <pre>
  *   Declarations decl = CommandPermissionRules.declare(domainHandlers);   // ① 收声明（唯一读标记的地方）
- *   ... 用 decl.dmUsableTypes() 构造 sd.RegisterEffect / sd.IssueDirective，再并入注册面 ...
+ *   ... 用 decl.dmUsableTypes() 构造 sd.RegisterEffect / ga.IssueDirective，再并入注册面 ...
  *   CommandFaces faces = CommandPermissionRules.resolve(decl, allHandlers, landingPoints); // ② 四个面 + 三条审计
  * </pre>
  *
@@ -129,7 +129,7 @@ public final class CommandPermissionRules {
     }
 
     // ② 落点不得是 DM 可用命令：落点本身不能被嵌进令 / 入队 —— 否则"决策落点"可以被当效果再发一次 = 权限放大。
-    //   ★ 今天两条落点（sd.IssueDirective / sd.SubmitVerdict）都不打 DmUsableCommand ⇒ 本审计不抛；
+    //   ★ 今天两条落点（ga.IssueDirective / ga.SubmitVerdict）都不打 DmUsableCommand ⇒ 本审计不抛；
     //     它守的是"将来有人给落点补上 DmUsableCommand"这一步。
     Set<String> landingInDmFace = new LinkedHashSet<>(landing);
     landingInDmFace.retainAll(dmUsable);
@@ -189,7 +189,7 @@ public final class CommandPermissionRules {
    *
    * <p>★ <b>未列入 {@code dmUsableTypes} 的类型 = 仅 GM</b>（反向标记已随批次 1 收尾整体退役 ⇒ 不需要第二个集合）。 ★ {@code
    * dmUsableTypes} 同时是"可嵌令面"与"可入队面"的来源（{@code DmUsableCommand} 的语义覆盖两者， 见 {@link CommandFaces}
-   * 的类注）——装配期在 ② 之前要用它构造 {@code sd.RegisterEffect} 与 {@code sd.IssueDirective}，故这里先把它露出来。
+   * 的类注）——装配期在 ② 之前要用它构造 {@code sd.RegisterEffect} 与 {@code ga.IssueDirective}，故这里先把它露出来。
    *
    * <p>★★ 冻结写在紧凑构造器体里（<b>不抽辅助方法</b>）：SpotBugs 的 {@code EI_EXPOSE_REP} 只认看得见的包装调用 —— 出处见 {@link
    * CommandFaces} 的类注。

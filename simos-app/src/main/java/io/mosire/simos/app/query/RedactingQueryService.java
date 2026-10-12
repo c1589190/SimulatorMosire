@@ -238,7 +238,7 @@ public final class RedactingQueryService {
 
   /** 无 actor（GM / 调试）的判决视图：{@code FULL} 口径，全量字段。 */
   public List<Map<String, Object>> verdicts(QueryTarget target) {
-    return verdictViews(sdState(target), DisclosurePolicy.FULL);
+    return verdictViews(verdictsTable(target), DisclosurePolicy.FULL);
   }
 
   /**
@@ -250,7 +250,8 @@ public final class RedactingQueryService {
    */
   public List<Map<String, Object>> verdicts(DecisionMakerId actor, QueryTarget target) {
     AccessLimit limit = accessLimitOf(actor, target);
-    List<Map<String, Object>> views = verdictViews(sdState(target), limit.adjudicationDisclosure());
+    List<Map<String, Object>> views =
+        verdictViews(verdictsTable(target), limit.adjudicationDisclosure());
     List<Map<String, Object>> out = new ArrayList<>(views.size());
     for (Map<String, Object> view : views) {
       out.add(asMap(applyRedactedFields(view, limit)));
@@ -533,16 +534,22 @@ public final class RedactingQueryService {
     return view;
   }
 
-  /** 判决视图的公共构造：按 id 字典序（响应字节可复现），再按口径裁字段。 */
-  private static List<Map<String, Object>> verdictViews(SdState sd, DisclosurePolicy policy) {
+  /**
+   * 判决视图的公共构造：按 id 字典序（响应字节可复现），再按口径裁字段。
+   *
+   * <p>★ 2026-10-12 批次 3b′：{@code verdicts} 表搬进 {@code simos-ga} ⇒ 入参由 {@code SdState} 换成那张表本身 （读
+   * slice 的动作收在 {@link #verdictsTable}，本方法保持纯函数）。
+   */
+  private static List<Map<String, Object>> verdictViews(
+      Map<VerdictId, Verdict> verdicts, DisclosurePolicy policy) {
     if (policy == DisclosurePolicy.WITHHELD) {
       return List.of();
     }
-    List<VerdictId> ids = new ArrayList<>(sd.verdicts().keySet());
+    List<VerdictId> ids = new ArrayList<>(verdicts.keySet());
     ids.sort(Comparator.comparing(VerdictId::value));
     List<Map<String, Object>> out = new ArrayList<>(ids.size());
     for (VerdictId id : ids) {
-      Verdict verdict = sd.verdicts().get(id);
+      Verdict verdict = verdicts.get(id);
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("id", verdict.id().value());
       view.put("breakpoint", verdict.breakpoint().value());
@@ -564,6 +571,11 @@ public final class RedactingQueryService {
   @SuppressWarnings("unchecked")
   private static Map<String, Object> asMap(Object value) {
     return (Map<String, Object>) value;
+  }
+
+  /** {@code verdicts} 表的取数口（2026-10-12 批次 3b′：表住 {@code simos-ga}）。缺切片 / 类型不对 = 装配故障，当场炸。 */
+  private Map<VerdictId, Verdict> verdictsTable(QueryTarget target) {
+    return ToolSupport.gaState(query.stateAt(target)).verdicts();
   }
 
   private SdState sdState(QueryTarget target) {

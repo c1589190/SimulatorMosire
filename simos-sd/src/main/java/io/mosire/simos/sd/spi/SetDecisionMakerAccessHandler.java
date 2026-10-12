@@ -23,7 +23,7 @@ import java.util.Set;
  * {@code sd.SetDecisionMakerAccess} 命令的处理器（spec §4.2；用户 2026-09-22 裁定③）：GM 为某个决策人**配权**。
  *
  * <pre>{@code
- * {"decisionMakerId":"dm1","allowedTools":["sd.IssueDirective"],
+ * {"decisionMakerId":"dm1","allowedTools":["ga.IssueDirective"],
  *  "accessLimit":{"map":["Map1/region/701"]},"redactedFields":["position"],
  *  "adjudicationDisclosure":"PERCEPTION_ONLY"}
  * }</pre>

@@ -1,15 +1,16 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.adjudication.VerdictFreezer;
-import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AdjudicationBreakpoint;
 import io.mosire.simos.sd.model.Verdict;
 import io.mosire.simos.sd.model.VerdictMeta;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -22,7 +23,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * {@code sd.SubmitVerdict} 命令的处理器（spec §四 / §八.5，D3）：把裁决结果**冻结**成数据、落进 revision。
+ * {@code ga.SubmitVerdict} 命令的处理器（spec §四 / §八.5，D3；<b>★ 2026-10-12 批次 3b′ 自 {@code
+ * simos-sd/sd.spi} 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：把裁决结果**冻结**成数据、落进 revision。
  *
  * <pre>{@code
  * {"verdictId":"v1","breakpoint":"D1","subject":"sd:combat.c1",
@@ -34,20 +36,23 @@ import java.util.Objects;
  *
  * <p>★ **N7**：判决落成**数据**（{@link Verdict}，含 {@code atRevision}）；回放不重跑 LLM——见 {@link VerdictFreezer}。
  *
+ * <p>★ <b>本命令只写 {@code verdicts} 一张表</b>（{@code GaChangeSet}）：判决没有配套的 INFO 条目，故不存在 {@code
+ * ga.IssueDirective} 那种"跨命名空间第二条命令"的形态。
+ *
  * <p>拒绝：verdictId 已存在；payload 不过该断点 schema；subject 不在断点裁决面；meta 任一字段空白。
  */
 public final class SubmitVerdictHandler implements CommandHandler {
 
   @Override
   public String type() {
-    return "sd.SubmitVerdict";
+    return "ga.SubmitVerdict";
   }
 
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
     String verdictForLog = null;
     String breakpointForLog = null;
     try {
@@ -70,11 +75,11 @@ public final class SubmitVerdictHandler implements CommandHandler {
       Verdict verdict = VerdictFreezer.freeze(id, breakpoint, subject, verdictPayload, meta, at);
       Map<VerdictId, Verdict> next = new LinkedHashMap<>(base.verdicts());
       next.put(id, verdict);
-      EventLog.channel(SdLog.decision())
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_VERDICT_SUBMITTED",
-                  SdLogSource.SD_DECISION,
+                  GaLogSource.GA_DECISION,
                   "id",
                   id.value(),
                   "breakpoint",
@@ -83,7 +88,7 @@ public final class SubmitVerdictHandler implements CommandHandler {
                   subject.canonical(),
                   "verdicts",
                   next.size()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withVerdicts(next)));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, base.withVerdicts(next)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "verdict", verdictForLog, "breakpoint", breakpointForLog);
     }
@@ -95,8 +100,8 @@ public final class SubmitVerdictHandler implements CommandHandler {
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(),
-        SdLogSource.SD_DECISION,
+        GaLog.decision(),
+        GaLogSource.GA_DECISION,
         "SD_SUBMIT_VERDICT_REJECTED",
         reason,
         idKeyValues);

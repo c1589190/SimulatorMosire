@@ -29,7 +29,7 @@ import java.util.Set;
 
 /**
  * {@code simos.gm.approve}（P7b，2026-10-01 后端 + MCP 稳定化计划）：**GM-only MCP 裁决口**——外部 GM/MCP 对 {@code
- * sd.IssueDirective} / {@code sd.SubmitVerdict} 等敏感写阻塞等待的审批项作答。
+ * ga.IssueDirective} / {@code ga.SubmitVerdict} 等敏感写阻塞等待的审批项作答。
  *
  * <p>★★ <b>与 HTTP 审批面的裁决语义同源</b>（{@code ApprovalHttpEndpoint.handleDecide}）：
  *

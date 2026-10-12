@@ -10,7 +10,7 @@ import java.util.Objects;
  * <p>★ **不含视图数据**（N17）：渠道拿不到全量视图；脱敏简报由 sd 侧按 actor 的 {@code accessLimit} 构造（{@link
  * ChannelAdmission#redactedBrief}）。
  *
- * <p>★ {@code commandType} 只允许两条落点（R9）：{@code sd.IssueDirective} / {@code sd.SubmitVerdict}——由
+ * <p>★ {@code commandType} 只允许两条落点（R9）：{@code ga.IssueDirective} / {@code ga.SubmitVerdict}——由
  * {@link ChannelAdmission#requireLandingPoint} 在模块侧强制。
  */
 public record DecisionRequest(

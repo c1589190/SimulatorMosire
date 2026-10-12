@@ -41,7 +41,7 @@ public final class DecisionRunRegistry {
   /**
    * 一轮的**有界上限**（E4）：超过它 ⇒ 判定这一轮**已死**，读状态时归到失败终态（reason = {@link #REASON_RUN_TIMEOUT}）。
    *
-   * <p>★★ **取值理由（不是随手取的一个数）**：一轮里若决策人出令（{@code sd.IssueDirective} 是敏感写），那次工具调用 会**阻塞式等审批**，上限 = 壳的
+   * <p>★★ **取值理由（不是随手取的一个数）**：一轮里若决策人出令（{@code ga.IssueDirective} 是敏感写），那次工具调用 会**阻塞式等审批**，上限 = 壳的
    * {@code APPROVAL_TIMEOUT}（{@code Shell} 里 = **5 分钟**）。一轮里可能出现**多次**
    * 这样的等待（每出一次令一次），故本上限**必须严格大于** {@code APPROVAL_TIMEOUT} 并留余量： {@code 30 分钟 = 6 ×
    * APPROVAL_TIMEOUT}——足够容纳"多次等审批 + 每轮 LLM 的自身耗时"，又仍是一个**有界**的读数。

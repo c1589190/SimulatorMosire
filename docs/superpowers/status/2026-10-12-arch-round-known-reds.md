@@ -80,3 +80,34 @@
 `package` 会卡在 sd 上、**永远到不了 spotbugs 门禁**。
 ⇒ **自本批起，每批的 spotbugs 门禁一律用 `-DskipTests -Dmaven.test.skip=true package spotbugs:check`**
 （`maven.test.skip=true` 连测试编译一起跳）。这是**架构调整期的既定代价**（§12.2），不是放松。
+
+### 批次 3b-1（`directives`+`verdicts` 搬 ga；3 条命令 `sd.*`→`ga.*`）
+
+**A. 新增编译断（23 文件；相对 3a 台账再增）**
+- **sd 侧 10**：`SdRoundTripTest`（`:60 hasSize(14)` 早红 + 新增 `cs.directives()/verdicts()`）· `SdResolverTest`（`new SdResolver()`）·
+  `spi/{IssueDirectiveHandlerTest, SubmitVerdictHandlerTest, RunDecisionHandlerTest, StartDecisionHandlerTest,
+  SetDiplomaticRelationHandlerTest, RecordDiplomaticEventHandlerTest, ResetDecisionMakerConversationHandlerTest}` ·
+  `SdStateInvariantTest` · **`SdFixtures`（12 参构造器 + `withDirectives/withVerdicts` + `.directives()/.verdicts()` —— sd 侧多数断的共同源头）**
+- **app 侧 13**：`SdVerdictFreezeEndToEndTest` · `decision/{RealLlmGovScenarioTest, RealLlmUnitDecisionLoopTest}` ·
+  `gui/{RedactionApiTest, SdDecisionMakerApiTest}` · `llm/AdjudicationEndToEndTest` · `query/RedactingQueryServiceTest` ·
+  `sd/{AdjudicatorRunnerTest, StartDecisionEndToEndTest}` · `sd/channel/DecisionChannelTest` ·
+  `tools/write/{AdjudicateTickToolTest, RejectDirectiveToolTest}`
+**处置**：§一.10 删/迁移（这些 API 已不在 sd）。
+
+**B. 新增断言红（29 文件，旧命令/工具名串；`grep` 可复现 129 处命中）**
+`McpCoverageTest` · `McpPortTopologyTest` · `McpServerTest` · `SimosToolsTest` · `ToolSurfaceGapTest` · `CatalogVisibilityTest` ·
+`DecisionFaceGolden` · `DecisionMakerScopeEndToEndTest` · `LlmToolNamesTest` · `RunDecisionEndToEndTest` · `DecisionAgentRunnerTest` ·
+`SdDirectivesApiTest` · `SdDecisionMakerApiTest` · `SdRunDecisionApiTest` · `GovPolicyIntoEconomyZ6Test` · `SdLoggingTest` ·
+`AdjudicateTickToolTest` · `RejectDirectiveToolTest` …（`sd.IssueDirective`/`sd.SubmitVerdict`/`sd.SetDirectiveStatus` 串、
+`sd_IssueDirective` 线格式名、`hasSize(66/97/142/143)` 一类计数表）
+**处置**：改名类 ⇒ 收尾期**改为新契约**（不是删）。
+
+**C. ★ 过渡性缺口（规划 §16.4 已记，收口时点 = `info` 搬进 ga）**
+绕过工具/渠道、**直接 `CoreSimos.submit("ga.IssueDirective", …)`** ⇒ **只落令、不落执行原文**。
+受影响：`SdQueryService:156-168,192-201`（`/api/sd/directives` 的 intentInfo、决策人文档面、`ApiViews:5955-5956`）、
+`VoidAdjudicationTool:237-244` 的 restore。
+
+**D. javadoc 债（9 处旧名，在 3b-1 写权外）**
+economy 6 / gov 1 / unit 1 / util 1 个文件提及旧命令名 —— 留给对应批次或收尾期统一改。
+（agent/ga/sd 三模块内描述**当前**命令名的 javadoc 已同步 39 文件；**历史叙述故意保留**，如
+`DecisionResultsTool:35` 的事故叙述加了"该事故发生时还叫 sd.*，留痕不改"。）

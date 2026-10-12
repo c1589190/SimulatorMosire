@@ -151,7 +151,7 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
    *
    * <p>**为什么需要它**：基类的粗断言（{@code map:<mapId>} + {@code unit:"*"} + {@code social:"*"}）在**受限调用者**
    * 身上一律判否（{@code ResourceScope} 是段边界前缀匹配）⇒ **粗断言撞细围栏 = 整调被拒**（spec §5.2 第 2 条）。 两条**决策窄写**（{@code
-   * sd.IssueDirective}/{@code sd.SubmitVerdict}）因此连出令都出不了——它们写的是 **sd
+   * ga.IssueDirective}/{@code ga.SubmitVerdict}）因此连出令都出不了——它们写的是 **sd
    * 域的自己那一小块**，不是地图/单位数据，故各自覆写本方法（见那两个类）。
    *
    * <p>★ **按 context 取、不按载荷取**：资源声明必须从**宿主已知的东西**（身份 / 工具的构造参数）推出，不采信模型 自报的载荷字段（spec §4.3

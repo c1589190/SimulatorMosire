@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  * **LLM 线格式的工具名映射**（真实名 ↔ 送给模型的名字）：让 Simos 的点分层工具名能过 OpenAI 兼容端点的函数名文法。
  *
  * <p>★★ **缺陷现场**（2026-09-22 真 LLM 实测，不是推断）：Simos 的工具名形如 {@code simos.map.hex} / {@code
- * sd.IssueDirective}， 含 {@code .}；而 OpenAI 兼容端点要求函数名匹配 {@code ^[a-zA-Z0-9_-]+$}，于是**整份请求被拒**：
+ * ga.IssueDirective}， 含 {@code .}；而 OpenAI 兼容端点要求函数名匹配 {@code ^[a-zA-Z0-9_-]+$}，于是**整份请求被拒**：
  *
  * <pre>
  * HTTP 400: Invalid 'tools[0].function.name': string does not match pattern.

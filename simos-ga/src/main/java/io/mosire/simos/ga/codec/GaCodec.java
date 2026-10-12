@@ -10,7 +10,9 @@ import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DecisionPacketId;
+import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
+import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -34,15 +36,17 @@ import org.slf4j.Logger;
  * 决定"这条变更集施加到哪个命名空间"⇒ handler 搬进 ga 却仍叫 {@code sd.*} 时，{@code GaChangeSet} 会被拿去喂 {@code
  * SdCodec}，<b>当场炸</b>。名称与切片的绑定不是风格问题。
  *
- * <p>★ <b>树里的自定义键有两个</b>：{@code DecisionPacketId}（{@code decisionPackets} 的键）与 {@code
- * MergedEffectPlanId}（{@code mergedEffectPlans} 的键）。两者都在<b>顶层表</b>上；漏注册任一个，都会在<b>对应表非空</b>时于
- * 解码期炸（表空着时测不到——故 {@code GaRoundTripTest} 的夹具必须让两张表非空）。键反序列化器照裁定 16 在<b>本模块</b>注册， 不进共享基座。
+ * <p>★ <b>树里的自定义键有四个</b>：{@code DecisionPacketId}（{@code decisionPackets} 的键）、{@code
+ * MergedEffectPlanId}（{@code mergedEffectPlans} 的键）、{@code DirectiveId}（{@code directives} 的键）与
+ * {@code VerdictId}（{@code verdicts} 的键）。四者都在<b>顶层表</b>上；漏注册任一个，都会在<b>对应表非空</b>时于 解码期炸（表空着时测不到——故
+ * {@code GaRoundTripTest} 的夹具必须让四张表非空）。键反序列化器照裁定 16 在<b>本模块</b>注册， 不进共享基座。
  *
  * <p>★ <b>值类型里没有嵌套自定义键</b>（{@code DecisionPacket} → {@code FormattedCall} 的 {@code targets} 是
- * {@code List<CommandTarget>}、{@code MergedEffectPlan} → {@code List<MergedEffect>}，都不含 {@code
- * Map}）⇒ 本 codec <b>只注册这两个键</b>，不给不存在的键写凭空注册。★ 值类型（{@code DecisionPacket} / {@code
- * MergedEffectPlan} 及两个 id）住在 {@code simos-sd}：它们仍被 sd 的其余组件与 sd 的测试引用，而 {@code sd} 不得依赖 {@code
- * ga}（成环）⇒ 本模块<b>反向引用</b>它们（既有的 {@code ga → sd} 方向，不新增边）。
+ * {@code List<CommandTarget>}、{@code MergedEffectPlan} → {@code List<MergedEffect>}、{@code
+ * Directive} → {@code List<DirectiveCommand>} 与 {@code Set<EffectId>}、{@code Verdict} → 无 {@code
+ * Map}，都不含 {@code Map}）⇒ 本 codec <b>只注册这四个键</b>，不给不存在的键写凭空注册。★ 值类型（{@code DecisionPacket} / {@code
+ * MergedEffectPlan} / {@code Directive} / {@code Verdict} 及它们的 id）住在 {@code simos-sd}：它们仍被 sd
+ * 的其余组件与 sd 的测试引用，而 {@code sd} 不得依赖 {@code ga}（成环）⇒ 本模块<b>反向引用</b>它们（既有的 {@code ga → sd} 方向，不新增边）。
  *
  * <p>★ <b>键的（反）序列化走各类型自带的"裸 {@code toString()} + 单参 {@code parse}"配对</b>（裁定 R-48-f）：写侧 Jackson
  * 的默认键序列化器调 {@code toString()} 恰好就对了，故<b>只注册读侧</b>（与 {@code GovCodec} 同口径）。
@@ -77,11 +81,16 @@ public final class GaCodec implements ModuleCodec, ModuleDiffer {
     abstract boolean isEmpty();
   }
 
-  /** 两个顶层表的键 {@code DecisionPacketId} / {@code MergedEffectPlanId}（读侧注册，见类注）。 */
+  /**
+   * 四个顶层表的键 {@code DecisionPacketId} / {@code MergedEffectPlanId} / {@code DirectiveId} / {@code
+   * VerdictId}（读侧注册，见类注）。
+   */
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("ga-json-keys");
     module.addKeyDeserializer(DecisionPacketId.class, keyDeserializer(DecisionPacketId::parse));
     module.addKeyDeserializer(MergedEffectPlanId.class, keyDeserializer(MergedEffectPlanId::parse));
+    module.addKeyDeserializer(DirectiveId.class, keyDeserializer(DirectiveId::parse));
+    module.addKeyDeserializer(VerdictId.class, keyDeserializer(VerdictId::parse));
     return module;
   }
 
@@ -158,7 +167,11 @@ public final class GaCodec implements ModuleCodec, ModuleDiffer {
                   "decisionPackets",
                   snapshot.state().decisionPackets().size(),
                   "mergedEffectPlans",
-                  snapshot.state().mergedEffectPlans().size()));
+                  snapshot.state().mergedEffectPlans().size(),
+                  "directives",
+                  snapshot.state().directives().size(),
+                  "verdicts",
+                  snapshot.state().verdicts().size()));
     }
     return snapshot;
   }
@@ -178,7 +191,11 @@ public final class GaCodec implements ModuleCodec, ModuleDiffer {
                   "decisionPackets",
                   gaSnapshot.state().decisionPackets().size(),
                   "mergedEffectPlans",
-                  gaSnapshot.state().mergedEffectPlans().size()));
+                  gaSnapshot.state().mergedEffectPlans().size(),
+                  "directives",
+                  gaSnapshot.state().directives().size(),
+                  "verdicts",
+                  gaSnapshot.state().verdicts().size()));
     }
     return json;
   }
@@ -201,6 +218,10 @@ public final class GaCodec implements ModuleCodec, ModuleDiffer {
                   next.state().decisionPackets().size(),
                   "mergedEffectPlans",
                   next.state().mergedEffectPlans().size(),
+                  "directives",
+                  next.state().directives().size(),
+                  "verdicts",
+                  next.state().verdicts().size(),
                   "ref",
                   newMeta.ref()));
     }
@@ -213,11 +234,13 @@ public final class GaCodec implements ModuleCodec, ModuleDiffer {
     return GaChangeSet.between(asGaSnapshot(base).state(), asGaSnapshot(target).state());
   }
 
-  /** 变更集里 changed 的组件数（两个组件的只读计数；只产出标量元信息，不读也不打印载荷内容）。 */
+  /** 变更集里 changed 的组件数（四个组件的只读计数；只产出标量元信息，不读也不打印载荷内容）。 */
   private static int changedComponents(GaChangeSet changeSet) {
     int changed = 0;
     changed += changeSet.decisionPackets().changed() ? 1 : 0;
     changed += changeSet.mergedEffectPlans().changed() ? 1 : 0;
+    changed += changeSet.directives().changed() ? 1 : 0;
+    changed += changeSet.verdicts().changed() ? 1 : 0;
     return changed;
   }
 

@@ -804,11 +804,11 @@ public final class CatalogTool implements SimosTool {
                   + " createdTick?"),
           Map.entry("sd.CancelEffect", "effectId"),
           Map.entry(
-              "sd.IssueDirective",
+              "ga.IssueDirective",
               "directiveId, decisionMakerId, tick, target?, intentInfo,"
                   + " commands[{type,payloadJson}], effects[字符串...]?"),
           Map.entry(
-              "sd.SubmitVerdict",
+              "ga.SubmitVerdict",
               "verdictId, breakpoint(D1|D3|D6), subject(sd:combat.*), payload(JSON 文本),"
                   + " meta{model,promptVersion,inputBriefDigest}"),
           Map.entry(
@@ -846,7 +846,7 @@ public final class CatalogTool implements SimosTool {
                   + " upsert，同 id 幂等替换；不对外窄工具，由 simos.gm.mergedPlan.upsert / 决策效果执行器 outcome"
                   + " 回写内部提交）"),
           Map.entry(
-              "sd.SetDirectiveStatus",
+              "ga.SetDirectiveStatus",
               "directiveId, status(EXECUTED|CANCELLED)（★ 只允许 ISSUED → 二者之一，只由"
                   + " sd.AdjudicateTick 内部编排产生；不对外提供窄工具）"),
           Map.entry(

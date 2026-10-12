@@ -29,17 +29,17 @@ import java.util.Set;
  * }</pre>
  *
  * <p>★ **它记的是"触发"这一事实，不是这一轮的产出**：命令处理是**纯函数**（{@code SimulationState → ChangeSet}），而"跑一轮 agent"要调真
- * LLM、还要经 {@code sd.IssueDirective} 落更多 revision——那是**命令之外**的动作（由 app 层的窄工具在**本命令落盘之后** 执行）。故本
- * handler 只写一条**感知层事实**：谁在哪个 tick 让哪个决策人跑了一轮。决策人的产出仍走 {@code sd.IssueDirective}/{@code
- * sd.SubmitVerdict}（铁律 2 无例外）。
+ * LLM、还要经 {@code ga.IssueDirective} 落更多 revision——那是**命令之外**的动作（由 app 层的窄工具在**本命令落盘之后** 执行）。故本
+ * handler 只写一条**感知层事实**：谁在哪个 tick 让哪个决策人跑了一轮。决策人的产出仍走 {@code ga.IssueDirective}/{@code
+ * ga.SubmitVerdict}（铁律 2 无例外）。
  *
  * <p>★ **与 {@code sd.StartDecision} 的分工**（两者语义不同，不是同一件事的两种写法）：
  *
  * <ul>
  *   <li>{@link StartDecisionHandler}（{@code sd.StartDecision}）= **"开始一次判决"**：结果由 app 侧的 {@code
- *       DecisionAdjudicationService} 折成 {@code sd.SubmitVerdict}（裁决者冻结判决）；
+ *       DecisionAdjudicationService} 折成 {@code ga.SubmitVerdict}（裁决者冻结判决）；
  *   <li>本命令（{@code sd.RunDecision}）= **"让某决策人的 agent 跑一轮"**：结果由 app 侧的 {@code DecisionAgentRunner}
- *       折成决策人**自己**调工具（读世界 + {@code sd.IssueDirective}）。
+ *       折成决策人**自己**调工具（读世界 + {@code ga.IssueDirective}）。
  * </ul>
  *
  * <p>两者写在**同一个地址空间** {@code sd:decision.<dmId>}（前缀直接取自 {@link

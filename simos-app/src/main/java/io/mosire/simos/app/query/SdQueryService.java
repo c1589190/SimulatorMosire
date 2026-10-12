@@ -1,6 +1,7 @@
 package io.mosire.simos.app.query;
 
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
@@ -130,7 +131,7 @@ public final class SdQueryService {
    */
   public List<DirectiveInfo> listDirectives(QueryTarget target) {
     SimulationState state = query.stateAt(target);
-    return directivesOf(sdState(state), null);
+    return directivesOf(directivesTable(state), sdState(state), null);
   }
 
   /**
@@ -146,17 +147,21 @@ public final class SdQueryService {
     if (!sd.decisionMakers().containsKey(id)) {
       return Optional.empty();
     }
-    return Optional.of(directivesOf(sd, id));
+    return Optional.of(directivesOf(directivesTable(state), sd, id));
   }
 
   /**
    * 决策记录投影 + **执行原文**：{@code intentInfo} 从 sd INFO 覆盖层取（spec §三.6：写在 {@code sd:directive.<id>}
    * 地址下、key = 该记录自己的 {@code intentInfoKey}），取不到 ⇒ {@code null}（**显式未知**，不拿空串顶替）。
+   *
+   * <p>★★ <b>两个切片各取一半</b>（2026-10-12 批次 3b′）：{@code directives} 表搬进 {@code simos-ga} ⇒ 令从 ga 切片读
+   * （{@link #directivesTable(SimulationState)}），执行原文条目仍住 sd 的 INFO 覆盖层（{@code info} 表属批次 3b）⇒ 两处都要。
    */
-  private static List<DirectiveInfo> directivesOf(SdState sd, DecisionMakerId only) {
+  private static List<DirectiveInfo> directivesOf(
+      Map<DirectiveId, Directive> directives, SdState sd, DecisionMakerId only) {
     Map<DirectiveId, Map<String, String>> infoByDirective = infoByDirective(sd);
     List<Directive> picked = new ArrayList<>();
-    for (Directive directive : sd.directives().values()) {
+    for (Directive directive : directives.values()) {
       if (only == null || directive.decisionMakerId().equals(only)) {
         picked.add(directive);
       }
@@ -246,7 +251,7 @@ public final class SdQueryService {
             nation.nationId().value(),
             null,
             null,
-            pending(maker, sd, tick));
+            pending(maker, directivesTable(state), tick));
       }
       case Affiliation.Army army -> {
         Army value = sd.armies().get(army.armyId());
@@ -258,7 +263,7 @@ public final class SdQueryService {
             null,
             value == null ? null : value.masterGovUnitId().map(UnitId::value).orElse(null),
             value == null ? null : value.rootUnit().value(),
-            pending(maker, sd, tick));
+            pending(maker, directivesTable(state), tick));
       }
       case Affiliation.Gov gov -> {
         // ★ 显示名从 unit 切片现取（GOV 没有 sd 侧的名字字段）；单位被删/不是 GOV ⇒ null（显式未知，不编造）。
@@ -271,7 +276,7 @@ public final class SdQueryService {
             null,
             null,
             null,
-            pending(maker, sd, tick));
+            pending(maker, directivesTable(state), tick));
       }
     };
   }
@@ -291,17 +296,18 @@ public final class SdQueryService {
    * D7 已裁公式：{@code due = (当前 tick − 该 dm 最近一次落 Directive 的 tick) ≥ decisionCadenceTicks}； 首次（该 dm
    * 无任何 Directive）**恒 {@code due}**。
    *
-   * <p>★ **"最近一次"取最大 tick，不取最小**：{@code SdState.directives()} 是插入序表（R4 自 2026-09-23 起是**末位生效** ——同一
+   * <p>★ **"最近一次"取最大 tick，不取最小**：{@code GaState.directives()} 是插入序表（R4 自 2026-09-23 起是**末位生效** ——同一
    * {@code (dm,tick)} 可有多条令）⇒ 插入序与 tick 序无关，必须显式求 max；取首个/取最小都会把周期算反。
    *
    * <p>★ **首次用 {@code null} 表示"没有上一次"**（{@code ticksSinceLast} 是无穷大）：填 {@code 0} 或 {@code -1}
    * 会把"没有基准"伪装成一个具体间隔，下游就没法把"从未决策"与"刚决策过"区分开。
    *
-   * <p>★ **只读派生**：只查 {@code sd.directives()}，不改任何状态、不落 revision。
+   * <p>★ **只读派生**：只查 {@code GaState.directives()}（2026-10-12 批次 3b′ 起住 ga），不改任何状态、不落 revision。
    */
-  private static PendingSignal pending(DecisionMaker maker, SdState sd, long tick) {
+  private static PendingSignal pending(
+      DecisionMaker maker, Map<DirectiveId, Directive> directives, long tick) {
     Long last = null;
-    for (Directive directive : sd.directives().values()) {
+    for (Directive directive : directives.values()) {
       if (!directive.decisionMakerId().equals(maker.id())) {
         continue;
       }
@@ -319,6 +325,16 @@ public final class SdQueryService {
   /** 被查询快照的当前 tick（推进只改它；决策标记只由命令落，不由推进产生）。 */
   private static long tickOf(SimulationState state) {
     return state.meta().timestamp().tick();
+  }
+
+  /**
+   * {@code directives} 表的取数口（2026-10-12 批次 3b′：表住 {@code simos-ga}）——与 {@link #directivesOf} 区分：
+   * 本方法只取表，后者做投影。
+   *
+   * <p>★ 缺切片 / 类型不对 = 装配故障，当场炸（与 {@link #sdState} 同口径，不静默折成空表）。
+   */
+  private static Map<DirectiveId, Directive> directivesTable(SimulationState state) {
+    return ToolSupport.gaState(state).directives();
   }
 
   /** sd 切片只能从 sd 模块拿（铁律 3/4）：缺席或类型不对是装配故障，不是"没有候选"。 */

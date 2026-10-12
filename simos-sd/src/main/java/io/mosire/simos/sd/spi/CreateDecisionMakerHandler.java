@@ -27,7 +27,7 @@ import java.util.Set;
  *
  * <pre>{@code
  * {"id":"dm1","affiliation":{"kind":"nation","id":"n1"},
- *  "allowedTools":["sd.SubmitVerdict"],"cadence":1}
+ *  "allowedTools":["ga.SubmitVerdict"],"cadence":1}
  * }</pre>
  *
  * <p>★ 拒绝：id 已存在；{@code affiliation} 目标不存在；{@code allowedTools} 含**通用写**（{@link

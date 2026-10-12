@@ -4,7 +4,7 @@ package io.mosire.simos.sd.model;
  * 决策携带的一条结构化命令（spec §三.5）：{@code type}（{@code <namespace>.<Command>}）+ 不透明载荷 JSON。
  *
  * <p>★ {@code type} 走**命令白名单**（§四）；★ **{@code sd} 自己的命令也不允许自指**（防无限递归）——v1 明确禁。校验在 {@code
- * sd.IssueDirective} 的命令期（D1）。
+ * ga.IssueDirective} 的命令期（D1）。
  */
 public record DirectiveCommand(String type, String payloadJson) {
 

@@ -29,7 +29,7 @@ import java.util.TreeSet;
  * 这些 Region 的<b>逐格</b> hex 前缀 + Region 级前缀 + 自己所在格。
  *
  * <p>★★ <b>这里只算"直辖"</b>：中央决策人读不到省的数据，除非中央自己的 {@code jurisdiction} 里就有那个 Region（or 用 {@code
- * sd.IssueDirective} 的审批链）。<b>名义全境</b>（沿 {@code superiorGov} 聚合下级 GOV 的管辖）在 {@link
+ * ga.IssueDirective} 的审批链）。<b>名义全境</b>（沿 {@code superiorGov} 聚合下级 GOV 的管辖）在 {@link
  * io.mosire.simos.app.gov.GovTerritory}，<b>绝不进任何授权判定</b>——用户裁定 4 明令它是显示/后续 NationSummary 的只读派生。
  *
  * <p>★ <b>四个命名空间各自表态</b>（与 {@code NationScope}/{@code ArmyScope} 同一条纪律，spec §5.2 第 3 条）：

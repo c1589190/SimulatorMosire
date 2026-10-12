@@ -1,26 +1,26 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DirectiveStatus;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.SdInfoIds;
+import io.mosire.simos.sd.spi.DirectiveIntentInfo;
+import io.mosire.simos.sd.spi.DirectiveWhitelist;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
-import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -30,7 +30,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code sd.IssueDirective} 命令的处理器（spec §四，D1）：落一条 {@link Directive}，并把**执行原文**写成 sd 侧 INFO。
+ * {@code ga.IssueDirective} 命令的处理器（spec §四，D1；<b>★ 2026-10-12 批次 3b′ 自 {@code simos-sd/sd.spi}
+ * 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：落一条 {@link Directive}，按 R4 顶掉同 (决策人, tick) 的旧版。
  *
  * <pre>{@code
  * {"directiveId":"d1","decisionMakerId":"dm1","tick":3,"target":"sd:combat.c1",
@@ -40,15 +41,24 @@ import java.util.Set;
  *
  * <p>★★ **R4 = 末位生效，不是"唯一"**（2026-09-23 用户裁定）：同一 ({@code decisionMakerId}, {@code tick}) 允许在 **同一
  * tick 内再出令**（"打回重写"要的正是这一条——不必先推 tick）——但**只有最新一条生效**：出令时把同 (决策人, tick) 下**仍生效** 的旧令翻成 {@link
- * DirectiveStatus#SUPERSEDED}（终态、留痕、不再参与裁决）。 {@link SdState} 的构造期不变量是同一规则的**状态期**后备 （第二层："至多一条生效"）。
+ * DirectiveStatus#SUPERSEDED}（终态、留痕、不再参与裁决）。 {@link GaState} 的构造期不变量是同一规则的**状态期**后备 （第二层："至多一条生效"）。
  *
  * <p>★ **重写 = 新的 {@link DirectiveId}**（不是改写旧令）：旧令的形状与执行原文一条不动 ⇒ 时间线可回退、可审计。
  *
  * <p>★ **白名单**（spec §四）：{@code commands[].type} 必须落在 {@link DirectiveWhitelist}；{@code sd.*}
  * 自指与通用写被明确拒绝。
  *
- * <p>★ **执行原文与效果分开存**（spec §三.6）：{@code intentInfo} 写进地址 {@code sd:directive.<id>} 下的 INFO 条目（key
- * 固定为 {@value #INTENT_INFO_KEY}），{@code Directive.intentInfoKey} 只记该 key；二者不互相推导。
+ * <p>★★ <b>执行原文（{@code intentInfo}）不再由本命令写入</b>（2026-10-12 批次 3b′，本批的**唯一**行为收窄，如实记）： 一条命令 =
+ * 一个命名空间（{@code CommandBus.namespaceOf(type)} 取类型前缀）⇒ 本命令改名 {@code ga.*} 后**只能**写 {@code
+ * GaChangeSet}，而执行原文的落点（sd INFO 覆盖层的 {@code sd:directive.<id>} 条目）本批仍住 {@code SdState.info} （{@code
+ * info} 表搬 ga 属批次 3b）。⇒ 该条目改由**同批的第二条命令 {@code sd.PutInfo}** 落（仓内既有形制：{@code RejectDirectiveTool} /
+ * {@code AdjudicateTickTool} / {@code DecisionEffectExecutor} 等十余处审计条目都这么做）： 载荷由 {@code
+ * io.mosire.simos.sd.spi.DirectiveIntentInfo} 从**同一份出令载荷**派生（键/地址的**唯一拼写点**在那边），
+ * 提交方是真正持有载荷的两个生产写路径（{@code IssueDirectiveTool} 与三条决策渠道）——它们把两条命令装进**同一批**，故 令与执行原文仍落在**同一条
+ * revision**。{@code Directive.intentInfoKey} 照旧记那个 key，二者的对应关系（ {@code sourceDirective} 字段）由那条
+ * {@code sd.PutInfo} 写上。
+ *
+ * <p>★ <b>本命令自己仍然要求</b> {@code intentInfo} 非空白（载荷契约不变）：缺了它，那条执行原文的写入就无从谈起。
  *
  * <p>拒绝：{@code decisionMakerId} 不存在；**载荷 {@code tick} 记在未来**（{@code tick > 世界当前 tick}，见 {@link
  * #handle}）；指令 id 已存在；{@code commands[].type} 不在白名单（或自指）； {@code target} 非法；{@code effects[]}
@@ -56,8 +66,22 @@ import java.util.Set;
  */
 public final class IssueDirectiveHandler implements CommandHandler {
 
-  /** 执行原文在 sd INFO 覆盖层里的 key（spec §二.3："单条决策 = 单条 Command，Command 必须自带 INFO 作为执行原文"）。 */
-  public static final String INTENT_INFO_KEY = "intent";
+  /**
+   * 命令类型。
+   *
+   * <p>★ {@link #type()} 里仍写**字面量**而不是引用本常量：{@code SimosToolsTest} 从源码抽 {@code type()} 的返回串做"注册面 ==
+   * 实现面"的强判据，扫描器只认 {@code return "…"} 形态（引用常量会被漏掉）。两处同值由下方注释钉住。 决策渠道据此判"这条落点要不要配一条 {@code
+   * sd.PutInfo} 记执行原文"（见 {@code AbstractCoreDecisionChannel}）。
+   */
+  public static final String TYPE = "ga.IssueDirective";
+
+  /**
+   * 执行原文在 sd INFO 覆盖层里的 key（spec §二.3："单条决策 = 单条 Command，Command 必须自带 INFO 作为执行原文"）。
+   *
+   * <p>★ <b>拼写点只有一处</b>：本常量是 {@link DirectiveIntentInfo#INFO_KEY} 的别名（那条配套 {@code sd.PutInfo} 的载荷
+   * 也用它），不在这里再写一遍字面量。{@code Directive.intentInfoKey} 记的就是它。
+   */
+  public static final String INTENT_INFO_KEY = DirectiveIntentInfo.INFO_KEY;
 
   private final DirectiveWhitelist whitelist;
 
@@ -67,14 +91,16 @@ public final class IssueDirectiveHandler implements CommandHandler {
 
   @Override
   public String type() {
-    return "sd.IssueDirective";
+    return "ga.IssueDirective"; // ★ 必须与 TYPE 同值：扫描器要求字面量（见 TYPE 的注）
   }
 
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
+    // ★ 决策人 / 效果两张表仍住 sd（本批不搬，见批次 3b）⇒ 引用完整性判据在命令期读 sd 切片（既有的 ga → sd 方向）。
+    SdState sd = GaSnapshots.sd(state);
     String directiveForLog = null;
     String dmForLog = null;
     try {
@@ -86,11 +112,12 @@ public final class IssueDirectiveHandler implements CommandHandler {
       dmForLog = decisionMakerId.value();
       long tick = SdPayloads.requireLong(payload, "tick");
       Optional<Address> target = SdPayloads.optionalAddress(payload, "target");
-      String intentInfo = SdPayloads.requireText(payload, "intentInfo");
+      // ★ 载荷契约不变：intentInfo 必须是字符串（本命令只校验形状；它的落点是同批的第二条 sd.PutInfo，见类注）。
+      SdPayloads.requireText(payload, "intentInfo");
       List<DirectiveCommand> commands = SdPayloads.optionalDirectiveCommands(payload, "commands");
       Set<EffectId> effects = parseEffectIds(payload);
 
-      if (!base.decisionMakers().containsKey(decisionMakerId)) {
+      if (!sd.decisionMakers().containsKey(decisionMakerId)) {
         return rejected(
             "决策人不存在: " + decisionMakerId.value(), "directive", directiveForLog, "dm", dmForLog);
       }
@@ -126,7 +153,7 @@ public final class IssueDirectiveHandler implements CommandHandler {
             commands.size());
       }
       for (EffectId effectId : effects) {
-        if (!base.effects().containsKey(effectId)) {
+        if (!sd.effects().containsKey(effectId)) {
           return rejected(
               "效果不存在: " + effectId.value(),
               "directive",
@@ -137,27 +164,6 @@ public final class IssueDirectiveHandler implements CommandHandler {
               effectId.value());
         }
       }
-
-      RevisionId at = state.meta().ref().revision();
-      String infoAddress = "sd:directive." + id.value();
-      Map<String, List<SdInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
-      List<SdInfoEntry> entries = new ArrayList<>(nextInfo.getOrDefault(infoAddress, List.of()));
-      // ★ 决策结果三件套（第 3 波第 1 步）：执行原文就是这条决策的**结果**，故 tick 取**令自带的 tick**（不是世界 tick——
-      //   令允许补记/滞后，见上面"令不得记在未来"的裁定；按世界 tick 归档会让同一条令随处理时刻漂移）；tags 挂**出令决策人**。
-      SdInfoEntry entry =
-          new SdInfoEntry(
-              SdInfoIds.synthesize(infoAddress, entries.size()),
-              tick,
-              Set.of(decisionMakerId),
-              Set.of(),
-              INTENT_INFO_KEY,
-              intentInfo,
-              Optional.empty(),
-              at,
-              Optional.of(id),
-              Optional.empty());
-      entries.add(entry);
-      nextInfo.put(infoAddress, List.copyOf(entries));
 
       Directive directive =
           new Directive(
@@ -173,12 +179,12 @@ public final class IssueDirectiveHandler implements CommandHandler {
       Map<DirectiveId, Directive> nextDirectives = new LinkedHashMap<>(base.directives());
       supersedeOldVersions(nextDirectives, decisionMakerId, tick);
       nextDirectives.put(id, directive);
-      SdState target0 = base.withDirectives(nextDirectives).withInfo(nextInfo);
-      EventLog.channel(SdLog.decision())
+      GaState target0 = base.withDirectives(nextDirectives);
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_DIRECTIVE_ISSUED",
-                  SdLogSource.SD_DECISION,
+                  GaLogSource.GA_DECISION,
                   "id",
                   id.value(),
                   "decisionMaker",
@@ -193,7 +199,7 @@ public final class IssueDirectiveHandler implements CommandHandler {
                   target.map(Address::canonical).orElse("-"),
                   "directives",
                   nextDirectives.size()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, target0));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, target0));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "directive", directiveForLog, "dm", dmForLog);
     }
@@ -205,8 +211,8 @@ public final class IssueDirectiveHandler implements CommandHandler {
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(),
-        SdLogSource.SD_DECISION,
+        GaLog.decision(),
+        GaLogSource.GA_DECISION,
         "SD_ISSUE_DIRECTIVE_REJECTED",
         reason,
         idKeyValues);

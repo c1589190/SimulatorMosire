@@ -5,7 +5,7 @@ import java.util.Set;
 /**
  * 决策提交渠道（spec §十三.1，照 AgentLib {@code ApprovalChannel} 形制）：**落点适配器，不是新语义**。
  *
- * <p>★ **无论从哪条渠道进来，最终都写同一落点**（{@code sd.IssueDirective} / {@code sd.SubmitVerdict}），走同一条 {@code
+ * <p>★ **无论从哪条渠道进来，最终都写同一落点**（{@code ga.IssueDirective} / {@code ga.SubmitVerdict}），走同一条 {@code
  * Command → ChangeSet → Revision} 路径（R9 / 铁律 2）。
  *
  * <p>★ **模块侧强制四条**（spec §十三.2，渠道不得代劳）：actor ∈ {@link #representableActors()}（{@link

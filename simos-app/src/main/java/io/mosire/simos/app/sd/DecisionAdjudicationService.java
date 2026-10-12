@@ -41,7 +41,7 @@ import java.util.Optional;
  *   <li>本服务从**新的 head** 读 sd 切片，取该决策人**当前**绑定的 provider（{@link DecisionMaker#providerId()}）， 由
  *       {@link LlmProviderResolver#adjudicatorFor} 装配裁决器；
  *   <li>按**世界状态选断点**跑判决（见下"战斗不是前提"）；
- *   <li>判决经 {@link AdjudicatorRunner} 折成 {@code sd.SubmitVerdict} 落成**真 revision**（N7：回放不重跑 LLM）。
+ *   <li>判决经 {@link AdjudicatorRunner} 折成 {@code ga.SubmitVerdict} 落成**真 revision**（N7：回放不重跑 LLM）。
  * </ol>
  *
  * <p>★ **战斗不是决策的前提**（2026-09-22 用户裁定，逐字）：「**战斗是一个状态**，**决策是随时可以做的**」⇒ 断点选择为：

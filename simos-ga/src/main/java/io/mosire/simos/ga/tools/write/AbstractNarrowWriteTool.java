@@ -26,11 +26,13 @@ import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.Command;
 import io.mosire.simos.util.state.RevisionId;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * ★★ <b>ga 工具面的窄写共同落点</b>（spec §八.3，N9）：**命令类型固定**、参数只有载荷与坐标，最终仍走命令链（铁律 2）。
@@ -234,11 +236,59 @@ public abstract class AbstractNarrowWriteTool implements AgentTool {
     Map<String, Object> args = context.arguments();
     BranchId branch = new BranchId(ToolSchema.requiredText(args, "branch"));
     RevisionId expectedRevision = new RevisionId(ToolSchema.requiredLong(args, "expectedRevision"));
-    Command command = () -> expectedRevision;
-    ToolWritePort.Receipt receipt =
-        writes.submitWithReceipt(
-            branch, command, commandType(), ToolSchema.optionalText(args, "payloadJson", "{}"));
-    return new SubmittedCommand(receipt.commandId(), receipt.outcome());
+    String payloadJson = ToolSchema.optionalText(args, "payloadJson", "{}");
+    List<ToolWritePort.Request> companions = companionRequests(context, payloadJson);
+    if (companions.isEmpty()) {
+      // ★ 绝大多数窄工具走这一支：单命令提交（与加钩子之前逐字同形，含 correlationId = commandId）。
+      Command command = () -> expectedRevision;
+      ToolWritePort.Receipt receipt =
+          writes.submitWithReceipt(branch, command, commandType(), payloadJson);
+      return new SubmittedCommand(receipt.commandId(), receipt.commandId(), receipt.outcome());
+    }
+    // ★ 带配套命令的那一支：**一批 = 一条 revision**（配套命令与主命令原子同落）。主命令恒在批内第 0 位。
+    List<ToolWritePort.Request> batch = new ArrayList<>(companions.size() + 1);
+    batch.add(new ToolWritePort.Request(commandType(), payloadJson));
+    batch.addAll(companions);
+    String correlationId = UUID.randomUUID().toString();
+    ToolWritePort.BatchReceipt receipt =
+        writes.submitBatchWithReceipt(branch, expectedRevision, batch, correlationId);
+    return new SubmittedCommand(
+        receipt.commandIds().get(0), receipt.correlationId(), primaryOutcome(receipt.outcome()));
+  }
+
+  /**
+   * ★★ <b>与本工具固定命令同批提交的"配套命令"</b>（2026-10-12 批次 3b′ 新增的钩子）。
+   *
+   * <p>★★ <b>为什么需要它</b>：一条命令 = 一个命名空间（{@code CommandBus.namespaceOf(type)} 取类型前缀）⇒ 一条命令
+   * **写不了两个切片**。而仓内既有形制里"世界事实 + 审计/INFO 条目"本来就是**同批两条命令**（{@code RejectDirectiveTool} / {@code
+   * AdjudicateTickTool} / {@code DecisionEffectExecutor} 与 army/gov/unit 十余个工具都这么做，靠 {@code
+   * submitBatchWithReceipt} 的批级 {@code branch}/{@code expectedRevision} 落**同一条 revision**）。
+   * 本钩子把那件事做成基类 的**可覆写口**：缺省返回空 ⇒ <b>单命令提交，其余窄工具一字不变</b>。
+   *
+   * <p>★ 唯一覆写者：{@code IssueDirectiveTool}（出令的执行原文条目随批次 3b′ 改由配套 {@code sd.PutInfo} 落，见该类注）。
+   *
+   * @param context 调用上下文（资源断言已过）
+   * @param payloadJson 本工具固定命令的载荷原文（**逐字节**转交；配套命令要引用它时从这里派生，不另抄一份字段知识）
+   * @return 追加在**主命令之后**的命令（保序；空 = 不追加）
+   */
+  protected List<ToolWritePort.Request> companionRequests(ToolContext context, String payloadJson) {
+    return List.of();
+  }
+
+  /**
+   * 批结局 ⇒ <b>主命令</b>（批内第 0 条）的单一结局：形态与单命令提交逐字同形，故 {@link #afterSubmit} 的折叠与 {@code
+   * TOOL_SUBMIT_RESULT} 日志的下游语义一字不改。
+   *
+   * <p>★ <b>整批被拒时取批内第 0 条</b>：批内按入参顺序**逐条**给结局 ⇒ 主命令自己被拒时，第 0 条就是它自己的拒因（与单命令
+   * 提交的拒因逐字相同）；若被拒的是配套命令，则第 0 条是"随整批复原"，而世界**一条 revision 都没落**（原子性不变）。
+   */
+  private static ToolWritePort.Outcome primaryOutcome(ToolWritePort.BatchOutcome batch) {
+    return switch (batch) {
+      case ToolWritePort.BatchOutcome.Committed committed -> committed.outcomes().get(0);
+      case ToolWritePort.BatchOutcome.Rejected rejected -> rejected.outcomes().get(0);
+      case ToolWritePort.BatchOutcome.Conflict conflict ->
+          new ToolWritePort.Outcome.Conflict(conflict.current());
+    };
   }
 
   /**
@@ -248,14 +298,17 @@ public abstract class AbstractNarrowWriteTool implements AgentTool {
    * `execute` 是 {@code final} ⇒ 子类不可能绕过署名判定/资源断言/错误折叠这三段，只能从这一个明写的口子往下接。
    */
   protected ToolResult afterSubmit(ToolContext context, SubmittedCommand submitted) {
-    return ToolResults.fold(submitted.outcome(), submitted.commandId(), submitted.commandId());
+    return ToolResults.fold(submitted.outcome(), submitted.commandId(), submitted.correlationId());
   }
 
   /**
    * 一次提交的账。
    *
-   * @param commandId 本次提交的命令 id（装配面生成、写口回报）
+   * @param commandId 本次提交的**主命令** id（装配面生成、写口回报）
+   * @param correlationId 调用链 id：单命令提交 = {@code commandId}（与加配套命令钩子之前逐字同口径）；带配套命令的批 = 批级
+   *     id（信封与结果视图报的是同一个）
    * @param outcome 三结局（committed / conflict / rejected）
    */
-  protected record SubmittedCommand(String commandId, ToolWritePort.Outcome outcome) {}
+  protected record SubmittedCommand(
+      String commandId, String correlationId, ToolWritePort.Outcome outcome) {}
 }

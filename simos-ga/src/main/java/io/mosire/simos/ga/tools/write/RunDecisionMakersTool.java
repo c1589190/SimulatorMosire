@@ -63,7 +63,7 @@ import java.util.concurrent.ThreadFactory;
  * </ol>
  *
  * <p>★★ <b>触发事实与运行轮分开记</b>：触发批只落 {@code sd.RunDecision}（每条 = 一条 {@code sd.InfoEntry}）；决策人这一轮的产出仍走
- * 运行流内部的既有链路（{@code sd.IssueDirective} 等，含人工审批）——本工具<b>不</b>在这里提交 {@code sd.IssueDirective}
+ * 运行流内部的既有链路（{@code ga.IssueDirective} 等，含人工审批）——本工具<b>不</b>在这里提交 {@code ga.IssueDirective}
  * 或任何其他命令。运行轮各自产生的世界写入各自带 revision，本工具不汇总 revision 数。
  *
  * <p>★★ <b>并发与幂等</b>：本工具不做跨调用锁、不做自动重试。GM 并发对同一 DM 触发两次时，触发命令的 sd 语义与 {@code submitBatch}
@@ -139,7 +139,7 @@ public final class RunDecisionMakersTool implements SimosTool {
         + "preview=false：先同批提交 N 条 sd.RunDecision 触发事实（批成功恰一条 revision；批拒/冲突均零 revision、"
         + "逐条真因、不跑 LLM），成功后按名单顺序（concurrency=1）或并发（concurrency>1）调用决策人运行流跑真轮，返回逐人 "
         + "{decisionMakerId,status,finalText,llmCalls,toolCalls,conversationId,...}；continueOnError=false 时首个失败后停止并给 "
-        + "stoppedAfter。本工具不做跨调用锁、不做自动重试，也不在这里提交 sd.IssueDirective/其他命令"
+        + "stoppedAfter。本工具不做跨调用锁、不做自动重试，也不在这里提交 ga.IssueDirective/其他命令"
         + "（决策人轮内的产出仍走既有链路与人工审批）。";
   }
 

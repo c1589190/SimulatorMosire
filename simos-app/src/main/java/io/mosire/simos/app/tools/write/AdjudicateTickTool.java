@@ -26,6 +26,7 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.ga.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.hex.HexCoord;
@@ -37,7 +38,6 @@ import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
-import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
@@ -77,7 +77,7 @@ import java.util.UUID;
  * <p>★★ **第 4 条的口径 = 「范围函数 ∩ accessLimit」，不是"只判 accessLimit"**（第 3 波第 2 步的裁定）：只判 {@code
  * accessLimit} 在默认配置下**等于没判**（{@link io.mosire.simos.sd.model.AccessLimit#empty()} 的语义是"不收紧"）⇒
  * 与本意"不能越权"直接相反。故本类用 {@link DecisionCallerFactory#resourceScopesFor}——它是「范围函数 ∩ {@code
- * narrowTo(accessLimit)}」的**唯一装配点**，也正是**该决策人自己发 {@code sd.IssueDirective} 时被授权用的那一份权威** ⇒
+ * narrowTo(accessLimit)}」的**唯一装配点**，也正是**该决策人自己发 {@code ga.IssueDirective} 时被授权用的那一份权威** ⇒
  * **不引入第二份真相**。
  *
  * <p>★★ **"这条命令要动谁"从哪来**：{@link CommandTargets}（新契约）——由**各域 handler 自己实现**，
@@ -86,7 +86,7 @@ import java.util.UUID;
  *
  * <p>★★ **一条 revision 是怎么落成的（本类最绕、也最关键的一段）**：决策结果必须写进**同一批**（写成两条 revision 就破了"一个 tick
  * 一条"），而决策结果的内容**要等批的结局才知道**（哪条被 handler 拒了）。故组批 = **〔过检命令…〕+〔本 tick 每条令一条 {@code
- * sd.SetDirectiveStatus}：状态翻转〕+〔一条 {@code sd.PutInfo}：本次裁决的决策结果〕**，跑一个**收敛循环**：
+ * ga.SetDirectiveStatus}：状态翻转〕+〔一条 {@code sd.PutInfo}：本次裁决的决策结果〕**，跑一个**收敛循环**：
  *
  * <ul>
  *   <li>{@link BatchResult.Committed} ⇒ 成了。这一条 revision 里**同时**含"被接受的命令""每条令的状态翻转"与"这份决策结果"；
@@ -96,7 +96,7 @@ import java.util.UUID;
  * </ul>
  *
  * <p>★★ **状态翻转（第 3 波最后一块）**：本 tick **每条参与裁决的令**（见 {@link #directivesAt}：被重写顶掉的 {@code SUPERSEDED}
- * 与被打回的 {@code CANCELLED} **不参与**）在同批里带一条 {@code sd.SetDirectiveStatus}——该令的命令**全部被接受** ⇒ {@code
+ * 与被打回的 {@code CANCELLED} **不参与**）在同批里带一条 {@code ga.SetDirectiveStatus}——该令的命令**全部被接受** ⇒ {@code
  * EXECUTED}，**有任一被剔除/被拒** ⇒ {@code CANCELLED}。翻转目标是**本轮步骤表**的函数（命令被剔 ⇒ 下一轮重算成 {@code
  * CANCELLED}），故与"被剔命令不进批"同一次修订收敛。翻转**自己也受转移守卫**（{@code ISSUED → 终态}）：它若被拒（并发 / 前置状态不对），走**同一条**
  * 收敛逻辑——剔出 + 拒因写进决策结果的 {@code flips}，**不静默吞掉**。
@@ -121,7 +121,7 @@ import java.util.UUID;
 public final class AdjudicateTickTool implements SimosTool {
 
   /**
-   * 工具名（全局唯一）。★ 它**不是**一条已注册的命令类型 ⇒ 不登记进 {@code PAYLOAD_HINTS}（它内部用的 {@code sd.SetDirectiveStatus}
+   * 工具名（全局唯一）。★ 它**不是**一条已注册的命令类型 ⇒ 不登记进 {@code PAYLOAD_HINTS}（它内部用的 {@code ga.SetDirectiveStatus}
    * 才是命令类型，由 {@code Shell} 注册）。
    */
   public static final String NAME = "sd.AdjudicateTick";
@@ -340,7 +340,7 @@ public final class AdjudicateTickTool implements SimosTool {
   private ToolResult adjudicate(
       StateRef base, String adjudicationId, long tick, SimulationState state) {
     SdState sd = ToolSupport.sdState(state);
-    List<Directive> directives = directivesAt(sd, tick);
+    List<Directive> directives = directivesAt(ToolSupport.gaState(state).directives(), tick);
     if (directives.isEmpty()) {
       // ★ **明确拒绝，不静默成功**：空 tick 裁决成"什么都没发生"会让调用方以为结算过了。
       return ToolResult.error("REJECTED", "tick " + tick + " 里没有任何决策人的令，无可裁决");
@@ -349,7 +349,8 @@ public final class AdjudicateTickTool implements SimosTool {
     List<Step> steps = new ArrayList<>();
     for (Directive directive : directives) {
       DecisionMaker maker = sd.decisionMakers().get(directive.decisionMakerId());
-      // 引用完整性由 SdState 的构造期不变量保证；这里只做防御（不编"决策人不存在"之外的语义）。
+      // ★ 2026-10-12 批次 3b′：令对决策人的外键成了**跨切片**的（令住 ga、决策人住 sd）⇒ 状态期不再判它，这里只做防御
+      //   （不编"决策人不存在"之外的语义；写入侧由 ga.IssueDirective 的命令期判据把守）。
       ResourceScopeMap fence =
           maker == null
               ? ResourceScopeMap.empty()
@@ -455,9 +456,9 @@ public final class AdjudicateTickTool implements SimosTool {
    * <p>★ 判别力：把本方法改回"只按 tick 取全部令"，重写后**旧版的命令也会进批**（两条都生效）⇒ {@code
    * AdjudicateTickToolTest.onlyTheLatestVersionOfARewrittenDirectiveIsAdjudicated} 当场红。
    */
-  private static List<Directive> directivesAt(SdState sd, long tick) {
+  private static List<Directive> directivesAt(Map<DirectiveId, Directive> directives, long tick) {
     List<Directive> out = new ArrayList<>();
-    for (Directive directive : sd.directives().values()) {
+    for (Directive directive : directives.values()) {
       if (directive.tick() == tick && participatesInAdjudication(directive.status())) {
         out.add(directive);
       }
@@ -721,7 +722,7 @@ public final class AdjudicateTickTool implements SimosTool {
   }
 
   /**
-   * 一条**状态翻转**命令的信封（{@code sd.SetDirectiveStatus}）：把该令翻到 {@link Flip#target}。
+   * 一条**状态翻转**命令的信封（{@code ga.SetDirectiveStatus}）：把该令翻到 {@link Flip#target}。
    *
    * <p>★ {@code initiator} 用**本工具的 initiator**（GM 的裁决动作），**不是**出令决策人——翻转是裁决的产物，不是决策人自己下的命令 （尤其
    * {@code CANCELLED} 是"它的命令被拒"的结果，挂它名下会误导）。{@code correlationId} 与同批其余命令一致 = 本次裁决 id。
@@ -1004,7 +1005,7 @@ public final class AdjudicateTickTool implements SimosTool {
   }
 
   /**
-   * 本 tick 一条令的状态翻转（{@code sd.SetDirectiveStatus}）：目标在每轮按步骤表重算，{@code reason} 非 null ⇔ 该翻转**自己被拒**。
+   * 本 tick 一条令的状态翻转（{@code ga.SetDirectiveStatus}）：目标在每轮按步骤表重算，{@code reason} 非 null ⇔ 该翻转**自己被拒**。
    *
    * <p>★ 与 {@link Step} 的差别：Step 的信封在建表时定死（预检拒则 null），Flip 的信封**每轮现拼**（因为目标态可能随命令被剔而变）。
    */

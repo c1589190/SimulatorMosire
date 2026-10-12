@@ -5,6 +5,7 @@ import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.SdInfoId;
 import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.Affiliation;
@@ -51,7 +52,12 @@ import java.util.Set;
  *       sd.CreateDecisionMaker} 的 {@code affiliation}：{@code {"kind":"nation"|"army","id":"…"}}）。
  *       它与 {@code tags} 是**并集**关系，判定不在本层（见 {@code RedactingQueryService#docs}）；
  *   <li>{@code tick} 缺席 ⇒ **世界当前 tick**（第 3 波第 1 步的既有行为，向后兼容）；给了 ⇒ 用它，但 **不得记在未来** （{@code > 世界
- *       tick} ⇒ 拒，与 {@code IssueDirectiveHandler} 同口径）。**过去合法**（补记/滞后）。
+ *       tick} ⇒ 拒，与 {@code ga.IssueDirective} 同口径）。**过去合法**（补记/滞后）；
+ *   <li>{@code sourceDirective}（2026-10-12 批次 3b′ 新增的**可选**字段）缺席 ⇒ {@link
+ *       SdInfoEntry#sourceDirective()} 为 空（旧调用一字不变）；给了 ⇒ 解析成 {@link DirectiveId}
+ *       写进去。它是<b>出令执行原文</b>的配套字段：{@code ga.IssueDirective} 搬出 sd
+ *       后，那条执行原文条目改由**同批的第二条命令**（本命令）落，靠这个字段与令挂钩（生产者在 {@code DirectiveIntentInfo}；读侧是 {@code
+ *       SdQueryService}）。★ 本命令**不**校验该令是否存在（它只认形状，与 {@code tags} 同口径）。
  * </ul>
  *
  * <p>★ 诚实边界（spec §六 + M4 裁定 38 同口径）：{@code SdInfoEntry.value} 是**裸 {@code Object}**，结构化值的 {@code
@@ -91,6 +97,9 @@ public final class PutInfoHandler implements CommandHandler {
       Set<Affiliation> affiliations = SdPayloads.optionalAffiliationSet(payload, "affiliations");
       Optional<AdjudicationStatus> adjudicationStatus = parseAdjudicationStatus(payload);
       Optional<SdInfoId> explicitId = SdPayloads.optionalText(payload, "id").map(SdInfoId::parse);
+      // ★ 可选来源引用（批次 3b′）：出令执行原文条目靠它挂回那条令（见类注）。
+      Optional<DirectiveId> sourceDirective =
+          SdPayloads.optionalText(payload, "sourceDirective").map(DirectiveId::parse);
       RevisionId at = state.meta().ref().revision();
       long worldTick = state.meta().timestamp().tick();
       // ★ 可选 tick（第 3 波第 2 步）：缺省 = 世界当前 tick（**向后兼容**，旧调用一字不变）；显式给 = 用它。
@@ -136,7 +145,7 @@ public final class PutInfoHandler implements CommandHandler {
               value,
               note,
               at,
-              Optional.empty(),
+              sourceDirective,
               adjudicationStatus);
       entries.add(entry);
       next.put(mapKey, List.copyOf(entries));

@@ -192,7 +192,7 @@ public final class GuiServer implements AutoCloseable {
    * **「让它跑一轮」窄写面**：{@code POST /api/sd/run-decision}——命令类型固定为 {@code sd.RunDecision}，用户路径
    * **直接生效**（与 {@code /api/sd/start-decision} 同制；GM Agent 走 MCP 窄工具的那条才过审批门链）。
    *
-   * <p>★★ **但这一轮的内部不是无审批的**：决策人自己出的令（{@code sd.IssueDirective}）是敏感写 ⇒ 它各自进一次审批门链， 而审批是**阻塞等待**（上限 =
+   * <p>★★ **但这一轮的内部不是无审批的**：决策人自己出的令（{@code ga.IssueDirective}）是敏感写 ⇒ 它各自进一次审批门链， 而审批是**阻塞等待**（上限 =
    * 壳的 {@code APPROVAL_TIMEOUT}）⇒ 本请求会在那里停住。界面必须显示"正在跑 / 可能在等审批"， **不能表现得像卡死**（前端 {@code panels.js}
    * 的 runDecision 状态行就是为这条写的）。
    */
@@ -1806,7 +1806,7 @@ public final class GuiServer implements AutoCloseable {
    * / {@code failed}）。理由：它们是**两件不同的事实**——把"这一轮没跑成"折成 4xx/5xx 会让调用方读成
    * "什么都没发生"，而触发事实**已经在盘上了**（可回放、AAR 看得见）。这与 {@code ApiViews} 的"不省字段、调用方一次判空" 同口径。
    *
-   * <p>★ **这一轮可能阻塞**：决策人若出令（{@code sd.IssueDirective} 是敏感写），那一次工具调用会**等审批** （上限 = 壳的 {@code
+   * <p>★ **这一轮可能阻塞**：决策人若出令（{@code ga.IssueDirective} 是敏感写），那一次工具调用会**等审批** （上限 = 壳的 {@code
    * APPROVAL_TIMEOUT}）⇒ 本请求停在那里。前端因此必须显示"正在跑 / 可能在等审批"。
    *
    * <p>★★ **2026-09-24（E4）：同一决策人已有一轮活着在跑 ⇒ 明确拒绝（422）**，理由可读、**不覆盖**上一轮的账。策略选"拒绝"而不是 "排队"，理由见 {@link

@@ -434,7 +434,7 @@
       "正在跑一轮：" + id + "（已 " + seconds + "s）· 第 " + valueOrDash(status && status.llmCalls) +
       " 轮 LLM · 已调 " + calls + " 次工具" +
       (calls ? "（最近 " + lastToolName(status) + "）" : "") +
-      "——若它出令（sd.IssueDirective），会在审批栏等审批（右下方通知栏 / 「审批」子页）"
+      "——若它出令（ga.IssueDirective），会在审批栏等审批（右下方通知栏 / 「审批」子页）"
     );
   }
 

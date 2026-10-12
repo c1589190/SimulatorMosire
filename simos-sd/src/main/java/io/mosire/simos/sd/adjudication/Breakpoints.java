@@ -23,11 +23,11 @@ import java.util.Optional;
  *       不是决策的前提**」 ⇒ 无战斗时决策照样可做，此时对**决策人本人**裁决（判决产物是决策记录文本）；战斗/情报只是判决的**输入**。
  * </ul>
  *
- * <p>★ **D2 为何也产判决**：spec §八.2 的 D2 行把它记为"出令"（最终落 {@code sd.IssueDirective}）。但按**三件事模型**
+ * <p>★ **D2 为何也产判决**：spec §八.2 的 D2 行把它记为"出令"（最终落 {@code ga.IssueDirective}）。但按**三件事模型**
  * （「建议」≠「开始决策」≠「决策人出令」）， 「开始决策」触发的是**判决**（数据、落 revision、可回放），出令是**另一条**命令。故本类把 D2 的**判决记录**纳入
- * 判决面（subject = 决策人），出令仍走 {@code sd.IssueDirective}——两条路互不占名额（R4 的**末位生效名额**归后者）。
+ * 判决面（subject = 决策人），出令仍走 {@code ga.IssueDirective}——两条路互不占名额（R4 的**末位生效名额**归后者）。
  *
- * <p>★ **D4/D5/D7/D8 不产判决**：它们的产出是**草案**，按 D7 的既定口径由决策 Agent / 人经 {@code sd.IssueDirective} 发出。
+ * <p>★ **D4/D5/D7/D8 不产判决**：它们的产出是**草案**，按 D7 的既定口径由决策 Agent / 人经 {@code ga.IssueDirective} 发出。
  */
 public final class Breakpoints {
 
@@ -75,7 +75,7 @@ public final class Breakpoints {
     return false;
   }
 
-  /** 该断点是否产出判决（决定能否经 {@code sd.SubmitVerdict} 落盘）。 */
+  /** 该断点是否产出判决（决定能否经 {@code ga.SubmitVerdict} 落盘）。 */
   public static boolean producesVerdict(AdjudicationBreakpoint breakpoint) {
     return COMBAT_VERDICT_BREAKPOINTS.contains(breakpoint)
         || DECISION_VERDICT_BREAKPOINTS.contains(breakpoint);

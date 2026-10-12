@@ -32,7 +32,7 @@ import java.util.Optional;
  *   <li>{@code text} 必填非空白：自然语言描述；**谈判/联动裁决的状态就记在这里**（D-005），对同一 (from,to) 再调一次就是
  *       **更新**（upsert，不新增第二条边）；
  *   <li>{@code tick} 可选，缺省 = 世界当前 tick；**不得记在未来**（{@code > 世界 tick} ⇒ 拒，与 {@code sd.PutInfo}/{@code
- *       sd.IssueDirective} 同口径）；过去合法（补记/滞后），存进 {@code updatedTick}。
+ *       ga.IssueDirective} 同口径）；过去合法（补记/滞后），存进 {@code updatedTick}。
  * </ul>
  *
  * <p>★ **不在 DM 两面**（不打 {@code DmUsableCommand}）：命令本身不做调用者身份判定——"不许以别国名义写"由**决策人窄工具**的 signature

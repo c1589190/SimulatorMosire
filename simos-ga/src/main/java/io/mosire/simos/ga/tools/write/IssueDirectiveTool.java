@@ -11,21 +11,30 @@ import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.sd.spi.DecisionSignature;
+import io.mosire.simos.sd.spi.DirectiveIntentInfo;
+import io.mosire.simos.sd.spi.PutInfoHandler;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code sd.IssueDirective} 窄工具（spec §八.3，N9）：决策人出令的**唯一**写面。
+ * {@code ga.IssueDirective} 窄工具（spec §八.3，N9）：决策人出令的**唯一**写面。
  *
  * <p>★ **资源声明 = sd 域的自己那一块**（T10）：出令是**决策行为**，不是"直接改地图/单位数据"（用户 2026-09-22 原话
- * 「决策人不能直接改地图等数据」——下指令是它的本职，spec §2.2 把这条放进决策人白名单就是这条意思）。故它
+ * 「决策人不能直接改地图/单位数据」——下指令是它的本职，spec §2.2 把这条放进决策人白名单就是这条意思）。故它
  * **不复用**基类缺省的三命名空间粗断言：那条在受限调用者身上会**整调拒掉**（粗断言撞细围栏，T5-T8 实测发现 1）。
+ *
+ * <p>★★ <b>本工具一次提交<b>两条</b>命令（同批 = 同一条 revision）</b>（2026-10-12 批次 3b′，见 {@link
+ * AbstractNarrowWriteTool#companionRequests}）：① 主命令 {@code ga.IssueDirective}（令落 {@code
+ * GaState.directives}）；② 配套命令 {@code sd.PutInfo}（出令的**执行原文**条目落 sd INFO 覆盖层 {@code
+ * sd:directive.<id>}）。<b>为什么必须两条</b>：一条命令 = 一个命名空间（{@code CommandBus.namespaceOf} 取类型前缀）⇒ 令搬进
+ * {@code ga} 之后，同一个 handler 再也写不了仍住 sd 的 {@code info} 表；而执行原文的落点本批不搬（{@code info} 属批次 3b）。配套载荷由
+ * {@link DirectiveIntentInfo} 从**同一份出令载荷**派生（地址/键/来源引用的唯一拼写点在那里），故字段知识没有第二份。
  */
 public final class IssueDirectiveTool extends AbstractNarrowWriteTool implements SimosTool {
 
-  public static final String NAME = "sd.IssueDirective";
+  public static final String NAME = "ga.IssueDirective";
 
   /**
    * 本工具只碰 sd 命名空间（前置闸据此判"够不够得着这个工具的声明面"）。
@@ -58,7 +67,8 @@ public final class IssueDirectiveTool extends AbstractNarrowWriteTool implements
 
   @Override
   public String description() {
-    return "决策人出令：固定 sd.IssueDirective，载荷 {directiveId, decisionMakerId, tick, target?, intentInfo, commands[], effects[]?}";
+    return "决策人出令：固定 ga.IssueDirective，载荷 {directiveId, decisionMakerId, tick, target?, intentInfo,"
+        + " commands[], effects[]?}（同批另落一条 sd.PutInfo 记执行原文）";
   }
 
   @Override
@@ -84,6 +94,25 @@ public final class IssueDirectiveTool extends AbstractNarrowWriteTool implements
     return DecisionSignature.violation(
         identity().decisionMakerIdOf(context.identity()),
         ToolSchema.optionalText(context.arguments(), "payloadJson", "{}"));
+  }
+
+  /**
+   * ★★ <b>配套命令：出令执行原文条目</b>（同批第二条，见类注）。
+   *
+   * <p>★ 载荷由 {@link DirectiveIntentInfo#putInfoPayloadJson} 从**同一份出令载荷**派生（地址 {@code
+   * sd:directive.<id>}、 key {@code intent}、value {@code intentInfo}、tags 决策人、tick、{@code
+   * sourceDirective}）。派生不出（载荷缺字段 / id 拼不出合法地址）⇒
+   * <b>不追加</b>：主命令照落并自己给出具名拒因（不在这里改判据，也不让一条本该能落的令因配套条目而整批被拒）。
+   *
+   * <p>★ <b>顺序 = 主命令在前</b>（{@link AbstractNarrowWriteTool#submit} 固定把主命令放批内第 0 位）：拒因与结果视图都以主命令为准。
+   */
+  @Override
+  protected List<ToolWritePort.Request> companionRequests(ToolContext context, String payloadJson) {
+    return DirectiveIntentInfo.putInfoPayloadJson(payloadJson)
+        .map(
+            putInfoPayload ->
+                List.of(new ToolWritePort.Request(PutInfoHandler.TYPE, putInfoPayload)))
+        .orElseGet(List::of);
   }
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */

@@ -33,9 +33,9 @@ import java.util.Objects;
  *
  * <p>★ **执行上浮**（N10）：真实 key / 超时 / 重试在注入的 {@code LlmClient} 实现里；测试注 Fake 即完全离线。
  *
- * <p>★ v1 落点：**产判决**的断点经 {@code sd.SubmitVerdict} 自动落盘——战斗判决 D1/D3/D6（主体 {@code sd:combat.*}）+ 决策判决
+ * <p>★ v1 落点：**产判决**的断点经 {@code ga.SubmitVerdict} 自动落盘——战斗判决 D1/D3/D6（主体 {@code sd:combat.*}）+ 决策判决
  * D2（主体 {@code sd:decision-maker.*}，无战斗时的决策记录）；其余断点（D4/D5/D7/D8）的接受草案返回给调用方， 由决策 Agent / 人经 {@code
- * sd.IssueDirective} 走同一路径发出（不在此自动落盘——那需要额外的草稿→指令装配）。
+ * ga.IssueDirective} 走同一路径发出（不在此自动落盘——那需要额外的草稿→指令装配）。
  */
 public final class AdjudicatorRunner {
 
@@ -137,7 +137,7 @@ public final class AdjudicatorRunner {
                 INITIATOR,
                 branch,
                 new RevisionId(expectedRevision),
-                "sd.SubmitVerdict",
+                "ga.SubmitVerdict",
                 toJson(root)));
     if (result instanceof CommandResult.Committed committed) {
       return committed.ref().revision().value();

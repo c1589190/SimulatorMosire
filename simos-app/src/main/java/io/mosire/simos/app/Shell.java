@@ -106,7 +106,11 @@ import io.mosire.simos.ga.command.CommandFaces;
 import io.mosire.simos.ga.command.CommandPermissionRules;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.spi.DecideDecisionPacketHandler;
+import io.mosire.simos.ga.spi.GaDirectiveLookup;
+import io.mosire.simos.ga.spi.IssueDirectiveHandler;
+import io.mosire.simos.ga.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.ga.spi.SubmitDecisionPacketHandler;
+import io.mosire.simos.ga.spi.SubmitVerdictHandler;
 import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.spi.UpsertMergedEffectPlanHandler;
 import io.mosire.simos.ga.tools.GmAutoApproveGate;
@@ -146,7 +150,6 @@ import io.mosire.simos.sd.spi.CreateNationHandler;
 import io.mosire.simos.sd.spi.DeleteDecisionMakerHandler;
 import io.mosire.simos.sd.spi.DeleteNationHandler;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
-import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
 import io.mosire.simos.sd.spi.RecordDiplomaticEventHandler;
@@ -157,10 +160,8 @@ import io.mosire.simos.sd.spi.SetArmyMasterGovHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler;
 import io.mosire.simos.sd.spi.SetDiplomaticRelationHandler;
-import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
 import io.mosire.simos.sd.spi.StartDecisionHandler;
-import io.mosire.simos.sd.spi.SubmitVerdictHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -537,6 +538,10 @@ public final class Shell implements AutoCloseable {
       coreSimos.register(codec);
     }
 
+    // ★★ 2026-10-12 批次 3b′：`directives` 表住 ga，而 sd 侧两处（SdResolver 的 `sd:directive.<id>` 存在性、
+    //   DeleteDecisionMakerHandler 的"仍被历史 Directive 引用"守卫）仍要读它 ⇒ 只读口在 sd、实现在 ga、
+    //   装配在这里注入（sd 不得依赖 ga，见 DirectiveLookup 类注）。
+    GaDirectiveLookup directiveLookup = new GaDirectiveLookup();
     List<CommandHandler> handlers =
         new ArrayList<>(
             List.of(
@@ -832,7 +837,7 @@ public final class Shell implements AutoCloseable {
                 new TransferAccountsHandler(),
                 // ── R3a（2026-10-01 行政区划修复计划 §1.3）：actor.RemitGovTreasury —— 显式 GOV 国库上缴 /
                 //   任意两个 GOV 单位之间转移（整条原子；只动 accounts）。★ **打 DmUsableCommand**：省份决策人可嵌进
-                //   sd.IssueDirective；targetPaths 返回源/目标两个 actor 格路径（决策 scope 在 R3b 贯通）。
+                //   ga.IssueDirective；targetPaths 返回源/目标两个 actor 格路径（决策 scope 在 R3b 贯通）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes；同时进 commandTypes ⇒ CommandTargets 同源认得它。──
                 new RemitGovTreasuryHandler(),
                 // ── P1b1（2026-10-01）：GM-only 区域 actor 账本清空（目标格账本 + 清账后不再持有账户的主体）。──
@@ -850,7 +855,7 @@ public final class Shell implements AutoCloseable {
                 // ── P1b2（2026-10-01）：GM-only 决策人身份删除（只删 decisionMakers 的一条；不级联历史 Directive /
                 //   文档 / 会话）。不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM
                 // 直接提交照常可用。──
-                new DeleteDecisionMakerHandler(),
+                new DeleteDecisionMakerHandler(directiveLookup),
                 new PutInfoHandler(),
                 // ★★ D2（2026-10-22 决策包计划）：三条决策包命令——整包 upsert（propose/intent）、提交、GM 裁决。
                 //   都**不**打 {@code DmUsableCommand} ⇒ 仅 GM（Upsert/Submit 由决策人工具内部提交；Decide 只被 GM
@@ -878,7 +883,7 @@ public final class Shell implements AutoCloseable {
                 new CancelEffectHandler(),
                 new StartDecisionHandler(),
                 new RunDecisionHandler(),
-                // ★ 第 3 波最后一块：裁决用的状态翻转命令（sd.SetDirectiveStatus）。它不是对外窄工具——
+                // ★ 第 3 波最后一块：裁决用的状态翻转命令（ga.SetDirectiveStatus）。它不是对外窄工具——
                 //   由 sd.AdjudicateTick 内部编排产生；注册在此是为了它在批里能被 CommandBus 路由到。
                 new SetDirectiveStatusHandler(),
                 // ★★ D1（2026-10-02 / D-012）：army 切片的第一条命令（写一条单 tick 单场交战记录）。★ 不
@@ -972,7 +977,7 @@ public final class Shell implements AutoCloseable {
     resolverRegistry.register(new MapResolver());
     resolverRegistry.register(new SocialResolver());
     resolverRegistry.register(new UnitResolver());
-    resolverRegistry.register(new SdResolver());
+    resolverRegistry.register(new SdResolver(directiveLookup));
     // ★ R2a：economy 自己的地址解析器（economy:<mapId>[:industry.<id> | :debt.<id> | :class.<i>.<s> |
     // :flow.<i>.<s>]）。
     resolverRegistry.register(new EconomyResolver());

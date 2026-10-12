@@ -34,8 +34,12 @@ public final class ChannelAdmission {
    * io.mosire.simos.ga.command.CommandPermissionRules.resolve(...)}，由规则层审计"这两条**是注册面成员**且 **不是 DM
    * 可用命令**（落点本身不能被嵌进令）。⇒ 命令改名（例如批次 3 把决策族搬出 sd）会**在装配期当场炸**， 而不是留下一个
    * "永远拒所有决策提交"的静默缺口。拒绝的实现在本类（模块侧强制），规则层不替它判。
+   *
+   * <p>★★ <b>2026-10-12 批次 3b′：两条落点随决策族一起改名 {@code sd.* → ga.*}</b>（令与判决两张表搬进 {@code
+   * simos-ga}；一条命令的变更集由类型**前缀**决定喂给哪个 codec ⇒ 名字与切片的绑定是硬约束）。<b>面本身仍是这两条、仍在 {@code ChannelAdmission}
+   * 里强制</b>——变的只有字符串，两条命令都**不打** {@code DmUsableCommand}（落点不得可嵌令/入队）。
    */
-  public static final Set<String> LANDING_POINTS = Set.of("sd.IssueDirective", "sd.SubmitVerdict");
+  public static final Set<String> LANDING_POINTS = Set.of("ga.IssueDirective", "ga.SubmitVerdict");
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
@@ -81,7 +85,7 @@ public final class ChannelAdmission {
                   "reason",
                   "landing-point-not-allowed"));
       throw new IllegalArgumentException(
-          "决策只能落在 sd.IssueDirective / sd.SubmitVerdict（R9）: " + commandType);
+          "决策只能落在 ga.IssueDirective / ga.SubmitVerdict（R9）: " + commandType);
     }
   }
 

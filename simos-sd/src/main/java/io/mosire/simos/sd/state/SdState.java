@@ -7,11 +7,9 @@ import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
-import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
 import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
@@ -20,20 +18,15 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DiplomaticEvent;
 import io.mosire.simos.sd.model.DiplomaticRelation;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
-import io.mosire.simos.sd.model.Directive;
-import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.Effect;
 import io.mosire.simos.sd.model.LossRecord;
 import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.model.OutcomeOption;
 import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.Verdict;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * sd 模块的完整状态树（spec §三.1，铁律 5 的"完整状态类型"）。
@@ -43,15 +36,27 @@ import java.util.Set;
  * 记入台账取代说明。
  *
  * <p>★★ <b>2026-10-12 批次 3a：本树由 14 个组件收为 12 个</b>——{@code decisionPackets}（一决策人 × 一 tick 一个包）与
- * {@code mergedEffectPlans}（合并效果集）<b>整表搬进 {@code simos-ga}</b>（{@code GaState} 的两组件 + {@code
- * GaCodec}，命名空间 {@code "ga"}；用户裁定「sd 整个弃用」「ga 应当维护标准的一般决策人……储存可以交给 Core」）。 相应的四条命令改名 {@code sd.* →
- * ga.*}，handler 随表迁入 {@code simos-ga}。★ <b>值类型仍住本模块</b>（{@code DecisionPacket} / {@code
- * MergedEffectPlan} / 两个 id）：它们仍被 sd 的其余组件与 sd 的测试引用，而 {@code sd} 不得依赖 {@code ga}（成环）⇒ 反向引用是既有的
+ * {@code mergedEffectPlans}（合并效果集）<b>整表搬进 {@code simos-ga}</b>（{@code GaState} + {@code GaCodec}，
+ * 命名空间 {@code "ga"}）。<b>本批（3b′）：再收为 10 个</b>——{@code directives}（决策记录）与 {@code verdicts}（判决） 同样整表搬进
+ * {@code simos-ga}（{@code GaState} 的第 3/4 组件），相应的三条命令改名 {@code sd.* → ga.*}、handler 随表迁入 {@code
+ * simos-ga}。
+ *
+ * <p>★★ <b>随表搬走的两条构造期不变量（不是删除，是换家）</b>：① "同一 (决策人, tick) 至多一条生效令"（R4 末位生效）；② "{@code
+ * Directive.verdict()} 指向的判决必须存在"。两条都只依赖那两张表 ⇒ 整条搬进 {@link io.mosire.simos.ga.GaState}
+ * 的构造期。<b>收窄的那条（如实记）</b>：{@code Directive} 对 {@code decisionMakers} / {@code effects} 的外键此后是
+ * <b>跨切片</b>的（铁律 3：ga 不拥有这两张表）⇒ 状态期判不了，改由 <b>命令期</b>判（{@code ga.IssueDirective} 逐条校验决策人与效果存在）。
+ * 读取这两张表的两处 sd 侧调用点（{@code SdResolver} 的 {@code sd:directive.<id>}、{@code
+ * DeleteDecisionMakerHandler} 的 "不级联"守卫）经注入的 {@link io.mosire.simos.sd.spi.DirectiveLookup} 读 ga
+ * 切片（sd 不得依赖 ga ⇒ 端口注入）。
+ *
+ * <p>★ <b>值类型仍住本模块</b>（{@code Directive} / {@code Verdict} 及其 id、{@code DecisionPacket} / {@code
+ * MergedEffectPlan} 及其 id）：它们仍被 sd 的其余组件与 sd 的测试引用，而 {@code sd} 不得依赖 {@code ga}（成环）⇒ 反向引用是既有的
  * {@code ga → sd} 方向。
  *
- * <p>★ **12 个组件与 {@link io.mosire.simos.sd.change.SdChangeSet} 的 12 个组件一一对应**（铁律 5）：任何新增组件都要同时进变更集，
+ * <p>★ **10 个组件与 {@link io.mosire.simos.sd.change.SdChangeSet} 的 10 个组件一一对应**（铁律 5）：任何新增组件都要同时进变更集，
  * 由 {@code SdRoundTripTest} 的反射枚举把守。★ D5（2026-10-02 / R6）新增两个：{@code diplomaticRelations}（D-003
- * 有向边） 与 {@code diplomaticEvents}（D-005 多国谈判逐 tick 记录）；★★ D2（2026-10-22 决策包计划）曾新增的两个已随批次 3a 搬走（见上）。
+ * 有向边） 与 {@code diplomaticEvents}（D-005 多国谈判逐 tick 记录）；★★ D2（2026-10-22 决策包计划）曾新增的两个、以及 {@code
+ * directives}/{@code verdicts} 两个，已分别随批次 3a / 3b′ 搬走（见上）。
  *
  * <p>★ **两张表的键都保序不可变**（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**禁用** {@code
  * Map.copyOf} ——迭代序不是内容的纯函数，M2 Task 5 实测）。冻结那一步**写在赋值处**（SpotBugs 的 {@code EI_EXPOSE_REP}
@@ -68,9 +73,7 @@ public record SdState(
     Map<CombatId, Combat> combats,
     Map<CombatStateId, CombatState> combatStates,
     Map<DecisionMakerId, DecisionMaker> decisionMakers,
-    Map<DirectiveId, Directive> directives,
     Map<EffectId, Effect> effects,
-    Map<VerdictId, Verdict> verdicts,
     Map<LossRecordId, LossRecord> lossRecords,
     Map<String, List<SdInfoEntry>> info,
     Map<DiplomaticRelationKey, DiplomaticRelation> diplomaticRelations,
@@ -82,9 +85,7 @@ public record SdState(
     combats = Collections.unmodifiableMap(copyOf(combats, "combats"));
     combatStates = Collections.unmodifiableMap(copyOf(combatStates, "combatStates"));
     decisionMakers = Collections.unmodifiableMap(copyOf(decisionMakers, "decisionMakers"));
-    directives = Collections.unmodifiableMap(copyOf(directives, "directives"));
     effects = Collections.unmodifiableMap(copyOf(effects, "effects"));
-    verdicts = Collections.unmodifiableMap(copyOf(verdicts, "verdicts"));
     lossRecords = Collections.unmodifiableMap(copyOf(lossRecords, "lossRecords"));
     info = Collections.unmodifiableMap(copyInfo(info));
     // ★ 老档兼容（D5 新增的两个组件之前落盘的快照没有这两个键）：Jackson 对缺失的 Map 绑 null
@@ -98,9 +99,7 @@ public record SdState(
     diplomaticRelations =
         Collections.unmodifiableMap(copyOf(diplomaticRelations, "diplomaticRelations"));
     diplomaticEvents = Collections.unmodifiableMap(copyOf(diplomaticEvents, "diplomaticEvents"));
-    requireAtMostOneActiveDirective(directives);
-    requireReferentialIntegrity(
-        combats, combatStates, decisionMakers, directives, effects, verdicts, lossRecords);
+    requireReferentialIntegrity(combats, combatStates, lossRecords);
     requireOutcomeConsistency(combats, combatStates);
     requireStageChains(combats);
     requireLossConsistency(combatStates, lossRecords);
@@ -110,12 +109,12 @@ public record SdState(
   public static SdState empty() {
     return new SdState(
         Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-        Map.of(), Map.of(), Map.of());
+        Map.of());
   }
 
   // ── 逐组件替换（一个组件一个 with，照 GameMap 的形制）────────────────────────────────
 
-  /** 仅替换 {@code nations}，其余 11 个组件原样。 */
+  /** 仅替换 {@code nations}，其余 9 个组件原样。 */
   public SdState withNations(Map<NationId, Nation> v) {
     return new SdState(
         v,
@@ -123,9 +122,7 @@ public record SdState(
         combats,
         combatStates,
         decisionMakers,
-        directives,
         effects,
-        verdicts,
         lossRecords,
         info,
         diplomaticRelations,
@@ -140,9 +137,7 @@ public record SdState(
         combats,
         combatStates,
         decisionMakers,
-        directives,
         effects,
-        verdicts,
         lossRecords,
         info,
         diplomaticRelations,
@@ -157,9 +152,7 @@ public record SdState(
         v,
         combatStates,
         decisionMakers,
-        directives,
         effects,
-        verdicts,
         lossRecords,
         info,
         diplomaticRelations,
@@ -174,9 +167,7 @@ public record SdState(
         combats,
         v,
         decisionMakers,
-        directives,
         effects,
-        verdicts,
         lossRecords,
         info,
         diplomaticRelations,
@@ -191,26 +182,7 @@ public record SdState(
         combats,
         combatStates,
         v,
-        directives,
         effects,
-        verdicts,
-        lossRecords,
-        info,
-        diplomaticRelations,
-        diplomaticEvents);
-  }
-
-  /** 仅替换 {@code directives}。 */
-  public SdState withDirectives(Map<DirectiveId, Directive> v) {
-    return new SdState(
-        nations,
-        armies,
-        combats,
-        combatStates,
-        decisionMakers,
-        v,
-        effects,
-        verdicts,
         lossRecords,
         info,
         diplomaticRelations,
@@ -225,25 +197,6 @@ public record SdState(
         combats,
         combatStates,
         decisionMakers,
-        directives,
-        v,
-        verdicts,
-        lossRecords,
-        info,
-        diplomaticRelations,
-        diplomaticEvents);
-  }
-
-  /** 仅替换 {@code verdicts}。 */
-  public SdState withVerdicts(Map<VerdictId, Verdict> v) {
-    return new SdState(
-        nations,
-        armies,
-        combats,
-        combatStates,
-        decisionMakers,
-        directives,
-        effects,
         v,
         lossRecords,
         info,
@@ -259,9 +212,7 @@ public record SdState(
         combats,
         combatStates,
         decisionMakers,
-        directives,
         effects,
-        verdicts,
         v,
         info,
         diplomaticRelations,
@@ -276,9 +227,7 @@ public record SdState(
         combats,
         combatStates,
         decisionMakers,
-        directives,
         effects,
-        verdicts,
         lossRecords,
         v,
         diplomaticRelations,
@@ -293,9 +242,7 @@ public record SdState(
         combats,
         combatStates,
         decisionMakers,
-        directives,
         effects,
-        verdicts,
         lossRecords,
         info,
         v,
@@ -310,9 +257,7 @@ public record SdState(
         combats,
         combatStates,
         decisionMakers,
-        directives,
         effects,
-        verdicts,
         lossRecords,
         info,
         diplomaticRelations,
@@ -322,81 +267,21 @@ public record SdState(
   // ── 构造期不变量（逐条配故意违规用例）────────────────────────────────────────────
 
   /**
-   * 不变量 1（R4 的**末位生效**形态，2026-09-23 用户裁定）：同一 ({@code decisionMakerId}, {@code tick}) 下**至多一条生效**
-   * （{@code PLANNED}/{@code ISSUED}）。
-   *
-   * <p>★★ **为什么不是"唯一"**：用户裁定「同一次决策，不管有多少细条目，都只能放在一段文本里；但是又没说**不可以打回重写**」—— 重写 = 产生新的一版（新的 {@link
-   * DirectiveId}），旧的转 {@link DirectiveStatus#SUPERSEDED}（终态，留痕但不再生效）。故同一 ({@code decisionMakerId},
-   * {@code tick}) **允许多条 Directive 并存**，只是**生效的至多一条**。
-   *
-   * <p>★ 这条不变量把"末位生效"从命令期的实现细节升级成**状态层的结构性事实**：任何绕过 {@code IssueDirectiveHandler}
-   * 的构造（测试夹具、回放、分岔）若造出两条同时生效的令，构造期当场抛。
-   */
-  private static void requireAtMostOneActiveDirective(Map<DirectiveId, Directive> directives) {
-    Set<String> seen = new LinkedHashSet<>();
-    for (Directive directive : directives.values()) {
-      if (!isActive(directive.status())) {
-        continue; // 终态（EXECUTED/CANCELLED/SUPERSEDED）不参与"生效名额"。
-      }
-      String key = directive.decisionMakerId().value() + "@" + directive.tick();
-      if (!seen.add(key)) {
-        throw new IllegalArgumentException(
-            "R4 违反：决策人 "
-                + directive.decisionMakerId().value()
-                + " 在 tick "
-                + directive.tick()
-                + " 已有一条**生效中**的 Directive"
-                + "（同一 (决策人, tick) 至多一条生效；重写应把旧令翻成 "
-                + DirectiveStatus.SUPERSEDED
-                + "）");
-      }
-    }
-  }
-
-  /** 该状态是否"生效中"（{@code PLANNED}/{@code ISSUED}）——"末位生效"只认这两档。 */
-  private static boolean isActive(DirectiveStatus status) {
-    return status == DirectiveStatus.PLANNED || status == DirectiveStatus.ISSUED;
-  }
-
-  /**
-   * 不变量 2：外键必须存在于同快照。
+   * 不变量：外键必须存在于同快照。
    *
    * <p>★ 阶段 12：Army 去 {@code NationId} 后不再有 {@code nations} 外键可查；{@code masterGovUnitId} 指向的是
    * <b>unit 切片</b>里的 GOV 单位（跨片），存在性由命令期（{@code sd.CreateArmy} / {@code unit.SetArmyFormation}）判， sd
    * 快照构造期不做跨片查询（铁律 3：sd 只拥有 sd 数据）。
+   *
+   * <p>★★ <b>2026-10-12 批次 3b′ 收窄（如实记）</b>：原来这里还判 {@code Directive} 的三条外键（{@code decisionMakerId} /
+   * {@code effects} / {@code verdict}），{@code directives} 表搬进 {@code simos-ga}
+   * 后——前两条成了<b>跨切片</b>（ga 不拥有 {@code decisionMakers} / {@code effects}）⇒ 状态期判不了，落点改在命令期（{@code
+   * ga.IssueDirective}）；第三条整条搬进 {@code GaState} 的构造期（两张表都在那边）。
    */
   private static void requireReferentialIntegrity(
       Map<CombatId, Combat> combats,
       Map<CombatStateId, CombatState> combatStates,
-      Map<DecisionMakerId, DecisionMaker> decisionMakers,
-      Map<DirectiveId, Directive> directives,
-      Map<EffectId, Effect> effects,
-      Map<VerdictId, Verdict> verdicts,
       Map<LossRecordId, LossRecord> lossRecords) {
-    for (Directive directive : directives.values()) {
-      if (!decisionMakers.containsKey(directive.decisionMakerId())) {
-        throw new IllegalArgumentException(
-            "引用完整性：Directive "
-                + directive.id().value()
-                + " 的 decisionMakerId "
-                + directive.decisionMakerId().value()
-                + " 不存在");
-      }
-      for (EffectId effectId : directive.effects()) {
-        if (!effects.containsKey(effectId)) {
-          throw new IllegalArgumentException(
-              "引用完整性：Directive " + directive.id().value() + " 的效果引用 " + effectId + " 不存在");
-        }
-      }
-      if (directive.verdict().isPresent() && !verdicts.containsKey(directive.verdict().get())) {
-        throw new IllegalArgumentException(
-            "引用完整性：Directive "
-                + directive.id().value()
-                + " 的判决 "
-                + directive.verdict().get()
-                + " 不存在");
-      }
-    }
     for (CombatState state : combatStates.values()) {
       Combat combat = combats.get(state.combatId());
       if (combat == null) {

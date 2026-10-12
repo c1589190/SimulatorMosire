@@ -29,7 +29,7 @@ import java.util.Set;
  * {@code sd.RunDecision} 窄工具（T11C）：**让某个决策人的 agent 真跑一轮**的触发入口，**只在 GM 桶**（= 运行时 MCP 口）。
  *
  * <p>★ **它与 {@code sd.StartDecision} 的语义不同**：后者是"开始一次**判决**"（结果折成裁决者冻结的 {@code
- * sd.SubmitVerdict}）；本工具是"让某决策人**自己调工具**跑一轮"（结果折成它自己的读工具调用 + {@code sd.IssueDirective}）。
+ * ga.SubmitVerdict}）；本工具是"让某决策人**自己调工具**跑一轮"（结果折成它自己的读工具调用 + {@code ga.IssueDirective}）。
  * 两者都落一条**触发事实**、都不占 R4 的名额。
  *
  * <p>★★ **两步走，且顺序有意义**：
@@ -48,7 +48,7 @@ import java.util.Set;
  * <p>★ **超长内容按既有惯例截断**（{@link ToolResultTruncator}，AgentLib 的那一份，本仓不自造阈值）：真档上 {@code
  * simos.map.overview} 一次就可能几十 KB，轨迹里原样塞回去会让触发者拿到一条比整个世界还大的结果。
  *
- * <p>★ **决策本身不经本工具落盘**：它仍走运行流内部的 {@code sd.IssueDirective} / {@code sd.SubmitVerdict}（铁律 2，
+ * <p>★ **决策本身不经本工具落盘**：它仍走运行流内部的 {@code ga.IssueDirective} / {@code ga.SubmitVerdict}（铁律 2，
  * 运行流已如此）——本工具只多落那**一条触发事实**。
  */
 public final class RunDecisionTool extends AbstractNarrowWriteTool implements SimosTool {

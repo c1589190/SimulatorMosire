@@ -24,11 +24,11 @@ import java.util.Set;
  *       <ul>
  *         <li>{@code permissions().isToolAllowed(type)}——他能**直接调**的窄工具（窄工具的 {@code name()} 逐字等于
  *             {@code commandType()}，见 {@code AbstractNarrowWriteTool}，故工具名可以直接当类型名用）。典型 = {@code
- *             sd.IssueDirective} / {@code sd.SubmitVerdict}；
+ *             ga.IssueDirective} / {@code ga.SubmitVerdict}；
  *         <li>{@link DirectiveWhitelist#allowedTypes()}——**令里可以嵌**的领域命令（"全量 − {@code sd.*} − 通用写"）。
  *             ★ **这一支 不能省**：只按 `isToolAllowed` 会**过窄**（决策人明明能在令里用 {@code map.CreateRegion}/{@code
  *             unit.*}， 却看不到它们），而那条规则**已经有唯一实现**（{@code DirectiveWhitelist}，{@code
- *             sd.IssueDirective} 的校验 就用它）⇒ 直接复用，绝不在这里再写一遍"哪些算领域命令"。
+ *             ga.IssueDirective} 的校验 就用它）⇒ 直接复用，绝不在这里再写一遍"哪些算领域命令"。
  *       </ul>
  * </ol>
  *

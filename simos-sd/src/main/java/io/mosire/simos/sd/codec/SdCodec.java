@@ -13,11 +13,9 @@ import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
-import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
 import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -36,12 +34,12 @@ import java.util.function.Function;
  * sd 模块的 {@link ModuleCodec} 实现（spec §八）：**全仓第 4 个** ModuleCodec。形态与 {@code MapCodec}/{@code
  * UnitCodec} 同制，理由不重复——只记 sd 自己的那点差异。
  *
- * <p>★★ <b>2026-10-12 批次 3a：树里的自定义键由 13 个收为 11 个</b>（原 9 个 ID 类型的键 —— {@code nations}/{@code
- * armies}/{@code combats}/{@code combatStates}/{@code decisionMakers}/{@code directives}/{@code
- * effects}/{@code verdicts}/{@code lossRecords}——加 D5 的 {@code diplomaticRelations} 复合键与 {@code
- * diplomaticEvents} 的 {@code DiplomaticEventId}），全住在 simos-sd 自己家里。★ D2 的两个键（{@code
- * DecisionPacketId} / {@code MergedEffectPlanId}）<b>已随那两张表整表搬进 {@code simos-ga}</b>：它们的键读侧注册改在
- * {@code GaCodec}（唯一拼写点， 不是两份）。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
+ * <p>★★ <b>树里的自定义键：13 →（批次 3a）11 →（批次 3b′）9</b>。今天注册的 9 个是 7 个 ID 类型的键 —— {@code nations}/{@code
+ * armies}/{@code combats}/{@code combatStates}/{@code decisionMakers}/{@code effects}/{@code
+ * lossRecords}——加 D5 的 {@code diplomaticRelations} 复合键与 {@code diplomaticEvents} 的 {@code
+ * DiplomaticEventId}。★ D2 的两个键（{@code DecisionPacketId} / {@code MergedEffectPlanId}）<b>已随那两张表整表搬进
+ * {@code simos-ga}</b>；{@code DirectiveId} / {@code VerdictId} 两个键<b>随批次 3b′ 的两张表同样搬走</b> ⇒
+ * 它们的键读侧注册改在 {@code GaCodec}（唯一拼写点， 不是两份）。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
  *
  * <p>★ **{@code CombatStageId}/{@code CombatOutcomeId} 不作 Map 键**（它们是 {@code Combat.stages} 的值，以及
  * OutcomeOption/CombatState 的字段），因此**不注册**——不给它们写凭空的注册。
@@ -53,12 +51,12 @@ import java.util.function.Function;
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
  * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link
- * SdChangeSet#between(SdState, SdState)}——12 个组件一起比，含 {@code info}、{@code
+ * SdChangeSet#between(SdState, SdState)}——10 个组件一起比，含 {@code info}、{@code
  * diplomaticRelations}、{@code diplomaticEvents}。
  *
  * <p>★ <b>日志（2026-10-23 L2）</b>：五个入口各一条 DEBUG（{@code SD_CODEC_*}），只记组件 changed
- * 计数/规模/文本长度这类元信息，**绝不打印 JSON 原文/载荷**。本类没有旧形状迁移路径（D2 的 12 参兼容构造器是"组件缺省 = Unchanged"，不是迁移），故无迁移
- * INFO。
+ * 计数/规模/文本长度这类元信息，**绝不打印 JSON 原文/载荷**。本类没有旧形状迁移路径（{@code SdChangeSet} 的紧凑构造器只把缺键归一成 {@code
+ * Unchanged}，那不是迁移），故无迁移 INFO。
  */
 public final class SdCodec implements ModuleCodec, ModuleDiffer {
 
@@ -95,9 +93,7 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(CombatId.class, keyDeserializer(CombatId::parse));
     module.addKeyDeserializer(CombatStateId.class, keyDeserializer(CombatStateId::parse));
     module.addKeyDeserializer(DecisionMakerId.class, keyDeserializer(DecisionMakerId::parse));
-    module.addKeyDeserializer(DirectiveId.class, keyDeserializer(DirectiveId::parse));
     module.addKeyDeserializer(EffectId.class, keyDeserializer(EffectId::parse));
-    module.addKeyDeserializer(VerdictId.class, keyDeserializer(VerdictId::parse));
     module.addKeyDeserializer(LossRecordId.class, keyDeserializer(LossRecordId::parse));
     // ★ D5（2026-10-02 / D-003、D-005）：外交关系边（复合键）+ 外交事件 id。
     module.addKeyDeserializer(
@@ -245,7 +241,7 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
     return SdChangeSet.between(asSdSnapshot(base).state(), asSdSnapshot(target).state());
   }
 
-  /** 变更集里 changed 的组件数（12 个组件的只读计数；只产出标量元信息，不读也不打印载荷内容）。 */
+  /** 变更集里 changed 的组件数（10 个组件的只读计数；只产出标量元信息，不读也不打印载荷内容）。 */
   private static int changedComponents(SdChangeSet changeSet) {
     int changed = 0;
     changed += changeSet.nations().changed() ? 1 : 0;
@@ -253,9 +249,7 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
     changed += changeSet.combats().changed() ? 1 : 0;
     changed += changeSet.combatStates().changed() ? 1 : 0;
     changed += changeSet.decisionMakers().changed() ? 1 : 0;
-    changed += changeSet.directives().changed() ? 1 : 0;
     changed += changeSet.effects().changed() ? 1 : 0;
-    changed += changeSet.verdicts().changed() ? 1 : 0;
     changed += changeSet.lossRecords().changed() ? 1 : 0;
     changed += changeSet.info().changed() ? 1 : 0;
     changed += changeSet.diplomaticRelations().changed() ? 1 : 0;

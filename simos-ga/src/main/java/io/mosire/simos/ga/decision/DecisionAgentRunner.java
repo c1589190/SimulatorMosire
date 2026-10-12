@@ -430,7 +430,7 @@ public final class DecisionAgentRunner {
    * **全参 + 同时决策冻结回合**：在显式白名单基础上多一个 {@link FrozenDecisionContext}（{@code null} = 旧模式）。
    *
    * <p>★★ 冻结回合的工具面在装配期就被裁掉：只留世界读 + 决策包四件套 + 显式无状态读口；带 {@code expectedRevision} 的旧世界写工具（{@code
-   * sd.IssueDirective} / {@code GovPay} / 外交写等）既不发给模型，执行口也会拒绝。 世界写因此不可能在决策期发生——这正是"同时决策"的硬约束。
+   * ga.IssueDirective} / {@code GovPay} / 外交写等）既不发给模型，执行口也会拒绝。 世界写因此不可能在决策期发生——这正是"同时决策"的硬约束。
    */
   public DecisionAgentRunner(
       DecisionToolCaller caller,

@@ -14,14 +14,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.SubmitVerdict} 窄工具（spec §八.3，N9）：裁决者冻结判决的**唯一**写面。
+ * {@code ga.SubmitVerdict} 窄工具（spec §八.3，N9）：裁决者冻结判决的**唯一**写面。
  *
  * <p>★ **资源声明 = sd 域的自己那一块**（T10）：交判决与出令同属**决策行为**（spec §2.2 的两条决策窄写）， 不是"直接改地图/单位数据"⇒
  * 不复用基类缺省的三命名空间粗断言（那条会让受限调用者**整调被拒**）。
  */
 public final class SubmitVerdictTool extends AbstractNarrowWriteTool implements SimosTool {
 
-  public static final String NAME = "sd.SubmitVerdict";
+  public static final String NAME = "ga.SubmitVerdict";
 
   /** 本工具只碰 sd 命名空间；缺省策略取 {@code READ_ONLY}（未表态者不得**写**）——理由见 {@code IssueDirectiveTool}。 */
   private static final ResourceManifest SD_WRITE =
@@ -43,7 +43,7 @@ public final class SubmitVerdictTool extends AbstractNarrowWriteTool implements 
 
   @Override
   public String description() {
-    return "裁决者冻结判决：固定 sd.SubmitVerdict，载荷 {verdictId, breakpoint, subject, payload, meta}";
+    return "裁决者冻结判决：固定 ga.SubmitVerdict，载荷 {verdictId, breakpoint, subject, payload, meta}";
   }
 
   @Override

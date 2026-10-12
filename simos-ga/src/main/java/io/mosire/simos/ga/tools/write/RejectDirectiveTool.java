@@ -11,6 +11,8 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -23,11 +25,10 @@ import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -52,7 +53,7 @@ import java.util.UUID;
  *   <li><b>把 {@code reason} 作为一条 user 消息投进该决策人的会话</b> —— 复用 {@code say} 通道的**同一段实现**（{@link
  *       DecisionAgentService#appendUserMessage}，即 {@code POST /api/sd/decision-makers/{id}/say}
  *       背后那一段）；
- *   <li><b>该令标 {@code CANCELLED}</b>（不执行、不落世界观变更）—— 复用既有的 {@code sd.SetDirectiveStatus} 命令，
+ *   <li><b>该令标 {@code CANCELLED}</b>（不执行、不落世界观变更）—— 复用既有的 {@code ga.SetDirectiveStatus} 命令，
  *       **不另写一条状态转移**（它的 {@code ISSUED → CANCELLED} 守卫就是唯一那份判据）。
  * </ol>
  *
@@ -60,7 +61,7 @@ import java.util.UUID;
  * 轮"、**不做**"效果不符预期自动打回"——{@code reason} 文本**原样透传**进会话， "什么叫打回"的判定留给 GM 与决策人之间的**约定**（例如 {@code
  * reason} 以 {@code 【打回】} 开头）。
  *
- * <p>★★ **一条 revision 同时留痕三件事**（铁律 2 的"打回也是世界事实"）：状态翻转（{@code sd.SetDirectiveStatus}）+ 审计条目（ {@code
+ * <p>★★ **一条 revision 同时留痕三件事**（铁律 2 的"打回也是世界事实"）：状态翻转（{@code ga.SetDirectiveStatus}）+ 审计条目（ {@code
  * sd.PutInfo}，地址 {@code sd:rejection.<directiveId>}：谁的令 / 第几版 / 理由文本 / 落在哪条 revision）**同批**落一条
  * revision（{@link ToolWritePort#submitBatchWithReceipt}，原子）。
  *
@@ -72,7 +73,7 @@ import java.util.UUID;
  *
  * <p>★ 拒绝：{@code branch} 不存在；{@code expectedRevision} 过期（{@code CONFLICT}，原样上报真实 head）；
  * 令不存在；令**当前不是生效态** （已 {@code EXECUTED}/{@code CANCELLED}/{@code SUPERSEDED} ⇒ 走 {@code
- * sd.SetDirectiveStatus} 的转移守卫原样拒， **不静默成功**）；{@code reason} 空白（打回必须有话可说，否则会话里就落一条空消息）。
+ * ga.SetDirectiveStatus} 的转移守卫原样拒， **不静默成功**）；{@code reason} 空白（打回必须有话可说，否则会话里就落一条空消息）。
  */
 public final class RejectDirectiveTool implements SimosTool {
 
@@ -181,12 +182,15 @@ public final class RejectDirectiveTool implements SimosTool {
         return conflict(new StateRef(branch, head.get()), rejectionId);
       }
       StateRef base = new StateRef(branch, head.get());
-      SdState sd = GaToolReads.sd(writes.replay(base));
-      Directive directive = sd.directives().get(directiveId);
+      SimulationState state = writes.replay(base);
+      // ★ 2026-10-12 批次 3b′：directives 表搬进本模块（GaState 第三组件）⇒ 令从这里读（决策人/效果仍读 sd 切片，
+      //   本工具不碰那两张表）。
+      GaState ga = GaToolReads.ga(state);
+      Directive directive = ga.directives().get(directiveId);
       if (directive == null) {
         return ToolResult.error("REJECTED", "决策不存在: " + directiveId.value());
       }
-      return reject(base, rejectionId, sd, directive, reason);
+      return reject(base, rejectionId, ga, directive, reason);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -212,8 +216,8 @@ public final class RejectDirectiveTool implements SimosTool {
    * revision 同事务，故只能"先落世界事实、再落话"；后者失败会**如实**报在 {@code conversation.error} 里（不静默吞）。
    */
   private ToolResult reject(
-      StateRef base, String rejectionId, SdState sd, Directive directive, String reason) {
-    int version = versionOf(sd, directive);
+      StateRef base, String rejectionId, GaState ga, Directive directive, String reason) {
+    int version = versionOf(ga, directive);
     long resultRevision = base.revision().value() + 1;
     List<ToolWritePort.Request> batch =
         List.of(
@@ -243,9 +247,9 @@ public final class RejectDirectiveTool implements SimosTool {
   }
 
   /** 同一 (决策人, tick) 下的**第几条令**（1-based）——"第几版"的判据（每次重写新添一条，故条数即版本号）。 */
-  private static int versionOf(SdState sd, Directive directive) {
+  private static int versionOf(GaState ga, Directive directive) {
     int count = 0;
-    for (Directive candidate : sd.directives().values()) {
+    for (Directive candidate : ga.directives().values()) {
       if (candidate.decisionMakerId().equals(directive.decisionMakerId())
           && candidate.tick() == directive.tick()) {
         count++;
@@ -254,7 +258,7 @@ public final class RejectDirectiveTool implements SimosTool {
     return count;
   }
 
-  /** 状态翻转命令：{@code sd.SetDirectiveStatus(directiveId, CANCELLED)}——目标态由**既有守卫**裁定合法性。 */
+  /** 状态翻转命令：{@code ga.SetDirectiveStatus(directiveId, CANCELLED)}——目标态由**既有守卫**裁定合法性。 */
   private static ToolWritePort.Request flipRequest(DirectiveId directiveId) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("directiveId", directiveId.value());

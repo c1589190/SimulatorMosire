@@ -76,7 +76,7 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
 
   /** 决策人的派生目标（进身份的 {@code goal}，只进内存态提示面与审批提示，不进事件库）。 */
   public static final String GOAL =
-      "在受限可见范围内做出决策：出令（sd.IssueDirective）、裁决（sd.SubmitVerdict）、外交写入（sd.SetDiplomaticRelation / sd.RecordDiplomaticEvent）、向 GOV 付款（simos.gov.pay）与决策包提议/提交/查看（simos.sd.propose / packet.submit / packet.intent / packet.my）";
+      "在受限可见范围内做出决策：出令（ga.IssueDirective）、裁决（ga.SubmitVerdict）、外交写入（sd.SetDiplomaticRelation / sd.RecordDiplomaticEvent）、向 GOV 付款（simos.gov.pay）与决策包提议/提交/查看（simos.sd.propose / packet.submit / packet.intent / packet.my）";
 
   private final DecisionScopeFunctions scopeFunctions;
   private final ToolCallAuthorizer authorizer;
@@ -308,7 +308,7 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
   /**
    * ★★ **决策人的 sd 域 = 它自己的决策域**（{@code sd:decision-maker/<自己的 id>}，T10）。
    *
-   * <p>**为什么必须有这一条**：两条决策窄写（{@code sd.IssueDirective} / {@code sd.SubmitVerdict}）是
+   * <p>**为什么必须有这一条**：两条决策窄写（{@code ga.IssueDirective} / {@code ga.SubmitVerdict}）是
    * **决策行为**，不是"直接改地图/单位数据"（用户 2026-09-22 原话：「决策人不能直接改地图等数据」——下指令、交判决是它的**本职**， spec §2.2
    * 把这两条放进决策人白名单就是这条意思）。它们过去的资源声明是基类缺省的"三命名空间粗断言" ⇒ 粗断言撞细围栏，决策人**连出令都出不了**（T5-T8 实测发现 1）。
    *

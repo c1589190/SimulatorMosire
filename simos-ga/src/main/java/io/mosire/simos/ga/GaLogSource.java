@@ -26,14 +26,14 @@ public enum GaLogSource implements LogOrigin {
   /**
    * ★ 2026-10-12 批次 3a：决策包 / 合并效果集四条命令的 handler 面（落盘与具名拒绝）。
    *
-   * <p>★ <b>与 {@code sd.SdLogSource.SD_DECISION} 逐字同档</b>（{@link LogOriginKind#SYSTEM}）：这四条命令自
-   * {@code sd.*} 改名 {@code ga.*} 并从 {@code simos-sd} 搬进本模块，日志的<b>粗分类与事件名保持原样</b> ⇒ 消费者按 kind
-   * 粗筛的语义不变；变的只有 logger 名（{@code io.mosire.simos.sd.decision} → {@code
-   * io.mosire.simos.ga.decision}）与来源表。
+   * <p>★ <b>与 {@code sd.SdLogSource.SD_DECISION} 逐字同档</b>（{@link LogOriginKind#SYSTEM}）：这些命令自
+   * {@code sd.*} 改名 {@code ga.*} 并从 {@code simos-sd} 搬进本模块（批次 3a 四条状态命令 + 批次 3b′
+   * 决策族三条），日志的<b>粗分类与事件名保持原样</b> ⇒ 消费者按 kind 粗筛的语义不变；变的只有 logger 名（{@code
+   * io.mosire.simos.sd.decision} → {@code io.mosire.simos.ga.decision}）与来源表。
    */
   GA_DECISION(
       "ga-decision",
-      "决策包 / 合并效果集命令的 handler 面（整包 upsert、提交、GM 裁决、计划的落盘与具名拒绝）",
+      "ga 四条状态命令的 handler 面（决策包整包 upsert/提交/GM 裁决、合并效果集落盘；出令/状态翻转/交判决）与具名拒绝",
       LogOriginKind.SYSTEM),
   /** ★ 2026-10-12 批次 3a：{@code GaCodec} 的编解码与变更集施加（照 {@code GovLogSource.GOV_CODEC} 同档）。 */
   GA_CODEC("ga-codec", "GaCodec 编解码与变更集施加", LogOriginKind.SYSTEM);

@@ -54,14 +54,20 @@ import org.slf4j.Logger;
  *
  * <p>★ **本类只管形状与类型**；数值范围与域规则由领域类型 / handler 判。
  *
- * <p>★★ <b>2026-10-12 批次 3a：本类与下面 9 个方法放宽到 {@code public}</b>（其余成员一字未动）—— 决策包 / 合并效果集四条命令改名 {@code
+ * <p>★★ <b>2026-10-12 批次 3a：本类与其中 9 个方法放宽到 {@code public}</b>（其余成员一字未动）—— 决策包 / 合并效果集四条命令改名 {@code
  * ga.*} 后 handler 搬进 {@code simos-ga}，而它们仍要用同一份载荷解析。 决策包族的<b>线格式</b>因此保持<b>唯一拼写点</b>：若在 ga
  * 侧复制一份解析，就会有两个各自漂移的载荷形状（本仓最忌讳的形态）。
+ *
+ * <p>★★ <b>2026-10-12 批次 3b′：再放宽 4 个</b>（{@code requireAddress} / {@code optionalAddress} / {@code
+ * optionalTextSet} / {@code optionalDirectiveCommands}）—— 出令 / 交判决两条 handler 随 {@code ga.*} 改名搬进
+ * {@code simos-ga}，同一条理由（线格式一处拼写）。
  *
  * <p>★ 可见性只放宽必须的那几个：{@code parse} / {@code requireText} / {@code optionalText} / {@code
  * requireLong} / {@code optionalLongValue} / {@code requirePacketStatus} / {@code
  * optionalFormattedCalls} / {@code requireMergedEffectPlan} / {@code logRejected}（{@code
- * logRejected} 的 logger 与 origin 由调用方给 ⇒ ga 侧自然走 {@code GaLog}）。★ 本类随 {@code simos-sd} 在批次 3e 退役。
+ * logRejected} 的 logger 与 origin 由调用方给 ⇒ ga 侧自然走 {@code GaLog}）/ {@code requireAddress} / {@code
+ * optionalAddress} / {@code optionalTextSet} / {@code optionalDirectiveCommands}。★ 本类随 {@code
+ * simos-sd} 在批次 3e 退役。
  */
 public final class SdPayloads {
 
@@ -185,15 +191,15 @@ public final class SdPayloads {
     return out;
   }
 
-  static Address requireAddress(JsonNode payload, String field) {
+  public static Address requireAddress(JsonNode payload, String field) {
     return Address.parse(requireText(payload, field));
   }
 
-  static Optional<Address> optionalAddress(JsonNode payload, String field) {
+  public static Optional<Address> optionalAddress(JsonNode payload, String field) {
     return optionalText(payload, field).map(Address::parse);
   }
 
-  static Set<String> optionalTextSet(JsonNode payload, String field) {
+  public static Set<String> optionalTextSet(JsonNode payload, String field) {
     return optionalTextSetIfPresent(payload, field).orElse(Set.of());
   }
 
@@ -222,7 +228,7 @@ public final class SdPayloads {
     return Optional.of(out);
   }
 
-  static List<DirectiveCommand> optionalDirectiveCommands(JsonNode payload, String field) {
+  public static List<DirectiveCommand> optionalDirectiveCommands(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
       return List.of();
