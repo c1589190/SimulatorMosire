@@ -1,0 +1,164 @@
+package io.mosire.simos.app;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+
+import io.mosire.agentlib.tool.AgentTool;
+import io.mosire.simos.app.tools.SimosToolSource;
+import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.tools.ToolRoleAudit;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * ★★ <b>真 {@link Shell} 装配冒烟</b>（规划 §29.2 的落地）：把「本批门禁里至少有一条<b>会真的构造出组合根</b>的检查」变成 <b>仓内、常规 {@code
+ * test} 阶段、永不 skip</b> 的回归护栏。
+ *
+ * <p>★ <b>为什么必须是这一条</b>（本仓刚付过的学费）：架构调整轮出过两个<b>真生产缺陷</b>，四道静态门禁 （{@code compile}/{@code
+ * spotless}/{@code spotbugs}/{@code validate}）一道都没拦住 ——
+ *
+ * <ol>
+ *   <li>{@code SimosSdReportsTool.roles()} 被写成 {@code {GM}}，而它注册在 DM 桶 ⇒ 组合根装配当场抛 （{@code
+ *       Shell.start(...)} 里那两个 {@code SimosToolSource} 的构造期）⇒ <b>从 {@code 3ee4aea5} 起 5 个提交里 GUI
+ *       根本起不来</b>（{@code simos-app} 基线 445 红，其中 378 同此一因）；
+ *   <li>{@code api.js:535} 引用已删除的函数 ⇒ {@code window.SimosaApi} 整个不发布（前端面，本用例不管）。
+ * </ol>
+ *
+ * <p>★ <b>判据不是"编译过"，是"装配期自审真的跑过且没抛"</b>：这道防线在装配链上有两个调用点，本用例都会走到 —— ① {@code SimosToolSource:568}
+ * 的<b>单桶</b> {@link ToolRoleAudit#requireFace}（建桶时：桶里每条工具都必须声明该桶角色）；② {@code Shell:1194} 的<b>双桶</b>
+ * {@link ToolRoleAudit#requireFaces}（装配完成处：工具名在 GM 桶 ⇔ {@code roles()} 含 {@code GM}；在决策人桶 ⇔ 含
+ * {@code DM}，双向全量，不一致<b>当场抛</b>）。 本用例<b>真的调 {@link Shell#start(ShellConfig)}</b>（不是 {@code new
+ * Shell(...)} 的一半装配），所以两道 check 必然被走到；能执行到 {@code start()} 之后的第一行断言，就是"它们跑过了、没抛"的证据。 ★
+ * 这条因果由<b>变异自证</b>钉死：把 {@code SimosSdReportsTool.roles()} 改回 {@code Set.of(ToolRole.GM)} ⇒
+ * 本用例当场红，异常文本 = 「工具面装配故障：simos.sd.reports 声明 [GM]（不含 DM），却注册在 DM 桶里」，真实栈 = {@code
+ * ToolRoleAudit.requireFace(ToolRoleAudit.java:66)} → {@code
+ * SimosToolSource.<init>(SimosToolSource.java:568)} → {@code Shell.start(Shell.java:1131)}。
+ *
+ * <p>★ <b>为什么断言这么窄</b>：本文件<b>不是</b>功能验收用例（那是 {@code ShellSmokeTest}/{@code *EndToEndTest}
+ * 的事），它只钉装配面的三件事 —— ① 组合根真的构造得出来；② 两桶与 {@code roles()} 声明逐条一致； ③ 几条<b>不许为了修绿而放宽</b>的桶归属锚点（见 {@link
+ * #GM_ONLY_READS} 与两个条数常量）。
+ *
+ * <p>★ <b>为什么不建世界、不跑 tick、不走 HTTP 业务面</b>：本用例只做 {@code start → toolsFor(两桶) → close} （实测约 1 秒）。端口全
+ * {@code 0} ⇒ OS 随机分配，<b>绝不占 5711/5715/5713</b>；store 用 JUnit 临时目录 （{@code @TempDir}
+ * 在用例结束后递归清理，<b>不往仓里写一个字节</b>），并在 {@code close()} 之后显式删掉。
+ *
+ * <p>★ <b>工作目录说明</b>：surefire 的 CWD = {@code simos-app}（不是仓根），所以仓根相对的 {@code
+ * config/worldgen/*.json} / {@code config/skills} / {@code config/llm-providers.json}
+ * 在本用例里都是"不存在"。这<b>不影响</b>本用例：那三处都是<b>惰性读</b>（worldgen 由 {@code simos.worldgen.initialize} 调用时才
+ * fail-closed）或<b>容缺</b>（skills 种子目录缺失 ⇒ 空库； llm 仓库默认配置只是兜底种子，"两者都没有则什么都不迁"），装配期没有一处依赖它们的内容。
+ */
+class ShellAssemblySmokeTest {
+
+  /** 跨区上报读口：装配面里唯一一条<b>两桶都在</b>的 sd 读口（本用例的正向锚点）。 */
+  private static final String REPORTS = "simos.sd.reports";
+
+  /**
+   * ★ <b>GM-only 读口（6 条）</b>：它们是「为了修绿而放宽装配」的锚点 —— 谁把其中任何一条挪进决策人桶 （或从 GM 桶摘掉），本用例当场红，而不是静默变成权限面变化。
+   */
+  private static final List<String> GM_ONLY_READS =
+      List.of(
+          "simos.map.path",
+          "simos.map.block",
+          "simos.map.overlaps",
+          "simos.sd.decision-makers",
+          "simos.sd.directives",
+          "simos.economy.ownership");
+
+  /**
+   * ★ <b>两桶条数锚点</b>（2026-10-13 实测值：GM 桶 161 / 决策人桶 43）。工具面增删一条都会在这里红 ——
+   * 那时应当<b>显式</b>改本行并说明为什么，而不是把断言删掉/放宽。
+   */
+  private static final int GM_BUCKET_SIZE = 161;
+
+  private static final int DECISION_BUCKET_SIZE = 43;
+
+  /** 八个 codec（map / social / unit / economy / actor / ga / gov / army）。 */
+  private static final int MODULE_COUNT = 8;
+
+  @TempDir Path tempDir;
+
+  @Test
+  void realShellAssemblesAuditsBothToolFacesAndClosesCleanly() throws IOException {
+    Path store = Files.createDirectories(tempDir.resolve("store"));
+    // ★ 端口全 0 ⇒ OS 随机分配（guarded：绝不占 5711/5715/5713 这三个本仓服务端口）。
+    ShellConfig config = ShellConfig.defaults(store).withPorts(0, 0, 0);
+
+    try (Shell shell = Shell.start(config)) {
+      // ★★ 判据：能执行到这一行 = 上一行 start() 没有抛 = 装配完成处的 ToolRoleAudit.requireFaces
+      //   （Shell:1194）**真的跑过了**。这是本用例的核心，下面各条都是它的窄化锚点。
+      assertThat(shell.registeredModuleCount())
+          .as("八个 codec 全部注册（map/social/unit/economy/actor/ga/gov/army）")
+          .isEqualTo(MODULE_COUNT);
+      assertThat(shell.boundGuiPort()).as("GUI 口已绑上（port=0 ⇒ OS 分配，>0）").isPositive();
+      assertThat(shell.boundMcpPort()).as("MCP 口已绑上（port=0 ⇒ OS 分配，>0）").isPositive();
+
+      List<AgentTool> gm = shell.toolsFor(SimosToolSource.Role.GM);
+      List<AgentTool> decision = shell.toolsFor(SimosToolSource.Role.DECISION_AGENT);
+      Set<String> gmNames = namesOf(gm);
+      Set<String> decisionNames = namesOf(decision);
+
+      // ★ 对**导出的**两桶再走一遍同一道校验：让「两桶 ⇔ roles() 声明」这条不变量在本文件里被具名断言，
+      //   而不是只藏在 Shell 内部的一行调用里。★ 它**不能**替代 Shell 自己那次调用 ——「Shell.start 里真的调了」
+      //   由上一行的 start() 跑通承担，并由变异自证钉死（roles() 改坏 ⇒ start() 当场抛，见本批报告）。
+      assertThatCode(() -> ToolRoleAudit.requireFaces(gm, decision))
+          .as("两桶 ⇔ SimosTool.roles() 声明必须逐条一致（设计书 §4.4 / I-G3），不一致当场抛")
+          .doesNotThrowAnyException();
+
+      // ① 正向：跨区上报读口在**两桶**（它就是这次装配缺陷的当事工具）。
+      assertThat(gmNames).as("%s 必须在 GM 桶", REPORTS).contains(REPORTS);
+      assertThat(decisionNames).as("%s 必须在决策人桶（它是决策人与 GM 共用的读口）", REPORTS).contains(REPORTS);
+
+      // ② 反证：6 条 GM-only 读口必须 GM=true 且 DM=false（防"为了修绿而放宽"）。
+      for (String name : GM_ONLY_READS) {
+        assertThat(gmNames).as("反证：%s 是 GM-only 读口，必须在 GM 桶", name).contains(name);
+        assertThat(decisionNames).as("反证：%s 是 GM-only 读口，**不许**进决策人桶", name).doesNotContain(name);
+      }
+
+      // ③ 条数锚点：任何工具增删都会在这里红。
+      assertThat(gm).as("GM 桶条数锚点（增删工具须显式改本行）").hasSize(GM_BUCKET_SIZE);
+      assertThat(decision).as("决策人桶条数锚点（增删工具须显式改本行）").hasSize(DECISION_BUCKET_SIZE);
+      assertThat(gmNames).as("GM 桶无重名工具").hasSize(gm.size());
+      assertThat(decisionNames).as("决策人桶无重名工具").hasSize(decision.size());
+    }
+
+    // ④ close() 真的收尾：库文件在盘上（端口随 close 释放，由 Shell.close 的次序保证）。
+    Path dbFile = store.resolve(CoreSimos.DB_FILE_NAME);
+    assertThat(dbFile).as("close() 之后库文件仍在磁盘上").exists();
+
+    // ⑤ 清理：store 是临时目录，用完即删（不往仓里留任何东西）。
+    deleteRecursively(store);
+    assertThat(store).as("store 临时目录已清理").doesNotExist();
+  }
+
+  /** 两桶的工具名（{@link LinkedHashSet} ⇒ 可读且能查重）。 */
+  private static Set<String> namesOf(List<AgentTool> tools) {
+    Set<String> names = new LinkedHashSet<>();
+    for (AgentTool tool : tools) {
+      names.add(tool.name());
+    }
+    return names;
+  }
+
+  /** 递归删除（深度优先；临时 store 的清理用，见判据⑤）。 */
+  private static void deleteRecursively(Path root) throws IOException {
+    if (!Files.exists(root)) {
+      return;
+    }
+    try (Stream<Path> paths = Files.walk(root)) {
+      for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+        Files.deleteIfExists(path);
+      }
+    } catch (UncheckedIOException e) {
+      throw e.getCause();
+    }
+  }
+}
