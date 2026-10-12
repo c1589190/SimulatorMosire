@@ -399,33 +399,55 @@ class RedactingQueryServiceTest {
     return new SimulationState(base.meta(), slices, base.info());
   }
 
+  /**
+   * ★★ 2026-10-13 收尾测试第 3 层：<b>归属行必须真的落进模块的表</b>。
+   *
+   * <p>归属归模块之后（乙收尾），"这个决策人属某国"不再住在 {@code DecisionMaker} 值上，而住 {@code
+   * GovState.nationAffiliations()}（按 dmId 索引）/ {@code ArmyData.armyAffiliations()}。只造裸决策人 ⇒ 范围函数给
+   * deny-all ⇒ 本类"逐格/逐单位对拍"的断言会**两边都空**而假绿（同源护栏失去判别力）。
+   *
+   * <p>★ {@code beta} 国也必须存在：区域 tag 指向的国家不在 {@code nations} 里时，{@code NationAffiliations.resolve}
+   * 会裁掉那一行（fail-closed）⇒ "alpha 看不见 beta 的格"会退化成"谁都看不见"。
+   */
   private static io.mosire.simos.app.testing.WorldSlices sdState() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
-    makers.put(DM_ALPHA, nationDm("dm-alpha", "alpha", AccessLimit.empty()));
-    makers.put(DM_BETA, nationDm("dm-beta", "beta", AccessLimit.empty()));
+    makers.put(DM_ALPHA, nationDm("dm-alpha", AccessLimit.empty()));
+    makers.put(DM_BETA, nationDm("dm-beta", AccessLimit.empty()));
+    makers.put(DM_NARROWED, nationDm("dm-narrowed", Map.of("map", Set.of(MAP_ID + "/region/r1"))));
+    makers.put(DM_WIDEN_ATTEMPT, nationDm("dm-widen", Map.of("map", Set.of(MAP_ID))));
     makers.put(
-        DM_NARROWED,
-        nationDm("dm-narrowed", "alpha", Map.of("map", Set.of(MAP_ID + "/region/r1"))));
-    makers.put(DM_WIDEN_ATTEMPT, nationDm("dm-widen", "alpha", Map.of("map", Set.of(MAP_ID))));
-    makers.put(
-        DM_EMPTY_INTERSECTION,
-        nationDm("dm-empty", "alpha", Map.of("map", Set.of(MAP_ID + "/region/r2"))));
-    makers.put(DM_NO_UNIT, nationDm("dm-no-unit", "alpha", Map.of("unit", Set.of())));
+        DM_EMPTY_INTERSECTION, nationDm("dm-empty", Map.of("map", Set.of(MAP_ID + "/region/r2"))));
+    makers.put(DM_NO_UNIT, nationDm("dm-no-unit", Map.of("unit", Set.of())));
     makers.put(DM_ARMY, new DecisionMaker(DM_ARMY, Set.of(), AccessLimit.empty(), 1));
-    makers.put(DM_FULL, nationDm("dm-full", "alpha", disclosure(DisclosurePolicy.FULL, Set.of())));
+    makers.put(DM_FULL, nationDm("dm-full", disclosure(DisclosurePolicy.FULL, Set.of())));
     makers.put(
         DM_PERCEPTION,
-        nationDm("dm-perception", "alpha", disclosure(DisclosurePolicy.PERCEPTION_ONLY, Set.of())));
+        nationDm("dm-perception", disclosure(DisclosurePolicy.PERCEPTION_ONLY, Set.of())));
     makers.put(
-        DM_WITHHELD,
-        nationDm("dm-withheld", "alpha", disclosure(DisclosurePolicy.WITHHELD, Set.of())));
+        DM_WITHHELD, nationDm("dm-withheld", disclosure(DisclosurePolicy.WITHHELD, Set.of())));
     makers.put(
         DM_REDACT_POSITION,
-        nationDm("dm-redact", "alpha", disclosure(DisclosurePolicy.FULL, Set.of("position"))));
+        nationDm("dm-redact", disclosure(DisclosurePolicy.FULL, Set.of("position"))));
     Map<VerdictId, Verdict> verdicts = new LinkedHashMap<>();
     verdicts.put(V1, verdict("v-1"));
-    var base = ScopeFixtures.sdWithArmy("a1", "alpha", "u-a");
-    return base.withGa(base.ga().withDecisionMakers(makers).withVerdicts(verdicts));
+    var base = ScopeFixtures.sdWithArmy("a1", "alpha", "u-a", "beta");
+    io.mosire.simos.app.testing.WorldSlices slices =
+        base.withGa(base.ga().withDecisionMakers(makers).withVerdicts(verdicts));
+    // ★ 逐条落归属行：国家轴按 NATION_OF 的单一拼写点，军队轴只有 dm-army 一条。
+    for (DecisionMakerId maker : makers.keySet()) {
+      if (maker.equals(DM_ARMY)) {
+        continue;
+      }
+      slices =
+          slices.withNationAffiliation(
+              maker, new io.mosire.simos.gov.nation.NationId(nationOf(maker.value())));
+    }
+    return slices.withArmyAffiliation(DM_ARMY, new io.mosire.simos.army.ArmyId("a1"));
+  }
+
+  /** 夹具里"谁属哪国"的<b>唯一拼写点</b>（{@code dm-beta} 属 beta，其余全属 alpha）—— 与上面的 makers 表同源，避免两处漂移。 */
+  private static String nationOf(String decisionMakerId) {
+    return DM_BETA.value().equals(decisionMakerId) ? "beta" : "alpha";
   }
 
   /** 只改披露口径与字段剔除、**不额外收紧资源**（空前缀图 = 不表态）。 */
@@ -433,12 +455,11 @@ class RedactingQueryServiceTest {
     return new AccessLimit(Map.of(), redacted, policy);
   }
 
-  private static DecisionMaker nationDm(
-      String id, String nationId, Map<String, Set<String>> prefixes) {
-    return nationDm(id, nationId, AccessLimit.ofPrefixes(prefixes));
+  private static DecisionMaker nationDm(String id, Map<String, Set<String>> prefixes) {
+    return nationDm(id, AccessLimit.ofPrefixes(prefixes));
   }
 
-  private static DecisionMaker nationDm(String id, String nationId, AccessLimit limit) {
+  private static DecisionMaker nationDm(String id, AccessLimit limit) {
     return new DecisionMaker(new DecisionMakerId(id), Set.of(), limit, 1);
   }
 

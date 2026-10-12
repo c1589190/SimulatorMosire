@@ -117,7 +117,11 @@ class DiplomaticWriteToolsTest {
 
       assertThat(result.success()).isFalse();
       assertThat(result.code()).isEqualTo("REJECTED");
-      assertThat(result.message()).contains("只对 Nation 归属的决策人开放").contains("归属");
+      // ★★ 2026-10-13 收尾测试第 3 层：拒因文案随**归属端口**落地改了措辞（乙收尾）——
+      //   旧文案「只对 Nation 归属的决策人开放」→ 新文案「只对具有外交身份（Nation 归属）的决策人开放」。
+      //   ★ 判别力保留并**加强**：不只要求出现 "Nation 归属"，还要求**点名调用者**（把"军队归属 ≠ 外交身份"
+      //   与"根本不认识这个决策人"分开——后者是另一条具名拒，见 relationFromUnknownDecisionMakerIsRejected）。
+      assertThat(result.message()).contains("Nation 归属").contains("dm-army").contains("没有外交身份");
       assertThat(fx.head()).isEqualTo(1L);
     }
   }
@@ -182,7 +186,8 @@ class DiplomaticWriteToolsTest {
           fx.callEvent("dm-army", "{\"participants\":[\"FRA\",\"GER\"],\"text\":\"军队决策人无外交署名权\"}");
       assertThat(result.success()).isFalse();
       assertThat(result.code()).isEqualTo("REJECTED");
-      assertThat(result.message()).contains("只对 Nation 归属的决策人开放");
+      // ★ 拒因文案同 relationFromArmyAffiliatedDecisionMakerIsRejected（同一条端口判据、同一个具名拒）。
+      assertThat(result.message()).contains("Nation 归属").contains("dm-army").contains("没有外交身份");
       assertThat(fx.head()).isEqualTo(1L);
     }
   }
@@ -355,11 +360,19 @@ class DiplomaticWriteToolsTest {
         new ArmyId("army-1"),
         new Army(
             new ArmyId("army-1"), Optional.empty(), new io.mosire.simos.unit.UnitId("u-1"), "军队一"));
+    // ★★ 2026-10-13 收尾测试第 3 层：**归属行真的落表** —— 归属归模块之后（乙收尾），"dm-fra 是 FRA 的人"
+    //   不再住在 `DecisionMaker` 值上，而住 `GovState.nationAffiliations()` / `ArmyData.armyAffiliations()`
+    //   （按 dmId 索引）。外交署名身份由 `DecisionMakerAffiliationPort` 现取这张 nation 表 ⇒
+    //   只造裸决策人时**每个**决策人都"没有外交身份"（六条用例的拒因全变成同一句，判据失去区分度）。
+    //   ★ dm-army 属**军队**（不是国家）——它正是"有归属但不是 Nation ⇒ 拒"那一支的靶子。
     WorldSlices slices =
         WorldSlices.of(
-            new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
-            ArmyData.empty().withArmies(armies),
-            GaState.empty().withDecisionMakers(makers));
+                new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+                ArmyData.empty().withArmies(armies),
+                GaState.empty().withDecisionMakers(makers))
+            .withNationAffiliation(new DecisionMakerId("dm-fra"), new NationId(FRA))
+            .withNationAffiliation(new DecisionMakerId("dm-ger"), new NationId(GER))
+            .withArmyAffiliation(new DecisionMakerId("dm-army"), new ArmyId("army-1"));
     return new SimulationState(
         new StateMeta(ref, T7),
         Map.of(

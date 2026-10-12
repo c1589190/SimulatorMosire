@@ -16,7 +16,7 @@ import java.util.Set;
  * 往决策人桶加/删任何一条工具而不同步本表 ⇒ 该用例当场红；反过来，改本表而没改 {@code roles()} 声明（或没挂桶）⇒ {@code
  * ToolRoleAudit.requireFaces} 在装配期当场抛。
  *
- * <p>★ <b>它是什么、不是什么</b>：它是**规格**（"决策人面就该是这 44 条"），不是生产常量的副本 —— 没有任何生产代码读它。 别处（{@code
+ * <p>★ <b>它是什么、不是什么</b>：它是**规格**（"决策人面就该是这 43 条"），不是生产常量的副本 —— 没有任何生产代码读它。 别处（{@code
  * GovToolsZ6Test} / {@code LlmToolNamesTest} 等）需要"决策人面的名字"却又不启 {@code Shell} 时也用它， 免得把同一份 44
  * 条抄成好几份。
  *
@@ -27,7 +27,10 @@ public final class DecisionFaceGolden {
 
   private DecisionFaceGolden() {}
 
-  /** 决策人面的 44 条工具名（2026-10-12 B4b 冻结；与 {@code roles()} 声明、两桶装配三处一致）。 */
+  /**
+   * 决策人面的 43 条工具名（2026-10-12 B4b 冻结 44 条；★★ 2026-10-13 收尾测试第 3 层删掉幽灵 {@code simos.sd.combats} ⇒
+   * 43；与 {@code roles()} 声明、两桶装配三处一致）。
+   */
   public static final Set<String> ALL =
       Set.of(
           // ── 共享读工具（GM / 决策人两桶共享；标了 GmOnlyRead 的**不在**这里）────────────────
@@ -47,7 +50,9 @@ public final class DecisionFaceGolden {
           // ★ C7a：历法读口是四桶共享读（未标 GmOnlyRead）。
           "simos.calendar.info",
           // ★ 工具面补齐 / T1c：交战记录与 army 读口属"世界状态·四桶共享"。
-          "simos.sd.combats",
+          // ★★ 2026-10-13 收尾测试第 3 层：**删掉幽灵条目 `simos.sd.combats`** —— 旧战斗族退役后
+          //   交战读口只剩 `simos.army.combats` / `simos.army.combat`（main 里对 `simos.sd.combats` 零命中）。
+          //   它一条幽灵压住 DecisionCallerFactoryTest 的整个用例（DM 面 43 = 金名单 44 − 1 幽灵）。
           "simos.army.combats",
           "simos.army.combat",
           // ★ R2a：逐格经济读数（视野由工具内收窄，不越界）。

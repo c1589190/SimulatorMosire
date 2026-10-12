@@ -27,6 +27,7 @@ import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.ScopeFixtures;
+import io.mosire.simos.app.testing.WorldSlices;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.CoreSimosToolWritePort;
 import io.mosire.simos.app.tools.QueryServiceToolReadPort;
@@ -35,6 +36,11 @@ import io.mosire.simos.app.tools.gov.AppGovToolCommandTypes;
 import io.mosire.simos.app.tools.gov.AppGovToolEconomy;
 import io.mosire.simos.app.tools.gov.AppGovToolPerspective;
 import io.mosire.simos.app.tools.gov.AppGovToolViews;
+import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyId;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -53,11 +59,17 @@ import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.gov.tools.GovToolSupport;
 import io.mosire.simos.gov.tools.write.GovPayTool;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -127,6 +139,13 @@ class GovPayToolD5Test {
   private static final HexCoord H12 = new HexCoord(1, 2);
 
   private static final String GOV_A = "gov-a";
+
+  /** 夹具国家（{@code gov} 片）的家园区域 id——只作引用，不需要地图上真有这个区域。 */
+  private static final RegionId R_FRA = new RegionId("r-FRA");
+
+  /** 军队 a1 的根单位（= 付方 GOV_A 的编成单位，够 {@code Army} 的引用完整性即可）。 */
+  private static final UnitId U1 = new UnitId(GOV_A);
+
   private static final String GOV_B = "gov-b";
   private static final String GOV_NO_POS = "gov-no-pos";
   private static final String PLAIN_UNIT = "u-plain";
@@ -379,6 +398,7 @@ class GovPayToolD5Test {
                   "core.AdvanceTime",
                   Timeline.changeSetJson(WorldChangeSet.empty())));
     }
+    WorldSlices slices = sdState();
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref(1L), T7),
@@ -386,7 +406,9 @@ class GovPayToolD5Test {
                 "map", new MapSnapshot(ref(1L), T7, ScopeFixtures.mapOf()),
                 "social", new SocialSnapshot(ref(1L), T7, SocialData.empty()),
                 "unit", new UnitSnapshot(ref(1L), T7, units()),
-                "ga", new GaSnapshot(ref(1L), T7, sdState()),
+                "gov", new GovSnapshot(ref(1L), T7, slices.gov()),
+                "army", new ArmySnapshot(ref(1L), T7, slices.army()),
+                "ga", new GaSnapshot(ref(1L), T7, slices.ga()),
                 "economy", new EconomySnapshot(ref(1L), T7, EconomyData.empty()),
                 "actor", new ActorSnapshot(ref(1L), T7, actors())),
             InMemoryInfoSystem.empty());
@@ -398,6 +420,8 @@ class GovPayToolD5Test {
           new MapCodec(),
           new SocialCodec(),
           new UnitCodec(),
+          new GovCodec(),
+          new ArmyCodec(),
           new GaCodec(),
           new EconomyCodec(),
           new ActorCodec());
@@ -474,12 +498,31 @@ class GovPayToolD5Test {
         households);
   }
 
-  private static GaState sdState() {
+  /**
+   * ★★ 2026-10-13 收尾测试第 3 层：<b>归属行真的落进模块的表</b> —— 归属归模块之后（乙收尾）， {@code govUnitOf(...)} 读的是 {@code
+   * GovState.govAffiliations()}（按 dmId 索引），不再是 {@code DecisionMaker} 上的字段。
+   *
+   * <p>★ {@code dm-gov} → {@code gov-a}（**GOV 归属**：付款人由身份派生那一支的靶子）；{@code dm-nation} → 国家 FRA
+   * （有归属但**不是 GOV** ⇒ "只有 GOV 归属的决策人可付款"）；{@code dm-army} → 军队 a1（同前，另一轴）。
+   *
+   * <p>★ 只造裸决策人 ⇒ 缺 {@code gov}/{@code army} 切片时 {@code ToolSupport.govState} 当场抛（装配故障）， 而那个
+   * IllegalArgumentException 会被 {@code resolvePayer} 折成误导性的「调用者身份里的决策人 id 非法: dm-nation」
+   * ——正是本类改动前四条红的现场。
+   */
+  private static WorldSlices sdState() {
+    NationId fra = new NationId("FRA");
+    ArmyId a1 = new ArmyId("a1");
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(new DecisionMakerId("dm-gov"), maker("dm-gov"));
     makers.put(new DecisionMakerId("dm-nation"), maker("dm-nation"));
     makers.put(new DecisionMakerId("dm-army"), maker("dm-army"));
-    return GaState.empty().withDecisionMakers(makers);
+    return WorldSlices.of(
+            GovState.empty().withNations(Map.of(fra, new Nation(fra, "国家 FRA", R_FRA, 0))),
+            ArmyData.empty().withArmies(Map.of(a1, new Army(a1, Optional.empty(), U1, "军队 a1"))),
+            GaState.empty().withDecisionMakers(makers))
+        .withGovAffiliation(new DecisionMakerId("dm-gov"), new UnitId(GOV_A))
+        .withNationAffiliation(new DecisionMakerId("dm-nation"), fra)
+        .withArmyAffiliation(new DecisionMakerId("dm-army"), a1);
   }
 
   private static DecisionMaker maker(String id) {

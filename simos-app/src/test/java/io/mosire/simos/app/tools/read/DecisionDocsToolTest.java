@@ -311,7 +311,6 @@ class DecisionDocsToolTest {
     makers.put(DM_A, nationDm(DM_A, "alpha"));
     makers.put(DM_B, nationDm(DM_B, "beta"));
     makers.put(DM_C, nationDm(DM_C, "alpha"));
-
     Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
     info.put(ADDR_ALPHA, List.of(doc(ADDR_ALPHA, 0, 3, Set.of(DM_A), Set.of(), ALPHA_BODY)));
     info.put(
@@ -348,10 +347,16 @@ class DecisionDocsToolTest {
             new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
             ArmyData.empty(),
             GaState.empty().withDecisionMakers(makers).withInfo(info));
+    // ★★ 2026-10-13 收尾测试第 3 层：归属行**真的落进 `GovState.nationAffiliations()`**（归属归模块之后，
+    //   "dm-a 属 alpha"不再住在 `DecisionMaker` 值上）——只造裸决策人 ⇒ 归属轴那一半文档谁都看不见，
+    //   "归属自动可见"的断言会退化成恒真式。`ScopeFixtures.Affiliated` 把"决策人本体 + 世界表里的那一行"绑成一个值。
     return ScopeFixtures.state(
         ScopeFixtures.mapOf(ScopeFixtures.nationRegion("r1", "alpha", H11)),
         ScopeFixtures.units(),
-        slices);
+        slices,
+        ScopeFixtures.nationDm(DM_A.value(), "alpha"),
+        ScopeFixtures.nationDm(DM_B.value(), "beta"),
+        ScopeFixtures.nationDm(DM_C.value(), "alpha"));
   }
 
   private static DecisionMaker nationDm(DecisionMakerId id, String nationId) {

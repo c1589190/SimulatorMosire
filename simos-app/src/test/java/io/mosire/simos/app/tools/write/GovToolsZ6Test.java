@@ -33,6 +33,10 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.world.SmallWorld;
 import io.mosire.simos.app.world.WorldRegistry;
+import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyId;
+import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
@@ -58,6 +62,10 @@ import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.tools.ToolBuckets;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.gov.tools.read.GovInfoTool;
 import io.mosire.simos.gov.tools.write.GovAssignPostsTool;
 import io.mosire.simos.gov.tools.write.GovExpandHouseholdTool;
@@ -66,6 +74,7 @@ import io.mosire.simos.gov.tools.write.GovSetBudgetPolicyTool;
 import io.mosire.simos.gov.tools.write.GovSetEstablishmentTool;
 import io.mosire.simos.gov.tools.write.GovTransferTreasuryTool;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -131,6 +140,13 @@ class GovToolsZ6Test {
 
   private static final BranchId MAIN = new BranchId("main");
   private static final UnitId CENTRAL = UnitId.parse(GovWorldBootstrap.CENTRAL_GOV_ID);
+
+  /** 夹具国家 id（`dm-nation` 的归属行指向它；小世界创世不造国家 ⇒ 由夹具补）。 */
+  private static final String NATION = "FRA";
+
+  /** 夹具军队 id（`dm-army` 的归属行指向它；同理由夹具补）。 */
+  private static final String ARMY = "a1";
+
   private static final UnitId PROVINCE = UnitId.parse(GovWorldBootstrap.PROVINCE_GOV_ID);
 
   private static final HouseholdId CENTRAL_OFFICIAL = HouseholdId.parse("hh-unit:gov-central");
@@ -1547,6 +1563,11 @@ class GovToolsZ6Test {
                   meta.ref(),
                   meta.timestamp(),
                   GaState.empty().withDecisionMakers(decisionMakers())));
+      // ★★ 2026-10-13 收尾测试第 3 层：**归属行真的落表**（乙收尾起归属归模块、按 dmId 索引）——
+      //   `dm-central`/`dm-province` → 各自 GOV 单位（gov 表）、`dm-nation` → 国家（gov 表）、
+      //   `dm-army` → 军队（army 表）。只造裸决策人时每个都被判成"没有归属"，
+      //   工具拒因退化成「归属: 」空串 ⇒ 本类四条断言（含"拒因必须写清归属"）全部落空。
+      state = withAffiliations(state);
       state = mutate.apply(state);
       shell.coreSimos().bootstrapGenesis(state);
       return new World(shell, config.mapId(), label);
@@ -1554,6 +1575,39 @@ class GovToolsZ6Test {
       shell.close();
       throw e;
     }
+  }
+
+  /**
+   * ★★ <b>2026-10-13 收尾测试第 3 层</b>：把四条**归属行**写进各模块自己的表（形制与 {@code
+   * gov.AssignDecisionMakerGov/Nation}、{@code army.AssignDecisionMakerArmy} 逐字同形；手搭创世没有命令总线可走）。
+   *
+   * <p>★ 小世界创世只造 GOV 单位（{@code gov-central}/{@code gov-province}），<b>没有</b>国家与军队 ⇒ 本方法一并把 {@code
+   * FRA} 国与 {@code a1} 军造出来（否则那两条归属行会被读侧的 fail-closed 裁掉，与"没有归属"不可区分）。
+   */
+  private static SimulationState withAffiliations(SimulationState state) {
+    StateMeta meta = state.meta();
+    GovState gov = ((GovSnapshot) state.module("gov").orElseThrow()).state();
+    NationId nation = new NationId(NATION);
+    Map<NationId, Nation> nations = new LinkedHashMap<>(gov.nations());
+    nations.put(nation, new Nation(nation, "国家 " + NATION, new RegionId("r-1"), 0));
+    GovState nextGov =
+        gov.withNations(nations)
+            .withGovAffiliations(
+                Map.of(
+                    new DecisionMakerId("dm-central"), CENTRAL,
+                    new DecisionMakerId("dm-province"), PROVINCE))
+            .withNationAffiliations(Map.of(new DecisionMakerId("dm-nation"), nation));
+    ArmyData army = ((ArmySnapshot) state.module("army").orElseThrow()).data();
+    ArmyId a1 = new ArmyId(ARMY);
+    Map<ArmyId, Army> armies = new LinkedHashMap<>(army.armies());
+    armies.put(a1, new Army(a1, Optional.empty(), CENTRAL, "军队 " + ARMY));
+    ArmyData nextArmy =
+        army.withArmies(armies).withArmyAffiliations(Map.of(new DecisionMakerId("dm-army"), a1));
+    SimulationState withGov =
+        GovZ6WorldFixture.withModule(
+            state, "gov", new GovSnapshot(meta.ref(), meta.timestamp(), nextGov));
+    return GovZ6WorldFixture.withModule(
+        withGov, "army", new ArmySnapshot(meta.ref(), meta.timestamp(), nextArmy));
   }
 
   private static Map<DecisionMakerId, DecisionMaker> decisionMakers() {

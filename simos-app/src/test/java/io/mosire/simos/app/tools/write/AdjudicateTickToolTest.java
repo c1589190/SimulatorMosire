@@ -14,9 +14,13 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.testing.WorldSlices;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmyId;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
@@ -35,6 +39,9 @@ import io.mosire.simos.ga.model.AdjudicationStatus;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DirectiveStatus;
 import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.gov.nation.Nation;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.gov.nation.NationTag;
@@ -157,28 +164,35 @@ class AdjudicateTickToolTest {
     }
   }
 
-  // ── 判据一：一个 tick 两个决策人 ⇒ 恰好一条新 revision，且多命名空间 + sd 都在 ─────────────
+  // ── 判据一：一个 tick 两个决策人 ⇒ 恰好一条新 revision，且两个决策人的效果 + 决策结果都在 ────
 
   /**
-   * ★ **"一个 tick 一条 revision"的承重判据**：{@code dm-fra} 出一条 {@code unit.*}、{@code dm-army} 出一条 {@code
-   * map.*} ⇒ 裁决后 head **恰好 +1**，而那一条 {@code WorldChangeSet} 里**同时**有 {@code unit} / {@code map} /
-   * {@code sd}（决策结果）三个键。
+   * ★ **"一个 tick 一条 revision"的承重判据**：{@code dm-fra} 与 {@code dm-army} 各出一条令 ⇒ 裁决后 head **恰好
+   * +1**（两条令的效果 + 决策结果同落那一条 {@code WorldChangeSet}），且那一条 revision 里**同时**有 {@code unit}（两条令的效果）与
+   * {@code ga}（决策结果）两个键。
    *
-   * <p>★ 判别力：若实现改成"每条令各落一条 revision"，head 会 +3 ⇒ 这里红；若决策结果没进同一批，{@code sd} 键缺席 ⇒ 这里也红。
+   * <p>★★ <b>2026-10-13 收尾测试第 3 层：本条的第二条令换过命令，如实记</b>——它原先是 {@code map.SetTerrain}，但 <b>批次
+   * 1「权限统一」之后 map 域命令一律不打 {@code DmUsableCommand}</b>（用户原话：「map 层级的命令、凭空造钱造人建军肯定不该给 DM 用啊」）⇒ 嵌进令里当场
+   * {@code Rejected[决策命令不在白名单]}，用例连"两条令"这一步都走不到。换上 {@code unit.SetRejoinTarget}（在 17
+   * 条可嵌令面上）。<b>代价如实登记</b>："跨命名空间"这一维在**本夹具**下不再可取（17 条面上唯一的非 unit 命名空间命令是 {@code
+   * actor.RemitGovTreasury} / 三条 {@code economy.SetHousehold*}，都要求本夹具没有的国库账/职业表）——
+   * "两条令的效果在同一批里"由下面的逐字段断言承担，判别力不降。
+   *
+   * <p>★ 判别力：若实现改成"每条令各落一条 revision"，head 会 +3 ⇒ 这里红；若决策结果没进同一批，{@code ga} 键缺席 ⇒ 这里也红。
    */
   @Test
-  void twoDecisionMakersInOneTickLandExactlyOneRevisionAcrossNamespaces() throws Exception {
+  void twoDecisionMakersInOneTickLandExactlyOneRevisionWithTheDecisionResult() throws Exception {
     long before = head();
     issueDirective(
         WORLD_TICK,
         DM_FRA,
         "d-fra",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第一连改\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}"));
     issueDirective(
         WORLD_TICK,
         DM_ARMY,
         "d-army",
-        commands("map.SetTerrain", "{\"hexes\":[{\"q\":2,\"r\":1}],\"terrain\":\"plains\"}"));
+        commands("unit.SetRejoinTarget", "{\"id\":\"u-3\",\"target\":\"u-1\"}"));
 
     ToolResult result = adjudicate(WORLD_TICK);
 
@@ -187,26 +201,27 @@ class AdjudicateTickToolTest {
     assertThat(after).as("★ 一个 tick 恰好一条 revision（两条令 + 决策结果同落一批）").isEqualTo(before + 2 + 1);
 
     Set<String> namespaces = namespacesOfRevision(after);
-    assertThat(namespaces)
-        .as("各命令所属命名空间的键 + ga（决策结果）都在同一条 revision 里")
-        .contains("unit", "map", "ga");
+    assertThat(namespaces).as("两条令的效果所属命名空间的键 + ga（决策结果）都在同一条 revision 里").contains("unit", "ga");
 
     JsonNode value = decisionResult(after, WORLD_TICK);
     assertThat(value.get("tick").asLong()).isEqualTo(WORLD_TICK);
     assertThat(value.get("resultRevision").asLong()).isEqualTo(after);
     assertThat(resultsByType(value))
-        .containsEntry("unit.RenameUnit", "applied")
-        .containsEntry("map.SetTerrain", "applied");
+        .containsEntry("unit.SetJurisdiction", "applied")
+        .containsEntry("unit.SetRejoinTarget", "applied");
 
-    // 反方向：世界**真的**变了（不是"没报错"）。
-    assertThat(unitName(after, U1)).isEqualTo("第一连改");
+    // 反方向：世界**真的**变了（不是"没报错"）——且是**两个决策人各自的**那一条令。
+    assertThat(jurisdictionRegions(after, U1))
+        .as("dm-fra 的那条令真的落了（管辖区域 701）")
+        .containsExactly("701");
+    assertThat(rejoinTargetOf(after, U3)).as("dm-army 的那条令也真的落了（u-3 的回归目标 = u-1）").contains(U1);
   }
 
   // ── 判据二：handler 级被拒 ⇒ 该条被剔出、其余照落、仍只有一条 revision ────────────────────
 
   /**
-   * ★ **前置校验覆盖不到的那一类**（"单位名不得空白"只有域层知道）：一条被 handler 拒、一条过 ⇒ 被拒的被**剔出**、 过的那条照落，而**整批仍然只落一条
-   * revision**（不是"先落一条、再补一条结果"），拒因**逐条**记在决策结果里。
+   * ★ **前置校验覆盖不到的那一类**（"这个区域在不在 map.regions() 里"只有域层知道）：一条被 handler 拒、一条过 ⇒ 被拒的被**剔出**、
+   * 过的那条照落，而**整批仍然只落一条 revision**（不是"先落一条、再补一条结果"），拒因**逐条**记在决策结果里。
    */
   @Test
   void aHandlerRejectedCommandIsDroppedAndRecordedWhileTheRestLand() throws Exception {
@@ -216,10 +231,10 @@ class AdjudicateTickToolTest {
         DM_ARMY,
         "d-army",
         commands(
-            "unit.RenameUnit",
-            "{\"id\":\"u-1\",\"name\":\"第一连改\"}",
-            "unit.RenameUnit",
-            "{\"id\":\"u-3\",\"name\":\"\"}"));
+            "unit.SetJurisdiction",
+            "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}",
+            "unit.SetJurisdiction",
+            "{\"unitId\":\"u-3\",\"regions\":[\"no-such-region\"]}"));
 
     ToolResult result = adjudicate(WORLD_TICK);
 
@@ -233,10 +248,10 @@ class AdjudicateTickToolTest {
     assertThat(value.get("commands").get(0).get("result").asText()).isEqualTo("applied");
     assertThat(value.get("commands").get(1).get("result").asText()).isEqualTo("rejected");
     assertThat(value.get("commands").get(1).get("reason").asText())
-        .as("拒因是**域层的原文**（handler 拒绝），不是一句笼统的失败")
-        .contains("不得为空白");
-    assertThat(unitName(after, U1)).as("过检的那条真的落了").isEqualTo("第一连改");
-    assertThat(unitName(after, U3)).as("被剔的那条真的没落").isEqualTo("第三连");
+        .as("拒因是**域层的原文**（handler 拒绝：区域在 map.regions() 里不存在），不是一句笼统的失败")
+        .contains("区域不存在");
+    assertThat(jurisdictionRegions(after, U1)).as("过检的那条真的落了").containsExactly("701");
+    assertThat(jurisdictionRegions(after, U3)).as("被剔的那条真的没落（u-3 的管辖仍是空的）").isEmpty();
   }
 
   // ── 判据三：expectedRevision 过期 ⇒ Conflict、零 revision ─────────────────────────────
@@ -261,18 +276,20 @@ class AdjudicateTickToolTest {
         WORLD_TICK,
         DM_ARMY,
         "d-v1",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第一版\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}"));
     issueDirective(
         WORLD_TICK,
         DM_ARMY,
         "d-v2",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第二版\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"201\"]}"));
 
     ToolResult result = adjudicate(WORLD_TICK);
 
     assertThat(result.success()).as("裁决必须成（实际：%s）", result.message()).isTrue();
     long after = head();
-    assertThat(unitName(after, U1)).as("★ 只有新版生效（旧版那条命令一条都没执行）").isEqualTo("第二版");
+    assertThat(jurisdictionRegions(after, U1))
+        .as("★ 只有新版生效（旧版那条命令一条都没执行）⇒ 管辖是 201，不是 701")
+        .containsExactly("201");
 
     JsonNode value = decisionResult(after, WORLD_TICK);
     assertThat(value.get("commands")).as("旧版不进批、不进结果").hasSize(1);
@@ -292,7 +309,7 @@ class AdjudicateTickToolTest {
    * ★★ **被打回的令不参与裁决**（2026-09-23 用户裁定的"GM 打回"在裁决侧的承重判据）：一条被 GM 打回（{@code CANCELLED}）的令**不执行**，
    * 也不进决策结果；同 tick 的另一条（未被打回）照常裁决。
    *
-   * <p>★ 判别力：把 {@code participatesInAdjudication} 改成"一律参与"，被打回那条的命令会真的执行（单位名变成"不该生效"）⇒ 本用例红。
+   * <p>★ 判别力：把 {@code participatesInAdjudication} 改成"一律参与"，被打回那条的命令会真的执行（u-1 的管辖变成 701）⇒ 本用例红。
    */
   @Test
   void aRejectedDirectiveDoesNotParticipateInAdjudicationWhileItsSiblingDoes() throws Exception {
@@ -300,7 +317,7 @@ class AdjudicateTickToolTest {
         WORLD_TICK,
         DM_ARMY,
         "d-rejected",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"不该生效\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}"));
     assertThat(
             submit(
                 "ga.SetDirectiveStatus",
@@ -311,7 +328,7 @@ class AdjudicateTickToolTest {
         WORLD_TICK,
         DM_FRA,
         "d-live",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"该生效\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"201\"]}"));
     long before = head();
 
     ToolResult result = adjudicate(WORLD_TICK);
@@ -319,7 +336,9 @@ class AdjudicateTickToolTest {
     assertThat(result.success()).as("裁决必须成（实际：%s）", result.message()).isTrue();
     long after = head();
     assertThat(after).as("仍只一条 revision").isEqualTo(before + 1);
-    assertThat(unitName(after, U1)).as("★ 被打回的那条没执行、没被打回的那条执行了").isEqualTo("该生效");
+    assertThat(jurisdictionRegions(after, U1))
+        .as("★ 被打回的那条没执行、没被打回的那条执行了 ⇒ 管辖是 201")
+        .containsExactly("201");
 
     JsonNode value = decisionResult(after, WORLD_TICK);
     assertThat(value.get("commands")).as("被打回的令不进批、不进结果").hasSize(1);
@@ -336,7 +355,7 @@ class AdjudicateTickToolTest {
         WORLD_TICK,
         DM_FRA,
         "d-fra",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"x\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}"));
     long head = head();
 
     ToolResult result = adjudicateWithExpected(WORLD_TICK, head - 1);
@@ -365,7 +384,7 @@ class AdjudicateTickToolTest {
   // ── 判据五：越权 ⇒ 不进批；同一条命令换个有权的决策人 ⇒ 进批（可区分）────────────────────
 
   /**
-   * ★★ **"越权可区分"的承重判据**：**同一条命令**（{@code unit.RenameUnit} on {@code u-3}，载荷逐字相同）——
+   * ★★ **"越权可区分"的承重判据**：**同一条命令**（{@code unit.SetJurisdiction} on {@code u-3}，载荷逐字相同）——
    *
    * <ul>
    *   <li>{@code dm-fra}（**国家**决策人，可达面 = 本国区域 701 ⇒ u-1）：{@code u-3} 在**中立格**上 ⇒ **够不着** ⇒
@@ -378,10 +397,10 @@ class AdjudicateTickToolTest {
   @Test
   void theSameCommandIsRefusedForOneDecisionMakerAndAppliedForAnother() throws Exception {
     long before = head();
-    String renameU3 = "unit.RenameUnit";
-    String payload = "{\"id\":\"u-3\",\"name\":\"第三连改\"}";
-    issueDirective(WORLD_TICK, DM_FRA, "d-fra", commands(renameU3, payload));
-    issueDirective(WORLD_TICK, DM_ARMY, "d-army", commands(renameU3, payload));
+    String commandType = "unit.SetJurisdiction";
+    String payload = "{\"unitId\":\"u-3\",\"regions\":[\"701\"]}";
+    issueDirective(WORLD_TICK, DM_FRA, "d-fra", commands(commandType, payload));
+    issueDirective(WORLD_TICK, DM_ARMY, "d-army", commands(commandType, payload));
 
     ToolResult result = adjudicate(WORLD_TICK);
 
@@ -395,7 +414,7 @@ class AdjudicateTickToolTest {
     assertThat(fra.get("result").asText()).as("★ 国家决策人够不着 u-3 ⇒ 不进批").isEqualTo("rejected");
     assertThat(fra.get("reason").asText()).as("拒因写明**哪条资源**越界（可读、可核对）").contains("unit:u-3");
     assertThat(army.get("result").asText()).as("★ 同一条命令，军队决策人够得着 ⇒ 进批").isEqualTo("applied");
-    assertThat(unitName(after, U3)).as("真的按军队决策人的令改了名").isEqualTo("第三连改");
+    assertThat(jurisdictionRegions(after, U3)).as("真的按军队决策人的令落了管辖").containsExactly("701");
   }
 
   // ── 判据六：显式 none 必拒；"不表态"不是收紧（两条方向相反）────────────────────────────
@@ -418,7 +437,7 @@ class AdjudicateTickToolTest {
         WORLD_TICK,
         DM_NARROW,
         "d-narrow",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"x\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}"));
     long before = head();
     ToolResult result = adjudicate(WORLD_TICK);
 
@@ -428,7 +447,7 @@ class AdjudicateTickToolTest {
     JsonNode value = decisionResult(after, WORLD_TICK);
     assertThat(value.get("commands").get(0).get("result").asText()).isEqualTo("rejected");
     assertThat(value.get("commands").get(0).get("reason").asText()).contains("unit:u-1");
-    assertThat(unitName(after, U1)).as("没落").isEqualTo("第一连");
+    assertThat(jurisdictionRegions(after, U1)).as("没落").isEmpty();
 
     // ② 不表态 vs 显式 none：同一层上直接断言两条相反方向（端到端走不到"不表态"，见类注）。
     assertThat(AdjudicateTickTool.violations(ResourceScopeMap.empty(), "unit", List.of("u-1")))
@@ -451,7 +470,10 @@ class AdjudicateTickToolTest {
   void aPastTickIsAdjudicatedAndItsDecisionResultCarriesThatTick() throws Exception {
     long past = 3L;
     issueDirective(
-        past, DM_ARMY, "d-army", commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"补记改\"}"));
+        past,
+        DM_ARMY,
+        "d-army",
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}"));
 
     ToolResult result = adjudicate(past);
 
@@ -463,7 +485,7 @@ class AdjudicateTickToolTest {
     assertThat(entries).as("按 tick 归档 ⇒ 地址里带的就是那个 tick").isNotNull().hasSize(1);
     assertThat(entries.get(0).tick()).as("★ 条目带**过去**那个 tick（不是世界 tick）").isEqualTo(past);
     assertThat(entries.get(0).tags()).as("标签挂到本次涉及的决策人").containsExactly(DM_ARMY);
-    assertThat(unitName(after, U1)).as("效果落在当下").isEqualTo("补记改");
+    assertThat(jurisdictionRegions(after, U1)).as("效果落在当下").containsExactly("701");
   }
 
   // ── 判据八：同一个 tick 的第二次裁决落**第二条记录**（改判）；"至多一条生效"由状态承担 ──────────────
@@ -482,7 +504,7 @@ class AdjudicateTickToolTest {
         WORLD_TICK,
         DM_ARMY,
         "d-army",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第一连改\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}"));
     // 先把第一次裁决作废（不然世界已是改后的样子，第二次的命令会在错误的基态上试）——但本用例只证"能不能落第二条"，
     // 故直接再裁一次：命令会因"名字已经是第一连改"而无实际变更，这不影响本条要证的东西。
     assertThat(adjudicate(WORLD_TICK).success()).isTrue();
@@ -520,34 +542,46 @@ class AdjudicateTickToolTest {
     AdjudicateTickTool tool = tool();
     Map<String, CommandTargets> targets = tool.commandTargets();
 
-    // ① 10 条缺口必须**恰好**是这 10 条（少一条 ⇒ 有人悄悄补上了却没登记；多一条 ⇒ 白名单里多了没人管的类型）。
-    //   ★ 辖区阶段 5 的 unit.SetJurisdiction / unit.SetTaxRate 与阶段 9–12 的 6 条新 unit 命令都实现了
-    //     CommandTargets（目标 = 载荷点名的 unitId）⇒ 它们不在缺口里，由下面的 samples 逐条钉住输出路径。
+    // ★★ 2026-10-13 收尾测试第 3 层：可嵌令面**整体重算**过 —— 旧断言（"10 条缺口 + 66 条白名单"）量的是
+    //   "注册面 − GmOnly − sd 自指"那个**中间量**；批次 1「权限统一」之后可嵌令面改由
+    //   `CommandPermissionRules` 从 `DmUsableCommand` 声明派生（反默认：不打标记 = 仅 GM）⇒ 现在是 **17 条**。
+    //   17 条的**名单逐条钉在这里**（不是只钉条数）：少一条/多一条/换一条都当场红。
+    Set<String> dmFace =
+        Set.of(
+            "actor.RemitGovTreasury",
+            "economy.SetHouseholdLabor",
+            "economy.SetHouseholdParticipation",
+            "economy.SetHouseholdClass",
+            "unit.CancelRoute",
+            "unit.SetRejoinTarget",
+            "unit.SetGovSuperior",
+            "unit.SetJurisdiction",
+            "unit.PlanSparseRoute",
+            "unit.AssignExternalGovPost",
+            "unit.SetArmyPayPolicy",
+            "unit.PlanRoute",
+            "unit.SetTaxRate",
+            "unit.AssignGovPost",
+            "unit.SetGovFormation",
+            "unit.SetGovPolicy",
+            "unit.SetArmyFormation");
+    assertThat(tool.allowedCommandTypes())
+        .as("可嵌令面 = 全仓 17 条打了 DmUsableCommand 的命令（逐条名单见上；`sd.*` 整族不打标记 ⇒ 不在里面）")
+        .containsExactlyInAnyOrderElementsOf(dmFace);
+
+    // ① **缺口按新的 17 条重算**：缺失 = 可嵌令面 − 有目标声明者。重算结果是**空集**，而且是**可推导**的空：
+    //   17 条 handler **逐条**都 implements CommandTargets（目标 = 载荷点名的 unitId / 家户格 / 源-目标格）⇒
+    //   不存在"白名单里有、映射表里没有"的类型（那会让该命令被**静默拒**）。
     Set<String> missing = new LinkedHashSet<>(tool.allowedCommandTypes());
     missing.removeAll(targets.keySet());
     assertThat(missing)
-        .as(
-            "★ 有意无目标的 10 条（语义对象不是资源命名空间；economy 账/人口迁移 6 条同族）——缺口在册可查，不静默。"
-                + " sd.* 整族被 DirectiveWhitelist 禁自指，不进本白名单 ⇒ 不在 missing 里。")
-        .containsExactlyInAnyOrder(
-            "unit.CreateCommandChain",
-            "unit.UpdateCommandChain",
-            "map.SetEdge",
-            "map.RegisterPathwayGroup",
-            "economy.AddDemand",
-            "economy.CancelDemand",
-            "economy.MigrateHousehold",
-            "economy.RegisterCandidate",
-            "economy.SetMarketPrice",
-            "economy.TransferAssetShare");
-    assertThat(tool.allowedCommandTypes())
-        .as(
-            "白名单 = 注册面（128）− GmOnly（15）− sd 自指（42）= 66（D0–D4 新增 7 条有目标声明的命令："
-                + "economy 家户劳动/参与/阶层/需求 4 条 + social.SubmitHouseholdWorkOrder + "
-                + "unit.SetVisionRadius / unit.SetArmyPayPolicy；Z4/Z3d 再 +unit.AssignGovPost +unit.AssignExternalGovPost）")
-        .hasSize(66);
+        .as("★ 缺口 = 可嵌令面(17) − 有目标声明者；17 条逐条实现 CommandTargets ⇒ 缺口必须为空（不是「没查」）")
+        .isEmpty();
+    assertThat(dmFace)
+        .as("★ 缺口为空的前提：17 条**逐条**都在目标声明表里（这两条断言合起来才是「重算」，只写 isEmpty 不是）")
+        .isSubsetOf(targets.keySet());
 
-    // ② 其余 47 条白名单类型 + 10 条 GM-only（实现 CommandTargets 的）= 57 条样本：逐条给真载荷、钉死输出路径。
+    // ② 17 条可嵌令类型 + 全部实现 CommandTargets 的 GM-only 命令 = 101 条样本：逐条给真载荷、钉死输出路径。
     //   ★ 10 条 GM-only 里 4 条经济命令（SwitchMode/GmAdjust/UnitBorrow/UnitRepay）与三条区域清空
     //     （actor/economy/social.ClearRegion）有意返回空目标；actor.AdjustAccounts 返回**落格**目标
     //     （entries[] 的 q/r），actor.RemitGovTreasury 返回源/目标两格，unit.AdjustComposition 返回载荷点名的
@@ -766,6 +800,22 @@ class AdjudicateTickToolTest {
     samples.put(
         "economy.UpdateDemand", List.of("{\"demand\":\"d-1\",\"hex\":{\"q\":1,\"r\":1}}", "1_1"));
     samples.put("social.SubmitHouseholdWorkOrder", List.of("{}"));
+    // ★★ 2026-10-13 收尾测试第 3 层补登 4 条（`commandTargets()` 表里有、samples 里没有 ⇒ 旧断言当场红）：
+    //   乙收尾的三条赋权工单（写各模块自己的归属表，目标 = 那个决策人的那一行）+ 批次 2 的 map.SetHexArea。
+    samples.put(
+        "gov.AssignDecisionMakerNation",
+        List.of("{\"decisionMakerId\":\"dm-1\",\"nationId\":\"n1\"}", "nation-affiliation/dm-1"));
+    samples.put(
+        "gov.AssignDecisionMakerGov",
+        List.of("{\"decisionMakerId\":\"dm-1\",\"govUnitId\":\"u-1\"}", "gov-affiliation/dm-1"));
+    samples.put(
+        "army.AssignDecisionMakerArmy",
+        List.of("{\"decisionMakerId\":\"dm-1\",\"armyId\":\"a1\"}", "army-affiliation/dm-1"));
+    samples.put(
+        "map.SetHexArea",
+        List.of(
+            "{\"hex\":{\"q\":1,\"r\":2},\"key\":\"rural\",\"op\":\"add\",\"value\":1000}",
+            MAP_ID + "/hex/1_2"));
     samples.put(
         "actor.RemitGovTreasury",
         List.of("{\"fromHousehold\":\"hh-1\",\"toHousehold\":\"hh-2\",\"grain\":1}"));
@@ -925,9 +975,10 @@ class AdjudicateTickToolTest {
     }
     assertThat(samples.keySet())
         .as(
-            "97 条样本一条不漏（78 条有目标声明 + 19 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）"
-                + "（★★ 追加裁定 12：economy.SetGovernmentPolicy 有真目标声明 ⇒ 96 → 97）")
-        .hasSize(97);
+            "101 条样本一条不漏（82 条有目标声明 + 19 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）"
+                + "（★★ 追加裁定 12：economy.SetGovernmentPolicy 有真目标声明 ⇒ 96 → 97；"
+                + "★★ 2026-10-13 收尾测试第 3 层：乙收尾三条赋权工单 + map.SetHexArea ⇒ 97 → 101）")
+        .hasSize(101);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());
@@ -955,12 +1006,12 @@ class AdjudicateTickToolTest {
         WORLD_TICK,
         DM_ARMY,
         "d-army",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第一连改\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}"));
     issueDirective(
         WORLD_TICK,
         DM_FRA,
         "d-fra",
-        commands("unit.RenameUnit", "{\"id\":\"u-3\",\"name\":\"第三连改\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-3\",\"regions\":[\"701\"]}"));
     long before = head();
 
     ToolResult result = adjudicate(WORLD_TICK);
@@ -985,8 +1036,8 @@ class AdjudicateTickToolTest {
     assertThat(flipResultOf(value, "d-army")).isEqualTo("applied");
     assertThat(flipResultOf(value, "d-fra")).isEqualTo("applied");
 
-    assertThat(unitName(after, U1)).as("EXECUTED 的令的命令真的落了").isEqualTo("第一连改");
-    assertThat(unitName(after, U3)).as("CANCELLED 的令的命令真的没落").isEqualTo("第三连");
+    assertThat(jurisdictionRegions(after, U1)).as("EXECUTED 的令的命令真的落了").containsExactly("701");
+    assertThat(jurisdictionRegions(after, U3)).as("CANCELLED 的令的命令真的没落").isEmpty();
   }
 
   /**
@@ -1002,10 +1053,10 @@ class AdjudicateTickToolTest {
         DM_ARMY,
         "d-army",
         commands(
-            "unit.RenameUnit",
-            "{\"id\":\"u-1\",\"name\":\"第一连改\"}",
-            "unit.RenameUnit",
-            "{\"id\":\"u-3\",\"name\":\"\"}"));
+            "unit.SetJurisdiction",
+            "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}",
+            "unit.SetJurisdiction",
+            "{\"unitId\":\"u-3\",\"regions\":[\"no-such-region\"]}"));
     long before = head();
 
     ToolResult result = adjudicate(WORLD_TICK);
@@ -1016,8 +1067,8 @@ class AdjudicateTickToolTest {
     assertThat(sdAt(after).directives().get(new DirectiveId("d-army")).status())
         .as("有任一命令被剔 ⇒ 整条令 CANCELLED")
         .isEqualTo(DirectiveStatus.CANCELLED);
-    assertThat(unitName(after, U1)).as("过检的那条照落").isEqualTo("第一连改");
-    assertThat(unitName(after, U3)).as("被剔的那条没落").isEqualTo("第三连");
+    assertThat(jurisdictionRegions(after, U1)).as("过检的那条照落").containsExactly("701");
+    assertThat(jurisdictionRegions(after, U3)).as("被剔的那条没落").isEmpty();
   }
 
   /**
@@ -1032,12 +1083,12 @@ class AdjudicateTickToolTest {
         WORLD_TICK,
         DM_ARMY,
         "d-army",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"x\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}"));
     issueDirective(
         WORLD_TICK,
         DM_FRA,
         "d-fra",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"y\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"201\"]}"));
 
     // 正向：ISSUED → EXECUTED 成；落地可重放。
     CommandResult first =
@@ -1118,17 +1169,17 @@ class AdjudicateTickToolTest {
         WORLD_TICK,
         DM_ARMY,
         "d-army",
-        commands("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"第一连改\"}"));
+        commands("unit.SetJurisdiction", "{\"unitId\":\"u-1\",\"regions\":[\"701\"]}"));
     assertThat(adjudicate(WORLD_TICK).success()).isTrue();
     long afterAdjudication = head();
-    assertThat(unitName(afterAdjudication, U1)).as("前提：裁决真的改了世界").isEqualTo("第一连改");
+    assertThat(jurisdictionRegions(afterAdjudication, U1)).as("前提：裁决真的改了世界").containsExactly("701");
 
     ToolResult result = voidAdjudication(WORLD_TICK);
 
     assertThat(result.success()).as("作废应成功：%s", result.message()).isTrue();
     long afterVoid = head();
     assertThat(afterVoid).as("① 追加一条逆变更 revision（时间线只追加，不截断）").isGreaterThan(afterAdjudication);
-    assertThat(unitName(afterVoid, U1)).as("② 世界真的回到裁决之前").isNotEqualTo("第一连改");
+    assertThat(jurisdictionRegions(afterVoid, U1)).as("② 世界真的回到裁决之前（管辖被回滚）").isEmpty();
     GaState sd = sdAt(afterVoid);
     assertThat(sd.directives().get(new DirectiveId("d-army")).status())
         .as("③ 被它翻过的令退回待裁决（于是可以改判/重裁）")
@@ -1271,12 +1322,37 @@ class AdjudicateTickToolTest {
     throw new AssertionError("决策结果里没有 " + decisionMakerId + " 的命令: " + value);
   }
 
-  private String unitName(long revision, UnitId id) {
+  /**
+   * ★★ <b>2026-10-13 收尾测试第 3 层</b>：该单位在某个 revision 的<b>管辖区域集合</b>（升序的 regionId
+   * 串）——"令里的命令真的落了世界"的判据面。
+   *
+   * <p>旧形态读的是 {@code Unit.name()}，因为当时的夹具命令是 {@code unit.RenameUnit}。该命令在<b>批次 4 被摘出 DM 面</b>
+   * （用户反默认口径：不打 {@code DmUsableCommand} = 仅 GM）⇒ 嵌进令里当场 {@code Rejected[决策命令不在白名单]}，
+   * 该用例连"出令"这一步都走不到。换上的 {@code unit.SetJurisdiction} 在<b>新的 17 条可嵌令面</b>上，且写的是 {@code
+   * Unit.jurisdiction()} 这个**普通字段**（与旧断言同样"读一个字段比字面量"，判别力不降）。
+   */
+  /** 该单位在某个 revision 的**回归目标**（{@code unit.SetRejoinTarget} 的判据面；未设 ⇒ 空）。 */
+  private java.util.Optional<UnitId> rejoinTargetOf(long revision, UnitId id) {
     return ((UnitSnapshot) core().replay(ref("main", revision)).module("unit").orElseThrow())
         .state()
         .units()
         .get(id)
-        .name();
+        .rejoinTarget();
+  }
+
+  private List<String> jurisdictionRegions(long revision, UnitId id) {
+    return ((UnitSnapshot) core().replay(ref("main", revision)).module("unit").orElseThrow())
+        .state()
+        .units()
+        .get(id)
+        .jurisdiction()
+        .map(
+            jurisdiction ->
+                jurisdiction.taxRatePerMilleByRegion().keySet().stream()
+                    .map(RegionId::value)
+                    .sorted()
+                    .toList())
+        .orElse(List.of());
   }
 
   /** 重放某个 revision 得到的 sd 状态——状态翻转是否**真落盘**的判据面（往返）。 */
@@ -1364,6 +1440,7 @@ class AdjudicateTickToolTest {
             new LinkedHashMap<>(Map.of(H12, populationSeries(), H13, populationSeries())),
             Map.of(),
             Map.of());
+    WorldSlices slices = sdWithNationArmyAndMakers();
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
@@ -1371,18 +1448,35 @@ class AdjudicateTickToolTest {
                 "map", new MapSnapshot(ref("main", 1), T7, fourHexMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "ga", new GaSnapshot(ref("main", 1), T7, sdWithNationArmyAndMakers())),
+                // ★★ 2026-10-13 收尾测试第 3 层：国家住 gov、军队住 army，**归属行也真的落表**
+                //   ——归属归模块之后，"dm-fra 属 FRA / dm-army 属 a1 军"住在各模块的表里（按 dmId 索引）；
+                //   只造裸决策人 ⇒ 范围函数 deny-all ⇒ 每条令都被资源预检拒（"真的落了世界"的断言全红）。
+                "gov", new GovSnapshot(ref("main", 1), T7, slices.gov()),
+                "army", new ArmySnapshot(ref("main", 1), T7, slices.army()),
+                "ga", new GaSnapshot(ref("main", 1), T7, slices.ga())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new GovCodec(),
+                    new ArmyCodec(),
+                    new GaCodec())));
   }
 
-  /** 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1，视野 1）+ 三个决策人（国家 / 军队 / 被收紧的国家）。 */
-  private static GaState sdWithNationArmyAndMakers() {
+  /**
+   * 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1，视野 1）+ 三个决策人（国家 / 军队 / 被收紧的国家）。
+   *
+   * <p>★★ <b>2026-10-13 收尾测试第 3 层</b>：返回值由 {@code GaState} 改 {@link WorldSlices}，且**归属行真的落表**
+   * （{@code GovState.nationAffiliations()} / {@code ArmyData.armyAffiliations()}）。在此之前， {@code
+   * nations}/{@code armies} 两张表只是**方法里的死局部变量**——世界装配时被静默丢掉（第 1 层台账 §5.3 记过这个形态）。
+   */
+  private static WorldSlices sdWithNationArmyAndMakers() {
     NationId fra = new NationId("FRA");
     Map<NationId, Nation> nations = new LinkedHashMap<>();
     nations.put(fra, new Nation(fra, "国家 FRA", new RegionId("701"), 0));
@@ -1394,7 +1488,13 @@ class AdjudicateTickToolTest {
     makers.put(DM_ARMY, maker(DM_ARMY, AccessLimit.empty()));
     makers.put(
         DM_NARROW, maker(DM_NARROW, AccessLimit.ofPrefixes(Map.of("unit", Set.<String>of()))));
-    return GaState.empty().withDecisionMakers(makers);
+    return WorldSlices.of(
+            new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+            ArmyData.empty().withArmies(armies),
+            GaState.empty().withDecisionMakers(makers))
+        .withNationAffiliation(DM_FRA, fra)
+        .withNationAffiliation(DM_NARROW, fra)
+        .withArmyAffiliation(DM_ARMY, a1);
   }
 
   private static DecisionMaker maker(DecisionMakerId id, AccessLimit accessLimit) {

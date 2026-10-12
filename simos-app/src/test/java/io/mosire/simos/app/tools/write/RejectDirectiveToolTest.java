@@ -167,7 +167,8 @@ class RejectDirectiveToolTest {
    * <ul>
    *   <li>该令 {@code ISSUED → CANCELLED}（真落盘，重放读回）；
    *   <li>理由**真的进了该决策人的会话**（读真 {@code conversations.db}，最后一条 user 消息 == 传进去的 reason 原文）；
-   *   <li>审计条目在 {@code sd:rejection.<directiveId>}：谁的令 / 第几版 / 理由文本 / 落在哪条 revision；
+   *   <li>审计条目在 {@code ga:rejection.<directiveId>}（批次 3e 起 `sd:` 整族退役；唯一拼写点 = {@code
+   *       RejectDirectiveTool.REJECTION_ADDRESS_PREFIX}）：谁的令 / 第几版 / 理由文本 / 落在哪条 revision；
    *   <li>★ **世界观无变更**：那一条 revision 的变更集里**只有 {@code sd}** 命名空间，且单位名一字未动。
    * </ul>
    *
@@ -203,7 +204,9 @@ class RejectDirectiveToolTest {
         .isEqualTo(DirectiveStatus.CANCELLED);
 
     // ★ 审计留痕：谁的令 / 第几版 / 理由文本 / 落在哪条 revision。
-    List<SdInfoEntry> entries = sdAt(after).info().get("sd:rejection.d-shanghai-0001");
+    // ★ 地址前缀取自**唯一拼写点**（不手抄字面量）：批次 3e 把它从 `sd:rejection.` 改挂 `ga:rejection.`。
+    List<SdInfoEntry> entries =
+        sdAt(after).info().get(RejectDirectiveTool.REJECTION_ADDRESS_PREFIX + "d-shanghai-0001");
     assertThat(entries).as("审计条目存在").isNotNull().hasSize(1);
     SdInfoEntry audit = entries.get(0);
     assertThat(audit.key()).isEqualTo(RejectDirectiveTool.REJECTION_KEY);

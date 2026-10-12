@@ -10,6 +10,9 @@ import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -21,6 +24,9 @@ import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -208,18 +214,11 @@ class SdDecisionScopeApiTest {
         "gov.CreateNation",
         "{\"nationId\":\"n2\",\"name\":\"乙国\",\"homeRegionId\":\"r-other\",\"adminBudgetPerTick\":10}");
     submit("army.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
-    submit(
-        "ga.CreateDecisionMaker",
-        "{\"id\":\"dm-nation\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
-            + "\"allowedTools\":[],\"cadence\":3}");
-    submit(
-        "ga.CreateDecisionMaker",
-        "{\"id\":\"dm-army\",\"affiliation\":{\"kind\":\"army\",\"id\":\"a1\"},"
-            + "\"allowedTools\":[],\"cadence\":5}");
-    submit(
-        "ga.CreateDecisionMaker",
-        "{\"id\":\"dm-narrow\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
-            + "\"allowedTools\":[],\"cadence\":3}");
+    // ★★ 2026-10-13 收尾测试第 3 层：建裸决策人 → 用持有模块的赋权工单落归属行
+    //   （`ga.CreateDecisionMaker` 自乙收尾起整条拒收 `affiliation`：归属归模块）。
+    createMaker("dm-nation", 3, "nation", "n1");
+    createMaker("dm-army", 5, "army", "a1");
+    createMaker("dm-narrow", 3, "nation", "n1");
     // 交集演示：一个含本国区域（+ 一个不存在的），一个只含**别国**的区域。
     submit(
         "ga.SetDecisionMakerAccess",
@@ -231,6 +230,35 @@ class SdDecisionScopeApiTest {
         "{\"decisionMakerId\":\"dm-narrow\","
             + "\"accessLimit\":{\"map\":[\"Map1/region/r-other\"]},"
             + "\"adjudicationDisclosure\":\"PERCEPTION_ONLY\",\"redactedFields\":[]}");
+  }
+
+  /**
+   * ★★ 2026-10-13 收尾测试第 3 层：<b>建裸决策人 → 用模块的赋权工单落归属</b>（归属归模块之后夹具的既定形制）。
+   *
+   * <p>{@code nation} → {@code gov.AssignDecisionMakerNation}、{@code gov} → {@code
+   * gov.AssignDecisionMakerGov}、{@code army} → {@code army.AssignDecisionMakerArmy}。★ 未注册的 kind ⇒
+   * 当场抛。
+   */
+  private void createMaker(String id, long cadence, String affiliationKind, String affiliationRef)
+      throws Exception {
+    submit(
+        "ga.CreateDecisionMaker",
+        "{\"id\":\"" + id + "\",\"allowedTools\":[],\"cadence\":" + cadence + "}");
+    switch (affiliationKind) {
+      case "nation" ->
+          submit(
+              "gov.AssignDecisionMakerNation",
+              "{\"decisionMakerId\":\"" + id + "\",\"nationId\":\"" + affiliationRef + "\"}");
+      case "gov" ->
+          submit(
+              "gov.AssignDecisionMakerGov",
+              "{\"decisionMakerId\":\"" + id + "\",\"govUnitId\":\"" + affiliationRef + "\"}");
+      case "army" ->
+          submit(
+              "army.AssignDecisionMakerArmy",
+              "{\"decisionMakerId\":\"" + id + "\",\"armyId\":\"" + affiliationRef + "\"}");
+      default -> throw new IllegalArgumentException("未注册的归属种类（夹具写错了？）: " + affiliationKind);
+    }
   }
 
   private JsonNode scopeJson(String id) throws Exception {
@@ -326,14 +354,23 @@ class SdDecisionScopeApiTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty())),
+                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty()),
+                // ★★ 2026-10-13 收尾测试第 3 层：国家住 gov、军队住 army（批次 3c/3d-1 起不再住 sd/ga）。
+                "gov", new GovSnapshot(ref("main", 1), T7, GovState.empty()),
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new GovCodec(),
+                    new ArmyCodec(),
+                    new GaCodec())));
   }
 
   private static GameMap twoNationMap() {

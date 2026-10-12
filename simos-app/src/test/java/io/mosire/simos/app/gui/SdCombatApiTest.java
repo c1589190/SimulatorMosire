@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -16,6 +19,9 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -87,6 +93,12 @@ class SdCombatApiTest {
   private static final UnitId U1 = new UnitId("u-1");
   private static final RegionId R_NATION = new RegionId("r-nation");
 
+  /**
+   * ★★ 2026-10-13 收尾测试第 3 层：交战记录在 GUI 侧的**唯一**读口。旧的 {@code /api/sd/combats} 已随批次 3d-2 旧战斗族退役删除（打它只会
+   * 404，那是"端点不存在"，不是"空库"）。
+   */
+  private static final String COMBATS = "/api/army/combats";
+
   private static final ObjectMapper JSON = new ObjectMapper();
 
   @TempDir Path tempDir;
@@ -114,7 +126,7 @@ class SdCombatApiTest {
 
   @Test
   void emptyLibraryGivesEmptyListNotAnError() throws Exception {
-    HttpResponse<String> response = get("/api/sd/combats");
+    HttpResponse<String> response = get(COMBATS);
 
     assertThat(response.statusCode()).as("空库不是错误").isEqualTo(200);
     JsonNode body = JSON.readTree(response.body());
@@ -126,76 +138,92 @@ class SdCombatApiTest {
   /**
    * 交战种在 {@code (1,2)}（单位 {@code u-1} 在 {@code (1,1)}）：GET 该路由，逐值断言记录内容。
    *
-   * <p>★ 判别力：把 {@code /api/sd/combats} 写成"从单位同格推"（旧 GUI 口径）会得到空集 ⇒ hex/名字/阶段 断言全红。
+   * <p>★★ <b>2026-10-13 收尾测试第 3 层：形状迁到新战斗契约</b>（批次 3d-2 旧战斗族整族退役）——旧形状的 {@code combatId}/{@code
+   * combatStateId}/{@code name}/{@code currentStage}/{@code selectedOutcome} 都是**旧记录**的字段， 新读面
+   * {@code ApiViews.armyCombat} 发的是 {@code {id,kind,tick,hex,participants,text,stages,losses}}
+   * （阶段的概率表与判定在 {@code stages[].outcomes[]} 里）。断言跟着<b>新契约</b>走，不是删掉。
+   *
+   * <p>★ 判别力：把 {@code /api/army/combats} 写成"从单位同格推"会得到空集 ⇒ hex/阶段/participants 断言全红。
    */
   @Test
   void combatsReportsTheRecordedHexStageAndParticipants() throws Exception {
     createCombatAt(new HexCoord(1, 2));
 
-    JsonNode combats = getJson("/api/sd/combats").get("combats");
+    JsonNode combats = getJson(COMBATS).get("combats");
 
     assertThat(combats).as("恰一场交战").hasSize(1);
     JsonNode combat = combats.get(0);
-    assertThat(combat.get("combatId").asText()).isEqualTo("c1");
-    assertThat(combat.get("combatStateId").asText()).isEqualTo("cs1");
-    assertThat(combat.get("name").asText()).isEqualTo("甲战役");
+    assertThat(combat.get("id").asText()).isEqualTo("c1");
+    // ★ kind = **自定义交战状态**（D-009："轰城也是特殊交战状态"）——旧形状里的 name/combatStateId 两个槽位由它一个承担。
+    assertThat(combat.get("kind").asText()).isEqualTo("野战");
+    assertThat(combat.get("tick").asLong()).as("缺省 tick = 世界当前 tick（创世 7）").isEqualTo(7L);
     assertThat(combat.get("hex").get("q").asInt()).as("★ 交战格以记录为准").isEqualTo(1);
     assertThat(combat.get("hex").get("r").asInt()).isEqualTo(2);
-    assertThat(combat.get("currentStage").asText()).isEqualTo("s1");
-    assertThat(combat.get("currentStageName").asText()).isEqualTo("遭遇战");
-    assertThat(combat.get("selectedOutcome").isNull()).as("尚未选结局 ⇒ null").isTrue();
     assertThat(combat.get("participants")).hasSize(1);
     assertThat(combat.get("participants").get(0).asText()).isEqualTo("u-1");
-    assertThat(combat.get("participantCount").asInt()).isEqualTo(1);
-    assertThat(combat.get("participantsAtHex")).as("u-1 在 (1,1)，不在交战格 (1,2)").isEmpty();
-    assertThat(combat.get("participantsAtHexCount").asInt()).isEqualTo(0);
+    // ★ stages 有序：记录级初始阶段（handler 合成 start/初始阶段）+ 追加的 s1（遭遇战）。
+    JsonNode stages = combat.get("stages");
+    assertThat(stages).as("初始阶段 + 追加阶段").hasSize(2);
+    assertThat(stages.get(0).get("id").asText()).isEqualTo("start");
+    assertThat(stages.get(1).get("id").asText()).isEqualTo("s1");
+    assertThat(stages.get(1).get("name").asText()).isEqualTo("遭遇战");
+    assertThat(stages.get(1).get("participants").get(0).asText()).isEqualTo("u-1");
+    assertThat(stages.get(1).get("outcomes")).as("追加阶段带着概率表").hasSize(1);
+    assertThat(stages.get(1).get("outcomes").get(0).get("label").asText()).isEqualTo("胜");
+    assertThat(combat.get("losses")).as("尚未判定结局 ⇒ 无逐单位损失").isEmpty();
   }
 
-  // ── 判据：跨格 —— 单位详情的 combat 子对象 ─────────────────────────────
+  // ── 判据：记录与单位位置解耦；单位视图不再携带 combat ──────────────────────
 
-  /** 单位不在交战格：{@code combat} 里能读出 combatId/currentStage/hex，且 {@code atHex=false}。 */
+  /**
+   * ★★ <b>2026-10-13 收尾测试第 3 层：旧"单位详情 combat 子对象"整条判据的替代</b>。
+   *
+   * <p>旧形状里 {@code /api/unit/<id>} 带一个 {@code combat} 子对象（{@code atHex} 标"本单位在不在交战格"）。批次 3d-2 把
+   * {@code combat} 一栏**从单位视图删除**（{@code ApiViews} 自述：不是恒 {@code null} ——留一条恒 null
+   * 的键会让读侧以为"这个单位不参加任何交战"）。
+   *
+   * <p>⇒ 新契约的两条判据一起钉在这里：① 交战记录的读面在 army 自己的面，记录里的 hex 是**记录在案的真值**，与参与单位此刻在哪一格无关； ② 单位视图**没有**
+   * {@code combat} 键（连记录存在时也没有）。
+   */
   @Test
-  void unitDetailExposesItsCombatAndFlagsWhenTheUnitIsNotOnTheCombatHex() throws Exception {
-    createCombatAt(new HexCoord(1, 2));
+  void theRecordKeepsItsOwnHexEvenWhenTheUnitIsElsewhereAndTheUnitViewHasNoCombatKey()
+      throws Exception {
+    createCombatAt(new HexCoord(1, 2)); // 单位 u-1 的创世位置是 (1,1)
+
+    JsonNode record = getJson(COMBATS).get("combats").get(0);
+    assertThat(record.get("hex").get("q").asInt()).as("★ 记录格 = 记录时写下的那一格").isEqualTo(1);
+    assertThat(record.get("hex").get("r").asInt()).isEqualTo(2);
+    assertThat(record.get("participants").get(0).asText())
+        .as("参与单位不必在交战格（引擎允许交战双方不同格）")
+        .isEqualTo("u-1");
 
     JsonNode unit = getJson("/api/unit/u-1");
-
-    JsonNode combat = unit.get("combat");
-    assertThat(combat).as("★ 记录在案 ⇒ 单位详情带着所属交战").isNotNull();
-    assertThat(combat.get("combatId").asText()).isEqualTo("c1");
-    assertThat(combat.get("name").asText()).isEqualTo("甲战役");
-    assertThat(combat.get("currentStage").asText()).isEqualTo("s1");
-    assertThat(combat.get("hex").get("q").asInt()).isEqualTo(1);
-    assertThat(combat.get("hex").get("r").asInt()).isEqualTo(2);
-    assertThat(combat.get("atHex").asBoolean()).as("★ 本单位不在交战格（引擎不要求交战双方同格）").isFalse();
+    assertThat(unit.has("combat")).as("★ 旧 combat 栏已删除：连记录存在时也不出现（不是恒 null 的空壳）").isFalse();
   }
 
-  /** 单位**就在**交战格：同一份 {@code combat} 视图里 {@code atHex=true}。 */
+  /** 交战格过滤（{@code ?q=&r=}）：记录格命中 ⇒ 一条；别格 ⇒ 空集（格的判据来自记录，不来自单位位置）。 */
   @Test
-  void unitOnTheCombatHexReportsAtHexTrue() throws Exception {
+  void combatsCanBeFilteredByTheRecordedHex() throws Exception {
     createCombatAt(H11); // 与 u-1 的创世位置 (1,1) 同格
 
-    JsonNode combat = getJson("/api/unit/u-1").get("combat");
-
-    assertThat(combat).isNotNull();
-    assertThat(combat.get("atHex").asBoolean()).isTrue();
-    assertThat(combat.get("hex").get("q").asInt()).isEqualTo(1);
-    assertThat(combat.get("hex").get("r").asInt()).isEqualTo(1);
+    assertThat(getJson(COMBATS + "?q=1&r=1").get("combats")).as("记录格命中").hasSize(1);
+    assertThat(getJson(COMBATS + "?q=1&r=2").get("combats"))
+        .as("★ 记录只落在 (1,1) ⇒ 问 (1,2) 必须是空集（不按单位位置糊弄）")
+        .isEmpty();
   }
 
-  /** 无交战的单位 ⇒ {@code combat} 是 JSON {@code null}（**不拿空对象顶替**）。 */
+  /** 无交战的世界：{@code 200 {"combats":[]}}，且单位视图**同样**没有 {@code combat} 键（两种世界逐字同形）。 */
   @Test
-  void unitWithoutAnyCombatReportsNullCombat() throws Exception {
-    JsonNode unit = getJson("/api/unit/u-1");
-
-    assertThat(unit.get("combat").isNull()).as("无交战 ⇒ null（不是 {}）").isTrue();
+  void aWorldWithoutRecordsReportsAnEmptyListAndStillNoCombatKey() throws Exception {
+    assertThat(getJson(COMBATS).get("combats")).isEmpty();
+    assertThat(getJson("/api/unit/u-1").has("combat")).isFalse();
   }
 
   // ── 判据：只读面口径（GET-only + 拒 as=）──────────────────────────────
 
   @Test
   void combatsEndpointOnlyAllowsGet() throws Exception {
-    HttpResponse<String> response = post("/api/sd/combats", "{}");
+    HttpResponse<String> response = post(COMBATS, "{}");
 
     assertThat(response.statusCode()).isEqualTo(405);
     assertThat(response.headers().firstValue("Allow")).hasValue("GET");
@@ -207,7 +235,7 @@ class SdCombatApiTest {
    */
   @Test
   void combatsRejectsAsPerspective() throws Exception {
-    HttpResponse<String> response = get("/api/sd/combats?as=dm-nope");
+    HttpResponse<String> response = get(COMBATS + "?as=dm-nope");
 
     assertThat(response.statusCode()).as("未接 redaction ⇒ 带 as= 显式拒绝").isEqualTo(400);
     assertThat(JSON.readTree(response.body()).get("error")).isNotNull();
@@ -215,27 +243,33 @@ class SdCombatApiTest {
 
   // ────────────────────────────── 夹具 ──────────────────────────────
 
-  /** 经真命令路径种一场交战：{@code c1}（participants=[u-1]），首阶段 {@code s1} 落在 {@code hex}。 */
+  /**
+   * 经真命令路径种一场交战：{@code c1}（participants=[u-1]，交战格 = {@code hex}），随后追加阶段 {@code s1}。
+   *
+   * <p>★★ <b>2026-10-13 收尾测试第 3 层：载荷迁到新战斗契约</b>——
+   *
+   * <ul>
+   *   <li>旧 {@code sd.CreateCombat} / {@code sd.AddCombatStage} 已随批次 3d-2 整族退役 ⇒ 写口 = {@code
+   *       army.RecordCombat} / {@code army.AppendCombatStage}；
+   *   <li><b>交战格在记录期给定</b>（{@code army.RecordCombat} 的 {@code hex}）：{@code AppendCombatStage} 的载荷
+   *       <b>没有</b> {@code hex}/{@code combatStateId} 两个字段（旧的 {@code sd.AddCombatStage}
+   *       有）——阶段只是记录内的一段演进， 换不了这场交战落在哪一格；
+   *   <li>阶段的形状是 {@code {id,name,participants?,text?,outcomes?}}（旧形状的 {@code stageId}/{@code
+   *       entry}/{@code exit}/{@code minDurationTicks}/{@code outcomes.options} 整组退役）。
+   * </ul>
+   */
   private void createCombatAt(HexCoord hex) throws Exception {
-    // ★★ 2026-10-13 收尾测试第 2 层：旧战斗族的 `sd.CreateCombat` 已随批次 3d-2 退役（用户裁定「把 1、2、3、5
-    //   给废除掉」）⇒ 建记录的写口是 `army.RecordCombat`（同一批里 `army.AppendCombatStage` 也已改名）。
     submit(
         "army.RecordCombat",
-        "{\"id\":\"c1\",\"kind\":\"野战\",\"hex\":{\"q\":1,\"r\":1},"
-            + "\"participants\":[\"u-1\"],\"text\":\"甲战役\","
-            + "\"initialStage\":{\"id\":\"s1\",\"name\":\"遭遇战\",\"text\":\"遭遇战\","
-            + "\"outcomes\":[{\"id\":\"o1\",\"label\":\"胜\",\"weight\":1}]}}");
-    submit(
-        "army.AppendCombatStage",
-        "{\"combatId\":\"c1\",\"combatStateId\":\"cs1\",\"hex\":{\"q\":"
+        "{\"id\":\"c1\",\"kind\":\"野战\",\"hex\":{\"q\":"
             + hex.q()
             + ",\"r\":"
             + hex.r()
-            + "},\"stage\":{\"stageId\":\"s1\",\"name\":\"遭遇战\",\"participants\":[\"u-1\"],"
-            + "\"entry\":[{\"@class\":\"at_or_after_tick\",\"tick\":0}],"
-            + "\"exit\":[{\"@class\":\"at_or_after_tick\",\"tick\":5}],"
-            + "\"minDurationTicks\":0,\"maxDurationTicks\":10,"
-            + "\"outcomes\":{\"options\":[{\"id\":\"o1\",\"label\":\"胜\",\"weight\":1}]}}}");
+            + "},\"participants\":[\"u-1\"],\"text\":\"甲战役\"}");
+    submit(
+        "army.AppendCombatStage",
+        "{\"combatId\":\"c1\",\"stage\":{\"id\":\"s1\",\"name\":\"遭遇战\",\"participants\":[\"u-1\"],"
+            + "\"text\":\"遭遇战\",\"outcomes\":[{\"id\":\"o1\",\"label\":\"胜\",\"weight\":1}]}}");
   }
 
   private String submit(String type, String payloadJson) throws Exception {
@@ -307,14 +341,24 @@ class SdCombatApiTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty())),
+                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty()),
+                // ★★ 2026-10-13 收尾测试第 3 层：交战记录住 army 切片（批次 3d-2 起不再住 sd/ga）
+                //   ⇒ 缺这片时 `army.RecordCombat` 直接 500（装配故障），读侧也无从谈起。
+                "gov", new GovSnapshot(ref("main", 1), T7, GovState.empty()),
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new GovCodec(),
+                    new ArmyCodec(),
+                    new GaCodec())));
   }
 
   private static GameMap nationMap() {

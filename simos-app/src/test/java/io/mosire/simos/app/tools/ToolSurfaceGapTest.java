@@ -14,6 +14,10 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.tools.write.CommandSubmitTool;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -27,6 +31,9 @@ import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.tools.write.SdCreateDecisionMakerTool;
 import io.mosire.simos.ga.tools.write.SdCreateNationTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -145,7 +152,9 @@ class ToolSurfaceGapTest {
     JsonNode verdict = full.get(0);
     assertThat(verdict.get("id").asText()).isEqualTo("v1");
     assertThat(verdict.get("breakpoint").asText()).isEqualTo("D1");
-    assertThat(verdict.get("subject").asText()).isEqualTo("sd:combat.c1");
+    assertThat(verdict.get("subject").asText())
+        .as("★★ 判决面重挂：战斗 subject 的地址族是 `army:combat.*`（旧 `sd:combat.*` 已随批次 3d-2 退役）")
+        .isEqualTo("army:combat.c1");
     assertThat(verdict.get("payload").asText()).contains("stageId").contains("s1");
     assertThat(verdict.get("meta").get("model").asText()).isEqualTo("test-model");
     assertThat(verdict.get("meta").get("promptVersion").asText()).isEqualTo("v9");
@@ -184,12 +193,14 @@ class ToolSurfaceGapTest {
   @Test
   void gmToolUsageToolReturnsTheRecordedInvocation() throws Exception {
     // 先经 MCP 面调一次读工具（记录器包的是 GM 组的源）。
-    read("simos.sd.combats", Map.of());
+    // ★★ 2026-10-13 收尾测试第 3 层：`simos.sd.combats` 是**幽灵名**（旧战斗族退役后真名 = `simos.army.combats`）
+    //   ——`DecisionFaceGolden.ALL` 里那条同名条目也已删除（同一批）。
+    read("simos.army.combats", Map.of());
 
     JsonNode entries = read("simos.gm.tool-usage", Map.of()).get("entries");
     assertThat(entries).isNotEmpty();
     JsonNode latest = entries.get(0);
-    assertThat(latest.get("tool").asText()).isEqualTo("simos.sd.combats");
+    assertThat(latest.get("tool").asText()).isEqualTo("simos.army.combats");
     assertThat(latest.get("ok").asBoolean()).isTrue();
     assertThat(latest.get("code").isNull()).as("成功 ⇒ 无失败码").isTrue();
     assertThat(latest.get("atEpochMs").asLong()).isPositive();
@@ -277,10 +288,19 @@ class ToolSurfaceGapTest {
     assertThat(
             callNarrowWrite(
                     SdCreateDecisionMakerTool.NAME,
-                    "{\"id\":\"dm-1\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
-                        + "\"allowedTools\":[\"sd.IssueDirective\"],\"cadence\":5}",
+                    "{\"id\":\"dm-1\",\"allowedTools\":[\"ga.IssueDirective\"],\"cadence\":5}",
                     head + 1)
                 .success())
+        .isTrue();
+    // ★★ 2026-10-13 收尾测试第 3 层：归属归模块 ⇒ `ga.CreateDecisionMaker` 不再收 `affiliation`（载荷带它 = 具名拒），
+    //   归属由 gov 的赋权工单写 `GovState.nationAffiliations()`；该命令**没有**窄工具，走通用信封提交面。
+    assertThat(
+            submitCommand(
+                    "gov.AssignDecisionMakerNation",
+                    "{\"decisionMakerId\":\"dm-1\",\"nationId\":\"n1\"}",
+                    head + 2)
+                .success())
+        .as("赋权工单必须真的落进 gov 的归属表（否则范围函数给 deny-all，下面的可见性断言会恒真）")
         .isTrue();
   }
 
@@ -290,12 +310,22 @@ class ToolSurfaceGapTest {
         "{\\\"stageId\\\":\\\"s1\\\",\\\"selectedOutcomeId\\\":\\\"o1\\\","
             + "\\\"casualtyDeltas\\\":[],\\\"rationaleText\\\":\\\"测试判决\\\"}";
     String body =
-        "{\"verdictId\":\"v1\",\"breakpoint\":\"D1\",\"subject\":\"sd:combat.c1\","
+        "{\"verdictId\":\"v1\",\"breakpoint\":\"D1\",\"subject\":\"army:combat.c1\","
             + "\"payload\":\""
             + payload
             + "\",\"meta\":{\"model\":\"test-model\",\"promptVersion\":\"v9\","
             + "\"inputBriefDigest\":\"digest-1\"}}";
     assertThat(callNarrowWrite(SubmitVerdictTool.NAME, body, head).success()).isTrue();
+  }
+
+  /** 通用信封提交（没有窄工具的命令走这条：GM 的 {@code simos.command.submit}）。 */
+  private ToolResult submitCommand(String type, String payloadJson, long expectedRevision) {
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("type", type);
+    args.put("payloadJson", payloadJson);
+    args.put("branch", "main");
+    args.put("expectedRevision", expectedRevision);
+    return call(CommandSubmitTool.NAME, args);
   }
 
   private ToolResult callNarrowWrite(String toolName, String payloadJson, long expectedRevision) {
@@ -357,14 +387,24 @@ class ToolSurfaceGapTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty())),
+                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty()),
+                // ★★ 2026-10-13 收尾测试第 3 层：国家住 gov、军队住 army（批次 3c/3d-1 起不再住 sd/ga）
+                //   ⇒ 缺这两片时 `gov.CreateNation` 直接 500、赋权工单也写不进表。
+                "gov", new GovSnapshot(ref("main", 1), T7, GovState.empty()),
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new GovCodec(),
+                    new ArmyCodec(),
+                    new GaCodec())));
   }
 
   private static GameMap corridorMap() {

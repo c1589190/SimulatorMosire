@@ -83,7 +83,7 @@ class SdVerdictFreezeEndToEndTest {
     assertThat(baseline).isPositive();
 
     CommandResult result =
-        core.submit(envelope(1, json("v1", "D1", "sd:combat.c1", VALID_D1, "m1")));
+        core.submit(envelope(1, json("v1", "D1", "army:combat.c1", VALID_D1, "m1")));
     assertThat(result).isInstanceOf(CommandResult.Committed.class);
     assertThat(((CommandResult.Committed) result).ref())
         .isEqualTo(new StateRef(MAIN, new RevisionId(2)));
@@ -100,7 +100,7 @@ class SdVerdictFreezeEndToEndTest {
   @Test
   void sameRevisionReplaysToEqualStateTwice() {
     CoreSimos core = start();
-    core.submit(envelope(1, json("v1", "D1", "sd:combat.c1", VALID_D1, "m1")));
+    core.submit(envelope(1, json("v1", "D1", "army:combat.c1", VALID_D1, "m1")));
 
     StateRef ref = new StateRef(MAIN, new RevisionId(2));
     assertThat(core.replay(ref)).isEqualTo(core.replay(ref));
@@ -110,7 +110,7 @@ class SdVerdictFreezeEndToEndTest {
   void blankMetaIsRejectedAndLeavesNoRevision() {
     CoreSimos core = start();
     CommandResult result =
-        core.submit(envelope(1, json("v1", "D1", "sd:combat.c1", VALID_D1, " ")));
+        core.submit(envelope(1, json("v1", "D1", "army:combat.c1", VALID_D1, " ")));
     assertThat(result).isInstanceOf(CommandResult.Rejected.class);
     assertThat(((CommandResult.Rejected) result).reason()).contains("model");
     assertThat(core.head(MAIN).orElseThrow()).isEqualTo(new RevisionId(1));

@@ -134,9 +134,17 @@ class DecisionAgentRunnerTest {
   private static final String SELF_REFERENCING_COMMAND =
       "{\"type\":\"sd.RegisterEffect\",\"payloadJson\":\"{}\"}";
 
-  /** 一条**非 sd 的领域命令**：身份消息新补的那条规则指示的形态，重试时用它（证明按规则重试走得通）。 */
+  /**
+   * 一条**非 sd 的领域命令**：身份消息新补的那条规则指示的形态，重试时用它（证明按规则重试走得通）。
+   *
+   * <p>★★ 2026-10-13 收尾测试第 3 层：原先这里写 {@code unit.RenameUnit} —— 它在**批次 4 被摘出 DM 面** （反默认口径：不打
+   * {@code DmUsableCommand} = 仅 GM），照着身份消息的规则"改用领域命令"重试<b>仍然会被拒</b> （{@code
+   * 决策命令不在白名单}），末位那条"真的出令成功"的断言必然假。换成 {@code unit.SetJurisdiction} ——它<b>在</b>新的 17
+   * 条可嵌令面上，且载荷能在这个两格世界（区域 701）里真正生效。
+   */
   private static final String DOMAIN_COMMAND =
-      "{\"type\":\"unit.RenameUnit\",\"payloadJson\":\"{}\"}";
+      "{\"type\":\"unit.SetJurisdiction\","
+          + "\"payloadJson\":\"{\\\"unitId\\\":\\\"u-1\\\",\\\"regions\\\":[\\\"701\\\"]}\"}";
 
   private static final DecisionMaker DM_FRA =
       new DecisionMaker(new DecisionMakerId("dm-fra"), Set.of(), AccessLimit.empty(), 1);
@@ -198,7 +206,7 @@ class DecisionAgentRunnerTest {
     long headBefore = head();
     llm.enqueue(
         LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)),
-        LlmResponse.toolCall("call-2", "sd_IssueDirective", directiveArgs(headBefore)),
+        LlmResponse.toolCall("call-2", "ga_IssueDirective", directiveArgs(headBefore)),
         LlmResponse.text("已按计划出令"));
 
     DecisionAgentRunner.DecisionTurn turn =
@@ -262,7 +270,7 @@ class DecisionAgentRunnerTest {
         .allMatch(name -> name.matches("^[a-zA-Z0-9_-]+$"));
     assertThat(sent)
         .as("★ 转义规则是 `.` → `_`（不是删掉点：`simosmaphex` 也匹配文法，却读不出层级、且更容易撞名）")
-        .contains("simos_map_hex", "sd_IssueDirective");
+        .contains("simos_map_hex", "ga_IssueDirective");
   }
 
   // ── 同时决策回合的硬约束 ─────────────────────────────────────────────
@@ -279,7 +287,7 @@ class DecisionAgentRunnerTest {
             "call-read",
             "simos_map_hex",
             Map.of("q", 1, "r", 1, "branch", "not-main", "revision", 999L)),
-        LlmResponse.toolCall("call-world-write", "sd_IssueDirective", directiveArgs(frozenHead)),
+        LlmResponse.toolCall("call-world-write", "ga_IssueDirective", directiveArgs(frozenHead)),
         LlmResponse.toolCall(
             "call-packet",
             "simos_sd_packet_intent",
@@ -293,7 +301,7 @@ class DecisionAgentRunnerTest {
     List<String> sent = llm.requests().get(0).tools().stream().map(ToolDef::name).toList();
     assertThat(sent)
         .as("世界写工具（sd.IssueDirective / GovPay 等）在冻结回合的工具面里必须消失")
-        .doesNotContain("sd_IssueDirective")
+        .doesNotContain("ga_IssueDirective")
         .contains("simos_map_hex", "simos_sd_packet_intent", "simos_sd_packet_submit");
 
     assertThat(turn.toolInvocations()).hasSize(3);
@@ -549,7 +557,7 @@ class DecisionAgentRunnerTest {
         .as(
             "任务：范围由系统强制 + 先查看再决策 + 出令与载荷提示 + expectedRevision 的来源；"
                 + "★ 名字一律是**线格式**（模型眼里的那个写法），说真名等于让它去叫一个看不见的名字")
-        .contains("sd_IssueDirective")
+        .contains("ga_IssueDirective")
         .contains("simos_command_catalog")
         .contains("simos_timeline_branches")
         .contains("expectedRevision")
@@ -580,7 +588,7 @@ class DecisionAgentRunnerTest {
    *
    * <p>★ **缺陷现场**（不是推断）：决策人 {@code dm-osman} 勘察完之后**第一次出令就用了** {@code sd.RegisterEffect} —— 那是
    * {@code sd} 自指，被 {@code DirectiveWhitelist} **正确拒绝**（防无限递归）。它此前**无从得知**这条规则：身份消息只说 "出令用 {@code
-   * sd_IssueDirective}、载荷字段见 catalog"，**没有一个字说 commands 里不许放 sd 前缀的类型**。代价是**白烧一轮**
+   * ga_IssueDirective}、载荷字段见 catalog"，**没有一个字说 commands 里不许放 sd 前缀的类型**。代价是**白烧一轮**
    * ——而那一轮预算已经见底（同一次现场的另一条发现）。
    *
    * <p>★ **断言方式刻意不依赖任何清单**：只钉这条规则的**两半**——① 受管对象是**命令类型**那一层（写作 {@code commands}）； ② 被禁的是 {@code
@@ -588,8 +596,8 @@ class DecisionAgentRunnerTest {
    *
    * <p>★ **为什么钉 {@code "sd."}（点）而不是 {@code "sd_"}**：点号是**命令类型**的命名空间分隔符（{@code
    * DirectiveWhitelist.isSdSelfReference} 判的正是它，现场那次拒绝的理由正文逐字是「决策命令不得自指 sd.*（防无限递归）:
-   * sd.RegisterEffect」）；下划线是**工具名**的线格式转义产物（{@code sd_IssueDirective}）——两者混为一谈就等于教错了层。
-   * 判别力也在这里：现有正文里有 {@code sd_IssueDirective} 却**没有** {@code sd.}，故 {@code contains("sd.")} 不是恒真。
+   * sd.RegisterEffect」）；下划线是**工具名**的线格式转义产物（{@code ga_IssueDirective}）——两者混为一谈就等于教错了层。
+   * 判别力也在这里：现有正文里有 {@code ga_IssueDirective} 却**没有** {@code sd.}，故 {@code contains("sd.")} 不是恒真。
    */
   @Test
   void theIdentityMessageStatesTheNoSelfReferencingCommandsRule() {
@@ -744,13 +752,13 @@ class DecisionAgentRunnerTest {
         // ── 第 8 次：出令，用**自指**命令 ⇒ 被白名单正确拒绝（现场那一笔）
         LlmResponse.toolCall(
             "d1",
-            "sd_IssueDirective",
+            "ga_IssueDirective",
             directiveArgs(headBefore, "d-1", "[" + SELF_REFERENCING_COMMAND + "]")),
         // ── 现场正好停在这一步：它要重读状态、再出一次令
         LlmResponse.toolCall("s8", "simos_timeline_branches", Map.of()),
         LlmResponse.toolCall(
             "d2",
-            "sd_IssueDirective",
+            "ga_IssueDirective",
             directiveArgs(headBefore, "d-2", "[" + DOMAIN_COMMAND + "]")),
         LlmResponse.text("已按重读到的 head 改用领域命令重新出令"));
 
@@ -1034,8 +1042,12 @@ class DecisionAgentRunnerTest {
     //   这里给的是**生产用的那两个实现**——AppDecisionToolNames.INSTANCE（名字逐个取自各工具 NAME 常量，
     //   与白名单同源）与 DecisionToolImages.INSTANCE（消息形状与迁出前 DecisionAgentRunner 内联的那段逐字相同）。
     //   ⇒ 本类原先钉的回合语义与"图发不发"的断言都不因这次搬迁而改变判据。
+    DecisionCallerFactory factory = factory();
+    // ★★ 2026-10-13 收尾测试第 3 层：**归属端口必须是真的**（生产实现 = AppDecisionMakerAffiliations）。
+    //   归属归模块之后，身份消息里的"归属"由 DecisionMakerAffiliationPort 渲染，11 参构造器给的是
+    //   DecisionMakerAffiliationPort.NONE ⇒ 世界里有归属行也一律渲染成"尚未被任何模块赋予（裸决策人）"。
     return new DecisionAgentRunner(
-        factory(),
+        factory,
         registry,
         llm,
         conversations,
@@ -1045,7 +1057,10 @@ class DecisionAgentRunnerTest {
         maxLlmCalls,
         DecisionAgentRunner.ProgressListener.NONE,
         vision,
-        openingSnapshot);
+        openingSnapshot,
+        factory.whitelist(),
+        null,
+        AppDecisionMakerAffiliations.INSTANCE);
   }
 
   /** 同时决策冻结回合：世界读钉在当前 head，packet 写共用一把锁。 */
@@ -1284,7 +1299,14 @@ class DecisionAgentRunnerTest {
                     new GaCodec())));
   }
 
-  /** 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1）+ 一个**国家**决策人。 */
+  /**
+   * 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1）+ 一个**国家**决策人 + 一个**军队**决策人。
+   *
+   * <p>★★ <b>2026-10-13 收尾测试第 3 层：归属行真的落进模块的表</b>。归属归模块之后（乙收尾），"dm-fra 属 FRA、dm-army 属 a1 军"不再住在
+   * {@code DecisionMaker} 值上，而住 {@code GovState.nationAffiliations()} / {@code
+   * ArmyData.armyAffiliations()}（按 dmId 索引）。只造裸决策人 ⇒ ① 身份消息渲染成"归属：尚未被任何模块赋予"（断言红）；②
+   * 回合里每一次世界读都被范围函数拒（"真的跑通"的断言红）。
+   */
   private static WorldSlices sdWithOneNationOneArmy() {
     NationId fra = new NationId("FRA");
     Map<NationId, Nation> nations = new LinkedHashMap<>();
@@ -1294,10 +1316,13 @@ class DecisionAgentRunnerTest {
     armies.put(a1, new Army(a1, Optional.empty(), U1, "军队 a1"));
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(DM_FRA.id(), DM_FRA);
+    makers.put(DM_ARMY.id(), DM_ARMY);
     return WorldSlices.of(
-        new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
-        ArmyData.empty().withArmies(armies),
-        GaState.empty().withDecisionMakers(makers));
+            new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+            ArmyData.empty().withArmies(armies),
+            GaState.empty().withDecisionMakers(makers))
+        .withNationAffiliation(DM_FRA.id(), fra)
+        .withArmyAffiliation(DM_ARMY.id(), a1);
   }
 
   /** 两格世界（{@code (1,1)/(1,2)}，desert），区域 701（{@code nation:FRA}）覆盖两格。 */

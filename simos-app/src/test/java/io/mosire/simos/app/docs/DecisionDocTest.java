@@ -7,10 +7,11 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * ★★ **文档地址约定的唯一拼写点**（Docs，2026-09-23）：{@code sd:doc.<docId>} 的往返与**判不出来就不当文档**。
+ * ★★ **文档地址约定的唯一拼写点**（Docs，2026-09-23；★★ 2026-10-12 批次 3e 随 {@code sd:} 地址族退役改挂 {@code
+ * ga:doc.<docId>}）：地址的往返与**判不出来就不当文档**。
  *
  * <p>★ **为什么地址约定要单独测**：{@code sd.info()} 的键是**任何人写的任意 canonical 地址**（{@code sd.PutInfo} 是通用写口），
- * 而"这是不是一篇文档"的判据如果写成字符串前缀，就会把 {@code sd:docx.foo} 这类**假阳性**放进来、也会被 docId 里的 {@code '.'} 撕碎
+ * 而"这是不是一篇文档"的判据如果写成字符串前缀，就会把 {@code ga:docx.foo} 这类**假阳性**放进来、也会被 docId 里的 {@code '.'} 撕碎
  * （canonical 是段序列拼 {@code ':'}、段内是 {@code kind.name}）。故 {@link DecisionDoc#docIdOf} 用**解析出的
  * kind**判， 本用例把两个方向都钉住。
  */
@@ -19,7 +20,9 @@ class DecisionDocTest {
   @Test
   void aValidDocIdRoundTripsThroughItsCanonicalAddress() {
     String address = DecisionDoc.addressOf("shanghai-brief");
-    assertThat(address).isEqualTo("sd:doc.shanghai-brief");
+    assertThat(address)
+        .as("★★ 地址族是 `ga:doc.`（批次 3e 起 `sd:` 整族退役；写 `sd:` 的条目照样落盘，但读侧不再是文档）")
+        .isEqualTo("ga:doc.shanghai-brief");
     assertThat(DecisionDoc.docIdOf(address)).contains("shanghai-brief");
   }
 
@@ -39,12 +42,12 @@ class DecisionDocTest {
   void aNonDocAddressIsNeverReadAsADoc() {
     for (String other :
         new String[] {
-          "sd:adjudication.0",
-          "sd:decision.dm1#0",
+          "ga:adjudication.0",
+          "ga:decision.dm1#0",
           "map:Map1",
           "map:Map1:region.r1",
           "unit:u-1",
-          "sd:docx.foo",
+          "ga:docx.foo",
         }) {
       assertThat(DecisionDoc.docIdOf(other))
           .as("★ %s 不是文档地址 ⇒ 判不出来就不当文档（fail-closed）", other)

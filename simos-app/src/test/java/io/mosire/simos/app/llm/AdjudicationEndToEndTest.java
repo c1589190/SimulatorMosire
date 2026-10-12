@@ -9,6 +9,12 @@ import io.mosire.simos.app.sd.DecisionAdjudicationService;
 import io.mosire.simos.app.testing.WorldSlices;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.CombatOutcome;
+import io.mosire.simos.army.CombatOutcomeId;
+import io.mosire.simos.army.CombatRecord;
+import io.mosire.simos.army.CombatRecordId;
+import io.mosire.simos.army.CombatStage;
+import io.mosire.simos.army.CombatStageId;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.GaSnapshot;
@@ -23,7 +29,10 @@ import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.nation.Nation;
 import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.unit.UnitSnapshot;
+import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.DecisionMakerId;
@@ -81,7 +90,7 @@ class AdjudicationEndToEndTest {
     AtomicReference<String> seenBody = new AtomicReference<>();
     startStub(seenModel, seenAuth, seenBody);
 
-    CoreSimos core = start();
+    CoreSimos core = start(true);
     AgentLibLlmConfig config = AgentLibLlmConfig.open(tempDir);
     config.upsertRoute("stub", baseUrl(), "deepseek-flash", "keys.stub", 5_000L);
     config.putKey("stub", "sk-test-key");
@@ -116,7 +125,7 @@ class AdjudicationEndToEndTest {
     AtomicReference<String> seenBody = new AtomicReference<>();
     startStub(seenModel, seenAuth, seenBody);
 
-    CoreSimos core = start();
+    CoreSimos core = start(false);
     AgentLibLlmConfig config = AgentLibLlmConfig.open(tempDir);
     config.upsertRoute("stub", baseUrl(), "deepseek-flash", "keys.stub", 5_000L);
     config.putKey("stub", "sk-test-key");
@@ -136,7 +145,7 @@ class AdjudicationEndToEndTest {
     assertThat(verdict.breakpoint().value()).isEqualTo("D2");
     assertThat(verdict.subject().canonical())
         .as("无战斗 ⇒ 主体是决策人本人（不是战斗）")
-        .isEqualTo("sd:decision-maker.dm1");
+        .isEqualTo("ga:decision-maker.dm1");
     assertThat(seenModel.get()).as("provider 真被调（无战斗也要调）").isEqualTo("deepseek-flash");
     assertThat(seenAuth.get()).as("Authorization 头").isEqualTo("Bearer sk-test-key");
     assertThat(seenBody.get())
@@ -149,7 +158,7 @@ class AdjudicationEndToEndTest {
   void unboundDecisionMakerMakesTheServiceFailClosedRatherThanUseAnotherProvider()
       throws Exception {
     startStub(new AtomicReference<>(), new AtomicReference<>(), new AtomicReference<>());
-    CoreSimos core = start();
+    CoreSimos core = start(false);
     AgentLibLlmConfig config = AgentLibLlmConfig.open(tempDir);
     config.upsertRoute("stub", baseUrl(), "deepseek-flash", "keys.stub", 5_000L);
     config.putKey("stub", "sk-test-key");
@@ -227,15 +236,25 @@ class AdjudicationEndToEndTest {
     return "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
   }
 
-  private CoreSimos start() {
+  /**
+   * ★★ 2026-10-13 收尾测试第 3 层：{@code withCombat} 维度<b>按新契约恢复</b>。
+   *
+   * <p>第 1 层删掉了旧的 {@code withCombat} 支（它塞的是已退役的旧 {@code Combat} 装饰），代价是"有交战记录的世界"这一维<b>不再被本文件覆盖</b>
+   * ——第一个用例（D1/D3+D6 两组判决）因此只剩 D2 一条。新契约下"有交战"= {@code ArmyData.combats()} 里有一条 {@code
+   * CombatRecord}（写口 {@code army.RecordCombat}），所以这里按新形状把那一维补回：<b>断言不降级</b>。
+   */
+  private CoreSimos start(boolean withCombat) {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new GaCodec());
     // ★★ 2026-10-13 收尾测试第 2 层：乙收尾起 `armies` 住 army 片 ⇒ 信封必须有 ArmyCodec（缺 ⇒ 创世当场抛）。
     core.register(new io.mosire.simos.army.codec.ArmyCodec());
     // ★ 同批：`nations` 住 gov 片 ⇒ 信封也要 GovCodec。
     core.register(new io.mosire.simos.gov.codec.GovCodec());
+    // ★★ 2026-10-13 收尾测试第 3 层：判决链要读 unit 切片 ⇒ 信封里有 `unit` 就必须有 UnitCodec
+    //   （`CheckpointEncoder` 缺一个当场抛："checkpoint 信封要写的模块没有装配 codec"）。
+    core.register(new io.mosire.simos.unit.codec.UnitCodec());
     core.register(new SubmitVerdictHandler());
-    core.bootstrapGenesis(genesis());
+    core.bootstrapGenesis(withCombat ? genesisWithCombat() : genesis());
     return core;
   }
 
@@ -252,21 +271,79 @@ class AdjudicationEndToEndTest {
     //   国家自乙收尾起住 gov 片。
     WorldSlices slices =
         WorldSlices.of(
-            new GovState(
-                Map.of(),
-                Map.of(),
-                Map.of(
-                    new NationId("n1"),
-                    new Nation(new NationId("n1"), "甲国", new RegionId("r1"), 1)),
-                Map.of(),
-                Map.of(),
-                Map.of(),
-                Map.of()),
-            ArmyData.empty(),
-            GaState.empty().withDecisionMakers(Map.of(DM1, dm)));
+                new GovState(
+                    Map.of(),
+                    Map.of(),
+                    Map.of(
+                        new NationId("n1"),
+                        new Nation(new NationId("n1"), "甲国", new RegionId("r1"), 1)),
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    Map.of()),
+                ArmyData.empty(),
+                GaState.empty().withDecisionMakers(Map.of(DM1, dm)))
+            // ★★ 2026-10-13 收尾测试第 3 层：归属行**真的落进 gov 的表**（归属归模块之后，"dm1 属 n1"
+            //   不再住在 `DecisionMaker` 值上）——缺它则范围函数 deny-all，判决链上的世界读一律被拒。
+            .withNationAffiliation(DM1, new NationId("n1"));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),
         Map.of(
+            // ★★ 2026-10-13 收尾测试第 3 层：判决的落点/效果链要读 **unit** 切片 ⇒ 夹具必须装上它
+            //   （缺片时 `ToolSupport.unitState` 当场抛「状态里没有 unit 模块切片——装配故障」，两条用例直接 E）。
+            "unit", new UnitSnapshot(ref, SimosTimestamp.of(0), UnitState.empty()),
+            "gov", new GovSnapshot(ref, SimosTimestamp.of(0), slices.gov()),
+            "army", new ArmySnapshot(ref, SimosTimestamp.of(0), slices.army()),
+            "ga", new GaSnapshot(ref, SimosTimestamp.of(0), slices.ga())),
+        InMemoryInfoSystem.empty());
+  }
+
+  /**
+   * ★★ 「有交战记录」的世界（新契约形状）：{@code army} 片里一条 {@code CombatRecord}（id {@code c1}，一个阶段一个结局）。
+   *
+   * <p>只有这一片不同 —— 其余（gov / ga / unit / 归属行）与 {@link #genesis()} 逐字相同，故两个用例的差异**只**在"有没有交战记录"。
+   */
+  private static SimulationState genesisWithCombat() {
+    StateRef ref = new StateRef(MAIN, new RevisionId(1));
+    DecisionMaker dm = maker(Optional.of("stub"));
+    CombatStage stage =
+        new CombatStage(
+            new CombatStageId("s1"),
+            "遭遇战",
+            List.of(new io.mosire.simos.unit.UnitId("u-1")),
+            "两军相遇",
+            List.of(new CombatOutcome(new CombatOutcomeId("o1"), "胜", 100, List.of())),
+            Optional.empty(),
+            Optional.empty());
+    CombatRecord record =
+        new CombatRecord(
+            new CombatRecordId("c1"),
+            "野战",
+            0L,
+            new HexCoord(1, 1),
+            List.of(new io.mosire.simos.unit.UnitId("u-1")),
+            "甲战役",
+            List.of(stage),
+            new RevisionId(1));
+    WorldSlices slices =
+        WorldSlices.of(
+                new GovState(
+                    Map.of(),
+                    Map.of(),
+                    Map.of(
+                        new NationId("n1"),
+                        new Nation(new NationId("n1"), "甲国", new RegionId("r1"), 1)),
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    Map.of()),
+                ArmyData.empty().withCombats(Map.of(record.id(), record)),
+                GaState.empty().withDecisionMakers(Map.of(DM1, dm)))
+            .withNationAffiliation(DM1, new NationId("n1"));
+    return new SimulationState(
+        new StateMeta(ref, SimosTimestamp.of(0)),
+        Map.of(
+            "unit", new UnitSnapshot(ref, SimosTimestamp.of(0), UnitState.empty()),
             "gov", new GovSnapshot(ref, SimosTimestamp.of(0), slices.gov()),
             "army", new ArmySnapshot(ref, SimosTimestamp.of(0), slices.army()),
             "ga", new GaSnapshot(ref, SimosTimestamp.of(0), slices.ga())),

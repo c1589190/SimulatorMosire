@@ -8,6 +8,9 @@ import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -22,6 +25,9 @@ import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.model.SdInfoIds;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
@@ -439,14 +445,25 @@ class SdDecisionResultsApiTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "ga", new GaSnapshot(ref("main", 1), T7, sdState())),
+                "ga", new GaSnapshot(ref("main", 1), T7, sdState()),
+                // ★★ 2026-10-13 收尾测试第 3 层：国家住 gov、军队住 army（批次 3c/3d-1 起不再住 sd/ga）。
+                //   本端点的 404 分支与 affiliations 解析都要读 `gov`——缺它 ⇒
+                //   `IllegalArgumentException: 状态里没有 gov 模块切片——装配故障`（400），断言全落在错的地方。
+                "gov", new GovSnapshot(ref("main", 1), T7, GovState.empty()),
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new GovCodec(),
+                    new ArmyCodec(),
+                    new GaCodec())));
   }
 
   private static GaState sdState() {

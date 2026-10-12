@@ -240,10 +240,10 @@ class DecisionCallerFactoryTest {
           ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
       assertThat(gmFace).as("GM 面非空").isNotEmpty();
 
-      // ★★ 核心判据（B4b，独立规格）：**决策人面 == 金名单 44 条**。规格从生产搬进测试后判别力不降反升——
+      // ★★ 核心判据（B4b，独立规格）：**决策人面 == 金名单 43 条**。规格从生产搬进测试后判别力不降反升——
       //   它不再"跟着实现走"，而是钉住实现：漏一条/多一条都必须有人显式改规格。
       assertThat(decisionFace)
-          .as("★ 决策人面 == 测试侧金名单（44 条，独立规格）")
+          .as("★ 决策人面 == 测试侧金名单（43 条，独立规格）")
           .containsExactlyInAnyOrderElementsOf(DecisionFaceGolden.ALL);
 
       Set<String> whitelist =

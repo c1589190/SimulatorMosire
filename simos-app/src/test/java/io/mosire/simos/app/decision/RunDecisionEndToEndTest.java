@@ -203,7 +203,7 @@ class RunDecisionEndToEndTest {
   void aGmCanDriveOneRealRoundThroughMcpAndReadBackTheTrace() throws Exception {
     llm.enqueue(
         LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)),
-        LlmResponse.toolCall("call-2", "sd_IssueDirective", directiveArgs(2L)),
+        LlmResponse.toolCall("call-2", "ga_IssueDirective", directiveArgs(2L)),
         LlmResponse.text("已按计划出令"));
 
     McpSchema.CallToolResult result = callWithApproval(runDecisionArgs(DM_ID, 1L));
@@ -277,7 +277,7 @@ class RunDecisionEndToEndTest {
             "frozen-read",
             "simos_map_hex",
             Map.of("q", 1, "r", 1, "branch", "not-main", "revision", 999L)),
-        LlmResponse.toolCall("frozen-world-write", "sd_IssueDirective", directiveArgs(before)),
+        LlmResponse.toolCall("frozen-world-write", "ga_IssueDirective", directiveArgs(before)),
         LlmResponse.toolCall(
             "frozen-packet", "simos_sd_packet_intent", Map.of("text", "同时决策：先读冻结快照，再写决策包")),
         LlmResponse.text("同时决策回合收口"));
@@ -687,10 +687,14 @@ class RunDecisionEndToEndTest {
     armies.put(a1, new Army(a1, Optional.empty(), U1, "军队 a1"));
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(maker.id(), maker);
+    // ★★ 2026-10-13 收尾测试第 3 层：归属行**真的落进 `GovState.nationAffiliations()`**（归属归模块之后，
+    //   "这个决策人属 FRA"不再住在 `DecisionMaker` 值上）。只造裸决策人 ⇒ 范围函数 deny-all ⇒
+    //   回合里的世界读一律被拒（"仍能成功读到真世界"这条断言会红，而根因是夹具少了一行）。
     return WorldSlices.of(
-        new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
-        ArmyData.empty().withArmies(armies),
-        GaState.empty().withDecisionMakers(makers));
+            new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+            ArmyData.empty().withArmies(armies),
+            GaState.empty().withDecisionMakers(makers))
+        .withNationAffiliation(maker.id(), fra);
   }
 
   /** 两格世界（{@code (1,1)/(1,2)}，desert），区域 701（{@code nation:FRA}）覆盖两格。 */

@@ -10,6 +10,9 @@ import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -24,6 +27,9 @@ import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -457,13 +463,45 @@ class SdDecisionMakerApiTest {
   }
 
   private void createMaker(String id, long cadence) throws Exception {
+    createMaker(id, cadence, "nation", "n1", "[]");
+  }
+
+  /**
+   * ★★ 2026-10-13 收尾测试第 3 层：<b>建裸决策人 → 用模块的赋权工单落归属</b>。
+   *
+   * <p>{@code ga.CreateDecisionMaker} 自乙收尾起<b>整条拒收 {@code affiliation}</b>（归属归模块）⇒
+   * 夹具改走「先建裸决策人，再由持有模块 的赋权工单写它自己那张表」：{@code nation} → {@code gov.AssignDecisionMakerNation}、{@code
+   * gov} → {@code gov.AssignDecisionMakerGov}、{@code army} → {@code army.AssignDecisionMakerArmy}。
+   *
+   * <p>★ 未注册的 kind ⇒ 当场抛（不静默当"没归属"）：夹具写错种类名必须响亮失败。
+   */
+  private void createMaker(
+      String id, long cadence, String affiliationKind, String affiliationRef, String allowedTools)
+      throws Exception {
     submit(
         "ga.CreateDecisionMaker",
         "{\"id\":\""
             + id
-            + "\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},\"allowedTools\":[],\"cadence\":"
+            + "\",\"allowedTools\":"
+            + allowedTools
+            + ",\"cadence\":"
             + cadence
             + "}");
+    switch (affiliationKind) {
+      case "nation" ->
+          submit(
+              "gov.AssignDecisionMakerNation",
+              "{\"decisionMakerId\":\"" + id + "\",\"nationId\":\"" + affiliationRef + "\"}");
+      case "gov" ->
+          submit(
+              "gov.AssignDecisionMakerGov",
+              "{\"decisionMakerId\":\"" + id + "\",\"govUnitId\":\"" + affiliationRef + "\"}");
+      case "army" ->
+          submit(
+              "army.AssignDecisionMakerArmy",
+              "{\"decisionMakerId\":\"" + id + "\",\"armyId\":\"" + affiliationRef + "\"}");
+      default -> throw new IllegalArgumentException("未注册的归属种类（夹具写错了？）: " + affiliationKind);
+    }
   }
 
   private void issueDirective(String directiveId, String decisionMakerId, long tick)
@@ -507,14 +545,8 @@ class SdDecisionMakerApiTest {
         "gov.CreateNation",
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"r-nation\",\"adminBudgetPerTick\":10}");
     submit("army.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
-    submit(
-        "ga.CreateDecisionMaker",
-        "{\"id\":\"dm-nation\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
-            + "\"allowedTools\":[\"sd.SubmitVerdict\"],\"cadence\":3}");
-    submit(
-        "ga.CreateDecisionMaker",
-        "{\"id\":\"dm-army\",\"affiliation\":{\"kind\":\"army\",\"id\":\"a1\"},"
-            + "\"allowedTools\":[\"sd.IssueDirective\",\"sd.SubmitVerdict\"],\"cadence\":5}");
+    createMaker("dm-nation", 3, "nation", "n1", "[\"ga.SubmitVerdict\"]");
+    createMaker("dm-army", 5, "army", "a1", "[\"ga.IssueDirective\",\"ga.SubmitVerdict\"]");
     submit(
         "ga.SetDecisionMakerAccess",
         "{\"decisionMakerId\":\"dm-nation\","
@@ -606,6 +638,11 @@ class SdDecisionMakerApiTest {
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
                 "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty()),
+                // ★ 2026-10-13 收尾测试第 3 层：国家住 gov、军队住 army（批次 3c/3d-1 之后不再住 sd/ga）⇒
+                //   夹具必须把这两片也装上，否则 gov.CreateNation / army.CreateArmy 直接 500（装配故障），
+                //   赋权工单也写不进各自那张表。
+                "gov", new GovSnapshot(ref("main", 1), T7, GovState.empty()),
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty()),
                 // ★ R3a：日推进要求 economy 切片在场（§6.6）；本夹具未播种（meta 空）⇒ 参与者交不变提案。
                 "economy",
                     new EconomySnapshot(
@@ -624,6 +661,8 @@ class SdDecisionMakerApiTest {
                     new SocialCodec(),
                     new UnitCodec(),
                     new GaCodec(),
+                    new GovCodec(),
+                    new ArmyCodec(),
                     new EconomyCodec(),
                     new ActorCodec())));
   }

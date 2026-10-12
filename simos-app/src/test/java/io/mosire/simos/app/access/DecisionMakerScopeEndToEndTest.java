@@ -838,11 +838,21 @@ class DecisionMakerScopeEndToEndTest {
                     new ArmyCodec())));
   }
 
-  /** 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1）+ 两个决策人（国家 / 军队各一）。 */
+  /**
+   * ★★ 2026-10-13 收尾测试第 3 层：裸决策人 + <b>落进模块表的归属行</b>。
+   *
+   * <p>归属归模块之后（乙收尾），"这个决策人属 FRA / 属 a1 军"住在 {@code GovState.nationAffiliations()} 与 {@code
+   * ArmyData.armyAffiliations()} 里（按 dmId 索引）。只产裸决策人 = 本类的每个"看得见/看不见"断言都退化成 deny-all 恒真式。
+   *
+   * <p>★ {@code GER} 也必须存在：区域 201 的 tag 指向它；国家不在 {@code nations} 里时归属行会被 {@code
+   * NationAffiliations.resolve} 裁掉（fail-closed）⇒"别国的东西看不见"会与"谁都看不见"混为一谈。
+   */
   private static WorldSlices sdWithOneNationOneArmy() {
     NationId fra = new NationId("FRA");
     Map<NationId, Nation> nations = new LinkedHashMap<>();
     nations.put(fra, new Nation(fra, "国家 FRA", new RegionId("701"), 0));
+    NationId ger = new NationId("GER");
+    nations.put(ger, new Nation(ger, "国家 GER", new RegionId("201"), 0));
     ArmyId a1 = new ArmyId("a1");
     Map<ArmyId, Army> armies = new LinkedHashMap<>();
     armies.put(a1, new Army(a1, Optional.empty(), U1, "军队 a1"));
@@ -850,9 +860,11 @@ class DecisionMakerScopeEndToEndTest {
     makers.put(DM_FRA.id(), DM_FRA);
     makers.put(DM_ARMY.id(), DM_ARMY);
     return WorldSlices.of(
-        new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
-        ArmyData.empty().withArmies(armies),
-        GaState.empty().withDecisionMakers(makers));
+            new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+            ArmyData.empty().withArmies(armies),
+            GaState.empty().withDecisionMakers(makers))
+        .withNationAffiliation(DM_FRA.id(), fra)
+        .withArmyAffiliation(DM_ARMY.id(), a1);
   }
 
   /** 四格世界 + 两个区域（FRA 覆盖 (1,1)/(1,2)、GER 覆盖 (1,3)）；(2,1) 无归属（中立格）。 */

@@ -64,7 +64,6 @@ class McpPortTopologyTest {
           "simos.map.region",
           "simos.map.render",
           "simos.province.divide",
-          "simos.sd.combats",
           "simos.sd.decision-maker",
           "simos.sd.decision-makers",
           "simos.sd.diplomacy",
@@ -154,6 +153,7 @@ class McpPortTopologyTest {
       List.of(
           "map.SetTerrain",
           "map.SetEdge",
+          "map.SetHexArea",
           "map.CreateRegion",
           "map.UpdateRegion",
           "map.RenameRegion",
@@ -209,7 +209,6 @@ class McpPortTopologyTest {
           "ga.PutInfo",
           "simos.sd.set-diplomatic-relation",
           "simos.sd.record-diplomatic-event",
-          "army.AppendCombatStage",
           "ga.RegisterEffect",
           "ga.CancelEffect",
           "ga.SetDecisionMakerProvider");

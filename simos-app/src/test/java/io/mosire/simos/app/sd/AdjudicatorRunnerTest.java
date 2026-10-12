@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
 class AdjudicatorRunnerTest {
 
   private static final BranchId MAIN = new BranchId("main");
-  private static final String COMBAT = "sd:combat.c1";
+  private static final String COMBAT = "army:combat.c1";
 
   @TempDir Path tempDir;
 

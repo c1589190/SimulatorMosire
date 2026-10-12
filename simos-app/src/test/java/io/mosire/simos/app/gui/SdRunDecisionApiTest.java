@@ -563,7 +563,13 @@ class SdRunDecisionApiTest {
                     new GaCodec())));
   }
 
-  /** 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1）+ 一个**国家**决策人。 */
+  /**
+   * 一个国家（FRA，区域 701）+ 一条军队（a1，根单位 u-1）+ 一个**国家**决策人。
+   *
+   * <p>★★ 2026-10-13 收尾测试第 3 层：归属行必须真的落进 {@code GovState.nationAffiliations()} —— 归属归模块之后
+   * （乙收尾），"这个决策人属 FRA"不再住在 {@code DecisionMaker} 值上；只造裸决策人 = 范围函数 deny-all ⇒
+   * 回合跑起来也读不到任何东西（本用例的断言正是"跑得起来且看得见东西"）。
+   */
   private static WorldSlices sdState() {
     NationId fra = new NationId("FRA");
     Map<NationId, Nation> nations = new LinkedHashMap<>();
@@ -574,9 +580,10 @@ class SdRunDecisionApiTest {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(DM_FRA.id(), DM_FRA);
     return WorldSlices.of(
-        new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
-        ArmyData.empty().withArmies(armies),
-        GaState.empty().withDecisionMakers(makers));
+            new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),
+            ArmyData.empty().withArmies(armies),
+            GaState.empty().withDecisionMakers(makers))
+        .withNationAffiliation(DM_FRA.id(), fra);
   }
 
   /** 两格世界（{@code (1,1)/(1,2)}，desert），区域 701（{@code nation:FRA}）覆盖两格。 */

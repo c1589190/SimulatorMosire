@@ -16,6 +16,9 @@ import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.tools.SimosToolSource;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -30,7 +33,13 @@ import io.mosire.simos.ga.id.SdInfoId;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.spi.StartDecisionHandler;
 import io.mosire.simos.ga.tools.write.StartDecisionTool;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -38,6 +47,7 @@ import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
@@ -94,7 +104,7 @@ import org.junit.jupiter.api.io.TempDir;
  * </ul>
  *
  * <p>★ 另钉一条**本任务的关键设计决定**：{@code sd.StartDecision} **不写 {@code Directive}** ⇒ 不占 R4 名额 （「同一 {@code
- * (decisionMakerId, tick)} 至多一条 {@code Directive}」）⇒ 同一 tick 其后的 {@code sd.IssueDirective}
+ * (decisionMakerId, tick)} 至多一条 {@code Directive}」）⇒ 同一 tick 其后的 {@code ga.IssueDirective}
  * **照常被接受**。若本命令改成写 {@code Directive}（哪怕 {@code PLANNED}），本用例的第 5 条会当场红。
  */
 class StartDecisionEndToEndTest {
@@ -108,6 +118,11 @@ class StartDecisionEndToEndTest {
 
   private static final UnitId U1 = new UnitId("u-1");
   private static final DecisionMakerId DM = new DecisionMakerId("dm-t10");
+
+  /** 夹具里的国家（`gov` 片）——归属行的落点。★ 区域 id 与地图上的 tag 同源，改一边要改另一边。 */
+  private static final NationId N1 = new NationId("n1");
+
+  private static final RegionId R_NATION = new RegionId("r-1");
   private static final int CHECKPOINT_INTERVAL = 100;
 
   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形。 */
@@ -169,11 +184,11 @@ class StartDecisionEndToEndTest {
       assertThat(row.initiator()).as("C18①：GUI 身份恰是 player:gui").isEqualTo("player:gui");
       assertThat(row.commandType()).isEqualTo("ga.StartDecision");
     }
-    assertThat(sdState(2).info().get("sd:decision.dm-t10"))
+    assertThat(sdState(2).info().get(StartDecisionHandler.ADDRESS_PREFIX + "dm-t10"))
         .as("发起记录落进 sd INFO 覆盖层（随 revision 重放）")
         .containsExactly(
             new SdInfoEntry(
-                new SdInfoId("sd:decision.dm-t10#0"),
+                new SdInfoId(StartDecisionHandler.ADDRESS_PREFIX + "dm-t10#0"),
                 7L,
                 Set.of(DM),
                 Set.of(),
@@ -219,7 +234,7 @@ class StartDecisionEndToEndTest {
       assertThat(row.initiator()).as("GM MCP 写命令的 initiator 恰是配置值").isEqualTo(TEST_INITIATOR);
       assertThat(row.commandType()).isEqualTo("ga.StartDecision");
     }
-    assertThat(sdState(2).info().get("sd:decision.dm-t10")).hasSize(1);
+    assertThat(sdState(2).info().get(StartDecisionHandler.ADDRESS_PREFIX + "dm-t10")).hasSize(1);
 
     // 再发一次：同样直接过（不是"批一次管一会儿"），只是这次要拿新的 head。
     Future<ToolResult> second = startDecisionViaGmPort(2L);
@@ -244,7 +259,7 @@ class StartDecisionEndToEndTest {
 
   @Test
   void startDecisionDoesNotConsumeTheR4DirectiveSlot() throws Exception {
-    // 先发「开始决策」（用户路径），再在同一 tick 发 sd.IssueDirective —— 必须被接受。
+    // 先发「开始决策」（用户路径），再在同一 tick 发 ga.IssueDirective —— 必须被接受。
     assertThat(
             post(
                     shell.boundGuiPort(),
@@ -257,7 +272,7 @@ class StartDecisionEndToEndTest {
         post(
             shell.boundGuiPort(),
             "/api/command",
-            "{\"type\":\"sd.IssueDirective\",\"branch\":\"main\",\"expectedRevision\":2,"
+            "{\"type\":\"ga.IssueDirective\",\"branch\":\"main\",\"expectedRevision\":2,"
                 + "\"payloadJson\":\"{\\\"directiveId\\\":\\\"d-after\\\","
                 + "\\\"decisionMakerId\\\":\\\"dm-t10\\\",\\\"tick\\\":7,"
                 + "\\\"intentInfo\\\":\\\"推进\\\",\\\"commands\\\":[]}\"}");
@@ -376,14 +391,31 @@ class StartDecisionEndToEndTest {
                 "map", new MapSnapshot(ref("main", 1), T7, corridorMap()),
                 "unit", new UnitSnapshot(ref("main", 1), T7, units),
                 "social", new SocialSnapshot(ref("main", 1), T7, social),
-                "ga", new GaSnapshot(ref("main", 1), T7, sd)),
+                "ga", new GaSnapshot(ref("main", 1), T7, sd),
+                // ★★ 2026-10-13 收尾测试第 3 层：国家住 gov、军队住 army（批次 3c/3d-1 起不再住 sd/ga）
+                //   ⇒ 起动决策的读面要解析调用者归属，缺 gov 片直接 400「状态里没有 gov 模块切片——装配故障」。
+                //   归属行也必须真的落表：只造裸决策人 = 范围函数 deny-all（决策人看不到任何东西）。
+                "gov",
+                    new GovSnapshot(
+                        ref("main", 1),
+                        T7,
+                        GovState.empty()
+                            .withNations(Map.of(N1, new Nation(N1, "国家 n1", R_NATION, 0)))
+                            .withNationAffiliations(Map.of(DM, N1))),
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new GovCodec(),
+                    new ArmyCodec(),
+                    new GaCodec())));
     // ★ 2026-09-22（裁决：无战斗也要走判决）：DM 绑定一个**不可达** provider ⇒ 判决走 N13 可降级失败
     //   （Judgement.Failed，不落 verdict、不落 revision）。本用例只验 C18 的命令/权限面；成功判决路径
     //   见 AdjudicationEndToEndTest（本地 stub）与真 e2e。

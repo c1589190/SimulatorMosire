@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.testing.WorldSlices;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -23,6 +27,10 @@ import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DisclosurePolicy;
 import io.mosire.simos.ga.model.Verdict;
 import io.mosire.simos.ga.model.VerdictMeta;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
+import io.mosire.simos.gov.nation.Nation;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
@@ -116,6 +124,9 @@ class RedactionApiTest {
 
   /** 地图标识：与真壳同源取（{@link ShellConfig#DEFAULT_MAP_ID}），不手拼。 */
   private static final String MAP_ID = ShellConfig.DEFAULT_MAP_ID;
+
+  /** 夹具里唯一的区域 id（本国 = r1，tag = {@code nation:n1}）。 */
+  private static final RegionId HOME_REGION = new RegionId("r1");
 
   private static final String DM_REDACT_HEADS = "dm-state";
 
@@ -311,6 +322,7 @@ class RedactionApiTest {
                   "core.AdvanceTime",
                   Timeline.changeSetJson(WorldChangeSet.empty())));
     }
+    WorldSlices slices = sdState();
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
@@ -322,14 +334,24 @@ class RedactionApiTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "ga", new GaSnapshot(ref("main", 1), T7, sdState())),
+                // ★★ 2026-10-13 收尾测试第 3 层：国家住 gov、军队住 army；归属行也住 gov 的表里
+                //   ⇒ 夹具必须一次交回三片（只装 ga 会让每个决策人变成"谁都够不着"）。
+                "gov", new GovSnapshot(ref("main", 1), T7, slices.gov()),
+                "army", new ArmySnapshot(ref("main", 1), T7, slices.army()),
+                "ga", new GaSnapshot(ref("main", 1), T7, slices.ga())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new GovCodec(),
+                    new ArmyCodec(),
+                    new GaCodec())));
   }
 
   private static GameMap map() {
@@ -376,7 +398,13 @@ class RedactionApiTest {
     return new UnitState(new LinkedHashMap<>(Map.of(U1, unit)));
   }
 
-  private static GaState sdState() {
+  /**
+   * ★★ 2026-10-13 收尾测试第 3 层：三片一起交回，且<b>归属行真的落进 {@code GovState.nationAffiliations()}</b>。
+   *
+   * <p>归属归模块之后（乙收尾），"这个决策人是某国的"不再住在 {@code DecisionMaker} 值上，而住 gov 的表里、按 dmId 索引 ⇒ 只造裸决策人 =
+   * 范围函数给四命名空间 deny-all，一切"不同 as= ⇒ 不同数据"的断言会退化成"谁都看不见"的恒真式。
+   */
+  private static WorldSlices sdState() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     // ★ 全部是 Nation(n1)（本国 = r1）——区别只在额外限制上，故"不同 as= ⇒ 不同数据"证的是**限制**那一维。
     makers.put(
@@ -395,6 +423,8 @@ class RedactionApiTest {
         new DecisionMakerId(DM_REDACT_HEADS),
         maker(DM_REDACT_HEADS, "n1", disclosure(DisclosurePolicy.FULL, Set.of("heads"))));
     // 这个国家的 tag 谁都不带 ⇒ 范围函数给 deny-all（**不是**靠"空 accessLimit"——那是"不收紧"，方向相反）。
+    // ★ 但 n-none 必须**真的存在**于 `nations`：`NationAffiliations.resolve` 会裁掉"指向不存在国家"的归属行
+    //   （fail-closed）——若让那一行被裁掉，本用例验的就从"国家在、但没有一格属于它"变成"根本没有归属"，不是同一件事。
     makers.put(new DecisionMakerId(DM_NO_SCOPE), maker(DM_NO_SCOPE, "n-none", AccessLimit.empty()));
     makers.put(
         new DecisionMakerId(DM_NO_UNIT),
@@ -404,7 +434,24 @@ class RedactionApiTest {
         maker(DM_WIDEN_ATTEMPT, "n1", AccessLimit.ofPrefixes(Map.of("map", Set.of(MAP_ID)))));
     Map<VerdictId, Verdict> verdicts = new LinkedHashMap<>();
     verdicts.put(new VerdictId("v-1"), verdict("v-1"));
-    return GaState.empty().withDecisionMakers(makers).withVerdicts(verdicts);
+    GaState ga = GaState.empty().withDecisionMakers(makers).withVerdicts(verdicts);
+
+    Map<NationId, Nation> nations = new LinkedHashMap<>();
+    nations.put(new NationId("n1"), new Nation(new NationId("n1"), "国家 n1", HOME_REGION, 0));
+    nations.put(
+        new NationId("n-none"), new Nation(new NationId("n-none"), "国家 n-none", HOME_REGION, 0));
+    WorldSlices slices =
+        WorldSlices.of(GovState.empty().withNations(nations), ArmyData.empty(), ga);
+    // ★ 逐条落归属行（写表形制与 `gov.AssignDecisionMakerNation` 逐字相同；这里没有命令总线可走）。
+    for (DecisionMaker maker : makers.values()) {
+      slices = slices.withNationAffiliation(maker.id(), new NationId(nationOf(maker.id().value())));
+    }
+    return slices;
+  }
+
+  /** 夹具里"谁属于哪国"的单一拼写点（{@link #sdState()} 与上面的 makers 表同源，避免两处漂移）。 */
+  private static String nationOf(String decisionMakerId) {
+    return DM_NO_SCOPE.equals(decisionMakerId) ? "n-none" : "n1";
   }
 
   /** 只改披露口径 / 字段剔除、**不额外收紧资源**（空前缀图 = 不表态）。 */

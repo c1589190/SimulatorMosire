@@ -56,7 +56,7 @@ class LlmToolNamesTest {
   @Test
   void escapingReplacesIllegalCharactersInsteadOfDroppingThem() {
     assertThat(LlmToolNames.wireNameOf("simos.map.hex")).isEqualTo("simos_map_hex");
-    assertThat(LlmToolNames.wireNameOf("ga.IssueDirective")).isEqualTo("sd_IssueDirective");
+    assertThat(LlmToolNames.wireNameOf("ga.IssueDirective")).isEqualTo("ga_IssueDirective");
     assertThat(LlmToolNames.wireNameOf("a b/c.d-e_f"))
         .as("空格、斜杠、点各转一个下划线；连字符与下划线原样保留")
         .isEqualTo("a_b_c_d-e_f");

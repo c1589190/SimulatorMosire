@@ -99,9 +99,11 @@ class McpServerTest {
    * H0.6 的 simos.economy.ownership）。
    */
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 37 读 + 129 写 = 161 条（★★ W2 按实测补入
-   * simos.economy.setMarketZonePriceAlpha ⇒ 162 → 163；★★ W5-fix6 按实测补入
-   * simos.economy.setGovernmentMintScale ⇒ 163 → 164；★★ W5.5 按实测补入
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 37 读 + 129 写 = 161 条（★★ 2026-10-13 收尾测试第 3 层按实测校正三处： 删掉幽灵 {@code
+   * simos.sd.combats}（旧战斗族退役）与 {@code army.AppendCombatStage}（**没有**以该名命的窄工具 ⇒ 它只能经 {@code
+   * simos.command.submit} 走，不是 tools/list 的一条），补上批次 2 的 {@code map.SetHexArea} （{@code
+   * MapSetHexAreaTool.NAME} 与命令类型同字面）。（★★ W2 按实测补入 simos.economy.setMarketZonePriceAlpha ⇒ 162 →
+   * 163；★★ W5-fix6 按实测补入 simos.economy.setGovernmentMintScale ⇒ 163 → 164；★★ W5.5 按实测补入
    * simos.economy.setMarketZoneLoanRateAlpha ⇒ 164 → 165；★★ W10 按实测补入
    * simos.economy.setEconomyPolicy ⇒ 165 → 161；2026-10-09 按实测补入 A1/A2a/B2 的 4 条货币 + 3 条市场区工具）（spec
    * §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与 P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐，以及用户 2026-10-02 的
@@ -117,9 +119,9 @@ class McpServerTest {
           "map.RegisterPathwayGroup",
           "map.RenameRegion",
           "map.SetEdge",
+          "map.SetHexArea",
           "map.SetTerrain",
           "map.UpdateRegion",
-          "army.AppendCombatStage",
           "sd.AdjudicateTick",
           "ga.CancelEffect",
           "army.CreateArmy",
@@ -215,7 +217,6 @@ class McpServerTest {
           "simos.region.clearData",
           "simos.region.clearStructures",
           "simos.region.seed",
-          "simos.sd.combats",
           "simos.sd.decision-maker",
           "simos.sd.decision-makers",
           "simos.sd.diplomacy",

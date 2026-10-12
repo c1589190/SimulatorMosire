@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -16,6 +19,9 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -192,10 +198,10 @@ class SdDirectivesApiTest {
     submit(
         "gov.CreateNation",
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"r-nation\",\"adminBudgetPerTick\":10}");
-    submit(
-        "ga.CreateDecisionMaker",
-        "{\"id\":\"dm-1\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
-            + "\"allowedTools\":[],\"cadence\":3}");
+    submit("ga.CreateDecisionMaker", "{\"id\":\"dm-1\",\"allowedTools\":[],\"cadence\":3}");
+    // ★★ 2026-10-13 收尾测试第 3 层：归属归模块——先建裸决策人，再由 gov 的赋权工单落
+    //   `GovState.nationAffiliations()` 那一行（`ga.CreateDecisionMaker` 已整条拒收 `affiliation`）。
+    submit("gov.AssignDecisionMakerNation", "{\"decisionMakerId\":\"dm-1\",\"nationId\":\"n1\"}");
   }
 
   private JsonNode directivesJson(String path) throws Exception {
@@ -268,14 +274,24 @@ class SdDirectivesApiTest {
                         ref("main", 1),
                         T7,
                         new SocialData(new LinkedHashMap<>(), Map.of(), Map.of())),
-                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty())),
+                "ga", new GaSnapshot(ref("main", 1), T7, GaState.empty()),
+                // ★★ 2026-10-13 收尾测试第 3 层：国家住 gov、军队住 army（批次 3c/3d-1 起不再住 sd/ga）
+                //   ⇒ 缺这两片时 `gov.CreateNation` 直接 500（"状态里没有 gov 模块切片——装配故障"）。
+                "gov", new GovSnapshot(ref("main", 1), T7, GovState.empty()),
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
-                List.of(new MapCodec(), new SocialCodec(), new UnitCodec(), new GaCodec())));
+                List.of(
+                    new MapCodec(),
+                    new SocialCodec(),
+                    new UnitCodec(),
+                    new GovCodec(),
+                    new ArmyCodec(),
+                    new GaCodec())));
   }
 
   private static GameMap twoNationMap() {

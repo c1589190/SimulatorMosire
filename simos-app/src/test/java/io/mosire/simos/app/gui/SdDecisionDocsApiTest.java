@@ -87,7 +87,7 @@ class SdDecisionDocsApiTest {
           .as("★ %s 看不到无主文档（两个轴都不命中 ⇒ fail-closed）", actor)
           .doesNotContain("secret");
     }
-    assertThat(infoIds()).as("前提：无主文档确实在 INFO 层里（否则上面的『看不到』是假象）").contains("sd:doc.secret#0");
+    assertThat(infoIds()).as("前提：无主文档确实在 INFO 层里（否则上面的『看不到』是假象）").contains("ga:doc.secret#0");
   }
 
   // ── 判据二：docId 精确取一篇；"不存在"与"无权看"返回同一个回答 ─────────────────────
@@ -234,10 +234,15 @@ class SdDecisionDocsApiTest {
     assertThat(JSON.readTree(response.body()).get("result").asText()).isEqualTo("committed");
   }
 
-  /** {@code sd.PutInfo} 发一条文档（{@code affiliations} 为 null 时不带该键）。 */
+  /**
+   * {@code ga.PutInfo} 发一条文档（{@code affiliations} 为 null 时不带该键）。
+   *
+   * <p>★ 地址前缀 = {@code ga:doc.}（{@code DecisionDoc.ADDRESS_PREFIX}，批次 3e 随 {@code sd:} 地址族退役改名）： 写
+   * {@code sd:doc.…} 的话条目照样落盘，但<b>不是文档</b>（{@code docIdOf} 解不出 docId）⇒ 读面永远空集。
+   */
   private void putDoc(String docId, String value, String tagsJson, String affiliationsJson)
       throws Exception {
-    StringBuilder payload = new StringBuilder("{\"address\":\"sd:doc.").append(docId);
+    StringBuilder payload = new StringBuilder("{\"address\":\"ga:doc.").append(docId);
     payload.append("\",\"key\":\"doc\",\"value\":\"").append(escape(value)).append('"');
     if (tagsJson != null) {
       payload.append(",\"tags\":").append(tagsJson);
@@ -260,10 +265,10 @@ class SdDecisionDocsApiTest {
    * 两个国家（n1/n2）+ 三个决策人（dm-a/dm-b/dm-c）+ 四条 INFO：
    *
    * <pre>
-   *   sd:doc.alpha-brief   tags={dm-a}   affiliations={}    （显式指派）
-   *   sd:doc.shared-brief  tags={}       affiliations={n1}  （归属自动）
-   *   sd:doc.beta-brief    tags={}       affiliations={n2}  （归属自动，另一国）
-   *   sd:doc.secret        tags={}       affiliations={}    （无主）
+   *   ga:doc.alpha-brief   tags={dm-a}       affiliations={}             （显式指派）
+   *   ga:doc.shared-brief  tags={}           affiliations={nation:n1}    （归属自动）
+   *   ga:doc.beta-brief    tags={}           affiliations={nation:n2}    （归属自动，另一国）
+   *   ga:doc.secret        tags={}           affiliations={}             （无主）
    * </pre>
    */
   private void createFixture() throws Exception {
@@ -287,24 +292,20 @@ class SdDecisionDocsApiTest {
         "{\"nationId\":\"n2\",\"name\":\"乙国\",\"homeRegionId\":\""
             + regions.get(1)
             + "\",\"adminBudgetPerTick\":10}");
-    for (String[] dm :
-        new String[][] {
-          {"dm-a", "nation", "n1"}, {"dm-c", "nation", "n1"}, {"dm-b", "nation", "n2"}
-        }) {
+    // ★★ 2026-10-13 收尾测试第 3 层：归属归模块 —— 先建**裸**决策人，再由 gov 的赋权工单
+    //   `gov.AssignDecisionMakerNation` 落 `GovState.nationAffiliations()` 那一行
+    //   （`ga.CreateDecisionMaker` 自乙收尾起整条拒收 `affiliation`，422 具名拒）。
+    for (String[] dm : new String[][] {{"dm-a", "n1"}, {"dm-c", "n1"}, {"dm-b", "n2"}}) {
       submit(
-          "ga.CreateDecisionMaker",
-          "{\"id\":\""
-              + dm[0]
-              + "\",\"affiliation\":{\"kind\":\""
-              + dm[1]
-              + "\",\"id\":\""
-              + dm[2]
-              + "\"},\"allowedTools\":[],\"cadence\":1}");
+          "ga.CreateDecisionMaker", "{\"id\":\"" + dm[0] + "\",\"allowedTools\":[],\"cadence\":1}");
+      submit(
+          "gov.AssignDecisionMakerNation",
+          "{\"decisionMakerId\":\"" + dm[0] + "\",\"nationId\":\"" + dm[1] + "\"}");
     }
 
     putDoc("alpha-brief", "{\"title\":\"Alpha 简报\"}", "[\"dm-a\"]", null);
-    putDoc("shared-brief", "{\"title\":\"共享简报\"}", null, "[{\"kind\":\"nation\",\"id\":\"n1\"}]");
-    putDoc("beta-brief", "{\"title\":\"Beta 简报\"}", null, "[{\"kind\":\"nation\",\"id\":\"n2\"}]");
+    putDoc("shared-brief", "{\"title\":\"共享简报\"}", null, "[\"nation:n1\"]");
+    putDoc("beta-brief", "{\"title\":\"Beta 简报\"}", null, "[\"nation:n2\"]");
     putDoc("secret", "{\"title\":\"无主\"}", null, null);
   }
 }

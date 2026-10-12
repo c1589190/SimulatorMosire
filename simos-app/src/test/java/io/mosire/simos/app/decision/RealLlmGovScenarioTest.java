@@ -2849,7 +2849,7 @@ class RealLlmGovScenarioTest {
       }
       return LlmResponse.toolCall(
           "fake-call-" + dmId + "-" + call,
-          "sd_IssueDirective",
+          "ga_IssueDirective",
           Map.of("payloadJson", json(payload), "branch", MAIN.value(), "expectedRevision", head()));
     }
 

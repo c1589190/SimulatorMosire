@@ -62,12 +62,13 @@ import org.junit.jupiter.api.Test;
  *   <li>具名拒绝（{@link ChannelAdmission}）必须是 {@code INFO|} 行，带 reason 与来源；
  *   <li>{@link GaLog#ROOT_LOGGER_NAME} 调到 WARN 后 INFO 消失、调回 INFO 后回来；
  *   <li>{@link GaLog#TRACE_LOGGER_NAME} 关闭时逐条 {@code SD_EFFECT_FIRED} 不出现、打开后出现；
- *   <li>TICK 类事件（{@code SD_ADVANCE_START/DAY/END}）带 {@code day} 与 {@code origin=sd-tick
- *       originKind=tick}。
+ *   <li>TICK 类事件（{@code SD_ADVANCE_START/DAY/END}）带 {@code day} 与 {@code origin=ga-tick
+ *       originKind=tick}（★★ 2026-10-12 批次 3b-4/3e：来源档 {@code sd-tick} → {@code ga-tick}、{@code
+ *       sd-decision} → {@code ga-decision}；事件名与粗分类<b>一字未改</b>——那是"日志契约"的另一半）。
  * </ul>
  *
- * <p>★ 装置住 app 模块：只有 app 的测试类路径上有 log4j-core + log4j-slf4j2-impl（sd 模块自身没有，见依赖树）；这里只借 app
- * 的类路径，被验对象仍是 {@code io.mosire.simos.sd} 及其子 logger。
+ * <p>★ 装置住 app 模块：只有 app 的测试类路径上有 log4j-core + log4j-slf4j2-impl（ga 模块自身没有，见依赖树）；这里只借 app
+ * 的类路径，被验对象是 {@code io.mosire.simos.ga} 及其子 logger（{@code simos-sd} 已随批次 3e 退役）。
  *
  * <p>★ {@link #logLinesAreActuallyCaptured()} 是前提断言：log4j2 没有配置时 root level 是 ERROR，只挂 appender 不抬
  * level 会收到空集；空集上"不含某串"会假绿（core 的 {@code CommandBusLoggingTest} 已记过这个坑）。
@@ -127,8 +128,8 @@ class SdLoggingTest {
   }
 
   /**
-   * 真 handler 的成功 INFO：{@code CreateDecisionMakerHandler} 在 sd 切片里成功落一个决策人， 事件名 + 关键字段 + {@code
-   * origin=sd-nation originKind=system} 必须齐全。
+   * 真 handler 的成功 INFO：{@code CreateDecisionMakerHandler} 在 ga 切片里成功落一个决策人， 事件名 + 关键字段 + {@code
+   * origin=ga-decision originKind=system} 必须齐全。
    *
    * <p>判别力：事件名写错、缺 origin/originKind、把命令面标成 interaction、字段值算错，这里当场红。
    */
@@ -141,8 +142,7 @@ class SdLoggingTest {
         new CreateDecisionMakerHandler()
             .handle(
                 sdWorld(nationBase()),
-                "{\"id\":\"dm9\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"
-                    + "\"allowedTools\":[\"sd.SubmitVerdict\"],\"cadence\":3}");
+                "{\"id\":\"dm9\",\"allowedTools\":[\"ga.SubmitVerdict\"],\"cadence\":3}");
 
     assertThat(outcome)
         .as("夹具必须真的走到成功路径，否则后面的日志断言可能只是空跑。实得 %s", outcome)
@@ -151,7 +151,7 @@ class SdLoggingTest {
         appender.messages(),
         "INFO|",
         "SD_DECISION_MAKER_CREATED",
-        "origin=sd-nation",
+        "origin=ga-decision",
         "originKind=system",
         "id=dm9",
         "cadence=3",
@@ -174,8 +174,8 @@ class SdLoggingTest {
     assertEvent(
         appender.messages(),
         "INFO|",
-        "SD_CHANNEL_ADMISSION_REJECTED",
-        "origin=sd-decision",
+        "GA_CHANNEL_ADMISSION_REJECTED",
+        "origin=ga-decision",
         "originKind=system",
         "actor=ghost",
         "commandType=-",
@@ -187,8 +187,8 @@ class SdLoggingTest {
     assertEvent(
         appender.messages(),
         "INFO|",
-        "SD_CHANNEL_ADMISSION_REJECTED",
-        "origin=sd-decision",
+        "GA_CHANNEL_ADMISSION_REJECTED",
+        "origin=ga-decision",
         "originKind=system",
         "actor=-",
         "commandType=simos.command.submit",
@@ -204,7 +204,7 @@ class SdLoggingTest {
     assertEvent(
         appender.messages(),
         "INFO|",
-        "SD_CHANNEL_ADMISSION_REJECTED",
+        "GA_CHANNEL_ADMISSION_REJECTED",
         "reason=actor-not-representable");
 
     setSdLevel(Level.WARN);
@@ -212,7 +212,7 @@ class SdLoggingTest {
     rejectGhostActor();
     assertThat(appender.messages())
         .as("WARN 时 INFO 拒绝行必须消失；实得 %s", appender.messages())
-        .noneMatch(line -> line.contains("event=SD_CHANNEL_ADMISSION_REJECTED"));
+        .noneMatch(line -> line.contains("event=GA_CHANNEL_ADMISSION_REJECTED"));
 
     setSdLevel(Level.INFO);
     appender.clear();
@@ -220,7 +220,7 @@ class SdLoggingTest {
     assertEvent(
         appender.messages(),
         "INFO|",
-        "SD_CHANNEL_ADMISSION_REJECTED",
+        "GA_CHANNEL_ADMISSION_REJECTED",
         "reason=actor-not-representable");
   }
 
@@ -240,7 +240,7 @@ class SdLoggingTest {
         appender.messages(),
         "INFO|",
         "SD_ADVANCE_START",
-        "origin=sd-tick",
+        "origin=ga-tick",
         "originKind=tick",
         "day=0");
     assertThat(appender.messages())
@@ -254,7 +254,7 @@ class SdLoggingTest {
         appender.messages(),
         "TRACE|",
         "SD_EFFECT_FIRED",
-        "origin=sd-tick",
+        "origin=ga-tick",
         "originKind=tick",
         "day=1",
         "id=e1");
@@ -262,7 +262,7 @@ class SdLoggingTest {
 
   /**
    * TICK 事件：{@code GaTimeParticipant} 推 0→2 天，START/DAY/END 都必须带 {@code day} 且来源是 {@code
-   * origin=sd-tick originKind=tick}（DEBUG 的 DAY 行一并证明判据级明细）。
+   * origin=ga-tick originKind=tick}（DEBUG 的 DAY 行一并证明判据级明细）。
    */
   @Test
   void tickAdvanceEventsCarryDayAndTickOrigin() {
@@ -276,7 +276,7 @@ class SdLoggingTest {
         appender.messages(),
         "INFO|",
         "SD_ADVANCE_START",
-        "origin=sd-tick",
+        "origin=ga-tick",
         "originKind=tick",
         "day=0",
         "from=0",
@@ -287,7 +287,7 @@ class SdLoggingTest {
         appender.messages(),
         "DEBUG|",
         "SD_ADVANCE_DAY",
-        "origin=sd-tick",
+        "origin=ga-tick",
         "originKind=tick",
         "day=1",
         "effectsEvaluated=1",
@@ -296,7 +296,7 @@ class SdLoggingTest {
         appender.messages(),
         "INFO|",
         "SD_ADVANCE_END",
-        "origin=sd-tick",
+        "origin=ga-tick",
         "originKind=tick",
         "day=2",
         "from=0",
