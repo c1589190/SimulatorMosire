@@ -232,3 +232,36 @@ test-scope 声明仍列入禁列 + 用 `io.mosire:simos-map:*:*:test` 窄 `<incl
 ### 8.5 批次 1 拆分（据 §一.5"按可独立编译的层拆"）
 - **批次 1**：**权限声明与规则统一**（`ga-spi` 标记 + `ga` 规则/审计 + 各域打标签 + `Shell` 改判 + 删 `sd.` 前缀 + 删 `:903-914` 无条件 add）—— **行为等价**（66 集对称差 = ∅）
 - **批次 1.5**：**模块自交 handler 清单**（把 `Shell` 里 142 个 `new XxxHandler()` 下放到各模块，app 只 `concat`）—— 结构性，零行为变化；独立可验收
+
+---
+
+## §9 批次 1 中期裁定（2026-10-12 晚）：标记落 `simos-util/spi`（**控制方批准**）
+
+### 9.1 派单书前提被推翻（**控制方实测错误**）
+派单书 §③.1 写「★ `ga-spi` 已被**全部 16 个模块**显式声明（实测）⇒ 声明标记落 `ga-spi` 零 pom 改动」——**该前提为假**。
+
+**错误成因（记进教训）**：控制方当时的探测命令是
+```bash
+for p in simos-*/pom.xml; do grep -q "simos-ga-spi" $p && printf "✓ %s\n" "$(basename $(dirname $p))"; done
+```
+—— **`grep` 一个字符串在 pom 里出现 ≠ 该模块声明了它**：禁列里的 `<exclude>io.mosire:simos-ga-spi</exclude>` 也被计成"✓"。
+（同族教训：本仓已多次踩"grep 命中 ≠ 事实"。**探测 pom 依赖必须解析 `<dependency>` 块、并把 `<exclude>` 排除**。）
+
+**实测事实（解析 `<dependency>` 块）**：
+| 面 | 结果 |
+|---|---|
+| **声明** `simos-ga-spi` | **仅 7 个**：army / economy / ga / gov / map / social / unit |
+| **禁列** `simos-ga-spi` | 含 **`simos-actor`**（`simos-actor/pom.xml:106`，注释自陈"本模块不声明它（只可能经传递可见）"） |
+| 五个需打标记的域（map/unit/social/economy/**actor**）是否都声明 `simos-util` | **全部 ✓** |
+
+### 9.2 三条路的代价（子 Agent 给出，控制方复核）与裁定
+| 路 | 后果 |
+|---|---|
+| (a) 标记落 `ga-spi`，actor 2 条不标 | DM 面 **66 → 64** ⇒ **等价性破、`hasSize(66)` 红** —— 违反本批核心判据 ❌ |
+| (b) 标记落 `ga-spi`，actor 靠**传递依赖** import | compile/validate 会过，但 actor 的 pom 自陈"只可能经传递可见"，**等于引入"依赖传递不是契约"这一已被本仓定性为缺陷的形态** ❌ |
+| **(c) 标记落 `simos-util/spi`** | util 是 map/unit/social/economy/actor **五个模块全部显式声明**的唯一下层 ⇒ **零 pom 改动、零 enforcer 例外、66 条一条不漏、等价性成立** ✅ |
+
+**控制方裁定：批准 (c)。**
+- **不与用户原话冲突**：用户「让 ga 统一鉴权」指的是**规则与审计**（那部分**仍在 `ga`**，未动）；标记只是"声明契约"的家。
+- **且是自然落点**：`simos-util/spi` 里已经住着 `GmOnlyCommand`（它要取代的那个标记）、`CommandHandler`、`HandlerOutcome`、`ModuleCodec` —— 同包同形制。
+- ★ 与上文 §1「甲组」的措辞对齐：批次 1 的**声明落 `util/spi`（不是 ga-spi）**，**规则与审计落 `ga`**。
