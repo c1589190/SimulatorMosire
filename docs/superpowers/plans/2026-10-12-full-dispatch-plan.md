@@ -1027,3 +1027,50 @@ D4 受众标签定为 `kind:ref` 串（代价 = 视图/载荷形状变化 O5/O6/
 **共同形态 = "某个地方维护着第二个拼写点，而门禁读的是错的那一个"**。
 ⇒ **纪律（写死）**：**凡"扫描器/审计器"，必须镜像生产代码的真实取值链**（`name()` 怎么取，审计就怎么取），
 **且必须有"改坏生产侧 ⇒ 审计当场红"的变异自证** —— 否则审计器本身就是下一个盲区。
+
+---
+
+## §33 `roles()` 修复收工（`b1b48696`）+ 第 2 层的实测画像
+
+### 33.1 修复（一行，`SimosSdReportsTool.roles()` 恢复 `{DM,GM}`）
+★ **证据等级是本轮最高的一次** —— 代理做了 **A/B 反证**：同一条仓外冒烟、**只换那一个 class 文件**
+- **改前版本** ⇒ **当场抛**：`IllegalStateException: 工具面装配故障：simos.sd.reports 声明 [GM]（不含 DM），却注册在 DM 桶里`，
+  栈 `ToolRoleAudit:66 → SimosToolSource:568 → Shell.start:1131 → :489`（**与派单书第⑥条逐字一致**）；
+- **改后** ⇒ `RESULT=PASS`：装配期自审通过 / `registeredModuleCount=8` / **真 MCP + 真 GUI 绑定（端口 0 随机）** /
+  **GM 桶 161 · 决策人桶 43** / `simos.sd.reports` **两桶都在** / **6 条 GM-only 读口反证（GM=true DM=false）** /
+  `close()` 干净、库文件在位。
+⇒ **"真 `Shell` 能构造"这道 §29.2 要求的防线，第一次真的被建立并跑通了。**
+★ 代理明确区分了「**我实际证明了什么**」（全量装配链 + 双桶 ⇔ `roles()` 双向全量自审 + 两桶读回 + `close()`）
+与「**我没证明什么**」（GUI HTTP 业务面 / tick 推进 / 决策回合 / 权限裁决与审批链 / 有世界档的装配分支）——**这正是要的形态**。
+★ **机械审计**：`simos-ga/src/main` **171 个工具类**的「桶成员关系 ⇔ `roles()` 声明」**双向全量对照，不一致 = 0**（修后）；
+磁盘 171 个 `*Tool.java` ↔ 真两桶并集 171：**缺 0 幽灵 0**。
+
+### 33.2 `simos-app` test 实测画像（改动前后）
+| | 跑 | Failures | Errors | Skipped | **红合计** |
+|---|---|---|---|---|---|
+| 前（控制方基线） | 914 | 59 | **445** | — | **504** |
+| **后** | **914** | **140** | **21** | 5 | **161** |
+**Errors 445 → 21**（−424：378 同因 + `CatalogVisibilityTest` 静态初始化级联消失 ⇒ 该用例本轮 **3/3 绿**）；
+**Failures 59 → 140**（+81 = 原先"连 `Shell` 都构造不出来 ⇒ 直接 E"的那批**现在真的跑到了断言**）⇒ **总红 −343**。
+**剩余 161 红按 5 族归因**（38 个测试类，**无一条由本修复造成**，代理给了三条依据）：
+A `sd`→`ga`/`army` 改名与模块键未跟上 · B **归属契约**（乙收尾）· C **夹具缺 gov 切片 / gov·army codec** ·
+D 工具面冻结计数陈旧（166 vs 161、142 vs 141）· E 其余冻结节面/白名单/夹具陈旧。
+★ 代理把「**属测试陈旧**」与「**疑似别的缺陷**」分开列，后者只给了 **3 条**（见 33.3）——**没有把两者混起来**。
+
+### 33.3 交给后续的三条「疑似别的缺陷」候选（控制方按第 3 层输入收）
+1. `CrossProcessDeterminismTest` —— 子 JVM 未正常退出（现象 + 真因到"子进程没退"，**未定位到生产代码**）；
+2. ★ `GovToolsZ6Test.decisionMakerSensitiveWriteAsksAndCommitsExactlyOneRevisionAfterGmApproval` ——
+   DM 调用 **10 s 内既未进审批也未结束** ⇒ **疑似审批链装配异常**（这条最值得追，属**后端行为**）；
+3. `SimosToolsTest.sdCreateArmyToolSurfacesTheNamedRejectionForTheRemovedNationId` —— `No value present`。
+
+### 33.4 测试侧两条点名（交第 2 层，控制方已无法直连该 Agent ⇒ 落盘待收尾）
+1. `SdCreateArmyTool`/`SdSetArmyMasterGovTool` 的 **`NAME` 常量仍是 `sd.*`**，而 `name()` 返回 `commandType()` = `army.*`
+   ⇒ `SimosToolsTest` 三条 + `DecisionFaceGolden` 比对因此红。★ 这正是 §32.4 那条"**第二个拼写点**"的**同一个实例**。
+2. ★ `DecisionFaceGolden.ALL` 的 **44 条金名单含已不存在的 `simos.sd.combats`**（main 0 命中，真名 = `simos.army.combats`）
+   ⇒ **DM 面 43 = 金名单 44 − 1 幽灵** ⇒ `DecisionCallerFactoryTest:247` 的失败**100% 由此解释**（一条幽灵条目压住一个用例）。
+
+### 33.5 控制方两处操作教训
+1. ★ **长提交信息一律用 `-F <文件>`**：`git commit -m "…含双引号…"` 会把 shell 引号闭合 ⇒
+   **git 把后半句当 pathspec** ⇒ 提交失败而人以为成功（这次靠 `git log` 复核才发现）。**提交后必须复核 `git log --oneline -1`**。
+2. ★ **`git add <显式路径>` 生效**（§31.4 的新纪律第一次执行）：`git show --stat` 确认**只含那一个文件**，
+   层 2 的 **50 个活文件仍在工作树**、未被误提交。
