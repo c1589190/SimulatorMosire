@@ -387,3 +387,33 @@ UtilSimos .......................................... FAILURE [  6.698 s]
 1. **`correlationId` 此前是"假定等于 commandId"**；改后由装配面生成并**经 `Receipt` 回报真实值** ⇒ 不再有错值可能。
 2. **没有**把 `DecisionPacketPayloads.fold` 换成 `ToolResults.fold` —— 后者折的是"只有结局"的独立视图，会把 `submission`
    排到 JSON 最前、**改掉这 5 个工具返回的键序**。保留原折叠体 ⇒ 键序逐字不变。
+
+---
+
+## §14 批次 3a 中期裁定（2026-10-12 晚，控制方）
+
+### 14.1 ★ 派单书自相矛盾（控制方错）：`test-compile rc=0` ⊥「不许改其他测试文件」
+**代理实测**：移除 `SdState` 的两个组件 ⇒ **`simos-sd` 的测试必然编译断**（不是断言红），共 4 个文件：
+`SdFixtures.java:100-103,216-231,234+,271+,308+`（`base.decisionPackets()` / `withDecisionPackets` / `withMergedEffectPlans` / `P2`/`MP1`/`draftPacket`/`mergedEffectPlan`）·
+`SdRoundTripTest.java:127,130-131,136,157,170-171` + `:60 hasSize(14)` ·
+`SdCodecTest.java:226-232,281-343,360-370` · `SdStateInvariantTest.java:119-131`。
+
+**裁定：撤掉本批的 `test-compile rc=0` 要求。**依据：
+- §12.1 明写 **`test`/`test-compile` 留到最后统一做**；§12.2 明写**编译断属台账类**（架构调整期既有测试网注定成批失效）；
+- 本批若强行要求 test-compile 绿，等价于**每批都插一个测试迁移批** —— 正是用户 2026-10-12 重申 §三.0 时要避免的。
+⇒ **本批门禁 = `compile` + `spotless:check` + `spotbugs:check` + 两处护栏自证**；sd 测试的编译断**逐条进台账**。
+
+### 14.2 ★ 迁移面比派单书更窄：**零值类型迁入 ga**（代理判定，控制方批准）
+派单书只想到"`DecisionMakerId` 要留在 sd"；代理实测**范围更大**：`DecisionPacket`/`MergedEffectPlan`/
+`DecisionPacketId`/`MergedEffectPlanId`/`FormattedCall`/`MergedEffect`/`PacketStatus`/`CallStatus`
+**全被 sd 的测试引用** ⇒ 把任一搬进 ga，sd 侧（含测试）就得声明 `sd → ga` ⇒ **成环，pom 禁列当场拒**。
+⇒ **只搬两张表的"状态组件"（`Map` 字段）**，值类型全留 sd，`ga` 反向引用（**既有 `ga → sd` 方向，不新增边**）。
+`GaState` 的两组件类型即 `Map<DecisionPacketId, DecisionPacket>` / `Map<MergedEffectPlanId, MergedEffectPlan>`。
+**批准。** ★ 遗留（记入 3b/3e 的输入）：这批值类型与 `SdPayloads` 最终要随 sd 退役一并安置；
+且 `sd:packet.<id>` 之类**地址族**是否改挂 `ga:`，属 3b 的待裁项。
+
+### 14.3 `SdPayloads` 最小可见性放宽（代理判定，控制方批准）
+4 个 handler 用 `SdPayloads`（729 行、包私有、**sd 其余 handler 仍在用** ⇒ 不能搬）解析载荷。
+代理把**类 + 8 个方法**（`parse`/`requireText`/`optionalText`/`requireLong`/`optionalLongValue`/
+`requirePacketStatus`/`optionalFormattedCalls`/`requireMergedEffectPlan`/`logRejected`）放宽到 `public`，
+其余一字不动。**批准** —— 替代方案是在 ga 复制 ~150 行载荷解析 = **线格式的第二个拼写点**，违背本仓反复强调的"一处声明"。
