@@ -268,3 +268,55 @@ map 侧 18 个文件含基类/助手）；`simos-map/src/main` 对 `core`/`app` 
   还原后 `md5sum simos-sd/pom.xml` = `97fa84dd45708b841510c570db972835` **前后逐字节一致**。
 - ★ 脚本坑（如实记）：第一版只插了注释、**漏插 `<exclude>` 那一行**（`raise SystemExit` 分支外的路径没走到），
   复核时发现"条数没变"才抓到 ⇒ 已补齐并逐个复验条数 +1。**"改完立刻复核条数"这一步不能省**。
+
+---
+
+## 9. ★★★ B4 一处声明收口完成（`6e04849a` B4a + `e2ef67f1` B4b）
+
+用户目标（设计书 §4.4 / 不变量 I-G3）：**"这个工具能被谁用"只有一处拼写点 = 工具自己的 `roles()`；
+两个桶与决策人白名单从它派生，仓库里不得再有手抄清单。**
+
+### 9.1 两轮各自的交付
+
+| 轮 | 提交 | 交付 |
+|---|---|---|
+| **B4a** | `6e04849a` | **176 个具体工具类**实现 `SimosTool.roles()`（唯一拼写点）：`{GM}` 132 / `{DM}` 10 / `{GM,DM}` 34；GM 桶 166 / DM 桶 44。新增 `ga.tools.ToolRoleAudit`（装配完成处 O(n) fail-closed 审计：单桶 `requireFace` + 双桶双向 `requireFaces`）。`Shell` 从决策人桶派生名字注入 `DecisionCallerFactory.forDecisionFace(...)`。 |
+| **B4b** | `e2ef67f1` | **删掉静态 44 条 `WHITELIST`**（128 行）+ 其专属 2 参构造器 + 38 行 import；`defaults(...)` 改吃入参；删 `requireSameNames`（其唯一理由是比对手抄清单）；**新增"派生白名单为空 ⇒ 当场抛"**；`grep WHITELIST simos-*/src/main` = **0 命中**、`DecisionCallerFactory` 对工具类 import = **0**（结构上无法持有清单）。测试迁到**测试侧金名单** `DecisionFaceGolden`（11 文件 + 1 新规格）。 |
+
+### 9.2 关键判据（本批真正的价值）
+
+- **装配期 fail-closed 三连**（负向实跑，原文入账）：① GM-only 窄写标 `{GM,DM}`② DM 桶工具少标 `DM`
+  ③ 工具未声明 `roles()` ⇒ 三次均**当场抛** `工具面装配故障：…`；还原后 md5 逐字节一致。
+- **"真零清单"的等价证明**：只改 `MapPathTool` **自己那一个文件**（去掉 `GmOnlyRead` + `roles()` 加 DM）⇒
+  决策人面/白名单**自动**多出 `simos.map.path`，由**两份独立用例**发现（改过的规格用例 + **未被触碰的**
+  `SimosToolsTest:1047`），**零处清单被改**。
+- **测试判据升级**：从"生产静态清单自证" → 「**真装配派生的决策人面 == 测试侧金名单 44 条**」。
+
+### 9.3 记录在案的偏离（控制方已裁定接受）
+
+| # | 偏离 | 理由 |
+|---|---|---|
+| **D-A** | §4.4 措辞"GM 桶 = 全部 `roles().contains(GM)` 的工具"**未按字面实现**：`roles()` 是**声明面**、桶是**显式装配面**，由 `requireFace`/`requireFaces` **双向钉死** | 让桶从 `roles()` **动态派生**会牺牲"角色标错 = 启动即红"的防护（漏挂桶不再被发现），且与"`roles()` 不做注册开关"的既有裁定冲突 ⇒ 保持现状 |
+| D-B | `ToolRoleAudit.requireSameNames` **整个删除**（非只删调用） | 其唯一存在理由 = "手抄清单 ⇔ 派生集合"比对；清单已无 ⇒ 死代码 |
+| D-C | `LlmToolNamesTest` 的类注"真在用的那 11 条"是**陈旧注释**（实际遍历整表 44 条），按 44 条迁移 | 照"11 条"迁移会把覆盖 44 → 11 = **削弱断言**（与派单纪律冲突）⇒ 拒绝并纠错 |
+| D-D | 测试侧金名单收成**一份** `DecisionFaceGolden`（而非 7 份局部） | 7 个测试文件需要同一份"真决策人面"，其中 4 个不启 Shell；抄 7 份 = 7 个漂移源。**生产侧仍零份**（测试里的金名单是独立规格，不是生产副本） |
+| D-E | `AppDecisionToolNames`（B2a，10 余条工具名）**不在收口面内** | 语义不同 = "运行流需要哪些名字"，不是"谁能用" |
+
+### 9.4 验收
+
+★ **控制方独立终审（不由实现方代跑）**：`tools/mvn-lock.sh clean verify` ⇒ **BUILD SUCCESS，18/18 模块，06:01**
+（2026-10-12 19:11）；独立核对：surefire **3410 / 0 / 0 / 5**、**spotbugs 非零模块 = 0**、前端门禁 **412/412**。
+
+- `-q -DskipTests compile` rc=0；`-DskipTests validate` rc=0（`BannedDependencies passed` **×16**）；
+- **`clean verify` rc=0 / BUILD SUCCESS / 06:00**：surefire **3410 / 0 失败 / 0 错误 / 5 跳过**
+  （+1 = B4b 新增的空集合 fail-closed 用例；5 skip = 既有真 LLM 门控）、
+  spotbugs **17/17 `BugInstance size is 0`**、前端门禁 **412/412**、checkstyle ×18 零违规、spotless ×18 全过、shade 守卫 OK；
+- **I-G1 零行为变化**：构造序列 `new *Tool(` 185 条 md5 `fa287408…` 逐位相同、`built.add(` 150/150；
+- **I-G4 不退化**：`SimosToolsTest` 的 `hasSize(70)`/`hasSize(176)` **一字未改**且全绿。
+
+### 9.5 仍未做（非阻塞）
+
+1. `simos-ga` / `simos-ga-spi` 自身**无 `src/test`**（其工具与新接缝零测试覆盖；既有测试全在 app）；
+2. 外交类型迁 gov、`AdjudicateTickTool`/`VoidAdjudicationTool` 归属（均属后续批）；
+3. `SimosToolsTest` 里的测试侧名单（`ALL_READ_NAMES` / `GM_ONLY_READ_NAMES` / `hasSize(44)`）与新金名单
+   构成**两份测试侧规格** —— 未来可另开批收口（不影响生产）。
