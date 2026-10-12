@@ -66,16 +66,26 @@
 | `simos-economy-api` | 经济切片共用契约（稳定 ID / 商品 / 市场 / 货币 / 关系 / 转移形状） | `actor-api` `util` `map` `social-api` | `army` `calendar` `economy` `gov` `ledger` |
 | `simos-economy` | 聚合式经济切片（产业/市场/债务/货币/政府政策），**机制与规则的归属地** | `actor-api` `util` `economy-api` `map` `social-api` `social` | `army` `calendar` `gov` `ledger` |
 | `simos-gov` | 政府：行政编制、国库预算、区划服务、**外交**（Nation/关系/事件） | `util` `map` `unit` `social` `economy-api` | `actor-api` `army` `economy` `ledger` |
-| `simos-army` | 交战记录与军方编排 | `util` `map` `unit` `social` | `actor-api` `economy` `economy-api` `ledger` `social-api` |
-| `simos-sd` | **推演框架层**：决策人（dm）与推演人（gm）的总实现 —— 决策流程、权限范围、工具协议与两个工具面 | `util` `map` `social` `unit` | `actor-api` `army` `economy` `economy-api` `gov` `ledger` `social-api` |
+| `simos-army` | 交战记录与军方编排；**军队身份 + 战斗（含阶段）**（★ 2026-10-12 用户裁定：「战斗模块，包括阶段之类的，归Army模块管，原则和GOV差不多」） | `util` `map` `unit` `social` **`gov`**（★ 2026-10-12 用户裁定「**Army 很显然可以依赖 GOV**」；批次 0b 落地） | `actor-api` `economy` `economy-api` `ledger` `social-api`（★ 本列原为示意、与 pom 不完全一致 —— **唯一权威是 `simos-army/pom.xml` 的禁列**） |
+| `simos-sd` | ~~**推演框架层**：决策人（dm）与推演人（gm）的总实现 —— 决策流程、权限范围、工具协议与两个工具面~~ ★★ **已被取代（2026-10-12 用户裁定：「sd整个弃用！」）⇒ 本行作废，模块整体退役** | ~~`util` `map` `social` `unit`~~ | —— |
 | `simos-core` | 组合与调度（**编译期看不见任何领域类型**；铁律 4 的结构化） | `util`（+ agentlib/jackson/sqlite）；领域模块**仅 test scope** | `actor-api` `army` `calendar` `gov` `ledger` |
 | `simos-app` | **组合根**：装配、GUI、MCP 口、工具面、权限范围函数（**不设 enforcer**，文档明文） | 全部 | （不设；由"领域模块 0 工具类"等专门判据守） |
 
 ★ **`simos-sd` 那一行是 2026-10-12 的语义扩张**：用户裁定「改造 sd 模块，扩大其语义为整个决策人-推演人（dm-gm）的总实现，
 和其他功能模块实现相关工具的接口」。**本批只冻结语义表述**；实现迁移见后续批（`docs/superpowers/specs/` 另立）。
+★★ **2026-10-12 追加更正（同日晚，用户第五轮裁定）**：该行**已被取代** —— 用户裁定「**sd整个弃用！**」，
+且更早的「ga 应当维护标准的一般决策人」（`NationId` 归 **gov**、`sd:*` 地址族「**直接扔**」）。
+⇒ 上面那条语义扩张**不再作为 sd 的现状描述**；sd 的去向 = 决策族 7 组件 → `ga`、外交 3 组件 → `gov`、
+战斗 4 组件 → `army`、模块整体退役。规划见 `docs/superpowers/plans/2026-10-12-full-dispatch-plan.md` §4 批次 3。
+★ 另注（同批核实）：`freeze.md` 原文所指的"推演框架层"其实**早在 B2a/B3 就已不成立** —— 决策人运行流与两个工具面
+已搬进 `simos-ga`（`AGENTS.md` ga 行）。本行是**双重过期**，一并更正。
 
 ★ **外交归 gov**（用户 2026-10-12：「外交是 gov 的事」）：本表已把 `Nation`/`DiplomaticRelation`/`DiplomaticEvent`
-写进 `simos-gov` 的语义；**类型迁移是后续批**（前置：`simos-map` 现用了 `Nation`，需先解该引用，否则 `map → gov` 反向依赖会被新禁列当场拒）。
+写进 `simos-gov` 的语义；**类型迁移是后续批**。
+★★ **2026-10-12 追加更正（该前置实测为假）**：原文写"前置：`simos-map` 现用了 `Nation`，需先解该引用" ——
+**实测不成立**：`simos-map` 对 `io.mosire.simos.sd` 的 import = **0**；`map`/`gov` 里出现的 `Nation` 全是
+`{@link}` javadoc 或工具参数文案（`MapToolPerspective:20`、`GovToolPerspective:61`），**无类型引用**。
+⇒ 真正的迁移前置是：**`NationId` 落点**（用户已裁：**GOV**）+ `gov`/`sd` 互禁 + **`ga` 不持归属**（用户第五轮裁"归属归模块"）。
 
 ---
 

@@ -37,7 +37,11 @@
    - 若有人员损失 ⇒ `social.SubmitHouseholdWorkOrder`（按 stage 内 unit 的 stable 顺序，逐 unit 一张）；
    - 若有装备损失 ⇒ `unit.AdjustComposition`（只带 `equipment`，不带 `manpower`；载荷仍按原 `{id,equipment}` 形状，
      空 manpower 省略）；
-2. `unit.ResolveCombatStage`（更新交战记录判定）；
+2. ~~`unit.ResolveCombatStage`~~（更新交战记录判定）；
+   ★ **2026-10-12 更正（实测）：命令名笔误** —— 全仓不存在 `unit.ResolveCombatStage`；实际是
+   **`army.ResolveCombatStage`**（`simos-army/.../spi/ResolveCombatStageHandler.java`，
+   `ResolveCombatPlan.java:86` 的 `TYPE` 常量）。原文保留作留痕（§五.4），**以本节更正为准**
+   —— 这也与用户 2026-10-12 裁定「战斗模块，包括阶段之类的，归Army模块管」同向。
 3. 全部阶段判定完时逐单位 `unit.SetStateDescription`（清状态链接，原逻辑保留）；
 4. `sd.PutInfo`（如原工具已有则保留）。
 
