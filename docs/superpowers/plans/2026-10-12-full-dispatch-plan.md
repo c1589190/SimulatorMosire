@@ -417,3 +417,31 @@ UtilSimos .......................................... FAILURE [  6.698 s]
 代理把**类 + 8 个方法**（`parse`/`requireText`/`optionalText`/`requireLong`/`optionalLongValue`/
 `requirePacketStatus`/`optionalFormattedCalls`/`requireMergedEffectPlan`/`logRejected`）放宽到 `public`，
 其余一字不动。**批准** —— 替代方案是在 ga 复制 ~150 行载荷解析 = **线格式的第二个拼写点**，违背本仓反复强调的"一处声明"。
+
+---
+
+## §15 `effects` 组件的模块边界（用户 2026-10-12 裁定）
+
+> 用户原话：「**那让它依赖unit呗，这不是Army模块管理的吗？照道理来说Army和Nation都得依赖Unit作为地图实体**」
+
+### 15.1 先讲清 `effects` 是什么（控制方调查结论）
+**决策层的「未来／条件动作队列」** —— 此刻定下、**将来或条件满足时才发生**的动作（"令"与"时间"之间的桥）。
+- **Trigger（何时发生）7 档**：`AtOrAfterTick` · `AfterTicks` · **`UnitAtHex(UnitId, HexCoord)`** · `ThresholdKills` · `OutcomeSelected` · `And` · `Or`
+- **Action（发生做什么）4 档**：`PutInfo(Address,…)` · `SetStage` · **`RecordCasualties`（实测无生产者 + `SdTimeParticipant` 的 `default -> {}` 静默忽略 ⇒ 死路）** · `EnqueueUnitCommand(type, payloadJson)`（不透明）
+- **Kind 5 档**（`SCHEDULED`/`ON_CALL`/`BE_PREPARED`/`BRANCH`/`SEQUEL`）· **Status 5 档**（`PLANNED`→`COMMITTED`→`FIRED`/`CANCELLED`/`EXPIRED`）
+- **推进者** `SdTimeParticipant`（每世界日求值 Trigger，满足则执行 Action 并标 `FIRED`，日志 `SD_EFFECT_FIRED`）；**创建/取消** `sd.RegisterEffect`/`sd.CancelEffect`；**挂靠** `Directive.effects`
+- ★ 耦合面很窄：**只有 `Trigger.UnitAtHex` 一处引用域类型**（unit + map）；`PutInfo` 用 util 的 `Address`，`EnqueueUnitCommand` 已是不透明载荷
+
+### 15.2 裁定
+1. **`ga` 可依赖 `unit`** —— 用户口径：`unit` 是**地图实体基础设施**（"Army 和 Nation 都得依赖 Unit 作为地图实体"）。
+   同理 `map`（`UnitAtHex` 还要 `HexCoord`）⇒ **打开 `ga → unit` + `ga → map` 两条边**，**不算破例**。
+   ★ 无环已核：`unit`/`map` **都已显式声明 `ga-spi`**，而**没有任何模块允许依赖 `ga` 本体** ⇒ 单向无环。
+2. **战斗耦合的四档归 Army 的账上**（用户："这不是 Army 模块管理的吗"）：`ThresholdKills` / `OutcomeSelected` /
+   `SetStage` / `RecordCasualties` 服务的是**丁组已废除的战斗阶段机**（且 `RecordCasualties` 已是死路）
+   ⇒ 它们**随 3d 退役或归 army**，**不由 ga 承担**。
+3. ⇒ **`effects` 搬 ga 可行**，且 **`Trigger.UnitAtHex` 不必改成不透明载荷**（依赖 unit 是正常的）。
+   ⇒ 上一轮 §15.1 列的选项 (c1)/(c2) **作废**；采纳"选项 (b) 的 unit+map 子集"。
+
+### 15.3 排期
+`effects` 的执行顺位挪到 **3b-4**（它要动 `simos-ga/pom.xml`：允许面 +2、禁列 −2）；
+正在跑的 **3b-1（`directives`+`verdicts`）零 pom 改动，不受影响**。
