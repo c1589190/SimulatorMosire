@@ -12,7 +12,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -45,7 +44,7 @@ import java.util.Optional;
  * 会被拒（"载荷未给出任何可寻址目标"）， 由 GM 直接 {@code simos.command.submit}
  * 不受影响（那条走粗写声明，不查目标集）。这不假装能判——要放开得先给城市一个资源路径，那是另一个决定。
  */
-public final class UpdateCityHandler implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class UpdateCityHandler implements CommandHandler, CommandTargets {
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {

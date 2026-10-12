@@ -14,7 +14,6 @@ import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -34,8 +33,7 @@ import java.util.Objects;
  *
  * <p>★ <b>语义</b>：只调 {@link HouseholdBook#addMembers}；落一条 {@code GM_ADJUST} 事件（可回放），守恒检查在域层收口。
  */
-public final class AddHouseholdMembersHandler
-    implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class AddHouseholdMembersHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、组合工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.AddHouseholdMembers";

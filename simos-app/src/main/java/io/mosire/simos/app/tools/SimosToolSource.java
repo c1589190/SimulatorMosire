@@ -731,8 +731,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitCancelRouteTool(unitWrites, mapId));
     built.add(new UnitDisbandTool(unitWrites, mapId));
     built.add(new UnitSetStatusTool(unitWrites, mapId));
-    // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的窄写。**只在 GM 桶**（命令本身打 {@code DmUsableCommand}，
-    //   决策人仍可经 ga.IssueDirective 审批链写）；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的窄写。**只在 GM 桶**；★★ 2026-10-13 批次 4
+    //   起命令**摘掉**了 {@code DmUsableCommand} ⇒ 决策人也不能再经令嵌入。★ 工具名不是命令类型 ⇒
+    //   不进 catalog/PAYLOAD_HINTS。
     built.add(new UnitSetStateDescriptionTool(unitWrites, mapId));
     built.add(new UnitAttachTool(unitWrites, mapId));
     built.add(new UnitDetachTool(unitWrites, mapId));
@@ -761,9 +762,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitSetArmyFormationTool(unitWrites, mapId));
     // 阶段 10b-i（2026-10-01 GOV 计划）：GOV 政策 / 上级层级两条窄工具。**只在 GM 桶**。
     //   ★ **有意不为 unit.RecruitStaff / unit.DismissStaff 配窄工具**：那会变成"凭空造人 / 跳过退休支付"的
-    //   直通口。两条命令本身已注册且打 {@code DmUsableCommand}，由阶段 10b-ii 的三条配套工具批（createOffice / recruit /
-    // dismiss）
-    //   或决策令批使用；★ 离编人员的**社会回写**明确留阶段 13（见 GovDismissTool/GovDismissPlan 类注的具名缺口）。
+    //   直通口。两条命令本身已注册；★★ 2026-10-13 批次 4 起**摘掉** {@code DmUsableCommand}（② 建军/凭空造人）
+    //   ⇒ 决策令面也不再含它们，配套工具批（createOffice / recruit / dismiss）经 GM 桶提交。
+    //   ★ 离编人员的**社会回写**明确留阶段 13（见 GovDismissTool/GovDismissPlan 类注的具名缺口）。
     built.add(new UnitSetGovPolicyTool(unitWrites, mapId));
     built.add(new UnitSetGovSuperiorTool(unitWrites, mapId));
     // 阶段 10b-ii（2026-10-01 GOV 计划）：三条 GOV 组合工具（建 GOV+绑决策人 / 招募 / 离编+退休待遇）。

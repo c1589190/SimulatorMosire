@@ -13,7 +13,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -29,8 +28,7 @@ import java.util.Objects;
  * <p>★ **差分不另造路径**：本条命令与其余 handler 一样，产出的变更集是 {@link UnitChangeSet#between}（**绝对值**：目标状态
  * 的新值），不是"增量"——故回退到战损前那一 revision 读回的就是战前值（时间线恢复）。
  */
-public final class ApplyCasualtiesHandler
-    implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class ApplyCasualtiesHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（信封上的 {@code type}，也是 catalog / 窄工具引用的唯一拼写点）。 */
   public static final String TYPE = "unit.ApplyCasualties";

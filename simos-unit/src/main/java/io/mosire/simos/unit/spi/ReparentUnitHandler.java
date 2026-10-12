@@ -12,7 +12,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -27,7 +26,7 @@ import java.util.Optional;
  * <p>改编在 base 状态时间戳追加一条 {@code parent} 段（{@code from = at}，M3 口径）——同刻已有段由严格升序校验拒绝； 环由 {@code
  * UnitState} 构造期拒绝（{@code UnitOperations} 不重复实现）。
  */
-public final class ReparentUnitHandler implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class ReparentUnitHandler implements CommandHandler, CommandTargets {
 
   /**
    * ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：被改编的那个单位 + **载荷点名的新父**（若有）。

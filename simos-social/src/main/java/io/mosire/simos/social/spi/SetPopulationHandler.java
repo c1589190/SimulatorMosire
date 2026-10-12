@@ -11,7 +11,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -41,7 +40,7 @@ import java.util.Objects;
  * ResourcePaths#social(int, int)}（{@code <q>_<r>}，**不带 mapId**）——与读侧 {@code populationVisible}
  * 判的是同一个资源。
  */
-public final class SetPopulationHandler implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class SetPopulationHandler implements CommandHandler, CommandTargets {
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {

@@ -1,8 +1,8 @@
 package io.mosire.simos.util.spi;
 
 /**
- * ★★ <b>DM 可用命令标记</b>（2026-10-12 权限统一 / 反默认）。一条已注册的领域命令，<b>允许</b>被嵌进决策令 （{@code sd.IssueDirective}
- * / {@code sd.AdjudicateTick} 的 directive 载荷），且<b>允许</b>入效果队列 （{@code sd.RegisterEffect} 的 {@code
+ * ★★ <b>DM 可用命令标记</b>（2026-10-12 权限统一 / 反默认）。一条已注册的领域命令，<b>允许</b>被嵌进决策令 （{@code ga.IssueDirective}
+ * / {@code ga.AdjudicateTick} 的 directive 载荷），且<b>允许</b>入效果队列 （{@code ga.RegisterEffect} 的 {@code
  * Action.EnqueueUnitCommand}）。
  *
  * <p>★★ <b>语义是"允许被嵌进决策令 / 允许入效果队列"，不是"已授权"</b>：标了它只说明这条命令<b>可以被写进令</b>；至于
@@ -24,13 +24,48 @@ package io.mosire.simos.util.spi;
  * </blockquote>
  *
  * ⇒ <b>各模块在自己的 handler 上声明</b>（本接口就长在那个类上），<b>ga 负责统一规则与装配期审计</b> （{@code
- * io.mosire.simos.ga.command.CommandPermissionRules}：四个面从同一份声明派生 + 两条 fail-closed 审计），
+ * io.mosire.simos.ga.command.CommandPermissionRules}：四个面从同一份声明派生 + 三条 fail-closed 审计），
  * <b>组合根只注册</b>（{@code Shell} 里不再有任何权限判断）。
+ *
+ * <p>★★ <b>2026-10-13 批次 4（权限收紧）：声明面 66 → 18</b>。依据 = 派单规划 §4「批次 4（收紧）」＋用户原话 「{@code map}
+ * 层级的命令、凭空造钱造人建军肯定不该给 DM 用」/「单个 Army 决策人只有权提交自然文本战术和移动到哪， 其他工具都是 GM 专有」。<b>逐条判据三选一</b>：
+ *
+ * <ol>
+ *   <li><b>① 属于 GM 的推演 / 世界构造权</b>：单位位置与状态（{@code unit.PlaceAt} / {@code SetStatus} / {@code
+ *       SetVisionRadius} / {@code SetStateDescription}）、单位编制与指挥链（改名 / 改编 / 挂靠 / 拆分 / 合并 / 指挥链 /
+ *       单位家户表）、聚落（{@code social.CreateCity} / {@code UpdateCity}）与经济世界参数 / 产权结构 （{@code
+ *       economy.RegisterCandidate} / {@code TransferAssetShare} / {@code SetMarketPrice} / {@code
+ *       MigrateHousehold}）；
+ *   <li><b>② 能绕过工单直接创造 / 毁灭资源或人口（钱、人口、军队）</b>：{@code actor.Seed} / {@code economy.Seed}
+ *       （凭空造钱造货）、{@code social.SetPopulation} / {@code SeedGroups} / {@code CreateHousehold} /
+ *       {@code AddHouseholdMembers} / {@code RemoveHouseholdMembers} / {@code
+ *       TransferHouseholdMembers} / {@code SetHouseholdVitalRates} / {@code
+ *       AdjustHouseholdPopulation}（造人 · 灭人 · 人口布局）、 {@code unit.CreateUnit} / {@code DisbandUnit} /
+ *       {@code SetComposition} / {@code ApplyCasualties} / {@code RecruitStaff} / {@code
+ *       DismissStaff}（建军 · 兵力）、经济需求的注入 / 改写 / 取消 （{@code economy.AddDemand} / {@code UpdateDemand}
+ *       / {@code CancelDemand}）；
+ *   <li><b>③ 跨域的世界编辑（地图）</b>：{@code map.*} 七条（地形 / 区划增删改 / 连通性 / 通路词表 / 随机化）。
+ * </ol>
+ *
+ * <p>★ <b>摘除面 48 条</b>（map 7 · {@code actor.Seed} · economy 8 · social 11 · unit 21）；★ <b>保留 DM 的
+ * 18 条</b> = 移动三件套（{@code unit.PlanRoute} / {@code PlanSparseRoute} / {@code CancelRoute}，派单规划 §4
+ * 明令保留）＋ {@code unit.SetRejoinTarget}（移动意图：只设引用、不设 hex、不建路线）＋ {@code
+ * social.SubmitHouseholdWorkOrder} （<b>工单入口</b>：判据 ② 说的是"<b>绕过</b>工单"，而工单本身带 reason +
+ * source，是"唯一家户人口变更受理口"）＋ {@code actor.RemitGovTreasury}（零和上缴 / 两 GOV 间转移）＋ economy 家户经济配置 3
+ * 条（{@code SetHouseholdClass} / {@code SetHouseholdParticipation} / {@code SetHouseholdLabor}）＋ GOV
+ * 行政 / 政策 9 条（辖区 / 税率 / 编制 / 政策 / 上级 / 岗位 / 军俸）。
+ *
+ * <p>★★ <b>权限只收紧、不放松</b>：本批逐条对称差 = <b>新增 0 条</b>；catalog（141）与决策落点面（2 = {@code ga.IssueDirective} /
+ * {@code ga.SubmitVerdict}）<b>逐条不变</b> —— 摘标记不改目录、不改 handler、不改落点。 ★
+ * <b>如实记的残留通道（不在本批授权内的判定）</b>：{@code social.SubmitHouseholdWorkOrder} 的 plan 词表含 {@code
+ * CREATE_HOUSEHOLD} / {@code ADD_MEMBERS} / {@code REMOVE_MEMBERS} / {@code TRANSFER_MEMBERS} /
+ * {@code ADJUST_POPULATION} ⇒ DM 仍可<b>经这条带审计的工单</b>改人口（逐操作的直接命令已摘）。本条属控制方 / 用户裁定范围。
  *
  * <p>★ <b>为什么住 {@code util.spi}</b>：声明方是五个域模块（map / unit / social / economy / actor），而 util 是它们
  * <b>全部显式声明</b>的唯一下层——与 {@link CommandHandler} 同址同形制。★ 不放 {@code ga-spi}：{@code simos-actor} 的
- * enforcer 明确禁 {@code simos-ga-spi}（改它要动 pom，且会给"依赖传递不是契约" 开口子），而那 2 条 actor 命令今天确实在 DM 面上 ⇒ 放
- * ga-spi 会让 DM 面静默从 66 掉到 64。
+ * enforcer 明确禁 {@code simos-ga-spi}（改它要动 pom，且会给"依赖传递不是契约" 开口子），而移居当时那 2 条 actor 命令确实 在 DM 面上 ⇒ 放
+ * ga-spi 会让 DM 面静默从 66 掉到 64。（★ 2026-10-13 批次 4 后 actor 只剩 {@code RemitGovTreasury} 在 DM 面上、{@code
+ * actor.Seed} 已摘；此处的"2 条 / 66"是批次 1 的历史事实，留痕不改。）
  *
  * <p>★ <b>唯一标记</b>：本仓现在只有这一个权限标记（反向标记已退役）⇒ "同一条命令同时标两个互斥标记"在类型上
  * 已不可表达，相应那条审计（装配期当场抛）随之废止。剩下<b>三条</b>审计（声明了未注册类型 / <b>落点不得是 DM 可用命令</b> / 四个面不得为空） 仍在 {@code

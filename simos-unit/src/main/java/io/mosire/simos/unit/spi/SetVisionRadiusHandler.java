@@ -11,7 +11,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -27,10 +26,10 @@ import java.util.Objects;
  * <p>★ 字段 {@link io.mosire.simos.unit.Unit#visionRadius()} 早已存在，本命令补齐<b>写路径</b>；当前唯一读者是 app 侧
  * {@code ArmyScope}（军队决策人的可见范围按军队位置 + 本半径现算），下一轮现算即生效、无缓存失效。
  *
- * <p>★ <b>打 {@code DmUsableCommand}</b>：与既有 unit 命令同待遇（可嵌入决策令）；{@link CommandTargets} 声明被改单位。
+ * <p>★★ 2026-10-13 批次 4（权限收紧）：**已摘掉** {@code DmUsableCommand} ⇒ 不再可嵌入决策令（单位视野半径属 ① GM 的 推演/世界构造权），仅
+ * GM 直接提交；{@link CommandTargets} 仍声明被改单位。
  */
-public final class SetVisionRadiusHandler
-    implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class SetVisionRadiusHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "unit.SetVisionRadius";

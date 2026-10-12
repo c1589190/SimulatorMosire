@@ -12,7 +12,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -35,11 +34,11 @@ import java.util.Optional;
  * <p>★ <b>载荷形状</b>：{@code id}/{@code state} 必填非空白；{@code address} 允许缺省、{@code null} 或空串 =
  * 清除该状态链接。坏载荷与域规则违反都折成 {@code Rejected}（不留 revision）。
  *
- * <p>★ <b>目标声明</b>（{@link CommandTargets}）：本命令**打 {@code DmUsableCommand}**（D-012
- * 的机制是通用的，后续政府模块也要用），因此它可以被 嵌进决策令；目标就是载荷点名的**那一个单位**（与 {@code unit.SetStatus} 同款，判越权交调用方）。
+ * <p>★ <b>目标声明</b>（{@link CommandTargets}）：本命令的目标就是载荷点名的**那一个单位**（与 {@code unit.SetStatus}
+ * 同款，判越权交调用方）。★★ 2026-10-13 批次 4（权限收紧）：**已摘掉** {@code DmUsableCommand} ⇒ 不再可嵌进决策令 （单位回合状态属 ① GM
+ * 的推演/世界构造权），仅 GM 直接提交。
  */
-public final class SetStateDescriptionHandler
-    implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class SetStateDescriptionHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（信封上的 {@code type}，也是 {@code CatalogTool} 与 GM 窄工具的固定命令类型）。 */
   public static final String TYPE = "unit.SetStateDescription";

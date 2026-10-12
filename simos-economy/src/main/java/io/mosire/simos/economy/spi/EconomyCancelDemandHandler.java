@@ -10,7 +10,6 @@ import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -25,7 +24,7 @@ import org.slf4j.Logger;
  *
  * <p>★ 不存在 ⇒ {@link HandlerOutcome.Rejected}（不静默成功）；<b>只写 {@code demands}</b>。
  */
-public final class EconomyCancelDemandHandler implements CommandHandler, DmUsableCommand {
+public final class EconomyCancelDemandHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.CancelDemand";
 

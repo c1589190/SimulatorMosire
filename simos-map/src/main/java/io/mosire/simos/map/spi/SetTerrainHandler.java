@@ -10,7 +10,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -35,7 +34,7 @@ import java.util.Set;
  *
  * <p>★ **不是时间命令** ⇒ 没有 {@code TimeProposal}、没有读写集。
  */
-public final class SetTerrainHandler implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class SetTerrainHandler implements CommandHandler, CommandTargets {
 
   /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：{@code hexes[]} 里**每一个**格（逐条判）。 */
   @Override

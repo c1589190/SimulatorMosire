@@ -9,7 +9,6 @@ import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
@@ -31,7 +30,7 @@ import java.util.Objects;
  * <p>★ **payload 形态是本模块的私事**（C26）：Core 只转交 {@code payloadJson} 字节串。字段缺失 / 类型不符 / 组 id 已存在 ⇒ {@code
  * Rejected}。
  */
-public final class RegisterPathwayGroupHandler implements CommandHandler, DmUsableCommand {
+public final class RegisterPathwayGroupHandler implements CommandHandler {
 
   @Override
   public String type() {

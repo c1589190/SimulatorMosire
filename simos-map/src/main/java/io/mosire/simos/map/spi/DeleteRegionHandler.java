@@ -10,7 +10,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -27,7 +26,7 @@ import java.util.Objects;
  * <p>★ 目标不存在 ⇒ {@code Rejected}（**不做静默幂等**）。删除后 {@code RegionIndex} 里每个 hex 的从属**少一个**（只属它 ⇒
  * 变成无从属），**不悬空**。
  */
-public final class DeleteRegionHandler implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class DeleteRegionHandler implements CommandHandler, CommandTargets {
 
   /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：被删的那个区域。 */
   @Override

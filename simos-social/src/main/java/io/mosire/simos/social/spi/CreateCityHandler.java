@@ -13,7 +13,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -44,7 +43,7 @@ import java.util.Optional;
  * ResourcePaths#social(int, int)}（{@code <q>_<r>}）——social 资源语法里**没有** city 专属路径，故按城市所在的格判（与读侧把
  * {@code map.city} 映射到它那一格同口径）。
  */
-public final class CreateCityHandler implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class CreateCityHandler implements CommandHandler, CommandTargets {
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {

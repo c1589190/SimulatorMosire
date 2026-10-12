@@ -397,3 +397,45 @@ economy 6 / gov 1 / unit 1 / util 1 个文件提及旧命令名 —— 留给对
 3. **`GaRoundTripTest` 未修**（见 A4）—— 本批**无铁律 5 变异证据**。
 4. **前端 REST 路由 `/api/sd/*` 未动**（那是 **HTTP 路由名**，不是地址族；`webui/api.js` 多处）—— 不在本批范围。
 5. **`worlds/**` 未动**（本批禁碰）；`RichWorld` 只改了 app 侧的 codec 白名单与切片补法。
+
+---
+
+### 批次 4（权限收紧：`DmUsableCommand` 摘除 48 条）—— 预期红（**断言级**；编译级预期 0 断）
+
+> **本批改动**：48 个 handler 删 `implements … , DmUsableCommand` + 对应 import（不动逻辑 / 命令类型 / 注册面）。
+> 派生实测：catalog **141 不变** · 可嵌令 **66 → 18** · 可入队 **66 → 18** · 落点 **2 不变** · 声明面 **66 → 18**；
+> 逐条对称差 = 摘除 48 / **新增 0**（权限只收紧）。`compile` / `spotless` / `spotbugs`（16/16 归零）/ `validate`（×15）全绿。
+> ★ `test-compile` **未跑**（§12.1：测试环节留最后统一做）⇒ 下表为**静态推理**，逐条给依据。
+
+**A. 编译断（预期 0）**
+| 判据 | 结果 |
+|---|---|
+| 摘除只动 `implements` 子句 + import（无类型/签名变化） | 不产生编译断 |
+| 全仓测试对 `DmUsableCommand` 的**正向** `isInstanceOf` 断言 | **0 处**（grep 实测） |
+| `isNotInstanceOf(DmUsableCommand.class)` 的 6 处断言对象 | `actor.AdjustAccounts` · `economy.SetGovernmentPolicy`（2 处）· `army.{ResolveCombatStage,RecordCombat,AppendCombatStage}` · `unit.AdjustComposition` —— **都不在本批摘除面内** ⇒ 仍绿 |
+
+**B. 断言红（预期红，真 `Shell` 装配 + 合成夹具）**
+| # | file:line | 钉的旧形状 | 预期 | 处置方向 |
+|---|---|---|---|---|
+| 1 | `simos-app/src/test/.../tools/write/AdjudicateTickToolTest.java:548-556` | 真 `Shell`：`tool.allowedCommandTypes()` `.hasSize(66)` | **红** ⇒ **18** | 改 18；`:550-555` 的算式注释（「注册面 128 − GmOnly 15 − sd 自指 42 = 66」）是**批次 1 时代**的，整段重写 |
+| 2 | 同上 `:520-546` | 「有意无目标的 10 条」`containsExactlyInAnyOrder(...)` | **红**：这 10 条**全在本批摘除面内**（`unit.CreateCommandChain` / `unit.UpdateCommandChain` / `map.SetEdge` / `map.RegisterPathwayGroup` / `economy.{AddDemand,CancelDemand,MigrateHousehold,RegisterCandidate,SetMarketPrice,TransferAssetShare}`）⇒ 缺口语义消失、`missing` 变空 | 收尾期裁定：删该断言，或改成「missing 为空（18 条白名单全部有目标）」 |
+| 3 | 同上 `samples`（`:558` 起，共 **97** 条） | 逐条钉「白名单类型 + 目标路径」 | **红 38 条**（属于本批摘除面的样本清单：账本 `evidence-affected-samples.txt`） | 38 条迁成负向断言（「不在白名单 ⇒ 不可裁」）或删除 |
+| 4 | `simos-app/src/test/.../access/CatalogVisibilityTest.java:57-92` | 合成面硬编码 `DM_DECLARED` = {`map.CreateRegion`, `map.UpdateRegion`, `map.DeleteRegion`, `unit.DisbandUnit`, `unit.SetStatus`}；类注自称「与生产逐条一致」 | ★ **不红但语义失真**（夹具喂合成面，不读生产 handler）—— 而这 5 条**全部**在本批摘除面内 | 收尾期把夹具换到新面（否则它继续为旧契约背书）；★ **不是**"改断言迁就实现"：这是夹具与生产脱钩 |
+| 5 | `simos-app/src/test/.../sd/channel/DecisionChannelTest.java:101` | `new DirectiveWhitelist(Set.of("unit.RenameUnit", "sd.IssueDirective"))` 合成白名单 | ★ 不红但语义失真（`unit.RenameUnit` 已不在生产 DM 面） | 换成仍在面上的命令（如 `unit.PlanRoute`） |
+| 6 | `simos-app/src/test/.../access/DecisionFaceGolden.java` | 金样本 = **工具面**（`roles()`） | **不红** | 零改动（本批只动命令面；132/10/34 与 44 条 DM 工具一字未动） |
+| 7 | `simos-ga/src/test/.../command/CommandPermissionRulesTest.java:71` | 合成面声明 2 条 `.hasSize(2)` | **不红** | 零改动（合成面，不读生产 handler） |
+| 8 | `simos-app/src/test/.../McpCoverageTest.java` / `tools/SimosToolsTest.java`（各命中 48 个被摘类型串） | catalog / MCP / 工具面计数 | **预期不红**（引用的是**类型串**，走 catalog 面；catalog 141 未变） | 收尾期实测；若某用例走 directive 面则按 #1-#3 处置 |
+| 9 | `simos-app/src/test/.../decision/RealLlmGovScenarioTest.java:867,1945,1987,2844` | 3 个被摘类型串 | **预期不红**（走计划 / 直接提交路径；★ **未逐行走查**，如实记） | 收尾期实测 |
+
+**C. 本批新增能力尚无测试（收尾期按规划 §4「批次 4」补）**
+① 正向：18 条保留面**仍在**令白名单 / `RegisterEffect` 面（`PlanRoute` / `PlanSparseRoute` / `CancelRoute` 三件套是核心）；
+② 负向（判别力核心）：48 条被摘命令**逐条**在 `ga.IssueDirective` 载荷 / `RegisterEffect` 入队里被**具名拒**（改前一验即红）；
+③ 负向：DM 的 catalog（`CatalogVisibility`）里 48 条**消失**、18 条仍在；
+④ 装配期三条审计 + 次序守卫仍成立（真 `Shell` 起得来 = 最强证据）；
+⑤ 残留通道（须显式记）：`social.SubmitHouseholdWorkOrder` 仍可嵌令，且其 plan 含 `CREATE_HOUSEHOLD` / `ADD_MEMBERS` / `REMOVE_MEMBERS` / `TRANSFER_MEMBERS` / `ADJUST_POPULATION` ⇒ **DM 经工单仍能改人口**（带 reason + source 审计）——这是本批**有意保留**的设计点，不是漏网。
+
+**D. 本批未动的面（如实记，控制方复核项）**
+1. **工具面 `SimosTool.roles()` 一字未动**（派单书 ④：留给批次 5）⇒ DM 侧窄工具仍能**直接提交**被摘命令（不经可嵌令面）；本批只收窄「令里能嵌 / 效果可入队」。
+2. **边界保留 12 条**未再收紧（GOV 行政 / 政策 9 + 家户经济角色配置 3）—— 若按判据 ① 的最严读法可再收紧，留给控制方 / 用户。
+3. **`simos-ga/**` 的过时「66 条」文案未改**（写权外）：`RegisterEffectHandler.java:50-51` · `CommandFaces.java:22` · `DirectiveWhitelist.java` 类注。
+   ★ 另有**先于本批就存在**的失真（本批未动、如实报）：`SimosToolSource.java:749` 称 `unit.AdjustComposition`「命令本身打 `DmUsableCommand`」，而它**从来不在** DM 面。

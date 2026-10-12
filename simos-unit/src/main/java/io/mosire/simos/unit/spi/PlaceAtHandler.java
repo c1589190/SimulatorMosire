@@ -13,7 +13,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -26,7 +25,7 @@ import java.util.Optional;
  *
  * <p>位置设置在 base 状态时间戳追加一条 {@code position} 段，并按 M3 语义**顺带清空在途路线**（改了位置，旧路线不再有意义）。
  */
-public final class PlaceAtHandler implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class PlaceAtHandler implements CommandHandler, CommandTargets {
 
   /**
    * ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：**只**声明被移动的那个单位——位置住在 {@code UnitState} 里， {@code

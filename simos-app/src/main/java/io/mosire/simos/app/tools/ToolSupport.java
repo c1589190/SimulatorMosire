@@ -103,6 +103,7 @@ public final class ToolSupport {
    * 是**权限声明面**的标识（字符串值本身），它与状态切片只是同名：
    *
    * <ul>
+   *   ★ 数值更新（2026-10-13 批次 4 权限收紧）：可嵌令 / 可入队 / 声明面 **66 → 18**；catalog 141 与落点面 2 不变。
    *   <li><b>本批红线是"权限四面逐条不变"</b>（catalog 141 / 可嵌令 66 / 可入队 66 / 落点 2 / 声明面 66）—— 改这个字符串会动 GM
    *       组的逐命名空间范围图与近百条 {@code ResourceManifest} 的键， 却买不到任何行为（GM 侧 {@code sd} 与 {@code ga} 都是
    *       {@code unlimited()}）；

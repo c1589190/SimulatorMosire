@@ -15,7 +15,6 @@ import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -41,7 +40,7 @@ import org.slf4j.Logger;
  *
  * <p>★ <b>fail-closed</b>：家户不存在 / 目标格不在图上 / 目标格就是原格 ⇒ {@code Rejected}（不产生半截 revision）。
  */
-public final class EconomyMigrateHouseholdHandler implements CommandHandler, DmUsableCommand {
+public final class EconomyMigrateHouseholdHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.MigrateHousehold";
 

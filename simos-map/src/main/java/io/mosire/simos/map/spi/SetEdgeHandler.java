@@ -9,7 +9,6 @@ import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
@@ -34,7 +33,7 @@ import java.util.Set;
  * <p>★ **域规则违反以 {@code Rejected} 面世**：{@link EdgeOperations} 的 {@link IllegalArgumentException}
  * （kind 不在词表、mode 非法、空边集、端点不在图上）在本边界折成拒绝理由。
  */
-public final class SetEdgeHandler implements CommandHandler, DmUsableCommand {
+public final class SetEdgeHandler implements CommandHandler {
 
   @Override
   public String type() {

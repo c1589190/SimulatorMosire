@@ -18,7 +18,6 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -49,7 +48,7 @@ import org.slf4j.Logger;
  *   <li><b>只写 {@code demands}</b>；不造商品/货币/账户/市场。
  * </ul>
  */
-public final class EconomyAddDemandHandler implements CommandHandler, DmUsableCommand {
+public final class EconomyAddDemandHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.AddDemand";
 

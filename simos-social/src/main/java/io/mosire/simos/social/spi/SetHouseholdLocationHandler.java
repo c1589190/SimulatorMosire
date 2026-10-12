@@ -14,7 +14,6 @@ import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -37,8 +36,7 @@ import java.util.Objects;
  * unit:<unitId>} 解析。双边都判是刻意的：只判新位置会让"把范围内家户改到范围外"从授权面溜过去。旧 {@link #targetPaths} 保留（只给新 HEX
  * 位置，升级前逐字一致）。
  */
-public final class SetHouseholdLocationHandler
-    implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class SetHouseholdLocationHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、组合工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.SetHouseholdLocation";

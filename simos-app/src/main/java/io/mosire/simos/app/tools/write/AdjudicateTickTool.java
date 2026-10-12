@@ -201,8 +201,8 @@ public final class AdjudicateTickTool implements SimosTool {
    * 不是第二份真相；它守的是"**存量令里的命令按今天的白名单仍然合法**"（白名单收窄过就不该继续执行）。
    *
    * <p>★★ 2026-10-12 批次 1 起 {@code commandTypes} 就是 ga 规则层派生的**可嵌令面**（{@code
-   * CommandFaces.directiveTypes()}，66 条）—— {@code sd.} 前缀规则已删，自指保护由"决策族命令不打 {@code
-   * DmUsableCommand}"承担；本类拿到的面里本就没有一条 {@code sd.*}，故复算结果与迁移前逐条相同。
+   * CommandFaces.directiveTypes()}；批次 1 当时 66 条，**2026-10-13 批次 4 收紧后 18 条**）—— {@code sd.}
+   * 前缀规则已删，自指保护由"决策族命令不打 {@code DmUsableCommand}"承担；本类拿到的面里本就没有一条 {@code sd.*}。
    */
   private final DirectiveWhitelist whitelist;
 

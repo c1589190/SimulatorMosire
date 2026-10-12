@@ -16,7 +16,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -50,10 +49,10 @@ import org.slf4j.Logger;
  *       档必须 等于该户居住格；HEX 档必须等于目标格；不给 ⇒ 不进决策令（GM 直通照常）。
  * </ul>
  *
- * <p>★ <b>权限</b>：打 {@code DmUsableCommand}（与 {@code AddDemand}/{@code CancelDemand} 同待遇）。
+ * <p>★ <b>权限</b>：**2026-10-13 批次 4 起不打** {@code DmUsableCommand} ⇒ 仅 GM（与 {@code AddDemand} /
+ * {@code CancelDemand} 同待遇 —— 需求账本三条同族一起收紧；② 凭空注入/改写经济对象）。
  */
-public final class EconomyUpdateDemandHandler
-    implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class EconomyUpdateDemandHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.UpdateDemand";

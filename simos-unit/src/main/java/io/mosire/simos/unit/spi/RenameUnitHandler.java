@@ -15,7 +15,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -40,7 +39,7 @@ import java.util.Objects;
  *
  * <p>★ **不是时间命令** ⇒ 没有 {@code TimeProposal}、没有读写集，该路径的读写集为空集（spec §9.2 末段）。
  */
-public final class RenameUnitHandler implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class RenameUnitHandler implements CommandHandler, CommandTargets {
 
   /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：本命令点名的**那一个单位**。 */
   @Override
