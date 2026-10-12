@@ -140,3 +140,51 @@
 - **未追 `DeleteCity(deletePopulation=true)` → economy 侧 `PeopleLotId` 悬空引用链**（改前缀口径时它会变成实际影响面）。
 - `SettlementGenerator` 只读行号级摘要 ⇒ **创世重写成本估计可能偏乐观**。
 - **未系统检索 D-xxx 用户原稿** ⇒ 用户这条设计意图**是否已有更早裁定，未排除**（§一.12 口径溯源未做全）。
+
+---
+
+## 8. ★★ 用户 2026-10-12 后续裁定（**追加；与上文冲突处以本节为准**）
+
+### 8.1 原话逐字照录（§一.8.1）
+
+> 「首先，一切以我最新说明为准
+> 其次，城市方面目前暂时只交给Map维护一个固定数值，变动搞一个标准的程序内工单，就是提交谁干的、为了干什么就能改一个hex的城市化率
+> 还有，根据前者，这种程序内工单在项目里似乎不少吧？也许可以做个通用化？原本要求提交谁干的为了干什么是为了日志方便，现在看来很有必要标准化啊
+> simos-sd不是取缔掉了吗？GOV模块随便引用新的ga模块；
+> 国家语义直接般GOV模块得了呗，GOV就是维护国家/政府等的！
+> 继续思考和考察」
+
+### 8.2 控制方处置（逐条）
+
+| # | 裁定 | 处置 |
+|---|---|---|
+| R1 | **一切以最新说明为准** | ⇒ §5.1 的 **C-1 冲突按用户最新原话判**：**城市 = 单个 hex 的比例状态**；**D10「不是比例、是独立池子」作废**（其出处 `specs/2026-10-10-urbanization-and-industry-pool-design.md:34` 需标注被取代）。C-2 仍待明确（"比例"是人口还是用地/强度）。 |
+| R2 | **城市 = Map 维护一个固定数值** | ⇒ 城市化率是 `map` 持有的**逐 hex 数值**（不是社会域、不是点实体）⇒ 落点 = `GameMap` 的逐 hex 属性（候选 (a) 新组件 / (b) `HexCell` 加字段）；**"固定数值"** = 它是个被写入的事实，不是每 tick 重算的派生量。 |
+| R3 | **变动走标准"程序内工单"：谁干的 + 为了什么** | ⇒ 改单格城市化率要走一条**带 `initiator` + `reason` 的命令**（`initiator` 信封层已有；**`reason` 尚无标准位置** —— 见 §8.3）。 |
+| R4 | **"这种程序内工单在项目里似乎不少"，要做通用化** | ⇒ 已派只读调查（工单/审计元数据现状盘点 + 通用化代价）。**待其结论后再裁形态**。 |
+| R5 | **GOV 模块随便引用新的 ga 模块** | ⇒ 技术上**成立**：`ga` 的闭包 = `util`/`ga-spi`/`core`/`sd`，**其中无 `gov`** ⇒ `gov → ga` 无环。（控制方复核进行中；`ga` 是否需要另论 —— gov 已依赖 `ga-spi`。） |
+| R6 | **国家语义直接搬 GOV 模块；GOV 就是维护国家/政府的** | ⇒ 目标明确：`Nation` 及国家/政府语义归 `simos-gov`。**但用户前提有误**（见 §8.4），搬迁路径已派只读调查。 |
+
+### 8.3 控制方已实测的两条起点事实（供 R3/R4 用）
+
+| 元数据 | 现状 | 位置 |
+|---|---|---|
+| **"谁干的"（`initiator`）** | ✅ **已标准化** | `CommandEnvelope(commandId, correlationId, **initiator**, branch, expectedRevision, type, payloadJson)`（`simos-core/.../command/CommandEnvelope.java:22-29`）→ 落盘 `RevisionRow(..., **initiator**, commandType, changesetJson)`（`simos-core/.../timeline/RevisionRow.java:25-34`） |
+| **"为了什么"（`reason`）** | ❌ **未标准化** | 全仓 `"reason"` 951 处命中，但只有 **3 个 handler** 用 `requireText(payload,"reason")` 当**必填载荷**；其余散在可选载荷/工具参数/日志/注释里 |
+| **仓里已有的"工单"实体** | 存在 | `social.SubmitHouseholdWorkOrder`（army/gov 都在用，如 `simos-gov/.../GovRecruitPlan.java:82-83`） |
+
+### 8.4 ★ 更正用户前提：**`simos-sd` 没有被取缔**（实测）
+
+`simos-sd/src/main/java/io/mosire/simos/sd/` **存在且是重模块**：
+- **`SdState` 有 14 个组件**：`nations` / `armies` / `combats` / `combatStates` / `decisionMakers` / `directives` / `effects` / `verdicts` / `lossRecords` / `info` / `diplomaticRelations` / `diplomaticEvents` / `decisionPackets` / `mergedEffectPlans`。
+- **28 个 `CommandHandler`**。
+- ★ **军队/交战状态也在 sd**（`armies`/`combats`/`combatStates`/`lossRecords`），而 `simos-army` 只是**派生视图**模块（`ArmyVision` 不落盘）。
+- B2a/B3 只把**决策人运行流**与**决策/GM 工具**搬进了 `simos-ga`；`sd` 的**状态与 handler 一件没走**。
+⇒ 因此「国家语义搬 GOV」的实际含义是：**从 `SdState` 把一个或多个组件搬出去**，而不是"从已废弃模块里搬"。
+
+### 8.5 顺带更正两处已被实测推翻的文档前提（留痕，不改旧行）
+
+| 文档 | 原文 | 实测 |
+|---|---|---|
+| `specs/2026-10-12-module-boundaries-freeze.md:78` | 「外交迁移前置：**`simos-map` 现用了 `Nation`**」 | **假**：`grep -rn "io.mosire.simos.sd" simos-map/src` = **0 命中**；`simos-map/pom.xml` 只声明 util + ga-spi。map 里的 `Nation` 全是 Javadoc/测试 tag 字符串。**真前置是 `NationId` 落点 + `HandlerOutcome` 只回本模块变更集**（前一轮报告 §4.2/§4.3）。 |
+| `specs/2026-10-12-module-boundaries-freeze.md:68`（sd 行） | 「`simos-sd` = **推演框架层**：决策流程、权限范围、工具协议与两个工具面」 | **已过期**：决策流程与两个工具面在 B2a/B3 已搬 `simos-ga`；`sd` 现在是**决策/军事/外交的域状态 + handler**。 |
