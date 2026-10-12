@@ -6,16 +6,16 @@ import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.city.SocialCity;
@@ -152,11 +152,11 @@ public final class MoveCapitalPlan {
     GameMap map = mapOf(state);
     SocialData social = socialOf(state);
     UnitState units = unitsOf(state);
-    SdState sd = sdOf(state);
+    GovState govState = govOf(state);
     SimosTimestamp at = state.meta().timestamp();
 
     NationId nationId = NationId.parse(request.nationId());
-    Nation nation = sd.nations().get(nationId);
+    Nation nation = govState.nations().get(nationId);
     if (nation == null) {
       throw new IllegalArgumentException("国家不存在: " + nationId);
     }
@@ -369,13 +369,14 @@ public final class MoveCapitalPlan {
     return unitSnapshot.state();
   }
 
-  private static SdState sdOf(SimulationState state) {
-    Snapshot snapshot = requireModule(state, "sd");
-    if (!(snapshot instanceof SdSnapshot sdSnapshot)) {
+  /** ★ 2026-10-12 批次 3c：国家表搬进 gov 切片（外交是 gov 的事）⇒ 国家记录从这里取。 */
+  private static GovState govOf(SimulationState state) {
+    Snapshot snapshot = requireModule(state, "gov");
+    if (!(snapshot instanceof GovSnapshot govSnapshot)) {
       throw new IllegalStateException(
-          "state 的 sd 切片不是 SdSnapshot: " + snapshot.getClass().getName());
+          "state 的 gov 切片不是 GovSnapshot: " + snapshot.getClass().getName());
     }
-    return sdSnapshot.state();
+    return govSnapshot.state();
   }
 
   private static Snapshot requireModule(SimulationState state, String namespace) {

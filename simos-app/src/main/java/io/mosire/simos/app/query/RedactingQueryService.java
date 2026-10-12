@@ -13,7 +13,6 @@ import io.mosire.simos.ga.GaState;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
@@ -23,6 +22,7 @@ import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.Verdict;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
@@ -483,7 +483,7 @@ public final class RedactingQueryService {
       switch (affiliation) {
         case Affiliation.Nation nation -> {
           view.put("kind", "nation");
-          view.put("id", nation.nationId().value());
+          view.put("id", nation.nationId());
         }
         case Affiliation.Army army -> {
           view.put("kind", "army");

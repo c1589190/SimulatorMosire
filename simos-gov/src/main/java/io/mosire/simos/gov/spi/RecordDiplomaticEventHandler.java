@@ -1,14 +1,14 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.gov.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
-import io.mosire.simos.sd.id.DiplomaticEventId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.DiplomaticEvent;
-import io.mosire.simos.sd.model.DiplomaticEventIds;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.gov.GovLog;
+import io.mosire.simos.gov.GovLogSource;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.change.GovChangeSet;
+import io.mosire.simos.gov.nation.DiplomaticEvent;
+import io.mosire.simos.gov.nation.DiplomaticEventId;
+import io.mosire.simos.gov.nation.DiplomaticEventIds;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -24,7 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code sd.RecordDiplomaticEvent} 命令的处理器（D-005 / R6）：**追加一条外交事件记录**（多国谈判逐 tick 记录参与国与内容）。
+ * {@code gov.RecordDiplomaticEvent} 命令的处理器（D-005 / R6）：**追加一条外交事件记录**（多国谈判逐 tick 记录参与国与内容）。
  *
  * <pre>{@code
  * {"eventId":"e-1","tick":120,"participants":["大蜀","西陵"],"text":"……自然语言……"}
@@ -32,7 +32,7 @@ import java.util.Set;
  *
  * <ul>
  *   <li>{@code participants} 必填数组，**至少 2 个、不得重复**（每个元素解析成 {@link NationId}，保载荷顺序）。★ 本层只判
- *       **形状与去重**，不查这些 Nation 是否存在——存在性校验是 {@code sd.SetDiplomaticRelation} 的边端点语义；事件是"当时谁参与了"
+ *       **形状与去重**，不查这些 Nation 是否存在——存在性校验是 {@code gov.SetDiplomaticRelation} 的边端点语义；事件是"当时谁参与了"
  *       的记录（D-005 原文只要求参与国与内容），本阶段不发明额外约束（见报告"待裁定"）；
  *   <li>{@code text} 必填非空白：具体内容，自然语言；
  *   <li>{@code tick} 可选，缺省 = 世界当前 tick；**不得记在未来**（同 {@code ga.PutInfo}/{@code
@@ -42,29 +42,33 @@ import java.util.Set;
  *       id 仍会查一次撞车（显式 id 可能恰好长成合成串）⇒ 撞车响亮拒，不静默改写 id。
  * </ul>
  *
- * <p>★ **不在 DM 两面**（不打 {@code DmUsableCommand}）：与 {@code sd.SetDiplomaticRelation}
- * 同待遇——身份约束在决策人窄工具层；{@code sd.*} 前缀规则已删，排除来自声明本身。
+ * <p>★ **不在 DM 两面**（不打 {@code DmUsableCommand}）：与 {@code gov.SetDiplomaticRelation}
+ * 同待遇——身份约束在决策人窄工具层；★ 自 2026-10-12 批次 1 起"面外"由<b>声明</b>承担（{@code sd.} 前缀规则已删）⇒ 改名 {@code gov.*} 后
+ * 仍在面外。
+ *
+ * <p>★★ <b>2026-10-12 批次 3c：本类自 {@code simos-sd/sd.spi} 迁入 {@code simos-gov/spi}</b>（外交是 gov 的事）。
+ * 语义/载荷/拒绝文案一字未改，变的只有落点（{@code GovChangeSet.diplomaticEvents}）、载荷与切片助手、日志门面（事件名与字段逐字保留）。
  */
 public final class RecordDiplomaticEventHandler implements CommandHandler {
 
   @Override
   public String type() {
-    return "sd.RecordDiplomaticEvent";
+    return "gov.RecordDiplomaticEvent";
   }
 
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GovState base = GovSnapshots.of(state);
     String eventForLog = null;
     Long tickForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
-      String text = SdPayloads.requireText(payload, "text");
+      JsonNode payload = GovPayloads.parse(payloadJson);
+      String text = GovPayloads.requireText(payload, "text");
       List<NationId> participants = parseParticipants(payload);
       long worldTick = state.meta().timestamp().tick();
-      long tick = SdPayloads.optionalLong(payload, "tick", worldTick);
+      long tick = GovPayloads.optionalLong(payload, "tick", worldTick);
       tickForLog = tick;
       if (tick < 0L) {
         return rejected("外交事件 tick 不得为负: " + tick, "event", "-", "tick", tickForLog);
@@ -78,7 +82,7 @@ public final class RecordDiplomaticEventHandler implements CommandHandler {
             tickForLog);
       }
       Map<DiplomaticEventId, DiplomaticEvent> next = new LinkedHashMap<>(base.diplomaticEvents());
-      Optional<String> explicitId = SdPayloads.optionalText(payload, "eventId");
+      Optional<String> explicitId = GovPayloads.optionalText(payload, "eventId");
       DiplomaticEventId id;
       if (explicitId.isPresent()) {
         id = DiplomaticEventId.parse(explicitId.get());
@@ -100,11 +104,11 @@ public final class RecordDiplomaticEventHandler implements CommandHandler {
         }
       }
       next.put(id, new DiplomaticEvent(id, tick, participants, text));
-      EventLog.channel(SdLog.diplomacy())
+      EventLog.channel(GovLog.diplomacy())
           .info(
               LogEvent.of(
                   "SD_DIPLOMATIC_EVENT_RECORDED",
-                  SdLogSource.SD_DIPLOMACY,
+                  GovLogSource.GOV_DIPLOMACY,
                   "id",
                   id.value(),
                   "tick",
@@ -113,7 +117,8 @@ public final class RecordDiplomaticEventHandler implements CommandHandler {
                   participants.size(),
                   "events",
                   next.size()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDiplomaticEvents(next)));
+      return new HandlerOutcome.Applied(
+          GovChangeSet.between(base, base.withDiplomaticEvents(next)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "event", eventForLog, "tick", tickForLog);
     }
@@ -124,9 +129,9 @@ public final class RecordDiplomaticEventHandler implements CommandHandler {
    * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
-        SdLog.diplomacy(),
-        SdLogSource.SD_DIPLOMACY,
+    GovPayloads.logRejected(
+        GovLog.diplomacy(),
+        GovLogSource.GOV_DIPLOMACY,
         "SD_RECORD_DIPLOMATIC_EVENT_REJECTED",
         reason,
         idKeyValues);
@@ -136,7 +141,8 @@ public final class RecordDiplomaticEventHandler implements CommandHandler {
   /**
    * {@code participants}：必须是数组、元素非空白字符串、解析成 {@link NationId} 后**不重复**，且**至少 2 个**。
    *
-   * <p>★ 不用 {@link SdPayloads#requireTextSet}（那个会把重复**静默吞掉**）：D-005 要的是"哪些国家参与"，重复参与国是一条坏输入， 应当响亮拒。
+   * <p>★ 不走 {@code GovPayloads#requireTextSet} 一类的集合助手（那个会把重复**静默吞掉**）：D-005
+   * 要的是"哪些国家参与"，重复参与国是一条坏输入， 应当响亮拒。
    */
   private static List<NationId> parseParticipants(JsonNode payload) {
     JsonNode value = payload.get("participants");

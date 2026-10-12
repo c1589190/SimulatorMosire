@@ -18,6 +18,8 @@ import org.slf4j.LoggerFactory;
  *   <tr><td>{@link #demand()}</td><td>{@code .demand}</td><td>逐格行政需求与效率读数</td></tr>
  *   <tr><td>{@link #efficiency()}</td><td>{@code .efficiency}</td><td>Z2 两维效率公式（契约故障 ERROR / 汇总 DEBUG）</td></tr>
  *   <tr><td>{@link #command()}</td><td>{@code .command}</td><td>gov 配置命令 handler（成功/拒绝 INFO、契约 ERROR）</td></tr>
+ *   <tr><td>{@link #nation()}</td><td>{@code .nation}</td><td>国家生命周期（2026-10-12 批次 3c 随 {@code nations} 表自 sd 迁入）</td></tr>
+ *   <tr><td>{@link #diplomacy()}</td><td>{@code .diplomacy}</td><td>外交关系与外交事件（同上，随外交两表迁入）</td></tr>
  *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>GovCodec 编解码/变更集施加</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐单位/逐格明细</b></td></tr>
  * </table>
@@ -51,12 +53,16 @@ public final class GovLog {
   public static final String DEMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".demand";
   public static final String EFFICIENCY_LOGGER_NAME = ROOT_LOGGER_NAME + ".efficiency";
   public static final String COMMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".command";
+  public static final String NATION_LOGGER_NAME = ROOT_LOGGER_NAME + ".nation";
+  public static final String DIPLOMACY_LOGGER_NAME = ROOT_LOGGER_NAME + ".diplomacy";
   public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger DAILY = LoggerFactory.getLogger(DAILY_LOGGER_NAME);
   private static final Logger DEMAND = LoggerFactory.getLogger(DEMAND_LOGGER_NAME);
   private static final Logger EFFICIENCY = LoggerFactory.getLogger(EFFICIENCY_LOGGER_NAME);
   private static final Logger COMMAND = LoggerFactory.getLogger(COMMAND_LOGGER_NAME);
+  private static final Logger NATION = LoggerFactory.getLogger(NATION_LOGGER_NAME);
+  private static final Logger DIPLOMACY = LoggerFactory.getLogger(DIPLOMACY_LOGGER_NAME);
   private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
@@ -80,6 +86,25 @@ public final class GovLog {
   /** gov 配置命令 handler（成功/拒绝 INFO、契约 ERROR）。 */
   public static Logger command() {
     return COMMAND;
+  }
+
+  /**
+   * 国家生命周期（命令面）：{@code gov.CreateNation} / {@code gov.DeleteNation}。
+   *
+   * <p>★★ 2026-10-12 批次 3c：随外交三表自 {@code simos-sd} 迁入（原 {@code SdLog.nation()}），<b>事件名与字段逐字保留</b>
+   * （{@code SD_NATION_CREATED} / {@code SD_NATION_DELETED} 等历史串不改——日志是留痕，改名会让既有回放/检索断档）。
+   */
+  public static Logger nation() {
+    return NATION;
+  }
+
+  /**
+   * 外交关系与外交事件（命令面）：{@code gov.SetDiplomaticRelation} / {@code gov.RecordDiplomaticEvent}。
+   *
+   * <p>同 {@link #nation()} 的留痕口径（自 {@code SdLog.diplomacy()} 迁入，事件名逐字保留）。
+   */
+  public static Logger diplomacy() {
+    return DIPLOMACY;
   }
 
   /** GovCodec 编解码与变更集施加。 */

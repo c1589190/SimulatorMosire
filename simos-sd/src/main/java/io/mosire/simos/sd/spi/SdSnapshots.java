@@ -35,7 +35,7 @@ final class SdSnapshots {
     return sdSnapshot;
   }
 
-  /** map 切片（{@code sd.CreateNation} 校验 homeRegion 用；只读）。 */
+  /** map 切片（{@code gov.CreateNation} 校验 homeRegion 用；只读）。 */
   static GameMap map(SimulationState state) {
     Objects.requireNonNull(state, "state");
     Snapshot snapshot =

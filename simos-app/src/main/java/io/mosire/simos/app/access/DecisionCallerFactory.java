@@ -14,11 +14,11 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.decision.DecisionToolCaller;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -76,7 +76,7 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
 
   /** 决策人的派生目标（进身份的 {@code goal}，只进内存态提示面与审批提示，不进事件库）。 */
   public static final String GOAL =
-      "在受限可见范围内做出决策：出令（ga.IssueDirective）、裁决（ga.SubmitVerdict）、外交写入（sd.SetDiplomaticRelation / sd.RecordDiplomaticEvent）、向 GOV 付款（simos.gov.pay）与决策包提议/提交/查看（simos.sd.propose / packet.submit / packet.intent / packet.my）";
+      "在受限可见范围内做出决策：出令（ga.IssueDirective）、裁决（ga.SubmitVerdict）、外交写入（gov.SetDiplomaticRelation / gov.RecordDiplomaticEvent）、向 GOV 付款（simos.gov.pay）与决策包提议/提交/查看（simos.sd.propose / packet.submit / packet.intent / packet.my）";
 
   private final DecisionScopeFunctions scopeFunctions;
   private final ToolCallAuthorizer authorizer;
@@ -375,10 +375,13 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
    * {@code map.hex} 的 {@code nation} 给）， 不是"我这一圈与哪些国家接壤"。两条信息不同源，别互相顶替。
    */
   public static Optional<NationId> viewerNationOf(ToolContext context, SimulationState state) {
+    // ★★ 2026-10-12 批次 3c：Nation 支的载荷是**不透明引用**（NationId 已搬 gov）⇒ 这里向 gov 的裁定方要归属
+    //   （{@code AppNationAffiliations}：解释引用 + 查 nations）。**读不到归属 ⇒ 空**——与 NationScope 的 deny-all
+    // 同一口径
+    //   （视图不给派生信息，而不是给一份"看起来有归属"的假读数）。
     return decisionMakerOf(context, state)
-        .map(DecisionMaker::affiliation)
-        .filter(Affiliation.Nation.class::isInstance)
-        .map(nation -> ((Affiliation.Nation) nation).nationId());
+        .filter(maker -> maker.affiliation() instanceof Affiliation.Nation)
+        .flatMap(maker -> AppNationAffiliations.nationOf(maker.id(), state));
   }
 
   /**

@@ -1001,9 +1001,9 @@ public final class SimosToolSource implements ToolSource {
 
   /**
    * 决策人组的写面（N9 + 用户 2026-09-22 的收窄 + D5 的三条新增）：**决策行为 + 外交/支付两条受限写入** —— {@code
-   * ga.IssueDirective}（出令）、{@code ga.SubmitVerdict}（裁决者冻结判决）、{@code sd.SetDiplomaticRelation} （以调用者
-   * Nation 名义写外交边）、{@code sd.RecordDiplomaticEvent}（参与者必须含调用者 Nation）、 {@code simos.gov.pay}（付款人 =
-   * 调用者所属 GOV，身份派生；收款方由既有审批链把关）。
+   * ga.IssueDirective}（出令）、{@code ga.SubmitVerdict}（裁决者冻结判决）、{@code gov.SetDiplomaticRelation}
+   * （以调用者 Nation 名义写外交边）、{@code gov.RecordDiplomaticEvent}（参与者必须含调用者 Nation）、 {@code
+   * simos.gov.pay}（付款人 = 调用者所属 GOV，身份派生；收款方由既有审批链把关）。
    *
    * <p>★ **无** `ga.SetDecisionMakerAccess`（配权是 GM 的活）、**无**通用写、**无** map/unit/sd
    * 的任何其他写工具：用户原话「决策人不能直接改地图等数据， 只能获取有限的、被 GM 权限层限制范围的信息」。指挥一律走 `ga.IssueDirective`（spec §八.2 的 D2

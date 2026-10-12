@@ -1,6 +1,6 @@
 package io.mosire.simos.sd.model;
 
-import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Optional;

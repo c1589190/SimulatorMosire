@@ -2,7 +2,6 @@ package io.mosire.simos.ga.change;
 
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
@@ -13,6 +12,7 @@ import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.Verdict;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.StateMeta;

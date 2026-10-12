@@ -17,11 +17,11 @@ import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolQueries;
 import io.mosire.simos.ga.tools.GaToolReads;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -303,7 +303,7 @@ public final class SimosSdReportsTool implements SimosTool {
       switch (affiliation) {
         case Affiliation.Nation nation -> {
           view.put("kind", "nation");
-          view.put("id", nation.nationId().value());
+          view.put("id", nation.nationId());
         }
         case Affiliation.Army army -> {
           view.put("kind", "army");

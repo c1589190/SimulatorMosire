@@ -1,8 +1,8 @@
 package io.mosire.simos.ga.tools;
 
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.SdInfoEntry;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import java.util.List;

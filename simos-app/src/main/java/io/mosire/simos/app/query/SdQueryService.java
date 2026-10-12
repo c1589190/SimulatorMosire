@@ -3,21 +3,22 @@ package io.mosire.simos.app.query;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.ga.GaState;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.sd.id.ArmyId;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
-import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
-import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.ArrayList;
@@ -115,6 +116,7 @@ public final class SdQueryService {
     SimulationState state = query.stateAt(target);
     GaState ga = gaState(state);
     SdState sd = sdState(state);
+    GovState govState = govOf(state);
     List<DecisionMaker> makers = new ArrayList<>();
     for (DecisionMaker maker : ga.decisionMakers().values()) {
       if (matches(maker.affiliation(), filter)) {
@@ -122,7 +124,7 @@ public final class SdQueryService {
       }
     }
     makers.sort(Comparator.comparing(maker -> maker.id().value()));
-    return infos(makers, sd, state, tickOf(state));
+    return infos(makers, sd, govState, state, tickOf(state));
   }
 
   /**
@@ -216,15 +218,20 @@ public final class SdQueryService {
     Objects.requireNonNull(id, "id");
     SimulationState state = query.stateAt(target);
     SdState sd = sdState(state);
+    GovState govState = govOf(state);
     DecisionMaker maker = gaState(state).decisionMakers().get(id);
-    return maker == null ? Optional.empty() : Optional.of(info(maker, sd, state, tickOf(state)));
+    return maker == null
+        ? Optional.empty()
+        : Optional.of(info(maker, sd, govState, state, tickOf(state)));
   }
 
   private static boolean matches(Affiliation affiliation, AffiliationFilter filter) {
     return switch (filter) {
       case AffiliationFilter.All ignored -> true;
+      // ★ 2026-10-12 批次 3c：Nation 支的载荷是不透明串（NationId 已搬 gov）⇒ 逐字比较原文，不做存在性查询。
       case AffiliationFilter.OfNation nation ->
-          affiliation instanceof Affiliation.Nation n && n.nationId().equals(nation.nationId());
+          affiliation instanceof Affiliation.Nation n
+              && n.nationId().equals(nation.nationId().value());
       case AffiliationFilter.OfArmy army ->
           affiliation instanceof Affiliation.Army a && a.armyId().equals(army.armyId());
       case AffiliationFilter.OfGov gov ->
@@ -233,25 +240,28 @@ public final class SdQueryService {
   }
 
   private static List<DecisionMakerInfo> infos(
-      List<DecisionMaker> makers, SdState sd, SimulationState state, long tick) {
+      List<DecisionMaker> makers, SdState sd, GovState govState, SimulationState state, long tick) {
     List<DecisionMakerInfo> out = new ArrayList<>(makers.size());
     for (DecisionMaker maker : makers) {
-      out.add(info(maker, sd, state, tick));
+      out.add(info(maker, sd, govState, state, tick));
     }
     return List.copyOf(out);
   }
 
   private static DecisionMakerInfo info(
-      DecisionMaker maker, SdState sd, SimulationState state, long tick) {
+      DecisionMaker maker, SdState sd, GovState govState, SimulationState state, long tick) {
     return switch (maker.affiliation()) {
       case Affiliation.Nation nation -> {
-        Nation value = sd.nations().get(nation.nationId());
+        // ★ 2026-10-12 批次 3c：国家表住 gov 切片；引用解释不了 / 国家不存在 ⇒ 显示名与 homeRegion 都 null
+        //   （显式未知，不编造——与下面两支的"值不在就 null"同一口径）。
+        Nation value = nationOrNull(govState, nation.nationId());
+        String nationId = nation.nationId();
         yield new DecisionMakerInfo(
             maker,
             "nation",
-            nation.nationId().value(),
+            nationId,
             value == null ? null : value.name(),
-            nation.nationId().value(),
+            value == null ? null : value.id().value(),
             null,
             null,
             pending(maker, directivesTable(state), tick));
@@ -346,6 +356,29 @@ public final class SdQueryService {
    */
   private static GaState gaState(SimulationState state) {
     return ToolSupport.gaState(state);
+  }
+
+  /**
+   * 把不透明国家引用解释成 gov 的国家记录：解析不了 / 国家不在表里 ⇒ {@code null}（**显式未知**，不编造、也不抛）。
+   *
+   * <p>★ 2026-10-12 批次 3c：{@code nations} 表搬进 {@link GovState}，而 sd 侧只剩 {@code Affiliation.Nation}
+   * 的不透明串 ⇒ 解释与查表都在这里（读侧的唯一口径见 {@code AppNationAffiliations}）。
+   */
+  private static Nation nationOrNull(GovState govState, String opaqueNationId) {
+    NationId nationId;
+    try {
+      nationId = NationId.parse(opaqueNationId);
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+    return govState.nations().get(nationId);
+  }
+
+  /**
+   * gov 切片的取数口（2026-10-12 批次 3c：{@code nations} 与外交两表搬进 {@code simos-gov}）；缺切片 / 类型不对 = 装配故障，当场炸。
+   */
+  private static GovState govOf(SimulationState state) {
+    return ToolSupport.govState(state);
   }
 
   /** sd 切片只能从 sd 模块拿（铁律 3/4）：缺席或类型不对是装配故障，不是"没有候选"。 */

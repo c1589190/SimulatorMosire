@@ -1,4 +1,4 @@
-package io.mosire.simos.sd.model;
+package io.mosire.simos.gov.nation;
 
 import java.util.Optional;
 
@@ -10,13 +10,16 @@ import java.util.Optional;
  * <ul>
  *   <li>{@link #kind}——自由文本，**可空**；"称臣纳贡"只是它的一个取值（D-004：贡额/周期/违约一律<b>不</b>写死，所以本类型 不解释 kind
  *       的含义、也不因某个 kind 施加任何规则）；
- *   <li>{@link #text}——自然语言描述；**谈判/联动裁决的状态与情况就记在这里**（D-005），再调 {@code sd.SetDiplomaticRelation}
+ *   <li>{@link #text}——自然语言描述；**谈判/联动裁决的状态与情况就记在这里**（D-005），再调 {@code gov.SetDiplomaticRelation}
  *       就是更新它；
  *   <li>{@link #updatedTick}——该边最后一次写入所用的 tick（单位：日；允许补记过去，但命令期拒绝未来，与 {@code ga.PutInfo}/{@code
  *       ga.IssueDirective} 同口径）。
  * </ul>
  *
  * <p>★ 两端（from/to）在 {@link DiplomaticRelationKey} 里，值不重复存一份：端点身份属于边的键，不是边的属性。
+ *
+ * <p>★★ <b>2026-10-12 批次 3c：自 {@code io.mosire.simos.sd.model} 迁入本包</b>（随 {@code
+ * diplomaticRelations} 表一起成为 {@link io.mosire.simos.gov.GovState} 的第 4 个组件）；形状与不变量一字未改。
  */
 public record DiplomaticRelation(Optional<String> kind, String text, long updatedTick) {
 

@@ -1,6 +1,4 @@
-package io.mosire.simos.sd.model;
-
-import io.mosire.simos.sd.id.NationId;
+package io.mosire.simos.gov.nation;
 
 /**
  * 外交关系边的键（D-003 / R6）：**有向边** {@code fromNationId → toNationId}——同一对国家 A→B 与 B→A 是两条不同的边。
@@ -13,6 +11,9 @@ import io.mosire.simos.sd.id.NationId;
  * {@code <from 的 UTF-16 长度>:<from><to>}：对任意 Nation id 都无歧义（{@code to} 至少一个字符，故长度前缀能精确切出两段）。
  *
  * <p>★ 自环（{@code from == to}）在构造期拒绝：D-003 的边是"每个 Nation 对其他 Nation"，自己对自己的关系没有语义。
+ *
+ * <p>★★ <b>2026-10-12 批次 3c：自 {@code io.mosire.simos.sd.model} 迁入本包</b>（随 {@code diplomaticRelations} 表一起）。
+ * 编码格式（长度前缀）一字未改——它进变更集 key，改它等于改线格式。
  */
 public record DiplomaticRelationKey(NationId from, NationId to) {
 

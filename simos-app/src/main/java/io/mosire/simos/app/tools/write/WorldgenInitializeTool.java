@@ -26,12 +26,12 @@ import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolRole;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.social.gen.ArmyPlan;
 import io.mosire.simos.social.gen.NationSetup;
 import io.mosire.simos.social.gen.PlannedCity;
@@ -97,12 +97,12 @@ import java.util.UUID;
  *
  * <ol>
  *   <li>{@code map.UpdateRegion}（**仅当**当前 region 的 tag 不是 {@code nation:<nationId>}）：{@code
- *       sd.CreateNation} 要求 homeRegion 有国家 tag（{@code NationTag.PREFIX}），而真档三国 region 的 tag 是文档式
+ *       gov.CreateNation} 要求 homeRegion 有国家 tag（{@code NationTag.PREFIX}），而真档三国 region 的 tag 是文档式
  *       {@code "Nation"} （不带前缀）⇒ 必须先改 tag。★★ 该命令的 {@code meta} 是**整体替换**（{@code
  *       MapPayloads.optionalMeta} 只读 color/tag/description/annexedBy 四个字段，未写的清成 null）⇒ 本工具**从当前
  *       region 原样回填 color / description / annexedBy**、只换 tag（只发 {@code {tag:…}} 会把区域颜色抹掉）；tag 已是目标值
  *       ⇒ **跳过**（幂等）。
- *   <li>{@code sd.CreateNation}（{@code nationId = regionId 字面值}）。★ {@code adminBudgetPerTick} **置
+ *   <li>{@code gov.CreateNation}（{@code nationId = regionId 字面值}）。★ {@code adminBudgetPerTick} **置
  *       0**：行政预算属后续 政治-经济模型，冻结输入**没有**它的依据，本笔不臆造（{@code Nation} 允许 0）。
  *   <li>**根单位**一条 + **每个兵种一条** {@code unit.CreateUnit}：{@code manpower} 是编制表（根单位 = 全部兵种逐条、兵种单位 =
  *       自己那一条；type 取兵种名、amount 取编制人数）、{@code equipment} 按 {@code armKits} 的"每百人件数"换算（{@code ceil(人数
@@ -142,7 +142,7 @@ public final class WorldgenInitializeTool implements SimosTool {
   public static final String UPDATE_REGION_TYPE = "map.UpdateRegion";
 
   /** 见 {@link #UPDATE_REGION_TYPE}。 */
-  public static final String CREATE_NATION_TYPE = "sd.CreateNation";
+  public static final String CREATE_NATION_TYPE = "gov.CreateNation";
 
   /** 见 {@link #UPDATE_REGION_TYPE}。 */
   public static final String CREATE_UNIT_TYPE = "unit.CreateUnit";
@@ -278,7 +278,7 @@ public final class WorldgenInitializeTool implements SimosTool {
     return "GM 世界初始化：按冻结输入（config/worldgen/v17levant-nations.json）生成一国的聚落，"
         + "翻成命令一次落**一条** revision（1 条 social.SetPopulation + 每座城一条 social.CreateCity"
         + " + 1 条 economy.Seed（R2a：逐格经济状态）；"
-        + "army 为真时再追加 map.UpdateRegion? + sd.CreateNation + 根/兵种 unit.CreateUnit + unit.CreateCommandChain"
+        + "army 为真时再追加 map.UpdateRegion? + gov.CreateNation + 根/兵种 unit.CreateUnit + unit.CreateCommandChain"
         + " + sd.CreateArmy）。"
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
         + " dryRun?(缺省 true=只算不写), army?(缺省 true=连军队编制一起建；false=只做人口+城市), branch?(缺省 main),"
@@ -293,7 +293,7 @@ public final class WorldgenInitializeTool implements SimosTool {
         + "★ props 里的城市审计量（tier/catchmentHexes/localSurplus/tradeMultiplier/politicalMultiplier/"
         + "justification/seed）落进 SocialCity.props。"
         + "★ army 段含 peacetime/mobilization/establishmentTotal/armCount/rootUnitId/chainId/armyId/nationId/"
-        + "各单位表；sd.CreateNation 的 adminBudgetPerTick 置 0（行政预算属后续政治-经济模型，本笔不臆造）。";
+        + "各单位表；gov.CreateNation 的 adminBudgetPerTick 置 0（行政预算属后续政治-经济模型，本笔不臆造）。";
   }
 
   @Override
@@ -307,7 +307,7 @@ public final class WorldgenInitializeTool implements SimosTool {
         "army",
         ToolSupport.prop(
             "boolean",
-            "是否连军队编制一起建（缺省 true：同一批追加 sd.CreateNation + 单位 + 指挥链 + sd.CreateArmy）；"
+            "是否连军队编制一起建（缺省 true：同一批追加 gov.CreateNation + 单位 + 指挥链 + sd.CreateArmy）；"
                 + "false = 只做人口+城市（不写国家 tag、不建国）"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
@@ -896,7 +896,7 @@ public final class WorldgenInitializeTool implements SimosTool {
    * CreateUnit}(每兵种) → {@code CreateCommandChain} → {@code CreateArmy}。
    *
    * <p>★ {@code map.UpdateRegion} **仅当**当前 tag 不等于 {@code nation:<nationId>} 时追加（幂等：已是目标 tag 就不动
-   * meta， 免得白白覆盖颜色）；其余六类命令**无条件**追加（{@code sd.CreateNation} 在已建国的区域上会被 {@code CreateNationHandler}
+   * meta， 免得白白覆盖颜色）；其余六类命令**无条件**追加（{@code gov.CreateNation} 在已建国的区域上会被 {@code CreateNationHandler}
    * 拒「国家已存在」，这是调用方要处理的重放错误，不由本处静默跳过）。
    */
   private static void appendArmyCommands(
@@ -1023,7 +1023,7 @@ public final class WorldgenInitializeTool implements SimosTool {
   }
 
   /**
-   * {@code sd.CreateNation} 载荷。★ {@code adminBudgetPerTick = 0}：行政预算属后续政治-经济模型，本笔**不臆造**（{@code
+   * {@code gov.CreateNation} 载荷。★ {@code adminBudgetPerTick = 0}：行政预算属后续政治-经济模型，本笔**不臆造**（{@code
    * Nation} 允许 0）。
    */
   private static String createNationPayload(String nationId, String name, String homeRegionId) {

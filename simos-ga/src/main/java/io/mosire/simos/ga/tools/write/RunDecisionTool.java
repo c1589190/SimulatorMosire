@@ -16,7 +16,7 @@ import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaDecisionHost;
 import io.mosire.simos.ga.tools.GaToolIdentity;
-import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.StateRef;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

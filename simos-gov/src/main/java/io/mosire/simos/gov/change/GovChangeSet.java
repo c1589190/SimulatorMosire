@@ -4,6 +4,12 @@ import io.mosire.simos.gov.GovOfficeState;
 import io.mosire.simos.gov.GovRemittanceState;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.DiplomaticEvent;
+import io.mosire.simos.gov.nation.DiplomaticEventId;
+import io.mosire.simos.gov.nation.DiplomaticRelation;
+import io.mosire.simos.gov.nation.DiplomaticRelationKey;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
@@ -12,14 +18,18 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * gov 切片的变更集（阶段 10a；Z2 扩为三组件、Z7c 扩为四组件、R2 扩为五组件；<b>★ 追加裁定 12（2026-10-12 §21.9 D-1）
- * 收为两组件</b>）。<b>组件与 {@link GovState} 的 record 组件一一对应</b>： {@code offices} / {@code
- * remittanceStates}。
+ * gov 切片的变更集（阶段 10a；Z2 扩为三组件、Z7c 扩为四组件、R2 扩为五组件；★ 追加裁定 12（2026-10-12 §21.9 D-1） 收为两组件；<b>★★
+ * 2026-10-12 批次 3c 再扩为五组件</b>）。<b>组件与 {@link GovState} 的 record 组件一一对应</b>： {@code offices} /
+ * {@code remittanceStates} / {@code nations} / {@code diplomaticRelations} / {@code
+ * diplomaticEvents}。
  *
  * <p>★★★ <b>三条政策源状态（{@code administrationPlans} / {@code budgetPolicies} / {@code portPolicies}）的
  * {@link FieldDelta} 已整段删除</b>：政策不再住本切片，改挂 {@code EconomyData.governments} 的 {@code Government}
  * 记录（写口 = {@code economy.SetGovernmentPolicy}）⇒ 对非 root 节点写政策<b>不再经过本变更集</b>。政策那一半的铁律 5 往返由 {@code
  * EconomyChangeSet.governments} 承担（同一条既有通道：只有 {@code Government} 记录的字段值在变）。
+ *
+ * <p>★★ <b>本批（3c）新增的三条 {@link FieldDelta} 是外交三表</b>（自 {@code SdChangeSet} 整段迁入，语义一字未改）： {@code
+ * nations}（键 {@code NationId}）/ {@code diplomaticRelations}（复合键）/ {@code diplomaticEvents}。
  *
  * <p>★ 铁律 5：变更集从完整状态类型派生——{@link #between(GovState, GovState)} 是唯一生产者，差异/重建语义一律委托 {@link
  * FieldDelta#diff} / {@link FieldDelta#rebuild}（与 Map/Social/Unit/Sd/Economy/Actor 共用同一份机制，
@@ -32,7 +42,11 @@ import java.util.Objects;
  * ref} / {@code timestamp} 装上去（模块状态类型本身不带坐标）。
  */
 public record GovChangeSet(
-    FieldDelta<GovOfficeState> offices, FieldDelta<GovRemittanceState> remittanceStates)
+    FieldDelta<GovOfficeState> offices,
+    FieldDelta<GovRemittanceState> remittanceStates,
+    FieldDelta<Nation> nations,
+    FieldDelta<DiplomaticRelation> diplomaticRelations,
+    FieldDelta<DiplomaticEvent> diplomaticEvents)
     implements ChangeSet {
 
   public GovChangeSet {
@@ -42,11 +56,25 @@ public record GovChangeSet(
     if (remittanceStates == null) {
       remittanceStates = new FieldDelta.Unchanged<>();
     }
+    if (nations == null) {
+      nations = new FieldDelta.Unchanged<>();
+    }
+    if (diplomaticRelations == null) {
+      diplomaticRelations = new FieldDelta.Unchanged<>();
+    }
+    if (diplomaticEvents == null) {
+      diplomaticEvents = new FieldDelta.Unchanged<>();
+    }
   }
 
-  /** 只给 offices 的形状（阶段 10a 的调用点/夹具）：上缴周期账记“未动”。 */
+  /** 只给 offices 的形状（阶段 10a 的调用点/夹具）：其余四张表记“未动”。 */
   public GovChangeSet(FieldDelta<GovOfficeState> offices) {
-    this(offices, new FieldDelta.Unchanged<>());
+    this(
+        offices,
+        new FieldDelta.Unchanged<>(),
+        new FieldDelta.Unchanged<>(),
+        new FieldDelta.Unchanged<>(),
+        new FieldDelta.Unchanged<>());
   }
 
   /** 逐组件比较。全相等 ⇒ <b>全 Unchanged</b>（不是空对象）。 */
@@ -55,7 +83,10 @@ public record GovChangeSet(
     Objects.requireNonNull(target, "target");
     return new GovChangeSet(
         FieldDelta.diff(base.offices(), target.offices()),
-        FieldDelta.diff(base.remittanceStates(), target.remittanceStates()));
+        FieldDelta.diff(base.remittanceStates(), target.remittanceStates()),
+        FieldDelta.diff(base.nations(), target.nations()),
+        FieldDelta.diff(base.diplomaticRelations(), target.diplomaticRelations()),
+        FieldDelta.diff(base.diplomaticEvents(), target.diplomaticEvents()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -66,7 +97,17 @@ public record GovChangeSet(
         FieldDelta.rebuild(base.offices(), cs.offices(), UnitId::parse);
     Map<UnitId, GovRemittanceState> remittanceStates =
         FieldDelta.rebuild(base.remittanceStates(), cs.remittanceStates(), UnitId::parse);
-    return new GovState(offices, remittanceStates);
+    // ★ 键读侧（toString → parse）的三个解析器与 GovCodec 的键反序列化器同源（同一个类型的那个 parse）：
+    //   变更集 key 与 JSON key 走的是同一把尺，此处漏一个 ⇒ 该表一旦非空就往返不成立。
+    Map<NationId, Nation> nations =
+        FieldDelta.rebuild(base.nations(), cs.nations(), NationId::parse);
+    Map<DiplomaticRelationKey, DiplomaticRelation> diplomaticRelations =
+        FieldDelta.rebuild(
+            base.diplomaticRelations(), cs.diplomaticRelations(), DiplomaticRelationKey::parse);
+    Map<DiplomaticEventId, DiplomaticEvent> diplomaticEvents =
+        FieldDelta.rebuild(
+            base.diplomaticEvents(), cs.diplomaticEvents(), DiplomaticEventId::parse);
+    return new GovState(offices, remittanceStates, nations, diplomaticRelations, diplomaticEvents);
   }
 
   /**
@@ -81,6 +122,10 @@ public record GovChangeSet(
 
   /** 是否所有组件都未变。 */
   public boolean isEmpty() {
-    return !offices.changed() && !remittanceStates.changed();
+    return !offices.changed()
+        && !remittanceStates.changed()
+        && !nations.changed()
+        && !diplomaticRelations.changed()
+        && !diplomaticEvents.changed();
   }
 }

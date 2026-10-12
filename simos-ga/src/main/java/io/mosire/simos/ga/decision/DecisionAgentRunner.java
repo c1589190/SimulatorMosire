@@ -12,12 +12,12 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.llm.LlmToolNames;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -675,7 +675,7 @@ public final class DecisionAgentRunner {
     Affiliation affiliation = dm.affiliation();
     String where;
     if (affiliation instanceof Affiliation.Nation nation) {
-      where = "国家（nationId=" + nation.nationId().value() + "）";
+      where = "国家（nationId=" + nation.nationId() + "）";
     } else if (affiliation instanceof Affiliation.Army army) {
       where = "军队（armyId=" + army.armyId().value() + "）";
     } else if (affiliation instanceof Affiliation.Gov gov) {

@@ -1,13 +1,13 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.gov.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.DiplomaticRelation;
-import io.mosire.simos.sd.model.DiplomaticRelationKey;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.gov.GovLog;
+import io.mosire.simos.gov.GovLogSource;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.change.GovChangeSet;
+import io.mosire.simos.gov.nation.DiplomaticRelation;
+import io.mosire.simos.gov.nation.DiplomaticRelationKey;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -19,14 +19,14 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * {@code sd.SetDiplomaticRelation} 命令的处理器（D-003 / D-005 / R6）：**upsert 一条有向外交关系边**。
+ * {@code gov.SetDiplomaticRelation} 命令的处理器（D-003 / D-005 / R6）：**upsert 一条有向外交关系边**。
  *
  * <pre>{@code
  * {"from":"大蜀","to":"西陵","kind":"称臣纳贡","text":"……自然语言……","tick":120}
  * }</pre>
  *
  * <ul>
- *   <li>{@code from} / {@code to} 必填、非空白，且必须是**已存在的 sd.Nation**（查 {@code SdState.nations()}，查无 ⇒
+ *   <li>{@code from} / {@code to} 必填、非空白，且必须是**已存在的 Nation**（查 {@code GovState.nations()}，查无 ⇒
  *       具名拒）；{@code from == to} ⇒ 拒（D-003 的边不建自环）；
  *   <li>{@code kind} 可选（自由文本，可空；"称臣纳贡"只是它的一个取值——本命令**不**解释它、也**不**写死贡额/周期/违约）；
  *   <li>{@code text} 必填非空白：自然语言描述；**谈判/联动裁决的状态就记在这里**（D-005），对同一 (from,to) 再调一次就是
@@ -36,35 +36,41 @@ import java.util.Optional;
  * </ul>
  *
  * <p>★ **不在 DM 两面**（不打 {@code DmUsableCommand}）：命令本身不做调用者身份判定——"不许以别国名义写"由**决策人窄工具**的 signature
- * 层拒绝（命令结构性看不见调用者）； GM 走 {@code simos.command.submit} / GM 窄工具。{@code sd.*} 本就不进指令白名单（禁自指），不担心嵌令递归。
+ * 层拒绝（命令结构性看不见调用者）； GM 走 {@code simos.command.submit} / GM 窄工具。★ 自 2026-10-12 批次 1 起"哪些命令能被嵌进令"只由
+ * <b>声明</b>决定（{@code DmUsableCommand} 为唯一标记，{@code sd.} 前缀规则已删）⇒ 本命令换成 {@code gov.}
+ * 前缀后<b>仍然在面外</b>， 不靠前缀。
+ *
+ * <p>★★ <b>2026-10-12 批次 3c：本类自 {@code simos-sd/sd.spi} 迁入 {@code simos-gov/spi}，命令名 {@code
+ * sd.SetDiplomaticRelation} → {@code gov.SetDiplomaticRelation}</b>（外交是 gov
+ * 的事）。语义/载荷/拒绝文案一字未改，变的只有落点（ {@code GovChangeSet.diplomaticRelations}）、载荷与切片助手、日志门面（事件名与字段逐字保留）。
  */
 public final class SetDiplomaticRelationHandler implements CommandHandler {
 
   @Override
   public String type() {
-    return "sd.SetDiplomaticRelation";
+    return "gov.SetDiplomaticRelation";
   }
 
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GovState base = GovSnapshots.of(state);
     String fromForLog = null;
     String toForLog = null;
     Long tickForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
-      NationId from = NationId.parse(SdPayloads.requireText(payload, "from"));
+      JsonNode payload = GovPayloads.parse(payloadJson);
+      NationId from = NationId.parse(GovPayloads.requireText(payload, "from"));
       fromForLog = from.value();
-      NationId to = NationId.parse(SdPayloads.requireText(payload, "to"));
+      NationId to = NationId.parse(GovPayloads.requireText(payload, "to"));
       toForLog = to.value();
-      String text = SdPayloads.requireText(payload, "text");
+      String text = GovPayloads.requireText(payload, "text");
       // kind 可空：缺省 / null / 空白 ⇒ 无 kind（"称臣纳贡"只是它的一个取值，本层不解释）。
       Optional<String> kind =
-          SdPayloads.optionalText(payload, "kind").filter(value -> !value.isBlank());
+          GovPayloads.optionalText(payload, "kind").filter(value -> !value.isBlank());
       long worldTick = state.meta().timestamp().tick();
-      long tick = SdPayloads.optionalLong(payload, "tick", worldTick);
+      long tick = GovPayloads.optionalLong(payload, "tick", worldTick);
       tickForLog = tick;
       if (tick < 0L) {
         return rejected(
@@ -96,11 +102,11 @@ public final class SetDiplomaticRelationHandler implements CommandHandler {
       Map<DiplomaticRelationKey, DiplomaticRelation> next =
           new LinkedHashMap<>(base.diplomaticRelations());
       next.put(key, new DiplomaticRelation(kind, text, tick));
-      EventLog.channel(SdLog.diplomacy())
+      EventLog.channel(GovLog.diplomacy())
           .info(
               LogEvent.of(
                   "SD_DIPLOMATIC_RELATION_SET",
-                  SdLogSource.SD_DIPLOMACY,
+                  GovLogSource.GOV_DIPLOMACY,
                   "from",
                   from.value(),
                   "to",
@@ -114,7 +120,7 @@ public final class SetDiplomaticRelationHandler implements CommandHandler {
                   "relations",
                   next.size()));
       return new HandlerOutcome.Applied(
-          SdChangeSet.between(base, base.withDiplomaticRelations(next)));
+          GovChangeSet.between(base, base.withDiplomaticRelations(next)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "from", fromForLog, "to", toForLog, "tick", tickForLog);
     }
@@ -122,12 +128,12 @@ public final class SetDiplomaticRelationHandler implements CommandHandler {
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GovPayloads} 的日志安全截断，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
-        SdLog.diplomacy(),
-        SdLogSource.SD_DIPLOMACY,
+    GovPayloads.logRejected(
+        GovLog.diplomacy(),
+        GovLogSource.GOV_DIPLOMACY,
         "SD_SET_DIPLOMATIC_RELATION_REJECTED",
         reason,
         idKeyValues);

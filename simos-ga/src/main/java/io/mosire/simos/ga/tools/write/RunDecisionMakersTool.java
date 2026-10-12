@@ -22,7 +22,7 @@ import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaDecisionHost;
 import io.mosire.simos.ga.tools.GaToolQueries;
 import io.mosire.simos.ga.tools.GaToolReads;
-import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;

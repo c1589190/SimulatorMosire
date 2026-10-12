@@ -1,8 +1,8 @@
 package io.mosire.simos.ga.tools;
 
 import io.mosire.agentlib.permission.AgentIdentity;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.util.spi.CommandTarget;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Optional;

@@ -545,3 +545,37 @@ gov/army/app 另有十余个工具的文案写着"进 `sd.PutInfo` 行动记录"
 
 ★ **每步的硬判据**：**不得新增任何被 enforcer 禁的依赖边**（`sd → gov`/`sd → army`/`sd → ga`/`ga → core`）；
 若某步做不到，**停手上报**并给"哪条边必须开"的方案 —— 不擅自开边。
+
+---
+
+## §19 批次 3c 收工：外交整体搬 gov（控制方追认全部偏离）
+
+**结果**：108 项（89 M / 14 D / 5 新增）、+973/−1620、**零 pom / 零 worlds**。
+`GovState` 2→**5**、`SdState` 8→**5**、**4 条命令 `sd.*`→`gov.*`**（gov 的第一批命令）、
+`NationId`/`Nation`/`NationTag`/`Diplomatic*` 全套类型 + `RegionDeleteGuard` 搬 gov。
+`SdResolver` 的 `sd:nation.<id>` 支**整支删除**（用户已批的不可逆点）。
+**`DecisionMakerId` → `simos-util/spi`**（57 个 main 文件改 import；ADR-1 原文 + `DmUsableCommand` 先例；**零 pom 改动、零环**）。
+**`Affiliation.Nation(NationId)` → `Affiliation.Nation(String)`**：gov 新增 `NationAffiliations`（**裁定方，唯一形态与唯一裁点**）+
+`NationAffiliationLookup`（端口在 gov、实现在 app）+ `AppNationAffiliations`（唯一拼装点：读 ga 的 `Affiliation.Nation` 自称 × gov 的
+`nations` **裁定**，解析不了/国家不存在的引用**裁剪丢弃**）；`NationScope` 读不到归属 ⇒ **四命名空间 deny-all**（不抛、不回落、不给全量）；
+★ **`DecisionScopeFunctions` 一行未改**（"键改 kind 字符串"是 §18.2 第 4 步，不在本批）。
+
+**门禁**（控制方自跑复核）：compile rc=0（18/18）· spotless rc=0 · spotbugs rc=0（**17/17 归零**）·
+`validate` rc=0（`BannedDependencies passed` ×16，★ **零新增被禁边**：三条互禁原样）· `GovRoundTripTest` **10/10**。
+**变异自证**：给 `GovState` 加第 6 组件 ⇒ **红在 4 处**，还原 **md5 逐字节一致**并重跑绿。
+
+### 19.1 ★ 代理第三次纠正控制方的事实错误
+派单书写「`GovCodec` 注册 `NationId` 与 `DiplomaticEventId` **两个**键」——**漏了复合键 `DiplomaticRelationKey`**；
+漏它则 `diplomaticRelations` **非空即解码炸**（空表测不到）。实为 **3 个**键。**追认 3 个。**
+
+### 19.2 控制方追认的 8 条偏离
+| # | 偏离 | 裁定 |
+|---|---|---|
+| **D1** | gov 是 nation 归属的**裁定方**而非**写入方**（写入仍在 `ga.CreateDecisionMaker` 的 affiliation 载荷） | ✅ **追认** —— 让 gov 自己写就要**新增 `gov.Assign*DecisionMaker` 命令 ⇒ 目录 143→144，撞本批红线**；且规划 §18.2 本就把"各模块持归属表 + 各自赋予命令"排在**乙第 4 步**。本批做到"能做的最大且 fail-closed" |
+| **D2** | `Affiliation.Nation` 收窄为 `String`（不透明引用） | ✅ **追认** —— fail-closed（解析不了即裁剪 ⇒ deny-all）；且乙收尾会**整条删除 `Affiliation`** |
+| **D3** | `ga.CreateDecisionMaker` 给不存在的国家 id：从"当场具名拒"变"建成 + 该决策人 nation 面 **deny-all**" | ✅ **追认** —— D1 的直接后果，方向是 fail-closed（**不是提权**） |
+| **D4** | 多搬/删 4 件结构性必需物（`NationTag`、`RegionDeleteGuard`、`Army` 旧构造删除、gov 侧新建 `GovPayloads`/`GovSnapshots`） | ✅ **追认** |
+| **D5** | 键读侧实为 **3** 个 | ✅ **追认**（见 19.1） |
+| **D6** | `GaToolViews` 两个方法签名必须改（ga 结构性看不见 gov 类型）+ 连带 `SdDiplomacyTool`/`SdDiplomaticEventsTool`/`AppGaToolViews` | ✅ **追认** —— 同 §13.1/§17.1 的"目标 ⊥ 文件所有权 ⇒ 最小改动" |
+| **D7** | 4 条命令的**工具面资源声明仍写 `sd` 命名空间**（新增 `GOV_NAMESPACE` 要动本批禁碰的 `simos-ga-spi`） | ✅ **追认** —— 运行时影响为零（DM 侧声明与迁移前逐字相同）；**留给批次 5 收口** |
+| **D9** | `SdSnapshots.map(...)` 成死代码但保留 | ✅ **追认** —— 随 sd 退役一并删 |

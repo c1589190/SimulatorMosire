@@ -12,10 +12,6 @@ import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.ga.tools.GaToolViews;
-import io.mosire.simos.sd.id.DiplomaticEventId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.DiplomaticEvent;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,13 +21,17 @@ import java.util.Set;
 /**
  * {@code simos.sd.diplomatic-events}（D5 / D-005 / R6）：**外交事件只读面**——多国谈判逐 tick 记录参与国与自然语言内容。
  *
- * <p>形状复用 {@link ApiViews#diplomaticEvents(java.util.Map)}（GUI / 后续读口同源），本类只装配 {@code
- * {"events":[…]}}。
+ * <p>形状复用 {@code ApiViews.diplomaticEvents}（GUI / 后续读口同源），本类只装配 {@code {"events":[…]}}。
  *
  * <p>★ **四桶共享读**（不标 {@code GmOnlyRead}）：R6 的"关系默认共享读"同样覆盖事件记录；内容是世界级自然语言，不含视野数据、 不做逐格过滤（D-002）。
  *
  * <p>★ <b>过滤</b>：{@code tick?} 只列该世界日的事件；{@code participant?} 只列参与国含该 Nation 的事件；两者都给 = 交集。
  * 过滤参数只按形状解析（未知 Nation / 无命中 tick ⇒ 空结果），不做存在性查询。
+ *
+ * <p>★★ <b>2026-10-12 批次 3c：过滤与取表搬进 {@link GaToolViews} 的实现（app）</b>——{@code diplomaticEvents} 表与
+ * {@code NationId} 都随外交搬进 {@code simos-gov}，而 {@code simos-ga} 不得依赖 {@code gov} ⇒
+ * 本类只把参数形状解析成"不透明国家引用 （{@code String}）+ tick"，筛选与排序由实现做（那里仍是"形状只有一处"）。★ 参数校验口径一字未改：{@code
+ * NationId.parse} 原本只拒空白， 这里因此只判非空白。
  */
 public final class SdDiplomaticEventsTool implements SimosTool {
 
@@ -80,23 +80,14 @@ public final class SdDiplomaticEventsTool implements SimosTool {
     try {
       Map<String, Object> args = context.arguments();
       Long tick = ToolSchema.optionalLong(args, "tick");
-      String rawParticipant = ToolSchema.optionalText(args, "participant", null);
-      NationId participant = rawParticipant == null ? null : NationId.parse(rawParticipant);
-      SimulationState state = GaToolReads.state(reads, args);
-      SdState sd = GaToolReads.sd(state);
-      Map<DiplomaticEventId, DiplomaticEvent> selected = new LinkedHashMap<>();
-      for (Map.Entry<DiplomaticEventId, DiplomaticEvent> entry : sd.diplomaticEvents().entrySet()) {
-        DiplomaticEvent event = entry.getValue();
-        if (tick != null && event.tick() != tick) {
-          continue;
-        }
-        if (participant != null && !event.participants().contains(participant)) {
-          continue;
-        }
-        selected.put(entry.getKey(), event);
+      String participant = ToolSchema.optionalText(args, "participant", null);
+      if (participant != null && participant.isBlank()) {
+        // ★ 与迁移前逐字同口径：NationId.parse 对空白串抛 IllegalArgumentException ⇒ 同一句 BAD_REQUEST。
+        throw new IllegalArgumentException("NationId 不得为空白: " + participant);
       }
+      SimulationState state = GaToolReads.state(reads, args);
       Map<String, Object> view = new LinkedHashMap<>();
-      view.put("events", views.diplomaticEvents(selected));
+      view.put("events", views.diplomaticEvents(state, tick, participant));
       return ToolResults.ok(view);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());

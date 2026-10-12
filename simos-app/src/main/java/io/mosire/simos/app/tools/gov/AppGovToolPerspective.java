@@ -6,15 +6,15 @@ import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.app.time.GovernmentServiceDesertionBridge;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.gov.tools.GovToolPerspective;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
-import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -42,7 +42,7 @@ public final class AppGovToolPerspective implements GovToolPerspective {
   public GovDecisionMaker decisionMaker(SimulationState state, String decisionMakerId) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(decisionMakerId, "decisionMakerId");
-    // ★ 非法 id 的拒因与文案来自 sd.id.DecisionMakerId 的构造（与 mig 入前逐字相同）。
+    // ★ 非法 id 的拒因与文案来自 util.spi.DecisionMakerId 的构造（与 mig 入前逐字相同）。
     DecisionMaker maker = ToolSupport.gaState(state).decisionMakers().get(sdId(decisionMakerId));
     if (maker == null) {
       return new GovDecisionMaker(decisionMakerId, false, false, null, "");

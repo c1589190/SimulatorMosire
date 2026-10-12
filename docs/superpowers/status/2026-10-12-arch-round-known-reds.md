@@ -135,3 +135,44 @@ economy 6 / gov 1 / unit 1 / util 1 个文件提及旧命令名 —— 留给对
 前端 JS 门禁（`package` 阶段 `exec` 的 `frontend-unit-tests`）**无 skip 守卫**，而它有 1 条用例钉旧命令名 ⇒
 **spotbugs 门禁的完整形态 = `-DskipTests -Dmaven.test.skip=true -Dexec.skip=true package spotbugs:check`**。
 （前端 412 条属收尾测试期；`-Dexec.skip=true` 与"测试留最后"口径一致。）
+
+---
+
+### 批次 3c（外交三表 + 4 命令 `sd.*`→`gov.*` 搬进 gov；`Affiliation.Nation` 收窄为不透明串；`DecisionMakerId` 落 `util.spi`）
+
+> 提交面：**未提交**（实现代理**不 commit**，§一.5：控制方审后提交）。工作树 107 项（88 M / 14 D / 5 ??）；
+> 证据目录 `.superpowers/sdd/2026-10-12-sd-abolition-3c/evidence/`（compile / spotless / spotbugs / gov-roundtrip / faces / literal-scan / reds-scan / mutation）。
+> ★ 本节**只列相对 3b-2 台账新增的部分**（§12.2：分不清"老架构老测试该删"与"新代码弄坏了"就无法归因）。
+
+**A. 新增编译断（类型搬家，import 断）**
+- **`DecisionMakerId` 从 `io.mosire.simos.sd.id` 搬到 `io.mosire.simos.util.spi`** ⇒ 测试侧 **39 个文件** import 断
+  （`grep -rl '^import io.mosire.simos.sd.id.DecisionMakerId;' simos-*/src/test` = 39）。**处置：收尾期把 import 改到 `util.spi` 即可**（类型形状一字未改）。
+- **`NationId` / `Nation` / `Diplomatic*` / `NationTag` 从 sd 搬到 `io.mosire.simos.gov.nation`** ⇒ 逐文件命中数见 `evidence/reds-scan.txt` A 节（最重：`app/tools/write/DiplomaticWriteToolsTest` 9 · `sd/testing/SdFixtures` 7 · `sd/codec/SdCodecTest` 5 · `sd/change/SdRoundTripTest` 5 · `app/tools/read/DiplomacyReadToolsTest` 5 …共 50 个文件）。
+- **`SdState` 8 → 5**（`nations` / `diplomaticRelations` / `diplomaticEvents` 三组件消失）⇒ `sd/testing/SdFixtures`、`sd/codec/SdCodecTest`、`sd/change/SdRoundTripTest`（`hasSize(8)` 又要再改）、`sd/state/SdStateInvariantTest`、`sd/spi/{SetDiplomaticRelationHandlerTest, RecordDiplomaticEventHandlerTest, CreateNationHandlerTest}`、`app/tools/write/DiplomaticWriteToolsTest`、`app/world/CompactThreeNationsWorld` 等（逐文件计数见 `evidence/reds-scan.txt` B 节）。
+- **`GovState` 2 → 5 / `GovChangeSet` 2 → 5**：1 参便利构造**保留** ⇒ `new GovState(Map.of(...))` 的 4 处仍编译（`app/logging/GovLoggingTest:314`、`app/time/Z7RemittanceBridgeTest:180`、`app/time/GovAdminSalaryBudgetZ6Test:725,962`、`app/household/GovernmentServiceLaborBridgeZ6Test:272`）；**2 参形状（offices, remittances）已不存在** ⇒ 若有测试用它需改 5 参（本批只在新护栏里用到）。★ `GovRoundTripTest` 已同批扩到 5 组件（§12.3 例外）。
+- **`RegionDeleteGuard` 从 `sd.guard` 搬到 `gov.guard`** ⇒ `sd/guard/RegionDeleteGuardTest` import 断；★ 且它的 `name()` 串改为 `"gov.region-delete"` ⇒ 该测试 `:22 nameIsStable` **断言红**（处置：改新契约）。
+- **`Army` 的 deprecated 4 参 `NationId` 兼容构造**整条删除（§一.11；留着 = `sd → gov` 被禁边）⇒ 用它建夹具的测试编译断（约 10 个文件：`app/access/{ScopeFixtures,GovScopeTest,DecisionMakerScopeEndToEndTest}` · `app/decision/{RealLlmUnitDecisionLoopTest,RunDecisionEndToEndTest,DecisionAgentRunnerTest,ResetConversationEndToEndTest}` · `app/tools/write/{RejectDirectiveToolTest,AdjudicateTickToolTest,DiplomaticWriteToolsTest}` · `app/gui/SdRunDecisionApiTest` · `sd/testing/SdFixtures:326` · `sd/model/SdModelTest:221`）⇒ 处置：夹具改传 `Optional.empty()`（canonical 形态）。
+- **`Affiliation.Nation` 的载荷由 `NationId` 换成 `String`** ⇒ 测试里 `new Affiliation.Nation(new NationId(...))` 一类构造（36 处）编译断；`SdPayloads` 的线格式随之变化（`{"nationId":{"value":…}}` → `{"nationId":"…"}`）。
+
+**B. 新增断言红（旧命令串 / 工具名，非编译断）**
+`app/tools/SimosToolsTest`（11 处）· `app/McpCoverageTest`（10）· `app/tools/write/DiplomaticWriteToolsTest`（5）· `sd/spi/SetDiplomaticRelationHandlerTest`（3）· `sd/spi/RecordDiplomaticEventHandlerTest`（3）· `app/gui/SdDecisionMakerApiTest`（3）· `app/gui/SdDecisionScopeApiTest`（2）· `app/gui/SdDecisionDocsApiTest`（2）· `app/access/DecisionFaceGolden`（2）· `sd/spi/CreateNationHandlerTest`（1）· `sd/spi/CreateArmyHandlerTest`（1）· `app/tools/write/AdjudicateTickToolTest`（1）· `app/gui/SdDirectivesApiTest`（1）· `app/McpServerTest`（1）· `app/McpPortTopologyTest`（1）。
+★ 附带一类：**决策人窄工具名**由 `sd.SetDiplomaticRelation` / `sd.RecordDiplomaticEvent` 变为 `gov.*` ⇒ 夹具里 `allowedTools` 写旧名的用例（`DiplomaticWriteToolsTest` 等）在交集里**失去该工具**（fail-closed，不是提权）。
+★ 计数表（catalog 143 / 66 / 97 / 142-143 等）**本批一处未变**（4 条改名不改数）⇒ 3b-1/3b-2 台账里的那些计数红点**不受本批影响**。
+
+**C. 旧命令串的"未注册 ⇒ Rejected"行为（本批未运行期实测）**
+静态：4 条旧串在 `simos-*/src/main` 已 **0 命中**（`evidence/literal-scan.txt`）；`CommandBus` 对未注册类型走 `未注册的命令类型: …` 的 Rejected 分支（不留 revision）。⇒ **收尾期补一条端到端负向用例**（旧 `sd.CreateNation` ⇒ Rejected 且 head 不变；`gov.CreateNation` ⇒ 落盘）。
+
+**D. 本批新增行为尚无测试（收尾期按规划 §18.2 的判据补）**
+① `Affiliation.Nation` 的不透明引用：**读不到归属 ⇒ deny-all**（`NationScope` 四命名空间 `none()`）的负向用例；
+② `NationAffiliations.resolve` 的裁剪（解析不了 / 国家不存在的引用被丢弃）；
+③ `gov.DeleteNation` 经 `NationAffiliationLookup` 端口的"决策人绑定"守卫（端口在 gov、实现在 app）；
+④ `gov.*` 四条命令的落盘与 `GovChangeSet` 的外交三组件（正向）；
+⑤ `RegionDeleteGuard` 迁 gov 后的 `name()` 与真值表；
+⑥ 工具面资源命名空间仍写 `sd` 的债（见下 E）。
+
+**E. 已知债（如实记，本批**有意**未做）**
+1. **工具面的资源声明仍写 `sd` 命名空间**（`SdCreateNationTool` 等的 `SD_NAMESPACE_WRITE` / `SD_READ` / `decisionWriteResources`）：新增 `GOV_NAMESPACE` 要动 **`simos-ga-spi/**`（本批禁碰）** ⇒ 留给批次 5（gov 命令面）。运行时影响为零（GM 对 sd unlimited；DM 侧声明与迁移前逐字相同），但"资源面正名"未做。
+2. **`GovPayloads` 是模块内第三份载荷解析**（sd/ga/gov 各一份）：本仓既有形制即"每模块一份 `XxxPayloads`"，本批按同形制落最小子集；若要收口，属"线格式一处声明"的另一次决定。
+3. **javadoc 债 1 处（本批写权外）**：`simos-social/src/main/java/io/mosire/simos/social/spi/CreateCityHandler.java:34` 仍以 `sd.CreateNation` 作对比（**纯注释、零行为**）。
+4. **`SdSnapshots.map(...)` 成了死代码**（唯一调用者 `CreateNationHandler` 搬走）：本批**保留**（删它会再增加若干条测试编译断）；随 sd 3d/3e 退役一起删。
+5. **`gov.DeleteNation` 的 `targetPaths` 仍走 `ResourcePaths.sd("nation", …)`**：它返回**不含命名空间**的路径，命名空间由 `CommandTargets` 默认实现从命令类型第一段取 ⇒ 实际是 `gov:nation/<id>`（行为正确）；util 侧没有 `gov(...)` 助手，本批文件所有权只允许往 `util/spi` 放 `DecisionMakerId`。

@@ -7,9 +7,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
-import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Action;
 import io.mosire.simos.sd.model.Affiliation;
@@ -35,6 +33,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.log.LogOrigin;
 import io.mosire.simos.util.spi.CommandTarget;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -302,7 +301,10 @@ public final class SdPayloads {
     String kind = requireText(value, "kind");
     String id = requireText(value, "id");
     return switch (kind) {
-      case "nation" -> new Affiliation.Nation(NationId.parse(id));
+      // ★ 2026-10-12 批次 3c：Nation 支的载荷是**不透明引用**（NationId 已随外交搬进 simos-gov，sd 不得依赖 gov）
+      //   ⇒ 这里不再 NationId.parse，只把串交给 Affiliation.Nation（它判非空白）；解释与裁定在 gov 的
+      //   NationAffiliations。形状（{"kind":"nation","id":"…"}）与空白拒因一字未改。
+      case "nation" -> new Affiliation.Nation(id);
       case "army" -> new Affiliation.Army(ArmyId.parse(id));
       case "gov" -> new Affiliation.Gov(UnitId.parse(id));
       default ->

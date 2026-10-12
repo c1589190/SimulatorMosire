@@ -3,13 +3,14 @@ package io.mosire.simos.app.access;
 import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -56,13 +57,18 @@ public final class NationScope implements DecisionScopeFunction {
     Objects.requireNonNull(dm, "dm");
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(mapId, "mapId");
-    if (!(dm.affiliation() instanceof Affiliation.Nation nation)) {
+    if (!(dm.affiliation() instanceof Affiliation.Nation)) {
       throw new IllegalArgumentException(
           "NationScope 只服务 Affiliation.Nation，收到 "
               + dm.affiliation().getClass().getName()
               + "（分派由 DecisionScopeFunctions 负责）");
     }
-    String nationTag = NationTag.tagFor(nation.nationId());
+    // ★★ 2026-10-12 批次 3c：归属的**裁定方是 gov**（决策人记录里只有不透明引用）——读不到 ⇒ deny-all（见类注）。
+    Optional<NationId> ownNation = AppNationAffiliations.nationOf(dm.id(), state);
+    if (ownNation.isEmpty()) {
+      return denyAll();
+    }
+    String nationTag = NationTag.tagFor(ownNation.get());
     GameMap map = ToolSupport.gameMap(state);
 
     Set<String> regionPrefixes = new TreeSet<>(); // ★ 有序：范围内容与区域迭代序无关（Set.copyOf 不保序）
@@ -114,6 +120,19 @@ public final class NationScope implements DecisionScopeFunction {
             ToolSupport.UNIT_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(unitPrefixes))
         .withNamespace(
             ToolSupport.SOCIAL_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(socialPrefixes))
+        .withNamespace(ToolSupport.ACTOR_NAMESPACE, ResourceScope.none());
+  }
+
+  /**
+   * ★★ <b>deny-all 的唯一写法</b>（"读不到归属"与"本国一个区域都没有"走同一条路）：四个命名空间全部 {@link ResourceScope#none()}。
+   *
+   * <p>★ 为什么不是"空 {@code ResourceScopeMap}"或"少配几个命名空间"：那是"本层不表态"，会回落到工具缺省策略 ⇒ <b>静默放宽</b> （spec §5.2
+   * 第 3 条）；而 {@code none()} 是明确的"你什么都够不着"。
+   */
+  private static ResourceScopeMap denyAll() {
+    return ResourceScopeMap.of(ToolSupport.MAP_NAMESPACE, ResourceScope.none())
+        .withNamespace(ToolSupport.UNIT_NAMESPACE, ResourceScope.none())
+        .withNamespace(ToolSupport.SOCIAL_NAMESPACE, ResourceScope.none())
         .withNamespace(ToolSupport.ACTOR_NAMESPACE, ResourceScope.none());
   }
 }

@@ -1,11 +1,11 @@
 package io.mosire.simos.app.access;
 
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionIndex;
-import io.mosire.simos.sd.spi.NationTag;
 import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
@@ -18,7 +18,9 @@ import java.util.TreeSet;
  * 「取第一个」「假定唯一」是错的。**这是本类最容易被写歪的地方**， 故 {@code HexOwnerTest} 有一条专门的多归属用例。
  *
  * <p>★ **返回国家 id，不是 tag 本身**（铁律 1：地址是定位方式，ID 是身份）：{@code nation:FRA} → {@code "FRA"}， 于是它与 {@code
- * sd:nation/FRA} 那类资源路径、以及 {@code Affiliation.Nation} 里的 id 是**同一套身份**。
+ * gov:nation/<id>} 那类资源路径、以及 {@code Affiliation.Nation} 里的那个引用是**同一套身份**（★ 2026-10-12 批次 3c： {@code
+ * NationId} 随外交搬进 {@code simos-gov}，{@code Affiliation.Nation} 的载荷<b>收窄为不透明串</b>——解释方是 gov 的 {@code
+ * NationAffiliations}；{@code sd:nation.<id>} 地址族已按用户裁定直接扔）。
  *
  * <p>★ **不按"区域是否可见"过滤**（这是 J6 能不能成立的前提）：军队决策人的范围是**逐格**前缀（{@code ArmyScope}）， 它**没有任何区域级前缀** ⇒
  * 若在这里按 {@link ToolSupport#regionVisible} 过滤，军队决策人看到的每个格都会是"无归属"， J6

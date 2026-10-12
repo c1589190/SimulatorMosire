@@ -1,9 +1,5 @@
 package io.mosire.simos.ga.tools;
 
-import io.mosire.simos.sd.id.DiplomaticEventId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.DiplomaticEvent;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Map;
@@ -20,17 +16,36 @@ import java.util.Map;
  *
  * <p>★ <b>入参用 util 类型 + 本模块看得见的 sd 类型</b>：需要 unit 快照的视图（如 {@code combats}）收 {@link SimulationState}
  * 整体，由实现自己去取它要的切片 —— 这样接口不必认识 unit。
+ *
+ * <p>★★ <b>2026-10-12 批次 3c：两条外交视图的入参由"领域类型"改为"整个 state + 不透明过滤串"</b>——外交三表与 {@code NationId} 搬进
+ * {@code simos-gov}，而 {@code simos-ga} <b>不得依赖 {@code gov}</b>（enforcer 禁列）⇒ 接口里不能再出现 {@code
+ * SdState}/{@code NationId}/{@code DiplomaticEvent} 这些类型。★ 于是：
+ *
+ * <ul>
+ *   <li>{@code diplomaticRelations} 收 {@code state} + {@code nation} <b>不透明串</b>（{@code null} =
+ *       不过滤）——解析成 {@code NationId} 与读 gov 切片都在实现（app）里；
+ *   <li>{@code diplomaticEvents} 同样收 {@code state} + 过滤参数（{@code tick}/{@code
+ *       participant}）——<b>筛序与排序搬进 实现</b>（那里才是"形状只有一处"的地方），ga 侧只做参数形状校验。
+ * </ul>
+ *
+ * ★ 对外返回的视图字节与迁入前<b>逐字相同</b>（实现仍是同一个 {@code ApiViews} 函数）。
  */
 public interface GaToolViews {
 
   /** 交战记录清单（{@code ApiViews.combats}：同时读 sd 与 unit 两片，故收整个 state）。 */
   List<Map<String, Object>> combats(SimulationState state);
 
-  /** 外交关系边（{@code ApiViews.diplomaticRelations}）；{@code nation} 为 null = 不过滤。 */
-  List<Map<String, Object>> diplomaticRelations(SdState sd, NationId nation);
+  /**
+   * 外交关系边（{@code ApiViews.diplomaticRelations}）：读 gov 切片的关系边表，按 {@code nation}（不透明国家引用；{@code null}
+   * = 不过滤，非空白串由实现解析）过滤。
+   */
+  List<Map<String, Object>> diplomaticRelations(SimulationState state, String nation);
 
-  /** 外交事件（{@code ApiViews.diplomaticEvents}）；入参已是筛过的有序表（顺序原样保留）。 */
-  List<Map<String, Object>> diplomaticEvents(Map<DiplomaticEventId, DiplomaticEvent> events);
+  /**
+   * 外交事件（{@code ApiViews.diplomaticEvents}）：读 gov 切片的事件表，按 {@code tick}（{@code null} = 不限）与 {@code
+   * participant}（不透明国家引用；{@code null} = 不限）过滤；**有序输出**（按事件 id）。
+   */
+  List<Map<String, Object>> diplomaticEvents(SimulationState state, Long tick, String participant);
 
   /** GM 工具使用记录（{@code ApiViews.gmToolUsage}；入参是"最新在前"的有界快照）。 */
   List<Map<String, Object>> gmToolUsage(List<GmToolUsage.Entry> entries);

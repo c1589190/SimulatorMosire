@@ -1,26 +1,26 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.gov.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.gov.GovLog;
+import io.mosire.simos.gov.GovLogSource;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.change.GovChangeSet;
+import io.mosire.simos.gov.nation.DiplomaticEvent;
+import io.mosire.simos.gov.nation.DiplomaticEventId;
+import io.mosire.simos.gov.nation.DiplomaticRelation;
+import io.mosire.simos.gov.nation.DiplomaticRelationKey;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationAffiliations;
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
-import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.DiplomaticEventId;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DiplomaticEvent;
-import io.mosire.simos.sd.model.DiplomaticRelation;
-import io.mosire.simos.sd.model.DiplomaticRelationKey;
-import io.mosire.simos.sd.model.Nation;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -31,7 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * ★★ {@code sd.DeleteNation}（P1.2 后端行政）：删除国家实体，<b>严格引用检查、默认不静默级联</b>。
+ * ★★ {@code gov.DeleteNation}（P1.2 后端行政）：删除国家实体，<b>严格引用检查、默认不静默级联</b>。
  *
  * <pre>{@code
  * {"nationId":"西陵"}
@@ -42,38 +42,45 @@ import java.util.Objects;
  * <p>★★ <b>默认拒绝的硬引用（逐类具名报数）</b>：
  *
  * <ol>
- *   <li>{@link DecisionMaker} 的 {@link Affiliation.Nation} 仍指向该国家 ⇒ 先 {@code
- *       ga.DeleteDecisionMaker}（仅当其名下没有历史 Directive 时可用）或另行处理；★ 若该决策人已被 Directive 引用，当前命令面没有"删历史
- *       Directive"的入口，完整清理路径缺失，见 P1.2 报告；
+ *   <li><b>决策人的国家归属</b>仍指向该国家 ⇒ 先 {@code ga.DeleteDecisionMaker}（仅当其名下没有历史 Directive 时可用）或另行处理；★
+ *       若该决策人已被 Directive 引用，当前命令面没有"删历史 Directive"的入口，完整清理路径缺失，见 P1.2 报告。 ★ <b>本批（3c）起这条判据读 gov
+ *       自己的归属裁定</b>：{@link NationAffiliations#resolve}（输入经 {@link NationAffiliationLookup}
+ *       端口取自决策人记录， 裁定"这个国家存在吗"用本站的 {@code nations}）—— 不再是"扫 sd 切片里的决策人表"；
  *   <li>外交关系边 {@link DiplomaticRelation} 的 from/to 仍指向该国家 ⇒ 可显式给 {@code
  *       clearDiplomaticReferences=true} 随国删除，或先另行清理；
  *   <li>地图上仍有 {@code nation:&lt;id&gt;} tag 的 Region ⇒ 先 {@code map.UpdateRegion} 把 tag 改掉/清掉
- *       （清理路径在 map 自己的命令面；sd 只读 map 做检查，不反向写 map）。
+ *       （清理路径在 map 自己的命令面；gov 只读 map 做检查，不反向写 map）。
  * </ol>
  *
  * <p>★★ <b>不作为硬引用的两类（如实记录，不假装已清）</b>：{@code SdInfoEntry.affiliations/tags} 是感知层归属标签（{@code info}
- * 覆盖层本批起住 {@code GaState}，本命令只读决策人表、不碰它）、 {@link DiplomaticEvent#participants()} 是历史事件记录；它们都不是
- * {@code SdState} 构造期强制的引用。删国后这些历史条目 <b>保留原文</b>（不篡改留痕），读侧按既有 fail-closed
- * 口径处理"指向不存在国家"的标签。若要连历史事件一起清，显式给 {@code clearDiplomaticReferences=true}（连关系边与外交事件一并删）。
+ * 覆盖层住 {@code GaState}，本命令只读归属裁定、不碰它）、 {@link DiplomaticEvent#participants()} 是历史事件记录；它们都不是 {@code
+ * GovState} 构造期强制的引用。删国后这些历史条目 <b>保留原文</b>（不篡改留痕），读侧按既有 fail-closed 口径处理"指向不存在国家"的标签。若要连历史事件一起清，显式给
+ * {@code clearDiplomaticReferences=true}（连关系边与外交事件一并删）。
  *
  * <p>★ <b>GM-only</b>：删国是行政原语，不开放给决策令直调。
+ *
+ * <p>★★ <b>2026-10-12 批次 3c：本类自 {@code simos-sd/sd.spi} 迁入 {@code simos-gov/spi}，命令名 {@code
+ * sd.DeleteNation} → {@code gov.DeleteNation}</b>（外交是 gov 的事）。语义/载荷/拒绝文案一字未改，变的只有：①落点（{@code
+ * GovChangeSet} 的外交三表，含 {@code nations}）；②载荷与切片助手改本模块；③日志门面；④第 1 条硬引用的读法（见上：决策人表改经 gov 侧端口，因为 gov 禁
+ * {@code sd}/{@code ga}）。
  */
 public final class DeleteNationHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
-  public static final String TYPE = "sd.DeleteNation";
+  public static final String TYPE = "gov.DeleteNation";
 
   /**
-   * ★★ <b>2026-10-12 批次 3b-2：决策人表搬进 ga ⇒ 经注入的只读口取它</b>（{@code simos-sd} 不得依赖 {@code simos-ga}，成环；实现
-   * {@code GaDecisionTablesLookup} 在 ga、组合根 {@code Shell} 接线）。
+   * ★★ <b>nation 归属的只读输入口</b>（<b>端口在 gov、实现在 app、{@code Shell} 注入</b>）：原 sd 侧用的是 {@code
+   * DecisionTablesLookup}（端口在 sd、实现在 ga），而 gov <b>既禁 sd 也禁 ga</b> ⇒ 本批改为 gov 自己的窄口，只问一件事：
+   * "谁自称归属哪个国家"（不透明引用原文）。解释与裁定都在 {@link NationAffiliations#resolve}。
    *
-   * <p>★ 本命令（{@code sd.DeleteNation}）自己<b>仍住 sd</b>（{@code nations} 表不搬）⇒ 它只是"跨切片读一次决策人表"， 与 {@code
+   * <p>★ 本命令（{@code gov.DeleteNation}）与 {@code nations} 表同在 gov 切片 ⇒ 它只是"跨切片读一次决策人表"，与 {@code
    * sd.CreateArmy} 读 unit 切片同款（铁律 3：只读，不改写别的切片）。
    */
-  private final DecisionTablesLookup decisionTables;
+  private final NationAffiliationLookup nationAffiliations;
 
-  public DeleteNationHandler(DecisionTablesLookup decisionTables) {
-    this.decisionTables = Objects.requireNonNull(decisionTables, "decisionTables");
+  public DeleteNationHandler(NationAffiliationLookup nationAffiliations) {
+    this.nationAffiliations = Objects.requireNonNull(nationAffiliations, "nationAffiliations");
   }
 
   @Override
@@ -83,8 +90,11 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
-    JsonNode payload = SdPayloads.parse(payloadJson);
-    NationId id = NationId.parse(SdPayloads.requireText(payload, "nationId"));
+    JsonNode payload = GovPayloads.parse(payloadJson);
+    NationId id = NationId.parse(GovPayloads.requireText(payload, "nationId"));
+    // ★ 路径不含命名空间：{@code CommandTargets} 的默认实现按**命令类型第一段**取命名空间 ⇒ 本命令是
+    //   `gov:nation/<id>`（改名前是 `sd:nation/<id>`）。{@link ResourcePaths#sd} 只是"<kind>/<id>"这条路径语法的
+    //   助手（util 侧不含任何领域命名空间，也不许我在这里加一个 —— 见批次 3c 的文件所有权）。
     return List.of(ResourcePaths.sd("nation", id.value()));
   }
 
@@ -92,11 +102,11 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GovState base = GovSnapshots.of(state);
     String nationForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
-      NationId id = NationId.parse(SdPayloads.requireText(payload, "nationId"));
+      JsonNode payload = GovPayloads.parse(payloadJson);
+      NationId id = NationId.parse(GovPayloads.requireText(payload, "nationId"));
       nationForLog = id.value();
       boolean clearDiplomatic = optionalBoolean(payload, "clearDiplomaticReferences", false);
       if (!base.nations().containsKey(id)) {
@@ -104,7 +114,9 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
       }
 
       List<String> problems = new ArrayList<>();
-      List<DecisionMakerId> decisionMakers = decisionMakersOf(state, id);
+      NationAffiliations affiliations =
+          NationAffiliations.resolve(nationAffiliations.nationClaims(state), base.nations());
+      List<DecisionMakerId> decisionMakers = decisionMakersOf(affiliations, id);
       if (!decisionMakers.isEmpty()) {
         problems.add(
             "决策人绑定 "
@@ -150,7 +162,7 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
 
       Map<NationId, Nation> nations = new LinkedHashMap<>(base.nations());
       nations.remove(id);
-      SdState next = base.withNations(nations);
+      GovState next = base.withNations(nations);
       if (clearDiplomatic) {
         Map<DiplomaticRelationKey, DiplomaticRelation> remainingRelations =
             new LinkedHashMap<>(base.diplomaticRelations());
@@ -171,11 +183,11 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
         }
         next = next.withDiplomaticEvents(remainingEvents);
       }
-      EventLog.channel(SdLog.nation())
+      EventLog.channel(GovLog.nation())
           .info(
               LogEvent.of(
                   "SD_NATION_DELETED",
-                  SdLogSource.SD_NATION,
+                  GovLogSource.GOV_NATION,
                   "id",
                   id.value(),
                   "clearDiplomatic",
@@ -186,7 +198,7 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
                   clearDiplomatic ? events.size() : 0,
                   "nations",
                   nations.size()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, next));
+      return new HandlerOutcome.Applied(GovChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "nation", nationForLog);
     }
@@ -194,27 +206,31 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GovPayloads} 的日志安全截断，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
-        SdLog.nation(), SdLogSource.SD_NATION, "SD_DELETE_NATION_REJECTED", reason, idKeyValues);
+    GovPayloads.logRejected(
+        GovLog.nation(), GovLogSource.GOV_NATION, "SD_DELETE_NATION_REJECTED", reason, idKeyValues);
     return new HandlerOutcome.Rejected(reason);
   }
 
-  private List<DecisionMakerId> decisionMakersOf(SimulationState state, NationId id) {
+  /**
+   * 归属该国家的决策人 id（升序）——判据来自 {@link NationAffiliations}（gov 的裁定），不再是"扫决策人表里的 {@code
+   * Affiliation.Nation}"：sd 侧的 {@code Affiliation} 类型 gov 不认识（gov 禁 sd），端口交过来的只是"自称"的原文。
+   */
+  private static List<DecisionMakerId> decisionMakersOf(
+      NationAffiliations affiliations, NationId id) {
     List<DecisionMakerId> ids = new ArrayList<>();
-    for (DecisionMaker maker : decisionTables.decisionMakers(state).values()) {
-      if (maker.affiliation() instanceof Affiliation.Nation nation
-          && nation.nationId().equals(id)) {
-        ids.add(maker.id());
+    for (Map.Entry<DecisionMakerId, NationId> entry : affiliations.byDecisionMaker().entrySet()) {
+      if (id.equals(entry.getValue())) {
+        ids.add(entry.getKey());
       }
     }
     ids.sort((a, b) -> a.value().compareTo(b.value()));
     return List.copyOf(ids);
   }
 
-  private static List<String> diplomaticRelationKeys(SdState base, NationId id) {
+  private static List<String> diplomaticRelationKeys(GovState base, NationId id) {
     List<String> ids = new ArrayList<>();
     for (DiplomaticRelationKey key : base.diplomaticRelations().keySet()) {
       if (key.from().equals(id) || key.to().equals(id)) {
@@ -225,7 +241,7 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
     return List.copyOf(ids);
   }
 
-  private static List<DiplomaticEventId> diplomaticEvents(SdState base, NationId id) {
+  private static List<DiplomaticEventId> diplomaticEvents(GovState base, NationId id) {
     List<DiplomaticEventId> ids = new ArrayList<>();
     for (Map.Entry<DiplomaticEventId, DiplomaticEvent> entry : base.diplomaticEvents().entrySet()) {
       if (entry.getValue().participants().contains(id)) {
@@ -238,7 +254,7 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
 
   /** map 里 tag 逐字等于 {@code nation:<id>} 的区域（只读 map；写入由 map 自己的命令负责）。 */
   private static List<RegionId> nationTaggedRegions(SimulationState state, NationId id) {
-    GameMap map = SdSnapshots.map(state);
+    GameMap map = GovSnapshots.map(state);
     String expected = NationTag.tagFor(id);
     List<RegionId> ids = new ArrayList<>();
     for (Region region : map.regions().values()) {

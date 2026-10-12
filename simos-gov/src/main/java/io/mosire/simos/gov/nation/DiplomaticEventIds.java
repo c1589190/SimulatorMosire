@@ -1,6 +1,4 @@
-package io.mosire.simos.sd.model;
-
-import io.mosire.simos.sd.id.DiplomaticEventId;
+package io.mosire.simos.gov.nation;
 
 /**
  * {@link DiplomaticEvent} 的 ID 合成（缺省 id 时的**唯一拼写点**）：形制 {@code diplomatic-event:<tick>#<该 tick

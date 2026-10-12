@@ -2,11 +2,13 @@ package io.mosire.simos.app.sd;
 
 import io.mosire.simos.app.llm.LlmProviderResolver;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.sd.adjudication.Breakpoints;
 import io.mosire.simos.sd.adjudication.DecisionAdjudicator;
 import io.mosire.simos.sd.adjudication.Judgement;
 import io.mosire.simos.sd.id.CombatId;
-import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
@@ -89,7 +91,9 @@ public final class DecisionAdjudicationService {
     Objects.requireNonNull(branch, "branch");
     Objects.requireNonNull(baseRevision, "baseRevision");
     Objects.requireNonNull(maker, "maker");
-    SdState sd = sdOf(core.replay(new StateRef(branch, baseRevision)));
+    // ★ 2026-10-12 批次 3c：这一份 replay 现在要喂两片——sd（战斗）与 gov（国家表，见 decisionBrief）。
+    SimulationState state = core.replay(new StateRef(branch, baseRevision));
+    SdState sd = sdOf(state);
     DecisionAdjudicator adjudicator = resolver.adjudicatorFor(maker);
     AdjudicatorRunner runner = new AdjudicatorRunner(core, adjudicator);
     Optional<Combat> subject = firstCombat(sd);
@@ -101,7 +105,7 @@ public final class DecisionAdjudicationService {
           baseRevision,
           List.of(Breakpoints.D2),
           Map.of(Breakpoints.D2, decisionSubject),
-          Map.of(Breakpoints.D2, decisionBrief(sd, maker)));
+          Map.of(Breakpoints.D2, decisionBrief(sd, govOf(state), maker)));
     }
     Combat combat = subject.get();
     String canonical = "sd:combat." + combat.id().value();
@@ -118,14 +122,14 @@ public final class DecisionAdjudicationService {
    * 决策人的**事实性**简报（D2，无战斗时用）：只摆该决策人自己与世界**已有**的字段（归属 / 允许工具 / 决策周期 / 已存在的战斗与国家
    * 清单），战斗/情报作**输入**摆出来，**不发明候选**。guidance 只复述 schema 的字段要求。
    */
-  private static String decisionBrief(SdState sd, DecisionMaker maker) {
+  private static String decisionBrief(SdState sd, GovState gov, DecisionMaker maker) {
     Map<String, Object> brief = new LinkedHashMap<>();
     brief.put("decisionMakerId", maker.id().value());
     brief.put("affiliation", affiliationView(maker));
     brief.put("allowedTools", new ArrayList<>(maker.allowedTools()));
     brief.put("decisionCadenceTicks", maker.decisionCadenceTicks());
     brief.put("combats", sortedCombatIds(sd));
-    brief.put("nations", sortedNationIds(sd));
+    brief.put("nations", sortedNationIds(gov));
     brief.put(
         "guidance",
         "本 tick 无战斗对象；战斗/情报只是判决的输入，不是前提。按 schema 出令：directiveId 自拟、intentText 写决心、commands 是数组（可为空）、rationaleText 写理由；无法裁决则弃权。");
@@ -141,7 +145,7 @@ public final class DecisionAdjudicationService {
     switch (maker.affiliation()) {
       case Affiliation.Nation nation -> {
         view.put("kind", "nation");
-        view.put("id", nation.nationId().value());
+        view.put("id", nation.nationId());
       }
       case Affiliation.Army army -> {
         view.put("kind", "army");
@@ -164,9 +168,10 @@ public final class DecisionAdjudicationService {
     return ids;
   }
 
-  private static List<String> sortedNationIds(SdState sd) {
+  /** ★ 2026-10-12 批次 3c：国家表搬进 gov 切片（外交是 gov 的事）⇒ 简报的国家清单从这里取。 */
+  private static List<String> sortedNationIds(GovState gov) {
     List<String> ids = new ArrayList<>();
-    for (NationId nationId : sd.nations().keySet()) {
+    for (NationId nationId : gov.nations().keySet()) {
       ids.add(nationId.value());
     }
     Collections.sort(ids);
@@ -224,6 +229,17 @@ public final class DecisionAdjudicationService {
       return Optional.empty();
     }
     return Optional.of(sd.combats().get(new CombatId(ids.get(0))));
+  }
+
+  /** ★ 2026-10-12 批次 3c：gov 切片（国家表的新家）；缺切片/类型不对 = 装配故障，当场炸。 */
+  private static GovState govOf(SimulationState state) {
+    Snapshot snapshot =
+        state.module("gov").orElseThrow(() -> new IllegalStateException("state 里没有 gov 切片（装配故障）"));
+    if (!(snapshot instanceof GovSnapshot govSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 gov 切片不是 GovSnapshot: " + snapshot.getClass().getName());
+    }
+    return govSnapshot.state();
   }
 
   private static SdState sdOf(SimulationState state) {

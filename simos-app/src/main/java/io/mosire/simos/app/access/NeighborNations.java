@@ -1,11 +1,11 @@
 package io.mosire.simos.app.access;
 
+import io.mosire.simos.gov.nation.NationId;
+import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionIndex;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.spi.NationTag;
 import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;

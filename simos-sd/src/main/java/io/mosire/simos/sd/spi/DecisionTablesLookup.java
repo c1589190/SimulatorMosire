@@ -1,9 +1,9 @@
 package io.mosire.simos.sd.spi;
 
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.SdInfoEntry;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -15,8 +15,8 @@ import java.util.Map;
  *
  * <p>★★ <b>为什么需要它</b>：{@code directives}（3b-1）、{@code decisionMakers} 与 {@code info}（3b-2）三张表搬进
  * {@code simos-ga}（{@code GaState} 的第 3/5/6 个组件），而 sd 侧仍有四处要碰它们：{@code SdResolver} 的 {@code
- * sd:directive.<id>} 与 {@code sd:decision-maker.<id>} 存在性判据、{@code sd.DeleteNation} 的"仍有决策人挂在这个 国家上
- * ⇒ 具名拒"守卫、{@code SdTimeParticipant} 的 {@code Action.PutInfo}（延期效果写 INFO 覆盖层）。{@code simos-sd}
+ * sd:directive.<id>} 与 {@code sd:decision-maker.<id>} 存在性判据、{@code gov.DeleteNation} 的"仍有决策人挂在这个
+ * 国家上 ⇒ 具名拒"守卫、{@code SdTimeParticipant} 的 {@code Action.PutInfo}（延期效果写 INFO 覆盖层）。{@code simos-sd}
  * <b>不得</b>依赖 {@code simos-ga}（那会与既有的 {@code ga → sd} 成环，模块边界 enforcer 建图期直接拒）⇒ 读写口由
  * <b>装配注入</b>：接口在 sd（本类，消费方一侧）、实现在 ga（{@code GaDecisionTablesLookup}，{@code ga → sd} 是既有方向）、 组合根
  * {@code Shell} 接线。形制与 {@code DecisionToolCaller} / {@code ToolImages} 同款（"接口在消费方、实现在另一侧、装配期注入"）。

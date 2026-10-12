@@ -1,7 +1,7 @@
 package io.mosire.simos.sd.model;
 
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;

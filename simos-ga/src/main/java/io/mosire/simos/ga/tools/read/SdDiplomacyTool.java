@@ -12,8 +12,6 @@ import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.ga.tools.GaToolViews;
-import io.mosire.simos.sd.id.NationId;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,15 +21,14 @@ import java.util.Set;
 /**
  * {@code simos.sd.diplomacy}（D5 / D-003 / R6）：**外交关系边只读面**。
  *
- * <p>每个 Nation 对其他 Nation 一条**有向边**（{@code from → to}），内容 = 自然语言（含谈判状态）。形状复用 {@link
- * ApiViews#diplomaticRelations(java.util.Map, NationId)}——与 GUI / 后续读口同源，本类只装配 {@code
- * {"relations":[…]}}。
+ * <p>每个 Nation 对其他 Nation 一条**有向边**（{@code from → to}），内容 = 自然语言（含谈判状态）。形状复用 {@code
+ * ApiViews.diplomaticRelations}——与 GUI / 后续读口同源，本类只装配 {@code {"relations":[…]}}。
  *
  * <p>★ **四桶共享读**（不标 {@code GmOnlyRead}）：R6 明写"关系文本默认四桶共享读"；关系文本是**世界级自然语言**，不含视野数据 ⇒
  * 不做逐格过滤，也**不**因此给中央 DM 任何地图/单位视野（D-002）。
  *
  * <p>★ <b>过滤</b>：{@code nation?} 只看 from 或 to 等于该 Nation 的边；缺省 = 全部。过滤参数只按形状解析（未知 Nation ⇒
- * 空结果），不做存在性查询——存在性约束是写命令的语义（{@code sd.SetDiplomaticRelation}）。
+ * 空结果），不做存在性查询——存在性约束是写命令的语义（{@code gov.SetDiplomaticRelation}）。
  */
 public final class SdDiplomacyTool implements SimosTool {
 
@@ -78,12 +75,14 @@ public final class SdDiplomacyTool implements SimosTool {
   public ToolResult execute(ToolContext context) {
     try {
       Map<String, Object> args = context.arguments();
-      String rawNation = ToolSchema.optionalText(args, "nation", null);
-      NationId nation = rawNation == null ? null : NationId.parse(rawNation);
+      String nation = ToolSchema.optionalText(args, "nation", null);
+      if (nation != null && nation.isBlank()) {
+        // ★ 与迁移前逐字同口径：NationId.parse 对空白串抛 IllegalArgumentException ⇒ 同一句 BAD_REQUEST。
+        throw new IllegalArgumentException("NationId 不得为空白: " + nation);
+      }
       SimulationState state = GaToolReads.state(reads, args);
-      SdState sd = GaToolReads.sd(state);
       Map<String, Object> view = new LinkedHashMap<>();
-      view.put("relations", views.diplomaticRelations(sd, nation));
+      view.put("relations", views.diplomaticRelations(state, nation));
       return ToolResults.ok(view);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());

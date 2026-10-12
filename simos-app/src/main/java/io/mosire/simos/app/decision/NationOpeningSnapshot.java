@@ -4,6 +4,7 @@ import io.mosire.agentlib.llm.ContentPart;
 import io.mosire.agentlib.llm.LlmMessage;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
+import io.mosire.simos.app.access.AppNationAffiliations;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.render.ArtifactStore;
 import io.mosire.simos.app.render.RenderRequest;
@@ -11,6 +12,8 @@ import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.llm.LlmToolNames;
+import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -18,7 +21,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.tools.read.MapRenderTool;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
@@ -77,7 +79,7 @@ public final class NationOpeningSnapshot implements DecisionAgentRunner.OpeningS
               "day",
               state.meta().timestamp().tick(),
               "nation",
-              nation.nationId().value(),
+              nation.nationId(),
               "reason",
               "home-region-missing"));
       return Optional.empty();
@@ -95,7 +97,7 @@ public final class NationOpeningSnapshot implements DecisionAgentRunner.OpeningS
               List.of(
                   new ContentPart.Text(
                       "【开场快照】你的国土（"
-                          + nation.nationId().value()
+                          + nation.nationId()
                           + "）所在区域的当前视图：中心 ("
                           + center.q()
                           + ","
@@ -125,7 +127,15 @@ public final class NationOpeningSnapshot implements DecisionAgentRunner.OpeningS
 
   /** 该国家在**此刻的世界**里的首府区域（查无 ⇒ null，由调用方如实报原因）。 */
   private static Region homeRegionOf(Affiliation.Nation affiliation, SimulationState state) {
-    Nation nation = ToolSupport.sdState(state).nations().get(affiliation.nationId());
+    // ★ 2026-10-12 批次 3c：决策人的国家只是个不透明引用（sd 侧不认识 NationId）⇒ 先解释成 NationId
+    //   （解释不了 = 没有国家归属 ⇒ 返回 null，由调用方如实报原因），再读 **gov** 切片的国家表。
+    NationId nationId;
+    try {
+      nationId = NationId.parse(affiliation.nationId());
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+    Nation nation = AppNationAffiliations.nationOrNull(state, nationId);
     if (nation == null) {
       return null;
     }

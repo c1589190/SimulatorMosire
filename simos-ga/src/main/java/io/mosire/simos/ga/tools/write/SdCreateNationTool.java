@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.CreateNation} 窄工具（M3，spec §八.3）：**建国家**的唯一窄写面。
+ * {@code gov.CreateNation} 窄工具（M3，spec §八.3）：**建国家**的唯一窄写面。
  *
  * <p>★ **只在 GM 桶**（故运行时 MCP 口（= GM 组）也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
@@ -21,7 +21,7 @@ import java.util.Set;
  */
 public final class SdCreateNationTool extends AbstractNarrowWriteTool implements SimosTool {
 
-  public static final String NAME = "sd.CreateNation";
+  public static final String NAME = "gov.CreateNation";
 
   public SdCreateNationTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
@@ -39,7 +39,7 @@ public final class SdCreateNationTool extends AbstractNarrowWriteTool implements
 
   @Override
   public String description() {
-    return "建国家：固定 sd.CreateNation，载荷 {nationId, name, homeRegionId, adminBudgetPerTick}（四者全必填；★ homeRegionId 指向的区域必须**已带 `nation:` 前缀的 tag**，否则被拒——R13）";
+    return "建国家：固定 gov.CreateNation，载荷 {nationId, name, homeRegionId, adminBudgetPerTick}（四者全必填；★ homeRegionId 指向的区域必须**已带 `nation:` 前缀的 tag**，否则被拒——R13）";
   }
 
   @Override

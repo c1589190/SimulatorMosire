@@ -12,6 +12,9 @@ import io.mosire.simos.gov.GovLog;
 import io.mosire.simos.gov.GovLogSource;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.change.GovChangeSet;
+import io.mosire.simos.gov.nation.DiplomaticEventId;
+import io.mosire.simos.gov.nation.DiplomaticRelationKey;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
@@ -32,10 +35,12 @@ import org.slf4j.Logger;
  * io.mosire.simos.gov.GovSnapshot#namespace()} <b>同字面</b>——{@code SimulationState} 构造期校验"modules 的键
  * == snapshot.namespace()"，写歪当场抛（装配期那处有牙）。改一处必须同时改另一处。
  *
- * <p>★ <b>树里的自定义键有两个</b>：{@code UnitId}（{@code offices}/{@code remittanceStates} 两个顶层表的键）、 {@code
- * CommodityId} 与 {@code CurrencyId}（{@link io.mosire.simos.gov.GovOfficeState} 六张读数表的键）。三者都在
- * <b>嵌套位置</b>或顶层表上； 漏注册任一个，都会在<b>对应表非空</b>时于解码期炸（表空着时测不到——故往返夹具必须让读数表非空）。键反序列化器照裁定 16 在
- * <b>本模块</b>注册，不进共享基座。
+ * <p>★ <b>树里的自定义键有五个</b>：{@code UnitId}（{@code offices}/{@code remittanceStates} 两个顶层表的键）、 {@code
+ * CommodityId} 与 {@code CurrencyId}（{@link io.mosire.simos.gov.GovOfficeState} 六张读数表的键），以及
+ * <b>2026-10-12 批次 3c 随外交三表迁入的三个</b>——{@code NationId}（{@code nations} 的键）、{@code
+ * DiplomaticRelationKey}（{@code diplomaticRelations} 的复合键）、{@code DiplomaticEventId}（{@code
+ * diplomaticEvents} 的键）。它们都在 <b>顶层表</b>上； 漏注册任一个，都会在<b>对应表非空</b>时于解码期炸（表空着时测不到——故往返夹具必须让每张表非空）。
+ * 键反序列化器照裁定 16 在<b>本模块</b>注册，不进共享基座。
  *
  * <p>★★ 2026-10-12（追加裁定 12 §21.9 D-1）：P-T1e 追加的第四个键 {@code MarketOrderKind}（{@code
  * GovPortPolicy.currencyRules} 的内层键）已随政策表整段搬走 —— 它在 {@code EconomyCodec} 注册。
@@ -79,7 +84,9 @@ public final class GovCodec implements ModuleCodec, ModuleDiffer {
 
   /**
    * 键（反）序列化器：{@code UnitId}（{@code offices} / {@code remittanceStates} 两个顶层表的键）+ 两张嵌套读数表的键 {@code
-   * CommodityId} / {@code CurrencyId}。
+   * CommodityId} / {@code CurrencyId} + <b>本批（3c）随外交三表迁入的三个键</b>：{@code NationId}（国家表）、 {@code
+   * DiplomaticRelationKey}（外交边复合键）、{@code DiplomaticEventId}（外交事件表）。★ 后三个原住 {@code SdCodec}，本批
+   * <b>整段搬家而非复制</b>（唯一拼写点：一张表的键读侧只在一个模块注册）。
    *
    * <p>★★ 2026-10-12（追加裁定 12 §21.9 D-1）：原来还要注册第四个 —— P-T1e 的口岸币种规则内层键 {@code MarketOrderKind}
    * （读写两侧都注册）。政策搬进 economy 后，那张表随 {@code GovPortPolicy} 一起走了 ⇒ 本模块<b>不再认识</b> {@code
@@ -90,6 +97,10 @@ public final class GovCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(UnitId.class, keyDeserializer(UnitId::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
     module.addKeyDeserializer(CurrencyId.class, keyDeserializer(CurrencyId::parse));
+    module.addKeyDeserializer(NationId.class, keyDeserializer(NationId::parse));
+    module.addKeyDeserializer(
+        DiplomaticRelationKey.class, keyDeserializer(DiplomaticRelationKey::parse));
+    module.addKeyDeserializer(DiplomaticEventId.class, keyDeserializer(DiplomaticEventId::parse));
     return module;
   }
 
@@ -172,6 +183,12 @@ public final class GovCodec implements ModuleCodec, ModuleDiffer {
                   GovLogSource.GOV_CODEC,
                   "offices",
                   next.state().offices().size(),
+                  "nations",
+                  next.state().nations().size(),
+                  "diplomaticRelations",
+                  next.state().diplomaticRelations().size(),
+                  "diplomaticEvents",
+                  next.state().diplomaticEvents().size(),
                   "ref",
                   newMeta.ref()));
     }

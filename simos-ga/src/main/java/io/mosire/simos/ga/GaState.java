@@ -1,6 +1,5 @@
 package io.mosire.simos.ga;
 
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
@@ -14,6 +13,7 @@ import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.Verdict;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;

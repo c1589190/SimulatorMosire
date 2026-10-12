@@ -18,6 +18,8 @@ import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
@@ -954,6 +956,25 @@ public final class ToolSupport {
   /** economy 切片（R2a）：与 GUI 同一份提取（{@link ApiViews#economyData}），缺切片/类型不对 = 装配故障。 */
   public static EconomyData economyData(SimulationState state) {
     return ApiViews.economyData(state);
+  }
+
+  /**
+   * ★★ <b>gov 切片</b>（2026-10-12 批次 3c）：{@code nations} / {@code diplomaticRelations} / {@code
+   * diplomaticEvents} 三张表自 {@code sd} 搬进 {@code gov} ⇒ app 侧读它们改走本方法（国家归属的权限判据也走它）。
+   *
+   * <p>★ <b>缺切片/类型不对 = 装配故障，当场炸</b>（与 {@link #sdState} 同口径）：gov 切片对可推进世界是必需的（{@code Shell} 注册
+   * {@code GovCodec}、四个创世/升档世界各补空片），静默返回空会把装配错误伪装成"这个世界没有国家"。
+   *
+   * <p>★★ <b>注意"缺席"与"空表"不是一回事</b>：本方法对<b>缺切片</b>抛（装配故障）；而 {@code nations} 为空表是合法的世界事实 （没有国家）⇒ 读侧据此
+   * deny-all，不抛。
+   */
+  public static GovState govState(SimulationState state) {
+    Snapshot snapshot =
+        state.module("gov").orElseThrow(() -> new IllegalArgumentException("状态里没有 gov 模块切片——装配故障"));
+    if (!(snapshot instanceof GovSnapshot govSnapshot)) {
+      throw new IllegalArgumentException("gov 模块切片不是 GovSnapshot：" + snapshot.getClass().getName());
+    }
+    return govSnapshot.state();
   }
 
   /**

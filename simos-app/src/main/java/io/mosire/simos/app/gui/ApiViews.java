@@ -86,6 +86,13 @@ import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionProcessBook;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.tools.GmToolUsage;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.nation.DiplomaticEvent;
+import io.mosire.simos.gov.nation.DiplomaticEventId;
+import io.mosire.simos.gov.nation.DiplomaticRelation;
+import io.mosire.simos.gov.nation.DiplomaticRelationKey;
+import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexAreas;
@@ -106,18 +113,13 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.CombatStateId;
-import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.EffectId;
-import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DiplomaticEvent;
-import io.mosire.simos.sd.model.DiplomaticRelation;
-import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -6138,6 +6140,24 @@ public final class ApiViews {
       throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
     }
     return sdSnapshot.state();
+  }
+
+  /**
+   * ★★ <b>gov 切片</b>（2026-10-12 批次 3c）：{@code nations} 与外交两表自 {@code sd} 搬进 {@code gov}（外交是 gov 的事）
+   * ⇒ GUI / 工具视图读它们改走本方法。
+   *
+   * <p>★ 缺席或类型不对是装配故障，不是"没有候选"（与 {@link #sdState} 同口径）。★ 与 {@code ToolSupport.govState} 是**同一条提取的
+   * 两处实现**——这是本仓 {@code sdState} 早就存在的形态（GUI 与工具面各一份），此处照旧，不新开第三种写法。
+   */
+  public static GovState govState(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module("gov")
+            .orElseThrow(() -> new IllegalArgumentException("状态里没有 gov 模块切片——装配故障，不是\"没有候选\""));
+    if (!(snapshot instanceof GovSnapshot govSnapshot)) {
+      throw new IllegalArgumentException("gov 模块切片不是 GovSnapshot：" + snapshot.getClass().getName());
+    }
+    return govSnapshot.state();
   }
 
   /**

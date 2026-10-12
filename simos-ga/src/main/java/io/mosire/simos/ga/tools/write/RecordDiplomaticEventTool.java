@@ -16,7 +16,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code sd.RecordDiplomaticEvent} 决策人窄工具（D5 / D-005 / R6）：**决策人记外交事件**（多国谈判逐 tick 记录）。
+ * {@code gov.RecordDiplomaticEvent} 决策人窄工具（D5 / D-005 / R6）：**决策人记外交事件**（多国谈判逐 tick 记录）。
  *
  * <p>载荷 = 命令形状 {@code {eventId?,tick?,participants[],text}}。
  *
@@ -29,7 +29,7 @@ import java.util.Set;
 public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /** 工具名 = 命令类型（与 {@code IssueDirectiveTool}/{@code SubmitVerdictTool} 同制）。 */
-  public static final String NAME = "sd.RecordDiplomaticEvent";
+  public static final String NAME = "gov.RecordDiplomaticEvent";
 
   /** 本工具只碰 sd 命名空间；缺省策略取 {@code READ_ONLY}（未表态者不得**写**）——理由见 {@code IssueDirectiveTool}。 */
   private static final ResourceManifest SD_WRITE =
@@ -59,7 +59,7 @@ public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool imp
 
   @Override
   public String description() {
-    return "决策人追加一条外交事件记录（固定 sd.RecordDiplomaticEvent）："
+    return "决策人追加一条外交事件记录（固定 gov.RecordDiplomaticEvent）："
         + "载荷 {eventId?,tick?,participants[],text}；participants ≥2 且不重复、必须包含调用者自己的 Nation（不许替别国记名）；"
         + "text 自然语言；tick 缺省=世界当前 tick 且不得记在未来；eventId 缺省按 tick 合成。"
         + "需 GM 在审批面点头（敏感工具走既有审批链）。";

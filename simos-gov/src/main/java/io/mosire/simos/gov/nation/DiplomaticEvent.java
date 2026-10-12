@@ -1,7 +1,5 @@
-package io.mosire.simos.sd.model;
+package io.mosire.simos.gov.nation;
 
-import io.mosire.simos.sd.id.DiplomaticEventId;
-import io.mosire.simos.sd.id.NationId;
 import java.util.LinkedHashSet;
 import java.util.List;
 
@@ -11,7 +9,7 @@ import java.util.List;
  * <p>字段：
  *
  * <ul>
- *   <li>{@link #id}——事件 id（唯一键；同时是 {@code SdState.diplomaticEvents} 的 map key）；
+ *   <li>{@link #id}——事件 id（唯一键；同时是 {@code GovState.diplomaticEvents} 的 map key）；
  *   <li>{@link #tick}——该事件所属世界日（单位：日），与 {@code SdInfoEntry.tick} 同口径；
  *   <li>{@link #participants}——参与国（{@link NationId}）列表，**至少 2 个、不得重复**（D-005 的"多国谈判"；双边状态走
  *       关系边，不走本类型）；顺序按载荷给定保留；
@@ -19,6 +17,9 @@ import java.util.List;
  * </ul>
  *
  * <p>★ 同一 tick 允许多条事件（逐条 append，不覆盖）：本类型没有"一 tick 一条"的不变量。
+ *
+ * <p>★★ <b>2026-10-12 批次 3c：自 {@code io.mosire.simos.sd.model} 迁入本包</b>（随 {@code diplomaticEvents}
+ * 表一起成为 {@link io.mosire.simos.gov.GovState} 的第 5 个组件）；形状与不变量一字未改。
  */
 public record DiplomaticEvent(
     DiplomaticEventId id, long tick, List<NationId> participants, String text) {

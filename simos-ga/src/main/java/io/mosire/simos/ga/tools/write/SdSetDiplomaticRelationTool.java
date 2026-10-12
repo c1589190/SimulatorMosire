@@ -12,8 +12,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code simos.sd.set-diplomatic-relation}（GM 桶窄写；D-003 / R6）：固定 {@code sd.SetDiplomaticRelation} 的
- * GM 封装。
+ * {@code simos.sd.set-diplomatic-relation}（GM 桶窄写；D-003 / R6）：固定 {@code gov.SetDiplomaticRelation}
+ * 的 GM 封装。
  *
  * <p>载荷 = {@code {from,to,kind?,text,tick?}}（命令 handler 的形状）：upsert 一条有向外交关系边；再调一次同 (from,to) 就是
  * **更新自然语言（谈判状态）**。
@@ -26,11 +26,11 @@ import java.util.Set;
 public final class SdSetDiplomaticRelationTool extends AbstractNarrowWriteTool
     implements SimosTool {
 
-  /** 工具名（全局唯一；与命令类型 {@code sd.SetDiplomaticRelation} 不同名）。 */
+  /** 工具名（全局唯一；与命令类型 {@code gov.SetDiplomaticRelation} 不同名）。 */
   public static final String NAME = "simos.sd.set-diplomatic-relation";
 
   /** 本工具钉死的命令类型（与 handler 的 {@code type()} 同字面）。 */
-  private static final String COMMAND_TYPE = "sd.SetDiplomaticRelation";
+  private static final String COMMAND_TYPE = "gov.SetDiplomaticRelation";
 
   public SdSetDiplomaticRelationTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
@@ -53,7 +53,7 @@ public final class SdSetDiplomaticRelationTool extends AbstractNarrowWriteTool
 
   @Override
   public String description() {
-    return "GM 写入/更新一条有向外交关系边：固定 sd.SetDiplomaticRelation，"
+    return "GM 写入/更新一条有向外交关系边：固定 gov.SetDiplomaticRelation，"
         + "载荷 {from,to,kind?,text,tick?}（from/to 必须是已存在的 Nation 且不得相同；kind 自由文本可空；"
         + "text 非空白自然语言、谈判状态记这里；tick 缺省=世界当前 tick、不得记在未来）。"
         + "同 (from,to) 再调一次 = 更新该边，不新增第二条。";

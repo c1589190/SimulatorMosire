@@ -1,4 +1,4 @@
-package io.mosire.simos.sd.id;
+package io.mosire.simos.gov.nation;
 
 /**
  * 外交事件（D-005 / R6）的 ID：**事件记录**（多国谈判逐 tick 记录参与国与内容）的唯一键。
@@ -7,11 +7,13 @@ package io.mosire.simos.sd.id;
  *
  * <ol>
  *   <li>载荷显式给的 id（GM / 决策人可指定稳定的可引用名）；
- *   <li>缺省合成：见 {@link io.mosire.simos.sd.model.DiplomaticEventIds#synthesize}（{@code tick + 该 tick
- *       下已有事件数} 的纯函数，可重放）。
+ *   <li>缺省合成：见 {@link DiplomaticEventIds#synthesize}（{@code tick + 该 tick 下已有事件数} 的纯函数，可重放）。
  * </ol>
  *
  * <p>★ 它**不是自增、不是随机 UUID**：同一份 base + 同一载荷恒得同一 id ⇒ 满足铁律 2 的可重放。
+ *
+ * <p>★★ <b>2026-10-12 批次 3c：自 {@code io.mosire.simos.sd.id} 迁入本包</b>（随 {@code diplomaticEvents}
+ * 表一起）；形状一字未改。
  */
 public record DiplomaticEventId(String value) {
 

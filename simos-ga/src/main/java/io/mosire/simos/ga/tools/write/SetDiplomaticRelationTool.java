@@ -16,9 +16,9 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code sd.SetDiplomaticRelation} 决策人窄工具（D5 / D-003 / R6）：**决策人写外交关系边的唯一入口**。
+ * {@code gov.SetDiplomaticRelation} 决策人窄工具（D5 / D-003 / R6）：**决策人写外交关系边的唯一入口**。
  *
- * <p>载荷 = 命令 {@code sd.SetDiplomaticRelation} 的形状 {@code {from,to,kind?,text,tick?}}；upsert
+ * <p>载荷 = 命令 {@code gov.SetDiplomaticRelation} 的形状 {@code {from,to,kind?,text,tick?}}；upsert
  * 有向边，重复调用更新自然语言。
  *
  * <p>★★ <b>不许冒名</b>：载荷 {@code from} 必须等于调用者的 Nation 归属（身份取自 {@link ToolContext#identity()}，与 {@code
@@ -35,7 +35,7 @@ import java.util.Set;
 public final class SetDiplomaticRelationTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /** 工具名 = 命令类型（与 {@code IssueDirectiveTool}/{@code SubmitVerdictTool} 同制）。 */
-  public static final String NAME = "sd.SetDiplomaticRelation";
+  public static final String NAME = "gov.SetDiplomaticRelation";
 
   /** 本工具只碰 sd 命名空间；缺省策略取 {@code READ_ONLY}（未表态者不得**写**）——理由见 {@code IssueDirectiveTool}。 */
   private static final ResourceManifest SD_WRITE =
@@ -65,7 +65,7 @@ public final class SetDiplomaticRelationTool extends AbstractNarrowWriteTool imp
 
   @Override
   public String description() {
-    return "决策人写入/更新一条有向外交关系边（固定 sd.SetDiplomaticRelation）："
+    return "决策人写入/更新一条有向外交关系边（固定 gov.SetDiplomaticRelation）："
         + "载荷 {from,to,kind?,text,tick?}；from 必须是调用者自己的 Nation（不许冒名），to 必须是已存在的 Nation；"
         + "kind 自由文本可空、text 自然语言（谈判状态记这里）、tick 缺省=世界当前 tick 且不得记在未来。"
         + "需 GM 在审批面点头（敏感工具走既有审批链）。";

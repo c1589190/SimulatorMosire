@@ -1,10 +1,10 @@
 package io.mosire.simos.sd.model;
 
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;

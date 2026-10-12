@@ -12,7 +12,7 @@ import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolQueries;
 import io.mosire.simos.ga.tools.GaToolReads;
-import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

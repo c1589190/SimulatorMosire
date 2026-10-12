@@ -30,6 +30,7 @@ import io.mosire.simos.actor.spi.DeductHouseholdStockHandler;
 import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
 import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.actor.spi.TransferAccountsHandler;
+import io.mosire.simos.app.access.AppNationAffiliations;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.LoggingApprovalChannel;
 import io.mosire.simos.app.decision.DecisionAgentService;
@@ -128,6 +129,11 @@ import io.mosire.simos.ga.tools.RecordingToolSource;
 import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.ToolRoleAudit;
 import io.mosire.simos.gov.codec.GovCodec;
+import io.mosire.simos.gov.guard.RegionDeleteGuard;
+import io.mosire.simos.gov.spi.CreateNationHandler;
+import io.mosire.simos.gov.spi.DeleteNationHandler;
+import io.mosire.simos.gov.spi.RecordDiplomaticEventHandler;
+import io.mosire.simos.gov.spi.SetDiplomaticRelationHandler;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
@@ -146,22 +152,16 @@ import io.mosire.simos.sd.channel.ActorId;
 import io.mosire.simos.sd.channel.ChannelAdmission;
 import io.mosire.simos.sd.channel.DecisionChannel;
 import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.guard.RegionDeleteGuard;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.resolve.SdResolver;
 import io.mosire.simos.sd.spi.AddStageHandler;
 import io.mosire.simos.sd.spi.CancelEffectHandler;
 import io.mosire.simos.sd.spi.CommitOutcomeHandler;
 import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateCombatHandler;
-import io.mosire.simos.sd.spi.CreateNationHandler;
-import io.mosire.simos.sd.spi.DeleteNationHandler;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
-import io.mosire.simos.sd.spi.RecordDiplomaticEventHandler;
 import io.mosire.simos.sd.spi.RegisterEffectHandler;
 import io.mosire.simos.sd.spi.SetArmyMasterGovHandler;
-import io.mosire.simos.sd.spi.SetDiplomaticRelationHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
 import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -233,6 +233,7 @@ import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.resolve.ResolverRegistry;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.state.BranchId;
@@ -539,7 +540,7 @@ public final class Shell implements AutoCloseable {
     }
 
     // ★★ 2026-10-12 批次 3b-2：`directives` / `decisionMakers` / `info` 三张表住 ga，而 sd 侧四处仍要碰它们
-    //   （SdResolver 的 `sd:directive.<id>` 与 `sd:decision-maker.<id>` 存在性、sd.DeleteNation 的"仍有决策人挂在
+    //   （SdResolver 的 `sd:directive.<id>` 与 `sd:decision-maker.<id>` 存在性、gov.DeleteNation 的"仍有决策人挂在
     //   这个国家上"守卫、SdTimeParticipant 的 Action.PutInfo 写 INFO 覆盖层）⇒ 读写口在 sd、实现在 ga、装配在这里注入
     //   （sd 不得依赖 ga，见 DecisionTablesLookup 类注）。
     GaDecisionTablesLookup decisionTables = new GaDecisionTablesLookup();
@@ -844,9 +845,11 @@ public final class Shell implements AutoCloseable {
                 // ── P1b1（2026-10-01）：GM-only 区域 actor 账本清空（目标格账本 + 清账后不再持有账户的主体）。──
                 new ActorClearRegionHandler(),
                 new CreateNationHandler(),
-                // ── P1.2（2026-10-09 后端行政批次）：sd.DeleteNation —— 默认严格引用检查（决策人 / 外交关系 /
+                // ── P1.2（2026-10-09 后端行政批次）：gov.DeleteNation —— 默认严格引用检查（决策人 / 外交关系 /
                 //   map nation tag），显式 clearDiplomaticReferences=true 才连关系与外交事件一起清。GM-only。──
-                new DeleteNationHandler(decisionTables),
+                // ★★ 2026-10-12 批次 3c：gov.DeleteNation 的"仍有决策人挂在这个国家上"守卫改问 gov 自己的窄口
+                //   （端口在 gov、实现在 app：判据要同时看 ga 的决策人与 gov 的 nations，只有组合根看得见两片）。
+                new DeleteNationHandler(AppNationAffiliations.INSTANCE),
                 new CreateArmyHandler(),
                 // ── 阶段 12 后续赋值（2026-10-01 Army 主子改派缺口）：Army 创建后的主子改派/解除。★ GM-only
                 //   （handler 不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM

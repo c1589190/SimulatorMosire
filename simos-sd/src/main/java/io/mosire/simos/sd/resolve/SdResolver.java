@@ -6,10 +6,8 @@ import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
-import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.OutcomeOption;
@@ -28,6 +26,7 @@ import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.resolve.ResolveContext;
 import io.mosire.simos.util.resolve.Resolver;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.List;
 import java.util.Objects;
@@ -36,11 +35,16 @@ import java.util.Optional;
 /**
  * {@code sd:} 命名空间的地址解析器（spec §二.2，N15）。
  *
- * <p>**canonical 形态**：{@code sd:nation.<id>} / {@code sd:army.<id>} / {@code sd:combat.<id>} /
- * {@code sd:combat.<id>:stage.<stageId>} / {@code
- * sd:combat.<id>:stage.<stageId>:outcome.<outcomeId>} / {@code sd:decision-maker.<id>} / {@code
- * sd:directive.<id>} / {@code sd:effect.<id>}。canonical 一律由 {@link Address} AST 构造后 {@link
- * Address#canonical()} 产出，**不手拼**。
+ * <p>**canonical 形态**：{@code sd:army.<id>} / {@code sd:combat.<id>} / {@code
+ * sd:combat.<id>:stage.<stageId>} / {@code sd:combat.<id>:stage.<stageId>:outcome.<outcomeId>} /
+ * {@code sd:decision-maker.<id>} / {@code sd:directive.<id>} / {@code sd:effect.<id>}。canonical 一律由
+ * {@link Address} AST 构造后 {@link Address#canonical()} 产出，**不手拼**。
+ *
+ * <p>★★ <b>2026-10-12 批次 3c：{@code nation} 支<b>整支删除</b></b>（用户裁定：{@code sd:nation.<id>}
+ * 地址族「<b>直接扔</b>」）—— {@code nations} 表随外交搬进 {@code simos-gov}，本解析器连它的存在性都判不了（{@code sd} 不得依赖 {@code
+ * gov}）。 ⇒ 今天 {@code sd:nation.<id>} 一律走 {@code default ->
+ * empty()}（<b>空候选</b>，不是抛：那是"这个地址不存在"，与"路径形状非法"同一档）； 国家身份的读面走 gov 自己的面。★ 这是规划 §4 批次 3
+ * 列的<b>不可逆点</b>，用户已批。
  *
  * <p>★ **空候选与抛的分工**同 {@code MapResolver}/{@code UnitResolver}：合法但不服务/不存在的 ⇒ 空候选；抛只有一处—— 装配故障（缺 sd
  * 切片、或切片类型不对）。
@@ -51,12 +55,12 @@ import java.util.Optional;
  * SD_RESOLVE_UNAVAILABLE}），**不逐次记成功查询**；地址串是领域 id，不是载荷原文。
  *
  * <p>★★ <b>{@code directive} 与 {@code decision-maker} 两支的存在性判据住 ga</b>（{@code directives} 随 3b-1、
- * {@code decisionMakers} 随本批 3b-2 搬进 {@code simos-ga}），而 {@code simos-sd} <b>不得</b>依赖 {@code
+ * {@code decisionMakers} 随 3b-2 搬进 {@code simos-ga}），而 {@code simos-sd} <b>不得</b>依赖 {@code
  * simos-ga}（成环） ⇒ 本类经构造期注入的 {@link DecisionTablesLookup} 问它（实现 {@code GaDecisionTablesLookup} 在
  * ga、组合根 {@code Shell} 接线）。★ <b>地址族串一字不改</b> （{@code sd:directive.<id>} / {@code
  * sd:decision-maker.<id>} 仍是本解析器的 对外形态；地址族的裁量属批次 3e）——变的只是"表住哪个切片"。
  *
- * <p>★ 其余三支（{@code nation}/{@code army}/{@code effect}/{@code combat}）仍读 sd 切片，一字未动。
+ * <p>★ 其余三支（{@code army}/{@code effect}/{@code combat}）仍读 sd 切片，一字未动（它们随 3d 一起搬 army）。
  */
 public final class SdResolver implements Resolver {
 
@@ -120,9 +124,8 @@ public final class SdResolver implements Resolver {
     }
     QueryResult result =
         switch (root.kind().get()) {
-          case "nation" ->
-              rootOnly(
-                  segments, root, SdResolver::parseNation, state.nations()::containsKey, "Nation");
+          // ★ 2026-10-12 批次 3c：`nation` 支已整支删除（用户裁定「sd:nation.<id> 直接扔」）——
+          //   nations 表搬进 simos-gov，本解析器判不了它的存在性（sd 不得依赖 gov）⇒ 落到 default -> empty()。
           case "army" ->
               rootOnly(segments, root, SdResolver::parseArmy, state.armies()::containsKey, "Army");
           case "decision-maker" ->
@@ -218,10 +221,6 @@ public final class SdResolver implements Resolver {
     }
     return single(
         root.kind().get() + "." + root.name(), address(root.kind().get(), root.name()), typeName);
-  }
-
-  private static Optional<NationId> parseNation(String text) {
-    return safe(() -> NationId.parse(text));
   }
 
   private static Optional<ArmyId> parseArmy(String text) {

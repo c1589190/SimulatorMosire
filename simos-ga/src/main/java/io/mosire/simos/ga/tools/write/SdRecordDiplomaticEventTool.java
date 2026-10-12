@@ -12,8 +12,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code simos.sd.record-diplomatic-event}（GM 桶窄写；D-005 / R6）：固定 {@code sd.RecordDiplomaticEvent} 的
- * GM 封装。
+ * {@code simos.sd.record-diplomatic-event}（GM 桶窄写；D-005 / R6）：固定 {@code gov.RecordDiplomaticEvent}
+ * 的 GM 封装。
  *
  * <p>载荷 = {@code {eventId?,tick?,participants[],text}}：追加一条外交事件记录（多国谈判逐 tick 记录参与国与内容）。
  *
@@ -24,11 +24,11 @@ import java.util.Set;
 public final class SdRecordDiplomaticEventTool extends AbstractNarrowWriteTool
     implements SimosTool {
 
-  /** 工具名（全局唯一；与命令类型 {@code sd.RecordDiplomaticEvent} 不同名）。 */
+  /** 工具名（全局唯一；与命令类型 {@code gov.RecordDiplomaticEvent} 不同名）。 */
   public static final String NAME = "simos.sd.record-diplomatic-event";
 
   /** 本工具钉死的命令类型（与 handler 的 {@code type()} 同字面）。 */
-  private static final String COMMAND_TYPE = "sd.RecordDiplomaticEvent";
+  private static final String COMMAND_TYPE = "gov.RecordDiplomaticEvent";
 
   public SdRecordDiplomaticEventTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
@@ -51,7 +51,7 @@ public final class SdRecordDiplomaticEventTool extends AbstractNarrowWriteTool
 
   @Override
   public String description() {
-    return "GM 追加一条外交事件记录：固定 sd.RecordDiplomaticEvent，"
+    return "GM 追加一条外交事件记录：固定 gov.RecordDiplomaticEvent，"
         + "载荷 {eventId?,tick?,participants[],text}（participants ≥2 且不重复；text 非空白自然语言；"
         + "tick 缺省=世界当前 tick、不得记在未来；eventId 缺省按 tick 合成）。";
   }

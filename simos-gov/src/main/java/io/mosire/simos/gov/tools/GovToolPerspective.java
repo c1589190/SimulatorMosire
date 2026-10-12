@@ -38,7 +38,7 @@ public interface GovToolPerspective {
   /**
    * 查一个决策人（{@code known=false} = 表里没有）。
    *
-   * @throws IllegalArgumentException id 形状非法（与 {@code sd.id.DecisionMakerId} 的构造同一条拒因与文案）
+   * @throws IllegalArgumentException id 形状非法（与 {@code util.spi.DecisionMakerId} 的构造同一条拒因与文案）
    */
   GovDecisionMaker decisionMaker(SimulationState state, String decisionMakerId);
 

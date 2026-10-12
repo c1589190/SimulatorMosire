@@ -1,7 +1,7 @@
 package io.mosire.simos.ga.tools;
 
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
-import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;

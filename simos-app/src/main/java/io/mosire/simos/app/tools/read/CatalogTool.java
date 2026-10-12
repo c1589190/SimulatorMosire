@@ -751,7 +751,7 @@ public final class CatalogTool implements SimosTool {
                   + "（★ GM-only；★★ P2-A 具名缺口：账户键不再带 location ⇒ 本命令不再能映射"
                   + "「目标 Region 的账本」，本批只校验 region 存在性、不改账本/主体；"
                   + "区域清账改由组合根按家户集协调（P2-F））"),
-          Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
+          Map.entry("gov.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry(
               "sd.CreateArmy",
               "armyId, masterGovUnitId?, rootUnitId, name"
@@ -774,12 +774,12 @@ public final class CatalogTool implements SimosTool {
               "address, key, value, note?, id?（同类型内唯一）, tags[决策人 id…]?,"
                   + " tick?（缺省=世界当前 tick；记在未来 ⇒ 拒）"),
           Map.entry(
-              "sd.SetDiplomaticRelation",
+              "gov.SetDiplomaticRelation",
               "from, to, kind?, text, tick?（★ D5 / D-003：upsert 一条有向外交关系边；from≠to 且两端必须是已存在的"
                   + " Nation；kind 自由文本可空——「称臣纳贡」只是它的一个取值，本命令不解释、不写死贡额/周期/违约；"
                   + " text 非空白自然语言、谈判状态记这里；tick 缺省=世界当前 tick、不得记在未来；同 (from,to) 再调一次=更新）"),
           Map.entry(
-              "sd.RecordDiplomaticEvent",
+              "gov.RecordDiplomaticEvent",
               "eventId?, tick?, participants[字符串...], text（★ D5 / D-005：追加一条外交事件记录；"
                   + "participants ≥2 且不得重复；text 非空白自然语言；tick 缺省=世界当前 tick、不得记在未来；"
                   + "eventId 缺省按 tick 合成（diplomatic-event:<tick>#<该 tick 已有事件数>），撞车 ⇒ 拒）"),
@@ -888,7 +888,7 @@ public final class CatalogTool implements SimosTool {
                   + "（★ P1.2：逐格从所有 fromRegions 删除、往目标加入；每个 hex 必须至少属于一个源；"
                   + "任一源被划空 ⇒ 拒并指向 Merge/Split/Delete；重叠不报错；GmOnly）"),
           Map.entry(
-              "sd.DeleteNation",
+              "gov.DeleteNation",
               "nationId, clearDiplomaticReferences?"
                   + "（★ P1.2：缺省 false = 仍有决策人绑定 / 外交关系边 / 外交事件 / map 上 nation:<id> tag ⇒ "
                   + "逐类具名拒绝，不静默级联；true = 连该国的外交关系与外交事件一起删，"

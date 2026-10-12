@@ -1,8 +1,8 @@
 package io.mosire.simos.sd.model;
 
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.SdInfoId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.RevisionId;
 import java.util.Collections;
 import java.util.LinkedHashSet;

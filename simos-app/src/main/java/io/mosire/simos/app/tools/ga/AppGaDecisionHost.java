@@ -3,7 +3,7 @@ package io.mosire.simos.app.tools.ga;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.tools.GaDecisionHost;
-import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;

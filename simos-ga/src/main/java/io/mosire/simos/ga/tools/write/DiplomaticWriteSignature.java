@@ -8,10 +8,10 @@ import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolReads;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Optional;
 
@@ -22,8 +22,8 @@ import java.util.Optional;
  * <p>规则（D5）：调用者必须是本世界已知的 {@link DecisionMaker}，且归属是 {@link Affiliation.Nation}——
  *
  * <ul>
- *   <li>写关系边（{@code sd.SetDiplomaticRelation}）：载荷 {@code from} 必须等于调用者 Nation（不许以别国名义立边）；
- *   <li>记事件（{@code sd.RecordDiplomaticEvent}）：{@code participants} 必须包含调用者 Nation（不许替别国记名）。
+ *   <li>写关系边（{@code gov.SetDiplomaticRelation}）：载荷 {@code from} 必须等于调用者 Nation（不许以别国名义立边）；
+ *   <li>记事件（{@code gov.RecordDiplomaticEvent}）：{@code participants} 必须包含调用者 Nation（不许替别国记名）。
  * </ul>
  *
  * <p>★ <b>为什么住在 app 工具层、不搬进命令 handler</b>：命令 handler 结构性看不见调用者（{@code CommandHandler} 只有 {@code
@@ -84,7 +84,7 @@ public final class DiplomaticWriteSignature {
               + maker.affiliation()
               + "）");
     }
-    String callerNation = nation.nationId().value();
+    String callerNation = nation.nationId();
     JsonNode payload;
     try {
       payload = MAPPER.readTree(ToolSchema.optionalText(context.arguments(), "payloadJson", "{}"));
