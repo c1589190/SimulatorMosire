@@ -299,3 +299,35 @@ for p in simos-*/pom.xml; do grep -q "simos-ga-spi" $p && printf "✓ %s\n" "$(b
 `CatalogTool.java` **15 处** + `EconomyAdjustTool.java` **1 处**，合计 **16 处运行时字符串**仍是旧口径，例如
 `:83/:89`「非 GmOnly，可嵌进决策令…」、`:411`「★ GmOnly 标记只挡住令/RegisterEffect/决策人 catalog 三条路径，不拦命令总线」、`:728/:851/…/:915`「…；GmOnly）」。
 **未改**：它们是**工具面可见输出**（不是注释），改字 = 改行为。★ 其中 `:411` 与 `:83/:89` 的措辞在"一处声明"口径下已**不精确**（"非 GmOnly"不再蕴含"可嵌令"）⇒ **另开一批统一改口径**（属工具面文案变更，应走评审）。
+
+---
+
+## §11 ★ 控制方流程漏洞：格式门禁被错当成"测试阶段"（2026-10-12 晚）
+
+**现象**：批次 1.7 的测试代理跑 `tools/mvn-lock.sh clean verify` ⇒ **rc=1**，红在
+```
+spotless-maven-plugin:3.10.2:check on project simos-util:
+    src/main/java/io/mosire/simos/util/spi/DmUsableCommand.java
+        @@ -1,18 +1,17 @@   （google-java-format 要重排该文件 javadoc 的折行）
+Spotless.Java is keeping 89 files clean - 1 needs changes to be clean …
+UtilSimos .......................................... FAILURE [  6.698 s]
+其余 16 个模块 SKIPPED
+```
+
+**根因 = 控制方**：批次 1 与 1.6a 给实现方的**收工门禁只写了 `clean compile`**（§10 原文），**没有跑 `spotless:check`**
+⇒ **基线 `ae068da8` 本身就是 `spotless:check` 红的**。三个批次（1 / 1.6a）新建或手写改了 **117+ 个文件**，
+格式从未被检过。测试代理的判定正确：**不是文档错、不是它夹具错，是实现批遗留**。
+
+**判决**：`spotless:apply` 全仓跑一次（**格式器，零逻辑**），然后 `spotless:check` **必须 rc=0**。
+
+**★ 教训（写进后续派单模板）**：
+1. **格式门禁属于"提交前必跑"，不属于"测试阶段"** —— §一.5 的"只写到编译过"是**实现方**的交付门槛，
+   但**控制方提交前必须跑 `spotless:check`**（它不执行测试、不碰 jar、几秒钟）；
+2. **凡批次新建了文件（`?`/`A` 状态），提交前一律先跑 `spotless:apply` 再 `spotless:check`** ——
+   人手写的 javadoc 折行几乎必违规（本次一次就中）；
+3. `spotless` 在第一处 FAILURE 后**其余模块全部 SKIPPED** ⇒ 只看到 1 个违规 ≠ 只有 1 个违规，
+   **修完必须重跑**，直到全绿（可能要多轮）。
+
+**★ 处置（控制方执行，等测试代理跑完 Maven 后，§一.4 不许并发改 Java）**：
+① `tools/mvn-lock.sh spotless:apply`（全仓）→ ② 出文件清单 + md5 前后 + **证明零逻辑改动**
+（过滤掉注释/空白/纯折行后的 `+/-` 行必须为空）→ ③ `spotless:check` rc=0 → ④ `spotbugs:check` → ⑤ 重跑全量测试取最终数。
