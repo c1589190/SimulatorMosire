@@ -46,14 +46,14 @@ class ArchitectureGuardsTest {
   private static final Pattern MODULE_TAG = Pattern.compile("<module>([^<]+)</module>");
 
   /**
-   * R1：main 源码里 {@code ChangeSet} 的实现者**恰 9 个**（World / Map / Social / Unit / Sd / Actor / Economy
-   * / Gov / Army）——多一个少一个都是信号： 多一个可能是有人绕过 codec 在 Core 里另造状态形态；少一个说明某个模块的变更集丢了 ChangeSet
+   * R1：main 源码里 {@code ChangeSet} 的实现者**恰 10 个**（World / Map / Social / Unit / Sd / Actor / Economy
+   * / Gov / Army / Ga）——多一个少一个都是信号： 多一个可能是有人绕过 codec 在 Core 里另造状态形态；少一个说明某个模块的变更集丢了 ChangeSet
    * 身份（Featherweight 的"契约不空转"断了一根）。
    *
    * <p>★ test 侧的 3 个玩具实现者（simos-util 的 {@code RoundTripAssertionsTest} / {@code DriftTest} 里）
    * **不计入**：它们不在 main 源码里，本扫描只枚举各模块的 {@code src/main}——这条例外写在这里， 免得下一个人以为漏扫了。
    *
-   * <p>★ 用 {@code containsExactly} 而不只是 {@code hasSize(9)}：个数对"一个文件重复含串、另一个实现者 恰好漏了"零判别力（M1
+   * <p>★ 用 {@code containsExactly} 而不只是 {@code hasSize(10)}：个数对"一个文件重复含串、另一个实现者 恰好漏了"零判别力（M1
    * 的形态：数个数对张冠李戴零判别力）。扫描匹配的是**连续串**——声明被 google-java-format 折行时 {@code implements}
    * 与类型名仍落在同一行（实测：MapChangeSet 即折行形态，仍命中）。
    *
@@ -61,10 +61,12 @@ class ArchitectureGuardsTest {
    * ...Five...}（旧名会误导）。★ Task 10（2026-09-26）：第 6~7 个是 {@code actor}/{@code economy}
    * 两片（它们**当时就没进扫描面**， 不是新增的变更集没登记），方法名同款改为 {@code ...Seven...}。★ 阶段 10a（2026-09-30）：{@code
    * simos-ledger} 退役、 {@code simos-gov} 的 {@code GovChangeSet} 进场 ⇒ 当前恰 8 个。★ 阶段
-   * D4（2026-10-02）：{@code simos-army} 的 {@code ArmyChangeSet} 进场 ⇒ 当前恰 9 个。
+   * D4（2026-10-02）：{@code simos-army} 的 {@code ArmyChangeSet} 进场 ⇒ 当前恰 9 个。★★ 批次 3a
+   * （2026-10-12）：{@code simos-ga} 首次持状态（决策包 / 合并效果集两张表自 {@code sd} 搬入）⇒ 它的 {@code GaChangeSet} 进场 ⇒
+   * 当前恰 10 个。
    */
   @Test
-  void changeSetHasExactlyNineMainSourceImplementors() throws IOException {
+  void changeSetHasExactlyTenMainSourceImplementors() throws IOException {
     // ★ rawContent 声明受检异常，而 lambda（Predicate）传不出去——计划草图此处编不过，
     //   故经下面的 content() 拆包成 UncheckedIOException（与 util 侧 R15 同款执行期校正）。
     List<String> hits =
@@ -80,6 +82,7 @@ class ArchitectureGuardsTest {
             "simos-army/src/main/java/io/mosire/simos/army/change/ArmyChangeSet.java",
             "simos-core/src/main/java/io/mosire/simos/core/state/WorldChangeSet.java",
             "simos-economy/src/main/java/io/mosire/simos/economy/change/EconomyChangeSet.java",
+            "simos-ga/src/main/java/io/mosire/simos/ga/change/GaChangeSet.java",
             "simos-gov/src/main/java/io/mosire/simos/gov/change/GovChangeSet.java",
             "simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java",
             "simos-sd/src/main/java/io/mosire/simos/sd/change/SdChangeSet.java",
@@ -100,7 +103,8 @@ class ArchitectureGuardsTest {
    *
    * <p>★ <b>2026-10-12 补记（C1 测试迁移批）</b>：B1 新增 {@code simos-ga-spi}、B2a 新增 {@code simos-ga} 时根
    * {@code pom.xml} 加了、本清单没加 ⇒ 本用例当场红（B1 落地后即已红）。本次按"清单与根 pom 必须同步"把两条补回，两个新模块随 之纳入扫描面；实测两片 {@code
-   * src/main} 里零 {@code implements ChangeSet} ⇒ 上面那条恰 9 个的判据不受影响（扫描面变大 = 覆盖变多，判据本身未改）。
+   * src/main} 里零 {@code implements ChangeSet} ⇒ 那条判据当时不受影响（扫描面变大 = 覆盖变多，判据本身未改）；★★ 批次
+   * 3a（2026-10-12）：{@code simos-ga} 的 {@code GaChangeSet} 进场 ⇒ 判据由恰 9 个改为恰 10 个。
    */
   @Test
   void theScannedModuleListMatchesTheOneTheBuildDeclares() throws IOException {

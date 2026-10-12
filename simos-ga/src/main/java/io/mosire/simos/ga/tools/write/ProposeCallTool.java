@@ -10,6 +10,7 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -17,6 +18,7 @@ import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.tools.GaProposalHost;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolReads;
@@ -27,7 +29,6 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.state.BranchId;
@@ -54,7 +55,7 @@ import java.util.Set;
  *       pkt-<proposerId>-<tick>}；已存在且非 DRAFT ⇒ 具名拒；
  *   <li>用系统预览上下文跑目标工具的真 {@code preview=true}（不落盘）；
  *   <li>从 args + preview 提取跨命名空间目标，逐条按调用者现算 scope 校验（越界 ⇒ FORBIDDEN、不写包）；
- *   <li>追加一条 {@link FormattedCall}，经 {@code sd.UpsertDecisionPacket} 落一条 revision。
+ *   <li>追加一条 {@link FormattedCall}，经 {@code ga.UpsertDecisionPacket} 落一条 revision。
  * </ol>
  *
  * <p>★ 敏感写（{@link ToolGate.Ask}）：决策人链路走待批，与既有窄写同制。
@@ -107,7 +108,7 @@ public final class ProposeCallTool implements SimosTool {
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(缺省 head)}。"
         + "流程：catalog 校验 → 真 preview(preview=true，不落盘) → 逐目标 scope 校验（越界 = FORBIDDEN）→ "
-        + "一条 sd.UpsertDecisionPacket。同 proposer 同 tick 一个包；已提交/已裁决 ⇒ BAD_REQUEST。"
+        + "一条 ga.UpsertDecisionPacket。同 proposer 同 tick 一个包；已提交/已裁决 ⇒ BAD_REQUEST。"
         + "返回 {packetId, status, callIndex, tool, targets, preview, submission?}。";
   }
 
@@ -169,6 +170,7 @@ public final class ProposeCallTool implements SimosTool {
       }
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
       SdState sd = GaToolReads.sd(state);
+      GaState ga = GaToolReads.ga(state);
       DecisionMaker dm = sd.decisionMakers().get(proposerId);
       if (dm == null) {
         return ToolResult.error("FORBIDDEN", "决策人不存在: " + proposerId.value());
@@ -187,7 +189,7 @@ public final class ProposeCallTool implements SimosTool {
 
       long tick = state.meta().timestamp().tick();
       DecisionPacketId packetId = DecisionPacketId.parse(packetIdOf(proposerId, tick));
-      DecisionPacket existing = sd.decisionPackets().get(packetId);
+      DecisionPacket existing = ga.decisionPackets().get(packetId);
       if (existing != null && existing.status() != PacketStatus.DRAFT) {
         return ToolResult.error(
             "BAD_REQUEST",

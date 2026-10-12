@@ -1,9 +1,10 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.model.CallStatus;
@@ -11,7 +12,7 @@ import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -30,7 +31,9 @@ import java.util.OptionalLong;
 import java.util.Set;
 
 /**
- * {@code sd.DecideDecisionPacket} 命令的处理器（D2 决策包计划 §2）：GM 对 PENDING 决策包做整包/逐 call true-positive 裁决。
+ * {@code ga.DecideDecisionPacket} 命令的处理器（D2 决策包计划 §2；<b>★ 2026-10-12 批次 3a 自 {@code
+ * simos-sd/sd.spi} 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：GM 对 PENDING 决策包做整包/逐 call true-positive
+ * 裁决。
  *
  * <pre>{@code {"id":"pkt-...","decision":"APPROVE|DENY|MERGE","note":"...","callIndexes":[0,1]?,
  *  "mergedPlanId":"merge-360-1"?,"decidedBy":"external-mcp"}}</pre>
@@ -44,19 +47,23 @@ import java.util.Set;
  *       PARTIALLY_APPROVED；
  *   <li>{@code DENY} ⇒ 全部 call REJECTED，包 REJECTED；
  *   <li>{@code MERGE} ⇒ 必须给 {@code mergedPlanId} 且目标 plan 必须已存在；包置 {@link PacketStatus#MERGED}，
- *       **当前 PENDING** 的 call 置 {@link CallStatus#MERGED} 并写 {@code mergedPlanId}；{@code
+ *       <b>当前 PENDING</b> 的 call 置 {@link CallStatus#MERGED} 并写 {@code mergedPlanId}；{@code
  *       callIndexes} 与 MERGE 互斥。
  * </ul>
  *
- * <p>★ {@code decidedBy} 由 payload 带入，但**由 GM 工具从 {@code context.identity()} 派生后写入**——handler
+ * <p>★ {@code decidedBy} 由 payload 带入，但<b>由 GM 工具从 {@code context.identity()} 派生后写入</b>——handler
  * 结构性看不见 ToolContext，故身份只在这一条窄口上过界；模型自报的值不会被 GM 工具采用。
  *
  * <p>★ {@code decidedAtRevision} 用 base revision（{@code state.meta().ref().revision().value()}）。
+ *
+ * <p>★ 改名理由与权限口径同 {@link UpsertDecisionPacketHandler} 的类注（{@code namespaceOf} 按类型前缀选 codec； <b>不打
+ * {@code DmUsableCommand} ⇒ 仅 GM</b>）。★ MERGE 的存在性判据改读 {@code ga} 切片的 {@code mergedEffectPlans}（原为
+ * {@code sd} 切片）。
  */
 public final class DecideDecisionPacketHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
-  public static final String TYPE = "sd.DecideDecisionPacket";
+  public static final String TYPE = "ga.DecideDecisionPacket";
 
   @Override
   public String type() {
@@ -74,7 +81,7 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
     String packetForLog = null;
     String decisionForLog = null;
     try {
@@ -140,11 +147,11 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
                 OptionalLong.of(decidedAtRevision),
                 note);
         next.put(id, mergedPacket);
-        EventLog.channel(SdLog.decision())
+        EventLog.channel(GaLog.decision())
             .info(
                 LogEvent.of(
                     "SD_DECIDE_DECISION_PACKET_APPLIED",
-                    SdLogSource.SD_DECISION,
+                    GaLogSource.GA_DECISION,
                     "packet",
                     id.value(),
                     "decision",
@@ -166,7 +173,7 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
                     "notePresent",
                     note.isPresent()));
         return new HandlerOutcome.Applied(
-            SdChangeSet.between(base, base.withDecisionPackets(next)));
+            GaChangeSet.between(base, base.withDecisionPackets(next)));
       }
       if (mergedPlanId.isPresent()) {
         return rejected(
@@ -197,11 +204,11 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
               OptionalLong.of(decidedAtRevision),
               note);
       next.put(id, decidedPacket);
-      EventLog.channel(SdLog.decision())
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_DECIDE_DECISION_PACKET_APPLIED",
-                  SdLogSource.SD_DECISION,
+                  GaLogSource.GA_DECISION,
                   "packet",
                   id.value(),
                   "decision",
@@ -220,7 +227,7 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
                   decidedBy,
                   "notePresent",
                   note.isPresent()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionPackets(next)));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, base.withDecisionPackets(next)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "packet", packetForLog, "decision", decisionForLog);
     }
@@ -232,8 +239,8 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(),
-        SdLogSource.SD_DECISION,
+        GaLog.decision(),
+        GaLogSource.GA_DECISION,
         "SD_DECIDE_DECISION_PACKET_REJECTED",
         reason,
         idKeyValues);

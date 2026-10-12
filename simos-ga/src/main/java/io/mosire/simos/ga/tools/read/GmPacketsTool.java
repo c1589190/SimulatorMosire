@@ -7,6 +7,7 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.spi.GmOnlyRead;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
@@ -17,7 +18,6 @@ import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -86,13 +86,13 @@ public final class GmPacketsTool implements SimosTool, GmOnlyRead {
           context, Operation.READ, List.of(ResourceId.of(ToolResources.SD_NAMESPACE, "*")));
       Map<String, Object> args = context.arguments();
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
-      SdState sd = GaToolReads.sd(state);
+      GaState ga = GaToolReads.ga(state);
       Long tick = ToolSchema.optionalLong(args, "tick");
       String status = ToolSchema.optionalText(args, "status", null);
       String proposerId = ToolSchema.optionalText(args, "proposerId", null);
       String tool = ToolSchema.optionalText(args, "tool", null);
       List<Map<String, Object>> packets = new ArrayList<>();
-      for (DecisionPacket packet : sd.decisionPackets().values()) {
+      for (DecisionPacket packet : ga.decisionPackets().values()) {
         if (tick != null && packet.tick() != tick) {
           continue;
         }

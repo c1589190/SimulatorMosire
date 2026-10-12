@@ -16,6 +16,8 @@ import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
@@ -932,6 +934,21 @@ public final class ToolSupport {
       throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
     }
     return sdSnapshot.state();
+  }
+
+  /**
+   * ★★ <b>ga 切片</b>（2026-10-12 批次 3a）：决策包 / 合并效果集两张表自 {@code sd} 搬进 {@code ga} ⇒ app 侧读它们 改走本方法。
+   *
+   * <p>★ <b>缺切片/类型不对 = 装配故障，当场炸</b>（与 {@link #sdState} 同口径）：ga 切片对可推进世界是必需的（{@code Shell} 注册 {@code
+   * GaCodec}、四个创世/升档世界各补空片），静默返回空会把装配错误伪装成"这个决策人没有决策包"。
+   */
+  public static GaState gaState(SimulationState state) {
+    Snapshot snapshot =
+        state.module("ga").orElseThrow(() -> new IllegalArgumentException("状态里没有 ga 模块切片——装配故障"));
+    if (!(snapshot instanceof GaSnapshot gaSnapshot)) {
+      throw new IllegalArgumentException("ga 模块切片不是 GaSnapshot：" + snapshot.getClass().getName());
+    }
+    return gaSnapshot.state();
   }
 
   /** economy 切片（R2a）：与 GUI 同一份提取（{@link ApiViews#economyData}），缺切片/类型不对 = 装配故障。 */

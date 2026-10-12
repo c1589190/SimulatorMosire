@@ -11,6 +11,7 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -24,7 +25,6 @@ import io.mosire.simos.sd.model.CallStatus;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -123,8 +123,8 @@ public final class GmPacketExecuteTool implements SimosTool {
         return ToolResult.error("BAD_REQUEST", "expectedRevision 不得为负: " + expectedArg);
       }
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
-      SdState sd = GaToolReads.sd(state);
-      List<DecisionPacket> selected = selectPackets(args, sd, state);
+      GaState ga = GaToolReads.ga(state);
+      List<DecisionPacket> selected = selectPackets(args, ga, state);
       List<GaEffectExecution.Effect> calls = new ArrayList<>();
       for (DecisionPacket packet : selected) {
         if (packet.status() != PacketStatus.APPROVED
@@ -162,10 +162,10 @@ public final class GmPacketExecuteTool implements SimosTool {
 
   /** 稳定序选包：packetId 显式 → 单包；否则按 tick（缺省当前 tick）取全部，再按 packetId 字符串序。 */
   private static List<DecisionPacket> selectPackets(
-      Map<String, Object> args, SdState sd, SimulationState state) {
+      Map<String, Object> args, GaState ga, SimulationState state) {
     String packetIdArg = ToolSchema.optionalText(args, "packetId", null);
     if (packetIdArg != null) {
-      DecisionPacket packet = sd.decisionPackets().get(DecisionPacketId.parse(packetIdArg));
+      DecisionPacket packet = ga.decisionPackets().get(DecisionPacketId.parse(packetIdArg));
       if (packet == null) {
         throw new IllegalArgumentException("决策包不存在: " + packetIdArg);
       }
@@ -177,7 +177,7 @@ public final class GmPacketExecuteTool implements SimosTool {
       throw new IllegalArgumentException("tick 不得为负: " + tick);
     }
     List<DecisionPacket> packets = new ArrayList<>();
-    for (DecisionPacket packet : sd.decisionPackets().values()) {
+    for (DecisionPacket packet : ga.decisionPackets().values()) {
       if (packet.tick() == tick) {
         packets.add(packet);
       }

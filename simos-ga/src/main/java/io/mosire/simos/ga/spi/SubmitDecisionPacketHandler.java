@@ -1,14 +1,15 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -21,18 +22,23 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * {@code sd.SubmitDecisionPacket} 命令的处理器（D2 决策包计划 §2）：把 DRAFT 决策包置为 {@link PacketStatus#PENDING}。
+ * {@code ga.SubmitDecisionPacket} 命令的处理器（D2 决策包计划 §2；<b>★ 2026-10-12 批次 3a 自 {@code
+ * simos-sd/sd.spi} 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：把 DRAFT 决策包置为 {@link
+ * PacketStatus#PENDING}。
  *
  * <pre>{@code {"id":"pkt-dm-1-360","proposerId":"dm-1"}}</pre>
  *
- * <p>★ **仅 DRAFT 可提交**：非 DRAFT ⇒ 具名拒（工具侧对"已 PENDING"走幂等成功，不落到这里；已裁决一律拒）。
+ * <p>★ <b>仅 DRAFT 可提交</b>：非 DRAFT ⇒ 具名拒（工具侧对"已 PENDING"走幂等成功，不落到这里；已裁决一律拒）。
  *
  * <p>★ 全部 call 保持原状态（拟稿期只产生 PENDING；本命令不改逐 call 状态）。
+ *
+ * <p>★ 改名理由与权限口径同 {@link UpsertDecisionPacketHandler} 的类注（{@code namespaceOf} 按类型前缀选 codec； <b>不打
+ * {@code DmUsableCommand} ⇒ 仅 GM</b>）。
  */
 public final class SubmitDecisionPacketHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
-  public static final String TYPE = "sd.SubmitDecisionPacket";
+  public static final String TYPE = "ga.SubmitDecisionPacket";
 
   @Override
   public String type() {
@@ -51,7 +57,7 @@ public final class SubmitDecisionPacketHandler implements CommandHandler, Comman
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
     String packetForLog = null;
     String proposerForLog = null;
     try {
@@ -83,11 +89,11 @@ public final class SubmitDecisionPacketHandler implements CommandHandler, Comman
       }
       Map<DecisionPacketId, DecisionPacket> next = new LinkedHashMap<>(base.decisionPackets());
       next.put(id, packet.withStatus(PacketStatus.PENDING));
-      EventLog.channel(SdLog.decision())
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_SUBMIT_DECISION_PACKET_APPLIED",
-                  SdLogSource.SD_DECISION,
+                  GaLogSource.GA_DECISION,
                   "packet",
                   id.value(),
                   "proposer",
@@ -100,7 +106,7 @@ public final class SubmitDecisionPacketHandler implements CommandHandler, Comman
                   packet.calls().size(),
                   "decisionPackets",
                   next.size()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionPackets(next)));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, base.withDecisionPackets(next)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "packet", packetForLog, "proposer", proposerForLog);
     }
@@ -112,8 +118,8 @@ public final class SubmitDecisionPacketHandler implements CommandHandler, Comman
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(),
-        SdLogSource.SD_DECISION,
+        GaLog.decision(),
+        GaLogSource.GA_DECISION,
         "SD_SUBMIT_DECISION_PACKET_REJECTED",
         reason,
         idKeyValues);

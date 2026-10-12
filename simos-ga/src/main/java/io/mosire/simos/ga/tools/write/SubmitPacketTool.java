@@ -10,7 +10,9 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.SubmitDecisionPacketHandler;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -23,8 +25,6 @@ import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.spi.SubmitDecisionPacketHandler;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -120,10 +120,10 @@ public final class SubmitPacketTool implements SimosTool {
         return ToolResult.error("BAD_REQUEST", "expectedRevision 不得为负: " + expectedRevisionArg);
       }
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
-      SdState sd = GaToolReads.sd(state);
+      GaState ga = GaToolReads.ga(state);
       long tick = state.meta().timestamp().tick();
       DecisionPacketId packetId = DecisionPacketId.parse("pkt-" + proposerId.value() + "-" + tick);
-      DecisionPacket packet = sd.decisionPackets().get(packetId);
+      DecisionPacket packet = ga.decisionPackets().get(packetId);
       if (packet == null) {
         return ToolResult.error(
             "BAD_REQUEST", "本 tick 还没有决策包（先 propose 或 intent）: " + packetId.value());

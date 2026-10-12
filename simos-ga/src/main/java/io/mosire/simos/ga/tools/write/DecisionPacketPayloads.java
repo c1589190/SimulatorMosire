@@ -16,8 +16,9 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * 决策包 / 合并效果集命令载荷的**唯一拼写点**（propose/intent 写 {@code sd.UpsertDecisionPacket}；GM 写 {@code
- * sd.DecideDecisionPacket}；D3 的 GM 工具与执行器写 {@code sd.UpsertMergedEffectPlan}）。
+ * 决策包 / 合并效果集命令载荷的**唯一拼写点**（propose/intent 写 {@code ga.UpsertDecisionPacket}；GM 写 {@code
+ * ga.DecideDecisionPacket}；D3 的 GM 工具与执行器写 {@code ga.UpsertMergedEffectPlan}）。★ 2026-10-12 批次
+ * 3a：四条命令连同两张表自 {@code sd.*} 改名/迁入 {@code ga.*}，<b>载荷形状逐字未变</b>（改的只是类型串）。
  *
  * <p>★ 工具与 handler 之间的线格式是扁平 JSON（handler 用 {@code SdPayloads} 逐字段读）；把领域对象 → 载荷的映射收在一处， 避免
  * propose/intent/GM/执行器各拼一份、加字段时静默丢一个。
@@ -31,7 +32,7 @@ public final class DecisionPacketPayloads {
 
   private DecisionPacketPayloads() {}
 
-  /** {@code sd.UpsertDecisionPacket} 的整包载荷（propose 追加 call / intent 改写 / 执行器 outcome 回写共用）。 */
+  /** {@code ga.UpsertDecisionPacket} 的整包载荷（propose 追加 call / intent 改写 / 执行器 outcome 回写共用）。 */
   public static String upsert(DecisionPacket packet) {
     Objects.requireNonNull(packet, "packet");
     Map<String, Object> payload = new LinkedHashMap<>();
@@ -56,7 +57,7 @@ public final class DecisionPacketPayloads {
     return ToolResults.json(payload);
   }
 
-  /** {@code sd.SubmitDecisionPacket} 载荷。 */
+  /** {@code ga.SubmitDecisionPacket} 载荷。 */
   public static String submit(String packetId, String proposerId) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("id", packetId);
@@ -65,7 +66,7 @@ public final class DecisionPacketPayloads {
   }
 
   /**
-   * {@code sd.DecideDecisionPacket} 载荷（{@code callIndexes} 为空 ⇒ 整包口径；MERGE 时带 {@code
+   * {@code ga.DecideDecisionPacket} 载荷（{@code callIndexes} 为空 ⇒ 整包口径；MERGE 时带 {@code
    * mergedPlanId}）。
    */
   static String decide(
@@ -91,7 +92,7 @@ public final class DecisionPacketPayloads {
     return ToolResults.json(payload);
   }
 
-  /** {@code sd.UpsertMergedEffectPlan} 的整包扁平载荷（GM 建计划 / 执行器 outcome 回写共用）。 */
+  /** {@code ga.UpsertMergedEffectPlan} 的整包扁平载荷（GM 建计划 / 执行器 outcome 回写共用）。 */
   public static String mergedPlan(MergedEffectPlan plan) {
     Objects.requireNonNull(plan, "plan");
     Map<String, Object> payload = new LinkedHashMap<>();

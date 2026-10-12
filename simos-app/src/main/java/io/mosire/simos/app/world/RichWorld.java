@@ -12,6 +12,9 @@ import io.mosire.simos.core.store.Envelope;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -122,6 +125,13 @@ public final class RichWorld {
         "army",
         ignored ->
             new ArmySnapshot(decoded.meta().ref(), decoded.meta().timestamp(), ArmyData.empty()));
+    // ★★ 2026-10-12 批次 3a：v17levant 档早于 ga 切片，而命令总线与 app 读面都要求切片在场
+    //   （ga 侧四条命令找不到命名空间会响亮失败）⇒ 补一个空的 ga 片（与 sd/economy/actor/gov/army 同制）。
+    //   ★ 键名写死 "ga"，与 GaSnapshot.namespace() 同字面（SimulationState 构造期会校验）。
+    modules.computeIfAbsent(
+        "ga",
+        ignored ->
+            new GaSnapshot(decoded.meta().ref(), decoded.meta().timestamp(), GaState.empty()));
     return new SimulationState(decoded.meta(), modules, readInfo(decoded.infoJson()));
   }
 
@@ -141,7 +151,10 @@ public final class RichWorld {
             new GovCodec(),
             // ★★ D1（2026-10-02 / D-012）：army codec 与 Shell 同源；上面 computeIfAbsent("army") 保证
             //   旧档/创世也有空 army 片（命令总线要求切片在场）。
-            new ArmyCodec())) {
+            new ArmyCodec(),
+            // ★★ 2026-10-12 批次 3a：第九个切片（ga）codec 与 Shell 同源；上面 computeIfAbsent("ga")
+            //   保证旧档/创世也有空 ga 片（命令总线与 app 读面都要求切片在场）。
+            new GaCodec())) {
       codecs.put(codec.namespace(), codec);
     }
     return codecs;

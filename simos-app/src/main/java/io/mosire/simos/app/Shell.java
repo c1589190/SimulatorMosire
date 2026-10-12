@@ -101,9 +101,14 @@ import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
+import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.command.CommandFaces;
 import io.mosire.simos.ga.command.CommandPermissionRules;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.spi.DecideDecisionPacketHandler;
+import io.mosire.simos.ga.spi.SubmitDecisionPacketHandler;
+import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
+import io.mosire.simos.ga.spi.UpsertMergedEffectPlanHandler;
 import io.mosire.simos.ga.tools.GmAutoApproveGate;
 import io.mosire.simos.ga.tools.GmToolUsage;
 import io.mosire.simos.ga.tools.RecordingToolSource;
@@ -138,7 +143,6 @@ import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateCombatHandler;
 import io.mosire.simos.sd.spi.CreateDecisionMakerHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
-import io.mosire.simos.sd.spi.DecideDecisionPacketHandler;
 import io.mosire.simos.sd.spi.DeleteDecisionMakerHandler;
 import io.mosire.simos.sd.spi.DeleteNationHandler;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
@@ -156,10 +160,7 @@ import io.mosire.simos.sd.spi.SetDiplomaticRelationHandler;
 import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
 import io.mosire.simos.sd.spi.StartDecisionHandler;
-import io.mosire.simos.sd.spi.SubmitDecisionPacketHandler;
 import io.mosire.simos.sd.spi.SubmitVerdictHandler;
-import io.mosire.simos.sd.spi.UpsertDecisionPacketHandler;
-import io.mosire.simos.sd.spi.UpsertMergedEffectPlanHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -526,7 +527,12 @@ public final class Shell implements AutoCloseable {
             new GovCodec(),
             // ★★ D1（2026-10-02 / D-012）：第八个切片（army）——交战记录的唯一载体。★ namespace() 恒 "army" ——
             //   必须与 ArmySnapshot.namespace() 同字面，写歪 SimulationState 构造期当场抛。
-            new ArmyCodec());
+            new ArmyCodec(),
+            // ★★ 2026-10-12 批次 3a：第九个切片（ga）——决策包 / 合并效果集两张表的载体（用户裁定「ga 应当维护标准
+            //   的一般决策人……储存可以交给 Core」）。★ namespace() 恒 "ga" —— 必须与 GaSnapshot.namespace() 同
+            //   字面，写歪 SimulationState 构造期当场抛。★ 四条 ga.* 命令的 handler 返回 GaChangeSet，名称前缀决定
+            //   CommandBus 把变更集喂给哪个 codec ⇒ 改一处必须同时改另一处。
+            new GaCodec());
     for (ModuleCodec codec : codecs) {
       coreSimos.register(codec);
     }
@@ -849,11 +855,14 @@ public final class Shell implements AutoCloseable {
                 // ★★ D2（2026-10-22 决策包计划）：三条决策包命令——整包 upsert（propose/intent）、提交、GM 裁决。
                 //   都**不**打 {@code DmUsableCommand} ⇒ 仅 GM（Upsert/Submit 由决策人工具内部提交；Decide 只被 GM
                 // 工具调用）。
+                //   ★★ 2026-10-12 批次 3a：三条自 {@code sd.*} 改名 {@code ga.*}、handler 与两张表一起搬进
+                //   {@code simos-ga}（类型前缀决定变更集施加到哪个命名空间的 codec ⇒ 改名是硬约束）。
                 new UpsertDecisionPacketHandler(),
                 new SubmitDecisionPacketHandler(),
                 new DecideDecisionPacketHandler(),
                 // ★★ D3（2026-10-22 合并计划契约 §9）：合并效果计划整包 upsert（GM 建计划 / 执行器 outcome 回写）。
                 //   同 D2 三条：不打 DmUsableCommand ⇒ 仅 GM（执行器在系统上下文同批回写 outcome）。
+                //   ★★ 2026-10-12 批次 3a：同上改名 {@code ga.*} 并搬进 {@code simos-ga}。
                 new UpsertMergedEffectPlanHandler(),
                 // ★★ D5（2026-10-02 / D-003、D-005、R6）：sd 的两条外交命令（不打 DmUsableCommand ⇒ 不在 DM 两面；sd.
                 // 前缀规则已删）。

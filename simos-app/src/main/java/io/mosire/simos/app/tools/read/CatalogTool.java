@@ -823,7 +823,7 @@ public final class CatalogTool implements SimosTool {
           Map.entry("sd.RunDecision", "decisionMakerId"),
           Map.entry("sd.SetDecisionMakerProvider", "decisionMakerId, providerId"),
           Map.entry(
-              "sd.UpsertDecisionPacket",
+              "ga.UpsertDecisionPacket",
               "id, branch, tick, proposerId,"
                   + " status(DRAFT|PENDING|APPROVED|REJECTED|MERGED|PARTIALLY_APPROVED), intent?,"
                   + " createdAtRevision, decidedBy?, decidedAtRevision?, reasonInfoId?,"
@@ -832,15 +832,15 @@ public final class CatalogTool implements SimosTool {
                   + " status(PENDING|APPROVED|REJECTED|MERGED), mergedPlanId?, outcomeJson?}]（★"
                   + " D2/D3：整包 upsert；同 id 幂等替换；不对外窄工具，由 simos.sd.propose / intent / 决策效果执行器内部提交）"),
           Map.entry(
-              "sd.SubmitDecisionPacket",
+              "ga.SubmitDecisionPacket",
               "id, proposerId（★ D2：DRAFT → PENDING；只被 simos.sd.packet.submit 调用）"),
           Map.entry(
-              "sd.DecideDecisionPacket",
+              "ga.DecideDecisionPacket",
               "id, decision(APPROVE|DENY|MERGE), decidedBy, note?, callIndexes[]?, mergedPlanId?（★"
                   + " D2/D3：GM 整包/逐 call true-positive 裁决；decidedBy 由 simos.gm.packet.decide"
                   + " 从身份派生；MERGE 必带 mergedPlanId 且目标 plan 必须已存在，callIndexes 与 MERGE 互斥）"),
           Map.entry(
-              "sd.UpsertMergedEffectPlan",
+              "ga.UpsertMergedEffectPlan",
               "id, tick, participantIds[决策人 id…]?, orderedEffects[{toolName, argsJson,"
                   + " sourceCallRefs[]?}…], sources[字符串…]?, reasonInfoId?, outcome?（★ D3：合并效果计划整包"
                   + " upsert，同 id 幂等替换；不对外窄工具，由 simos.gm.mergedPlan.upsert / 决策效果执行器 outcome"

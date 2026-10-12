@@ -6,13 +6,15 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.spi.SubmitDecisionPacketHandler;
+import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.tools.write.DecisionPacketPayloads;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
@@ -45,8 +47,8 @@ import java.util.UUID;
  * 的真实行为是“提交后还可能继续补命令/继续说话”。回合结束后，由本类用 {@link CoreSimos#submitBatch} 一次性落：
  *
  * <ul>
- *   <li>{@code sd.UpsertDecisionPacket}（整理 intent/保留 calls，必要时建空包）
- *   <li>{@code sd.SubmitDecisionPacket}（统一提交）
+ *   <li>{@code ga.UpsertDecisionPacket}（整理 intent/保留 calls，必要时建空包）
+ *   <li>{@code ga.SubmitDecisionPacket}（统一提交）
  *   <li>{@code sd.PutInfo}（审计：为什么自动结算、最后一段文本是什么）
  * </ul>
  *
@@ -124,11 +126,11 @@ final class DecisionTurnFinalizer {
     }
     RevisionId expected = head.get();
     SimulationState state = core.replay(new StateRef(branch, expected));
-    SdState sd = ToolSupport.sdState(state);
+    GaState ga = ToolSupport.gaState(state);
     long tick = state.meta().timestamp().tick();
     DecisionPacketId packetId =
         DecisionPacketId.parse("pkt-" + decisionMakerId.value() + "-" + tick);
-    DecisionPacket packet = sd.decisionPackets().get(packetId);
+    DecisionPacket packet = ga.decisionPackets().get(packetId);
     if (packet != null && packet.status() != PacketStatus.DRAFT) {
       // GM 已经处理过（或重复结算）：不再改写已决包。
       DECISION.debug(
@@ -224,7 +226,7 @@ final class DecisionTurnFinalizer {
               INITIATOR,
               branch,
               expected,
-              "sd.UpsertDecisionPacket",
+              UpsertDecisionPacketHandler.TYPE,
               DecisionPacketPayloads.upsert(draft)));
     }
     batch.add(
@@ -234,7 +236,7 @@ final class DecisionTurnFinalizer {
             INITIATOR,
             branch,
             expected,
-            "sd.SubmitDecisionPacket",
+            SubmitDecisionPacketHandler.TYPE,
             DecisionPacketPayloads.submit(packetId.value(), decisionMakerId.value())));
     batch.add(
         new CommandEnvelope(

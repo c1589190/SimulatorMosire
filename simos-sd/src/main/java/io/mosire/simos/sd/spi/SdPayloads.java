@@ -53,14 +53,23 @@ import org.slf4j.Logger;
  * HandlerOutcome.Rejected}（理由进 {@code simos.command.rejected} 事件，拒绝不留 revision）。
  *
  * <p>★ **本类只管形状与类型**；数值范围与域规则由领域类型 / handler 判。
+ *
+ * <p>★★ <b>2026-10-12 批次 3a：本类与下面 9 个方法放宽到 {@code public}</b>（其余成员一字未动）—— 决策包 / 合并效果集四条命令改名 {@code
+ * ga.*} 后 handler 搬进 {@code simos-ga}，而它们仍要用同一份载荷解析。 决策包族的<b>线格式</b>因此保持<b>唯一拼写点</b>：若在 ga
+ * 侧复制一份解析，就会有两个各自漂移的载荷形状（本仓最忌讳的形态）。
+ *
+ * <p>★ 可见性只放宽必须的那几个：{@code parse} / {@code requireText} / {@code optionalText} / {@code
+ * requireLong} / {@code optionalLongValue} / {@code requirePacketStatus} / {@code
+ * optionalFormattedCalls} / {@code requireMergedEffectPlan} / {@code logRejected}（{@code
+ * logRejected} 的 logger 与 origin 由调用方给 ⇒ ga 侧自然走 {@code GaLog}）。★ 本类随 {@code simos-sd} 在批次 3e 退役。
  */
-final class SdPayloads {
+public final class SdPayloads {
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
   private SdPayloads() {}
 
-  static JsonNode parse(String payloadJson) {
+  public static JsonNode parse(String payloadJson) {
     Objects.requireNonNull(payloadJson, "payloadJson");
     JsonNode payload;
     try {
@@ -107,7 +116,7 @@ final class SdPayloads {
    *
    * <p>每个具名拒绝路径（显式 {@code Rejected} 与 catch）各调用一次；{@code idKeyValues} 是偶数个 {@code key,value}。
    */
-  static void logRejected(
+  public static void logRejected(
       Logger logger, LogOrigin origin, String event, String reason, Object... idKeyValues) {
     Objects.requireNonNull(logger, "logger");
     Objects.requireNonNull(origin, "origin");
@@ -126,7 +135,7 @@ final class SdPayloads {
     EventLog.channel(logger).info(LogEvent.of(event, origin, fields));
   }
 
-  static String requireText(JsonNode payload, String field) {
+  public static String requireText(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || !value.isTextual()) {
       throw new IllegalArgumentException("字段 " + field + " 必须是字符串: " + payload);
@@ -134,7 +143,7 @@ final class SdPayloads {
     return value.asText();
   }
 
-  static Optional<String> optionalText(JsonNode payload, String field) {
+  public static Optional<String> optionalText(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
       return Optional.empty();
@@ -153,7 +162,7 @@ final class SdPayloads {
     return value.asInt();
   }
 
-  static long requireLong(JsonNode payload, String field) {
+  public static long requireLong(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || !value.isIntegralNumber() || !value.canConvertToLong()) {
       throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
@@ -559,7 +568,7 @@ final class SdPayloads {
    * 的 {@code {namespace,path}} 形状，{@code mergedPlanId} 缺省 = {@link Optional#empty()}； {@code
    * outcomeJson} 缺省 = {@link Optional#empty()}（D3 旧档兼容口径）。
    */
-  static List<FormattedCall> optionalFormattedCalls(JsonNode payload, String field) {
+  public static List<FormattedCall> optionalFormattedCalls(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
       return List.of();
@@ -615,7 +624,7 @@ final class SdPayloads {
   }
 
   /** 读包状态（只收枚举名，不收自由字符串）。 */
-  static PacketStatus requirePacketStatus(JsonNode payload, String field) {
+  public static PacketStatus requirePacketStatus(JsonNode payload, String field) {
     String text = requireText(payload, field);
     try {
       return PacketStatus.valueOf(text.trim());
@@ -635,7 +644,7 @@ final class SdPayloads {
   }
 
   /** 可空整数（键缺席/为 null ⇒ {@link OptionalLong#empty()}；给了必须是整数）。 */
-  static OptionalLong optionalLongValue(JsonNode payload, String field) {
+  public static OptionalLong optionalLongValue(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
       return OptionalLong.empty();
@@ -673,7 +682,7 @@ final class SdPayloads {
    * <p>★ {@code participantIds}/{@code orderedEffects}/{@code sources} 缺省/为 null ⇒ 空表；{@code
    * outcome}/ {@code reasonInfoId} 缺省 ⇒ {@link Optional#empty()}（旧档兼容口径）。
    */
-  static MergedEffectPlan requireMergedEffectPlan(JsonNode payload) {
+  public static MergedEffectPlan requireMergedEffectPlan(JsonNode payload) {
     MergedEffectPlanId id = MergedEffectPlanId.parse(requireText(payload, "id"));
     long tick = requireLong(payload, "tick");
     List<DecisionMakerId> participantIds =

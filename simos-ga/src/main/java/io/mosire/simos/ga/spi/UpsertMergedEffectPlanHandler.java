@@ -1,12 +1,13 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.model.MergedEffectPlan;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -20,7 +21,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * {@code sd.UpsertMergedEffectPlan} 命令的处理器（D3 契约 §3）：整包写入/覆盖一个 {@link MergedEffectPlan}。
+ * {@code ga.UpsertMergedEffectPlan} 命令的处理器（D3 契约 §3；<b>★ 2026-10-12 批次 3a 自 {@code simos-sd/sd.spi}
+ * 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：整包写入/覆盖一个 {@link MergedEffectPlan}。
  *
  * <pre>{@code
  * {"id":"merge-360-1","tick":360,"participantIds":["dm-1","dm-2"],
@@ -29,17 +31,21 @@ import java.util.Objects;
  *  "sources":["pkt-dm-1-360:0","pkt-dm-2-360:0"],"reasonInfoId":null,"outcome":null}
  * }</pre>
  *
- * <p>★ 同 id **幂等替换**（整包覆盖）：GM 建计划与执行器回写 {@code outcome} 都走这一条命令。
+ * <p>★ 同 id <b>幂等替换</b>（整包覆盖）：GM 建计划与执行器回写 {@code outcome} 都走这一条命令。
  *
  * <p>★ 扁平载荷字段由 {@link SdPayloads#requireMergedEffectPlan(JsonNode)} 读；{@code participantIds}
- * 允许历史已删除 决策人（与 packet 同口径，不做存在性校验）。
+ * 允许历史已删除的决策人（与 packet 同口径，不做存在性校验）。
  *
- * <p>★ {@link CommandTargets#targetPaths} 返回 {@code merged-plan/<id>}（GM 侧 sd unlimited）。
+ * <p>★ {@link CommandTargets#targetPaths} 返回 {@code merged-plan/<id>}；路径串逐字保留（见 {@link
+ * UpsertDecisionPacketHandler} 的类注）。
+ *
+ * <p>★ 改名理由与权限口径同 {@link UpsertDecisionPacketHandler} 的类注（{@code namespaceOf} 按类型前缀选 codec； <b>不打
+ * {@code DmUsableCommand} ⇒ 仅 GM</b>）。
  */
 public final class UpsertMergedEffectPlanHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
-  public static final String TYPE = "sd.UpsertMergedEffectPlan";
+  public static final String TYPE = "ga.UpsertMergedEffectPlan";
 
   @Override
   public String type() {
@@ -57,7 +63,7 @@ public final class UpsertMergedEffectPlanHandler implements CommandHandler, Comm
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
     String planForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
@@ -67,11 +73,11 @@ public final class UpsertMergedEffectPlanHandler implements CommandHandler, Comm
           new LinkedHashMap<>(base.mergedEffectPlans());
       boolean newPlan = !next.containsKey(plan.id());
       next.put(plan.id(), plan); // 整包覆盖，同 id 幂等替换
-      EventLog.channel(SdLog.decision())
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_UPSERT_MERGED_EFFECT_PLAN_APPLIED",
-                  SdLogSource.SD_DECISION,
+                  GaLogSource.GA_DECISION,
                   "plan",
                   plan.id().value(),
                   "tick",
@@ -89,7 +95,7 @@ public final class UpsertMergedEffectPlanHandler implements CommandHandler, Comm
                   "mergedEffectPlans",
                   next.size()));
       return new HandlerOutcome.Applied(
-          SdChangeSet.between(base, base.withMergedEffectPlans(next)));
+          GaChangeSet.between(base, base.withMergedEffectPlans(next)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "plan", planForLog);
     }
@@ -101,8 +107,8 @@ public final class UpsertMergedEffectPlanHandler implements CommandHandler, Comm
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(),
-        SdLogSource.SD_DECISION,
+        GaLog.decision(),
+        GaLogSource.GA_DECISION,
         "SD_UPSERT_MERGED_EFFECT_PLAN_REJECTED",
         reason,
         idKeyValues);

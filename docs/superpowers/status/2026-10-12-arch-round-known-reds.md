@@ -43,3 +43,40 @@
 **零逻辑证明**：去掉注释后 **65 个文件的代码 token 逐字节相同**（Python 注释剥离器，处理字符串/字符字面量）；
 差异全在 javadoc 折行位置与类声明折行。
 ★ 教训（已入规划 §11）：**格式门禁属"提交前必跑"**；`spotless` 第一处 FAILURE 后其余模块全 SKIPPED ⇒ 修完必须重跑直到全绿。
+
+### 批次 3a（`ga` 首次持状态：搬 `decisionPackets`+`mergedEffectPlans` 两组件，4 条命令 `sd.*`→`ga.*`）
+
+**A. 编译断（`test-compile` 实测 56 报错行 / 4 文件，全在 `simos-sd/src/test`）—— 属性：旧测试直接调用被移除的组件**
+| 文件 | 报错行 | 形态 |
+|---|---|---|
+| `sd/change/SdRoundTripTest.java` | 16 | `cs.decisionPackets()` / `cs.mergedEffectPlans()` / `rebuilt.*` / `:60 hasSize(14)` |
+| `sd/codec/SdCodecTest.java` | 22 | `withDecisionPackets(...)` / `withMergedEffectPlans(...)` / 缺键⇒空表用例 |
+| `sd/state/SdStateInvariantTest.java` | 8 | `after.decisionPackets()` / 键不一致用例 |
+| `sd/testing/SdFixtures.java` | 10 | `:118 new SdState(14 参)` / `mutated(base,"decisionPackets"\|"mergedEffectPlans")` |
+**处置**：§一.10「老架构老测试、新架构新测试」⇒ 收尾期**删/迁移**（这些组件已不在 sd）。
+
+**B. 编译断（`simos-app/src/test`，被 A 挡住未走到，独立于 A 必然断）**
+`app/decision/RealLlmGovScenarioTest.java:557` · `app/decision/RunDecisionEndToEndTest.java:424`（均 `SdState.decisionPackets()`）。
+
+**C. 断言红（类型串 / 清单）**
+`app/McpCoverageTest.java:226,363,494`（含 4 条旧串 + "not found" 样本表）· `app/tools/SimosToolsTest.java:626` ·
+`app/tools/write/AdjudicateTickToolTest.java:825,829,832`（`samples` 的 key = 旧类型串；★ `:549 hasSize(66)` **不受影响**）·
+`sd/change/SdRoundTripTest.java:60 hasSize(14)` → 须 **12**（方法名同步）。
+
+**D. 模块集断言红（新增空 `ga` 片）**
+`app/world/CorridorWorldTest.java:47`（`containsExactlyInAnyOrder(...)` 须 +`"ga"`）· `app/world/T12InfoRedlineTest.java:76` 同。
+
+**E. ★ 装配红（未实测，**收尾期主要工作量**）**
+**54 个 app 测试文件手工列 codec 表**（`List.of(new MapCodec(), …, new SdCodec())`）并手工搭世界，**没有 `GaCodec` 也没有 `ga` 片**
+⇒ 凡真正驱动"决策包流程 / 决策回合结算"的用例会在运行期红（`ToolSupport.gaState` 抛"状态里没有 ga 模块切片"，或 `ga.*` 命令找不到 codec）。
+候选集（代理给的 14 个）：`DecisionResultsShellEndToEndTest` · `DecisionMakerScopeEndToEndTest` · `DecisionAgentRunnerTest` ·
+`RealLlmUnitDecisionLoopTest` · `ResetConversationEndToEndTest` · `SdDecisionResultsApiTest` · `SdRunDecisionApiTest` ·
+`DecisionDocsToolTest` · `DecisionResultsToolTest` · `StartDecisionEndToEndTest` · `AdjudicationEndToEndTest` ·
+`AdjudicatorRunnerTest` · `SdCommandDrainTest` · `DecisionChannelTest`。
+**补法**（代理给）：夹具加 `new GaSnapshot(...)` / `new GaCodec()` 两行。
+
+### ★ 流程修正（2026-10-12，自批次 3a 起生效）
+`test-compile` 从本批起**注定红**（sd 测试的编译断要到收尾期才清）⇒ 而 **`-DskipTests` 不跳过 test-compile**，
+`package` 会卡在 sd 上、**永远到不了 spotbugs 门禁**。
+⇒ **自本批起，每批的 spotbugs 门禁一律用 `-DskipTests -Dmaven.test.skip=true package spotbugs:check`**
+（`maven.test.skip=true` 连测试编译一起跳）。这是**架构调整期的既定代价**（§12.2），不是放松。

@@ -11,6 +11,8 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.spi.DecideDecisionPacketHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -24,8 +26,6 @@ import io.mosire.simos.sd.model.CallStatus;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.spi.DecideDecisionPacketHandler;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -165,8 +165,8 @@ public final class GmDecidePacketTool implements SimosTool {
         return ToolResult.error("BAD_REQUEST", "expectedRevision 不得为负: " + expectedRevisionArg);
       }
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
-      SdState sd = GaToolReads.sd(state);
-      DecisionPacket packet = sd.decisionPackets().get(DecisionPacketId.parse(packetId));
+      GaState ga = GaToolReads.ga(state);
+      DecisionPacket packet = ga.decisionPackets().get(DecisionPacketId.parse(packetId));
       if (packet == null) {
         return ToolResult.error("NOT_FOUND", "决策包不存在: " + packetId);
       }
@@ -175,7 +175,7 @@ public final class GmDecidePacketTool implements SimosTool {
             "BAD_REQUEST", "只有 PENDING 决策包可裁决，当前状态: " + packet.status() + "（" + packetId + "）");
       }
       if (MERGE.equals(decision)
-          && !sd.mergedEffectPlans()
+          && !ga.mergedEffectPlans()
               .containsKey(MergedEffectPlanId.parse(mergedPlanIdArg.orElseThrow()))) {
         return ToolResult.error("NOT_FOUND", "合并计划不存在: " + mergedPlanIdArg.orElseThrow());
       }

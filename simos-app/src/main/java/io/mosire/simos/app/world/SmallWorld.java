@@ -12,6 +12,8 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.GameMap;
@@ -381,6 +383,9 @@ public final class SmallWorld {
     modules.put("actor", new ActorSnapshot(ref, AT, ActorData.empty()));
     modules.put("gov", new GovSnapshot(ref, AT, GovState.empty()));
     modules.put("army", new ArmySnapshot(ref, AT, ArmyData.empty()));
+    // ★★ 2026-10-12 批次 3a（九片在场）：ga 切片（决策包 / 合并效果集两表）。键名写死 "ga"，与
+    //   GaSnapshot.namespace() 同字面（SimulationState 构造期校验）。
+    modules.put("ga", new GaSnapshot(ref, AT, GaState.empty()));
     return new SimulationState(new StateMeta(ref, AT), modules, InMemoryInfoSystem.empty());
   }
 

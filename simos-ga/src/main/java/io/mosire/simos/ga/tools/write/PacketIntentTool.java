@@ -10,20 +10,20 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.spi.UpsertDecisionPacketHandler;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -124,10 +124,10 @@ public final class PacketIntentTool implements SimosTool {
         return ToolResult.error("BAD_REQUEST", "expectedRevision 不得为负: " + expectedRevisionArg);
       }
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
-      SdState sd = GaToolReads.sd(state);
+      GaState ga = GaToolReads.ga(state);
       long tick = state.meta().timestamp().tick();
       DecisionPacketId packetId = DecisionPacketId.parse("pkt-" + proposerId.value() + "-" + tick);
-      DecisionPacket existing = sd.decisionPackets().get(packetId);
+      DecisionPacket existing = ga.decisionPackets().get(packetId);
       if (existing != null && existing.status() != PacketStatus.DRAFT) {
         return ToolResult.error(
             "BAD_REQUEST",

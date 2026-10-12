@@ -1,5 +1,7 @@
 package io.mosire.simos.ga.tools;
 
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.spi.GaSnapshots;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolSchema;
@@ -82,5 +84,16 @@ public final class GaToolReads {
       throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
     }
     return sdSnapshot.state();
+  }
+
+  /**
+   * ★★ <b>ga 切片</b>（{@code state.module("ga")}）：缺切片 / 类型不对 = 装配故障，当场炸。
+   *
+   * <p>★ 2026-10-12 批次 3a：决策包 / 合并效果集两张表从 {@code sd} 搬进 {@code ga} ⇒ 决策包族工具改从这里取数。 语义委托 {@link
+   * io.mosire.simos.ga.spi.GaSnapshots#state(SimulationState)}（切片提取的<b>唯一拼写点</b>在那边，
+   * 本方法只是工具面的入口别名）。
+   */
+  public static GaState ga(SimulationState state) {
+    return GaSnapshots.state(state);
   }
 }

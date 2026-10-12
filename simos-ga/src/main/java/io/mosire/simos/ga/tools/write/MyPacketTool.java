@@ -8,6 +8,7 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -20,7 +21,6 @@ import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.model.DecisionPacket;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -99,7 +99,7 @@ public final class MyPacketTool implements SimosTool {
       DecisionMakerId proposerId = DecisionMakerId.parse(decisionMakerId.get());
       Map<String, Object> args = context.arguments();
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
-      SdState sd = GaToolReads.sd(state);
+      GaState ga = GaToolReads.ga(state);
       Long tickArg = ToolSchema.optionalLong(args, "tick");
       long tick = tickArg == null ? state.meta().timestamp().tick() : tickArg;
       ToolResources.requireAll(
@@ -107,7 +107,7 @@ public final class MyPacketTool implements SimosTool {
           Operation.READ,
           List.of(ToolResources.resourceSd(identity.decisionPacketKind(), proposerId.value())));
       DecisionPacketId packetId = DecisionPacketId.parse("pkt-" + proposerId.value() + "-" + tick);
-      DecisionPacket packet = sd.decisionPackets().get(packetId);
+      DecisionPacket packet = ga.decisionPackets().get(packetId);
       if (packet == null) {
         return ToolResult.error("NOT_FOUND", "本 tick 没有决策包: " + packetId.value());
       }

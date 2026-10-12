@@ -7,6 +7,7 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.spi.GmOnlyRead;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
@@ -19,7 +20,6 @@ import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.model.DecisionPacket;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Map;
@@ -83,9 +83,9 @@ public final class GmPacketTool implements SimosTool, GmOnlyRead {
           context, Operation.READ, List.of(ResourceId.of(ToolResources.SD_NAMESPACE, "*")));
       Map<String, Object> args = context.arguments();
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
-      SdState sd = GaToolReads.sd(state);
+      GaState ga = GaToolReads.ga(state);
       DecisionPacketId packetId = resolvePacketId(args);
-      DecisionPacket packet = sd.decisionPackets().get(packetId);
+      DecisionPacket packet = ga.decisionPackets().get(packetId);
       if (packet == null) {
         return ToolResult.error("NOT_FOUND", "决策包不存在: " + packetId.value());
       }

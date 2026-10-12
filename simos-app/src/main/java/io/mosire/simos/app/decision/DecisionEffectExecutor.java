@@ -16,6 +16,9 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
+import io.mosire.simos.ga.spi.UpsertMergedEffectPlanHandler;
 import io.mosire.simos.ga.tools.write.DecisionPacketPayloads;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.model.DecisionPacket;
@@ -23,9 +26,6 @@ import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.MergedEffect;
 import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.spi.PutInfoHandler;
-import io.mosire.simos.sd.spi.UpsertDecisionPacketHandler;
-import io.mosire.simos.sd.spi.UpsertMergedEffectPlanHandler;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -59,8 +59,8 @@ import java.util.UUID;
  * <p>★ <b>稳定序</b>：由调用方保证——{@code gm.packet.execute} 按 packetId 字符串序 → callIndex 升序； {@code
  * gm.mergedPlan.apply} 按 plan.orderedEffects 顺序。
  *
- * <p>★ <b>outcome 回写</b>（同批）：涉及的每个 packet 追加一条 {@code sd.UpsertDecisionPacket}（执行到的 call 写 {@code
- * outcomeJson}，其余字段原样）；合并计划追加一条 {@code sd.UpsertMergedEffectPlan}（{@code outcome} = 同一摘要 JSON
+ * <p>★ <b>outcome 回写</b>（同批）：涉及的每个 packet 追加一条 {@code ga.UpsertDecisionPacket}（执行到的 call 写 {@code
+ * outcomeJson}，其余字段原样）；合并计划追加一条 {@code ga.UpsertMergedEffectPlan}（{@code outcome} = 同一摘要 JSON
  * 字符串）；最后追加一条 {@code sd.PutInfo}（地址 {@code sd:execution.<batchId>}，key={@code result}， value=同一摘要
  * JSON 字符串）作为可读审计。合并计划的 sourceCallRefs 会反向把 outcome 写到来源 call 上。
  */
@@ -265,10 +265,10 @@ public final class DecisionEffectExecutor {
     String summaryJson = summaryJson(batchId, tick, mergedPlan, callOutcomes);
 
     // ④ 追加 outcome 回写命令（同批）。先校验目标 packet/call 存在且无旧 outcome（fail-closed，绝不静默覆盖/剔除）。
-    SdState sd = ToolSupport.sdState(base);
+    GaState ga = ToolSupport.gaState(base);
     Map<String, Map<Integer, String>> packetOutcomes;
     try {
-      packetOutcomes = collectPacketOutcomes(sd, callOutcomes);
+      packetOutcomes = collectPacketOutcomes(ga, callOutcomes);
     } catch (IllegalArgumentException e) {
       return failure(batchId, Status.PLANNING_FAILED, "BAD_REQUEST", e.getMessage());
     }
@@ -276,7 +276,7 @@ public final class DecisionEffectExecutor {
       return failure(batchId, Status.PLANNING_FAILED, "BAD_REQUEST", "合并计划已有 outcome，拒绝重复 apply");
     }
     for (String packetId : sortedKeys(packetOutcomes)) {
-      DecisionPacket packet = sd.decisionPackets().get(DecisionPacketId.parse(packetId));
+      DecisionPacket packet = ga.decisionPackets().get(DecisionPacketId.parse(packetId));
       DecisionPacket updated = withOutcomes(packet, packetOutcomes.get(packetId));
       batch.add(
           new CommandEnvelope(
@@ -419,28 +419,28 @@ public final class DecisionEffectExecutor {
    * 反向映射到来源 call。
    */
   private static Map<String, Map<Integer, String>> collectPacketOutcomes(
-      SdState sd, List<CallOutcome> outcomes) {
+      GaState ga, List<CallOutcome> outcomes) {
     Map<String, Map<Integer, String>> byPacket = new LinkedHashMap<>();
     for (CallOutcome outcome : outcomes) {
       EffectCall call = outcome.call();
       if (call.packetId() != null) {
-        putPacketOutcome(sd, byPacket, call.packetId(), call.callIndex(), outcome);
+        putPacketOutcome(ga, byPacket, call.packetId(), call.callIndex(), outcome);
       }
       for (String ref : call.sourceCallRefs()) {
         SourceRef parsed = parseSourceRef(ref);
-        putPacketOutcome(sd, byPacket, parsed.packetId(), parsed.callIndex(), outcome);
+        putPacketOutcome(ga, byPacket, parsed.packetId(), parsed.callIndex(), outcome);
       }
     }
     return byPacket;
   }
 
   private static void putPacketOutcome(
-      SdState sd,
+      GaState ga,
       Map<String, Map<Integer, String>> byPacket,
       String packetId,
       int callIndex,
       CallOutcome outcome) {
-    DecisionPacket packet = sd.decisionPackets().get(DecisionPacketId.parse(packetId));
+    DecisionPacket packet = ga.decisionPackets().get(DecisionPacketId.parse(packetId));
     if (packet == null) {
       throw new IllegalArgumentException("outcome 回写目标决策包不存在: " + packetId);
     }

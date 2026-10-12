@@ -4,26 +4,22 @@ import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
-import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.DiplomaticEvent;
 import io.mosire.simos.sd.model.DiplomaticRelation;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.Effect;
 import io.mosire.simos.sd.model.LossRecord;
-import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.Verdict;
@@ -35,9 +31,10 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * sd 状态的变更集（spec §五.1）：**组件与 {@link SdState} 的 record 组件一一对应**（当前 14 个；D5 / R6 追加 {@code
- * diplomaticRelations} 与 {@code diplomaticEvents}；D2 追加 {@code decisionPackets} 与 {@code
- * mergedEffectPlans}）。
+ * sd 状态的变更集（spec §五.1）：**组件与 {@link SdState} 的 record 组件一一对应**（★★ 2026-10-12 批次 3a 起 <b>12 个</b>；D5
+ * / R6 追加 {@code diplomaticRelations} 与 {@code diplomaticEvents}；D2 追加的 {@code decisionPackets} 与
+ * {@code mergedEffectPlans} 已随批次 3a <b>整表搬进 {@code simos-ga}</b>（{@code GaChangeSet}
+ * 的两组件），值类型仍住本模块）。
  *
  * <p>★ 铁律 5：变更集从完整状态类型派生，由 {@code SdRoundTripTest} 的反射枚举把守——新增状态组件若不进变更集，那个测试自动红。
  *
@@ -61,52 +58,10 @@ public record SdChangeSet(
     FieldDelta<LossRecord> lossRecords,
     FieldDelta<List<SdInfoEntry>> info,
     FieldDelta<DiplomaticRelation> diplomaticRelations,
-    FieldDelta<DiplomaticEvent> diplomaticEvents,
-    FieldDelta<DecisionPacket> decisionPackets,
-    FieldDelta<MergedEffectPlan> mergedEffectPlans)
+    FieldDelta<DiplomaticEvent> diplomaticEvents)
     implements ChangeSet {
 
-  /**
-   * ★★ **12 参兼容构造器**（D2 决策包新增两个组件时保留）：旧调用点/旧夹具一字不改，新组件按 {@link FieldDelta.Unchanged}
-   * 处理（"旧档没提该组件，就是没动它"）。
-   */
-  public SdChangeSet(
-      FieldDelta<Nation> nations,
-      FieldDelta<Army> armies,
-      FieldDelta<Combat> combats,
-      FieldDelta<CombatState> combatStates,
-      FieldDelta<DecisionMaker> decisionMakers,
-      FieldDelta<Directive> directives,
-      FieldDelta<Effect> effects,
-      FieldDelta<Verdict> verdicts,
-      FieldDelta<LossRecord> lossRecords,
-      FieldDelta<List<SdInfoEntry>> info,
-      FieldDelta<DiplomaticRelation> diplomaticRelations,
-      FieldDelta<DiplomaticEvent> diplomaticEvents) {
-    this(
-        nations,
-        armies,
-        combats,
-        combatStates,
-        decisionMakers,
-        directives,
-        effects,
-        verdicts,
-        lossRecords,
-        info,
-        diplomaticRelations,
-        diplomaticEvents,
-        new FieldDelta.Unchanged<>(),
-        new FieldDelta.Unchanged<>());
-  }
-
   public SdChangeSet {
-    if (decisionPackets == null) {
-      decisionPackets = new FieldDelta.Unchanged<>();
-    }
-    if (mergedEffectPlans == null) {
-      mergedEffectPlans = new FieldDelta.Unchanged<>();
-    }
     if (diplomaticRelations == null) {
       diplomaticRelations = new FieldDelta.Unchanged<>();
     }
@@ -131,9 +86,7 @@ public record SdChangeSet(
         FieldDelta.diff(base.lossRecords(), target.lossRecords()),
         FieldDelta.diff(base.info(), target.info()),
         FieldDelta.diff(base.diplomaticRelations(), target.diplomaticRelations()),
-        FieldDelta.diff(base.diplomaticEvents(), target.diplomaticEvents()),
-        FieldDelta.diff(base.decisionPackets(), target.decisionPackets()),
-        FieldDelta.diff(base.mergedEffectPlans(), target.mergedEffectPlans()));
+        FieldDelta.diff(base.diplomaticEvents(), target.diplomaticEvents()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -154,10 +107,7 @@ public record SdChangeSet(
         FieldDelta.rebuild(
             base.diplomaticRelations(), cs.diplomaticRelations(), DiplomaticRelationKey::parse),
         FieldDelta.rebuild(
-            base.diplomaticEvents(), cs.diplomaticEvents(), DiplomaticEventId::parse),
-        FieldDelta.rebuild(base.decisionPackets(), cs.decisionPackets(), DecisionPacketId::parse),
-        FieldDelta.rebuild(
-            base.mergedEffectPlans(), cs.mergedEffectPlans(), MergedEffectPlanId::parse));
+            base.diplomaticEvents(), cs.diplomaticEvents(), DiplomaticEventId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -173,8 +123,6 @@ public record SdChangeSet(
         && !lossRecords.changed()
         && !info.changed()
         && !diplomaticRelations.changed()
-        && !diplomaticEvents.changed()
-        && !decisionPackets.changed()
-        && !mergedEffectPlans.changed();
+        && !diplomaticEvents.changed();
   }
 }

@@ -11,6 +11,7 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -22,7 +23,6 @@ import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.model.MergedEffect;
 import io.mosire.simos.sd.model.MergedEffectPlan;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -111,8 +111,8 @@ public final class GmMergedPlanApplyTool implements SimosTool {
         return ToolResult.error("BAD_REQUEST", "expectedRevision 不得为负: " + expectedArg);
       }
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
-      SdState sd = GaToolReads.sd(state);
-      MergedEffectPlan plan = sd.mergedEffectPlans().get(MergedEffectPlanId.parse(planId));
+      GaState ga = GaToolReads.ga(state);
+      MergedEffectPlan plan = ga.mergedEffectPlans().get(MergedEffectPlanId.parse(planId));
       if (plan == null) {
         return ToolResult.error("NOT_FOUND", "合并计划不存在: " + planId);
       }

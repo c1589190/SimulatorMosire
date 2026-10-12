@@ -13,20 +13,20 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.ga.spi.UpsertMergedEffectPlanHandler;
 import io.mosire.simos.ga.tools.GaProposalHost;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.model.MergedEffect;
 import io.mosire.simos.sd.model.MergedEffectPlan;
-import io.mosire.simos.sd.spi.UpsertMergedEffectPlanHandler;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -47,7 +47,7 @@ import java.util.Set;
  * merge-<tick>-<n>}（n = 该 tick 已有计划数 + 1，稳定确定性）；每条 effect 的工具必须在 {@link ProposalCatalog} 初始清单里（D3
  * 不允许任意工具，避免执行面失控）。
  *
- * <p>★ 提交一条 {@code sd.UpsertMergedEffectPlan}（整包 upsert，一条 revision）；返回计划视图。
+ * <p>★ 提交一条 {@code ga.UpsertMergedEffectPlan}（整包 upsert，一条 revision）；返回计划视图。
  *
  * <p>★ 顺序约束：先 upsert，再 {@code simos.gm.packet.decide(MERGE, mergedPlanId)}，最后 {@code
  * simos.gm.mergedPlan.apply}。
@@ -89,7 +89,7 @@ public final class GmMergedPlanUpsertTool implements SimosTool {
     return "GM 建/改合并效果计划（写）：参数 {planId?(缺省 merge-<tick>-<n>), tick?(缺省当前 tick), "
         + "participantIds?[决策人 id], sources?[来源引用], reason?(审批摘要用), "
         + "orderedEffects[{toolName(必须在 ProposalCatalog 清单), argsJson(JSON 对象), sourceCallRefs?[]}...](必填非空)}。"
-        + "一条 sd.UpsertMergedEffectPlan（整包 upsert）。返回 {planId, tick, participantIds, orderedEffects, "
+        + "一条 ga.UpsertMergedEffectPlan（整包 upsert）。返回 {planId, tick, participantIds, orderedEffects, "
         + "sources, outcome?, submission?}。先本工具建计划，再 gm.packet.decide(MERGE, planId)，最后 "
         + "gm.mergedPlan.apply。";
   }
@@ -167,7 +167,7 @@ public final class GmMergedPlanUpsertTool implements SimosTool {
         return ToolResult.error("BAD_REQUEST", "expectedRevision 不得为负: " + expectedArg);
       }
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
-      SdState sd = GaToolReads.sd(state);
+      GaState ga = GaToolReads.ga(state);
       Long tickArg = ToolSchema.optionalLong(args, "tick");
       long tick = tickArg == null ? state.meta().timestamp().tick() : tickArg;
       if (tick < 0L) {
@@ -178,7 +178,7 @@ public final class GmMergedPlanUpsertTool implements SimosTool {
       List<String> sources = optionalStringList(args, "sources", "sources");
       String planIdArg = ToolSchema.optionalText(args, "planId", null);
       String planId =
-          planIdArg == null || planIdArg.isBlank() ? defaultPlanId(sd, tick) : planIdArg.trim();
+          planIdArg == null || planIdArg.isBlank() ? defaultPlanId(ga, tick) : planIdArg.trim();
       MergedEffectPlan plan =
           new MergedEffectPlan(
               MergedEffectPlanId.parse(planId),
@@ -290,16 +290,16 @@ public final class GmMergedPlanUpsertTool implements SimosTool {
   }
 
   /** 缺省 planId：{@code merge-<tick>-<n>}，n = 该 tick 已有计划数 + 1；撞既有 id（历史异常数据）就继续 +1。 */
-  private static String defaultPlanId(SdState sd, long tick) {
+  private static String defaultPlanId(GaState ga, long tick) {
     long count = 0L;
-    for (MergedEffectPlan plan : sd.mergedEffectPlans().values()) {
+    for (MergedEffectPlan plan : ga.mergedEffectPlans().values()) {
       if (plan.tick() == tick) {
         count++;
       }
     }
     long n = count + 1;
     String candidate = "merge-" + tick + "-" + n;
-    while (sd.mergedEffectPlans().containsKey(MergedEffectPlanId.parse(candidate))) {
+    while (ga.mergedEffectPlans().containsKey(MergedEffectPlanId.parse(candidate))) {
       n++;
       candidate = "merge-" + tick + "-" + n;
     }

@@ -4,6 +4,8 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.GameMap;
@@ -107,7 +109,9 @@ public final class CorridorWorld {
             // ★ S1 阶段 2：同款——actor 切片缺席时 slice("actor") 会响亮失败 ⇒ 补空/未激活切片。
             "actor", new ActorSnapshot(at, AT, ActorData.empty()),
             // ★ 阶段 11b/12：gov 片由参与者写；缺席时带 GovernmentFormation 的推进会被 TimeAdvance 拒 ⇒ 补空片。
-            "gov", new GovSnapshot(at, AT, GovState.empty())),
+            "gov", new GovSnapshot(at, AT, GovState.empty()),
+            // ★★ 2026-10-12 批次 3a：ga 切片（决策包 / 合并效果集两表）——命令总线与 app 读面都要求切片在场。
+            "ga", new GaSnapshot(at, AT, GaState.empty())),
         InMemoryInfoSystem.empty());
   }
 
