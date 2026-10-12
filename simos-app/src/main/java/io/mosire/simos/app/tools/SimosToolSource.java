@@ -574,10 +574,10 @@ public final class SimosToolSource implements ToolSource {
     this.source = GaToolSource.of(built);
   }
 
-  /** GM 面必须带上决策人运行流（{@code sd.RunDecision} 没有它就只是半条工具）——缺了当场抛，不静默少一条。 */
+  /** GM 面必须带上决策人运行流（{@code ga.RunDecision} 没有它就只是半条工具）——缺了当场抛，不静默少一条。 */
   private static DecisionAgentService requireDecisionAgent(DecisionAgentService decisionAgent) {
     return Objects.requireNonNull(
-        decisionAgent, "decisionAgent（GM 面含 sd.RunDecision，需要决策人 agent 运行流）");
+        decisionAgent, "decisionAgent（GM 面含 ga.RunDecision，需要决策人 agent 运行流）");
   }
 
   /** 通用写（spec §八.3）：submit / advance / fork —— 只有 {@link Role#GM} 有。 */
@@ -589,11 +589,11 @@ public final class SimosToolSource implements ToolSource {
   }
 
   /**
-   * GM 窄写（N11）：sd 域两条决策窄工具 + 配权工具（`sd.SetDecisionMakerAccess`）+ 「开始决策」（T10）+ **map 域与 unit 域的窄写**。
+   * GM 窄写（N11）：sd 域两条决策窄工具 + 配权工具（`ga.SetDecisionMakerAccess`）+ 「开始决策」（T10）+ **map 域与 unit 域的窄写**。
    *
    * <p>★ **窄写工具进的是 GM 组**（不是通用写、也不是决策人组）：它们的命令类型在工具里固定死，模型只能给载荷 ——与 {@code simos.command.submit}
    * 的"自选 type"相对（spec §八.3）。{@link Role#GM} 是运行时 MCP 口，因此口上也含这些。★ **T11C 的那条（{@code
-   * sd.RunDecision}） 是唯一的例外形态**：它落一条触发事实之后**还要跑一轮真 LLM**，故 GM 面需要{@link
+   * ga.RunDecision}） 是唯一的例外形态**：它落一条触发事实之后**还要跑一轮真 LLM**，故 GM 面需要{@link
    * DecisionAgentService}（见那个构造器）。
    *
    * <p>★ **M3（spec §八.3）：sd 域余下的写命令也在此追加**——命令类型固定、与 map/unit 窄写同形。★ **新窄写一律加在这里**， 加完**不必回来改本注**
@@ -636,7 +636,7 @@ public final class SimosToolSource implements ToolSource {
     // T11C：触发**决策人自己**跑一轮（真 LLM + 真工具）。★ **只在 GM 桶**——决策人不触发自己（那是自环）。
     built.add(new RunDecisionTool(gaWrites, gaIdentity, mapId, gaDecision));
     // ★★ P7a（2026-10-01 后端 + MCP 稳定化计划）：显式名单批量派决策人（GM-only 组合工具）。
-    //   不做自动筛选/自动派出：due 只读展示、不参与选择；名单由调用方显式给。先同批落 N 条 sd.RunDecision 触发事实
+    //   不做自动筛选/自动派出：due 只读展示、不参与选择；名单由调用方显式给。先同批落 N 条 ga.RunDecision 触发事实
     //   （一条 revision），批成功后按名单顺序逐个调运行流跑真轮；批拒/冲突零 revision 且不跑 LLM。
     //   本工具不做跨调用锁、不做自动重试；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     //   ★★ 2026-10-12 A1（ga 摘掉 core 依赖）：本行起共 8 处装配改吃同一只窄写口 `gaWrites` —— 已下放到 ga 的
@@ -834,13 +834,13 @@ public final class SimosToolSource implements ToolSource {
     built.add(
         new LevyRegionTool(unitWrites, unitReads, unitViews, unitPerspective, unitAllocations));
     // 辖区阶段 8（2026-09-30 / 计划 §5）：组军 GM 组合工具——从地方抽人力 + 抽粮/钱，同批 unit.CreateUnit +
-    //   actor.AdjustAccounts + social.SeedGroups + sd.PutInfo，四条命令同批落一条 revision。**只在 GM 桶**；
+    //   actor.AdjustAccounts + social.SeedGroups + ga.PutInfo，四条命令同批落一条 revision。**只在 GM 桶**；
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；分摊与 levyRegion 共用 RegionAllocations 一份瀑布。
     built.add(
         new RaiseUnitTool(
             unitWrites, unitReads, unitViews, unitPerspective, unitAllocations, unitCommandTypes));
     // P5（2026-10-01 后端 + MCP 稳定化计划）：按格直接建军 GM 组合工具——GM 特权不抽人口/粮饷，同批
-    //   unit.CreateUnit + [role 非空: unit.SetArmyFormation] + sd.CreateArmy + sd.PutInfo，一条
+    //   unit.CreateUnit + [role 非空: unit.SetArmyFormation] + sd.CreateArmy + ga.PutInfo，一条
     // revision。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；raiseUnit 的抽取语义不变。
     built.add(
@@ -856,7 +856,7 @@ public final class SimosToolSource implements ToolSource {
     ArmyToolPerspective armyPerspective = new AppArmyToolPerspective();
     ArmyManpowerPort armyManpower = new AppArmyManpowerPort(calendarService);
     // 阶段 12 后续赋值缺口（2026-10-01）：Army 创建后的主子改派/解除 GM 组合工具——unit.SetArmyFormation
-    //   → sd.SetArmyMasterGov → sd.PutInfo 同批落一条 revision，避免 sd / unit 两侧主子漂移。**只在 GM
+    //   → sd.SetArmyMasterGov → ga.PutInfo 同批落一条 revision，避免 sd / unit 两侧主子漂移。**只在 GM
     //   桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new AssignArmyGovTool(toolWrites, toolReads, armyPerspective));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
@@ -903,7 +903,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new ResolveCombatTool(toolWrites, toolReads, armyViews, armyManpower));
     // ★★ D3a（2026-10-02 / D-010 + 补裁 R2 最小环）：Army 侧"按统一格式整表复写单位人力/装备"的工具链入口——
     //   按格式（有序条目 + 可选 jitter/上下限 + 可选 seed）算出目标表，经 unit.SetComposition 整表复写，
-    //   同批写 sd.PutInfo（含生效 seed，可复现证据）。**只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    //   同批写 ga.PutInfo（含生效 seed，可复现证据）。**只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new FormatUnitTool(toolWrites, toolReads, armyViews));
     // ★★ E6b：GM 经济调整（economy.GmAdjust 的窄封装：预览 / 原因 / 前后差异 / 审计）。
     //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它（白名单派生自那个桶，故也不会有它），
@@ -1005,7 +1005,7 @@ public final class SimosToolSource implements ToolSource {
    * Nation 名义写外交边）、{@code sd.RecordDiplomaticEvent}（参与者必须含调用者 Nation）、 {@code simos.gov.pay}（付款人 =
    * 调用者所属 GOV，身份派生；收款方由既有审批链把关）。
    *
-   * <p>★ **无** `sd.SetDecisionMakerAccess`（配权是 GM 的活）、**无**通用写、**无** map/unit/sd
+   * <p>★ **无** `ga.SetDecisionMakerAccess`（配权是 GM 的活）、**无**通用写、**无** map/unit/sd
    * 的任何其他写工具：用户原话「决策人不能直接改地图等数据， 只能获取有限的、被 GM 权限层限制范围的信息」。指挥一律走 `ga.IssueDirective`（spec §八.2 的 D2
    * 原设计）。★ D5 新增的三条也都是**受限面**：两条外交写只以自己的 Nation 名义、支付只能花自己所属 GOV 的国库， 且都走同一条敏感审批链。
    *
@@ -1079,7 +1079,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new PacketIntentTool(gaWrites, gaReads, gaIdentity));
     built.add(new MyPacketTool(gaReads, gaIdentity));
     // ★★ D4（2026-10-22）：跨区上报写口——发送人=调用者身份（context.identity()），只写自己的
-    //   sd:decision-maker/<自己> 自指域；落一条 sd.PutInfo（key=report）= 一条 revision。
+    //   sd:decision-maker/<自己> 自指域；落一条 ga.PutInfo（key=report）= 一条 revision。
     //   **只在决策人桶**；白名单即由该桶派生。
     built.add(new SimosSdReportTool(gaWrites, gaReads, gaIdentity));
   }
@@ -1195,7 +1195,7 @@ public final class SimosToolSource implements ToolSource {
         new EconomyOwnershipTool(economyReads, economyViews, economyPerspective, mapId),
         // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）
         new MapRenderTool(mapReads, mapViews, mapRender),
-        // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `sd.CreateDecisionMaker` 写、写完看不见。
+        // ★ 同上：sd 侧的两条（决策人清单 / 详情）——此前只能 `ga.CreateDecisionMaker` 写、写完看不见。
         new DecisionMakersTool(gaQueries),
         // ★ 2026-09-25：详情并入 GUI 的 `/{id}/scope`（现算可见范围）——同一资源的两个端点合成一条工具。
         new DecisionMakerTool(gaQueries),

@@ -17,6 +17,7 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.spi.UpsertMergedEffectPlanHandler;
 import io.mosire.simos.ga.tools.write.DecisionPacketPayloads;
@@ -25,7 +26,6 @@ import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.MergedEffect;
 import io.mosire.simos.sd.model.MergedEffectPlan;
-import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -61,7 +61,7 @@ import java.util.UUID;
  *
  * <p>★ <b>outcome 回写</b>（同批）：涉及的每个 packet 追加一条 {@code ga.UpsertDecisionPacket}（执行到的 call 写 {@code
  * outcomeJson}，其余字段原样）；合并计划追加一条 {@code ga.UpsertMergedEffectPlan}（{@code outcome} = 同一摘要 JSON
- * 字符串）；最后追加一条 {@code sd.PutInfo}（地址 {@code sd:execution.<batchId>}，key={@code result}， value=同一摘要
+ * 字符串）；最后追加一条 {@code ga.PutInfo}（地址 {@code sd:execution.<batchId>}，key={@code result}， value=同一摘要
  * JSON 字符串）作为可读审计。合并计划的 sourceCallRefs 会反向把 outcome 写到来源 call 上。
  */
 public final class DecisionEffectExecutor {

@@ -46,8 +46,8 @@ import java.util.Set;
  * <p>★★ <b>区域重叠 ≠ 省籍</b>：{@code overlappingRegions} 只作信息；是否删除某个相交 Region，要么它满足上面的自动候选规则， 要么调用方在
  * {@code regionIds} 里显式点名。
  *
- * <p>★★ <b>批序固定</b>：{@code sd.DeleteDecisionMaker × N → unit.DisbandUnit × N → map.DeleteRegion × N
- * → sd.PutInfo}；只对有候选项且开关打开的类别下单，全部无命令 ⇒ {@link #hasWork()} 为假（零 revision）。
+ * <p>★★ <b>批序固定</b>：{@code ga.DeleteDecisionMaker × N → unit.DisbandUnit × N → map.DeleteRegion × N
+ * → ga.PutInfo}；只对有候选项且开关打开的类别下单，全部无命令 ⇒ {@link #hasWork()} 为假（零 revision）。
  *
  * <p>★ <b>不前置预演 domain 拒绝</b>：{@code unit.DisbandUnit} 仍有下属或仍被链引用时仍会被域层拒；pre-scan 只把这两种 "几乎必拒"的形状写进
  * warning（见 {@link #addUnitDisbandWarnings}），不改候选、不替域层判。
@@ -55,7 +55,7 @@ import java.util.Set;
 final class RegionClearStructuresPlan {
 
   /** 固定批序第 1 类。 */
-  static final String DELETE_DECISION_MAKER_TYPE = "sd.DeleteDecisionMaker";
+  static final String DELETE_DECISION_MAKER_TYPE = "ga.DeleteDecisionMaker";
 
   /** 固定批序第 2 类。 */
   static final String DISBAND_UNIT_TYPE = "unit.DisbandUnit";
@@ -121,7 +121,7 @@ final class RegionClearStructuresPlan {
     }
   }
 
-  /** 一次可执行清空计划（纯函数产物；{@code commands} 是实际会落的类型序，含末尾的 {@code sd.PutInfo}）。 */
+  /** 一次可执行清空计划（纯函数产物；{@code commands} 是实际会落的类型序，含末尾的 {@code ga.PutInfo}）。 */
   record Plan(
       Region region,
       long tick,
@@ -628,7 +628,7 @@ final class RegionClearStructuresPlan {
                 + directiveIds.size()
                 + " 条 Directive 引用（"
                 + listed
-                + "）：sd.DeleteDecisionMaker 会拒（不级联删历史指令），整批将零 revision");
+                + "）：ga.DeleteDecisionMaker 会拒（不级联删历史指令），整批将零 revision");
       }
     }
   }

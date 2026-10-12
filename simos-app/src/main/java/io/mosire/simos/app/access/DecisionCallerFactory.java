@@ -365,7 +365,7 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
     Objects.requireNonNull(context, "context");
     Objects.requireNonNull(state, "state");
     return decisionMakerIdOf(context.identity())
-        .map(id -> ToolSupport.sdState(state).decisionMakers().get(new DecisionMakerId(id)));
+        .map(id -> ToolSupport.gaState(state).decisionMakers().get(new DecisionMakerId(id)));
   }
 
   /**

@@ -101,14 +101,23 @@ import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
+import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.command.CommandFaces;
 import io.mosire.simos.ga.command.CommandPermissionRules;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.spi.CreateDecisionMakerHandler;
 import io.mosire.simos.ga.spi.DecideDecisionPacketHandler;
-import io.mosire.simos.ga.spi.GaDirectiveLookup;
+import io.mosire.simos.ga.spi.DeleteDecisionMakerHandler;
+import io.mosire.simos.ga.spi.GaDecisionTablesLookup;
 import io.mosire.simos.ga.spi.IssueDirectiveHandler;
+import io.mosire.simos.ga.spi.PutInfoHandler;
+import io.mosire.simos.ga.spi.ResetDecisionMakerConversationHandler;
+import io.mosire.simos.ga.spi.RunDecisionHandler;
+import io.mosire.simos.ga.spi.SetDecisionMakerAccessHandler;
+import io.mosire.simos.ga.spi.SetDecisionMakerProviderHandler;
 import io.mosire.simos.ga.spi.SetDirectiveStatusHandler;
+import io.mosire.simos.ga.spi.StartDecisionHandler;
 import io.mosire.simos.ga.spi.SubmitDecisionPacketHandler;
 import io.mosire.simos.ga.spi.SubmitVerdictHandler;
 import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
@@ -145,24 +154,15 @@ import io.mosire.simos.sd.spi.CancelEffectHandler;
 import io.mosire.simos.sd.spi.CommitOutcomeHandler;
 import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateCombatHandler;
-import io.mosire.simos.sd.spi.CreateDecisionMakerHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
-import io.mosire.simos.sd.spi.DeleteDecisionMakerHandler;
 import io.mosire.simos.sd.spi.DeleteNationHandler;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
-import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
 import io.mosire.simos.sd.spi.RecordDiplomaticEventHandler;
 import io.mosire.simos.sd.spi.RegisterEffectHandler;
-import io.mosire.simos.sd.spi.ResetDecisionMakerConversationHandler;
-import io.mosire.simos.sd.spi.RunDecisionHandler;
 import io.mosire.simos.sd.spi.SetArmyMasterGovHandler;
-import io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler;
-import io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler;
 import io.mosire.simos.sd.spi.SetDiplomaticRelationHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
-import io.mosire.simos.sd.spi.StartDecisionHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
@@ -404,7 +404,7 @@ public final class Shell implements AutoCloseable {
   /** 决策编排（T3）：把 {@code AdjudicatorRunner} 接进壳——「开始决策」真的会跑 LLM 判决。 */
   private final DecisionAdjudicationService decisionAdjudicationService;
 
-  /** 决策人 agent 运行流（T11C）：{@code sd.RunDecision} 触发的那一轮（真 LLM + 真工具）。 */
+  /** 决策人 agent 运行流（T11C）：{@code ga.RunDecision} 触发的那一轮（真 LLM + 真工具）。 */
   private final DecisionAgentService decisionAgentService;
 
   /** 决策人的会话存储（T11C）：落 {@code <store>/conversations.db} ⇒ 跨 tick / 跨重启沿用同一段会话。 */
@@ -494,7 +494,7 @@ public final class Shell implements AutoCloseable {
   /**
    * 同 {@link #start(ShellConfig)}，但可**显式注入决策人 agent 的 LLM 客户端来源**（T11C）。
    *
-   * <p>★ **为什么有这条缝**：{@code sd.RunDecision} 触发的那一轮要**真调 LLM**，而本仓的用例纪律是"测试不打真网络" ⇒ 用例要能把 {@code
+   * <p>★ **为什么有这条缝**：{@code ga.RunDecision} 触发的那一轮要**真调 LLM**，而本仓的用例纪律是"测试不打真网络" ⇒ 用例要能把 {@code
    * FakeLlmClient} 注入**真壳**（真 MCP 口、真审批链、真工具面、真 store），而不是另搭一套 装配——那样测到的就不是"壳接到哪里"了。
    *
    * <p>★ **它只替得掉"怎么造客户端"**：未绑定 provider 的 fail-closed 判定在 {@link DecisionAgentService} 里（世界事实那一半），
@@ -538,10 +538,11 @@ public final class Shell implements AutoCloseable {
       coreSimos.register(codec);
     }
 
-    // ★★ 2026-10-12 批次 3b′：`directives` 表住 ga，而 sd 侧两处（SdResolver 的 `sd:directive.<id>` 存在性、
-    //   DeleteDecisionMakerHandler 的"仍被历史 Directive 引用"守卫）仍要读它 ⇒ 只读口在 sd、实现在 ga、
-    //   装配在这里注入（sd 不得依赖 ga，见 DirectiveLookup 类注）。
-    GaDirectiveLookup directiveLookup = new GaDirectiveLookup();
+    // ★★ 2026-10-12 批次 3b-2：`directives` / `decisionMakers` / `info` 三张表住 ga，而 sd 侧四处仍要碰它们
+    //   （SdResolver 的 `sd:directive.<id>` 与 `sd:decision-maker.<id>` 存在性、sd.DeleteNation 的"仍有决策人挂在
+    //   这个国家上"守卫、SdTimeParticipant 的 Action.PutInfo 写 INFO 覆盖层）⇒ 读写口在 sd、实现在 ga、装配在这里注入
+    //   （sd 不得依赖 ga，见 DecisionTablesLookup 类注）。
+    GaDecisionTablesLookup decisionTables = new GaDecisionTablesLookup();
     List<CommandHandler> handlers =
         new ArrayList<>(
             List.of(
@@ -845,7 +846,7 @@ public final class Shell implements AutoCloseable {
                 new CreateNationHandler(),
                 // ── P1.2（2026-10-09 后端行政批次）：sd.DeleteNation —— 默认严格引用检查（决策人 / 外交关系 /
                 //   map nation tag），显式 clearDiplomaticReferences=true 才连关系与外交事件一起清。GM-only。──
-                new DeleteNationHandler(),
+                new DeleteNationHandler(decisionTables),
                 new CreateArmyHandler(),
                 // ── 阶段 12 后续赋值（2026-10-01 Army 主子改派缺口）：Army 创建后的主子改派/解除。★ GM-only
                 //   （handler 不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM
@@ -855,7 +856,7 @@ public final class Shell implements AutoCloseable {
                 // ── P1b2（2026-10-01）：GM-only 决策人身份删除（只删 decisionMakers 的一条；不级联历史 Directive /
                 //   文档 / 会话）。不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM
                 // 直接提交照常可用。──
-                new DeleteDecisionMakerHandler(directiveLookup),
+                new DeleteDecisionMakerHandler(),
                 new PutInfoHandler(),
                 // ★★ D2（2026-10-22 决策包计划）：三条决策包命令——整包 upsert（propose/intent）、提交、GM 裁决。
                 //   都**不**打 {@code DmUsableCommand} ⇒ 仅 GM（Upsert/Submit 由决策人工具内部提交；Decide 只被 GM
@@ -961,7 +962,7 @@ public final class Shell implements AutoCloseable {
             //   ⇒ 组合参与者把 UnitTimeParticipant 与 PopulationEconomyTimeParticipant 合成一份提案；
             //   内部次序固定：population（含逃亡 outbox）→ unit 移动 → unit 摘除。
             new PopulationUnitTimeParticipant(config.mapId()),
-            new SdTimeParticipant(config.mapId()));
+            new SdTimeParticipant(config.mapId(), decisionTables));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }
@@ -977,7 +978,7 @@ public final class Shell implements AutoCloseable {
     resolverRegistry.register(new MapResolver());
     resolverRegistry.register(new SocialResolver());
     resolverRegistry.register(new UnitResolver());
-    resolverRegistry.register(new SdResolver(directiveLookup));
+    resolverRegistry.register(new SdResolver(decisionTables));
     // ★ R2a：economy 自己的地址解析器（economy:<mapId>[:industry.<id> | :debt.<id> | :class.<i>.<s> |
     // :flow.<i>.<s>]）。
     resolverRegistry.register(new EconomyResolver());
@@ -1182,7 +1183,7 @@ public final class Shell implements AutoCloseable {
             llmConfig,
             decisionAdjudicationService,
             // ★ T11C 的运行流（不是判决定编）：/api/sd/run-decision 落地时就是拿它跑那一轮——与 GM 侧的
-            //   sd.RunDecision 窄工具**同一个实例**（同一个会话库、同一条 provider 解析链）。
+            //   ga.RunDecision 窄工具**同一个实例**（同一个会话库、同一条 provider 解析链）。
             decisionAgentService,
             // ★ C6a/D-020：GUI 三条读口与 MCP 单位/人口读口共用启动期 CalendarService.load 的**同一实例**——
             //   GM 改历法/分带后日期与季节当场整体切换，不需重启。
@@ -1270,12 +1271,13 @@ public final class Shell implements AutoCloseable {
       return Set.of();
     }
     SimulationState state = core.replay(new StateRef(main, head.get()));
-    Snapshot slice = state.module("sd").orElse(null);
-    if (!(slice instanceof SdSnapshot sd)) {
+    // ★★ 2026-10-12 批次 3b-2：决策人表搬进 ga ⇒ 改读 ga 切片（缺片/类型不对 ⇒ 空集，与搬迁前同一条 fail-closed 读法）。
+    Snapshot slice = state.module("ga").orElse(null);
+    if (!(slice instanceof GaSnapshot ga)) {
       return Set.of();
     }
     Set<ActorId> actors = new LinkedHashSet<>();
-    for (DecisionMakerId id : sd.state().decisionMakers().keySet()) {
+    for (DecisionMakerId id : ga.state().decisionMakers().keySet()) {
       actors.add(new ActorId(id.value()));
     }
     return actors;
@@ -1573,7 +1575,7 @@ public final class Shell implements AutoCloseable {
   }
 
   /**
-   * 决策人 agent 运行流（T11C）：测试/调试面读回装配实况（{@code sd.RunDecision} 那条路内部就是它）。
+   * 决策人 agent 运行流（T11C）：测试/调试面读回装配实况（{@code ga.RunDecision} 那条路内部就是它）。
    *
    * <p>★★ **本方法原先刻意不加抑制**（理由写在"它是本壳的产物、不是内部表示"上），但 2026-09-23 的门禁把它报了 （{@code
    * EI_EXPOSE_REP}，Medium）——而**同类的** {@link #llmConfig()} 一直带着同一条抑制。按"门禁是判据"处理： 在这里补上与 {@code

@@ -11,7 +11,8 @@ import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DirectiveStatus;
-import io.mosire.simos.sd.spi.DirectiveIntentInfo;
+import io.mosire.simos.sd.model.SdInfoEntry;
+import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.sd.state.SdState;
@@ -20,7 +21,9 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -30,8 +33,9 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code ga.IssueDirective} 命令的处理器（spec §四，D1；<b>★ 2026-10-12 批次 3b′ 自 {@code simos-sd/sd.spi}
- * 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：落一条 {@link Directive}，按 R4 顶掉同 (决策人, tick) 的旧版。
+ * {@code ga.IssueDirective} 命令的处理器（spec §四，D1；<b>★ 2026-10-12 批次 3b-1 自 {@code simos-sd/sd.spi}
+ * 迁入并改名 {@code sd.* → ga.*}；3b-2 起<b>执行原文回归本命令</b>，见下</b>）：落一条 {@link Directive}，按 R4 顶掉同 (决策人,
+ * tick) 的旧版。
  *
  * <pre>{@code
  * {"directiveId":"d1","decisionMakerId":"dm1","tick":3,"target":"sd:combat.c1",
@@ -48,17 +52,17 @@ import java.util.Set;
  * <p>★ **白名单**（spec §四）：{@code commands[].type} 必须落在 {@link DirectiveWhitelist}；{@code sd.*}
  * 自指与通用写被明确拒绝。
  *
- * <p>★★ <b>执行原文（{@code intentInfo}）不再由本命令写入</b>（2026-10-12 批次 3b′，本批的**唯一**行为收窄，如实记）： 一条命令 =
- * 一个命名空间（{@code CommandBus.namespaceOf(type)} 取类型前缀）⇒ 本命令改名 {@code ga.*} 后**只能**写 {@code
- * GaChangeSet}，而执行原文的落点（sd INFO 覆盖层的 {@code sd:directive.<id>} 条目）本批仍住 {@code SdState.info} （{@code
- * info} 表搬 ga 属批次 3b）。⇒ 该条目改由**同批的第二条命令 {@code sd.PutInfo}** 落（仓内既有形制：{@code RejectDirectiveTool} /
- * {@code AdjudicateTickTool} / {@code DecisionEffectExecutor} 等十余处审计条目都这么做）： 载荷由 {@code
- * io.mosire.simos.sd.spi.DirectiveIntentInfo} 从**同一份出令载荷**派生（键/地址的**唯一拼写点**在那边），
- * 提交方是真正持有载荷的两个生产写路径（{@code IssueDirectiveTool} 与三条决策渠道）——它们把两条命令装进**同一批**，故 令与执行原文仍落在**同一条
- * revision**。{@code Directive.intentInfoKey} 照旧记那个 key，二者的对应关系（ {@code sourceDirective} 字段）由那条
- * {@code sd.PutInfo} 写上。
+ * <p>★★ <b>执行原文（{@code intentInfo}）由本命令<b>自己</b>写入（2026-10-12 批次 3b-2 <b>回归</b>）：一条命令 = 一个命名空间</b>
+ * ——{@code info} 覆盖层（地址 {@code sd:directive.<id>}、key {@value #INTENT_INFO_KEY}）与 {@code
+ * directives} 表<b>同住 {@code GaState}</b>（第 3/6 个组件）⇒ 令与执行原文落在<b>同一条 revision、同一条命令</b>里，二者不可分割。
  *
- * <p>★ <b>本命令自己仍然要求</b> {@code intentInfo} 非空白（载荷契约不变）：缺了它，那条执行原文的写入就无从谈起。
+ * <p>★★ <b>批次 3b-1 的过渡态及其中止（如实记）</b>：3b-1 把令搬进 ga 而 {@code info} 仍住 sd ⇒ 当时不得不改用"**同批第二条命令 {@code
+ * ga.PutInfo}**"补执行原文（{@link io.mosire.simos.sd.spi.DecisionTablesLookup 所在模块}的 {@code
+ * DirectiveIntentInfo} + {@code AbstractNarrowWriteTool.companionRequests} + {@code
+ * CommandSubmitTool} 的配套分支）。那条缺口（控制方 §16.4：绕过工具/渠道直接提交 {@code ga.IssueDirective} ⇒ 只落令、不落执行原文） 随本批
+ * {@code info} 搬进 ga 而<b>关闭</b>：配套机制整条删除，"单条命令自带执行原文"的原形恢复。
+ *
+ * <p>★ <b>本命令自己要求</b> {@code intentInfo} 非空白（载荷契约不变）：它现在是这条条目<b>唯一</b>的来源。
  *
  * <p>拒绝：{@code decisionMakerId} 不存在；**载荷 {@code tick} 记在未来**（{@code tick > 世界当前 tick}，见 {@link
  * #handle}）；指令 id 已存在；{@code commands[].type} 不在白名单（或自指）； {@code target} 非法；{@code effects[]}
@@ -70,18 +74,17 @@ public final class IssueDirectiveHandler implements CommandHandler {
    * 命令类型。
    *
    * <p>★ {@link #type()} 里仍写**字面量**而不是引用本常量：{@code SimosToolsTest} 从源码抽 {@code type()} 的返回串做"注册面 ==
-   * 实现面"的强判据，扫描器只认 {@code return "…"} 形态（引用常量会被漏掉）。两处同值由下方注释钉住。 决策渠道据此判"这条落点要不要配一条 {@code
-   * sd.PutInfo} 记执行原文"（见 {@code AbstractCoreDecisionChannel}）。
+   * 实现面"的强判据，扫描器只认 {@code return "…"} 形态（引用常量会被漏掉）。两处同值由下方注释钉住。
    */
   public static final String TYPE = "ga.IssueDirective";
 
   /**
-   * 执行原文在 sd INFO 覆盖层里的 key（spec §二.3："单条决策 = 单条 Command，Command 必须自带 INFO 作为执行原文"）。
+   * 执行原文在 INFO 覆盖层里的 key（spec §二.3："单条决策 = 单条 Command，Command 必须自带 INFO 作为执行原文"）。
    *
-   * <p>★ <b>拼写点只有一处</b>：本常量是 {@link DirectiveIntentInfo#INFO_KEY} 的别名（那条配套 {@code sd.PutInfo} 的载荷
-   * 也用它），不在这里再写一遍字面量。{@code Directive.intentInfoKey} 记的就是它。
+   * <p>★ <b>拼写点只有一处</b>：{@code Directive.intentInfoKey} 记的就是它；批次 3b-1 曾把它别名到 sd 侧的 {@code
+   * DirectiveIntentInfo.INFO_KEY}（那条配套命令的载荷生产者），该机制已随 3b-2 删除 ⇒ 常量回到本类自持（与搬迁前逐字同形）。
    */
-  public static final String INTENT_INFO_KEY = DirectiveIntentInfo.INFO_KEY;
+  public static final String INTENT_INFO_KEY = "intent";
 
   private final DirectiveWhitelist whitelist;
 
@@ -99,7 +102,8 @@ public final class IssueDirectiveHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GaState base = GaSnapshots.state(state);
-    // ★ 决策人 / 效果两张表仍住 sd（本批不搬，见批次 3b）⇒ 引用完整性判据在命令期读 sd 切片（既有的 ga → sd 方向）。
+    // ★ 决策人表已在 ga（本批搬入）⇒ 上面那条外键在状态期也判（GaState 构造期）；此处仍逐条判是为了给具名拒因。
+    //   效果表仍住 sd（3b-4 才搬）⇒ 引用完整性在命令期读 sd 切片（既有的 ga → sd 方向）。
     SdState sd = GaSnapshots.sd(state);
     String directiveForLog = null;
     String dmForLog = null;
@@ -112,12 +116,11 @@ public final class IssueDirectiveHandler implements CommandHandler {
       dmForLog = decisionMakerId.value();
       long tick = SdPayloads.requireLong(payload, "tick");
       Optional<Address> target = SdPayloads.optionalAddress(payload, "target");
-      // ★ 载荷契约不变：intentInfo 必须是字符串（本命令只校验形状；它的落点是同批的第二条 sd.PutInfo，见类注）。
-      SdPayloads.requireText(payload, "intentInfo");
+      String intentInfo = SdPayloads.requireText(payload, "intentInfo");
       List<DirectiveCommand> commands = SdPayloads.optionalDirectiveCommands(payload, "commands");
       Set<EffectId> effects = parseEffectIds(payload);
 
-      if (!sd.decisionMakers().containsKey(decisionMakerId)) {
+      if (!base.decisionMakers().containsKey(decisionMakerId)) {
         return rejected(
             "决策人不存在: " + decisionMakerId.value(), "directive", directiveForLog, "dm", dmForLog);
       }
@@ -165,6 +168,27 @@ public final class IssueDirectiveHandler implements CommandHandler {
         }
       }
 
+      RevisionId at = state.meta().ref().revision();
+      String infoAddress = intentInfoAddressOf(id);
+      Map<String, List<SdInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
+      List<SdInfoEntry> entries = new ArrayList<>(nextInfo.getOrDefault(infoAddress, List.of()));
+      // ★ 决策结果三件套（第 3 波第 1 步）：执行原文就是这条决策的**结果**，故 tick 取**令自带的 tick**（不是世界 tick——
+      //   令允许补记/滞后，见上面"令不得记在未来"的裁定；按世界 tick 归档会让同一条令随处理时刻漂移）；tags 挂**出令决策人**。
+      SdInfoEntry entry =
+          new SdInfoEntry(
+              SdInfoIds.synthesize(infoAddress, entries.size()),
+              tick,
+              Set.of(decisionMakerId),
+              Set.of(),
+              INTENT_INFO_KEY,
+              intentInfo,
+              Optional.empty(),
+              at,
+              Optional.of(id),
+              Optional.empty());
+      entries.add(entry);
+      nextInfo.put(infoAddress, List.copyOf(entries));
+
       Directive directive =
           new Directive(
               id,
@@ -179,7 +203,7 @@ public final class IssueDirectiveHandler implements CommandHandler {
       Map<DirectiveId, Directive> nextDirectives = new LinkedHashMap<>(base.directives());
       supersedeOldVersions(nextDirectives, decisionMakerId, tick);
       nextDirectives.put(id, directive);
-      GaState target0 = base.withDirectives(nextDirectives);
+      GaState next = base.withDirectives(nextDirectives).withInfo(nextInfo);
       EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
@@ -198,8 +222,10 @@ public final class IssueDirectiveHandler implements CommandHandler {
                   "target",
                   target.map(Address::canonical).orElse("-"),
                   "directives",
-                  nextDirectives.size()));
-      return new HandlerOutcome.Applied(GaChangeSet.between(base, target0));
+                  nextDirectives.size(),
+                  "infoAddresses",
+                  nextInfo.size()));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "directive", directiveForLog, "dm", dmForLog);
     }
@@ -259,5 +285,18 @@ public final class IssueDirectiveHandler implements CommandHandler {
       out.add(EffectId.parse(value));
     }
     return out;
+  }
+
+  /**
+   * 出令执行原文条目的 canonical 地址前缀（{@code sd:directive.<id>}）——<b>唯一拼写点</b>（搬迁前它住在 {@code
+   * DirectiveIntentInfo.ADDRESS_PREFIX}，那个类随 companion 机制一起删了）。
+   *
+   * <p>★ <b>地址族串一字未改</b>（{@code sd:directive.<id>} 的裁量属批次 3e）：变的只是"表住哪个切片"。
+   */
+  static final String INTENT_INFO_ADDRESS_PREFIX = "sd:directive.";
+
+  /** 执行原文条目的 canonical 地址（{@code sd:directive.<id>}）。 */
+  static String intentInfoAddressOf(DirectiveId id) {
+    return INTENT_INFO_ADDRESS_PREFIX + id.value();
   }
 }

@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.SetDecisionMakerProvider} 窄工具（M3）：**给决策人绑定 LLM provider 引用**的唯一窄写面。
+ * {@code ga.SetDecisionMakerProvider} 窄工具（M3）：**给决策人绑定 LLM provider 引用**的唯一窄写面。
  *
  * <p>★ **只在 GM 桶**（故运行时 MCP 口（= GM 组）也含它）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
@@ -23,7 +23,7 @@ import java.util.Set;
 public final class SdSetDecisionMakerProviderTool extends AbstractNarrowWriteTool
     implements SimosTool {
 
-  public static final String NAME = "sd.SetDecisionMakerProvider";
+  public static final String NAME = "ga.SetDecisionMakerProvider";
 
   public SdSetDecisionMakerProviderTool(
       ToolWritePort writes, GaToolIdentity identity, String mapId) {
@@ -42,7 +42,7 @@ public final class SdSetDecisionMakerProviderTool extends AbstractNarrowWriteToo
 
   @Override
   public String description() {
-    return "配 provider：固定 sd.SetDecisionMakerProvider，载荷 {decisionMakerId, providerId}（两者全必填；★★ 本命令**只校验 providerId 非空白，不校验 provider 是否存在**——存在性在**使用时刻**解析，解析不到即 fail-closed，绝不静默兜底）";
+    return "配 provider：固定 ga.SetDecisionMakerProvider，载荷 {decisionMakerId, providerId}（两者全必填；★★ 本命令**只校验 providerId 非空白，不校验 provider 是否存在**——存在性在**使用时刻**解析，解析不到即 fail-closed，绝不静默兜底）";
   }
 
   @Override

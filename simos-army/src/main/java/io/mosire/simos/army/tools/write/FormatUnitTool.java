@@ -33,10 +33,10 @@ import java.util.Set;
 /**
  * ★★ {@code simos.army.formatUnit}（阶段 D3a，2026-10-02 / D-010 + 补裁 R2 的<b>最小环</b>）：GM-only
  * 组合工具——按给定格式 （有序人力/装备条目 + 可选随机化幅度/上下限 + 可选 seed）算出目标表，经 {@code unit.SetComposition} **整表复写**，
- * 并同批写一条 {@code sd.PutInfo} 审计记录（含生效种子）。
+ * 并同批写一条 {@code ga.PutInfo} 审计记录（含生效种子）。
  *
  * <p>★★ <b>为什么是一次批写多切片的组合工具而不是一条命令</b>：它同时写 {@code unit}（一条 {@code unit.SetComposition}）与 {@code
- * sd}（一条 {@code sd.PutInfo}）两个命名空间；单条命令只能落一个命名空间。本工具走注入的 {@link
+ * sd}（一条 {@code ga.PutInfo}）两个命名空间；单条命令只能落一个命名空间。本工具走注入的 {@link
  * ToolWritePort#submitBatchWithReceipt}（同一批 + 同一 branch/expectedRevision ⇒ **一批 = 一条
  * revision**，原子）； preview 一个字节都不写。
  *
@@ -108,7 +108,7 @@ public final class FormatUnitTool implements SimosTool {
   public String description() {
     return "GM 按给定格式整表复写单位人力/装备（组合工具，一批 = 一条 revision）：格式 = 有序条目"
         + " {type, baseAmount, jitterPerMille?, min?, max?}；算出目标表后经 unit.SetComposition 整表复写，并同批写"
-        + " sd.PutInfo（key="
+        + " ga.PutInfo（key="
         + FormatUnitPlan.INFO_KEY
         + "，value 含生效 seed/是否显式/前后两张表）。参数 {unitId(必填), manpower[](必填，空数组合法),"
         + " equipment[](必填，空数组合法), seed?, reason?(缺省 "
@@ -117,7 +117,7 @@ public final class FormatUnitTool implements SimosTool {
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。seed 缺省 = 由 unitId + 基态 revision + tick + 格式表确定性派生；"
         + "jitterPerMille 千分比（0 = 不随机），每条在 [base−floor(base×jitter/1000), base+…] 均匀取整后按 [min,max] 截断；"
-        + "未列出的 type 会消失（整表复写）。批顺序：unit.SetComposition → sd.PutInfo。"
+        + "未列出的 type 会消失（整表复写）。批顺序：unit.SetComposition → ga.PutInfo。"
         + "返回 {preview, submitted, unitId, seed, seedProvided, tick, manpower, equipment, beforeManpower,"
         + " beforeEquipment, commands, reason, infoText}；apply 另加 submission。";
   }
@@ -136,7 +136,7 @@ public final class FormatUnitTool implements SimosTool {
         ToolSchema.prop("integer", "显式随机种子（可选；缺省 = 由 unitId + 基态 revision + tick + 格式表确定性派生）"));
     props.put(
         "reason",
-        ToolSchema.prop("string", "操作原因（可选；缺省 " + DEFAULT_REASON + "，进 sd.PutInfo 审计记录）"));
+        ToolSchema.prop("string", "操作原因（可选；缺省 " + DEFAULT_REASON + "，进 ga.PutInfo 审计记录）"));
     props.put(
         "preview",
         ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交 SetComposition + PutInfo 同一批"));
@@ -350,7 +350,7 @@ public final class FormatUnitTool implements SimosTool {
     return view;
   }
 
-  /** {@code sd.PutInfo} 载荷：单位 canonical 地址 + key + value(JSON 字符串) + note + tick。 */
+  /** {@code ga.PutInfo} 载荷：单位 canonical 地址 + key + value(JSON 字符串) + note + tick。 */
   private String infoPayload(FormatUnitPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", views.unitAddress(plan.unitId()));

@@ -31,7 +31,7 @@ import java.util.Optional;
  * expectedRevision ⇒ 一批 = 一条 revision，原子）， 把两侧主子同批落定、不给漂移留窗口。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：需要同步 unit 侧时先 {@code unit.SetArmyFormation} → {@code
- * sd.SetArmyMasterGov} → {@code sd.PutInfo}；不需要同步时第一条缺席。后一条看得见前一条累积后的候选态。
+ * sd.SetArmyMasterGov} → {@code ga.PutInfo}；不需要同步时第一条缺席。后一条看得见前一条累积后的候选态。
  *
  * <p>★★ <b>unit 侧 role 语义</b>：
  *
@@ -67,8 +67,8 @@ final class AssignArmyGovPlan {
   /** {@code sd.SetArmyMasterGov} 的命令类型。 */
   static final String SET_ARMY_MASTER_GOV_TYPE = "sd.SetArmyMasterGov";
 
-  /** {@code sd.PutInfo} 的命令类型（恒有，行动记录）。 */
-  static final String PUT_INFO_TYPE = "sd.PutInfo";
+  /** {@code ga.PutInfo} 的命令类型（恒有，行动记录）。 */
+  static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   private AssignArmyGovPlan() {}
 
@@ -245,7 +245,7 @@ final class AssignArmyGovPlan {
       return ToolResults.json(payload);
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；字段序固定，人可读审计）。 */
+    /** {@code ga.PutInfo} 的 {@code value}（JSON <b>字符串</b>；字段序固定，人可读审计）。 */
     String infoValueJson(String reason) {
       requireNonBlank(reason, "reason");
       Map<String, Object> value = new LinkedHashMap<>();
@@ -259,7 +259,7 @@ final class AssignArmyGovPlan {
       return ToolResults.json(value);
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       requireNonBlank(reason, "reason");
       return "改派 Army "

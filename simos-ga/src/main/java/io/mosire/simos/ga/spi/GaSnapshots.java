@@ -14,11 +14,13 @@ import java.util.Objects;
  * <p>★ <b>装配故障当场炸</b>（与 {@code SdSnapshots} / {@code UnitSnapshots} 同口径）：缺切片、或切片类型不对，都抛 {@link
  * IllegalStateException}——它们是装配的错，不走 {@code Rejected} 路径。
  *
- * <p>★★ <b>为什么 handler 还要读 sd 切片</b>：{@code ga.UpsertDecisionPacket} 要在<b>新建包</b>时校验 {@code
- * proposerId} 存在；{@code ga.IssueDirective} 要校验 {@code decisionMakerId} 与 {@code effects[]} 存在（这三张表
- * ——{@code decisionMakers} / {@code effects} / {@code info}——仍住 sd，属批次 3b）。这条读取是既有的 {@code ga → sd}
- * 方向，不新增模块边。★ 反向的读（sd 侧要读 ga 的 {@code directives}）走注入的 {@code
- * io.mosire.simos.sd.spi.DirectiveLookup}（实现 {@link GaDirectiveLookup}）。
+ * <p>★★ <b>为什么 handler 还要读 sd 切片</b>：{@code ga.CreateDecisionMaker} 要校验归属目标存在（{@code nations} /
+ * {@code armies} 仍住 sd）；{@code ga.IssueDirective} 要校验 {@code effects[]} 存在（{@code effects} 表仍住
+ * sd，属批次 3b-4）。★ <b>批次 3b-2 起 {@code decisionMakers} 与 {@code info} 已住 ga</b>——原先为它们走本方法的两处 （{@code
+ * UpsertDecisionPacket} 的 proposer、{@code IssueDirective} 的决策人）改读 {@link #state}，{@code info} 侧
+ * 的读口同理。这条读取是既有的 {@code ga → sd} 方向，不新增模块边。★ 反向的读（sd 侧要读 ga 的 {@code directives} / {@code
+ * decisionMakers} / {@code info}）走注入的 {@code io.mosire.simos.sd.spi.*Lookup}（实现都在本包的 {@code
+ * Ga*Lookup}）。
  *
  * <p>★ 本类<b>只读</b>，既不 cache、也不改写任何切片（铁律 3）。
  */
@@ -38,12 +40,15 @@ public final class GaSnapshots {
     return gaSnapshot;
   }
 
-  /** ga 切片的完整状态树（四组件：决策包 / 合并效果集 / 决策记录 / 判决）。 */
+  /** ga 切片的完整状态树（六组件：决策包 / 合并效果集 / 决策记录 / 判决 / 决策人 / INFO 覆盖层）。 */
   public static GaState state(SimulationState state) {
     return of(state).state();
   }
 
-  /** sd 切片（只读）：{@code decisionMakers} 的存在性判据仍在那边（批次 3b 才搬）。 */
+  /**
+   * sd 切片（只读）：{@code nations} / {@code armies} / {@code effects} 的存在性判据仍在那边（3b-4 才动 {@code
+   * effects}）。
+   */
   public static SdState sd(SimulationState state) {
     Objects.requireNonNull(state, "state");
     Snapshot snapshot =

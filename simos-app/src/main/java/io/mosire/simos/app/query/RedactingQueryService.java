@@ -9,6 +9,7 @@ import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
@@ -20,12 +21,9 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DisclosurePolicy;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.Verdict;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
-import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -88,14 +86,14 @@ public final class RedactingQueryService {
   }
 
   /**
-   * actor 的**额外限制**（GM 用 {@code sd.SetDecisionMakerAccess} 配的那一层）；actor 不存在 ⇒ {@link
+   * actor 的**额外限制**（GM 用 {@code ga.SetDecisionMakerAccess} 配的那一层）；actor 不存在 ⇒ {@link
    * AccessLimit#empty()}（fail-closed）。
    *
    * <p>★ 注意它**不是**"该 actor 能看见什么"——那要范围函数参与，见 {@link #readContextOf}。
    */
   public AccessLimit accessLimitOf(DecisionMakerId actor, QueryTarget target) {
     Objects.requireNonNull(actor, "actor");
-    DecisionMaker maker = sdState(target).decisionMakers().get(actor);
+    DecisionMaker maker = gaState(target).decisionMakers().get(actor);
     return maker == null ? AccessLimit.empty() : maker.accessLimit();
   }
 
@@ -108,7 +106,7 @@ public final class RedactingQueryService {
   public Optional<ToolContext> readContextOf(DecisionMakerId actor, QueryTarget target) {
     Objects.requireNonNull(actor, "actor");
     SimulationState state = query.stateAt(target);
-    DecisionMaker maker = sdState(target).decisionMakers().get(actor);
+    DecisionMaker maker = gaState(target).decisionMakers().get(actor);
     if (maker == null) {
       return Optional.empty();
     }
@@ -127,7 +125,7 @@ public final class RedactingQueryService {
   public Optional<ResourceScopeMap> computedScopeOf(DecisionMakerId actor, QueryTarget target) {
     Objects.requireNonNull(actor, "actor");
     SimulationState state = query.stateAt(target);
-    DecisionMaker maker = sdState(target).decisionMakers().get(actor);
+    DecisionMaker maker = gaState(target).decisionMakers().get(actor);
     if (maker == null) {
       return Optional.empty();
     }
@@ -320,7 +318,7 @@ public final class RedactingQueryService {
       DecisionMakerId actor, QueryTarget target, DecisionResultWindow window) {
     Objects.requireNonNull(actor, "actor");
     Objects.requireNonNull(window, "window");
-    SdState sd = sdState(target);
+    GaState sd = gaState(target);
     List<SdInfoEntry> matched = new ArrayList<>();
     for (Map.Entry<String, List<SdInfoEntry>> at : sd.info().entrySet()) {
       if (!at.getKey().startsWith(AdjudicateTickTool.RESULT_ADDRESS_PREFIX)) {
@@ -383,7 +381,7 @@ public final class RedactingQueryService {
       DecisionMakerId actor, QueryTarget target, DecisionResultWindow window) {
     Objects.requireNonNull(actor, "actor");
     Objects.requireNonNull(window, "window");
-    SdState sd = sdState(target);
+    GaState sd = gaState(target);
     DecisionMaker maker = sd.decisionMakers().get(actor);
     Affiliation affiliation = maker == null ? null : maker.affiliation();
     List<MatchedDoc> matched = new ArrayList<>();
@@ -578,13 +576,11 @@ public final class RedactingQueryService {
     return ToolSupport.gaState(query.stateAt(target)).verdicts();
   }
 
-  private SdState sdState(QueryTarget target) {
-    SimulationState state = query.stateAt(target);
-    Snapshot snapshot =
-        state.module("sd").orElseThrow(() -> new IllegalStateException("状态里没有 sd 切片（装配故障）"));
-    if (!(snapshot instanceof SdSnapshot sdSnapshot)) {
-      throw new IllegalStateException("状态里 sd 切片不是 SdSnapshot：" + snapshot.getClass().getName());
-    }
-    return sdSnapshot.state();
+  /**
+   * ga 切片（2026-10-12 批次 3b-2：{@code decisionMakers} 与 {@code info} 表搬进 {@code simos-ga}）—— 决策人那一层与
+   * INFO 覆盖层的取数口。缺切片 / 类型不对 = 装配故障，当场炸（与 {@link #sdState} 同口径）。
+   */
+  private GaState gaState(QueryTarget target) {
+    return ToolSupport.gaState(query.stateAt(target));
   }
 }

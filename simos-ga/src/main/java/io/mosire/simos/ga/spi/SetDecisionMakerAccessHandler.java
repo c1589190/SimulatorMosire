@@ -1,13 +1,15 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.spi.SdCommandNames;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -20,7 +22,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code sd.SetDecisionMakerAccess} 命令的处理器（spec §4.2；用户 2026-09-22 裁定③）：GM 为某个决策人**配权**。
+ * {@code ga.SetDecisionMakerAccess} 命令的处理器（spec §4.2；用户 2026-09-22 裁定③；<b>★ 2026-10-12 批次 3b-2 自
+ * {@code simos-sd/sd.spi} 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：GM 为某个决策人**配权**。
  *
  * <pre>{@code
  * {"decisionMakerId":"dm1","allowedTools":["ga.IssueDirective"],
@@ -52,14 +55,14 @@ public final class SetDecisionMakerAccessHandler implements CommandHandler {
    */
   @Override
   public String type() {
-    return "sd.SetDecisionMakerAccess";
+    return "ga.SetDecisionMakerAccess";
   }
 
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
     String dmForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
@@ -98,11 +101,11 @@ public final class SetDecisionMakerAccessHandler implements CommandHandler {
               existing.conversationGeneration());
       Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>(base.decisionMakers());
       makers.put(id, next);
-      EventLog.channel(SdLog.decision())
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_SET_DECISION_MAKER_ACCESS_APPLIED",
-                  SdLogSource.SD_NATION,
+                  GaLogSource.GA_DECISION,
                   "dm",
                   id.value(),
                   "allowedTools",
@@ -117,7 +120,7 @@ public final class SetDecisionMakerAccessHandler implements CommandHandler {
                   updated.adjudicationDisclosure(),
                   "decisionMakers",
                   makers.size()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionMakers(makers)));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, base.withDecisionMakers(makers)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "dm", dmForLog);
     }
@@ -129,8 +132,8 @@ public final class SetDecisionMakerAccessHandler implements CommandHandler {
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(),
-        SdLogSource.SD_NATION,
+        GaLog.decision(),
+        GaLogSource.GA_DECISION,
         "SD_SET_DECISION_MAKER_ACCESS_REJECTED",
         reason,
         idKeyValues);

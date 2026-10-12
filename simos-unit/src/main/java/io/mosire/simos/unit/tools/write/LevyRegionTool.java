@@ -62,7 +62,7 @@ import java.util.UUID;
  *   <li>{@code actor.AdjustAccounts}（粮 / 钱 / 布任一 &gt; 0 时）：各来源家户账的<b>负增量</b>（粮与布合并进同一 {@code
  *       (owner,格)} 条目的 {@code goods} 表，钱进同条目的 {@code money} 表，避免同键重复）+ 一条单位国库账户（{@code
  *       ActorRef(UNIT, unitId)}，格 = 单位当刻有效位置）的 <b>正增量</b>；逐值相等（Σ 扣减 == 入库）；
- *   <li>{@code sd.PutInfo}（恒有）：行动记录，地址 = 单位 canonical（{@link Address#parse} → {@link
+ *   <li>{@code ga.PutInfo}（恒有）：行动记录，地址 = 单位 canonical（{@link Address#parse} → {@link
  *       Address#canonical()}，与 {@code RejectDirectiveTool} 同款），{@code key="levyRegion"}，{@code
  *       value} = JSON <b>字符串</b>（unitId/regionId/tick/四项数量/目标家户/人力 shares 的
  *       household/lot/taken/hex/reason）， {@code tick} = 当前世界日。
@@ -103,7 +103,7 @@ public final class LevyRegionTool implements SimosTool {
       SubmitHouseholdWorkOrderHandler.TYPE;
 
   /** 见 {@link #ADJUST_ACCOUNTS_TYPE}。 */
-  public static final String PUT_INFO_TYPE = "sd.PutInfo";
+  public static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   /** 人口工单的 {@code source.module}：本工具是 GOV 辖区抽取（征发主体与国库都在 GOV 侧）。 */
   private static final String WORK_ORDER_SOURCE_MODULE = "gov";
@@ -176,7 +176,7 @@ public final class LevyRegionTool implements SimosTool {
         + "总量不足 ⇒ 整条拒（不部分、不截断）；分摊 = 瀑布（可用量降序，同量按账键升序）；requested=0 的维度整段跳过（manpower=0 不扫描 Social 家户份额）。"
         + "apply 批（固定顺序）：social.SubmitHouseholdWorkOrder（manpower>0；orderId=levy-manpower:<batchId>:<unitId>，"
         + "target=目标家户，plan=逐 share TRANSFER_MEMBERS，source.module=gov）→ actor.AdjustAccounts（粮/钱/布任一>0；"
-        + "各来源负增量 + 单位国库正增量；粮与布合并进 goods、钱进 money）→ sd.PutInfo（单位 canonical 地址、key="
+        + "各来源负增量 + 单位国库正增量；粮与布合并进 goods、钱进 money）→ ga.PutInfo（单位 canonical 地址、key="
         + INFO_KEY
         + "、value=JSON 字符串的行动记录，人力段逐 share household/lot/taken/hex）。"
         + "返回 {preview, submitted, tick, unitId, regionId, treasuryLocation, manpowerTargetHousehold,"
@@ -207,12 +207,12 @@ public final class LevyRegionTool implements SimosTool {
             "抽人力（人；可选，缺省 0 = 本维度整段跳过；不得为负，不得超 levyManpowerCapPerCommand）："
                 + "从 region 各 hex 的 Social 家户 MALE+成年份额（share-aware）里抽，转入单位 unit.households() 恰一个目标家户"
                 + "（必须已在 Social 里；为空/多个/不在 Social ⇒ BAD_REQUEST；多户需显式 target 政策）；不足 ⇒ 整条拒（不部分、不截断）"));
-    props.put("reason", ToolSchema.prop("string", "抽取原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "抽取原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put(
         "preview",
         ToolSchema.prop(
             "boolean",
-            "true（缺省）= 只算不写；false = 提交同一批（social.SubmitHouseholdWorkOrder? + actor.AdjustAccounts? + sd.PutInfo）"));
+            "true（缺省）= 只算不写；false = 提交同一批（social.SubmitHouseholdWorkOrder? + actor.AdjustAccounts? + ga.PutInfo）"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
@@ -368,7 +368,7 @@ public final class LevyRegionTool implements SimosTool {
 
   /**
    * 组批：{@code social.SubmitHouseholdWorkOrder}? → {@code actor.AdjustAccounts}? → {@code
-   * sd.PutInfo}（固定顺序，可复现）。
+   * ga.PutInfo}（固定顺序，可复现）。
    *
    * <p>★ 三条共享同一 {@code batchId}（correlationId）与同一 branch/expectedRevision ⇒ {@code submitBatch} 落一条
    * revision；任一腿失败整批拒、零 revision。
@@ -494,14 +494,14 @@ public final class LevyRegionTool implements SimosTool {
     return ToolResults.json(payload);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录）───────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录）───────────────────────────────────────────────────────
 
   /**
-   * {@code sd.PutInfo} 载荷：单位 canonical 地址 + {@code key="levyRegion"} + {@code value} = JSON
+   * {@code ga.PutInfo} 载荷：单位 canonical 地址 + {@code key="levyRegion"} + {@code value} = JSON
    * <b>字符串</b>（含 unitId/regionId/tick/四项数量/目标家户/reason + 人力 shares 的 household/lot/taken/hex）+
    * {@code note} = 人可读摘要 + {@code tick} = 当前世界日。
    *
-   * <p>★ {@code id} 不显式给：由 {@code sd.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一单位的后续抽取自然追加 #1、#2…
+   * <p>★ {@code id} 不显式给：由 {@code ga.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一单位的后续抽取自然追加 #1、#2…
    */
   private String infoPayload(LevyRegionPlan.Plan plan, String reason) {
     Map<String, Object> value = new LinkedHashMap<>();
@@ -591,7 +591,7 @@ public final class LevyRegionTool implements SimosTool {
   }
 
   /**
-   * 人力逐 share 视图（工具结果与 {@code sd.PutInfo.value.sources} 共用；保序）：{@code
+   * 人力逐 share 视图（工具结果与 {@code ga.PutInfo.value.sources} 共用；保序）：{@code
    * {household,lot,taken,hex}}；{@code hex} 只有 {@code HEX} 来源家户才有，{@code UNIT} 家户没有格 ⇒ {@code null}
    * （不伪造位置）。
    */
@@ -616,7 +616,7 @@ public final class LevyRegionTool implements SimosTool {
     return view;
   }
 
-  /** 人可读行动摘要（结果视图的 {@code infoText}，也进 {@code sd.PutInfo} 的 {@code note}）。 */
+  /** 人可读行动摘要（结果视图的 {@code infoText}，也进 {@code ga.PutInfo} 的 {@code note}）。 */
   private static String infoText(LevyRegionPlan.Plan plan, String reason) {
     return "单位 "
         + plan.unitId()

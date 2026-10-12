@@ -31,7 +31,7 @@ import java.util.Optional;
  *   <li>{@code kind} 可选（自由文本，可空；"称臣纳贡"只是它的一个取值——本命令**不**解释它、也**不**写死贡额/周期/违约）；
  *   <li>{@code text} 必填非空白：自然语言描述；**谈判/联动裁决的状态就记在这里**（D-005），对同一 (from,to) 再调一次就是
  *       **更新**（upsert，不新增第二条边）；
- *   <li>{@code tick} 可选，缺省 = 世界当前 tick；**不得记在未来**（{@code > 世界 tick} ⇒ 拒，与 {@code sd.PutInfo}/{@code
+ *   <li>{@code tick} 可选，缺省 = 世界当前 tick；**不得记在未来**（{@code > 世界 tick} ⇒ 拒，与 {@code ga.PutInfo}/{@code
  *       ga.IssueDirective} 同口径）；过去合法（补记/滞后），存进 {@code updatedTick}。
  * </ul>
  *

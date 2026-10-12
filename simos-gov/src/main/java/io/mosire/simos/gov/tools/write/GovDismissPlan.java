@@ -37,7 +37,7 @@ import java.util.Optional;
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code unit.DismissStaff}（{@code {unitId, role, count}}；减到 0
  * <b>保留角色键</b>） →（{@code payment > 0} 时）{@code actor.AdjustAccounts}（国库银<b>负增量</b>一条）→ {@code
- * sd.PutInfo}（地址 = 单位 canonical，key={@code dismiss}，value=JSON <b>字符串</b>，含
+ * ga.PutInfo}（地址 = 单位 canonical，key={@code dismiss}，value=JSON <b>字符串</b>，含
  * role/count/待遇/tick，note=人可读摘要）。三条共享同一 batchId 与同一 branch/expectedRevision ⇒ 一条 revision。
  *
  * <p>★★ <b>具名缺口：人员社会回写明确留阶段 13，本工具不做</b>。{@code unit.DismissStaff} 只把 roster 减掉、本工具只支付 {@code
@@ -59,8 +59,8 @@ final class GovDismissPlan {
   /** {@code actor.AdjustAccounts} 的命令类型（仅待遇 &gt; 0 才落）。 */
   static final String ADJUST_ACCOUNTS_TYPE = "actor.AdjustAccounts";
 
-  /** {@code sd.PutInfo} 的命令类型（恒有，行动记录）。 */
-  static final String PUT_INFO_TYPE = "sd.PutInfo";
+  /** {@code ga.PutInfo} 的命令类型（恒有，行动记录）。 */
+  static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   private GovDismissPlan() {}
 
@@ -336,7 +336,7 @@ final class GovDismissPlan {
       return ToolResults.json(payload);
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；含 role/count/待遇/tick）。 */
+    /** {@code ga.PutInfo} 的 {@code value}（JSON <b>字符串</b>；含 role/count/待遇/tick）。 */
     String infoValueJson(String reason) {
       if (reason == null || reason.isBlank()) {
         throw new IllegalArgumentException("reason 必须是非空文本");
@@ -357,7 +357,7 @@ final class GovDismissPlan {
       return ToolResults.json(value);
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       if (reason == null || reason.isBlank()) {
         throw new IllegalArgumentException("reason 必须是非空文本");

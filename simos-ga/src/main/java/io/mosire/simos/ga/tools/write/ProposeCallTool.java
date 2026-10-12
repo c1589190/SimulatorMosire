@@ -29,7 +29,6 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -169,9 +168,8 @@ public final class ProposeCallTool implements SimosTool {
         return ToolResult.error("BAD_REQUEST", "expectedRevision 不得为负: " + expectedRevisionArg);
       }
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
-      SdState sd = GaToolReads.sd(state);
       GaState ga = GaToolReads.ga(state);
-      DecisionMaker dm = sd.decisionMakers().get(proposerId);
+      DecisionMaker dm = ga.decisionMakers().get(proposerId);
       if (dm == null) {
         return ToolResult.error("FORBIDDEN", "决策人不存在: " + proposerId.value());
       }

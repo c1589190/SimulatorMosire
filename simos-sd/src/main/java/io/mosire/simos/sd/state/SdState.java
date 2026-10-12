@@ -5,7 +5,6 @@ import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.CombatStateId;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
@@ -14,7 +13,6 @@ import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
-import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DiplomaticEvent;
 import io.mosire.simos.sd.model.DiplomaticRelation;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
@@ -22,7 +20,6 @@ import io.mosire.simos.sd.model.Effect;
 import io.mosire.simos.sd.model.LossRecord;
 import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.model.OutcomeOption;
-import io.mosire.simos.sd.model.SdInfoEntry;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,47 +32,42 @@ import java.util.Map;
  * SdSnapshot}。spec §三.1 把 {@code implements Snapshot} 写在了状态树头（设计形状的笔误），执行期按"树 / 切片分离"落地 ——
  * 记入台账取代说明。
  *
- * <p>★★ <b>2026-10-12 批次 3a：本树由 14 个组件收为 12 个</b>——{@code decisionPackets}（一决策人 × 一 tick 一个包）与
- * {@code mergedEffectPlans}（合并效果集）<b>整表搬进 {@code simos-ga}</b>（{@code GaState} + {@code GaCodec}，
- * 命名空间 {@code "ga"}）。<b>本批（3b′）：再收为 10 个</b>——{@code directives}（决策记录）与 {@code verdicts}（判决） 同样整表搬进
- * {@code simos-ga}（{@code GaState} 的第 3/4 组件），相应的三条命令改名 {@code sd.* → ga.*}、handler 随表迁入 {@code
- * simos-ga}。
+ * <p>★★ <b>本树的收缩史（三次，逐批如实记）</b>：14 →（批次 3a）12 —— {@code decisionPackets} / {@code
+ * mergedEffectPlans} 整表搬进 {@code simos-ga}；12 →（批次 3b-1）10 —— {@code directives} / {@code verdicts}
+ * 同样搬走；<b>10 →（本批 3b-2）8</b> —— {@code decisionMakers} 与 {@code info} 整表搬进 {@code GaState} 的第 5/6
+ * 个组件。⇒ 决策族的七张表里只剩 {@code effects} 仍住本模块（它要开 {@code ga → unit + map} 两条边， 顺位在 3b-4）。
  *
- * <p>★★ <b>随表搬走的两条构造期不变量（不是删除，是换家）</b>：① "同一 (决策人, tick) 至多一条生效令"（R4 末位生效）；② "{@code
- * Directive.verdict()} 指向的判决必须存在"。两条都只依赖那两张表 ⇒ 整条搬进 {@link io.mosire.simos.ga.GaState}
- * 的构造期。<b>收窄的那条（如实记）</b>：{@code Directive} 对 {@code decisionMakers} / {@code effects} 的外键此后是
- * <b>跨切片</b>的（铁律 3：ga 不拥有这两张表）⇒ 状态期判不了，改由 <b>命令期</b>判（{@code ga.IssueDirective} 逐条校验决策人与效果存在）。
- * 读取这两张表的两处 sd 侧调用点（{@code SdResolver} 的 {@code sd:directive.<id>}、{@code
- * DeleteDecisionMakerHandler} 的 "不级联"守卫）经注入的 {@link io.mosire.simos.sd.spi.DirectiveLookup} 读 ga
- * 切片（sd 不得依赖 ga ⇒ 端口注入）。
+ * <p>★★ <b>随表搬走的构造期不变量（不是删除，是换家）</b>：① "同一 (决策人, tick) 至多一条生效令"（R4 末位生效）；② "{@code
+ * Directive.verdict()} 指向的判决必须存在"；③ <b>本批 3b-2 起</b> "{@code Directive.decisionMakerId} 指向的决策人必须存在"
+ * ——三条都只依赖已搬走的那几张表 ⇒ 整条住 {@link io.mosire.simos.ga.GaState} 的构造期（第 ③ 条在 3b-1 曾因跨切片降到命令期，
+ * 本批两张表又同在一棵树里 ⇒ <b>整条恢复</b>）。<b>仍跨切片的那一条（如实记）</b>：{@code Directive.effects()} 指向的 {@code effects}
+ * 仍住本模块 ⇒ 状态期判不了，落点保持在<b>命令期</b>（{@code ga.IssueDirective} 逐条校验）。
  *
- * <p>★ <b>值类型仍住本模块</b>（{@code Directive} / {@code Verdict} 及其 id、{@code DecisionPacket} / {@code
- * MergedEffectPlan} 及其 id）：它们仍被 sd 的其余组件与 sd 的测试引用，而 {@code sd} 不得依赖 {@code ga}（成环）⇒ 反向引用是既有的
- * {@code ga → sd} 方向。
+ * <p>★ <b>值类型仍住本模块</b>（{@code DecisionMaker} / {@code SdInfoEntry} 及其 id、{@code Directive} / {@code
+ * Verdict} 等）：它们仍被 sd 的其余组件与 sd 的测试引用，而 {@code sd} 不得依赖 {@code ga}（成环）⇒ 反向引用是既有的 {@code ga → sd}
+ * 方向。
  *
- * <p>★ **10 个组件与 {@link io.mosire.simos.sd.change.SdChangeSet} 的 10 个组件一一对应**（铁律 5）：任何新增组件都要同时进变更集，
- * 由 {@code SdRoundTripTest} 的反射枚举把守。★ D5（2026-10-02 / R6）新增两个：{@code diplomaticRelations}（D-003
- * 有向边） 与 {@code diplomaticEvents}（D-005 多国谈判逐 tick 记录）；★★ D2（2026-10-22 决策包计划）曾新增的两个、以及 {@code
- * directives}/{@code verdicts} 两个，已分别随批次 3a / 3b′ 搬走（见上）。
+ * <p>★ <b>8 个组件与 {@link io.mosire.simos.sd.change.SdChangeSet} 的 8 个组件一一对应</b>（铁律
+ * 5）：任何新增组件都要同时进变更集， 由 {@code SdRoundTripTest} 的反射枚举把守。★ D5（2026-10-02 / R6）新增两个：{@code
+ * diplomaticRelations}（D-003 有向边） 与 {@code diplomaticEvents}（D-005 多国谈判逐 tick 记录）；★★ D2（2026-10-22
+ * 决策包计划）曾新增的两个、 {@code directives}/{@code verdicts} 两个、以及本批的 {@code decisionMakers}/{@code info}
+ * 两个，已分别随批次 3a / 3b-1 / 3b-2 搬走（见上）。
  *
  * <p>★ **两张表的键都保序不可变**（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**禁用** {@code
  * Map.copyOf} ——迭代序不是内容的纯函数，M2 Task 5 实测）。冻结那一步**写在赋值处**（SpotBugs 的 {@code EI_EXPOSE_REP}
  * 只认它看得见的包装）。
  *
- * <p>★ **{@code info} 的键是 canonical 地址串、值是该地址下的条目列表**：spec §三.1 写作 {@code Map<Address, …>}，但 {@code
- * FieldDelta} 的 key 约定是"各 key 类型的裸值 {@code toString()}"，而 {@code Address}（util 的类型）**没有**重写 {@code
- * toString}（它的 canonical 另有其法，且既有用例把这个"不等"钉住了）⇒ 用 {@code Address} 作变更集键会破往返。故键取 {@code
- * Address#canonical()}（canonical 唯一、可逆），谓词层不变。记入台账取代说明。
+ * <p>★ <b>{@code sd} 侧仍有读 ga 三张表的地方</b>（{@code SdResolver} / {@code sd.DeleteNation} / {@code
+ * SdTimeParticipant}）：走注入的 {@link io.mosire.simos.sd.spi.DecisionTablesLookup}（实现在 ga、组合根接线），
+ * 见该接口的类注。
  */
 public record SdState(
     Map<NationId, Nation> nations,
     Map<ArmyId, Army> armies,
     Map<CombatId, Combat> combats,
     Map<CombatStateId, CombatState> combatStates,
-    Map<DecisionMakerId, DecisionMaker> decisionMakers,
     Map<EffectId, Effect> effects,
     Map<LossRecordId, LossRecord> lossRecords,
-    Map<String, List<SdInfoEntry>> info,
     Map<DiplomaticRelationKey, DiplomaticRelation> diplomaticRelations,
     Map<DiplomaticEventId, DiplomaticEvent> diplomaticEvents) {
 
@@ -84,10 +76,8 @@ public record SdState(
     armies = Collections.unmodifiableMap(copyOf(armies, "armies"));
     combats = Collections.unmodifiableMap(copyOf(combats, "combats"));
     combatStates = Collections.unmodifiableMap(copyOf(combatStates, "combatStates"));
-    decisionMakers = Collections.unmodifiableMap(copyOf(decisionMakers, "decisionMakers"));
     effects = Collections.unmodifiableMap(copyOf(effects, "effects"));
     lossRecords = Collections.unmodifiableMap(copyOf(lossRecords, "lossRecords"));
-    info = Collections.unmodifiableMap(copyInfo(info));
     // ★ 老档兼容（D5 新增的两个组件之前落盘的快照没有这两个键）：Jackson 对缺失的 Map 绑 null
     //   ⇒ 缺省 = 空表（不是抛——抛了等于"整个世界打不开"，与 SdInfoEntry 的新字段同一条口径）。
     if (diplomaticRelations == null) {
@@ -108,23 +98,20 @@ public record SdState(
   /** 往返用例与 handlers 的起点。 */
   public static SdState empty() {
     return new SdState(
-        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-        Map.of());
+        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   // ── 逐组件替换（一个组件一个 with，照 GameMap 的形制）────────────────────────────────
 
-  /** 仅替换 {@code nations}，其余 9 个组件原样。 */
+  /** 仅替换 {@code nations}，其余 7 个组件原样。 */
   public SdState withNations(Map<NationId, Nation> v) {
     return new SdState(
         v,
         armies,
         combats,
         combatStates,
-        decisionMakers,
         effects,
         lossRecords,
-        info,
         diplomaticRelations,
         diplomaticEvents);
   }
@@ -136,10 +123,8 @@ public record SdState(
         v,
         combats,
         combatStates,
-        decisionMakers,
         effects,
         lossRecords,
-        info,
         diplomaticRelations,
         diplomaticEvents);
   }
@@ -151,10 +136,8 @@ public record SdState(
         armies,
         v,
         combatStates,
-        decisionMakers,
         effects,
         lossRecords,
-        info,
         diplomaticRelations,
         diplomaticEvents);
   }
@@ -162,31 +145,7 @@ public record SdState(
   /** 仅替换 {@code combatStates}。 */
   public SdState withCombatStates(Map<CombatStateId, CombatState> v) {
     return new SdState(
-        nations,
-        armies,
-        combats,
-        v,
-        decisionMakers,
-        effects,
-        lossRecords,
-        info,
-        diplomaticRelations,
-        diplomaticEvents);
-  }
-
-  /** 仅替换 {@code decisionMakers}。 */
-  public SdState withDecisionMakers(Map<DecisionMakerId, DecisionMaker> v) {
-    return new SdState(
-        nations,
-        armies,
-        combats,
-        combatStates,
-        v,
-        effects,
-        lossRecords,
-        info,
-        diplomaticRelations,
-        diplomaticEvents);
+        nations, armies, combats, v, effects, lossRecords, diplomaticRelations, diplomaticEvents);
   }
 
   /** 仅替换 {@code effects}。 */
@@ -196,10 +155,8 @@ public record SdState(
         armies,
         combats,
         combatStates,
-        decisionMakers,
         v,
         lossRecords,
-        info,
         diplomaticRelations,
         diplomaticEvents);
   }
@@ -207,61 +164,19 @@ public record SdState(
   /** 仅替换 {@code lossRecords}。 */
   public SdState withLossRecords(Map<LossRecordId, LossRecord> v) {
     return new SdState(
-        nations,
-        armies,
-        combats,
-        combatStates,
-        decisionMakers,
-        effects,
-        v,
-        info,
-        diplomaticRelations,
-        diplomaticEvents);
-  }
-
-  /** 仅替换 {@code info}（canonical 地址串 → 条目列表）。 */
-  public SdState withInfo(Map<String, List<SdInfoEntry>> v) {
-    return new SdState(
-        nations,
-        armies,
-        combats,
-        combatStates,
-        decisionMakers,
-        effects,
-        lossRecords,
-        v,
-        diplomaticRelations,
-        diplomaticEvents);
+        nations, armies, combats, combatStates, effects, v, diplomaticRelations, diplomaticEvents);
   }
 
   /** 仅替换 {@code diplomaticRelations}（D-003 有向边表；键 = (from,to)）。 */
   public SdState withDiplomaticRelations(Map<DiplomaticRelationKey, DiplomaticRelation> v) {
     return new SdState(
-        nations,
-        armies,
-        combats,
-        combatStates,
-        decisionMakers,
-        effects,
-        lossRecords,
-        info,
-        v,
-        diplomaticEvents);
+        nations, armies, combats, combatStates, effects, lossRecords, v, diplomaticEvents);
   }
 
   /** 仅替换 {@code diplomaticEvents}（D-005 多国谈判/外交事件记录）。 */
   public SdState withDiplomaticEvents(Map<DiplomaticEventId, DiplomaticEvent> v) {
     return new SdState(
-        nations,
-        armies,
-        combats,
-        combatStates,
-        decisionMakers,
-        effects,
-        lossRecords,
-        info,
-        diplomaticRelations,
-        v);
+        nations, armies, combats, combatStates, effects, lossRecords, diplomaticRelations, v);
   }
 
   // ── 构造期不变量（逐条配故意违规用例）────────────────────────────────────────────
@@ -273,10 +188,11 @@ public record SdState(
    * <b>unit 切片</b>里的 GOV 单位（跨片），存在性由命令期（{@code sd.CreateArmy} / {@code unit.SetArmyFormation}）判， sd
    * 快照构造期不做跨片查询（铁律 3：sd 只拥有 sd 数据）。
    *
-   * <p>★★ <b>2026-10-12 批次 3b′ 收窄（如实记）</b>：原来这里还判 {@code Directive} 的三条外键（{@code decisionMakerId} /
-   * {@code effects} / {@code verdict}），{@code directives} 表搬进 {@code simos-ga}
-   * 后——前两条成了<b>跨切片</b>（ga 不拥有 {@code decisionMakers} / {@code effects}）⇒ 状态期判不了，落点改在命令期（{@code
-   * ga.IssueDirective}）；第三条整条搬进 {@code GaState} 的构造期（两张表都在那边）。
+   * <p>★★ <b>批次 3b-1 / 3b-2 的收窄（如实记）</b>：原来这里还判 {@code Directive} 的三条外键（{@code decisionMakerId} /
+   * {@code effects} / {@code verdict}）。{@code directives} 表搬进 {@code simos-ga} 后：{@code
+   * decisionMakerId} 那条随 {@code decisionMakers} 在本批（3b-2）也搬进 ga ⇒ 回归 {@link
+   * io.mosire.simos.ga.GaState} 的构造期；{@code verdict} 那条早在 3b-1 就整条搬过去；<b>只剩 {@code effects} 一条</b>因
+   * {@code effects} 仍住本模块而成为跨切片外键 ⇒ 状态期判不了， 落点在命令期（{@code ga.IssueDirective}）。
    */
   private static void requireReferentialIntegrity(
       Map<CombatId, Combat> combats,
@@ -429,20 +345,6 @@ public record SdState(
         throw new IllegalArgumentException(name + " 的键与值都不得为 null: " + entry.getKey());
       }
       copy.put(entry.getKey(), entry.getValue());
-    }
-    return copy;
-  }
-
-  private static Map<String, List<SdInfoEntry>> copyInfo(Map<String, List<SdInfoEntry>> source) {
-    if (source == null) {
-      throw new IllegalArgumentException("info 不得为 null");
-    }
-    Map<String, List<SdInfoEntry>> copy = new LinkedHashMap<>();
-    for (Map.Entry<String, List<SdInfoEntry>> entry : source.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("info 的键与值都不得为 null: " + entry.getKey());
-      }
-      copy.put(entry.getKey(), List.copyOf(entry.getValue()));
     }
     return copy;
   }

@@ -37,7 +37,7 @@ import java.util.Objects;
  * <ol>
  *   <li><b>没有 {@code signatureViolation} 钩子</b>：那是 sd 的"署名不许冒名"（决策人窄写专用），unit 的窄写一条都
  *       不用它；搬一个恒空的钩子过来只会造出"看着能覆写、其实没人覆写"的假接缝；
- *   <li><b>没有 {@code afterSubmit} 钩子</b>：同上（只有 {@code sd.RunDecision} 那类"落盘后还要做事"的工具要它）；
+ *   <li><b>没有 {@code afterSubmit} 钩子</b>：同上（只有 {@code ga.RunDecision} 那类"落盘后还要做事"的工具要它）；
  *   <li><b>不记 {@code TOOL_SUBMIT_RESULT} 日志行</b>：unit 模块的来源表口径是"命令入口的工具/人工交互由 app 层自记 {@code
  *       interaction}（origin 不跨模块传）"（{@code UnitLogSource} 类注），而工具面的发起/结果已由 app 的 {@code
  *       RecordingToolSource} 统一记录 ⇒ 在这里再记一条会是同一事实的第二处。这条差别**只影响一行 DEBUG 日志**， 不改任何状态、载荷、拒绝码（台账里有记）。

@@ -22,7 +22,7 @@ import java.util.Set;
  * 会同时犯两个错：让 sd 依赖它看不见的配置（铁律 3），并把"配置缺失"与"世界事实"混为一谈。
  *
  * <p>★★ **{@code conversationGeneration} = 这个决策人的 LLM 会话"第几代"**（缺省 0，{@code
- * sd.ResetDecisionMakerConversation} 每次 +1）。它存在是因为**会话本身会在现实中坏掉**：改版前落盘的老会话在回放时会 400（历史里没有 {@code
+ * ga.ResetDecisionMakerConversation} 每次 +1）。它存在是因为**会话本身会在现实中坏掉**：改版前落盘的老会话在回放时会 400（历史里没有 {@code
  * reasoning_content}，补不上）⇒ 唯一的处置是**换一段新的重开**。把那件事做成一条命令（而不是改库/删文件），它就有了铁律 2 的全部性质：可回放、可回退分岔、AAR
  * 里看得见"谁在什么时候把谁的会话换掉了"。
  *
@@ -49,11 +49,11 @@ public record DecisionMaker(
   /**
    * 5 参重载：新建的**没绑 provider、世代 0**的决策人。
    *
-   * <p>★ 只应被**创建**路径使用（{@code sd.CreateDecisionMaker}）；**重建**既有决策人的处理器（如 {@link
-   * io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler} / {@link
-   * io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler}）**必须**把它自己的 {@code providerId()} **与**
-   * {@code conversationGeneration()} 原样带过来，否则会静默丢绑定（M11 的变异靶子 m2）或 **静默把会话退回第 0 代**（=
-   * 那个人又接回一段早已作废的会话）。
+   * <p>★ 只应被**创建**路径使用（{@code ga.CreateDecisionMaker}）；**重建**既有决策人的处理器（如 {@link
+   * io.mosire.simos.ga.spi.SetDecisionMakerAccessHandler} / {@link
+   * io.mosire.simos.ga.spi.SetDecisionMakerProviderHandler}——两者自 2026-10-12 批次 3b-2 起住 {@code
+   * simos-ga}）**必须**把它自己的 {@code providerId()} **与** {@code conversationGeneration()}
+   * 原样带过来，否则会静默丢绑定（M11 的变异靶子 m2）或 **静默把会话退回第 0 代**（= 那个人又接回一段早已作废的会话）。
    */
   public DecisionMaker(
       DecisionMakerId id,

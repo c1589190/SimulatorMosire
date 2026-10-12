@@ -43,7 +43,7 @@ import java.util.concurrent.ThreadFactory;
 
 /**
  * ★★ {@code simos.sd.run-decision-makers}（P7a，2026-10-01 后端 + MCP 稳定化计划）：<b>GM-only 显式名单批量派决策人</b>
- * ——输入一份显式 {@code decisionMakerIds} 名单，先同批落 N 条 {@code sd.RunDecision} 触发事实（一批 = 一条
+ * ——输入一份显式 {@code decisionMakerIds} 名单，先同批落 N 条 {@code ga.RunDecision} 触发事实（一批 = 一条
  * revision），再让所有决策人在**同一触发 revision 的冻结快照**上跑一轮（{@code concurrency} 只影响墙钟并发）：世界写工具在
  * 决策期不可用，只允许写各自决策包；回合结束后由 {@link io.mosire.simos.app.decision.DecisionTurnFinalizer} 统一结算成一个
  * PENDING packet，GM 再合并执行。返回逐人汇总。
@@ -54,7 +54,7 @@ import java.util.concurrent.ThreadFactory;
  * <p>★★ <b>两步走，顺序与 {@link RunDecisionTool} 同源、语义一致</b>：
  *
  * <ol>
- *   <li><b>先落触发事实</b>：每个 DM 一条 {@code sd.RunDecision}（载荷 {@code {decisionMakerId}}），全部共享同一 {@code
+ *   <li><b>先落触发事实</b>：每个 DM 一条 {@code ga.RunDecision}（载荷 {@code {decisionMakerId}}），全部共享同一 {@code
  *       branch/expectedRevision/batchId}，经 {@link ToolWritePort#submitBatchWithReceipt} 原子提交 ——
  *       全部成功 ⇒ 一条 revision； 批内任一被拒 ⇒ 整批零 revision、逐条报真拒因、<b>不跑任何 LLM</b>；冲突 ⇒ 报真实 head、同样不跑 LLM。
  *   <li><b>再逐个跑轮</b>：对批的新坐标 {@code ref}，按输入顺序调用 {@code DecisionAgentService.runRound(BranchId,
@@ -62,7 +62,7 @@ import java.util.concurrent.ThreadFactory;
  *       预算中止）如实记进该人的结果，不静默；{@code continueOnError=false} 时在第一个失败处停止， 并用 {@code stoppedAfter} 记下是谁。
  * </ol>
  *
- * <p>★★ <b>触发事实与运行轮分开记</b>：触发批只落 {@code sd.RunDecision}（每条 = 一条 {@code sd.InfoEntry}）；决策人这一轮的产出仍走
+ * <p>★★ <b>触发事实与运行轮分开记</b>：触发批只落 {@code ga.RunDecision}（每条 = 一条 {@code sd.InfoEntry}）；决策人这一轮的产出仍走
  * 运行流内部的既有链路（{@code ga.IssueDirective} 等，含人工审批）——本工具<b>不</b>在这里提交 {@code ga.IssueDirective}
  * 或任何其他命令。运行轮各自产生的世界写入各自带 revision，本工具不汇总 revision 数。
  *
@@ -72,7 +72,7 @@ import java.util.concurrent.ThreadFactory;
  * <p>★ <b>资源声明</b>：本工具只写 {@code sd} 命名空间（{@link ResourcePolicy#UNRESTRICTED}；GM 侧 sd 为 unlimited）。
  *
  * <p>★ <b>工具名不是命令类型</b>：{@code simos.sd.run-decision-makers} 不进 catalog / {@code
- * PAYLOAD_HINTS}；它组的是既有 {@code sd.RunDecision} 命令。
+ * PAYLOAD_HINTS}；它组的是既有 {@code ga.RunDecision} 命令。
  */
 public final class RunDecisionMakersTool implements SimosTool {
 
@@ -135,8 +135,8 @@ public final class RunDecisionMakersTool implements SimosTool {
         + ToolResources.DEFAULT_BRANCH
         + ") + expectedRevision?(preview=false 必填，>=0) + reason(必填非空白)。"
         + "preview=true：零 revision，读 base state 逐个校验存在，返回每人 id/exists/providerId/cadence/due(仅展示)/"
-        + "allowedTools 概要 + commandsPreview(每人一条 sd.RunDecision)，缺失任意 DM ⇒ BAD_REQUEST 具名列表；"
-        + "preview=false：先同批提交 N 条 sd.RunDecision 触发事实（批成功恰一条 revision；批拒/冲突均零 revision、"
+        + "allowedTools 概要 + commandsPreview(每人一条 ga.RunDecision)，缺失任意 DM ⇒ BAD_REQUEST 具名列表；"
+        + "preview=false：先同批提交 N 条 ga.RunDecision 触发事实（批成功恰一条 revision；批拒/冲突均零 revision、"
         + "逐条真因、不跑 LLM），成功后按名单顺序（concurrency=1）或并发（concurrency>1）调用决策人运行流跑真轮，返回逐人 "
         + "{decisionMakerId,status,finalText,llmCalls,toolCalls,conversationId,...}；continueOnError=false 时首个失败后停止并给 "
         + "stoppedAfter。本工具不做跨调用锁、不做自动重试，也不在这里提交 ga.IssueDirective/其他命令"
@@ -320,7 +320,7 @@ public final class RunDecisionMakersTool implements SimosTool {
     if (!missing.isEmpty()) {
       view.put("missingDecisionMakerIds", missing);
       view.put("results", List.of());
-      view.put("note", "存在缺失的决策人，未生成/提交任何 sd.RunDecision 触发命令（零 revision）：" + missing);
+      view.put("note", "存在缺失的决策人，未生成/提交任何 ga.RunDecision 触发命令（零 revision）：" + missing);
       return ToolResult.error("BAD_REQUEST", ToolResults.json(view));
     }
     view.put("commandsPreview", commandsPreview(decisionMakerIds));
@@ -329,13 +329,13 @@ public final class RunDecisionMakersTool implements SimosTool {
         "note",
         "preview 只读：零 revision；apply 时这 "
             + decisionMakerIds.size()
-            + " 条 sd.RunDecision 触发命令同批落一条 revision，随后按名单"
+            + " 条 ga.RunDecision 触发命令同批落一条 revision，随后按名单"
             + (concurrency <= 1 ? "顺序逐个" : ("并发（" + concurrency + "）"))
             + "跑轮");
     return ToolResult.ok(ToolResults.json(view));
   }
 
-  /** commandsPreview：每人一条 {@code sd.RunDecision}，载荷字段名与 handler 的拼写点一致。 */
+  /** commandsPreview：每人一条 {@code ga.RunDecision}，载荷字段名与 handler 的拼写点一致。 */
   private static List<Map<String, Object>> commandsPreview(List<String> decisionMakerIds) {
     List<Map<String, Object>> out = new ArrayList<>(decisionMakerIds.size());
     for (String id : decisionMakerIds) {
@@ -350,7 +350,7 @@ public final class RunDecisionMakersTool implements SimosTool {
     return List.copyOf(out);
   }
 
-  /** {@code sd.RunDecision} 的唯一载荷字段（与 {@code RunDecisionHandler.decisionMakerIdOf} 同拼写）。 */
+  /** {@code ga.RunDecision} 的唯一载荷字段（与 {@code RunDecisionHandler.decisionMakerIdOf} 同拼写）。 */
   private static Map<String, Object> triggerPayload(String decisionMakerId) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("decisionMakerId", decisionMakerId);
@@ -412,7 +412,7 @@ public final class RunDecisionMakersTool implements SimosTool {
   }
 
   /**
-   * 组批：每人一条 {@code sd.RunDecision}，批级 {@code branch/expectedRevision/correlationId} 由端口调用给（见 {@link
+   * 组批：每人一条 {@code ga.RunDecision}，批级 {@code branch/expectedRevision/correlationId} 由端口调用给（见 {@link
    * #apply}），命令 id 由装配面逐条生成 —— 工具只给"我这条命令是什么"（{@code type} + 逐字节转交的载荷）。
    */
   private static List<ToolWritePort.Request> buildTriggerBatch(List<String> decisionMakerIds) {

@@ -42,7 +42,7 @@ import java.util.Set;
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（逐来源 {@code
  * TRANSFER_MEMBERS(from=源家户, to=政府家户, lotId, count)}；{@code disbandDispatched} 时再逐源家户 {@code
  * SET_LOCATION(HEX=GOV 单位当刻 effectivePosition)}）→ {@code unit.RecruitStaff}（{@code role += count}）→
- * （{@code disbandDispatched} 才落）{@code unit.DisbandUnit} → {@code sd.PutInfo}（行动记录）。 ★ {@code
+ * （{@code disbandDispatched} 才落）{@code unit.DisbandUnit} → {@code ga.PutInfo}（行动记录）。 ★ {@code
  * SET_LOCATION} 必须在 {@code unit.DisbandUnit} 之前：否则源家户的 {@code UNIT(sourceUnitId)} 会变成孤儿位置， 下轮
  * {@code HouseholdUnitConsistency} 会 unresolved（且无法单侧修复）。
  *
@@ -76,8 +76,8 @@ final class GovAbsorbUnitPlan {
   /** {@code unit.DisbandUnit} 的命令类型（仅 disbandDispatched 时才落）。 */
   static final String DISBAND_UNIT_TYPE = "unit.DisbandUnit";
 
-  /** {@code sd.PutInfo} 的命令类型（恒有，行动记录）。 */
-  static final String PUT_INFO_TYPE = "sd.PutInfo";
+  /** {@code ga.PutInfo} 的命令类型（恒有，行动记录）。 */
+  static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   /** 工单来源模块名（进 {@code social.SubmitHouseholdWorkOrder} 载荷与日志）。 */
   private static final String SOURCE_MODULE = "gov";
@@ -719,7 +719,7 @@ final class GovAbsorbUnitPlan {
       return ToolResults.json(payload);
     }
 
-    /** 逐来源份额视图（工具结果与 {@code sd.PutInfo.value.shares} 共用；保序）。 */
+    /** 逐来源份额视图（工具结果与 {@code ga.PutInfo.value.shares} 共用；保序）。 */
     List<Map<String, Object>> sharesView() {
       List<Map<String, Object>> rows = new ArrayList<>(shares.size());
       for (GovToolManpower.ManpowerShare share : shares) {
@@ -734,7 +734,7 @@ final class GovAbsorbUnitPlan {
       return List.copyOf(rows);
     }
 
-    /** 逐源家户迁移后剩余人口视图（工具结果与 {@code sd.PutInfo.value.householdRemainders} 共用；保序）。 */
+    /** 逐源家户迁移后剩余人口视图（工具结果与 {@code ga.PutInfo.value.householdRemainders} 共用；保序）。 */
     List<Map<String, Object>> remaindersView() {
       List<Map<String, Object>> rows = new ArrayList<>(remainders.size());
       for (HouseholdRemainder remainder : remainders) {
@@ -755,7 +755,7 @@ final class GovAbsorbUnitPlan {
     }
 
     /**
-     * {@code sd.PutInfo} 的 {@code value}（JSON 字符串；含
+     * {@code ga.PutInfo} 的 {@code value}（JSON 字符串；含
      * govUnitId/sourceUnitId/role/count/shares/disbanded/disbandSkippedReason）。
      */
     String infoValueJson(String reason) {
@@ -788,7 +788,7 @@ final class GovAbsorbUnitPlan {
       return ToolResults.json(value);
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       requireReason(reason);
       return "吸收 "

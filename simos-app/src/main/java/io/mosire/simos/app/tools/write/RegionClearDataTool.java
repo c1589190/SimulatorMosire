@@ -41,14 +41,14 @@ import java.util.UUID;
  * regionId 清 social / actor / economy 三类数值与关联记录，<b>不动</b> Region/Unit/GOV/决策人结构。
  *
  * <p>★★ <b>一批 = 一条 revision，固定批序</b>：{@code social.ClearRegion} → {@code actor.ClearRegion} →
- * {@code economy.ClearRegion} → {@code sd.PutInfo}；四个信封共享同一 {@code batchId}（correlationId）与同一
+ * {@code economy.ClearRegion} → {@code ga.PutInfo}；四个信封共享同一 {@code batchId}（correlationId）与同一
  * branch/expectedRevision ⇒ {@link CoreSimos#submitBatch} 原子落一条 revision。preview 一个字节都不写。
  *
  * <p>★★ <b>preview / apply 共用同一份只读 pre-scan</b>：唯一语义落点在 {@link RegionClearPlan#scan}（复用 {@code
  * RegionSeedPlan.inspectCleanGate} 的同一次命中扫描）；本类只做四件事——参数形状解析、读 base state、把 Plan 折成视图、组批与折叠结局。
  *
  * <p>★★ <b>只对"有命中"的域下单</b>：某域 clean gate 干净 ⇒ 该域的 ClearRegion 不进批；三域都无命中 ⇒ <b>不 submit、零
- * revision</b>，返回具名"没有需要清空的数据"。{@code sd.PutInfo} 只在有任一域命中时追加，记录本次清空的范围与原因。
+ * revision</b>，返回具名"没有需要清空的数据"。{@code ga.PutInfo} 只在有任一域命中时追加，记录本次清空的范围与原因。
  *
  * <p>★ <b>与结构清空分开</b>：{@code
  * simos.region.clearStructures}（Region/Unit/GOV/决策人结构）另行单独确认；本工具不做跨域结构清空。
@@ -108,7 +108,7 @@ public final class RegionClearDataTool implements SimosTool {
   public String description() {
     return "GM 区域数据清空（组合工具，一批 = 一条 revision）：按 regionId 只读 pre-scan（与 simos.region.seed 的 clean"
         + " gate 同一次扫描），只对命中域按固定批序 social.ClearRegion → actor.ClearRegion → economy.ClearRegion →"
-        + " sd.PutInfo 下单；三域都无命中 ⇒ 不提交、零 revision，返回\"没有需要清空的数据\"。"
+        + " ga.PutInfo 下单；三域都无命中 ⇒ 不提交、零 revision，返回\"没有需要清空的数据\"。"
         + "清空边界：social 清目标 Region 格集内的 populations/groups/cities（含 city.region 归属命中）；actor 清目标格内的"
         + " HouseholdInventory，并只删除清账后在任何位置都不再持有账户的主体；economy 至少清目标格 industries/markets 及其"
         + " unit/relations/classes/memberships 等可靠可定位的连带记录（不动世界级发行审计/在途货物/laborSupply）。"
@@ -132,7 +132,7 @@ public final class RegionClearDataTool implements SimosTool {
         "expectedRevision",
         ToolSupport.prop(
             "integer", "preview=false 必填：提交的乐观并发 base revision（>=0）；preview 的读数也取它（缺省=该分支 head）"));
-    props.put("reason", ToolSupport.prop("string", "清空原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSupport.prop("string", "清空原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     return ToolSupport.schema(props, List.of("regionId", "reason"));
   }
 
@@ -287,7 +287,7 @@ public final class RegionClearDataTool implements SimosTool {
     return ToolResult.error("REJECTED", ToolSupport.json(view));
   }
 
-  /** 组批（固定顺序，可复现）：只含命中域的 ClearRegion，最后必有 sd.PutInfo（{@code hasWork()} 为真时）。 */
+  /** 组批（固定顺序，可复现）：只含命中域的 ClearRegion，最后必有 ga.PutInfo（{@code hasWork()} 为真时）。 */
   private List<CommandEnvelope> buildBatch(
       String batchId,
       RegionClearPlan.Plan plan,
@@ -321,14 +321,14 @@ public final class RegionClearDataTool implements SimosTool {
         payloadJson);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录） ─────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录） ─────────────────────────────────────────────────────
 
   /**
-   * {@code sd.PutInfo} 载荷：目标 Region canonical 地址（{@code map:<mapId>:region.<regionId>}，只用 Address
+   * {@code ga.PutInfo} 载荷：目标 Region canonical 地址（{@code map:<mapId>:region.<regionId>}，只用 Address
    * AST 造） + {@code key="regionClearData"} + {@code value}=JSON 字符串 + {@code note}=人可读摘要 + {@code
    * tick}=base state 的世界日。
    *
-   * <p>★ {@code id} 不显式给：由 {@code sd.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一 Region 的后续清空自然追加序号。
+   * <p>★ {@code id} 不显式给：由 {@code ga.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一 Region 的后续清空自然追加序号。
    */
   private String infoPayload(RegionClearPlan.Plan plan, String reason) {
     Map<String, Object> value = new LinkedHashMap<>();

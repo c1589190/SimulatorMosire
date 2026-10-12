@@ -150,7 +150,7 @@ public final class GuiServer implements AutoCloseable {
    * 决策人**这一轮跑到哪儿了**（只读，2026-09-23）：{@code GET /api/sd/decision-makers/{id}/run-status}。
    *
    * <p>★★ **它存在的前提是"GUI 那条跑一轮改成了异步"**：{@code POST /api/sd/run-decision} 现在**立即返回**
-   * （只在后台起跑），浏览器便只能靠轮询知道进度与结局。★ **GM 经 MCP 的那条仍是同步的**（{@code sd.RunDecision}
+   * （只在后台起跑），浏览器便只能靠轮询知道进度与结局。★ **GM 经 MCP 的那条仍是同步的**（{@code ga.RunDecision}
    * 窄工具：调用方等到整轮结束直接拿轨迹）——两条路语义不同是**有意的**，不是不一致：MCP 的调用方是 agent，它能等； 浏览器的调用方是人，等三十秒会以为界面卡死。
    *
    * <p>★ **与 {@code /scope} 同款放在详情前缀之下** ⇒ 在 {@link #handleGet} 里必须**先于** {@link
@@ -172,7 +172,7 @@ public final class GuiServer implements AutoCloseable {
    * **重置某决策人的会话上下文**（2026-09-23）：{@code POST /api/sd/reset-decision-maker-conversation}，体 {@code
    * {branch, expectedRevision, decisionMakerId}}。
    *
-   * <p>★ **它是一条真命令**（{@code sd.ResetDecisionMakerConversation}，落 revision ⇒ 会话世代 +1）：与 {@code
+   * <p>★ **它是一条真命令**（{@code ga.ResetDecisionMakerConversation}，落 revision ⇒ 会话世代 +1）：与 {@code
    * /api/sd/start-decision} / {@code /api/sd/run-decision} 同族窄写，命令类型由服务端写死。旧会话**一条字节都不动**
    * （append-only、可审计），换的是"下一个轮次落到哪一段"。
    */
@@ -189,7 +189,7 @@ public final class GuiServer implements AutoCloseable {
   private static final String DIRECTIVES_PATH = "/api/sd/directives";
 
   /**
-   * **「让它跑一轮」窄写面**：{@code POST /api/sd/run-decision}——命令类型固定为 {@code sd.RunDecision}，用户路径
+   * **「让它跑一轮」窄写面**：{@code POST /api/sd/run-decision}——命令类型固定为 {@code ga.RunDecision}，用户路径
    * **直接生效**（与 {@code /api/sd/start-decision} 同制；GM Agent 走 MCP 窄工具的那条才过审批门链）。
    *
    * <p>★★ **但这一轮的内部不是无审批的**：决策人自己出的令（{@code ga.IssueDirective}）是敏感写 ⇒ 它各自进一次审批门链， 而审批是**阻塞等待**（上限 =
@@ -206,7 +206,7 @@ public final class GuiServer implements AutoCloseable {
 
   /**
    * 「开始决策」窄写面（T10，spec §四.5 / §六.3）：{@code POST /api/sd/start-decision}——用户路径，命令类型固定为 {@code
-   * sd.StartDecision}，**直接生效**（不经审批；GM Agent 走 MCP 窄工具的那条才过审批门链，D6）。
+   * ga.StartDecision}，**直接生效**（不经审批；GM Agent 走 MCP 窄工具的那条才过审批门链，D6）。
    */
   private static final String START_DECISION_PATH = "/api/sd/start-decision";
 
@@ -220,7 +220,7 @@ public final class GuiServer implements AutoCloseable {
 
   private static final String LLM_PROVIDERS_TEST_PATH = LLM_PROVIDERS_PATH + "/test";
 
-  /** 决策人绑定 provider 窄写（世界写）：固定类型 {@code sd.SetDecisionMakerProvider}，落 revision。 */
+  /** 决策人绑定 provider 窄写（世界写）：固定类型 {@code ga.SetDecisionMakerProvider}，落 revision。 */
   private static final String SET_DECISION_MAKER_PROVIDER_PATH =
       "/api/sd/set-decision-maker-provider";
 
@@ -1752,7 +1752,7 @@ public final class GuiServer implements AutoCloseable {
    * 「开始决策」窄写（T10，spec §四.5）：唯一一条**固定命令类型**的 GUI 写端点（与 MCP 侧窄工具对称），用户路径**直接生效**。
    *
    * <p>体 {@code {branch, expectedRevision, decisionMakerId, note?}}；命令类型由服务端写死为 {@code
-   * sd.StartDecision}， 前端不传 type（不给工作台开通用写面）。
+   * ga.StartDecision}， 前端不传 type（不给工作台开通用写面）。
    */
   private Reply startDecisionReply(HttpExchange exchange) throws IOException {
     JsonNode root = readBody(exchange);
@@ -1772,7 +1772,7 @@ public final class GuiServer implements AutoCloseable {
             GUI_INITIATOR,
             branch,
             expected,
-            "sd.StartDecision",
+            "ga.StartDecision",
             MAPPER.writeValueAsString(payload));
     CommandResult result = core.submit(command);
     if (!(result instanceof CommandResult.Committed committed)
@@ -1791,13 +1791,13 @@ public final class GuiServer implements AutoCloseable {
 
   /**
    * **「让它跑一轮」窄写**：{@code POST /api/sd/run-decision}，体 {@code {branch, expectedRevision,
-   * decisionMakerId}}；命令类型由服务端写死为 {@code sd.RunDecision}（前端不传 type，与 {@link #startDecisionReply} 同制
+   * decisionMakerId}}；命令类型由服务端写死为 {@code ga.RunDecision}（前端不传 type，与 {@link #startDecisionReply} 同制
    * ⇒ 工作台仍没有通用写面）。
    *
    * <p>★★ **两步走，顺序有意义**（与 GM 侧的 {@code RunDecisionTool} 同一套语义，见其类注）：
    *
    * <ol>
-   *   <li>**先落触发事实**（{@code sd.RunDecision}，经 {@link CoreSimos#submit}，铁律 2 无例外）；
+   *   <li>**先落触发事实**（{@code ga.RunDecision}，经 {@link CoreSimos#submit}，铁律 2 无例外）；
    *   <li>**再跑一轮**（{@link DecisionAgentService#runRound}）——世界版本取**刚落盘的新 head**，不是调用方手里那份。
    *       落盘失败（冲突/被拒）就不跑（不浪费一次真 LLM 调用）。
    * </ol>
@@ -1825,7 +1825,7 @@ public final class GuiServer implements AutoCloseable {
             GUI_INITIATOR,
             new BranchId(textField(root, "branch")),
             new RevisionId(longField(root, "expectedRevision")),
-            "sd.RunDecision",
+            "ga.RunDecision",
             MAPPER.writeValueAsString(payload));
     // ★★ E4 **并发闸门：先占位、再落事实**（顺序有意）：
     //   · 占位在 submit **之前** ⇒ 被拒的那一次**不会白落一条触发事实、白涨一个 revision**（世界事实只记"真跑了的那些"）；
@@ -2028,7 +2028,7 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * **重置某决策人的会话上下文**（2026-09-23）：固定类型 {@code sd.ResetDecisionMakerConversation}，落 revision （与
+   * **重置某决策人的会话上下文**（2026-09-23）：固定类型 {@code ga.ResetDecisionMakerConversation}，落 revision （与
    * {@code /api/sd/set-decision-maker-provider} 同制）。体 {@code {branch, expectedRevision,
    * decisionMakerId}}。
    *
@@ -2046,7 +2046,7 @@ public final class GuiServer implements AutoCloseable {
             GUI_INITIATOR,
             new BranchId(textField(root, "branch")),
             new RevisionId(longField(root, "expectedRevision")),
-            "sd.ResetDecisionMakerConversation",
+            "ga.ResetDecisionMakerConversation",
             MAPPER.writeValueAsString(payload));
     return resultReply(core.submit(command));
   }
@@ -2113,7 +2113,7 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * 决策人绑定 provider 窄写（M11′）：固定类型 {@code sd.SetDecisionMakerProvider}，落 revision（与 {@code
+   * 决策人绑定 provider 窄写（M11′）：固定类型 {@code ga.SetDecisionMakerProvider}，落 revision（与 {@code
    * /api/sd/start-decision} 同制）。体 {@code {branch, expectedRevision, decisionMakerId, providerId}}。
    */
   private Reply setDecisionMakerProviderReply(HttpExchange exchange) throws IOException {
@@ -2129,7 +2129,7 @@ public final class GuiServer implements AutoCloseable {
             GUI_INITIATOR,
             new BranchId(textField(root, "branch")),
             new RevisionId(longField(root, "expectedRevision")),
-            "sd.SetDecisionMakerProvider",
+            "ga.SetDecisionMakerProvider",
             MAPPER.writeValueAsString(payload));
     return resultReply(core.submit(command));
   }

@@ -24,7 +24,7 @@ import java.util.Optional;
  * "是不是文档"判据不再一致**。{@link #addressOf} 在写入侧就拒，故这条不会以"文档静默消失"的形式出现。
  *
  * <p>★ **读侧判据用解析出的 {@code kind}、不用字符串前缀**：{@code startsWith} 只在"docId 一定是裸词"这个前提下成立，而 {@link
- * #docIdOf} 的入参可能来自**任何人写的任意地址**（{@code sd.PutInfo} 是通用写口，GM 可能手滑）。解析成 {@link Entity} 再比 {@code
+ * #docIdOf} 的入参可能来自**任何人写的任意地址**（{@code ga.PutInfo} 是通用写口，GM 可能手滑）。解析成 {@link Entity} 再比 {@code
  * kind} 才与 canonical 的唯一性同源（同时规避 {@code sd:docx.foo} 这类前缀假阳性）。
  */
 public final class DecisionDoc {

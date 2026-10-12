@@ -49,7 +49,7 @@ import java.util.UUID;
  * <p>★★ <b>一批 = 一条 revision，固定批序与 {@link WorldgenInitializeTool} 同源</b>：{@code
  * social.SetPopulation} → {@code social.CreateCity × N} → {@code social.SeedGroups} → [{@code
  * includeEconomy}: {@code economy.Seed}] → [{@code includeActors}: {@code actor.Seed}] → {@code
- * sd.PutInfo}。全部共享同一 {@code batchId}（correlationId） 与同一 branch/expectedRevision ⇒ {@link
+ * ga.PutInfo}。全部共享同一 {@code batchId}（correlationId） 与同一 branch/expectedRevision ⇒ {@link
  * CoreSimos#submitBatch} 原子落一条 revision；preview 一个字节都不写。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点在 {@link RegionSeedPlan#derive}；本类只做四件事——参数形状解析、读
@@ -117,7 +117,7 @@ public final class RegionSeedTool implements SimosTool {
    * @param core 唯一写入口（本工具走 {@code submitBatch}；preview=true 时一个字节都不写）
    * @param query 只读入口（读 branch/revision 的当前 {@link SimulationState}；preview 与 apply 共用同一份推导）
    * @param initiator 落盘时的发起者（C21 的 {@code <kind>:<id>} 形态）
-   * @param mapId 本世界的 map 称谓（进 {@code economy.Seed} 与 {@code sd.PutInfo} 地址）
+   * @param mapId 本世界的 map 称谓（进 {@code economy.Seed} 与 {@code ga.PutInfo} 地址）
    */
   public RegionSeedTool(CoreSimos core, QueryService query, String initiator, String mapId) {
     this.core = Objects.requireNonNull(core, "core");
@@ -135,7 +135,7 @@ public final class RegionSeedTool implements SimosTool {
   public String description() {
     return "GM 任意 Region 数据播种（生成模式；组合工具，一批 = 一条 revision）：按 regionId + totalPopulation 用"
         + " SettlementGenerator 生成聚落，翻成固定批序 social.SetPopulation → social.CreateCity × N →"
-        + " social.SeedGroups → [includeEconomy: economy.Seed] → [includeActors: actor.Seed] → sd.PutInfo"
+        + " social.SeedGroups → [includeEconomy: economy.Seed] → [includeActors: actor.Seed] → ga.PutInfo"
         + "（key="
         + INFO_KEY
         + "，address=Region canonical，value=JSON 字符串）。"
@@ -184,7 +184,7 @@ public final class RegionSeedTool implements SimosTool {
     props.put("politicalCentralization", ToolSupport.prop("number", "政治中央度（可选，缺省 1.0，>= 0）"));
     props.put("includeEconomy", ToolSupport.prop("boolean", "是否落 economy.Seed（可选，缺省 true；低人口可关掉）"));
     props.put("includeActors", ToolSupport.prop("boolean", "是否落 actor.Seed（可选，缺省 true；低人口可关掉）"));
-    props.put("reason", ToolSupport.prop("string", "播种原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSupport.prop("string", "播种原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
@@ -531,7 +531,7 @@ public final class RegionSeedTool implements SimosTool {
   /**
    * 组批（固定顺序，可复现）：{@code social.SetPopulation} → {@code social.CreateCity × N} → {@code
    * social.SeedGroups} → [{@code includeEconomy}: {@code economy.Seed}] → [{@code includeActors}:
-   * {@code actor.Seed}] → {@code sd.PutInfo}。
+   * {@code actor.Seed}] → {@code ga.PutInfo}。
    *
    * <p>★ 载荷**复用 {@code WorldgenInitializeTool} 的同一份包内助手**（逐格人口 / 城市 props 的拼法只有一处），经济与 actor 读
    * **同一次** {@link EconomySeeder#plan} 的 {@link EconomySeeder.Seed}。全部共享同一 {@code batchId} 与同一
@@ -627,14 +627,14 @@ public final class RegionSeedTool implements SimosTool {
         payloadJson);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录） ─────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录） ─────────────────────────────────────────────────────
 
   /**
-   * {@code sd.PutInfo} 载荷：目标 Region canonical 地址（{@code map:<mapId>:region.<regionId>}，只用 Address
+   * {@code ga.PutInfo} 载荷：目标 Region canonical 地址（{@code map:<mapId>:region.<regionId>}，只用 Address
    * AST 造） + {@code key="regionSeed"} + {@code value}=JSON 字符串 + {@code note}=人可读摘要 + {@code
    * tick}=当前世界日。
    *
-   * <p>★ {@code id} 不显式给：由 {@code sd.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一 Region 的后续播种自然追加序号。
+   * <p>★ {@code id} 不显式给：由 {@code ga.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一 Region 的后续播种自然追加序号。
    */
   private static String infoPayload(RegionSeedPlan.Plan plan, String reason) {
     Map<String, Object> value = new LinkedHashMap<>();

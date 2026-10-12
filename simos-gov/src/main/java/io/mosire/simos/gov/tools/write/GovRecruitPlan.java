@@ -52,7 +52,7 @@ import java.util.Set;
  *   <li><b>不足 ⇒ 整条拒</b>：家户份额总量不足时带 requested / available / 缺口具名抛出，<b>不部分抽取、不截断</b>；
  *   <li><b>守恒</b>：Σ share.taken == {@code count} == {@code unit.RecruitStaff} 的 roster 增量；三个数字在
  *       Plan 构造期逐值互校，批载荷逐值对应（同一份 sources 同时喂 {@code social.SubmitHouseholdWorkOrder}、{@code
- *       unit.RecruitStaff} 与 {@code sd.PutInfo}）。
+ *       unit.RecruitStaff} 与 {@code ga.PutInfo}）。
  * </ol>
  *
  * <p>★★ <b>目标政府家户前置（缺一 ⇒ plan 级具名拒，不猜、不新建第二户）</b>：目标恒为 {@link GovernmentHouseholds#of(String)} =
@@ -62,7 +62,7 @@ import java.util.Set;
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
  * orderId=gov-recruit:<unitId>:<role>:<tick>:<count>} 确定性幂等键；target = 政府家户；逐来源 {@code
  * TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId, count=taken)}）→ {@code unit.RecruitStaff}（{@code
- * sources} = 逐来源 {@code {kind:"household", id, lotId, count}}）→ {@code sd.PutInfo}（地址 = 单位
+ * sources} = 逐来源 {@code {kind:"household", id, lotId, count}}）→ {@code ga.PutInfo}（地址 = 单位
  * canonical，key={@code recruit}，value=JSON <b>字符串</b>，含
  * role/count/来源家户/reason/tick，note=人可读摘要）。三条共享同一 batchId 与同一 branch/expectedRevision ⇒ 一条 revision。
  *
@@ -88,8 +88,8 @@ final class GovRecruitPlan {
   /** {@code unit.AssignGovPost} 的命令类型（Z4 岗位户模式落点；只写 posts，绝不写 staff）。 */
   static final String ASSIGN_GOV_POST_TYPE = AssignGovPostHandler.TYPE;
 
-  /** {@code sd.PutInfo} 的命令类型（恒有，行动记录）。 */
-  static final String PUT_INFO_TYPE = "sd.PutInfo";
+  /** {@code ga.PutInfo} 的命令类型（恒有，行动记录）。 */
+  static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   private GovRecruitPlan() {}
 
@@ -444,7 +444,7 @@ final class GovRecruitPlan {
     }
 
     /**
-     * {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；含
+     * {@code ga.PutInfo} 的 {@code value}（JSON <b>字符串</b>；含
      * mode/target/role/count/来源家户份额/reason/tick； 旧档另含 staff 前后）。
      */
     String infoValueJson(String reason) {
@@ -471,7 +471,7 @@ final class GovRecruitPlan {
       return ToolResults.json(value);
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       requireReason(reason);
       return "招募 "
@@ -500,7 +500,7 @@ final class GovRecruitPlan {
           + reason;
     }
 
-    /** 逐来源视图（工具结果与 {@code sd.PutInfo.value.sources} 共用；保序）。 */
+    /** 逐来源视图（工具结果与 {@code ga.PutInfo.value.sources} 共用；保序）。 */
     List<Map<String, Object>> sourcesView() {
       List<Map<String, Object>> rows = new ArrayList<>(sources.size());
       for (GovToolManpower.ManpowerShare share : sources) {

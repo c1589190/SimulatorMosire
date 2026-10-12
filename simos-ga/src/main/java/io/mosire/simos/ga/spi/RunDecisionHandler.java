@@ -1,12 +1,13 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -22,7 +23,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code sd.RunDecision} 命令的处理器（T11C）：**「让某个决策人的 agent 跑一轮」= 一条真命令**。
+ * {@code ga.RunDecision} 命令的处理器（T11C；<b>★ 2026-10-12 批次 3b-2 自 {@code simos-sd/sd.spi} 迁入并 改名
+ * {@code sd.* → ga.*}，语义一字未改</b>）：**「让某个决策人的 agent 跑一轮」= 一条真命令**。
  *
  * <pre>{@code
  * {"decisionMakerId":"dm1"}
@@ -33,12 +35,15 @@ import java.util.Set;
  * handler 只写一条**感知层事实**：谁在哪个 tick 让哪个决策人跑了一轮。决策人的产出仍走 {@code ga.IssueDirective}/{@code
  * ga.SubmitVerdict}（铁律 2 无例外）。
  *
- * <p>★ **与 {@code sd.StartDecision} 的分工**（两者语义不同，不是同一件事的两种写法）：
+ * <p>★★ <b>为什么它跟决策人一起搬进 ga</b>：与 {@link StartDecisionHandler} 同因——它写 INFO 覆盖层，而该表本批搬进 {@code
+ * GaState}（一条命令的变更集由类型前缀决定 codec）。地址族串一字未改。
+ *
+ * <p>★ **与 {@code ga.StartDecision} 的分工**（两者语义不同，不是同一件事的两种写法）：
  *
  * <ul>
- *   <li>{@link StartDecisionHandler}（{@code sd.StartDecision}）= **"开始一次判决"**：结果由 app 侧的 {@code
+ *   <li>{@link StartDecisionHandler}（{@code ga.StartDecision}）= **"开始一次判决"**：结果由 app 侧的 {@code
  *       DecisionAdjudicationService} 折成 {@code ga.SubmitVerdict}（裁决者冻结判决）；
- *   <li>本命令（{@code sd.RunDecision}）= **"让某决策人的 agent 跑一轮"**：结果由 app 侧的 {@code DecisionAgentRunner}
+ *   <li>本命令（{@code ga.RunDecision}）= **"让某决策人的 agent 跑一轮"**：结果由 app 侧的 {@code DecisionAgentRunner}
  *       折成决策人**自己**调工具（读世界 + {@code ga.IssueDirective}）。
  * </ul>
  *
@@ -46,7 +51,7 @@ import java.util.Set;
  * StartDecisionHandler#ADDRESS_PREFIX}——同一处拼写点，避免两条事实在 AAR 里跑到两个地址去），只以 key 区分：{@code start} /
  * {@link #RUN_INFO_KEY}。
  *
- * <p>★ **不写 {@code Directive}**（与 {@code sd.StartDecision} 同一条理由，见 {@link StartDecisionHandler}
+ * <p>★ **不写 {@code Directive}**（与 {@code ga.StartDecision} 同一条理由，见 {@link StartDecisionHandler}
  * 的类注）：触发命令若在决策人**将要出令的那个 (决策人, tick)** 上留一条 {@code Directive}，它就会成为"第 1 版"、被决策人的真出令顶成 {@code
  * SUPERSEDED}——AAR 上凭空多一条决策人从没写过的版本。
  *
@@ -62,13 +67,13 @@ public final class RunDecisionHandler implements CommandHandler {
 
   @Override
   public String type() {
-    return "sd.RunDecision";
+    return "ga.RunDecision";
   }
 
   /**
    * 载荷里那**唯一**一个字段（{@code decisionMakerId}）。
    *
-   * <p>★ **公开的理由**：触发这条命令的 app 侧窄工具（{@code sd.RunDecision}）在**命令落盘之后**还要拿同一个 id 去跑那一轮
+   * <p>★ **公开的理由**：触发这条命令的 app 侧窄工具（{@code ga.RunDecision}）在**命令落盘之后**还要拿同一个 id 去跑那一轮
    * ——两处若各写一遍字段名，改名时一处漏改就会"命令认得、运行流认不得"（或反过来），而**没有任何症状**。故字段名的拼写点只有这里。
    *
    * @throws IllegalArgumentException 载荷不是合法 JSON / 缺 {@code decisionMakerId}（与 {@link #handle}
@@ -84,7 +89,7 @@ public final class RunDecisionHandler implements CommandHandler {
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
     String dmForLog = null;
     try {
       DecisionMakerId decisionMakerId = decisionMakerIdOf(payloadJson);
@@ -115,11 +120,11 @@ public final class RunDecisionHandler implements CommandHandler {
       entries.add(entry);
       nextInfo.put(address, List.copyOf(entries));
 
-      EventLog.channel(SdLog.decision())
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_DECISION_RUN_RECORDED",
-                  SdLogSource.SD_DECISION,
+                  GaLogSource.GA_DECISION,
                   "decisionMaker",
                   decisionMakerId.value(),
                   "tick",
@@ -128,7 +133,7 @@ public final class RunDecisionHandler implements CommandHandler {
                   entries.size(),
                   "infoAddresses",
                   nextInfo.size()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withInfo(nextInfo)));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, base.withInfo(nextInfo)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "dm", dmForLog);
     }
@@ -140,7 +145,7 @@ public final class RunDecisionHandler implements CommandHandler {
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(), SdLogSource.SD_DECISION, "SD_RUN_DECISION_REJECTED", reason, idKeyValues);
+        GaLog.decision(), GaLogSource.GA_DECISION, "SD_RUN_DECISION_REJECTED", reason, idKeyValues);
     return new HandlerOutcome.Rejected(reason);
   }
 }

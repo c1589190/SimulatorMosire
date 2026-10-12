@@ -1294,7 +1294,7 @@
 
   // ── 「开始决策」入口（T10，三件事模型 ④；2026-09-23 按用户裁定改造）────────────
   // ★ 目标 = 左栏当前展示的那个决策人（右栏点选 / 单位解析出的单个；国家多决策人时无单一目标）。
-  // ★ 写路径 = api.startDecision（POST /api/sd/start-decision 窄端点，服务端写死 sd.StartDecision）——
+  // ★ 写路径 = api.startDecision（POST /api/sd/start-decision 窄端点，服务端写死 ga.StartDecision）——
   //   本文件**不发通用命令写**（通用写只归 app 的 writeCommand）；审批裁决那条写另有其处（decideApproval）。
   //
   // ★★ **due 不再是闸门，只是提示**（用户 2026-09-23：「我在当前回合点开始决策」要随时可点）：
@@ -1304,8 +1304,8 @@
   // ★★ **点一次 = （有补充指示时先发它）+ 发起 + 真跑一轮**（用户要的"跑完在下面生成当前 tick 这个
   //   决策人的完整决策"）：
   //   ① 文本框非空 ⇒ 先把那句话作为一条 user 消息发进它的会话（POST …/say，append-only、不改世界）；
-  //   ② `sd.StartDecision`（原样保留：它是"开始一次决策"的世界事实，判决链挂在它后面）；
-  //   ③ 接着起一轮**异步**的 `sd.RunDecision`（POST 立即返回；进度与结局靠 run-status 轮询，见下一节）。
+  //   ② `ga.StartDecision`（原样保留：它是"开始一次决策"的世界事实，判决链挂在它后面）；
+  //   ③ 接着起一轮**异步**的 `ga.RunDecision`（POST 立即返回；进度与结局靠 run-status 轮询，见下一节）。
   //   ★★ 2026-09-23（用户裁定）：「发送」/「让它跑一轮」/「开始决策」**三个按钮合并成这一个**——
   //   故 `#decision-run` 与 `#decision-say-send` 两个按钮已从 index.html 退场（**端点一个都没动**）。
   //   再点一次 = 再跑一轮（用户原话：「视为不满意，让 llm 重新决策」）——**上下文沿用**，
@@ -1405,7 +1405,7 @@
    * 一次点击按**固定顺序**做三件事，两种情形：
    *
    * <ul>
-   *   <li>文本框**空** ⇒ 与合并前逐字一致：`sd.StartDecision`（发起）→ 异步跑一轮；
+   *   <li>文本框**空** ⇒ 与合并前逐字一致：`ga.StartDecision`（发起）→ 异步跑一轮；
    *   <li>文本框**有内容** ⇒ ① 先把这句作为一条 user 消息发进它的会话，**成功之后**才 ② 发起、③ 跑一轮。
    * </ul>
    *
@@ -1487,10 +1487,10 @@
       });
   }
 
-  // ── 「让它跑一轮」（sd.RunDecision，2026-09-23）─────────────────────────
+  // ── 「让它跑一轮」（ga.RunDecision，2026-09-23）─────────────────────────
   //
   // ★★ **它补的是哪一处空白**：让某个决策人**真跑一轮**（真 LLM 自行读世界、出令）此前只有 GM 的 MCP 窄工具
-  //   （sd.RunDecision）做得到 ⇒ 界面上**点不出来**。本入口把它接进工作台：写仍走**窄端点**
+  //   （ga.RunDecision）做得到 ⇒ 界面上**点不出来**。本入口把它接进工作台：写仍走**窄端点**
   //   POST /api/sd/run-decision（服务端写死命令类型，前端不传 type）。
   //
   // ★★ **2026-09-23 起服务端那条变成异步**（用户要的"状态标识 + 可展开进度窗"）：POST **立即返回**，
@@ -1857,7 +1857,7 @@
   //
   // ★★ 用户原话：「重新决策（已有决策的情况下开始决策），llm 的上下文是**沿用**而不是重置的；
   //   **只有点额外的上下文重置按键才重置**」⇒ 重跑路径**绝不**碰会话；清空只在这一个按钮上。
-  // ★ 走**既有**的 `sd.ResetDecisionMakerConversation`（真命令、落 revision）：会话世代 +1 ⇒ 下一轮落到另一段
+  // ★ 走**既有**的 `ga.ResetDecisionMakerConversation`（真命令、落 revision）：会话世代 +1 ⇒ 下一轮落到另一段
   //   新会话、从空上下文开始（首轮会重新注入身份消息）；**旧会话一条字节都不动**（可审计）。
   function setContextStatus(message, tone) {
     app.statusMessage(app.byId("decision-context-status"), message, tone);
@@ -3165,7 +3165,7 @@
     startDecisionTargetId: function () {
       return startDecisionTarget ? String(startDecisionTarget.id) : null;
     },
-    // ★ 2026-09-23：「让它跑一轮」（sd.RunDecision）+ 决策记录（/api/sd/directives）的纯函数投影。
+    // ★ 2026-09-23：「让它跑一轮」（ga.RunDecision）+ 决策记录（/api/sd/directives）的纯函数投影。
     runDecisionGate: runDecisionGate,
     runDecision: decideRunDecision,
     runDecisionTargetId: function () {

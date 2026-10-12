@@ -35,7 +35,7 @@ import java.util.Set;
  *       **形状与去重**，不查这些 Nation 是否存在——存在性校验是 {@code sd.SetDiplomaticRelation} 的边端点语义；事件是"当时谁参与了"
  *       的记录（D-005 原文只要求参与国与内容），本阶段不发明额外约束（见报告"待裁定"）；
  *   <li>{@code text} 必填非空白：具体内容，自然语言；
- *   <li>{@code tick} 可选，缺省 = 世界当前 tick；**不得记在未来**（同 {@code sd.PutInfo}/{@code
+ *   <li>{@code tick} 可选，缺省 = 世界当前 tick；**不得记在未来**（同 {@code ga.PutInfo}/{@code
  *       ga.IssueDirective}）；过去合法；
  *   <li>{@code eventId} 可选：给了就用它，与既有事件**撞 id 即具名拒**（不覆盖）；缺省走 {@link
  *       DiplomaticEventIds#synthesize}（{@code diplomatic-event:<tick>#<该 tick 下已有事件数>}，纯函数、可重放）。 合成

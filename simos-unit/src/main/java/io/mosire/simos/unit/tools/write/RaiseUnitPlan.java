@@ -69,7 +69,7 @@ import java.util.Set;
  *       不再写已退役的 {@code manpower}</b>；粮 / 钱进新单位国库；人口腿收成<b>一张</b> {@code
  *       social.SubmitHouseholdWorkOrder}（{@code CREATE_HOUSEHOLD} + 逐来源 {@code TRANSFER_MEMBERS}；旧
  *       {@code social.CreateHousehold}/{@code social.TransferHouseholdMembers}×N 两条腿已不再发），行动记录进
- *       {@code sd.PutInfo}；<b>不另造第二份账</b>。
+ *       {@code ga.PutInfo}；<b>不另造第二份账</b>。
  * </ol>
  *
  * <p>★ <b>为什么载荷组装也在这个类</b>：各条命令的载荷都是这份计划的纯函数（照 {@code LevyRegionPlan} 的拆法）——把载荷留在
@@ -93,7 +93,7 @@ final class RaiseUnitPlan {
   static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE = SubmitHouseholdWorkOrderHandler.TYPE;
 
   /** 行动记录的命令类型（{@code PutInfoHandler.type()}）。 */
-  static final String PUT_INFO_TYPE = "sd.PutInfo";
+  static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   /**
    * 粮的商品 id：取 {@link EconomyVocabulary#GRAIN_COMMODITY_ID} 这个<b>唯一</b>字面量来源（本类不另写 {@code "grain"}）。
@@ -573,7 +573,7 @@ final class RaiseUnitPlan {
     }
 
     /**
-     * {@code sd.PutInfo} 的 {@code value}（JSON
+     * {@code ga.PutInfo} 的 {@code value}（JSON
      * <b>字符串</b>；字段序固定：unit/region/at/三项数量/来源计数/sources/reason）。 {@code sources} = 逐来源 {@code
      * {householdId, lotId, taken, hex}}（share-aware 瀑布序）。
      */
@@ -599,7 +599,7 @@ final class RaiseUnitPlan {
     }
 
     /**
-     * 逐来源视图（工具结果与 {@code sd.PutInfo.value.sources} 共用；保序）。{@code hex} 只有 {@code HEX} 来源家户才有； {@code
+     * 逐来源视图（工具结果与 {@code ga.PutInfo.value.sources} 共用；保序）。{@code hex} 只有 {@code HEX} 来源家户才有； {@code
      * UNIT} 来源没有格 ⇒ 值为 {@code null}（不伪造位置）。
      */
     List<Map<String, Object>> sourcesView(UnitToolViews views) {
@@ -615,7 +615,7 @@ final class RaiseUnitPlan {
       return rows;
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       requireNonBlank(reason, "reason");
       return "组军 "

@@ -1,18 +1,26 @@
 package io.mosire.simos.ga.change;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
+import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.id.SdInfoId;
 import io.mosire.simos.sd.id.VerdictId;
+import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.AdjudicationBreakpoint;
+import io.mosire.simos.sd.model.AdjudicationStatus;
+import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.CallStatus;
+import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
@@ -21,6 +29,7 @@ import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.MergedEffect;
 import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.PacketStatus;
+import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.Verdict;
 import io.mosire.simos.sd.model.VerdictMeta;
 import io.mosire.simos.util.address.Address;
@@ -42,21 +51,22 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * ★★ <b>铁律 5 在 ga 切片的机械化落地</b>（2026-10-12 批次 3a 建；批次 3b′ 随 {@code directives} / {@code verdicts}
- * 两张表迁入而扩到 <b>四组件</b>）。形制照 {@code GovRoundTripTest} / {@code SdRoundTripTest}（反射枚举状态组件 → 逐组件造差异 →
- * 三条断言），不另创一套。
+ * ★★ <b>铁律 5 在 ga 切片的机械化落地</b>（2026-10-12 批次 3a 建；3b-1 随 {@code directives} / {@code verdicts}
+ * 扩到四组件；<b>本批 3b-2 随 {@code decisionMakers} / {@code info} 再扩到六组件</b>）。形制照 {@code GovRoundTripTest}
+ * / {@code SdRoundTripTest}（反射枚举状态组件 → 逐组件造差异 → 三条断言），不另创一套。
  *
  * <p>★★ <b>判别力来自"反射枚举 + 两个 switch 的 default 抛"</b>：往 {@link GaState} 加一个组件而<b>不</b>同步 {@link
  * GaChangeSet} 时，{@link #mutate} 与 {@link #changedOf} 的 {@code default -> throw} 当场响，且 {@link
- * #stateHasExactlyFourComponents} 的 {@code containsExactly} 与 {@link
+ * #stateHasExactlySixComponents} 的 {@code containsExactly} 与 {@link
  * #changeSetCoversEveryStateComponentWithNoExemptions} 的"并集相等"同时红 —— 三处各自独立，不靠"人记得改"。
  *
- * <p>★★ <b>为什么夹具四张表都必须非空</b>：{@link FieldDelta#diff} 把表键经 {@code toString()} 写成规范串、 {@link
- * FieldDelta#rebuild} 再用 {@code DecisionPacketId::parse} / {@code MergedEffectPlanId::parse} 读回 ——
- * 空表 <b>根本不经过键的字面量往返</b>，于是"键读侧缺失"这一类缺陷在空夹具下永远看不见（{@code apply(between(empty, empty), empty)}
- * 恒真）。{@link io.mosire.simos.ga.codec.GaCodec} 只注册这四个键的读侧，漏一个就只在"表非空"时炸 ⇒ 本类因此一律用<b>非空</b>四张表造差异。
+ * <p>★★ <b>为什么夹具六张表都必须非空</b>：{@link FieldDelta#diff} 把表键经 {@code toString()} 写成规范串、 {@link
+ * FieldDelta#rebuild} 再用 {@code DecisionPacketId::parse} / {@code MergedEffectPlanId::parse} /
+ * {@code DirectiveId::parse} / {@code VerdictId::parse} / {@code DecisionMakerId::parse} 读回 —— 空表
+ * <b>根本不经过键的字面量往返</b>，于是"键读侧缺失"这一类缺陷在空夹具下永远看不见（{@code apply(between(empty, empty), empty)}
+ * 恒真）。{@link io.mosire.simos.ga.codec.GaCodec} 只注册这五个键的读侧，漏一个就只在"表非空"时炸 ⇒ 本类因此一律用<b>非空</b>六张表造差异。
  *
- * <p>★ <b>豁免集为空且被单独钉死</b>：{@code GaState} 的四个组件都必须进变更集，本类<b>不设</b>任何豁免项；写成一个被 {@link
+ * <p>★ <b>豁免集为空且被单独钉死</b>：{@code GaState} 的六个组件都必须进变更集，本类<b>不设</b>任何豁免项；写成一个被 {@link
  * #theExclusionListIsEmpty} 单独断言的集合，加名字是一次显式动作、在 diff 里现形（照 {@code GovRoundTripTest} 的"豁免口
  * 必须自己现形"口径）。
  */
@@ -72,6 +82,7 @@ class GaRoundTripTest {
 
   private static final DecisionMakerId DM1 = new DecisionMakerId("dm-1");
   private static final DecisionMakerId DM2 = new DecisionMakerId("dm-2");
+  private static final DecisionMakerId DM3 = new DecisionMakerId("dm-3");
 
   private static final DirectiveId D1 = new DirectiveId("d-360-1");
   private static final DirectiveId D2 = new DirectiveId("d-360-2");
@@ -80,6 +91,12 @@ class GaRoundTripTest {
   private static final VerdictId V1 = new VerdictId("v-360-1");
   private static final VerdictId V2 = new VerdictId("v-360-2");
   private static final VerdictId V3 = new VerdictId("v-361-3");
+
+  /** 执行原文地址（{@code sd:directive.<id>} 形制）与文档地址（{@code sd:doc.*} 形制）各一。 */
+  private static final String INFO_INTENT_A = "sd:directive.d-360-1";
+
+  private static final String INFO_INTENT_B = "sd:directive.d-360-2";
+  private static final String INFO_DOC_C = "sd:doc.report-dm-1-360-1";
 
   private static final SimosTimestamp AT = SimosTimestamp.of(360L, "第 360 日");
 
@@ -109,26 +126,32 @@ class GaRoundTripTest {
     }
   }
 
-  /** ★ 反射断言：{@code GaState} 的 record 组件**恰四个**、名字逐字相等（声明序）。 */
+  /** ★ 反射断言：{@code GaState} 的 record 组件**恰六个**、名字逐字相等（声明序）。 */
   @Test
-  void stateHasExactlyFourComponents() {
+  void stateHasExactlySixComponents() {
     assertThat(GaState.class.getRecordComponents())
-        .as("GaState 恰 4 个组件 —— 多加一个而不改变更集，本断言与往返用例同时红")
-        .hasSize(4);
+        .as("GaState 恰 6 个组件 —— 多加一个而不改变更集，本断言与往返用例同时红")
+        .hasSize(6);
     assertThat(componentNames(GaState.class))
         .as("名字逐字相等（顺序即声明序）")
-        .containsExactly("decisionPackets", "mergedEffectPlans", "directives", "verdicts");
+        .containsExactly(
+            "decisionPackets",
+            "mergedEffectPlans",
+            "directives",
+            "verdicts",
+            "decisionMakers",
+            "info");
   }
 
-  /** ★ 变更集这边同样恰 4 个组件，且与状态组件集**互相包含**（两个方向都钉，不是只钉一边）。 */
+  /** ★ 变更集这边同样恰 6 个组件，且与状态组件集**互相包含**（两个方向都钉，不是只钉一边）。 */
   @Test
-  void changeSetHasExactlyFourComponentsMatchingTheState() {
-    assertThat(GaChangeSet.class.getRecordComponents()).hasSize(4);
+  void changeSetHasExactlySixComponentsMatchingTheState() {
+    assertThat(GaChangeSet.class.getRecordComponents()).hasSize(6);
     assertThat(componentNames(GaChangeSet.class))
         .as("变更集的每个组件都必须在 GaState 里有同名的 record 组件")
         .isSubsetOf(componentNames(GaState.class));
     assertThat(componentNames(GaState.class))
-        .as("反向也成立 ⇒ 两边组件集相同（挡不住'两边同时多出一个同名组件'，故上面另有 hasSize(4)）")
+        .as("反向也成立 ⇒ 两边组件集相同（挡不住'两边同时多出一个同名组件'，故上面另有 hasSize(6)）")
         .isSubsetOf(componentNames(GaChangeSet.class));
   }
 
@@ -138,7 +161,7 @@ class GaRoundTripTest {
   @Test
   void theExclusionListIsEmpty() {
     assertThat(EXCLUDED_FROM_CHANGE_SET)
-        .as("GaState 没有豁免项：四张表（决策包 / 合并效果集 / 决策记录 / 判决）都必须进变更集")
+        .as("GaState 没有豁免项：六张表（决策包 / 合并效果集 / 决策记录 / 判决 / 决策人 / INFO）都必须进变更集")
         .isEmpty();
   }
 
@@ -152,14 +175,17 @@ class GaRoundTripTest {
         .containsExactlyInAnyOrderElementsOf(componentNames(GaState.class));
   }
 
-  // ── ③ 两张表都非空的逐字段往返（含"又删又改"）──────────────────────────────────────────
+  // ── ③ 六张表都非空的逐字段往返（含"又删又改"）──────────────────────────────────────────
 
   /**
-   * ★★ <b>非空 → 非空</b>的逐字段往返：目标态对四张表**各删一个键、各改一个键、各加一个键**（{@link FieldDelta.Patch}
+   * ★★ <b>非空 → 非空</b>的逐字段往返：目标态对六张表**各删一个键、各改一个键、各加一个键**（{@link FieldDelta.Patch}
    * 的两侧），于是"键读侧"（{@code toString → parse}）、"值覆盖"、"键删除"三条路径全部走到，而不是只走"从空表往里加"。
    *
    * <p>★ 判别力：若 {@code GaChangeSet.apply} 漏重建任一张表、或把 {@code Patch} 的某一侧丢掉，{@code
    * rebuilt.equals(target)} 与下面逐字段的断言都会红（整态 equals 只是最后一条，**不能**是唯一一条 —— 两个空对象也相等）。
+   *
+   * <p>★ <b>外键约束决定了"删谁"</b>：{@code decisionMakers} 这一张不能随便删 —— {@code Directive.decisionMakerId}
+   * 是构造期的真外键（本批刚整条恢复）。故目标态把 {@code DM2} 删掉的同时，也把引用它的 {@code D2} 换成了引用 {@code DM3} 的 {@code D3}。
    */
   @Test
   void allNonEmptyTablesRoundTripFieldByFieldWithRemovalsAndOverwrites() {
@@ -175,9 +201,17 @@ class GaRoundTripTest {
     Map<DirectiveId, Directive> baseDirectives = new LinkedHashMap<>();
     baseDirectives.put(D1, directive(D1, DM1, 360L, DirectiveStatus.ISSUED, Optional.of(V1)));
     baseDirectives.put(D2, directive(D2, DM2, 360L, DirectiveStatus.CANCELLED, Optional.empty()));
-    GaState base = new GaState(basePackets, basePlans, baseDirectives, baseVerdicts);
+    Map<DecisionMakerId, DecisionMaker> baseMakers = new LinkedHashMap<>();
+    baseMakers.put(DM1, maker(DM1, "n-1", "p-old", 1L, 0L));
+    baseMakers.put(DM2, maker(DM2, "n-1", "p-old", 1L, 0L));
+    Map<String, List<SdInfoEntry>> baseInfo = new LinkedHashMap<>();
+    baseInfo.put(INFO_INTENT_A, List.of(infoEntry(INFO_INTENT_A, 0, D1, "向北推进", true)));
+    baseInfo.put(INFO_INTENT_B, List.of(infoEntry(INFO_INTENT_B, 0, D2, "原地待命", false)));
+    GaState base =
+        new GaState(basePackets, basePlans, baseDirectives, baseVerdicts, baseMakers, baseInfo);
 
-    // target：P2/M2 从两张表**删掉**、P1/M1 的值**被覆盖**、P3/M3 是**新增**键。
+    // target：P2/M2/DM2/INFO_INTENT_B 从各自的表**删掉**、P1/M1/V1/DM1/INFO_INTENT_A 的值**被覆盖**、
+    //   P3/M3/D3/DM3/INFO_DOC_C 是**新增**键。
     Map<DecisionPacketId, DecisionPacket> targetPackets = new LinkedHashMap<>();
     targetPackets.put(P1, packet(P1, DM1, PacketStatus.APPROVED, 7L, "拟稿 A 已改写"));
     targetPackets.put(P3, packet(P3, DM1, PacketStatus.MERGED, 9L, "拟稿 C"));
@@ -190,8 +224,22 @@ class GaRoundTripTest {
     targetVerdicts.put(V3, verdict(V3, AdjudicationBreakpoint.parse("D3"), "冻结的判定 v3"));
     Map<DirectiveId, Directive> targetDirectives = new LinkedHashMap<>();
     targetDirectives.put(D1, directive(D1, DM1, 360L, DirectiveStatus.EXECUTED, Optional.of(V1)));
-    targetDirectives.put(D3, directive(D3, DM2, 361L, DirectiveStatus.ISSUED, Optional.of(V3)));
-    GaState target = new GaState(targetPackets, targetPlans, targetDirectives, targetVerdicts);
+    targetDirectives.put(D3, directive(D3, DM3, 361L, DirectiveStatus.ISSUED, Optional.of(V3)));
+    // 决策人：DM2 删掉（引用它的 D2 也一并不在目标态里）、DM1 的 providerId/世代被覆盖、DM3 新增。
+    Map<DecisionMakerId, DecisionMaker> targetMakers = new LinkedHashMap<>();
+    targetMakers.put(DM1, maker(DM1, "n-1", "p-new", 4L, 2L));
+    targetMakers.put(DM3, maker(DM3, "a-9", "p-new", 1L, 0L));
+    // INFO：第二条地址整条删掉、第一条地址被**覆盖**成两条、第三条地址新增。
+    Map<String, List<SdInfoEntry>> targetInfo = new LinkedHashMap<>();
+    targetInfo.put(
+        INFO_INTENT_A,
+        List.of(
+            infoEntry(INFO_INTENT_A, 0, D1, "向北推进（改写）", true),
+            infoEntry(INFO_INTENT_A, 1, D1, "追加的第二条", false)));
+    targetInfo.put(INFO_DOC_C, List.of(infoEntry(INFO_DOC_C, 0, null, "{\"body\":\"报告\"}", false)));
+    GaState target =
+        new GaState(
+            targetPackets, targetPlans, targetDirectives, targetVerdicts, targetMakers, targetInfo);
 
     GaChangeSet cs = GaChangeSet.between(base, target);
 
@@ -202,6 +250,8 @@ class GaRoundTripTest {
     assertThat(cs.mergedEffectPlans()).isInstanceOf(FieldDelta.Patch.class);
     assertThat(cs.directives()).as("决策记录同样又删又改 ⇒ Patch").isInstanceOf(FieldDelta.Patch.class);
     assertThat(cs.verdicts()).as("判决同样又删又改 ⇒ Patch").isInstanceOf(FieldDelta.Patch.class);
+    assertThat(cs.decisionMakers()).as("决策人同样又删又改 ⇒ Patch").isInstanceOf(FieldDelta.Patch.class);
+    assertThat(cs.info()).as("INFO 覆盖层同样又删又改 ⇒ Patch").isInstanceOf(FieldDelta.Patch.class);
 
     GaState rebuilt = GaChangeSet.apply(cs, base);
 
@@ -249,6 +299,9 @@ class GaRoundTripTest {
     assertThat(rebuilt.directives().get(D1).effects()).containsExactly(new EffectId("e-1"));
     assertThat(rebuilt.directives().get(D3)).as("新增键（键读侧真的被解析回来）").isNotNull();
     assertThat(rebuilt.directives().get(D3).id()).isEqualTo(D3);
+    assertThat(rebuilt.directives().get(D3).decisionMakerId())
+        .as("外键指向新决策人 DM3（目标态里真的存在）")
+        .isEqualTo(DM3);
     assertThat(rebuilt.directives().get(D3).verdict()).contains(V3);
     assertThat(rebuilt.directives()).as("被删掉的 D2 不许留在重建结果里").doesNotContainKey(D2);
 
@@ -262,6 +315,45 @@ class GaRoundTripTest {
         .as("Address 值活过往返")
         .isEqualTo(Address.parse("sd:combat.c3"));
     assertThat(rebuilt.verdicts()).doesNotContainKey(V2);
+
+    assertThat(rebuilt.decisionMakers()).containsOnlyKeys(DM1, DM3);
+    assertThat(rebuilt.decisionMakers().get(DM1).providerId())
+        .as("DM1 的 providerId 被覆盖（p-new，不是 p-old）")
+        .contains("p-new");
+    assertThat(rebuilt.decisionMakers().get(DM1).decisionCadenceTicks()).isEqualTo(4L);
+    assertThat(rebuilt.decisionMakers().get(DM1).conversationGeneration())
+        .as("会话世代活过往返（漏带它 = 静默退回第 0 代）")
+        .isEqualTo(2L);
+    assertThat(rebuilt.decisionMakers().get(DM1).allowedTools())
+        .containsExactly("ga.IssueDirective");
+    assertThat(rebuilt.decisionMakers().get(DM1).accessLimit()).isEqualTo(AccessLimit.empty());
+    assertThat(rebuilt.decisionMakers().get(DM3)).as("新增键（键读侧真的被解析回来）").isNotNull();
+    assertThat(rebuilt.decisionMakers().get(DM3).id()).isEqualTo(DM3);
+    assertThat(rebuilt.decisionMakers().get(DM3).affiliation())
+        .as("sealed 多态的 Affiliation 活过往返（Army 那一支）")
+        .isEqualTo(new Affiliation.Army(new ArmyId("a-9")));
+    assertThat(rebuilt.decisionMakers()).as("被删掉的 DM2 不许留在重建结果里").doesNotContainKey(DM2);
+
+    assertThat(rebuilt.info()).containsOnlyKeys(INFO_INTENT_A, INFO_DOC_C);
+    assertThat(rebuilt.info().get(INFO_INTENT_A))
+        .as("INFO_INTENT_A 被覆盖成两条（追加语义由写入侧负责，变更集只管整值）")
+        .hasSize(2);
+    assertThat(rebuilt.info().get(INFO_INTENT_A).get(0).value()).isEqualTo("向北推进（改写）");
+    assertThat(rebuilt.info().get(INFO_INTENT_A).get(0).id())
+        .as("SdInfoId 活过往返")
+        .isEqualTo(SdInfoId.parse(INFO_INTENT_A + "#0"));
+    assertThat(rebuilt.info().get(INFO_INTENT_A).get(0).sourceDirective()).contains(D1);
+    assertThat(rebuilt.info().get(INFO_INTENT_A).get(0).adjudicationStatus())
+        .as("Optional<AdjudicationStatus> 活过往返")
+        .contains(AdjudicationStatus.EFFECTIVE);
+    assertThat(rebuilt.info().get(INFO_INTENT_A).get(1).tick()).isEqualTo(360L);
+    assertThat(rebuilt.info().get(INFO_INTENT_A).get(1).note()).isEmpty();
+    assertThat(rebuilt.info().get(INFO_DOC_C)).as("新增地址（键是 String，不是自定义 id）").hasSize(1);
+    assertThat(rebuilt.info().get(INFO_DOC_C).get(0).value()).isEqualTo("{\"body\":\"报告\"}");
+    assertThat(rebuilt.info().get(INFO_DOC_C).get(0).affiliations())
+        .as("sealed 多态的 affiliations 集合活过往返")
+        .isEmpty();
+    assertThat(rebuilt.info()).as("被删掉的 INFO_INTENT_B 不许留在重建结果里").doesNotContainKey(INFO_INTENT_B);
 
     assertThat(rebuilt)
         .as("铁律 5 的原文：apply(between(base, target), base) 逐字段重建出 target")
@@ -278,16 +370,18 @@ class GaRoundTripTest {
   // ── ③b codec 的键读侧（本批最容易被"空表"掩盖的一处）──────────────────────────────────
 
   /**
-   * ★★ <b>JSON 往返：四张表都非空</b>。
+   * ★★ <b>JSON 往返：六张表都非空</b>。
    *
-   * <p>★ <b>为什么这条必须在这里</b>：{@link GaCodec} 的四个键反序列化器（{@code DecisionPacketId} / {@code
-   * MergedEffectPlanId} / {@code DirectiveId} / {@code VerdictId}）是<b>读侧</b>注册，写侧靠各类型自带的 {@code
-   * toString()}。<b>表空着时这条路径根本不会被走到</b> —— {@code {}} 解出来两个空表，"漏注册"与"注册对了"完全同形。故夹具必须非空，且这里走的是<b>真正的
-   * Jackson 编解码</b> （{@link GaChangeSet#between}/{@link GaChangeSet#apply} 那条路走的是 {@code
-   * FieldDelta} 的 {@code toString → parse}，与 codec 的键注册是两条独立的路，互相挡不住）。
+   * <p>★ <b>为什么这条必须在这里</b>：{@link GaCodec} 的五个键反序列化器（{@code DecisionPacketId} / {@code
+   * MergedEffectPlanId} / {@code DirectiveId} / {@code VerdictId} / {@code
+   * DecisionMakerId}）是<b>读侧</b>注册， 写侧靠各类型自带的 {@code toString()}。<b>表空着时这条路径根本不会被走到</b> —— {@code
+   * {}} 解出来两个空表，"漏注册"与"注册对了"完全同形。故夹具必须非空，且这里走的是<b>真正的 Jackson 编解码</b> （{@link
+   * GaChangeSet#between}/{@link GaChangeSet#apply} 那条路走的是 {@code FieldDelta} 的 {@code toString →
+   * parse}，与 codec 的键注册是两条独立的路，互相挡不住）。
    *
    * <p>★ 判别力：删掉 {@code GaCodec.keyModule()} 里任一行 {@code addKeyDeserializer} ⇒ 本条当场红（解码期 {@code
-   * UnrecognizedPropertyException}/反序列化失败），而其余各条<b>全绿</b>。
+   * UnrecognizedPropertyException}/反序列化失败），而其余各条<b>全绿</b>。★ {@code info} 的键是 {@code
+   * String}（canonical 地址串）⇒ 那一支本来就没有自定义键可注册，本用例只断言它活着。
    */
   @Test
   void allNonEmptyTablesSurviveTheJacksonRoundTripThroughTheCodec() {
@@ -297,25 +391,58 @@ class GaRoundTripTest {
         new GaSnapshot(new StateRef(new BranchId("main"), new RevisionId(7)), AT, state);
 
     String snapshotJson = codec.encodeSnapshot(snapshot);
-    assertThat(snapshotJson).as("四张表的键真的写进了字节（先证明夹具不是空表）").contains("pkt-dm-1-360");
+    assertThat(snapshotJson).as("六张表的键真的写进了字节（先证明夹具不是空表）").contains("pkt-dm-1-360");
     assertThat(snapshotJson).contains("merge-360-1");
     assertThat(snapshotJson).contains("d-360-1");
     assertThat(snapshotJson).contains("v-360-1");
+    assertThat(snapshotJson).contains("dm-1");
+    assertThat(snapshotJson).contains(INFO_INTENT_A);
     assertThat(codec.decodeSnapshot(snapshotJson))
         .as("快照 JSON 往返：apply/encode 出来的字节必须能被自己逐字段读回（铁律 5）")
         .isEqualTo(snapshot);
 
     GaChangeSet cs = GaChangeSet.between(GaState.empty(), state);
     String changeSetJson = codec.encodeChangeSet(cs);
-    assertThat(changeSetJson).as("变更集里四张表的键也真的写进了字节").contains("pkt-dm-1-360");
+    assertThat(changeSetJson).as("变更集里六张表的键也真的写进了字节").contains("pkt-dm-1-360");
     assertThat(changeSetJson).contains("merge-360-1");
     assertThat(changeSetJson).contains("d-360-1");
     assertThat(changeSetJson).contains("v-360-1");
-    assertThat(codec.decodeChangeSet(changeSetJson)).as("变更集 JSON 往返（含四个顶层表的键读侧）").isEqualTo(cs);
+    assertThat(changeSetJson).contains("dm-1");
+    assertThat(changeSetJson).contains(INFO_INTENT_A);
+    assertThat(codec.decodeChangeSet(changeSetJson)).as("变更集 JSON 往返（含五个顶层表的键读侧）").isEqualTo(cs);
     assertThat(
             GaChangeSet.apply((GaChangeSet) codec.decodeChangeSet(changeSetJson), GaState.empty()))
         .as("解码回来的变更集必须与原件同语义")
         .isEqualTo(state);
+  }
+
+  // ── ③c 本批恢复的状态期外键（3b-1 曾降级到命令期，3b-2 整条回归）─────────────────────────
+
+  /**
+   * ★★ <b>{@code Directive.decisionMakerId} 必须存在</b>：批次 3b-1 把 {@code directives} 搬进 ga
+   * 时，这条外键成了跨切片、 只能降级到命令期；本批 {@code decisionMakers} 也搬了进来 ⇒ 两张表又在同一棵树里，判据<b>整条回到构造期</b>。
+   *
+   * <p>★ 负向用例（故意违规必须当场抛）：删掉决策人而把引用它的令留着 ⇒ 构造期 {@link IllegalArgumentException}。
+   */
+  @Test
+  void aDirectivePointingAtAMissingDecisionMakerIsRejectedAtConstruction() {
+    GaState state = full();
+    Map<DecisionMakerId, DecisionMaker> withoutDm1 = new LinkedHashMap<>(state.decisionMakers());
+    withoutDm1.remove(DM1);
+
+    assertThatThrownBy(
+            () ->
+                new GaState(
+                    state.decisionPackets(),
+                    state.mergedEffectPlans(),
+                    state.directives(),
+                    state.verdicts(),
+                    withoutDm1,
+                    state.info()))
+        .as("Directive 指向的决策人不存在 ⇒ 构造期当场抛（不是留到读的时候才发现）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("decisionMakerId")
+        .hasMessageContaining(DM1.value());
   }
 
   // ── ④ 变更集自身语义（照 {@code GovRoundTripTest} 的同款）──────────────────────────────
@@ -331,6 +458,8 @@ class GaRoundTripTest {
     assertThat(cs.mergedEffectPlans()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(cs.directives()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(cs.verdicts()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.decisionMakers()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.info()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(GaChangeSet.apply(cs, state)).as("一字未动的往返必须恒等").isEqualTo(state);
   }
 
@@ -342,19 +471,21 @@ class GaRoundTripTest {
    */
   @Test
   void aChangeSetWithMissingComponentKeysIsNormalizedToUnchanged() {
-    GaChangeSet fromMissingKeys = new GaChangeSet(null, null, null, null);
+    GaChangeSet fromMissingKeys = new GaChangeSet(null, null, null, null, null, null);
 
-    assertThat(fromMissingKeys.isEmpty()).as("缺键 ⇒ 四个组件都是 Unchanged").isTrue();
+    assertThat(fromMissingKeys.isEmpty()).as("缺键 ⇒ 六个组件都是 Unchanged").isTrue();
     assertThat(fromMissingKeys.decisionPackets()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(fromMissingKeys.mergedEffectPlans()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(fromMissingKeys.directives()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(fromMissingKeys.verdicts()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(fromMissingKeys.decisionMakers()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(fromMissingKeys.info()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(GaChangeSet.apply(fromMissingKeys, full())).as("一字未动的往返必须恒等（不抛）").isEqualTo(full());
   }
 
   // ── 夹具与反射小工具 ────────────────────────────────────────────────────────────────
 
-  /** 四张表都**非空**的起点：两个决策包 + 两个合并效果集 + 两条决策记录 + 两条判决。 */
+  /** 六张表都**非空**的起点：两个决策包 + 两个合并效果集 + 两条决策记录 + 两条判决 + 两个决策人 + 两条 INFO。 */
   private static GaState full() {
     Map<DecisionPacketId, DecisionPacket> packets = new LinkedHashMap<>();
     packets.put(P1, packet(P1, DM1, PacketStatus.DRAFT, 0L, "拟稿 A"));
@@ -369,7 +500,14 @@ class GaRoundTripTest {
     // D1 带 verdict 引用（外键必须真有那条判决 ⇒ 覆盖 GaState 的跨表判据），D2 是终态（不占"末位生效"名额）。
     directives.put(D1, directive(D1, DM1, 360L, DirectiveStatus.ISSUED, Optional.of(V1)));
     directives.put(D2, directive(D2, DM2, 360L, DirectiveStatus.CANCELLED, Optional.empty()));
-    return new GaState(packets, plans, directives, verdicts);
+    // ★ 决策人两张都非空，且**必须**覆盖上面两条令引用的 DM1 / DM2（构造期的真外键，本批刚恢复）。
+    Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
+    makers.put(DM1, maker(DM1, "n-1", "p-1", 1L, 0L));
+    makers.put(DM2, maker(DM2, "n-1", "p-2", 2L, 3L));
+    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
+    info.put(INFO_INTENT_A, List.of(infoEntry(INFO_INTENT_A, 0, D1, "向北推进", true)));
+    info.put(INFO_INTENT_B, List.of(infoEntry(INFO_INTENT_B, 0, D2, "原地待命", false)));
+    return new GaState(packets, plans, directives, verdicts, makers, info);
   }
 
   /**
@@ -377,6 +515,9 @@ class GaRoundTripTest {
    *
    * <p>★ <b>{@code default} 必须抛</b>：往 {@link GaState} 加组件时这个 {@code switch} 当场响，**这正是想要的** ——
    * 它迫使加字段的人来读这个测试（照 {@code GovRoundTripTest} 的同一条纪律）。
+   *
+   * <p>★ 决策人那一支用**覆盖值**（不是删键）：{@code Directive.decisionMakerId} 是构造期的真外键，删掉 DM1/DM2 会让 {@link
+   * #full} 里的两条令悬空、构造期就抛（那是另一条用例的事）。
    */
   private static GaState mutate(GaState base, String name) {
     return switch (name) {
@@ -404,6 +545,17 @@ class GaRoundTripTest {
                   base.verdicts(),
                   V2,
                   verdict(V2, AdjudicationBreakpoint.parse("D2"), "refreshed")));
+      case "decisionMakers" ->
+          base.withDecisionMakers(
+              merged(base.decisionMakers(), DM2, maker(DM2, "a-9", "p-9", 5L, 1L)));
+      case "info" ->
+          base.withInfo(
+              merged(
+                  base.info(),
+                  INFO_INTENT_A,
+                  List.of(
+                      infoEntry(INFO_INTENT_A, 0, D1, "向北推进", true),
+                      infoEntry(INFO_INTENT_A, 1, D1, "追加的第二条", false))));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -415,6 +567,8 @@ class GaRoundTripTest {
       case "mergedEffectPlans" -> cs.mergedEffectPlans().changed();
       case "directives" -> cs.directives().changed();
       case "verdicts" -> cs.verdicts().changed();
+      case "decisionMakers" -> cs.decisionMakers().changed();
+      case "info" -> cs.info().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -525,6 +679,48 @@ class GaRoundTripTest {
         new LinkedHashSet<>(List.of(new EffectId("e-1"))),
         verdict,
         status);
+  }
+
+  /**
+   * 一个决策人：{@code affiliation} 走 {@code nation:<id>} 那一支（另有一处夹具走 {@code army} 支，见 {@link
+   * #allNonEmptyTablesRoundTripFieldByFieldWithRemovalsAndOverwrites}）。
+   *
+   * <p>★ {@code providerId}/{@code conversationGeneration} 都是**必须逐字带过**的字段（漏带 = 静默解绑 / 会话退回第 0
+   * 代），故夹具里**取值互不相同**，漏带时重建结果对不上。
+   */
+  private static DecisionMaker maker(
+      DecisionMakerId id, String nationId, String providerId, long cadence, long generation) {
+    return new DecisionMaker(
+        id,
+        "a-9".equals(nationId)
+            ? new Affiliation.Army(new ArmyId(nationId))
+            : new Affiliation.Nation(new NationId(nationId)),
+        new LinkedHashSet<>(List.of("ga.IssueDirective")),
+        AccessLimit.empty(),
+        cadence,
+        Optional.of(providerId),
+        generation);
+  }
+
+  /**
+   * 一条 INFO 条目（{@code sd:directive.<id>} / {@code sd:doc.*} 形制的地址下第 {@code ordinal} 条）。
+   *
+   * <p>★ {@code value} 用**标量串**：{@code SdInfoEntry.value} 是裸 {@code Object}，只有标量往返有保证（结构化值列为挂起项，见
+   * 该类类注）。
+   */
+  private static SdInfoEntry infoEntry(
+      String address, int ordinal, DirectiveId source, String value, boolean effective) {
+    return new SdInfoEntry(
+        SdInfoId.parse(address + "#" + ordinal),
+        360L,
+        new LinkedHashSet<>(List.of(DM1)),
+        new LinkedHashSet<>(List.<Affiliation>of()),
+        source == null ? "report" : "intent",
+        value,
+        ordinal == 0 && source != null ? Optional.of("夹具备注") : Optional.empty(),
+        new RevisionId(7),
+        Optional.ofNullable(source),
+        effective ? Optional.of(AdjudicationStatus.EFFECTIVE) : Optional.empty());
   }
 
   /** 一条判决：subject 用 {@code Address} 作值（与 {@code target} 同一条绑定），meta 三字段齐全。 */

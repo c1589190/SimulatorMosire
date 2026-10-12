@@ -176,7 +176,7 @@ public final class SdPayloads {
     return value.asLong();
   }
 
-  static Set<String> requireTextSet(JsonNode payload, String field) {
+  public static Set<String> requireTextSet(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull() || !value.isArray()) {
       throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
@@ -207,10 +207,10 @@ public final class SdPayloads {
    * **"缺省"与"显式空"分得开**的文本集读取：键缺席（或 null）⇒ {@link Optional#empty()}；显式给（**含空数组**）⇒ 有值。
    *
    * <p>★ 与 {@link #optionalTextSet} 的差别就是这一格：那是"缺省即空集"，本方法是"缺省 = 没说"。{@code
-   * sd.SetDecisionMakerAccess} 的载荷语义是"缺省 = 不改动、显式给 = 整份替换" ⇒ 用错那个会把"没写"读成"清空"， 于是**一条只改白名单的命令静默抹掉
+   * ga.SetDecisionMakerAccess} 的载荷语义是"缺省 = 不改动、显式给 = 整份替换" ⇒ 用错那个会把"没写"读成"清空"， 于是**一条只改白名单的命令静默抹掉
    * GM 刚配的资源限制**（两个方向都不会报错）。
    */
-  static Optional<Set<String>> optionalTextSetIfPresent(JsonNode payload, String field) {
+  public static Optional<Set<String>> optionalTextSetIfPresent(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
       return Optional.empty();
@@ -248,7 +248,7 @@ public final class SdPayloads {
     return List.copyOf(out);
   }
 
-  static Object requireValue(JsonNode payload, String field) {
+  public static Object requireValue(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
       throw new IllegalArgumentException("字段 " + field + " 不得缺失或为 null: " + payload);
@@ -256,7 +256,7 @@ public final class SdPayloads {
     return MAPPER.convertValue(value, Object.class);
   }
 
-  static Affiliation requireAffiliation(JsonNode payload, String field) {
+  public static Affiliation requireAffiliation(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull() || !value.isObject()) {
       throw new IllegalArgumentException(
@@ -274,7 +274,7 @@ public final class SdPayloads {
    * <p>★ 与 {@link #optionalTextSet} 同族（缺省即空集），因为 {@code affiliations} 的语义就是"这一份对谁可见"—— "什么都没说"
    * 与"说了空"在本语义下没有区别，都是**不按归属发**（fail-closed）。
    */
-  static Set<Affiliation> optionalAffiliationSet(JsonNode payload, String field) {
+  public static Set<Affiliation> optionalAffiliationSet(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
       return Set.of();
@@ -449,7 +449,7 @@ public final class SdPayloads {
     return MAPPER.convertValue(value, Action.class);
   }
 
-  static long optionalLong(JsonNode payload, String field, long fallback) {
+  public static long optionalLong(JsonNode payload, String field, long fallback) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
       return fallback;
@@ -496,7 +496,7 @@ public final class SdPayloads {
   }
 
   /**
-   * 读 {@code sd.SetDecisionMakerAccess} 的 {@link AccessLimit}：**三个键各自"缺省 = 保持既有、显式给 = 整份替换"**。
+   * 读 {@code ga.SetDecisionMakerAccess} 的 {@link AccessLimit}：**三个键各自"缺省 = 保持既有、显式给 = 整份替换"**。
    *
    * <pre>{@code
    * {"accessLimit":{"map":["Map1/region/701"]}, "redactedFields":["position"],
@@ -506,7 +506,7 @@ public final class SdPayloads {
    * <p>★ **{@code accessLimit} 的键缺席 = 不动**（既有的前缀逐字保留）；给了就整份替换，**给空对象 = 清空**（= 无额外限制）。
    * 两个方向的差别只在"有没有这个键"，而它们**都不报错**——见 {@link #optionalTextSetIfPresent}。
    */
-  static AccessLimit accessLimitOrKeep(AccessLimit existing, JsonNode payload) {
+  public static AccessLimit accessLimitOrKeep(AccessLimit existing, JsonNode payload) {
     Map<String, Set<String>> prefixes =
         optionalPrefixesByNamespace(payload).orElse(existing.prefixesByNamespace());
     Set<String> redactedFields =

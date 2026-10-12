@@ -43,8 +43,8 @@ import java.util.UUID;
  * <p>★★ <b>与 {@code simos.region.clearData} 分开</b>：数据清空与结构清空是两个独立动作、各自 preview/apply、各自确认；
  * 本工具只组批结构命令，不替调用方做"一键清光"。
  *
- * <p>★★ <b>一批 = 一条 revision，固定批序</b>：{@code sd.DeleteDecisionMaker × N → unit.DisbandUnit × N →
- * map.DeleteRegion × N → sd.PutInfo}；所有信封共享同一 {@code batchId}（correlationId）、branch 与
+ * <p>★★ <b>一批 = 一条 revision，固定批序</b>：{@code ga.DeleteDecisionMaker × N → unit.DisbandUnit × N →
+ * map.DeleteRegion × N → ga.PutInfo}；所有信封共享同一 {@code batchId}（correlationId）、branch 与
  * expectedRevision ⇒ {@link CoreSimos#submitBatch} 原子落一条 revision。preview 一个字节都不写。
  *
  * <p>★★ <b>preview / apply 共用同一份只读 pre-scan</b>：唯一语义落点在 {@link
@@ -107,7 +107,7 @@ public final class RegionClearStructuresTool implements SimosTool {
         + "带 GovernmentFormation 且当刻有效位置在目标 Region hex 集内的 GOV 单位、这些 GOV 的 Gov 归属决策人、以及"
         + " id = sanitize(regionId)+\"__P\"+两位以上数字 且 hexes 是目标 hex 真子集的省 Region；"
         + "其它相交 Region 只在 overlappingRegions/warnings 里列出，不自动删。"
-        + "固定批序 sd.DeleteDecisionMaker × N → unit.DisbandUnit × N → map.DeleteRegion × N → sd.PutInfo；"
+        + "固定批序 ga.DeleteDecisionMaker × N → unit.DisbandUnit × N → map.DeleteRegion × N → ga.PutInfo；"
         + "只对有候选项且开关打开的类别下单；全部无命令 ⇒ 不 submit、零 revision，返回\"没有需要清空的结构\"。"
         + "参数 {regionId(必填，必须在当前 map.regions()), regionIds?(显式删除的 Region 数组，必须存在且 != 目标),"
         + " unitIds?(显式删除的 Unit 数组，必须存在), decisionMakerIds?(显式删除的 DM 数组，必须存在且是 Gov 归属),"
@@ -140,7 +140,7 @@ public final class RegionClearStructuresTool implements SimosTool {
         "expectedRevision",
         ToolSchema.prop(
             "integer", "preview=false 必填：提交的乐观并发 base revision（>=0）；preview 的读数也取它（缺省=该分支 head）"));
-    props.put("reason", ToolSchema.prop("string", "清空原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "清空原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     return ToolSchema.schema(props, List.of("regionId", "reason"));
   }
 
@@ -299,7 +299,7 @@ public final class RegionClearStructuresTool implements SimosTool {
     return ToolResult.error("REJECTED", ToolResults.json(view));
   }
 
-  /** 组批：类型序由 Plan 给出；本方法按同一序为每类消耗对应 id，最后一条恒为 {@code sd.PutInfo}。 */
+  /** 组批：类型序由 Plan 给出；本方法按同一序为每类消耗对应 id，最后一条恒为 {@code ga.PutInfo}。 */
   private List<ToolWritePort.Request> buildBatch(
       String batchId, RegionClearStructuresPlan.Plan plan, String reason) {
     List<ToolWritePort.Request> batch = new ArrayList<>(plan.commands().size());
@@ -326,14 +326,14 @@ public final class RegionClearStructuresTool implements SimosTool {
     return java.util.Collections.unmodifiableList(batch);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录） ─────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录） ─────────────────────────────────────────────────────
 
   /**
-   * {@code sd.PutInfo} 载荷：目标 Region canonical 地址（{@code map:<mapId>:region.<regionId>}，只用 Address
+   * {@code ga.PutInfo} 载荷：目标 Region canonical 地址（{@code map:<mapId>:region.<regionId>}，只用 Address
    * AST 造） + {@code key="regionClearStructures"} + {@code value}=JSON 字符串（regionId + 各类删除清单 +
    * reason） + {@code note}=人可读摘要 + {@code tick}=base state 的世界当前日。
    *
-   * <p>★ {@code id} 不显式给：由 {@code sd.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一 Region 的后续清空自然追加序号。
+   * <p>★ {@code id} 不显式给：由 {@code ga.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一 Region 的后续清空自然追加序号。
    */
   private String infoPayload(RegionClearStructuresPlan.Plan plan, String reason) {
     Map<String, Object> value = new LinkedHashMap<>();

@@ -11,7 +11,6 @@ import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.spi.SdPayloads;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -81,7 +80,6 @@ public final class UpsertDecisionPacketHandler implements CommandHandler, Comman
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GaState base = GaSnapshots.state(state);
-    SdState sd = GaSnapshots.sd(state);
     String packetForLog = null;
     String proposerForLog = null;
     try {
@@ -103,9 +101,10 @@ public final class UpsertDecisionPacketHandler implements CommandHandler, Comman
       Optional<String> decisionNote = SdPayloads.optionalText(payload, "decisionNote");
 
       // ★ 新建包要求 proposer 存在；已有历史包的 outcome/status 回写允许 proposer 已被删除（D3 执行器写 outcome
-      //   时会覆盖同一个 id），否则"删了决策人 ⇒ 历史包永远无法回写 outcome"。★ decisionMakers 仍住 sd（批次 3b 才搬）。
+      //   时会覆盖同一个 id），否则"删了决策人 ⇒ 历史包永远无法回写 outcome"。★ 3b-2 起 decisionMakers 也住 ga
+      //   ⇒ 读本模块状态（不再跨切片）。
       boolean newPacket = !base.decisionPackets().containsKey(id);
-      if (newPacket && !sd.decisionMakers().containsKey(proposerId)) {
+      if (newPacket && !base.decisionMakers().containsKey(proposerId)) {
         return rejected(
             "决策人不存在: " + proposerId.value(), "packet", packetForLog, "proposer", proposerForLog);
       }

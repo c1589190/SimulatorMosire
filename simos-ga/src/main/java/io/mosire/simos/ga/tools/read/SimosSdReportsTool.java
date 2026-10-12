@@ -7,6 +7,7 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -20,7 +21,6 @@ import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
@@ -35,7 +35,7 @@ import java.util.Set;
 /**
  * ★★ {@code simos.sd.reports}（D4，2026-10-22）：<b>跨区上报的共享读口</b>（决策人桶 + GM 桶）。
  *
- * <p>★ <b>可见性</b>（只读 {@code key="report"} 的 sd INFO 条目）：
+ * <p>★ <b>可见性</b>（只读 {@code key="report"} 的 ga INFO 覆盖层条目）：
  *
  * <ul>
  *   <li><b>决策人</b>：条目 {@code tags} 含自己 <b>或</b> {@code affiliations} 含自己的归属 <b>或</b>报告 {@code
@@ -127,7 +127,7 @@ public final class SimosSdReportsTool implements SimosTool {
       String toFilter = ToolSchema.optionalText(args, "to", null);
       String subjectContains = ToolSchema.optionalText(args, "subjectContains", null);
       SimulationState state = GaToolReads.state(reads, args);
-      SdState sd = GaToolReads.sd(state);
+      GaState sd = GaToolReads.ga(state);
       DecisionMakerId actor =
           identity.decisionMakerIdOf(context.identity()).map(DecisionMakerId::parse).orElse(null);
       Affiliation affiliation =

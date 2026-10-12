@@ -48,7 +48,7 @@ import java.util.UUID;
  * UNIT) + 逐来源 TRANSFER_MEMBERS}）→ {@code
  * unit.CreateUnit}（households=[新家户]、equipment=[]、speed=4、mobilityPerMille=800；<b>无
  * manpower</b>）→（目的 GOV 给了且不同格）{@code unit.PlanRoute} → {@code economy.RegisterHousehold}（新家户经济行）→
- * {@code actor.EnsureHouseholdAccount}（新家户零余额账户）→ {@code sd.PutInfo}（key={@value #INFO_KEY}）。
+ * {@code actor.EnsureHouseholdAccount}（新家户零余额账户）→ {@code ga.PutInfo}（key={@value #INFO_KEY}）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ 决策人要科举仍走 {@code sd.IssueDirective} / GM 代执行这条链——本工具就是 GM 的 “代执行手”。
@@ -104,7 +104,7 @@ public final class GovSelectExamineesTool implements SimosTool {
     return "GM 科举选人（组合工具，一批 = 一条 revision）：从来源 GOV 辖区的 Social 家户份额抽 MALE+ADULT（share-aware，"
         + "同一 lot 可被多户持有）落成新人口家户 hh-unit:<newUnitId>，同批建无标签纯人员单位（unit.households=[该家户]；"
         + "★ P1.5：不再发 unit.CreateUnit(manpower=...)，也不再发 social.SeedGroups），并补齐该家户的 economy 经济行与 actor 零余额账户，"
-        + "可给目的 GOV 规划一条 unit.PlanRoute，最后落 sd.PutInfo 行动记录。"
+        + "可给目的 GOV 规划一条 unit.PlanRoute，最后落 ga.PutInfo 行动记录。"
         + "参数 {unitId(必填, 带 GovernmentFormation 的来源 GOV), count(必填 ≥ 1), targetGovUnitId?(目的 GOV), "
         + "role?(行动记录角色标签，缺省 EXAMINEE), newUnitId?(可选；缺省确定性生成), reason(必填), "
         + "preview?(缺省 true=只算不写), branch?(缺省 "
@@ -116,7 +116,7 @@ public final class GovSelectExamineesTool implements SimosTool {
         + "target=hh-unit:<newUnitId>，plan=CREATE_HOUSEHOLD + 逐来源 TRANSFER_MEMBERS）→ unit.CreateUnit"
         + "（id/name/position/households=[新家户]/equipment=[]/speed=4/mobilityPerMille=800；无 manpower）→"
         + "（目的 GOV 给了且不同格）unit.PlanRoute（waypoints=A* 逐格路径）→ economy.RegisterHousehold"
-        + "（household=hh-unit:<newUnitId>）→ actor.EnsureHouseholdAccount（household=hh-unit:<newUnitId>）→ sd.PutInfo"
+        + "（household=hh-unit:<newUnitId>）→ actor.EnsureHouseholdAccount（household=hh-unit:<newUnitId>）→ ga.PutInfo"
         + "（地址=来源 GOV canonical、key="
         + INFO_KEY
         + "、value=JSON 字符串）。守恒：Σ来源 share.taken == count == 新人口家户的成员增量。"
@@ -138,7 +138,7 @@ public final class GovSelectExamineesTool implements SimosTool {
         "newUnitId",
         ToolSchema.prop(
             "string", "新纯人员单位 id（可选；缺省用 exam-<来源GOV>-<tick>-<count> 确定性生成；其人口家户为 hh-unit:<id>）"));
-    props.put("reason", ToolSchema.prop("string", "选送原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "选送原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批命令"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
@@ -261,7 +261,7 @@ public final class GovSelectExamineesTool implements SimosTool {
   /**
    * 组批（P1.5 固定顺序）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} → （有路线）{@code
    * unit.PlanRoute} → {@code economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} →
-   * {@code sd.PutInfo}。
+   * {@code ga.PutInfo}。
    */
   private List<ToolWritePort.Request> buildBatch(
       String batchId, GovSelectExamineesPlan.Plan plan, String reason) {
@@ -290,7 +290,7 @@ public final class GovSelectExamineesTool implements SimosTool {
     return java.util.Collections.unmodifiableList(batch);
   }
 
-  /** {@code sd.PutInfo} 载荷：来源 GOV canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
+  /** {@code ga.PutInfo} 载荷：来源 GOV canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
   private static String infoPayload(GovSelectExamineesPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", GovCreateOfficePlan.unitAddress(plan.unitId()));

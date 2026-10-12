@@ -2,6 +2,7 @@ package io.mosire.simos.app.query;
 
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.ga.GaState;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
@@ -34,9 +35,10 @@ import java.util.Optional;
  * affiliation**，{@code RedactingQueryService.scopeOf} 只按 ID 单查。T7（决策人交互）/ T9（待决信号）/ T10（开始决策入口）
  * 都要读这个面。
  *
- * <p>★ **铁律 3：读取走 sd 模块自己的口**。数据来源是 {@code Snapshot}"sd" 切片（{@link SdSnapshot}）的 {@link
- * SdState}，只用它的**公共 record 访问器**（{@code decisionMakers()} / {@code armies()} / {@code nations()}）——
- * 不反射内部字段、不复制它的结构。本类**不新增 sd 字段**（D13：左栏要显示的现有数据都够）。
+ * <p>★ **铁律 3：读取走各模块自己的口**。{@code nations} / {@code armies} 来自 {@code Snapshot}"sd" 切片（{@link
+ * SdSnapshot}）的 {@link SdState}；★★ <b>2026-10-12 批次 3b-2 起 {@code decisionMakers} 与 {@code info}
+ * 两张表住 {@code simos-ga}</b>（用户原话「ga 应当维护标准的一般决策人」）⇒ 这两支改读 {@code ToolSupport.gaState}。两处都只用**公共
+ * record 访问器**——不反射内部字段、不复制它的结构。本类**不新增字段**（D13：左栏要显示的现有数据都够）。
  *
  * <p>★ **fail-closed**：过滤串**未知 kind / 空 id / 少冒号**一律抛（GUI 折成 400），**不静默返回空集合冒充"没有决策人"**； 单个详情查不到 ⇒
  * {@link Optional#empty()}（GUI 折成 404），与 unit/region 详情同口径。归属目标解析不出显示名时字段为 {@code
@@ -106,14 +108,15 @@ public final class SdQueryService {
   /**
    * 全部决策人（先按 filter 筛、再按 id **字典序**排），每条带由 affiliation 解析出的显示信息。
    *
-   * <p>★ 排序是为了**响应字节可复现**（{@code SdState.decisionMakers()} 是插入序表；C15 要"组内按 id 字典序"）。
+   * <p>★ 排序是为了**响应字节可复现**（{@code GaState.decisionMakers()} 是插入序表；C15 要"组内按 id 字典序"）。
    */
   public List<DecisionMakerInfo> listDecisionMakers(AffiliationFilter filter, QueryTarget target) {
     Objects.requireNonNull(filter, "filter");
     SimulationState state = query.stateAt(target);
+    GaState ga = gaState(state);
     SdState sd = sdState(state);
     List<DecisionMaker> makers = new ArrayList<>();
-    for (DecisionMaker maker : sd.decisionMakers().values()) {
+    for (DecisionMaker maker : ga.decisionMakers().values()) {
       if (matches(maker.affiliation(), filter)) {
         makers.add(maker);
       }
@@ -131,7 +134,7 @@ public final class SdQueryService {
    */
   public List<DirectiveInfo> listDirectives(QueryTarget target) {
     SimulationState state = query.stateAt(target);
-    return directivesOf(directivesTable(state), sdState(state), null);
+    return directivesOf(directivesTable(state), gaState(state), null);
   }
 
   /**
@@ -143,23 +146,23 @@ public final class SdQueryService {
   public Optional<List<DirectiveInfo>> listDirectives(DecisionMakerId id, QueryTarget target) {
     Objects.requireNonNull(id, "id");
     SimulationState state = query.stateAt(target);
-    SdState sd = sdState(state);
-    if (!sd.decisionMakers().containsKey(id)) {
+    if (!gaState(state).decisionMakers().containsKey(id)) {
       return Optional.empty();
     }
-    return Optional.of(directivesOf(directivesTable(state), sd, id));
+    return Optional.of(directivesOf(directivesTable(state), gaState(state), id));
   }
 
   /**
-   * 决策记录投影 + **执行原文**：{@code intentInfo} 从 sd INFO 覆盖层取（spec §三.6：写在 {@code sd:directive.<id>}
+   * 决策记录投影 + **执行原文**：{@code intentInfo} 从 ga INFO 覆盖层取（spec §三.6：写在 {@code sd:directive.<id>}
    * 地址下、key = 该记录自己的 {@code intentInfoKey}），取不到 ⇒ {@code null}（**显式未知**，不拿空串顶替）。
    *
-   * <p>★★ <b>两个切片各取一半</b>（2026-10-12 批次 3b′）：{@code directives} 表搬进 {@code simos-ga} ⇒ 令从 ga 切片读
-   * （{@link #directivesTable(SimulationState)}），执行原文条目仍住 sd 的 INFO 覆盖层（{@code info} 表属批次 3b）⇒ 两处都要。
+   * <p>★★ <b>两半现在同住一个切片</b>（2026-10-12 批次 3b-2 起）：{@code directives} 表随 3b-1、{@code info} 覆盖层随本批
+   * 都搬进 {@code simos-ga} ⇒ 令与执行原文都从 ga 切片读（{@link #directivesTable(SimulationState)} / {@link
+   * #gaState(SimulationState)}）。
    */
   private static List<DirectiveInfo> directivesOf(
-      Map<DirectiveId, Directive> directives, SdState sd, DecisionMakerId only) {
-    Map<DirectiveId, Map<String, String>> infoByDirective = infoByDirective(sd);
+      Map<DirectiveId, Directive> directives, GaState ga, DecisionMakerId only) {
+    Map<DirectiveId, Map<String, String>> infoByDirective = infoByDirective(ga);
     List<Directive> picked = new ArrayList<>();
     for (Directive directive : directives.values()) {
       if (only == null || directive.decisionMakerId().equals(only)) {
@@ -189,14 +192,14 @@ public final class SdQueryService {
   }
 
   /**
-   * 执行原文索引：{@code 决策 id ⇒ (INFO key ⇒ 值)}。**一次遍历**建好（每次查一条就重扫一遍 sd.info 是 O(n·m)）。
+   * 执行原文索引：{@code 决策 id ⇒ (INFO key ⇒ 值)}。**一次遍历**建好（每次查一条就重扫一遍 ga.info 是 O(n·m)）。
    *
    * <p>★ 认 {@code sourceDirective} 而**不是**自己去拼地址串：地址形态是写入方（{@code IssueDirectiveHandler}）的事，
    * 读的一侧照它留的引用找——拼串的两处会各自"看起来对"，改名时静默失配。
    */
-  private static Map<DirectiveId, Map<String, String>> infoByDirective(SdState sd) {
+  private static Map<DirectiveId, Map<String, String>> infoByDirective(GaState ga) {
     Map<DirectiveId, Map<String, String>> out = new LinkedHashMap<>();
-    for (List<SdInfoEntry> entries : sd.info().values()) {
+    for (List<SdInfoEntry> entries : ga.info().values()) {
       for (SdInfoEntry entry : entries) {
         if (entry.sourceDirective().isEmpty()) {
           continue;
@@ -213,7 +216,7 @@ public final class SdQueryService {
     Objects.requireNonNull(id, "id");
     SimulationState state = query.stateAt(target);
     SdState sd = sdState(state);
-    DecisionMaker maker = sd.decisionMakers().get(id);
+    DecisionMaker maker = gaState(state).decisionMakers().get(id);
     return maker == null ? Optional.empty() : Optional.of(info(maker, sd, state, tickOf(state)));
   }
 
@@ -334,7 +337,15 @@ public final class SdQueryService {
    * <p>★ 缺切片 / 类型不对 = 装配故障，当场炸（与 {@link #sdState} 同口径，不静默折成空表）。
    */
   private static Map<DirectiveId, Directive> directivesTable(SimulationState state) {
-    return ToolSupport.gaState(state).directives();
+    return gaState(state).directives();
+  }
+
+  /**
+   * ga 切片的取数口（2026-10-12 批次 3b-2：{@code decisionMakers} 与 {@code info} 两张表搬进 {@code simos-ga}）； 缺切片
+   * / 类型不对 = 装配故障，当场炸（与 {@link #sdState} 同口径）。
+   */
+  private static GaState gaState(SimulationState state) {
+    return ToolSupport.gaState(state);
   }
 
   /** sd 切片只能从 sd 模块拿（铁律 3/4）：缺席或类型不对是装配故障，不是"没有候选"。 */
@@ -350,7 +361,7 @@ public final class SdQueryService {
   /**
    * 决策人视图的领域侧投影：{@link DecisionMaker} 本体 + 由 affiliation 解析出的显示信息。
    *
-   * <p>★ 解析不出的字段一律 {@code null}（显式未知）。当前命令路径（{@code sd.CreateDecisionMaker} 拒绝不存在的 affiliation
+   * <p>★ 解析不出的字段一律 {@code null}（显式未知）。当前命令路径（{@code ga.CreateDecisionMaker} 拒绝不存在的 affiliation
    * 目标）下这些字段必非空；{@code null} 只在状态被外部构造坏时出现——**不用空串顶替**，那会与"名称为空"混淆。
    *
    * <p>★ 阶段 12：Army 去 {@code NationId} 后，{@code nationId} 槽位只服务 {@link
@@ -367,7 +378,7 @@ public final class SdQueryService {
       PendingSignal pending) {}
 
   /**
-   * 一条决策记录的投影：{@link Directive} 本体 + 从 sd INFO 覆盖层取回的**执行原文**。
+   * 一条决策记录的投影：{@link Directive} 本体 + 从 ga INFO 覆盖层取回的**执行原文**。
    *
    * <p>★ {@code intentInfo} 取不到时为 {@code null}（**显式未知**）——它可能在（a）该记录由别处构造、没写 INFO，
    * （b）地址被外部改坏。两种情况都不该被读成"这条决策没有理由"。

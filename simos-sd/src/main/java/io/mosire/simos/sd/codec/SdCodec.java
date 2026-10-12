@@ -11,7 +11,6 @@ import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatStateId;
-import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
@@ -34,12 +33,14 @@ import java.util.function.Function;
  * sd 模块的 {@link ModuleCodec} 实现（spec §八）：**全仓第 4 个** ModuleCodec。形态与 {@code MapCodec}/{@code
  * UnitCodec} 同制，理由不重复——只记 sd 自己的那点差异。
  *
- * <p>★★ <b>树里的自定义键：13 →（批次 3a）11 →（批次 3b′）9</b>。今天注册的 9 个是 7 个 ID 类型的键 —— {@code nations}/{@code
- * armies}/{@code combats}/{@code combatStates}/{@code decisionMakers}/{@code effects}/{@code
+ * <p>★★ <b>树里的自定义键：13 →（批次 3a）11 →（3b-1）9 →（本批 3b-2）8</b>。今天注册的 8 个是 6 个 ID 类型的键 —— {@code
+ * nations}/{@code armies}/{@code combats}/{@code combatStates}/{@code effects}/{@code
  * lossRecords}——加 D5 的 {@code diplomaticRelations} 复合键与 {@code diplomaticEvents} 的 {@code
  * DiplomaticEventId}。★ D2 的两个键（{@code DecisionPacketId} / {@code MergedEffectPlanId}）<b>已随那两张表整表搬进
- * {@code simos-ga}</b>；{@code DirectiveId} / {@code VerdictId} 两个键<b>随批次 3b′ 的两张表同样搬走</b> ⇒
- * 它们的键读侧注册改在 {@code GaCodec}（唯一拼写点， 不是两份）。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
+ * {@code simos-ga}</b>；{@code DirectiveId} / {@code VerdictId} 两个键<b>随批次 3b-1 的两张表同样搬走</b>； {@code
+ * DecisionMakerId} <b>随本批的 {@code decisionMakers} 表搬走</b> ⇒ 它们的键读侧注册改在 {@code GaCodec} （唯一拼写点，
+ * 不是两份）。★ {@code info} 表的键是 {@code String}（canonical 地址串）⇒ 那一支**本来就没有**自定义键可注册 （{@code SdInfoId} 是
+ * {@code SdInfoEntry} 的字段，全仓无 {@code Map} 以它为键）。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
  *
  * <p>★ **{@code CombatStageId}/{@code CombatOutcomeId} 不作 Map 键**（它们是 {@code Combat.stages} 的值，以及
  * OutcomeOption/CombatState 的字段），因此**不注册**——不给它们写凭空的注册。
@@ -51,8 +52,8 @@ import java.util.function.Function;
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
  * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link
- * SdChangeSet#between(SdState, SdState)}——10 个组件一起比，含 {@code info}、{@code
- * diplomaticRelations}、{@code diplomaticEvents}。
+ * SdChangeSet#between(SdState, SdState)}——8 个组件一起比，含 {@code diplomaticRelations}、{@code
+ * diplomaticEvents}。
  *
  * <p>★ <b>日志（2026-10-23 L2）</b>：五个入口各一条 DEBUG（{@code SD_CODEC_*}），只记组件 changed
  * 计数/规模/文本长度这类元信息，**绝不打印 JSON 原文/载荷**。本类没有旧形状迁移路径（{@code SdChangeSet} 的紧凑构造器只把缺键归一成 {@code
@@ -92,7 +93,6 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(ArmyId.class, keyDeserializer(ArmyId::parse));
     module.addKeyDeserializer(CombatId.class, keyDeserializer(CombatId::parse));
     module.addKeyDeserializer(CombatStateId.class, keyDeserializer(CombatStateId::parse));
-    module.addKeyDeserializer(DecisionMakerId.class, keyDeserializer(DecisionMakerId::parse));
     module.addKeyDeserializer(EffectId.class, keyDeserializer(EffectId::parse));
     module.addKeyDeserializer(LossRecordId.class, keyDeserializer(LossRecordId::parse));
     // ★ D5（2026-10-02 / D-003、D-005）：外交关系边（复合键）+ 外交事件 id。
@@ -175,9 +175,7 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
               "combats",
               state.combats().size(),
               "effects",
-              state.effects().size(),
-              "infoAddresses",
-              state.info().size()));
+              state.effects().size()));
     }
     return snapshot;
   }
@@ -201,9 +199,7 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
               "combats",
               state.combats().size(),
               "effects",
-              state.effects().size(),
-              "infoAddresses",
-              state.info().size()));
+              state.effects().size()));
     }
     return json;
   }
@@ -228,9 +224,7 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
               "combats",
               next.combats().size(),
               "effects",
-              next.effects().size(),
-              "infoAddresses",
-              next.info().size()));
+              next.effects().size()));
     }
     return applied;
   }
@@ -241,17 +235,15 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
     return SdChangeSet.between(asSdSnapshot(base).state(), asSdSnapshot(target).state());
   }
 
-  /** 变更集里 changed 的组件数（10 个组件的只读计数；只产出标量元信息，不读也不打印载荷内容）。 */
+  /** 变更集里 changed 的组件数（8 个组件的只读计数；只产出标量元信息，不读也不打印载荷内容）。 */
   private static int changedComponents(SdChangeSet changeSet) {
     int changed = 0;
     changed += changeSet.nations().changed() ? 1 : 0;
     changed += changeSet.armies().changed() ? 1 : 0;
     changed += changeSet.combats().changed() ? 1 : 0;
     changed += changeSet.combatStates().changed() ? 1 : 0;
-    changed += changeSet.decisionMakers().changed() ? 1 : 0;
     changed += changeSet.effects().changed() ? 1 : 0;
     changed += changeSet.lossRecords().changed() ? 1 : 0;
-    changed += changeSet.info().changed() ? 1 : 0;
     changed += changeSet.diplomaticRelations().changed() ? 1 : 0;
     changed += changeSet.diplomaticEvents().changed() ? 1 : 0;
     return changed;

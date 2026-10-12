@@ -66,7 +66,7 @@ import java.util.Set;
  *   <li>{@code actor.AdjustAccounts}（仅粮/钱任一 &gt; 0 时）：各来源家户账的<b>负增量</b>（粮与钱合并进同一 {@code (owner,格)}
  *       条目，避免同键重复）+ 新单位国库账户（{@code ActorRef(UNIT, newUnitId)} @ {@code at}）的 <b>正增量</b>；逐值相等（Σ 扣减
  *       == 入库）；
- *   <li>{@code sd.PutInfo}（恒有）：行动记录，地址 = 单位 canonical（{@link RaiseUnitPlan#unitAddress}），{@code
+ *   <li>{@code ga.PutInfo}（恒有）：行动记录，地址 = 单位 canonical（{@link RaiseUnitPlan#unitAddress}），{@code
  *       key="raiseUnit"}，{@code value} = JSON
  *       <b>字符串</b>（unit/region/at/三项数量/来源计数/sources/reason），{@code note} = 人可读摘要，{@code tick} =
  *       当前世界日。
@@ -188,7 +188,7 @@ public final class RaiseUnitTool implements SimosTool {
         + " 成年档；同一 lot 可被多户持有）、从 region 各 hex 的 HOUSEHOLD 账抽 grain/money；同批先用一张 "
         + "social.SubmitHouseholdWorkOrder（CREATE_HOUSEHOLD + 逐来源 TRANSFER_MEMBERS）把成员转进"
         + " location=UNIT(newUnitId) 的新人口家户，再建出新单位（unit.households = [该家户]，人口 = 转移人数）、"
-        + "补该家户的 economy 经济行与 actor 零余额账户、把粮/钱落进新单位国库，并落一条 sd.PutInfo 行动记录"
+        + "补该家户的 economy 经济行与 actor 零余额账户、把粮/钱落进新单位国库，并落一条 ga.PutInfo 行动记录"
         + "（★ P1.3：不再写 unit.manpower 第二本 headcount，也不再逐条发 CreateHousehold/TransferHouseholdMembers；"
         + "★ P3：同批补齐 economy.RegisterHousehold + actor.EnsureHouseholdAccount，打通 raiseUnit 后的 advance）。"
         + "载荷 {newUnitId(必填), name(必填), regionId(必填), at{q,r}(必填, 必须在该 region 的 hex 集里), "
@@ -209,7 +209,7 @@ public final class RaiseUnitTool implements SimosTool {
         + "target=hh-unit:<unitId>，plan=CREATE_HOUSEHOLD+逐来源 TRANSFER_MEMBERS）→ unit.CreateUnit"
         + " → economy.RegisterHousehold（household=hh-unit:<unitId>）→ actor.EnsureHouseholdAccount"
         + "（household=hh-unit:<unitId>）→ actor.AdjustAccounts（家户负增量 + 新单位国库正增量；仅粮/钱>0 时）"
-        + " → sd.PutInfo（单位 canonical 地址、key="
+        + " → ga.PutInfo（单位 canonical 地址、key="
         + INFO_KEY
         + "、value=JSON 字符串的行动记录）。"
         + "返回 {preview, submitted, tick, unitId, name, regionId, at, residence, parent, householdId, population, "
@@ -243,7 +243,7 @@ public final class RaiseUnitTool implements SimosTool {
         ToolSchema.prop(
             "object", "装备 {字符串:整数}（可选，缺省空表；值 >=0，按输入 map 迭代序转成新 Unit 的 [{type,amount}] 表，不从账本抽）"));
     props.put("parent", ToolSchema.prop("string", "父单位 id（可选；必须存在且当刻有效位置与 at 同格）"));
-    props.put("reason", ToolSchema.prop("string", "组军原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "组军原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批命令"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
@@ -528,7 +528,7 @@ public final class RaiseUnitTool implements SimosTool {
   /**
    * 组批：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} → {@code
    * economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} → {@code
-   * actor.AdjustAccounts}? → {@code sd.PutInfo}（P3 固定顺序，可复现）。
+   * actor.AdjustAccounts}? → {@code ga.PutInfo}（P3 固定顺序，可复现）。
    *
    * <p>★ 各条共享同一 {@code batchId}（correlationId）与同一 branch/expectedRevision ⇒ {@code submitBatch} 落一条
    * revision。
@@ -556,13 +556,13 @@ public final class RaiseUnitTool implements SimosTool {
     return List.copyOf(batch);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录）───────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录）───────────────────────────────────────────────────────
 
   /**
-   * {@code sd.PutInfo} 载荷：单位 canonical 地址 + {@code key="raiseUnit"} + {@code value} = JSON
+   * {@code ga.PutInfo} 载荷：单位 canonical 地址 + {@code key="raiseUnit"} + {@code value} = JSON
    * <b>字符串</b> + {@code note} = 人可读摘要 + {@code tick} = 当前世界日。
    *
-   * <p>★ {@code id} 不显式给：由 {@code sd.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一单位的后续行动自然追加序号。
+   * <p>★ {@code id} 不显式给：由 {@code ga.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一单位的后续行动自然追加序号。
    */
   private String infoPayload(RaiseUnitPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();

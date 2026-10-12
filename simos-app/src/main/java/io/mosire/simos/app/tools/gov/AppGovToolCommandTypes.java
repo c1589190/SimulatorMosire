@@ -11,8 +11,8 @@ import io.mosire.simos.economy.spi.EconomySetGovServiceCommitmentHandler;
 import io.mosire.simos.economy.spi.EconomySetGovernmentPolicyHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetOfficialRateHandler;
+import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.gov.tools.GovToolCommandTypes;
-import io.mosire.simos.sd.spi.PutInfoHandler;
 
 /**
  * {@link GovToolCommandTypes} 的宿主实现（组合根）：**逐条转调各域 handler 的 {@code TYPE} 常量** —— 命令类型串的唯一拼写点

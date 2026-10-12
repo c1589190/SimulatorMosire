@@ -11,21 +11,14 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
-import io.mosire.simos.core.command.CommandOutcome;
-import io.mosire.simos.core.command.CommandResult;
-import io.mosire.simos.ga.spi.IssueDirectiveHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolRole;
-import io.mosire.simos.sd.spi.DirectiveIntentInfo;
-import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -114,30 +107,10 @@ public final class CommandSubmitTool implements SimosTool {
       String payloadJson = ToolSupport.optionalText(args, "payloadJson", "{}");
       CommandEnvelope command =
           new CommandEnvelope(id, id, initiator, branch, expectedRevision, type, payloadJson);
-      // ★★ 2026-10-12 批次 3b-1（控制方裁定 §16.3 的第三条写路径）：{@code ga.IssueDirective} 的**执行原文**
-      //   条目与令**同批**落（同一条 revision）。它必须是一条独立命令——一条命令 = 一个命名空间
-      //   （{@code CommandBus.namespaceOf} 取类型前缀），而令住 ga、INFO 覆盖层仍住 sd。载荷由
-      //   {@link DirectiveIntentInfo} 从同一份出令载荷派生（地址/键/来源引用的唯一拼写点在那里）；
-      //   派生不出 ⇒ **退回单命令提交**，让出令命令自己给具名拒因（不在这里改判据）。
-      Optional<String> companion =
-          IssueDirectiveHandler.TYPE.equals(type)
-              ? DirectiveIntentInfo.putInfoPayloadJson(payloadJson)
-              : Optional.empty();
-      if (companion.isEmpty()) {
-        return ToolSupport.fold(core.submit(command), id, id);
-      }
-      List<CommandEnvelope> batch =
-          List.of(
-              command,
-              new CommandEnvelope(
-                  UUID.randomUUID().toString(),
-                  id,
-                  initiator,
-                  branch,
-                  expectedRevision,
-                  PutInfoHandler.TYPE,
-                  companion.get()));
-      return ToolSupport.fold(primaryResult(core.submitBatch(batch)), id, id);
+      // ★★ 2026-10-12 批次 3b-2：{@code ga.IssueDirective} 的**执行原文**现在由该命令**自己**写（令与 INFO 覆盖层
+      //   同住 GaState）⇒ 本工具回到**单命令提交**的原形。批次 3b-1 的"同批第二条 ga.PutInfo"配套分支
+      //   （+ DirectiveIntentInfo 载荷生产者）已整条删除；缺口（绕过工具直接提交 ⇒ 只落令不落执行原文）随之关闭。
+      return ToolSupport.fold(core.submit(command), id, id);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -148,19 +121,6 @@ public final class CommandSubmitTool implements SimosTool {
       return ToolResult.error(
           "TOOL_ERROR", "命令提交失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
     }
-  }
-
-  /**
-   * 批结局 ⇒ <b>批内第 0 条（= 本工具提交的主命令）</b>的单一结局：与单命令提交的折叠逐字同形。
-   *
-   * <p>★ 批内结局**与入参顺序逐位对应**（{@code BatchResult} 的不变式）⇒ 第 0 条就是本条 {@code type} 自己的结局；
-   * 整批被拒时它带的是自己的真拒因（若被拒的是配套命令，则是"随整批复原"——而世界**一条 revision 都没落**，原子性不变）。
-   */
-  private static CommandResult primaryResult(BatchResult batch) {
-    List<CommandOutcome> outcomes = batch.outcomes();
-    return outcomes.isEmpty()
-        ? new CommandResult.Rejected("整批未提交（无逐条结局）")
-        : outcomes.get(0).result();
   }
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */

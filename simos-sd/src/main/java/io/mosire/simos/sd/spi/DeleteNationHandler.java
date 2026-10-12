@@ -43,7 +43,7 @@ import java.util.Objects;
  *
  * <ol>
  *   <li>{@link DecisionMaker} 的 {@link Affiliation.Nation} 仍指向该国家 ⇒ 先 {@code
- *       sd.DeleteDecisionMaker}（仅当其名下没有历史 Directive 时可用）或另行处理；★ 若该决策人已被 Directive 引用，当前命令面没有"删历史
+ *       ga.DeleteDecisionMaker}（仅当其名下没有历史 Directive 时可用）或另行处理；★ 若该决策人已被 Directive 引用，当前命令面没有"删历史
  *       Directive"的入口，完整清理路径缺失，见 P1.2 报告；
  *   <li>外交关系边 {@link DiplomaticRelation} 的 from/to 仍指向该国家 ⇒ 可显式给 {@code
  *       clearDiplomaticReferences=true} 随国删除，或先另行清理；
@@ -51,10 +51,10 @@ import java.util.Objects;
  *       （清理路径在 map 自己的命令面；sd 只读 map 做检查，不反向写 map）。
  * </ol>
  *
- * <p>★★ <b>不作为硬引用的两类（如实记录，不假装已清）</b>：{@code SdInfoEntry.affiliations/tags} 是感知层归属标签、 {@link
- * DiplomaticEvent#participants()} 是历史事件记录；它们都不是 {@code SdState} 构造期强制的引用。删国后这些历史条目
- * <b>保留原文</b>（不篡改留痕），读侧按既有 fail-closed 口径处理"指向不存在国家"的标签。若要连历史事件一起清，显式给 {@code
- * clearDiplomaticReferences=true}（连关系边与外交事件一并删）。
+ * <p>★★ <b>不作为硬引用的两类（如实记录，不假装已清）</b>：{@code SdInfoEntry.affiliations/tags} 是感知层归属标签（{@code info}
+ * 覆盖层本批起住 {@code GaState}，本命令只读决策人表、不碰它）、 {@link DiplomaticEvent#participants()} 是历史事件记录；它们都不是
+ * {@code SdState} 构造期强制的引用。删国后这些历史条目 <b>保留原文</b>（不篡改留痕），读侧按既有 fail-closed
+ * 口径处理"指向不存在国家"的标签。若要连历史事件一起清，显式给 {@code clearDiplomaticReferences=true}（连关系边与外交事件一并删）。
  *
  * <p>★ <b>GM-only</b>：删国是行政原语，不开放给决策令直调。
  */
@@ -62,6 +62,19 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "sd.DeleteNation";
+
+  /**
+   * ★★ <b>2026-10-12 批次 3b-2：决策人表搬进 ga ⇒ 经注入的只读口取它</b>（{@code simos-sd} 不得依赖 {@code simos-ga}，成环；实现
+   * {@code GaDecisionTablesLookup} 在 ga、组合根 {@code Shell} 接线）。
+   *
+   * <p>★ 本命令（{@code sd.DeleteNation}）自己<b>仍住 sd</b>（{@code nations} 表不搬）⇒ 它只是"跨切片读一次决策人表"， 与 {@code
+   * sd.CreateArmy} 读 unit 切片同款（铁律 3：只读，不改写别的切片）。
+   */
+  private final DecisionTablesLookup decisionTables;
+
+  public DeleteNationHandler(DecisionTablesLookup decisionTables) {
+    this.decisionTables = Objects.requireNonNull(decisionTables, "decisionTables");
+  }
 
   @Override
   public String type() {
@@ -91,14 +104,14 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
       }
 
       List<String> problems = new ArrayList<>();
-      List<DecisionMakerId> decisionMakers = decisionMakersOf(base, id);
+      List<DecisionMakerId> decisionMakers = decisionMakersOf(state, id);
       if (!decisionMakers.isEmpty()) {
         problems.add(
             "决策人绑定 "
                 + decisionMakers.size()
                 + " 个（"
                 + summarize(decisionMakers)
-                + "）：先 sd.DeleteDecisionMaker（仅当其无历史 Directive 引用时可用）；若已被 Directive 引用，"
+                + "）：先 ga.DeleteDecisionMaker（仅当其无历史 Directive 引用时可用）；若已被 Directive 引用，"
                 + "当前命令面没有删历史 Directive 的入口");
       }
       List<String> relations = diplomaticRelationKeys(base, id);
@@ -189,9 +202,9 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
     return new HandlerOutcome.Rejected(reason);
   }
 
-  private static List<DecisionMakerId> decisionMakersOf(SdState base, NationId id) {
+  private List<DecisionMakerId> decisionMakersOf(SimulationState state, NationId id) {
     List<DecisionMakerId> ids = new ArrayList<>();
-    for (DecisionMaker maker : base.decisionMakers().values()) {
+    for (DecisionMaker maker : decisionTables.decisionMakers(state).values()) {
       if (maker.affiliation() instanceof Affiliation.Nation nation
           && nation.nationId().equals(id)) {
         ids.add(maker.id());

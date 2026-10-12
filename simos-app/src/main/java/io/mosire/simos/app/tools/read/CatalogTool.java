@@ -24,8 +24,8 @@ import java.util.Set;
  * simos.command.submit} 到达。工具面不另立一份"支持的类型"表。
  *
  * <p>★★ **按调用者可见性过滤（用户 2026-09-23 裁定）**：清单不再对所有人一样——**GM / MCP 口看到全量**，**决策人只看到自己
- * 有途径触发的类型**（能直接调的窄工具 ∪ 令里可嵌的领域命令）。理由：旧行为下决策人看得见 {@code sd.PutInfo} / {@code sd.AdjudicateTick} /
- * {@code sd.CreateDecisionMaker} 这些**它执行不了**的类型，于是"照着目录去试"每一试都白烧一轮真 LLM
+ * 有途径触发的类型**（能直接调的窄工具 ∪ 令里可嵌的领域命令）。理由：旧行为下决策人看得见 {@code ga.PutInfo} / {@code sd.AdjudicateTick} /
+ * {@code ga.CreateDecisionMaker} 这些**它执行不了**的类型，于是"照着目录去试"每一试都白烧一轮真 LLM
  * 调用——目录在回答"系统允许你干什么"时**必须与真权限面同源**。判据本体在 {@link CatalogVisibility}（一份实现，可单测）。
  *
  * <p>★ **构造期的覆盖断言不受过滤影响**：{@link #PAYLOAD_HINTS} 仍要求覆盖**全部已注册** type（缺项即抛）——那是"声明式清单不随注册面自动
@@ -764,13 +764,13 @@ public final class CatalogTool implements SimosTool {
                   + "给了必须存在且带 GovernmentFormation；armyId 不存在 ⇒ 具名拒；只改 sd 侧，不碰 unit 侧 ArmyFormation；"
                   + "GM-only）"),
           Map.entry(
-              "sd.CreateDecisionMaker", "id, affiliation{kind,id}, allowedTools[字符串...], cadence"),
+              "ga.CreateDecisionMaker", "id, affiliation{kind,id}, allowedTools[字符串...], cadence"),
           Map.entry(
-              "sd.DeleteDecisionMaker",
+              "ga.DeleteDecisionMaker",
               "decisionMakerId（必填；不存在 ⇒ 具名拒；只删决策人身份，不级联删历史 Directive / 文档 / 会话；"
                   + "仍被 Directive 引用时具名拒，不做静默级联；GM-only）"),
           Map.entry(
-              "sd.PutInfo",
+              "ga.PutInfo",
               "address, key, value, note?, id?（同类型内唯一）, tags[决策人 id…]?,"
                   + " tick?（缺省=世界当前 tick；记在未来 ⇒ 拒）"),
           Map.entry(
@@ -812,16 +812,16 @@ public final class CatalogTool implements SimosTool {
               "verdictId, breakpoint(D1|D3|D6), subject(sd:combat.*), payload(JSON 文本),"
                   + " meta{model,promptVersion,inputBriefDigest}"),
           Map.entry(
-              "sd.SetDecisionMakerAccess",
+              "ga.SetDecisionMakerAccess",
               "decisionMakerId, allowedTools[]?, accessLimit{命名空间:[前缀…]}?, redactedFields[]?,"
                   + "adjudicationDisclosure(FULL|PERCEPTION_ONLY|WITHHELD)?"
                   + "（★ 四个可选字段：缺省 = 不改动，显式给 = 整份替换；"
                   + "accessLimit 是**额外限制**，与范围函数求交 ⇒ 只能收紧）"),
           Map.entry(
-              "sd.ResetDecisionMakerConversation", "decisionMakerId（会话世代 +1：该决策人下一轮从空上下文重开；旧会话不删）"),
-          Map.entry("sd.StartDecision", "decisionMakerId, note?"),
-          Map.entry("sd.RunDecision", "decisionMakerId"),
-          Map.entry("sd.SetDecisionMakerProvider", "decisionMakerId, providerId"),
+              "ga.ResetDecisionMakerConversation", "decisionMakerId（会话世代 +1：该决策人下一轮从空上下文重开；旧会话不删）"),
+          Map.entry("ga.StartDecision", "decisionMakerId, note?"),
+          Map.entry("ga.RunDecision", "decisionMakerId"),
+          Map.entry("ga.SetDecisionMakerProvider", "decisionMakerId, providerId"),
           Map.entry(
               "ga.UpsertDecisionPacket",
               "id, branch, tick, proposerId,"

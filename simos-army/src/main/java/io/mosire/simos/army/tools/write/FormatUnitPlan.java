@@ -36,7 +36,7 @@ import java.util.Set;
  *   <li>随机源是 {@link Random}，种子显式给出 ⇒ 与 JVM 的协议一致、同种子同序；**不用 {@code Math.random()}**；
  *   <li>抽取顺序固定：先按 {@code manpower} 规格表序，再按 {@code equipment} 规格表序；{@code jitterPerMille == 0} 或幅度算出
  *       0 的条目不消耗随机数（口径写在这里，测试阶段照此钉值）；
- *   <li>生效种子（以及是否显式提供）进 {@code sd.PutInfo.value} 的审计记录，落在同一批的 revision 里。
+ *   <li>生效种子（以及是否显式提供）进 {@code ga.PutInfo.value} 的审计记录，落在同一批的 revision 里。
  * </ul>
  *
  * <p>★ <b>确定性边界</b>：随机化只发生在 <b>apply 之前</b>的推导里，且推导是状态+参数的纯函数；命令载荷里落的是**算好的绝对值**， 重放同一份 revision
@@ -54,7 +54,7 @@ final class FormatUnitPlan {
   static final String SET_COMPOSITION_TYPE = SetCompositionHandler.TYPE;
 
   /** 本工具提交的第二条命令类型（行动记录；与 {@code PutInfoHandler.type()} 同字面）。 */
-  static final String PUT_INFO_TYPE = "sd.PutInfo";
+  static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   /** 行动记录在 sd INFO 覆盖层里的 key（地址 = 单位 canonical，一次格式化一条）。 */
   static final String INFO_KEY = "formatUnit";
@@ -314,7 +314,7 @@ final class FormatUnitPlan {
     }
 
     /**
-     * {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>）：把生效种子、是否显式、前后两张表与 reason 写进同一批的
+     * {@code ga.PutInfo} 的 {@code value}（JSON <b>字符串</b>）：把生效种子、是否显式、前后两张表与 reason 写进同一批的
      * revision——这是"随机化可复现"的**审计证据路径**（命令记录里带种子）。
      */
     String infoValueJson(ArmyToolViews views, String reason) {
@@ -329,7 +329,7 @@ final class FormatUnitPlan {
       return ToolResults.json(value);
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       return "按格式复写单位 "
           + unitId

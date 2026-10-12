@@ -49,7 +49,7 @@ import java.util.UUID;
  * <ul>
  *   <li>{@code ga.UpsertDecisionPacket}（整理 intent/保留 calls，必要时建空包）
  *   <li>{@code ga.SubmitDecisionPacket}（统一提交）
- *   <li>{@code sd.PutInfo}（审计：为什么自动结算、最后一段文本是什么）
+ *   <li>{@code ga.PutInfo}（审计：为什么自动结算、最后一段文本是什么）
  * </ul>
  *
  * <p>★ 三条命令同 branch/expectedRevision/batchId ⇒ 结算本身只落一条 revision；GM 仍然是最终审批/执行方。 ★ 已经
@@ -245,7 +245,7 @@ final class DecisionTurnFinalizer {
             INITIATOR,
             branch,
             expected,
-            "sd.PutInfo",
+            "ga.PutInfo",
             auditPayload(
                 packetId.value(),
                 decisionMakerId.value(),
@@ -306,7 +306,7 @@ final class DecisionTurnFinalizer {
     return existing + "\n【最后陈述】" + text;
   }
 
-  /** sd.PutInfo 载荷：值本身是 JSON 字符串，结构化内容一眼可读。 */
+  /** ga.PutInfo 载荷：值本身是 JSON 字符串，结构化内容一眼可读。 */
   private static String auditPayload(
       String packetId,
       String decisionMakerId,

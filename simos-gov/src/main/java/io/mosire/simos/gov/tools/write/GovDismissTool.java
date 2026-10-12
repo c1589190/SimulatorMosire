@@ -46,7 +46,7 @@ import java.util.UUID;
  *   <li>{@code unit.DismissStaff}（恒有）：{@code {unitId, role, count}}；
  *   <li>{@code actor.AdjustAccounts}（仅 {@code payment > 0} 时）：国库银<b>负增量</b>一条；待遇 = {@code
  *       policy.retirementPerStaff × count}，来源 = {@code ActorRef(UNIT, unitId)} @ 单位当刻有效位置；
- *   <li>{@code sd.PutInfo}（恒有）：地址 = 单位 canonical，key = {@value #INFO_KEY}，value = JSON <b>字符串</b>
+ *   <li>{@code ga.PutInfo}（恒有）：地址 = 单位 canonical，key = {@value #INFO_KEY}，value = JSON <b>字符串</b>
  *       （role/count/待遇/tick），note = 人可读摘要。
  * </ol>
  *
@@ -115,7 +115,7 @@ public final class GovDismissTool implements SimosTool {
         + "), expectedRevision(preview=false 时必填)}。"
         + "待遇 = policy.retirementPerStaff × count（银）；待遇>0 时国库 = ActorRef(UNIT,unitId) @ 单位当刻有效位置，"
         + "可支配银不足 ⇒ 整条拒（带 requested/available/缺口）；待遇=0 ⇒ 批里无 actor 命令。"
-        + "批：unit.DismissStaff → [actor.AdjustAccounts 国库银负增量] → sd.PutInfo(key="
+        + "批：unit.DismissStaff → [actor.AdjustAccounts 国库银负增量] → ga.PutInfo(key="
         + INFO_KEY
         + ")。"
         + "★ 具名缺口：离编人员的社会回写（回老家/父老乡亲）留阶段 13，本工具只减 roster + 支付银，不产生任何 social.* 命令。"
@@ -129,7 +129,7 @@ public final class GovDismissTool implements SimosTool {
     props.put("unitId", ToolSchema.prop("string", "离编主体：带 GovernmentFormation 的 GOV 单位 id"));
     props.put("role", ToolSchema.prop("string", "行政角色：SCRIBE（书吏）|YAMEN（衙门）|POST（驿传）"));
     props.put("count", ToolSchema.prop("integer", "离编人数（≥ 1；不得超过该角色现有在编）"));
-    props.put("reason", ToolSchema.prop("string", "离编原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "离编原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交三条命令的同一批"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
@@ -238,7 +238,7 @@ public final class GovDismissTool implements SimosTool {
     return ToolResult.error("REJECTED", ToolResults.json(view));
   }
 
-  /** 组批：{@code unit.DismissStaff} → [payment] {@code actor.AdjustAccounts} → {@code sd.PutInfo}。 */
+  /** 组批：{@code unit.DismissStaff} → [payment] {@code actor.AdjustAccounts} → {@code ga.PutInfo}。 */
   private List<ToolWritePort.Request> buildBatch(
       String batchId, GovDismissPlan.Plan plan, String reason) {
     List<ToolWritePort.Request> batch = new ArrayList<>(3);
@@ -254,9 +254,9 @@ public final class GovDismissTool implements SimosTool {
     return java.util.Collections.unmodifiableList(batch);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录） ─────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录） ─────────────────────────────────────────────────────
 
-  /** {@code sd.PutInfo} 载荷：单位 canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
+  /** {@code ga.PutInfo} 载荷：单位 canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
   private static String infoPayload(GovDismissPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", GovCreateOfficePlan.unitAddress(plan.unitId()));

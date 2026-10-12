@@ -13,7 +13,6 @@ import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.spi.NationTag;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.util.state.SimulationState;
@@ -44,7 +43,7 @@ public final class AppGovToolPerspective implements GovToolPerspective {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(decisionMakerId, "decisionMakerId");
     // ★ 非法 id 的拒因与文案来自 sd.id.DecisionMakerId 的构造（与 mig 入前逐字相同）。
-    DecisionMaker maker = sdState(state).decisionMakers().get(sdId(decisionMakerId));
+    DecisionMaker maker = ToolSupport.gaState(state).decisionMakers().get(sdId(decisionMakerId));
     if (maker == null) {
       return new GovDecisionMaker(decisionMakerId, false, false, null, "");
     }
@@ -55,7 +54,7 @@ public final class AppGovToolPerspective implements GovToolPerspective {
   public List<GovDecisionMaker> decisionMakers(SimulationState state) {
     Objects.requireNonNull(state, "state");
     List<GovDecisionMaker> facts = new ArrayList<>();
-    for (DecisionMaker maker : sdState(state).decisionMakers().values()) {
+    for (DecisionMaker maker : ToolSupport.gaState(state).decisionMakers().values()) {
       facts.add(factOf(maker));
     }
     // ★ 迭代序 = sd 状态表自身的序（调用方各自按 id 稳定序排序；此处不重排，免得两处口径）。
@@ -109,15 +108,5 @@ public final class AppGovToolPerspective implements GovToolPerspective {
   /** sd 的决策人 id 解析（非法 ⇒ {@code IllegalArgumentException}，与既有构造同一条拼写）。 */
   private static DecisionMakerId sdId(String decisionMakerId) {
     return new DecisionMakerId(decisionMakerId);
-  }
-
-  /**
-   * sd 切片（决策人 / 国家 / 军队三张表仍住 sd）。
-   *
-   * <p>★ {@code directives} 表自 2026-10-12 批次 3b′ 起住 {@code simos-ga} ⇒ {@link
-   * #directiveIdsReferencing} 直接走 {@code ToolSupport.gaState}，不经本方法。
-   */
-  private static SdState sdState(SimulationState state) {
-    return ToolSupport.sdState(state);
   }
 }

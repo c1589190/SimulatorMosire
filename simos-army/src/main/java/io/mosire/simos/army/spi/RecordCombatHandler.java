@@ -47,7 +47,7 @@ import org.slf4j.Logger;
  * 的 {@code simos.command.submit} 直接提交（handler 照常注册、照进 catalog），但排除出令白名单 / {@code sd.RegisterEffect}
  * / 决策人目录三条路径。
  *
- * <p>★ <b>tick 口径</b>（与 {@code sd.PutInfo} 同族）：缺省 = **世界当前 tick**；显式给 ⇒ 用它；**未来 tick
+ * <p>★ <b>tick 口径</b>（与 {@code ga.PutInfo} 同族）：缺省 = **世界当前 tick**；显式给 ⇒ 用它；**未来 tick
  * 拒**，过去合法（补记历史）。 命令的**效果**仍落在当下（世界不随时间字段改动）。
  *
  * <p>★ <b>同 id 已存在 ⇒ 具名拒</b>：记录 id 是**一次性身份**；记录内容随后的演进走 {@code army.AppendCombatStage} / {@code
@@ -122,7 +122,7 @@ public final class RecordCombatHandler implements CommandHandler {
         return new HandlerOutcome.Rejected("交战记录 id 已存在（记录 id 是一次性身份，不覆盖）: " + id.value());
       }
       long worldTick = state.meta().timestamp().tick();
-      // ★ tick 缺省 = 世界当前 tick（与 sd.PutInfo 同族口径）；显式给 ⇒ 用它，但不得记在未来。
+      // ★ tick 缺省 = 世界当前 tick（与 ga.PutInfo 同族口径）；显式给 ⇒ 用它，但不得记在未来。
       Optional<Long> explicitTick = ArmyPayloads.optionalLong(payload, "tick");
       long tick = explicitTick.orElse(worldTick);
       if (explicitTick.isEmpty() && LOG.isDebugEnabled()) {

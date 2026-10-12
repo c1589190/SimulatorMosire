@@ -51,7 +51,7 @@ import java.util.UUID;
  *       count=taken)}——人真的进了政府家户；
  *   <li>{@code unit.RecruitStaff}（恒有）：{@code {unitId, role, count, sources}}，{@code sources} = 逐来源
  *       {@code {kind:"household", id, lotId, count}}；命令本身只入编（不扣人——扣人在上一腿）；
- *   <li>{@code sd.PutInfo}（恒有）：地址 = 单位 canonical，key = {@value #INFO_KEY}，value = JSON <b>字符串</b>
+ *   <li>{@code ga.PutInfo}（恒有）：地址 = 单位 canonical，key = {@value #INFO_KEY}，value = JSON <b>字符串</b>
  *       （role/count/逐来源 householdId/lotId/taken/hex/reason/tick），note = 人可读摘要。
  * </ol>
  *
@@ -124,7 +124,7 @@ public final class GovRecruitTool implements SimosTool {
         + " HouseholdManpowerAllocator 的 MALE+ADULT 家户份额瀑布（排除目标家户/财政户）；总量不足 ⇒ 整条拒（带"
         + " requested/available/缺口），不部分抽取。批：social.SubmitHouseholdWorkOrder（orderId="
         + "gov-recruit:<unitId>:<role>:<tick>:<count> 幂等键，target=目标家户，逐来源 TRANSFER_MEMBERS(from=来源家户,"
-        + "to=目标家户,lotId,count=taken)）→ [unit.AssignGovPost | unit.RecruitStaff] → sd.PutInfo（key="
+        + "to=目标家户,lotId,count=taken)）→ [unit.AssignGovPost | unit.RecruitStaff] → ga.PutInfo（key="
         + INFO_KEY
         + "）。守恒：Σ share.taken == count（旧档另 == roster 增量）。返回 {preview, submitted, mode, tick, unitId,"
         + " targetHouseholdId, role, count, [旧档 staffBefore/After/Cap], available,"
@@ -143,7 +143,7 @@ public final class GovRecruitTool implements SimosTool {
     props.put("role", ToolSchema.prop("string", "行政角色：SCRIBE（书吏）|YAMEN（衙门）|POST（驿传）"));
     props.put("count", ToolSchema.prop("integer", "招募人数（≥ 1；旧档另受 staffCap[role] 剩余额度约束，新世界落岗位指派）"));
     props.put(
-        "reason", ToolSchema.prop("string", "招募原因（必填非空白；进 Social 工单 reason、sd.PutInfo 行动记录与工具结果）"));
+        "reason", ToolSchema.prop("string", "招募原因（必填非空白；进 Social 工单 reason、ga.PutInfo 行动记录与工具结果）"));
     props.put(
         "preview",
         ToolSchema.prop(
@@ -264,7 +264,7 @@ public final class GovRecruitTool implements SimosTool {
 
   /**
    * 组批（固定顺序、按模式二选一）：{@code social.SubmitHouseholdWorkOrder} → [新世界 {@code unit.AssignGovPost} / 旧档
-   * {@code unit.RecruitStaff}] → {@code sd.PutInfo}。
+   * {@code unit.RecruitStaff}] → {@code ga.PutInfo}。
    */
   private List<ToolWritePort.Request> buildBatch(
       String batchId, GovRecruitPlan.Plan plan, String reason) {
@@ -287,9 +287,9 @@ public final class GovRecruitTool implements SimosTool {
     return java.util.Collections.unmodifiableList(batch);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录） ─────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录） ─────────────────────────────────────────────────────
 
-  /** {@code sd.PutInfo} 载荷：单位 canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
+  /** {@code ga.PutInfo} 载荷：单位 canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
   private static String infoPayload(GovRecruitPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", GovCreateOfficePlan.unitAddress(plan.unitId()));

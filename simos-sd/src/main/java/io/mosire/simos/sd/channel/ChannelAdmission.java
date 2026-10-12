@@ -7,7 +7,6 @@ import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -89,9 +88,16 @@ public final class ChannelAdmission {
     }
   }
 
-  /** actor 的**额外限制**（actor = {@code DecisionMakerId} 裸值）；不存在 ⇒ 空。 */
-  public static Optional<AccessLimit> accessLimitOf(SdState state, ActorId actor) {
-    DecisionMaker maker = state.decisionMakers().get(new DecisionMakerId(actor.value()));
+  /**
+   * actor 的**额外限制**（actor = {@code DecisionMakerId} 裸值）；不存在 ⇒ 空。
+   *
+   * <p>★★ <b>2026-10-12 批次 3b-2：参数由 {@code SdState} 换成决策人表本身</b>——{@code decisionMakers} 表已搬进
+   * {@code GaState}，而 sd 不得依赖 ga ⇒ 本类（纯静态工具、无可注入构造器）改为**接收那张表**；取表由调用方走 {@link
+   * io.mosire.simos.sd.spi.DecisionTablesLookup#decisionMakers} 或 {@code GaState.decisionMakers()}。
+   */
+  public static Optional<AccessLimit> accessLimitOf(
+      Map<DecisionMakerId, DecisionMaker> decisionMakers, ActorId actor) {
+    DecisionMaker maker = decisionMakers.get(new DecisionMakerId(actor.value()));
     return maker == null ? Optional.empty() : Optional.of(maker.accessLimit());
   }
 
@@ -107,8 +113,9 @@ public final class ChannelAdmission {
    *
    * <p>★ 本方法**无生产调用者**（spec §1.3 第 3 条自陈的 N17 缺口在 T9 时仍未接），改动只影响它自己的用例。
    */
-  public static String redactedBrief(SdState state, ActorId actor) {
-    AccessLimit limit = accessLimitOf(state, actor).orElse(AccessLimit.empty());
+  public static String redactedBrief(
+      Map<DecisionMakerId, DecisionMaker> decisionMakers, ActorId actor) {
+    AccessLimit limit = accessLimitOf(decisionMakers, actor).orElse(AccessLimit.empty());
     Map<String, Object> brief = new LinkedHashMap<>();
     Map<String, Object> prefixes = new LinkedHashMap<>();
     for (var entry : limit.prefixesByNamespace().entrySet()) {

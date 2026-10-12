@@ -32,12 +32,12 @@ import java.util.Optional;
  * 「开始决策」编排（T3，把 D7 的 {@link AdjudicatorRunner} **接进壳**）：一次调用 = 一个决策人的一次判决。
  *
  * <p>★ **它解决的真实缺口**：D 阶段交付了 {@link AdjudicatorRunner}，但**全仓只有测试调用它** ⇒ 用户点「开始决策」 只写一条 INFO
- * 覆盖层记录（{@code sd.StartDecision}），**判决从不真跑**。本类是那个"接线"。
+ * 覆盖层记录（{@code ga.StartDecision}），**判决从不真跑**。本类是那个"接线"。
  *
  * <p>★ **形状（为什么是这么一条窄路，而不是"推进时自动跑全部断点"）**：
  *
  * <ol>
- *   <li>调用方先经 {@code CoreSimos.submit} 落一条 {@code sd.StartDecision}（**世界事实**：谁在哪个 tick 发起了决策）；
+ *   <li>调用方先经 {@code CoreSimos.submit} 落一条 {@code ga.StartDecision}（**世界事实**：谁在哪个 tick 发起了决策）；
  *   <li>本服务从**新的 head** 读 sd 切片，取该决策人**当前**绑定的 provider（{@link DecisionMaker#providerId()}）， 由
  *       {@link LlmProviderResolver#adjudicatorFor} 装配裁决器；
  *   <li>按**世界状态选断点**跑判决（见下"战斗不是前提"）；
@@ -79,7 +79,7 @@ public final class DecisionAdjudicationService {
    * <p>★ **无战斗不跳过判决**：有战斗 ⇒ D1/D3/D6（主体 {@code sd:combat.<id>}）；无战斗 ⇒ D2（主体 {@code
    * sd:decision-maker.<dmId>}）——LLM 一律被调。
    *
-   * @param branch 分支（应为 {@code sd.StartDecision} 刚落盘的那个分支）
+   * @param branch 分支（应为 {@code ga.StartDecision} 刚落盘的那个分支）
    * @param baseRevision 起始 base（新 head；乐观并发，落点成功后前移）
    * @param maker 决策人（调用方从**新 head** 读出的那个——绑定的 provider 以它为准）
    * @return 各断点的判决（保序）

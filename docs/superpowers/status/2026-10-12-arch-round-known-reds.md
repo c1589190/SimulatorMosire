@@ -111,3 +111,27 @@
 economy 6 / gov 1 / unit 1 / util 1 个文件提及旧命令名 —— 留给对应批次或收尾期统一改。
 （agent/ga/sd 三模块内描述**当前**命令名的 javadoc 已同步 39 文件；**历史叙述故意保留**，如
 `DecisionResultsTool:35` 的事故叙述加了"该事故发生时还叫 sd.*，留痕不改"。）
+
+### 批次 3b-2（`decisionMakers`+`info` 搬 ga；GaState 4→6 / sd 10→8 / **8 条**命令改名）
+
+**新增编译断（相对 3b-1）**
+- **sd 侧**：`codec/SdCodecTest` · `spi/{CreateDecisionMakerHandlerTest, SetDecisionMakerAccessHandlerTest,
+  SetDecisionMakerProviderHandlerTest, PutInfoHandlerTest}`（handler **搬包** ⇒ import 断）· `channel/ChannelAdmissionTest`（签名换表）·
+  `time/SdTimeParticipantTest`（`simulate` → `simulateWorld`）· `state/SdStateInvariantTest` / `change/SdRoundTripTest` /
+  `testing/SdFixtures` 的**新红点**（`hasSize(10)`→8、`withDecisionMakers/withInfo` 消失、构造器参数量）
+- **app 侧新点名**：`SdPutInfoEndToEndTest` · `SdSetDecisionMakerAccessEndToEndTest` · `SdProviderBindingEndToEndTest` ·
+  `ResetConversationEndToEndTest` · `StartDecisionEndToEndTest` · `RunDecisionEndToEndTest` · `SdRegionDeleteGuardEndToEndTest` ·
+  `gui/{SdDecisionDocsApiTest, SdDecisionResultsApiTest, SdDecisionScopeApiTest, SdDecisionMakerApiTest, SdDirectivesApiTest, SdRunDecisionApiTest}`
+- **unit**：`tools/write/RaiseUnitPlanTest`（`PUT_INFO_TYPE` 期望值）
+- ★ **前端 JS（新的一类红，实测）**：`simos-app/src/test/js/modes.test.cjs:99`（**实测红**，钉旧命令名）；
+  `write-allowlist.test.cjs` / `decision-mode.test.cjs` / `pending-signal.test.cjs` 需复核
+
+★ **本批关闭的一条**：3b-1 台账 C 节的「§16.4 过渡性缺口」及其 3 处受影响面 —— **收尾期不再需要处理**（`IssueDirectiveHandler`
+恢复"一条命令写 directives+info"，companion 机制代码级清零）。
+★ **本批恢复的一条不变量**：3b-1 曾把 `Directive.decisionMakerId` 外键降级到命令期；两表回到同一棵树 ⇒ 整条回到构造期，
+并有负向用例 `aDirectivePointingAtAMissingDecisionMakerIsRejectedAtConstruction` 把守。
+
+### ★ 流程修正（再一条，自批次 3b-2 起）
+前端 JS 门禁（`package` 阶段 `exec` 的 `frontend-unit-tests`）**无 skip 守卫**，而它有 1 条用例钉旧命令名 ⇒
+**spotbugs 门禁的完整形态 = `-DskipTests -Dmaven.test.skip=true -Dexec.skip=true package spotbugs:check`**。
+（前端 412 条属收尾测试期；`-Dexec.skip=true` 与"测试留最后"口径一致。）

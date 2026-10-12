@@ -1,13 +1,14 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -23,7 +24,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code sd.StartDecision} 命令的处理器（T10，spec §四.5，D5 已裁）：**「开始决策」= 一条真命令**。
+ * {@code ga.StartDecision} 命令的处理器（T10，spec §四.5，D5 已裁；<b>★ 2026-10-12 批次 3b-2 自 {@code
+ * simos-sd/sd.spi} 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：**「开始决策」= 一条真命令**。
  *
  * <pre>{@code
  * {"decisionMakerId":"dm1","note":"可选说明"}
@@ -37,6 +39,10 @@ import java.util.Set;
  * PLANNED}），它就会**留在同键的历史里**——决策人随后那次真出令会把它**顶成 {@code SUPERSEDED}**，于是 AAR / 时间线上凭空多出一条
  * "决策人从没写过、却被标记为被打回前的第 1 版"的记录（**症状是无害的错账，不是报错**）。**故本命令不写 {@code Directive}**：它写的是"发起/授权"这一事实（INFO
  * 覆盖层），与决策人的出令**在数据上完全分离**。
+ *
+ * <p>★★ <b>为什么它跟决策人一起搬进 ga</b>：本命令写的是 INFO 覆盖层（本批起住 {@code GaState.info}），而一条命令的变更集由类型 **前缀**决定喂给哪个
+ * codec（{@code CommandBus.namespaceOf}）⇒ {@code info} 搬走后，本 handler <b>只能</b>回 {@code
+ * GaChangeSet}、类型串<b>只能</b>是 {@code ga.*}。地址族串一字未改。
  *
  * <p>★ **落点（INFO 覆盖层）**：地址 {@code sd:decision.<dmId>}（同 {@code ga.IssueDirective} 的 {@code
  * sd:directive.<id>} 形制），key 固定 {@value #START_INFO_KEY}，{@code value} 记本命令所在 tick（**标量串**—— {@link
@@ -55,14 +61,14 @@ public final class StartDecisionHandler implements CommandHandler {
 
   @Override
   public String type() {
-    return "sd.StartDecision";
+    return "ga.StartDecision";
   }
 
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
     String dmForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
@@ -97,11 +103,11 @@ public final class StartDecisionHandler implements CommandHandler {
       entries.add(entry);
       nextInfo.put(address, List.copyOf(entries));
 
-      EventLog.channel(SdLog.decision())
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_DECISION_STARTED",
-                  SdLogSource.SD_DECISION,
+                  GaLogSource.GA_DECISION,
                   "decisionMaker",
                   decisionMakerId.value(),
                   "tick",
@@ -112,7 +118,7 @@ public final class StartDecisionHandler implements CommandHandler {
                   entries.size(),
                   "infoAddresses",
                   nextInfo.size()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withInfo(nextInfo)));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, base.withInfo(nextInfo)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "dm", dmForLog);
     }
@@ -124,8 +130,8 @@ public final class StartDecisionHandler implements CommandHandler {
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(),
-        SdLogSource.SD_DECISION,
+        GaLog.decision(),
+        GaLogSource.GA_DECISION,
         "SD_START_DECISION_REJECTED",
         reason,
         idKeyValues);

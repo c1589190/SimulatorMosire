@@ -12,10 +12,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.ResetDecisionMakerConversation} 窄工具：**GM 专用**——把某个决策人的 LLM 会话**重置为新会话**（标
+ * {@code ga.ResetDecisionMakerConversation} 窄工具：**GM 专用**——把某个决策人的 LLM 会话**重置为新会话**（标
  * sensitive，走审批）。
  *
- * <p>★ **与 {@code sd.RunDecision} 同形**（窄工具、命令类型固定、载荷由模型写）：两者都只在 GM 面，都要走审批链。
+ * <p>★ **与 {@code ga.RunDecision} 同形**（窄工具、命令类型固定、载荷由模型写）：两者都只在 GM 面，都要走审批链。
  *
  * <p>★★ **它治的是现场真出现过的病**：改版前落盘的老会话在回放时会 400（历史里没有 {@code reasoning_content}，补不上）⇒
  * 处置只能是"换个新会话重开"。在那之前唯一的做法是**去动库/删文件**——那既绕过铁律 2，也把审计凭据销毁了。本工具把那件事变成一条**真命令**： 世代
@@ -31,7 +31,7 @@ import java.util.Set;
 public final class ResetDecisionMakerConversationTool extends AbstractNarrowWriteTool
     implements SimosTool {
 
-  public static final String NAME = "sd.ResetDecisionMakerConversation";
+  public static final String NAME = "ga.ResetDecisionMakerConversation";
 
   public ResetDecisionMakerConversationTool(
       ToolWritePort writes, GaToolIdentity identity, String mapId) {
@@ -55,7 +55,7 @@ public final class ResetDecisionMakerConversationTool extends AbstractNarrowWrit
 
   @Override
   public String description() {
-    return "GM 重置：固定 sd.ResetDecisionMakerConversation，载荷 {decisionMakerId}——"
+    return "GM 重置：固定 ga.ResetDecisionMakerConversation，载荷 {decisionMakerId}——"
         + "把该决策人的 LLM 会话换一段新的（世界事实里的会话世代 +1）。"
         + "它下一轮从**空上下文**重新开始；旧会话**一条字节都不删**（可审计）。"
         + "用途：旧会话回放坏掉（如缺少 reasoning_content）时重开一段。";

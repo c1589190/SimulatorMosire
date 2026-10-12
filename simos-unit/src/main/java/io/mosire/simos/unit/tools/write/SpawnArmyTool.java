@@ -43,7 +43,7 @@ import java.util.UUID;
  * social.SubmitHouseholdWorkOrder}（恒有；CREATE_HOUSEHOLD + ADD_MEMBERS 建人口家户并凭空加成年男丁）→ {@code
  * unit.CreateUnit}（恒有；{@code households=[hh-unit:<unitId>]}，不携带 {@code manpower}）→ [role 非空: {@code
  * unit.SetArmyFormation}] → {@code sd.CreateArmy} → {@code economy.RegisterHousehold}（恒有）→ {@code
- * actor.EnsureHouseholdAccount}（恒有）→ {@code sd.PutInfo}（恒有）——同批落一条 revision。
+ * actor.EnsureHouseholdAccount}（恒有）→ {@code ga.PutInfo}（恒有）——同批落一条 revision。
  *
  * <p>★★ <b>造人走 Social 权威（用户 2026-10-19 裁定）</b>：GM 想改什么就能改什么、可以直接建军，但人口加口唯一入口是 {@code
  * social.SubmitHouseholdWorkOrder} 的 {@code ADD_MEMBERS}——{@code member} = GM 授权下经 Social
@@ -164,7 +164,7 @@ public final class SpawnArmyTool implements SimosTool {
         + " → unit.CreateUnit（households=[hh-unit:<unitId>]，绝不携带 manpower）→ [role 非空: unit.SetArmyFormation]"
         + " → sd.CreateArmy → economy.RegisterHousehold（household=hh-unit:<unitId>，residence 按落点是否城市格判 urban/rural，"
         + "stratum=landless_laborer，participationPerMille=0）→ actor.EnsureHouseholdAccount（household=hh-unit:<unitId>）"
-        + " → sd.PutInfo(key="
+        + " → ga.PutInfo(key="
         + INFO_KEY
         + "，address=root 单位 canonical，value=JSON 字符串，含 householdId/population)。"
         + "★ 若 role 为空但 masterGov 给了：只写 sd 侧 masterGov，unit 侧未设 ArmyFormation.masterGov（preview 会明确说明）。"
@@ -203,7 +203,7 @@ public final class SpawnArmyTool implements SimosTool {
         "masterGov",
         ToolSchema.prop(
             "string", "认领的 GOV 单位 id（可选；给了必须存在且带 GovernmentFormation；同批写 sd.CreateArmy）"));
-    props.put("reason", ToolSchema.prop("string", "建军原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "建军原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
@@ -524,7 +524,7 @@ public final class SpawnArmyTool implements SimosTool {
   /**
    * 组批（固定七步，{@code role} 缺席时六步）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} →
    * [role 非空: {@code unit.SetArmyFormation}] → {@code sd.CreateArmy} → {@code
-   * economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} → {@code sd.PutInfo}（可复现）。
+   * economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} → {@code ga.PutInfo}（可复现）。
    *
    * <p>★ 全部共享同一 {@code batchId}（correlationId）与同一 branch/expectedRevision ⇒ {@code submitBatch} 落一条
    * revision；第 1 条工单的 {@code orderId} 用同一 {@code batchId} 作确定性幂等键（Tool 每次 apply 生成的 UUID）。
@@ -560,13 +560,13 @@ public final class SpawnArmyTool implements SimosTool {
     return List.copyOf(batch);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录） ─────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录） ─────────────────────────────────────────────────────
 
   /**
-   * {@code sd.PutInfo} 载荷：root 单位 canonical 地址 + {@code key="spawnArmy"} + {@code value}=JSON 字符串 +
+   * {@code ga.PutInfo} 载荷：root 单位 canonical 地址 + {@code key="spawnArmy"} + {@code value}=JSON 字符串 +
    * {@code note}=人可读摘要 + {@code tick}=当前世界日。
    *
-   * <p>★ {@code id} 不显式给：由 {@code sd.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一单位的后续行动自然追加序号。
+   * <p>★ {@code id} 不显式给：由 {@code ga.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一单位的后续行动自然追加序号。
    */
   private String infoPayload(SpawnArmyPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();

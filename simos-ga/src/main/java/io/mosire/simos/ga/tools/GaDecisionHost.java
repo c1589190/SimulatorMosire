@@ -7,7 +7,7 @@ import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;
 
 /**
- * ★★ <b>决策人运行口</b>（2026-10-12 B3 第 7 域）：GM 侧的触发工具（{@code sd.RunDecision} / {@code
+ * ★★ <b>决策人运行口</b>（2026-10-12 B3 第 7 域）：GM 侧的触发工具（{@code ga.RunDecision} / {@code
  * simos.sd.run-decision-makers} / 打回令时往会话里投递理由）与运行流之间的唯一接缝。
  *
  * <p>★ <b>为什么是端口而不是直接持 {@code DecisionAgentRunner}</b>：一轮的运行要 LLM 客户端、会话库、开场快照、权限链 —— 那些是 app
@@ -43,7 +43,7 @@ public interface GaDecisionHost {
       Object packetWriteLock);
 
   /**
-   * 某个世界版本上，该决策人此刻该用的会话 id（按**世界事实**现算——会话世代会被 {@code sd.ResetDecisionMakerConversation} 改掉）。
+   * 某个世界版本上，该决策人此刻该用的会话 id（按**世界事实**现算——会话世代会被 {@code ga.ResetDecisionMakerConversation} 改掉）。
    *
    * @throws IllegalArgumentException 该版本的世界里没有这个决策人
    */

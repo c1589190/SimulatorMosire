@@ -68,7 +68,7 @@ import java.util.Set;
  * TRANSFER_MEMBERS(from=来源家户, to=新家户, lotId, count=taken)}）→ {@code unit.CreateUnit}（{@code
  * households=[新家户]}、equipment=[]、speed=4、mobilityPerMille=800；<b>无 manpower</b>）→ （目的 GOV
  * 给了且不同格时）{@code unit.PlanRoute}（A* 逐格路径）→ {@code economy.RegisterHousehold}（新家户经济行）→ {@code
- * actor.EnsureHouseholdAccount}（新家户零余额账户，幂等）→ {@code sd.PutInfo}（地址 = 来源 GOV canonical， key={@code
+ * actor.EnsureHouseholdAccount}（新家户零余额账户，幂等）→ {@code ga.PutInfo}（地址 = 来源 GOV canonical， key={@code
  * selectExaminees}，value 含新单位/人数/家户/来源 shares/route）。
  *
  * <p>★★ <b>目的 GOV route 逻辑保留</b>：来源与目的都是 GOV、当刻都有有效位置；同格 ⇒ 不发 {@code unit.PlanRoute}，不同格 ⇒ A*
@@ -564,7 +564,7 @@ public final class GovSelectExamineesPlan {
       return List.copyOf(types);
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON 字符串；含来源/目的/角色/家户/来源 shares）。 */
+    /** {@code ga.PutInfo} 的 {@code value}（JSON 字符串；含来源/目的/角色/家户/来源 shares）。 */
     String infoValueJson(String reason) {
       requireNonBlank(reason, "reason");
       Map<String, Object> value = new LinkedHashMap<>();
@@ -584,7 +584,7 @@ public final class GovSelectExamineesPlan {
       return ToolResults.json(value);
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       requireNonBlank(reason, "reason");
       return "科举选人 "
@@ -612,7 +612,7 @@ public final class GovSelectExamineesPlan {
           + reason;
     }
 
-    /** 逐来源视图（工具结果与 {@code sd.PutInfo.value.sources} 共用；保序）。 */
+    /** 逐来源视图（工具结果与 {@code ga.PutInfo.value.sources} 共用；保序）。 */
     List<Map<String, Object>> sourcesView() {
       List<Map<String, Object>> rows = new ArrayList<>(sources.size());
       for (GovToolManpower.ManpowerShare share : sources) {

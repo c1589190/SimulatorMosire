@@ -38,7 +38,7 @@ import java.util.Optional;
  * <p>★★ <b>批顺序（固定七步，可复现；{@code role} 缺席时只有六步）</b>：{@code social.SubmitHouseholdWorkOrder}（建人口家户 +
  * 凭空加成年男丁）→ {@code unit.CreateUnit}（{@code households=[人口家户]}， 不携带 {@code manpower}）→（{@code role}
  * 非空才落）{@code unit.SetArmyFormation} → {@code sd.CreateArmy} → {@code economy.RegisterHousehold} →
- * {@code actor.EnsureHouseholdAccount} → {@code sd.PutInfo}。后几条都看得见前一条累积后的候选态，故 {@code
+ * {@code actor.EnsureHouseholdAccount} → {@code ga.PutInfo}。后几条都看得见前一条累积后的候选态，故 {@code
  * sd.CreateArmy} 的 {@code rootUnitId} 就是同批刚创建的 root 单位，{@code sd.CreateArmy} 之前的家户也已由 Social 权威建好。
  *
  * <p>★★ <b>造人走 Social 权威（用户 2026-10-19 裁定）</b>：GM 可以直接建军、可以凭空造人，但人口加口必须经 {@code
@@ -80,8 +80,8 @@ final class SpawnArmyPlan {
   /** 人口腿统一走 Social 家户工单（引用 social handler 常量，本类不另抄字面量）。 */
   static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE = SubmitHouseholdWorkOrderHandler.TYPE;
 
-  /** {@code sd.PutInfo} 的命令类型（恒有，行动记录）。 */
-  static final String PUT_INFO_TYPE = "sd.PutInfo";
+  /** {@code ga.PutInfo} 的命令类型（恒有，行动记录）。 */
+  static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   /** 新单位速度缺省值（P5 计划：{@code speed} 可选，缺省 3；域层要求 ≥ 1）。 */
   static final int DEFAULT_SPEED = 3;
@@ -487,7 +487,7 @@ final class SpawnArmyPlan {
       return ToolResults.json(payload);
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；字段序固定，人可读审计；含人口家户 id 与人口数）。 */
+    /** {@code ga.PutInfo} 的 {@code value}（JSON <b>字符串</b>；字段序固定，人可读审计；含人口家户 id 与人口数）。 */
     String infoValueJson(String reason, UnitToolViews views) {
       requireNonBlank(reason, "reason");
       Map<String, Object> value = new LinkedHashMap<>();
@@ -524,7 +524,7 @@ final class SpawnArmyPlan {
       return "role 为空：unit 侧不落 unit.SetArmyFormation，unit 侧未设 ArmyFormation.masterGov";
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       requireNonBlank(reason, "reason");
       return "按格直接建军 "

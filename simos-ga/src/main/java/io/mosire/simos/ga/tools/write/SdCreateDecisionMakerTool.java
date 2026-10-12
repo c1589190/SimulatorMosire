@@ -12,16 +12,16 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.CreateDecisionMaker} 窄工具（M3，spec §八.3）：**建决策人**的唯一窄写面。
+ * {@code ga.CreateDecisionMaker} 窄工具（M3，spec §八.3）：**建决策人**的唯一窄写面。
  *
  * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
  * <p>★ {@code allowedTools} 含通用写（{@code simos.command.submit}）即被拒（N9）；★ 创建期 {@code accessLimit}
- * 恒为**无额外限制**、本命令**不接受**该字段——传了会被**静默忽略**（无拒绝）。配权走 {@code sd.SetDecisionMakerAccess}。
+ * 恒为**无额外限制**、本命令**不接受**该字段——传了会被**静默忽略**（无拒绝）。配权走 {@code ga.SetDecisionMakerAccess}。
  */
 public final class SdCreateDecisionMakerTool extends AbstractNarrowWriteTool implements SimosTool {
 
-  public static final String NAME = "sd.CreateDecisionMaker";
+  public static final String NAME = "ga.CreateDecisionMaker";
 
   public SdCreateDecisionMakerTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
@@ -39,7 +39,7 @@ public final class SdCreateDecisionMakerTool extends AbstractNarrowWriteTool imp
 
   @Override
   public String description() {
-    return "建决策人：固定 sd.CreateDecisionMaker，载荷 {id, affiliation, allowedTools, cadence}（四者全必填；★ 创建期 accessLimit 恒为无额外限制、本命令不接受该字段，传了会被静默忽略；★ allowedTools 不得含通用写）";
+    return "建决策人：固定 ga.CreateDecisionMaker，载荷 {id, affiliation, allowedTools, cadence}（四者全必填；★ 创建期 accessLimit 恒为无额外限制、本命令不接受该字段，传了会被静默忽略；★ allowedTools 不得含通用写）";
   }
 
   @Override

@@ -20,11 +20,8 @@ import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.change.MapChangeSet;
-import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -55,15 +52,17 @@ import java.util.Set;
  *   <li>**map / unit / social 走逆变更**：{@code XChangeSet.between(当前, 基态)} —— 就是"把世界改回裁决之前"。 ★
  *       逆变更集是**白拿**的（同一个 {@code between} 换个参数序）；不需要命令明文（那东西根本没留痕， 见 {@code
  *       CommandBus#RESTORE_COMMAND_TYPE} 的类注）；
- *   <li>**sd 不做逆变更、只做显式改写**：那条记录翻成 {@link AdjudicationStatus#VOIDED}（**不删**——留痕： "第 1
- *       版被作废"这件事本身要看得到）；★★ <b>令与判决的退回走 ga 的逆变更</b>（2026-10-12 批次 3b′：两张表搬进 {@code simos-ga}，与
- *       map/unit/social 同一条 {@code between(当前, 基态)} 机理）——基态里就是它们原本的样子，比"构造一个 {@code ISSUED}"更忠实；
+ *   <li>**ga 承担两件事**：那条记录翻成 {@link AdjudicationStatus#VOIDED}（**不删**——留痕："第 1 版被作废"这件事本身要看得到）； ★★
+ *       令与判决的退回走同一个模块的逆变更（2026-10-12 批次 3b-1 搬 directives/verdicts、<b>3b-2 再搬 INFO 覆盖层</b> ⇒ 原先分给
+ *       sd 的那一半现在也归 ga），与 map/unit/social 同一条 {@code between(当前, 基态)} 机理——基态里就是它们原本的 样子，比"构造一个
+ *       {@code ISSUED}"更忠实；★★ <b>sd 命名空间因此从本变更集里消失</b>（原先那个分量除 INFO 外全是 {@code Unchanged}，见 {@link
+ *       #changeSet}）；
  *   <li>把两半合成**一个** {@link WorldChangeSet}，交给 {@code core.submitRestore} —— 一条 revision 落地。
  * </ol>
  *
  * <p>★★ **为什么"令退回 ISSUED"不走 {@code ga.SetDirectiveStatus}**：那条命令的守卫只放 {@code ISSUED →
- * EXECUTED/CANCELLED} （终态不得翻回），**它是对的、不许放开**——放开之后任何路径都能把已执行的令改回去。作废是在 restore 的**变更集**里直接改写 sd
- * 状态，而 {@code submitRestore} 只有 Core 的公开 API 一条入口（本工具是唯一调用方）。
+ * EXECUTED/CANCELLED} （终态不得翻回），**它是对的、不许放开**——放开之后任何路径都能把已执行的令改回去。作废是在 restore 的**变更集**里直接改写 ga
+ * 状态（令 / 判决 / INFO 覆盖层三张表），而 {@code submitRestore} 只有 Core 的公开 API 一条入口（本工具是唯一调用方）。
  *
  * <p>★ **只允许作废"仍是最新一条 revision"的裁决**（tip-only）：逆变更是"当前 → 基态"，中间若还夹着别的 revision，
  * 一次撤销会把它们**一起**抹掉。非最新 ⇒ **响亮拒绝**并提示先 {@code simos.fork}。
@@ -119,6 +118,8 @@ public final class VoidAdjudicationTool implements SimosTool {
   public ResourceManifest resources() {
     // 只声明 sd 只读策略面（fail-closed：未表态 sd 的调用者在**写**上被拒）——撤销本身跨命名空间，
     // 由 core.submitRestore 落盘，不按资源谓词逐条判。
+    // ★ 2026-10-12 批次 3b-2：本工具改写的 INFO 覆盖层搬进了 ga，但**这条声明一字未改**——它是"调用者必须表态的粗围栏"，
+    //   改它等于改权限面（未表态 sd 的调用者会被拒/放行的方向反过来）；本工具只在 GM 桶（GM 面无限制）⇒ 零可观测差异。
     return ResourceManifest.of(ToolSupport.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
   }
 
@@ -159,9 +160,8 @@ public final class VoidAdjudicationTool implements SimosTool {
             "head 已变：你给的是 " + target.revision().value() + "，现在是 " + head.revision().value());
       }
       SimulationState current = core.replay(head);
-      SdState currentSd = sdOf(current);
       String address = Address.parse(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + tick).canonical();
-      Optional<SdInfoEntry> effective = effectiveEntry(currentSd, address, tick);
+      Optional<SdInfoEntry> effective = effectiveEntry(gaOf(current), address, tick);
       if (effective.isEmpty()) {
         return ToolResult.error(
             "TOOL_ERROR", "该 tick 没有生效裁决可作废: " + address + "（用 sd.DecisionResults 看有哪些）");
@@ -184,7 +184,7 @@ public final class VoidAdjudicationTool implements SimosTool {
 
       StateRef source = new StateRef(head.branch(), new RevisionId(entry.at().value()));
       SimulationState base = core.replay(source);
-      WorldChangeSet changeSet = changeSet(current, currentSd, base, currentSd, entry, address);
+      WorldChangeSet changeSet = changeSet(current, base, entry, address);
 
       var outcome = core.submitRestore(head.branch(), head.revision(), initiator, changeSet);
       if (outcome instanceof io.mosire.simos.core.command.CommandResult.Committed committed) {
@@ -209,17 +209,15 @@ public final class VoidAdjudicationTool implements SimosTool {
   }
 
   /**
-   * 合成那**一个**变更集：map/unit/social 逆变更 + sd 显式改写（详见类注）。
+   * 合成那**一个**变更集：map/unit/social 逆变更 + ga 的「逆变更 + 显式改写」（详见类注）。
    *
-   * <p>★ 四个命名空间**恒在**（本世界四个模块都在）——不做"只放变了的"，因为零变更的 delta（{@code Unchanged}） 施加下去是恒等，省它只会多一处分支。
+   * <p>★★ <b>2026-10-12 批次 3b-2：{@code sd} 命名空间从本变更集里<b>消失</b></b>——撤销原先改的那张表（INFO 覆盖层）已随本批 搬进
+   * {@code GaState}，而 sd 的其余组件在"只能作废最新一条 revision"这条前置下本就没有变化（原先那个 {@code
+   * SdChangeSet.between(currentSd, baseSd.withInfo(info))} 的其余分量全是 {@code Unchanged}）。 {@code
+   * Replay/CommandBus} 的既定语义是"变更集里没提到的模块保持原样、坐标也不推进" ⇒ 少一个恒等分量不改变任何可观测结果。
    */
   private static WorldChangeSet changeSet(
-      SimulationState current,
-      SdState currentSd,
-      SimulationState base,
-      SdState sdUnused,
-      SdInfoEntry entry,
-      String address) {
+      SimulationState current, SimulationState base, SdInfoEntry entry, String address) {
     Map<String, ChangeSet> modules = new LinkedHashMap<>();
     modules.put(
         "map",
@@ -237,17 +235,15 @@ public final class VoidAdjudicationTool implements SimosTool {
             ((SocialSnapshot) current.module("social").orElseThrow()).data(),
             ((SocialSnapshot) base.module("social").orElseThrow()).data()));
 
-    SdState baseSd = sdOf(base);
-    // sd 侧：基态 + 那条记录（翻成 VOIDED）。**本批只改 INFO 覆盖层**——令（directives）已随 2026-10-12 批次 3b′
-    // 搬进 ga，故"令退回 ISSUED"由下面的 ga 逆变更承担（同一个 between 换个参数序，机理与 map/unit/social 逐字相同）。
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>(baseSd.info());
+    // ga 侧一个模块承担两件事（2026-10-12 批次 3b-2 起 INFO 覆盖层也住 ga）：
+    //   ① **逆变更**：基态的 directives 就是"令退回 ISSUED"的忠实来源（它们当时本就是 ISSUED），判决表同样回滚
+    //      （判决由裁决产生，作废就该连它一起退）。判据与 map/unit/social 逐字相同；
+    //   ② **显式改写**：那条裁决记录翻成 VOIDED（**不删**——留痕）。
+    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>(gaOf(base).info());
     List<SdInfoEntry> atAddress = new ArrayList<>(info.getOrDefault(address, List.of()));
     atAddress.add(voided(entry));
     info.put(address, List.copyOf(atAddress));
-    modules.put("sd", SdChangeSet.between(currentSd, baseSd.withInfo(info)));
-    // ga 侧：**逆变更**——基态的 directives 就是"令退回 ISSUED"的忠实来源（它们当时本就是 ISSUED），
-    //   判决表同样回滚（判决由裁决产生，作废就该连它一起退）。判据与 map/unit/social 逐字相同。
-    modules.put("ga", GaChangeSet.between(gaOf(current), gaOf(base)));
+    modules.put("ga", GaChangeSet.between(gaOf(current), gaOf(base).withInfo(info)));
     return new WorldChangeSet(modules);
   }
 
@@ -267,8 +263,8 @@ public final class VoidAdjudicationTool implements SimosTool {
   }
 
   /** 该地址下**生效**的那一条（至多一条；多条时取最后一条并把异常留给不变量去暴露）。 */
-  private static Optional<SdInfoEntry> effectiveEntry(SdState sd, String address, long tick) {
-    List<SdInfoEntry> entries = sd.info().getOrDefault(address, List.of());
+  private static Optional<SdInfoEntry> effectiveEntry(GaState ga, String address, long tick) {
+    List<SdInfoEntry> entries = ga.info().getOrDefault(address, List.of());
     SdInfoEntry found = null;
     for (SdInfoEntry entry : entries) {
       if (entry.tick() == tick && SdInfoEntry.isEffective(entry)) {
@@ -327,10 +323,6 @@ public final class VoidAdjudicationTool implements SimosTool {
   /** ga 切片（令 / 判决两张表，2026-10-12 批次 3b′ 起住这里）：缺切片 / 类型不对 = 装配故障，当场炸。 */
   private static GaState gaOf(SimulationState state) {
     return ToolSupport.gaState(state);
-  }
-
-  private static SdState sdOf(SimulationState state) {
-    return ((SdSnapshot) state.module("sd").orElseThrow()).state();
   }
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */

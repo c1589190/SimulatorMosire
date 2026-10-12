@@ -45,7 +45,7 @@ import java.util.Set;
  * <p>★ <b>确定性</b>：不碰墙钟（tick 是 base state 的函数）、不用随机量；participants 的输入序原样保留。
  *
  * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/write} 随工具迁入 {@code simos-army}；视图/载荷形状走注入的
- * {@link ArmyToolViews}（{@code {q,r}} 坐标形状与 {@code sd.PutInfo} 一样只有一份实现），切片取用走 {@link
+ * {@link ArmyToolViews}（{@code {q,r}} 坐标形状与 {@code ga.PutInfo} 一样只有一份实现），切片取用走 {@link
  * ArmyToolReads}。
  */
 final class StartCombatPlan {

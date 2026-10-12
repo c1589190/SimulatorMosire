@@ -55,7 +55,7 @@ import java.util.Set;
  *
  * <p>★★ <b>批顺序（P2 文档 §3，固定可复现）</b>：对每个涉事 unit（顺序 = 结局 {@code losses} 表序）——
  * <b>先</b>人员工单（如有）、<b>再</b>装备命令（如有）；全部单位之后是 {@code army.ResolveCombatStage}；若记录内所有阶段都已判定， 再逐单位
- * {@code unit.SetStateDescription} 清链接；本工具无 {@code sd.PutInfo} 腿。
+ * {@code unit.SetStateDescription} 清链接；本工具无 {@code ga.PutInfo} 腿。
  *
  * <p>★★ <b>状态链接的"结束"口径（R3：不自动清，由本工具显式处理）</b>：本次判定之后若记录里**所有阶段都已判定**，则清除所有"状态键 {@code combat} 且地址恰为
  * {@code army:combat.<id>}"的单位链接（{@code unit.SetStateDescription} 省略 address = 删除）。只清**恰好链到本记录**的那些

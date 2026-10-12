@@ -46,7 +46,7 @@ public final class AppGaToolIdentity implements GaToolIdentity {
   @Override
   public Optional<String> scopeViolation(
       DecisionMakerId actor, SimulationState state, List<CommandTarget> targets, String mapId) {
-    DecisionMaker maker = ToolSupport.sdState(state).decisionMakers().get(actor);
+    DecisionMaker maker = ToolSupport.gaState(state).decisionMakers().get(actor);
     if (maker == null) {
       return Optional.of("决策人不存在: " + actor.value());
     }

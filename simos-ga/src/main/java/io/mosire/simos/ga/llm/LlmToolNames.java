@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  *            Expected a string that matches the pattern '^[a-zA-Z0-9_-]+$'.
  * </pre>
  *
- * <p>⇒ {@code sd.RunDecision} 返回 {@code {"result":"failed","llmCalls":0,...}}——**一次都没发出去**。修法是本类：
+ * <p>⇒ {@code ga.RunDecision} 返回 {@code {"result":"failed","llmCalls":0,...}}——**一次都没发出去**。修法是本类：
  * 送出去时把非法字符转义成 {@code _}，收回来时按同一张表**映射回真实名**再交给权限链（权限链一字不改，它仍然只认真实名）。
  *
  * <p>★ **为什么不改工具名本身**：工具名是**平台身份**——它进 catalog、进 {@code whitelist}、进 {@code ToolInvocation} 的账、进

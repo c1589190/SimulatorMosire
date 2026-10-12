@@ -52,7 +52,7 @@ import java.util.UUID;
  * unit.CreateUnit}（households=[新家户]、equipment=[]、speed=6、mobilityPerMille=900；<b>无
  * manpower</b>）→（armed=true） {@code unit.SetArmyFormation}（masterGov=来源 GOV、role="armed-team"）→
  * {@code economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} → {@code
- * unit.DismissStaff}（只减 roster）→ {@code sd.PutInfo} （key={@value #INFO_KEY}，含 armed 标记）。
+ * unit.DismissStaff}（只减 roster）→ {@code ga.PutInfo} （key={@value #INFO_KEY}，含 armed 标记）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ 资源声明：写 {@code social}/{@code unit}/{@code economy}/{@code actor}/{@code sd}
@@ -117,7 +117,7 @@ public final class GovDispatchTeamTool implements SimosTool {
         + "（不部分、不截断）。apply 批（固定顺序）：social.SubmitHouseholdWorkOrder（orderId="
         + "gov-dispatch-team:<batchId>:<newUnitId>，target=hh-unit:<newUnitId>，plan=CREATE_HOUSEHOLD + 逐来源"
         + " TRANSFER_MEMBERS）→ unit.CreateUnit →（armed）unit.SetArmyFormation → economy.RegisterHousehold →"
-        + " actor.EnsureHouseholdAccount → [旧档 unit.DismissStaff] → sd.PutInfo（key="
+        + " actor.EnsureHouseholdAccount → [旧档 unit.DismissStaff] → ga.PutInfo（key="
         + INFO_KEY
         + "）。守恒：Σ来源 share.taken == count == 新人口家户成员增量；旧档另加 roster−count == 出人后 roster。"
         + "返回 {preview, submitted, mode, tick, unitId, newUnitId, householdId, sourceHouseholdId, population, "
@@ -140,7 +140,7 @@ public final class GovDispatchTeamTool implements SimosTool {
         "newUnitId",
         ToolSchema.prop(
             "string", "新调查组单位 id（可选；缺省用 team-<来源GOV>-<tick>-<count> 确定性生成；其人口家户为 hh-unit:<id>）"));
-    props.put("reason", ToolSchema.prop("string", "派出原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "派出原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批命令"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
@@ -263,7 +263,7 @@ public final class GovDispatchTeamTool implements SimosTool {
   /**
    * 组批（P1.5 固定顺序）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} → （armed）{@code
    * unit.SetArmyFormation} → {@code economy.RegisterHousehold} → {@code
-   * actor.EnsureHouseholdAccount} → {@code unit.DismissStaff} → {@code sd.PutInfo}。
+   * actor.EnsureHouseholdAccount} → {@code unit.DismissStaff} → {@code ga.PutInfo}。
    */
   private List<ToolWritePort.Request> buildBatch(
       String batchId, GovDispatchTeamPlan.Plan plan, String reason) {
@@ -296,7 +296,7 @@ public final class GovDispatchTeamTool implements SimosTool {
     return java.util.Collections.unmodifiableList(batch);
   }
 
-  /** {@code sd.PutInfo} 载荷：来源 GOV canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
+  /** {@code ga.PutInfo} 载荷：来源 GOV canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
   private static String infoPayload(GovDispatchTeamPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", GovCreateOfficePlan.unitAddress(plan.unitId()));

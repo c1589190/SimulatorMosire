@@ -56,11 +56,11 @@ import java.util.UUID;
  *   <li>{@code unit.SetGovFormation}（恒有）：{@code level/superiorGov?/staff/policy}；
  *   <li>{@code unit.SetJurisdiction}（仅 {@code regions} 非空才落）：{@code {unitId, regions:[…]}}，不带 levy
  *       caps；
- *   <li>{@code sd.CreateDecisionMaker}（恒有）：{@code {id, affiliation:{kind:"gov",id:unitId},
+ *   <li>{@code ga.CreateDecisionMaker}（恒有）：{@code {id, affiliation:{kind:"gov",id:unitId},
  *       allowedTools, cadence}}；
- *   <li>{@code sd.SetDecisionMakerProvider}（仅 providerId 给了才落）；
- *   <li>{@code sd.SetDecisionMakerAccess}（仅 accessLimit 给了非空对象才落；创建命令不接受 accessLimit）；
- *   <li>{@code sd.PutInfo}（恒有）：地址 = 单位 canonical，key = {@value #INFO_KEY}，value = JSON <b>字符串</b>，
+ *   <li>{@code ga.SetDecisionMakerProvider}（仅 providerId 给了才落）；
+ *   <li>{@code ga.SetDecisionMakerAccess}（仅 accessLimit 给了非空对象才落；创建命令不接受 accessLimit）；
+ *   <li>{@code ga.PutInfo}（恒有）：地址 = 单位 canonical，key = {@value #INFO_KEY}，value = JSON <b>字符串</b>，
  *       note = 人可读摘要，tick = 当前世界日。
  * </ol>
  *
@@ -127,9 +127,9 @@ public final class GovCreateOfficeTool implements SimosTool {
         + "superiorGov?(可选; 非空必须存在且带 GovernmentFormation), staff?(可选 {SCRIBE|YAMEN|POST:整数}, 缺省空表), "
         + "policy?(可选 {grainPerStaffPerTick?, clothPerStaffPerCycle?, moneyPerStaffPerTick?, retirementPerStaff?, "
         + "staffCap?{角色:整数}}, 缺省 OfficePolicy.defaults()、可部分覆盖), decisionMakerId(必填, 不得已存在), "
-        + "providerId?(可选; 给了同批 sd.SetDecisionMakerProvider), cadence?(可选, 缺省 1), "
+        + "providerId?(可选; 给了同批 ga.SetDecisionMakerProvider), cadence?(可选, 缺省 1), "
         + "allowedTools?(可选字符串数组, 缺省空集), accessLimit?(可选 {命名空间:[前缀…]}; 给了非空对象才同批 "
-        + "sd.SetDecisionMakerAccess), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
+        + "ga.SetDecisionMakerAccess), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
         + "纯推导前置：unitId/decisionMakerId 必须不存在；level 词表；regions 每个必须存在于当前地图（具名拒，不静默丢）；"
@@ -139,7 +139,7 @@ public final class GovCreateOfficeTool implements SimosTool {
         + "批顺序：unit.CreateUnit → social.CreateHousehold（政府家户 hh-gov-<unitId>，位置 UNIT(unitId)）→ "
         + "actor.EnsureHouseholdAccount（政府家户零余额账户）→ unit.SetGovFormation（域层把该政府家户编入 Unit.households）→ "
         + "economy.RegisterGovernment（gov-unit-<unitId>，要求 economy 已激活）→ [regions 非空: unit.SetJurisdiction] → "
-        + "sd.CreateDecisionMaker → [provider] → [access] → sd.PutInfo(key="
+        + "ga.CreateDecisionMaker → [provider] → [access] → ga.PutInfo(key="
         + INFO_KEY
         + "，value 回显 regions)。"
         + "返回 {preview, submitted, tick, unitId, name, position, level, regions, superiorGov, staff, policy, "
@@ -172,13 +172,13 @@ public final class GovCreateOfficeTool implements SimosTool {
     props.put("decisionMakerId", ToolSchema.prop("string", "同批绑定的决策人 id（不得已存在）"));
     props.put(
         "providerId",
-        ToolSchema.prop("string", "LLM provider 引用（可选；给了同批 sd.SetDecisionMakerProvider）"));
+        ToolSchema.prop("string", "LLM provider 引用（可选；给了同批 ga.SetDecisionMakerProvider）"));
     props.put("cadence", ToolSchema.prop("integer", "决策周期（天，≥ 1；缺省 1）"));
     props.put("allowedTools", ToolSchema.prop("array", "决策人窄工具白名单（可选字符串数组，缺省空集）"));
     props.put(
         "accessLimit",
-        ToolSchema.prop("object", "额外资源限制 {命名空间:[前缀…]}（可选；给了非空对象才同批 sd.SetDecisionMakerAccess）"));
-    props.put("reason", ToolSchema.prop("string", "建置原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+        ToolSchema.prop("object", "额外资源限制 {命名空间:[前缀…]}（可选；给了非空对象才同批 ga.SetDecisionMakerAccess）"));
+    props.put("reason", ToolSchema.prop("string", "建置原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
@@ -550,9 +550,9 @@ public final class GovCreateOfficeTool implements SimosTool {
     return java.util.Collections.unmodifiableList(batch);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录） ─────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录） ─────────────────────────────────────────────────────
 
-  /** {@code sd.PutInfo} 载荷：单位 canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
+  /** {@code ga.PutInfo} 载荷：单位 canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
   private static String infoPayload(GovCreateOfficePlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", GovCreateOfficePlan.unitAddress(plan.unitId()));

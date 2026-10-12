@@ -33,7 +33,7 @@ import java.util.Set;
  * 投影取 {@code ApiViews.decisionScope}——与 GUI 同一条链（本类不自己算范围，也不另拼 scope 的 payload）。
  *
  * <p>★ **未并入的相邻端点**：{@code GET /api/sd/decision-makers/{id}/run-status} **有意不并**——它读的是进程内的 {@code
- * DecisionRunRegistry}（"这一轮跑到哪儿了"，GUI 异步轮询用，进程重启即失），**不是世界状态**；且 MCP 的 {@code sd.RunDecision}
+ * DecisionRunRegistry}（"这一轮跑到哪儿了"，GUI 异步轮询用，进程重启即失），**不是世界状态**；且 MCP 的 {@code ga.RunDecision}
  * 是同步的（调用方等到整轮结束直接拿轨迹），agent 没有轮询需求。把运行时观测面塞进这条世界读工具会 把"不可回放的观测"伪装成"决策人的属性"。详见审计报告。
  *
  * <p>★ **形状与 GUI 同源**：{@code ApiViews.decisionMaker(...)} + {@code scope}。 ★ **只在 GM 桶**（{@link

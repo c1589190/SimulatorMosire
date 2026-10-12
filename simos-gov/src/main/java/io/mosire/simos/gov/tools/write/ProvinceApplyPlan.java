@@ -78,10 +78,10 @@ import java.util.Set;
  *   <li>{@code unit.SetGovFormation} × (N+1)：中央 {@code {level:CENTRAL, staff, policy}}（不给
  *       superiorGov）；省 {@code {level:PROVINCE, superiorGov:中央, staff, policy}}；
  *   <li>{@code unit.SetJurisdiction}：中央在首都圈非空时授 {@code __CAP}、否则不落；每省授本省 Region；
- *   <li>{@code sd.CreateDecisionMaker} × (N+1)：id={@code <govUnitId>-dm}、affiliation={@code
+ *   <li>{@code ga.CreateDecisionMaker} × (N+1)：id={@code <govUnitId>-dm}、affiliation={@code
  *       gov:<govUnitId>}；
- *   <li>{@code sd.SetDecisionMakerProvider} × (N+1)（仅 {@code providerId} 给了才落）；
- *   <li>{@code sd.PutInfo}：address=目标 Region canonical，key={@value #INFO_KEY}，value=JSON
+ *   <li>{@code ga.SetDecisionMakerProvider} × (N+1)（仅 {@code providerId} 给了才落）；
+ *   <li>{@code ga.PutInfo}：address=目标 Region canonical，key={@value #INFO_KEY}，value=JSON
  *       字符串，tick=base 世界当前日。
  * </ol>
  *
@@ -114,14 +114,14 @@ final class ProvinceApplyPlan {
   /** {@code unit.SetJurisdiction} 的命令类型（中央无首都圈时缺席）。 */
   static final String SET_JURISDICTION_TYPE = GovCreateOfficePlan.SET_JURISDICTION_TYPE;
 
-  /** {@code sd.CreateDecisionMaker} 的命令类型。 */
+  /** {@code ga.CreateDecisionMaker} 的命令类型。 */
   static final String CREATE_DECISION_MAKER_TYPE = GovCreateOfficePlan.CREATE_DECISION_MAKER_TYPE;
 
-  /** {@code sd.SetDecisionMakerProvider} 的命令类型（仅 providerId 给了才落）。 */
+  /** {@code ga.SetDecisionMakerProvider} 的命令类型（仅 providerId 给了才落）。 */
   static final String SET_DECISION_MAKER_PROVIDER_TYPE =
       GovCreateOfficePlan.SET_DECISION_MAKER_PROVIDER_TYPE;
 
-  /** {@code sd.PutInfo} 的命令类型（恒有，行动记录）。 */
+  /** {@code ga.PutInfo} 的命令类型（恒有，行动记录）。 */
   static final String PUT_INFO_TYPE = GovCreateOfficePlan.PUT_INFO_TYPE;
 
   /** 新 GOV 单位的固定速度（与 createOffice 既有口径同源）。 */
@@ -184,7 +184,7 @@ final class ProvinceApplyPlan {
    * @param policy 每个 GOV 的编制政策（同一套值给中央与省）
    * @param allowedTools 每个决策人的窄工具白名单（保序；空 = P6a 口径"全局白名单"）
    * @param cadence 决策周期（天；≥1）
-   * @param providerId 可选 LLM provider（给了才逐 DM 落 sd.SetDecisionMakerProvider）
+   * @param providerId 可选 LLM provider（给了才逐 DM 落 ga.SetDecisionMakerProvider）
    * @param overrideOverlaps 相交 Region 的显式 override 开关
    */
   record Params(
@@ -396,7 +396,7 @@ final class ProvinceApplyPlan {
   /**
    * 一份可执行的一键落盘计划（全部字段是 base state 与参数的纯函数；集合都在构造期冻结）。
    *
-   * @param mapId 世界 map 称谓（进 sd.PutInfo 地址）
+   * @param mapId 世界 map 称谓（进 ga.PutInfo 地址）
    * @param regionId 目标 Region id
    * @param regionName 目标 Region 名
    * @param tick base state 的世界当前日
@@ -551,7 +551,7 @@ final class ProvinceApplyPlan {
     }
 
     /**
-     * {@code sd.PutInfo.value}：JSON
+     * {@code ga.PutInfo.value}：JSON
      * <b>字符串</b>（regionId/省数/regionIds/unitIds/dmIds/overlaps/reason）。
      */
     String infoValueJson(String reason) {
@@ -578,7 +578,7 @@ final class ProvinceApplyPlan {
       return ToolResults.json(value);
     }
 
-    /** 人可读行动摘要（工具结果与 sd.PutInfo.note 共用）。 */
+    /** 人可读行动摘要（工具结果与 ga.PutInfo.note 共用）。 */
     String infoNote(String reason) {
       requireNonBlank(reason, "reason");
       return "省份一键落盘 region="
@@ -710,7 +710,7 @@ final class ProvinceApplyPlan {
     }
 
     /**
-     * {@code sd.CreateDecisionMaker} 载荷：{@code {id, affiliation:{kind:gov,id:unitId}, allowedTools,
+     * {@code ga.CreateDecisionMaker} 载荷：{@code {id, affiliation:{kind:gov,id:unitId}, allowedTools,
      * cadence}}。
      */
     String createDecisionMakerPayload(GovEntry gov) {
@@ -725,11 +725,11 @@ final class ProvinceApplyPlan {
       return ToolResults.json(payload);
     }
 
-    /** {@code sd.SetDecisionMakerProvider} 载荷（仅 providerId 给了才调用）。 */
+    /** {@code ga.SetDecisionMakerProvider} 载荷（仅 providerId 给了才调用）。 */
     String setDecisionMakerProviderPayload(GovEntry gov) {
       Optional<String> providerId = params.providerId();
       if (providerId.isEmpty()) {
-        throw new IllegalStateException("批不自洽：无 providerId 却要组装 sd.SetDecisionMakerProvider 载荷");
+        throw new IllegalStateException("批不自洽：无 providerId 却要组装 ga.SetDecisionMakerProvider 载荷");
       }
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("decisionMakerId", gov.decisionMakerId());

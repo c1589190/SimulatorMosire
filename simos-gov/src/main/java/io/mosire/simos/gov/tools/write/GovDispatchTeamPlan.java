@@ -54,7 +54,7 @@ import java.util.Optional;
  * TRANSFER_MEMBERS(from=hh-gov:<unitId>, to=新家户, lotId, count=taken)}）→ {@code
  * unit.CreateUnit}（households=[新家户]、无 manpower）→（armed）{@code unit.SetArmyFormation} → {@code
  * economy.RegisterHousehold}（新家户经济行）→ {@code actor.EnsureHouseholdAccount}（新家户零余额账户，幂等）→ {@code
- * unit.DismissStaff}（{@code {unitId, role, count}}，出人不付待遇）→ {@code sd.PutInfo}（地址 = 来源 GOV
+ * unit.DismissStaff}（{@code {unitId, role, count}}，出人不付待遇）→ {@code ga.PutInfo}（地址 = 来源 GOV
  * canonical， key={@code dispatchTeam}，value 含 armed 标记/新家户/来源 shares）。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：来源 GOV 存在且带 {@link
@@ -507,7 +507,7 @@ final class GovDispatchTeamPlan {
       return List.copyOf(types);
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON 字符串；含 mode/role/count/armed/新家户/来源 shares）。 */
+    /** {@code ga.PutInfo} 的 {@code value}（JSON 字符串；含 mode/role/count/armed/新家户/来源 shares）。 */
     String infoValueJson(String reason) {
       requireNonBlank(reason, "reason");
       Map<String, Object> value = new LinkedHashMap<>();
@@ -533,7 +533,7 @@ final class GovDispatchTeamPlan {
       return ToolResults.json(value);
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       requireNonBlank(reason, "reason");
       return "派出"
@@ -565,7 +565,7 @@ final class GovDispatchTeamPlan {
           + reason;
     }
 
-    /** 逐来源视图（工具结果与 {@code sd.PutInfo.value.sources} 共用；{@code UNIT} 来源的 hex 为 null）。 */
+    /** 逐来源视图（工具结果与 {@code ga.PutInfo.value.sources} 共用；{@code UNIT} 来源的 hex 为 null）。 */
     List<Map<String, Object>> sourcesView() {
       List<Map<String, Object>> rows = new ArrayList<>(sources.size());
       for (GovToolManpower.ManpowerShare share : sources) {

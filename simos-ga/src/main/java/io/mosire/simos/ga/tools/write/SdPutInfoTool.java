@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.PutInfo} 窄工具（M3，spec §六/§八.3）：**写 sd 侧 INFO** 的唯一窄写面。
+ * {@code ga.PutInfo} 窄工具（M3，spec §六/§八.3）：**写 sd 侧 INFO** 的唯一窄写面。
  *
  * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
@@ -21,7 +21,7 @@ import java.util.Set;
  */
 public final class SdPutInfoTool extends AbstractNarrowWriteTool implements SimosTool {
 
-  public static final String NAME = "sd.PutInfo";
+  public static final String NAME = "ga.PutInfo";
 
   public SdPutInfoTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
@@ -39,7 +39,7 @@ public final class SdPutInfoTool extends AbstractNarrowWriteTool implements Simo
 
   @Override
   public String description() {
-    return "写 Info：固定 sd.PutInfo，载荷 {address, key, value, note?, id?, tags[决策人 id…]?,"
+    return "写 Info：固定 ga.PutInfo，载荷 {address, key, value, note?, id?, tags[决策人 id…]?,"
         + " affiliations[{\"kind\":\"nation\"|\"army\",\"id\":…}…]?, tick?}"
         + "（address/key/value 必填；★ value 是裸值，只保证标量往返，结构化值读回不保证逐字段相等"
         + "（要存结构化内容请自行序列化成 JSON 字符串）；"

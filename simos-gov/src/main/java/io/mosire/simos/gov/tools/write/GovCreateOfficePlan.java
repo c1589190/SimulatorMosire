@@ -46,20 +46,20 @@ import java.util.Set;
  * <p>★★ <b>决策人三件（载荷先读 {@code CreateDecisionMakerHandler}/{@code SdPayloads} 定准）</b>：
  *
  * <ul>
- *   <li>{@code sd.CreateDecisionMaker} 的载荷只认 {@code {id, affiliation, allowedTools,
+ *   <li>{@code ga.CreateDecisionMaker} 的载荷只认 {@code {id, affiliation, allowedTools,
  *       cadence}}；{@code affiliation} = {@code {"kind":"gov","id":unitId}}。创建期它<b>不接受</b> {@code
- *       accessLimit}（传了会被静默忽略） ⇒ {@code accessLimit} 若给，走同批 {@code sd.SetDecisionMakerAccess}；
- *   <li>{@code providerId} 若给 ⇒ 同批 {@code sd.SetDecisionMakerProvider}（{@code {decisionMakerId,
+ *       accessLimit}（传了会被静默忽略） ⇒ {@code accessLimit} 若给，走同批 {@code ga.SetDecisionMakerAccess}；
+ *   <li>{@code providerId} 若给 ⇒ 同批 {@code ga.SetDecisionMakerProvider}（{@code {decisionMakerId,
  *       providerId}}）；
  *   <li>缺省：{@code cadence} 缺省 = {@code 1}（域层的合法下界 = 1）；{@code allowedTools} 缺省 = 空集（不替调用方发明能力面）；
  *       {@code accessLimit} 缺省 = 不写（创建期本就是 {@code AccessLimit.empty()} = 不额外收紧）；显式给空对象 {@code {}}
- *       与缺省等价，故不产生 {@code sd.SetDecisionMakerAccess} 命令。
+ *       与缺省等价，故不产生 {@code ga.SetDecisionMakerAccess} 命令。
  * </ul>
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code unit.CreateUnit} → {@code unit.SetGovFormation} →（{@code regions}
- * 非空才落）{@code unit.SetJurisdiction} → {@code sd.CreateDecisionMaker} →（{@code providerId}
- * 给了才落）{@code sd.SetDecisionMakerProvider} →（{@code accessLimit} 给了非空对象才落）{@code
- * sd.SetDecisionMakerAccess} → {@code sd.PutInfo}（key={@code createOffice}， address=单位
+ * 非空才落）{@code unit.SetJurisdiction} → {@code ga.CreateDecisionMaker} →（{@code providerId}
+ * 给了才落）{@code ga.SetDecisionMakerProvider} →（{@code accessLimit} 给了非空对象才落）{@code
+ * ga.SetDecisionMakerAccess} → {@code ga.PutInfo}（key={@code createOffice}， address=单位
  * canonical，value=JSON <b>字符串</b>，note=人可读摘要）。 四条/五条/七条共享同一 batchId 与同一 branch/expectedRevision ⇒
  * 一条 revision。
  *
@@ -93,17 +93,17 @@ public final class GovCreateOfficePlan {
   /** {@code unit.SetJurisdiction} 的命令类型（仅 regions 非空才落）。 */
   public static final String SET_JURISDICTION_TYPE = "unit.SetJurisdiction";
 
-  /** {@code sd.CreateDecisionMaker} 的命令类型。 */
-  static final String CREATE_DECISION_MAKER_TYPE = "sd.CreateDecisionMaker";
+  /** {@code ga.CreateDecisionMaker} 的命令类型。 */
+  static final String CREATE_DECISION_MAKER_TYPE = "ga.CreateDecisionMaker";
 
-  /** {@code sd.SetDecisionMakerProvider} 的命令类型（仅 providerId 给了才落）。 */
-  static final String SET_DECISION_MAKER_PROVIDER_TYPE = "sd.SetDecisionMakerProvider";
+  /** {@code ga.SetDecisionMakerProvider} 的命令类型（仅 providerId 给了才落）。 */
+  static final String SET_DECISION_MAKER_PROVIDER_TYPE = "ga.SetDecisionMakerProvider";
 
-  /** {@code sd.SetDecisionMakerAccess} 的命令类型（仅 accessLimit 给了非空对象才落）。 */
-  static final String SET_DECISION_MAKER_ACCESS_TYPE = "sd.SetDecisionMakerAccess";
+  /** {@code ga.SetDecisionMakerAccess} 的命令类型（仅 accessLimit 给了非空对象才落）。 */
+  static final String SET_DECISION_MAKER_ACCESS_TYPE = "ga.SetDecisionMakerAccess";
 
-  /** {@code sd.PutInfo} 的命令类型（恒有，行动记录）。 */
-  static final String PUT_INFO_TYPE = "sd.PutInfo";
+  /** {@code ga.PutInfo} 的命令类型（恒有，行动记录）。 */
+  static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   /** 新 GOV 单位的固定速度（控制方口径：行政班子不是作战单位；speed=1 是域层下界）。 */
   static final int NEW_UNIT_SPEED = 1;
@@ -129,10 +129,10 @@ public final class GovCreateOfficePlan {
    * @param staff 初始编制（保序；缺省空表由工具层给）
    * @param policy 编制政策（缺省 {@link OfficePolicy#defaults()} 由工具层给）
    * @param decisionMakerId 同批绑定的决策人 id（在 sd 切片里必须不存在）
-   * @param providerId LLM provider 引用（可选；给了才落 sd.SetDecisionMakerProvider）
+   * @param providerId LLM provider 引用（可选；给了才落 ga.SetDecisionMakerProvider）
    * @param cadence 决策周期（天；≥ 1）
    * @param allowedTools 决策人窄工具白名单（保序；缺省空集由工具层给）
-   * @param accessLimit 额外资源限制（可选；给了非空对象才落 sd.SetDecisionMakerAccess）
+   * @param accessLimit 额外资源限制（可选；给了非空对象才落 ga.SetDecisionMakerAccess）
    * @throws IllegalArgumentException 任一具名前置不满足（工具折 {@code BAD_REQUEST}）
    */
   static Plan plan(
@@ -311,13 +311,13 @@ public final class GovCreateOfficePlan {
       return !regions.isEmpty();
     }
 
-    /** 是否要落 {@code sd.SetDecisionMakerProvider}（providerId 给了才落）。 */
+    /** 是否要落 {@code ga.SetDecisionMakerProvider}（providerId 给了才落）。 */
     boolean hasProviderCommand() {
       return providerId.isPresent();
     }
 
     /**
-     * 是否要落 {@code sd.SetDecisionMakerAccess}：<b>键缺席</b>不落；显式给非空对象才落；显式给空对象 {@code {}} 与创建期缺省（{@code
+     * 是否要落 {@code ga.SetDecisionMakerAccess}：<b>键缺席</b>不落；显式给非空对象才落；显式给空对象 {@code {}} 与创建期缺省（{@code
      * AccessLimit.empty()}）等价，故不落（不产生无状态变化的命令）。
      */
     boolean hasAccessCommand() {
@@ -458,9 +458,9 @@ public final class GovCreateOfficePlan {
     }
 
     /**
-     * {@code sd.CreateDecisionMaker} 载荷：{@code {id, affiliation:{kind:"gov",id:unitId},
+     * {@code ga.CreateDecisionMaker} 载荷：{@code {id, affiliation:{kind:"gov",id:unitId},
      * allowedTools, cadence}}—— 逐字段对应 {@code CreateDecisionMakerHandler} 的四个必填输入；{@code
-     * accessLimit} <b>不进这里</b>（创建期恒为空、 传了会被静默忽略），要走同批 {@code sd.SetDecisionMakerAccess}。
+     * accessLimit} <b>不进这里</b>（创建期恒为空、 传了会被静默忽略），要走同批 {@code ga.SetDecisionMakerAccess}。
      */
     String createDecisionMakerPayloadJson() {
       Map<String, Object> affiliation = new LinkedHashMap<>();
@@ -474,10 +474,10 @@ public final class GovCreateOfficePlan {
       return ToolResults.json(payload);
     }
 
-    /** {@code sd.SetDecisionMakerProvider} 载荷（{@link #hasProviderCommand()} 为真时才可调用）。 */
+    /** {@code ga.SetDecisionMakerProvider} 载荷（{@link #hasProviderCommand()} 为真时才可调用）。 */
     String setDecisionMakerProviderPayloadJson() {
       if (!hasProviderCommand()) {
-        throw new IllegalStateException("批不自洽：无 providerId 却要组装 sd.SetDecisionMakerProvider 载荷");
+        throw new IllegalStateException("批不自洽：无 providerId 却要组装 ga.SetDecisionMakerProvider 载荷");
       }
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("decisionMakerId", decisionMakerId);
@@ -485,10 +485,10 @@ public final class GovCreateOfficePlan {
       return ToolResults.json(payload);
     }
 
-    /** {@code sd.SetDecisionMakerAccess} 载荷（{@link #hasAccessCommand()} 为真时才可调用）。 */
+    /** {@code ga.SetDecisionMakerAccess} 载荷（{@link #hasAccessCommand()} 为真时才可调用）。 */
     String setDecisionMakerAccessPayloadJson() {
       if (!hasAccessCommand()) {
-        throw new IllegalStateException("批不自洽：无 accessLimit 却要组装 sd.SetDecisionMakerAccess 载荷");
+        throw new IllegalStateException("批不自洽：无 accessLimit 却要组装 ga.SetDecisionMakerAccess 载荷");
       }
       Map<String, Object> limit = new LinkedHashMap<>();
       for (Map.Entry<String, Set<String>> entry : accessLimit.get().entrySet()) {
@@ -500,7 +500,7 @@ public final class GovCreateOfficePlan {
       return ToolResults.json(payload);
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；字段序固定，人可读审计）。 */
+    /** {@code ga.PutInfo} 的 {@code value}（JSON <b>字符串</b>；字段序固定，人可读审计）。 */
     String infoValueJson(String reason) {
       requireNonBlank(reason, "reason");
       Map<String, Object> value = new LinkedHashMap<>();
@@ -530,7 +530,7 @@ public final class GovCreateOfficePlan {
       return ToolResults.json(value);
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       requireNonBlank(reason, "reason");
       return "建 GOV "

@@ -50,7 +50,7 @@ import java.util.UUID;
  * regionId} 且候选包含其 {@code at}；父 Region 自身永远不会是候选。
  *
  * <p>★ <b>只改 region</b>：每条命令的载荷只有 {@code {id, region}}，{@code name}/{@code props} 原样保留（不是整城覆盖）。
- * {@code reason} 必填，进本工具结果与审批摘要；本工具<b>不</b>带 {@code sd.PutInfo} 审计（所以资源只声明 social 写）。
+ * {@code reason} 必填，进本工具结果与审批摘要；本工具<b>不</b>带 {@code ga.PutInfo} 审计（所以资源只声明 social 写）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；工具名不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。{@code UpdateCityHandler.targetPaths} 仍为空 ⇒ 决策令路径继续 fail-closed，GM 路径不受影响。

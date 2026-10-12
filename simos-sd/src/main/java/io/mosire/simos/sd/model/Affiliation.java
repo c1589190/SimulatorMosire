@@ -49,7 +49,7 @@ public sealed interface Affiliation {
 
   /**
    * 归属政府单位（阶段 10a）：{@code govUnit} 必须在 unit 切片里存在、且带 {@code GovernmentFormation}——创建期由 {@code
-   * sd.CreateDecisionMaker} 具名拒，运行期由 {@code GovScope} deny-all 三命名空间兜底（fail-closed）。
+   * ga.CreateDecisionMaker} 具名拒，运行期由 {@code GovScope} deny-all 三命名空间兜底（fail-closed）。
    */
   record Gov(UnitId govUnit) implements Affiliation {
 

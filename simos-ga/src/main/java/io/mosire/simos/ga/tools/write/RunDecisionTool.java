@@ -7,6 +7,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.agentlib.tool.ToolResultTruncator;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.spi.RunDecisionHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -16,7 +17,6 @@ import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaDecisionHost;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.spi.RunDecisionHandler;
 import io.mosire.simos.util.state.StateRef;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,16 +26,16 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * {@code sd.RunDecision} 窄工具（T11C）：**让某个决策人的 agent 真跑一轮**的触发入口，**只在 GM 桶**（= 运行时 MCP 口）。
+ * {@code ga.RunDecision} 窄工具（T11C）：**让某个决策人的 agent 真跑一轮**的触发入口，**只在 GM 桶**（= 运行时 MCP 口）。
  *
- * <p>★ **它与 {@code sd.StartDecision} 的语义不同**：后者是"开始一次**判决**"（结果折成裁决者冻结的 {@code
+ * <p>★ **它与 {@code ga.StartDecision} 的语义不同**：后者是"开始一次**判决**"（结果折成裁决者冻结的 {@code
  * ga.SubmitVerdict}）；本工具是"让某决策人**自己调工具**跑一轮"（结果折成它自己的读工具调用 + {@code ga.IssueDirective}）。
  * 两者都落一条**触发事实**、都不占 R4 的名额。
  *
  * <p>★★ **两步走，且顺序有意义**：
  *
  * <ol>
- *   <li>**先落触发事实**（{@code sd.RunDecision} 命令，经 {@link AbstractNarrowWriteTool#submit}）——铁律 2 无例外：
+ *   <li>**先落触发事实**（{@code ga.RunDecision} 命令，经 {@link AbstractNarrowWriteTool#submit}）——铁律 2 无例外：
  *       世界上的每次改动都走 {@code Command → ChangeSet → Revision}，连"谁让谁跑了一轮"也不例外（AAR 要看得见）；
  *   <li>**再跑一轮**（{@link DecisionAgentService#runRound}）——世界版本取**刚落盘的新 head**，不是调用方手里那份：
  *       触发事实与这一轮看到的世界因此同源，不会出现"在旧世界上跑、却用新 revision 出令"。**落盘失败（冲突/被拒）就直接返回、不跑** ——不浪费一次真 LLM
@@ -53,7 +53,7 @@ import java.util.Set;
  */
 public final class RunDecisionTool extends AbstractNarrowWriteTool implements SimosTool {
 
-  public static final String NAME = "sd.RunDecision";
+  public static final String NAME = "ga.RunDecision";
 
   /** 每条轨迹摘要的上限（沿用 AgentLib 的截断惯例；截断点由它给，本类不另立阈值）。 */
   private static final int SUMMARY_MAX_CHARS = ToolResultTruncator.DEFAULT_MAX_CHARS;
@@ -88,7 +88,7 @@ public final class RunDecisionTool extends AbstractNarrowWriteTool implements Si
 
   @Override
   public String description() {
-    return "GM 触发：固定 sd.RunDecision，载荷 {decisionMakerId}——先落一条触发事实（revision），"
+    return "GM 触发：固定 ga.RunDecision，载荷 {decisionMakerId}——先落一条触发事实（revision），"
         + "再让该决策人的 agent 真跑一轮（真 LLM 自行调工具读世界、出令），返回本轮轨迹"
         + "（finalText / toolCalls[工具名+结果摘要] / llmCalls / abortedByBudget）";
   }
@@ -110,12 +110,12 @@ public final class RunDecisionTool extends AbstractNarrowWriteTool implements Si
       // ★ 触发事实没落盘 ⇒ **不跑**（见类注 第 2 条）：把真实结局（CONFLICT/REJECTED）如实交回去。
       return super.afterSubmit(context, submitted);
     }
-    // ★ 载荷字段名的拼写点在 sd 那边（RunDecisionHandler.decisionMakerIdOf）——命令认得它，运行流也认得同一个它。
+    // ★ 载荷字段名的拼写点在 handler 那边（RunDecisionHandler.decisionMakerIdOf）——命令认得它，运行流也认得同一个它。
     DecisionMakerId decisionMakerId =
         RunDecisionHandler.decisionMakerIdOf(
             ToolSchema.optionalText(context.arguments(), "payloadJson", "{}"));
     // ★★ **会话 id 在失败路径上现算**（不是开头算好一个常量）：它由**世界事实**「id + 会话世代」派生，而世代会被
-    //   `sd.ResetDecisionMakerConversation` 改掉 ⇒ 早算的那个值在重置之后就作废了。成功路径用的是 turn 自带的那一个
+    //   `ga.ResetDecisionMakerConversation` 改掉 ⇒ 早算的那个值在重置之后就作废了。成功路径用的是 turn 自带的那一个
     //   （同源，见 DecisionTurn.conversationId），故只有这两条 catch 需要它。
     try {
       DecisionAgentRunner.DecisionTurn turn =

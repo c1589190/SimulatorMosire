@@ -82,7 +82,7 @@ public record AccessLimit(
   /**
    * **无额外限制**（= 旧 {@code ViewScope.empty()} 的位置，但语义相反）。
    *
-   * <p>旧空范围是 **deny-all**（什么都没有）；本条是 **不收紧**——范围函数说什么就是什么。缺省必须是它，否则 {@code sd.CreateDecisionMaker}
+   * <p>旧空范围是 **deny-all**（什么都没有）；本条是 **不收紧**——范围函数说什么就是什么。缺省必须是它，否则 {@code ga.CreateDecisionMaker}
    * 建出来的决策人当场变瞎（与 spec §4.2「可为空 = 无额外限制」一致）。
    *
    * <p>{@code adjudicationDisclosure} 仍取 {@link DisclosurePolicy#WITHHELD}（fail-closed，与旧 {@code

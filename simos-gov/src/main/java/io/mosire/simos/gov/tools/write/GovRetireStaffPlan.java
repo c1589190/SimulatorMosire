@@ -59,7 +59,7 @@ import java.util.Optional;
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
  * orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户>} 确定性幂等键；target = 目标家户；逐来源 {@code
  * TRANSFER_MEMBERS(from=退休源, to=目标家户, lotId, count=taken)}）→ [旧档：{@code unit.DismissStaff}] → （待遇
- * &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}（地址 = 单位 canonical，key={@code
+ * &gt; 0）{@code actor.AdjustAccounts} → {@code ga.PutInfo}（地址 = 单位 canonical，key={@code
  * retireStaff}， value=JSON <b>字符串</b>，含目标家户/来源 shares，note=人可读摘要）。全部共享同一 batchId 与同一
  * branch/expectedRevision ⇒ 一条 revision。
  *
@@ -80,8 +80,8 @@ final class GovRetireStaffPlan {
   /** {@code actor.AdjustAccounts} 的命令类型（仅待遇 &gt; 0 才落）。 */
   static final String ADJUST_ACCOUNTS_TYPE = "actor.AdjustAccounts";
 
-  /** {@code sd.PutInfo} 的命令类型（恒有，行动记录）。 */
-  static final String PUT_INFO_TYPE = "sd.PutInfo";
+  /** {@code ga.PutInfo} 的命令类型（恒有，行动记录）。 */
+  static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   /** 工单来源模块名（进 {@code social.SubmitHouseholdWorkOrder} 载荷与日志）。 */
   private static final String SOURCE_MODULE = "gov";
@@ -532,7 +532,7 @@ final class GovRetireStaffPlan {
     /**
      * 本工具将落的命令类型（批内固定顺序；preview 视图与 apply 组批共用这一处）： {@code social.SubmitHouseholdWorkOrder} →
      * [旧档：{@code unit.DismissStaff}] → （待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code
-     * sd.PutInfo}。
+     * ga.PutInfo}。
      */
     List<String> commandTypes() {
       List<String> types = new ArrayList<>(4);
@@ -627,7 +627,7 @@ final class GovRetireStaffPlan {
       return ToolResults.json(payload);
     }
 
-    /** 逐来源视图（工具结果与 {@code sd.PutInfo.value.sources} 共用；{@code UNIT} 来源的 hex 为 null）。 */
+    /** 逐来源视图（工具结果与 {@code ga.PutInfo.value.sources} 共用；{@code UNIT} 来源的 hex 为 null）。 */
     List<Map<String, Object>> sourcesView() {
       List<Map<String, Object>> rows = new ArrayList<>(sources.size());
       for (GovToolManpower.ManpowerShare share : sources) {
@@ -653,7 +653,7 @@ final class GovRetireStaffPlan {
       return text.toString();
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON 字符串；含模式/退休源/目标家户/来源 shares/待遇）。 */
+    /** {@code ga.PutInfo} 的 {@code value}（JSON 字符串；含模式/退休源/目标家户/来源 shares/待遇）。 */
     String infoValueJson(String reason) {
       requireReason(reason);
       Map<String, Object> value = new LinkedHashMap<>();
@@ -690,7 +690,7 @@ final class GovRetireStaffPlan {
       return ToolResults.json(value);
     }
 
-    /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
+    /** 人可读行动摘要（工具结果与 {@code ga.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
       requireReason(reason);
       return "退休离编 "

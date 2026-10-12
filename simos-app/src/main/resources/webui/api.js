@@ -409,13 +409,13 @@
 
   /**
    * 「让它跑一轮」（窄写）：打 `POST /api/sd/run-decision`，体 {branch, expectedRevision, decisionMakerId}。
-   * 命令类型由服务端写死（`sd.RunDecision` ⇒ 前端不传 type）；先落一条触发事实（revision），再让该决策人的 agent
+   * 命令类型由服务端写死（`ga.RunDecision` ⇒ 前端不传 type）；先落一条触发事实（revision），再让该决策人的 agent
    * 真跑一轮（真 LLM 自行调工具读世界、出令）。
    *
    * <p>★★ **它立即返回**（2026-09-23 起）：这一轮在**服务端后台**跑，请求体只回报"触发事实已落盘 + 起跑了"。
    * 进度与结局改由 {@link runDecisionStatus} 轮询（`GET …/run-status`）——因为这一轮里决策人若出令，
    * 那次工具调用要**阻塞式**等审批（上限 = 壳的 APPROVAL_TIMEOUT），让 HTTP 请求停在那里，界面就只能表现为卡死。
-   * <p>★ GM 经 MCP 调 `sd.RunDecision` 的那条**仍是同步**的（调用方是 agent，它能等）——两条路语义不同是**有意的**。
+   * <p>★ GM 经 MCP 调 `ga.RunDecision` 的那条**仍是同步**的（调用方是 agent，它能等）——两条路语义不同是**有意的**。
    */
   function runDecision(branch, expectedRevision, decisionMakerId) {
     invalidateState();
@@ -462,7 +462,7 @@
   }
 
   /**
-   * 重置决策人的**会话上下文**（命令写，固定类型 `sd.ResetDecisionMakerConversation`，落 revision）：会话世代 +1
+   * 重置决策人的**会话上下文**（命令写，固定类型 `ga.ResetDecisionMakerConversation`，落 revision）：会话世代 +1
    * ⇒ 下一个轮次落到**另一段新会话**上、从空上下文重新开始；旧会话**一条字节都不动**（可审计）。
    *
    * <p>★ 这是"重跑沿用上下文"的唯一例外口——用户在界面上点「上下文重置」才清。
@@ -503,7 +503,7 @@
     return postJson("/llm/providers/test", { id: id });
   }
 
-  /** 决策人绑定 provider（世界写，固定类型 sd.SetDecisionMakerProvider，落 revision）。 */
+  /** 决策人绑定 provider（世界写，固定类型 ga.SetDecisionMakerProvider，落 revision）。 */
   function setDecisionMakerProvider(branch, expectedRevision, decisionMakerId, providerId) {
     invalidateState();
     return postJson("/sd/set-decision-maker-provider", {

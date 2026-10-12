@@ -20,7 +20,7 @@ import java.util.Set;
  * {@code simos.sd.decision-makers}（工具面 M4）：**决策人清单**。
  *
  * <p>补的是 M4 侦察报告里的一条完全缺口：GUI 有 {@code GET /api/sd/decision-makers}，MCP 侧没有 ⇒ Agent
- * 连"这个世界里有几个决策人、各挂在哪支军队上"都问不出来（{@code sd.CreateDecisionMaker} 只能写、写完看不见）。
+ * 连"这个世界里有几个决策人、各挂在哪支军队上"都问不出来（{@code ga.CreateDecisionMaker} 只能写、写完看不见）。
  *
  * <p>★ **形状与 GUI 同源**：{@link ApiViews#decisionMakers(List)}（GUI {@code decisionMakersReply} 用同一份）。
  *

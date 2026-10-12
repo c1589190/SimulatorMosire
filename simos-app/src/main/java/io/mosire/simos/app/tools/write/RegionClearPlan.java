@@ -24,21 +24,21 @@ import java.util.Objects;
  * 的同族失败）。
  *
  * <p>★ <b>命中即下单</b>：每个域只有 clean gate 非干净时才落对应的 {@code ClearRegion}；三域都干净 ⇒ 命令序为空（零 revision）。{@code
- * sd.PutInfo} 只在至少一个域有命中时追加在最后。
+ * ga.PutInfo} 只在至少一个域有命中时追加在最后。
  *
  * <p>★ <b>计数是"阻塞播种的记录条数"</b>（与 clean gate 逐条同源）：经济域只认 {@code industries}/{@code markets}
  * ——清空命令在实际执行时还会连带清掉 unit/classes/memberships 等依赖记录，那些不由 pre-scan 的命中数表达，但它们的清空发生在 同一个域命令内、同一批内。
  */
 final class RegionClearPlan {
 
-  /** 固定批序：social → actor → economy → sd.PutInfo（见类注与工具描述）。三个域名从各 handler 的 TYPE 取，不另抄字面量。 */
+  /** 固定批序：social → actor → economy → ga.PutInfo（见类注与工具描述）。三个域名从各 handler 的 TYPE 取，不另抄字面量。 */
   static final String SOCIAL_CLEAR_TYPE = ClearRegionHandler.TYPE;
 
   static final String ACTOR_CLEAR_TYPE = ActorClearRegionHandler.TYPE;
 
   static final String ECONOMY_CLEAR_TYPE = EconomyClearRegionHandler.TYPE;
 
-  /** {@code sd.PutInfo} 的类型字面与 {@link RegionSeedPlan#PUT_INFO_TYPE} 同源（同住包内，不另抄）。 */
+  /** {@code ga.PutInfo} 的类型字面与 {@link RegionSeedPlan#PUT_INFO_TYPE} 同源（同住包内，不另抄）。 */
   static final String PUT_INFO_TYPE = RegionSeedPlan.PUT_INFO_TYPE;
 
   /** 行动记录在 sd INFO 覆盖层里的 key（地址 = 目标 Region canonical，一次清空一条）。 */
@@ -76,7 +76,7 @@ final class RegionClearPlan {
     }
   }
 
-  /** 一次可执行清空计划（纯函数产物；{@code commands} 是实际会落的类型序，含最后的 sd.PutInfo）。 */
+  /** 一次可执行清空计划（纯函数产物；{@code commands} 是实际会落的类型序，含最后的 ga.PutInfo）。 */
   record Plan(
       Region region,
       long tick,

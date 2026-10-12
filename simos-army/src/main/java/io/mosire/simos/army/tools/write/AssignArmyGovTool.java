@@ -43,7 +43,7 @@ import java.util.Set;
  * Plan，不出现第二份推导。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：需要同步 unit 侧时 {@code unit.SetArmyFormation} → {@code sd.SetArmyMasterGov}
- * → {@code sd.PutInfo}；不需要同步时第一条缺席。全部共享同一批级 id 与同一 branch/expectedRevision。
+ * → {@code ga.PutInfo}；不需要同步时第一条缺席。全部共享同一批级 id 与同一 branch/expectedRevision。
  *
  * <p>★★ <b>{@code masterGovUnitId} 三态</b>：缺席 / {@code null} / 空串（含空白串）= 解除认领；给了非空白值必须存在且带 {@code
  * GovernmentFormation}（preview 的前置校验与域层同口径）。
@@ -123,7 +123,7 @@ public final class AssignArmyGovTool implements SimosTool {
         + "前置：Army 与 root unit 必须已存在；新主子必须存在且带 GovernmentFormation；syncUnitSide=true 且 root 无 "
         + "ArmyFormation 时必须有 role，否则 BAD_REQUEST（零 revision）。"
         + "批顺序："
-        + "[syncUnitSide: unit.SetArmyFormation] → sd.SetArmyMasterGov → sd.PutInfo"
+        + "[syncUnitSide: unit.SetArmyFormation] → sd.SetArmyMasterGov → ga.PutInfo"
         + "(address=sd:army.<armyId>, key="
         + INFO_KEY
         + ", value=JSON 字符串, tick=当前世界日)。"
@@ -149,7 +149,7 @@ public final class AssignArmyGovTool implements SimosTool {
         ToolSchema.prop(
             "string",
             "unit 侧 role（root 还没有 ArmyFormation 且 syncUnitSide=true 时必填；已有 ArmyFormation 时用原 role）"));
-    props.put("reason", ToolSchema.prop("string", "改派原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "改派原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
@@ -336,7 +336,7 @@ public final class AssignArmyGovTool implements SimosTool {
 
   /**
    * 组批：{@code [syncUnitSide: unit.SetArmyFormation]} → {@code sd.SetArmyMasterGov} → {@code
-   * sd.PutInfo} （固定顺序，可复现）。批级 id（correlationId）与 branch/expectedRevision 由写口适配器统一补 ⇒ 整批落一条
+   * ga.PutInfo} （固定顺序，可复现）。批级 id（correlationId）与 branch/expectedRevision 由写口适配器统一补 ⇒ 整批落一条
    * revision。
    */
   private static List<ToolWritePort.Request> buildBatch(
@@ -355,13 +355,13 @@ public final class AssignArmyGovTool implements SimosTool {
     return List.copyOf(batch);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录） ─────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录） ─────────────────────────────────────────────────────
 
   /**
-   * {@code sd.PutInfo} 载荷：Army canonical 地址 + {@code key="assignArmyGov"} + {@code value}=JSON 字符串
+   * {@code ga.PutInfo} 载荷：Army canonical 地址 + {@code key="assignArmyGov"} + {@code value}=JSON 字符串
    * + {@code note}=人可读摘要 + {@code tick}=当前世界日。
    *
-   * <p>★ {@code id} 不显式给：由 {@code sd.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一 Army 的后续改派自然追加序号。
+   * <p>★ {@code id} 不显式给：由 {@code ga.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一 Army 的后续改派自然追加序号。
    */
   private static String infoPayload(AssignArmyGovPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();

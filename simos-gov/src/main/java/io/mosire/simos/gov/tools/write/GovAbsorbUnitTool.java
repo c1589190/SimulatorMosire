@@ -52,7 +52,7 @@ import java.util.UUID;
  *       effectivePosition)}——必须在 {@code unit.DisbandUnit} 之前，避免孤儿 {@code UNIT(sourceUnitId)} 位置；
  *   <li>{@code unit.RecruitStaff}（恒有）：{@code {unitId, role, count, sources}}，只入编、不扣人；
  *   <li>{@code unit.DisbandUnit}（仅 {@link GovAbsorbUnitPlan.Plan#disbandDispatched()}）：解散已清空的源单位；
- *   <li>{@code sd.PutInfo}（恒有）：地址 = GOV canonical，key={@value #INFO_KEY}，value = JSON <b>字符串</b>
+ *   <li>{@code ga.PutInfo}（恒有）：地址 = GOV canonical，key={@value #INFO_KEY}，value = JSON <b>字符串</b>
  *       （govUnitId/sourceUnitId/role/count/shares/disbanded/disbandSkippedReason 等），note = 人可读摘要。
  * </ol>
  *
@@ -60,7 +60,7 @@ import java.util.UUID;
  * 总人口不变（转移只改份额归属）。Plan 构造期逐值互校；三条/四条命令的载荷都从同一份 shares/remainders 派生。
  *
  * <p>★ <b>disbandSource 的条件语义</b>：只有“所有源家户迁移后剩余人口 == 0”才落 {@code SET_LOCATION + unit.DisbandUnit}；
- * 仍有剩余人口 ⇒ <b>不解散</b>，工具结果与 {@code sd.PutInfo} 里给具名 {@code disbandSkippedReason}（不丢人）。
+ * 仍有剩余人口 ⇒ <b>不解散</b>，工具结果与 {@code ga.PutInfo} 里给具名 {@code disbandSkippedReason}（不丢人）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ 资源声明：写 {@code social}/{@code unit}/{@code sd} 三个命名空间（GM 侧三者 unlimited）。
@@ -125,7 +125,7 @@ public final class GovAbsorbUnitTool implements SimosTool {
         + "不足整条拒。★ 源带 ArmyFormation 或 GovernmentFormation ⇒ 具名拒（不是人口容器）。"
         + "批：social.SubmitHouseholdWorkOrder（逐 share TRANSFER_MEMBERS 到吸收目标家户；disband 时再逐源家户 "
         + "SET_LOCATION=GOV 有效位置 HEX）→ [unit.AssignGovPost | unit.RecruitStaff] →（disband）unit.DisbandUnit → "
-        + "sd.PutInfo(key="
+        + "ga.PutInfo(key="
         + INFO_KEY
         + ")。不再发 unit.ApplyCasualties，也不写 Unit 第二本 headcount。守恒：Σshare.taken == count；"
         + "源家户人口前−count == 后；旧档另加 staff 前+count == 后。"
@@ -150,7 +150,7 @@ public final class GovAbsorbUnitTool implements SimosTool {
             "boolean",
             "缺省 false；true 且迁移后所有源家户人口=0 才同批 SET_LOCATION(源家户→GOV 有效位置 HEX) + unit.DisbandUnit；"
                 + "仍有剩余人口 ⇒ 不解散并给 disbandSkippedReason"));
-    props.put("reason", ToolSchema.prop("string", "吸收原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "吸收原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批命令"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
@@ -262,7 +262,7 @@ public final class GovAbsorbUnitTool implements SimosTool {
 
   /**
    * 组批（固定顺序）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.RecruitStaff} →
-   * [disbandDispatched: {@code unit.DisbandUnit}] → {@code sd.PutInfo}。
+   * [disbandDispatched: {@code unit.DisbandUnit}] → {@code ga.PutInfo}。
    *
    * <p>★ 全部共享同一 {@code batchId}（correlationId）与同一 branch/expectedRevision ⇒ {@code submitBatch} 落一条
    * revision；第 1 条工单的 {@code orderId} 用同一 {@code batchId} 作确定性幂等键（Tool 每次 apply 生成的 UUID）。
@@ -295,7 +295,7 @@ public final class GovAbsorbUnitTool implements SimosTool {
     return java.util.Collections.unmodifiableList(batch);
   }
 
-  /** {@code sd.PutInfo} 载荷：吸收方 GOV canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
+  /** {@code ga.PutInfo} 载荷：吸收方 GOV canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
   private static String infoPayload(GovAbsorbUnitPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", GovCreateOfficePlan.unitAddress(plan.govUnitId()));

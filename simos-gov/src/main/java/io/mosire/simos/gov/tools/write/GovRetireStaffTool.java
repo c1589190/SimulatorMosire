@@ -38,7 +38,7 @@ import java.util.UUID;
  * orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户>} 幂等键；逐 lot {@code
  * TRANSFER_MEMBERS(from=hh-gov-<unitId>, to=目标家户, lotId, count=taken)}）→ {@code
  * unit.DismissStaff}（形状不变） →（待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code
- * sd.PutInfo}（key={@value #INFO_KEY}）。
+ * ga.PutInfo}（key={@value #INFO_KEY}）。
  *
  * <p>★★ <b>目标家户必须明确</b>：{@code toHouseholdId} 精确指定（必须存在于 Social、≠ 政府家户）；或给 {@code reinsertQ}/{@code
  * reinsertR} 成对坐标，在该 hex 按 household id 升序取第一个有人口的家户；两者都没给 ⇒ plan 级具名拒（人不能凭空消失，也不再合并进最小批次）。
@@ -106,7 +106,7 @@ public final class GovRetireStaffTool implements SimosTool {
         + "可支配银不足 ⇒ 整条拒（带 requested/available/缺口）；待遇=0 ⇒ 批里无 actor 命令。"
         + "批顺序：social.SubmitHouseholdWorkOrder（orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户> 幂等键，"
         + "target=目标家户，逐 lot TRANSFER_MEMBERS(from=退休源,to=目标家户,lotId,count=taken)）→ "
-        + "[旧档 unit.DismissStaff] → [actor.AdjustAccounts] → sd.PutInfo(key="
+        + "[旧档 unit.DismissStaff] → [actor.AdjustAccounts] → ga.PutInfo(key="
         + INFO_KEY
         + ")。"
         + "返回 {preview, submitted, mode, tick, unitId, role, count, [旧档 staffBefore/After], retirementPerStaff, "
@@ -130,7 +130,7 @@ public final class GovRetireStaffTool implements SimosTool {
             "integer",
             "回退目标格 q（可选；与 reinsertR 成对且不与 toHouseholdId 同给；在该 hex 按 household id 升序取第一个有人口的家户）"));
     props.put("reinsertR", ToolSchema.prop("integer", "回退目标格 r（可选；必须与 reinsertQ 成对）"));
-    props.put("reason", ToolSchema.prop("string", "退休离编原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "退休离编原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批命令"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
@@ -255,7 +255,7 @@ public final class GovRetireStaffTool implements SimosTool {
 
   /**
    * 组批（固定顺序、按需缺席）：{@code social.SubmitHouseholdWorkOrder} → [旧档 {@code unit.DismissStaff}] → （待遇
-   * &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}。
+   * &gt; 0）{@code actor.AdjustAccounts} → {@code ga.PutInfo}。
    */
   private List<ToolWritePort.Request> buildBatch(
       String batchId, GovRetireStaffPlan.Plan plan, String reason) {
@@ -279,7 +279,7 @@ public final class GovRetireStaffTool implements SimosTool {
     return java.util.Collections.unmodifiableList(batch);
   }
 
-  /** {@code sd.PutInfo} 载荷：离编 GOV canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
+  /** {@code ga.PutInfo} 载荷：离编 GOV canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
   private static String infoPayload(GovRetireStaffPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", GovCreateOfficePlan.unitAddress(plan.unitId()));

@@ -10,6 +10,8 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -20,8 +22,6 @@ import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.sd.id.DecisionMakerId;
-import io.mosire.simos.sd.spi.PutInfoHandler;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
@@ -43,7 +43,7 @@ import java.util.Set;
  * {@link ToolContext#identity()} 派生（{@code decision-maker:<自己>}），<b>不由载荷自报</b>；{@code tick} 缺省 =
  * 当前世界 tick，不得记未来。
  *
- * <p>★ <b>落点</b>：一条 {@code sd.PutInfo} 命令，地址 {@code sd:doc.report-<sender>-<tick>-<seq>}、{@code
+ * <p>★ <b>落点</b>：一条 {@code ga.PutInfo} 命令，地址 {@code sd:doc.report-<sender>-<tick>-<seq>}、{@code
  * key="report"}、 {@code value} 为 JSON 字符串 {@code {from,to,subject,body,evidence?,tick}}：
  *
  * <ul>
@@ -54,7 +54,7 @@ import java.util.Set;
  *       自指域，不采信载荷里的 id）。
  * </ul>
  *
- * <p>★★ <b>不因上报给决策人任何跨区原始数据读权</b>：本工具只写 sd 感知层，报告内容由发送方负责；读侧过滤见 {@code SimosSdReportsTool}。
+ * <p>★★ <b>不因上报给决策人任何跨区原始数据读权</b>：本工具只写 ga 侧的 INFO 感知层，报告内容由发送方负责；读侧过滤见 {@code SimosSdReportsTool}。
  *
  * <p>★ <b>只在决策人桶</b>（{@code SimosToolSource.addDecisionAgentWrites}）——决策人白名单即由那个桶派生（{@code roles()}
  * 是唯一声明），不另立清单。
@@ -176,8 +176,8 @@ public final class SimosSdReportTool implements SimosTool {
           context,
           Operation.WRITE,
           List.of(ToolResources.resourceSd(identity.decisionMakerKind(), sender.value())));
-      SdState sd = GaToolReads.sd(state);
-      int seq = nextSeq(sd, sender.value(), tick);
+      GaState ga = GaToolReads.ga(state);
+      int seq = nextSeq(ga, sender.value(), tick);
       Address address =
           new Address(
               List.of(
@@ -249,13 +249,13 @@ public final class SimosSdReportTool implements SimosTool {
   }
 
   /**
-   * 下一个地址序号：扫描 sd INFO 里本发送人、本 tick 的既有报告地址 {@code sd:doc.report-<sender>-<tick>-<n>}，取 max+1； 没有 ⇒
-   * 1。地址是身份的一部分 ⇒ 同一发送人同 tick 多次上报不覆盖。
+   * 下一个地址序号：扫描 ga INFO 覆盖层里本发送人、本 tick 的既有报告地址 {@code sd:doc.report-<sender>-<tick>-<n>}，取 max+1；
+   * 没有 ⇒ 1。地址是身份的一部分 ⇒ 同一发送人同 tick 多次上报不覆盖（★ 地址族串一字未改，只是表自 3b-2 起住 ga）。
    */
-  private static int nextSeq(SdState sd, String sender, long tick) {
+  private static int nextSeq(GaState ga, String sender, long tick) {
     String prefix = "report-" + sender + "-" + tick + "-";
     int max = 0;
-    for (String key : sd.info().keySet()) {
+    for (String key : ga.info().keySet()) {
       try {
         Address address = Address.parse(key);
         if (!ToolResources.SD_NAMESPACE.equals(address.namespace())

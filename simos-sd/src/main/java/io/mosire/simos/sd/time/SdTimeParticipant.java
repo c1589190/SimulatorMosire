@@ -17,6 +17,7 @@ import io.mosire.simos.sd.model.EffectStatus;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.model.Trigger;
+import io.mosire.simos.sd.spi.DecisionTablesLookup;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -29,6 +30,8 @@ import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.TimeProposal;
+import io.mosire.simos.util.spi.WorldTimeProposal;
+import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -56,6 +59,13 @@ import java.util.Set;
  * <p>★ **能力边界**：只写 sd（跨模块效果落成 {@code Action.EnqueueUnitCommand}，由 app 层 {@code SdCommandDrain} 落真
  * revision，spec §五.3）；只读 unit 切片。
  *
+ * <p>★★ <b>2026-10-12 批次 3b-2：本参与者成了<b>多切片参与者</b>（{@link WorldTimeProposal}）</b>——{@code
+ * Action.PutInfo} 写的 INFO 覆盖层搬进了 {@code GaState.info}，而 sd 不得依赖 ga（成环）⇒ 那一半经注入的 {@link
+ * DecisionTablesLookup#replaceInfo} 产出 <b>ga 命名空间的变更集</b>（不透明 {@link ChangeSet}），与 sd 的
+ * effects/combatStates 变更集装在**同一次推进的同一个提案**里（{@code TimeProposalResolver} 的读写集仍按参与者整体声明，
+ * 语义与搬迁前逐字相同：INFO 仍是本参与者在本次推进里"写"的地址）。★ <b>没有 INFO 写入时不带 ga 分量</b>——不让每次推进都给 ga
+ * 切片换一次坐标（与"不写就不动"同口径）。
+ *
  * <p>★ {@code range.to} 缺省（无上界推进）⇒ **零变更提案、不抛**（照 {@code UnitTimeParticipant} 的边界）。
  */
 public final class SdTimeParticipant implements TimeParticipant {
@@ -68,8 +78,15 @@ public final class SdTimeParticipant implements TimeParticipant {
 
   private final String mapId;
 
-  public SdTimeParticipant(String mapId) {
+  private final DecisionTablesLookup decisionTables;
+
+  /**
+   * @param mapId 地图 id（触发器的 {@code unit:*} / hex 地址需要它）
+   * @param decisionTables ga 侧 {@code info} 覆盖层的读写口（装配期注入；非 null——缺了它 {@code Action.PutInfo} 无从落地）
+   */
+  public SdTimeParticipant(String mapId, DecisionTablesLookup decisionTables) {
     this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.decisionTables = Objects.requireNonNull(decisionTables, "decisionTables");
   }
 
   @Override
@@ -77,8 +94,13 @@ public final class SdTimeParticipant implements TimeParticipant {
     return NAMESPACE;
   }
 
+  /**
+   * ★★ <b>多切片提案</b>（2026-10-12 批次 3b-2）：sd 分量（effects / combatStates）+ ga 分量（{@code Action.PutInfo}
+   * 写的 INFO 覆盖层）。{@link TimeParticipant} 的契约里，改多个模块的参与者实现本方法、**不**实现 {@code simulate}（后者的默认实现会抛，
+   * 指路到这里）——与 {@code PopulationUnitTimeParticipant} / {@code PopulationEconomyTimeParticipant} 同款。
+   */
   @Override
-  public TimeProposal simulate(SimulationState state, TimeRange range) {
+  public WorldTimeProposal simulateWorld(SimulationState state, TimeRange range) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(range, "range");
     SdState base = sdOf(state);
@@ -96,7 +118,8 @@ public final class SdTimeParticipant implements TimeParticipant {
                 "reason",
                 "range.to 缺省（无上界推进）"));
       }
-      return new TimeProposal(NAMESPACE, SdChangeSet.between(base, base), Set.of(), Set.of());
+      return WorldTimeProposal.single(
+          new TimeProposal(NAMESPACE, SdChangeSet.between(base, base), Set.of(), Set.of()));
     }
     SimosTimestamp end = to.get();
     long startDay = range.from().tick();
@@ -133,7 +156,7 @@ public final class SdTimeParticipant implements TimeParticipant {
 
     Map<EffectId, Effect> effects = new LinkedHashMap<>(base.effects());
     Map<CombatStateId, CombatState> combatStates = new LinkedHashMap<>(base.combatStates());
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>(base.info());
+    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>(decisionTables.info(state));
 
     // ★★ §十一（2026-09-25）：一次推进 N 天 ⇒ **从 from 逐日推到 to**——阶段链、AfterTicks/AtOrAfterTick、effect 触发
     //   都按**日**推进。一次跳 100 天只按 to 求值，会把中间该发生的阶段转换/触发整段跳过（等价性当场破）。
@@ -141,7 +164,8 @@ public final class SdTimeParticipant implements TimeParticipant {
     //     的逐步语义逐字一致——这就是等价性的根。
     for (long day = startDay + 1L; day <= endDay; day++) {
       SimosTimestamp at = SimosTimestamp.of(day);
-      SdState todayBegin = base.withEffects(effects).withCombatStates(combatStates).withInfo(info);
+      // ★ 本批起 {@code info} 不在 sd 树里 ⇒ todayBegin 只带 sd 自己的两个组件；info 的累计仍在本方法内（第 3 个可变局部）。
+      SdState todayBegin = base.withEffects(effects).withCombatStates(combatStates);
       long firedToday = 0L;
       long evaluatedToday = 0L;
       long statusSkippedToday = 0L;
@@ -277,7 +301,7 @@ public final class SdTimeParticipant implements TimeParticipant {
       }
     }
 
-    SdState target = base.withEffects(effects).withCombatStates(combatStates).withInfo(info);
+    SdState target = base.withEffects(effects).withCombatStates(combatStates);
     EventLog.channel(SdLog.time())
         .info(
             LogEvent.of(
@@ -309,7 +333,17 @@ public final class SdTimeParticipant implements TimeParticipant {
                 effects.size(),
                 "combatStates",
                 combatStates.size()));
-    return new TimeProposal(NAMESPACE, SdChangeSet.between(base, target), reads, writes);
+    SdChangeSet sdChangeSet = SdChangeSet.between(base, target);
+    if (info.equals(decisionTables.info(state))) {
+      // ★ 本次一天都没写 INFO ⇒ 单切片提案（形态与搬迁前逐字相同）：不让每次推进都给 ga 切片换一次坐标。
+      return WorldTimeProposal.single(new TimeProposal(NAMESPACE, sdChangeSet, reads, writes));
+    }
+    // ★★ 多切片提案：sd 分量 + ga 分量（INFO 覆盖层）。ga 分量由注入的口子算（sd 不认识 GaChangeSet）。
+    ChangeSet gaChangeSet = decisionTables.replaceInfo(state, info);
+    Map<String, ChangeSet> moduleChanges = new LinkedHashMap<>();
+    moduleChanges.put(NAMESPACE, sdChangeSet);
+    moduleChanges.put("ga", gaChangeSet);
+    return new WorldTimeProposal(NAMESPACE, moduleChanges, reads, writes);
   }
 
   private void applyAction(

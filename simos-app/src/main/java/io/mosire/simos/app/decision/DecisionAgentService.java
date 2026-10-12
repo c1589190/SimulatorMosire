@@ -229,7 +229,7 @@ public final class DecisionAgentService {
     Objects.requireNonNull(decisionMakerId, "decisionMakerId");
     Objects.requireNonNull(listener, "listener");
     SimulationState state = core.replay(new StateRef(branch, revision));
-    DecisionMaker maker = ToolSupport.sdState(state).decisionMakers().get(decisionMakerId);
+    DecisionMaker maker = ToolSupport.gaState(state).decisionMakers().get(decisionMakerId);
     if (maker == null) {
       throw new IllegalArgumentException("决策人不存在: " + decisionMakerId.value());
     }
@@ -332,7 +332,7 @@ public final class DecisionAgentService {
    * <p>★ **不改世界**：会话库是 append-only 的旁路存储（不在 {@code revision} 里），故本方法**不**经 {@code
    * CoreSimos.submit}——它记的不是世界事实（与 {@code /api/sd/run-decision} 的"轨迹不落盘"同一口径）。
    *
-   * @param ref 世界版本（**用来查会话世代**：{@code sd.ResetDecisionMakerConversation} 会把它改掉）
+   * @param ref 世界版本（**用来查会话世代**：{@code ga.ResetDecisionMakerConversation} 会把它改掉）
    * @param decisionMakerId 决策人 id（查无 ⇒ 抛，与 {@link #conversationIdOf} 同口径）
    * @param text 用户那句话（空白 ⇒ 抛：不落一条空消息下去）
    * @return 这条消息落进的会话 id（界面据它显示"说给哪一段会话听"）
@@ -345,7 +345,7 @@ public final class DecisionAgentService {
       throw new IllegalArgumentException("消息不得为空");
     }
     DecisionMaker maker =
-        ToolSupport.sdState(core.replay(ref)).decisionMakers().get(decisionMakerId);
+        ToolSupport.gaState(core.replay(ref)).decisionMakers().get(decisionMakerId);
     if (maker == null) {
       throw new IllegalArgumentException("决策人不存在: " + decisionMakerId.value());
     }
@@ -363,7 +363,7 @@ public final class DecisionAgentService {
    * **某个世界版本上，该决策人此刻该用的会话 id**（触发工具在**失败**路径上也要报它：中止/未绑定时历史仍已落盘，下一轮可续）。
    *
    * <p>★★ **它必须按世界事实算，不能只按 id 算**：会话 id 由「id + 会话世代」派生，而世代是**世界事实**——被 {@code
-   * sd.ResetDecisionMakerConversation} 改过之后，同一个 id 的会话已经换了一段。拿"id 拼前缀"糊一个 id 出去（旧签名
+   * ga.ResetDecisionMakerConversation} 改过之后，同一个 id 的会话已经换了一段。拿"id 拼前缀"糊一个 id 出去（旧签名
    * 就是这么做的）会在重置之后**报一个早已作废的会话 id**，而调用方（GM / AAR）看到的是一句**看起来很正常**的话。
    *
    * <p>★ **查无 ⇒ 抛**（不兜一个"看起来像"的 id 出去）：调用方本来就要处理"决策人不存在"这条失败路径，如实报它比编一个 id 好。
@@ -376,7 +376,7 @@ public final class DecisionAgentService {
     Objects.requireNonNull(ref, "ref");
     Objects.requireNonNull(decisionMakerId, "decisionMakerId");
     DecisionMaker maker =
-        ToolSupport.sdState(core.replay(ref)).decisionMakers().get(decisionMakerId);
+        ToolSupport.gaState(core.replay(ref)).decisionMakers().get(decisionMakerId);
     if (maker == null) {
       throw new IllegalArgumentException("决策人不存在: " + decisionMakerId.value());
     }

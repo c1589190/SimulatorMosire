@@ -1,12 +1,13 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -17,7 +18,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * {@code sd.ResetDecisionMakerConversation} 命令的处理器：GM 把某个决策人的 LLM 会话**重置为新会话**。
+ * {@code ga.ResetDecisionMakerConversation} 命令的处理器（<b>★ 2026-10-12 批次 3b-2 自 {@code
+ * simos-sd/sd.spi} 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：GM 把某个决策人的 LLM 会话**重置为新会话**。
  *
  * <pre>{@code
  * {"decisionMakerId":"dm1"}
@@ -52,14 +54,14 @@ public final class ResetDecisionMakerConversationHandler implements CommandHandl
    */
   @Override
   public String type() {
-    return "sd.ResetDecisionMakerConversation";
+    return "ga.ResetDecisionMakerConversation";
   }
 
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
     String dmForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
@@ -82,21 +84,21 @@ public final class ResetDecisionMakerConversationHandler implements CommandHandl
               // ★ 与 M11 同一条纪律：重建路径必须带回 providerId，否则"换个会话"顺手把 provider 解绑了。
               existing.providerId(),
               existing.conversationGeneration() + 1);
-      // ★ **用 withDecisionMakers 派生新状态**（不是 new SdState(...)）：后者会静默清空别的九个组件（本仓那条通则的由来）。
+      // ★ **用 withDecisionMakers 派生新状态**（不是 new GaState(...)）：后者会静默清空别的五个组件（本仓那条通则的由来）。
       Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>(base.decisionMakers());
       makers.put(id, next);
-      EventLog.channel(SdLog.decision())
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_RESET_DECISION_MAKER_CONVERSATION_APPLIED",
-                  SdLogSource.SD_NATION,
+                  GaLogSource.GA_DECISION,
                   "dm",
                   id.value(),
                   "fromGeneration",
                   existing.conversationGeneration(),
                   "toGeneration",
                   next.conversationGeneration()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionMakers(makers)));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, base.withDecisionMakers(makers)));
     } catch (IllegalArgumentException e) {
       return rejected(e.getMessage(), "dm", dmForLog);
     }
@@ -108,8 +110,8 @@ public final class ResetDecisionMakerConversationHandler implements CommandHandl
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(),
-        SdLogSource.SD_NATION,
+        GaLog.decision(),
+        GaLogSource.GA_DECISION,
         "SD_RESET_DECISION_MAKER_CONVERSATION_REJECTED",
         reason,
         idKeyValues);

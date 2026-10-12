@@ -8,9 +8,9 @@ package io.mosire.simos.gov.tools;
  * 的 {@code UnitToolCommandTypes}、第三/四域 social 的 {@code SocialUnitPort} 同款。
  *
  * <p>★ <b>域内可见的命令类型不经这里</b>：{@code unit.*} / {@code social.*} 的常量由工具直接读它们的 handler（unit/social 在
- * gov 允许面内）。★ 另有若干 {@code actor.*} / {@code sd.*} 字面量**本来就拼在 gov 侧**（如 {@code
- * "actor.AdjustAccounts"}、 {@code "sd.PutInfo"} 的历史拼点）——迁移**不新增也不删除**第二处拼法：只有原本读 handler
- * 常量的那几处改走本端口。
+ * gov 允许面内）。★ 另有若干 {@code actor.*} 与决策族 {@code ga.*} 字面量**本来就拼在 gov 侧**（如 {@code
+ * "actor.AdjustAccounts"}、{@code "ga.PutInfo"}——后者原为 {@code "sd.PutInfo"}，随 2026-10-12 批次 3b-2 的
+ * {@code info} 搬进 ga 一起改名）——迁移**不新增也不删除**第二处拼法：只有原本读 handler 常量的那几处改走本端口。
  */
 public interface GovToolCommandTypes {
 
@@ -47,6 +47,6 @@ public interface GovToolCommandTypes {
   /** {@code actor.RemitGovTreasury}。 */
   String remitGovTreasury();
 
-  /** {@code sd.PutInfo}。 */
+  /** {@code ga.PutInfo}。 */
   String putInfo();
 }

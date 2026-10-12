@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.SetDecisionMakerAccess} 窄工具（spec §4.2，N9/N11）：**GM 专用**配权写面（标 sensitive，走审批）。
+ * {@code ga.SetDecisionMakerAccess} 窄工具（spec §4.2，N9/N11）：**GM 专用**配权写面（标 sensitive，走审批）。
  *
  * <p>★ **取代 {@code sd.SetViewScope}**（用户 2026-09-22 裁定③）：旧工具配的是 GM **绝对指定**的可见集合；本工具配的是 **额外限制**——与
  * app 层范围函数现算的结果做交集（{@code narrowTo}）⇒ GM 只能额外收紧。
@@ -23,7 +23,7 @@ import java.util.Set;
  */
 public final class SetDecisionMakerAccessTool extends AbstractNarrowWriteTool implements SimosTool {
 
-  public static final String NAME = "sd.SetDecisionMakerAccess";
+  public static final String NAME = "ga.SetDecisionMakerAccess";
 
   public SetDecisionMakerAccessTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
@@ -41,7 +41,7 @@ public final class SetDecisionMakerAccessTool extends AbstractNarrowWriteTool im
 
   @Override
   public String description() {
-    return "GM 配权：固定 sd.SetDecisionMakerAccess，载荷 {decisionMakerId, allowedTools?, "
+    return "GM 配权：固定 ga.SetDecisionMakerAccess，载荷 {decisionMakerId, allowedTools?, "
         + "accessLimit{命名空间:[前缀…]}?, redactedFields?, adjudicationDisclosure?}";
   }
 

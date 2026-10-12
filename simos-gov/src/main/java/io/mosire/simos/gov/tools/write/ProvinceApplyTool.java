@@ -66,8 +66,8 @@ import java.util.UUID;
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code map.CreateRegion}（省 → 首都区）→ {@code unit.CreateUnit}（中央 → 省）→
  * {@code unit.SetGovFormation}（中央 → 省）→ {@code unit.SetJurisdiction}（中央在首都圈非空时才落；省逐个）→ {@code
- * sd.CreateDecisionMaker} → [{@code providerId}: {@code sd.SetDecisionMakerProvider}] → {@code
- * sd.PutInfo}（key={@value #INFO_KEY}，address=目标 Region canonical，value=JSON 字符串，tick=base 世界当前日）。
+ * ga.CreateDecisionMaker} → [{@code providerId}: {@code ga.SetDecisionMakerProvider}] → {@code
+ * ga.PutInfo}（key={@value #INFO_KEY}，address=目标 Region canonical，value=JSON 字符串，tick=base 世界当前日）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；★ 工具名不是命令类型 ⇒ 不进 catalog /
  * {@code PAYLOAD_HINTS}。
@@ -109,7 +109,7 @@ public final class ProvinceApplyTool implements SimosTool {
 
   /**
    * @param support 政府工具接缝束（写口/读口/视图口/视角口/经济口/命令类型口/人力口；见 {@link GovToolSupport}）
-   * @param mapId 本世界的 map 称谓（进 {@code sd.PutInfo} 的目标 Region canonical 地址）
+   * @param mapId 本世界的 map 称谓（进 {@code ga.PutInfo} 的目标 Region canonical 地址）
    */
   public ProvinceApplyTool(GovToolSupport support, String mapId) {
     this.support = Objects.requireNonNull(support, "support");
@@ -128,8 +128,8 @@ public final class ProvinceApplyTool implements SimosTool {
         + "→ social.CreateHousehold（每个 GOV 一个政府家户 hh-gov-<unitId>，位置 UNIT(unitId)）× (N+1) → "
         + "actor.EnsureHouseholdAccount × (N+1) → unit.SetGovFormation（域层把政府家户编入 Unit.households；省 superiorGov=中央）→ "
         + "economy.RegisterGovernment × (N+1)（gov-unit-<unitId>，要求 economy 已激活）→ "
-        + "unit.SetJurisdiction（中央仅首都区；省本省）→ sd.CreateDecisionMaker × (N+1) → "
-        + "[providerId: sd.SetDecisionMakerProvider] → sd.PutInfo。"
+        + "unit.SetJurisdiction（中央仅首都区；省本省）→ ga.CreateDecisionMaker × (N+1) → "
+        + "[providerId: ga.SetDecisionMakerProvider] → ga.PutInfo。"
         + "参数 {regionId(必填，必须在当前 map.regions() 里), maxHexPerProvince?(缺省 "
         + ProvinceDivider.DEFAULT_MAX_HEX_PER_PROVINCE
         + "), minHexPerProvince?(缺省 "
@@ -194,7 +194,7 @@ public final class ProvinceApplyTool implements SimosTool {
     props.put("cadence", ToolSchema.prop("integer", "决策周期（天，≥1；缺省 1）"));
     props.put("providerId", ToolSchema.prop("string", "LLM provider 引用（可选；给了才逐 DM 落 provider）"));
     props.put("overrideOverlaps", ToolSchema.prop("boolean", "显式接受相交 Region（缺省 false ⇒ 命中相交即拒）"));
-    props.put("reason", ToolSchema.prop("string", "落盘原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
+    props.put("reason", ToolSchema.prop("string", "落盘原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
@@ -583,7 +583,7 @@ public final class ProvinceApplyTool implements SimosTool {
   /**
    * 组批（固定顺序，可复现）：{@code map.CreateRegion}（省 → 首都区）→ {@code unit.CreateUnit}（中央 → 省）→ {@code
    * unit.SetGovFormation}（中央 → 省）→ {@code unit.SetJurisdiction}（按需）→ {@code
-   * sd.CreateDecisionMaker}（中央 → 省）→ [provider] → {@code sd.PutInfo}。全部共享同一 batchId 与同一
+   * ga.CreateDecisionMaker}（中央 → 省）→ [provider] → {@code ga.PutInfo}。全部共享同一 batchId 与同一
    * branch/expectedRevision ⇒ {@code submitBatch} 落一条 revision。
    */
   private List<ToolWritePort.Request> buildBatch(
@@ -683,9 +683,9 @@ public final class ProvinceApplyTool implements SimosTool {
     return java.util.Collections.unmodifiableList(batch);
   }
 
-  // ── 载荷：sd.PutInfo（行动记录） ─────────────────────────────────────────────────────
+  // ── 载荷：ga.PutInfo（行动记录） ─────────────────────────────────────────────────────
 
-  /** {@code sd.PutInfo} 载荷：目标 Region canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
+  /** {@code ga.PutInfo} 载荷：目标 Region canonical 地址 + key + value JSON 字符串 + note + 当前 tick。 */
   private static String infoPayload(ProvinceApplyPlan.Plan plan, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", regionAddress(plan.mapId(), plan.regionId()));

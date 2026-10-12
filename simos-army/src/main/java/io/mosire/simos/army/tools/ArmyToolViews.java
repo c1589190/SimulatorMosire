@@ -44,7 +44,7 @@ public interface ArmyToolViews {
   List<Map<String, Object>> compositionDeltaView(List<CompositionDelta> deltas);
 
   /**
-   * 单位 canonical 地址（{@code unit:<unitId>}）：{@code sd.PutInfo} 行动记录的地址（{@code formatUnit} 的唯一使用点）。
+   * 单位 canonical 地址（{@code unit:<unitId>}）：{@code ga.PutInfo} 行动记录的地址（{@code formatUnit} 的唯一使用点）。
    *
    * <p>★ 走注入而不是在域内拼：该地址形态的既有唯一拼写点是 app 的 {@code RaiseUnitPlan.unitAddress} （{@code
    * Address.parse(...).canonical()}）——"单位 canonical"多拼一处就多一处可以漂移的语法。

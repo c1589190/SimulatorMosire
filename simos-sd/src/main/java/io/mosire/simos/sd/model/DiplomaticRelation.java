@@ -12,7 +12,7 @@ import java.util.Optional;
  *       的含义、也不因某个 kind 施加任何规则）；
  *   <li>{@link #text}——自然语言描述；**谈判/联动裁决的状态与情况就记在这里**（D-005），再调 {@code sd.SetDiplomaticRelation}
  *       就是更新它；
- *   <li>{@link #updatedTick}——该边最后一次写入所用的 tick（单位：日；允许补记过去，但命令期拒绝未来，与 {@code sd.PutInfo}/{@code
+ *   <li>{@link #updatedTick}——该边最后一次写入所用的 tick（单位：日；允许补记过去，但命令期拒绝未来，与 {@code ga.PutInfo}/{@code
  *       ga.IssueDirective} 同口径）。
  * </ul>
  *

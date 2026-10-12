@@ -1,9 +1,10 @@
-package io.mosire.simos.sd.spi;
+package io.mosire.simos.ga.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.sd.SdLog;
-import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.change.SdChangeSet;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.SdInfoId;
@@ -11,7 +12,7 @@ import io.mosire.simos.sd.model.AdjudicationStatus;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -29,7 +30,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code sd.PutInfo} 命令的处理器（spec §六，R14）：sd 自有 INFO 覆盖层写路径。
+ * {@code ga.PutInfo} 命令的处理器（spec §六，R14；<b>★ 2026-10-12 批次 3b-2 自 {@code simos-sd/sd.spi} 迁入并 改名
+ * {@code sd.* → ga.*}，语义一字未改</b>）：决策族的 INFO 覆盖层写路径（该覆盖层本批起住 {@code GaState.info}）。
  *
  * <pre>{@code
  * {"address":"map:Map1:region.r1","key":"brief","value":"……","note":"可选",
@@ -37,7 +39,7 @@ import java.util.Set;
  *  "affiliations":[{"kind":"nation","id":"shanghai"}]}
  * }</pre>
  *
- * <p>★ **不复用全局 {@code InfoSystem}**（spec §六）：写进 {@code SdChangeSet.info} → 进 revision，可重放、受铁律 5
+ * <p>★ **不复用全局 {@code InfoSystem}**（spec §六）：写进 {@code GaChangeSet.info} → 进 revision，可重放、受铁律 5
  * 往返守卫。 **写的是感知层**（供 UI / AAR 展示），ground truth 仍由领域模块持有。
  *
  * <p>★★ **决策结果三件套（第 3 波第 1 步）**：本命令写的就是**决策结果本身**（INFO 条目），故三条新字段在这里落地—— {@code id}/{@code
@@ -49,15 +51,16 @@ import java.util.Set;
  *   <li>{@code tags} 缺席 ⇒ 空集（无主）；给了 ⇒ 逐字解析成 {@link DecisionMakerId}（**不**在此校验决策人是否存在——
  *       那是后续步骤的语义，本命令只认形状）；
  *   <li>{@code affiliations} 缺席 ⇒ 空集（不按归属发）；给了 ⇒ 逐项解析成 {@link Affiliation}（形状同 {@code
- *       sd.CreateDecisionMaker} 的 {@code affiliation}：{@code {"kind":"nation"|"army","id":"…"}}）。
+ *       ga.CreateDecisionMaker} 的 {@code affiliation}：{@code {"kind":"nation"|"army","id":"…"}}）。
  *       它与 {@code tags} 是**并集**关系，判定不在本层（见 {@code RedactingQueryService#docs}）；
  *   <li>{@code tick} 缺席 ⇒ **世界当前 tick**（第 3 波第 1 步的既有行为，向后兼容）；给了 ⇒ 用它，但 **不得记在未来** （{@code > 世界
  *       tick} ⇒ 拒，与 {@code ga.IssueDirective} 同口径）。**过去合法**（补记/滞后）；
- *   <li>{@code sourceDirective}（2026-10-12 批次 3b′ 新增的**可选**字段）缺席 ⇒ {@link
- *       SdInfoEntry#sourceDirective()} 为 空（旧调用一字不变）；给了 ⇒ 解析成 {@link DirectiveId}
- *       写进去。它是<b>出令执行原文</b>的配套字段：{@code ga.IssueDirective} 搬出 sd
- *       后，那条执行原文条目改由**同批的第二条命令**（本命令）落，靠这个字段与令挂钩（生产者在 {@code DirectiveIntentInfo}；读侧是 {@code
- *       SdQueryService}）。★ 本命令**不**校验该令是否存在（它只认形状，与 {@code tags} 同口径）。
+ *   <li>{@code sourceDirective}（2026-10-12 批次 3b-1 新增的**可选**字段）缺席 ⇒ {@link
+ *       SdInfoEntry#sourceDirective()} 为 空（旧调用一字不变）；给了 ⇒ 解析成 {@link DirectiveId} 写进去。★★ <b>3b-2
+ *       起它不再是出令执行原文的载体</b>：{@code info} 表搬进 ga 后，{@code ga.IssueDirective} <b>一条命令**自己**写令 +
+ *       执行原文</b>（见该类注），配套的 {@code DirectiveIntentInfo} 与 companion 机制已删除。 本字段作为**合法载荷口**保留（它是
+ *       {@link SdInfoEntry} 的既有字段，读侧 {@code SdQueryService} / {@code VoidAdjudicationTool}
+ *       仍按它索引）——删它等于缩载荷契约，与"行为等价"冲突。★ 本命令**不**校验该令是否存在 （它只认形状，与 {@code tags} 同口径）。
  * </ul>
  *
  * <p>★ 诚实边界（spec §六 + M4 裁定 38 同口径）：{@code SdInfoEntry.value} 是**裸 {@code Object}**，结构化值的 {@code
@@ -69,7 +72,7 @@ import java.util.Set;
 public final class PutInfoHandler implements CommandHandler {
 
   /** 命令类型（信封上的 {@code type}；P1.5 起 Plan 类直接引用本常量，不再另抄字面量）。 */
-  public static final String TYPE = "sd.PutInfo";
+  public static final String TYPE = "ga.PutInfo";
 
   @Override
   public String type() {
@@ -80,7 +83,7 @@ public final class PutInfoHandler implements CommandHandler {
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    SdState base = SdSnapshots.of(state).state();
+    GaState base = GaSnapshots.state(state);
     String addressForLog = null;
     String keyForLog = null;
     String infoIdForLog = null;
@@ -149,11 +152,11 @@ public final class PutInfoHandler implements CommandHandler {
               adjudicationStatus);
       entries.add(entry);
       next.put(mapKey, List.copyOf(entries));
-      EventLog.channel(SdLog.decision())
+      EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
                   "SD_PUT_INFO_APPLIED",
-                  SdLogSource.SD_DECISION,
+                  GaLogSource.GA_DECISION,
                   "id",
                   id.value(),
                   "address",
@@ -172,7 +175,7 @@ public final class PutInfoHandler implements CommandHandler {
                   entries.size(),
                   "infoAddresses",
                   next.size()));
-      return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withInfo(next)));
+      return new HandlerOutcome.Applied(GaChangeSet.between(base, base.withInfo(next)));
     } catch (IllegalArgumentException e) {
       return rejected(
           e.getMessage(),
@@ -193,7 +196,7 @@ public final class PutInfoHandler implements CommandHandler {
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
     SdPayloads.logRejected(
-        SdLog.decision(), SdLogSource.SD_DECISION, "SD_PUT_INFO_REJECTED", reason, idKeyValues);
+        GaLog.decision(), GaLogSource.GA_DECISION, "SD_PUT_INFO_REJECTED", reason, idKeyValues);
     return new HandlerOutcome.Rejected(reason);
   }
 

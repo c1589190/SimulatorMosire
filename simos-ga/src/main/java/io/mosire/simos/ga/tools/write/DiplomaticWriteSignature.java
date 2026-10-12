@@ -72,7 +72,7 @@ public final class DiplomaticWriteSignature {
     } catch (IllegalArgumentException e) {
       return Optional.of("调用者身份里的决策人 id 非法: " + decisionMakerId.get());
     }
-    DecisionMaker maker = GaToolReads.sd(state).decisionMakers().get(id);
+    DecisionMaker maker = GaToolReads.ga(state).decisionMakers().get(id);
     if (maker == null) {
       return Optional.of("调用者身份不是本世界已知的决策人: " + decisionMakerId.get());
     }

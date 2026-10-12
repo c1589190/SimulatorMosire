@@ -38,7 +38,6 @@ import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -86,7 +85,7 @@ import java.util.UUID;
  *
  * <p>★★ **一条 revision 是怎么落成的（本类最绕、也最关键的一段）**：决策结果必须写进**同一批**（写成两条 revision 就破了"一个 tick
  * 一条"），而决策结果的内容**要等批的结局才知道**（哪条被 handler 拒了）。故组批 = **〔过检命令…〕+〔本 tick 每条令一条 {@code
- * ga.SetDirectiveStatus}：状态翻转〕+〔一条 {@code sd.PutInfo}：本次裁决的决策结果〕**，跑一个**收敛循环**：
+ * ga.SetDirectiveStatus}：状态翻转〕+〔一条 {@code ga.PutInfo}：本次裁决的决策结果〕**，跑一个**收敛循环**：
  *
  * <ul>
  *   <li>{@link BatchResult.Committed} ⇒ 成了。这一条 revision 里**同时**含"被接受的命令""每条令的状态翻转"与"这份决策结果"；
@@ -339,7 +338,6 @@ public final class AdjudicateTickTool implements SimosTool {
 
   private ToolResult adjudicate(
       StateRef base, String adjudicationId, long tick, SimulationState state) {
-    SdState sd = ToolSupport.sdState(state);
     List<Directive> directives = directivesAt(ToolSupport.gaState(state).directives(), tick);
     if (directives.isEmpty()) {
       // ★ **明确拒绝，不静默成功**：空 tick 裁决成"什么都没发生"会让调用方以为结算过了。
@@ -348,9 +346,10 @@ public final class AdjudicateTickTool implements SimosTool {
 
     List<Step> steps = new ArrayList<>();
     for (Directive directive : directives) {
-      DecisionMaker maker = sd.decisionMakers().get(directive.decisionMakerId());
-      // ★ 2026-10-12 批次 3b′：令对决策人的外键成了**跨切片**的（令住 ga、决策人住 sd）⇒ 状态期不再判它，这里只做防御
-      //   （不编"决策人不存在"之外的语义；写入侧由 ga.IssueDirective 的命令期判据把守）。
+      DecisionMaker maker =
+          ToolSupport.gaState(state).decisionMakers().get(directive.decisionMakerId());
+      // ★ 2026-10-12 批次 3b-2：令与决策人**又同住 ga**（decisionMakers 随本批搬入）⇒ GaState 构造期那条外键整条恢复；
+      //   这里只做防御（不编"决策人不存在"之外的语义）。
       ResourceScopeMap fence =
           maker == null
               ? ResourceScopeMap.empty()
@@ -548,7 +547,7 @@ public final class AdjudicateTickTool implements SimosTool {
       Directive directive,
       DirectiveCommand command) {
     DecisionMaker maker =
-        ToolSupport.sdState(state).decisionMakers().get(directive.decisionMakerId());
+        ToolSupport.gaState(state).decisionMakers().get(directive.decisionMakerId());
     if (maker == null) {
       return Optional.of("决策人不存在: " + directive.decisionMakerId().value());
     }
@@ -742,10 +741,10 @@ public final class AdjudicateTickTool implements SimosTool {
   }
 
   /**
-   * 决策结果条目（一条 {@code sd.PutInfo} 命令）——**与命令同批落**（这样它和命令效果在**同一条 revision** 里）。
+   * 决策结果条目（一条 {@code ga.PutInfo} 命令）——**与命令同批落**（这样它和命令效果在**同一条 revision** 里）。
    *
    * <p>★★ **id 不再显式给**（2026-09-23 改）：原来写死 {@code #0} 是为了让"一个 tick 一条由构造保证"，但那让**作废之后没法重裁** ——作废把
-   * {@code #0} 翻成 VOIDED 留在原地，重裁再写 {@code #0} 就撞 id 被拒。现在交给 {@code sd.PutInfo} 的合成 （{@code
+   * {@code #0} 翻成 VOIDED 留在原地，重裁再写 {@code #0} 就撞 id 被拒。现在交给 {@code ga.PutInfo} 的合成 （{@code
    * 地址#该地址下条目数}）⇒ 同 tick 的第二条自然落成 {@code #1}，"至多一条生效"改由 {@link
    * io.mosire.simos.sd.model.AdjudicationStatus}（新条 EFFECTIVE、旧条被作废成 VOIDED）承担。
    *
@@ -776,7 +775,7 @@ public final class AdjudicateTickTool implements SimosTool {
         initiator,
         base.branch(),
         base.revision(),
-        "sd.PutInfo",
+        "ga.PutInfo",
         ToolSupport.json(payload));
   }
 

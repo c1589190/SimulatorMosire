@@ -74,8 +74,8 @@ final class RegionSeedPlan {
   /** {@code actor.Seed} 的命令类型（{@code includeActors=false} 时缺席）。 */
   static final String SEED_ACTOR_TYPE = WorldgenInitializeTool.SEED_ACTOR_TYPE;
 
-  /** {@code sd.PutInfo} 的命令类型（恒有：行动记录；与 {@code PutInfoHandler.type()} 同字面）。 */
-  static final String PUT_INFO_TYPE = "sd.PutInfo";
+  /** {@code ga.PutInfo} 的命令类型（恒有：行动记录；与 {@code PutInfoHandler.type()} 同字面）。 */
+  static final String PUT_INFO_TYPE = "ga.PutInfo";
 
   /** 城市化率缺省（冻结输入 {@code v17levant-nations.json} 的德意志取值；GM 可覆盖）。 */
   static final double DEFAULT_URBANIZATION_RATE = 0.12;
@@ -195,7 +195,7 @@ final class RegionSeedPlan {
   /**
    * 一份 Region 播种计划（全部字段是 base state 与参数的纯函数）。
    *
-   * @param mapId 世界 map 称谓（进 {@code economy.Seed} 与 {@code sd.PutInfo} 地址）
+   * @param mapId 世界 map 称谓（进 {@code economy.Seed} 与 {@code ga.PutInfo} 地址）
    * @param region 目标 Region（真档对象）
    * @param params 本次调用的全部 GM 参数
    * @param request 交给 {@link SettlementGenerator} 的生成请求（全部字段都在）

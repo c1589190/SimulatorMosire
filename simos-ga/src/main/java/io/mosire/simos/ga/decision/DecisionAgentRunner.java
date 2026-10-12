@@ -55,7 +55,7 @@ import java.util.Set;
  * SqliteConversationStore} 落在 {@code <store>} 下）落到同一段会话上。
  *
  * <p>★★ **但"同一段"要按「世代」算**（{@link DecisionMaker#conversationGeneration()}）：{@code
- * sd.ResetDecisionMakerConversation} 把世代 +1 ⇒ 下一个轮次落到**另一段**新会话上、**从空上下文重新开始**，而旧会话
+ * ga.ResetDecisionMakerConversation} 把世代 +1 ⇒ 下一个轮次落到**另一段**新会话上、**从空上下文重新开始**，而旧会话
  * **一条字节都不动**（会话库是 append-only，可审计）。世代 0 的 id 与旧格式**逐字相同**，故现场已落盘的老会话接得上。
  *
  * <p>★★ **空会话先注入一条 user 身份/规范消息**（{@link #openingUserMessage}，T11D）：{@code load} 对从未写过的会话返回空表 ⇒
@@ -155,7 +155,7 @@ public final class DecisionAgentRunner {
   /**
    * **一轮的进度回调**（2026-09-23，GUI 准实时进度）：**每轮 LLM 结束**、**每次工具调用结束**各推一次。
    *
-   * <p>★★ **默认 no-op ⇒ MCP 路径零影响**：GM 经 MCP 调 {@code sd.RunDecision} 那条是**同步**的（调用方等到整轮结束才拿到
+   * <p>★★ **默认 no-op ⇒ MCP 路径零影响**：GM 经 MCP 调 {@code ga.RunDecision} 那条是**同步**的（调用方等到整轮结束才拿到
    * 轨迹），它不需要进度；GUI 那条改成了**异步 + 轮询**，进度就是从这里出去的。两条路的区别只有"装不装监听"。
    *
    * <p>★ **只在两个真实的观察点推**（不另设节流/心跳）：模型的每一次响应、工具的每一次执行——它们就是这一轮**仅有**的 事件。界面上的"已 Ns"由渲染方按 {@code
@@ -591,7 +591,7 @@ public final class DecisionAgentRunner {
    * #GENERATION_CONVERSATION_ID_PREFIX} 那一族。
    *
    * <p>★ **入参是整个 {@code DecisionMaker}、不是一个 id 字符串**：这样"用哪个世代"不可能由调用方随手给错——它是**世界事实** 的一部分（{@code
-   * sd.ResetDecisionMakerConversation} 每次 +1）。传入 id + 世代的重载只是**格式原语**（用例与派生判据用）， 生产路径不该用它。
+   * ga.ResetDecisionMakerConversation} 每次 +1）。传入 id + 世代的重载只是**格式原语**（用例与派生判据用）， 生产路径不该用它。
    */
   public static String conversationIdOf(DecisionMaker dm) {
     Objects.requireNonNull(dm, "dm");
@@ -640,7 +640,7 @@ public final class DecisionAgentRunner {
    * <p>★★ **Skill 那一句是"指针"不是"内容"**（2026-09-23）：技能库是**外部文件、改了即生效**（见 {@code SkillLibrary}），
    * 若把正文钉进这条永久消息，模型此后每一轮读到的都是**改之前**的版本，而且没有任何症状。故这里只说"用哪个工具去读、要读就读当下这一版"。 ★ **代价要明说**：opening
    * 只在**空会话**注入 ⇒ 这条新指针**已落盘的老会话看不到**（它们仍能从工具列表里看到该工具）。 要让老会话也带上它，走 {@code
-   * sd.ResetDecisionMakerConversation} **换代重开**（生成一个新会话，opening 重新注入）。
+   * ga.ResetDecisionMakerConversation} **换代重开**（生成一个新会话，opening 重新注入）。
    *
    * <p>★★ **必须交代「出令的 {@code commands} 不得含 {@code sd.*}」**（真 LLM 现场实测缺陷的修法，2026-09-22）：模型勘察完
    * **第一次出令就用了 {@code sd.RegisterEffect}**——那是 sd 自指，被 {@code DirectiveWhitelist} **正确拒绝**（防无限递归），
@@ -1077,7 +1077,7 @@ public final class DecisionAgentRunner {
   /**
    * 把一次工具结局折成回灌消息与本轮账（成功与失败同一条路；见 {@link #execute} 的类注）。
    *
-   * <p>★ **同一段文本两处用**（T11C）：既回灌给模型，也记进本轮的账（{@code resultSummary}）——{@code sd.RunDecision}
+   * <p>★ **同一段文本两处用**（T11C）：既回灌给模型，也记进本轮的账（{@code resultSummary}）——{@code ga.RunDecision}
    * 的轨迹就是靠它报告"决策人看见了什么"。两处若各拼一次，轨迹与实际回灌的内容就会**各说各话**，而没有任何症状。
    */
   private ToolExecution recordResult(
@@ -1195,7 +1195,7 @@ public final class DecisionAgentRunner {
    *     为什么不记线名：这份账是给 GM / AAR 看的（"决策人调了什么"），而线名是供应商方言的产物、在 catalog 与 GUI 里都不存在； ★
    *     为什么过不了表时记原话：那一笔的**事实**就是"模型叫了这个名字"，换掉它等于把"叫错了名"这件事抹掉。
    * @param resultSummary **回灌给模型的那段文本**（与 {@link LlmMessage#tool} 里那条 tool 消息**同源**，见 {@link
-   *     #feedbackText}）。★ T11C 起它在账里：{@code sd.RunDecision} 把它当"决策人看见了什么"的载体交给调用方 ——
+   *     #feedbackText}）。★ T11C 起它在账里：{@code ga.RunDecision} 把它当"决策人看见了什么"的载体交给调用方 ——
    *     在此之前本记录刻意**不带**输出（"输出在会话里"），但那条路对**工具调用者**不成立：它拿不到会话，只能拿到这个账。 ★ 原样保存、**不在此截断**（截断是渲染方的事，见
    *     {@code RunDecisionTool}）。
    */
@@ -1210,7 +1210,7 @@ public final class DecisionAgentRunner {
   /**
    * **撞上回合预算**（{@link #DEFAULT_MAX_LLM_CALLS}）时的可判别信号（T11C 新增）。
    *
-   * <p>★ **为什么给一个类型而不是沿用裸 {@code IllegalStateException}**：{@code sd.RunDecision}
+   * <p>★ **为什么给一个类型而不是沿用裸 {@code IllegalStateException}**：{@code ga.RunDecision}
    * 要如实报"这一轮**是否因预算中止**"， 而在**消息文本**里找关键词是脆的（改一个字就静默失配，且本类里还有别的 {@code
    * IllegalStateException}——装配故障）。 子类仍然满足"响亮失败"的原判据（{@code IllegalStateException} 的 {@code
    * isInstanceOf} 断言照旧成立）。

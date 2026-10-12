@@ -62,7 +62,7 @@ import java.util.UUID;
  * reason} 以 {@code 【打回】} 开头）。
  *
  * <p>★★ **一条 revision 同时留痕三件事**（铁律 2 的"打回也是世界事实"）：状态翻转（{@code ga.SetDirectiveStatus}）+ 审计条目（ {@code
- * sd.PutInfo}，地址 {@code sd:rejection.<directiveId>}：谁的令 / 第几版 / 理由文本 / 落在哪条 revision）**同批**落一条
+ * ga.PutInfo}，地址 {@code sd:rejection.<directiveId>}：谁的令 / 第几版 / 理由文本 / 落在哪条 revision）**同批**落一条
  * revision（{@link ToolWritePort#submitBatchWithReceipt}，原子）。
  *
  * <p>★ **审计条目**有意**不带 tags**（无主）：它是治理/审计记录，不是"裁决结果"（{@code sd:adjudication.<tick>} 那一族）—— 挂上决策人的
@@ -267,7 +267,7 @@ public final class RejectDirectiveTool implements SimosTool {
   }
 
   /**
-   * 审计条目（{@code sd.PutInfo}，地址 {@code sd:rejection.<directiveId>}）：**谁的令 / 第几版 / 理由文本 / 落在哪条
+   * 审计条目（{@code ga.PutInfo}，地址 {@code sd:rejection.<directiveId>}）：**谁的令 / 第几版 / 理由文本 / 落在哪条
    * revision**。
    *
    * <p>★ {@code value} 是 **JSON 字符串**（{@code SdInfoEntry.value} 是裸 {@code Object}，只有标量往返有保证）；{@code
@@ -292,7 +292,7 @@ public final class RejectDirectiveTool implements SimosTool {
     payload.put("value", ToolResults.json(value));
     payload.put("id", SdInfoIds.synthesize(canonical, 0).value());
     payload.put("tick", directive.tick());
-    return new ToolWritePort.Request("sd.PutInfo", ToolResults.json(payload));
+    return new ToolWritePort.Request("ga.PutInfo", ToolResults.json(payload));
   }
 
   /** 整批被拒时取**第一条真拒因**（批内顺序 = 状态翻转在前 ⇒ 打回不合法时取到的就是转移守卫/命令期的原文）。 */
