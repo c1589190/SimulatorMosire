@@ -14,6 +14,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -30,7 +31,7 @@ import java.util.Objects;
  *
  * <p>起点必须等于该单位在 {@code at} 的有效位置（M3 口径），否则拒绝。
  */
-public final class PlanRouteHandler implements CommandHandler, CommandTargets {
+public final class PlanRouteHandler implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** 命令类型（信封上的 {@code type}；P1.5 起 Plan 类直接引用本常量，不再另抄字面量）。 */
   public static final String TYPE = "unit.PlanRoute";

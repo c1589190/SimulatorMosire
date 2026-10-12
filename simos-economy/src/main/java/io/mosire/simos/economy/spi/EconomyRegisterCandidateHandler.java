@@ -15,6 +15,7 @@ import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -41,7 +42,7 @@ import org.slf4j.Logger;
  * <p>★ <b>本命令只登记、不采用</b>：不建 unit、不改关系/资产/劳动/市场；进入算法留 E2b。不实现 {@code CommandTargets} （同 {@code
  * economy.MigrateHousehold}：GM {@code simos.command.submit} 可用，directive 内会被 fail-closed 拒）。
  */
-public final class EconomyRegisterCandidateHandler implements CommandHandler {
+public final class EconomyRegisterCandidateHandler implements CommandHandler, DmUsableCommand {
 
   private static final String COMMAND = "economy.RegisterCandidate";
 

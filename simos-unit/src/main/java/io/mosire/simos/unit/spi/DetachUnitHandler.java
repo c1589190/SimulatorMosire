@@ -12,6 +12,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -24,7 +25,7 @@ import java.util.Objects;
  * <p>★ **只节点**（P3 的不对称）：只把 `id` 标成 `attached=false`，子节点**不动**（子树整体的分离是 SplitFormation， T4）。`id` 已是根
  * ⇒ 拒绝（没有可脱离的父）；`id` 不存在 ⇒ 拒绝。在 base 状态时间戳追加段。
  */
-public final class DetachUnitHandler implements CommandHandler, CommandTargets {
+public final class DetachUnitHandler implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：本命令点名的**那一个单位**。 */
   @Override

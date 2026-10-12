@@ -13,6 +13,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -28,7 +29,8 @@ import java.util.Objects;
  * <p>★ <b>命令类型名改了</b>：旧 {@code unit.SetStrength} 与 {member, equipment-map} 载荷按 D-011/R4 **不留兼容层**；
  * 旧调用方读不出/提交即被拒是预期行为（世界替换在后续阶段 D6）。
  */
-public final class SetCompositionHandler implements CommandHandler, CommandTargets {
+public final class SetCompositionHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** 命令类型（信封上的 {@code type}，也是 catalog / 窄工具引用的唯一拼写点）。 */
   public static final String TYPE = "unit.SetComposition";

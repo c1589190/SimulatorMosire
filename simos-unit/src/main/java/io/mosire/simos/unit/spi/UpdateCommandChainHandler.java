@@ -12,6 +12,7 @@ import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
@@ -33,7 +34,7 @@ import java.util.Optional;
  *
  * <p>★ 链**无时刻分量**：不追加段、不读 {@code state.meta().timestamp()}。
  */
-public final class UpdateCommandChainHandler implements CommandHandler {
+public final class UpdateCommandChainHandler implements CommandHandler, DmUsableCommand {
 
   @Override
   public String type() {

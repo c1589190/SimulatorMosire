@@ -12,6 +12,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -32,7 +33,8 @@ import java.util.Optional;
  * <p>★ 拒绝一律走 {@link HandlerOutcome.Rejected}（理由由 {@link UnitOperations#setRejoinTarget} 给出，与 {@code
  * unit.SetStatus} 同一条折算路径）；**装配故障**（缺 unit 切片）才抛。
  */
-public final class SetRejoinTargetHandler implements CommandHandler, CommandTargets {
+public final class SetRejoinTargetHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：回归单位 + **载荷点名的回归目标**（若有）。 */
   @Override

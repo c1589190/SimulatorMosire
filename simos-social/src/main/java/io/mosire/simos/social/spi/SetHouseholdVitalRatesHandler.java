@@ -13,6 +13,7 @@ import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -38,7 +39,8 @@ import java.util.Objects;
  * io.mosire.simos.social.SocialData#findVitalRate(io.mosire.simos.social.api.id.HouseholdId,
  * io.mosire.simos.social.population.AgeBracket, io.mosire.simos.social.api.population.Sex)}。
  */
-public final class SetHouseholdVitalRatesHandler implements CommandHandler, CommandTargets {
+public final class SetHouseholdVitalRatesHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** 命令类型（唯一拼写点：Shell 注册、组合工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.SetHouseholdVitalRates";

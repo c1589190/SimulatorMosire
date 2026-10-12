@@ -18,6 +18,7 @@ import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -64,7 +65,7 @@ import org.slf4j.Logger;
  * 命令语义的准入判断（份额存在/数量范围/至少一栏变化），真正的校验/新 id/守恒/活跃质押上界全在 Book 里一次完成： 任一失败 ⇒ 调用方的表一字不动（不再有"先改源行、后生成 id
  * 抛错"的半笔风险）。
  */
-public final class EconomyTransferOwnershipStakeHandler implements CommandHandler {
+public final class EconomyTransferOwnershipStakeHandler implements CommandHandler, DmUsableCommand {
 
   private static final String COMMAND = "economy.TransferAssetShare";
 

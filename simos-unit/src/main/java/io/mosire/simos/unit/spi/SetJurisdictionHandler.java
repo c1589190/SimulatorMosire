@@ -15,6 +15,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -41,7 +42,8 @@ import java.util.Optional;
  * <p>★ **目标声明**（{@link CommandTargets}）：按载荷点名的 unitId 判（同既有 unit 命令）。本命令是 unit 域命令，region 是 map
  * 命名空间的数据，故目标只含该 unit 的资源路径。
  */
-public final class SetJurisdictionHandler implements CommandHandler, CommandTargets {
+public final class SetJurisdictionHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {

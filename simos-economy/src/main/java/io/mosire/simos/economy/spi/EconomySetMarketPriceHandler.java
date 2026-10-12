@@ -11,6 +11,7 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -42,7 +43,7 @@ import org.slf4j.Logger;
  * <p>★ <b>不做的事</b>：不实现 {@code CommandTargets}（同 {@code economy.MigrateHousehold}：GM {@code
  * simos.command.submit} 可用，directive 内会被 fail-closed 拒）。
  */
-public final class EconomySetMarketPriceHandler implements CommandHandler {
+public final class EconomySetMarketPriceHandler implements CommandHandler, DmUsableCommand {
 
   private static final String COMMAND = "economy.SetMarketPrice";
 

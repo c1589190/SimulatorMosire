@@ -17,6 +17,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -56,7 +57,7 @@ import java.util.Objects;
  * <p>★ **坏载荷与域规则违反都折成 {@code Rejected}**（照本模块惯例，见 {@link SocialPayloads}）：空 entries、 {@code sex}
  * 不在词表里、id 空白各抛 {@link IllegalArgumentException}；跨组件归位冲突由 {@code SocialData} 构造期校验拒。
  */
-public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
+public final class SeedGroupsHandler implements CommandHandler, CommandTargets, DmUsableCommand {
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {

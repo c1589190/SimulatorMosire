@@ -11,6 +11,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -49,7 +50,7 @@ import org.slf4j.Logger;
  * 构造期守卫判——**不重复实现**。两者的失败都以 {@code Rejected} 出面；**装配故障**（state 里没有 actor 切片）则当场炸， 不走拒绝路径（见 {@link
  * ActorSnapshots}）。
  */
-public final class ActorSeedHandler implements CommandHandler, CommandTargets {
+public final class ActorSeedHandler implements CommandHandler, CommandTargets, DmUsableCommand {
 
   private static final Logger LOG = ActorLog.seed();
 

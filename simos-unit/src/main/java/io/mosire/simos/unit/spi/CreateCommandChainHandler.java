@@ -13,6 +13,7 @@ import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashSet;
@@ -34,7 +35,7 @@ import java.util.Set;
  * <p>★ 链**无时刻分量**：本命令不追加任何段，故不读 {@code state.meta().timestamp()}（与 `UpdateCommandChain` 同制， 与带时刻的
  * `SplitFormation`/`MergeFormation` 一族相反）。多属**不是**拒绝理由（spec §一.2 / P11）。
  */
-public final class CreateCommandChainHandler implements CommandHandler {
+public final class CreateCommandChainHandler implements CommandHandler, DmUsableCommand {
 
   @Override
   public String type() {

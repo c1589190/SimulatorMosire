@@ -17,6 +17,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -75,7 +76,8 @@ import org.slf4j.Logger;
  *   <li>某资源可支配量不足（余额 − 冻结）。
  * </ol>
  */
-public final class RemitGovTreasuryHandler implements CommandHandler, CommandTargets {
+public final class RemitGovTreasuryHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   private static final Logger LOG = ActorLog.account();
 

@@ -7,6 +7,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -25,7 +26,8 @@ import java.util.Objects;
  * <p>★ 历史口径（旧实现，不再执行）：{@code dq}/{@code dr} 都缺或为 {@code null} ⇒ 清偏移；只给一个 ⇒ 另一个按 0 补；
  * 偏移允许越界（相对父的站位，不判地图内）。
  */
-public final class SetFormationOffsetHandler implements CommandHandler, CommandTargets {
+public final class SetFormationOffsetHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：本命令点名的**那一个单位**。 */
   @Override

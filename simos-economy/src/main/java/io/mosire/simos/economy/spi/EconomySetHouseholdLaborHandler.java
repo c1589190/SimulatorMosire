@@ -12,6 +12,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -43,7 +44,8 @@ import org.slf4j.Logger;
  *
  * <p>★ <b>权限</b>：非 {@code GmOnlyCommand}（同 social 的家户命令）；决策令路径是否可达由 {@code economy} 命名空间的目标格可达面决定。
  */
-public final class EconomySetHouseholdLaborHandler implements CommandHandler, CommandTargets {
+public final class EconomySetHouseholdLaborHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.SetHouseholdLabor";

@@ -13,6 +13,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -36,7 +37,7 @@ import java.util.Optional;
  *
  * <p>★ <b>目标声明</b>（{@link CommandTargets}）：按载荷点名的 unitId 判；本命令只写 unit 命名空间。
  */
-public final class SetGovPolicyHandler implements CommandHandler, CommandTargets {
+public final class SetGovPolicyHandler implements CommandHandler, CommandTargets, DmUsableCommand {
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {

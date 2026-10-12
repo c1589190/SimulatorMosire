@@ -13,6 +13,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -41,7 +42,8 @@ import java.util.Objects;
  *
  * <p>★ <b>非 GmOnly</b>：unit 域日常政策命令，未来决策人可嵌令（P4c 的工具/白名单另批）；命令只写 unit 命名空间。
  */
-public final class SetArmyPayPolicyHandler implements CommandHandler, CommandTargets {
+public final class SetArmyPayPolicyHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** 命令类型（唯一拼写点：Shell 注册、catalog 提示与烟测都从这里取/对齐）。 */
   public static final String TYPE = "unit.SetArmyPayPolicy";

@@ -12,6 +12,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -37,7 +38,8 @@ import java.util.Optional;
  * <p>★ <b>目标声明</b>（{@link CommandTargets}）：本命令**非 GmOnly**（D-012 的机制是通用的，后续政府模块也要用），因此它可以被
  * 嵌进决策令；目标就是载荷点名的**那一个单位**（与 {@code unit.SetStatus} 同款，判越权交调用方）。
  */
-public final class SetStateDescriptionHandler implements CommandHandler, CommandTargets {
+public final class SetStateDescriptionHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** 命令类型（信封上的 {@code type}，也是 {@code CatalogTool} 与 GM 窄工具的固定命令类型）。 */
   public static final String TYPE = "unit.SetStateDescription";

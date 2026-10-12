@@ -13,6 +13,7 @@ import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -28,7 +29,8 @@ import java.util.Objects;
  * <p>★ <b>语义</b>：只调 {@link HouseholdBook#removeMembers}（走 {@code GM_ADJUST}
  * 负事件，可回放）；家户不存在、批次不属于该家户、 扣减超量、{@code count ≤ 0} 都由域层具名拒。
  */
-public final class RemoveHouseholdMembersHandler implements CommandHandler, CommandTargets {
+public final class RemoveHouseholdMembersHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** 命令类型（唯一拼写点：Shell 注册、组合工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.RemoveHouseholdMembers";

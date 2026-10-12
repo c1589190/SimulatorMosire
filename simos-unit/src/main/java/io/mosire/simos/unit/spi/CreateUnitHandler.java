@@ -18,6 +18,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.Segment;
@@ -47,7 +48,7 @@ import java.util.Optional;
  *
  * <p>★ 因此"同一支编制里的单位都同格"是**创建期就成立**的不变量（`attach`/`merge` 两条路也各自判同格）。
  */
-public final class CreateUnitHandler implements CommandHandler, CommandTargets {
+public final class CreateUnitHandler implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** 命令类型（信封上的 {@code type}，也是 catalog / 窄工具引用的唯一拼写点）。 */
   public static final String TYPE = "unit.CreateUnit";

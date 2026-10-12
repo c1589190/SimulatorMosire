@@ -13,6 +13,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -25,7 +26,7 @@ import java.util.Objects;
  * {@link IllegalArgumentException}，handler 在命令边界折成 {@code Rejected}）；单位不存在 ⇒ 拒绝。改状态**只影响此后新下达的路线**，
  * **在途不回溯**（P6：`Movement.speedAtDeparture` 出发时已冻结）。
  */
-public final class SetStatusHandler implements CommandHandler, CommandTargets {
+public final class SetStatusHandler implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：本命令点名的**那一个单位**。 */
   @Override

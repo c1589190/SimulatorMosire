@@ -101,6 +101,8 @@ import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
+import io.mosire.simos.ga.command.CommandFaces;
+import io.mosire.simos.ga.command.CommandPermissionRules;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.tools.GmAutoApproveGate;
 import io.mosire.simos.ga.tools.GmToolUsage;
@@ -122,6 +124,7 @@ import io.mosire.simos.map.spi.SetTerrainHandler;
 import io.mosire.simos.map.spi.SplitRegionHandler;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
 import io.mosire.simos.sd.channel.ActorId;
+import io.mosire.simos.sd.channel.ChannelAdmission;
 import io.mosire.simos.sd.channel.DecisionChannel;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.guard.RegionDeleteGuard;
@@ -227,7 +230,6 @@ import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.resolve.ResolverRegistry;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.state.BranchId;
@@ -349,16 +351,15 @@ public final class Shell implements AutoCloseable {
   private final List<DecisionChannel> decisionChannels;
 
   /**
-   * **GM catalog 可见的命令类型**（E6b 起 = 完整注册面，含 {@link GmOnlyCommand}）：按角色重建工具面时供 catalog 读。 ★ 决策人侧仍由
-   * {@code CatalogVisibility} 按权限过滤 —— GM-only 命令不在其"可嵌入令"白名单里，故决策人看不到。
+   * **完整注册面**（= {@code CommandFaces.catalogTypes()}，含 GM-only 命令与装配自身新增的 {@code sd.RegisterEffect} 与 5 条
+   * sd 决策命令）：按角色重建工具面时供 catalog 读。★ 决策人侧仍由 {@code CatalogVisibility} 按权限过滤 —— GM-only 命令不在其"可嵌入令"白名单里，故决策人看不到。
    */
   private final Set<String> commandTypes;
 
   /**
-   * **可嵌入令 / 可入 RegisterEffect 的白名单输入集**（E6b 起与 catalog 面拆开；= 注册面 − {@link GmOnlyCommand}）： {@code
-   * IssueDirectiveHandler} 的 {@code DirectiveWhitelist}（再过滤 {@code sd.*} 自指与通用写）、{@code
-   * sd.AdjudicateTick} 重建的白名单与 {@code RegisterEffectHandler} 的可入队白名单共用这一份。★ GM-only 命令仍注册在 Core、仍进
-   * {@code commandTargets}，GM 的 {@code simos.command.submit} 不受影响。
+   * **可嵌入令面**（= {@code CommandFaces.directiveTypes()}，由 handler 上的 {@code DmUsableCommand} 声明派生）： {@code
+   * IssueDirectiveHandler} 的 {@code DirectiveWhitelist}、{@code sd.AdjudicateTick} 重建的白名单、决策人工具目录共用这一份。
+   * ★ GM-only 命令仍注册在 Core、仍进 {@code commandTargets}，GM 的 {@code simos.command.submit} 不受影响。
    */
   private final Set<String> directiveCommandTypes;
 
@@ -855,31 +856,45 @@ public final class Shell implements AutoCloseable {
                 //   GmOnlyCommand（同 D1 的边界）；判定算法在 CombatResolution（唯一拼写点），本注册只负责路由。
                 new AppendCombatStageHandler(),
                 new ResolveCombatStageHandler()));
-    Set<String> drainableCommandTypes = new LinkedHashSet<>();
-    for (CommandHandler handler : handlers) {
-      // ★★ E6a：GM-only 标记同样排除出 `sd.RegisterEffect` 的可入队命令白名单 —— 它是**第三条**决策人可间接
-      //   触发的路径（效果在后续 tick FIRED 后由 SdCommandDrain 提交）。判定与 DirectiveWhitelist 同源
-      //   （handler 上的标记接口），不另写清单。
-      if (!handler.type().startsWith("sd.") && !(handler instanceof GmOnlyCommand)) {
-        drainableCommandTypes.add(handler.type());
-      }
-    }
-    handlers.add(new RegisterEffectHandler(drainableCommandTypes));
-    // ★★ E6b：把"**GM catalog 可见的命令类型**"与"**可嵌入令/可入 RegisterEffect 的白名单**"拆开：
-    //   - catalogCommandTypes = 完整注册面（含 GmOnlyCommand）⇒ GM 的 simos.command.catalog 看得到
-    //     economy.SwitchMode / economy.GmAdjust；
-    //   - directiveCommandTypes = 注册面 − GmOnlyCommand（E6a 口径不变）⇒ IssueDirective 白名单、
-    //     sd.AdjudicateTick 重建的白名单、RegisterEffect 可入队白名单与决策人工具目录继续排除它们。
-    //   ★ catalog 的过滤仍在 CatalogVisibility（受限调用者只看到"自己可触发的"）；两条命令对决策人不可见。
-    Set<String> catalogCommandTypes = new LinkedHashSet<>();
-    Set<String> directiveCommandTypes = new LinkedHashSet<>();
+    // ★★ 批次 1（2026-10-12「权限统一到 ga 规范层」）：命令权限**只有一处声明**（handler 上的 {@code DmUsableCommand}
+    //   标记），四个面全部由 ga 的规则层从这一份声明派生 + 装配期 fail-closed 审计。
+    //   ⇒ Shell **不再有任何权限判断**：迁移前的三处判据全部删除——
+    //     ① drainable 的 `!type.startsWith("sd.") && !(h instanceof GmOnlyCommand)`；
+    //     ② directive 的 `!(h instanceof GmOnlyCommand)`（**默认放行**的根源）；
+    //     ③ 5 条 late handler 的**无条件** directiveCommandTypes.add(...)。
+    //   ★ ③ 删得尤其要紧：它今天被 `sd.` 前缀规则吃掉（是死的），前缀一撤就复活成"自指可嵌令"的后门。
+    //   ① 先收声明 —— 唯一读标记的地方在 ga 的规则层，不在组合根：
+    CommandPermissionRules.Declarations declarations = CommandPermissionRules.declare(handlers);
+    //   ② 用派生面构造"装配自身新增"的 6 条 handler（sd.RegisterEffect + 5 条 sd 决策命令）：它们**都不打声明**
+    //     ⇒ 既不进可嵌令面、也不进可入队面（与迁移前"被 sd. 前缀剔掉"逐条等价）。
+    //   ★ 可入队面与可嵌令面在本批口径下是**同一份声明**的两种用法（见 CommandFaces 的类注），故共用这一个集合。
+    Set<String> dmUsableTypes = declarations.dmUsableTypes();
+    handlers.add(new RegisterEffectHandler(dmUsableTypes));
+    IssueDirectiveHandler issueDirectiveHandler =
+        new IssueDirectiveHandler(new DirectiveWhitelist(dmUsableTypes));
+    SubmitVerdictHandler submitVerdictHandler = new SubmitVerdictHandler();
+    SetDecisionMakerAccessHandler setDecisionMakerAccessHandler =
+        new SetDecisionMakerAccessHandler();
+    SetDecisionMakerProviderHandler setDecisionMakerProviderHandler =
+        new SetDecisionMakerProviderHandler();
+    ResetDecisionMakerConversationHandler resetDecisionMakerConversationHandler =
+        new ResetDecisionMakerConversationHandler();
+    handlers.add(issueDirectiveHandler);
+    handlers.add(submitVerdictHandler);
+    handlers.add(setDecisionMakerAccessHandler);
+    handlers.add(setDecisionMakerProviderHandler);
+    handlers.add(resetDecisionMakerConversationHandler);
+    //   ③ 注册：顺序与迁移前逐条相同（136 条领域 handler → sd.RegisterEffect → 5 条 sd 决策命令 = 142 条）。
     for (CommandHandler handler : handlers) {
       coreSimos.register(handler);
-      catalogCommandTypes.add(handler.type());
-      if (!(handler instanceof GmOnlyCommand)) {
-        directiveCommandTypes.add(handler.type());
-      }
     }
+    //   ④ 四个面 + 三条 fail-closed 审计，在**完整注册面**上收口：catalog / 可嵌令 / 可入队 / 决策落点。
+    //   ★ 落点面是"输入 + 审计"：组合根把 ChannelAdmission.LANDING_POINTS 送进规则层，规则层审"它是注册面成员、
+    //     且不是 DM 可用命令"（拒绝的实现在 sd.ChannelAdmission 里，仍是模块侧强制）。
+    CommandFaces commandFaces =
+        CommandPermissionRules.resolve(declarations, handlers, ChannelAdmission.LANDING_POINTS);
+    Set<String> catalogCommandTypes = commandFaces.catalogTypes();
+    Set<String> directiveCommandTypes = commandFaces.directiveTypes();
 
     // ★ 第 3 波第 2 步：命令的**目标声明**从同一份 handler 清单派生（实现了 CommandTargets 的那些）——
     //   与执行面同源 ⇒ 不需要另立一张会漂移的表；未实现者不在表里 ⇒ 工具侧 fail-closed 拒。
@@ -890,28 +905,9 @@ public final class Shell implements AutoCloseable {
       }
     }
 
-    // ★ D1：决策命令白名单从**注册面**推导（禁 sd 自指/通用写）⇒ 用上面那份已排除 GM-only 的 directiveCommandTypes。
-    IssueDirectiveHandler issueDirectiveHandler =
-        new IssueDirectiveHandler(new DirectiveWhitelist(directiveCommandTypes));
-    SubmitVerdictHandler submitVerdictHandler = new SubmitVerdictHandler();
-    SetDecisionMakerAccessHandler setDecisionMakerAccessHandler =
-        new SetDecisionMakerAccessHandler();
-    SetDecisionMakerProviderHandler setDecisionMakerProviderHandler =
-        new SetDecisionMakerProviderHandler();
-    ResetDecisionMakerConversationHandler resetDecisionMakerConversationHandler =
-        new ResetDecisionMakerConversationHandler();
-    for (CommandHandler late :
-        List.of(
-            issueDirectiveHandler,
-            submitVerdictHandler,
-            setDecisionMakerAccessHandler,
-            setDecisionMakerProviderHandler,
-            resetDecisionMakerConversationHandler)) {
-      handlers.add(late);
-      coreSimos.register(late);
-      catalogCommandTypes.add(late.type());
-      directiveCommandTypes.add(late.type());
-    }
+    // ★★ 批次 1：原来这里"从 directiveCommandTypes 重建白名单 + 5 条 late handler **无条件** add 进
+    //   directiveCommandTypes"的两段已删 —— 5 条 sd 决策命令的构造与注册上移到 ②/③（用同一份派生面构造），
+    //   它们**不打声明** ⇒ 不进可嵌令面（今天被 sd. 前缀规则吃掉的那一步，现在由声明承担）。
 
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
     //   ★ 2026-10-09：生产路径收敛到 **production-runtime** —— 经济/人口/actor 三片由

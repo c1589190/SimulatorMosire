@@ -18,6 +18,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -49,7 +50,8 @@ import java.util.Objects;
  *
  * <p>★ <b>目标声明</b>（{@link CommandTargets}）：按载荷点名的 {@code govUnitId} 判；本命令只写 unit 命名空间。
  */
-public final class AssignExternalGovPostHandler implements CommandHandler, CommandTargets {
+public final class AssignExternalGovPostHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /** 命令类型（信封上的 {@code type}；app 侧工具直接引用本常量，不再另抄字面量）。 */
   public static final String TYPE = "unit.AssignExternalGovPost";

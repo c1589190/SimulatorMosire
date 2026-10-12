@@ -198,8 +198,12 @@ public final class AdjudicateTickTool implements SimosTool {
   /**
    * 决策命令白名单（与 {@code IssueDirectiveHandler} **同一个构造器、同一个输入** {@code commandTypes}）。
    *
-   * <p>★ 这里重建一份是**纯函数复算**（{@code new DirectiveWhitelist(commandTypes)} 是同一份注册面的确定性函数），
+   * <p>★ 这里重建一份是**纯函数复算**（{@code new DirectiveWhitelist(commandTypes)} 是同一份输入的确定性函数），
    * 不是第二份真相；它守的是"**存量令里的命令按今天的白名单仍然合法**"（白名单收窄过就不该继续执行）。
+   *
+   * <p>★★ 2026-10-12 批次 1 起 {@code commandTypes} 就是 ga 规则层派生的**可嵌令面**（{@code
+   * CommandFaces.directiveTypes()}，66 条）—— {@code sd.} 前缀规则已删，自指保护由"决策族命令不打 {@code
+   * DmUsableCommand}"承担；本类拿到的面里本就没有一条 {@code sd.*}，故复算结果与迁移前逐条相同。
    */
   private final DirectiveWhitelist whitelist;
 
@@ -211,7 +215,8 @@ public final class AdjudicateTickTool implements SimosTool {
    * @param initiator 本工具落盘时的发起者（C21 的 {@code <kind>:<id>} 形态）——**决策结果条目**用它； 命令信封各自用**出令决策人**的身份（见
    *     {@link #envelopeFor}）
    * @param mapId 地图称谓（拼目标资源路径的首段）
-   * @param commandTypes 已注册命令类型（与 {@code Shell} 注册的 handler 同源，构造白名单）
+   * @param commandTypes **可嵌进决策令的命令类型**（2026-10-12 批次 1 起 = {@code Shell} 派生的可嵌令面， 与 {@code
+   *     IssueDirectiveHandler} 收到的是同一份；迁移前这里收的是"注册面 − GmOnly"，靠 {@code sd.} 前缀现场再过滤一次）
    * @param commandTargets {@code type → 目标声明}（**必须**由同一个已注册 handler 清单派生 ⇒ 与执行面同源）
    */
   public AdjudicateTickTool(

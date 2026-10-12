@@ -12,6 +12,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -28,7 +29,8 @@ import java.util.Optional;
  * <p>★ `parent` **可选**：缺失或 `null` ⇒ **提升为根**（P4），故这里**不**照抄 {@link AttachUnitHandler} 的
  * `orElseThrow`——那会把这唯一的降根路径堵死。`parent` 落在 `rootId` 的子树内 ⇒ 拒绝（成环）；两个 id 有任一不存在 ⇒ 拒绝。
  */
-public final class ReparentSubtreeHandler implements CommandHandler, CommandTargets {
+public final class ReparentSubtreeHandler
+    implements CommandHandler, CommandTargets, DmUsableCommand {
 
   /**
    * ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：子树根 + 新父。

@@ -13,6 +13,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -31,7 +32,7 @@ import java.util.Objects;
  *
  * <p>★ **目标声明**（{@link CommandTargets}）：按载荷点名的 unitId 判；region 是 map 命名空间的数据，本命令只写 unit 侧管辖。
  */
-public final class SetTaxRateHandler implements CommandHandler, CommandTargets {
+public final class SetTaxRateHandler implements CommandHandler, CommandTargets, DmUsableCommand {
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
