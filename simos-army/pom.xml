@@ -13,9 +13,15 @@
   <name>ArmySimos</name>
   <description>军队切片（阶段 12 最小版）：只做“军队辖区 = 视野”的纯派生视图（ArmyVision），不算任何战力。</description>
 
-  <!-- ★ 依赖面（用户阶段 12 裁定 + 2026-10-09 方案 A）：util（SimosTimestamp）、map（HexCoord/HexGrid）、
-       unit（Unit/UnitState/UnitId）、social（人员/家户唯一域——方案 A 允许业务模块大方直连）。
-       ★ 仍不依赖 sd / gov / economy / actor / app / core（铁律 3：领域模块不认识组合与调度；
+  <!-- ★ 依赖面（用户阶段 12 裁定 + 2026-10-09 方案 A + ★★ 2026-10-12 用户裁定）：util（SimosTimestamp）、
+       map（HexCoord/HexGrid）、unit（Unit/UnitState/UnitId）、social（人员/家户唯一域——方案 A 允许业务模块
+       大方直连）、**gov**（政府/行政/国家语义）。
+       ★★ gov 的依据是用户 2026-10-12 原话「**Army 很显然可以依赖GOV**」（约束设计书 §0 第三轮 +
+          §3 的 0b 条）：gov 由**禁列**移入**允许面**。本批**只打开依赖面**——`simos-army/src/main`
+          对 `io.mosire.simos.gov` 的 import 实测仍为 **0**，使用留后续批。
+       ★★ 单向不对称：`simos-gov` 侧**仍禁 army**（`simos-gov/pom.xml:107` 一个字不动）——
+          这是防环的必要条件，不是遗漏。
+       ★ 仍不依赖 sd / economy / actor / app / core（铁律 3：领域模块不认识组合与调度；
          兄弟切片**实现**互不依赖）。social 传递带出的 economy-api / actor-api / social-api / calendar
          都是更上游的契约层或纯计算层，不是禁止对象。
        ★ 依赖由下面的 enforcer 构建期强制。 -->
@@ -47,6 +53,18 @@
          版本由父 POM 的 dependencyManagement 提供。 -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-social</artifactId>
+    </dependency>
+    <!-- ★★ 2026-10-12 用户裁定（约束设计书 §0 第三轮原话：「**Army 很显然可以依赖GOV**」；§3 的 0b 条）：
+         军队（交战记录与军方编排，含"阶段"）依赖政府（行政编制/国库预算/区划/国家语义）——gov 从**禁列**
+         移入**允许面**。
+         ★ 本批**只打开依赖面**：`simos-army/src/main` 对 `io.mosire.simos.gov` 的 import 实测为 **0**
+           （`grep -rF 'import io.mosire.simos.gov' simos-army/src/main` = 0 命中），不新增任何使用；
+           真正的使用（含"对 GOV 的修改也要走工单"）留后续批次。
+         ★★ **单向不对称**：`simos-gov` 侧**仍禁 army**（`simos-gov/pom.xml:107` 一个字不动）——
+           这是防环的必要条件：全仓声明 `simos-army` 依赖的只有组合根 `simos-app`，gov 不在其中。
+         ★ 版本由父 POM 的 dependencyManagement 提供，不在此处写版本。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-gov</artifactId>
     </dependency>
     <!-- ★ 阶段 D1（2026-10-02）：Army 切片落地 —— ArmyCodec 真 import Jackson（ObjectMapper /
          SimpleModule / KeyDeserializer / JsonIgnore）。★ 版本由父 POM 的 dependencyManagement
@@ -84,16 +102,18 @@
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:simos-app</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
-                    <!-- 阶段 12 + 方案 A（2026-10-09）：Army 不再是 sd 的下游，也不属于经济/行政切片**实现**。
-                         ★ 兄弟切片实现仍禁（防环）：economy / actor；sd / gov 也禁。
+                    <!-- 阶段 12 + 方案 A（2026-10-09）：Army 不再是 sd 的下游，也不属于经济切片**实现**。
+                         ★ 兄弟切片实现仍禁（防环）：economy / actor；sd 也禁。
+                         ★★ 2026-10-12 用户裁定：「Army 很显然可以依赖GOV」⇒ **gov 已从禁列移出、进允许面**
+                            （见上面的 dependency 块）；保留的是**反向不对称**——`simos-gov/pom.xml:107`
+                            仍禁 army（单向是防环的必要条件）。
                          ★ simos-social 是方案 A 允许直连的人员/家户唯一域；economy-api / actor-api /
                            social-api 虽由它传递带出，但都是更上游的契约层 ⇒ 全部不在禁列。 -->
                     <exclude>io.mosire:simos-sd</exclude>
-                    <exclude>io.mosire:simos-gov</exclude>
                     <exclude>io.mosire:simos-economy</exclude>
                     <exclude>io.mosire:simos-actor</exclude>
                     <!-- ★★ 2026-10-12 模块语义冻结（文档 §3）：对称闭合
-                         = 禁掉"本模块 + 允许面（util/map/unit/social）之外"的全部 simos 模块。
+                         = 禁掉"本模块 + 允许面（util/map/unit/social + 工具契约层 ga-spi + gov）之外"的全部 simos 模块。
                          ★ 上方那段"economy-api / actor-api / social-api 全不在禁列"的口径已被取代
                          （原文保留作留痕）——它们是 social/unit 传递带出的，见下面的传递依赖例外注。
                          ★ `simos-ledger` 已退役、当前无同名模块：照冻结表列入，作历史留痕与未来防线。
@@ -102,7 +122,11 @@
                          （enforcer 3.6.3 `searchTransitive` 默认 true ⇒ 禁列查传递依赖）。实测链（Maven 原文）：
                              simos-army → simos-unit → simos-social-api
                              simos-army → simos-social → simos-economy-api → simos-actor-api
-                         ★ I-F2 禁止加 `<includes>` 白名单绕过 ⇒ 此处不列它们；归属由冻结表重算（另裁）。 -->
+                         ★ I-F2 禁止加 `<includes>` 白名单绕过 ⇒ 此处不列它们；归属由冻结表重算（另裁）。
+                         ★★ **上面这段已被同日"闭合"推翻，原文留痕**：本 rule 首行加了
+                            `<searchTransitive>false</searchTransitive>` 后禁列不再查传递 ⇒ 那三条
+                            **已经列进来**（见下方 actor-api / economy-api / social-api 三条）——
+                            事实以实际禁列为准：**零例外**。 -->
                     <!-- ★★ 2026-10-12 B2a（设计书 §4.1 / §5 I-G2）：运行框架 simos-ga（工具运作 + 决策人运行）——
                          它永不依赖 app，其余模块也不得依赖它 ⇒ 列入禁列（组合根 simos-app 是唯一认识它的地方）。 -->
                     <exclude>io.mosire:simos-ga</exclude>
@@ -112,7 +136,7 @@
                     <exclude>io.mosire:simos-economy-api</exclude>
                     <exclude>io.mosire:simos-social-api</exclude>
                   </excludes>
-                  <message>simos-army 是交战记录与军方编排（一期：辖区 = 视野的纯派生视图，不落盘、不算战力）：只许依赖 util/map/unit/social + 工具契约层 ga-spi（★ 2026-10-12 B3 第二域：军队的工具实现下放到本模块，只依赖 ga-spi、不依赖运行流 ga）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 core/app/agentlib、sd、运行框架 ga、兄弟切片 gov/economy/actor 与已退役的 ledger）。★ 例外：social-api / calendar / economy-api / actor-api 由 unit 与 social 传递带出，四条按 I-F1 不入禁列。</message>
+                  <message>simos-army 是交战记录与军方编排（一期：辖区 = 视野的纯派生视图，不落盘、不算战力）：只许依赖 util/map/unit/social + 工具契约层 ga-spi + gov（★ 2026-10-12 B3 第二域：军队的工具实现下放到本模块，只依赖 ga-spi、不依赖运行流 ga；★★ 2026-10-12 用户裁定「Army 很显然可以依赖GOV」：gov 由禁列移入允许面，本批只开依赖面、不新增使用；反向不对称不变——gov 侧仍禁 army）；禁列 = 全仓 17 个 simos 模块 − 自己 − 允许面（含 core/app/agentlib、sd、运行框架 ga、兄弟切片 economy/actor、契约层 social-api/calendar/economy-api/actor-api 与已退役的 ledger 留痕），零例外。</message>
                 </bannedDependencies>
               </rules>
             </configuration>
