@@ -76,7 +76,6 @@
                     <exclude>io.mosire:simos-economy</exclude>
                     <exclude>io.mosire:simos-actor</exclude>
                     <exclude>io.mosire:simos-actor-api</exclude>
-                    <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:simos-army</exclude>
                     <exclude>io.mosire:simos-gov</exclude>

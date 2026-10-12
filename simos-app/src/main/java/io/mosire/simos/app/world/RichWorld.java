@@ -19,9 +19,6 @@ import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -94,11 +91,9 @@ public final class RichWorld {
       }
       modules.put(entry.getKey(), codec.decodeSnapshot(entry.getValue()));
     }
-    modules.computeIfAbsent(
-        "sd",
-        ignored ->
-            new SdSnapshot(decoded.meta().ref(), decoded.meta().timestamp(), SdState.empty()));
-    // ★ R2a：同 sd 的先例——v17levant 档早于 economy 模块，而"日推进/命令总线要求切片在场"（CommandBus 的
+    // ★★ 2026-10-12 批次 3e：`computeIfAbsent("sd")` 随 `simos-sd` 退役**整条删除**（用户裁定「sd 整个弃用！」）
+    //   —— 旧档里的 sd 条目由下面的白名单校验拒掉（`codecs.get("sd")` 已无对应 codec ⇒ 响亮失败，不静默丢弃）。
+    // ★ R2a：同款先例——v17levant 档早于 economy 模块，而"日推进/命令总线要求切片在场"（CommandBus 的
     //   slice() 找不到命名空间会响亮失败）⇒ 这里补一个**未激活**的空 economy 切片（meta 空 = §6.6 的未激活语义）。
     modules.computeIfAbsent(
         "economy",
@@ -143,7 +138,6 @@ public final class RichWorld {
             new MapCodec(),
             new SocialCodec(),
             new UnitCodec(),
-            new SdCodec(),
             new EconomyCodec(),
             new ActorCodec(),
             // ★ 阶段 10a：gov codec 与 Shell 同源。★ 阶段 11b 起 gov 片由参与者写 ⇒ 创世/升档必须补空片

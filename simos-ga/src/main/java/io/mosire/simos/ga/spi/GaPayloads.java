@@ -1,0 +1,516 @@
+package io.mosire.simos.ga.spi;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.ga.id.MergedEffectPlanId;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.CallStatus;
+import io.mosire.simos.ga.model.DirectiveCommand;
+import io.mosire.simos.ga.model.DisclosurePolicy;
+import io.mosire.simos.ga.model.FormattedCall;
+import io.mosire.simos.ga.model.MergedEffect;
+import io.mosire.simos.ga.model.MergedEffectPlan;
+import io.mosire.simos.ga.model.PacketStatus;
+import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
+import io.mosire.simos.util.log.LogOrigin;
+import io.mosire.simos.util.spi.CommandTarget;
+import io.mosire.simos.util.spi.DecisionMakerId;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.OptionalLong;
+import java.util.Set;
+import org.slf4j.Logger;
+
+/**
+ * sd 命令 handler 共用的载荷解析助手（spec §四）。形制照 {@code UnitPayloads}/{@code MapPayloads}。
+ *
+ * <p>★ **坏载荷一律以 {@link IllegalArgumentException} 面世、带可读中文原因**；handler 在命令边界把它折成 {@code
+ * HandlerOutcome.Rejected}（理由进 {@code simos.command.rejected} 事件，拒绝不留 revision）。
+ *
+ * <p>★ **本类只管形状与类型**；数值范围与域规则由领域类型 / handler 判。
+ *
+ * <p>★★ <b>2026-10-12 批次 3a：本类与其中 9 个方法放宽到 {@code public}</b>（其余成员一字未动）—— 决策包 / 合并效果集四条命令改名 {@code
+ * ga.*} 后 handler 搬进 {@code simos-ga}，而它们仍要用同一份载荷解析。 决策包族的<b>线格式</b>因此保持<b>唯一拼写点</b>：若在 ga
+ * 侧复制一份解析，就会有两个各自漂移的载荷形状（本仓最忌讳的形态）。
+ *
+ * <p>★★ <b>2026-10-12 批次 3b′：再放宽 4 个</b>（{@code requireAddress} / {@code optionalAddress} / {@code
+ * optionalTextSet} / {@code optionalDirectiveCommands}）—— 出令 / 交判决两条 handler 随 {@code ga.*} 改名搬进
+ * {@code simos-ga}，同一条理由（线格式一处拼写）。
+ *
+ * <p>★ 可见性只放宽必须的那几个：{@code parse} / {@code requireText} / {@code optionalText} / {@code
+ * requireLong} / {@code optionalLongValue} / {@code requirePacketStatus} / {@code
+ * optionalFormattedCalls} / {@code requireMergedEffectPlan} / {@code logRejected}（{@code
+ * logRejected} 的 logger 与 origin 由调用方给 ⇒ ga 侧自然走 {@code GaLog}）/ {@code requireAddress} / {@code
+ * optionalAddress} / {@code optionalTextSet} / {@code optionalDirectiveCommands}。★ 本类随 {@code
+ * simos-sd} 在批次 3e 退役。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：本类删掉 8 个只服务旧战斗族的解析器（如实记）</b>——{@code requireHex} / {@code
+ * optionalUnitIdSet} / {@code optionalTriggers} / {@code requireStage} / {@code
+ * requireOutcomeTable} / {@code optionalCasualtySpec} / {@code requireDeltas} / {@code
+ * requireLossClass}，以及随之失去唯一调用者的 {@code optionalInt} / {@code optionalIntMap} / {@code
+ * optionalStageId}（<b>不是</b>搬去 army：army 有自己的 {@code ArmyPayloads}，同族方法名在那里另有实现 ⇒
+ * 抄一份过来才是"同一形状两处拼写"）。 这 11 个方法全仓 {@code src/main} 的调用者<b>只有</b> 那 5 个已删除的 handler ⇒ 删除后无第二读者。★
+ * 载荷形状的<b>存活面</b>（决策人与 决策包各族）一字未改。
+ *
+ * <p>★★ <b>2026-10-12 批次 3b-4：本类再删 3 个"只服务效果族"的解析器（如实记）</b>——{@code requireEffectKind} / {@code
+ * requireTrigger} / {@code requireAction}：它们的<b>返回类型</b>（{@code EffectKind} / {@code Trigger} /
+ * {@code Action}）随 {@code effects} 整族搬进 {@code simos-ga}（{@code
+ * io.mosire.simos.ga.effect}），留在本类会立刻造出 {@code sd → ga} 的禁边 ⇒ 同一条判据、同一段文案<b>搬到 ga 侧</b>的 {@code
+ * io.mosire.simos.ga.effect.EffectPayloads} （<b>不是</b>"第二份解析"：搬走后本类再无同名方法，全仓仍只有一处拼写）。★ 这三个方法全仓
+ * {@code src/main} 的调用者 <b>只有</b> {@code RegisterEffectHandler}（已随族搬进 {@code simos-ga}）⇒ 删除后无第二读者。★
+ * 载荷形状的<b>其余存活面</b> （决策人 / 决策包 / 令 / 判决各族）一字未改。
+ */
+public final class GaPayloads {
+
+  private static final ObjectMapper MAPPER = SimosObjectMapper.create();
+
+  private GaPayloads() {}
+
+  public static JsonNode parse(String payloadJson) {
+    Objects.requireNonNull(payloadJson, "payloadJson");
+    JsonNode payload;
+    try {
+      payload = MAPPER.readTree(payloadJson);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("payload 不是合法 JSON: " + e.getOriginalMessage(), e);
+    }
+    if (payload == null || !payload.isObject()) {
+      throw new IllegalArgumentException("payload 必须是 JSON 对象: " + payloadJson);
+    }
+    return payload;
+  }
+
+  /**
+   * ★ <b>日志安全的拒绝理由</b>：本类的校验消息为方便调用方排查会回显字段值/整段载荷，但日志纪律禁止载荷明文与 JSON 原文（plan §4.3）。 这里只保留可读前缀——截到第一个
+   * JSON 起始符/换行；{@code payload ...} 这一类原始文本消息再截到冒号，避免把调用方原文带进日志。 截断只影响日志文本，不影响异常本身，也不改 {@code
+   * Rejected} 的理由。
+   */
+  static String logReason(String message) {
+    if (message == null || message.isBlank()) {
+      return "unknown";
+    }
+    String text = message.strip();
+    int cut = text.length();
+    for (char marker : new char[] {'{', '[', '\n', '\r'}) {
+      int at = text.indexOf(marker);
+      if (at >= 0 && at < cut) {
+        cut = at;
+      }
+    }
+    if (text.startsWith("payload ")) {
+      int colon = text.indexOf(':');
+      if (colon >= 0 && colon < cut) {
+        cut = colon;
+      }
+    }
+    String reason = text.substring(0, cut).strip();
+    return reason.isEmpty() ? "unknown" : reason;
+  }
+
+  /**
+   * ★ <b>具名拒绝的统一 INFO 发射</b>（2026-10-23 用户裁定：被拒绝一律 INFO，必须明显记录）：字段固定 {@code reason=} + 调用方给的关键 id（值
+   * null/空白 ⇒ {@code -}）。理由先过 {@link #logReason}，载荷原文/JSON 原文不进日志。
+   *
+   * <p>每个具名拒绝路径（显式 {@code Rejected} 与 catch）各调用一次；{@code idKeyValues} 是偶数个 {@code key,value}。
+   */
+  public static void logRejected(
+      Logger logger, LogOrigin origin, String event, String reason, Object... idKeyValues) {
+    Objects.requireNonNull(logger, "logger");
+    Objects.requireNonNull(origin, "origin");
+    Objects.requireNonNull(event, "event");
+    if (idKeyValues.length % 2 != 0) {
+      throw new IllegalArgumentException("logRejected 需要偶数个 id key/value: " + idKeyValues.length);
+    }
+    Object[] fields = new Object[idKeyValues.length + 2];
+    fields[0] = "reason";
+    fields[1] = logReason(reason);
+    for (int index = 0; index < idKeyValues.length; index += 2) {
+      Object value = idKeyValues[index + 1];
+      fields[index + 2] = idKeyValues[index];
+      fields[index + 3] = value == null || String.valueOf(value).isBlank() ? "-" : value;
+    }
+    EventLog.channel(logger).info(LogEvent.of(event, origin, fields));
+  }
+
+  public static String requireText(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || !value.isTextual()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是字符串: " + payload);
+    }
+    return value.asText();
+  }
+
+  public static Optional<String> optionalText(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isTextual()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是字符串或 null: " + payload);
+    }
+    return Optional.of(value.asText());
+  }
+
+  static int requireInt(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || !value.isIntegralNumber() || !value.canConvertToInt()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
+    }
+    return value.asInt();
+  }
+
+  public static long requireLong(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || !value.isIntegralNumber() || !value.canConvertToLong()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
+    }
+    return value.asLong();
+  }
+
+  public static Set<String> requireTextSet(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
+    }
+    Set<String> out = new LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual() || element.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
+      }
+      out.add(element.asText());
+    }
+    return out;
+  }
+
+  public static Address requireAddress(JsonNode payload, String field) {
+    return Address.parse(requireText(payload, field));
+  }
+
+  public static Optional<Address> optionalAddress(JsonNode payload, String field) {
+    return optionalText(payload, field).map(Address::parse);
+  }
+
+  public static Set<String> optionalTextSet(JsonNode payload, String field) {
+    return optionalTextSetIfPresent(payload, field).orElse(Set.of());
+  }
+
+  /**
+   * **"缺省"与"显式空"分得开**的文本集读取：键缺席（或 null）⇒ {@link Optional#empty()}；显式给（**含空数组**）⇒ 有值。
+   *
+   * <p>★ 与 {@link #optionalTextSet} 的差别就是这一格：那是"缺省即空集"，本方法是"缺省 = 没说"。{@code
+   * ga.SetDecisionMakerAccess} 的载荷语义是"缺省 = 不改动、显式给 = 整份替换" ⇒ 用错那个会把"没写"读成"清空"， 于是**一条只改白名单的命令静默抹掉
+   * GM 刚配的资源限制**（两个方向都不会报错）。
+   */
+  public static Optional<Set<String>> optionalTextSetIfPresent(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
+    }
+    Set<String> out = new LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual() || element.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
+      }
+      out.add(element.asText());
+    }
+    return Optional.of(out);
+  }
+
+  public static List<DirectiveCommand> optionalDirectiveCommands(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是命令数组: " + payload);
+    }
+    List<DirectiveCommand> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是对象: " + element);
+      }
+      String type = requireText(element, "type");
+      String payloadJson = optionalText(element, "payloadJson").orElse("{}");
+      out.add(new DirectiveCommand(type, payloadJson));
+    }
+    return List.copyOf(out);
+  }
+
+  public static Object requireValue(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      throw new IllegalArgumentException("字段 " + field + " 不得缺失或为 null: " + payload);
+    }
+    return MAPPER.convertValue(value, Object.class);
+  }
+
+  public static long optionalLong(JsonNode payload, String field, long fallback) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return fallback;
+    }
+    if (!value.isIntegralNumber() || !value.canConvertToLong()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
+    }
+    return value.asLong();
+  }
+
+  /**
+   * 读 {@code ga.SetDecisionMakerAccess} 的 {@link AccessLimit}：**三个键各自"缺省 = 保持既有、显式给 = 整份替换"**。
+   *
+   * <pre>{@code
+   * {"accessLimit":{"map":["Map1/region/701"]}, "redactedFields":["position"],
+   *  "adjudicationDisclosure":"PERCEPTION_ONLY"}
+   * }</pre>
+   *
+   * <p>★ **{@code accessLimit} 的键缺席 = 不动**（既有的前缀逐字保留）；给了就整份替换，**给空对象 = 清空**（= 无额外限制）。
+   * 两个方向的差别只在"有没有这个键"，而它们**都不报错**——见 {@link #optionalTextSetIfPresent}。
+   */
+  public static AccessLimit accessLimitOrKeep(AccessLimit existing, JsonNode payload) {
+    Map<String, Set<String>> prefixes =
+        optionalPrefixesByNamespace(payload).orElse(existing.prefixesByNamespace());
+    Set<String> redactedFields =
+        optionalTextSetIfPresent(payload, "redactedFields").orElse(existing.redactedFields());
+    DisclosurePolicy disclosure =
+        optionalDisclosureIfPresent(payload).orElse(existing.adjudicationDisclosure());
+    return new AccessLimit(prefixes, redactedFields, disclosure);
+  }
+
+  /** 命名空间 → 前缀集；键缺席 ⇒ 空。值必须是 {@code [字符串…]}（**空数组是有效值** = 该命名空间"够不着"）。 */
+  static Optional<Map<String, Set<String>>> optionalPrefixesByNamespace(JsonNode payload) {
+    JsonNode value = payload.get("accessLimit");
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isObject()) {
+      throw new IllegalArgumentException("字段 accessLimit 必须是 {\"命名空间\":[前缀…]} 对象: " + payload);
+    }
+    Map<String, Set<String>> out = new LinkedHashMap<>();
+    var fields = value.fields();
+    while (fields.hasNext()) {
+      var entry = fields.next();
+      String namespace = entry.getKey();
+      if (namespace.isBlank()) {
+        throw new IllegalArgumentException("accessLimit 的命名空间不得为空白: " + value);
+      }
+      JsonNode prefixes = entry.getValue();
+      if (!prefixes.isArray()) {
+        throw new IllegalArgumentException(
+            "accessLimit[" + namespace + "] 必须是 [前缀…] 数组: " + prefixes);
+      }
+      Set<String> items = new LinkedHashSet<>();
+      for (JsonNode prefix : prefixes) {
+        if (!prefix.isTextual() || prefix.asText().isBlank()) {
+          throw new IllegalArgumentException(
+              "accessLimit[" + namespace + "] 的元素必须是非空白字符串: " + prefix);
+        }
+        items.add(prefix.asText());
+      }
+      out.put(namespace, items);
+    }
+    return Optional.of(out);
+  }
+
+  /** 披露档；键缺席（或 null）⇒ 空（**不**回落任何缺省——调用方决定"保持既有"还是"取缺省"）。 */
+  static Optional<DisclosurePolicy> optionalDisclosureIfPresent(JsonNode payload) {
+    Optional<String> text = optionalText(payload, "adjudicationDisclosure");
+    if (text.isEmpty()) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(DisclosurePolicy.valueOf(text.get()));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "adjudicationDisclosure 非法（FULL|PERCEPTION_ONLY|WITHHELD）: " + text.get());
+    }
+  }
+
+  // ── D2 决策包 / FormattedCall（扁平载荷，避免嵌套大对象解析）──────────────────────────
+
+  /**
+   * 读 {@code calls} 数组（一条扁平 {@code FormattedCall} 一个小对象）。
+   *
+   * <p>★ 键缺席/为 null ⇒ 空表（拟稿期"还没有 call"是合法形态）；给了就必须是对象数组。目标 {@code targets} 用 {@link CommandTarget}
+   * 的 {@code {namespace,path}} 形状，{@code mergedPlanId} 缺省 = {@link Optional#empty()}； {@code
+   * outcomeJson} 缺省 = {@link Optional#empty()}（D3 旧档兼容口径）。
+   */
+  public static List<FormattedCall> optionalFormattedCalls(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是调用数组: " + payload);
+    }
+    List<FormattedCall> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是对象: " + element);
+      }
+      int callIndex = requireInt(element, "callIndex");
+      String toolName = requireText(element, "toolName");
+      String argsJson = optionalText(element, "argsJson").orElse("{}");
+      List<CommandTarget> targets = requireCommandTargets(element, "targets");
+      String previewJson = optionalText(element, "previewJson").orElse("{}");
+      List<String> draftChecks = optionalTextList(element, "draftChecks");
+      CallStatus status = parseCallStatus(requireText(element, "status"));
+      Optional<String> mergedPlanId = optionalText(element, "mergedPlanId");
+      Optional<String> outcomeJson = optionalText(element, "outcomeJson");
+      out.add(
+          new FormattedCall(
+              callIndex,
+              toolName,
+              argsJson,
+              targets,
+              previewJson,
+              draftChecks,
+              status,
+              mergedPlanId,
+              outcomeJson));
+    }
+    return List.copyOf(out);
+  }
+
+  /** 读跨命名空间目标数组 {@code [{"namespace":"map","path":"Map1/hex/1_2"}…]}。 */
+  static List<CommandTarget> requireCommandTargets(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isArray()) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 [{\"namespace\":…,\"path\":…}…] 数组: " + payload);
+    }
+    List<CommandTarget> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException(
+            "字段 " + field + " 的元素必须是 {namespace,path} 对象: " + element);
+      }
+      out.add(new CommandTarget(requireText(element, "namespace"), requireText(element, "path")));
+    }
+    return List.copyOf(out);
+  }
+
+  /** 读包状态（只收枚举名，不收自由字符串）。 */
+  public static PacketStatus requirePacketStatus(JsonNode payload, String field) {
+    String text = requireText(payload, field);
+    try {
+      return PacketStatus.valueOf(text.trim());
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          field + " 非法（DRAFT|PENDING|APPROVED|REJECTED|MERGED|PARTIALLY_APPROVED）: " + text);
+    }
+  }
+
+  /** 读 call 状态（只收枚举名）。 */
+  static CallStatus parseCallStatus(String text) {
+    try {
+      return CallStatus.valueOf(text.trim());
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("status 非法（PENDING|APPROVED|REJECTED|MERGED）: " + text);
+    }
+  }
+
+  /** 可空整数（键缺席/为 null ⇒ {@link OptionalLong#empty()}；给了必须是整数）。 */
+  public static OptionalLong optionalLongValue(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return OptionalLong.empty();
+    }
+    if (!value.isIntegralNumber() || !value.canConvertToLong()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数或 null: " + payload);
+    }
+    return OptionalLong.of(value.asLong());
+  }
+
+  /** 可选字符串数组（键缺席/为 null ⇒ 空表；元素必须是非空白文本）。 */
+  static List<String> optionalTextList(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
+    }
+    List<String> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual() || element.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
+      }
+      out.add(element.asText());
+    }
+    return List.copyOf(out);
+  }
+
+  // ── D3 合并效果集（扁平载荷；整包 upsert）─────────────────────────────────────────────
+
+  /**
+   * 读 {@code sd.UpsertMergedEffectPlan} 的扁平载荷（整包）。
+   *
+   * <p>★ {@code participantIds}/{@code orderedEffects}/{@code sources} 缺省/为 null ⇒ 空表；{@code
+   * outcome}/ {@code reasonInfoId} 缺省 ⇒ {@link Optional#empty()}（旧档兼容口径）。
+   */
+  public static MergedEffectPlan requireMergedEffectPlan(JsonNode payload) {
+    MergedEffectPlanId id = MergedEffectPlanId.parse(requireText(payload, "id"));
+    long tick = requireLong(payload, "tick");
+    List<DecisionMakerId> participantIds =
+        optionalMergedPlanParticipants(payload, "participantIds");
+    List<MergedEffect> orderedEffects = optionalMergedEffects(payload, "orderedEffects");
+    List<String> sources = optionalTextList(payload, "sources");
+    Optional<String> reasonInfoId = optionalText(payload, "reasonInfoId");
+    Optional<String> outcome = optionalText(payload, "outcome");
+    return new MergedEffectPlan(
+        id, tick, participantIds, orderedEffects, sources, reasonInfoId, outcome);
+  }
+
+  /** 合并计划参与者：允许指向**已删除**的决策人（与 packet 同口径，不做存在性校验）。 */
+  static List<DecisionMakerId> optionalMergedPlanParticipants(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
+    }
+    List<DecisionMakerId> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual() || element.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
+      }
+      out.add(DecisionMakerId.parse(element.asText()));
+    }
+    return List.copyOf(out);
+  }
+
+  /** 有序效果数组 {@code [{toolName,argsJson,sourceCallRefs[]?}…]}；缺省/为 null ⇒ 空表。 */
+  static List<MergedEffect> optionalMergedEffects(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是效果数组: " + payload);
+    }
+    List<MergedEffect> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是对象: " + element);
+      }
+      String toolName = requireText(element, "toolName");
+      String argsJson = optionalText(element, "argsJson").orElse("{}");
+      List<String> sourceCallRefs = optionalTextList(element, "sourceCallRefs");
+      out.add(new MergedEffect(toolName, argsJson, sourceCallRefs));
+    }
+    return List.copyOf(out);
+  }
+}

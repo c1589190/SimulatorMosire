@@ -34,8 +34,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.population.Sex;
@@ -681,7 +679,6 @@ public final class ThreePowersWorld {
     modules.put(
         "social", new SocialSnapshot(ref, AT, new SocialData(Map.of(), Map.of(), Map.of())));
     modules.put("unit", new UnitSnapshot(ref, AT, UnitState.empty()));
-    modules.put("sd", new SdSnapshot(ref, AT, SdState.empty()));
     modules.put("economy", new EconomySnapshot(ref, AT, EconomyData.empty()));
     modules.put("actor", new ActorSnapshot(ref, AT, ActorData.empty()));
     modules.put("gov", new GovSnapshot(ref, AT, GovState.empty()));

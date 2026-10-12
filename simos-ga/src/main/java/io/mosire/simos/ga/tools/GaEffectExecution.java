@@ -1,6 +1,6 @@
 package io.mosire.simos.ga.tools;
 
-import io.mosire.simos.sd.model.MergedEffectPlan;
+import io.mosire.simos.ga.model.MergedEffectPlan;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
 import java.util.Collections;

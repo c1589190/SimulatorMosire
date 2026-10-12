@@ -32,7 +32,6 @@ class ArchitectureGuardsTest {
           "simos-social",
           "simos-unit",
           "simos-core",
-          "simos-sd",
           "simos-actor-api",
           "simos-actor",
           "simos-economy-api",
@@ -46,14 +45,14 @@ class ArchitectureGuardsTest {
   private static final Pattern MODULE_TAG = Pattern.compile("<module>([^<]+)</module>");
 
   /**
-   * R1：main 源码里 {@code ChangeSet} 的实现者**恰 10 个**（World / Map / Social / Unit / Sd / Actor / Economy
-   * / Gov / Army / Ga）——多一个少一个都是信号： 多一个可能是有人绕过 codec 在 Core 里另造状态形态；少一个说明某个模块的变更集丢了 ChangeSet
+   * R1：main 源码里 {@code ChangeSet} 的实现者**恰 9 个**（World / Map / Social / Unit / Actor / Economy / Gov
+   * / Army / Ga）——多一个少一个都是信号： 多一个可能是有人绕过 codec 在 Core 里另造状态形态；少一个说明某个模块的变更集丢了 ChangeSet
    * 身份（Featherweight 的"契约不空转"断了一根）。
    *
    * <p>★ test 侧的 3 个玩具实现者（simos-util 的 {@code RoundTripAssertionsTest} / {@code DriftTest} 里）
    * **不计入**：它们不在 main 源码里，本扫描只枚举各模块的 {@code src/main}——这条例外写在这里， 免得下一个人以为漏扫了。
    *
-   * <p>★ 用 {@code containsExactly} 而不只是 {@code hasSize(10)}：个数对"一个文件重复含串、另一个实现者 恰好漏了"零判别力（M1
+   * <p>★ 用 {@code containsExactly} 而不只是 {@code hasSize(9)}：个数对"一个文件重复含串、另一个实现者 恰好漏了"零判别力（M1
    * 的形态：数个数对张冠李戴零判别力）。扫描匹配的是**连续串**——声明被 google-java-format 折行时 {@code implements}
    * 与类型名仍落在同一行（实测：MapChangeSet 即折行形态，仍命中）。
    *
@@ -63,10 +62,11 @@ class ArchitectureGuardsTest {
    * simos-ledger} 退役、 {@code simos-gov} 的 {@code GovChangeSet} 进场 ⇒ 当前恰 8 个。★ 阶段
    * D4（2026-10-02）：{@code simos-army} 的 {@code ArmyChangeSet} 进场 ⇒ 当前恰 9 个。★★ 批次 3a
    * （2026-10-12）：{@code simos-ga} 首次持状态（决策包 / 合并效果集两张表自 {@code sd} 搬入）⇒ 它的 {@code GaChangeSet} 进场 ⇒
-   * 当前恰 10 个。
+   * 当前恰 10 个。★★ 批次 3e（2026-10-12）：{@code simos-sd} <b>整模块退役</b>（用户裁定「sd 整个弃用！」）⇒ 它的 {@code
+   * SdChangeSet} 随模块一起消失 ⇒ <b>当前恰 9 个</b>（方法名同款改为 {@code ...Nine...}）。
    */
   @Test
-  void changeSetHasExactlyTenMainSourceImplementors() throws IOException {
+  void changeSetHasExactlyNineMainSourceImplementors() throws IOException {
     // ★ rawContent 声明受检异常，而 lambda（Predicate）传不出去——计划草图此处编不过，
     //   故经下面的 content() 拆包成 UncheckedIOException（与 util 侧 R15 同款执行期校正）。
     List<String> hits =
@@ -85,7 +85,6 @@ class ArchitectureGuardsTest {
             "simos-ga/src/main/java/io/mosire/simos/ga/change/GaChangeSet.java",
             "simos-gov/src/main/java/io/mosire/simos/gov/change/GovChangeSet.java",
             "simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java",
-            "simos-sd/src/main/java/io/mosire/simos/sd/change/SdChangeSet.java",
             "simos-social/src/main/java/io/mosire/simos/social/change/SocialChangeSet.java",
             "simos-unit/src/main/java/io/mosire/simos/unit/change/UnitChangeSet.java");
   }

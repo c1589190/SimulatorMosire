@@ -18,8 +18,6 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -103,7 +101,6 @@ public final class CorridorWorld {
             "map", new MapSnapshot(at, AT, corridorMap()),
             "unit", new UnitSnapshot(at, AT, unitState()),
             "social", new SocialSnapshot(at, AT, socialData()),
-            "sd", new SdSnapshot(at, AT, SdState.empty()),
             // ★ R2a：命令总线要求切片在场（缺 economy 时 slice() 会响亮失败）⇒ 空/未激活的 economy 切片。
             "economy", new EconomySnapshot(at, AT, EconomyData.empty()),
             // ★ S1 阶段 2：同款——actor 切片缺席时 slice("actor") 会响亮失败 ⇒ 补空/未激活切片。

@@ -6,7 +6,7 @@ import io.mosire.simos.util.address.Entity;
 import java.util.Optional;
 
 /**
- * 决策文档（Docs）的**地址约定唯一拼写点**：一份文档 = sd INFO 覆盖层里的一条条目，地址形如 {@code sd:doc.<docId>}。
+ * 决策文档（Docs）的**地址约定唯一拼写点**：一份文档 = sd INFO 覆盖层里的一条条目，地址形如 {@code ga:doc.<docId>}。
  *
  * <p>★★ **为什么文档建在 INFO 上而不是新开一个模块**（用户 2026-09-23 原话）：「对于单个决策人，文档必然是有关程序中国家、地块等的信息； 本质问题是单个 INFO
  * 无法储存更多信息，因此应该和 INFO 机制结合，作为 INFO 机制的扩展」。落法：
@@ -25,14 +25,14 @@ import java.util.Optional;
  *
  * <p>★ **读侧判据用解析出的 {@code kind}、不用字符串前缀**：{@code startsWith} 只在"docId 一定是裸词"这个前提下成立，而 {@link
  * #docIdOf} 的入参可能来自**任何人写的任意地址**（{@code ga.PutInfo} 是通用写口，GM 可能手滑）。解析成 {@link Entity} 再比 {@code
- * kind} 才与 canonical 的唯一性同源（同时规避 {@code sd:docx.foo} 这类前缀假阳性）。
+ * kind} 才与 canonical 的唯一性同源（同时规避 {@code ga:docx.foo} 这类前缀假阳性）。
  */
 public final class DecisionDoc {
 
   /**
-   * 文档地址前缀（{@code sd:doc.<docId>}）。★ 与 {@code AdjudicateTickTool.RESULT_ADDRESS_PREFIX} 并列的一条地址约定。
+   * 文档地址前缀（{@code ga:doc.<docId>}）。★ 与 {@code AdjudicateTickTool.RESULT_ADDRESS_PREFIX} 并列的一条地址约定。
    */
-  public static final String ADDRESS_PREFIX = "sd:doc.";
+  public static final String ADDRESS_PREFIX = "ga:doc.";
 
   /** 文档条目的 {@code key}（固定值：一份文档一条 INFO）。 */
   public static final String KEY = "doc";

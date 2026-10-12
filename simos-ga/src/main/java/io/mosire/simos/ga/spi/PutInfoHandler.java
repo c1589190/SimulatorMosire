@@ -5,12 +5,11 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
-import io.mosire.simos.sd.id.DirectiveId;
-import io.mosire.simos.sd.id.SdInfoId;
-import io.mosire.simos.sd.model.AdjudicationStatus;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.spi.SdPayloads;
+import io.mosire.simos.ga.id.DirectiveId;
+import io.mosire.simos.ga.id.SdInfoId;
+import io.mosire.simos.ga.model.AdjudicationStatus;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -90,30 +89,30 @@ public final class PutInfoHandler implements CommandHandler {
     String infoIdForLog = null;
     Long tickForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
-      Address address = SdPayloads.requireAddress(payload, "address");
+      JsonNode payload = GaPayloads.parse(payloadJson);
+      Address address = GaPayloads.requireAddress(payload, "address");
       addressForLog = address.canonical();
-      String key = SdPayloads.requireText(payload, "key");
+      String key = GaPayloads.requireText(payload, "key");
       keyForLog = key;
-      Object value = SdPayloads.requireValue(payload, "value");
-      Optional<String> note = SdPayloads.optionalText(payload, "note");
+      Object value = GaPayloads.requireValue(payload, "value");
+      Optional<String> note = GaPayloads.optionalText(payload, "note");
       Set<DecisionMakerId> tags = parseTags(payload);
       // ★★ 乙收尾：affiliations 是**不透明受众标签集**（写入方自报的串，形如 nation:n1 / army:a1 / gov:g1）——
       //   与 tags 同族"缺省即空集"，但**不解析任何形状**（旧形状 {"kind","id"} 的 kind switch 正是"新加模块要改 ga"
       //   的根源，本批删掉）。解释与可见性判定只在 app 的 RedactingQueryService。
-      Set<String> affiliations = SdPayloads.optionalTextSet(payload, "affiliations");
+      Set<String> affiliations = GaPayloads.optionalTextSet(payload, "affiliations");
       Optional<AdjudicationStatus> adjudicationStatus = parseAdjudicationStatus(payload);
-      Optional<SdInfoId> explicitId = SdPayloads.optionalText(payload, "id").map(SdInfoId::parse);
+      Optional<SdInfoId> explicitId = GaPayloads.optionalText(payload, "id").map(SdInfoId::parse);
       // ★ 可选来源引用（批次 3b′）：出令执行原文条目靠它挂回那条令（见类注）。
       Optional<DirectiveId> sourceDirective =
-          SdPayloads.optionalText(payload, "sourceDirective").map(DirectiveId::parse);
+          GaPayloads.optionalText(payload, "sourceDirective").map(DirectiveId::parse);
       RevisionId at = state.meta().ref().revision();
       long worldTick = state.meta().timestamp().tick();
       // ★ 可选 tick（第 3 波第 2 步）：缺省 = 世界当前 tick（**向后兼容**，旧调用一字不变）；显式给 = 用它。
       //   ★ 为什么允许**过去**的 tick：`IssueDirectiveHandler` 明确允许"补记/滞后"的令（只拒未来）⇒ 若这里
       //   只收当前 tick，那些令的**决策结果**将永远归不到正确的 tick 上（制造孤儿）。语义是：命令的**效果**仍落在
       //   当下（世界在 current tick），只是**条目带该 tick**（归属正确）。★ 未来 tick 照旧拒（与"令不得记在未来"同口径）。
-      long tick = SdPayloads.optionalLong(payload, "tick", worldTick);
+      long tick = GaPayloads.optionalLong(payload, "tick", worldTick);
       tickForLog = tick;
       if (tick > worldTick) {
         return rejected(
@@ -196,10 +195,10 @@ public final class PutInfoHandler implements CommandHandler {
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GaPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
+    GaPayloads.logRejected(
         GaLog.decision(), GaLogSource.GA_DECISION, "SD_PUT_INFO_REJECTED", reason, idKeyValues);
     return new HandlerOutcome.Rejected(reason);
   }
@@ -209,7 +208,7 @@ public final class PutInfoHandler implements CommandHandler {
    * {@code EFFECTIVE|VOIDED}（**不收自由字符串**——状态要能被读面与不变量断言，不接受拼写漂移）。
    */
   private static Optional<AdjudicationStatus> parseAdjudicationStatus(JsonNode payload) {
-    Optional<String> text = SdPayloads.optionalText(payload, "adjudicationStatus");
+    Optional<String> text = GaPayloads.optionalText(payload, "adjudicationStatus");
     if (text.isEmpty()) {
       return Optional.empty();
     }
@@ -223,7 +222,7 @@ public final class PutInfoHandler implements CommandHandler {
   /** {@code tags} 可选载荷：缺席/空数组 ⇒ 空集（无主）；元素必须是决策人 id。顺序按载荷给定（保序集合）。 */
   private static Set<DecisionMakerId> parseTags(JsonNode payload) {
     Set<DecisionMakerId> out = new LinkedHashSet<>();
-    for (String tag : SdPayloads.optionalTextSet(payload, "tags")) {
+    for (String tag : GaPayloads.optionalTextSet(payload, "tags")) {
       out.add(DecisionMakerId.parse(tag));
     }
     return out;

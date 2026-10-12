@@ -13,7 +13,7 @@ import io.mosire.simos.app.llm.ProviderLlm;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
-import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;

@@ -7,8 +7,7 @@ import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.ga.effect.Effect;
 import io.mosire.simos.ga.effect.EffectStatus;
-import io.mosire.simos.sd.id.EffectId;
-import io.mosire.simos.sd.spi.SdPayloads;
+import io.mosire.simos.ga.id.EffectId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -47,8 +46,8 @@ public final class CancelEffectHandler implements CommandHandler {
     GaState base = GaSnapshots.state(state);
     String effectForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
-      EffectId id = EffectId.parse(SdPayloads.requireText(payload, "effectId"));
+      JsonNode payload = GaPayloads.parse(payloadJson);
+      EffectId id = EffectId.parse(GaPayloads.requireText(payload, "effectId"));
       effectForLog = id.value();
       Effect effect = base.effects().get(id);
       if (effect == null) {
@@ -91,10 +90,10 @@ public final class CancelEffectHandler implements CommandHandler {
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logRejected}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GaPayloads#logRejected}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
+    GaPayloads.logRejected(
         GaLog.decision(),
         GaLogSource.GA_DECISION,
         "SD_CANCEL_EFFECT_REJECTED",

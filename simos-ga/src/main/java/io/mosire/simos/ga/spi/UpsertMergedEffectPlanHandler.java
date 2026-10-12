@@ -5,9 +5,8 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
-import io.mosire.simos.sd.id.MergedEffectPlanId;
-import io.mosire.simos.sd.model.MergedEffectPlan;
-import io.mosire.simos.sd.spi.SdPayloads;
+import io.mosire.simos.ga.id.MergedEffectPlanId;
+import io.mosire.simos.ga.model.MergedEffectPlan;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -33,7 +32,7 @@ import java.util.Objects;
  *
  * <p>★ 同 id <b>幂等替换</b>（整包覆盖）：GM 建计划与执行器回写 {@code outcome} 都走这一条命令。
  *
- * <p>★ 扁平载荷字段由 {@link SdPayloads#requireMergedEffectPlan(JsonNode)} 读；{@code participantIds}
+ * <p>★ 扁平载荷字段由 {@link GaPayloads#requireMergedEffectPlan(JsonNode)} 读；{@code participantIds}
  * 允许历史已删除的决策人（与 packet 同口径，不做存在性校验）。
  *
  * <p>★ {@link CommandTargets#targetPaths} 返回 {@code merged-plan/<id>}；路径串逐字保留（见 {@link
@@ -54,8 +53,8 @@ public final class UpsertMergedEffectPlanHandler implements CommandHandler, Comm
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
-    JsonNode payload = SdPayloads.parse(payloadJson);
-    MergedEffectPlanId id = MergedEffectPlanId.parse(SdPayloads.requireText(payload, "id"));
+    JsonNode payload = GaPayloads.parse(payloadJson);
+    MergedEffectPlanId id = MergedEffectPlanId.parse(GaPayloads.requireText(payload, "id"));
     return List.of(ResourcePaths.sd("merged-plan", id.value()));
   }
 
@@ -66,8 +65,8 @@ public final class UpsertMergedEffectPlanHandler implements CommandHandler, Comm
     GaState base = GaSnapshots.state(state);
     String planForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
-      MergedEffectPlan plan = SdPayloads.requireMergedEffectPlan(payload);
+      JsonNode payload = GaPayloads.parse(payloadJson);
+      MergedEffectPlan plan = GaPayloads.requireMergedEffectPlan(payload);
       planForLog = plan.id().value();
       Map<MergedEffectPlanId, MergedEffectPlan> next =
           new LinkedHashMap<>(base.mergedEffectPlans());
@@ -103,10 +102,10 @@ public final class UpsertMergedEffectPlanHandler implements CommandHandler, Comm
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GaPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
+    GaPayloads.logRejected(
         GaLog.decision(),
         GaLogSource.GA_DECISION,
         "SD_UPSERT_MERGED_EFFECT_PLAN_REJECTED",

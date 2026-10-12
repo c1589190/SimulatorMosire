@@ -26,17 +26,17 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.ga.id.DirectiveId;
+import io.mosire.simos.ga.model.AdjudicationStatus;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.Directive;
+import io.mosire.simos.ga.model.DirectiveCommand;
+import io.mosire.simos.ga.model.DirectiveStatus;
+import io.mosire.simos.ga.spi.DirectiveWhitelist;
 import io.mosire.simos.ga.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.id.DirectiveId;
-import io.mosire.simos.sd.model.AdjudicationStatus;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.Directive;
-import io.mosire.simos.sd.model.DirectiveCommand;
-import io.mosire.simos.sd.model.DirectiveStatus;
-import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -74,7 +74,7 @@ import java.util.UUID;
  * </ol>
  *
  * <p>★★ **第 4 条的口径 = 「范围函数 ∩ accessLimit」，不是"只判 accessLimit"**（第 3 波第 2 步的裁定）：只判 {@code
- * accessLimit} 在默认配置下**等于没判**（{@link io.mosire.simos.sd.model.AccessLimit#empty()} 的语义是"不收紧"）⇒
+ * accessLimit} 在默认配置下**等于没判**（{@link io.mosire.simos.ga.model.AccessLimit#empty()} 的语义是"不收紧"）⇒
  * 与本意"不能越权"直接相反。故本类用 {@link DecisionCallerFactory#resourceScopesFor}——它是「范围函数 ∩ {@code
  * narrowTo(accessLimit)}」的**唯一装配点**，也正是**该决策人自己发 {@code ga.IssueDirective} 时被授权用的那一份权威** ⇒
  * **不引入第二份真相**。
@@ -135,13 +135,13 @@ public final class AdjudicateTickTool implements SimosTool {
   /**
    * 决策结果条目在 sd INFO 覆盖层里的 key。
    *
-   * <p>★ 地址取 {@code sd:adjudication.<tick>}（**一个 tick 一条**，与"按 tick + 标签查"的读法同源）；key 只是同一地址下
+   * <p>★ 地址取 {@code ga:adjudication.<tick>}（**一个 tick 一条**，与"按 tick + 标签查"的读法同源）；key 只是同一地址下
    * 的人类可读标签，取 {@value #RESULT_KEY}。
    */
   public static final String RESULT_KEY = "result";
 
-  /** 决策结果条目的地址前缀（{@code sd:adjudication.<tick>}）。 */
-  public static final String RESULT_ADDRESS_PREFIX = "sd:adjudication.";
+  /** 决策结果条目的地址前缀（{@code ga:adjudication.<tick>}）。 */
+  public static final String RESULT_ADDRESS_PREFIX = "ga:adjudication.";
 
   /**
    * "被接受却随整批复原"的拒因前缀（{@code CommandBus#rolledBack} 的**唯一**产出）。
@@ -750,7 +750,7 @@ public final class AdjudicateTickTool implements SimosTool {
    * <p>★★ **id 不再显式给**（2026-09-23 改）：原来写死 {@code #0} 是为了让"一个 tick 一条由构造保证"，但那让**作废之后没法重裁** ——作废把
    * {@code #0} 翻成 VOIDED 留在原地，重裁再写 {@code #0} 就撞 id 被拒。现在交给 {@code ga.PutInfo} 的合成 （{@code
    * 地址#该地址下条目数}）⇒ 同 tick 的第二条自然落成 {@code #1}，"至多一条生效"改由 {@link
-   * io.mosire.simos.sd.model.AdjudicationStatus}（新条 EFFECTIVE、旧条被作废成 VOIDED）承担。
+   * io.mosire.simos.ga.model.AdjudicationStatus}（新条 EFFECTIVE、旧条被作废成 VOIDED）承担。
    *
    * <p>★ {@code value} 是 **JSON 字符串**（{@code SdInfoEntry.value} 是裸 {@code Object}，只有标量往返有保证 ⇒
    * 结构化内容必须自己序列化）。

@@ -106,16 +106,20 @@ import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
 import io.mosire.simos.ga.GaSnapshot;
+import io.mosire.simos.ga.channel.ActorId;
+import io.mosire.simos.ga.channel.ChannelAdmission;
+import io.mosire.simos.ga.channel.DecisionChannel;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.command.CommandFaces;
 import io.mosire.simos.ga.command.CommandPermissionRules;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.effect.GaTimeParticipant;
+import io.mosire.simos.ga.resolve.GaResolver;
 import io.mosire.simos.ga.spi.CancelEffectHandler;
 import io.mosire.simos.ga.spi.CreateDecisionMakerHandler;
 import io.mosire.simos.ga.spi.DecideDecisionPacketHandler;
 import io.mosire.simos.ga.spi.DeleteDecisionMakerHandler;
-import io.mosire.simos.ga.spi.GaDecisionTablesLookup;
+import io.mosire.simos.ga.spi.DirectiveWhitelist;
 import io.mosire.simos.ga.spi.IssueDirectiveHandler;
 import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.ga.spi.RegisterEffectHandler;
@@ -156,12 +160,6 @@ import io.mosire.simos.map.spi.SetHexAreaHandler;
 import io.mosire.simos.map.spi.SetTerrainHandler;
 import io.mosire.simos.map.spi.SplitRegionHandler;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
-import io.mosire.simos.sd.channel.ActorId;
-import io.mosire.simos.sd.channel.ChannelAdmission;
-import io.mosire.simos.sd.channel.DecisionChannel;
-import io.mosire.simos.sd.codec.SdCodec;
-import io.mosire.simos.sd.resolve.SdResolver;
-import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
@@ -517,7 +515,6 @@ public final class Shell implements AutoCloseable {
             new MapCodec(),
             new SocialCodec(),
             new UnitCodec(),
-            new SdCodec(),
             new EconomyCodec(),
             // ★ S1 阶段 2：第六个切片（actor）。★ 它的 namespace() 恒 "actor" —— 必须与 ActorSnapshot.namespace()
             //   同字面（ToolSupport.ACTOR_NAMESPACE 是第三处），写歪 SimulationState 构造期当场抛。
@@ -538,11 +535,9 @@ public final class Shell implements AutoCloseable {
       coreSimos.register(codec);
     }
 
-    // ★★ 2026-10-12 批次 3b-2：`directives` / `decisionMakers` / `info` 三张表住 ga，而 sd 侧四处仍要碰它们
-    //   （SdResolver 的 `sd:directive.<id>` 与 `sd:decision-maker.<id>` 存在性、gov.DeleteNation 的"仍有决策人挂在
-    //   这个国家上"守卫、SdTimeParticipant 的 Action.PutInfo 写 INFO 覆盖层）⇒ 读写口在 sd、实现在 ga、装配在这里注入
-    //   （sd 不得依赖 ga，见 DecisionTablesLookup 类注）。
-    GaDecisionTablesLookup decisionTables = new GaDecisionTablesLookup();
+    // ★★ 2026-10-12 批次 3e：上一批（3b-2）在这里构造的 `GaDecisionTablesLookup`（sd 侧跨切片读 ga 三张表的注入端口）
+    //   随 `simos-sd` 退役**整条删除**（如实记）——`GaResolver` 现在与 `directives` / `decisionMakers` 同住
+    //   `GaState`，直接读树，端口与它的唯一实现一并消失（"看着能注入、其实只有一条线"的接缝不留）。
     List<CommandHandler> handlers =
         new ArrayList<>(
             List.of(
@@ -991,7 +986,7 @@ public final class Shell implements AutoCloseable {
     resolverRegistry.register(new MapResolver());
     resolverRegistry.register(new SocialResolver());
     resolverRegistry.register(new UnitResolver());
-    resolverRegistry.register(new SdResolver(decisionTables));
+    resolverRegistry.register(new GaResolver());
     // ★ R2a：economy 自己的地址解析器（economy:<mapId>[:industry.<id> | :debt.<id> | :class.<i>.<s> |
     // :flow.<i>.<s>]）。
     resolverRegistry.register(new EconomyResolver());

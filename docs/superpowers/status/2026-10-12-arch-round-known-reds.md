@@ -343,3 +343,57 @@ economy 6 / gov 1 / unit 1 / util 1 个文件提及旧命令名 —— 留给对
    若该 id 被重新创建，会继承旧归属。收口方向记在账本 §3.4（未做）。
 3. 前端对 `affiliations` 视图形状变化的消费点**未逐文件核**（§17.2 的 GUI 面）；
    批内只核到 `simos-app/src/test/js` 里 `affiliation` 零命中。
+
+---
+
+### 批次 3e（`simos-sd` **整模块退役**：残壳整体迁 `ga`；`sd:` 地址族整体消失；模块 17 → 16）
+
+> 提交面：**未提交**（实现代理**不 commit**，§一.5：控制方审后提交）。工作树 **186 项**（106 M / 38 D / 42 R；`git diff HEAD --stat` = 187 files / +904 / −7339）。
+> 证据目录 `.superpowers/sdd/2026-10-12-sd-abolition-3e/evidence/`（compile / spotless / spotbugs / validate / archguards /
+> faces-before / faces-after / faces-diff / reds-scan / testcompile / gates）。账本 `.superpowers/sdd/2026-10-12-sd-abolition-3e/impl-ledger.md`。
+> ★★ **本节的"新增"基准 = 3b-4 节 + 乙收尾节**（本台账**从未追加 3c / 3d-1 / 3d-2 三节** —— 3c 只以"未提交"块的形式散在 3d-1 节上方，
+> 3d-2 完全没有；口径以规划 §19/§20/§21 为准。**这是本台账第二次发现同类缺口**，收尾期按批号核对时应以此为准）。
+> ★ 方法说明（为什么是静态推理而不是机械 A/B）：`-fae test-compile` 在 **simos-army 就 FAILURE 停住**（`ArmyData` 3 参的既有台账红），
+> **根本走不到 `simos-app`** ⇒ 机械 diff 对本批完全不可用；`simos-app` / `simos-ga` 的红点全部由**静态扫描**给出（见 `evidence/reds-scan.txt`）。
+
+**A. 编译断（★ 本批**新增**的：包 `io.mosire.simos.sd.*` 整体消失 / 类型搬进 `ga.*`）**
+| # | 形态 | 命中（实测计数） | 处置方向 |
+|---|---|---|---|
+| A1 | **`import io.mosire.simos.sd.*` 全部失效**（包不存在；44 个类型改住 `io.mosire.simos.ga.{model,id,spi,channel,resolve,adjudication}`） | **74 个测试文件**（`simos-app` **73** + `simos-ga` **1**）；最重的几个：`decision/RealLlmUnitDecisionLoopTest`(18 条) · `tools/write/DiplomaticWriteToolsTest`(16) · `tools/write/AdjudicateTickToolTest`(16) · `tools/write/RejectDirectiveToolTest`(15) · `logging/SdLoggingTest`(15) · `decision/RunDecisionEndToEndTest`(15) · `llm/AdjudicationEndToEndTest`(14) · `gui/RedactionApiTest`(14) | 收尾期**机械改名 import 即可**（`io.mosire.simos.sd.` → `io.mosire.simos.ga.`；类型形状一字未改）。★ 逐文件清单见 `evidence/reds-scan.txt` A 节 |
+| A2 | **`SdState` / `SdSnapshot` / `SdChangeSet` / `SdCodec` / `SdResolver` / `SdLog` / `SdLogSource` / `SdPayloads` / `SdCommandNames` / `DecisionTablesLookup` / `GaDecisionTablesLookup` 整类删除** | 71 个测试文件引用其中之一（含 A1 的子集） | ★ 这些是**旧架构本体**：`SdState`→`GaState`、`SdSnapshot`→`GaSnapshot`、`SdCodec`→`GaCodec`、`SdResolver`→`GaResolver`（构造器由 1 参变 **0 参**）、`SdPayloads`→`GaPayloads`、`SdLogSource.SD_*`→`GaLogSource.GA_*`（`SD_COMBAT`/`SD_TICK` 两档**不存在**，已随退役删除）；`SdChangeSet`/`DecisionTablesLookup`/`GaDecisionTablesLookup` **无替代**（按 §一.10 删除相关用例） |
+| A3 | **`SdResolver` 构造器 1 参 → `GaResolver` 0 参**（`DecisionTablesLookup` 端口删除） | `simos-app/.../sd/*` 与 `access/*` 夹具里 `new SdResolver(...)` 的用例 | 改 `new GaResolver()` |
+| A4 | **`GaRoundTripTest`（`simos-ga` 唯一护栏）import 断口从 3 条扩到 23 条** | `simos-ga/src/test/.../change/GaRoundTripTest.java`（基线即断，3d-1 起） | ★ **本批最高优先收尾项**（一行 sed：`io.mosire.simos.sd.` → `io.mosire.simos.ga.`）。本批未修的**理由**：任务书硬性纪律 1 只授权 `ArchitectureGuardsTest` 一个测试文件 ⇒ 未越权；后果 = **本批没有可用的铁律 5 变异证据**（如实记，不冒充通过） |
+
+**B. 断言红（旧命令串 / 旧地址族 / 旧资源命名空间；非编译断）**
+| # | file:line（预期） | 钉的旧形状 | 处置方向 |
+|---|---|---|---|
+| B1 | `sd/resolve/SdResolverTest.java:34` 一类（**文件已随模块删除**） | `one("sd:decision-maker.dm1")` / `typeName()` | 已随 A 删除；新契约 = `ga:decision-maker.<id>`（新用例收尾期补） |
+| B2 | `app/.../decision/DecisionAdjudicationService` 的 D2 判决链 | subject 由 `sd:decision-maker.<id>` 改挂 **`ga:decision-maker.<id>`** | 收尾期：用例里的 subject 字面量同步改 `ga:`；★ `Breakpoints.acceptsVerdictSubject` 的 D2 支**已同批改挂**（`"sd"` → `"ga"`），两处必须逐字一致 |
+| B3 | 7 处 **INFO key 前缀**：`sd:doc.` / `sd:adjudication.` / `sd:directive.` / `sd:decision.` / `sd:rejection.` / `sd:execution.` / `sd:decision-finalize.` | 全部改挂 `ga:*`（`ga.info` 表的 key 变了） | 收尾期：凡夹具里硬编码这些**字符串字面量**的用例改 `ga:`（用常量引用的**零改动**） |
+| B4 | 前端 tooltip 文案（`webui/panels.js:2578,2762`） | `sd:adjudication.<tick>` / `sd:doc.<docId>` → `ga:*` | 已同批改（纯文案；JS 用例未核） |
+| B5 | `app/McpCoverageTest` / `app/tools/SimosToolsTest` 的 `EXPECTED_COMMAND_TYPES` | ★ **本批一处未变**（catalog 141 / 可嵌令 66 / 可入队 66 / 落点 2 / 声明面 66，逐条对称差 = ∅） | — |
+
+**C. ★ 本批**未**动的资源声明面（如实记，属控制方复核项）**
+`ToolResources.SD_NAMESPACE = "sd"`（`simos-ga-spi`）+ `ResourcePaths.sd(...)`（`simos-util`）+ `ToolSupport.SD_NAMESPACE`（app）
+共 **126 处**引用**原样保留**：它是**权限声明面**的命名空间标识（与状态切片 `sd` 同名但不同物），
+正名要动 `simos-ga-spi/**` + `simos-util/**`（**本批写权外**），且"权限四面 + 声明面逐条不变"是本批红线。
+★ 台账 3c §E.1 / 3d-1 §D.1 / 3b-4 §H.1 已把"资源面正名"明排给**批次 5** ⇒ 本批按既定排期执行。
+运行时 GM 侧 `sd` 与 `ga` 都是 `ResourceScope.unlimited()`；**DM 侧无 `ga` 档** ⇒ 若硬改名会落"未表态"分支（失效方向可能是"该拒的放行"）—— 这正是 3d-1 §D.1 拒绝承担的风险。
+
+**D. 本批新增行为尚无测试（收尾期按规划 §18.2 判据补）**
+① 旧串零命中：`sd:decision-maker.*` / `sd:directive.*` ⇒ **空候选**（不是抛）；
+② `ga:decision-maker.<id>` / `ga:directive.<id>` 正向解析（存在 ⇒ 1 候选；不存在 / 空白 id ⇒ **空候选**）；
+③ **D2 判决端到端**：subject = `ga:decision-maker.<id>` ⇒ `acceptsVerdictSubject(D2, …)` 为真、判决可落 revision；
+   ★ 负向：`sd:decision-maker.<id>` ⇒ 判决面**当场拒**（改挂的判别力核心）；
+④ `ga` 切片缺席 / 类型不对 ⇒ `GaResolver` **抛**（装配故障，不折成空候选）；
+⑤ 装配负向：**不再注册 `SdCodec`**（模块已无该类）⇒ 旧档里的 `sd` 条目在 `RichWorld.codecTable()` 处**响亮失败**（不静默丢弃）；
+⑥ `GaLogSource.GA_RESOLVE` / `GaLog.resolve()` 的开关（`-Dsimos.ga.logLevel`）与事件名 `GA_RESOLVE_*`；
+⑦ `ToolSupport.subjectVisible` 的 `"ga"` 支（`ga:decision-maker.<id>` 可见性按 `sd` 资源命名空间的既有前缀判，读不到 ⇒ false）。
+
+**E. 已知债（如实记，本批**有意**未做）**
+1. **资源声明面 `"sd"` 标识符未改名**（见 C 节 + 账本 §3.2/§4 D1）—— 留批次 5。
+2. **`Sd*` 类名保留**（`SdInfoEntry` / `SdInfoId` / `SdInfoIds` 等住进 `io.mosire.simos.ga.model` / `ga.id`）——
+   改名会把 diff 从"搬迁"扩成全仓重命名而判别力为零（模块已不存在）⇒ 记债，收尾期可评估。
+3. **`GaRoundTripTest` 未修**（见 A4）—— 本批**无铁律 5 变异证据**。
+4. **前端 REST 路由 `/api/sd/*` 未动**（那是 **HTTP 路由名**，不是地址族；`webui/api.js` 多处）—— 不在本批范围。
+5. **`worlds/**` 未动**（本批禁碰）；`RichWorld` 只改了 app 侧的 codec 白名单与切片补法。

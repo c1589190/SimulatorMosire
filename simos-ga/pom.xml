@@ -11,7 +11,7 @@
 
   <artifactId>simos-ga</artifactId>
   <name>GaSimos</name>
-  <description>推演框架（运行流）：工具运作 + 决策人运行（LLM 回合、工具面装配、冻结回合裁决）+ 决策层效果队列（effects）。依赖 util + ga-spi + sd + map + unit + agentlib（★ 2026-10-12 A1 起**不依赖 core**：写面一律走 ga-spi.ToolWritePort；★★ 2026-10-12 批次 3b-4 起**可依赖 map + unit**：用户裁定「那让它依赖unit呗，这不是Army模块管理的吗？照道理来说Army和Nation都得依赖Unit作为地图实体」）；宿主事实（工具名、图片通路、权限链执行）一律构造期注入，不依赖 simos-app。</description>
+  <description>推演框架（运行流）：工具运作 + 决策人运行（LLM 回合、工具面装配、冻结回合裁决）+ 决策层效果队列（effects）。依赖 util + ga-spi + map + unit + agentlib（★ 2026-10-12 A1 起**不依赖 core**：写面一律走 ga-spi.ToolWritePort；★★ 2026-10-12 批次 3b-4 起**可依赖 map + unit**：用户裁定「那让它依赖unit呗，这不是Army模块管理的吗？照道理来说Army和Nation都得依赖Unit作为地图实体」）；宿主事实（工具名、图片通路、权限链执行）一律构造期注入，不依赖 simos-app。</description>
 
   <!-- ★★ 2026-10-12 新增（设计书 docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md
        §1 用户原话 ⑤「把工具运作、决策人运行放到ga模块」/ §4.1 目标依赖图 / §4.5 ga 的内容 / §5 I-G2）：
@@ -39,11 +39,12 @@
          RejectDirective / SubmitPacket / SimosSdReport / ProposeCall / PacketIntent / GmMergedPlanUpsert /
          GmDecidePacket / DecisionPacketPayloads）全部改吃 `ga-spi.ToolWritePort` ⇒ 本模块**编译期再也看不见 Core**，
          与其余 8 个持状态模块同待遇（铁律 3/4 的结构化）。
-         ★ 结果：依赖面 = util + ga-spi + sd（`sd` 将在批次 3e 退役）+ map + unit（见下）；
+         ★ 结果（2026-10-12 批次 3e 起）：依赖面 = util + ga-spi + map + unit（见下）——**`sd` 已随模块退役摘掉**；
          ★ 不成环：没有任何模块依赖 ga（15 个模块的禁列里都有它）。 -->
-    <dependency>
-      <groupId>io.mosire</groupId><artifactId>simos-sd</artifactId>
-    </dependency>
+    <!-- ★★ 2026-10-12 批次 3e：`simos-sd` 依赖随模块退役**整条删除**（用户裁定「sd 整个弃用！」）——
+         残壳里的值类型（决策人 / 决策记录 / 判决 / 决策包 / 效果 id / 载荷 / 渠道准入 / 解析器）本批**整体迁入
+         本模块**（`ga.model` / `ga.id` / `ga.spi` / `ga.channel` / `ga.resolve` / `ga.adjudication`）
+         ⇒ 依赖面上少一条边、内容上一个字都不少。 -->
     <!-- ★★ 2026-10-12 批次 3b-4（用户裁定，规划 §15.2 第 1 条）：**map + unit 由禁列移入允许面**。
          依据 = 用户原话「**那让它依赖unit呗，这不是Army模块管理的吗？照道理来说Army和Nation都得依赖Unit作为地图实体**」
          —— unit 是"地图实体基础设施"，map 供 `HexCoord`。
@@ -100,8 +101,8 @@
                          （commitLock 是可重入锁 ⇒ 跑得起来、静默绕过"一条命令一条 revision"）。
                          设计书 §4.1 / §5 I-G2（**本模块的硬约束**）：允许面 = util + ga-spi + sd + map + unit
                          （+ agentlib-mosire，它不是 simos 模块故不在禁列；★★ map/unit 由批次 3b-4 按用户裁定
-                         移入，见上方 dependency 注释）。禁列 = 全仓 17 个 simos 模块
-                         − 自己 − 允许面（11 条）+ 已退役 ledger 留痕（1 条）。
+                         移入，见上方 dependency 注释）。禁列 = 全仓 16 个 simos 模块
+                         − 自己 − 允许面（10 条）+ 已退役 `simos-ledger` 留痕（`simos-sd` 本批随模块退役**整条撤出**，不留 exclude）。
                          ★ 最要紧的一条是 `simos-app`：ga 依赖 app 就是 `app → ga → app` 环（Maven 建图期直接拒），
                            也是设计书 §1 用户原话②「app只负责组装」的反面。 -->
                     <exclude>io.mosire:simos-core</exclude>
@@ -116,10 +117,14 @@
                     <exclude>io.mosire:simos-army</exclude>
                     <exclude>io.mosire:simos-app</exclude>
                     <!-- ★ `simos-ledger` 已于 2026-09-27 退役、当前无同名模块：照冻结表列入，
-                         作历史留痕与未来防线（与其余模块的禁列口径一致）。 -->
-                    <exclude>io.mosire:simos-ledger</exclude>
+                         作历史留痕与未来防线（与其余模块的禁列口径一致）。
+                         ★★ 2026-10-12 批次 3e：`simos-sd` 也已整模块退役（用户裁定「sd 整个弃用！」）
+                         —— 它的残壳本批整体迁入本模块 ⇒ 它从"允许面成员"变成"不存在的模块"，
+                         **与 ledger 不同**：本批**不为它留 exclude**（禁列 = 全仓现存模块 − 自己 − 允许面，
+                         零例外；防"同名模块被加回来"由 `ArchitectureGuardsTest` 的清单一致性判据承担）。
+                         ⇒ 本模块的 `<message>` 里那句"两条留痕"随之改为只指 ledger。 -->
                   </excludes>
-                  <message>simos-ga 是推演框架（工具运作 + 决策人运行 + 决策层效果队列，"怎么跑"、不知道"有哪些域"）：只许依赖 simos-util / simos-ga-spi / simos-sd / simos-map / simos-unit（+ agentlib-mosire，不在禁列；★ map/unit 是 2026-10-12 批次 3b-4 按用户裁定「那让它依赖unit呗…Army和Nation都得依赖Unit作为地图实体」移入的，用于 Trigger.UnitAtHex(UnitId, HexCoord)）。★ 禁列 = 全仓 17 个 simos 模块 − 自己 − 允许面（含 simos-core、全部领域切片与已退役的 ledger 留痕），零例外；★ 尤其**不许依赖 simos-app**：那就是 `app → ga → app` 环（设计书 §4.1 / I-G2），宿主事实一律构造期注入。</message>
+                  <message>simos-ga 是推演框架（工具运作 + 决策人运行 + 决策层效果队列 + 决策族值类型，"怎么跑"、不知道"有哪些域"）：只许依赖 simos-util / simos-ga-spi / simos-map / simos-unit（+ agentlib-mosire，不在禁列；★ map/unit 是 2026-10-12 批次 3b-4 按用户裁定「那让它依赖unit呗…Army和Nation都得依赖Unit作为地图实体」移入的，用于 Trigger.UnitAtHex(UnitId, HexCoord)）。★ 禁列 = 全仓 16 个 simos 模块 − 自己 − 允许面（含 simos-core、全部领域切片与已退役的 ledger 留痕；`simos-sd` 本批已整模块退役、不再是允许面成员），零例外；★ 尤其**不许依赖 simos-app**：那就是 `app → ga → app` 环（设计书 §4.1 / I-G2），宿主事实一律构造期注入。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

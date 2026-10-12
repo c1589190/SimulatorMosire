@@ -99,7 +99,7 @@ public final class ArmyResolver implements Resolver {
     return empty();
   }
 
-  /** 第三段是否是给定的子段 kind（与迁入前 {@code SdResolver.isKind} 逐字同款）。 */
+  /** 第三段是否是给定的子段 kind（与迁入前 sd 侧解析器的同名私有助手逐字同款；该解析器已随模块退役）。 */
   private static boolean isKind(AddressSegment segment, String kind) {
     return segment instanceof Entity entity
         && entity.kind().isPresent()

@@ -8,7 +8,7 @@ import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.effect.Action;
 import io.mosire.simos.ga.effect.Effect;
 import io.mosire.simos.ga.effect.EffectStatus;
-import io.mosire.simos.sd.id.EffectId;
+import io.mosire.simos.ga.id.EffectId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;

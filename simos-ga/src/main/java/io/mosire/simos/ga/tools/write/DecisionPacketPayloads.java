@@ -1,12 +1,12 @@
 package io.mosire.simos.ga.tools.write;
 
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.FormattedCall;
+import io.mosire.simos.ga.model.MergedEffect;
+import io.mosire.simos.ga.model.MergedEffectPlan;
 import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.ga.spi.ToolWritePort;
-import io.mosire.simos.sd.model.DecisionPacket;
-import io.mosire.simos.sd.model.FormattedCall;
-import io.mosire.simos.sd.model.MergedEffect;
-import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.util.spi.CommandTarget;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,7 +20,7 @@ import java.util.Optional;
  * ga.DecideDecisionPacket}；D3 的 GM 工具与执行器写 {@code ga.UpsertMergedEffectPlan}）。★ 2026-10-12 批次
  * 3a：四条命令连同两张表自 {@code sd.*} 改名/迁入 {@code ga.*}，<b>载荷形状逐字未变</b>（改的只是类型串）。
  *
- * <p>★ 工具与 handler 之间的线格式是扁平 JSON（handler 用 {@code SdPayloads} 逐字段读）；把领域对象 → 载荷的映射收在一处， 避免
+ * <p>★ 工具与 handler 之间的线格式是扁平 JSON（handler 用 {@code GaPayloads} 逐字段读）；把领域对象 → 载荷的映射收在一处， 避免
  * propose/intent/GM/执行器各拼一份、加字段时静默丢一个。
  *
  * <p>★ D3 起本类对 {@code app.decision.DecisionEffectExecutor} 公开（outcome 回写要在同一批里重建整包载荷）。

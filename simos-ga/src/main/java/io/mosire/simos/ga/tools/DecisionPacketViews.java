@@ -2,8 +2,8 @@ package io.mosire.simos.ga.tools;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mosire.simos.sd.model.DecisionPacket;
-import io.mosire.simos.sd.model.FormattedCall;
+import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.FormattedCall;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.state.SimulationState;

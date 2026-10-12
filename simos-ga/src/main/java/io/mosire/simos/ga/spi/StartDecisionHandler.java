@@ -5,9 +5,8 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.spi.SdPayloads;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -44,7 +43,7 @@ import java.util.Set;
  * codec（{@code CommandBus.namespaceOf}）⇒ {@code info} 搬走后，本 handler <b>只能</b>回 {@code
  * GaChangeSet}、类型串<b>只能</b>是 {@code ga.*}。地址族串一字未改。
  *
- * <p>★ **落点（INFO 覆盖层）**：地址 {@code sd:decision.<dmId>}（同 {@code ga.IssueDirective} 的 {@code
+ * <p>★ **落点（INFO 覆盖层）**：地址 {@code ga:decision.<dmId>}（同 {@code ga.IssueDirective} 的 {@code
  * sd:directive.<id>} 形制），key 固定 {@value #START_INFO_KEY}，{@code value} 记本命令所在 tick（**标量串**—— {@link
  * SdInfoEntry#value()} 是裸 {@code Object}，数值类型跨 JSON 往返会 Long↔Integer 漂移，故取串），{@code note}
  * 记可选说明。这是**感知层**（供 UI / AAR 展示）记录，不影响 `due` 计算（`due` 只扫 {@code Directive}）。
@@ -56,8 +55,8 @@ public final class StartDecisionHandler implements CommandHandler {
   /** 发起记录在 sd INFO 覆盖层里的 key。 */
   public static final String START_INFO_KEY = "start";
 
-  /** 发起记录地址前缀（{@code sd:decision.<dmId>}，同 {@code sd:directive.<id>} 形制）。 */
-  public static final String ADDRESS_PREFIX = "sd:decision.";
+  /** 发起记录地址前缀（{@code ga:decision.<dmId>}，同 {@code ga:directive.<id>} 形制）。 */
+  public static final String ADDRESS_PREFIX = "ga:decision.";
 
   @Override
   public String type() {
@@ -71,11 +70,11 @@ public final class StartDecisionHandler implements CommandHandler {
     GaState base = GaSnapshots.state(state);
     String dmForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
+      JsonNode payload = GaPayloads.parse(payloadJson);
       DecisionMakerId decisionMakerId =
-          DecisionMakerId.parse(SdPayloads.requireText(payload, "decisionMakerId"));
+          DecisionMakerId.parse(GaPayloads.requireText(payload, "decisionMakerId"));
       dmForLog = decisionMakerId.value();
-      Optional<String> note = SdPayloads.optionalText(payload, "note");
+      Optional<String> note = GaPayloads.optionalText(payload, "note");
 
       if (!base.decisionMakers().containsKey(decisionMakerId)) {
         return rejected("决策人不存在: " + decisionMakerId.value(), "dm", dmForLog);
@@ -126,10 +125,10 @@ public final class StartDecisionHandler implements CommandHandler {
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GaPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
+    GaPayloads.logRejected(
         GaLog.decision(),
         GaLogSource.GA_DECISION,
         "SD_START_DECISION_REJECTED",

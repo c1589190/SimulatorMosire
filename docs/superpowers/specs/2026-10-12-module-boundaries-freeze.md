@@ -67,7 +67,7 @@
 | `simos-economy` | 聚合式经济切片（产业/市场/债务/货币/政府政策），**机制与规则的归属地** | `actor-api` `util` `economy-api` `map` `social-api` `social` | `army` `calendar` `gov` `ledger` |
 | `simos-gov` | 政府：行政编制、国库预算、区划服务、**外交**（Nation/关系/事件） | `util` `map` `unit` `social` `economy-api` | `actor-api` `army` `economy` `ledger` |
 | `simos-army` | 交战记录与军方编排；**军队身份 + 战斗（含阶段）**（★ 2026-10-12 用户裁定：「战斗模块，包括阶段之类的，归Army模块管，原则和GOV差不多」） | `util` `map` `unit` `social` **`gov`**（★ 2026-10-12 用户裁定「**Army 很显然可以依赖 GOV**」；批次 0b 落地） | `actor-api` `economy` `economy-api` `ledger` `social-api`（★ 本列原为示意、与 pom 不完全一致 —— **唯一权威是 `simos-army/pom.xml` 的禁列**） |
-| `simos-sd` | ~~**推演框架层**：决策人（dm）与推演人（gm）的总实现 —— 决策流程、权限范围、工具协议与两个工具面~~ ★★ **已被取代（2026-10-12 用户裁定：「sd整个弃用！」）⇒ 本行作废，模块整体退役** | ~~`util` `map` `social` `unit`~~ | —— |
+| ~~`simos-sd`~~ | ~~**推演框架层**：决策人（dm）与推演人（gm）的总实现~~ ★★★ **2026-10-12 批次 3e：已整模块退役 —— 本行作废，模块、它的 `<module>` 行与 enforcer 条目全部消失**（用户裁定「**sd整个弃用！**」＋「`sd:*` 地址族 → **直接扔**」）。14 组件去向：决策族 7 → `ga` · 外交 3 → `gov` · 战斗 4 + 军队身份 → `army`；残壳（0 组件状态 / 0 键 codec / `SdResolver` / `ChannelAdmission` / `SdPayloads` 等）本批整体迁入 `ga`（`ga.model` / `ga.id` / `ga.spi` / `ga.channel` / `ga.resolve.GaResolver` / `ga.adjudication`）⇒ **根 pom 17 → 16 模块**、`ArchitectureGuardsTest.MODULES` −1、ChangeSet 实现者 10 → 9。★ 其余 15 个 pom 的禁列里**保留一条 `simos-sd` 留痕**（防同名模块被加回来，与 `simos-ledger` 同款） | ~~`util` `map` `social` `unit`~~ | —— |
 | `simos-core` | 组合与调度（**编译期看不见任何领域类型**；铁律 4 的结构化） | `util`（+ agentlib/jackson/sqlite）；领域模块**仅 test scope** | `actor-api` `army` `calendar` `gov` `ledger` |
 | `simos-app` | **组合根**：装配、GUI、MCP 口、工具面、权限范围函数（**不设 enforcer**，文档明文） | 全部 | （不设；由"领域模块 0 工具类"等专门判据守） |
 
@@ -77,6 +77,7 @@
 且更早的「ga 应当维护标准的一般决策人」（`NationId` 归 **gov**、`sd:*` 地址族「**直接扔**」）。
 ⇒ 上面那条语义扩张**不再作为 sd 的现状描述**；sd 的去向 = 决策族 7 组件 → `ga`、外交 3 组件 → `gov`、
 战斗 4 组件 → `army`、模块整体退役。规划见 `docs/superpowers/plans/2026-10-12-full-dispatch-plan.md` §4 批次 3。
+★★ **2026-10-12 批次 3e 收尾（本节最终态）**：退役**已完成** —— 全仓 `simos-sd/**` 目录、根 `pom.xml` 的 `<module>` 与 `dependencyManagement` 条目、`simos-app/pom.xml` 的依赖、以及 15 个模块 enforcer 禁列里的该行**全部删除**（唯 `simos-ga` 保留一条**留痕** exclude）；`sd:*` 地址族整体消失（存活两支改挂 `ga:decision-maker.<id>` / `ga:directive.<id>`）。★ **一条已知债**：资源声明面的**标识符** `"sd"`（`ToolResources.SD_NAMESPACE` / `ResourcePaths#sd` / `ToolSupport.SD_NAMESPACE`）**有意未改名** —— 它属权限声明面（与状态切片同名但不同物），正名要动 `simos-ga-spi` + `simos-util`，且"权限四面逐条不变"是该批红线；留批次 5 与 gov/军队/战斗族的资源面一并收口。
 ★ 另注（同批核实）：`freeze.md` 原文所指的"推演框架层"其实**早在 B2a/B3 就已不成立** —— 决策人运行流与两个工具面
 已搬进 `simos-ga`（`AGENTS.md` ga 行）。本行是**双重过期**，一并更正。
 

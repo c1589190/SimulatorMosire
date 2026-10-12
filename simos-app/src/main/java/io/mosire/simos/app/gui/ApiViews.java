@@ -85,6 +85,12 @@ import io.mosire.simos.economy.time.MarketReport;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionProcessBook;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.id.EffectId;
+import io.mosire.simos.ga.id.VerdictId;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.model.Directive;
+import io.mosire.simos.ga.model.DirectiveCommand;
 import io.mosire.simos.ga.tools.GmToolUsage;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
@@ -110,14 +116,6 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.id.EffectId;
-import io.mosire.simos.sd.id.VerdictId;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.model.Directive;
-import io.mosire.simos.sd.model.DirectiveCommand;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -6009,27 +6007,15 @@ public final class ApiViews {
     return unitSnapshot.state();
   }
 
-  /**
-   * sd 切片（交战记录 / 参与单位的唯一只读来源；铁律 3）。
-   *
-   * <p>缺席或类型不对是装配故障，不是"没有候选"（与 {@link #unitState} 同口径）。
-   */
-  public static SdState sdState(SimulationState state) {
-    Snapshot snapshot =
-        state
-            .module("sd")
-            .orElseThrow(() -> new IllegalArgumentException("状态里没有 sd 模块切片——装配故障，不是\"没有候选\""));
-    if (!(snapshot instanceof SdSnapshot sdSnapshot)) {
-      throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
-    }
-    return sdSnapshot.state();
-  }
+  // ★★ 2026-10-12 批次 3e：`sdState(SimulationState)` 随 `simos-sd` 退役**整条删除**（如实记）——
+  //   它自批次 3d-2（交战记录搬 army）起就已**无调用者**（旧注："唯一只读来源"指的是已退役的旧战斗族），
+  //   本批连同 sd 切片本身一起消失（用户裁定「sd 整个弃用！」）。GUI 侧读决策族一律走 `gaState(...)`。
 
   /**
    * ★★ <b>gov 切片</b>（2026-10-12 批次 3c）：{@code nations} 与外交两表自 {@code sd} 搬进 {@code gov}（外交是 gov 的事）
    * ⇒ GUI / 工具视图读它们改走本方法。
    *
-   * <p>★ 缺席或类型不对是装配故障，不是"没有候选"（与 {@link #sdState} 同口径）。★ 与 {@code ToolSupport.govState} 是**同一条提取的
+   * <p>★ 缺席或类型不对是装配故障，不是"没有候选"（与 {@link #unitState} 同口径）。★ 与 {@code ToolSupport.govState} 是**同一条提取的
    * 两处实现**——这是本仓 {@code sdState} 早就存在的形态（GUI 与工具面各一份），此处照旧，不新开第三种写法。
    */
   public static GovState govState(SimulationState state) {

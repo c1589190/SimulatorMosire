@@ -8,12 +8,12 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.id.DecisionPacketId;
+import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.PacketStatus;
 import io.mosire.simos.ga.spi.SubmitDecisionPacketHandler;
 import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.tools.write.DecisionPacketPayloads;
-import io.mosire.simos.sd.id.DecisionPacketId;
-import io.mosire.simos.sd.model.DecisionPacket;
-import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
@@ -64,7 +64,7 @@ final class DecisionTurnFinalizer {
   private static final String INITIATOR = "system:decision-turn-finalizer";
 
   /** 审计 INFO 的地址前缀。 */
-  private static final String AUDIT_ADDRESS_PREFIX = "sd:decision-finalize.";
+  private static final String AUDIT_ADDRESS_PREFIX = "ga:decision-finalize.";
 
   private static final String AUTO_NO_SUBMIT = "auto-no-submit";
   private static final String SUBMIT_MARKER = "submit-marker";

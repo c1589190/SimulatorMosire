@@ -1,7 +1,7 @@
 package io.mosire.simos.app.sd.channel;
 
 import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.sd.channel.ActorId;
+import io.mosire.simos.ga.channel.ActorId;
 import java.util.Set;
 import java.util.function.Supplier;
 

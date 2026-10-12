@@ -5,14 +5,13 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
-import io.mosire.simos.sd.id.DecisionPacketId;
-import io.mosire.simos.sd.id.MergedEffectPlanId;
-import io.mosire.simos.sd.model.CallStatus;
-import io.mosire.simos.sd.model.DecisionPacket;
-import io.mosire.simos.sd.model.FormattedCall;
-import io.mosire.simos.sd.model.MergedEffectPlan;
-import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.sd.spi.SdPayloads;
+import io.mosire.simos.ga.id.DecisionPacketId;
+import io.mosire.simos.ga.id.MergedEffectPlanId;
+import io.mosire.simos.ga.model.CallStatus;
+import io.mosire.simos.ga.model.DecisionPacket;
+import io.mosire.simos.ga.model.FormattedCall;
+import io.mosire.simos.ga.model.MergedEffectPlan;
+import io.mosire.simos.ga.model.PacketStatus;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -72,8 +71,8 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
-    JsonNode payload = SdPayloads.parse(payloadJson);
-    DecisionPacketId id = DecisionPacketId.parse(SdPayloads.requireText(payload, "id"));
+    JsonNode payload = GaPayloads.parse(payloadJson);
+    DecisionPacketId id = DecisionPacketId.parse(GaPayloads.requireText(payload, "id"));
     return List.of(ResourcePaths.sd("decision-packet", id.value()));
   }
 
@@ -85,13 +84,13 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
     String packetForLog = null;
     String decisionForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
-      DecisionPacketId id = DecisionPacketId.parse(SdPayloads.requireText(payload, "id"));
+      JsonNode payload = GaPayloads.parse(payloadJson);
+      DecisionPacketId id = DecisionPacketId.parse(GaPayloads.requireText(payload, "id"));
       packetForLog = id.value();
-      String decision = SdPayloads.requireText(payload, "decision").trim();
+      String decision = GaPayloads.requireText(payload, "decision").trim();
       decisionForLog = decision;
-      String decidedBy = SdPayloads.requireText(payload, "decidedBy");
-      Optional<String> note = SdPayloads.optionalText(payload, "note");
+      String decidedBy = GaPayloads.requireText(payload, "decidedBy");
+      Optional<String> note = GaPayloads.optionalText(payload, "note");
       Optional<Set<Integer>> callIndexes = optionalCallIndexes(payload, "callIndexes");
       DecisionPacket packet = base.decisionPackets().get(id);
       if (packet == null) {
@@ -106,7 +105,7 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
             packet.status());
       }
       long decidedAtRevision = state.meta().ref().revision().value();
-      Optional<String> mergedPlanId = SdPayloads.optionalText(payload, "mergedPlanId");
+      Optional<String> mergedPlanId = GaPayloads.optionalText(payload, "mergedPlanId");
       if (!"APPROVE".equals(decision) && !"DENY".equals(decision) && !"MERGE".equals(decision)) {
         return rejected(
             "decision 只允许 APPROVE|DENY|MERGE: " + decision,
@@ -235,10 +234,10 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GaPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
+    GaPayloads.logRejected(
         GaLog.decision(),
         GaLogSource.GA_DECISION,
         "SD_DECIDE_DECISION_PACKET_REJECTED",

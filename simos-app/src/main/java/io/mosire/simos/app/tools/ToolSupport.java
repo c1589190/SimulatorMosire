@@ -32,8 +32,6 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.household.SocialLookupAdapter;
@@ -95,11 +93,26 @@ public final class ToolSupport {
   public static final String UNIT_NAMESPACE = "unit";
 
   /**
-   * sd 域资源所属的命名空间（{@code sd.<kind>/<id>}）。
+   * 决策域资源所属的命名空间（{@code sd.<kind>/<id>}）。
    *
-   * <p>★ 今天**没有工具在 {@code ResourceManifest} 里声明它**（sd 窄写走的是 {@link #ALL_WRITE} 的 map/unit/social）——
-   * 它存在的理由是**权限表态**：GM 组的可达面按四个命名空间逐条表态（{@link io.mosire.simos.app.Shell#gmCaller()}），
-   * 第五个命名空间出现时那条表态会与这里对不上。
+   * <p>★ 它存在的理由是**权限表态**：GM 组的可达面按命名空间逐条表态（{@link io.mosire.simos.app.Shell#gmCaller()}），
+   * 新命名空间不加进那份表态就会回落成"未表态"分支。
+   *
+   * <p>★★ <b>2026-10-12 批次 3e：这个标识符<b>有意不改名</b>（如实记，属"与设计书不一致处"）</b>—— {@code simos-sd}
+   * 模块已整模块退役、状态切片 {@code sd} 与 {@code SdCodec}／{@code SdSnapshot} 全部消失， 但**资源命名空间 {@code "sd"}**
+   * 是**权限声明面**的标识（字符串值本身），它与状态切片只是同名：
+   *
+   * <ul>
+   *   <li><b>本批红线是"权限四面逐条不变"</b>（catalog 141 / 可嵌令 66 / 可入队 66 / 落点 2 / 声明面 66）—— 改这个字符串会动 GM
+   *       组的逐命名空间范围图与近百条 {@code ResourceManifest} 的键， 却买不到任何行为（GM 侧 {@code sd} 与 {@code ga} 都是
+   *       {@code unlimited()}）；
+   *   <li>正名要同时改 <b>{@code simos-ga-spi}</b>（{@code ToolResources.SD_NAMESPACE} 是公共常量）与 <b>{@code
+   *       simos-util}</b>（{@code ResourcePaths#sd} 是路径助手），两者都<b>不在本批写权内</b>；
+   *   <li>规划 §18.2 与台账 3c §E.1 / 3d-1 §D.1 / 3b-4 §H.1 已把"资源面正名"<b>明排给批次 5</b> （与 gov / 军队 /
+   *       战斗族的资源面一并收口）。
+   * </ul>
+   *
+   * ⇒ 本批只改**地址族**（{@code sd:<kind>.<id>} → {@code ga:<kind>.<id>}）与状态切片，资源面原样留批 5。
    */
   public static final String SD_NAMESPACE = "sd";
 
@@ -305,9 +318,10 @@ public final class ToolSupport {
    *
    * <p>★ 各命名空间的 localId 形态来自各自的 resolver（实测）：{@code map} → mapId（根主体）、{@code map.hex} → {@code
    * q_r}、{@code map.region} → 区域 id、{@code map.city} → 城市 id、{@code social}/{@code social.hex} →
-   * mapId / {@code q_r}、{@code unit} → 单位 id、{@code sd} → {@code <kind>.<name>}、{@code army} →
-   * {@code combat.<id>}（交战记录）、{@code combat.<id>:stage.<sid>}（交战阶段，2026-10-12 批次 3d-2 起）或 {@code
-   * army.<id>}（军队身份，2026-10-12 批次 3d-1 起）。
+   * mapId / {@code q_r}、{@code unit} → 单位 id、{@code ga} → {@code <kind>.<name>}（{@code
+   * decision-maker.dm-1} / {@code directive.d-1}；★★ 2026-10-12 批次 3e 起取代旧的 {@code sd} 一支）、{@code
+   * army} → {@code combat.<id>}（交战记录）、{@code combat.<id>:stage.<sid>}（交战阶段，2026-10-12 批次 3d-2 起）或
+   * {@code army.<id>}（军队身份，2026-10-12 批次 3d-1 起）。
    *
    * <p>★ <b>{@code state} 参数只被 {@code army} 分支用</b>（阶段 D1）：交战记录与军队身份都没有自己的资源路径 ⇒ 前者按记录所在格判、 后者按它的
    * root 单位所在格判 ⇒ 需要完整 state。其余命名空间不看它（调用方照旧传当前查询态即可）。
@@ -330,7 +344,13 @@ public final class ToolSupport {
       case "social", "social.hex" ->
           context.resources().allows(Operation.READ, ResourceId.of(SOCIAL_NAMESPACE, localId));
       case "unit" -> unitVisible(context, new UnitId(localId));
-      case "sd" -> sdVisible(context, localId);
+      // ★★ 2026-10-12 批次 3e：`sd` 这一支随 `simos-sd` 退役**整支删除**（`GaResolver` 不再产出该命名空间的
+      //   主体）—— 它映射的资源命名空间 `sd` 是**权限声明面**的标识（`ToolResources.SD_NAMESPACE`），
+      //   与状态切片 `sd` 无关、本批有意不动（见 impl-ledger 的"资源面留批 5"一条）。
+      // ★ `ga` 主体（`ga:decision-maker.<id>` / `ga:directive.<id>`，批次 3e 新增）**不回落全量、也不交给
+      //   `default`**：它的 localId 形态（`<kind>.<name>`）与旧的 `sd` 逐字相同，映射方法也逐字相同
+      //   ⇒ 走 gaVisible（读不到 ⇒ false，fail-closed）。
+      case "ga" -> gaVisible(context, localId);
       // ★ S1 阶段 2（Task 10 补）：actor 切片的**根主体**（`actor:<mapId>`，localId 就是 mapId）——
       //   形制与 `map` 那条逐字同款：主体的 localId 就是资源路径。缺了这一条时它落进 `default -> false`，
       //   于是 MCP 的 `simos.state.resolve` 对 `actor:Map1` 回空候选（GUI 的 `/api/resolve` 却回一条）
@@ -421,8 +441,14 @@ public final class ToolSupport {
     return city == null ? Optional.empty() : Optional.of(city.at());
   }
 
-  /** {@code sd:<kind>/<id>}（localId 形如 {@code nation.FRA}、含子路径时取首段为 kind）。 */
-  private static boolean sdVisible(ToolContext context, String localId) {
+  /**
+   * {@code ga:<kind>.<id>} 主体是否可见（localId 形如 {@code decision-maker.dm-1}、{@code directive.d-1}）。
+   *
+   * <p>★★ <b>2026-10-12 批次 3e</b>：本方法是旧 {@code sdVisible} 的逐字沿用（改挂命名空间 + 改名）——
+   * 判据仍是"把这个主体的资源路径交给调用者的可读面判"，而那个资源路径仍住在权限声明面<b>既有的</b> {@code sd} 命名空间里（{@link #SD_NAMESPACE}
+   * 的注释解释了为什么该标识本批不动）。 判不出来 / 读不到 ⇒ {@code false}（fail-closed，与 {@code default -> false} 同一条口径）。
+   */
+  private static boolean gaVisible(ToolContext context, String localId) {
     int dot = localId.indexOf('.');
     if (dot <= 0 || dot == localId.length() - 1) {
       return false;
@@ -964,26 +990,15 @@ public final class ToolSupport {
     return socialSnapshot.data();
   }
 
-  /**
-   * sd 切片（T11）：视图层要按**调用者的决策人身份**决定给不给派生信息（邻国），而决策人住在 sd 切片里。
-   *
-   * <p>★ **缺切片/类型不对 = 装配故障，当场炸**（与上面三个同口径，T6 裁定："装配故障当场炸不静默兜底"）： sd 切片对可推进世界是必需的（{@code DemoWorld}
-   * 与各 app 夹具都补了它），静默返回空会把装配错误伪装成"这个决策人没有归属"。
-   */
-  public static SdState sdState(SimulationState state) {
-    Snapshot snapshot =
-        state.module("sd").orElseThrow(() -> new IllegalArgumentException("状态里没有 sd 模块切片——装配故障"));
-    if (!(snapshot instanceof SdSnapshot sdSnapshot)) {
-      throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
-    }
-    return sdSnapshot.state();
-  }
+  // ★★ 2026-10-12 批次 3e：`sdState(SimulationState)` 随 `simos-sd` 退役**整条删除**（如实记）——
+  //   它读的是 sd 切片，而该模块连同 `SdState` / `SdSnapshot` / `SdCodec` 一起消失（用户裁定「sd 整个弃用！」）。
+  //   决策人 / 决策记录 / INFO 从批次 3a 起就住 ga 切片 ⇒ 唯一替代是下面的 `gaState(...)`（自 3a 起已在场）。
 
   /**
    * ★★ <b>ga 切片</b>（2026-10-12 批次 3a）：决策包 / 合并效果集两张表自 {@code sd} 搬进 {@code ga} ⇒ app 侧读它们 改走本方法。
    *
-   * <p>★ <b>缺切片/类型不对 = 装配故障，当场炸</b>（与 {@link #sdState} 同口径）：ga 切片对可推进世界是必需的（{@code Shell} 注册 {@code
-   * GaCodec}、四个创世/升档世界各补空片），静默返回空会把装配错误伪装成"这个决策人没有决策包"。
+   * <p>★ <b>缺切片/类型不对 = 装配故障，当场炸</b>（与 {@link #socialData} 同口径）：ga 切片对可推进世界是必需的（{@code Shell} 注册
+   * {@code GaCodec}、四个创世/升档世界各补空片），静默返回空会把装配错误伪装成"这个决策人没有决策包"。
    */
   public static GaState gaState(SimulationState state) {
     Snapshot snapshot =
@@ -1003,7 +1018,7 @@ public final class ToolSupport {
    * ★★ <b>gov 切片</b>（2026-10-12 批次 3c）：{@code nations} / {@code diplomaticRelations} / {@code
    * diplomaticEvents} 三张表自 {@code sd} 搬进 {@code gov} ⇒ app 侧读它们改走本方法（国家归属的权限判据也走它）。
    *
-   * <p>★ <b>缺切片/类型不对 = 装配故障，当场炸</b>（与 {@link #sdState} 同口径）：gov 切片对可推进世界是必需的（{@code Shell} 注册
+   * <p>★ <b>缺切片/类型不对 = 装配故障，当场炸</b>（与 {@link #socialData} 同口径）：gov 切片对可推进世界是必需的（{@code Shell} 注册
    * {@code GovCodec}、四个创世/升档世界各补空片），静默返回空会把装配错误伪装成"这个世界没有国家"。
    *
    * <p>★★ <b>注意"缺席"与"空表"不是一回事</b>：本方法对<b>缺切片</b>抛（装配故障）；而 {@code nations} 为空表是合法的世界事实 （没有国家）⇒ 读侧据此
@@ -1023,7 +1038,7 @@ public final class ToolSupport {
    * 侧读它改走本方法（{@link io.mosire.simos.app.access.ArmyScope} 的归属裁定与 {@code SdQueryService}
    * 的军队显示信息都走它）。
    *
-   * <p>★ <b>缺切片/类型不对 = 装配故障，当场炸</b>（与 {@link #sdState} 同口径）：army 切片对可推进世界是必需的（{@code Shell} 注册
+   * <p>★ <b>缺切片/类型不对 = 装配故障，当场炸</b>（与 {@link #socialData} 同口径）：army 切片对可推进世界是必需的（{@code Shell} 注册
    * {@code ArmyCodec}、四个创世/升档世界各补空片），静默返回空会把装配错误伪装成"这个世界没有军队"。
    *
    * <p>★★ <b>注意"缺席"与"空表"不是一回事</b>：本方法对<b>缺切片</b>抛（装配故障）；而 {@code armies} 为空表是合法的世界事实 （没有军队）⇒ 读侧据此

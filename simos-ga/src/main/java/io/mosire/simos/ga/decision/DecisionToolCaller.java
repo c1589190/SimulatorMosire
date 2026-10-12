@@ -2,7 +2,7 @@ package io.mosire.simos.ga.decision;
 
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Map;
 import java.util.Set;

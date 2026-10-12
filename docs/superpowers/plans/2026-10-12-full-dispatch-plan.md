@@ -690,3 +690,38 @@ D1 删两个端口（`NationAffiliationLookup`/`ArmyAffiliationPort`，理由消
 D4 受众标签定为 `kind:ref` 串（代价 = 视图/载荷形状变化 O5/O6/O7）· D6 同批删 `SdSnapshots.units`。
 **已知债**：`SimosSdReportTool:351` 仍按工具自己的收件人词表拼标签（**既有债**，第二个拼写点，失效方向 fail-closed）·
 **删决策人不清理 gov/army 的归属行**（留下的是够不着的行；id 被重建会继承旧归属）—— 已入台账 §D。
+
+---
+
+## §24 批次 3e 收工：**`simos-sd` 整模块退役**（§18.2 第 5 步）
+
+**结果**：188 项（107 M / **38 D** / **42 R**（git mv））、+905 / **−7340**、**零 worlds**。
+`simos-sd` **目录已不存在**；42 个 `git mv` + 11 处删除 —— 残壳 44 个存活类型整体迁入 `simos-ga`
+（`ga.model` / `ga.id` / `ga.adjudication` / `ga.channel` / `ga.spi` / `ga.resolve.GaResolver`）。
+`ChannelAdmission` → `ga/channel/`（★ 给 `ga-spi` 会**成环**：它要读 `ga.model` 的 `DecisionMaker`/`AccessLimit`；`LANDING_POINTS` 一字未改）。
+★ **`SdResolver` 迁 ga 后端口对整条删除**（旧形态因 `sd` 不得依赖 `ga` 才要注入 `DecisionTablesLookup`；同模块后直读 `GaState`，不留"只有一条线"的接缝）。
+★ **D2 判决面改挂 `ga:decision-maker.*`**：`Breakpoints`（`"sd"` → `"ga"`，kind 判据一字未改，**零 ga import**）+ `DecisionAdjudicationService` 同串。
+
+### 24.1 ★ 四个独立信号互相印证（控制方复核）
+| 信号 | 值 |
+|---|---|
+| 根 `pom.xml` 的 `<module>`（逐条列出） | **16** |
+| 实际 `simos-*/` 子目录 | **16** |
+| `compile` 反应堆条目 | **17**（16 模块 + parent） |
+| `validate` 的 `BannedDependencies passed` | **15**（16 模块 − `simos-app` 不设 enforcer） |
+| `spotbugs:check` 归零 | **16/16**（上批 17/17） |
+
+### 24.2 ★ 代理逮到的成环陷阱
+`ChannelAdmission` **不能**放 `ga-spi`：它要读 `ga.model` 的 `DecisionMaker`/`AccessLimit` ⇒ 会造出 `ga-spi → ga`，
+与既有的 `ga → ga-spi` **成环**。落 `simos-ga/ga/channel/` 正确。
+
+### 24.3 控制方裁决与追认
+| # | 事项 | 裁定 |
+|---|---|---|
+| **D1** | **资源声明面的标识符 `"sd"` 有意未改名**（`ToolResources.SD_NAMESPACE` / `ResourcePaths.sd` / `ToolSupport.SD_NAMESPACE`，**126 处**引用） | ✅ **同意缓做** —— 它与状态切片同名但属**权限声明面**（第三种东西）；正名要动 `simos-ga-spi` + `simos-util`（本批写权外），而**DM 侧无 `ga` 档** ⇒ 硬改的失效方向可能是"**该拒的放行**"（正是 3d-1 §D.1 拒绝承担的风险）。台账 3c §E.1 / 3d-1 §D.1 / 3b-4 §H.1 已**三处**排给**批次 5**，且要求**逐工具资源键 A/B 证据**（"计数不变 ≠ 每条键逐条相同"） |
+| **D3** | 删了 `simos-sd/src/test/**` **27 文件**（派单"整目录删除" vs "不要改其他测试文件"两处授权冲突，取前者） | ✅ **追认** —— 模块已退役，那些测试测的是已删除的代码；`git show 3ee4aea5:<path>` 可取回 |
+| D2 | `Sd*` 类名保留（`SdInfoEntry`/`SdInfoId`/`SdInfoIds`，模块已不存在） | ✅ **追认**（改名判别力为零；3e 后它们住 `ga.model`） |
+| D4 | `simos-ga` 不为已退役的 `simos-sd` 留 enforcer exclude 留痕 | ✅ **追认** —— "防同名模块复活"由 `ArchitectureGuardsTest` 的清单一致性判据承担，比死条目**更有牙** |
+| D5/D6 | 改了 `simos-app/src/main/resources/**`（`log4j2.xml` 删 sd 两行、`panels.js` 文案） | ✅ **追认** |
+| D7/D8 | 根 pom 不留痕 · `GaLogSource.GA_RESOLVE` 新增表项 | ✅ **追认** |
+| ★ | **`GaRoundTripTest` 本批未修**（它自 3d-1 起编译不过，import 断口 3 → **23** 条） | ✅ **同意不越权** —— 派单只授权 `ArchitectureGuardsTest` 一个测试文件。它**如实记"本批无铁律 5 变异证据"、不冒充通过**，处置正确。⇒ **列为收尾期最高优先项**（一行 sed） |

@@ -5,10 +5,8 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.spi.SdCommandNames;
-import io.mosire.simos.sd.spi.SdPayloads;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -65,9 +63,9 @@ public final class SetDecisionMakerAccessHandler implements CommandHandler {
     GaState base = GaSnapshots.state(state);
     String dmForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
+      JsonNode payload = GaPayloads.parse(payloadJson);
       DecisionMakerId id =
-          DecisionMakerId.parse(SdPayloads.requireText(payload, "decisionMakerId"));
+          DecisionMakerId.parse(GaPayloads.requireText(payload, "decisionMakerId"));
       dmForLog = id.value();
 
       DecisionMaker existing = base.decisionMakers().get(id);
@@ -76,18 +74,18 @@ public final class SetDecisionMakerAccessHandler implements CommandHandler {
       }
 
       Optional<Set<String>> allowedTools =
-          SdPayloads.optionalTextSetIfPresent(payload, "allowedTools");
+          GaPayloads.optionalTextSetIfPresent(payload, "allowedTools");
       if (allowedTools.isPresent()
-          && allowedTools.get().contains(SdCommandNames.SIMOS_COMMAND_SUBMIT)) {
+          && allowedTools.get().contains(GaCommandNames.SIMOS_COMMAND_SUBMIT)) {
         return rejected(
-            "allowedTools 不得含通用写 " + SdCommandNames.SIMOS_COMMAND_SUBMIT + "（N9：决策 Agent 只用窄工具）",
+            "allowedTools 不得含通用写 " + GaCommandNames.SIMOS_COMMAND_SUBMIT + "（N9：决策 Agent 只用窄工具）",
             "dm",
             dmForLog,
             "allowedTools",
             allowedTools.get().size());
       }
 
-      AccessLimit updated = SdPayloads.accessLimitOrKeep(existing.accessLimit(), payload);
+      AccessLimit updated = GaPayloads.accessLimitOrKeep(existing.accessLimit(), payload);
       DecisionMaker next =
           new DecisionMaker(
               existing.id(),
@@ -127,10 +125,10 @@ public final class SetDecisionMakerAccessHandler implements CommandHandler {
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GaPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
+    GaPayloads.logRejected(
         GaLog.decision(),
         GaLogSource.GA_DECISION,
         "SD_SET_DECISION_MAKER_ACCESS_REJECTED",

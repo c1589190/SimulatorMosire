@@ -32,9 +32,11 @@
     <module>simos-social</module>
     <module>simos-unit</module>
     <module>simos-core</module>
-    <!-- ★ SDSimos（A1）：国家与决策人。领域模块，位于 core 之后、app 之前；
-         它不被 core 依赖（core 的 enforcer 把它禁在 main scope）。 -->
-    <module>simos-sd</module>
+    <!-- ★★ 2026-10-12 批次 3e：`simos-sd` **整模块退役**（用户裁定「sd 整个弃用！」＋「sd:nation.<id>
+         地址族 → 直接扔」）——它的 14 个组件早已按族交清（决策族 7 → ga / 外交 3 → gov / 战斗 4 → army），
+         最后一批把残壳（0 组件状态、0 键 codec、解析器、载荷、渠道准入）拆完 ⇒ 模块与它的 `<module>` 行一并消失。
+         ★ 本行**有意不留痕**：`<module>` 是构建面，留着就是"模块还在"（与 `simos-ledger` 只在 enforcer 禁列留痕的
+         处置不同——那条是防"有人再把同名模块加回来"，由其余 16 个 pom 的禁列承担）。 -->
     <!-- ★ S1 阶段 2：actor 切片共用契约（ActorRef / ActorKind / AssetKind / AssetClassKey）。
          它在依赖图上比 economy-api 更底层（economy-api 反过来依赖本模块），故排在 economy-api 之
          前：不声明主依赖（util / map / jackson 都不声明），不被任何领域模块**反向**依赖。 -->
@@ -127,9 +129,6 @@
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-core</artifactId><version>${project.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>io.mosire</groupId><artifactId>simos-sd</artifactId><version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-actor-api</artifactId><version>${project.version}</version>

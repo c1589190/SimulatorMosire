@@ -1,6 +1,6 @@
 package io.mosire.simos.ga.tools;
 
-import io.mosire.simos.sd.model.SdInfoEntry;
+import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;

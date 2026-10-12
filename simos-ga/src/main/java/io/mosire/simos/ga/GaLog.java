@@ -57,12 +57,14 @@ public final class GaLog {
   public static final String APPROVAL_LOGGER_NAME = ROOT_LOGGER_NAME + ".approval";
   public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
   public static final String TIME_LOGGER_NAME = ROOT_LOGGER_NAME + ".time";
+  public static final String RESOLVE_LOGGER_NAME = ROOT_LOGGER_NAME + ".resolve";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger DECISION = LoggerFactory.getLogger(DECISION_LOGGER_NAME);
   private static final Logger TOOL = LoggerFactory.getLogger(TOOL_LOGGER_NAME);
   private static final Logger APPROVAL = LoggerFactory.getLogger(APPROVAL_LOGGER_NAME);
   private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
   private static final Logger TIME = LoggerFactory.getLogger(TIME_LOGGER_NAME);
+  private static final Logger RESOLVE = LoggerFactory.getLogger(RESOLVE_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private GaLog() {}
@@ -114,6 +116,19 @@ public final class GaLog {
    */
   public static Logger time() {
     return TIME;
+  }
+
+  /**
+   * {@code ga:} 地址族的解析诊断：空候选与装配故障（照 {@code SdLog.resolve()} 的同形制）。
+   *
+   * <p>★★ <b>2026-10-12 批次 3e</b>：{@code SdResolver} 整类迁入本模块为 {@link
+   * io.mosire.simos.ga.resolve.GaResolver}（{@code sd:} 命名空间整体消失）⇒ 它的事件从 {@code
+   * io.mosire.simos.sd.resolve} 挪到这里，开关随之从 {@code -Dsimos.sd.logLevel} 换成 {@code
+   * -Dsimos.ga.logLevel}（**只影响输出的 logger 名与开关，不改任何解析语义**；事件名由 {@code SD_RESOLVE_*} 换成 {@code
+   * GA_RESOLVE_*}，来源档 {@code sd-resolve} → {@code ga-resolve}）。
+   */
+  public static Logger resolve() {
+    return RESOLVE;
   }
 
   /** 逐轮逐工具的明细（默认关；与 {@link #decision()} 同级但可单独升降）。 */

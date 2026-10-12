@@ -1,6 +1,6 @@
 package io.mosire.simos.ga.effect;
 
-import io.mosire.simos.sd.id.EffectId;
+import io.mosire.simos.ga.id.EffectId;
 
 /**
  * 效果（spec §三.6，R6）：**此时决定、未来发生**——trigger + action + 状态机。

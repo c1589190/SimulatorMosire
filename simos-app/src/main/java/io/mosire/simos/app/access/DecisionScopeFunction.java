@@ -2,7 +2,7 @@ package io.mosire.simos.app.access;
 
 import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
-import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Collection;
 

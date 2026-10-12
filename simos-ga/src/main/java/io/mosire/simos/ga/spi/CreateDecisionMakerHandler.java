@@ -5,10 +5,8 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
-import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.spi.SdCommandNames;
-import io.mosire.simos.sd.spi.SdPayloads;
+import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -38,7 +36,7 @@ import java.util.Set;
  * 的处置同款： 拒绝，不静默忽略）：字段已从 {@link DecisionMaker} 删除，继续兼容读会让人以为"决策人自带归属"。拒因直接给出三条新命令。
  *
  * <p>★ 拒绝：id 已存在；带了 {@code affiliation}；{@code allowedTools} 含**通用写**（{@link
- * SdCommandNames#SIMOS_COMMAND_SUBMIT}）⇒ 拒绝（N9）。
+ * GaCommandNames#SIMOS_COMMAND_SUBMIT}）⇒ 拒绝（N9）。
  *
  * <p>★ **创建期 {@code accessLimit} 恒为"无额外限制"**（{@link AccessLimit#empty()}）：可见范围由 app 层的范围函数 现算，GM
  * 配的是**额外收紧**——创建期不解析它，配权由 GM 专用的 {@code ga.SetDecisionMakerAccess} 写入（spec §4.2）。 这**不是**旧 {@code
@@ -68,8 +66,8 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
     GaState base = GaSnapshots.state(state);
     String dmForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
-      DecisionMakerId id = DecisionMakerId.parse(SdPayloads.requireText(payload, "id"));
+      JsonNode payload = GaPayloads.parse(payloadJson);
+      DecisionMakerId id = DecisionMakerId.parse(GaPayloads.requireText(payload, "id"));
       dmForLog = id.value();
       if (payload.has("affiliation") && !payload.get("affiliation").isNull()) {
         return rejected(
@@ -80,14 +78,14 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
             "dm",
             dmForLog);
       }
-      Set<String> allowedTools = SdPayloads.requireTextSet(payload, "allowedTools");
-      long cadence = SdPayloads.requireLong(payload, "cadence");
+      Set<String> allowedTools = GaPayloads.requireTextSet(payload, "allowedTools");
+      long cadence = GaPayloads.requireLong(payload, "cadence");
       if (base.decisionMakers().containsKey(id)) {
         return rejected("决策人已存在: " + id, "dm", dmForLog);
       }
-      if (allowedTools.contains(SdCommandNames.SIMOS_COMMAND_SUBMIT)) {
+      if (allowedTools.contains(GaCommandNames.SIMOS_COMMAND_SUBMIT)) {
         return rejected(
-            "allowedTools 不得含通用写 " + SdCommandNames.SIMOS_COMMAND_SUBMIT + "（N9：决策 Agent 只用窄工具）",
+            "allowedTools 不得含通用写 " + GaCommandNames.SIMOS_COMMAND_SUBMIT + "（N9：决策 Agent 只用窄工具）",
             "dm",
             dmForLog,
             "allowedTools",
@@ -116,10 +114,10 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GaPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
+    GaPayloads.logRejected(
         GaLog.decision(),
         GaLogSource.GA_DECISION,
         "SD_CREATE_DECISION_MAKER_REJECTED",

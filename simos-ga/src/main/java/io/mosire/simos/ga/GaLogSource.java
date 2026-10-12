@@ -47,7 +47,17 @@ public enum GaLogSource implements LogOrigin {
    * {@code SD_EFFECT_FIRED}）⇒ 消费者按 kind 粗筛的语义不变；变的只有 logger 名（{@code io.mosire.simos.sd.time} →
    * {@code io.mosire.simos.ga.time}）与来源表。
    */
-  GA_TICK("ga-tick", "每 tick 推进：effect 逐日触发（tick 算法，必带 day）", LogOriginKind.TICK);
+  GA_TICK("ga-tick", "每 tick 推进：effect 逐日触发（tick 算法，必带 day）", LogOriginKind.TICK),
+  /**
+   * ★★ 2026-10-12 批次 3e：{@code ga:} 地址族的解析诊断（{@code GaResolver} 的空候选与装配故障）。
+   *
+   * <p>★ <b>与 {@code sd.SdLogSource.SD_RESOLVE} 逐字同档</b>（{@link LogOriginKind#SYSTEM}）：{@code
+   * SdResolver} 整类迁入本模块并改挂 {@code ga:} 命名空间（{@code simos-sd} 退役）⇒ 日志的粗分类与 「只记空候选 /
+   * 装配故障、不逐次记成功查询」的口径不变；变的只有 logger 名（{@code io.mosire.simos.sd.resolve} → {@code
+   * io.mosire.simos.ga.resolve}）与来源档（{@code sd-resolve} → {@code ga-resolve}，同 3b-4 的 {@code
+   * SD_TICK} → {@code GA_TICK}）。
+   */
+  GA_RESOLVE("ga-resolve", "GaResolver 候选装配与空结果诊断", LogOriginKind.SYSTEM);
 
   private final String id;
   private final String description;

@@ -67,7 +67,6 @@
                     <exclude>io.mosire:simos-social</exclude>
                     <exclude>io.mosire:simos-unit</exclude>
                     <exclude>io.mosire:simos-core</exclude>
-                    <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-actor-api</exclude>
                     <exclude>io.mosire:simos-actor</exclude>
                     <exclude>io.mosire:simos-economy-api</exclude>
@@ -82,7 +81,7 @@
                     <exclude>io.mosire:simos-ga</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                   </excludes>
-                  <message>simos-ga-spi 是工具契约层（SimosTool 工具接口 + ToolRole 角色标签 + GmOnlyRead 标签 + ToolWritePort 窄写口 + ToolResources/ToolSchema 纯助手，零逻辑零状态）：只许依赖 simos-util（状态协议）与 agentlib-mosire（工具/权限契约）。★ 禁列 = 全仓 17 个 simos 模块 − 自己 − util（含全部领域/编排模块与已退役的 ledger 留痕），零例外；★ 尤其**不许依赖 core**：core 的 test scope 依赖 map/social/unit ⇒ `map → ga-spi → core → map(test)` 会成环（设计书 §4.2 末段 / I-G2）。</message>
+                  <message>simos-ga-spi 是工具契约层（SimosTool 工具接口 + ToolRole 角色标签 + GmOnlyRead 标签 + ToolWritePort 窄写口 + ToolResources/ToolSchema 纯助手，零逻辑零状态）：只许依赖 simos-util（状态协议）与 agentlib-mosire（工具/权限契约）。★ 禁列 = 全仓 16 个 simos 模块 − 自己 − util（含全部领域/编排模块与已退役的 ledger 留痕），零例外；★ 尤其**不许依赖 core**：core 的 test scope 依赖 map/social/unit ⇒ `map → ga-spi → core → map(test)` 会成环（设计书 §4.2 末段 / I-G2）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

@@ -66,7 +66,6 @@
                   <excludes>
                     <exclude>io.mosire:simos-social</exclude>
                     <exclude>io.mosire:simos-unit</exclude>
-                    <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:simos-app</exclude>
                     <!-- ★★ 2026-10-12 模块语义冻结（文档 §3）：对称闭合

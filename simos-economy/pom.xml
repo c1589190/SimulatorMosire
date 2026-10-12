@@ -93,7 +93,6 @@
                          Social 是人员/家户的唯一域，economy 允许直接依赖其实现（与 social 单向，不成环）。
                          契约层 economy-api / social-api / actor-api 与纯计算 calendar 都不在禁列。 -->
                     <exclude>io.mosire:simos-unit</exclude>
-                    <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:simos-app</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
@@ -116,7 +115,7 @@
                     <exclude>io.mosire:simos-ledger</exclude>
                     <exclude>io.mosire:simos-calendar</exclude>
                   </excludes>
-                  <message>simos-economy 是聚合式经济切片（产业/阶层行/债务/流水/市场/货币/政府政策），**机制与规则的归属地**：只许依赖 actor-api/util/economy-api/map/social-api/social + 工具契约层 ga-spi（★ 方案 A 2026-10-09：允许直连 social —— 人员/家户唯一域；★★ 2026-10-12 B3 第三域：工具下放后加 ga-spi）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 unit/sd/core/app、army/gov、运行框架 ga 与同层 actor、已退役的 ledger）。★ 例外：calendar 由 social 传递带出，按 I-F1 不入禁列（见上方注）。</message>
+                  <message>simos-economy 是聚合式经济切片（产业/阶层行/债务/流水/市场/货币/政府政策），**机制与规则的归属地**：只许依赖 actor-api/util/economy-api/map/social-api/social + 工具契约层 ga-spi（★ 方案 A 2026-10-09：允许直连 social —— 人员/家户唯一域；★★ 2026-10-12 B3 第三域：工具下放后加 ga-spi）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 unit/core/app、army/gov、运行框架 ga 与同层 actor、已退役的 ledger；`simos-sd` 已于 2026-10-12 整模块退役）。★ 例外：calendar 由 social 传递带出，按 I-F1 不入禁列（见上方注）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

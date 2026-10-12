@@ -61,10 +61,8 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-unit</artifactId>
     </dependency>
-    <!-- ★ SDSimos（A1）：组合根装配 sd（codec/handler/participant/resolver，见 spec §一.4）。 -->
-    <dependency>
-      <groupId>io.mosire</groupId><artifactId>simos-sd</artifactId>
-    </dependency>
+    <!-- ★★ 2026-10-12 批次 3e：`simos-sd` 依赖随模块退役**整条删除**（用户裁定「sd 整个弃用！」）——
+         组合根此前要装配的 SdCodec / SdResolver / 渠道类如今全在 `simos-ga`（本 pom 上方已显式声明它）。 -->
     <!-- ★ 聚合式经济（R1/R2a）：codec/resolver/命令 handler 与读口视图（§十"验收目标 A"）。 -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-economy</artifactId>

@@ -9,13 +9,13 @@ import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.army.CombatStage;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.adjudication.Breakpoints;
+import io.mosire.simos.ga.adjudication.DecisionAdjudicator;
+import io.mosire.simos.ga.adjudication.Judgement;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.nation.NationId;
-import io.mosire.simos.sd.adjudication.Breakpoints;
-import io.mosire.simos.sd.adjudication.DecisionAdjudicator;
-import io.mosire.simos.sd.adjudication.Judgement;
-import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -106,7 +106,11 @@ public final class DecisionAdjudicationService {
     Optional<CombatRecord> subject = firstCombat(army);
     if (subject.isEmpty()) {
       // ★ 无交战记录 ⇒ 不跳过判决，跑决策人自己的决策断点 D2（战斗只是输入，不是前提）。
-      String decisionSubject = "sd:decision-maker." + maker.id().value();
+      // ★★ 2026-10-12 批次 3e：D2 的判决主体由 `sd:decision-maker.<id>` 改挂 `ga:decision-maker.<id>` ——
+      //   `sd:` 地址族整体消失（用户裁定「sd 整个弃用！」），决策人身份住 `GaState.decisionMakers`，
+      //   其 canonical 地址由 `GaResolver` 产出 `ga:decision-maker.<id>`（同一形态，只换命名空间）。
+      //   `Breakpoints.acceptsVerdictSubject` 的 D2 支同步改挂 ⇒ 两条必须逐字一致，否则判决会被判决面当场拒。
+      String decisionSubject = "ga:decision-maker." + maker.id().value();
       return runner.run(
           branch,
           baseRevision,

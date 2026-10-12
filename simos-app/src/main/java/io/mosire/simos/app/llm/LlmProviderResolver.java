@@ -12,9 +12,9 @@ import io.mosire.agentlib.llm.ToolAssetResolver;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
-import io.mosire.simos.sd.adjudication.DecisionAdjudicator;
-import io.mosire.simos.sd.adjudication.LlmDecisionAdjudicator;
-import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.ga.adjudication.DecisionAdjudicator;
+import io.mosire.simos.ga.adjudication.LlmDecisionAdjudicator;
+import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
@@ -24,7 +24,7 @@ import java.util.Objects;
 
 /**
  * 使用期解析（spec §三，判据 C8/C9）：把决策人绑定的 {@code providerId} 解析成 AgentLib 的 {@link LlmClient}， 并包成本模块 D 阶段的
- * {@link io.mosire.simos.sd.adjudication.LlmClient} SPI。
+ * {@link io.mosire.simos.ga.adjudication.LlmClient} SPI。
  *
  * <p>★ **不静默兜底**是核心不变量（这是本类唯一"自己的逻辑"，也是唯一的变异靶子）：
  *
@@ -161,7 +161,7 @@ public final class LlmProviderResolver {
   }
 
   /**
-   * 本模块（sd）的 {@link io.mosire.simos.sd.adjudication.LlmClient} SPI：AgentLib 客户端的薄适配。
+   * 本模块（sd）的 {@link io.mosire.simos.ga.adjudication.LlmClient} SPI：AgentLib 客户端的薄适配。
    *
    * <p>★ **走 {@link LlmClient#text} 而不是 {@code chat}**：判决场景要的就是"一段文本"（JSON 草案）， 而 AgentLib 的 {@code
    * text()} 已经把 A1 的思维链折叠（`reasoning_content` 非空且正文为空时折进正文）与 "拿不到就抛 {@code NO_TEXT}"两条语义处理掉了 ——
@@ -172,7 +172,7 @@ public final class LlmProviderResolver {
    *
    * <p>★ **采样**：{@code temperature=0}（判决要可复现，需求 A2）+ {@code maxTokens=4096}（推理模型给足思维链空间）。
    */
-  public io.mosire.simos.sd.adjudication.LlmClient llmClientFor(String providerId) {
+  public io.mosire.simos.ga.adjudication.LlmClient llmClientFor(String providerId) {
     String id = requireRouteId(providerId);
     // ★ fail-closed 的第二道（第一道是 requireRouteId）：路由表里没有这个名字 ⇒ **点名该 id** 抛出，
     //   绝不落到别的 provider（这正是回放悬空 / 配置被删时的形态）。

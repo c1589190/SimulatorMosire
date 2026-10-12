@@ -2,7 +2,7 @@ package io.mosire.simos.app.access;
 
 import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.agentlib.tool.ToolContext;
-import io.mosire.simos.sd.spi.DirectiveWhitelist;
+import io.mosire.simos.ga.spi.DirectiveWhitelist;
 import java.util.Objects;
 import java.util.Set;
 

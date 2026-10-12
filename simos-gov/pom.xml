@@ -92,7 +92,6 @@
                     <!-- 切片之间互不依赖（对称）：sd 是领域模块的下游；economy / actor 是兄弟切片。
                          ★ economy-api 与 actor-api **不在禁列**（契约层，任务书明文允许；本阶段只用了 economy-api 的 ID）。
                          ★ map / social / unit 是计划 §2.2 明确允许的上游，也不在禁列。 -->
-                    <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-economy</exclude>
                     <exclude>io.mosire:simos-actor</exclude>
                     <!-- ★★ 2026-10-12 模块语义冻结（文档 §3）：对称闭合
@@ -117,7 +116,7 @@
                        ★ ga-spi **不入禁列**：它是域模块写工具的唯一契约面（设计书 §4.1），且它自己不依赖 core/域。
                        ★ 传依赖的契约层（social-api / calendar / actor-api）仍在禁列里：`searchTransitive=false` 只拦
                          **直接声明**，传递可见不受影响（这三条一直由 social / economy-api 传递带出）。 -->
-                  <message>simos-gov 是政府：行政编制、国库预算、区划服务 + **外交**（Nation / 关系 / 事件；2026-10-12 用户裁定"外交是 gov 的事"）：只许依赖 util/map/unit/social/economy-api + 工具契约层 ga-spi（2026-10-12 B3 第六域下放后）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 core/app/agentlib、sd、运行框架 ga、兄弟切片 economy/actor/army 与已退役的 ledger）。★ 留痕：social-api / calendar / actor-api 三条由 social 与 economy-api **传递**带出（旧口径"按 I-F1 不入禁列"已被 2026-10-12 冻结批取代 —— 它们在禁列里，但 searchTransitive=false 使传递可见不触禁）。</message>
+                  <message>simos-gov 是政府：行政编制、国库预算、区划服务 + **外交**（Nation / 关系 / 事件；2026-10-12 用户裁定"外交是 gov 的事"）：只许依赖 util/map/unit/social/economy-api + 工具契约层 ga-spi（2026-10-12 B3 第六域下放后）；禁列 = 全仓 simos 模块 − 自己 − 允许面（含 core/app/agentlib、运行框架 ga、兄弟切片 economy/actor/army 与已退役的 ledger；`simos-sd` 已于 2026-10-12 整模块退役）。★ 留痕：social-api / calendar / actor-api 三条由 social 与 economy-api **传递**带出（旧口径"按 I-F1 不入禁列"已被 2026-10-12 冻结批取代 —— 它们在禁列里，但 searchTransitive=false 使传递可见不触禁）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

@@ -12,6 +12,9 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.id.DirectiveId;
+import io.mosire.simos.ga.model.Directive;
+import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -22,9 +25,6 @@ import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaDecisionHost;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolReads;
-import io.mosire.simos.sd.id.DirectiveId;
-import io.mosire.simos.sd.model.Directive;
-import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -62,10 +62,10 @@ import java.util.UUID;
  * reason} 以 {@code 【打回】} 开头）。
  *
  * <p>★★ **一条 revision 同时留痕三件事**（铁律 2 的"打回也是世界事实"）：状态翻转（{@code ga.SetDirectiveStatus}）+ 审计条目（ {@code
- * ga.PutInfo}，地址 {@code sd:rejection.<directiveId>}：谁的令 / 第几版 / 理由文本 / 落在哪条 revision）**同批**落一条
+ * ga.PutInfo}，地址 {@code ga:rejection.<directiveId>}：谁的令 / 第几版 / 理由文本 / 落在哪条 revision）**同批**落一条
  * revision（{@link ToolWritePort#submitBatchWithReceipt}，原子）。
  *
- * <p>★ **审计条目**有意**不带 tags**（无主）：它是治理/审计记录，不是"裁决结果"（{@code sd:adjudication.<tick>} 那一族）—— 挂上决策人的
+ * <p>★ **审计条目**有意**不带 tags**（无主）：它是治理/审计记录，不是"裁决结果"（{@code ga:adjudication.<tick>} 那一族）—— 挂上决策人的
  * tag 会让它混进决策结果的读口（{@code sd.DecisionResults} 的判据是"tags 含自己"），而两者 {@code value} 的形状不同。
  * 决策人知道"被打回"这件事 **走会话**（第 1 件事），不走结果列表。
  *
@@ -83,8 +83,8 @@ public final class RejectDirectiveTool implements SimosTool {
   /** 状态翻转用的命令类型（取自唯一的常量来源，不另写一个字面量）。 */
   private static final String STATUS_COMMAND_TYPE = SetDirectiveStatusHandler.TYPE;
 
-  /** 审计 INFO 的地址前缀（{@code sd:rejection.<directiveId>}——**一条令一个地址**）。 */
-  public static final String REJECTION_ADDRESS_PREFIX = "sd:rejection.";
+  /** 审计 INFO 的地址前缀（{@code ga:rejection.<directiveId>}——**一条令一个地址**）。 */
+  public static final String REJECTION_ADDRESS_PREFIX = "ga:rejection.";
 
   /** 审计 INFO 的 key（同一条令只会被打回一次，故一个地址下恰好一条）。 */
   public static final String REJECTION_KEY = "rejection";
@@ -202,7 +202,7 @@ public final class RejectDirectiveTool implements SimosTool {
     }
   }
 
-  /** 本工具要写的资源：{@code sd:decision-maker}（打回是 GM 对一个决策人的令的动作）。 */
+  /** 本工具要写的资源：{@code ga:decision-maker}（打回是 GM 对一个决策人的令的动作）。 */
   private List<ResourceId> writeResources() {
     return List.of(ResourceId.of(ToolResources.SD_NAMESPACE, identity.decisionMakerKind()));
   }
@@ -267,7 +267,7 @@ public final class RejectDirectiveTool implements SimosTool {
   }
 
   /**
-   * 审计条目（{@code ga.PutInfo}，地址 {@code sd:rejection.<directiveId>}）：**谁的令 / 第几版 / 理由文本 / 落在哪条
+   * 审计条目（{@code ga.PutInfo}，地址 {@code ga:rejection.<directiveId>}）：**谁的令 / 第几版 / 理由文本 / 落在哪条
    * revision**。
    *
    * <p>★ {@code value} 是 **JSON 字符串**（{@code SdInfoEntry.value} 是裸 {@code Object}，只有标量往返有保证）；{@code

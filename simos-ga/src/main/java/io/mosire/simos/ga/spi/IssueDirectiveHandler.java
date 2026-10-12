@@ -5,15 +5,13 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
-import io.mosire.simos.sd.id.DirectiveId;
-import io.mosire.simos.sd.id.EffectId;
-import io.mosire.simos.sd.model.Directive;
-import io.mosire.simos.sd.model.DirectiveCommand;
-import io.mosire.simos.sd.model.DirectiveStatus;
-import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.model.SdInfoIds;
-import io.mosire.simos.sd.spi.DirectiveWhitelist;
-import io.mosire.simos.sd.spi.SdPayloads;
+import io.mosire.simos.ga.id.DirectiveId;
+import io.mosire.simos.ga.id.EffectId;
+import io.mosire.simos.ga.model.Directive;
+import io.mosire.simos.ga.model.DirectiveCommand;
+import io.mosire.simos.ga.model.DirectiveStatus;
+import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -52,14 +50,14 @@ import java.util.Set;
  * 自指与通用写被明确拒绝。
  *
  * <p>★★ <b>执行原文（{@code intentInfo}）由本命令<b>自己</b>写入（2026-10-12 批次 3b-2 <b>回归</b>）：一条命令 = 一个命名空间</b>
- * ——{@code info} 覆盖层（地址 {@code sd:directive.<id>}、key {@value #INTENT_INFO_KEY}）与 {@code
+ * ——{@code info} 覆盖层（地址 {@code ga:directive.<id>}、key {@value #INTENT_INFO_KEY}）与 {@code
  * directives} 表<b>同住 {@code GaState}</b>（第 3/6 个组件）⇒ 令与执行原文落在<b>同一条 revision、同一条命令</b>里，二者不可分割。
  *
  * <p>★★ <b>批次 3b-1 的过渡态及其中止（如实记）</b>：3b-1 把令搬进 ga 而 {@code info} 仍住 sd ⇒ 当时不得不改用"**同批第二条命令 {@code
- * ga.PutInfo}**"补执行原文（{@link io.mosire.simos.sd.spi.DecisionTablesLookup 所在模块}的 {@code
- * DirectiveIntentInfo} + {@code AbstractNarrowWriteTool.companionRequests} + {@code
- * CommandSubmitTool} 的配套分支）。那条缺口（控制方 §16.4：绕过工具/渠道直接提交 {@code ga.IssueDirective} ⇒ 只落令、不落执行原文） 随本批
- * {@code info} 搬进 ga 而<b>关闭</b>：配套机制整条删除，"单条命令自带执行原文"的原形恢复。
+ * ga.PutInfo}**"补执行原文（{@link io.mosire.simos.ga.GaState 所在模块}的 {@code DirectiveIntentInfo} + {@code
+ * AbstractNarrowWriteTool.companionRequests} + {@code CommandSubmitTool} 的配套分支）。那条缺口（控制方
+ * §16.4：绕过工具/渠道直接提交 {@code ga.IssueDirective} ⇒ 只落令、不落执行原文） 随本批 {@code info} 搬进 ga
+ * 而<b>关闭</b>：配套机制整条删除，"单条命令自带执行原文"的原形恢复。
  *
  * <p>★ <b>本命令自己要求</b> {@code intentInfo} 非空白（载荷契约不变）：它现在是这条条目<b>唯一</b>的来源。
  *
@@ -107,16 +105,16 @@ public final class IssueDirectiveHandler implements CommandHandler {
     String directiveForLog = null;
     String dmForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
-      DirectiveId id = DirectiveId.parse(SdPayloads.requireText(payload, "directiveId"));
+      JsonNode payload = GaPayloads.parse(payloadJson);
+      DirectiveId id = DirectiveId.parse(GaPayloads.requireText(payload, "directiveId"));
       directiveForLog = id.value();
       DecisionMakerId decisionMakerId =
-          DecisionMakerId.parse(SdPayloads.requireText(payload, "decisionMakerId"));
+          DecisionMakerId.parse(GaPayloads.requireText(payload, "decisionMakerId"));
       dmForLog = decisionMakerId.value();
-      long tick = SdPayloads.requireLong(payload, "tick");
-      Optional<Address> target = SdPayloads.optionalAddress(payload, "target");
-      String intentInfo = SdPayloads.requireText(payload, "intentInfo");
-      List<DirectiveCommand> commands = SdPayloads.optionalDirectiveCommands(payload, "commands");
+      long tick = GaPayloads.requireLong(payload, "tick");
+      Optional<Address> target = GaPayloads.optionalAddress(payload, "target");
+      String intentInfo = GaPayloads.requireText(payload, "intentInfo");
+      List<DirectiveCommand> commands = GaPayloads.optionalDirectiveCommands(payload, "commands");
       Set<EffectId> effects = parseEffectIds(payload);
 
       if (!base.decisionMakers().containsKey(decisionMakerId)) {
@@ -232,10 +230,10 @@ public final class IssueDirectiveHandler implements CommandHandler {
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GaPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
+    GaPayloads.logRejected(
         GaLog.decision(),
         GaLogSource.GA_DECISION,
         "SD_ISSUE_DIRECTIVE_REJECTED",
@@ -280,21 +278,21 @@ public final class IssueDirectiveHandler implements CommandHandler {
 
   private static Set<EffectId> parseEffectIds(JsonNode payload) {
     Set<EffectId> out = new LinkedHashSet<>();
-    for (String value : SdPayloads.optionalTextSet(payload, "effects")) {
+    for (String value : GaPayloads.optionalTextSet(payload, "effects")) {
       out.add(EffectId.parse(value));
     }
     return out;
   }
 
   /**
-   * 出令执行原文条目的 canonical 地址前缀（{@code sd:directive.<id>}）——<b>唯一拼写点</b>（搬迁前它住在 {@code
+   * 出令执行原文条目的 canonical 地址前缀（{@code ga:directive.<id>}）——<b>唯一拼写点</b>（搬迁前它住在 {@code
    * DirectiveIntentInfo.ADDRESS_PREFIX}，那个类随 companion 机制一起删了）。
    *
-   * <p>★ <b>地址族串一字未改</b>（{@code sd:directive.<id>} 的裁量属批次 3e）：变的只是"表住哪个切片"。
+   * <p>★ <b>地址族串一字未改</b>（{@code ga:directive.<id>} 的裁量属批次 3e）：变的只是"表住哪个切片"。
    */
-  static final String INTENT_INFO_ADDRESS_PREFIX = "sd:directive.";
+  static final String INTENT_INFO_ADDRESS_PREFIX = "ga:directive.";
 
-  /** 执行原文条目的 canonical 地址（{@code sd:directive.<id>}）。 */
+  /** 执行原文条目的 canonical 地址（{@code ga:directive.<id>}）。 */
   static String intentInfoAddressOf(DirectiveId id) {
     return INTENT_INFO_ADDRESS_PREFIX + id.value();
   }

@@ -5,10 +5,9 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
-import io.mosire.simos.sd.id.DirectiveId;
-import io.mosire.simos.sd.model.Directive;
-import io.mosire.simos.sd.model.DirectiveStatus;
-import io.mosire.simos.sd.spi.SdPayloads;
+import io.mosire.simos.ga.id.DirectiveId;
+import io.mosire.simos.ga.model.Directive;
+import io.mosire.simos.ga.model.DirectiveStatus;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -69,10 +68,10 @@ public final class SetDirectiveStatusHandler implements CommandHandler {
     String directiveForLog = null;
     String targetForLog = null;
     try {
-      JsonNode payload = SdPayloads.parse(payloadJson);
-      DirectiveId id = DirectiveId.parse(SdPayloads.requireText(payload, "directiveId"));
+      JsonNode payload = GaPayloads.parse(payloadJson);
+      DirectiveId id = DirectiveId.parse(GaPayloads.requireText(payload, "directiveId"));
       directiveForLog = id.value();
-      DirectiveStatus target = parseTarget(SdPayloads.requireText(payload, "status"));
+      DirectiveStatus target = parseTarget(GaPayloads.requireText(payload, "status"));
       targetForLog = target.name();
       Directive directive = base.directives().get(id);
       if (directive == null) {
@@ -113,10 +112,10 @@ public final class SetDirectiveStatusHandler implements CommandHandler {
 
   /**
    * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
-   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   * GaPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
    */
   private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
-    SdPayloads.logRejected(
+    GaPayloads.logRejected(
         GaLog.decision(),
         GaLogSource.GA_DECISION,
         "SD_SET_DIRECTIVE_STATUS_REJECTED",

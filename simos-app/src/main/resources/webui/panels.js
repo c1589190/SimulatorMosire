@@ -2575,7 +2575,7 @@
       app.el("span", {
         class: "result-entry-id",
         text: entry.id,
-        title: "决策结果地址（sd:adjudication.<tick>#<n>）",
+        title: "决策结果地址（ga:adjudication.<tick>#<n>）",
       })
     );
     head.appendChild(
@@ -2759,7 +2759,7 @@
       app.el("span", {
         class: "doc-entry-id",
         text: entry.docId,
-        title: "文档地址（sd:doc.<docId>），条目 id=" + entry.id,
+        title: "文档地址（ga:doc.<docId>），条目 id=" + entry.id,
       })
     );
     // ★ 两轴各显一栏：看得到这篇文档**是因为被指派**还是**因为归属命中**。
