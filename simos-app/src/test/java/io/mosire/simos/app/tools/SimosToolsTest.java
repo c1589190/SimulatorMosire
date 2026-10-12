@@ -29,53 +29,10 @@ import io.mosire.simos.app.render.RenderCache;
 import io.mosire.simos.app.render.RenderRequest;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.testing.SocialHouseholdFixture;
+import io.mosire.simos.app.tools.ga.AppGaToolIdentity;
 import io.mosire.simos.app.tools.map.AppMapToolPerspective;
 import io.mosire.simos.app.tools.map.AppMapToolViews;
 import io.mosire.simos.app.tools.read.CatalogTool;
-import io.mosire.simos.app.tools.write.EconomyAdjustTool;
-import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
-import io.mosire.simos.app.tools.write.SdCancelEffectTool;
-import io.mosire.simos.app.tools.write.SdCommitCombatOutcomeTool;
-import io.mosire.simos.app.tools.write.SdCreateArmyTool;
-import io.mosire.simos.app.tools.write.SdCreateCombatTool;
-import io.mosire.simos.app.tools.write.SdCreateDecisionMakerTool;
-import io.mosire.simos.app.tools.write.SdCreateNationTool;
-import io.mosire.simos.app.tools.write.SdPutInfoTool;
-import io.mosire.simos.app.tools.write.SdRecordCasualtiesTool;
-import io.mosire.simos.app.tools.write.SdRecordDiplomaticEventTool;
-import io.mosire.simos.app.tools.write.SdRegisterEffectTool;
-import io.mosire.simos.app.tools.write.SdSetArmyMasterGovTool;
-import io.mosire.simos.app.tools.write.SdSetDecisionMakerProviderTool;
-import io.mosire.simos.app.tools.write.SdSetDiplomaticRelationTool;
-import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
-import io.mosire.simos.app.tools.write.UnitAdjustCompositionTool;
-import io.mosire.simos.app.tools.write.UnitApplyCasualtiesTool;
-import io.mosire.simos.app.tools.write.UnitAttachTool;
-import io.mosire.simos.app.tools.write.UnitCancelRouteTool;
-import io.mosire.simos.app.tools.write.UnitCreateCommandChainTool;
-import io.mosire.simos.app.tools.write.UnitCreateTool;
-import io.mosire.simos.app.tools.write.UnitDetachTool;
-import io.mosire.simos.app.tools.write.UnitDisbandTool;
-import io.mosire.simos.app.tools.write.UnitMergeFormationTool;
-import io.mosire.simos.app.tools.write.UnitPlaceAtTool;
-import io.mosire.simos.app.tools.write.UnitPlanRouteTool;
-import io.mosire.simos.app.tools.write.UnitPlanSparseRouteTool;
-import io.mosire.simos.app.tools.write.UnitRenameTool;
-import io.mosire.simos.app.tools.write.UnitReparentSubtreeTool;
-import io.mosire.simos.app.tools.write.UnitReparentTool;
-import io.mosire.simos.app.tools.write.UnitSetArmyFormationTool;
-import io.mosire.simos.app.tools.write.UnitSetCompositionTool;
-import io.mosire.simos.app.tools.write.UnitSetFormationOffsetTool;
-import io.mosire.simos.app.tools.write.UnitSetGovPolicyTool;
-import io.mosire.simos.app.tools.write.UnitSetGovSuperiorTool;
-import io.mosire.simos.app.tools.write.UnitSetGovernmentFormationTool;
-import io.mosire.simos.app.tools.write.UnitSetJurisdictionTool;
-import io.mosire.simos.app.tools.write.UnitSetRejoinTargetTool;
-import io.mosire.simos.app.tools.write.UnitSetStateDescriptionTool;
-import io.mosire.simos.app.tools.write.UnitSetStatusTool;
-import io.mosire.simos.app.tools.write.UnitSetTaxRateTool;
-import io.mosire.simos.app.tools.write.UnitSplitFormationTool;
-import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.codec.ArmyCodec;
@@ -90,8 +47,25 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.spi.EconomyGmAdjustments;
+import io.mosire.simos.economy.tools.write.EconomyAdjustTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.ga.tools.GaToolIdentity;
+import io.mosire.simos.ga.tools.write.SdAddCombatStageTool;
+import io.mosire.simos.ga.tools.write.SdCancelEffectTool;
+import io.mosire.simos.ga.tools.write.SdCommitCombatOutcomeTool;
+import io.mosire.simos.ga.tools.write.SdCreateArmyTool;
+import io.mosire.simos.ga.tools.write.SdCreateCombatTool;
+import io.mosire.simos.ga.tools.write.SdCreateDecisionMakerTool;
+import io.mosire.simos.ga.tools.write.SdCreateNationTool;
+import io.mosire.simos.ga.tools.write.SdPutInfoTool;
+import io.mosire.simos.ga.tools.write.SdRecordCasualtiesTool;
+import io.mosire.simos.ga.tools.write.SdRecordDiplomaticEventTool;
+import io.mosire.simos.ga.tools.write.SdRegisterEffectTool;
+import io.mosire.simos.ga.tools.write.SdSetArmyMasterGovTool;
+import io.mosire.simos.ga.tools.write.SdSetDecisionMakerProviderTool;
+import io.mosire.simos.ga.tools.write.SdSetDiplomaticRelationTool;
+import io.mosire.simos.ga.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -135,6 +109,34 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.codec.UnitCodec;
+import io.mosire.simos.unit.tools.write.UnitAdjustCompositionTool;
+import io.mosire.simos.unit.tools.write.UnitApplyCasualtiesTool;
+import io.mosire.simos.unit.tools.write.UnitAttachTool;
+import io.mosire.simos.unit.tools.write.UnitCancelRouteTool;
+import io.mosire.simos.unit.tools.write.UnitCreateCommandChainTool;
+import io.mosire.simos.unit.tools.write.UnitCreateTool;
+import io.mosire.simos.unit.tools.write.UnitDetachTool;
+import io.mosire.simos.unit.tools.write.UnitDisbandTool;
+import io.mosire.simos.unit.tools.write.UnitMergeFormationTool;
+import io.mosire.simos.unit.tools.write.UnitPlaceAtTool;
+import io.mosire.simos.unit.tools.write.UnitPlanRouteTool;
+import io.mosire.simos.unit.tools.write.UnitPlanSparseRouteTool;
+import io.mosire.simos.unit.tools.write.UnitRenameTool;
+import io.mosire.simos.unit.tools.write.UnitReparentSubtreeTool;
+import io.mosire.simos.unit.tools.write.UnitReparentTool;
+import io.mosire.simos.unit.tools.write.UnitSetArmyFormationTool;
+import io.mosire.simos.unit.tools.write.UnitSetCompositionTool;
+import io.mosire.simos.unit.tools.write.UnitSetFormationOffsetTool;
+import io.mosire.simos.unit.tools.write.UnitSetGovPolicyTool;
+import io.mosire.simos.unit.tools.write.UnitSetGovSuperiorTool;
+import io.mosire.simos.unit.tools.write.UnitSetGovernmentFormationTool;
+import io.mosire.simos.unit.tools.write.UnitSetJurisdictionTool;
+import io.mosire.simos.unit.tools.write.UnitSetRejoinTargetTool;
+import io.mosire.simos.unit.tools.write.UnitSetStateDescriptionTool;
+import io.mosire.simos.unit.tools.write.UnitSetStatusTool;
+import io.mosire.simos.unit.tools.write.UnitSetTaxRateTool;
+import io.mosire.simos.unit.tools.write.UnitSplitFormationTool;
+import io.mosire.simos.unit.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
@@ -788,36 +790,40 @@ class SimosToolsTest {
   void unitNarrowWriteToolsAreNamedAfterTheirFixedCommandType() throws Exception {
     CoreSimos core = shell.coreSimos();
     String mapId = ShellConfig.defaults(tempDir).mapId();
+    // ★★ 2026-10-12 B3 收尾（C3）：28 条 unit 窄写已下放到 simos-unit
+    //   （`io.mosire.simos.unit.tools.write`）⇒ 构造器改吃注入的窄写口，与生产装配（SimosToolSource:717+）
+    //   **同源**地传同一个 CoreSimosToolWritePort（命令 id/发起者/信封由它装配）。
+    ToolWritePort unitWrites = new CoreSimosToolWritePort(core, TEST_INITIATOR);
     List<AgentTool> unitTools =
         List.of(
-            new UnitRenameTool(core, TEST_INITIATOR, mapId),
-            new UnitCreateTool(core, TEST_INITIATOR, mapId),
-            new UnitReparentTool(core, TEST_INITIATOR, mapId),
-            new UnitSetCompositionTool(core, TEST_INITIATOR, mapId),
-            new UnitPlaceAtTool(core, TEST_INITIATOR, mapId),
-            new UnitPlanRouteTool(core, TEST_INITIATOR, mapId),
-            new UnitCancelRouteTool(core, TEST_INITIATOR, mapId),
-            new UnitDisbandTool(core, TEST_INITIATOR, mapId),
-            new UnitSetStatusTool(core, TEST_INITIATOR, mapId),
-            new UnitSetStateDescriptionTool(core, TEST_INITIATOR, mapId),
-            new UnitAttachTool(core, TEST_INITIATOR, mapId),
-            new UnitDetachTool(core, TEST_INITIATOR, mapId),
-            new UnitReparentSubtreeTool(core, TEST_INITIATOR, mapId),
-            new UnitSetFormationOffsetTool(core, TEST_INITIATOR, mapId),
-            new UnitSplitFormationTool(core, TEST_INITIATOR, mapId),
-            new UnitMergeFormationTool(core, TEST_INITIATOR, mapId),
-            new UnitPlanSparseRouteTool(core, TEST_INITIATOR, mapId),
-            new UnitSetRejoinTargetTool(core, TEST_INITIATOR, mapId),
-            new UnitCreateCommandChainTool(core, TEST_INITIATOR, mapId),
-            new UnitUpdateCommandChainTool(core, TEST_INITIATOR, mapId),
-            new UnitApplyCasualtiesTool(core, TEST_INITIATOR, mapId),
-            new UnitAdjustCompositionTool(core, TEST_INITIATOR, mapId),
-            new UnitSetJurisdictionTool(core, TEST_INITIATOR, mapId),
-            new UnitSetTaxRateTool(core, TEST_INITIATOR, mapId),
-            new UnitSetGovernmentFormationTool(core, TEST_INITIATOR, mapId),
-            new UnitSetArmyFormationTool(core, TEST_INITIATOR, mapId),
-            new UnitSetGovPolicyTool(core, TEST_INITIATOR, mapId),
-            new UnitSetGovSuperiorTool(core, TEST_INITIATOR, mapId));
+            new UnitRenameTool(unitWrites, mapId),
+            new UnitCreateTool(unitWrites, mapId),
+            new UnitReparentTool(unitWrites, mapId),
+            new UnitSetCompositionTool(unitWrites, mapId),
+            new UnitPlaceAtTool(unitWrites, mapId),
+            new UnitPlanRouteTool(unitWrites, mapId),
+            new UnitCancelRouteTool(unitWrites, mapId),
+            new UnitDisbandTool(unitWrites, mapId),
+            new UnitSetStatusTool(unitWrites, mapId),
+            new UnitSetStateDescriptionTool(unitWrites, mapId),
+            new UnitAttachTool(unitWrites, mapId),
+            new UnitDetachTool(unitWrites, mapId),
+            new UnitReparentSubtreeTool(unitWrites, mapId),
+            new UnitSetFormationOffsetTool(unitWrites, mapId),
+            new UnitSplitFormationTool(unitWrites, mapId),
+            new UnitMergeFormationTool(unitWrites, mapId),
+            new UnitPlanSparseRouteTool(unitWrites, mapId),
+            new UnitSetRejoinTargetTool(unitWrites, mapId),
+            new UnitCreateCommandChainTool(unitWrites, mapId),
+            new UnitUpdateCommandChainTool(unitWrites, mapId),
+            new UnitApplyCasualtiesTool(unitWrites, mapId),
+            new UnitAdjustCompositionTool(unitWrites, mapId),
+            new UnitSetJurisdictionTool(unitWrites, mapId),
+            new UnitSetTaxRateTool(unitWrites, mapId),
+            new UnitSetGovernmentFormationTool(unitWrites, mapId),
+            new UnitSetArmyFormationTool(unitWrites, mapId),
+            new UnitSetGovPolicyTool(unitWrites, mapId),
+            new UnitSetGovSuperiorTool(unitWrites, mapId));
 
     assertThat(toolNames(unitTools))
         .as("28 条 unit 窄工具的登记名逐条等于 UNIT_WRITE_NAMES（含 D3a/D1 三条非命令型工具名）")
@@ -848,23 +854,27 @@ class SimosToolsTest {
   void sdNarrowWriteToolsAreNamedAfterTheirFixedCommandType() throws Exception {
     CoreSimos core = shell.coreSimos();
     String mapId = ShellConfig.defaults(tempDir).mapId();
+    // ★★ 2026-10-12 B3 收尾（C3）：15 条 Sd* 窄写已下放到 simos-ga（`io.mosire.simos.ga.tools.write`）
+    //   ⇒ 构造器改吃注入的窄写口 + ga 身份口，与生产装配（SimosToolSource:847+）**同源**。
+    ToolWritePort gaWrites = new CoreSimosToolWritePort(core, TEST_INITIATOR);
+    GaToolIdentity gaIdentity = new AppGaToolIdentity();
     List<AgentTool> sdTools =
         List.of(
-            new SdCreateNationTool(core, TEST_INITIATOR, mapId),
-            new SdCreateArmyTool(core, TEST_INITIATOR, mapId),
-            new SdSetArmyMasterGovTool(core, TEST_INITIATOR, mapId),
-            new SdCreateDecisionMakerTool(core, TEST_INITIATOR, mapId),
-            new SdPutInfoTool(core, TEST_INITIATOR, mapId),
-            new SdSetDiplomaticRelationTool(core, TEST_INITIATOR, mapId),
-            new SdRecordDiplomaticEventTool(core, TEST_INITIATOR, mapId),
-            new SdCreateCombatTool(core, TEST_INITIATOR, mapId),
-            new SdAddCombatStageTool(core, TEST_INITIATOR, mapId),
-            new SdSetStageOutcomeTableTool(core, TEST_INITIATOR, mapId),
-            new SdCommitCombatOutcomeTool(core, TEST_INITIATOR, mapId),
-            new SdRecordCasualtiesTool(core, TEST_INITIATOR, mapId),
-            new SdRegisterEffectTool(core, TEST_INITIATOR, mapId),
-            new SdCancelEffectTool(core, TEST_INITIATOR, mapId),
-            new SdSetDecisionMakerProviderTool(core, TEST_INITIATOR, mapId));
+            new SdCreateNationTool(gaWrites, gaIdentity, mapId),
+            new SdCreateArmyTool(gaWrites, gaIdentity, mapId),
+            new SdSetArmyMasterGovTool(gaWrites, gaIdentity, mapId),
+            new SdCreateDecisionMakerTool(gaWrites, gaIdentity, mapId),
+            new SdPutInfoTool(gaWrites, gaIdentity, mapId),
+            new SdSetDiplomaticRelationTool(gaWrites, gaIdentity, mapId),
+            new SdRecordDiplomaticEventTool(gaWrites, gaIdentity, mapId),
+            new SdCreateCombatTool(gaWrites, gaIdentity, mapId),
+            new SdAddCombatStageTool(gaWrites, gaIdentity, mapId),
+            new SdSetStageOutcomeTableTool(gaWrites, gaIdentity, mapId),
+            new SdCommitCombatOutcomeTool(gaWrites, gaIdentity, mapId),
+            new SdRecordCasualtiesTool(gaWrites, gaIdentity, mapId),
+            new SdRegisterEffectTool(gaWrites, gaIdentity, mapId),
+            new SdCancelEffectTool(gaWrites, gaIdentity, mapId),
+            new SdSetDecisionMakerProviderTool(gaWrites, gaIdentity, mapId));
 
     assertThat(toolNames(sdTools))
         .as("15 条 GM-only sd 窄工具的登记名逐条等于 SD_WRITE_NAMES")
@@ -1126,8 +1136,9 @@ class SimosToolsTest {
                 + "66 → 67；★★ W5-fix6 的 simos.economy.setGovernmentMintScale 同样继承它 ⇒ 67 → 68；"
                 + "★★ W5.5 的 simos.economy.setMarketZoneLoanRateAlpha 同样继承它 ⇒ 68 → 69；"
                 + "★★ W10 的 simos.economy.setEconomyPolicy 同样继承它 ⇒ 69 → 70；"
-                + "★★ 2026-10-12 B3 试点把 8 条 map 窄写下放到 simos-map（扫描根见 narrowWriteSourceRoots()）——"
-                + "下放只移动落点、不增减工具 ⇒ 总数仍是 70（扫描根没跟上就会静默掉到 62，这里当场红）；"
+                + "★★ 2026-10-12 B3 把**各域**的窄写全部下放到它们自己的模块（map 8 / army 1 / economy 8 / "
+                + "social 1 / unit 28 / ga 23；扫描根见 narrowWriteSourceRoots()）——下放只移动落点、不增减工具 ⇒ "
+                + "总数仍是 70（扫描根没跟上就会静默掉数，这里当场红）；"
                 + "扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
         .hasSize(70);
 
@@ -1201,9 +1212,10 @@ class SimosToolsTest {
   /**
    * 实现了窄写基类的工具类所在源码根（**按模块逐条给出**）。
    *
-   * <p>★★ 2026-10-12 B3 试点：地图的 8 条窄写已下放到 {@code simos-map}（{@code
-   * io.mosire.simos.map.tools.write}）⇒ 扫描面必须跟着架构走。只扫 app 会让下放的工具**静默漏出**扫描面（本仓踩过的
-   * "扫描器静默"陷阱），故这里两个模块都列；下一个域下放时在此加一行即可。
+   * <p>★★ 2026-10-12 B3：工具实现**全部下放到各自的域模块**（试点 map + army + economy + social + unit + gov + ga
+   * 共七批）⇒ 扫描面必须跟着架构走。只扫 app 会让下放的工具**静默漏出**扫描面（本仓踩过的"扫描器静默"陷阱）， 故这里把 **app + 七个域**逐条列出；★
+   * **计数（{@link #everyNarrowWriteToolClassIsWiredIntoTheGmBucket} 的 {@code hasSize(70)}）不随下放改动** ——
+   * 下放只移动落点、不增减工具（漏一个根 ⇒ 当场红，见该用例的变异自证）。
    *
    * <p>★ 路径相对 {@code simos-app/}（surefire 的工作目录）：自己的树写 {@code src/…}，兄弟模块写 {@code
    * ../simos-<模块>/…}（与 {@link #commandHandlerSourceRoots()} 同款，主树与 worktree 里都成立）。
@@ -1211,18 +1223,34 @@ class SimosToolsTest {
   private static List<Path> narrowWriteSourceRoots() {
     return List.of(
         Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "write"),
-        Paths.get(
-            "..",
-            "simos-map",
-            "src",
-            "main",
-            "java",
-            "io",
-            "mosire",
-            "simos",
-            "map",
-            "tools",
-            "write"));
+        domainToolsRoot("map", "write"),
+        domainToolsRoot("army", "write"),
+        domainToolsRoot("economy", "write"),
+        domainToolsRoot("social", "write"),
+        domainToolsRoot("unit", "write"),
+        domainToolsRoot("gov", "write"),
+        domainToolsRoot("ga", "write"));
+  }
+
+  /**
+   * 某个域模块的 {@code io/mosire/simos/<域>/tools/<read|write>} 源码根（★ 2026-10-12 B3 收尾新增）。
+   *
+   * <p>工具实现住在各自的域模块里（"app 只负责组装"）⇒ 扫描根一词一改就够：新增一个域或一个子目录时只动本方法。 路径相对 {@code simos-app/}（surefire
+   * 的工作目录），兄弟模块写 {@code ../simos-<模块>/…}。
+   */
+  private static Path domainToolsRoot(String module, String sub) {
+    return Paths.get(
+        "..",
+        "simos-" + module,
+        "src",
+        "main",
+        "java",
+        "io",
+        "mosire",
+        "simos",
+        module,
+        "tools",
+        sub);
   }
 
   /**
@@ -1815,8 +1843,9 @@ class SimosToolsTest {
                 + "★★ W5-fix6 新增 simos.economy.setGovernmentMintScale ⇒ 173 → 174；"
                 + "★★ W5.5 新增 simos.economy.setMarketZoneLoanRateAlpha ⇒ 174 → 175；"
                 + "★★ W10 新增 simos.economy.setEconomyPolicy ⇒ 175 → 176；"
-                + "★★ 2026-10-12 B3 试点把 15 个 Map*Tool 下放到 simos-map（扫描根见 toolSourceRoots()）——"
-                + "下放只移动落点、不增减工具 ⇒ 总数仍是 176（扫描根没跟上就会静默掉到 161）；"
+                + "★★ 2026-10-12 B3 把**各域**的工具全部下放到它们自己的模块（map 15 / army 12 / economy 15 / "
+                + "social 12 / unit 36 / gov 36 / ga 49；扫描根见 toolSourceRoots()）——下放只移动落点、不增减工具 ⇒ "
+                + "总数仍是 176（扫描根没跟上就会静默掉数）；"
                 + "扫到 0/漏文件是『扫描器静默』陷阱）")
         .hasSize(176);
 
@@ -1836,9 +1865,10 @@ class SimosToolsTest {
   /**
    * 扫工具面 {@code NAME = "…"} 的全部源码根（{@code tools/read} + {@code tools/write}，M4 同源判据用）。
    *
-   * <p>★★ 2026-10-12 B3 试点：地图的 15 个 {@code Map*Tool} 已下放到 {@code simos-map}（{@code
-   * io.mosire.simos.map.tools.{read,write}}）⇒ 扫描面必须跟着架构走（只扫 app 会让下放的工具静默漏出扫描面 ⇒
-   * "扫描器静默"陷阱）；下一个域下放时在此加一行。
+   * <p>★★ 2026-10-12 B3：工具实现**全部下放到各自的域模块**（试点 map + army + economy + social + unit + gov + ga
+   * 共七批）⇒ 扫描面必须跟着架构走（只扫 app 会让下放的工具静默漏出扫描面 ⇒ "扫描器静默"陷阱）。★ **计数（{@link
+   * #everyToolClassOnDiskIsRegisteredInSomeBucket} 的 {@code hasSize(176)}）不随下放改动** ——
+   * 下放只移动落点、不增减工具（漏一个根 ⇒ 当场红）。
    *
    * <p>★ 路径相对 {@code simos-app/}（surefire 的工作目录）：自己的树写 {@code src/…}，兄弟模块写 {@code
    * ../simos-<模块>/…}（与 {@link #commandHandlerSourceRoots()} 同款）。
@@ -1847,30 +1877,20 @@ class SimosToolsTest {
     return List.of(
         Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "read"),
         Paths.get("src", "main", "java", "io", "mosire", "simos", "app", "tools", "write"),
-        Paths.get(
-            "..",
-            "simos-map",
-            "src",
-            "main",
-            "java",
-            "io",
-            "mosire",
-            "simos",
-            "map",
-            "tools",
-            "read"),
-        Paths.get(
-            "..",
-            "simos-map",
-            "src",
-            "main",
-            "java",
-            "io",
-            "mosire",
-            "simos",
-            "map",
-            "tools",
-            "write"));
+        domainToolsRoot("map", "read"),
+        domainToolsRoot("map", "write"),
+        domainToolsRoot("army", "read"),
+        domainToolsRoot("army", "write"),
+        domainToolsRoot("economy", "read"),
+        domainToolsRoot("economy", "write"),
+        domainToolsRoot("social", "read"),
+        domainToolsRoot("social", "write"),
+        domainToolsRoot("unit", "read"),
+        domainToolsRoot("unit", "write"),
+        domainToolsRoot("gov", "read"),
+        domainToolsRoot("gov", "write"),
+        domainToolsRoot("ga", "read"),
+        domainToolsRoot("ga", "write"));
   }
 
   /** 扫 {@code tools/read} + {@code tools/write} 的 {@code NAME = "…"}（M4 同源判据用）。 */

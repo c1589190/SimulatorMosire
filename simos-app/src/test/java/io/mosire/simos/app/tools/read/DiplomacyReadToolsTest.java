@@ -10,8 +10,14 @@ import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
+import io.mosire.simos.app.tools.ga.AppGaToolViews;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.tools.GaToolViews;
+import io.mosire.simos.ga.tools.read.SdDiplomacyTool;
+import io.mosire.simos.ga.tools.read.SdDiplomaticEventsTool;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.NationId;
@@ -159,8 +165,12 @@ class DiplomacyReadToolsTest {
     private Fixture(CoreSimos core) {
       this.core = core;
       this.query = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
-      this.diplomacyTool = new SdDiplomacyTool(query);
-      this.eventsTool = new SdDiplomaticEventsTool(query);
+      // ★★ 2026-10-12 B3 收尾（C3）：两条外交读工具已下放到 simos-ga（io.mosire.simos.ga.tools.read）
+      //   ⇒ 构造器改吃注入端口，与生产装配（SimosToolSource）同源。
+      ToolReadPort reads = new QueryServiceToolReadPort(query);
+      GaToolViews views = new AppGaToolViews();
+      this.diplomacyTool = new SdDiplomacyTool(reads, views);
+      this.eventsTool = new SdDiplomaticEventsTool(reads, views);
     }
 
     static Fixture open(Path storeDir) {

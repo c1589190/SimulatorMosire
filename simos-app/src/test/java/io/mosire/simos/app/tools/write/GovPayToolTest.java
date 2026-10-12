@@ -8,6 +8,15 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.time.CalendarService;
+import io.mosire.simos.app.tools.CoreSimosToolWritePort;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
+import io.mosire.simos.app.tools.gov.AppGovToolCommandTypes;
+import io.mosire.simos.app.tools.gov.AppGovToolEconomy;
+import io.mosire.simos.app.tools.gov.AppGovToolPerspective;
+import io.mosire.simos.app.tools.gov.AppGovToolViews;
+import io.mosire.simos.gov.tools.GovToolSupport;
+import io.mosire.simos.gov.tools.write.GovPayTool;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -68,8 +77,20 @@ class GovPayToolTest {
   /** 起一个真壳（空 store）并把真 {@link GovPayTool} 交给回调——工具只依赖 core/query，验证分支不碰世界。 */
   private void withTool(java.util.function.Consumer<GovPayTool> body) {
     try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0))) {
-      body.accept(
-          new GovPayTool(shell.coreSimos(), shell.queryService(), "decision-maker:dm-test"));
+      // ★★ 2026-10-12 B3 收尾（C3）：GovPayTool 已下放到 simos-gov（io.mosire.simos.gov.tools.write）
+      //   ⇒ 构造器改吃 GovToolSupport 接缝束，七条实参与生产装配（SimosToolSource:670-676）同源。
+      //   ★ 旧三参构造隐含的"缺省历法时钟"由 AppGovToolManpower(CalendarService.defaults()) 原样承接
+      //   （本用例只走金额校验分支，不碰世界面）。
+      GovToolSupport gov =
+          new GovToolSupport(
+              new CoreSimosToolWritePort(shell.coreSimos(), "decision-maker:dm-test"),
+              new QueryServiceToolReadPort(shell.queryService()),
+              new AppGovToolViews(),
+              new AppGovToolPerspective(),
+              new AppGovToolEconomy(),
+              new AppGovToolCommandTypes(),
+              new AppGovToolManpower(CalendarService.defaults()));
+      body.accept(new GovPayTool(gov));
     }
   }
 

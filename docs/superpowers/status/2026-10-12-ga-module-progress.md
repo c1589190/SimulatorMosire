@@ -187,3 +187,53 @@ map 侧 18 个文件含基类/助手）；`simos-map/src/main` 对 `core`/`app` 
 4. 权限围栏（可见性谓词）**不抄第二份** —— 域声明端口、app 转调 `ToolSupport`；
 5. app 侧：`SimosToolSource` 的 new 处换成注入 + 该域 `App*` 适配器；测试扫描根 +1 行、计数不动；
 6. 门禁：`compile` → `validate`（看 `BannedDependencies passed` 次数）→ 聚焦测试 → `clean verify`。
+
+---
+
+## 7. ★★★ B3 全部完成：七批工具下放（2026-10-12/13）
+
+用户 2026-10-12：「**我认为应该把各个工具的实现都下放到各个具体的功能模块**」「**app只负责组装**」
+→ 后续追令：「**一口气做完**」。
+
+| 批 | 提交 | 域 | 工具数 | 关键证据 |
+|---|---|---|---|---|
+| 试点 | `f5eeb2c3` | `simos-map` | 15 | `-am verify` 全绿；spotbugs 3→0（保序冻结 + 仓内同款 suppress） |
+| 2 | `d4bbde12` | `simos-army` | 12 | 跨切片组合工具照样下放；`ArmyCodec` 规模敏感误报经干净副本对照实验后精确豁免 |
+| 3/4 | `f9438461` | `simos-economy` + `simos-social` | 15 + 12 | `SocialHouseholdsTool` 如实留 app（其实现是 1459 行跨 actor/unit 的聚合服务） |
+| 5 | `5b788b4b` | `simos-unit` | 36 | 最大域；spotbugs 零 finding 零豁免；`RegionAllocations` 留 app（3 个 gov 调用点） |
+| 6 | `ab7a7829` | `simos-gov` | 36 + `ProvinceDivider` | economy 政策值类型用**全字段镜像记录**（少镜像一字段会静默变 noop） |
+| 7 | `d8714818` | `simos-ga` | 49 + 工具运作三件 | `SimosToolSource` 留 app（组合根，搬即环）；抽出 `GaToolSource`+`ToolBuckets` |
+| 测试 | 随 §7.1 提交 | 全仓测试迁移 | 30 文件 | 3409/0/0/5 与基线逐数一致；两条扫描面断言经变异自证 |
+
+**总量**：领域模块自带工具类 = map 19 / army 12 / economy 20 / social 17 / unit 39 / gov 32 / ga 63；
+**app 侧只剩 20 个真工具**（系统/核心面 + 创世三件套 + `SocialHouseholdsTool` + `AdjudicateTickTool` + `VoidAdjudicationTool`），
+全部按设计书 §4.3/G-5 有据留 app。
+
+### 7.1 收尾时抓出并修掉的两处（都在生产代码，如实记）
+
+1. **`SimosToolSource:556` 死局部量 `gaReads`**（`DLS_DEAD_LOCAL_STORE`, High）：ga 批在 ga 模块里删了 3 个 `URF_UNREAD_FIELD`，
+   **漏删装配器里同一处清理的另一半**；ga 批的 `-pl simos-ga -am verify` 不含 `simos-app` ⇒ 直到全仓 verify 才暴露。
+   处置：删该行（与 ga 批"不留死参数、不豁免"的口径一致）。
+2. **修 1 时吞掉一个换行**（把代码行与紧随的注释并成一行、行尾 8 空格、长度 147 > 100）⇒ 会被 `spotless:check` 抓。
+   处置：拆回两行（纯格式、零行为）。★ 教训：**"删一行"的 edit 也要当心吃掉邻近换行**；改完立刻 `sed -n` 目视。
+
+### 7.2 沉淀为规则的（后续域/后续批照抄）
+
+1. 域内**声明端口**、app **逐条转调既有唯一实现**（权限围栏/裁剪/署名**绝不抄第二份**）；
+2. 有序集合**保序冻结在赋值处**（`Collections.unmodifiableList(new ArrayList<>(…))`；**禁** `List.copyOf`/`Set.copyOf`）；
+3. **SpotBugs 误报**：先在 `git archive`/`worktree` 干净副本做**对照实验**定位 ⇒ 精确位置豁免 + 记账；
+   落新代码的 finding **改代码**（保序冻结/删无用字段），**豁免不是第一选择**；
+4. 适配器落 `app.tools.write` 或 `app.tools.<域>`（委托人**包内可见** ⇒ 适配器同包，不为一次下放放宽既有类可见性）；
+5. **跨切片组合工具照样下放**，走注入写口提交多条命令；
+6. **搬不动的如实上报**（`SocialHouseholdsTool`/`RegionAllocations`/`AdjudicateTickTool`/`VoidAdjudicationTool`），
+   **不硬搬、不造"域里只剩 schema"的假接缝**；
+7. **每批跑 `-pl <域> -am verify`（含 spotbugs）** —— 只跑 compile/validate 会漏掉 verify 阶段的门禁（试点教训）。
+
+### 7.3 仍未做（下一步）
+
+| # | 事项 | 说明 |
+|---|---|---|
+| 1 | **enforcer 闭合补列** | `ga-spi` 只进了 5 个最底层模块的禁列、`ga` 进了 15 个；social/unit/sd/core/actor/economy/gov/army 等**仍缺这两条**（口径 = 全仓 − 自己 − 允许面） |
+| 2 | **B4 `roles()` 收口** | `SimosTool`/`roles()` 尚未被任何工具实现；两个桶与 `DecisionCallerFactory.WHITELIST` 仍是手抄（设计书 §4.4） |
+| 3 | **`simos-ga`/`simos-ga-spi` 无 `src/test`** | 其工具与新接缝零测试覆盖（既有测试全在 app） |
+| 4 | 外交类型迁 gov、`AdjudicateTickTool`/`VoidAdjudicationTool` 的归属 | 均属后续批（前者要先迁 `Nation`/关系/事件类型） |

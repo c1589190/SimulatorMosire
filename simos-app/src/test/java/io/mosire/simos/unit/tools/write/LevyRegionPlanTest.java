@@ -1,4 +1,15 @@
-package io.mosire.simos.app.tools.write;
+// ★★ 2026-10-12 B3 收尾（C3）：「Plan 纯推导」白盒用例随被测类下放到被测包。
+//
+// 为什么包名是 io.mosire.simos.unit.tools.write（文件仍住 simos-app 的测试树）：
+//   · `LevyRegionPlan` / `RaiseUnitPlan` 在 simos-unit 里是**包内可见**的纯推导实现（设计如此，不是漏写 public）；
+//   · 白盒用例要引用 `LevyRegionPlan.Plan/Dimension/AccountSource/Manpower` 这些**包内可见**的嵌套类型
+//     ⇒ 用例必须与它们同包（Java 的包内可见性只认包名，同包 ⇒ 同一运行时包，无需放宽生产代码可见性）；
+//   · 用例同时要用 app 测试树的 `SocialHouseholdFixture` 与 `simos-actor` 的 `ActorData/ActorSnapshot`
+//     （simos-unit 的测试类路径上都没有，搬进 simos-unit/src/test 需要改生产 pom）⇒ 文件留在 simos-app 测试树。
+//   断言一字未改；唯一被迫改的是**期望值的书写类型**：plan 的返回类型已从 app 侧的
+//   `RegionAllocations/HouseholdManpowerAllocator` 换成域侧 `UnitToolAllocations` 的**逐字段同形投影**
+//   （见 unit 批账本 D3；`skipped()` 语义逐字相同：requested=0/available=0/空表）。
+package io.mosire.simos.unit.tools.write;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -10,6 +21,9 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.testing.SocialHouseholdFixture;
+import io.mosire.simos.app.time.CalendarService;
+import io.mosire.simos.app.tools.write.AppUnitToolAllocations;
+import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
@@ -42,6 +56,7 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
+import io.mosire.simos.unit.tools.UnitToolAllocations;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -327,7 +342,7 @@ class LevyRegionPlanTest {
         .extracting(share -> share.lotId().value())
         .containsExactly("g1", "g2");
     assertThat(plan.manpower().shares())
-        .extracting(HouseholdManpowerAllocator.ManpowerShare::taken)
+        .extracting(UnitToolAllocations.ManpowerShare::taken)
         .containsExactly(30L, 10L);
 
     // ★ 阶段 11b：cloth=0 的维度整段跳过（不扫描、不产生来源、available 记 0 = 未求值）。
@@ -399,7 +414,20 @@ class LevyRegionPlanTest {
       long money,
       long cloth,
       long manpower) {
-    return LevyRegionPlan.plan(state(unit), unitId, regionId, grain, money, cloth, manpower);
+    // ★★ 2026-10-12 B3 收尾（C3）：`LevyRegionPlan` 的**无端口重载已被删**（unit 批 D7：时钟改由 app
+    //   适配器持有，不再有静态默认时钟）⇒ 这里与生产装配同源地把两条端口补上。
+    //   ★ 旧无参重载隐含的 `CalendarClock.julianDefault()` 由
+    //   `AppUnitToolAllocations(CalendarService.defaults())` **等价**承接（全缺省儒略历、不读 store）。
+    return LevyRegionPlan.plan(
+        state(unit),
+        unitId,
+        regionId,
+        grain,
+        money,
+        cloth,
+        manpower,
+        new AppUnitToolAllocations(CalendarService.defaults()),
+        new AppUnitToolPerspective());
   }
 
   private static Unit baseUnit() {

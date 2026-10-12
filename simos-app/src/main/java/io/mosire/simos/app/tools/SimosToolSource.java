@@ -553,7 +553,6 @@ public final class SimosToolSource implements ToolSource {
         // ★ 第 3 波第 3 步：决策人**只读**自己能看的决策结果（用户原话「允许决策人查看不同 tick 的不同决策结果」）。
         //   **只在决策人桶**——GM 侧看不到它（GM 有 GUI 面与 sd 只读全权，不靠这条）；它的可见性判据在
         //   RedactingQueryService#decisionResults（tags 含调用者自己）。
-        ToolReadPort gaReads = new QueryServiceToolReadPort(query);
         GaToolQueries gaQueries = new AppGaToolQueries(query, mapId);
         GaToolIdentity gaIdentity = new AppGaToolIdentity();
         built.add(new DecisionResultsTool(gaQueries, gaIdentity));

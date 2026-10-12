@@ -15,7 +15,10 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.access.ScopeFixtures;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.tools.army.AppArmyToolPerspective;
+import io.mosire.simos.app.tools.write.AppArmyToolViews;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatRecord;
@@ -23,8 +26,13 @@ import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.army.CombatStage;
 import io.mosire.simos.army.CombatStageId;
 import io.mosire.simos.army.codec.ArmyCodec;
+import io.mosire.simos.army.tools.ArmyToolPerspective;
+import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.army.tools.read.ArmyCombatTool;
+import io.mosire.simos.army.tools.read.ArmyCombatsTool;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -177,8 +185,13 @@ class ArmyCombatReadToolsTest {
     private Fixture(CoreSimos core) {
       this.core = core;
       this.query = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
-      this.listTool = new ArmyCombatsTool(query, MAP_ID);
-      this.detailTool = new ArmyCombatTool(query, MAP_ID);
+      // ★★ 2026-10-12 B3 收尾（C3）：两个读工具已下放到 simos-army（io.mosire.simos.army.tools.read）
+      //   ⇒ 构造器改吃注入端口，这里与生产装配（SimosToolSource）**同源**地传同一组适配器。
+      ToolReadPort reads = new QueryServiceToolReadPort(query);
+      ArmyToolViews views = new AppArmyToolViews();
+      ArmyToolPerspective perspective = new AppArmyToolPerspective();
+      this.listTool = new ArmyCombatsTool(reads, views, perspective, MAP_ID);
+      this.detailTool = new ArmyCombatTool(reads, views, perspective, MAP_ID);
     }
 
     static Fixture open(Path storeDir) {

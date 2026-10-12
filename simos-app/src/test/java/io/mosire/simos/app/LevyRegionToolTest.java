@@ -15,10 +15,11 @@ import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.testing.SocialHouseholdFixture;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.SimosToolSource;
-import io.mosire.simos.app.tools.write.LevyRegionTool;
+import io.mosire.simos.app.tools.write.AppUnitToolAllocations;
+import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
 import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
 import io.mosire.simos.core.store.CheckpointStore;
@@ -32,6 +33,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -76,6 +78,9 @@ import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.codec.UnitCodec;
+import io.mosire.simos.unit.tools.UnitToolAllocations;
+import io.mosire.simos.unit.tools.UnitToolPerspective;
+import io.mosire.simos.unit.tools.write.LevyRegionTool;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -252,18 +257,13 @@ class LevyRegionToolTest {
   @Test
   void applySubmitsOneRevisionWithTheExpectedBatchAndInfoRecord() throws Exception {
     // 批内命令类型 / 顺序：反射调工具自己的 buildBatch（batch 行读不出 composition，见类注）。
-    List<CommandEnvelope> batch = batchOf(120L, 100L, 0L, 40L);
+    List<ToolWritePort.Request> batch = batchOf(120L, 100L, 0L, 40L);
     assertThat(batch)
-        .extracting(CommandEnvelope::type)
+        .extracting(ToolWritePort.Request::type)
         .containsExactly(
             LevyRegionTool.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE,
             LevyRegionTool.ADJUST_ACCOUNTS_TYPE,
             LevyRegionTool.PUT_INFO_TYPE);
-    assertThat(batch)
-        .allMatch(envelope -> envelope.correlationId().equals(batch.get(0).correlationId()));
-    assertThat(batch).allMatch(envelope -> envelope.branch().equals(main()));
-    assertThat(batch).allMatch(envelope -> envelope.expectedRevision().equals(new RevisionId(1)));
-
     JsonNode adjust = JSON.readTree(batch.get(1).payloadJson());
     JsonNode entries = adjust.get("entries");
     assertThat(entries).as("粮钱来源合并 + 目标家户国库一条：house@1_1 / house@1_2 / hh-gov-u-1").hasSize(3);
@@ -315,6 +315,21 @@ class LevyRegionToolTest {
     assertThat(view.get("submission").get("ref").get("revision").asLong())
         .as("apply 落一条 revision ⇒ (main,2)")
         .isEqualTo(2L);
+
+    // ★★ 2026-10-12 B3 收尾（C3）：原三条"批内信封共享 correlationId / branch=main / expectedRevision=1"的断言
+    //   在**下放后**不能再从组批产物读（`ToolWritePort.Request` 只有 type/payloadJson；branch/expectedRevision/
+    //   correlationId 由 app 适配器在**提交时**装配成信封 —— unit 批账本 D1/U9）。判据**不删**，改读"实际写进去的"：
+    //   三条命令落在**同一条 revision 行**（一批 = 一条 revision，已由上面 head/revisionRowCount 钉住）⇒ 它们
+    //   必然同一个 correlation_id；再断言该 correlation_id == 工具回执自报的批级 id（消灭"报出去的 ≠ 落盘的"）。
+    //   expectedRevision=1 的可观测后果就是"从 head=1 提交成功并落在 2"（值错 ⇒ CONFLICT ⇒ 无 revision）。
+    assertThat(view.get("submission").get("correlationId").asText())
+        .as("回执必须报出批级 correlationId")
+        .isNotEmpty();
+    RevisionRow committedRow = revisionRow(2L);
+    assertThat(committedRow.branch()).as("批落在 main（branch 由装配面写进信封）").isEqualTo(main());
+    assertThat(committedRow.correlationId())
+        .as("★ 落盘索引的 correlation_id == 工具回执报的批级 id（三条命令同批 ⇒ 共享同一个）")
+        .isEqualTo(view.get("submission").get("correlationId").asText());
 
     assertThat(head()).as("一批只前进一格").isEqualTo(2L);
     assertThat(revisionRowCount()).as("一批只多一行 revision").isEqualTo(revisionsBefore + 1L);
@@ -534,9 +549,9 @@ class LevyRegionToolTest {
   /** ★ requested=0 的维度不产生批内命令（且 AdjustAccounts 载荷里没有该维度）：只粮 / 只人两种形态各钉一次。 */
   @Test
   void zeroRequestedDimensionsProduceNoCommandAndNoEntry() throws Exception {
-    List<CommandEnvelope> grainOnly = batchOf(120L, 0L, 0L, 0L);
+    List<ToolWritePort.Request> grainOnly = batchOf(120L, 0L, 0L, 0L);
     assertThat(grainOnly)
-        .extracting(CommandEnvelope::type)
+        .extracting(ToolWritePort.Request::type)
         .containsExactly(LevyRegionTool.ADJUST_ACCOUNTS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
     JsonNode adjust = JSON.readTree(grainOnly.get(0).payloadJson());
     assertThat(adjust.get("entries")).as("粮来源 2 户 + 国库 1 条").hasSize(3);
@@ -546,9 +561,9 @@ class LevyRegionToolTest {
     assertThat(grainValue.get("manpower").asLong()).as("人力 0 进行动记录，但不进批内命令").isZero();
     assertThat(grainValue.get("sourceCounts").get("manpower").asInt()).isZero();
 
-    List<CommandEnvelope> moneyOnly = batchOf(0L, 100L, 0L, 0L);
+    List<ToolWritePort.Request> moneyOnly = batchOf(0L, 100L, 0L, 0L);
     assertThat(moneyOnly)
-        .extracting(CommandEnvelope::type)
+        .extracting(ToolWritePort.Request::type)
         .containsExactly(LevyRegionTool.ADJUST_ACCOUNTS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
     JsonNode moneyAdjust = JSON.readTree(moneyOnly.get(0).payloadJson());
     assertThat(moneyAdjust.get("entries")).as("钱来源 2 户 + 国库 1 条").hasSize(3);
@@ -556,9 +571,9 @@ class LevyRegionToolTest {
     assertThat(moneyAdjust.get("entries").get(2).get("money").get("silver").asLong())
         .isEqualTo(100L);
 
-    List<CommandEnvelope> manpowerOnly = batchOf(0L, 0L, 0L, 40L);
+    List<ToolWritePort.Request> manpowerOnly = batchOf(0L, 0L, 0L, 40L);
     assertThat(manpowerOnly)
-        .extracting(CommandEnvelope::type)
+        .extracting(ToolWritePort.Request::type)
         .containsExactly(
             LevyRegionTool.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE, LevyRegionTool.PUT_INFO_TYPE);
     JsonNode putInfo = JSON.readTree(manpowerOnly.get(1).payloadJson());
@@ -576,9 +591,9 @@ class LevyRegionToolTest {
    */
   @Test
   void zeroClothDimensionLeavesNoClothEntryAndClothOnlyBatchHasTwoCommands() throws Exception {
-    List<CommandEnvelope> grainOnly = batchOf(120L, 0L, 0L, 0L);
+    List<ToolWritePort.Request> grainOnly = batchOf(120L, 0L, 0L, 0L);
     assertThat(grainOnly)
-        .extracting(CommandEnvelope::type)
+        .extracting(ToolWritePort.Request::type)
         .as("cloth=0 ⇒ 仍走 AdjustAccounts + PutInfo 两条命令")
         .containsExactly(LevyRegionTool.ADJUST_ACCOUNTS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
     JsonNode grainAdjust = JSON.readTree(grainOnly.get(0).payloadJson());
@@ -596,9 +611,9 @@ class LevyRegionToolTest {
         .as("grain-only：sourceCounts.cloth=0")
         .isZero();
 
-    List<CommandEnvelope> clothOnly = batchOf(0L, 0L, 100L, 0L);
+    List<ToolWritePort.Request> clothOnly = batchOf(0L, 0L, 100L, 0L);
     assertThat(clothOnly)
-        .extracting(CommandEnvelope::type)
+        .extracting(ToolWritePort.Request::type)
         .as("只 cloth>0：AdjustAccounts + PutInfo，没有 SeedGroups")
         .containsExactly(LevyRegionTool.ADJUST_ACCOUNTS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
     JsonNode clothAdjust = JSON.readTree(clothOnly.get(0).payloadJson());
@@ -700,9 +715,9 @@ class LevyRegionToolTest {
     assertThat(head()).as("超粮 cap 不得推 head").isEqualTo(1L);
     assertThat(revisionRowCount()).as("超粮 cap 不得留 revision").isEqualTo(revisionsBefore);
 
-    List<CommandEnvelope> batch = batchOfFor("u-cap-1", 0L, 0L, 80L, 0L);
+    List<ToolWritePort.Request> batch = batchOfFor("u-cap-1", 0L, 0L, 80L, 0L);
     assertThat(batch)
-        .extracting(CommandEnvelope::type)
+        .extracting(ToolWritePort.Request::type)
         .as("cloth-only ⇒ AdjustAccounts + PutInfo（无 SeedGroups）")
         .containsExactly(LevyRegionTool.ADJUST_ACCOUNTS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
 
@@ -889,16 +904,29 @@ class LevyRegionToolTest {
   /**
    * 反射调**工具自己的** {@code buildBatch}（私有；批 composition 的唯一可读点）：先生成 {@code LevyRegionPlan.Plan}，再按
    * 真方法组批。参数类型逐字对应生产签名，不复制任何组批逻辑。
+   *
+   * <p>★★ 2026-10-12 B3 收尾（C3）两处随架构走（**判据本身一字未改**，只换读法）：
+   *
+   * <ul>
+   *   <li>被测类搬到 {@code io.mosire.simos.unit.tools.write.LevyRegionPlan}（反射按 FQN 找）；
+   *   <li>`plan` 的**无端口重载已删**（unit 批 D7）⇒ 反射参数表补 {@code UnitToolAllocations} + {@code
+   *       UnitToolPerspective} 两条端口，与生产装配同源传 app 适配器 （{@code CalendarService.defaults()} =
+   *       旧缺省儒略历路径）；
+   *   <li>{@code buildBatch} 现在返回 {@link ToolWritePort.Request}（只有 type/payloadJson）——
+   *       branch/expectedRevision/correlationId **不再存在于组批产物**，改由 app 适配器在提交时写进信封 （unit 批账本 D1/U9）⇒
+   *       批的**结构面**（类型/顺序/载荷）仍从这里读，**批级 id/分支**改从真落盘的索引 行读（见 {@link
+   *       #revisionRow(long)}），那比读组批中间态更强。
+   * </ul>
    */
-  private List<CommandEnvelope> batchOf(long grain, long money, long cloth, long manpower) {
+  private List<ToolWritePort.Request> batchOf(long grain, long money, long cloth, long manpower) {
     return batchOfFor("u-1", grain, money, cloth, manpower);
   }
 
   /** 见 {@link #batchOf}；本重载换抽取主体（u-cap-1 的 cap=1 用例需要）。 */
-  private List<CommandEnvelope> batchOfFor(
+  private List<ToolWritePort.Request> batchOfFor(
       String unitId, long grain, long money, long cloth, long manpower) {
     try {
-      Class<?> planClass = Class.forName("io.mosire.simos.app.tools.write.LevyRegionPlan");
+      Class<?> planClass = Class.forName("io.mosire.simos.unit.tools.write.LevyRegionPlan");
       Method planMethod =
           planClass.getDeclaredMethod(
               "plan",
@@ -908,19 +936,26 @@ class LevyRegionToolTest {
               long.class,
               long.class,
               long.class,
-              long.class);
+              long.class,
+              UnitToolAllocations.class,
+              UnitToolPerspective.class);
       planMethod.setAccessible(true);
       SimulationState state = stateAt(head());
       Object plan =
-          planMethod.invoke(null, state, unitId, "r-nation", grain, money, cloth, manpower);
+          planMethod.invoke(
+              null,
+              state,
+              unitId,
+              "r-nation",
+              grain,
+              money,
+              cloth,
+              manpower,
+              new AppUnitToolAllocations(CalendarService.defaults()),
+              new AppUnitToolPerspective());
       Method buildBatch =
           LevyRegionTool.class.getDeclaredMethod(
-              "buildBatch",
-              String.class,
-              plan.getClass(),
-              String.class,
-              BranchId.class,
-              RevisionId.class);
+              "buildBatch", String.class, plan.getClass(), String.class);
       buildBatch.setAccessible(true);
       // ★ 注册表里的条目可能是包装器；组批方法声明在 LevyRegionTool 上 ⇒ 从 GM 桶取**原始工具实例**。
       LevyRegionTool tool =
@@ -930,12 +965,20 @@ class LevyRegionToolTest {
                   .findFirst()
                   .orElseThrow();
       @SuppressWarnings("unchecked")
-      List<CommandEnvelope> batch =
-          (List<CommandEnvelope>)
-              buildBatch.invoke(tool, "batch-t2", plan, REASON, main(), new RevisionId(head()));
+      List<ToolWritePort.Request> batch =
+          (List<ToolWritePort.Request>) buildBatch.invoke(tool, "batch-t2", plan, REASON);
       return batch;
     } catch (ReflectiveOperationException e) {
       throw new AssertionError("反射调用工具自己的 plan/buildBatch 失败（签名漂移？）", e);
+    }
+  }
+
+  /** 读 {@code (main, revision)} 的**真落盘索引行**（批级 correlationId / branch 的落点）。 */
+  private RevisionRow revisionRow(long revision) {
+    try (SqliteStore store = SqliteStore.open(dbFile())) {
+      return new Timeline(store, CHECKPOINT_INTERVAL)
+          .row(ref(revision))
+          .orElseThrow(() -> new AssertionError("索引里没有 (main," + revision + ")"));
     }
   }
 

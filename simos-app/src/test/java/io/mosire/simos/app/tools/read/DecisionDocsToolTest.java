@@ -15,9 +15,12 @@ import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.ScopeFixtures;
 import io.mosire.simos.app.docs.DecisionDoc;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.tools.ga.AppGaToolIdentity;
+import io.mosire.simos.app.tools.ga.AppGaToolQueries;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.tools.read.DecisionDocsTool;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
@@ -203,7 +206,10 @@ class DecisionDocsToolTest {
   private ToolResult call(DecisionMakerId dm, Map<String, Object> args) {
     SimulationState state = stateAtGenesis();
     ToolRegistry registry = new ToolRegistry();
-    registry.register(new DecisionDocsTool(queryService, MAP_ID));
+    // ★★ 2026-10-12 B3 收尾（C3）：DecisionDocsTool 已下放到 simos-ga（io.mosire.simos.ga.tools.read）
+    //   ⇒ 构造器改吃两条 ga 端口，与生产装配（SimosToolSource:1053-1054）同源。
+    registry.register(
+        new DecisionDocsTool(new AppGaToolQueries(queryService, MAP_ID), new AppGaToolIdentity()));
     return DecisionCallerFactory.defaults(authorizer())
         .execute(
             registry,

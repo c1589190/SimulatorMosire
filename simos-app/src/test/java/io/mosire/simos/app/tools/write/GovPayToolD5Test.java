@@ -27,7 +27,14 @@ import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.ScopeFixtures;
+import io.mosire.simos.app.time.CalendarService;
+import io.mosire.simos.app.tools.CoreSimosToolWritePort;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.tools.gov.AppGovToolCommandTypes;
+import io.mosire.simos.app.tools.gov.AppGovToolEconomy;
+import io.mosire.simos.app.tools.gov.AppGovToolPerspective;
+import io.mosire.simos.app.tools.gov.AppGovToolViews;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -41,6 +48,8 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.gov.tools.GovToolSupport;
+import io.mosire.simos.gov.tools.write.GovPayTool;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
@@ -285,7 +294,18 @@ class GovPayToolD5Test {
                 base.bindAddress()));
     shells.add(shell);
     // 决策人桶不在 shell.toolRegistry()（那是 GM 源）里 ⇒ 按生产装配新造一条同参工具实例。
-    GovPayTool tool = new GovPayTool(shell.coreSimos(), shell.queryService(), TEST_INITIATOR);
+    // ★★ 2026-10-12 B3 收尾（C3）：GovPayTool 已下放到 simos-gov（io.mosire.simos.gov.tools.write）
+    //   ⇒ 构造器改吃 GovToolSupport 接缝束，七条实参与生产装配（SimosToolSource:670-676）同源。
+    GovToolSupport gov =
+        new GovToolSupport(
+            new CoreSimosToolWritePort(shell.coreSimos(), TEST_INITIATOR),
+            new QueryServiceToolReadPort(shell.queryService()),
+            new AppGovToolViews(),
+            new AppGovToolPerspective(),
+            new AppGovToolEconomy(),
+            new AppGovToolCommandTypes(),
+            new AppGovToolManpower(CalendarService.defaults()));
+    GovPayTool tool = new GovPayTool(gov);
     return new World(shell, tool, storeDir);
   }
 

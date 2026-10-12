@@ -12,11 +12,13 @@ import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.ScopeFixtures;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.map.AppMapToolPerspective;
 import io.mosire.simos.app.tools.map.AppMapToolViews;
-import io.mosire.simos.app.tools.read.UnitGetTool;
+import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
+import io.mosire.simos.app.tools.write.AppUnitToolViews;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.map.codec.MapCodec;
@@ -40,6 +42,7 @@ import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.codec.UnitCodec;
+import io.mosire.simos.unit.tools.read.UnitGetTool;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
@@ -117,7 +120,14 @@ class RedactingQueryServiceTest {
             new AppMapToolViews(),
             new AppMapToolPerspective(),
             MAP_ID));
-    registry.register(new UnitGetTool(query));
+    // ★★ 2026-10-12 B3 收尾（C3）：simos.unit.get 已下放到 simos-unit（io.mosire.simos.unit.tools.read）
+    //   ⇒ 构造器改吃注入端口，与生产装配（SimosToolSource:1164）同源。★ 旧单参构造隐含的
+    //   `CalendarService.defaults()`（全缺省儒略历、不读 store）由 AppUnitToolViews 原样承接。
+    registry.register(
+        new UnitGetTool(
+            new QueryServiceToolReadPort(query),
+            new AppUnitToolViews(CalendarService.defaults()),
+            new AppUnitToolPerspective()));
     DecisionCallerFactory factory = DecisionCallerFactory.defaults(authorizer());
     SimulationState state = stateAt(1);
     var map = ToolSupport.gameMap(state);

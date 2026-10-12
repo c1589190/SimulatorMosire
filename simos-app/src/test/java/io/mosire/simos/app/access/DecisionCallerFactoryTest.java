@@ -17,18 +17,20 @@ import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.tools.CoreSimosToolWritePort;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.app.tools.read.DecisionDocsTool;
-import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
-import io.mosire.simos.app.tools.write.IssueDirectiveTool;
-import io.mosire.simos.app.tools.write.SubmitVerdictTool;
-import io.mosire.simos.app.tools.write.UnitPlaceAtTool;
-import io.mosire.simos.app.tools.write.UnitRenameTool;
+import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.ga.tools.read.DecisionDocsTool;
+import io.mosire.simos.ga.tools.read.DecisionResultsTool;
+import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
+import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.unit.tools.write.UnitPlaceAtTool;
+import io.mosire.simos.unit.tools.write.UnitRenameTool;
 import io.mosire.simos.util.state.SimulationState;
 import java.time.Duration;
 import java.util.List;
@@ -181,8 +183,12 @@ class DecisionCallerFactoryTest {
   void decisionMakerCannotCallUnitDomainWrites() {
     try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0))) {
       ToolRegistry registry = new ToolRegistry();
-      registry.register(new UnitRenameTool(shell.coreSimos(), "agent:test", ScopeFixtures.MAP_ID));
-      registry.register(new UnitPlaceAtTool(shell.coreSimos(), "agent:test", ScopeFixtures.MAP_ID));
+      // ★★ 2026-10-12 B3 收尾（C3）：两条 unit 窄写已下放到 simos-unit（io.mosire.simos.unit.tools.write）
+      //   ⇒ 构造器改吃注入的窄写口，与生产装配（SimosToolSource:717+）同源。★ 本用例的断言（决策人**不能**
+      //   调这两条域写命令）一字未改；WHITELIST 内容与顺序也一字未改。
+      ToolWritePort unitWrites = new CoreSimosToolWritePort(shell.coreSimos(), "agent:test");
+      registry.register(new UnitRenameTool(unitWrites, ScopeFixtures.MAP_ID));
+      registry.register(new UnitPlaceAtTool(unitWrites, ScopeFixtures.MAP_ID));
 
       DecisionCallerFactory factory = factory();
       for (String name : List.of(UnitRenameTool.NAME, UnitPlaceAtTool.NAME)) {

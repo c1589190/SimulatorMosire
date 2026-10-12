@@ -8,9 +8,9 @@ import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.app.AppLog;
-import io.mosire.simos.app.gm.GmToolUsage;
-import io.mosire.simos.app.gm.RecordingToolSource;
+import io.mosire.simos.ga.GaLog;
+import io.mosire.simos.ga.tools.GmToolUsage;
+import io.mosire.simos.ga.tools.RecordingToolSource;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -33,10 +33,15 @@ import org.junit.jupiter.api.Test;
  *
  * <ul>
  *   <li>被拒工具调用 {@code TOOL_CALL_REJECTED} 必须是 <b>INFO</b>（用户 2026-10-23：「被拒绝肯定走 INFO」）， 带 {@code
- *       origin=tool-call} + {@code originKind=interaction} + tool/caller/code；
+ *       origin=ga-tool-call}（★ 2026-10-12 B3 收尾：随工具运作迁进 simos-ga，来源 id 从 app 的 {@code tool-call} 改为
+ *       {@link io.mosire.simos.ga.GaLogSource#GA_TOOL_CALL} 的 {@code ga-tool-call}； {@code
+ *       originKind=interaction} 与其余字段一字未改）+ tool/caller/code；
  *   <li>成功调用 {@code TOOL_CALL_START/END} 是 DEBUG；
  *   <li><b>载荷纪律</b>：{@code ToolContext.arguments()} 是模型/用户输入，绝不进日志；
- *   <li>app 模块开关（{@code AppLog.tool()} 分类）关掉后工具事件消失、打开后回来。
+ *   <li>ga 模块开关（{@code GaLog.tool()} 分类，{@code -Dsimos.ga.logLevel}）关掉后工具事件消失、打开后回来。 ★★ 2026-10-12
+ *       B3 收尾（C3）：{@code RecordingToolSource}/{@code GmToolUsage} 随工具运作迁进 {@code simos-ga} ⇒ 分类从
+ *       {@code AppLog.tool()}（{@code io.mosire.simos.app.tool}）挪到 {@code GaLog.tool()} （{@code
+ *       io.mosire.simos.ga.tool}）；断言的事件名/字段/级别一字未改，只换 logger 名与开关。
  * </ul>
  *
  * <p>装置住 app 测试类路径（log4j-core）；{@link #logLinesAreActuallyCaptured} 是前提断言。
@@ -56,7 +61,7 @@ class AppToolLoggingTest {
   void installCapture() {
     context = (LoggerContext) LogManager.getContext(false);
     configuration = (AbstractConfiguration) context.getConfiguration();
-    originalLevel = configuration.getLoggerConfig(AppLog.TOOL_LOGGER_NAME).getLevel();
+    originalLevel = configuration.getLoggerConfig(GaLog.TOOL_LOGGER_NAME).getLevel();
     appender = new CollectingAppender();
     appender.start();
     configuration.addAppender(appender);
@@ -65,9 +70,9 @@ class AppToolLoggingTest {
 
   @AfterEach
   void removeCapture() {
-    Configurator.setLevel(AppLog.TOOL_LOGGER_NAME, originalLevel);
+    Configurator.setLevel(GaLog.TOOL_LOGGER_NAME, originalLevel);
     context.updateLoggers();
-    configuration.getLoggerConfig(AppLog.TOOL_LOGGER_NAME).removeAppender(APPENDER_NAME);
+    configuration.getLoggerConfig(GaLog.TOOL_LOGGER_NAME).removeAppender(APPENDER_NAME);
     configuration.removeAppender(APPENDER_NAME);
     context.updateLoggers();
     appender.stop();
@@ -98,7 +103,7 @@ class AppToolLoggingTest {
                     .contains("caller=" + AccessToken.DEFAULT.name())
                     .contains("success=false")
                     .contains("code=E_DENIED")
-                    .contains("origin=tool-call")
+                    .contains("origin=ga-tool-call")
                     .contains("originKind=interaction"));
     assertThat(appender.messages())
         .as("★ 工具参数（模型/用户输入）绝不进日志")
@@ -116,7 +121,7 @@ class AppToolLoggingTest {
         "DEBUG",
         "TOOL_CALL_START",
         "tool=" + TOOL_NAME,
-        "origin=tool-call",
+        "origin=ga-tool-call",
         "originKind=interaction");
     assertEvent(
         appender.messages(),
@@ -125,18 +130,18 @@ class AppToolLoggingTest {
         "tool=" + TOOL_NAME,
         "success=true",
         "code=",
-        "origin=tool-call",
+        "origin=ga-tool-call",
         "originKind=interaction");
   }
 
-  /** ★ 开关控制：app.tool 分类 WARN ⇒ INFO 拒绝消失；调回 INFO ⇒ 回来。 */
+  /** ★ 开关控制：ga.tool 分类 WARN ⇒ INFO 拒绝消失；调回 INFO ⇒ 回来。 */
   @Test
   void appLevelSwitchHidesAndRevealsToolRejection() {
     setToolLevel(Level.WARN);
     appender.clear();
     execute(ToolResult.error("E_DENIED", "领域侧拒绝"));
     assertThat(appender.messages())
-        .as("app.tool 级别 WARN ⇒ INFO 工具拒绝必须消失")
+        .as("ga.tool 级别 WARN ⇒ INFO 工具拒绝必须消失")
         .noneSatisfy(line -> assertThat(line).contains("event=TOOL_CALL_REJECTED"));
 
     setToolLevel(Level.INFO);
@@ -147,7 +152,7 @@ class AppToolLoggingTest {
         "INFO",
         "TOOL_CALL_REJECTED",
         "tool=" + TOOL_NAME,
-        "origin=tool-call",
+        "origin=ga-tool-call",
         "originKind=interaction");
   }
 
@@ -194,8 +199,8 @@ class AppToolLoggingTest {
   }
 
   private void setToolLevel(Level level) {
-    Configurator.setLevel(AppLog.TOOL_LOGGER_NAME, level);
-    LoggerConfig current = configuration.getLoggerConfig(AppLog.TOOL_LOGGER_NAME);
+    Configurator.setLevel(GaLog.TOOL_LOGGER_NAME, level);
+    LoggerConfig current = configuration.getLoggerConfig(GaLog.TOOL_LOGGER_NAME);
     if (!current.getAppenders().containsKey(APPENDER_NAME)) {
       current.addAppender(appender, null, null);
     }

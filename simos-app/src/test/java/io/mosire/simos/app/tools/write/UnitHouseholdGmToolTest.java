@@ -14,8 +14,13 @@ import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.testing.UnitHouseholdWorldFixture;
 import io.mosire.simos.app.time.CalendarService;
+import io.mosire.simos.app.tools.CoreSimosToolWritePort;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
+import io.mosire.simos.app.tools.social.AppSocialUnitPort;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -27,6 +32,9 @@ import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.social.household.SocialLookupAdapter;
+import io.mosire.simos.social.tools.SocialUnitPort;
+import io.mosire.simos.social.tools.write.UnitAssignHouseholdTool;
+import io.mosire.simos.social.tools.write.UnitDetachHouseholdTool;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -73,8 +81,14 @@ class UnitHouseholdGmToolTest {
   void setUp() {
     core = UnitHouseholdWorldFixture.core(tempDir, singleGovState(), oneHouseholdSocial());
     query = UnitHouseholdWorldFixture.query(core);
-    assign = new UnitAssignHouseholdTool(core, query, "agent:s3a-test");
-    detach = new UnitDetachHouseholdTool(core, query, "agent:s3a-test");
+    // ★★ 2026-10-12 B3 收尾（C3）：两条 household 窄写已下放到 simos-social
+    //   （io.mosire.simos.social.tools.write）⇒ 构造器改吃注入端口，与生产装配
+    //   （SimosToolSource:959-960）同源。
+    ToolWritePort writes = new CoreSimosToolWritePort(core, "agent:s3a-test");
+    ToolReadPort reads = new QueryServiceToolReadPort(query);
+    SocialUnitPort units = new AppSocialUnitPort();
+    assign = new UnitAssignHouseholdTool(writes, reads, units);
+    detach = new UnitDetachHouseholdTool(writes, reads, units);
   }
 
   @AfterEach

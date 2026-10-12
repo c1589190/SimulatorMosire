@@ -7,12 +7,14 @@ import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.agentlib.permission.ResourceAuthorizer;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
-import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.testing.UnitHouseholdWorldFixture;
-import io.mosire.simos.app.tools.write.UnitAssignHouseholdTool;
-import io.mosire.simos.app.tools.write.UnitDetachHouseholdTool;
+import io.mosire.simos.app.tools.CoreSimosToolWritePort;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
+import io.mosire.simos.app.tools.social.AppSocialUnitPort;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialLog;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -22,6 +24,9 @@ import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.household.HouseholdBook;
+import io.mosire.simos.social.tools.SocialUnitPort;
+import io.mosire.simos.social.tools.write.UnitAssignHouseholdTool;
+import io.mosire.simos.social.tools.write.UnitDetachHouseholdTool;
 import io.mosire.simos.unit.UnitLog;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
@@ -78,14 +83,18 @@ class UnitHouseholdLoggingTest {
   private LoggerConfig socialConfig;
   private LoggerConfig socialTraceConfig;
 
-  /** ★ L3：ASSIGN/DETACH 的发射点已下沉到 app 工具（AppLog.tool()），捕获面必须同时含 app.tool。 */
-  private LoggerConfig appToolConfig;
+  /**
+   * ★★ 2026-10-12 B3 收尾（C3）：ASSIGN/DETACH 的发射点随工具下放移到**域内**（simos-social 的 {@code
+   * UnitAssignHouseholdTool}/{@code UnitDetachHouseholdTool}），分类 = {@link SocialLog#command()} ⇒
+   * 捕获面从 {@code app.tool} 换成 {@code social.command}（开关也随之换）。
+   */
+  private LoggerConfig socialCommandConfig;
 
   private Level originalUnitLevel;
   private Level originalUnitTraceLevel;
   private Level originalSocialLevel;
   private Level originalSocialTraceLevel;
-  private Level originalAppToolLevel;
+  private Level originalSocialCommandLevel;
   private CollectingAppender appender;
 
   @BeforeEach
@@ -96,12 +105,12 @@ class UnitHouseholdLoggingTest {
     unitTraceConfig = configuration.getLoggerConfig(UnitLog.TRACE_LOGGER_NAME);
     socialConfig = configuration.getLoggerConfig(SocialLog.ROOT_LOGGER_NAME);
     socialTraceConfig = configuration.getLoggerConfig(SocialLog.TRACE_LOGGER_NAME);
-    appToolConfig = configuration.getLoggerConfig(AppLog.TOOL_LOGGER_NAME);
+    socialCommandConfig = configuration.getLoggerConfig(SocialLog.COMMAND_LOGGER_NAME);
     originalUnitLevel = unitConfig.getLevel();
     originalUnitTraceLevel = unitTraceConfig.getLevel();
     originalSocialLevel = socialConfig.getLevel();
     originalSocialTraceLevel = socialTraceConfig.getLevel();
-    originalAppToolLevel = appToolConfig.getLevel();
+    originalSocialCommandLevel = socialCommandConfig.getLevel();
 
     appender = new CollectingAppender();
     appender.start();
@@ -116,11 +125,11 @@ class UnitHouseholdLoggingTest {
     Configurator.setLevel(UnitLog.TRACE_LOGGER_NAME, originalUnitTraceLevel);
     Configurator.setLevel(SocialLog.ROOT_LOGGER_NAME, originalSocialLevel);
     Configurator.setLevel(SocialLog.TRACE_LOGGER_NAME, originalSocialTraceLevel);
-    Configurator.setLevel(AppLog.TOOL_LOGGER_NAME, originalAppToolLevel);
+    Configurator.setLevel(SocialLog.COMMAND_LOGGER_NAME, originalSocialCommandLevel);
     context.updateLoggers();
     configuration.getLoggerConfig(UnitLog.ROOT_LOGGER_NAME).removeAppender(APPENDER_NAME);
     configuration.getLoggerConfig(SocialLog.ROOT_LOGGER_NAME).removeAppender(APPENDER_NAME);
-    configuration.getLoggerConfig(AppLog.TOOL_LOGGER_NAME).removeAppender(APPENDER_NAME);
+    configuration.getLoggerConfig(SocialLog.COMMAND_LOGGER_NAME).removeAppender(APPENDER_NAME);
     configuration.removeAppender(APPENDER_NAME);
     context.updateLoggers();
     appender.stop();
@@ -156,11 +165,16 @@ class UnitHouseholdLoggingTest {
     CoreSimos core = UnitHouseholdWorldFixture.core(tempDir, govState(), social());
     try {
       QueryService query = UnitHouseholdWorldFixture.query(core);
-      UnitAssignHouseholdTool assign = new UnitAssignHouseholdTool(core, query, "agent:log-test");
-      UnitDetachHouseholdTool detach = new UnitDetachHouseholdTool(core, query, "agent:log-test");
+      // ★★ 2026-10-12 B3 收尾（C3）：两条工具已下放到 simos-social（`io.mosire.simos.social.tools.write`）
+      //   ⇒ 构造器改吃注入端口，与生产装配（SimosToolSource:959-960）同源。
+      ToolWritePort writes = new CoreSimosToolWritePort(core, "agent:log-test");
+      ToolReadPort reads = new QueryServiceToolReadPort(query);
+      SocialUnitPort units = new AppSocialUnitPort();
+      UnitAssignHouseholdTool assign = new UnitAssignHouseholdTool(writes, reads, units);
+      UnitDetachHouseholdTool detach = new UnitDetachHouseholdTool(writes, reads, units);
       setUnitLevels(Level.INFO, Level.INFO);
       setSocialLevels(Level.INFO, Level.INFO);
-      setAppToolLevel(Level.INFO);
+      setSocialCommandLevel(Level.INFO);
       appender.clear();
 
       long head = UnitHouseholdWorldFixture.head(core);
@@ -192,8 +206,11 @@ class UnitHouseholdLoggingTest {
           "reason=编入",
           "origin=unit-command",
           "originKind=system");
-      // ★ L3：ASSIGN 的发射点移到 app 工具（AppLog.tool()，origin=tool-call / interaction），
-      //   reason 明文改成 reasonLength（只记长度）。
+      // ★ L3：reason 明文改成 reasonLength（只记长度）。
+      // ★★ 2026-10-12 B3 收尾（C3）：ASSIGN 的发射点随工具下放到 simos-social
+      //   （`io.mosire.simos.social.tools.write.UnitAssignHouseholdTool`，分类 SocialLog.command()）
+      //   ⇒ origin=tool-call/interaction 换成域来源表的 origin=social-command/system
+      //   （口径：origin 不跨模块传，域只记自己的执行）。事件名与逐字段断言一字未改。
       assertEvent(
           linesAfterAssign,
           "UNIT_HOUSEHOLD_ASSIGN",
@@ -201,14 +218,14 @@ class UnitHouseholdLoggingTest {
           "household=hh-a",
           "location=UNIT:u-gov",
           "reasonLength=2",
-          "origin=tool-call",
-          "originKind=interaction");
+          "origin=social-command",
+          "originKind=system");
       assertEvent(
           linesAfterAssign, "HOUSEHOLD_LOCATION_SET", "id=hh-a", "from=HEX:1_1", "to=UNIT:u-gov");
 
-      // ★ 开关控制（app 模块）：关掉 app.tool ⇒ 工具层 INFO 消失，但 unit/social 领域事件照常；
-      //   调回 INFO ⇒ 工具事件回来。判别力：把 app 侧 INFO 写成不受 level 约束的形式，这里当场红。
-      setAppToolLevel(Level.WARN);
+      // ★ 开关控制（social 模块的 command 分类）：关掉 social.command ⇒ 工具层 INFO 消失，但 unit 侧
+      //   领域事件照常；调回 INFO ⇒ 工具事件回来。判别力：把域侧 INFO 写成不受 level 约束的形式，这里当场红。
+      setSocialCommandLevel(Level.WARN);
       appender.clear();
       assertThat(
               detach
@@ -231,13 +248,18 @@ class UnitHouseholdLoggingTest {
                   .success())
           .isTrue();
       List<String> linesAtWarn = appender.messages();
+      // ★★ 2026-10-12 B3 收尾（C3）：本步的"开关一个分类、看另一类是否照常"判据按**新通道**重述 ——
+      //   下放后 ASSIGN/DETACH **与** HOUSEHOLD_LOCATION_SET 同住 {@code SocialLog.command()}
+      //   （后者由 `HouseholdBook.setLocation` 发，本来就属于 social 域命令面）⇒ 关掉该分类时三条一起消失；
+      //   判别力不降反升：同时断言 **unit 侧**的 UNIT_HOUSEHOLDS_SET **不受**该开关影响（两条通道确实独立）。
       assertThat(linesAtWarn)
-          .as("app.tool 级别 WARN ⇒ 工具层 ASSIGN/DETACH 必须消失（实得 %s）", linesAtWarn)
+          .as("social.command 级别 WARN ⇒ 该分类下的 ASSIGN/DETACH/位置事件必须一起消失（实得 %s）", linesAtWarn)
           .noneSatisfy(line -> assertThat(line).contains("event=UNIT_HOUSEHOLD_ASSIGN"))
-          .noneSatisfy(line -> assertThat(line).contains("event=UNIT_HOUSEHOLD_DETACH"));
-      assertEvent(linesAtWarn, "HOUSEHOLD_LOCATION_SET", "id=hh-a", "to=HEX:1_2");
+          .noneSatisfy(line -> assertThat(line).contains("event=UNIT_HOUSEHOLD_DETACH"))
+          .noneSatisfy(line -> assertThat(line).contains("event=HOUSEHOLD_LOCATION_SET"));
+      assertEvent(linesAtWarn, "UNIT_HOUSEHOLDS_SET", "unit=u-gov", "reason=移出");
 
-      setAppToolLevel(Level.INFO);
+      setSocialCommandLevel(Level.INFO);
       appender.clear();
       long afterDetach = UnitHouseholdWorldFixture.head(core);
       assertThat(
@@ -265,8 +287,8 @@ class UnitHouseholdLoggingTest {
           "household=hh-a",
           "location=UNIT:u-gov",
           "reasonLength=2",
-          "origin=tool-call",
-          "originKind=interaction");
+          "origin=social-command",
+          "originKind=system");
     } finally {
       core.close();
     }
@@ -368,9 +390,12 @@ class UnitHouseholdLoggingTest {
     context.updateLoggers();
   }
 
-  /** ★ L3：ASSIGN/DETACH 由 app 工具发到 {@link AppLog#tool()}，开关也按 app 模块根级别验。 */
-  private void setAppToolLevel(Level level) {
-    Configurator.setLevel(AppLog.TOOL_LOGGER_NAME, level);
+  /**
+   * ★★ 2026-10-12 B3 收尾（C3）：ASSIGN/DETACH 由**域内工具**发到 {@link SocialLog#command()}，开关也按该分类验
+   * （域来源表口径：工具面交互由 app 记 {@code interaction}，域只记自己的执行 ⇒ originKind=system）。
+   */
+  private void setSocialCommandLevel(Level level) {
+    Configurator.setLevel(SocialLog.COMMAND_LOGGER_NAME, level);
     attachAppenders();
     context.updateLoggers();
   }
@@ -378,7 +403,8 @@ class UnitHouseholdLoggingTest {
   /** {@code Configurator.setLevel} 会替换 LoggerConfig ⇒ 每次改级别后把采集 appender 重新挂上。 */
   private void attachAppenders() {
     for (String name :
-        List.of(UnitLog.ROOT_LOGGER_NAME, SocialLog.ROOT_LOGGER_NAME, AppLog.TOOL_LOGGER_NAME)) {
+        List.of(
+            UnitLog.ROOT_LOGGER_NAME, SocialLog.ROOT_LOGGER_NAME, SocialLog.COMMAND_LOGGER_NAME)) {
       LoggerConfig current = configuration.getLoggerConfig(name);
       if (!current.getAppenders().containsKey(APPENDER_NAME)) {
         current.addAppender(appender, null, null);

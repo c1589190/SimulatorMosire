@@ -14,9 +14,17 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.tools.CoreSimosToolWritePort;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.tools.ga.AppGaToolIdentity;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.ga.tools.GaToolIdentity;
+import io.mosire.simos.ga.tools.write.RecordDiplomaticEventTool;
+import io.mosire.simos.ga.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -210,8 +218,13 @@ class DiplomaticWriteToolsTest {
     private Fixture(CoreSimos core) {
       this.core = core;
       this.query = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
-      this.relationTool = new SetDiplomaticRelationTool(core, query, "agent:t2b-diplo", "Map1");
-      this.eventTool = new RecordDiplomaticEventTool(core, query, "agent:t2b-diplo", "Map1");
+      // ★★ 2026-10-12 B3 收尾（C3）：两条外交写工具已下放到 simos-ga（io.mosire.simos.ga.tools.write）
+      //   ⇒ 构造器改吃注入端口，与生产装配（SimosToolSource:1019-1020）同源。
+      ToolWritePort writes = new CoreSimosToolWritePort(core, "agent:t2b-diplo");
+      ToolReadPort reads = new QueryServiceToolReadPort(query);
+      GaToolIdentity identity = new AppGaToolIdentity();
+      this.relationTool = new SetDiplomaticRelationTool(writes, reads, identity, "Map1");
+      this.eventTool = new RecordDiplomaticEventTool(writes, reads, identity, "Map1");
       core.register(recording(new SetDiplomaticRelationHandler()));
       core.register(recording(new RecordDiplomaticEventHandler()));
       core.register(

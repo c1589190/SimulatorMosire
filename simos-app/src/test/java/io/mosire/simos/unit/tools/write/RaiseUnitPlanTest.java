@@ -1,4 +1,15 @@
-package io.mosire.simos.app.tools.write;
+// ★★ 2026-10-12 B3 收尾（C3）：「Plan 纯推导」白盒用例随被测类下放到被测包。
+//
+// 为什么包名是 io.mosire.simos.unit.tools.write（文件仍住 simos-app 的测试树）：
+//   · `LevyRegionPlan` / `RaiseUnitPlan` 在 simos-unit 里是**包内可见**的纯推导实现（设计如此，不是漏写 public）；
+//   · 白盒用例要引用 `LevyRegionPlan.Plan/Dimension/AccountSource/Manpower` 这些**包内可见**的嵌套类型
+//     ⇒ 用例必须与它们同包（Java 的包内可见性只认包名，同包 ⇒ 同一运行时包，无需放宽生产代码可见性）；
+//   · 用例同时要用 app 测试树的 `SocialHouseholdFixture` 与 `simos-actor` 的 `ActorData/ActorSnapshot`
+//     （simos-unit 的测试类路径上都没有，搬进 simos-unit/src/test 需要改生产 pom）⇒ 文件留在 simos-app 测试树。
+//   断言一字未改；唯一被迫改的是**期望值的书写类型**：plan 的返回类型已从 app 侧的
+//   `RegionAllocations/HouseholdManpowerAllocator` 换成域侧 `UnitToolAllocations` 的**逐字段同形投影**
+//   （见 unit 批账本 D3；`skipped()` 语义逐字相同：requested=0/available=0/空表）。
+package io.mosire.simos.unit.tools.write;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -12,6 +23,11 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.testing.SocialHouseholdFixture;
+import io.mosire.simos.app.time.CalendarService;
+import io.mosire.simos.app.tools.write.AppUnitToolAllocations;
+import io.mosire.simos.app.tools.write.AppUnitToolCommandTypes;
+import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
+import io.mosire.simos.app.tools.write.AppUnitToolViews;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
@@ -43,6 +59,9 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
+import io.mosire.simos.unit.tools.UnitToolAllocations;
+import io.mosire.simos.unit.tools.UnitToolCommandTypes;
+import io.mosire.simos.unit.tools.UnitToolViews;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -269,7 +288,10 @@ class RaiseUnitPlanTest {
     assertThat(plan.equipment())
         .containsExactly(new CompositionEntry("rifle", 12), new CompositionEntry("shield", 3));
     assertThat(plan.parent()).isEmpty();
-    assertThat(plan.commandTypes())
+    assertThat(
+            plan.commandTypes(
+                commandTypes().registerHouseholdType(),
+                commandTypes().ensureHouseholdAccountType()))
         .containsExactly(
             "social.SubmitHouseholdWorkOrder",
             "unit.CreateUnit",
@@ -283,16 +305,16 @@ class RaiseUnitPlanTest {
     assertThat(plan.grain().available()).isEqualTo(120L);
     assertThat(plan.grain().sources())
         .containsExactly(
-            new RegionAllocations.AccountSource(HH1, H11, 80L),
-            new RegionAllocations.AccountSource(HH2, H12, 40L));
+            new UnitToolAllocations.AccountSource(HH1, H11, 80L),
+            new UnitToolAllocations.AccountSource(HH2, H12, 40L));
 
     // 钱：hh2 可支配 80 先，再 hh1 的 50 里扣 20。
     assertThat(plan.money().requested()).isEqualTo(100L);
     assertThat(plan.money().available()).isEqualTo(130L);
     assertThat(plan.money().sources())
         .containsExactly(
-            new RegionAllocations.AccountSource(HH2, H12, 80L),
-            new RegionAllocations.AccountSource(HH1, H11, 20L));
+            new UnitToolAllocations.AccountSource(HH2, H12, 80L),
+            new UnitToolAllocations.AccountSource(HH1, H11, 20L));
 
     // 人力：g1(30) 先扣满后 count=0，再 g2 扣 10；女性 / 未成年 / 老年 / 区外 / 空批都不算。
     assertThat(plan.manpowerCount()).isEqualTo(40L);
@@ -301,12 +323,12 @@ class RaiseUnitPlanTest {
         .extracting(share -> share.lotId().value())
         .containsExactly("g1", "g2");
     assertThat(plan.sources())
-        .extracting(HouseholdManpowerAllocator.ManpowerShare::taken)
+        .extracting(UnitToolAllocations.ManpowerShare::taken)
         .containsExactly(30L, 10L);
     assertThat(30L - plan.sources().get(0).taken()).as("g1 扣后 count = 0（合法空批，不能避开）").isZero();
     assertThat(20L - plan.sources().get(1).taken()).as("g2 扣后 count = 10").isEqualTo(10L);
 
-    JsonNode create = JSON.readTree(plan.createUnitPayloadJson());
+    JsonNode create = JSON.readTree(plan.createUnitPayloadJson(views()));
     assertThat(create.get("id").asText()).isEqualTo("u-new");
     assertThat(create.get("name").asText()).isEqualTo("新军");
     assertThat(create.get("position").get("q").asInt()).isEqualTo(1);
@@ -355,7 +377,7 @@ class RaiseUnitPlanTest {
     assertThat(transfer1.get("lotId").asText()).isEqualTo("g2");
     assertThat(transfer1.get("count").asLong()).isEqualTo(10L);
 
-    JsonNode info = JSON.readTree(plan.infoValueJson("组军测试"));
+    JsonNode info = JSON.readTree(plan.infoValueJson("组军测试", views()));
     assertThat(info.get("unitId").asText()).isEqualTo("u-new");
     assertThat(info.get("regionId").asText()).isEqualTo("r-nation");
     assertThat(info.get("at").get("q").asInt()).isEqualTo(1);
@@ -383,7 +405,7 @@ class RaiseUnitPlanTest {
         plan("u-new", "r-nation", H11, 40L, 120L, 100L, 4, 700, equipment(), U_PARENT.value());
 
     assertThat(plan.parent()).contains(U_PARENT.value());
-    JsonNode create = JSON.readTree(plan.createUnitPayloadJson());
+    JsonNode create = JSON.readTree(plan.createUnitPayloadJson(views()));
     assertThat(create.get("parent").asText()).isEqualTo(U_PARENT.value());
   }
 
@@ -391,7 +413,10 @@ class RaiseUnitPlanTest {
   void commandsSkipAdjustAccountsWhenGrainAndMoneyAreZero() {
     RaiseUnitPlan.Plan manpowerOnly = plan(40L, 0L, 0L);
 
-    assertThat(manpowerOnly.commandTypes())
+    assertThat(
+            manpowerOnly.commandTypes(
+                commandTypes().registerHouseholdType(),
+                commandTypes().ensureHouseholdAccountType()))
         .as("纯人力批：无粮/钱 ⇒ 不落 actor.AdjustAccounts")
         .containsExactly(
             "social.SubmitHouseholdWorkOrder",
@@ -402,8 +427,8 @@ class RaiseUnitPlanTest {
     assertThat(manpowerOnly.hasGrainOrMoney()).isFalse();
     assertThat(manpowerOnly.grain())
         .as("requested=0 = 整段跳过（不是『恰好没有来源』）")
-        .isEqualTo(RegionAllocations.AccountAllocation.skipped());
-    assertThat(manpowerOnly.money()).isEqualTo(RegionAllocations.AccountAllocation.skipped());
+        .isEqualTo(UnitToolAllocations.AccountAllocation.skipped());
+    assertThat(manpowerOnly.money()).isEqualTo(UnitToolAllocations.AccountAllocation.skipped());
     assertThat(manpowerOnly.sources()).hasSize(2);
   }
 
@@ -430,12 +455,21 @@ class RaiseUnitPlanTest {
     assertThat(second.equipment()).isEqualTo(first.equipment());
     assertThat(second.parent()).isEqualTo(first.parent());
     assertThat(second).isEqualTo(first);
-    assertThat(second.commandTypes()).containsExactlyElementsOf(first.commandTypes());
-    assertThat(second.createUnitPayloadJson()).isEqualTo(first.createUnitPayloadJson());
+    assertThat(
+            second.commandTypes(
+                commandTypes().registerHouseholdType(),
+                commandTypes().ensureHouseholdAccountType()))
+        .containsExactlyElementsOf(
+            first.commandTypes(
+                commandTypes().registerHouseholdType(),
+                commandTypes().ensureHouseholdAccountType()));
+    assertThat(second.createUnitPayloadJson(views()))
+        .isEqualTo(first.createUnitPayloadJson(views()));
     assertThat(second.adjustAccountsPayloadJson()).isEqualTo(first.adjustAccountsPayloadJson());
     assertThat(second.submitHouseholdWorkOrderPayloadJson("组军测试"))
         .isEqualTo(first.submitHouseholdWorkOrderPayloadJson("组军测试"));
-    assertThat(second.infoValueJson("组军测试")).isEqualTo(first.infoValueJson("组军测试"));
+    assertThat(second.infoValueJson("组军测试", views()))
+        .isEqualTo(first.infoValueJson("组军测试", views()));
     assertThat(second.grain().sources()).containsExactlyElementsOf(first.grain().sources());
     assertThat(second.sources()).containsExactlyElementsOf(first.sources());
   }
@@ -470,7 +504,23 @@ class RaiseUnitPlanTest {
         speed,
         mobilityPerMille,
         equipment,
-        Optional.ofNullable(parent));
+        Optional.ofNullable(parent),
+        views(),
+        new AppUnitToolAllocations(CalendarService.defaults()),
+        new AppUnitToolPerspective());
+  }
+
+  /**
+   * 视图口（{@link UnitToolViews}）：与生产装配同源。★ 旧版 `Plan` 的载荷方法直接调 `ToolSupport.hexCoord` /
+   * `compositionView`，现在这两条经端口注入 ⇒ 测试按同一份 app 适配器构造（`CalendarService.defaults()` = 旧缺省时钟）。
+   */
+  private static UnitToolViews views() {
+    return new AppUnitToolViews(CalendarService.defaults());
+  }
+
+  /** 跨域命令类型口（{@link UnitToolCommandTypes}）：与生产装配同源（拼写点在 handler，不手抄字面量）。 */
+  private static UnitToolCommandTypes commandTypes() {
+    return new AppUnitToolCommandTypes();
   }
 
   private static Map<String, Integer> equipment() {

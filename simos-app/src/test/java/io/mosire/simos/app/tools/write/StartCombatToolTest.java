@@ -18,6 +18,8 @@ import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.tools.CoreSimosToolWritePort;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.ArmyData;
@@ -26,11 +28,17 @@ import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.army.spi.RecordCombatHandler;
+import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.army.tools.write.FormatUnitTool;
+import io.mosire.simos.army.tools.write.ResolveCombatTool;
+import io.mosire.simos.army.tools.write.StartCombatTool;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -309,7 +317,12 @@ class StartCombatToolTest {
     private Fixture(CoreSimos core) {
       this.core = core;
       this.query = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
-      this.tool = new StartCombatTool(core, query, "agent:t2b-start");
+      // ★★ 2026-10-12 B3 收尾（C3）：StartCombatTool 已下放到 simos-army（io.mosire.simos.army.tools.write）
+      //   ⇒ 构造器改吃注入端口，与生产装配（SimosToolSource:886）同源。
+      ToolWritePort writes = new CoreSimosToolWritePort(core, "agent:t2b-start");
+      ToolReadPort reads = new QueryServiceToolReadPort(query);
+      ArmyToolViews views = new AppArmyToolViews();
+      this.tool = new StartCombatTool(writes, reads, views);
       core.register(recording(new RecordCombatHandler()));
       core.register(recording(new SetStateDescriptionHandler()));
       core.register(

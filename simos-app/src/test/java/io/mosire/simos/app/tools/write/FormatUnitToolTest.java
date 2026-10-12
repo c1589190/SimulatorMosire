@@ -16,15 +16,21 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.tools.CoreSimosToolWritePort;
+import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.codec.ArmyCodec;
+import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.army.tools.write.FormatUnitTool;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -46,6 +52,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.spi.SetCompositionHandler;
+import io.mosire.simos.unit.tools.UnitToolReads;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.resolve.ResolverRegistry;
@@ -116,7 +123,7 @@ class FormatUnitToolTest {
       assertThat(amounts(a.get("equipment"))).isEqualTo(expectedFormats(expectedSeed, 400L));
       assertThat(amounts(b.get("equipment"))).isEqualTo(amounts(a.get("equipment")));
       assertThat(values(a.get("commands")))
-          .containsExactly(SetCompositionHandler.TYPE, FormatUnitPlan.PUT_INFO_TYPE);
+          .containsExactly(SetCompositionHandler.TYPE, PutInfoHandler.TYPE);
 
       assertThat(fx.head()).as("preview 零写入").isEqualTo(1L);
       assertThat(fx.storedRevisions()).hasSize(1);
@@ -141,7 +148,7 @@ class FormatUnitToolTest {
       assertThat(fx.storedRevisions()).hasSize(2);
       assertThat(fx.handlerCalls)
           .as("批内顺序：unit.SetComposition → sd.PutInfo")
-          .containsExactly(SetCompositionHandler.TYPE, FormatUnitPlan.PUT_INFO_TYPE);
+          .containsExactly(SetCompositionHandler.TYPE, PutInfoHandler.TYPE);
       assertThat(fx.handlerPayloads.get(1))
           .as("PutInfo 的载荷 JSON 里含 key/value")
           .contains("\"key\":\"formatUnit\"");
@@ -160,7 +167,10 @@ class FormatUnitToolTest {
       assertThat(value.get("tick").asLong()).isEqualTo(7L);
       assertThat(deltas(value.get("beforeEquipment"))).containsExactly("步枪=50");
       assertThat(deltas(value.get("equipment"))).isEqualTo(expected);
-      assertThat(value.get("reason").asText()).isEqualTo(FormatUnitTool.DEFAULT_REASON);
+      // ★★ 2026-10-12 B3 收尾（C3）：`FormatUnitTool.DEFAULT_REASON` 随下放变成 army 侧**包内可见**
+      //   （app 测试看不见）⇒ 按该常量的**字面值**断言（值逐字相同："army.formatUnit"），与
+      //   PutInfoHandler.TYPE 那处同款处置；断言的判别力不变（reason 被改掉 ⇒ 当场红）。
+      assertThat(value.get("reason").asText()).isEqualTo("army.formatUnit");
       assertThat(entry.note()).isPresent();
       assertThat(entry.note().orElseThrow()).contains("seed=42");
     }
@@ -193,7 +203,7 @@ class FormatUnitToolTest {
   @Test
   void applyOrderIsReadFromTheRealEnvelopeSequenceWhenAGuardRejectsPutInfo() throws Exception {
     try (Fixture fx = Fixture.open(tempDir.resolve("order"))) {
-      fx.rejectTypes.add(FormatUnitPlan.PUT_INFO_TYPE);
+      fx.rejectTypes.add(PutInfoHandler.TYPE);
       ToolResult result = fx.call(formatArgs("u-1", 400L, 7L, 1L, Boolean.FALSE));
       assertThat(result.success()).isFalse();
       assertThat(result.code()).isEqualTo("REJECTED");
@@ -202,7 +212,7 @@ class FormatUnitToolTest {
       commands.forEach(row -> types.add(row.get("type").asText()));
       assertThat(types)
           .as("真信封序：SetComposition 先、PutInfo 后")
-          .containsExactly(SetCompositionHandler.TYPE, FormatUnitPlan.PUT_INFO_TYPE);
+          .containsExactly(SetCompositionHandler.TYPE, PutInfoHandler.TYPE);
       assertThat(fx.head()).as("整批拒 ⇒ 零 revision").isEqualTo(1L);
       assertThat(entries(fx.unit(fx.stateAt(1L)).equipment())).containsExactly("步枪=50");
     }
@@ -292,7 +302,12 @@ class FormatUnitToolTest {
     private Fixture(CoreSimos core) {
       this.core = core;
       this.query = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
-      this.tool = new FormatUnitTool(core, query, "agent:t2b-format");
+      // ★★ 2026-10-12 B3 收尾（C3）：FormatUnitTool 已下放到 simos-army（io.mosire.simos.army.tools.write）
+      //   ⇒ 构造器改吃注入端口，与生产装配（SimosToolSource:891）同源。
+      ToolWritePort writes = new CoreSimosToolWritePort(core, "agent:t2b-format");
+      ToolReadPort reads = new QueryServiceToolReadPort(query);
+      ArmyToolViews views = new AppArmyToolViews();
+      this.tool = new FormatUnitTool(writes, reads, views);
       core.register(recording(new SetCompositionHandler()));
       core.register(recording(new PutInfoHandler()));
       core.register(
@@ -372,7 +387,9 @@ class FormatUnitToolTest {
   /** 从 replay 态读同批 PutInfo 的条目（地址 = 单位 canonical、key = formatUnit）。 */
   private static SdInfoEntry infoEntry(SimulationState state) {
     SdState sd = ((SdSnapshot) state.module("sd").orElseThrow()).state();
-    List<SdInfoEntry> entries = sd.info().get(RaiseUnitPlan.unitAddress("u-1"));
+    // ★★ 2026-10-12 B3 收尾（C3）：`unitAddress` 是 unit 侧的**跨批次共享拼写点**
+    //   （unit 批 D8：从 RaiseUnitPlan 移到 UnitToolReads，public）⇒ 改调该唯一拼写点。
+    List<SdInfoEntry> entries = sd.info().get(UnitToolReads.unitAddress("u-1"));
     assertThat(entries).as("sd.PutInfo 必须落在单位 canonical 地址上").isNotNull().hasSize(1);
     return entries.get(0);
   }
