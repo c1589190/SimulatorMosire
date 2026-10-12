@@ -27,8 +27,9 @@ package io.mosire.simos.util.spi;
  * io.mosire.simos.ga.command.CommandPermissionRules}：四个面从同一份声明派生 + 三条 fail-closed 审计），
  * <b>组合根只注册</b>（{@code Shell} 里不再有任何权限判断）。
  *
- * <p>★★ <b>2026-10-13 批次 4（权限收紧）：声明面 66 → 18</b>。依据 = 派单规划 §4「批次 4（收紧）」＋用户原话 「{@code map}
- * 层级的命令、凭空造钱造人建军肯定不该给 DM 用」/「单个 Army 决策人只有权提交自然文本战术和移动到哪， 其他工具都是 GM 专有」。<b>逐条判据三选一</b>：
+ * <p>★★ <b>2026-10-13 权限收紧（批次 4 + 批次 4b）：声明面 66 → 17</b>。依据 = 派单规划 §4「批次 4（收紧）」＋用户原话 「{@code map}
+ * 层级的命令、凭空造钱造人建军肯定不该给 DM 用」/「单个 Army 决策人只有权提交自然文本战术和移动到哪， 其他工具都是 GM 专有」；批次 4b = 用户 2026-10-13
+ * 追加裁定「<b>关闭：整条摘标记（可嵌令面 18 → 17）</b>」。 <b>逐条判据三选一</b>：
  *
  * <ol>
  *   <li><b>① 属于 GM 的推演 / 世界构造权</b>：单位位置与状态（{@code unit.PlaceAt} / {@code SetStatus} / {@code
@@ -47,19 +48,23 @@ package io.mosire.simos.util.spi;
  *   <li><b>③ 跨域的世界编辑（地图）</b>：{@code map.*} 七条（地形 / 区划增删改 / 连通性 / 通路词表 / 随机化）。
  * </ol>
  *
- * <p>★ <b>摘除面 48 条</b>（map 7 · {@code actor.Seed} · economy 8 · social 11 · unit 21）；★ <b>保留 DM 的
- * 18 条</b> = 移动三件套（{@code unit.PlanRoute} / {@code PlanSparseRoute} / {@code CancelRoute}，派单规划 §4
- * 明令保留）＋ {@code unit.SetRejoinTarget}（移动意图：只设引用、不设 hex、不建路线）＋ {@code
- * social.SubmitHouseholdWorkOrder} （<b>工单入口</b>：判据 ② 说的是"<b>绕过</b>工单"，而工单本身带 reason +
- * source，是"唯一家户人口变更受理口"）＋ {@code actor.RemitGovTreasury}（零和上缴 / 两 GOV 间转移）＋ economy 家户经济配置 3
- * 条（{@code SetHouseholdClass} / {@code SetHouseholdParticipation} / {@code SetHouseholdLabor}）＋ GOV
- * 行政 / 政策 9 条（辖区 / 税率 / 编制 / 政策 / 上级 / 岗位 / 军俸）。
+ * <p>★ <b>摘除面 49 条</b>（map 7 · {@code actor.Seed} · economy 8 · social 12 · unit 21；其中批次 4 摘 48、批次
+ * 4b 再摘 {@code social.SubmitHouseholdWorkOrder} 1 条）；★ <b>保留 DM 的 17 条</b> = 移动三件套（{@code
+ * unit.PlanRoute} / {@code PlanSparseRoute} / {@code CancelRoute}，派单规划 §4 明令保留）＋ {@code
+ * unit.SetRejoinTarget}（移动意图：只设引用、不设 hex、不建路线）＋ {@code actor.RemitGovTreasury}（零和上缴 / 两 GOV 间转移）＋
+ * economy 家户经济配置 3 条（{@code SetHouseholdClass} / {@code SetHouseholdParticipation} / {@code
+ * SetHouseholdLabor}）＋ GOV 行政 / 政策 9 条（辖区 / 税率 / 编制 / 政策 / 上级 / 岗位 / 军俸）。
  *
- * <p>★★ <b>权限只收紧、不放松</b>：本批逐条对称差 = <b>新增 0 条</b>；catalog（141）与决策落点面（2 = {@code ga.IssueDirective} /
- * {@code ga.SubmitVerdict}）<b>逐条不变</b> —— 摘标记不改目录、不改 handler、不改落点。 ★
- * <b>如实记的残留通道（不在本批授权内的判定）</b>：{@code social.SubmitHouseholdWorkOrder} 的 plan 词表含 {@code
- * CREATE_HOUSEHOLD} / {@code ADD_MEMBERS} / {@code REMOVE_MEMBERS} / {@code TRANSFER_MEMBERS} /
- * {@code ADJUST_POPULATION} ⇒ DM 仍可<b>经这条带审计的工单</b>改人口（逐操作的直接命令已摘）。本条属控制方 / 用户裁定范围。
+ * <p>★★ <b>批次 4b：{@code social.SubmitHouseholdWorkOrder} 整条摘标记</b>（用户 2026-10-13 裁定：它虽带 {@code
+ * reason} + {@code source} 的审计形状，但 plan 词表含 {@code CREATE_HOUSEHOLD} / {@code ADD_MEMBERS} / {@code
+ * REMOVE_MEMBERS} / {@code TRANSFER_MEMBERS} / {@code ADJUST_POPULATION} ⇒ <b>整族写人口</b>，与「凭空造人肯定不该给
+ * DM 用」直接冲突）。★ <b>为什么是"整条摘"而不是"按 plan 种类分别放行"</b>：后者要在本接口之外新增第二处权限声明 / 判定点，违反本仓「 {@link
+ * DmUsableCommand} 是唯一声明、{@code CommandPermissionRules} 是唯一判定点」⇒ 不采纳（这是选整条摘的唯一理由，不是取舍）。 该命令仍留在
+ * catalog（141 不变）与 GM 提交面，只是不再进令白名单 / {@code ga.RegisterEffect} / 决策人 catalog。
+ *
+ * <p>★★ <b>权限只收紧、不放松</b>：批次 4 逐条对称差 = <b>新增 0 条</b>，批次 4b 再摘 1 条 / 新增 0 条；catalog（141）与决策落点面（2 =
+ * {@code ga.IssueDirective} / {@code ga.SubmitVerdict}）<b>逐条不变</b> —— 摘标记不改目录、不改 handler、不改落点。 ★
+ * <b>批次 4 如实记的残留通道（工单写人口）已由批次 4b 关闭</b>：DM 经命令面改人口的通道现在为零（逐操作直接命令在批次 4 摘除，工单在批次 4b 摘除）。
  *
  * <p>★ <b>为什么住 {@code util.spi}</b>：声明方是五个域模块（map / unit / social / economy / actor），而 util 是它们
  * <b>全部显式声明</b>的唯一下层——与 {@link CommandHandler} 同址同形制。★ 不放 {@code ga-spi}：{@code simos-actor} 的

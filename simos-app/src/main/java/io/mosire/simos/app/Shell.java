@@ -544,6 +544,12 @@ public final class Shell implements AutoCloseable {
     //   保留 DM 的 18 条 = 移动三件套 + SetRejoinTarget + SubmitHouseholdWorkOrder（工单入口）
     //   + RemitGovTreasury（零和上缴）+ economy 家户经济配置 3 条 + GOV 行政/政策 9 条。
     //   逐条判据（① GM 推演/世界构造权 ② 凭空造钱/人/军 ③ 跨域的世界编辑）见 {@code DmUsableCommand} 类注。
+    // ★★ 2026-10-13 批次 4b（用户追加裁定「关闭：整条摘标记（可嵌令面 18 → 17）」）：
+    //   {@code social.SubmitHouseholdWorkOrder} 的 plan 词表含 CREATE_HOUSEHOLD / ADD_MEMBERS /
+    //   REMOVE_MEMBERS / TRANSFER_MEMBERS / ADJUST_POPULATION ⇒ **整族写人口**，与「凭空造人
+    //   肯定不该给 DM 用」冲突 ⇒ **整条摘掉** {@code DmUsableCommand}。可嵌令面 / 可入队面 /
+    //   声明面 **18 → 17**（catalog 141 与落点面 2 不变；摘 1 / 新增 0）。★ 未按 plan 种类分别
+    //   放行 —— 那会引入第二处权限声明/判定点。保留 DM 的 17 条 = 上一段去掉工单入口后的其余 17 条。
     List<CommandHandler> handlers =
         new ArrayList<>(
             List.of(
@@ -662,8 +668,12 @@ public final class Shell implements AutoCloseable {
                 // ── S3a（2026-10-09 家户/人口架构 §4.1）：家户生命周期七条逐操作命令——创建 / 位置 / 增人 / 减人 /
                 //   转移 / 设率 / GM 直调人口。全部只写 SocialData、返回 SocialChangeSet；UNIT 位置的 unit 侧一致性
                 //   由 app 组合工具同批保证（social 域不认识 unit）。★★ 2026-10-13 批次 4（② 写人口）：七条**全部摘掉**
-                //   {@code DmUsableCommand} ⇒ 仅 GM；人口的 DM 通道只剩下面那条**工单**
-                //   {@code social.SubmitHouseholdWorkOrder}（带 reason + source 的审计入口）。──
+                //   {@code DmUsableCommand} ⇒ 仅 GM。★ 批次 4 当时记的「人口的 DM 通道只剩下面那条
+                //   **工单** {@code social.SubmitHouseholdWorkOrder}（带 reason + source 的审计
+                //   入口）」**已由批次 4b 关闭**：用户 2026-10-13 追加裁定「关闭：整条摘标记
+                //   （可嵌令面 18 → 17）」⇒ 工单也摘标记（它的 plan 词表含 CREATE_HOUSEHOLD /
+                //   ADD_MEMBERS / REMOVE_MEMBERS / TRANSFER_MEMBERS / ADJUST_POPULATION ＝ 整族写
+                //   人口）。⇒ DM 经命令面改人口的通道现为**零**（逐操作命令批次 4 摘、工单批次 4b 摘）。──
                 new CreateHouseholdHandler(),
                 new SetHouseholdLocationHandler(),
                 new AddHouseholdMembersHandler(),
@@ -684,7 +694,11 @@ public final class Shell implements AutoCloseable {
                 new SetLaborCoefficientHandler(),
                 // ── S3b（2026-10-09 用户裁定）：**唯一家户人口变更受理口**——工单（target + 有序 plan + reason +
                 //   source）在一张工作副本上顺序应用，任一操作失败整单具名拒；成功落一条 SocialChangeSet。
-                //   ★ 打 {@code DmUsableCommand}：它是本批给 Unit/Eco 等调用方预留的正式入口，且逐操作旧命令仍并存。──
+                //   ★ 2026-10-13 批次 4b（用户追加裁定）：**不打** {@code DmUsableCommand} ⇒ 仅 GM
+                //   （它的 plan 词表含 CREATE_HOUSEHOLD / ADD_MEMBERS / REMOVE_MEMBERS /
+                //   TRANSFER_MEMBERS / ADJUST_POPULATION ＝ 整族写人口）；它仍是 Social 给
+                //   Unit/Eco 等调用方预留的正式工单入口，且逐操作旧命令仍并存 —— 摘的只是「DM
+                //   能不能把它嵌进令 / 入效果队列」，命令本体、载荷与 handler 逻辑一律未动。──
                 new SubmitHouseholdWorkOrderHandler(),
                 // ── P1b1（2026-10-01）：GM-only 区域社会数据清空（目标 Region 格集内的 populations/groups/cities）。
                 //   不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──

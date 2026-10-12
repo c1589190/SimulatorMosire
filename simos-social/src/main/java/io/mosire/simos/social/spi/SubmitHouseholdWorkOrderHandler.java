@@ -12,7 +12,6 @@ import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -58,8 +57,7 @@ import java.util.Objects;
  * CREATE_HOUSEHOLD.location / SET_LOCATION（旧位置 + 新位置）/ 全部 household/from/to 引用；创建型用载荷 location，
  * 现有家户用 SocialData 现值（plan 内先建的户按工作副本位置解析）。旧 {@link #targetPaths} 保留为空列表（它看不到 state， 升级前逐字一致）。
  */
-public final class SubmitHouseholdWorkOrderHandler
-    implements CommandHandler, CommandTargets, DmUsableCommand {
+public final class SubmitHouseholdWorkOrderHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、组合工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.SubmitHouseholdWorkOrder";
