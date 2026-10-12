@@ -295,6 +295,6 @@ public final class SimosSdReportsTool implements SimosTool {
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
   public Set<ToolRole> roles() {
-    return Set.of(ToolRole.GM);
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }
