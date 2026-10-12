@@ -1074,3 +1074,55 @@ D 工具面冻结计数陈旧（166 vs 161、142 vs 141）· E 其余冻结节�
    **git 把后半句当 pathspec** ⇒ 提交失败而人以为成功（这次靠 `git log` 复核才发现）。**提交后必须复核 `git log --oneline -1`**。
 2. ★ **`git add <显式路径>` 生效**（§31.4 的新纪律第一次执行）：`git show --stat` 确认**只含那一个文件**，
    层 2 的 **50 个活文件仍在工作树**、未被误提交。
+
+---
+
+## §34 `Shell` 装配冒烟入仓（`8f1d5747`）+ ★★ 两条门禁设计发现
+
+### 34.1 交付
+`simos-app/src/test/java/io/mosire/simos/app/ShellAssemblySmokeTest.java` —— **161 行改成 164**、**裸 `@Test`**、
+类名以 `Test` 结尾 ⇒ **落在 surefire 默认 include，常规 `test` 阶段必跑、无 skip**。
+`@TempDir` store · 端口全 `0`（OS 随机，**不占 5711/5715/5713**）· `try (Shell shell = Shell.start(config))` 覆盖 `close()`。
+**断言**：`registeredModuleCount==8` · 两个 boundPort > 0 · `ToolRoleAudit` 自审不抛 · `simos.sd.reports` **两桶都在** ·
+**6 条 GM-only 读口（`map.path`/`map.block`/`map.overlaps`/`sd.decision-makers`/`sd.directives`/`economy.ownership`）GM=true ∧ DM=false**
+（★ 这是**防"为了修绿而放宽"的锚点**）· GM 桶 `hasSize(161)` · DM 桶 `hasSize(43)` · 两桶无重名 ·
+`close()` 后库文件在位且 store 已清。
+**速度**：用例本体 **0.78–0.81 s**；聚焦整条命令 6.3–7.9 s（含 test-compile + 前端门禁 412/412）。
+
+### 34.2 ★★ 变异自证三步（全走通）
+| 步 | 结果 |
+|---|---|
+| ① 绿基线 | `RC=0 / Tests run: 1, Failures: 0, Errors: 0` |
+| ② **改坏**（`roles()` → `{GM}`，**不动注册面**） | **`MUTANT_RC=1 / Errors: 1`**，异常文本**逐字** = 「工具面装配故障：`simos.sd.reports` 声明 `[GM]`（不含 DM），却注册在 DM 桶里」；栈 `ToolRoleAudit.requireFace:66` → `SimosToolSource:568` → `:361` → `Shell.start:1131` → `:489` → **本用例:91** |
+| ③ 还原 | 源文件 md5 `2d38d3ee…` **逐字节一致** + 重跑 **RC=0 绿**；`git diff -- '*/src/main/*'` **为空**；`~/.m2` 的 `simos-ga` jar md5 逐字节还原；`javap` 复核 `roles()` = `{DM, GM}` |
+
+★ **代理修正控制方判据**：**真跑到的第一道防线**是 `SimosToolSource:568` 的**单桶** `requireFace`（**建桶时**），
+`Shell:1194` 的**双桶** `requireFaces` 是**第二道**；javadoc 已改成与实测一致，**两者本用例都会走到**。
+
+### 34.3 ★★★ 门禁设计发现 #1：`-pl <module>` 验的是 **`~/.m2` 的上游 jar**，不是工作树
+**代理实测**：把 mutant 放进 `simos-ga/src/main` 后直接跑 `-pl simos-app -Dtest=…` ⇒ **它是绿的**（看不到改坏）。
+**根因**：`-pl simos-app` 从 `~/.m2` 解析上游 SNAPSHOT 依赖，**不重编工作树的上游 `src/main`**。
+⇒ ★★ **若上游 `src/main` 有未 `install` 的改动，`-pl <module> test` 验的是旧字节码。**
+★★ **这条动摇了本轮部分证据的基础**：架构轮里我跑的**所有聚焦护栏**（`-pl simos-ga -Dtest=GaRoundTripTest`、
+`-pl simos-gov -Dtest=GovRoundTripTest` …）**都会从 `~/.m2` 取上游 jar** —— 因此
+**只要某批改了「被护栏所在模块依赖的上游模块」的 `src/main`，那道护栏验的就是旧字节码**（例：某批改 `simos-util` 的
+`DmUsableCommand` 而护栏在 `simos-ga`）。**这不是说护栏结论都错**（同批改动多在被测模块内、且各自模块的
+`compile` 门禁覆盖了它），而是说**"护栏绿"这一条证据的强度被我高估了**。
+★★ **纪律（写死）**：**凡"聚焦跑某模块的测试"，必须让上游来自工作树** —— 二选一：
+① 加 **`-am`**（反应堆带上上游）；② 先 **`-pl <上游> install`** 再聚焦跑。
+★ **并在报告里写明用的是哪一种**（否则读者无法判断验的是哪个字节码）。
+★ 已记：`-am` 在**并发写盘期**会红（被半成品尾巴挡住，属 §一.2），故**取全量/带 `-am` 的基线必须等窗口空出来**。
+
+### 34.4 门禁设计发现 #2：代理的一次**有意偏离**（正确且已披露）
+为让变异在**并发环境下**成立，它**手工持 `tools/mvn-lock.sh` 的同一把锁**（`mkdir .mvn-lock.d` + 写自己的 pid），
+窗口期用 `./mvnw` 跑那一次、并把 `~/.m2` 的 jar 换入/逐字节换回 ⇒ **并发 Agent 一定排队、绝不会读到 mutant**。
+★ **这是对"Maven 走 `tools/mvn-lock.sh`"的唯一一次偏离，已主动披露并给了 md5 证据** ⇒ 处置**正确**。
+★ 另：`spotless:apply` 它用 **`-DspotlessFiles='.*ShellAssemblySmokeTest\.java'`** 限定成**只格式化自己那一个文件**，
+**没有顺手重排并发 Agent 的文件** —— 这是本仓"一个文件一个 owner"的正确执行形态，**值得后续照抄**。
+
+### 34.5 代理自述「证明 / 没证明」
+**证明**：组合根真的构造得出来（含两道自审）· 两桶 ⇔ `roles()` 逐条一致且**改坏时本用例当场红并精确指向该缺陷** ·
+8 codec 全注册 · 三端口真绑 · `close()` 真收尾 · 防放宽锚点在位。
+**没证明**：★★ **装配链走通 ≠ GUI 业务面可用** —— 不建世界、不跑 tick、不发 HTTP、不跑决策人 ⇒
+对 `api.js` 那类**前端**缺陷、`/api/*` 路由、世界生成、命令提交、决策运行流**零覆盖**，
+也**发现不了"装配成功但算错"**的缺陷。★ 第二个真缺陷（`window.SimosaApi` 不发布）它**同样拦不住** —— **那需要前端门禁**。
