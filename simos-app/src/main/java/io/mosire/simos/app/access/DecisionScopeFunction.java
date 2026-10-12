@@ -11,8 +11,8 @@ import java.util.Collection;
  *
  * <p>★ **是函数，不是配置**（用户裁定）：不缓存、不落盘、不写进 revision —— **每次调用现算**， 世界状态变则范围变（军队移动 ⇒ 可见格随之变化，判据 J4）。
  *
- * <p>★ **分派按 {@code Affiliation} 的运行时类型**（见 {@link DecisionScopeFunctions}），
- * 故实现类只负责一种归属；调用方拿到的永远是"世界当前状态下的"范围。
+ * <p>★ **分派按归属种类名（kind 字符串）**（见 {@link DecisionScopeFunctions}；乙收尾前按 {@code Affiliation} 的运行时类型），
+ * 故实现类只负责一种归属；调用方拿到的永远是"世界当前状态下的"范围。★ 每个种类的名字由**持有该归属的模块**自报 （{@code NationAffiliations.KIND} 等）。
  */
 @FunctionalInterface
 public interface DecisionScopeFunction {

@@ -551,20 +551,24 @@ public final class AdjudicateTickTool implements SimosTool {
     if (maker == null) {
       return Optional.of("决策人不存在: " + directive.decisionMakerId().value());
     }
-    if (!(maker.affiliation() instanceof io.mosire.simos.sd.model.Affiliation.Gov gov)) {
+    // ★★ 乙收尾：归属归 gov 自己的表（写口 = gov.AssignDecisionMakerGov）⇒ 问 app 的读口，不再读决策人字段。
+    io.mosire.simos.unit.UnitId govUnit =
+        io.mosire.simos.app.access.AppGovAffiliations.govUnitOf(maker.id(), state).orElse(null);
+    if (govUnit == null) {
       return Optional.of(
           "只有 GOV 归属的决策人可上缴国库（调用者 "
               + directive.decisionMakerId().value()
               + " 归属: "
-              + maker.affiliation()
+              + io.mosire.simos.app.access.AppDecisionMakerAffiliations.affiliationTextOf(
+                  maker.id(), state)
               + "）");
     }
     UnitState units = ToolSupport.unitState(state);
-    Unit fromUnit = units.units().get(gov.govUnit());
+    Unit fromUnit = units.units().get(govUnit);
     if (fromUnit == null
         || !(fromUnit.module().orElse(null)
             instanceof GovernmentFormation fromGovernmentFormation)) {
-      return Optional.of("出令决策人所属 GOV 单位不存在或不是 GOV: " + gov.govUnit().value());
+      return Optional.of("出令决策人所属 GOV 单位不存在或不是 GOV: " + govUnit.value());
     }
     UnitId superiorId = fromGovernmentFormation.superiorGov().orElse(null);
     if (superiorId == null) {

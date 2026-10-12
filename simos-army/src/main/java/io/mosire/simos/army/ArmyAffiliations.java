@@ -11,15 +11,14 @@ import java.util.Optional;
  * ★★ <b>army 归属表</b>（用户 2026-10-12 裁定「<b>归属肯定归模块</b>」＋「<b>战斗模块，包括阶段之类的，归 Army 模块管</b>」）： {@code 决策人
  * → 军队} 这张表的 <b>唯一形态与唯一裁定点</b>。
  *
- * <p>★★ <b>它在本批（3d-1）里的角色 —— 裁定方，不是写入方（如实记，与 3c 的 {@code NationAffiliations} 逐条同构）</b>：本批的红线是
- * <b>命令目录恒 143</b>（只改 2 条命令的名字，不新增命令类型），而 {@code CommandBus} 的<b>一条命令只写一个命名空间</b>（见规划
- * §16.1）：绑定决策人与军队的那条既有路径是 {@code ga.CreateDecisionMaker} 的 {@code affiliation} 载荷 ⇒ 它<b>只能</b>落
- * {@code ga}。⇒ 本批把<b>权威搬过来</b>（下一条），而"army 自己写这张表"要等乙第 4 步的 {@code army.Assign*DecisionMaker} 命令（规划
- * §18.2 第 4 步，属批次 5）。<b>不新增命令是本批的硬判据</b>，故不在这里造一个"没人能写"的表。
+ * <p>★★★ <b>乙收尾（本批）起它是"写入方"</b>（3d-1 时只是裁定方 —— 那张表的写口当时仍挂在 {@code ga.CreateDecisionMaker} 的 {@code
+ * affiliation} 载荷上，见规划 §18.2 的 D1 偏离）：表本体住 {@link ArmyData#armyAffiliations()}，<b>写口 = {@code
+ * army.AssignDecisionMakerArmy}</b>（用户原话「<b>同样搞工单</b>」）。★ 这也正是 3d-1 台账 §D.2 记下的那条 「乙第 4 步在 army 自己的
+ * {@code army.Assign*DecisionMaker} 命令里把存在性校验补回」——本批兑现。
  *
- * <p>★★ <b>权威在哪（本批就成立）</b>：{@link ArmyData#armies()} 是"这个军队存在吗"的<b>唯一</b>权威。决策人记录里那份军队归属只剩一个
- * <b>不透明引用</b>（{@code Affiliation.Army(String)}，sd 侧不认识 {@link ArmyId}）⇒ <b>解释它、并裁定它是否成立的地方是这里</b>：
- * 引用解析不出 {@link ArmyId}、或解析出的军队不在 {@code armies} 里 ⇒ 该决策人 <b>没有军队归属</b>（{@link #armyOf} 返回空）。
+ * <p>★★ <b>权威在哪</b>：{@link ArmyData#armies()} 是"这个军队存在吗"的<b>唯一</b>权威。归属表里的值已经是 {@link ArmyId}
+ * （写入方在命令期已具名拒过不存在的军队）⇒ 本类的裁定只剩"那个军队后来还在不在"这一条：不在 {@code armies} 里 ⇒ 该决策人 <b>没有军队归属</b>（{@link
+ * #armyOf} 返回空）。
  *
  * <p>★★★ <b>"读不到归属 ⇒ deny-all" 的落点</b>：调用方（app 的 {@code ArmyScope}）拿到空 ⇒ <b>四个命名空间全部 {@code
  * ResourceScope.none()}</b>，<b>不抛、不回落、不给全量</b>——世界数据的问题只降权、不报错（与 {@code NationScope} / {@code
@@ -33,6 +32,12 @@ import java.util.Optional;
  * 的"是函数不是配置"同一条口径）。
  */
 public record ArmyAffiliations(Map<DecisionMakerId, ArmyId> byDecisionMaker) {
+
+  /**
+   * ★ <b>本种类的名字</b>（<b>模块自报</b>）：范围函数注册表（{@code DecisionScopeFunctions}）与归属标签 （{@code
+   * kind:ref}）都以它为准 —— 新增一个模块时，这个名字只在<b>它自己的模块里</b>拼写一次。
+   */
+  public static final String KIND = "army";
 
   public ArmyAffiliations {
     if (byDecisionMaker == null) {
@@ -54,27 +59,21 @@ public record ArmyAffiliations(Map<DecisionMakerId, ArmyId> byDecisionMaker) {
   }
 
   /**
-   * ★ <b>唯一的建表入口</b>：把"决策人自报的不透明引用"按 {@code armies} 裁成成立的那部分。
+   * ★ <b>唯一的建表入口</b>：把状态里那张归属表按 {@code armies} 裁成成立的那部分。
    *
-   * @param claims 决策人 → 不透明军队引用（原文；来自 {@link io.mosire.simos.army.spi.ArmyAffiliationPort} 的端口实现）
+   * @param table {@code ArmyData.armyAffiliations()}（写入方 = {@code army.AssignDecisionMakerArmy}）
    * @param armies {@code ArmyData.armies()}——"这个军队存在吗"的权威
    */
   public static ArmyAffiliations resolve(
-      Map<DecisionMakerId, String> claims, Map<ArmyId, Army> armies) {
-    Objects.requireNonNull(claims, "claims");
+      Map<DecisionMakerId, ArmyId> table, Map<ArmyId, Army> armies) {
+    Objects.requireNonNull(table, "table");
     Objects.requireNonNull(armies, "armies");
     Map<DecisionMakerId, ArmyId> resolved = new LinkedHashMap<>();
-    for (Map.Entry<DecisionMakerId, String> entry : claims.entrySet()) {
+    for (Map.Entry<DecisionMakerId, ArmyId> entry : table.entrySet()) {
       DecisionMakerId decisionMaker = entry.getKey();
-      String claim = entry.getValue();
-      if (decisionMaker == null || claim == null || claim.isBlank()) {
+      ArmyId armyId = entry.getValue();
+      if (decisionMaker == null || armyId == null) {
         continue; // 形状坏的引用：不是"归属",是坏数据 ⇒ 丢弃（fail-closed）
-      }
-      ArmyId armyId;
-      try {
-        armyId = ArmyId.parse(claim);
-      } catch (IllegalArgumentException e) {
-        continue; // 同上：解释不了 ⇒ 没有归属
       }
       if (!armies.containsKey(armyId)) {
         continue; // ★ 权威裁定：army 不认识这个军队 ⇒ 这个决策人没有军队归属
@@ -88,5 +87,23 @@ public record ArmyAffiliations(Map<DecisionMakerId, ArmyId> byDecisionMaker) {
   public Optional<ArmyId> armyOf(DecisionMakerId decisionMaker) {
     Objects.requireNonNull(decisionMaker, "decisionMaker");
     return Optional.ofNullable(byDecisionMaker.get(decisionMaker));
+  }
+
+  /**
+   * ★ <b>本种类的一条归属"长什么样"</b>（给人看的那句话）——由<b>本模块</b>渲染，调用方（app / 提示语）不得自己拼。
+   *
+   * <p>★★ <b>逐字保留收窄前的渲染</b>：用户可见文本（决策人开场提示语）此前嵌的是 {@code Affiliation.Army(String)} 那一支的原文（{@code
+   * "军队（armyId=a1）"}），换一份渲染就会改掉对外文本。
+   */
+  public static String describe(String ref) {
+    return "军队（armyId=" + ref + "）";
+  }
+
+  /**
+   * ★ <b>收窄前 {@code Affiliation.Army} 的 {@code toString()} 原文</b>（工具拒因里嵌的就是它）：调用方需要"归属类型文本"
+   * 时用它，不自己拼第二份。
+   */
+  public static String affiliationText(String ref) {
+    return "Army[armyId=" + ref + "]";
   }
 }

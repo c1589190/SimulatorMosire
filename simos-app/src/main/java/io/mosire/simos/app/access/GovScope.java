@@ -7,10 +7,10 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -24,9 +24,10 @@ import java.util.TreeSet;
 /**
  * **政府决策人**的可见范围（阶段 10a，用户裁定 4：<b>直辖</b>）。
  *
- * <p>链路：{@code Affiliation.Gov(govUnitId)} → unit 切片里那个单位（<b>必须存在且带 {@link GovernmentFormation}，否则
- * deny-all 四命名空间</b>，照 {@code ArmyScope} 的 fail-closed）→ 本级 {@code Unit.jurisdiction} 的 Region 集合 ⇒
- * 这些 Region 的<b>逐格</b> hex 前缀 + Region 级前缀 + 自己所在格。
+ * <p>链路（乙收尾起：表本体与写口都在 gov）：{@code GovState.govAffiliations()}（决策人 → GOV 单位；写口 = {@code
+ * gov.AssignDecisionMakerGov}）→ unit 切片里那个单位（<b>必须存在且带 {@link GovernmentFormation}，否则 deny-all
+ * 四命名空间</b>，照 {@code ArmyScope} 的 fail-closed）→ 本级 {@code Unit.jurisdiction} 的 Region 集合 ⇒ 这些
+ * Region 的<b>逐格</b> hex 前缀 + Region 级前缀 + 自己所在格。
  *
  * <p>★★ <b>这里只算"直辖"</b>：中央决策人读不到省的数据，除非中央自己的 {@code jurisdiction} 里就有那个 Region（or 用 {@code
  * ga.IssueDirective} 的审批链）。<b>名义全境</b>（沿 {@code superiorGov} 聚合下级 GOV 的管辖）在 {@link
@@ -74,16 +75,13 @@ public final class GovScope implements DecisionScopeFunction {
     Objects.requireNonNull(dm, "dm");
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(mapId, "mapId");
-    if (!(dm.affiliation() instanceof Affiliation.Gov gov)) {
-      throw new IllegalArgumentException(
-          "GovScope 只服务 Affiliation.Gov，收到 "
-              + dm.affiliation().getClass().getName()
-              + "（分派由 DecisionScopeFunctions 负责）");
-    }
+    // ★★ 2026-10-12 乙收尾：分派由 DecisionScopeFunctions 按**归属种类名**做（决策人身上不再带 Affiliation）——
+    //   归属从 gov 自己的表来（写口 = gov.AssignDecisionMakerGov），单位被删 / 被摘编制 ⇒ 那一行被裁掉 ⇒ deny-all。
     // ★ 装配故障（缺 unit 切片）当场炸；"单位不存在 / 不是 GOV"是世界数据的问题 ⇒ deny-all，不抛。
     UnitState units = ToolSupport.unitState(state);
-    Unit govUnit = units.units().get(gov.govUnit());
-    if (govUnit == null || !(govUnit.module().orElse(null) instanceof GovernmentFormation)) {
+    UnitId govUnitId = AppGovAffiliations.govUnitOf(dm.id(), state).orElse(null);
+    Unit govUnit = govUnitId == null ? null : units.units().get(govUnitId);
+    if (!AppGovAffiliations.isGovUnit(govUnit)) {
       return denyAll();
     }
 

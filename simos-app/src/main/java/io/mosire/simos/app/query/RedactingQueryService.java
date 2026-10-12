@@ -2,6 +2,7 @@ package io.mosire.simos.app.query;
 
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.docs.DecisionDoc;
@@ -15,7 +16,6 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DisclosurePolicy;
 import io.mosire.simos.sd.model.SdInfoEntry;
@@ -375,9 +375,13 @@ public final class RedactingQueryService {
       DecisionMakerId actor, QueryTarget target, DecisionResultWindow window) {
     Objects.requireNonNull(actor, "actor");
     Objects.requireNonNull(window, "window");
+    SimulationState state = query.stateAt(target);
     GaState sd = gaState(target);
     DecisionMaker maker = sd.decisionMakers().get(actor);
-    Affiliation affiliation = maker == null ? null : maker.affiliation();
+    // ★★ 乙收尾：调用者的受众标签由各模块自报的归属现拼（唯一拼装点）；解不出决策人 / 没有归属 ⇒ 空集
+    //   （那一轴不参与 —— 与"不知道你是谁"绝不读成"按归属放行"同一条纪律）。
+    Set<String> actorLabels =
+        maker == null ? Set.of() : AppDecisionMakerAffiliations.labelsOf(actor, state);
     List<MatchedDoc> matched = new ArrayList<>();
     for (Map.Entry<String, List<SdInfoEntry>> at : sd.info().entrySet()) {
       Optional<String> docId = DecisionDoc.docIdOf(at.getKey());
@@ -385,7 +389,7 @@ public final class RedactingQueryService {
         continue;
       }
       for (SdInfoEntry entry : at.getValue()) {
-        if (visible(entry, actor, affiliation) && inWindow(entry.tick(), window)) {
+        if (visible(entry, actor, actorLabels) && inWindow(entry.tick(), window)) {
           matched.add(new MatchedDoc(docId.get(), entry));
         }
       }
@@ -417,13 +421,24 @@ public final class RedactingQueryService {
     return entry.tags().contains(actor);
   }
 
-  /** 两轴并集判可见（{@code affiliations} 那一支在解不出 actor 的归属时**不参与**，见 {@link #docs} 的类注）。 */
+  /**
+   * 两轴并集判可见（{@code affiliations} 那一支在解不出 actor 的归属时**不参与**，见 {@link #docs} 的类注）。
+   *
+   * <p>★★ 2026-10-12 乙收尾：第二轴从"{@code Set<Affiliation>} 的成员判定"改成"**不透明受众标签集**的交集判定" （{@code
+   * entry.affiliations()} 与 {@code actorLabels} 都是 {@code kind:ref} 串）——判据仍然只此一处，但**不再需要认识任何
+   * 归属种类**（标签由写入方自报、由各模块的归属现拼）。
+   */
   private static boolean visible(
-      SdInfoEntry entry, DecisionMakerId actor, Affiliation affiliation) {
+      SdInfoEntry entry, DecisionMakerId actor, Set<String> actorLabels) {
     if (taggedFor(entry, actor)) {
       return true;
     }
-    return affiliation != null && entry.affiliations().contains(affiliation);
+    for (String label : actorLabels) {
+      if (entry.affiliations().contains(label)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -437,14 +452,15 @@ public final class RedactingQueryService {
    *
    * @param entry 条目；不得为 null
    * @param actor 调用者决策人；不得为 null
-   * @param affiliation 调用者的归属；解不出（决策人已删/身份与状态不同源）⇒ null（该轴不参与）
+   * @param affiliationLabels 调用者的**不透明受众标签集**（各模块自报的归属现拼；空集 ⇒ 该轴不参与）
    * @param sender 报告 {@code value.from}（解析不出 ⇒ null，该轴不参与）
    */
   public static boolean reportVisibleToDecisionMaker(
-      SdInfoEntry entry, DecisionMakerId actor, Affiliation affiliation, String sender) {
+      SdInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, String sender) {
     Objects.requireNonNull(entry, "entry");
     Objects.requireNonNull(actor, "actor");
-    if (visible(entry, actor, affiliation)) {
+    Objects.requireNonNull(affiliationLabels, "affiliationLabels");
+    if (visible(entry, actor, affiliationLabels)) {
       return true;
     }
     return sender != null && actor.value().equals(sender);
@@ -458,7 +474,8 @@ public final class RedactingQueryService {
     view.put("id", entry.id().value());
     view.put("tick", entry.tick());
     view.put("tags", entry.tags().stream().map(DecisionMakerId::value).sorted().toList());
-    view.put("affiliations", affiliationViews(entry.affiliations()));
+    // ★★ 乙收尾：affiliations 是**不透明受众标签串**（写入方自报）⇒ 视图原样成列（按字典序，字节可复现）。
+    view.put("affiliations", entry.affiliations().stream().sorted().toList());
     view.put("key", entry.key());
     view.put("value", entry.value());
     entry.note().ifPresent(note -> view.put("note", note));
@@ -467,33 +484,6 @@ public final class RedactingQueryService {
     at.put("revision", entry.at().value());
     view.put("at", at);
     return view;
-  }
-
-  /** 归属视图：{@code {kind, id}}，按 {@code kind:id} 升序（响应字节可复现）。 */
-  private static List<Map<String, Object>> affiliationViews(Set<Affiliation> affiliations) {
-    List<Map<String, Object>> out = new ArrayList<>();
-    for (Affiliation affiliation : affiliations) {
-      Map<String, Object> view = new LinkedHashMap<>();
-      switch (affiliation) {
-        case Affiliation.Nation nation -> {
-          view.put("kind", "nation");
-          view.put("id", nation.nationId());
-        }
-        case Affiliation.Army army -> {
-          view.put("kind", "army");
-          view.put("id", army.armyId());
-        }
-        case Affiliation.Gov gov -> {
-          view.put("kind", "gov");
-          view.put("id", gov.govUnit().value());
-        }
-      }
-      out.add(view);
-    }
-    out.sort(
-        Comparator.comparing(
-            view -> String.valueOf(view.get("kind")) + ":" + String.valueOf(view.get("id"))));
-    return List.copyOf(out);
   }
 
   /** tick 是否落在窗口内（{@code tick} 优先，其次闭区间；两者都空 = 不按 tick 筛，仅受 {@code limit} 约束）。 */

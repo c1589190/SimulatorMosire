@@ -55,6 +55,7 @@ public final class GovLog {
   public static final String COMMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".command";
   public static final String NATION_LOGGER_NAME = ROOT_LOGGER_NAME + ".nation";
   public static final String DIPLOMACY_LOGGER_NAME = ROOT_LOGGER_NAME + ".diplomacy";
+  public static final String AFFILIATION_LOGGER_NAME = ROOT_LOGGER_NAME + ".affiliation";
   public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger DAILY = LoggerFactory.getLogger(DAILY_LOGGER_NAME);
@@ -63,6 +64,7 @@ public final class GovLog {
   private static final Logger COMMAND = LoggerFactory.getLogger(COMMAND_LOGGER_NAME);
   private static final Logger NATION = LoggerFactory.getLogger(NATION_LOGGER_NAME);
   private static final Logger DIPLOMACY = LoggerFactory.getLogger(DIPLOMACY_LOGGER_NAME);
+  private static final Logger AFFILIATION = LoggerFactory.getLogger(AFFILIATION_LOGGER_NAME);
   private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
@@ -108,6 +110,14 @@ public final class GovLog {
   }
 
   /** GovCodec 编解码与变更集施加。 */
+  /**
+   * 归属表的写入命令面（{@code gov.AssignDecisionMakerNation} / {@code
+   * gov.AssignDecisionMakerGov}）——2026-10-12 乙收尾 新增，与 {@link #nation()} 并列（国家生命周期 vs 归属关系）。
+   */
+  public static Logger affiliation() {
+    return AFFILIATION;
+  }
+
   public static Logger codec() {
     return CODEC;
   }

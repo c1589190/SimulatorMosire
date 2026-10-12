@@ -16,7 +16,6 @@ import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.decision.DecisionToolCaller;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
@@ -379,8 +378,9 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
     //   （{@code AppNationAffiliations}：解释引用 + 查 nations）。**读不到归属 ⇒ 空**——与 NationScope 的 deny-all
     // 同一口径
     //   （视图不给派生信息，而不是给一份"看起来有归属"的假读数）。
+    // ★★ 2026-10-12 乙收尾：归属不再挂在决策人身上（读 gov 自己的归属表，见 AppNationAffiliations）——
+    //   没有 nation 归属（军队 / GOV / 裸决策人）⇒ 空，与 NationScope 的 deny-all 同一口径。
     return decisionMakerOf(context, state)
-        .filter(maker -> maker.affiliation() instanceof Affiliation.Nation)
         .flatMap(maker -> AppNationAffiliations.nationOf(maker.id(), state));
   }
 

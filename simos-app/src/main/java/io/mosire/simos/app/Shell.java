@@ -30,7 +30,7 @@ import io.mosire.simos.actor.spi.DeductHouseholdStockHandler;
 import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
 import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.actor.spi.TransferAccountsHandler;
-import io.mosire.simos.app.access.AppNationAffiliations;
+import io.mosire.simos.app.access.AppDecisionMakerExistence;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.LoggingApprovalChannel;
 import io.mosire.simos.app.decision.DecisionAgentService;
@@ -55,6 +55,7 @@ import io.mosire.simos.app.world.GovJurisdictionGuard;
 import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.army.resolve.ArmyResolver;
 import io.mosire.simos.army.spi.AppendCombatStageHandler;
+import io.mosire.simos.army.spi.AssignDecisionMakerArmyHandler;
 import io.mosire.simos.army.spi.CreateArmyHandler;
 import io.mosire.simos.army.spi.RecordCombatHandler;
 import io.mosire.simos.army.spi.ResolveCombatStageHandler;
@@ -135,6 +136,8 @@ import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.ToolRoleAudit;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.gov.guard.RegionDeleteGuard;
+import io.mosire.simos.gov.spi.AssignDecisionMakerGovHandler;
+import io.mosire.simos.gov.spi.AssignDecisionMakerNationHandler;
 import io.mosire.simos.gov.spi.CreateNationHandler;
 import io.mosire.simos.gov.spi.DeleteNationHandler;
 import io.mosire.simos.gov.spi.RecordDiplomaticEventHandler;
@@ -845,7 +848,13 @@ public final class Shell implements AutoCloseable {
                 //   map nation tag），显式 clearDiplomaticReferences=true 才连关系与外交事件一起清。GM-only。──
                 // ★★ 2026-10-12 批次 3c：gov.DeleteNation 的"仍有决策人挂在这个国家上"守卫改问 gov 自己的窄口
                 //   （端口在 gov、实现在 app：判据要同时看 ga 的决策人与 gov 的 nations，只有组合根看得见两片）。
-                new DeleteNationHandler(AppNationAffiliations.INSTANCE),
+                new DeleteNationHandler(),
+                // ── ★★ 2026-10-12 乙收尾：归属的**写入工单**（用户原话「归属肯定归模块啊」＋「同样搞工单」）。
+                //   gov 的两条覆盖它持有的两张表：nationAffiliations（决策人 → 国家）与 govAffiliations（决策人 → GOV 单位）。
+                //   ★ 三条赋权命令**都不打** DmUsableCommand ⇒ 只进 catalog 与 GM 提交面，不进可嵌令 / 可入队 / 声明面
+                //     （赋权是行政动作）。★ 决策人存在性走 ga-spi 端口（决策人表住 ga，gov/army 都看不见）。──
+                new AssignDecisionMakerNationHandler(AppDecisionMakerExistence.INSTANCE),
+                new AssignDecisionMakerGovHandler(AppDecisionMakerExistence.INSTANCE),
                 new CreateDecisionMakerHandler(),
                 // ── P1b2（2026-10-01）：GM-only 决策人身份删除（只删 decisionMakers 的一条；不级联历史 Directive /
                 //   文档 / 会话）。不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM
@@ -883,6 +892,8 @@ public final class Shell implements AutoCloseable {
                 //   GM 直接提交与 GM 窄工具照常可用。★ 改名是硬约束：类型前缀决定变更集施加到哪个命名空间的 codec。
                 new CreateArmyHandler(),
                 new SetArmyMasterGovHandler(),
+                // ── ★★ 2026-10-12 乙收尾：army 的归属写入工单（决策人 → 军队）。同 gov 两条：GM-only、走同一端口判决策人存在性。──
+                new AssignDecisionMakerArmyHandler(AppDecisionMakerExistence.INSTANCE),
                 // ★★ D1（2026-10-02 / D-012）：army 切片的第一条命令（写一条单 tick 单场交战记录）。★ 不
                 //   打 DmUsableCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交与 GM 窄工具照常可用。
                 new RecordCombatHandler(),

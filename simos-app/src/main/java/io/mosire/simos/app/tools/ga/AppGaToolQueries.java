@@ -1,5 +1,6 @@
 package io.mosire.simos.app.tools.ga;
 
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.gui.ApiViews;
@@ -8,7 +9,6 @@ import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.query.RedactingQueryService;
 import io.mosire.simos.app.query.SdQueryService;
 import io.mosire.simos.ga.tools.GaToolQueries;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.util.spi.DecisionMakerId;
@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ <b>{@link GaToolQueries} 的 app 实现</b>（2026-10-12 B3 第七域）：把"决策人 / 令 / 判决 / 决策结果 / 文档 / 上报"
@@ -118,8 +119,14 @@ public final class AppGaToolQueries implements GaToolQueries {
 
   @Override
   public boolean reportVisibleToDecisionMaker(
-      SdInfoEntry entry, DecisionMakerId actor, Affiliation affiliation, String sender) {
-    return RedactingQueryService.reportVisibleToDecisionMaker(entry, actor, affiliation, sender);
+      SdInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, String sender) {
+    return RedactingQueryService.reportVisibleToDecisionMaker(
+        entry, actor, affiliationLabels, sender);
+  }
+
+  @Override
+  public Set<String> affiliationLabelsOf(DecisionMakerId decisionMaker, SimulationState state) {
+    return AppDecisionMakerAffiliations.labelsOf(decisionMaker, state);
   }
 
   @Override

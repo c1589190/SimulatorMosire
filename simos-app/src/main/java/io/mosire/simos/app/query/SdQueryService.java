@@ -1,15 +1,18 @@
 package io.mosire.simos.app.query;
 
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyAffiliations;
 import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.ga.GaState;
+import io.mosire.simos.gov.GovAffiliations;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.nation.Nation;
+import io.mosire.simos.gov.nation.NationAffiliations;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.sd.id.DirectiveId;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.SdInfoEntry;
@@ -60,8 +63,9 @@ public final class SdQueryService {
   /**
    * 归属过滤（spec §六.1 的 {@code ?affiliation=nation:<id>|army:<id>|gov:<unitId>}）。
    *
-   * <p>★ {@code gov} 是阶段 10a 新增：过滤的是 {@code Affiliation.Gov(govUnit)}（实际行政部门），与 {@code
-   * Affiliation.Nation}（政治实体）是两条并存的归属轴（用户裁定 5/7）。
+   * <p>★ {@code gov} 是阶段 10a 新增：过滤的是"决策人 → GOV 单位"那条归属轴（实际行政部门），与"决策人 → 国家"（政治实体） 是两条并存的归属轴（用户裁定
+   * 5/7）。★ 乙收尾后归属表住各模块自己的状态（{@code GovState.nationAffiliations} / {@code GovState.govAffiliations}
+   * / {@code ArmyData.armyAffiliations}），过滤词表仍是本类自己的 GUI 词表。
    */
   public sealed interface AffiliationFilter {
 
@@ -115,15 +119,18 @@ public final class SdQueryService {
     Objects.requireNonNull(filter, "filter");
     SimulationState state = query.stateAt(target);
     GaState ga = gaState(state);
-    GovState govState = govOf(state);
+    // ★★ 乙收尾：归属不再挂在决策人身上 ⇒ 先拼一次"决策人 → 归属"的索引（唯一拼装点 =
+    //   AppDecisionMakerAffiliations，各模块自报），再按它筛。
+    Map<DecisionMakerId, List<AppDecisionMakerAffiliations.Claim>> affiliations =
+        AppDecisionMakerAffiliations.indexOf(state);
     List<DecisionMaker> makers = new ArrayList<>();
     for (DecisionMaker maker : ga.decisionMakers().values()) {
-      if (matches(maker.affiliation(), filter)) {
+      if (matches(affiliations.getOrDefault(maker.id(), List.of()), filter)) {
         makers.add(maker);
       }
     }
     makers.sort(Comparator.comparing(maker -> maker.id().value()));
-    return infos(makers, govState, state, tickOf(state));
+    return infos(makers, affiliations, state, tickOf(state));
   }
 
   /**
@@ -216,82 +223,106 @@ public final class SdQueryService {
   public Optional<DecisionMakerInfo> decisionMaker(DecisionMakerId id, QueryTarget target) {
     Objects.requireNonNull(id, "id");
     SimulationState state = query.stateAt(target);
-    GovState govState = govOf(state);
     DecisionMaker maker = gaState(state).decisionMakers().get(id);
     return maker == null
         ? Optional.empty()
-        : Optional.of(info(maker, govState, state, tickOf(state)));
+        : Optional.of(
+            info(maker, AppDecisionMakerAffiliations.claimsOf(id, state), state, tickOf(state)));
   }
 
-  private static boolean matches(Affiliation affiliation, AffiliationFilter filter) {
+  /**
+   * 该决策人的归属里有没有 filter 要的那一条。
+   *
+   * <p>★★ 2026-10-12 乙收尾：判据从"看 {@code Affiliation} 的密封分支"改成"比**受众标签**"（{@code kind:ref}）——标签是
+   * 各模块自报的串（唯一拼写点 {@code AppDecisionMakerAffiliations.label}），过滤词表（{@code
+   * ?affiliation=nation:…}）与它同源。★ 过滤词的 kind 仍是 app 的 GUI 词表（{@code SdQueryService.parseFilter}），
+   * 与"归属有几种"无关。
+   */
+  private static boolean matches(
+      List<AppDecisionMakerAffiliations.Claim> claims, AffiliationFilter filter) {
     return switch (filter) {
       case AffiliationFilter.All ignored -> true;
-      // ★ 2026-10-12 批次 3c：Nation 支的载荷是不透明串（NationId 已搬 gov）⇒ 逐字比较原文，不做存在性查询。
       case AffiliationFilter.OfNation nation ->
-          affiliation instanceof Affiliation.Nation n
-              && n.nationId().equals(nation.nationId().value());
+          hasLabel(claims, NationAffiliations.KIND, nation.nationId().value());
       case AffiliationFilter.OfArmy army ->
-          affiliation instanceof Affiliation.Army a && a.armyId().equals(army.armyId().value());
+          hasLabel(claims, ArmyAffiliations.KIND, army.armyId().value());
       case AffiliationFilter.OfGov gov ->
-          affiliation instanceof Affiliation.Gov g && g.govUnit().equals(gov.govUnit());
+          hasLabel(claims, GovAffiliations.KIND, gov.govUnit().value());
     };
   }
 
+  private static boolean hasLabel(
+      List<AppDecisionMakerAffiliations.Claim> claims, String kind, String ref) {
+    String label = AppDecisionMakerAffiliations.label(kind, ref);
+    for (AppDecisionMakerAffiliations.Claim claim : claims) {
+      if (label.equals(claim.label())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private static List<DecisionMakerInfo> infos(
-      List<DecisionMaker> makers, GovState govState, SimulationState state, long tick) {
+      List<DecisionMaker> makers,
+      Map<DecisionMakerId, List<AppDecisionMakerAffiliations.Claim>> affiliations,
+      SimulationState state,
+      long tick) {
     List<DecisionMakerInfo> out = new ArrayList<>(makers.size());
     for (DecisionMaker maker : makers) {
-      out.add(info(maker, govState, state, tick));
+      out.add(info(maker, affiliations.getOrDefault(maker.id(), List.of()), state, tick));
     }
     return List.copyOf(out);
   }
 
+  /**
+   * 决策人视图的领域侧投影（乙收尾改造：归属来自 {@code AppDecisionMakerAffiliations} 的索引，不再读 {@code
+   * maker.affiliation()}）。
+   *
+   * <p>★ <b>多轴时取第一条</b>（按 {@code AppDecisionMakerAffiliations.SOURCES} 的登记序 = nation / gov / army）：
+   * 视图只报一条归属（字段形状一字未改），而权限面（{@code DecisionScopeFunctions}）对多轴取并集——两者不冲突，但**视图不假装完整**： 归属条数可从
+   * {@code AppDecisionMakerAffiliations.claimsOf} 现取。
+   *
+   * <p>★ 解析不出的字段一律 {@code null}（显式未知，不编造）。
+   */
   private static DecisionMakerInfo info(
-      DecisionMaker maker, GovState govState, SimulationState state, long tick) {
-    return switch (maker.affiliation()) {
-      case Affiliation.Nation nation -> {
-        // ★ 2026-10-12 批次 3c：国家表住 gov 切片；引用解释不了 / 国家不存在 ⇒ 显示名与 homeRegion 都 null
-        //   （显式未知，不编造——与下面两支的"值不在就 null"同一口径）。
-        Nation value = nationOrNull(govState, nation.nationId());
-        String nationId = nation.nationId();
-        yield new DecisionMakerInfo(
-            maker,
-            "nation",
-            nationId,
-            value == null ? null : value.name(),
-            value == null ? null : value.id().value(),
-            null,
-            null,
-            pending(maker, directivesTable(state), tick));
-      }
-      case Affiliation.Army army -> {
-        // ★★ 2026-10-12 批次 3d-1：军队表住 army 切片（armies 表随军队身份搬进 simos-army）；引用解释不了 /
-        //   军队不存在 ⇒ 显示名与 root/masterGov 都 null（显式未知，不编造——与 nation 支同一口径）。
-        Army value = ToolSupport.armyData(state).armies().get(ArmyId.parse(army.armyId()));
-        yield new DecisionMakerInfo(
-            maker,
-            "army",
-            army.armyId(),
-            value == null ? null : value.name(),
-            null,
-            value == null ? null : value.masterGovUnitId().map(UnitId::value).orElse(null),
-            value == null ? null : value.rootUnit().value(),
-            pending(maker, directivesTable(state), tick));
-      }
-      case Affiliation.Gov gov -> {
-        // ★ 显示名从 unit 切片现取（GOV 没有 sd 侧的名字字段）；单位被删/不是 GOV ⇒ null（显式未知，不编造）。
-        Unit value = unitOf(state, gov.govUnit());
-        yield new DecisionMakerInfo(
-            maker,
-            "gov",
-            gov.govUnit().value(),
-            value == null ? null : value.name(),
-            null,
-            null,
-            null,
-            pending(maker, directivesTable(state), tick));
-      }
-    };
+      DecisionMaker maker,
+      List<AppDecisionMakerAffiliations.Claim> claims,
+      SimulationState state,
+      long tick) {
+    if (claims.isEmpty()) {
+      // 裸决策人（乙收尾起合法：创建时没有归属）⇒ 归属三槽全 null（显式未知，不编造）。
+      return new DecisionMakerInfo(
+          maker, null, null, null, null, null, null, pending(maker, directivesTable(state), tick));
+    }
+    AppDecisionMakerAffiliations.Claim claim = claims.get(0);
+    GovState govState = govOf(state);
+    String displayName = null;
+    String nationId = null;
+    String masterGovUnitId = null;
+    String rootUnit = null;
+    if (NationAffiliations.KIND.equals(claim.kind())) {
+      Nation value = nationOrNull(govState, claim.ref());
+      displayName = value == null ? null : value.name();
+      nationId = value == null ? null : value.id().value();
+    } else if (ArmyAffiliations.KIND.equals(claim.kind())) {
+      Army value = ToolSupport.armyData(state).armies().get(ArmyId.parse(claim.ref()));
+      displayName = value == null ? null : value.name();
+      masterGovUnitId =
+          value == null ? null : value.masterGovUnitId().map(UnitId::value).orElse(null);
+      rootUnit = value == null ? null : value.rootUnit().value();
+    } else if (GovAffiliations.KIND.equals(claim.kind())) {
+      Unit value = unitOf(state, UnitId.parse(claim.ref()));
+      displayName = value == null ? null : value.name();
+    }
+    return new DecisionMakerInfo(
+        maker,
+        claim.kind(),
+        claim.ref(),
+        displayName,
+        nationId,
+        masterGovUnitId,
+        rootUnit,
+        pending(maker, directivesTable(state), tick));
   }
 
   /** unit 切片里的单位（stage 10a 的 GOV 显示名用）：缺切片/类型不对 = 装配故障，当场炸。 */
@@ -384,8 +415,10 @@ public final class SdQueryService {
   /**
    * 决策人视图的领域侧投影：{@link DecisionMaker} 本体 + 由 affiliation 解析出的显示信息。
    *
-   * <p>★ 解析不出的字段一律 {@code null}（显式未知）。当前命令路径（{@code ga.CreateDecisionMaker} 拒绝不存在的 affiliation
-   * 目标）下这些字段必非空；{@code null} 只在状态被外部构造坏时出现——**不用空串顶替**，那会与"名称为空"混淆。
+   * <p>★ 解析不出的字段一律 {@code null}（显式未知）。归属三槽（{@code affiliationKind}/{@code affiliationId} 之外的
+   * nation/army 派生槽）在"该轴不存在"或"目标已被删"时为 {@code null}——**不用空串顶替**，那会与"名称为空"混淆。 ★★ 乙收尾起 {@code
+   * affiliationKind}/{@code affiliationId} 也可能是 {@code null}：**裸决策人**（创建后还没被任何模块赋予归属）
+   * 是合法状态，且此时它什么都看不见（deny-all）。
    *
    * <p>★ 阶段 12：Army 去 {@code NationId} 后，{@code nationId} 槽位只服务 {@link
    * Affiliation.Nation}；军队的认领主子改看 {@code masterGovUnitId}（未认主子 ⇒ {@code null}）。

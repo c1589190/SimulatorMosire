@@ -7,6 +7,7 @@ import io.mosire.simos.gov.nation.DiplomaticRelationKey;
 import io.mosire.simos.gov.nation.Nation;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -26,8 +27,14 @@ import java.util.Optional;
  * economy.SetGovernmentPolicy}，GM-only）。本切片从此<b>不存任何政策</b>，只留"每 tick 读数 + 上缴周期账"。 ⇒ <b>形状是"读数 2 +
  * 外交 3"</b>，不再是"读数 + 政策"。
  *
- * <p>★★ <b>五个组件与 {@link io.mosire.simos.gov.change.GovChangeSet} 的五个组件一一对应</b>（铁律
- * 5）：任何新增组件都要同时进变更集， 由 {@code GovRoundTripTest} 的反射枚举把守（本批同批把那个护栏从 2 扩到 5）。
+ * <p>★★ <b>七个组件与 {@link io.mosire.simos.gov.change.GovChangeSet} 的七个组件一一对应</b>（铁律
+ * 5）：任何新增组件都要同时进变更集， 由 {@code GovRoundTripTest} 的反射枚举把守（0a 建时 2 → 3c 扩到 5 → <b>乙收尾扩到 7</b>）。
+ *
+ * <p>★★★ <b>乙收尾（本批）新增的两个组件 = 归属表</b>（用户裁定「<b>归属肯定归模块</b>」＋「单个决策人的具体归属，交给调用 ga
+ * 的具体模块不行吗？<b>同样搞工单</b>」）：{@code nationAffiliations}（决策人 → 国家）与 {@code govAffiliations}（决策人 → GOV
+ * 单位）。它们放在<b>末位</b> ⇒ 既有五个键的线格式次序一字未动。★ 写口是两条新命令 （{@code gov.AssignDecisionMakerNation} / {@code
+ * gov.AssignDecisionMakerGov}），读口是本模块的两个裁定视图 （{@link io.mosire.simos.gov.nation.NationAffiliations}
+ * / {@link io.mosire.simos.gov.GovAffiliations}）。
  *
  * <ul>
  *   <li>★ <b>结构红利</b>：政府记录没了 ⇒ 它的政策跟着没了 ⇒ "GOV 删除后政策悬空"在结构上不可能出现（无需级联清理、无需悬空检测）；
@@ -59,13 +66,19 @@ import java.util.Optional;
  * @param nations 国家表（键 = {@link NationId}；2026-10-12 批次 3c 自 {@code SdState} 迁入）
  * @param diplomaticRelations 有向外交关系边（D-003；键 = (from,to) 复合键；本批自 {@code SdState} 迁入）
  * @param diplomaticEvents 外交事件记录（D-005；键 = {@link DiplomaticEventId}；本批自 {@code SdState} 迁入）
+ * @param nationAffiliations <b>nation 归属表</b>（乙收尾：{@code 决策人 → 国家}；写口 = {@code
+ *     gov.AssignDecisionMakerNation}）
+ * @param govAffiliations <b>gov 归属表</b>（乙收尾：{@code 决策人 → GOV 单位}；写口 = {@code
+ *     gov.AssignDecisionMakerGov}）
  */
 public record GovState(
     Map<UnitId, GovOfficeState> offices,
     Map<UnitId, GovRemittanceState> remittanceStates,
     Map<NationId, Nation> nations,
     Map<DiplomaticRelationKey, DiplomaticRelation> diplomaticRelations,
-    Map<DiplomaticEventId, DiplomaticEvent> diplomaticEvents) {
+    Map<DiplomaticEventId, DiplomaticEvent> diplomaticEvents,
+    Map<DecisionMakerId, NationId> nationAffiliations,
+    Map<DecisionMakerId, UnitId> govAffiliations) {
 
   public GovState {
     // ★ 缺键（null）⇒ 空表，见类注释（fail-closed 方向）。
@@ -74,6 +87,8 @@ public record GovState(
     nations = Collections.unmodifiableMap(copyNations(nations));
     diplomaticRelations = Collections.unmodifiableMap(copyRelations(diplomaticRelations));
     diplomaticEvents = Collections.unmodifiableMap(copyEvents(diplomaticEvents));
+    nationAffiliations = Collections.unmodifiableMap(copyNationAffiliations(nationAffiliations));
+    govAffiliations = Collections.unmodifiableMap(copyGovAffiliations(govAffiliations));
   }
 
   /**
@@ -86,12 +101,12 @@ public record GovState(
    * EconomyData.governments}。旧的三参/四参/五参形状<b>直接删除</b>（AGENTS §一.11：旧设计不留兼容位）。
    */
   public GovState(Map<UnitId, GovOfficeState> offices) {
-    this(offices, Map.of(), Map.of(), Map.of(), Map.of());
+    this(offices, Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
-  /** 往返用例的起点：五个组件全空（= 本世界还没有任何 GOV 读数/上缴周期账/国家/外交边/外交事件）。 */
+  /** 往返用例的起点：七个组件全空（= 本世界还没有任何 GOV 读数/上缴周期账/国家/外交边/外交事件/归属）。 */
   public static GovState empty() {
-    return new GovState(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+    return new GovState(Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   /**
@@ -101,7 +116,14 @@ public record GovState(
    * 时的推荐入口。
    */
   public GovState withOffices(Map<UnitId, GovOfficeState> value) {
-    return new GovState(value, remittanceStates, nations, diplomaticRelations, diplomaticEvents);
+    return new GovState(
+        value,
+        remittanceStates,
+        nations,
+        diplomaticRelations,
+        diplomaticEvents,
+        nationAffiliations,
+        govAffiliations);
   }
 
   /**
@@ -117,7 +139,14 @@ public record GovState(
     Objects.requireNonNull(office, "office");
     Map<UnitId, GovOfficeState> next = new LinkedHashMap<>(offices);
     next.put(office.unitId(), office);
-    return new GovState(next, remittanceStates, nations, diplomaticRelations, diplomaticEvents);
+    return new GovState(
+        next,
+        remittanceStates,
+        nations,
+        diplomaticRelations,
+        diplomaticEvents,
+        nationAffiliations,
+        govAffiliations);
   }
 
   /** 写一条 remittance 周期账（键 = GOV 单位；内容不内嵌身份）：整条替换，保留其余四表。 */
@@ -126,22 +155,84 @@ public record GovState(
     Objects.requireNonNull(state, "state");
     Map<UnitId, GovRemittanceState> next = new LinkedHashMap<>(remittanceStates);
     next.put(unitId, state);
-    return new GovState(offices, next, nations, diplomaticRelations, diplomaticEvents);
+    return new GovState(
+        offices,
+        next,
+        nations,
+        diplomaticRelations,
+        diplomaticEvents,
+        nationAffiliations,
+        govAffiliations);
   }
 
   /** 仅替换 {@code nations}（外交三表之 3/3：国家表），其余四个组件原样。 */
   public GovState withNations(Map<NationId, Nation> value) {
-    return new GovState(offices, remittanceStates, value, diplomaticRelations, diplomaticEvents);
+    return new GovState(
+        offices,
+        remittanceStates,
+        value,
+        diplomaticRelations,
+        diplomaticEvents,
+        nationAffiliations,
+        govAffiliations);
   }
 
   /** 仅替换 {@code diplomaticRelations}（D-003 有向边表；键 = (from,to)），其余四个组件原样。 */
   public GovState withDiplomaticRelations(Map<DiplomaticRelationKey, DiplomaticRelation> value) {
-    return new GovState(offices, remittanceStates, nations, value, diplomaticEvents);
+    return new GovState(
+        offices,
+        remittanceStates,
+        nations,
+        value,
+        diplomaticEvents,
+        nationAffiliations,
+        govAffiliations);
   }
 
   /** 仅替换 {@code diplomaticEvents}（D-005 多国谈判/外交事件记录），其余四个组件原样。 */
   public GovState withDiplomaticEvents(Map<DiplomaticEventId, DiplomaticEvent> value) {
-    return new GovState(offices, remittanceStates, nations, diplomaticRelations, value);
+    return new GovState(
+        offices,
+        remittanceStates,
+        nations,
+        diplomaticRelations,
+        value,
+        nationAffiliations,
+        govAffiliations);
+  }
+
+  /**
+   * ★★ <b>仅替换 {@code nationAffiliations}</b>（写口 = {@code gov.AssignDecisionMakerNation}），其余六个组件原样。
+   *
+   * <p>★ 键 = 决策人 id、值 = {@link NationId}；<b>不在这里判"这个国家存在吗"</b>（存在性由命令期具名拒 + 读侧裁剪兜底， 见 {@link
+   * io.mosire.simos.gov.nation.NationAffiliations}）。
+   */
+  public GovState withNationAffiliations(Map<DecisionMakerId, NationId> value) {
+    return new GovState(
+        offices,
+        remittanceStates,
+        nations,
+        diplomaticRelations,
+        diplomaticEvents,
+        value,
+        govAffiliations);
+  }
+
+  /**
+   * ★★ <b>仅替换 {@code govAffiliations}</b>（写口 = {@code gov.AssignDecisionMakerGov}），其余六个组件原样。
+   *
+   * <p>★ 键 = 决策人 id、值 = 那个 GOV 单位的 {@link UnitId}（"必须是带 {@code GovernmentFormation} 的单位"由命令期 具名拒 +
+   * {@link io.mosire.simos.gov.GovAffiliations} 的读侧裁剪兜底）。
+   */
+  public GovState withGovAffiliations(Map<DecisionMakerId, UnitId> value) {
+    return new GovState(
+        offices,
+        remittanceStates,
+        nations,
+        diplomaticRelations,
+        diplomaticEvents,
+        nationAffiliations,
+        value);
   }
 
   /** 该 GOV 的 remittance 周期账（缺席 = 还没累计，由 {@link #remittanceStateOrDefault} 给全 0）。 */
@@ -234,6 +325,44 @@ public record GovState(
     for (Map.Entry<DiplomaticEventId, DiplomaticEvent> entry : map.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("diplomaticEvents 的键与值都不得为 null: " + entry.getKey());
+      }
+      copy.put(entry.getKey(), entry.getValue());
+    }
+    return copy;
+  }
+
+  /**
+   * nation 归属表拷贝（键/值非 null）；null ⇒ 空表。
+   *
+   * <p>★ 只有"键与值都不得为 null"这一条构造期判据（与 {@code nations} 同口径）：<b>不</b>在这里判"国家存在吗" ——
+   * 那需要另一张表（同一棵树里可以判，但会让"删国家"与"改归属"互相纠缠），故存在性一律走命令期具名拒 + 读侧裁剪 （{@link
+   * io.mosire.simos.gov.nation.NationAffiliations#resolve}）。
+   */
+  private static Map<DecisionMakerId, NationId> copyNationAffiliations(
+      Map<DecisionMakerId, NationId> map) {
+    if (map == null) {
+      return new LinkedHashMap<>();
+    }
+    Map<DecisionMakerId, NationId> copy = new LinkedHashMap<>();
+    for (Map.Entry<DecisionMakerId, NationId> entry : map.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("nationAffiliations 的键与值都不得为 null: " + entry.getKey());
+      }
+      copy.put(entry.getKey(), entry.getValue());
+    }
+    return copy;
+  }
+
+  /** gov 归属表拷贝（键/值非 null）；null ⇒ 空表（判据同 {@link #copyNationAffiliations}）。 */
+  private static Map<DecisionMakerId, UnitId> copyGovAffiliations(
+      Map<DecisionMakerId, UnitId> map) {
+    if (map == null) {
+      return new LinkedHashMap<>();
+    }
+    Map<DecisionMakerId, UnitId> copy = new LinkedHashMap<>();
+    for (Map.Entry<DecisionMakerId, UnitId> entry : map.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("govAffiliations 的键与值都不得为 null: " + entry.getKey());
       }
       copy.put(entry.getKey(), entry.getValue());
     }

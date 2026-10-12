@@ -1,13 +1,14 @@
 package io.mosire.simos.ga.tools;
 
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ <b>决策人读面的窄查询口</b>（2026-10-12 B3 第 7 域）：把 app 的 {@code SdQueryService}（决策人/令清单）与 {@code
@@ -121,9 +122,18 @@ public interface GaToolQueries {
    *
    * <p>★ 前两轴的唯一实现在 app 的 {@code RedactingQueryService.visible}（**不许在这里重写一份**）；本方法只多出"自己发的" 那一支。
    *
-   * @param affiliation 调用者的归属；解不出 ⇒ null（该轴不参与）
+   * @param affiliationLabels 调用者的**不透明受众标签集**（各模块自报的归属拼出来的串，见 {@link #affiliationLabelsOf}）；空集 ⇒
+   *     该轴不参与（不抛、不回落）
    * @param sender 报告 {@code value.from}（解析不出 ⇒ null，该轴不参与）
    */
   boolean reportVisibleToDecisionMaker(
-      SdInfoEntry entry, DecisionMakerId actor, Affiliation affiliation, String sender);
+      SdInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, String sender);
+
+  /**
+   * ★★ <b>该决策人此刻的受众标签集</b>（2026-10-12 乙收尾新增）：由**各持有模块自报的归属**现拼（{@code kind:ref} 形）， 实现住 app（它同时看得见
+   * ga 的决策人表与各模块的归属表）。
+   *
+   * <p>★ <b>空集 = 没有归属</b>（裸决策人）⇒ 调用方一律按"该轴不参与"处置；ga 侧不认识任何归属种类。
+   */
+  Set<String> affiliationLabelsOf(DecisionMakerId decisionMaker, SimulationState state);
 }

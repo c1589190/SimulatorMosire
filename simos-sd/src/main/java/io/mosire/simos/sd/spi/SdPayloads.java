@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.CallStatus;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DisclosurePolicy;
@@ -13,7 +12,6 @@ import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.MergedEffect;
 import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.PacketStatus;
-import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
@@ -256,66 +254,6 @@ public final class SdPayloads {
       throw new IllegalArgumentException("字段 " + field + " 不得缺失或为 null: " + payload);
     }
     return MAPPER.convertValue(value, Object.class);
-  }
-
-  public static Affiliation requireAffiliation(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull() || !value.isObject()) {
-      throw new IllegalArgumentException(
-          "字段 "
-              + field
-              + " 必须是 {\"kind\":\"nation\"|\"army\"|\"gov\",\"id\":\"…\"} 对象: "
-              + payload);
-    }
-    return readAffiliation(value);
-  }
-
-  /**
-   * **可选**的归属集合：键缺席/为 null ⇒ 空集（"不按归属发"）；给了 ⇒ 逐项按 {@link #readAffiliation} 解析（**含空数组**）。
-   *
-   * <p>★ 与 {@link #optionalTextSet} 同族（缺省即空集），因为 {@code affiliations} 的语义就是"这一份对谁可见"—— "什么都没说"
-   * 与"说了空"在本语义下没有区别，都是**不按归属发**（fail-closed）。
-   */
-  public static Set<Affiliation> optionalAffiliationSet(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull()) {
-      return Set.of();
-    }
-    if (!value.isArray()) {
-      throw new IllegalArgumentException(
-          "字段 "
-              + field
-              + " 必须是 [{\"kind\":\"nation\"|\"army\"|\"gov\",\"id\":\"…\"}…] 数组: "
-              + payload);
-    }
-    Set<Affiliation> out = new LinkedHashSet<>();
-    for (JsonNode element : value) {
-      if (!element.isObject()) {
-        throw new IllegalArgumentException(
-            "字段 " + field + " 的元素必须是 {\"kind\":…,\"id\":…} 对象: " + element);
-      }
-      out.add(readAffiliation(element));
-    }
-    return out;
-  }
-
-  /** 把一个 {@code {"kind","id"}} 对象读成 {@link Affiliation}（形状唯一拼写点）。 */
-  private static Affiliation readAffiliation(JsonNode value) {
-    String kind = requireText(value, "kind");
-    String id = requireText(value, "id");
-    return switch (kind) {
-      // ★ 2026-10-12 批次 3c：Nation 支的载荷是**不透明引用**（NationId 已随外交搬进 simos-gov，sd 不得依赖 gov）
-      //   ⇒ 这里不再 NationId.parse，只把串交给 Affiliation.Nation（它判非空白）；解释与裁定在 gov 的
-      //   NationAffiliations。形状（{"kind":"nation","id":"…"}）与空白拒因一字未改。
-      case "nation" -> new Affiliation.Nation(id);
-      // ★★ 2026-10-12 批次 3d-1：Army 支**同款**——ArmyId 已随军队身份搬进 simos-army，而 sd 不得依赖 army
-      //   ⇒ 不再 ArmyId.parse，只把串交给 Affiliation.Army（它判非空白）；解释（ArmyId.parse）与"这个军队存在吗"的
-      //   裁定在 army 的 ArmyAffiliations。载荷形状（{"kind":"army","id":"…"}）一字未改。
-      case "army" -> new Affiliation.Army(id);
-      case "gov" -> new Affiliation.Gov(UnitId.parse(id));
-      default ->
-          throw new IllegalArgumentException("affiliation.kind 必须是 nation|army|gov: " + kind);
-    };
   }
 
   public static long optionalLong(JsonNode payload, String field, long fallback) {

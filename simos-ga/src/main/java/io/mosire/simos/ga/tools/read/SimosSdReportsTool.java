@@ -17,8 +17,6 @@ import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolQueries;
 import io.mosire.simos.ga.tools.GaToolReads;
-import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.DecisionMakerId;
@@ -29,7 +27,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -130,12 +127,9 @@ public final class SimosSdReportsTool implements SimosTool {
       GaState sd = GaToolReads.ga(state);
       DecisionMakerId actor =
           identity.decisionMakerIdOf(context.identity()).map(DecisionMakerId::parse).orElse(null);
-      Affiliation affiliation =
-          actor == null
-              ? null
-              : Optional.ofNullable(sd.decisionMakers().get(actor))
-                  .map(DecisionMaker::affiliation)
-                  .orElse(null);
+      // ★★ 乙收尾：调用者的受众标签集由 app 的实现现拼（各模块自报的归属）——ga 不认识任何归属种类。
+      Set<String> affiliationLabels =
+          actor == null ? Set.of() : queries.affiliationLabelsOf(actor, state);
       List<MatchedReport> matched = new ArrayList<>();
       for (Map.Entry<String, List<SdInfoEntry>> at : sd.info().entrySet()) {
         for (SdInfoEntry entry : at.getValue()) {
@@ -143,7 +137,7 @@ public final class SimosSdReportsTool implements SimosTool {
             continue;
           }
           JsonNode report = parseReport(entry.value());
-          if (actor != null && !visibleToDecisionMaker(entry, actor, affiliation, report)) {
+          if (actor != null && !visibleToDecisionMaker(entry, actor, affiliationLabels, report)) {
             continue;
           }
           if (!inWindow(entry.tick(), window)) {
@@ -216,8 +210,9 @@ public final class SimosSdReportsTool implements SimosTool {
    * 决策人可见性三支：tags / 归属两轴复用 {@code RedactingQueryService.reportVisibleToDecisionMaker}，第三轴 = 自己发的。
    */
   private boolean visibleToDecisionMaker(
-      SdInfoEntry entry, DecisionMakerId actor, Affiliation affiliation, JsonNode report) {
-    return queries.reportVisibleToDecisionMaker(entry, actor, affiliation, textOf(report, "from"));
+      SdInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, JsonNode report) {
+    return queries.reportVisibleToDecisionMaker(
+        entry, actor, affiliationLabels, textOf(report, "from"));
   }
 
   private static boolean inWindow(long tick, GaToolQueries.Window window) {
@@ -283,7 +278,9 @@ public final class SimosSdReportsTool implements SimosTool {
     view.put("tick", entry.tick());
     view.put("key", entry.key());
     view.put("tags", entry.tags().stream().map(DecisionMakerId::value).sorted().toList());
-    view.put("affiliations", affiliationViews(entry.affiliations()));
+    // ★★ 乙收尾：affiliations 现在是**不透明受众标签串**（写入方自报）⇒ 视图原样成列（按字典序可复现），
+    //   不再有"按归属种类 switch 成 {kind,id}"的那一段（那正是"新加模块要改 ga"的根源）。
+    view.put("affiliations", entry.affiliations().stream().sorted().toList());
     view.put("value", entry.value());
     if (row.report() != null) {
       view.put("report", row.report());
@@ -295,35 +292,9 @@ public final class SimosSdReportsTool implements SimosTool {
     return view;
   }
 
-  /** 归属视图：{@code {kind, id}}，按 {@code kind:id} 升序（响应字节可复现）。 */
-  private static List<Map<String, Object>> affiliationViews(Set<Affiliation> affiliations) {
-    List<Map<String, Object>> out = new ArrayList<>(affiliations.size());
-    for (Affiliation affiliation : affiliations) {
-      Map<String, Object> view = new LinkedHashMap<>();
-      switch (affiliation) {
-        case Affiliation.Nation nation -> {
-          view.put("kind", "nation");
-          view.put("id", nation.nationId());
-        }
-        case Affiliation.Army army -> {
-          view.put("kind", "army");
-          view.put("id", army.armyId());
-        }
-        case Affiliation.Gov gov -> {
-          view.put("kind", "gov");
-          view.put("id", gov.govUnit().value());
-        }
-      }
-      out.add(view);
-    }
-    out.sort(
-        Comparator.comparing((Map<String, Object> row) -> row.get("kind") + ":" + row.get("id")));
-    return List.copyOf(out);
-  }
-
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
   @Override
   public Set<ToolRole> roles() {
-    return Set.of(ToolRole.DM, ToolRole.GM);
+    return Set.of(ToolRole.GM);
   }
 }

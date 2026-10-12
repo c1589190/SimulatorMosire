@@ -1,5 +1,6 @@
 package io.mosire.simos.army;
 
+import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -7,6 +8,10 @@ import java.util.Objects;
 
 /**
  * army 切片的完整状态树（阶段 D1 / 用户设计 D-012，2026-10-02；<b>2026-10-12 批次 3d-1 起两个组件</b>）。
+ *
+ * <p>★★★ <b>乙收尾（本批）起三个组件</b>：{@code armyAffiliations}（<b>军队归属表</b>：决策人 → 军队，用户裁定
+ * 「<b>归属肯定归模块</b>」＋「<b>同样搞工单</b>」；写口 = {@code army.AssignDecisionMakerArmy}）放<b>末位</b> ⇒
+ * 既有两个键的线格式次序一字未动。
  *
  * <p>★★ <b>两个组件的分工</b>：
  *
@@ -29,10 +34,13 @@ import java.util.Objects;
  * 收成空表，<b>此处不抛</b>——army 切片是阶段 D1 引入的、{@code armies} 又是本批新搬入的，这一条让"还没落过该组件的世界"仍能读回。 方向是
  * fail-closed：没提该表 = 没有任何军队身份 / 没有任何交战记录。
  *
- * <p>★ <b>保序不可变</b>：两张表都走 {@code LinkedHashMap} 拷贝 + 在赋值处 {@code Collections.unmodifiableMap}
+ * <p>★ <b>保序不可变</b>：三张表都走 {@code LinkedHashMap} 拷贝 + 在赋值处 {@code Collections.unmodifiableMap}
  * 冻结，<b>绝不用 {@code Map.copyOf}</b>——它的迭代序不是内容的纯函数，字节级往返因此不成立。
  */
-public record ArmyData(Map<ArmyId, Army> armies, Map<CombatRecordId, CombatRecord> combats) {
+public record ArmyData(
+    Map<ArmyId, Army> armies,
+    Map<CombatRecordId, CombatRecord> combats,
+    Map<DecisionMakerId, ArmyId> armyAffiliations) {
 
   public ArmyData {
     // ★ 缺键（null）⇒ 空表，见类注释（旧档/旧夹具兼容，fail-closed 方向）。
@@ -41,6 +49,9 @@ public record ArmyData(Map<ArmyId, Army> armies, Map<CombatRecordId, CombatRecor
     }
     if (combats == null) {
       combats = Map.of();
+    }
+    if (armyAffiliations == null) {
+      armyAffiliations = Map.of();
     }
     Map<ArmyId, Army> armiesCopy = new LinkedHashMap<>();
     for (Map.Entry<ArmyId, Army> entry : armies.entrySet()) {
@@ -67,23 +78,41 @@ public record ArmyData(Map<ArmyId, Army> armies, Map<CombatRecordId, CombatRecor
       }
       combatsCopy.put(entry.getKey(), entry.getValue());
     }
+    Map<DecisionMakerId, ArmyId> affiliationsCopy = new LinkedHashMap<>();
+    for (Map.Entry<DecisionMakerId, ArmyId> entry : armyAffiliations.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("armyAffiliations 的键与值都不得为 null: " + entry.getKey());
+      }
+      affiliationsCopy.put(entry.getKey(), entry.getValue());
+    }
     armies = Collections.unmodifiableMap(armiesCopy); // ★ 冻在赋值处
     combats = Collections.unmodifiableMap(combatsCopy); // ★ 冻在赋值处
+    armyAffiliations = Collections.unmodifiableMap(affiliationsCopy); // ★ 冻在赋值处
   }
 
-  /** 往返用例的起点：两张表皆空（= 本世界还没有任何军队身份与交战记录）。 */
+  /** 往返用例的起点：三张表皆空（= 本世界还没有任何军队身份、交战记录与军队归属）。 */
   public static ArmyData empty() {
-    return new ArmyData(Map.of(), Map.of());
+    return new ArmyData(Map.of(), Map.of(), Map.of());
   }
 
   /** 一个组件一个 with（照 {@code ActorData} / {@code GovState} 的形制）：仅替换 {@code armies}。 */
   public ArmyData withArmies(Map<ArmyId, Army> value) {
-    return new ArmyData(value, combats);
+    return new ArmyData(value, combats, armyAffiliations);
   }
 
   /** 一个组件一个 with：仅替换 {@code combats}。 */
   public ArmyData withCombats(Map<CombatRecordId, CombatRecord> value) {
-    return new ArmyData(armies, value);
+    return new ArmyData(armies, value, armyAffiliations);
+  }
+
+  /**
+   * ★★ <b>仅替换 {@code armyAffiliations}</b>（乙收尾：写口 = {@code army.AssignDecisionMakerArmy}），其余两张表原样。
+   *
+   * <p>★ 键 = 决策人 id、值 = {@link ArmyId}；<b>不在这里判"这个军队存在吗"</b>（存在性由命令期具名拒 + 读侧 {@link
+   * ArmyAffiliations#resolve} 的裁剪兜底）。
+   */
+  public ArmyData withArmyAffiliations(Map<DecisionMakerId, ArmyId> value) {
+    return new ArmyData(armies, combats, value);
   }
 
   /**
@@ -99,7 +128,7 @@ public record ArmyData(Map<ArmyId, Army> armies, Map<CombatRecordId, CombatRecor
     Objects.requireNonNull(army, "army");
     Map<ArmyId, Army> next = new LinkedHashMap<>(armies);
     next.put(army.id(), army);
-    return new ArmyData(next, combats);
+    return new ArmyData(next, combats, armyAffiliations);
   }
 
   /**
@@ -115,6 +144,6 @@ public record ArmyData(Map<ArmyId, Army> armies, Map<CombatRecordId, CombatRecor
     Objects.requireNonNull(combat, "combat");
     Map<CombatRecordId, CombatRecord> next = new LinkedHashMap<>(combats);
     next.put(combat.id(), combat);
-    return new ArmyData(armies, next);
+    return new ArmyData(armies, next, armyAffiliations);
   }
 }

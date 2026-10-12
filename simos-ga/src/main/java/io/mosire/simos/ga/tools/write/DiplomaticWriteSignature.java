@@ -4,11 +4,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.DecisionMakerAffiliationPort;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolReads;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.DecisionMakerId;
@@ -19,7 +19,12 @@ import java.util.Optional;
  * 决策人**外交写入**的署名校验（与 {@code IssueDirectiveTool} 的 {@code signatureViolation} 同口径：身份只从 {@link
  * ToolContext#identity()} 取，绝不采信载荷自报的"我是谁"）。
  *
- * <p>规则（D5）：调用者必须是本世界已知的 {@link DecisionMaker}，且归属是 {@link Affiliation.Nation}——
+ * <p>★★★ <b>2026-10-12 乙收尾：归属判定改走 {@link DecisionMakerAffiliationPort}</b>（用户裁定「归属肯定归模块」）：
+ * 调用者的"外交身份"由各持有模块自报（app 侧实现问 gov 的 nation 归属表），<b>ga 侧不再有 {@code Affiliation} 类型、也不枚举任何归属
+ * 种类</b>——收窄前那一句 {@code maker.affiliation() instanceof Affiliation.Nation} 是本批删掉的最后一个"归属种类 switch"。
+ * ★ 拿不到外交身份 ⇒ 一律拒（fail-closed）。
+ *
+ * <p>规则（D5）：调用者必须是本世界已知的 {@link DecisionMaker}，且有<b>外交署名身份</b>——
  *
  * <ul>
  *   <li>写关系边（{@code gov.SetDiplomaticRelation}）：载荷 {@code from} 必须等于调用者 Nation（不许以别国名义立边）；
@@ -44,12 +49,17 @@ public final class DiplomaticWriteSignature {
    * @param context 本次调用上下文（身份 + 参数）
    * @param reads 只读入口（按 {@code branch}/{@code expectedRevision} 取世界状态核对归属）
    * @param identity 身份口（解出调用者的决策人 id；判据本体在 app 的 {@code DecisionCallerFactory}）
+   * @param affiliations 归属读口（宿主注入，见 {@link DecisionMakerAffiliationPort}）：回答"调用者以谁的名义"
    * @param participantsMode {@code true} = 事件记录（要求 participants 含调用者 Nation）；{@code false} = 关系边（要求
    *     from = 调用者 Nation）
    * @return 拒绝理由；不构成冒名 ⇒ 空
    */
   public static Optional<String> violation(
-      ToolContext context, ToolReadPort reads, GaToolIdentity identity, boolean participantsMode) {
+      ToolContext context,
+      ToolReadPort reads,
+      GaToolIdentity identity,
+      DecisionMakerAffiliationPort affiliations,
+      boolean participantsMode) {
     Optional<String> decisionMakerId = identity.decisionMakerIdOf(context.identity());
     if (decisionMakerId.isEmpty()) {
       return Optional.of("调用者不是决策人（身份 " + context.identity().instanceId() + "），外交写入只暴露给决策人");
@@ -76,15 +86,14 @@ public final class DiplomaticWriteSignature {
     if (maker == null) {
       return Optional.of("调用者身份不是本世界已知的决策人: " + decisionMakerId.get());
     }
-    if (!(maker.affiliation() instanceof Affiliation.Nation nation)) {
+    // ★★ 乙收尾：归属判定走端口（app 侧实现问 gov 的 nation 归属表）。ga 不认识任何归属种类；
+    //   拿不到外交身份 ⇒ 拒（fail-closed，与收窄前"不是 Nation 归属 ⇒ 拒"方向逐条一致）。
+    Optional<String> signatory = affiliations.diplomaticSignatoryOf(id, state);
+    if (signatory.isEmpty()) {
       return Optional.of(
-          "外交写入只对 Nation 归属的决策人开放（调用者 "
-              + decisionMakerId.get()
-              + " 归属: "
-              + maker.affiliation()
-              + "）");
+          "外交写入只对具有外交身份（Nation 归属）的决策人开放（调用者 " + decisionMakerId.get() + " 此刻没有外交身份）");
     }
-    String callerNation = nation.nationId();
+    String callerNation = signatory.get();
     JsonNode payload;
     try {
       payload = MAPPER.readTree(ToolSchema.optionalText(context.arguments(), "payloadJson", "{}"));

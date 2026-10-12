@@ -4,6 +4,7 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.DecisionMakerAffiliationPort;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -37,10 +38,21 @@ public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool imp
 
   private final ToolReadPort reads;
 
+  /**
+   * ★★ <b>归属读口</b>（宿主注入，见 {@link DecisionMakerAffiliationPort}；2026-10-12 乙收尾新增）：署名判定问它"调用者以谁的名义"
+   * ——归属归模块后，ga 不再认识 {@code Affiliation}，也不枚举任何归属种类。
+   */
+  private final DecisionMakerAffiliationPort affiliations;
+
   public RecordDiplomaticEventTool(
-      ToolWritePort writes, ToolReadPort reads, GaToolIdentity identity, String mapId) {
+      ToolWritePort writes,
+      ToolReadPort reads,
+      GaToolIdentity identity,
+      DecisionMakerAffiliationPort affiliations,
+      String mapId) {
     super(writes, identity, mapId);
     this.reads = reads;
+    this.affiliations = java.util.Objects.requireNonNull(affiliations, "affiliations");
   }
 
   @Override
@@ -77,7 +89,7 @@ public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool imp
 
   @Override
   protected Optional<String> signatureViolation(ToolContext context) {
-    return DiplomaticWriteSignature.violation(context, reads, identity(), true);
+    return DiplomaticWriteSignature.violation(context, reads, identity(), affiliations, true);
   }
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */

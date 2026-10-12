@@ -74,7 +74,7 @@ public final class CreateArmyHandler implements CommandHandler {
       if (payload.has("nationId")) {
         return rejected(
             "army.CreateArmy 不再接受 nationId：Army 已去 NationId，改认 masterGovUnitId"
-                + "（可选，缺省 = 未认主子）。国家归属请用 gov.CreateNation/Affiliation.Nation；"
+                + "（可选，缺省 = 未认主子）。国家归属请用 gov.CreateNation + gov.AssignDecisionMakerNation；"
                 + "认领 GOV 请用 unit.SetArmyFormation。",
             "army",
             "-");

@@ -21,7 +21,6 @@ import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.AdjudicationBreakpoint;
 import io.mosire.simos.sd.model.AdjudicationStatus;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.CallStatus;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.DecisionPacket;
@@ -219,8 +218,8 @@ class GaRoundTripTest {
     baseDirectives.put(D1, directive(D1, DM1, 360L, DirectiveStatus.ISSUED, Optional.of(V1)));
     baseDirectives.put(D2, directive(D2, DM2, 360L, DirectiveStatus.CANCELLED, Optional.empty()));
     Map<DecisionMakerId, DecisionMaker> baseMakers = new LinkedHashMap<>();
-    baseMakers.put(DM1, maker(DM1, "n-1", "p-old", 1L, 0L));
-    baseMakers.put(DM2, maker(DM2, "n-1", "p-old", 1L, 0L));
+    baseMakers.put(DM1, maker(DM1, "p-old", 1L, 0L));
+    baseMakers.put(DM2, maker(DM2, "p-old", 1L, 0L));
     Map<String, List<SdInfoEntry>> baseInfo = new LinkedHashMap<>();
     baseInfo.put(INFO_INTENT_A, List.of(infoEntry(INFO_INTENT_A, 0, D1, "向北推进", true)));
     baseInfo.put(INFO_INTENT_B, List.of(infoEntry(INFO_INTENT_B, 0, D2, "原地待命", false)));
@@ -254,8 +253,8 @@ class GaRoundTripTest {
     targetDirectives.put(D3, directive(D3, DM3, 361L, DirectiveStatus.ISSUED, Optional.of(V3)));
     // 决策人：DM2 删掉（引用它的 D2 也一并不在目标态里）、DM1 的 providerId/世代被覆盖、DM3 新增。
     Map<DecisionMakerId, DecisionMaker> targetMakers = new LinkedHashMap<>();
-    targetMakers.put(DM1, maker(DM1, "n-1", "p-new", 4L, 2L));
-    targetMakers.put(DM3, maker(DM3, "a-9", "p-new", 1L, 0L));
+    targetMakers.put(DM1, maker(DM1, "p-new", 4L, 2L));
+    targetMakers.put(DM3, maker(DM3, "p-new", 1L, 0L));
     // INFO：第二条地址整条删掉、第一条地址被**覆盖**成两条、第三条地址新增。
     Map<String, List<SdInfoEntry>> targetInfo = new LinkedHashMap<>();
     targetInfo.put(
@@ -367,9 +366,11 @@ class GaRoundTripTest {
     assertThat(rebuilt.decisionMakers().get(DM1).accessLimit()).isEqualTo(AccessLimit.empty());
     assertThat(rebuilt.decisionMakers().get(DM3)).as("新增键（键读侧真的被解析回来）").isNotNull();
     assertThat(rebuilt.decisionMakers().get(DM3).id()).isEqualTo(DM3);
-    assertThat(rebuilt.decisionMakers().get(DM3).affiliation())
-        .as("sealed 多态的 Affiliation 活过往返（Army 那一支）")
-        .isEqualTo(new Affiliation.Army("a-9"));
+    // ★★ 2026-10-12 乙收尾：DecisionMaker 已去掉 affiliation（归属归各模块的工单）⇒ 这里不再有"密封归属活过往返"
+    //   那一条；改为逐字段钉住新增的那条决策人（providerId / 周期 / 世代都取非平凡值，漏带时重建对不上）。
+    assertThat(rebuilt.decisionMakers().get(DM3).providerId()).contains("p-new");
+    assertThat(rebuilt.decisionMakers().get(DM3).decisionCadenceTicks()).isEqualTo(1L);
+    assertThat(rebuilt.decisionMakers().get(DM3).conversationGeneration()).isZero();
     assertThat(rebuilt.decisionMakers()).as("被删掉的 DM2 不许留在重建结果里").doesNotContainKey(DM2);
 
     assertThat(rebuilt.info()).containsOnlyKeys(INFO_INTENT_A, INFO_DOC_C);
@@ -389,8 +390,11 @@ class GaRoundTripTest {
     assertThat(rebuilt.info().get(INFO_DOC_C)).as("新增地址（键是 String，不是自定义 id）").hasSize(1);
     assertThat(rebuilt.info().get(INFO_DOC_C).get(0).value()).isEqualTo("{\"body\":\"报告\"}");
     assertThat(rebuilt.info().get(INFO_DOC_C).get(0).affiliations())
-        .as("sealed 多态的 affiliations 集合活过往返")
+        .as("不透明受众标签集活过往返（这一条不按归属发 ⇒ 空集）")
         .isEmpty();
+    assertThat(rebuilt.info().get(INFO_INTENT_A).get(0).affiliations())
+        .as("★ 乙收尾：令的执行原文带着写入方自报的受众标签（往返后逐字相同）")
+        .containsExactly("nation:" + DM1.value());
     assertThat(rebuilt.info()).as("被删掉的 INFO_INTENT_B 不许留在重建结果里").doesNotContainKey(INFO_INTENT_B);
 
     assertThat(rebuilt.effects()).containsOnlyKeys(E1, E3);
@@ -572,8 +576,8 @@ class GaRoundTripTest {
     directives.put(D2, directive(D2, DM2, 360L, DirectiveStatus.CANCELLED, Optional.empty()));
     // ★ 决策人两张都非空，且**必须**覆盖上面两条令引用的 DM1 / DM2（构造期的真外键，本批刚恢复）。
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
-    makers.put(DM1, maker(DM1, "n-1", "p-1", 1L, 0L));
-    makers.put(DM2, maker(DM2, "n-1", "p-2", 2L, 3L));
+    makers.put(DM1, maker(DM1, "p-1", 1L, 0L));
+    makers.put(DM2, maker(DM2, "p-2", 2L, 3L));
     Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
     info.put(INFO_INTENT_A, List.of(infoEntry(INFO_INTENT_A, 0, D1, "向北推进", true)));
     info.put(INFO_INTENT_B, List.of(infoEntry(INFO_INTENT_B, 0, D2, "原地待命", false)));
@@ -620,8 +624,7 @@ class GaRoundTripTest {
                   V2,
                   verdict(V2, AdjudicationBreakpoint.parse("D2"), "refreshed")));
       case "decisionMakers" ->
-          base.withDecisionMakers(
-              merged(base.decisionMakers(), DM2, maker(DM2, "a-9", "p-9", 5L, 1L)));
+          base.withDecisionMakers(merged(base.decisionMakers(), DM2, maker(DM2, "p-9", 5L, 1L)));
       case "info" ->
           base.withInfo(
               merged(
@@ -808,17 +811,15 @@ class GaRoundTripTest {
   }
 
   /**
-   * 一个决策人：{@code affiliation} 走 {@code nation:<id>} 那一支（另有一处夹具走 {@code army} 支，见 {@link
-   * #allNonEmptyTablesRoundTripFieldByFieldWithRemovalsAndOverwrites}）。
+   * 一个决策人（★★ 2026-10-12 乙收尾：{@code affiliation} 字段已删 ⇒ 本夹具不再有那一维；保留了"按 id 造差异"的形状）。
    *
    * <p>★ {@code providerId}/{@code conversationGeneration} 都是**必须逐字带过**的字段（漏带 = 静默解绑 / 会话退回第 0
    * 代），故夹具里**取值互不相同**，漏带时重建结果对不上。
    */
   private static DecisionMaker maker(
-      DecisionMakerId id, String nationId, String providerId, long cadence, long generation) {
+      DecisionMakerId id, String providerId, long cadence, long generation) {
     return new DecisionMaker(
         id,
-        "a-9".equals(nationId) ? new Affiliation.Army(nationId) : new Affiliation.Nation(nationId),
         new LinkedHashSet<>(List.of("ga.IssueDirective")),
         AccessLimit.empty(),
         cadence,
@@ -838,7 +839,11 @@ class GaRoundTripTest {
         SdInfoId.parse(address + "#" + ordinal),
         360L,
         new LinkedHashSet<>(List.of(DM1)),
-        new LinkedHashSet<>(List.<Affiliation>of()),
+        // ★★ 乙收尾：affiliations 是**不透明受众标签串**（写入方自报）——令的执行原文按国家发；
+        //   文档/上报条目（source == null 那一档）**不按归属发**（与下面那条"DOC_C 的 affiliations 为空"的断言同源）。
+        source == null
+            ? new LinkedHashSet<String>()
+            : new LinkedHashSet<>(List.of("nation:" + DM1.value())),
         source == null ? "report" : "intent",
         value,
         ordinal == 0 && source != null ? Optional.of("夹具备注") : Optional.empty(),

@@ -7,7 +7,6 @@ import io.mosire.simos.army.Army;
 import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.army.ArmyVision;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -23,17 +22,20 @@ import java.util.TreeSet;
 /**
  * **军队决策人**的可见范围（spec §3.2）：军队当前位置 + 视野半径圈内的格。
  *
- * <p>链路：{@code Affiliation.Army(不透明 armyId 串)} → <b>归属裁定</b>（{@link
- * AppArmyAffiliations#armyOf}：把自称串交给 army 的 {@link io.mosire.simos.army.ArmyAffiliations} 拿 {@code
- * ArmyData.armies()} 裁）→ {@link Army#rootUnit()}（归属只存关系，编制在 unit） → {@link
- * ArmyVision#visionHexes(UnitState, io.mosire.simos.unit.UnitId, SimosTimestamp)} 取**当前位置 + 半径圈** ⇒
- * 前缀 {@code <mapId>/hex/<q>_<r>} 每条（R=1 ⇒ 7 条、R=2 ⇒ 19 条，可控）。★★ <b>视野算法唯一拼写点在 {@code
- * simos-army.ArmyVision}</b>，本类只做裁定/unit 解引用与命名空间投影，不再内联半径算式。
+ * <p>链路（乙收尾起：表本体与写口都在 army）：{@code ArmyData.armyAffiliations()}（决策人 → 军队；写口 = {@code
+ * army.AssignDecisionMakerArmy}）→ <b>归属裁定</b>（{@link AppArmyAffiliations#armyOf}：交给 army 的 {@link
+ * io.mosire.simos.army.ArmyAffiliations} 拿 {@code ArmyData.armies()} 裁）→ {@link
+ * Army#rootUnit()}（归属只存关系，编制在 unit） → {@link ArmyVision#visionHexes(UnitState,
+ * io.mosire.simos.unit.UnitId, SimosTimestamp)} 取**当前位置 + 半径圈** ⇒ 前缀 {@code <mapId>/hex/<q>_<r>}
+ * 每条（R=1 ⇒ 7 条、R=2 ⇒ 19 条，可控）。★★ <b>视野算法唯一拼写点在 {@code simos-army.ArmyVision}</b>，本类只做裁定/unit
+ * 解引用与命名空间投影，不再内联半径算式。
  *
  * <p>★★ <b>2026-10-12 批次 3d-1：本类从"读自称"改成"读自称 × army 的裁定"</b>（与 3c 的 {@code NationScope}
  * 同构，逐条照抄）。{@code armies} 表与 {@code Army} / {@code ArmyId} 搬进 {@code simos-army}，而 {@code
  * Affiliation.Army} 的载荷收窄成**不透明串**（{@code sd} 不得依赖 {@code army}）⇒ 本类不再能自己 {@code
- * sdState(state).armies().get(...)}，改问唯一拼装点 {@link AppArmyAffiliations}。
+ * sdState(state).armies().get(...)}，改问唯一拼装点 {@link AppArmyAffiliations}。★ <b>乙收尾后那条"自称串"本身也消失了</b>
+ * （{@code DecisionMaker.affiliation} 已删、{@code Affiliation} 本体已删）⇒ 本类读的是 army 自己的归属表 （{@code
+ * ArmyData.armyAffiliations}，写口 = {@code army.AssignDecisionMakerArmy}）；链路与判定口径一字未变。
  *
  * <p>★ **位置走 {@code effectivePosition}**（与 GUI / 工具面 / facet 同口径）：根单位自身没有有效位置 ⇒ 空答案。
  *
@@ -60,13 +62,8 @@ public final class ArmyScope implements DecisionScopeFunction {
     Objects.requireNonNull(dm, "dm");
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(mapId, "mapId");
-    if (!(dm.affiliation() instanceof Affiliation.Army)) {
-      throw new IllegalArgumentException(
-          "ArmyScope 只服务 Affiliation.Army，收到 "
-              + dm.affiliation().getClass().getName()
-              + "（分派由 DecisionScopeFunctions 负责）");
-    }
-    // ★★ 归属 = 自称 × army 的裁定（唯一拼装点 = AppArmyAffiliations）：解析不了这个串、或军队不在 armies 表里
+    // ★★ 2026-10-12 乙收尾：分派由 DecisionScopeFunctions 按**归属种类名**做（决策人身上不再带 Affiliation）——
+    //   走到这里就意味着这个决策人有一条 army 归属；军队不在 armies 表里（那一行被 AppArmyAffiliations 裁掉）
     //   ⇒ 读不到归属 ⇒ 下面一律 deny-all（**不抛、不回落、不给全量**）。
     Optional<ArmyId> armyId = AppArmyAffiliations.armyOf(dm.id(), state);
     if (armyId.isEmpty()) {

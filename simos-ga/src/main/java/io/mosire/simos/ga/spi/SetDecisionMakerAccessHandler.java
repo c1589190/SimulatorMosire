@@ -91,7 +91,6 @@ public final class SetDecisionMakerAccessHandler implements CommandHandler {
       DecisionMaker next =
           new DecisionMaker(
               existing.id(),
-              existing.affiliation(),
               allowedTools.orElse(existing.allowedTools()),
               updated,
               existing.decisionCadenceTicks(),

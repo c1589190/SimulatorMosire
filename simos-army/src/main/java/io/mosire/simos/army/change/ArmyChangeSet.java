@@ -6,6 +6,7 @@ import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.StateMeta;
@@ -27,7 +28,8 @@ import java.util.Objects;
  * <p>★ {@link #applyTo(ArmySnapshot, StateMeta)} 按 {@code ModuleCodec} 的 C28 契约把<b>新的</b> {@code
  * ref} / {@code timestamp} 装上去（模块状态类型本身不带坐标）。
  */
-public record ArmyChangeSet(FieldDelta<Army> armies, FieldDelta<CombatRecord> combats)
+public record ArmyChangeSet(
+    FieldDelta<Army> armies, FieldDelta<CombatRecord> combats, FieldDelta<ArmyId> armyAffiliations)
     implements ChangeSet {
 
   public ArmyChangeSet {
@@ -37,6 +39,9 @@ public record ArmyChangeSet(FieldDelta<Army> armies, FieldDelta<CombatRecord> co
     if (combats == null) {
       combats = new FieldDelta.Unchanged<>(); // ★ 旧档缺键，见类注释
     }
+    if (armyAffiliations == null) {
+      armyAffiliations = new FieldDelta.Unchanged<>(); // ★ 旧档缺键，见类注释
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ <b>全 Unchanged</b>（不是空对象）。 */
@@ -45,16 +50,19 @@ public record ArmyChangeSet(FieldDelta<Army> armies, FieldDelta<CombatRecord> co
     Objects.requireNonNull(target, "target");
     return new ArmyChangeSet(
         FieldDelta.diff(base.armies(), target.armies()),
-        FieldDelta.diff(base.combats(), target.combats()));
+        FieldDelta.diff(base.combats(), target.combats()),
+        FieldDelta.diff(base.armyAffiliations(), target.armyAffiliations()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
   public static ArmyData apply(ArmyChangeSet cs, ArmyData base) {
     Objects.requireNonNull(cs, "cs");
     Objects.requireNonNull(base, "base");
+    // ★ armyAffiliations 的键读侧（DecisionMakerId.parse）与 ArmyCodec 的键反序列化器同源：漏一个 ⇒ 该表一旦非空就往返不成立。
     return new ArmyData(
         FieldDelta.rebuild(base.armies(), cs.armies(), ArmyId::parse),
-        FieldDelta.rebuild(base.combats(), cs.combats(), CombatRecordId::parse));
+        FieldDelta.rebuild(base.combats(), cs.combats(), CombatRecordId::parse),
+        FieldDelta.rebuild(base.armyAffiliations(), cs.armyAffiliations(), DecisionMakerId::parse));
   }
 
   /**
@@ -69,6 +77,6 @@ public record ArmyChangeSet(FieldDelta<Army> armies, FieldDelta<CombatRecord> co
 
   /** 是否所有组件都未变。 */
   public boolean isEmpty() {
-    return !armies.changed() && !combats.changed();
+    return !armies.changed() && !combats.changed() && !armyAffiliations.changed();
   }
 }

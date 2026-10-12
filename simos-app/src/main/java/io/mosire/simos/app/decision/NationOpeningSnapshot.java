@@ -19,7 +19,6 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.tools.read.MapRenderTool;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -64,10 +63,14 @@ public final class NationOpeningSnapshot implements DecisionAgentRunner.OpeningS
   public Optional<LlmMessage> forDecisionMaker(DecisionMaker dm, SimulationState state) {
     Objects.requireNonNull(dm, "dm");
     Objects.requireNonNull(state, "state");
-    if (!(dm.affiliation() instanceof Affiliation.Nation nation)) {
+    // ★★ 乙收尾：归属不再挂在决策人身上 ⇒ 问 gov 自己的归属表（写口 = gov.AssignDecisionMakerNation）。
+    //   没有 nation 归属（军队 / GOV / 裸决策人）⇒ 不给这一份快照（与迁移前逐条同口径）。
+    String nationRef =
+        AppNationAffiliations.nationOf(dm.id(), state).map(NationId::value).orElse(null);
+    if (nationRef == null) {
       return Optional.empty();
     }
-    Region region = homeRegionOf(nation, state);
+    Region region = homeRegionOf(nationRef, state);
     if (region == null) {
       // ★ 保留 WARN（用户 2026-10-23：不接受降级）。
       DECISION.warn(
@@ -79,7 +82,7 @@ public final class NationOpeningSnapshot implements DecisionAgentRunner.OpeningS
               "day",
               state.meta().timestamp().tick(),
               "nation",
-              nation.nationId(),
+              nationRef,
               "reason",
               "home-region-missing"));
       return Optional.empty();
@@ -97,7 +100,7 @@ public final class NationOpeningSnapshot implements DecisionAgentRunner.OpeningS
               List.of(
                   new ContentPart.Text(
                       "【开场快照】你的国土（"
-                          + nation.nationId()
+                          + nationRef
                           + "）所在区域的当前视图：中心 ("
                           + center.q()
                           + ","
@@ -126,12 +129,12 @@ public final class NationOpeningSnapshot implements DecisionAgentRunner.OpeningS
   }
 
   /** 该国家在**此刻的世界**里的首府区域（查无 ⇒ null，由调用方如实报原因）。 */
-  private static Region homeRegionOf(Affiliation.Nation affiliation, SimulationState state) {
-    // ★ 2026-10-12 批次 3c：决策人的国家只是个不透明引用（sd 侧不认识 NationId）⇒ 先解释成 NationId
-    //   （解释不了 = 没有国家归属 ⇒ 返回 null，由调用方如实报原因），再读 **gov** 切片的国家表。
+  private static Region homeRegionOf(String nationRef, SimulationState state) {
+    // ★★ 乙收尾：引用已由 gov 的归属表给出（类型化的 NationId 裸值）⇒ 解释只可能失败于"形状坏"，
+    //   国家不在表里则由 nationOrNull 给 null（显式未知，调用方如实报原因）。
     NationId nationId;
     try {
-      nationId = NationId.parse(affiliation.nationId());
+      nationId = NationId.parse(nationRef);
     } catch (IllegalArgumentException e) {
       return null;
     }

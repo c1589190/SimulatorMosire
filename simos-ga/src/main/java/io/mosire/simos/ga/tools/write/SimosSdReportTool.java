@@ -47,9 +47,10 @@ import java.util.Set;
  * key="report"}、 {@code value} 为 JSON 字符串 {@code {from,to,subject,body,evidence?,tick}}：
  *
  * <ul>
- *   <li>可见性两轴：{@code to.kind=GOV} ⇒ {@code affiliations=[{kind:gov,id:unitId}]}；{@code NATION} ⇒
- *       {@code affiliations=[{kind:nation,id:nationId}]}；{@code GM} ⇒ 两者都空（只有 GM 的 {@code
- *       simos.sd.reports} 能看到）。{@code tags} 恒空——归属匹配由 affiliations 承担；
+ *   <li>可见性两轴：{@code to.kind=GOV} ⇒ {@code affiliations=["gov:<unitId>"]}；{@code NATION} ⇒ {@code
+ *       affiliations=["nation:<nationId>"]}；{@code GM} ⇒ 两者都空（只有 GM 的 {@code simos.sd.reports}
+ *       能看到）。{@code tags} 恒空——归属匹配由 affiliations 承担；★ 2026-10-12 乙收尾：{@code affiliations}
+ *       是<b>不透明受众标签串</b>（写入方自报），本工具只按"谁收"拼那两串，不解释任何归属种类；
  *   <li>一条命令 = 一条 revision；发送人只能写自己的报告（{@code requireAll} 用 {@code sd:decision-maker/<自己>}
  *       自指域，不采信载荷里的 id）。
  * </ul>
@@ -335,14 +336,19 @@ public final class SimosSdReportTool implements SimosTool {
       return out;
     }
 
-    Optional<List<Map<String, Object>>> affiliations() {
+    /**
+     * ★ 受众标签（{@code SdInfoEntry.affiliations} 的**不透明串**形状）：{@code "nation:<id>"} / {@code
+     * "gov:<id>"}。
+     *
+     * <p>★★ 2026-10-12 乙收尾：从 {@code [{kind,id}]} 改成<b>串</b>——旧形状要求 sd/ga 侧有一个"归属种类的
+     * switch"（新加一个模块就得改 ga），新形状把种类交给写入方自报、解释交给 app。
+     */
+    Optional<List<String>> affiliations() {
       if (nation == null) {
         return Optional.empty();
       }
-      Map<String, Object> affiliation = new LinkedHashMap<>();
-      affiliation.put("kind", nation ? "nation" : "gov");
-      affiliation.put("id", id);
-      return Optional.of(List.of(affiliation));
+      // ★ 标签的拼法（kind:ref）与各模块自报的种类名同源：这里用到的两串由本工具的 to.kind 决定。
+      return Optional.of(List.of((nation ? "nation" : "gov") + ":" + id));
     }
   }
 

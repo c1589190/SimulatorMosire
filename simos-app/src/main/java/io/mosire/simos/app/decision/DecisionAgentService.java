@@ -6,6 +6,7 @@ import io.mosire.agentlib.store.ConversationStore;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.llm.LlmProviderResolver;
 import io.mosire.simos.app.llm.ProviderLlm;
@@ -253,7 +254,9 @@ public final class DecisionAgentService {
             provider.vision(),
             openingSnapshot,
             callerFactory.whitelistFor(maker),
-            frozen);
+            frozen,
+            // ★★ 2026-10-12 乙收尾：身份消息里的"归属：…"由各模块自报的归属现拼（端口在 ga-spi、实现住 app）。
+            AppDecisionMakerAffiliations.INSTANCE);
     try {
       DecisionAgentRunner.DecisionTurn turn = runner.run(maker, state);
       // ★★ 回合结束统一结算（用户 2026-10-22 裁定）：submit 工具在回合内只登记；这里把“没 submit 自动 NL 决策 /
@@ -353,7 +356,11 @@ public final class DecisionAgentService {
     if (conversations.load(conversationId).isEmpty()) {
       conversations.append(
           conversationId,
-          DecisionAgentRunner.openingUserMessage(maker, AppDecisionToolNames.INSTANCE));
+          DecisionAgentRunner.openingUserMessage(
+              maker,
+              DecisionAgentRunner.affiliationTextOf(
+                  AppDecisionMakerAffiliations.INSTANCE, maker, core.replay(ref)),
+              AppDecisionToolNames.INSTANCE));
     }
     conversations.append(conversationId, LlmMessage.user(text));
     return conversationId;

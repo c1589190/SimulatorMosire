@@ -6,9 +6,7 @@ import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.sd.spi.AffiliationTargets;
 import io.mosire.simos.sd.spi.SdCommandNames;
 import io.mosire.simos.sd.spi.SdPayloads;
 import io.mosire.simos.util.log.EventLog;
@@ -20,7 +18,6 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -28,20 +25,31 @@ import java.util.Set;
  * 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）。
  *
  * <pre>{@code
- * {"id":"dm1","affiliation":{"kind":"nation","id":"n1"},
- *  "allowedTools":["ga.SubmitVerdict"],"cadence":1}
+ * {"id":"dm1","allowedTools":["ga.SubmitVerdict"],"cadence":1}
  * }</pre>
  *
- * <p>★ 拒绝：id 已存在；{@code affiliation} 目标不存在；{@code allowedTools} 含**通用写**（{@link
+ * <p>★★★ <b>2026-10-12 乙收尾：{@code affiliation}
+ * 载荷<b>整条删除</b></b>（用户原话「归属肯定归模块啊」＋「不但允许创建<b>没有更多附加状态的单个决策人</b>，
+ * 也可以创建/为已有决策人<b>赋予、修改状态</b>」）：本命令从此只造<b>裸决策人身份</b>；归属由各持有模块的赋权工单后赋 —— {@code
+ * gov.AssignDecisionMakerNation}（决策人 → 国家）· {@code gov.AssignDecisionMakerGov}（决策人 → GOV 单位）·
+ * {@code army.AssignDecisionMakerArmy}（决策人 → 军队）。
+ *
+ * <p>★ <b>旧 {@code affiliation} 键<b>具名拒并指路</b></b>（与 {@code army.CreateArmy} 对旧 {@code nationId}
+ * 的处置同款： 拒绝，不静默忽略）：字段已从 {@link DecisionMaker} 删除，继续兼容读会让人以为"决策人自带归属"。拒因直接给出三条新命令。
+ *
+ * <p>★ 拒绝：id 已存在；带了 {@code affiliation}；{@code allowedTools} 含**通用写**（{@link
  * SdCommandNames#SIMOS_COMMAND_SUBMIT}）⇒ 拒绝（N9）。
  *
  * <p>★ **创建期 {@code accessLimit} 恒为"无额外限制"**（{@link AccessLimit#empty()}）：可见范围由 app 层的范围函数 现算，GM
  * 配的是**额外收紧**——创建期不解析它，配权由 GM 专用的 {@code ga.SetDecisionMakerAccess} 写入（spec §4.2）。 这**不是**旧 {@code
  * viewScope.empty()} 那种 deny-all：新语义下空限制 = 不收紧，否则新建的决策人当场变瞎。
  *
- * <p>★★ <b>归属校验仍在 sd 侧</b>（{@link AffiliationTargets}）：它要读 {@code sd} 的 {@code nations}/{@code
- * armies} 与 <b>unit 切片</b>的 {@code GovernmentFormation}，而本模块<b>没有声明</b> {@code simos-unit} 依赖 ⇒
- * 那段判据留在 sd （它服务的正是 sd 的 {@link Affiliation} 值类型），本类经既有的 {@code ga → sd} 方向调用；<b>不是复制第二份</b>。
+ * <p>★★ <b>归属校验去哪了（如实记）</b>：3c/3d-1 期间它住 sd 的 {@code AffiliationTargets}（读 unit 切片的 {@code
+ * GovernmentFormation}），本批随"归属归模块"<b>整条搬进各持有模块的赋权命令</b>——Nation 的存在性判据在 {@code
+ * gov.AssignDecisionMakerNation}、Gov 单位的"存在 + 带 GovernmentFormation"在 {@code
+ * gov.AssignDecisionMakerGov}、 军队存在性在 {@code army.AssignDecisionMakerArmy}。★
+ * 那三条命令<b>都</b>比本命令多一条判据：{@code decisionMakerId} 必须是已存在的决策人（拆分前"创建"与"绑归属"是同一条命令，不存在这个问题）⇒ 走 {@code
+ * ga.spi.DecisionMakerExistencePort}。
  *
  * <p>★ <b>GM-only</b>（反默认口径）：不打 {@code DmUsableCommand} ⇒ handler 照常注册、GM 的 {@code
  * simos.command.submit} 照常可用，但排除出决策令白名单 / {@code sd.RegisterEffect} / 决策人目录 —— 与搬迁前逐字同档。
@@ -63,15 +71,19 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
       JsonNode payload = SdPayloads.parse(payloadJson);
       DecisionMakerId id = DecisionMakerId.parse(SdPayloads.requireText(payload, "id"));
       dmForLog = id.value();
-      Affiliation affiliation = SdPayloads.requireAffiliation(payload, "affiliation");
+      if (payload.has("affiliation") && !payload.get("affiliation").isNull()) {
+        return rejected(
+            "ga.CreateDecisionMaker 不再接受 affiliation：决策人身份与归属已分开（用户裁定「归属肯定归模块」）。"
+                + "先建裸决策人，再用工单赋归属：gov.AssignDecisionMakerNation（决策人 → 国家）、"
+                + "gov.AssignDecisionMakerGov（决策人 → GOV 单位）、army.AssignDecisionMakerArmy（决策人 → 军队）；"
+                + "没有归属的决策人读不到任何可见范围（deny-all）。",
+            "dm",
+            dmForLog);
+      }
       Set<String> allowedTools = SdPayloads.requireTextSet(payload, "allowedTools");
       long cadence = SdPayloads.requireLong(payload, "cadence");
       if (base.decisionMakers().containsKey(id)) {
         return rejected("决策人已存在: " + id, "dm", dmForLog);
-      }
-      Optional<String> affiliationProblem = AffiliationTargets.problem(state, affiliation);
-      if (affiliationProblem.isPresent()) {
-        return rejected(affiliationProblem.get(), "dm", dmForLog);
       }
       if (allowedTools.contains(SdCommandNames.SIMOS_COMMAND_SUBMIT)) {
         return rejected(
@@ -82,7 +94,7 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
             allowedTools.size());
       }
       Map<DecisionMakerId, DecisionMaker> next = new LinkedHashMap<>(base.decisionMakers());
-      next.put(id, new DecisionMaker(id, affiliation, allowedTools, AccessLimit.empty(), cadence));
+      next.put(id, new DecisionMaker(id, allowedTools, AccessLimit.empty(), cadence));
       EventLog.channel(GaLog.decision())
           .info(
               LogEvent.of(
@@ -90,8 +102,6 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
                   GaLogSource.GA_DECISION,
                   "id",
                   id.value(),
-                  "affiliation",
-                  affiliation,
                   "cadence",
                   cadence,
                   "allowedTools",

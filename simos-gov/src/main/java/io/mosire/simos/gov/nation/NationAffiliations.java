@@ -11,16 +11,15 @@ import java.util.Optional;
  * ★★ <b>nation 归属表</b>（用户 2026-10-12 裁定「<b>归属肯定归模块</b>」＋「外交是 gov 的事」）：{@code 决策人 → 国家} 这张表的
  * <b>唯一形态与唯一裁定点</b>。
  *
- * <p>★★ <b>它在本批（3c）里的角色 —— 裁定方，不是写入方（如实记，这是与约束设计书措辞的偏离）</b>：本批的红线是 <b>命令目录恒 143</b>（只改 4
- * 条命令的名字，不新增命令类型），而 {@code CommandBus} 的<b>一条命令只写一个命名空间</b> （见规划 §16.1）：绑定决策人与国家的那条既有路径是 {@code
- * ga.CreateDecisionMaker} 的 {@code affiliation} 载荷 ⇒ 它<b>只能</b>落 {@code ga}。⇒
- * 本批把<b>权威搬过来</b>（下一条），而"gov 自己写这张表"要等乙第 4 步的 {@code gov.Assign*DecisionMaker} 命令（规划 §18.2 第 4 步 /
- * §5.3 第 2 步，属批次 5 的 gov 命令面）。<b>不新增命令是本批的硬判据</b>，故不在这里造一个"没人能写"的表。
+ * <p>★★★ <b>乙收尾（本批）起它是"写入方"</b>（3c 时只是裁定方 —— 那张表的写口当时仍挂在 {@code ga.CreateDecisionMaker} 的 {@code
+ * affiliation} 载荷上，见规划 §18.2 的 D1 偏离）：表本体住 {@link
+ * io.mosire.simos.gov.GovState#nationAffiliations()}， <b>写口 = {@code
+ * gov.AssignDecisionMakerNation}</b>（用户原话「<b>同样搞工单</b>」）。本类只负责 <b>解释 + 裁定 + 渲染</b>：写入方写的已经是类型化的
+ * {@link NationId}，"这个国家此刻还在不在"由 {@link #resolve} 按 {@code nations} 裁。
  *
- * <p>★★ <b>权威在哪（本批就成立）</b>：{@link io.mosire.simos.gov.GovState#nations()} 是"这个国家存在吗"的<b>唯一</b>权威。
- * 决策人记录里那份国家归属只剩一个<b>不透明引用</b>（{@code Affiliation.Nation(String)}，sd 侧不认识 {@link NationId}）⇒
- * <b>解释它、并裁定它是否成立的地方是这里</b>：引用解析不出 {@link NationId}、或解析出的国家不在 {@code nations} 里 ⇒ 该决策人
- * <b>没有国家归属</b>（{@link #nationOf} 返回空）。
+ * <p>★★ <b>权威在哪</b>：{@link io.mosire.simos.gov.GovState#nations()} 是"这个国家存在吗"的<b>唯一</b>权威。归属表里的
+ * 值已经是 {@link NationId}（写入方在命令期已具名拒过不存在的国家）⇒ 本类的裁定只剩"那个国家后来还在不在"这一条： 不在 {@code nations} 里 ⇒
+ * 该决策人<b>没有国家归属</b>（{@link #nationOf} 返回空）。
  *
  * <p>★★★ <b>"读不到归属 ⇒ deny-all" 的落点</b>：调用方（app 的 {@code NationScope}）拿到空 ⇒ <b>四个命名空间全部 {@code
  * ResourceScope.none()}</b>，<b>不抛、不回落、不给全量</b>——世界数据的问题只降权、不报错（与 {@code NationScope} 既有的 "无匹配区域 ⇒
@@ -34,6 +33,12 @@ import java.util.Optional;
  * 的"是函数不是配置"同一条口径）。
  */
 public record NationAffiliations(Map<DecisionMakerId, NationId> byDecisionMaker) {
+
+  /**
+   * ★ <b>本种类的名字</b>（<b>模块自报</b>）：范围函数注册表（{@code DecisionScopeFunctions}）与归属标签 （{@code
+   * kind:ref}）都以它为准 —— 新增一个模块时，这个名字只在<b>它自己的模块里</b>拼写一次。
+   */
+  public static final String KIND = "nation";
 
   public NationAffiliations {
     if (byDecisionMaker == null) {
@@ -55,28 +60,21 @@ public record NationAffiliations(Map<DecisionMakerId, NationId> byDecisionMaker)
   }
 
   /**
-   * ★ <b>唯一的建表入口</b>：把"决策人自报的不透明引用"按 {@code nations} 裁成成立的那部分。
+   * ★ <b>唯一的建表入口</b>：把状态里那张归属表按 {@code nations} 裁成成立的那部分。
    *
-   * @param claims 决策人 → 不透明国家引用（原文；来自 {@link io.mosire.simos.gov.spi.NationAffiliationLookup}
-   *     的端口实现）
+   * @param table {@code GovState.nationAffiliations()}（写入方 = {@code gov.AssignDecisionMakerNation}）
    * @param nations {@code GovState.nations()}——"这个国家存在吗"的权威
    */
   public static NationAffiliations resolve(
-      Map<DecisionMakerId, String> claims, Map<NationId, Nation> nations) {
-    Objects.requireNonNull(claims, "claims");
+      Map<DecisionMakerId, NationId> table, Map<NationId, Nation> nations) {
+    Objects.requireNonNull(table, "table");
     Objects.requireNonNull(nations, "nations");
     Map<DecisionMakerId, NationId> resolved = new LinkedHashMap<>();
-    for (Map.Entry<DecisionMakerId, String> entry : claims.entrySet()) {
+    for (Map.Entry<DecisionMakerId, NationId> entry : table.entrySet()) {
       DecisionMakerId decisionMaker = entry.getKey();
-      String claim = entry.getValue();
-      if (decisionMaker == null || claim == null || claim.isBlank()) {
+      NationId nationId = entry.getValue();
+      if (decisionMaker == null || nationId == null) {
         continue; // 形状坏的引用：不是"归属",是坏数据 ⇒ 丢弃（fail-closed）
-      }
-      NationId nationId;
-      try {
-        nationId = NationId.parse(claim);
-      } catch (IllegalArgumentException e) {
-        continue; // 同上：解释不了 ⇒ 没有归属
       }
       if (!nations.containsKey(nationId)) {
         continue; // ★ 权威裁定：gov 不认识这个国家 ⇒ 这个决策人没有国家归属
@@ -90,5 +88,23 @@ public record NationAffiliations(Map<DecisionMakerId, NationId> byDecisionMaker)
   public Optional<NationId> nationOf(DecisionMakerId decisionMaker) {
     Objects.requireNonNull(decisionMaker, "decisionMaker");
     return Optional.ofNullable(byDecisionMaker.get(decisionMaker));
+  }
+
+  /**
+   * ★ <b>本种类的一条归属"长什么样"</b>（给人看的那句话）——由<b>本模块</b>渲染，调用方（app / 提示语）不得自己拼。
+   *
+   * <p>★★ <b>逐字保留收窄前的渲染</b>：用户可见文本（决策人开场提示语）此前嵌的是 {@code Affiliation.Nation(String)} 那一支的原文（{@code
+   * "国家（nationId=n1）"}），换一份渲染就会改掉对外文本。
+   */
+  public static String describe(String ref) {
+    return "国家（nationId=" + ref + "）";
+  }
+
+  /**
+   * ★ <b>收窄前 {@code Affiliation.Nation} 的 {@code toString()} 原文</b>（工具拒因里嵌的就是它）：调用方需要"归属类型文本"
+   * 时用它，不自己拼第二份。
+   */
+  public static String affiliationText(String ref) {
+    return "Nation[nationId=" + ref + "]";
   }
 }

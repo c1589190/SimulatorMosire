@@ -9,7 +9,6 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -24,6 +23,10 @@ import java.util.TreeSet;
 
 /**
  * **国家决策人**的可见范围（spec §3.2）：本国区域。
+ *
+ * <p>★ <b>归属从哪来</b>：{@code GovState.nationAffiliations()}（决策人 → 国家；写口 = {@code
+ * gov.AssignDecisionMakerNation}）经 {@link AppNationAffiliations} 裁一遍（国家不存在 ⇒ 那一行失效）⇒ 读不到就
+ * deny-all，与 3c 的口径逐条相同。
  *
  * <p>逻辑：扫 {@code GameMap.regions()}，取 {@code region.meta().tag()} **逐字等于** {@link NationTag#tagFor}
  * 的区域 ⇒ 前缀 {@code <mapId>/region/<rid>} 每条。
@@ -57,13 +60,9 @@ public final class NationScope implements DecisionScopeFunction {
     Objects.requireNonNull(dm, "dm");
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(mapId, "mapId");
-    if (!(dm.affiliation() instanceof Affiliation.Nation)) {
-      throw new IllegalArgumentException(
-          "NationScope 只服务 Affiliation.Nation，收到 "
-              + dm.affiliation().getClass().getName()
-              + "（分派由 DecisionScopeFunctions 负责）");
-    }
-    // ★★ 2026-10-12 批次 3c：归属的**裁定方是 gov**（决策人记录里只有不透明引用）——读不到 ⇒ deny-all（见类注）。
+    // ★★ 2026-10-12 乙收尾：分派由 DecisionScopeFunctions 按**归属种类名**做（决策人身上不再带 Affiliation），
+    //   本类不再需要"类型不符即抛"那段 —— 走到这里就意味着这个决策人有一条 nation 归属；读不到（表里没有 /
+    //   国家已不在 nations 里被裁掉）⇒ 下面 deny-all（见类注）。
     Optional<NationId> ownNation = AppNationAffiliations.nationOf(dm.id(), state);
     if (ownNation.isEmpty()) {
       return denyAll();

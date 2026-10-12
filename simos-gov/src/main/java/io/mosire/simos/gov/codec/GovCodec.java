@@ -19,6 +19,7 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
@@ -34,6 +35,9 @@ import org.slf4j.Logger;
  * <p>★★ <b>{@link #namespace()} 恒返回字面量 {@code "gov"}</b>：与 {@link
  * io.mosire.simos.gov.GovSnapshot#namespace()} <b>同字面</b>——{@code SimulationState} 构造期校验"modules 的键
  * == snapshot.namespace()"，写歪当场抛（装配期那处有牙）。改一处必须同时改另一处。
+ *
+ * <p>★★★ <b>乙收尾（本批）多一个键 {@code DecisionMakerId}</b>：它同时是 {@code nationAffiliations} 与 {@code
+ * govAffiliations} 两张新表的键（两个组件共用一把尺，仍是"只注册读侧一处"）。漏注册 ⇒ 任一张表非空即解码炸。
  *
  * <p>★ <b>树里的自定义键有五个</b>：{@code UnitId}（{@code offices}/{@code remittanceStates} 两个顶层表的键）、 {@code
  * CommodityId} 与 {@code CurrencyId}（{@link io.mosire.simos.gov.GovOfficeState} 六张读数表的键），以及
@@ -101,6 +105,9 @@ public final class GovCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(
         DiplomaticRelationKey.class, keyDeserializer(DiplomaticRelationKey::parse));
     module.addKeyDeserializer(DiplomaticEventId.class, keyDeserializer(DiplomaticEventId::parse));
+    // ★★ 乙收尾（本批）：归属两表（nationAffiliations / govAffiliations）的键 = 决策人 id ⇒ 读侧必须认识
+    //   DecisionMakerId（漏注册 ⇒ 那两张表一旦非空就解码炸；表空着测不到）。
+    module.addKeyDeserializer(DecisionMakerId.class, keyDeserializer(DecisionMakerId::parse));
     return module;
   }
 

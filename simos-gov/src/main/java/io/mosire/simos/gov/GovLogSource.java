@@ -20,6 +20,9 @@ import io.mosire.simos.util.log.LogOriginKind;
  *       迁入</b>的国家生命周期 / 外交写入命令面（{@code gov.CreateNation} / {@code gov.DeleteNation} / {@code
  *       gov.SetDiplomaticRelation} / {@code gov.RecordDiplomaticEvent}）——同样无 {@code day} 上下文，归
  *       {@link LogOriginKind#SYSTEM}；
+ *   <li>{@link #GOV_AFFILIATION}：<b>2026-10-12 乙收尾新增</b>——归属表（决策人 → 国家 / 决策人 → GOV 单位）的写入命令面
+ *       （{@code gov.AssignDecisionMakerNation} / {@code gov.AssignDecisionMakerGov}）：无 {@code day}
+ *       上下文，归 {@link LogOriginKind#SYSTEM}；
  *   <li>{@link #GOV_CODEC}：GovCodec 编解码与变更集施加。
  * </ul>
  */
@@ -37,6 +40,10 @@ public enum GovLogSource implements LogOrigin {
   GOV_DIPLOMACY(
       "gov-diplomacy",
       "外交关系与外交事件命令面（gov.SetDiplomaticRelation / gov.RecordDiplomaticEvent；同上）",
+      LogOriginKind.SYSTEM),
+  GOV_AFFILIATION(
+      "gov-affiliation",
+      "归属表写入命令面（gov.AssignDecisionMakerNation / gov.AssignDecisionMakerGov；2026-10-12 乙收尾）",
       LogOriginKind.SYSTEM),
   GOV_PORT(
       "gov-port", "R2 口岸管制：政策命令 + 逐政府实际管制力/市场区总效率折算（无 day 上下文，按纪律归 system）", LogOriginKind.SYSTEM),

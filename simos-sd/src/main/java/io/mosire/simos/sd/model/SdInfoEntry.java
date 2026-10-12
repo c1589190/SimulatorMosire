@@ -27,9 +27,14 @@ import java.util.Set;
  *   <li>{@link #tick}——该条目所属**世界日**（单位：日，2026-09-24 日制裁定；不是 {@link #at} 那个 revision：二者互不换算）；
  *   <li>{@link #tags}——挂 {@link DecisionMakerId}（**与既有权限模型同构**，**不开**自由字符串标签）。**可为空集 = 无主**，
  *       天然成立，不用 {@code Optional} 包一层；
- *   <li>{@link #affiliations}（**决策文档可见性的第二轴**）——挂 {@link Affiliation}。语义是"这条 INFO 记的是**谁**的事" ⇒ 同一
- *       nation/army 的决策人**自动**看得到，不必逐个指派。与 {@link #tags} 是**并集**关系（二者命中其一即可见）， 判定**只此一处**（{@code
- *       RedactingQueryService#docs}）。**可为空集 = 不按归属发**，同样不用 {@code Optional}。
+ *   <li>{@link #affiliations}（**决策文档可见性的第二轴**）——<b>不透明的"受众标签集"</b>（{@code Set<String>}，2026-10-12
+ *       乙收尾改造：此前是 {@code Set<Affiliation>}）。语义仍是"这条 INFO 记的是**谁**的事" ⇒ 同一 nation/army/GOV
+ *       的决策人**自动**看得到；但<b>标签由写入方自报</b>（形如 {@code nation:n1} / {@code army:a1} / {@code gov:g1}），
+ *       <b>sd / ga 都不解释它</b>——解释与判定只在 app（{@code RedactingQueryService#docs}，**只此一处**）。与 {@link
+ *       #tags} 是**并集**关系（二者命中其一即可见）。**可为空集 = 不按归属发**，同样不用 {@code Optional}。 ★
+ *       <b>为什么改成字符串</b>：用户原话「<b>归属肯定归模块啊，后面新加模块 ga 还得显式地重新添加？不可能的</b>」—— 旧形状要求 sd
+ *       侧有一个"归属种类的枚举"（{@code {"kind":"nation"|"army"|"gov"}} 的解析 switch），新加一个模块就要改
+ *       sd/ga；不透明字符串把这件事变成"写入方自报一个标签"，ga/sd <b>零改动</b>。
  *   <li>{@link #adjudicationStatus}（**裁决的生效 / 作废**，2026-09-23 用户原话「只有生效裁决和作废裁决」）——只对 {@code
  *       sd:adjudication.*} 条目有意义；缺省 {@code empty()} = 老档（那时都生效）。★ 一个 tick 可以留**多条**裁决记录，但**至多一条
  *       {@link AdjudicationStatus#EFFECTIVE}**；作废时那条记录**不删**，只换状态（与令的 {@code SUPERSEDED} 同族留痕）。
@@ -51,7 +56,7 @@ public record SdInfoEntry(
     SdInfoId id,
     long tick,
     Set<DecisionMakerId> tags,
-    Set<Affiliation> affiliations,
+    Set<String> affiliations,
     String key,
     Object value,
     Optional<String> note,
@@ -105,8 +110,10 @@ public record SdInfoEntry(
     if (affiliations == null) {
       affiliations = Set.of();
     }
-    Set<Affiliation> frozenAffiliations = new LinkedHashSet<>();
-    for (Affiliation affiliation : affiliations) {
+    // ★ 不透明受众标签：只判"不是 null"（与 tags 同一条构造期口径）。**不解析、不校验形状**——解释它是 app 的事，
+    //   sd/ga 不解释（见类注：那是"新加模块不必改 ga"的兑现点）。
+    Set<String> frozenAffiliations = new LinkedHashSet<>();
+    for (String affiliation : affiliations) {
       if (affiliation == null) {
         throw new IllegalArgumentException("affiliations 不得含 null");
       }

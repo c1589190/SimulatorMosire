@@ -4,6 +4,7 @@ import io.mosire.agentlib.approval.ApprovalCoordinator;
 import io.mosire.agentlib.approval.PendingApprovals;
 import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.decision.ProposalCatalog;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
@@ -1022,8 +1023,14 @@ public final class SimosToolSource implements ToolSource {
     //   外交关系边（from 必须是调用者 Nation）、外交事件（participants 必须含调用者 Nation）、
     //   "给 XXX 政府钱"（付款人 = 调用者所属 GOV，身份派生；任意收款 GOV 由既有审批链把关）。
     //   **桶**（本方法）就是 **权限组白名单**的来源——{@code Shell} 从本桶派生工具名，{@code roles()} 是唯一声明。
-    built.add(new SetDiplomaticRelationTool(gaWrites, gaReads, gaIdentity, mapId));
-    built.add(new RecordDiplomaticEventTool(gaWrites, gaReads, gaIdentity, mapId));
+    // ★★ 2026-10-12 乙收尾：署名判定要问"调用者以谁的名义"⇒ 注入归属读口（端口在 ga-spi、实现住 app，
+    //   它同时服务决策人运行流的身份消息）。
+    built.add(
+        new SetDiplomaticRelationTool(
+            gaWrites, gaReads, gaIdentity, AppDecisionMakerAffiliations.INSTANCE, mapId));
+    built.add(
+        new RecordDiplomaticEventTool(
+            gaWrites, gaReads, gaIdentity, AppDecisionMakerAffiliations.INSTANCE, mapId));
     GovToolSupport gov =
         new GovToolSupport(
             new CoreSimosToolWritePort(core, initiator),

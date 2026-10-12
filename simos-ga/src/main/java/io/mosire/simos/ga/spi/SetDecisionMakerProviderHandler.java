@@ -63,7 +63,6 @@ public final class SetDecisionMakerProviderHandler implements CommandHandler {
       DecisionMaker updated =
           new DecisionMaker(
               existing.id(),
-              existing.affiliation(),
               existing.allowedTools(),
               existing.accessLimit(),
               existing.decisionCadenceTicks(),

@@ -77,7 +77,6 @@ public final class ResetDecisionMakerConversationHandler implements CommandHandl
       DecisionMaker next =
           new DecisionMaker(
               existing.id(),
-              existing.affiliation(),
               existing.allowedTools(),
               existing.accessLimit(),
               existing.decisionCadenceTicks(),

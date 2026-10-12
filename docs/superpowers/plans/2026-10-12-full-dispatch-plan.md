@@ -658,3 +658,35 @@ army 做裁定方（`ArmyAffiliations` + `ArmyAffiliationPort` 端口在 army + 
 ① **`SdSpec` 不存在**（我派单里写的；实际同步的是 `SdSnapshots`）；② 我写"`allowedCommandTypes = CommandFaces.drainableTypes()`"是语义描述，**实际注入点是 `declarations.dmUsableTypes()`（内容相同）且未改**；
 ③ **`GaRoundTripTest` 自 3d-1 起就编译不过**（3 处 import 指向已搬走的 id 类型 + `Affiliation.Army(String)`）⇒ 本批一并修正，否则护栏跑不起来。
 ★ 另：它发现**台账的最后一节是 3d-1，3d-2 从未追加**（3d-2 那批自称追加了）⇒ 它按"3d-1 + 规划 §21"为基准记账并注明。**控制方已知悉，3d-2 的台账增量以规划 §21 为准。**
+
+---
+
+## §23 乙收尾（§18.2 第 4 步）收工：归属彻底归模块 + 删 `Affiliation` 本体
+
+**结果**：65 项（52 M / 4 D / 9 新增）、**零 pom / 零 worlds**、test 面**只有 3 个护栏文件**。
+**`Affiliation` 本体 + `AffiliationTargets` + `SdPayloads.requireAffiliation/optionalAffiliationSet/readAffiliation` 全删**；
+`DecisionMaker` → **6 参**（`affiliation` 去掉 ⇒ **裸决策人**成形；带 `affiliation` 键 ⇒ **具名拒并指路三条新命令**）。
+
+### 23.1 ★★ N = 3 条赋权命令（catalog 138 → **141**）
+`gov.AssignDecisionMakerNation` · `gov.AssignDecisionMakerGov` · `army.AssignDecisionMakerArmy`
+—— **幂等 / 可改 / 可清**（缺席/null/空串 ⇒ 清除；同值再赋 ⇒ 空变更集），**逐条具名拒**（决策人不存在 / 国家不在 `nations` /
+单位不存在或不带 `GovernmentFormation` / 军队不在 `armies`）。表 = **新状态组件放末位**（`GovState` 5→**7**、`ArmyData` 2→**3**）
+⇒ 既有键线格式次序未动。★ 三条一律**不打 `DmUsableCommand`**。
+**权限四面**：catalog **138 → 141**（授权）· 可嵌令 **66（∅）** · 可入队 **66（∅）** · 落点 **2（∅）** · 声明面 **66（∅）**。
+
+### 23.2 ★★ 用户那句「新加模块 ga 还得显式地重新添加？不可能的」的**兑现证据**
+`DecisionScopeFunctions` 键 = **kind 字符串**（各模块自报常量 `NationAffiliations.KIND="nation"` / `GovAffiliations.KIND="gov"` / `ArmyAffiliations.KIND="army"`）。
+**加一个新模块的步骤**：① 模块内加归属表 + 赋权命令（`KIND`/`describe`/`affiliationText` 都在模块内）；② app 加一个 `DecisionScopeFunction` + 注册一行 + `AppDecisionMakerAffiliations.SOURCES` 加一行；**③ `ga` / `ga-spi` 一个字都不用改**。
+**控制方复核**：`simos-ga/src/main` + `simos-ga-spi/src/main` 内 `Affiliation` 类型引用 = **0**（唯一命中是 `DiplomaticWriteSignature:24` 的 **javadoc 注释**，描述"本批删掉的最后一个归属种类 switch"）；两处 `switch (kind)` 与归属无关（`FrozenToolKind` / 工具自己的收件人词表）。
+
+### 23.3 「读不到归属 ⇒ deny-all」证据
+`NationScope:131` / `ArmyScope:118` / `GovScope:157` 三处 `denyAll()` **一律四命名空间 `ResourceScope.none()`**（不抛、不回落、不给全量）；
+`DecisionScopeFunctions:98` 是**裸决策人**那条（同样四 none）；`:105` 是**未注册 kind ⇒ 抛**。
+**等价性论证**：单轴 DM 时并集 = 该轴输出（其余轴给全 `none()`，`X ∪ none = X`）；三处范围算法**一行未改**，变的只是"归属从哪读"。
+
+### 23.4 控制方追认的 6 条偏离 + 已知债
+D1 删两个端口（`NationAffiliationLookup`/`ArmyAffiliationPort`，理由消失 ⇒ 拒造假接缝）· D2 新增 `DecisionMakerExistencePort`
+（拆分"创建/赋归属"必然新增的判据）· **D3 多轴归属取并集**（跨模块互斥结构性做不到；**单轴时与迁移前逐字段相同**）·
+D4 受众标签定为 `kind:ref` 串（代价 = 视图/载荷形状变化 O5/O6/O7）· D6 同批删 `SdSnapshots.units`。
+**已知债**：`SimosSdReportTool:351` 仍按工具自己的收件人词表拼标签（**既有债**，第二个拼写点，失效方向 fail-closed）·
+**删决策人不清理 gov/army 的归属行**（留下的是够不着的行；id 被重建会继承旧归属）—— 已入台账 §D。

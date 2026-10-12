@@ -1,5 +1,6 @@
 package io.mosire.simos.app.sd;
 
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.llm.LlmProviderResolver;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
@@ -14,7 +15,6 @@ import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.sd.adjudication.Breakpoints;
 import io.mosire.simos.sd.adjudication.DecisionAdjudicator;
 import io.mosire.simos.sd.adjudication.Judgement;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
@@ -114,7 +114,7 @@ public final class DecisionAdjudicationService {
           Map.of(Breakpoints.D2, decisionSubject),
           Map.of(
               Breakpoints.D2,
-              decisionBrief(sortedCombatIds(army.combats().keySet()), govOf(state), maker)));
+              decisionBrief(sortedCombatIds(army.combats().keySet()), govOf(state), maker, state)));
     }
     CombatRecord record = subject.get();
     // ★★ 2026-10-12 批次 3d-2：subject 由 sd:combat.<id> 改为 army:combat.<id>（判决面重挂；
@@ -133,10 +133,11 @@ public final class DecisionAdjudicationService {
    * 决策人的**事实性**简报（D2，无交战记录时用）：只摆该决策人自己与世界**已有**的字段（归属 / 允许工具 / 决策周期 / 已存在的交战记录与国家
    * 清单），战斗/情报作**输入**摆出来，**不发明候选**。guidance 只复述 schema 的字段要求。
    */
-  private static String decisionBrief(List<String> combatIds, GovState gov, DecisionMaker maker) {
+  private static String decisionBrief(
+      List<String> combatIds, GovState gov, DecisionMaker maker, SimulationState state) {
     Map<String, Object> brief = new LinkedHashMap<>();
     brief.put("decisionMakerId", maker.id().value());
-    brief.put("affiliation", affiliationView(maker));
+    brief.put("affiliation", affiliationView(maker, state));
     brief.put("allowedTools", new ArrayList<>(maker.allowedTools()));
     brief.put("decisionCadenceTicks", maker.decisionCadenceTicks());
     brief.put("combats", combatIds);
@@ -151,21 +152,20 @@ public final class DecisionAdjudicationService {
     }
   }
 
-  private static Map<String, Object> affiliationView(DecisionMaker maker) {
+  /**
+   * ★★ 2026-10-12 乙收尾：归属视图从"读 {@code maker.affiliation()} 的密封分支"改成"取索引里的**第一条**归属" （按 {@code
+   * AppDecisionMakerAffiliations.SOURCES} 的登记序 = nation / gov / army）。
+   *
+   * <p>★ 裸决策人（没有归属）⇒ <b>空对象</b>（不是 null、也不是编一条假的）——它是合法状态（用户原话「允许创建没有更多附加状态的单个决策人」）。 视图键形状（{@code
+   * kind}/{@code id}）一字未改。
+   */
+  private static Map<String, Object> affiliationView(DecisionMaker maker, SimulationState state) {
     Map<String, Object> view = new LinkedHashMap<>();
-    switch (maker.affiliation()) {
-      case Affiliation.Nation nation -> {
-        view.put("kind", "nation");
-        view.put("id", nation.nationId());
-      }
-      case Affiliation.Army army -> {
-        view.put("kind", "army");
-        view.put("id", army.armyId());
-      }
-      case Affiliation.Gov gov -> {
-        view.put("kind", "gov");
-        view.put("id", gov.govUnit().value());
-      }
+    List<AppDecisionMakerAffiliations.Claim> claims =
+        AppDecisionMakerAffiliations.claimsOf(maker.id(), state);
+    if (!claims.isEmpty()) {
+      view.put("kind", claims.get(0).kind());
+      view.put("id", claims.get(0).ref());
     }
     return view;
   }

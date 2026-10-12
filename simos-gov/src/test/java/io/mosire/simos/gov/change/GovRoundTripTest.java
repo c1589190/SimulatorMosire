@@ -17,6 +17,7 @@ import io.mosire.simos.gov.nation.Nation;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -40,12 +41,12 @@ import org.junit.jupiter.api.Test;
  *
  * <p>★★ <b>判别力来自"反射枚举 + 两个 switch 的 default 抛"</b>：往 {@link GovState} 加一个组件而<b>不</b>同步 {@link
  * GovChangeSet} 时，{@link #mutate} 与 {@link #changedOf} 的 {@code default -> throw} 当场响，且 {@link
- * #stateHasExactlyFiveComponentsIncludingTheDiplomaticTables} 的 {@code containsExactly} 与 {@link
+ * #stateHasExactlySevenComponentsIncludingTheAffiliationTables} 的 {@code containsExactly} 与 {@link
  * #changeSetCoversEveryStateComponentWithNoExemptions} 的"并集相等"同时红 —— 三处 各自独立，不靠"人记得改"。
  *
  * <p>★★ <b>为什么夹具每张表都必须非空</b>：{@link FieldDelta#diff} 把表键经 {@code toString()} 写成规范串、 {@link
  * FieldDelta#rebuild} 再用各自的 {@code parse} 读回 —— 空表<b>根本不经过键的字面量往返</b>，
- * 于是"键读侧缺失"这一类缺陷在空夹具下永远看不见（{@code apply(between(empty, empty), empty)} 恒真）。本类因此一律用<b>非空</b> 五张表造差异。
+ * 于是"键读侧缺失"这一类缺陷在空夹具下永远看不见（{@code apply(between(empty, empty), empty)} 恒真）。本类因此一律用<b>非空</b> 七张表造差异。
  *
  * <p>★ <b>豁免集为空且被单独钉死</b>：{@code GovState} 的五个组件都必须进变更集，本类<b>不设</b>任何豁免项；写成一个被 {@link
  * #theExclusionListIsEmpty} 单独断言的集合，加名字是一次显式动作、在 diff 里现形（照 {@code RoundTripComponentsTest} 的
@@ -53,7 +54,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>★★ <b>2026-10-12 批次 3c 的同批扩写（0a 建立的护栏，§12.3 例外允许改本文件）</b>：{@code GovState} 2 → 5 组件（外交三表自
  * {@code simos-sd} 迁入）⇒ ①组件数/名字断言 2 → 5；②{@code mutate}/{@code changedOf} 各加三支；③非空夹具与"又删又改又加"往返扩到
- * 外交三表；④<b>新增一条 codec 的 JSON 往返</b>（{@link #govCodecJsonRoundTripsAllFiveTables}）——本批在 {@code
+ * 外交三表；④<b>新增一条 codec 的 JSON 往返</b>（{@link #govCodecJsonRoundTripsAllSevenTables}）——本批在 {@code
  * GovCodec} 新注册了 <b>三个键反序列化器</b>（{@code NationId} / {@code DiplomaticRelationKey} / {@code
  * DiplomaticEventId}），而"键读侧注册漏了"只在 <b>对应表非空</b>时才会炸（{@code SdCodec}/{@code GovCodec} 类注的同一条教训）⇒
  * 必须有一条真过 JSON 的用例把守。
@@ -74,6 +75,10 @@ class GovRoundTripTest {
   private static final NationId N3 = new NationId("南越");
   private static final RegionId R1 = new RegionId("大蜀-京畿");
   private static final RegionId R2 = new RegionId("西陵-京畿");
+
+  private static final DecisionMakerId DM1 = new DecisionMakerId("dm-1");
+  private static final DecisionMakerId DM2 = new DecisionMakerId("dm-2");
+  private static final DecisionMakerId DM3 = new DecisionMakerId("dm-3");
 
   private static final DiplomaticEventId E1 = new DiplomaticEventId("e-1");
   private static final DiplomaticEventId E2 = new DiplomaticEventId("e-2");
@@ -105,27 +110,33 @@ class GovRoundTripTest {
     }
   }
 
-  /** ★ 反射断言：{@code GovState} 的 record 组件**恰五个**、名字逐字相等（声明序）。 */
+  /** ★ 反射断言：{@code GovState} 的 record 组件**恰七个**、名字逐字相等（声明序）。 */
   @Test
-  void stateHasExactlyFiveComponentsIncludingTheDiplomaticTables() {
+  void stateHasExactlySevenComponentsIncludingTheAffiliationTables() {
     assertThat(GovState.class.getRecordComponents())
-        .as("GovState 恰 5 个组件 —— 多加一个而不改变更集，本断言与往返用例同时红")
-        .hasSize(5);
+        .as("GovState 恰 7 个组件 —— 多加一个而不改变更集，本断言与往返用例同时红")
+        .hasSize(7);
     assertThat(componentNames(GovState.class))
-        .as("名字逐字相等（顺序即声明序）")
+        .as("名字逐字相等（顺序即声明序；★ 乙收尾的两个归属表在**末位** ⇒ 既有五个键的线格式次序一字未动）")
         .containsExactly(
-            "offices", "remittanceStates", "nations", "diplomaticRelations", "diplomaticEvents");
+            "offices",
+            "remittanceStates",
+            "nations",
+            "diplomaticRelations",
+            "diplomaticEvents",
+            "nationAffiliations",
+            "govAffiliations");
   }
 
-  /** ★ 变更集这边同样恰 5 个组件，且与状态组件集**互相包含**（两个方向都钉，不是只钉一边）。 */
+  /** ★ 变更集这边同样恰 7 个组件，且与状态组件集**互相包含**（两个方向都钉，不是只钉一边）。 */
   @Test
-  void changeSetHasExactlyFiveComponentsMatchingTheState() {
-    assertThat(GovChangeSet.class.getRecordComponents()).hasSize(5);
+  void changeSetHasExactlySevenComponentsMatchingTheState() {
+    assertThat(GovChangeSet.class.getRecordComponents()).hasSize(7);
     assertThat(componentNames(GovChangeSet.class))
         .as("变更集的每个组件都必须在 GovState 里有同名的 record 组件")
         .isSubsetOf(componentNames(GovState.class));
     assertThat(componentNames(GovState.class))
-        .as("反向也成立 ⇒ 两边组件集相同（挡不住'两边同时多出一个同名组件'，故上面另有 hasSize(5)）")
+        .as("反向也成立 ⇒ 两边组件集相同（挡不住'两边同时多出一个同名组件'，故上面另有 hasSize(7)）")
         .isSubsetOf(componentNames(GovChangeSet.class));
   }
 
@@ -134,7 +145,7 @@ class GovRoundTripTest {
   /** ★ 钉死豁免集本身 —— 否则"加字段忘了改"的补救方式会变成"往豁免集里塞一项"，护栏出现一个正好等于新字段大小的洞。 */
   @Test
   void theExclusionListIsEmpty() {
-    assertThat(EXCLUDED_FROM_CHANGE_SET).as("GovState 没有豁免项：五张表都必须进变更集").isEmpty();
+    assertThat(EXCLUDED_FROM_CHANGE_SET).as("GovState 没有豁免项：七张表都必须进变更集").isEmpty();
   }
 
   /** ★ 最后一条兜底：变更集组件 ∪ 豁免集必须**恰好**覆盖 {@code GovState} 的全部组件（多一项 = 有组件被豁免掉，少一项 = 有组件谁都没管）。 */
@@ -147,10 +158,10 @@ class GovRoundTripTest {
         .containsExactlyInAnyOrderElementsOf(componentNames(GovState.class));
   }
 
-  // ── ③ 五张表都非空的逐字段往返（含"又删又改"）──────────────────────────────────────────
+  // ── ③ 七张表都非空的逐字段往返（含"又删又改"）──────────────────────────────────────────
 
   /**
-   * ★★ <b>非空 → 非空</b>的逐字段往返：目标态对五张表**各删一个键、各改一个键、各加一个键**（{@link FieldDelta.Patch}
+   * ★★ <b>非空 → 非空</b>的逐字段往返：目标态对七张表**各删一个键、各改一个键、各加一个键**（{@link FieldDelta.Patch}
    * 的两侧），于是"键读侧"（{@code toString → parse}）、"值覆盖"、"键删除"三条路径全部走到，而不是只走"从空表往里加"。
    *
    * <p>★ 判别力：若 {@code GovChangeSet.apply} 漏重建任一张表、或把 {@code Patch} 的某一侧丢掉，{@code
@@ -159,10 +170,10 @@ class GovRoundTripTest {
    * <p>★ 外交三表的键<b>形态各不同</b>（普通 id / 长度前缀复合键 / 普通 id）⇒ 这一条同时把三把不同的 key-parser 都走过一遍。
    */
   @Test
-  void allFiveNonEmptyTablesRoundTripFieldByFieldWithRemovalsAndOverwrites() {
+  void allSevenNonEmptyTablesRoundTripFieldByFieldWithRemovalsAndOverwrites() {
     GovState base = full();
 
-    // target：五张表各自把第 2 个键**删掉**、第 1 个键的值**覆盖**、再**新增**第 3 个键。
+    // target：七张表各自把第 2 个键**删掉**、第 1 个键的值**覆盖**、再**新增**第 3 个键。
     Map<UnitId, GovOfficeState> targetOffices = new LinkedHashMap<>();
     targetOffices.put(U1, office(U1, 9L, 700L, 300L));
     targetOffices.put(U3, office(U3, 9L, 55L, 5L));
@@ -178,18 +189,34 @@ class GovRoundTripTest {
     Map<DiplomaticEventId, DiplomaticEvent> targetEvents = new LinkedHashMap<>();
     targetEvents.put(E1, event(E1, 12L, List.of(N1, N3), "会盟（改）"));
     targetEvents.put(E3, event(E3, 13L, List.of(N2, N3), "换质"));
+    Map<DecisionMakerId, NationId> targetNationAffiliations = new LinkedHashMap<>();
+    targetNationAffiliations.put(DM1, N3); // 改绑
+    targetNationAffiliations.put(DM3, N2); // 新增
+    Map<DecisionMakerId, UnitId> targetGovAffiliations = new LinkedHashMap<>();
+    targetGovAffiliations.put(DM1, U3); // 改绑
+    targetGovAffiliations.put(DM3, U1); // 新增
     GovState target =
         new GovState(
-            targetOffices, targetRemittances, targetNations, targetRelations, targetEvents);
+            targetOffices,
+            targetRemittances,
+            targetNations,
+            targetRelations,
+            targetEvents,
+            targetNationAffiliations,
+            targetGovAffiliations);
 
     GovChangeSet cs = GovChangeSet.between(base, target);
 
     assertThat(cs.isEmpty()).isFalse();
-    assertThat(cs.offices()).as("五张表各自又删又改 ⇒ Patch（两侧都不许丢）").isInstanceOf(FieldDelta.Patch.class);
+    assertThat(cs.offices()).as("七张表各自又删又改 ⇒ Patch（两侧都不许丢）").isInstanceOf(FieldDelta.Patch.class);
     assertThat(cs.remittanceStates()).isInstanceOf(FieldDelta.Patch.class);
     assertThat(cs.nations()).isInstanceOf(FieldDelta.Patch.class);
     assertThat(cs.diplomaticRelations()).isInstanceOf(FieldDelta.Patch.class);
     assertThat(cs.diplomaticEvents()).isInstanceOf(FieldDelta.Patch.class);
+    assertThat(cs.nationAffiliations())
+        .as("归属表同样又删又改 ⇒ Patch")
+        .isInstanceOf(FieldDelta.Patch.class);
+    assertThat(cs.govAffiliations()).as("归属表同样又删又改 ⇒ Patch").isInstanceOf(FieldDelta.Patch.class);
 
     GovState rebuilt = GovChangeSet.apply(cs, base);
 
@@ -236,6 +263,18 @@ class GovRoundTripTest {
     assertThat(rebuilt.diplomaticEvents().get(E3).tick()).isEqualTo(13L);
     assertThat(rebuilt.diplomaticEvents()).doesNotContainKey(E2);
 
+    assertThat(rebuilt.nationAffiliations()).containsOnlyKeys(DM1, DM3);
+    assertThat(rebuilt.nationAffiliations().get(DM1)).as("DM1 的国家被改绑成 N3").isEqualTo(N3);
+    assertThat(rebuilt.nationAffiliations().get(DM3))
+        .as("新增的 DecisionMakerId 键被解析回来")
+        .isEqualTo(N2);
+    assertThat(rebuilt.nationAffiliations()).as("被删掉的 DM2 不许留在重建结果里").doesNotContainKey(DM2);
+
+    assertThat(rebuilt.govAffiliations()).containsOnlyKeys(DM1, DM3);
+    assertThat(rebuilt.govAffiliations().get(DM1)).as("DM1 的 GOV 单位被改绑成 U3").isEqualTo(U3);
+    assertThat(rebuilt.govAffiliations().get(DM3)).as("新增的 DecisionMakerId 键被解析回来").isEqualTo(U1);
+    assertThat(rebuilt.govAffiliations()).doesNotContainKey(DM2);
+
     assertThat(rebuilt)
         .as("铁律 5 的原文：apply(between(base, target), base) 逐字段重建出 target")
         .isEqualTo(target);
@@ -262,6 +301,8 @@ class GovRoundTripTest {
     assertThat(cs.nations()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(cs.diplomaticRelations()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(cs.diplomaticEvents()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.nationAffiliations()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(cs.govAffiliations()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(GovChangeSet.apply(cs, state)).as("一字未动的往返必须恒等").isEqualTo(state);
   }
 
@@ -273,31 +314,33 @@ class GovRoundTripTest {
    */
   @Test
   void aChangeSetWithMissingComponentKeysIsNormalizedToUnchanged() {
-    GovChangeSet fromMissingKeys = new GovChangeSet(null, null, null, null, null);
+    GovChangeSet fromMissingKeys = new GovChangeSet(null, null, null, null, null, null, null);
 
-    assertThat(fromMissingKeys.isEmpty()).as("缺键 ⇒ 五个组件都是 Unchanged").isTrue();
+    assertThat(fromMissingKeys.isEmpty()).as("缺键 ⇒ 七个组件都是 Unchanged").isTrue();
     assertThat(fromMissingKeys.offices()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(fromMissingKeys.remittanceStates()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(fromMissingKeys.nations()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(fromMissingKeys.diplomaticRelations()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(fromMissingKeys.diplomaticEvents()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(fromMissingKeys.nationAffiliations()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(fromMissingKeys.govAffiliations()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(GovChangeSet.apply(fromMissingKeys, full())).as("一字未动的往返必须恒等（不抛）").isEqualTo(full());
   }
 
   // ── ⑤ codec 的 JSON 往返：新注册的三个键读侧（本批 3c 新增的护栏面）──────────────────────────
 
   /**
-   * ★★ <b>{@code GovCodec} 的 JSON 往返必须覆盖五张非空表</b>——本批给 {@code GovCodec} 新注册了三个<b>键反序列化器</b>（ {@code
-   * NationId} / {@code DiplomaticRelationKey} / {@code
-   * DiplomaticEventId}）；而"键读侧漏注册"<b>只在对应表非空时</b>才会在 解码期炸（表空着时测不到，见 {@code GovCodec}/{@code SdCodec}
-   * 的类注）。
+   * ★★ <b>{@code GovCodec} 的 JSON 往返必须覆盖七张非空表</b>——3c 给它注册了三个键（{@code NationId} / {@code
+   * DiplomaticRelationKey} / {@code DiplomaticEventId}），<b>乙收尾再注册一个 {@code
+   * DecisionMakerId}</b>（两张归属表共用）； 而"键读侧漏注册"<b>只在对应表非空时</b>才会在 解码期炸（表空着时测不到，见 {@code
+   * GovCodec}/{@code SdCodec} 的类注）。
    *
    * <p>★ 往返走**编码 → 解码**两趟：解码成功 = 三个键都被认识；再断言逐字段等于原状态 = 值也往返对了。★ 顺带把 {@code diff}（{@link
    * io.mosire.simos.util.spi.ModuleDiffer}）与 {@code apply}（C28：新坐标由 codec 装）也各走一遍 ——那是 codec
    * 与变更集两条路的接缝。
    */
   @Test
-  void govCodecJsonRoundTripsAllFiveTables() {
+  void govCodecJsonRoundTripsAllSevenTables() {
     GovCodec codec = new GovCodec();
     GovState state = full();
     GovSnapshot snapshot =
@@ -306,7 +349,7 @@ class GovRoundTripTest {
     String json = codec.encodeSnapshot(snapshot);
     GovSnapshot decoded = (GovSnapshot) codec.decodeSnapshot(json);
 
-    assertThat(decoded.state()).as("五张非空表过 JSON 后逐字段相同").isEqualTo(state);
+    assertThat(decoded.state()).as("七张非空表过 JSON 后逐字段相同").isEqualTo(state);
     assertThat(decoded.state().nations().keySet()).as("国家表的键读回来了").containsExactly(N1, N2);
     assertThat(decoded.state().diplomaticRelations().keySet())
         .as("复合键（长度前缀编码）读回来了")
@@ -314,10 +357,21 @@ class GovRoundTripTest {
     assertThat(decoded.state().diplomaticEvents().keySet())
         .as("外交事件的键读回来了")
         .containsExactly(E1, E2);
+    // ★★ 乙收尾新增的键读侧：DecisionMakerId 同时是两张归属表的键（**非空夹具**才验得到）。
+    assertThat(decoded.state().nationAffiliations().keySet())
+        .as("nation 归属表的 DecisionMakerId 键读回来了")
+        .containsExactly(DM1, DM2);
+    assertThat(decoded.state().govAffiliations().keySet())
+        .as("gov 归属表的 DecisionMakerId 键读回来了")
+        .containsExactly(DM1, DM2);
 
     // 变更集 JSON：编码 → 解码 → 施加（本批新增的三个组件也必须能过线）
     GovState target =
-        mutate(mutate(mutate(state, "nations"), "diplomaticRelations"), "diplomaticEvents");
+        mutate(
+            mutate(
+                mutate(mutate(mutate(state, "nations"), "diplomaticRelations"), "diplomaticEvents"),
+                "nationAffiliations"),
+            "govAffiliations");
     GovChangeSet cs = GovChangeSet.between(state, target);
     GovChangeSet decodedCs = (GovChangeSet) codec.decodeChangeSet(codec.encodeChangeSet(cs));
     assertThat(GovChangeSet.apply(decodedCs, decoded.state())).isEqualTo(target);
@@ -343,7 +397,7 @@ class GovRoundTripTest {
 
   // ── 夹具与反射小工具 ────────────────────────────────────────────────────────────────
 
-  /** 五张表都**非空**的起点（同一份夹具给"逐组件往返"与"JSON 往返"共用：两边要钉的是同一组形状）。 */
+  /** 七张表都**非空**的起点（同一份夹具给"逐组件往返"与"JSON 往返"共用：两边要钉的是同一组形状）。 */
   private static GovState full() {
     Map<UnitId, GovOfficeState> offices = new LinkedHashMap<>();
     offices.put(U1, office(U1, 7L, 100L, 40L));
@@ -360,7 +414,15 @@ class GovRoundTripTest {
     Map<DiplomaticEventId, DiplomaticEvent> events = new LinkedHashMap<>();
     events.put(E1, event(E1, 12L, List.of(N1, N2), "会盟"));
     events.put(E2, event(E2, 12L, List.of(N2, N1, N3), "三方换质"));
-    return new GovState(offices, remittances, nations, relations, events);
+    // ★ 乙收尾的两张归属表：**非空**（空表根本不过键的字面量往返 ⇒ "键读侧缺失"看不见）。
+    Map<DecisionMakerId, NationId> nationAffiliations = new LinkedHashMap<>();
+    nationAffiliations.put(DM1, N1);
+    nationAffiliations.put(DM2, N2);
+    Map<DecisionMakerId, UnitId> govAffiliations = new LinkedHashMap<>();
+    govAffiliations.put(DM1, U1);
+    govAffiliations.put(DM2, U2);
+    return new GovState(
+        offices, remittances, nations, relations, events, nationAffiliations, govAffiliations);
   }
 
   /**
@@ -390,6 +452,16 @@ class GovRoundTripTest {
         next.put(E2, event(E2, 12L, List.of(N2, N1, N3), "三方换质（改）"));
         yield base.withDiplomaticEvents(next);
       }
+      case "nationAffiliations" -> {
+        Map<DecisionMakerId, NationId> next = new LinkedHashMap<>(base.nationAffiliations());
+        next.put(DM2, N3); // 改绑 + 换国家
+        yield base.withNationAffiliations(next);
+      }
+      case "govAffiliations" -> {
+        Map<DecisionMakerId, UnitId> next = new LinkedHashMap<>(base.govAffiliations());
+        next.put(DM2, U3); // 改绑另一个 GOV 单位
+        yield base.withGovAffiliations(next);
+      }
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -402,6 +474,8 @@ class GovRoundTripTest {
       case "nations" -> cs.nations().changed();
       case "diplomaticRelations" -> cs.diplomaticRelations().changed();
       case "diplomaticEvents" -> cs.diplomaticEvents().changed();
+      case "nationAffiliations" -> cs.nationAffiliations().changed();
+      case "govAffiliations" -> cs.govAffiliations().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

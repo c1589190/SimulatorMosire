@@ -8,7 +8,6 @@ import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.SdInfoId;
 import io.mosire.simos.sd.model.AdjudicationStatus;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.spi.SdPayloads;
@@ -36,7 +35,7 @@ import java.util.Set;
  * <pre>{@code
  * {"address":"map:Map1:region.r1","key":"brief","value":"……","note":"可选",
  *  "id":"可选：显式 id（同类型内唯一）","tags":["可选：决策人 id…"],"tick":"可选：该条目所属 tick",
- *  "affiliations":[{"kind":"nation","id":"shanghai"}]}
+ *  "affiliations":["nation:shanghai"]}
  * }</pre>
  *
  * <p>★ **不复用全局 {@code InfoSystem}**（spec §六）：写进 {@code GaChangeSet.info} → 进 revision，可重放、受铁律 5
@@ -50,9 +49,11 @@ import java.util.Set;
  *       **重复即拒**（见下）；
  *   <li>{@code tags} 缺席 ⇒ 空集（无主）；给了 ⇒ 逐字解析成 {@link DecisionMakerId}（**不**在此校验决策人是否存在——
  *       那是后续步骤的语义，本命令只认形状）；
- *   <li>{@code affiliations} 缺席 ⇒ 空集（不按归属发）；给了 ⇒ 逐项解析成 {@link Affiliation}（形状同 {@code
- *       ga.CreateDecisionMaker} 的 {@code affiliation}：{@code {"kind":"nation"|"army","id":"…"}}）。
- *       它与 {@code tags} 是**并集**关系，判定不在本层（见 {@code RedactingQueryService#docs}）；
+ *   <li>{@code affiliations} <b>不透明的受众标签集</b>（2026-10-12 乙收尾改造）：缺席/null ⇒ 空集（不按归属发）；给了 ⇒
+ *       必须是<b>非空白字符串数组</b>（形如 {@code "nation:n1"} / {@code "army:a1"} / {@code "gov:g1"}），
+ *       <b>本层只做"非空白"这一条形状检查，不解析、不枚举种类</b>——用户口径「<b>归属肯定归模块啊，后面新加模块 ga
+ *       还得显式地重新添加？不可能的</b>」。标签由**写入方自报**，它与 {@code tags} 是**并集**关系，解释与判定<b>只</b>在 app 的 {@code
+ *       RedactingQueryService#docs}（决策人自己的标签由各模块自报的归属现拼）；
  *   <li>{@code tick} 缺席 ⇒ **世界当前 tick**（第 3 波第 1 步的既有行为，向后兼容）；给了 ⇒ 用它，但 **不得记在未来** （{@code > 世界
  *       tick} ⇒ 拒，与 {@code ga.IssueDirective} 同口径）。**过去合法**（补记/滞后）；
  *   <li>{@code sourceDirective}（2026-10-12 批次 3b-1 新增的**可选**字段）缺席 ⇒ {@link
@@ -97,7 +98,10 @@ public final class PutInfoHandler implements CommandHandler {
       Object value = SdPayloads.requireValue(payload, "value");
       Optional<String> note = SdPayloads.optionalText(payload, "note");
       Set<DecisionMakerId> tags = parseTags(payload);
-      Set<Affiliation> affiliations = SdPayloads.optionalAffiliationSet(payload, "affiliations");
+      // ★★ 乙收尾：affiliations 是**不透明受众标签集**（写入方自报的串，形如 nation:n1 / army:a1 / gov:g1）——
+      //   与 tags 同族"缺省即空集"，但**不解析任何形状**（旧形状 {"kind","id"} 的 kind switch 正是"新加模块要改 ga"
+      //   的根源，本批删掉）。解释与可见性判定只在 app 的 RedactingQueryService。
+      Set<String> affiliations = SdPayloads.optionalTextSet(payload, "affiliations");
       Optional<AdjudicationStatus> adjudicationStatus = parseAdjudicationStatus(payload);
       Optional<SdInfoId> explicitId = SdPayloads.optionalText(payload, "id").map(SdInfoId::parse);
       // ★ 可选来源引用（批次 3b′）：出令执行原文条目靠它挂回那条令（见类注）。

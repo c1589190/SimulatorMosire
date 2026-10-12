@@ -14,6 +14,7 @@ import io.mosire.simos.army.CombatUnitLoss;
 import io.mosire.simos.army.testing.ArmyFixtures;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -29,8 +30,8 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * 铁律 5 在 army 切片上的机械化落地（T2a / D-012；<b>2026-10-12 批次 3d-1 扩到两个组件</b>）：反射枚举 {@link ArmyData} 的
- * record 组件，逐组件造差异，三条断言 ——新增状态组件若忘了进变更集，本测试自动红。
+ * 铁律 5 在 army 切片上的机械化落地（T2a / D-012；<b>2026-10-12 批次 3d-1 扩到两个组件；乙收尾扩到三个</b>）：反射枚举 {@link ArmyData}
+ * 的 record 组件，逐组件造差异，三条断言 ——新增状态组件若忘了进变更集，本测试自动红。
  *
  * <p>★★ <b>本批为什么必须当场改（§12.3 的"护栏例外"）</b>：{@code armies}（军队身份）自 {@code SdState} 搬进 {@link ArmyData}
  * ⇒ 组件数 1 → 2。本类是**新架构的护栏**（防静默漂移），不是"钉旧机制的旧测试"⇒ 按 §12.3 当场修，不攒台账。
@@ -55,6 +56,11 @@ class ArmyRoundTripTest {
   /** 第三条 id：只用来造"同 id 换值"的 Patch 变体（不动 {@code a-1}/{@code a-2} 的插入序）。 */
   private static final ArmyId A3 = new ArmyId("a-3");
 
+  /** 归属表的两个决策人键（★ 乙收尾新增；同样刻意非升序：DM2 在前）。 */
+  private static final DecisionMakerId DM1 = new DecisionMakerId("dm-1");
+
+  private static final DecisionMakerId DM2 = new DecisionMakerId("dm-2");
+
   /** 认领了一个 GOV 主子的军队（{@code masterGovUnitId} 非空 ⇒ Optional 那一维也被覆盖）。 */
   private static Army armyWithMaster(ArmyId id, String name) {
     return new Army(
@@ -74,9 +80,22 @@ class ArmyRoundTripTest {
     return armies;
   }
 
-  /** 一份两个组件都非空、且各自非平凡的 army 切片。 */
+  /** 一份三个组件都非空、且各自非平凡的 army 切片（★ 乙收尾起含归属表）。 */
   private static ArmyData sampleData() {
-    return ArmyFixtures.sampleData().withArmies(sampleArmies());
+    return ArmyFixtures.sampleData()
+        .withArmies(sampleArmies())
+        .withArmyAffiliations(sampleAffiliations());
+  }
+
+  /**
+   * 归属表夹具（★ 2026-10-12 乙收尾）：插入序刻意<b>不是</b> key 升序（保序断言的判别力据此成立），且两个键都非平凡 ——空表根本不过键的字面量往返（{@code
+   * DecisionMakerId.toString()} ↔ {@code parse}）。
+   */
+  private static Map<DecisionMakerId, ArmyId> sampleAffiliations() {
+    Map<DecisionMakerId, ArmyId> affiliations = new LinkedHashMap<>();
+    affiliations.put(DM2, A1);
+    affiliations.put(DM1, A2);
+    return affiliations;
   }
 
   @Test
@@ -91,6 +110,7 @@ class ArmyRoundTripTest {
           switch (name) {
             case "armies" -> ArmyData.empty().withArmies(sampleArmies());
             case "combats" -> ArmyFixtures.sampleData();
+            case "armyAffiliations" -> ArmyData.empty().withArmyAffiliations(sampleAffiliations());
             default -> base;
           };
       ArmyChangeSet changeSet = ArmyChangeSet.between(base, target);
@@ -108,6 +128,7 @@ class ArmyRoundTripTest {
     return switch (component) {
       case "armies" -> changeSet.armies().changed();
       case "combats" -> changeSet.combats().changed();
+      case "armyAffiliations" -> changeSet.armyAffiliations().changed();
       default -> throw new AssertionError("ArmyData 有未接进变更集的组件: " + component);
     };
   }
@@ -118,8 +139,8 @@ class ArmyRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlyTwoComponentsMatchingTheState() {
-    assertThat(ArmyChangeSet.class.getRecordComponents()).hasSize(2);
+  void changeSetHasExactlyThreeComponentsMatchingTheState() {
+    assertThat(ArmyChangeSet.class.getRecordComponents()).hasSize(3);
     assertThat(componentNames(ArmyChangeSet.class))
         .as("变更集的每个组件都必须在 ArmyData 里有同名的 record 组件")
         .isEqualTo(componentNames(ArmyData.class));
@@ -132,20 +153,26 @@ class ArmyRoundTripTest {
 
     assertThat(changeSet.armies()).as("全相等 ⇒ Unchanged").isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(changeSet.combats()).as("全相等 ⇒ Unchanged").isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(changeSet.armyAffiliations())
+        .as("全相等 ⇒ Unchanged")
+        .isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(changeSet.isEmpty()).isTrue();
     assertThat(ArmyChangeSet.apply(changeSet, full)).as("Unchanged 施加回 base 原样").isEqualTo(full);
   }
 
   @Test
-  void aLegacyChangeSetWithoutEitherKeyReadsAsUnchanged() {
+  void aLegacyChangeSetWithoutAnyKeyReadsAsUnchanged() {
     ArmyData full = sampleData();
-    ArmyChangeSet legacy = new ArmyChangeSet(null, null);
+    ArmyChangeSet legacy = new ArmyChangeSet(null, null, null);
 
     assertThat(legacy.armies())
         .as("★ 旧档缺 armies 键 ⇒ Unchanged（fail-closed：旧档没提该组件 = 没动它）")
         .isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(legacy.combats())
         .as("★ 旧档缺 combats 键 ⇒ Unchanged")
+        .isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(legacy.armyAffiliations())
+        .as("★ 旧档缺 armyAffiliations 键 ⇒ Unchanged")
         .isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(legacy.isEmpty()).isTrue();
     assertThat(ArmyChangeSet.apply(legacy, full)).as("ΔUnchanged 不得清空已有军队身份/交战表").isEqualTo(full);
@@ -306,7 +333,7 @@ class ArmyRoundTripTest {
         .isInstanceOf(NullPointerException.class);
     assertThatThrownBy(() -> ArmyChangeSet.apply(null, ArmyData.empty()))
         .isInstanceOf(NullPointerException.class);
-    assertThatThrownBy(() -> ArmyChangeSet.apply(new ArmyChangeSet(null, null), null))
+    assertThatThrownBy(() -> ArmyChangeSet.apply(new ArmyChangeSet(null, null, null), null))
         .isInstanceOf(NullPointerException.class);
   }
 

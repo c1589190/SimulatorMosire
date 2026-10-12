@@ -2,6 +2,8 @@ package io.mosire.simos.app.tools.gov;
 
 import io.mosire.agentlib.permission.AgentIdentity;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
+import io.mosire.simos.app.access.AppGovAffiliations;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.app.time.GovernmentServiceDesertionBridge;
@@ -9,11 +11,11 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.gov.nation.NationTag;
 import io.mosire.simos.gov.tools.GovToolPerspective;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
@@ -47,7 +49,7 @@ public final class AppGovToolPerspective implements GovToolPerspective {
     if (maker == null) {
       return new GovDecisionMaker(decisionMakerId, false, false, null, "");
     }
-    return factOf(maker);
+    return factOf(maker, state);
   }
 
   @Override
@@ -55,7 +57,7 @@ public final class AppGovToolPerspective implements GovToolPerspective {
     Objects.requireNonNull(state, "state");
     List<GovDecisionMaker> facts = new ArrayList<>();
     for (DecisionMaker maker : ToolSupport.gaState(state).decisionMakers().values()) {
-      facts.add(factOf(maker));
+      facts.add(factOf(maker, state));
     }
     // ★ 迭代序 = sd 状态表自身的序（调用方各自按 id 稳定序排序；此处不重排，免得两处口径）。
     return Collections.unmodifiableList(facts);
@@ -96,13 +98,20 @@ public final class AppGovToolPerspective implements GovToolPerspective {
     return Collections.unmodifiableList(ids);
   }
 
-  private static GovDecisionMaker factOf(DecisionMaker maker) {
-    if (maker.affiliation() instanceof Affiliation.Gov gov) {
-      return new GovDecisionMaker(
-          maker.id().value(), true, true, gov.govUnit().value(), maker.affiliation().toString());
-    }
+  /**
+   * ★★ 2026-10-12 乙收尾：归属从 {@code AppDecisionMakerAffiliations} 现取（各模块自报）。{@code affiliationText}
+   * 逐字保留 收窄前 {@code Affiliation.toString()} 的渲染（**可能拼多条**：多轴归属时按登记序连接；裸决策人 ⇒ 空串），
+   * 既有拒因/告警文案因此不会因为"归属换家"而改字。
+   */
+  private static GovDecisionMaker factOf(DecisionMaker maker, SimulationState state) {
+    String govUnitId =
+        AppGovAffiliations.govUnitOf(maker.id(), state).map(UnitId::value).orElse(null);
     return new GovDecisionMaker(
-        maker.id().value(), true, false, null, maker.affiliation().toString());
+        maker.id().value(),
+        true,
+        govUnitId != null,
+        govUnitId,
+        AppDecisionMakerAffiliations.affiliationTextOf(maker.id(), state));
   }
 
   /** sd 的决策人 id 解析（非法 ⇒ {@code IllegalArgumentException}，与既有构造同一条拼写）。 */

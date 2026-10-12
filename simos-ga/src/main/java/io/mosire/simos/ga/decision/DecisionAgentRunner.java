@@ -12,7 +12,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.llm.LlmToolNames;
-import io.mosire.simos.sd.model.Affiliation;
+import io.mosire.simos.ga.spi.DecisionMakerAffiliationPort;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -189,6 +189,16 @@ public final class DecisionAgentRunner {
 
   /** **图片通路**（宿主注入，见 {@link ToolImages}）：ga 不认识工件库与媒体类型，只决定发不发、什么时候发。 */
   private final ToolImages toolImages;
+
+  /**
+   * ★★ <b>归属读口</b>（宿主注入，见 {@link DecisionMakerAffiliationPort}；2026-10-12 乙收尾新增）：空会话身份消息里的"归属：…"
+   * 那一段由它现取。
+   *
+   * <p>★★ <b>为什么必须是端口而不是直接读</b>：归属（国家 / 军队 / GOV 单位）是<b>各模块自己的表</b>（用户裁定「归属肯定归模块」）， 而 {@code ga}
+   * 结构性看不见 gov / army（enforcer 禁列）⇒ 走本仓既有的"端口在契约层、实现在组合根"形制。★ 本端口只交<b>不透明标签 + 一句人话</b>，ga
+   * <b>不认识任何归属种类</b>（没有枚举、没有 switch、没有 instanceof）——加一个新模块不必改 ga 一个字。
+   */
+  private final DecisionMakerAffiliationPort affiliations;
 
   private final int maxLlmCalls;
 
@@ -423,7 +433,8 @@ public final class DecisionAgentRunner {
         vision,
         openingSnapshot,
         toolWhitelist,
-        null);
+        null,
+        DecisionMakerAffiliationPort.NONE);
   }
 
   /**
@@ -445,7 +456,8 @@ public final class DecisionAgentRunner {
       boolean vision,
       OpeningSnapshot openingSnapshot,
       Set<String> toolWhitelist,
-      FrozenDecisionContext frozen) {
+      FrozenDecisionContext frozen,
+      DecisionMakerAffiliationPort affiliations) {
     this.caller = Objects.requireNonNull(caller, "caller");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
@@ -453,6 +465,7 @@ public final class DecisionAgentRunner {
     this.mapId = Objects.requireNonNull(mapId, "mapId");
     this.toolNames = Objects.requireNonNull(toolNames, "toolNames");
     this.toolImages = Objects.requireNonNull(toolImages, "toolImages");
+    this.affiliations = Objects.requireNonNull(affiliations, "affiliations");
     if (maxLlmCalls <= 0) {
       throw new IllegalArgumentException("maxLlmCalls 必须为正: " + maxLlmCalls);
     }
@@ -658,8 +671,35 @@ public final class DecisionAgentRunner {
    * DecisionAgentService#appendUserMessage}）；运行流与装配从 B2a 起分居两个模块（{@code ga} / {@code app}） ⇒
    * 它不能再是包内可见，故为 {@code public}（语义与文本逐字未变，只是可见性放宽）。
    */
-  public static LlmMessage openingUserMessage(DecisionMaker dm, DecisionToolNames toolNames) {
-    return openingUserMessage(dm, null, toolNames);
+  public static LlmMessage openingUserMessage(
+      DecisionMaker dm, String affiliationText, DecisionToolNames toolNames) {
+    return openingUserMessage(dm, affiliationText, null, toolNames);
+  }
+
+  /**
+   * ★★ <b>一句人话的"归属：…"</b>（2026-10-12 乙收尾）：从注入的 {@link DecisionMakerAffiliationPort} 现取该决策人此刻的归属，
+   * 多个种类按标签升序用 {@code 、} 连接；<b>一条都没有 ⇒ "尚未被任何模块赋予（裸决策人）"</b>（用户原话：「和 Unit
+   * 一样，不但允许创建没有更多附加状态的单个决策人」）。
+   *
+   * <p>★ 每一段文本由<b>持有该归属的模块</b>渲染（{@code NationAffiliations.describe} 等）⇒ 单个归属时与迁移前 <b>逐字相同</b>；ga
+   * 侧不认识任何归属种类（没有枚举、没有 switch）。
+   */
+  public static String affiliationTextOf(
+      DecisionMakerAffiliationPort affiliations, DecisionMaker dm, SimulationState state) {
+    Objects.requireNonNull(affiliations, "affiliations");
+    List<DecisionMakerAffiliationPort.AffiliationClaim> claims =
+        affiliations.affiliationsOf(dm.id(), state);
+    if (claims.isEmpty()) {
+      return "尚未被任何模块赋予（裸决策人）";
+    }
+    StringBuilder text = new StringBuilder();
+    for (DecisionMakerAffiliationPort.AffiliationClaim claim : claims) {
+      if (text.length() > 0) {
+        text.append("、");
+      }
+      text.append(claim.description());
+    }
+    return text.toString();
   }
 
   /**
@@ -669,20 +709,14 @@ public final class DecisionAgentRunner {
    * <p>★ 工具名一律从宿主注入的 {@link DecisionToolNames} 取（不在这里写字面量）：改名时这条消息跟着走，"说的"与"注册的"不会错位。
    */
   static LlmMessage openingUserMessage(
-      DecisionMaker dm, FrozenDecisionContext frozen, DecisionToolNames toolNames) {
+      DecisionMaker dm,
+      String affiliationText,
+      FrozenDecisionContext frozen,
+      DecisionToolNames toolNames) {
     Objects.requireNonNull(dm, "dm");
+    Objects.requireNonNull(affiliationText, "affiliationText");
     Objects.requireNonNull(toolNames, "toolNames");
-    Affiliation affiliation = dm.affiliation();
-    String where;
-    if (affiliation instanceof Affiliation.Nation nation) {
-      where = "国家（nationId=" + nation.nationId() + "）";
-    } else if (affiliation instanceof Affiliation.Army army) {
-      where = "军队（armyId=" + army.armyId() + "）";
-    } else if (affiliation instanceof Affiliation.Gov gov) {
-      where = "政府（govUnit=" + gov.govUnit().value() + "）";
-    } else {
-      throw new IllegalStateException("未知的归属类型: " + affiliation.getClass().getName());
-    }
+    String where = affiliationText;
     String catalog = LlmToolNames.wireNameOf(toolNames.catalog());
     String branches = LlmToolNames.wireNameOf(toolNames.branches());
     String intentTool = LlmToolNames.wireNameOf(toolNames.packetIntent());
@@ -892,7 +926,8 @@ public final class DecisionAgentRunner {
     //   的"修法"在**换进程/换 store 实例**之后又回到空会话，缺陷原样复现（见 openingUserMessage 的类注）。
     //   ★ 只在**空会话**上注入（"有没有历史"是纯函数，不看世界）：第二轮 `load` 里已经有它，故不会重复追加。
     if (history.isEmpty()) {
-      LlmMessage opening = openingUserMessage(dm, frozen, toolNames);
+      LlmMessage opening =
+          openingUserMessage(dm, affiliationTextOf(affiliations, dm, state), frozen, toolNames);
       conversations.append(conversationId, opening);
       history.add(opening);
       // ★★ P4：身份之后补一条**开场快照**（世界长这样）。★ 顺序不可反——先有"你是谁"，再有"你在哪"；

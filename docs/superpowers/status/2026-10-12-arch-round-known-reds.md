@@ -291,3 +291,55 @@ economy 6 / gov 1 / unit 1 / util 1 个文件提及旧命令名 —— 留给对
    ga 侧新增 `GaLogSource.GA_TICK` + `GaLog.time()`（表项新增，非改名）。
 5. **`Directive.effects()` 外键仍只在命令期判**（`effects` 已同树 ⇒ 技术上可回构造期）：本批有意不回迁
    （会新开一个"搬迁前能构造、搬迁后当场抛"的失败面），见账本 §3.3，留 3e/后续批次复核。
+
+---
+
+### 批次 3b 乙收尾（归属彻底归模块 + 删 `Affiliation` 本体；3 条新命令 · catalog 138→141）
+
+> 提交面：**未提交**（实现代理**不 commit**，§一.5：控制方审后提交）。证据目录
+> `.superpowers/sdd/2026-10-12-sd-abolition-yi/evidence/`（compile / spotless / spotbugs / validate / faces-before / faces-after / faces-diff /
+> grep-no-kind-enum / deny-all / reds-scan）。
+> ★ 本节**只列相对 3b-4 台账新增的部分**（§12.2：分不清"老架构老测试该删"与"新代码弄坏了"就无法归因）。
+
+**A. 新增编译断（类型/构造器/方法被删被改；`-Dmaven.test.skip=true` 下不显示，纯静态扫描）**
+| # | 形态 | 命中（test 侧，实测正则扫描） | 处置方向 |
+|---|---|---|---|
+| A1 | **`io.mosire.simos.sd.model.Affiliation` 整型删除** | **33 个文件** import 断（含 `app/access/*`、`app/tools/*`、`sd/model/SdModelTest`、`sd/codec/SdCodecTest` …） | 收尾期按新契约重写：归属改走 `AppDecisionMakerAffiliations.claimsOf(...)`（**kind 串 + ref**）或 gov/army 自己的表 |
+| A2 | **`Affiliation.Nation/Army/Gov` 构造** | **35 个文件** | 同上；★ 其中"造决策人夹具"的那一类改成"裸 `DecisionMaker` + 赋权命令" |
+| A3 | **`DecisionMaker` 构造器 7 参 → 6 参（便利构造 5 → 4）** | **32 个文件** `new DecisionMaker(` | 删掉第 2 个实参（`affiliation`） |
+| A4 | **`SdInfoEntry.affiliations` 类型 `Set<Affiliation>` → `Set<String>`**（不透明标签） | **11 个文件** `new SdInfoEntry(`（+ 视图断言） | 夹具改喂串（形如 `nation:n1`）；视图从 `[{kind,id}]` 变排序串数组 |
+| A5 | **`ArmyData` 2 → 3 参 / `ArmyChangeSet` 2 → 3 参** | **5 个文件**（`army/ArmyDataTest`、`army/testing/ArmyFixtures`、`army/spi/ResolveCombatStageHandlerTest`…） | 第三个组件 `armyAffiliations` 补 `Map.of()`；★ **这些文件在基线就已编译断**（3d-1 §A1 + 3d-2 的 `CombatRecord` 第 8 组件），见台账 §20.1 点 4 |
+| A6 | **`GovState` 5 → 7 参 / `GovChangeSet` 5 → 7 参** | **5 个文件** | 两个归属表补 `Map.of()` |
+| A7 | **`DecisionScopeFunctions` 键类型 `Class<? extends Affiliation>` → `String`** | **12 个文件** | 用例改喂 kind 串（`NationAffiliations.KIND` 等） |
+| A8 | **`DiplomaticWriteSignature.violation(...)` 多一个端口形参** | **2 个文件** | 传 `AppDecisionMakerAffiliations.INSTANCE` |
+| A9 | **两条外交写工具构造器多一个端口形参** | **1 个文件** | 同上 |
+| A10 | **`maker.affiliation()` / `dm.affiliation()` 字段访问消失** | **5 个文件** | 改走归属索引 / 各自的表 |
+
+★ **删除类**（本批删掉、测试侧 0 命中，但属新契约）：`sd.model.Affiliation` · `sd.spi.AffiliationTargets` ·
+`gov.spi.NationAffiliationLookup` · `army.spi.ArmyAffiliationPort` · `SdPayloads.requireAffiliation` / `optionalAffiliationSet`
+（`SdSnapshots.units(...)` 同批删除）。
+
+**B. 新增断言红（报文/视图形状；非编译断）**
+| # | file:line（预期） | 钉的旧形状 | 处置方向 |
+|---|---|---|---|
+| B1 | `app/McpCoverageTest` 的 `EXPECTED_COMMAND_TYPES` / `MINIMAL_PAYLOADS` | 计数 **138 → 141**；三条新命令各需一个能真提交成功的最小载荷 | 补三条（`decisionMakerId` + 目标键；清除型载荷只给 `decisionMakerId`） |
+| B2 | `app/tools/SimosToolsTest`（`hasSize(142/143/…)` 一类） | catalog/工具面计数随之变 | 收尾期按新契约改数（★ 本批**不打** `DmUsableCommand` ⇒ 可嵌令/可入队/落点不动） |
+| B3 | `app/tools/write/AdjudicateTickToolTest:549 hasSize(66)` | **不受影响**（三条新命令不进 DM 面） | — |
+| B4 | `app/McpServerTest` / `McpPortTopologyTest` 的 `affiliations` 视图样本 | `[{kind,id}]` → `["nation:n1"]` | 改新契约 |
+| B5 | `ga.CreateDecisionMaker` 的用例（`sd/spi/CreateDecisionMakerHandlerTest`、`app/access/*ScopeFixtures*` 等） | 载荷不再有 `affiliation`（带了 ⇒ **具名拒**） | 用例改成"建裸决策人 + 另发赋权命令" |
+| B6 | `ga.PutInfo` 的用例（`sd/spi/PutInfoHandlerTest`、`app/SdPutInfoEndToEndTest`） | `affiliations` 必须是**字符串数组** | 改新契约（旧对象数组 ⇒ 具名拒） |
+
+**C. 本批新增行为尚无测试（收尾期按判据补）**
+① 三条赋权命令的幂等/改绑/清除（含"清一个本来没有的 ⇒ 空变更集、head 仍 +1"）与三条具名拒（决策人不存在 / 国家不存在 /
+军队不存在 / 单位不是 GOV）；② `DecisionScopeFunctions` 的**裸决策人 ⇒ 四命名空间 deny-all** 与**未注册 kind ⇒ 抛**；
+③ 多轴归属的**并集**语义（与单轴逐字段相同的对照）；④ `SdInfoEntry.affiliations` 的标签交集可见性（含"标签对不上 ⇒ 不可见"）；
+⑤ `GovState`/`ArmyData` 新增组件经 `GovCodec`/`ArmyCodec` 的键读侧往返（**非空表**才验得到；三个护栏已覆盖）；
+⑥ 旧载荷（`ga.CreateDecisionMaker` 带 `affiliation` / `affiliations` 给对象数组）⇒ 具名 `Rejected` 且 head 不变。
+
+**D. 已知债（如实记，本批有意未做）**
+1. `SimosSdReportTool:351` 仍按该工具自己的收件人词表拼受众标签（`nation:` / `gov:`）——标签拼法的第二个拼写点
+   （既有债，收窄前同样在这里拼 `{kind}`）；失效方向 fail-closed（标签对不上 ⇒ 收不到）。
+2. 删决策人**不清理** gov/army 的归属行（一条命令只写一个命名空间）：留下的是**够不着**的行（该 id 已不存在 ⇒ 没人会为它算范围）；
+   若该 id 被重新创建，会继承旧归属。收口方向记在账本 §3.4（未做）。
+3. 前端对 `affiliations` 视图形状变化的消费点**未逐文件核**（§17.2 的 GUI 面）；
+   批内只核到 `simos-app/src/test/js` 里 `affiliation` 零命中。

@@ -43,9 +43,11 @@ import java.util.Objects;
  *
  * <ol>
  *   <li><b>决策人的国家归属</b>仍指向该国家 ⇒ 先 {@code ga.DeleteDecisionMaker}（仅当其名下没有历史 Directive 时可用）或另行处理；★
- *       若该决策人已被 Directive 引用，当前命令面没有"删历史 Directive"的入口，完整清理路径缺失，见 P1.2 报告。 ★ <b>本批（3c）起这条判据读 gov
- *       自己的归属裁定</b>：{@link NationAffiliations#resolve}（输入经 {@link NationAffiliationLookup}
- *       端口取自决策人记录， 裁定"这个国家存在吗"用本站的 {@code nations}）—— 不再是"扫 sd 切片里的决策人表"；
+ *       若该决策人已被 Directive 引用，当前命令面没有"删历史 Directive"的入口，完整清理路径缺失，见 P1.2 报告。 ★ <b>乙收尾（本批）起这条判据读 gov
+ *       自己的归属表</b>：表本体就在本切片（{@code GovState.nationAffiliations()}，写口 = {@code
+ *       gov.AssignDecisionMakerNation}）⇒ 经 {@link NationAffiliations#resolve} 裁一遍（"这个国家还在吗"用本站的
+ *       {@code nations}），<b>不再需要任何端口</b>（3c 的那个 {@code NationAffiliationLookup} 随本批删除 —— 它存在的唯一理由
+ *       "决策人记录住 ga、gov 看不见"已随归属归模块消失）；
  *   <li>外交关系边 {@link DiplomaticRelation} 的 from/to 仍指向该国家 ⇒ 可显式给 {@code
  *       clearDiplomaticReferences=true} 随国删除，或先另行清理；
  *   <li>地图上仍有 {@code nation:&lt;id&gt;} tag 的 Region ⇒ 先 {@code map.UpdateRegion} 把 tag 改掉/清掉
@@ -61,27 +63,14 @@ import java.util.Objects;
  *
  * <p>★★ <b>2026-10-12 批次 3c：本类自 {@code simos-sd/sd.spi} 迁入 {@code simos-gov/spi}，命令名 {@code
  * sd.DeleteNation} → {@code gov.DeleteNation}</b>（外交是 gov 的事）。语义/载荷/拒绝文案一字未改，变的只有：①落点（{@code
- * GovChangeSet} 的外交三表，含 {@code nations}）；②载荷与切片助手改本模块；③日志门面；④第 1 条硬引用的读法（见上：决策人表改经 gov 侧端口，因为 gov 禁
- * {@code sd}/{@code ga}）。
+ * GovChangeSet} 的外交三表，含 {@code nations}）；②载荷与切片助手改本模块；③日志门面。
+ *
+ * <p>★★ <b>2026-10-12 乙收尾：构造器回到无参</b>——第 1 条硬引用的读法从"经端口问 app"改成"直接读本站的归属表"（见上）。
  */
 public final class DeleteNationHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "gov.DeleteNation";
-
-  /**
-   * ★★ <b>nation 归属的只读输入口</b>（<b>端口在 gov、实现在 app、{@code Shell} 注入</b>）：原 sd 侧用的是 {@code
-   * DecisionTablesLookup}（端口在 sd、实现在 ga），而 gov <b>既禁 sd 也禁 ga</b> ⇒ 本批改为 gov 自己的窄口，只问一件事：
-   * "谁自称归属哪个国家"（不透明引用原文）。解释与裁定都在 {@link NationAffiliations#resolve}。
-   *
-   * <p>★ 本命令（{@code gov.DeleteNation}）与 {@code nations} 表同在 gov 切片 ⇒ 它只是"跨切片读一次决策人表"，与 {@code
-   * army.CreateArmy} 读 unit 切片同款（铁律 3：只读，不改写别的切片）。
-   */
-  private final NationAffiliationLookup nationAffiliations;
-
-  public DeleteNationHandler(NationAffiliationLookup nationAffiliations) {
-    this.nationAffiliations = Objects.requireNonNull(nationAffiliations, "nationAffiliations");
-  }
 
   @Override
   public String type() {
@@ -114,8 +103,9 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
       }
 
       List<String> problems = new ArrayList<>();
+      // ★ 乙收尾：归属表就在本切片 ⇒ 不再有"跨切片读决策人记录"那一步，也没有端口。
       NationAffiliations affiliations =
-          NationAffiliations.resolve(nationAffiliations.nationClaims(state), base.nations());
+          NationAffiliations.resolve(base.nationAffiliations(), base.nations());
       List<DecisionMakerId> decisionMakers = decisionMakersOf(affiliations, id);
       if (!decisionMakers.isEmpty()) {
         problems.add(
@@ -214,10 +204,7 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
     return new HandlerOutcome.Rejected(reason);
   }
 
-  /**
-   * 归属该国家的决策人 id（升序）——判据来自 {@link NationAffiliations}（gov 的裁定），不再是"扫决策人表里的 {@code
-   * Affiliation.Nation}"：sd 侧的 {@code Affiliation} 类型 gov 不认识（gov 禁 sd），端口交过来的只是"自称"的原文。
-   */
+  /** 归属该国家的决策人 id（升序）——判据来自 {@link NationAffiliations}（gov 自己的归属表 + 本切片国家表的裁定）。 */
   private static List<DecisionMakerId> decisionMakersOf(
       NationAffiliations affiliations, NationId id) {
     List<DecisionMakerId> ids = new ArrayList<>();
