@@ -28,9 +28,13 @@ import org.slf4j.Logger;
  * <p>★ **每个操作都是纯函数**（只读 {@code base}，产出走 {@link MapChangeSet}）；变更集**唯一**的生产路径是 {@link
  * MapChangeSet#between(GameMap, GameMap)}——**不做**"操作直接拼增量变更集"的第二条路径（两条路径必然分叉，正是本项目最贵的教训形态）。
  *
- * <p>★ **改地形 = 改权威块 + 重切分**（M9 T6 取代说明）：P1 之后地形不再逐格存（{@code HexCell} 只剩高度）， 故本操作把目标格叠进 {@link
- * GameMap#terrainIndex()} 后**整体重切**（{@link TerrainBlocks#split}），受影响块自然**合并/拆分**。**不逐格写地形**——{@code
- * HexCell} 已无 terrain 字段，编译期就挡。
+ * <p>★ **改地形 = 改权威块 + 重切分**（M9 T6 取代说明）：P1 之后地形不再逐格存（{@code HexCell} 已无 terrain 字段）， 故本操作把目标格叠进
+ * {@link GameMap#terrainIndex()} 后**整体重切**（{@link
+ * TerrainBlocks#split}），受影响块自然**合并/拆分**。**不逐格写地形**——{@code HexCell} 已无 terrain 字段，编译期就挡。
+ *
+ * <p>★★ <b>涂地形只动高度，不动可用地面积属性表</b>（2026-10-12 批次 2 的必修语义点）：换高度走 {@link HexCell#withHeight} —— 它把该格
+ * {@code areas} 逐条带到新格。这不是"顺手多写一句"，而是**唯一不静默抹平用户编辑值**的写法（用 {@code new HexCell(...)}
+ * 重建该格会让面积悄悄回到地形默认，编译期与测试期都不会响）。★ 本操作**有意不**按新地形重算乡村面积：面积是编辑值， 改地形不是"重新创世"。
  *
  * <p>★★ **高度随地形一起写**（2026-09-24 用户裁定，取代此前的"高度一字不动"）：每一格写入 {@link
  * TerrainHeights#paintHeight}（缺省带中点；沙漠 = 平原中点 + 0.005）。理由是手绘出来的格要在格详情里读出与地形相称的高度，
@@ -112,7 +116,9 @@ public final class TerrainOperations {
         throw new IllegalArgumentException("hex 不在图上: " + hex);
       }
       terrainByHex.put(hex, terrain);
-      nextHexes.put(hex, new HexCell(paintHeight));
+      // ★★ **涂地形不得抹平该格的编辑值**（2026-10-12 批次 2 的必修语义点）：只换高度，可用地面积属性表逐条带过去。
+      //   改前这里是 new HexCell(paintHeight)（单字段时代的写法）—— 它不报编译错、不报测试错，只是把用户改过的面积静默重置。
+      nextHexes.put(hex, base.hexes().get(hex).withHeight(paintHeight));
       if (TRACE.isTraceEnabled()) {
         EventLog.channel(TRACE)
             .trace(

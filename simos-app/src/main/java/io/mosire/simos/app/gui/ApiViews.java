@@ -88,6 +88,7 @@ import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.tools.GmToolUsage;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexAreas;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.block.BlockId;
@@ -4890,6 +4891,11 @@ public final class ApiViews {
    * <p>★ <b>C6a（D-020）</b>：末尾追加 {@code date} 与 {@code season}——两者都用**该 state 的 tick**；季节按**该格
    * {@code coord.r()}** 判带（{@link CalendarService#seasonAt}），未配置分带时 {@code zoneSource=fallback}。 旧页
    * {@code map.html} 与工作台 {@code index.html} 共用这一份响应，前端只渲染、不重算。
+   *
+   * <p>★ <b>2026-10-12 批次 2</b>：追加可用地面积属性表 {@code areas}（毫亩，内置 {@code urban}/{@code rural} 恒在、
+   * 自定义字段有值才出现）与逐键来源 {@code areaSources}（{@code explicit} / {@code
+   * terrain-default}，没赋过值的字段读该地形的默认可用面积 —— 用户原话「以乡村类型显示」）。形状由 map 模块的 {@link HexAreas#putInto} 给，与
+   * MCP 侧 {@code simos.map.hex} 同一实现。
    */
   static Map<String, Object> mapHex(
       HexCoord coord,
@@ -4906,6 +4912,10 @@ public final class ApiViews {
     Map<String, Object> view = hexCoord(coord);
     view.put("terrain", terrain);
     view.put("height", cell.height());
+    // ★ **可用地面积属性表**（2026-10-12 批次 2）：areas（解析后的值，毫亩；没赋过值的字段 ⇒ 该地形默认可用面积，
+    //   乡村面积因此"以乡村类型显示"）+ areaSources（explicit / terrain-default）。★ 与 MCP 侧 simos.map.hex
+    //   共用 map 模块的 HexAreas.putInto 这一个实现（GUI 与 MCP 不许各写一份同形视图）。
+    HexAreas.putInto(view, cell, terrain);
     List<String> regionIds = new ArrayList<>(regions.size());
     for (RegionId region : regions) {
       regionIds.add(region.value());

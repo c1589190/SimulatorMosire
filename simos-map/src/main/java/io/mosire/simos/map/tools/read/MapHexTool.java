@@ -10,6 +10,7 @@ import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexAreas;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.tools.MapToolPerspective;
@@ -94,8 +95,14 @@ public final class MapHexTool implements SimosTool {
               MapToolReads.branch(args),
               MapToolReads.revision(args));
       Map<String, Object> view = views.hexCoord(coord);
-      view.put("terrain", map.terrainAt(coord));
+      String terrain = map.terrainAt(coord);
+      view.put("terrain", terrain);
       view.put("height", cell.height());
+      // ★ **可用地面积属性表**（2026-10-12 批次 2）：areas = 解析后的值（毫亩；没赋过值的字段 ⇒ 该地形的默认可用面积，
+      //   乡村面积因此"以乡村类型显示"）+ areaSources = 逐键来源（explicit / terrain-default）。
+      //   ★ 形状由 map 模块的 HexAreas.putInto 给（唯一实现）⇒ GUI 的 ApiViews.mapHex 与本工具**共用同一个函数**，
+      //     不会各自漂移出两份同形视图（仓内硬纪律）。
+      HexAreas.putInto(view, cell, terrain);
       // ★ **归属国家**（T11，spec §3.4 的字段表：军队决策人「每个 hex 的归属国家」）。★ 值是**列表**：M8-U1
       //   裁定区域从属是多对多 ⇒ 一个格可以同时属于多个国家区域，不许读成"唯一归属"。
       // ★ 这一项**不做角色分派**：格已经过 hexVisible 判定（调用者够得着它），"它归谁"就是该格自己的事实；

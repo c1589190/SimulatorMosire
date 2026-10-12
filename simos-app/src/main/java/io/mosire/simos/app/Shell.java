@@ -120,6 +120,7 @@ import io.mosire.simos.map.spi.ReassignHexesHandler;
 import io.mosire.simos.map.spi.RegisterPathwayGroupHandler;
 import io.mosire.simos.map.spi.RenameRegionHandler;
 import io.mosire.simos.map.spi.SetEdgeHandler;
+import io.mosire.simos.map.spi.SetHexAreaHandler;
 import io.mosire.simos.map.spi.SetTerrainHandler;
 import io.mosire.simos.map.spi.SplitRegionHandler;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
@@ -534,6 +535,10 @@ public final class Shell implements AutoCloseable {
         new ArrayList<>(
             List.of(
                 new SetTerrainHandler(),
+                // ★★ 2026-10-12 批次 2（hex 属性表）：GM 改单格可用地面积。**不打** {@code DmUsableCommand} ⇒ 默认仅
+                //   GM（用户裁定「map 层级的命令…肯定不该给 DM 用」）：它进 catalog 与 GM 提交面/窄工具，
+                //   但进不了令白名单 / RegisterEffect / 决策人 catalog。──
+                new SetHexAreaHandler(),
                 new CreateRegionHandler(),
                 new UpdateRegionHandler(),
                 // ★★ P1.2（2026-10-09 后端行政批次）：区划语义命令——map 只改自己的 regions；
@@ -904,11 +909,14 @@ public final class Shell implements AutoCloseable {
     handlers.add(setDecisionMakerAccessHandler);
     handlers.add(setDecisionMakerProviderHandler);
     handlers.add(resetDecisionMakerConversationHandler);
-    //   ③ 注册：顺序与迁移前逐条相同（136 条领域 handler → sd.RegisterEffect → 5 条 sd 决策命令 = 142 条）。
+    //   ③ 注册：顺序与迁移前逐条相同（★ 2026-10-12 批次 2 加 map.SetHexArea 后：137 条领域 handler →
+    //      sd.RegisterEffect → 5 条 sd 决策命令 = 143 条）。
     for (CommandHandler handler : handlers) {
       coreSimos.register(handler);
     }
-    //   ④ 四个面 + 三条 fail-closed 审计，在**完整注册面**上收口：catalog / 可嵌令 / 可入队 / 决策落点。
+    //   ④ 四个面 + 三条 fail-closed 审计 **+ 一条装配顺序守卫**，在**完整注册面**上收口：catalog / 可嵌令 / 可入队 / 决策落点。
+    //      ★ 三条审计 = 声明了未注册类型 / 落点不得是 DM 可用命令 / 四个面不得为空；顺序守卫 = 声明收集之后装配面又混进带标记的
+    //      handler（那个标记不会被读到）⇒ 当场抛。见 CommandPermissionRules 的类注。
     //   ★ 落点面是"输入 + 审计"：组合根把 ChannelAdmission.LANDING_POINTS 送进规则层，规则层审"它是注册面成员、
     //     且不是 DM 可用命令"（拒绝的实现在 sd.ChannelAdmission 里，仍是模块侧强制）。
     CommandFaces commandFaces =

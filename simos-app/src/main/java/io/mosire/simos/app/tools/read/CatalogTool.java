@@ -185,6 +185,12 @@ public final class CatalogTool implements SimosTool {
               "unitId, regionId, ratePerMille(0..1000)"
                   + "（★ regionId 必须已在该单位的管辖里，否则具名拒并指路先 unit.SetJurisdiction）"),
           Map.entry("map.SetTerrain", "hexes[{q,r}...], terrain"),
+          Map.entry(
+              "map.SetHexArea",
+              "hex{q,r}, key(内置字段标签 urban|rural) 或 customKey(自定义字段名，字符串)（两者恰给一个）, op(set|add),"
+                  + " value(整数毫亩：set ⇒ ≥0 的绝对面积；add ⇒ ±增量，基数是当前读出值、结果不得为负)。"
+                  + "一次改一格一个字段；★ 没赋过值的字段读回时是该地形的默认可用面积（以 rural 呈现，"
+                  + "读面 areaSources 标 explicit / terrain-default）；★ GM-only：决策人不能嵌入令）"),
           Map.entry("map.CreateRegion", "regionId, name, hexes[{q,r}...], meta?"),
           Map.entry("map.UpdateRegion", "regionId, hexes?, meta?"),
           Map.entry(

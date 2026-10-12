@@ -80,4 +80,52 @@ public final class TerrainCatalog {
     }
     return t;
   }
+
+  // ── 可用地面积的**地形默认值**（2026-10-12 批次 2）─────────────────────────────────────
+
+  /**
+   * 每格土地基准（亩）：**量纲标定值**，与 economy 的 {@code EconomySeeder.MU_PER_HEX}（3,100L，v2 spec §10.3 定案 A）
+   * 同值。★ 两者的关系是**同源重复点**：本批（用户裁定"不与任何模块联动"）不动 {@code EconomySeeder}，故这个数今天有两处拼写； 将来定"土地权威归谁"时应把
+   * economy 侧那一份改成引用本处（见批次报告"将来会撞的口子"）。
+   */
+  public static final long MU_PER_HEX = 3_100L;
+
+  /**
+   * 满可耕地的产能档 = 本表里可耕作核心那档的 {@code food}（{@code EconomySeeder.FOOD_AT_FULL_ARABLE} 的同源值）： {@link
+   * #defaultUsableAreaMilliMu(String)} 的分母。
+   */
+  public static final int FOOD_AT_FULL_ARABLE = 3;
+
+  /**
+   * ★★ <b>某地形的默认可用地面积</b>（<b>毫亩</b>，2026-10-12 批次 2 / 用户原话「根据地形在初始化世界的时候先给乡村面积一个固定值」 +
+   * 「这个可用地面积如果没有，那么读的时候就走默认，也就是单个地形的默认可用面积」）。
+   *
+   * <p>逐格默认值 = 该地形的可耕作系数（千分）× 每格土地基准：
+   *
+   * <ul>
+   *   <li>{@code food} 最高那档（= {@link #FOOD_AT_FULL_ARABLE}）⇒ 满值 {@code 3_100 × 1000 = 3,100,000}
+   *       毫亩；
+   *   <li>次一档（{@code food = 2}）⇒ {@code 3_100 × 666 = 2,064,600} 毫亩；
+   *   <li>再一档（{@code food = 1}）⇒ {@code 3_100 × 333 = 1,032,300} 毫亩；
+   *   <li>其余（{@code food = 0}：水体与不毛之地）⇒ <b>0</b> 毫亩。
+   * </ul>
+   *
+   * <p>★ <b>算法与 {@code EconomySeeder.arablePerMilleOf(food) = food * 1000 / FOOD_AT_FULL_ARABLE}
+   * 逐字同源</b> （整数除法：{@code 2 × 1000 / 3 = 666}，不是 666.67 ⇒ 整数语义也要一致，别顺手改成浮点）。
+   *
+   * <p>★★ <b>为什么落在这里、且只按 {@code food} 派生</b>：{@code RegressionGuardsTest} 的 L9③ 禁止四个地形 key 出现在
+   * <b>{@code simos-map/src/main} 里本文件之外的任何文件</b>（连注释都算）⇒ 默认值表**只能**住在 {@link TerrainCatalog}
+   * 内，且不许按 key 写字面量分支，只能按 {@link TerrainType#food()} 派生。
+   *
+   * @param key 地形 key（必须在 {@link #KEYS} 内；词表外由 {@link #of} fail-closed 抛）
+   * @return 该地形的默认可用地面积（毫亩，≥ 0）
+   */
+  public static long defaultUsableAreaMilliMu(String key) {
+    return MU_PER_HEX * arablePerMilleOf(of(key).food());
+  }
+
+  /** 可耕作系数（千分）：与 economy 的 {@code EconomySeeder.arablePerMilleOf} 同式（整数除法，不四舍五入）。 */
+  private static int arablePerMilleOf(int food) {
+    return food * 1000 / FOOD_AT_FULL_ARABLE;
+  }
 }

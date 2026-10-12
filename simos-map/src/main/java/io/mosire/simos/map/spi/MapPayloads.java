@@ -3,9 +3,11 @@ package io.mosire.simos.map.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.map.HexAreaKey;
 import io.mosire.simos.map.MapLog;
 import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.ops.HexAreaOperations;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.map.region.RegionId;
@@ -163,6 +165,73 @@ final class MapPayloads {
       hexes.add(hexFrom(element, field));
     }
     return hexes;
+  }
+
+  /**
+   * 必填的**单格** {@code {q,r}} 对象（2026-10-12 批次 2 新增；形制照 armY/economy/sd 的同名助手）。
+   *
+   * <p>与 {@link #requireHexes} 分开是因为语义不同：{@code map.SetHexArea} 一次只改一格（"一次改一格一个字段"是用户裁定的粒度），
+   * 收数组会让载荷与目标声明多一层没有意义的包装。
+   */
+  static HexCoord requireHex(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isObject()) {
+      debugFieldRejected(field, "必须是 {q,r} 对象");
+      throw new IllegalArgumentException("字段 " + field + " 必须是 {\"q\":整数,\"r\":整数} 对象: " + payload);
+    }
+    return hexFrom(value, field);
+  }
+
+  /**
+   * 属性表字段键（2026-10-12 批次 2）：{@code key}（**内置字段**，enum 标签 {@code urban}/{@code rural}）与 {@code
+   * customKey}（**自定义字段**，String）**恰给一个**。
+   *
+   * <p>★ 两个字段名分开写，是用户裁定「自定义字段必须是一个 String，应当明确标注为"自定义字段"，已有的城市/乡村走 enum 标签声明」在**载荷形状**上的落地：
+   * "这是内置还是自定义"从字段名就能读出来，不靠值的格式去猜。两个都给 / 都不给 ⇒ 具名拒（不默认取某一个）。
+   */
+  static HexAreaKey requireAreaKey(JsonNode payload) {
+    JsonNode builtin = payload.get("key");
+    JsonNode custom = payload.get("customKey");
+    boolean hasBuiltin = builtin != null && !builtin.isNull();
+    boolean hasCustom = custom != null && !custom.isNull();
+    if (hasBuiltin == hasCustom) {
+      debugFieldRejected("key", "key 与 customKey 必须恰给一个");
+      throw new IllegalArgumentException(
+          "字段 key 与 customKey 必须恰给一个：内置字段（urban | rural）走 key，自定义字段走 customKey（字符串）");
+    }
+    if (hasBuiltin) {
+      if (!builtin.isTextual()) {
+        debugFieldRejected("key", "必须是字符串");
+        throw new IllegalArgumentException("字段 key 必须是内置字段标签字符串: " + payload);
+      }
+      try {
+        return HexAreaKey.parse(builtin.asText());
+      } catch (IllegalArgumentException e) {
+        debugFieldRejected("key", "不属于内置字段标签");
+        throw e;
+      }
+    }
+    if (!custom.isTextual()) {
+      debugFieldRejected("customKey", "必须是字符串");
+      throw new IllegalArgumentException("字段 customKey 必须是自定义字段名字符串: " + payload);
+    }
+    try {
+      return new HexAreaKey.Custom(custom.asText());
+    } catch (IllegalArgumentException e) {
+      debugFieldRejected("customKey", "自定义字段名不得为空白");
+      throw e;
+    }
+  }
+
+  /** 必填的写操作 {@code op}：{@code set}（全量赋值）/ {@code add}（增量 ±）。词表在 {@link HexAreaOperations.Op}。 */
+  static HexAreaOperations.Op requireAreaOp(JsonNode payload) {
+    String text = requireText(payload, "op");
+    try {
+      return HexAreaOperations.Op.parse(text);
+    } catch (IllegalArgumentException e) {
+      debugFieldRejected("op", "必须是 set 或 add");
+      throw e;
+    }
   }
 
   /** 必填的 {@code regionId} 字符串 ⇒ {@link RegionId}（空白由 {@link RegionId#parse} 拒绝，消息是它自己的）。 */

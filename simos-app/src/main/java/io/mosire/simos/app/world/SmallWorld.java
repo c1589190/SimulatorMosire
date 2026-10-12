@@ -15,6 +15,7 @@ import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.HexAreas;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.block.TerrainBlocks;
@@ -426,7 +427,9 @@ public final class SmallWorld {
     }
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
     for (HexCoord hex : HEXES) {
-      hexes.put(hex, new HexCell(HEX_HEIGHT));
+      // ★ 创世初始化（2026-10-12 批次 2）：按地形给"乡村面积"固定初值（该地形的默认可用面积）；
+      //   城市面积不给初值，留给 map.SetHexArea 编辑。默认值为 0 的地形不写显式项（读出来同为 0）。
+      hexes.put(hex, HexAreas.initialCell(HEX_HEIGHT, terrainByHex.get(hex)));
     }
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     TerrainType plains = TerrainCatalog.of(PLAINS);

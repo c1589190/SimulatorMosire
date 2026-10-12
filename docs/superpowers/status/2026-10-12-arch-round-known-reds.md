@@ -14,9 +14,27 @@
 |---|---|---|---|
 | 1.7 | `f3458cea` | 9 个测试文件因 `GmOnlyCommand` 删除而**编译断** + 3 个用例因 `sd.` 前缀规则删除而**红** | ✅ **已在同批结清**（2026-10-12）：9 处改 `isNotInstanceOf(DmUsableCommand.class)`；3 个用例迁移到新契约（夹具改喂派生面、自指保护改端到端验证），`DM_EXPECTED` 一字未放宽 |
 
-## 待最后测试阶段处理（**无**）
+## 待最后测试阶段处理
 
-（截至批次 1 收尾：空。后续批次追加。）
+### 批次 2（hex 属性表，`HexCell` 加 `areas` 组件）—— 预期红（断言级，非编译级）
+`test-compile` 实测 rc=0（0 ERROR）⇒ 下面全是**断言**红，不是编译断。
+
+| # | file:line | 钉的旧形状 | 处置方向 |
+|---|---|---|---|
+| 1 | `simos-map/src/test/.../HexCellTest.java:49-52` | `hasSize(1)` + `containsExactly("height")` | 改成 `[height, areas]`（保留 `doesNotContain("terrain","edgeTags","riverMask")` 的判别力） |
+| 2 | `simos-map/src/test/.../RegressionGuardsTest.java:168-172`（L2） | `containsExactly("height")` | 同上（该条本意"无 terrain/无连通性"仍成立） |
+| 3 | `simos-app/src/test/.../tools/SimosToolsTest.java:985` | `hasSize(142)` | ⇒ **143**（新增 `map.SetHexArea`） |
+| 4 | 同上 `:1026` | `hasSize(166)` | ⇒ **167**（GM 桶读+写） |
+| 5 | 同上 `:1143` | `hasSize(70)` | ⇒ **71**（窄写类扫描） |
+| 6 | 同上 `:1850` | `hasSize(176)` | ⇒ **177**（`*Tool.java` NAME 扫描） |
+| 7 | 同上 `:1154` | `NARROW_WRITE_NAMES` 名单 | 补 `map.SetHexArea`（68⇒69） |
+| 8 | `simos-app/src/test/.../McpCoverageTest.java:147` | `EXPECTED_COMMAND_TYPES`(142) | ⇒ **143** |
+| 9 | 同上 `:577` | `MINIMAL_PAYLOADS` | 补 `map.SetHexArea` 的最小可成功载荷（该表要求每个 catalog type 都有能**真提交成功**的载荷） |
+
+**本批新增能力尚无测试**（"涂地形不抹编辑值" / "未赋值读地形默认" / "增量基数是读出值" / "GM-only 不动 DM 面"）⇒ 收尾期按规划 §4 批次 2 的五条负向判据补。
+
+### 未核项（如实）
+`AdjudicateTickToolTest:931 hasSize(97)` 本批未核（97 = 实现 `CommandTargets` 的 handler 数；新命令实现了它 ⇒ **预期 98**，收尾期实测）。
 
 ## 格式门禁修复（2026-10-12，控制方执行）
 
