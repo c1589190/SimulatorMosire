@@ -55,8 +55,10 @@ import io.mosire.simos.app.world.GovJurisdictionGuard;
 import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.army.resolve.ArmyResolver;
 import io.mosire.simos.army.spi.AppendCombatStageHandler;
+import io.mosire.simos.army.spi.CreateArmyHandler;
 import io.mosire.simos.army.spi.RecordCombatHandler;
 import io.mosire.simos.army.spi.ResolveCombatStageHandler;
+import io.mosire.simos.army.spi.SetArmyMasterGovHandler;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
@@ -156,12 +158,10 @@ import io.mosire.simos.sd.resolve.SdResolver;
 import io.mosire.simos.sd.spi.AddStageHandler;
 import io.mosire.simos.sd.spi.CancelEffectHandler;
 import io.mosire.simos.sd.spi.CommitOutcomeHandler;
-import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateCombatHandler;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
 import io.mosire.simos.sd.spi.RegisterEffectHandler;
-import io.mosire.simos.sd.spi.SetArmyMasterGovHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
 import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -850,11 +850,6 @@ public final class Shell implements AutoCloseable {
                 // ★★ 2026-10-12 批次 3c：gov.DeleteNation 的"仍有决策人挂在这个国家上"守卫改问 gov 自己的窄口
                 //   （端口在 gov、实现在 app：判据要同时看 ga 的决策人与 gov 的 nations，只有组合根看得见两片）。
                 new DeleteNationHandler(AppNationAffiliations.INSTANCE),
-                new CreateArmyHandler(),
-                // ── 阶段 12 后续赋值（2026-10-01 Army 主子改派缺口）：Army 创建后的主子改派/解除。★ GM-only
-                //   （handler 不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM
-                // 直接提交照常可用）。──
-                new SetArmyMasterGovHandler(),
                 new CreateDecisionMakerHandler(),
                 // ── P1b2（2026-10-01）：GM-only 决策人身份删除（只删 decisionMakers 的一条；不级联历史 Directive /
                 //   文档 / 会话）。不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM
@@ -890,6 +885,13 @@ public final class Shell implements AutoCloseable {
                 // ★ 第 3 波最后一块：裁决用的状态翻转命令（ga.SetDirectiveStatus）。它不是对外窄工具——
                 //   由 sd.AdjudicateTick 内部编排产生；注册在此是为了它在批里能被 CommandBus 路由到。
                 new SetDirectiveStatusHandler(),
+                // ★★ 2026-10-12 批次 3d-1：**军队身份**的两条命令（{@code army.CreateArmy} /
+                //   {@code army.SetArmyMasterGov}）自 {@code simos-sd} 迁入 {@code simos-army}（用户裁定
+                //   「战斗模块，包括阶段之类的，归 Army 模块管」＋「sd 整个弃用！」）。★ 两条都**不打**
+                //   {@code DmUsableCommand} ⇒ 仅 GM（迁移前它们靠 {@code sd.} 前缀不在 DM 两面 ⇒ 边界一字未改）；
+                //   GM 直接提交与 GM 窄工具照常可用。★ 改名是硬约束：类型前缀决定变更集施加到哪个命名空间的 codec。
+                new CreateArmyHandler(),
+                new SetArmyMasterGovHandler(),
                 // ★★ D1（2026-10-02 / D-012）：army 切片的第一条命令（写一条单 tick 单场交战记录）。★ 不
                 //   打 DmUsableCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交与 GM 窄工具照常可用。
                 new RecordCombatHandler(),

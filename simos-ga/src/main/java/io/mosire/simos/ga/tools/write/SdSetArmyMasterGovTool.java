@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.SetArmyMasterGov} 窄工具（阶段 12 后续赋值缺口）：**已存在 Army 的主子改派 / 解除**的唯一窄写面。
+ * {@code army.SetArmyMasterGov} 窄工具（阶段 12 后续赋值缺口）：**已存在 Army 的主子改派 / 解除**的唯一窄写面。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
@@ -24,7 +24,16 @@ import java.util.Set;
  */
 public final class SdSetArmyMasterGovTool extends AbstractNarrowWriteTool implements SimosTool {
 
+  /**
+   * 工具名（★ 全局唯一，且**不随命令类型改名**）：它在工具面/白名单/MCP 覆盖表里是稳定身份，改名会动可观测面。
+   *
+   * <p>★ 2026-10-12 批次 3d-1：命令类型由 {@code sd.SetArmyMasterGov} 变 {@code
+   * army.SetArmyMasterGov}，但**工具名 一字未改**（同 {@link SdCreateArmyTool#NAME} 的口径）。
+   */
   public static final String NAME = "sd.SetArmyMasterGov";
+
+  /** 本工具钉死的命令类型（2026-10-12 批次 3d-1 起 {@code army.SetArmyMasterGov}）。 */
+  public static final String COMMAND_TYPE = "army.SetArmyMasterGov";
 
   public SdSetArmyMasterGovTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
@@ -32,7 +41,7 @@ public final class SdSetArmyMasterGovTool extends AbstractNarrowWriteTool implem
 
   @Override
   protected String commandType() {
-    return NAME;
+    return COMMAND_TYPE;
   }
 
   @Override
@@ -42,9 +51,9 @@ public final class SdSetArmyMasterGovTool extends AbstractNarrowWriteTool implem
 
   @Override
   public String description() {
-    return "改派/解除 Army 主子 GOV：固定 sd.SetArmyMasterGov，载荷 {armyId, masterGovUnitId?}"
+    return "改派/解除 Army 主子 GOV：固定 army.SetArmyMasterGov，载荷 {armyId, masterGovUnitId?}"
         + "（armyId 必填；masterGovUnitId 缺席/null/空串 = 解除认领，给了必须存在且带 GovernmentFormation；"
-        + "armyId 不存在 ⇒ 具名拒；只改 sd 侧 masterGovUnitId，保留 id/rootUnit/name，不碰 unit 侧 ArmyFormation）";
+        + "armyId 不存在 ⇒ 具名拒；只改 army 侧 masterGovUnitId，保留 id/rootUnit/name，不碰 unit 侧 ArmyFormation）";
   }
 
   @Override

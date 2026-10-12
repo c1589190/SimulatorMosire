@@ -111,8 +111,8 @@ import java.util.UUID;
  *       指向根单位。
  *   <li>{@code unit.CreateCommandChain}：{@code commander = 根单位}，{@code members}
  *       **含根单位与全部兵种单位**（{@code CommandChain} 构造期硬要求 {@code commander ∈ members}）。
- *   <li>{@code sd.CreateArmy}：{@code rootUnitId = 根单位}；{@code masterGovUnitId} <b>省略</b>——本批尚不建 GOV
- *       单位（阶段 12：Army 只认 GOV，国家字段已删），后续由 {@code unit.SetArmyFormation} 认领主子。
+ *   <li>{@code army.CreateArmy}：{@code rootUnitId = 根单位}；{@code masterGovUnitId} <b>省略</b>——本批尚不建
+ *       GOV 单位（阶段 12：Army 只认 GOV，国家字段已删），后续由 {@code unit.SetArmyFormation} 认领主子。
  * </ol>
  *
  * <p>★ 同批内 handler 看到的是**累计候选态**（{@code CommandBus.runBatch} 的 candidate 逐条演进）⇒ {@code
@@ -151,7 +151,7 @@ public final class WorldgenInitializeTool implements SimosTool {
   public static final String CREATE_COMMAND_CHAIN_TYPE = "unit.CreateCommandChain";
 
   /** 见 {@link #UPDATE_REGION_TYPE}。 */
-  public static final String CREATE_ARMY_TYPE = "sd.CreateArmy";
+  public static final String CREATE_ARMY_TYPE = "army.CreateArmy";
 
   /**
    * ★ R2a（2026-09-25）：经济切片播种命令 —— 一次把该国的**全部格**种进 economy 切片（§十"验收目标 A"）。
@@ -279,7 +279,7 @@ public final class WorldgenInitializeTool implements SimosTool {
         + "翻成命令一次落**一条** revision（1 条 social.SetPopulation + 每座城一条 social.CreateCity"
         + " + 1 条 economy.Seed（R2a：逐格经济状态）；"
         + "army 为真时再追加 map.UpdateRegion? + gov.CreateNation + 根/兵种 unit.CreateUnit + unit.CreateCommandChain"
-        + " + sd.CreateArmy）。"
+        + " + army.CreateArmy）。"
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
         + " dryRun?(缺省 true=只算不写), army?(缺省 true=连军队编制一起建；false=只做人口+城市), branch?(缺省 main),"
         + " economyProfile?(唯一值 production-runtime，缺省 production-runtime),"
@@ -307,7 +307,7 @@ public final class WorldgenInitializeTool implements SimosTool {
         "army",
         ToolSupport.prop(
             "boolean",
-            "是否连军队编制一起建（缺省 true：同一批追加 gov.CreateNation + 单位 + 指挥链 + sd.CreateArmy）；"
+            "是否连军队编制一起建（缺省 true：同一批追加 gov.CreateNation + 单位 + 指挥链 + army.CreateArmy）；"
                 + "false = 只做人口+城市（不写国家 tag、不建国）"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
@@ -1073,7 +1073,7 @@ public final class WorldgenInitializeTool implements SimosTool {
   }
 
   /**
-   * {@code sd.CreateArmy} 载荷（键名以 {@code CreateArmyHandler} 为准：armyId/rootUnitId/name； {@code
+   * {@code army.CreateArmy} 载荷（键名以 {@code CreateArmyHandler} 为准：armyId/rootUnitId/name； {@code
    * masterGovUnitId} 省略 = 未认主子，等后续 {@code unit.SetArmyFormation} 认领）。
    */
   private static String createArmyPayload(String armyId, String rootUnitId, String name) {

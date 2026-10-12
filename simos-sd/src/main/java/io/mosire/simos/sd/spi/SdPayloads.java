@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
@@ -305,7 +304,10 @@ public final class SdPayloads {
       //   ⇒ 这里不再 NationId.parse，只把串交给 Affiliation.Nation（它判非空白）；解释与裁定在 gov 的
       //   NationAffiliations。形状（{"kind":"nation","id":"…"}）与空白拒因一字未改。
       case "nation" -> new Affiliation.Nation(id);
-      case "army" -> new Affiliation.Army(ArmyId.parse(id));
+      // ★★ 2026-10-12 批次 3d-1：Army 支**同款**——ArmyId 已随军队身份搬进 simos-army，而 sd 不得依赖 army
+      //   ⇒ 不再 ArmyId.parse，只把串交给 Affiliation.Army（它判非空白）；解释（ArmyId.parse）与"这个军队存在吗"的
+      //   裁定在 army 的 ArmyAffiliations。载荷形状（{"kind":"army","id":"…"}）一字未改。
+      case "army" -> new Affiliation.Army(id);
       case "gov" -> new Affiliation.Gov(UnitId.parse(id));
       default ->
           throw new IllegalArgumentException("affiliation.kind 必须是 nation|army|gov: " + kind);

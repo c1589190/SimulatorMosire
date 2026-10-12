@@ -149,7 +149,7 @@ public final class DecisionAdjudicationService {
       }
       case Affiliation.Army army -> {
         view.put("kind", "army");
-        view.put("id", army.armyId().value());
+        view.put("id", army.armyId());
       }
       case Affiliation.Gov gov -> {
         view.put("kind", "gov");

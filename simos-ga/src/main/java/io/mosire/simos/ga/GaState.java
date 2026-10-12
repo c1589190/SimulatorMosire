@@ -32,7 +32,7 @@ import java.util.Set;
  *
  * <p>★★ <b>诚实边界（本批唯一收窄为跨切片的那条外键）</b>：{@code Directive.effects()} 指向的 {@code effects} 表<b>仍住
  * sd</b>（3b-4 才搬）⇒ 该外键此后是<b>跨切片</b>的（铁律 3：ga 不拥有 {@code effects}）⇒ 状态期判不了，落点改在<b>命令期</b> （{@code
- * ga.IssueDirective} 逐条校验效果存在；与 {@code sd.CreateArmy} 的 {@code masterGovUnitId} 同款口径）。
+ * ga.IssueDirective} 逐条校验效果存在；与 {@code army.CreateArmy} 的 {@code masterGovUnitId} 同款口径）。
  *
  * <p>★★ <b>值类型留在 {@code simos-sd}</b>（{@link DecisionPacket} / {@link MergedEffectPlan} / {@link
  * Directive} / {@link Verdict} / {@link DecisionMaker} / {@link SdInfoEntry} 与它们的 id）：它们仍被 sd

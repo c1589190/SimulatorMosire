@@ -2,19 +2,17 @@ package io.mosire.simos.app.query;
 
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.nation.Nation;
 import io.mosire.simos.gov.nation.NationId;
-import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.model.Affiliation;
-import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.SdInfoEntry;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -36,10 +34,12 @@ import java.util.Optional;
  * affiliation**，{@code RedactingQueryService.scopeOf} 只按 ID 单查。T7（决策人交互）/ T9（待决信号）/ T10（开始决策入口）
  * 都要读这个面。
  *
- * <p>★ **铁律 3：读取走各模块自己的口**。{@code nations} / {@code armies} 来自 {@code Snapshot}"sd" 切片（{@link
- * SdSnapshot}）的 {@link SdState}；★★ <b>2026-10-12 批次 3b-2 起 {@code decisionMakers} 与 {@code info}
- * 两张表住 {@code simos-ga}</b>（用户原话「ga 应当维护标准的一般决策人」）⇒ 这两支改读 {@code ToolSupport.gaState}。两处都只用**公共
- * record 访问器**——不反射内部字段、不复制它的结构。本类**不新增字段**（D13：左栏要显示的现有数据都够）。
+ * <p>★ **铁律 3：读取走各模块自己的口**。★★ <b>三张表的家逐批搬过（本类跟着改的只有读取入口，视图字段一字未变）</b>：{@code decisionMakers} 与
+ * {@code info} 自 2026-10-12 批次 3b-2 起住 {@code simos-ga}（用户原话「ga 应当维护标准的一般决策人」）⇒ 读 {@code
+ * ToolSupport.gaState}；{@code nations} 自 3c 起住 {@code simos-gov} ⇒ 读 {@code
+ * ToolSupport.govState}（{@link #govOf}）；<b>{@code armies} 自本批 3d-1 起住 {@code simos-army}</b> ⇒ 读
+ * {@code ToolSupport.armyData}。各处都只用**公共 record
+ * 访问器**——不反射内部字段、不复制它的结构。本类**不新增字段**（D13：左栏要显示的现有数据都够）。
  *
  * <p>★ **fail-closed**：过滤串**未知 kind / 空 id / 少冒号**一律抛（GUI 折成 400），**不静默返回空集合冒充"没有决策人"**； 单个详情查不到 ⇒
  * {@link Optional#empty()}（GUI 折成 404），与 unit/region 详情同口径。归属目标解析不出显示名时字段为 {@code
@@ -115,7 +115,6 @@ public final class SdQueryService {
     Objects.requireNonNull(filter, "filter");
     SimulationState state = query.stateAt(target);
     GaState ga = gaState(state);
-    SdState sd = sdState(state);
     GovState govState = govOf(state);
     List<DecisionMaker> makers = new ArrayList<>();
     for (DecisionMaker maker : ga.decisionMakers().values()) {
@@ -124,7 +123,7 @@ public final class SdQueryService {
       }
     }
     makers.sort(Comparator.comparing(maker -> maker.id().value()));
-    return infos(makers, sd, govState, state, tickOf(state));
+    return infos(makers, govState, state, tickOf(state));
   }
 
   /**
@@ -184,7 +183,7 @@ public final class SdQueryService {
   /**
    * 排序（**响应字节可复现**的前提）：tick **降序**（新的在前，界面要的第一条就是"最近一次"），同 tick 再按 id 字典序。
    *
-   * <p>★ {@code SdState.directives()} 是插入序表（R4 自 2026-09-23 起是**末位生效**：同一 {@code (dm,tick)} 可有多条令，
+   * <p>★ {@code GaState.directives()} 是插入序表（R4 自 2026-09-23 起是**末位生效**：同一 {@code (dm,tick)} 可有多条令，
    * 旧版为 {@code SUPERSEDED}）⇒ 插入序**不保证**任何可读次序，必须显式排。
    */
   private static Comparator<Directive> order() {
@@ -217,12 +216,11 @@ public final class SdQueryService {
   public Optional<DecisionMakerInfo> decisionMaker(DecisionMakerId id, QueryTarget target) {
     Objects.requireNonNull(id, "id");
     SimulationState state = query.stateAt(target);
-    SdState sd = sdState(state);
     GovState govState = govOf(state);
     DecisionMaker maker = gaState(state).decisionMakers().get(id);
     return maker == null
         ? Optional.empty()
-        : Optional.of(info(maker, sd, govState, state, tickOf(state)));
+        : Optional.of(info(maker, govState, state, tickOf(state)));
   }
 
   private static boolean matches(Affiliation affiliation, AffiliationFilter filter) {
@@ -233,23 +231,23 @@ public final class SdQueryService {
           affiliation instanceof Affiliation.Nation n
               && n.nationId().equals(nation.nationId().value());
       case AffiliationFilter.OfArmy army ->
-          affiliation instanceof Affiliation.Army a && a.armyId().equals(army.armyId());
+          affiliation instanceof Affiliation.Army a && a.armyId().equals(army.armyId().value());
       case AffiliationFilter.OfGov gov ->
           affiliation instanceof Affiliation.Gov g && g.govUnit().equals(gov.govUnit());
     };
   }
 
   private static List<DecisionMakerInfo> infos(
-      List<DecisionMaker> makers, SdState sd, GovState govState, SimulationState state, long tick) {
+      List<DecisionMaker> makers, GovState govState, SimulationState state, long tick) {
     List<DecisionMakerInfo> out = new ArrayList<>(makers.size());
     for (DecisionMaker maker : makers) {
-      out.add(info(maker, sd, govState, state, tick));
+      out.add(info(maker, govState, state, tick));
     }
     return List.copyOf(out);
   }
 
   private static DecisionMakerInfo info(
-      DecisionMaker maker, SdState sd, GovState govState, SimulationState state, long tick) {
+      DecisionMaker maker, GovState govState, SimulationState state, long tick) {
     return switch (maker.affiliation()) {
       case Affiliation.Nation nation -> {
         // ★ 2026-10-12 批次 3c：国家表住 gov 切片；引用解释不了 / 国家不存在 ⇒ 显示名与 homeRegion 都 null
@@ -267,11 +265,13 @@ public final class SdQueryService {
             pending(maker, directivesTable(state), tick));
       }
       case Affiliation.Army army -> {
-        Army value = sd.armies().get(army.armyId());
+        // ★★ 2026-10-12 批次 3d-1：军队表住 army 切片（armies 表随军队身份搬进 simos-army）；引用解释不了 /
+        //   军队不存在 ⇒ 显示名与 root/masterGov 都 null（显式未知，不编造——与 nation 支同一口径）。
+        Army value = ToolSupport.armyData(state).armies().get(ArmyId.parse(army.armyId()));
         yield new DecisionMakerInfo(
             maker,
             "army",
-            army.armyId().value(),
+            army.armyId(),
             value == null ? null : value.name(),
             null,
             value == null ? null : value.masterGovUnitId().map(UnitId::value).orElse(null),
@@ -344,7 +344,7 @@ public final class SdQueryService {
    * {@code directives} 表的取数口（2026-10-12 批次 3b′：表住 {@code simos-ga}）——与 {@link #directivesOf} 区分：
    * 本方法只取表，后者做投影。
    *
-   * <p>★ 缺切片 / 类型不对 = 装配故障，当场炸（与 {@link #sdState} 同口径，不静默折成空表）。
+   * <p>★ 缺切片 / 类型不对 = 装配故障，当场炸（与 {@link #govOf} 同口径，不静默折成空表）。
    */
   private static Map<DirectiveId, Directive> directivesTable(SimulationState state) {
     return gaState(state).directives();
@@ -352,7 +352,7 @@ public final class SdQueryService {
 
   /**
    * ga 切片的取数口（2026-10-12 批次 3b-2：{@code decisionMakers} 与 {@code info} 两张表搬进 {@code simos-ga}）； 缺切片
-   * / 类型不对 = 装配故障，当场炸（与 {@link #sdState} 同口径）。
+   * / 类型不对 = 装配故障，当场炸（与 {@link #govOf} 同口径）。
    */
   private static GaState gaState(SimulationState state) {
     return ToolSupport.gaState(state);
@@ -379,16 +379,6 @@ public final class SdQueryService {
    */
   private static GovState govOf(SimulationState state) {
     return ToolSupport.govState(state);
-  }
-
-  /** sd 切片只能从 sd 模块拿（铁律 3/4）：缺席或类型不对是装配故障，不是"没有候选"。 */
-  private SdState sdState(SimulationState state) {
-    Snapshot snapshot =
-        state.module("sd").orElseThrow(() -> new IllegalStateException("状态里没有 sd 切片（装配故障）"));
-    if (!(snapshot instanceof SdSnapshot sdSnapshot)) {
-      throw new IllegalStateException("状态里 sd 切片不是 SdSnapshot：" + snapshot.getClass().getName());
-    }
-    return sdSnapshot.state();
   }
 
   /**

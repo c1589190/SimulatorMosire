@@ -2,7 +2,6 @@ package io.mosire.simos.sd.resolve;
 
 import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
@@ -35,16 +34,21 @@ import java.util.Optional;
 /**
  * {@code sd:} 命名空间的地址解析器（spec §二.2，N15）。
  *
- * <p>**canonical 形态**：{@code sd:army.<id>} / {@code sd:combat.<id>} / {@code
- * sd:combat.<id>:stage.<stageId>} / {@code sd:combat.<id>:stage.<stageId>:outcome.<outcomeId>} /
- * {@code sd:decision-maker.<id>} / {@code sd:directive.<id>} / {@code sd:effect.<id>}。canonical 一律由
- * {@link Address} AST 构造后 {@link Address#canonical()} 产出，**不手拼**。
+ * <p>**canonical 形态**：{@code sd:combat.<id>} / {@code sd:combat.<id>:stage.<stageId>} / {@code
+ * sd:combat.<id>:stage.<stageId>:outcome.<outcomeId>} / {@code sd:decision-maker.<id>} / {@code
+ * sd:directive.<id>} / {@code sd:effect.<id>}。canonical 一律由 {@link Address} AST 构造后 {@link
+ * Address#canonical()} 产出，**不手拼**。
  *
  * <p>★★ <b>2026-10-12 批次 3c：{@code nation} 支<b>整支删除</b></b>（用户裁定：{@code sd:nation.<id>}
  * 地址族「<b>直接扔</b>」）—— {@code nations} 表随外交搬进 {@code simos-gov}，本解析器连它的存在性都判不了（{@code sd} 不得依赖 {@code
  * gov}）。 ⇒ 今天 {@code sd:nation.<id>} 一律走 {@code default ->
  * empty()}（<b>空候选</b>，不是抛：那是"这个地址不存在"，与"路径形状非法"同一档）； 国家身份的读面走 gov 自己的面。★ 这是规划 §4 批次 3
  * 列的<b>不可逆点</b>，用户已批。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-1：{@code army} 支<b>整支删除</b></b>（同款处置，本批逐字照抄 3c）—— {@code armies}
+ * 表与军队身份（{@code Army} / {@code ArmyId}）搬进 {@code simos-army}，而 {@code sd} 不得依赖 {@code army} ⇒ 同理落到
+ * {@code default -> empty()}。军队身份的读面走 <b>army 自己的支</b>：{@code army:army.<id>} （见 {@link
+ * io.mosire.simos.army.resolve.ArmyResolver}）。★ 这也是规划 §4 列的不可逆点，用户已批（「sd 整个弃用」）。
  *
  * <p>★ **空候选与抛的分工**同 {@code MapResolver}/{@code UnitResolver}：合法但不服务/不存在的 ⇒ 空候选；抛只有一处—— 装配故障（缺 sd
  * 切片、或切片类型不对）。
@@ -60,7 +64,8 @@ import java.util.Optional;
  * ga、组合根 {@code Shell} 接线）。★ <b>地址族串一字不改</b> （{@code sd:directive.<id>} / {@code
  * sd:decision-maker.<id>} 仍是本解析器的 对外形态；地址族的裁量属批次 3e）——变的只是"表住哪个切片"。
  *
- * <p>★ 其余三支（{@code army}/{@code effect}/{@code combat}）仍读 sd 切片，一字未动（它们随 3d 一起搬 army）。
+ * <p>★ 其余两支（{@code effect}/{@code combat}）仍读 sd 切片，一字未动（{@code effect} 随 3b-4、{@code combat} 随 3d-2
+ * 再搬）。
  */
 public final class SdResolver implements Resolver {
 
@@ -126,8 +131,13 @@ public final class SdResolver implements Resolver {
         switch (root.kind().get()) {
           // ★ 2026-10-12 批次 3c：`nation` 支已整支删除（用户裁定「sd:nation.<id> 直接扔」）——
           //   nations 表搬进 simos-gov，本解析器判不了它的存在性（sd 不得依赖 gov）⇒ 落到 default -> empty()。
-          case "army" ->
-              rootOnly(segments, root, SdResolver::parseArmy, state.armies()::containsKey, "Army");
+          // ★★ 2026-10-12 批次 3d-1：`army` 支**同款整支删除**（用户裁定「sd 整个弃用！」；本批逐字照抄 3c 对
+          //   sd:nation.<id> 的处置）——armies 表与军队身份（Army / ArmyId）搬进 simos-army，而 sd 不得依赖
+          //   army ⇒ 判不了"这个军队存在吗"。⇒ 今天 `sd:army.<id>` 一律走 `default -> empty()`
+          //   （**空候选**，不是抛：那是"这个地址不存在"，与"路径形状非法"同一档）。
+          //   ★ 军队身份的读面改走 army 自己的解析器支：`army:army.<id>`
+          //   （见 io.mosire.simos.army.resolve.ArmyResolver 与 ArmyAddresses.ARMY_KIND）。
+          //   ★ 这是规划 §4 批次 3 列的**不可逆点**（地址族），用户已批。
           case "decision-maker" ->
               rootOnly(
                   segments,
@@ -221,10 +231,6 @@ public final class SdResolver implements Resolver {
     }
     return single(
         root.kind().get() + "." + root.name(), address(root.kind().get(), root.name()), typeName);
-  }
-
-  private static Optional<ArmyId> parseArmy(String text) {
-    return safe(() -> ArmyId.parse(text));
   }
 
   private static Optional<DecisionMakerId> parseDecisionMaker(String text) {

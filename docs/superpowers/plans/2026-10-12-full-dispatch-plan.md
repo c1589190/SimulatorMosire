@@ -579,3 +579,28 @@ gov/army/app 另有十余个工具的文案写着"进 `sd.PutInfo` 行动记录"
 | **D6** | `GaToolViews` 两个方法签名必须改（ga 结构性看不见 gov 类型）+ 连带 `SdDiplomacyTool`/`SdDiplomaticEventsTool`/`AppGaToolViews` | ✅ **追认** —— 同 §13.1/§17.1 的"目标 ⊥ 文件所有权 ⇒ 最小改动" |
 | **D7** | 4 条命令的**工具面资源声明仍写 `sd` 命名空间**（新增 `GOV_NAMESPACE` 要动本批禁碰的 `simos-ga-spi`） | ✅ **追认** —— 运行时影响为零（DM 侧声明与迁移前逐字相同）；**留给批次 5 收口** |
 | **D9** | `SdSnapshots.map(...)` 成死代码但保留 | ✅ **追认** —— 随 sd 退役一并删 |
+
+---
+
+## §20 批次 3d-1 收工：军队身份搬 army（控制方追认 4 点）
+
+**结果**：54 项（43 M / 4 D / 7 新增）、+834/−677、**零 pom / 零 worlds / `src/test` 恰 1 个文件**。
+`ArmyData` 1→**2 组件**（`armies` 放第一组件 ⇒ 线格式键序不变）；`SdState` 5→**4**；
+2 条命令 `sd.*`→**`army.*`**（`army.CreateArmy`/`army.SetArmyMasterGov`，仍仅 GM）；
+`Affiliation.Army(ArmyId)` → **`Affiliation.Army(String)`**（与 3c 的 `Nation` 支逐字同构）；
+army 做裁定方（`ArmyAffiliations` + `ArmyAffiliationPort` 端口在 army + `AppArmyAffiliations` 实现在 app）；
+`ArmyScope` 读不到归属 ⇒ **四命名空间 deny-all**（不抛、不回落、不给全量）。
+**门禁**（控制方自跑）：compile rc=0 · spotless rc=0 · spotbugs rc=0（17/17）· `validate` rc=0（×16，**零新增被禁边**）·
+`ArmyRoundTripTest` **12/12**。权限四面 **143/66/66/2** + 声明面 66 逐条不变。
+
+### 20.1 控制方追认的 4 点
+| # | 事项 | 裁定 |
+|---|---|---|
+| **D4** | 派单只写"删 `sd:army.<id>` 支"，代理**删了并在 army 侧补了 `army:army.<id>`**（+ `ToolSupport.subjectVisible` 新分支） | ✅ **追认** —— 理由成立：**gov 删 `sd:nation.<id>` 时自己有第二条读面，而 army 的身份读面只有 resolver 这一条** ⇒ 删而不补 = **功能净损失**（不是改名）；且 `army:army.<id>` 属 `army:` 命名空间，**不在用户"sd:* 直接扔"的范围内**。用户口径「单个 Army 单位的本质不是被 Army 模块打上自定义数据集的 Unit」也支持 army 拥有自己的身份地址 |
+| **D6** | 2 条 ga 工具的资源声明仍写 `sd` 命名空间（留给批次 5） | ✅ **同意缓做** —— 代理的失效方向论证正确：同时改 `resources()`（审批面）与 `writeResources()`（权限判定）而不同步时，失败方向是"**该拒的放行**"，与本批"只改名不改数"的红线冲突；运行时影响为零。**批次 5 与 gov/战斗族资源面一起正名** |
+| **点 3** | `ArmyAffiliationPort` 今天**无域内注入点**（army 无删除命令），代理**没造 `INSTANCE` 假接缝** | ✅ **接受** —— 造一个"看着能注入、其实无人注入"的常量才是坏形态 |
+| **点 4** | `ArmyRoundTripTest` 的绿是在两个无权修改的兄弟测试文件（`ArmyDataTest` 8 处 + `ArmyFixtures:73`）的**临时补丁**下取得的，已 md5 逐字节还原；`ArmyData.java` 因后续 `spotless:apply` 覆写了备份，改用"无残留 grep + 行为等价 + 门禁重跑绿"三重核对 | ✅ **接受** —— 三重核对 + 两个兄弟文件逐字节 md5 已足够；**`simos-army` 的 test 源集在本批结束后仍编译断** ⇒ 收尾期先改那两个文件（已入台账） |
+
+### 20.2 ★ 代理自我更正（记功）
+它先前报的「资源面正名要动 `simos-ga-spi`」**是错的** —— 实际只需动 `simos-ga/src/main`（基类加一对 `ARMY_NAMESPACE_WRITE`
+与 `armyNamespaceWriteResources()`，形制与 army 自己的 `AbstractNarrowWriteTool` 逐字相同）。它**主动在台账里更正了自己**。

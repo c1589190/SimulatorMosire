@@ -677,7 +677,7 @@ public final class DecisionAgentRunner {
     if (affiliation instanceof Affiliation.Nation nation) {
       where = "国家（nationId=" + nation.nationId() + "）";
     } else if (affiliation instanceof Affiliation.Army army) {
-      where = "军队（armyId=" + army.armyId().value() + "）";
+      where = "军队（armyId=" + army.armyId() + "）";
     } else if (affiliation instanceof Affiliation.Gov gov) {
       where = "政府（govUnit=" + gov.govUnit().value() + "）";
     } else {

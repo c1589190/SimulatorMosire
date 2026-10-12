@@ -1,18 +1,16 @@
 package io.mosire.simos.army.tools.write;
 
+import io.mosire.simos.army.ArmyAddresses;
+import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.army.tools.ArmyToolPerspective;
 import io.mosire.simos.army.tools.ArmyToolPerspective.ArmyGovernance;
 import io.mosire.simos.army.tools.ArmyToolReads;
-import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
-import io.mosire.simos.util.address.Address;
-import io.mosire.simos.util.address.Entity;
-import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -31,7 +29,7 @@ import java.util.Optional;
  * expectedRevision ⇒ 一批 = 一条 revision，原子）， 把两侧主子同批落定、不给漂移留窗口。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：需要同步 unit 侧时先 {@code unit.SetArmyFormation} → {@code
- * sd.SetArmyMasterGov} → {@code ga.PutInfo}；不需要同步时第一条缺席。后一条看得见前一条累积后的候选态。
+ * army.SetArmyMasterGov} → {@code ga.PutInfo}；不需要同步时第一条缺席。后一条看得见前一条累积后的候选态。
  *
  * <p>★★ <b>unit 侧 role 语义</b>：
  *
@@ -46,7 +44,7 @@ import java.util.Optional;
  * </ul>
  *
  * <p>★ <b>{@code masterGovUnitId} 的三态</b>：缺席 / {@code null} / 空串（含空白串）= 解除认领；给了非空白值必须存在、 且带 {@link
- * GovernmentFormation}（与 {@code sd.CreateArmy}/{@code unit.SetArmyFormation} 同口径）。
+ * GovernmentFormation}（与 {@code army.CreateArmy}/{@code unit.SetArmyFormation} 同口径）。
  *
  * <p>★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：{@code armyId}/{@code reason}
  * 非空白；Army 必须存在；root unit 必须存在；新主子若给必须存在且带 {@link GovernmentFormation}；{@code syncUnitSide=true} 时
@@ -64,8 +62,11 @@ final class AssignArmyGovPlan {
   /** {@code unit.SetArmyFormation} 的命令类型（仅需要同步 unit 侧时落）。 */
   static final String SET_ARMY_FORMATION_TYPE = "unit.SetArmyFormation";
 
-  /** {@code sd.SetArmyMasterGov} 的命令类型。 */
-  static final String SET_ARMY_MASTER_GOV_TYPE = "sd.SetArmyMasterGov";
+  /**
+   * {@code army.SetArmyMasterGov} 的命令类型（2026-10-12 批次 3d-1：军队身份随 {@code armies} 表搬进 {@code
+   * simos-army} ⇒ 命令类型前缀由 {@code sd.} 改 {@code army.}）。★ 与 {@code SetArmyMasterGovHandler.TYPE} 同值。
+   */
+  static final String SET_ARMY_MASTER_GOV_TYPE = "army.SetArmyMasterGov";
 
   /** {@code ga.PutInfo} 的命令类型（恒有，行动记录）。 */
   static final String PUT_INFO_TYPE = "ga.PutInfo";
@@ -132,7 +133,7 @@ final class AssignArmyGovPlan {
         state.meta().timestamp().tick());
   }
 
-  /** 新主子必须存在且带 {@link GovernmentFormation}（与 {@code sd.CreateArmy} 同口径，纯只读）。 */
+  /** 新主子必须存在且带 {@link GovernmentFormation}（与 {@code army.CreateArmy} 同口径，纯只读）。 */
   private static void requireGovUnit(UnitState units, String govId, String field) {
     requireNonBlank(govId, field);
     UnitId gov = UnitId.parse(govId);
@@ -153,17 +154,19 @@ final class AssignArmyGovPlan {
   }
 
   /**
-   * Army 的 canonical 地址（{@code sd:army.<armyId>}）：与 {@code SdResolver} 的 {@code address("army",
-   * name)} 同形态（AST → {@link Address#canonical()}，不手拼），行动记录的唯一拼写点。
+   * Army 的 canonical 地址（{@code army:army.<armyId>}）：与 {@code ArmyResolver} 的 {@code army} 支同形态（AST
+   * → {@link Address#canonical()}，不手拼），行动记录的唯一拼写点。
    *
-   * <p>★ 命名空间字面量取 {@link ToolResources#SD_NAMESPACE}（值 {@code "sd"}，与迁入前的 {@code
-   * ToolSupport.SD_NAMESPACE} 同源同值）：不在这里另抄一个 {@code "sd"}。
+   * <p>★★ <b>2026-10-12 批次 3d-1 的形态变化（如实记，可观测）</b>：迁入前这里是 {@code sd:army.<armyId>}（命名空间 {@code
+   * sd}）。军队身份随 {@code armies} 表搬进 {@code simos-army}，sd 侧的 {@code sd:army.<id>} 地址族<b>整支删除</b>
+   * （用户裁定「sd 整个弃用！」+ 先例 = 3c 对 {@code sd:nation.<id>} 的同一处置）⇒ 身份地址改由 {@link
+   * ArmyAddresses#armyCanonical(ArmyId)} 产出。★ 后果：{@code ga.PutInfo} 的 {@code address} 值由 {@code
+   * sd:army.<id>} 变成 {@code army:army.<id>}（本工具 description 里那行文案同步改）；这是**有意的、用户已批的不可逆点**，
+   * 不是回归：新地址是唯一能被解析器认领的形态。
    */
   static String armyAddress(String armyId) {
     Objects.requireNonNull(armyId, "armyId");
-    return new Address(
-            List.of(new Namespace(ToolResources.SD_NAMESPACE), Entity.of("army", armyId)))
-        .canonical();
+    return ArmyAddresses.armyCanonical(ArmyId.parse(armyId));
   }
 
   /**
@@ -235,7 +238,7 @@ final class AssignArmyGovPlan {
     }
 
     /**
-     * {@code sd.SetArmyMasterGov} 载荷：{@code {armyId, masterGovUnitId?}}——新主子有就给，解除认领就不给该键（缺省/
+     * {@code army.SetArmyMasterGov} 载荷：{@code {armyId, masterGovUnitId?}}——新主子有就给，解除认领就不给该键（缺省/
      * null/空串 = 解除）。
      */
     String setArmyMasterGovPayloadJson() {

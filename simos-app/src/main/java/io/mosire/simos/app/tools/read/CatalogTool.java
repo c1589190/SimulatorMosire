@@ -753,12 +753,12 @@ public final class CatalogTool implements SimosTool {
                   + "区域清账改由组合根按家户集协调（P2-F））"),
           Map.entry("gov.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry(
-              "sd.CreateArmy",
+              "army.CreateArmy",
               "armyId, masterGovUnitId?, rootUnitId, name"
                   + "（★ masterGovUnitId 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；"
                   + "旧 nationId 键已拒并指路 masterGovUnitId）"),
           Map.entry(
-              "sd.SetArmyMasterGov",
+              "army.SetArmyMasterGov",
               "armyId, masterGovUnitId?"
                   + "（★ 已存在 Army 的主子改派/解除：masterGovUnitId 缺席/null/空串 = 解除认领；"
                   + "给了必须存在且带 GovernmentFormation；armyId 不存在 ⇒ 具名拒；只改 sd 侧，不碰 unit 侧 ArmyFormation；"

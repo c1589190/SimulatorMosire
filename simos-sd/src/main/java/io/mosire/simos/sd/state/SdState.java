@@ -1,13 +1,11 @@
 package io.mosire.simos.sd.state;
 
-import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
-import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
@@ -26,29 +24,33 @@ import java.util.Map;
  * SdSnapshot}。spec §三.1 把 {@code implements Snapshot} 写在了状态树头（设计形状的笔误），执行期按"树 / 切片分离"落地 ——
  * 记入台账取代说明。
  *
- * <p>★★ <b>本树的收缩史（四次，逐批如实记）</b>：14 →（批次 3a）12 —— {@code decisionPackets} / {@code
+ * <p>★★ <b>本树的收缩史（五次，逐批如实记）</b>：14 →（批次 3a）12 —— {@code decisionPackets} / {@code
  * mergedEffectPlans} 整表搬进 {@code simos-ga}；12 →（批次 3b-1）10 —— {@code directives} / {@code verdicts}
- * 同样搬走；10 →（批次 3b-2）8 —— {@code decisionMakers} 与 {@code info} 整表搬进 {@code GaState}；<b>8 →（本批
- * 3c）5</b> —— 外交三表（{@code nations} / {@code diplomaticRelations} / {@code diplomaticEvents}）连同四个
- * handler 搬进 {@code simos-gov}（用户裁定「<b>外交是 gov 的事</b>」＋「<b>NationId 落点 → GOV 模块</b>」）。 ⇒ 决策族的七张表里只剩
- * {@code effects} 仍住本模块（它要开 {@code ga → unit + map} 两条边，顺位在 3b-4）；战斗四张表（{@code armies} / {@code
- * combats} / {@code combatStates} / {@code lossRecords}）留给 3d 搬进 {@code simos-army}。
+ * 同样搬走；10 →（批次 3b-2）8 —— {@code decisionMakers} 与 {@code info} 整表搬进 {@code GaState}；8 →（3c）5 ——
+ * 外交三表（{@code nations} / {@code diplomaticRelations} / {@code diplomaticEvents}）连同四个 handler 搬进
+ * {@code simos-gov}（用户裁定「<b>外交是 gov 的事</b>」＋「<b>NationId 落点 → GOV 模块</b>」）；<b>5 →（本批 3d-1）4</b> ——
+ * {@code armies}（<b>军队身份</b>）连同 {@code Army} / {@code ArmyId} 两个类型与两条命令 （{@code army.CreateArmy} /
+ * {@code army.SetArmyMasterGov}）搬进 {@code simos-army}（用户裁定「<b>战斗模块，包括阶段 之类的，归 Army 模块管</b>」＋「<b>sd
+ * 整个弃用！</b>」）。 ⇒ 决策族的七张表里只剩 {@code effects} 仍住本模块（它要开 {@code ga → unit + map} 两条边，顺位在 3b-4）；战斗族四张表里
+ * {@code combats} / {@code combatStates} / {@code lossRecords} 三张仍在（属 <b>3d-2</b>）。
  *
  * <p>★★ <b>随表搬走的构造期不变量（不是删除，是换家）</b>：① "同一 (决策人, tick) 至多一条生效令"（R4 末位生效）；② "{@code
  * Directive.verdict()} 指向的判决必须存在"；③ "{@code Directive.decisionMakerId} 指向的决策人必须存在" ——三条都只依赖已搬走的那几张表
  * ⇒ 整条住 {@link io.mosire.simos.ga.GaState} 的构造期。<b>仍跨切片的那一条（如实记）</b>：{@code Directive.effects()}
- * 指向的 {@code effects} 仍住本模块 ⇒ 状态期判不了，落点保持在<b>命令期</b>（{@code ga.IssueDirective} 逐条校验）。★ 外交三表原住的
- * {@code nations} <b>本就没有构造期跨表不变量</b>（sd 时代只判键/值非 null），故本批没有不变量随之外迁。
+ * 指向的 {@code effects} 仍住本模块 ⇒ 状态期判不了，落点保持在<b>命令期</b>（{@code ga.IssueDirective} 逐条校验）。★ {@code
+ * armies} 表在 sd 时代<b>本就没有构造期跨表不变量</b>（sd 只判键/值非 null），故本批没有不变量随之外迁；它的"键必须等于值内 id"守卫落在 {@link
+ * io.mosire.simos.army.ArmyData} 的构造期。
  *
  * <p>★ <b>值类型仍住本模块</b>（{@code DecisionMaker} / {@code SdInfoEntry} 及其 id、{@code Directive} / {@code
- * Verdict}、{@code Army} / {@code Combat} 等）：它们仍被 sd 的其余组件与 sd 的测试引用，而 {@code sd} 不得依赖 {@code ga} /
- * {@code gov} / {@code army}（成环）⇒ 反向引用是既有的 {@code ga → sd} 方向。★ <b>例外一处（本批）</b>：{@code NationId} /
- * {@code Nation} / 外交关系与事件<b>不是</b>值类型层面的"留 sd"，而是<b>整体搬走</b>——因为 {@code Affiliation.Nation}
- * 已收窄为不透明引用（见该类型的类注）。
+ * Verdict}、{@code Combat} / {@code CombatState} / {@code LossRecord} 等）：它们仍被 sd 的其余组件与 sd 的测试引用，而
+ * {@code sd} 不得依赖 {@code ga} / {@code gov} / {@code army}（成环）⇒ 反向引用是既有的 {@code ga → sd} 方向。★
+ * <b>两处例外（逐个批次）</b>：{@code NationId} / {@code Nation} / 外交关系与事件（3c）与 {@code Army} / {@code
+ * ArmyId}（本批）<b>不是</b>值类型层面的"留 sd"，而是<b>整体搬走</b>——因为 {@code Affiliation.Nation} 与 {@code
+ * Affiliation.Army} 都已收窄为不透明引用（见那两个类型的类注）。
  *
- * <p>★ <b>5 个组件与 {@link io.mosire.simos.sd.change.SdChangeSet} 的 5 个组件一一对应</b>（铁律
- * 5）：任何新增组件都要同时进变更集， 由 {@code SdRoundTripTest} 的反射枚举把守。<b>本批 8 → 5 的同步点见 {@code SdChangeSet} /
- * {@code SdCodec} / {@code SdResolver} 三处的类注。</b>
+ * <p>★ <b>4 个组件与 {@link io.mosire.simos.sd.change.SdChangeSet} 的 4 个组件一一对应</b>（铁律
+ * 5）：任何新增组件都要同时进变更集， 由 {@code SdRoundTripTest} 的反射枚举把守。<b>本批 5 → 4 的同步点见 {@code SdChangeSet} /
+ * {@code SdCodec} / {@code SdResolver} / {@code SdSnapshot} 几处的类注。</b>
  *
  * <p>★ **三张表的键都保序不可变**（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**禁用** {@code
  * Map.copyOf} ——迭代序不是内容的纯函数，M2 Task 5 实测）。冻结那一步**写在赋值处**（SpotBugs 的 {@code EI_EXPOSE_REP}
@@ -58,14 +60,12 @@ import java.util.Map;
  * io.mosire.simos.sd.spi.DecisionTablesLookup}（实现在 ga、组合根接线），见该接口的类注。
  */
 public record SdState(
-    Map<ArmyId, Army> armies,
     Map<CombatId, Combat> combats,
     Map<CombatStateId, CombatState> combatStates,
     Map<EffectId, Effect> effects,
     Map<LossRecordId, LossRecord> lossRecords) {
 
   public SdState {
-    armies = Collections.unmodifiableMap(copyOf(armies, "armies"));
     combats = Collections.unmodifiableMap(copyOf(combats, "combats"));
     combatStates = Collections.unmodifiableMap(copyOf(combatStates, "combatStates"));
     effects = Collections.unmodifiableMap(copyOf(effects, "effects"));
@@ -78,34 +78,29 @@ public record SdState(
 
   /** 往返用例与 handlers 的起点。 */
   public static SdState empty() {
-    return new SdState(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+    return new SdState(Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   // ── 逐组件替换（一个组件一个 with，照 GameMap 的形制）────────────────────────────────
 
-  /** 仅替换 {@code armies}，其余 4 个组件原样。 */
-  public SdState withArmies(Map<ArmyId, Army> v) {
-    return new SdState(v, combats, combatStates, effects, lossRecords);
-  }
-
-  /** 仅替换 {@code combats}。 */
+  /** 仅替换 {@code combats}，其余 3 个组件原样。 */
   public SdState withCombats(Map<CombatId, Combat> v) {
-    return new SdState(armies, v, combatStates, effects, lossRecords);
+    return new SdState(v, combatStates, effects, lossRecords);
   }
 
   /** 仅替换 {@code combatStates}。 */
   public SdState withCombatStates(Map<CombatStateId, CombatState> v) {
-    return new SdState(armies, combats, v, effects, lossRecords);
+    return new SdState(combats, v, effects, lossRecords);
   }
 
   /** 仅替换 {@code effects}。 */
   public SdState withEffects(Map<EffectId, Effect> v) {
-    return new SdState(armies, combats, combatStates, v, lossRecords);
+    return new SdState(combats, combatStates, v, lossRecords);
   }
 
   /** 仅替换 {@code lossRecords}。 */
   public SdState withLossRecords(Map<LossRecordId, LossRecord> v) {
-    return new SdState(armies, combats, combatStates, effects, v);
+    return new SdState(combats, combatStates, effects, v);
   }
 
   // ── 构造期不变量（逐条配故意违规用例）────────────────────────────────────────────
@@ -114,8 +109,8 @@ public record SdState(
    * 不变量：外键必须存在于同快照。
    *
    * <p>★ 阶段 12：Army 去 {@code NationId} 后不再有 {@code nations} 外键可查；{@code masterGovUnitId} 指向的是
-   * <b>unit 切片</b>里的 GOV 单位（跨片），存在性由命令期（{@code sd.CreateArmy} / {@code unit.SetArmyFormation}）判， sd
-   * 快照构造期不做跨片查询（铁律 3：sd 只拥有 sd 数据）。
+   * <b>unit 切片</b>里的 GOV 单位（跨片），存在性由命令期（{@code army.CreateArmy} / {@code unit.SetArmyFormation}）判，
+   * 军队快照构造期不做跨片查询（铁律 3：谁的数据谁拥有）。
    *
    * <p>★★ <b>批次 3b-1 / 3b-2 / 3c 的收窄（如实记）</b>：原来这里还判 {@code Directive} 的三条外键（{@code
    * decisionMakerId} / {@code effects} / {@code verdict}）。{@code directives} 表搬进 {@code simos-ga}

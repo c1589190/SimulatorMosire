@@ -36,8 +36,9 @@ public interface UnitToolPerspective {
   boolean unitVisible(ToolContext context, UnitId unitId);
 
   /**
-   * 该 army id 是否已被占用（{@code sd.CreateArmy} 的既有前置判据：{@code
-   * sdState(state).armies().containsKey(...)}）。
+   * 该 army id 是否已被占用（{@code army.CreateArmy} 的既有前置判据：{@code
+   * ToolSupport.armyData(state).armies().containsKey(...)}；★ 2026-10-12 批次 3d-1 前是 {@code
+   * sdState(state).armies()}，表与判据一字未改、只换了家）。
    *
    * <p>★ 拒因不在这里拼：本方法只回事实，文案由调用点按既有口径给。
    */

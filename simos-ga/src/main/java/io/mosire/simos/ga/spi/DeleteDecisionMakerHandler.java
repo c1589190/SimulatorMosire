@@ -42,7 +42,7 @@ import java.util.Objects;
  * {@code SdResolver} 仍在 sd 侧，改由 {@code DecisionTablesLookup} 兑现）。
  *
  * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} ⇒ handler 照常注册、GM 的 {@code simos.command.submit}
- * 照常可用，但排除出决策令白名单 / {@code sd.RegisterEffect} / 决策人目录（与 {@code sd.SetArmyMasterGov} 等同制）。
+ * 照常可用，但排除出决策令白名单 / {@code sd.RegisterEffect} / 决策人目录（与 {@code army.SetArmyMasterGov} 等同制）。
  *
  * <p>★ <b>失败语义</b>：{@code decisionMakerId} 缺失 / 空白 / 非法 ⇒ {@code Rejected}（载荷解析抛，命令边界折）；目标不存在 ⇒
  * {@code Rejected}（不做静默幂等）；仍被 Directive 引用 ⇒ {@code Rejected} 并点名引用数。

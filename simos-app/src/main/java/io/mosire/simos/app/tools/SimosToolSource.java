@@ -840,7 +840,7 @@ public final class SimosToolSource implements ToolSource {
         new RaiseUnitTool(
             unitWrites, unitReads, unitViews, unitPerspective, unitAllocations, unitCommandTypes));
     // P5（2026-10-01 后端 + MCP 稳定化计划）：按格直接建军 GM 组合工具——GM 特权不抽人口/粮饷，同批
-    //   unit.CreateUnit + [role 非空: unit.SetArmyFormation] + sd.CreateArmy + ga.PutInfo，一条
+    //   unit.CreateUnit + [role 非空: unit.SetArmyFormation] + army.CreateArmy + ga.PutInfo，一条
     // revision。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；raiseUnit 的抽取语义不变。
     built.add(
@@ -856,7 +856,7 @@ public final class SimosToolSource implements ToolSource {
     ArmyToolPerspective armyPerspective = new AppArmyToolPerspective();
     ArmyManpowerPort armyManpower = new AppArmyManpowerPort(calendarService);
     // 阶段 12 后续赋值缺口（2026-10-01）：Army 创建后的主子改派/解除 GM 组合工具——unit.SetArmyFormation
-    //   → sd.SetArmyMasterGov → ga.PutInfo 同批落一条 revision，避免 sd / unit 两侧主子漂移。**只在 GM
+    //   → army.SetArmyMasterGov → ga.PutInfo 同批落一条 revision，避免 army / unit 两侧主子漂移。**只在 GM
     //   桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new AssignArmyGovTool(toolWrites, toolReads, armyPerspective));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。

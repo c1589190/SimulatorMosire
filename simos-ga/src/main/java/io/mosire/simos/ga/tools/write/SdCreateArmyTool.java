@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.CreateArmy} 窄工具（M3，spec §八.3）：**建军**的唯一窄写面。
+ * {@code army.CreateArmy} 窄工具（M3，spec §八.3）：**建军**的唯一窄写面。
  *
  * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
@@ -22,7 +22,17 @@ import java.util.Set;
  */
 public final class SdCreateArmyTool extends AbstractNarrowWriteTool implements SimosTool {
 
+  /**
+   * 工具名（★ 全局唯一，且**不随命令类型改名**）：它在工具面/白名单/MCP 覆盖表里是稳定身份，改名会动可观测面。
+   *
+   * <p>★ 2026-10-12 批次 3d-1：命令类型由 {@code sd.CreateArmy} 变 {@code army.CreateArmy}（军队身份搬进 army），
+   * 但**工具名一字未改**——工具名与命令类型在本仓本来就是两个可独立的拼写（见 {@link
+   * io.mosire.simos.ga.tools.write.AbstractNarrowWriteTool#toolName()} 的钩子）。
+   */
   public static final String NAME = "sd.CreateArmy";
+
+  /** 本工具钉死的命令类型（2026-10-12 批次 3d-1 起 {@code army.CreateArmy}）。 */
+  public static final String COMMAND_TYPE = "army.CreateArmy";
 
   public SdCreateArmyTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
@@ -30,7 +40,7 @@ public final class SdCreateArmyTool extends AbstractNarrowWriteTool implements S
 
   @Override
   protected String commandType() {
-    return NAME;
+    return COMMAND_TYPE;
   }
 
   @Override
@@ -40,7 +50,7 @@ public final class SdCreateArmyTool extends AbstractNarrowWriteTool implements S
 
   @Override
   public String description() {
-    return "建军：固定 sd.CreateArmy，载荷 {armyId, masterGovUnitId?, rootUnitId, name}"
+    return "建军：固定 army.CreateArmy，载荷 {armyId, masterGovUnitId?, rootUnitId, name}"
         + "（armyId/rootUnitId/name 必填；masterGovUnitId 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；"
         + "★ 旧 nationId 键已拒并指路 masterGovUnitId）";
   }

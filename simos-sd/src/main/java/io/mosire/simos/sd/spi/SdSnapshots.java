@@ -47,7 +47,10 @@ final class SdSnapshots {
     return mapSnapshot.map();
   }
 
-  /** unit 切片（{@code sd.CreateArmy} 校验 rootUnit 用；只读）。 */
+  /**
+   * unit 切片（{@code sd.CreateCombat} / 战斗族 handler 校验 rootUnit 用；只读）。★ 2026-10-12 批次
+   * 3d-1：军队身份两条命令已搬走，这里只剩战斗族的读者。
+   */
   static UnitState units(SimulationState state) {
     Objects.requireNonNull(state, "state");
     Snapshot snapshot =

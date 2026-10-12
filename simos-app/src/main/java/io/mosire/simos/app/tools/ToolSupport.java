@@ -11,6 +11,10 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.time.CalendarService;
+import io.mosire.simos.army.Army;
+import io.mosire.simos.army.ArmyAddresses;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -129,7 +133,7 @@ public final class ToolSupport {
    *
    * <p>★ <b>它今天只用于写侧表态</b>（GM 的 {@code army.*} 写资源断言与 {@code gmPermissionSet} 的逐命名空间范围）；
    * <b>读侧的可见性不落在这个命名空间上</b>——交战记录没有自己的资源路径，按记录所在格判（与 {@code map.city} 同款，见 {@link #subjectVisible}
-   * 与 {@code ToolSupport.armyCombatVisible}）。新命名空间不加进 {@code gmPermissionSet}，GM 面就会回落成"未表态"分支。
+   * 与 {@code ToolSupport.armySubjectVisible}）。新命名空间不加进 {@code gmPermissionSet}，GM 面就会回落成"未表态"分支。
    */
   public static final String ARMY_NAMESPACE = "army";
 
@@ -302,10 +306,10 @@ public final class ToolSupport {
    * <p>★ 各命名空间的 localId 形态来自各自的 resolver（实测）：{@code map} → mapId（根主体）、{@code map.hex} → {@code
    * q_r}、{@code map.region} → 区域 id、{@code map.city} → 城市 id、{@code social}/{@code social.hex} →
    * mapId / {@code q_r}、{@code unit} → 单位 id、{@code sd} → {@code <kind>.<name>}、{@code army} →
-   * {@code combat.<id>}。
+   * {@code combat.<id>}（交战记录）或 {@code army.<id>}（军队身份，2026-10-12 批次 3d-1 起）。
    *
-   * <p>★ <b>{@code state} 参数只被 {@code army} 分支用</b>（阶段 D1）：交战记录没有自己的资源路径，要先从 army 切片取出记录、再按记录所在格判 ⇒
-   * 需要完整 state。其余命名空间不看它（调用方照旧传当前查询态即可）。
+   * <p>★ <b>{@code state} 参数只被 {@code army} 分支用</b>（阶段 D1）：交战记录与军队身份都没有自己的资源路径 ⇒ 前者按记录所在格判、 后者按它的
+   * root 单位所在格判 ⇒ 需要完整 state。其余命名空间不看它（调用方照旧传当前查询态即可）。
    */
   public static boolean subjectVisible(
       ToolContext context,
@@ -335,7 +339,9 @@ public final class ToolSupport {
       // ★ D1（2026-10-02）：army 的交战记录主体（`army:combat.<id>`）——记录**没有自己的资源路径**，
       //   按它所在的那一格判（与上面 `map.city` 的"没有自己的资源路径 ⇒ 按格判"同款）。这一支要读 army 切片，
       //   故本方法多了 state 参数（只有它用）。
-      case "army" -> armyCombatVisible(context, mapId, map, state, localId);
+      // ★★ 2026-10-12 批次 3d-1：同一命名空间多了**军队身份**主体（`army:army.<id>`，ArmyResolver 新支）——
+      //   它同样没有自己的资源路径 ⇒ 按它的 root 单位所在格判（见 armyIdentVisible）。
+      case "army" -> armySubjectVisible(context, mapId, map, state, localId);
       // ★ 三个子命名空间（`actor.actor` / `actor.holding` / `actor.goods`）**仍然 fail-closed**：它们的
       //   localId 是聚合键的规范串（`UNIT:u-1`、`…|1_1|…`），而本切片在 `ResourcePaths` 里只有**逐格**的
       //   `actor:<q>_<r>`（`actor.Seed` 的命令目标）——实体级资源路径不存在 ⇒ 该按什么判**没有出处**，
@@ -345,25 +351,53 @@ public final class ToolSupport {
   }
 
   /**
-   * {@code army:combat.<id>} 主体是否可见（阶段 D1 / D-012）：记录没有自己的资源路径 ⇒ **按记录所在格判**（{@link #hexVisible}）。
+   * {@code army:<kind>.<id>} 主体是否可见（阶段 D1 / D-012；2026-10-12 批次 3d-1 起两支）：两个 army 主体都**没有自己的资源路径**
+   * ⇒ 各按自己的<b>所在格</b>判（{@link #hexVisible}）。
    *
-   * <p>★ localId 由 {@code ArmyResolver} 产出，形如 {@code combat.<id>}。判不出/记录不存在/战格不可见 ⇒
-   * false（fail-closed，与 {@code default -> false} 同一条口径）。
+   * <ul>
+   *   <li>{@code combat.<id>} —— 按记录所在格 {@link CombatRecord#hex()} 判；
+   *   <li>{@code army.<id>} —— 按它的 <b>root 单位</b>所在格判（{@code UnitState.effectivePosition}，与工具面/GUI
+   *       同口径： 根单位没有有效位置 ⇒ 不可见）。
+   * </ul>
+   *
+   * <p>★ localId 由 {@code ArmyResolver} 产出，形如 {@code combat.<id>} / {@code army.<id>}。判不出 / 主体不存在 /
+   * 格不可见 ⇒ false（fail-closed，与 {@code default -> false} 同一条口径）。
    */
-  private static boolean armyCombatVisible(
+  private static boolean armySubjectVisible(
       ToolContext context, String mapId, GameMap map, SimulationState state, String localId) {
     int dot = localId.indexOf('.');
-    if (dot <= 0 || dot == localId.length() - 1 || !"combat".equals(localId.substring(0, dot))) {
+    if (dot <= 0 || dot == localId.length() - 1) {
       return false;
     }
-    CombatRecordId id;
-    try {
-      id = CombatRecordId.parse(localId.substring(dot + 1));
-    } catch (IllegalArgumentException e) {
-      return false; // 判不了就不可见
+    String kind = localId.substring(0, dot);
+    String name = localId.substring(dot + 1);
+    if (ArmyAddresses.COMBAT_KIND.equals(kind)) {
+      CombatRecordId id;
+      try {
+        id = CombatRecordId.parse(name);
+      } catch (IllegalArgumentException e) {
+        return false; // 判不了就不可见
+      }
+      CombatRecord record = ApiViews.armyData(state).combats().get(id);
+      return record != null && hexVisible(context, mapId, map, record.hex());
     }
-    CombatRecord record = ApiViews.armyData(state).combats().get(id);
-    return record != null && hexVisible(context, mapId, map, record.hex());
+    if (ArmyAddresses.ARMY_KIND.equals(kind)) {
+      ArmyId id;
+      try {
+        id = ArmyId.parse(name);
+      } catch (IllegalArgumentException e) {
+        return false; // 判不了就不可见
+      }
+      Army army = ApiViews.armyData(state).armies().get(id);
+      if (army == null) {
+        return false;
+      }
+      return unitState(state)
+          .effectivePosition(army.rootUnit(), state.meta().timestamp())
+          .map(at -> hexVisible(context, mapId, map, at))
+          .orElse(false);
+    }
+    return false;
   }
 
   /** 城市的格（{@code map.city} 主体没有自己的资源路径 ⇒ 按它所在的那一格判，与 `map.overview` 的 cities 同口径）。 */
@@ -975,6 +1009,22 @@ public final class ToolSupport {
       throw new IllegalArgumentException("gov 模块切片不是 GovSnapshot：" + snapshot.getClass().getName());
     }
     return govSnapshot.state();
+  }
+
+  /**
+   * ★★ <b>army 切片</b>（2026-10-12 批次 3d-1）：{@code armies}（军队身份）自 {@code sd} 搬进 {@code army} ⇒ app
+   * 侧读它改走本方法（{@link io.mosire.simos.app.access.ArmyScope} 的归属裁定与 {@code SdQueryService}
+   * 的军队显示信息都走它）。
+   *
+   * <p>★ <b>缺切片/类型不对 = 装配故障，当场炸</b>（与 {@link #sdState} 同口径）：army 切片对可推进世界是必需的（{@code Shell} 注册
+   * {@code ArmyCodec}、四个创世/升档世界各补空片），静默返回空会把装配错误伪装成"这个世界没有军队"。
+   *
+   * <p>★★ <b>注意"缺席"与"空表"不是一回事</b>：本方法对<b>缺切片</b>抛（装配故障）；而 {@code armies} 为空表是合法的世界事实 （没有军队）⇒ 读侧据此
+   * deny-all，不抛。★ 口径与字段名逐字同 {@link ApiViews#armyData}（它此前是唯一提取点，本方法只是让"按 namespace 取切片" 这件事在 {@code
+   * ToolSupport} 里也有一个稳定入口）。
+   */
+  public static ArmyData armyData(SimulationState state) {
+    return ApiViews.armyData(state);
   }
 
   /**

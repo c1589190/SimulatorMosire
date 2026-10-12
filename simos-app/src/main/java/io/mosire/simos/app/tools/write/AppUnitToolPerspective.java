@@ -3,10 +3,10 @@ package io.mosire.simos.app.tools.write;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.gov.tools.write.GovSelectExamineesPlan;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.Unit;
@@ -21,8 +21,9 @@ import io.mosire.simos.util.state.SimulationState;
  *   <li>{@link #unitVisible} → {@code ToolSupport.unitVisible}（{@code unit:<unitId>}
  *       资源判定；**权限围栏不抄第二份**）；
  *   <li>{@link #armyExists} → {@code
- *       ToolSupport.sdState(state).armies().containsKey(ArmyId.parse(armyId))}（sd 事实； {@code
- *       simos-sd} 在 unit 的禁列里 ⇒ 只有组合根能判）；
+ *       ToolSupport.armyData(state).armies().containsKey(ArmyId.parse(armyId))}（★ 2026-10-12 批次
+ *       3d-1： {@code armies} 表随军队身份搬进 {@code simos-army}，此前是 {@code sdState(state).armies()}；
+ *       {@code simos-army} 仍在 unit 的禁列里 ⇒ 判据照旧只有组合根能判）；
  *   <li>{@link #governmentHousehold} → {@code
  *       GovernmentHouseholdResolver.requireGovernmentHousehold}（GOV 国库家户的 既有唯一解析落点；{@code
  *       GovRemitTool}/{@code GovPayTool} 两条仍在 app 的财政路径与 levy 共用它）；
@@ -40,12 +41,12 @@ public final class AppUnitToolPerspective implements UnitToolPerspective {
   }
 
   /**
-   * sd 侧事实：该 army id 是否已被占用。{@code ArmyId.parse} 的异常类与文案与迁入前逐字相同（非法 id ⇒ 具名 {@link
-   * IllegalArgumentException}，由工具折 {@code BAD_REQUEST}）。
+   * army 侧事实（2026-10-12 批次 3d-1 前是 sd 侧事实）：该 army id 是否已被占用。{@code ArmyId.parse} 的异常类与文案与迁入前
+   * 逐字相同（非法 id ⇒ 具名 {@link IllegalArgumentException}，由工具折 {@code BAD_REQUEST}）。
    */
   @Override
   public boolean armyExists(SimulationState state, String armyId) {
-    return ToolSupport.sdState(state).armies().containsKey(ArmyId.parse(armyId));
+    return ToolSupport.armyData(state).armies().containsKey(ArmyId.parse(armyId));
   }
 
   @Override

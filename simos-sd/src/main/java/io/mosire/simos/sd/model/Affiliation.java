@@ -2,11 +2,10 @@ package io.mosire.simos.sd.model;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.unit.UnitId;
 
 /**
- * 决策人的归属（spec §三.2）：{@code Nation(不透明国家引用)} | {@code Army(ArmyId)} | {@code Gov(UnitId)}。
+ * 决策人的归属（spec §三.2）：{@code Nation(不透明国家引用)} | {@code Army(不透明军队引用)} | {@code Gov(UnitId)}。
  *
  * <p>★ **归属是默认权限边界，不是硬约束**（spec §二.3）：一个 Directive 的归属"可以是这个决策人能管理的东西，甚至还可以不是"。
  *
@@ -20,13 +19,20 @@ import io.mosire.simos.unit.UnitId;
  * 只搬运这个串，<b>不解释它</b>； 解释它（{@code NationId.parse}）并裁定"这个国家存在吗"的地方是 gov 的 {@link
  * io.mosire.simos.gov.nation.NationAffiliations}。
  *
+ * <p>★★★ <b>2026-10-12 批次 3d-1：{@code Army} 支<b>同款收窄为不透明引用</b></b> —— 本批逐字照抄 3c 对 {@code Nation}
+ * 的处置。{@code Army} / {@code ArmyId} 已随军队身份整表搬进 {@code simos-army}（用户口径：「<b>单个Army单位的本质不是被Army模块
+ * 打上自定义数据集的Unit吗</b>」＋「<b>战斗模块，包括阶段之类的，归 Army 模块管</b>」），而 {@code sd} <b>不得依赖 {@code army}</b>
+ * （enforcer 禁列）⇒ 本支的载荷由 {@code ArmyId} 换成 <b>{@code String}</b>——sd 只搬运这个串、<b>不解释它</b>；解释它 （{@code
+ * ArmyId.parse}）并裁定"这个军队存在吗"的地方是 <b>army 自己</b>的 {@link io.mosire.simos.army.ArmyAffiliations}。
+ *
  * <ul>
  *   <li>★ <b>这是"收窄"，不是"删除"</b>：删除 {@code Affiliation} 本体、把归属表的<b>写入</b>也搬进各模块（{@code
- *       gov.Assign*DecisionMaker} 命令）属规划 §18.2 的乙第 4 步，<b>不在本批</b>（那要新增命令类型 ⇒ 目录从 143 变 144，本批红线）；
- *   <li>★ <b>读不到归属 ⇒ deny-all</b>：{@code NationScope} 拿到这个串后向 gov 要归属，<b>拿不到就四个命名空间全 deny-all</b>
- *       （不回落、不给全量）——见 {@code NationScope} 的类注；
- *   <li>★ <b>线格式变化（如实记）</b>：{@code {"@class":"nation","nationId":{"value":"FRA"}}} → {@code
- *       {"@class":"nation","nationId":"FRA"}}。Alpha 阶段不兼容旧档（AGENTS §一.11）：旧档读不了就重建世界。
+ *       gov.Assign*DecisionMaker} / {@code army.Assign*DecisionMaker} 命令）属规划 §18.2 的乙第 4
+ *       步，<b>不在本批</b>（那要新增命令类型 ⇒ 目录从 143 变 144，本批红线）；
+ *   <li>★ <b>读不到归属 ⇒ deny-all</b>：{@code ArmyScope} 拿到这个串后向 army 要归属，<b>拿不到就四个命名空间全
+ *       deny-all</b>（不回落、不给全量）——见 {@code ArmyScope} 的类注；
+ *   <li>★ <b>线格式变化（如实记）</b>：{@code {"@class":"army","armyId":{"value":"a1"}}} → {@code
+ *       {"@class":"army","armyId":"a1"}}。Alpha 阶段不兼容旧档（AGENTS §一.11）：旧档读不了就重建世界。
  * </ul>
  *
  * <p>★ 这是 **sealed 多态类型**：裸往返不可能（与 {@code FieldDelta} 同族，见其类注释）⇒ 类型信息以**注解钉在类型上** （{@code Id.NAME}
@@ -56,12 +62,18 @@ public sealed interface Affiliation {
     }
   }
 
-  /** 归属军队。 */
-  record Army(ArmyId armyId) implements Affiliation {
+  /**
+   * 归属军队：<b>不透明引用</b>（{@code ArmyId} 的裸值原文；2026-10-12 批次 3d-1 收窄，见接口类注）。
+   *
+   * <p>★ sd **不认识**这个串的含义，也不在 sd 侧校验它指向的军队是否存在——那两件事都在 <b>army</b>（裁定方 = {@link
+   * io.mosire.simos.army.ArmyAffiliations}）。★ 这里只判"非空白"：空白串不可能是一个军队引用，属**形状**问题（与收窄前的 {@code
+   * ArmyId} 构造器同一条拒因：它当时只判 null，空白串会在更远处炸；收窄后**当场具名拒**，方向是 fail-closed、不是放宽）。
+   */
+  record Army(String armyId) implements Affiliation {
 
     public Army {
-      if (armyId == null) {
-        throw new IllegalArgumentException("armyId 不得为 null");
+      if (armyId == null || armyId.isBlank()) {
+        throw new IllegalArgumentException("armyId 不得为空白");
       }
     }
   }

@@ -37,9 +37,10 @@ import java.util.Optional;
  *
  * <p>★★ <b>批顺序（固定七步，可复现；{@code role} 缺席时只有六步）</b>：{@code social.SubmitHouseholdWorkOrder}（建人口家户 +
  * 凭空加成年男丁）→ {@code unit.CreateUnit}（{@code households=[人口家户]}， 不携带 {@code manpower}）→（{@code role}
- * 非空才落）{@code unit.SetArmyFormation} → {@code sd.CreateArmy} → {@code economy.RegisterHousehold} →
- * {@code actor.EnsureHouseholdAccount} → {@code ga.PutInfo}。后几条都看得见前一条累积后的候选态，故 {@code
- * sd.CreateArmy} 的 {@code rootUnitId} 就是同批刚创建的 root 单位，{@code sd.CreateArmy} 之前的家户也已由 Social 权威建好。
+ * 非空才落）{@code unit.SetArmyFormation} → {@code army.CreateArmy} → {@code economy.RegisterHousehold}
+ * → {@code actor.EnsureHouseholdAccount} → {@code ga.PutInfo}。后几条都看得见前一条累积后的候选态，故 {@code
+ * army.CreateArmy} 的 {@code rootUnitId} 就是同批刚创建的 root 单位，{@code army.CreateArmy} 之前的家户也已由 Social
+ * 权威建好。
  *
  * <p>★★ <b>造人走 Social 权威（用户 2026-10-19 裁定）</b>：GM 可以直接建军、可以凭空造人，但人口加口必须经 {@code
  * social.SubmitHouseholdWorkOrder} 的 {@code ADD_MEMBERS} 落进 Social 家户——{@code member} 是 GM 授权下 经
@@ -50,7 +51,7 @@ import java.util.Optional;
  * 工单凭空创建；{@code member} 仍须 ≥ 1（P5 计划明文）。{@code raiseUnit} 保持抽取语义，一个字不动。
  *
  * <p>★★ <b>{@code masterGov} 的双边语义</b>：{@code masterGov} 给了 ⇒ 必须存在且带 {@link
- * GovernmentFormation}；同批写入 {@code sd.CreateArmy.masterGovUnitId}。{@code role} 非空 ⇒ 同批再落 {@code
+ * GovernmentFormation}；同批写入 {@code army.CreateArmy.masterGovUnitId}。{@code role} 非空 ⇒ 同批再落 {@code
  * unit.SetArmyFormation}，并把同一个 {@code masterGov} 写进它的 {@code masterGov} 字段。{@code role} 为空但 {@code
  * masterGov} 给了 ⇒ <b>只写 sd 侧</b>（unit 侧不落 ArmyFormation，也就不设 {@code
  * ArmyFormation.masterGov}）——preview 由 {@link Plan#armyFormationNote()} 明确说明。
@@ -74,8 +75,8 @@ final class SpawnArmyPlan {
   /** {@code unit.SetArmyFormation} 的命令类型（仅 {@code role} 非空才落）。 */
   static final String SET_ARMY_FORMATION_TYPE = "unit.SetArmyFormation";
 
-  /** {@code sd.CreateArmy} 的命令类型。 */
-  static final String CREATE_ARMY_TYPE = "sd.CreateArmy";
+  /** {@code army.CreateArmy} 的命令类型（2026-10-12 批次 3d-1：自 {@code sd.} 改前缀）。 */
+  static final String CREATE_ARMY_TYPE = "army.CreateArmy";
 
   /** 人口腿统一走 Social 家户工单（引用 social handler 常量，本类不另抄字面量）。 */
   static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE = SubmitHouseholdWorkOrderHandler.TYPE;
@@ -183,7 +184,7 @@ final class SpawnArmyPlan {
     }
     SimosTimestamp timestamp = state.meta().timestamp();
     parent.ifPresent(parentId -> requireParentAt(units, parentId, at, timestamp));
-    // ★ sd 事实经视角口判（unit 看不见 sd：ArmyId 住在 simos-sd，在禁列里）——判据与拒因文案逐字不变。
+    // ★ army 事实经视角口判（unit 看不见 army：ArmyId 住在 simos-army，在禁列里）——判据与拒因文案逐字不变。
     if (perspective.armyExists(state, armyId)) {
       throw new IllegalArgumentException("军队 id 已存在（armyId 不得复用）: " + armyId);
     }
@@ -252,7 +253,7 @@ final class SpawnArmyPlan {
   }
 
   /**
-   * {@code masterGov} 必须存在且带 {@link GovernmentFormation}（与 {@code sd.CreateArmy}/{@code
+   * {@code masterGov} 必须存在且带 {@link GovernmentFormation}（与 {@code army.CreateArmy}/{@code
    * UnitOperations} 同口径）。
    */
   private static void requireGovUnit(UnitState units, String govId, String field) {
@@ -475,7 +476,7 @@ final class SpawnArmyPlan {
     }
 
     /**
-     * {@code sd.CreateArmy} 载荷：{@code {armyId, masterGovUnitId?, rootUnitId, name}}——rootUnitId
+     * {@code army.CreateArmy} 载荷：{@code {armyId, masterGovUnitId?, rootUnitId, name}}——rootUnitId
      * 指向同批刚创建的 单位；masterGov 给了才写 sd 侧主子。
      */
     String createArmyPayloadJson() {
@@ -519,7 +520,7 @@ final class SpawnArmyPlan {
       }
       if (masterGov.isPresent()) {
         return "role 为空：unit 侧不落 unit.SetArmyFormation，unit 侧未设 ArmyFormation.masterGov；"
-            + "masterGov 只写入 sd.CreateArmy.masterGovUnitId";
+            + "masterGov 只写入 army.CreateArmy.masterGovUnitId";
       }
       return "role 为空：unit 侧不落 unit.SetArmyFormation，unit 侧未设 ArmyFormation.masterGov";
     }

@@ -11,12 +11,17 @@ import io.mosire.simos.util.log.LogOriginKind;
  * <ul>
  *   <li>{@link #ARMY_COMBAT}：交战记录/阶段追加/裁决写口与逐条战损（命令面）——命令入口的工具/人工交互由 app 层自记 {@code
  *       interaction}（用户裁定 origin 不跨模块传、不改 SPI），本模块只记自己的执行，故为 {@link LogOriginKind#SYSTEM}；
+ *   <li>{@link #ARMY_REGISTRY}：<b>军队身份</b>（{@code armies} 表）的建档与主子改派写口（命令面）——2026-10-12 批次 3d-1 新增
+ *       （用户裁定「战斗模块，包括阶段之类的，归 Army 模块管」⇒ 军队身份与两条命令自 {@code sd} 迁入）。★ 它替代了迁入前那两条命令用的 {@code
+ *       SdLogSource.SD_NATION}（{@code sd-nation}："国家/军队/决策人生命周期"）——军队身份不再住 sd，来源表随之换家； 同 {@link
+ *       #ARMY_COMBAT}，工具/人工交互仍由 app 层自记，故为 {@link LogOriginKind#SYSTEM}；
  *   <li>{@link #ARMY_CODEC}：ArmyCodec 编解码、变更集施加与旧形状迁移；
  *   <li>{@link #ARMY_RESOLVE}：ArmyResolver 候选装配、空结果与故障诊断。
  * </ul>
  */
 public enum ArmyLogSource implements LogOrigin {
   ARMY_COMBAT("army-combat", "交战记录/阶段追加/裁决写口与逐条战损（命令面）", LogOriginKind.SYSTEM),
+  ARMY_REGISTRY("army-registry", "军队身份（armies 表）的建档与主子改派写口（命令面）", LogOriginKind.SYSTEM),
   ARMY_CODEC("army-codec", "ArmyCodec 编解码、变更集施加与旧形状迁移", LogOriginKind.SYSTEM),
   ARMY_RESOLVE("army-resolve", "ArmyResolver 候选装配、空结果与故障诊断", LogOriginKind.SYSTEM);
 

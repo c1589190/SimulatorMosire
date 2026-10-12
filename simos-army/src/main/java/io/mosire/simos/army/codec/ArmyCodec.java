@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.army.ArmyLog;
 import io.mosire.simos.army.ArmyLogSource;
 import io.mosire.simos.army.ArmySnapshot;
@@ -30,9 +31,11 @@ import org.slf4j.Logger;
  * io.mosire.simos.army.ArmySnapshot#namespace()} <b>同字面</b>——{@code SimulationState} 构造期校验"modules
  * 的键 == snapshot.namespace()"，写歪当场抛（装配期那处有牙）。改一处必须同时改另一处。
  *
- * <p>★ <b>树里的自定义键只有一个</b>：{@code CombatRecordId}（{@code combats} 的键）。{@code CombatRecord} 里的 {@code
- * HexCoord}（交战格）、{@code UnitId}（参与单位）、阶段/结局/损失 id（{@code CombatStageId} / {@code
- * CombatOutcomeId}）都是**值** 不是 Map 键 ⇒ 按 record 值绑定，**不需要**也不应该注册。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
+ * <p>★ <b>树里的自定义键有<b>两个</b>（2026-10-12 批次 3d-1 起）</b>：{@code ArmyId}（{@code armies} 的键）与 {@code
+ * CombatRecordId}（{@code combats} 的键）。{@code CombatRecord} 里的 {@code HexCoord}（交战格）、{@code
+ * UnitId}（参与单位）、阶段/结局/损失 id（{@code CombatStageId} / {@code CombatOutcomeId}）都是**值** 不是 Map 键 ⇒ 按
+ * record 值绑定，**不需要**也不应该注册。★ {@code armies} 的键随军队身份（{@link ArmyId}）自 {@code SdState} 搬入，读侧注册随之从
+ * {@code SdCodec} 移到这里（**唯一拼写点**，不是两份）。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
  *
  * <p>★ <b>键的（反）序列化走各类型自带的"裸 {@code toString()} + 单参 {@code parse}"配对</b>（裁定 R-48-f）：写侧 Jackson
  * 的默认键序列化器调 {@code toString()} 恰好就对了，故<b>只注册读侧</b>（与 {@code ActorCodec} 同口径）。
@@ -74,9 +77,10 @@ public final class ArmyCodec implements ModuleCodec, ModuleDiffer {
     abstract boolean isEmpty();
   }
 
-  /** 一路键反序列化器：{@code combats} 的键 {@code CombatRecordId}。 */
+  /** 一路键反序列化器一型：{@code armies} 的键 {@code ArmyId} + {@code combats} 的键 {@code CombatRecordId}。 */
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("army-json-keys");
+    module.addKeyDeserializer(ArmyId.class, keyDeserializer(ArmyId::parse));
     module.addKeyDeserializer(CombatRecordId.class, keyDeserializer(CombatRecordId::parse));
     return module;
   }
@@ -158,6 +162,8 @@ public final class ArmyCodec implements ModuleCodec, ModuleDiffer {
               LogEvent.of(
                   "ARMY_CODEC_APPLIED",
                   ArmyLogSource.ARMY_CODEC,
+                  "armies",
+                  next.data().armies().size(),
                   "combats",
                   next.data().combats().size(),
                   "ref",

@@ -12,10 +12,14 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
+import io.mosire.simos.util.log.LogOrigin;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * army 各命令 handler 共用的载荷解析助手（阶段 D1 落地、阶段 D4 扩展 / D-009 补裁 + D-010）：与 unit 的 {@code UnitPayloads}、sd
@@ -65,6 +69,33 @@ final class ArmyPayloads {
     return reason.isEmpty() ? "unknown" : reason;
   }
 
+  /**
+   * ★ <b>具名拒绝的统一 INFO 发射</b>（2026-10-23 用户裁定：被拒绝一律 INFO，必须明显记录）：字段固定 {@code reason=} + 调用方给的关键 id（值
+   * null/空白 ⇒ {@code -}）。理由先过 {@link #logReason}，载荷原文/JSON 原文不进日志。语义与 {@code
+   * SdPayloads#logRejected} / {@code GovPayloads#logRejected} 逐字相同（2026-10-12 批次 3d-1 随军队身份两条命令
+   * 迁入时补：它们原先借的是 sd 的那一份）。
+   *
+   * <p>每个具名拒绝路径（显式 {@code Rejected} 与 catch）各调用一次；{@code idKeyValues} 是偶数个 {@code key,value}。
+   */
+  static void logRejected(
+      Logger logger, LogOrigin origin, String event, String reason, Object... idKeyValues) {
+    Objects.requireNonNull(logger, "logger");
+    Objects.requireNonNull(origin, "origin");
+    Objects.requireNonNull(event, "event");
+    if (idKeyValues.length % 2 != 0) {
+      throw new IllegalArgumentException("logRejected 需要偶数个 id key/value: " + idKeyValues.length);
+    }
+    Object[] fields = new Object[idKeyValues.length + 2];
+    fields[0] = "reason";
+    fields[1] = logReason(reason);
+    for (int index = 0; index < idKeyValues.length; index += 2) {
+      Object value = idKeyValues[index + 1];
+      fields[index + 2] = idKeyValues[index];
+      fields[index + 3] = value == null || String.valueOf(value).isBlank() ? "-" : value;
+    }
+    EventLog.channel(logger).info(LogEvent.of(event, origin, fields));
+  }
+
   /** 解析载荷文本：非 JSON、或不是 JSON 对象 ⇒ 抛。 */
   static JsonNode parse(String payloadJson) {
     Objects.requireNonNull(payloadJson, "payloadJson");
@@ -97,6 +128,36 @@ final class ArmyPayloads {
     }
     if (!value.isTextual() || value.asText().isBlank()) {
       throw new IllegalArgumentException("字段 " + field + " 若给出必须是非空白字符串: " + payload);
+    }
+    return Optional.of(value.asText());
+  }
+
+  /**
+   * ★ <b>「空串也是空」的可选字符串字段</b>（2026-10-12 批次 3d-1 新增，<b>逐字照抄 sd 侧那份的语义</b>）：缺失或 {@code null} ⇒ 空
+   * Optional；给出但<b>非文本</b> ⇒ 抛；给出且是文本（<b>含空串/空白串</b>）⇒ 原样返回。
+   *
+   * <p>★★ <b>为什么必须与 {@link #optionalText} 并存（不是重复）</b>：军队身份的两条命令自 {@code sd} 迁入时，两条的
+   * "可选串"口径<b>本来就不同</b>，且都已有调用方依赖：
+   *
+   * <ul>
+   *   <li>{@code army.CreateArmy} 的 {@code masterGovUnitId} 走 {@code
+   *       SdPayloads.optionalText}（<b>不</b>拒空白）⇒ <b>空串是一份形状合法的"未认主子"载荷</b>，随后由 {@code UnitId.parse}
+   *       具名拒（"UnitId 不得为空白"）；迁入后必须保持这条 拒绝链（工具描述里明写"缺省 = 未认主子"，而 {@code army.SetArmyMasterGov} 的
+   *       docs 明写"空串 = 解除认领"）；
+   *   <li>{@code army.SetArmyMasterGov} 的 {@code masterGovUnitId} <b>先过这一条、再由调用方 filter 掉空白</b>（"缺席
+   *       / {@code null} / 空串（含空白串）= 解除认领"，见该 handler 的类注）。
+   * </ul>
+   *
+   * ⇒ 两条命令各用各的、语义各自冻结。<b>不把 {@link #optionalText} 改成宽容</b>：那会静默改掉 {@code army.RecordCombat}
+   * 一族已经生效的严格口径（形状坏的载荷不该被放过）。非文本的拒因文案与 sd 侧那份逐字相同。
+   */
+  static Optional<String> optionalTextAllowingBlank(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isTextual()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是字符串或 null: " + payload);
     }
     return Optional.of(value.asText());
   }

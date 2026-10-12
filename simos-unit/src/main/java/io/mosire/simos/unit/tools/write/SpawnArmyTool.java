@@ -42,7 +42,7 @@ import java.util.UUID;
  * 组合工具</b>——按格直接建军， <b>不抽地方人口、不抽粮饷</b>；造人必须走 Social 权威。批序（固定七步，{@code role} 缺席时六步）：{@code
  * social.SubmitHouseholdWorkOrder}（恒有；CREATE_HOUSEHOLD + ADD_MEMBERS 建人口家户并凭空加成年男丁）→ {@code
  * unit.CreateUnit}（恒有；{@code households=[hh-unit:<unitId>]}，不携带 {@code manpower}）→ [role 非空: {@code
- * unit.SetArmyFormation}] → {@code sd.CreateArmy} → {@code economy.RegisterHousehold}（恒有）→ {@code
+ * unit.SetArmyFormation}] → {@code army.CreateArmy} → {@code economy.RegisterHousehold}（恒有）→ {@code
  * actor.EnsureHouseholdAccount}（恒有）→ {@code ga.PutInfo}（恒有）——同批落一条 revision。
  *
  * <p>★★ <b>造人走 Social 权威（用户 2026-10-19 裁定）</b>：GM 想改什么就能改什么、可以直接建军，但人口加口唯一入口是 {@code
@@ -62,7 +62,7 @@ import java.util.UUID;
  * raiseUnit} 保持抽取语义，一个字不动。
  *
  * <p>★★ <b>{@code masterGov} 的双边语义</b>：给了就必须存在且带 GovernmentFormation；同批写入 {@code
- * sd.CreateArmy.masterGovUnitId}。{@code role} 非空时才同批落 {@code unit.SetArmyFormation}，也把同一个 {@code
+ * army.CreateArmy.masterGovUnitId}。{@code role} 非空时才同批落 {@code unit.SetArmyFormation}，也把同一个 {@code
  * masterGov} 写进它的 {@code masterGov}。{@code role} 为空但 {@code masterGov} 给了 ⇒ 只写 sd 侧，<b>unit 侧未设
  * ArmyFormation.masterGov</b>；preview 的 {@code armyFormationNote} 会明确说明。
  *
@@ -151,7 +151,7 @@ public final class SpawnArmyTool implements SimosTool {
         + "parent?(可选; 给了必须存在且当刻有效位置与 (q,r) 同格), "
         + "status?(可选 MOVING|RESTING|ENGAGED，缺省 RESTING), "
         + "armyId?(可选; 缺省 unitId + \"-army\"；不得已存在), role?(可选; 给了非空白才同批落 unit.SetArmyFormation), "
-        + "masterGov?(可选; 给了必须存在且带 GovernmentFormation；同批写入 sd.CreateArmy.masterGovUnitId，role 非空时也写入 "
+        + "masterGov?(可选; 给了必须存在且带 GovernmentFormation；同批写入 army.CreateArmy.masterGovUnitId，role 非空时也写入 "
         + "unit.SetArmyFormation.masterGov), reason(必填非空白), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 必填，>=0)}。"
@@ -162,7 +162,7 @@ public final class SpawnArmyTool implements SimosTool {
         + "target=hh-unit:<unitId>，plan=CREATE_HOUSEHOLD(location=UNIT(unitId)，profile=name+\"·人口家户\") + "
         + "ADD_MEMBERS(lotId=spawn-army:<unitId>:<tick>，MALE，count=member，ageAtAnchorDays=7300=20*365，anchorTick=<tick>))"
         + " → unit.CreateUnit（households=[hh-unit:<unitId>]，绝不携带 manpower）→ [role 非空: unit.SetArmyFormation]"
-        + " → sd.CreateArmy → economy.RegisterHousehold（household=hh-unit:<unitId>，residence 按落点是否城市格判 urban/rural，"
+        + " → army.CreateArmy → economy.RegisterHousehold（household=hh-unit:<unitId>，residence 按落点是否城市格判 urban/rural，"
         + "stratum=landless_laborer，participationPerMille=0）→ actor.EnsureHouseholdAccount（household=hh-unit:<unitId>）"
         + " → ga.PutInfo(key="
         + INFO_KEY
@@ -202,7 +202,7 @@ public final class SpawnArmyTool implements SimosTool {
     props.put(
         "masterGov",
         ToolSchema.prop(
-            "string", "认领的 GOV 单位 id（可选；给了必须存在且带 GovernmentFormation；同批写 sd.CreateArmy）"));
+            "string", "认领的 GOV 单位 id（可选；给了必须存在且带 GovernmentFormation；同批写 army.CreateArmy）"));
     props.put("reason", ToolSchema.prop("string", "建军原因（必填非空白；进 ga.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSchema.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
@@ -523,7 +523,7 @@ public final class SpawnArmyTool implements SimosTool {
 
   /**
    * 组批（固定七步，{@code role} 缺席时六步）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} →
-   * [role 非空: {@code unit.SetArmyFormation}] → {@code sd.CreateArmy} → {@code
+   * [role 非空: {@code unit.SetArmyFormation}] → {@code army.CreateArmy} → {@code
    * economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} → {@code ga.PutInfo}（可复现）。
    *
    * <p>★ 全部共享同一 {@code batchId}（correlationId）与同一 branch/expectedRevision ⇒ {@code submitBatch} 落一条

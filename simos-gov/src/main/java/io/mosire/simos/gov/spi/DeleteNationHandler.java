@@ -75,7 +75,7 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
    * "谁自称归属哪个国家"（不透明引用原文）。解释与裁定都在 {@link NationAffiliations#resolve}。
    *
    * <p>★ 本命令（{@code gov.DeleteNation}）与 {@code nations} 表同在 gov 切片 ⇒ 它只是"跨切片读一次决策人表"，与 {@code
-   * sd.CreateArmy} 读 unit 切片同款（铁律 3：只读，不改写别的切片）。
+   * army.CreateArmy} 读 unit 切片同款（铁律 3：只读，不改写别的切片）。
    */
   private final NationAffiliationLookup nationAffiliations;
 

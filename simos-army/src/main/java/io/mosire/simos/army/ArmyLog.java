@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
  *   <caption>分类与用途</caption>
  *   <tr><th>取用方法</th><th>logger 名</th><th>记什么</th></tr>
  *   <tr><td>{@link #combat()}</td><td>{@code .combat}</td><td>交战记录/阶段追加/投骰判定</td></tr>
+ *   <tr><td>{@link #armies()}</td><td>{@code .armies}</td><td>军队身份（{@code armies} 表）的建档/主子改派与具名拒绝</td></tr>
  *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>ArmyCodec 编解码/变更集施加</td></tr>
  *   <tr><td>{@link #resolve()}</td><td>{@code .resolve}</td><td>ArmyResolver 候选装配/空结果</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐阶段/逐结局明细</b></td></tr>
@@ -46,10 +47,12 @@ public final class ArmyLog {
   public static final String ROOT_LOGGER_NAME = "io.mosire.simos.army";
 
   public static final String COMBAT_LOGGER_NAME = ROOT_LOGGER_NAME + ".combat";
+  public static final String ARMIES_LOGGER_NAME = ROOT_LOGGER_NAME + ".armies";
   public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
   public static final String RESOLVE_LOGGER_NAME = ROOT_LOGGER_NAME + ".resolve";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger COMBAT = LoggerFactory.getLogger(COMBAT_LOGGER_NAME);
+  private static final Logger ARMIES = LoggerFactory.getLogger(ARMIES_LOGGER_NAME);
   private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
   private static final Logger RESOLVE = LoggerFactory.getLogger(RESOLVE_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
@@ -59,6 +62,16 @@ public final class ArmyLog {
   /** 交战记录/阶段追加/投骰判定。 */
   public static Logger combat() {
     return COMBAT;
+  }
+
+  /**
+   * <b>军队身份</b>（{@code armies} 表）的建档/主子改派与具名拒绝（2026-10-12 批次 3d-1）。
+   *
+   * <p>★ 迁入前这两条命令（{@code sd.CreateArmy} / {@code sd.SetArmyMasterGov}）用的是 {@code SdLog.nation()}
+   * （{@code io.mosire.simos.sd.nation}）——军队身份搬进 army 后，来源表随之换家（同一条纪律的另一面：logger 名的唯一拼写点在本模块）。
+   */
+  public static Logger armies() {
+    return ARMIES;
   }
 
   /** ArmyCodec 编解码、变更集施加与旧形状迁移。 */

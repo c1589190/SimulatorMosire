@@ -176,3 +176,45 @@ economy 6 / gov 1 / unit 1 / util 1 个文件提及旧命令名 —— 留给对
 3. **javadoc 债 1 处（本批写权外）**：`simos-social/src/main/java/io/mosire/simos/social/spi/CreateCityHandler.java:34` 仍以 `sd.CreateNation` 作对比（**纯注释、零行为**）。
 4. **`SdSnapshots.map(...)` 成了死代码**（唯一调用者 `CreateNationHandler` 搬走）：本批**保留**（删它会再增加若干条测试编译断）；随 sd 3d/3e 退役一起删。
 5. **`gov.DeleteNation` 的 `targetPaths` 仍走 `ResourcePaths.sd("nation", …)`**：它返回**不含命名空间**的路径，命名空间由 `CommandTargets` 默认实现从命令类型第一段取 ⇒ 实际是 `gov:nation/<id>`（行为正确）；util 侧没有 `gov(...)` 助手，本批文件所有权只允许往 `util/spi` 放 `DecisionMakerId`。
+
+---
+
+### 批次 3d-1（军队身份 `armies` + `Army`/`ArmyId` 搬进 army；2 条命令 `sd.*`→`army.*`；`Affiliation.Army` 收窄为不透明串）
+
+> 提交面：**未提交**（实现代理**不 commit**，§一.5：控制方审后提交）。工作树 53 项（41 M / 4 D / 8 ??）。
+> ★ 本节**只列相对 3c 台账新增的部分**（§12.2：分不清"老架构老测试该删"与"新代码弄坏了"就无法归因）。
+> ★ 与 3c 的**结构性同构**（三表/两表 + handler + 类型搬走、`Affiliation` 某支收窄为 `String`、裁定方在新模块 + 端口在模块/实现在 app）⇒ 下面的归类也照 3c 的分节。
+
+**A. 新增编译断（类型/构造器/包搬家）**
+| # | 形态 | 命中（test 侧，实测 grep） | 处置方向 |
+|---|---|---|---|
+| A1 | **`ArmyData` 构造器 1 参 → 2 参**（组件 `combats` → `armies` + `combats`） | `simos-army/src/test/.../ArmyDataTest.java:20,33,36,46,80,81,97`（8 处）+ `army/testing/ArmyFixtures.java:73` | `new ArmyData(combats)` ⇒ `new ArmyData(Map.of(), combats)`（`null` 那处 ⇒ `new ArmyData(null, null)`，语义正是"旧档两个键都缺"） |
+| A2 | **`ArmyId`/`Army` 从 `io.mosire.simos.sd.id`/`sd.model` 搬到 `io.mosire.simos.army`** ⇒ import 断 | **19 个文件**：`app/access/{DecisionMakerScopeEndToEndTest,GovScopeTest,ScopeFixtures}` · `app/decision/{DecisionAgentRunnerTest,RealLlmUnitDecisionLoopTest,ResetConversationEndToEndTest,RunDecisionEndToEndTest}` · `app/gui/SdRunDecisionApiTest` · `app/tools/write/{AdjudicateTickToolTest,DiplomaticWriteToolsTest,GovPayToolD5Test,GovToolsZ6Test,RejectDirectiveToolTest}` · `ga/change/GaRoundTripTest` · `sd/model/{SdIdTest,SdModelTest}` · `sd/spi/CreateArmyHandlerTest` · `sd/state/SdStateInvariantTest` · `sd/testing/SdFixtures` ·（`app/query/RedactingQueryServiceTest:416` 用的是内联全限定名，同族） | 收尾期把 import 改到 `io.mosire.simos.army`（类型形状一字未改） |
+| A3 | **`Affiliation.Army(ArmyId)` → `Affiliation.Army(String)`** ⇒ 构造断 + `armyId().value()` 断 | 12 处（`ScopeFixtures:218` · `DecisionMakerScopeEndToEndTest:767` · `RealLlmUnitDecisionLoopTest:1380` · `DecisionAgentRunnerTest:146` · `GovPayToolD5Test:489` · `GovToolsZ6Test:1573` · `AdjudicateTickToolTest:1395` · `DiplomaticWriteToolsTest:337` · `RedactingQueryServiceTest:416` · `GaRoundTripTest:334,696` …） | `new Affiliation.Army(new ArmyId(x))` ⇒ `new Affiliation.Army(x)`；`a.armyId().value()` ⇒ `a.armyId()`。★ 线格式随之变化（`{"armyId":{"value":…}}` → `{"armyId":"…"}`） |
+| A4 | **`SdState` 5 → 4 / `SdChangeSet` 5 → 4**（`armies` 组件消失） | `sd/testing/SdFixtures`（12 参构造器 + `withArmies` + `.armies()`）· `sd/change/SdRoundTripTest` · `sd/codec/SdCodecTest` · `sd/state/SdStateInvariantTest` · `sd/model/SdModelTest` · `sd/spi/{RecordDiplomaticEventHandlerTest,SetDiplomaticRelationHandlerTest,ResetDecisionMakerConversationHandlerTest,CreateArmyHandlerTest}` · `app/access/{ScopeFixtures,DecisionMakerScopeEndToEndTest,GovScopeTest}` · `app/decision/{DecisionAgentRunnerTest,RealLlmUnitDecisionLoopTest,ResetConversationEndToEndTest,RunDecisionEndToEndTest}` · `app/gui/SdRunDecisionApiTest` · `app/tools/write/{AdjudicateTickToolTest,DiplomaticWriteToolsTest,RejectDirectiveToolTest}` · `app/world/CompactThreeNationsWorld` | 这些文件的 `.armies()`/`withArmies(...)` 调用改走 `ArmyData`（army 切片）；★ **`SdFixtures` 是 sd 侧多数断的共同源头**（同 3b-1 台账 A 节的同一处） |
+| A5 | **两条 handler 搬包**：`simos-sd.spi.{CreateArmyHandler,SetArmyMasterGovHandler}` → `simos-army.spi.*` | `sd/spi/CreateArmyHandlerTest`（整类）· `sd/spi/CreateDecisionMakerHandlerTest`（`Affiliation.Army` 夹具） | 收尾期把 handler 测试迁到 `simos-army`（或改 import）；`ArmyDataTest`/`ArmyFixtures` 与它同属"3d-1 的两条新增 A" |
+
+**B. 新增断言红（旧命令串 / 地址族 / 工具资源面；非编译断）**
+| # | file:line | 钉的旧形状 | 处置方向 |
+|---|---|---|---|
+| B1 | `app/tools/AccessPathsTest.java:55` | `ToolSupport.resourceSd("army","a1").fullId() == "sd:army/a1"` | ★ 本批**有意未改**：`ResourcePaths.sd(kind,id)` 今天仍被决策人/决策包三处生产路径用（`DecisionCallerFactory:330,335` · `AbstractNarrowWriteTool:181`）⇒ 它不是"军队专属"，删不得。该断言钉的是"sd 路径语法对任意 kind 都成立"，与新家无关；若收尾期要正名，属批次 5（gov 命令面）同族的资源面收口 |
+| B2 | `sd/resolve/SdResolverTest.java:34`（`one("sd:army.a1").typeName() == "Army"`） | `sd:army.<id>` 地址族已被**整支删除**（用户已批的不可逆点，先例 = 3c 对 `sd:nation.<id>`） | 改新契约：军队身份读面 = `army:army.<id>`（`ArmyResolver`）；旧地址 ⇒ 空候选（不是抛） |
+| B3 | `app/tools/write/AdjudicateTickToolTest`（`samples` / 清单里的 `sd.CreateArmy`、`sd.SetArmyMasterGov` 串） | 两条命令改名 `army.*` | 收尾期改新串；★ **`hasSize(66)` 与 `hasSize(97)` 不受影响**（2 条改名不改数；两条 handler 本就不实现 `CommandTargets`、也不打 `DmUsableCommand`） |
+| B4 | `app/McpCoverageTest` / `app/tools/SimosToolsTest` / `app/tools/read/CatalogTool` 相关用例里的 `sd.CreateArmy`/`sd.SetArmyMasterGov` 串 | 同上 | 同上；★ 工具 **NAME 常量一字未改**（`SdCreateArmyTool.NAME` / `SdSetArmyMasterGovTool.NAME` 仍是 `sd.*`）⇒ 工具面/白名单/MCP 覆盖表的**名称**那一维零变化 |
+| B5 | `army` 侧的 `AssignArmyGovToolTest`（若断言 `ga.PutInfo` 的 `address`） | 本批把该工具发出的行动记录地址由 `sd:army.<id>` 改成 `army:army.<id>`（`AssignArmyGovPlan.armyAddress` 改走 `ArmyAddresses.armyCanonical`） | ★ **有意的可观测变化**：旧地址在新解析器下已不可能被认领（sd 侧那支已删）⇒ 留着它等于发一个查不到的地址。改新契约 |
+
+★ 计数表（catalog 143 / 66 / 97 / 142-143 等）**本批一处未变**（2 条改名不改数）⇒ 3b-1/3b-2/3c 台账里的那些计数红点**不受本批影响**。
+★ **代码侧不做端到端的"旧串 ⇒ Rejected"实测**（本批门禁不含 `test`，§12.1）：静态依据 = 4 条旧串在 `simos-*/src/main` 已 **0 命中带引号字面量**（残留 2 处全是工具 `NAME` 常量，那是**工具名**不是命令类型），而 `CommandBus` 对未注册类型走 `未注册的命令类型: …` 的 `Rejected` 分支（不留 revision）。⇒ **收尾期补一条端到端负向用例**（旧 `sd.CreateArmy` ⇒ Rejected 且 head 不变；`army.CreateArmy` ⇒ 落盘 + `army` 切片的 `armies` 恰 1 条）。
+
+**C. 本批新增行为尚无测试（收尾期按本批判据补）**
+① `Affiliation.Army` 的不透明引用：**读不到归属 ⇒ deny-all**（`ArmyScope` 四命名空间 `none()`）的负向用例（自称串解释不了 / 军队不存在两种入口）；
+② `ArmyAffiliations.resolve` 的裁剪（解析不了 / 军队不存在的引用被丢弃）与 `AppArmyAffiliations.of` 的"自称 × 裁定"唯一拼装点；
+③ `army:army.<id>` 的解析（存在 ⇒ `Army` 主体、不存在 / 空白 id ⇒ **空候选不是抛**）与 `ToolSupport.subjectVisible` 的新分支（按 root 单位所在格判、无有效位置 ⇒ 不可见）；
+④ `army.CreateArmy` / `army.SetArmyMasterGov` 的正向落盘（`ArmyChangeSet` 的 `armies` 组件）与旧串 `Rejected`；
+⑤ `ArmyData` 两个组件的构造期不变量（键=值内 id 两条）与 `ArmyCodec` 两个键的读侧注册（漏 `ArmyId` 则 `armies` **非空即解码炸**，空表测不到）；
+⑥ `ga.CreateDecisionMaker` 给不存在的军队 id：从"当场具名拒"变"建成 + 该决策人 army 面 deny-all"（见 D1，方向 fail-closed）。
+
+**D. 已知债（如实记，本批**有意**未做）**
+1. **`army` 两条命令的工具面资源声明仍写 `sd` 命名空间**（`SdCreateArmyTool` / `SdSetArmyMasterGovTool` 的 `SD_NAMESPACE_WRITE` / `sdNamespaceWriteResources()`；而这两条命令的 handler 只产 `ArmyChangeSet` ⇒ **实际写的是 `army` 命名空间**）：★ 技术上加这个口子**只需动 `simos-ga/src/main`**（基类加一对 `ARMY_NAMESPACE_WRITE` / `armyNamespaceWriteResources()`，形制与 army 模块自己的 `AbstractNarrowWriteTool:54-60` 逐字相同，**不必碰 `simos-ga-spi`**）。**本批仍选择不动**，理由是避免在「军队身份」这一批里同时改两条：① 资源**声明**（`resources()`，审批面可见）；② 资源**断言**（`writeResources()`，权限判定）——两者一起改，一旦某条 GM 路径的声明面与断言面不同步，失效方向是「该拒的放行」。本批红线是「2 条改名不改数、四面逐条不变」，动它就要额外证明 GM 面零变化 ⇒ 属同 3c §E.1 的「资源面正名」，**留给批次 5 一并收口**（那时连带 gov / 军队 / 战斗族的资源面一起正名）。运行时影响：GM 侧 `sd` 与 `army` 都是 `unlimited()`（`Shell#gmPermissionSet`），DM 侧两条命令本就不可用 ⇒ **零行为变化**。
+2. **`AffiliationTargets` 的 Army 那一路从"创建期具名拒"变为"放行 + 读面 deny-all"**（见 C⑥）：3c 已对 Nation 做过同一处置（台账 3c §D3 追认），本批逐字沿用；乙第 4 步在 army 自己的 `army.Assign*DecisionMaker` 命令里把存在性校验补回。
+3. **javadoc 债 3 处（本批写权外）**：`simos-social/src/main/.../CreateCityHandler.java`（3c §E.3 已记的那处）之外，本批**没有新增**写权外的旧串（`simos-sd` 内 8 处"历史叙述"式 `sd.CreateArmy`/`sd.SetArmyMasterGov` 提及已逐条改读 `army.*` 或明确标注为"迁入前叫 sd.*"的留痕）。
