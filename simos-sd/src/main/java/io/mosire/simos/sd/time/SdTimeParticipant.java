@@ -4,14 +4,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
-import io.mosire.simos.sd.id.CombatId;
-import io.mosire.simos.sd.id.CombatStageId;
-import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.model.Action;
-import io.mosire.simos.sd.model.Combat;
-import io.mosire.simos.sd.model.CombatStage;
-import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.Effect;
 import io.mosire.simos.sd.model.EffectStatus;
 import io.mosire.simos.sd.model.SdInfoEntry;
@@ -49,9 +43,9 @@ import java.util.Set;
 /**
  * sd 侧的时间推进参与者（spec §五.2，C4）：**每个 sd 命名空间只有一个**（{@code putIfAbsent} 重复即抛）。
  *
- * <p>★ {@code simulate} 是**纯函数**：**从 {@code range.from} 逐日推到 {@code range.to}**，逐日求值 {@code
- * Effect.trigger}（R6 延期效果）与 {@code CombatStage.exit}（N1 阶段推进），产出**本模块** {@code
- * SdChangeSet}（§十一：一次推进 N 天，内部逐日，避免一次跳日把中间该发生的阶段转换整段跳过）。**绝不放进 ③Resolve**。
+ * <p>★ {@code simulateWorld} 是**纯函数**：**从 {@code range.from} 逐日推到 {@code range.to}**，逐日求值 {@code
+ * Effect.trigger}（R6 延期效果），产出**本模块** {@code SdChangeSet}（§十一：一次推进 N 天，内部逐日，避免一次跳日把中间该发生的触发整段跳过）。
+ * **绝不放进 ③Resolve**。
  *
  * <p>★ **时间量纲（2026-09-24 日制裁定）**：{@code range.to.tick()} 是**世界日**（全局 1 tick = 1 天）⇒ 求值里 {@code
  * at.tick()} 与参照点的差值即**日数**。
@@ -61,10 +55,20 @@ import java.util.Set;
  *
  * <p>★★ <b>2026-10-12 批次 3b-2：本参与者成了<b>多切片参与者</b>（{@link WorldTimeProposal}）</b>——{@code
  * Action.PutInfo} 写的 INFO 覆盖层搬进了 {@code GaState.info}，而 sd 不得依赖 ga（成环）⇒ 那一半经注入的 {@link
- * DecisionTablesLookup#replaceInfo} 产出 <b>ga 命名空间的变更集</b>（不透明 {@link ChangeSet}），与 sd 的
- * effects/combatStates 变更集装在**同一次推进的同一个提案**里（{@code TimeProposalResolver} 的读写集仍按参与者整体声明，
- * 语义与搬迁前逐字相同：INFO 仍是本参与者在本次推进里"写"的地址）。★ <b>没有 INFO 写入时不带 ga 分量</b>——不让每次推进都给 ga
- * 切片换一次坐标（与"不写就不动"同口径）。
+ * DecisionTablesLookup#replaceInfo} 产出 <b>ga 命名空间的变更集</b>（不透明 {@link ChangeSet}），与 sd 的 effects
+ * 变更集装在**同一次推进的同一个提案**里（{@code TimeProposalResolver} 的读写集仍按参与者整体声明， 语义与搬迁前逐字相同：INFO
+ * 仍是本参与者在本次推进里"写"的地址）。★ <b>没有 INFO 写入时不带 ga 分量</b>——不让每次推进都给 ga 切片换一次坐标（与"不写就不动"同口径）。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：本参与者只剩「effect 逐日触发」一件活（如实记）</b>——原来还有第二段：逐日求值 {@code
+ * CombatStage.exit} 并推进 {@code CombatState.currentStage}（N1 阶段推进）。旧的 {@code combatStates} 表随旧战斗族
+ * <b>退役</b>，而那一段整体依赖 sd 自己的战斗 id（{@code CombatId} / {@code CombatStageId} / {@code CombatStateId}）⇒
+ * 编译期已不可能保留，本批整段删除（<b>不是</b>搬进 army：army 的阶段推进是它自己的命令 {@code army.AppendCombatStage} / {@code
+ * ArmyResolveCombatStage}，不走 sd 的触发器状态机 —— 用户已裁「1（触发器状态机）废除」）。
+ *
+ * <p>★ <b>连带删掉的三条日志字段（如实记）</b>：{@code SD_ADVANCE_START} / {@code SD_ADVANCE_END} 的 {@code
+ * combatStates=}、{@code SD_ADVANCE_DAY} 的 {@code stagesChecked=} / {@code stagesAdvanced=} / {@code
+ * stageExitsFalse=}，以及 {@code SD_COMBAT_STAGE_ADVANCED} 这条 TRACE —— 它们记的是已退役的那张表。★
+ * <b>不是</b>"换了家"（army 有它自己的阶段日志），故本批不声称由别的读数接手。其余字段与文案逐字不变。
  *
  * <p>★ {@code range.to} 缺省（无上界推进）⇒ **零变更提案、不抛**（照 {@code UnitTimeParticipant} 的边界）。
  */
@@ -95,9 +99,9 @@ public final class SdTimeParticipant implements TimeParticipant {
   }
 
   /**
-   * ★★ <b>多切片提案</b>（2026-10-12 批次 3b-2）：sd 分量（effects / combatStates）+ ga 分量（{@code Action.PutInfo}
-   * 写的 INFO 覆盖层）。{@link TimeParticipant} 的契约里，改多个模块的参与者实现本方法、**不**实现 {@code simulate}（后者的默认实现会抛，
-   * 指路到这里）——与 {@code PopulationUnitTimeParticipant} / {@code PopulationEconomyTimeParticipant} 同款。
+   * ★★ <b>多切片提案</b>（2026-10-12 批次 3b-2）：sd 分量（effects）+ ga 分量（{@code Action.PutInfo} 写的 INFO
+   * 覆盖层）。{@link TimeParticipant} 的契约里，改多个模块的参与者实现本方法、**不**实现 {@code simulate}（后者的默认实现会抛，指路到这里） ——与
+   * {@code PopulationUnitTimeParticipant} / {@code PopulationEconomyTimeParticipant} 同款。
    */
   @Override
   public WorldTimeProposal simulateWorld(SimulationState state, TimeRange range) {
@@ -139,39 +143,31 @@ public final class SdTimeParticipant implements TimeParticipant {
                 "days",
                 days,
                 "effects",
-                base.effects().size(),
-                "combatStates",
-                base.combatStates().size()));
+                base.effects().size()));
     long firedEffects = 0L;
-    long advancedStages = 0L;
     long effectsEvaluated = 0L;
     long effectsStatusSkipped = 0L;
     long triggersFalse = 0L;
-    long stagesChecked = 0L;
-    long stageExitsFalse = 0L;
     RevisionId atRevision = state.meta().ref().revision();
     UnitState units = unitsOf(state);
     Set<String> reads = new LinkedHashSet<>();
     Set<String> writes = new LinkedHashSet<>();
 
     Map<EffectId, Effect> effects = new LinkedHashMap<>(base.effects());
-    Map<CombatStateId, CombatState> combatStates = new LinkedHashMap<>(base.combatStates());
     Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>(decisionTables.info(state));
 
-    // ★★ §十一（2026-09-25）：一次推进 N 天 ⇒ **从 from 逐日推到 to**——阶段链、AfterTicks/AtOrAfterTick、effect 触发
-    //   都按**日**推进。一次跳 100 天只按 to 求值，会把中间该发生的阶段转换/触发整段跳过（等价性当场破）。
-    //   ★ 每天用**该日开始时的状态快照**（effects/combatStates/info 已含前几天的累计结果）求值，与"N 次单日推进"
+    // ★★ §十一（2026-09-25）：一次推进 N 天 ⇒ **从 from 逐日推到 to**——AfterTicks/AtOrAfterTick、effect 触发
+    //   都按**日**推进。一次跳 100 天只按 to 求值，会把中间该发生的触发整段跳过（等价性当场破）。
+    //   ★ 每天用**该日开始时的状态快照**（effects/info 已含前几天的累计结果）求值，与"N 次单日推进"
     //     的逐步语义逐字一致——这就是等价性的根。
     for (long day = startDay + 1L; day <= endDay; day++) {
       SimosTimestamp at = SimosTimestamp.of(day);
-      // ★ 本批起 {@code info} 不在 sd 树里 ⇒ todayBegin 只带 sd 自己的两个组件；info 的累计仍在本方法内（第 3 个可变局部）。
-      SdState todayBegin = base.withEffects(effects).withCombatStates(combatStates);
+      // ★ {@code info} 不在 sd 树里 ⇒ todayBegin 只带 sd 自己的唯一组件；info 的累计仍在本方法内（第 2 个可变局部）。
+      SdState todayBegin = base.withEffects(effects);
       long firedToday = 0L;
       long evaluatedToday = 0L;
       long statusSkippedToday = 0L;
       long triggersFalseToday = 0L;
-      long stagesCheckedToday = 0L;
-      long stageExitsFalseToday = 0L;
 
       for (Effect effect : sortedEffects(todayBegin)) {
         if (effect.status() != EffectStatus.PLANNED && effect.status() != EffectStatus.COMMITTED) {
@@ -181,8 +177,7 @@ public final class SdTimeParticipant implements TimeParticipant {
         evaluatedToday++;
         reads.add(effectAddress(effect.id()));
         collectTriggerReads(effect.trigger(), reads);
-        if (!TriggerEvaluator.evaluate(
-            effect.trigger(), at, todayBegin, units, effect.createdTick())) {
+        if (!TriggerEvaluator.evaluate(effect.trigger(), at, units, effect.createdTick())) {
           triggersFalseToday++;
           continue;
         }
@@ -212,71 +207,12 @@ public final class SdTimeParticipant implements TimeParticipant {
                   effect.action().getClass().getSimpleName()));
         }
         writes.add(effectAddress(effect.id()));
-        applyAction(
-            effect.action(), atRevision, at.tick(), todayBegin, combatStates, info, reads, writes);
-      }
-
-      long advancedToday = 0L;
-      for (CombatState combatState : sortedStates(todayBegin)) {
-        Combat combat = base.combats().get(combatState.combatId());
-        CombatStage current = stageOf(combat, combatState.currentStage());
-        if (current == null || current.exit().isEmpty()) {
-          continue;
-        }
-        stagesCheckedToday++;
-        reads.add(stageAddress(combat.id(), current.id()));
-        for (Trigger condition : current.exit()) {
-          collectTriggerReads(condition, reads);
-        }
-        boolean satisfied = true;
-        for (Trigger condition : current.exit()) {
-          if (!TriggerEvaluator.evaluate(condition, at, todayBegin, units, 0L)) {
-            satisfied = false;
-            break;
-          }
-        }
-        if (!satisfied) {
-          stageExitsFalseToday++;
-          continue;
-        }
-        CombatStage next = nextStage(combat, current);
-        if (next == null) {
-          continue;
-        }
-        combatStates.put(
-            combatState.id(),
-            new CombatState(
-                combatState.id(),
-                combatState.combatId(),
-                next.id(),
-                combatState.hex(),
-                combatState.participants(),
-                combatState.selectedOutcome(),
-                combatState.losses()));
-        advancedStages++;
-        advancedToday++;
-        if (TRACE.isTraceEnabled()) {
-          TRACE.trace(
-              LogEvent.of(
-                  "SD_COMBAT_STAGE_ADVANCED",
-                  SdLogSource.SD_TICK,
-                  "day",
-                  day,
-                  "combat",
-                  combat.id().value(),
-                  "from",
-                  current.id().value(),
-                  "to",
-                  next.id().value()));
-        }
-        writes.add(stageAddress(combat.id(), next.id()));
+        applyAction(effect.action(), atRevision, at.tick(), info, writes);
       }
 
       effectsEvaluated += evaluatedToday;
       effectsStatusSkipped += statusSkippedToday;
       triggersFalse += triggersFalseToday;
-      stagesChecked += stagesCheckedToday;
-      stageExitsFalse += stageExitsFalseToday;
       if (TIME.isDebugEnabled()) {
         TIME.debug(
             LogEvent.of(
@@ -291,17 +227,11 @@ public final class SdTimeParticipant implements TimeParticipant {
                 "effectsStatusSkipped",
                 statusSkippedToday,
                 "triggersFalse",
-                triggersFalseToday,
-                "stagesChecked",
-                stagesCheckedToday,
-                "stagesAdvanced",
-                advancedToday,
-                "stageExitsFalse",
-                stageExitsFalseToday));
+                triggersFalseToday));
       }
     }
 
-    SdState target = base.withEffects(effects).withCombatStates(combatStates);
+    SdState target = base.withEffects(effects);
     EventLog.channel(SdLog.time())
         .info(
             LogEvent.of(
@@ -317,22 +247,14 @@ public final class SdTimeParticipant implements TimeParticipant {
                 days,
                 "firedEffects",
                 firedEffects,
-                "advancedStages",
-                advancedStages,
                 "effectsEvaluated",
                 effectsEvaluated,
                 "effectsStatusSkipped",
                 effectsStatusSkipped,
                 "triggersFalse",
                 triggersFalse,
-                "stagesChecked",
-                stagesChecked,
-                "stageExitsFalse",
-                stageExitsFalse,
                 "effects",
-                effects.size(),
-                "combatStates",
-                combatStates.size()));
+                effects.size()));
     SdChangeSet sdChangeSet = SdChangeSet.between(base, target);
     if (info.equals(decisionTables.info(state))) {
       // ★ 本次一天都没写 INFO ⇒ 单切片提案（形态与搬迁前逐字相同）：不让每次推进都给 ga 切片换一次坐标。
@@ -346,14 +268,19 @@ public final class SdTimeParticipant implements TimeParticipant {
     return new WorldTimeProposal(NAMESPACE, moduleChanges, reads, writes);
   }
 
+  /**
+   * 触发器的动作落地（★ 2026-10-12 批次 3d-2：由 switch 收成单支）。
+   *
+   * <p>原来还有 {@code Action.SetStage}（推进 sd 自己的 {@code combatStates}）与一条静默吞掉 {@code
+   * Action.RecordCasualties} 的 {@code default -> {}}；两者随旧战斗族退役。今天 {@link Action} 只剩 {@code PutInfo}
+   * 与 {@code EnqueueUnitCommand} 两档，后者由 app 层 {@code SdCommandDrain} 处理（本方法**有意**
+   * 不处理它——那是跨模块写，不是本参与者的活），故这里就是一支 + 一条明确的空分支。
+   */
   private void applyAction(
       Action action,
       RevisionId atRevision,
       long tick,
-      SdState base,
-      Map<CombatStateId, CombatState> combatStates,
       Map<String, List<SdInfoEntry>> info,
-      Set<String> reads,
       Set<String> writes) {
     switch (action) {
       case Action.PutInfo putInfo -> {
@@ -375,24 +302,9 @@ public final class SdTimeParticipant implements TimeParticipant {
         info.put(address, List.copyOf(entries));
         writes.add(infoAddress(putInfo.key()));
       }
-      case Action.SetStage setStage -> {
-        CombatState target = combatStates.get(setStage.combatState());
-        if (target != null && base.combats().containsKey(target.combatId())) {
-          reads.add(stageAddress(target.combatId(), target.currentStage()));
-          writes.add(stageAddress(target.combatId(), setStage.stage()));
-          combatStates.put(
-              target.id(),
-              new CombatState(
-                  target.id(),
-                  target.combatId(),
-                  setStage.stage(),
-                  target.hex(),
-                  target.participants(),
-                  target.selectedOutcome(),
-                  target.losses()));
-        }
-      }
-      default -> {}
+      // ★ 跨模块效果（Action.EnqueueUnitCommand）不在此落地：它由 app 层 SdCommandDrain 经 CoreSimos.submit
+      //   落成真 revision（spec §五.3，铁律 3）——这是既有分工，不是本批新加的分支。
+      case Action.EnqueueUnitCommand ignored -> {}
     }
   }
 
@@ -402,42 +314,12 @@ public final class SdTimeParticipant implements TimeParticipant {
     return out;
   }
 
-  private static List<CombatState> sortedStates(SdState base) {
-    List<CombatState> out = new ArrayList<>(base.combatStates().values());
-    out.sort((left, right) -> left.id().value().compareTo(right.id().value()));
-    return out;
-  }
-
-  private static CombatStage stageOf(Combat combat, CombatStageId stageId) {
-    if (combat == null) {
-      return null;
-    }
-    for (CombatStage stage : combat.stages()) {
-      if (stage.id().equals(stageId)) {
-        return stage;
-      }
-    }
-    return null;
-  }
-
-  private static CombatStage nextStage(Combat combat, CombatStage current) {
-    List<CombatStage> stages = combat.stages();
-    for (int i = 0; i + 1 < stages.size(); i++) {
-      if (stages.get(i).id().equals(current.id())) {
-        return stages.get(i + 1);
-      }
-    }
-    return null;
-  }
-
   private void collectTriggerReads(Trigger trigger, Set<String> reads) {
     switch (trigger) {
       case Trigger.UnitAtHex unitAtHex -> {
         reads.add("unit:" + unitAtHex.unit().value());
         reads.add(hexAddress(mapId, unitAtHex.hex()));
       }
-      case Trigger.OutcomeSelected outcomeSelected ->
-          reads.add(combatAddress(outcomeSelected.combat()));
       case Trigger.And and -> {
         for (Trigger child : and.all()) {
           collectTriggerReads(child, reads);
@@ -449,27 +331,13 @@ public final class SdTimeParticipant implements TimeParticipant {
         }
       }
       default -> {
-        // 时间/击杀阈值不引用实体
+        // 时间阈值（AtOrAfterTick / AfterTicks）不引用实体
       }
     }
   }
 
   private static String effectAddress(EffectId id) {
     return new Address(List.of(new Namespace(NAMESPACE), Entity.of("effect", id.value())))
-        .canonical();
-  }
-
-  private static String combatAddress(CombatId id) {
-    return new Address(List.of(new Namespace(NAMESPACE), Entity.of("combat", id.value())))
-        .canonical();
-  }
-
-  private static String stageAddress(CombatId combatId, CombatStageId stageId) {
-    return new Address(
-            List.of(
-                new Namespace(NAMESPACE),
-                Entity.of("combat", combatId.value()),
-                Entity.of("stage", stageId.value())))
         .canonical();
   }
 

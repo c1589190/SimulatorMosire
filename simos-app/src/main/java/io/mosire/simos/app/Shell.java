@@ -155,14 +155,9 @@ import io.mosire.simos.sd.channel.ChannelAdmission;
 import io.mosire.simos.sd.channel.DecisionChannel;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.resolve.SdResolver;
-import io.mosire.simos.sd.spi.AddStageHandler;
 import io.mosire.simos.sd.spi.CancelEffectHandler;
-import io.mosire.simos.sd.spi.CommitOutcomeHandler;
-import io.mosire.simos.sd.spi.CreateCombatHandler;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
-import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
 import io.mosire.simos.sd.spi.RegisterEffectHandler;
-import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
 import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
@@ -874,11 +869,6 @@ public final class Shell implements AutoCloseable {
                 //   旧档缺这两个组件 ⇒ 空表（见 SdState / SdChangeSet 的构造期兼容）。
                 new SetDiplomaticRelationHandler(),
                 new RecordDiplomaticEventHandler(),
-                new CreateCombatHandler(),
-                new AddStageHandler(),
-                new SetOutcomeTableHandler(),
-                new CommitOutcomeHandler(),
-                new RecordCasualtiesHandler(),
                 new CancelEffectHandler(),
                 new StartDecisionHandler(),
                 new RunDecisionHandler(),

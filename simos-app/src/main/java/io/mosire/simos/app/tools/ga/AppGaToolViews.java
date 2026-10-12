@@ -16,7 +16,7 @@ import java.util.Map;
  * 一条都不重拼、不改字段名、不改顺序。
  *
  * <p>★ <b>为什么视图不跟着工具进 ga</b>：这些视图函数与 GUI 端点**共用同一份**（形状只许有一处），而 {@code ApiViews} 会用 {@code
- * map}/{@code unit} 等 ga 看不见的切片（{@code combats} 同时读 sd 与 unit）⇒ 只能住 app。
+ * map}/{@code unit}/{@code gov} 等 ga 看不见的切片（{@code diplomaticEvents} 就读 gov 的事件表）⇒ 只能住 app。
  *
  * <p>★★ <b>2026-10-12 批次 3c：两条外交视图改"自己取 gov 切片 + 自己筛"</b>——外交三表与 {@code NationId} 搬进 {@code
  * simos-gov}，ga 看不见它们（enforcer 禁列）⇒ 接口只剩 {@code state + 不透明过滤串}，取表/筛序/排序都落在这里（app 同时看得见 gov 与
@@ -24,12 +24,6 @@ import java.util.Map;
  * 的循环（tick 命中 + participants 含该国家 + 保事件表插入序），而 {@code ApiViews.diplomaticEvents} 自己按 id 排序。
  */
 public final class AppGaToolViews implements GaToolViews {
-
-  @Override
-  public List<Map<String, Object>> combats(SimulationState state) {
-    return ApiViews.combats(
-        ApiViews.sdState(state), ApiViews.unitState(state), state.meta().timestamp());
-  }
 
   @Override
   public List<Map<String, Object>> diplomaticRelations(SimulationState state, String nation) {

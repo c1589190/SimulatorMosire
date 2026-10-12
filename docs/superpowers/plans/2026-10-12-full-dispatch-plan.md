@@ -604,3 +604,33 @@ army 做裁定方（`ArmyAffiliations` + `ArmyAffiliationPort` 端口在 army + 
 ### 20.2 ★ 代理自我更正（记功）
 它先前报的「资源面正名要动 `simos-ga-spi`」**是错的** —— 实际只需动 `simos-ga/src/main`（基类加一对 `ARMY_NAMESPACE_WRITE`
 与 `armyNamespaceWriteResources()`，形制与 army 自己的 `AbstractNarrowWriteTool` 逐字相同）。它**主动在台账里更正了自己**。
+
+---
+
+## §21 批次 3d-2 收工：旧战斗族退役 + 判决面重挂 + 补回 4/6（控制方追认 7 条 + 1 项裁决）
+
+**结果**：67 项（40 M / **27 D** / 0 新增）、+694/−3042、**零 pom / 零 worlds**。
+**退役（不是搬迁）**：sd 旧战斗族 27 文件 —— 5 个战斗 id + 10 个战斗模型 + 5 个 handler + `SdCombats` + ga 侧 6 个工具类。
+**`SdState` 4 → 1**（只剩 `effects`）。★ 这就是 **D-012 那句"清理另批"的落地**。
+**判决面重挂**：`Breakpoints.acceptsVerdictSubject` 改为**按断点分别判命名空间**（D1/D3/D6 → `army:combat.*`；**D2 仍 `sd:decision-maker.*`**）
+—— ★★ **代理逮到一个控制方也没预见到的陷阱**：旧代码是**同一个提前返回**，只把字面量 `"sd"` 换成 `"army"` 会**连 D2 一起打死**。
+★ `Breakpoints` **零 army import**（只比对 `Address.namespace()` 与根段 `kind()` 两个字符串）⇒ **未新增依赖边**。
+**补回 4 = `atRevision`**：`CombatRecord` 第 8 组件（记录级 —— 与 `ArmyChangeSet` 的"整条替换"粒度**逐字对齐**，避免"阶段戳 vs 记录戳谁说了算"的**第二处解释权**）；
+3 个 handler 各取 `state.meta().ref().revision()`；**3 条命令的线格式一字未变**（戳不进载荷）。
+**补回 6 = 三段地址**：`army:combat.<id>:stage.<sid>`（与 `combat(id)` **同源同 id 文本**）；可见性在**冒号处截断**按记录所在格判（否则 `CombatRecordId.parse("c-1:stage.s1")` 会失败 ⇒ 阶段恒不可见）；
+★ **第四段 `:outcome.<oid>` 有意不补**（用户已废第 5 项 ⇒ 补它等于**复活被废的那一档**）。
+**四档 Trigger/Action 退役**（逐档给了理由）；存活档语义一字未改。
+**权限四面**：catalog **143 → 138**（−5）· 可嵌令 **66（∅）** · 可入队 **66（∅）** · 落点 **2（∅）** —— **与预期逐值一致，无意外变化**。
+**门禁**：compile/spotless/spotbugs（17/17）/validate（×16）**全 rc=0**；`ArmyRoundTripTest` **12/12**；
+变异自证两版：A（给 `ArmyData` 加组件不改变更集）⇒ **红 2 条**；B（只动 `CombatRecord` 组件 = 本批真实改动面）⇒ **仍 12/12 绿**（= 本批该绿且确实绿，**不是漏网**）。
+
+### 21.1 控制方追认的 7 条偏离
+| # | 偏离 | 裁定 |
+|---|---|---|
+| D1 | 同批删 `/api/sd/combats` 端点 + 改 5 个前端文件（派单书未列） | ✅ **追认** —— 数据源已退役，端点留着就是死路由 |
+| D2 | 单位视图 `combat` 键删除（**键缺席，不是 null**） | ✅ **追认** |
+| D3 | `DecisionAdjudicationService` 缺 army 切片 ⇒ **空表**（不抛，fail-closed） | ✅ **追认** —— 与 3c/3d-1 的 deny-all 同向 |
+| D4 | `SdLogSource.SD_COMBAT` / `SdLog.combat()` **保留**（已无生产者） | ✅ **同意保留** —— 稳定 id 不悄悄改（本仓既定纪律）；**随 3e 收口** |
+| D5 | 两处 ga javadoc 例句 `sd:combat.c1` → `army:combat.c1` | ✅ **追认** |
+| D6 | 不补第四段 `:outcome.<oid>` | ✅ **追认** —— 见上文（复活被废档 = 违背用户裁定） |
+| D7 | 未实现"按 revision 自拟 id"的 army 工具（id 形态属**工具层**另批） | ✅ **追认** —— 域类型不替调用方定 id 形态 |

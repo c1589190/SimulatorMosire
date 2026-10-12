@@ -2,14 +2,16 @@ package io.mosire.simos.army;
 
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.util.state.RevisionId;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * 单 tick 单场交战的记录（阶段 D1 落地、阶段 D4 升级 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02）： {@code id / kind /
- * tick / hex / participants / text / stages}。
+ * 单 tick 单场交战的记录（阶段 D1 落地、阶段 D4 升级 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02；<b>2026-10-12 批次 3d-2
+ * 补 {@code atRevision}</b>）： {@code id / kind / tick / hex / participants / text / stages /
+ * atRevision}。
  *
  * <p>★★ <b>{@code kind} = 自定义交战状态（自由文本）</b>：D-009 明文"轰炸城池也是特殊的交战状态，记在 Unit 通用交战关系状态里，不要额外开攻城命令"——
  * 所以"轰城"只是 {@code kind="轰城"} 的一条普通交战记录，没有第二条攻城命令族。{@code text} 是记录级的自然语言概述；每个阶段的自然语言过程与 概率表在 {@link
@@ -24,9 +26,31 @@ import java.util.Set;
  *   <li>即"记录不可被一条新记录覆盖，但可被**具名的阶段命令**演进"——历史不丢，语义不含糊。要更正已写下的阶段内容，本阶段不提供改写命令（清理/修订另批）。
  * </ul>
  *
- * <p>★ <b>本类自身的不变量</b>（全部构造期判）：{@code id}/{@code hex} 非 null；{@code kind}/{@code text} 非空白；{@code
- * tick ≥ 0}；{@code participants} 非空、不重复；{@code stages} 非空、阶段 id 不重复。{@code outcomes} 的表内不变量、{@code
- * selectedOutcomeId} 的引用完整性都由 {@link CombatStage} 判（列表级不变量各自在拥有它的类型上）。
+ * <p>★★ <b>2026-10-12 批次 3d-2：新增 {@code atRevision}（"这批结果记在哪一次 revision 上"）</b>——用户点名的第 4 项工具
+ * 「{@code atRevision} 很有用，给 GM 开放」。语义照旧的 {@code sd.model.LossRecord.atRevision}（该族本批整族退役）：
+ * <b>本记录当前这一份内容是在哪一次 revision 上落盘的</b>。
+ *
+ * <ul>
+ *   <li><b>落点为什么在记录上、而不是在阶段上</b>：本仓的记录模型是"<b>整条替换</b>"——{@code AppendCombatStage} / {@code
+ *       ResolveCombatStage} 都产出一条同 id、新 stages 的记录，由 {@code ArmyChangeSet} 落成新 revision。 ⇒ 一条
+ *       {@code atRevision} 就精确回答"这条记录（含它此刻的全部阶段）属于哪一次 revision"，与 {@code ArmyChangeSet}
+ *       的粒度<b>逐字对齐</b>；若改成每阶段一个戳，就会出现"阶段戳与所属记录戳谁说了算"的第二处解释权。
+ *   <li><b>为什么必须由命令层写、不能由域层算</b>：域类型看不见世界坐标（{@code RevisionId} 在 {@code SimulationState.meta()}
+ *       里），故三条 handler 各自把 {@code state.meta().ref().revision()} 传进来（与 {@code ga.PutInfo} 记 {@code
+ *       atRevision} 同一条口径）。{@link #withAppendedStage} / {@link #withReplacedStage}
+ *       产出的新记录<b>继承</b>本字段，由 handler 再用 {@link #evolvedAt(RevisionId)} 盖上本次推进的 revision ⇒
+ *       "谁动的就记谁的那一次"，不会静默丢掉戳。
+ *   <li><b>幂等语义（与旧实现的差别，如实记）</b>：旧 {@code sd.RecordCasualties} 把 revision 编进<b>记录 id</b>（{@code
+ *       combatId + ":" + atRevision}）来取得"同一 revision 重复提交 ⇒ 撞同一个 id ⇒ 具名拒"的幂等。本模型<b>不</b>那样做 —— 记录
+ *       id 是调用方给的一次性身份（{@code army.RecordCombat} 的既有口径：同 id 具名拒），而 {@code atRevision}
+ *       是<b>读数</b>不是身份。两条幂等路径因此都成立且互不干扰：① 同 id 重复提交 ⇒ 具名拒（不留 revision）；② GM 工具若要 与旧行为逐字等价，可按 {@code
+ *       "<combatId>:<revision>"} 自拟 id（{@code CombatRecordId} 只校验非空白，不限制形态）⇒ 同一 revision 上重复提交仍撞同一个
+ *       id。★ 本类<b>不替调用方定 id 形态</b>（那是工具层的口径）。
+ * </ul>
+ *
+ * <p>★ <b>本类自身的不变量</b>（全部构造期判）：{@code id}/{@code hex}/{@code atRevision} 非 null；{@code kind}/{@code
+ * text} 非空白；{@code tick ≥ 0}；{@code participants} 非空、不重复；{@code stages} 非空、阶段 id 不重复。 {@code
+ * outcomes} 的表内不变量、{@code selectedOutcomeId} 的引用完整性都由 {@link CombatStage} 判（列表级不变量各自在拥有它的类型上）。
  *
  * <p>★ <b>"不得记在未来"是命令期判据</b>（要世界当前 tick，域类型看不见它，见 {@code RecordCombatHandler}）。
  *
@@ -37,7 +61,8 @@ import java.util.Set;
  * {@code Map.copyOf} /{@code Set.copyOf}**：迭代序不是内容的纯函数，字节级往返会漂。
  *
  * <p>★ <b>不背旧档</b>（D-011 / R4）：阶段 D1 的 {@code losses: Map<String,Long>}
- * 字段已删除，且没有兼容构造器——旧字节读不出就让它读不出（世界替换在 D6），不留"双轨"。
+ * 字段已删除，且没有兼容构造器——旧字节读不出就让它读不出（世界替换在 D6），不留"双轨"。★ {@code atRevision} 同款：它是本批<b>新增</b>的组件， 没有"缺省 =
+ * 空"的归一（{@code null} 当场抛），旧字节读不回来就重建（§一.11：Alpha 阶段不背旧档）。
  */
 public record CombatRecord(
     CombatRecordId id,
@@ -46,7 +71,8 @@ public record CombatRecord(
     HexCoord hex,
     List<UnitId> participants,
     String text,
-    List<CombatStage> stages) {
+    List<CombatStage> stages,
+    RevisionId atRevision) {
 
   public CombatRecord {
     if (id == null) {
@@ -63,6 +89,10 @@ public record CombatRecord(
     }
     if (text == null || text.isBlank()) {
       throw new IllegalArgumentException("text 不得为空白（交战过程/结局必须写出来）");
+    }
+    if (atRevision == null) {
+      throw new IllegalArgumentException(
+          "atRevision 不得为 null（本记录这一份内容是在哪一次 revision 上落盘的；命令层从 world meta 取）");
     }
     if (participants == null) {
       throw new IllegalArgumentException("participants 不得为 null");
@@ -98,7 +128,21 @@ public record CombatRecord(
     stages = List.copyOf(stages);
   }
 
-  /** 追加一个阶段：阶段 id 必须尚未出现（重复 ⇒ 具名拒，不静默覆盖历史阶段）。 */
+  /**
+   * 把 {@code atRevision} 盖上<b>新的</b> revision（记录演进命令用）：其余字段逐字不变，<b>包括阶段列表</b>。
+   *
+   * <p>★ 刻意做成"独立一步"而不是给 {@link #withAppendedStage} / {@link #withReplacedStage} 加参数：那两个方法的语义是"改阶段"，
+   * 它们的返回值<b>继承</b>原有的 {@code atRevision}（旧戳不会因为一次阶段操作而被抹成 null）；"这次落盘算哪一次 revision"由 handler
+   * 显式表达（{@code record.withAppendedStage(s).evolvedAt(at)}）。
+   */
+  public CombatRecord evolvedAt(RevisionId revision) {
+    if (revision == null) {
+      throw new IllegalArgumentException("revision 不得为 null");
+    }
+    return new CombatRecord(id, kind, tick, hex, participants, text, stages, revision);
+  }
+
+  /** 追加一个阶段：阶段 id 必须尚未出现（重复 ⇒ 具名拒，不静默覆盖历史阶段）。{@code atRevision} 继承（见 {@link #evolvedAt}）。 */
   public CombatRecord withAppendedStage(CombatStage stage) {
     if (stage == null) {
       throw new IllegalArgumentException("stage 不得为 null");
@@ -110,12 +154,12 @@ public record CombatRecord(
     }
     List<CombatStage> next = new ArrayList<>(stages);
     next.add(stage);
-    return new CombatRecord(id, kind, tick, hex, participants, text, next);
+    return new CombatRecord(id, kind, tick, hex, participants, text, next, atRevision);
   }
 
   /**
    * 用同 id 的新阶段**整条替换**（判定命令用）：阶段 id 必须已存在；这是"记录演进"的内部写口，只由 {@code army.ResolveCombatStage} 的
-   * handler 调用。
+   * handler 调用。{@code atRevision} 继承（见 {@link #evolvedAt}）。
    */
   public CombatRecord withReplacedStage(CombatStage stage) {
     if (stage == null) {
@@ -125,7 +169,7 @@ public record CombatRecord(
     for (int i = 0; i < next.size(); i++) {
       if (next.get(i).id().equals(stage.id())) {
         next.set(i, stage);
-        return new CombatRecord(id, kind, tick, hex, participants, text, next);
+        return new CombatRecord(id, kind, tick, hex, participants, text, next, atRevision);
       }
     }
     throw new IllegalArgumentException("阶段不存在: " + stage.id().value());

@@ -16,6 +16,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Objects;
@@ -56,6 +57,10 @@ import org.slf4j.Logger;
  * <p>★ <b>参与者不查存在性</b>：见 {@link CombatRecord} 的注（记录写的是历史，单位可能已被解散）。
  *
  * <p>★ <b>不背旧档</b>（D-011/R4）：旧 D1 载荷的 {@code losses:{自然语义键:数量}} 字段**显式拒**，不留兼容层、也不静默丢。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：本 handler 给记录盖上 {@code atRevision}</b>（用户点名的第 4 项工具，见 {@link
+ * CombatRecord} 的类注）：取 {@code state.meta().ref().revision()}——即"这条记录落在哪一次 revision 上"。它<b>不进载荷</b>
+ * （调用方给不了、也不该给：那是世界坐标，不是记录内容），故本命令的线格式<b>一字未变</b>。
  */
 public final class RecordCombatHandler implements CommandHandler {
 
@@ -182,8 +187,12 @@ public final class RecordCombatHandler implements CommandHandler {
                       INITIAL_STAGE_ID));
         }
       }
+      // ★ 2026-10-12 批次 3d-2：atRevision = 本记录这一份内容落盘的那一次 revision（用户点名的第 4 项工具）。
+      //   域类型看不见世界坐标 ⇒ 命令期从 state.meta() 取（与 ga.PutInfo 记 atRevision 同一条口径）。
+      RevisionId atRevision = state.meta().ref().revision();
       CombatRecord record =
-          new CombatRecord(id, kind, tick, hex, participants, text, List.of(initialStage));
+          new CombatRecord(
+              id, kind, tick, hex, participants, text, List.of(initialStage), atRevision);
       ArmyData next = snapshot.data().withCombat(record);
       EventLog.channel(LOG)
           .info(
@@ -201,7 +210,9 @@ public final class RecordCombatHandler implements CommandHandler {
                   "participants",
                   participants.size(),
                   "stages",
-                  record.stages().size()));
+                  record.stages().size(),
+                  "atRevision",
+                  atRevision.value()));
       ArmyCombatTrace.stage(id, initialStage);
       return new HandlerOutcome.Applied(ArmyChangeSet.between(snapshot.data(), next));
     } catch (IllegalArgumentException e) {

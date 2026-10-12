@@ -2,9 +2,6 @@ package io.mosire.simos.sd.model;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import io.mosire.simos.sd.id.CombatStageId;
-import io.mosire.simos.sd.id.CombatStateId;
-import io.mosire.simos.sd.id.LossRecordId;
 import io.mosire.simos.util.address.Address;
 
 /**
@@ -14,12 +11,27 @@ import io.mosire.simos.util.address.Address;
  * SdCommandDrain} 经 {@code CoreSimos.submit} 落成真 revision（spec §五.3，铁律 3）。
  *
  * <p>★ **sealed 多态**：裸往返不可能（同 {@code FieldDelta}）⇒ 类型信息以注解钉在类型上。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：两档战斗耦合的动作随旧战斗族退役（如实记）</b>：
+ *
+ * <ul>
+ *   <li>{@code SetStage(CombatStateId, CombatStageId)} —— 它引的 <b>两个 id 类型都是 sd 自己的战斗 id</b>，作用是推进
+ *       {@code SdState.combatStates} 里的当前阶段（{@code SdTimeParticipant} 的 {@code Action.SetStage}
+ *       支）；该表本批退役 ⇒ 编译期已不可能保留；
+ *   <li>{@code RecordCasualties(LossRecordId)} —— 引 sd 自己的 {@code LossRecord}。★ 它<b>早已是死路</b>：全仓
+ *       {@code src/main} 无生产者（没有任何命令/工具造出这个动作），而 {@code SdTimeParticipant.applyAction} 的 {@code
+ *       default -> {}} <b>静默忽略</b>它 ⇒ 就算写进 {@code sd.RegisterEffect} 也永不生效。本批与族一起删除，不再留这条静默失效的路。
+ * </ul>
+ *
+ * <p>★ <b>存活档（本批一个字未改语义）</b>：{@code PutInfo}（写 ga 的 INFO 覆盖层，经注入的 {@code DecisionTablesLookup}）与
+ * {@code EnqueueUnitCommand}（跨模块效果：交 app 层 drain 成真 revision）。
+ *
+ * <p>★ <b>线格式的后果（如实记）</b>：{@code @class} 里的 {@code set_stage} / {@code record_casualties} 两个取值不再被认领
+ * （Jackson 对未知子类型抛 ⇒ 该载荷在 {@code sd.RegisterEffect} 的命令期被<b>具名拒</b>）。
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "@class")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = Action.PutInfo.class, name = "put_info"),
-  @JsonSubTypes.Type(value = Action.SetStage.class, name = "set_stage"),
-  @JsonSubTypes.Type(value = Action.RecordCasualties.class, name = "record_casualties"),
   @JsonSubTypes.Type(value = Action.EnqueueUnitCommand.class, name = "enqueue_unit_command"),
 })
 public sealed interface Action {
@@ -36,29 +48,6 @@ public sealed interface Action {
       }
       if (value == null) {
         throw new IllegalArgumentException("value 不得为 null");
-      }
-    }
-  }
-
-  /** 推进某交战状态的当前阶段（N1）。 */
-  record SetStage(CombatStateId combatState, CombatStageId stage) implements Action {
-
-    public SetStage {
-      if (combatState == null) {
-        throw new IllegalArgumentException("combatState 不得为 null");
-      }
-      if (stage == null) {
-        throw new IllegalArgumentException("stage 不得为 null");
-      }
-    }
-  }
-
-  /** 记录一次战损（引 sd 自己的 {@code LossRecord}，N3）。 */
-  record RecordCasualties(LossRecordId lossRecord) implements Action {
-
-    public RecordCasualties {
-      if (lossRecord == null) {
-        throw new IllegalArgumentException("lossRecord 不得为 null");
       }
     }
   }

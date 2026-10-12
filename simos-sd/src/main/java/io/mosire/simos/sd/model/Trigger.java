@@ -3,8 +3,6 @@ package io.mosire.simos.sd.model;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.id.CombatId;
-import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.unit.UnitId;
 import java.util.List;
 
@@ -17,14 +15,30 @@ import java.util.List;
  * 判据一致）。 记台账。
  *
  * <p>★ **sealed 多态**：裸往返不可能（同 {@code FieldDelta}）⇒ 类型信息以注解钉在类型上。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：两档战斗耦合的触发条件随旧战斗族退役（如实记）</b>：
+ *
+ * <ul>
+ *   <li>{@code OutcomeSelected(CombatId, CombatOutcomeId)} —— 它引的 <b>两个 id 类型都是 sd 自己的战斗 id</b>，且判据
+ *       {@code CombatState.selectedOutcome}（旧战斗族的第二张表）。两者本批一起删除 ⇒ 该档<b>在编译期已不可能保留</b>；
+ *   <li>{@code ThresholdKills(int kills)} —— 数值本身不引任何战斗类型，但它的<b>求值读 {@code
+ *       SdState.lossRecords}</b>（旧战斗族的第三张 表：{@code TriggerEvaluator.cumulativeKills}
+ *       把全体损失记录里的人员损失绝对值求和）。该表退役 ⇒ 这个条件<b>没有事实来源</b>； 留着就只有两条路：① 让它读 army 的记录（新开 {@code sd → army}
+ *       边，enforcer 当场拒）；② 让它恒假（静默失效，比删更坏）。故一并退役。
+ * </ul>
+ *
+ * <p>★ <b>存活档（本批一个字未改语义）</b>：{@code AtOrAfterTick} / {@code AfterTicks} / {@code UnitAtHex} /
+ * {@code And} / {@code Or}。
+ *
+ * <p>★ <b>线格式的后果（如实记）</b>：{@code @class} 里的 {@code threshold_kills} / {@code outcome_selected}
+ * 两个取值不再被认领（Jackson 对未知子类型抛 ⇒ 该载荷在 {@code sd.RegisterEffect} 的命令期被<b>具名拒</b>，不是静默当假）。 这是 retired
+ * 能力的预期失败方向，不是兼容缺口（§一.11：Alpha 不背旧档）。
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "@class")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = Trigger.AtOrAfterTick.class, name = "at_or_after_tick"),
   @JsonSubTypes.Type(value = Trigger.AfterTicks.class, name = "after_ticks"),
   @JsonSubTypes.Type(value = Trigger.UnitAtHex.class, name = "unit_at_hex"),
-  @JsonSubTypes.Type(value = Trigger.ThresholdKills.class, name = "threshold_kills"),
-  @JsonSubTypes.Type(value = Trigger.OutcomeSelected.class, name = "outcome_selected"),
   @JsonSubTypes.Type(value = Trigger.And.class, name = "and"),
   @JsonSubTypes.Type(value = Trigger.Or.class, name = "or"),
 })
@@ -59,29 +73,6 @@ public sealed interface Trigger {
       }
       if (hex == null) {
         throw new IllegalArgumentException("hex 不得为 null");
-      }
-    }
-  }
-
-  /** 累计击杀达到阈值。 */
-  record ThresholdKills(int kills) implements Trigger {
-
-    public ThresholdKills {
-      if (kills < 1) {
-        throw new IllegalArgumentException("kills 必须 ≥ 1: " + kills);
-      }
-    }
-  }
-
-  /** 某交战的结局已被选定。 */
-  record OutcomeSelected(CombatId combat, CombatOutcomeId outcome) implements Trigger {
-
-    public OutcomeSelected {
-      if (combat == null) {
-        throw new IllegalArgumentException("combat 不得为 null");
-      }
-      if (outcome == null) {
-        throw new IllegalArgumentException("outcome 不得为 null");
       }
     }
   }

@@ -54,8 +54,11 @@ public final class AppUnitToolViews implements UnitToolViews {
   }
 
   /**
-   * 转调 {@code ToolSupport.unit(unit, units, at, map, sd, social, calendars)}——五个派生量（时刻 / map 切片 /
-   * sd 切片 / social 切片 / 历法）都从**同一次读数**的 {@code state} 取，与迁入前逐字同源。
+   * 转调 {@code ToolSupport.unit(unit, units, at, map, social, calendars)}——四个派生量（时刻 / map 切片 /
+   * social 切片 / 历法）都从**同一次读数**的 {@code state} 取，与迁入前逐字同源。
+   *
+   * <p>★ 2026-10-12 批次 3d-2：{@code ToolSupport.sdState(state)} 这个实参取下——它只喂单位视图的 {@code combat}
+   * 一栏，而那一栏随旧战斗族退役删除（见 {@code ApiViews.unit} 的类注）。
    */
   @Override
   public Map<String, Object> unit(Unit unit, UnitState units, SimulationState state) {
@@ -64,7 +67,6 @@ public final class AppUnitToolViews implements UnitToolViews {
         units,
         state.meta().timestamp(),
         ToolSupport.gameMap(state),
-        ToolSupport.sdState(state),
         ToolSupport.socialData(state),
         calendarService);
   }
@@ -80,7 +82,6 @@ public final class AppUnitToolViews implements UnitToolViews {
         units,
         state.meta().timestamp(),
         ToolSupport.gameMap(state),
-        ToolSupport.sdState(state),
         unitId -> ToolSupport.unitVisible(context, unitId),
         ToolSupport.socialData(state),
         calendarService);

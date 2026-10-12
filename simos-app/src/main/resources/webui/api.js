@@ -117,17 +117,11 @@
     return cachedGet("/units", target);
   }
 
-  // ★ 2026-09-24 交战：sd 的**真实交战记录**（把"哪格在交战"从纯推断升级为以记录为准）。
-  //   与 cachedUnits 同款：按 target 记忆化，同一 URL×target 只发一次。
-  //   ★ D2（2026-10-02 / D-012）：它不再是地图交战层的真值来源（改用下面的 cachedArmyCombats），
-  //   但 map.js 的**空回退**与 panels.js 的 hex 详情仍在用它 ⇒ 保留，不删。
-  function cachedCombats(target) {
-    return cachedGet("/sd/combats", target);
-  }
-
   // ★ D2（2026-10-02 / D-012）：Army 交战记录——地图交战层的**真值来源**（GET /api/army/combats）。
   //   服务端缺省只发**世界当前 tick**的记录（历史 tick 要显式传 tick，本函数不传 = 永远读当前 tick）。
-  //   与 cachedCombats / cachedUnits 同款：按 target 记忆化，同一 URL×target 只发一次。
+  //   与 cachedUnits 同款：按 target 记忆化，同一 URL×target 只发一次。
+  //   ★★ 2026-10-12 批次 3d-2：它现在是**唯一**的交战读口——旧的 cachedCombats（GET /api/sd/combats）随旧战斗族
+  //      退役整条删除（后端端点也已删除），故这里不再有"空回退"两路并存的形态。
   function cachedArmyCombats(target) {
     return cachedGet("/army/combats", target);
   }
@@ -282,18 +276,9 @@
     return getJson(withTarget("/unit/" + encodeURIComponent(id), target));
   }
 
-  /**
-   * 交战只读面（2026-09-24）：{combats:[{combatId,combatStateId,name,hex,currentStage,currentStageName,
-   * selectedOutcome,participants,participantsAtHex,participantCount,participantsAtHexCount}…]}（sd 的
-   * Combat/CombatState）。
-   *
-   * <p>★ D2（2026-10-02 / D-012）：它**不再是地图交战层的真值来源**（那已归 Army 记录的
-   * {@link cachedArmyCombats}）；map.js 只在 Army 为空时**回退**本读口（老世界兼容），panels.js 的 hex 详情仍用它。
-   * ★ 前端**不得**再从"同格 ≥2 支军队"自行推断当真值（那是兜底，只在没有记录时用）。
-   */
-  function combats(target) {
-    return getJson(withTarget("/sd/combats", target));
-  }
+  // ★★ 2026-10-12 批次 3d-2：combats(target)（GET /api/sd/combats）**整条删除**——旧战斗族（sd 的 Combat /
+  //   CombatState）整族退役，那个端点在后端也已删除（见 GuiServer 的类注）。交战记录的读口只剩
+  //   cachedArmyCombats(target)（GET /api/army/combats）。
 
   /** 决策人列表（T5，只读）：{decisionMakers:[…]}；可带 ?affiliation=nation:<id>|army:<id>。 */
   function decisionMakers(affiliation, target) {
@@ -565,8 +550,8 @@
     cachedEconomyOverview: cachedEconomyOverview,
     cachedMapOverview: cachedMapOverview,
     cachedUnits: cachedUnits,
-    cachedCombats: cachedCombats,
     // ★ D2（2026-10-02 / D-012）：Army 交战记录（地图交战层的真值来源；缺省 = 世界当前 tick）。
+    //   ★ 2026-10-12 批次 3d-2：唯一的交战读口（旧 cachedCombats 已随旧战斗族退役删除）。
     cachedArmyCombats: cachedArmyCombats,
     cachedDecisionMakers: cachedDecisionMakers,
     // ★ R2a：逐格经济读数（hex 详情面板的"经济"段）。

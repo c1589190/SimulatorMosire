@@ -2,14 +2,8 @@ package io.mosire.simos.sd.resolve;
 
 import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.SdLogSource;
-import io.mosire.simos.sd.id.CombatId;
-import io.mosire.simos.sd.id.CombatOutcomeId;
-import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
-import io.mosire.simos.sd.model.Combat;
-import io.mosire.simos.sd.model.CombatStage;
-import io.mosire.simos.sd.model.OutcomeOption;
 import io.mosire.simos.sd.spi.DecisionTablesLookup;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -34,10 +28,8 @@ import java.util.Optional;
 /**
  * {@code sd:} 命名空间的地址解析器（spec §二.2，N15）。
  *
- * <p>**canonical 形态**：{@code sd:combat.<id>} / {@code sd:combat.<id>:stage.<stageId>} / {@code
- * sd:combat.<id>:stage.<stageId>:outcome.<outcomeId>} / {@code sd:decision-maker.<id>} / {@code
- * sd:directive.<id>} / {@code sd:effect.<id>}。canonical 一律由 {@link Address} AST 构造后 {@link
- * Address#canonical()} 产出，**不手拼**。
+ * <p>**canonical 形态**：{@code sd:decision-maker.<id>} / {@code sd:directive.<id>} / {@code
+ * sd:effect.<id>}。 canonical 一律由 {@link Address} AST 构造后 {@link Address#canonical()} 产出，**不手拼**。
  *
  * <p>★★ <b>2026-10-12 批次 3c：{@code nation} 支<b>整支删除</b></b>（用户裁定：{@code sd:nation.<id>}
  * 地址族「<b>直接扔</b>」）—— {@code nations} 表随外交搬进 {@code simos-gov}，本解析器连它的存在性都判不了（{@code sd} 不得依赖 {@code
@@ -45,10 +37,17 @@ import java.util.Optional;
  * empty()}（<b>空候选</b>，不是抛：那是"这个地址不存在"，与"路径形状非法"同一档）； 国家身份的读面走 gov 自己的面。★ 这是规划 §4 批次 3
  * 列的<b>不可逆点</b>，用户已批。
  *
- * <p>★★ <b>2026-10-12 批次 3d-1：{@code army} 支<b>整支删除</b></b>（同款处置，本批逐字照抄 3c）—— {@code armies}
+ * <p>★★ <b>2026-10-12 批次 3d-1：{@code army} 支<b>整支删除</b></b>（同款处置，逐字照抄 3c）—— {@code armies}
  * 表与军队身份（{@code Army} / {@code ArmyId}）搬进 {@code simos-army}，而 {@code sd} 不得依赖 {@code army} ⇒ 同理落到
  * {@code default -> empty()}。军队身份的读面走 <b>army 自己的支</b>：{@code army:army.<id>} （见 {@link
  * io.mosire.simos.army.resolve.ArmyResolver}）。★ 这也是规划 §4 列的不可逆点，用户已批（「sd 整个弃用」）。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：{@code combat} 支<b>整支删除</b></b>（同款处置，旧战斗族<b>退役</b>而非搬迁）—— {@code
+ * combats} 表与 {@code Combat} / {@code CombatStage} / {@code CombatOutcome} 三个 id 类型随该族一起删除， 本解析器
+ * <b>连那些类型都不存在了</b>（编译期即不可能保留该支）。⇒ 今天 {@code sd:combat.<id>}（含旧的三段形态 {@code
+ * sd:combat.<id>:stage.<sid>} 与四段形态 {@code …:outcome.<oid>}）一律走 {@code default ->
+ * empty()}（<b>空候选</b>）。 交战的读面走 <b>army 自己的支</b>：{@code army:combat.<id>}（含 {@code
+ * army:combat.<id>:stage.<sid>}）。
  *
  * <p>★ **空候选与抛的分工**同 {@code MapResolver}/{@code UnitResolver}：合法但不服务/不存在的 ⇒ 空候选；抛只有一处—— 装配故障（缺 sd
  * 切片、或切片类型不对）。
@@ -64,8 +63,7 @@ import java.util.Optional;
  * ga、组合根 {@code Shell} 接线）。★ <b>地址族串一字不改</b> （{@code sd:directive.<id>} / {@code
  * sd:decision-maker.<id>} 仍是本解析器的 对外形态；地址族的裁量属批次 3e）——变的只是"表住哪个切片"。
  *
- * <p>★ 其余两支（{@code effect}/{@code combat}）仍读 sd 切片，一字未动（{@code effect} 随 3b-4、{@code combat} 随 3d-2
- * 再搬）。
+ * <p>★ 余下一支 {@code effect} 仍读 sd 切片，一字未动（随 3b-4 搬进 ga）。
  */
 public final class SdResolver implements Resolver {
 
@@ -131,13 +129,18 @@ public final class SdResolver implements Resolver {
         switch (root.kind().get()) {
           // ★ 2026-10-12 批次 3c：`nation` 支已整支删除（用户裁定「sd:nation.<id> 直接扔」）——
           //   nations 表搬进 simos-gov，本解析器判不了它的存在性（sd 不得依赖 gov）⇒ 落到 default -> empty()。
-          // ★★ 2026-10-12 批次 3d-1：`army` 支**同款整支删除**（用户裁定「sd 整个弃用！」；本批逐字照抄 3c 对
+          // ★★ 2026-10-12 批次 3d-1：`army` 支**同款整支删除**（用户裁定「sd 整个弃用！」；逐字照抄 3c 对
           //   sd:nation.<id> 的处置）——armies 表与军队身份（Army / ArmyId）搬进 simos-army，而 sd 不得依赖
           //   army ⇒ 判不了"这个军队存在吗"。⇒ 今天 `sd:army.<id>` 一律走 `default -> empty()`
           //   （**空候选**，不是抛：那是"这个地址不存在"，与"路径形状非法"同一档）。
           //   ★ 军队身份的读面改走 army 自己的解析器支：`army:army.<id>`
           //   （见 io.mosire.simos.army.resolve.ArmyResolver 与 ArmyAddresses.ARMY_KIND）。
           //   ★ 这是规划 §4 批次 3 列的**不可逆点**（地址族），用户已批。
+          // ★★ 2026-10-12 批次 3d-2：`combat` 支**同款整支删除**（旧战斗族**退役**：combats 表与
+          //   Combat/CombatStage/CombatOutcome 三个 id 类型一起删除 ⇒ 该支在编译期已不可能保留）。
+          //   ⇒ 今天 `sd:combat.<id>`（含旧三段 `:stage.<sid>` / 四段 `:outcome.<oid>`）一律走
+          //   `default -> empty()`。★ 交战的读面改走 army 自己的支：`army:combat.<id>`（含
+          //   `army:combat.<id>:stage.<sid>`，见 ArmyResolver）。
           case "decision-maker" ->
               rootOnly(
                   segments,
@@ -155,7 +158,6 @@ public final class SdResolver implements Resolver {
           case "effect" ->
               rootOnly(
                   segments, root, SdResolver::parseEffect, state.effects()::containsKey, "Effect");
-          case "combat" -> resolveCombat(state, segments, root.name());
           default -> empty();
         };
     if (result.candidates().isEmpty() && RESOLVE.isDebugEnabled()) {
@@ -173,47 +175,6 @@ public final class SdResolver implements Resolver {
               segments.size()));
     }
     return result;
-  }
-
-  private static QueryResult resolveCombat(
-      SdState state, List<AddressSegment> segments, String name) {
-    Optional<CombatId> combatId = parseCombat(name);
-    if (combatId.isEmpty()) {
-      return empty();
-    }
-    Combat combat = state.combats().get(combatId.get());
-    if (combat == null) {
-      return empty();
-    }
-    if (segments.size() == 2) {
-      return single("combat." + name, address("combat", name), "Combat");
-    }
-    if (segments.size() == 3 && isKind(segments.get(2), "stage")) {
-      String stageName = ((Entity) segments.get(2)).name();
-      CombatStage stage = stageOf(combat, stageName);
-      if (stage == null) {
-        return empty();
-      }
-      return single(
-          "combat." + name + ":stage." + stageName,
-          address("combat", name, "stage", stageName),
-          "CombatStage");
-    }
-    if (segments.size() == 4
-        && isKind(segments.get(2), "stage")
-        && isKind(segments.get(3), "outcome")) {
-      String stageName = ((Entity) segments.get(2)).name();
-      String outcomeName = ((Entity) segments.get(3)).name();
-      CombatStage stage = stageOf(combat, stageName);
-      if (stage == null || !hasOutcome(stage, outcomeName)) {
-        return empty();
-      }
-      return single(
-          "combat." + name + ":stage." + stageName + ":outcome." + outcomeName,
-          address("combat", name, "stage", stageName, "outcome", outcomeName),
-          "CombatOutcome");
-    }
-    return empty();
   }
 
   private static <T> QueryResult rootOnly(
@@ -245,52 +206,12 @@ public final class SdResolver implements Resolver {
     return safe(() -> EffectId.parse(text));
   }
 
-  private static Optional<CombatId> parseCombat(String text) {
-    return safe(() -> CombatId.parse(text));
-  }
-
   private static <T> Optional<T> safe(java.util.function.Supplier<T> supplier) {
     try {
       return Optional.of(supplier.get());
     } catch (IllegalArgumentException e) {
       return Optional.empty();
     }
-  }
-
-  private static boolean isKind(AddressSegment segment, String kind) {
-    return segment instanceof Entity entity
-        && entity.kind().isPresent()
-        && entity.kind().get().equals(kind);
-  }
-
-  private static CombatStage stageOf(Combat combat, String stageName) {
-    CombatStageId wanted;
-    try {
-      wanted = CombatStageId.parse(stageName);
-    } catch (IllegalArgumentException e) {
-      return null;
-    }
-    for (CombatStage stage : combat.stages()) {
-      if (stage.id().equals(wanted)) {
-        return stage;
-      }
-    }
-    return null;
-  }
-
-  private static boolean hasOutcome(CombatStage stage, String outcomeName) {
-    CombatOutcomeId wanted;
-    try {
-      wanted = CombatOutcomeId.parse(outcomeName);
-    } catch (IllegalArgumentException e) {
-      return false;
-    }
-    for (OutcomeOption option : stage.outcomes().options()) {
-      if (option.id().equals(wanted)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   private static QueryResult single(String localId, Address canonical, String typeName) {
@@ -302,26 +223,6 @@ public final class SdResolver implements Resolver {
 
   private static Address address(String kind, String name) {
     return new Address(List.of(new Namespace(NAMESPACE), Entity.of(kind, name)));
-  }
-
-  private static Address address(String kind, String name, String childKind, String childName) {
-    return new Address(
-        List.of(new Namespace(NAMESPACE), Entity.of(kind, name), Entity.of(childKind, childName)));
-  }
-
-  private static Address address(
-      String kind,
-      String name,
-      String childKind,
-      String childName,
-      String leafKind,
-      String leafName) {
-    return new Address(
-        List.of(
-            new Namespace(NAMESPACE),
-            Entity.of(kind, name),
-            Entity.of(childKind, childName),
-            Entity.of(leafKind, leafName)));
   }
 
   private static QueryResult empty() {

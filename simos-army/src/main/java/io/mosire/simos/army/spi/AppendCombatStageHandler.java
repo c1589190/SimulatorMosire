@@ -13,6 +13,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
 import org.slf4j.Logger;
@@ -37,6 +38,10 @@ import org.slf4j.Logger;
  *
  * <p>★ <b>不打 {@code DmUsableCommand}</b>：与 {@link RecordCombatHandler} 同一条边界——战果编排是 GM
  * 的活，决策人不得凭空追加交战阶段。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：本 handler 把记录的 {@code atRevision} 推到本次推进</b>（{@link
+ * CombatRecord#evolvedAt}）：记录演进落的是<b>新</b> revision，故戳必须跟着走，否则读侧会以为"这条记录还是老 revision 的"。 ★
+ * 本命令的线格式<b>一字未变</b>。
  */
 public final class AppendCombatStageHandler implements CommandHandler {
 
@@ -74,7 +79,10 @@ public final class AppendCombatStageHandler implements CommandHandler {
         return new HandlerOutcome.Rejected("交战记录不存在: " + combatId.value());
       }
       CombatStage stage = ArmyPayloads.requireStage(payload, "stage", record.participants());
-      CombatRecord next = record.withAppendedStage(stage);
+      // ★ 2026-10-12 批次 3d-2：先追加阶段（继承原 atRevision），再盖上本次推进的 revision —— 记录的
+      //   atRevision 恒等于"产出当前这份内容的那个 revision"，与 ArmyChangeSet 的粒度逐字对齐。
+      RevisionId atRevision = state.meta().ref().revision();
+      CombatRecord next = record.withAppendedStage(stage).evolvedAt(atRevision);
       ArmyData nextData = snapshot.data().withCombat(next);
       EventLog.channel(LOG)
           .info(
@@ -88,7 +96,9 @@ public final class AppendCombatStageHandler implements CommandHandler {
                   "outcomes",
                   stage.outcomes().size(),
                   "stages",
-                  next.stages().size()));
+                  next.stages().size(),
+                  "atRevision",
+                  atRevision.value()));
       ArmyCombatTrace.stage(combatId, stage);
       return new HandlerOutcome.Applied(ArmyChangeSet.between(snapshot.data(), nextData));
     } catch (IllegalArgumentException e) {

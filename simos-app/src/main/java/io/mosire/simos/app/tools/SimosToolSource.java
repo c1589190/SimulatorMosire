@@ -107,7 +107,6 @@ import io.mosire.simos.ga.tools.read.GmApprovalsTool;
 import io.mosire.simos.ga.tools.read.GmPacketTool;
 import io.mosire.simos.ga.tools.read.GmPacketsTool;
 import io.mosire.simos.ga.tools.read.GmToolUsageTool;
-import io.mosire.simos.ga.tools.read.SdCombatsTool;
 import io.mosire.simos.ga.tools.read.SdDiplomacyTool;
 import io.mosire.simos.ga.tools.read.SdDiplomaticEventsTool;
 import io.mosire.simos.ga.tools.read.SdDirectivesTool;
@@ -127,21 +126,16 @@ import io.mosire.simos.ga.tools.write.RejectDirectiveTool;
 import io.mosire.simos.ga.tools.write.ResetDecisionMakerConversationTool;
 import io.mosire.simos.ga.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.ga.tools.write.RunDecisionTool;
-import io.mosire.simos.ga.tools.write.SdAddCombatStageTool;
 import io.mosire.simos.ga.tools.write.SdCancelEffectTool;
-import io.mosire.simos.ga.tools.write.SdCommitCombatOutcomeTool;
 import io.mosire.simos.ga.tools.write.SdCreateArmyTool;
-import io.mosire.simos.ga.tools.write.SdCreateCombatTool;
 import io.mosire.simos.ga.tools.write.SdCreateDecisionMakerTool;
 import io.mosire.simos.ga.tools.write.SdCreateNationTool;
 import io.mosire.simos.ga.tools.write.SdPutInfoTool;
-import io.mosire.simos.ga.tools.write.SdRecordCasualtiesTool;
 import io.mosire.simos.ga.tools.write.SdRecordDiplomaticEventTool;
 import io.mosire.simos.ga.tools.write.SdRegisterEffectTool;
 import io.mosire.simos.ga.tools.write.SdSetArmyMasterGovTool;
 import io.mosire.simos.ga.tools.write.SdSetDecisionMakerProviderTool;
 import io.mosire.simos.ga.tools.write.SdSetDiplomaticRelationTool;
-import io.mosire.simos.ga.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.ga.tools.write.SetDecisionMakerAccessTool;
 import io.mosire.simos.ga.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.ga.tools.write.SimosSdReportTool;
@@ -883,11 +877,6 @@ public final class SimosToolSource implements ToolSource {
     //   决策人侧另有同名命令型的窄工具（见 addDecisionAgentWrites）。──
     built.add(new SdSetDiplomaticRelationTool(gaWrites, gaIdentity, mapId));
     built.add(new SdRecordDiplomaticEventTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdCreateCombatTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdAddCombatStageTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdSetStageOutcomeTableTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdCommitCombatOutcomeTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdRecordCasualtiesTool(gaWrites, gaIdentity, mapId));
     built.add(new SdRegisterEffectTool(gaWrites, gaIdentity, mapId));
     built.add(new SdCancelEffectTool(gaWrites, gaIdentity, mapId));
     built.add(new SdSetDecisionMakerProviderTool(gaWrites, gaIdentity, mapId));
@@ -1203,8 +1192,6 @@ public final class SimosToolSource implements ToolSource {
         //   与 decision-makers/decision-maker 同属"读别人的底牌" ⇒ 只给 GM 桶（GmOnlyRead）；视图直接复用
         //   ApiViews.directives，不另写一份。
         new SdDirectivesTool(gaQueries),
-        // ★ 工具面补齐（2026-09-25）：交战记录（世界状态 ⇒ 四桶共享，复用 ApiViews.combats）。
-        new SdCombatsTool(gaReads, gaViews),
         // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件（世界级自然语言文本 ⇒
         //   四桶共享读；不标 GmOnlyRead；**不做逐格视野过滤**、也绝不借它给中央 DM 地图/单位视野——D-002）。
         //   形状复用 ApiViews.diplomaticRelations / ApiViews.diplomaticEvents。

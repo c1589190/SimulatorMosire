@@ -16,20 +16,20 @@ import org.slf4j.LoggerFactory;
  *   <tr><th>取用方法</th><th>logger 名</th><th>记什么</th></tr>
  *   <tr><td>{@link #decision()}</td><td>{@code .decision}</td><td>决策通道/裁决/令/判决/决策人运行流</td></tr>
  *   <tr><td>{@link #nation()}</td><td>{@code .nation}</td><td>国家/军队/决策人生命周期（create/delete/seed）</td></tr>
- *   <tr><td>{@link #combat()}</td><td>{@code .combat}</td><td>交战记录/阶段/伤亡</td></tr>
+ *   <tr><td>{@link #combat()}</td><td>{@code .combat}</td><td>交战记录/阶段/伤亡（★ 2026-10-12 批次 3d-2 起<b>无调用方</b>，见下）</td></tr>
  *   <tr><td>{@link #diplomacy()}</td><td>{@code .diplomacy}</td><td>外交关系与外交事件</td></tr>
- *   <tr><td>{@link #time()}</td><td>{@code .time}</td><td>sd 时间推进（effect 触发、combat stage 推进）</td></tr>
+ *   <tr><td>{@link #time()}</td><td>{@code .time}</td><td>sd 时间推进（effect 触发）</td></tr>
  *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>SdCodec 编解码、旧形状迁移与变更集施加（只记元信息，不记 JSON 原文）</td></tr>
  *   <tr><td>{@link #resolve()}</td><td>{@code .resolve}</td><td>SdResolver 空候选与装配故障诊断（不逐次记成功查询）</td></tr>
- *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐条 effect/combat/令/判决明细</b></td></tr>
+ *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐条 effect/令/判决明细</b></td></tr>
  * </table>
  *
  * <p><b>级别约定</b>（消费者按级别裁剪）：
  *
  * <ul>
- *   <li><b>INFO</b>：生命周期事件（建国/建交战/出令/判决/裁决/外交落账）；
+ *   <li><b>INFO</b>：生命周期事件（建国/出令/判决/裁决/外交落账）；
  *   <li><b>DEBUG</b>：阶段池/触发原因/推进汇总；
- *   <li><b>TRACE</b>：逐条 effect、逐阶段、逐条令/判决明细。
+ *   <li><b>TRACE</b>：逐条 effect、逐条令/判决明细。
  * </ul>
  *
  * <p><b>打开方式</b>：应用配置（{@code simos-app/src/main/resources/log4j2.xml}）把 {@value #ROOT_LOGGER_NAME}
@@ -78,7 +78,14 @@ public final class SdLog {
     return NATION;
   }
 
-  /** 交战记录/阶段/伤亡。 */
+  /**
+   * 交战记录/阶段/伤亡。
+   *
+   * <p>★★ <b>2026-10-12 批次 3d-2 起无调用方（如实记）</b>：旧战斗族的五条命令整族退役（用户裁定「战斗模块，包括阶段之类的，归 Army 模块管」＋「sd
+   * 整个弃用！」），交战记录的日志面换成 {@code ArmyLog.combat()}（{@code army-combat}）。★ 门面方法
+   * <b>本批不删</b>：删它会连带改模块的日志来源表与 {@code log4j2.xml} 的既有分类说明，属"批次 3e（sd 空壳退役）连同 {@code
+   * SdLogSource.SD_COMBAT} 一起收口"的活；<b>本批只改注释，零行为</b>。
+   */
   public static Logger combat() {
     return COMBAT;
   }
@@ -88,7 +95,7 @@ public final class SdLog {
     return DIPLOMACY;
   }
 
-  /** sd 时间推进（effect 触发、combat stage 推进）。 */
+  /** sd 时间推进（effect 触发）。 */
   public static Logger time() {
     return TIME;
   }
@@ -103,7 +110,7 @@ public final class SdLog {
     return RESOLVE;
   }
 
-  /** <b>逐条 effect/combat/令/判决明细</b>。 */
+  /** <b>逐条 effect/令/判决明细</b>。 */
   public static Logger trace() {
     return TRACE;
   }

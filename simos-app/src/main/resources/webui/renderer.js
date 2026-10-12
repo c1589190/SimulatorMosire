@@ -137,7 +137,8 @@
     // ★ 2026-09-24 交战：交战格上的标记额外带 {combat:true, combatCount, combatRowSpacing}，
     //   并被 combatSlot 定位到格心左右两列（见 recomputeWorldPixels）。
     var markers = [];
-    // ★ 2026-09-24 交战：**真实记录的**交战格（`{"q_r": {…}}`，来自 `GET /api/sd/combats`）。
+    // ★ 2026-09-24 交战：**真实记录的**交战格（`{"q_r": {…}}`，来自 `GET /api/army/combats`；
+    //   ★ 2026-10-12 批次 3d-2 起旧 sd 读口已删）。
     //   这是判定"哪格在交战"的**真值来源**；旧的两条推断（同格多军队 / ENGAGED）在 combatHexes 里兜底。
     var realCombatHexes = {};
     var routes = []; // 在途路线（M7b T2）：{id,movement,path:[{q,r}…]}
@@ -610,7 +611,8 @@
     }
 
     /**
-     * ★ 2026-09-24 交战：装载 **真实交战记录**（`GET /api/sd/combats` 的 `combats` 数组），翻成
+     * ★ 2026-09-24 交战：装载 **真实交战记录**（`GET /api/army/combats` 的 `combats` 数组；★ 2026-10-12 批次 3d-2
+     * 起旧 sd 读口已删），翻成
      * `combatHexes` 的第二参 `{"q_r": {combatId,name,stage,stageName,outcome,participants}}`。
      *
      * <p>★ **记录在案的格必须画成交战格**（哪怕那格此刻一个单位标记都没有）——由 `combatHexes` 的第二参

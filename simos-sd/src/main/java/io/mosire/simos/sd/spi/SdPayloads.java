@@ -3,26 +3,17 @@ package io.mosire.simos.sd.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.sd.id.CombatOutcomeId;
-import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Action;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.CallStatus;
-import io.mosire.simos.sd.model.CasualtyDelta;
-import io.mosire.simos.sd.model.CasualtySpec;
-import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DisclosurePolicy;
 import io.mosire.simos.sd.model.EffectKind;
 import io.mosire.simos.sd.model.FormattedCall;
-import io.mosire.simos.sd.model.LossClass;
 import io.mosire.simos.sd.model.MergedEffect;
 import io.mosire.simos.sd.model.MergedEffectPlan;
-import io.mosire.simos.sd.model.OutcomeOption;
-import io.mosire.simos.sd.model.OutcomeTable;
 import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.unit.UnitId;
@@ -66,6 +57,14 @@ import org.slf4j.Logger;
  * logRejected} 的 logger 与 origin 由调用方给 ⇒ ga 侧自然走 {@code GaLog}）/ {@code requireAddress} / {@code
  * optionalAddress} / {@code optionalTextSet} / {@code optionalDirectiveCommands}。★ 本类随 {@code
  * simos-sd} 在批次 3e 退役。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：本类删掉 8 个只服务旧战斗族的解析器（如实记）</b>——{@code requireHex} / {@code
+ * optionalUnitIdSet} / {@code optionalTriggers} / {@code requireStage} / {@code
+ * requireOutcomeTable} / {@code optionalCasualtySpec} / {@code requireDeltas} / {@code
+ * requireLossClass}，以及随之失去唯一调用者的 {@code optionalInt} / {@code optionalIntMap} / {@code
+ * optionalStageId}（<b>不是</b>搬去 army：army 有自己的 {@code ArmyPayloads}，同族方法名在那里另有实现 ⇒
+ * 抄一份过来才是"同一形状两处拼写"）。 这 11 个方法全仓 {@code src/main} 的调用者<b>只有</b> 那 5 个已删除的 handler ⇒ 删除后无第二读者。★
+ * 载荷形状的<b>存活面</b>（{@code trigger} / {@code action} / 决策人与 决策包各族）一字未改。
  */
 public final class SdPayloads {
 
@@ -314,120 +313,6 @@ public final class SdPayloads {
     };
   }
 
-  static HexCoord requireHex(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull() || !value.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是 {\"q\":…,\"r\":…} 对象: " + payload);
-    }
-    int q = requireInt(value, "q");
-    int r = requireInt(value, "r");
-    return new HexCoord(q, r);
-  }
-
-  static Set<UnitId> optionalUnitIdSet(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull()) {
-      return Set.of();
-    }
-    if (!value.isArray()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
-    }
-    Set<UnitId> out = new LinkedHashSet<>();
-    for (JsonNode element : value) {
-      if (!element.isTextual() || element.asText().isBlank()) {
-        throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
-      }
-      out.add(UnitId.parse(element.asText()));
-    }
-    return out;
-  }
-
-  static List<Trigger> optionalTriggers(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull()) {
-      return List.of();
-    }
-    if (!value.isArray()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是条件数组: " + payload);
-    }
-    List<Trigger> out = new ArrayList<>();
-    for (JsonNode element : value) {
-      out.add(MAPPER.convertValue(element, Trigger.class));
-    }
-    return List.copyOf(out);
-  }
-
-  static CombatStage requireStage(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull() || !value.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是阶段对象: " + payload);
-    }
-    CombatStageId id = CombatStageId.parse(requireText(value, "stageId"));
-    String name = requireText(value, "name");
-    Set<UnitId> participants = optionalUnitIdSet(value, "participants");
-    List<Trigger> entry = optionalTriggers(value, "entry");
-    List<Trigger> exit = optionalTriggers(value, "exit");
-    long min = optionalLong(value, "minDurationTicks", 0L);
-    long max = optionalLong(value, "maxDurationTicks", min);
-    OutcomeTable outcomes = requireOutcomeTable(value, "outcomes");
-    return new CombatStage(id, name, participants, entry, exit, min, max, outcomes);
-  }
-
-  static OutcomeTable requireOutcomeTable(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull() || !value.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是 {\"options\":[…]}: " + payload);
-    }
-    JsonNode options = value.get("options");
-    if (options == null || !options.isArray() || options.isEmpty()) {
-      throw new IllegalArgumentException("outcomeTable.options 不得为空（N2）: " + value);
-    }
-    List<OutcomeOption> parsed = new ArrayList<>();
-    for (JsonNode option : options) {
-      CombatOutcomeId id = CombatOutcomeId.parse(requireText(option, "id"));
-      String label = requireText(option, "label");
-      int weight = requireInt(option, "weight");
-      CasualtySpec casualties = optionalCasualtySpec(option, "casualties");
-      parsed.add(new OutcomeOption(id, label, weight, casualties));
-    }
-    return new OutcomeTable(parsed);
-  }
-
-  private static CasualtySpec optionalCasualtySpec(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull()) {
-      return new CasualtySpec(0, Map.of());
-    }
-    int personnel = optionalInt(value, "personnel", 0);
-    Map<String, Integer> equipment = optionalIntMap(value, "equipment");
-    return new CasualtySpec(personnel, equipment);
-  }
-
-  static List<CasualtyDelta> requireDeltas(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull() || !value.isArray() || value.isEmpty()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是非空数组: " + payload);
-    }
-    List<CasualtyDelta> out = new ArrayList<>();
-    for (JsonNode delta : value) {
-      UnitId unit = UnitId.parse(requireText(delta, "unit"));
-      int personnel = optionalInt(delta, "personnel", 0);
-      Map<String, Integer> equipment = optionalIntMap(delta, "equipment");
-      LossClass lossClass = requireLossClass(delta, "lossClass");
-      out.add(new CasualtyDelta(unit, personnel, equipment, lossClass));
-    }
-    return List.copyOf(out);
-  }
-
-  static LossClass requireLossClass(JsonNode payload, String field) {
-    String text = requireText(payload, field);
-    try {
-      return LossClass.valueOf(text);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("lossClass 非法（PERMANENT|RECOVERABLE）: " + text);
-    }
-  }
-
   static EffectKind requireEffectKind(JsonNode payload, String field) {
     String text = requireText(payload, field);
     try {
@@ -462,41 +347,6 @@ public final class SdPayloads {
       throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
     }
     return value.asLong();
-  }
-
-  static int optionalInt(JsonNode payload, String field, int fallback) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull()) {
-      return fallback;
-    }
-    if (!value.isIntegralNumber() || !value.canConvertToInt()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
-    }
-    return value.asInt();
-  }
-
-  static Map<String, Integer> optionalIntMap(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || value.isNull()) {
-      return Map.of();
-    }
-    if (!value.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是 {\"键\":整数} 对象: " + payload);
-    }
-    Map<String, Integer> out = new LinkedHashMap<>();
-    var fields = value.fields();
-    while (fields.hasNext()) {
-      var entry = fields.next();
-      if (!entry.getValue().isIntegralNumber() || !entry.getValue().canConvertToInt()) {
-        throw new IllegalArgumentException("字段 " + field + " 的值必须是整数: " + entry.getKey());
-      }
-      out.put(entry.getKey(), entry.getValue().asInt());
-    }
-    return out;
-  }
-
-  static Optional<CombatStageId> optionalStageId(JsonNode payload, String field) {
-    return optionalText(payload, field).map(CombatStageId::parse);
   }
 
   /**

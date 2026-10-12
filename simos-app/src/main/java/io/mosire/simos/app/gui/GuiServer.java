@@ -251,16 +251,16 @@ public final class GuiServer implements AutoCloseable {
   private static final String DECISION_DOCS_PATH = "/api/sd/decision-docs";
 
   /**
-   * **交战只读面**（2026-09-24，用户点名的改法）：{@code GET /api/sd/combats}——把 sd 里**真实记录在案**的交战 （{@code Combat}
-   * / {@code CombatState}：交战 id、名称、hex、当前阶段、已选结局、参与单位）发给前端。
+   * ★★ <b>2026-10-12 批次 3d-2：{@code GET /api/sd/combats} <b>整条删除</b>（如实记）</b>——旧战斗族（sd 的 {@code
+   * Combat} / {@code CombatState} 两张表 + 5 条命令 + 全部战斗模型类型）整族<b>退役</b>（用户裁定「战斗模块，包括阶段之类的，归 Army
+   * 模块管」＋「sd 整个弃用！」）⇒ 本端点<b>没有数据源</b>，留着就是一条永远空响的路由。
    *
-   * <p>★★ **它补的是哪一处空白**：GUI 此前的"交战"是**纯推断**出来的（同格 ≥2 个 rootId，或任一单位 {@code
-   * ENGAGED}）——真实交战记录一个字都没用。于是"记录在案、但那格此刻一个单位标记都没有"的交战**在图上根本看不见**，
-   * 且"交战双方不同格"（引擎**允许**的语义）在界面上无法表达。本端点把真值交出来，让前端能以记录为准、旧推断降为兜底。
+   * <p>★ <b>它原来补的空白由谁接</b>：D-012 起地图交战层的真值来源已经是 {@link #ARMY_COMBATS_PATH}（{@code GET
+   * /api/army/combats}，读 {@code ArmyData.combats}）；前端 {@code map.js} 早在 D2 就把 army 记录当真值、旧 sd
+   * 列表只作兜底 ⇒ 删掉的是那条兜底路（本批同批改前端，见 {@code webui/api.js} / {@code map.js} / {@code panels.js}）。
    *
-   * <p>★ 与 {@code /api/sd/directives} 同款拒 {@code as=}（配置/审计面，不接视角 redaction ⇒ fail-closed）。
+   * <p>★ 与 {@code /api/sd/directives} 同款拒 {@code as=} 的口径<b>不变</b>，只是少了一条路由。
    */
-  private static final String COMBATS_PATH = "/api/sd/combats";
 
   /**
    * **军队交战只读面**（阶段 D2 / 用户设计 D-012，2026-10-02）：{@code GET /api/army/combats}——把 Army 切片里
@@ -274,7 +274,8 @@ public final class GuiServer implements AutoCloseable {
    * simos.army.combat} 同一份形状，本层不另拼字段清单）。纯只读（不经 {@code CoreSimos}、不写盘）；无记录 ⇒ {@code 200
    * {"combats":[]}}（不是 404/500）。
    *
-   * <p>★ 与 {@code /api/sd/combats} 同款拒 {@code as=}（未接视角 redaction ⇒ fail-closed，不静默给全量）。
+   * <p>★ 与 {@code /api/sd/directives} 同款拒 {@code as=}（未接视角 redaction ⇒ fail-closed，不静默给全量）。★
+   * 2026-10-12 批次 3d-2：旧的 {@code /api/sd/combats} 已随旧战斗族退役删除 ⇒ 本端点是交战记录在 GUI 侧的唯一读口。
    */
   private static final String ARMY_COMBATS_PATH = "/api/army/combats";
 
@@ -327,8 +328,8 @@ public final class GuiServer implements AutoCloseable {
           "/api/sd/decision-makers",
           "/api/sd/directives",
           "/api/sd/verdicts",
-          COMBATS_PATH,
           // ★ D2（2026-10-02）：Army 交战记录只读面（地图交战层的真值来源；缺省 tick = 世界当前 tick）。
+          //   ★ 2026-10-12 批次 3d-2：它现在是交战记录**唯一**的 GUI 读口——旧的 /api/sd/combats 随旧战斗族退役删除。
           ARMY_COMBATS_PATH,
           DECISION_RESULTS_PATH,
           DECISION_DOCS_PATH,
@@ -825,7 +826,6 @@ public final class GuiServer implements AutoCloseable {
                   units,
                   state.meta().timestamp(),
                   ApiViews.gameMap(state),
-                  ApiViews.sdState(state),
                   calendarService,
                   lookup,
                   lookup)));
@@ -891,12 +891,9 @@ public final class GuiServer implements AutoCloseable {
       rejectAs(path, asPresent);
       return directivesReply(params);
     }
-    if (path.equals(COMBATS_PATH)) {
-      rejectAs(path, asPresent);
-      return combatsReply(params);
-    }
     if (path.equals(ARMY_COMBATS_PATH)) {
-      // ★ D2：军队交战记录只读面——与 /api/sd/combats 同款：未接 redaction ⇒ 带 as= 显式拒绝（fail-closed）。
+      // ★ D2：军队交战记录只读面——未接 redaction ⇒ 带 as= 显式拒绝（fail-closed）。★ 2026-10-12 批次 3d-2 起
+      //   它也是交战记录**唯一**的 GUI 读口（旧的 /api/sd/combats 随旧战斗族退役删除）。
       rejectAs(path, asPresent);
       return armyCombatsReply(params);
     }
@@ -1310,7 +1307,6 @@ public final class GuiServer implements AutoCloseable {
                 units,
                 state.meta().timestamp(),
                 ApiViews.gameMap(state),
-                ApiViews.sdState(state),
                 calendarService,
                 // ★★ S3a：unit 详情附 households[] 与实时人口（同一份 SocialLookupAdapter 同时喂两个只读 SPI）。
                 householdLookup,
@@ -1389,21 +1385,8 @@ public final class GuiServer implements AutoCloseable {
         .orElseGet(() -> Reply.of(404, Map.of("error", "decision maker not found", "id", raw)));
   }
 
-  /**
-   * **交战只读面**：{@code GET /api/sd/combats}。响应形状 {@code {"combats":[{combatId,combatStateId,name,hex,
-   * currentStage,currentStageName,selectedOutcome,participants,participantsAtHex,participantCount,
-   * participantsAtHexCount}…]}}。
-   *
-   * <p>★ **纯只读**（不经 {@code CoreSimos}、不写盘）；空库 ⇒ {@code 200 {"combats":[]}}（不是 404/500）。参与单位
-   * "真的在交战格"由 {@link ApiViews#combats} 用 {@code effectivePosition} 现算，本层只装配。
-   */
-  private Reply combatsReply(Map<String, String> params) {
-    SimulationState state = queryService.stateAt(target(params));
-    List<Map<String, Object>> views =
-        ApiViews.combats(
-            ApiViews.sdState(state), ApiViews.unitState(state), state.meta().timestamp());
-    return Reply.of(200, Map.of("combats", views));
-  }
+  // ★★ 2026-10-12 批次 3d-2：combatsReply(…) 与 COMBATS_PATH 随旧战斗族退役整条删除（见上）。
+  //   交战记录的 GUI 读口 = armyCombatsReply(…)（GET /api/army/combats）。
 
   /**
    * **军队交战只读面**（阶段 D2 / 用户设计 D-012，阶段 D4 补字段）：{@code GET
@@ -1417,8 +1400,9 @@ public final class GuiServer implements AutoCloseable {
    * <p>★ {@code q}/{@code r} 可选过滤、必须成对给（半给 ⇒ 400，不静默当"没给"）——与 {@code simos.army.combats}
    * 同一口径。过滤后按记录 id **字典序**发出（记录表是插入序；不排序则响应字节不可复现，与读工具同款）。
    *
-   * <p>★ <b>可见性</b>：与 {@code /api/sd/combats} 同款——本端点未接视角 redaction，带 {@code as=} 时由路由层 {@link
-   * #rejectAs} **显式拒绝**（fail-closed，不静默给全量）；不带 {@code as=} 的是 GM 全量面。
+   * <p>★ <b>可见性</b>：与 {@code /api/sd/directives} 同款——本端点未接视角 redaction，带 {@code as=} 时由路由层 {@link
+   * #rejectAs} **显式拒绝**（fail-closed，不静默给全量）；不带 {@code as=} 的是 GM 全量面。★ 2026-10-12 批次 3d-2 起它是交战记录在
+   * GUI 侧的**唯一**读口（旧的 {@code /api/sd/combats} 随旧战斗族退役删除）。
    */
   private Reply armyCombatsReply(Map<String, String> params) {
     Long requestedTick = optionalLongParam(params, "tick");

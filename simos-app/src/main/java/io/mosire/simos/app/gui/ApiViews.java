@@ -110,15 +110,9 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
-import io.mosire.simos.sd.id.CombatOutcomeId;
-import io.mosire.simos.sd.id.CombatStageId;
-import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AccessLimit;
-import io.mosire.simos.sd.model.Combat;
-import io.mosire.simos.sd.model.CombatStage;
-import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
@@ -5039,10 +5033,10 @@ public final class ApiViews {
     return view;
   }
 
-  /** 单位列表（每个单位带 head 时刻的有效位置与在途移动视图；★ 2026-09-24 起带所属交战）。 */
+  /** 单位列表（每个单位带 head 时刻的有效位置与在途移动视图）。 */
   static List<Map<String, Object>> units(
-      UnitState units, SimosTimestamp at, GameMap map, SdState sd, CalendarService calendars) {
-    return units(units, at, map, sd, calendars, null, null);
+      UnitState units, SimosTimestamp at, GameMap map, CalendarService calendars) {
+    return units(units, at, map, calendars, null, null);
   }
 
   /** S3a：单位清单的每条视图同样带 {@code households[]} 与实时 {@code population}（与 {@link #unit} 的 8 参形态同源）。 */
@@ -5050,13 +5044,12 @@ public final class ApiViews {
       UnitState units,
       SimosTimestamp at,
       GameMap map,
-      SdState sd,
       CalendarService calendars,
       PopulationLookup population,
       HouseholdLookup householdLookup) {
     List<Map<String, Object>> out = new ArrayList<>(units.units().size());
     for (Unit unit : units.units().values()) {
-      out.add(unit(unit, units, at, map, sd, calendars, population, householdLookup));
+      out.add(unit(unit, units, at, map, calendars, population, householdLookup));
     }
     return out;
   }
@@ -5064,19 +5057,20 @@ public final class ApiViews {
   /**
    * 旧签名兼容（测试/旧路径）：缺省历法配置；生产路径由 {@code GuiServer}/{@code ToolSupport} 传世界的 {@link CalendarService}。
    */
-  static List<Map<String, Object>> units(
-      UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
-    return units(units, at, map, sd, CalendarService.defaults());
+  static List<Map<String, Object>> units(UnitState units, SimosTimestamp at, GameMap map) {
+    return units(units, at, map, CalendarService.defaults());
   }
 
   /**
-   * 单位详情：冻结字段 + {@code parent}（head 时刻）+ **位置**（head 时刻）+ **在途移动视图** + **编制视图**（v2）+
-   * **所属交战**（2026-09-24，无 ⇒ {@code null}）。
+   * 单位详情：冻结字段 + {@code parent}（head 时刻）+ **位置**（head 时刻）+ **在途移动视图** + **编制视图**（v2）。
    *
    * <p>★★ **两边共用这一份**（AGENT.md §8.3 的纪律）：MCP 读工具（{@code simos.unit.list} / {@code simos.unit.get}）
    * 经 {@code ToolSupport.unit} 直接调本方法 ⇒ 新字段**一处加、两面同形**（原先两处各写一份，加字段就得记得改两处）。
    *
-   * <p>★ {@code combat} 是**真实交战记录**（不是 GUI 现推的"同格多军队"）：见 {@link #combatOf}。
+   * <p>★★ <b>2026-10-12 批次 3d-2：{@code combat} 一栏删除（如实记）</b>——它原来发"该单位所属的真实交战"（真相源 = 旧 sd 的 {@code
+   * CombatState}，见已删的 {@code combatOf}）。旧战斗族整族退役 ⇒ 该键<b>删除</b>（<b>不是</b>恒 {@code null}：留一条 恒 null
+   * 的键会让读侧以为"这个单位不参加任何交战"）。交战记录的读面在 army 自己的面（{@code /api/army/combats} 与 {@code simos.army.combat}
+   * / {@code simos.army.combats}），单位侧的状态↔描述地址链接仍由 {@code stateDescriptions} 承载（D-012）。
    *
    * <p>★★ <b>P4 只读 additive（2026-10-01）</b>：{@code unit.module()} 存在 ⇒ 追加 {@code module}（{@code
    * kind} + gov 的 {@code level/superiorGov/staff/policy} 或 army 的 {@code masterGov/role}）；{@code
@@ -5089,13 +5083,8 @@ public final class ApiViews {
    * 读侧不必分"字段缺席"与"空表"两态。
    */
   public static Map<String, Object> unit(
-      Unit unit,
-      UnitState units,
-      SimosTimestamp at,
-      GameMap map,
-      SdState sd,
-      CalendarService calendars) {
-    return unit(unit, units, at, map, sd, calendars, null, null);
+      Unit unit, UnitState units, SimosTimestamp at, GameMap map, CalendarService calendars) {
+    return unit(unit, units, at, map, calendars, null, null);
   }
 
   /**
@@ -5116,7 +5105,6 @@ public final class ApiViews {
       UnitState units,
       SimosTimestamp at,
       GameMap map,
-      SdState sd,
       CalendarService calendars,
       PopulationLookup population,
       HouseholdLookup householdLookup) {
@@ -5139,8 +5127,9 @@ public final class ApiViews {
     view.put(
         "position", units.effectivePosition(unit.id(), at).map(ApiViews::hexCoord).orElse(null));
     view.put("movement", movement(unit, at, map, calendars));
-    // ★ 所属交战（2026-09-24）：真实 {@code CombatState} 记录优先；不在任何交战 ⇒ null。
-    view.put("combat", combatOf(unit.id(), sd, units, at));
+    // ★★ 2026-10-12 批次 3d-2：原来这里发 `combat`（所属交战，真相源 = 旧 sd 的 CombatState）。旧战斗族整族退役
+    //   ⇒ 这一栏**删除**（不是改成 null：留着一条恒 null 的键会让读侧以为"这个单位不参加任何交战"）。
+    //   交战记录的读面在 army 自己的面（`/api/army/combats` 与 `simos.army.combat(s)`）。
     // ★★ 编制 v2（2026-09-24）：`attached` = 我是不是跟别人一起走；`formationRootId` = 该对谁下令；
     //   `formationSize` / `formationSpeed` = **这一支**（从顶层算）多大、一起走多快（= 支内 `effectiveSpeed`
     // 最小值，含状态折算）。
@@ -5197,10 +5186,13 @@ public final class ApiViews {
 
   /**
    * 旧签名兼容（测试/旧路径）：缺省历法配置；生产路径由 {@code GuiServer}/{@code ToolSupport} 传世界的 {@link CalendarService}。
+   *
+   * <p>★ 2026-10-12 批次 3d-2：签名里的 {@code SdState sd} 随旧战斗族退役而<b>取下</b>（它唯一的用途是装配单位视图的 {@code combat}
+   * 一栏，而那一栏的真相源是旧 sd 的 {@code CombatState}）。本重载的形参由 5 个收成 4 个。
    */
   public static Map<String, Object> unit(
-      Unit unit, UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
-    return unit(unit, units, at, map, sd, CalendarService.defaults());
+      Unit unit, UnitState units, SimosTimestamp at, GameMap map) {
+    return unit(unit, units, at, map, CalendarService.defaults());
   }
 
   /** 人力/装备有序表 → JSON 视图（{@code [{type,amount}…]}，顺序原样；D3a 的读侧唯一形状）。 */
@@ -5312,29 +5304,6 @@ public final class ApiViews {
   }
 
   /**
-   * 交战清单（GUI / MCP 的「真实交战记录」读口，2026-09-24）：每条 = 一个 {@link CombatState} + 它的 {@link Combat} 汇总。
-   *
-   * <p>字段：{@code combatId} / {@code combatStateId} / {@code name} / {@code hex} / {@code
-   * currentStage} （阶段 id）/ {@code currentStageName} / {@code selectedOutcome}（未选 ⇒ {@code null}）/
-   * {@code participants}（阶段参与 ∪ 交战汇总，字典序）/ {@code participantsAtHex}（**真的在交战格**的参与单位，走 {@link
-   * UnitState#effectivePosition}）/ {@code participantCount} / {@code participantsAtHexCount}。
-   *
-   * <p>★ **为什么发 participantsAtHex**：引擎**不要求**交战双方同格（已核实的语义）——"这场交战有谁"与 "此刻谁真在那一格"是两件事，GUI
-   * 要能分别表达（这正是"跨格也能看出属于同一场交战"的判据）。
-   *
-   * <p>★ **逐字节可复现**：{@code combatStates} 按 id 字典序、参与单位按字典序发（状态插入序不是内容的纯函数）。
-   */
-  public static List<Map<String, Object>> combats(SdState sd, UnitState units, SimosTimestamp at) {
-    List<CombatStateId> ids = sortedCombatStateIds(sd);
-    List<Map<String, Object>> out = new ArrayList<>(ids.size());
-    for (CombatStateId id : ids) {
-      CombatState state = sd.combatStates().get(id);
-      out.add(combat(state, sd.combats().get(state.combatId()), units, at));
-    }
-    return out;
-  }
-
-  /**
    * 外交关系边清单（D-003 / R6；GUI 与 MCP 的 {@code simos.sd.diplomacy} 共用这一份形状）。
    *
    * <p>每条 = 一条**有向边** {@code from → to}：字段 {@code from}/{@code to}（Nation id 裸值）、{@code kind}（无
@@ -5398,94 +5367,6 @@ public final class ApiViews {
     return out;
   }
 
-  /** 单个 {@link CombatState} 的 JSON 形（交战记录的独立视图）。 */
-  private static Map<String, Object> combat(
-      CombatState state, Combat combat, UnitState units, SimosTimestamp at) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("combatId", state.combatId().value());
-    view.put("combatStateId", state.id().value());
-    view.put("name", combat == null ? null : combat.name());
-    view.put("hex", hexCoord(state.hex()));
-    view.put("currentStage", state.currentStage().value());
-    view.put("currentStageName", stageName(combat, state.currentStage()));
-    view.put("selectedOutcome", state.selectedOutcome().map(CombatOutcomeId::value).orElse(null));
-    List<UnitId> participants = participantsOf(state, combat);
-    view.put("participants", unitIdValues(participants));
-    List<String> atHex = new ArrayList<>();
-    for (UnitId unit : participants) {
-      if (units.effectivePosition(unit, at).filter(state.hex()::equals).isPresent()) {
-        atHex.add(unit.value());
-      }
-    }
-    view.put("participantsAtHex", atHex);
-    view.put("participantCount", participants.size());
-    view.put("participantsAtHexCount", atHex.size());
-    return view;
-  }
-
-  /**
-   * 单位**所属交战**（无 ⇒ {@code null}）。
-   *
-   * <p>归属判据 = 参与集合（{@link CombatState#participants()} ∪ 其 {@code Combat.participants()}）含本单位；同一单位
-   * 同时在多场交战时取 **combatState id 字典序第一条**（可复现，不靠插入序）。
-   *
-   * <p>★ {@code atHex} = 本单位此刻的 {@code effectivePosition} 是否恰在交战格——引擎**不要求**交战双方同格，
-   * 故"参与了这把交战"与"人就在那把交战的格上"必须分开看（{@code false} 时 GUI 要能明说"不在交战格，交战格在 q,r"）。
-   */
-  private static Map<String, Object> combatOf(
-      UnitId unitId, SdState sd, UnitState units, SimosTimestamp at) {
-    for (CombatStateId id : sortedCombatStateIds(sd)) {
-      CombatState state = sd.combatStates().get(id);
-      Combat combat = sd.combats().get(state.combatId());
-      if (!participantsOf(state, combat).contains(unitId)) {
-        continue;
-      }
-      Map<String, Object> view = new LinkedHashMap<>();
-      view.put("combatId", state.combatId().value());
-      view.put("combatStateId", state.id().value());
-      view.put("name", combat == null ? null : combat.name());
-      view.put("currentStage", state.currentStage().value());
-      view.put("currentStageName", stageName(combat, state.currentStage()));
-      view.put("selectedOutcome", state.selectedOutcome().map(CombatOutcomeId::value).orElse(null));
-      view.put("hex", hexCoord(state.hex()));
-      view.put(
-          "atHex", units.effectivePosition(unitId, at).filter(state.hex()::equals).isPresent());
-      return view;
-    }
-    return null;
-  }
-
-  /** 参与单位 = 阶段参与 ∪ 交战汇总（字典序、去重）——两层集合都要算"这场交战有谁"。 */
-  private static List<UnitId> participantsOf(CombatState state, Combat combat) {
-    Set<UnitId> union = new LinkedHashSet<>(state.participants());
-    if (combat != null) {
-      union.addAll(combat.participants());
-    }
-    List<UnitId> out = new ArrayList<>(union);
-    out.sort(Comparator.comparing(UnitId::value));
-    return out;
-  }
-
-  /** 交战状态按 id **字典序**——{@code combatStates} 是插入序表，不排序则响应字节不可复现。 */
-  private static List<CombatStateId> sortedCombatStateIds(SdState sd) {
-    List<CombatStateId> ids = new ArrayList<>(sd.combatStates().keySet());
-    ids.sort(Comparator.comparing(CombatStateId::value));
-    return ids;
-  }
-
-  /** 阶段名（查不到 ⇒ {@code null}，**不拿 id 顶替**）。 */
-  private static String stageName(Combat combat, CombatStageId stageId) {
-    if (combat == null) {
-      return null;
-    }
-    for (CombatStage stage : combat.stages()) {
-      if (stage.id().equals(stageId)) {
-        return stage.name();
-      }
-    }
-    return null;
-  }
-
   /** 单位 id 列表的 JSON 形（保序）。 */
   private static List<String> unitIdValues(List<UnitId> ids) {
     List<String> out = new ArrayList<>(ids.size());
@@ -5541,8 +5422,10 @@ public final class ApiViews {
    * {id,name,participants,text,outcomes,selectedOutcomeId,selectedOutcome,rollSeed,resolved,losses}}
    * （{@code selectedOutcome} 与 {@code selectedOutcomeId} 同值：前者是读口惯用名、后者是记录字段名）。
    *
-   * <p>★ 本方法与 {@code selectedOutcomeId} 的拼写用**全限定名**：本类同时 import 了 sd 的 {@code CombatStage} /
-   * {@code CombatOutcomeId}（另一场交战的视图），简单名会撞（编译期实测）。
+   * <p>★ 本方法与 {@code selectedOutcomeId} 的拼写用**全限定名**（{@code io.mosire.simos.army.*}）：★ 2026-10-12
+   * 批次 3d-2 起本类<b>不再</b> import sd 的 {@code CombatStage} / {@code CombatOutcomeId}（那两个类型已随旧战斗族删除）⇒
+   * 简单名<b>不再</b>会撞。这里保留全限定名是<b>有意</b>的：army 的 outcome 与"另一个模块的交战 outcome"同名，写全限定名可读性更好，
+   * 且省掉一次将来可能再撞的改单（<b>零行为</b>）。
    */
   private static Map<String, Object> combatStage(io.mosire.simos.army.CombatStage stage) {
     Map<String, Object> view = new LinkedHashMap<>();

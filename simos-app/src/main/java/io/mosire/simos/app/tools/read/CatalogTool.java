@@ -783,21 +783,6 @@ public final class CatalogTool implements SimosTool {
               "eventId?, tick?, participants[字符串...], text（★ D5 / D-005：追加一条外交事件记录；"
                   + "participants ≥2 且不得重复；text 非空白自然语言；tick 缺省=世界当前 tick、不得记在未来；"
                   + "eventId 缺省按 tick 合成（diplomatic-event:<tick>#<该 tick 已有事件数>），撞车 ⇒ 拒）"),
-          Map.entry("sd.CreateCombat", "combatId, name, participants[字符串...]"),
-          Map.entry(
-              "sd.AddCombatStage",
-              "combatId, stage{stageId,name,participants?,entry,exit,minDurationTicks?,"
-                  + "maxDurationTicks?,outcomes{options[{id,label,weight,casualties?}]}},"
-                  + " combatStateId?(首阶段必填), hex{q,r}?(首阶段必填；"
-                  + "非首阶段时出现任一键（含显式 null）都会被具名拒)"),
-          Map.entry(
-              "sd.SetStageOutcomeTable",
-              "combatId, stageId, outcomes{options[{id,label,weight,casualties?}]}"),
-          Map.entry("sd.CommitCombatOutcome", "combatId, stageId, selectedOutcomeId"),
-          Map.entry(
-              "sd.RecordCasualties",
-              "combatId, stageId,"
-                  + " deltas[{unit,personnel,equipment,lossClass(PERMANENT|RECOVERABLE)}]"),
           Map.entry(
               "sd.RegisterEffect",
               "effectId, kind(SCHEDULED|ON_CALL|BE_PREPARED|BRANCH|SEQUEL), trigger, action,"

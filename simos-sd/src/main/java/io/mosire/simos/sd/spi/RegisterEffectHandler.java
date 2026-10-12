@@ -4,17 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
-import io.mosire.simos.sd.id.CombatId;
-import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.model.Action;
-import io.mosire.simos.sd.model.Combat;
-import io.mosire.simos.sd.model.CombatStage;
-import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.Effect;
 import io.mosire.simos.sd.model.EffectKind;
 import io.mosire.simos.sd.model.EffectStatus;
-import io.mosire.simos.sd.model.OutcomeOption;
 import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.log.EventLog;
@@ -73,8 +67,8 @@ public final class RegisterEffectHandler implements CommandHandler {
       if (base.effects().containsKey(id)) {
         return rejected("效果已存在: " + id, "effect", effectForLog);
       }
-      requireTriggerReferences(state, base, trigger);
-      requireActionReferences(state, base, action);
+      requireTriggerReferences(state, trigger);
+      requireActionReferences(action);
       Map<EffectId, Effect> next = new LinkedHashMap<>(base.effects());
       next.put(id, new Effect(id, kind, trigger, action, EffectStatus.PLANNED, createdTick));
       EventLog.channel(SdLog.decision())
@@ -110,51 +104,41 @@ public final class RegisterEffectHandler implements CommandHandler {
     return new HandlerOutcome.Rejected(reason);
   }
 
-  private static void requireTriggerReferences(
-      SimulationState state, SdState base, Trigger trigger) {
+  private static void requireTriggerReferences(SimulationState state, Trigger trigger) {
     switch (trigger) {
       case Trigger.UnitAtHex unitAtHex -> {
         if (!SdSnapshots.unitExists(state, unitAtHex.unit())) {
           throw new IllegalArgumentException("trigger 引用的单位不存在: " + unitAtHex.unit());
         }
       }
-      case Trigger.OutcomeSelected outcomeSelected -> {
-        requireOutcomeInCombat(base, outcomeSelected.combat(), outcomeSelected.outcome());
-      }
       case Trigger.And and -> {
         for (Trigger child : and.all()) {
-          requireTriggerReferences(state, base, child);
+          requireTriggerReferences(state, child);
         }
       }
       case Trigger.Or or -> {
         for (Trigger child : or.any()) {
-          requireTriggerReferences(state, base, child);
+          requireTriggerReferences(state, child);
         }
       }
       default -> {
-        // AtOrAfterTick / AfterTicks / ThresholdKills 不引用实体
+        // AtOrAfterTick / AfterTicks 不引用实体
       }
     }
   }
 
-  private void requireActionReferences(SimulationState state, SdState base, Action action) {
+  /**
+   * 动作引用的合法性（§八.4：效果引用合法性由代码判）。
+   *
+   * <p>★ <b>2026-10-12 批次 3d-2：本方法由两档收成一档（如实记）</b>——原来还判 {@code Action.SetStage}（引 {@code
+   * CombatState} / 阶段）与 {@code Action.RecordCasualties}（引 {@code LossRecord}），两者随旧战斗族退役。 今天剩 {@code
+   * EnqueueUnitCommand}（白名单）与 {@code PutInfo}（地址由 {@link io.mosire.simos.util.address.Address}
+   * 解析期保证合法）。★ 同批：本方法的两个参数 {@code state} 与 {@code base}（sd
+   * 状态树）随那两档一起取下——因为它们只被那两档读；方法本身仍<b>是实例方法</b>（白名单 {@code allowedCommandTypes} 是实例字段，只有 {@code
+   * state} 参数被取掉）。
+   */
+  private void requireActionReferences(Action action) {
     switch (action) {
-      case Action.SetStage setStage -> {
-        CombatState combatState = base.combatStates().get(setStage.combatState());
-        if (combatState == null) {
-          throw new IllegalArgumentException(
-              "action 引用的 CombatState 不存在: " + setStage.combatState());
-        }
-        Combat combat = base.combats().get(combatState.combatId());
-        if (combat == null || SdCombats.stageOrNull(combat, setStage.stage()) == null) {
-          throw new IllegalArgumentException("action 引用的阶段不存在: " + setStage.stage());
-        }
-      }
-      case Action.RecordCasualties record -> {
-        if (!base.lossRecords().containsKey(record.lossRecord())) {
-          throw new IllegalArgumentException("action 引用的损失记录不存在: " + record.lossRecord());
-        }
-      }
       case Action.EnqueueUnitCommand enqueue -> {
         if (!allowedCommandTypes.contains(enqueue.type())) {
           throw new IllegalArgumentException("action 引用的命令不在白名单: " + enqueue.type());
@@ -164,21 +148,5 @@ public final class RegisterEffectHandler implements CommandHandler {
         // PutInfo 的地址由 Address 解析期保证合法
       }
     }
-  }
-
-  private static void requireOutcomeInCombat(
-      SdState base, CombatId combatId, CombatOutcomeId outcomeId) {
-    Combat combat = base.combats().get(combatId);
-    if (combat == null) {
-      throw new IllegalArgumentException("trigger 引用的交战不存在: " + combatId);
-    }
-    for (CombatStage stage : combat.stages()) {
-      for (OutcomeOption option : stage.outcomes().options()) {
-        if (option.id().equals(outcomeId)) {
-          return;
-        }
-      }
-    }
-    throw new IllegalArgumentException("trigger 引用的结局不在该交战里: " + outcomeId);
   }
 }

@@ -38,7 +38,7 @@ import java.util.Set;
  * tick) 的旧版。
  *
  * <pre>{@code
- * {"directiveId":"d1","decisionMakerId":"dm1","tick":3,"target":"sd:combat.c1",
+ * {"directiveId":"d1","decisionMakerId":"dm1","tick":3,"target":"army:combat.c1",
  *  "intentInfo":"向北推进","commands":[{"type":"unit.PlanRoute","payloadJson":"{...}"}],
  *  "effects":[]}
  * }</pre>

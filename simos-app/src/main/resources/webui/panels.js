@@ -701,8 +701,9 @@
       api.population(selection.q, selection.r, app.target()).catch(function () {
         return null;
       }),
-      // ★ 2026-09-24 交战：真实交战记录（该格有没有被记录为交战格）。取不到不拖垮整条详情。
-      api.cachedCombats(app.target()).catch(function () {
+      // ★ 2026-09-24 交战 / ★★ 2026-10-12 批次 3d-2：真实交战记录（该格有没有被记录为交战格）——改取 **Army
+      //   记录**（`/api/army/combats`）：旧 sd 读口随旧战斗族退役删除。取不到不拖垮整条详情。
+      api.cachedArmyCombats(app.target()).catch(function () {
         return null;
       }),
       // ★ R2a：该格的经济读数（取不到/未激活都不拖垮整条详情，由投影函数决定显示什么）。

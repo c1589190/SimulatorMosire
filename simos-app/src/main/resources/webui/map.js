@@ -273,28 +273,22 @@
   async function reloadUnits() {
     try {
       // ★ 2026-09-24 交战 / ★ D2（2026-10-02 / D-012）：单位与交战记录同批载入（renderer 从这一份聚合里读两者）。
-      //   · 交战**真值 = Army 记录**（`/api/army/combats`，服务端缺省只发**世界当前 tick**）；
-      //   · 旧 sd 记录仍取一份：Army 为空（老世界 / 还没写过记录）时**回退**它，老世界照旧看得见交战格；
-      //   · 两路交战取数失败**不拖垮单位列表**（各自兜成 null：交战只是叠加层，没有它仍能画图）。
+      //   · 交战真值 = **Army 记录**（`/api/army/combats`，服务端缺省只发**世界当前 tick**）；
+      //   · 交战取数失败**不拖垮单位列表**（兜成 null：交战只是叠加层，没有它仍能画图）。
+      //   ★★ 2026-10-12 批次 3d-2：旧 sd 那一份（`/api/sd/combats`）**整路删除**——旧战斗族退役、后端端点也已删除
+      //      ⇒ "Army 为空就回退 sd" 那条兜底没有数据源了（留着就是一条永远取不到东西的请求）。
       var results = await Promise.all([
         api.cachedUnits(app.target()),
         api.cachedArmyCombats(app.target()).catch(function () {
           return null;
         }),
-        api.cachedCombats(app.target()).catch(function () {
-          return null;
-        }),
       ]);
       active.setUnits((results[0] && results[0].units) || []);
-      // ★ D2：地图交战层以 **Army 记录为真值**；Army 返回空 ⇒ 回退旧 sd 列表（老世界兼容）。
       var armyCombats = (results[1] && results[1].combats) || [];
-      var sdCombats = (results[2] && results[2].combats) || [];
       active.setCombats(
-        armyCombats.length > 0
-          ? armyCombats.map(armyCombatForRenderer).filter(function (c) {
-              return c !== null;
-            })
-          : sdCombats
+        armyCombats.map(armyCombatForRenderer).filter(function (c) {
+          return c !== null;
+        })
       );
       // ★ F1：搜索索引 / 世界总览需要带 module/parent 的单位列表——与 renderer 同一份服务端读数。
       host.worldUnits = (results[0] && results[0].units) || [];

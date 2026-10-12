@@ -306,7 +306,8 @@ public final class ToolSupport {
    * <p>★ 各命名空间的 localId 形态来自各自的 resolver（实测）：{@code map} → mapId（根主体）、{@code map.hex} → {@code
    * q_r}、{@code map.region} → 区域 id、{@code map.city} → 城市 id、{@code social}/{@code social.hex} →
    * mapId / {@code q_r}、{@code unit} → 单位 id、{@code sd} → {@code <kind>.<name>}、{@code army} →
-   * {@code combat.<id>}（交战记录）或 {@code army.<id>}（军队身份，2026-10-12 批次 3d-1 起）。
+   * {@code combat.<id>}（交战记录）、{@code combat.<id>:stage.<sid>}（交战阶段，2026-10-12 批次 3d-2 起）或 {@code
+   * army.<id>}（军队身份，2026-10-12 批次 3d-1 起）。
    *
    * <p>★ <b>{@code state} 参数只被 {@code army} 分支用</b>（阶段 D1）：交战记录与军队身份都没有自己的资源路径 ⇒ 前者按记录所在格判、 后者按它的
    * root 单位所在格判 ⇒ 需要完整 state。其余命名空间不看它（调用方照旧传当前查询态即可）。
@@ -351,17 +352,22 @@ public final class ToolSupport {
   }
 
   /**
-   * {@code army:<kind>.<id>} 主体是否可见（阶段 D1 / D-012；2026-10-12 批次 3d-1 起两支）：两个 army 主体都**没有自己的资源路径**
-   * ⇒ 各按自己的<b>所在格</b>判（{@link #hexVisible}）。
+   * {@code army:<kind>.<id>} 主体是否可见（阶段 D1 / D-012；2026-10-12 批次 3d-1 起两支；<b>本批 3d-2 补阶段子段</b>）：这些
+   * army 主体都**没有自己的资源路径** ⇒ 各按自己的<b>所在格</b>判（{@link #hexVisible}）。
    *
    * <ul>
    *   <li>{@code combat.<id>} —— 按记录所在格 {@link CombatRecord#hex()} 判；
+   *   <li>{@code combat.<id>:stage.<sid>} —— <b>同上</b>：阶段子地址按<b>它的记录</b>所在格判 ⇒ 根地址与阶段地址**同可见性**
+   *       （阶段在地图上不是一个位置，它就是记录的一部分；2026-10-12 批次 3d-2 新增的三段形态，见 {@code ArmyAddresses}）；
    *   <li>{@code army.<id>} —— 按它的 <b>root 单位</b>所在格判（{@code UnitState.effectivePosition}，与工具面/GUI
    *       同口径： 根单位没有有效位置 ⇒ 不可见）。
    * </ul>
    *
-   * <p>★ localId 由 {@code ArmyResolver} 产出，形如 {@code combat.<id>} / {@code army.<id>}。判不出 / 主体不存在 /
-   * 格不可见 ⇒ false（fail-closed，与 {@code default -> false} 同一条口径）。
+   * <p>★ localId 由 {@code ArmyResolver} 产出，形如 {@code combat.<id>} / {@code combat.<id>:stage.<sid>}
+   * / {@code army.<id>}——<b>阶段那一路在冒号处截断</b>（{@code :} 是 {@link
+   * io.mosire.simos.util.address.Address#canonical()} 的子段分隔符，而 {@code CombatRecordId} / {@code
+   * CombatStageId} 只校验非空白、不限制形态——但本仓实际 id 不含它）。判不出 / 主体不存在 / 格不可见 ⇒ false（fail-closed，与 {@code
+   * default -> false} 同一条口径）。
    */
   private static boolean armySubjectVisible(
       ToolContext context, String mapId, GameMap map, SimulationState state, String localId) {
@@ -371,6 +377,15 @@ public final class ToolSupport {
     }
     String kind = localId.substring(0, dot);
     String name = localId.substring(dot + 1);
+    // ★ 2026-10-12 批次 3d-2：三段形态 combat.<id>:stage.<sid> ⇒ 取冒号前那一段（记录名）再按记录判。
+    //   单段名里没有冒号，故这条截断对既有的 combat.<id> / army.<id> 逐字无影响。
+    int colon = name.indexOf(':');
+    if (colon >= 0) {
+      name = name.substring(0, colon);
+      if (name.isEmpty()) {
+        return false;
+      }
+    }
     if (ArmyAddresses.COMBAT_KIND.equals(kind)) {
       CombatRecordId id;
       try {
@@ -743,8 +758,8 @@ public final class ToolSupport {
   }
 
   public static List<Map<String, Object>> units(
-      UnitState units, SimosTimestamp at, GameMap map, SdState sd, CalendarService calendars) {
-    return units(units, at, map, sd, any -> true, calendars);
+      UnitState units, SimosTimestamp at, GameMap map, CalendarService calendars) {
+    return units(units, at, map, any -> true, calendars);
   }
 
   /**
@@ -755,10 +770,9 @@ public final class ToolSupport {
       UnitState units,
       SimosTimestamp at,
       GameMap map,
-      SdState sd,
       SocialData social,
       CalendarService calendars) {
-    return units(units, at, map, sd, any -> true, social, calendars);
+    return units(units, at, map, any -> true, social, calendars);
   }
 
   /** **按可见性过滤**的单位清单（T10）：越界的单位不进结果（与 {@code unit.get} 的"不可见 ⇒ NOT_FOUND"同一口径）。 */
@@ -766,7 +780,6 @@ public final class ToolSupport {
       UnitState units,
       SimosTimestamp at,
       GameMap map,
-      SdState sd,
       Predicate<UnitId> unitVisible,
       CalendarService calendars) {
     List<Map<String, Object>> out = new ArrayList<>(units.units().size());
@@ -774,7 +787,7 @@ public final class ToolSupport {
       if (!unitVisible.test(unit.id())) {
         continue;
       }
-      out.add(unit(unit, units, at, map, sd, calendars));
+      out.add(unit(unit, units, at, map, calendars));
     }
     return out;
   }
@@ -787,7 +800,6 @@ public final class ToolSupport {
       UnitState units,
       SimosTimestamp at,
       GameMap map,
-      SdState sd,
       Predicate<UnitId> unitVisible,
       SocialData social,
       CalendarService calendars) {
@@ -797,7 +809,7 @@ public final class ToolSupport {
       if (!unitVisible.test(unit.id())) {
         continue;
       }
-      out.add(ApiViews.unit(unit, units, at, map, sd, calendars, lookup, lookup));
+      out.add(ApiViews.unit(unit, units, at, map, calendars, lookup, lookup));
     }
     return out;
   }
@@ -808,17 +820,13 @@ public final class ToolSupport {
    * <p>★★ **委托给 {@link ApiViews#unit}**（2026-09-24 合一）：GUI 与 MCP 两面此前各写一份同形视图，加字段就得记得改两处 ——AGENT.md
    * §8.3 的纪律是"共用同一份视图层（ApiViews）"。这里只留转调，不再有第二份字段清单。
    *
-   * <p>★ {@code sd} 供装配 {@code combat}（所属交战）——与 GUI 同一份真值（铁律 3：不在这里另推一份）。 ★ {@code calendars} 供在途移动
-   * {@code departedAt} 的日期（C6a）；生产路径由 {@code SimosToolSource} 传世界同一实例。
+   * <p>★ <b>2026-10-12 批次 3d-2：{@code SdState sd} 形参取下（如实记）</b>——它唯一的用途是装配 {@code combat} （所属交战，真相源
+   * = 旧 sd 的 {@code CombatState}）；旧战斗族整族退役 ⇒ 该栏删除、形参随之取下。 ★ {@code calendars} 供在途移动 {@code
+   * departedAt} 的日期（C6a）；生产路径由 {@code SimosToolSource} 传世界同一实例。
    */
   public static Map<String, Object> unit(
-      Unit unit,
-      UnitState units,
-      SimosTimestamp at,
-      GameMap map,
-      SdState sd,
-      CalendarService calendars) {
-    return ApiViews.unit(unit, units, at, map, sd, calendars);
+      Unit unit, UnitState units, SimosTimestamp at, GameMap map, CalendarService calendars) {
+    return ApiViews.unit(unit, units, at, map, calendars);
   }
 
   /** S3a 生产形态：unit 详情附 {@code households[]} 与 {@code population}（同一份 adapter 喂两个 SPI）。 */
@@ -827,11 +835,10 @@ public final class ToolSupport {
       UnitState units,
       SimosTimestamp at,
       GameMap map,
-      SdState sd,
       SocialData social,
       CalendarService calendars) {
     SocialLookupAdapter lookup = lookup(social, at, calendars);
-    return ApiViews.unit(unit, units, at, map, sd, calendars, lookup, lookup);
+    return ApiViews.unit(unit, units, at, map, calendars, lookup, lookup);
   }
 
   /** 一次查询窗口的只读 SPIs：{@link SocialLookupAdapter} 绑定 base 切片 + 查询时刻 + 历法时钟。 */

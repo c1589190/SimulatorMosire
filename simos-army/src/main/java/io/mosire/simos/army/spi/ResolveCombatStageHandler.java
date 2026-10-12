@@ -16,6 +16,7 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
 import java.util.Optional;
@@ -42,6 +43,9 @@ import org.slf4j.Logger;
  * unit.AdjustComposition} 完成（D-010：Army 只编排，写单位走 unit 命令）。单独提交本命令 = 只记判定、不改单位（低层命令口径）。
  *
  * <p>★ <b>不打 {@code DmUsableCommand}</b>：与 {@link RecordCombatHandler} 同一条边界。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：本 handler 把记录的 {@code atRevision} 推到本次推进</b>（{@link
+ * CombatRecord#evolvedAt}）：判定落的是新 revision ⇒ 读侧据此知道"这批判定结果属于哪一次 revision"。★ 本命令的线格式<b>一字未变</b>。
  */
 public final class ResolveCombatStageHandler implements CommandHandler {
 
@@ -146,7 +150,9 @@ public final class ResolveCombatStageHandler implements CommandHandler {
           CombatResolution.select(
               record.id(), stage.id(), record.tick(), stage.outcomes(), outcomeId, seed);
       CombatStage resolved = stage.resolvedAs(selection.outcome().id(), selection.seed());
-      CombatRecord next = record.withReplacedStage(resolved);
+      // ★ 2026-10-12 批次 3d-2：同 AppendCombatStageHandler —— 判定落新 revision，戳随之前移。
+      RevisionId atRevision = state.meta().ref().revision();
+      CombatRecord next = record.withReplacedStage(resolved).evolvedAt(atRevision);
       ArmyData nextData = snapshot.data().withCombat(next);
       EventLog.channel(LOG)
           .info(
@@ -160,7 +166,9 @@ public final class ResolveCombatStageHandler implements CommandHandler {
                   "outcome",
                   selection.outcome().id().value(),
                   "seed",
-                  selection.seed().map(Object::toString).orElse("-")));
+                  selection.seed().map(Object::toString).orElse("-"),
+                  "atRevision",
+                  atRevision.value()));
       ArmyCombatTrace.outcome(combatId, stageId, selection.outcome());
       return new HandlerOutcome.Applied(ArmyChangeSet.between(snapshot.data(), nextData));
     } catch (IllegalStateException e) {

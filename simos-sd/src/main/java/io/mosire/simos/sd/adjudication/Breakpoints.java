@@ -18,10 +18,20 @@ import java.util.Optional;
  * 表达）：
  *
  * <ul>
- *   <li><b>战斗判决面</b>：D1/D3/D6，subject 必须是 {@code sd:combat.*}——spec §八.2 的这三行输出 schema 均以战斗为对象；
+ *   <li><b>战斗判决面</b>：D1/D3/D6，subject 必须是 {@code army:combat.*}——spec §八.2 的这三行输出 schema 均以战斗为对象；
  *   <li><b>决策判决面</b>（2026-09-22 用户裁定）：D2，subject 必须是 {@code sd:decision-maker.*}——「**战斗是世界的一个状态，
  *       不是决策的前提**」 ⇒ 无战斗时决策照样可做，此时对**决策人本人**裁决（判决产物是决策记录文本）；战斗/情报只是判决的**输入**。
  * </ul>
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：战斗判决面的命名空间由 {@code sd} 改挂 {@code army}（判决面重挂，不可逆点）</b>——
+ * 旧战斗族整族退役（用户裁定「战斗模块，包括阶段之类的，归 Army 模块管」＋「sd 整个弃用！」），交战记录的<b>唯一</b>载体是 {@code simos-army} 的 {@code
+ * ArmyData.combats}，它的 canonical 地址族是 {@code army:combat.<id>}（{@code
+ * io.mosire.simos.army.ArmyAddresses}）。⇒ 判决主体必须随之改挂，否则 {@code ga.SubmitVerdict} 的 D1/D3/D6
+ * 判决会被本类<b>当场拒</b>（"subject 不在裁决面"），判决面就成了死的。
+ *
+ * <p>★ <b>改动面：一个字符串字面量（命名空间）</b>——{@code "sd"} → {@code "army"}；kind 判据（{@code combat}）与 D2
+ * 那一支（{@code sd:decision-maker.*}）<b>一字未改</b>。★ 本类<b>不 import 任何 army 类型</b>（它只比对 {@link Address}
+ * 的命名空间串与根段 kind 串）⇒ <b>不新增 {@code sd → army} 依赖边</b>，enforcer 的禁列原样成立。
  *
  * <p>★ **D2 为何也产判决**：spec §八.2 的 D2 行把它记为"出令"（最终落 {@code ga.IssueDirective}）。但按**三件事模型**
  * （「建议」≠「开始决策」≠「决策人出令」）， 「开始决策」触发的是**判决**（数据、落 revision、可回放），出令是**另一条**命令。故本类把 D2 的**判决记录**纳入
@@ -81,19 +91,24 @@ public final class Breakpoints {
         || DECISION_VERDICT_BREAKPOINTS.contains(breakpoint);
   }
 
-  /** 判决主体是否落在该断点的裁决面：D1/D3/D6 = {@code sd:combat.*}；D2 = {@code sd:decision-maker.*}。 */
+  /** 判决主体是否落在该断点的裁决面：D1/D3/D6 = {@code army:combat.*}；D2 = {@code sd:decision-maker.*}。 */
   public static boolean acceptsVerdictSubject(AdjudicationBreakpoint breakpoint, Address subject) {
     Objects.requireNonNull(breakpoint, "breakpoint");
     Objects.requireNonNull(subject, "subject");
-    if (!"sd".equals(subject.namespace())) {
-      return false;
-    }
-    String kind = rootEntityKind(subject).orElse(null);
+    // ★★ 2026-10-12 批次 3d-2：战斗判决面的命名空间 sd → army（旧战斗族退役、交战记录归 army）。
+    //   只改这一个字面量：kind 判据与 D2 支一字未改；本类不引任何 army 类型 ⇒ 不新增 sd → army 依赖边。
+    //   ★ 按断点分别判命名空间：D2（决策人）仍住 sd，不能统一换成 army。
     if (COMBAT_VERDICT_BREAKPOINTS.contains(breakpoint)) {
-      return "combat".equals(kind);
+      if (!"army".equals(subject.namespace())) {
+        return false;
+      }
+      return "combat".equals(rootEntityKind(subject).orElse(null));
     }
     if (DECISION_VERDICT_BREAKPOINTS.contains(breakpoint)) {
-      return "decision-maker".equals(kind);
+      if (!"sd".equals(subject.namespace())) {
+        return false;
+      }
+      return "decision-maker".equals(rootEntityKind(subject).orElse(null));
     }
     return false;
   }

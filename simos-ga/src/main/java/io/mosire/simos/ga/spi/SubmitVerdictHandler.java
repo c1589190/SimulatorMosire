@@ -27,7 +27,7 @@ import java.util.Objects;
  * simos-sd/sd.spi} 迁入并改名 {@code sd.* → ga.*}，语义一字未改</b>）：把裁决结果**冻结**成数据、落进 revision。
  *
  * <pre>{@code
- * {"verdictId":"v1","breakpoint":"D1","subject":"sd:combat.c1",
+ * {"verdictId":"v1","breakpoint":"D1","subject":"army:combat.c1",
  *  "payload":"{\"stageId\":\"s1\",\"selectedOutcomeId\":\"o1\",\"casualtyDeltas\":[],\"rationaleText\":\"…\"}",
  *  "meta":{"model":"…","promptVersion":"…","inputBriefDigest":"…"}}
  * }</pre>
@@ -40,6 +40,10 @@ import java.util.Objects;
  * ga.IssueDirective} 那种"跨命名空间第二条命令"的形态。
  *
  * <p>拒绝：verdictId 已存在；payload 不过该断点 schema；subject 不在断点裁决面；meta 任一字段空白。
+ *
+ * <p>★★ <b>2026-10-12 批次 3d-2：示例里的战斗 subject 由 {@code sd:combat.c1} 改为 {@code army:combat.c1}</b>
+ * （判决面重挂，零逻辑改注释）——旧战斗族整族退役、交战记录归 army；D1/D3/D6 的 subject 现在必须落在 {@code army:combat.*}（判据在 {@code
+ * Breakpoints.acceptsVerdictSubject}）。★ 留着旧串会让照抄示例的人<b>必然</b>撞 "subject 不在裁决面"的具名拒。
  */
 public final class SubmitVerdictHandler implements CommandHandler {
 

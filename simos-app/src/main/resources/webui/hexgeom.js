@@ -461,7 +461,8 @@
    *
    * <p>口径 = **真实交战记录 ∪ 两条推断**：
    * <ol>
-   *   <li>★ **记录在案的格**（`trueHexes`，来自 `/api/sd/combats` 的真 {@code CombatState.hex}）——**必须**是
+   *   <li>★ **记录在案的格**（`trueHexes`，来自 `/api/army/combats` 的真 {@code CombatRecord.hex}；★ 2026-10-12 批次
+   *   3d-2 起旧 sd 读口已删）——**必须**是
    *       交战格，**哪怕那格此刻一个单位标记都没有**；其值取 `max(该格不同 rootId 数, 1)`（≥1）。</li>
    *   <li>该格有 **≥2 个不同 `rootId`**（= 两支及以上不同军队同处一格，用户 tick15 的实况）<b>——兜底</b>；</li>
    *   <li>该格有任一组的 `engaged === true`（某单位显式进入 `ENGAGED`，哪怕只 1 支军队）<b>——兜底</b>。</li>
