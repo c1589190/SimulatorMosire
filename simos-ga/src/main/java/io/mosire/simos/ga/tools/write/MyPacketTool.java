@@ -6,12 +6,13 @@ import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.DecisionPacketViews;
 import io.mosire.simos.ga.tools.GaToolIdentity;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code simos.sd.packet.my}（D2 决策包计划 §3.2）：决策人读**自己**的本 tick（或指定 tick）决策包——状态、intent、逐 call
@@ -36,7 +38,7 @@ import java.util.Optional;
  *
  * <p>★ 视图与 GM 的 {@code simos.gm.packet} 共用 {@link DecisionPacketViews}（同字段口径，两处一起变）。
  */
-public final class MyPacketTool implements AgentTool {
+public final class MyPacketTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS。 */
   public static final String NAME = "simos.sd.packet.my";
@@ -122,5 +124,11 @@ public final class MyPacketTool implements AgentTool {
       return ToolResult.error(
           "TOOL_ERROR", "读取决策包失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM);
   }
 }

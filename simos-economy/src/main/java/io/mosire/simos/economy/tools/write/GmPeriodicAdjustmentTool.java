@@ -14,8 +14,10 @@ import io.mosire.simos.economy.spi.EconomyRemovePeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.tools.EconomyToolPerspective;
 import io.mosire.simos.economy.tools.EconomyToolReads;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.social.SocialData;
@@ -29,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.gm.periodicAdjustment}（D4，2026-10-22）：<b>P4a 周期家户库存扣增规则表的 GM 窄工具</b> —— {@code
@@ -54,7 +57,7 @@ import java.util.OptionalLong;
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；只写 economy 命名空间（GM 侧 unlimited ⇒ 声明
  * {@code economy} UNRESTRICTED）。工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。
  */
-public final class GmPeriodicAdjustmentTool extends AbstractEconomyGmTool {
+public final class GmPeriodicAdjustmentTool extends AbstractEconomyGmTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gm.periodicAdjustment";
@@ -420,5 +423,11 @@ public final class GmPeriodicAdjustmentTool extends AbstractEconomyGmTool {
       out.put(entry.getKey().value(), entry.getValue());
     }
     return out;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

@@ -1,12 +1,13 @@
 package io.mosire.simos.gov.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.spi.GmOnlyRead;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.gov.tools.GovToolReads;
 import io.mosire.simos.gov.tools.GovToolSupport;
@@ -22,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * {@code simos.province.divide}（P3）：**只读**省份划分建议。
@@ -39,7 +41,7 @@ import java.util.Objects;
  * <p>★ <b>相交 Region</b>：{@code overlappingRegions} 列出除目标 Region 外与它相交的全部 Region（id/name/tag/相交格数）。
  * 区域重叠 ≠ 省籍 —— 是否 override 由调用方显式决定，本工具只列信息、不影响建议。
  */
-public final class ProvinceDivideTool implements AgentTool, GmOnlyRead {
+public final class ProvinceDivideTool implements SimosTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.province.divide";
@@ -260,5 +262,11 @@ public final class ProvinceDivideTool implements AgentTool, GmOnlyRead {
       return true;
     }
     return BigDecimal.valueOf(value).stripTrailingZeros().scale() > 0;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

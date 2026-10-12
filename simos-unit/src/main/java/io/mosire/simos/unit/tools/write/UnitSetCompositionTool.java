@@ -1,8 +1,11 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.unit.spi.SetCompositionHandler;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.unit.set-composition} 窄工具（阶段 D3a，2026-10-02；原 {@code unit.SetStrength} 的 rename）：
@@ -17,7 +20,7 @@ import java.util.Map;
  *
  * <p>★ 标 sensitive ⇒ 走审批门链（GM 侧 GmAutoApproveGate 无脑过，与其余窄写同制）。
  */
-public final class UnitSetCompositionTool extends AbstractNarrowWriteTool {
+public final class UnitSetCompositionTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /** 工具名（全局唯一；用户给定）。 */
   public static final String NAME = "simos.unit.set-composition";
@@ -46,5 +49,11 @@ public final class UnitSetCompositionTool extends AbstractNarrowWriteTool {
     return "整表复写单位装备：固定 unit.SetComposition，载荷 {id, equipment[{type,amount}]}"
         + "（★ S3b：manpower 已退役，非空 manpower 具名拒；人员属于 Social 家户）——装备表整体取代旧表（不是增量）；"
         + "未知 type 合法；amount ≥ 0、同表 type 不重复。旧 unit.SetStrength 已按 D-011 删除，不留兼容。";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

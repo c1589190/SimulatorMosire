@@ -4,9 +4,12 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.army.spi.RecordCombatHandler;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.army.recordCombat} 窄工具（阶段 D1 / 用户设计 D-012，2026-10-02）：**写一条单 tick 单场交战记录**的唯一 GM
@@ -27,7 +30,7 @@ import java.util.Map;
  * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-army}，对 {@code
  * CoreSimos} 的直连换成构造期注入的 {@link ToolWritePort}（适配器在组合根）；工具名、载荷、拒绝码、资源声明逐字不变。
  */
-public final class ArmyRecordCombatTool extends AbstractNarrowWriteTool {
+public final class ArmyRecordCombatTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.army.recordCombat";
@@ -68,5 +71,11 @@ public final class ArmyRecordCombatTool extends AbstractNarrowWriteTool {
         + "weight,losses?[{unit,manpower?[{type,amount(有符号)}],equipment?[]}]}]}}——tick 缺省 = 当前 tick、不得记在未来；"
         + "同 id 已存在 ⇒ 具名拒（记录 id 一次性；阶段追加走 army.AppendCombatStage、判定走 army.ResolveCombatStage）；"
         + "participants 至少一个且不重复；weight 必须 > 0、阶段/结局 id 不得重复；旧 D1 的 losses{键:值} 字段已删除（D-011）。";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

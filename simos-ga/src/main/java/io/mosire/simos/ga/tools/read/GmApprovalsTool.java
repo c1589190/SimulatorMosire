@@ -3,13 +3,14 @@ package io.mosire.simos.ga.tools.read;
 import io.mosire.agentlib.approval.ApprovalRequest;
 import io.mosire.agentlib.approval.PendingApprovals;
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.spi.GmOnlyRead;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.gm.approvals}（P7b，2026-10-01 后端 + MCP 稳定化计划）：**待裁决审批清单的 GM-only MCP 读口**。
@@ -35,7 +37,7 @@ import java.util.Map;
  *
  * <p>★ **未接入审批面（装配未传 {@link PendingApprovals}）⇒ 具名 {@code UNAVAILABLE}**，不静默回空列表当"没有待裁决项"。
  */
-public final class GmApprovalsTool implements AgentTool, GmOnlyRead {
+public final class GmApprovalsTool implements SimosTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gm.approvals";
@@ -106,5 +108,11 @@ public final class GmApprovalsTool implements AgentTool, GmOnlyRead {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("pending", rows);
     return ToolResults.ok(view);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

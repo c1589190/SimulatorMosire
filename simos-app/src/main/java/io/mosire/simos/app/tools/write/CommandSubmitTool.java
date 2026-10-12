@@ -7,17 +7,19 @@ import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -30,7 +32,7 @@ import java.util.UUID;
  * <p>★ 敏感写：{@code spec().sensitive()=true} + {@link ToolGate.Ask}（classKey = 工具名，summary 含
  * type/branch/expected）；资源面 map+soc+unit {@code UNRESTRICTED}。
  */
-public final class CommandSubmitTool implements AgentTool {
+public final class CommandSubmitTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.command.submit";
@@ -118,5 +120,11 @@ public final class CommandSubmitTool implements AgentTool {
       return ToolResult.error(
           "TOOL_ERROR", "命令提交失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

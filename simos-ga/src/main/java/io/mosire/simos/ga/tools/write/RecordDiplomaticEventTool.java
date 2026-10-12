@@ -4,13 +4,16 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code sd.RecordDiplomaticEvent} 决策人窄工具（D5 / D-005 / R6）：**决策人记外交事件**（多国谈判逐 tick 记录）。
@@ -23,7 +26,7 @@ import java.util.Optional;
  * <p>★ **资源声明 = sd 域的自己那一块**（同 {@code IssueDirectiveTool}）：{@code decisionWriteResources} + {@code
  * READ_ONLY} 缺省策略；ToolSpec 敏感 ⇒ 走决策人链路的既有审批（需 GM 在审批面点头）。
  */
-public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool {
+public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /** 工具名 = 命令类型（与 {@code IssueDirectiveTool}/{@code SubmitVerdictTool} 同制）。 */
   public static final String NAME = "sd.RecordDiplomaticEvent";
@@ -75,5 +78,11 @@ public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool {
   @Override
   protected Optional<String> signatureViolation(ToolContext context) {
     return DiplomaticWriteSignature.violation(context, reads, identity(), true);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM);
   }
 }

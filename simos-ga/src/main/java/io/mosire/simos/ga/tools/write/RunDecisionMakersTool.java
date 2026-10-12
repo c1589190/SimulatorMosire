@@ -9,7 +9,6 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.agentlib.tool.ToolResultTruncator;
@@ -19,8 +18,10 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaDecisionHost;
 import io.mosire.simos.ga.tools.GaToolQueries;
@@ -36,6 +37,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -76,7 +78,7 @@ import java.util.concurrent.ThreadFactory;
  * <p>★ <b>工具名不是命令类型</b>：{@code simos.sd.run-decision-makers} 不进 catalog / {@code
  * PAYLOAD_HINTS}；它组的是既有 {@code sd.RunDecision} 命令。
  */
-public final class RunDecisionMakersTool implements AgentTool {
+public final class RunDecisionMakersTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.sd.run-decision-makers";
@@ -735,5 +737,11 @@ public final class RunDecisionMakersTool implements AgentTool {
       values.add(text);
     }
     return List.copyOf(values);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

@@ -1,12 +1,13 @@
 package io.mosire.simos.app.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.state.resolve}（spec §7.1 读工具）：把地址文本解析成稳定实体候选（canonical 回显）。
@@ -22,7 +24,7 @@ import java.util.Map;
  * <p>经 {@link QueryService#resolve}，每次重放目标状态（spec §5.1）。坏地址 / 未注册命名空间**明确失败**（util 契约）， 折成 {@code
  * BAD_REQUEST}——不静默编造候选。
  */
-public final class StateResolveTool implements AgentTool {
+public final class StateResolveTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.state.resolve";
@@ -88,5 +90,11 @@ public final class StateResolveTool implements AgentTool {
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

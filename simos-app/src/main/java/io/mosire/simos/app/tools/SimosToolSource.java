@@ -87,6 +87,7 @@ import io.mosire.simos.economy.tools.write.EconomyUpsertIndustryTool;
 import io.mosire.simos.economy.tools.write.GmGovMarketMandateTool;
 import io.mosire.simos.economy.tools.write.GmPeriodicAdjustmentTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaDecisionHost;
 import io.mosire.simos.ga.tools.GaEffectExecution;
@@ -97,6 +98,7 @@ import io.mosire.simos.ga.tools.GaToolSource;
 import io.mosire.simos.ga.tools.GaToolViews;
 import io.mosire.simos.ga.tools.GmToolUsage;
 import io.mosire.simos.ga.tools.ToolBuckets;
+import io.mosire.simos.ga.tools.ToolRoleAudit;
 import io.mosire.simos.ga.tools.read.DecisionDocsTool;
 import io.mosire.simos.ga.tools.read.DecisionMakerTool;
 import io.mosire.simos.ga.tools.read.DecisionMakersTool;
@@ -563,6 +565,11 @@ public final class SimosToolSource implements ToolSource {
         addDecisionAgentWrites(built, core, calendarService, query, initiator, mapId);
       }
     }
+    // ★★ 2026-10-12 B4（设计书 §4.4 / 不变量 I-G3）：**装配完成处一次性校验本桶** —— 桶里每条工具都必须实现
+    //   SimosTool 且 roles() 含本桶角色；不一致**当场抛**（fail-closed），不是静默少注册、也不是 warn。
+    //   ★ 双桶那一半（"标了 DM 却没注册进 DM 桶"）单桶看不见，由 Shell 用 ToolRoleAudit.requireFaces 校验
+    //     （那里同时拿得到两桶）。★ 校验是 O(n) 一次，不是每条工具建的时候各查一遍。
+    ToolRoleAudit.requireFace(built, role == Role.GM ? ToolRole.GM : ToolRole.DM);
     this.source = GaToolSource.of(built);
   }
 

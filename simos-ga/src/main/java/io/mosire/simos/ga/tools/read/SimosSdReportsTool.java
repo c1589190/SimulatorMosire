@@ -5,12 +5,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolQueries;
@@ -51,7 +52,7 @@ import java.util.Set;
  * <p>★ <b>资源声明 = sd 只读</b>：INFO 条目地址（{@code sd:doc.*}）不在任何决策人的可达面，可见性完全由上一条判据承担；
  * 本工具不因读报告给出任何跨区原始数据读权（报告内容由发送方负责）。★ 工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。
  */
-public final class SimosSdReportsTool implements AgentTool {
+public final class SimosSdReportsTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.sd.reports";
@@ -318,5 +319,11 @@ public final class SimosSdReportsTool implements AgentTool {
     out.sort(
         Comparator.comparing((Map<String, Object> row) -> row.get("kind") + ":" + row.get("id")));
     return List.copyOf(out);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

@@ -4,8 +4,10 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.social.SocialData;
@@ -24,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.social.demand}（2026-10-09 家户结构修复计划 Batch 4；D 批 2026-10-09 加批量）：<b>GM 改/清 social
@@ -58,7 +61,7 @@ import java.util.Optional;
  *
  * <p>★ <b>旧档作废、不迁移</b>：预览/提交都只认带第 6 组件 {@code provisioning} 的新档；旧档在状态构造期即具名拒。
  */
-public final class SocialDemandTool extends AbstractHouseholdGmTool {
+public final class SocialDemandTool extends AbstractHouseholdGmTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.social.demand";
@@ -390,5 +393,11 @@ public final class SocialDemandTool extends AbstractHouseholdGmTool {
     view.put("period", value.period().name());
     view.put("cycleDays", value.cycleDays());
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

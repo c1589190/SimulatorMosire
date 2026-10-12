@@ -9,14 +9,15 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.gov.tools.GovToolReads;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -61,7 +63,7 @@ import java.util.UUID;
  * 可达面天然含"自己 + superiorGov 的国库格"（{@link io.mosire.simos.app.access.GovScope}）⇒ 自己那一笔必过、别人的必拒；GM 侧两面都
  * unlimited。
  */
-public final class GovIssueMoneyTool implements AgentTool {
+public final class GovIssueMoneyTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.issueMoney";
@@ -325,5 +327,11 @@ public final class GovIssueMoneyTool implements AgentTool {
     List<Map<String, Object>> commands = new ArrayList<>(GovToolSupport.commandsPreview(batch));
     view.put("commandsPreview", List.copyOf(commands));
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

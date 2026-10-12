@@ -14,7 +14,6 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
@@ -27,6 +26,8 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
@@ -117,7 +118,7 @@ import java.util.UUID;
  * <p>★ **批不发事件链**（{@code CommandBus.submitBatch} 的既有事实）：每条命令的身份只在**本次返回**的 {@code outcomes}
  * 里，事件表查不到 ⇒ 本类把逐条结局**写进决策结果条目**，那才是可回放、可审计的那份。
  */
-public final class AdjudicateTickTool implements AgentTool {
+public final class AdjudicateTickTool implements SimosTool {
 
   /**
    * 工具名（全局唯一）。★ 它**不是**一条已注册的命令类型 ⇒ 不登记进 {@code PAYLOAD_HINTS}（它内部用的 {@code sd.SetDirectiveStatus}
@@ -1023,5 +1024,11 @@ public final class AdjudicateTickTool implements AgentTool {
     public void noteRejection(String reason) {
       this.reason = reason;
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

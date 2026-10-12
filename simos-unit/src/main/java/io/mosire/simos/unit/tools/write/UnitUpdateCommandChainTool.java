@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.UpdateCommandChain} 窄工具（M2，spec §八.3）：**改命令链**的唯一窄写面。
@@ -13,7 +16,7 @@ import java.util.Map;
  *
  * <p>★ 链不存在 ⇒ 域层拒；改了 `members` 后 `commander` 必须仍在 `members` 内（否则拒，理由带**可执行的下一步**）。
  */
-public final class UnitUpdateCommandChainTool extends AbstractNarrowWriteTool {
+public final class UnitUpdateCommandChainTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.UpdateCommandChain";
 
@@ -34,5 +37,11 @@ public final class UnitUpdateCommandChainTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "改命令链：固定 unit.UpdateCommandChain，载荷 {chainId, name?, commander?, members?}（★ 三者全缺是合法的，但会落一条 revision）";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

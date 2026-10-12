@@ -7,12 +7,13 @@ import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -21,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -32,7 +34,7 @@ import java.util.UUID;
  * 缺省 = {@code from + 1}（推一天）；显式给 {@code to} 时允许 {@code to = from + N}（{@code 1 ≤ N ≤ 36500}，越界由
  * Core 拒绝）。 结算语义不跳日：各参与者在这一次推进内部**逐日**推进（等价性见 Core 与 e2e 护栏）。
  */
-public final class AdvanceTool implements AgentTool {
+public final class AdvanceTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.advance";
@@ -128,5 +130,11 @@ public final class AdvanceTool implements AgentTool {
       return ToolResult.error(
           "TOOL_ERROR", "时间推进提交失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

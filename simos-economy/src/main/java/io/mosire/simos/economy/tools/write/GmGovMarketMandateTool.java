@@ -12,8 +12,10 @@ import io.mosire.simos.economy.api.market.MarketMandateId;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.spi.EconomyAuthorizeGovMarketOrderHandler;
 import io.mosire.simos.economy.spi.EconomyCancelGovMarketOrderHandler;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -23,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.gm.govMarketMandate}（R1，2026-10-09）：<b>政府市场授权（行政家户挂单）的 GM 窄工具</b> —— {@code
@@ -44,7 +47,7 @@ import java.util.Map;
  * <p>★★ <b>它不是"政策层"</b>：工具只写一张授权表，订单仍由既有的 家户→订单→撮合→结算 在日结算里生成； 工具的 preview
  * 不预演撮合结果（那是模拟的责任，不是工具的责任）。★ 工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。
  */
-public final class GmGovMarketMandateTool extends AbstractEconomyGmTool {
+public final class GmGovMarketMandateTool extends AbstractEconomyGmTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gm.govMarketMandate";
@@ -268,5 +271,11 @@ public final class GmGovMarketMandateTool extends AbstractEconomyGmTool {
       rows.add(row);
     }
     return rows;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

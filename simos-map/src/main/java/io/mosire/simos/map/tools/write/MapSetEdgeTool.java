@@ -1,7 +1,10 @@
 package io.mosire.simos.map.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code map.SetEdge} 窄工具（M1，spec §八.3）：**GM 改连通性**的唯一窄写面。
@@ -14,7 +17,7 @@ import java.util.Map;
  * <p>★ <b>2026-10-12 B3 下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-map}，对 {@code CoreSimos}
  * 的直连换成构造期注入的 {@link ToolWritePort}（命令类型、载荷、拒绝码、资源声明、审批门逐字不变）。
  */
-public final class MapSetEdgeTool extends AbstractNarrowWriteTool {
+public final class MapSetEdgeTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "map.SetEdge";
 
@@ -35,5 +38,11 @@ public final class MapSetEdgeTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "GM 改连通性：固定 map.SetEdge，载荷 {kind, edges[\"q_r|q_r\"…], mode（replace|merge，无默认）}";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

@@ -9,11 +9,12 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.gov.tools.GovToolReads;
 import io.mosire.simos.gov.tools.GovToolSupport;
@@ -23,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>{@code simos.gov.defineCurrency}（A1 2026-10-08；约束设计书 §3.1-3）</b>：定义一种新币种（= 该 GOV 发行的钱）——
@@ -41,7 +43,7 @@ import java.util.Objects;
  * {@code economy} ⇒ 取工具缺省策略 = {@code UNRESTRICTED}，而 GM 侧 unlimited）。 ★ 这是"命名空间级"的粗断言，真正的收窄在 ①
  * 身份派生（只能自己的 GOV）② GM 审批链 ③ handler 的守卫。
  */
-public final class GovDefineCurrencyTool implements AgentTool {
+public final class GovDefineCurrencyTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.defineCurrency";
@@ -224,5 +226,11 @@ public final class GovDefineCurrencyTool implements AgentTool {
     command.put("payloadJson", payloadJson);
     view.put("commandsPreview", List.of(command));
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

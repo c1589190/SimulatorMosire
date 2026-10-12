@@ -1,8 +1,11 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.unit.spi.CreateUnitHandler;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.CreateUnit} 窄工具（M2，spec §八.3）：**新建单位**的唯一窄写面。
@@ -15,7 +18,7 @@ import java.util.Map;
  * <p>★ **{@code status?} 有缺省**（缺 ⇒ {@code MOVING}）：它与"给对 {@code MOVING}"在 revision 上无法区分。同 id 已存在 ⇒
  * 域层拒（`单位 id 已存在: <id>`）；**重名不拒**。
  */
-public final class UnitCreateTool extends AbstractNarrowWriteTool {
+public final class UnitCreateTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = CreateUnitHandler.TYPE;
 
@@ -40,5 +43,11 @@ public final class UnitCreateTool extends AbstractNarrowWriteTool {
         + "（★ S3b：manpower 已退役——人员由 Social 家户承载，非空 manpower 具名拒；equipment 必填、空数组合法；"
         + "households 给的 Social 家户必须存在，位置不一致时由下一轮推进的 Unit↔Social 自动同步对齐到 UNIT(本单位)；"
         + "省略 position ⇒ 无自身位置、跟随父，此时须给 parent）";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

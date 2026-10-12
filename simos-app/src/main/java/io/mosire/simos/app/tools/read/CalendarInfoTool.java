@@ -1,7 +1,6 @@
 package io.mosire.simos.app.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.gui.ApiViews;
@@ -11,12 +10,15 @@ import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.calendar.CalendarDate;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.calendar.info}（C5b 读工具，设计稿 §七/§八）：当前历法/气候配置 + 指定 tick 的日期/节气（可选季节）。
@@ -37,7 +39,7 @@ import java.util.Map;
  * ApiViews#dateView}/{@link ApiViews#solarTermView}/{@link ApiViews#seasonView}（设计稿 §八的字段口径，含
  * {@code date.calendar}）；来源标记照 C5a 的三个 getter（{@code store|default|fallback}）。
  */
-public final class CalendarInfoTool implements AgentTool {
+public final class CalendarInfoTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.calendar.info";
@@ -140,5 +142,11 @@ public final class CalendarInfoTool implements AgentTool {
     view.put("seasonSource", service.seasonSource().key());
     view.put("zoneSource", service.zoneSource().key());
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

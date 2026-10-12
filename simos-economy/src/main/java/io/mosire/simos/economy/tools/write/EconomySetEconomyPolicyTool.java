@@ -5,10 +5,13 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.economy.spi.EconomySetEconomyPolicyHandler;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * ★★★ {@code simos.economy.setEconomyPolicy}（W10，2026-10-11）：<b>把一个经济侧行为值写成 GM 政策预设</b> 的窄写面 ——
@@ -24,7 +27,8 @@ import java.util.Map;
  *
  * <p>★ <b>写面只声明 economy 命名空间</b>：handler 只产 {@code EconomyChangeSet}（政策表住在 {@code economy.meta} 里）。
  */
-public final class EconomySetEconomyPolicyTool extends AbstractNarrowWriteTool {
+public final class EconomySetEconomyPolicyTool extends AbstractNarrowWriteTool
+    implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.economy.setEconomyPolicy";
@@ -76,5 +80,11 @@ public final class EconomySetEconomyPolicyTool extends AbstractNarrowWriteTool {
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return List.of(ResourceId.of(ToolResources.ECONOMY_NAMESPACE, "*"));
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

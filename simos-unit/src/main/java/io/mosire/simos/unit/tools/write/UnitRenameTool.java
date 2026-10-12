@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.RenameUnit} 窄工具（M2，spec §八.3）：**改单位名**的唯一窄写面。
@@ -13,7 +16,7 @@ import java.util.Map;
  *
  * <p>★ **它是 20 条里唯一的形状异类**：本命令的载荷不走共享解析器，故其载荷层文案自成一族；重名**不拒**（域层没有名字唯一性检查）。
  */
-public final class UnitRenameTool extends AbstractNarrowWriteTool {
+public final class UnitRenameTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.RenameUnit";
 
@@ -34,5 +37,11 @@ public final class UnitRenameTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "单位改名：固定 unit.RenameUnit，载荷 {id, name}";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

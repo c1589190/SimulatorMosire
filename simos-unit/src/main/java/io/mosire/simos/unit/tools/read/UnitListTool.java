@@ -1,12 +1,13 @@
 package io.mosire.simos.unit.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.tools.UnitToolReads;
@@ -16,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * {@code simos.unit.list}（spec §7.1 读工具）：单位列表（每个带 head 时刻的有效位置）。
@@ -29,7 +31,7 @@ import java.util.Objects;
  * 构造期注入（窄读口 + 视图口）；工具名、描述、schema、资源声明、可见性口径逐字不变——**过滤谓词仍只有一处实现** （app 的 {@code
  * ToolSupport.unitVisible}，本类只把 {@code context} 原样交给视图口）。
  */
-public final class UnitListTool implements AgentTool {
+public final class UnitListTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.unit.list";
@@ -79,5 +81,11 @@ public final class UnitListTool implements AgentTool {
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

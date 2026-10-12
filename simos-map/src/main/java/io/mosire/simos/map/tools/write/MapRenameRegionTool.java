@@ -1,10 +1,13 @@
 package io.mosire.simos.map.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code map.RenameRegion} 窄工具（R4，行政区划修复计划 §1.4）：**GM 改区域名**的唯一窄写面。
@@ -21,7 +24,7 @@ import java.util.Map;
  * <p>★ <b>2026-10-12 B3 下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-map}，对 {@code CoreSimos}
  * 的直连换成构造期注入的 {@link ToolWritePort}（命令类型、载荷、拒绝码、资源声明、审批门逐字不变）。
  */
-public final class MapRenameRegionTool extends AbstractNarrowWriteTool {
+public final class MapRenameRegionTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /** 工具名（与命令类型同名，同一个拼写点）。 */
   public static final String NAME = "map.RenameRegion";
@@ -57,5 +60,11 @@ public final class MapRenameRegionTool extends AbstractNarrowWriteTool {
     props.put("branch", ToolSchema.prop("string", "分支名"));
     props.put("expectedRevision", ToolSchema.prop("integer", "期望的 base revision（乐观并发）"));
     return ToolSchema.schema(props, List.of("branch", "expectedRevision"));
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

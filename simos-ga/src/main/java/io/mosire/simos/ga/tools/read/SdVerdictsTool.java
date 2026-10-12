@@ -1,18 +1,20 @@
 package io.mosire.simos.ga.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.spi.GmOnlyRead;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolQueries;
 import io.mosire.simos.ga.tools.GaToolReads;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.sd.verdicts}（工具面补齐，2026-09-25）：**判决只读面**。
@@ -32,7 +34,7 @@ import java.util.Map;
  * actor} ⇒ 走 {@code verdicts(actor, target)} 的 redaction（按该决策人的 adjudication 披露策略裁剪字段），语义与 GUI 的
  * {@code as=} 完全一致——★ **不把 {@code as=} 当成可省略的装饰**：给了就真裁剪。
  */
-public final class SdVerdictsTool implements AgentTool, GmOnlyRead {
+public final class SdVerdictsTool implements SimosTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.sd.verdicts";
@@ -79,5 +81,11 @@ public final class SdVerdictsTool implements AgentTool, GmOnlyRead {
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

@@ -1,12 +1,13 @@
 package io.mosire.simos.app.tools.read;
 
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.app.access.CatalogVisibility;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,7 +33,7 @@ import java.util.Set;
  *
  * <p>★ **不给 Core 加新面**（spec §7.1 原文）：Core 不暴露 {@code CommandRegistry.types()}，清单由 app 持有。
  */
-public final class CatalogTool implements AgentTool {
+public final class CatalogTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.command.catalog";
@@ -1017,5 +1018,11 @@ public final class CatalogTool implements AgentTool {
     }
     view.put("payloadHints", hints);
     return ToolSupport.ok(view);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

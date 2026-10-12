@@ -7,8 +7,10 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.agentlib.tool.ToolResultTruncator;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaDecisionHost;
@@ -21,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * {@code sd.RunDecision} 窄工具（T11C）：**让某个决策人的 agent 真跑一轮**的触发入口，**只在 GM 桶**（= 运行时 MCP 口）。
@@ -48,7 +51,7 @@ import java.util.Objects;
  * <p>★ **决策本身不经本工具落盘**：它仍走运行流内部的 {@code sd.IssueDirective} / {@code sd.SubmitVerdict}（铁律 2，
  * 运行流已如此）——本工具只多落那**一条触发事实**。
  */
-public final class RunDecisionTool extends AbstractNarrowWriteTool {
+public final class RunDecisionTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "sd.RunDecision";
 
@@ -220,5 +223,11 @@ public final class RunDecisionTool extends AbstractNarrowWriteTool {
       out.add(row);
     }
     return out;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

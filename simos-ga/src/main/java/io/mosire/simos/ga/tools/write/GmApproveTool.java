@@ -10,12 +10,13 @@ import io.mosire.agentlib.approval.ToolGate;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -24,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code simos.gm.approve}（P7b，2026-10-01 后端 + MCP 稳定化计划）：**GM-only MCP 裁决口**——外部 GM/MCP 对 {@code
@@ -57,7 +59,7 @@ import java.util.Optional;
  *
  * <p>★ <b>{@code by} 只是审计注记</b>：正文原样进登记表，不参与任何判定；缺省 {@value #DEFAULT_BY}（本通道名）。
  */
-public final class GmApproveTool implements AgentTool {
+public final class GmApproveTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gm.approve";
@@ -290,5 +292,11 @@ public final class GmApproveTool implements AgentTool {
       case APPROVE_SESSION -> "session";
       case DENY -> "none";
     };
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

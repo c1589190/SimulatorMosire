@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.SetFormationOffset} 窄工具（M2，spec §八.3）：**设编制偏移**的唯一窄写面。
@@ -13,7 +16,7 @@ import java.util.Map;
  * <p>★★ **两个分量全缺 = 清除偏移**，**不是**"不动"；**只给一个分量时另一个按 0**（不是"保持原值"）。 这两条都写进 {@link
  * #description()}，让模型在调用前就看得见。
  */
-public final class UnitSetFormationOffsetTool extends AbstractNarrowWriteTool {
+public final class UnitSetFormationOffsetTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.SetFormationOffset";
 
@@ -37,5 +40,11 @@ public final class UnitSetFormationOffsetTool extends AbstractNarrowWriteTool {
         + "（移动/编队/战斗都不读），调用会被具名拒、不写状态；字段仅为旧档保留。"
         + "站位调整请用 unit.PlaceAt / unit.PlanRoute / unit.PlanSparseRoute / unit.AttachUnit / unit.DetachUnit /"
         + " unit.ReparentUnit；相对父的站位偏移暂无替代";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

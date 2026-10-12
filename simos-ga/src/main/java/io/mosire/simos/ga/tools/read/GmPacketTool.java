@@ -5,13 +5,14 @@ import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.spi.GmOnlyRead;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.DecisionPacketViews;
 import io.mosire.simos.ga.tools.GaToolReads;
@@ -23,6 +24,7 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * {@code simos.gm.packet}（D2 决策包计划 §4）：GM 读单个决策包的全量（intent、逐 call 的参数/目标/预览/拟稿检查/状态）。
@@ -32,7 +34,7 @@ import java.util.Objects;
  *
  * <p>★ 只在 GM 桶（{@link GmOnlyRead}），视图与 {@code simos.sd.packet.my} 共用 {@link DecisionPacketViews}。
  */
-public final class GmPacketTool implements AgentTool, GmOnlyRead {
+public final class GmPacketTool implements SimosTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS。 */
   public static final String NAME = "simos.gm.packet";
@@ -112,5 +114,11 @@ public final class GmPacketTool implements AgentTool, GmOnlyRead {
       throw new IllegalArgumentException("tick 不得为负: " + tick);
     }
     return DecisionPacketId.parse("pkt-" + DecisionMakerId.parse(proposerId).value() + "-" + tick);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

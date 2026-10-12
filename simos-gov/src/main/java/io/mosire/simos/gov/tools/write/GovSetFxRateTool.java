@@ -9,15 +9,16 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.economy.api.fx.OfficialRate;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.gov.tools.GovToolReads;
 import io.mosire.simos.gov.tools.GovToolSupport;
@@ -27,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>{@code simos.gov.setFxRate}（A2a 2026-10-08；约束设计书 §3.3）</b>：定/改一个 GOV 对某个币对的<b>官方汇率</b> ——
@@ -44,7 +46,7 @@ import java.util.Objects;
  * FxSettlement}），政府外汇窗口按 {@code bidP = buyPerMille} / {@code askP = sellPerMille} 挂牌， 储备上限 = 该 GOV
  * 对该币种累计发行量的 500‰。★ 没定过汇率的世界<b>完全没有外汇面</b>（逐值退回）。
  */
-public final class GovSetFxRateTool implements AgentTool {
+public final class GovSetFxRateTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.setFxRate";
@@ -270,5 +272,11 @@ public final class GovSetFxRateTool implements AgentTool {
   /** ★ 供测试/探针引用的政府 id 形态（与 handler 的同一拼写点）。 */
   static GovernmentId governmentIdOf(String govUnitId) {
     return GovernmentIds.ofUnit(govUnitId);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

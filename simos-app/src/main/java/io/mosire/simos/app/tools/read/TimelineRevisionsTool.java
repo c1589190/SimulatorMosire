@@ -2,7 +2,6 @@ package io.mosire.simos.app.tools.read;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.gui.ApiViews;
@@ -10,12 +9,15 @@ import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.timeline.RevisionRow;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code simos.timeline.revisions}（工具面 M4）：**时间轴的节点清单**（{@code branch} / {@code head} / {@code
@@ -31,7 +33,7 @@ import java.util.Optional;
  * <p>★ **只读**：{@code core.head} / {@code core.revisions} 都不触发封存与写盘（R1 口径）。分支不存在 ⇒ {@code
  * NOT_FOUND}（与 GUI 的 404 同口径：不给"空分支"这种含糊结果）。
  */
-public final class TimelineRevisionsTool implements AgentTool {
+public final class TimelineRevisionsTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.timeline.revisions";
@@ -91,5 +93,11 @@ public final class TimelineRevisionsTool implements AgentTool {
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

@@ -100,6 +100,13 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
    * 决策人的工具白名单（spec §2.2）：**共享读工具 + 两条决策行为**（★ M4 起：读工具里标了 {@code GmOnlyRead} 的那些**不在**本白名单里——它们只进
    * GM 桶）。
    *
+   * <p>★★ <b>2026-10-12 B4「一处声明、三处派生」的处置（设计书 §4.4 / I-G3）</b>：本常量**不再是权限面的真源** —— 生产路径由 {@code
+   * Shell} 从**决策人桶**派生（{@link #forDecisionFace}，桶的内容又由每条工具自己的 {@code SimosTool.roles()} 声明经 {@code
+   * ToolRoleAudit.requireFaces} 双向钉死）。本常量保留为**静态声明值**：{@code DecisionToolDefsTest} 在不启动 {@code
+   * Shell} 的静态初始化期就要它非空且逐条正确（"白名单漏一条要响亮失败"那条用例），而 {@code SimosTool.roles()} 是**实例**方法 ——
+   * 没有装配就没有实例，静态期无法派生。★ 两者的关系由装配期的 {@code ToolRoleAudit.requireSameNames} **逐条比对**钉死：
+   * 派生集合与本常量不一致（漏一条/多一条）**当场抛**，所以"往决策人桶加工具却忘了同步这里"不会静默成一条旁路。
+   *
    * <p>★ 第 10 条读工具是第 3 波第 3 步的 {@link DecisionResultsTool}（决策人查看**自己**的决策结果，用户原话「允许决策人查看不同 tick
    * 的不同决策结果」）——它只挂决策人桶，读口经 {@code RedactingQueryService#decisionResults}（可见性 = 条目 tags 含自己）。
    *
@@ -250,6 +257,26 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
   /** 按 spec §2.2 装配：范围函数取两个内置实现（国家 / 军队），执行走调用方给的 authorizer（**带审批编排器**的那个）。 */
   public static DecisionCallerFactory defaults(ToolCallAuthorizer authorizer) {
     return new DecisionCallerFactory(DecisionScopeFunctions.defaults(), authorizer);
+  }
+
+  /**
+   * ★★ <b>生产路径的装配</b>（2026-10-12 B4）：白名单 = **从决策人桶派生的工具名**（{@code ToolBuckets.namesOf(决策人桶)}）， 不再手抄
+   * 44 条（设计书 §4.4「一处声明、三处派生」/ I-G3）。
+   *
+   * <p>★ 为什么由 {@code Shell} 传进来而不是本类自己算：派生需要**装配好的决策人桶**（真实工具实例），而本类住在 {@code app.access}，
+   * 看不见桶的装配（那要 core/query/16 个模块的工具构造）。{@code Shell} 是唯一同时拿得到"桶"与"权限组"的地方。
+   *
+   * <p>★ <b>传进来的集合必须已经过校验</b>：{@code Shell} 先跑 {@code ToolRoleAudit.requireFaces}（桶 ⇔ {@code
+   * roles()} 声明）与 {@code requireSameNames}（派生集合 ⇔ 静态 {@link #WHITELIST}），两者都不一致当场抛 —— 所以这里拿到的名字与
+   * {@link #WHITELIST} 逐条相等，只是**来源**换成了声明。
+   *
+   * @param authorizer 带审批编排器的 authorizer（与 {@link #defaults} 同一条链）
+   * @param derivedDecisionFaceNames 决策人桶的工具名（派生；非空）
+   */
+  public static DecisionCallerFactory forDecisionFace(
+      ToolCallAuthorizer authorizer, Set<String> derivedDecisionFaceNames) {
+    return new DecisionCallerFactory(
+        DecisionScopeFunctions.defaults(), authorizer, derivedDecisionFaceNames);
   }
 
   /**

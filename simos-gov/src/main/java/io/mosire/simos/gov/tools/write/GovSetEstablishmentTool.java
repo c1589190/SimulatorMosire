@@ -7,11 +7,12 @@ import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.gov.tools.GovToolEconomy;
 import io.mosire.simos.gov.tools.GovToolReads;
@@ -23,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>{@code simos.gov.setEstablishment}（Z3c-2）：行政编制计划设置工具（GM + 该 GOV 决策人）</b> —— {@code
@@ -41,7 +43,7 @@ import java.util.Objects;
  * {@code EconomyGovPolicyPayloads} 解析与 GOV 单位守卫），preview 不写状态、不发"已应用"日志；逐值相同的重放 = noop（不落空
  * revision）。
  */
-public final class GovSetEstablishmentTool implements AgentTool {
+public final class GovSetEstablishmentTool implements SimosTool {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.setEstablishment}）。 */
   public static final String NAME = "simos.gov.setEstablishment";
@@ -226,5 +228,11 @@ public final class GovSetEstablishmentTool implements AgentTool {
     view.put("paperworkDemandStaticModifierPerMille", plan.paperworkDemandStaticModifierPerMille());
     view.put("supernumerarySqrtCoefficient", plan.supernumerarySqrtCoefficient());
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

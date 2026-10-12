@@ -5,7 +5,6 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ResourceScope;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.household.HouseholdPositionResolver;
@@ -24,6 +23,8 @@ import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
@@ -61,7 +62,7 @@ import java.util.function.Function;
  * <p>★ <b>不靠工具名/身份字符串判 GM</b>：{@code scope=ALL} 只看调用者的 {@code social} 命名空间是否 {@code
  * unrestricted()}（与 {@code Shell#gmPermissionSet} 同源）。
  */
-public final class SocialHouseholdsTool implements AgentTool {
+public final class SocialHouseholdsTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.social.households";
@@ -765,5 +766,11 @@ public final class SocialHouseholdsTool implements AgentTool {
     schema.put("description", "格坐标数组，如 [{\"q\":0,\"r\":0}]");
     schema.put("items", items);
     return schema;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

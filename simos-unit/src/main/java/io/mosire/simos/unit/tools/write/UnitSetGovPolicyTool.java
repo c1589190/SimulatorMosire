@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.SetGovPolicy} 窄工具（阶段 10b-i，2026-10-01）：<b>改 GOV 编制政策</b>的唯一 GM 窄写面。
@@ -15,7 +18,7 @@ import java.util.Map;
  * <p>★ 工具层不做前置校验（那份校验能被 {@code simos.command.submit} 绕过 ⇒ 是装饰），拒绝理由由域层给、经 {@code ToolResults.fold}
  * 变成可读的 {@code REJECTED}。
  */
-public final class UnitSetGovPolicyTool extends AbstractNarrowWriteTool {
+public final class UnitSetGovPolicyTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.SetGovPolicy";
 
@@ -40,5 +43,11 @@ public final class UnitSetGovPolicyTool extends AbstractNarrowWriteTool {
         + " staffCap?{SCRIBE|YAMEN|POST:整数}}"
         + "（★ 部分覆盖：未给字段保持原值；staffCap 给 {} = 清空上限、缺省保持原表；"
         + "四个数值与上限值必须 ≥0，否则 OfficePolicy 构造期具名拒；单位必须是 GOV）";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

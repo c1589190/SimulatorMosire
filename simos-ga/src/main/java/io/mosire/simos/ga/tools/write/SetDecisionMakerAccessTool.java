@@ -3,10 +3,13 @@ package io.mosire.simos.ga.tools.write;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code sd.SetDecisionMakerAccess} 窄工具（spec §4.2，N9/N11）：**GM 专用**配权写面（标 sensitive，走审批）。
@@ -18,7 +21,7 @@ import java.util.Map;
  * 窄写工具集合 == GM 桶的窄写工具集合（{@code SimosToolsTest}）、catalog 的 type 集合 == 全部 handler 的 {@code
  * type()}。它们才是把三处名字钉在一起的东西（写成常量引用会让扫描器当场判"抽不到"）。
  */
-public final class SetDecisionMakerAccessTool extends AbstractNarrowWriteTool {
+public final class SetDecisionMakerAccessTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "sd.SetDecisionMakerAccess";
 
@@ -54,5 +57,11 @@ public final class SetDecisionMakerAccessTool extends AbstractNarrowWriteTool {
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return sdNamespaceWriteResources();
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

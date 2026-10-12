@@ -105,6 +105,8 @@ import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.tools.GmAutoApproveGate;
 import io.mosire.simos.ga.tools.GmToolUsage;
 import io.mosire.simos.ga.tools.RecordingToolSource;
+import io.mosire.simos.ga.tools.ToolBuckets;
+import io.mosire.simos.ga.tools.ToolRoleAudit;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
@@ -1021,9 +1023,11 @@ public final class Shell implements AutoCloseable {
     //   工具面补齐（2026-09-25）起它同时是 MCP 的 `simos.gm.tool-usage` 的数据源。★ **必须在两个工具源之前建**：
     //   两档的读工具装配都要求它非 null（GM-only 读工具虽会被决策人桶过滤，仍先被构造）。
     GmToolUsage gmToolUsage = new GmToolUsage();
-    DecisionCallerFactory decisionCallerFactory = DecisionCallerFactory.defaults(toolAuthorizer);
-    ToolRegistry decisionTools = new ToolRegistry();
-    decisionTools.registerAll(
+    // ★★ 2026-10-12 B4（设计书 §4.4「一处声明、三处派生」/ I-G3）：**决策人桶先建、权限组白名单从它派生**
+    //   —— 白名单不再手抄 44 条（唯一拼写点是每条工具自己的 SimosTool.roles()）。静态 WHITELIST 保留为
+    //   **声明值**（DecisionToolDefsTest 在不启 Shell 的静态初始化期就要它非空、且含 simos.map.overview），
+    //   两者在下面由 ToolRoleAudit.requireSameNames 逐条比对钉死：漏一条/多一条**当场抛**，不会静默成旁路。
+    List<AgentTool> decisionAgentFace =
         new SimosToolSource(
                 coreSimos,
                 calendarService,
@@ -1038,7 +1042,12 @@ public final class Shell implements AutoCloseable {
                 gmToolUsage,
                 llmConfig,
                 SimosToolSource.Role.DECISION_AGENT)
-            .listTools());
+            .listTools();
+    DecisionCallerFactory decisionCallerFactory =
+        DecisionCallerFactory.forDecisionFace(
+            toolAuthorizer, ToolBuckets.namesOf(decisionAgentFace));
+    ToolRegistry decisionTools = new ToolRegistry();
+    decisionTools.registerAll(decisionAgentFace);
     // ★ 决策人桶**不带**触发工具（决策人不触发自己，那是自环）⇒ 这里用不带运行流的那条构造器。
     SqliteConversationStore decisionConversations =
         SqliteConversationStore.open(
@@ -1082,6 +1091,15 @@ public final class Shell implements AutoCloseable {
             decisionAgentService,
             pendingApprovals,
             approvalCoordinator);
+    // ★★ 2026-10-12 B4（设计书 §4.4 / I-G3）：**装配完成处的两段校验，各一次 O(n)** ——
+    //   ① 两桶 ⇔ roles() 声明（双向全量）：抓"标了 DM 却没注册进决策人桶""只在 GM 桶的窄写却标了 DM"
+    //      "加了工具忘了标角色"；② 静态白名单 ⇔ 从决策人桶派生的名字集合：抓"桶里加了工具却忘了改白名单"
+    //      （或反之）。两段都是 **fail-closed：当场抛**，不是静默跳过、不是 warn。
+    ToolRoleAudit.requireFaces(toolSource.listTools(), decisionAgentFace);
+    ToolRoleAudit.requireSameNames(
+        "DecisionCallerFactory.WHITELIST",
+        DecisionCallerFactory.WHITELIST,
+        ToolBuckets.namesOf(decisionAgentFace));
     // ★ T8：GM 交互界面的数据源（`gmToolUsage` 已在上方、两个工具源之前建好）——只包 GM 组的源 ⇒ 记录的就是
     //   "GM MCP 的工具使用"（spec §七.4 C22）。
     ToolRegistry toolRegistry = new ToolRegistry();

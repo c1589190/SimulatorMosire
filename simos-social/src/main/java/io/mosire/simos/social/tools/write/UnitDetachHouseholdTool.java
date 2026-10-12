@@ -3,8 +3,10 @@ package io.mosire.simos.social.tools.write;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.map.hex.HexCoord;
@@ -25,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.unit.detachHousehold}（S3a，2026-10-09）：<b>GM 把家户移出单位窄工具</b>——两条命令<b>同批落一条
@@ -41,7 +44,7 @@ import java.util.Objects;
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；资源声明 social + unit。
  */
-public final class UnitDetachHouseholdTool extends AbstractHouseholdGmTool {
+public final class UnitDetachHouseholdTool extends AbstractHouseholdGmTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.unit.detachHousehold";
@@ -178,5 +181,11 @@ public final class UnitDetachHouseholdTool extends AbstractHouseholdGmTool {
                         "HEX:" + hex,
                         "reasonLength",
                         request.reason() == null ? 0 : request.reason().length())));
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

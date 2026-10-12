@@ -3,10 +3,13 @@ package io.mosire.simos.ga.tools.write;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code sd.SetDecisionMakerProvider} 窄工具（M3）：**给决策人绑定 LLM provider 引用**的唯一窄写面。
@@ -17,7 +20,8 @@ import java.util.Map;
  * fail-closed，**绝不静默兜底**。⇒ 工具层**有意不加**存在性校验：那份校验能被 {@code simos.command.submit}
  * 绕过（＝装饰），而「从工具面看不出写错了」这件事已写进 {@link #description()}。
  */
-public final class SdSetDecisionMakerProviderTool extends AbstractNarrowWriteTool {
+public final class SdSetDecisionMakerProviderTool extends AbstractNarrowWriteTool
+    implements SimosTool {
 
   public static final String NAME = "sd.SetDecisionMakerProvider";
 
@@ -53,5 +57,11 @@ public final class SdSetDecisionMakerProviderTool extends AbstractNarrowWriteToo
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return sdNamespaceWriteResources();
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

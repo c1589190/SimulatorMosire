@@ -4,7 +4,9 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
@@ -12,6 +14,7 @@ import io.mosire.simos.sd.spi.DecisionSignature;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code sd.IssueDirective} 窄工具（spec §八.3，N9）：决策人出令的**唯一**写面。
@@ -20,7 +23,7 @@ import java.util.Optional;
  * 「决策人不能直接改地图等数据」——下指令是它的本职，spec §2.2 把这条放进决策人白名单就是这条意思）。故它
  * **不复用**基类缺省的三命名空间粗断言：那条在受限调用者身上会**整调拒掉**（粗断言撞细围栏，T5-T8 实测发现 1）。
  */
-public final class IssueDirectiveTool extends AbstractNarrowWriteTool {
+public final class IssueDirectiveTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "sd.IssueDirective";
 
@@ -81,5 +84,11 @@ public final class IssueDirectiveTool extends AbstractNarrowWriteTool {
     return DecisionSignature.violation(
         identity().decisionMakerIdOf(context.identity()),
         ToolSchema.optionalText(context.arguments(), "payloadJson", "{}"));
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

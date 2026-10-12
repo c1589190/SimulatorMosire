@@ -5,7 +5,6 @@ import io.mosire.agentlib.approval.ToolGate;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
@@ -18,6 +17,8 @@ import io.mosire.simos.calendar.JulianCalendar;
 import io.mosire.simos.calendar.SeasonBoundary;
 import io.mosire.simos.calendar.SeasonState;
 import io.mosire.simos.calendar.TropicalModel;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
@@ -53,7 +54,7 @@ import java.util.regex.Pattern;
  * BAD_REQUEST}，不静默截断/回落）。{@code dryRun=true} ⇒ 只预览：不写 store、不换内存快照，返回 {@code applied=false} 与
  * warnings。
  */
-public final class CalendarConfigureTool implements AgentTool {
+public final class CalendarConfigureTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.calendar.configure";
@@ -434,5 +435,11 @@ public final class CalendarConfigureTool implements AgentTool {
       notes.add("未给坐标（q/r 都缺省），季节不适用：本响应省略 season；给成对的 q/r 再查。");
     }
     return notes;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

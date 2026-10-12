@@ -2,15 +2,17 @@ package io.mosire.simos.app.tools.read;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.tools.GmOnlyRead;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.llm.providers}（工具面补齐，2026-09-25）：**LLM provider 配置的掩码视图**（只读）。
@@ -33,7 +35,7 @@ import java.util.Map;
  * 名是**对手的模型配置与观测面**，决策人/外部 Agent 不该看。GM 面本就全权（GUI 同端点）。资源声明取 {@link ResourceManifest#NONE}：它读的是
  * AgentLib 配置，不读任何领域命名空间。
  */
-public final class LlmProvidersTool implements AgentTool, GmOnlyRead {
+public final class LlmProvidersTool implements SimosTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.llm.providers";
@@ -78,5 +80,11 @@ public final class LlmProvidersTool implements AgentTool, GmOnlyRead {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("providers", config.views());
     return ToolSupport.ok(view);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

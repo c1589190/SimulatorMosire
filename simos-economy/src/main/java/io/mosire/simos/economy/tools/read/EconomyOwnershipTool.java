@@ -2,22 +2,24 @@ package io.mosire.simos.economy.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.economy.tools.EconomyToolPerspective;
 import io.mosire.simos.economy.tools.EconomyToolReads;
 import io.mosire.simos.economy.tools.EconomyToolViews;
 import io.mosire.simos.ga.spi.GmOnlyRead;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.economy.ownership}（H0.6 的产权读口）：某格**各家户持有什么** —— actor 侧的库存账与行侧的商品栏**并排**给。
@@ -38,7 +40,7 @@ import java.util.Map;
  * ApiViews.economyOwnership}）装配，与 GUI 的 {@code GET /api/economy/ownership} **同一个函数**（{@code
  * AGENT.md} §8.3：不许在工具里另拼一遍）。
  */
-public final class EconomyOwnershipTool implements AgentTool, GmOnlyRead {
+public final class EconomyOwnershipTool implements SimosTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.economy.ownership";
@@ -125,5 +127,11 @@ public final class EconomyOwnershipTool implements AgentTool, GmOnlyRead {
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

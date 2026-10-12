@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.SetStatus} 窄工具（M2，spec §八.3）：**设定单位状态**的唯一窄写面。
@@ -13,7 +16,7 @@ import java.util.Map;
  *
  * <p>★ 改状态**只影响此后新下达的路线**，在途路线的速度在出发时已冻结、不回溯。
  */
-public final class UnitSetStatusTool extends AbstractNarrowWriteTool {
+public final class UnitSetStatusTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.SetStatus";
 
@@ -34,5 +37,11 @@ public final class UnitSetStatusTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "设定单位状态：固定 unit.SetStatus，载荷 {id, status（MOVING|RESTING|ENGAGED）}";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

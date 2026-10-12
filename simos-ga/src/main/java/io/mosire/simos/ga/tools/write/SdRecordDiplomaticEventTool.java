@@ -3,10 +3,13 @@ package io.mosire.simos.ga.tools.write;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.sd.record-diplomatic-event}（GM 桶窄写；D-005 / R6）：固定 {@code sd.RecordDiplomaticEvent} 的
@@ -18,7 +21,8 @@ import java.util.Map;
  * RecordDiplomaticEventTool}）。★ 工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}；命令类型本体已注册并登记载荷提示。 ★
  * 写面只声明 {@code sd} 命名空间（handler 只产 sd 变更集）。
  */
-public final class SdRecordDiplomaticEventTool extends AbstractNarrowWriteTool {
+public final class SdRecordDiplomaticEventTool extends AbstractNarrowWriteTool
+    implements SimosTool {
 
   /** 工具名（全局唯一；与命令类型 {@code sd.RecordDiplomaticEvent} 不同名）。 */
   public static final String NAME = "simos.sd.record-diplomatic-event";
@@ -60,5 +64,11 @@ public final class SdRecordDiplomaticEventTool extends AbstractNarrowWriteTool {
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return sdNamespaceWriteResources();
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.PlanSparseRoute} 窄工具（M2，spec §八.3）：**下达稀疏路线**的唯一窄写面。
@@ -11,7 +14,7 @@ import java.util.Map;
  * <p>★ 与 {@code unit.PlanRoute} 的差别在**载荷语义**：这里 {@code waypoints} 是**稀疏路点**，相邻两点之间由域层
  * 逐段寻路展开（成本模型由装配注入，不写死）。**任一段不可达即整条被拒**，不是跳过该段——拒绝发生在**命令期**， 不留下半条路线。
  */
-public final class UnitPlanSparseRouteTool extends AbstractNarrowWriteTool {
+public final class UnitPlanSparseRouteTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.PlanSparseRoute";
 
@@ -35,5 +38,11 @@ public final class UnitPlanSparseRouteTool extends AbstractNarrowWriteTool {
         + "（逐段展开；任一段不可达即整条被拒；★ 首点必须是该单位**当前所在格**；"
         + "★ 末点可以与首点相同 = **巡逻一圈回原地**，允许）。"
         + "★★ 只有编制**顶层**能下路线：成员会被拒（理由点名顶层）——改对顶层下令，或先 SplitFormation / DetachUnit 拆出来";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

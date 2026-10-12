@@ -9,15 +9,16 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.army.CombatOutcome;
 import io.mosire.simos.army.tools.ArmyManpowerPort;
 import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.unit.UnitId;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.army.resolveCombat}（阶段 D4 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02；P2 人员伤亡 回写
@@ -75,7 +77,7 @@ import java.util.Optional;
  * CoreSimos} / {@code QueryService} / {@code CalendarService} 的直连换成构造期注入（写口 / 读口 / 视图口 /
  * 选人口——历法时钟由选人口的实现持有， 因为 {@code simos-calendar} 在 army 禁列里）；工具名、载荷、拒绝码、资源声明、批内顺序逐字不变。
  */
-public final class ResolveCombatTool implements AgentTool {
+public final class ResolveCombatTool implements SimosTool {
 
   /** 工具名（全局唯一；用户给定）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.army.resolveCombat";
@@ -345,5 +347,11 @@ public final class ResolveCombatTool implements AgentTool {
       throw new IllegalArgumentException("参数 " + name + " 若给出必须是非空白文本");
     }
     return Optional.of(text);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.SetGovSuperior} 窄工具（阶段 10b-i，2026-10-01）：<b>改 GOV 上级层级</b>的唯一 GM 窄写面。
@@ -16,7 +19,7 @@ import java.util.Map;
  * <p>★ 工具层不做前置校验（那份校验能被 {@code simos.command.submit} 绕过 ⇒ 是装饰），拒绝理由由域层给、经 {@code ToolResults.fold}
  * 变成可读的 {@code REJECTED}。
  */
-public final class UnitSetGovSuperiorTool extends AbstractNarrowWriteTool {
+public final class UnitSetGovSuperiorTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.SetGovSuperior";
 
@@ -39,5 +42,11 @@ public final class UnitSetGovSuperiorTool extends AbstractNarrowWriteTool {
     return "设/改 GOV 上级：固定 unit.SetGovSuperior，载荷 {unitId, superiorGov?}"
         + "（★ superiorGov 缺省或 null = 中央；非空必须存在且带 GovernmentFormation、不得指向自身；"
         + "沿 superiorGov 上溯不得成环（seen + 最多 64 层兜底）；单位本身必须是 GOV）";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

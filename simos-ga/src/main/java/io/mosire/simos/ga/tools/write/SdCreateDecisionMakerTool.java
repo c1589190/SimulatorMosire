@@ -3,10 +3,13 @@ package io.mosire.simos.ga.tools.write;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code sd.CreateDecisionMaker} 窄工具（M3，spec §八.3）：**建决策人**的唯一窄写面。
@@ -16,7 +19,7 @@ import java.util.Map;
  * <p>★ {@code allowedTools} 含通用写（{@code simos.command.submit}）即被拒（N9）；★ 创建期 {@code accessLimit}
  * 恒为**无额外限制**、本命令**不接受**该字段——传了会被**静默忽略**（无拒绝）。配权走 {@code sd.SetDecisionMakerAccess}。
  */
-public final class SdCreateDecisionMakerTool extends AbstractNarrowWriteTool {
+public final class SdCreateDecisionMakerTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "sd.CreateDecisionMaker";
 
@@ -51,5 +54,11 @@ public final class SdCreateDecisionMakerTool extends AbstractNarrowWriteTool {
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return sdNamespaceWriteResources();
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

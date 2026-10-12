@@ -4,12 +4,15 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code social.UpdateCity} 窄工具（R2a，行政区划修复计划 §1.2/§R4）：**改城市 name / props / region** 的唯一窄写面。
@@ -27,7 +30,7 @@ import java.util.Map;
  * <p>★ <b>目标资源</b>：{@code CommandTargets} 仍返回空列表（命令载荷不含坐标、social 资源语法也没有 city 专属路径）； GM
  * 直接调用不受影响，受限调用者继续 fail-closed（见 {@code UpdateCityHandler} 类注）。
  */
-public final class SocialUpdateCityTool extends AbstractNarrowWriteTool {
+public final class SocialUpdateCityTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "social.UpdateCity";
 
@@ -81,5 +84,11 @@ public final class SocialUpdateCityTool extends AbstractNarrowWriteTool {
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return List.of(ResourceId.of(ToolResources.SOCIAL_NAMESPACE, "*"));
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

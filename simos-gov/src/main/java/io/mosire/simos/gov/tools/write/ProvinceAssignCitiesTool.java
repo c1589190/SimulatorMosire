@@ -9,11 +9,12 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.gov.tools.GovToolReads;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -61,7 +63,7 @@ import java.util.UUID;
  * <p>★ <b>{@code changedCities == 0}</b> ⇒ 不组批、不提交，返回 {@code submitted:false}、 {@code
  * changedCities:0}（零 revision）。本工具是给既有/新建世界补归省用的；R5 重建时在 {@code province.apply} 之后 显式调用它。
  */
-public final class ProvinceAssignCitiesTool implements AgentTool {
+public final class ProvinceAssignCitiesTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.province.assignCities";
@@ -326,5 +328,11 @@ public final class ProvinceAssignCitiesTool implements AgentTool {
       out.add(row);
     }
     return List.copyOf(out);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

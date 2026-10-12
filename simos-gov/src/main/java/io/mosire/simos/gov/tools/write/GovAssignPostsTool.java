@@ -7,11 +7,12 @@ import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.gov.tools.GovToolEconomy;
@@ -28,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -51,7 +53,7 @@ import java.util.UUID;
  * laborMilli} 只能在 (0, 当前劳动] 内（超上限 ⇒ 具名 BAD_REQUEST）。官吏户必须已在 {@code Unit.households} 里（先走 {@code
  * simos.gov.expandHousehold} / {@code simos.unit.assignHousehold}），本工具不擅自编户、不改位置。
  */
-public final class GovAssignPostsTool implements AgentTool {
+public final class GovAssignPostsTool implements SimosTool {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.assignPosts}）。 */
   public static final String NAME = "simos.gov.assignPosts";
@@ -370,5 +372,11 @@ public final class GovAssignPostsTool implements AgentTool {
         economyLaborBefore == socialLaborMilli ? economyLaborBefore : socialLaborMilli);
     view.put("commandsPreview", GovToolSupport.commandsPreview(batch));
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

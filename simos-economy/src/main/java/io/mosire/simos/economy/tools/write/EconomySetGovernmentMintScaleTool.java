@@ -5,10 +5,13 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.economy.spi.EconomySetGovernmentMintScaleHandler;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.economy.setGovernmentMintScale}（W5-fix6，2026-10-11）：<b>设置某个政府的铸币政策旋钮</b> 的 GM 窄写面
@@ -26,7 +29,8 @@ import java.util.Map;
  *
  * <p>★ <b>写面只声明 economy 命名空间</b>：handler 只产 {@code EconomyChangeSet}（政府表是经济切片的组件）。
  */
-public final class EconomySetGovernmentMintScaleTool extends AbstractNarrowWriteTool {
+public final class EconomySetGovernmentMintScaleTool extends AbstractNarrowWriteTool
+    implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.economy.setGovernmentMintScale";
@@ -76,5 +80,11 @@ public final class EconomySetGovernmentMintScaleTool extends AbstractNarrowWrite
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return List.of(ResourceId.of(ToolResources.ECONOMY_NAMESPACE, "*"));
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

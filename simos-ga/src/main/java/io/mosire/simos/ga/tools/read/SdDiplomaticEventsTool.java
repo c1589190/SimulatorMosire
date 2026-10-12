@@ -2,12 +2,13 @@ package io.mosire.simos.ga.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.ga.tools.GaToolViews;
@@ -19,6 +20,7 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.sd.diplomatic-events}（D5 / D-005 / R6）：**外交事件只读面**——多国谈判逐 tick 记录参与国与自然语言内容。
@@ -31,7 +33,7 @@ import java.util.Map;
  * <p>★ <b>过滤</b>：{@code tick?} 只列该世界日的事件；{@code participant?} 只列参与国含该 Nation 的事件；两者都给 = 交集。
  * 过滤参数只按形状解析（未知 Nation / 无命中 tick ⇒ 空结果），不做存在性查询。
  */
-public final class SdDiplomaticEventsTool implements AgentTool {
+public final class SdDiplomaticEventsTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.sd.diplomatic-events";
@@ -99,5 +101,11 @@ public final class SdDiplomaticEventsTool implements AgentTool {
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

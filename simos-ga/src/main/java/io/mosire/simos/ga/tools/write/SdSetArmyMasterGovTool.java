@@ -3,10 +3,13 @@ package io.mosire.simos.ga.tools.write;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code sd.SetArmyMasterGov} 窄工具（阶段 12 后续赋值缺口）：**已存在 Army 的主子改派 / 解除**的唯一窄写面。
@@ -19,7 +22,7 @@ import java.util.Map;
  * <p>★ <b>只改 sd 侧</b>：本工具不碰 {@code unit.ArmyFormation}（unit 侧同步走 {@code simos.army.assignGov}
  * 组合工具）； 两者语义独立，命令面不替调用方发明跨域联动。
  */
-public final class SdSetArmyMasterGovTool extends AbstractNarrowWriteTool {
+public final class SdSetArmyMasterGovTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "sd.SetArmyMasterGov";
 
@@ -56,5 +59,11 @@ public final class SdSetArmyMasterGovTool extends AbstractNarrowWriteTool {
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return sdNamespaceWriteResources();
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

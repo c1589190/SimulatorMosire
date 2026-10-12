@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.MergeFormation} 窄工具（M2，spec §八.3）：**合并编制**的唯一窄写面。
@@ -13,7 +16,7 @@ import java.util.Map;
  *
  * <p>★ 成功路径复用「合体」的级联：{@code childId} **及其全部后代**在同一刻追加 {@code attached=true} 段。
  */
-public final class UnitMergeFormationTool extends AbstractNarrowWriteTool {
+public final class UnitMergeFormationTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.MergeFormation";
 
@@ -35,5 +38,11 @@ public final class UnitMergeFormationTool extends AbstractNarrowWriteTool {
   public String description() {
     return "合并编制：固定 unit.MergeFormation，载荷 {childId, parentId}（★ 必须**同格**且 child 状态为 MOVING）——"
         + "合并后 child 的整棵子树编入 parent 那一支、一起移动；存活方是 parentId，其 speed 取合并后整支的最慢者";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

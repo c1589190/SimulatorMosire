@@ -9,14 +9,15 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.army.spi.RecordCombatHandler;
 import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.map.hex.HexCoord;
@@ -28,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.army.startCombat}（阶段 D4 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02）：GM-only
@@ -60,7 +62,7 @@ import java.util.Objects;
  * submission.commandId}/{@code correlationId} 仍**就是**落盘信封里的那一对（批级 id 由写口适配器生成并回报， 见 {@link
  * ToolWritePort.BatchReceipt}）。
  */
-public final class StartCombatTool implements AgentTool {
+public final class StartCombatTool implements SimosTool {
 
   /** 工具名（全局唯一；用户给定）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.army.startCombat";
@@ -301,5 +303,11 @@ public final class StartCombatTool implements AgentTool {
       view.put("submission", submission);
     }
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

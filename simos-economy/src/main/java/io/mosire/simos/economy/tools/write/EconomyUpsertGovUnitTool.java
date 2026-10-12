@@ -9,7 +9,6 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.api.asset.AssetKind;
@@ -19,9 +18,11 @@ import io.mosire.simos.economy.spi.EconomyGovUnitUpserts;
 import io.mosire.simos.economy.spi.EconomyUpsertGovUnitHandler;
 import io.mosire.simos.economy.tools.EconomyToolPerspective;
 import io.mosire.simos.economy.tools.EconomyToolReads;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.social.SocialData;
@@ -34,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ <b>{@code simos.economy.upsertGovUnit}（Z1c）：GM 行政服务生产 unit 创建/补齐窄工具</b> —— {@code
@@ -58,7 +60,7 @@ import java.util.Optional;
  * DecisionCallerFactory.WHITELIST} 也不含它；命令本身标了 {@code GmOnlyCommand} ⇒ 令 / {@code RegisterEffect} /
  * 决策人 catalog 三条路径同样排除。
  */
-public final class EconomyUpsertGovUnitTool implements AgentTool {
+public final class EconomyUpsertGovUnitTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS。 */
   public static final String NAME = "simos.economy.upsertGovUnit";
@@ -310,5 +312,11 @@ public final class EconomyUpsertGovUnitTool implements AgentTool {
       view.put(entry.getKey().name(), entry.getValue());
     }
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

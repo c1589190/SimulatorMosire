@@ -5,10 +5,13 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.economy.spi.EconomyReassignZoneHexesHandler;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.economy.reassignZoneHexes}（阶段 2-B2，2026-10-08；约束设计书 §4.2 / 用户 §1.2「退让市场区、覆盖范围」）：
@@ -21,7 +24,8 @@ import java.util.Map;
  *
  * <p>★ <b>写面只声明 economy 命名空间</b>：handler 只产 {@code EconomyChangeSet}（区表是经济切片的组件）。
  */
-public final class EconomyReassignZoneHexesTool extends AbstractNarrowWriteTool {
+public final class EconomyReassignZoneHexesTool extends AbstractNarrowWriteTool
+    implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.economy.reassignZoneHexes";
@@ -67,5 +71,11 @@ public final class EconomyReassignZoneHexesTool extends AbstractNarrowWriteTool 
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return List.of(ResourceId.of(ToolResources.ECONOMY_NAMESPACE, "*"));
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

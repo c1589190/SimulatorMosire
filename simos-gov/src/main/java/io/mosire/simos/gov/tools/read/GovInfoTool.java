@@ -5,14 +5,15 @@ import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.gov.GovOfficeState;
 import io.mosire.simos.gov.GovRemittanceState;
@@ -66,7 +67,7 @@ import java.util.Set;
  * map:<mapId>/hex/<q>_<r>} / {@code social:<q>_<r>} / {@code actor:<q>_<r>}（GM 面 unlimited；决策人
  * {@code GovScope} 只授自己单位与座位）。
  */
-public final class GovInfoTool implements AgentTool {
+public final class GovInfoTool implements SimosTool {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.info}）。 */
   public static final String NAME = "simos.gov.info";
@@ -760,5 +761,11 @@ public final class GovInfoTool implements AgentTool {
     InfoRejected(String message) {
       super(message);
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

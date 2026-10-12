@@ -9,12 +9,13 @@ import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.sd.change.SdChangeSet;
@@ -39,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ {@code sd.VoidAdjudication}（**只在 GM 桶**，2026-09-23）：把某一 tick 的裁决**作废**——世界回滚、令退回待裁决、 记录标作废。
@@ -66,7 +68,7 @@ import java.util.Optional;
  * <p>★ **它不是一个命令类型**（与 {@code sd.AdjudicateTick} 同族）：固定的是"作废某一 tick"这一件事，载荷只有坐标 ⇒ 不进
  * catalog、不进令白名单，决策人够不着。
  */
-public final class VoidAdjudicationTool implements AgentTool {
+public final class VoidAdjudicationTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "sd.VoidAdjudication";
@@ -318,5 +320,11 @@ public final class VoidAdjudicationTool implements AgentTool {
 
   private static SdState sdOf(SimulationState state) {
     return ((SdSnapshot) state.module("sd").orElseThrow()).state();
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

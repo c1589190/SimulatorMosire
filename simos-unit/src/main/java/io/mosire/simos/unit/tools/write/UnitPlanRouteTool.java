@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.PlanRoute} 窄工具（M2，spec §八.3）：**下达路线**的唯一窄写面。
@@ -11,7 +14,7 @@ import java.util.Map;
  * <p>★ 载荷的 {@code waypoints} **同时当作逐格 path**：本命令要求点列本身逐格相邻（**可以回到走过的格**——巡逻环线； 稀疏路线的逐段展开是另一条命令
  * {@code unit.PlanSparseRoute}）。起点必须等于单位在该时刻的有效位置，否则域层拒。
  */
-public final class UnitPlanRouteTool extends AbstractNarrowWriteTool {
+public final class UnitPlanRouteTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.PlanRoute";
 
@@ -35,5 +38,11 @@ public final class UnitPlanRouteTool extends AbstractNarrowWriteTool {
         + "★ 首点必须是该单位**当前所在格**，写成邻格会被拒）。"
         + "★★ 只有编制**顶层**能下路线：与别人一同移动的成员会被拒（理由点名顶层）——"
         + "要么改对顶层下令（整支一起跟着走），要么先用 unit.SplitFormation / unit.DetachUnit 把它拆成独立单位";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

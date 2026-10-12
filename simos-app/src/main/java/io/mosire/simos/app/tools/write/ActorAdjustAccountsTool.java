@@ -4,8 +4,11 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code actor.AdjustAccounts} 窄工具（辖区阶段 6 / 计划 §6.2）：**按有符号净增量改 actor 账**的唯一窄写面。
@@ -30,7 +33,7 @@ import java.util.Map;
  * <p>★ 工具层不做前置校验（那份校验能被 {@code simos.command.submit} 绕过 ⇒ 是装饰），拒绝理由由域层具名给、经 {@code
  * ToolSupport.fold} 变成可读的 {@code REJECTED}。
  */
-public final class ActorAdjustAccountsTool extends AbstractNarrowWriteTool {
+public final class ActorAdjustAccountsTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "actor.AdjustAccounts";
 
@@ -70,5 +73,11 @@ public final class ActorAdjustAccountsTool extends AbstractNarrowWriteTool {
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return actorNamespaceWriteResources();
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

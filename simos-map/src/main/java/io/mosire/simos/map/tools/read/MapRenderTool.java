@@ -1,12 +1,13 @@
 package io.mosire.simos.map.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * {@code simos.map.render}：把世界<b>渲染成图</b>——图片随工具结果一并出站（MCP 的 {@code ImageContent} / 决策人的图片分片），
@@ -40,7 +42,7 @@ import java.util.Objects;
  * 的直连换成构造期注入 （读口 + 视图口 + 渲染口 {@link MapRenderPort}——渲染服务/工件库/token 预算都在 app，地图模块不做存储）；
  * 参数缺省、图层校验文案、载荷字段逐字不变。
  */
-public final class MapRenderTool implements AgentTool {
+public final class MapRenderTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.map.render";
@@ -257,5 +259,11 @@ public final class MapRenderTool implements AgentTool {
       view.put("height", rendered.height());
     }
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

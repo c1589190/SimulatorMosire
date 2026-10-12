@@ -9,11 +9,12 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.gov.tools.GovToolReads;
@@ -31,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.gov.remit}（R3a，行政区划修复计划 §1.3/§R4）：<b>GM-only 显式 GOV 国库上缴 / 转移窄工具</b> —— 把用户选定的两个
@@ -55,7 +57,7 @@ import java.util.Objects;
  * REJECTED} 带真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head； 资源不匹配 ⇒ 原样抛 {@link
  * ResourceDeniedException}（由唯一入口折资源拒因）。
  */
-public final class GovRemitTool implements AgentTool {
+public final class GovRemitTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.remit";
@@ -405,4 +407,10 @@ public final class GovRemitTool implements AgentTool {
 
   /** 国库落点：GOV 单位 id + 当刻有效位置。 */
   private record TreasuryLocation(String unitId, HexCoord at, String householdId) {}
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
+  }
 }

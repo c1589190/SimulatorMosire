@@ -9,11 +9,12 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.gov.tools.GovToolPerspective;
@@ -34,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.gov.pay}（D5 / D-004 / R5）：<b>决策人版"给 XXX 政府钱"</b> —— 从<b>调用者所属 GOV</b>的国库账， 把
@@ -55,7 +57,7 @@ import java.util.Optional;
  * <b>付款人自己国库格</b>的 actor 写权限（路径由身份派生的 GOV 当刻位置算出，不取载荷）——GovernmentScope 的 actor 可达面 天然含"自己 +
  * superiorGov"，故付款侧恒可断言通过。收款侧不做工具层资源断言：收款人由决策人点名、由 GM 审批把关（见上）。
  */
-public final class GovPayTool implements AgentTool {
+public final class GovPayTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.pay";
@@ -448,5 +450,11 @@ public final class GovPayTool implements AgentTool {
     PaymentRejected(String message) {
       super(message);
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM);
   }
 }

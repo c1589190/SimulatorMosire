@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.CreateCommandChain} 窄工具（M2，spec §八.3）：**建命令链**的唯一窄写面。
@@ -11,7 +14,7 @@ import java.util.Map;
  * <p>★ 链**没有时刻**（全标量，命令表里也没有 `at`）：成立即可用，不参与时间推进。`chainId` 已存在 ⇒ 域层拒； `commander` 必须是 `members`
  * 之一、且 `members` 非空、不含 null、每个成员都解析得到 ⇒ 否则逐条可读拒绝。
  */
-public final class UnitCreateCommandChainTool extends AbstractNarrowWriteTool {
+public final class UnitCreateCommandChainTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.CreateCommandChain";
 
@@ -32,5 +35,11 @@ public final class UnitCreateCommandChainTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "建命令链：固定 unit.CreateCommandChain，载荷 {chainId, name, commander, members[]}";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

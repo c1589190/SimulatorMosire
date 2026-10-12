@@ -1,12 +1,13 @@
 package io.mosire.simos.social.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
@@ -17,6 +18,7 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * {@code simos.social.population}（spec §7.1 读工具）：某格在 head 时刻的人口取值。
@@ -31,7 +33,7 @@ import java.util.Objects;
  *
  * <p>★ 该格无人口序列 ⇒ {@code NOT_FOUND}（与"这一格你看不见"**拒因逐字相同**，不给存在性侧信道）。
  */
-public final class PopulationTool implements AgentTool {
+public final class PopulationTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.social.population";
@@ -102,5 +104,11 @@ public final class PopulationTool implements AgentTool {
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

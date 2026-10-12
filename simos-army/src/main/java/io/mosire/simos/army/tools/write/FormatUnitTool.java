@@ -9,13 +9,14 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.util.state.BranchId;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.army.formatUnit}（阶段 D3a，2026-10-02 / D-010 + 补裁 R2 的<b>最小环</b>）：GM-only
@@ -61,7 +63,7 @@ import java.util.Optional;
  * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-army}，对 {@code
  * CoreSimos} / {@code QueryService} 的直连换成构造期注入；工具名、载荷、拒绝码、资源声明、批内顺序逐字不变。
  */
-public final class FormatUnitTool implements AgentTool {
+public final class FormatUnitTool implements SimosTool {
 
   /** 工具名（全局唯一；用户给定）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.army.formatUnit";
@@ -357,5 +359,11 @@ public final class FormatUnitTool implements AgentTool {
     payload.put("note", plan.infoNote(reason));
     payload.put("tick", plan.tick());
     return ToolResults.json(payload);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

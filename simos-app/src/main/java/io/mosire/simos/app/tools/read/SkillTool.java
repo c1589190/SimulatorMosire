@@ -1,17 +1,19 @@
 package io.mosire.simos.app.tools.read;
 
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.skill.Skill;
 import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.skill.SkillSummary;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code simos.skill}（Skill 系统，2026-09-23）：**决策人的方法论与常识**——读一份外部维护的 Markdown 库。
@@ -32,7 +34,7 @@ import java.util.Optional;
  * <p>★ **它没有资源声明**（{@code ResourceManifest.NONE}，与 {@code CatalogTool} 同款）：技能不在世界里，没有"哪块资源能不能碰"
  * 这一维；它的可见性就是"能调到这个工具"。
  */
-public final class SkillTool implements AgentTool {
+public final class SkillTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.skill";
@@ -124,5 +126,11 @@ public final class SkillTool implements AgentTool {
       out.add(summary.id());
     }
     return List.copyOf(out);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.ReparentUnit} 窄工具（M2，spec §八.3）：**改单位的父**的唯一窄写面。
@@ -11,7 +14,7 @@ import java.util.Map;
  * <p>★★ **{@code parent} 缺省或为 null = 清根**，**不是**"不动"：这条已写进 {@link #description()}，让模型在调用前就看得见——
  * 少了它，模型会把"清根"当成"不改"来用（与 M1 的 `meta` 警告同族）。
  */
-public final class UnitReparentTool extends AbstractNarrowWriteTool {
+public final class UnitReparentTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.ReparentUnit";
 
@@ -32,5 +35,11 @@ public final class UnitReparentTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "改单位的父：固定 unit.ReparentUnit，载荷 {id, parent?}（★ parent 缺省或为 null = 清根，不是“不动”）";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

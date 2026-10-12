@@ -9,11 +9,12 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.gov.tools.GovToolReads;
 import io.mosire.simos.gov.tools.GovToolSupport;
@@ -31,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>{@code simos.gov.transferTreasury}（Z3c-2，F2 前置 G1）：国库注资 / 政府间转账的 GM 窄工具</b> —— 包装 {@code
@@ -46,7 +48,7 @@ import java.util.Objects;
  * <p>★ <b>只在 GM 桶</b>（决策人路径走既有 {@code simos.gov.pay}），工具名不是命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS （它提交的
  * {@code actor.RemitGovTreasury} 已由 handler 注册）。
  */
-public final class GovTransferTreasuryTool implements AgentTool {
+public final class GovTransferTreasuryTool implements SimosTool {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.transferTreasury}）。 */
   public static final String NAME = "simos.gov.transferTreasury";
@@ -337,4 +339,10 @@ public final class GovTransferTreasuryTool implements AgentTool {
 
   /** 源落点：GOV 国库（{@code unitId} 非空）或任意家户账户（{@code unitId == null}，坐标可空）。 */
   private record SourceLocation(String unitId, HexCoord at, String householdId) {}
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
+  }
 }

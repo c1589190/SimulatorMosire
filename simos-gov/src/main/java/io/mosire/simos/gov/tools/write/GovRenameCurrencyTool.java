@@ -9,13 +9,14 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.gov.tools.GovToolReads;
 import io.mosire.simos.gov.tools.GovToolSupport;
@@ -25,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>{@code simos.gov.renameCurrency}（A1 2026-10-08；约束设计书 §3.1-3）</b>：<b>只改币种的显示名</b> —— {@code
@@ -39,7 +41,7 @@ import java.util.Objects;
  * <p>★ 两面并列、门禁不同（同 {@link GovDefineCurrencyTool}）：GM 桶 {@code GmAutoApproveGate} + 显式 {@code
  * govUnitId}；决策人桶需 GM 审批 + 身份派生。
  */
-public final class GovRenameCurrencyTool implements AgentTool {
+public final class GovRenameCurrencyTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.renameCurrency";
@@ -237,5 +239,11 @@ public final class GovRenameCurrencyTool implements AgentTool {
     command.put("payloadJson", payloadJson);
     view.put("commandsPreview", List.of(command));
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

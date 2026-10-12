@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.SetTaxRate} 窄工具（辖区阶段 5 / 计划 §2.2）：**改某管辖区域长期税率**的唯一窄写面。
@@ -15,7 +18,7 @@ import java.util.Map;
  * <p>★ 工具层不做前置校验（那份校验能被 {@code simos.command.submit} 绕过 ⇒ 是装饰），拒绝理由由域层给、经 {@code ToolResults.fold}
  * 变成可读的 {@code REJECTED}。
  */
-public final class UnitSetTaxRateTool extends AbstractNarrowWriteTool {
+public final class UnitSetTaxRateTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.SetTaxRate";
 
@@ -37,5 +40,11 @@ public final class UnitSetTaxRateTool extends AbstractNarrowWriteTool {
   public String description() {
     return "改管辖税率：固定 unit.SetTaxRate，载荷 {unitId, regionId, ratePerMille(0..1000)}"
         + "（★ regionId 必须已在该单位的管辖里，否则具名拒并指路先 unit.SetJurisdiction）";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

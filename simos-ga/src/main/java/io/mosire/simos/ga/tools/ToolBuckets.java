@@ -3,8 +3,10 @@ package io.mosire.simos.ga.tools;
 import io.mosire.agentlib.tool.AgentTool;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -40,5 +42,23 @@ public final class ToolBuckets {
       }
     }
     return Collections.unmodifiableList(shared);
+  }
+
+  /**
+   * ★★ <b>从一份（已由 {@link ToolRoleAudit} 校验过的）工具面派生工具名集合</b>（2026-10-12 B4）：这就是生产路径的 {@code
+   * DecisionCallerFactory.WHITELIST} 的来源 —— 白名单不再手抄 44 条，而是"决策人桶里有哪些工具"的纯函数。
+   *
+   * <p>★ <b>保序</b>：{@link LinkedHashSet} 按工具面的注册顺序收（与白名单冻结在赋值处的既有口径一致—— 迭代序是内容的纯函数，不做排序、也不依赖 {@code
+   * Set.copyOf} 的未定义序）。
+   *
+   * @param tools 工具面（构造顺序 = 注册顺序）
+   */
+  public static Set<String> namesOf(List<AgentTool> tools) {
+    Objects.requireNonNull(tools, "tools");
+    Set<String> names = new LinkedHashSet<>(tools.size());
+    for (AgentTool tool : tools) {
+      names.add(tool.name());
+    }
+    return Collections.unmodifiableSet(names);
   }
 }

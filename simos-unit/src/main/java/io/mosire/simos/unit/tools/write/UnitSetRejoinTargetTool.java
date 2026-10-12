@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.SetRejoinTarget} 窄工具（M2，spec §八.3）：**设回归目标**的唯一窄写面。
@@ -13,7 +16,7 @@ import java.util.Map;
  *
  * <p>★★ **{@code target} 缺省或为 null = 清除回归意图**，**不是**"不动"：这条已写进 {@link #description()}， 让模型在调用前就看得见。
  */
-public final class UnitSetRejoinTargetTool extends AbstractNarrowWriteTool {
+public final class UnitSetRejoinTargetTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.SetRejoinTarget";
 
@@ -34,5 +37,11 @@ public final class UnitSetRejoinTargetTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "设回归目标：固定 unit.SetRejoinTarget，载荷 {id, target?}（★ target 缺省或为 null = 清除回归意图）";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

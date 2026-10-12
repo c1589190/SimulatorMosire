@@ -1,18 +1,20 @@
 package io.mosire.simos.ga.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.spi.GmOnlyRead;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolQueries;
 import io.mosire.simos.ga.tools.GaToolReads;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.sd.decision-makers}（工具面 M4）：**决策人清单**。
@@ -26,7 +28,7 @@ import java.util.Map;
  * providerId}/{@code viewScope}（**对手的感知配置**）、{@code rootUnit}（**对手的编制根**）—— 语义上就是"读别人的底牌"。GM
  * 全权可读；决策人桶不开。
  */
-public final class DecisionMakersTool implements AgentTool, GmOnlyRead {
+public final class DecisionMakersTool implements SimosTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.sd.decision-makers";
@@ -72,5 +74,11 @@ public final class DecisionMakersTool implements AgentTool, GmOnlyRead {
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

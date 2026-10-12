@@ -2,11 +2,12 @@ package io.mosire.simos.ga.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolQueries;
@@ -15,6 +16,7 @@ import io.mosire.simos.sd.id.DecisionMakerId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code sd.DecisionResults}（第 3 波第 3 步）：**决策人查看自己的决策结果**——按 tick 看不同裁决的逐条结局。
@@ -43,7 +45,7 @@ import java.util.Map;
  * DecisionCallerFactory} 现算的权限组承担，本工具与 {@code DecisionCallerFactory.WHITELIST} 两处同步（否则 {@code
  * DecisionToolDefs.requireAll} 当场炸）。
  */
-public final class DecisionResultsTool implements AgentTool {
+public final class DecisionResultsTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "sd.DecisionResults";
@@ -163,5 +165,11 @@ public final class DecisionResultsTool implements AgentTool {
     if (value != null && value < 0) {
       throw new IllegalArgumentException("参数 " + name + " 必须 ≥ 0: " + value);
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM);
   }
 }

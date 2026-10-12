@@ -9,7 +9,6 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.core.CoreSimos;
@@ -17,8 +16,10 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaDecisionHost;
 import io.mosire.simos.ga.tools.GaToolIdentity;
@@ -38,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -76,7 +78,7 @@ import java.util.UUID;
  * 令不存在；令**当前不是生效态** （已 {@code EXECUTED}/{@code CANCELLED}/{@code SUPERSEDED} ⇒ 走 {@code
  * sd.SetDirectiveStatus} 的转移守卫原样拒， **不静默成功**）；{@code reason} 空白（打回必须有话可说，否则会话里就落一条空消息）。
  */
-public final class RejectDirectiveTool implements AgentTool {
+public final class RejectDirectiveTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它**不是**一条已注册的命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "sd.RejectDirective";
@@ -365,5 +367,11 @@ public final class RejectDirectiveTool implements AgentTool {
     }
     view.put("conversation", conversation);
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.SetArmyFormation} 窄工具（阶段 10a）：**立 Army 编制**的唯一窄写面。
@@ -13,7 +16,7 @@ import java.util.Map;
  * 给了就必须存在且带 {@code GovernmentFormation}。既有 GovernmentFormation ⇒ 具名拒（一单位一标签，不静默替换）。拒绝理由由域层给、经
  * {@code ToolResults.fold} 变成可读的 {@code REJECTED}。
  */
-public final class UnitSetArmyFormationTool extends AbstractNarrowWriteTool {
+public final class UnitSetArmyFormationTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.SetArmyFormation";
 
@@ -39,5 +42,11 @@ public final class UnitSetArmyFormationTool extends AbstractNarrowWriteTool {
         + "缺省 = 保持既有配置（不是清空）；role 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；"
         + "既有 GovernmentFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
         + "同类型重复设置 = 整体替换（role/masterGov 一起换））";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

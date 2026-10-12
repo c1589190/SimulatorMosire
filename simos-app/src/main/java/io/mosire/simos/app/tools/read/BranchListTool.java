@@ -1,11 +1,12 @@
 package io.mosire.simos.app.tools.read;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import java.util.ArrayList;
@@ -14,13 +15,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code simos.timeline.branches}（spec §7.1 读工具）：分支清单与各自 head。
  *
  * <p>经 {@link CoreSimos#branches()} / {@link CoreSimos#head} 的**只读委托**（spec §S8，零写面）。
  */
-public final class BranchListTool implements AgentTool {
+public final class BranchListTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.timeline.branches";
@@ -65,5 +67,11 @@ public final class BranchListTool implements AgentTool {
     view.put("branches", names);
     view.put("heads", heads);
     return ToolSupport.ok(view);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

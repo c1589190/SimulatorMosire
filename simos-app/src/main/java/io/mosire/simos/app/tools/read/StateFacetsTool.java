@@ -1,12 +1,13 @@
 package io.mosire.simos.app.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.identity.ResolvedSubject;
@@ -14,6 +15,7 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.state.facets}（spec §7.1 读工具）：某地址上的全部 facet 视图（注册序）。
@@ -22,7 +24,7 @@ import java.util.Map;
  * **不改写**转交的地址，Index/Human 形（{@code map:Map1:[1,1]}）对 facet 来说等于"没有内容"。要按坐标查 facet 请用 {@code
  * simos.map.hex}（它自己造 canonical），或先用 {@code simos.state.resolve} 拿 canonical 地址。
  */
-public final class StateFacetsTool implements AgentTool {
+public final class StateFacetsTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.state.facets";
@@ -88,5 +90,11 @@ public final class StateFacetsTool implements AgentTool {
       }
     }
     return false;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.SplitFormation} 窄工具（M2，spec §八.3）：**拆分编制**的唯一窄写面。
@@ -11,7 +14,7 @@ import java.util.Map;
  * <p>★ {@code subUnitIds} **不得为空**：至少指名一个目标，`[]` 会被域层拒（理由带**可执行的下一步**）。被指名的 子单位从 {@code rootId}
  * 的编制里脱出（脱离一个节点、不级联，与 {@code unit.DetachUnit} 同形）。
  */
-public final class UnitSplitFormationTool extends AbstractNarrowWriteTool {
+public final class UnitSplitFormationTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.SplitFormation";
 
@@ -34,5 +37,11 @@ public final class UnitSplitFormationTool extends AbstractNarrowWriteTool {
     return "拆分编制：固定 unit.SplitFormation，载荷 {rootId, subUnitIds[]（不得为空）}——"
         + "把指名的下挂单位从这支编制里摘出来。★ 摘出来之后它们成为**独立单位**（可以自己下路线；它们自己的下挂仍跟着它们走），"
         + "这是「派一支部队单独行动」的正道（没拆的成员不能自己移动）";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

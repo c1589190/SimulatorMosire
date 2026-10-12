@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.SetJurisdiction} 窄工具（辖区阶段 5 / 计划 §2.2）：**设/改单位管辖**的唯一窄写面。
@@ -15,7 +18,7 @@ import java.util.Map;
  * <p>★ 工具层不做前置校验（那份校验能被 {@code simos.command.submit} 绕过 ⇒ 是装饰），拒绝理由由域层给、经 {@code ToolResults.fold}
  * 变成可读的 {@code REJECTED}。
  */
-public final class UnitSetJurisdictionTool extends AbstractNarrowWriteTool {
+public final class UnitSetJurisdictionTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.SetJurisdiction";
 
@@ -42,5 +45,11 @@ public final class UnitSetJurisdictionTool extends AbstractNarrowWriteTool {
         + "三个 levy*CapPerCommand 的上限 = **一条**抽取命令的上限，0 = 该类无额度、拒，本批不建周期累计账本；"
         + "布（simos.unit.levyRegion 的 cloth?）本批无单命令上限、只受可用量约束，上限字段留后续；"
         + "administrationPerMille 已退役：生产路径零读取，仅为旧档兼容保留，长期税改读 gov 读数的 efficiencyPerMille）";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

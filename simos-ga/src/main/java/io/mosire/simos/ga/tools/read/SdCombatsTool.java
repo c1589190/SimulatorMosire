@@ -1,12 +1,13 @@
 package io.mosire.simos.ga.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolReads;
 import io.mosire.simos.ga.tools.GaToolViews;
@@ -14,6 +15,7 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.sd.combats}（工具面补齐，2026-09-25）：**交战记录只读面**。
@@ -29,7 +31,7 @@ import java.util.Map;
  * <p>★ **四桶共享**（不标 {@code GmOnlyRead}）：交战记录是世界状态（{@code SdState.combatStates}，可回放）， 不是别人的底牌、也不是地形探测
  * ⇒ 决策人与外部 Agent 都该能看（与 {@code simos.map.hex}/{@code simos.unit.list} 同档）。
  */
-public final class SdCombatsTool implements AgentTool {
+public final class SdCombatsTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.sd.combats";
@@ -73,5 +75,11 @@ public final class SdCombatsTool implements AgentTool {
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

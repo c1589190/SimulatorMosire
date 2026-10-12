@@ -4,11 +4,14 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code sd.SubmitVerdict} 窄工具（spec §八.3，N9）：裁决者冻结判决的**唯一**写面。
@@ -16,7 +19,7 @@ import java.util.Map;
  * <p>★ **资源声明 = sd 域的自己那一块**（T10）：交判决与出令同属**决策行为**（spec §2.2 的两条决策窄写）， 不是"直接改地图/单位数据"⇒
  * 不复用基类缺省的三命名空间粗断言（那条会让受限调用者**整调被拒**）。
  */
-public final class SubmitVerdictTool extends AbstractNarrowWriteTool {
+public final class SubmitVerdictTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "sd.SubmitVerdict";
 
@@ -52,5 +55,11 @@ public final class SubmitVerdictTool extends AbstractNarrowWriteTool {
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return decisionWriteResources(context);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

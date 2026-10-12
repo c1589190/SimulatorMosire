@@ -1,8 +1,11 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.unit.spi.ApplyCasualtiesHandler;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.ApplyCasualties} 窄工具（M2，spec §八.3；D3a 改为双轨 delta 有序条目列表）：**施加战损**的唯一窄写面。
@@ -16,7 +19,7 @@ import java.util.Map;
  * type 会被拒**，**不视作 0**（拼错 type 不会被静默忽略成"没这项"）。上界双向：`|Δ|` 不得超过当前值。 这些写进 {@link
  * #description()}，让模型在调用前就看得见。
  */
-public final class UnitApplyCasualtiesTool extends AbstractNarrowWriteTool {
+public final class UnitApplyCasualtiesTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = ApplyCasualtiesHandler.TYPE;
 
@@ -39,5 +42,11 @@ public final class UnitApplyCasualtiesTool extends AbstractNarrowWriteTool {
     return "施加装备战损：固定 unit.ApplyCasualties，载荷 {id, equipment[{type,amount≤0}]}"
         + "（★ S3b：manpower 已退役，非空 manpower 具名拒；人员战损要落 Social 家户命令）——只扣提及的 type、"
         + "未提及的保持不变；提及不存在的 type ⇒ 具名拒（不视作 0）；|Δ| ≤ 当前值。";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

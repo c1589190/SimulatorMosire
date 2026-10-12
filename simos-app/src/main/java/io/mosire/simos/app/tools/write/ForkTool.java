@@ -5,17 +5,19 @@ import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.ForkBranch;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -23,7 +25,7 @@ import java.util.UUID;
  *
  * <p>无资源命名空间（spec §7.1 表里 resources 列是 —）⇒ 不声明资源面。分岔行的类型串由 {@code Timeline} 钉住，本类不重复写。
  */
-public final class ForkTool implements AgentTool {
+public final class ForkTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.fork";
@@ -97,5 +99,11 @@ public final class ForkTool implements AgentTool {
       return ToolResult.error(
           "TOOL_ERROR", "分岔提交失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

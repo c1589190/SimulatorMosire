@@ -7,11 +7,12 @@ import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.gov.tools.GovToolManpower;
@@ -72,7 +73,7 @@ import java.util.UUID;
  *
  * <p>★ <b>不自动</b>：本工具不选人以外的任何自动动作——招多少人/招不招由调用方显式给 {@code count}；缺员只告警（Z3c-1）。
  */
-public final class GovExpandHouseholdTool implements AgentTool {
+public final class GovExpandHouseholdTool implements SimosTool {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.expandHousehold}）。 */
   public static final String NAME = "simos.gov.expandHousehold";
@@ -542,5 +543,11 @@ public final class GovExpandHouseholdTool implements AgentTool {
     view.put("sources", List.copyOf(sources));
     view.put("commandsPreview", GovToolSupport.commandsPreview(batch));
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

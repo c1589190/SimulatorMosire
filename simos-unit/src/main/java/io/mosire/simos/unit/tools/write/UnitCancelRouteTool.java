@@ -1,7 +1,10 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code unit.CancelRoute} 窄工具（M2，spec §八.3）：**取消路线**的唯一窄写面。
@@ -10,7 +13,7 @@ import java.util.Map;
  *
  * <p>★ 单位不存在 ⇒ 域层拒（`单位不存在: <id>`）；单位本来就没有在途路线时**不拒**（本操作面不判"无变化的命令"）。
  */
-public final class UnitCancelRouteTool extends AbstractNarrowWriteTool {
+public final class UnitCancelRouteTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "unit.CancelRoute";
 
@@ -31,5 +34,11 @@ public final class UnitCancelRouteTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "取消路线：固定 unit.CancelRoute，载荷 {id}";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

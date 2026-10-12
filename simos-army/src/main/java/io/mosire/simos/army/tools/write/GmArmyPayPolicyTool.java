@@ -9,13 +9,14 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.army.tools.ArmyToolReads;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -68,7 +69,7 @@ import java.util.Set;
  * （那会是一条"看着能复用、其实没人复用"的假接缝）。骨架的逐条口径与原文案（含 {@code planOnly} 内部参数、错误折叠文案）一字未改， 对宿主的直连换成构造期注入的 {@link
  * ToolWritePort} / {@link ToolReadPort}。
  */
-public final class GmArmyPayPolicyTool implements AgentTool {
+public final class GmArmyPayPolicyTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gm.armyPayPolicy";
@@ -498,5 +499,11 @@ public final class GmArmyPayPolicyTool implements AgentTool {
       out.add(household.value());
     }
     return List.copyOf(out);
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

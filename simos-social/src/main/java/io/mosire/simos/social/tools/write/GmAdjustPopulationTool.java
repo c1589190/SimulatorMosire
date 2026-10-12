@@ -12,14 +12,16 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * ★★ {@code simos.gm.adjustPopulation}（D4，2026-10-22）：<b>GM 直接增/减/转移家户人口</b>的薄适配器。
@@ -34,7 +36,7 @@ import java.util.Map;
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；只写 social 命名空间。工具名不是命令类型 ⇒ 不进 catalog /
  * {@code PAYLOAD_HINTS}。
  */
-public final class GmAdjustPopulationTool implements AgentTool {
+public final class GmAdjustPopulationTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gm.adjustPopulation";
@@ -121,5 +123,11 @@ public final class GmAdjustPopulationTool implements AgentTool {
       return ToolResult.error(
           "TOOL_ERROR", name() + " 失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

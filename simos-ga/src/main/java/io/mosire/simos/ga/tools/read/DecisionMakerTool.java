@@ -1,12 +1,13 @@
 package io.mosire.simos.ga.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.spi.GmOnlyRead;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.tools.GaToolQueries;
 import io.mosire.simos.ga.tools.GaToolReads;
@@ -14,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code simos.sd.decision-maker}（工具面 M4）：**单个决策人详情 + 现算可见范围**。
@@ -37,7 +39,7 @@ import java.util.Optional;
  * <p>★ **形状与 GUI 同源**：{@code ApiViews.decisionMaker(...)} + {@code scope}。 ★ **只在 GM 桶**（{@link
  * GmOnlyRead}），理由同类表（见该类注）。
  */
-public final class DecisionMakerTool implements AgentTool, GmOnlyRead {
+public final class DecisionMakerTool implements SimosTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.sd.decision-maker";
@@ -86,5 +88,11 @@ public final class DecisionMakerTool implements AgentTool, GmOnlyRead {
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

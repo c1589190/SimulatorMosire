@@ -7,11 +7,12 @@ import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.gov.tools.GovToolEconomy;
 import io.mosire.simos.gov.tools.GovToolReads;
@@ -23,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>{@code simos.gov.setBudgetPolicy}（Z3c-2）：国库预算政策设置工具（GM + 该 GOV 决策人）</b> —— {@code
@@ -38,7 +40,7 @@ import java.util.Objects;
  * <p>★ <b>preview 与 apply 同源</b>：同一坐标、同一 {@link GovPolicyPlanSupport}（与 handler 共用字段解析 + GOV
  * 单位守卫）；逐值相同的重放 = noop（不落空 revision）。
  */
-public final class GovSetBudgetPolicyTool implements AgentTool {
+public final class GovSetBudgetPolicyTool implements SimosTool {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.setBudgetPolicy}）。 */
   public static final String NAME = "simos.gov.setBudgetPolicy";
@@ -223,5 +225,11 @@ public final class GovSetBudgetPolicyTool implements AgentTool {
     salary.put("silverMilliPerCommittedHour", rule.silverMilliPerCommittedHour());
     view.put("officialSalaryRule", salary);
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }

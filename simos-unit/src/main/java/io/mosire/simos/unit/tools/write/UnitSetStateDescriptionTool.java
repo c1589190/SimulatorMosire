@@ -1,8 +1,11 @@
 package io.mosire.simos.unit.tools.write;
 
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.unit.spi.SetStateDescriptionHandler;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.unit.set-state-description} 窄工具（阶段 D1 / 用户设计 D-012，2026-10-02）：**设定/清除单位当前回合状态对应的
@@ -22,7 +25,8 @@ import java.util.Map;
  *
  * <p>★ 标 sensitive ⇒ 走审批门链（GM 侧 {@code GmAutoApproveGate} 无脑过，与其余窄写同制）。
  */
-public final class UnitSetStateDescriptionTool extends AbstractNarrowWriteTool {
+public final class UnitSetStateDescriptionTool extends AbstractNarrowWriteTool
+    implements SimosTool {
 
   /** 工具名（全局唯一；用户给定）。 */
   public static final String NAME = "simos.unit.set-state-description";
@@ -51,5 +55,11 @@ public final class UnitSetStateDescriptionTool extends AbstractNarrowWriteTool {
     return "设定单位当前回合状态对应的状态描述地址：固定 unit.SetStateDescription，载荷 {id, state, address}——"
         + "id/state 必填非空白；address 缺省/null/空串 = 清除该状态链接，非空 = canonical 地址文本。"
         + "地址目标域对本命令不透明（unit 只记链接）。";
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

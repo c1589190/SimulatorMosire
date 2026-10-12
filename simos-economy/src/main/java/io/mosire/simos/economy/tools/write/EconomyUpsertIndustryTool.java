@@ -9,7 +9,6 @@ import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.api.asset.AssetKind;
@@ -21,9 +20,11 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.spi.EconomyIndustryUpserts;
 import io.mosire.simos.economy.spi.EconomyUpsertIndustryHandler;
 import io.mosire.simos.economy.tools.EconomyToolReads;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.util.state.BranchId;
@@ -34,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>{@code simos.economy.upsertIndustry}（Z1a）：GM 产业模板创建/修改窄工具</b> —— {@code
@@ -58,7 +60,7 @@ import java.util.Objects;
  * 决策人 catalog 三条路径同样排除。★ 工具名不是命令类型 ⇒ 不进 {@code CatalogTool} 的 PAYLOAD_HINTS（命令类型 {@code
  * economy.UpsertIndustry} 本体由 catalog 单独列出）。
  */
-public final class EconomyUpsertIndustryTool implements AgentTool {
+public final class EconomyUpsertIndustryTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS。 */
   public static final String NAME = "simos.economy.upsertIndustry";
@@ -326,5 +328,11 @@ public final class EconomyUpsertIndustryTool implements AgentTool {
       view.put(entry.getKey().name(), commodityAmounts(entry.getValue()));
     }
     return view;
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.GM);
   }
 }

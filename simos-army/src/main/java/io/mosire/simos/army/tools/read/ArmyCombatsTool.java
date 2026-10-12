@@ -1,7 +1,6 @@
 package io.mosire.simos.army.tools.read;
 
 import io.mosire.agentlib.permission.ResourceManifest;
-import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.army.ArmyData;
@@ -10,9 +9,11 @@ import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.army.tools.ArmyToolPerspective;
 import io.mosire.simos.army.tools.ArmyToolReads;
 import io.mosire.simos.army.tools.ArmyToolViews;
+import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolSchema;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
@@ -22,6 +23,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code simos.army.combats}（阶段 D1 / 用户设计 D-012，2026-10-02）：**交战记录清单**——"当前 tick 在哪发生了交战"的读口。
@@ -39,7 +41,7 @@ import java.util.Map;
  * <p>★ <b>2026-10-12 B3 第二域下放</b>：本类自 {@code app/tools/read} 迁入 {@code simos-army}，对 app/core 的直连换成
  * 构造期注入；载荷、文案、拒绝码、资源声明逐字不变。
  */
-public final class ArmyCombatsTool implements AgentTool {
+public final class ArmyCombatsTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.army.combats";
@@ -128,5 +130,11 @@ public final class ArmyCombatsTool implements AgentTool {
     }
     return new HexCoord(
         (int) ToolSchema.requiredLong(args, "q"), (int) ToolSchema.requiredLong(args, "r"));
+  }
+
+  /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */
+  @Override
+  public Set<ToolRole> roles() {
+    return Set.of(ToolRole.DM, ToolRole.GM);
   }
 }
