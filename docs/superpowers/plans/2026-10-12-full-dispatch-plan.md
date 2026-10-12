@@ -510,3 +510,38 @@ gov/army/app 另有十余个工具的文案写着"进 `sd.PutInfo` 行动记录"
 ⇒ **每一批改名前，先跑这张表的扫描**（`grep -rhoE '"sd\.[A-Za-z]+"' --include=*.java <模块>/src/main | sort -u`）。
 ★ 次要债：这些是**各模块自己维护的常量**（一条命令在 N 个模块各有一份字面量）—— 与"一处声明"有张力；
 但把它们收进 `ga-spi`/`util` 常量会让域模块引用框架常量，**本批不动**，记一条债（收尾期评估）。
+
+---
+
+## §18 ★★ 剩余批次的结构性纠缠（控制方发现）与解开次序
+
+### 18.1 纠缠（三处互为前置）
+| # | 想要做 | 被谁挡住 | 为什么 |
+|---|---|---|---|
+| **乙** 归属归模块（gov/army 持 `Map<DecisionMakerId, NationId/ArmyId>`） | ⇐ 需 `NationId` 在 gov（**3c**）、`ArmyId` 在 army（**3d**） | gov/army **禁 sd** ⇒ 拿不到 sd 的 id |
+| **3c** 外交 → gov（`NationId` → gov） | ⇐ 需 sd 先不再用 `NationId` | `Affiliation.Nation(NationId)` **在 sd**；sd 若引用 gov 的 `NationId` ⇒ `sd → gov` = **pom 禁列当场拒** |
+| **3d** 战斗/军队 → army（`ArmyId`/`CombatId` 等 → army） | ⇐ 需 sd 先不再用它们 | `Trigger.OutcomeSelected(CombatId,…)` / `Action.SetStage(CombatStateId,…)` / `Action.RecordCasualties(LossRecordId)` 在 sd 的 **`Effect`** 里；`Effect` 要到 **3b-4** 才搬 ga ⇒ sd 仍引 army 的 id |
+
+**根因**：`Affiliation`（sd）与 `Effect`（sd）这两个"最后一个 sd 用户"把 sd 焊在了 `NationId`/`ArmyId`/战斗 id 上。
+
+### 18.2 ★ 解开次序（控制方裁定；每步都只为下一步解锁，不做无关事）
+1. **3c**：外交 3 组件（`nations`/`diplomaticRelations`/`diplomaticEvents`）+ 4 handler → **gov**；`NationId`/`Nation`/
+   `DiplomaticRelation`/`DiplomaticEvent` 全搬 gov。
+   ★ **必须同批处理 `Affiliation.Nation(NationId)` 这个冲突点** —— 方向 = 用户裁定的「**归属归模块**」：
+   gov 持 nation 归属表（key = `DecisionMakerId`），`Affiliation` 的 nation 支随之收窄/由 gov 承担。
+   ★ `DecisionMakerId` 落 **`simos-util/spi`**（依据 **ADR-1 原文：「新增契约一律放 `io.mosire.simos.util.spi`」**
+   + `DmUsableCommand` 先例；util 是 gov/army/sd/ga **全部**允许依赖的唯一下层 ⇒ 零 pom 改动、零环）。
+2. **3d**：战斗 4 组件 + 军队身份（`armies`）+ 7 handler → **army**；`ArmyId`/`CombatId`/`CombatStateId`/
+   `CombatStageId`/`LossRecordId`/`CombatOutcomeId` 等 → army。
+   ★ **先重挂判决面** `sd:combat.*` → `army:combat.*`（`Breakpoints`/`VerdictFreezer`；**不可逆点**，用户已批"肯定啊"）。
+   ★ 战斗耦合的四档 `Trigger/Action`（`OutcomeSelected`/`SetStage`/`RecordCasualties`/`ThresholdKills`）
+   按用户口径「**这不是 Army 模块管理的吗**」**随本批退役或归 army**（`RecordCasualties` 早已是死路）。
+3. **3b-4**：`effects` → ga（开 `ga → unit` + `ga → map` 两条边 —— 用户已批「那让它依赖unit呗」）；
+   此时战斗四档已退役 ⇒ `effects` 不再引 army 类型 ⇒ ga **不必**依赖 army。
+4. **乙 收尾**：删 `Affiliation` 本体 + `DecisionMaker.affiliation` + `SdPayloads.requireAffiliation`；
+   `SdInfoEntry.affiliations` → **不透明受众标签集**（可见性判定搬 app）；`DecisionScopeFunctions` 键改 kind 字符串；
+   `DecisionAgentRunner`/`DiplomaticWriteSignature` 改走 `ga-spi` 端口。★ 三条都**不得**引入 `sd → ga`。
+5. **3e**：sd 空壳退役（根 pom −1 模块、`ArchitectureGuardsTest.MODULES` −1、cmd 串清零）。
+
+★ **每步的硬判据**：**不得新增任何被 enforcer 禁的依赖边**（`sd → gov`/`sd → army`/`sd → ga`/`ga → core`）；
+若某步做不到，**停手上报**并给"哪条边必须开"的方案 —— 不擅自开边。
