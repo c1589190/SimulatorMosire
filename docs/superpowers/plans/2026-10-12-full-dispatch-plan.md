@@ -941,3 +941,51 @@ D4 受众标签定为 `kind:ref` 串（代价 = 视图/载荷形状变化 O5/O6/
   若两批的**测量面不相交**（例如一批只跑 `src/test`、另一批只改一个 `src/main` 文件并跑聚焦门禁），
   并行是**允许**的；**但若要下"全量测试基线"的结论，必须等窗口空出来**（本批的接线口径 = 各批各自聚焦跑，
   全量基线由控制方在**无并发**时统一取）。
+
+---
+
+## §31 前端批（推迟）：`api.js` 悬空导出已修 + 两处事实更正 + 我的第三次纪律失败
+
+### 31.1 ★ `api.js:535` 已修（控制方已授权，`c5b0c203` 内，−1 行）
+删 `combats: combats,`（`combats()` 函数本体已在 3d-2 `e4bbe6d0` 删除 ⇒ IIFE **求值期抛 `ReferenceError`**
+⇒ `window.SimosaApi` **整个不发布** ⇒ **浏览器里 GUI 是坏的**）。
+**证据（含反向对照 = 变异自证）**：
+- 修复后：`window.SimosaApi` = **object**，49 个导出键，`combats` 缺席、`cachedArmyCombats` = function；
+- **基线旧版**：`❌ ReferenceError: combats is not defined` / `window.SimosaApi = undefined` ⇒ 一只手证明"现在真的发布了"，
+  另一只手证明"旧版确实整块不发布"（**不是脚本恒绿**）。
+**前端 JS 门禁：11 红 → 2 红**（`tests 400 → 412`，因 `provider-config.test.cjs` 整文件复活）：
+- 余 2 条**都是陈旧断言**、都在 `src/test/**`（另一个 Agent 的地盘）、**改动前就红**：
+  ① `d3b-composition-army.test.cjs:145` 断言 `map.js` 必须含 `:\s*sdCombats`（"Army 为空回退旧 sd 列表"）
+  —— 3d-2 **有意**删了那条兜底，§一.11 明令旧设计直接删 ⇒ 断言陈旧；
+  ② `modes.test.cjs:104` 期望 `["sd.StartDecision", …]`，实得 `["ga.StartDecision", …]` ⇒ 生产侧 `ga.*` 才是对的。
+**审计面（`acorn` 作用域分析器 + 端点级 + 被删符号级 + 消费方反向 + HTML 级）**：
+`api.js` **只此一处**悬空；26 个端点字面量**逐个回 Java 侧核对全部仍在注册**；被删的 `/api/sd/combats` 在 webui 只剩注释；
+`SimosApi.combats` 全仓 **0 调用** ⇒ 删导出**不打断任何调用方**。
+
+### 31.2 ★★ 代理更正控制方两处事实（**已接受，落盘**）
+| # | 控制方/前批的写法 | 实测 | 处置 |
+|---|---|---|---|
+| 1 | 「3d-2 同批删了 `/api/sd/combats` + **5 个前端文件**」 | `git log --all --diff-filter=D --name-only \| grep -i webui` = **0 命中**；`e4bbe6d0`/`b3d6dfae` 删的 28+ 文件里 **0 个 `.js`/`.html`/`.css`** | ★ **该说法为假** ⇒ 前端侧"被删的东西"**只有函数/导出**，不存在"删文件漏改引用"这一支。**台账按此更正** |
+| 2 | 「前端 JS 门禁在 `package` 阶段的 `exec`」 | exec 实际绑在 **`test` 阶段**（`simos-app/pom.xml:150`）；`package` 会**经过**它 | 结论不变（跑 `package` 仍会触发），但**跑法口径更正** |
+
+### 31.3 裁定：`renderer.js:2902` 的第二处悬空引用 ⇒ **推迟**（前端批）
+`renderer.js:2902 paintBorders(ctx);` —— `paintBorders` **全 webui 0 定义**；函数本体由 `f9e3c0dc`（m8-r §八）删除时**漏了
+`benchStages()` 里这一处调用**，`ae66853a`（M12 拆文件）原样带过。
+**影响面**：只在**微基准**路径（`window.SimosMap.benchStages`，M9 perf harness 用 `page.evaluate` 调）上炸，
+**不影响任何用户可见路径**，前端门禁对它**0 覆盖**。
+★ **裁定**：按用户口径「**等后端完善好了再完善前端**」⇒ **推迟到前端批**。
+★ **前端批的处置倾向（先记下，届时候选）**：**倾向改指 `paintRegionOutlines(ctx)`**，而不是删调用 ——
+因为删掉会让 `out.borders` 变成**空档位**，**一个"什么都不测"的基准比"测错的函数"更坏**。
+★ 同族**陈旧字段读**（不抛错、只是显示残缺）：`panels.js:767/769-772` 与 `renderer.js:630-632` 仍读
+`combatHere.name/currentStageName/currentStage/participantCount/selectedOutcome`，而 3d-2 后 Army 记录字段已变
+（`{id,kind,tick,hex,participants,text,stages,losses}`）⇒ hex 详情渲染成 **"—"**。**同样推迟**（改它要决定"军队记录该显示哪几栏"）。
+
+### 31.4 ★★★ 控制方的第三次同类纪律失败（写死）
+**事实**：`c5b0c203`（本该只提交 `docs/superpowers/plans/…` 一个文件）用了 **`git add -A`**，
+**扫进了 4 个别人正在写的文件**：`webui/api.js`（Agent A 的修复）· `access/DecisionScopeFunctionsTest.java` +
+`access/ScopeFixtures.java`（Agent B 的层 2 中间态）· `map/RegressionGuardsTest.java`。
+**这是第三次**（前两次：`79f9bb0e`、`68f56d24`）——**同类错犯三次 = 纪律没有真正执行**。
+**损害**：有限（层 2 继续写，其提交会完整覆盖 ⇒ **终态正确**），代价是 git 历史多一个**非原子中间点**。
+**处置**：**不重写历史**（Agent 在飞，风险大于收益）；**下次提交时由层 2 的完整差异覆盖**。
+★★ **纪律（写死，第三次）**：**永远不用 `git add -A`；一律显式点名路径**。
+★ **根因**：`git add -A` 是"省一次输入"，而它买到的时间**远小于**一次污染提交的排查成本 ⇒ **没有任何理由再用它**。
