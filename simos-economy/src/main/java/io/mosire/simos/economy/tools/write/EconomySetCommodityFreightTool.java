@@ -21,8 +21,7 @@ import java.util.Set;
  * <p>★★ <b>为什么是薄工具而不是带参数的工具</b>：本命令的载荷契约（商品 id / 基础运费 / 可选 reason）与三条具名拒都写在 handler 类注与 catalog
  * 载荷提示里；逐个列成工具参数只会把契约复制一份到工具面（两处拼写、两处会漂）。本工具只透传 {@code payloadJson}。
  *
- * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}（命令本体已注册并登记载荷提示）；命令本身标 {@code
- * GmOnlyCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；{@code 决策人白名单} 也不含本工具。
+ * <p>★ <b>只在 GM 桶</b>：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}（命令本体已注册并登记载荷提示）；命令本身不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人命令目录；{@code 决策人白名单} 也不含本工具。
  *
  * <p>★ <b>写面只声明 economy 命名空间</b>：handler 只产 {@code EconomyChangeSet}（基础运费表是经济切片的组件）。
  */

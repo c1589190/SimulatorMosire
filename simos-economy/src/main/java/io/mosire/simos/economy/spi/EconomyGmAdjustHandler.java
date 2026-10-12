@@ -8,7 +8,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -56,7 +55,7 @@ import org.slf4j.Logger;
  *   <li><b>Z1 产品产出数量覆盖（两）</b>：{@code setOutputQuantity}（{@code
  *       {industryId,commodityId,quantity}}；quantity 必须是 [0, 1000000] 整数）、{@code
  *       clearOutputQuantity}（{@code {industryId,commodityId}}；没有既有覆盖 ⇒ 拒）；守卫与具名 reason 见 {@link
- *       EconomyGmAdjustments#project}。 本批保持 GmOnly、{@code targetPaths} 返回空列表、不进决策令桶。
+ *       EconomyGmAdjustments#project}。 本批保持仅 GM（不打 {@code DmUsableCommand}）、{@code targetPaths} 返回空列表、不进决策令桶。
  * </ul>
  *
  * <p>★★ <b>派生读数不可直写</b>：{@code flows} / {@code demandBook} / {@code crisisSignals} / {@code
@@ -67,7 +66,7 @@ import org.slf4j.Logger;
  * 只做"装配状态 → project → {@code Applied(changeSet)}"，工具只做"读状态 → 同一个 project → 预览/提交"。 同一 payload
  * 重放确定性由该纯函数保证（保序复制、稳定 ID、无时钟/随机数）。
  *
- * <p>★★ <b>GM-only</b>：实现 {@link GmOnlyCommand} —— 仍注册到 Core、仍进 {@code commandTargets}、GM 的 {@code
+ * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 仍注册到 Core、仍进 {@code commandTargets}、GM 的 {@code
  * simos.command.submit} 可提交；但组合根构造 {@code DirectiveWhitelist} / {@code RegisterEffect} 白名单 /
  * 决策人工具目录时 排除它，普通 GOV Agent 无法把它写进令里执行（E6a 的 {@code directiveCommandTypes} 过滤口径不变）。
  *
@@ -75,7 +74,7 @@ import org.slf4j.Logger;
  * 的签名拿不到状态；本命令的语义对象 （债务合同 / 生产资料规则 / 生产方式制度表）不是本仓资源命名空间里的可寻址路径（economy 资源围栏以格为粒度），且本命令
  * GM-only、不进入决策人令 ⇒ 有意返回空列表（"没有可声明的目标"）。空列表在裁决路径上是 fail-closed 的语义，而本命令根本到不了那条路径。
  */
-public final class EconomyGmAdjustHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
+public final class EconomyGmAdjustHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：工具、catalog 提示与 Shell 注册都从这里取/对齐）。 */
   public static final String TYPE = "economy.GmAdjust";

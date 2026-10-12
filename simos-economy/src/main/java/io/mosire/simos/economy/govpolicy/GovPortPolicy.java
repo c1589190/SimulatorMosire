@@ -68,7 +68,7 @@ import java.util.Set;
  *
  * <ul>
  *   <li><b>为什么放在本类而不是新开一条政策/命令</b>：本类就是"政府对本市场区的法律规定层"的既有载体（设计书 §4.5 G9）， {@code
- *       economy.SetGovernmentPolicy} 也已经是 {@code GmOnly} 的既有命令面 ⇒ 不新增权限面、不新增命令类型（派单冻结口径 §1）；
+ *       economy.SetGovernmentPolicy} 也已经是**不打 {@code DmUsableCommand}**（仅 GM）的既有命令面 ⇒ 不新增权限面、不新增命令类型（派单冻结口径 §1）；
  *   <li><b>缺省 false = 缺省语义中性</b>（I-C2）：没要求管控的世界既没有置顶也没有行政力消耗 ⇒ 逐值不变；
  *   <li><b>它不是"规则表"，但也是"设过的政策"</b>：{@link #noRules()} 因此把本开关算进去（开了管控的政策不是"空政策"）。
  * </ul>

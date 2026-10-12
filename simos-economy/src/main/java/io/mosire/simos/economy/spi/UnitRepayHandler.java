@@ -18,7 +18,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
@@ -61,7 +60,7 @@ import org.slf4j.Logger;
  * <p>★★ <b>GM-only</b>（同 {@code UnitBorrow}）：{@code targetPaths} 返回空表；GM 的 {@code
  * simos.command.submit} 可调。
  */
-public final class UnitRepayHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
+public final class UnitRepayHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.UnitRepay";

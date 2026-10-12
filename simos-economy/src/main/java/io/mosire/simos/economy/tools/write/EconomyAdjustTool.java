@@ -51,7 +51,7 @@ import java.util.Set;
  * </ul>
  *
  * <p>★★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶（{@code
- * addDecisionAgentWrites}）里没有本工具； 决策人白名单（派生自决策人桶） 里也没有 {@link #NAME}；命令本身标了 {@code GmOnlyCommand} ⇒
+ * addDecisionAgentWrites}）里没有本工具； 决策人白名单（派生自决策人桶） 里也没有 {@link #NAME}；命令本身不打 {@code DmUsableCommand} ⇒
  * 令 / {@code RegisterEffect} / 决策人 catalog 三条路径同样到不了它。
  *
  * <p>★ <b>审计</b>：GM 工具使用留痕复用既有的 {@code GmToolUsage}（{@code RecordingToolSource} 装饰 GM 源，不另造第二份）；

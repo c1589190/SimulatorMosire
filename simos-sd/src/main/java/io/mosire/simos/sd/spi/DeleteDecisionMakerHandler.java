@@ -11,7 +11,6 @@ import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
@@ -35,13 +34,13 @@ import java.util.Objects;
  * 都存在于 {@code decisionMakers}。若目标决策人仍被任何 Directive 引用，本命令<b>不</b>顺手删 Directive（那会违背上面的"不级联"），而是给出具名
  * {@code Rejected}，让调用方先处置历史指令。这样既守住状态不变量，也不把"删身份"悄悄升级成"删历史"。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} ⇒ handler 照常注册、GM 的 {@code simos.command.submit}
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} ⇒ handler 照常注册、GM 的 {@code simos.command.submit}
  * 照常可用，但排除出决策令白名单 / {@code sd.RegisterEffect} / 决策人目录（与 {@code sd.SetArmyMasterGov} 等同制）。
  *
  * <p>★ <b>失败语义</b>：{@code decisionMakerId} 缺失 / 空白 / 非法 ⇒ {@code Rejected}（载荷解析抛，命令边界折）；目标不存在 ⇒
  * {@code Rejected}（不做静默幂等）；仍被 Directive 引用 ⇒ {@code Rejected} 并点名引用数。
  */
-public final class DeleteDecisionMakerHandler implements CommandHandler, GmOnlyCommand {
+public final class DeleteDecisionMakerHandler implements CommandHandler {
 
   @Override
   public String type() {

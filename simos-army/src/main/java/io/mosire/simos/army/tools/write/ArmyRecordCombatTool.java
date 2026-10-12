@@ -23,7 +23,7 @@ import java.util.Set;
  * <p>★ <b>校验交域层</b>：tick 不得记在未来、同 id 不覆盖、参与单位至少一个且不重复、损失量 ≥ 0 等判据全在 handler / {@code
  * CombatRecord}；本工具只做信封组装。
  *
- * <p>★ <b>只在 GM 桶</b>：{@code army.RecordCombat} 标了 {@code GmOnlyCommand}（裁定战果是 GM 的活，决策人不得凭空写战果），
+ * <p>★ <b>只在 GM 桶</b>：{@code army.RecordCombat} 不打 {@code DmUsableCommand}（裁定战果是 GM 的活，决策人不得凭空写战果），
  * 故本工具也只在 {@code SimosToolSource.addGmWrites} 注册。★ <b>写面只声明 {@code army} 命名空间</b>（{@link
  * #ARMY_NAMESPACE_WRITE}），GM 侧 {@code army} 在 {@code Shell#gmPermissionSet} 显式 {@code unlimited()}。
  *

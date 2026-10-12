@@ -49,7 +49,7 @@ import org.slf4j.Logger;
  *   <li>{@code at} 是给 {@link CommandTargets} 的目标声明；给了就必须等于该家户当刻居住格。
  * </ul>
  *
- * <p>★ <b>权限</b>：非 {@code GmOnlyCommand}（同 {@link EconomySetHouseholdClassHandler}）。
+ * <p>★ <b>权限</b>：打 {@code DmUsableCommand}（同 {@link EconomySetHouseholdClassHandler}）。
  */
 public final class EconomySetHouseholdParticipationHandler
     implements CommandHandler, CommandTargets, DmUsableCommand {

@@ -27,7 +27,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -79,14 +78,14 @@ import org.slf4j.Logger;
  * simos.map.province.apply} 已固定成对写入）或既有 {@code actor.AdjustAccounts}（纯正增量）创建。缺账户时推进会在装载账本处
  * fail-closed，不会把"没有账户"当成"余额 0"。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} —— 它写的是"谁是一级政府、国库在哪"的结构身份，不是日常家户经济配置； 仍注册到 Core、仍可被
- * GM 的 {@code simos.command.submit} 直接调用，但排除出决策令白名单。政府家户的日常配置 （Class/劳动/参与率/需求）由 P2-B 的四条非 GmOnly
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 它写的是"谁是一级政府、国库在哪"的结构身份，不是日常家户经济配置； 仍注册到 Core、仍可被
+ * GM 的 {@code simos.command.submit} 直接调用，但排除出决策令白名单。政府家户的日常配置 （Class/劳动/参与率/需求）由 P2-B 的四条打 {@code DmUsableCommand}
  * 命令与 {@code economy.GmAdjust} 负责。
  *
  * <p>★ <b>目标声明</b>：本命令不声明资源路径（政府/国库不是 {@code economy} 命名空间的格键路径，且 GM-only 不进决策令）； 只做载荷形状校验。
  */
 public final class EconomyRegisterGovernmentHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.RegisterGovernment";

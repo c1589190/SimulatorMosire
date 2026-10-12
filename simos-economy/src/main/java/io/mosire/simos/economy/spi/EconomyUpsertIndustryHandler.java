@@ -6,7 +6,6 @@ import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
@@ -52,7 +51,7 @@ import org.slf4j.Logger;
  * <p>★★ <b>写口与铁律</b>：只走既有 {@link EconomyData#withIndustries(java.util.Map)}；变更集由两整份状态经 {@code
  * EconomyChangeSet.between} 派生（铁律 5）；本命令只写 economy 切片（铁律 2/3）。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人目录；GM 的
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人目录；GM 的
  * {@code simos.command.submit} 与配套窄工具 {@code simos.economy.upsertIndustry} 可用。★ <b>不实现 {@code
  * CommandTargets}</b>（spec §5 的 Z1a 范围：不进决策令桶，没有决策人版；see Z1a ledger）。
  *
@@ -60,7 +59,7 @@ import org.slf4j.Logger;
  * logReason} 脱敏）；{@code EconomyData} 跨表一致性故障 ERROR 且不降级、原样抛出。事件来源 = {@link
  * EconomyLogSource#ECONOMY_COMMAND}。本类不新增/不降级 WARN。
  */
-public final class EconomyUpsertIndustryHandler implements CommandHandler, GmOnlyCommand {
+public final class EconomyUpsertIndustryHandler implements CommandHandler {
 
   /** 命令类型（唯一拼写点：Shell 注册、GM 工具、catalog 提示都从这里取/对齐）。 */
   public static final String TYPE = "economy.UpsertIndustry";

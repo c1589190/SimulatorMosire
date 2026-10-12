@@ -47,7 +47,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -107,14 +106,14 @@ import org.slf4j.Logger;
  * IllegalStateException} 当场炸，不走拒绝路径）；payload 的 regionId 查不到是 {@link HandlerOutcome.Rejected}（零
  * revision）。
  *
- * <p>★★ <b>GM-only</b>：实现 {@link GmOnlyCommand} —— 仍注册、仍进 {@code commandTargets}，GM 的 {@code
+ * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 仍注册、仍进 {@code commandTargets}，GM 的 {@code
  * simos.command.submit} 可提交；令白名单/RegisterEffect/决策人目录排除它。
  *
  * <p>★ <b>{@link CommandTargets} 的诚实边界</b>：签名拿不到 state；逐格 economy 资源路径要读目标 Region 的 hex 集才能展开， 本命令
  * GM-only、不进入决策令/裁决目标检查 ⇒ 返回空列表（fail-closed）。
  */
 public final class EconomyClearRegionHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：catalog 提示、Shell 注册与组合工具都从这里取/对齐）。 */
   public static final String TYPE = "economy.ClearRegion";

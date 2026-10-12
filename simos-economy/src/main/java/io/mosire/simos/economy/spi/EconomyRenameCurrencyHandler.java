@@ -15,7 +15,6 @@ import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -46,7 +45,7 @@ import java.util.Objects;
  * simos.gov.renameCurrency}（身份派生 + 只能自己的 GOV + GM 审批链）。
  */
 public final class EconomyRenameCurrencyHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.RenameCurrency";

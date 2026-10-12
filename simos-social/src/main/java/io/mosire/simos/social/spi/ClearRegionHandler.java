@@ -21,7 +21,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -60,7 +59,7 @@ import java.util.Set;
  * IllegalStateException} 当场炸，不走拒绝路径）；payload 里的 regionId 在 map 里查不到才是 {@link
  * HandlerOutcome.Rejected}（零 revision）。
  *
- * <p>★★ <b>GM-only</b>：实现 {@link GmOnlyCommand} —— 仍注册到 Core、仍进 {@code commandTargets}，GM 的 {@code
+ * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 仍注册到 Core、仍进 {@code commandTargets}，GM 的 {@code
  * simos.command.submit} 可提交；但组合根构造 {@code DirectiveWhitelist}/{@code RegisterEffect}
  * 白名单/决策人工具目录时排除它。理由同其余 GM-only 原语：这是"清空"这种破坏性动作，不能由决策人间接触发。
  *
@@ -68,7 +67,7 @@ import java.util.Set;
  * 而逐格 social 资源路径必须读目标 Region 的 hex 集才能展开；本命令 GM-only、不进入决策令/裁决目标检查 ⇒ 返回空列表（"没有可声明的目标"，
  * fail-closed）。真正要动的格由 {@code handle} 从只读 state 里取。
  */
-public final class ClearRegionHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
+public final class ClearRegionHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：catalog 提示、Shell 注册与组合工具都从这里取/对齐）。 */
   public static final String TYPE = "social.ClearRegion";

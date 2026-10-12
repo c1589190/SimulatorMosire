@@ -13,7 +13,6 @@ import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -61,7 +60,7 @@ import java.util.Set;
  * CommandTargets#targetPaths} 恒空）。
  */
 public final class EconomyReassignZoneHexesHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册与 catalog 载荷提示都取它）。 */
   public static final String TYPE = "economy.ReassignZoneHexes";

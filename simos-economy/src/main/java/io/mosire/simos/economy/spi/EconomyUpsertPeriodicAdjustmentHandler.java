@@ -15,7 +15,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -45,11 +44,11 @@ import org.slf4j.Logger;
  * <p>★★ <b>全量替换，不静默合并</b>：同 id 已存在 ⇒ 整条旧规则被新规则取代；字段缺省 = 按本命令的显式语义 （{@code payee}/{@code
  * expiresOnDay} 空 = sink/永久），不是"沿用旧值"。规则构造期守卫判字段不变量； {@code EconomyData} 构造期再判"键 == 值内 id"。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 的 {@code
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 的 {@code
  * simos.command.submit} 仍可直接调用（P4b 才做窄工具）。
  */
 public final class EconomyUpsertPeriodicAdjustmentHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.UpsertHouseholdPeriodicAdjustment";

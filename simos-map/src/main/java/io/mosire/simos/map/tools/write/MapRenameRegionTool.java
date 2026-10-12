@@ -18,7 +18,7 @@ import java.util.Set;
  * <p>★ <b>载荷</b>：{@code {regionId, name}}，两者都必填且非空白；{@code regionId} 必须已是当前地图里的 Region （改名不是
  * upsert），否则域层具名 {@code REJECTED}。改名只动 name，Region 的内容/边界不变。
  *
- * <p>★ <b>GM-only 命令</b>：它提交的 {@code map.RenameRegion} handler 标了 {@code GmOnlyCommand} ⇒ 决策人令 /
+ * <p>★ <b>GM-only 命令</b>：它提交的 {@code map.RenameRegion} handler 不打 {@code DmUsableCommand} ⇒ 决策人令 /
  * {@code RegisterEffect} / 决策人 catalog 三条路径都到不了；GM 直接提交与这条窄工具照常可用。
  *
  * <p>★ <b>2026-10-12 B3 下放</b>：本类自 {@code app/tools/write} 迁入 {@code simos-map}，对 {@code CoreSimos}

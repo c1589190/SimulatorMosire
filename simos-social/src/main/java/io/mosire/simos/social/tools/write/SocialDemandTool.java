@@ -55,7 +55,7 @@ import java.util.Set;
  * copy-with 算出目标 provisioning（零状态写入、零 revision）；若 {@code preview=false} 才把同一份载荷提交给 {@code
  * ToolWritePort.submitWithReceipt}。 所以预览绝不产生 revision，也不依赖另一套算法。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；命令本身标 {@code GmOnlyCommand}，工具名不是命令类型 ⇒
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；命令本身不打 {@code DmUsableCommand}，工具名不是命令类型 ⇒
  * 不进 catalog / {@code PAYLOAD_HINTS}。只写 social 命名空间。★ 批量的加入**没有**新增命令类型、没有新增工具名、没有新增写 资源 ⇒
  * GM/决策人两桶的权限面一字未变（权限单调性）。
  *

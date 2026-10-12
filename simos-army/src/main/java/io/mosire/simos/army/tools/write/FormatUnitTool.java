@@ -44,7 +44,7 @@ import java.util.Set;
  * ToolContext} / 写口）；随机化与"同状态同参数 ⇒ 同结果"的口径写在那里的类注。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；工具名不是命令类型 ⇒ 不进 catalog / {@code
- * PAYLOAD_HINTS}。它提交的 {@code unit.SetComposition} 本身非 GmOnly（可嵌进决策令），但 {@code formatUnit} 这条带随机化
+ * PAYLOAD_HINTS}。它提交的 {@code unit.SetComposition} 本身打 {@code DmUsableCommand}（可嵌进决策令），但 {@code formatUnit} 这条带随机化
  * 的编排口只给 GM。
  *
  * <p>★ <b>资源声明</b>：只写 {@code unit}/{@code sd} 两个命名空间（{@link ResourcePolicy#UNRESTRICTED}；GM 侧两片

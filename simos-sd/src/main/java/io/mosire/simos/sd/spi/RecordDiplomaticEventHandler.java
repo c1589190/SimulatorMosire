@@ -42,7 +42,7 @@ import java.util.Set;
  *       id 仍会查一次撞车（显式 id 可能恰好长成合成串）⇒ 撞车响亮拒，不静默改写 id。
  * </ul>
  *
- * <p>★ **非 GmOnly**：与 {@code sd.SetDiplomaticRelation} 同待遇——身份约束在决策人窄工具层；{@code sd.*} 不进指令白名单。
+ * <p>★ **不在 DM 两面**（不打 {@code DmUsableCommand}）：与 {@code sd.SetDiplomaticRelation} 同待遇——身份约束在决策人窄工具层；{@code sd.*} 前缀规则已删，排除来自声明本身。
  */
 public final class RecordDiplomaticEventHandler implements CommandHandler {
 

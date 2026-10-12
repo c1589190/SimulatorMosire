@@ -33,7 +33,9 @@ import java.util.Set;
  * <p>★★ <b>两面并列、门禁不同</b>（照 {@link GovSetEstablishmentTool}）：GM 桶调用走 {@code GmAutoApproveGate}
  * （直接批准）、必须显式给 {@code govUnitId}；决策人桶调用走 {@code AutoApproveGate → ConfirmGate →
  * PendingApprovals}（<b>需 GM 点头</b>），{@code govUnitId} 由身份派生、给别的 GOV ⇒ 具名 {@code REJECTED} （见 {@link
- * GovToolSupport}）。★ 本工具<b>不标</b> {@code GmOnlyCommand}（那是命令层的标记，工具层没有它）： 决策人用得了它，权限由审批链 + 身份派生兜。
+ * GovToolSupport}）。★ 本工具是<b>工具层</b>的（{@code DmUsableCommand} 是**命令层**标记，工具层没有它；工具的角色由工具自己的声明决定）：
+ * 决策人用得了它，权限由审批链 + 身份派生兜。它提交的 {@code economy.DefineCurrency} 不打 {@code DmUsableCommand}
+ * ⇒ 仅 GM，"令里嵌不进去"这一层因此不放大。
  *
  * <p>★ <b>写什么</b>：币种表 + 工具表 + 该 GOV 的 {@code issuable}（三处在同一条命令、同一条 revision 里； 详见 {@link
  * EconomyDefineCurrencyHandler} 的类注）。★ <b>只作用于自己所属 GOV</b>（M6）：决策人路径下载荷里的 {@code govUnitId}

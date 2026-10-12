@@ -539,7 +539,7 @@ public final class Shell implements AutoCloseable {
                 new MergeRegionsHandler(),
                 new SplitRegionHandler(),
                 new ReassignHexesHandler(),
-                // ★ R4（行政区划修复计划 §1.4）：GM 改区域名。标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect /
+                // ★ R4（行政区划修复计划 §1.4）：GM 改区域名。不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect /
                 //   决策人目录；GM 直接提交照常可用。──
                 new RenameRegionHandler(),
                 new DeleteRegionHandler(),
@@ -555,9 +555,9 @@ public final class Shell implements AutoCloseable {
                 new CancelRouteHandler(),
                 new DisbandUnitHandler(),
                 new SetStatusHandler(),
-                // ★★ P1.2 / A6：视野半径命令（字段早已存在，本次补写路径；非 GmOnly，目标声明见 handler）。
+                // ★★ P1.2 / A6：视野半径命令（字段早已存在，本次补写路径；打 {@code DmUsableCommand}，目标声明见 handler）。
                 new SetVisionRadiusHandler(),
-                // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的 upsert / 删除。★ 非 GmOnly ⇒
+                // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的 upsert / 删除。★ 打 {@code DmUsableCommand} ⇒
                 //   与既有 unit 命令同待遇（可嵌进决策令，目标声明见 handler 自己的 CommandTargets）；
                 //   GM 侧的窄写工具 simos.unit.set-state-description 走这一条 handler。
                 new SetStateDescriptionHandler(),
@@ -573,23 +573,23 @@ public final class Shell implements AutoCloseable {
                 new UpdateCommandChainHandler(),
                 new ApplyCasualtiesHandler(),
                 // ★★ D3a（2026-10-02 / D-009 补裁）：单单位人力/装备的 GM 调试直改原语（有符号增量，一条命令原子）。
-                //   GmOnly（控制器 2026-10-02 收紧）⇒ 不进决策令 / RegisterEffect 白名单；GM 直通口是窄工具
+                //   不打 {@code DmUsableCommand}（控制器 2026-10-02 收紧）⇒ 不进决策令 / RegisterEffect 白名单；GM 直通口是窄工具
                 //   simos.unit.adjust-composition（只在 GM 桶），以及 GM 的 simos.command.submit。──
                 new AdjustCompositionHandler(),
-                // ── S3a（2026-10-09）：单个 unit 容纳的家户列表整体替换（unit 侧唯一写口；非 GmOnly ⇒ 与既有 unit
+                // ── S3a（2026-10-09）：单个 unit 容纳的家户列表整体替换（unit 侧唯一写口；打 {@code DmUsableCommand} ⇒ 与既有 unit
                 //   命令同待遇；"加入/移出 Unit"的两侧一致性由 app 组合工具同批保证）。──
                 new SetUnitHouseholdsHandler(),
-                // ── 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率两条窄写。非 GmOnly ⇒ 与既有 unit 命令同待遇
+                // ── 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率两条窄写。打 {@code DmUsableCommand} ⇒ 与既有 unit 命令同待遇
                 //   （仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
                 new SetJurisdictionHandler(),
                 new SetTaxRateHandler(),
-                // ── 阶段 10a（2026-09-30）：两条"立编制"命令（编制字段在 Unit.module ⇒ unit 域命令）。非 GmOnly
+                // ── 阶段 10a（2026-09-30）：两条"立编制"命令（编制字段在 Unit.module ⇒ unit 域命令）。打 {@code DmUsableCommand}
                 //   ⇒ 与既有 unit 命令同待遇（仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
                 new SetGovernmentFormationHandler(),
                 new SetArmyFormationHandler(),
-                // ── P4b（2026-10-15）：军俸政策整体替换（非 GmOnly；unit 域日常政策命令，未来决策人可嵌令）。──
+                // ── P4b（2026-10-15）：军俸政策整体替换（打 {@code DmUsableCommand}；unit 域日常政策命令，未来决策人可嵌令）。──
                 new SetArmyPayPolicyHandler(),
-                // ── 阶段 10b-i（2026-10-01）：GOV 政策 / 层级 / 入编 / 离编四条 unit 命令。全部非 GmOnly
+                // ── 阶段 10b-i（2026-10-01）：GOV 政策 / 层级 / 入编 / 离编四条 unit 命令。全部打 {@code DmUsableCommand}
                 //   ⇒ 与既有 unit 命令同待遇（可嵌入决策令）。★ Recruit/Dismiss 有意**不配** GM 窄工具
                 //   （那会变成"凭空造人/跳过支付"的直通口）：它们只作为命令，由 10b-ii 的配套工具批/决策令批使用。──
                 new SetGovPolicyHandler(),
@@ -597,11 +597,11 @@ public final class Shell implements AutoCloseable {
                 new RecruitStaffHandler(),
                 new DismissStaffHandler(),
                 // ── Z4（2026-10-23）：岗位指派窄写口（只写 GovernmentFormation.householdPosts，绝不碰
-                //   staff；C4 一处真相）。非 GmOnly ⇒ 与既有 unit 命令同待遇，Z3 的 simos.gov.assignPosts
+                //   staff；C4 一处真相）。打 {@code DmUsableCommand} ⇒ 与既有 unit 命令同待遇，Z3 的 simos.gov.assignPosts
                 //   工具/决策令批将复用它。──
                 new AssignGovPostHandler(),
                 // ── Z3d（2026-10-23）：外部岗位窄写口（只写 GovernmentFormation.externalPosts，绝不碰
-                //   Unit.households / Social 位置 / staff；外部户保留原单位与位置）。非 GmOnly ⇒ 与
+                //   Unit.households / Social 位置 / staff；外部户保留原单位与位置）。打 {@code DmUsableCommand} ⇒ 与
                 //   unit.AssignGovPost 同待遇（命令可嵌决策令，审批链由 simos.gov.openPostsToMarket 工具面承担）。──
                 new AssignExternalGovPostHandler(),
                 // ── social（4 条既有）：逐格农村人口 + 城市节点 + **人口批次**（R1 的 T3：人口的唯一落盘入口）。
@@ -624,12 +624,12 @@ public final class Shell implements AutoCloseable {
                 new RemoveHouseholdMembersHandler(),
                 new TransferHouseholdMembersHandler(),
                 new SetHouseholdVitalRatesHandler(),
-                // ── D4（2026-10-22）：全局默认生死率整体替换（GmOnlyCommand；配套窄工具 simos.gm.vitalRates）。
+                // ── D4（2026-10-22）：全局默认生死率整体替换（不打 DmUsableCommand ⇒ 仅 GM；配套窄工具 simos.gm.vitalRates）。
                 new SetGlobalVitalRatesHandler(),
                 new AdjustHouseholdPopulationHandler(),
                 // ── Batch 4（2026-10-09 家户结构修复计划）：Social 需求/劳动系数两条 GM 命令——全局默认 + 单家户
                 //   覆盖的 upsert/清除（只写 SocialData 第 6 组件 provisioning，结果经 withProvisioning 写回）。
-                //   两条都标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交与
+                //   两条都不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交与
                 //   simos.social.demand / simos.social.labor 两条窄工具照常可用。★ 2026-10-09 D 批：
                 //   social.SetDemandCoefficient 的**载荷**新增可选 entries（批量改多条 = 一条 revision，整批原子），
                 //   单条老载荷逐字走老路径；命令类型名、注册面、工具面与写资源一概未变（权限单调性）。──
@@ -637,10 +637,10 @@ public final class Shell implements AutoCloseable {
                 new SetLaborCoefficientHandler(),
                 // ── S3b（2026-10-09 用户裁定）：**唯一家户人口变更受理口**——工单（target + 有序 plan + reason +
                 //   source）在一张工作副本上顺序应用，任一操作失败整单具名拒；成功落一条 SocialChangeSet。
-                //   ★ 不作 GmOnly：它是本批给 Unit/Eco 等调用方预留的正式入口，且逐操作旧命令仍并存。──
+                //   ★ 打 {@code DmUsableCommand}：它是本批给 Unit/Eco 等调用方预留的正式入口，且逐操作旧命令仍并存。──
                 new SubmitHouseholdWorkOrderHandler(),
                 // ── P1b1（2026-10-01）：GM-only 区域社会数据清空（目标 Region 格集内的 populations/groups/cities）。
-                //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
+                //   不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new ClearRegionHandler(),
                 // ── economy（1 条，R2a）：一次播种某国全部格的初始经济状态（§十"验收目标 A"）──
                 new EconomySeedHandler(),
@@ -653,13 +653,13 @@ public final class Shell implements AutoCloseable {
                 //   ★ GM-only（经济身份结构写口）。
                 new EconomyRegisterHouseholdHandler(),
                 // ── economy（P4a 2026-10-14）：通用周期家户库存扣增规则表的两条 GM 写口
-                //   —— upsert 全量替换 / remove 具名拒不存在。两者都标 GmOnlyCommand ⇒ 排除出令白名单 /
+                //   —— upsert 全量替换 / remove 具名拒不存在。两者都不打 {@code DmUsableCommand} ⇒ 排除出令白名单 /
                 //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与 P4b 的窄工具面可用。
                 new EconomyUpsertPeriodicAdjustmentHandler(),
                 new EconomyRemovePeriodicAdjustmentHandler(),
                 // ── economy（R1 2026-10-09，约束设计书 §4.5 G8 / 不变量 I-P6）：政府国库户回到商品市场后
                 //   **只按明确授权下单**的两条 GM 写口 —— 授权（谁/商品/方向/量/限价/到期）与撤销。
-                //   两者都标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
+                //   两者都不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
                 //   GM 的 simos.command.submit 与窄工具 simos.gm.govMarketMandate 照常可用。
                 //   ★ 它们只写一张授权表：不改价格、不改成本、不豁免任何市场规则（那不是"政策层"）。
                 new EconomyAuthorizeGovMarketOrderHandler(),
@@ -671,48 +671,48 @@ public final class Shell implements AutoCloseable {
                 // ── economy（R4-E2a）：价格 / 需求账本 / 候选预设 —— GM simos.command.submit 路径可用；
                 //   进入采用算法（E2b）不在本片。──
                 new EconomySetMarketPriceHandler(),
-                // ── economy（A2b）：把某一格市场的计价币改成词表里的另一种币（GmOnly）。这是 A2a 账本 BLOCKED-1
+                // ── economy（A2b）：把某一格市场的计价币改成词表里的另一种币（不打 {@code DmUsableCommand} ⇒ 仅 GM）。这是 A2a 账本 BLOCKED-1
                 //   的最小前置命令面（否则"买持铜/卖只收银"的多计价币世界造不出来），也是 B2「市场区法定币」要面对的那一维。
                 //   只写 markets 一格；**不折算**任何余额与价格（世界无汇率）。──
                 new EconomySetMarketNumeraireHandler(),
                 // ── economy（2026-10-09 用户裁定「甲」后的纠正版；约束设计书 §4.1 修正版）：GM 设置某商品的**基础运费**
                 //   （毫计价货币 / 商品单位 / 程；载荷字段 baseMilli，值域 ≥ 0）。★ 商品维管**整条单位运费**
                 //   （`freightUnitMilli` 的唯一算式），不再是费率乘数；缺键 ⇒ 现行硬编码分档（粮1/纤维1/布2/工具3）
-                //   = 未设表的世界逐值不变。★ GM-only（标 GmOnlyCommand）⇒ 排除出令白名单 /
+                //   = 未设表的世界逐值不变。★ GM-only（不打 {@code DmUsableCommand}）⇒ 排除出令白名单 /
                 //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
                 //   simos.economy.setCommodityFreight 照常可用。★ 不实现 CommandTargets（不进决策令桶，
                 //   与 SetMarketPrice/SetMarketNumeraire 同款）。──
                 new EconomySetCommodityFreightHandler(),
                 // ── economy（W2，2026-10-11；约束设计书 §2.1 + 口径溯源 §4.1「α 必须可政策调」）：
                 //   GM 设置**某个市场区**的动态价步长 α（MarketZone.priceAlphaPerMille；‰/轮，缺省 50，不设上下限）。
-                //   只写 marketZones 一个区的一个字段；下一市场轮生效。★ GM-only（标 GmOnlyCommand）⇒
+                //   只写 marketZones 一个区的一个字段；下一市场轮生效。★ GM-only（不打 {@code DmUsableCommand}）⇒
                 //   排除出令白名单 / RegisterEffect / 决策人目录；窄工具 simos.economy.setMarketZonePriceAlpha
                 // 照常可用。──
                 new EconomySetMarketZonePriceAlphaHandler(),
                 // ── economy（W5.5，2026-10-11；S-12⑤ + 口径溯源 §4.1「α 必须可政策调」）：
                 //   GM 设置**某个市场区**的货币市场利率步长 α（MarketZone.loanRateAlphaPerMille；‰/轮，缺省 50，
                 //   不设上下限，0 = 该区利率钉死）。只写 marketZones 一个区的一个字段；下一市场轮生效。
-                //   ★ GM-only（标 GmOnlyCommand）⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
+                //   ★ GM-only（不打 {@code DmUsableCommand}）⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
                 //   窄工具 simos.economy.setMarketZoneLoanRateAlpha 照常可用。──
                 new EconomySetMarketZoneLoanRateAlphaHandler(),
                 // ── economy（W5-fix6，2026-10-11；W5 验收报告 §3-D1 + 设计书 v3.20 §7）：
                 //   GM 设置**某个政府**的铸币政策旋钮（Government.mintScalePerCycle；本周期最多铸多少毫，0 = 不许铸）。
                 //   地址两路恰给一个：governmentId（精确 id —— 世界级 world-silver 走这一路）| govUnitId（派生
-                //   gov-unit-<id>）。只写政府表那一个字段；下一关账日生效。★ GM-only（标 GmOnlyCommand）⇒
+                //   gov-unit-<id>）。只写政府表那一个字段；下一关账日生效。★ GM-only（不打 {@code DmUsableCommand}）⇒
                 //   排除出令白名单 / RegisterEffect / 决策人目录；窄工具 simos.economy.setGovernmentMintScale
                 // 照常可用。──
                 new EconomySetGovernmentMintScaleHandler(),
                 // ★★★ W10（2026-10-11）：经济侧**行为值政策预设**的 GM 写口（economy.SetEconomyPolicy）——
                 //   用户裁定第 18 条「凡"行为"一律做成 GM 可调的预设」。只写 economy.meta.economyPolicies 一个键；
                 //   缺键 = 该键的具名缺省（= 改造前的常量值）⇒ 从没被写过的世界逐值等于改动前。
-                //   GM-only（标 GmOnlyCommand）⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
+                //   GM-only（不打 {@code DmUsableCommand}）⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
                 //   窄工具 simos.economy.setEconomyPolicy 照常可用。──
                 new EconomySetEconomyPolicyHandler(),
                 new EconomyAddDemandHandler(),
                 new EconomyCancelDemandHandler(),
                 new EconomyRegisterCandidateHandler(),
                 // ── economy（P2-B §13.6）：家户经济配置窄写四条 —— Class 归属、可参与生产方式（多生产方式）、
-                //   劳动时间/参与率、需求更新。★ 全部**非 GmOnly**（与 social 家户命令、AddDemand 同待遇）
+                //   劳动时间/参与率、需求更新。★ 全部**打 DmUsableCommand**（与 social 家户命令、AddDemand 同待遇）
                 //   ⇒ 进 directive 白名单/RegisterEffect；是否到得了决策令由 economy 命名空间的目标格可达面决定
                 //   （handler 的 CommandTargets 从载荷 at 声明目标格，见各自类注）。──
                 new EconomySetHouseholdClassHandler(),
@@ -720,7 +720,7 @@ public final class Shell implements AutoCloseable {
                 new EconomySetHouseholdLaborHandler(),
                 new EconomyUpdateDemandHandler(),
                 // ── economy（E6a）：模式变迁登记（只写 PENDING；执行在日结算自动组织之前）。★ GM-only：
-                //   标 GmOnlyCommand ⇒ 排除出 DirectiveWhitelist / 工具目录，但 handler 仍注册、仍进
+                //   不打 {@code DmUsableCommand} ⇒ 排除出 DirectiveWhitelist / 工具目录，但 handler 仍注册、仍进
                 // commandTargets，
                 //   GM 的 simos.command.submit 照常可用（见下方 directiveCommandTypes）。──
                 new EconomySwitchModeHandler(),
@@ -729,12 +729,12 @@ public final class Shell implements AutoCloseable {
                 //   catalogCommandTypes 与 directiveCommandTypes 的拆分）。──
                 new EconomyGmAdjustHandler(),
                 // ── economy（Z1a 2026-10-23）：创建/修改产业模板（新版本 = 新 kind 后缀 id；原地改仅限无
-                //   units/assetShares/relations 引用）。★ GM-only：标 GmOnlyCommand ⇒ 排除出令白名单 /
+                //   units/assetShares/relations 引用）。★ GM-only：不打 {@code DmUsableCommand} ⇒ 排除出令白名单 /
                 //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
                 //   simos.economy.upsertIndustry 照常可用。★ 不实现 CommandTargets（不进决策令桶）。──
                 new EconomyUpsertIndustryHandler(),
                 // ── economy（Z1c 2026-10-23）：为 GOV 单位创建/补齐 office 行政服务生产 unit（units +
-                //   assetShares + relations；operator=hh-gov-<id>）。★ GM-only：标 GmOnlyCommand ⇒
+                //   assetShares + relations；operator=hh-gov-<id>）。★ GM-only：不打 {@code DmUsableCommand} ⇒
                 // 排除出令白名单 /
                 //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与窄工具
                 //   simos.economy.upsertGovUnit 照常可用。★ 不实现 CommandTargets（不进决策令桶）。
@@ -744,17 +744,17 @@ public final class Shell implements AutoCloseable {
                 // ── economy（Z3a 2026-10-23）：GOV 行政岗位承诺写口（写/改/清一条 kind=GOV_SERVICE 的
                 //   HouseholdLaborCommitment；laborMilli=0 = release；同 (household, activity) 的
                 // PRODUCTION
-                //   冲突 ⇒ 具名拒；Σ承诺 ≤ 家户 laborMilli 预检）。★ GM-only：标 GmOnlyCommand ⇒ 排除出令
+                //   冲突 ⇒ 具名拒；Σ承诺 ≤ 家户 laborMilli 预检）。★ GM-only：不打 {@code DmUsableCommand} ⇒ 排除出令
                 //   白名单 / RegisterEffect / 决策人目录；GM 的 simos.command.submit 照常可用。★ 不实现
                 //   CommandTargets；决策人工具 + 审批链 + 窄工具归 Z3c。★ economy 因模块边界看不见 unit；
                 //   经济侧守卫 = GOV 登记信封 + classes + Social 家户表（§18 裁定 A 同源）。──
                 new EconomySetGovServiceCommitmentHandler(),
                 // ── P1b1（2026-10-01）：GM-only 区域经济数据清空（目标格 industries/markets + 可靠可定位的连带记录）。
-                //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
+                //   不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new EconomyClearRegionHandler(),
                 // ── economy（A1 2026-10-08，汇率阶段 2 §3.1-3）：货币身份三件套 —— 定义币种（币种进
-                //   词表 + 工具进工具表 + 该 GOV 成为发行人）/ 只改显示名 / 发行审计。★ 三条都标
-                //   GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人命令目录；GM 的
+                //   词表 + 工具进工具表 + 该 GOV 成为发行人）/ 只改显示名 / 发行审计。★ 三条都
+                //   不打 DmUsableCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人命令目录；GM 的
                 //   simos.command.submit 与窄工具（simos.gov.defineCurrency / renameCurrency /
                 //   issueMoney）照常可用；决策人侧走同一批窄工具（身份派生 + GM 审批链；
                 //   工具名从决策人桶派生 —— 白名单不是手抄清单）。★ 词表与发行是世界级事实 ⇒ 无格资源
@@ -763,7 +763,7 @@ public final class Shell implements AutoCloseable {
                 new EconomyRenameCurrencyHandler(),
                 // ★★ A2a（阶段 2 §3.3）：设/改官方汇率（官方汇率是状态；实际汇率永远是读数）。
                 // ★★ B2（2026-10-08 阶段 2-B；约束设计书 §4.2 / I22）：市场区的持久状态与划界命令面三条
-                //   —— 定义区 / 逐格改划（退让·覆盖）/ 合并（撤源区）。★ 三条都标 GmOnlyCommand ⇒ 排除出令
+                //   —— 定义区 / 逐格改划（退让·覆盖）/ 合并（撤源区）。★ 三条都不打 {@code DmUsableCommand} ⇒ 排除出令
                 //   白名单 / RegisterEffect / 决策人命令目录；GM 的 simos.command.submit 与三条薄工具照常可用。
                 //   ★ 区表是**世界级**表（一份区表横跨多个格，"区"本身不是格资源）⇒ targetPaths 恒空、不进决策令桶。
                 new EconomyDefineMarketZoneHandler(),
@@ -775,7 +775,7 @@ public final class Shell implements AutoCloseable {
                 //   **唯一通用写口** —— 政策随 Government 记录走（EconomyData.governments），GOV 只调写口、不负责存。
                 //   旧三条 gov.SetPortPolicy / gov.SetBudgetPolicy / gov.SetAdministrationPlan
                 // 已删除（不留别名）。
-                //   ★ GM-only（D-4）：标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
+                //   ★ GM-only（D-4）：不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
                 //     GM 的 simos.command.submit 与两条窄工具照常可用。
                 //   ★ 实现 CommandTargets（D-4）：载荷用 governmentId 精确点名时自报该目标。──
                 new EconomySetGovernmentPolicyHandler(),
@@ -806,7 +806,7 @@ public final class Shell implements AutoCloseable {
                 //   位置从 Household.location 派生 ⇒ "搬账"不再是一个动作）。
                 new TransferAccountsHandler(),
                 // ── R3a（2026-10-01 行政区划修复计划 §1.3）：actor.RemitGovTreasury —— 显式 GOV 国库上缴 /
-                //   任意两个 GOV 单位之间转移（整条原子；只动 accounts）。★ **非 GmOnly**：省份决策人可嵌进
+                //   任意两个 GOV 单位之间转移（整条原子；只动 accounts）。★ **打 DmUsableCommand**：省份决策人可嵌进
                 //   sd.IssueDirective；targetPaths 返回源/目标两个 actor 格路径（决策 scope 在 R3b 贯通）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes；同时进 commandTypes ⇒ CommandTargets 同源认得它。──
                 new RemitGovTreasuryHandler(),
@@ -818,22 +818,22 @@ public final class Shell implements AutoCloseable {
                 new DeleteNationHandler(),
                 new CreateArmyHandler(),
                 // ── 阶段 12 后续赋值（2026-10-01 Army 主子改派缺口）：Army 创建后的主子改派/解除。★ GM-only
-                //   （handler 标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用）。──
+                //   （handler 不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用）。──
                 new SetArmyMasterGovHandler(),
                 new CreateDecisionMakerHandler(),
                 // ── P1b2（2026-10-01）：GM-only 决策人身份删除（只删 decisionMakers 的一条；不级联历史 Directive /
-                //   文档 / 会话）。标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
+                //   文档 / 会话）。不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new DeleteDecisionMakerHandler(),
                 new PutInfoHandler(),
                 // ★★ D2（2026-10-22 决策包计划）：三条决策包命令——整包 upsert（propose/intent）、提交、GM 裁决。
-                //   都**不**标 GmOnlyCommand（Upsert/Submit 由决策人工具内部提交；Decide 只被 GM 工具调用）。
+                //   都**不**打 {@code DmUsableCommand} ⇒ 仅 GM（Upsert/Submit 由决策人工具内部提交；Decide 只被 GM 工具调用）。
                 new UpsertDecisionPacketHandler(),
                 new SubmitDecisionPacketHandler(),
                 new DecideDecisionPacketHandler(),
                 // ★★ D3（2026-10-22 合并计划契约 §9）：合并效果计划整包 upsert（GM 建计划 / 执行器 outcome 回写）。
-                //   同 D2 三条：不标 GmOnlyCommand（执行器在系统上下文同批回写 outcome）。
+                //   同 D2 三条：不打 DmUsableCommand ⇒ 仅 GM（执行器在系统上下文同批回写 outcome）。
                 new UpsertMergedEffectPlanHandler(),
-                // ★★ D5（2026-10-02 / D-003、D-005、R6）：sd 的两条外交命令（非 GmOnly；sd.* 不进指令白名单）。
+                // ★★ D5（2026-10-02 / D-003、D-005、R6）：sd 的两条外交命令（不打 DmUsableCommand ⇒ 不在 DM 两面；sd. 前缀规则已删）。
                 //   变更集走 SdChangeSet 的第 11/12 个组件（diplomaticRelations / diplomaticEvents），
                 //   旧档缺这两个组件 ⇒ 空表（见 SdState / SdChangeSet 的构造期兼容）。
                 new SetDiplomaticRelationHandler(),
@@ -849,11 +849,11 @@ public final class Shell implements AutoCloseable {
                 // ★ 第 3 波最后一块：裁决用的状态翻转命令（sd.SetDirectiveStatus）。它不是对外窄工具——
                 //   由 sd.AdjudicateTick 内部编排产生；注册在此是为了它在批里能被 CommandBus 路由到。
                 new SetDirectiveStatusHandler(),
-                // ★★ D1（2026-10-02 / D-012）：army 切片的第一条命令（写一条单 tick 单场交战记录）。★ 标
-                //   GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交与 GM 窄工具照常可用。
+                // ★★ D1（2026-10-02 / D-012）：army 切片的第一条命令（写一条单 tick 单场交战记录）。★ 不
+                //   打 DmUsableCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交与 GM 窄工具照常可用。
                 new RecordCombatHandler(),
-                // ★★ D4（2026-10-02 / D-009 补裁 + D-010）：记录演进的两条命令——追加阶段与投骰判定。★ 都标
-                //   GmOnlyCommand（同 D1 的边界）；判定算法在 CombatResolution（唯一拼写点），本注册只负责路由。
+                // ★★ D4（2026-10-02 / D-009 补裁 + D-010）：记录演进的两条命令——追加阶段与投骰判定。★ 都
+                //   不打 DmUsableCommand（同 D1 的边界）；判定算法在 CombatResolution（唯一拼写点），本注册只负责路由。
                 new AppendCombatStageHandler(),
                 new ResolveCombatStageHandler()));
     // ★★ 批次 1（2026-10-12「权限统一到 ga 规范层」）：命令权限**只有一处声明**（handler 上的 {@code DmUsableCommand}
@@ -863,6 +863,8 @@ public final class Shell implements AutoCloseable {
     //     ② directive 的 `!(h instanceof GmOnlyCommand)`（**默认放行**的根源）；
     //     ③ 5 条 late handler 的**无条件** directiveCommandTypes.add(...)。
     //   ★ ③ 删得尤其要紧：它今天被 `sd.` 前缀规则吃掉（是死的），前缀一撤就复活成"自指可嵌令"的后门。
+    //   ★ ①/② 引文里的 `GmOnlyCommand` 是**已删代码的历史原文**：该反向标记本身也已随批次 1 收尾（甲组第 2 条）
+    //     整体退役 ⇒ 现在"不打 `DmUsableCommand`"就是 GM-only 的声明，不再有第二个标记。
     //   ① 先收声明 —— 唯一读标记的地方在 ga 的规则层，不在组合根：
     CommandPermissionRules.Declarations declarations = CommandPermissionRules.declare(handlers);
     //   ② 用派生面构造"装配自身新增"的 6 条 handler（sd.RegisterEffect + 5 条 sd 决策命令）：它们**都不打声明**

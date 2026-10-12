@@ -27,7 +27,7 @@ import java.util.Objects;
  * <p>★ 字段 {@link io.mosire.simos.unit.Unit#visionRadius()} 早已存在，本命令补齐<b>写路径</b>；当前唯一读者是 app 侧
  * {@code ArmyScope}（军队决策人的可见范围按军队位置 + 本半径现算），下一轮现算即生效、无缓存失效。
  *
- * <p>★ <b>非 GmOnly</b>：与既有 unit 命令同待遇（可嵌入决策令）；{@link CommandTargets} 声明被改单位。
+ * <p>★ <b>打 {@code DmUsableCommand}</b>：与既有 unit 命令同待遇（可嵌入决策令）；{@link CommandTargets} 声明被改单位。
  */
 public final class SetVisionRadiusHandler
     implements CommandHandler, CommandTargets, DmUsableCommand {

@@ -12,7 +12,6 @@ import io.mosire.simos.army.change.ArmyChangeSet;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
@@ -36,10 +35,10 @@ import org.slf4j.Logger;
  * <p>★ <b>阶段字段缺省</b>：{@code participants} 省略 ⇒ 沿用记录级 participants；{@code outcomes} 省略 ⇒ 空表；{@code
  * selectedOutcomeId}/{@code rollSeed} 不得出现在载荷里（判定只走 {@code army.ResolveCombatStage}）。
  *
- * <p>★ <b>标 {@link GmOnlyCommand}</b>：与 {@link RecordCombatHandler} 同一条边界——战果编排是 GM
+ * <p>★ <b>不打 {@code DmUsableCommand}</b>：与 {@link RecordCombatHandler} 同一条边界——战果编排是 GM
  * 的活，决策人不得凭空追加交战阶段。
  */
-public final class AppendCombatStageHandler implements CommandHandler, GmOnlyCommand {
+public final class AppendCombatStageHandler implements CommandHandler {
 
   private static final Logger LOG = ArmyLog.combat();
 

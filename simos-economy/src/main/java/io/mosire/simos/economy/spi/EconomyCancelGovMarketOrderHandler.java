@@ -11,7 +11,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -33,7 +32,7 @@ import org.slf4j.Logger;
  * <p>★ 撤销只删状态行，<b>不</b>回滚任何已成交的货/钱（已发生的事不篡改）：成交量是历史，撤销只终止后续挂单。
  */
 public final class EconomyCancelGovMarketOrderHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.CancelGovernmentMarketOrder";

@@ -17,7 +17,6 @@ import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -70,7 +69,7 @@ import java.util.Set;
  * currency-not-issuable} —— 立区<b>不管"谁发得出"</b>：区只是法律事实（G4），发不出就没人能换、后果自负。 ★
  * <b>不新增</b>"至少有一个政府能发行该法定币"之类的校验（§4.3 明文）。
  *
- * <p>★★ <b>GM-only</b>：本命令标 {@link GmOnlyCommand}（照 {@code economy.SetOfficialRate} / {@code
+ * <p>★★ <b>GM-only</b>：本命令不打 {@code DmUsableCommand}（照 {@code economy.SetOfficialRate} / {@code
  * economy.DefineCurrency}） —— 划界是货币制度面的事实，不进决策人令 / {@code RegisterEffect} / 决策人命令目录。★
  * 决策人侧的"管理本国市场区"（用户 §1.2 的 口岸政策语境）需要身份派生的作用域，与口岸/管制一起做（阶段 3），本批**不**给决策人桶开这条口子（权限不得因为新增命令而放大）。
  *
@@ -78,7 +77,7 @@ import java.util.Set;
  * 不进决策令桶（与 {@code SetOfficialRate} / {@code DefineCurrency} 同款，{@code targetPaths} 恒空）。
  */
 public final class EconomyDefineMarketZoneHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册与 catalog 载荷提示都取它）。 */
   public static final String TYPE = "economy.DefineMarketZone";

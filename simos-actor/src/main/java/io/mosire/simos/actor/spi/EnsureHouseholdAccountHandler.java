@@ -12,7 +12,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -36,7 +35,7 @@ import org.slf4j.Logger;
  *
  * <p>★ <b>幂等</b>：账已存在 ⇒ 逐值不变（返回 {@code Applied(Unchanged)}），不覆盖任何余额/冻结。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} —— 它是给组合工具（{@code simos.gov.createOffice} / {@code
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 它是给组合工具（{@code simos.gov.createOffice} / {@code
  * simos.map.province.apply} 的政府家户开户）用的裸原语；仍注册到 Core、GM 的 {@code simos.command.submit} 可调，
  * 但排除出决策令白名单。
  *
@@ -44,7 +43,7 @@ import org.slf4j.Logger;
  * 可声明的格目标，故返回空列表（GM-only、不进决策令）。
  */
 public final class EnsureHouseholdAccountHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "actor.EnsureHouseholdAccount";

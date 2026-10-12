@@ -10,7 +10,6 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -48,7 +47,7 @@ import org.slf4j.Logger;
  *       轮内已算出的利率与已签的合同一个都不改。
  * </ul>
  *
- * <p>★★ <b>GM-only</b>：本命令标 {@link GmOnlyCommand} —— 它改的是<b>利率形成机制的强度</b>，属市场制度面，不进决策人令 （{@code
+ * <p>★★ <b>GM-only</b>：本命令不打 {@code DmUsableCommand} —— 它改的是<b>利率形成机制的强度</b>，属市场制度面，不进决策人令 （{@code
  * sd.IssueDirective} / {@code AdjudicateTick} 的 directive 载荷）。
  *
  * <p>★ <b>铁律 5</b>：{@code loanRateAlphaPerMille} 是 {@code MarketZone} 的持久组件 ⇒ 本写口经 {@code
@@ -56,7 +55,7 @@ import org.slf4j.Logger;
  * 相等判变化） → Codec（Jackson record 绑定）三件套齐备；往返不变式由同一批构造器保证。
  */
 public final class EconomySetMarketZoneLoanRateAlphaHandler
-    implements CommandHandler, GmOnlyCommand {
+    implements CommandHandler {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册与 catalog 载荷提示都取它）。 */
   public static final String TYPE = "economy.SetMarketZoneLoanRateAlpha";

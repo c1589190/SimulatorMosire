@@ -216,7 +216,7 @@ public final class AdjudicateTickTool implements SimosTool {
    *     {@link #envelopeFor}）
    * @param mapId 地图称谓（拼目标资源路径的首段）
    * @param commandTypes **可嵌进决策令的命令类型**（2026-10-12 批次 1 起 = {@code Shell} 派生的可嵌令面， 与 {@code
-   *     IssueDirectiveHandler} 收到的是同一份；迁移前这里收的是"注册面 − GmOnly"，靠 {@code sd.} 前缀现场再过滤一次）
+   *     IssueDirectiveHandler} 收到的是同一份；迁移前这里收的是"注册面 − GM-only"，靠 {@code sd.} 前缀现场再过滤一次）
    * @param commandTargets {@code type → 目标声明}（**必须**由同一个已注册 handler 清单派生 ⇒ 与执行面同源）
    */
   public AdjudicateTickTool(

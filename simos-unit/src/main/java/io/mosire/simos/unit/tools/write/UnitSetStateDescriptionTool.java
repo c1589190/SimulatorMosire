@@ -20,7 +20,7 @@ import java.util.Set;
  * {@code unit.SetStateDescription} 的 handler / {@code Unit} 构造期——工具层复写一份就是**装饰**（{@code
  * simos.command.submit} 那条路绕得过去）。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：命令本身非 GmOnly（D-012
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：命令本身打 {@code DmUsableCommand}（D-012
  * 的机制是通用的、政府模块后续要用），决策人仍可 经 {@code sd.IssueDirective} 审批链写；本窄工具是 GM 的直通口。
  *
  * <p>★ 标 sensitive ⇒ 走审批门链（GM 侧 {@code GmAutoApproveGate} 无脑过，与其余窄写同制）。

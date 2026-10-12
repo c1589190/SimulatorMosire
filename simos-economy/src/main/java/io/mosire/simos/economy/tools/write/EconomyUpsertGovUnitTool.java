@@ -56,8 +56,7 @@ import java.util.Set;
  * GovernmentFormation}。不满足 ⇒ {@code REJECTED}，零提交。★ 残余边界：GM 裸 {@code simos.command.submit}
  * 绕过本预检（已在设计书 §18 / Z1c 台账记名，Z4/Z6 必做项）。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有本工具，{@code 决策人白名单} 也不含它；命令本身标了
- * {@code GmOnlyCommand} ⇒ 令 / {@code RegisterEffect} / 决策人 catalog 三条路径同样排除。
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有本工具，{@code 决策人白名单} 也不含它；命令本身不打 {@code DmUsableCommand} ⇒ 令 / {@code RegisterEffect} / 决策人 catalog 三条路径同样排除。
  */
 public final class EconomyUpsertGovUnitTool implements SimosTool {
 

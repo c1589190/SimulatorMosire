@@ -40,7 +40,7 @@ import java.util.Objects;
  * ArmyFormation}；排期/逐值/至少一腿/家户键 ⊆ {@code Unit.households} 任一不成立。命令边界一律折成 {@code
  * HandlerOutcome.Rejected}（零 revision）。
  *
- * <p>★ <b>非 GmOnly</b>：unit 域日常政策命令，未来决策人可嵌令（P4c 的工具/白名单另批）；命令只写 unit 命名空间。
+ * <p>★ <b>打 {@code DmUsableCommand}</b>：unit 域日常政策命令，未来决策人可嵌令（P4c 的工具/白名单另批）；命令只写 unit 命名空间。
  */
 public final class SetArmyPayPolicyHandler
     implements CommandHandler, CommandTargets, DmUsableCommand {

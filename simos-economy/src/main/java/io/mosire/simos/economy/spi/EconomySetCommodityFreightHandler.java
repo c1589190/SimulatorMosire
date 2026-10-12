@@ -11,7 +11,6 @@ import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -50,7 +49,7 @@ import org.slf4j.Logger;
  *       economy.SetOfficialRate} 的幂等口径：没变化就不落 revision）。
  * </ul>
  *
- * <p>★★ <b>GM-only</b>：本命令标 {@link GmOnlyCommand}（照 {@code economy.SetMarketPrice}/{@code
+ * <p>★★ <b>GM-only</b>：本命令不打 {@code DmUsableCommand}（照 {@code economy.SetMarketPrice}/{@code
  * economy.SetMarketNumeraire}）—— 它改的是"整个世界的运费口径"，属经济制度面，不进决策人令（{@code sd.IssueDirective} / {@code
  * AdjudicateTick} 的 directive 载荷）、不进 {@code sd.RegisterEffect} 可入队白名单、 不进决策人工具目录；GM 的 {@code
  * simos.command.submit} 与 GM 窄工具 {@code simos.economy.setCommodityFreight} 照常可用。
@@ -60,7 +59,7 @@ import org.slf4j.Logger;
  * <p>★ <b>日志（§一.9）</b>：设置成功 INFO 一条（商品 / 新基础费 / 旧值 / reason）；三条具名拒各 INFO 一条（业务拒绝 = INFO， 用户
  * 2026-10-23 裁定）+ DEBUG 一条"为什么"。
  */
-public final class EconomySetCommodityFreightHandler implements CommandHandler, GmOnlyCommand {
+public final class EconomySetCommodityFreightHandler implements CommandHandler {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册、catalog 载荷提示与 GM 窄工具都取它）。 */
   public static final String TYPE = "economy.SetCommodityFreight";

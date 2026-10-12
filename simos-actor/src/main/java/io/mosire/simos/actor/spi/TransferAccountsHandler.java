@@ -10,7 +10,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -42,7 +41,7 @@ import org.slf4j.Logger;
  * 命令，不走决策令的资源围栏；这是 P2-A 的具名缺口（政府家户的采购/上缴路径在 P2-C 重建）。
  */
 public final class TransferAccountsHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "actor.TransferAccounts";

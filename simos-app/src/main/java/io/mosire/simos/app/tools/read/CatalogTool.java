@@ -639,7 +639,7 @@ public final class CatalogTool implements SimosTool {
                   + " QUANTITY_OUT_OF_RANGE；缺省覆盖=配方默认）；clearOutputQuantity={industryId,commodityId}（industryId"
                   + " 须已存在；commodityId 须在配方产出键里；无既有覆盖 ⇒ NO_OVERRIDE_TO_CLEAR，不做静默幂等；回落配方默认））"),
           // ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套 —— 注册面新增三个 type ⇒ 本表必须同批
-          //   登记（构造成员守卫会逐条比对注册面，缺项当场抛）。三条都标 GmOnlyCommand：GM 的
+          //   登记（构造成员守卫会逐条比对注册面，缺项当场抛）。三条都不打 {@code DmUsableCommand}：GM 的
           //   simos.command.submit 与窄工具照常可用，令 / RegisterEffect / 决策人命令目录三条路不放大。
           Map.entry(
               "economy.DefineCurrency",
@@ -943,15 +943,16 @@ public final class CatalogTool implements SimosTool {
   /**
    * ★★ E6b：清单与"令里可嵌白名单"**拆开** —— catalog 可见的命令类型可以 ⊋ 可嵌入令的白名单。
    *
-   * <p>为什么需要它：E6a 起 {@code GmOnlyCommand}（{@code economy.SwitchMode} / {@code economy.GmAdjust}）不得进
+   * <p>为什么需要它：E6a 起 GM-only 命令（{@code economy.SwitchMode} / {@code economy.GmAdjust} —— 不打 {@code
+   * DmUsableCommand}）不得进
    * {@code DirectiveWhitelist}，但 GM 的 catalog 仍要列出它们（GM 能用 {@code simos.command.submit} 直接提交）。 若继续把
-   * {@code registered − GmOnly} 喂给 catalog，GM 就看不到这两条；而把完整注册面同时当白名单来源，决策人又会看到 {@code
-   * GmOnlyCommand}（它们不在 {@code directiveCommandTypes} 里）。故此处收两份输入：catalog 面取完整注册面，白名单面取 {@code
-   * Shell} 已派生的"注册面 − GmOnly"。
+   * {@code registered − GM-only} 喂给 catalog，GM 就看不到这两条；而把完整注册面同时当白名单来源，决策人又会看到 {@code
+   * GM-only 命令（它们不在 {@code directiveCommandTypes} 里）。故此处收两份输入：catalog 面取完整注册面，白名单面取 {@code
+   * Shell} 已派生的"注册面 − GM-only"。
    *
    * @param commandTypes catalog 可见的**完整注册面**（含 GM-only）；本类只读它
    * @param embeddableCommandTypes 可嵌入令白名单的**输入集**（{@code Shell} 的 {@code directiveCommandTypes} =
-   *     注册面 − GmOnly）；{@link CatalogVisibility} 会照旧经 {@link DirectiveWhitelist} 过滤 {@code sd.*} /
+   *     注册面 − GM-only）；{@link CatalogVisibility} 会照旧经 {@link DirectiveWhitelist} 过滤 {@code sd.*} /
    *     通用写
    * @throws IllegalArgumentException 已注册 type 缺载荷提示，或可嵌入白名单含未注册 type（两处都不静默）
    */
@@ -980,7 +981,7 @@ public final class CatalogTool implements SimosTool {
     }
     this.types = List.copyOf(sorted);
     // ★ 决策人可见性仍走既有唯一判据 CatalogVisibility（内部照旧用 DirectiveWhitelist 过滤 sd 自指/通用写）：
-    //   E6b 只把"输入集"从完整注册面换成已排除 GmOnly 的 directiveCommandTypes ⇒ 决策人行为逐值不变。
+    //   E6b 只把"输入集"从完整注册面换成已排除 GM-only 的 directiveCommandTypes ⇒ 决策人行为逐值不变。
     this.visibility = new CatalogVisibility(embeddableCommandTypes);
   }
 

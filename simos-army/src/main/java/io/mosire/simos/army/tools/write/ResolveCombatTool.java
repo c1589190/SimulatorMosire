@@ -59,7 +59,7 @@ import java.util.Set;
  * army:combat.<id>}"的链接（只清恰链到本记录的；本来没有链接的不发命令）。还有未判定阶段 ⇒ 链接保留到下一次显式清除。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：它既改记录又改单位/家户，是战果结算；工具名不是命令类型 ⇒ 不进
- * catalog / {@code PAYLOAD_HINTS}。它提交的 {@code unit.AdjustComposition} 本身标了 {@code GmOnlyCommand}（GM
+ * catalog / {@code PAYLOAD_HINTS}。它提交的 {@code unit.AdjustComposition} 本身不打 {@code DmUsableCommand}（GM
  * 直改原语），与此工具同一条权限边界。
  *
  * <p>★ <b>资源声明</b>：写 {@code social}/{@code unit}/{@code army} 三个命名空间（{@link

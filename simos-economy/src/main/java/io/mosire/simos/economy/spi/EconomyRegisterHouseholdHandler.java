@@ -15,7 +15,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -54,14 +53,14 @@ import org.slf4j.Logger;
  * <p>★ <b>{@code q/r} 不要求该格有产业</b>：{@code EconomyData} 只在 flows 行存在时要求 view 有产业；本命令建的是零人口登记行， 没有
  * flow。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} —— 它写的是经济身份注册（结构写口），排除出决策令白名单 / RegisterEffect /
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 它写的是经济身份注册（结构写口），排除出决策令白名单 / RegisterEffect /
  * 决策人目录；仍注册到 Core、GM 的 {@code simos.command.submit} 与 app 组合工具（{@code simos.unit.raiseUnit}）在 GM
  * 授权上下文中可直接调用。
  *
  * <p>★ <b>目标声明</b>：本命令是 GM-only 身份原语，与 {@code economy.RegisterGovernment} 同款只做载荷形状校验，返回空列表。
  */
 public final class EconomyRegisterHouseholdHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.RegisterHousehold";

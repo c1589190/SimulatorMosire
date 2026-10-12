@@ -15,7 +15,6 @@ import io.mosire.simos.army.change.ArmyChangeSet;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
@@ -42,9 +41,9 @@ import org.slf4j.Logger;
  * manpower/equipment} 增量）原样存在记录里； **把损失写进单位**由 GM 组合工具 {@code simos.army.resolveCombat} 用同批 {@code
  * unit.AdjustComposition} 完成（D-010：Army 只编排，写单位走 unit 命令）。单独提交本命令 = 只记判定、不改单位（低层命令口径）。
  *
- * <p>★ <b>标 {@link GmOnlyCommand}</b>：与 {@link RecordCombatHandler} 同一条边界。
+ * <p>★ <b>不打 {@code DmUsableCommand}</b>：与 {@link RecordCombatHandler} 同一条边界。
  */
-public final class ResolveCombatStageHandler implements CommandHandler, GmOnlyCommand {
+public final class ResolveCombatStageHandler implements CommandHandler {
 
   private static final Logger LOG = ArmyLog.combat();
 

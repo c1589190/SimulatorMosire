@@ -21,7 +21,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -59,7 +58,7 @@ import java.util.Objects;
  *
  * <p>★ <b>GM-only</b>：删国是行政原语，不开放给决策令直调。
  */
-public final class DeleteNationHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
+public final class DeleteNationHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "sd.DeleteNation";

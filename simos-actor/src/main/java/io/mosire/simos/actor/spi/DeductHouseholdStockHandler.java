@@ -11,7 +11,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -59,7 +58,7 @@ import org.slf4j.Logger;
  * <p>★ <b>目标声明</b>：家户账户键不含格（P2-A）⇒ 本命令返回空目标清单（与 {@code actor.TransferAccounts} 同款）。
  */
 public final class DeductHouseholdStockHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "actor.DeductHouseholdStock";

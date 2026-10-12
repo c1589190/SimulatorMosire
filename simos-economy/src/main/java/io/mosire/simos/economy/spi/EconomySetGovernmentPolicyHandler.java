@@ -14,7 +14,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -70,7 +69,7 @@ import org.slf4j.Logger;
  *       看不见词表），政策搬进 economy 后那道守卫<b>整个消失</b>——判据没丢，只是回到了能看见词表的那一层。
  * </ul>
  *
- * <p>★★ <b>权限单调性（I-B4 / D-4）</b>：本命令标 {@link GmOnlyCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} /
+ * <p>★★ <b>权限单调性（I-B4 / D-4）</b>：本命令不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} /
  * 决策人目录（旧三条 {@code gov.Set*} 命令也是 GM-only，权限面<b>不放大也不缩小</b>）；GM 的 {@code simos.command.submit}
  * 与窄工具照常。 ★ <b>不造第二套声明机制</b>（D-4）：复用既有 {@link CommandTargets}（目标 = 本命令声明的政府身份）与工具面的 {@code
  * ResourceManifest}。
@@ -83,7 +82,7 @@ import org.slf4j.Logger;
  * 一条"为什么"。
  */
 public final class EconomySetGovernmentPolicyHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册、catalog 提示与窄工具都取它）。 */
   public static final String TYPE = "economy.SetGovernmentPolicy";

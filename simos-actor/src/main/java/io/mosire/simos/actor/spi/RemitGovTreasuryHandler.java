@@ -58,8 +58,8 @@ import org.slf4j.Logger;
  *       ActorChangeSet#between(ActorData, ActorData)}。
  * </ol>
  *
- * <p>★★ <b>非 GmOnly</b>：省份决策人要把这条命令嵌进 {@code sd.IssueDirective}，故<b>不</b>实现 {@link
- * io.mosire.simos.util.spi.GmOnlyCommand}。★ 本类不做"目标必须是源的 superiorGov"校验（actor 模块不认识 unit；该规则在 app 层
+ * <p>★★ <b>可 DM</b>：省份决策人要把这条命令嵌进 {@code sd.IssueDirective}，故<b>打</b> {@link
+ * io.mosire.simos.util.spi.DmUsableCommand}（反默认：不打该标记 = 仅 GM）。★ 本类不做"目标必须是源的 superiorGov"校验（actor 模块不认识 unit；该规则在 app 层
  * scope / 窄工具，见计划 §1.3 与 R3b）。GM 的 {@code simos.gov.remit} 允许任意两个 GOV 之间转移。
  *
  * <p>★ <b>目标声明</b>（{@link CommandTargets}）：<b>源与目标两个</b> actor 格路径（ {@link ResourcePaths#actor(int,

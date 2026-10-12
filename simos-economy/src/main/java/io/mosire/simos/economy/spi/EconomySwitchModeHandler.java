@@ -14,7 +14,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -40,7 +39,7 @@ import org.slf4j.Logger;
  * 由 {@link ModeTransitionId#idOf(ProductionOrganizationId, ProductionModeId, long)} 确定性派生，同 id
  * 且请求字段逐值相同 ⇒ 返回空变更集（不再落第二条）。
  *
- * <p>★★ <b>GM-only</b>：实现 {@link GmOnlyCommand} —— 注册面（Core / {@code commandTargets}）照常可见、GM 的
+ * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand} —— 注册面（Core / {@code commandTargets}）照常可见、GM 的
  * {@code simos.command.submit} 可提交；组合根在构造 {@code DirectiveWhitelist} 时排除它，普通 GOV Agent 无法把它写进令里执行。
  * ★ <b>不实现任何给决策人的窄工具</b>（见 {@code SimosToolSource} 的工具面）。
  *
@@ -50,7 +49,7 @@ import org.slf4j.Logger;
  * 返回空目标（裁决侧 fail-closed 拒绝"无目标声明"），不伪造坐标。
  */
 public final class EconomySwitchModeHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   private static final String COMMAND = "economy.SwitchMode";
 

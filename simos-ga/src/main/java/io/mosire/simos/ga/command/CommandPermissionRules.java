@@ -2,7 +2,6 @@ package io.mosire.simos.ga.command;
 
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.DmUsableCommand;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -17,11 +16,16 @@ import java.util.Set;
  * ——这正是迁移前的老毛病（"默认放行"：不打标记就自动进令白名单）。⇒ 本层与 {@code ToolRoleAudit} 同款口径：
  * <b>声明是唯一的权限拼写点，装配面照旧显式写死，两者在装配完成处做一致性审计，不一致当场抛</b>。
  *
- * <p>★ <b>三条审计</b>（全部 {@link IllegalStateException}，都在装配期、不静默）：
+ * <p>★★ <b>权限方向 = 反默认</b>（用户裁定）：<b>默认仅 GM</b>；只有<b>显式</b>标了 {@link DmUsableCommand} 的命令
+ * 才进 DM 面（可嵌令 / 可入队）。★ <b>"不打标记"本身就是 GM-only 的声明</b> —— 故本仓**只有这一个**权限标记：
+ * 2026-10-12 批次 1 收尾（甲组第 2 条）已把旧的反向标记 {@code GmOnlyCommand} 整体退役，"两个标记说同一件事、
+ * 读者要查两处"的形态随之消失；"一条命令同时标两个互斥标记"这类自相矛盾<b>在类型上已不可表达</b>，
+ * 相应的那条审计随之废止。
+ *
+ * <p>★ <b>两条审计</b>（全部 {@link IllegalStateException}，都在装配期、不静默）：
  *
  * <ol>
- *   <li><b>自相矛盾</b>：一条命令同时标 {@link DmUsableCommand} 与 {@link GmOnlyCommand} ⇒ 抛；
- *   <li><b>声明了未注册的类型</b>：声明面（DM 可用 ∪ 仅 GM ∪ 落点）⊄ 注册面 ⇒ 抛；
+ *   <li><b>声明了未注册的类型</b>：声明面（DM 可用 ∪ 落点）⊄ 注册面 ⇒ 抛；
  *   <li><b>结果集为空</b>：四个面任一为空 ⇒ 抛（空 = 谁都看不见 = 装配故障，不是"合法形态"）。
  * </ol>
  *
@@ -43,36 +47,32 @@ public final class CommandPermissionRules {
   private CommandPermissionRules() {}
 
   /**
-   * ① 声明收集：从注册面的 handler 上读两个标记接口（<b>唯一读标记的地方</b>）。
+   * ① 声明收集：从注册面的 handler 上读权限标记接口（<b>唯一读标记的地方</b>）。
+   *
+   * <p>★ 反默认：只有 {@link DmUsableCommand} 一个标记 —— <b>打了 = 可 DM；不打 = 仅 GM</b>。
    *
    * @param registeredHandlers 注册面的 handler（构造顺序 = 注册顺序）
-   * @throws IllegalStateException 同一条命令同时标两个标记（自相矛盾）
    */
   public static Declarations declare(List<CommandHandler> registeredHandlers) {
     Objects.requireNonNull(registeredHandlers, "registeredHandlers");
     Set<String> dmUsable = new LinkedHashSet<>();
-    Set<String> gmOnly = new LinkedHashSet<>();
     for (CommandHandler handler : registeredHandlers) {
       Objects.requireNonNull(handler, "handler");
       String type = requireType(handler.type());
       if (handler instanceof DmUsableCommand) {
         dmUsable.add(type);
       }
-      if (handler instanceof GmOnlyCommand) {
-        gmOnly.add(type);
-      }
     }
-    requireNoContradiction(dmUsable, gmOnly);
-    return new Declarations(dmUsable, gmOnly);
+    return new Declarations(dmUsable);
   }
 
   /**
-   * ② 四个面 + 三条审计（在**完整注册面**上收口）。
+   * ② 四个面 + 两条审计（在**完整注册面**上收口）。
    *
    * @param declarations ① 的声明（装配自身新增 handler <b>之前</b>收集的那份）
    * @param registeredHandlers <b>完整</b>注册面的 handler（含装配自身新增者）
    * @param landingPoints 决策落点（组合根把 {@code ChannelAdmission.LANDING_POINTS} 送进来）
-   * @throws IllegalStateException 三条审计任一不过，或装配面在声明收集之后又混进了带标记的 handler
+   * @throws IllegalStateException 两条审计任一不过，或装配面在声明收集之后又混进了带标记的 handler
    */
   public static CommandFaces resolve(
       Declarations declarations, List<CommandHandler> registeredHandlers, Set<String> landingPoints) {
@@ -90,8 +90,7 @@ public final class CommandPermissionRules {
               + full
               + "）—— 后加的标记不会被看到。要么别给它打标记，要么把声明收集挪到它之后。");
     }
-    return derive(
-        typesOf(registeredHandlers), declarations.dmUsableTypes(), declarations.gmOnlyTypes(), landingPoints);
+    return derive(typesOf(registeredHandlers), declarations.dmUsableTypes(), landingPoints);
   }
 
   /**
@@ -99,19 +98,14 @@ public final class CommandPermissionRules {
    * 直接构造声明面（"type + 声明的等价形式"）。
    *
    * @param registeredTypes 注册面（全部已注册命令类型）
-   * @param dmUsableTypes 标了 {@link DmUsableCommand} 的类型
-   * @param gmOnlyTypes 标了 {@link GmOnlyCommand} 的类型
+   * @param dmUsableTypes 标了 {@link DmUsableCommand} 的类型（★ 未列入者 = 仅 GM）
    * @param landingPoints 决策落点
-   * @throws IllegalStateException 三条审计任一不过
+   * @throws IllegalStateException 两条审计任一不过
    */
   public static CommandFaces derive(
-      Set<String> registeredTypes,
-      Set<String> dmUsableTypes,
-      Set<String> gmOnlyTypes,
-      Set<String> landingPoints) {
+      Set<String> registeredTypes, Set<String> dmUsableTypes, Set<String> landingPoints) {
     Set<String> registered = frozen(registeredTypes, "registeredTypes");
     Set<String> dmUsable = frozen(dmUsableTypes, "dmUsableTypes");
-    Set<String> gmOnly = frozen(gmOnlyTypes, "gmOnlyTypes");
     Set<String> landing = frozen(landingPoints, "landingPoints");
     for (String type : registered) {
       requireType(type);
@@ -119,19 +113,12 @@ public final class CommandPermissionRules {
     for (String type : dmUsable) {
       requireType(type);
     }
-    for (String type : gmOnly) {
-      requireType(type);
-    }
     for (String type : landing) {
       requireType(type);
     }
 
-    // ① 自相矛盾：两个标记互斥
-    requireNoContradiction(dmUsable, gmOnly);
-
-    // ② 声明了未注册的类型：声明面必须 ⊆ 注册面（fail-closed 的方向：注册面是执行面的事实）
+    // ① 声明了未注册的类型：声明面必须 ⊆ 注册面（fail-closed 的方向：注册面是执行面的事实）
     Set<String> unknown = new LinkedHashSet<>(dmUsable);
-    unknown.addAll(gmOnly);
     unknown.addAll(landing);
     unknown.removeAll(registered);
     if (!unknown.isEmpty()) {
@@ -144,7 +131,7 @@ public final class CommandPermissionRules {
     Set<String> directive = new LinkedHashSet<>(dmUsable);
     Set<String> drainable = new LinkedHashSet<>(dmUsable);
 
-    // ③ 结果集为空：空 = 谁都看不见 = 装配故障（不是"合法形态"）
+    // ② 结果集为空：空 = 谁都看不见 = 装配故障（不是"合法形态"）
     requireNonEmpty(catalog, "catalogTypes（注册面）");
     requireNonEmpty(directive, "directiveTypes（可嵌决策令面）");
     requireNonEmpty(drainable, "drainableTypes（可入效果队列面）");
@@ -166,16 +153,6 @@ public final class CommandPermissionRules {
       types.add(requireType(handler.type()));
     }
     return types;
-  }
-
-  private static void requireNoContradiction(Set<String> dmUsable, Set<String> gmOnly) {
-    Set<String> both = new LinkedHashSet<>(dmUsable);
-    both.retainAll(gmOnly);
-    if (!both.isEmpty()) {
-      throw new IllegalStateException(
-          "命令权限装配故障：下列命令同时标了 DmUsableCommand 与 GmOnlyCommand（自相矛盾，两个标记互斥、必须二者取一）："
-              + both);
-    }
   }
 
   private static void requireNonEmpty(Set<String> face, String name) {
@@ -201,20 +178,19 @@ public final class CommandPermissionRules {
   }
 
   /**
-   * ① 的产物：注册面上读到的两个声明集合（{@link DmUsableCommand} / {@link GmOnlyCommand}）。
+   * ① 的产物：注册面上读到的<b>唯一</b>声明集合（{@link DmUsableCommand}）。
    *
-   * <p>★ {@code dmUsableTypes} 同时是"可嵌令面"与"可入队面"的来源（{@code DmUsableCommand} 的语义覆盖两者，
+   * <p>★ <b>未列入 {@code dmUsableTypes} 的类型 = 仅 GM</b>（反向标记已随批次 1 收尾整体退役 ⇒ 不需要第二个集合）。
+   * ★ {@code dmUsableTypes} 同时是"可嵌令面"与"可入队面"的来源（{@code DmUsableCommand} 的语义覆盖两者，
    * 见 {@link CommandFaces} 的类注）——装配期在 ② 之前要用它构造 {@code sd.RegisterEffect} 与
    * {@code sd.IssueDirective}，故这里先把它露出来。
    *
    * @param dmUsableTypes 标了 {@link DmUsableCommand} 的命令类型（保序）
-   * @param gmOnlyTypes 标了 {@link GmOnlyCommand} 的命令类型（保序）
    */
-  public record Declarations(Set<String> dmUsableTypes, Set<String> gmOnlyTypes) {
+  public record Declarations(Set<String> dmUsableTypes) {
 
     public Declarations {
       dmUsableTypes = frozen(dmUsableTypes, "dmUsableTypes");
-      gmOnlyTypes = frozen(gmOnlyTypes, "gmOnlyTypes");
     }
   }
 }

@@ -11,7 +11,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -27,7 +26,7 @@ import java.util.Objects;
  * {"regionId":"r1","name":"新的区域名"}
  * }</pre>
  *
- * <p>★ <b>GM-only</b>（{@link GmOnlyCommand}）：决策人只能提出改名诉求，实际执行由 GM 走 {@code simos.command.submit} 或
+ * <p>★ <b>GM-only</b>（不打 {@code DmUsableCommand}）：决策人只能提出改名诉求，实际执行由 GM 走 {@code simos.command.submit} 或
  * GM 窄工具；该标记会自动把它排除出令白名单 / {@code RegisterEffect} / 决策人 catalog，GM 的提交面与窄工具照常可用。
  *
  * <p>★ <b>为什么单开一条命令而不复用 {@code map.UpdateRegion}</b>：{@code map.UpdateRegion} 的 {@code name}
@@ -39,7 +38,7 @@ import java.util.Objects;
  * <p>★ <b>目标资源</b>（{@link CommandTargets}）：被改名区域那一条 {@code map:<mapId>/region/<regionId>}。 载荷坏 /
  * 目标不存在 ⇒ 拒绝，不留 revision。
  */
-public final class RenameRegionHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
+public final class RenameRegionHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型字面量（同时是窄工具名；两处同源在各自类的 {@code NAME}）。 */
   public static final String TYPE = "map.RenameRegion";

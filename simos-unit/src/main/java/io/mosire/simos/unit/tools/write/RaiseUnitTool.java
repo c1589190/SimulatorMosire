@@ -83,7 +83,7 @@ import java.util.Set;
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字也不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ {@code actor.AdjustAccounts} 与 {@code actor.EnsureHouseholdAccount}、 {@code
- * economy.RegisterHousehold} 都标了 {@code GmOnlyCommand}，令 / {@code RegisterEffect} / 决策人 catalog
+ * economy.RegisterHousehold} 都不打 {@code DmUsableCommand}，令 / {@code RegisterEffect} / 决策人 catalog
  * 三条路径到不了这些结构写口；本工具走 GM 授权上下文同批提交。
  *
  * <p>★ <b>资源声明</b>：只写 {@code economy}/{@code unit}/{@code actor}/{@code social}/{@code sd}

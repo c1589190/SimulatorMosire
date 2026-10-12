@@ -11,7 +11,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -33,12 +32,12 @@ import java.util.Objects;
  *
  * <p>★ <b>语义</b>：只调 {@link SocialData#withVitalRates}——整体替换第七组件；家户覆盖不动（查找仍是家户覆盖优先、全局兜底）。
  *
- * <p>★★ <b>GM-only</b>（实现 {@link GmOnlyCommand}）：本命令仍注册 Core、仍进 {@code commandTargets}，GM 的窄工具
+ * <p>★★ <b>GM-only</b>（不打 {@code DmUsableCommand}）：本命令仍注册 Core、仍进 {@code commandTargets}，GM 的窄工具
  * {@code simos.gm.vitalRates} 与 {@code simos.command.submit} 照常可用；但排除出令白名单 / RegisterEffect / 决策人目录
  * ——全局参数是 GM 的活（与 {@code social.SetDemandCoefficient} / {@code social.SetLaborCoefficient} 同族）。
  */
 public final class SetGlobalVitalRatesHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、窄工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.SetGlobalVitalRates";

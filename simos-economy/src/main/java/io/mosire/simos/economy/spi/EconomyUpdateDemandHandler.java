@@ -50,7 +50,7 @@ import org.slf4j.Logger;
  *       档必须 等于该户居住格；HEX 档必须等于目标格；不给 ⇒ 不进决策令（GM 直通照常）。
  * </ul>
  *
- * <p>★ <b>权限</b>：非 {@code GmOnlyCommand}（与 {@code AddDemand}/{@code CancelDemand} 同待遇）。
+ * <p>★ <b>权限</b>：打 {@code DmUsableCommand}（与 {@code AddDemand}/{@code CancelDemand} 同待遇）。
  */
 public final class EconomyUpdateDemandHandler
     implements CommandHandler, CommandTargets, DmUsableCommand {

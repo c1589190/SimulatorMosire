@@ -12,7 +12,6 @@ import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -54,7 +53,7 @@ import org.slf4j.Logger;
  *       revision）。
  * </ul>
  *
- * <p>★★ <b>GM-only</b>：本命令标 {@link GmOnlyCommand}（照 {@code economy.SetMarketPrice}）——
+ * <p>★★ <b>GM-only</b>：本命令不打 {@code DmUsableCommand}（照 {@code economy.SetMarketPrice}）——
  * 它改的是"这一片按什么钱报价"， 属货币制度面，不进决策人令（{@code sd.IssueDirective} / {@code AdjudicateTick} 的 directive
  * 载荷）。
  *
@@ -62,7 +61,7 @@ import org.slf4j.Logger;
  * io.mosire.simos.economy.time.MarketSettlement} 的唯一拼写点；估值 = 世界汇率行情 / 当地实际流通 ⇒ 面值）。 本命令正是 E
  * 判据的现场制造器（"买方持铜 / 卖方按银报价收银"：把某个市场的计价币改成银即可），不再需要"先走外汇"。
  */
-public final class EconomySetMarketNumeraireHandler implements CommandHandler, GmOnlyCommand {
+public final class EconomySetMarketNumeraireHandler implements CommandHandler {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册与 catalog 载荷提示都取它）。 */
   public static final String TYPE = "economy.SetMarketNumeraire";

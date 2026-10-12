@@ -11,7 +11,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -35,7 +34,7 @@ import java.util.Set;
  *
  * <p>★ <b>GM-only</b>。
  */
-public final class ReassignHexesHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
+public final class ReassignHexesHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "map.ReassignHexes";

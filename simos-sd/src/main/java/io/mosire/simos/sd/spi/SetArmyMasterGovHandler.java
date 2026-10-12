@@ -13,7 +13,6 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -40,10 +39,10 @@ import java.util.Optional;
  * ArmyFormation.masterGov} 的双边同步是 {@code simos.army.assignGov} 组合工具的职责（本命令只做 sd 侧的单一事实落点， 供 GM 直接提交
  * / 组合工具复用）。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} ⇒ handler 照常注册、GM 的 {@code simos.command.submit}
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} ⇒ handler 照常注册、GM 的 {@code simos.command.submit}
  * 照常可用，但排除出决策令白名单 / {@code sd.RegisterEffect} / 决策人目录（与 {@code economy.SwitchMode} 等同制）。
  */
-public final class SetArmyMasterGovHandler implements CommandHandler, GmOnlyCommand {
+public final class SetArmyMasterGovHandler implements CommandHandler {
 
   @Override
   public String type() {

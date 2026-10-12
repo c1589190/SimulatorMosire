@@ -18,7 +18,6 @@ import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -68,14 +67,14 @@ import java.util.Objects;
  * <p>★★ <b>写这条命令的代价（如实记）</b>：GOV 级那条它<b>激活</b>这个币对的外汇市场 —— 有官方汇率，家户的 FX 挂单规则才有锚 （{@code
  * FxSettlement} 的类注写了为什么锚必须是政策价）。也就是说<b>没定过汇率的世界一个数都不动</b>，定了才开始有外汇面。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand}（排除出令白名单 / {@code RegisterEffect} / 决策人命令目录三条路；
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand}（排除出令白名单 / {@code RegisterEffect} / 决策人命令目录三条路；
  * 命令总线本身仍可被窄工具提交）。决策人侧的受控入口是窄工具 {@code simos.gov.setFxRate}（身份派生 + 只能自己的 GOV + GM 审批链）， 与 {@code
  * gov.defineCurrency} 的既有形制同源；★ <b>B2 的区级分支不给决策人桶开</b>（决策人窄工具不暴露 marketZoneId）——
  * 区级报价的作用域（"本行政区下辖的本国市场区部分"）要按身份派生，与口岸政策一起做（阶段 3），权限不得因为参数新增而放大。 ★ 不声明格资源（政府表/区表都没有单格路径）⇒ {@link
  * CommandTargets#targetPaths} 恒空。
  */
 public final class EconomySetOfficialRateHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.SetOfficialRate";

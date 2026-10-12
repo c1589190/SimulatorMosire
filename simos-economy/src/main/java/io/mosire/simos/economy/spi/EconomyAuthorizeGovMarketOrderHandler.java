@@ -18,7 +18,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -70,11 +69,11 @@ import org.slf4j.Logger;
  *   <li>到期日与总量是<b>必填</b>（本命令不接受"永久授权"）：{@code expiresOnDay} 必须给出，且到期后由日结算清除该行。
  * </ul>
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 的 {@code
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 的 {@code
  * simos.command.submit} 与窄工具 {@code simos.gm.govMarketMandate} 照常可用。
  */
 public final class EconomyAuthorizeGovMarketOrderHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.AuthorizeGovernmentMarketOrder";

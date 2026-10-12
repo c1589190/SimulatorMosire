@@ -9,7 +9,6 @@ import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -41,7 +40,7 @@ import org.slf4j.Logger;
  *
  * <p>★ <b>模块边界（§18 裁定 A 同源）</b>：economy enforcer 禁 unit ⇒ 这里查经济侧 GOV 登记信封 + classes + Social
  * 家户表；app 组合根/工具（Z3c）再做 unit + {@code GovernmentFormation} 预检。本命令 GM 裸 {@code simos.command.submit}
- * 路径只过经济侧信封（已裁定接受的边界）。★ <b>GM-only</b>：实现 {@link GmOnlyCommand} ⇒
+ * 路径只过经济侧信封（已裁定接受的边界）。★ <b>GM-only</b>：不打 {@code DmUsableCommand} ⇒
  * 排除出令白名单/RegisterEffect/决策人目录；决策人版与审批链归 Z3c。★ 不实现 {@code CommandTargets}。
  *
  * <p>★ <b>日志（AGENTS §一.9）</b>：成功 INFO（{@code GOV_SERVICE_COMMITMENT_SET}）、业务/载荷拒绝 INFO（{@code
@@ -49,7 +48,7 @@ import org.slf4j.Logger;
  * GOV_SERVICE_COMMITMENT_CONTRACT_VIOLATION}）且不降级、抛新实例（保留 cause）；无 WARN 降级。来源 = {@link
  * EconomyLogSource#ECONOMY_COMMAND}。
  */
-public final class EconomySetGovServiceCommitmentHandler implements CommandHandler, GmOnlyCommand {
+public final class EconomySetGovServiceCommitmentHandler implements CommandHandler {
 
   /** 命令类型（唯一拼写点：Shell 注册、catalog 提示、Z3c 窄工具都从这里取/对齐）。 */
   public static final String TYPE = "economy.SetGovServiceCommitment";

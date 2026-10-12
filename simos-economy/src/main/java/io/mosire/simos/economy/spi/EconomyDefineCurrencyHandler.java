@@ -18,7 +18,6 @@ import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -56,13 +55,13 @@ import java.util.Set;
  * InstrumentKind#SPECIE}，无发行人、无兑现人 —— 与 {@code silver-specie} 逐字同形）。本批<b>不</b>接受工具档参数： {@code
  * STATE_NOTE} / {@code BANK_DEPOSIT} 的价值是对发行人的索取（必须有发行人），那属后续批次 —— 本批只做金属币这一档，不做"为了让词表好看而编造制度"。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand}（排除出令白名单 / {@code RegisterEffect} / 决策人命令目录三条路；
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand}（排除出令白名单 / {@code RegisterEffect} / 决策人命令目录三条路；
  * 命令总线本身仍可被窄工具提交）。决策人侧的受控入口是窄工具 {@code simos.gov.defineCurrency}（身份派生 + 只能自己的 GOV + GM 审批链），与
  * {@code economy.SetGovernmentPolicy} 的既有形制同源（★★ 2026-10-12 追加裁定 12 前是 {@code
  * gov.SetAdministrationPlan}，该命令已删除）。★ 不声明格资源（世界级词表没有格）⇒ {@link CommandTargets#targetPaths} 恒空。
  */
 public final class EconomyDefineCurrencyHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.DefineCurrency";

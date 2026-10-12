@@ -10,7 +10,6 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -49,7 +48,7 @@ import org.slf4j.Logger;
  *       语义与守卫一字不动（同一世界仍能建/改 {@code gov-unit-*} 政府）。
  * </ul>
  *
- * <p>★★ <b>GM-only</b>：本命令标 {@link GmOnlyCommand}（照 {@code economy.SetMarketZonePriceAlpha}）——
+ * <p>★★ <b>GM-only</b>：本命令不打 {@code DmUsableCommand}（照 {@code economy.SetMarketZonePriceAlpha}）——
  * 它改的是<b>发钞规模</b>这条 政策面，不进决策人令（{@code sd.IssueDirective} / {@code AdjudicateTick} 的 directive
  * 载荷），只走 GM 的 {@code simos.command.submit} 与窄工具 {@code simos.economy.setGovernmentMintScale}。
  *
@@ -60,7 +59,7 @@ import org.slf4j.Logger;
  * FieldDelta.diff} 按 record 相等判变化）→ Codec（Jackson record 绑定）三件套本来就是这一字段的既有三件套 （{@code
  * MintSettlement.writeLastCycleReadout} 与 {@code economy.RegisterGovernment} 已在写它）。
  */
-public final class EconomySetGovernmentMintScaleHandler implements CommandHandler, GmOnlyCommand {
+public final class EconomySetGovernmentMintScaleHandler implements CommandHandler {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册与 catalog 载荷提示都取它）。 */
   public static final String TYPE = "economy.SetGovernmentMintScale";

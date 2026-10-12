@@ -8,7 +8,6 @@ import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -44,7 +43,7 @@ import org.slf4j.Logger;
  * 两条路径另做 unit 切片预检（unit 存在 + {@code module()} 是 GovernmentFormation）。GM 裸 {@code
  * simos.command.submit} 绕过 unit 切片检查是已裁定接受的边界 （详见 Z1c 台账）。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人目录；GM 的
+ * <p>★ <b>GM-only</b>：不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / {@code RegisterEffect} / 决策人目录；GM 的
  * {@code simos.command.submit} 与窄工具 {@code simos.economy.upsertGovUnit} 照常可用。★ <b>不实现 {@code
  * CommandTargets}</b>（Z3 接决策人工具/审批链时再按需打开）。
  *
@@ -53,7 +52,7 @@ import org.slf4j.Logger;
  * GOV_UNIT_UPSERT_CONTRACT_VIOLATION}）且不降级、抛新实例（保留 cause）；无 WARN 降级。事件来源 = {@link
  * EconomyLogSource#ECONOMY_COMMAND}。
  */
-public final class EconomyUpsertGovUnitHandler implements CommandHandler, GmOnlyCommand {
+public final class EconomyUpsertGovUnitHandler implements CommandHandler {
 
   /** 命令类型（唯一拼写点：Shell 注册、GM 工具、catalog 提示都从这里取/对齐）。 */
   public static final String TYPE = "economy.UpsertGovUnit";

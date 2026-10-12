@@ -17,7 +17,6 @@ import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -50,8 +49,7 @@ import java.util.Objects;
  * io.mosire.simos.core.CoreSimos#submitBatch}）⇒ 不可能出现"记了发行但没人收到钱" 或反过来的半截状态。
  *
  * <p>★★ <b>与 {@code actor.AdjustAccounts} 的分工（重要）</b>：那条命令是"任意增减账"的裸原语，本身<b>不留发行痕迹</b>；
- * 本命令是它的审计对侧。只提交本命令 = 凭空多一条"发过钱"的记录而余额没动（{@code MoneyStock} 的守恒读数会当场不平） ⇒ 故本命令标 {@link
- * GmOnlyCommand}（排除出令白名单 / {@code RegisterEffect} / 决策人命令目录三条路）， 只能由 GM 或窄工具在受控批里提交 —— 与 {@code
+ * 本命令是它的审计对侧。只提交本命令 = 凭空多一条"发过钱"的记录而余额没动（{@code MoneyStock} 的守恒读数会当场不平） ⇒ 故本命令不打 {@code DmUsableCommand}（排除出令白名单 / {@code RegisterEffect} / 决策人命令目录三条路）， 只能由 GM 或窄工具在受控批里提交 —— 与 {@code
  * actor.AdjustAccounts} 的既有定性（"给组合工具用的裸账目原语"）同制。
  *
  * <p>★★ <b>"谁能发"只在 {@code Government.issuable} 上判一次</b>（权限不得放大 / M6）：不是该 GOV 发行的币种 ⇒ 具名拒 （{@code
@@ -62,7 +60,7 @@ import java.util.Objects;
  * UUID：发行记录会进快照/dump，随机 id 会让"同代码跑两遍逐值相同"（判据 F7）当场不成立。
  */
 public final class EconomyRecordMoneyIssuanceHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.RecordMoneyIssuance";

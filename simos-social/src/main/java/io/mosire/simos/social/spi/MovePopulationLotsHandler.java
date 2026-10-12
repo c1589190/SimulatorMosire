@@ -19,7 +19,6 @@ import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -63,7 +62,7 @@ import java.util.Set;
  * 同一侧两个字段都给时两条都列出（更严，不静默漏判）；一侧都没给 ⇒ 该侧无目标；整条都没有可寻址目标 ⇒ 空列表（调用方 fail-closed 拒，与升级前同方向）。
  */
 public final class MovePopulationLotsHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "social.MovePopulationLots";

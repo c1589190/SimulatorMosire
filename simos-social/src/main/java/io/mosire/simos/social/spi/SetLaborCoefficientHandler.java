@@ -14,7 +14,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
@@ -40,14 +39,14 @@ import java.util.Objects;
  *       scope/household/年龄档/性别/milliHoursPerTick 的事件，失败一律 {@link HandlerOutcome.Rejected} 带中文原因。
  * </ul>
  *
- * <p>★★ <b>GM-only</b>（实现 {@link GmOnlyCommand}）：仍注册到 Core、仍进 {@code commandTargets}、GM 直接提交与窄工具
+ * <p>★★ <b>GM-only</b>（不打 {@code DmUsableCommand}）：仍注册到 Core、仍进 {@code commandTargets}、GM 直接提交与窄工具
  * 照常可用；但不得嵌入决策人令，也不进决策人目录——劳动系数是全世界/全户的调参面。
  *
  * <p>★ <b>旧档作废、不迁移</b>（用户 2026-10-09 裁定"一切从新"）：本命令只认带第 6 组件 {@code provisioning} 的新档； 旧档缺该组件在
  * {@link SocialData} / {@link SocialChangeSet} 构造期即具名拒，本命令不补默认值、不做双读。
  */
 public final class SetLaborCoefficientHandler
-    implements CommandHandler, CommandTargets, GmOnlyCommand {
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、窄工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.SetLaborCoefficient";

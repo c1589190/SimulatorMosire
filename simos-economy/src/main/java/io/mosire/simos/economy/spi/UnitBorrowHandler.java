@@ -23,7 +23,6 @@ import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
@@ -77,10 +76,10 @@ import org.slf4j.Logger;
  * <p>★★ <b>{@code nextDueTick} 的落点</b>：它写进 {@link DebtTerms#dueDay()}（合同身份维的一部分），
  * 记录"约定在哪个世界日到期"；本批的日结算<b>尚未执行到期催收</b>（具名缺口：due 只作身份/审计，见报告）。 {@code dueCycle} 滚动字段留空（本命令不用产业周期口径）。
  *
- * <p>★★ <b>GM-only</b>：实现 {@link GmOnlyCommand}（GM 的 {@code simos.command.submit} 可调；不进决策令白名单）。
+ * <p>★★ <b>GM-only</b>：不打 {@code DmUsableCommand}（GM 的 {@code simos.command.submit} 可调；不进决策令白名单）。
  * {@code targetPaths} 返回空表（家户账户无格路径可声明；GM-only 命令不进资源围栏）。
  */
-public final class UnitBorrowHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
+public final class UnitBorrowHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.UnitBorrow";

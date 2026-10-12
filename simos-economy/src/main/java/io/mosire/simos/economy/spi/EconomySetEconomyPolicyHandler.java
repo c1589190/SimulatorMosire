@@ -10,7 +10,6 @@ import io.mosire.simos.economy.model.EconomyPolicyKey;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
@@ -40,7 +39,7 @@ import org.slf4j.Logger;
  *
  * <p>★ <b>未激活的世界</b>（{@code meta} 为空）没有政策宿主 ⇒ 具名拒 {@code not-activated}（不静默建一个 meta：那是另一件事）。
  */
-public final class EconomySetEconomyPolicyHandler implements CommandHandler, GmOnlyCommand {
+public final class EconomySetEconomyPolicyHandler implements CommandHandler {
 
   /** 命令类型（全仓唯一拼写点；{@code Shell} 注册与 catalog 载荷提示都取它）。 */
   public static final String TYPE = "economy.SetEconomyPolicy";

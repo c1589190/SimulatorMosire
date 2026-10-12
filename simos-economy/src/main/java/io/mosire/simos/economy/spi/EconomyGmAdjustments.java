@@ -70,7 +70,7 @@ import java.util.Set;
  *       七张 源状态表（class 两表同批落值走 {@link EconomyData#withClassStructuresAndPositions} 成对写口）。
  *   <li><b>Z1 产品产出数量覆盖（两）</b>：{@link #SET_OUTPUT_QUANTITY} / {@link #CLEAR_OUTPUT_QUANTITY} —— 只编辑
  *       {@code outputQuantityOverrides}（键 = industryId，内层键 = commodityId，值 = 商品数量/单位规模）； 本批保持
- *       GmOnly，不加 {@code CommandTargets}、不进决策令桶（§4）。
+ *       仅 GM（不打 {@code DmUsableCommand}），不加 {@code CommandTargets}、不进决策令桶（§4）。
  * </ul>
  *
  * <p>★★ <b>只改源状态、只走既有写口</b>：本类全部 kind 经既有 {@code with*} 写口落在对应组件上，不搬粮/钱/商品，不新增/删除任何其它表。
