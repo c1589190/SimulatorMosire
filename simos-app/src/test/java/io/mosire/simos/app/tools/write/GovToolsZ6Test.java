@@ -89,7 +89,7 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.spi.AssignExternalGovPostHandler;
 import io.mosire.simos.unit.tools.write.UnitSetJurisdictionTool;
-import io.mosire.simos.util.spi.GmOnlyCommand;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -389,13 +389,15 @@ class GovToolsZ6Test {
     }
   }
 
-  // ── P0-4：通用政府政策写口仍是 GmOnlyCommand，且进不了决策人 catalog（z3c2 §8-6）────────
+  // ── P0-4：通用政府政策写口仍**不打 DmUsableCommand**（= 仅 GM），且进不了决策人 catalog（z3c2 §8-6）──────
 
   @Test
-  void gmOnlyGovCommandsAreMarkedAndInvisibleInDecisionCatalog() throws Exception {
+  void notDmUsableGovPolicyWriteIsInvisibleInDecisionCatalog() throws Exception {
     assertThat(new EconomySetGovernmentPolicyHandler())
-        .as("economy.SetGovernmentPolicy 必须仍标 GmOnlyCommand（令/RegisterEffect/catalog 三条路径不放大）")
-        .isInstanceOf(GmOnlyCommand.class);
+        .as(
+            "economy.SetGovernmentPolicy 必须仍不打 DmUsableCommand（反默认 ⇒ 仅 GM：令/RegisterEffect/catalog"
+                + " 三条路径不放大）—— ★ 2026-10-12 批次 1 迁移：旧断言 isInstanceOf(GmOnlyCommand)（标记已退役）")
+        .isNotInstanceOf(DmUsableCommand.class);
 
     try (World world = start(tempDir.resolve("gm-only-catalog"), "gm-only-catalog")) {
       Shell shell = world.shell();
@@ -425,13 +427,13 @@ class GovToolsZ6Test {
       List<String> dmTypes = new ArrayList<>();
       dmView.get("types").forEach(node -> dmTypes.add(node.asText()));
       assertThat(dmTypes)
-          .as("GmOnlyCommand 不得进决策人 catalog（即令里不可嵌）")
+          .as("不打 DmUsableCommand ⇒ 不得进决策人 catalog（即令里不可嵌）")
           .doesNotContain(EconomySetGovernmentPolicyHandler.TYPE);
       assertThat(dmTypes)
-          .as("非 GmOnly 的岗位命令仍在决策人 catalog（正向对照，证明过滤不是整体为空）")
+          .as("打了 DmUsableCommand 的岗位命令仍在决策人 catalog（正向对照，证明过滤不是整体为空）")
           .contains("unit.AssignGovPost");
 
-      // ★ 决策人面（金名单）放的是**工具名**不是命令类型；命令类型的不可嵌判据 = GmOnlyCommand + 上面的 DM catalog。
+      // ★ 决策人面（金名单）放的是**工具名**不是命令类型；命令类型的不可嵌判据 = 不打 DmUsableCommand + 上面的 DM catalog。
       assertThat(DecisionFaceGolden.ALL)
           .as("金名单不得混入命令类型（口径说明）")
           .doesNotContain(EconomySetGovernmentPolicyHandler.TYPE);

@@ -6,7 +6,7 @@ import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
-import io.mosire.simos.util.spi.GmOnlyCommand;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import java.util.List;
 import java.util.Optional;
@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code unit.AdjustComposition} 的处理器（D-009 补裁的 GM 调试直改原语）： 有符号增量——正增量可新建 type（追加表尾）、负增量要求 type
- * 已存在且不越界、零增量是合法 no-op；GmOnly 标记不得丢。
+ * 已存在且不越界、零增量是合法 no-op；**不打 {@code DmUsableCommand}（= 仅 GM）这一条不得丢**。
  *
  * <p>★ S3b（2026-10-09）：{@code Unit.manpower} 已退役，本命令只作用于**装备表**；非空 `manpower` 载荷具名拒。
  */
@@ -50,11 +50,14 @@ class AdjustCompositionHandlerTest {
   }
 
   @Test
-  void typeAndGmOnlyMarkerMatchTheSpec() {
+  void typeMatchesTheSpecAndItIsNotDmUsable() {
     assertThat(HANDLER.type()).isEqualTo("unit.AdjustComposition");
     assertThat(HANDLER)
-        .as("D-009 补裁收紧：调试直改原语不得嵌入决策令（只有 GM 直提 / GM 窄工具能用）")
-        .isInstanceOf(GmOnlyCommand.class);
+        .as(
+            "D-009 补裁收紧：调试直改原语不得嵌入决策令（只有 GM 直提 / GM 窄工具能用）"
+                + "—— ★ 2026-10-12 批次 1 迁移：旧断言 isInstanceOf(GmOnlyCommand)（标记已退役），"
+                + "新契约下判据 = 不打 DmUsableCommand")
+        .isNotInstanceOf(DmUsableCommand.class);
   }
 
   @Test

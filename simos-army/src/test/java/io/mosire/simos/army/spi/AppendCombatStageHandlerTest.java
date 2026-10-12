@@ -7,7 +7,7 @@ import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatStage;
 import io.mosire.simos.army.change.ArmyChangeSet;
 import io.mosire.simos.army.testing.ArmyFixtures;
-import io.mosire.simos.util.spi.GmOnlyCommand;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +22,9 @@ class AppendCombatStageHandlerTest {
   @Test
   void typeIsArmyAppendCombatStageAndItIsGmOnly() {
     assertThat(HANDLER.type()).isEqualTo("army.AppendCombatStage");
-    assertThat(HANDLER).isInstanceOf(GmOnlyCommand.class);
+    // ★ 2026-10-12 批次 1 迁移：旧断言 isInstanceOf(GmOnlyCommand.class)（标记已退役）；
+    //   新契约下「不打 DmUsableCommand」= 仅 GM ⇒ 不嵌入令 / 不入效果队列 / 不进决策人 catalog。
+    assertThat(HANDLER).isNotInstanceOf(DmUsableCommand.class);
   }
 
   @Test

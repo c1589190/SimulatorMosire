@@ -18,7 +18,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.spi.CommandHandler;
-import io.mosire.simos.util.spi.GmOnlyCommand;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -70,10 +70,15 @@ class AdjustAccountsHandlerTest {
     assertThat(HANDLER.type()).isEqualTo("actor.AdjustAccounts");
   }
 
-  /** ★ 裸账目原语：实现 {@link GmOnlyCommand}（禁嵌入令 / RegisterEffect / 决策人 catalog 三条路）。 */
+  /**
+   * ★ 裸账目原语：**不打** {@link DmUsableCommand} ⇒ 反默认下**仅 GM**（禁嵌入令 / RegisterEffect / 决策人 catalog 三条路）。
+   *
+   * <p>★ 2026-10-12 批次 1 迁移（接缝位移）：旧断言是 {@code isInstanceOf(GmOnlyCommand.class)} —— 该反向标记已随批次 1
+   * 收尾整体退役，"不打 {@code DmUsableCommand}"就是新契约下 GM-only 的**唯一**拼写。断言对象（本 handler 不在 DM 面） 一个字没动。
+   */
   @Test
-  void handlerIsGmOnly() {
-    assertThat(HANDLER).isInstanceOf(GmOnlyCommand.class);
+  void handlerIsNotDmUsableSoGmOnly() {
+    assertThat(HANDLER).isNotInstanceOf(DmUsableCommand.class);
     assertThat(HANDLER).isInstanceOf(CommandHandler.class);
   }
 

@@ -8,7 +8,7 @@ import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdFixtures;
 import io.mosire.simos.sd.testing.SdWorlds;
-import io.mosire.simos.util.spi.GmOnlyCommand;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import java.util.List;
 import java.util.Map;
@@ -26,12 +26,23 @@ class SetDiplomaticRelationHandlerTest {
 
   private static final DiplomaticRelationKey EDGE = SdFixtures.DR12;
 
+  /**
+   * ★★ 2026-10-12 批次 1 迁移（**这一处最容易翻错**）：旧断言 {@code isNotInstanceOf(GmOnlyCommand.class)} 的原意是
+   * "命令本身没被反向标记"，但**反默认之后"非 GmOnly"不再等于"可 DM"** ⇒ <b>绝不可翻成</b> {@code
+   * isInstanceOf(DmUsableCommand.class)}（那会把"仅 GM"错钉成"可 DM"）。
+   *
+   * <p>现在钉的语义 = 「{@code sd.SetDiplomaticRelation} **不在 DM 命令面**上」：它是那 28 条 {@code sd.*} 之一，
+   * 既不进"可嵌入令面"（{@code directiveTypes}）也不进"可入队面"（{@code drainableTypes}）——它不是那种能被嵌进决策令的 领域命令。★
+   * 决策人照样能做外交，但走的是**工具面**：{@code SetDiplomaticRelationTool}（{@code NAME} 恰等于本命令 type）由 {@code
+   * SimosTool.roles()} 管辖、身份约束落在 {@code DiplomaticWriteSignature}（{@code from} 必须 = 调用者
+   * Nation）；旧文案"DM 窄写过滤时不会被误摘"说的正是**那一面**。命令面与工具面各自成立、互不推导。
+   */
   @Test
-  void typeIsSdSetDiplomaticRelationAndItIsNotGmOnly() {
+  void typeIsSdSetDiplomaticRelationAndItIsNotDmUsable() {
     assertThat(HANDLER.type()).isEqualTo("sd.SetDiplomaticRelation");
     assertThat(HANDLER)
-        .as("★ 身份约束在决策人窄工具层（signature），命令本身非 GmOnly ⇒ DM 窄写过滤时不会被误摘")
-        .isNotInstanceOf(GmOnlyCommand.class);
+        .as("★ 反默认：sd.* 不在 DM 命令面（不打 DmUsableCommand）；决策人的外交通路在工具面（roles()），不在命令面")
+        .isNotInstanceOf(DmUsableCommand.class);
   }
 
   @Test
@@ -40,7 +51,8 @@ class SetDiplomaticRelationHandlerTest {
         applied(
             nationsOnly(),
             5L,
-            "{\"from\":\"n1\",\"to\":\"n2\",\"kind\":\"称臣纳贡\",\"text\":\"N1 向 N2 称臣纳贡\",\"tick\":3}");
+            "{\"from\":\"n1\",\"to\":\"n2\",\"kind\":\"称臣纳贡\",\"text\":\"N1 向 N2"
+                + " 称臣纳贡\",\"tick\":3}");
 
     DiplomaticRelation relation = next.diplomaticRelations().get(EDGE);
     assertThat(relation).isNotNull();

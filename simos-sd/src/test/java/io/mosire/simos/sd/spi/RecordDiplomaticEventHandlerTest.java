@@ -8,7 +8,7 @@ import io.mosire.simos.sd.model.DiplomaticEvent;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdFixtures;
 import io.mosire.simos.sd.testing.SdWorlds;
-import io.mosire.simos.util.spi.GmOnlyCommand;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -21,12 +21,21 @@ class RecordDiplomaticEventHandlerTest {
 
   private static final RecordDiplomaticEventHandler HANDLER = new RecordDiplomaticEventHandler();
 
+  /**
+   * ★★ 2026-10-12 批次 1 迁移（同 {@code SetDiplomaticRelationHandlerTest} 那一处）：旧断言 {@code
+   * isNotInstanceOf(GmOnlyCommand.class)} **不可**翻成 {@code isInstanceOf(DmUsableCommand.class)} ——
+   * 反默认下 "非 GmOnly"不再等于"可 DM"。
+   *
+   * <p>现在钉的语义 = 「{@code sd.RecordDiplomaticEvent} **不在 DM 命令面**上」（28 条 {@code sd.*} 之一：既不进可嵌令面、
+   * 也不进可入队面）。决策人记外交事件走的是**工具面** {@code RecordDiplomaticEventTool}（{@code SimosTool.roles()} +
+   * {@code DiplomaticWriteSignature} 的 participants 约束），与命令面互不推导。
+   */
   @Test
-  void typeIsSdRecordDiplomaticEventAndItIsNotGmOnly() {
+  void typeIsSdRecordDiplomaticEventAndItIsNotDmUsable() {
     assertThat(HANDLER.type()).isEqualTo("sd.RecordDiplomaticEvent");
     assertThat(HANDLER)
-        .as("身份约束在决策人窄工具层（signature），命令本身非 GmOnly")
-        .isNotInstanceOf(GmOnlyCommand.class);
+        .as("★ 反默认：sd.* 不在 DM 命令面（不打 DmUsableCommand）；决策人通路在工具面（roles()）")
+        .isNotInstanceOf(DmUsableCommand.class);
   }
 
   @Test

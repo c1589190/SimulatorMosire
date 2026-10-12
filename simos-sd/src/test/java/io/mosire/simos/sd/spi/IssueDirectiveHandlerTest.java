@@ -15,31 +15,62 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-/** D1 的 handler 级判据：R4 **末位生效**（命令期，同 tick 可重写、旧版转 SUPERSEDED）、命令白名单（禁自指/通用写）、执行原文落 INFO。 */
+/**
+ * D1 的 handler 级判据：R4 **末位生效**（命令期，同 tick 可重写、旧版转 SUPERSEDED）、可嵌令面（禁通用写 + 自指拒因）、执行原文落 INFO。
+ *
+ * <p>★★ 2026-10-12 批次 1 迁移（**接缝位移，不是行为回归**）：本类旧夹具把"含 {@code sd.*} 的**原始注册面**"直接喂给 {@link
+ * DirectiveWhitelist}，钉的是**已被删除的 {@code sd.} 前缀规则**（用户裁定"一条不留"）。新契约下装配面 （{@code
+ * CommandPermissionRules}）已经派生好可嵌令面、**里面本就没有一条 {@code sd.*}** ⇒ 白名单退化为"对派生面的保序收口"，
+ * 只余一条硬规则（禁通用写）。旧用例名 {@code whitelistDropsSdSelfReferenceAndGenericSubmit}（已改名，留痕在此） 描述的是已不存在的内部行为。
+ *
+ * <p>★ **被保护的语义一个字没丢**：{@code sd.IssueDirective} 仍不得被嵌进决策令 —— 只是载体从"白名单剔前缀"搬到 "决策族命令不打 {@code
+ * DmUsableCommand}"，且 {@code DirectiveWhitelist.isSdSelfReference}（保留未动）继续承担 **拒因措辞**；端到端钉法见 {@link
+ * #derivedEmbeddableFaceIsTakenAsIsAndSdSelfReferenceIsStillRefused}。
+ */
 class IssueDirectiveHandlerTest {
 
-  private static final Set<String> REGISTERED =
-      Set.of(
-          "unit.RenameUnit",
-          "unit.PlanRoute",
-          "sd.PutInfo",
-          "sd.IssueDirective",
-          SdCommandNames.SIMOS_COMMAND_SUBMIT);
+  /**
+   * 装配面**派生后的可嵌令面**（新契约：装配面派生、消费方信任）——模拟 {@code CommandPermissionRules} 的产物： 只有打了 {@code
+   * DmUsableCommand} 的领域命令，本就没有 {@code sd.*}。
+   */
+  private static final Set<String> DERIVED_EMBEDDABLE_FACE =
+      Set.of("unit.RenameUnit", "unit.PlanRoute");
 
-  private static final DirectiveWhitelist WHITELIST = new DirectiveWhitelist(REGISTERED);
+  private static final DirectiveWhitelist WHITELIST =
+      new DirectiveWhitelist(DERIVED_EMBEDDABLE_FACE);
 
   /** 本类里"另一 tick 出令"那几条用的世界 tick：**必须 ≥ 载荷里最大的 tick**（4），否则会先撞上"令不得记在未来"。 */
   private static final long WORLD_TICK = 4;
 
   private final IssueDirectiveHandler handler = new IssueDirectiveHandler(WHITELIST);
 
+  /**
+   * ★★ 迁移后的**自指保护端到端**判据（旧名 {@code whitelistDropsSdSelfReferenceAndGenericSubmit} 留痕）：
+   *
+   * <ol>
+   *   <li>派生面**照收**：白名单不再剔任何前缀（{@code sd.} 规则已删），只余"禁通用写"这一条硬规则；
+   *   <li>自指仍被拒：{@code sd.IssueDirective} 嵌进令 ⇒ {@code Rejected}，且理由正文仍是**"自指"**（不是含糊的 "不在白名单"）——
+   *       判别力在于删掉 {@code firstWhitelistViolation} 的 {@code isSdSelfReference} 分支后本用例当场红。
+   * </ol>
+   *
+   * <p>★ 为什么这条必须走 handler 而不是 {@code WHITELIST.allows("sd.*")}：新契约下"白名单不含 sd.*"是**输入的性质**
+   * （派生面本就没有），再断言它就只是"不在集合里的东西不在集合里"这种恒真装饰；真正还要守的是**递归闸门**。
+   */
   @Test
-  void whitelistDropsSdSelfReferenceAndGenericSubmit() {
+  void derivedEmbeddableFaceIsTakenAsIsAndSdSelfReferenceIsStillRefused() {
+    // ① 派生面原样：不再有"白名单内部剔 sd.*"这一层（这就是被删掉的旧规则）。
     assertThat(WHITELIST.allows("unit.RenameUnit")).isTrue();
-    assertThat(WHITELIST.allows("sd.PutInfo")).as("sd 自指不得在决策里").isFalse();
-    assertThat(WHITELIST.allows(SdCommandNames.SIMOS_COMMAND_SUBMIT)).as("通用写不得在决策里").isFalse();
+    assertThat(WHITELIST.allows(SdCommandNames.SIMOS_COMMAND_SUBMIT)).as("通用写仍被白名单剔掉").isFalse();
     assertThat(WHITELIST.allowedTypes())
-        .containsExactlyInAnyOrder("unit.RenameUnit", "unit.PlanRoute");
+        .as("派生面保序收口，逐条等于输入面（无 sd.* 可剔 —— 它们本就不在派生面里）")
+        .containsExactlyInAnyOrderElementsOf(DERIVED_EMBEDDABLE_FACE);
+
+    // ② 自指保护（端到端）：sd.IssueDirective 不得被嵌进决策令，理由正文仍是"自指"。
+    SdState base = withDecisionMaker(SdState.empty());
+    HandlerOutcome outcome =
+        handle(base, payload("d1", "dm1", 0, "[{\"type\":\"sd.IssueDirective\"}]"));
+    assertThat(rejected(outcome)).contains("自指").contains("sd.IssueDirective");
+    assertThat(base.directives()).as("被拒 ⇒ 一条都没落").isEmpty();
   }
 
   @Test

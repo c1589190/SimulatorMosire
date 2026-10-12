@@ -50,7 +50,7 @@ import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
-import io.mosire.simos.util.spi.GmOnlyCommand;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateMeta;
@@ -78,9 +78,9 @@ import org.junit.jupiter.api.io.TempDir;
  *   <li><b>缺省中性（负向）</b>：没设过政策的世界，口岸面必须**逐值退回** {@code PortEnforcementInput.none()}， 优先级面不注入 ——
  *       不是"静默收 0 / 静默封死"；
  *   <li><b>非法政策 fail-closed（负向）</b>：负限制 / 未知商品 / 未知币种 / 未登记政府 ⇒ 具名拒 + <b>零 revision</b>；
- *   <li><b>权限（负向）</b>：本命令标 {@code GmOnlyCommand}，决策人的<b>令</b>与 <b>RegisterEffect</b> 两条路径都不放大 （决策人
- *       catalog 那一面见 {@code
- *       GovToolsZ6Test.gmOnlyGovCommandsAreMarkedAndInvisibleInDecisionCatalog}）；
+ *   <li><b>权限（负向）</b>：本命令**不打 {@code DmUsableCommand}**（反默认 ⇒ 仅 GM），决策人的<b>令</b>与
+ *       <b>RegisterEffect</b> 两条路径都不放大 （决策人 catalog 那一面见 {@code
+ *       GovToolsZ6Test.notDmUsableGovPolicyWriteIsInvisibleInDecisionCatalog}）；
  *   <li><b>GOV 删除收益</b>：政府记录没了 ⇒ 规则随之消失、无悬空键、别的政府不受影响；
  *   <li><b>两桥一致</b>：{@link PortRegimeBridge} 与 {@link ProcurementPriorityBridge}
  *       读<b>同一份</b>规则（同一政府记录）， 交叉改动只动各自那一面；
@@ -205,10 +205,12 @@ class GovPolicyIntoEconomyZ6Test {
   // ── 判据 4：权限（负向）—— 令 / RegisterEffect 两条路径不放大 ────────────────────────
 
   @Test
-  void gmOnlyMarkerAndBothDecisionPathsRefuseThePolicyWrite() {
+  void notDmUsableAndBothDecisionPathsRefuseThePolicyWrite() {
     assertThat(new EconomySetGovernmentPolicyHandler())
-        .as("标 GmOnlyCommand 是「三条路径都不放大」的共同依据（决策人 catalog 一面见 GovToolsZ6Test）")
-        .isInstanceOf(GmOnlyCommand.class);
+        .as(
+            "不打 DmUsableCommand 是「三条路径都不放大」的共同依据（决策人 catalog 一面见 GovToolsZ6Test）"
+                + "—— ★ 2026-10-12 批次 1 迁移：旧断言 isInstanceOf(GmOnlyCommand)（标记已退役）")
+        .isNotInstanceOf(DmUsableCommand.class);
 
     Path store = tempDir.resolve("policy-permission");
     try (Harness harness = genesisWithDecisionMakers(configFor(store), "policy-permission")) {
@@ -218,7 +220,7 @@ class GovPolicyIntoEconomyZ6Test {
       String dmId = firstDecisionMakerId(state);
       long worldTick = state.meta().timestamp().tick();
 
-      // ① 令：真 Shell 注册的 IssueDirectiveHandler 带「注册面 − GmOnly」白名单。
+      // ① 令：真 Shell 注册的 IssueDirectiveHandler 带 ga 规则层派生的**可嵌令面**白名单（未打 DmUsableCommand 者不在其中）。
       String directive =
           "{\"directiveId\":\"d-gm-only\",\"decisionMakerId\":\""
               + dmId

@@ -8,7 +8,7 @@ import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.army.CombatStage;
 import io.mosire.simos.army.change.ArmyChangeSet;
 import io.mosire.simos.army.testing.ArmyFixtures;
-import io.mosire.simos.util.spi.GmOnlyCommand;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +25,9 @@ class RecordCombatHandlerTest {
   @Test
   void typeIsArmyRecordCombatAndItIsGmOnly() {
     assertThat(HANDLER.type()).isEqualTo("army.RecordCombat");
-    assertThat(HANDLER).as("★ 裁定战果是 GM 的活：标 GmOnly 后排除出决策人令白名单").isInstanceOf(GmOnlyCommand.class);
+    assertThat(HANDLER)
+        .as("★ 裁定战果是 GM 的活：不打 DmUsableCommand ⇒ 反默认下仅 GM，排除出决策人令白名单")
+        .isNotInstanceOf(DmUsableCommand.class);
   }
 
   /** 缺省 tick ⇒ 世界当前 tick；initialStage 省略 ⇒ 合成 start/初始阶段（participants/text 取记录级）。 */

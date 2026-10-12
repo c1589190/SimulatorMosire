@@ -10,7 +10,7 @@ import io.mosire.simos.army.CombatResolution;
 import io.mosire.simos.army.CombatStage;
 import io.mosire.simos.army.change.ArmyChangeSet;
 import io.mosire.simos.army.testing.ArmyFixtures;
-import io.mosire.simos.util.spi.GmOnlyCommand;
+import io.mosire.simos.util.spi.DmUsableCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -28,7 +28,9 @@ class ResolveCombatStageHandlerTest {
   @Test
   void typeIsArmyResolveCombatStageAndItIsGmOnly() {
     assertThat(HANDLER.type()).isEqualTo("army.ResolveCombatStage");
-    assertThat(HANDLER).isInstanceOf(GmOnlyCommand.class);
+    assertThat(HANDLER)
+        .as("★ 2026-10-12 批次 1 迁移：不打 DmUsableCommand（旧断言是 isInstanceOf(GmOnlyCommand)）⇒ 仅 GM")
+        .isNotInstanceOf(DmUsableCommand.class);
   }
 
   @Test
