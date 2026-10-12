@@ -37,16 +37,21 @@ public record CommandFaces(
     Set<String> drainableTypes,
     Set<String> landingPoints) {
 
-  /** 四个面一律冻在赋值处（保序、不可变）——调用方拿到的是只读视图。 */
+  /**
+   * 四个面一律冻在赋值处（保序、不可变）——调用方拿到的是只读视图。
+   *
+   * <p>★★ <b>冻结必须写在构造器体里，不许抽进私有辅助方法</b>：SpotBugs 的 {@code EI_EXPOSE_REP} 只认它<b>看得见的包装调用</b>
+   * ——包装那一层一旦抽走，四个分量各报一条（实测 4 条，报点就是本 record 的声明行）。同款注记与出处：{@code
+   * io.mosire.simos.app.access.DecisionScopeView} / {@code DecisionScopeFunctions}。
+   */
   public CommandFaces {
-    catalogTypes = frozen(catalogTypes, "catalogTypes");
-    directiveTypes = frozen(directiveTypes, "directiveTypes");
-    drainableTypes = frozen(drainableTypes, "drainableTypes");
-    landingPoints = frozen(landingPoints, "landingPoints");
-  }
-
-  private static Set<String> frozen(Set<String> types, String name) {
-    Objects.requireNonNull(types, name);
-    return Collections.unmodifiableSet(new LinkedHashSet<>(types));
+    Objects.requireNonNull(catalogTypes, "catalogTypes");
+    catalogTypes = Collections.unmodifiableSet(new LinkedHashSet<>(catalogTypes));
+    Objects.requireNonNull(directiveTypes, "directiveTypes");
+    directiveTypes = Collections.unmodifiableSet(new LinkedHashSet<>(directiveTypes));
+    Objects.requireNonNull(drainableTypes, "drainableTypes");
+    drainableTypes = Collections.unmodifiableSet(new LinkedHashSet<>(drainableTypes));
+    Objects.requireNonNull(landingPoints, "landingPoints");
+    landingPoints = Collections.unmodifiableSet(new LinkedHashSet<>(landingPoints));
   }
 }

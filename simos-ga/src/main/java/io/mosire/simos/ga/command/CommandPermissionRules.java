@@ -21,10 +21,11 @@ import java.util.Set;
  * {@code GmOnlyCommand} 整体退役，"两个标记说同一件事、 读者要查两处"的形态随之消失；"一条命令同时标两个互斥标记"这类自相矛盾<b>在类型上已不可表达</b>，
  * 相应的那条审计随之废止。
  *
- * <p>★ <b>两条审计</b>（全部 {@link IllegalStateException}，都在装配期、不静默）：
+ * <p>★ <b>三条审计</b>（全部 {@link IllegalStateException}，都在装配期、不静默）：
  *
  * <ol>
  *   <li><b>声明了未注册的类型</b>：声明面（DM 可用 ∪ 落点）⊄ 注册面 ⇒ 抛；
+ *   <li><b>落点又是 DM 可用命令</b>：落点 ∩ DM 可用声明 ≠ ∅ ⇒ 抛（落点本身不得被嵌进令 / 入队——否则"决策落点"能被当效果再发一次 = 权限放大）；
  *   <li><b>结果集为空</b>：四个面任一为空 ⇒ 抛（空 = 谁都看不见 = 装配故障，不是"合法形态"）。
  * </ol>
  *
@@ -33,7 +34,7 @@ import java.util.Set;
  * <pre>
  *   Declarations decl = CommandPermissionRules.declare(domainHandlers);   // ① 收声明（唯一读标记的地方）
  *   ... 用 decl.dmUsableTypes() 构造 sd.RegisterEffect / sd.IssueDirective，再并入注册面 ...
- *   CommandFaces faces = CommandPermissionRules.resolve(decl, allHandlers, landingPoints); // ② 四个面 + 审计
+ *   CommandFaces faces = CommandPermissionRules.resolve(decl, allHandlers, landingPoints); // ② 四个面 + 三条审计
  * </pre>
  *
  * <p>★★ <b>不可协商</b>：本层只回答"令里能不能出现这个 type"，<b>一个字都不放松授权判据</b>—— <b>读不到归属 ⇒ deny-all</b>（{@code
@@ -64,12 +65,12 @@ public final class CommandPermissionRules {
   }
 
   /**
-   * ② 四个面 + 两条审计（在**完整注册面**上收口）。
+   * ② 四个面 + 三条审计（在**完整注册面**上收口）。
    *
    * @param declarations ① 的声明（装配自身新增 handler <b>之前</b>收集的那份）
    * @param registeredHandlers <b>完整</b>注册面的 handler（含装配自身新增者）
    * @param landingPoints 决策落点（组合根把 {@code ChannelAdmission.LANDING_POINTS} 送进来）
-   * @throws IllegalStateException 两条审计任一不过，或装配面在声明收集之后又混进了带标记的 handler
+   * @throws IllegalStateException 三条审计任一不过，或装配面在声明收集之后又混进了带标记的 handler
    */
   public static CommandFaces resolve(
       Declarations declarations,
@@ -99,13 +100,16 @@ public final class CommandPermissionRules {
    * @param registeredTypes 注册面（全部已注册命令类型）
    * @param dmUsableTypes 标了 {@link DmUsableCommand} 的类型（★ 未列入者 = 仅 GM）
    * @param landingPoints 决策落点
-   * @throws IllegalStateException 两条审计任一不过
+   * @throws IllegalStateException 三条审计任一不过
    */
   public static CommandFaces derive(
       Set<String> registeredTypes, Set<String> dmUsableTypes, Set<String> landingPoints) {
-    Set<String> registered = frozen(registeredTypes, "registeredTypes");
-    Set<String> dmUsable = frozen(dmUsableTypes, "dmUsableTypes");
-    Set<String> landing = frozen(landingPoints, "landingPoints");
+    Objects.requireNonNull(registeredTypes, "registeredTypes");
+    Set<String> registered = Collections.unmodifiableSet(new LinkedHashSet<>(registeredTypes));
+    Objects.requireNonNull(dmUsableTypes, "dmUsableTypes");
+    Set<String> dmUsable = Collections.unmodifiableSet(new LinkedHashSet<>(dmUsableTypes));
+    Objects.requireNonNull(landingPoints, "landingPoints");
+    Set<String> landing = Collections.unmodifiableSet(new LinkedHashSet<>(landingPoints));
     for (String type : registered) {
       requireType(type);
     }
@@ -124,12 +128,22 @@ public final class CommandPermissionRules {
       throw new IllegalStateException("命令权限装配故障：声明了未注册的命令类型（声明面必须 ⊆ 注册面，否则声明的是执行不了的东西）：" + unknown);
     }
 
+    // ② 落点不得是 DM 可用命令：落点本身不能被嵌进令 / 入队 —— 否则"决策落点"可以被当效果再发一次 = 权限放大。
+    //   ★ 今天两条落点（sd.IssueDirective / sd.SubmitVerdict）都不打 DmUsableCommand ⇒ 本审计不抛；
+    //     它守的是"将来有人给落点补上 DmUsableCommand"这一步。
+    Set<String> landingInDmFace = new LinkedHashSet<>(landing);
+    landingInDmFace.retainAll(dmUsable);
+    if (!landingInDmFace.isEmpty()) {
+      throw new IllegalStateException(
+          "命令权限装配故障：决策落点同时被声明为 DM 可用命令（落点本身不得可嵌令/入队 —— 否则决策人能把落点当效果再发一次，权限放大）：" + landingInDmFace);
+    }
+
     // 四个面：注册面 = catalog；后两个面 = 同一份声明的"可嵌令 / 可入队"两种用法
     Set<String> catalog = registered;
     Set<String> directive = new LinkedHashSet<>(dmUsable);
     Set<String> drainable = new LinkedHashSet<>(dmUsable);
 
-    // ② 结果集为空：空 = 谁都看不见 = 装配故障（不是"合法形态"）
+    // ③ 结果集为空：空 = 谁都看不见 = 装配故障（不是"合法形态"）
     requireNonEmpty(catalog, "catalogTypes（注册面）");
     requireNonEmpty(directive, "directiveTypes（可嵌决策令面）");
     requireNonEmpty(drainable, "drainableTypes（可入效果队列面）");
@@ -170,11 +184,6 @@ public final class CommandPermissionRules {
     return type;
   }
 
-  private static Set<String> frozen(Set<String> types, String name) {
-    Objects.requireNonNull(types, name);
-    return Collections.unmodifiableSet(new LinkedHashSet<>(types));
-  }
-
   /**
    * ① 的产物：注册面上读到的<b>唯一</b>声明集合（{@link DmUsableCommand}）。
    *
@@ -182,12 +191,16 @@ public final class CommandPermissionRules {
    * dmUsableTypes} 同时是"可嵌令面"与"可入队面"的来源（{@code DmUsableCommand} 的语义覆盖两者， 见 {@link CommandFaces}
    * 的类注）——装配期在 ② 之前要用它构造 {@code sd.RegisterEffect} 与 {@code sd.IssueDirective}，故这里先把它露出来。
    *
+   * <p>★★ 冻结写在紧凑构造器体里（<b>不抽辅助方法</b>）：SpotBugs 的 {@code EI_EXPOSE_REP} 只认看得见的包装调用 —— 出处见 {@link
+   * CommandFaces} 的类注。
+   *
    * @param dmUsableTypes 标了 {@link DmUsableCommand} 的命令类型（保序）
    */
   public record Declarations(Set<String> dmUsableTypes) {
 
     public Declarations {
-      dmUsableTypes = frozen(dmUsableTypes, "dmUsableTypes");
+      Objects.requireNonNull(dmUsableTypes, "dmUsableTypes");
+      dmUsableTypes = Collections.unmodifiableSet(new LinkedHashSet<>(dmUsableTypes));
     }
   }
 }
