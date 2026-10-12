@@ -251,3 +251,38 @@
 
 **最小可行切片（绕开全部阻塞）**：第 0 步给 gov 补 `GovRoundTripTest`（反射枚举 + `hasSize(2)` + 排除集为空）；第 1 步建 `simos-gov-api` **只装 `NationId`**（零主依赖，照 `actor-api` 先例）+ 回填 7 类同步点。
 **负向判据（今天必绿 ⇒ 判别力缺失）**：往 `GovState` 加组件而不改 `GovChangeSet` ⇒ **应红**。
+
+---
+
+## 10. 用户 2026-10-12 第三轮裁定（追加；与上文冲突以本节为准）
+
+### 10.1 原话逐字照录（§一.8.1）
+> 「工单我想了一下，原本我以为没有其他的，现在看来额外的自然语言reason没啥必要，保持现有；
+> 国家模块到底啥问题，命令改名自动放权，理论上不应是GM命令优先实现，然后额外套DMOnly标签管理吗？神了
+> 战斗模块，包括阶段之类的，归Army模块管，原则和GOV差不多，但是Army很显然可以依赖GOV，对GOV的相关修改也要走工单系统；
+> 这个能实现吗？」
+
+### 10.2 处置
+
+| # | 裁定 | 处置 |
+|---|---|---|
+| S1 | **工单：保持现有，不做通用化**（"额外的自然语言 reason 没啥必要"） | ⇒ **§9.1 的四条待裁全部关闭**：不新增信封字段、不统一 payload 约定、不建通用 WorkOrder。既有 18 个必填 + 17 个可选 + 工具面 32 个**原样保留**；`initiator` 既有通道（信封→`revisions.initiator`→`events.agent`）原样。★ §9.1 里"2026-10-09 已裁过工单 + 不要普遍搞多模块聚合"这条口径与本次一致。 |
+| S2 | **命令权限应"反默认"：GM 优先 + 显式 DM 标签** | ⇒ 用户批评成立且已实测证实（见 §10.3）。已派只读调查（反默认影响面 + 等价迁移清单 + 测试红点）。 |
+| S3 | **战斗（含阶段）归 `simos-army` 管**，原则同 GOV | ⇒ 已实测：`army` **已有新模型**（`ArmyData(Map<CombatRecordId,CombatRecord> combats)` + `RecordCombat`/`AppendCombatStage`/`ResolveCombatStage`），而 `sd` 仍留**旧战斗族**（`CreateCombat`/`AddStage`/`SetOutcomeTable`/`CommitOutcome`/`RecordCasualties` + `SdCombats` + 4 组件 `armies`/`combats`/`combatStates`/`lossRecords`）⇒ 实为**退役旧的、留下新的**（与 D-012 一致）。已派只读调查。 |
+| S4 | **`army` 可以依赖 `gov`** | ⇒ 控制方初判**无环**：gov 闭包 = util/map/unit/social/economy-api/ga-spi，**不含 army**。代价 = army 允许面 + gov 禁列里那条 `simos-army`。已派只读调查复核。 |
+| S5 | **对 GOV 的相关修改要走工单系统** | ⇒ 在 S1 之后，"工单"=**既有命令/工单路径**（`Command→ChangeSet→Revision` + initiator；social 的 `SubmitHouseholdWorkOrder` 是范本）。★ 受两条硬约束：`HandlerOutcome.Applied(ChangeSet)` + `CommandBus.namespaceOf(type)`（命令类型前缀决定变更集施加的命名空间）⇒ **一个 handler 只能回自己模块的变更集**，跨模块只能"**多条命令同批（`submitBatch`）**"。已派只读调查给可行形态。 |
+
+### 10.3 用户 S2 的批评已实测证实（可复核）
+
+```java
+// simos-app/.../Shell.java:876-884
+for (CommandHandler handler : handlers) {
+  catalogCommandTypes.add(handler.type());
+  if (!(handler instanceof GmOnlyCommand)) { directiveCommandTypes.add(handler.type()); }   // ← 默认放行
+}
+// :860-863（drainableCommandTypes，供 RegisterEffect 的 Action.EnqueueUnitCommand 入队）
+if (!handler.type().startsWith("sd.") && !(handler instanceof GmOnlyCommand)) { drainableCommandTypes.add(...); }
+```
+- 全仓 `implements CommandHandler` = **142**；标 `GmOnlyCommand`（显式 opt-out）的 = **51** ⇒ **91 条命令默认可嵌决策令**。
+- ⇒ **"改名自动放权"的根因就是这个默认方向**：`sd.CreateNation` 只是**碰巧**被 `sd.` 前缀挡住；改名 `gov.*` 后无任何显式标记 ⇒ 自动进令白名单与 Effect 入队集合。
+- 用户提议的**反默认**（默认仅 GM，DM 要用需显式标签）**在结构上消除该根因**：漏标 ⇒ DM 拿不到（能力缺失，响亮）而不是 DM 悄悄拿到（权限放大，无症状）。
