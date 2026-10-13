@@ -16,7 +16,7 @@ import java.util.Set;
  * 往决策人桶加/删任何一条工具而不同步本表 ⇒ 该用例当场红；反过来，改本表而没改 {@code roles()} 声明（或没挂桶）⇒ {@code
  * ToolRoleAudit.requireFaces} 在装配期当场抛。
  *
- * <p>★ <b>它是什么、不是什么</b>：它是**规格**（"决策人面就该是这 43 条"），不是生产常量的副本 —— 没有任何生产代码读它。 别处（{@code
+ * <p>★ <b>它是什么、不是什么</b>：它是**规格**（"决策人面就该是这 42 条"），不是生产常量的副本 —— 没有任何生产代码读它。 别处（{@code
  * GovToolsZ6Test} / {@code LlmToolNamesTest} 等）需要"决策人面的名字"却又不启 {@code Shell} 时也用它， 免得把同一份 44
  * 条抄成好几份。
  *
@@ -28,8 +28,8 @@ public final class DecisionFaceGolden {
   private DecisionFaceGolden() {}
 
   /**
-   * 决策人面的 43 条工具名（2026-10-12 B4b 冻结 44 条；★★ 2026-10-13 收尾测试第 3 层删掉幽灵 {@code simos.sd.combats} ⇒
-   * 43；与 {@code roles()} 声明、两桶装配三处一致）。
+   * 决策人面的 42 条工具名（2026-10-12 B4b 冻结 44 条；★★ 2026-10-13 收尾测试第 3 层删掉幽灵 {@code simos.sd.combats} ⇒
+   * 43；★★ 2026-10-13 取缔 Skill 系统删掉 Skill 读工具一条 ⇒ 42；与 {@code roles()} 声明、两桶装配三处一致）。
    */
   public static final Set<String> ALL =
       Set.of(
@@ -69,8 +69,6 @@ public final class DecisionFaceGolden {
           "sd.DecisionResults",
           // ★ 第 11 条：Docs 系统——发给自己的设定文档（"这一局我该怎么做"）。
           "sd.DecisionDocs",
-          // ★ 第 12 条：Skill 系统——方法论与常识（两桶共享，读外部 Markdown）。
-          "simos.skill",
           // ── 决策行为（两条，语义就靠它们）────────────────────────────────────────────
           "ga.IssueDirective",
           "ga.SubmitVerdict",

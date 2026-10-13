@@ -11,6 +11,7 @@ import io.mosire.simos.app.testing.GovZ6WorldFixture;
 import io.mosire.simos.app.testing.GovZ6WorldFixture.StateRunner;
 import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.HexCrisisSignal;
@@ -21,6 +22,7 @@ import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.household.HouseholdFleeState;
 import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -36,10 +38,25 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li>驱动公式：欠俸 +150‰/日；饥饿追加 ⌊150×饥饿比例⌋；付足吃饱 −20‰/日（下限 0）；上限 1000；
  *   <li>只转成员、不带走公/私财产：桥执行前后账户逐值不变、economy 资产份额逐值不变；
- *   <li>真走人 + 户空协同：摘岗位 / 摘 {@code Unit.households} / 释放 GOV_SERVICE 承诺 / {@code projectedStaff}=0 /
- *       发 {@code GOV_SERVICE_DESERTION} 信号；
+ *   <li>真走人 + 户空协同（★★ 新口径，用户 2026-10-13 裁定）：<b>职位与发薪依据一律保留</b> —— 岗位留在编制、{@code Unit.households}
+ *       仍含该 0 人壳户、位置仍是 {@code UNIT:<gov>}、 {@code GOV_SERVICE} 承诺行不缩不删、{@code projectedStaff}
+ *       照旧；只让<b>有效劳动</b>归 0 （{@code GovernmentServiceLaborBridge.supply} 的 {@code min(承诺,
+ *       该户实际劳动)}）⇒ 行政效率如实降到 0； 发 {@code GOV_SERVICE_DESERTION} 信号；
  *   <li>不自动补俸、不自动招人（国库仍 0、无新户、post 不补）。
  * </ul>
+ *
+ * <p>★★ <b>为什么"户空不摘岗位/不释放承诺"（2026-10-14 改向，用户原话，最高权威）</b>：
+ *
+ * <blockquote>
+ *
+ * 「我的设计要求是，<b>就算是政府家户，0 人也发钱</b> —— 我甚至<b>从来没设计过没人就不发钱了</b>」
+ *
+ * </blockquote>
+ *
+ * <p>旧口径（"户空 ⇒ 摘岗位 + 摘 {@code Unit.households} + 释放 {@code GOV_SERVICE} 承诺 + 迁壳户"）被用户裁定为
+ * <b>缺陷</b>：{@code GOV_SERVICE} 承诺行是<b>职位（post）</b>、也是 {@code GovSalaryRuleBridge} 逐户发薪与 {@code
+ * GovernmentUpkeepOracle} 俸禄分摊的<b>唯一遍历源</b> —— 缩到 0/删行就等于把"没人"读成"没职位 ⇒ 不发钱"。 本用例的断言据此改向新口径（机制与定位结论见
+ * {@code docs/superpowers/plans/2026-10-13-emergency-stop-protocol.md} §11.7）。
  */
 class Z7FleeTest {
 
@@ -223,7 +240,7 @@ class Z7FleeTest {
   }
 
   @Test
-  void emptyingHouseholdEvictsPostsReleasesCommitmentsAndSignalsWithoutAutoRefill() {
+  void emptyingHouseholdKeepsPostsAndCommitmentsAndSignalsWithoutAutoRefill() {
     SimulationState base = GovZ6WorldFixture.smallWorldState("Map1");
 
     SimulationState underpaid =
@@ -253,32 +270,41 @@ class Z7FleeTest {
     assertThat(flee.lastFleeReason()).isEqualTo("underpaid");
     assertThat(members(social, OFFICIAL)).as("户空").isZero();
     assertThat(social.households().get(OFFICIAL).location())
-        .as("户空后保留 0 人壳户、位置迁到 GOV 座位格（不造 economy 孤儿行）")
-        .isInstanceOf(HouseholdLocation.Hex.class);
+        .as("★ 新口径：户空后壳户留在原 unit —— 位置仍是 UNIT:gov-central（不迁座位格、不造 economy 孤儿行）")
+        .isEqualTo(new HouseholdLocation.Unit(CENTRAL.value()));
 
     Unit central = units.units().get(CENTRAL);
     assertThat(central.households())
-        .as("unit 侧摘除该户")
-        .doesNotContain(OFFICIAL)
+        .as("★ 新口径：Unit.households 仍含该 0 人壳户（不摘 households）")
+        .contains(OFFICIAL)
         .contains(CENTRAL_TREASURY);
     GovernmentFormation formation = (GovernmentFormation) central.module().orElseThrow();
-    assertThat(formation.governmentPostsOfHousehold()).as("内部岗位摘除").doesNotContainKey(OFFICIAL);
-    assertThat(
-            economy.allocations().values().stream()
-                .filter(row -> row.kind() == LaborCommitmentKind.GOV_SERVICE)
-                .filter(row -> row.household().equals(OFFICIAL))
-                .count())
-        .as("GOV_SERVICE 承诺释放")
-        .isZero();
+    assertThat(formation.governmentPostsOfHousehold())
+        .as("★ 新口径：该户的岗位留在编制里（职位不随人口消失）")
+        .containsKey(OFFICIAL);
+    assertThat(formation.governmentPostsOfHousehold().get(OFFICIAL).role())
+        .as("岗位内容逐值不变（创世的 POST/CENTRAL/tier-3 原样保留）")
+        .isEqualTo(StaffRole.POST);
+    List<HouseholdLaborCommitment> officialCommitments =
+        economy.allocations().values().stream()
+            .filter(row -> row.kind() == LaborCommitmentKind.GOV_SERVICE)
+            .filter(row -> row.household().equals(OFFICIAL))
+            .toList();
+    assertThat(officialCommitments).as("★ 新口径：GOV_SERVICE 承诺行不释放（仍是 1 行 = 该职位的发薪依据）").hasSize(1);
+    assertThat(officialCommitments.get(0).laborMilli())
+        .as("★ 新口径：承诺劳动不被人口缩减（满员承诺原值 32000 毫小时/tick）")
+        .isEqualTo(32_000L);
     assertThat(
             HouseholdUnitConsistency.staffHouseholdProjection(economy, social, units, 1L)
                 .getOrDefault("gov-central:POST", 0L))
-        .as("projectedStaff 随岗位/承诺降为 0")
-        .isZero();
+        .as("★ 新口径：projectedStaff 不随人口降为 0（32000 ÷ 标准定额 16000 = 2 人当量）")
+        .isEqualTo(2L);
     assertThat(HouseholdUnitConsistency.staffProjectionMismatches(economy, social, units, 1L))
         .as("跨切片一致性守卫不报不一致")
         .isEmpty();
-    // 效率读数与饥饿同口径：day1 的 office 用日初在编供给算（逃亡在日末）；day2 日初已无承诺 ⇒ 效率 0。
+    // ★ 新口径：职位与承诺都还在，但**有效供给** = min(承诺, 该户实际劳动) = min(32000, 0) = 0 ⇒ 效率如实降到 0。
+    //   注意"为什么是 0"变了：不再是"无在编供给/无岗位"（no-posted-household-commitment），而是"在编但无人到岗"
+    //   （GOV_EFFICIENCY_ZERO_SUPPLY reason=committed-supply-underfed-to-zero）。
     StateRunner afterFlight = new StateRunner("Map1", runner.state());
     afterFlight.advance(1L, 2L);
     assertThat(
@@ -286,7 +312,7 @@ class Z7FleeTest {
                 .offices()
                 .get(CENTRAL)
                 .efficiencyPerMille())
-        .as("户空后的次日 GOV 无在编供给 ⇒ 效率降到 0（不自动招人顶岗）")
+        .as("户空后的次日 GOV 无人到岗 ⇒ 有效供给 0 ⇒ 效率降到 0（不自动招人顶岗）")
         .isZero();
 
     assertThat(economy.crisisSignals().values())

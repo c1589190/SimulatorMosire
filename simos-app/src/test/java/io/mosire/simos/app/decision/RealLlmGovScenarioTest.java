@@ -255,7 +255,6 @@ class RealLlmGovScenarioTest {
     storeDir = tempDir.resolve("store");
     Files.createDirectories(storeDir);
     copyRepoProviderConfig();
-    copyRepoSkills();
     seedGenesis();
     // ★ 不注入 llm ⇒ 生产路径：按决策人 providerId 经 AgentLib 配置解析真 provider。
     ShellConfig shellConfig =
@@ -2542,21 +2541,6 @@ class RealLlmGovScenarioTest {
       }
       mapper.writerWithDefaultPrettyPrinter().writeValue(target.toFile(), root);
     }
-  }
-
-  private void copyRepoSkills() throws IOException {
-    Path skills = repoRoot().resolve("config").resolve("skills");
-    assertThat(Files.isDirectory(skills)).as("仓库存在技能种子目录 %s", skills).isTrue();
-    Path target = storeDir.resolve("skills");
-    Files.createDirectories(target);
-    int copied = 0;
-    try (Stream<Path> files = Files.list(skills)) {
-      for (Path file : files.filter(p -> p.getFileName().toString().endsWith(".md")).toList()) {
-        Files.copy(file, target.resolve(file.getFileName()), StandardCopyOption.REPLACE_EXISTING);
-        copied++;
-      }
-    }
-    assertThat(copied).as("至少复制一篇技能（SkillLibrary 的 store 覆盖目录）").isGreaterThan(0);
   }
 
   private static Path repoRoot() {

@@ -12,6 +12,9 @@ import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -167,6 +170,8 @@ class ArmyRecordCombatRevisionTest {
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new ArmyCodec());
+    // ★ 2026-10-13 夹具切片欠账：世界补 gov 空片 ⇒ 信封必须随之注册 codec（漏一个 = 创世当场抛）。
+    core.register(new GovCodec());
     core.register(new RecordCombatHandler());
     core.bootstrapGenesis(genesis());
     return core;
@@ -215,7 +220,10 @@ class ArmyRecordCombatRevisionTest {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     return new SimulationState(
         new StateMeta(ref, T7),
-        Map.of("army", new ArmySnapshot(ref, T7, ArmyData.empty())),
+        Map.of(
+            "army", new ArmySnapshot(ref, T7, ArmyData.empty()),
+            // ★ 2026-10-13 夹具切片欠账：gov 空片也在场（空 gov ⇒ 行政未激活，行为不变）。
+            "gov", new GovSnapshot(ref, T7, GovState.empty())),
         InMemoryInfoSystem.empty());
   }
 

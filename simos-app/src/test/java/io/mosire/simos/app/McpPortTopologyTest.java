@@ -46,6 +46,8 @@ class McpPortTopologyTest {
       List.of(
           "simos.army.combat",
           "simos.army.combats",
+          // ★★ 2026-10-13 急停协议：原因系统读口（GmOnlyRead ⇒ 只进 GM 面）
+          "simos.army.stopReport",
           "simos.calendar.info",
           "simos.command.catalog",
           "simos.economy.hex",
@@ -71,7 +73,6 @@ class McpPortTopologyTest {
           "simos.sd.directives",
           "simos.sd.reports",
           "simos.sd.verdicts",
-          "simos.skill",
           "simos.social.households",
           "simos.social.population",
           "simos.state.facets",
@@ -82,8 +83,9 @@ class McpPortTopologyTest {
           "simos.unit.list");
 
   /**
-   * **非窄写**的写工具（60 条）：3 条通用写 + D1–P7 的组合/编排写 + S3a 的 6 条家户/人口组合写 + 2026-10-09 按实测补入 A1/A2a 的 4 条
-   * {@code simos.gov.*} 货币工具（都不继承 AbstractNarrowWriteTool）。
+   * **非窄写**的写工具（61 条）：3 条通用写 + D1–P7 的组合/编排写 + S3a 的 6 条家户/人口组合写 + 2026-10-09 按实测补入 A1/A2a 的 4 条
+   * {@code simos.gov.*} 货币工具（都不继承 AbstractNarrowWriteTool）。★ 2026-10-13 急停协议 +1：{@code
+   * simos.emergency.advance}（通用写）。
    */
   private static final List<String> NON_NARROW_WRITES =
       List.of(
@@ -100,6 +102,8 @@ class McpPortTopologyTest {
           "simos.economy.adjust",
           "simos.economy.upsertGovUnit",
           "simos.economy.upsertIndustry",
+          // ★★ 2026-10-13 急停协议：唯一的急停推进入口（通用写，不继承窄写基类）
+          "simos.emergency.advance",
           "simos.fork",
           "simos.gm.adjustPopulation",
           "simos.gm.approve",
@@ -215,7 +219,12 @@ class McpPortTopologyTest {
 
   /** 其余 3 条窄写：D1 的 army 记录 + social 城市 + actor 账。 */
   private static final List<String> OTHER_NARROW_WRITES =
-      List.of("simos.army.recordCombat", "social.UpdateCity", "actor.AdjustAccounts");
+      List.of(
+          "simos.army.recordCombat",
+          // ★★ 2026-10-13 急停协议：army 的第 2 条窄写（相遇报警注册；固定命令 army.SetArmyContactWatch）
+          "simos.army.contactWatch",
+          "social.UpdateCity",
+          "actor.AdjustAccounts");
 
   /**
    * ★★ <b>economy 侧 + 政府挂单的 9 条窄写工具名</b>（都继承 {@code AbstractNarrowWriteTool}；工具名 ≠ 命令类型）。
@@ -239,7 +248,10 @@ class McpPortTopologyTest {
           // ★★ W10（2026-10-11，用户裁定「凡"行为"一律做成 GM 可调的预设」）：政策预设写口
           "simos.economy.setEconomyPolicy");
 
-  /** GM 组的 69 条窄写：21 sd + 8 map + 9 economy zone/govMandate + 28 unit + 3 其他；**都不是**通用写。 */
+  /**
+   * GM 组的 67 条窄写：16 sd + 8 map + 9 economy zone/govMandate + 28 unit + 4 其他（★ 2026-10-13 急停协议
+   * +1：simos.army.contactWatch）；**都不是**通用写。
+   */
   private static final List<String> GM_NARROW_WRITES =
       concat(
           concat(SD_NARROW_WRITES, MAP_WRITES),
@@ -264,9 +276,11 @@ class McpPortTopologyTest {
   }
 
   /**
-   * J1：**唯一的 MCP 口 = GM 组**（读 37 + 非窄写 60 + 窄写 69 = 161；W2 按实测补入
-   * simos.economy.setMarketZonePriceAlpha，W5-fix6 按实测补入 simos.economy.setGovernmentMintScale， W5.5
-   * 按实测补入 simos.economy.setMarketZoneLoanRateAlpha，W10 按实测补入 simos.economy.setEconomyPolicy）。
+   * J1：**唯一的 MCP 口 = GM 组**（160 → **163**：★★ 2026-10-13 急停协议新增 3 条 GM-only 工具；★★ 2026-10-13 取缔
+   * Skill 系统删掉 Skill 读工具一条 ⇒ 161 → 160，其余名单逐条未动； 该断言是 {@code containsExactlyInAnyOrderElementsOf} ⇒
+   * 名单必须精确。W2 按实测补入 simos.economy.setMarketZonePriceAlpha，W5-fix6 按实测补入
+   * simos.economy.setGovernmentMintScale， W5.5 按实测补入 simos.economy.setMarketZoneLoanRateAlpha，W10
+   * 按实测补入 simos.economy.setEconomyPolicy）。
    */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
@@ -275,7 +289,8 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（37 读 + 60 非窄写 + 69 窄写 = 161）")
+          .as(
+              "J1：唯一口 = GM 组（160 → 163；★★ 2026-10-13 急停协议新增 3 条 GM-only 工具：stopReport 读 + contactWatch 窄写 + emergency.advance 通用写）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

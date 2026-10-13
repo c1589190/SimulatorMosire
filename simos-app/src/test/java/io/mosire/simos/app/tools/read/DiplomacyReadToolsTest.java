@@ -12,6 +12,9 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.tools.QueryServiceToolReadPort;
 import io.mosire.simos.app.tools.ga.AppGaToolViews;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.spi.ToolReadPort;
@@ -176,12 +179,17 @@ class DiplomacyReadToolsTest {
     static Fixture open(Path storeDir) {
       CoreSimos core = new CoreSimos(new CoreConfig(storeDir, 100, new ObjectMapper()));
       core.register(new GovCodec());
+      // ★ 2026-10-13 夹具切片欠账：世界补 army 空片 ⇒ 信封必须随之注册 codec（漏一个 = 创世当场抛）。
+      core.register(new ArmyCodec());
       Fixture fixture = new Fixture(core);
       StateRef ref = new StateRef(main(), new RevisionId(1));
       SimulationState genesis =
           new SimulationState(
               new StateMeta(ref, T7),
-              Map.of("gov", new GovSnapshot(ref, T7, govState())),
+              Map.of(
+                  "gov", new GovSnapshot(ref, T7, govState()),
+                  // ★ 2026-10-13 夹具切片欠账：army 也是时间参与者（ArmyTimeParticipant）⇒ 切片必须在场；空片。
+                  "army", new ArmySnapshot(ref, T7, ArmyData.empty())),
               InMemoryInfoSystem.empty());
       core.bootstrapGenesis(genesis);
       return fixture;

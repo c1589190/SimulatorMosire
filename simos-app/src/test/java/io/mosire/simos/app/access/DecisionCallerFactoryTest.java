@@ -21,7 +21,6 @@ import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.tools.CoreSimosToolWritePort;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.spi.ToolWritePort;
@@ -240,10 +239,10 @@ class DecisionCallerFactoryTest {
           ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
       assertThat(gmFace).as("GM 面非空").isNotEmpty();
 
-      // ★★ 核心判据（B4b，独立规格）：**决策人面 == 金名单 43 条**。规格从生产搬进测试后判别力不降反升——
+      // ★★ 核心判据（B4b，独立规格）：**决策人面 == 金名单 42 条**。规格从生产搬进测试后判别力不降反升——
       //   它不再"跟着实现走"，而是钉住实现：漏一条/多一条都必须有人显式改规格。
       assertThat(decisionFace)
-          .as("★ 决策人面 == 测试侧金名单（43 条，独立规格）")
+          .as("★ 决策人面 == 测试侧金名单（42 条，独立规格）")
           .containsExactlyInAnyOrderElementsOf(DecisionFaceGolden.ALL);
 
       Set<String> whitelist =
@@ -267,11 +266,6 @@ class DecisionCallerFactoryTest {
               "★ 决策人必须读得到**发给自己的设定文档**（Docs，2026-09-23）：'我是谁、我这一局该做什么'靠这条工具补全"
                   + "——缺了它，模型只能拿通用常识硬套")
           .contains(DecisionDocsTool.NAME);
-      assertThat(whitelist)
-          .as(
-              "★ 决策人必须读得到**决策方法论与常识**（Skill 系统，2026-09-23）：'怎么做政治/经济/军事决策'靠它"
-                  + "——与 catalog（'你能调什么'）合起来才是一条完整的指导")
-          .contains(SkillTool.NAME);
       assertThat(whitelist)
           .as("两条决策窄写必须在（语义就靠它们）")
           .contains(IssueDirectiveTool.NAME, SubmitVerdictTool.NAME);

@@ -7,6 +7,9 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.time.CalendarService;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
@@ -433,7 +436,10 @@ class UnitExtensionEndToEndTest {
                         ref("main", 1),
                         T7,
                         EconomyData.empty()), // ★ T5：actor 切片也必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
-                "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty())),
+                "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty()),
+                // ★ 2026-10-13 急停协议：army 也成了时间参与者（ArmyTimeParticipant：逐日判"两军相遇"）
+                //   ⇒ 它同样要求切片在场（缺席是装配故障 —— 与上面 R3a/T5 同口径；本夹具未播种 ⇒ 不变提案）。
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
@@ -446,7 +452,8 @@ class UnitExtensionEndToEndTest {
                     new UnitCodec(),
                     new GaCodec(),
                     new EconomyCodec(),
-                    new ActorCodec())));
+                    new ActorCodec(),
+                    new ArmyCodec())));
   }
 
   /** 创世单位（canonical 13 参）：MOVING、attached=true、无偏移、无回归意图；u-1 带"步枪/炮"两键（装备双轨判据的载体）。 */

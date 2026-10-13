@@ -1,11 +1,17 @@
 package io.mosire.simos.app.testing;
 
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -78,6 +84,9 @@ public final class UnitHouseholdWorldFixture {
     core.register(new UnitCodec());
     core.register(new SocialCodec());
     core.register(new GaCodec());
+    // ★ 2026-10-13 夹具切片欠账：世界补 army / gov 空片 ⇒ 信封必须随之注册两个 codec（漏一个 = 创世当场抛）。
+    core.register(new ArmyCodec());
+    core.register(new GovCodec());
     // ★ S3a 组合工具同批提交的两条命令（只注册本夹具真的会用到的 handler；不是全量 Shell 注册面）。
     core.register(new SetHouseholdLocationHandler());
     core.register(new SetUnitHouseholdsHandler());
@@ -89,7 +98,11 @@ public final class UnitHouseholdWorldFixture {
                 "map", new MapSnapshot(ref, T0, map()),
                 "unit", new UnitSnapshot(ref, T0, units),
                 "social", new SocialSnapshot(ref, T0, social),
-                "ga", new GaSnapshot(ref, T0, GaState.empty())),
+                "ga", new GaSnapshot(ref, T0, GaState.empty()),
+                // ★ 2026-10-13 夹具切片欠账：army 也是时间参与者（ArmyTimeParticipant）⇒ 切片必须在场；空片。
+                "army", new ArmySnapshot(ref, T0, ArmyData.empty()),
+                // ★ 同批补 gov 空片（与 army 同口径）。
+                "gov", new GovSnapshot(ref, T0, GovState.empty())),
             InMemoryInfoSystem.empty()));
     return core;
   }

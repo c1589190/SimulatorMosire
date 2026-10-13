@@ -158,6 +158,8 @@ class McpCoverageTest {
           "army.CreateArmy",
           "army.RecordCombat",
           "army.ResolveCombatStage",
+          // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册命令（本批唯一新增命令类型）
+          "army.SetArmyContactWatch",
           "army.SetArmyMasterGov",
           "economy.AddDemand",
           "economy.AuthorizeGovernmentMarketOrder",
@@ -925,6 +927,10 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put("map.RenameRegion", "{\"regionId\":\"r-nation\",\"name\":\"覆盖改名\"}");
     MINIMAL_PAYLOADS.put(
         "army.SetArmyMasterGov", "{\"armyId\":\"a-cov\",\"masterGovUnitId\":\"u-2\"}");
+    // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册位（幂等写；a-cov 已由 army.CreateArmy 建好 ——
+    //   catalog 序里 army.CreateArmy < army.SetArmyContactWatch ⇒ 前置状态就位）。
+    MINIMAL_PAYLOADS.put(
+        "army.SetArmyContactWatch", "{\"armyId\":\"a-cov\",\"contactWatch\":true}");
 
     // ── S3a（2026-10-09）的 8 条家户/人口命令：追加在最后 ⇒ 不移动上面任何命令的 revision 号。──
     //   语义序：先建家户 hh-cov（HEX）→ 加成员 → 设率 → 调人口 → 减员 → 转移给 social.SeedGroups
@@ -1049,7 +1055,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 141 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = **141**）")
+            "catalog 列出的 type 与 Shell 注册的 142 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = 141；★★ 2026-10-13 急停协议新增 army.SetArmyContactWatch ⇒ **142**）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);

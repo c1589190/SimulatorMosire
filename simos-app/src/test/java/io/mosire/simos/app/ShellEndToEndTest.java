@@ -12,6 +12,9 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.observe.EventTypes;
 import io.mosire.simos.core.state.WorldChangeSet;
@@ -256,15 +259,18 @@ class ShellEndToEndTest {
       assertThat(participants)
           .as(
               "推进日志的参与者清单（Z7d-2 起 unit 与 population 合成一个组合参与者"
-                  + " PopulationUnitTimeParticipant；unit 只作为模块键出现）")
-          .containsExactlyInAnyOrder("ga", "population");
+                  + " PopulationUnitTimeParticipant；unit 只作为模块键出现；★★ 2026-10-13 急停协议起"
+                  + " army 也是参与者 —— ArmyTimeParticipant 逐日判「两军相遇」）")
+          .containsExactlyInAnyOrder("ga", "population", "army");
 
       JsonNode changeset = JSON.readTree(advanceRow.changesetJson());
       List<String> moduleKeys = new ArrayList<>();
       changeset.get("modules").fieldNames().forEachRemaining(moduleKeys::add);
       assertThat(moduleKeys)
-          .as("changeset 的模块键（population 参与者带 economy + social + **actor** 三个模块键）")
-          .containsExactlyInAnyOrder("unit", "ga", "economy", "social", "actor");
+          .as(
+              "changeset 的模块键（population 参与者带 economy + social + **actor** 三个模块键；"
+                  + "★ 2026-10-13 起 army 参与者交**不变**变更集 ⇒ army 也是一个模块键）")
+          .containsExactlyInAnyOrder("unit", "ga", "economy", "social", "actor", "army");
 
       // ③ 本壳的世界没有人口批次、经济也未激活 ⇒ **两份变更集都是不变的**（交不变变更集，不是空提案）。
       //   ★ R4 起 social 会真的变（生理压力/出生/死亡）—— 但**前提是有批次可算**；本壳是"世界还没初始化"那一形态，
@@ -420,7 +426,10 @@ class ShellEndToEndTest {
                         ref("main", 1),
                         T7,
                         EconomyData.empty()), // ★ T5：actor 切片也必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
-                "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty())),
+                "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty()),
+                // ★ 2026-10-13 急停协议：army 也成了时间参与者（ArmyTimeParticipant：逐日判"两军相遇"）
+                //   ⇒ 它同样要求切片在场（缺席是装配故障 —— 与上面 R3a/T5 同口径；本夹具未播种 ⇒ 不变提案）。
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
@@ -433,7 +442,8 @@ class ShellEndToEndTest {
                     new UnitCodec(),
                     new GaCodec(),
                     new EconomyCodec(),
-                    new ActorCodec())));
+                    new ActorCodec(),
+                    new ArmyCodec())));
   }
 
   private static Unit unit() {

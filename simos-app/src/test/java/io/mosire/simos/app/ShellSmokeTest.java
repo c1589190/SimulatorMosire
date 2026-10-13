@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -228,6 +231,9 @@ class ShellSmokeTest {
                 "economy", new EconomySnapshot(ref("main", 1), T0, EconomyData.empty()),
                 // ★ T5：actor 切片也必须在场（产权落账口要求它 —— 缺席 ⇒ 协调器当场抛）。
                 "actor", new ActorSnapshot(ref("main", 1), T0, ActorData.empty()),
+                // ★ 2026-10-13 急停协议：army 也成了时间参与者（ArmyTimeParticipant：逐日判"两军相遇"）
+                //   ⇒ 它同样要求切片在场（缺席是装配故障，不是"无事"—— 与上面 R3a/T5/R1 同口径；本夹具未播种 ⇒ 不变提案）。
+                "army", new ArmySnapshot(ref("main", 1), T0, ArmyData.empty()),
                 // ★ R1：social 也成了时间参与者（T6）⇒ 它同样要求切片在场（缺席是装配故障，不是"无事"）。
                 "social", new SocialSnapshot(ref("main", 1), T0, SocialData.empty())),
             InMemoryInfoSystem.empty());
@@ -242,7 +248,8 @@ class ShellSmokeTest {
                     new GaCodec(),
                     new EconomyCodec(),
                     new SocialCodec(),
-                    new ActorCodec())));
+                    new ActorCodec(),
+                    new ArmyCodec())));
   }
 
   /** 三格直线走廊，地形取 {@code desert}（{@code moveCost = 3}）⇒ 配合 mobility ‰500 每段恰 1500 毫 MP。 */

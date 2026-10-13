@@ -36,6 +36,9 @@ import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -335,7 +338,9 @@ class FormatUnitToolTest {
           .register(new GaCodec())
           .register(new ArmyCodec())
           .register(new EconomyCodec())
-          .register(new ActorCodec());
+          .register(new ActorCodec())
+          // ★ 2026-10-13 夹具切片欠账：世界补 gov 空片 ⇒ 信封必须随之注册 codec（漏一个 = 创世当场抛）。
+          .register(new GovCodec());
       Fixture fixture = new Fixture(core);
       core.bootstrapGenesis(genesis());
       return fixture;
@@ -405,7 +410,9 @@ class FormatUnitToolTest {
             "ga", new GaSnapshot(ref, T7, GaState.empty()),
             "army", new ArmySnapshot(ref, T7, ArmyData.empty()),
             "economy", new EconomySnapshot(ref, T7, EconomyData.empty()),
-            "actor", new ActorSnapshot(ref, T7, ActorData.empty())),
+            "actor", new ActorSnapshot(ref, T7, ActorData.empty()),
+            // ★ 2026-10-13 夹具切片欠账：gov 空片也在场（空 gov ⇒ 行政未激活，行为不变）。
+            "gov", new GovSnapshot(ref, T7, GovState.empty())),
         InMemoryInfoSystem.empty());
   }
 

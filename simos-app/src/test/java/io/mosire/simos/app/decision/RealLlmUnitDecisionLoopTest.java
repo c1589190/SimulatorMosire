@@ -113,7 +113,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -229,7 +228,6 @@ class RealLlmUnitDecisionLoopTest {
           "simos.unit.list",
           "simos.social.population",
           "simos.command.catalog",
-          "simos.skill",
           "simos.state.resolve",
           "simos.state.facets",
           "simos.timeline.revisions",
@@ -259,7 +257,6 @@ class RealLlmUnitDecisionLoopTest {
     storeDir = tempDir.resolve("store");
     Files.createDirectories(storeDir);
     copyRepoProviderConfig();
-    copyRepoSkills();
     seedGenesis();
     // ★ 不注入 llm ⇒ 生产路径：按决策人 providerId 经 AgentLib 配置解析真 provider。
     shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0));
@@ -1140,21 +1137,6 @@ class RealLlmUnitDecisionLoopTest {
         repoConfig, storeDir.resolve("llm-providers.json"), StandardCopyOption.REPLACE_EXISTING);
   }
 
-  private void copyRepoSkills() throws IOException {
-    Path skills = repoRoot().resolve("config").resolve("skills");
-    assertThat(Files.isDirectory(skills)).as("仓库存在技能种子目录 %s", skills).isTrue();
-    Path target = storeDir.resolve("skills");
-    Files.createDirectories(target);
-    int copied = 0;
-    try (Stream<Path> files = Files.list(skills)) {
-      for (Path file : files.filter(p -> p.getFileName().toString().endsWith(".md")).toList()) {
-        Files.copy(file, target.resolve(file.getFileName()), StandardCopyOption.REPLACE_EXISTING);
-        copied++;
-      }
-    }
-    assertThat(copied).as("至少复制一篇技能（SkillLibrary 的 store 覆盖目录）").isGreaterThan(0);
-  }
-
   /** 从 CWD 往上找仓库根（兼容 surefire 的模块目录 CWD 与 IDE 的仓根 CWD）。 */
   private static Path repoRoot() {
     Path dir = Path.of("").toAbsolutePath();
@@ -1367,7 +1349,7 @@ class RealLlmUnitDecisionLoopTest {
     brief.put(
         "body",
         "你是军队 a1（根单位 u-1）的决策人，辖地是区域 r-core（(1,1)/(1,2)/(2,1) 三格）。本轮任务："
-            + "① 先用读工具（command.catalog / map.hex / unit.get / social.population / skill / decision docs）核实辖区人口与单位状态；"
+            + "① 先用读工具（command.catalog / map.hex / unit.get / social.population / decision docs）核实辖区人口与单位状态；"
             + "② 然后出令 sd.IssueDirective，用 unit.SetTaxRate 把 r-core 的长期税率从 0‰ 调到 100‰（unitId=u-1，regionId=r-core）；"
             + "③ tick 填你从时间轴读到的当前世界 tick，不要猜；"
             + "④ commands 只放领域命令，不得含 sd.*；"
@@ -1390,7 +1372,7 @@ class RealLlmUnitDecisionLoopTest {
    *
    * <p>map：r-core 各 hex；social：r-core 各格；unit：{@code u-1}。★ 现状（未改生产）：ArmyScope 的 map 通道只给**逐 hex**
    * 前缀，故 {@code simos.map.region} 的 region 资源对军队决策人不可达——本测试的成功读走 {@code map.hex / unit.get /
-   * social.population / catalog / skill}。
+   * social.population / catalog}。
    */
   private static AccessLimit accessLimit() {
     Set<HexCoord> coreHexes = Set.of(H11, H12, H21);

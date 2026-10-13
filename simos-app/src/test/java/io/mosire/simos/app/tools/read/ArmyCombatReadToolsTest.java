@@ -33,6 +33,9 @@ import io.mosire.simos.army.tools.read.ArmyCombatsTool;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.spi.ToolReadPort;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -196,7 +199,7 @@ class ArmyCombatReadToolsTest {
 
     static Fixture open(Path storeDir) {
       CoreSimos core = new CoreSimos(new CoreConfig(storeDir, 100, new ObjectMapper()));
-      core.register(new MapCodec()).register(new ArmyCodec());
+      core.register(new MapCodec()).register(new ArmyCodec()).register(new GovCodec());
       Fixture fixture = new Fixture(core);
       GameMap map = ScopeFixtures.mapOf();
       StateRef ref = new StateRef(main(), new RevisionId(1));
@@ -205,7 +208,9 @@ class ArmyCombatReadToolsTest {
               new StateMeta(ref, T7),
               Map.of(
                   "map", new MapSnapshot(ref, T7, map),
-                  "army", new ArmySnapshot(ref, T7, armyData())),
+                  "army", new ArmySnapshot(ref, T7, armyData()),
+                  // ★ 2026-10-13 夹具切片欠账：gov 空片也在场（空 gov ⇒ 行政未激活，行为不变）。
+                  "gov", new GovSnapshot(ref, T7, GovState.empty())),
               InMemoryInfoSystem.empty());
       core.bootstrapGenesis(genesis);
       return fixture;

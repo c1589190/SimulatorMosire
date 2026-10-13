@@ -2,12 +2,18 @@ package io.mosire.simos.app.sd;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.effect.GaTimeParticipant;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
@@ -49,6 +55,9 @@ class SdTimeParticipantWiringTest {
     try {
       core.register(new GaCodec());
       core.register(new UnitCodec());
+      // ★ 2026-10-13 夹具切片欠账：世界补 army / gov 空片 ⇒ 信封必须随之注册两个 codec（漏一个 = 创世当场抛）。
+      core.register(new ArmyCodec());
+      core.register(new GovCodec());
       core.register(new GaTimeParticipant("Map1"));
       core.register(new GaTimeParticipant("Map1"));
       core.bootstrapGenesis(genesis());
@@ -80,7 +89,12 @@ class SdTimeParticipantWiringTest {
         new StateMeta(ref, T),
         Map.of(
             "unit", new UnitSnapshot(ref, T, units),
-            "ga", new GaSnapshot(ref, T, GaState.empty())),
+            "ga", new GaSnapshot(ref, T, GaState.empty()),
+            // ★ 2026-10-13 夹具切片欠账：army 也是时间参与者（ArmyTimeParticipant 逐日判"两军相遇"）
+            //   ⇒ 引擎契约"状态必须带每个参与者的切片"要求它必须在场（缺席是装配故障，不是"无事"）；本夹具未播种 ⇒ 空片。
+            "army", new ArmySnapshot(ref, T, ArmyData.empty()),
+            // ★ 2026-10-13 夹具切片欠账：gov 空片也在场（与 army 同批补；空 gov ⇒ 行政未激活，行为不变）。
+            "gov", new GovSnapshot(ref, T, GovState.empty())),
         InMemoryInfoSystem.empty());
   }
 }

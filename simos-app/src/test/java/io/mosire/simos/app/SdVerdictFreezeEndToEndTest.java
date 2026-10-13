@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -21,6 +24,9 @@ import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.id.VerdictId;
 import io.mosire.simos.ga.model.Verdict;
 import io.mosire.simos.ga.spi.SubmitVerdictHandler;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
@@ -127,6 +133,9 @@ class SdVerdictFreezeEndToEndTest {
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));
     core.register(new GaCodec());
+    // ★ 2026-10-13 夹具切片欠账：世界补 army / gov 空片 ⇒ 信封必须随之注册两个 codec（漏一个 = 创世当场抛）。
+    core.register(new ArmyCodec());
+    core.register(new GovCodec());
     core.register(new SubmitVerdictHandler());
     core.bootstrapGenesis(genesis());
     return core;
@@ -173,7 +182,13 @@ class SdVerdictFreezeEndToEndTest {
     StateRef ref = new StateRef(MAIN, new RevisionId(1));
     return new SimulationState(
         new StateMeta(ref, SimosTimestamp.of(0)),
-        Map.of("ga", new GaSnapshot(ref, SimosTimestamp.of(0), GaState.empty())),
+        Map.of(
+            "ga", new GaSnapshot(ref, SimosTimestamp.of(0), GaState.empty()),
+            // ★ 2026-10-13 夹具切片欠账：army 也是时间参与者（ArmyTimeParticipant 逐日判"两军相遇"）
+            //   ⇒ 引擎契约"状态必须带每个参与者的切片"要求它必须在场（缺席是装配故障，不是"无事"）；本夹具未播种 ⇒ 空片。
+            "army", new ArmySnapshot(ref, SimosTimestamp.of(0), ArmyData.empty()),
+            // ★ 2026-10-13 夹具切片欠账：gov 空片也在场（与 army 同批补；空 gov ⇒ 行政未激活，行为不变）。
+            "gov", new GovSnapshot(ref, SimosTimestamp.of(0), GovState.empty())),
         InMemoryInfoSystem.empty());
   }
 }

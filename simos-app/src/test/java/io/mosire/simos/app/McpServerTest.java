@@ -99,11 +99,15 @@ class McpServerTest {
    * H0.6 的 simos.economy.ownership）。
    */
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 37 读 + 129 写 = 161 条（★★ 2026-10-13 收尾测试第 3 层按实测校正三处： 删掉幽灵 {@code
-   * simos.sd.combats}（旧战斗族退役）与 {@code army.AppendCombatStage}（**没有**以该名命的窄工具 ⇒ 它只能经 {@code
-   * simos.command.submit} 走，不是 tools/list 的一条），补上批次 2 的 {@code map.SetHexArea} （{@code
-   * MapSetHexAreaTool.NAME} 与命令类型同字面）。（★★ W2 按实测补入 simos.economy.setMarketZonePriceAlpha ⇒ 162 →
-   * 163；★★ W5-fix6 按实测补入 simos.economy.setGovernmentMintScale ⇒ 163 → 164；★★ W5.5 按实测补入
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 160 条（★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条（共享读，两桶共享） ⇒ 161 →
+   * 160 —— 本行是**显式计数改动**，减掉的恰好是那一条，其余名单逐条未动。★ 本行**不再复述**"37 读 + 129 写"那句
+   * 旧拆分：它在本次改动**之前**就已与名单实况不符（改动前本表实测 161 条，而 37 + 129 = 166）⇒ 只改总数这一处，不编造未实测的拆分。）
+   *
+   * <p>（★★ 2026-10-13 收尾测试第 3 层按实测校正三处： 删掉幽灵 {@code simos.sd.combats}（旧战斗族退役）与 {@code
+   * army.AppendCombatStage}（**没有**以该名命的窄工具 ⇒ 它只能经 {@code simos.command.submit} 走，不是 tools/list
+   * 的一条），补上批次 2 的 {@code map.SetHexArea} （{@code MapSetHexAreaTool.NAME} 与命令类型同字面）。（★★ W2 按实测补入
+   * simos.economy.setMarketZonePriceAlpha ⇒ 162 → 163；★★ W5-fix6 按实测补入
+   * simos.economy.setGovernmentMintScale ⇒ 163 → 164；★★ W5.5 按实测补入
    * simos.economy.setMarketZoneLoanRateAlpha ⇒ 164 → 165；★★ W10 按实测补入
    * simos.economy.setEconomyPolicy ⇒ 165 → 161；2026-10-09 按实测补入 A1/A2a/B2 的 4 条货币 + 3 条市场区工具）（spec
    * §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与 P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐，以及用户 2026-10-02 的
@@ -143,10 +147,14 @@ class McpServerTest {
           "simos.army.assignGov",
           "simos.army.combat",
           "simos.army.combats",
+          // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册窄写（roles() 只有 GM）
+          "simos.army.contactWatch",
           "simos.army.formatUnit",
           "simos.army.recordCombat",
           "simos.army.resolveCombat",
           "simos.army.startCombat",
+          // ★★ 2026-10-13 急停协议：原因系统读口（GmOnlyRead ⇒ 只在 GM 面；payload.hex 是视野外信息）
+          "simos.army.stopReport",
           "simos.calendar.configure",
           "simos.calendar.info",
           "simos.command.catalog",
@@ -169,6 +177,8 @@ class McpServerTest {
           "simos.gm.govMarketMandate",
           "simos.economy.hex",
           "simos.economy.ownership",
+          // ★★ 2026-10-13 急停协议：唯一的急停推进入口（通用写；走 CoreSimos.submitAdvance ⇒ 能拿到 StopReport）
+          "simos.emergency.advance",
           "simos.fork",
           "simos.gm.adjustPopulation",
           "simos.gm.approvals",
@@ -227,7 +237,6 @@ class McpServerTest {
           "simos.sd.run-decision-makers",
           "simos.sd.set-diplomatic-relation",
           "simos.sd.verdicts",
-          "simos.skill",
           "simos.social.demand",
           "simos.social.household.create",
           "simos.social.household.members",
@@ -332,7 +341,7 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 161 条（37 读 + 129 写；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2）")
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 163 条（★★ 2026-10-13 急停协议：三条新工具且 roles() 只有 GM ⇒ 160 → 163；★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条 ⇒ 161 → 160；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

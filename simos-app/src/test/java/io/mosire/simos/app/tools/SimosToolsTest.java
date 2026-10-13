@@ -191,11 +191,13 @@ class SimosToolsTest {
   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
   private static final String TEST_INITIATOR = "agent:t5-test";
 
-  /** 读工具名单（37 条）：读闸**按名字选**，不用索引切片。 */
+  /** 读工具名单（36 条）：读闸**按名字选**，不用索引切片。 */
   private static final List<String> READ_TOOL_NAMES =
       List.of(
           "simos.army.combat",
           "simos.army.combats",
+          // ★★ 2026-10-13 急停协议：原因系统的 GM 读口（StopReportTool，GmOnlyRead）
+          "simos.army.stopReport",
           "simos.calendar.info",
           "simos.command.catalog",
           "simos.economy.hex",
@@ -221,7 +223,6 @@ class SimosToolsTest {
           "simos.sd.directives",
           "simos.sd.reports",
           "simos.sd.verdicts",
-          "simos.skill",
           "simos.social.households",
           "simos.social.population",
           "simos.state.facets",
@@ -231,9 +232,16 @@ class SimosToolsTest {
           "simos.unit.get",
           "simos.unit.list");
 
-  /** ★ **只给 GM 桶的读工具**（实现 {@code GmOnlyRead} 的那些，12 条）。 */
+  /**
+   * ★ **只给 GM 桶的读工具**（实现 {@code GmOnlyRead} 的那些，15 条）。
+   *
+   * <p>★★ 2026-10-13 急停协议：{@code simos.army.stopReport} 的 {@code payload.hex}
+   * 是**视野之外**的军队位置（中央视角信息）， 决策人看不见（D-002 中央不设全视野）⇒ 它是 GM-only 读口，必须在这里登记（名单口径 = 实现 {@code
+   * GmOnlyRead} 的那些）。
+   */
   private static final List<String> GM_ONLY_READ_NAMES =
       List.of(
+          "simos.army.stopReport",
           "simos.economy.ownership",
           "simos.gm.approvals",
           "simos.gm.packet",
@@ -250,7 +258,7 @@ class SimosToolsTest {
           "simos.sd.verdicts");
 
   /**
-   * 非窄写写工具（60 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
+   * 非窄写写工具（62 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
    *
    * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
    * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这批从差集里扣掉。
@@ -259,6 +267,10 @@ class SimosToolsTest {
    * simos.gov.*} 货币工具是不继承基类的通用写（载荷各自带审计腿 / 多步校验），当时没回填这张名单 ⇒ 连带本体与 {@code
    * registryContainsExactlyTheExternalUnionGmTools} 一起红了。实测来源 = {@code
    * shell.toolRegistry().list()}。
+   *
+   * <p>★★ <b>2026-10-13 急停协议 +1（61 → 62）</b>：{@code simos.emergency.advance}（{@code
+   * AdvanceWithStopTool}）是 **通用写**（只 {@code implements SimosTool}，不继承窄写基类）——它是本批**唯一**走 {@code
+   * CoreSimos.submitAdvance} 的入口（能拿到 {@code StopReport}），既有 {@code simos.advance} 一字未动。
    */
   private static final List<String> NON_NARROW_WRITE_NAMES =
       List.of(
@@ -275,6 +287,8 @@ class SimosToolsTest {
           "simos.economy.adjust",
           "simos.economy.upsertGovUnit",
           "simos.economy.upsertIndustry",
+          // ★★ 2026-10-13 急停协议：唯一的急停推进入口（非窄写；既有 simos.advance 不 drain、拿不到 StopReport）
+          "simos.emergency.advance",
           "simos.fork",
           "simos.gm.adjustPopulation",
           "simos.gm.approve",
@@ -478,10 +492,16 @@ class SimosToolsTest {
           "ga.SetDecisionMakerProvider");
 
   /**
-   * GM 桶的 68 条窄写（8 map + 8 economy + 28 unit + 15 sd + 9 决策共用/其他——后者含 1 army + 1 social + 1
-   * actor）。★ 按实测更新：W5-fix6 的 {@code simos.economy.setGovernmentMintScale} 是第 6 条 economy 窄写 ⇒ 65 →
+   * GM 桶的 65 条窄写（8 map + 8 economy + 28 unit + 15 sd + 其余——后者含 2 army + 1 social + 1 actor + 1
+   * 决策共用等）。 ★ 按实测更新：W5-fix6 的 {@code simos.economy.setGovernmentMintScale} 是第 6 条 economy 窄写 ⇒ 65 →
    * 66；★★ W5.5 的 {@code simos.economy.setMarketZoneLoanRateAlpha} 是第 7 条 ⇒ 66 → 67；★★ W10 的 {@code
    * simos.economy.setEconomyPolicy} 是第 8 条 ⇒ 67 → 68。
+   *
+   * <p>★★ <b>2026-10-13 急停协议 +1</b>：{@code simos.army.contactWatch}（{@code
+   * SetArmyContactWatchTool}，GM 设置" 是否要监控这支军的相遇"）是**窄写**（固定命令 {@code army.SetArmyContactWatch} +
+   * 载荷）⇒ 这里必须登记，否则 {@code everyNarrowWriteToolClassIsWiredIntoTheGmBucket} 的"GM 窄写 == 名单"当场红。 ★
+   * <b>逐条核过它数的是哪个面</b>：本名单 = **GM 桶里的窄写工具名**（不是命令类型、不是磁盘类数）；命令类型与磁盘类数 分别在 {@code
+   * EXPECTED_COMMAND_TYPES} 与 {@code everyToolClassOnDiskIsRegisteredInSomeBucket} 两处各自记账。
    */
   private static final List<String> NARROW_WRITE_NAMES =
       List.of(
@@ -509,6 +529,8 @@ class SimosToolsTest {
           "map.SetHexArea",
           "map.SetTerrain",
           "map.UpdateRegion",
+          // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册窄写（固定命令 army.SetArmyContactWatch）
+          "simos.army.contactWatch",
           "simos.army.recordCombat",
           "simos.economy.defineMarketZone",
           "simos.economy.mergeMarketZones",
@@ -550,15 +572,20 @@ class SimosToolsTest {
           "unit.SplitFormation",
           "unit.UpdateCommandChain");
 
-  /** 写工具全集（129 条 = 61 非窄写 + 68 窄写）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
+  /** 写工具全集（127 条 = 62 非窄写 + 65 窄写）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
   private static final List<String> WRITE_TOOL_NAMES =
       concat(NON_NARROW_WRITE_NAMES, NARROW_WRITE_NAMES);
 
-  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 37 读 + 129 写 = 166（**61 非窄写** + **68 窄写**）。 */
+  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 36 读 + 127 写 = 163（**62 非窄写** + **65 窄写**）。 */
   private static final List<String> GM_TOOL_NAMES = concat(READ_TOOL_NAMES, WRITE_TOOL_NAMES);
 
   /**
    * catalog 预期的 142 个已注册命令类型（与 Shell 注册的 handler 同源）。
+   *
+   * <p>★★ 2026-10-13 急停协议 +1（141 → 142）：新增 {@code army.SetArmyContactWatch}（GM 的相遇报警注册命令）⇒ 本表与
+   * {@code catalogCoversEveryCommandHandlerImplementation} 的 {@code hasSize(141 → 142)} 必须同轮改。 ★
+   * 实测来源 = 扫 {@code *Handler.java} 的 {@code type()}（本批实测扫描面 **142**）。★ 旧文案写"142 个"而实际是 141
+   * （历史沿革未回填），本次把**实测值**改对。
    *
    * <p>★★ <b>2026-10-09 按实测补齐（128 → 136）</b>：A1/A2a/B2（2026-10-08 货币词表 + 官方汇率 + 市场区）落地的 8
    * 条命令当时没回填本表（{@code economy.DefineCurrency}/{@code RenameCurrency}/{@code
@@ -590,6 +617,8 @@ class SimosToolsTest {
           "army.CreateArmy",
           "army.RecordCombat",
           "army.ResolveCombatStage",
+          // ★★ 2026-10-13 急停协议：GM 的"相遇报警"注册命令（唯一新增命令类型；不打 DmUsableCommand ⇒ 仅 GM）
+          "army.SetArmyContactWatch",
           "army.SetArmyMasterGov",
           "economy.AddDemand",
           "economy.AuthorizeGovernmentMarketOrder",
@@ -1000,8 +1029,9 @@ class SimosToolsTest {
         .as(
             "扫描必须恰为 142 个 *Handler.java 的 type()（W2 的 economy.SetMarketZonePriceAlpha 按实测补入本表 ⇒ 140 → 141；★★ W5-fix6 的 economy.SetGovernmentMintScale 按实测补入 ⇒ 141 → 142；★★ W5.5 的 economy.SetMarketZoneLoanRateAlpha 按实测补入 ⇒ 142 → 143；★★ W10 的 economy.SetEconomyPolicy 按实测补入 ⇒ 143 → 144；★★ 追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142）（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
                 + "P1b1/P3/R3a 的区域清空与国库上缴，辖区阶段 5–12，D1/D3a/D4/D5 的 unit/sd/army 新命令，"
-                + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds；Z6 起纳入 simos-gov 的 2 条 handler；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）")
-        .hasSize(141);
+                + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds；Z6 起纳入 simos-gov 的 2 条 handler；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令）；"
+                + "★★ 2026-10-13 急停协议：新增 army.SetArmyContactWatch ⇒ 141 → 142（实测：本批扫 *Handler.java 的 type() 得 142）")
+        .hasSize(142);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -1041,8 +1071,11 @@ class SimosToolsTest {
             "★ W2 后：GM 桶 = 37 读 + 126 写 = 163（61 非窄写 + 65 窄写；W2 的 simos.economy.setMarketZonePriceAlpha 是窄写 ⇒ 163）；"
                 + "★★ W5-fix6 的 simos.economy.setGovernmentMintScale 同样是窄写 ⇒ 163 → 164（实测：SHELL_ASSEMBLED tool=164、MCP 外发工具 164 个）；"
                 + "★★ W5.5 的 simos.economy.setMarketZoneLoanRateAlpha 同样是窄写 ⇒ 164 → 165（实测：本轮真跑该类的 tool 面计数）；"
-                + "★★ W10 的 simos.economy.setEconomyPolicy 同样是窄写 ⇒ 165 → 166（实测：本轮真跑该类的 tool 面计数 166 = 37 读 + 129 写）")
-        .hasSize(161);
+                + "★★ W10 的 simos.economy.setEconomyPolicy 同样是窄写 ⇒ 165 → 166（实测：本轮真跑该类的 tool 面计数 166 = 37 读 + 129 写）；"
+                + "★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条（共享读）⇒ 161 → 160（按实测桶大小显式改本条；设计书 §4.1「工具面只减一条，且恰好是那一条 Skill 工具」）；"
+                + "★★ 2026-10-13 急停协议：新增 3 条工具且**只在 GM 桶**（simos.army.stopReport 读 + simos.army.contactWatch 窄写 + simos.emergency.advance 通用写）⇒ 160 → **163**"
+                + "（逐条核过：决策人桶一条都不进 ⇒ 下面那条 42 **不动**；三条的 roles() 只有 GM）")
+        .hasSize(163);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1065,8 +1098,9 @@ class SimosToolsTest {
         .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
         .doesNotContainAnyElementsOf(GM_ONLY_READ_NAMES)
         .as(
-            "★ Z6 后：决策人桶 = 30 共享读 + 14 写（含 Z2/Z3 双桶 gov 工具，以及 2026-10-09 按实测补入的 4 条 A1/A2a 货币工具）= 44")
-        .hasSize(43);
+            "★ Z6 后：决策人桶 = 30 共享读 + 14 写（含 Z2/Z3 双桶 gov 工具，以及 2026-10-09 按实测补入的 4 条 A1/A2a 货币工具）= 44；"
+                + "★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条（决策人面读口）⇒ 43 → 42（按实测桶大小显式改本条；设计书 §4.1「工具面只减一条，且恰好是那一条 Skill 工具」）")
+        .hasSize(42);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -1158,8 +1192,10 @@ class SimosToolsTest {
                 + "★★ 2026-10-12 B3 把**各域**的窄写全部下放到它们自己的模块（map 8 / army 1 / economy 8 / "
                 + "social 1 / unit 28 / ga 23；扫描根见 narrowWriteSourceRoots()）——下放只移动落点、不增减工具 ⇒ "
                 + "总数仍是 70（扫描根没跟上就会静默掉数，这里当场红）；"
+                + "★★ 2026-10-13 急停协议：army 新增 1 个窄写类（SetArmyContactWatchTool）⇒ **实测 66 → 67**"
+                + "（★ 旧文案里的『70』与实际值 66 早有偏差，本次只把实测值改对）；"
                 + "扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
-        .hasSize(66);
+        .hasSize(67);
 
     // 真工具面派生的 GM 窄写 = GM 桶 ∖ 读名单 ∖ 非窄写写工具。
     List<String> gmNarrow =
@@ -1169,7 +1205,8 @@ class SimosToolsTest {
             .filter(name -> !NON_NARROW_WRITE_NAMES.contains(name))
             .toList();
     assertThat(gmNarrow)
-        .as("GM 窄写必须逐条等于 NARROW_WRITE_NAMES（68 条：9 + 8 map + 8 economy + 28 unit + 15 sd）")
+        .as(
+            "GM 窄写必须逐条等于 NARROW_WRITE_NAMES（65 条：其余 + 8 map + 8 economy + 28 unit + 15 sd；2026-10-13 急停协议 +1 条 army 窄写）")
         .containsExactlyInAnyOrderElementsOf(NARROW_WRITE_NAMES);
 
     // ★ D5：决策人桶里也有窄写（两条外交命令型窄工具）——它们同样必须在册，不能成为"扫描器盲区"。
@@ -1258,8 +1295,8 @@ class SimosToolsTest {
    *
    * <p>★★ 2026-10-12 B3：工具实现**全部下放到各自的域模块**（试点 map + army + economy + social + unit + gov + ga
    * 共七批）⇒ 扫描面必须跟着架构走。只扫 app 会让下放的工具**静默漏出**扫描面（本仓踩过的"扫描器静默"陷阱）， 故这里把 **app + 七个域**逐条列出；★
-   * **计数（{@link #everyNarrowWriteToolClassIsWiredIntoTheGmBucket} 的 {@code hasSize(70)}）不随下放改动** ——
-   * 下放只移动落点、不增减工具（漏一个根 ⇒ 当场红，见该用例的变异自证）。
+   * **计数（{@link #everyNarrowWriteToolClassIsWiredIntoTheGmBucket} 的 {@code hasSize(67)}；2026-10-13
+   * 急停协议前是 66）不随下放改动** —— 下放只移动落点、不增减工具（漏一个根 ⇒ 当场红，见该用例的变异自证）。
    *
    * <p>★ 路径相对 {@code simos-app/}（surefire 的工作目录）：自己的树写 {@code src/…}，兄弟模块写 {@code
    * ../simos-<模块>/…}（与 {@link #commandHandlerSourceRoots()} 同款，主树与 worktree 里都成立）。
@@ -1358,7 +1395,9 @@ class SimosToolsTest {
                 "summary"),
             // ★ Z3c-2（2026-10-23）：政府读口最小形状（GM 省略 govUnitId ⇒ 全部 GOV 按 id 序）。
             new Case("simos.gov.info", Map.of(), "governments"),
-            new Case("simos.skill", Map.of(), "skills"));
+            // ★★ 2026-10-13 急停协议：原因系统读口的最小形状。本进程还没急停过 ⇒ present=false
+            //   （★ 进程内观测、重启即失 —— 读不到 ≠ 世界从没停过，见工具 description 的三处写明）。
+            new Case("simos.army.stopReport", Map.of(), "present"));
     List<String> covered = new ArrayList<>();
     for (Case c : cases) {
       shell.toolRegistry().find(c.tool()).orElseThrow(); // 前置：名字必须真在注册表里
@@ -1885,15 +1924,20 @@ class SimosToolsTest {
     Set<String> onDisk = toolNamesFromSources();
     assertThat(onDisk)
         .as(
-            "扫描必须恰为 176 个 *Tool.java 的 NAME（W2 新增 simos.economy.setMarketZonePriceAlpha ⇒ 172 → 173；"
+            "扫描必须恰为 170 个 *Tool.java 的 NAME（★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具类那一个 *Tool.java ⇒ 扫描面 171 → 170。"
+                + "★ 本条旧文案里的『176』与实际值 171 早有偏差（历史累加未回填）⇒ 本次只把**实测值**改对：171 → 170，"
+                + "历史沿革原样保留在下面。设计书 §2.4 未列本条 ⇒ 由 task-2 按本类『显式改并说明为什么』的纪律补上）"
+                + "（W2 新增 simos.economy.setMarketZonePriceAlpha ⇒ 172 → 173；"
                 + "★★ W5-fix6 新增 simos.economy.setGovernmentMintScale ⇒ 173 → 174；"
                 + "★★ W5.5 新增 simos.economy.setMarketZoneLoanRateAlpha ⇒ 174 → 175；"
                 + "★★ W10 新增 simos.economy.setEconomyPolicy ⇒ 175 → 176；"
                 + "★★ 2026-10-12 B3 把**各域**的工具全部下放到它们自己的模块（map 15 / army 12 / economy 15 / "
                 + "social 12 / unit 36 / gov 36 / ga 49；扫描根见 toolSourceRoots()）——下放只移动落点、不增减工具 ⇒ "
                 + "总数仍是 176（扫描根没跟上就会静默掉数）；"
+                + "★★ 2026-10-13 急停协议：磁盘上真多了 3 个 *Tool.java（StopReportTool / SetArmyContactWatchTool / "
+                + "AdvanceWithStopTool）⇒ **实测 170 → 173**；"
                 + "扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(171);
+        .hasSize(173);
 
     List<String> union =
         Stream.concat(
@@ -1913,8 +1957,8 @@ class SimosToolsTest {
    *
    * <p>★★ 2026-10-12 B3：工具实现**全部下放到各自的域模块**（试点 map + army + economy + social + unit + gov + ga
    * 共七批）⇒ 扫描面必须跟着架构走（只扫 app 会让下放的工具静默漏出扫描面 ⇒ "扫描器静默"陷阱）。★ **计数（{@link
-   * #everyToolClassOnDiskIsRegisteredInSomeBucket} 的 {@code hasSize(176)}）不随下放改动** ——
-   * 下放只移动落点、不增减工具（漏一个根 ⇒ 当场红）。
+   * #everyToolClassOnDiskIsRegisteredInSomeBucket} 的 {@code hasSize(173)}；2026-10-13 急停协议前是
+   * 170）不随下放改动** —— 下放只移动落点、不增减工具（漏一个根 ⇒ 当场红）。
    *
    * <p>★ 路径相对 {@code simos-app/}（surefire 的工作目录）：自己的树写 {@code src/…}，兄弟模块写 {@code
    * ../simos-<模块>/…}（与 {@link #commandHandlerSourceRoots()} 同款）。
@@ -2166,8 +2210,13 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ 2026-09-25 §十一：{@code simos.advance} 支持**一次推进 N 天**（{@code to = from + N}）——一条命令、一条 revision，
-   * 时间戳 = {@code to}。判别力：把工具/Core 改回"恰好一天" ⇒ 本条的 3 天区间当场被拒 ⇒ 红。
+   * ★ 2026-09-25 §十一：{@code simos.advance} 支持**一次推进 N 天**（{@code to = from + N}）——一条命令，**N 条
+   * revision** （口径 1=(i)：Core 逐日落 revision，世界真的停在每一天、可直接续推）。判别力：把工具/Core 改回"恰好一天" ⇒ 本条的 3 天区间当场被拒 ⇒
+   * 红。
+   *
+   * <p>★★ <b>2026-10-13 急停协议逐日化后改断言</b>：旧口径是"一次 N 天落**一条** revision、时间戳 = to"；逐日化后 N 天 = N 条
+   * revision（main:2/3/4，时间戳分别 = 8/9/10）⇒ 终点坐标 = **main:4**。★ {@code loadCalls} 仍为 1 那条判据在 core
+   * 侧（Core 在内存里逐日推进）。
    */
   @Test
   void advanceToolAcceptsAMultiDaySpanInOneCommand() throws Exception {
@@ -2181,10 +2230,20 @@ class SimosToolsTest {
 
     assertThat(result.success()).as(result.message()).isTrue();
     JsonNode body = JSON.readTree(result.message());
-    assertThat(body.get("ref").get("revision").asLong()).as("一次 N 天落一条 revision").isEqualTo(2L);
+    assertThat(body.get("ref").get("revision").asLong())
+        .as("★ 逐日化：3 天 = 3 条 revision ⇒ 终点坐标 = main:4（旧口径的 main:2 已作废）")
+        .isEqualTo(4L);
     try (SqliteStore store = SqliteStore.open(dbFile())) {
-      RevisionRow row = new Timeline(store, CHECKPOINT_INTERVAL).row(ref("main", 2)).orElseThrow();
-      assertThat(row.timestamp().tick()).as("时间戳 = to（7 → 10，一次推进 3 天）").isEqualTo(10L);
+      Timeline timeline = new Timeline(store, CHECKPOINT_INTERVAL);
+      assertThat(timeline.row(ref("main", 2)).orElseThrow().timestamp())
+          .as("第 1 天的 revision（main:2）时间戳 = 8")
+          .isEqualTo(SimosTimestamp.of(8L));
+      assertThat(timeline.row(ref("main", 3)).orElseThrow().timestamp())
+          .as("第 2 天（main:3）= 9")
+          .isEqualTo(SimosTimestamp.of(9L));
+      assertThat(timeline.row(ref("main", 4)).orElseThrow().timestamp())
+          .as("推进终点 to（10）落在第 3 天那条 revision（main:4）上")
+          .isEqualTo(SimosTimestamp.of(10L));
     }
   }
 

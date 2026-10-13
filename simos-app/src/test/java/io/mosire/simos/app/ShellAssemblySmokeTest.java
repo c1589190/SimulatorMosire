@@ -52,9 +52,10 @@ import org.junit.jupiter.api.io.TempDir;
  * 在用例结束后递归清理，<b>不往仓里写一个字节</b>），并在 {@code close()} 之后显式删掉。
  *
  * <p>★ <b>工作目录说明</b>：surefire 的 CWD = {@code simos-app}（不是仓根），所以仓根相对的 {@code
- * config/worldgen/*.json} / {@code config/skills} / {@code config/llm-providers.json}
- * 在本用例里都是"不存在"。这<b>不影响</b>本用例：那三处都是<b>惰性读</b>（worldgen 由 {@code simos.worldgen.initialize} 调用时才
- * fail-closed）或<b>容缺</b>（skills 种子目录缺失 ⇒ 空库； llm 仓库默认配置只是兜底种子，"两者都没有则什么都不迁"），装配期没有一处依赖它们的内容。
+ * config/worldgen/*.json} / {@code config/llm-providers.json}
+ * 在本用例里都是"不存在"。这<b>不影响</b>本用例：那两处都是<b>惰性读</b>（worldgen 由 {@code simos.worldgen.initialize} 调用时才
+ * fail-closed）或<b>容缺</b>（llm 仓库默认配置只是兜底种子，"两者都没有则什么都不迁"），装配期没有一处依赖它们的内容。 ★ 2026-10-13 取缔 Skill 系统后
+ * {@code config/skills} 已被删除，本段的例子随之收缩为上面两处 （容缺判据本身不变：装配期本就不依赖任何种子目录的内容）。
  */
 class ShellAssemblySmokeTest {
 
@@ -62,7 +63,10 @@ class ShellAssemblySmokeTest {
   private static final String REPORTS = "simos.sd.reports";
 
   /**
-   * ★ <b>GM-only 读口（6 条）</b>：它们是「为了修绿而放宽装配」的锚点 —— 谁把其中任何一条挪进决策人桶 （或从 GM 桶摘掉），本用例当场红，而不是静默变成权限面变化。
+   * ★ <b>GM-only 读口（7 条）</b>：它们是「为了修绿而放宽装配」的锚点 —— 谁把其中任何一条挪进决策人桶 （或从 GM 桶摘掉），本用例当场红，而不是静默变成权限面变化。
+   *
+   * <p>★ 2026-10-13 急停协议 +1：{@code simos.army.stopReport}（急停原因系统）里带 {@code payload.hex} —— 那是
+   * <b>视野之外</b>的军队位置（中央视角信息），按 D-002「中央不设全视野」**只能**进 GM 桶。
    */
   private static final List<String> GM_ONLY_READS =
       List.of(
@@ -71,15 +75,27 @@ class ShellAssemblySmokeTest {
           "simos.map.overlaps",
           "simos.sd.decision-makers",
           "simos.sd.directives",
-          "simos.economy.ownership");
+          "simos.economy.ownership",
+          "simos.army.stopReport");
 
   /**
-   * ★ <b>两桶条数锚点</b>（2026-10-13 实测值：GM 桶 161 / 决策人桶 43）。工具面增删一条都会在这里红 ——
+   * ★ <b>两桶条数锚点</b>（2026-10-13 实测值：GM 桶 160 / 决策人桶 42）。工具面增删一条都会在这里红 ——
    * 那时应当<b>显式</b>改本行并说明为什么，而不是把断言删掉/放宽。
+   *
+   * <p>★★ <b>本次显式改动（2026-10-13 取缔 Skill 系统）</b>：按本类上面的纪律，这里逐字写明为什么改 —— 原值 161 / 43 是 2026-10-13
+   * 早先的实测值；本轮用户裁定「现有项目的 Skill 等直接取缔」，运行时 Skill 机制整条删除， 工具面**恰好减去 Skill 读工具一条**，而被删那条工具声明 `roles() =
+   * {DM, GM}` ⇒ **两个桶各减一条** ⇒ 161 → 160、43 → 42。 ★ 减的**不是**任意一条：`SimosToolsTest` 的 `hasSize(160)` /
+   * `hasSize(42)` 与 `McpServerTest` / `McpPortTopologyTest` / `DecisionFaceGolden` 的名单同轮精确同步（设计书
+   * §4.1 / §6.2），四处一致才算绿。
+   *
+   * <p>★★ <b>2026-10-13 急停协议再改一次</b>（同样逐字写明为什么）：新增 3 条工具且 **roles() 只有 GM** （{@code
+   * simos.army.stopReport} 读 / {@code simos.army.contactWatch} 窄写 / {@code simos.emergency.advance}
+   * 通用写）⇒ **GM 桶 160 → 163**；决策人桶一条都不进 ⇒ **42 不动**。★ 与 `SimosToolsTest`、`McpServerTest`、
+   * `McpPortTopologyTest` 同轮精确同步（`DecisionFaceGolden` 因"三条都不进决策人面"而**有意不动**）。
    */
-  private static final int GM_BUCKET_SIZE = 161;
+  private static final int GM_BUCKET_SIZE = 163;
 
-  private static final int DECISION_BUCKET_SIZE = 43;
+  private static final int DECISION_BUCKET_SIZE = 42;
 
   /** 八个 codec（map / social / unit / economy / actor / ga / gov / army）。 */
   private static final int MODULE_COUNT = 8;

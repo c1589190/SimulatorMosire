@@ -601,20 +601,29 @@ class TimeAdvanceTest {
                     SimosTimestamp.of(9L), Optional.of(SimosTimestamp.of(12L))))); // ★ 3 天
 
     assertThat(result)
-        .as("§十一：一次推进 3 天 ⇒ Committed（不再是「恰好一天」的拒绝）")
-        .isEqualTo(new CommandResult.Committed(ref("main", 2)));
+        .as("§十一：一次推进 3 天 ⇒ Committed；★ 逐日化（口径 1=(i)）后终点坐标 = 第 3 天那条 revision")
+        .isEqualTo(new CommandResult.Committed(ref("main", 4)));
     assertThat(timeline.row(ref("main", 2)).orElseThrow().timestamp())
-        .as("新 revision 的时间戳 = 推进终点 to（12），不是 from + 1")
+        .as(
+            "★ 急停协议逐日化（2026-10-13，口径 1=(i)）后 revision 2 是**第 1 天**的落点 ⇒ tick = 10；"
+                + "旧的「一条 revision 时间戳 = 终点 12」已作废")
+        .isEqualTo(SimosTimestamp.of(10L));
+    assertThat(timeline.row(ref("main", 4)).orElseThrow().timestamp())
+        .as("推进终点 to（12）落在第 3 天那条 revision（main:4）上")
         .isEqualTo(SimosTimestamp.of(12L));
     assertThat(types("corr-3day"))
-        .as("一次 N 天 = 一条完整推进链（一条 revision）")
+        .as(
+            "★ 一次 N 天 = **N 条** revision（口径 1=(i)：世界真的停在每一天、可直接续推）⇒ committed 每天一条，"
+                + "finished 只在**终结日**（1 天推进的 received+started+finished+committed 逐字不变）")
         .containsExactly(
             EventTypes.COMMAND_RECEIVED,
             EventTypes.TIME_ADVANCE_STARTED,
-            EventTypes.TIME_ADVANCE_FINISHED,
-            EventTypes.COMMAND_COMMITTED);
-    assertThat(loadCalls[0]).as("装配器被调一次（它真的跑了）").isEqualTo(1);
-    assertThat(alpha.simulateCalls).as("参与者被调一次（内部逐日是它的责任）").isEqualTo(1);
+            EventTypes.COMMAND_COMMITTED, // 第 1 天（tick 10）
+            EventTypes.COMMAND_COMMITTED, // 第 2 天（tick 11）
+            EventTypes.TIME_ADVANCE_FINISHED, // 终结日才发
+            EventTypes.COMMAND_COMMITTED); // 第 3 天（tick 12）
+    assertThat(loadCalls[0]).as("装配器仍只被调一次（Core 在内存里逐日推进，不再重新 load）").isEqualTo(1);
+    assertThat(alpha.simulateCalls).as("★ 逐日 ⇒ 参与者每天各调一次：3 天 = 3 次（内部逐日已提到 Core）").isEqualTo(3);
   }
 
   /**
@@ -623,6 +632,9 @@ class TimeAdvanceTest {
    *
    * <p>与"跨多日"同一条纪律：上限是**纯语法**判定，排在查库之前——装配器与参与者一被调到就抛。 ★ 判别力：删掉 {@code N ≤ 36500} 上限 ⇒ 第一条
    * 断言（越界必拒）当场红。
+   *
+   * <p>★★ <b>2026-10-13 急停协议逐日化后，{@code N == 36500} 的边界改用"装库探针"证</b>（口径 1=(i) 之后真跑会落 36500 条
+   * revision）：探针被调到 == 语法判定放行 == 上限含端点。**本用例不含任何 36500 天的真实推进**。
    */
   @Test
   void absurdlyLongAdvanceIsRejectedWithTheCapInTheReason() {
@@ -664,26 +676,38 @@ class TimeAdvanceTest {
         .containsExactly(EventTypes.COMMAND_RECEIVED, EventTypes.COMMAND_REJECTED);
     assertThat(timeline.row(ref("main", 2))).isEmpty();
 
-    // ★ 边界：N == 36500 恰好合法（上限含端点）。被拒的那次没动 head ⇒ 仍可从 revision 1 推进。
+    // ★★ 边界：N == 36500 恰好合法（上限含端点）。
+    //   ★ 2026-10-13 急停协议逐日化后**绝不许真跑满**：那会落 36500 条 revision + 36500 个事务（本批最容易把 CI
+    //     拖死的一处）。判据改成**纯语法层**的：上限判定排在 ① 装库**之前**，故"装库探针一被调到"就证明
+    //     N == MAX_ADVANCE_DAYS 已过第 0 项的语法判定（上限含端点）——一天都不跑，一条 revision 都不落。
+    //     若上限写成 `>=`（端点被误拒），这里拿到的是 Rejected、探针不会被调 ⇒ 当场红。
+    assertThat(TimeAdvance.MAX_ADVANCE_DAYS).as("上限字面量（理由文本与判据都点它）").isEqualTo(36500L);
     TimeAdvance accepting =
         route(
             List.of(new ToyCodec("alpha")),
             List.of(participant("alpha")),
-            ref -> state(1L, 9L, "alpha"));
-    CommandResult atCap =
-        accepting.run(
-            new AdvanceTime(
-                "cmd-cap",
-                "corr-cap",
-                "player:local",
-                main(),
-                new RevisionId(1L),
-                new TimeRange(
-                    SimosTimestamp.of(9L),
-                    Optional.of(SimosTimestamp.of(9L + TimeAdvance.MAX_ADVANCE_DAYS)))));
-    assertThat(atCap)
-        .as("N = 36500 是合法的（上限含端点）")
-        .isEqualTo(new CommandResult.Committed(ref("main", 2)));
+            ref -> {
+              throw new UnsupportedOperationException(
+                  "装库探针：N = MAX_ADVANCE_DAYS 已过第 0 项的语法判定 ⇒ 上限含端点成立");
+            });
+    assertThatThrownBy(
+            () ->
+                accepting.run(
+                    new AdvanceTime(
+                        "cmd-cap",
+                        "corr-cap",
+                        "player:local",
+                        main(),
+                        new RevisionId(1L),
+                        new TimeRange(
+                            SimosTimestamp.of(9L),
+                            Optional.of(SimosTimestamp.of(9L + TimeAdvance.MAX_ADVANCE_DAYS))))))
+        .as("N = 36500 是合法的（上限含端点）⇒ 语法判定必须放行，走到 ① 装库（★ 不真跑这 36500 天）")
+        .isInstanceOf(UnsupportedOperationException.class)
+        .hasMessageContaining("已过第 0 项的语法判定");
+    assertThat(timeline.row(ref("main", 2)))
+        .as("装库探针当场炸 ⇒ 这 36500 天一天都没推进、一条 revision 都没落")
+        .isEmpty();
   }
 
   /**
