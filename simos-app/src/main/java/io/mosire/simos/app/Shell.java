@@ -46,22 +46,30 @@ import io.mosire.simos.app.sd.SdCommandDrain;
 import io.mosire.simos.app.sd.channel.CliDecisionChannel;
 import io.mosire.simos.app.sd.channel.GuiDecisionChannel;
 import io.mosire.simos.app.sd.channel.HttpDecisionChannel;
-import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.time.PopulationUnitTimeParticipant;
+import io.mosire.simos.app.tools.CoreSimosToolWritePort;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.world.GovJurisdictionGuard;
 import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.army.resolve.ArmyResolver;
 import io.mosire.simos.army.spi.AppendCombatStageHandler;
+import io.mosire.simos.army.spi.ArmyTimeParticipant;
 import io.mosire.simos.army.spi.AssignDecisionMakerArmyHandler;
 import io.mosire.simos.army.spi.CreateArmyHandler;
 import io.mosire.simos.army.spi.RecordCombatHandler;
 import io.mosire.simos.army.spi.ResolveCombatStageHandler;
+import io.mosire.simos.army.spi.SetArmyContactWatchHandler;
 import io.mosire.simos.army.spi.SetArmyMasterGovHandler;
+import io.mosire.simos.army.stop.AdvanceStopPort;
+import io.mosire.simos.army.stop.StopReportBoard;
+import io.mosire.simos.army.tools.read.StopReportTool;
+import io.mosire.simos.army.tools.write.AdvanceWithStopTool;
+import io.mosire.simos.army.tools.write.SetArmyContactWatchTool;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.core.advance.AdvanceOutcome;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.codec.EconomyCodec;
@@ -133,6 +141,7 @@ import io.mosire.simos.ga.spi.SubmitDecisionPacketHandler;
 import io.mosire.simos.ga.spi.SubmitVerdictHandler;
 import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.spi.UpsertMergedEffectPlanHandler;
+import io.mosire.simos.ga.tools.GaToolSource;
 import io.mosire.simos.ga.tools.GmAutoApproveGate;
 import io.mosire.simos.ga.tools.GmToolUsage;
 import io.mosire.simos.ga.tools.RecordingToolSource;
@@ -237,6 +246,8 @@ import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateRef;
+import io.mosire.simos.util.time.SimosTimestamp;
+import io.mosire.simos.util.time.TimeRange;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -247,6 +258,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -287,9 +299,9 @@ public final class Shell implements AutoCloseable {
   private static final Duration APPROVAL_TIMEOUT = Duration.ofMinutes(5);
 
   /**
-   * 世界生成器冻结输入（v17levant 三国）的路径：**相对工作目录（仓根）拼**，与 {@code SkillLibrary} 的 {@code config/skills}
-   * 同一约定。★ 路径不存在时由 {@code WorldgenConfig.load} **fail-closed**（{@code simos.worldgen.initialize}
-   * 把它折成带绝对路径的 {@code BAD_REQUEST}），不静默兜底。
+   * 世界生成器冻结输入（v17levant 三国）的路径：**相对工作目录（仓根）拼**（与 {@code config/llm-providers.json} 同一约定）。 ★ 路径不存在时由
+   * {@code WorldgenConfig.load} **fail-closed**（{@code simos.worldgen.initialize} 把它折成带绝对路径的 {@code
+   * BAD_REQUEST}），不静默兜底。
    */
   private static final Path WORLDGEN_CONFIG_FILE =
       Path.of("config", "worldgen", "v17levant-nations.json");
@@ -366,15 +378,6 @@ public final class Shell implements AutoCloseable {
    */
   private final Set<String> directiveCommandTypes;
 
-  /**
-   * Skill 库（2026-09-23）：决策人的**外部方法论与常识**（仓库种子 {@code config/skills} + store 覆盖 {@code
-   * <storeDir>/skills}）。
-   *
-   * <p>★ **由 {@code storeDir} 现推、不进装配参数**：它不在世界 revision 内（与 {@code conversations.db}、 {@code
-   * agentlib/} 同族），没有"该配给哪个世界"这一维；多一个装配参数只会多一处可能传错的地方。
-   */
-  private final SkillLibrary skillLibrary;
-
   /** 渲染服务（P3）：三面共用（决策人 / MCP 工具 / GUI 出图）；工件库与它同源（一个实例，别处不要再 new）。 */
   private final RenderService renderService;
 
@@ -408,6 +411,17 @@ public final class Shell implements AutoCloseable {
   /** 决策人的会话存储（T11C）：落 {@code <store>/conversations.db} ⇒ 跨 tick / 跨重启沿用同一段会话。 */
   private final SqliteConversationStore decisionConversations;
 
+  /**
+   * ★★ <b>急停协议新增的三条 GM 工具</b>（2026-10-13）：注册窄写 {@code simos.army.contactWatch} + 原因系统读口 {@code
+   * simos.army.stopReport} + 唯一走 {@code CoreSimos.submitAdvance} 的推进入口 {@code
+   * simos.emergency.advance}。
+   *
+   * <p>★ <b>为什么把它当字段持有</b>：MCP 面（{@code build()} 里绑进 {@link ToolRegistry} 的那一份）与 {@link
+   * #toolsFor(SimosToolSource.Role)} 的读回面必须是**同一批实例**——否则测试读回的工具面与真 MCP 面就是两套东西 （{@code
+   * SimosToolsTest} 的"扫描面 ⇔ 桶"双向判据正是钉这个）。
+   */
+  private final List<AgentTool> stopProtocolGmTools;
+
   private volatile boolean closed;
 
   private Shell(
@@ -431,14 +445,14 @@ public final class Shell implements AutoCloseable {
       Set<String> commandTypes,
       Set<String> directiveCommandTypes,
       Map<String, CommandTargets> commandTargets,
-      SkillLibrary skillLibrary,
       RenderService renderService,
       ArtifactStore artifactStore,
       AgentLibLlmConfig llmConfig,
       GmToolUsage gmToolUsage,
       DecisionAdjudicationService decisionAdjudicationService,
       DecisionAgentService decisionAgentService,
-      SqliteConversationStore decisionConversations) {
+      SqliteConversationStore decisionConversations,
+      List<AgentTool> stopProtocolGmTools) {
     this.config = config;
     this.coreSimos = coreSimos;
     this.calendarService = Objects.requireNonNull(calendarService, "calendarService");
@@ -458,7 +472,6 @@ public final class Shell implements AutoCloseable {
     this.decisionChannels = List.copyOf(decisionChannels);
     this.commandTypes = Set.copyOf(commandTypes);
     this.directiveCommandTypes = Set.copyOf(directiveCommandTypes);
-    this.skillLibrary = Objects.requireNonNull(skillLibrary, "skillLibrary");
     this.renderService = Objects.requireNonNull(renderService, "renderService");
     this.artifactStore = Objects.requireNonNull(artifactStore, "artifactStore");
     this.commandTargets = Map.copyOf(commandTargets);
@@ -467,6 +480,7 @@ public final class Shell implements AutoCloseable {
     this.decisionAdjudicationService = decisionAdjudicationService;
     this.decisionAgentService = decisionAgentService;
     this.decisionConversations = decisionConversations;
+    this.stopProtocolGmTools = List.copyOf(stopProtocolGmTools);
   }
 
   /**
@@ -978,6 +992,9 @@ public final class Shell implements AutoCloseable {
     handlers.add(setDecisionMakerAccessHandler);
     handlers.add(setDecisionMakerProviderHandler);
     handlers.add(resetDecisionMakerConversationHandler);
+    //   ★★ 2026-10-13 急停协议（B）：GM 注册"两军相遇即报警"的窄写命令（唯一效果 = 改 Army.contactWatch 那一位）。
+    //     ★ 它**不打** {@code DmUsableCommand}（反默认落地）：监控注册是 GM 的活，决策人不得给自己加监控。
+    handlers.add(new SetArmyContactWatchHandler());
     //   ③ 注册：顺序与迁移前逐条相同（★ 2026-10-12 批次 2 加 map.SetHexArea、批次 3d-2 退役旧战斗族 5 条后：
     //      132 条领域 handler → ga.RegisterEffect → 5 条 ga 决策命令 = 138 条；★ 批次 3b-4 只改名不改数）。
     for (CommandHandler handler : handlers) {
@@ -1018,10 +1035,25 @@ public final class Shell implements AutoCloseable {
             new PopulationUnitTimeParticipant(config.mapId()),
             // ★★ 2026-10-12 批次 3b-4：sd 的推进器随 effects 整族搬进 simos-ga（GaTimeParticipant，单切片参与者：
             //   effects 与 info 现在同住 GaState）⇒ 它不再需要注入 DecisionTablesLookup（那条跨切片写口已删）。
-            new GaTimeParticipant(config.mapId()));
+            new GaTimeParticipant(config.mapId()),
+            // ★★ 2026-10-13 急停协议（B，设计书 §4.4）：**两军相遇**判据的推进者（namespace="army"）。
+            //   它**不消费任何参与者的提案**（两阶段模型里大家拿到的都是同一份 base，C25）⇒ 逐日自己用
+            //   UnitMoves.evaluate 现算各军位置（"军的位置 = 军 rootUnit 的位置"，ArmyData 不加位置字段）。
+            //   ★ 成本与 Unit 侧重复：账本已记（不得当成免费）。★ MovementCost 取**同一个**单例（与
+            //   PopulationUnitTimeParticipant 内部那条一致），否则"Army 算出的位置"与"Unit 搬到的位置"会分叉。
+            new ArmyTimeParticipant(TerrainMovementCost.INSTANCE));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }
+
+    // ★★ 2026-10-13 急停协议（B，设计书 §4.3 的口径 3=(A)/E3 更正）：**急停路径的 drain 接线就是这一行** ——
+    //   Core 保证了次序（①跑完当天全部参与者 → ②落 revision（世界做完）→ ③本钩子 drain → ④聚合 Incident → ⑤报 GM），
+    //   而"怎么 drain"由组合根注入（Core 不认识 app 的 SdCommandDrain）。
+    //   ★ 不装的后果（如实记）：停在 tick 5 时，第 5 天 FIRED 的跨模块效果永远悬着 ⇒ 每停一次多一条悬空（§4.5）。
+    //   ★★ 既有的 /api/advance 与 simos.advance 走的**非急停**路径仍不 drain：那是口径 3=A 的**有意**范围裁剪
+    //     （另开一批），本批一个字未动它们。
+    SdCommandDrain sdCommandDrain = new SdCommandDrain(coreSimos);
+    coreSimos.register((worldRef, atTick) -> sdCommandDrain.drainAfterAdvance(worldRef.branch()));
 
     // 写前跨模块守卫（A6，spec §九）：带国家 tag 的区域不可删。
     coreSimos.register(new RegionDeleteGuard());
@@ -1107,9 +1139,6 @@ public final class Shell implements AutoCloseable {
     //   ① 权限组走**同一个** authorizer（决策人的两条窄写是敏感工具 ⇒ 没有审批编排器就永远进不了工具体）；
     //   ② 工具面取**决策人桶**（与白名单同源：DecisionToolDefs.requireAll 对不上就当场炸）；
     //   ③ 会话落 <store> 下（与 simos.db 同层 ⇒ 跨进程重启沿用同一段会话）。
-    // ★ Skill 库（2026-09-23）：**装配期建一次**，两个工具面与 Shell 字段共用同一个实例
-    //   （外部 Markdown：仓库种子 config/skills + store 覆盖 <storeDir>/skills；读时按 mtime 热更）。
-    SkillLibrary skillLibrary = SkillLibrary.open(config.storeDir());
     // ★ P3（2026-09-24）：渲染产出的 PNG 落 <store>/artifacts（内容寻址；同一张图只存一份）。
     //   渲染服务三面共用（决策人链路 / MCP 工具 / GUI 出图路由）——键 = revision + 参数指纹。
     ArtifactStore artifactStore = new ArtifactStore(config.storeDir().resolve("artifacts"));
@@ -1132,7 +1161,6 @@ public final class Shell implements AutoCloseable {
                 WORLDGEN_CONFIG_FILE,
                 catalogCommandTypes,
                 directiveCommandTypes,
-                skillLibrary,
                 renderService,
                 gmToolUsage,
                 llmConfig,
@@ -1177,7 +1205,6 @@ public final class Shell implements AutoCloseable {
             WORLDGEN_CONFIG_FILE,
             catalogCommandTypes,
             directiveCommandTypes,
-            skillLibrary,
             renderService,
             gmToolUsage,
             llmConfig,
@@ -1186,17 +1213,56 @@ public final class Shell implements AutoCloseable {
             decisionAgentService,
             pendingApprovals,
             approvalCoordinator);
+    // ★★ 2026-10-13 急停协议（B，设计书 §7.2 的"装配三处"）：原因系统的**进程内**持有 + 本批新增的两条 GM 工具。
+    //   ① StopReportBoard：照 DecisionRunRegistry 的取舍（不进 revision、不落 DB 表）⇒ 进程重启即失，
+    //      读工具 description 里明写（不许让 GM 读成"没发生过"）。
+    //   ② simos.army.contactWatch：口径 2=(a) 的注册窄写（唯一效果 = 改 Army.contactWatch）。
+    //   ③ simos.army.stopReport：口径 2b 的原因系统读口（roles={GM}）。
+    //   ④ simos.emergency.advance：**唯一**走 CoreSimos.submitAdvance 的入口 —— 既有的 simos.advance 与
+    //      /api/advance 走 core.submit（口径 3=A 的有意裁剪，本批一个字未动），走那条路的急停被折成
+    //      Committed(atTick)、StopReport 无处安放 ⇒ P5/P6 与真机实测不可达。控制方 2026-10-13 明确要 B
+    //      在自己负责的那一处**新增**这个入口（不修既有两个入口）。
+    StopReportBoard stopReports = new StopReportBoard();
+    AdvanceStopPort advanceStopPort =
+        (branch, expectedRevision, from, to) -> {
+          String commandId = UUID.randomUUID().toString();
+          AdvanceOutcome outcome =
+              coreSimos.submitAdvance(
+                  new AdvanceTime(
+                      commandId,
+                      commandId,
+                      config.mcpInitiator(),
+                      branch,
+                      new RevisionId(expectedRevision),
+                      new TimeRange(SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(to)))));
+          // ★ 停下的那一刻就把原因记进进程内板子：读工具与本次返回值看到的是**同一份**报告。
+          outcome.stopReport().ifPresent(stopReports::record);
+          return stopOutcome(outcome);
+        };
+    List<AgentTool> stopProtocolGmTools =
+        List.of(
+            new SetArmyContactWatchTool(
+                new CoreSimosToolWritePort(coreSimos, config.mcpInitiator()), config.mapId()),
+            new StopReportTool(stopReports),
+            new AdvanceWithStopTool(advanceStopPort, config.mapId()));
     // ★★ 2026-10-12 B4（设计书 §4.4 / I-G3）：**装配完成处的校验，一次 O(n)** ——
     //   两桶 ⇔ roles() 声明（双向全量）：抓"标了 DM 却没注册进决策人桶""只在 GM 桶的窄写却标了 DM"
     //   "加了工具忘了标角色"。**fail-closed：当场抛**，不是静默跳过、不是 warn。
     //   ★ B4b 起这里只剩这一段：白名单 = 上面那个派生集合本身（同一份数据，不可能不一致），
     //     原先"派生集合 ⇔ 静态白名单"的第二段比对随静态清单一起删除。
-    ToolRoleAudit.requireFaces(toolSource.listTools(), decisionAgentFace);
+    //   ★ 2026-10-13（B）：急停协议新增的三条 GM 工具**并进同一个待校验面**（不是绕过审计直接塞进注册表）——
+    //     它们只声明 {GM}，与"只在 GM 桶"逐条一致。
+    List<AgentTool> gmToolFace = new ArrayList<>(toolSource.listTools());
+    gmToolFace.addAll(stopProtocolGmTools);
+    ToolRoleAudit.requireFaces(gmToolFace, decisionAgentFace);
     // ★ T8：GM 交互界面的数据源（`gmToolUsage` 已在上方、两个工具源之前建好）——只包 GM 组的源 ⇒ 记录的就是
     //   "GM MCP 的工具使用"（spec §七.4 C22）。
+    //   ★ 2026-10-13（B）：源改包**合并后的 GM 面**（含三条新工具）⇒ 它们与其余工具同吃 RecordingToolSource，
+    //     不出现"工具能用但不留痕"的旁路。
     ToolRegistry toolRegistry = new ToolRegistry();
     McpSourceBridge toolBridge =
-        McpSourceBridge.bind(RecordingToolSource.record(toolSource, gmToolUsage), toolRegistry);
+        McpSourceBridge.bind(
+            RecordingToolSource.record(GaToolSource.of(gmToolFace), gmToolUsage), toolRegistry);
 
     // MCP 服务（T7，spec §3.2 第 6 步）：**唯一的**口 = GM 组；authorizer 是带审批的那个。
     // ★ 决策人**不开 MCP**（spec §2.2 的 C3：caller 在 startHttp 时定死，一个端口一份权限集 ⇒ 表达不了"每个决策人一份权限"；
@@ -1304,19 +1370,39 @@ public final class Shell implements AutoCloseable {
         toolAuthorizer,
         gmToolAuthorizer,
         codecs.size(),
-        new SdCommandDrain(coreSimos),
+        sdCommandDrain,
         decisionChannels,
         catalogCommandTypes,
         directiveCommandTypes,
         commandTargets,
-        skillLibrary,
         renderService,
         artifactStore,
         llmConfig,
         gmToolUsage,
         decisionAdjudicationService,
         decisionAgentService,
-        decisionConversations);
+        decisionConversations,
+        // ★ 2026-10-13 急停协议（B）：GM 面上的三条新工具（MCP 面与 toolsFor 读回面**共用同一批实例**）。
+        stopProtocolGmTools);
+  }
+
+  /**
+   * ★★ <b>core 的急停结局 ⇒ army 侧的值视图</b>（2026-10-13 急停协议）：{@link AdvanceOutcome} 住 core，而工具住 {@code
+   * simos-army}（允许依赖不含 core）⇒ 跨这一道边界只能用 util 类型描述结局，映射就发生在这里。
+   *
+   * <p>★ 四种结局<b>一一对应、不丢信息</b>：{@code Ref/reason/current} 逐字搬运（{@code Stopped} 的坐标就在 {@link
+   * io.mosire.simos.util.spi.StopReport#worldRef()} 里）。
+   */
+  private static AdvanceStopPort.Outcome stopOutcome(AdvanceOutcome outcome) {
+    return switch (outcome) {
+      case AdvanceOutcome.Committed committed ->
+          new AdvanceStopPort.Outcome.Committed(committed.committed().ref());
+      case AdvanceOutcome.Stopped stopped -> new AdvanceStopPort.Outcome.Stopped(stopped.report());
+      case AdvanceOutcome.Rejected rejected ->
+          new AdvanceStopPort.Outcome.Rejected(rejected.rejected().reason());
+      case AdvanceOutcome.Conflict conflict ->
+          new AdvanceStopPort.Outcome.Conflict(conflict.conflict().current());
+    };
   }
 
   /** 当前世界里的决策人（作为渠道可代表的 actor；空库 ⇒ 空集）。 */
@@ -1369,30 +1455,43 @@ public final class Shell implements AutoCloseable {
    * 按角色重建工具面（D6/§2.1/§四.3）：{@link SimosToolSource.Role#GM} = 运行时 MCP 口（读 + 通用写 + 全部窄写）； {@link
    * SimosToolSource.Role#DECISION_AGENT} = 决策人组（读 + 两条决策窄写）——决策人**不走 MCP**，它那条路的权限由 {@code
    * DecisionCallerFactory} 现算的权限组承担。
+   *
+   * <p>★ 2026-10-13 急停协议（B）：GM 面尾部追加三条新工具（{@link #stopProtocolGmTools}，与 MCP 注册表同一批实例）；
+   * 决策人面**一条不加**。
    */
   public List<AgentTool> toolsFor(SimosToolSource.Role role) {
     // ★ P7b：审批控制面两条工具**只在 GM 桶**——决策人角色传 null（那两条根本到不了决策人面；
     //   这里传 null 让"决策人不接线"成为明确装配，而不是靠状态兜底）。
     boolean gm = role == SimosToolSource.Role.GM;
-    return new SimosToolSource(
-            coreSimos,
-            calendarService,
-            queryService,
-            config.mcpInitiator(),
-            config.mapId(),
-            WORLDGEN_CONFIG_FILE,
-            commandTypes,
-            directiveCommandTypes,
-            skillLibrary,
-            renderService,
-            gmToolUsage,
-            llmConfig,
-            commandTargets,
-            role,
-            decisionAgentService,
-            gm ? pendingApprovals : null,
-            gm ? approvalCoordinator : null)
-        .listTools();
+    List<AgentTool> gmFace =
+        new SimosToolSource(
+                coreSimos,
+                calendarService,
+                queryService,
+                config.mcpInitiator(),
+                config.mapId(),
+                WORLDGEN_CONFIG_FILE,
+                commandTypes,
+                directiveCommandTypes,
+                renderService,
+                gmToolUsage,
+                llmConfig,
+                commandTargets,
+                role,
+                decisionAgentService,
+                gm ? pendingApprovals : null,
+                gm ? approvalCoordinator : null)
+            .listTools();
+    // ★★ 2026-10-13 急停协议（B）：GM 面补上三条新工具（与 build() 里绑进 MCP 注册表的是**同一批实例**）。
+    //   决策人面**一条不加**（三条都只声明 {GM}；原因里含视野之外的军队位置，不给 DM —— D-002 中央不设全视野）。
+    return gm ? concat(gmFace, stopProtocolGmTools) : gmFace;
+  }
+
+  /** 两个工具面的拼接（{@code gmFace} 在前：既有工具的注册序一字不动，新工具追加在尾部）。 */
+  private static List<AgentTool> concat(List<AgentTool> face, List<AgentTool> extra) {
+    List<AgentTool> all = new ArrayList<>(face);
+    all.addAll(extra);
+    return all;
   }
 
   /** GUI 服务器实际绑定端口（{@code guiPort=0} 时由 OS 分配；spec §3.1 的读回口径，测试用）。 */

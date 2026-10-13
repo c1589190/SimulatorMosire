@@ -105,7 +105,15 @@ public final class SetArmyMasterGovHandler implements CommandHandler {
       ArmyData next =
           snapshot
               .data()
-              .withArmy(new Army(id, masterGovUnitId, existing.rootUnit(), existing.name()));
+              .withArmy(
+                  new Army(
+                      id,
+                      masterGovUnitId,
+                      existing.rootUnit(),
+                      existing.name(),
+                      // ★ 2026-10-13 急停协议：改主子**必须带上**相遇报警的启用位——四参构造器缺省 false 会让
+                      //   一次 army.SetArmyMasterGov 静默清掉 GM 的注册（工具面看不出、日志里也看不出）。
+                      existing.contactWatch()));
       EventLog.channel(LOG)
           .info(
               LogEvent.of(

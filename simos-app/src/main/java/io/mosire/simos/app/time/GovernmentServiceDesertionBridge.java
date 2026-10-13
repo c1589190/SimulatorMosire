@@ -11,7 +11,6 @@ import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
-import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -33,7 +32,6 @@ import io.mosire.simos.economy.time.ModeMigrationPolicy;
 import io.mosire.simos.economy.time.ProductionProcessBook;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
-import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -48,7 +46,6 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -76,12 +73,35 @@ import org.slf4j.Logger;
  *   累计毫人 = 户内成员 × rate + 余数（跨日结转）
  *   走人     = min(户内成员, ⌊累计 ÷ 1000⌋)；新余数 = 累计 − 走人 × 1000
  *   去向     = 该 GOV 有效位置格内的经济家户（排除政府/单位户），按 可吸收劳动余量 × 单位劳动预期利润 → 人均（粮+银+资产） → 家户 id
- *   只转成员（Social TRANSFER_MEMBERS 同款）；户空 ⇒ 释放 GOV_SERVICE 承诺 + 请求 unit 侧摘岗位/摘 households
+ *   只转成员（Social TRANSFER_MEMBERS 同款）；户空 ⇒ ★ **职位与发薪依据一律保留**（见下）
  * </pre>
  *
+ * <p>★★ <b>户空不发钱 = 已裁定缺陷（用户 2026-10-13 原话，最高权威）</b>：
+ *
+ * <blockquote>
+ *
+ * 「我的设计要求是，<b>就算是政府家户，0 人也发钱</b> —— 我甚至<b>从来没设计过没人就不发钱了</b>」
+ *
+ * </blockquote>
+ *
+ * <p>⇒ 发放（{@code ADMIN_SALARY} 官吏工资 / {@code ADMIN_STIPEND} 行政俸禄）<b>不得</b>以"户内还有没有人口 / 岗位还在不在"为前提。
+ * 落到本类两条行为：
+ *
+ * <ol>
+ *   <li><b>不缩、不释放 {@code GOV_SERVICE} 承诺</b>（含部分走人与整户走光）：承诺行是<b>职位（post）</b>不是人数 —— {@code
+ *       GovSalaryRuleBridge} 的逐户遍历源就是它，写 0/删行 ⇒ 当日<b>整行没有工资</b>（Z7 实测缺陷现场）。 人口走光只让<b>有效劳动</b>归
+ *       0（{@code GovernmentServiceLaborBridge.supply} 的 {@code min(承诺, 该户实际劳动)}），行政供给/效率因此如实降到
+ *       0，而职位与发薪依据仍在。
+ *   <li><b>不摘岗位、不摘 {@code Unit.households}、不迁壳户</b>：0 人壳户留在原 unit 且位置保持 {@code UNIT(<gov>)} ⇒
+ *       {@code HouseholdUnitConsistency} 的 「{@code Unit.households} ⇔ {@code Household.location ==
+ *       UNIT(unitId)}」不变量逐条成立 （原先"迁到座位格 + 摘 households"两步必须成对，正是为了这条不变量）。
+ * </ol>
+ *
+ * <p>★ <b>这不是"自动补员"</b>：本类不招人、不注资、不补俸；它只是拒绝把"没人"读成"没职位"。
+ *
  * <p>★★ <b>为什么不直接写 state</b>：本类只收"当日事实"（日结后 Social/Economy 工作副本、逐户工资缺口、逐 GOV 俸禄缺口）并返回 {@link
- * Outcome}（新 Social + 承诺缩减表 + 人口 delta + unit 摘除请求 + 危机信号）；真正落 state 由 {@link
- * PopulationEconomyTimeParticipant} 在同一 revision 内编排（铁律 2/3/4）。
+ * Outcome}（新 Social + 人口 delta + 危机信号；{@code commitmentReductions}/{@code evictions} 已按上述口径恒为空）；真正落
+ * state 由 {@link PopulationEconomyTimeParticipant} 在同一 revision 内编排（铁律 2/3/4）。
  *
  * <p>★ <b>确定性</b>：不碰墙钟/随机；所有遍历按 unit id / household id / lot id 规范序；同一输入同输出。
  */
@@ -130,7 +150,14 @@ public final class GovernmentServiceDesertionBridge {
     }
   }
 
-  /** 一次逃亡执行的完整产出（落 state 由调用方编排）。 */
+  /**
+   * 一次逃亡执行的完整产出（落 state 由调用方编排）。
+   *
+   * <p>★★ <b>{@code evictions} 与 {@code commitmentReductions} 自 2026-10-13（用户裁定「0 人也发钱」）起
+   * <b>恒为空表</b>：户空不再摘岗位/摘 households/迁壳户，也不再缩/释放 {@code GOV_SERVICE} 承诺（理由见本类类注）。 两个字段保留是**API
+   * 形状**（调用方 {@code PopulationEconomyTimeParticipant} / {@code PopulationUnitTimeParticipant}
+   * 原样消费空表即无副作用），不是"以后可能非空"的兼容位。
+   */
   record Outcome(
       SocialData social,
       List<Eviction> evictions,
@@ -454,7 +481,11 @@ public final class GovernmentServiceDesertionBridge {
           fledPopulation = Math.addExact(fledPopulation, fled);
           mergeDelta(populationDeltas, household, -fled);
           mergeDelta(populationDeltas, destination.household(), fled);
-          reduceGovServiceCommitments(live, household, members, fled, commitmentReductions);
+          // ★★ 不缩该户的 GOV_SERVICE 承诺（含户空）：承诺行 = **职位**，不是"人数"（用户 2026-10-13
+          //   设计要求，逐字见本类 Outcome 的类注）。
+          //   ⇒ 工资/俸禄的发放依据不随人口走光而变化；人口走光只让**有效劳动**归 0（由
+          //     GovernmentServiceLaborBridge.supply 的 min(承诺, 该户实际劳动) 承担），
+          //     行政供给与效率因此如实降到 0，但职位与发薪依据仍在。
           // 整批走光的 lot：清掉源户对应生死余数（不足 1 次事件的分数），避免次日 settle 的
           // POPULATION_SETTLE_REMAINDERS_CLEANED WARN 与跨户半事件漂移。
           List<PeopleLotId> fullyMovedLots = new ArrayList<>();
@@ -467,14 +498,22 @@ public final class GovernmentServiceDesertionBridge {
           social = pruneVitalRemainders(social, household, fullyMovedLots);
           boolean emptiedHousehold = fled == members;
           if (emptiedHousehold) {
-            // ★ 户空：Social 侧保留 0 人壳户并迁到 GOV 座位格（经济行/账户不造孤儿，避免
-            //   CLASSROW_POPULATION_PROJECTION_UNRESOLVED WARN）；单位侧由 Eviction 摘岗位/摘 households。
-            social = disbandEmptyHousehold(social, household, govSeat.get(), gov, driverReason);
-            // ★ 保留"最近一次逃亡"读数：壳户留一条 rate=0/余数=0 的历史记录（lastFlee* 不丢），
-            //   simos.gov.info 的 desertion 视图据此仍能显示最近逃亡（见 GovInfoTool.desertionView）。
+            // ★★ 户空（用户 2026-10-13 设计要求，最高权威）：**不摘岗位、不摘 households、不迁壳户、不释放承诺**。
+            //   用户原话「我的设计要求是，<b>就算是政府家户，0 人也发钱</b> —— 我甚至<b>从来没设计过没人就不发钱了</b>」。
+            //   ⇒ 发放（ADMIN_SALARY / ADMIN_STIPEND）不得以"户内还有没有人口 / 岗位还在不在"为前提。
+            //     · 承诺行 = 职位，本类**不**缩、**不**删（见上面"不缩该户的 GOV_SERVICE 承诺"）；
+            //     · 岗位（GovernmentFormation 的内部/外部 posts）留在原处 ⇒ projectedStaff 仍按该职位的
+            //       承诺劳动读数，有效供给另由 GovernmentServiceLaborBridge.supply 的
+            //       min(承诺, 该户实际劳动) 自然归 0（0 人 ⇒ 实际劳动 0 ⇒ 不产生任何行政供给）；
+            //     · 0 人壳户留在 unit.households 且位置保持 UNIT(<gov>) ⇒
+            //       HouseholdUnitConsistency 的「Unit.households ⇔ Household.location ==
+            // UNIT(unitId)」
+            //       不变量**逐条成立**（这正是原先"迁到座位格 + 摘 households"两步必须成对的原因）。
+            //   ★ 不产生 Eviction：单位侧没有任何需要摘的东西（这是"不删职位"，不是"自动补员"）。
+            //   ★ 保留"最近一次逃亡"读数（lastFlee* 不丢）：rate/余数清零，simos.gov.info 的 desertion 视图
+            //     仍能显示最近逃亡（见 GovInfoTool.desertionView）。
             fleeStates.put(household, state.withRateAndRemainder(0L, 0L));
             emptied.add(household);
-            evictions.add(new Eviction(gov, household, day, driverReason, members, fled));
           } else {
             fleeStates.put(household, state);
           }
@@ -579,24 +618,6 @@ public final class GovernmentServiceDesertionBridge {
     deltas.entrySet().removeIf(entry -> entry.getValue() == 0L);
   }
 
-  /**
-   * 户空：Social 家户保留为 0 人壳户，位置迁到 GOV 座位格（HEX）——人口/批次真值已随 TRANSFER_MEMBERS 全部落在目标户； 这样经济行、actor 账户与
-   * Social 家户三方不产生"孤儿行"（否则次日 {@code HouseholdEconomyProjection} 会每日 WARN）， 单位侧的"摘岗位/摘 households"由
-   * {@link Eviction} 在同一 revision 完成。
-   */
-  private static SocialData disbandEmptyHousehold(
-      SocialData social, HouseholdId household, HexCoord seat, UnitId gov, String reason) {
-    SocialData moved =
-        HouseholdBook.setLocation(
-            social,
-            household,
-            new HouseholdLocation.Hex(seat),
-            "gov-service-desertion:empty-household:" + gov.value() + ":" + reason);
-    Map<HouseholdId, Long> satiety = new LinkedHashMap<>(moved.satietyPerMille());
-    satiety.remove(household);
-    return moved.withSatietyPerMille(satiety);
-  }
-
   /** 整批走光的 lot：清掉源户对应生死余数（不足 1 次事件的分数），避免次日 settle 的清理 WARN 与跨户半事件漂移。 */
   private static SocialData pruneVitalRemainders(
       SocialData social, HouseholdId household, List<PeopleLotId> fullyMovedLots) {
@@ -612,62 +633,6 @@ public final class GovernmentServiceDesertionBridge {
       kept.add(entry);
     }
     return social.withVitalRemainders(new SocialVitalRemainders(kept));
-  }
-
-  /**
-   * 按离开成员份额显式缩减该户的 {@code GOV_SERVICE} 承诺；{@code remaining == 0} ⇒ 释放（0 = 删行）。 用 BigInteger 做
-   * {@code floor(old × remaining / before)}，不溢出、不引入 double。
-   */
-  private static void reduceGovServiceCommitments(
-      EconomyData economy,
-      HouseholdId household,
-      long membersBefore,
-      long fled,
-      Map<LaborAllocationId, Long> reductions) {
-    if (membersBefore <= 0L) {
-      return;
-    }
-    long remaining = membersBefore - fled;
-    List<HouseholdLaborCommitment> rows = new ArrayList<>();
-    for (HouseholdLaborCommitment commitment : economy.allocations().values()) {
-      if (commitment.household().equals(household)
-          && commitment.kind() == LaborCommitmentKind.GOV_SERVICE) {
-        rows.add(commitment);
-      }
-    }
-    rows.sort(Comparator.comparing(row -> row.id().value()));
-    for (HouseholdLaborCommitment row : rows) {
-      long next;
-      if (remaining <= 0L) {
-        next = 0L;
-      } else if (remaining >= membersBefore) {
-        next = row.laborMilli();
-      } else {
-        BigInteger numerator =
-            BigInteger.valueOf(row.laborMilli()).multiply(BigInteger.valueOf(remaining));
-        next = numerator.divide(BigInteger.valueOf(membersBefore)).longValueExact();
-      }
-      reductions.put(row.id(), next);
-      EventLog.channel(LOG)
-          .info(
-              LogEvent.of(
-                  "GOV_SERVICE_COMMITMENT_DESERTION_REDUCED",
-                  AppLogSource.DAILY_LOOP,
-                  "household",
-                  household.value(),
-                  "commitment",
-                  row.id().value(),
-                  "membersBefore",
-                  membersBefore,
-                  "fledCount",
-                  fled,
-                  "membersAfter",
-                  remaining,
-                  "laborBefore",
-                  row.laborMilli(),
-                  "laborAfter",
-                  next));
-    }
   }
 
   /** 一次逃亡的成员批次分派（按 lot id 规范序，逐批取 min(份额, 剩余)）；Σ take == count。 */

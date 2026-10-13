@@ -782,6 +782,13 @@ public final class CatalogTool implements SimosTool {
                   + "给了必须存在且带 GovernmentFormation；armyId 不存在 ⇒ 具名拒；只改 sd 侧，不碰 unit 侧 ArmyFormation；"
                   + "GM-only）"),
           Map.entry(
+              "army.SetArmyContactWatch",
+              "armyId, contactWatch(true|false)"
+                  + "（★ 2026-10-13 急停协议：GM 注册\"该军与他军相遇时报警\"——设为 true 后，只要该军与另一军**同格或相邻**"
+                  + "（逐日判定），推进就报突发事件 army.contact 并**停在那一天**；未启用的军对相遇不报。"
+                  + "armyId 必须已存在（不存在 ⇒ 具名拒）；contactWatch **必须显式给布尔值**（没有缺省：缺键/非布尔 ⇒ 具名拒）；"
+                  + "同值再设 = 幂等（不变变更集）；该位是世界状态（随 revision 落盘，重启仍有效）；GM-only）"),
+          Map.entry(
               "ga.CreateDecisionMaker",
               "id, allowedTools[字符串...], cadence"
                   + "（★★ 2026-10-12 乙收尾：**只造裸决策人**——affiliation 键已删并**具名拒**；归属由工单后赋："

@@ -2,7 +2,6 @@ package io.mosire.simos.app.decision;
 
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
-import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
 import io.mosire.simos.ga.decision.DecisionToolNames;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
@@ -38,11 +37,6 @@ public final class AppDecisionToolNames implements DecisionToolNames {
   @Override
   public String branches() {
     return BranchListTool.NAME;
-  }
-
-  @Override
-  public String skill() {
-    return SkillTool.NAME;
   }
 
   @Override

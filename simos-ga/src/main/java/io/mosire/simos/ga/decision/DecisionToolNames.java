@@ -9,7 +9,7 @@ import java.util.Set;
  * 常量。运行流若抄一份字面量，工具一改名就会**静默错位**—— 例如"提交工具在回合内只登记、由回合末统一结算"这条行为，靠的就是认出提交工具的名字；名字漂了它不会报错，只会悄悄不再发生。
  * 故本接口只声明"我需要哪些名字"，值由 {@code simos-app} 从各工具常量取（设计书 §4.5 I-G2：宿主事实构造期注入）。
  *
- * <p>★ <b>为什么是接口而不是一个多字段值对象</b>：11 个名字全是同型的字符串，位置式构造（一串字面量/常量按顺序传）**传串了不会有任何症状**；
+ * <p>★ <b>为什么是接口而不是一个多字段值对象</b>：10 个名字全是同型的字符串，位置式构造（一串字面量/常量按顺序传）**传串了不会有任何症状**；
  * 具名访问器让装配方逐个写清楚，读起来也不会数错位。
  *
  * <p>★ <b>两处"集合"是派生而不是第二次声明</b>：{@link #packetTools()} 与 {@link #statelessReads()} 由上面的访问器派生 ⇒
@@ -22,9 +22,6 @@ public interface DecisionToolNames {
 
   /** 分支与 head 列表读工具（开场消息要它，因为 {@code expectedRevision} 必须填它读到的当下 head）。 */
   String branches();
-
-  /** 技能（决策方法论）读工具——**指针**：消息里只说"用哪个工具去读当下这一版"。 */
-  String skill();
 
   /** 时间轴节点清单读工具（冻结回合里属"不读世界 revision"的共享读口）。 */
   String timelineRevisions();
@@ -59,8 +56,8 @@ public interface DecisionToolNames {
     return Set.of(propose(), packetIntent(), packetSubmit(), myPacket());
   }
 
-  /** **不读世界 revision、也不写世界的共享读口**（目录/技能/分支列表/阶段列表）：冻结回合里原样放行。 */
+  /** **不读世界 revision、也不写世界的共享读口**（目录/分支列表/阶段列表）：冻结回合里原样放行。 */
   default Set<String> statelessReads() {
-    return Set.of(catalog(), skill(), branches(), timelineRevisions());
+    return Set.of(catalog(), branches(), timelineRevisions());
   }
 }

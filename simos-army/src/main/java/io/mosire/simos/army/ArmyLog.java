@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
  *   <tr><th>取用方法</th><th>logger 名</th><th>记什么</th></tr>
  *   <tr><td>{@link #combat()}</td><td>{@code .combat}</td><td>交战记录/阶段追加/投骰判定</td></tr>
  *   <tr><td>{@link #armies()}</td><td>{@code .armies}</td><td>军队身份（{@code armies} 表）的建档/主子改派与具名拒绝</td></tr>
+ *   <tr><td>{@link #contact()}</td><td>{@code .contact}</td><td>两军相遇判据（逐日判定 / 命中上报 / 跳过原因）</td></tr>
  *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>ArmyCodec 编解码/变更集施加</td></tr>
  *   <tr><td>{@link #resolve()}</td><td>{@code .resolve}</td><td>ArmyResolver 候选装配/空结果</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐阶段/逐结局明细</b></td></tr>
@@ -48,11 +49,21 @@ public final class ArmyLog {
 
   public static final String COMBAT_LOGGER_NAME = ROOT_LOGGER_NAME + ".combat";
   public static final String ARMIES_LOGGER_NAME = ROOT_LOGGER_NAME + ".armies";
+
+  /**
+   * ★ 2026-10-13 急停协议新增：<b>两军相遇判据</b>（{@code ArmyTimeParticipant} 的逐日判定与命中上报）。
+   *
+   * <p>与 {@link #ARMIES_LOGGER_NAME} 分开的理由：一个是<b>命令面</b>（谁建了军队、谁改了主子）、一个是<b>推进面</b>（这一天哪两军在哪相遇） ——
+   * 现场调"急停为什么没停"时只需要后者，混在一个 logger 里会让开关失去分辨力。
+   */
+  public static final String CONTACT_LOGGER_NAME = ROOT_LOGGER_NAME + ".contact";
+
   public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
   public static final String RESOLVE_LOGGER_NAME = ROOT_LOGGER_NAME + ".resolve";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger COMBAT = LoggerFactory.getLogger(COMBAT_LOGGER_NAME);
   private static final Logger ARMIES = LoggerFactory.getLogger(ARMIES_LOGGER_NAME);
+  private static final Logger CONTACT = LoggerFactory.getLogger(CONTACT_LOGGER_NAME);
   private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
   private static final Logger RESOLVE = LoggerFactory.getLogger(RESOLVE_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
@@ -72,6 +83,15 @@ public final class ArmyLog {
    */
   public static Logger armies() {
     return ARMIES;
+  }
+
+  /**
+   * <b>两军相遇判据</b>（2026-10-13 急停协议）：{@code ArmyTimeParticipant} 逐日算各军位置、判"同格或相邻"、命中即上报。
+   *
+   * <p>★ 命中是 INFO（"这一天这两军相遇了"是**事实**，也是急停的原因）；跳过与汇总读数是 DEBUG。
+   */
+  public static Logger contact() {
+    return CONTACT;
   }
 
   /** ArmyCodec 编解码、变更集施加与旧形状迁移。 */

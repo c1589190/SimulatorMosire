@@ -23,7 +23,7 @@ import java.util.Optional;
  * ShellConfig}。因此本类**不构造 {@code ShellConfig}**，只交出"文件里明确写了什么"（每个字段都是 {@link Optional}，未写 = 不覆盖）。
  *
  * <p>★ **位置**：缺省 {@value #DEFAULT_PATH}（相对 CWD；与 {@code config/llm-providers.json}、{@code
- * config/skills} 同族），可用 {@code --config <file>} 改指。**缺省路径不存在 = 正常**（用内置缺省）；{@code --config}
+ * config/worldgen} 同族），可用 {@code --config <file>} 改指。**缺省路径不存在 = 正常**（用内置缺省）；{@code --config}
  * 显式指定的文件不存在 = 错误。
  *
  * <p>★ **fail-closed（用户 2026-10-09 口径）**：文件在、但内容是坏数据——不是合法 JSON、根不是对象、字段类型不对、字段值为空白、
@@ -67,7 +67,7 @@ public record ShellConfigFile(
     Optional<String> bindAddress,
     Optional<Boolean> openingSnapshot) {
 
-  /** 缺省配置文件位置：相对 CWD（与 {@code config/llm-providers.json} / {@code config/skills} 同族）。 */
+  /** 缺省配置文件位置：相对 CWD（与 {@code config/llm-providers.json} / {@code config/worldgen} 同族）。 */
   public static final String DEFAULT_PATH = "config/shell.json";
 
   /** 允许出现的字段；多出来的字段一律 fail-closed（拼错字段名必须响亮，不许静默退化）。 */

@@ -30,13 +30,27 @@ import java.util.Optional;
  *
  * <p>★ <b>不算战力</b>：本类型不持有任何力量/战斗力字段；{@code simos-army} 一期也只做视野派生（裁定 6）。
  *
+ * <p>★★ <b>2026-10-13 急停协议新增第 5 组件 {@code contactWatch}</b>（约束设计书 §4.4，口径 2 = (a)「具体条件交给对应模块」）：
+ * <b>"GM 是否要求在两军相遇时报警"</b>的启用位住<b>军队自己的记录</b>里。判据与监控职能都在 Army（用户原话：「<b>我首先说的是两支军队相遇， 所以说监控职能甚至应该包给
+ * Army 模块</b>」）⇒ 这个位必须与世界状态一起落 revision（重启后 GM 的注册不丢），由窄写工具 {@code simos.army.contactWatch}（命令
+ * {@code army.SetArmyContactWatch}）设置。
+ *
+ * <p>★ <b>加组件配四参兼容构造器</b>（不变量 I7 同款纪律）：既有构造点（{@code army.CreateArmy} / {@code
+ * army.SetArmyMasterGov} 与测试夹具）一位不用改，缺省 {@code false} = "没要求过"（与加组件前的行为逐字相同）。
+ *
  * @param id 军队 id（非 null）
  * @param masterGovUnitId 认领的 GOV 单位（未认领用 {@code Optional.empty()}；Optional 本身非 null）
  * @param rootUnit 军队根单位（非 null）
  * @param name 展示名（非空白）
+ * @param contactWatch ★ 是否启用"两军相遇即报警"（GM 注册位；{@code false} = 未启用 ⇒ 相遇不报、不停推进）
  */
 @JsonIgnoreProperties({"nationId"})
-public record Army(ArmyId id, Optional<UnitId> masterGovUnitId, UnitId rootUnit, String name) {
+public record Army(
+    ArmyId id,
+    Optional<UnitId> masterGovUnitId,
+    UnitId rootUnit,
+    String name,
+    boolean contactWatch) {
 
   public Army {
     if (id == null) {
@@ -51,5 +65,16 @@ public record Army(ArmyId id, Optional<UnitId> masterGovUnitId, UnitId rootUnit,
     if (name == null || name.isBlank()) {
       throw new IllegalArgumentException("name 不得为空白");
     }
+  }
+
+  /**
+   * ★ <b>四参兼容构造器</b>（2026-10-13 急停协议）：{@code contactWatch} 缺省 {@code false}。
+   *
+   * <p>它让"加了组件"对既有构造点**零影响**（{@code army.CreateArmy} 建出来的军队默认不受监控；要监控由 GM 显式设置）。 ★
+   * 反过来，**改写既有记录的代码必须显式带上原值**（{@code army.SetArmyMasterGov} 就是那一处）——否则一次改主子就静默清掉 GM
+   * 的注册，而这种丢失在日志里看不出来。
+   */
+  public Army(ArmyId id, Optional<UnitId> masterGovUnitId, UnitId rootUnit, String name) {
+    this(id, masterGovUnitId, rootUnit, name, false);
   }
 }

@@ -22,6 +22,13 @@ import io.mosire.simos.util.log.LogOriginKind;
 public enum ArmyLogSource implements LogOrigin {
   ARMY_COMBAT("army-combat", "交战记录/阶段追加/裁决写口与逐条战损（命令面）", LogOriginKind.SYSTEM),
   ARMY_REGISTRY("army-registry", "军队身份（armies 表）的建档与主子改派写口（命令面）", LogOriginKind.SYSTEM),
+  /**
+   * ★ 2026-10-13 急停协议新增：{@code ArmyTimeParticipant} 的<b>两军相遇判据</b>（逐日判定 / 命中上报 / 跳过原因）。
+   *
+   * <p>它记的是"这个模块怎么监控、什么算突发事件"（用户原话：「这些条件之类都是可自定义、<b>具体条件交给对应模块具体维护</b>」）—— 急停本身由 core
+   * 负责，本来源只记模块侧的判定，故仍是 {@link LogOriginKind#SYSTEM}。
+   */
+  ARMY_CONTACT("army-contact", "两军相遇判据（ArmyTimeParticipant 逐日判定、命中上报与跳过原因）", LogOriginKind.SYSTEM),
   ARMY_CODEC("army-codec", "ArmyCodec 编解码、变更集施加与旧形状迁移", LogOriginKind.SYSTEM),
   ARMY_RESOLVE("army-resolve", "ArmyResolver 候选装配、空结果与故障诊断", LogOriginKind.SYSTEM);
 

@@ -10,7 +10,6 @@ import io.mosire.simos.app.decision.ProposalCatalog;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.RenderService;
-import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.army.AppArmyToolPerspective;
 import io.mosire.simos.app.tools.economy.AppEconomyToolPerspective;
@@ -33,7 +32,6 @@ import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CalendarInfoTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
-import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.SocialHouseholdsTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
@@ -322,7 +320,6 @@ public final class SimosToolSource implements ToolSource {
       Path worldgenConfigFile,
       Set<String> commandTypes,
       Set<String> embeddableCommandTypes,
-      SkillLibrary skills,
       RenderService renderService,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
@@ -336,7 +333,6 @@ public final class SimosToolSource implements ToolSource {
         worldgenConfigFile,
         commandTypes,
         embeddableCommandTypes,
-        skills,
         renderService,
         gmToolUsage,
         llmConfig,
@@ -353,7 +349,6 @@ public final class SimosToolSource implements ToolSource {
       Path worldgenConfigFile,
       Set<String> commandTypes,
       Set<String> embeddableCommandTypes,
-      SkillLibrary skills,
       RenderService renderService,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
@@ -367,7 +362,6 @@ public final class SimosToolSource implements ToolSource {
         worldgenConfigFile,
         commandTypes,
         embeddableCommandTypes,
-        skills,
         renderService,
         gmToolUsage,
         llmConfig,
@@ -389,8 +383,6 @@ public final class SimosToolSource implements ToolSource {
    * @param commandTargets {@code type → 目标声明}（**必须**由同一份已注册 handler 清单派生，见 {@link CommandTargets}）
    * @param decisionAgent **只被 {@link Role#GM} 用到**（触发工具只在 GM 面）；该角色下为 null ⇒ **当场抛**
    *     （装配故障不静默兜底），{@link Role#DECISION_AGENT} 下**无关**（它没有触发工具，也不需要运行流）
-   * @param skills Skill 库（外部 Markdown：决策方法论与常识）。★ **必填**：它是决策人"该怎么做决策"的唯一来源，
-   *     装配期少一条不该退化成"模型自己猜"——故这里 {@code requireNonNull}，不搞"传 null 就不挂"的静默兜底。
    * @param worldgenConfigFile 世界生成器冻结输入 JSON 的路径（{@code simos.worldgen.initialize} 用；app 层拼，见
    *     {@code Shell}）。★ 只被 {@link Role#GM} 用到，但两档都要求非 null（省掉"哪档才要传"的静默分支）。
    */
@@ -402,7 +394,6 @@ public final class SimosToolSource implements ToolSource {
       Path worldgenConfigFile,
       Set<String> commandTypes,
       Set<String> embeddableCommandTypes,
-      SkillLibrary skills,
       RenderService renderService,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
@@ -419,7 +410,6 @@ public final class SimosToolSource implements ToolSource {
         worldgenConfigFile,
         commandTypes,
         embeddableCommandTypes,
-        skills,
         renderService,
         gmToolUsage,
         llmConfig,
@@ -442,7 +432,6 @@ public final class SimosToolSource implements ToolSource {
       Path worldgenConfigFile,
       Set<String> commandTypes,
       Set<String> embeddableCommandTypes,
-      SkillLibrary skills,
       RenderService renderService,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
@@ -460,7 +449,6 @@ public final class SimosToolSource implements ToolSource {
         worldgenConfigFile,
         commandTypes,
         embeddableCommandTypes,
-        skills,
         renderService,
         gmToolUsage,
         llmConfig,
@@ -492,7 +480,6 @@ public final class SimosToolSource implements ToolSource {
       Path worldgenConfigFile,
       Set<String> commandTypes,
       Set<String> embeddableCommandTypes,
-      SkillLibrary skills,
       RenderService renderService,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
@@ -509,7 +496,6 @@ public final class SimosToolSource implements ToolSource {
     Objects.requireNonNull(worldgenConfigFile, "worldgenConfigFile");
     Objects.requireNonNull(commandTypes, "commandTypes");
     Objects.requireNonNull(embeddableCommandTypes, "embeddableCommandTypes");
-    Objects.requireNonNull(skills, "skills");
     Objects.requireNonNull(gmToolUsage, "gmToolUsage");
     Objects.requireNonNull(commandTargets, "commandTargets");
     Objects.requireNonNull(role, "role");
@@ -524,7 +510,6 @@ public final class SimosToolSource implements ToolSource {
                     mapId,
                     commandTypes,
                     embeddableCommandTypes,
-                    skills,
                     renderService,
                     gmToolUsage,
                     llmConfig,
@@ -1089,7 +1074,6 @@ public final class SimosToolSource implements ToolSource {
       String mapId,
       Set<String> commandTypes,
       Set<String> embeddableCommandTypes,
-      SkillLibrary skills,
       RenderService renderService,
       GmToolUsage gmToolUsage,
       AgentLibLlmConfig llmConfig,
@@ -1225,10 +1209,7 @@ public final class SimosToolSource implements ToolSource {
         // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：待裁决审批清单（控制面；只在 GM 桶，GmOnlyRead）。
         //   读的是传入的 PendingApprovals（null = 未接入 ⇒ 执行期 UNAVAILABLE）；资源声明 NONE、不落 revision。
         new GmApprovalsTool(pendingApprovals),
-        new LlmProvidersTool(llmConfig),
-        // ★ Skill 系统（2026-09-23）：方法论与常识（外部 Markdown，改文件即生效）。**两桶共享**——
-        //   决策人读它是本职，GM 读它是为了写出与之一致的文档（Docs）。
-        new SkillTool(skills));
+        new LlmProvidersTool(llmConfig));
   }
 
   /**

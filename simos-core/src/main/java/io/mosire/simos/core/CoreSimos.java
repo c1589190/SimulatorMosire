@@ -1,5 +1,7 @@
 package io.mosire.simos.core;
 
+import io.mosire.simos.core.advance.AdvanceOutcome;
+import io.mosire.simos.core.advance.StopDrain;
 import io.mosire.simos.core.advance.TimeAdvance;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.BatchResult;
@@ -36,7 +38,7 @@ import java.util.UUID;
 
 /**
  * {@code CoreSimos} 的**装配门面**（spec §1.2；计划 Task 13）：把时间线、重放、checkpoint、推进管线与命令总线拼成一台可用的
- * 引擎，并对外只留四个动作——注册三类扩展、提交命令、重放坐标、关闭。
+ * 引擎，并对外只留五个动作——注册四类扩展（+ 2026-10-13 起的急停 drain）、提交命令、{@link #submitAdvance 提交推进（有急停）}、 重放坐标、关闭。
  *
  * <p>★ **装配的形状**（逐件对应已关账的任务，本类不重新实现任何一件）：
  *
@@ -104,6 +106,17 @@ public final class CoreSimos implements AutoCloseable {
   private final List<TimeParticipant> participants = new ArrayList<>();
   private final List<MutationGuard> guards = new ArrayList<>();
 
+  /**
+   * ★★ **急停路径的 drain 钩子**（2026-10-13 急停协议，口径 3 = (A)「只把 drain 接进急停路径」）。
+   *
+   * <p>★ **为什么 Core 收它却不认识它**：drain 的实现在 app（{@code SdCommandDrain}），而 Core 不认识 app（铁律 4）⇒
+   * 由调用方**注入**（{@link #register(StopDrain)}），由 {@link TimeAdvance} 在"世界已落 revision、尚未报给
+   * GM"那一步**调**。 缺省 {@link StopDrain#NONE} ⇒ 急停仍停、仍报，只是不 drain（后果记在账本"已知未修"一节）。
+   *
+   * <p>★ {@code volatile}：写发生在封存前的注册期，读发生在封存时（{@link #sealIfNeeded()}）——与 {@link #sealed} 同法。
+   */
+  private volatile StopDrain stopDrain = StopDrain.NONE;
+
   /** 封存标志：{@code volatile} 让 {@link #requireNotSealed()} 不必进锁读取。 */
   private volatile boolean sealed;
 
@@ -128,6 +141,12 @@ public final class CoreSimos implements AutoCloseable {
   private volatile Replay replay;
 
   private volatile CommandBus bus;
+
+  /**
+   * 封存后才有值：真 {@link TimeAdvance}（★ 2026-10-13 急停协议新增持有——{@link #submitAdvance} 要走到它那条**返回 {@link
+   * AdvanceOutcome}** 的口；{@link #submit} 那条仍走 {@link CommandBus}，行为一字未变）。{@code volatile} 同上。
+   */
+  private volatile TimeAdvance timeAdvance;
 
   /**
    * 打开存储并建时间线。
@@ -201,6 +220,25 @@ public final class CoreSimos implements AutoCloseable {
   }
 
   /**
+   * ★ **注册急停路径的 drain 钩子**（2026-10-13 急停协议，口径 3 = (A)）。**必须在封存之前**（与其余注册同法：封存后 {@link TimeAdvance}
+   * 的构造参数已定死）。
+   *
+   * <p>★ 它**只**在急停路径被调（{@link TimeAdvance#advance} 里"世界已落 revision、尚未产出 StopReport"那一步）：既有的 {@code
+   * /api/advance} / {@code simos.advance} 走的**非急停**路径仍不 drain（口径 3=A 的范围裁剪，账本已记"已知未修"）。
+   *
+   * <p>★ 传 {@link StopDrain#NONE} 等价于"不装"（急停仍停、仍报，只是跨模块效果不落地）。
+   *
+   * @return {@code this}（便于链式装配）
+   * @throws IllegalStateException 已封存
+   * @throws NullPointerException {@code drain} 为 null
+   */
+  public CoreSimos register(StopDrain drain) {
+    requireNotSealed();
+    this.stopDrain = Objects.requireNonNull(drain, "drain");
+    return this;
+  }
+
+  /**
    * 提交一条命令并同步返回结局。首次调用会**封存**装配。
    *
    * <p>若结局是 {@link CommandResult.Committed}，随后按类注的分工写 checkpoint（失败只 WARN，不改结局）。
@@ -213,6 +251,31 @@ public final class CoreSimos implements AutoCloseable {
     CommandResult result = sealedBus().submit(command);
     writePostCommitCheckpoint(command, result);
     return result;
+  }
+
+  /**
+   * ★★ **推进命令的"有急停"入口**（2026-10-13 急停协议）：返回 {@link AdvanceOutcome}——比 {@link CommandResult} 多一支
+   * {@link AdvanceOutcome.Stopped}，携带 {@link io.mosire.simos.util.spi.StopReport 原因系统}（哪些模块要求停、
+   * 证据、日志锚、可 replay 的坐标）。
+   *
+   * <p>★ **为什么不改 {@link #submit}**：{@code CommandResult} 的三种封闭是**铁律 2 的公共契约**（不变量 I3）， 且既有入口（{@code
+   * /api/advance} / {@code simos.advance}）走的就是它——给它们加一支新结局等于改动既有入口的行为， 那**不在本批**（口径 3=A
+   * 的范围裁剪）。故新增这条**窄口**，由 Shell/GUI/MCP 按需改用。
+   *
+   * <p>★ **急停时 {@link #submit} 的行为**（如实记）：世界确实提交到 {@code atTick} ⇒ 折成那一天的 {@link
+   * CommandResult.Committed}，而 {@code StopReport} **无处安放**（{@code CommandResult} 里没有它的位置）⇒ 走 {@code
+   * submit} 的调用方**看不到急停**。要看原因就必须走本方法。
+   *
+   * <p>★ **Post-commit 与本类其余口一致**：{@link AdvanceTime} 的 checkpoint 由真 {@link TimeAdvance} 自己写 （Task
+   * 12），本类**不重复**（见类注"三种命令的 checkpoint 分工"）。
+   *
+   * @param cmd 推进命令（**原样使用**，与 {@link CommandBus} 的信封支同一条纪律）
+   * @return 四种结局之一；急停 = {@link AdvanceOutcome.Stopped}
+   * @throws NullPointerException {@code cmd} 为 null
+   */
+  public AdvanceOutcome submitAdvance(AdvanceTime cmd) {
+    Objects.requireNonNull(cmd, "cmd");
+    return sealedTimeAdvance().advance(cmd);
   }
 
   /**
@@ -497,7 +560,8 @@ public final class CoreSimos implements AutoCloseable {
     this.replay = new Replay(timeline, checkpoints, codecs);
     CommandRegistry registry = new CommandRegistry(handlers);
     TimeAdvance timeAdvance =
-        new TimeAdvance(timeline, this::load, checkpoints, codecs, participants);
+        new TimeAdvance(timeline, this::load, checkpoints, codecs, participants, stopDrain);
+    this.timeAdvance = timeAdvance;
     this.bus =
         new CommandBus(timeline, registry, timeAdvance, this::load, List.copyOf(guards), codecs);
     this.sealed = true;
@@ -519,6 +583,12 @@ public final class CoreSimos implements AutoCloseable {
   private CommandBus sealedBus() {
     sealIfNeeded();
     return bus;
+  }
+
+  /** 封存后取真 {@link TimeAdvance}（{@link #submitAdvance} 的那条口；语义与 {@link #sealedBus()} 同法）。 */
+  private TimeAdvance sealedTimeAdvance() {
+    sealIfNeeded();
+    return timeAdvance;
   }
 
   private Replay sealedReplay() {
