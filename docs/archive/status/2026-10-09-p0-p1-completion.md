@@ -1,3 +1,5 @@
+> **取代者：`docs/superpowers/status/2026-10-13-outstanding-work-survey.md` · `docs/superpowers/status/2026-10-12-known-issues-code-verified.md`（2026-10-13）** —— 本文仅作历史留痕，**勿据此开工**。
+
 # 2026-10-09 P0/P1 完成汇报（子 Agent 新架构实验第一批）
 
 > 目标：按 `AGENTS.md` §一.10 的实验原则，自主完成 P0（唯一经济路线 + 经济正确性 + S3b 家户投影）

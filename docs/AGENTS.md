@@ -53,6 +53,6 @@
 2. **若与 git 提交日期矛盾，两者都记并标注疑点**：写成「用户口述 2026-10-13 / 提交日期 2026-10-14（★ 日期疑点，两存）」，不许只留一个。
 3. **★ 不许用文件名反推日期**：本仓实测有**文件名日期晚于当前日期**的现象 —— 今天是 2026-10-13，
    而 `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md`、`docs/superpowers/plans/2026-10-23-all-module-logging-rollout.md`、
-   `docs/superpowers/HANDOFF-2026-10-22-d5-decision-turn-economy.md` 等一批文件的文件名带 `2026-10-22/23`。
+   `docs/archive/handoff/HANDOFF-2026-10-22-d5-decision-turn-economy.md` 等一批文件的文件名带 `2026-10-22/23`。
    ⇒ 文件名日期只是**标签**，可能与内容实际日期不一致；要日期就去正文找"用户原话 + 日期"，或看 `git log`，**并标注疑点**。
 4. 文档里写"今天 / 本轮"时**带上绝对日期**；跨会话引用一律写绝对日期（`YYYY-MM-DD`）。

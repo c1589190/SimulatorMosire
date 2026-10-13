@@ -1,5 +1,6 @@
 # 2026-10-09 子 Agent 新架构实验 · 基线
 
+> **局部取代：§1「实验前的项目现实」（测试基线 / 已知经济红字，均为 2026-10-09 的历史自述、未回代码复核）—— 现状与未完成项口径以 `docs/superpowers/status/2026-10-12-known-issues-code-verified.md` 与 `docs/superpowers/status/2026-10-13-outstanding-work-survey.md` 为准（2026-10-13）**；本文件仍是 `docs/agents/02-一-并发.md` §一.10 指定的**实验记录与回退点**，原地保留。
 > 本文件是 **用户 2026-10-09 裁定“试新派单原则”** 的回退点与实验台账。
 > 规则见 `AGENTS.md §一.10`；实验期覆盖 §一.5/§一.8 的派单细节，但不取消五条铁律、模块边界与用户设计权威。
 > 本文件随 `AGENTS.md §一.10` 同一提交落盘；随后打 tag `agent-experiment-baseline-20261009` 并推送。

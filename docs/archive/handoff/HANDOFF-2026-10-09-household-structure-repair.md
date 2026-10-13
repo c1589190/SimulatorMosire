@@ -1,3 +1,5 @@
+> **取代者：`docs/superpowers/status/` 与 `.agents/notes/`（机制性取代，2026-10-13）** —— 勿据此开工。
+
 # HANDOFF 2026-10-09：家户结构修复（Social 人口/劳动/需求权威 + Economy 消费投影）
 
 > 本文件保存本批跨会话进度。新会话先读本文件与

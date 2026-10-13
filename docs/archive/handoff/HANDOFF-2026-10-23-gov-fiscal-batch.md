@@ -1,3 +1,5 @@
+> **取代者：`docs/superpowers/status/` 与 `.agents/notes/`（机制性取代，2026-10-13）** —— 勿据此开工。
+
 # HANDOFF 2026-10-23：经济生产效率框架 + gov 行政服务模式 + 税制/财政闭环（Z 批收口）
 
 > **恢复入口**。当前 `main` 工作树干净、0 未推送，最后提交 `52781f5a`（已 push `origin/main`）。

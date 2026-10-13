@@ -1,5 +1,7 @@
 # 未完成项总清单（回代码核实版）· 2026-10-13
 
+> **本文取代**：`docs/archive/status/2026-09-30-class-first-economy-status.md` · `docs/archive/status/2026-10-09-p0-p1-completion.md` · `docs/archive/status/2026-10-12-arch-round-known-reds.md` 的未完成/状态叙述（2026-10-13 归档）。
+> **重定向**：本文引用的 `HANDOFF-*.md` 已于 2026-10-13 移入 `docs/archive/handoff/`（文件名不变）。
 > **来源**：只读调查（`grep`/`find`/读文件；**未跑 Maven、未起服务、未跑世界**）
 > **基线**：`main` @ `30459634`（架构调整轮关账后）
 > **口径**：本文**取代**以下文档里的"未完成/待办"叙述（它们比现状旧，见 §6 反向更正）：

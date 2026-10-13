@@ -1,3 +1,5 @@
+> **取代者：`docs/superpowers/status/` 与 `.agents/notes/`（机制性取代，2026-10-13）** —— 勿据此开工。
+
 # HANDOFF 2026-10-09：Social API / S3a 后的工作进度与待办
 
 > 本文件是跨上下文存档。新会话先读本文件，再按以下路径读细档：

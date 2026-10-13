@@ -1,3 +1,5 @@
+> **取代者：`docs/superpowers/status/2026-10-13-outstanding-work-survey.md`（未完成项口径） · `docs/superpowers/status/2026-10-12-known-issues-code-verified.md`（现状口径）（2026-10-13）** —— 本文仅作历史留痕，**勿据此开工**。
+
 # 经济模块重构 · 工作状态文档
 
 > 日期：2026-09-30

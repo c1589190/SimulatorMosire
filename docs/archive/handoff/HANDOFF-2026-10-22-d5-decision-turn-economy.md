@@ -1,3 +1,5 @@
+> **取代者：`docs/superpowers/status/` 与 `.agents/notes/`（机制性取代，2026-10-13）** —— 勿据此开工。
+
 # HANDOFF 2026-10-22：D5 决策回合统一结算 + 经济系统观测状态
 
 > 恢复入口。当前 `main` 工作区干净，最后提交：`7d944911`（已 push `origin/main`）。

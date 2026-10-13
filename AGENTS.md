@@ -97,7 +97,7 @@
 | `docs/superpowers/status/2026-10-13-outstanding-work-survey.md` | **最新未完成清单**（口径以此为准） |
 | `docs/superpowers/status/2026-10-12-known-issues-code-verified.md` | **回代码核实版**：54 条说法逐条判定 + 16 处文档更正 + 好/没好分档 |
 | `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md` | "计划内未实现"总清单（**其经济部分已被上一份更正**） |
-| `docs/superpowers/HANDOFF-*.md` | 跨会话进度存档 |
+| `docs/archive/handoff/HANDOFF-*.md` | 跨会话进度存档（**2026-10-13 归档，勿据此开工**；机制上已被 `docs/superpowers/status/` 与 `.agents/notes/` 取代） |
 | `.superpowers/sdd/<topic>/` | SDD 台账与逐任务证据（`progress.md` / `task-N-report.md` / 各 `*-evidence/`） |
 
 ## 五、交叉纪律要点（每条只是概述 + 指针；**原文一律在长文里**）

@@ -1,5 +1,6 @@
 # 已知问题总表（回代码核实版，2026-10-12）
 
+> **本文取代**：`docs/archive/status/2026-10-11-economy-line-closeout.md`（本文是其逐条回代码核实；2026-10-13 归档）。
 > **这是什么**：对 `2026-10-11-economy-line-closeout.md`（经济线收口）与
 > `2026-10-23-planned-not-implemented-inventory.md`（计划内未实现总清单）的**逐条回代码核实**：
 > 哪些仍成立、哪些已过时、哪些要加限定。**这是目前最新的口径**（AGENTS §四.1「以最新落盘文档为准」）。

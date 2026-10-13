@@ -1,3 +1,5 @@
+> **取代者：`docs/superpowers/status/` 与 `.agents/notes/`（机制性取代，2026-10-13）** —— 勿据此开工。
+
 # HANDOFF 2026-10-09：Social 每 tick 生死引擎（Batch A/B/C + P0 迁移旁路关闭）
 
 > 新会话先读本文件 + `docs/superpowers/plans/2026-10-09-social-vital-rates-per-tick-plan.md`
