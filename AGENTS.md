@@ -1,30 +1,21 @@
-# AGENTS.md —— 本仓常驻上下文 + 多 agent 共用工作树的规矩
+# AGENTS.md —— 项目简介 + 文档索引（常驻；长文见 `docs/agents/`）
 
-> ★★ **2026-09-27 起本文件叫 `AGENTS.md`**（原名 `AGENT.md`）。改名的**唯一理由**是**让新 Agent 自动加载**：
-> 本机 DSH 的 workspace-instructions 候选名默认是 **`AGENTS.md`（第一顺位）→ `CLAUDE.md`**，
-> 而 `AGENT.md` **不在候选里** ⇒ 用原名要靠人告诉新会话"去读 AGENT.md"，改名后 harness **自动注入**。
-> 同时**删除 `CLAUDE.md`**（用户 2026-09-27 裁定：「最后把 CLAUDE.md 删了，确保新 Agent 加载时先加载 AGENT.md」；
-> 它的退役决定见下）—— 旧的那份 16 行"已废弃"指针文件的职责已由本行承担。
->
-> ★★ **历史留痕里的旧名一律不改**（§五.4：不篡改留痕）：`docs/superpowers/**` 与 `.superpowers/sdd/**`
-> 里出现的 `CLAUDE.md` / `AGENT.md`，**读作本文件**。★ 其中 `git show <sha>:CLAUDE.md` 那种**取历史版本**的
-> 写法**仍然有效**（`CLAUDE.md` 在 2026-09-24~2026-09-27 之间是一份"已废弃"指针，更早是 133KB 的历史台账，
-> 两者都在 git 里）。★ 改名这件事本身**不影响任何代码**（全仓零代码引用，只有注释里的"去哪读"）。
->
-> ★ **2026-09-24 起，本文件是唯一常驻文档**：原 `CLAUDE.md`（133KB，历史台账为主）**已废弃**——
-> 其中**仍要遵守的纪律**（判别力的载体形态 / 评审体量上限 / 密钥纪律 / 换设备自检 …）已并入本文件
-> （§三 / §五 / §八）；逐条里程碑与完整事故叙述在 **git 历史**、`docs/superpowers/**`（spec/plan）与
-> `.superpowers/sdd/**`（SDD 台账与证据）里都留着。**新文档一律写这里。**
->
-> 下文每条规矩后面都附**为什么**——它们几乎都是**真发生过的损失**，不是洁癖。
+> ★ **2026-10-13 起本文件只做「项目简单介绍 + 文档索引」**（用户裁定：「AGENTS.md只做一个项目简单介绍和文档索引」）。
+> 原先 123 KB 的纪律长文已**整节逐字**搬进 `docs/agents/*.md`（一节一个文件，正文一字未改、未重排）；
+> 本文件只常驻必需项：**五条铁律 · 模块边界表（只列允许依赖）· 文档索引 · 交叉纪律要点**。
+> ★ 本文件是**索引不是全集**：细节一律以 `docs/agents/*.md` 的原文为准；**冲突时以本文件（常驻口径）为准**。
 
-## 〇、这是什么 / 五条铁律 / 模块边界（改代码前先读）
+## 一、这是什么
 
-**SimulatorMosire（simos）** 是 GSimulator 的重构：把原本单一功能的地图推演工具，解放为**可分模块生长**的
-模拟引擎。参考项目 `~/DevMosire/GSimulator`（**只作参考、不作依赖**）与
-`~/ProjectMosire/AgentLibMosire`（CoreSimos 整包依赖）。
+**SimulatorMosire（simos）** 是 GSimulator 的重构：把原本单一功能的地图推演工具，解放为**可分模块生长**的模拟引擎。
+- 参考项目 `~/DevMosire/GSimulator`（**只作参考、不作依赖**）与 `~/ProjectMosire/AgentLibMosire`（CoreSimos 整包依赖）。
+- 形态：Maven 多模块（根 pom **16 个模块** = 15 个 `simos-*` 领域/契约/编排模块 + 组合根 `simos-app`）；
+  领域模块只拥有自己的数据（`MapSimos` 不知道 `SocialSimos`/`UnitSimos` 存在），Core 只组合与调度。
+- 权威顺序：**用户原话 > 用户设计原稿 > 最新落盘文档 > 本文件 > 旧文档**（口径细则见 `docs/AGENTS.md`）。
+- 「当前状态」**不在本文件抄写**：看 `git log --oneline -20`、`.superpowers/sdd/*/progress.md`，
+  以及最新未完成清单 `docs/superpowers/status/2026-10-13-outstanding-work-survey.md`。
 
-### 五条铁律（不可协商）
+## 二、五条铁律（不可协商；原文照抄，必须常驻）
 
 1. **所有查询最终解析为稳定实体。** 地址是定位方式，**ID 是身份**。单位调动、区域改名，历史与 Info 都不断。
 2. **所有修改最终表示为 `Command → ChangeSet → Revision`。** 不存在绕过该路径的写入口。
@@ -32,1012 +23,111 @@
 4. **Core 只负责组合与调度**，不重新实现领域逻辑。
 5. **变更集从完整状态类型派生**，且有**往返不变式测试**守卫：`apply(changeSet, base)` 逐字段重建 target。
 
-> 铁律 5 的由来：GSimulator 的 `MapDiff` 是**手工对着 `MapData` 维护**的，`MapData` 加字段时没人提醒跟着加，
-> 四个字段漂移出去（`terrainBlocks`/`terrainTypes`/`pathwayGroups`/`edges`），既无编译期也无测试期护栏，
-> 导致**对非 root 节点写连通性会静默丢失**。这是本项目最贵的教训。
+> 铁律 5 的由来（GSimulator `MapDiff` 手工对着 `MapData` 维护、四字段漂移、对非 root 节点写连通性静默丢失
+> —— 本项目最贵的教训）→ 详见 `docs/agents/01-〇-铁律与模块边界.md` §五条铁律。
 
-### 模块结构与依赖硬约束
+## 三、模块边界表（只列允许依赖；长注在长文里）
 
-> ★ **本节 2026-09-26 更正**：原图 `UtilSimos → MapSimos → { SocialSimos, UnitSimos } → CoreSimos → ShellSimos(app)`
-> **已过期**——它不含 `sd` / `actor-api` / `actor` / `economy-api` / `economy` / `ledger` 六个模块（都在图之后才建），
-> 且 `ShellSimos` 已不是模块名、Core 的地位经 ADR-1 收窄（见下表）。**旧图不删，留在这里作对照**。
+> 下表**只保留「模块 | 允许依赖」两列**；原表第三列（要点）与单元格内的 ★★ 长注（冻结批 / 回 pom 更正 / 闭合记录），
+> **原文整节搬在** `docs/agents/01-〇-铁律与模块边界.md`（下文简写 **`01-〇`**）**的同名行**，此处只留指针 ——
+> 本文件**不重复那些长注的原文**。
+> 边界由 `maven-enforcer-plugin` 的 `bannedDependencies` **在构建期强制**（越界 = 构建失败，不是 code review 的事）；
+> 2026-10-12 闭合后禁列 = **全仓 simos 模块 − 自己 − 允许面，零例外**，且各模块加了
+> `<searchTransitive>false</searchTransitive>` ⇒ **只拦"本模块直接声明"**，传递可见不算越界。
 
-```
-util → map → { social, unit, sd, calendar }
-util → economy-api → { economy, ledger }        （economy-api 还依赖 actor-api，见下一行）
-actor-api → economy-api → { economy, ledger }   （actor-api 主依赖为零；economy-api 反过来依赖它——LaborAllocation 持 ActorRef）
-util + map + economy-api → actor                （actor 切片；与 economy/ledger 是同层兄弟，互不依赖）
-core       只依赖 util（+ agentlib / sqlite-jdbc / jackson）；领域模块在 core 里**只许 test scope**
-app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯一认识所有模块的地方**
-```
+| 模块 | 允许依赖 |
+|---|---|
+| `simos-util` | 仅 Jackson（databind + datatype-jdk8）+ SLF4J（★ 详见 `01-〇` §simos-util） |
+| `simos-map` | `simos-util`（★ 详见 `01-〇` §simos-map） |
+| `simos-calendar` | `simos-util` + `simos-map`（★ 详见 `01-〇` §simos-calendar） |
+| `simos-social-api` | `simos-map`（+ jackson-annotations）（★ 详见 `01-〇` §simos-social-api） |
+| `simos-social` | util + map + `simos-social-api` + economy-api + `simos-calendar`（★ 详见 `01-〇` §simos-social） |
+| `simos-unit` | util + map + `simos-social-api` + `simos-social`（实现）（★ 详见 `01-〇` §simos-unit） |
+| ~~`simos-sd`~~ | ——（已整模块退役；★ 详见 `01-〇` §simos-sd） |
+| `simos-core` | **main scope**：util + `agentlib-mosire` + jackson-databind + sqlite-jdbc（map/social/unit 仅 test scope；★ 详见 `01-〇` §simos-core） |
+| `simos-actor-api` | **不声明任何主依赖**（★ 详见 `01-〇` §simos-actor-api） |
+| `simos-actor` | actor-api + util + map + economy-api + `simos-social-api` + jackson（★ 详见 `01-〇` §simos-actor） |
+| `simos-economy-api` | **actor-api** + util + map + `simos-social-api`（★ 详见 `01-〇` §simos-economy-api） |
+| `simos-economy` | actor-api + util + economy-api + **map** + `simos-social-api` + `simos-social`（★ 详见 `01-〇` §simos-economy） |
+| `simos-gov` | util + map + unit + social + `economy-api`（★ 详见 `01-〇` §simos-gov） |
+| `simos-army` | util + map + unit + social **+ gov**（★ 详见 `01-〇` §simos-army） |
+| ~~`simos-ledger`~~ | ——（已于 2026-09-27 退役；★ 详见 `01-〇` §simos-ledger） |
+| `simos-app`（组合根） | **全部 15 个 simos 模块**（core + util + ga-spi + map + calendar + social-api + social + unit + actor-api + actor + economy-api + economy + gov + army + **ga**）+ agentlib + mcp-core + mcp-json-jackson2 + jackson + 日志实现（不设 enforcer；★ 详见 `01-〇` §simos-app） |
+| `simos-ga-spi` | `simos-util` + `agentlib-mosire`（★ 详见 `01-〇` §simos-ga-spi） |
+| `simos-ga` | `simos-util` + `simos-ga-spi` + `map` + `unit` + `agentlib-mosire`（★ 详见 `01-〇` §simos-ga） |
 
-| 模块 | 允许依赖 | 要点 |
-|---|---|---|
-| `simos-util` | 仅 Jackson（databind + datatype-jdk8）+ SLF4J | 不依赖任何 simos 模块，**不碰文件系统**。jdk8 模块是必需的：`Optional` 在快照树里处于**嵌套泛型位置**，裸 databind 会写成 `{"present":…}` 并丢值。★★ **2026-10-12 冻结**（`docs/superpowers/specs/2026-10-12-module-boundaries-freeze.md` §3/§4）：enforcer 禁列已**闭合** —— = 全仓 15 个 simos 模块 − 自己（14 个现存 + 已退役 `ledger` 留痕），`<message>` 同步改写为"只许依赖谁"，文案与强制一致 |
-| `simos-map` | `simos-util` | **永不** import social/unit/agentlib；**不做任何存储**。★★ **2026-10-12 冻结**：禁列 = 全仓 simos 模块 − 自己 − util（含全部契约层 `social-api`/`actor-api`/`economy-api` 与已退役 `ledger`） |
-| `simos-calendar` | `simos-util` + `simos-map` | ★ 2026-10-02 D-019：年份系统 = **儒略历（全期）**历法换算（1 tick = 1 天 → 年/月/日）+ 24 节气/天文（二分二至）季界 + 南/赤道/北分带季节（热带雨季/旱季）。**纯计算、无状态**：无 Snapshot/Codec/ChangeSet/handler/存储，不 import Jackson、不碰文件系统。依赖方向固定 `util → map → calendar`（map 供 `HexCoord` 判带）；`util`/`map` 的 enforcer 已禁 calendar 防反向。禁一切领域/编排模块（social/unit/sd/core/app/economy*/actor*/gov/army/agentlib）。★★ **2026-10-12 冻结**：禁列 = 全仓 simos 模块 − 自己 − util/map（含全部契约层与已退役 `ledger`） |
-| `simos-social-api` | `simos-map`（+ jackson-annotations） | ★★ **2026-10-12 新增行**（本表原先没有它；冻结文档 §3）：人员/家户的**低层人口身份契约**（家户/人口批次 ID、性别、画像、人口事件与率、只读 SPI）——为了让 `economy-api`/`actor` 等更上游契约能依赖它、破 `social ↔ economy-api` 环（方案 A 2026-10-09）。只依赖 map（`HexCoord`）与 jackson-annotations；**零领域/编排依赖**。★ 禁列 = 全仓 − 自己 − map（含 `simos-util` —— 2026-10-12 闭合后已列入，`searchTransitive=false` 使传递链不再挡它）；依据 `simos-social-api/pom.xml` 禁列与 message（2026-10-12 回 pom 核） |
-| `simos-social` | util + map + `simos-social-api` + economy-api + `simos-calendar` | ★★ **2026-10-12 回 pom 补**：允许列原漏 `simos-social-api`（`simos-social/pom.xml:32-34` 显式声明，S1 起 `PeopleLotId`/`Sex` 迁入该契约层）。不依赖 UnitSimos；★ 2026-10-02 C4b：年龄档 15/60 = **整历法年**，逐日年龄 → 整岁换算走 `CalendarAge`，故显式依赖 calendar（不靠传递依赖）。★★ 2026-10-09 家户结构修复：Social 还是**人口可提供的劳动**与**人口需求系数**的唯一权威（`SocialProvisioning`：全局默认 + 家户覆盖，键 `(AgeBracket, Sex, CommodityId)` / 劳动 `(AgeBracket, Sex)`）；Economy/Actor/Unit 不得持第二本人口/劳动/需求权威。★★ 2026-10-09 每 tick 生死：出生/死亡率（ppm/tick）与全局默认 `SocialVitalRates`、家户覆盖、余数累加器（含稳定哈希初相位）都在 Social；`HouseholdBook.settleOneTick` 是唯一生产结算口；外部模块只提交 `social.SubmitHouseholdWorkOrder` 等 Social 接口，不直接改人口 |
-| `simos-unit` | util + map + `simos-social-api` + `simos-social`（实现） | ★★ **2026-10-12 回 pom 更正（原写"util + map，不依赖 SocialSimos"——已过期）**：`simos-unit/pom.xml:32-39` **显式声明** `simos-social-api` 与 `simos-social` 实现（方案 A 2026-10-09：Social 是人员/家户唯一域，允许直连）。★ 回代码核：`src/main` 里 **15 个文件** import `io.mosire.simos.social.api.*`（`HouseholdId` / `GovernmentHouseholds` 等），**0 处** import `simos-social` 实现 ⇒ "声明即允许"（冻结文档 §7.2 口径），死声明收口另裁。★ 冻结后禁列 = 全仓 − 自己 − 允许面（actor/app/army/economy/gov/sd/core + `ledger` 留痕）；★★ **2026-10-12 闭合后已零例外**：actor-api / economy-api / calendar 三条原按 I-F1 未列，加 `searchTransitive=false` 后全部列入 |
-| ~~`simos-sd`~~ | —— | ★★ **2026-10-12 批次 3e：已整模块退役**（用户裁定「**sd整个弃用！**」＋「`sd:*` 地址族 → **直接扔**」）。14 组件按族交清：决策族 7 → `ga`（3a/3b-1/3b-2/3b-4）· 外交 3 → `gov`（3c）· 战斗 4 + 军队身份 → `army`（3d-1/3d-2）；**本批（3e）拆掉的残壳**：0 组件的 `SdState`/`SdChangeSet`/`SdCodec`/`SdSnapshot`、`SdResolver`（→ `ga.resolve.GaResolver`，地址族改挂 `ga:decision-maker.<id>` / `ga:directive.<id>`）、`ChannelAdmission` + `ActorId`/`DecisionChannel`/`DecisionRequest`（→ `ga.channel`）、`SdPayloads`（→ `ga.spi.GaPayloads`）、`SdCommandNames`（→ `ga.spi.GaCommandNames`）、`DirectiveWhitelist`/`DecisionSignature`/`DecisionTablesLookup`、`sd.id.*`/`sd.model.*`/`sd.adjudication.*`（→ `ga.id`/`ga.model`/`ga.adjudication`）。根 pom **−1 模块（17 → 16）**、`ArchitectureGuardsTest.MODULES` −1、ChangeSet 实现者 **10 → 9**。★ **已知债（留给批次 5）**：资源声明面的**标识符** `sd`（`ToolResources.SD_NAMESPACE` / `ResourcePaths#sd` / `ToolSupport.SD_NAMESPACE`）**有意未改名** —— 它与状态切片同名但属**权限声明面**，改动要动 `simos-ga-spi` + `simos-util`（本批写权外），且"权限四面逐条不变"是本批红线；运行时 GM 侧 `sd` 与 `ga` 都是 `unlimited()` ⇒ 零行为差。规划见 `docs/superpowers/plans/2026-10-12-full-dispatch-plan.md` §18.2 第 5 步 |
-| `simos-core` | **main scope**：util + `agentlib-mosire` + jackson-databind + sqlite-jdbc | map/social/unit **退到 test scope**（★★ 2026-10-12 批次 3e：`sd` 已退役 ⇒ 本格的 test-scope 口子只剩这三片） ⇒ Core **编译期看不见任何领域类型**（铁律 4 的结构化），想重新实现领域逻辑也无从下手。★ 领域面（map/social/unit）与**经济面 + actor 切片**（economy/economy-api/ledger/**actor**/**actor-api**）**任何 scope 一律禁**，只有 test scope 开五条窄口子（map/social/unit/**economy-api**/**actor-api**——后两条是**传递依赖逼出来的**，见 pom 里那两段注释）。★★ **2026-10-12 冻结**：禁列补至 = 全仓 − 自己 − util（新增 `army`/`gov`/`app` + `ledger` 留痕；`actor-api` 原已禁）；★★ **2026-10-12 闭合后已零例外**：`calendar` 与 `social-api` 原按 I-F1 未列（test 路径 `core(test) → social` 传递带出），全部列入 |
-| `simos-actor-api` | **不声明任何主依赖**（util / map / jackson 都不声明） | actor 切片共用的**最底层契约**：`ActorRef`（种类 + **不透明** id）、`ActorKind`、`AssetKind` / `AssetClassKey`。★ 它比 `economy-api` 还底层（`economy-api` 反过来依赖它）⇒ 四个类型**与它们的测试**全是 `java.*`/junit/assertj，**零 simos import**（实测 `grep -rF 'import io.mosire'` = 0 命中；裁定 R-e/R-h/R-j 逐条删掉了用不到的声明）。禁一切领域/编排模块（economy-api/economy/ledger/social/unit/sd/core/app/agentlib）。★★ **2026-10-12 冻结**：禁列补至**全仓其他 14 个 simos 模块全部**（新增 `util`/`map`/`calendar`/`social-api`/`gov`/`army`/`actor` + `ledger` 留痕；本模块主依赖为零 ⇒ 一个口子都不留） |
-| `simos-actor` | actor-api + util + map + economy-api + `simos-social-api` + jackson | 聚合式 actor 切片（S1 阶段 2）：`Actor` 身份本体 + 产权（`AssetHolding`，**键到格** ⇒ 依赖 map 拿 `HexCoord`）+ 商品库存（`GoodsAccount`，键是 `CommodityId` ⇒ 依赖 economy-api）+ 状态树/落盘切片/变更集 + `ActorCodec`（`namespace() = "actor"`）。组件**恰四件**：`(meta, actors, holdings, accounts)`。★★ **2026-10-12 回 pom 更正（旧措辞"禁 social"不准确）**：本模块**显式声明并使用** `simos-social-api`（`simos-actor/pom.xml:53`；实测 `src/main` 多文件 `import io.mosire.simos.social.api.id.HouseholdId`），enforcer 禁的是 **`simos-social` 实现**本身；★ economy-api 与 actor-api **不在禁列**（契约层，与 social 依赖 economy-api 同待遇）。★ 冻结后禁列 = 全仓 − 自己 − 允许面（economy/ledger/social 实现/unit/sd/core/app/army/calendar/gov） |
-| `simos-economy-api` | **actor-api** + util + map + `simos-social-api`（★★ 2026-10-12 回 pom 补：`simos-economy-api/pom.xml:35` 显式声明 social-api，旧允许列漏了它；util 与 jackson 实际**零 import**：前者是死依赖；★ map：**2026-09-27 回代码更正**——不是"只有 `LotChange` 一处"，实测 **4 个文件**用 `HexCoord`：`CohortKey` / `HouseholdActors` / `Transfer` / `LotChange`） | 只放**经济切片共用的稳定契约**（各类稳定 ID / `CommodityId`）；无 Snapshot、无存储、无公式。★ `ActorRef` / `ActorKind` **已不在本模块**（上移到更底层的 `simos-actor-api`，本模块只**引用**它们——`LaborAllocation.actor`）。★★ **2026-10-12 冻结**：禁列 = 全仓 − 自己 − 允许面（social/unit/sd/core/app/actor/economy/army/calendar/gov + `ledger` 留痕），已**闭合、零例外**（2026-10-12） |
-| `simos-economy` | actor-api + util + economy-api + **map** + `simos-social-api` + `simos-social` | ★★ **2026-10-12 回 pom 重写（旧行"禁 social"确已过期，且旧禁列只列了 6 条）**：本模块 = 聚合式经济切片（产业/阶层行/债务/流水/市场/货币/政府政策），**机制与规则的归属地**；实际允许面 = actor-api/util/economy-api/map/social-api/social（方案 A 2026-10-09 允许直连 social 实现）；冻结后禁列 = 全仓 − 自己 − 允许面（unit/sd/core/app/army/gov + 同层 actor + `ledger` 留痕）；★★ **2026-10-12 闭合后已零例外**：`calendar` 原按 I-F1 未列，现已列入。下列 2026-10-11 / 2026-09-27 的更正原文**保留作留痕**：
-  `simos-economy/pom.xml:19/46-51` 明写「**方案 A（2026-10-09 用户裁定）：economy 允许大方直连 `simos-social`**（人员/家户唯一域）
-  与低层契约 `simos-social-api`」，ban 列表里原 `exclude simos-social` 已删、`<message>` 同步改写。
-  ⇒ **实际以 pom 的依赖块与 ban message 为准**；social 侧仍由 enforcer 禁反向依赖 economy。★ **2026-09-27 回 pom 更正**：本行原写"util + economy-api"——**漏了 map 与 actor-api**；实测 `simos-economy/pom.xml:34-37` 显式声明 `simos-map`（H4 起市场表键 = `HexCoord`，`pom` 自述见 `:19-21`）、`main` 里有 **9 文件 / 11 处** `import io.mosire.simos.map.hex.HexCoord`。★ 另记一句自相矛盾：同 pom `:77` 的 ban `<message>` 仍写"economy 只依赖 economy-api/util"（**文案陈旧，不是禁令**；事实以依赖块为准）。★★ 2026-10-09 家户结构修复：`HouseholdEconomy.population/laborMilli/naturalNeeds` 是 **app 从 Social 展开后注入的当日物化视图**，不是独立权威；运行时自然需求不得再用 `population × 统一系数` 折算，前瞻保留/覆盖改用逐户 `expectedNeedMilli`，饥荒分母改用 `cycleNaturalNeedMilli`。★★ 2026-10-09 每 tick 生死：日常出生/死亡只由 Social 结算，经济只收逐户 population delta。★★ 2026-10-10 P0 已关闭迁移写人旁路：`ModeMigrationSettlement` 只推投影账 + 瞬态 outbox（`EconomyPopulationTransfer`），App 的 `MigrationSocialBridge` 同 revision 落 Social 工单并回写经济行 delta；fresh 0→360 实测逐户 138/138 Social == Economy。设计/实施见 `docs/superpowers/plans/2026-10-10-p0-mode-migration-social-outbox.md`。。
-★★ 2026-10-14 P4a：EconomyData 新增 periodicAdjustments 组件与 `economy.Upsert/RemoveHouseholdPeriodicAdjustment`（GM-only），app 日循环按无状态到期部分支付；Unit 军俸政策/分摊（P4b）未做（★★ **2026-10-23 更正**：P4b 已于 `bfb246a3` 落地——`MilitaryPayPolicy` 第 4 组件 + `unit.SetArmyPayPolicy` + `MilitaryPayRuleBridge`；GM 窄工具由 D4 的 `simos.gm.armyPayPolicy` 补上。**P4c 仍开放**：决策人受限军俸工具/审批白名单、军俸 FlowRow/ledger 维度、与 GovDaily 共享国库预算优先级。未做项总表见 `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md`） |
-| `simos-gov` | util + map + unit + social + `economy-api` | ★★ **2026-10-12 新增行**（本表原先没有它；冻结文档 §3）：政府 —— 行政编制（`GovOfficeState`）、国库预算、区划服务、**外交**（Nation / 关系 / 事件）。★★ **2026-10-12 用户裁定（照抄冻结文档 §3）**：「**外交是 gov 的事**」⇒ 本表已把 `Nation` / `DiplomaticRelation` / `DiplomaticEvent` 写进本模块语义；**类型迁移是后续批**（~~前置：`simos-map` 现用了 `Nation`，需先解该引用，否则 `map → gov` 反向依赖会被新禁列当场拒~~ ★★ **同日第五轮更正：该前置实测为假** —— `simos-map` 对 `io.mosire.simos.sd` 的 import = **0**；`map`/`gov` 里的 `Nation` 全是 `{@link}` javadoc 或工具参数文案（`MapToolPerspective:20`、`GovToolPerspective:61`），**无类型引用**。真前置 = `NationId` 落点（用户已裁**归 GOV**）+ `gov`/`sd` 互禁 + 「**归属归模块**」）。★★ **同日第五轮追加**：`simos-sd` 整个弃用 ⇒ 外交 3 组件（`nations`/`diplomaticRelations`/`diplomaticEvents`）+ 4 handler 迁入本模块；`NationId` 也落本模块。★ 冻结后禁列 = 全仓 − 自己 − 允许面（core/app/agentlib/sd/economy/actor/army + `ledger` 留痕）；★★ **2026-10-12 闭合后已零例外**：social-api / calendar / actor-api 三条原按 I-F1 未列，全部列入 |
-| `simos-army` | util + map + unit + social **+ gov**（★★ **2026-10-12 第五轮用户裁定**：「**Army 很显然可以依赖 GOV**」⇒ 批次 0b 落地：`simos-army/pom.xml` 删 `simos-gov` 禁列 + 加 dependency；**`simos-gov` 侧禁 `army` 保留不动**，单向不对称防环） | ★★ **2026-10-12 新增行**（本表原先没有它；冻结文档 §3）：交战记录与军方编排（一期：辖区 = 视野的纯派生视图 `ArmyVision`，不落盘、不算战力）。★★ **同日第五轮追加**：用户裁定「战斗模块，包括阶段之类的，归Army模块管，原则和GOV差不多」⇒ `simos-sd` 弃用后**战斗 4 组件 + 军队身份（`armies`）**迁入本模块。★ 冻结后禁列 = 全仓 − 自己 − 允许面（core/app/agentlib/sd/economy/actor + `ledger` 留痕；**`gov` 已从禁列移入允许面**，见左列）；★★ **2026-10-12 闭合后已零例外**：social-api / calendar / economy-api / actor-api 四条原按 I-F1 未列，全部列入 |
-| ~~`simos-ledger`~~ | —— | ★★ **已于 2026-09-27 退役**（裁定 D2-A）：它零外部引用、无 handler、无人依赖；`Transfer` 的**形状**（不是它的 `ActorRef` 主体类型）已搬进 `simos-economy-api` 的 `transfer` 包。原模块连同 `Account`/`Claim`/三个测试一并删除；`economy-api` 的 ID 契约（`TransferId`/`ClaimId`/`AccountId`…）**保留**。★ 全仓对它的引用现在只剩历史叙述（设计文档与若干类注的留痕） |
-| `simos-app`（组合根） | **全部 15 个 simos 模块**（core + util + ga-spi + map + calendar + social-api + social + unit + actor-api + actor + economy-api + economy + gov + army + **ga**；★★ 2026-10-12 批次 3e：`sd` 退役 ⇒ 16 → **15**）+ agentlib + mcp-core + mcp-json-jackson2 + jackson + 日志实现（★★ 2026-10-12 回 pom 补全允许列：旧列漏了 util/actor-api/economy-api/social-api/actor/gov/army —— `simos-app/pom.xml:35-90` 全部**显式声明**；★★ **2026-10-12 计数更正**：B1/B2a 新增 `ga-spi` 与 `ga` 后本格旧写"14 个"已陈旧，现实为 **16 个**，`simos-app/pom.xml` 已显式声明 `simos-ga`） | **不设 enforcer**：按 `/map` `/social` `/unit` 路由 ⇒ 天然认识各模块。`Shell`/`ShellConfig`/`ShellMain`、`gui/`(5711)、`query/`、`tools/`、`binding/`、`demo/`。★ 2026-10-02 年份系统起 `calendar` **显式声明**（C4a：`CalendarClock`/`CalendarService`；不靠传递依赖）。★ 它**用了** `util`（56 个 main 文件）与 `economy-api`（2 个）却**未声明**，靠传递依赖（2026-09-26 查实；同款情形在 `simos-core/pom.xml:33-36` 曾被定性为缺陷并修过——**"依赖传递不是契约"**）。★★ **2026-10-12 回 pom 更正：这半条已关闭** —— `simos-app/pom.xml:35-43` 现已**显式声明** `simos-util` / `simos-actor-api` / `simos-economy-api`（pom 注释自述"此处补上显式声明"）。★★ **2026-10-12 冻结批已把"仍未回填"那条也关闭**：`util/map/unit` 以及其余 11 个模块现在都拦 `economy/economy-api/ledger`；本组合根**仍不设 enforcer**（文档明文），见下方 2026-10-12 bullet |
-| `simos-ga-spi` | `simos-util` + `agentlib-mosire` | ★★ **2026-10-12 新增**（依据设计书 `docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md` §4.1/§4.2；B1 批落地）：**工具契约层** —— `SimosTool`（工具接口 + `roles()` 角色声明 = "这个工具能被谁用"的**唯一拼写点**，取代今天 GM 桶 / 决策人桶 / `DecisionCallerFactory.WHITELIST` 三处手抄）、`ToolRole`（`{GM, DM}`：GM = 直接用、DM = 过审批；**审批链不在枚举里**，按装配决定）、`GmOnlyRead`（自 app `tools/GmOnlyRead.java` 原样迁入，**旧文件保留**待 B4 收口）、`ToolWritePort`（窄写口，替代 162 个工具直连 `CoreSimos`；结局类型自造以**不引 core**，适配规则写在类注）、`ToolResources` / `ToolSchema`（自 `ToolSupport` 拆出的纯助手：命名空间/路径/声明/写前断言 + schema/参数解析）。★ **零逻辑、零状态**：B1 只立契约 —— 现有 176 个工具类**尚未**实现 `SimosTool`（B3 下放、B4 收口）。★★ **不许依赖 `core`**（设计书 §4.2 末段 / I-G2）：core 的 test scope 依赖 map/social/unit ⇒ `map → ga-spi → core → map(test)` 会成环。★ 冻结后禁列 = 全仓 16 个 simos 模块 − 自己 − util（含全部领域/编排模块与已退役 `ledger` 留痕）；`util` / `map` / `calendar` / `social-api` / `actor-api` 五模块的禁列已按冻结文档 §4 I-F4 补上它 |
-| `simos-ga` | `simos-util` + `simos-ga-spi` + `map` + `unit` + `agentlib-mosire`（★★ 2026-10-12 批次 3e：`simos-sd` 依赖随模块退役摘掉；**不依赖 core**（A1））| ★★ **2026-10-12 新增**（依据设计书 `docs/superpowers/specs/2026-10-12-ga-module-and-tool-descent.md` §1 用户原话⑤「**把工具运作、决策人运行放到ga模块**」/ §4.1 目标依赖图 / §4.5 内容表 / §5 I-G2；B2a 批落地）：**推演框架（运行流）** —— 「**怎么跑**」，不知道「有哪些域」。B2a 已迁入：决策人运行流四件（`DecisionAgentRunner` 回合循环、`DecisionRunRegistry` 进程内留痕、`DecisionToolDefs` 工具面→`ToolDef`、`DecisionProposable` 可 propose 的预览契约）+ `LlmToolNames`（线格式工具名映射，自 `app/llm` 迁入，属「工具运作」的供应商方言面）+ 日志门面 `GaLog`/`GaLogSource`（logger 根 `io.mosire.simos.ga`，开关 `-Dsimos.ga.logLevel` / `-Dsimos.ga.traceLevel`）。★★ **永不依赖 `simos-app`**：`app → ga → app` 是环（Maven 建图期直接拒，已负向实测）⇒ 凡运行流需要「宿主的东西」一律**构造期注入**（接口在 ga、实现在 app）：`DecisionToolCaller`（权限链执行 + 全局白名单，app 侧 `DecisionCallerFactory implements`）、`DecisionToolNames`（11 个工具名，app 侧 `AppDecisionToolNames` 从各工具 `NAME` 常量取）、`ToolImages`（图片通路/媒体类型，app 侧 `DecisionToolImages` 引 `ArtifactStore.PNG_MEDIA_TYPE`）；另 `mapId`/决策人桶注册表/会话库/每轮 LLM 客户端本就是入参。★ B2a 的边界（如实记）：工具运作的另一半（`SimosToolSource` 装配两桶、审批链 `GmAutoApproveGate`）与 §4.3 的 ga 归属工具仍留 app，属 **B2b/B3**；`ProposalCatalog`/`NationOpeningSnapshot`/`DecisionAgentService`/`DecisionTurnFinalizer`/`DecisionEffectExecutor` 按设计书 §4.5 判据（持有域工具实例或读世界 = 装配）**留 app**。★★ **2026-10-12 批次 3e：`simos-sd` 残壳整体迁入本模块** ⇒ 本模块新版图 = 工具运作 + 决策人运行 + 效果队列 **+ 决策族值类型/地址族/渠道准入**（`ga.model` / `ga.id` / `ga.spi` / `ga.channel` / `ga.resolve.GaResolver` / `ga.adjudication`）；`GaState` 七组件（决策包 / 合并效果集 / 决策记录 / 判决 / 决策人 / INFO 覆盖层 / 效果）。★ 禁列 = 全仓 **16** 个 simos 模块 − 自己 − 允许面（10 条）+ 两条已退役模块留痕（`simos-sd`、`simos-ledger`），零例外；其余 14 个模块的禁列已同步补上它 |
+## 四、文档索引（★ 不要用 `@` 导入——导入会在启动时把文件展开进上下文，白载 5000+ 行）
 
-- 上表的边界**由 `maven-enforcer-plugin` 的 `bannedDependencies` 在构建期强制**——越界 = 构建失败，不是 code review 的事。
-  ★ **这份强制长期是不完整的**：`util/map/social/unit` 的 ban 列表停留在 **M0（2026-09-16，当时全仓只有 5 个模块）**，
-  此后新增的模块**长期没回填**（`git log -S'economy' -- {util,map,social,unit,core}/pom.xml` = **0 个提交**）。
-  ★★ **Task 10（2026-09-26）回填了哪些**（实测，非推演）：`core` 纳入 `simos-actor` / `simos-actor-api`（宽 exclude；
-  `actor-api` 的 test-scope 口子是**跑出来**的——`core → social(test) → economy-api → actor-api` 是传递依赖，与 R1 那条同因），
-  `util` / `map` / `social` / `unit` 各补 `simos-actor`（`simos-actor-api` 是**契约层**，与 `economy-api` 同待遇、**不在禁列**）。
-  ★★ **仍然没回填的**（如实记）：`util` / `map` / `unit` **都不拦** `economy` / `economy-api` / `ledger`
-  （`social → economy` 一条已由 R1 补上；`economy-api` 是**刻意**不拦——文档三处明文允许领域模块依赖它）。
-  ⇒ 设计意图是**互不依赖（对称）**，这一半仍未合上；要接的话按本条形制补（改 ban 列表 + 跑 `verify` 看是否被传递依赖逼出 `includes`）。
-- ★★ **2026-10-12 冻结批次已把上表的强制面合上**（依据 `docs/superpowers/specs/2026-10-12-module-boundaries-freeze.md` §3/§4）：
-  14 个模块的 `bannedDependencies` 全部补到"禁掉 **自己 + 允许面之外**的全部 simos 模块"（含已退役 `ledger` 留痕；
-  `simos-app` 组合根**不设** enforcer，文档明文）；上面那条「仍然没回填的」（`util`/`map`/`unit` 不拦
-  `economy`/`economy-api`/`ledger`）**已随之关闭**。★ 但 **19 条禁列被传递依赖逼出例外**——
-  enforcer 3.6.3 的 `searchTransitive` 默认 **true**（字节码核实）⇒ 禁列查传递依赖，这 19 条加进去 `validate` 当场红；
-  逐条链与处置见该批报告（**本批零 `<includes>`、零 `<dependency>` 改动**，不变量 I-F2/I-F3 未破）。
-- ★★ **2026-10-12 闭合完成（当场关掉那个开关，19 条例外归零）**：本仓的边界语义是「**本模块不许直接声明**某个依赖」，
-  而"传递可见"是 Maven 依赖图的事实、本模块控制不了 ⇒ 14 个模块的 `<bannedDependencies>` 各加一行
-  **`<searchTransitive>false</searchTransitive>`**（`setSearchTransitive(boolean)` 是该 rule 的公开 setter），
-  再补回那 19 条 ⇒ **禁列 = 全仓 simos 模块 − 自己 − 允许面，零例外**（唯一"多列"的是 `app`：它不该被任何模块依赖）。
-  实测：`tools/mvn-lock.sh -DskipTests validate` **rc=0**、`BannedDependencies passed` **×14**（`simos-app` 0 次 ✓）；
-  负向验证（给 `simos-map` 加一条被禁的 `simos-actor-api`）⇒ **rc=1**、原文 `on project simos-map` +
-  `io.mosire:simos-actor-api … banned via the exclude/include list`；还原后 md5 逐字节一致、validate 重新绿。
-  ★ 口径说明：**只拦"直接声明"**，传递依赖不再拦（那正是开关的目的，不是放松）；冻结文档 §7.3 的"待核"已关闭。
-- 跨模块可见性走 **Facet**，不走反向依赖："某个 hex 上有哪些单位"**不能**写成 `MapManager.getUnitsAt(hex)`；
-  Util 提供 Facet 协议，各领域模块自己注册提供者，MapSimos 对这些扩展完全不知情。
-- ★ **命令跨模块边界是"不透明载荷"**（ADR-1，2026-09-18）：Core 只认信封的 `type` 字符串，不 `instanceof`、
-  不 switch 类型；新增契约一律放 `io.mosire.simos.util.spi`，既有契约**原地不动**。
-- ★ 写新阶段的 bite-sized 步骤前，**先确认该模块的待决项已裁决**——否则等于编造设计。
+**① 纪律长文（`docs/agents/`，2026-10-13 整节搬出；原文逐字未改）**
 
-### 文档地图（★ 不要用 `@` 导入——导入会在启动时把文件展开进上下文，白载 5000+ 行）
+| 文件 | 覆盖什么 |
+|---|---|
+| `docs/agents/00-序言-改名与常驻说明.md` | `AGENT.md` → `AGENTS.md` 的改名理由、`CLAUDE.md` 退役、历史留痕里的旧名怎么读 |
+| `docs/agents/01-〇-铁律与模块边界.md` | 这是什么 / 五条铁律 + 由来 / **模块边界表全文（含 ★★ 长注与要点列）** / 文档地图 |
+| `docs/agents/02-一-并发.md` | §一 并发 · §一.5 派单粒度 · §一.6–一.7 子代理等待/前台 · §一.8 约束设计书 · §一.8.1 原话附录 · §一.9 日志 · §一.10 责任区委派 · §一.11 Alpha 不兼容旧档 · §一.12 口径溯源 |
+| `docs/agents/03-二-产物与jar.md` | 别覆盖在跑的 jar；`-Dshade.skip` 无开关；服务在跑时用 `./mvnw test` |
+| `docs/agents/04-三-验证.md` | §三 护栏自证、不许把"没跑"写成"通过"；§三.0 测试与变异自证留到最后 |
+| `docs/agents/05-四-台账与代码核对.md` | §四 机制性描述回代码核；§四.1 最新落盘文档为准；§四.2 调查可提设计修改 |
+| `docs/agents/06-五-提交与协作.md` | §五 提交 / 推送 / 留痕 / 密钥纪律 |
+| `docs/agents/07-六-前端.md` | §六 前端（无 npm、无打包器、纯 `<script>`） |
+| `docs/agents/08-七-门禁与关账命令.md` | §七 门禁与关账常用命令（`tools/gate.sh` 等） |
+| `docs/agents/09-八-环境与运维.md` | §8.1–8.7 起服务判活 / 世界数据两层 / MCP 审批链 / 图片通路 / 编制与移动 / 换设备自检 / 18Lvt 测试世界 |
+| `docs/agents/10-九-实测失败形态.md` | §9.1–9.5 判别力假货、计划数字是预测、夹具与不变量冲突、工具假阴性、技能不是判据 |
+| `docs/agents/11-十-用户设计权威.md` | §十.1 用户设计 = 最终版本 · §十.2 中央不设全视野 · §十.3 待调查清单更新规则 |
+| `docs/agents/12-十一-运行时操作原则.md` | §十一 直接用工具、不先读代码；有异常只记录 |
+| `docs/agents/13-十二-推演Skill文档规则.md` | §十二 推演 Skill 的文档规则 |
+| `docs/agents/14-十三-战损概率表先审后录.md` | §十三 概率/战损表先审后录、掷点可复现、错误落库后的回滚口径 |
+
+**② 文档系统与台账形制**
+
+- `docs/AGENTS.md` —— 文档系统本身的用法：**六层归宿表** · 口径优先级 · 「取代关系」怎么写 · `file:line` 与"生成命令"要求 · **日期口径规则**。
+- `.superpowers/AGENTS.md` —— **SDD 台账/证据的落点与形制**：`impl-ledger.md` 落 `.superpowers/sdd/<topic>/`，`evidence/` 同目录，**该目录被 `.gitignore` 的 `*` 忽略（不进 git）**。
+- 决策记录 → `.agents/notes/{proposed,implemented,archived}/<分类>/YYYY-MM-DD-<slug>.md`（为什么这么定、被谁取代）。
+- 技能 → `.agents/skills/<name>/SKILL.md`（**跨运行时**：Codex / Copilot CLI / Gemini CLI 也认）。
+- 机械强制 → `tools/gate.sh`（门禁组合 · `-pl` 强制 `-am` · `git add` 白名单）。
+
+**③ 关键长文（既有，本批未搬动）**
 
 | 文档 | 内容 |
 |---|---|
 | `docs/superpowers/specs/2026-09-16-simos-master-design.md` | **总纲**：五模块边界、八大件原语、两层地址、两阶段时间推进、存储分层、里程碑（已批准） |
 | `docs/superpowers/plans/2026-09-16-simos-master-plan.md` | **实现计划**：M0 分解 + M1~M6 路线图 |
-| `docs/superpowers/specs/` 与 `plans/` 下的其余按日期文件 | 各阶段的 spec/plan：M1 util、M2 map、M3 social+unit、M4 core、M5 shell、M6 导入器、M7 webui、**M8 地图编辑**、M9 大图性能、M10 部署、Unit 扩容、SDSimos、工具面… |
-| `.superpowers/sdd/<topic>/` | **SDD 台账与逐任务证据**（`progress.md` / `task-N-report.md` / 各 `*-evidence/`）。想要"当时到底怎么验的"看这里 |
+| `docs/superpowers/specs/2026-10-02-architecture-design-source.md` | **用户设计原稿（D-xxx）＝ 最高权威** |
+| `docs/superpowers/specs/` 与 `plans/` 下的其余按日期文件 | 各阶段的 spec/plan：M1 util、M2 map、M3 social+unit、M4 core、M5 shell、M6 导入器、M7 webui、M8 地图编辑、M9 大图性能、M10 部署、Unit 扩容、SDSimos、工具面… |
+| `docs/superpowers/status/2026-10-13-outstanding-work-survey.md` | **最新未完成清单**（口径以此为准） |
+| `docs/superpowers/status/2026-10-12-known-issues-code-verified.md` | **回代码核实版**：54 条说法逐条判定 + 16 处文档更正 + 好/没好分档 |
+| `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md` | "计划内未实现"总清单（**其经济部分已被上一份更正**） |
 | `docs/superpowers/HANDOFF-*.md` | 跨会话进度存档 |
-| `docs/superpowers/status/*.md` | **阶段状态与未实现清单**（最新：`2026-10-12-known-issues-code-verified.md` = **回代码核实版**：54 条说法逐条判定 + 16 处文档更正 + 好/没好分档；上一份 `2026-10-23-planned-not-implemented-inventory.md` 仍是"计划内未实现"总清单，**其经济部分已被前者更正**） |
-
-★ **"当前状态"不在这里抄一遍**：看 `git log --oneline -20`、最近的 `.superpowers/sdd/*/progress.md`、
-以及各计划自己那节关账记录；**未实现功能总表**看 `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md`（★ 2026-10-12 起，**口径以 `docs/superpowers/status/2026-10-12-known-issues-code-verified.md` 为准** —— 回代码核实版：54 条说法逐条判定 + 16 处文档更正 + 好/没好分档）。
-★ 历史里程碑的逐条台账**已随 CLAUDE.md 退役**（在 git 历史里，`git show <sha>:CLAUDE.md` 可取）。
-
-## 一、并发：这是最容易造成返工的一类
-
-1. ★ **一次只能跑一个 Maven。** 本机内存不足以并行；两轮 Maven 同抢 `target/` 会让**测试计数失真**
-   （实测：某轮 simos-app 只跑了 **9/66** 个测试类、97 条，而正常是 459 条）。
-   跑前：`pgrep -af "surefirebooter|classworlds.launcher"`；有命中就等。
-   ★★ **2026-10-23 用户更正作用域**：「**那是隔壁项目，编译门禁只是用于同一个项目文件！**」
-   ⇒ 本条只约束**同一个项目 / 同一棵工作树**（同抢同一份 `target/`、同一份 `.mvn-lock.d`）——
-   执行形态就是 `tools/mvn-lock.sh`（本仓锁，拿不到锁自动排队）。
-   **别的仓库 / 别的项目的 Maven 在跑，不阻塞本仓构建**；判断"本仓有没有 Maven 在跑"要看进程是否落在本仓
-   （命令行 / cwd 含本仓路径），**不要用裸 `pgrep` 把隔壁项目的 Maven 也算进来**。
-2. ★ **一个文件一个 owner。** 动手前先 `git status --porcelain`，再用 `find <模块>/src -newermt "-3 minutes"`
-   看有没有人正在写；看到**半成品尾巴**（例如某处 import 了刚被删的类 ⇒ 编译不过）**不要接手**——
-   那通常不是坏尾，是**另一个 agent 的中间态**。本会话就发生过：一个 agent 因此停下报我，判断是对的。
-3. ★ **派单要写清"谁拥有哪些文件"**；跨 agent 改同一文件 = 互相覆盖。
-4. ★ **不要在别人跑 Maven 的窗口里改 Java**：编译/测试的计数会不可信，白跑一轮。
-
-### 一.5 ★★★ 用户 2026-09-27 裁定：**派单粒度 = 一个责任区一个写代码代理，测试最后单独一个代理**
-
-> 用户原话（连起来读才完整）：
-> ① 「**不是，为啥一个 M1 能拆这么多子任务，不是先写代码和过编译，等最后再搞测试吗**」
-> ② 「**也没让你自己写，是让你派子代理写代码、过编译，然后最后你搞测试，具体也是派测试 Agent 盯着，
->   一个阶段拆这么多干啥？**」
-
-**这条同时纠正两个错**（我 2026-09-27 在 M1 上两个都犯了，代价是两次子代理被打断）：
-
-| 错误做法 | 正确做法 |
-|---|---|
-| ❌ **把一个阶段拆成 8~9 个子任务**（M1 拆成 M1.0…M1.8，一个任务一个代理） | ✅ **一个责任区 = 一个写代码代理**，一次把该责任区**全部生产代码**写完 |
-| ❌ **每个任务都配测试**（写一段代码、配一组用例、跑一次门禁） | ✅ 写代码代理**只写到「编译过」**；**测试整块留给最后的测试代理** |
-| ❌ **控制方（我）自己动手写代码** | ✅ 代码**派子代理**写；**控制方负责派单、审、验收、提交** |
-
-**责任区（2026-10-23 起，你 2026-09-27 原话里的"阶段"即此）**：一个**完整、可编译、可独立验收**的目标/问题域
-（例："钱这一层""关系这一层""某个模块的日志面收口"），**不是计划编号、不是文件数、不是 Task 3.2**；
-切法按"可独立编译的层"（§一.5 的例外条款），不按计划编号逐条拆。
-★ **compile 只是进入下一个责任区的门槛，不是完成标准**：当前责任区的最终验收按 §一.10（真实行为证据 + 负向验证）。
-
-**与 §三.0 的关系**：§三.0 已裁定"**测试与变异自证留到最后统一做**"（"先一口气把业务代码都做完"）。
-§一.5 补上它的**执行形态**：那条裁定落到派单上就是"**写代码代理不写测试、测试代理最后统一盯**"。
-两条是同一件事的两面，一起读。
-
-**写代码代理的任务书里必须写死的三条**：
-1. **只写生产代码，写到「编译过」**（`-DskipTests … compile`）；**不要写/改任何测试文件**；
-   **不要跑 `test` / `verify`**（测试阶段不归它）；
-2. **不 `git commit`**（控制方审后提交）；
-3. 报告里必须**点名哪些改动会改变数值行为**、以及受影响的硬编码字面量清单（**给测试代理当输入**）。
-
-**测试代理的任务书里必须写死的三条**：
-1. 按**计划里的判据清单**（`docs/superpowers/plans/*` 的该阶段各条）逐条落实，**不是**按代码反推该测什么；
-2. 关键项要**变异自证**（改坏 ⇒ 当场红 ⇒ 还原 ⇒ 比 md5），做不到的如实说"等价存活"；
-3. 报告里必须有**"我没做 / 没验证的"**一节。
-
-★ **粒度判据（怎么算"一个阶段"）**：以**开发计划里的一节**为单位（M1、M2…）。
-阶段内部**不再逐任务派单**——同一个代理在一个上下文里写完，才看得见各任务之间的耦合
-（M1 的 `frozen` 边界、`applyTransfer` 唯一写口、关系面与保留算式的分工，都是**跨任务**才看得清的）。
-★ **例外**：阶段**明显过大**（一个代理一轮写不完）时可以拆，但**按"可独立编译的层"拆**（如"钱这一层"/"关系这一层"），
-**不是**按计划里的编号逐条拆；且每层仍然只写代码、不写测试。
-
-### 一.6 ★★ 用户 2026-09-27 裁定：**后台子代理在跑时，控制方直接 sleep 等待**（★★ 本条是 **DeepseekHarness 特有**）
-
-> ★★ **适用面（先读这一行再照抄）**：本条讲的两个现象 —— ① 后台子代理在跑时 harness 会**持续注入 goal 续轮**；
-> ② **长 sleep 会被工具拒**（实测 `sleep 570` 返回 `Error: [object Object]`）—— 是 **DeepseekHarness 特有的构式机制**，
-> **其他 Agent 软件貌似没有**（用户 2026-09-27 原话）。⇒ 换外壳 / 换 harness 时**先核一遍再照抄**（与 §八.6 同族纪律），
-> 别把本节的绕法带到没有这个机制的环境里。
-
-- 用户原话（两句连读才完整）：
-  ①「**这个子Agent在后台运行会一直注入 goal，直接 sleep 等着就行；这条计入 AGENTS.md，避免后续浪费 token**」
-  ②「**我的建议是 2 分钟 1 等，这条也计入 AGENTS.md，注意说明这是 Deepseek**」
-- **规矩**：只要还有后台子代理没落定，控制方**不要再做任何"填时间"的活**（读代码 / 侦察 / 写计划都不算进展）——
-  **每次 `sleep 120`（2 分钟）、醒来查一次；落定一个再执行下一步**；**不要一次 sleep 几分钟以上**（本 harness 的长 sleep 会被工具拒）。
-- **为什么**：goal 自动续轮会在等待期反复注入轮次、每轮都要重新装载上下文 ⇒ 侦察的 token 成本远高于它买到的信息，
-  而那些信息本来就在子代理的报告里。★ 例外只有一个：等待期间**有别的子代理已落定的报告要审**（那不是填时间，是下一步）。
-
-### 一.7 ★★ 用户 2026-09-27 裁定：**只有一个子代理要跑时，直接派到前台**
-
-- 用户原话：「**对于这种单个的Agent，最优解还是直接派到前台，下次注意吧——写进AGENTS.md**」
-- **规矩**：当"同时只有一个子代理"（控制方自己无并行活可干）时，用**前台**派单（`subagent` 的
-  `run_in_background: false`），**一次调用等到它落定**；**不要**留在后台 + `sleep` 轮询。
-- **为什么**：本会话实测 —— 后台的单代理 `50031f11` 在 goal 续轮边界上**被中途停止**
-  （幸好它当时还没写盘，靠控制方补消息才续跑）；而后台机制本来是给"多个代理并行"用的。
-- ★ 与 §一.6 的关系：§一.6 讲的是**已经**在后台上跑的代理怎么等（`sleep 120` 轮询）；本条讲**一开始就别把它放后台**。
-  两条都只在 **DeepseekHarness** 下成立（§一.6 的适用面声明同样适用本条）。
-
-### 一.8 ★★★ 用户 2026-10-06 裁定：**派"实现架构"的子 Agent 前，必须先保存完整架构设计文档，并据此明确告诉它新架构长什么样**
-
-> 用户原话：「我注意到，你调用子Agent的时候，不跟它讲代码设计，只让它干测试，那它怎么可能干得好？
-> 往AGENTS.md里加上，派子Agent实现架构设计，必须先保存一份可以被阅读、验证、逻辑完全的架构设计文档，
-> 然后必须以此明确告诉子Agent新架构长什么样，现在先记、写。」
-
-> 用户 2026-10-23 补充：「细化到多少执行多少……让子Agent文档化明确记录自主设计和编写流程、
-> 允许挑战原有设计乃至和主Agent沟通」⇒ **按需细化**：不是"主控预写死一切"，也不是"什么都不给"。
-
-**本条是 §一.5 的前置条件**：派实现 Agent 之前，控制方必须把**该冻结的**写成文档、并在派单里讲清楚；
-但**只冻结必须冻结的**——控制方出「**约束设计书**」，实现方自己出「**实现架构账本**」：
-
-- **【控制方】约束设计书 = 冻结"世界必须长成什么样"**：需求来源/用户原话/目标/非目标；现状事实（`file:line`）；
-  外部接口·载荷形状·数据流与所有权边界；不变量清单（权限单调性、失败语义、往返不变式、模块边界）；
-  验收判据 + 负向用例清单；文件所有权。
-  ⇒ **该细的必须细**：契约、不变量、验收判据、边界写不清 = 没资格派单；
-  ⇒ **不该细的不细**：内部组件拆分、类/方法设计、实现顺序、调查路线（调查 Agent 除外，只给方向与问题清单）。
-- **【实现方】实现架构账本 = 决定"代码怎么把这个世界长出来"**：落点 `.superpowers/sdd/<topic>/impl-ledger.md`，内容见下。
-
-**什么算"实现架构"（触发本条）**：
-- 新增/删除/改绑 `EconomyData`、`ActorData`、`SocialData` 等持久状态组件；
-- 新增运行时阶段、结算器、时间参与者、profile/激活位、跨切片写口；
-- 新增/修改对外 API、GM 工具、Codec/ChangeSet 形状、载荷契约；
-- 改数据流/所有权/生命周期（谁在什么时候读什么、写什么、按什么次序）；
-- 改数值公式口径或硬编码标定值。
-只做局部重命名、单点 bugfix、纯文案/格式化，可以只写简短派单说明，但**一旦碰到上面任一项就必须有文档**。
-
-**约束设计书放哪**：
-- 规格：`docs/superpowers/specs/<YYYY-MM-DD>-<主题>.md`（追加式，不删旧版本；被取代的标"已被 D-xxx/新条目取代"）；
-- 或作为既有主计划的独立小节；**不能只写在聊天里、不能只写在代码注释里、不能只写在子 Agent 的任务书里**；
-- 文档必须落盘（工作树可见可读）；跨批次/跨会话复用的大型设计要提交后再派单，并在派单书里写提交号或工作树路径。
-
-**实现架构账本（实现 Agent 自己写，落盘后由控制方随批提交）**：
-1. **关键调查结论**：`file:line` 证据 → 结论 → 影响；
-2. **自己的实现架构**：内部组件拆分、类/方法设计、实际数据流与调用次序；
-3. **关键判断**：为什么这样拆、为什么不用另一条路线、调查中推翻过什么；
-4. **偏离记录**：与约束设计书不一致之处及原因（主动记录，不隐瞒）；
-5. 只记决策相关事实，不写流水账、不抄工具输出。
-
-**挑战与沟通（既不是"只能服从"，也不是"只能停手"）**：实现 Agent 认为约束设计书有错/漏/自相矛盾 ⇒
-**可以提出并说明理由、与主 Agent 沟通**；控制方按三级处置：
-- 涉及用户原话、五条铁律、模块边界、权限单调性、用户设计原稿 ⇒ **控制方必须转问用户**，得到裁定后才继续；
-- 其余技术分歧 ⇒ **控制方当场裁定**或更新约束设计书（更新必须落盘）；
-- 纯实现困难（非设计冲突）⇒ **不停手**：给最强 fail-closed 方案并实现，任务保持未完成（**BLOCKED，不是 DONE**）。
-
-**判据**：读约束设计书不需要看代码就能回答"外部契约是什么、钱/货/人/债每一步怎么走、失败时怎样、
-权限/边界在哪"；关键路径上不允许"实现时再定"这类占位；确实要用户裁定的开放点单列"待裁定"，
-卡住实现就先问用户、不许先写。
-
-**派单书里必须写死的五条**：
-1. **引用约束设计书路径 + 具体小节号/条目号**，并把关键形状**原样复述**给子 Agent
-   （不能只给链接、不能只说"读计划"；任务书本身要是一份可执行的自包含摘要）；
-2. **责任区六要素**：① 问题现场（`file:line` 已确认事实） ② 责任归属（这一整块由你负责解决到什么程度）
-   ③ 最终能力（完成后系统必须出现的行为/能力） ④ 不可破坏机制（五条铁律/模块边界/权限单调性/用户原稿/
-   既有工具·目录·预算语义） ⑤ 可动范围（大致模块方向） ⑥ 交账方式（账本 + 真实命令与结果 + 负向验证 +
-   未完成项/blocker）；
-3. **明确不要求**：逐文件施工图；预设调查路线（调查 Agent 除外，它只给方向与问题清单）；固定实现计划；
-   阶段性停靠点；按控制方预设的类/方法拆分；
-4. **文件所有权**：允许写哪些、禁止碰哪些；只写生产代码、只过编译、不写/不跑测试（§一.5）；
-5. **报告模板**：改动文件、编译结果、会改变数值行为的清单、受影响硬编码字面量、
-   **会让既有测试断言失效的清单**、账本落点、与约束设计书不一致处及原因、未完成/未验证项。
-
-**测试 Agent 的任务书引用同一份约束设计书**：按验收判据逐条测（含**负向用例**：权限不能放大、
-拒绝语义成立、数据往返成立、绕过路径确实被挡住），不是按代码反推该测什么。
-若测试发现实现与文档不一致，**先判定是文档错、实现错还是测试夹具错**；改文档必须单独提交并写明原因，
-不许测试 Agent 为迁就实现改断言。
-
-**门禁**：没有约束设计书就派实现 Agent ⇒ 控制方派单无效，子 Agent 有权拒绝并指出缺文档；
-控制方可以自己先写，或先派一个"只写约束设计书、不写实现"的设计 Agent，文档落盘/提交后再派实现 Agent。
-
-### 一.8.1 ★★★ 用户 2026-10-23 裁定：**派单文档必须原样收录用户原话；设计与原话冲突 ⇒ 子 Agent 直接上报**
-
-> 用户原话：「往AGENTS.md里面加一条，这种用于派单实现开发计划的文档，里面必须包含我的全部相关原话，
-> 子Agent若认为架构设计和我的原话冲突，直接上报，然后你来问我，最大限度确保设计不失真」
-
-**执行形态**：
-
-1. **原话附录是派单门槛**：凡用于派实现子 Agent 的**开发计划 / 架构设计文档**，必须有独立小节
-   「用户原话附录」，**逐条原样照录**该主题下用户的**全部相关原话**（含日期；不改写、不缩写、不"意译"、
-   不把自己的总结混进去）；相关的用户裁定编号（`D-xxx`）一并列出。
-2. **冲突与 blocker 分开处置**（2026-10-23 起按 §一.8 的三级口径）：
-   - 设计与**用户原话/红线**冲突、或原话有歧义 ⇒ **立即停手上报**，控制方必须转问用户，得到裁定后才继续；
-   - 纯技术分歧 ⇒ 可提出、与主 Agent 沟通，由控制方当场裁定或更新约束设计书（更新要落盘）；
-   - 纯实现困难 ⇒ **不停手**：给最强 fail-closed 方案并实现，任务保持 **BLOCKED（不是 DONE）**。
-3. **控制方不得代替用户裁定设计**：文档里要分清哪些是**用户裁定**、哪些是**控制方的实现建议**
-   （后者随时可被用户推翻）；派单书（子 Agent 任务书）必须写明上面第 2 条的上报义务。
-4. **为什么**：本仓已两次栽在"设计失真"上——§四 的四条「台账/计划措辞 ≠ 代码实际」、
-   §五.5 的「自造的规矩冒充用户裁定」。都不是实现能力问题，是**源头设计被传话传歪**。
-
-### 一.9 ★★★ 用户 2026-10-04 裁定：**经济系统先全量 Log 化；其他模块暂时没有 Log，经济调试收口后必须补**
-
-> 用户原话：「讨论个屁啊，先把经济系统全量Log化，把日志记录给我做全了，并且在项目文档里写明其他模块没有加Log这次调试完记得加」
-
-**背景（实测，不是感觉）**：在 2026-10-04 之前，`simos-economy` 的 `src/main` 里**一个 `Logger` 都没有**
-（`grep -rl LoggerFactory simos-economy/src/main/java` = 1，且那 1 个是本次刚加的）；经济系统怎么跑、先干什么后干什么，
-只能靠事后读 `ProductionLedger` 猜。这是"市场冻结/借贷不触发"排查被拖长的主因。
-
-**经济系统的 Log 纪律（已落地）**：
-- 唯一门面：`io.mosire.simos.economy.EconomyLog`（`simos-economy/src/main/java/io/mosire/simos/economy/EconomyLog.java`），
-  分类 logger = `io.mosire.simos.economy` 下的 `settlement / market / debt / migration / organization / entry / population / trace`；
-  **禁止**各调用点自己 `LoggerFactory.getLogger("...")` 拼 logger 名。
-- 级别约定：**INFO** = 生命周期与"这一轮发生了什么"（每日 DAY_START/DAY_END、收获/开市/借还/饿死/迁移/建组织等事件）；
-  **DEBUG** = 每阶段池子/汇总/理由（谁有额度、为什么不开市、清算/退出几条）；**TRACE** = 逐笔明细（每笔转移、每个成交/未成交槽、
-  债务建立/减少/计息、迁移 move、逐户饿死）。逐笔事件走 `.trace` 分类，默认关闭、可单独开。
-- 开关（只影响输出，不影响状态）：`simos-app/src/main/resources/log4j2.xml` 读
-  `-Dsimos.economy.logLevel=INFO|DEBUG|TRACE`（主分类）与 `-Dsimos.economy.traceLevel=...`（逐笔分类）。
-- 设计文档：`docs/superpowers/specs/2026-10-04-economy-logging.md`；真实样例：`RealTwelveOneTickTraceTest`。
-- **新增/修改经济阶段时必须同时加日志**：新状态写口至少 INFO 一条"发生了什么 + 具名计数"，关键判据/拒绝路径至少 DEBUG 一条
-  "为什么"，逐条发生额至少 TRACE 一条；否则该阶段视为没做完（用户直接用日志排查，不读代码反推）。
-- 纪律：密钥/载荷明文绝不进日志；日志不写任何状态、不改任何公式；日志失败不得影响结算。
-
-**通用 event 机制落 util（2026-10-09 用户裁定）**：
-- 用户原话：「为啥非要让日志模块本身知道具体涉及了什么发生了什么，单纯的 event 完全应该放在 util。」
-- 通用机制唯一落点：`simos-util/src/main/java/io/mosire/simos/util/log/` 的
-  `LogEvent` / `LogLevel` / `EventLog` / `LogChannel`。它只持有"事件名 + 保序字段表 + 级别 + SLF4J
-  发射"，**不知道任何模块、事件名、领域类型或状态**；事件名与字段由产生事件的那一行代码传入。
-- 各模块 `XxxLog`（Economy/Social/Unit/Map/Sd/Actor/Gov/Army/Calendar/Core/App）继续是 logger 名的
-  **唯一拼写点**，继续被 `log4j2.xml` 的 `simos.<module>.logLevel/traceLevel` 控制；`kv` 不再各自实现，
-  只保留一行 `return EventLog.kv(keyValues);` 委托。新代码优先
-  `EventLog.channel(XxxLog.category()).info(LogEvent.of("EVENT", ...))`。
-- `io.mosire.simos.util.time.Event<T>` 仍是"时刻 + 值 + ADD/SET"的时态值类型，**不是**日志事件，二者不合并；
-  util 不持有任何领域事件（如 `HouseholdPopulationEvent` / `DebtContract` / `MIGRATION_*`）。
-- 设计文档：`docs/superpowers/plans/2026-10-09-util-event-logging-refactor.md`。
-
-**其他模块的现状（用户要求写明，调试收口后补）**：
-- 实测（2026-10-04）：`simos-map` / `simos-social` / `simos-unit` / `simos-sd` / `simos-actor` / `simos-actor-api` /
-  `simos-economy-api` / `simos-calendar` 的 `src/main/java` 里 **`LoggerFactory` 与 `System.out` 都是 0 命中**；
-  `simos-core` 有 4 个文件、`simos-app` 有 11 个文件有零星日志（启动/检查点/人口/税等），但**没有**"每一步做了什么"的阶段日志。
-- **待办（不是可选）**：本轮经济调试收口（市场冻结/借贷/迁移跑通）之后，按本条的同一套形态给其他模块补日志——
-  每个模块一个 `XxxLog` 门面、同样 INFO/DEBUG/TRACE 三档、同样先写设计文档再派实现（§一.8）。
-  ★ 2026-10-09 P1.3 已补 `MapLog / SdLog / ActorLog / GovLog / ArmyLog / CalendarLog / CoreLog / AppLog`（★★ 2026-10-12 批次 3e：`SdLog`/`SdLogSource` 随 `simos-sd` 退役删除；`SdResolver` 的 `SD_RESOLVE_*` 事件改挂 `GaLog.resolve()` / `GaLogSource.GA_RESOLVE`，事件名 `GA_RESOLVE_*`）
-  八个门面（social/unit/economy 原有），剩余是调用点覆盖与测试迁移；通用 event 机制随后收口到 util（见上）。
-  模块补齐前，任何"其他模块为什么没动作"的排查都只能读代码，不能读日志；这条缺口不许再被当成"已经是这样"。
-- ★★★ **2026-10-23 已收口**（用户裁定先做工程/纪律/运维；批次与验收见
-  `docs/superpowers/plans/2026-10-23-all-module-logging-rollout.md`，用户原话附录在该文件 §11）：
-  - util 只加类型架构 `LogOrigin`/`LogOriginKind`；11 个模块各自维护来源表 `XxxLogSource`（表项带中文说明、id 不改）；
-  - 全部 `*Handler` / 时间参与者 / codec / resolver 覆盖（economy spi 20/20、map 11/11、unit 33/33、social 19/19、sd 28/28、actor 7/7、army 3/3）；门面外 `LoggerFactory` 清零；
-  - 发射统一 `EventLog.channel(...)` + `LogEvent.of(name, source, ...)`，**每条事件带 `origin=` + `originKind=`**（tick/interaction/system）；
-  - 级别规则（用户 2026-10-23 裁定）：**业务拒绝 = INFO**；**契约/跨切片一致性故障 = ERROR 不降级**（负人口、投影不一致等）；**既有 WARN 不降级**；逐笔明细 = TRACE。
-  - 剩余（另开批，不阻塞）：economy 9 条命令面事件的分类待统一；`Replay.applyWorld`/`Timeline.readChangeSet`/`Envelope.decode` 三处失败路径无 ERROR 行；真 `-Dsimos.*` 系统属性轮未跑。
-
-### 一.10 ★★★ 责任区委派：办事 Agent 的派单形态（2026-10-09 用户裁定立；2026-10-23 按实验结论收编）
-
-> 用户原话（2026-10-09）：「子Agent我认为只分两种，一种是调查子Agent……然后是办事……代码实现Agent，
-> 应该只给要求目标……可容忍的修改……然后框一个大致的文件范围……只要能过编译就继续派Agent实现下一部分，
-> 最后按照已有AGENTS.md原则进行总验收，而不是写一个阶段验一个阶段；老架构老测试，新架构新测试，
-> 直接给被改的相关架构的测试删了。」
-
-**两类子 Agent**：
-
-1. **调查子 Agent**：只读。可以读全项目，但针对特定功能时派单必须带**方向与问题清单**；
-   禁止无方向地“把全项目查一遍”。
-2. **办事子 Agent**：只给目标与边界，不给逐文件施工图；本 Agent 负责**一个责任区**的全部生产代码
-   （责任区定义与切法见 §一.5）。
-
-**派单书六要素 / 明确不要求**：见 §一.8（同一套，不在这里重抄）。
-
-**compile 语义（2026-10-23 修正）**：`-DskipTests compile` 过 = **可以进入下一个责任区**；
-**不等于当前责任区已验收**。最终按 AGENTS 既有原则**总验收**（真实行为证据 + 负向验证），不做阶段内逐段验收。
-
-**测试口径**：老架构老测试、新架构新测试；被改架构相关的旧测试直接删/迁移；
-**新测试由后续测试 Agent 按验收判据补（含反证用例），不是删完就算**。
-
-**硬边界门禁**：
-
-- 五条铁律、模块边界 enforcer、权限单调性、用户设计原稿（§十.1）**不可协商**；
-- 做不到 ⇒ 任务 **BLOCKED，不是 DONE**；**"写进风险文档/未完成项"不能替代验收判据通过**；
-- blocker 报告必须给：为什么做不到、需要的最小额外范围、是否有 fail-closed 的安全降级方案
-  （能做就实现它，不是只写"当前存在风险"）；
-- 只有"设计冲突/需要用户裁定"才允许停手等指令（走 §一.8 的三级处置）；纯实现困难**不属于**停手理由。
-
-**红线（不因委派放松）**：一次只允许一个**写代码**的办事 Agent（多 Agent 只用于只读调查且互不共享写目标）；
-一次只跑一个 Maven（**作用域=本仓**，隔壁仓库不阻塞）；一个文件一个 owner；
-控制方不写代码（只做调查综合/约束设计/派单/验收/提交）；密钥纪律；不覆盖运行中 jar；§五.5「该推就推」。
-**实验记录与回退点**：`docs/superpowers/status/2026-10-09-agent-experiment-baseline.md`。
-
-### 一.11 ★★★ 用户 2026-10-10 裁定：**旧设计与旧数据类型不保留——直接重建、直接删**
-
-> 用户原话（2026-10-10）：「**旧设计和数据类型直接重建不用留，删就删了，谁跟你说不能删的？**」
-
-**规矩**：
-
-1. **落盘旧档不要求兼容**：改状态形状 / 删持久组件时，**不必**写"旧键归一 / 兼容位 / 忽略 + 具名 INFO"
-   这类向后兼容代码；旧档按**重建**处理（重新播种 / 跑新世界）。
-2. **旧设计类型直接删**：为旧设计而存在的字段、组件、枚举档、"旧档兼容位"、只留痕的结构——**该删就删**，
-   不因为"可能还有人读"而保留。
-3. **旧测试直接删**（与 §一.10 同源）：被改架构相关的旧测试**删/迁移**；新测试按验收判据另写。
-4. **控制方不得自造"兼容"门槛**：把"旧档要能读"当成不可协商的约束 = **自造规矩**（与 §五.5 同族错误）。
-   用户没说要兼容，就按"删 / 重建"做。
-
-**★ 三件不要混起来（本轮混淆的根源）**：
-
-| 概念 | 是否保留 | 说明 |
-|---|---|---|
-| **旧档 / 旧格式兼容**（落盘数据还能读） | ❌ **不要** | 本条管的 |
-| **"未设新东西 ⇒ 逐值不变"**（缺省语义中性：`s=0` / 税=0 / 空表 ⇒ 行为同改前） | ✅ **保留** | 这是**新契约的缺省语义**，不是兼容位；I-P8 / I-C2 / F 批一系列判据靠它 |
-| **文档历史留痕不改**（§五.4） | ✅ **保留** | 只针对 `docs/**` 与 `.superpowers/**` 的历史行；**不等于**代码/数据要兼容 |
-
-**为什么**：这个项目的"存档"是**模拟世界的中间产物**，不是用户资产；为它写兼容层会把每个批次的成本翻倍，
-并让旧设计在代码里**永久驻留**（正是"看起来在记、其实永远不被读"那一族）。用户 2026-10-09 已裁定
-"老架构老测试、新架构新测试"（§一.10）；本条把同一条**扩到数据类型与落盘数据**。
-
-#### ★★★ 2026-10-11 用户裁定（**写死**）：**Alpha 阶段不考虑任何兼容性**
-
-> 用户原话：「**存档废掉就废掉了！！！！没人让你存老档！写死在AGENTS.md里，Alpha阶段没做完考虑啥兼容性！**」
-
-1. **旧存档 / 旧格式一律作废**：形状一变，旧档**读不了就读不了** —— 直接重建（重新播种 / 跑新世界）。
-   **不写迁移、不写键归一、不写"旧键忽略/兼容位/双读"**（§一.11 的执行面）。
-2. **"旧档读不回来"不是缺陷**：不许记成 bug、不许为它开批次、不许把它写进风险/未完成清单；
-   门禁里也**不许**加任何"旧档可读 / 旧档还能跑"的判据。
-3. **唯一要守的是"同一版本内自洽"**（铁律 5）：**新代码写出去的档，必须能被新代码逐字段读回**（往返不变式）。
-   ★ **这两件事不是一回事，别混**：本项目刚踩的坑是**新类型写出去、自己读不回来**
-   （`MarketTable.isEmpty()` 被 Jackson 当成属性多写了 `"empty"` ⇒ fail-closed 拒）——那是**铁律 5 缺陷，必须修**；
-   而"上一版的档读不了"是**预期行为，不修、不管、不记**。
-4. **推理链要短**：任何"为了兼容旧档 / 旧世界 / 旧测试"而多写的分支、开关、兼容位、迁移命令，
-   一律按**自造门槛**处理（§五.5：自造的规矩不得冒充用户裁定）——
-   实现 Agent 有权**直接删掉**并记一条偏离，控制方不得以"怕丢数据"为由拦。
-5. **验收只认"跑新世界"**：一律用**从创世新播的世界**（`run-small-world.sh` / `test-world` / `~/Simos-18Lvt`）；
-   **不许**拿"旧档还能跑"当通过证据，也不许为迁就旧档而推迟批次。
-
-### 一.12 ★★★ 用户 2026-10-10 裁定：**提"待裁定"之前必须先做口径溯源——已有裁定不得重复问**
-
-> 用户原话（2026-10-10）：「**你能不能看一下之前的文档？有很多东西我在之前的最新文档里已经做过裁定了，
-> 为啥让我做重复裁定？把规则记进AGENTS.md，裁定应先核对文档里的最后相关口径**」
-
-**规矩**：控制方向用户提**任何**"待裁定 / 请裁定 / 你选哪个"之前，**必须**先做完口径溯源，并把它**落盘**
-（写在相关 spec 的一节里，例如「口径溯源」表）。**没有溯源表 = 提问无效**，子 Agent 有权拒绝按它开工。
-
-**口径溯源四步**：
-
-1. **检索范围（按 §四.1「最新落盘文档为准」）**，至少覆盖：
-   - `docs/superpowers/specs/2026-10-02-architecture-design-source.md` —— **用户设计原稿 D-xxx = 最高权威**
-     （D-023/D-030 这类"用户口述裁定"就在里面，且往往被后来的计划远距离引用）；
-   - 该主题相关的 `docs/superpowers/specs/*.md` —— 尤其每份文档开头的「**用户原话附录**」
-     （§一.8.1 要求逐字照录 ⇒ **裁定常常就躺在里面**）；
-   - `docs/superpowers/plans/*.md` 的**裁定 / 默认值表**（"未回则按默认开工"的那些条目）；
-   - `docs/superpowers/status/*.md` 的**待裁定项与缺口清单**；
-   - `AGENTS.md` 自身（§五.5：引用裁定要能指出原话与日期；**自造规矩不得冒充用户裁定**）。
-2. **每条候选裁定必须给**：**结论 + 出处（文件 + 条目/§号 + 日期）+ 原话或条款原文 + 是否已被更新的文档取代**（§四.1）。
-3. **结论只有三种**：
-   - **已有裁定** ⇒ **直接用，不许再问**；实现上做不到就按 §一.10 走 **BLOCKED**，不是回去问用户；
-   - **文档之间 / 与用户最新原话冲突** ⇒ 带**冲突双方**（各自出处 + 日期 + 原话）去问，让用户选边，
-     而不是把一个裸问题丢给他；
-   - **确实无裁定** ⇒ 才问，且问题里写明"我查过哪些文档、最近的口径是什么、缺的到底是哪一点"。
-4. **反面样本（本条由来）**：2026-10-10 我把四条"待裁定"提给用户，其中**三条早已裁定** ——
-   - "还债要不要留口粮"：设计原稿 **D-030 §4** 早写死「冻结不越、**一日口粮保留**、余额不得为负」；
-   - "还不起怎么办"：**D-023 §3**（不做分别核算、合同保留单一未偿额）+ 用户 0–8 序列**第 7 条**
-     「没库存就记为实际债务」+ **第二批第 1 条**（阶层流动 = 速度、市场轮最末结算）；
-   - "铸币入口"：`docs/superpowers/specs/2026-10-08-currency-exchange-stage2-design.md` §1.1 与同文档
-     「不做铸币生产方式：`gov.issueMoney` 是 DM 定发多少的**行政发行** + 审计，不是产业产出」。
-   这三份文档**都在我的检索半径里**，其中两条的**原话还是我自己刚抄进 spec §1 的**。
-
-**为什么**：重复裁定把用户的注意力当草稿纸用；更坏的是它**掩盖真实缺口**（真没裁定的那一条会被三条重复的淹掉），
-并让"最新文档为准"这个权威落空（§四.1）。这与 §五.5「自造的规矩别冒充用户裁定」是同一条纪律的两面：
-**既要能指出裁定的出处，也要真的去指出处。**
-
-## 二、产物：别把正在跑的服务的 jar 覆盖掉
-
-- ★ **重建产物前先停服务**（或把新 jar 打到别的路径）。Java 的 classloader 是**惰性加载**的：
-  运行中被替换的 jar，之后要用到某个类时就读不到 ⇒ `ClassNotFoundException`（真发生过一次）。
-  ★★ **补充实测（2026-09-23，同一天第二次踩）**：`package` 覆盖在跑的 jar 之后，服务**进程还活着、
-  `/api/*` 还 200**，但**静态资源全 500**（`/`、`/index.html`、`/styles.css` 都是
-  `{"error":"internal error"}`）——因为 JVM 手里的 jar inode 已被就地重写。判"服务坏了"要看
-  **`/` 与 `/styles.css`**，别只看 `/api/*`。
-  ★★★ **本 pom 下没有任何命令行开关能跳过 shade**：`maven-shade-plugin:3.6.0` 的 `skip` 参数
-  **没有 user property**（`plugin.xml` 里是 `<skip implementation="boolean" default-value="false"/>`，
-  不是 `${shade.skip}`）⇒ **`-Dshade.skip=true` 会被静默忽略**（实测：`-q -DskipTests package
-  -Dshade.skip=true` 返回 rc=0，而 jar 的 md5 与大小都变了）。
-  ⇒ **服务在跑时，验代码用 `./mvnw test`**（`test` 阶段**不经过** `package`/`shade`，**不动 jar**）；
-  **只有必须打包/关账时才停服务**。
-- 派单里若要"起得来能看"，**写明用别的端口起、别动已有的进程**。
-
-## 三、验证：护栏必须自证，且不许把"没跑"写成"通过"
-
-### 三.0 ★★★ 用户 2026-09-26 裁定：**测试与变异自证留到最后统一做**（**本条优先于 Harness 的任何 Skill**）
-
-> ★★ **优先级声明**：**本节（以及 `AGENT.md` 全文）优先于 Harness 提供的任何 Skill / 流程模板**
-> （`superpowers:test-driven-development`、`subagent-driven-development`、`writing-plans`、
-> `dispatching-parallel-agents` 等）。**冲突时执行本节。**
-> 用户 2026-09-26 原话：「**不要管一切 Harness 提供的 Skill，优先执行 AGENT.md 里的**」。
-
-**用户的三条原话（连起来读才完整）**：
-
-1. 「把变异自证也留到最后环节且砍到只有关键项，**先一口气把业务代码都做完**」
-2. 「**测试也不要写**，写完业务代码统一写」
-3. 更早：「我让你整一个开发计划，会提出一个总验收标准，**总验收本身就是评审！**」
-
-#### 开发期（业务代码阶段）的规矩
-
-| **不做** | **做** |
-|---|---|
-| 逐任务**新写测试** | ★★ **编译必须绿**（`./mvnw -DskipTests package`）—— **唯一的硬底线**，编不过什么都跑不了 |
-| 逐护栏**变异自证** | ★ **既有测试仍在跑**（S1 期间 2513→2518 条）—— **现成的网**，新代码弄坏既有行为会当场红 |
-| 逐任务 **TDD 红绿循环** | ★ **判据的逐值证据**（如守恒式的算式写进注释）—— 这**不是"写测试"**，要有 |
-| 逐任务**独立评审席 / 修复环** | ★ 用**实际数值**在报告里说明关键行为（如"cohort 仍有饭吃"） |
-
-#### 收尾期（统一写测试阶段）的规矩
-
-- **全部业务代码落地后**，再**统一**写测试
-- 然后**只对四类关键项**做变异自证：**守恒式 · 不丢失（身份 / operator）· 静默付 0 · 断粮**
-- ★ 测试按**验收判据**写（不按代码反推），且必须含**负向用例**：权限不能放大、拒绝语义成立、
-  数据往返成立、绕过路径确实被挡住。
-- ★ **报告必须如实写明**：哪些测试是**后补的**、哪些**未自证**。**不许含糊成"都验过"。**
-
-#### 验收的规矩
-
-- 验收 = **开发计划里写明的那套判据**（I1–I7 那一类），在**阶段边界**由控制方自己跑
-- **最终判据是模拟数据**（S1 = 阶段 6 之后重跑 600 天三国）
-- **不设逐任务的评审席**；**不跑修复环**
-
-★ **本条的代价（写下来，不辩解）**：开发期没有测试 ⇒ **曲线一旦不对，没有测试告诉我们是哪一块错的**，
-诊断退回"读代码 + 二分"。与之对冲的是：既有测试仍在守**既有行为**，而**新路径**的正确性最终由**模拟数据**判定
-—— 这正是用户定的判据。
-
-★ **与本节其余各条的关系**：下面第 **2** 条（"新护栏要有判别力：变异体必须当场红"）
-**在开发期暂停执行、在收尾的统一写测试阶段恢复**；本节其余各条
-（不信 `rc=0`、看 surefire 报告与 mtime、如实写"没做/没验证"）**始终有效**。
-
-> ★★ **2026-09-27 用户追加裁定：阶段门禁只做编译，所有测试统一移到最后。**
-> 用户原话：「**把统一测试都移到最后，阶段门禁只进行编译，所有有关内容的测试都移到最后！**」
-> ⇒ **执行形态（覆盖本文 §七"阶段边界跑全仓 `clean verify`"一条，在本计划执行期有效）**：
-> ① 阶段/层的边界**只跑** `tools/mvn-lock.sh -q spotless:apply` + `tools/mvn-lock.sh -DskipTests compile`
-> （**不跑** `test` / `verify` / `package`；**既有回归网在全部生产代码落地前也不跑** —— "用全绿当阶段门禁"的做法
-> 在本计划执行期暂停）；
-> ② **全部生产代码**（本计划 = M1 剩余 + M2）落地之后，才**统一**：写测试 → 全仓 `clean verify` → 一年期真档读数 → 台账/关账；
-> ③ 收尾期的四类关键项变异自证仍照本节收尾期规矩执行；
-> ④ **如实记**：开发期**没有**既有测试的回归保护 —— 编不过会当场发现，**行为回归不会**。这是用户已知并接受的对冲。
-
----
-
-1. ★ 不信"rc=0 就是过了"：本仓 pom 明写前端门禁 **fail-closed、不设 skip/if 守卫**；
-   而 `-q` 会吞掉 surefire 汇总 ⇒ **类名写错、测试被跳过，照样 rc=0**。
-   要**看 surefire 报告**（`target/surefire-reports/*.txt`）并核对 **mtime 落在本轮**。
-   ★★ **追加（2026-09-27 实测踩到）：取 rc 本身也会读错** ——
-   `… | tail -25; echo "[exit=$?]"` 里 **`$?` 是 `tail` 的退出码**，于是"报告里还带 1 条红"的一次运行被读成了绿。
-   ⇒ **要么不接管道，要么显式用 `${PIPESTATUS[0]}`**；且**仍要看 surefire 的真数与 mtime**。
-   （同族的另一种：`-q` 下管道给 `tail` ⇒ 既丢了汇总、又读错了 rc。）
-2. ★ 新护栏/新判据要有**判别力**：临时把被测逻辑改坏（变异体）⇒ 必须**当场红**，然后还原。
-   做不到的（结构性不可表达）如实说"等价存活"，**不许编红点**。
-3. ★ 报告里必须有**"我没做/没验证的"**一节。凡是没跑过的，不许写成通过。
-4. 本会话反复用到的一条：**门禁沙箱不执行 `initHost`/`initDecision`** ⇒ "搬走函数但别处还留着裸调用点"
-   这类漏改**门禁查不出来、只在运行时炸**。搬函数后必须**静态审计裸引用**。
-5. ★★ **"同一个输入跑出两个结果"的第一嫌疑是产物陈旧，不是非确定性**（2026-10-11 实测，代价一整批的误诊）：
-   同一条命令、**源码逐字节相同**，分布跑出两个值（A 4/5、B 1/5）。查了半天"确定性"，真因是
-   **`target/classes` 陈旧** —— `maven-compiler-plugin` 增量判据 = 源 mtime vs 类 mtime，**被并发 Maven 刷新过的 `.class`
-   会让本轮跳过编译**（§一.1/§一.4 的同族），于是 B = "上一批修复没生效"的世界。
-   **判别实验（决定性、且便宜）**：把**旧版 `.class`** 放 classpath 最前、其余全用当前字节 ⇒ 分布复现 B 族。
-   **纪律**：① 见到"两个结果"先核**产物**（`find <模块>/target/classes -newermt` 与源 mtime 对比、必要时 `rm -rf <模块>/target/classes` 重编）；
-   ② 判"跨 JVM 非确定性"之前先做**同 JVM 双世界逐字节对比**（相同 ⇒ 排除逐对象 identity hash，只剩"每 JVM 常量"型）；
-   ③ 别急着往 main 加"守卫/校验"（那是新机制，按 §一.8 需先有约束设计书）；
-   ④ 排查手段可复用：钉 `java.util.ImmutableCollections` 的盐、位移 identity-hash 序列，各自跑一轮看分布是否变。
-
-**判别力的载体形态（摘要）**：完整叙述（每例的装置、数字、由来）在 `git show 6808aad^:CLAUDE.md` 的「纪律」节，
-这里只留仍要遵守的判据：
-
-- **"我验过了"与"我记得是这样"必须分开**：写给别人当依据的每个 Expected / 事实 / 出处都要有**当场跑过的痕迹**
-  ——不写没实测过的期望输出；不把工具的静默假阴性当"不存在"；不把推导出来的风险当既成事实。
-- **变异体先自证再跑**：编一份原件作参照、比 md5，证明落盘的确实与原件字节不同；变异体按**目标类名**推入
-  （按变异文件名拷入 ⇒ "红"变成编译错误，不算数）；每轮先把工作目录恢复成**干净世界**（重编原件 + 比 md5）。
-- **`target/` 下的一切都不还原**（`.class`、`surefire-reports/*.txt`）⇒ 读 surefire 数字**先跑干净轮**，
-  并核对报告 mtime 落在本轮；别拿"上次留下的绿/红"当本轮结论。
-- **红要红在被保护的那行上**（红的理由不对不算数）；**没红也要问为什么没红**（可能根本没跑到：
-  `--details=none` 全通过时不打汇总行）。
-- **夹具规模决定判别力**：用冻结字面量钉 `Map.copyOf`/`Set.copyOf` 保序时，3 键实测 7%~40% 恰好落回插入序
-  （假绿），4~6 键 0/30 ⇒ 键数要当场量，别凭"看起来不像巧合"。
-- **`mtime` 不是"字节变了"的判据，md5 才是**：变异轮还原时 `cp` 重写文件、字节一个没变 ⇒
-  mtime 新不能判旧证据失效；反过来也不能因为 mtime 新就重跑。
-- **拒收判据与接收判据都要有真样本**：Maven 3.9 写的是 `[INFO] BUILD FAILURE`，只认 `[ERROR]` 的正则
-  会把跑完的红轮判成"没跑完"（把"有"伪装成"没有"）。
-- **命中 0 先怀疑自己的正则 / 读取，别先怀疑被测物**：`grep -cE 'spotless.*SUCCESS'` 返回 0，
-  而 Spotless 其实跑遍了 6 个模块；核对脚本读到空串要先断言非空再下结论。
-- **分析器的判定不是被分析文件的纯函数**：同一份逐字节相同的 `UnitCodec.java`，SpotBugs 在 `c76b2b6` 的类集下报 0、
-  在 `684c757` 下报 2；`spotbugs:check` 直调不跑生命周期、不编译，在没编译过的树里 rc=0 无提示通过
-  ⇒ 要跑门禁就 `verify`；见绿先问"它分析了几个类"。
-- **装置的输入会静默改变被测对象**：Playwright `page.fill` 会把页面滚下去 ⇒ 随后的 `mouse.click` 落在视口外、
-  **无任何报错**；点击后必须断言"它真的发生了"（选中态 / 状态文案变了）。
-- **装了护栏要在它真正会被用到的每种环境形态下各证一次**（主树 / worktree / 从模块目录起跑）：
-  同一份仓源扫描器在主树扫到 44 个文件、在 worktree 扫到 0 个（绝对路径含 `.claude`）⇒ 断言恒真、全绿、无症状；
-  **只在主树测过等于没测**。★ 装了护栏却不跑 = 装饰（自建装置不在 CI 里同罪）。
-- **自建装置要自指**：把"这一轮跑的是哪份字节（md5）"追加进日志本身；引用自记要取**本名轮**那一块
-  （同名日志里会留作废轮）。
-
-## 四、台账/计划 vs 代码：**机制性描述一律回代码核**
-
-本会话发现**至少 4 处**"计划/台账措辞 ≠ 代码实际"，都足以让人做错方向：
-
-| 台账/计划说 | 代码实际 |
-|---|---|
-| "写工具用粗断言" | 写侧确实粗，但**有 3 条决策窄写覆写** `writeResources`，且目标**由身份而非载荷派生** |
-| T10 "写工具的断言也成对改细" | 只兑现为那 3 条，**"改细"的范围比措辞小** |
-| "读口必须走 `RedactingQueryService` 的同一份装配" | 9 条读工具走的是 `ToolSupport` 谓词；`RedactingQueryService` 是 GUI `?as=` 在走 |
-| "`at.revision` = 该条目落盘时的 revision" | 实为**写入所依据的基态** revision（可能小于首次可见的 revision） |
-
-⇒ **凡要用到台账里的机制描述，先去代码确认**；发现不符**报出来**，别照着措辞硬做。
-
-★★ **追加（2026-10-11 实测）：异常消息里的位置 ≠ 真凶 —— 报错点要用"判别实验"断因果。**
-W5 让新世界创世失败，46 个 app 测试全红，报错原文是「**未登记的制度，无法推导默认经营主体：`government_mint`**；已登记的档: [feudal, household, handicraft, tenant]」——
-照字面去补"制度表"是**改错表**（那是经营主体表，按裁定就该四档）。真凶在**三环之外的第一环**：
-载荷解析对**每个** industry 节点都**急切**推导默认经营主体（新形状其实自带 operator，那个值只在 `legacy==true` 时有消费者）。
-**判别实验**（只补那一处 ⇒ 创世当场通过）才把因果断开。
-⇒ **纪律**：门禁红/异常时，先把"消息指向的位置"当成**线索之一**而不是结论；用**最小改动 + 单点复跑**做判别实验，
-把"谁真的抛了这一句"和"谁让状态变成这样"分开写进报告。
-（同族：`Replay.applyWorld` 报 codec 解码失败，真凶可能是更上游的类型多写了一个键 —— 见 §一.11 的 `MoneyOutput.isEmpty()`／`MarketTable.isEmpty()` 两次踩。）
-
-★ **SDD 的 workspace 目录名由脚本从计划文件名推导，可能与台账实际目录不一致**：本阶段计划是
-`2026-09-22-tool-surface-plan.md`，脚本推导出 `.superpowers/sdd/2026-09-22-tool-surface-plan/`，
-而**真正的台账**在 `.superpowers/sdd/2026-09-22-tool-surface/`（无 `-plan` 后缀，开工时手工建的）。
-⇒ 接手前先 `ls .superpowers/sdd/`；别据"脚本目录里没有 `progress.md`"判定无台账——那会被读成
-"本计划没有台账 ⇒ 从头开始"，把已关账的任务全部重派（SDD 技能原文称之为**观察到的最贵的失败**）。
-
-### 四.1 ★★★ 文档时效权威：冲突时**以最新落盘文档为准**（2026-10-09 用户裁定）
-
-> 用户原话要点：「production-runtime 和 production-runtime-government 显然是同一套体系……至于 class-first
-> 直接扫进垃圾堆，**以最新文档为准**（这条原则加进 AGENTS.md）」。
-
-- 多份 spec / plan / status / handoff 对同一件事说法冲突时，以**日期最新、已落盘**的那份为准；
-  更早的旧设计、旧台账、旧计划自动降为**历史留痕**。
-- 旧文档**不回头改**（§五.4 留痕纪律不变）；由新文档追加“已被 `YYYY-MM-DD-xxx` 取代”即可。
-- 代码与最新文档冲突时，仍按本节开头“机制性描述一律回代码核”先核代码，再判定是实现未跟上、文档写错，
-  还是口径已变；**不得拿旧文档去否定新文档**。
-- `docs/superpowers/specs/2026-10-02-architecture-design-source.md` 里的用户裁定仍是最高权威；
-  用户后来在会话中给出的新裁定 = 最新文档，追加进原稿后覆盖旧条目。
-
-★ 本条与 §十.1 配套：用户给定设计不得被旧文档或既有代码静默颠覆；用户后续的新裁定优先于更早的裁定。
-
-### 四.2 ★★★ 调查取证默认可提出设计修改（2026-10-09 用户裁定）
-
-> 用户原话要点：「调查取证环节默认可能进行设计修改，旧有框架不要设这么死。」
-
-- **调查不是只读背诵旧边界**：调查任务默认允许提出并落设计修改建议，包括推翻旧 pom enforcer、
-  旧 AGENTS 模块禁令、旧“app 唯一写者”之类的历史约束。
-- 任何推翻旧边界的方案必须给出：现有依赖/调用图证据、影响面、迁移/回退路径、与五条铁律的关系；
-  由控制方整理后交用户裁定，不能由实现 Agent 自行静默改边界。
-- 当用户最新设计意图与旧禁令冲突时，**以用户最新裁定为准**；旧禁令只作历史留痕，
-  不构成“不能调查/不能改”的天花板。
-- 调查结论若包含设计修改，必须单独落文档或报告，标明“建议修改/待裁定/已裁定”，不得混进实现 diff。
-
-## 五、提交与协作
-
-1. **不 `git add -A`**；按**批次**提交（不同关注点分开，便于回退与审计），提交前扫 `git status`。
-   ★★ **但反过来也有坑**（2026-09-23 实测踩到）：跑过**全仓工具**（`./mvnw spotless:apply`、
-   格式化/重写的 codemod）之后，**按模块路径 `git add` 会漏掉别的模块的同类改动** ——
-   那次 `spotless:apply` 改了 21 个文件（`simos-app` 18 个 + `simos-sd` 3 个），
-   我按 `git add -A simos-app/src/...` 提交，`simos-sd` 那 3 个**留在工作树里没进提交**，
-   而提交信息却写着"21 个文件"（**信息与提交内容不符**）。
-   ⇒ **纪律**：全仓工具跑完后，用 `git diff --name-only` **列全**再逐条确认，
-   或按"我改过的模块清单"取并集，不要只给一个模块路径。
-   ★★ **2026-10-12 用户裁定（写死）：单文件 >100 MB 一律不入库。**
-   GitHub 的单文件硬上限就是 **100 MB（按未压缩体积算）**，超限的提交必被拒 —— 首次推送时表现为
-   `RPC failed; HTTP 408 … send-pack: unexpected disconnect`，**不要误判成网络问题**。
-   - **提交前自查**（只读对象头、不解压；有输出就别提交）：
-     `git diff --cached --name-only -z | xargs -0 -I{} git cat-file -s :{} | awk '$1>104857600'`
-   - **`.superpowers/sdd/**` 的运行产物**（`*.log` / `*.log.stripped` / `*.log.gz` / `simos.db` / `*.jsonl`）
-     **只许 `git add`，禁 `-f`**：该目录 `.gitignore` 的内容就是 `*`，它们本来就不该进库。
-     要留证据就留"摘要 + md5 + 命令"，原始大文件留在磁盘或 `~/simos-runs/**`。
-   - **由来（代价）**：W 线 40 个未推送提交里被 `git add -f` 塞进 **23 个运行产物、14.4 GB**
-     （最大单文件 2,025 MB），推送必然失败。处置见
-     `docs/superpowers/status/2026-10-12-known-issues-code-verified.md` §9
-     （重写未推送历史 + 备份分支 `backup/pre-largefile-clean`；**磁盘原件未删**）。
-   - ★ **重写历史的两个坑**（实测）：① `git filter-branch` 收尾会**硬重置工作树** ⇒ 被剔除的
-     已跟踪文件会**从磁盘消失**（本次用 `git checkout <备份分支> -- <路径>` + `git reset` 恢复）；
-     ② 排查大文件**禁用** `git rev-list --objects --all | git cat-file`、`git pack-objects`、`git gc`
-     —— 会把十几 GB 从 pack 里解出来、**直接把机器卡死**；改用 `du -sh` / `find -size +100M`（只 stat）
-     与 `git log --name-only --diff-filter=A -- <路径>`（不读 blob），单对象大小用
-     `git cat-file --batch-check` 且**只喂小集合**。
-2. 提交信息**中文**、写清"改了什么 + 为什么 + 验收的实际数字 + 未验的部分"；本仓惯例是**把诚实边界写进提交信息**。
-3. 已确认的发现，**若修复比描述还短，当场修**，别 park 成 issue。
-4. `.superpowers/sdd/**` 与 `docs/**` 的历史台账行是**留痕**：**不篡改**；要更正就**追加**标注。
-   （`CLAUDE.md` 已于 2026-09-24 退役 ⇒ 它的历史行在 git 里，同样不回头改。）
-5. **该推就推**：私有仓库，用户 2026-09-17 原话「你爱推就推反正是私有仓库」。★ 曾有一条"不擅自推送"
-   是控制器**自造**的规矩、用户从未说过，却被冠以"用户裁定"写进 6 个文件、一路挡着推送——已撤。
-   ⇒ **自造的规矩别冒充用户裁定**；引用裁定要能指出原话与日期。
-6. ★ **评审的体量不得压过代码本身**（用户 2026-09-17 原话：「别他妈一个模块跑几轮十几轮评审，
-   这个代码没多少，评审用的上下文比项目大了」）：单个模块开发任务的**评审不超过 3 轮**
-   （数的是"发现问题 / 判是否可关账"的独立派发）；第 3 轮仍不收敛，由控制器当场裁定，
-   未决项记成带裁定的遗留条目往下走。
-   不许为评审自建重型装置（评审包 / 限域重审 / md5 清单 / 多轮取证表格——M2 Task 1 上失控的形态：
-   一个 hex 包留痕比它的代码长一个数量级）；**代码量小时，控制器自己读 diff 就是评审**；
-   实现者自带的变异自证已经是"测试"，不要在外面再套一层去复现它；**台账记裁定与结论，不记取证过程**。
-7. **密钥纪律**：值绝不进日志 / 异常 / 事件 / argv / env / stdio；读配置只打印**路径 + 长度**。
-8. 注释与文档**用中文**，与既有风格一致。
-
-## 六、前端（无 npm、无打包器、纯 `<script>`）
-
-1. 拆文件后**加载顺序是语义的一部分**：`hexgeom → hexcolor → regionShape → map.js → map-mapeditor.js →
-   map-regioneditor.js → renderer.js`（`renderer.js` **加载期**就要 `core.renderEdgeKindOptions`）。
-2. `simos-app/src/test/js/helpers/webui-loader.cjs` 的 `BUNDLE_DEPS`：**新文件依赖它取用的宿主**（例如新文件
-   依赖 `map.js`），**不许反过来**——反过来会让新文件先于宿主执行、取不到 `SimosMapCore`。
-3. **可变绑定跨文件必须走 getter**（`active`、`regionNamesEnabled`）；取快照会恒为初始值。
-4. 两个宿主页（`map.html` 旧页 / `index.html` 工作台）**都要同步**；旧页也加载 `map*.js` 与 `renderer.js`。
-5. 前端门禁下界**两处同值、改一处必须改两处**：`simos-app/src/test/js/run-gate.cjs` 的 `MIN_TESTS` 与
-   `gate-contract.test.cjs` 的 `MIN_ASSERTIONS`（当前 **402**，2026-10-02 年份系统 C7b 后；新增 `.test.cjs` 文件还要进 `REQUIRED_FILES`）。
-
-## 七、门禁与关账的常用命令
-
-```bash
-node simos-app/src/test/js/run-gate.cjs          # 前端门禁（下界见 run-gate.cjs，当前 402）
-./mvnw test -pl simos-app -am                    # 全量测试（含前端门禁那一步；不动 jar）
-./mvnw -q -Dspotless.check.skip=true -DskipTests package 2>/dev/null   # 见 §二「产物」——本仓无 shade 开关
-./mvnw clean verify                              # ★ 关账：Spotless+Checkstyle+SpotBugs+Surefire+前端门禁
-```
-
-★★ **2026-10-23 用户裁定：真实世界长跑测试不进程序化门禁。** 已删除 6 个类：
-`RealTwelveMarketFreezeDiagnosisTest`、`RealTwelveHexProductionRuntime3650Test`、`RealTwelveOneTickTraceTest`、
-`RichWorldTest`、`SevenHexFullChain3650Test`、`SevenHexNatural3650Test`（这 6 个原占 ~130 秒）。
-**实际行为验证改走真实 world + 读日志**（`run-small-world.sh` / `test-world` / `~/Simos-18Lvt`），
-不再用程序化长跑代替。门禁仍是 `clean verify`：跑**全部剩余测试** + Spotless/Checkstyle/SpotBugs + 前端门禁。
-★★ **真数（2026-10-23，日志线 L1~L4 收口后，全仓 `clean verify`）**：
-**3144 条 / 0 失败 / 0 错误 / 5 跳过**（5 条为 `RealLlm*` 环境门控）；
-15 个被分析模块 **`BugInstance size is 0`**（SpotBugs 基线债 124→0）；前端门禁 **412/412**；总耗时 **3:03**。
-**后续以本行为准**（旧行留作历史）。
-
-★ **`clean verify` 必须前台跑**：台账记过"后台跑会被内存守卫杀"，而被杀**既不是红也不是绿**（不能算过）。
-★★ **真数（2026-09-27，M1.0+M1.1 之后，全仓 `clean verify` 后逐模块清点 surefire 报告）**：
-**11 个模块 / 2483 条 / 0 失败 / 0 错误**（app 685、map 379、unit 305、core 215、util 201、sd 188、social 188、
-economy 171、actor 105、economy-api 38、actor-api 8），前端门禁 **297/297**。
-★ 历史：H6 收口轮 2460 → M0 批 2467 → **M1.0+M1.1 后 2483**（util +2、economy-api +12、actor +1、app +1）。**以本行为准**（★ 已被下一行 2026-10-02 真数取代）。
-★★ **真数（2026-10-02，年份系统 C1~C7 之后，全仓 `clean verify` 后逐模块清点 surefire 报告）**：
-**14 个模块 / 3006 条 / 0 失败 / 0 错误 / 5 跳过**（app 812、map 379、unit 458、sd 226、core 223、util 211、
-social 194、economy 146、actor 125、army 91、gov 62、economy-api 38、calendar 33、actor-api 8），前端门禁
-**402/402**；5 条跳过为既有 `RealLlm*` 用例。**后续以本行为准**（旧行留作历史）。
-★ 报"测试数"之前**先 `rm -rf */target/surefire-reports`**（否则读到两轮的并集，见 §三.1）；
-★ `simos-app/target/surefire-reports/` **可能整个目录不存在** —— 那说明 app 侧这一轮**没跑到 test 阶段**
-（编译或前置模块失败、或被中断），**不能读成"app 没有测试"**，更不能拿上游 10 个模块的绿当 app 的绿。
-★★ **追加（2026-09-27，M0 收尾查清的一处夹具 bug —— 凡"一年末"读数必看）**：
-`EconomyRealScaleClothTest` 的 `YEAR_DAYS` 曾是 **365**，而本仓的"一年末"一律是 **第 360 天**
-（`CYCLE_DAYS = 120` 的第 3 个关账日；一年期真档推进 = tick 120/240/360）。365 落在**第 4 个周期的第 5 天**，
-而周期第一天就把现扣投入划走 ⇒ 缸里的纤维被取空 ⇒ 当年读到"年末纤维 = 0"，
-并被**误诊成"推进路径造成的相位差异"**（实为时点错；M0.1 已证路径无关）。
-实测：第 0 天 20,700,000 → 第 1 天 0 → 第 120/240/**360** 天 **18,042,000** → 第 365 天 **0**。
-⇒ **纪律：`YEAR_DAYS` 一律 360；写一年末断言前先问"这是第几天"**。
-★ 连带教训：**"上界"式区间断言（`isBetween(0, X)`）会把时点错掩盖成"相位差异"** ——
-能收紧就收紧，收不紧要写明理由。
-
-★★ **追加（2026-09-27，M0 批实测踩到，代价三轮返工）**：
-① **`-Dtest='A+B'` 是 JUnit5 的 tag 表达式、不是"或"** ⇒ 不匹配任何类、surefire **一条不跑**、
-打印 `test` 目标、**退出 0**。正确写法是**逗号**：`-Dtest='A,B'`。**差一点把"一条都没跑"当成"测试通过"。**
-② **Maven 增量编译不可全信**：实测 `simos-economy` 的类文件比源文件**新 21 秒**却没重编
-（`-pl simos-app -am` 下没有 `Recompiling the module`）⇒ 两轮诊断都跑在**旧字节码**上。
-**纪律：改完生产代码，先 `rm -rf <模块>/target/classes`（或 `target/test-classes`）再跑测试。**
-★★ **追加（2026-09-27 实测踩到三次）：阶段边界的门禁要跑「全仓 `verify`」，不是模块级。**
-`verify -pl <某模块> -am` 只对**该模块及其上游**跑 Spotless/Checkstyle/SpotBugs ⇒ 我在别的模块欠的格式账
-（`simos-social` / `simos-actor`）**跨了两个批次都没被发现**，直到一次全仓 verify 才暴露。
-⇒ 三件事一起记住：① 跑了 `spotless:apply` **必须**跑 `verify`（不是 `test`）；
-② **`-am` 不能省**（`verify -pl simos-app` 不带 `-am` 会用 `~/.m2` 的旧 SNAPSHOT，报"找不到包"的**假红**）；
-③ **门禁是三项**（Spotless + Checkstyle + SpotBugs）——只跑前两项**不等于**绿（实测：5 条 SpotBugs 就是这么漏过去的）。
-★ 全仓工具（`spotless:apply`）跑完后，按 §五.1：**`git diff --name-only` 列全**再逐条确认后提交。
-★ 迭代时只跑相关单条：`./mvnw -q -Dtest=<类名> -Dsurefire.failIfNoSpecifiedTests=false test -pl <模块> -am`。
-★ 中文 Javadoc 的折行由 **google-java-format**（Spotless）决定：**不要手工调行宽**（手工断行处会留下接缝空格），
-改完跑 `./mvnw -q spotless:apply`；`~/ProjectMosire` 同为该形态。
-
-## 八、环境与运维（本机实测；换机器先看这一节）
-
-- 工具链：**Java 21**；Maven `[3.8,)`；父 POM 是 `io.mosire:simos-parent`，**不继承** `io.mosire:mosire-parent`。
-
-### 8.1 起一个实例 / 判活 / 收工
-
-```bash
-pgrep -af "surefirebooter|classworlds.launcher|maven"        # ① 先确认没有 Maven/服务在跑
-stat -c '%y %n' simos-app/target/simos-app-*-shaded.jar      # ② ★ bearer：jar 的 mtime 可能**早于源码**
-./mvnw -DskipTests package -pl simos-app -am                 #    早于就跑一次（build 期间**别**有服务在跑）
-tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
-  --store /tmp/simos-store --gui-port 5817                    # ③ 快照式启动（JVM 独占副本，免受就地重写）
-```
-
-- ★ **判活三条一起看**：`/`、`/index.html`、`/styles.css` 全 **200**（只看 `/api/*` 会漏判 §二那种"jar 被就地重写"）
-  + `/api/map/overview`、`/api/units`、`/api/timeline` 200 + 进程在。
-- ★ 所有 curl 都要 `--noproxy '*'`（本机代理会拦 127.0.0.1）。
-- ★ **收工用 PID，别 `pkill -f`**：本仓实例的命令行里含 jar 快照名/端口/store，`pkill -f "<那串>"` 会**连执行它的
-  shell 一起杀**（已踩 4 次）。用 `ps -eo pid,cmd | grep simos-shaded` 拿 PID ⇒ `kill <pid>`。
-- ★ 端口约定：GUI **5711**（常用 5817 起演示实例）、MCP **5715**、审批 **5713**。
-- ★ **store 是世界的本体**：`--store <dir>` 指向一个 SQLite 库；**空库首启会就地种入富世界**
-  （`v17levant` 复刻：59223 hex / 252 区域 / 240 河流边），**非空库绝不覆盖**。换库 = 换世界。
-- ★★ **2026-09-27 实测（重启会抹掉长程模拟的全部中间产物）**：本机 16:38 重启过一次，`uptime` 归零的同时
-  **`/tmp` 被整个清空** —— 正在跑的 600 天批次的服务快照、`--store`（SQLite 世界本体）、
-  `h6raw_*.json` / `h6agg_*.json` 原始读数**一起没了**（`/tmp` 里的痕迹 **0 个**，事后无从判断跑到哪一天）。
-  ⇒ ① **长程模拟的 store 与逐关账日读数要落在重启后仍存在的地方**，或**明确接受"重启即重跑"**
-  （关账批每跑一个关账日就落一次读数，正是为了这个）；② 判"这批跑到哪了"**只能看产物**，
-  不要靠"进程应该还在"；③ 重启后先 `uptime` + `pgrep`，再据产物决定"接着跑"还是"从头跑"。
-- ★ **600 天关账批的实测参数（同一脚本内的约定，别照抄缺省端口）**：服务由
-  `.superpowers/sdd/2026-09-27-economic-cycle-impl/h6sim_full.sh` **在自己的进程树里**起
-  （★ 单独 `nohup` 起的服务会在**别的后台作业结束时**收到停止信号 —— 实测两次），端口
-  **GUI 5827 / MCP 5725 / 审批 5723**，推进器 `../2026-09-26-year-one-simulation/v3curve_advance.py`。
-  ★ 一批要 **几小时**（一次 `advance` 到下一关账日 + 一次逐格 dump），起它要用**受管后台作业**。
-  ★★ **两批分属两个代码态，顺序不能反**：基线批跑**重打包之前**的 shaded jar（H5 代码），
-  关账批要**先 `package` 出 H6 的 jar 再跑**；两批各用独立 store（`/tmp/simos-v3curve-h6` / `-h6r2`），
-  对照由 `h6cmp.py <基线前缀> <关账前缀>` 出表（自比 `h6cmp.py tick tick` 应当恒 +0，先拿它冒烟自检）。
-  ★ 服务在跑时**不要 `package`**（§二）：要重打包就先收工（`ps -eo pid,cmd | grep simos-shaded` 拿 PID ⇒ `kill`）。
-
-### 8.2 世界数据的两层：bootstrap ≠ 世界初始化
-
-- **空库 bootstrap**（`RichWorld`）只给**地图 + 区域**：`/api/map/overview` 的 `cities:0`、`/api/units` 的
-  `{"units":[]}` **不是故障**。
-- 人口 / 城市 / 三国军队要靠 MCP 工具 **`simos.worldgen.initialize`**（一次一批 = 一条 revision，`army` 缺省真，
-  连带写 map/social/unit/sd 四域）。输入是 `config/worldgen/v17levant-nations.json`，`randomization.enabled`
-  出厂 `false` ⇒ 取文档硬值（可复现）。
-- 地形在 simos 里是**块**（`GameMap.terrainBlocks` = 同地形六邻连通分量）；`HexCell` 只存 **height**。
-
-### 8.3 MCP 口与审批链（2026-09-24 起）
-
-- **MCP 口 = GM 组**（用户裁定："MCP 和 GM Agent 处于同一权限级，想改什么改什么"），当前 **126 条工具**
-  （2026-10-02 年份系统 C5b 后实测：读 32 + 窄写 60 + 通用/组合写 34；GM 桶 126、决策人桶 27；年份系统新增读
-  `simos.calendar.info` 与 GM 写 `simos.calendar.configure`；窄写/组合写名单以 `SimosToolsTest` 为准；组合写含 P5 的
-  `simos.unit.spawnArmy`、army 主子改派补丁的 `simos.army.assignGov`、P1a1 的 `simos.region.seed`、P1b1 的
-  `simos.region.clearData`、P1b2 的 `simos.region.clearStructures`、P3 落盘的 `simos.province.apply`、P7a 的
-  `simos.sd.run-decision-makers` 与 P7b 的 `simos.gm.approve`；读工具含 P3 的
-  `simos.province.divide`、P7b 的 `simos.gm.approvals` 与 P7c 的 `simos.sd.directives`）。就绪判据：启动日志里
-  `外发工具 N 个`；工具面与桶的对齐由
-  `SimosToolsTest`/`McpServerTest`/`McpPortTopologyTest` 三处名单断言把守。
-- **审批链两条**：**GM 面（MCP 口）的写"无脑过"**（`GmAutoApproveGate` ⇒ 直接批准、不登记待批）；
-  **决策人链仍要人批**（`AutoApproveGate → ConfirmGate`，GM 在「决策 → 审批」点头）。
-  ★ 两张面的 caller 桶都是 `DEFAULT` ⇒ **从请求字段上分不开**，只能按"用哪条 authorizer"分。
-  ★ `scope=session` 会被 AgentLib 收窄成 `once`（`DEFAULT` 桶非 `sessionGrantable`）。
-- 读工具默认**四桶共享**；只给 GM 的那些在类上标 `app.tools.GmOnlyRead`
-  （2026-10-02 实测 12 条：`simos.map.path`、`simos.map.block`、`simos.map.overlaps`、
-  `simos.sd.decision-makers`、`simos.sd.decision-maker`、`simos.sd.directives`、`simos.sd.verdicts`、
-  `simos.economy.ownership`、`simos.gm.tool-usage`、`simos.gm.approvals`、`simos.llm.providers`、
-  `simos.province.divide`）。
-- ★ **GUI 与 MCP 读工具共用同一份视图**（`app/gui/ApiViews` 是公开的视图层）——别再各写一份
-  （那正是"同一资源的两个形状"的由来，见 `.superpowers/sdd/2026-09-22-tool-surface/m4-inventory.md` §二-6）。
-- ★★ **追加（2026-09-27，M0.3）：`ApiViews.economyHex` 里多了一栏 `grainDiagnosis`**（逐格粮食诊断）。
-  做得到四项：`coverageDays`（库存 ÷ **日耗**）、`importDemand`（= 本周期累计未满足）、
-  `affordableGrain` + `purchasingGap`（钱 × 1000 ÷ 本格粮价，**是上限**——市场只算"既缺口又付得起"的家户）、
-  `satisfactionPerMille` + `unmetPersonDays`。
-  ★★ **算不出的三项具名列在 `unavailable` 里、绝不填 0**：`productionSelfSufficiency`（要本周期 ledger 的毛产/损耗/投入，
-  而 ledger **当日丢弃** ⇒ 落点 M2 的市场读数组件）、`logisticsGap`（M2.4 之前无定义）、
-  `paymentInstrumentGap`（货币工具属 M1）。★ 视图里的 `window` 字段**写出本周期需求量**，因为
-  `importDemand`/满足率/人日都是**本期累计**（只有关账日读才是整周期的量）。
-  ⇒ 报表脚本按格 dump 的那一份**自动带上它**（`h6sim_dump.py` 走的就是 `/api/economy/hex`）。
-
-### 8.4 图片通路（让决策人 / 外部 agent「看图」）
-
-- **发不发图由路由的能力位定**：`llm.routes.<name>.capabilities.vision=true`（缺省 **false**）。决策人绑哪条路由
-  ⇒ 它能不能收图；**且同一个位**还决定 `simos.map.render` 的 `format=auto` 落在图还是字符图。
-  配在 `<store>/agentlib/config.json`（GUI 的 provider 页能看见 `vision`，但**不编辑**它）。
-- **工具反馈带图**：`simos.map.render` 的 `assetId` 由运行流折成一条**额外的 user 图片消息**（tool 角色带图是
-  AgentLib 的响亮 CONFIG 错）⇒ 图随下一轮请求发给模型。
-  ★★ **图片消息必须排在本回合「所有」tool 消息之后**（真网关实测：一个是回合里模型一次要了 5 个工具，
-  中间插一条 user 会被拒 `HTTP 400: An assistant message with 'tool_calls' must be followed by tool messages…`）；
-  回放式假客户端**不校验协议**、看不见这个约束，只有真网关会拒。
-  ★ **成本提醒**：图片分片落进会话历史后会**每一轮都重发**（base64），会话越长越贵——目前不做裁剪，知悉即可。
-- **开场快照**：`--opening-snapshot` 开（缺省**关**）⇒ 决策人会话**首次为空**时，先给它一张本国首府区域的渲染图
-  （军队归属的决策人**没有**快照，取景语义未裁决）。开关开着而路由无视觉能力 ⇒ 跳过 + 日志一行 warn（不静默）。
-- MCP 面（外部 agent）出图是另一条：工具的图片资产由 `AgentToMcpServer` 出成 `ImageContent`（P1）。
-
-### 8.5 编制与移动（v2，2026-09-24 裁定）
-
-- **`parent` = 编制归属；`attached` = 是否与父同属一支"一同移动"的编制**（不再表示"位置由父继承"）。
-- **顶层**：沿 `parent` 上溯到 `attached=false` 或**无父**的那个单位。**只有顶层能移动**；它一动，整支
-  （全部 `attached=true` 的后代）**一起到同一格**（推进器显式搬），**速度取支内 `effectiveSpeed` 最小值**（含状态折算）。
-- 成员自己下路线 ⇒ 拒，理由**点名顶层** + 指路（控制顶层 / 拆出来）。
-- **进入编制必须同格**（`attach` / `merge` / `createUnit` 各自判）——这就是"跟随"取消后的代替品：
-  **要合并就回同格**，不再有"不同格偏移式加入"。
-- **位置永远是各单位的自己的**：没有位置 = 不知在哪（**不再向父取位**）。`offset` 与 `unit.SetFormationOffset`
-  保留但**不再影响任何计算**。
-- ★ 决策人**要派兵单独出去，必须先拆**（`unit.SplitFormation` / `unit.DetachUnit`）；三条令里"给下挂单位下路线"
-  这种写法会被正当拒绝（三国那轮实测就是这么撞上的——见 `.superpowers` 之外的本节）。
-- ★★ **同一 tick 内的"改编"是覆盖、不是拒**（`setOrAppend`，后写者胜）：创世段就在 tick 0、命令也落在 tick 0 ⇒
-  第二条写会撞 `SegmentedSeries` 的"段必须按 from 严格升序"。**世界不推进时间时，任何第二次改编都会撞**——
-  这是 live 跑出来的（三国在 tick 0 的 `unit.DetachUnit` 全被拒）。`attach`/`detach`/`reparent*` 都已走同刻覆盖。
-- ★ **巡逻环线允许**（2026-09-24 裁定）：`Route.path` 可以回到已走过的格（`waypoints` 末点可等于首点），
-  **走完一圈即停**（不是永久巡逻）。旧不变量"path 不得有重复格（R4）"已作废。
-- 设计原文与取代声明：`docs/superpowers/specs/2026-09-24-formation-v2-design.md`。
-
-### 8.6 换设备自检（本机踩过的坑，按序做）
-
-1. `git status` 看 `core.autocrlf`——曾把整棵工作树 checkout 成 CRLF，`mvnw` 的 shebang 变 `#!/bin/sh\r`
-   导致 Maven 完全起不来、Spotless 全红。仓库已用 `.gitattributes` 钉死 LF。
-2. `~/.m2` 是**每台机器各自的**：`agentlib-mosire` 的重建不会跨机同步。新机器上若 `AgentLibAvailabilityTest` 红
-   （或 `simos-core` 测试编译失败），在本机重建一次：`cd ~/ProjectMosire && ./mvnw -pl AgentLibMosire -am install`。
-   **判"重建成功与否"一律看类数**（`jar tf … | grep -c '\.class$'` ≥ 118），**不看时间戳**
-   （`install` 会把源 jar 的 mtime 一并带过去）。
-3. **本机 `grep` 可能是 ugrep**（`grep --version` 可辨）：它**默认尊重 `.gitignore` 且跳过隐藏目录** ⇒
-   `grep -rn <串> .` 会**静默返回空**，把"没搜到"伪装成"不存在"（`.superpowers/**` 是重灾区）。
-   ★ **`git grep` 有同族陷阱**：它默认只看**已入库**文件，而开发期刚写的文件全是 untracked ⇒ 也会静默空/rc=1。
-   ⇒ **搜全仓**：`git grep <串>`；**含未入库文件**：`git grep --untracked <串>`（或 `grep --hidden --no-ignore-files`）。
-4. superpowers 插件的 `scripts/*` 可能是 **CRLF**：直接执行会报 `/usr/bin/env: 'bash\r': No such file or directory`。
-   绕法：`tr -d '\r' < 脚本 > /tmp/x.sh && bash /tmp/x.sh <参数>`。
-5. **门禁耗时会压着工具 600s 上限**：越过会被摘到后台，而"后台 × 内存压力"可能被杀。
-   **"被杀"既不是红也不是绿**（不能算过）；跑 `clean verify` 前先确认没有别的 Maven 在跑。
-6. **"按外壳 / 按树 / 按机器"的东西别照抄**：子代理类型与模型（在 Claude Code 里照抄 opencode 的
-   `deepseek-flash-go` 会直接报 `not found`；那条禁令的对象是**那个模型 V4 Flash**，不是"不许派子代理"——
-   该派就派、用本外壳的默认类型）、`~/.m2`、`.superpowers/.gitignore` 同族 ⇒ 换外壳 / 换 worktree 先核一遍再照抄。
-   ★ 本仓常同时有主检出与 worktree，**同名文件分属不同分支**（`CLAUDE.md` 曾是重灾区：拿主检出的绝对路径去改，
-   编辑成功了、改的却是另一棵树里的旧版）⇒ 改文件一律用**本树**的绝对路径，改完 `git status` 确认变的是本树。
-
-### 8.7 ★ 全真推演测试世界 = **隔壁独立仓库** `~/Simos-18Lvt`（2026-10-02 用户裁定）
-
-- **世界在隔壁，不在本仓**：全真推演测试世界是独立 git 仓库 **`~/Simos-18Lvt`**
-  （`git@github.com:c1589190/Simos-18Lvt.git`）。世界本体 = v17levant 的 **n0008 重建态**：
-  底图 `n0000_map.json` + n0001~n0007 全部 `_map_diff.json`（changed/removed + provinces + rivers）叠加；
-  **59,223 hex / 252 区域 / 447 河流边 / 1,270 地形块**；地形 plateau 9,708、low_hills 16,489、
-  plains 16,370、ocean 14,876、mountains 1,034、desert 746。
-- **本仓内置资源不换**：`simos-app/src/main/resources/worlds/v17levant.json` 仍是**旧的内置样例**（仅供空库
-  bootstrap 与既有测试）——**不要**把它替换成隔壁世界（2026-10-02 曾试换、随后按用户指示回退）。
-- **起停**：`cd ~/Simos-18Lvt && scripts/start.sh` / `scripts/stop.sh`；端口 **GUI 5857 / MCP 5757 / 审批 5753**
-  （与旧 `dashu-v2` 的 5827/5727/5723 错开）；来历/映射/md5/判活见 `~/Simos-18Lvt/README.md`。
-- 重建装置：`tools/gsimap_import.py --regen-samples`；地形映射 `plains(山区/高原)→plateau`、
-  `mountain→mountains` 等；底图与重建备份在 `~/simos-testspace/backups/20261002-150321-map-backup/`。
-- **仓内代码测试副本（2026-10-02 用户指示，隔离）**：`test-world/`（Simos 仓内，`.gitignore` 排除）=
-  全真世界的**副本**，专用于代码测试：独立 store（`test-world/store/`）、独立端口 **GUI 5867 / MCP 5767 / 审批 5763**、
-  独立 systemd 单元 **`simos-testworld`**、独立日志；jar 用**本仓当前代码**构建（现为 `d53d2ce1`）。
-  起停 `test-world/scripts/{start.sh,stop.sh}`；夹在两边测试时**不要**把它的 store 指到 `~/Simos-18Lvt/world`、
-  也不要复用端口——那就不是隔离了。详见 `test-world/README.md`。
-- **世界内容尚未初始化**（units 空 / cities 0），等用户指示；旧 `dashu-v2`（5827/5727）用户已表示**可退役**。
-
-## 九、实现与评审期间**实测**到的失败形态（2026-09-25，经济线 plan1/plan2）
-
-> ★★ 本节全部**真发生过**，不是推演。载体：`docs/superpowers/plans/2026-09-25-aggregate-economy-v2-plan{1,2}.md`、
-> `.superpowers/sdd/2026-09-25-aggregate-economy-v2-plan{1,2}/progress.md`（逐条 ruling 与实测数字）。
-> **★ 本节 9.1~9.4 的每一条，都是子代理抓出来的——控制器自审一次都没看出来。** 这不是自谦，是选型依据：
-> 自审与"写"共用同一个心智模型，"评审"必须换一个上下文。
-
-### 9.1 判别力的三种**假货**（最贵，因为测试照样全绿）
-
-| 形态 | 长什么样 | 实测证据 |
-|---|---|---|
-| **幻影判别力** | 注释写"X 承担判别力"，而 **X 根本不存在** | `PLAINS_HARVEST_NET` 的注释声称 `EconomySeederTest.realScaleHexIsSelfSufficientWithinTheCalibratedBand` 守着自给率——全仓 grep **只命中那句注释本身**。计划里写了它的源码，控制器改期望值时**漏建** |
-| **假判别力** | 注释写"X 失效它会红"，实测**不会红** | 低丘格注释声称"地形系数若失效（低丘=平原）它会红"——实测低丘的瓶颈在**劳动**（可经营 1,745 亩 < 可用 2,064 亩），系数改 1000‰ 后两格**照样不等** |
-| **放宽断言** | 把精确断言降级成关系断言 | 低丘的精确净产被换成"两格不相等"（计划 Step 5 明文禁止）⇒ 后按子代理给的闭式钉回 `99,377,750`，**一次通过** |
-
-**纪律**：写下"判别力由 X 承担"之后，**当场核实 X 存在、且真的会红**；核不了就改写成不声称的口径。
-**为什么**：这三种都不会让测试变红——它们让**测试看起来比实际强**。这是 §三「没红也要问为什么没红」的反面。
-
-### 9.2 计划里的数字是**预测**，不是事实
-
-`Expected:`、变异轮"会红几条"，实测**屡次不符**（plan2：说红 1 条实际 2 条；说会红的没红；说 1 条而端到端红了 3 条）。
-
-**纪律**：执行时 `Expected:` 与实际不符 ⇒ **先核算式、先查被测物**；**不许**把 Expected 改成实际值。
-**为什么**：那会让用例退化成同义反复（断言恒真）。计划是**论证**，权威是 spec 与代码。
-
-### 9.3 夹具与不变量的三种冲突（★ 三次都不是"护栏太严"，是**夹具本身违反新口径**）
-
-| 冲突 | 病灶 | 处置 |
-|---|---|---|
-| 槽位上限 vs 行参与率 | `EconomyCodecTest`/`EconomyRoundTripTest` 的槽位 `700/300` 是 R1.1 修正**前**的"人口占比"旧语义，被读成"投入率上限"后与行的 `800` 冲突 | **修夹具**（改 `950/900`），**不放宽护栏** |
-| 逐组件变异 vs 跨表引用完整性 | `EconomyRoundTripTest.mutate` 从 `EconomyData.empty()` **单改一个组件**；而新不变量要求"债务两端 ∈ classes"+"行内 debts ⊆ 债务表" ⇒ 单改任一**必然非法** | 变异体**自带支撑组件**（用例只断言"目标组件进了变更集 + 往返相等"，多带支撑不破坏断言） |
-| 真档量级 vs 小夹具 | `EconomyTestWorld` 是 **1,000 人/格、储备 5,395,000 毫粮**，而真档满种要 24,784,000 ⇒ 配种子会把口粮当种子播光 | **保持该夹具未配种子**，让它当"未配种子的对照格"；配种子的字面量放**真档量级**。诊断轮实测：第 1 天扣光 5,395,000、第 120 天只收 43,803,260（674 亩）、第一周期饿死 **200/1000** |
-
-**纪律**：新护栏打红既有用例 ⇒ **先判"护栏错"还是"夹具错"**，多数是后者；修夹具，并把"为什么这个夹具必须长这样"写进注释。
-**为什么**：选"放宽护栏"消掉**判别力**，选"改口径迁就夹具"消掉**正确性**——两条都是净损失。
-
-### 9.4 工具与读取：假阴性（§三 那条**又被踩**）
-
-| 形态 | 实测 |
-|---|---|
-| ★★ **`find -newermt '-5 minutes'` 在本机无效** | 本机 `find` 是 **`bfs`**：该写法报 `Invalid timestamp` 并**静默返回 0 命中**；而当时用了 `2>/dev/null` **把错误吞了** ⇒ 拿"零活动"当证据报给用户。`-mmin -5` 与绝对时间戳写法正常 |
-| **"未配种子 ⇒ 颗粒无收"原先只有算式证明** | 后由端到端变异轮**实测**：`176,545,000 → 0`，且饿死回来 |
-| **"字面量没改"不如"md5 未变"硬** | 前者靠人看、可自欺；后者可机械核对——实测 `EconomySettlementEndToEndTest` 的 md5 `fe489310…` **逐字节一致**，这才叫"行为恒等"的证据 |
-| ★★ **把"5 天采样"当成年度特征**（第 4 次同族错） | 缺口（`FlowRow.unmetNeed`）**按周期清零**，而 tick 365 = 第 4 周期的**第 5 天** ⇒ 读到的是 **5 天的发生额**。据此写了"霍赫兰缺口 0"并当国别特征横向比三国——整周期真值是 **1,760,828 粮**。**读数对、公式对、口径也对，错在没核这个数的统计窗口**；且同一列三个数都是 5 天口径，却被当成可比的国家差异 |
-
-**纪律**：报任何"某国 / 某格 / 某指标 **= 0**"或"最小 / 最大"之前，先核三件事：
-① 这个数的**统计窗口**是什么（时点快照？本期发生额？历史累计？）；
-② 同表其它列**是否同一窗口**（不同窗口的数不可并排比）；
-③ 窗口**是否随周期/推进被清零**（`FlowRow` 全族都按周期清零）。
-**为什么**：这是本会话第 4 次同族错（前三次是 §9.1 的两条判别力假货、§9.4 的坏仪器），
-**每一次都不是算错，而是"没核自己读的是什么"**——它比算错更难自查，因为数本身是真的。
-
-**纪律**：报"零命中 / 零活动"之前，**先造一个已知会命中的样本证明工具在该写法下有效**；**禁止 `2>/dev/null` 吞工具错误**。
-**为什么**：§三 早已有这条（"命中 0 先怀疑自己的正则 / 读取"），本轮**又被踩** ⇒ 它会反复发生，不是一次性疏忽。
-
-### 9.5 流程：技能是默认路径，不是判据（用户指令可能已让某条规矩失效）
-
-| 形态 | 实测 |
-|---|---|
-| **执行模式选错** | `writing-plans` 交接要求二选一，控制器选了 `inline`（自己写代码）⇒ **烧掉控制器的上下文**——而那正是用户一直在省的东西 |
-| **机械执行技能、不回头核对用户指令** | `writing-plans` 硬性要求"代码写进计划"，控制器照做三份（48 / 94 / 113 KB）；而用户早已说"评审可以等代码全写完再做" ⇒ 该规矩的**唯一价值（实现前评审）已被抽掉**，剩下的只是把同一份代码写两遍 |
-
-**纪律**：**每批开工前回头对一次用户指令**，看有没有哪条技能规矩已被它的效力抽空；被抽空的就跳过。
-**为什么**：这两条都是**照规矩办事**造成的损失，不是偷懒造成的 ⇒ 自查时最不容易起疑。
-
-
-## 十、用户设计权威 / 中央地方边界 / 待调查清单（2026-10-02 用户裁定）
-
-### 十.1 ★★★ 用户给定的设计 = 最终版本，不得被颠覆
-
-- 用户原话：「**为了确保一些判决不被颠覆，往Agent.md里记录一下，对于我给定的设计，记最终版本为原则，顺便开个架构设计原稿记录文档来记录**」
-- **执行形态**：
-  1. 用户给定的设计一律**原样**记入 **架构设计原稿**：`docs/superpowers/specs/2026-10-02-architecture-design-source.md`（追加式；旧版本不删，
-     被取代的标"已被 D-xxx 取代"）。
-  2. 任何 agent（含控制器 / 子代理）**不得**以"实现方便 / 更优设计 / 时间不够"为由改口径或静默绕过；需要改动时**必须先由用户在会话里明示**，
-     然后在原稿里追加新版本条目。
-  3. 原稿与 spec / plan / 台账 / 代码注释冲突 ⇒ **以原稿（用户设计）为准**，并把"实现与设计的偏差"作为一条记进待调查清单。
-  4. 开工前先读原稿里与本批相关的条目；派单书必须引用对应 `D-xxx` 编号。
-
-### 十.2 ★ 中央政府不设全视野（中央—地方博弈是设计目的）
-
-- 用户原话：「**中央政府不应有全视野！！！本来作用就是让中央和地方博弈**」
-- ⇒ 不实现"中央 DM 全国视野"；`NationScope` / 扩 jurisdiction 等能力**不得**用来给中央开天眼。已有调查里"Nation 归属 DM 看全国"的方案作废。
-
-### 十.3 ★ 待调查 / 待解决问题清单（更新规则）
-
-- **文件**：`docs/superpowers/plans/2026-10-02-open-bugs.md`（文件名保留历史；内容即"待调查 / 待解决问题清单"，含三类：
-  **未修复缺陷 / 待调查 / 待解决**）。
-- **规则**（用户 2026-10-02：「**待调查/待解决问题列表更新规则也写进AGENT.md！**」）：
-  1. **先记录、不实现**（用户同日："先记录到……不急着修复"；原因：已有缺陷要先由用户做解释与重设计）。
-  2. 每条至少写清：**来源原话 / 现象 / 代码或世界证据（`文件:行号` 或只读读数）/ 待裁定问题**。
-  3. **不删条目**：状态只做追加流转（`open → 已裁定 → 已设计 → 已实现/已关闭`），关闭也要留行并写明结论；
-     要更正旧行就追加标注（同 §五.4）。
-  4. 用户裁定后**另开开发批次**，清单里只记指向（批次名 / 提交号），不在清单里做实现设计。
-  5. **不许**把未验证的写成事实、把没跑的写成通过；工具读数为 0 时要先自证工具在该写法下会命中。
-  6. 新条目按分类追加；跨文档引用用相对路径。
-
-## 十一、运行时操作原则：直接用工具，不先读代码；有异常只记录（2026-10-02 用户裁定）
-
-- 用户原话：「**直接重建，目前1tick都没推进呢，你不需要摸清楚代码长什么样，只需要用、记录问题，把这条原则写在AGENTS.md**」
-- **执行形态**（GM/运行时数据整理、世界重建、播种、改名、编制初始化等操作）：
-  1. **先查工具面**（MCP 工具 / 已注册命令 / 现有脚本），直接 dry-run 或 apply；不得以"先读源码看懂实现"为由拖延、绕路或扩大上下文。
-  2. **遇到失败/异常**：按 §十.3 把问题记入待调查清单（用户原话、现象、只读读数/命令回执、待裁定问题），**不自行修代码、不绕过、不改口径**；能绕开就按官方工具从更早的干净状态整体重建。
-  3. 只有用户明确说"修这个缺陷 / 改代码"时，才进入源码阅读、修改、构建与 jar 替换流程。
-  4. 重建优先使用官方组合工具（`simos.region.clearData` / `simos.region.seed` / `simos.worldgen.initialize` 等），并优先选择"从更早的干净 revision 整体重建"，而不是手工补数据或直接改库。
-
-## 十二、推演 Skill 文档规则（2026-10-02 用户裁定）
-
-- 用户原话：「**由于是第一次进行推演，应当创建Skill文档，在本次推演完成后总结可复用的推演守则，创建并使用Skill文档本身规则应被记进AGENTS.md**」。
-- **执行形态**：
-  1. **每轮推演开始**：在 skill 库创建/读取本轮记录。技能库位置见 `simos.skill` 工具说明：`config/skills`（仓种子）或 `world/skills`（store 覆盖，同 id 优先）；本轮记录命名 `world/skills/turn-XXX-*.md`。
-  2. **每轮推演结束**：把稳定可复用的推演守则回填通用 skill（首轮为 `config/skills/simulation-runbook.md`），本轮逐项记录留在 `world/skills/turn-*.md`，不删不改历史。
-  3. **聊天记录不算留痕**：玩家原话、指令拆解、只读事实盘点、决策人处理、实际命令/revision、战斗/损失、后果与复盘必须落进 Skill 文档。
-  4. **先事实后推演**：不得跳过事实盘点直接落命令；涉及多决策人的，按各 DM 可见面分发信息，中央不得开全视野（§十.2）。
-  5. **工具异常先记录**：推演中遇到工具缺陷/不明确行为，按 §十.3 记入待调查清单，不自行改代码、不绕路、不改口径（§十一）。
-  6. **Skill 文档进本仓留痕**：通用守则与本轮记录属于运行目录文档，随世界仓提交；AGENTS.md 只记规则，不记本轮战果。
-  7. **通用 Skill 分类**（2026-10-03 用户裁定）：通用守则至少分「Simos 使用方法 / 军事推演方法 / 政治推演方法 / 经济推演方法」等类别；没有内容的类别可以不写，不硬凑；每类可附最小可复用示例。用户原话：「**应当分一下Simos使用方法、军事推演方法、政治推演方法、经济推演方法等，没有的可以不用写**」。
-  8. **每次推演都尝试总结、更新推演原则**（2026-10-03 用户裁定）：每轮推演结束（或每完成一个可独立复盘的阶段）都必须做一次“原则提炼”，并把结果写回通用 Skill（`config/skills/simulation-runbook.md`）与本轮记录（`world/skills/turn-*.md`）。用户原话：「**每次推演都应该尝试总结、更新推演原则**」。
-     - 具体动作：① 列出本轮新学到的可复用原则；② 修正/补强已有原则；③ 若确实没有新原则，也要在本轮记录里明写“本轮无可复用新原则”，**不许跳过**。
-     - 提炼内容按 §十二.7 的分类归档；Skill 文档只写“怎么做”，不写流水账；本轮流水账留在 `world/skills/turn-*.md`。
-- **为什么**：首次推演的命令已经横跨编制调整、历史剧情、行政/外交、多决策人与战斗裁决；不落 Skill 文档则下一轮无法复盘，也无法把“哪些是玩家定的、哪些是 GM 代裁的、哪些骰子结果”分清。
-
-## 十三、战损概率表先审后录（2026-10-03 用户裁定）
-
-- 用户原话：「**战损太高了，可以整个/10，而且中世纪伤亡一般都是阵型溃散后逃逸时造成的。你先按照我说的流程，重新出战况概率表让我审核，等我确认后再算概率录入。**」
-- **执行形态**（战斗/轰城/交战裁决）：
-  1. **任何概率或战损表在录入世界、掷点前，必须先以简要表交用户审核**（结局 id/标签、权重、双方各结局损失、期望、取整规则）；用户确认后才能 `army.RecordCombat` / `sd.SetStageOutcomeTable` / `simos.army.resolveCombat` 落库。禁止 GM 自定权重后直接掷点。
-  2. **默认战损口径**：不确定时旧表整体 `/10` 起步；接触本身伤亡小，伤亡主要在阵型溃散、退却、逃散与追击阶段；败方承担最大头损失，胜方/追击方损失小。
-  3. **掷点可复现**：先 `preview=true + 显式 seed` 看结局与损失，再用同 seed `preview=false` 落库；seed 公开记录。显式 `outcomeId` 不投骰，显式 `seed` 才投骰，二者不可混用。
-  4. **错误已落库但 tick 未推进**：优先回滚 revision 到错误之前的干净 head，再按用户确认的新表重建；回滚前必须备份 `world/simos.db` 与 `conversations.db`，旧结果保留在 git 历史/备份中，不得静默覆盖。tick 已推进后才用追加式 correction Info + 资源回补。
-  5. 战斗记录一次性、不可编辑（`army.RecordCombat` 同 id 具名拒），修正只能按上述回滚或追加；不要把“旧战果”当作既成事实继续推演。
-  6. **“突破一线”不等于“攻占要点”**：关隘、筑城、市镇、营垒等目标不能用一次野战阶段决定归属。若地形/城市数据没有 fortification/防御倍率，战斗表必须显式补守方工事加成，并按“外围接触 → 攻关垒 → 夺关/巷战”拆成多阶段；只有最终阶段出现 capture/守军弃守，才算占领。单阶段 `breakthrough` 只能解释为突破第一线，后续仍可继续抵抗。
-- **为什么**：首轮 c-002 第一阶段曾由 GM 自定高战损表并直接掷点，用户判定不可接受；错误根因不是某个数值，而是“先掷后审”的流程。此后战损表必须先经用户确认，再进世界。随后用户又指出“关隘就这么破了？历史上有这么效率吗？”——根因是单阶段表 + 数据层没有工事字段，把野战突破错误升格为关破；故补第 6 条。
+| `.superpowers/sdd/<topic>/` | SDD 台账与逐任务证据（`progress.md` / `task-N-report.md` / 各 `*-evidence/`） |
+
+## 五、交叉纪律要点（每条只是概述 + 指针；**原文一律在长文里**）
+
+1. **并发（★ 最容易返工）**：一次只跑一个 Maven，且**作用域 = 本仓**（用 `tools/mvn-lock.sh` 排队；隔壁仓库的 Maven 不阻塞本仓）；
+   **一个文件一个 owner**，动手前先 `git status --porcelain`，看到半成品尾巴**不要接手**；不要在别人跑 Maven 的窗口里改 Java。
+   → 详见 `docs/agents/02-一-并发.md` §一
+2. **派单粒度**：**一个责任区 = 一个写代码代理**（一次写完该责任区全部生产代码，**只写到"编译过"**，不写不跑测试）；
+   **测试最后单独一个测试代理**统一盯；**控制方不自己写代码**（只做调查综合 / 约束设计 / 派单 / 验收 / 提交）。
+   → 详见 `docs/agents/02-一-并发.md` §一.5
+3. **约束设计书（派实现代理的前置）**：控制方先把"世界必须长成什么样"落盘（需求来源与用户原话 / 现状 `file:line` /
+   接口·载荷·数据流与所有权边界 / 不变量清单 / 验收判据 + 负向用例 / 文件所有权）；任务书里引用路径 + 小节号并**原样复述关键形状**；
+   **没有约束设计书就派实现 Agent ⇒ 派单无效**，子 Agent 有权拒绝。实现方自己出「实现架构账本」。→ 详见 `docs/agents/02-一-并发.md` §一.8
+4. **用户原话逐字收录**：用于派单的开发计划/架构设计文档必须有独立小节「**用户原话附录**」，**逐条原样照录**（含日期；不改写、不缩写、不意译）；
+   子 Agent 若认为设计与**用户原话/红线**冲突 ⇒ **立即上报**，控制方必须转问用户，**不得代替用户裁定设计**。
+   → 详见 `docs/agents/02-一-并发.md` §一.8.1
+5. **责任区委派六要素**：① 问题现场（`file:line` 已确认事实）② 责任归属 ③ 最终能力 ④ 不可破坏机制 ⑤ 可动范围 ⑥ 交账方式；
+   **明确不要求**逐文件施工图 / 固定实现计划；做不到 ⇒ **BLOCKED，不是 DONE**（"写进风险文档/未完成项"**不能替代**验收判据通过）。
+   → 详见 `docs/agents/02-一-并发.md` §一.8 / §一.10
+6. **Alpha 不兼容旧档**：旧存档 / 旧格式**一律作废**（直接重建，不写迁移、不写键归一、不写兼容位）；
+   "旧档读不回来"**不是缺陷**、不许记 bug；唯一要守的是**同一版本内自洽**（铁律 5 往返不变式）。
+   → 详见 `docs/agents/02-一-并发.md` §一.11
+7. **口径溯源**：向用户提任何"待裁定"之前，**必须先做口径溯源并落盘**（specs / plans / status / 本文件 —— 尤其各文档开头的「用户原话附录」）；
+   已有裁定**不得重复问**；**没有溯源表 = 提问无效**。→ 详见 `docs/agents/02-一-并发.md` §一.12
+8. **日志纪律**：先写设计文档再派实现；每模块一个 `XxxLog` 门面（logger 名唯一拼写点），INFO/DEBUG/TRACE 分档；
+   新增/修改经济阶段必须同时加日志；**业务拒绝 = INFO**、**契约/跨切片一致性故障 = ERROR 不降级**、逐笔明细 = TRACE。
+   → 详见 `docs/agents/02-一-并发.md` §一.9
+9. **产物**：重建产物前**先停服务**（覆盖运行中的 jar ⇒ 惰性加载 `ClassNotFoundException`、静态资源 500）；
+   服务在跑时验代码用 `./mvnw test`；`-Dshade.skip=true` 会被**静默忽略**。→ 详见 `docs/agents/03-二-产物与jar.md`
+10. **验证**：**护栏必须自证**（变异/负向验证：改坏 ⇒ 当场红 ⇒ 还原 ⇒ 比 md5，做不到就如实说"等价存活"）；
+    **不许把"没跑"写成"通过"**；测试与变异自证**留到最后统一做**。→ 详见 `docs/agents/04-三-验证.md`
+11. **提交与关账**：不擅自 `git commit`；提交/推送/留痕/密钥纪律 → 详见 `docs/agents/06-五-提交与协作.md`；
+    关账跑 `tools/gate.sh`（门禁组合 · `-pl` 强制 `-am` · `git add` 白名单）→ 详见 `docs/agents/08-七-门禁与关账命令.md`。
