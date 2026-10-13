@@ -183,3 +183,28 @@
 4. 未核：`LatitudeBands` 负溢出 · `awaitPending` 文案 · 跨命名空间夹具维度 · `worlds/v17levant.json` 与创世数据一致性 · `test-world/store/simos.db` 是否真 0 city/0 unit（未读 live 库）。
 5. 未核前端运行时（`paintBorders`/陈旧字段读只做静态核对）。
 6. **老计划未逐条判定是否已被消化**（例：`2026-10-10-market-port-fx-merchant-plan.md` §7 的 Q-1~Q-20 多数带"控制方默认"）。
+
+
+---
+
+## 9. 追加（2026-10-13 下午）：两条新事实
+
+### 9.1 ★ `class-first` **并未从代码退役**（此前无此条）
+显式路径下仍命中：`simos-economy/.../EconomyCodec.java:713/714/720` · `EconomyPayloads.java:262/266` ·
+`simos-unit/.../UnitBorrowHandler.java:50`（+ webui）。
+★ 生成命令（★ 注意 pathspec 必须带 `**`，否则恒定假 0 —— 见 `docs/agents/10-九-实测失败形态.md` §9.6）：
+```bash
+git grep -n "class-first" -- 'simos-*/src/main/**'
+git ls-files 'simos-*/src/main/**' | wc -l     # 应 = 1318；若 = 0 说明 pathspec 写错
+```
+
+### 9.2 ★ 技能计划的一条被 **RED 基线否决**（记入，避免重复开工）
+原本计划把「审计器必须镜像生产代码的真实取值链」做成技能 `auditing-second-spelling-points`。
+**2026-10-13 的 RED 基线（6/6 run）无一失败** —— 子代理在无任何技能的情况下**自己**抓住了第二个拼写点，
+★ 其中 B5 **直接引用了本仓既有的** `docs/agents/10-九-实测失败形态.md` §9.4（「报零命中前先造一个已知会命中的样本」）。
+⇒ 按 `writing-skills` 的「**Don't create for: 别处已有良好文档的标准做法 / Project-specific conventions**」
++ 其铁律「**If the control doesn't exhibit the failure, there is nothing to fix**」⇒ **该技能撤销、不写**。
+★ 另：原定场景 A 的靶子（`SimosToolsTest` 窄写扫描）**在本仓已被修好**
+（`SimosToolsTest.java:1223` 已写 `overridesToolName = source.contains("protected String toolName()")`；真源在
+`AbstractNarrowWriteTool.java:66-68 toolName(){return commandType();}` / `:74-76 name(){return toolName();}`）
+⇒ **靶子选错**，不是技能有效。**后续候选技能必须先跑 RED 基线再定去留。**
