@@ -314,6 +314,14 @@ class SimosToolsTest {
           "simos.fork",
           "simos.gm.adjustPopulation",
           "simos.gm.approve",
+          // ★★ 2026-10-14 批 G（GM 代打 {@code simos.gm.actAs}）+1（63 → 64）：它是**非窄写**（只
+          //   implements SimosTool，不继承 AbstractNarrowWriteTool ⇒ 窄写扫描器扫不到它）。
+          //   ★ 为什么必须登记进**本**名单（而不是 NARROW_WRITE_NAMES）：本名单 = "GM 桶里的写 ∖ 磁盘上的窄写类"
+          //     的**扣减面**；不登记 ⇒ 它以"孤儿窄写"身份出现在
+          //     everyNarrowWriteToolClassIsWiredIntoTheGmBucket 的差集里（实测原文：but the following
+          //     elements were unexpected: ["simos.gm.actAs"]）；登记进 NARROW_WRITE_NAMES 则会与磁盘扫描面
+          //     （那里根本没有它）对不上。⇒ 它的位置只有这一个。★ 它 roles()={GM} ⇒ 决策人面一条不动。
+          "simos.gm.actAs",
           "simos.gm.armyPayPolicy",
           "simos.gm.govMarketMandate",
           // ★★ 2026-10-14 GM⇄DM 信件批 +1（62 → 63）：GM 发信是**非窄写**（只 implements SimosTool，
@@ -1203,8 +1211,11 @@ class SimosToolsTest {
                 + "三条**只有 GM**；{@code ga.adjudication.ack}（写，非窄写）**只有决策人** ⇒ GM 面 175 → **178**"
                 + "（实测：真壳 GM 桶 178 = 37 读 + 141 写；本条与 {@code everyToolClassOnDiskIsRegisteredInSomeBucket} "
                 + "的 174 → 181、{@code McpServerTest}/{@code McpPortTopologyTest} 的 175 → 178、"
-                + "{@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 同一次真跑读数）")
-        .hasSize(178);
+                + "{@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 同一次真跑读数）；"
+                + "★★ 2026-10-14 批 G（GM 代打 {@code simos.gm.actAs}）：该工具 {@code roles()={GM}} 且是**非窄写**"
+                + "（不继承 AbstractNarrowWriteTool）⇒ GM 面 **178 → 179**（= 37 读 + 142 写），决策人面 **54 一条不动**"
+                + "（★ 实测：本条真跑红在「Expected size: 178 but was: 179」；下面那条决策人桶断言同一次跑**没红**）")
+        .hasSize(179);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -2126,8 +2137,11 @@ class SimosToolsTest {
                 + "{@code ReopenPacketTool}，均写）；批 B 另把 {@code SubmitPacketTool} 用 {@code git mv} 改名成 "
                 + "{@code ConfirmPacketTool}（改名 ⇒ 计数不变）。★ 逐条核过：7 条全部已在磁盘、其中 4 条只有 GM、"
                 + "4 条只有 DM（{@code adjudication.ack} + 批 B 三件套）⇒ 与 GM 桶 175→178、决策人桶 50→51 三条读数自洽；"
-                + "扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(181);
+                + "扫到 0/漏文件是『扫描器静默』陷阱）；"
+                + "★★ 2026-10-14 批 G（GM 代打）：磁盘上 **+1 个 *Tool.java ⇒ 实测 181 → 182** —— "
+                + "{@code simos-ga/.../tools/write/GmActAsTool.java}（{@code roles()={GM}}，只 implements SimosTool）"
+                + "（★ 实测：本条真跑红在「Expected size: 181 but was: 182」）")
+        .hasSize(182);
 
     List<String> union =
         Stream.concat(

@@ -113,6 +113,8 @@ class McpPortTopologyTest {
           "simos.fork",
           "simos.gm.adjustPopulation",
           "simos.gm.approve",
+          // ★★ 2026-10-14 批 G（GM 代打）：写；非窄写（不继承 AbstractNarrowWriteTool）；roles()={GM} ⇒ 只在 GM 面
+          "simos.gm.actAs",
           "simos.gm.armyPayPolicy",
           // ★★ 2026-10-14 GM⇄DM 信件批：GM 发信（写；非窄写 —— 不继承 AbstractNarrowWriteTool）
           "simos.gm.message.send",

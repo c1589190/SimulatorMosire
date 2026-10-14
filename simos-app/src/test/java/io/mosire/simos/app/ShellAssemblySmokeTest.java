@@ -132,8 +132,15 @@ class ShellAssemblySmokeTest {
    * {@code roles()} 只有 GM）；决策人面 +4（决策族 4 → 8 条：改名 3 条不计增，净新增 revise / drop / reopen 三条 + {@code
    * simos.ga.adjudication.ack} 一条）。 ★ 实测来源：本条真跑，红在「GM 桶条数锚点 … Expected size: 175 but was:
    * 178」与「决策人桶条数锚点 … Expected size: 50 but was: 54」（★ 设计书 §7 预测的是 DM 50→51，实测 54 ⇒ 以实测为准）。
+   *
+   * <p>★★ <b>2026-10-14 批 G（GM 代打 {@code simos.gm.actAs}）：GM 178 → 179；决策人 54 <b>一条不动</b></b> ——
+   * {@code GmActAsTool} 的 {@code roles()={GM}}（代打是 GM 的活，决策人不得替别人代打，设计书 §3.7）⇒ 只进 GM 桶一条。 ★
+   * 它<b>不是窄写</b>（只 {@code implements SimosTool}，不继承 {@code AbstractNarrowWriteTool}）⇒ {@code
+   * SimosToolsTest.NON_NARROW_WRITE_NAMES} +1，而 {@code NARROW_WRITE_NAMES} 与"磁盘窄写类集合"<b>一条不动</b>。 ★
+   * 实测来源：本条真跑，红在「GM 桶条数锚点（增删工具须显式改本行）Expected size: 178 but was: 179」； ★ 决策人桶那条锚点<b>没有红</b> ——
+   * 这正是"它只进 GM 桶"这一侧的判别力。
    */
-  private static final int GM_BUCKET_SIZE = 178;
+  private static final int GM_BUCKET_SIZE = 179;
 
   private static final int DECISION_BUCKET_SIZE = 54;
 

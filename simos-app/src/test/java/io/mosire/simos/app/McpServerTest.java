@@ -191,6 +191,8 @@ class McpServerTest {
           "simos.gm.adjustPopulation",
           "simos.gm.approvals",
           "simos.gm.approve",
+          // ★★ 2026-10-14 批 G（GM 代打）：写，非窄写（只 implements SimosTool）；roles()={GM} ⇒ 只在 GM 面
+          "simos.gm.actAs",
           "simos.gm.armyPayPolicy",
           "simos.gm.mergedPlan.apply",
           "simos.gm.mergedPlan.upsert",
