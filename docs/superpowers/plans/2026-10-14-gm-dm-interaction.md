@@ -233,6 +233,16 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 - 留痕：`GmToolUsage`（GM 口每次工具执行都留痕）+ 日志记 `decisionMakerId` 与 `tool`
 - ★ 它**不进 DM 桶**（`roles()={GM}`）
 
+### ★★ 3.7.1 三条落地裁定（2026-10-14 用户口述，逐字）
+
+> 「1 按照你说的吧，log肯定是要的，agent上下文没必要伪造 / 2 不能 / 3 GM想放哪放哪」
+
+| # | 裁定 | 落地 |
+|---|---|---|
+| **1** | **留痕 = 日志（+ `GmToolUsage`）**；★ **"agent 上下文没必要伪造"** | ⇒ ① 日志**必须**有（INFO，记 `decisionMakerId` + `tool` + 结局码）；② **决策包与 INFO 里都不加"这次是 GM 代打"的标记** —— 包里 `proposerId` 就是那个 DM，不多一个字段（用户要的是**真实的伪造**）；③ ★★ **`actAs` 不写任何会话**：不往 `conversations` 追加任何消息、**不跑 LLM** ⇒ "那个 DM 的 agent 上下文"保持原样、不被伪造 |
+| **2** | **不能触发"跑一轮 LLM"** | ⇒ 对**编排族工具**（`simos.sd.run-decision-makers` / `ga.RunDecision` / `ga.StartDecision`）**显式具名拒**（`BAD_REQUEST`，文案写明"代打只落工具调用，不触发决策人跑轮"）。★ 它们本来就不在决策人桶里、会被自然拒 —— 但**显式拒**比"碰巧不可达"清楚，模型也看得懂 |
+| **3** | **GM 想放哪放哪** | ⇒ `branch` / `expectedRevision` **原样生效**：`actAs` 用 GM 给的那个坐标 `replay` 状态，**在那个状态上**现算该 DM 的权限组与环境。★ **不限制成 head**；不传 ⇒ 缺省 head（既有惯例） |
+
 ### 3.8 ★ `sd` 权限域名改名（2026-10-14 第二轮裁定）
 
 **用户原话**：
@@ -332,7 +342,7 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 | **B** | 决策自由化 + 确认/撤回 + 权限转类3 **+ 信件序修正 + 收件箱文案** | `simos-ga/.../tools/write/ProposeCallTool.java` · 新 `ReviseCallTool` / `DropCallTool` / `ReopenPacketTool` · `PacketIntentTool` / `MyPacketTool` / `SubmitPacketTool` → `ConfirmPacketTool`（改名 + gate）· `simos-ga/.../decision/DecisionToolNames.java` · `simos-ga/.../decision/DecisionAgentRunner.java`（删 submit 拦截 + 预算口径）· `simos-app/.../decision/DecisionTurnFinalizer.java`（条件式结算 + 条件式 mergeIntent）· `simos-app/.../decision/ProposalCatalog.java`（revise 复用其校验段）· ★ **`simos-ga/.../tools/read/GmInboxTool.java`（§3.4.1 信件序改为数值序 + §D1 收件箱文案"每 tick 每方向最多 128 条"）** | ✅ **已完成**（11 改 + 4 新 + 1 `git mv`；`test-compile` rc=0，控制方独立复跑亦 rc=0；未写未跑测试） |
 | **E** | **旧名/过时文案收口**（批 B 交账时发现的残留） | `simos-app/.../access/DecisionCallerFactory.java`（`GOAL` 里 4 个旧工具名）· `simos-app/.../tools/read/CatalogTool.java`（`:855,:858` 两处旧名）· `simos-ga/.../tools/read/GaMessageInboxTool.java`（`description()` 仍写"每 tick 每方向**至多一条**" ⇒ 128）· `simos-ga/.../tools/write/SetDecisionMakerPeerTool.java`（`description()` 同上）· `simos-ga/.../tools/read/GmPacketTool.java`（javadoc 指向 `simos.sd.packet.my`）· `simos-ga/.../tools/DecisionPacketViews.java`（同）· `simos-app/.../tools/SimosToolSource.java:1935`（注释同） | ✅ **已完成**（7 文件 +13/−9，全文本；控制方用 `grep -a` 在 **`.class` 常量池**里核到「每 tick 每方向最多 128 条」已折叠进去 ⇒ 模型真读到；`test-compile` rc=0） |
 | **F** | `sd` 权限域名改名（§3.8） | `simos-ga-spi/.../ToolResources.java` · `simos-util/.../ResourcePaths.java` · `simos-app/.../tools/ToolSupport.java` + 全仓 ~106 处引用 + `SimosToolSource:1570` 失真注释 | ✅ **已完成**（87 文件 +211/−213；金样本单文件 diff 为空；控制方 clean verify rc=0） |
-| **G** | GM 代打工具 `simos.gm.actAs`（§3.7） | 新 `simos-ga/.../tools/write/GmActAsTool.java` · `simos-app/.../tools/SimosToolSource.java`（注册，`addGmWrites`）· `simos-app/.../access/DecisionCallerFactory.java`（若需暴露 `callerFor` 的窄口） | ⬜ **待派**（可与 F 合并为一批，但**与 D 串行**） |
+| **G** | GM 代打工具 `simos.gm.actAs`（§3.7 + §3.7.1 三条裁定） | 新 `simos-ga/.../tools/write/GmActAsTool.java` · `simos-app/.../tools/SimosToolSource.java`（注册，`addGmWrites`）· `simos-app/.../access/DecisionCallerFactory.java`（若需暴露 `callerFor` 的窄口） | ⬜ **下一批**（F 已完成） |
 | **D** | 测试面（**单独一个测试代理**） | `simos-app/src/test/**` · `simos-ga/src/test/**` | ⬜ **下一批**（覆盖 A/B/E；F/G 落地后再来一轮小的） |
 
 ★ **`DecisionAgentRunner.java` 在 A 与 B 各出现一次** ⇒ **A 必须先完成并提交**，B 再动它（一文件一 owner，见 §一 并发）。✅ 已满足。
