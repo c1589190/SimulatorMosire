@@ -122,6 +122,7 @@ import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.command.CommandFaces;
 import io.mosire.simos.ga.command.CommandPermissionRules;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.decision.DecisionToolCaller;
 import io.mosire.simos.ga.effect.GaTimeParticipant;
 import io.mosire.simos.ga.resolve.GaResolver;
 import io.mosire.simos.ga.spi.CancelEffectHandler;
@@ -439,6 +440,21 @@ public final class Shell implements AutoCloseable {
   private final SqliteConversationStore decisionConversations;
 
   /**
+   * ★★ <b>GM 代打（{@code simos.gm.actAs}）的执行面</b>（2026-10-14 批 G，设计书 §3.7）：决策人的权限链入口 —— {@code
+   * DecisionCallerFactory}（它按**被代打的那个决策人**建身份 + 现算权限组，再走 AgentLib 的五段判定链）。
+   *
+   * <p>★ <b>为什么当字段持有</b>：真 MCP 面（{@code start} 里绑进注册表的那一份）与 {@link #toolsFor(SimosToolSource.Role)}
+   * 的读回面必须是<b>同一批实例、同一批依赖</b>——否则两处装出来的代打不是同一个东西（同 {@link #stopProtocolGmTools} 的理由）。
+   */
+  private final DecisionToolCaller decisionToolCaller;
+
+  /**
+   * ★★ <b>GM 代打用的决策人桶注册表</b>（2026-10-14 批 G）：代打只能在<b>那个决策人够得着</b>的工具面上调 —— 用 GM 桶就是把"它只能干那个 DM
+   * 能干的"整条红线作废。★ 与 {@link #decisionToolCaller} 同生共死（见其 javadoc）。
+   */
+  private final ToolRegistry decisionToolRegistry;
+
+  /**
    * ★★ <b>急停协议新增的三条 GM 工具</b>（2026-10-13）：注册窄写 {@code simos.army.contactWatch} + 原因系统读口 {@code
    * simos.army.stopReport} + 唯一走 {@code CoreSimos.submitAdvance} 的推进入口 {@code
    * simos.emergency.advance}。
@@ -479,6 +495,9 @@ public final class Shell implements AutoCloseable {
       DecisionAdjudicationService decisionAdjudicationService,
       DecisionAgentService decisionAgentService,
       SqliteConversationStore decisionConversations,
+      // ★ 2026-10-14 批 G（GM 代打）：执行面 + 决策人桶注册表（两处都在 Shell.start 的 GM 工具源之前建好，见那里的顺序注释）。
+      DecisionToolCaller decisionToolCaller,
+      ToolRegistry decisionToolRegistry,
       List<AgentTool> stopProtocolGmTools) {
     this.config = config;
     this.coreSimos = coreSimos;
@@ -507,6 +526,9 @@ public final class Shell implements AutoCloseable {
     this.decisionAdjudicationService = decisionAdjudicationService;
     this.decisionAgentService = decisionAgentService;
     this.decisionConversations = decisionConversations;
+    // ★ 2026-10-14 批 G（GM 代打）：非 null 由 requireDecisionAgent 同款的"装配故障当场抛"保证（见 SimosToolSource）。
+    this.decisionToolCaller = decisionToolCaller;
+    this.decisionToolRegistry = decisionToolRegistry;
     this.stopProtocolGmTools = List.copyOf(stopProtocolGmTools);
   }
 
@@ -1301,6 +1323,10 @@ public final class Shell implements AutoCloseable {
 
     // 工具集（spec §2.1）：MCP 口 = **GM 组** = 读工具 + 通用写 + 全部窄写（条数以工具面为准）；
     //   GM 组的权限集是显式构造的那一份（gmCaller 的 resourceScopes 逐命名空间表态），不再是 unrestricted 的空资源图。
+    // ★★ 2026-10-14 批 G（GM 代打）：末两参 = 上面建好的**决策人**那两样（执行面 + 决策人桶注册表）——
+    //   顺序在这里成立：decisionAgentFace(1280) → decisionCallerFactory(1295) → decisionTools(1298)
+    //   → decisionAgentService(1304) → **本行**(GM 工具源，1331)。★ 两者都是决策人那一侧的实例：
+    //   代打因此只能干那个 DM 能干的（见 GmActAsTool 类注）。
     SimosToolSource toolSource =
         new SimosToolSource(
             coreSimos,
@@ -1318,7 +1344,9 @@ public final class Shell implements AutoCloseable {
             SimosToolSource.Role.GM,
             decisionAgentService,
             pendingApprovals,
-            approvalCoordinator);
+            approvalCoordinator,
+            decisionCallerFactory,
+            decisionTools);
     // ★★ 2026-10-13 急停协议（B，设计书 §7.2 的"装配三处"）：原因系统的**进程内**持有 + 本批新增的两条 GM 工具。
     //   ① StopReportBoard：照 DecisionRunRegistry 的取舍（不进 revision、不落 DB 表）⇒ 进程重启即失，
     //      读工具 description 里明写（不许让 GM 读成"没发生过"）。
@@ -1488,6 +1516,9 @@ public final class Shell implements AutoCloseable {
         decisionAdjudicationService,
         decisionAgentService,
         decisionConversations,
+        // ★ 2026-10-14 批 G（GM 代打）：执行面 + 决策人桶注册表 —— 上面 1295/1298 那两行建的东西，正是 toolsFor 与 MCP 面共用的那一份。
+        decisionCallerFactory,
+        decisionTools,
         // ★ 2026-10-13 急停协议（B）：GM 面上的三条新工具（MCP 面与 toolsFor 读回面**共用同一批实例**）。
         stopProtocolGmTools);
   }
@@ -1605,7 +1636,10 @@ public final class Shell implements AutoCloseable {
                 role,
                 decisionAgentService,
                 gm ? pendingApprovals : null,
-                gm ? approvalCoordinator : null)
+                gm ? approvalCoordinator : null,
+                // ★ 2026-10-14 批 G（GM 代打）：同审批面那条惯例 —— 两个依赖**只有 GM 档用**（决策人不代打别人）。
+                gm ? decisionToolCaller : null,
+                gm ? decisionToolRegistry : null)
             .listTools();
     // ★★ 2026-10-13 急停协议（B）：GM 面补上三条新工具（与 build() 里绑进 MCP 注册表的是**同一批实例**）。
     //   决策人面**一条不加**（三条都只声明 {GM}；原因里含视野之外的军队位置，不给 DM —— D-002 中央不设全视野）。

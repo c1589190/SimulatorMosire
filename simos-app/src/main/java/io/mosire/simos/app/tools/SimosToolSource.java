@@ -12,6 +12,7 @@ import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.docs.DocsCapability;
 import io.mosire.docs.DocsTools;
 import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
@@ -96,6 +97,7 @@ import io.mosire.simos.economy.tools.write.EconomyUpsertGovUnitTool;
 import io.mosire.simos.economy.tools.write.EconomyUpsertIndustryTool;
 import io.mosire.simos.economy.tools.write.GmGovMarketMandateTool;
 import io.mosire.simos.economy.tools.write.GmPeriodicAdjustmentTool;
+import io.mosire.simos.ga.decision.DecisionToolCaller;
 import io.mosire.simos.ga.spi.SimosToolAdapter;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolRole;
@@ -129,6 +131,7 @@ import io.mosire.simos.ga.tools.write.AdjudicationAckTool;
 import io.mosire.simos.ga.tools.write.ConfirmPacketTool;
 import io.mosire.simos.ga.tools.write.DropCallTool;
 import io.mosire.simos.ga.tools.write.GaMessageSendTool;
+import io.mosire.simos.ga.tools.write.GmActAsTool;
 import io.mosire.simos.ga.tools.write.GmApproveTool;
 import io.mosire.simos.ga.tools.write.GmDecidePacketTool;
 import io.mosire.simos.ga.tools.write.GmMergedPlanApplyTool;
@@ -993,6 +996,9 @@ public final class SimosToolSource implements ToolSource {
         role,
         null,
         null,
+        null,
+        // ★ 2026-10-14 批 G（GM 代打）：决策人桶那条路**不需要**执行面与决策人桶注册表 ⇒ 两处 null（同 pendingApprovals 的惯例）。
+        null,
         null);
   }
 
@@ -1080,7 +1086,10 @@ public final class SimosToolSource implements ToolSource {
         role,
         decisionAgent,
         pendingApprovals,
-        approvalCoordinator);
+        approvalCoordinator,
+        // ★ 2026-10-14 批 G：测试/旧路径不接 GM 代打面（同审批面的"未接入"惯例）。
+        null,
+        null);
   }
 
   /**
@@ -1090,10 +1099,18 @@ public final class SimosToolSource implements ToolSource {
    * <p>★ 审批依赖**只被 {@link Role#GM} 用到**：两条工具标了 {@link GmOnlyRead} / 只加在 {@link #addGmWrites}，
    * 决策人桶里不出现；{@link Role#DECISION_AGENT} 下传 null 是合法装配（那两条根本不会被构造到可执行面）。
    *
+   * <p>★★ <b>2026-10-14 批 G（GM 代打）：{@code decisionToolCaller} / {@code decisionToolRegistry} 同样只被
+   * {@link Role#GM} 用到</b>——它们是 {@code simos.gm.actAs} 的两个依赖（执行面 + <b>决策人桶</b>注册表）， 该工具只在 {@link
+   * #addGmWrites} 注册；{@link Role#DECISION_AGENT} 下传 null 是合法装配（代打是 GM 的活，决策人不代打别人）。 ★ 装配顺序由 {@code
+   * Shell.start} 保证：决策人桶（含注册表）与 {@code DecisionCallerFactory} 都在 GM 工具源**之前**建好。
+   *
    * @param calendarService 启动期装载的历法服务（非空；四个 gov 写工具按它取时钟）
    * @param pendingApprovals 进程内唯一的审批登记表（GM 裁决口读写它；null = 未接入 ⇒ 工具回 {@code UNAVAILABLE}）
    * @param approvalCoordinator 决策人链的审批编排器（成功回执取 {@code effectiveDecision(...)} 算实际生效 scope； null =
    *     未接入 ⇒ 工具回 {@code UNAVAILABLE}）
+   * @param decisionToolCaller <b>只有 GM 档用</b>：决策人权限链的执行面（生产 = {@code DecisionCallerFactory}， 见
+   *     {@link DecisionToolCaller}）。决策人档传 null。
+   * @param decisionToolRegistry <b>只有 GM 档用</b>：<b>决策人桶</b>的工具注册表（代打只能用那个 DM 够得着的工具）。 决策人档传 null。
    */
   public SimosToolSource(
       CoreSimos core,
@@ -1111,7 +1128,9 @@ public final class SimosToolSource implements ToolSource {
       Role role,
       DecisionAgentService decisionAgent,
       PendingApprovals pendingApprovals,
-      ApprovalCoordinator approvalCoordinator) {
+      ApprovalCoordinator approvalCoordinator,
+      DecisionToolCaller decisionToolCaller,
+      ToolRegistry decisionToolRegistry) {
     Objects.requireNonNull(core, "core");
     Objects.requireNonNull(calendarService, "calendarService");
     Objects.requireNonNull(query, "query");
@@ -1154,7 +1173,10 @@ public final class SimosToolSource implements ToolSource {
             commandTargets,
             requireDecisionAgent(decisionAgent),
             pendingApprovals,
-            approvalCoordinator);
+            approvalCoordinator,
+            // ★ 2026-10-14 批 G（GM 代打）：这两个依赖只在这一档（GM）用得上——见全参构造器的 javadoc。
+            requireDecisionToolCaller(decisionToolCaller),
+            requireDecisionToolRegistry(decisionToolRegistry));
       }
       case DECISION_AGENT -> {
         // ★ 第 3 波第 3 步：决策人**只读**自己能看的决策结果（用户原话「允许决策人查看不同 tick 的不同决策结果」）。
@@ -1193,6 +1215,24 @@ public final class SimosToolSource implements ToolSource {
   private static DecisionAgentService requireDecisionAgent(DecisionAgentService decisionAgent) {
     return Objects.requireNonNull(
         decisionAgent, "decisionAgent（GM 面含 ga.RunDecision，需要决策人 agent 运行流）");
+  }
+
+  /**
+   * ★ 2026-10-14 批 G：GM 面必须带上决策人权限链的执行面（{@code simos.gm.actAs} 没有它就只能 fail-closed）——缺了当场抛。
+   *
+   * <p>★ 为什么是"当场抛"而不是"少一条工具"：代打是**唯一**的"以某个决策人的环境落一次调用"的口，静默少一条 = 那条路整个消失
+   * 且不报错（本仓最贵的一类失效）。决策人桶不调本方法（那边传 null 是合法装配，见全参构造器 javadoc）。
+   */
+  private static DecisionToolCaller requireDecisionToolCaller(
+      DecisionToolCaller decisionToolCaller) {
+    return Objects.requireNonNull(
+        decisionToolCaller, "decisionToolCaller（GM 面含 simos.gm.actAs，需要决策人权限链的执行面）");
+  }
+
+  /** ★ 同上：代打必须用**决策人桶**的注册表（用 GM 桶 = 绕过"它只能干那个 DM 能干的"，当场抛、不静默换桶）。 */
+  private static ToolRegistry requireDecisionToolRegistry(ToolRegistry decisionToolRegistry) {
+    return Objects.requireNonNull(
+        decisionToolRegistry, "decisionToolRegistry（GM 面含 simos.gm.actAs，需要决策人桶的注册表）");
   }
 
   // ── 2026-10-14 外来工具面的适配三件套（角色 / gate / 注册）────────────────────────────────────
@@ -1326,7 +1366,10 @@ public final class SimosToolSource implements ToolSource {
       Map<String, CommandTargets> commandTargets,
       DecisionAgentService decisionAgent,
       PendingApprovals pendingApprovals,
-      ApprovalCoordinator approvalCoordinator) {
+      ApprovalCoordinator approvalCoordinator,
+      // ★ 2026-10-14 批 G（GM 代打）：两个依赖都只被 addGmWrites 里的 simos.gm.actAs 用（见全参构造器 javadoc）。
+      DecisionToolCaller decisionToolCaller,
+      ToolRegistry decisionToolRegistry) {
     // ★★ 2026-10-12 B3 第三/四域（economy + social）：经济/社会工具**已下放**（`economy.tools.write` /
     //   `social.tools.write`），这里只做装配——注入窄写口 + 窄读口 + 各自域声明的端口：
     //   ① 经济视角口（可见性围栏 + unit 编制预检 + 周期规则到期判据，唯一实现在 app）；
@@ -1354,6 +1397,14 @@ public final class SimosToolSource implements ToolSource {
     //   全部从 GaMessageSendTool 的静态助手取（那个类是信件形状的唯一拼写点，本行不复制第二份）。
     //   落点是 info 感知层（一条 ga.PutInfo ⇒ 一条 revision），不写世界命名空间。
     built.add(new GmMessageSendTool(gaWrites, gaReads));
+    // ★★ 2026-10-14 批 G（GM 代打，设计书 §3.7 + §3.7.1）：GM 以**某个决策人的环境**调一次任意工具（从外部把真人玩家的东西输进去）。
+    //   ★★ 这条装配的要害是**两个"用哪个桶"的选择**，两处都必须是决策人那一侧：
+    //     ① 执行面 = DecisionCallerFactory（callerFor 按那个 DM 建身份 + 现算权限组）；
+    //     ② 注册表 = decisionToolRegistry（**决策人桶**，不是 GM 桶）⇒ 代打只能干那个 DM 能干的。
+    //   ★ 判据不许放宽（红线）：那个 DM 够不着就照实回 TOOL_NOT_FOUND / PERMISSION_DENIED / RESOURCE_DENIED。
+    //   ★ 只在 GM 桶（roles={GM}）：代打是 GM 的活，决策人不代打别人；★ 工具名不是命令类型 ⇒ 不进 catalog。
+    //   ★ 它自己不碰世界命名空间（resources()=NONE）：内层工具各有各的 manifest，且在那个 DM 的权限集下判（理由见该工具类注）。
+    built.add(new GmActAsTool(decisionToolCaller, decisionToolRegistry, gaReads, mapId));
     // 「把某个决策人的会话换一段新的」：只在 GM 桶——决策人不重置自己（那等于给自己开一个"忘掉刚才答应过什么"的按钮）。
     built.add(new ResetDecisionMakerConversationTool(gaWrites, gaIdentity, mapId));
     built.add(new StartDecisionTool(gaWrites, gaIdentity, mapId));
