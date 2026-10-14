@@ -306,3 +306,52 @@ outcome=(无 outcome) · 编制 50→47
 2. ★ **`gm.packet.execute` 的端到端**：一次执行 ⇒ **恰好一条 revision**（含 outcome 回写）；重试 ⇒ 非成功且零落盘。
 3. ★ **把两任修复者留在 `/tmp` 的探针沉淀成真测试**（`OfficeProbe` / `CreateOfficeAcceptProbe` / `planonly-probe` / `province-probe`）—— 它们**能走到这些工具并读到真状态**，而仓里那条 e2e 走不到（`SIMOS_REAL_LLM` 门控 + `seedGenesis()` 缺 army 片）。
 4. §9.5 的两条：`validateCall` 在 `allowedTools` 为空时**跳过整条白名单检查** · 资源面漏的三维。
+
+---
+
+## 11. 批 3b 落地结果（2026-10-15）
+
+### 11.1 ★ 前置条件复核（**通过**）
+- **静态**：九条的 `if (planOnly)` 一律排在**唯一**提交点之前（如 `GovIssueMoneyTool:239 < 243`），每条直接 `writes.` 调用数 = **0**（无第二条写路；两条 policy 工具多一处 noop 空批分支，是有意为之）。
+- **动态**：九条**逐条**真调 `preview=false + planOnly=true` ⇒ `plannedCommands` 1/1/2/6/2/1/1/2/1 条 **且 `headDelta=0`** ⇒ `planOnlyOk=9/9`。
+  ★ **顺带补上了 `c27febc7` §10.5 自认未验证的另外 8 条** —— 那条"只做结构验证"的欠账**已还清**。
+
+### 11.2 应用与验收
+- 补丁 `git apply` **cleanly**（无需手工落地）；落地后 md5 `30b35b74a4f194792662610e11ff3695` 与上一任 proposed **逐字节相同**；`+59/−3` 单文件。
+- **九条逐条真 propose：9/9 成功**（生产装配，`SmallWorld` 8 片含 army）；`gm.packet` 读回 9 条工具名齐全。
+- **B1–B6 全过**。★ **B3 做了判别对照**（这是本批最漂亮的一笔）：
+  ```
+  同一链上直接调 setBudgetPolicy ⇒ APPROVAL_DENIED，asks=1     ← 类2 的阻塞路径真的存在
+  同一链上走 propose            ⇒ success，     asks 不增      ← 决策包路径零阻塞（零审批）
+  ```
+  ⇒ **"DM 侧零阻塞"不是推理，是对照实验测出来的。**
+- ★ **B4 的 revision 逐跳计数**（世界真的只变一次，有数字）：
+  ```
+  head 1 →(九条 planOnly) 0 →(9 propose) 10 →(B3 对照) 11 →(B4 propose) 12
+       →(confirm) 13 →(decide APPROVE) 14 →(execute) 15 恰 +1，含 outcome 回写
+       → 重试 BAD_REQUEST 15→15
+  国库 copper 100000 → 107777（+7777，真落盘）· plannedCommands=2 且 headDelta=0
+  ```
+
+### 11.3 ★★ 控制方更正：真实流程 **多一步 `confirm`**
+
+我在 §8.4 的 B4 里写「`propose` → `decide` → `execute`」——**漏了一步**：
+`propose` 落的是 **`DRAFT`**，而 **GM 不能裁决 DRAFT**（`GmDecidePacketTool`：只有 `PENDING` 可裁决）⇒ **真实流程是**
+```
+DM propose → DM confirm（→ PENDING）→ GM decide → GM execute
+```
+★ 这不是缺陷，是**既有状态机**，而且正是用户「DM 确认决策」那条裁定的落地。⇒ 引用流程时**必须带 `confirm`**。
+
+### 11.4 ★ 控制方裁定（两条，2026-10-15）
+
+| # | 问题 | 裁定 |
+|---|---|---|
+| **(a)** | 九条工具的 `description()` 写「决策人可省 `govUnitId` = 自己的 GOV」，但 **propose 路径用 `AgentIdentity.external()` ⇒ 走不到那个便利**，DM 必须**显式**给 `govUnitId` | ★ **必须改描述**（或让两条路径行为一致）。理由：**这正是本仓反复犯的那个病 —— 描述承诺一个走不到的便利**（与 `affiliation` 那句谎同族）。⇒ 已派单：**先核清两条路径各自的真实行为**，再照事实写 |
+| **(b)** | 任务书 B4 漏了 `confirm` 那一步 | ✅ **接受更正**（见 §11.3），设计书已改 |
+
+### 11.5 未做（如实）
+- **资源面漏的三维**：币种（`ResourcePaths` 无币种路径）· `issueMoney` 的 `actor:<q>_<r>` 国库格 · `assignPosts`/`openPostsToMarket` 的 `activity` 单位 —— 要改 `ResourcePaths` + 各 Scope，**越界**。
+- **`allowedTools` 为空 ⇒ 整条白名单检查被跳过**（`DecisionCallerFactory` 越界）⇒ 单独立项。
+- 两条 policy 的 **noop + planOnly 空批**分支仍未实测。
+- 另外 8 条**未逐条走完** `decide → execute`（只验了 `planOnly` 交批 + `propose` 成功）。
+- ★ **证据全在仓库外，未沉淀成回归用例**（红线）⇒ 见 §10.6 测试面待办。
