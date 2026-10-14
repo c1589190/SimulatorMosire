@@ -389,6 +389,44 @@ new WorkspaceCaller(userKey, assemblyPermissions(docsRoot))
 
 ---
 
+## 7.3 ★ 门禁暴露的第二个生产缺陷：SpotBugs `REC_CATCH_EXCEPTION`（2026-10-14）
+
+**症状**：`clean verify` 跑到 `simos-ga` 后 FAILURE —— 断在 SpotBugs ⇒ **`simos-app` 的 SpotBugs 与测试整轮 SKIPPED**（"全仓干净"这个数字当轮拿不到）。
+
+```
+[ERROR] Low: Exception is caught when Exception is not thrown
+        ...PacketDraftSupport.parseArgsObject(String) At PacketDraftSupport.java:[line 99] REC_CATCH_EXCEPTION
+[ERROR] Failed to execute goal ...spotbugs-maven-plugin:4.10.4.1:check (spotbugs-check) on project simos-ga:
+        failed with 1 bugs and 0 errors
+```
+
+**归属**：`PacketDraftSupport.java` 由批 B（`4187c51a`）**新增** ⇒ **本批引入的新违规**，不是既有的 `16×"size is 0"` 基线债。
+
+**修法**（唯一文件，2 insertions / 1 deletion）：catch 参数 `Exception` ⇒ `com.fasterxml.jackson.core.JsonProcessingException`。文案 / `IllegalArgumentException` 折叠 / 原异常作 cause **逐字未动**（catch 行号 `:99` ⇒ `:100`）。★ **不许**用 `@SuppressFBWarnings` 压——这条能真修干净，压掉就是撒谎。
+
+**等价性**（修复代理给 `javap` 证据，非口称）：本仓 `jackson-databind-2.22.2` 的 `readValue(String, TypeReference)` **只声明** `throws JsonProcessingException, JsonMappingException`（后者是子类）⇒ 受检异常集恰为 `{JsonProcessingException}`，宽 catch 多出的那一截**无可达抛出路径**。
+
+**真实数字**：改前 `-pl simos-ga -am` ⇒ RC=1 / `:99` / `1 bugs and 0 errors`；改后 `-pl simos-ga,simos-app -am` ⇒ **RC=0**，两模块各 `BugInstance size is 0` + `Error size is 0`，17/17 SUCCESS。★ 本轮被 SKIPPED 的 `simos-app` 静态检查首次结果：**干净，无任何违规**。
+
+### ★★ 记录：只到"编译过"的实际漏检率
+
+本批的纪律是「实现方只写到**编译过**，测试最后单独一个代理统一做」。代价在本批**实测**出来了：
+
+| 缺陷 | 引入批 | 只到"编译过"时 | 在门禁里才现形于 |
+|---|---|---|---|
+| `sim-log` 挂载被 M9/W1 拒（**壳起不来**） | 权限版图（早期批） | 编译 rc=0、`spotless:check` rc=0 | 测试代理跑全量 |
+| SpotBugs `REC_CATCH_EXCEPTION` | **批 B** | `test-compile` rc=0 | 测试代理跑 `clean verify` |
+
+⇒ **两条都是"编译过"完全看不见的**（一条是装配期行为、一条是静态分析），且**都在门禁里现形、没有流到真机**。这就是这条纪律的收益；代价是缺陷晚一步现形、且需要**控制方在最终门禁上独立复跑**才能确认——**不能拿实现方的"编译过"当验收**。
+
+### ★ 范围判据（本批确立，供后来者照用）
+
+**"本批引入的"才修，历史的一律不动**（哪怕代码形状一模一样）：
+- `DecisionPacketViews.java:80` 的**同类宽 catch** 属历史代码（`git blame` = `996cfd418`，2026-10-06；★ 与 `git log -S -1` 给出的哈希有分歧 —— **以 `git blame` 单行为准**，`-S` 数的是字符串出现次数变化，行移动会让它指到别的提交），本轮 SpotBugs **没有**报它 ⇒ **不改，仅记录**。
+- 另 7 处宽 catch（`GaCodec:127,330` / `GmMergedPlanUpsertTool:287,337` / `DecisionEffectExecutor:410` / `ProposalCatalog:250` / `GuiServer:644`）SpotBugs 均未报 ⇒ 其 `try` 内确有 `Exception` 级抛出路径，属**合法宽捕获** ⇒ **不另立责任区**。
+
+---
+
 ## 8. 不在本批范围（明确不做的）
 
 - `ToolResources.SD_NAMESPACE` 等**权限命名空间标识符**改名（批次 5）。
