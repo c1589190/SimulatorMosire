@@ -351,6 +351,44 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 
 ---
 
+## 7.2 ★ 公用 `sim-log` 挂载缺陷（2026-10-14 实测发现 + 修复）
+
+**这是本设计书之外、但由本批的测试面暴露出来的一个真生产缺陷**（测试代理在跑全量时红：`DecisionResultsShellEndToEndTest.startShell:118`，全量 925 条里唯一 Error）。**症状**：只要 `Shell.start` 跑在一个**世界里已有决策人**的 store 上，装配期就抛 `WorkspaceException(M9/W1)`，**壳起不来**——即"第二次启动一个已有决策人的 store"必炸；首次启动因宿主还没挂过 `sim-log` 而侥幸通过。
+
+### 根因（**依赖库给出的硬约束，不是我们的设计意图错**）
+
+WorkspaceMosire（`io.mosire:workspace-mosire`，**依赖 jar、不可改**）三道守卫连着咬：
+
+| 位置 | 判据 |
+|---|---|
+| `DefaultWorkspaceRegistry:103`（M2） | `caller.holder().equals(spec.holder())` ⇒ **`Mount.holder` 必须逐字等于 `caller.holder`** |
+| `DefaultWorkspaceRegistry:113`（M2） | `Lineage.inSubtree(lineageOf(caller.holder()), lineageOf(spec.user()))` ⇒ caller 必须是 user 的祖先**或本身**（`Lineage:37` 含自身） |
+| `DefaultWorkspaceRegistry:164-173`（M9/W1） | `own = ownMountContaining(caller.holder(), spec.dir())`；`own != null && !own.strictlyContains(dir)` ⇒ 拒 |
+| `Mount.contains:95` | `equals(dir) \|\| startsWith(dir)` ⇒ ★ **"等于"也算包含**；而 `strictlyContains:104` 要的是**真子目录** |
+| `ownMountContaining:479-494` | ★ 只查 **`slices.get(holder)` 这一片**（切片键 = `spec.user()`） |
+
+⇒ ★★ **同一个 `holder` 名下、同一物理 dir 只能有一条挂载。**
+
+原实现 `mountSharedSimLog` 对**每个用户都用同一个 holder**（`WORKSPACE_HOST_KEY`）⇒ 宿主那条挂上之后，决策人那条要挂**同一个物理 dir** 就被判成"等于自己的工作区根"而拒。**设计意图没错**（"同一块物理地分头挂给多个使用者"是挂载表 `(user, name)` 分片的正常用法），**错在 holder**。
+
+### 修法（唯一可行，行为改动 4 行）
+
+`mountSharedSimLog` 里 **holder 与 caller 双双换成 `userKey`**：
+```java
+Mount.of(new MountName(SHARED_SIM_LOG_NAME), userKey, userKey, dir, Kind.LOG, …)
+new WorkspaceCaller(userKey, assemblyPermissions(docsRoot))
+```
+逐条对上：`holder == user` ⇒ `:103` 过；`inSubtree(x,x)` ⇒ `:113` 过；**每个 user 的切片只装自己那条** ⇒ 对每个用户 `ownMountContaining` 都是 `null` ⇒ M9/W1 整段跳过。
+★ **不允许**改的：物理落点 `<docsRoot>/shared/sim-log` · `Kind.LOG` · `Origin.ASSEMBLY` · 能力集 · `hasMount` 幂等 · 排除口语义 · `mountDecisionMaker`（**它是对的**：私有落在 `<docsRoot>/dm/<id>`，与宿主的 `<docsRoot>/gm` 是兄弟目录 ⇒ `own == null`）· 依赖版本。
+
+### ★ 给后来者的教训（本仓口径）
+
+1. **"同一物理 dir 挂给多个 user"在本库上需要 `holder == user`** —— 写成"宿主统一持有"必然在**第二条**挂载上炸，且**首次启动不炸**（宿主那一片还是空的）⇒ 只在"已存在决策人"的 store 上现形。
+2. **依赖库的行为要回源码核，别照类注推断**：原类注写「{@code holder} 恒为宿主（M1：{@code holder} 恒为创建者本人）」——**这句被实测证伪**，而它正是错误实现的依据。修完已把该句删掉并写进因果链与行号。
+3. **`Kind` 不是权限**（§2.1 同族）：`sim-log` 对决策人**只读**是靠 `withDecisionMakerDocsScopes` 的**写面只取私有工作区**（挂载名 == `DEFAULT_WORKSPACE_NAME`），不是靠 `Kind.LOG`。修后已复核：read 含 `sim-log`、write **不含**。
+
+---
+
 ## 8. 不在本批范围（明确不做的）
 
 - `ToolResources.SD_NAMESPACE` 等**权限命名空间标识符**改名（批次 5）。

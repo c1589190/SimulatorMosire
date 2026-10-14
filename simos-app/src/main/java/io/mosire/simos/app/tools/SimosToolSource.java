@@ -434,9 +434,42 @@ public final class SimosToolSource implements ToolSource {
      * #mountDecisionMaker} 同一处理）。装配期与懒补<b>都会</b>走到这里。
      *
      * <p>★ <b>为什么不带 {@code derivedFrom}</b>：它<b>不是</b>任何人的子工作区（M9/W1 的"真子目录"不适用），也不是"派生形态" ——
-     * 它是一块由宿主直接开出来的公用平地。★ {@code holder} 恒为宿主（M1：{@code holder} 恒为创建者本人），{@code user} 才是"挂给谁"。
+     * 它是一块由宿主直接开出来的公用平地。
      *
-     * @param userKey 挂给谁（宿主键或 {@code decision-maker:<id>}）
+     * <p>★★ <b>{@code holder == user == 这条挂载的"挂给谁"（userKey）}</b>（2026-10-14 修正：旧注释曾写「{@code holder}
+     * 恒为宿主、 {@code user} 才是"挂给谁"」，<b>该说法已被实测证伪</b>）。理由是守卫给出的一条硬约束 —— <b>同一个 {@code holder} 名下、同一物理
+     * dir 只能有一条挂载</b>，逐条对上报错经过的三个判据（行号 = 依赖 jar 源码）：
+     *
+     * <ol>
+     *   <li>{@code DefaultWorkspaceRegistry:103}（M2）：{@code caller.holder().equals(spec.holder())}
+     *       —— holder 恒为创建者本人；
+     *   <li>{@code DefaultWorkspaceRegistry:113}（M2）：{@code
+     *       Lineage.inSubtree(lineageOf(caller.holder()), lineageOf(spec.user()))} —— caller 必须是
+     *       user 的祖先<b>或本身</b>（{@code Lineage:37}：{@code candidate.equals(ancestor) ||
+     *       startsWith(ancestor + "/")}，<b>含自身</b>）；
+     *   <li>{@code DefaultWorkspaceRegistry:164-173}（M9/W1）：{@code Mount own =
+     *       ownMountContaining(caller.holder(), spec.dir())}， 若 {@code own != null &&
+     *       !own.strictlyContains(spec.dir())} ⇒ 当场拒。而 {@code ownMountContaining:479-494} <b>只查
+     *       {@code slices.get(holder)} 这一片</b>（切片键是 {@code spec.user()}：{@code :204} 落格 / {@code
+     *       mounts():265} 取片）， {@code Mount.contains:95} 的口径是"{@code equals || startsWith}" ⇒ ★
+     *       <b>"等于"也算包含</b>，而 {@code Mount.strictlyContains:104} 要求的是<b>真子目录</b>。
+     * </ol>
+     *
+     * <p>⇒ <b>因果链</b>：① {@link #mountSharedSimLogForHost} 以 holder=宿主挂上 {@code
+     * <docsRoot>/shared/sim-log} —— 成功（宿主那一片里只有 {@code <docsRoot>/gm}，是<b>兄弟</b>目录 ⇒ {@code own ==
+     * null}）；② 决策人循环里要挂<b>同一块物理地</b>，若 holder 仍是宿主，则③ 命中①那条 <b>同 dir</b> 的 {@code
+     * sim-log}，"等于"过不了"真子目录" ⇒ 拒。这正是 {@code Shell.start} 在「世界里已有决策人」时起不来的那个生产缺陷 （原始报错：{@code
+     * 工作区操作被拒（M9/W1）: 子工作区必须是自己的目录下的真子目录（等于自己的工作区根 = 把权限整份复制）}）。 把 holder 与 caller 都换成"这条挂载自己的
+     * user"后：① 逐字相等 ✓；② {@code inSubtree(x, x) == true} ✓；③ 每个 user 的切片里只装<b>自己那一条</b> （宿主切片只有
+     * {@code <docsRoot>/gm}、决策人切片只有 {@code <docsRoot>/dm/<id>}，都与 {@code <docsRoot>/shared/sim-log}
+     * 互不包含） ⇒ {@code own == null} ⇒ M9/W1 整段跳过 ✓。<b>设计意图（同一块物理地分头挂给多个使用者）不变 —— 错的是 holder，不是意图。</b>
+     *
+     * <p>★ <b>改 holder 不影响读面/写面</b>：幂等判据 {@link #hasMount} 与 {@link #withDecisionMakerDocsScopes}
+     * 都走 {@code registry.mounts(userKey)}（<b>按 user 取切片</b>，方法形参名虽叫 {@code holder}）⇒ 决策人仍枚举得到
+     * {@code sim-log}（读）， 而写面只收 {@code name == DEFAULT_WORKSPACE_NAME} 的落点 ⇒ {@code sim-log}
+     * 对决策人<b>仍然只读</b>。
+     *
+     * @param userKey 挂给谁（宿主键或 {@code decision-maker:<id>}）—— ★ 同时也是本挂载的 {@code holder}（见上）
      * @return true = 这次真挂了；false = 已有同名挂载（不改任何东西）
      */
     private boolean mountSharedSimLog(Path docsRoot, String userKey) {
@@ -446,16 +479,20 @@ public final class SimosToolSource implements ToolSource {
       // ★ 同一物理目录（多次调用 resolve 到同一路径；createDirectories 幂等）。
       Path dir = createDir(docsRoot.resolve("shared").resolve(SHARED_SIM_LOG_NAME));
       try {
+        // ★★ holder 必须是"这条挂载自己的 user"，不能恒为宿主：同一个 holder 名下、同一物理 dir 只能有一条挂载
+        //    （M9/W1 的 ownMountContaining 只查 slices.get(holder)，且 Mount.contains 把"等于"也算包含 ⇒
+        // 第二条会被拒）。
+        //    挂给宿主时 userKey == WORKSPACE_HOST_KEY，与旧写法逐字等价；差别只在决策人那一条。详见上方方法注释。
         registry.mount(
             Mount.of(
                 new MountName(SHARED_SIM_LOG_NAME),
-                WORKSPACE_HOST_KEY,
+                userKey,
                 userKey,
                 dir,
                 Kind.LOG,
                 Set.of(DocsCapability.ID),
                 Origin.ASSEMBLY),
-            new WorkspaceCaller(WORKSPACE_HOST_KEY, assemblyPermissions(docsRoot)));
+            new WorkspaceCaller(userKey, assemblyPermissions(docsRoot)));
         return true;
       } catch (WorkspaceException e) {
         // ★ 并发对手先挂上了 ⇒ 幂等；真失败照抛（fail-closed）。
