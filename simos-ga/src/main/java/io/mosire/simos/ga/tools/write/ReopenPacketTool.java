@@ -23,6 +23,7 @@ import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.tools.GaToolIdentity;
 import io.mosire.simos.ga.tools.GaToolReads;
+import io.mosire.simos.ga.tools.read.GmRoundTool;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -42,13 +43,15 @@ import java.util.Set;
  * {"tick":"可选","branch":"可选","expectedRevision":"可选"}
  * }</pre>
  *
- * <p>★★★ <b>硬防线（不变量 I3）：已裁决的包不可回到 DRAFT。</b>两条判据，**缺一不可**：
+ * <p>★★ <b>语义收窄（2026-10-15 用户裁定："PENDING 不是锁"；设计书 §3.9.2）：本工具 = 显式撤回提交标记，内容一字不动</b>。
+ * 它**不再**是"想改包"的必经之路——四个修改工具（{@link ProposeCallTool} / {@link ReviseCallTool} / {@link
+ * DropCallTool} / {@link PacketIntentTool}）在 PENDING 上会**自动撤回成 DRAFT**（隐式 reopen），DM 不必自己调它。
+ * 保留它的用途只有一个：让这个 DM **重新出现在** GM 的 {@code simos.gm.round} 的 {@code pendingConfirmations} 里 —— 即明确告诉
+ * GM"我还没说完，先别裁"。★ 所以它**不改 calls、不改 intent**，只翻状态。
  *
- * <ol>
- *   <li>{@code decidedBy} **非空** ⇒ 具名拒（GM 已经裁决过这个包）；
- *   <li>状态是 {@code APPROVED} / {@code REJECTED} / {@code MERGED} / {@code PARTIALLY_APPROVED} 任一 ⇒
- *       具名拒。
- * </ol>
+ * <p>★★★ <b>硬防线（不变量 I3 / I14）：已裁决的包不可回到 DRAFT。</b>判据是**合取**、且只有一处实现 （{@link
+ * PacketDraftSupport#rejectIfDecided}）：{@code decidedBy} **非空** **或** 状态是 {@code APPROVED} / {@code
+ * REJECTED} / {@code MERGED} / {@code PARTIALLY_APPROVED} 任一 ⇒ 具名拒。
  *
  * <p>★★ <b>为什么这条防线必须落在工具侧</b>（设计书 §3.2 原文的"这一条是防线，不是顺手"）：{@code ga.UpsertDecisionPacket}
  * **本身没有状态机**——status 从载荷取、整包覆盖（{@code UpsertDecisionPacketHandler:93,132-136}）⇒ 不加这两条守卫，DM 就能把 GM
@@ -56,8 +59,9 @@ import java.util.Set;
  *
  * <p>★ <b>幂等</b>：已经是 DRAFT ⇒ 幂等成功（返回现状，**不写 revision**）——"撤回"是个状态目标，不是一次计数。
  *
- * <p>★ <b>本 tick 没有包</b> ⇒ {@code BAD_REQUEST}。★ <b>零 revision</b> 是拒因的共同后果：所有守卫都在 {@code
- * writes.submitWithReceipt} **之前**，被拒时世界（含包）逐字段不变。
+ * <p>★ <b>本 tick 没有包</b> ⇒ {@code BAD_REQUEST}；★ <b>非当前 tick</b> ⇒ {@code BAD_REQUEST}（不变量 I15，历史
+ * tick 只读）。 ★ <b>零 revision</b> 是拒因的共同后果：所有守卫都在 {@code writes.submitWithReceipt}
+ * **之前**，被拒时世界（含包）逐字段不变。
  *
  * <p>★★ <b>权限 = 类3 {@code DM_FREE}</b>（设计书 §5）：撤回零世界效果（不变量 I1，只写自己的包）⇒ {@code gate() =
  * ALLOW}、{@code roles() = {DM}}。★ 身份从 {@code context.identity()} 派生（不采信载荷）——
@@ -93,7 +97,14 @@ public final class ReopenPacketTool implements SimosTool {
 
   @Override
   public String description() {
-    return "决策人**撤回确认**：把本 tick 自己的决策包 PENDING → DRAFT，撤回后又能 "
+    return "决策人**显式撤回提交标记**：把本 tick 自己的决策包 PENDING → DRAFT，内容**一字不动**。参数 "
+        + "{tick?(缺省 = 当前世界 tick), branch?(缺省 "
+        + ToolResources.DEFAULT_BRANCH
+        + "), expectedRevision?(缺省 head)}。"
+        + "★ 用途 = 让 GM 的 "
+        + GmRoundTool.NAME
+        + " 的 pendingConfirmations 里重新出现你（明确告诉 GM「我还没说完，先别裁」）。"
+        + "★ **改包不必先调它**："
         + ReviseCallTool.NAME
         + " / "
         + DropCallTool.NAME
@@ -101,12 +112,13 @@ public final class ReopenPacketTool implements SimosTool {
         + PacketIntentTool.NAME
         + " / "
         + ProposeCallTool.NAME
-        + "。参数 {tick?(缺省 = 当前世界 tick), branch?(缺省 "
-        + ToolResources.DEFAULT_BRANCH
-        + "), expectedRevision?(缺省 head)}。"
+        + " 在 PENDING 上会自动把包撤回成 DRAFT（隐式 reopen），改完再 "
+        + ConfirmPacketTool.NAME
+        + " 提交即可。"
         + "★ **已裁决就撤不回来**：GM 已经裁决过（decidedBy 非空）或状态属 APPROVED/REJECTED/MERGED/PARTIALLY_APPROVED "
         + "⇒ 具名拒 + 包不变（GM 的裁决不会被抹掉）。已是 DRAFT ⇒ 幂等成功（返回现状，不写 revision）。"
-        + "本 tick 没有包 ⇒ BAD_REQUEST。返回 {packetId, status, reopened, callCount, decidedBy?, submission?}。";
+        + "本 tick 没有包 ⇒ BAD_REQUEST；非当前 tick ⇒ BAD_REQUEST（历史 tick 只读）。"
+        + "返回 {packetId, status, reopened, callCount, decidedBy?, submission?}。";
   }
 
   @Override
@@ -159,6 +171,13 @@ public final class ReopenPacketTool implements SimosTool {
       }
       long tick = tickArg == null ? state.meta().timestamp().tick() : tickArg;
       DecisionPacketId packetId = PacketDraftSupport.packetIdValueOf(proposerId, tick);
+      // ★★ I15（只许动当前 tick 的包）：tick 显式给出且不是世界当前 tick ⇒ 拒（历史 tick 只读）。
+      long currentTick = reads.stateAt(branch, null).meta().timestamp().tick();
+      Optional<ToolResult> staleTick =
+          PacketDraftSupport.rejectIfNotCurrentTick(packetId.value(), tick, currentTick);
+      if (staleTick.isPresent()) {
+        return staleTick.get();
+      }
       DecisionPacket packet = ga.decisionPackets().get(packetId);
       if (packet == null) {
         return ToolResult.error("BAD_REQUEST", "本 tick 没有决策包，无可撤回: " + packetId.value());
@@ -171,22 +190,11 @@ public final class ReopenPacketTool implements SimosTool {
           Operation.WRITE,
           List.of(ToolResources.resourceGa(identity.decisionPacketKind(), proposerId.value())));
 
-      // ★★ 硬防线（不变量 I3）之一：GM 已裁决 ⇒ 绝不允许回到 DRAFT（理由见类注）。
-      if (packet.decidedBy().isPresent()) {
-        return ToolResult.error(
-            "BAD_REQUEST",
-            "决策包已由 GM 裁决（decidedBy="
-                + packet.decidedBy().get()
-                + "），撤回不可用——已裁决不可回退: "
-                + packetId.value()
-                + " status="
-                + packet.status());
-      }
-      // ★★ 硬防线之二：四种已裁决状态逐一挡住（decidedBy 为空但状态已是终态 = 契约故障，也不放行）。
-      if (isDecided(packet.status())) {
-        return ToolResult.error(
-            "BAD_REQUEST",
-            "决策包状态 " + packet.status() + " 已是终态，撤回不可用——已裁决不可回退: " + packetId.value());
+      // ★★★ 硬防线（不变量 I3 / I14）：GM 已裁决 ⇒ 绝不允许回到 DRAFT。★ 判据的**唯一实现**在 PacketDraftSupport
+      //   （decidedBy 非空 **或** 状态属四种终态；两者不一致 = 契约故障，也拒，fail-closed）。
+      Optional<ToolResult> decided = PacketDraftSupport.rejectIfDecided(packet);
+      if (decided.isPresent()) {
+        return decided.get();
       }
       // ★ 幂等：已经是 DRAFT ⇒ 返回现状，不写 revision。
       if (packet.status() == PacketStatus.DRAFT) {
@@ -235,14 +243,6 @@ public final class ReopenPacketTool implements SimosTool {
         ToolResult.error(
             "BAD_REQUEST",
             "只有已确认（PENDING）的决策包可撤回，当前状态: " + packet.status() + "（" + packet.id().value() + "）"));
-  }
-
-  /** 四种"已裁决"终态（{@link PacketStatus} 里除 DRAFT/PENDING 之外的全部取值）——撤回的硬边界。 */
-  private static boolean isDecided(PacketStatus status) {
-    return status == PacketStatus.APPROVED
-        || status == PacketStatus.REJECTED
-        || status == PacketStatus.MERGED
-        || status == PacketStatus.PARTIALLY_APPROVED;
   }
 
   private static Map<String, Object> view(DecisionPacket packet, boolean reopened) {

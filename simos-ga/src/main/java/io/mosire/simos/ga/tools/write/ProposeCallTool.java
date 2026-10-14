@@ -62,7 +62,8 @@ import java.util.Set;
  *   <li>身份从 {@code context.identity()} 派生（载荷里的 proposer 一律不采信）；
  *   <li>工具必须在本批 {@code ProposalCatalog} 初始清单、且被该决策人的 {@code allowedTools} 允许（空 = 全清单）；
  *   <li>取 base 状态（branch/expectedRevision 可选，缺省 head）⇒ tick = 世界当前 tick；包 id = {@code
- *       pkt-<proposerId>-<tick>}；已存在且非 DRAFT ⇒ 具名拒；
+ *       pkt-<proposerId>-<tick>}；★ 已**裁决** ⇒ 具名拒（I14）；★ 包在 PENDING 上也放行——改动以 DRAFT 写回（隐式
+ *       reopen，I13）；
  *   <li>用系统预览上下文跑目标工具的真 {@code preview=true}（不落盘）；
  *   <li>从 args + preview 提取跨命名空间目标，逐条按调用者现算 scope 校验（越界 ⇒ FORBIDDEN、包不变）。
  * </ol>
@@ -145,10 +146,16 @@ public final class ProposeCallTool implements SimosTool {
         + "逐条流程：catalog 校验 → 真 preview(preview=true，不落盘) → 逐目标 scope 校验（越界 = FORBIDDEN）→ "
         + "**全部通过后**一次 ga.UpsertDecisionPacket 落一条 revision（整次调用要么全成、要么全不成、世界零变化）。"
         + "多条形态下每条的 intent 按顺序拼成包级 intent（带【意图 #<callIndex>】标号），顶层 intent 有则整体覆盖它。"
-        + "同 proposer 同 tick 一个包；已提交/已裁决 ⇒ BAD_REQUEST（先 "
+        + "★ 本 tick 内可以提交（"
+        + ConfirmPacketTool.NAME
+        + "）**很多次**：包已是 PENDING 也**照样能继续提议** —— 本次改动会自动把它撤回成 DRAFT（隐式 reopen，"
+        + "视图里报 status=DRAFT 与 autoWithdrawn 注记），改完再 confirm 一次即可，**不必**自己先调 "
         + ReopenPacketTool.NAME
-        + " 撤回）。返回 {packetId, status, callCount, callIndex, tool, targets, preview, calls:[{callIndex, tool, "
-        + "targets, preview, intent?}], intent?, submission?}。";
+        + "。"
+        + "★ 只有**已裁决**（decidedBy 非空或状态 APPROVED/REJECTED/MERGED/PARTIALLY_APPROVED）才真的改不了 "
+        + "⇒ BAD_REQUEST。只许动**当前 tick** 的包（历史 tick 只读）。"
+        + "返回 {packetId, status, callCount, callIndex, tool, targets, preview, calls:[{callIndex, tool, "
+        + "targets, preview, intent?}], intent?, autoWithdrawn?, note?, submission?}。";
   }
 
   @Override
@@ -221,10 +228,22 @@ public final class ProposeCallTool implements SimosTool {
       long tick = state.meta().timestamp().tick();
       DecisionPacketId packetId = PacketDraftSupport.packetIdValueOf(proposerId, tick);
       DecisionPacket existing = ga.decisionPackets().get(packetId);
-      Optional<ToolResult> notDraft = PacketDraftSupport.rejectIfNotDraft(existing);
-      if (notDraft.isPresent()) {
-        return notDraft.get();
+      // ★★ I15（只许动当前 tick 的包）：expectedRevision 可以指出一个**历史**坐标 ⇒ 上面那个 tick 未必是世界当前
+      //   tick（那样 DM 就能改写历史 tick 的决策）。故"当前世界 tick"以该分支 head 为准，两处不一致 ⇒ 具名拒。
+      long currentTick = reads.stateAt(branch, null).meta().timestamp().tick();
+      Optional<ToolResult> staleTick =
+          PacketDraftSupport.rejectIfNotCurrentTick(packetId.value(), tick, currentTick);
+      if (staleTick.isPresent()) {
+        return staleTick.get();
       }
+      // ★★ I14（已裁决 ⇒ 拒）。★ PENDING **不是锁**（用户 2026-10-15）：它放行，落到下面以 DRAFT 写回。
+      Optional<ToolResult> decided = PacketDraftSupport.rejectIfDecided(existing);
+      if (decided.isPresent()) {
+        return decided.get();
+      }
+      // ★ 隐式 reopen 的注记（PENDING ⇒ 本次改完包回 DRAFT）：**必须在写之前**判——落盘之后 head 上读到的包已是
+      //   DRAFT，"原本是不是 PENDING"就再也看不出来了。
+      Optional<String> autoWithdrawn = PacketDraftSupport.autoWithdrawNote(existing);
 
       // ★★ 逐条先全部校验（真预览 + 目标 scope），一条不过就整次返回 ⇒ 世界零变化、包不变（见类注）。
       int firstIndex = PacketDraftSupport.nextCallIndex(existing);
@@ -275,6 +294,12 @@ public final class ProposeCallTool implements SimosTool {
       if (!finalIntentText.isBlank()) {
         view.put("intent", finalIntentText);
       }
+      // ★ 隐式 reopen（I13）：包以 DRAFT 写回（见 newPacket），视图如实报出来 + 一句"改完记得再 confirm"。
+      autoWithdrawn.ifPresent(
+          note -> {
+            view.put("autoWithdrawn", true);
+            view.put("note", note);
+          });
       return DecisionPacketPayloads.fold(receipt.outcome(), view, receipt.commandId());
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
@@ -484,6 +509,8 @@ public final class ProposeCallTool implements SimosTool {
       decisionNote = existing.decisionNote();
     }
     calls.addAll(appended);
+    // ★★ 隐式 reopen（I13）：无论 existing 是 DRAFT 还是 PENDING，追加后的包**一律以 DRAFT 写回**——这正是
+    //   "PENDING 不是修改锁"的落法（DM 改完再 confirm 一次即可，不必自己先 reopen）。
     return new DecisionPacket(
         packetId,
         branch.value(),

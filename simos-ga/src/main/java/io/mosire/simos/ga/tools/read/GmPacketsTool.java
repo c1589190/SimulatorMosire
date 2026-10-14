@@ -58,7 +58,10 @@ public final class GmPacketsTool implements SimosTool, GmOnlyRead {
     return "GM 查看决策包摘要列表（只读）：参数 {tick?, status?, proposerId?, tool?, branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(缺省 head)}。返回 {branch, revision, count, packets:[{id, tick, proposerId, "
-        + "status, callCount, toolNames}]}。";
+        + "status, callCount, toolNames}]}。"
+        + "★ **PENDING = 该决策人当前的提交**；同一 tick 内它可以提交**很多次**，GM 应**以最后一次为准**"
+        + "（读到的就是最后一次的内容）；已裁决（decidedBy 非空或终态 APPROVED/REJECTED/MERGED/PARTIALLY_APPROVED）"
+        + "之后不能再改。";
   }
 
   @Override

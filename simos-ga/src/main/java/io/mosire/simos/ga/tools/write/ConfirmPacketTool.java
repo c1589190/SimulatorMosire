@@ -45,9 +45,15 @@ import java.util.Set;
  * <p>★ <b>"全部决策" = 包里的全部 calls + intent</b>：跨轮累积（同 tick 跑多轮，每轮都能再改/再加，见 {@link ReviseCallTool} /
  * {@link DropCallTool}）⇒ {@code confirm} 定稿的是**这一刻**的整包，不是某一轮那一条。
  *
- * <p>★ <b>只接受 DRAFT；已 PENDING ⇒ 幂等成功</b>（返回现状，不写 revision）；已裁决 ⇒ 具名拒；本 tick 没有包 ⇒ 具名拒。★ 确认之后要再改：先
- * {@link ReopenPacketTool}（撤回，PENDING → DRAFT）；GM 已裁决则**改不了**（不变量 I3）——那条硬防线落在 {@code reopen} 侧，因为
- * {@code ga.UpsertDecisionPacket} 本身**没有状态机**。
+ * <p>★★ <b>提交可以反复做</b>（用户 2026-10-15：「gm 应当取最后一轮提交的决策……提交多少轮都没问题」；设计书 §3.9.2 / 不变量 I13）：<b>已是
+ * PENDING ⇒ 幂等成功</b>（返回现状、**零 revision**）——它的意思就是"我又提交了一次，**以这一次为准**" （包内容没变，所以不必再写一遍）。★ 于是"PENDING
+ * 上继续改（{@link ReviseCallTool} / {@link DropCallTool} / {@link PacketIntentTool} / {@link
+ * ProposeCallTool}）→ 再 confirm"是**正常的工作流**，不需要中间调一回 {@link ReopenPacketTool}。
+ *
+ * <p>★★ <b>两条真边界</b>（设计书 §3.9.3）：<b>已裁决 ⇒ 具名拒</b>（不变量 I14：{@code decidedBy} 非空 **或** 状态属四种终态； 统一判据在
+ * {@link PacketDraftSupport#rejectIfDecided}）；<b>非当前 tick ⇒ 具名拒</b>（不变量 I15：历史 tick 只读）。本 tick 没有包
+ * ⇒ 具名拒。★ GM 已裁决之后 DM **改不了也再提交不了**（不变量 I3）—— 那条硬防线落在 {@link ReopenPacketTool} 与 {@link
+ * PacketDraftSupport#rejectIfDecided} 两侧，因为 {@code ga.UpsertDecisionPacket} 本身**没有状态机**。
  *
  * <p>★★ <b>权限 = 类3 {@code DM_FREE}</b>（设计书 §5 权限表、用户同日裁定「决策-提交流程属无条件执行」）：本工具 **零世界效果**（只写自己的包）⇒
  * {@code gate() = ALLOW}、{@code roles() = {DM}}。★ 闸门在 GM 侧 （{@code gm.packet.decide} / {@code
@@ -90,16 +96,18 @@ public final class ConfirmPacketTool implements SimosTool {
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(缺省 head)}。"
         + "确认的是**整包**（跨轮累积的全部 calls + intent），不是某一条。"
-        + "本 tick 没有包 ⇒ BAD_REQUEST；已 PENDING ⇒ 幂等成功（返回现状）；已裁决 ⇒ BAD_REQUEST。"
-        + "★ 确认之后要再改（"
+        + "★ 本 tick 内**可以提交很多次，GM 以最后一次为准**：已 PENDING ⇒ 幂等成功（返回现状、**不写 revision**）"
+        + "——它的意思就是「我又提交了一次」。★ 提交之后想再改**不必**先撤回："
         + ReviseCallTool.NAME
         + " / "
         + DropCallTool.NAME
         + " / "
         + PacketIntentTool.NAME
-        + "）：先 "
-        + ReopenPacketTool.NAME
-        + " 撤回（PENDING → DRAFT）；GM 已裁决则改不了。"
+        + " / "
+        + ProposeCallTool.NAME
+        + " 在 PENDING 上会自动把包撤回成 DRAFT，改完再 confirm 一次即可。"
+        + "★ 只有**已裁决**（decidedBy 非空或状态 APPROVED/REJECTED/MERGED/PARTIALLY_APPROVED）才真的不能再提交 "
+        + "⇒ BAD_REQUEST；只许动**当前 tick** 的包（历史 tick 只读）。本 tick 没有包 ⇒ BAD_REQUEST。"
         + "返回 {packetId, status, callCount, submitted}。";
   }
 
@@ -153,6 +161,13 @@ public final class ConfirmPacketTool implements SimosTool {
       }
       long tick = tickArg == null ? state.meta().timestamp().tick() : tickArg;
       DecisionPacketId packetId = PacketDraftSupport.packetIdValueOf(proposerId, tick);
+      // ★★ I15（只许动当前 tick 的包）：tick 显式给出且不是世界当前 tick ⇒ 拒（历史 tick 只读）。
+      long currentTick = reads.stateAt(branch, null).meta().timestamp().tick();
+      Optional<ToolResult> staleTick =
+          PacketDraftSupport.rejectIfNotCurrentTick(packetId.value(), tick, currentTick);
+      if (staleTick.isPresent()) {
+        return staleTick.get();
+      }
       DecisionPacket packet = ga.decisionPackets().get(packetId);
       if (packet == null) {
         return ToolResult.error(
@@ -171,16 +186,21 @@ public final class ConfirmPacketTool implements SimosTool {
           context,
           Operation.WRITE,
           List.of(ToolResources.resourceGa(identity.decisionPacketKind(), proposerId.value())));
+      // ★★ I14（已裁决 ⇒ 拒）：唯一判据在 PacketDraftSupport——必须在"已 PENDING ⇒ 幂等成功"**之前**判，
+      //   否则一个"已裁决但状态残留 PENDING"的契约故障会被当成幂等成功放过去。
+      Optional<ToolResult> decided = PacketDraftSupport.rejectIfDecided(packet);
+      if (decided.isPresent()) {
+        return decided.get();
+      }
       if (packet.status() == PacketStatus.PENDING) {
-        return ToolResults.ok(packetView(packet, false)); // 幂等：已确认 ⇒ 返回现状
+        return ToolResults.ok(packetView(packet, false)); // 幂等：又提交一次（以这一次为准）⇒ 返回现状
       }
       if (packet.status() != PacketStatus.DRAFT) {
-        // ★ 统一文案（本批七个决策族工具同款）：已提交/已裁决一律指向 reopen；已裁决 reopen 也会拒。
+        // ★ fail-closed：走到这里 = 状态既不是 DRAFT 也不是 PENDING，而上面那条 decided 判据又没拦住
+        //   （decidedBy 为空 + 状态不在四种终态里）⇒ 只可能是将来新增的状态取值 ⇒ 不放行。
         return ToolResult.error(
             "BAD_REQUEST",
-            "本 tick 决策包已提交/已裁决 ⇒ 先 "
-                + ReopenPacketTool.NAME
-                + " 撤回: "
+            "决策包状态不是可提交的草稿，也不在已知的已裁决终态里 ⇒ 拒绝提交（fail-closed）: "
                 + packetId.value()
                 + " status="
                 + packet.status());

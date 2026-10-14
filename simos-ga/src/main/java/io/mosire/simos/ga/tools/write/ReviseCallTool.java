@@ -51,8 +51,19 @@ import java.util.Set;
  * {@link ProposeCallTool#validateCall}，**与 propose 同一段代码，不复制第二份**。 校验失败 / 越界 ⇒ 具名拒 + 包不变（**零
  * revision**）。
  *
- * <p>★ <b>只在 DRAFT 上允许</b>：非 DRAFT ⇒ 具名拒，提示先 {@link ReopenPacketTool} 撤回（统一文案）。 {@code callIndex}
- * 在包里不存在 ⇒ {@code BAD_REQUEST}（本 tick 没有包 ⇒ 同样是 {@code BAD_REQUEST}）。
+ * <p>★★ <b>PENDING 不是修改锁</b>（用户 2026-10-15：「提交多少轮都没问题」；设计书 §3.9.2 / 不变量 I13）：包已确认（PENDING）
+ * **照样能改**——改动会**自动把包撤回成 DRAFT**（隐式 reopen，一次 revision，不必 DM 自己先调 {@link ReopenPacketTool}）， 视图里报
+ * {@code status=DRAFT} + {@code autoWithdrawn} + 一句"改完记得再 confirm"。
+ *
+ * <p>★★ <b>真正的边界只有两条</b>（设计书 §3.9.3）：
+ *
+ * <ol>
+ *   <li><b>已裁决 ⇒ 拒</b>（不变量 I14）：{@code decidedBy} 非空 <b>或</b> 状态属四种终态 ⇒ 具名拒（统一判据在 {@link
+ *       PacketDraftSupport#rejectIfDecided}）——否则 DM 能把 GM 已批的包改了；
+ *   <li><b>非当前 tick ⇒ 拒</b>（不变量 I15）：历史 tick 的包**只读**。
+ * </ol>
+ *
+ * <p>{@code callIndex} 在包里不存在 ⇒ {@code BAD_REQUEST}（本 tick 没有包 ⇒ 同样是 {@code BAD_REQUEST}）。
  *
  * <p>★★ <b>权限 = 类3 {@code DM_FREE}</b>（设计书 §5）：决策表达零世界效果（不变量 I1）⇒ {@code gate() = ALLOW}、 {@code
  * roles() = {DM}}。★ 身份从 {@code context.identity()} 派生（不采信载荷）。
@@ -96,14 +107,21 @@ public final class ReviseCallTool implements SimosTool {
 
   @Override
   public String description() {
-    return "决策人**改**本 tick DRAFT 决策包里的一条 call（整条替换）：参数 {callIndex(必填、整数 ≥ 0), "
+    return "决策人**改**本 tick 决策包里的一条 call（整条替换）：参数 {callIndex(必填、整数 ≥ 0), "
         + "tool?(缺省 = 沿用原 tool), args?(缺省 = 沿用原 args), intent?(有则覆盖包级 intent), branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(缺省 head)}。"
         + "★ 改一条与提一条的校验**完全一致**（catalog → 真 preview → 逐目标 scope）：越界 / 校验失败 ⇒ 具名拒、包不变。"
-        + "callIndex 不存在 ⇒ BAD_REQUEST；只在 DRAFT 上允许，否则先 "
+        + "★ 本 tick 内可以提交（"
+        + ConfirmPacketTool.NAME
+        + "）**很多次**：包已是 PENDING 也**照样能改** —— 本次改动会自动把它撤回成 DRAFT（隐式 reopen，"
+        + "视图里报 status=DRAFT 与 autoWithdrawn 注记），改完再 confirm 一次即可，**不必**自己先调 "
         + ReopenPacketTool.NAME
-        + " 撤回。返回 {packetId, status, callIndex, tool, targets, preview, intent?, submission?}。";
+        + "。"
+        + "★ 只有**已裁决**（decidedBy 非空或状态 APPROVED/REJECTED/MERGED/PARTIALLY_APPROVED）才真的改不了 "
+        + "⇒ BAD_REQUEST；只许动**当前 tick** 的包（历史 tick 只读）。"
+        + "callIndex 不存在 ⇒ BAD_REQUEST。返回 {packetId, status, callCount, callIndex, tool, targets, preview, "
+        + "intent?, autoWithdrawn?, note?, submission?}。";
   }
 
   @Override
@@ -182,10 +200,20 @@ public final class ReviseCallTool implements SimosTool {
                 + "）: "
                 + packetId.value());
       }
-      Optional<ToolResult> notDraft = PacketDraftSupport.rejectIfNotDraft(existing);
-      if (notDraft.isPresent()) {
-        return notDraft.get();
+      // ★★ I15（只许动当前 tick 的包）：expectedRevision 可以指出历史坐标 ⇒ 与 head 的 tick 不一致就拒。
+      long currentTick = reads.stateAt(branch, null).meta().timestamp().tick();
+      Optional<ToolResult> staleTick =
+          PacketDraftSupport.rejectIfNotCurrentTick(packetId.value(), tick, currentTick);
+      if (staleTick.isPresent()) {
+        return staleTick.get();
       }
+      // ★★ I14（已裁决 ⇒ 拒）：唯一判据在 PacketDraftSupport。★ PENDING 放行（隐式 reopen，见类注）。
+      Optional<ToolResult> decided = PacketDraftSupport.rejectIfDecided(existing);
+      if (decided.isPresent()) {
+        return decided.get();
+      }
+      // ★ 隐式 reopen 的注记：必须在写之前判（落盘后 head 上的包已是 DRAFT）。
+      Optional<String> autoWithdrawn = PacketDraftSupport.autoWithdrawNote(existing);
       ToolResources.requireAll(
           context,
           Operation.WRITE,
@@ -217,10 +245,14 @@ public final class ReviseCallTool implements SimosTool {
       for (FormattedCall call : existing.calls()) {
         calls.add(call.callIndex() == callIndex ? check.call() : call);
       }
-      DecisionPacket revised =
+      // ★★ 隐式 reopen（I13）：把包**以 DRAFT 状态**写回——这就是"PENDING 也能改"的落法。**一次** revision
+      //   （不是"先 reopen 再改"的两次）。★ 非 PENDING 时（本来就是 DRAFT）withStatus 是恒等变换。
+      //   ★ 形状说明：三元**必须先收成一个局部变量**再 withStatus（把注释/换行插进三元 ?: 的中间是语法错）。
+      DecisionPacket revisedKeepingStatus =
           newIntent.isPresent()
               ? existing.withIntent(newIntent.get()).withCalls(calls)
               : existing.withCalls(calls);
+      DecisionPacket revised = revisedKeepingStatus.withStatus(PacketStatus.DRAFT);
       ToolWritePort.Receipt receipt =
           writes.submitWithReceipt(
               branch,
@@ -238,6 +270,11 @@ public final class ReviseCallTool implements SimosTool {
       if (newIntent.isPresent()) {
         view.put("intent", newIntent.get());
       }
+      autoWithdrawn.ifPresent(
+          note -> {
+            view.put("autoWithdrawn", true);
+            view.put("note", note);
+          });
       return DecisionPacketPayloads.fold(receipt.outcome(), view, receipt.commandId());
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());

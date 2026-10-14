@@ -59,7 +59,10 @@ public final class GmPacketTool implements SimosTool, GmOnlyRead {
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(缺省 head)}。返回 {packetId, branch, tick, proposerId, status, intent, "
         + "calls:[{callIndex, toolName, argsJson, args, targets, previewJson, preview, draftChecks, status, "
-        + "mergedPlanId?}], decidedBy?, decidedAtRevision?, decisionNote?}。";
+        + "mergedPlanId?}], decidedBy?, decidedAtRevision?, decisionNote?}。"
+        + "★ **PENDING = 该决策人当前的提交**；同一 tick 内它可以提交**很多次**，GM 应**以最后一次为准**"
+        + "（读到的就是最后一次的内容）；已裁决（decidedBy 非空或终态 APPROVED/REJECTED/MERGED/PARTIALLY_APPROVED）"
+        + "之后不能再改。";
   }
 
   @Override

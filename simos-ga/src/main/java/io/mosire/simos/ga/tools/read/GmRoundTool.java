@@ -99,6 +99,9 @@ public final class GmRoundTool implements SimosTool, GmOnlyRead {
         + "packetStatus = 该 tick 的决策包状态（DRAFT|PENDING|…；**没有包 ⇒ null**）；callCount = 包里的命令条数（没有包 ⇒ 0）；"
         + "openQuestions = 该决策人发给 GM 且**还没被回信**的信件条数（不按 tick 过滤）；adjudicationAcked = 该 tick 的推演确认到了没有。"
         + "pendingConfirmations = 决策包还没到 PENDING 的决策人 id；pendingQuestions = 有未答问题的决策人 id；pendingAcks = 这个 tick 还没确认推演的决策人 id。"
+        + "★ **PENDING = 该决策人当前的提交**；同一 tick 内它可以提交**很多次**（GM 应**以最后一次为准**，"
+        + "且 DM 改包时包会自动退回 DRAFT ⇒ 该 DM 会**重新出现**在这个清单里）；"
+        + "已裁决（decidedBy 非空或终态 APPROVED/REJECTED/MERGED/PARTIALLY_APPROVED）之后不能再改。"
         + "★★ **纪律：这三个清单有任何一个非空时，不要推演（simos.advance / 任何世界写）** —— 等他们确认/答完再推。"
         + "这是**纪律，不是系统拦截**（工具只报告谁还没确认，不替 GM 踩刹车）；纯粹只读，零世界效果。";
   }
