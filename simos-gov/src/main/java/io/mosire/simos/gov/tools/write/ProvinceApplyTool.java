@@ -46,9 +46,9 @@ import java.util.UUID;
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点是 {@link ProvinceApplyPlan#derive}（不碰 {@link
  * ToolContext} / {@code CoreSimos}）；本类只做五件事——资源断言、参数形状解析、读 base state、把 Plan 折成视图、组批与折叠结局。
  *
- * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：新建 Region 在 map 切片、GOV 单位在 unit 切片、决策人在 sd
- * 切片；单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 batchId/branch/expectedRevision ⇒ 一批 = 一条
- * revision，原子）。
+ * <p>★★ <b>它为什么是组合工具而不是一条命令</b>：新建 Region 在 map 切片、GOV 单位在 unit 切片、决策人在 ga 切片；单条命令只能落一个命名空间。本工具走
+ * {@link ToolWritePort#submitBatchWithReceipt}（同 batchId/branch/expectedRevision ⇒ 一批 = 一条
+ * revision，原子；★ 唯一写入口是这个端口，gov 够不着 {@code CoreSimos}）。
  *
  * <p>★★ <b>相关结构门</b>（目标 Region 内/指向目标 Region 的既有结构，只读 base state）：命中带 {@code GovernmentFormation}
  * 的单位 / 其 Gov 决策人 / 覆盖目标 Region（或完全落在目标 hex 集内的 Region）的 jurisdiction / id 形如 {@code
@@ -66,15 +66,19 @@ import java.util.UUID;
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code map.CreateRegion}（省 → 首都区）→ {@code unit.CreateUnit}（中央 → 省）→
  * {@code unit.SetGovFormation}（中央 → 省）→ {@code unit.SetJurisdiction}（中央在首都圈非空时才落；省逐个）→ {@code
- * ga.CreateDecisionMaker} → [{@code providerId}: {@code ga.SetDecisionMakerProvider}] → {@code
+ * ga.CreateDecisionMaker}（中央 → 省，载荷 {@code {id, allowedTools, cadence}}、<b>不带</b> {@code
+ * affiliation}）→ {@code gov.AssignDecisionMakerGov}（中央 → 省，{@code {decisionMakerId,
+ * govUnitId}}，落决策人的 GOV 归属；★ 必须晚于同 GOV 的 {@code unit.SetGovFormation} 与 {@code
+ * ga.CreateDecisionMaker}）→ [{@code providerId}: {@code ga.SetDecisionMakerProvider}] → {@code
  * ga.PutInfo}（key={@value #INFO_KEY}，address=目标 Region canonical，value=JSON 字符串，tick=base 世界当前日）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；★ 工具名不是命令类型 ⇒ 不进 catalog /
  * {@code PAYLOAD_HINTS}。
  *
- * <p>★ <b>资源声明</b>：只写 {@code map}/{@code unit}/{@code sd} 三个命名空间（{@link
+ * <p>★ <b>资源声明</b>：粗断言与资源清单只覆盖 {@code map}/{@code unit}/{@code ga} 三个命名空间（{@link
  * ResourcePolicy#UNRESTRICTED}，GM 侧三者 unlimited）；{@link #spec()} 与其余 GM 组合写同制（DEFAULT / sensitive /
- * 不可嵌入）。
+ * 不可嵌入）。★ 批里另有写 {@code social}/{@code actor}/{@code economy}/{@code gov} 各切片的命令（政府家户、账户、政府记录、 GOV
+ * 归属）—— 写口 {@code CoreSimosToolWritePort} <b>不逐命令判资源</b>，那几条由各自的 handler 落。
  *
  * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / region 不存在 / min·max·radius 不合法 / 空建议 ⇒ {@link
  * IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；相关结构 / 相交未 override ⇒ {@code
@@ -89,7 +93,7 @@ public final class ProvinceApplyTool implements SimosTool {
   /** 行动记录在 sd INFO 覆盖层里的 key（地址 = 目标 Region canonical，一次落盘一条）。 */
   public static final String INFO_KEY = ProvinceApplyPlan.INFO_KEY;
 
-  /** 本工具只写 map / unit / sd 三个命名空间（GM 侧三者 unlimited ⇒ 逐条判通过）。 */
+  /** 本工具的粗断言只覆盖 map / unit / ga 三个命名空间（GM 侧三者 unlimited ⇒ 逐条判通过）。 */
   private static final ResourceManifest PROVINCE_APPLY_WRITE =
       ResourceManifest.of(
           Map.of(
@@ -128,8 +132,9 @@ public final class ProvinceApplyTool implements SimosTool {
         + "→ social.CreateHousehold（每个 GOV 一个政府家户 hh-gov-<unitId>，位置 UNIT(unitId)）× (N+1) → "
         + "actor.EnsureHouseholdAccount × (N+1) → unit.SetGovFormation（域层把政府家户编入 Unit.households；省 superiorGov=中央）→ "
         + "economy.RegisterGovernment × (N+1)（gov-unit-<unitId>，要求 economy 已激活）→ "
-        + "unit.SetJurisdiction（中央仅首都区；省本省）→ ga.CreateDecisionMaker × (N+1) → "
-        + "[providerId: ga.SetDecisionMakerProvider] → ga.PutInfo。"
+        + "unit.SetJurisdiction（中央仅首都区；省本省）→ ga.CreateDecisionMaker × (N+1)（载荷 {id, allowedTools, "
+        + "cadence}，**不带 affiliation**）→ gov.AssignDecisionMakerGov × (N+1)（{decisionMakerId, govUnitId}，"
+        + "落决策人的 GOV 归属）→ [providerId: ga.SetDecisionMakerProvider] → ga.PutInfo。"
         + "参数 {regionId(必填，必须在当前 map.regions() 里), maxHexPerProvince?(缺省 "
         + ProvinceDivider.DEFAULT_MAX_HEX_PER_PROVINCE
         + "), minHexPerProvince?(缺省 "
@@ -564,9 +569,12 @@ public final class ProvinceApplyTool implements SimosTool {
         support
             .writes()
             .submitBatchWithReceipt(branch, new RevisionId(expectedRevision), batch, batchId);
-    Map<String, Object> view = planView(plan, derived, reason, false, true, conflictPreflight);
-    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Committed committed) {
-      view.put("submission", ToolResults.committedView(committed.ref(), batchId, batchId));
+    // ★ 假绿修正：submitted 只在这一批真的落盘时为 true（旧写法恒传 true ⇒ REJECTED/CONFLICT 视图也报 true，
+    //   按 submitted 判成功会看不见整批被拒）。★ 验收一律看 code / submission.result 或直接读态。
+    boolean committed = receipt.outcome() instanceof ToolWritePort.BatchOutcome.Committed;
+    Map<String, Object> view = planView(plan, derived, reason, false, committed, conflictPreflight);
+    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Committed committedOutcome) {
+      view.put("submission", ToolResults.committedView(committedOutcome.ref(), batchId, batchId));
       return ToolResults.ok(view);
     }
     if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Conflict conflict) {
@@ -583,8 +591,15 @@ public final class ProvinceApplyTool implements SimosTool {
   /**
    * 组批（固定顺序，可复现）：{@code map.CreateRegion}（省 → 首都区）→ {@code unit.CreateUnit}（中央 → 省）→ {@code
    * unit.SetGovFormation}（中央 → 省）→ {@code unit.SetJurisdiction}（按需）→ {@code
-   * ga.CreateDecisionMaker}（中央 → 省）→ [provider] → {@code ga.PutInfo}。全部共享同一 batchId 与同一
-   * branch/expectedRevision ⇒ {@code submitBatch} 落一条 revision。
+   * ga.CreateDecisionMaker}（中央 → 省）→ {@code gov.AssignDecisionMakerGov}（中央 → 省）→ [provider] →
+   * {@code ga.PutInfo}。全部共享同一 batchId 与同一 branch/expectedRevision ⇒ {@code submitBatch} 落一条
+   * revision。
+   *
+   * <p>★ <b>为什么 assign 块整体排在 create 块之后</b>：本批是<b>逐 GOV</b> 的（中央 + N 个省）。每条 {@code
+   * gov.AssignDecisionMakerGov} 必须晚于<b>它自己那条</b> {@code ga.CreateDecisionMaker}（handler
+   * 要求决策人已存在）与<b>它自己那条</b> {@code unit.SetGovFormation}（handler 要求目标单位带 {@code
+   * GovernmentFormation}）——本块两块的循环都是「中央 → 省」，且 assign 块落后于 create 块与 SetGovFormation 块 ⇒ 对每个 GOV
+   * 都成立（不依赖循环内的相对次序）。
    */
   private List<ToolWritePort.Request> buildBatch(
       String batchId, ProvinceApplyPlan.Plan plan, String reason) {
@@ -663,6 +678,17 @@ public final class ProvinceApplyTool implements SimosTool {
           GovToolSupport.request(
               ProvinceApplyPlan.CREATE_DECISION_MAKER_TYPE,
               plan.createDecisionMakerPayload(govs.get(i))));
+    }
+
+    // ★★ 归属归模块（用户裁定「归属肯定归模块」）：ga.CreateDecisionMaker 只造裸决策人，gov 归属由本模块的
+    //   gov.AssignDecisionMakerGov 逐 GOV 落。★ 定序：本块整块排在 SetGovFormation 块与 ga.CreateDecisionMaker
+    //   块之后 ⇒ 每条 assign 都晚于「它自己那条」create（决策人已存在）与「它自己那条」SetGovFormation（目标带
+    //   GovernmentFormation）；同批后一条能看见前一条的效果（CommandBus 逐条施加到累积候选态）⇒ 一批 = 一条 revision。
+    for (ProvinceApplyPlan.GovEntry gov : govs) {
+      batch.add(
+          GovToolSupport.request(
+              ProvinceApplyPlan.ASSIGN_DECISION_MAKER_GOV_TYPE,
+              plan.assignDecisionMakerGovPayload(gov)));
     }
 
     if (plan.params().providerId().isPresent()) {

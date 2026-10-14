@@ -1,6 +1,7 @@
 package io.mosire.simos.gov.tools.write;
 
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.gov.spi.AssignDecisionMakerGovHandler;
 import io.mosire.simos.gov.tools.GovToolCommandTypes;
 import io.mosire.simos.gov.tools.GovToolPerspective;
 import io.mosire.simos.gov.tools.GovToolReads;
@@ -55,7 +56,8 @@ import java.util.Set;
  *       <ul>
  *         <li>目标 Region hex 集内存在带 {@link GovernmentFormation} 的 Unit（按当刻 {@code
  *             effectivePosition}）；
- *         <li>存在 {@link Affiliation.Gov} 且其 {@code govUnit} 属于上述 Unit 的 DecisionMaker；
+ *         <li>存在 gov 归属（{@code GovState.govAffiliations()} 那一行；经 {@link GovToolPerspective} 读，gov
+ *             够不着 {@code simos-ga}）且其 {@code govUnit} 属于上述 Unit 的 DecisionMaker；
  *         <li>存在任何 Unit 的 {@code jurisdiction} 覆盖目标 Region 的 key，或覆盖一个 hex 集完全落在目标 Region hex 集内的
  *             Region；
  *         <li>存在 id 形如 {@code sanitize(regionId) + "__P" + 数字} 或 {@code sanitize(regionId) +
@@ -78,8 +80,12 @@ import java.util.Set;
  *   <li>{@code unit.SetGovFormation} × (N+1)：中央 {@code {level:CENTRAL, staff, policy}}（不给
  *       superiorGov）；省 {@code {level:PROVINCE, superiorGov:中央, staff, policy}}；
  *   <li>{@code unit.SetJurisdiction}：中央在首都圈非空时授 {@code __CAP}、否则不落；每省授本省 Region；
- *   <li>{@code ga.CreateDecisionMaker} × (N+1)：id={@code <govUnitId>-dm}、affiliation={@code
- *       gov:<govUnitId>}；
+ *   <li>{@code ga.CreateDecisionMaker} × (N+1)：id={@code <govUnitId>-dm}，载荷只认 {@code {id,
+ *       allowedTools, cadence}}（<b>没有</b> {@code affiliation} —— 该键被 {@code simos-ga} 的 {@code
+ *       CreateDecisionMakerHandler} 具名拒；★ gov 看不见那个模块，故此处只以 {@code} 称名、不建链接）；
+ *   <li>{@code gov.AssignDecisionMakerGov} × (N+1)：{@code {decisionMakerId, govUnitId}} ——
+ *       把刚建的裸决策人绑到<b>同一 GOV</b> 的本批新单位；必须晚于 {@code unit.SetGovFormation}（要求带 {@code
+ *       GovernmentFormation}）与 {@code ga.CreateDecisionMaker}（要求决策人已存在）；
  *   <li>{@code ga.SetDecisionMakerProvider} × (N+1)（仅 {@code providerId} 给了才落）；
  *   <li>{@code ga.PutInfo}：address=目标 Region canonical，key={@value #INFO_KEY}，value=JSON
  *       字符串，tick=base 世界当前日。
@@ -116,6 +122,16 @@ final class ProvinceApplyPlan {
 
   /** {@code ga.CreateDecisionMaker} 的命令类型。 */
   static final String CREATE_DECISION_MAKER_TYPE = GovCreateOfficePlan.CREATE_DECISION_MAKER_TYPE;
+
+  /**
+   * {@code gov.AssignDecisionMakerGov} 的命令类型（恒有，整块排在 {@code ga.CreateDecisionMaker} 块之后、provider
+   * 之前；块内逐 GOV 同序：中央 → 省）。
+   *
+   * <p>★ <b>不抄字面量</b>：取 {@link AssignDecisionMakerGovHandler#TYPE}（唯一拼写点）。该 handler 住在<b>本模块</b>
+   * （{@code gov.spi}），不在 {@link io.mosire.simos.gov.tools.GovToolCommandTypes} 那张端口上 —— 那张端口只为 gov
+   * <b>看不见</b>的域（economy/actor/ga）而设，同 {@code unit.*}/{@code social.*} 的常量由工具直接读 handler 一个道理。
+   */
+  static final String ASSIGN_DECISION_MAKER_GOV_TYPE = AssignDecisionMakerGovHandler.TYPE;
 
   /** {@code ga.SetDecisionMakerProvider} 的命令类型（仅 providerId 给了才落）。 */
   static final String SET_DECISION_MAKER_PROVIDER_TYPE =
@@ -500,6 +516,7 @@ final class ProvinceApplyPlan {
       }
       counts.put(SET_JURISDICTION_TYPE, jurisdictions);
       counts.put(CREATE_DECISION_MAKER_TYPE, govs.size());
+      counts.put(ASSIGN_DECISION_MAKER_GOV_TYPE, govs.size());
       if (params.providerId().isPresent()) {
         counts.put(SET_DECISION_MAKER_PROVIDER_TYPE, govs.size());
       }
@@ -710,18 +727,36 @@ final class ProvinceApplyPlan {
     }
 
     /**
-     * {@code ga.CreateDecisionMaker} 载荷：{@code {id, affiliation:{kind:gov,id:unitId}, allowedTools,
-     * cadence}}。
+     * {@code ga.CreateDecisionMaker} 载荷：只认 {@code {id, allowedTools, cadence}} ——
+     * <b>三个</b>必填输入（{@code GaPayloads.requireTextSet("allowedTools")} + {@code
+     * requireLong("cadence")}）。
+     *
+     * <p>★★ <b>这里不写 {@code affiliation}</b>：该键已被 {@code CreateDecisionMakerHandler}
+     * <b>具名拒</b>（归属归模块：用户裁定 「归属肯定归模块」）⇒ 旧写法会让<b>整批</b>被拒、零落盘（{@code CommandBus.runBatch} 一条拒 ⇒
+     * 整批复原）。决策人的 gov 归属改由同批 {@code gov.AssignDecisionMakerGov} 落（见 {@link
+     * #assignDecisionMakerGovPayload(GovEntry)}）。
      */
     String createDecisionMakerPayload(GovEntry gov) {
-      Map<String, Object> affiliation = new LinkedHashMap<>();
-      affiliation.put("kind", "gov");
-      affiliation.put("id", gov.unitId());
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("id", gov.decisionMakerId());
-      payload.put("affiliation", affiliation);
       payload.put("allowedTools", params.allowedToolsView());
       payload.put("cadence", params.cadence());
+      return ToolResults.json(payload);
+    }
+
+    /**
+     * {@code gov.AssignDecisionMakerGov} 载荷：{@code {decisionMakerId, govUnitId}} —— 把刚建的裸决策人绑到<b>同一
+     * GOV</b> 的本批新单位（收窄前 {@code Affiliation.Gov(UnitId)} 那一支的落地形态）。
+     *
+     * <p>★ <b>批内定序（两条都是 handler 的硬判据，不是偏好）</b>：本命令必须<b>晚于</b> {@code unit.SetGovFormation}（{@code
+     * AssignDecisionMakerGovHandler} 要求目标单位存在<b>且</b>带 {@code GovernmentFormation}）且<b>晚于</b>该 GOV
+     * 的 {@code ga.CreateDecisionMaker}（同一 handler 要求决策人已存在，走 {@code DecisionMakerExistencePort}）⇒
+     * 工具把它排在 {@code ga.CreateDecisionMaker} 块之后、provider 之前。
+     */
+    String assignDecisionMakerGovPayload(GovEntry gov) {
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("decisionMakerId", gov.decisionMakerId());
+      payload.put("govUnitId", gov.unitId());
       return ToolResults.json(payload);
     }
 
