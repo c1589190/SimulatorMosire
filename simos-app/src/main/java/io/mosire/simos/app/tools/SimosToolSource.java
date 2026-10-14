@@ -126,6 +126,8 @@ import io.mosire.simos.ga.tools.read.SdDiplomaticEventsTool;
 import io.mosire.simos.ga.tools.read.SdDirectivesTool;
 import io.mosire.simos.ga.tools.read.SdVerdictsTool;
 import io.mosire.simos.ga.tools.write.AdjudicationAckTool;
+import io.mosire.simos.ga.tools.write.ConfirmPacketTool;
+import io.mosire.simos.ga.tools.write.DropCallTool;
 import io.mosire.simos.ga.tools.write.GaMessageSendTool;
 import io.mosire.simos.ga.tools.write.GmApproveTool;
 import io.mosire.simos.ga.tools.write.GmDecidePacketTool;
@@ -139,7 +141,9 @@ import io.mosire.simos.ga.tools.write.PacketIntentTool;
 import io.mosire.simos.ga.tools.write.ProposeCallTool;
 import io.mosire.simos.ga.tools.write.RecordDiplomaticEventTool;
 import io.mosire.simos.ga.tools.write.RejectDirectiveTool;
+import io.mosire.simos.ga.tools.write.ReopenPacketTool;
 import io.mosire.simos.ga.tools.write.ResetDecisionMakerConversationTool;
+import io.mosire.simos.ga.tools.write.ReviseCallTool;
 import io.mosire.simos.ga.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.ga.tools.write.RunDecisionTool;
 import io.mosire.simos.ga.tools.write.SdCancelEffectTool;
@@ -156,7 +160,6 @@ import io.mosire.simos.ga.tools.write.SetDecisionMakerAccessTool;
 import io.mosire.simos.ga.tools.write.SetDecisionMakerPeerTool;
 import io.mosire.simos.ga.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.ga.tools.write.StartDecisionTool;
-import io.mosire.simos.ga.tools.write.SubmitPacketTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
 import io.mosire.simos.gov.tools.GovToolSupport;
 import io.mosire.simos.gov.tools.read.GovInfoTool;
@@ -1754,18 +1757,31 @@ public final class SimosToolSource implements ToolSource {
     //   ★★ A2a（2026-10-08 汇率阶段 2 §3.3）：官方汇率 —— 同一形制（GM 桶 + 决策人桶同名两处注册 +
     //     决策人侧白名单/审批链）。★ 定下它就是"激活这个币对的外汇市场"（没定过 ⇒ 没有外汇面，逐值退回）。
     built.add(new GovSetFxRateTool(gov));
-    // ★★ D2（2026-10-22 决策包计划）：决策包四件套——propose / submit / intent / my。
-    //   **只在决策人桶**；白名单即由该桶派生。
-    //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；submit/intent 走 own-packet 围栏。
+    // ★★ D2（2026-10-22 决策包计划）+ 2026-10-14 批 B（设计书 §3.2/§3.3）决策族定型：**七件套**
+    //   propose / revise / drop / intent / confirm / reopen / my。
+    //   **只在决策人桶**；白名单即由该桶派生（roles() 是唯一声明）。
+    //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；confirm/intent/reopen 走 own-packet 围栏。
+    //   ★ 权限：写口六条全 gate=ALLOW（类3 DM_FREE）—— 决策表达**零世界效果**（不变量 I1：只写自己的 sd
+    //     包/INFO 覆盖层），真正的闸门在 GM 侧（gm.packet.decide / mergedPlan.* / packet.execute 本批一处不放松）；
+    //     my 是只读口（无 gate 覆写）。
+    //   ★ 相对次序保持原样（propose → confirm → intent → my），三条新工具**追加在 my 之后**。
     ProposalCatalog proposalCatalog =
         new ProposalCatalog(core, calendarService, query, initiator, mapId);
     GaProposalHost gaProposal = new AppGaProposalHost(proposalCatalog);
-    built.add(new ProposeCallTool(gaWrites, gaReads, mapId, gaProposal, gaIdentity));
-    built.add(new SubmitPacketTool(gaWrites, gaReads, gaIdentity));
+    ProposeCallTool propose = new ProposeCallTool(gaWrites, gaReads, mapId, gaProposal, gaIdentity);
+    built.add(propose);
+    built.add(new ConfirmPacketTool(gaWrites, gaReads, gaIdentity));
     built.add(new PacketIntentTool(gaWrites, gaReads, gaIdentity));
     built.add(new MyPacketTool(gaReads, gaIdentity));
+    //   ★★ 三条新工具（批 B）：改 / 删 / 撤回确认。
+    //     revise 复用**同一个** propose 实例：校验段（catalog 校验 → 真 preview → 目标 scope → 造 FormattedCall）的
+    //       唯一实现 = ProposeCallTool.validateCall，两个调用点（propose 自己的逐条循环 + revise）共用它，
+    //       注入同一对象 ⇒ 装配面不可能凑出"第二份校验"。
+    built.add(new ReviseCallTool(gaWrites, gaReads, propose, gaIdentity));
+    built.add(new DropCallTool(gaWrites, gaReads, gaIdentity));
+    built.add(new ReopenPacketTool(gaWrites, gaReads, gaIdentity));
     // ★★ 2026-10-14 决策人互致消息（设计书 §4.2/§4.3）：旧的 simos.sd.report 跨区上报**整族废弃**（用户原话
-    //   「把这个工具扔了得了……老的直接扔掉」），换成"GM 一次授权 ⇒ 两人双向互致消息、每 tick 每方向一条"。
+    //   「把这个工具扔了得了……老的直接扔掉」），换成"GM 一次授权 ⇒ 两人双向互致消息、每 tick 每方向最多 128 条（命令期判）"。
     //   **两条都只在决策人桶**（GM 不是决策人、没有 decision-maker: 身份 ⇒ 它读 info 全量、不需要这个收件箱）；
     //   白名单即由该桶派生 ⇒ 两个工具自动进决策人可达面。
     //   ★ send 的闸门是 **GM 事先授权**（accessLimit.peer），不是逐条审批 ⇒ 它**故意不继承 AbstractNarrowWriteTool**

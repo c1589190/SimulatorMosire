@@ -4,11 +4,14 @@ import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
 import io.mosire.simos.ga.decision.DecisionToolNames;
+import io.mosire.simos.ga.tools.write.ConfirmPacketTool;
+import io.mosire.simos.ga.tools.write.DropCallTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
 import io.mosire.simos.ga.tools.write.MyPacketTool;
 import io.mosire.simos.ga.tools.write.PacketIntentTool;
 import io.mosire.simos.ga.tools.write.ProposeCallTool;
-import io.mosire.simos.ga.tools.write.SubmitPacketTool;
+import io.mosire.simos.ga.tools.write.ReopenPacketTool;
+import io.mosire.simos.ga.tools.write.ReviseCallTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
 import io.mosire.simos.map.tools.read.MapRenderTool;
 
@@ -50,13 +53,28 @@ public final class AppDecisionToolNames implements DecisionToolNames {
   }
 
   @Override
+  public String revise() {
+    return ReviseCallTool.NAME;
+  }
+
+  @Override
+  public String drop() {
+    return DropCallTool.NAME;
+  }
+
+  @Override
   public String packetIntent() {
     return PacketIntentTool.NAME;
   }
 
   @Override
-  public String packetSubmit() {
-    return SubmitPacketTool.NAME;
+  public String confirm() {
+    return ConfirmPacketTool.NAME;
+  }
+
+  @Override
+  public String reopen() {
+    return ReopenPacketTool.NAME;
   }
 
   @Override

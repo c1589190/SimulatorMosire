@@ -278,8 +278,10 @@ public final class DecisionAgentService {
             AppDecisionMakerAffiliations.INSTANCE);
     try {
       DecisionAgentRunner.DecisionTurn turn = runner.run(maker, state);
-      // ★★ 回合结束统一结算（用户 2026-10-22 裁定）：submit 工具在回合内只登记；这里把“没 submit 自动 NL 决策 /
-      //   submit 后继续发命令保守合并 / 正常提交”整理成一个最终 PENDING packet，GM 随后照常审批执行。
+      // ★★ 回合结束的统一结算（用户 2026-10-22 裁定；2026-10-14 批 B 改成**条件式**）：DM 自己调
+      //   simos.ga.packet.confirm 时包已经是 PENDING（这里原样跳过）；只有"没确认又没未答提问就停了话"才由这里兜底
+      //   把整轮写进包的内容（+ 从未显式写过 intent 时的最后一段文本）结算成一个 PENDING packet——不静默丢决策。
+      //   ★ 本 tick 还有未答提问 ⇒ 本方法**不写任何东西**，包保持 DRAFT 等 GM 答完（见 DecisionTurnFinalizer 类注）。
       turnFinalizer.finalizeTurn(branch, decisionMakerId, turn);
       // ★ 一轮的**一行留痕**（运维/验收要看"哪个 provider 真被调、用了几轮、调了什么"）：只打名字与计数，不打内容
       //   （内容在轨迹与会话里，且**绝不打密钥**——本行没有任何配置值）。

@@ -214,8 +214,8 @@ public final class GmRoundTool implements SimosTool, GmOnlyRead {
   }
 
   /**
-   * 决策包 id 的形状（{@code pkt-<dm>-<tick>}）——与 {@code SubmitPacketTool} / {@code DecisionTurnFinalizer}
-   * 同源口径。
+   * 决策包 id 的形状（{@code pkt-<dm>-<tick>}）——与 {@code ConfirmPacketTool} / {@code
+   * DecisionTurnFinalizer} 同源口径。
    */
   private static String packetIdOf(String decisionMakerId, long tick) {
     return "pkt-" + decisionMakerId + "-" + tick;

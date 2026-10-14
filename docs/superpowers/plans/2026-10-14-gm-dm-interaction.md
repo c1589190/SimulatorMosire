@@ -267,14 +267,29 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 |---|---|---|---|
 | **A** | 信件双向化 + GM 收/发 + 自动注入 | `simos-ga-spi/.../ToolResources.java`（加 `GM_ID`）· `simos-ga/.../tools/write/GaMessageSendTool.java` · 新 `.../tools/read/GmInboxTool.java` · 新 `.../tools/write/GmMessageSendTool.java` · `simos-app/.../access/DecisionCallerFactory.java`（`withPeerSelfFace` 加 `gm`）· `simos-ga/.../decision/DecisionAgentRunner.java`（新信件注入 + 提醒文案） | ✅ **已完成**（5 改 4 新建；`test-compile` rc=0，控制方独立复跑亦 rc=0；未写未跑测试） |
 | **C** | 推演确认 + GM 看板 | 新 `AdjudicationAckTool` · 新 `GmRoundTool` | ✅ **随 A 一并完成** |
-| **B** | 决策自由化 + 确认/撤回 + 权限转类3 **+ 信件序修正 + 收件箱文案** | `simos-ga/.../tools/write/ProposeCallTool.java` · 新 `ReviseCallTool` / `DropCallTool` / `ReopenPacketTool` · `PacketIntentTool` / `MyPacketTool` / `SubmitPacketTool` → `ConfirmPacketTool`（改名 + gate）· `simos-ga/.../decision/DecisionToolNames.java` · `simos-ga/.../decision/DecisionAgentRunner.java`（删 submit 拦截 + 预算口径）· `simos-app/.../decision/DecisionTurnFinalizer.java`（条件式结算 + 条件式 mergeIntent）· `simos-app/.../decision/ProposalCatalog.java`（revise 复用其校验段）· ★ **`simos-ga/.../tools/read/GmInboxTool.java`（§3.4.1 信件序改为数值序 + §D1 收件箱文案"每 tick 每方向最多 128 条"）** | ⬜ **待派**（依赖 A 已提交） |
-| **D** | 测试面（**单独一个测试代理**，最后统一做） | `simos-app/src/test/**` · `simos-ga/src/test/**` | ⬜ 待 A·B 完 |
+| **B** | 决策自由化 + 确认/撤回 + 权限转类3 **+ 信件序修正 + 收件箱文案** | `simos-ga/.../tools/write/ProposeCallTool.java` · 新 `ReviseCallTool` / `DropCallTool` / `ReopenPacketTool` · `PacketIntentTool` / `MyPacketTool` / `SubmitPacketTool` → `ConfirmPacketTool`（改名 + gate）· `simos-ga/.../decision/DecisionToolNames.java` · `simos-ga/.../decision/DecisionAgentRunner.java`（删 submit 拦截 + 预算口径）· `simos-app/.../decision/DecisionTurnFinalizer.java`（条件式结算 + 条件式 mergeIntent）· `simos-app/.../decision/ProposalCatalog.java`（revise 复用其校验段）· ★ **`simos-ga/.../tools/read/GmInboxTool.java`（§3.4.1 信件序改为数值序 + §D1 收件箱文案"每 tick 每方向最多 128 条"）** | ✅ **已完成**（11 改 + 4 新 + 1 `git mv`；`test-compile` rc=0，控制方独立复跑亦 rc=0；未写未跑测试） |
+| **E** | **旧名/过时文案收口**（批 B 交账时发现的残留） | `simos-app/.../access/DecisionCallerFactory.java`（`GOAL` 里 4 个旧工具名）· `simos-app/.../tools/read/CatalogTool.java`（`:855,:858` 两处旧名）· `simos-ga/.../tools/read/GaMessageInboxTool.java`（`description()` 仍写"每 tick 每方向**至多一条**" ⇒ 128）· `simos-ga/.../tools/write/SetDecisionMakerPeerTool.java`（`description()` 同上）· `simos-ga/.../tools/read/GmPacketTool.java`（javadoc 指向 `simos.sd.packet.my`）· `simos-ga/.../tools/DecisionPacketViews.java`（同）· `simos-app/.../tools/SimosToolSource.java:1935`（注释同） | ⬜ **待派** |
+| **D** | 测试面（**单独一个测试代理**，最后统一做） | `simos-app/src/test/**` · `simos-ga/src/test/**` | ⬜ 待 B·E 完（与 E **文件集不相交** ⇒ 可并行） |
 
 ★ **`DecisionAgentRunner.java` 在 A 与 B 各出现一次** ⇒ **A 必须先完成并提交**，B 再动它（一文件一 owner，见 §一 并发）。✅ 已满足。
 
-★ **`GmInboxTool.java` 的所有权裁定（原批 A 的偏差 D1 收口）**：批 A 的任务书 §4 把它列为禁碰（写范围只含「新建」），故其文案仍写"每 tick 每方向一条"（已过时）。⇒ **并入批 B**，一次把"文案 + §3.4.1 的信件序缺陷"两件都在同一文件里收口（一文件一个 owner，不另开批）。
+★ **`GmInboxTool.java` 的所有权裁定（原批 A 的偏差 D1 收口）**：批 A 的任务书 §4 把它列为禁碰（写范围只含「新建」），故其文案仍写"每 tick 每方向一条"（已过时）。⇒ **并入批 B**，一次把"文案 + §3.4.1 的信件序缺陷"两件都在同一文件里收口（一文件一个 owner，不另开批）。✅ 已办（但 §2.11 的文案只覆盖了类注，`description()` 那一条漏网 ⇒ 归批 E）。
 
 ★ **A 批的两条已知红测试**（行为按用户裁定改变，**由测试代理**改成新靶子）：`DmMessagingEndToEndTest#p4_secondMessageInTheSameTickIsRejectedByNameAndLeavesNoRevision` ⇒ 改成"第 129 条具名拒"；`SimosToolsTest` / `DecisionFaceGolden` 的计数（GM-only 读 +2、非窄写 +1、GM 桶 175→178、DM 桶 50→51、磁盘类 174→178；**窄写 68 与 catalog 143 不动**）。
+
+---
+
+## 7.1 批 A/B 的落地裁定（2026-10-14，控制方核过后追认）
+
+| # | 事项 | 裁定 | 理由 |
+|---|---|---|---|
+| **L1** | "未答提问"判据只认 `to == "gm"` 的信 | ✅ **追认** | peer DM 之间的信**没有 `replyTo` 键**（DM 侧发信载荷就没有这个键）⇒ 把它们算进"未答"会让该 DM **永远不结算** |
+| **L2** | 判据按**本 tick**，不按"本回合" | ✅ **追认** | "本回合"在**冻结快照**里不可判定（快照里没有"回合"这个概念）；不限 tick 则历史未答问题会让该 DM 永久卡死。★ 副作用（接受）：DM 在 tick N 问、GM 不答就推进到 N+1 ⇒ 那个问题成为孤儿 |
+| **L3** | `reopen` 除 `decidedBy` 非空外，再加"四种终态 ⇒ 拒" | ✅ **追认** | fail-closed：`decidedBy` 为空但状态已是终态 = 契约故障，也不许放行 |
+| **L4** | `intent` / `my` / `confirm` 也收 `tick?`（缺省 = 当前 tick） | ✅ **追认** | 族口径一致；向后兼容 |
+| **L5** | 旧 4 参 `DecisionTurn` 构造器**删除** | ✅ **追认** | 与规范构造器签名同形，Java 不允许并存；`finalizeAborted` 改显式 5 参 |
+| **L6** | 批 B **动了 3 处批 A 文件的注释**（`AdjudicationAckTool` 5 处 / `GmRoundTool` 1 处 / `DecisionAgentService` 1 段） | ✅ **追认** | 控制方用 `git diff -U0 \| grep -v` 核过：**注释行改动，零代码改动**；原文指向已改名的类 = 缺陷 |
+| **L7** | 残留旧名/过时文案 **8 处 7 文件** | ⬜ **批 E 修** | 见 §7 批 E。★ 判据：**模型/GM 直接读到的文本（`description()` / `GOAL` / catalog 文案）必须修**；javadoc 指向不存在工具的必须修；**明确标注"旧名"的历史留痕保留**（`MyPacketTool:43` / `ProposeCallTool:88` / `PacketIntentTool:53` / `ConfirmPacketTool:42`） |
 
 ---
 

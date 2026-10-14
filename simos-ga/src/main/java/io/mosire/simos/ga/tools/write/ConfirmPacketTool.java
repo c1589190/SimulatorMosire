@@ -1,6 +1,5 @@
 package io.mosire.simos.ga.tools.write;
 
-import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.Operation;
@@ -36,16 +35,30 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code simos.sd.packet.submit}（D2 决策包计划 §3.2）：把本 tick 的 DRAFT 决策包置为 PENDING。
+ * ★★ {@code simos.ga.packet.confirm}（DM 面；2026-10-14 GM⇄DM 设计书 §3.2 / 缺口 G4 / 不变量 I10）：<b>决策人确认本
+ * tick 的全部决策</b>——DRAFT → PENDING。
  *
- * <p>★ 只接受 DRAFT；**已 PENDING ⇒ 幂等成功**（返回现状，不写 revision）；已裁决 ⇒ 具名拒；本 tick 没有包 ⇒ 具名拒。
+ * <p>★★ <b>它是 DM 的一次真实动作</b>（用户 2026-10-14 原话「DM 要允许通过工具确认之前的所有决策」）：运行流**不再**在回合内拦截它， 也不再由回合末自动替 DM
+ * 提交（旧 {@code simos.sd.packet.submit} 的 {@code {"submitted":false,"deferred":true}} 形态已整条删除）⇒ DM
+ * 调它，包**立刻**变 PENDING。
+ *
+ * <p>★ <b>"全部决策" = 包里的全部 calls + intent</b>：跨轮累积（同 tick 跑多轮，每轮都能再改/再加，见 {@link ReviseCallTool} /
+ * {@link DropCallTool}）⇒ {@code confirm} 定稿的是**这一刻**的整包，不是某一轮那一条。
+ *
+ * <p>★ <b>只接受 DRAFT；已 PENDING ⇒ 幂等成功</b>（返回现状，不写 revision）；已裁决 ⇒ 具名拒；本 tick 没有包 ⇒ 具名拒。★ 确认之后要再改：先
+ * {@link ReopenPacketTool}（撤回，PENDING → DRAFT）；GM 已裁决则**改不了**（不变量 I3）——那条硬防线落在 {@code reopen} 侧，因为
+ * {@code ga.UpsertDecisionPacket} 本身**没有状态机**。
+ *
+ * <p>★★ <b>权限 = 类3 {@code DM_FREE}</b>（设计书 §5 权限表、用户同日裁定「决策-提交流程属无条件执行」）：本工具 **零世界效果**（只写自己的包）⇒
+ * {@code gate() = ALLOW}、{@code roles() = {DM}}。★ 闸门在 GM 侧 （{@code gm.packet.decide} / {@code
+ * mergedPlan.*} / {@code packet.execute} 保持 GM-only，本批一处不放松）。
  *
  * <p>★ 身份从 {@code context.identity()} 派生（不采信载荷）；只写自己的 {@code sd:decision-packet/<自己>} 前缀。
  */
-public final class SubmitPacketTool implements SimosTool {
+public final class ConfirmPacketTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS。 */
-  public static final String NAME = "simos.sd.packet.submit";
+  public static final String NAME = "simos.ga.packet.confirm";
 
   private static final ResourceManifest SD_WRITE =
       ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
@@ -59,7 +72,7 @@ public final class SubmitPacketTool implements SimosTool {
    * @param reads 窄读口
    * @param identity 身份口（决策人 id 从调用者身份派生，不采信载荷）
    */
-  public SubmitPacketTool(ToolWritePort writes, ToolReadPort reads, GaToolIdentity identity) {
+  public ConfirmPacketTool(ToolWritePort writes, ToolReadPort reads, GaToolIdentity identity) {
     this.writes = Objects.requireNonNull(writes, "writes");
     this.reads = Objects.requireNonNull(reads, "reads");
     this.identity = Objects.requireNonNull(identity, "identity");
@@ -72,15 +85,28 @@ public final class SubmitPacketTool implements SimosTool {
 
   @Override
   public String description() {
-    return "决策人提交本 tick 的决策包：DRAFT → PENDING。参数 {branch?(缺省 "
+    return "决策人确认**本 tick 的全部决策**（本 tick 的决策在此定稿交给 GM）：DRAFT → PENDING。参数 "
+        + "{tick?(缺省 = 当前世界 tick), branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
-        + "), expectedRevision?(缺省 head)}。本 tick 没有包 ⇒ BAD_REQUEST；已 PENDING ⇒ 幂等成功；"
-        + "已裁决 ⇒ BAD_REQUEST。返回 {packetId, status, callCount, submission?}。";
+        + "), expectedRevision?(缺省 head)}。"
+        + "确认的是**整包**（跨轮累积的全部 calls + intent），不是某一条。"
+        + "本 tick 没有包 ⇒ BAD_REQUEST；已 PENDING ⇒ 幂等成功（返回现状）；已裁决 ⇒ BAD_REQUEST。"
+        + "★ 确认之后要再改（"
+        + ReviseCallTool.NAME
+        + " / "
+        + DropCallTool.NAME
+        + " / "
+        + PacketIntentTool.NAME
+        + "）：先 "
+        + ReopenPacketTool.NAME
+        + " 撤回（PENDING → DRAFT）；GM 已裁决则改不了。"
+        + "返回 {packetId, status, callCount, submitted}。";
   }
 
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
+    props.put("tick", ToolSchema.prop("integer", "要确认的 tick（缺省 = 当前世界 tick）"));
     props.put("branch", ToolSchema.prop("string", "分支名（缺省 " + ToolResources.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
@@ -98,9 +124,10 @@ public final class SubmitPacketTool implements SimosTool {
     return SD_WRITE;
   }
 
+  /** ★ 类3 {@code DM_FREE}：DM 确认自己的决策包，零世界效果（设计书 §5 权限表）。 */
   @Override
   public ToolGate gate(ToolContext context) {
-    return new ToolGate.Ask(name(), "提交本 tick 决策包", AskKind.SENSITIVE);
+    return ToolGate.ALLOW;
   }
 
   @Override
@@ -109,8 +136,7 @@ public final class SubmitPacketTool implements SimosTool {
       Map<String, Object> args = context.arguments();
       Optional<String> decisionMakerId = identity.decisionMakerIdOf(context.identity());
       if (decisionMakerId.isEmpty()) {
-        return ToolResult.error(
-            "FORBIDDEN", "simos.sd.packet.submit 只能由决策人身份调用（身份里没有 decision-maker: 前缀）");
+        return ToolResult.error("FORBIDDEN", NAME + " 只能由决策人身份调用（身份里没有 decision-maker: 前缀）");
       }
 
       DecisionMakerId proposerId = DecisionMakerId.parse(decisionMakerId.get());
@@ -121,12 +147,22 @@ public final class SubmitPacketTool implements SimosTool {
       }
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
       GaState ga = GaToolReads.ga(state);
-      long tick = state.meta().timestamp().tick();
-      DecisionPacketId packetId = DecisionPacketId.parse("pkt-" + proposerId.value() + "-" + tick);
+      Long tickArg = ToolSchema.optionalLong(args, "tick");
+      if (tickArg != null && tickArg < 0L) {
+        return ToolResult.error("BAD_REQUEST", "tick 不得为负: " + tickArg);
+      }
+      long tick = tickArg == null ? state.meta().timestamp().tick() : tickArg;
+      DecisionPacketId packetId = PacketDraftSupport.packetIdValueOf(proposerId, tick);
       DecisionPacket packet = ga.decisionPackets().get(packetId);
       if (packet == null) {
         return ToolResult.error(
-            "BAD_REQUEST", "本 tick 还没有决策包（先 propose 或 intent）: " + packetId.value());
+            "BAD_REQUEST",
+            "本 tick 还没有决策包（先 "
+                + ProposeCallTool.NAME
+                + " 或 "
+                + PacketIntentTool.NAME
+                + "）: "
+                + packetId.value());
       }
       if (!packet.proposerId().equals(proposerId)) {
         return ToolResult.error("FORBIDDEN", "决策包不属于调用者: " + packetId.value());
@@ -136,12 +172,18 @@ public final class SubmitPacketTool implements SimosTool {
           Operation.WRITE,
           List.of(ToolResources.resourceSd(identity.decisionPacketKind(), proposerId.value())));
       if (packet.status() == PacketStatus.PENDING) {
-        return ToolResults.ok(view(packet, false)); // 幂等：已提交返回现状
+        return ToolResults.ok(packetView(packet, false)); // 幂等：已确认 ⇒ 返回现状
       }
       if (packet.status() != PacketStatus.DRAFT) {
+        // ★ 统一文案（本批七个决策族工具同款）：已提交/已裁决一律指向 reopen；已裁决 reopen 也会拒。
         return ToolResult.error(
             "BAD_REQUEST",
-            "只有 DRAFT 决策包可提交，当前状态: " + packet.status() + "（" + packetId.value() + "）");
+            "本 tick 决策包已提交/已裁决 ⇒ 先 "
+                + ReopenPacketTool.NAME
+                + " 撤回: "
+                + packetId.value()
+                + " status="
+                + packet.status());
       }
       // ★ 命令 id 由窄写口的装配面生成并**回报**（见 ToolWritePort.Receipt）——载荷里嵌的 id 与落盘信封的是同一个。
       ToolWritePort.Receipt receipt =
@@ -150,20 +192,20 @@ public final class SubmitPacketTool implements SimosTool {
               () -> new RevisionId(state.meta().ref().revision().value()),
               SubmitDecisionPacketHandler.TYPE,
               DecisionPacketPayloads.submit(packetId.value(), proposerId.value()));
-      Map<String, Object> view = view(packet, true);
+      Map<String, Object> view = packetView(packet, true);
       view.put("status", PacketStatus.PENDING.name());
       return DecisionPacketPayloads.fold(receipt.outcome(), view, receipt.commandId());
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
-      throw e;
+      throw e; // 资源拒因原样逃到 ToolCallAuthorizer 边界，折成 RESOURCE_DENIED
     } catch (RuntimeException e) {
       return ToolResult.error(
-          "TOOL_ERROR", "提交失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+          "TOOL_ERROR", "确认决策包失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
     }
   }
 
-  private static Map<String, Object> view(DecisionPacket packet, boolean submitted) {
+  private static Map<String, Object> packetView(DecisionPacket packet, boolean submitted) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("packetId", packet.id().value());
     view.put("status", packet.status().name());

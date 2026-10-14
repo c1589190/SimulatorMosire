@@ -12,7 +12,9 @@ import io.mosire.simos.ga.id.DecisionPacketId;
 import io.mosire.simos.ga.model.DecisionPacket;
 import io.mosire.simos.ga.model.PacketStatus;
 import io.mosire.simos.ga.spi.SubmitDecisionPacketHandler;
+import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
+import io.mosire.simos.ga.tools.read.GmInboxTool;
 import io.mosire.simos.ga.tools.write.DecisionPacketPayloads;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -29,22 +31,33 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * ★★ **决策回合统一结算器**（用户 2026-10-22 裁定）：把“LLM 何时算提交/结束”从工具调用时刻改到**回合结束之后**。
+ * ★★ **决策回合统一结算器**（用户 2026-10-22 裁定；2026-10-14 批 B 改成**条件式**）。
  *
- * <p>三种分支：
+ * <p>★★ <b>现在的真实语义（两条分支，按顺序判）</b>：
  *
  * <ol>
- *   <li><b>一直没 submit 就停止说话</b>：本回合已写进 packet 的 intent/calls + 整轮最后一段自然语言，合并成一个最终 PENDING
- *       packet；自然语言作为 NL 决策一起交给 GM；
- *   <li><b>submit 后不再发命令</b>：已写进 packet 的命令照常审批；提交后的纯文本只留审计，不再额外算新的 NL 决策；
- *   <li><b>submit 后又继续 propose/intent</b>：保守合并——整个回合的所有命令 + 整轮最后一段自然语言，统一提交一次。
+ *   <li><b>本 tick 该 DM 还有"未答提问"</b>（它发出去的信里，存在 {@code to="gm"} 且没有 GM 回信 {@code replyTo} 指向的那一条）⇒
+ *       <b>完全不结算</b>：不 upsert、不 submit、不写审计（已 PENDING / 已裁决的既有跳过分支也不参与）。 包**保持 DRAFT**（因此仍可被 {@code
+ *       simos.gm.packet*} 读到 ⇒ <b>不丢</b>），等 GM 答完再跑该 DM 一轮。 ★★ 这是本批的要害：不这么做，"这一轮我只问了句话"的那句话会被当成
+ *       **NL 决策**提交给 GM。
+ *   <li><b>无未答提问</b> ⇒ 照旧结算：{@code auto-no-submit} 兜底——把包里已写的内容 + （**仅当 DM 从未显式写过 intent
+ *       时**）整轮最后一段自然语言合并成一个最终 PENDING packet，一起交 GM。★ "不静默丢决策"这条红线不退让。
  * </ol>
  *
- * <p>★★ **为什么必须在这里做**：{@code simos.sd.packet.submit} 在决策回合里只登记标记（见 DecisionAgentRunner 的拦截），因为 LLM
- * 的真实行为是“提交后还可能继续补命令/继续说话”。回合结束后，由本类用 {@link CoreSimos#submitBatch} 一次性落：
+ * <p>★★ <b>{@code mergeIntent} 已是条件式</b>（补缺口 G10）：DM 显式写过 intent（{@code packet.intent()} 非空白， 即
+ * {@code ga.UpsertDecisionPacket} 已经落过 intent）⇒ **不再追加「【最后陈述】」**，它的表达原样交给 GM；
+ * 只有从未显式写过时才用最后一段自然语言兜底。
+ *
+ * <p>★★ <b>为什么"已提交"不再是本类的一个分支</b>（2026-10-14，缺口 G4 / 不变量 I10）：{@code simos.ga.packet.confirm} 现在是
+ * DM 的**一次真实工具调用**——调了就已经是 PENDING，本类在上面第 2 步的"已 PENDING/已裁决 ⇒ 跳过"分支里原样保留它，不再有任何"提交标记 /
+ * 提交后继续发命令"的判定（那三个信号连同 {@code DecisionAgentRunner.DecisionTurn} 的三个字段一起删除了，见那次改动的类注）。
+ *
+ * <p>★ <b>为什么仍在回合末做</b>：LLM 的真实行为是"说完话就停"，而"整轮最后一段文本算不算一条 NL 决策"只有回合结束才知道 ——故兜底必须在这里，且由 {@link
+ * CoreSimos#submitBatch} 一次性落：
  *
  * <ul>
  *   <li>{@code ga.UpsertDecisionPacket}（整理 intent/保留 calls，必要时建空包）
@@ -66,9 +79,10 @@ final class DecisionTurnFinalizer {
   /** 审计 INFO 的地址前缀。 */
   private static final String AUDIT_ADDRESS_PREFIX = "ga:decision-finalize.";
 
+  /** 无未答提问时的兜底理由（唯一剩下的非 forced 理由；见类注第 2 条）。 */
   private static final String AUTO_NO_SUBMIT = "auto-no-submit";
-  private static final String SUBMIT_MARKER = "submit-marker";
-  private static final String CONTINUED_AFTER_SUBMIT = "continued-after-submit";
+
+  /** 零内容的理由标记（包空、文本空 ⇒ 一个字节都不写）。 */
   private static final String EMPTY = "empty";
 
   private final CoreSimos core;
@@ -84,11 +98,11 @@ final class DecisionTurnFinalizer {
   }
 
   /**
-   * 对一个已跑完的决策回合做统一结算；没有决策内容且没有自然语言时零写。
+   * 对一个已跑完的决策回合做统一结算；**本 tick 还有未答提问时完全不结算**（见类注第 1 条）；没有决策内容且没有自然语言时零写。
    *
    * @param branch 分支（触发/运行所在分支）
    * @param decisionMakerId 本轮决策人
-   * @param turn runner 的回合账（含 submit 标记与整轮最后文本）
+   * @param turn runner 的回合账（{@code DecisionTurn}：本轮调了几次模型、跑了哪些工具、收尾文本与整轮最后一段非空文本）
    * @throws IllegalStateException 结算批被拒/冲突（响亮失败，不静默丢决策）
    */
   void finalizeTurn(
@@ -101,13 +115,19 @@ final class DecisionTurnFinalizer {
   /**
    * ★★ **预算中止/运行时失败时的保守结算**：模型还没“停止说话”，但已经写进 packet 的 intent/calls 不能丢。 这里把已有 DRAFT packet 直接结算成
    * PENDING（不追加自然语言），并落一条 {@code aborted} 审计交给 GM。
+   *
+   * <p>★ <b>它**不**受"未答提问 ⇒ 不结算"那条守卫约束</b>（{@code forcedReason != null} 走的是同一条早返回）：中止不是 DM
+   * 说完话，而是被动中断——此时"不丢已写进包的决策"（不变量 I4）优先于"别把提问当决策"。★ 中止路径**不追加**自然语言 （{@code naturalText = empty}）⇒
+   * 它本来也不会凭空造出一条 NL 决策。
    */
   void finalizeAborted(BranchId branch, DecisionMakerId decisionMakerId) {
     synchronized (finalizeLock) {
       finalizeInternal(
           branch,
           decisionMakerId,
-          new DecisionAgentRunner.DecisionTurn("aborted", 0, List.of(), Optional.empty()),
+          // ★ 没有真回合账 ⇒ finalText 与 lastAssistantText 都是空：中止路径本来也不追加自然语言（见方法注）。
+          new DecisionAgentRunner.DecisionTurn(
+              "aborted", 0, List.of(), Optional.empty(), Optional.empty()),
           "aborted");
     }
   }
@@ -148,22 +168,43 @@ final class DecisionTurnFinalizer {
       return;
     }
 
+    // ★★ 条件式结算（2026-10-14 批 B，设计书 §3.3 / 不变量 I4）：本 tick 还有"我发出去、GM 还没回"的提问 ⇒
+    //   完全不结算——包保持 DRAFT（gm.packet* 仍读得到 ⇒ 不丢），等 GM 答完再跑我一轮。
+    //   ★ 不这么做的话，"这一轮我只问了句话"的那句话会被当成 NL 决策自动提交给 GM。
+    //   ★ 判据复用 GmInboxTool.repliedIds（simos-ga 里"谁被回过"的唯一实现），这里不写第二份 replyTo 扫描。
+    if (forcedReason == null && hasOpenQuestions(ga, decisionMakerId, tick)) {
+      DECISION.info(
+          LogEvent.of(
+              "DECISION_TURN_FINALIZE_DEFERRED",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              decisionMakerId.value(),
+              "day",
+              tick,
+              "packet",
+              packetId.value(),
+              "reason",
+              "open-questions"));
+      return;
+    }
+
     String reason;
     Optional<String> naturalText;
     if (forcedReason != null) {
       reason = forcedReason;
       naturalText = Optional.empty();
-    } else if (turn.commandsAfterSubmit()) {
-      reason = CONTINUED_AFTER_SUBMIT;
-      naturalText = turn.lastAssistantText();
-    } else if (turn.packetSubmitSeen()) {
-      reason = SUBMIT_MARKER;
-      naturalText = turn.lastTextBeforeSubmit();
     } else {
+      // ★ 唯一剩下的非 forced 理由：没确认（或确认后又撤回）就没未答提问地停了话 ⇒ 兜底提交，不静默丢决策。
       reason = AUTO_NO_SUBMIT;
       naturalText = turn.lastAssistantText();
     }
-    String finalIntent = mergeIntent(packet == null ? "" : packet.intent(), naturalText);
+    // ★★ 条件式 mergeIntent（补缺口 G10）：DM 显式写过 intent（包里 intent 非空白）⇒ 原样采用，**不追加**
+    //   「【最后陈述】」。判据是"包里的 intent 是不是它写的"，不是"文本里有没有某个标记"（那会看模型脸色）。
+    String explicitIntent = packet == null ? "" : packet.intent();
+    String finalIntent =
+        (packet != null && !explicitIntent.isBlank())
+            ? explicitIntent
+            : mergeIntent(explicitIntent, naturalText);
     boolean hasCalls = packet != null && !packet.calls().isEmpty();
     if (packet == null && finalIntent.isBlank()) {
       DECISION.debug(
@@ -287,7 +328,40 @@ final class DecisionTurnFinalizer {
             committed.ref().revision().value()));
   }
 
-  /** 最后一段文本合并进 packet intent；已有 intent 时不覆盖，只追加“最后陈述”段。 */
+  /**
+   * ★★ <b>本 tick 该 DM 还有没有"发出去、GM 还没回"的提问</b>（2026-10-14 批 B 的条件式结算判据）。
+   *
+   * <p>判据（三条同时成立）：① {@code value.to == }{@link ToolResources#GM_ID}（发给 GM 的提问；发给别的决策人的信不算——
+   * 本判据问的是"**GM 回答了吗**"，见类注与台账的偏差条）；② {@code tick == 本 tick}（早先 tick 的老问题不该让本轮永远不结算）； ③ 它的 id
+   * **不在** {@link GmInboxTool#repliedIds} 里。
+   *
+   * <p>★★ <b>复用既有唯一实现</b>：{@code repliedIds(GaState)} 是"哪条信被回过"的全仓唯一拼法（给 {@code simos.gm.inbox} 的
+   * {@code answered} 与 {@code simos.gm.round} 的 {@code openQuestions} 用），这里**不写第二份 {@code replyTo}
+   * 扫描**（{@code DecisionResultsVisibilityGuardTest} 钉的是"归属判据恰一份"，本条同一条纪律）。
+   */
+  private static boolean hasOpenQuestions(GaState ga, DecisionMakerId decisionMakerId, long tick) {
+    Set<String> replied = GmInboxTool.repliedIds(ga);
+    String self = decisionMakerId.value();
+    for (GmInboxTool.Letter letter : GmInboxTool.letters(ga)) {
+      if (!self.equals(letter.from()) || letter.tick() != tick) {
+        continue;
+      }
+      if (!ToolResources.GM_ID.equals(letter.to())) {
+        continue;
+      }
+      if (!replied.contains(letter.id())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 最后一段文本兜底进 packet intent（★★ <b>只在 DM 从未显式写过 intent 时才会被调用</b>，见类注的"条件式 mergeIntent"）。
+   *
+   * <p>★ 走到这里说明 {@code existingIntent} 是空白（调用方的判据就是"它非空白就不用本方法"）：<b>有文本用它、没文本留空</b>
+   * ——「【最后陈述】」那段拼接保留只是为了防"同一个 DM 在别的路径上已经写过 intent"这一种情况，本批起正常路径不再产生它。
+   */
   private static String mergeIntent(String existingIntent, Optional<String> naturalText) {
     String existing = existingIntent == null ? "" : existingIntent;
     if (naturalText.isEmpty()) {
@@ -320,12 +394,9 @@ final class DecisionTurnFinalizer {
     audit.put("decisionMakerId", decisionMakerId);
     audit.put("tick", tick);
     audit.put("finalizeReason", reason);
-    audit.put("packetSubmitSeen", turn.packetSubmitSeen());
-    audit.put("commandsAfterSubmit", turn.commandsAfterSubmit());
     audit.put("hasCalls", hasCalls);
     audit.put("intent", finalIntent);
     audit.put("lastAssistantText", turn.lastAssistantText().orElse(null));
-    audit.put("lastTextBeforeSubmit", turn.lastTextBeforeSubmit().orElse(null));
     audit.put("llmCalls", turn.llmCalls());
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", AUDIT_ADDRESS_PREFIX + packetId);

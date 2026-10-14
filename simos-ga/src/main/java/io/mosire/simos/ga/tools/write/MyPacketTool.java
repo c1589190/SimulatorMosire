@@ -30,18 +30,22 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code simos.sd.packet.my}（D2 决策包计划 §3.2）：决策人读**自己**的本 tick（或指定 tick）决策包——状态、intent、逐 call
- * 的参数/目标/预览/拟稿检查。
+ * ★★ {@code simos.ga.packet.my}（DM 面；D2 决策包计划 §3.2）：决策人读**自己**的本 tick（或指定 tick）决策包——状态、 intent、逐
+ * call 的参数/目标/预览/拟稿检查。
  *
- * <p>★ 只读工具；身份从 {@code context.identity()} 派生，包 id 由身份 + tick 派生 ⇒ **读到的一定是自己的包**（载荷里没有 proposer
- * 字段可自报）。
+ * <p>★ <b>只读口</b>：它**没有** {@code gate()} 覆写（读口照旧走缺省的直放；本批"权限转类3"针对的是六个写口）。身份从 {@code
+ * context.identity()} 派生、包 id 由身份 + tick 派生 ⇒ **读到的一定是自己的包**（载荷里没有 proposer 字段可自报）。
  *
- * <p>★ 视图与 GM 的 {@code simos.gm.packet} 共用 {@link DecisionPacketViews}（同字段口径，两处一起变）。
+ * <p>★ <b>它是"改/删/撤回"的复查口</b>：{@link ReviseCallTool} / {@link DropCallTool} 要的 {@code callIndex}、以及
+ * {@link ReopenPacketTool} 要判断的 {@code status}/{@code decidedBy}，都能在这里先看清楚（返回视图里就有它们）。
+ *
+ * <p>★ 视图与 GM 的 {@code simos.gm.packet} 共用 {@link DecisionPacketViews}（同字段口径，两处一起变）。★ 旧名 {@code
+ * simos.sd.packet.my} 不做兼容（Alpha 不兼容旧档）。
  */
 public final class MyPacketTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS。 */
-  public static final String NAME = "simos.sd.packet.my";
+  public static final String NAME = "simos.ga.packet.my";
 
   private static final ResourceManifest SD_READ =
       ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
@@ -65,7 +69,8 @@ public final class MyPacketTool implements SimosTool {
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(缺省 head)}。返回 {packetId, branch, tick, proposerId, status, intent, "
         + "createdAtRevision, decidedBy?, decidedAtRevision?, reasonInfoId?, decisionNote?, calls:[…]}（call 含 "
-        + "args/preview 解析后的 Map 与原始 JSON）。";
+        + "callIndex/toolName/args/preview 解析后的 Map 与原始 JSON）。"
+        + "★ 改/删/撤回前先读它：revise/drop 要的 callIndex 与 reopen 要看的 status/decidedBy 都在这里。";
   }
 
   @Override
@@ -92,8 +97,7 @@ public final class MyPacketTool implements SimosTool {
     try {
       Optional<String> decisionMakerId = identity.decisionMakerIdOf(context.identity());
       if (decisionMakerId.isEmpty()) {
-        return ToolResult.error(
-            "FORBIDDEN", "simos.sd.packet.my 只能由决策人身份调用（身份里没有 decision-maker: 前缀）");
+        return ToolResult.error("FORBIDDEN", NAME + " 只能由决策人身份调用（身份里没有 decision-maker: 前缀）");
       }
 
       DecisionMakerId proposerId = DecisionMakerId.parse(decisionMakerId.get());
@@ -101,12 +105,15 @@ public final class MyPacketTool implements SimosTool {
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
       GaState ga = GaToolReads.ga(state);
       Long tickArg = ToolSchema.optionalLong(args, "tick");
+      if (tickArg != null && tickArg < 0L) {
+        return ToolResult.error("BAD_REQUEST", "tick 不得为负: " + tickArg);
+      }
       long tick = tickArg == null ? state.meta().timestamp().tick() : tickArg;
       ToolResources.requireAll(
           context,
           Operation.READ,
           List.of(ToolResources.resourceSd(identity.decisionPacketKind(), proposerId.value())));
-      DecisionPacketId packetId = DecisionPacketId.parse("pkt-" + proposerId.value() + "-" + tick);
+      DecisionPacketId packetId = PacketDraftSupport.packetIdValueOf(proposerId, tick);
       DecisionPacket packet = ga.decisionPackets().get(packetId);
       if (packet == null) {
         return ToolResult.error("NOT_FOUND", "本 tick 没有决策包: " + packetId.value());

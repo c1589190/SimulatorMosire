@@ -57,12 +57,12 @@ import java.util.Set;
  * 当场具名拒（{@code REJECTED}，理由原文回给调用方）。这条既有的机制就是本工具的幂等边界，不另造状态。
  *
  * <p>★ <b>身份不采信载荷</b>：DM 从 {@link GaToolIdentity#decisionMakerIdOf} 派生（解不出 ⇒ {@code FORBIDDEN}），
- * 地址段与 {@code tags} 都用派生值 ⇒ 谁也不能替别人确认推演（与 {@code SubmitPacketTool} 同形）。
+ * 地址段与 {@code tags} 都用派生值 ⇒ 谁也不能替别人确认推演（与 {@code ConfirmPacketTool} 同形）。
  *
  * <p>★ <b>tick 不得记在未来</b>：与 {@code ga.PutInfo} 同口径（过去合法——"我刚才那轮没来得及确认"是真实场景）。 为负 ⇒ 直接 {@code
  * BAD_REQUEST}（{@code SdInfoEntry} 的构造期判据是 {@code tick ≥ 0}，但那会以 handler 的具名拒返回， 不如在工具侧说清）。
  *
- * <p>★ <b>资源断言照抄 {@code SubmitPacketTool}</b>：{@code sd:decision-packet/<自己>}（自指域，决策人基础可达面里已有它）
+ * <p>★ <b>资源断言照抄 {@code ConfirmPacketTool}</b>：{@code sd:decision-packet/<自己>}（自指域，决策人基础可达面里已有它）
  * ——因为本工具落的是"我自己的决策流程"里的一条 INFO，不是别人的数据。
  */
 public final class AdjudicationAckTool implements SimosTool {
@@ -80,7 +80,8 @@ public final class AdjudicationAckTool implements SimosTool {
   private static final LogChannel TOOL = EventLog.channel(GaLog.tool());
 
   /**
-   * 写 {@code sd} 域（与 {@code SubmitPacketTool} 同款：本工具钉死的 {@code ga.PutInfo} 只产 {@code GaChangeSet}）。
+   * 写 {@code sd} 域（与 {@code ConfirmPacketTool} 同款：本工具钉死的 {@code ga.PutInfo} 只产 {@code
+   * GaChangeSet}）。
    */
   private static final ResourceManifest SD_WRITE =
       ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
@@ -144,7 +145,7 @@ public final class AdjudicationAckTool implements SimosTool {
   public ToolResult execute(ToolContext context) {
     try {
       Map<String, Object> args = context.arguments();
-      // ★ 身份只从 context 派生（不采信载荷）：照 SubmitPacketTool 的同形制；解不出 ⇒ FORBIDDEN。
+      // ★ 身份只从 context 派生（不采信载荷）：照 ConfirmPacketTool 的同形制；解不出 ⇒ FORBIDDEN。
       Optional<String> decisionMakerRaw = identity.decisionMakerIdOf(context.identity());
       if (decisionMakerRaw.isEmpty()) {
         return reject("FORBIDDEN", NAME + " 只能由决策人身份调用（身份里没有 decision-maker: 前缀）");
@@ -163,7 +164,7 @@ public final class AdjudicationAckTool implements SimosTool {
         return reject("BAD_REQUEST", "确认不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick);
       }
 
-      // ★ 资源断言照抄 SubmitPacketTool 那一行（自指域；决策人基础可达面里有它）——在 submit 之前 ⇒ 被拒时世界零变化。
+      // ★ 资源断言照抄 ConfirmPacketTool 那一行（自指域；决策人基础可达面里有它）——在 submit 之前 ⇒ 被拒时世界零变化。
       ToolResources.requireAll(
           context,
           Operation.WRITE,

@@ -164,6 +164,19 @@ public final class DecisionAgentRunner {
   public static final int DEFAULT_MAX_LLM_CALLS = 10_000;
 
   /**
+   * ★★ <b>写进开场消息与每轮提醒的"工具调用次数"预算口径</b>（2026-10-14 本批新增）：<b>{@value #TOOL_CALL_BUDGET} 次 工具调用</b>。
+   *
+   * <p>★★ <b>这个数管的是"工具调用次数"，不是"决策条数"</b>（用户 2026-10-14 原话：「决策人一轮运行产生多个工具决策是很正常的」）： 一次 {@code
+   * propose{calls:[…]}} 可以带多条决策，占用的仍然只是**一次**工具调用。旧口径写的是"本回合最多做 4–6 次工具调用"， 读起来却像"最多 4–6 条决策"，把
+   * {@code propose} 逼成一条一条提——那正是缺口 G9 的现场。
+   *
+   * <p>★ <b>它是提示词里的口头预算，不是硬闸门</b>：真正的硬闸门是 {@link #DEFAULT_MAX_LLM_CALLS}（撞上 ⇒ {@link
+   * TurnBudgetExceeded}）。这里取值只为"给模型一个收口的数"，比 4–6 宽（一轮写几条决策 + 改几条 + 读几次包， 24 次足够），又远小于那个兜底值。★
+   * 两个数**语义不同**，不要合并。
+   */
+  public static final int TOOL_CALL_BUDGET = 24;
+
+  /**
    * **一轮的进度回调**（2026-09-23，GUI 准实时进度）：**每轮 LLM 结束**、**每次工具调用结束**各推一次。
    *
    * <p>★★ **默认 no-op ⇒ MCP 路径零影响**：GM 经 MCP 调 {@code ga.RunDecision} 那条是**同步**的（调用方等到整轮结束才拿到
@@ -579,15 +592,18 @@ public final class DecisionAgentRunner {
    * 冻结回合分类（只认 schema 里的坐标字段，不靠命名约定）：
    *
    * <ul>
-   *   <li>packet 四件套 ⇒ {@link FrozenToolKind#PACKET_WRITE}；
+   *   <li>决策包**七件套**（{@code packetTools()}：propose / revise / drop / intent / confirm / reopen /
+   *       my） ⇒ {@link FrozenToolKind#PACKET_WRITE}；
    *   <li>schema 有 {@code revision} ⇒ {@link FrozenToolKind#WORLD_READ}（runner 会强制覆盖成冻结坐标）；
-   *   <li>schema 有 {@code expectedRevision} 且不是 packet ⇒ {@code null}（旧世界写/自指写，冻结回合直接移除）；
+   *   <li>schema 有 {@code expectedRevision} 且**不在七件套里** ⇒ {@code null}（旧世界写/自指写，冻结回合直接移除） ——★
+   *       判据的顺序是**要害**：七个决策包工具里有六个也带 {@code expectedRevision}（只写自己的包，不带 {@code revision}），故 {@code
+   *       packetTools} 那一支必须排在前面，否则它们会被整族移出冻结回合；
    *   <li>显式列出的无状态读口 ⇒ {@link FrozenToolKind#STATELESS_READ}；
    *   <li>其余 ⇒ {@code null}（安全默认：新工具若没被明确分类，同时决策回合里不出现）。
    * </ul>
    *
    * <p>★ 两组名字由宿主注入的 {@link DecisionToolNames} 派生（{@code packetTools()} / {@code statelessReads()}），
-   * 不在 ga 里写字面量：工具改名而这里没跟着改的话，症状是**静默**的（提交不再被延迟、新读口在冻结回合里消失）。
+   * 不在 ga 里写字面量：工具改名而这里没跟着改的话，症状是**静默**的（新读口在冻结回合里消失、决策包工具被整族拒掉）。
    */
   private static FrozenToolKind frozenKindOf(
       ToolDef def, Set<String> packetTools, Set<String> statelessReads) {
@@ -631,14 +647,14 @@ public final class DecisionAgentRunner {
   public static final String GENERATION_CONVERSATION_ID_PREFIX = "decision-maker#";
 
   /**
-   * **同时决策回合的冻结上下文**（用户 2026-10-22 裁定）：一次 {@code simos.sd.run-decision-makers} 批里所有决策人 <b>读同一
+   * **同时决策回合的冻结上下文**（用户 2026-10-22 裁定）：一次 {@code simos.ga.run-decision-makers} 批里所有决策人 <b>读同一
    * branch/revision 快照</b>；世界写工具在工具面与执行口都被移除，只允许：
    *
    * <ul>
    *   <li>世界读工具：runner 强制把 {@code branch/revision} 覆盖成冻结坐标，模型自己填什么都不生效；
-   *   <li>决策包读/写工具（{@code simos.sd.propose} / {@code packet.intent} / {@code packet.submit} /
-   *       {@code packet.my}）：强制到冻结 branch，且剥掉 {@code expectedRevision}（让工具自己取当下 head）——
-   *       于是每个决策人只写自己的 packet 前缀，不碰世界，也不会被前一个决策人的 packet 写版本顶掉；
+   *   <li>决策包读/写工具（{@code simos.ga.packet.propose} / {@code .revise} / {@code .drop} / {@code
+   *       .intent} / {@code .confirm} / {@code .reopen} / {@code .my}）：强制到冻结 branch，且剥掉 {@code
+   *       expectedRevision}（让工具自己取当下 head）—— 于是每个决策人只写自己的 packet 前缀，不碰世界， 也不会被前一个决策人的 packet 写版本顶掉；
    *   <li>{@code packetWriteLock}：并发跑轮时所有 packet 写共用同一把锁，把"读快照并发、写包串行"钉死。
    * </ul>
    *
@@ -806,15 +822,22 @@ public final class DecisionAgentRunner {
     String branches = LlmToolNames.wireNameOf(toolNames.branches());
     String intentTool = LlmToolNames.wireNameOf(toolNames.packetIntent());
     String proposeTool = LlmToolNames.wireNameOf(toolNames.propose());
-    String submitTool = LlmToolNames.wireNameOf(toolNames.packetSubmit());
+    String reviseTool = LlmToolNames.wireNameOf(toolNames.revise());
+    String dropTool = LlmToolNames.wireNameOf(toolNames.drop());
+    String confirmTool = LlmToolNames.wireNameOf(toolNames.confirm());
+    String reopenTool = LlmToolNames.wireNameOf(toolNames.reopen());
     String myPacketTool = LlmToolNames.wireNameOf(toolNames.myPacket());
+    String messageTool = LlmToolNames.wireNameOf(GaMessageSendTool.NAME);
     // ★★ 可达面：**问宿主**（唯一真相 = 装配方的 DecisionCallerFactory.whitelistFor），运行流不自己算（见 DecisionToolReach
     // 类注）。
     boolean canCatalog = toolReach.reachable(dm, toolNames.catalog());
     boolean canBranches = toolReach.reachable(dm, toolNames.branches());
     boolean canIntent = toolReach.reachable(dm, toolNames.packetIntent());
     boolean canPropose = toolReach.reachable(dm, toolNames.propose());
-    boolean canSubmit = toolReach.reachable(dm, toolNames.packetSubmit());
+    boolean canRevise = toolReach.reachable(dm, toolNames.revise());
+    boolean canDrop = toolReach.reachable(dm, toolNames.drop());
+    boolean canConfirm = toolReach.reachable(dm, toolNames.confirm());
+    boolean canReopen = toolReach.reachable(dm, toolNames.reopen());
     boolean canMyPacket = toolReach.reachable(dm, toolNames.myPacket());
     // ★ 冻结回合不点旧单人回合的两件（下面走另一段），故它们不参与"有没有点了却够不着的名字"。
     boolean canLegacyWrites =
@@ -826,7 +849,10 @@ public final class DecisionAgentRunner {
             && canBranches
             && canIntent
             && canPropose
-            && canSubmit
+            && canRevise
+            && canDrop
+            && canConfirm
+            && canReopen
             && canMyPacket
             && canLegacyWrites;
     StringBuilder text = new StringBuilder();
@@ -870,42 +896,61 @@ public final class DecisionAgentRunner {
         .append("【决策的两种表达】\n")
         .append("1) 自然语言决策：用 ")
         .append(intentTool)
-        .append(" 写 text；或者在你结束本回合时，用最后一段自然语言陈述表达。\n")
+        .append(" 写 text（**整段覆盖**，可反复改）；或者在你结束本回合时，用最后一段自然语言陈述表达。\n")
         .append("2) 结构命令：用 ")
         .append(proposeTool)
-        .append(" 提议真实工具调用，参数里带 {tool, args, intent}；一条命令一次提议。\n")
-        .append("最后用 ")
-        .append(submitTool)
-        .append(" 统一提交本 tick 的决策包。用 ")
+        .append(" 提议真实工具调用。★ **一轮可以提多条决策**：一次 ")
+        .append(proposeTool)
+        .append(" 的 calls 数组里放多条 [{tool, args, intent}, …]（单条形态仍可直接给 tool/args）。\n")
+        .append("★ 决策条数**不设限**（一次可带多条）；能改、能删：用 ")
+        .append(reviseTool)
+        .append(" 改包里第 callIndex 条（tool/args 缺省 = 沿用原值），用 ")
+        .append(dropTool)
+        .append(" 删掉第 callIndex 条（其余序号自动重排）。\n")
+        .append("★ 定稿：用 ")
+        .append(confirmTool)
+        .append(" 把本 tick 的全部决策（所有 call + 自然语言）一次性确认交给 GM。")
+        .append("确认之后要再改，先用 ")
+        .append(reopenTool)
+        .append(" 撤回（回到拟稿）；**GM 一旦裁决就改不了了**。用 ")
         .append(myPacketTool)
-        .append(" 查看自己的包。\n")
+        .append(" 查看自己的包（改/删要的 callIndex 与状态都在里面）。\n")
         .append("\n")
         .append(
             "【本轮可 propose 的工具】simos.unit.raiseUnit / simos.gov.recruit / simos.gov.retireStaff / ")
         .append(
             "simos.social.household.members / simos.unit.levyRegion / simos.gov.selectExaminees / ")
         .append("simos.gov.dispatchTeam（以你实际 allowedTools 为准；清单外不要在 propose 里试，试一次拒一次）。\n")
-        .append("【工具预算与写法】本回合最多做 4–6 次工具调用：");
+        .append("【工具预算与写法】本回合最多做 ")
+        .append(TOOL_CALL_BUDGET)
+        .append(" 次工具调用——★ 这个数管的是**工具调用次数**，不是决策条数（一次 ")
+        .append(proposeTool)
+        .append(" 可带多条决策）：");
     if (canCatalog) {
       // ★ 够不着就不点它的名（点名 = 叫它去用；见本方法的类注）。
-      text.append("先看一次 ").append(catalog).append(" 选一条可 propose 的工具，");
+      text.append("先看一次 ").append(catalog).append(" 选可 propose 的工具，");
     }
-    text.append("写 intent + propose + submit 后立刻收口。不要逐条试工具；任何工具的 args 里不要出现 JSON null，")
+    text.append("写 intent + propose + confirm 后立刻收口。不要逐条试工具；任何工具的 args 里不要出现 JSON null，")
         .append("缺字段就省略。\n")
         .append("\n")
+        .append("【GM 会和你来回问答（重要）】你的 ")
+        .append(messageTool)
+        .append(" 可以把问题直接发给 GM（to=\"")
+        .append(ToolResources.GM_ID)
+        .append("\"）；GM 可能**中途问你问题**、也会**回答你的提问**——新信件会自动出现在你面前。")
+        .append("★ 你这一轮只要还有没被答复的提问，系统就**不会**替你确认决策（包留在拟稿态，不会丢），")
+        .append("等 GM 答完再跑你一轮。\n")
+        .append("\n")
         .append("【系统如何结算你的回合（重要）】\n")
-        .append("- 如果你一直不调用 ")
-        .append(submitTool)
-        .append(" 就停止说话：本回合写进包里的所有自然语言与结构命令，加上你整轮最后一段自然语言，")
-        .append("会被自动一起交给 GM；系统自动完成提交。\n")
-        .append("- 如果你调用 ")
-        .append(submitTool)
-        .append(" 后又继续写/提议命令：系统会保守地把整个回合的所有命令合并，")
-        .append("并用整轮最后一段自然语言作为 NL 决策，最后统一提交一次。\n")
-        .append("- 如果你调用 ")
-        .append(submitTool)
-        .append(" 后不再发命令、只继续说话：之前提交/写进包的命令照常作为你的决策；")
-        .append("提交后的纯文本只作为解释留档，不再额外算一条新的自然语言决策。\n")
+        .append("- ")
+        .append(confirmTool)
+        .append(" 是**你自己**的动作：调用它 ⇒ 本 tick 的决策立刻定稿（PENDING）交给 GM；系统不再替你自动提交。\n")
+        .append("- 如果你没调用 ")
+        .append(confirmTool)
+        .append("、又没有未答提问，就停止说话：本回合写进包里的所有自然语言与结构命令，加上你整轮最后一段自然语言，")
+        .append("会被自动一起交给 GM（**不静默丢决策**）；但如果你已经显式写过 intent（")
+        .append(intentTool)
+        .append("），就不会再往它后面附加你的收尾文本。\n")
         .append("- GM 收到包后决定批准/拒绝/合并执行；你不需要自己执行世界效果。\n")
         .append("\n");
     if (frozen == null) {
@@ -957,11 +1002,21 @@ public final class DecisionAgentRunner {
         .append(LlmToolNames.wireNameOf(toolNames.packetIntent()))
         .append(" 或最后一段文本表达；结构命令用 ")
         .append(LlmToolNames.wireNameOf(toolNames.propose()))
-        .append("；最后用 ")
-        .append(LlmToolNames.wireNameOf(toolNames.packetSubmit()))
-        .append(" 提交。提交后又继续发命令会被保守合并；一直不提交就结束，系统会把整轮最后一段文本自动作为 NL 决策交 GM。")
-        .append("提交后只说话不再发命令，则提交后的文本不再算新的 NL 决策。")
-        .append("★ 预算：最多 4–6 次工具调用；只 propose 工具面列出的 proposeable 工具，args 里不要写 null，缺字段就省略。");
+        .append("（一次可带**多条**决策：calls 数组），可改（")
+        .append(LlmToolNames.wireNameOf(toolNames.revise()))
+        .append("）、可删（")
+        .append(LlmToolNames.wireNameOf(toolNames.drop()))
+        .append("）；定稿用 ")
+        .append(LlmToolNames.wireNameOf(toolNames.confirm()))
+        .append(" 确认本 tick 的全部决策，确认后要再改先 ")
+        .append(LlmToolNames.wireNameOf(toolNames.reopen()))
+        .append(" 撤回（GM 已裁决就改不了了）。")
+        .append("没确认也没结束提问就停止说话 ⇒ 系统会把整轮最后一段文本自动作为 NL 决策交 GM（不静默丢决策）；")
+        .append("已显式写过 intent ⇒ 收尾文本不再附加（你的表达原样保留）。")
+        .append("★ 预算：最多 ")
+        .append(TOOL_CALL_BUDGET)
+        .append(" 次**工具调用**（★ 管的是调用次数，**不是决策条数**：一次 propose 可带多条）；")
+        .append("只 propose 工具面列出的 proposeable 工具，args 里不要写 null，缺字段就省略。");
     // ★★ 信件口径（2026-10-14）：一句话说清"能发几条 / 答复会自动出现 / 去哪复查"。★ 工具名走线格式
     //   （模型收到的工具清单里就是这个名字，写真实名会让它照着一个调不到的名字去点）。
     text.append("★ 信件：本 tick 你已收发 ")
@@ -971,7 +1026,8 @@ public final class DecisionAgentRunner {
         .append("）；**新收到的信**（GM 的答复 / 被授权决策人的来信）会在每轮开始时自动出现在你的会话里，")
         .append("你不需要自己去捞；要复查完整收件箱用 ")
         .append(LlmToolNames.wireNameOf(GaMessageInboxTool.NAME))
-        .append("。");
+        .append("。")
+        .append("★ 你这一轮还有没被答复的提问 ⇒ 系统**不结算**（包留在拟稿态、不会丢），等 GM 答完再跑你一轮。");
     if (frozen != null) {
       text.append("世界冻结在 ")
           .append(frozen.branch().value())
@@ -1146,57 +1202,21 @@ public final class DecisionAgentRunner {
     return List.copyOf(out);
   }
 
-  /** 回合结算信号：记录提交标记、提交后是否继续发命令、整轮最后一段文本与提交前最后一段文本。 */
-  private static final class DecisionTurnSignals {
-
-    /** 工具名声明（宿主注入的那一份）：只用来认出"提交 / 提议 / 自然语言"三件套。 */
-    private final DecisionToolNames toolNames;
-
-    private boolean submitSeen;
-    private boolean commandsAfterSubmit;
-    private Optional<String> lastAssistantText = Optional.empty();
-    private Optional<String> lastTextBeforeSubmit = Optional.empty();
-
-    DecisionTurnSignals(DecisionToolNames toolNames) {
-      this.toolNames = Objects.requireNonNull(toolNames, "toolNames");
+  /**
+   * ★★ <b>整轮最后一段非空助手文本</b>（2026-10-14 本批简化）：回合末的 {@code DecisionTurnFinalizer} 在"DM 从未显式写过
+   * intent"时用它兜底成 NL 决策（不变量 I4：不静默丢决策）。
+   *
+   * <p>★★ <b>本批删掉了原来的 {@code DecisionTurnSignals} 三件套</b>（{@code submitSeen} / {@code
+   * commandsAfterSubmit} / {@code lastTextBeforeSubmit}）：它们**只**服务于"提交工具在回合内被拦截、由回合末统一结算"那套语义
+   * ——而那套语义整个作废了（缺口 G4 / 不变量 I10：{@code confirm} 现在是一次真实工具调用，调了就是 PENDING）。删掉拦截之后
+   * 三个字段**一个读者都没有**，{@code continued-after-submit} / {@code submit-marker} 两条分支**永不成立**。 死代码就是谎言 ⇒
+   * 连同它们一起删除，只留"最后一段文本"这一个真事实。
+   */
+  private static Optional<String> lastAssistantText(Optional<String> text) {
+    if (text == null || text.isEmpty() || text.get() == null || text.get().isBlank()) {
+      return Optional.empty();
     }
-
-    void onAssistantText(Optional<String> text) {
-      if (text == null || text.isEmpty() || text.get() == null || text.get().isBlank()) {
-        return;
-      }
-      lastAssistantText = text;
-      if (!submitSeen) {
-        lastTextBeforeSubmit = text;
-      }
-    }
-
-    void onToolCall(String toolName) {
-      if (toolNames.packetSubmit().equals(toolName)) {
-        submitSeen = true;
-        return;
-      }
-      if (submitSeen
-          && (toolNames.propose().equals(toolName) || toolNames.packetIntent().equals(toolName))) {
-        commandsAfterSubmit = true;
-      }
-    }
-
-    boolean submitSeen() {
-      return submitSeen;
-    }
-
-    boolean commandsAfterSubmit() {
-      return commandsAfterSubmit;
-    }
-
-    Optional<String> lastAssistantText() {
-      return lastAssistantText;
-    }
-
-    Optional<String> lastTextBeforeSubmit() {
-      return lastTextBeforeSubmit;
-    }
+    return text;
   }
 
   /**
@@ -1258,8 +1278,9 @@ public final class DecisionAgentRunner {
     }
     // ★ 回合规范提醒**不落盘**、每轮现插：老会话（首轮身份消息里没有新口径）也必须被本轮规则覆盖。
     history.add(decisionRoundNotice(dm, frozen, toolNames, lettersThisTick(dm, state)));
-    DecisionTurnSignals signals = new DecisionTurnSignals(toolNames);
     List<ToolInvocation> invocations = new ArrayList<>();
+    // ★ 整轮最后一段非空助手文本的累积处（本批删掉 DecisionTurnSignals 后剩下的唯一回合信号）。
+    Optional<String> lastText = Optional.empty();
     int llmCalls = 0;
     while (true) {
       if (llmCalls >= maxLlmCalls) {
@@ -1289,7 +1310,11 @@ public final class DecisionAgentRunner {
       LlmResponse response = llmClient.chat(new LlmRequest(requestMessages(history), toolDefs));
       llmCalls++;
       LlmMessage assistant = response.assistantMessage();
-      signals.onAssistantText(response.textPart());
+      // ★ 整轮最后一段非空文本（唯一要留的回合信号，见 lastAssistantText 的类注）：空文本不覆盖已有值。
+      Optional<String> textPart = lastAssistantText(response.textPart());
+      if (textPart.isPresent()) {
+        lastText = textPart;
+      }
       // ★ 先落盘再判：模型说了什么都要记（非工具轮同样是这一轮的产出）。
       conversations.append(conversationId, assistant);
       history.add(assistant);
@@ -1310,19 +1335,12 @@ public final class DecisionAgentRunner {
                 "tools",
                 invocations.size()));
         return new DecisionTurn(
-            conversationId,
-            llmCalls,
-            invocations,
-            response.textPart(),
-            signals.submitSeen(),
-            signals.commandsAfterSubmit(),
-            signals.lastAssistantText(),
-            signals.lastTextBeforeSubmit());
+            conversationId, llmCalls, invocations, response.textPart(), lastText);
       }
       List<LlmMessage> imageMessages = new ArrayList<>();
       for (ContentPart.ToolCall call : requested) {
         // ★ 一次工具调用产出两条消息：tool 消息（永远有）+ 图片消息（有图且有视觉能力时，P4）。
-        ToolExecution execution = execute(dm, state, call, invocations, signals);
+        ToolExecution execution = execute(dm, state, call, invocations);
         conversations.append(conversationId, execution.toolMessage());
         history.add(execution.toolMessage());
         execution.imageMessage().ifPresent(imageMessages::add);
@@ -1352,30 +1370,22 @@ public final class DecisionAgentRunner {
    * <p>★★ **为什么图片是"另备"而不是"紧跟着发"**（P4，真网关实测的硬约束）：{@code tool} 角色的 {@code content} 只接受字符串（带图是
    * AgentLib 的响亮 CONFIG 错），故图必须另起一条 {@code user} 消息；但**它的位置由 {@code run} 定**—— 必须等本回合**所有** tool
    * 消息落完再发，否则真网关直接 400（见 {@code run} 里那段注释）。
+   *
+   * <p>★★ <b>本批删掉了"提交工具在回合内被拦截"那一支</b>（2026-10-14；缺口 G4 / 不变量 I10）：{@code simos.ga.packet.confirm}
+   * 现在和别的工具一样**真执行**——DM 调它，包立刻变 PENDING。旧形态返回的 {@code {"submitted":false,"deferred":true}}
+   * 与回合末的自动提交一起作废；回合末的兜底只剩 {@code DecisionTurnFinalizer} 里"未确认且无未答提问"那一条（不变量 I4：不静默丢决策）。
    */
   private ToolExecution execute(
       DecisionMaker dm,
       SimulationState state,
       ContentPart.ToolCall call,
-      List<ToolInvocation> invocations,
-      DecisionTurnSignals signals) {
+      List<ToolInvocation> invocations) {
     // ★★ **线名 ⇒ 真实名**（`simos_map_hex` → `simos.map.hex`）：权限链、注册表、工具自身**只认真实名**，本层是唯一的翻译点。
     //   ★ **查不到就原样交下去**（不新造"这个名字不在表里"的拒绝理由）：于是 AgentLib 的两条既有判据逐字保留——
     //   真没这个工具 ⇒ `TOOL_NOT_FOUND`（正文是「工具不存在: <模型给的名字>」，模型据此看得见自己叫错了名）；
     //   工具真在注册表里、只是权限组不放它 ⇒ `PERMISSION_DENIED`。本层若抢先拒，后者就再也测不到了（工具面 = 白名单，
     //   凡是能过名字表的都在白名单里），等于用一个更弱的理由顶掉一个更强的判据。
     String toolName = wireNames.realNameOf(call.name()).orElse(call.name());
-    signals.onToolCall(toolName);
-    if (toolNames.packetSubmit().equals(toolName)) {
-      // ★★ 回合统一结算：提交工具在决策回合里只登记，不立刻把 packet 锁成 PENDING——
-      //   这样"提交后继续 propose / intent"仍然能写进同一个 DRAFT，回合结束时由 service 层合并提交一次。
-      //   真工具本身不改：GM / 其他非回合路径直接调 simos.sd.packet.submit 仍是原语义。
-      ToolResult deferred =
-          ToolResult.ok(
-              "{\"submitted\":false,\"deferred\":true,"
-                  + "\"note\":\"已登记：本回合结束时统一提交；可继续补充命令，最后一段自然语言会作为 NL 决策一并交给 GM。\"}");
-      return recordResult(dm, toolName, call, deferred, invocations);
-    }
     Map<String, Object> args = new LinkedHashMap<>(call.arguments());
     FrozenToolKind kind = null;
     if (frozen != null) {
@@ -1595,36 +1605,30 @@ public final class DecisionAgentRunner {
   /**
    * 一轮的账。
    *
+   * <p>★★ <b>本批（2026-10-14）删掉了三个提交信号字段</b>（{@code packetSubmitSeen} / {@code commandsAfterSubmit} /
+   * {@code lastTextBeforeSubmit}）：它们的唯一读者是回合末的"提交标记分支"，而"提交在回合内被拦截"那套语义已整条作废 （缺口 G4 / 不变量 I10）⇒
+   * 三个字段**一个读者都没有**。★ <b>旧的 4 参构造器也随之删除</b>——它当时只是把三个信号填成缺省， 现在规范构造器的参数表与它**逐字同形**（{@code
+   * conversationId, llmCalls, toolInvocations, finalText, lastAssistantText}），既有调用点（如 {@code
+   * DecisionTurnFinalizer.finalizeAborted}）一字不用改。
+   *
    * @param conversationId 这一段会话的 id（跨 tick 的锚）
    * @param llmCalls 本轮向模型发起的调用次数（≥ 1）
    * @param toolInvocations **真的被执行过**的工具调用（按发生序；被权限拒的也在内，{@code success=false}）
    * @param finalText 收尾那条助手消息的文本（模型不停在工具调用上时的产出；不含文本 ⇒ 空）
+   * @param lastAssistantText 整轮**最后一段非空**助手文本（收尾文本为空时它可能来自更早那轮；从未说过话 ⇒ 空）—— 回合末"DM 从未显式写过
+   *     intent"时用它兜底成 NL 决策（不变量 I4）
    */
   public record DecisionTurn(
       String conversationId,
       int llmCalls,
       List<ToolInvocation> toolInvocations,
       Optional<String> finalText,
-      boolean packetSubmitSeen,
-      boolean commandsAfterSubmit,
-      Optional<String> lastAssistantText,
-      Optional<String> lastTextBeforeSubmit) {
-
-    /** 旧 4 参兼容构造器（测试与旧调用点）：没有回合信号的轮次按"无提交、最后文本即整轮文本"处理。 */
-    public DecisionTurn(
-        String conversationId,
-        int llmCalls,
-        List<ToolInvocation> toolInvocations,
-        Optional<String> finalText) {
-      this(
-          conversationId, llmCalls, toolInvocations, finalText, false, false, finalText, finalText);
-    }
+      Optional<String> lastAssistantText) {
 
     public DecisionTurn {
       toolInvocations = List.copyOf(toolInvocations);
       Objects.requireNonNull(finalText, "finalText");
       Objects.requireNonNull(lastAssistantText, "lastAssistantText");
-      Objects.requireNonNull(lastTextBeforeSubmit, "lastTextBeforeSubmit");
     }
 
     /** 这一轮有没有用过工具（J11 的"不是被动收简报"就落在这一位上）。 */

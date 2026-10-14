@@ -62,8 +62,13 @@ import java.util.Set;
  * 影响**（GM 要的是"还有几件事没答"，不是"这一页里有几件"）。★ 用 {@code sinceTick} 分页时，这个数**不会**跟着变小—— 它就是这么设计的（要按 tick
  * 切分的视图走 {@code simos.gm.round} 的 {@code openQuestions}）。
  *
- * <p>★ <b>{@code limit} 截取的是**最近**的 N 条</b>（返回列表内部仍按 {@code (tick, id)} 升序）：GM 的用途是"答还没答的
- * 问题"，截取最旧的一页会让新问题永远看不见——而"GM 的答复必须到达 DM"是这批的红线之一。 超上限**具名拒**（不静默截断；静默截断会让调用方以为拿到了全部）。
+ * <p>★ <b>{@code limit} 截取的是**最近**的 N 条</b>（返回列表内部仍按 {@code (tick, sequence, id)} 升序，见 {@link
+ * #letters}）：GM 的用途是"答还没答的问题"，截取最旧的一页会让新问题永远看不见——而"GM 的答复必须到达 DM"是这批的红线之一。
+ * 超上限**具名拒**（不静默截断；静默截断会让调用方以为拿到了全部）。
+ *
+ * <p>★★ <b>条数上限：每 tick 每方向最多 {@value GaMessageSendTool#MAX_MESSAGES_PER_TICK_PER_DIRECTION} 条</b>
+ * （用户 2026-10-14 裁定「至少改成128」；**命令期**判，第 N+1 条具名拒 + 世界零变化）。★ 本工具 <b>不做截断</b>：{@code limit}
+ * 只管"这一次返回几条"，不改变"信里写了多少"——正文一律原样给出 （截断 = 静默丢掉 GM 的答复 = 问答断链）。
  *
  * <p>★ <b>资源声明与断言照同族 GM 只读口</b>（{@code simos.gm.packets}）：声明 {@code sd} 只读 + 断言 {@code sd:*}（GM 的
  * {@code sd} 是 unlimited）。 ★ 为什么**不**声明 {@code peer}：GM 组的可达面**没有** {@code peer} 那一维表态 ⇒ 声明它并断言
@@ -114,7 +119,10 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
         + "**还没答**的条数（不受 sinceTick/limit 影响）。"
         + "★ 决策人之间的信不会出现在这里（本工具只回 to=\""
         + ToolResources.GM_ID
-        + "\" 的信）。回信请用 simos.gm.message.send{to, body, replyTo}。";
+        + "\" 的信）。回信请用 simos.gm.message.send{to, body, replyTo}。"
+        + "★ 条数上限：每 tick 每方向最多 "
+        + GaMessageSendTool.MAX_MESSAGES_PER_TICK_PER_DIRECTION
+        + " 条（命令期判，超出的第 N+1 条具名拒、世界零变化）；正文不截断，limit 只影响这一次返回几条。";
   }
 
   @Override
@@ -241,16 +249,15 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
   // ── 读侧共享件（唯一实现：GmRoundTool 也走这里，不复制第二份）──────────────────────────────────
 
   /**
-   * 一条**能解析出结构**的信件条目：条目 + 解析后的值。{@code id} 取条目自带的 id（{@code msg-...}）。
+   * 一条**能解析出结构**的信件条目：条目 + 解析后的值 + **数值化的信序号**。{@code id} 取条目自带的 id（{@code msg-...}）。
    *
    * <p>★ 解析不出结构（不是对象 / 非 JSON 文本）的条目**不进列表**——"看不懂的信"不猜、不显示。
+   *
+   * <p>★★ {@code sequence} 是 **2026-10-14 批 B 修的一个真缺陷**（设计书 §3.4.1，见 {@link #letters}）： 信件 id
+   * 末段是**十进制**序号，而 {@code "<tick>,<id>"} 的**字典序**会把 {@code 10} 排到 {@code 2} 前面 ⇒ 注入游标（"最后一条 id +
+   * 1"）会**静默跳过**同一 tick 的第 10..N 条。故这里把序号**解析成数值**参与排序。
    */
-  public record Letter(SdInfoEntry entry, JsonNode value) {
-
-    public Letter {
-      Objects.requireNonNull(entry, "entry");
-      Objects.requireNonNull(value, "value");
-    }
+  public record Letter(SdInfoEntry entry, JsonNode value, int sequence) {
 
     /** 条目 id（信件 id，回信时填进 {@code replyTo} 的就是它）。 */
     public String id() {
@@ -274,10 +281,55 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
   }
 
   /**
-   * **全部**信件条目（{@code key == }{@link GaMessageSendTool#KEY_MESSAGE} 且值能解析成对象），按 {@code (tick, id)}
-   * 升序。
+   * id 末段解析不出十进制序号时的**哨兵值**（★ 明确的约定，不是 {@code 0}）：这些条目在**同一 tick 内排在最前**， 彼此之间退化成按 id 字典序（稳定、不猜）。★
+   * 与合法序号（{@code 0..}{@value GaMessageSendTool#MAX_MESSAGES_PER_TICK_PER_DIRECTION}{@code
+   * -1}）**永不相等** ⇒ 排序可全序，不会撞。
+   */
+  static final int SEQUENCE_SENTINEL = Integer.MIN_VALUE;
+
+  /**
+   * 从信件 id 末段取**数值**序号（{@code msg-<from>-<to>-<tick>-<n>} 的 {@code <n>}）；解析不出 ⇒ {@link
+   * #SEQUENCE_SENTINEL}。
    *
-   * <p>★ <b>不按收件人/可见性筛</b>：那是调用方的事（GM 读全量是本工具的口径；DM 侧的收件箱走它自己的可见性端口）。
+   * <p>★ 拼写点只此一处：只认**最后一段**、只认整段都是十进制数字（{@code +1} / {@code 01} / {@code 1a} 都不算——
+   * 前两个不是发信工具的产物，第三个根本不是序号）。
+   */
+  static int sequenceOf(String id) {
+    if (id == null) {
+      return SEQUENCE_SENTINEL;
+    }
+    int dash = id.lastIndexOf('-');
+    if (dash < 0 || dash == id.length() - 1) {
+      return SEQUENCE_SENTINEL;
+    }
+    String tail = id.substring(dash + 1);
+    for (int i = 0; i < tail.length(); i++) {
+      if (tail.charAt(i) < '0' || tail.charAt(i) > '9') {
+        return SEQUENCE_SENTINEL;
+      }
+    }
+    try {
+      return Integer.parseInt(tail);
+    } catch (NumberFormatException e) {
+      return SEQUENCE_SENTINEL; // 位数超 int：明确约定成哨兵，不抛、不截断
+    }
+  }
+
+  /**
+   * **全部**信件条目（{@code key == }{@link GaMessageSendTool#KEY_MESSAGE} 且值能解析成对象），按 {@code (tick,
+   * sequence, id)} 升序。
+   *
+   * <p>★★ <b>为什么不是 {@code (tick, id)}</b>（2026-10-14 批 B 修的真缺陷，设计书 §3.4.1）：信件 id 的末段是**十进制**序号，
+   * 字典序在同一 tick ≥10 条时会变成 {@code 0,1,10,11,2,…,9}。后果不是"看起来乱"—— {@code
+   * DecisionAgentRunner.newLettersMessage} 的注入游标是"最后一条信的 id + 1（下标）"， 而**新到的第 12 条（{@code
+   * -12}）排在游标前面** ⇒ {@code start = index(cursor)+1} **跳过它** ⇒ **GM 的答复被静默丢掉**（正是本设计最不能出的错）；{@code
+   * simos.gm.inbox} 的"截最近 N 条"也会截错。 ⇒ 排序改成先比**数值**序号、再拿 id 兜底（同序号不可能来自同一发信工具，但不同来源的条目可能撞 ⇒
+   * 全序必须有最后一键）。
+   *
+   * <p>★ 解析不出序号的条目取 {@link #SEQUENCE_SENTINEL}（同一 tick 内排最前，保持稳定序）——**不丢、不猜**。
+   *
+   * <p>★ <b>不按收件人/可见性筛</b>：那是调用方的事（GM 读全量是本工具的口径；DM 侧的收件箱走它自己的可见性端口）。 ★ {@code repliedIds}
+   * 的既有语义**不受本次改动影响**（它只收集 {@code replyTo} 的集合，与顺序无关）。
    */
   public static List<Letter> letters(GaState ga) {
     List<Letter> all = new ArrayList<>();
@@ -287,10 +339,13 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
           continue;
         }
         Optional<JsonNode> value = GaMessageSendTool.parseMessageValue(entry.value());
-        value.ifPresent(node -> all.add(new Letter(entry, node)));
+        value.ifPresent(node -> all.add(new Letter(entry, node, sequenceOf(entry.id().value()))));
       }
     }
-    all.sort(Comparator.comparingLong(Letter::tick).thenComparing(Letter::id));
+    all.sort(
+        Comparator.comparingLong(Letter::tick)
+            .thenComparingInt(Letter::sequence)
+            .thenComparing(Letter::id));
     return all;
   }
 
