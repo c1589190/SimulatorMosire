@@ -50,8 +50,9 @@ public final class SetDecisionMakerPeerTool extends AbstractNarrowWriteTool impl
     return "GM 授权两个决策人互致消息：固定 ga.SetDecisionMakerPeer，载荷 {dmA, dmB, allowed}（三者全必填；"
         + "allowed 必须是布尔）。★ 一次调用**同时写两条**决策人记录、落**一条 revision** ⇒ **双向**授权（不存在"
         + "\"A 能发 B、B 回不了\"的半开态）；allowed=false 关闸（两侧各删去对方）。"
-        + "授权后两人的可达面各出现 peer:<对方> ⇒ 可用 simos.ga.message.send 发、simos.ga.message.inbox 收"
-        + "（每 tick 每方向一条）。★ 本命令只动 accessLimit 的 peer 前缀表，不新建存储、不新建切片。";
+        + "授权后两人的可达面各出现 peer:<对方> ⇒ 可用 simos.ga.message.send 发、simos.ga.message.inbox 收（每 tick 每方向最多 "
+        + GaMessageSendTool.MAX_MESSAGES_PER_TICK_PER_DIRECTION
+        + " 条）。★ 本命令只动 accessLimit 的 peer 前缀表，不新建存储、不新建切片。";
   }
 
   @Override

@@ -852,10 +852,11 @@ public final class CatalogTool implements SimosTool {
                   + " decisionNote?, calls[{callIndex, toolName, argsJson,"
                   + " targets[{namespace,path}], previewJson, draftChecks[],"
                   + " status(PENDING|APPROVED|REJECTED|MERGED), mergedPlanId?, outcomeJson?}]（★"
-                  + " D2/D3：整包 upsert；同 id 幂等替换；不对外窄工具，由 simos.sd.propose / intent / 决策效果执行器内部提交）"),
+                  + " D2/D3：整包 upsert；同 id 幂等替换；不对外窄工具，由 simos.ga.packet.propose / simos.ga.packet.intent"
+                  + " / 决策效果执行器内部提交）"),
           Map.entry(
               "ga.SubmitDecisionPacket",
-              "id, proposerId（★ D2：DRAFT → PENDING；只被 simos.sd.packet.submit 调用）"),
+              "id, proposerId（★ D2：DRAFT → PENDING；只被 simos.ga.packet.confirm 调用）"),
           Map.entry(
               "ga.DecideDecisionPacket",
               "id, decision(APPROVE|DENY|MERGE), decidedBy, note?, callIndexes[]?, mergedPlanId?（★"

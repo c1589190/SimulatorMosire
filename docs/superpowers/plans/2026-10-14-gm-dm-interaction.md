@@ -202,6 +202,62 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 
 ---
 
+### 3.7 ★ GM 代打：`simos.gm.actAs`（2026-10-14 第二轮裁定）
+
+**用户原话**：
+
+> 「那我建议还是决策人归决策人，真人归真人吧——反正真人真要下令也是自然语言，如果有些工具注定只有决策人需要用，那GM就算碰，那出于真实的伪造决策的需求，也应该让GM搞，总结就是该咋整咋整，不要动现有架构，GM想干啥干啥」
+
+**裁定拆解**：
+
+| 子项 | 裁定 | 后果 |
+|---|---|---|
+| **真人 / 决策人分家** | **不做**（`ChannelAdmission.LANDING_POINTS` **不动**） | 真人要下令就走**自然语言**；决策包七件套**不进**落点 |
+| **GM 代打（伪造决策）** | **要做** | 出于"从外部把真人玩家的东西输进去"的真实需求 |
+| **总口径** | **不要动现有架构；GM 想干啥干啥** | ⇒ 只能是**加法**：一个**新工具**，零改既有七件套、零改权限面、零改通道 |
+
+**★ 为什么是"新工具"而不是"给七件套的 `roles` 加 GM"**（这一条是红线）：后者的载荷必须新增 `decisionMakerId`，而七件套现在的身份是 **从 `context.identity()` 派生、不采信载荷**（`ProposeCallTool:158` 等）。把身份改成从载荷取 = 给 GM 开一条**替任意 DM 提交**的通道，且破掉"模型写的载荷不等于身份"这条不变量。⇒ **一个工具、唯一的口**，好过在七件套里各开一个洞。
+
+**形状**：
+
+- `NAME = "simos.gm.actAs"`；`roles() = {GM}`；`gate = Ask`（GM 链 `GmAutoApproveGate` 无脑过，与其余 GM 写同制）
+- 载荷：`{decisionMakerId(必填，必须是当前存在的决策人), tool(必填，真实工具名), args?(对象，缺省 {}), branch?, expectedRevision?}`
+- 执行：**建那个 DM 的环境，再走决策人回合内**完全同一条路：
+  ```
+  DecisionCallerFactory.callerFor(dm, state, mapId)   ← 该 DM 的身份 + 现算权限组（范围/accessLimit/docs/peer）
+  DecisionToolCaller.execute(决策人桶注册表, tool, dm, state, mapId, args, config)
+  ```
+  ⇒ 五段判定链（档位 / 资源声明前置闸 / 审批 / 执行）**一段都不跳**；用的注册表必须是**决策人桶**（不是 GM 桶），用的白名单必须是 `whitelistFor(该 DM)`
+- 拒绝：决策人不存在 ⇒ 具名拒；工具不在该 DM 的可达面 ⇒ 照实回 `PERMISSION_DENIED` / `TOOL_NOT_FOUND`（**不许**为了"让 GM 成功"而绕过任何判定）
+- ★ **诚实标注（必须写进类注）**：GM 本来就有通用写（`simos.command.submit` 可提交任意命令，用户 2026-09-22 裁定 D2）⇒ 本工具**不放大任何权力**。它存在的意义是给"以某个决策人的环境落一次调用"这件事一个**唯一的、可见的、进 `GmToolUsage` 留痕的**口——否则 GM 只能手拼命令，**手工拼＝绕过权限链**（`DecisionToolCaller` 类注：手工拼 `ToolContext` 再直接 `tool.execute()` 会让每个 `require` 的工具 fail-closed，那是"没有判定者"的缺省，不是正确行为）
+- 留痕：`GmToolUsage`（GM 口每次工具执行都留痕）+ 日志记 `decisionMakerId` 与 `tool`
+- ★ 它**不进 DM 桶**（`roles()={GM}`）
+
+### 3.8 ★ `sd` 权限域名改名（2026-10-14 第二轮裁定）
+
+**用户原话**：
+
+> 「但凡和被取缔的sd模块有关的就改，正常语义不用」
+
+**是什么**：`sd` 作为**数据**早就没了（模块退役、`sd:*` 地址族 0 处、`sd.*` 命令类型 0 条）。剩下的是一个**权限声明面的域名串**，三个拼写点 + ~106 处引用：
+
+| 拼写点 | 位置 |
+|---|---|
+| `ToolResources.SD_NAMESPACE = "sd"` | `simos-ga-spi:50` |
+| `ResourcePaths.sd(kind, id)` | `simos-util:90` |
+| `ToolSupport.SD_NAMESPACE = "sd"` | `simos-app:120` |
+
+**改成什么**：**`ga`**。理由：现存的资源路径是 `sd:decision-maker/<id>` / `sd:decision-packet/<id>`，而**地址族**早就是 `ga:decision-maker.<id>` / `ga:directive.<id>`（`GaResolver` 只接受 `ga`）⇒ 改后**权限域名与地址族同名**，一处一致。
+★ **已核无撞名**：`ToolResources` 现声明 8 个域名（`map`/`social`/`unit`/`sd`/`economy`/`actor`/`army`/`peer`），**没有 `ga`** ✔
+
+**红线（「正常语义不用」的落地）**：**只换名字串，不改任何权限口径**——类1/类2/类3 的归属、各命名空间的表态、决策人基础面（`{sd:decision-maker/<自己>, sd:decision-packet/<自己>}`）、GM 组的 `unlimited` 表态，**逐条不变**。证明方式 = **重跑 `DecisionFaceGolden`（决策面金样本）** + `DecisionCallerFactoryTest`；漏改一处不会报错，只会**静默放宽或收紧权限**。
+
+★ `ResourcePaths.sd(...)` → `ResourcePaths.ga(...)`；方法名与常量名一起改（`SD_NAMESPACE` → `GA_NAMESPACE`），**不留别名**（留别名 = 第二处拼写点）。
+
+★ 顺带（同属"和被取缔的 sd 模块有关"）：`SimosToolSource.java:1570` 的注释写「工具名（`simos.sd.*`）」，但它管的 5 条里 3 条是 `ga.*` ⇒ 注释失真，一并改。
+
+---
+
 ## 4. 不变量（I 清单）
 
 | # | 不变量 | 守它的判据 |
@@ -268,8 +324,10 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 | **A** | 信件双向化 + GM 收/发 + 自动注入 | `simos-ga-spi/.../ToolResources.java`（加 `GM_ID`）· `simos-ga/.../tools/write/GaMessageSendTool.java` · 新 `.../tools/read/GmInboxTool.java` · 新 `.../tools/write/GmMessageSendTool.java` · `simos-app/.../access/DecisionCallerFactory.java`（`withPeerSelfFace` 加 `gm`）· `simos-ga/.../decision/DecisionAgentRunner.java`（新信件注入 + 提醒文案） | ✅ **已完成**（5 改 4 新建；`test-compile` rc=0，控制方独立复跑亦 rc=0；未写未跑测试） |
 | **C** | 推演确认 + GM 看板 | 新 `AdjudicationAckTool` · 新 `GmRoundTool` | ✅ **随 A 一并完成** |
 | **B** | 决策自由化 + 确认/撤回 + 权限转类3 **+ 信件序修正 + 收件箱文案** | `simos-ga/.../tools/write/ProposeCallTool.java` · 新 `ReviseCallTool` / `DropCallTool` / `ReopenPacketTool` · `PacketIntentTool` / `MyPacketTool` / `SubmitPacketTool` → `ConfirmPacketTool`（改名 + gate）· `simos-ga/.../decision/DecisionToolNames.java` · `simos-ga/.../decision/DecisionAgentRunner.java`（删 submit 拦截 + 预算口径）· `simos-app/.../decision/DecisionTurnFinalizer.java`（条件式结算 + 条件式 mergeIntent）· `simos-app/.../decision/ProposalCatalog.java`（revise 复用其校验段）· ★ **`simos-ga/.../tools/read/GmInboxTool.java`（§3.4.1 信件序改为数值序 + §D1 收件箱文案"每 tick 每方向最多 128 条"）** | ✅ **已完成**（11 改 + 4 新 + 1 `git mv`；`test-compile` rc=0，控制方独立复跑亦 rc=0；未写未跑测试） |
-| **E** | **旧名/过时文案收口**（批 B 交账时发现的残留） | `simos-app/.../access/DecisionCallerFactory.java`（`GOAL` 里 4 个旧工具名）· `simos-app/.../tools/read/CatalogTool.java`（`:855,:858` 两处旧名）· `simos-ga/.../tools/read/GaMessageInboxTool.java`（`description()` 仍写"每 tick 每方向**至多一条**" ⇒ 128）· `simos-ga/.../tools/write/SetDecisionMakerPeerTool.java`（`description()` 同上）· `simos-ga/.../tools/read/GmPacketTool.java`（javadoc 指向 `simos.sd.packet.my`）· `simos-ga/.../tools/DecisionPacketViews.java`（同）· `simos-app/.../tools/SimosToolSource.java:1935`（注释同） | ⬜ **待派** |
-| **D** | 测试面（**单独一个测试代理**，最后统一做） | `simos-app/src/test/**` · `simos-ga/src/test/**` | ⬜ 待 B·E 完（与 E **文件集不相交** ⇒ 可并行） |
+| **E** | **旧名/过时文案收口**（批 B 交账时发现的残留） | `simos-app/.../access/DecisionCallerFactory.java`（`GOAL` 里 4 个旧工具名）· `simos-app/.../tools/read/CatalogTool.java`（`:855,:858` 两处旧名）· `simos-ga/.../tools/read/GaMessageInboxTool.java`（`description()` 仍写"每 tick 每方向**至多一条**" ⇒ 128）· `simos-ga/.../tools/write/SetDecisionMakerPeerTool.java`（`description()` 同上）· `simos-ga/.../tools/read/GmPacketTool.java`（javadoc 指向 `simos.sd.packet.my`）· `simos-ga/.../tools/DecisionPacketViews.java`（同）· `simos-app/.../tools/SimosToolSource.java:1935`（注释同） | ✅ **已完成**（7 文件 +13/−9，全文本；控制方用 `grep -a` 在 **`.class` 常量池**里核到「每 tick 每方向最多 128 条」已折叠进去 ⇒ 模型真读到；`test-compile` rc=0） |
+| **F** | `sd` 权限域名改名（§3.8） | `simos-ga-spi/.../ToolResources.java` · `simos-util/.../ResourcePaths.java` · `simos-app/.../tools/ToolSupport.java` + 全仓 ~106 处引用 + `SimosToolSource:1570` 失真注释 | ⬜ **待派**（待 D 完） |
+| **G** | GM 代打工具 `simos.gm.actAs`（§3.7） | 新 `simos-ga/.../tools/write/GmActAsTool.java` · `simos-app/.../tools/SimosToolSource.java`（注册，`addGmWrites`）· `simos-app/.../access/DecisionCallerFactory.java`（若需暴露 `callerFor` 的窄口） | ⬜ **待派**（可与 F 合并为一批，但**与 D 串行**） |
+| **D** | 测试面（**单独一个测试代理**） | `simos-app/src/test/**` · `simos-ga/src/test/**` | ⬜ **下一批**（覆盖 A/B/E；F/G 落地后再来一轮小的） |
 
 ★ **`DecisionAgentRunner.java` 在 A 与 B 各出现一次** ⇒ **A 必须先完成并提交**，B 再动它（一文件一 owner，见 §一 并发）。✅ 已满足。
 

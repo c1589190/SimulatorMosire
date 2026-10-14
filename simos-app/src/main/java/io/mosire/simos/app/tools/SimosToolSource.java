@@ -1932,7 +1932,7 @@ public final class SimosToolSource implements ToolSource {
         // ★ 判决（模型原始输出 + meta）：省略 actor = FULL 全量披露 ⇒ 只给 GM 桶（GmOnlyRead），见类注。
         new SdVerdictsTool(gaQueries),
         // ★★ D2（2026-10-22 决策包计划）：GM 决策包两条读口（摘要列表 + 单包全量）。
-        //   只给 GM 桶（GmOnlyRead）：决策包是 GM 的裁决工作面，决策人用 simos.sd.packet.my 读自己的。
+        //   只给 GM 桶（GmOnlyRead）：决策包是 GM 的裁决工作面，决策人用 simos.ga.packet.my 读自己的。
         new GmPacketsTool(gaReads),
         new GmPacketTool(gaReads),
         // ★ GM 面观测/配置读口（只给 GM 桶）：工具使用记录（运行时监督数据）与 LLM provider 掩码配置。

@@ -32,7 +32,7 @@ import java.util.Set;
  * <p>★ 定位两选一：{@code packetId}，或 {@code tick + proposerId}（包 id 是 {@code pkt-<proposer>-<tick>}
  * 的确定性形态， 但本工具不替调用方拼——两种都显式收）。
  *
- * <p>★ 只在 GM 桶（{@link GmOnlyRead}），视图与 {@code simos.sd.packet.my} 共用 {@link DecisionPacketViews}。
+ * <p>★ 只在 GM 桶（{@link GmOnlyRead}），视图与 {@code simos.ga.packet.my} 共用 {@link DecisionPacketViews}。
  */
 public final class GmPacketTool implements SimosTool, GmOnlyRead {
 

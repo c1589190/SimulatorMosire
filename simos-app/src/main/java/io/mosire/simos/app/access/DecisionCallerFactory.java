@@ -78,7 +78,7 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
 
   /** 决策人的派生目标（进身份的 {@code goal}，只进内存态提示面与审批提示，不进事件库）。 */
   public static final String GOAL =
-      "在受限可见范围内做出决策：出令（ga.IssueDirective）、裁决（ga.SubmitVerdict）、外交写入（gov.SetDiplomaticRelation / gov.RecordDiplomaticEvent）、向 GOV 付款（simos.gov.pay）与决策包提议/提交/查看（simos.sd.propose / packet.submit / packet.intent / packet.my）";
+      "在受限可见范围内做出决策：出令（ga.IssueDirective）、裁决（ga.SubmitVerdict）、外交写入（gov.SetDiplomaticRelation / gov.RecordDiplomaticEvent）、向 GOV 付款（simos.gov.pay）与决策包提议/提交/查看（simos.ga.packet.propose / simos.ga.packet.confirm / simos.ga.packet.intent / simos.ga.packet.my）";
 
   private final DecisionScopeFunctions scopeFunctions;
   private final ToolCallAuthorizer authorizer;

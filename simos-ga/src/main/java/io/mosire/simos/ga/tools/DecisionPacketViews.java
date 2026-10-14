@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 决策包的工具面视图（D2 决策包计划 §3.2/§4）：{@code simos.sd.packet.my} 与 GM 的 {@code simos.gm.packet} **共用同一份
+ * 决策包的工具面视图（D2 决策包计划 §3.2/§4）：{@code simos.ga.packet.my} 与 GM 的 {@code simos.gm.packet} **共用同一份
  * 字段口径**，避免两个读口慢慢漂移（AGENTS §8.3 的"共用同一份视图层"）。
  *
  * <p>★ {@code argsJson}/{@code previewJson} 原始文本保留，同时给解析后的 {@code args}/{@code preview} Map（GM

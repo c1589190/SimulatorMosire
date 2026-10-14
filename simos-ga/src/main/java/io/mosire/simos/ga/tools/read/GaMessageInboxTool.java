@@ -85,7 +85,9 @@ public final class GaMessageInboxTool implements SimosTool {
 
   @Override
   public String description() {
-    return "读**寄给自己的**消息（被 GM 授权与你互通的决策人发来的；每 tick 每方向至多一条）。"
+    return "读**寄给自己的**消息（被 GM 授权与你互通的决策人发来的；每 tick 每方向最多 "
+        + GaMessageSendTool.MAX_MESSAGES_PER_TICK_PER_DIRECTION
+        + " 条）。"
         + "载荷 {sinceTick?, limit?}：sinceTick = 只看该 tick 及以后的（闭区间下界）；limit 缺省 "
         + DEFAULT_LIMIT
         + "、上限 "
