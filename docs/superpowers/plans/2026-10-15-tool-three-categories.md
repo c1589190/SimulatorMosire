@@ -250,3 +250,59 @@ DM propose（这 4 条任一，已在 catalog 里）→ GM APPROVE → GM gm.pac
 - 补 `planOnly`（P0/P1，范围外）
 - **"工具面"那一维**：`validateCall` 在 `dm.allowedTools()` **为空时整条白名单检查被跳过** ⇒ DM 能 propose catalog 里**任何一条**。真封它要动 `DecisionCallerFactory.whitelistFor`（范围外，且会红 `GmActAsToolTest:94`）⇒ **单独立项**。
 - **资源面漏的三维**（逐条见 3b 台账 §3.3）：**币种**（`ResourcePaths` 无币种路径）· `issueMoney` 的 `actor:<q>_<r>` 国库格 · `assignPosts`/`openPostsToMarket` 的 `activity` 单位。
+
+---
+
+## 10. §9 的落地结果与两处更正（2026-10-15）
+
+### 10.1 ★ 全扫（机械判据，改前）—— 控制方 §9.2 的核实**逐条成立**
+
+| 判据 | 结果 |
+|---|---|
+| gov 有写入口的工具 | **23 条** |
+| 「收了 `planOnly` 却不用」 | **4 条违反**（`GovRecruit` / `GovRetireStaff` / `GovSelectExaminees` / `GovDispatchTeam`）—— **全在 catalog ⇒ 今天可达** |
+| catalog 里"完全不支持 `planOnly`" | **0** |
+| 3b 拟入 catalog 的 9 条 | **连参数都没读** |
+| 邻近模块（unit / economy / army）既有 `planOnly` 工具 | **全合规** |
+| ★ **范围外同族违反** | **7 条**（`simos-social` 的 `AbstractHouseholdGmTool` 7 个子类的 submit 路径不看 `planOnly`）—— **均不在 catalog ⇒ 潜伏** |
+| 非 catalog 的 10 条 gov 写工具 | 两条判据都不满足 ⇒ **未改，记为潜伏风险（进 catalog 前必须补）** |
+
+### 10.2 ★★ 真实红/绿（仓库外夹具，真调 `gm.packet.execute`）
+
+**改前红（双写实证）**：
+```
+headDelta=1（planOnly 真写盘）→ code=TOOL_ERROR「目标工具未按 planOnly 契约返回 plannedCommands」（内裹 "revision":10）
+→ GM 重试 ⇒ headDelta=1（revision 11）          ⇒ ★★ 两次 execute = 两条 revision
+outcome=(无 outcome) · 编制 50→47
+另 3 条 P0 + defineCurrency 直接调：plannedCommands=-1 且 headDelta=1 ⇒ 4 条全真落盘
+```
+**改后绿**：`plannedCommands` 6 条 + `headDelta=0` · execute 一次 ⇒ `revision=9` **恰好一条**（含 outcome 回写）· 重试 `BAD_REQUEST` 零落盘 · ★ **preview 改前改后 md5 相同**（`061e72889f436c794c79f6277f0df842`，20 字段逐字不变）。
+
+**修法**：13 文件（全在 `simos-gov/.../tools/write/`）—— P0 四条在写之前插 `if (planOnly) return ok(GovBatchViews.planOnly(batch));`；P1 九条照 `AbstractEconomyGmTool:112` 形制读 args 分支；两条 policy 工具让 **noop 支优先**（noop ⇒ 空批）。★ **`GovBatchViews.java` 0 字节 diff**，其现成件 `planOnly(batch)` 的调用者 **0 → 13 文件 / 15 处**。`roles()`/`gate()`/`jsonSchema()`/`description()` **零改动**。
+
+### 10.3 ★ 控制方更正 §9.2 的一处措辞（字面 vs 语义）
+
+§9.2 我写「执行器报 `PLANNING_FAILED`」—— **语义成立、字面不成立**：`PLANNING_FAILED` 是**内部枚举**；GM **可见的码是 `TOOL_ERROR`**，正文是「目标工具未按 planOnly 契约返回 plannedCommands」。⇒ 引用时以**可见码 + 正文**为准。
+
+### 10.4 控制方裁定（两条）
+
+| # | 问题 | 裁定 |
+|---|---|---|
+| ① | `simos-social` 那 7 条同族违反是否另派 owner | **暂不派**。它们**不在 catalog ⇒ 没有活风险**；但**进 catalog 前必修**（写进 §10.1 的潜伏清单）。理由：先清活风险，不为"潜伏"开新战线 |
+| ② | 非 catalog 的 10 条 gov 写工具是否**预防性**补 | **不补**。实现方按"只修可达的 + 即将可达的"判据办事是**对的**；预防性改动 = 未被任何验收覆盖的新面。⇒ 同样进潜伏清单 |
+
+★ **潜伏清单（两条判据：① 在 catalog 里 或 ② 将被加进 catalog ⇒ 必修；其余先记）**：
+`simos-social` 7 条（`AbstractHouseholdGmTool` 子类）· gov 非 catalog 10 条（absorbUnit / applyStaffing / createOffice / dismiss / pay / remit / transferTreasury / provinceApply / provinceAssignCities / regionClearStructures）。
+
+### 10.5 未验证（如实）
+
+- P1 另外 8 条只做**结构验证**（同处插入 + 编译 + grep）—— 3b 未上 ⇒ 执行器**够不到**它们（`catalog.requireTool` 会抛）；P1 里**真调过的只有 `defineCurrency`**。
+- 两条 policy 工具的 **noop + planOnly 空批**分支未实测。
+- **无测试**（红线）—— ★ 而 `simos-gov/src/test` 里 `planOnly` **零覆盖**，**正是这个缺陷长期存活的原因**。⇒ 测试面必补（见 §10.6）。
+
+### 10.6 测试面待办（下一批）
+
+1. ★ **`planOnly` 的覆蓋**（`simos-gov/src/test` 目前为零）：每条 catalog 成员都应有"`planOnly=true` ⇒ 返回 `plannedCommands` 且 **零 revision**"的判据。
+2. ★ **`gm.packet.execute` 的端到端**：一次执行 ⇒ **恰好一条 revision**（含 outcome 回写）；重试 ⇒ 非成功且零落盘。
+3. ★ **把两任修复者留在 `/tmp` 的探针沉淀成真测试**（`OfficeProbe` / `CreateOfficeAcceptProbe` / `planonly-probe` / `province-probe`）—— 它们**能走到这些工具并读到真状态**，而仓里那条 e2e 走不到（`SIMOS_REAL_LLM` 门控 + `seedGenesis()` 缺 army 片）。
+4. §9.5 的两条：`validateCall` 在 `allowedTools` 为空时**跳过整条白名单检查** · 资源面漏的三维。
