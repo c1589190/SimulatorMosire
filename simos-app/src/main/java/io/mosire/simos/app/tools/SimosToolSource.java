@@ -116,18 +116,22 @@ import io.mosire.simos.ga.tools.read.DecisionMakersTool;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
 import io.mosire.simos.ga.tools.read.GaMessageInboxTool;
 import io.mosire.simos.ga.tools.read.GmApprovalsTool;
+import io.mosire.simos.ga.tools.read.GmInboxTool;
 import io.mosire.simos.ga.tools.read.GmPacketTool;
 import io.mosire.simos.ga.tools.read.GmPacketsTool;
+import io.mosire.simos.ga.tools.read.GmRoundTool;
 import io.mosire.simos.ga.tools.read.GmToolUsageTool;
 import io.mosire.simos.ga.tools.read.SdDiplomacyTool;
 import io.mosire.simos.ga.tools.read.SdDiplomaticEventsTool;
 import io.mosire.simos.ga.tools.read.SdDirectivesTool;
 import io.mosire.simos.ga.tools.read.SdVerdictsTool;
+import io.mosire.simos.ga.tools.write.AdjudicationAckTool;
 import io.mosire.simos.ga.tools.write.GaMessageSendTool;
 import io.mosire.simos.ga.tools.write.GmApproveTool;
 import io.mosire.simos.ga.tools.write.GmDecidePacketTool;
 import io.mosire.simos.ga.tools.write.GmMergedPlanApplyTool;
 import io.mosire.simos.ga.tools.write.GmMergedPlanUpsertTool;
+import io.mosire.simos.ga.tools.write.GmMessageSendTool;
 import io.mosire.simos.ga.tools.write.GmPacketExecuteTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
 import io.mosire.simos.ga.tools.write.MyPacketTool;
@@ -340,10 +344,18 @@ public final class SimosToolSource implements ToolSource {
       return INSTANCE.registry;
     }
 
-    /** 该使用者切片里已有同名挂载？（幂等判据） */
-    private boolean hasMount(String userKey) {
+    /**
+     * 该使用者切片里已有**同名**挂载？（幂等判据 —— 与 {@code DefaultWorkspaceRegistry.mount} 的 M4 判据 同源：{@code
+     * lookup(user, name) != null} 就是"该使用者名下已有一个同名挂载"）。
+     */
+    private boolean hasMount(String userKey, String mountName) {
       return registry.mounts(userKey).stream()
-          .anyMatch(mount -> mount.name().value().equals(DEFAULT_WORKSPACE_NAME));
+          .anyMatch(mount -> mount.name().value().equals(mountName));
+    }
+
+    /** 默认工作区那一块已有？（等价 {@code hasMount(userKey, DEFAULT_WORKSPACE_NAME)}） */
+    private boolean hasMount(String userKey) {
+      return hasMount(userKey, DEFAULT_WORKSPACE_NAME);
     }
 
     /** 宿主根挂载（{@code <docsRoot>/gm}）：{@code mount_workspace} 的 {@code parent} 只能从它派生。 */
@@ -405,6 +417,74 @@ public final class SimosToolSource implements ToolSource {
       } catch (IOException e) {
         throw new IllegalStateException("工作区物理落点建不出来（装配故障）: " + dir, e);
       }
+    }
+
+    /**
+     * ★★ <b>公用推演日志挂载的<u>唯一</u>实现</b>（{@code <docsRoot>/shared/sim-log/}，2026-10-14 用户裁定
+     * 「首先应该有一个<b>目录</b>，<b>所有 DM/大部分 DM 都有读取权限</b>，具体读取权限怎么实现你自己看着办」）。
+     *
+     * <p>★ <b>怎么实现"多人都能读"</b>：<u>不是</u>共享权限位，而是把<b>同一块物理地</b>分头挂给多个使用者 —— 挂载表按 {@code (user, name)}
+     * 分片、唯一性只查 {@code lookup(user, name)}（<b>不查 dir</b>）⇒ 宿主一条、每个决策人各一条，指向同一个 dir。读得到是因为 {@link
+     * #withDecisionMakerDocsScopes} 把 {@code docs} 面铺到它名下<b>全部</b>挂载的落点上。
+     *
+     * <p>★ <b>幂等</b>：判据与 {@link #hasMount} 同款（"同名挂载已存在"），且并发对手先挂上时按 M4 当场拒 ⇒ 视同幂等 （与 {@link
+     * #mountDecisionMaker} 同一处理）。装配期与懒补<b>都会</b>走到这里。
+     *
+     * <p>★ <b>为什么不带 {@code derivedFrom}</b>：它<b>不是</b>任何人的子工作区（M9/W1 的"真子目录"不适用），也不是"派生形态" ——
+     * 它是一块由宿主直接开出来的公用平地。★ {@code holder} 恒为宿主（M1：{@code holder} 恒为创建者本人），{@code user} 才是"挂给谁"。
+     *
+     * @param userKey 挂给谁（宿主键或 {@code decision-maker:<id>}）
+     * @return true = 这次真挂了；false = 已有同名挂载（不改任何东西）
+     */
+    private boolean mountSharedSimLog(Path docsRoot, String userKey) {
+      if (hasMount(userKey, SHARED_SIM_LOG_NAME)) {
+        return false;
+      }
+      // ★ 同一物理目录（多次调用 resolve 到同一路径；createDirectories 幂等）。
+      Path dir = createDir(docsRoot.resolve("shared").resolve(SHARED_SIM_LOG_NAME));
+      try {
+        registry.mount(
+            Mount.of(
+                new MountName(SHARED_SIM_LOG_NAME),
+                WORKSPACE_HOST_KEY,
+                userKey,
+                dir,
+                Kind.LOG,
+                Set.of(DocsCapability.ID),
+                Origin.ASSEMBLY),
+            new WorkspaceCaller(WORKSPACE_HOST_KEY, assemblyPermissions(docsRoot)));
+        return true;
+      } catch (WorkspaceException e) {
+        // ★ 并发对手先挂上了 ⇒ 幂等；真失败照抛（fail-closed）。
+        if (hasMount(userKey, SHARED_SIM_LOG_NAME)) {
+          return false;
+        }
+        throw e;
+      }
+    }
+
+    /** 宿主的公用推演日志挂载（★ GM 要用它来写日志 —— 用户 2026-10-14：「目前都交给 GM 吧」）。 */
+    private boolean mountSharedSimLogForHost(Path docsRoot) {
+      return mountSharedSimLog(docsRoot, WORKSPACE_HOST_KEY);
+    }
+
+    /**
+     * 决策人的公用推演日志挂载 —— ★ <b>同源</b>：装配期（{@link #provisionWorkspaces}）与懒补（{@link
+     * #ensureDecisionMakerWorkspace}）都调这里，<b>不复制第二份挂载逻辑</b>。
+     *
+     * <p>★★ <b>排除口子</b>（用户裁定里的「部分私密」）：命中的决策人<b>直接不挂</b> —— <b>排除 = 不挂，不是加权限位</b>。 没有挂载 ⇒ {@code
+     * docs} 面自动不覆盖 ⇒ 读不到，且"不可见"与"不存在"同码。★ 默认空集（所有 DM 都给）， 判据未定 ⇒ 这里不接任何真实规则，见 {@link
+     * SimosToolSource#simLogExcludedDecisionMakers}。
+     *
+     * @param decisionMakerId 世界的决策人 <b>id</b>（不带 {@code decision-maker:} 前缀）
+     * @return true = 这次真挂了；false = 被口子排除 / 已有同名挂载
+     */
+    private boolean mountSharedSimLogForDecisionMaker(Path docsRoot, String decisionMakerId) {
+      if (simLogExcludedDecisionMakers.contains(decisionMakerId)) {
+        return false;
+      }
+      return mountSharedSimLog(
+          docsRoot, DecisionCallerFactory.INSTANCE_ID_PREFIX + decisionMakerId);
     }
 
     /**
@@ -533,6 +613,52 @@ public final class SimosToolSource implements ToolSource {
    */
   public static final String DEFAULT_WORKSPACE_NAME = "workspace";
 
+  /**
+   * ★★ <b>公用推演日志的虚拟挂载名</b>（{@code <docsRoot>/shared/sim-log}，2026-10-14 用户裁定「首先应该有一个<b>目录</b>，
+   * <b>所有 DM/大部分 DM 都有读取权限</b>」）。
+   *
+   * <p>★ <b>同一块物理地，分头挂给多个使用者</b>：挂载表按 {@code (user, name)} 分片、唯一性只查 {@code lookup(user,
+   * name)}（<b>不查 dir</b>，{@code DefaultWorkspaceRegistry:193}）⇒ 宿主（GM）与每个决策人可以各自有一条 {@code sim-log}
+   * 挂载、指向同一个目录。★ 不是"共享权限位"，是<b>多条挂载指向同一 dir</b>。
+   *
+   * <p>★ <b>为什么 {@code kind = }{@link Kind#LOG}</b>：推演日志是<b>追加型、不可变</b>语义（纪律 {@code Kind}
+   * 与资源面是两条独立的轴）——LOG 地只服务 {@code doc_query}/{@code doc_append}/{@code doc_void} 这一族。
+   *
+   * <p>★ <b>形态必须匹配 {@code MountName.PATTERN}（{@code [a-z0-9][a-z0-9-]{0,63}}）</b>：不能有下划线。
+   */
+  public static final String SHARED_SIM_LOG_NAME = "sim-log";
+
+  /**
+   * ★★ <b>「不给挂 {@code sim-log}」的决策人 id 集合</b>（**具名排除口子**，2026-10-14 用户裁定里的「部分私密」）。
+   *
+   * <p>★★ <b>排除 = 不挂，<u>不是</u>加权限位</b>（这是本口子的全部设计）：挂载表里没有这一条 ⇒ {@code withDecisionMakerDocsScopes}
+   * 的 {@code docs} 面自动不覆盖它 ⇒ 读不到；而且"不可见"与"不存在"<b>同码</b> （不泄露存在性）。★ 零额外权限位、零额外判据。
+   *
+   * <p>★ <b>默认空集 = 所有决策人都给</b>。★ <b>目前是空口子</b>：用户尚未给出"哪些 DM 不发"的判据 ⇒ 这里<b>不接任何真实排除逻辑</b>，
+   * 只留入口与传播路径（谁将来定判据，只改这个集合的填充处，不动挂载实现）。
+   *
+   * <p>★ 并发：整体替换 + {@code volatile}（本仓口径：读多写少的口子不做细粒度锁；挂载本身另有注册表锁）。
+   */
+  private static volatile Set<String> simLogExcludedDecisionMakers = Set.of();
+
+  /**
+   * 设置「不给挂 {@code sim-log} 公用推演日志」的决策人 <b>id</b> 集合（不是 {@code decision-maker:} 前缀的 user 键）。
+   *
+   * <p>★ 排除 = <b>不挂</b>（不是加权限位）：下次装配/懒补时该决策人拿不到 {@code sim-log} 挂载 ⇒ {@code docs} 面自动不覆盖它 ⇒
+   * 它读不到公用日志，且"不可见"与"不存在"同码。★ 传 {@code null} 视同空集。
+   *
+   * <p>★ 已经是空口子（见 {@link #simLogExcludedDecisionMakers}）：本方法存在是为了让"部分私密"有<b>形状</b>， 不是因为现在有判据。
+   */
+  public static void setSimLogExcludedDecisionMakers(Set<String> decisionMakerIds) {
+    simLogExcludedDecisionMakers =
+        decisionMakerIds == null ? Set.of() : Set.copyOf(decisionMakerIds);
+  }
+
+  /** 读回当前的口子内容（自检/用例断言用）；空集 = 所有决策人都给。 */
+  public static Set<String> simLogExcludedDecisionMakers() {
+    return simLogExcludedDecisionMakers;
+  }
+
   /** 文档能力的**读命名空间**（他们的 {@code DocsTools} 读工具 manifest 用的就是这个字面）。 */
   public static final String DOCS_NAMESPACE = "docs";
 
@@ -606,6 +732,9 @@ public final class SimosToolSource implements ToolSource {
     ExternalWorkspaceHost host = ExternalWorkspaceHost.INSTANCE;
     host.docsRoot = docsRoot;
     int roots = host.mountRoot(docsRoot) ? 1 : 0;
+    // ★★ 公用推演日志（`<docsRoot>/shared/sim-log`）：宿主一条（GM 要用它写日志）+ 每个决策人一条（读取权限）。
+    //    ★ 装配期与懒补同源：都走 ExternalWorkspaceHost.mountSharedSimLog*（不复制第二份挂载逻辑）。
+    host.mountSharedSimLogForHost(docsRoot);
     int mounted = 0;
     int skipped = 0;
     for (String id : decisionMakerIds) {
@@ -616,18 +745,24 @@ public final class SimosToolSource implements ToolSource {
       if (host.mountDecisionMaker(docsRoot, id)) {
         mounted++;
       }
+      host.mountSharedSimLogForDecisionMaker(docsRoot, id);
     }
     return new WorkspaceProvision(roots, mounted, skipped);
   }
 
   /**
-   * 补一个决策人的默认工作区（**幂等、fail-soft**）：装配之后才建的 DM 在它跑第一轮之前补上。
+   * 补一个决策人的默认工作区 + 公用推演日志（**幂等、fail-soft**）：装配之后才建的 DM 在它跑第一轮之前补上。
    *
    * <p>★ <b>为什么 fail-soft（不抛）</b>：这条走在决策人每一轮的调用者装配路径上（{@code DecisionCallerFactory}）——
    * 补挂失败**不该**让一个不碰文档的回合整轮失败。代价是"没补上"这件事只在文档工具被调用时以 {@code WORKSPACE_NOT_FOUND}
    * 现形（那正是他们"不可见/不存在同码"的既有形态），且装配期没挂过根时本方法**直接不动** （用例自搭的壳不该被越界补）。
    *
-   * @return true = 这次真挂了；false = 已存在 / 没根 / id 形态非法（都不改任何东西）
+   * <p>★★ <b>与装配期同源</b>（2026-10-14）：公用推演日志（{@code sim-log}）也在这里补，且调的是同一段实现 （{@code
+   * ExternalWorkspaceHost.mountSharedSimLogForDecisionMaker}）——<b>不复制第二份挂载逻辑</b>。⇒ 空库 bootstrap
+   * 之后才建的 DM，既有一块私有地、也拿得到公用日志的读取权限。
+   *
+   * @return true = 这次真补上了<b>默认工作区</b>；false = 已存在 / 没根 / id 形态非法（★ 注意：返回 false 时 {@code sim-log}
+   *     仍可能被补上——本返回值只对"默认工作区"这一块表态）
    */
   public static boolean ensureDecisionMakerWorkspace(String decisionMakerUserKey) {
     Objects.requireNonNull(decisionMakerUserKey, "decisionMakerUserKey");
@@ -638,7 +773,13 @@ public final class SimosToolSource implements ToolSource {
       return false;
     }
     String id = decisionMakerUserKey.substring(DecisionCallerFactory.INSTANCE_ID_PREFIX.length());
-    return SAFE_DECISION_MAKER_ID.matcher(id).matches() && host.mountDecisionMaker(root, id);
+    if (!SAFE_DECISION_MAKER_ID.matcher(id).matches()) {
+      return false;
+    }
+    boolean mounted = host.mountDecisionMaker(root, id);
+    // ★ 同源：装配期调的是同一个 mountSharedSimLogForDecisionMaker（排除口子也在这段里，不重复判）。
+    host.mountSharedSimLogForDecisionMaker(root, id);
+    return mounted;
   }
 
   /**
@@ -653,22 +794,60 @@ public final class SimosToolSource implements ToolSource {
   }
 
   /**
-   * 决策人的**文档资源范围**（{@code docs}/{@code docs-edit} 两个命名空间）：范围 = 它自己那些挂载的落点。
+   * 决策人的**文档资源范围**（{@code docs}/{@code docs-edit} 两个命名空间）。
    *
-   * <p>★ <b>为什么按挂载取而不是给整棵树</b>：可达面 = **它自己那块地**（他们按使用者切片本就把别人的挂载挡在外面， 这里只是把同一件事写进权限面）；没有挂载 ⇒ {@link
-   * ResourceScope#none()}（够不着，与"未表态"两种取值相反，fail-closed）。 ★ 单调性：DM 的范围 ⊆ 宿主（GM）的 {@code unlimited()}
-   * ⇒ 放行不多于父级。
+   * <p>★★ <b>读面与写面<u>不是</u>同一个集合</b>（2026-10-14 用户裁定「首先应该有一个<b>目录</b>，<b>所有 DM/大部分 DM
+   * 都有读取权限</b>；然后<b>每个 DM 自己额外有一个私有目录，这个目录 DM 随便干啥都行</b>」）：
+   *
+   * <ul>
+   *   <li>{@code docs}（<b>读</b>）= 该使用者名下<b>全部</b>挂载的落点 —— 私有地 + 公用区（{@code sim-log}）⇒ <b>两处都能读</b>；
+   *   <li>{@code docs-edit}（<b>写</b>）= <b>只有挂载名 == {@link #DEFAULT_WORKSPACE_NAME}</b> 那些挂载的落点 ⇒
+   *       公用区<b>只读</b>。
+   * </ul>
+   *
+   * <p>★★ <b>为什么写面按「挂载名」收窄</b>（本方法的全部要点）：
+   *
+   * <ol>
+   *   <li><b>公用区必须是只读的，而这件事只能由资源面保证</b>：AgentLib 的文档引擎逐字是「读面看 {@code docs}，写面看 {@code
+   *       docs-edit}」（{@code DocsEngine.require}）——两个命名空间是<b>两条独立的闸</b>。若 {@code docs-edit} 与
+   *       {@code docs} 取同一个集合，则"给 DM 再挂一个公用目录"这一步会<b>顺带把公用区变成可写</b>（不是只读）；
+   *   <li><b>纪律（{@code Kind}）管不了这件事</b>：{@code Kind.LOG} 与 {@code Kind.FILE} 是**另一条轴**（一块地只服务
+   *       哪个工具族），它<b>不表态</b>谁能写。★ 本仓最贵的一类失效就是"看起来有条边界、其实不在判定路径上" ⇒ 写面的收窄必须
+   *       落在<b>资源面</b>（判定路径）上，落在纪律上等于没有；
+   *   <li><b>判据用挂载名，不用 {@code Kind}、也不加新字段</b>：私有地 = 既有的 {@link #DEFAULT_WORKSPACE_NAME} （GM 与每个 DM
+   *       都叫这个名字，切片按使用者隔离）——这是一个<b>已经存在</b>的、装配期就在写的名字，不需要新的元数据 （新字段 = 多一处会漂移的口径）。★ 判据<b>不是</b>
+   *       {@code Kind}：{@code Kind} 表达的是"这块地服务哪个工具族"， 不是"谁可以写"。
+   * </ol>
+   *
+   * <p>★ <b>为什么按挂载取而不是给整棵树</b>：可达面 = **它自己名下那些地**（他们按使用者切片本就把别人的挂载挡在外面， 这里只是把同一件事写进权限面）。
+   *
+   * <p>★ <b>fail-closed</b>：<b>没有挂载 ⇒ 两个命名空间都是</b> {@link ResourceScope#none()}（够不着，与"未表态"两种取值相反）。
+   * ★ 有挂载但没有一块叫 {@code workspace} 时：读面照给（那些挂载本来就该能读）、写面为 {@code none()} —— 这正是"公用区只读"的形态。
+   *
+   * <p>★ <b>单调性</b>：DM 的两个范围 ⊆ 宿主（GM）的 {@code unlimited()} ⇒ 放行不多于父级。
+   *
+   * <p>★ <b>与"部分私密"的关系</b>：「不给某个 DM 公用日志」= <b>不给他挂</b> {@code sim-log}（{@link
+   * #setSimLogExcludedDecisionMakers}）⇒ 本方法读面自动不覆盖它 ⇒ <b>零额外权限位</b>。
    */
   public static ResourceScopeMap withDecisionMakerDocsScopes(
       ResourceScopeMap base, String decisionMakerUserKey) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(decisionMakerUserKey, "decisionMakerUserKey");
-    List<Path> dirs =
-        ExternalWorkspaceHost.INSTANCE.registry.mounts(decisionMakerUserKey).stream()
+    List<Mount> mounts = ExternalWorkspaceHost.INSTANCE.registry.mounts(decisionMakerUserKey);
+    // 读面：名下全部挂载的落点（私有 + 公用）。
+    List<Path> readableDirs = mounts.stream().map(Mount::dir).toList();
+    // 写面：只有私有工作区（挂载名 == DEFAULT_WORKSPACE_NAME）那些落点；公用区 ⇒ 只读。
+    List<Path> writableDirs =
+        mounts.stream()
+            .filter(mount -> DEFAULT_WORKSPACE_NAME.equals(mount.name().value()))
             .map(Mount::dir)
             .toList();
-    ResourceScope scope = dirs.isEmpty() ? ResourceScope.none() : ResourceScope.ofDirs(dirs);
-    return base.withNamespace(DOCS_NAMESPACE, scope).withNamespace(DOCS_EDIT_NAMESPACE, scope);
+    ResourceScope readScope =
+        readableDirs.isEmpty() ? ResourceScope.none() : ResourceScope.ofDirs(readableDirs);
+    ResourceScope writeScope =
+        writableDirs.isEmpty() ? ResourceScope.none() : ResourceScope.ofDirs(writableDirs);
+    return base.withNamespace(DOCS_NAMESPACE, readScope)
+        .withNamespace(DOCS_EDIT_NAMESPACE, writeScope);
   }
 
   /**
@@ -1130,6 +1309,11 @@ public final class SimosToolSource implements ToolSource {
     //   落**一条 revision** ⇒ 授权天然双向（不存在"A 能发 B、B 回不了"的半开态）。**只在 GM 桶**（配权是 GM 的活；
     //   决策人不得给自己开闸）。底层机制仍是 accessLimit（零新存储/零新可见性/零新切片）。
     built.add(new SetDecisionMakerPeerTool(gaWrites, gaIdentity, mapId));
+    // ★★ 2026-10-14 GM⇄DM 双向信件（设计书 §3.1，缺口 G2）：GM **回信**——给一个**已存在**的决策人发一条消息。
+    //   **只在 GM 桶**（roles={GM}，不是 {DM,GM}：DM 侧有它自己的 simos.ga.message.send 那条）；地址/条目 id/上限
+    //   全部从 GaMessageSendTool 的静态助手取（那个类是信件形状的唯一拼写点，本行不复制第二份）。
+    //   落点是 info 感知层（一条 ga.PutInfo ⇒ 一条 revision），不写世界命名空间。
+    built.add(new GmMessageSendTool(gaWrites, gaReads));
     // 「把某个决策人的会话换一段新的」：只在 GM 桶——决策人不重置自己（那等于给自己开一个"忘掉刚才答应过什么"的按钮）。
     built.add(new ResetDecisionMakerConversationTool(gaWrites, gaIdentity, mapId));
     built.add(new StartDecisionTool(gaWrites, gaIdentity, mapId));
@@ -1591,6 +1775,11 @@ public final class SimosToolSource implements ToolSource {
     //     ⇒ 注入既有端口 GaToolQueries.infoVisibleToDecisionMaker（实现 = AppGaToolQueries）。
     GaToolQueries gaQueries = new AppGaToolQueries(query, mapId);
     built.add(new GaMessageInboxTool(gaQueries, gaReads, gaIdentity));
+    // ★★ 2026-10-14 GM⇄DM 双向信件（设计书 §3.5）：**确认推演**——DM 的一次表态，零世界效果（类3 DM_FREE，
+    //   gate=ALLOW）。落一条 ga.PutInfo（地址 ga:adjudicationAck.<tick>.<dm>、显式 id ack-<tick>-<dm>
+    //   ⇒ 同 tick 第二条被命令期具名拒 = 天然幂等一次）。**只在决策人桶**（roles={DM}）：这是 DM 说"我认了这次推演"，
+    //   GM 侧的表态面是只读的 simos.gm.round。
+    built.add(new AdjudicationAckTool(gaWrites, gaReads, gaIdentity));
     // ★★ 2026-10-14 决策人互致消息（设计书 §4.1）：GM 侧"授权两人互通"的窄写（一次写两条 DM 记录、一条 revision）。
     //   **不在本桶**（roles={GM}，它是配权命令）⇒ 它注册在 addGmWrites。
   }
@@ -1735,6 +1924,14 @@ public final class SimosToolSource implements ToolSource {
         // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：待裁决审批清单（控制面；只在 GM 桶，GmOnlyRead）。
         //   读的是传入的 PendingApprovals（null = 未接入 ⇒ 执行期 UNAVAILABLE）；资源声明 NONE、不落 revision。
         new GmApprovalsTool(pendingApprovals),
+        // ★★ 2026-10-14 GM⇄DM 双向信件（设计书 §3.1/§3.5）：**两条 GM-only 读口**——
+        //   ① simos.gm.inbox：决策人寄给 GM 的信 + 逐条 answered（GM 回话的前提；缺它就是缺口 G2）；
+        //   ② simos.gm.round：轮次看板（逐 DM：包状态 / 未答问题数 / 是否已确认推演 + 三个 pending 清单）。
+        //   ★ 两条都靠 GmOnlyRead **自动只进 GM 桶**（读工具默认四桶共享，见 readToolsFor 的唯一拼写点）：
+        //     决策人读自己的收件箱走 simos.ga.message.inbox，那条按可见性三轴筛、只回 to==自己的信——两条读口各读各的那一半。
+        //   ★ 都是纯派生读口（零新状态）：资源声明 sd 只读 + 断言 sd:*（与 simos.gm.packets 同款）。
+        new GmInboxTool(gaReads),
+        new GmRoundTool(gaReads),
         new LlmProvidersTool(llmConfig));
   }
 

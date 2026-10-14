@@ -167,11 +167,28 @@
 
 **新信件在每轮开始时自动注入，且落盘**（与开场消息同一条纪律：只注一次）：
 
-1. 每轮开始，取本 tick 内**寄给该 DM、且会话历史里还没有的**信（GM 的回信 + 被授权 peer DM 的来信）；
+1. 每轮开始，取该 DM **收件箱里、且会话历史里还没有的**信（GM 的回信 + 被授权 peer DM 的来信）；
 2. 拼成一条 **user** 消息，`conversations.append` 落盘，排在身份消息之后、本轮提醒之前；
 3. **游标由历史自己承载**：注入消息正文里写明"已注入至 `<最后一条信的 id>`" ⇒ 重启后扫历史即可恢复，**零新存储**。
+4. ★ **无新信 ⇒ 一个字节都不写会话**（不许每轮塞一条空消息）。
 
 ★ 同时把"你有未读信件"写进 `decisionRoundNotice`（不落盘的那条每轮提醒），让 DM 知道该调 `inbox` 复查。
+
+★★ **前提（派单时未写明，实测推出来的一条硬约束）**：**GM 每答一次，必须重跑一次触发（`run-decision-makers` / `ga.RunDecision`），答复才会到达 DM。** 因为冻结回合的 `state` 是**触发 revision 的快照**（`DecisionAgentService.runRound:250`：`core.replay(new StateRef(branch, revision))`），而 `run-decision-makers` **每次调用都会先落一批 `ga.RunDecision` ⇒ 新的触发 revision**（`RunDecisionMakersTool.apply`）。所以：
+- GM 答（写 INFO，revision N）⇒ 再触发（revision N+1，≥N）⇒ DM 的冻结快照含那条答复 ✔
+- **不重跑触发就看不到答复** ⇒ 这条要写进 `simos.gm.inbox` / `simos.gm.message.send` 的 `description`：**"回信之后要重跑一次该决策人，它才会看到"**。
+
+### 3.4.1 信件序（**实现中发现的一个真缺陷，批 2 修**）
+
+信件 id = `msg-<from>-<to>-<tick>-<n>`，而 `<n>` 是**十进制**。按 `(tick, id)` **字典序**排 ⇒ 同一 tick 内 ≥10 条时顺序变成 `0,1,10,11,2,…,9`：
+
+```
+$ printf 'msg-gm-dm1-5-%s\n' 0 1 2 3 4 5 6 7 8 9 10 11 | sort | tr '\n' ' '
+msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 … msg-gm-dm1-5-9
+```
+
+★ 后果：注入游标是"最后一条的 id + 1"，而新到的第 12 条（`-12`）**排在游标前面** ⇒ `start = index(cursor)+1` **跳过它** ⇒ **答复被静默丢掉**（正是本设计最不能出的错）。同理 `gm.inbox` 的"截最近 N 条"会截错。
+★ 修法：`Letter` 加**数值** `sequence()`（取 id 最后一段，解析失败退回不参与排序），排序改成 `(tick, sequence, id)`。
 
 ### 3.5 确认推演（补 G7）
 
@@ -246,14 +263,18 @@
 
 ## 7. 批次与文件所有权（一文件一 owner）
 
-| 批 | 责任区 | 写范围 | 依赖 |
+| 批 | 责任区 | 写范围 | 状态 |
 |---|---|---|---|
-| **A** | 信件双向化 + GM 收/发 + 自动注入 | `simos-ga-spi/.../ToolResources.java`（加 `GM_ID`）· `simos-ga/.../tools/write/GaMessageSendTool.java` · `.../tools/read/GaMessageInboxTool.java` · 新 `.../tools/read/GmInboxTool.java` · 新 `.../tools/write/GmMessageSendTool.java` · `simos-app/.../access/DecisionCallerFactory.java`（`withPeerSelfFace` 加 `gm`）· `simos-ga/.../decision/DecisionAgentRunner.java`（新信件注入 + 提醒文案） | — |
-| **B** | 决策自由化 + 确认/撤回 + 权限转类3 | `simos-ga/.../tools/write/ProposeCallTool.java` · 新 `ReviseCallTool` / `DropCallTool` / `ConfirmPacketTool` / `ReopenPacketTool` · `PacketIntentTool` / `MyPacketTool` / `SubmitPacketTool`（改名 + gate）· `simos-ga/.../decision/DecisionToolNames.java` · `simos-ga/.../decision/DecisionAgentRunner.java`（删 submit 拦截 + 预算口径）· `simos-app/.../decision/DecisionTurnFinalizer.java`（条件式结算 + 条件式 mergeIntent）· `simos-app/.../decision/ProposalCatalog.java`（revise 复用其校验段） | A（`DecisionAgentRunner` 同文件 ⇒ **A 先完**） |
-| **C** | 推演确认 + GM 看板 | 新 `AdjudicationAckTool` · 新 `GmRoundTool` | B |
-| **D** | 测试面（**单独一个测试代理**，最后统一做） | `simos-app/src/test/**` · `simos-ga/src/test/**` | A·B·C |
+| **A** | 信件双向化 + GM 收/发 + 自动注入 | `simos-ga-spi/.../ToolResources.java`（加 `GM_ID`）· `simos-ga/.../tools/write/GaMessageSendTool.java` · 新 `.../tools/read/GmInboxTool.java` · 新 `.../tools/write/GmMessageSendTool.java` · `simos-app/.../access/DecisionCallerFactory.java`（`withPeerSelfFace` 加 `gm`）· `simos-ga/.../decision/DecisionAgentRunner.java`（新信件注入 + 提醒文案） | ✅ **已完成**（5 改 4 新建；`test-compile` rc=0，控制方独立复跑亦 rc=0；未写未跑测试） |
+| **C** | 推演确认 + GM 看板 | 新 `AdjudicationAckTool` · 新 `GmRoundTool` | ✅ **随 A 一并完成** |
+| **B** | 决策自由化 + 确认/撤回 + 权限转类3 **+ 信件序修正 + 收件箱文案** | `simos-ga/.../tools/write/ProposeCallTool.java` · 新 `ReviseCallTool` / `DropCallTool` / `ReopenPacketTool` · `PacketIntentTool` / `MyPacketTool` / `SubmitPacketTool` → `ConfirmPacketTool`（改名 + gate）· `simos-ga/.../decision/DecisionToolNames.java` · `simos-ga/.../decision/DecisionAgentRunner.java`（删 submit 拦截 + 预算口径）· `simos-app/.../decision/DecisionTurnFinalizer.java`（条件式结算 + 条件式 mergeIntent）· `simos-app/.../decision/ProposalCatalog.java`（revise 复用其校验段）· ★ **`simos-ga/.../tools/read/GmInboxTool.java`（§3.4.1 信件序改为数值序 + §D1 收件箱文案"每 tick 每方向最多 128 条"）** | ⬜ **待派**（依赖 A 已提交） |
+| **D** | 测试面（**单独一个测试代理**，最后统一做） | `simos-app/src/test/**` · `simos-ga/src/test/**` | ⬜ 待 A·B 完 |
 
-★ **`DecisionAgentRunner.java` 在 A 与 B 各出现一次** ⇒ **A 必须先完成并提交**，B 再动它（一文件一 owner，见 §一 并发）。
+★ **`DecisionAgentRunner.java` 在 A 与 B 各出现一次** ⇒ **A 必须先完成并提交**，B 再动它（一文件一 owner，见 §一 并发）。✅ 已满足。
+
+★ **`GmInboxTool.java` 的所有权裁定（原批 A 的偏差 D1 收口）**：批 A 的任务书 §4 把它列为禁碰（写范围只含「新建」），故其文案仍写"每 tick 每方向一条"（已过时）。⇒ **并入批 B**，一次把"文案 + §3.4.1 的信件序缺陷"两件都在同一文件里收口（一文件一个 owner，不另开批）。
+
+★ **A 批的两条已知红测试**（行为按用户裁定改变，**由测试代理**改成新靶子）：`DmMessagingEndToEndTest#p4_secondMessageInTheSameTickIsRejectedByNameAndLeavesNoRevision` ⇒ 改成"第 129 条具名拒"；`SimosToolsTest` / `DecisionFaceGolden` 的计数（GM-only 读 +2、非窄写 +1、GM 桶 175→178、DM 桶 50→51、磁盘类 174→178；**窄写 68 与 catalog 143 不动**）。
 
 ---
 

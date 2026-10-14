@@ -1,5 +1,6 @@
 package io.mosire.simos.ga.decision;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.agentlib.llm.ContentPart;
 import io.mosire.agentlib.llm.LlmClient;
 import io.mosire.agentlib.llm.LlmMessage;
@@ -14,6 +15,11 @@ import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.llm.LlmToolNames;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.spi.DecisionMakerAffiliationPort;
+import io.mosire.simos.ga.spi.GaSnapshots;
+import io.mosire.simos.ga.spi.ToolResources;
+import io.mosire.simos.ga.tools.read.GaMessageInboxTool;
+import io.mosire.simos.ga.tools.read.GmInboxTool;
+import io.mosire.simos.ga.tools.write.GaMessageSendTool;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
@@ -930,9 +936,20 @@ public final class DecisionAgentRunner {
     return LlmMessage.user(text.toString());
   }
 
-  /** 每轮不落盘的 user 规范提醒：保证老会话与新会话都按同一套回合结算规则跑。 */
+  /**
+   * 每轮不落盘的 user 规范提醒：保证老会话与新会话都按同一套回合结算规则跑。
+   *
+   * <p>★★ 2026-10-14 GM⇄DM 双向信件（设计书 §3.4 / §9-C）：这条提醒里多一句"本 tick 你已收发 N 条信件（上限 128）" +
+   * "新信件会自动出现、要复查完整收件箱用收件箱读工具"。★ 它**不落盘**（每轮现插）——既有语义不变；★ 报数而不是拒发： 上限是**命令期**判的（第 129
+   * 条具名拒），这里只把"还剩多少额度"摆在模型面前，让收敛责任有个落点。
+   *
+   * @param lettersThisTick 本 tick 与该决策人有关的信件条数（收 + 发；见 {@link #lettersThisTick}）
+   */
   private static LlmMessage decisionRoundNotice(
-      DecisionMaker dm, FrozenDecisionContext frozen, DecisionToolNames toolNames) {
+      DecisionMaker dm,
+      FrozenDecisionContext frozen,
+      DecisionToolNames toolNames,
+      int lettersThisTick) {
     StringBuilder text = new StringBuilder();
     text.append("[本回合规则提醒] 决策人「")
         .append(dm.id().value())
@@ -945,6 +962,16 @@ public final class DecisionAgentRunner {
         .append(" 提交。提交后又继续发命令会被保守合并；一直不提交就结束，系统会把整轮最后一段文本自动作为 NL 决策交 GM。")
         .append("提交后只说话不再发命令，则提交后的文本不再算新的 NL 决策。")
         .append("★ 预算：最多 4–6 次工具调用；只 propose 工具面列出的 proposeable 工具，args 里不要写 null，缺字段就省略。");
+    // ★★ 信件口径（2026-10-14）：一句话说清"能发几条 / 答复会自动出现 / 去哪复查"。★ 工具名走线格式
+    //   （模型收到的工具清单里就是这个名字，写真实名会让它照着一个调不到的名字去点）。
+    text.append("★ 信件：本 tick 你已收发 ")
+        .append(lettersThisTick)
+        .append(" 条（每 tick 每方向上限 ")
+        .append(GaMessageSendTool.MAX_MESSAGES_PER_TICK_PER_DIRECTION)
+        .append("）；**新收到的信**（GM 的答复 / 被授权决策人的来信）会在每轮开始时自动出现在你的会话里，")
+        .append("你不需要自己去捞；要复查完整收件箱用 ")
+        .append(LlmToolNames.wireNameOf(GaMessageInboxTool.NAME))
+        .append("。");
     if (frozen != null) {
       text.append("世界冻结在 ")
           .append(frozen.branch().value())
@@ -953,6 +980,155 @@ public final class DecisionAgentRunner {
           .append("，读同一快照；世界写工具不在工具面。");
     }
     return LlmMessage.user(text.toString());
+  }
+
+  /** 注入消息的正文头（也是游标扫描的**身份判据**：只认以它开头的消息，见 {@link #lettersCursorOf}）。 */
+  static final String LETTERS_MESSAGE_HEADER = "[新信件]";
+
+  /** 注入游标的正文标记前缀：{@code [本消息已注入至 <最后一条信的 id>]}（见 {@link #newLettersMessage}）。 */
+  static final String LETTERS_CURSOR_PREFIX = "[本消息已注入至 ";
+
+  /** 注入游标的正文标记后缀。 */
+  static final String LETTERS_CURSOR_SUFFIX = "]";
+
+  /**
+   * ★★ <b>新信件注入</b>（设计书 §3.4）：取本 tick 状态里**寄给该 DM**、且**会话历史里还没有的**信，拼成一条 user 消息。
+   *
+   * <p>★★ <b>游标由历史自己承载</b>（零新存储、跨进程重启可恢复）：扫 {@code history} 里已有的注入消息正文中的 {@code [本消息已注入至 <id>]}
+   * 标记，取标记里那个 id 在信件序列里的位置，只注入它**之后**的。找不到标记 = 从未注入过 ⇒ 从最早开始。 ★ <b>游标 id 不在这批信里</b>（换分支 / 条目被裁剪 /
+   * 旧档没有这个 id）⇒ 从最早开始**重注一次**：宁可重复， 不可静默丢——"GM 的答复必须到达 DM"是这一批的红线，重复只是啰嗦，丢信是断链。
+   *
+   * <p>★ <b>正文逐条列 {@code from / tick / subject? / body}，不截断正文</b>（设计书 §9-C 的裁定：截断会静默丢掉 GM 的答复 =
+   * 问答断链）。★ 每条还带上 {@code id}（回信/对账用得上，也是"这条信注入过没有"的显式痕迹）。
+   */
+  private static Optional<LlmMessage> newLettersMessage(
+      DecisionMaker dm, SimulationState state, List<LlmMessage> history) {
+    String self = dm.id().value();
+    List<GmInboxTool.Letter> incoming = new ArrayList<>();
+    for (GmInboxTool.Letter letter : GmInboxTool.letters(GaSnapshots.state(state))) {
+      // ★ 只注入**寄给我的**（GM 的回信 + 被授权 peer DM 的来信都落在这里：`to` 就是收件人）。
+      if (self.equals(letter.to())) {
+        incoming.add(letter);
+      }
+    }
+    if (incoming.isEmpty()) {
+      return Optional.empty();
+    }
+    int start = 0;
+    String cursor = lettersCursorOf(history);
+    if (cursor != null) {
+      int index = indexOfLetter(incoming, cursor);
+      if (index >= 0) {
+        start = index + 1;
+      }
+    }
+    if (start >= incoming.size()) {
+      return Optional.empty();
+    }
+    List<GmInboxTool.Letter> fresh = incoming.subList(start, incoming.size());
+    StringBuilder text = new StringBuilder();
+    text.append(LETTERS_MESSAGE_HEADER)
+        .append(" 有你 ")
+        .append(fresh.size())
+        .append(" 条还没看过的信（GM 的答复 / 被授权决策人的来信）——**不需要自己去读收件箱，它们就在这里**：\n");
+    text.append(LETTERS_CURSOR_PREFIX)
+        .append(fresh.get(fresh.size() - 1).id())
+        .append(LETTERS_CURSOR_SUFFIX)
+        .append("\n");
+    for (GmInboxTool.Letter letter : fresh) {
+      text.append("---\n")
+          .append("id=")
+          .append(letter.id())
+          .append(" · from=")
+          .append(letter.from())
+          .append(" · tick=")
+          .append(letter.tick());
+      JsonNode value = letter.value();
+      if (value.hasNonNull("subject")) {
+        text.append(" · subject=").append(value.path("subject").asText(""));
+      }
+      if (value.hasNonNull("replyTo")) {
+        text.append(" · replyTo=").append(value.path("replyTo").asText(""));
+      }
+      text.append("\n").append(value.path("body").asText("")).append("\n");
+    }
+    text.append("---\n★ 要回信 / 追问：用 ")
+        .append(LlmToolNames.wireNameOf(GaMessageSendTool.NAME))
+        .append("（to=\"")
+        .append(ToolResources.GM_ID)
+        .append("\" 或 GM 授权给你的那个决策人 id）。");
+    return Optional.of(LlmMessage.user(text.toString()));
+  }
+
+  /**
+   * 历史里最后一条注入消息的游标 id（{@code [本消息已注入至 <id>]} 里那个 id）；从未注入过 ⇒ {@code null}。
+   *
+   * <p>★ 取**最后一条**：会话是追加式的，后一条注入消息的游标一定覆盖前一条（幂等）。
+   *
+   * <p>★ <b>只认以 {@link #LETTERS_MESSAGE_HEADER} 开头的消息</b>：信件的**正文**是原样贴进来的（不截断），
+   * 万一某封信的正文里恰好写了同样的标记串，它也不该被当成游标——身份判据（消息是不是注入消息）与内容判据（标记在哪）分开。
+   */
+  private static String lettersCursorOf(List<LlmMessage> history) {
+    String cursor = null;
+    for (LlmMessage message : history) {
+      String text = textOf(message);
+      if (!text.startsWith(LETTERS_MESSAGE_HEADER)) {
+        continue;
+      }
+      int at = text.lastIndexOf(LETTERS_CURSOR_PREFIX);
+      if (at < 0) {
+        continue;
+      }
+      int end = text.indexOf(LETTERS_CURSOR_SUFFIX, at + LETTERS_CURSOR_PREFIX.length());
+      if (end < 0) {
+        continue;
+      }
+      String id = text.substring(at + LETTERS_CURSOR_PREFIX.length(), end).strip();
+      if (!id.isEmpty()) {
+        cursor = id;
+      }
+    }
+    return cursor;
+  }
+
+  /** 信件序列里该 id 的下标；不在 ⇒ {@code -1}（调用方按"从最早开始重注"处置）。 */
+  private static int indexOfLetter(List<GmInboxTool.Letter> letters, String id) {
+    for (int i = 0; i < letters.size(); i++) {
+      if (letters.get(i).id().equals(id)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /** 一条消息里的**文本分片**拼起来（游标扫描只关心正文；工具调用/图片分片不参与）。 */
+  private static String textOf(LlmMessage message) {
+    StringBuilder text = new StringBuilder();
+    for (ContentPart part : message.content()) {
+      if (part instanceof ContentPart.Text literal) {
+        text.append(literal.text());
+      }
+    }
+    return text.toString();
+  }
+
+  /**
+   * 本 tick 与该决策人有关的信件条数（**收 + 发**）：给 {@code decisionRoundNotice} 报"已收发 N 条 / 上限 128"。
+   *
+   * <p>★ 判据按 {@code value.tick} == 世界当前 tick（信件自己记的 tick 就是发信那一刻的世界 tick），不是按条目落盘的 revision。
+   */
+  private static int lettersThisTick(DecisionMaker dm, SimulationState state) {
+    String self = dm.id().value();
+    int count = 0;
+    for (GmInboxTool.Letter letter : GmInboxTool.letters(GaSnapshots.state(state))) {
+      if (letter.tick() != state.meta().timestamp().tick()) {
+        continue;
+      }
+      if (self.equals(letter.from()) || self.equals(letter.to())) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
@@ -1068,8 +1244,20 @@ public final class DecisionAgentRunner {
         history.add(snapshot.get());
       }
     }
+    // ★★ 2026-10-14 GM⇄DM 双向信件（设计书 §3.4，缺口 G6）：**新信件在每轮开始时自动注入、且落盘**。
+    //   ★ 为什么必须由运行流注入、而不是指望 DM 自己去调收件箱：DM 不会主动去捞（缺口 G6 的原话："DM 不调 inbox
+    //     就永远看不到答复"）⇒ GM 的答复到不了 DM = 问答断链。
+    //   ★ 位置有意：开场消息/开场快照**之后**（先有"你是谁、你在哪"，再有"有人给你回信了"）、`decisionRoundNotice`
+    //     之前（那条每轮提醒里要报"本 tick 你已收发 N 条信件"）。
+    //   ★ **只在有"新"信件时注入**：一条都没有 ⇒ 一个字节都不写会话（不许每轮塞一条空消息——那会污染会话，
+    //     也是"每轮现插"与"落盘"混用的错误形态）。
+    Optional<LlmMessage> newLetters = newLettersMessage(dm, state, history);
+    if (newLetters.isPresent()) {
+      conversations.append(conversationId, newLetters.get());
+      history.add(newLetters.get());
+    }
     // ★ 回合规范提醒**不落盘**、每轮现插：老会话（首轮身份消息里没有新口径）也必须被本轮规则覆盖。
-    history.add(decisionRoundNotice(dm, frozen, toolNames));
+    history.add(decisionRoundNotice(dm, frozen, toolNames, lettersThisTick(dm, state)));
     DecisionTurnSignals signals = new DecisionTurnSignals(toolNames);
     List<ToolInvocation> invocations = new ArrayList<>();
     int llmCalls = 0;

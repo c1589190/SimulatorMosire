@@ -309,26 +309,29 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
   }
 
   /**
-   * ★★ <b>决策人的自指 {@code peer} 域</b>（2026-10-14 决策人互致消息，设计书 §4.1 的"自审补丁"）： {@code peer}
-   * 是**新命名空间**，决策人基础可达面本来不含它 ⇒ 不补两条都会坏：
+   * ★★ <b>决策人的基础 {@code peer} 域</b>（2026-10-14 决策人互致消息，设计书 §4.1 的"自审补丁"；同日 GM⇄DM 双向信件再加第二段）： {@code
+   * peer} 是**新命名空间**，决策人基础可达面本来不含它 ⇒ 不补三处都会坏：
    *
    * <ol>
    *   <li>{@code simos.ga.message.inbox} 被自己的资源断言拒掉（零授权的决策人连自己的收件箱都打不开）；
-   *   <li>{@code simos.ga.message.send} 里"只能以自己名义"那条自指断言**永远判否**。
+   *   <li>{@code simos.ga.message.send} 里"只能以自己名义"那条自指断言**永远判否**；
+   *   <li>★ 2026-10-14 新增：{@code simos.ga.message.send} 发给 {@link ToolResources#GM_ID} 的那条断言（{@code
+   *       peer:gm}）**永远判否** ⇒ DM 问不了 GM（缺口 G1）。⇒ {@code peer:gm} 与 {@code peer:<自己>} 同属**基础可达面**：
+   *       DM→GM 的疑问**不需要 GM 事先授权**（他写的是自己的疑问，不读也不写别人的数据，不构成越权，设计书 §3.1）， 而 DM→DM 仍要授权（那是把信息给第三方）。
    * </ol>
    *
-   * <p>★★ <b>语义 = 并集：{@code peer:<自己>} ∪ {@code accessLimit.peer}</b>，而且**必须加在 {@code
-   * narrowTo(accessLimit)} 之后**——这是实测出来的坑（两条都是"看起来能跑但权限不生效"的形态）：
+   * <p>★★ <b>语义 = 并集：{@code peer:<自己>} ∪ {@code peer:gm} ∪ {@code accessLimit.peer}</b>，而且**必须加在
+   * {@code narrowTo(accessLimit)} 之后**——这是实测出来的坑（两条都是"看起来能跑但权限不生效"的形态）：
    *
    * <ul>
-   *   <li>若把自指域放在 {@code narrowTo} <b>之前</b>：GM 配的 {@code accessLimit.peer=[对方]} 会与 {@code {自己}}
-   *       <b>求交</b> ⇒ <b>空集</b> ⇒ **被授权的人反而发不出信**；
-   *   <li>若<b>覆盖式</b>写（{@code withNamespace(peer, {自己})} 直接盖掉）：{@code accessLimit.peer} 的授权前缀 被抹 ⇒
-   *       同样发不出去。
+   *   <li>若把基础域放在 {@code narrowTo} <b>之前</b>：GM 配的 {@code accessLimit.peer=[对方]} 会与 {@code {自己,
+   *       gm}} <b>求交</b> ⇒ <b>空集</b> ⇒ **被授权的人反而发不出信**；
+   *   <li>若<b>覆盖式</b>写（{@code withNamespace(peer, {自己, gm})} 直接盖掉）：{@code accessLimit.peer} 的授权前缀
+   *       被抹 ⇒ 同样发不出去。
    * </ul>
    *
    * <p>★ <b>授权前缀只能"加"</b>：{@code ga.SetDecisionMakerPeer} 往 {@code accessLimit.peer} 里写对方
-   * id，本方法再把自指域并上去 ⇒ 最终 = {自己} ∪ {被授权者}。★ 若某人的 {@code accessLimit.peer} 是 {@code unlimited}（GM
+   * id，本方法再把基础域并上去 ⇒ 最终 = {自己, gm} ∪ {被授权者}。★ 若某人的 {@code accessLimit.peer} 是 {@code unlimited}（GM
    * 显式放开），原样保留。
    */
   private static ResourceScopeMap withPeerSelfFace(ResourceScopeMap base, DecisionMaker dm) {
@@ -340,6 +343,9 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
     }
     Set<String> prefixes = new TreeSet<>();
     prefixes.add(dm.id().value());
+    // ★★ 第二段基础可达面：GM（唯一拼写点 = ToolResources.GM_ID，不抄字面量）。★ 它的位置**就在这一行**——
+    //   加在 narrowTo(accessLimit) 之后（本方法是那条链的最后一环），且是"并入"不是"覆盖"（见类注的两条实测坑）。
+    prefixes.add(ToolResources.GM_ID);
     if (declared != null) {
       prefixes.addAll(declared.prefixes());
     }

@@ -82,6 +82,27 @@ public final class ToolResources {
   public static final String ARMY_NAMESPACE = "army";
 
   /**
+   * ★★ <b>GM 的稳定身份 id</b>（2026-10-14 GM⇄DM 双向信件，约束设计书 §9-A 裁定）：{@code "gm"}——<b>全仓唯一拼写点</b>，
+   * 它出现在三处，全部引用本常量、不抄字面量：
+   *
+   * <ol>
+   *   <li><b>信件地址段</b>：{@code ga:message.gm.<dm>.<tick>.<n>}（GM 发出的信；DM 发出的信是 {@code
+   *       ga:message.<dm>.gm.<tick>.<n>}）；
+   *   <li><b>信件的 {@code tags}</b>：{@code {gm, <对方>}}（与既有的"tags = 收发双方"同形，不新开可见性机制）；
+   *   <li><b>{@code peer} 前缀表</b>：{@code peer:gm} 进**每个**决策人的基础可达面（见 {@link #PEER_NAMESPACE} 第 2
+   *       条）。
+   * </ol>
+   *
+   * <p>★ <b>为什么必须有它</b>：{@code ga.SetDecisionMakerPeer} 要求**两个 id 都是已存在的决策人**，而 GM 不是决策人 ⇒ 没有这个稳定
+   * id 就写不出"GM 收件人"这一段地址，DM 的疑问无处可寄（设计书 §2.2 缺口 G1/G11）。
+   *
+   * <p>★ <b>它不是决策人 id</b>：{@code ToolResources.GM_ID} 只作地址段与 tags 的字符串；{@code
+   * GaState.decisionMakers()} 里**没有**它（GM 不是决策人 ⇒ 不参与决策包/裁决），任何"按决策人遍历"的读口（如 {@code
+   * simos.gm.round}）都不该把它算进去。
+   */
+  public static final String GM_ID = "gm";
+
+  /**
    * ★★ <b>peer 资源所属的命名空间</b>（2026-10-14 决策人互致消息，设计书 §4.1）：目标资源 = {@code peer:<决策人id>}。
    *
    * <p>★ 它是"GM 一次授权 ⇒ 两决策人双向互致消息"的**唯一闸门**（零新机制）：授权把对方的 id 写进本命名空间的 {@code accessLimit} 前缀表，工具在
@@ -91,8 +112,17 @@ public final class ToolResources {
    *
    * <ol>
    *   <li><b>工具声明</b>（{@link #PEER_WRITE}）——★ <b>策略必须是 {@code DENY}</b>，见那个常量的注释（选错 = fail-open）；
-   *   <li><b>决策人基础可达面</b>：{@code peer:<自己>}（自指域；不补则 {@code inbox} 被自己拒、自指断言永远判否）；
-   *   <li><b>GM 组</b>：{@code Shell#gmPermissionSet} 的逐命名空间表态。
+   *   <li><b>决策人基础可达面</b>：{@code peer:<自己>} <b>∪ {@code peer:gm}</b>——两段都是**人人皆有**的基础面（第一段 = 自己，第二段
+   *       = GM，见 {@link #GM_ID}）。★ 补 {@code peer:<自己>} 的理由：不补则 {@code inbox} 被自己拒、自指断言永远判否；★ 补
+   *       {@code peer:gm} 的理由：DM→GM 的疑问**不需要 GM 事先授权**（他写的是自己的疑问，不读也不写别人的数据，不构成越权，见设计书 §3.1），
+   *       故它必须落在**基础可达面**上而不是靠 {@code accessLimit.peer} 配出来。★ 两段都加在 {@code narrowTo(accessLimit)}
+   *       <b>之后</b>（{@code DecisionCallerFactory.withPeerSelfFace}）——放在之前或改成覆盖式写，GM 配的授权前缀会被求交/抹掉。
+   *   <li><b>GM 组</b>：{@code Shell#gmPermissionSet} 的逐命名空间表态。★ <b>2026-10-14 现状（回代码核过）</b>：GM
+   *       组**没有** {@code peer} 这一维的表态 ⇒ 凡 GM 面的工具若把 {@code peer} 写进自己的 {@code ResourceManifest}，会在
+   *       {@code ResourceAuthorizer.denial()} 的**执行前闸**上被整调拒掉（{@code DENY} 缺省策略 + 调用者未表态 =
+   *       "一个都够不着"）。⇒ GM 侧的两条信件工具（{@code simos.gm.inbox} / {@code simos.gm.message.send}）**不声明**
+   *       {@code peer}（取 {@link io.mosire.agentlib.permission.ResourceManifest#NONE} / 既有 {@code
+   *       sd} 读声明）， 它们的收件人判据是**地址事实**（{@code value.to == } {@link #GM_ID} / 决策人表存在性），不是资源断言。
    * </ol>
    */
   public static final String PEER_NAMESPACE = "peer";
