@@ -506,3 +506,46 @@ new WorkspaceCaller(userKey, assemblyPermissions(docsRoot))
 | **B** | 撤回（`reopen`）要不要？ | **要，但只到 PENDING 为止** | PENDING → DRAFT；`decidedBy` 非空（GM 已裁决）⇒ 具名拒（不变量 I3）；`gm.packet.decide` 之后不可回退 |
 | **C** | 同 tick 同方向信件上限 N | ★ **`N = 128`**（用户原话：「这个上限太傻逼了，至少改成128」；设计书原推荐 8 被否决） | 落**命令期**（`PutInfoHandler` 之前由工具数一次）⇒ 第 129 条具名拒、世界零变化。★ **正文注入不截断**：截断会静默丢掉 GM 的答复 = 问答断链；改为在 `decisionRoundNotice` 里报告「本 tick 已收发 N 条 / 上限 128」，把收敛责任交给 DM 与 GM（不许静默） |
 | **D** | "有未确认 DM 时禁止推演"的强制机制 | **不做** | 只在 `simos.gm.round` 的 `description` 里写明纪律；GM 是自主行动方，机制不替它判断（与用户「触发器本身只管是否被触发」同口径）。若真机反复出现"GM 提前推演"，再按急停协议的形态补 |
+
+---
+
+## 12. ★★ 真 LLM 验证前的阻塞：**唯一的门控 e2e 引用了改过名的工具**（2026-10-15 凌晨）
+
+### 12.1 事实（控制方核过，逐行）
+
+`simos-app/src/test/java/io/mosire/simos/app/decision/RealLlmGovScenarioTest.java` 里有 **10 处**引用**已被批 B 改名**的工具名：
+
+| 位置 | 内容 | 后果 |
+|---|---|---|
+| `:159-162` | `DECISION_ALLOWED_TOOLS` 里的 `simos.sd.packet.intent` / `simos.sd.propose` / `simos.sd.packet.submit` / `simos.sd.packet.my` | ① 该列表经 `:815`/`:837` 当 **`allowedTools`** 传给 `ga.CreateDecisionMaker` ⇒ 决策人**白名单里四条全是空名** ⇒ 它**根本没有决策包工具**；② 它还被**念给真模型听** |
+| `:945` `:949` `:957` | 中央决策人的提示词：叫它调 `simos.sd.packet.intent` / `propose` / `packet.submit` | 模型会照做 ⇒ `TOOL_NOT_FOUND` ⇒ ★ 正是"**换路径死磕**"那种形态 |
+| `:974` `:976` `:985` | 省级决策人的提示词，同上 | 同上 |
+
+**正确的新名**：`simos.ga.packet.intent` · `simos.ga.packet.propose` · **`simos.ga.packet.confirm`**（旧 `packet.submit`）· `simos.ga.packet.my`。
+
+★ 对照（**不要动**）：`DecisionCallerFactoryTest:302-307` 也是这四个旧名，但它是 **`doesNotContain`**（"旧名一律不留"）⇒ **是对的、在过**。
+★ 另一处对照：`SimosToolsTest` / `McpServerTest` / `DecisionFaceGolden` 等处的 `simos.sd.*` 大多是**还没改名的那 15 条**（`decision-maker` / `diplomacy` / `verdicts` / `run-decision-makers` …）⇒ **当前正确，别乱改**。
+
+### 12.2 ★★ 这是同一个死角的**第 4 次**
+
+| # | 缺陷 | 为什么没红 |
+|---|---|---|
+| 1 | `gov.createOffice` 整体 0 落盘 | 门控 `SIMOS_REAL_LLM` + `seedGenesis()` 缺 army 片 |
+| 2 | `province.apply` 整体 0 落盘 | 同上 |
+| 3 | 4 条 catalog 工具双写（`planOnly` 被忽略） | 同上 + `simos-gov/src/test` 里 `planOnly` 零覆盖 |
+| **4** | ★ **门控 e2e 自己引用了改过名的工具** | **它被门控 ⇒ 从来不跑 ⇒ 没有任何人被告知它已经陈旧** |
+
+⇒ **"门控 + 坏夹具 + 零覆盖"之外，还要加一条：门控用例没人更新。** 它的存在感是**假的** —— 它在测试清单里、名字好听、**但永远不会告诉你任何事**。
+★ 纪律（写给后来者）：**改工具名时，全仓扫 `src/test/**` 的字面量**（不只是 `src/main`）；**门控用例要当成"会腐烂的资产"定期真跑**，否则它就是一块"看着有覆盖、其实没有"的假绿招牌。
+
+### 12.3 处置
+
+- ★ **一文件一 owner**：`RealLlmGovScenarioTest` 此刻正被"覆盖死角攻坚"那个批改夹具 ⇒ **不许再派第二个 owner**。等它交账后：**若它没顺手修这 10 处，立刻补派**（这是真 LLM 验证的**前置**）。
+- ★ **在它修好之前，跑 `SIMOS_REAL_LLM=1` 是浪费**：跑出来的红是"测试陈旧"，不是生产问题 —— 会把"真 LLM 验证"这件事变成噪声。
+
+### 12.4 顺带记录：门禁日志的体量问题（与本节无关，但值得记账）
+
+控制方实测：一次 `clean verify` 的完整日志 **869 MB / 2.6M 行**，其中 **99.9% 在测试阶段**，而来头最大的是 **`io.mosire.simos.economy.market` 一个 logger ≈43% 的采样行（约 110 万行）**。
+★ 本仓纪律是「**逐笔明细 = TRACE**」（`docs/agents/02-一-并发.md` §一.9），而它按 INFO 刷。
+⇒ 后果：11 次 verify 就堆了 **9.5 GB** 日志（控制方已清理，磁盘 64%→57%）。
+⇒ **待办**：要么那批经济测试降档到 TRACE/DEBUG，要么测试期把该 logger 调静。**不阻塞本目标。**
