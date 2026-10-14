@@ -254,6 +254,12 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 
 ★ `ResourcePaths.sd(...)` → `ResourcePaths.ga(...)`；方法名与常量名一起改（`SD_NAMESPACE` → `GA_NAMESPACE`），**不留别名**（留别名 = 第二处拼写点）。
 
+**✅ 2026-10-14 已落地（提交 `6f157693`）**：87 文件（main 76 / test 11）= +211/−213；派生符号 `SD_NAMESPACE_WRITE → GA_NAMESPACE_WRITE`、`sdNamespaceWriteResources → gaNamespaceWriteResources` 一并改（不改则"旧符号残留 grep = 0"这条验收过不了）。红线守住的三条证据：① **`DecisionFaceGolden` 单文件 `git diff` 为空**（不是靠改期望过的）② 控制方 `clean verify` **rc=0**（3250/0/0/5 · SpotBugs 16×size 0 · 前端 412/412）③ 机械自证：87 文件反向替换 4 个标识符后与 HEAD 逐字 diff，非注释残留**恰好 16 行、全是预期值改动**。
+
+### ★★ 从这一批学到的取数教训（写给后来者）
+
+**量"改名波及面"必须符号 + 字符串字面量两路 grep。** 控制方给实现方的清单是按**符号**（`SD_NAMESPACE` / `resourceSd` / `ResourcePaths.sd(`）grep 出来的（main 134 / test 14），**漏了只含 `"sd"` 字面量的文件**——实现方自查又找出 2 个：`GmPermissionGroupTest:50`（GM 命名空间清单）与 `SdDecisionScopeApiTest:179`（`namespaces.get("sd")`，**不改必 NPE**）。⇒ 正确姿势：`grep -rn 'SD_NAMESPACE\|resourceSd\|ResourcePaths\.sd(\|"sd"'`。
+
 ★ 顺带（同属"和被取缔的 sd 模块有关"）：`SimosToolSource.java:1570` 的注释写「工具名（`simos.sd.*`）」，但它管的 5 条里 3 条是 `ga.*` ⇒ 注释失真，一并改。
 
 ---
@@ -325,7 +331,7 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 | **C** | 推演确认 + GM 看板 | 新 `AdjudicationAckTool` · 新 `GmRoundTool` | ✅ **随 A 一并完成** |
 | **B** | 决策自由化 + 确认/撤回 + 权限转类3 **+ 信件序修正 + 收件箱文案** | `simos-ga/.../tools/write/ProposeCallTool.java` · 新 `ReviseCallTool` / `DropCallTool` / `ReopenPacketTool` · `PacketIntentTool` / `MyPacketTool` / `SubmitPacketTool` → `ConfirmPacketTool`（改名 + gate）· `simos-ga/.../decision/DecisionToolNames.java` · `simos-ga/.../decision/DecisionAgentRunner.java`（删 submit 拦截 + 预算口径）· `simos-app/.../decision/DecisionTurnFinalizer.java`（条件式结算 + 条件式 mergeIntent）· `simos-app/.../decision/ProposalCatalog.java`（revise 复用其校验段）· ★ **`simos-ga/.../tools/read/GmInboxTool.java`（§3.4.1 信件序改为数值序 + §D1 收件箱文案"每 tick 每方向最多 128 条"）** | ✅ **已完成**（11 改 + 4 新 + 1 `git mv`；`test-compile` rc=0，控制方独立复跑亦 rc=0；未写未跑测试） |
 | **E** | **旧名/过时文案收口**（批 B 交账时发现的残留） | `simos-app/.../access/DecisionCallerFactory.java`（`GOAL` 里 4 个旧工具名）· `simos-app/.../tools/read/CatalogTool.java`（`:855,:858` 两处旧名）· `simos-ga/.../tools/read/GaMessageInboxTool.java`（`description()` 仍写"每 tick 每方向**至多一条**" ⇒ 128）· `simos-ga/.../tools/write/SetDecisionMakerPeerTool.java`（`description()` 同上）· `simos-ga/.../tools/read/GmPacketTool.java`（javadoc 指向 `simos.sd.packet.my`）· `simos-ga/.../tools/DecisionPacketViews.java`（同）· `simos-app/.../tools/SimosToolSource.java:1935`（注释同） | ✅ **已完成**（7 文件 +13/−9，全文本；控制方用 `grep -a` 在 **`.class` 常量池**里核到「每 tick 每方向最多 128 条」已折叠进去 ⇒ 模型真读到；`test-compile` rc=0） |
-| **F** | `sd` 权限域名改名（§3.8） | `simos-ga-spi/.../ToolResources.java` · `simos-util/.../ResourcePaths.java` · `simos-app/.../tools/ToolSupport.java` + 全仓 ~106 处引用 + `SimosToolSource:1570` 失真注释 | ⬜ **待派**（待 D 完） |
+| **F** | `sd` 权限域名改名（§3.8） | `simos-ga-spi/.../ToolResources.java` · `simos-util/.../ResourcePaths.java` · `simos-app/.../tools/ToolSupport.java` + 全仓 ~106 处引用 + `SimosToolSource:1570` 失真注释 | ✅ **已完成**（87 文件 +211/−213；金样本单文件 diff 为空；控制方 clean verify rc=0） |
 | **G** | GM 代打工具 `simos.gm.actAs`（§3.7） | 新 `simos-ga/.../tools/write/GmActAsTool.java` · `simos-app/.../tools/SimosToolSource.java`（注册，`addGmWrites`）· `simos-app/.../access/DecisionCallerFactory.java`（若需暴露 `callerFor` 的窄口） | ⬜ **待派**（可与 F 合并为一批，但**与 D 串行**） |
 | **D** | 测试面（**单独一个测试代理**） | `simos-app/src/test/**` · `simos-ga/src/test/**` | ⬜ **下一批**（覆盖 A/B/E；F/G 落地后再来一轮小的） |
 
