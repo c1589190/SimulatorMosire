@@ -26,10 +26,19 @@ import io.mosire.simos.app.tools.write.AppUnitToolViews;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.decision.DecisionProposable;
 import io.mosire.simos.gov.tools.GovToolSupport;
+import io.mosire.simos.gov.tools.write.GovAssignPostsTool;
+import io.mosire.simos.gov.tools.write.GovDefineCurrencyTool;
 import io.mosire.simos.gov.tools.write.GovDispatchTeamTool;
+import io.mosire.simos.gov.tools.write.GovExpandHouseholdTool;
+import io.mosire.simos.gov.tools.write.GovIssueMoneyTool;
+import io.mosire.simos.gov.tools.write.GovOpenPostsToMarketTool;
 import io.mosire.simos.gov.tools.write.GovRecruitTool;
+import io.mosire.simos.gov.tools.write.GovRenameCurrencyTool;
 import io.mosire.simos.gov.tools.write.GovRetireStaffTool;
 import io.mosire.simos.gov.tools.write.GovSelectExamineesTool;
+import io.mosire.simos.gov.tools.write.GovSetBudgetPolicyTool;
+import io.mosire.simos.gov.tools.write.GovSetEstablishmentTool;
+import io.mosire.simos.gov.tools.write.GovSetFxRateTool;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -74,6 +83,23 @@ import java.util.Set;
  * <p>★ **本类的两处具名扩展**（与契约键表并存的工具实参名差异，控制方复核）：退休工具的 {@code toHouseholdId} 与预览 {@code
  * targetHouseholdId} 同按家户目标提取；{@code targetHex} 同按 hex 目标提取——否则"回退到辖区外家户"会绕过拟稿 目标校验。创建型工具的新单位
  * id（{@code newUnitId}）跳过、由 {@code at}/{@code regionId} 兜住。
+ *
+ * <p>★★ <b>批 3b：类2 世界写的资源面覆盖</b>（设计书 §8.3 第 1/2 条）。九条 {@code simos.gov.*}（{@code {DM,GM} +
+ * Ask}，即类2）加进本清单之后，「这条提议的 DM 够不够得着」这一维**仍然只由 {@code ProposeCallTool.validateCall} 那一段判**（{@code
+ * ReviseCallTool} 与它共用同一份，本批**不新写第二段校验**）—— 那一段的唯一判据来源是 {@link #targets}。⇒ 补资源面 =
+ * **让本类的目标提取覆盖这九条工具真正会碰的资源**，于是那一维自动落进既有的 scope 校验（越界 ⇒ {@code FORBIDDEN}、包不变）。
+ *
+ * <p>本批补进去的两维（此前**完全不做**越界校验）：
+ *
+ * <ul>
+ *   <li><b>GOV 单位</b>（{@code govUnitId}，见 {@link #UNIT_KEYS}）——九条的资源断言锚点；
+ *   <li><b>国库家户</b>（{@code treasuryHousehold}，见 {@link #HOUSEHOLD_KEYS}）——{@code gov.issueMoney}。
+ * </ul>
+ *
+ * <p>★ <b>覆盖不到的（如实记，见批 3b 台账）</b>：九条里有四条声明的是 {@code economy} 命名空间（{@code defineCurrency} / {@code
+ * renameCurrency} / {@code setFxRate} / {@code issueMoney}），而 {@code ResourcePaths} 里
+ * **没有币种的可寻址路径**（{@code economy(q,r)} 是逐格路径，与"某种币"无关）⇒ **币种这一维不做越界校验**；{@code issueMoney}
+ * 的国库格路径（{@code actor:<q>_<r>}）同样不提（把 hex 目标一概当成 actor 目标会让既有工具在辖区格上误拒）。
  */
 public final class ProposalCatalog {
 
@@ -87,8 +113,21 @@ public final class ProposalCatalog {
           "from",
           "to",
           "toHouseholdId",
-          "targetHouseholdId");
-  private static final Set<String> UNIT_KEYS = Set.of("unitId", "unit", "targetGovUnitId");
+          "targetHouseholdId",
+          // ★★ 批 3b：国库家户（`simos.gov.issueMoney` 的 `treasuryHousehold`，也是 GOV 的国库账所在户）。
+          //   九条 gov 工具里只有它把国库**显式报进视图**；国库格路径（`actor:<q>_<r>`）不在本键表内——
+          //   见类注「资源面覆盖」一节：把 hex 目标同时算成 actor 会让既有工具在辖区格上误拒。
+          "treasuryHousehold");
+
+  /**
+   * 单位键。
+   *
+   * <p>★★ 批 3b：加 {@code govUnitId} —— 九条 {@code simos.gov.*} 类2 工具的**资源断言锚点就是它** （其 {@code
+   * resources()} 声明 unit 命名空间、{@code requireGovWrite} 断言的也是这个 GOV 单位）。★ 少了这一维， 一个「unit 面够不着自己
+   * GOV」的决策人照样能 propose 成功，而那条 call 要等 GM 执行时才见分晓。
+   */
+  private static final Set<String> UNIT_KEYS =
+      Set.of("unitId", "unit", "targetGovUnitId", "govUnitId");
 
   /** source 元素里的家户键（{@code levyRegion} 的 manpower source 用短名 {@code household}）。 */
   private static final Set<String> SOURCE_HOUSEHOLD_KEYS = Set.of("householdId", "household");
@@ -155,7 +194,24 @@ public final class ProposalCatalog {
                 Set.of(),
                 false),
             entry(new GovSelectExamineesTool(gov, mapId), Set.of("newUnitId"), true),
-            entry(new GovDispatchTeamTool(gov, mapId), Set.of("newUnitId"), true));
+            entry(new GovDispatchTeamTool(gov, mapId), Set.of("newUnitId"), true),
+            // ★★ 2026-10-15 批 3b（设计书 §8.3 第 1 条）：九条 `simos.gov.*` **类2**（`{DM,GM}` +
+            // `gate=Ask(SENSITIVE)`）的
+            //   世界写加进清单 ⇒ 无人值守时 DM 走 `simos.ga.packet.propose`（**零阻塞**）、GM 用 `gm.packet.decide` 真审、
+            //   `gm.packet.execute` 执行；类2 的直写路径**一条没删**（有真人看着的场合照旧可用）。
+            //   ★ 纯加法：这九条的 `roles()`/`gate()`/审批链/上限**一个字没动** ⇒ 三格计数仍是 140/17/37。
+            //   ★ 九条都不建单位（`expandHousehold` 建的是**家户**、不是单位）⇒ `createsUnit=false`、`skipKeys` 空：
+            //     它们的参数/预览里没有"将要成为的目标的新 id"，只有既存资源（GOV 单位 / 家户 / 国库 / 格）。
+            //   ★ 顺序 = `SimosToolSource` 里 gov 写工具的注册顺序（§8.3 名单的保序展开，便于两边对读）。
+            entry(new GovSetEstablishmentTool(gov), Set.of(), false),
+            entry(new GovSetBudgetPolicyTool(gov), Set.of(), false),
+            entry(new GovAssignPostsTool(gov), Set.of(), false),
+            entry(new GovExpandHouseholdTool(gov), Set.of(), false),
+            entry(new GovOpenPostsToMarketTool(gov), Set.of(), false),
+            entry(new GovDefineCurrencyTool(gov), Set.of(), false),
+            entry(new GovRenameCurrencyTool(gov), Set.of(), false),
+            entry(new GovIssueMoneyTool(gov), Set.of(), false),
+            entry(new GovSetFxRateTool(gov), Set.of(), false));
     Map<String, Entry> byName = new LinkedHashMap<>();
     for (Entry value : entries) {
       byName.put(value.toolName(), value);
