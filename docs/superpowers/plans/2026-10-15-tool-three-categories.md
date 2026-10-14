@@ -355,3 +355,76 @@ DM propose → DM confirm（→ PENDING）→ GM decide → GM execute
 - 两条 policy 的 **noop + planOnly 空批**分支仍未实测。
 - 另外 8 条**未逐条走完** `decide → execute`（只验了 `planOnly` 交批 + `propose` 成功）。
 - ★ **证据全在仓库外，未沉淀成回归用例**（红线）⇒ 见 §10.6 测试面待办。
+
+---
+
+## 12. 真 LLM 验证（2026-10-15 凌晨）：**跑不起来，两个门控用例都坏** —— 但坏在测试侧
+
+### 12.0 结论先说
+
+**生产代码没有回归**（3289 条非门控用例全绿）。★ 跑不起来的两个原因**都在测试侧**：
+1. `RealLlmUnitDecisionLoopTest` —— ★★ **前提早就作废，出生就是红的**（见 §12.2）
+2. `RealLlmGovScenarioTest` —— 引用 10 处**已改名**的工具（见 §12.3）
+
+⇒ **真 LLM 验证目前不可能完成**，除非先把这两处修好。**这是"门控 + 坏夹具 + 零覆盖"死角的第 5、6 次。**
+
+### 12.1 端点与跑法（已验证，可直接复用）
+
+- `mosire-flash`（远程中转站）与 `gemma4-local`（本机 llama.cpp）**tool calling 都正常**：实测 `finish_reason=tool_calls` + 参数正确（0.7s / 1.1s）。
+- `config/llm-providers.json` **在 git 里** ⇒ 用默认 provider 即**零配置改动**。
+- 跑法（类注原文）：`SIMOS_REAL_LLM=1 tools/mvn-lock.sh -pl simos-app -am -Dtest='RealLlm…' -Dsurefire.failIfNoSpecifiedTests=false test`
+- ★ 建议在**独立工作树**里跑（不被在飞的批污染）：`git worktree add --detach /tmp/x HEAD`。
+
+### 12.2 ★★ `RealLlmUnitDecisionLoopTest`：**夹具前提已作废 ⇒ 出生即红**
+
+**症状**（HEAD `932602aa`，独立工作树，真跑）：3 个用例全在 `startShell:260 -> seedGenesis:1188` 炸：
+```
+IllegalArgument: checkpoint 信封要写的模块没有装配 codec（信封与本实例的 codec 表不同源）: gov
+```
+⇒ **它给的 codec 表只有 `Map/Social/Unit/Ga/Economy/Actor`，而创世状态里有 `gov` 与 `army` 两个切片** ⇒ 该门控用例**连创世都过不去**。
+（控制方在临时工作树补上 `GovCodec`+`ArmyCodec` 作**诊断**后，它才跑起来；该补丁**不是交付物**。）
+
+**跑起来之后**：真模型 14 次 LLM 调用 / 24 次工具调用，一轮走完（`head 1→7`），★ **但断言仍红**，且红的是**夹具自检** `:345`：
+```
+Expecting value to be true but was false
+  at RealLlmUnitDecisionLoopTest.fixtureScopeIsWiredAndOutOfScopeControlIsReal(:345)
+```
+`:345` 断言 `ResourceScopesFor(DecisionScopeFunctions.defaults(), dm, state, MAP_ID)` 算出的 `map` 作用域**允许** `Map1/hex/1_1`。
+
+**根因（回代码核实，`DecisionScopeFunctions` 类注 `:38-40` 原文）**：
+> **没有归属 ⇒ deny-all**（裸决策人；用户原话「允许创建没有更多附加状态的单个决策人」）：四个命名空间全部 `ResourceScope.none()`——不抛、不回落、不给全量
+
+而夹具造的是 `new DecisionMaker(DM, Set.of(), accessLimit(), …)` —— **不带归属**（`:27` 原文：「新形状：决策人**不带归属**（`DecisionMaker` 已去掉那个字段）」）。
+⇒ **按设计就是 deny-all** ⇒ `narrowTo(accessLimit)` 只**收窄**、**不会加**范围 ⇒ 该断言**不可能成立**。
+⇒ 它假设的是 **2026-10-12「归属归模块」之前**的旧设计（决策人身上带 `Affiliation`，范围 = `ArmyScope(位置+视野圈) ∩ accessLimit`）。**它出生就是红的**，且因门控**从未被告知**。
+
+**旁证（同一轮真跑的产物完全自洽）**：模型如实报告「可达面只有 `docs`、`ga=decision-packet/dm-u1` 与 `peer=gm`」，8 次读被 `RESOURCE_DENIED`、出令被裁「超出出令决策人 dm-u1 的可达面，命令被拒（目标资源）: unit:u-1」、`taxAfter=0`。
+★ 测试自己记了 `adjudicationGap`：「令里有命令被 GM 裁决拒……**如实记录，不伪造**」——**这测试的自我诚实是好的，坏的是前提**。
+
+**修法（测试侧，两个方向选一）**：① 给夹具的决策人**一条真的 army 归属**（让 `ArmyScope` 生效），断言随之恢复有意义；② 或把断言改成"**裸决策人 = deny-all**"并新增一条"有归属 ⇒ 有范围"的对照。★ 建议 **①+② 都做**：一条证明"有归属才有范围"，一条证明"没归属就 deny-all"（两条都是**用户裁定**的落地）。
+
+### 12.3 `RealLlmGovScenarioTest`：10 处旧名（与 §12 首版同）
+
+见本文件 §12 首版（`docs/superpowers/plans/2026-10-14-gm-dm-interaction.md` §12.1）：`:159-162` 的 `DECISION_ALLOWED_TOOLS` + `:945`–`:985` 的**提示词**都还在叫 `simos.sd.packet.intent` / `simos.sd.propose` / `simos.sd.packet.submit`。
+★ 控制方 03:53 复核：覆盖死角批改了该文件（`+9−2`）但**这 10 处旧名仍在** ⇒ 仍需修。
+
+### 12.4 §11.4(a) 的落地：**三路径实测矩阵**（控制方裁定成立）
+
+9 条 gov 工具「决策人可省 `govUnitId`」这条便利，**只在一条路径上成立**：
+
+| 路径 | 身份来源 | 省 `govUnitId` | 结果 |
+|---|---|---|---|
+| **GM 面直调** | `AgentIdentity.external()`（`Shell.gmCaller:1706`） | 省 | **BAD_REQUEST**「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」9/9 · headDelta=0 |
+| **DM 直写** | `decision-maker:<id>`（`DecisionCallerFactory:218`） | 省 | ✅ **成功 9/9**，`govDerivedFromIdentity=true`，真写一笔（国库 copper +4321） |
+| **propose** | `AgentIdentity.external()`（`ProposalCatalog.preview:250`） | 省 | **BAD_REQUEST**「目标工具预览失败(BAD_REQUEST): govUnitId 必填…」9/9 · 包不变 |
+| **execute** | `external()` + `SYSTEM`（`DecisionEffectExecutor.planCall:360`） | 省 | 同 propose；且**构造上不可达**（propose 用同一身份先拒） |
+
+⇒ 与 §11.4(a) 的裁定一致：**描述承诺了一个只有一条路径走得通的便利** ⇒ 已改 9/9 文件（`description()` + `jsonSchema` 字段说明 + 类注 + 末尾逐路径句），机械自证 `roles(`/`gate(`/载荷键/校验/`planOnly` 命中数 = **0**；改后三路径矩阵**逐格与改前一致**（`head=15` 同数）。
+
+### 12.5 记账：本轮新增的三条同族待办（都不阻塞真 LLM 前置）
+
+| # | 位置 | 事 |
+|---|---|---|
+| ① | 9 条工具描述里的「★ 需 GM 在审批面点头（决策人链路会停在待批）」 | 只对 **DM 直写**成立（§11.2 B3：propose 是 success、asks 不增）⇒ 同族第二处 |
+| ② | `GovToolSupport:159` 的错误正文 | 对两条 policy 工具也写 `govUnitId`，而字段实为 `payloadJson.unitId` ⇒ 改消息要动 `GovToolSupport` |
+| ③ | `simos-social` 7 条潜伏 `planOnly` | §10.4 潜伏清单，未扫 |
