@@ -40,7 +40,7 @@ public final class GmPacketsTool implements SimosTool, GmOnlyRead {
   public static final String NAME = "simos.gm.packets";
 
   private static final ResourceManifest SD_READ =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final ToolReadPort reads;
 
@@ -83,7 +83,7 @@ public final class GmPacketsTool implements SimosTool, GmOnlyRead {
   public ToolResult execute(ToolContext context) {
     try {
       ToolResources.requireAll(
-          context, Operation.READ, List.of(ResourceId.of(ToolResources.SD_NAMESPACE, "*")));
+          context, Operation.READ, List.of(ResourceId.of(ToolResources.GA_NAMESPACE, "*")));
       Map<String, Object> args = context.arguments();
       SimulationState state = GaToolReads.stateOfExpectedRevision(reads, args);
       GaState ga = GaToolReads.ga(state);

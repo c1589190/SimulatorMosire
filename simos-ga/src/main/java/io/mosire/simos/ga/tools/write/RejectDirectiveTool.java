@@ -91,7 +91,7 @@ public final class RejectDirectiveTool implements SimosTool {
 
   /** 本工具的名字在 sd 域里只声明 sd 只读策略面（fail-closed：未表态 sd 的调用者在**写**上被拒）。 */
   private static final ResourceManifest SD_WRITE =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final ToolWritePort writes;
   private final GaDecisionHost decisionAgent;
@@ -204,7 +204,7 @@ public final class RejectDirectiveTool implements SimosTool {
 
   /** 本工具要写的资源：{@code ga:decision-maker}（打回是 GM 对一个决策人的令的动作）。 */
   private List<ResourceId> writeResources() {
-    return List.of(ResourceId.of(ToolResources.SD_NAMESPACE, identity.decisionMakerKind()));
+    return List.of(ResourceId.of(ToolResources.GA_NAMESPACE, identity.decisionMakerKind()));
   }
 
   // ── 主流程 ────────────────────────────────────────────────────────────────────────────

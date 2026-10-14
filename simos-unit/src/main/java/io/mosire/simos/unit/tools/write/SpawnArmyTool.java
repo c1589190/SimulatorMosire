@@ -95,7 +95,7 @@ public final class SpawnArmyTool implements SimosTool {
               ToolResources.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolResources.ECONOMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolResources.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /** 与 {@link #SPAWN_ARMY_WRITE} 同源的逐命名空间粗断言（GM 五面 unlimited，顺序 = 批内命令命名空间序）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
@@ -104,7 +104,7 @@ public final class SpawnArmyTool implements SimosTool {
           ResourceId.of(ToolResources.UNIT_NAMESPACE, "*"),
           ResourceId.of(ToolResources.ECONOMY_NAMESPACE, "*"),
           ResourceId.of(ToolResources.ACTOR_NAMESPACE, "*"),
-          ResourceId.of(ToolResources.SD_NAMESPACE, "*"));
+          ResourceId.of(ToolResources.GA_NAMESPACE, "*"));
 
   private final ToolWritePort writes;
   private final ToolReadPort reads;

@@ -46,7 +46,7 @@ public final class IssueDirectiveTool extends AbstractNarrowWriteTool implements
    * 结论、又不越过那条边界。
    */
   private static final ResourceManifest SD_WRITE =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   public IssueDirectiveTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);

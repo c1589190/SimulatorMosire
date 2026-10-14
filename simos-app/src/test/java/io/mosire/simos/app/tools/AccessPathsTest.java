@@ -51,12 +51,12 @@ class AccessPathsTest {
 
   @Test
   void sdPathsAreKindThenId() {
-    assertThat(ToolSupport.resourceSd("nation", "FRA").fullId()).isEqualTo("sd:nation/FRA");
-    assertThat(ToolSupport.resourceSd("army", "a1").fullId()).isEqualTo("sd:army/a1");
-    assertThat(ToolSupport.resourceSd("decision-maker", "dm-a").fullId())
+    assertThat(ToolSupport.resourceGa("nation", "FRA").fullId()).isEqualTo("ga:nation/FRA");
+    assertThat(ToolSupport.resourceGa("army", "a1").fullId()).isEqualTo("ga:army/a1");
+    assertThat(ToolSupport.resourceGa("decision-maker", "dm-a").fullId())
         .as("kind 本身可含连字符（spec §3.3 的 decision-maker）")
-        .isEqualTo("sd:decision-maker/dm-a");
-    assertThat(ToolSupport.resourceSd("combat", "c1").fullId()).isEqualTo("sd:combat/c1");
+        .isEqualTo("ga:decision-maker/dm-a");
+    assertThat(ToolSupport.resourceGa("combat", "c1").fullId()).isEqualTo("ga:combat/c1");
   }
 
   /**

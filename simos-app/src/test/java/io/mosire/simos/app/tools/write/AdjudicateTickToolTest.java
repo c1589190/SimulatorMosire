@@ -1235,7 +1235,7 @@ class AdjudicateTickToolTest {
                 ToolSupport.MAP_NAMESPACE, ResourceScope.unlimited(),
                 ToolSupport.SOCIAL_NAMESPACE, ResourceScope.unlimited(),
                 ToolSupport.UNIT_NAMESPACE, ResourceScope.unlimited(),
-                ToolSupport.SD_NAMESPACE, ResourceScope.unlimited()));
+                ToolSupport.GA_NAMESPACE, ResourceScope.unlimited()));
     AgentPermissionSet permissions =
         new AgentPermissionSet(
             AccessToken.DEFAULT,

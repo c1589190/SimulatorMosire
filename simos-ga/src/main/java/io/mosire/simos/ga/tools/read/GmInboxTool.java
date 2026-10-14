@@ -89,7 +89,7 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
   public static final int MAX_LIMIT = 200;
 
   private static final ResourceManifest SD_READ =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   /** 工具面事件的发射通道（分类 = {@link GaLog#tool()}，来源 = {@link GaLogSource#GA_TOOL_CALL}）。 */
   private static final LogChannel TOOL = EventLog.channel(GaLog.tool());
@@ -148,7 +148,7 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
   public ToolResult execute(ToolContext context) {
     try {
       ToolResources.requireAll(
-          context, Operation.READ, List.of(ResourceId.of(ToolResources.SD_NAMESPACE, "*")));
+          context, Operation.READ, List.of(ResourceId.of(ToolResources.GA_NAMESPACE, "*")));
       Map<String, Object> args = context.arguments();
       Long sinceTick = ToolSchema.optionalLong(args, "sinceTick");
       if (sinceTick != null && sinceTick < 0L) {

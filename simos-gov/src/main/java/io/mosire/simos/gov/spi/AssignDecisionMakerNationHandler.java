@@ -75,7 +75,7 @@ public final class AssignDecisionMakerNationHandler implements CommandHandler, C
     DecisionMakerId id = DecisionMakerId.parse(GovPayloads.requireText(payload, "decisionMakerId"));
     // ★ 路径不含命名空间：CommandTargets 的默认实现按**命令类型第一段**取命名空间 ⇒ 本命令写的是
     //   gov:nation-affiliation/<决策人 id>（归属表在 gov 切片里，目标就是"这个决策人的那一行"）。
-    return List.of(ResourcePaths.sd(TARGET_KIND, id.value()));
+    return List.of(ResourcePaths.ga(TARGET_KIND, id.value()));
   }
 
   @Override

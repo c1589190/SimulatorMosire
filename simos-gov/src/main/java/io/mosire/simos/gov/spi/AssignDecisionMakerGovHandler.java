@@ -69,7 +69,7 @@ public final class AssignDecisionMakerGovHandler implements CommandHandler, Comm
   public List<String> targetPaths(String mapId, String payloadJson) {
     JsonNode payload = GovPayloads.parse(payloadJson);
     DecisionMakerId id = DecisionMakerId.parse(GovPayloads.requireText(payload, "decisionMakerId"));
-    return List.of(ResourcePaths.sd(TARGET_KIND, id.value()));
+    return List.of(ResourcePaths.ga(TARGET_KIND, id.value()));
   }
 
   @Override

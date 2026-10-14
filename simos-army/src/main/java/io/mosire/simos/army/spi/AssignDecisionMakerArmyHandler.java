@@ -76,7 +76,7 @@ public final class AssignDecisionMakerArmyHandler implements CommandHandler, Com
         DecisionMakerId.parse(ArmyPayloads.requireText(payload, "decisionMakerId"));
     // ★ 路径不含命名空间：CommandTargets 的默认实现按**命令类型第一段**取命名空间 ⇒ 本命令写的是
     //   army:army-affiliation/<决策人 id>。
-    return List.of(ResourcePaths.sd(TARGET_KIND, id.value()));
+    return List.of(ResourcePaths.ga(TARGET_KIND, id.value()));
   }
 
   @Override

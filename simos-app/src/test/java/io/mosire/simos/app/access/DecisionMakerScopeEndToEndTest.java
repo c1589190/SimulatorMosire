@@ -463,7 +463,7 @@ class DecisionMakerScopeEndToEndTest {
         .sensitiveAllowed(true)
         .resourceScopes(
             base.resourceScopes()
-                .withNamespace(ToolSupport.SD_NAMESPACE, ResourceScope.of(decisionDomain)))
+                .withNamespace(ToolSupport.GA_NAMESPACE, ResourceScope.of(decisionDomain)))
         .build();
   }
 
@@ -519,7 +519,7 @@ class DecisionMakerScopeEndToEndTest {
       AgentTool tool = shell.toolRegistry().find(name).orElseThrow();
       assertThat(tool.resources().namespaces())
           .as("%s 只碰 sd（不是三命名空间粗声明——那样受限调用者会整调被拒）", name)
-          .containsExactly(ToolSupport.SD_NAMESPACE);
+          .containsExactly(ToolSupport.GA_NAMESPACE);
 
       ToolResult result = factory.execute(shell.toolRegistry(), name, withoutSdScope());
       assertThat(result.success()).as("%s：未表态 sd ⇒ 不得写（fail-closed）", name).isFalse();
@@ -618,7 +618,7 @@ class DecisionMakerScopeEndToEndTest {
                 ToolSupport.MAP_NAMESPACE, ResourceScope.unlimited(),
                 ToolSupport.SOCIAL_NAMESPACE, ResourceScope.unlimited(),
                 ToolSupport.UNIT_NAMESPACE, ResourceScope.unlimited(),
-                ToolSupport.SD_NAMESPACE, ResourceScope.unlimited()));
+                ToolSupport.GA_NAMESPACE, ResourceScope.unlimited()));
     AgentPermissionSet permissions =
         new AgentPermissionSet(
             AccessToken.DEFAULT,

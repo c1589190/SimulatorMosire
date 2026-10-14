@@ -71,7 +71,7 @@ public final class RegionClearDataTool implements SimosTool {
               ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.ECONOMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolSupport.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /** 与 {@link #CLEAR_WRITE} 同源的逐命名空间粗断言（顺序 = 批内命令命名空间序：social → actor → economy → sd）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
@@ -79,7 +79,7 @@ public final class RegionClearDataTool implements SimosTool {
           ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.ACTOR_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.ECONOMY_NAMESPACE, "*"),
-          ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
+          ResourceId.of(ToolSupport.GA_NAMESPACE, "*"));
 
   private final CoreSimos core;
   private final QueryService query;

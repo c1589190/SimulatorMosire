@@ -69,7 +69,7 @@ public final class ReopenPacketTool implements SimosTool {
   public static final String NAME = "simos.ga.packet.reopen";
 
   private static final ResourceManifest SD_WRITE =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private final ToolWritePort writes;
   private final ToolReadPort reads;
@@ -169,7 +169,7 @@ public final class ReopenPacketTool implements SimosTool {
       ToolResources.requireAll(
           context,
           Operation.WRITE,
-          List.of(ToolResources.resourceSd(identity.decisionPacketKind(), proposerId.value())));
+          List.of(ToolResources.resourceGa(identity.decisionPacketKind(), proposerId.value())));
 
       // ★★ 硬防线（不变量 I3）之一：GM 已裁决 ⇒ 绝不允许回到 DRAFT（理由见类注）。
       if (packet.decidedBy().isPresent()) {

@@ -170,7 +170,7 @@ public final class AdjudicateTickTool implements SimosTool {
               ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolSupport.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /**
    * 范围函数注册表（无状态；与 {@code Shell} 的 {@code DecisionCallerFactory} 用**同一个** {@code defaults()} 构造器）。
@@ -188,7 +188,7 @@ public final class AdjudicateTickTool implements SimosTool {
               ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolSupport.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   private final CoreSimos core;
   private final String initiator;
@@ -320,7 +320,7 @@ public final class AdjudicateTickTool implements SimosTool {
   /** 本工具要写的资源：`map:<mapId>` / `unit:*` / `social:*`（三命名空间粗断言）+ `sd:decision-maker`。 */
   private List<ResourceId> writeResources() {
     List<ResourceId> ids = new ArrayList<>(ToolSupport.allWriteResources(mapId));
-    ids.add(ResourceId.of(ToolSupport.SD_NAMESPACE, DecisionCallerFactory.DECISION_MAKER_KIND));
+    ids.add(ResourceId.of(ToolSupport.GA_NAMESPACE, DecisionCallerFactory.DECISION_MAKER_KIND));
     return List.copyOf(ids);
   }
 

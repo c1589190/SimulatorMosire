@@ -32,7 +32,8 @@ class GmPermissionGroupTest {
 
   /**
    * GM 资源可达面的逐命名空间表态清单（与 {@code Shell#gmPermissionSet} 实际表态的命名空间同源，见 {@code ToolSupport} 的 manifest
-   * 常量）：map / social / unit / sd / economy（R2a 起）/ actor（S1 阶段 2 起）/ army（D1 起）。
+   * 常量）：map / social / unit / ga（2026-10-14 批次 F 由 sd 改名）/ economy（R2a 起）/ actor（S1 阶段 2 起）/
+   * army（D1 起）。
    *
    * <p>★★ <b>2026-10-14 AgentLib Docs/Workspace 接入 +3</b>：{@code workspaces} / {@code docs} /
    * {@code docs-edit} ⇒ <b>8 → 11</b>（实测：{@code
@@ -47,7 +48,7 @@ class GmPermissionGroupTest {
           "map",
           "social",
           "unit",
-          "sd",
+          "ga",
           "economy",
           "actor",
           "army",

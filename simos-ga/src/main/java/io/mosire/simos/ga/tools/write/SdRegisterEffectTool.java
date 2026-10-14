@@ -23,12 +23,11 @@ import java.util.Set;
  * 整个弃用！」；{@code effects} 表搬进 {@code GaState}，命令必须与切片同名——见 {@code GaCodec} 类注）。★ 类名保持 {@code
  * SdRegisterEffectTool}（工具名不是命令类型，改名它要连带动 app 的装配面与用例；留待批次 3e 随 sd 空壳一起正名）。
  *
- * <p>★★ <b>已知债（如实记，与 3c §E.1 / 3d-1 §D.1 同族）</b>：本工具的资源声明仍写 {@code sd} 命名空间 （{@link #resources()} =
- * {@code SD_NAMESPACE_WRITE}、{@link #writeResources} = {@code sdNamespaceWriteResources()}）， 而这条命令的
- * handler 自本批起只产 {@code GaChangeSet}（**实际写 ga 命名空间**）。★ 运行时影响为零：本工具只在 GM 桶， GM 侧 {@code sd} 与
- * {@code ga} 的写表态**相同**（{@code Shell#gmPermissionSet} 对逐命名空间 unlimited）， 且断言只决定"放不放行"、不决定命令落哪个切片；DM
- * 侧两条命令本就不可用。★ 不本批正名的理由：新增 {@code GA_NAMESPACE} 要动 {@code simos-ga-spi/ToolResources}（本批禁碰），且"资源声明面
- * + 断言面"要一起改（3d-1 §D.1 记过： 两者不同步时失效方向是"该拒的放行"）⇒ **留给批次 5（gov 命令面）一并收口**。
+ * <p>★★ <b>已知债已还（2026-10-14 批次 F）</b>：本工具的资源声明原写 {@code sd} 命名空间（与 3c §E.1 / 3d-1 §D.1 同族）， 而这条命令的
+ * handler 自 3b-4 起只产 {@code GaChangeSet}（**实际写 ga 命名空间**）—— 批次 F 把资源命名空间 {@code sd} → {@code ga}
+ * 正名（{@link #resources()} = {@code GA_NAMESPACE_WRITE} / {@link #writeResources} = {@code
+ * gaNamespaceWriteResources()}，两处同源、一起改），声明面与断言面**同时**落到 {@code ga}， 该债不再存在（3d-1 §D.1
+ * 记过：两者不同步时失效方向是"该拒的放行"）。
  */
 public final class SdRegisterEffectTool extends AbstractNarrowWriteTool implements SimosTool {
 
@@ -56,13 +55,13 @@ public final class SdRegisterEffectTool extends AbstractNarrowWriteTool implemen
 
   @Override
   public ResourceManifest resources() {
-    return SD_NAMESPACE_WRITE;
+    return GA_NAMESPACE_WRITE;
   }
 
-  /** ★ P0 资源对齐（**本批起为已知债**，见类注）：写断言仍取 {@code sd:*}；本命令实际写 ga 命名空间（GM 侧 unlimited ⇒ 放行结果不变）。 */
+  /** ★ P0 资源对齐（**2026-10-14 批次 F 已还债**，见类注）：写断言取 {@code ga:*}；与声明面同源，本命令实际写 ga 命名空间。 */
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
-    return sdNamespaceWriteResources();
+    return gaNamespaceWriteResources();
   }
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */

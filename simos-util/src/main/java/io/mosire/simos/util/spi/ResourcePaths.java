@@ -86,8 +86,11 @@ public final class ResourcePaths {
     return q + COORD_SEPARATOR + r;
   }
 
-  /** sd 域：{@code <kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
-  public static String sd(String kind, String id) {
+  /**
+   * ga 域：{@code <kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3；2026-10-14 批次
+   * F 由 {@code sd} 改名）。
+   */
+  public static String ga(String kind, String id) {
     Objects.requireNonNull(kind, "kind");
     Objects.requireNonNull(id, "id");
     return kind + "/" + id;

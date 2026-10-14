@@ -63,7 +63,7 @@ public final class DropCallTool implements SimosTool {
   public static final String NAME = "simos.ga.packet.drop";
 
   private static final ResourceManifest SD_WRITE =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private final ToolWritePort writes;
   private final ToolReadPort reads;
@@ -171,7 +171,7 @@ public final class DropCallTool implements SimosTool {
       ToolResources.requireAll(
           context,
           Operation.WRITE,
-          List.of(ToolResources.resourceSd(identity.decisionPacketKind(), proposerId.value())));
+          List.of(ToolResources.resourceGa(identity.decisionPacketKind(), proposerId.value())));
       FormattedCall dropped = null;
       List<FormattedCall> kept = new ArrayList<>(existing.calls().size());
       for (FormattedCall call : existing.calls()) {

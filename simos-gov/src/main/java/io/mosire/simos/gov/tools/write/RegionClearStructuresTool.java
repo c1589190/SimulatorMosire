@@ -75,12 +75,12 @@ public final class RegionClearStructuresTool implements SimosTool {
           Map.of(
               ToolResources.MAP_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolResources.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /** 与 {@link #CLEAR_STRUCTURES_WRITE} 同源的逐命名空间粗断言（顺序 = 批内命名空间序：sd → unit → map）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
       List.of(
-          ResourceId.of(ToolResources.SD_NAMESPACE, "*"),
+          ResourceId.of(ToolResources.GA_NAMESPACE, "*"),
           ResourceId.of(ToolResources.UNIT_NAMESPACE, "*"),
           ResourceId.of(ToolResources.MAP_NAMESPACE, "*"));
 

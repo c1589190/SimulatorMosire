@@ -120,7 +120,7 @@ public final class VoidAdjudicationTool implements SimosTool {
     // 由 core.submitRestore 落盘，不按资源谓词逐条判。
     // ★ 2026-10-12 批次 3b-2：本工具改写的 INFO 覆盖层搬进了 ga，但**这条声明一字未改**——它是"调用者必须表态的粗围栏"，
     //   改它等于改权限面（未表态 sd 的调用者会被拒/放行的方向反过来）；本工具只在 GM 桶（GM 面无限制）⇒ 零可观测差异。
-    return ResourceManifest.of(ToolSupport.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
+    return ResourceManifest.of(ToolSupport.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
   }
 
   @Override

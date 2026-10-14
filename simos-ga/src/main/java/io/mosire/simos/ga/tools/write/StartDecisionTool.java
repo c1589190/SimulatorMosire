@@ -44,7 +44,7 @@ public final class StartDecisionTool extends AbstractNarrowWriteTool implements 
 
   @Override
   public ResourceManifest resources() {
-    return SD_NAMESPACE_WRITE;
+    return GA_NAMESPACE_WRITE;
   }
 
   /**
@@ -53,7 +53,7 @@ public final class StartDecisionTool extends AbstractNarrowWriteTool implements 
    */
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
-    return sdNamespaceWriteResources();
+    return gaNamespaceWriteResources();
   }
 
   /** ★ 「这个工具能被谁用」的唯一拼写点（设计书 §4.4 / 不变量 I-G3）；装配期与两桶逐条比对，不一致当场抛。 */

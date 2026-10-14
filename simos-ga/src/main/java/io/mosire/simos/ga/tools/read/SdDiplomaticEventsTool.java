@@ -40,7 +40,7 @@ public final class SdDiplomaticEventsTool implements SimosTool {
 
   /** 本工具读 sd 切片（世界级共享文本，不做逐格视野过滤）。 */
   private static final ResourceManifest SD_READ =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final ToolReadPort reads;
   private final GaToolViews views;

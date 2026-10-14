@@ -1604,7 +1604,8 @@ public final class SimosToolSource implements ToolSource {
     built.add(new GmMergedPlanApplyTool(gaReads, initiator, gaEffects));
     built.add(new GmPacketExecuteTool(gaReads, initiator, gaEffects));
     // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件的 GM 窄写。
-    //   **只在 GM 桶**；工具名（simos.sd.*）不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 sd。
+    //   **只在 GM 桶**；工具名（下面 5 条 = 3 条 ga.* + 2 条 simos.sd.*）不是命令类型 ⇒ 不进
+    //   catalog/PAYLOAD_HINTS；写面只声明 ga（2026-10-14 批次 F 由 sd 改名；此处原文写「工具名（simos.sd.*）」，与实况失真，一并纠正）。
     //   决策人侧另有同名命令型的窄工具（见 addDecisionAgentWrites）。──
     built.add(new SdSetDiplomaticRelationTool(gaWrites, gaIdentity, mapId));
     built.add(new SdRecordDiplomaticEventTool(gaWrites, gaIdentity, mapId));

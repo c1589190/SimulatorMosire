@@ -93,10 +93,10 @@ public final class RunDecisionMakersTool implements SimosTool {
 
   /** 本工具只碰 sd 命名空间；GM 侧 sd 表态 unlimited。 */
   private static final ResourceManifest SD_WRITE =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private static final List<ResourceId> WRITE_RESOURCES =
-      List.of(ResourceId.of(ToolResources.SD_NAMESPACE, "*"));
+      List.of(ResourceId.of(ToolResources.GA_NAMESPACE, "*"));
 
   /** preview 里 {@code due} 的固定说明（只读展示位，不参与选择）。 */
   private static final String DUE_NOTE =

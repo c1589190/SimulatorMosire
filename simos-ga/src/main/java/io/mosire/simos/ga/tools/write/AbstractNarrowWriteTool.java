@@ -123,18 +123,18 @@ public abstract class AbstractNarrowWriteTool implements AgentTool {
   }
 
   /**
-   * **GM 专用 sd 窄写**共用的资源声明（P0 对齐）：这些工具各自钉死一条 {@code sd.*} 命令，命令 handler 只产 {@code SdChangeSet} ⇒
-   * 实际只写 sd 命名空间，不能再沿用基类的三命名空间粗断言。
+   * **GM 专用 ga 窄写**共用的资源声明（P0 对齐）：这些工具各自钉死一条 {@code sd.*} 命令，命令 handler 只产 {@code SdChangeSet} ⇒
+   * 实际只写 ga 命名空间（2026-10-14 批次 F 由 {@code sd} 改名），不能再沿用基类的三命名空间粗断言。
    *
    * <p>★ 写操作取 {@link ResourcePolicy#UNRESTRICTED}（不是 {@code IssueDirective}/{@code SubmitVerdict}
-   * 那两条决策窄写的 {@code READ_ONLY}）：它们只在 GM 桶，调用者的 sd 表态是 unlimited；取只读会把"未表态 sd 的系统身份"整调拒掉。
+   * 那两条决策窄写的 {@code READ_ONLY}）：它们只在 GM 桶，调用者的 ga 表态是 unlimited；取只读会把"未表态 ga 的系统身份"整调拒掉。
    */
-  protected static final ResourceManifest SD_NAMESPACE_WRITE =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+  protected static final ResourceManifest GA_NAMESPACE_WRITE =
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
-  /** GM 专用 sd 窄写的写资源断言（{@code sd:*}；GM 侧 sd 是 unlimited）。 */
-  protected static List<ResourceId> sdNamespaceWriteResources() {
-    return List.of(ResourceId.of(ToolResources.SD_NAMESPACE, "*"));
+  /** GM 专用 ga 窄写的写资源断言（{@code ga:*}；GM 侧 ga 是 unlimited）。 */
+  protected static List<ResourceId> gaNamespaceWriteResources() {
+    return List.of(ResourceId.of(ToolResources.GA_NAMESPACE, "*"));
   }
 
   /**
@@ -162,9 +162,9 @@ public abstract class AbstractNarrowWriteTool implements AgentTool {
   protected final List<ResourceId> decisionWriteResources(ToolContext context) {
     return identity
         .decisionMakerIdOf(context.identity())
-        .map(id -> List.of(ToolResources.resourceSd(identity.decisionMakerKind(), id)))
+        .map(id -> List.of(ToolResources.resourceGa(identity.decisionMakerKind(), id)))
         .orElseGet(
-            () -> List.of(ResourceId.of(ToolResources.SD_NAMESPACE, identity.decisionMakerKind())));
+            () -> List.of(ResourceId.of(ToolResources.GA_NAMESPACE, identity.decisionMakerKind())));
   }
 
   /**

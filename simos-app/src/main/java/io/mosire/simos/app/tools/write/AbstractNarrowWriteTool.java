@@ -95,39 +95,39 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
   }
 
   /**
-   * **GM 专用 sd 窄写**共用的资源声明（P0 对齐）：这些工具各自钉死一条 {@code sd.*} 命令，命令 handler 只产 {@code SdChangeSet} ⇒
-   * 实际只写 sd 命名空间，不能再沿用基类的三命名空间粗断言。
+   * **GM 专用 ga 窄写**共用的资源声明（P0 对齐）：这些工具各自钉死一条 {@code sd.*} 命令，命令 handler 只产 {@code SdChangeSet} ⇒
+   * 实际只写 ga 命名空间（2026-10-14 批次 F 由 {@code sd} 改名），不能再沿用基类的三命名空间粗断言。
    *
    * <p>★ 写操作取 {@link ResourcePolicy#UNRESTRICTED}（不是 {@code IssueDirective}/{@code SubmitVerdict}
-   * 那两条决策窄写的 {@code READ_ONLY}）：它们只在 GM 桶，调用者的 sd 表态是 unlimited；取只读会把"未表态 sd 的系统身份"整调拒掉（与 {@code
+   * 那两条决策窄写的 {@code READ_ONLY}）：它们只在 GM 桶，调用者的 ga 表态是 unlimited；取只读会把"未表态 ga 的系统身份"整调拒掉（与 {@code
    * WorldgenInitializeTool} 的取舍同一条）。
    */
-  protected static final ResourceManifest SD_NAMESPACE_WRITE =
-      ResourceManifest.of(ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+  protected static final ResourceManifest GA_NAMESPACE_WRITE =
+      ResourceManifest.of(ToolSupport.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   /**
-   * 同 {@link #SD_NAMESPACE_WRITE}，用于 {@code actor.AdjustAccounts}（handler 只产 {@code
+   * 同 {@link #GA_NAMESPACE_WRITE}，用于 {@code actor.AdjustAccounts}（handler 只产 {@code
    * ActorChangeSet}）。
    */
   protected static final ResourceManifest ACTOR_NAMESPACE_WRITE =
       ResourceManifest.of(ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   /**
-   * 同 {@link #SD_NAMESPACE_WRITE}，用于 {@code social.UpdateCity}（handler 只产 {@code SocialChangeSet}）。
+   * 同 {@link #GA_NAMESPACE_WRITE}，用于 {@code social.UpdateCity}（handler 只产 {@code SocialChangeSet}）。
    */
   protected static final ResourceManifest SOCIAL_NAMESPACE_WRITE =
       ResourceManifest.of(ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   /**
-   * 同 {@link #SD_NAMESPACE_WRITE}，用于 {@code army.RecordCombat}（阶段 D1：handler 只产 {@code
+   * 同 {@link #GA_NAMESPACE_WRITE}，用于 {@code army.RecordCombat}（阶段 D1：handler 只产 {@code
    * ArmyChangeSet}）。
    */
   protected static final ResourceManifest ARMY_NAMESPACE_WRITE =
       ResourceManifest.of(ToolSupport.ARMY_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
-  /** GM 专用 sd 窄写的写资源断言（{@code sd:*}；GM 侧 sd 是 unlimited）。 */
-  protected static List<ResourceId> sdNamespaceWriteResources() {
-    return List.of(ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
+  /** GM 专用 ga 窄写的写资源断言（{@code ga:*}；GM 侧 ga 是 unlimited）。 */
+  protected static List<ResourceId> gaNamespaceWriteResources() {
+    return List.of(ResourceId.of(ToolSupport.GA_NAMESPACE, "*"));
   }
 
   /** GM 专用 actor 窄写的写资源断言（{@code actor:*}；GM 侧 actor 是 unlimited）。 */
@@ -178,8 +178,8 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
    */
   protected final List<ResourceId> decisionWriteResources(ToolContext context) {
     return DecisionCallerFactory.decisionMakerIdOf(context.identity())
-        .map(id -> List.of(ToolSupport.resourceSd(DecisionCallerFactory.DECISION_MAKER_KIND, id)))
-        .orElseGet(() -> List.of(ResourceId.of(ToolSupport.SD_NAMESPACE, DECISION_MAKER_ROOT)));
+        .map(id -> List.of(ToolSupport.resourceGa(DecisionCallerFactory.DECISION_MAKER_KIND, id)))
+        .orElseGet(() -> List.of(ResourceId.of(ToolSupport.GA_NAMESPACE, DECISION_MAKER_ROOT)));
   }
 
   /** 决策人集合的根路径（{@code sd:decision-maker}）——GM 那一支的资源，见 {@link #decisionWriteResources}。 */

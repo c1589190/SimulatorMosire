@@ -44,7 +44,7 @@ public final class SdDirectivesTool implements SimosTool, GmOnlyRead {
 
   /** 本工具的资源声明：sd 只读（与 {@code DecisionDocsTool} 的 sd 只读同口径）。 */
   private static final ResourceManifest SD_READ =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final GaToolQueries queries;
 

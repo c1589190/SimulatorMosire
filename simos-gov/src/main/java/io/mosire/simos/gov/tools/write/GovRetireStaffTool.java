@@ -67,7 +67,7 @@ public final class GovRetireStaffTool implements SimosTool {
               ToolResources.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolResources.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolResources.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /** 与 {@link #RETIRE_WRITE} 同源的逐命名空间粗断言。 */
   private static final List<ResourceId> WRITE_RESOURCES =
@@ -75,7 +75,7 @@ public final class GovRetireStaffTool implements SimosTool {
           ResourceId.of(ToolResources.UNIT_NAMESPACE, "*"),
           ResourceId.of(ToolResources.ACTOR_NAMESPACE, "*"),
           ResourceId.of(ToolResources.SOCIAL_NAMESPACE, "*"),
-          ResourceId.of(ToolResources.SD_NAMESPACE, "*"));
+          ResourceId.of(ToolResources.GA_NAMESPACE, "*"));
 
   private final GovToolSupport support;
 

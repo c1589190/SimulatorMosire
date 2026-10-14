@@ -55,7 +55,7 @@ public final class UpsertMergedEffectPlanHandler implements CommandHandler, Comm
   public List<String> targetPaths(String mapId, String payloadJson) {
     JsonNode payload = GaPayloads.parse(payloadJson);
     MergedEffectPlanId id = MergedEffectPlanId.parse(GaPayloads.requireText(payload, "id"));
-    return List.of(ResourcePaths.sd("merged-plan", id.value()));
+    return List.of(ResourcePaths.ga("merged-plan", id.value()));
   }
 
   @Override

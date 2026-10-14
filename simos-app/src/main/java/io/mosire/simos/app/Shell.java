@@ -1691,7 +1691,7 @@ public final class Shell implements AutoCloseable {
                     ToolSupport.MAP_NAMESPACE, ResourceScope.unlimited(),
                     ToolSupport.SOCIAL_NAMESPACE, ResourceScope.unlimited(),
                     ToolSupport.UNIT_NAMESPACE, ResourceScope.unlimited(),
-                    ToolSupport.SD_NAMESPACE, ResourceScope.unlimited(),
+                    ToolSupport.GA_NAMESPACE, ResourceScope.unlimited(),
                     // ★ R2a：第六个命名空间（economy:<q>_<r>）——不在这里表态，GM 面就落到"未表态"分支。
                     ToolSupport.ECONOMY_NAMESPACE, ResourceScope.unlimited(),
                     // ★ S1 阶段 2：第七个命名空间（actor:<mapId>[:…]）——同款，不表态就回落"未表态"分支。

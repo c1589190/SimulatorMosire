@@ -66,11 +66,11 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
    */
   public static final String INSTANCE_ID_PREFIX = DecisionAgentRunner.CONVERSATION_ID_PREFIX;
 
-  /** {@code sd} 域里"决策人"这一类资源（spec §3.3：{@code sd: decision-maker/<id> · nation/<id> · …}）。 */
+  /** {@code ga} 域里"决策人"这一类资源（spec §3.3：{@code ga:decision-maker/<id> · nation/<id> · …}）。 */
   public static final String DECISION_MAKER_KIND = "decision-maker";
 
   /**
-   * {@code sd} 域里"决策包"这一类资源（D2）：{@code sd:decision-packet/<决策人 id>/…}——**按决策人归前缀**， 不是按 packet
+   * {@code ga} 域里"决策包"这一类资源（D2）：{@code ga:decision-packet/<决策人 id>/…}——**按决策人归前缀**， 不是按 packet
    * id。决策人只能写/读自己的 packet 前缀（propose/submit/intent/my 的目标声明都是 {@code
    * decision-packet/<proposerId>}）。
    */
@@ -230,7 +230,7 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
    * accessLimit} **直接覆盖**范围函数的结果，就是把 GM 的配权读成了"绝对指定"——那正是被取代的 {@code viewScope} 的语义，且**不会报错**：只看"DM
    * 能看见什么"的用例可能照样绿（限制恰好比范围窄时），只有"限制比范围**宽**"的用例才分得开。
    *
-   * <p>★ **{@code sd} 命名空间仍取决策人自己的决策域**（{@link #selfDecisionScope}）：它是**机制**不是配权，GM 配的 {@code sd}
+   * <p>★ **{@code ga} 命名空间仍取决策人自己的决策域**（{@link #selfDecisionScope}）：它是**机制**不是配权，GM 配的 {@code ga}
    * 前缀会与之求交（只能更窄），不会被顶掉。
    *
    * <p>★ **翻译点在 app 层**（spec §六.1）：sd 只存 {@code AccessLimit}（纯字符串），AgentLib 的 {@code ResourceScope}
@@ -249,7 +249,7 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
     ResourceScopeMap computed =
         scopeFunctions
             .scopesFor(dm, state, mapId)
-            .withNamespace(ToolSupport.SD_NAMESPACE, selfDecisionScope(dm));
+            .withNamespace(ToolSupport.GA_NAMESPACE, selfDecisionScope(dm));
     return computed.narrowTo(toResourceScopes(dm.accessLimit()));
   }
 
@@ -379,7 +379,7 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
   }
 
   /**
-   * ★★ **决策人的 sd 域 = 它自己的决策域**（{@code sd:decision-maker/<自己的 id>}，T10）。
+   * ★★ **决策人的 ga 域 = 它自己的决策域**（{@code ga:decision-maker/<自己的 id>}，T10）。
    *
    * <p>**为什么必须有这一条**：两条决策窄写（{@code ga.IssueDirective} / {@code ga.SubmitVerdict}）是
    * **决策行为**，不是"直接改地图/单位数据"（用户 2026-09-22 原话：「决策人不能直接改地图等数据」——下指令、交判决是它的**本职**， spec §2.2
@@ -392,20 +392,20 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
    * （要写的具体资源，从调用者身份推出）。两处必须同源——只改一处 = 要么整调被拒（旧形态），要么围栏形同虚设。
    */
   private static ResourceScope selfDecisionScope(DecisionMaker dm) {
-    // ★★ D2（2026-10-22 决策包计划）：第二条自指前缀 sd:decision-packet/<dm.id()>——决策人只能写/读**自己**的
-    //   packet 前缀（propose/submit/intent/my 的目标声明）。这是自指资源的第二段，不是放宽到全 sd。
+    // ★★ D2（2026-10-22 决策包计划）：第二条自指前缀 ga:decision-packet/<dm.id()>——决策人只能写/读**自己**的
+    //   packet 前缀（propose/submit/intent/my 的目标声明）。这是自指资源的第二段，不是放宽到全 ga。
     return ResourceScope.of(
         decisionDomainOf(dm.id().value()), decisionPacketDomainOf(dm.id().value()));
   }
 
   /** 决策人自己的决策域路径（{@code decision-maker/<id>}）——**唯一拼写点**（工具侧也从这里取）。 */
   public static String decisionDomainOf(String decisionMakerId) {
-    return ToolSupport.resourceSd(DECISION_MAKER_KIND, decisionMakerId).path();
+    return ToolSupport.resourceGa(DECISION_MAKER_KIND, decisionMakerId).path();
   }
 
   /** 决策人自己的决策包前缀（{@code decision-packet/<id>}）——**唯一拼写点**（D2）。 */
   public static String decisionPacketDomainOf(String decisionMakerId) {
-    return ToolSupport.resourceSd(DECISION_PACKET_KIND, decisionMakerId).path();
+    return ToolSupport.resourceGa(DECISION_PACKET_KIND, decisionMakerId).path();
   }
 
   /**

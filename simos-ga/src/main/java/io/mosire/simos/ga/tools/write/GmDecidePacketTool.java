@@ -58,7 +58,7 @@ public final class GmDecidePacketTool implements SimosTool {
   public static final String MERGE = "MERGE";
 
   private static final ResourceManifest SD_WRITE =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private final ToolWritePort writes;
   private final ToolReadPort reads;
@@ -180,7 +180,7 @@ public final class GmDecidePacketTool implements SimosTool {
         return ToolResult.error("NOT_FOUND", "合并计划不存在: " + mergedPlanIdArg.orElseThrow());
       }
       ToolResources.requireAll(
-          context, Operation.WRITE, List.of(ResourceId.of(ToolResources.SD_NAMESPACE, "*")));
+          context, Operation.WRITE, List.of(ResourceId.of(ToolResources.GA_NAMESPACE, "*")));
       // ★ 命令 id 由窄写口的装配面生成并**回报**（见 ToolWritePort.Receipt）。
       ToolWritePort.Receipt receipt =
           writes.submitWithReceipt(

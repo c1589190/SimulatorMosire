@@ -46,7 +46,7 @@ public final class GmMergedPlanApplyTool implements SimosTool {
   public static final String NAME = "simos.gm.mergedPlan.apply";
 
   private static final ResourceManifest SD_WRITE =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private final ToolReadPort reads;
   private final String initiator;
@@ -103,7 +103,7 @@ public final class GmMergedPlanApplyTool implements SimosTool {
   public ToolResult execute(ToolContext context) {
     try {
       ToolResources.requireAll(
-          context, Operation.WRITE, List.of(ResourceId.of(ToolResources.SD_NAMESPACE, "*")));
+          context, Operation.WRITE, List.of(ResourceId.of(ToolResources.GA_NAMESPACE, "*")));
       Map<String, Object> args = context.arguments();
       String planId = ToolSchema.requiredText(args, "planId");
       Long expectedArg = ToolSchema.optionalLong(args, "expectedRevision");

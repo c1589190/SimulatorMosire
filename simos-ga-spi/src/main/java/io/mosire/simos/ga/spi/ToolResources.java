@@ -42,12 +42,13 @@ public final class ToolResources {
   public static final String UNIT_NAMESPACE = "unit";
 
   /**
-   * sd 域资源所属的命名空间（{@code sd.<kind>/<id>}）。
+   * ga 域资源所属的命名空间（{@code ga:<kind>/<id>}；2026-10-14 批次 F 由 {@code sd} 改名 —— 用户裁定「但凡和被取缔的 sd
+   * 模块有关的就改」，改后与地址族 {@code ga:} 同名、一处一致）。
    *
    * <p>★ 它存在的理由是**权限表态**：GM 组的可达面按命名空间逐条表态（app 侧 {@code Shell#gmPermissionSet}）—— 新命名空间不加进那份表态，GM
    * 面就会回落成"未表态"分支。
    */
-  public static final String SD_NAMESPACE = "sd";
+  public static final String GA_NAMESPACE = "ga";
 
   /**
    * 经济资源所属的命名空间（{@code economy:<q>_<r>}，与 {@code ResourcePaths#economy} 同源）。
@@ -222,9 +223,9 @@ public final class ToolResources {
     return ResourceId.of(SOCIAL_NAMESPACE, ResourcePaths.social(q, r));
   }
 
-  /** sd 资源：{@code sd:<kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
-  public static ResourceId resourceSd(String kind, String id) {
-    return ResourceId.of(SD_NAMESPACE, ResourcePaths.sd(kind, id));
+  /** ga 资源：{@code ga:<kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
+  public static ResourceId resourceGa(String kind, String id) {
+    return ResourceId.of(GA_NAMESPACE, ResourcePaths.ga(kind, id));
   }
 
   /**

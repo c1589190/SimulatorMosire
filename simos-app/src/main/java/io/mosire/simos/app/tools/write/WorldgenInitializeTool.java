@@ -226,7 +226,7 @@ public final class WorldgenInitializeTool implements SimosTool {
               ToolSupport.MAP_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.ECONOMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               // ★ H1：家户 actor（{@code actor.Seed}）—— 同 economy 的待遇（真写它，故 UNRESTRICTED）。
               ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED));
@@ -237,7 +237,7 @@ public final class WorldgenInitializeTool implements SimosTool {
           ResourceId.of(ToolSupport.MAP_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"),
-          ResourceId.of(ToolSupport.SD_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.GA_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.ECONOMY_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.ACTOR_NAMESPACE, "*"));
 

@@ -117,14 +117,14 @@ public final class LevyRegionTool implements SimosTool {
           Map.of(
               ToolResources.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolResources.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /** 与 {@link #LEVY_WRITE} 同源的逐命名空间粗断言（GM 三面 unlimited）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
       List.of(
           ResourceId.of(ToolResources.ACTOR_NAMESPACE, "*"),
           ResourceId.of(ToolResources.SOCIAL_NAMESPACE, "*"),
-          ResourceId.of(ToolResources.SD_NAMESPACE, "*"));
+          ResourceId.of(ToolResources.GA_NAMESPACE, "*"));
 
   private final ToolWritePort writes;
   private final ToolReadPort reads;

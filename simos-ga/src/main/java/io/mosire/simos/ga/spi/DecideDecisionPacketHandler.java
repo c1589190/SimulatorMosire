@@ -73,7 +73,7 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
   public List<String> targetPaths(String mapId, String payloadJson) {
     JsonNode payload = GaPayloads.parse(payloadJson);
     DecisionPacketId id = DecisionPacketId.parse(GaPayloads.requireText(payload, "id"));
-    return List.of(ResourcePaths.sd("decision-packet", id.value()));
+    return List.of(ResourcePaths.ga("decision-packet", id.value()));
   }
 
   @Override

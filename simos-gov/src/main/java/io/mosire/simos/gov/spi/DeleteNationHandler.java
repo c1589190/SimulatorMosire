@@ -84,7 +84,7 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
     // ★ 路径不含命名空间：{@code CommandTargets} 的默认实现按**命令类型第一段**取命名空间 ⇒ 本命令是
     //   `gov:nation/<id>`（改名前是 `sd:nation/<id>`）。{@link ResourcePaths#sd} 只是"<kind>/<id>"这条路径语法的
     //   助手（util 侧不含任何领域命名空间，也不许我在这里加一个 —— 见批次 3c 的文件所有权）。
-    return List.of(ResourcePaths.sd("nation", id.value()));
+    return List.of(ResourcePaths.ga("nation", id.value()));
   }
 
   @Override

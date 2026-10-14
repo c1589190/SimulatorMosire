@@ -47,7 +47,7 @@ import java.util.OptionalLong;
  *
  * <p>★ {@link CommandTargets#targetPaths} 返回 {@code decision-packet/<proposerId>}——<b>不是</b> packet
  * id：决策人的自指前缀按人拼、tick 不同也同前缀（{@code DecisionCallerFactory.selfDecisionScope} 的第二条前缀）。 ★
- * 路径串<b>逐字保留</b>（{@code ResourcePaths.sd(kind,id)} 只产 {@code <kind>/<id>}，命名空间由调用方给）——
+ * 路径串<b>逐字保留</b>（{@code ResourcePaths.ga(kind,id)} 只产 {@code <kind>/<id>}，命名空间由调用方给）——
  * 改一个字符就是改权限围栏。
  *
  * <p>★ <b>本 handler 不打 {@code DmUsableCommand}</b>（自 {@code sd.*} 时代起就在 DM 面<b>外</b>）：反默认口径下 "不打标记"
@@ -71,7 +71,7 @@ public final class UpsertDecisionPacketHandler implements CommandHandler, Comman
 
   /** 决策人自己的决策包前缀路径（{@code decision-packet/<proposerId>}）。 */
   static String decisionPacketPath(String proposerId) {
-    return ResourcePaths.sd("decision-packet", proposerId);
+    return ResourcePaths.ga("decision-packet", proposerId);
   }
 
   @Override

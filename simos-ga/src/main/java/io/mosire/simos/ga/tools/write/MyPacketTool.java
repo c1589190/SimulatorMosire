@@ -48,7 +48,7 @@ public final class MyPacketTool implements SimosTool {
   public static final String NAME = "simos.ga.packet.my";
 
   private static final ResourceManifest SD_READ =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final ToolReadPort reads;
   private final GaToolIdentity identity;
@@ -112,7 +112,7 @@ public final class MyPacketTool implements SimosTool {
       ToolResources.requireAll(
           context,
           Operation.READ,
-          List.of(ToolResources.resourceSd(identity.decisionPacketKind(), proposerId.value())));
+          List.of(ToolResources.resourceGa(identity.decisionPacketKind(), proposerId.value())));
       DecisionPacketId packetId = PacketDraftSupport.packetIdValueOf(proposerId, tick);
       DecisionPacket packet = ga.decisionPackets().get(packetId);
       if (packet == null) {

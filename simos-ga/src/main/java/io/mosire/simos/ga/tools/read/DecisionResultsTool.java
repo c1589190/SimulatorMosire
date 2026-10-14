@@ -67,7 +67,7 @@ public final class DecisionResultsTool implements SimosTool {
 
   /** 本工具的资源声明：sd 只读（见类注的 fail-closed 理由）。 */
   private static final ResourceManifest SD_READ =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.READ_ONLY);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final GaToolQueries queries;
   private final GaToolIdentity identity;

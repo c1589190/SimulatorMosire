@@ -93,31 +93,23 @@ public final class ToolSupport {
   public static final String UNIT_NAMESPACE = "unit";
 
   /**
-   * 决策域资源所属的命名空间（{@code sd.<kind>/<id>}）。
+   * 决策域资源所属的命名空间（{@code ga:<kind>/<id>}；2026-10-14 批次 F 由 {@code sd} 改名）。
    *
    * <p>★ 它存在的理由是**权限表态**：GM 组的可达面按命名空间逐条表态（{@link io.mosire.simos.app.Shell#gmCaller()}），
    * 新命名空间不加进那份表态就会回落成"未表态"分支。
    *
-   * <p>★★ <b>2026-10-12 批次 3e：这个标识符<b>有意不改名</b>（如实记，属"与设计书不一致处"）</b>—— {@code simos-sd}
+   * <p>★★ <b>2026-10-14 批次 F：正名 {@code sd} → {@code ga}</b>（用户裁定「但凡和被取缔的 sd 模块有关的就改，正常语义不用」） ——
+   * 与地址族 {@code ga:} 同名、一处一致，且**不留别名**。此前它有意不改名（2026-10-12 批次 3e 起如实记为"与设计书不一致处"）： {@code simos-sd}
    * 模块已整模块退役、状态切片 {@code sd} 与 {@code SdCodec}／{@code SdSnapshot} 全部消失， 但**资源命名空间 {@code "sd"}**
-   * 是**权限声明面**的标识（字符串值本身），它与状态切片只是同名：
+   * 是**权限声明面**的标识（字符串值本身），它与状态切片只是同名；而正名要同时动 {@code simos-ga-spi} （{@code
+   * ToolResources.GA_NAMESPACE} 是公共常量）与 {@code simos-util}（{@code ResourcePaths#ga} 是路径助手），
+   * 两者当时都不在写权内 ⇒ 明排给后续批次。
    *
-   * <ul>
-   *   ★ 数值更新（2026-10-13 批次 4 权限收紧）：可嵌令 / 可入队 / 声明面 **66 → 18**；catalog 141 与落点面 2 不变。 ★
-   *   数值再更新（2026-10-13 批次 4b，用户裁定「关闭：整条摘标记」）：{@code social.SubmitHouseholdWorkOrder} 整条摘标记 ⇒ 可嵌令 /
-   *   可入队 / 声明面 **18 → 17**；catalog 141 与落点面 2 仍不变（摘 1 / 新增 0）。
-   *   <li><b>本批红线是"权限四面逐条不变"</b>（catalog 141 / 可嵌令 66 / 可入队 66 / 落点 2 / 声明面 66）—— 改这个字符串会动 GM
-   *       组的逐命名空间范围图与近百条 {@code ResourceManifest} 的键， 却买不到任何行为（GM 侧 {@code sd} 与 {@code ga} 都是
-   *       {@code unlimited()}）；
-   *   <li>正名要同时改 <b>{@code simos-ga-spi}</b>（{@code ToolResources.SD_NAMESPACE} 是公共常量）与 <b>{@code
-   *       simos-util}</b>（{@code ResourcePaths#sd} 是路径助手），两者都<b>不在本批写权内</b>；
-   *   <li>规划 §18.2 与台账 3c §E.1 / 3d-1 §D.1 / 3b-4 §H.1 已把"资源面正名"<b>明排给批次 5</b> （与 gov / 军队 /
-   *       战斗族的资源面一并收口）。
-   * </ul>
-   *
-   * ⇒ 本批只改**地址族**（{@code sd:<kind>.<id>} → {@code ga:<kind>.<id>}）与状态切片，资源面原样留批 5。
+   * <p>★ <b>本批红线是"只换名字串、权限口径逐条不变"</b>—— 改这个字符串会动 GM 组的逐命名空间范围图与近百条 {@code ResourceManifest}
+   * 的键，但**声明面条数一条未动**（批次 4 / 4b 的历史数值仍成立：可嵌令 / 可入队 / 声明面 66 → 18 → 17， catalog 141 与落点面 2 不变），判据 =
+   * {@code DecisionFaceGolden} + {@code DecisionCallerFactoryTest} 全绿。
    */
-  public static final String SD_NAMESPACE = "sd";
+  public static final String GA_NAMESPACE = "ga";
 
   /**
    * 经济资源所属的命名空间（R2a 起：{@code economy:<q>_<r>}，与 {@code ResourcePaths#economy} 同源）。
@@ -235,9 +227,9 @@ public final class ToolSupport {
     return ResourceId.of(SOCIAL_NAMESPACE, ResourcePaths.social(q, r));
   }
 
-  /** sd 资源：{@code sd:<kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
-  public static ResourceId resourceSd(String kind, String id) {
-    return ResourceId.of(SD_NAMESPACE, ResourcePaths.sd(kind, id));
+  /** ga 资源：{@code ga:<kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
+  public static ResourceId resourceGa(String kind, String id) {
+    return ResourceId.of(GA_NAMESPACE, ResourcePaths.ga(kind, id));
   }
 
   // ── 资源断言（AgentTool 契约：真正读写前调 require，工具只调不判）──────────────────────
@@ -348,8 +340,8 @@ public final class ToolSupport {
           context.resources().allows(Operation.READ, ResourceId.of(SOCIAL_NAMESPACE, localId));
       case "unit" -> unitVisible(context, new UnitId(localId));
       // ★★ 2026-10-12 批次 3e：`sd` 这一支随 `simos-sd` 退役**整支删除**（`GaResolver` 不再产出该命名空间的
-      //   主体）—— 它映射的资源命名空间 `sd` 是**权限声明面**的标识（`ToolResources.SD_NAMESPACE`），
-      //   与状态切片 `sd` 无关、本批有意不动（见 impl-ledger 的"资源面留批 5"一条）。
+      //   主体）—— 它映射的资源命名空间是**权限声明面**的标识（`ToolResources.GA_NAMESPACE`，2026-10-14
+      //   批次 F 由 `sd` 改名为 `ga`），与同样叫 `sd` 的状态切片无关。
       // ★ `ga` 主体（`ga:decision-maker.<id>` / `ga:directive.<id>`，批次 3e 新增）**不回落全量、也不交给
       //   `default`**：它的 localId 形态（`<kind>.<name>`）与旧的 `sd` 逐字相同，映射方法也逐字相同
       //   ⇒ 走 gaVisible（读不到 ⇒ false，fail-closed）。
@@ -448,8 +440,9 @@ public final class ToolSupport {
    * {@code ga:<kind>.<id>} 主体是否可见（localId 形如 {@code decision-maker.dm-1}、{@code directive.d-1}）。
    *
    * <p>★★ <b>2026-10-12 批次 3e</b>：本方法是旧 {@code sdVisible} 的逐字沿用（改挂命名空间 + 改名）——
-   * 判据仍是"把这个主体的资源路径交给调用者的可读面判"，而那个资源路径仍住在权限声明面<b>既有的</b> {@code sd} 命名空间里（{@link #SD_NAMESPACE}
-   * 的注释解释了为什么该标识本批不动）。 判不出来 / 读不到 ⇒ {@code false}（fail-closed，与 {@code default -> false} 同一条口径）。
+   * 判据仍是"把这个主体的资源路径交给调用者的可读面判"，而那个资源路径住在权限声明面的 {@code ga} 命名空间里（{@link #GA_NAMESPACE}； 2026-10-14
+   * 批次 F 由 {@code sd} 改名，切分逻辑与命名空间无关、逐字未动）。 判不出来 / 读不到 ⇒ {@code false}（fail-closed，与 {@code default
+   * -> false} 同一条口径）。
    */
   private static boolean gaVisible(ToolContext context, String localId) {
     int dot = localId.indexOf('.');
@@ -458,7 +451,7 @@ public final class ToolSupport {
     }
     return context
         .resources()
-        .allows(Operation.READ, resourceSd(localId.substring(0, dot), localId.substring(dot + 1)));
+        .allows(Operation.READ, resourceGa(localId.substring(0, dot), localId.substring(dot + 1)));
   }
 
   // ── 参数解析（模型给的 JSON 参数；坏输入折 ToolResult.error，不抛给管线）────────────────

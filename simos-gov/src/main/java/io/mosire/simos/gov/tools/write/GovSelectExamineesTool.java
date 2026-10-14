@@ -76,7 +76,7 @@ public final class GovSelectExamineesTool implements SimosTool {
               ToolResources.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolResources.ECONOMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolResources.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
+              ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /** 与 {@link #SELECT_WRITE} 同源的逐命名空间粗断言（顺序 = 批内命令的命名空间序）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
@@ -85,7 +85,7 @@ public final class GovSelectExamineesTool implements SimosTool {
           ResourceId.of(ToolResources.UNIT_NAMESPACE, "*"),
           ResourceId.of(ToolResources.ECONOMY_NAMESPACE, "*"),
           ResourceId.of(ToolResources.ACTOR_NAMESPACE, "*"),
-          ResourceId.of(ToolResources.SD_NAMESPACE, "*"));
+          ResourceId.of(ToolResources.GA_NAMESPACE, "*"));
 
   private final GovToolSupport support;
 

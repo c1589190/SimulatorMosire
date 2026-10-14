@@ -95,7 +95,7 @@ public final class ProposeCallTool implements SimosTool {
 
   /** 本工具只写 sd 命名空间（自己的 packet 前缀由身份派生）。 */
   private static final ResourceManifest SD_WRITE =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   /** 逐条意图写进包级 intent 时的标号前缀（见类注的合成规则第 1 条）。 */
   static final String INTENT_MARKER_PREFIX = "【意图 #";
@@ -216,7 +216,7 @@ public final class ProposeCallTool implements SimosTool {
       ToolResources.requireAll(
           context,
           Operation.WRITE,
-          List.of(ToolResources.resourceSd(identity.decisionPacketKind(), proposerId.value())));
+          List.of(ToolResources.resourceGa(identity.decisionPacketKind(), proposerId.value())));
 
       long tick = state.meta().timestamp().tick();
       DecisionPacketId packetId = PacketDraftSupport.packetIdValueOf(proposerId, tick);

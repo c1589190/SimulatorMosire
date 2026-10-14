@@ -60,7 +60,7 @@ public final class GmMergedPlanUpsertTool implements SimosTool {
   public static final String NAME = "simos.gm.mergedPlan.upsert";
 
   private static final ResourceManifest SD_WRITE =
-      ResourceManifest.of(ToolResources.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+      ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
@@ -156,7 +156,7 @@ public final class GmMergedPlanUpsertTool implements SimosTool {
   public ToolResult execute(ToolContext context) {
     try {
       ToolResources.requireAll(
-          context, Operation.WRITE, List.of(ResourceId.of(ToolResources.SD_NAMESPACE, "*")));
+          context, Operation.WRITE, List.of(ResourceId.of(ToolResources.GA_NAMESPACE, "*")));
       Map<String, Object> args = context.arguments();
       // reason 本批只进审批摘要（MergedEffectPlan 没有 reason 字段；reasonInfoId 留 D4）：读出来防误当未知参数静默忽略。
       ToolSchema.optionalText(args, "reason", null);

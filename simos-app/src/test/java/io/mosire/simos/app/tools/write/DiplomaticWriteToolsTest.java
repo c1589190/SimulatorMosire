@@ -331,7 +331,7 @@ class DiplomaticWriteToolsTest {
             // 决策人自己的 sd 决策域（与 AbstractNarrowWriteTool.decisionWriteResources 同源）。
             .resourceScopes(
                 ResourceScopeMap.of(
-                    ToolSupport.SD_NAMESPACE,
+                    ToolSupport.GA_NAMESPACE,
                     ResourceScope.of("decision-maker/" + decisionMakerId)))
             .build();
     AgentIdentity identity =
