@@ -1,5 +1,6 @@
 package io.mosire.simos.ga.tools.write;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.tool.ToolResult;
@@ -96,7 +97,7 @@ final class PacketDraftSupport {
       Map<String, Object> parsed =
           MAPPER.readValue(argsJson, new TypeReference<Map<String, Object>>() {});
       return parsed == null ? new LinkedHashMap<>() : new LinkedHashMap<>(parsed);
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       throw new IllegalArgumentException("决策包内的 argsJson 不是 JSON 对象: " + e.getMessage(), e);
     }
   }
