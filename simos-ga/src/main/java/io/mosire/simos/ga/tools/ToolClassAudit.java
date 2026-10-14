@@ -184,8 +184,10 @@ public final class ToolClassAudit {
   }
 
   /**
-   * ★ <b>三格分区结果</b>：三份**不可变**清单（顺序 = 两桶并集的遍历序 = 注册序），供后续批次（3b 的 {@code ProposalCatalog}）
-   * 与测试取用；工具名一律经 {@link ToolBuckets#namesOf} 派生（不在这里造第二处清单）。
+   * ★ <b>三格分区结果</b>：三份**不可变**的<b>工具实例</b>清单（顺序 = 两桶并集的遍历序 = 注册序），供后续批次（3b 的 {@code
+   * ProposalCatalog}）与测试取用。★ 清单从**两桶并集**派生（{@code requireClasses} 的 {@code union}），暴露的是 {@link
+   * AgentTool} 实例 —— 本类<b>不另造工具名清单</b>；需要名字的调用方（{@link ToolRoleAudit}、app 侧的白名单）经 {@link
+   * ToolBuckets#namesOf} 自己从工具面派生。
    */
   public record Partition(
       List<AgentTool> gmOnly, List<AgentTool> dmApproval, List<AgentTool> dmFree) {

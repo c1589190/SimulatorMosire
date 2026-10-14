@@ -56,8 +56,11 @@ import java.util.UUID;
  *   <li>{@code unit.SetGovFormation}（恒有）：{@code level/superiorGov?/staff/policy}；
  *   <li>{@code unit.SetJurisdiction}（仅 {@code regions} 非空才落）：{@code {unitId, regions:[…]}}，不带 levy
  *       caps；
- *   <li>{@code ga.CreateDecisionMaker}（恒有）：{@code {id, affiliation:{kind:"gov",id:unitId},
- *       allowedTools, cadence}}；
+ *   <li>{@code ga.CreateDecisionMaker}（恒有）：{@code {id, allowedTools, cadence}} —— <b>三个</b>必填输入；
+ *       <b>不带</b> {@code affiliation}（该键被具名拒：归属归模块）；
+ *   <li>{@code gov.AssignDecisionMakerGov}（恒有）：{@code {decisionMakerId, govUnitId}} —— 决策人的 gov 归属；
+ *       必须晚于上面的 {@code unit.SetGovFormation}（要求目标带 {@code GovernmentFormation}）与 {@code
+ *       ga.CreateDecisionMaker}（要求决策人已存在）；
  *   <li>{@code ga.SetDecisionMakerProvider}（仅 providerId 给了才落）；
  *   <li>{@code ga.SetDecisionMakerAccess}（仅 accessLimit 给了非空对象才落；创建命令不接受 accessLimit）；
  *   <li>{@code ga.PutInfo}（恒有）：地址 = 单位 canonical，key = {@value #INFO_KEY}，value = JSON <b>字符串</b>，
@@ -139,7 +142,8 @@ public final class GovCreateOfficeTool implements SimosTool {
         + "批顺序：unit.CreateUnit → social.CreateHousehold（政府家户 hh-gov-<unitId>，位置 UNIT(unitId)）→ "
         + "actor.EnsureHouseholdAccount（政府家户零余额账户）→ unit.SetGovFormation（域层把该政府家户编入 Unit.households）→ "
         + "economy.RegisterGovernment（gov-unit-<unitId>，要求 economy 已激活）→ [regions 非空: unit.SetJurisdiction] → "
-        + "ga.CreateDecisionMaker → [provider] → [access] → ga.PutInfo(key="
+        + "ga.CreateDecisionMaker（载荷 {id, allowedTools, cadence}，不带 affiliation）→ "
+        + "gov.AssignDecisionMakerGov（{decisionMakerId, govUnitId}，落决策人的 GOV 归属）→ [provider] → [access] → ga.PutInfo(key="
         + INFO_KEY
         + "，value 回显 regions)。"
         + "返回 {preview, submitted, tick, unitId, name, position, level, regions, superiorGov, staff, policy, "
@@ -486,9 +490,12 @@ public final class GovCreateOfficeTool implements SimosTool {
         support
             .writes()
             .submitBatchWithReceipt(branch, new RevisionId(expectedRevision), batch, batchId);
-    Map<String, Object> view = planView(plan, reason, false, true);
-    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Committed committed) {
-      view.put("submission", ToolResults.committedView(committed.ref(), batchId, batchId));
+    // ★ submitted 只对真落盘的结局为 true：REJECTED（整批复原、零 revision）与 CONFLICT（一条没落）
+    //   都必须报 false —— 否则"按 submitted 判成功"的断言在整批被拒时是假绿。
+    boolean committed = receipt.outcome() instanceof ToolWritePort.BatchOutcome.Committed;
+    Map<String, Object> view = planView(plan, reason, false, committed);
+    if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Committed committedOutcome) {
+      view.put("submission", ToolResults.committedView(committedOutcome.ref(), batchId, batchId));
       return ToolResults.ok(view);
     }
     if (receipt.outcome() instanceof ToolWritePort.BatchOutcome.Conflict conflict) {
@@ -505,7 +512,7 @@ public final class GovCreateOfficeTool implements SimosTool {
   /** 组批：固定顺序，命令类型与载荷都是 Plan 的纯函数；共享 batchId/branch/expectedRevision ⇒ 一条 revision。 */
   private List<ToolWritePort.Request> buildBatch(
       String batchId, GovCreateOfficePlan.Plan plan, String reason) {
-    List<ToolWritePort.Request> batch = new ArrayList<>(10);
+    List<ToolWritePort.Request> batch = new ArrayList<>(11);
     batch.add(
         GovToolSupport.request(GovCreateOfficePlan.CREATE_UNIT_TYPE, plan.createUnitPayloadJson()));
     // ★★ P2-C §13.7：每个 GOV 单位同批创建它自己的政府家户、零余额账户、编制引用与政府记录 —— 四件事共享
@@ -533,6 +540,14 @@ public final class GovCreateOfficeTool implements SimosTool {
     batch.add(
         GovToolSupport.request(
             GovCreateOfficePlan.CREATE_DECISION_MAKER_TYPE, plan.createDecisionMakerPayloadJson()));
+    // ★★ 同批补一条 gov.AssignDecisionMakerGov（归属归模块：决策人身份与归属是两条命令）。
+    //   定序是 handler 的硬判据，不是偏好：它必须晚于 unit.SetGovFormation（要求目标单位带
+    //   GovernmentFormation）且晚于上面的 ga.CreateDecisionMaker（要求决策人已存在）；同批后一条能看见
+    //   前一条（CommandBus.runBatch 把每条变更集施加到累积候选态上）⇒ 夹在 create 与 provider 之间即可。
+    batch.add(
+        GovToolSupport.request(
+            GovCreateOfficePlan.ASSIGN_DECISION_MAKER_GOV_TYPE,
+            plan.assignDecisionMakerGovPayloadJson()));
     if (plan.hasProviderCommand()) {
       batch.add(
           GovToolSupport.request(

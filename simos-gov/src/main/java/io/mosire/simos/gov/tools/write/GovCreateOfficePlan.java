@@ -2,6 +2,7 @@ package io.mosire.simos.gov.tools.write;
 
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
+import io.mosire.simos.gov.spi.AssignDecisionMakerGovHandler;
 import io.mosire.simos.gov.tools.GovToolCommandTypes;
 import io.mosire.simos.gov.tools.GovToolReads;
 import io.mosire.simos.gov.tools.GovToolSupport;
@@ -46,9 +47,13 @@ import java.util.Set;
  * <p>★★ <b>决策人三件（载荷先读 {@code CreateDecisionMakerHandler}/{@code SdPayloads} 定准）</b>：
  *
  * <ul>
- *   <li>{@code ga.CreateDecisionMaker} 的载荷只认 {@code {id, affiliation, allowedTools,
- *       cadence}}；{@code affiliation} = {@code {"kind":"gov","id":unitId}}。创建期它<b>不接受</b> {@code
- *       accessLimit}（传了会被静默忽略） ⇒ {@code accessLimit} 若给，走同批 {@code ga.SetDecisionMakerAccess}；
+ *   <li>{@code ga.CreateDecisionMaker} 的载荷只认 {@code {id, allowedTools, cadence}} —— <b>三个</b>必填输入
+ *       （{@code CreateDecisionMakerHandler:81-82}）；<b>没有</b> {@code
+ *       affiliation}（该键被具名拒，见下）；创建期它<b>不接受</b> {@code accessLimit}（传了会被静默忽略） ⇒ {@code accessLimit}
+ *       若给，走同批 {@code ga.SetDecisionMakerAccess}；
+ *   <li>决策人的 <b>gov 归属</b>由同批 {@code gov.AssignDecisionMakerGov}（{@code {decisionMakerId,
+ *       govUnitId}}）落 —— 归属归模块（用户裁定「归属肯定归模块」），创建命令只造<b>裸决策人身份</b>；本批已含该命令，故 {@code
+ *       simos.gov.createOffice} 建成后归属即成立；
  *   <li>{@code providerId} 若给 ⇒ 同批 {@code ga.SetDecisionMakerProvider}（{@code {decisionMakerId,
  *       providerId}}）；
  *   <li>缺省：{@code cadence} 缺省 = {@code 1}（域层的合法下界 = 1）；{@code allowedTools} 缺省 = 空集（不替调用方发明能力面）；
@@ -56,12 +61,13 @@ import java.util.Set;
  *       与缺省等价，故不产生 {@code ga.SetDecisionMakerAccess} 命令。
  * </ul>
  *
- * <p>★★ <b>批顺序（固定，可复现）</b>：{@code unit.CreateUnit} → {@code unit.SetGovFormation} →（{@code regions}
- * 非空才落）{@code unit.SetJurisdiction} → {@code ga.CreateDecisionMaker} →（{@code providerId}
- * 给了才落）{@code ga.SetDecisionMakerProvider} →（{@code accessLimit} 给了非空对象才落）{@code
- * ga.SetDecisionMakerAccess} → {@code ga.PutInfo}（key={@code createOffice}， address=单位
- * canonical，value=JSON <b>字符串</b>，note=人可读摘要）。 四条/五条/七条共享同一 batchId 与同一 branch/expectedRevision ⇒
- * 一条 revision。
+ * <p>★★ <b>批顺序（固定，可复现）</b>：{@code unit.CreateUnit} → {@code social.CreateHousehold} → {@code
+ * actor.EnsureHouseholdAccount} → {@code unit.SetGovFormation} → {@code economy.RegisterGovernment}
+ * →（{@code regions} 非空才落）{@code unit.SetJurisdiction} → {@code ga.CreateDecisionMaker} → {@code
+ * gov.AssignDecisionMakerGov} →（{@code providerId} 给了才落）{@code ga.SetDecisionMakerProvider}
+ * →（{@code accessLimit} 给了非空对象才落）{@code ga.SetDecisionMakerAccess} → {@code ga.PutInfo}（key={@code
+ * createOffice}， address=单位 canonical，value=JSON <b>字符串</b>，note=人可读摘要）。 各条共享同一 batchId 与同一
+ * branch/expectedRevision ⇒ 一条 revision。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：{@code unitId}/{@code name}/
  * {@code decisionMakerId} 非空白；{@code unitId} 在 unit 切片里<b>必须不存在</b>；{@code decisionMakerId} 在 sd
@@ -79,10 +85,10 @@ import java.util.Set;
 public final class GovCreateOfficePlan {
 
   /** {@code unit.CreateUnit} 的命令类型（字面量与 {@code CreateUnitHandler.type()} 同源）。 */
-  static final String CREATE_UNIT_TYPE = "unit.CreateUnit";
+  public static final String CREATE_UNIT_TYPE = "unit.CreateUnit";
 
   /** {@code social.CreateHousehold} 的命令类型（政府家户开户；S3a 契约的拼写点）。 */
-  static final String CREATE_HOUSEHOLD_TYPE = "social.CreateHousehold";
+  public static final String CREATE_HOUSEHOLD_TYPE = "social.CreateHousehold";
 
   /** {@code actor.EnsureHouseholdAccount} 的命令类型（政府家户的零余额账户；P2-C）。 */
   static final String ENSURE_HOUSEHOLD_ACCOUNT_TYPE = "actor.EnsureHouseholdAccount";
@@ -94,7 +100,17 @@ public final class GovCreateOfficePlan {
   public static final String SET_JURISDICTION_TYPE = "unit.SetJurisdiction";
 
   /** {@code ga.CreateDecisionMaker} 的命令类型。 */
-  static final String CREATE_DECISION_MAKER_TYPE = "ga.CreateDecisionMaker";
+  public static final String CREATE_DECISION_MAKER_TYPE = "ga.CreateDecisionMaker";
+
+  /**
+   * {@code gov.AssignDecisionMakerGov} 的命令类型（恒有，紧跟在 {@code ga.CreateDecisionMaker} 之后）。
+   *
+   * <p>★ <b>不抄字面量</b>：取 {@link AssignDecisionMakerGovHandler#TYPE}（唯一拼写点）。该 handler
+   * 住在<b>本模块</b>（{@code gov.spi}），不在 {@link io.mosire.simos.gov.tools.GovToolCommandTypes} 那张端口上 ——
+   * 那张端口只为 gov <b>看不见</b>的域（economy/actor/ga）而设，同 {@code unit.*}/{@code social.*} 的常量由工具直接读 handler
+   * 一个道理。
+   */
+  public static final String ASSIGN_DECISION_MAKER_GOV_TYPE = AssignDecisionMakerGovHandler.TYPE;
 
   /** {@code ga.SetDecisionMakerProvider} 的命令类型（仅 providerId 给了才落）。 */
   static final String SET_DECISION_MAKER_PROVIDER_TYPE = "ga.SetDecisionMakerProvider";
@@ -326,7 +342,7 @@ public final class GovCreateOfficePlan {
 
     /** 本工具将落的命令类型（批内固定顺序；preview 视图与 apply 组批共用这一处）。 */
     List<String> commandTypes(GovToolCommandTypes types_port) {
-      List<String> types = new ArrayList<>(10);
+      List<String> types = new ArrayList<>(11);
       types.add(CREATE_UNIT_TYPE);
       types.add(CREATE_HOUSEHOLD_TYPE);
       types.add(ENSURE_HOUSEHOLD_ACCOUNT_TYPE);
@@ -336,6 +352,7 @@ public final class GovCreateOfficePlan {
         types.add(SET_JURISDICTION_TYPE);
       }
       types.add(CREATE_DECISION_MAKER_TYPE);
+      types.add(ASSIGN_DECISION_MAKER_GOV_TYPE);
       if (hasProviderCommand()) {
         types.add(SET_DECISION_MAKER_PROVIDER_TYPE);
       }
@@ -458,19 +475,35 @@ public final class GovCreateOfficePlan {
     }
 
     /**
-     * {@code ga.CreateDecisionMaker} 载荷：{@code {id, affiliation:{kind:"gov",id:unitId},
-     * allowedTools, cadence}}—— 逐字段对应 {@code CreateDecisionMakerHandler} 的四个必填输入；{@code
-     * accessLimit} <b>不进这里</b>（创建期恒为空、 传了会被静默忽略），要走同批 {@code ga.SetDecisionMakerAccess}。
+     * {@code ga.CreateDecisionMaker} 载荷：只认 {@code {id, allowedTools, cadence}} ——
+     * <b>三个</b>必填输入（{@code GaPayloads.requireTextSet("allowedTools")} + {@code
+     * requireLong("cadence")}）。
+     *
+     * <p>★★ <b>这里不写 {@code affiliation}</b>：该键已被 {@code CreateDecisionMakerHandler}
+     * <b>具名拒</b>（归属归模块：用户裁定 「归属肯定归模块」）⇒ 旧写法会让<b>整批</b>被拒、零落盘。决策人的 gov 归属改由同批紧随其后的 {@code
+     * gov.AssignDecisionMakerGov} 落（见 {@link #assignDecisionMakerGovPayloadJson()}）。{@code
+     * accessLimit} <b>也不进这里</b> （创建期恒为空、传了会被静默忽略），要走同批 {@code ga.SetDecisionMakerAccess}。
      */
     String createDecisionMakerPayloadJson() {
-      Map<String, Object> affiliation = new LinkedHashMap<>();
-      affiliation.put("kind", "gov");
-      affiliation.put("id", unitId);
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("id", decisionMakerId);
-      payload.put("affiliation", affiliation);
       payload.put("allowedTools", new ArrayList<>(allowedTools));
       payload.put("cadence", cadence);
+      return ToolResults.json(payload);
+    }
+
+    /**
+     * {@code gov.AssignDecisionMakerGov} 载荷：{@code {decisionMakerId, govUnitId}} —— 把刚建的裸决策人绑到本批新建的
+     * GOV 单位（{@code Affiliation.Gov(UnitId)} 那一支的落地形态）。
+     *
+     * <p>★ <b>批内定序（两条都是 handler 的硬判据，不是偏好）</b>：本命令必须<b>晚于</b> {@code unit.SetGovFormation}（{@code
+     * AssignDecisionMakerGovHandler:119-128} 要求目标单位存在且带 {@code GovernmentFormation}）且<b>晚于</b>
+     * {@code ga.CreateDecisionMaker}（{@code :87-90} 要求决策人已存在）⇒ 夹在 create 与 provider 之间。
+     */
+    String assignDecisionMakerGovPayloadJson() {
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("decisionMakerId", decisionMakerId);
+      payload.put("govUnitId", unitId);
       return ToolResults.json(payload);
     }
 
