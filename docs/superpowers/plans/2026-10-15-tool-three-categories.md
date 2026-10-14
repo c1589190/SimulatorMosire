@@ -78,18 +78,22 @@ git grep -l "ToolRole.DM, ToolRole.GM\|ToolRole.GM, ToolRole.DM" HEAD -- 'simos-
 
 ### 3.2 装配期审计（**fail-closed 的分区**，照 `ToolRoleAudit.requireFaces` 的形制）
 
-新增一个审计（契约层 `simos-ga-spi` 定接口 + `simos-ga` 给实现，与 `ToolRoleAudit` 同址同制）：
+新增一个审计（与 `ToolRoleAudit` 同址同制：`simos-ga/.../tools/ToolClassAudit.java`；`ToolClass` 枚举进契约层 `simos-ga-spi`，与 `ToolRole` 并列）；接线点 = `Shell:1391`（`ToolRoleAudit.requireFaces(gmToolFace, decisionAgentFace)` 的下一行）。
 
 1. **全量分区**：遍历**两桶并集**里的每一条工具 ⇒ 按 §3.1 判类；判不出 ⇒ `IllegalStateException`（**装配期抛，不静默**）。
-2. **三格计数与具名清单**：审计对象里带 `toolClassOf(tool)` 与三份不可变清单（类1/类2/类3），供**测试与后续批次**取用（★ 不做第二处手写清单——清单**从工具面派生**）。
-3. ★ **不新增第二处声明**：判据只有 §3.1 那三条，**没有"期望表"**（有期望表就是又一处会漂移的声明）。审计保证的是"**每条工具都落进三格之一**"这条**结构性**不变量。
-4. ★ **本期不改变任何工具的行为**：不删任何 `Ask`、不改任何 `roles()`。审计只**读**。
+2. **三格具名清单**：审计产出三份**不可变清单**（类1/类2/类3），供测试与后续批次取用。
+3. ★★ **判据必须来自 `gate()` 的实得档，不许引入"第二个声明"**：
+   - `roles()` 是 context-free 的 ⇒ 直接读；
+   - `gate(ToolContext)` **需要上下文** ⇒ 用一个**探针上下文**（`arguments() = Map.of()`）调它，判 `Ask` / `ALLOW`。
+   - ★ 为什么必须读真 `gate()`：只有读真的，"分类"才**不可能与行为漂移**。若改成让每条工具再声明一个 `toolClass()`，那就是**第二处会漂移的声明** —— 与 `ToolRoleAudit` 存在的理由（消灭第二处声明）正好相反。
+   - ★ 既有的 `gate()` 实现里，**档位（Ask/ALLOW）全是常量**，`arguments()` 只用于拼 summary 文案（`args.get(...)` 的字符串拼接，null 安全）⇒ 探针可行。**但这是要实测确认的**：若某个工具的 `gate()` 在空 args 下抛异常、或需要真身份/权限 ⇒ ★ **停下报 BLOCKED**（附该工具与真实异常），**不许**悄悄换成第二处声明、也不许把它跳过。
+4. **本批只读**：不删任何 `Ask`、不改任何 `roles()` 的**集合内容**（D1 那一条只管元素顺序）。
 
 ### 3.3 小债（同批还清，逐条给现场）
 
 | # | 债 | 现场 | 处置 |
 |---|---|---|---|
-| D1 | `{DM,GM}` 有**两种拼法** | `Set.of(ToolRole.DM, ToolRole.GM)` 31 条 vs `Set.of(ToolRole.GM, ToolRole.DM)` 1 条 | 统一成**一种**（取多数派拼法），并把拼法写成常量/助手，**不留两种** |
+| D1 | `{DM,GM}` 有**两种拼法** | ★ **控制方复核后降级**：那"1 条反向拼法"是 `SimosToolSource:557` 的**具名常量** `ROLES_GM_DM`（外来 AgentLib 工具的角色表），不是随手字面量；而 `Set.of` **本就无序** ⇒ 两种写法**语义完全相同**。**这是纯外观，不是漂移风险。** | 把 `ROLES_GM_DM` 的元素顺序对齐多数派（1 行），并在常量注释里写明"与各工具 `roles()` 同集，顺序无语义"——**仅为读代码的人** |
 | D2 | `ga.CreateDecisionMaker` 的 description **声称 4 个必填**（含 `affiliation`），实际载荷只有 `{id, allowedTools, cadence}` 且 `affiliation` 会被拒 | `SetDecisionMakerAccessTool` / `SdCreateDecisionMakerTool` 的 `description()` | 按**真实载荷**改写 description |
 | D3 | `ga.IssueDirective` / `ga.SubmitVerdict` 的类注没写"**决策回合内不可达**" | 两者的类注 | 补一句：类2 只对**非回合路径**（真人/外部经决策通道）有意义；决策回合的工具面上没有它们（冻结回合只留决策包写） |
 | D4 | `social.household.members` 在 `ProposalCatalog` 里的必要性 | `ProposalCatalog` 初始清单（7 条） | ★ **本批不动**，随 3b 一起定 |
