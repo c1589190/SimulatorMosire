@@ -9,6 +9,9 @@ import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.read.DecisionDocsTool;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
 import io.mosire.simos.ga.tools.read.GaMessageInboxTool;
+import io.mosire.simos.ga.tools.read.GmPacketTool;
+import io.mosire.simos.ga.tools.read.GmPacketsTool;
+import io.mosire.simos.ga.tools.read.GmRoundTool;
 import io.mosire.simos.ga.tools.write.AdjudicationAckTool;
 import io.mosire.simos.ga.tools.write.ConfirmPacketTool;
 import io.mosire.simos.ga.tools.write.DropCallTool;
@@ -272,6 +275,81 @@ class DecisionPacketToolGateScanTest {
       }
     }
     throw new AssertionError(methodName + " 的方法体括号不配对");
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // ★★ 2026-10-15 批 J（§3.9.4）：GM 三条读口的文案 —— "PENDING = 当前提交 · 可多次 · 以最后一次为准 ·
+  //    已裁决之后不能再改"
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  /** ★ §3.9.4 的**四条**要点，逐条一个不可省的子串（三处文案必须逐字同源）。 */
+  private static final Map<String, String> REQUIRED_PHRASES = new LinkedHashMap<>();
+
+  static {
+    REQUIRED_PHRASES.put("PENDING = 该决策人当前的提交", "PENDING = 该决策人当前的提交");
+    REQUIRED_PHRASES.put("同一 tick 内可提交很多次", "很多次");
+    REQUIRED_PHRASES.put("GM 应以最后一次为准", "以最后一次为准");
+    REQUIRED_PHRASES.put("已裁决之后不能再改", "之后不能再改");
+  }
+
+  /** GM 侧三条读口的实现类（相对 {@code simos-ga/src/main/java/...}）。 */
+  private static final Map<String, String> GM_READ_TOOL_CLASSES = new LinkedHashMap<>();
+
+  static {
+    GM_READ_TOOL_CLASSES.put(GmPacketTool.NAME, "read/GmPacketTool.java");
+    GM_READ_TOOL_CLASSES.put(GmPacketsTool.NAME, "read/GmPacketsTool.java");
+    GM_READ_TOOL_CLASSES.put(GmRoundTool.NAME, "read/GmRoundTool.java");
+  }
+
+  /**
+   * ★★ <b>§3.9.4 / 不变量 I13·I14 的文案判据：GM 三条读口的 {@code description()} 必须写明 「PENDING = 当前提交 · 同 tick
+   * 可多次提交 · GM 以最后一次为准 · 已裁决之后不能再改」</b>。
+   *
+   * <p>★★ <b>为什么文案是判据、不是修辞</b>（设计书 §3.9.4 把它列为"必须改"）：GM 是<b>唯一的驱动者</b>，它读到的 {@code description()}
+   * 就是它判断"这个 DM 还会不会再改"的<b>全部依据</b>。★ 旧文案把 PENDING 描述成定稿 ⇒ GM 会在 DM 还没说完时就推演（设计书 §3.9.1「gm
+   * 应当取最后一轮提交的决策」直接被违反），而<b>没有任何一层会报错</b>。
+   *
+   * <p>★ <b>为什么扫源码而不是调 {@code description()}</b>：与 {@link
+   * #everyDecisionFaceToolDeclaresAllowAndDmOnlyInSource} 同一理由（形制也照它）——{@code description()}
+   * 是一段<b>声明</b>，它的坏法正是"某个分支下换一句话"，而装配期读一次 只能证"这一条路径上那句话对"。★
+   * 扫源码还能顺带钉住<b>三处逐字同源</b>（本仓为"第二处真相"付过代价）。
+   *
+   * <p>★★ <b>判别力</b>：四条要点各一个子串 ⇒ 删任意一条当场红；把三处里任意一处改回旧口径（旧文案讲的是 「已提交 ⇒ 定稿，先
+   * reopen」，那两句现在读的是「以最后一次为准」与「很多次」）⇒ 当场红。
+   */
+  @Test
+  void theThreeGmReadFacesDescribePendingAsTheLatestSubmissionNotAsALock() throws IOException {
+    Path gaMain = gaMainJava();
+    assertThat(Files.isDirectory(gaMain))
+        .as("★ 扫描根必须存在（否则下面的「扫到 0 条」会伪装成通过）：%s", gaMain.toAbsolutePath())
+        .isTrue();
+
+    int scanned = 0;
+    for (Map.Entry<String, String> entry : GM_READ_TOOL_CLASSES.entrySet()) {
+      String toolName = entry.getKey();
+      Path file = gaMain.resolve(entry.getValue());
+      assertThat(Files.isRegularFile(file))
+          .as("★ 扫描面必须命中（%s 的源码不在 %s ⇒ 扫描器静默 = 判据失效）", toolName, entry.getValue())
+          .isTrue();
+      String source = Files.readString(file);
+      assertThat(source)
+          .as("★ 命名判据：%s 的源码里必须逐字写着它自己的 NAME（改错文件时当场红）", toolName)
+          .contains("\"" + toolName + "\"");
+
+      String description = methodBody(source, "description");
+      for (Map.Entry<String, String> phrase : REQUIRED_PHRASES.entrySet()) {
+        assertThat(description)
+            .as(
+                "★★ §3.9.4：%s 的 description() 必须写明「%s」（缺这条 ⇒ GM 会把 PENDING 当定稿，"
+                    + "在 DM 还没说完时就推演；设计书 §3.9.1「取最后一轮提交的决策」被违反而**无任何一层报错**）",
+                toolName, phrase.getKey())
+            .contains(phrase.getValue());
+      }
+      scanned++;
+    }
+    assertThat(scanned)
+        .as("★ 扫描器自证：必须真的扫到全部 %d 条 GM 读口（扫到 0/漏文件 = 「空 == 空」陷阱）", GM_READ_TOOL_CLASSES.size())
+        .isEqualTo(GM_READ_TOOL_CLASSES.size());
   }
 
   private static int countOccurrences(String haystack, String needle) {

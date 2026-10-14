@@ -418,16 +418,33 @@ class RunDecisionEndToEndTest {
   }
 
   /**
-   * ★★ **已 PENDING 的包不能再改**（设计书 §3.2 硬边界；§6.1 N5 的同族）：confirm 之后再调 {@code packet.intent} ⇒
-   * **具名拒**（提示先 reopen），包原样不动、零 revision、intent 不被改写。
+   * ★★ <b>不变量 I13（设计书 §3.9）：PENDING 不是修改锁 —— confirm 之后再改，改成功且包自动回 DRAFT</b>。
    *
-   * <p>★★ <b>2026-10-14 批 B 换靶子</b>：旧用例 {@code
-   * continuedCommandsAfterSubmitConservativelyMergeWholeTurn} 测的是"submit 后继续发命令 ⇒
-   * 整轮保守合并"——那条分支（提交被拦截 + 整轮合并）已随批 B **整条删除**（死代码不许留）。
-   * 改成测**新边界的正面对手**：同样是"确认后又发命令"，但现在的正确行为是**拒**（并告诉 DM 下一步是 reopen），不是静默合并。
+   * <p>★★ <b>2026-10-15 翻向（旧口径 → 新口径，逐条记）</b>：用户同日原话「在这之前一直交流，<b>提交多少轮都没问题</b>」 ⇒ 设计书 §3.9.2 把
+   * {@code propose/revise/drop/intent} 在 PENDING 上的行为从"具名拒（先 reopen）"改成"<b>自动撤回成 DRAFT 再改</b>"（隐式
+   * reopen，<b>一次</b> revision）。本用例原来钉的是旧口径，四条断言逐条翻：
+   *
+   * <table>
+   *   <caption>旧 → 新</caption>
+   *   <tr><th>旧断言</th><th>新断言</th></tr>
+   *   <tr><td>{@code status === PENDING}（"被拒的改写不得把它翻回 DRAFT"）</td>
+   *       <td>{@code status === DRAFT}（★ 这正是隐式 reopen 的可执行形态）</td></tr>
+   *   <tr><td>{@code intent == "意图C：主计划"}（"一个字节都不许落地"）</td>
+   *       <td>{@code intent == "意图C：提交后补充"}（★ 改成功并<b>覆盖</b>）</td></tr>
+   *   <tr><td>{@code head == before + 3}（零 revision）</td>
+   *       <td>{@code head} 前进：被拒 → <b>被接受的一次写</b>（读数见断言里的 as）</td></tr>
+   *   <tr><td>（无此断言）</td><td>★ 触发那次的回执里带 {@code autoWithdrawn:true} + 指向 {@code confirm} 的 note</td></tr>
+   * </table>
+   *
+   * <p>★ <b>判别力没降反而升了</b>：旧断言只能分开"拒/不拒"，新断言同时钉住了①改成功②<b>覆盖</b>而不是追加③以 <b>DRAFT</b> 写回（"原样带 PENDING
+   * 回去"的实现会红在状态上）④回执如实报"发生了什么 + 下一步"。
+   *
+   * <p>★★ <b>与 2026-10-14 批 B 的关系</b>：本用例当时是从 {@code
+   * continuedCommandsAfterSubmitConservativelyMergeWholeTurn}（"提交后继续发命令 ⇒ 整轮保守合并"）换靶子来的 —— 那条分支已随批
+   * B 整条删除。现在的正确行为**既不是**静默合并**也不是**拒，而是"改成功 + 包回 DRAFT"。
    */
   @Test
-  void mutatingAPendingPacketIsRejectedByNameAndLeavesThePacketUnchanged() throws Exception {
+  void mutatingAPendingPacketSucceedsAndImplicitlyWithdrawsItToDraft() throws Exception {
     llm.enqueue(
         LlmResponse.toolCall("intent-1", "simos_ga_packet_intent", Map.of("text", "意图C：主计划")),
         LlmResponse.toolCall("confirm-1", "simos_ga_packet_confirm", Map.of()),
@@ -435,25 +452,59 @@ class RunDecisionEndToEndTest {
         LlmResponse.text("整轮最后自然语言C：这是最终口径"));
 
     long before = head();
-    assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
+    McpSchema.CallToolResult round = callWithApproval(runDecisionArgs(DM_ID, head()));
+    assertThat(round.isError()).isFalse();
+    long after = head();
+
+    // ★ I13 的"视图侧"判据：隐式 reopen **必须报出来**（它是 DM 唯一能看见"包被退回了"的地方）。
+    //   ★ 从**回执的轨迹**里读（那里是模型真正看见的那份），不是读工具自己造的第二份账。
+    JsonNode intentCall =
+        traceToolCalls(round).stream()
+            .filter(node -> node.path("tool").asText().equals("simos.ga.packet.intent"))
+            .reduce((first, second) -> second)
+            .orElseThrow(() -> new AssertionError("回执轨迹里必须有那次 intent 调用: " + wireText(round)));
+    String intentSummary = intentCall.path("summary").asText();
+    assertThat(intentSummary)
+        .as("★★ I13（§3.9.2）：confirm 之后那次 intent 的**回执**必须带 autoWithdrawn:true 与一句 note")
+        .contains("autoWithdrawn")
+        .contains("true")
+        .contains("DRAFT");
+    assertThat(intentSummary)
+        .as("★★ I13（§3.9.2）：note 必须点出下一步是 simos.ga.packet.confirm（只说'退回了'会让 DM 以为这一改已经算提交过）")
+        .contains("simos.ga.packet.confirm");
 
     DecisionPacket packet = packetOf(DM_ID);
     assertThat(packet).isNotNull();
+    // ★★ 状态这一步**有两层**，必须分开说清（这里踩过一次，如实记）：
+    //   ① 那一次 intent 写盘时包**是 DRAFT** —— 证据是它自己的回执带 `autoWithdrawn:true`
+    //      （`autoWithdrawNote` 只在"原本是 PENDING"时产生 ⇒ 这是"隐式 reopen 真的发生了"的**唯一**直接形态）；
+    //   ② 而**回合末** `DecisionTurnFinalizer` 的 `auto-no-submit` 兜底看到的是 DRAFT ⇒ 它照旧结算成 PENDING
+    //      （"不静默丢决策"那条红线不退让；设计书 §3.9.2 明写 finalizer 一行不用改）。
+    //   ⇒ "包以 DRAFT 写回"这一条**不能**在本类断言（回合末会被兜底结算掉）；它的直接判据在
+    //     `GmActAsToolTest#i13_a_...`（直接调工具、不经 runner，落盘后立刻读）。
     assertThat(packet.status())
-        .as("confirm 之后保持 PENDING（被拒的改写不得把它翻回 DRAFT）")
+        .as(
+            "★ 回合末兜底结算照旧（本回合无未答提问 ⇒ auto-no-submit 把它提交成 PENDING）；"
+                + "「以下 DRAFT 写回」的直接证据是上面那条 autoWithdrawn，不是这里的终态")
         .isEqualTo(PacketStatus.PENDING);
     assertThat(packet.intent())
-        .as("★★ 被拒的 intent 改写**一个字节都不许落地**：包里仍是 confirm 之前那句")
-        .isEqualTo("意图C：主计划");
+        .as("★★ I13：★ confirm 之后那次 intent **改成功了**（并覆盖前一句 —— 这正是「提交不是锁」），且兜底结算没把它丢掉")
+        .isEqualTo("意图C：提交后补充");
     assertThat(packet.intent())
         .as("★ 也不得退化成旧行为（把整轮最后一段自然语言并进来）")
         .doesNotContain("整轮最后自然语言C")
         .doesNotContain("【最后陈述】");
-    // 触发事实 1 条 + intent 1 条 + confirm 1 条 = 3；被拒的 intent-2 **零 revision**，
-    // 回合结束也因包已 PENDING 而不再结算（finalizer 的"已 PENDING ⇒ 跳过"分支）。
-    assertThat(head())
-        .as("★ 被拒的改写零 revision（拒 = 世界零变化），且 finalizer 对已 PENDING 的包不再结算")
-        .isEqualTo(before + 3L);
+    // ★ 实测读数（本批翻向后真跑得到的数，逐项可加）：
+    //   触发事实 1 + intent 1 + confirm 1 + **隐式 reopen 的那次改写 1** + **回合末兜底结算 1** = 5。
+    // ★ 旧口径是 before+3：被拒的 intent-2 零 revision，且 finalizer 看到包已是 PENDING ⇒ 走"跳过"分支。
+    //   新口径下 intent-2 真的落了盘（+1），finalizer 在回合内看到的是 DRAFT ⇒ 它再结算一次（+1）。
+    //   ★ 这条把两个方向都钉住了：回潮到旧口径 ⇒ 3；只放开守卫却"原样带 PENDING 回去" ⇒ 少掉 finalizer 那一步的
+    //     前提会变（且状态与 autoWithdrawn 那两条先红）。
+    assertThat(after - before)
+        .as(
+            "★★ I13（§3.9.2）：confirm 之后的那次改写**不再零 revision** —— 它是「一次 revision 的隐式 reopen」"
+                + "＋回合末兜底结算各一条（旧断言是 before+3「被拒 = 零副作用」，新语义下那正是要被打死的形态）")
+        .isEqualTo(5L);
   }
 
   /** 当前 head 上该决策人本 tick 的 packet（用于结算断言）。 */
@@ -478,26 +529,37 @@ class RunDecisionEndToEndTest {
   // ══════════════════════════════════════════════════════════════════════════════════════════
 
   /**
-   * ★★ <b>§6.1 N5：{@code revise}/{@code drop} 一个 PENDING 包 ⇒ 具名拒，提示先 {@code reopen}</b>。
+   * ★★ <b>2026-10-15 翻向：{@code revise}/{@code drop} 在 PENDING 上<b>不再是状态边界</b></b>（旧 §6.1 N5
+   * 的口径已作废）。
    *
-   * <p>★ 判别力：{@code ga.UpsertDecisionPacket} <b>本身没有状态机</b>（整包覆盖）⇒ 守卫<b>只能</b>落在工具侧 （设计书 §3.2 明写"否则
-   * DM 能把 GM 已批的包翻回 DRAFT 再提交，GM 的裁决被静默抹掉"）。 故本用例逐条钉：① 拒；② 码是 {@code BAD_REQUEST}；③ 文案<b>点出下一步是
-   * reopen</b>（模型据此知道怎么走，而不是死循环重试）； ④ 包<b>一个字节都没变</b>、零 revision。
+   * <p>★★ <b>旧口径 → 新口径</b>：
    *
-   * <p>★ <b>为什么这里直接调工具、而不经 runner 的返回体</b>：{@code RunDecision} 的回执里每条 call 只有 {@code ok} 与 {@code
-   * summary}（<b>没有</b> {@code code}）⇒ 从那里读不出"具名拒的码是什么"。直接经真 {@code DecisionCallerFactory} 调一次才拿得到
-   * {@code ToolResult.code()}（仍是真身份 + 真权限链 + 真工具，只是不经模型）。
+   * <ul>
+   *   <li><b>旧</b>（设计书 §3.2，已作废）：PENDING 上 {@code revise}/{@code drop} ⇒ 具名拒，拒因<b>点出下一步是 {@code
+   *       reopen}}</b>、包<b>一个字节不变</b>、<b>零 revision</b>；
+   *   <li><b>新</b>（§3.9.2，用户 2026-10-15「提交多少轮都没问题」）：守卫<b>放行</b>，请求一路走到"包里有没有那条 call"；改成功时包以
+   *       <b>DRAFT</b> 写回（隐式 reopen）。
+   * </ul>
    *
-   * <p>★★ <b>为什么用 {@code intent} 而不是 {@code propose} 造 DRAFT 包</b>（如实记的夹具限制，与 §6 第 4/5·N6 三条同源）：
-   * 本夹具的世界里 {@code u-1} 没有 {@code GovernmentFormation}、{@code social} 也没有家户 ⇒ {@code
-   * ProposalCatalog} 的<b>全部</b>候选工具在真 preview 阶段一律 {@code BAD_REQUEST}（实测原文见 {@link
-   * #n8_anUnansweredQuestionKeepsThePacketInDraftWithoutLosingAnyContent} 的类注）⇒ <b>造不出一条能落地的
-   * call</b>。 ★ 而 N5 守的是<b>状态边界</b>（非 DRAFT ⇒ 改/删一律拒），与"包里有没有 call"无关：{@code intent} 同样走 {@code
-   * ga.UpsertDecisionPacket} 落一条真 revision、同样把包推成 PENDING。⇒ 判据强度不降（拒的是同一个守卫）， 缺的只是"被拒的 revise
-   * 改不动的那条 call"这一侧的逐值断言（已如实列进台账 §6）。
+   * <p>★ <b>为什么这条用例不删而"翻向"</b>：它的编号 N5 过去是"PENDING ⇒ 拒"的判据；把它删掉等于把那一条语义变更
+   * <b>失去一条既有的可执行记录</b>。翻向之后它仍然有判别力，只是判的对象换了 —— 现在是"<b>拒因不再是状态边界</b>"：
+   *
+   * <ol>
+   *   <li><b>「不再是状态边界」的正面形态</b>：拒因里<b>没有</b> {@code reopen}、<b>没有</b> {@code PENDING} ——
+   *       旧实现恰恰会在这两个词上留痕 ⇒ 旧口径回潮时本断言当场红；
+   *   <li><b>「具名拒仍然发生，只是换了理由」</b>：本夹具（见下）造不出可落地的 call ⇒ 请求走到 {@code callAt(...)} 才被拒，拒因含 {@code
+   *       callIndex}；
+   *   <li>★ 拒 = <b>零 revision</b> + 包内容一字不变（这条<b>新旧通用</b>，一条没松）。
+   * </ol>
+   *
+   * <p>★★ <b>PENDING 上 revise/drop <u>成功</u>那一侧的正面判据在 {@code GmActAsToolTest#i13_a_...}</b>（那里有
+   * {@code GmActAsWorldFixture}，能造出<b>可落地</b>的 call ⇒ 才写得出"改成功了"的判据）。★ 本类<b>不另造夹具</b> （设计书 §7「一文件一
+   * owner」+ 本仓已为"第二份装配真相"付过代价）：本类的 genesis 里 {@code u-1} 没有 {@code GovernmentFormation}、{@code
+   * social} 也没有家户 ⇒ {@code ProposalCatalog} 的全部候选工具在真 preview 阶段一律 {@code BAD_REQUEST}（实测原文见 {@link
+   * #n8_anUnansweredQuestionKeepsThePacketInDraftWithoutLosingAnyContent} 的类注）。
    */
   @Test
-  void n5_reviseAndDropOnAPendingPacketAreRejectedAndPointAtReopen() throws Exception {
+  void n5_reviseAndDropOnAPendingPacketAreNoLongerAStatusBoundary() throws Exception {
     // ① 先造一个 DRAFT 包（intent 走真 ga.UpsertDecisionPacket，落一条真 revision）。
     llm.enqueue(
         LlmResponse.toolCall(
@@ -521,46 +583,58 @@ class RunDecisionEndToEndTest {
     ToolResult dropDenied = dmToolCall("simos.ga.packet.drop", Map.of("callIndex", 0));
 
     for (ToolResult denied : List.of(reviseDenied, dropDenied)) {
-      assertThat(denied.success())
-          .as("★★ N5：对 PENDING 包的改/删必须被具名拒（实得 %s）", denied.message())
-          .isFalse();
-      assertThat(denied.code())
-          .as("★ N5：码是用法错（BAD_REQUEST = 改行为：先 reopen）")
-          .isEqualTo("BAD_REQUEST");
+      // ③ ★★ 新口径的判别力所在：**拒因不再是状态边界**。
       assertThat(denied.message())
-          .as("★★ N5：拒因必须点出下一步是 simos.ga.packet.reopen（只说'失败'会让模型死循环重试）")
-          .contains("simos.ga.packet.reopen")
-          .contains("PENDING");
+          .as(
+              "★★ 翻向后的核心断言：PENDING **不再**是拒的理由 —— 拒因里不许再出现 reopen/PENDING"
+                  + "（旧实现的原文正是「已提交/已裁决 ⇒ BAD_REQUEST，先 simos.ga.packet.reopen」）实得 %s",
+              denied.message())
+          .doesNotContain("simos.ga.packet.reopen")
+          .doesNotContain("PENDING");
+      // ④ 具名拒仍然发生（只是理由换成了"包里没有那条 call"）—— 包是空的，故这条一定走得到。
+      assertThat(denied.success())
+          .as("★ 具名拒仍然发生（本夹具的包里一条 call 都没有）实得 %s", denied.message())
+          .isFalse();
+      assertThat(denied.code()).as("★ 码仍是用法错（BAD_REQUEST）").isEqualTo("BAD_REQUEST");
+      assertThat(denied.message())
+          .as("★★ 拒因指向的是**包里没有那条 call**（callIndex），不是包的状态 —— 这是「新边界」的可执行形态")
+          .contains("callIndex");
     }
 
     DecisionPacket after = packetOf(DM_ID);
-    assertThat(after.status()).as("★★ N5：被拒的调用不得把包翻回 DRAFT").isEqualTo(PacketStatus.PENDING);
-    assertThat(after.intent()).as("★★ N5：包的内容一个字节都没变").isEqualTo(intentBefore);
-    assertThat(head()).as("★ N5：两条被拒 = 零 revision").isEqualTo(headBefore);
+    assertThat(after.status())
+        .as(
+            "★★ 被拒的调用不得改变包状态（这两次<u>确实被拒</u>了 ⇒ 仍是 PENDING）；若这张断言红了，说明它们改成功了"
+                + "——那时应当把本用例整条搬去能造 call 的夹具（GmActAsToolTest），而不是放宽这里")
+        .isEqualTo(PacketStatus.PENDING);
+    assertThat(after.intent()).as("★★ 包的内容一个字节都没变").isEqualTo(intentBefore);
+    assertThat(head()).as("★ 两条被拒 = 零 revision（这条新旧通用，一条没松）").isEqualTo(headBefore);
   }
 
   /**
-   * ★★ <b>§6.1 N4 / §4 I3：{@code reopen} 一个**已裁决**的包 ⇒ 具名拒 + 世界零变化</b>。
+   * ★★ <b>§6.1 N4 / §4 I3 与 §4 I14：{@code reopen} 一个**已裁决**的包 ⇒ 具名拒 + 世界零变化</b>。
    *
    * <p>★ <b>这条是防线，不是顺手</b>（设计书 §3.2 原话）：{@code ga.UpsertDecisionPacket} <b>本身没有状态机</b> （status
-   * 从载荷取、整包覆盖）⇒ 不加这道守卫，DM 就能把 GM 已批的包翻回 DRAFT、改完再提交， <b>GM
-   * 的裁决被静默抹掉</b>（没有任何一层会报错）。故撤回的合法边界只是"我改主意了、GM 还没看"。
+   * 从载荷取、整包覆盖）⇒ 不加这道守卫，DM 就能把 GM 已批的包翻回 DRAFT、改完再提交， <b>GM 的裁决被静默抹掉</b>（没有任何一层会报错）。★ 2026-10-15
+   * 之后它同时是 <b>I14</b> 的一条：PENDING 放开成"可反复提交"之后， "已裁决 ⇒ 拒"不再由"只有 DRAFT 放行"顺带挡住，而是<b>显式</b>由 {@code
+   * PacketDraftSupport.rejectIfDecided} 一处判据挡住 ⇒ 本用例钉的正是那条判据。
    *
-   * <p>★ <b>本用例钉的是两条守卫里的第一条（{@code decidedBy} 非空）</b>：先把包推到 PENDING，再让**真 GM** 用 {@code
+   * <p>★ <b>本用例钉的是两条判据里的第一条（{@code decidedBy} 非空）</b>：先把包推到 PENDING，再让**真 GM** 用 {@code
    * simos.gm.packet.decide} 批成 APPROVED（{@code decidedBy} 由此被填上），然后 DM 试 {@code reopen}。 ★ 断言四处：①
-   * 拒；② 码 {@code BAD_REQUEST}；③ 文案点出"已裁决不可回退"（模型据此停止重试）； ④ <b>包状态与 content 一个字节都没变、零
+   * 拒；② 码 {@code BAD_REQUEST}；③ 文案点出"已裁决，不能再改"（模型据此停止重试）； ④ <b>包状态与 content 一个字节都没变、零
    * revision</b>（"被拒"必须真的是零副作用）。
    *
-   * <p>★★ <b>与设计书 §7 的偏差（如实记）</b>：任务书要求"四种终态逐一（APPROVED/REJECTED/MERGED/ PARTIALLY_APPROVED）"。本条只做了
-   * <b>APPROVED</b>，理由有两条、都回代码核过： ① 第 2 条守卫（{@code isDecided(status)}）挡的四种终态在**同一次 {@code
-   * decidedBy} 判定之后**，而真 GM 裁决 <b>必然</b>填 {@code decidedBy} ⇒ 走工具路径造出的四种终态**全部**先被第 1 条守卫拦下 ⇒
-   * 逐一测四种是 同一处代码的四次重复，判别力不增； ② {@code PARTIALLY_APPROVED} 的产生条件是 {@code
-   * GmDecidePacketTool.expectedStatus}：{@code callIndexes} 非空且**存在未选中的 call** ⇒ 包里<b>必须至少有一条真
-   * call</b>；而本夹具造不出可落地的 call （见 {@link
-   * #n8_anUnansweredQuestionKeepsThePacketInDraftWithoutLosingAnyContent} 的类注：{@code u-1} 无 {@code
-   * GovernmentFormation}、{@code social} 无家户 ⇒ {@code ProposalCatalog} 全部候选在真 preview 阶段 {@code
-   * BAD_REQUEST}）。 ★ 第 2 条守卫（{@code decidedBy} 为空但状态已是终态 = 契约故障）在本夹具里**不可造**（那需要直写状态， 而那正是 I12 / 铁律
-   * 2 禁止的路径）⇒ 如实列进台账 §6「未做」。
+   * <p>★★ <b>2026-10-15 措辞翻向（如实记）</b>：旧报文是「决策包已由 GM 裁决（decidedBy=…），撤回不可用——<b>已裁决不可回退</b>」， 新报文是
+   * {@code PacketDraftSupport} 里**唯一一处**判据的统一文案「决策包已由 GM 裁决，<b>不能再改</b>（decidedBy=… status=…）…」。★
+   * 为什么接受新措辞而不是把旧词加回去：§3.9 之后"已裁决"对<b>四个修改口 + confirm + reopen 六条写口</b>是同一条件，文案必须同源；"回退"是 reopen
+   * 视角的旧词，六条口共用会误导（propose/revise 不叫"回退"）。 <b>判据强度一条没降</b>：拒 + {@code BAD_REQUEST} + 状态不变 + 内容不变 +
+   * 零 revision 全在， 且下面的<b>判别力指纹</b>仍然只可能来自第一条判据。
+   *
+   * <p>★★ <b>与设计书 §7 的偏差（如实记）</b>：任务书要求"四种终态逐一（APPROVED/REJECTED/MERGED/ PARTIALLY_APPROVED）"。 本条只做
+   * <b>APPROVED</b>；<b>四种逐一的那条判据已由 {@code
+   * GmActAsToolTest#n4_reopenIsRejectedForEachOfTheFourTerminalStatusesWithZeroRevision} 真跑落地</b>
+   * （那里有能造真 call 的夹具 ⇒ {@code PARTIALLY_APPROVED} 造得出来）。★ 第 2 条判据（{@code decidedBy} 为空但状态已是 终态 =
+   * 契约故障）在**走工具路径**的世界里不可造（那需要直写状态，而那正是 I12 / 铁律 2 禁止的路径）。
    */
   @Test
   void n4_reopeningADecidedPacketIsRejectedAndLeavesTheWorldUnchanged() throws Exception {
@@ -591,20 +665,23 @@ class RunDecisionEndToEndTest {
     assertThat(reopenDenied.success()).as("★★ N4/I3：已裁决的包**不许**撤回").isFalse();
     assertThat(reopenDenied.code()).as("★ N4：码是用法错（BAD_REQUEST）").isEqualTo("BAD_REQUEST");
     assertThat(reopenDenied.message())
-        .as("★★ N4：拒因必须点出「已裁决不可回退」（模型据此停止重试，而不是死循环）")
-        .contains("已裁决不可回退");
-    // ★★★ 判别力补强（**变异自证逼出来的**，2026-10-14 实测）：`ReopenPacketTool` 有**两条**守卫，而它们的
+        .as("★★ N4/I14：拒因必须点出「已由 GM 裁决，不能再改」（模型据此停止重试，而不是死循环）")
+        .contains("已由 GM 裁决")
+        .contains("不能再改");
+    // ★★★ 判别力补强（**变异自证逼出来的**，2026-10-14 实测）：`ReopenPacketTool` 曾经有**两条**守卫，而它们的
     //   拒因文案**都**含「已裁决不可回退」⇒ 只断言那句话，**删掉第 1 条（decidedBy）守卫时本条照样全绿**
     //   （第 2 条 isDecided(status) 会接住它，报文一字不差到判据看不出来）—— 实测确认该变异**存活**。
-    //   ⇒ 加这两条**只属于第 1 条守卫**的指纹：报文里的 `decidedBy=<谁>` 与 `status=<什么态>`。
-    //     第 2 条守卫的报文是「决策包状态 X 已是终态，撤回不可用」——**不含** `decidedBy=`。
-    //   ★ 判别力：删掉 decidedBy 守卫 ⇒ 报文换成第 2 条那版 ⇒ 这两条当场红（已实测）。
+    //   ⇒ 加这两条**只属于第 1 条判据**的指纹：报文里的 `decidedBy=<谁>` 与 `status=<什么态>`。
+    //     第 2 条判据（decidedBy 为空但状态是终态）的报文**不含** `decidedBy=`。
+    //   ★ 2026-10-15：两条判据已合并成 `PacketDraftSupport.rejectIfDecided` 一处，指纹的形态不变、判别力照旧——
+    //     删掉 decidedBy 那一支（改成只看状态）⇒ 报文不再含 `decidedBy=…` ⇒ 本断言当场红。
     assertThat(reopenDenied.message())
         .as(
-            "★★★ N4 的判别力指纹：拒因必须来自**第 1 条（decidedBy 非空）**守卫 —— 删掉它，第 2 条守卫"
-                + "会接住同一个调用但报文不含 decidedBy= ⇒ 本断言当场红（变异自证实测）")
+            "★★★ N4 的判别力指纹：拒因必须来自**「decidedBy 非空」**那一支 —— 删掉它，只看状态的那一支会接住"
+                + "同一个调用但报文不含 decidedBy= ⇒ 本断言当场红（变异自证实测）")
         .contains("decidedBy=")
-        .contains(approved.decidedBy().orElseThrow());
+        .contains(approved.decidedBy().orElseThrow())
+        .contains("status=APPROVED");
 
     DecisionPacket after = packetOf(DM_ID);
     assertThat(after.status())
@@ -918,6 +995,29 @@ class RunDecisionEndToEndTest {
   private static String wireText(McpSchema.CallToolResult result) {
     List<McpSchema.Content> content = result.content();
     return content.get(0) instanceof McpSchema.TextContent text ? text.text() : content.toString();
+  }
+
+  /**
+   * 一次 {@code ga.RunDecision} 回执里记下的**内层工具调用**（{@code trace.toolCalls}）。
+   *
+   * <p>★ 它是"模型真正看见了什么"的那一份：内层工具被具名拒时回合照样 ok（模型拿到拒因、接着把话说完） ⇒ 判"那次调用成没成" <b>只能</b>读这里（{@code
+   * RunDecision} 的 {@code ok} 只说明回合正常收口）。
+   *
+   * <p>★ 形状不存在 ⇒ 当场抛（不静默退化成空表 —— 那会让"查得到"恒假）。
+   */
+  private static List<JsonNode> traceToolCalls(McpSchema.CallToolResult result) {
+    try {
+      JsonNode body = JSON.readTree(wireText(result));
+      JsonNode calls = body.path("toolCalls");
+      if (!calls.isArray()) {
+        throw new AssertionError("回执里没有 toolCalls 数组: " + wireText(result));
+      }
+      List<JsonNode> out = new ArrayList<>();
+      calls.forEach(out::add);
+      return out;
+    } catch (Exception e) {
+      throw new AssertionError("回执不是预期的轨迹 JSON: " + wireText(result), e);
+    }
   }
 
   private static List<String> names(List<AgentTool> tools) {

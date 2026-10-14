@@ -20,6 +20,7 @@ import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.PacketStatus;
 import io.mosire.simos.ga.tools.ToolBuckets;
+import io.mosire.simos.ga.tools.write.ConfirmPacketTool;
 import io.mosire.simos.ga.tools.write.GmActAsTool;
 import io.mosire.simos.ga.tools.write.ReopenPacketTool;
 import io.mosire.simos.ga.tools.write.RunDecisionMakersTool;
@@ -1030,11 +1031,16 @@ class GmActAsToolTest {
             .as("★★ N4[%s]：已裁决的包不可回到 DRAFT（实得 %s）", terminal, reopened.message())
             .isFalse();
         assertThat(reopened.code())
-            .as("★★ N4[%s]：码是 BAD_REQUEST（改行为：已裁决不可回退）", terminal)
+            .as("★★ N4[%s]：码是 BAD_REQUEST（改行为：已裁决不能再改）", terminal)
             .isEqualTo("BAD_REQUEST");
         assertThat(reopened.message())
-            .as("★★ N4[%s]：拒因必须说明「已裁决 / 不可回退」（只说失败会让模型死循环重试）", terminal)
-            .contains("裁决");
+            .as("★★ N4[%s]：拒因必须说明「已裁决 / 不能再改」（只说失败会让模型死循环重试）", terminal)
+            .contains("裁决")
+            // ★★ 判别力指纹（2026-10-15 加严）：报文必须来自 `PacketDraftSupport.rejectIfDecided` 那**唯一一处**
+            //   判据，而不是 `ReopenPacketTool` 自己那条"只有 PENDING 可撤回"的状态检查
+            //   （★ 实测：把 rejectIfDecided 摘掉之后，那条检查会接住同一个调用、报文是
+            //   「只有已确认（PENDING）的决策包可撤回，当前状态: APPROVED」——**不含**"不能再改" ⇒ 这里当场红）。
+            .contains("不能再改");
 
         JsonNode after = viaWorldPacket(one);
         assertThat(after.path("status").asText())
@@ -1110,6 +1116,731 @@ class GmActAsToolTest {
     assertThat(world.head()).as("★★ §6-4 负向：★ 零 revision（不是「落了再回滚」）").isEqualTo(headBefore);
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // ★★ 2026-10-15 批 J（I13）：PENDING 不是修改锁 —— 「提交多少轮都没问题」的四条正面判据
+  //
+  //   为什么落在**本类**：本类有 `GmActAsWorldFixture`（能造**可落地**的 call）与**直接调工具**的口
+  //   （`dmCall`，不经 runner）—— 后者是必需的：`RunDecisionEndToEndTest` 那条路上回合末的
+  //   `DecisionTurnFinalizer.auto-no-submit` 兜底会把 DRAFT 再结算成 PENDING ⇒ "以 DRAFT 写回"在那里**看不见**。
+  //   本类的判据全部是"落盘后立刻读"，没有中间层。
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * ★★ <b>不变量 I13-a：PENDING 上四条修改口（{@code intent} / {@code revise} / {@code drop} / {@code
+   * propose}）<b>全部成功</b>，且包<b>以 DRAFT 写回</b>、<b>恰好一次</b> revision、视图带 {@code autoWithdrawn}</b>。
+   *
+   * <p>★★ <b>这条直接打死三种坏实现</b>：
+   *
+   * <ol>
+   *   <li><b>旧口径回潮</b>（PENDING ⇒ 具名拒）：{@code success()} 那条当场红；
+   *   <li>★★ <b>"改成功但原样带 PENDING 回去"</b>（批 I 台账 §1.3 记的<b>真实</b>旧形态：{@code existing.withCalls(…)}
+   *       不带 {@code withStatus(DRAFT)}，而视图却谎报 DRAFT ⇒ 状态与视图不一致）：{@code status == DRAFT} 那条当场红；
+   *   <li><b>"先 reopen 再改"（两次 revision）</b>或<b>"没真写"（零 revision）</b>：{@code delta == 1} 那条当场红。
+   * </ol>
+   *
+   * <p>★ <b>为什么四条口各起一座新世界</b>：每条口都要"包此刻是 PENDING"这个前提，而改完它就不是了 ⇒
+   * 同一条口跑两次会串味（第二次的前提不成立）。四座世界各占一个子目录，互不影响。
+   */
+  @Test
+  void i13_a_allFourMutatingToolsSucceedOnAPendingPacketAndWriteItBackAsDraft() {
+    Map<String, java.util.function.BiFunction<GmActAsWorldFixture.World, String, ToolResult>>
+        mutators = new LinkedHashMap<>();
+    mutators.put(
+        INNER_INTENT, (w, ignored) -> viaWorldDm(w, INNER_INTENT, Map.of("text", "改后的意图")));
+    mutators.put(
+        "simos.ga.packet.revise",
+        (w, ignored) ->
+            viaWorldDm(
+                w,
+                "simos.ga.packet.revise",
+                Map.of(
+                    "callIndex",
+                    0,
+                    "args",
+                    retireArgs(1, "hh-0_0-rural-middle_peasant"),
+                    "intent",
+                    "改后的意图")));
+    mutators.put(
+        "simos.ga.packet.drop",
+        (w, ignored) -> viaWorldDm(w, "simos.ga.packet.drop", Map.of("callIndex", 0)));
+    mutators.put(
+        "simos.ga.packet.propose",
+        (w, ignored) ->
+            viaWorldPropose(
+                w, Map.of("intent", "再提一条"), List.of(call("simos.gov.recruit", recruitArgs()))));
+
+    // ★★ 四条口一次报全（与 I14 同一条理由：逐条当场断言会在**第 1 条**就中断整个方法 ⇒
+    //   变异自证时看不见另外三条口也判了）。
+    List<String> faults = new ArrayList<>();
+    for (Map.Entry<
+            String, java.util.function.BiFunction<GmActAsWorldFixture.World, String, ToolResult>>
+        entry : mutators.entrySet()) {
+      String tool = entry.getKey();
+      Path dir = tempDir.resolve("i13a-" + tool.replace('.', '-'));
+      GmActAsWorldFixture.Fake each = new GmActAsWorldFixture.Fake();
+      try (GmActAsWorldFixture.World one = GmActAsWorldFixture.start(dir, each)) {
+        // 前提：一条真 call 的 PENDING 包。
+        String before = pendingPacketWithOneCall(one);
+
+        long headBefore = one.head();
+        ToolResult mutated = entry.getValue().apply(one, before);
+        long headAfter = one.head();
+        String statusAfter = viaWorldPacket(one).path("status").asText();
+        long delta = headAfter - headBefore;
+        String message = mutated.message() == null ? "" : mutated.message();
+        List<String> faultsHere = new ArrayList<>();
+        if (!mutated.success()) {
+          faultsHere.add("被拒了（code=" + mutated.code() + " msg=" + message + "）");
+        }
+        if (!message.contains("\"autoWithdrawn\":true")) {
+          faultsHere.add("视图没有 autoWithdrawn:true");
+        }
+        if (!message.contains(ConfirmPacketTool.NAME)) {
+          faultsHere.add("note 没点出下一步是 " + ConfirmPacketTool.NAME);
+        }
+        if (!"DRAFT".equals(statusAfter)) {
+          faultsHere.add("写回的状态是 " + statusAfter + "（应为 DRAFT）");
+        }
+        if (delta != 1L) {
+          faultsHere.add("revision delta=" + delta + "（应为恰好 1）");
+        }
+        if (!faultsHere.isEmpty()) {
+          faults.add("[" + tool + "] " + faultsHere);
+        }
+      }
+    }
+
+    assertThat(faults)
+        .as(
+            "★★★ I13-a：PENDING 上 **四条修改口**（intent / revise / drop / propose）条条必须成功、"
+                + "以 DRAFT 写回、恰好一次 revision、视图带 autoWithdrawn（此处一次报全四条）")
+        .isEmpty();
+  }
+
+  /**
+   * ★★ <b>不变量 I13-b：{@code confirm} 连调两次 —— 第一次 DRAFT→PENDING（写一条 revision）， <b>第二次幂等成功且零
+   * revision</b></b>（＝"又提交一次，以这次为准"）。
+   *
+   * <p>★ 判别力：只断言"两次都成功、状态都是 PENDING"过不了<b>每次重新 upsert</b> 的实现 ⇒ 第二条 revision 断言才是本用例的核心（与 {@code
+   * reopenOnAnAlreadyDraftPacketIsIdempotentAndWritesNoRevision} 同一形制）。
+   */
+  @Test
+  void i13_b_confirmIsIdempotentOnAnAlreadyPendingPacketWithZeroRevision() {
+    assertThat(viaWorldDm(world, INNER_INTENT, Map.of("text", "I13-b 靶子")).success())
+        .as("夹具：先有一条 DRAFT 包")
+        .isTrue();
+    assertThat(viaWorldPacket(world).path("status").asText()).as("夹具前提：DRAFT").isEqualTo("DRAFT");
+
+    long headBeforeFirst = world.head();
+    ToolResult first = viaWorldDm(world, ConfirmPacketTool.NAME, Map.of());
+    long headAfterFirst = world.head();
+    assertThat(first.success()).as("★ I13-b：第一次 confirm 成功（实得 %s）", first.message()).isTrue();
+    assertThat(parse(first.message()).path("submitted").asBoolean())
+        .as("★ I13-b：第一次是**真提交**（submitted:true）")
+        .isTrue();
+    assertThat(viaWorldPacket(world).path("status").asText())
+        .as("★ I13-b：DRAFT → PENDING")
+        .isEqualTo("PENDING");
+    assertThat(headAfterFirst - headBeforeFirst)
+        .as("★ I13-b：第一次**写一条 revision**（提交是世界事实，铁律 2）")
+        .isEqualTo(1L);
+
+    long headBeforeSecond = world.head();
+    ToolResult second = viaWorldDm(world, ConfirmPacketTool.NAME, Map.of());
+    assertThat(second.success())
+        .as("★★ I13-b：已 PENDING ⇒ 第二次**幂等成功**（不是拒；实得 %s：%s）", second.code(), second.message())
+        .isTrue();
+    assertThat(viaWorldPacket(world).path("status").asText())
+        .as("★ I13-b：状态仍是 PENDING")
+        .isEqualTo("PENDING");
+    assertThat(world.head())
+        .as("★★★ I13-b：第二次**零 revision**（「每次都重新 upsert」的实现会在这里红）")
+        .isEqualTo(headBeforeSecond);
+  }
+
+  /**
+   * ★★ <b>不变量 I13-c：反复提交 —— 提交 → 改（自动撤回）→ 再提交 → 再改 → 再提交，<b>每一轮都成立</b>， 且 GM
+   * 读到的<b>永远是最新一次的内容</b></b>（用户原话「提交多少轮都没问题」+「gm 应当取最后一轮提交的决策」）。
+   *
+   * <p>★ <b>为什么不能只测一轮</b>：单轮只能证明"第一次之后还改得动"；用户原话的要害是"<b>多少轮都没问题</b>" ——
+   * 那是个<b>可反复成立</b>的性质，必须在循环里真跑一遍。★ 本用例连做 <b>3 轮</b>，每轮： {@code intent}（改）⇒ 断言包回 DRAFT ⇒ {@code
+   * confirm}（提交）⇒ 断言 PENDING ⇒ **用真 {@code gm.packet} 读回**、逐轮比对 intent 是<b>本轮新写的那句</b>。
+   */
+  @Test
+  void i13_c_repeatedSubmissionRoundsAllSucceedAndGmAlwaysSeesTheLatestContent() {
+    for (int round = 1; round <= 3; round++) {
+      String text = "第" + round + "次提交的意图";
+
+      ToolResult written = viaWorldDm(world, INNER_INTENT, Map.of("text", text));
+      assertThat(written.success())
+          .as("★★ I13-c：第 %d 轮的改必须成功（实得 %s）", round, written.message())
+          .isTrue();
+      assertThat(viaWorldPacket(world).path("status").asText())
+          .as("★★ I13-c：第 %d 轮改完 ⇒ 包回 DRAFT（这就是「自动撤回」）", round)
+          .isEqualTo("DRAFT");
+
+      ToolResult submitted = viaWorldDm(world, ConfirmPacketTool.NAME, Map.of());
+      assertThat(submitted.success())
+          .as("★★ I13-c：第 %d 轮的再提交必须成功（实得 %s：%s）", round, submitted.code(), submitted.message())
+          .isTrue();
+      JsonNode snapshot = viaWorldPacket(world);
+      assertThat(snapshot.path("status").asText())
+          .as("★★ I13-c：第 %d 轮提交后 ⇒ PENDING", round)
+          .isEqualTo("PENDING");
+      assertThat(snapshot.path("intent").asText())
+          .as("★★★ I13-c：GM 用 gm.packet 读到的**永远是本轮最新那次**的内容（「gm 应当取最后一轮提交的决策」）", round)
+          .isEqualTo(text);
+    }
+    assertThat(viaWorldPacket(world).path("intent").asText())
+        .as("★ I13-c：三轮跑完，包里留下的就是第 3 轮那句（不是第 1 轮的，也不是三段拼起来的）")
+        .isEqualTo("第3次提交的意图");
+  }
+
+  /**
+   * ★ <b>夹具助手：把包推到"已 PENDING 且带一条真 call"</b>（I13-a 的四条修改口都要这个前提）。
+   *
+   * @return 包 id（I13-a 的用例不必用它，但便于失败时定位）
+   */
+  private static String pendingPacketWithOneCall(GmActAsWorldFixture.World target) {
+    ToolResult proposed =
+        viaWorldPropose(
+            target,
+            Map.of("intent", "PENDING 前提"),
+            List.of(call(PROPOSABLE, retireArgs(1, IN_SCOPE_HOUSEHOLD))));
+    assertThat(proposed.success())
+        .as("夹具：propose 必须成功（实得 %s：%s）", proposed.code(), proposed.message())
+        .isTrue();
+    ToolResult confirmed = viaWorldDm(target, ConfirmPacketTool.NAME, Map.of());
+    assertThat(confirmed.success()).as("夹具：confirm 必须成功（实得 %s）", confirmed.message()).isTrue();
+    JsonNode packet = viaWorldPacket(target);
+    assertThat(packet.path("status").asText()).as("夹具前提：包已 PENDING").isEqualTo("PENDING");
+    assertThat(packet.path("calls")).as("夹具前提：包里有一条真 call").hasSize(1);
+    return packet.path("packetId").asText();
+  }
+
+  /**
+   * ★★ <b>不变量 I14（本次语义变更唯一的风险点）：<b>四种终态 × 四条修改口 = 16 条负向</b>，条条具名拒 + 零 revision + 包内容不变</b>。
+   *
+   * <p>★★ <b>为什么这条是"唯一的风险点"</b>（设计书 §3.9.3 原话）：旧实现挡住"已裁决"靠的是"<b>只有 DRAFT 才放行</b>" ——PENDING 一放开（用户
+   * 2026-10-15「提交多少轮都没问题」），那条顺带防线就没了。⇒ "已裁决 ⇒ 拒"必须<b>显式</b>补上， 且四个工具都得有。★ <b>漏掉一个的症状</b>是"DM 能把 GM
+   * 已批的包改了"，而 {@code ga.UpsertDecisionPacket} 本身<b>没有状态机</b>（整包覆盖）⇒ <b>没有任何一层会报错</b>。
+   *
+   * <p>★★ <b>16 条怎么造</b>：外层循环四种终态（每种一座新世界 —— 终态不可逆，I3），内层循环四条修改口。 终态的造法与 {@link
+   * #n4_reopenIsRejectedForEachOfTheFourTerminalStatusesWithZeroRevision} 逐字同源 （真 GM 裁决；{@code
+   * MERGED} 先 upsert 一条真 mergedPlan；{@code PARTIALLY_APPROVED} 需两条真 call）。
+   *
+   * <p>★★ <b>逐条判据（每条都带判别力指纹）</b>：
+   *
+   * <ol>
+   *   <li>{@code success() == false} + 码 {@code BAD_REQUEST}；
+   *   <li>★★ <b>报文含 {@code decidedBy=} 或 {@code status=}</b> —— 这是 §四要求的"判别力指纹"：
+   *       <b>只断言"拒"过不了"因为别的原因被拒"</b>（例如 {@code callIndex} 不存在、参数形状错）；
+   *   <li>★★ <b>零 revision</b>（"被拒"必须真的是零副作用，判据在写入之前）；
+   *   <li>★★ <b>包逐字段不变</b>：状态仍是那个终态、{@code intent} 一字未动、{@code calls} 条数不变、 {@code decidedBy}
+   *       仍非空（不许被洗掉）。
+   * </ol>
+   */
+  @Test
+  void i14_allFourMutatingToolsAreRejectedOnEachOfTheFourTerminalStatusesWithZeroRevision()
+      throws IOException {
+    // ★★ 为什么**收集**而不是"逐条当场断言"（实测教训，如实记）：逐条断言会在**第 1 条**就中断整个方法 ⇒
+    //   变异自证时只能看见"1 条红"，看不见"剩下 15 条也判了"。收集起来一次报 ⇒ 16 条**每条都被求值**，
+    //   变异日志里能一次看全（这正是"16 条负向"这句承诺的可验证形态）。
+    List<String> failures = new ArrayList<>();
+    List<String> matchedGuardMessages = new ArrayList<>();
+    int attempted = 0;
+    for (PacketStatus terminal :
+        List.of(
+            PacketStatus.APPROVED,
+            PacketStatus.REJECTED,
+            PacketStatus.MERGED,
+            PacketStatus.PARTIALLY_APPROVED)) {
+      Path dir = tempDir.resolve("i14-" + terminal.name().toLowerCase(Locale.ROOT));
+      GmActAsWorldFixture.Fake each = new GmActAsWorldFixture.Fake();
+      try (GmActAsWorldFixture.World one = GmActAsWorldFixture.start(dir, each)) {
+        decideToTerminal(one, terminal, each);
+        JsonNode before = viaWorldPacket(one);
+        // ★ 夹具前提也用收集器：前提不成立时应报"前提"，而不是伪装成"判据通过"。
+        if (before.path("decidedBy").asText().isBlank()) {
+          failures.add("[" + terminal + "] 夹具前提不成立：decidedBy 是空的（I14 第一条判据的靶子没了）");
+        }
+        long headBefore = one.head();
+
+        Map<String, ToolResult> attempts = new LinkedHashMap<>();
+        attempts.put("intent", viaWorldDm(one, INNER_INTENT, Map.of("text", "越权改写：intent")));
+        attempts.put(
+            "revise",
+            viaWorldDm(
+                one,
+                "simos.ga.packet.revise",
+                Map.of("callIndex", 0, "args", retireArgs(1, IN_SCOPE_HOUSEHOLD))));
+        attempts.put("drop", viaWorldDm(one, "simos.ga.packet.drop", Map.of("callIndex", 0)));
+        attempts.put(
+            "propose",
+            viaWorldPropose(
+                one,
+                Map.of("intent", "越权改写：propose"),
+                List.of(call("simos.gov.recruit", recruitArgs()))));
+
+        for (Map.Entry<String, ToolResult> attempt : attempts.entrySet()) {
+          String tool = attempt.getKey();
+          ToolResult denied = attempt.getValue();
+          boolean rejected = !denied.success();
+          boolean named = "BAD_REQUEST".equals(denied.code());
+          boolean byTheDecidedGuard =
+              denied.message() != null
+                  && (denied.message().contains("不能再改")
+                      || denied.message().contains("decidedBy=")
+                      || denied.message().contains("status="));
+          if (!(rejected && named && byTheDecidedGuard)) {
+            failures.add(
+                "["
+                    + terminal
+                    + " × "
+                    + tool
+                    + "] success="
+                    + denied.success()
+                    + " code="
+                    + denied.code()
+                    + " message="
+                    + denied.message());
+          }
+          matchedGuardMessages.add(denied.message());
+          attempted++;
+        }
+
+        // ★★ 后置检查**也进收集器**（与上面同一条理由：逐条当场断言会在第 1 个终态就中断整个方法，
+        //    那样变异自证只能看见"1 条红"，看不见"剩下三条终态的同族判据也判了"）。
+        JsonNode after = viaWorldPacket(one);
+        final JsonNode beforeSnapshot = before;
+        List<String> postFaults = new ArrayList<>();
+        if (!terminal.name().equals(after.path("status").asText())) {
+          postFaults.add(
+              "status=" + after.path("status").asText() + "（应为 " + terminal.name() + "）");
+        }
+        if (!beforeSnapshot.path("intent").asText().equals(after.path("intent").asText())) {
+          postFaults.add("intent 被改了：" + after.path("intent").asText());
+        }
+        if (beforeSnapshot.path("calls").size() != after.path("calls").size()) {
+          postFaults.add(
+              "calls 条数变了："
+                  + beforeSnapshot.path("calls").size()
+                  + " → "
+                  + after.path("calls").size());
+        }
+        if (!beforeSnapshot.path("decidedBy").asText().equals(after.path("decidedBy").asText())) {
+          postFaults.add("decidedBy 被改了：" + after.path("decidedBy").asText());
+        }
+        if (one.head() != headBefore) {
+          postFaults.add("revision 前进了：" + headBefore + " → " + one.head());
+        }
+        if (!postFaults.isEmpty()) {
+          failures.add("[" + terminal + " × 四条口] 被拒之后世界仍变了：" + postFaults);
+        }
+      }
+    }
+
+    assertThat(failures)
+        .as(
+            "★★★ I14：**四种终态 × 四条修改口 = 16 条**负向，条条必须具名拒（此处一次报全；"
+                + "摘掉 rejectIfDecided 这条判据时会 16 条一起出现 —— 见批 J 台账 §4 的变异自证 m1）")
+        .isEmpty();
+    assertThat(attempted)
+        .as("★ 判据自证：16 条**全部真的求值过**（4 终态 × 4 修改口）—— 少求值一条 = 判据面被静默缩小")
+        .isEqualTo(16);
+    assertThat(matchedGuardMessages)
+        .as(
+            "★★★ I14：16 条拒因**全部**含唯一判据的文案「不能再改」 ⇒ 它们是同一个判据挡下的，"
+                + "而不是四条口各被别的原因（参数错 / callIndex 不存在）拒掉")
+        .hasSize(16)
+        .allMatch(message -> message != null && message.contains("不能再改"));
+  }
+
+  /**
+   * ★★ <b>不变量 I14-b：{@code decidedBy} 非空但状态<b>残留 PENDING</b> 的契约故障，也要拒（合取、fail-closed）</b>。
+   *
+   * <p>★★ <b>为什么这条值得单独钉</b>：它是 {@code confirm} 里<b>判据顺序</b>的理由（批 I 台账 §1.6）—— {@code
+   * rejectIfDecided} <b>必须放在</b>"已 PENDING ⇒ 幂等成功"那一支<b>之前</b>；反过来的话， "已裁决但状态残留
+   * PENDING"的包会被当成"又提交一次"<b>幂等放过去</b>，而它其实已经被 GM 裁决过了。 同族地，四条修改口也不许只看状态。
+   *
+   * <p>★★ <b>这条判据怎么落（诚实说明）</b>：本仓<b>没有任何合法路径</b>能造出这种包 —— 要造它必须"直写状态" （把 {@code decidedBy} 填上却把
+   * {@code status} 留成 PENDING），而那正是 <b>I12 / 铁律 2</b>（所有修改走 {@code Command → ChangeSet →
+   * Revision}）禁止的。★ 故本判据落在<b>源码</b>上：真读 {@code PacketDraftSupport} 的 {@code rejectIfDecided}
+   * 实现，钉住它写的是 <b>{@code ||} 合取</b> （{@code decidedBy} 非空 <b>或</b> 终态）而不是"只看状态"。★ 形制照 {@link
+   * io.mosire.simos.app.tools.DecisionPacketToolGateScanTest}（§6.1 N10 的源码扫描判据）。
+   *
+   * <p>★ <b>它的判别力</b>：把判据改成"只看 status"（把 {@code decidedBy.isEmpty() && !terminal} 写成 {@code
+   * !terminal}）⇒ 源码里不再有 {@code decidedBy.isEmpty()} 与 {@code ||}/或的合取形态 ⇒ 本用例当场红。
+   */
+  @Test
+  void i14_b_theDecidedGuardIsAConjunctionSoAContractFaultIsAlsoRejected() throws IOException {
+    Path source =
+        Path.of(
+            "..",
+            "simos-ga",
+            "src",
+            "main",
+            "java",
+            "io",
+            "mosire",
+            "simos",
+            "ga",
+            "tools",
+            "write",
+            "PacketDraftSupport.java");
+    assertThat(Files.isRegularFile(source))
+        .as("扫描面必须存在（「空 == 空」恒真是本仓踩过的陷阱）：%s", source.toAbsolutePath())
+        .isTrue();
+    String text = Files.readString(source);
+    int start = text.indexOf("static Optional<ToolResult> rejectIfDecided(");
+    assertThat(start).as("PacketDraftSupport 里必须有 rejectIfDecided（I14 的唯一实现处）").isGreaterThan(0);
+    int end = text.indexOf("static Optional<ToolResult> rejectIfNotCurrentTick(");
+    assertThat(end)
+        .as("rejectIfDecided 之后必须有 rejectIfNotCurrentTick（用来切出扫描区间）")
+        .isGreaterThan(start);
+    String body = text.substring(start, end);
+
+    assertThat(body)
+        .as(
+            "★★★ I14-b：判据必须是**合取** —— 同时读 decidedBy 与 status。"
+                + "只读 status 的实现会让「decidedBy 非空但状态残留 PENDING」的契约故障**静默通过**（fail-open）")
+        .contains("decidedBy")
+        .contains("isDecidedStatus");
+    // ★★ 形态无关的等式（**实测校准**）：本实现写的是 De Morgan 形态
+    //    「两者都为空 ⇒ 放行（`decidedBy.isEmpty() && !terminal` ⇒ return empty）」，**没有**字面的 `||`。
+    //    ★ 第一版我断言了字面 `||` ⇒ 当场红（实测），而那是**我的判据写错了**，不是实现错了：
+    //      `if (A.isEmpty() && !B) return 放行;` 与 `if (A.isPresent() || B) 拒;` 是同一条件。
+    //    ⇒ 改判"表达式形状"等于把判据钉在实现风格上（第二处真相）。真正要守的是**语义**，故这里断言：
+    //      ① 合取里**两个条件都在**（decidedBy 这条**是**放行条件的合取项 —— 这正是"只读 status"会丢掉的那一项）；
+    //      ② `&&` ⇒ 必须**同时**成立才放行（任一条不成立 ⇒ 落到下面那条拒）。
+    //    ★ 判别力：把判据改成"只看 status"（删掉 `decidedBy.isEmpty() &&` 那半截）⇒ ① ② 两条一起红。
+    assertThat(body)
+        .as(
+            "★★★ I14-b：decidedBy 那一支必须是**放行条件的合取项**（`decidedBy.isEmpty() && …`）—— "
+                + "只读 status 的实现会让契约故障 fail-open")
+        .contains("decidedBy.isEmpty() &&");
+    assertThat(body).as("★★ I14-b：合取（&&）⇒ 两个条件必须同时成立才放行，否则落到具名拒（fail-closed）").contains("&&");
+  }
+
+  /**
+   * ★ <b>夹具助手：把世界里的包推到某个终态</b>（I14 与 N4 同源）。
+   *
+   * <p>★ <b>为什么每条都得</b>：终态<b>不可逆</b>（I3）⇒ 四种没法在同一个世界上叠着造。
+   */
+  private static void decideToTerminal(
+      GmActAsWorldFixture.World one, PacketStatus terminal, GmActAsWorldFixture.Fake each)
+      throws IOException {
+    // ① 两条真 call（PARTIALLY_APPROVED 需要"至少一条未选中的 call"，见 N4 的说明）。
+    ToolResult proposed =
+        viaWorldPropose(
+            one,
+            Map.of("intent", "I14 靶子 " + terminal),
+            List.of(
+                call(PROPOSABLE, retireArgs(1, IN_SCOPE_HOUSEHOLD)),
+                call("simos.gov.recruit", recruitArgs())));
+    assertThat(proposed.success())
+        .as("[%s] 夹具：propose 必须成功（实得 %s）", terminal, proposed.message())
+        .isTrue();
+    assertThat(viaWorldDm(one, ConfirmPacketTool.NAME, Map.of()).success())
+        .as("[%s] 夹具：confirm 必须成功", terminal)
+        .isTrue();
+    // ② MERGE 需要一条**真** mergedPlan（先 upsert，再 decide(MERGE, planId)）。
+    String mergedPlanId = null;
+    if (terminal == PacketStatus.MERGED) {
+      ToolResult plan =
+          viaWorldGm(
+              one,
+              "simos.gm.mergedPlan.upsert",
+              Map.of(
+                  "participantIds", List.of(GmActAsWorldFixture.DM),
+                  "orderedEffects",
+                      List.of(
+                          Map.of(
+                              "toolName",
+                              PROPOSABLE,
+                              "argsJson",
+                              JSON.writeValueAsString(retireArgs(1, IN_SCOPE_HOUSEHOLD))))));
+      assertThat(plan.success())
+          .as("[%s] 夹具：mergedPlan.upsert 必须成功（实得 %s）", terminal, plan.message())
+          .isTrue();
+      mergedPlanId = parse(plan.message()).path("planId").asText();
+      assertThat(mergedPlanId).as("[%s] 夹具：计划 id 非空", terminal).isNotBlank();
+    }
+    ToolResult decided =
+        viaWorldGm(one, "simos.gm.packet.decide", decideIn(one, terminal, mergedPlanId));
+    assertThat(decided.success())
+        .as("[%s] 夹具：GM 裁决必须成功（实得 %s：%s）", terminal, decided.code(), decided.message())
+        .isTrue();
+    assertThat(viaWorldPacket(one).path("status").asText())
+        .as("[%s] 夹具：包已到终态", terminal)
+        .isEqualTo(terminal.name());
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // ★★ 2026-10-15 批 J（I15）：只许动当前 tick 的包 —— 历史 tick 只读
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * ★★ <b>不变量 I15-a：历史 tick 上 {@code revise} / {@code confirm} / {@code reopen} 三个写口 <b>全部具名拒</b> +
+   * 零 revision</b>（设计书 §3.9.3 第一条红线）。
+   *
+   * <p>★ <b>为什么这条是新语义逼出来的</b>：包 id 是 {@code pkt-<决策人>-<tick>}，按 tick 分的容器 ⇒ 若允许在 tick 1 改写 tick 0
+   * 的包，DM 就能<b>改写历史</b> —— 那正是用户「做完决策这个 tick 就不能再提交命令了」要挡住的事。
+   *
+   * <p>★★ <b>三个口的 tick 怎么给（回代码核过，两个形状不一样）</b>：
+   *
+   * <ul>
+   *   <li>{@code confirm} / {@code reopen} 有显式 <b>{@code tick} 参数</b> ⇒ 直接点历史 tick；
+   *   <li>★★ {@code revise} <b>没有</b> {@code tick} 参数 ⇒ 它点名历史 tick 靠的是 <b>{@code
+   *       expectedRevision=<历史坐标>}</b>：{@code state.meta().timestamp().tick()} 随之是历史 tick。 ⇒ 这正是批 I
+   *       台账 §7-D1 记的「{@code expectedRevision} 旁路」（控制方已裁定「不过头」）：本用例把那条旁路 <b>真跑一次</b>钉住。
+   * </ul>
+   *
+   * <p>★ <b>判据四处</b>：① 三个口都拒；② 码 {@code BAD_REQUEST}；③ 报文点出「只许动当前 tick」与它看见的两个 tick
+   * （判别力指纹：不是被别的理由拒的）；④ <b>零 revision</b> + 历史包一个字节没变。 ★ 另加一条<b>对照</b>：同一个 DM 在<b>当前</b> tick
+   * 上是写得动的 —— 否则「拒」可能来自「包不存在」之类的别的原因。
+   */
+  @Test
+  void i15_a_writeToolsAreRejectedByNameOnAHistoricalTickWithZeroRevision() {
+    // ① 在 tick 0 造一个 PENDING 包（历史包）。
+    String packetId = pendingPacketWithOneCall(world);
+    long tick0 = tick();
+    assertThat(tick0).as("夹具前提：world 从 tick 0 起").isZero();
+    // ★ 历史坐标**精确**取"推进之前那个 head"（它在 tick 0 上）——不用 `head-1` 之类推出来的数：
+    //   推出来的数可能落在别处，那这条判据就测不到它想测的东西了（"空 == 空"的变体）。
+    long revisionAtTick0 = world.head();
+    JsonNode before = viaWorldPacket(world);
+
+    // ② 推进到 tick 1（真 GM 写工具；推演本身是纪律而非系统刹车，见 GmRoundTool 的说明）。
+    ToolResult advanced = advanceTo(tick0 + 1);
+    assertThat(advanced.success())
+        .as("夹具：时间推进必须成功（实得 %s：%s）", advanced.code(), advanced.message())
+        .isTrue();
+    assertThat(tick()).as("夹具前提：世界已在 tick 1").isEqualTo(1L);
+    long headAtTick1 = world.head();
+
+    // ③ 三个写口各自点名 tick 0（历史）⇒ 全部具名拒。
+    Map<String, ToolResult> attempts = new LinkedHashMap<>();
+    attempts.put("confirm", viaWorldDm(world, ConfirmPacketTool.NAME, Map.of("tick", tick0)));
+    attempts.put("reopen", viaWorldDm(world, ReopenPacketTool.NAME, Map.of("tick", tick0)));
+    attempts.put(
+        "revise",
+        viaWorldDm(
+            world,
+            "simos.ga.packet.revise",
+            Map.of(
+                "callIndex",
+                0,
+                "args",
+                retireArgs(1, "hh-0_0-rural-middle_peasant"),
+                // ★★ 旁路：没有 tick 参数的口，靠历史坐标把 tick 拉回 0（这正是 §3.9.3 之外必须补的那条）。
+                "expectedRevision",
+                revisionAtTick0)));
+
+    for (Map.Entry<String, ToolResult> attempt : attempts.entrySet()) {
+      ToolResult denied = attempt.getValue();
+      assertThat(denied.success())
+          .as("★★★ I15-a[%s]：历史 tick 上的写必须被拒（实得 %s）", attempt.getKey(), denied.message())
+          .isFalse();
+      assertThat(denied.code())
+          .as("★★ I15-a[%s]：码是用法错（BAD_REQUEST）", attempt.getKey())
+          .isEqualTo("BAD_REQUEST");
+      assertThat(denied.message())
+          .as(
+              "★★★ I15-a[%s] 的**判别力指纹**：报文必须点出「只许动当前 tick」并给出它看见的两个 tick" + "（只断言「被拒」会被别的原因蒙混过去）",
+              attempt.getKey())
+          .contains("只许动当前 tick")
+          .contains("tick=" + tick0)
+          .contains("tick=" + (tick0 + 1));
+    }
+
+    assertThat(world.head()).as("★★★ I15-a：三个写口全部拒在写入之前 ⇒ **零 revision**").isEqualTo(headAtTick1);
+    // ④ 用历史 tick 的坐标真读一次历史包：内容一字未变（"拒"必须真的是零副作用）。
+    ToolResult historical =
+        viaWorldGm(
+            world, "simos.gm.packet", Map.of("proposerId", GmActAsWorldFixture.DM, "tick", tick0));
+    assertThat(historical.success()).as("★ I15-a 对照：历史 tick 的包**仍读得到**（下面 I15-b 专测这条）").isTrue();
+    JsonNode historicalPacket = parse(readBody(historical.message()));
+    assertThat(historicalPacket.path("status").asText()).isEqualTo(before.path("status").asText());
+    assertThat(historicalPacket.path("intent").asText()).isEqualTo(before.path("intent").asText());
+    assertThat(historicalPacket.path("calls")).hasSameSizeAs(before.path("calls"));
+
+    // ⑤ ★★ 对照（**这条是判据强度的一半**）：同一个 DM 在**当前** tick 上是写得动的 ——
+    //    否则上面那三条「拒」可能只是「包不存在」之类的别的原因，而不是 tick 判据。
+    ToolResult currentTickWrite = viaWorldDm(world, INNER_INTENT, Map.of("text", "当前 tick 上照样写得动"));
+    assertThat(currentTickWrite.success())
+        .as(
+            "★★ I15-a 对照：当前 tick（tick 1）上写同一个 DM 的包必须成功（实得 %s：%s）",
+            currentTickWrite.code(), currentTickWrite.message())
+        .isTrue();
+    assertThat(world.head()).as("★ 对照这次是真写（+1 revision）").isEqualTo(headAtTick1 + 1);
+    assertThat(
+            parse(
+                    readBody(
+                        viaWorldGm(
+                                world,
+                                "simos.gm.packet",
+                                Map.of("proposerId", GmActAsWorldFixture.DM, "tick", tick0))
+                            .message()))
+                .path("intent")
+                .asText())
+        .as("★★ I15-a：对照写的是 tick 1 的包 ⇒ tick 0 那个历史包的内容**仍然一字未变**")
+        .isEqualTo(before.path("intent").asText());
+    assertThat(packetId).as("★ 历史包 id 的 tick 段确实是 0").endsWith("-" + tick0);
+  }
+
+  /**
+   * ★★ <b>不变量 I15-b：历史 tick 的包<b>只读</b> —— {@code simos.gm.packet{tick:历史}} 与 {@code
+   * simos.ga.packet.my{tick:历史}} <b>都仍可读</b></b>（不许把读口一起堵死）。
+   *
+   * <p>★ <b>为什么这条必须单独有</b>：I15 是「只许<b>动</b>当前 tick」，加守卫时最省事的坏实现是 「把 tick 过滤加到读口上」⇒ 那样 GM 再也回看不到上一
+   * tick 的决策，<b>历史与 Info 都断了</b>（铁律 1 的反面）。 ⇒ 本用例是「写口严、读口宽」的<b>对偶判据</b>：两侧都断言，缺一条就分不开「只堵写」与「读写一起堵」。
+   */
+  @Test
+  void i15_b_historicalTickPacketsStayReadableThroughBothReadFaces() {
+    String packetId = pendingPacketWithOneCall(world);
+    long tick0 = tick();
+    String intentAtTick0 = viaWorldPacket(world).path("intent").asText();
+
+    assertThat(advanceTo(tick0 + 1).success()).as("夹具：推进到 tick 1").isTrue();
+    assertThat(tick()).isEqualTo(1L);
+
+    // ① GM 面读历史 tick（点名 tick，而不是靠缺省 = 当前 tick）。
+    ToolResult gmRead =
+        viaWorldGm(
+            world, "simos.gm.packet", Map.of("proposerId", GmActAsWorldFixture.DM, "tick", tick0));
+    assertThat(gmRead.success())
+        .as("★★ I15-b：gm.packet{tick=历史} 必须仍可读（实得 %s：%s）", gmRead.code(), gmRead.message())
+        .isTrue();
+    JsonNode gmView = parse(readBody(gmRead.message()));
+    assertThat(gmView.path("packetId").asText()).as("★ I15-b：读到的是那个历史包").isEqualTo(packetId);
+    assertThat(gmView.path("tick").asLong()).as("★ I15-b：视图报的 tick 是历史那个").isEqualTo(tick0);
+    assertThat(gmView.path("intent").asText()).as("★ I15-b：内容原样").isEqualTo(intentAtTick0);
+
+    // ② GM 看板也要能点名历史 tick（gm.packets 的 tick 过滤）。
+    ToolResult gmList = viaWorldGm(world, "simos.gm.packets", Map.of("tick", tick0));
+    assertThat(gmList.success())
+        .as("★★ I15-b：gm.packets{tick=历史} 必须仍可读（实得 %s：%s）", gmList.code(), gmList.message())
+        .isTrue();
+    assertThat(packetIds(parse(readBody(gmList.message()))))
+        .as("★ I15-b：看板里仍列着那个历史包")
+        .contains(packetId);
+
+    // ③ 决策人自己的读口（packet.my）点名历史 tick。
+    ToolResult dmRead = viaWorldDm(world, "simos.ga.packet.my", Map.of("tick", tick0));
+    assertThat(dmRead.success())
+        .as("★★ I15-b：packet.my{tick=历史} 必须仍可读（实得 %s：%s）", dmRead.code(), dmRead.message())
+        .isTrue();
+    assertThat(readBody(dmRead.message()))
+        .as("★ I15-b：决策人读口读到的就是那个历史包的内容")
+        .contains(packetId)
+        .contains(intentAtTick0);
+  }
+
+  /**
+   * ★★ <b>不变量 I15-c：{@code expectedRevision=<历史坐标>} <b>旁路</b> —— 写口也要拒</b> （批 I 台账 §7-D1
+   * 的偏差；控制方已裁定「不过头」）。
+   *
+   * <p>★★ <b>这条在测什么、为什么它<b>不是</b> I13-a 的反面</b>：{@code propose}/{@code revise}/{@code drop}
+   * <b>没有</b> {@code tick} 参数 ⇒ 它们认的 tick 来自 {@code state.meta().timestamp().tick()}，而 {@code
+   * state} 是 {@code expectedRevision} 指出来的那个坐标。★ 若「当前世界 tick」跟着那个<b>历史</b>坐标走，DM 就能拿一个旧坐标 一路写回历史
+   * tick 的包（I15 形同虚设）。⇒ 正确形态是：与<b>该分支 head</b> 的 tick 比。
+   *
+   * <p>★ <b>本用例逐条</b>：三个口分别给一个<b>历史坐标</b> ⇒ 全部具名拒、零 revision、历史包不变。 ★ 与 {@link
+   * #i13_a_allFourMutatingToolsSucceedOnAPendingPacketAndWriteItBackAsDraft} 合起来才完整： 那条证「<b>当前</b>
+   * tick 上四条口都动得了」，这条证「<b>历史</b>坐标一步也动不了」。
+   */
+  @Test
+  void i15_c_theExpectedRevisionBypassIsAlsoRejectedOnWriteTools() {
+    pendingPacketWithOneCall(world);
+    long tick0 = tick();
+    JsonNode before = viaWorldPacket(world);
+    long historicalRevision = world.head();
+
+    assertThat(advanceTo(tick0 + 1).success()).as("夹具：推进到 tick 1").isTrue();
+    long headAtTick1 = world.head();
+
+    // ★ 三个口各给一个**历史坐标**（tick 1 的 head 是 headAtTick1，历史坐标是 historicalRevision）。
+    Map<String, ToolResult> attempts = new LinkedHashMap<>();
+    attempts.put(
+        "propose",
+        viaWorldProposeAt(
+            world,
+            Map.of("intent", "拿旧坐标写历史包", "expectedRevision", historicalRevision),
+            List.of(call("simos.gov.recruit", recruitArgs()))));
+    attempts.put(
+        "revise",
+        viaWorldDm(
+            world,
+            "simos.ga.packet.revise",
+            Map.of(
+                "callIndex",
+                0,
+                "args",
+                retireArgs(1, "hh-0_0-rural-middle_peasant"),
+                "expectedRevision",
+                historicalRevision)));
+    attempts.put(
+        "drop",
+        viaWorldDm(
+            world,
+            "simos.ga.packet.drop",
+            Map.of("callIndex", 0, "expectedRevision", historicalRevision)));
+
+    for (Map.Entry<String, ToolResult> attempt : attempts.entrySet()) {
+      ToolResult denied = attempt.getValue();
+      assertThat(denied.success())
+          .as(
+              "★★★ I15-c[%s]：`expectedRevision=<历史坐标>` **不是**改写历史的旁路（实得 %s）",
+              attempt.getKey(), denied.message())
+          .isFalse();
+      assertThat(denied.code())
+          .as("★★ I15-c[%s]：码是用法错（BAD_REQUEST）", attempt.getKey())
+          .isEqualTo("BAD_REQUEST");
+      assertThat(denied.message())
+          .as(
+              "★★★ I15-c[%s] 的判别力指纹：报文必须点出「只许动当前 tick」与两个 tick"
+                  + "（★ 若判据是拿 expectedRevision 的 tick 当「当前」，这里根本不会拒）",
+              attempt.getKey())
+          .contains("只许动当前 tick")
+          .contains("tick=" + tick0)
+          .contains("tick=" + (tick0 + 1));
+    }
+
+    assertThat(world.head()).as("★★★ I15-c：三条全部拒 ⇒ 零 revision").isEqualTo(headAtTick1);
+    ToolResult historical =
+        viaWorldGm(
+            world, "simos.gm.packet", Map.of("proposerId", GmActAsWorldFixture.DM, "tick", tick0));
+    JsonNode historicalPacket = parse(readBody(historical.message()));
+    assertThat(historicalPacket.path("status").asText()).isEqualTo(before.path("status").asText());
+    assertThat(historicalPacket.path("intent").asText()).isEqualTo(before.path("intent").asText());
+    assertThat(historicalPacket.path("calls")).hasSameSizeAs(before.path("calls"));
+  }
+
+  /**
+   * ★ <b>夹具助手：真 GM 口推进时间到 {@code to}</b>（I15 要一个「历史 tick」就得先把世界推过去）。
+   *
+   * <p>★ 用真 {@code simos.advance}（GM 桶的真写工具），不手改状态 —— 铁律 2：所有修改走 {@code Command → ChangeSet →
+   * Revision}。
+   */
+  private ToolResult advanceTo(long to) {
+    long from = tick();
+    return viaWorldGm(
+        world,
+        "simos.advance",
+        Map.of("branch", MAIN, "expectedRevision", world.head(), "from", from, "to", to));
+  }
+
+  /** 同 {@link #viaWorldPropose}，但额外允许显式给 {@code expectedRevision}（I15-c 的旁路靶子）。 */
+  private static ToolResult viaWorldProposeAt(
+      GmActAsWorldFixture.World target,
+      Map<String, Object> extra,
+      List<Map<String, Object>> calls) {
+    Map<String, Object> args = new LinkedHashMap<>(extra);
+    args.put("calls", calls);
+    return viaWorldDm(target, "simos.ga.packet.propose", args);
+  }
+
   /**
    * ★★ <b>§6-3：同一 tick 对同一 DM <b>连跑 4 轮</b>（问、答、再问、再答）⇒ 无 id 冲突 / 无 CONFLICT / 上下文连续</b> （设计书 §6 第
    * 3 条 + §4 I5）。
@@ -1124,19 +1855,23 @@ class GmActAsToolTest {
    * <p>判据五处：
    *
    * <ol>
-   *   <li><b>四轮都成</b>：四次 {@code ga.RunDecision} 都 ok，且每轮的 {@code propose} 内层 ok=true；
+   *   <li>★★ <b>四轮全都成功</b>：四次 {@code ga.RunDecision} 都 ok，且<b>每一轮</b>的 {@code propose} 内层 {@code
+   *       ok=true}（码为空）—— 第四轮的视图里 {@code callCount} 已累积到 4；
    *   <li><b>同 tick</b>：四轮跑完 tick 不变（问答不推进世界）；
    *   <li>★★ <b>无 id 冲突</b>：四轮里的<b>每一次</b>内层写都提到同一个包 id（{@code pkt-<dm>-<tick>} 确定性 id）， 且全程<b>没有一条
    *       CONFLICT</b>（"id 冲突"的可执行形态 = 包 id 变了或码是 CONFLICT）；
    *   <li>★★ <b>上下文连续</b>：第 4 轮的请求里<b>带着第 1 轮那句话与第 1 轮的工具结果</b> —— 逐轮重开会话的实现过不了这条；
-   *   <li>★ <b>两次写同一个 DRAFT 包不 CONFLICT</b>：第 1 轮落 callIndex 0、第 2 轮落 callIndex 1（同 tick 同包，
-   *       一次写接一次写）—— 这是 §4 I6「包能跨 revision 累积」在回合路径上的形态。
+   *   <li>★★ <b>四条 call 真累积</b>：四轮各 append 一条 ⇒ 包里 {@code calls} 恰好 4 条、{@code callIndex} {@code
+   *       [0,1,2,3]}（★ 这是 §4 I6「包能跨 revision 累积」在回合路径上的形态）。
    * </ol>
    *
-   * <p>★ <b>为什么第 2 轮会拿到 BAD_REQUEST 而不是再次 append</b>（回代码核过，是本判据最有价值的一条读数）：第一轮 收口时 {@code
-   * DecisionTurnFinalizer} 把包<b>结算成 PENDING</b> ⇒ 第 2 轮的 {@code propose} 撞上 {@code ProposeCallTool}
-   * 的状态边界（{@code 已提交/已裁决 ⇒ BAD_REQUEST，先 reopen}）。★ 那也是<b>具名拒</b>，不是 CONFLICT —— "同 tick 连跑不撞 id"
-   * 这条因此仍然成立，而且被钉在<b>更具体</b>的机制上。
+   * <p>★★ <b>2026-10-15 升级回强判据（旧口径 → 新口径，如实记）</b>：旧版这条钉的是"<b>无 CONFLICT + 永远是同一个包 id</b>" + "第 2~4
+   * 轮是 PENDING 状态边界的具名拒（{@code BAD_REQUEST}）"，并把"四轮各落一条 call"记为 <b>做不到</b>—— 理由是当时第 1 轮收口时 {@code
+   * DecisionTurnFinalizer} 把包结算成 PENDING，第 2 轮的 {@code propose} 撞上"已提交 ⇒ 拒"的状态边界。★ 用户
+   * 2026-10-15「提交多少轮都没问题」+ 设计书 §3.9.2「PENDING 自动撤回成 DRAFT 再改」之后，那道边界<b>没了</b> ⇒ 后三轮**真的
+   * append**，原判据随之升级为"<b>4 条 call、四轮同一包 id、无 CONFLICT、codes 全空</b>"。 ★ 强度是<b>升</b>不是平：旧版一条 {@code
+   * hasSize(1)} 只能证明"第 1 轮落了"，新版 {@code containsExactly(0,1,2,3)} + {@code containsOnly("")}
+   * 把"后三轮被拒"这个曾经的既成事实也钉死了。
    */
   @Test
   void c6_3_fourRoundsInTheSameTickKeepOneContextAndConflictNothing() {
@@ -1179,44 +1914,81 @@ class GmActAsToolTest {
       codesSeen.add(code);
       String summary = proposeCall.path("summary").asText();
       summariesSeen.add(summary);
-      // ★ 成功时 summary 是**视图 JSON**（带 packetId）；具名拒时是**拒因正文**（不是 JSON）——
-      //   两种形态都要能读，故这里按"是不是 JSON"分流，而不是硬 parse。
-      if (summary.startsWith("{")) {
-        packetIdsSeen.add(parse(summary).path("packetId").asText());
-      } else {
-        assertThat(summary)
-            .as("★ §6-3：第 %d 轮的具名拒必须点出包的当前状态与下一步（reopen）", round)
-            .contains("PENDING")
-            .contains("reopen");
-      }
+      // ★★ 2026-10-15 翻向之后：**四轮的 propose 全都成功**（PENDING 不是锁 ⇒ 后面的轮次不再撞状态边界）
+      //   ⇒ summary **一律**是视图 JSON。旧版这里有一条 `else` 支专门接"具名拒的非 JSON 正文"，
+      //   那条支路在新语义下**走不到** ⇒ 删掉它（留一条永远为假的断言就是判据里的死代码）。
+      //   ★ 删掉它反而**更严**：现在每一轮都必须给出可解析的视图（旧版允许第 2~4 轮给一段拒因正文）。
+      assertThat(summary)
+          .as("★★ §6-3：第 %d 轮的 propose 必须**成功**并回一份视图 JSON（新语义下 PENDING 不再拦；实得 %s）", round, summary)
+          .startsWith("{");
+      packetIdsSeen.add(parse(summary).path("packetId").asText());
 
-      // ★★ 无 CONFLICT：内层码永远不是 CONFLICT（第 2~4 轮的具名拒是 PENDING 边界，不是 id 冲突）。
+      // ★★ 无 CONFLICT：内层码永远不是 CONFLICT（四轮都成功 ⇒ 四轮的空码）。
       assertThat(code)
           .as("★★ §6-3：第 %d 轮的内层码**不得**是 CONFLICT（「同 tick 连跑撞 id」的可执行判据）—— 实得 %s", round, code)
           .isNotEqualTo("CONFLICT");
     }
 
-    assertThat(codesSeen.get(0)).as("★ §6-3：第 1 轮真的提成了（码为空 = 成功）").isEmpty();
-    assertThat(summariesSeen.get(0))
-        .as("★ §6-3：第 1 轮的 summary 是视图 JSON（带 packetId）")
-        .startsWith("{");
+    assertThat(codesSeen)
+        .as(
+            "★★ §6-3：**四轮全部成功**（码全为空串）—— 用户 2026-10-15「提交多少轮都没问题」的可执行形态；"
+                + "旧版断言的是 `subList(1,4) 全是 BAD_REQUEST`（PENDING 状态边界），那条口径已被 §3.9 取代")
+        .containsOnly("");
+    assertThat(summariesSeen)
+        .as("★★ §6-3：四轮的 summary 都是视图 JSON（不是拒因正文）")
+        .allMatch(each -> each.startsWith("{"));
     assertThat(packetIdsSeen)
-        .as("★★ §6-3：四轮提到的**永远是同一个包 id**（pkt-<dm>-<tick> 确定性 ⇒ 无 id 冲突）")
-        .containsExactly(packetId());
-    assertThat(codesSeen.subList(1, 4))
-        .as("★ §6-3：第 2~4 轮是 **PENDING 状态边界**的具名拒（不是 CONFLICT，也不是静默失败）")
-        .containsOnly("BAD_REQUEST");
+        .as("★★ §6-3：四轮提到的**永远是同一个包 id**（pkt-<dm>-<tick> 确定性 ⇒ 无 id 冲突），且四轮各报一次")
+        .hasSize(4)
+        .containsOnly(packetId())
+        .doesNotContain((String) null);
 
     assertThat(tick()).as("★★ §6-3：四轮在**同一个 tick** 里跑完（问答不推进世界）").isEqualTo(tickBefore);
     assertThat(fake.calls()).as("★★ §6-3：四轮 = 每轮两条 LLM 响应（工具调用 + 收尾），共 8 次").isEqualTo(8);
 
-    // ⑤ 同 tick 同包跨 revision 累积：第 1 轮落 callIndex 0（且它一直被后面的轮读到）。
+    // ⑤ ★★ 升级回强判据（2026-10-15）：四轮 propose **各落一条 call 且真累积** ——
+    //    旧版只能钉"第 1 轮那条还在"（hasSize(1)），因为当时第 2~4 轮被 PENDING 边界拒掉；
+    //    新语义下后三轮**真的 append** 了 ⇒ 包里必须是 4 条、callIndex [0,1,2,3]、且四条都指向同一个可落地工具。
     JsonNode packet = gmPacket();
     assertThat(packet.path("packetId").asText()).isEqualTo(packetId());
     assertThat(packet.path("calls"))
-        .as("★ §6-3/I6：第 1 轮那条 call **确实落进了包**（跨 revision 累积的起点）")
-        .hasSize(1);
-    assertThat(callIndexes(packet)).as("callIndex 从 0 起").containsExactly(0);
+        .as(
+            "★★ §6-3/I6：四轮 propose **各落一条 call**（旧版是 hasSize(1)：只有第 1 轮成；"
+                + "现在「四轮各 append 一条」才是正确形态）")
+        .hasSize(4);
+    assertThat(callIndexes(packet)).as("★★ §6-3/I6：callIndex 逐轮累积且连续").containsExactly(0, 1, 2, 3);
+    assertThat(toolNames(packet))
+        .as("★★ §6-3：四条 call 指向同一个可落地工具（逐轮换的是目标家户，不是工具）")
+        .containsOnly(PROPOSABLE);
+    // ★ 逐轮的 toHouseholdId 各不相同 ⇒ 四条 call 各自可辨（不是把同一条抄了四遍）。
+    //   ★★ 这条自证**只能读包本身**：`fake.requests()` 里记的是**消息**（system/user/assistant 的文本），
+    //     assistant 那条工具调用的 **args 不在 `LlmMessage.content` 里**（实测：第 1 轮请求渲染出来
+    //     只有 system + user 两段，没有 `poor_peasant`）⇒ 拿请求去证"换了家户"是**假靶子**（会红在夹具自证上）。
+    List<String> payloadPerCall = new ArrayList<>();
+    for (JsonNode callNode : packet.path("calls")) {
+      String argsJson = callNode.path("argsJson").asText();
+      assertThat(argsJson).as("每条 call 的 argsJson 必须是非空 JSON 对象").startsWith("{");
+      payloadPerCall.add(argsJson);
+    }
+    assertThat(payloadPerCall)
+        .as("★★ §6-3：四条 call 的 argsJson **两两不同**（逐轮换目标家户 ⇒ 四条各自可辨，不是同一条抄了四遍）")
+        .doesNotHaveDuplicates();
+    for (int round = 1; round <= 4; round++) {
+      assertThat(payloadPerCall.get(round - 1))
+          .as("★ §6-3：第 %d 条 call 指向本轮那个家户（ROUND_HOUSEHOLDS[%d]）", round, round - 1)
+          .contains(ROUND_HOUSEHOLDS[round - 1]);
+    }
+    // ★★ 回执里的**逐轮**读数：视图的 `callCount` 是**这一轮那批**的条数（每轮 1 条 ⇒ 恒为 1，实测），
+    //    真正逐轮前进的是 `callIndex`（0,1,2,3）⇒ 用它证"后三轮确实 append 到了同一个包的不同位置"。
+    for (int round = 1; round <= 4; round++) {
+      JsonNode view = parse(summariesSeen.get(round - 1));
+      assertThat(view.path("callCount").asInt())
+          .as("★ §6-3：第 %d 轮的视图报的是**本轮那批**的条数（1 条/轮）", round)
+          .isEqualTo(1);
+      assertThat(view.path("callIndex").asInt())
+          .as("★★ §6-3：第 %d 轮 append 到的是包里的第 %d 个位置（逐轮前进 ⇒ 真的累积，而不是覆盖同一个位置）", round, round - 1)
+          .isEqualTo(round - 1);
+    }
 
     // ④ ★★ 上下文连续：第 4 轮的请求里带着第 1 轮那句话与第 1 轮的工具结果。
     List<LlmRequest> requests = fake.requests();
