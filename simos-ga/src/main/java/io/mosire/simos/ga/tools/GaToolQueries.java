@@ -12,7 +12,7 @@ import java.util.Set;
 
 /**
  * ★★ <b>决策人读面的窄查询口</b>（2026-10-12 B3 第 7 域）：把 app 的 {@code SdQueryService}（决策人/令清单）与 {@code
- * RedactingQueryService}（**按调用者视角裁剪**的判决 / 决策结果 / 文档 / 上报）收成"给 id + 坐标、回**成品视图**"的一层。
+ * RedactingQueryService}（**按调用者视角裁剪**的判决 / 决策结果 / 文档 / 消息可见性）收成"给 id + 坐标、回**成品视图**"的一层。
  *
  * <p>★ <b>为什么回成品视图而不是领域对象</b>：那两条服务的返回值里混着 app 的类型（{@code SdQueryService.DecisionMakerInfo} /
  * {@code DirectiveInfo}、{@code ResourceScopeMap}、{@code DecisionScopeView}、{@code
@@ -24,7 +24,8 @@ import java.util.Set;
  * tick} 与区间互斥、{@code fromTick ≤ toTick}），转换只在 app 适配器一处 ⇒ 边界语义与迁入前逐字相同（拒因文案也相同，调用方折成 {@code
  * BAD_REQUEST}）。
  *
- * <p>★ <b>失败语义不许折平</b>：查无决策人 / 不认识的上报地址这些**由实现原样抛出**（今天就是异常），调用方按既有口径折成工具结果； 本接口不 catch、不兜底。
+ * <p>★ <b>失败语义不许折平</b>：查无决策人 / 解析不了的入参（未知 affiliation kind、空 id 这类）这些**由实现原样抛出**（今天就是异常），
+ * 调用方按既有口径折成工具结果；本接口不 catch、不兜底。
  */
 public interface GaToolQueries {
 
@@ -118,15 +119,20 @@ public interface GaToolQueries {
   List<MakerDue> makerDueSignals(BranchId branch, RevisionId revision);
 
   /**
-   * 上报（{@code simos.sd.reports}）的决策人可见性 = {@code tags} / 归属 / **发送人 = 自己** 三轴的并集判据。
+   * 一条 INFO 条目**对一个决策人是否可见** = {@code tags} / 归属 / **发送人 = 自己** 三轴的并集判据（决策人读 {@code GaState.info}
+   * 里的消息时用的那个可见性口；★ 2026-10-14 起 {@code simos.sd.reports} 整族已删除 —— 这个名字说的是 <b>条目</b>，不是那一族上报）。
    *
-   * <p>★ 前两轴的唯一实现在 app 的 {@code RedactingQueryService.visible}（**不许在这里重写一份**）；本方法只多出"自己发的" 那一支。
+   * <p>★ 前两轴的唯一实现在 app 的 {@code RedactingQueryService.visible}（**不许在这里或工具里重写一份**—— {@code
+   * DecisionResultsVisibilityGuardTest} 用源码扫描钉住"判据全仓恰一份"）；本方法只多出"自己发的" 那一支。
+   *
+   * <p>★ <b>调用方注意</b>：本方法**含**"发送人 = 自己"那一支 ⇒ 自己发出去的条目同样"可见"。读"寄给自己的信"的工具（{@code
+   * simos.ga.message.inbox}）必须再按**收件人**筛一道，否则会把自己的信也读出来。
    *
    * @param affiliationLabels 调用者的**不透明受众标签集**（各模块自报的归属拼出来的串，见 {@link #affiliationLabelsOf}）；空集 ⇒
    *     该轴不参与（不抛、不回落）
-   * @param sender 报告 {@code value.from}（解析不出 ⇒ null，该轴不参与）
+   * @param sender 条目的 {@code value.from}（解析不出 ⇒ null，该轴不参与）
    */
-  boolean reportVisibleToDecisionMaker(
+  boolean infoVisibleToDecisionMaker(
       SdInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, String sender);
 
   /**

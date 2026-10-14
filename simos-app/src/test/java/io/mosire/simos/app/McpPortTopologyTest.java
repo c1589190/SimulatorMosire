@@ -6,7 +6,9 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import io.mosire.docs.DocsTools;
 import io.mosire.simos.ga.channel.DecisionChannel;
+import io.mosire.workspace.WorkspaceTools;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -71,7 +73,7 @@ class McpPortTopologyTest {
           "simos.sd.diplomacy",
           "simos.sd.diplomatic-events",
           "simos.sd.directives",
-          "simos.sd.reports",
+          // ★★ 2026-10-14 决策人互致消息：旧上报读口 simos.sd.reports **已删**（读侧 −1）
           "simos.sd.verdicts",
           "simos.social.households",
           "simos.social.population",
@@ -197,12 +199,14 @@ class McpPortTopologyTest {
           "unit.SetGovPolicy",
           "unit.SetGovSuperior");
 
-  /** sd 的 21 条窄写（进 GM 桶；D5 两条外交工具名不是命令类型）。 */
+  /** sd 的 22 条窄写（进 GM 桶；D5 两条外交工具名不是命令类型）。 */
   private static final List<String> SD_NARROW_WRITES =
       List.of(
           "ga.IssueDirective",
           "ga.SubmitVerdict",
           "ga.SetDecisionMakerAccess",
+          // ★★ 2026-10-14 决策人互致消息：GM 的"授权两决策人互通"窄写（窄写侧 +1 ⇒ 读 −1 + 写 +1 = 净 0）
+          "ga.SetDecisionMakerPeer",
           "ga.ResetDecisionMakerConversation",
           "ga.StartDecision",
           "ga.RunDecision",
@@ -257,6 +261,30 @@ class McpPortTopologyTest {
           concat(SD_NARROW_WRITES, MAP_WRITES),
           concat(ECONOMY_ZONE_WRITES, concat(UNIT_WRITES, OTHER_NARROW_WRITES)));
 
+  /**
+   * ★★ <b>2026-10-14 AgentLib Docs/Workspace 接入：GM 面 +10</b>（7 条 {@code doc_*} + 3 条工作区）⇒ 163 →
+   * <b>173</b>。
+   *
+   * <p>★ 名字用他们自己的常量（{@code DocsTools.DOC_*} / {@code WorkspaceTools.*}）：改名 ⇒ 我们编译期就红。 实测来源：真壳
+   * {@code GM_SIZE=173}。★ 这 10 条**不在** {@link #GM_NARROW_WRITES} 里 —— 它们不是本仓窄写类， 故单列一张表再并进 GM
+   * 面（并进窄写表会让"窄写"这个词失真）。
+   */
+  private static final List<String> EXTERNAL_DOCS_WORKSPACE_TOOLS =
+      List.of(
+          DocsTools.DOC_LIST,
+          DocsTools.DOC_READ,
+          DocsTools.DOC_QUERY,
+          DocsTools.DOC_APPEND,
+          DocsTools.DOC_CREATE,
+          DocsTools.DOC_EDIT,
+          DocsTools.DOC_VOID,
+          WorkspaceTools.MOUNT_WORKSPACE,
+          WorkspaceTools.UNMOUNT_WORKSPACE,
+          WorkspaceTools.LIST_WORKSPACES,
+          // ★★ 2026-10-14 上游 R8（控制方裁定 §11.3）：两条能力自述工具 ⇒ {GM, DM} ⇒ GM 面 173 → 175。
+          DocsTools.DOC_GUIDE,
+          WorkspaceTools.WORKSPACE_INFO);
+
   private static final Duration PORT_RELEASE_WAIT = Duration.ofSeconds(5);
 
   @TempDir Path tempDir;
@@ -290,9 +318,11 @@ class McpPortTopologyTest {
 
       assertThat(toolNames(client))
           .as(
-              "J1：唯一口 = GM 组（160 → 163；★★ 2026-10-13 急停协议新增 3 条 GM-only 工具：stopReport 读 + contactWatch 窄写 + emergency.advance 通用写）")
+              "J1：唯一口 = GM 组（173 条；★★ 2026-10-13 急停协议新增 3 条 GM-only 工具：stopReport 读 + contactWatch 窄写 + emergency.advance 通用写 ⇒ 163；"
+                  + "★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ **175**）")
           .containsExactlyInAnyOrderElementsOf(
-              concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
+              concat(
+                  READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES, EXTERNAL_DOCS_WORKSPACE_TOOLS));
     }
   }
 

@@ -13,6 +13,8 @@ import io.mosire.simos.app.llm.ProviderLlm;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
+import io.mosire.simos.ga.decision.DecisionToolNames;
+import io.mosire.simos.ga.decision.DecisionToolReach;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -84,6 +86,17 @@ public final class DecisionAgentService {
   private final ConversationStore conversations;
   private final String mapId;
   private final int maxLlmCalls;
+
+  /**
+   * ★★ **可达面**（2026-10-14 真机实测缺陷的修法）：开场消息"点不点某件工具的名"由它作答（见 {@link
+   * DecisionAgentRunner#openingUserMessage(DecisionMaker, String, DecisionToolNames,
+   * DecisionToolReach)}）。
+   *
+   * <p>★ <b>与工具面同源</b>：本类建 runner 时把 {@code callerFactory.whitelistFor(maker)} 作为工具面白名单传进去，
+   * 而本端口转问的是**同一个工厂的同一个方法** ⇒ "消息里点名的"与"模型清单里有的"不可能各说各话。 本字段只是把那个工厂包一层（{@link
+   * AppDecisionToolReach#of(DecisionCallerFactory)}），不另存任何名单。
+   */
+  private final DecisionToolReach toolReach;
 
   /**
    * **开场快照来源**（P4）：装配方按开关给（{@code Shell} 用渲染件与"国家→首府区域"的取景规则实现）。
@@ -160,6 +173,8 @@ public final class DecisionAgentService {
     this.mapId = Objects.requireNonNull(mapId, "mapId");
     this.maxLlmCalls = maxLlmCalls;
     this.openingSnapshot = Objects.requireNonNull(openingSnapshot, "openingSnapshot");
+    // ★ 可达面与工具面同源：转问的工厂就是下面建 runner 时取 whitelistFor 的那一个（见字段注）。
+    this.toolReach = AppDecisionToolReach.of(callerFactory);
     this.turnFinalizer = new DecisionTurnFinalizer(core);
   }
 
@@ -254,6 +269,10 @@ public final class DecisionAgentService {
             provider.vision(),
             openingSnapshot,
             callerFactory.whitelistFor(maker),
+            // ★★ 2026-10-14：可达面（宿主注入）——开场消息按它决定"点不点某件工具的名"，够不着就不点
+            //   （真机实测：点名一件模型清单里没有的工具 ⇒ 模型换路径死磕，一轮 35 次同一条拒绝）。
+            //   ★ 与上面那个 whitelistFor(maker) 同源（同一个工厂、同一个方法），见字段注。
+            toolReach,
             frozen,
             // ★★ 2026-10-12 乙收尾：身份消息里的"归属：…"由各模块自报的归属现拼（端口在 ga-spi、实现住 app）。
             AppDecisionMakerAffiliations.INSTANCE);
@@ -360,7 +379,10 @@ public final class DecisionAgentService {
               maker,
               DecisionAgentRunner.affiliationTextOf(
                   AppDecisionMakerAffiliations.INSTANCE, maker, core.replay(ref)),
-              AppDecisionToolNames.INSTANCE));
+              AppDecisionToolNames.INSTANCE,
+              // ★★ 同一条可达面（与 runRound 那份同源）：这条"用户先说话"的路补的是**同一条**身份消息，
+              //   两条路口径不一致的话，同一段会话的消息会随"谁先开口"而不同（无症状的漂移）。
+              toolReach));
     }
     conversations.append(conversationId, LlmMessage.user(text));
     return conversationId;

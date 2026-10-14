@@ -1,5 +1,7 @@
 package io.mosire.simos.app.access;
 
+import io.mosire.docs.DocsTools;
+import io.mosire.workspace.WorkspaceTools;
 import java.util.Set;
 
 /**
@@ -16,7 +18,7 @@ import java.util.Set;
  * 往决策人桶加/删任何一条工具而不同步本表 ⇒ 该用例当场红；反过来，改本表而没改 {@code roles()} 声明（或没挂桶）⇒ {@code
  * ToolRoleAudit.requireFaces} 在装配期当场抛。
  *
- * <p>★ <b>它是什么、不是什么</b>：它是**规格**（"决策人面就该是这 42 条"），不是生产常量的副本 —— 没有任何生产代码读它。 别处（{@code
+ * <p>★ <b>它是什么、不是什么</b>：它是**规格**（"决策人面就该是这 48 条"），不是生产常量的副本 —— 没有任何生产代码读它。 别处（{@code
  * GovToolsZ6Test} / {@code LlmToolNamesTest} 等）需要"决策人面的名字"却又不启 {@code Shell} 时也用它， 免得把同一份 44
  * 条抄成好几份。
  *
@@ -28,8 +30,13 @@ public final class DecisionFaceGolden {
   private DecisionFaceGolden() {}
 
   /**
-   * 决策人面的 42 条工具名（2026-10-12 B4b 冻结 44 条；★★ 2026-10-13 收尾测试第 3 层删掉幽灵 {@code simos.sd.combats} ⇒
-   * 43；★★ 2026-10-13 取缔 Skill 系统删掉 Skill 读工具一条 ⇒ 42；与 {@code roles()} 声明、两桶装配三处一致）。
+   * 决策人面的 50 条工具名（2026-10-12 B4b 冻结 44 条；★★ 2026-10-13 收尾测试第 3 层删掉幽灵 {@code simos.sd.combats} ⇒
+   * 43；★★ 2026-10-13 取缔 Skill 系统删掉 Skill 读工具一条 ⇒ 42；★★ 2026-10-14 AgentLib Docs/Workspace 接入
+   * +6（doc_list/read/query/append/create/edit）⇒ 48；★★ <b>2026-10-14 决策人互致消息</b>：旧上报族整族废弃 ⇒ 删 {@code
+   * simos.sd.report}（写口）与 {@code simos.sd.reports}（读口）、加 {@code simos.ga.message.send} 与 {@code
+   * simos.ga.message.inbox} ⇒ 那一步仍是 48（−2 +2，条数逐字不变但**成员换了**）；★★ <b>2026-10-14 上游 R8</b> （控制方裁定
+   * §11.3）：{@code doc_guide} / {@code workspace_info} 两条"能力自述"工具都是纯读 ⇒ {@code {GM, DM}} ⇒ 48 →
+   * <b>50</b>。与 {@code roles()} 声明、两桶装配三处一致。
    */
   public static final Set<String> ALL =
       Set.of(
@@ -60,8 +67,12 @@ public final class DecisionFaceGolden {
           // ★★ D5：两条外交读口（世界级自然语言、四桶共享读）。
           "simos.sd.diplomacy",
           "simos.sd.diplomatic-events",
-          // ★ D4：跨区上报读口（决策人与 GM 共用）。
-          "simos.sd.reports",
+          // ★★ D4 的跨区上报读口 simos.sd.reports 与写口 simos.sd.report **已随旧上报族整族废弃**
+          //   （2026-10-14 决策人互致消息，用户原话「老的直接扔掉」）⇒ 这里**删掉那两条**。
+          // ★★ 2026-10-14 决策人互致消息（设计书 §4.2/§4.3）：决策人面新增两条消息工具 ——
+          //   发（写感知层，闸门 = GM 事先授权 peer:<对方>，gate=ALLOW）与收（读寄给自己的）。
+          "simos.ga.message.send",
+          "simos.ga.message.inbox",
           // ★★ Z3c-2：GOV 行政运行只读读口（决策人视野收窄到自己 GOV）。
           "simos.gov.info",
           // ── 决策人专属读口与决策方法论 ────────────────────────────────────────────────
@@ -93,6 +104,21 @@ public final class DecisionFaceGolden {
           "simos.sd.packet.submit",
           "simos.sd.packet.intent",
           "simos.sd.packet.my",
-          // ★★ D4：跨区上报写口（发送人 = 调用者身份）。
-          "simos.sd.report");
+          // ★★ D4 的跨区上报写口 simos.sd.report **已随旧上报族整族废弃**（2026-10-14 决策人互致消息）
+          //   ⇒ 它不在本表；取代它的是上面的 simos.ga.message.send（写感知层、闸门 = 事先授权）。
+          // ★★ 2026-10-14 AgentLib Docs/Workspace 接入 +6：决策人能自由记录文档
+          //   （用户原话「测试一下新agentlib体系能不能让dm自由记录文档」）。
+          //   ★ 逐条核过**只有这 6 条**进决策人面：doc_list/read/query/append/create/edit。
+          //     · doc_void **不在**（作废别人的记录是 GM 动作）；
+          //     · mount_workspace / unmount_workspace / list_workspaces **不在**（工作区由 GM 维护，U1）。
+          //   ⇒ 42 → 48。实测来源：真壳 DM_SIZE=48。
+          DocsTools.DOC_LIST,
+          DocsTools.DOC_READ,
+          DocsTools.DOC_QUERY,
+          DocsTools.DOC_APPEND,
+          DocsTools.DOC_CREATE,
+          DocsTools.DOC_EDIT,
+          // ★★ 2026-10-14 上游 R8（控制方裁定 §11.3）：两条"能力自述"工具（纯读、DM_FREE）也进决策人面 ⇒ 48 → 50。
+          DocsTools.DOC_GUIDE,
+          WorkspaceTools.WORKSPACE_INFO);
 }

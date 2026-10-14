@@ -789,29 +789,31 @@ class DecisionAgentRunnerTest {
   }
 
   /**
-   * ★ **默认回合预算就是现场算出来的那个数**（{@code 20}）：这是一条**带算术的裁定**，不是实现细节 ⇒ 不许静默改动。
+   * ★★ **默认回合预算 = 用户裁定的 {@code 10000}**（2026-10-14，逐字：「能把llm calls给设置成10000吗？我不希望再看到这个恼人的20」）：
+   * 这是一条**跟随用户裁定改向**的断言，不是实现细节 ⇒ 不许静默改动。
    *
-   * <p>★ 算术（每一项都取**上界**，依据是 2026-09-22 的真 LLM 现场）：
+   * <p>★ <b>新旧对照</b>（为什么原来钉 20、现在钉 10000）：
    *
    * <ol>
-   *   <li>勘察 <b>14</b> = 实测 <b>7</b> × 2——实测那 7 次是**最小世界**新会话首轮"把整个工具面摸一遍"的量（catalog / branches /
-   *       overview / unit.list / unit.get / map.hex / facets / …），世界变大只会更多；
-   *   <li>出令 <b>1</b>；
-   *   <li>重试 <b>4</b> = 2 轮 × (重读状态 + 重发令)——两种被拒理由（{@code commands} 自指 / {@code expectedRevision}
-   *       过期）各留一轮；
-   *   <li>收口 <b>1</b>（工具轮之后模型还要一次纯文本轮才算完，既有用例 {@code
-   *       theRunnerReallyExecutesTheToolsTheModelAsksFor} 实测的就是这个形态）。
+   *   <li><b>旧值 20（2026-09-22 现场算术）</b>：勘察 <b>14</b>（＝实测 <b>7</b> × 2——那 7 次是**最小世界新会话首轮**"把整个工具面
+   *       摸一遍"的量，世界变大只会更多）+ 出令 <b>1</b> + 重试 <b>4</b>（＝2 轮 ×〔重读状态 + 重发令〕，两种被拒理由 {@code commands} 自指
+   *       / {@code expectedRevision} 过期各留一轮）+ 收口 <b>1</b>（工具轮之后模型还要一次纯文本轮） ⇒ {@code 14 + 1 + 4 + 1
+   *       = 20}；**下界是 11**（现场那次撞墙的序列长度）。
+   *   <li><b>新值 10000（2026-10-14 用户裁定）</b>：用户明确要求取消这个"烦人的 20" ⇒ 上面那套算术<b>不再是这个数的来源</b>， 它只作"20
+   *       从哪来"的历史留痕。★ <b>后果如实记</b>：兜底实质上被取消——模型若不收口会一直烧到 10000 次， 而原来 20 次就中止并给可判别信号（{@code
+   *       DecisionAgentRunner.TurnBudgetExceeded}）。
    * </ol>
    *
-   * <p>★ 合计 <b>20</b>。**下界是 11**（现场那次撞墙的序列长度）——那个下界由 {@link
-   * #theDefaultBudgetFitsTheObservedSurveyThenRetrySequence} 在**行为层**另证一次； 本用例钉的是「别把这条决定改掉而不重新算一遍」，
-   * 它的判别力在**值**本身（改数就红），不在行为上。两者缺一不可：只有行为断言则"悄悄降到 11"能过，只有值断言则"降到 11 恰好还够用"这件事无人证明。
+   * <p>★ 本用例的判别力仍在**值**本身（改数就红、逼你重新面对这条裁定）；"这个预算仍然够用"由 {@link
+   * #theDefaultBudgetFitsTheObservedSurveyThenRetrySequence} 在**行为层**另证一次（11 次调用在 10000 下当然也走得完）。
    */
   @Test
-  void theDefaultBudgetIsTheNumberTheLiveRunArithmeticYields() {
+  void theDefaultBudgetIsTheUserRulingOfTenThousand() {
     assertThat(DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS)
-        .as("勘察 14 + 出令 1 + 重试 4 + 收口 1 = 20（算术见本用例注释与常量注释）")
-        .isEqualTo(20);
+        .as(
+            "用户裁定 2026-10-14：「能把llm calls给设置成10000吗？我不希望再看到这个恼人的20」；"
+                + "旧值 20 = 2026-09-22 现场算术（勘察 14 + 出令 1 + 重试 4 + 收口 1，下界 11），留作新旧对照")
+        .isEqualTo(10_000);
   }
 
   // ────────────────────────────── 图片通路（P4，2026-09-24） ──────────────────────────────

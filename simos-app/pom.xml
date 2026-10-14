@@ -96,6 +96,21 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>agentlib-mosire</artifactId>
     </dependency>
+    <!-- ★★ 2026-10-14 AgentLib Docs/Workspace 接入（设计书 §4.1/§4.2 / 指南 §2）：隔壁两个库的工具面
+         （`doc_*` 7 条 + `workspace_*` 3 条）。它们**只实现 AgentTool**，由 `simos-ga-spi` 的
+         `SimosToolAdapter` 适配成 `SimosTool` 后进桶（原样塞进桶 = 装配当场抛，见设计书 §2.2）。
+         ★ 依赖链 `docs → workspace → agentlib`：`agentlib-mosire` 由它们**传递**带过来，故不在这里重复声明
+           （指南 §2 逐字）。★ 版本引父 POM 的 `${agentlib-mosire.version}`（= 0.1.0）：三库共用一个拼写点。
+           原写作 `${project.version}` —— 那是**本仓自己的**版本，此前能对上纯属隔壁与本仓同为
+           0.1.0-SNAPSHOT 的巧合（潜伏 bug）；2026-10-14 隔壁转固定版本 0.1.0 后该巧合消失，故必须改。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>docs-mosire</artifactId>
+      <version>${agentlib-mosire.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>workspace-mosire</artifactId>
+      <version>${agentlib-mosire.version}</version>
+    </dependency>
     <!-- MCP SDK（spec §2.1：**禁**聚合 mcp，它带 Jackson 3）。版本由父 POM import 的 mcp-bom 提供。 -->
     <dependency>
       <groupId>io.modelcontextprotocol.sdk</groupId><artifactId>mcp-core</artifactId>

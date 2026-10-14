@@ -38,7 +38,6 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
-import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.tools.write.ResetDecisionMakerConversationTool;
@@ -293,6 +292,9 @@ class ResetConversationEndToEndTest {
    */
   @Test
   void theFailurePathReportsTheConversationOfTheCurrentGeneration() throws Exception {
+    // ★★ 2026-10-14 W4（设计书 §10.4）：撞预算才看得见失败路径，而生产缺省已是 10000（用户裁定）
+    //   ⇒ 用 Shell.start 的显式给上限那条重载把上限压到 RUNAWAY_BUDGET（**不许**改小生产缺省来"修"本用例）。
+    restartShellWithBudget(RUNAWAY_BUDGET);
     // 撞回合预算：模型一直要工具（真 provider 由替身提供；预算在调用前判，故这里不需要真脚本）
     enqueueRunaway();
     JsonNode before = errorBody(callWithApproval(RunDecisionTool.NAME, runDecisionArgs(head())));
@@ -424,9 +426,42 @@ class ResetConversationEndToEndTest {
 
   /** 让模型一直要工具 ⇒ 这一轮必然撞回合预算（是本类唯一能稳定触发的失败路径）。 */
   private void enqueueRunaway() {
-    for (int i = 0; i < DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS; i++) {
+    for (int i = 0; i < RUNAWAY_BUDGET; i++) {
       llm.enqueue(LlmResponse.toolCall("call-" + i, "simos_map_hex", Map.of("q", 1, "r", 1)));
     }
+  }
+
+  /**
+   * 「跑飞」类用例的**小**回合上限（2026-10-14 W4，设计书 §10.4）。
+   *
+   * <p>★ 取值 20 = **旧的生产缺省**（2026-09-22 现场算术 {@code 14+1+4+1}）——现在它只是本用例"小到几秒跑完"
+   * 的上限，与生产缺省（10000，用户裁定）无关。★ 判别力不靠这个数字：只看"模型不收口 ⇒ 撞上限 ⇒ 如实报 aborted"。
+   */
+  private static final int RUNAWAY_BUDGET = 20;
+
+  /**
+   * 在**同一个已种好的世界**上换一套壳，把一轮的回合上限显式压小（2026-10-14 W4）。
+   *
+   * <p>★ 为什么不复用 {@code @BeforeEach} 那条：回合上限是**装配参数**（{@code Shell.start} 的重载），压小只能重起壳； 本方法不重种
+   * genesis（store 一字不动），只换装配参数。
+   */
+  private void restartShellWithBudget(int maxLlmCalls) {
+    if (client != null) {
+      try {
+        client.closeGracefully();
+      } catch (Exception ignored) {
+        // 关停清理失败不影响用例判定（server 侧仍会被 shell.close() 收掉）
+      }
+      client = null;
+    }
+    if (shell != null) {
+      shell.close();
+      shell = null;
+    }
+    llm = new RecordingLlmClient();
+    shell =
+        Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0), llm::provider, maxLlmCalls);
+    client = newClient();
   }
 
   private static String wireText(McpSchema.CallToolResult result) {

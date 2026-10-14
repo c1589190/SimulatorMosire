@@ -239,10 +239,13 @@ class DecisionCallerFactoryTest {
           ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
       assertThat(gmFace).as("GM 面非空").isNotEmpty();
 
-      // ★★ 核心判据（B4b，独立规格）：**决策人面 == 金名单 42 条**。规格从生产搬进测试后判别力不降反升——
+      // ★★ 核心判据（B4b，独立规格）：**决策人面 == 金名单 50 条**（★★ 2026-10-14 上游 R8：doc_guide /
+      //   workspace_info 也 {GM, DM} ⇒ 48 → 50；本批"决策人互致消息"只换成员不改条数）。规格从生产搬进测试后判别力不降反升——
       //   它不再"跟着实现走"，而是钉住实现：漏一条/多一条都必须有人显式改规格。
+      //   ★★ 2026-10-14 决策人互致消息：金名单**成员换了但条数不变**（−simos.sd.report −simos.sd.reports
+      //     +simos.ga.message.send +simos.ga.message.inbox ⇒ 仍 48）⇒ 本行只把名字改对，判据一字未松。
       assertThat(decisionFace)
-          .as("★ 决策人面 == 测试侧金名单（42 条，独立规格）")
+          .as("★ 决策人面 == 测试侧金名单（50 条，独立规格）")
           .containsExactlyInAnyOrderElementsOf(DecisionFaceGolden.ALL);
 
       Set<String> whitelist =

@@ -48,8 +48,8 @@ import java.util.Set;
  *
  * <p>★★ **本类在 2026-10-12（B2a）自 {@code simos-app} 迁入 {@code simos-ga}**（用户原话⑤「把工具运作、决策人运行放到ga模块」）：
  * 迁移的硬约束是"运行流不得依赖组合根"，故凡"宿主的东西"一律改成**构造期注入**——工具执行面（{@link DecisionToolCaller}）、 工具名声明（{@link
- * DecisionToolNames}）、图片通路（{@link ToolImages}）、日志门面（{@code GaLog}）； 地图 id / 决策人桶注册表 / 会话库 / 每轮 LLM
- * 客户端本来就是入参。**行为与载荷逐字不变**（I-G1）。
+ * DecisionToolNames}）、可达面（{@link DecisionToolReach}，2026-10-14 真机缺陷的修法：开场消息只点够得着的工具名）、图片通路（{@link
+ * ToolImages}）、日志门面（{@code GaLog}）； 地图 id / 决策人桶注册表 / 会话库 / 每轮 LLM 客户端本来就是入参。**行为与载荷逐字不变**（I-G1）。
  *
  * <p>★ **会话 id 由决策人 id 派生**（{@link #conversationIdOf}），**不隐式取全局状态**：同一决策人跨 tick（乃至跨进程重启， 因为 {@code
  * SqliteConversationStore} 落在 {@code <store>} 下）落到同一段会话上。
@@ -126,31 +126,36 @@ public final class DecisionAgentRunner {
   /**
    * 一轮 {@code run} 允许的最大 LLM 调用次数（**本实现自设的兜底**，spec 未规定）。
    *
-   * <p>★★ **取 20，且这个数是从现场算术来的、不是拍的**（真 LLM 验收，2026-09-22，35 条会话在案）。曾经取 8，**实测不够**： 决策人 {@code
-   * dm-osman} 在**最小世界**（1 国 / 1 区域 / **573 格** / 1 单位）上，**7 次勘察 + 1 次出令**就把 8 用满； 出令因 {@code
-   * sd.RegisterEffect} 自指被正确拒绝后，它**正要重读状态再试**时预算耗尽 ⇒ {@code abortedByBudget} （设计如此、不静默截断，这点是对的）。⇒
-   * **8 是"最小世界的勘察成本本身"**，连一次重试都装不下。
+   * <p>★★ <b>现值 {@code 10000} = 用户裁定（2026-10-14，逐字）</b>：
    *
-   * <p>★ **算术**（每一项都取上界，逐项可回溯到现场）：
+   * <blockquote>
+   *
+   * 「能把llm calls给设置成10000吗？我不希望再看到这个恼人的20」
+   *
+   * </blockquote>
+   *
+   * <p>★ <b>新旧对照</b>（旧值怎么写出来的、为什么改）：
    *
    * <ol>
-   *   <li><b>勘察 14</b> = 实测 <b>7</b> × 2：实测那 7 次是**新会话首轮**"把整个工具面摸一遍"的量（catalog / branches /
-   *       overview / unit.list / unit.get / map.hex / facets / …），而且那是**最小世界**的量——世界一大只会更多； 2
-   *       倍余量买的是"多查几个格、多问几个单位"；
-   *   <li><b>出令 1</b>；
-   *   <li><b>重试 4</b> = 2 轮 × (重读状态 + 重发令)：出令有两种**已知**的被拒理由（{@code commands} 自指 / {@code
-   *       expectedRevision} 过期——后者本类的身份消息自己就警告了），各留一轮；
-   *   <li><b>收口 1</b>：工具轮之后模型还要一次纯文本轮才算完（既有用例实测的就是这个形态：两次工具 + 一次收口 = 3 次调用）。
+   *   <li><b>旧值 20</b> 是<b>从现场算术来的、不是拍的</b>（真 LLM 验收，2026-09-22，35 条会话在案）：勘察 14（＝实测 <b>7</b> × 2，那
+   *       7 次是**最小世界新会话首轮**"把整个工具面摸一遍"的量）+ 出令 1 + 重试 4（＝2 轮 ×〔重读状态 + 重发令〕）+ 收口 1 ⇒ {@code 14 + 1 +
+   *       4 + 1 = 20}；<b>下界是 11</b>（现场那次撞墙的序列长度）。 更早取 8 <b>实测不够</b>：决策人 {@code dm-osman} 在最小世界（1 国
+   *       / 1 区域 / 573 格 / 1 单位）上 7 次勘察 + 1 次出令就用满， 出令因 {@code sd.RegisterEffect}
+   *       自指被拒后它正要重读再试时预算耗尽。
+   *   <li><b>新值 10000</b> <b>不是重新算出来的</b>——用户明确要求取消这个"烦人的 20"。原注释里"为什么不做成可配" 那段论证（挂进 {@code
+   *       ShellConfig} 要四层各加一个形参、换来的只是"部署期调一个我们不希望有人乱调的兜底值"）
+   *       在裁定之后<b>不再是理由</b>：用户要的就是一个大到不会打断正常回合的上限。
    * </ol>
    *
-   * <p>★ 合计 {@code 14 + 1 + 4 + 1 = 20}。**下界是 11**（现场那次撞墙的序列长度），20 给的是两倍于勘察的余量与两轮重试。
+   * <p>★★ <b>如实风险说明（不许删）</b>：{@code 20 → 10000} <b>实质上等于取消了兜底</b>。原来模型若不收口，20 次就中止，并经 {@link
+   * TurnBudgetExceeded} 给出<b>可判别信号</b>（{@code ga.RunDecision} 回报 {@code result=aborted} / {@code
+   * abortedByBudget=true} / {@code reason=turn-budget}）；现在这个信号在 10000 次之前不会出现——本地/自建模型一旦陷入
+   * "反复调工具不收口"，烧掉的是 10000 次调用（真 LLM 上是真金白银与真时间）。兜底<b>还在</b>（常量存在、信号仍可判别、中止不丢上下文），
+   * 只是<b>不再在正常量级上起作用</b>。
    *
-   * <p>★★ **为什么不做成可配**（评估过，决定不做）：这个数的正确取值由**模型行为**决定，**不由部署决定**——把它挂进 {@code ShellConfig} 要让 {@code
-   * ShellConfig → Shell → DecisionAgentService → 本类} 四层各加一个形参，
-   * 换来的只是"部署期能调一个**我们不希望有人乱调**的兜底值"（调小了现场那种跑法必挂、调大了等于取消兜底）。
-   * 需要非常规取值时，装配方本来就能用下面那个**显式给上限**的构造器（用例正是这么测"跑飞会被中止"的）； 故**不新增装配复杂度**。
+   * <p>★ <b>需要非常规取值时</b>：装配方仍可用下面那些<b>显式给上限</b>的构造器（用例正是这么测"跑飞会被中止"的）——本常量只是<b>缺省</b>。
    */
-  public static final int DEFAULT_MAX_LLM_CALLS = 20;
+  public static final int DEFAULT_MAX_LLM_CALLS = 10_000;
 
   /**
    * **一轮的进度回调**（2026-09-23，GUI 准实时进度）：**每轮 LLM 结束**、**每次工具调用结束**各推一次。
@@ -227,6 +232,17 @@ public final class DecisionAgentRunner {
    * "权限组放行的"不会错位（spec §2.3 要点 1）。两处都在装配方（{@code simos-app}）。
    */
   private final Set<String> toolWhitelist;
+
+  /**
+   * ★★ **可达面**（宿主注入，见 {@link DecisionToolReach}）：开场消息按它决定"点不点某件工具的名"。
+   *
+   * <p>★★ <b>为什么消息要点名之前先问它</b>：点名一件够不着的工具 = 让模型去够一件拿不到的东西；现场实测里模型不会 报错，它会**换路径**（把工具名当文档挂载名反复调
+   * {@code doc_list}，一轮 35 次同一条拒绝）。见 {@link DecisionToolReach} 的类注（缺陷现场逐字）。
+   *
+   * <p>★ <b>缺省 = {@link DecisionToolReach#ofNames(Set)}（本 runner 的白名单）</b>：对"调用方已显式给白名单"的装配
+   * 形态（旧构造器与用例），白名单**就是**要发给模型的工具面，故"在不在清单里"与"够不够得着"是同一件事——不是第二份真相。
+   */
+  private final DecisionToolReach toolReach;
 
   /** **送给模型的那一份工具面**（名字是线格式；描述与 schema 逐字来自真工具）。 */
   private final List<ToolDef> toolDefs;
@@ -442,6 +458,9 @@ public final class DecisionAgentRunner {
    *
    * <p>★★ 冻结回合的工具面在装配期就被裁掉：只留世界读 + 决策包四件套 + 显式无状态读口；带 {@code expectedRevision} 的旧世界写工具（{@code
    * ga.IssueDirective} / {@code GovPay} / 外交写等）既不发给模型，执行口也会拒绝。 世界写因此不可能在决策期发生——这正是"同时决策"的硬约束。
+   *
+   * <p>★ <b>可达面缺省 = 本 runner 的白名单</b>（{@link DecisionToolReach#ofNames(Set)}）：对这条形态的调用方，白名单就是要发给模型的
+   * 工具面。要按**宿主自己的可达面真值**（{@code DecisionCallerFactory#whitelistFor}）答，走下面那条带端口的重载。
    */
   public DecisionAgentRunner(
       DecisionToolCaller caller,
@@ -458,6 +477,50 @@ public final class DecisionAgentRunner {
       Set<String> toolWhitelist,
       FrozenDecisionContext frozen,
       DecisionMakerAffiliationPort affiliations) {
+    this(
+        caller,
+        registry,
+        llmClient,
+        conversations,
+        mapId,
+        toolNames,
+        toolImages,
+        maxLlmCalls,
+        progressListener,
+        vision,
+        openingSnapshot,
+        toolWhitelist,
+        DecisionToolReach.ofNames(toolWhitelist),
+        frozen,
+        affiliations);
+  }
+
+  /**
+   * ★★ **全参（生产路径）+ 宿主注入的可达面**：与上面那条的唯一差别是开场消息"点不点某件工具的名"由 {@code toolReach} 作答（见 {@link
+   * DecisionToolReach}）。
+   *
+   * <p>★ <b>生产装配</b>（{@code simos-app.DecisionAgentService}）给的是 {@code AppDecisionToolReach}：它转问
+   * {@code DecisionCallerFactory#whitelistFor(dm)} —— 与 {@code toolWhitelist}（工具面）**同一份数据、同一个来源**，
+   * 故"消息里点名的"与"模型清单里有的"不会各说各话。其余参数语义与上面那条逐字相同（同一个构造器体，不复制字段赋值）。
+   *
+   * @param toolReach 可达面（非 null）；缺省形态见上面两条重载
+   */
+  public DecisionAgentRunner(
+      DecisionToolCaller caller,
+      ToolRegistry registry,
+      LlmClient llmClient,
+      ConversationStore conversations,
+      String mapId,
+      DecisionToolNames toolNames,
+      ToolImages toolImages,
+      int maxLlmCalls,
+      ProgressListener progressListener,
+      boolean vision,
+      OpeningSnapshot openingSnapshot,
+      Set<String> toolWhitelist,
+      DecisionToolReach toolReach,
+      FrozenDecisionContext frozen,
+      DecisionMakerAffiliationPort affiliations) {
     this.caller = Objects.requireNonNull(caller, "caller");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
@@ -466,6 +529,7 @@ public final class DecisionAgentRunner {
     this.toolNames = Objects.requireNonNull(toolNames, "toolNames");
     this.toolImages = Objects.requireNonNull(toolImages, "toolImages");
     this.affiliations = Objects.requireNonNull(affiliations, "affiliations");
+    this.toolReach = Objects.requireNonNull(toolReach, "toolReach");
     if (maxLlmCalls <= 0) {
       throw new IllegalArgumentException("maxLlmCalls 必须为正: " + maxLlmCalls);
     }
@@ -665,10 +729,23 @@ public final class DecisionAgentRunner {
    * <p>★ **公开可见性**（B2a）：装配方在"用户先说话"那条路上要先补这条身份消息（{@code
    * DecisionAgentService#appendUserMessage}）；运行流与装配从 B2a 起分居两个模块（{@code ga} / {@code app}） ⇒
    * 它不能再是包内可见，故为 {@code public}（语义与文本逐字未变，只是可见性放宽）。
+   *
+   * <p>★★ <b>按可达面点名</b>（2026-10-14 真机实测缺陷的修法，见 {@link DecisionToolReach} 的类注）：消息里**点名一件工具 =
+   * 叫模型去用它**，故点名之前先问宿主"这个决策人此刻够不够得着它"，**够不着就不点**（见下面那条重载的 {@code toolReach}）。 现场证据：决策人 {@code
+   * r8-dm} 只被允许 6 件文档/工作区工具，而消息无条件点名 {@code simos_command_catalog} / {@code
+   * simos_timeline_branches} ⇒ 模型在工具清单里找不到它们，**换路径**把工具名当**文档挂载名**反复调 {@code doc_list}，一轮 38 次调用里
+   * 35 次同一条 {@code INVALID_ARGUMENTS}，整轮烧光。 ★ 那句既有的"范围之外的调用会被拒——那不是你
+   * 参数写错了"**不够**：它解释了"被拒不是你的错"，却没有阻止模型**换路径死磕**；故新正文另加一条止损规则（见下）。
+   *
+   * @param toolReach 可达面（宿主注入，见 {@link DecisionToolReach}）：决定"先查看"那一段点不点名 {@code catalog} / {@code
+   *     branches}，以及是否补一条"本消息点到的名字可能不在你清单里"的标注
    */
   public static LlmMessage openingUserMessage(
-      DecisionMaker dm, String affiliationText, DecisionToolNames toolNames) {
-    return openingUserMessage(dm, affiliationText, null, toolNames);
+      DecisionMaker dm,
+      String affiliationText,
+      DecisionToolNames toolNames,
+      DecisionToolReach toolReach) {
+    return openingUserMessage(dm, affiliationText, null, toolNames, toolReach);
   }
 
   /**
@@ -702,15 +779,22 @@ public final class DecisionAgentRunner {
    * 为一个空格的 system 占位（供应商要求 system 必须存在），身份与规范全部走这条 user。
    *
    * <p>★ 工具名一律从宿主注入的 {@link DecisionToolNames} 取（不在这里写字面量）：改名时这条消息跟着走，"说的"与"注册的"不会错位。
+   *
+   * <p>★★ 2026-10-14 起**点名之前先问可达面**（{@code toolReach}，真机实测缺陷的修法）：能点名的只有 {@link
+   * DecisionToolReach#reachable} 答"够得着"的那些；一个都够不着时"先查看"那一段**一个工具名都不点**，只交代 "以你这次收到的工具清单为准"。★
+   * 这条消息**永久落盘**、而可达面此后可能被 GM 改（{@code ga.SetDecisionMakerAccess}） ⇒
+   * 正文一律写成"以**你这次收到的工具清单**为准"这种**自纠正**措辞，不写"你有/你没有 X"的绝对断言：后者在配权变化之后 就会变成一句**模型无法察觉的谎**。
    */
   static LlmMessage openingUserMessage(
       DecisionMaker dm,
       String affiliationText,
       FrozenDecisionContext frozen,
-      DecisionToolNames toolNames) {
+      DecisionToolNames toolNames,
+      DecisionToolReach toolReach) {
     Objects.requireNonNull(dm, "dm");
     Objects.requireNonNull(affiliationText, "affiliationText");
     Objects.requireNonNull(toolNames, "toolNames");
+    Objects.requireNonNull(toolReach, "toolReach");
     String where = affiliationText;
     String catalog = LlmToolNames.wireNameOf(toolNames.catalog());
     String branches = LlmToolNames.wireNameOf(toolNames.branches());
@@ -718,6 +802,27 @@ public final class DecisionAgentRunner {
     String proposeTool = LlmToolNames.wireNameOf(toolNames.propose());
     String submitTool = LlmToolNames.wireNameOf(toolNames.packetSubmit());
     String myPacketTool = LlmToolNames.wireNameOf(toolNames.myPacket());
+    // ★★ 可达面：**问宿主**（唯一真相 = 装配方的 DecisionCallerFactory.whitelistFor），运行流不自己算（见 DecisionToolReach
+    // 类注）。
+    boolean canCatalog = toolReach.reachable(dm, toolNames.catalog());
+    boolean canBranches = toolReach.reachable(dm, toolNames.branches());
+    boolean canIntent = toolReach.reachable(dm, toolNames.packetIntent());
+    boolean canPropose = toolReach.reachable(dm, toolNames.propose());
+    boolean canSubmit = toolReach.reachable(dm, toolNames.packetSubmit());
+    boolean canMyPacket = toolReach.reachable(dm, toolNames.myPacket());
+    // ★ 冻结回合不点旧单人回合的两件（下面走另一段），故它们不参与"有没有点了却够不着的名字"。
+    boolean canLegacyWrites =
+        frozen != null
+            || (toolReach.reachable(dm, toolNames.issueDirective())
+                && toolReach.reachable(dm, toolNames.submitVerdict()));
+    boolean allNamedReachable =
+        canCatalog
+            && canBranches
+            && canIntent
+            && canPropose
+            && canSubmit
+            && canMyPacket
+            && canLegacyWrites;
     StringBuilder text = new StringBuilder();
     text.append("你是决策人「")
         .append(dm.id().value())
@@ -728,12 +833,34 @@ public final class DecisionAgentRunner {
         .append("【你能看到什么】由系统强制：每次工具调用都由系统按你的归属与当前世界现算可见范围，范围之外的调用会被拒——")
         .append("那不是你参数写错了，是那件事你看不到。先查看，再决策。\n")
         .append("\n")
-        .append("【先查看】")
-        .append(catalog)
-        .append(" 给出你有途径触发的命令类型及其载荷字段；")
-        .append(branches)
-        .append(" 给出分支与当前 head。\n")
+        // ★★ 2026-10-14 真机实测教训的直接产物（见 DecisionToolReach 类注的 35 连撞现场）：光说"被拒不是你的错"不够
+        //   —— 模型会**换路径去够**（把工具名当文档挂载名）。这条止损规则点名那种换路径的形态。
+        .append("【被拒了怎么办（止损，重要）】任何一个拒绝都只说明\"那件事你看不到、或那条路不通\"")
+        .append("（RESOURCE_DENIED / TOOL_NOT_FOUND / INVALID_ARGUMENTS / 工作区类报错都一样）：\n")
+        .append("- 同一个调用被拒之后不要重试（参数没变，结果一定一样），也不要为了够到同一件事去换一件工具、换一个名字或换一种地址。\n")
+        .append("- ★ 不要把世界实体的名字当成**文档/工作区的挂载名**：某个命令名、某个工具名（包括本消息里点到的那些工具名）是工具、不是一块地，")
+        .append("拿它去调文档类工具只会被一遍遍拒。\n")
+        .append("- 被拒一次就收口：如实报告\"这件事我看不到\"，或改做你清单里确实能做的事。\n")
         .append("\n")
+        .append("【先查看】");
+    if (canCatalog && canBranches) {
+      text.append(catalog)
+          .append(" 给出你有途径触发的命令类型及其载荷字段；")
+          .append(branches)
+          .append(" 给出分支与当前 head。\n");
+    } else if (canCatalog) {
+      text.append(catalog).append(" 给出你有途径触发的命令类型及其载荷字段。\n");
+    } else if (canBranches) {
+      text.append(branches).append(" 给出分支与当前 head。\n");
+    } else {
+      // ★ 两件都够不着 ⇒ **一个名字都不点**：点名 = 叫它去够一件拿不到的东西（现场实测的根因）。
+      text.append("你此刻能查看什么，以**这次实际发给你的工具清单**为准——先查看，再决策。\n");
+    }
+    if (!allNamedReachable) {
+      // ★ 用户裁定允许的另一半：「明确标注"系统可能拒你，那不是错误"」。措辞指向**当次**工具清单 ⇒ 配权变了也不会过期。
+      text.append("★ 本消息里点到名的工具，凡不在你**这次收到的工具清单**里的，就是你看不到的能力——不要换别的工具、别的名字去够它（见上面的止损）。\n");
+    }
+    text.append("\n")
         .append("【决策的两种表达】\n")
         .append("1) 自然语言决策：用 ")
         .append(intentTool)
@@ -752,8 +879,12 @@ public final class DecisionAgentRunner {
         .append(
             "simos.social.household.members / simos.unit.levyRegion / simos.gov.selectExaminees / ")
         .append("simos.gov.dispatchTeam（以你实际 allowedTools 为准；清单外不要在 propose 里试，试一次拒一次）。\n")
-        .append("【工具预算与写法】本回合最多做 4–6 次工具调用：先看一次 catalog 选一条可 propose 的工具，")
-        .append("写 intent + propose + submit 后立刻收口。不要逐条试工具；任何工具的 args 里不要出现 JSON null，")
+        .append("【工具预算与写法】本回合最多做 4–6 次工具调用：");
+    if (canCatalog) {
+      // ★ 够不着就不点它的名（点名 = 叫它去用；见本方法的类注）。
+      text.append("先看一次 ").append(catalog).append(" 选一条可 propose 的工具，");
+    }
+    text.append("写 intent + propose + submit 后立刻收口。不要逐条试工具；任何工具的 args 里不要出现 JSON null，")
         .append("缺字段就省略。\n")
         .append("\n")
         .append("【系统如何结算你的回合（重要）】\n")
@@ -779,9 +910,14 @@ public final class DecisionAgentRunner {
           .append(" 仍可按旧语义使用；但推荐优先用上面的决策包三件套表达。\n")
           .append("如果使用 ")
           .append(LlmToolNames.wireNameOf(toolNames.issueDirective()))
-          .append("：expectedRevision 必须填 ")
-          .append(branches)
-          .append(" 读到的当前 head；commands 里不得放 sd. 前缀的命令类型（防无限递归）。\n");
+          .append("：expectedRevision 必须填 ");
+      if (canBranches) {
+        text.append(branches).append(" 读到的当前 head；");
+      } else {
+        // ★ 同一条纪律：{@code branches} 够不着就不点它的名（"读到的当前 head"这句不依赖任何工具名）。
+        text.append("你能读到的当前 head；");
+      }
+      text.append("commands 里不得放 sd. 前缀的命令类型（防无限递归）。\n");
     } else {
       text.append("【本轮为同时决策回合】世界冻结在 ")
           .append(frozen.branch().value())
@@ -920,7 +1056,8 @@ public final class DecisionAgentRunner {
     //   ★ 只在**空会话**上注入（"有没有历史"是纯函数，不看世界）：第二轮 `load` 里已经有它，故不会重复追加。
     if (history.isEmpty()) {
       LlmMessage opening =
-          openingUserMessage(dm, affiliationTextOf(affiliations, dm, state), frozen, toolNames);
+          openingUserMessage(
+              dm, affiliationTextOf(affiliations, dm, state), frozen, toolNames, toolReach);
       conversations.append(conversationId, opening);
       history.add(opening);
       // ★★ P4：身份之后补一条**开场快照**（世界长这样）。★ 顺序不可反——先有"你是谁"，再有"你在哪"；

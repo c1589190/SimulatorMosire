@@ -829,6 +829,11 @@ public final class CatalogTool implements SimosTool {
               "verdictId, breakpoint(D1|D3|D6), subject(sd:combat.*), payload(JSON 文本),"
                   + " meta{model,promptVersion,inputBriefDigest}"),
           Map.entry(
+              "ga.SetDecisionMakerPeer",
+              "dmA, dmB, allowed(布尔)"
+                  + "（★ 一次写**两条**决策人记录、一条 revision ⇒ **双向**授权是原子事实，不存在"
+                  + "\"A 能发 B、B 回不了\"的半开态；allowed=false 关闸）"),
+          Map.entry(
               "ga.SetDecisionMakerAccess",
               "decisionMakerId, allowedTools[]?, accessLimit{命名空间:[前缀…]}?, redactedFields[]?,"
                   + "adjudicationDisclosure(FULL|PERCEPTION_ONLY|WITHHELD)?"

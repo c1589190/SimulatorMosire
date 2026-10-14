@@ -50,6 +50,7 @@ import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.time.PopulationUnitTimeParticipant;
 import io.mosire.simos.app.tools.CoreSimosToolWritePort;
 import io.mosire.simos.app.tools.SimosToolSource;
+import io.mosire.simos.app.tools.SimosToolSource.WorkspaceProvision;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.world.GovJurisdictionGuard;
 import io.mosire.simos.army.codec.ArmyCodec;
@@ -134,6 +135,7 @@ import io.mosire.simos.ga.spi.RegisterEffectHandler;
 import io.mosire.simos.ga.spi.ResetDecisionMakerConversationHandler;
 import io.mosire.simos.ga.spi.RunDecisionHandler;
 import io.mosire.simos.ga.spi.SetDecisionMakerAccessHandler;
+import io.mosire.simos.ga.spi.SetDecisionMakerPeerHandler;
 import io.mosire.simos.ga.spi.SetDecisionMakerProviderHandler;
 import io.mosire.simos.ga.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.ga.spi.StartDecisionHandler;
@@ -147,6 +149,8 @@ import io.mosire.simos.ga.tools.GmToolUsage;
 import io.mosire.simos.ga.tools.RecordingToolSource;
 import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.ToolRoleAudit;
+import io.mosire.simos.ga.tools.read.GaMessageInboxTool;
+import io.mosire.simos.ga.tools.write.GaMessageSendTool;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.gov.guard.RegionDeleteGuard;
 import io.mosire.simos.gov.spi.AssignDecisionMakerGovHandler;
@@ -248,6 +252,7 @@ import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
+import io.mosire.workspace.WorkspacePermissions;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -297,6 +302,28 @@ public final class Shell implements AutoCloseable {
 
   /** 审批等待上限（spec 未定值，M5 取 5 分钟）：到点没人答 ⇒ fail-closed 拒（AgentLib 契约）。 */
   private static final Duration APPROVAL_TIMEOUT = Duration.ofMinutes(5);
+
+  /**
+   * 外来 Docs/Workspace 的**文档物理根**（相对 store）：{@code <store>/workspaces}。
+   *
+   * <p>★ 装配期挂载（{@link SimosToolSource#provisionWorkspaces}）的落点父目录：宿主根 = {@code <它>/gm}， 决策人默认工作区 =
+   * {@code <它>/dm/<id>}（必须落在宿主根下的**真**子目录——M9/W1）。 ★ 名字不含 {@code docs}：虚拟挂载名与命名空间才叫 {@code
+   * docs}，物理目录不跟它混（免得读成"文档库"）。
+   */
+  private static final String WORKSPACES_DIR_NAME = "workspaces";
+
+  /**
+   * 运行时**兜底写入**的本地 provider（2026-10-14 用户裁定：「把 gemma4-local 写进运行 store」）。
+   *
+   * <p>★ 为什么是写而不是只改种子：仓库的 {@code config/llm-providers.json} 只是**空 store 首启的迁移来源** （{@code
+   * AgentLibLlmConfig:408-415} 逐字：只在目标为空时迁）。现成 store（如 {@code run/small-world-db}） 非空 ⇒ 种子永远进不去。★
+   * 只在**缺这条路由**时写（幂等，绝不覆盖用户手改过的同名路由）。 ★ 该端点**无 apiKey**（本地 llama.cpp）⇒ 不写密钥、不进日志（§五.7）。
+   */
+  static final String LOCAL_PROVIDER_ID = "gemma4-local";
+
+  static final String LOCAL_PROVIDER_BASE_URL = "http://127.0.0.1:8080/v1";
+
+  private static final long LOCAL_PROVIDER_TIMEOUT_MS = 300_000L;
 
   /**
    * 世界生成器冻结输入（v17levant 三国）的路径：**相对工作目录（仓根）拼**（与 {@code config/llm-providers.json} 同一约定）。 ★ 路径不存在时由
@@ -516,7 +543,28 @@ public final class Shell implements AutoCloseable {
    */
   public static Shell start(
       ShellConfig config, DecisionAgentService.LlmClients decisionLlmClients) {
+    return start(config, decisionLlmClients, DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS);
+  }
+
+  /**
+   * 同 {@link #start(ShellConfig, DecisionAgentService.LlmClients)}，但**显式指定一轮决策的回合上限**。
+   *
+   * <p>★★ 2026-10-14 W4（设计书 §10.4）：生产缺省是 {@link DecisionAgentRunner#DEFAULT_MAX_LLM_CALLS} （用户裁定 =
+   * {@code 10000}，见那个常量的注释）。<b>用例要测"跑飞会被中止"必须把上限压小</b>——那正是 {@code DecisionAgentRunner}/{@code
+   * DecisionAgentService} 那两条"显式给上限"构造器存在的理由（其 Javadoc 逐字： 需要非常规取值时，装配方本来就能显式给上限）。★
+   * <b>不许</b>为了用例把生产缺省改小：那会让用户的 10000 裁定失效。
+   *
+   * @param decisionMaxLlmCalls 一轮最多几次 LLM 调用（必须为正）；生产传 {@link
+   *     DecisionAgentRunner#DEFAULT_MAX_LLM_CALLS}
+   */
+  public static Shell start(
+      ShellConfig config,
+      DecisionAgentService.LlmClients decisionLlmClients,
+      int decisionMaxLlmCalls) {
     Objects.requireNonNull(config, "config");
+    if (decisionMaxLlmCalls <= 0) {
+      throw new IllegalArgumentException("decisionMaxLlmCalls 必须为正: " + decisionMaxLlmCalls);
+    }
     CoreSimos coreSimos =
         new CoreSimos(
             new CoreConfig(
@@ -990,6 +1038,12 @@ public final class Shell implements AutoCloseable {
     handlers.add(issueDirectiveHandler);
     handlers.add(submitVerdictHandler);
     handlers.add(setDecisionMakerAccessHandler);
+    // ★★ 2026-10-14 决策人互致消息（设计书 §4.1）：GM 授权两人互通的命令。★ 它一次写两条 DM 记录、落一条 revision
+    //   ⇒ "双向"是原子事实（半开不可表达）。★ 注册面加一条 ⇒ catalog 的 PAYLOAD_HINTS 必须同步加，否则
+    //   Shell 起不来（CatalogTool 的构造期覆盖断言；task-6 踩过这个坑）。
+    //   ★ 两条消息工具名由**组合根**从工具常量取（唯一拼写点 = 各工具类的 NAME；机制层不抄字面量）。
+    handlers.add(
+        new SetDecisionMakerPeerHandler(Set.of(GaMessageSendTool.NAME, GaMessageInboxTool.NAME)));
     handlers.add(setDecisionMakerProviderHandler);
     handlers.add(resetDecisionMakerConversationHandler);
     //   ★★ 2026-10-13 急停协议（B）：GM 注册"两军相遇即报警"的窄写命令（唯一效果 = 改 Army.contactWatch 那一位）。
@@ -1062,6 +1116,36 @@ public final class Shell implements AutoCloseable {
     //   而 simos-map 永远不知道 GOV 存在（铁律 3），simos-gov 也看不见区表（见类注）。
     coreSimos.register(new GovJurisdictionGuard());
 
+    // ★★★ 2026-10-14 W2（设计书 §10.2 / 用户裁定「在1的基础上给每个决策人一个默认工作区」）：**装配期挂载**。
+    //   ① 宿主根挂载（`mount_workspace` 只做派生形态 ⇒ 没根就无从起步）；② 此刻已有的每个决策人一块默认工作区。
+    //   ★ 空库的 bootstrap 在 Shell.start **之后**（ShellMain:162-168）⇒ 这里扫到 0 个 DM 是正常的；装配之后
+    //     才建的 DM 由 DecisionCallerFactory 在它跑第一轮之前幂等补上（同一条实现）。
+    //   ★ holder 取 gmCaller() 的身份 —— 与 MCP 口的调用者键**同源**（不一致 provisionWorkspaces 当场抛）。
+    //   ★★★ **不变式（顺序，两条一起成立才算对）**：本块必须放在**整个 `coreSimos.register(...)` 注册面之后**：
+    //     它经 `currentDecisionMakerIds(coreSimos)` **读世界**（`core.replay(StateRef(main, head))`），而
+    //       ① replay 要求信封里每个切片都有已装配的 codec（`Replay.decodeCheckpoint` fail-closed：
+    //          `checkpoint 信封里有未装配 codec 的模块…: actor`）；
+    //       ② replay 会**封存** core（`CoreSimos.requireNotSealed`）⇒ 之后再 {register} 当场抛
+    //          （`装配已封存（seal）：register 必须在第一次 submit/replay 之前完成`）。
+    //     ⇒ 往下挪是安全的，**往上挪必炸**。★ 两次都炸过（2026-10-14 真回归：第一次放在 codec 注册前 ⇒ 330 error；
+    //       第二次放在 handler register 前 ⇒ seal 抛）。★ 空库探针**测不到**这两条（head 为空 ⇒ 提前 return，
+    //       读不到 replay）——**别再被"空库跑通"骗过去**。
+    WorkspaceProvision provision =
+        SimosToolSource.provisionWorkspaces(
+            gmCaller().identity().instanceId(),
+            config.storeDir().resolve(WORKSPACES_DIR_NAME),
+            currentDecisionMakerIds(coreSimos));
+    SHELL.info(
+        LogEvent.of(
+            "WORKSPACE_PROVISIONED",
+            AppLogSource.SHELL_LIFECYCLE,
+            "roots",
+            provision.roots(),
+            "decisionMakers",
+            provision.decisionMakers(),
+            "skipped",
+            provision.skipped()));
+
     ResolverRegistry resolverRegistry = new ResolverRegistry();
     resolverRegistry.register(new MapResolver());
     resolverRegistry.register(new SocialResolver());
@@ -1087,6 +1171,26 @@ public final class Shell implements AutoCloseable {
     // ★ M11′：LLM provider 配置落在 AgentLib 的 ConfigStore（<store>/agentlib/config.json），
     //   旧格式（<store>/llm-providers.json）只作一次性迁移来源；决策编排把 AdjudicatorRunner 接进壳。
     AgentLibLlmConfig llmConfig = AgentLibLlmConfig.open(config.storeDir());
+    // ★★ 2026-10-14 W3（用户裁定：「把 gemma4-local 写进运行 store」）：**运行时兜底**。
+    //   `open(...)` 已跑过 migrateLegacyIfPresent()——但它**只在目标为空时**迁（AgentLibLlmConfig:408-415）
+    //   ⇒ 现成 store（run/small-world-db 是非空的）永远拿不到仓库种子。这里补一次**幂等**的存在性保证：
+    //   缺这条路由才写，已有就一个字不动（绝不覆盖用户手改过的路由）。
+    if (!llmConfig.availableNames().contains(LOCAL_PROVIDER_ID)) {
+      llmConfig.upsertRoute(
+          LOCAL_PROVIDER_ID,
+          LOCAL_PROVIDER_BASE_URL,
+          LOCAL_PROVIDER_ID,
+          "" /* 本地 llama.cpp 无 apiKey（匿名）——绝不写密钥 */,
+          LOCAL_PROVIDER_TIMEOUT_MS);
+      SHELL.info(
+          LogEvent.of(
+              "LLM_LOCAL_PROVIDER_SEEDED",
+              AppLogSource.LLM_CONFIG,
+              "provider",
+              LOCAL_PROVIDER_ID,
+              "baseUrl",
+              LOCAL_PROVIDER_BASE_URL));
+    }
     LlmProviderResolver llmProviderResolver = new LlmProviderResolver(llmConfig, config.storeDir());
     DecisionAdjudicationService decisionAdjudicationService =
         new DecisionAdjudicationService(coreSimos, llmProviderResolver);
@@ -1187,7 +1291,9 @@ public final class Shell implements AutoCloseable {
             decisionTools,
             decisionConversations,
             config.mapId(),
-            DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS,
+            // ★★ 2026-10-14 W4：**装配方显式给的上限**（生产 = DEFAULT_MAX_LLM_CALLS = 10000，用户裁定；
+            //   用例要测"跑飞会被中止"就走 start(..., maxLlmCalls) 那条重载把它压小）。
+            decisionMaxLlmCalls,
             // ★ P4 开场快照：**开关关着就一个字节都不装**（传 NONE ⇒ 运行流那边分得出"没开"与"开了没出图"）。
             config.openingSnapshot()
                 ? new NationOpeningSnapshot(renderService)
@@ -1407,6 +1513,25 @@ public final class Shell implements AutoCloseable {
 
   /** 当前世界里的决策人（作为渠道可代表的 actor；空库 ⇒ 空集）。 */
   private static Set<ActorId> currentActorIds(CoreSimos core) {
+    Set<ActorId> actors = new LinkedHashSet<>();
+    for (String id : currentDecisionMakerIds(core)) {
+      actors.add(new ActorId(id));
+    }
+    return actors;
+  }
+
+  /**
+   * 当前世界里的决策人 **id**（装配期给每个决策人挂默认工作区用；空库 ⇒ 空集）。
+   *
+   * <p>★ 与 {@link #currentActorIds} <b>同一读法</b>（一次 replay + 读 ga 切片的 {@code decisionMakers()}），
+   * 只是不包成 {@link ActorId}——工作区的 {@code user} 要的是**身份键后缀**，多包一层再拆回来是白走一趟。
+   *
+   * <p>★★ <b>前置条件（顺序不变式）：调用它时 {@code coreSimos.register(codec)} 必须已经跑过。</b> 它内部走 {@code
+   * core.replay(...)}，而 replay 对"信封里有未装配 codec 的模块"是 **fail-closed 抛** （{@code checkpoint 信封里有未装配
+   * codec 的模块（信封与本实例的 codec 表不同源）: actor}）。 ★ 这个坑只在**打开已存在的 store** 时才现形（空库的 head 为空 ⇒ 本方法提前 {@code
+   * return Set.of()}， 那一步读不到 replay）——**空库探针测不到它**，别再被"空库跑通"骗过去（2026-10-14 真回归的教训）。
+   */
+  private static Set<String> currentDecisionMakerIds(CoreSimos core) {
     BranchId main = new BranchId("main");
     Optional<RevisionId> head = core.head(main);
     if (head.isEmpty()) {
@@ -1418,11 +1543,11 @@ public final class Shell implements AutoCloseable {
     if (!(slice instanceof GaSnapshot ga)) {
       return Set.of();
     }
-    Set<ActorId> actors = new LinkedHashSet<>();
+    Set<String> ids = new LinkedHashSet<>();
     for (DecisionMakerId id : ga.state().decisionMakers().keySet()) {
-      actors.add(new ActorId(id.value()));
+      ids.add(id.value());
     }
-    return actors;
+    return ids;
   }
 
   /**
@@ -1573,7 +1698,14 @@ public final class Shell implements AutoCloseable {
                     ToolSupport.ACTOR_NAMESPACE, ResourceScope.unlimited(),
                     // ★★ D1（2026-10-02 / D-012）：第八个命名空间（army:combat.<id>）——写侧表态（GM 的
                     //   army.RecordCombat 窄工具与通用提交）；读侧的可见性按记录所在格判，不落在这个命名空间上。
-                    ToolSupport.ARMY_NAMESPACE, ResourceScope.unlimited())))
+                    ToolSupport.ARMY_NAMESPACE, ResourceScope.unlimited(),
+                    // ★★ 2026-10-14 W1（设计书 §10.3 / 指南 §4 第 1/3 条）：**第九/十/十一**个命名空间 =
+                    //   外来 Workspace/Docs 两个库的工作面。★ 不表态 = 一个挂载都建不了（M1 实测原文）、
+                    //   doc_* 全部 RESOURCE_DENIED（实测原文）⇒「GM 维护工作区 + DM 记录文档」两件事都不可达。
+                    //   ★ 三者都取 unlimited：GM 面就是宿主本人（也是装配期挂载的 holder），它的可达面 = 整棵树。
+                    WorkspacePermissions.WORKSPACES, ResourceScope.unlimited(),
+                    SimosToolSource.DOCS_NAMESPACE, ResourceScope.unlimited(),
+                    SimosToolSource.DOCS_EDIT_NAMESPACE, ResourceScope.unlimited())))
         .build();
   }
 

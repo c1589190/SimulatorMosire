@@ -11,11 +11,13 @@ import io.mosire.agentlib.tool.ToolCallAuthorizer;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.decision.DecisionToolCaller;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
+import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.SimulationState;
@@ -26,6 +28,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * **决策人的调用者工厂**（spec §2.2）：进程内、**权限组每次现算**、经 {@link ToolCallAuthorizer} 执行。
@@ -265,18 +268,83 @@ public final class DecisionCallerFactory implements DecisionToolCaller {
     return ResourceScopeMap.of(byNamespace);
   }
 
-  /** 权限组装配（实例与非实例两条路共用的**唯一**实现）。 */
+  /**
+   * 权限组装配（实例与非实例两条路共用的**唯一**实现）。
+   *
+   * <p>★★ 2026-10-14 W1/W2（设计书 §10.3 / 用户裁定「给每个决策人一个默认工作区」）：这里多两件事——
+   *
+   * <ol>
+   *   <li><b>{@code destructiveAllowed(true)}</b>：外来文档写工具（{@code doc_append/create/edit/void}）的
+   *       {@code ToolSpec} 是 {@code destructive=true}（反编译核实）⇒ 不放行就报 {@code PERMISSION_DENIED 工具
+   *       doc_create 为破坏性操作，需显式放行}（指南 §4 第 2 条实测原文）。 ★ <b>单调性</b>：宿主（GM/MCP 口）的权限集**本来就有** {@code
+   *       destructiveAllowed(true)} （{@code Shell.gmPermissionSet}）⇒ 决策人拿到它**不多于父级**；
+   *   <li><b>文档范围</b>（{@code docs}/{@code docs-edit}）：范围 = 它自己那块默认工作区的落点 （{@link
+   *       SimosToolSource#withDecisionMakerDocsScopes}）；没有挂载 ⇒ {@code none()}（fail-closed）。 ★
+   *       缺这两个命名空间就是指南 §4 第 3 条的 {@code RESOURCE_DENIED}（实测原文）。
+   * </ol>
+   *
+   * <p>★ <b>顺带补挂</b>：决策人的默认工作区在这里**幂等补建**（{@link
+   * SimosToolSource#ensureDecisionMakerWorkspace}）——空库的 bootstrap 发生在 {@code Shell.start} 之后，
+   * 装配期那一趟扫不到任何决策人（{@code ShellMain:162-168}）；放在这里 = "它开跑之前一定有地"。fail-soft：补不上不打断回合， 症状是文档工具报
+   * {@code WORKSPACE_NOT_FOUND}（他们的"不可见/不存在同码"既有形态）。
+   */
   private static AgentPermissionSet permissionSetOf(
       DecisionScopeFunctions scopeFunctions,
       Set<String> whitelist,
       DecisionMaker dm,
       SimulationState state,
       String mapId) {
+    String userKey = INSTANCE_ID_PREFIX + dm.id().value();
+    SimosToolSource.ensureDecisionMakerWorkspace(userKey);
     return AgentPermissionSet.builder(AccessToken.DEFAULT)
         .allow(whitelist.toArray(String[]::new))
         .sensitiveAllowed(true)
-        .resourceScopes(resourceScopesFor(scopeFunctions, dm, state, mapId))
+        .destructiveAllowed(true)
+        .resourceScopes(
+            withPeerSelfFace(
+                SimosToolSource.withDecisionMakerDocsScopes(
+                    resourceScopesFor(scopeFunctions, dm, state, mapId), userKey),
+                dm))
         .build();
+  }
+
+  /**
+   * ★★ <b>决策人的自指 {@code peer} 域</b>（2026-10-14 决策人互致消息，设计书 §4.1 的"自审补丁"）： {@code peer}
+   * 是**新命名空间**，决策人基础可达面本来不含它 ⇒ 不补两条都会坏：
+   *
+   * <ol>
+   *   <li>{@code simos.ga.message.inbox} 被自己的资源断言拒掉（零授权的决策人连自己的收件箱都打不开）；
+   *   <li>{@code simos.ga.message.send} 里"只能以自己名义"那条自指断言**永远判否**。
+   * </ol>
+   *
+   * <p>★★ <b>语义 = 并集：{@code peer:<自己>} ∪ {@code accessLimit.peer}</b>，而且**必须加在 {@code
+   * narrowTo(accessLimit)} 之后**——这是实测出来的坑（两条都是"看起来能跑但权限不生效"的形态）：
+   *
+   * <ul>
+   *   <li>若把自指域放在 {@code narrowTo} <b>之前</b>：GM 配的 {@code accessLimit.peer=[对方]} 会与 {@code {自己}}
+   *       <b>求交</b> ⇒ <b>空集</b> ⇒ **被授权的人反而发不出信**；
+   *   <li>若<b>覆盖式</b>写（{@code withNamespace(peer, {自己})} 直接盖掉）：{@code accessLimit.peer} 的授权前缀 被抹 ⇒
+   *       同样发不出去。
+   * </ul>
+   *
+   * <p>★ <b>授权前缀只能"加"</b>：{@code ga.SetDecisionMakerPeer} 往 {@code accessLimit.peer} 里写对方
+   * id，本方法再把自指域并上去 ⇒ 最终 = {自己} ∪ {被授权者}。★ 若某人的 {@code accessLimit.peer} 是 {@code unlimited}（GM
+   * 显式放开），原样保留。
+   */
+  private static ResourceScopeMap withPeerSelfFace(ResourceScopeMap base, DecisionMaker dm) {
+    Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(dm, "dm");
+    ResourceScope declared = base.declaredScope(ToolResources.PEER_NAMESPACE);
+    if (declared != null && declared.unrestricted()) {
+      return base;
+    }
+    Set<String> prefixes = new TreeSet<>();
+    prefixes.add(dm.id().value());
+    if (declared != null) {
+      prefixes.addAll(declared.prefixes());
+    }
+    return base.withNamespace(
+        ToolResources.PEER_NAMESPACE, ResourceScope.of(prefixes.toArray(String[]::new)));
   }
 
   /**

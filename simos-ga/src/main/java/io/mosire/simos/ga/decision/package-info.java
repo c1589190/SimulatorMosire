@@ -12,6 +12,7 @@
  *   <li><b>宿主注入面</b>（本模块定接口、{@code simos-app} 给实现，设计书 §4.5 I-G2）： {@link
  *       io.mosire.simos.ga.decision.DecisionToolCaller}（权限链执行 + 全局白名单）、 {@link
  *       io.mosire.simos.ga.decision.DecisionToolNames}（工具名声明）、 {@link
+ *       io.mosire.simos.ga.decision.DecisionToolReach}（可达面：开场消息按它决定点不点某件工具的名）、 {@link
  *       io.mosire.simos.ga.decision.ToolImages}（图片通路）。
  * </ul>
  *

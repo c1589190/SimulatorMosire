@@ -1,10 +1,21 @@
 package io.mosire.simos.app.tools;
 
 import io.mosire.agentlib.approval.ApprovalCoordinator;
+import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.PendingApprovals;
+import io.mosire.agentlib.approval.ToolGate;
+import io.mosire.agentlib.permission.AccessToken;
+import io.mosire.agentlib.permission.AgentIdentity;
+import io.mosire.agentlib.permission.AgentPermissionSet;
+import io.mosire.agentlib.permission.ResourceScope;
+import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
+import io.mosire.agentlib.tool.ToolContext;
+import io.mosire.docs.DocsCapability;
+import io.mosire.docs.DocsTools;
 import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
+import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.decision.ProposalCatalog;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
@@ -85,6 +96,7 @@ import io.mosire.simos.economy.tools.write.EconomyUpsertGovUnitTool;
 import io.mosire.simos.economy.tools.write.EconomyUpsertIndustryTool;
 import io.mosire.simos.economy.tools.write.GmGovMarketMandateTool;
 import io.mosire.simos.economy.tools.write.GmPeriodicAdjustmentTool;
+import io.mosire.simos.ga.spi.SimosToolAdapter;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
@@ -102,6 +114,7 @@ import io.mosire.simos.ga.tools.read.DecisionDocsTool;
 import io.mosire.simos.ga.tools.read.DecisionMakerTool;
 import io.mosire.simos.ga.tools.read.DecisionMakersTool;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
+import io.mosire.simos.ga.tools.read.GaMessageInboxTool;
 import io.mosire.simos.ga.tools.read.GmApprovalsTool;
 import io.mosire.simos.ga.tools.read.GmPacketTool;
 import io.mosire.simos.ga.tools.read.GmPacketsTool;
@@ -110,7 +123,7 @@ import io.mosire.simos.ga.tools.read.SdDiplomacyTool;
 import io.mosire.simos.ga.tools.read.SdDiplomaticEventsTool;
 import io.mosire.simos.ga.tools.read.SdDirectivesTool;
 import io.mosire.simos.ga.tools.read.SdVerdictsTool;
-import io.mosire.simos.ga.tools.read.SimosSdReportsTool;
+import io.mosire.simos.ga.tools.write.GaMessageSendTool;
 import io.mosire.simos.ga.tools.write.GmApproveTool;
 import io.mosire.simos.ga.tools.write.GmDecidePacketTool;
 import io.mosire.simos.ga.tools.write.GmMergedPlanApplyTool;
@@ -136,8 +149,8 @@ import io.mosire.simos.ga.tools.write.SdSetArmyMasterGovTool;
 import io.mosire.simos.ga.tools.write.SdSetDecisionMakerProviderTool;
 import io.mosire.simos.ga.tools.write.SdSetDiplomaticRelationTool;
 import io.mosire.simos.ga.tools.write.SetDecisionMakerAccessTool;
+import io.mosire.simos.ga.tools.write.SetDecisionMakerPeerTool;
 import io.mosire.simos.ga.tools.write.SetDiplomaticRelationTool;
-import io.mosire.simos.ga.tools.write.SimosSdReportTool;
 import io.mosire.simos.ga.tools.write.StartDecisionTool;
 import io.mosire.simos.ga.tools.write.SubmitPacketTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
@@ -240,12 +253,31 @@ import io.mosire.simos.unit.tools.write.UnitSetTaxRateTool;
 import io.mosire.simos.unit.tools.write.UnitSplitFormationTool;
 import io.mosire.simos.unit.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.workspace.CapabilityCatalog;
+import io.mosire.workspace.CapabilityCatalogs;
+import io.mosire.workspace.DefaultWorkspaceRegistry;
+import io.mosire.workspace.Kind;
+import io.mosire.workspace.Mount;
+import io.mosire.workspace.MountName;
+import io.mosire.workspace.Origin;
+import io.mosire.workspace.Resolvers;
+import io.mosire.workspace.WorkspaceCaller;
+import io.mosire.workspace.WorkspaceException;
+import io.mosire.workspace.WorkspacePermissions;
+import io.mosire.workspace.WorkspaceRegistry;
+import io.mosire.workspace.WorkspaceTools;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.regex.Pattern;
 
 /**
  * Simos 工具供给源（M5 T5，spec §7.1）：**读工具各桶共享 + 各桶自己的写面**（{@link Role}）。
@@ -265,6 +297,379 @@ public final class SimosToolSource implements ToolSource {
 
   /** 供给源标识（同一运行时内唯一；审计与按源卸载依赖它）。★ 值住在契约实现 {@link GaToolSource#ID}（B2b 迁入 ga）。 */
   public static final String ID = GaToolSource.ID;
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // ★★ 2026-10-14 AgentLib Docs/Workspace 接入（设计书 §4.2/§4.3，指南 §3/§4）：外来工具面的
+  //    「谁能用 + 要不要审批」两件事**只在装配处**声明（契约层的 SimosToolAdapter 对文档零知识）。
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * ★★ <b>外来 Docs/Workspace 工具面的<b>进程内唯一</b>持有者</b>（设计书 §4.1/§4.2）。
+   *
+   * <p>★ <b>为什么"唯一"是硬要求</b>：两个工具面是<b>两个</b> {@code SimosToolSource} 实例（{@code Shell} 里决策人桶与 GM
+   * 桶各建一次；{@code Shell#toolsFor} 还会再建）——而外来库的可见性是<b>按使用者切片</b>的： {@code
+   * ToolContext.identity().instanceId()} 就是工作区调用者键（指南 §4 第 4 条逐字：「必须等于挂载的 {@code
+   * user}，否则连挂载都解析不到」）。各建一份注册表的话，GM 用 {@code mount_workspace} 挂出来的工作区 <b>决策人那条路根本看不见</b>（两份注册表不是同一个
+   * ⇒ 挂载查不到）——P2/P3 直接不可达。
+   *
+   * <p>★ <b>为什么是静态持有</b>：两个工具面是**两个** {@code SimosToolSource} 实例，而 {@code SimosToolSource} 的构造配方里
+   * 没有"宿主单例"这一类形参（加形参会改掉用例在用的构造签名）⇒ 静态持有是**两桶 + 装配期挂载（{@code Shell}）共用同一份注册表**的 唯一做法。代价（如实记账，见
+   * {@code impl-ledger.md}）：① 同 JVM 内多个 {@code Shell} 实例共享挂载（用例间可能串味）； ② 挂载<b>不落盘</b>——{@code
+   * DefaultWorkspaceRegistry} 是纯内存实现（{@code slices}/{@code history} 两个字段，反编译核实） ⇒ 每次启动都要重新挂（{@link
+   * #provisionWorkspaces}，幂等）。
+   */
+  private static final class ExternalWorkspaceHost {
+
+    private static final ExternalWorkspaceHost INSTANCE = new ExternalWorkspaceHost();
+
+    private final WorkspaceRegistry registry;
+
+    /** 装配期给的文档物理根（{@link #provisionWorkspaces} 设置）；{@code null} = 装配期没挂过（懒补不动）。 */
+    private Path docsRoot;
+
+    private ExternalWorkspaceHost() {
+      // ★ 指南 §3.1 的库门装配第一步：能力目录（docs 能力必须注册，否则挂载声明不了 `docs` 能力 ⇒ 工具门全拒）。
+      CapabilityCatalog catalog = CapabilityCatalogs.inMemory();
+      DocsCapability.register(catalog);
+      // ★★ 自定义血缘是"GM 替 DM 挂"的**必要条件**（默认恒等映射 ⇒ M2 拒，逐条实测见 workspaceLineage 的注释）。
+      this.registry =
+          DefaultWorkspaceRegistry.create(catalog, null, SimosToolSource::workspaceLineage);
+    }
+
+    private static WorkspaceRegistry registry() {
+      return INSTANCE.registry;
+    }
+
+    /** 该使用者切片里已有同名挂载？（幂等判据） */
+    private boolean hasMount(String userKey) {
+      return registry.mounts(userKey).stream()
+          .anyMatch(mount -> mount.name().value().equals(DEFAULT_WORKSPACE_NAME));
+    }
+
+    /** 宿主根挂载（{@code <docsRoot>/gm}）：{@code mount_workspace} 的 {@code parent} 只能从它派生。 */
+    private boolean mountRoot(Path docsRoot) {
+      if (hasMount(WORKSPACE_HOST_KEY)) {
+        return false;
+      }
+      Path dir = createDir(docsRoot.resolve("gm"));
+      registry.mount(
+          Mount.of(
+              new MountName(DEFAULT_WORKSPACE_NAME),
+              WORKSPACE_HOST_KEY,
+              WORKSPACE_HOST_KEY,
+              dir,
+              Kind.FILE,
+              Set.of(DocsCapability.ID),
+              Origin.ASSEMBLY),
+          new WorkspaceCaller(WORKSPACE_HOST_KEY, assemblyPermissions(docsRoot)));
+      return true;
+    }
+
+    /**
+     * 一个决策人的默认工作区：{@code holder=宿主}、{@code user=decision-maker:<id>}、 {@code
+     * derivedFrom=宿主的根挂载}、{@code dir=<docsRoot>/dm/<id>}（宿主根下的**真**子目录）。
+     */
+    private boolean mountDecisionMaker(Path docsRoot, String decisionMakerId) {
+      String userKey = DecisionCallerFactory.INSTANCE_ID_PREFIX + decisionMakerId;
+      if (hasMount(userKey)) {
+        return false;
+      }
+      Path dir = createDir(docsRoot.resolve("dm").resolve(decisionMakerId));
+      try {
+        registry.mount(
+            new Mount(
+                new MountName(DEFAULT_WORKSPACE_NAME),
+                WORKSPACE_HOST_KEY,
+                userKey,
+                dir,
+                Resolvers.direct(),
+                Kind.FILE,
+                Set.of(DocsCapability.ID),
+                Origin.ASSEMBLY,
+                Optional.of(new MountName(DEFAULT_WORKSPACE_NAME))),
+            new WorkspaceCaller(WORKSPACE_HOST_KEY, assemblyPermissions(docsRoot)));
+        return true;
+      } catch (WorkspaceException e) {
+        // ★ 并发对手先挂上了 ⇒ 幂等（两条决策回合同时补同一块地是可能的）；真失败照抛（fail-closed）。
+        if (hasMount(userKey)) {
+          return false;
+        }
+        throw e;
+      }
+    }
+
+    /** 物理落点：建不出来是**装配故障**（不静默降级成"没工作区"）。 */
+    private static Path createDir(Path dir) {
+      try {
+        return Files.createDirectories(dir);
+      } catch (IOException e) {
+        throw new IllegalStateException("工作区物理落点建不出来（装配故障）: " + dir, e);
+      }
+    }
+
+    /**
+     * 装配期挂载用的**宿主权限集**：三个命名空间各自表态（指南 §4 第 1/3 条：不表态 = 一个挂载都建不了）。
+     *
+     * <p>★ 只用于挂载期的 {@code WorkspacePermissions.admits} 判定（{@code SYSTEM} 档 = 宿主本人），不进任何运行期调用者。
+     */
+    private static AgentPermissionSet assemblyPermissions(Path docsRoot) {
+      return AgentPermissionSet.builder(AccessToken.SYSTEM)
+          .allowAll()
+          .sensitiveAllowed(true)
+          .destructiveAllowed(true)
+          .resourceScopes(
+              ResourceScopeMap.of(
+                  Map.of(
+                      WorkspacePermissions.WORKSPACES,
+                      ResourceScope.ofDir(docsRoot),
+                      DOCS_NAMESPACE,
+                      ResourceScope.ofDir(docsRoot),
+                      DOCS_EDIT_NAMESPACE,
+                      ResourceScope.ofDir(docsRoot))))
+          .build();
+    }
+  }
+
+  /** 角色表里的「两桶共享」（U2：doc 系列在<b>指定工作区</b>的情况下给 DM 自用）。 */
+  private static final Set<ToolRole> ROLES_GM_DM = Set.of(ToolRole.GM, ToolRole.DM);
+
+  /** 角色表里的「GM 独有」（U1：<b>工作区由 GM 维护</b>；作废也是 GM 动作）。 */
+  private static final Set<ToolRole> ROLES_GM = Set.of(ToolRole.GM);
+
+  /**
+   * ★★ <b>外来工具的角色表</b>（设计书 §4.2 / I1 / I6）：名字 → 角色，<b>逐条、无缺省</b>。
+   *
+   * <p>★ <b>为什么逐条而不是"整库默认"</b>：他们将来加一条工具时，<b>我们这边必须当场红</b>（{@link #rolesOf} 抛）， 而不是静默拿到一个默认角色——静默兜底
+   * = 权限面悄悄变化，正是本仓最贵的一类失效（{@code ToolRoleAudit} 的类注同款口径）。
+   *
+   * <p>★ <b>名字一律用他们的常量</b>（{@code DocsTools.DOC_*} / {@code WorkspaceTools.*}）而不是字面量：这样他们改名
+   * 我们**编译期**就红，而不是运行期悄悄少一条工具（I7 保留原名，不改名）。
+   *
+   * <p>★ <b>逐条口径</b>：{@code doc_*} 8 条里 7 条（list/read/query/append/create/edit/guide）= {@code {GM,
+   * DM}}（U2）；{@code doc_void} = {@code {GM}}（作废别人的记录是 GM 动作）；工作区 4 条里 3 条 = {@code {GM}}（U1），
+   * {@code workspace_info} = {@code {GM, DM}}。★ 三条工作区写工具里 {@code unmount_workspace} 在设计书 §4.2 的表里
+   * 没有单列（那张表只点了 mount/list 两条）——按 U1 同款口径补为 {@code {GM}}，并已记入账本「与设计书的偏差」。
+   *
+   * <p>★ <b>2026-10-14 新增两条「能力自述」工具</b>（上游 {@code 4a4084d}：{@code DocsTools.DOC_GUIDE} / {@code
+   * WorkspaceTools.WORKSPACE_INFO}）⇒ {@code {GM, DM}}。★ <b>用户原则逐字</b>：「只要涉及到真实世界变动…那 GM
+   * 必须审核，如果只是查看，查看范围应当是对决策人的权限范围的限制，GM 理论上事先已经做好了，所以不需要也不应该让 GM 审批，走 DM_FREE」
+   * ——两条都是<b>纯读</b>（{@code ResourceManifest.NONE} + {@code ToolSpec.level(DEFAULT, false,
+   * false)}：可导出、不敏感、不破坏），不产生真实世界变动 ⇒ 对决策人<b>不设限</b>（他自己的挂载在哪，他自己最该看得见）。
+   */
+  private static final Map<String, Set<ToolRole>> EXTERNAL_TOOL_ROLES =
+      Map.ofEntries(
+          Map.entry(DocsTools.DOC_LIST, ROLES_GM_DM),
+          Map.entry(DocsTools.DOC_READ, ROLES_GM_DM),
+          Map.entry(DocsTools.DOC_QUERY, ROLES_GM_DM),
+          Map.entry(DocsTools.DOC_APPEND, ROLES_GM_DM),
+          Map.entry(DocsTools.DOC_CREATE, ROLES_GM_DM),
+          Map.entry(DocsTools.DOC_EDIT, ROLES_GM_DM),
+          // ★ 自述（只回答"这族工具有哪些、怎么用、我在哪块地上能用"）：零挂载也给清楚回答、不抛异常，两桶都要有。
+          Map.entry(DocsTools.DOC_GUIDE, ROLES_GM_DM),
+          // ★ 作废（再追加一条 VOIDED 记录）不可逆：留在 GM 手里，决策人能写自己的、但不能标掉别人的。
+          Map.entry(DocsTools.DOC_VOID, ROLES_GM),
+          Map.entry(WorkspaceTools.MOUNT_WORKSPACE, ROLES_GM),
+          Map.entry(WorkspaceTools.UNMOUNT_WORKSPACE, ROLES_GM),
+          Map.entry(WorkspaceTools.LIST_WORKSPACES, ROLES_GM),
+          // ★ 自述（回答"工作区是什么 + 调用者自己切片的挂载清单"）：纯读、零挂载也给清楚回答。
+          Map.entry(WorkspaceTools.WORKSPACE_INFO, ROLES_GM_DM));
+
+  /**
+   * 外来工具里的<b>读类</b>（设计书 §4.3：读不需要审批 ⇒ {@link ToolGate#ALLOW}）。
+   *
+   * <p>★ <b>不在本集合里的外来工具一律走 {@code Ask(SENSITIVE)}</b>——"没列进读类"就是"要审批"， 这是 fail-closed
+   * 的那一侧（将来他们加一条写工具，我们这边不会静默放行）。
+   *
+   * <p>★ <b>2026-10-14 新增两条自述工具</b>（{@code doc_guide} / {@code workspace_info}）：两者都是 {@code
+   * ResourceManifest.NONE} + {@code ToolSpec.level(DEFAULT, false, false)} ⇒
+   * <b>纯读</b>（可导出、不敏感、不破坏）， 按上面的判据进本集合 ⇒ {@link ToolGate#ALLOW}（用户原则：「如果只是查看…不需要也不应该让 GM 审批，走
+   * DM_FREE」）。
+   */
+  private static final Set<String> EXTERNAL_READ_TOOLS =
+      Set.of(
+          DocsTools.DOC_LIST,
+          DocsTools.DOC_READ,
+          DocsTools.DOC_QUERY,
+          DocsTools.DOC_GUIDE,
+          WorkspaceTools.LIST_WORKSPACES,
+          WorkspaceTools.WORKSPACE_INFO);
+
+  /**
+   * ★★ <b>审批 summary 的白名单取键表</b>（U3 用户裁定 / I5）：<b>只有这里列出的键才可能进 summary</b>， 其余字段（正文 {@code
+   * text}/{@code value}、可见性轴 {@code owner}/{@code tags}/{@code affiliations}、 查询条件 {@code
+   * tick}/{@code from}/{@code to}/{@code limit}、编辑载荷 {@code ops}、{@code fields}/{@code note}…）
+   * <b>一律不出现</b>。
+   *
+   * <p>★ <b>白名单，不是黑名单</b>（设计书 §4.3 明令）：黑名单会随他们的 schema 演进而漏——新字段自动进 summary； 白名单只认已知的路径键，加字段也不会泄漏。
+   *
+   * <p>★ 三条工作区键也是路径：{@code mount_workspace} 的形态是 {@code parent} + {@code subdir}（派生挂载； 指南 §6
+   * 逐字：「工具门只接受派生形态」），{@code name} 是挂载名（虚拟路径第一段）。
+   */
+  private static final Map<String, List<String>> APPROVAL_PATH_KEYS =
+      Map.of(
+          DocsTools.DOC_APPEND, List.of("mount"),
+          DocsTools.DOC_VOID, List.of("mount"),
+          DocsTools.DOC_CREATE, List.of("mount"),
+          DocsTools.DOC_EDIT, List.of("mount"),
+          WorkspaceTools.MOUNT_WORKSPACE, List.of("parent", "subdir", "name"),
+          WorkspaceTools.UNMOUNT_WORKSPACE, List.of("name"));
+
+  /** summary 里单个路径字段的字符上限。★ 超长只截断——截断只会让 GM 看到<b>更少</b>信息，绝不更多。 */
+  private static final int SUMMARY_FIELD_LIMIT = 512;
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // ★★ 2026-10-14 W2（设计书 §10.2 / 用户裁定「给每个决策人一个默认工作区」）：**装配期挂载**。
+  //   工具门（`mount_workspace`）只能挂 user==调用者自己（schema 无 `user`）⇒ "GM 替 DM 挂"只能走
+  //   `WorkspaceRegistry.mount(...)`（宿主的活）。血缘规则逐条实测见 `impl-ledger.md` §12。
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  /** 工作区的宿主身份键 = MCP 口（{@code Shell.gmCaller()}）的身份，反编译核实即 {@code AgentIdentity.EXTERNAL_ID}。 */
+  public static final String WORKSPACE_HOST_KEY = AgentIdentity.EXTERNAL_ID;
+
+  /**
+   * 默认工作区的**虚拟挂载名**（GM 与每个 DM 都叫这个名字——切片按使用者隔离，各自看得见自己那块）。
+   *
+   * <p>★ 形态必须匹配 {@code MountName.PATTERN}（{@code [a-z0-9][a-z0-9-]{0,63}}）。
+   */
+  public static final String DEFAULT_WORKSPACE_NAME = "workspace";
+
+  /** 文档能力的**读命名空间**（他们的 {@code DocsTools} 读工具 manifest 用的就是这个字面）。 */
+  public static final String DOCS_NAMESPACE = "docs";
+
+  /** 文档能力的**写命名空间**（{@code doc_append/create/edit/void} 的 manifest 用的字面）。 */
+  public static final String DOCS_EDIT_NAMESPACE = "docs-edit";
+
+  /** 决策人 id 的**安全形态**（进物理目录名前必须过它：id 是世界里的字符串，`..`/`/` 会把落点带出根外）。 */
+  private static final Pattern SAFE_DECISION_MAKER_ID = Pattern.compile("[A-Za-z0-9_.-]{1,64}");
+
+  /**
+   * ★★ <b>血缘映射</b>（`DefaultWorkspaceRegistry.create(catalog, sink, lineagePathOf)` 的宿主定制点）。
+   *
+   * <p>★ <b>为什么必须有</b>（实测）：`DefaultWorkspaceRegistry.mount` 的 M2 判据是 {@code
+   * Lineage.inSubtree(lineageOf(caller.holder()), lineageOf(spec.user()))}，而默认血缘是**恒等映射** ⇒ {@code
+   * "decision-maker:<id>"} <b>不在</b> {@code "external-mcp"} 的子树里（{@code user.equals(lineage) ||
+   * user.startsWith(lineage + "/")} 两条都不成立）⇒ <b>"GM 替 DM 挂"被 M2 当场拒</b> （原始报错：{@code 工作区操作被拒（M2）:
+   * 只能为自己或自己的后代创建工作区（user 必须落在自己的血缘子树内）}）。
+   *
+   * <p>⇒ 宿主在此**显式声明血缘**：「决策人键是宿主（GM/MCP 口）的子节点」。★ 只动决策人这一支——其余键**恒等**，
+   * 他们默认语义（"只能为自己或后代建"）对其它任何身份一个字不变。
+   */
+  private static String workspaceLineage(String holderKey) {
+    String key = holderKey == null ? "" : holderKey.strip();
+    return key.startsWith(DecisionCallerFactory.INSTANCE_ID_PREFIX)
+        ? WORKSPACE_HOST_KEY
+            + "/"
+            + key.substring(DecisionCallerFactory.INSTANCE_ID_PREFIX.length())
+        : key;
+  }
+
+  /** 装配期挂载的结果（给调用方日志/用例读回；挂载失败一律抛，不在这里吞）。 */
+  public record WorkspaceProvision(int roots, int decisionMakers, int skipped) {}
+
+  /**
+   * ★★ <b>装配期挂载</b>（设计书 §10.2 / 用户裁定「在1的基础上给每个决策人一个默认工作区」）：<b>幂等</b>。
+   *
+   * <ol>
+   *   <li><b>宿主根挂载</b>：{@code mount_workspace} 只做<u>派生形态</u>（{@code parent + subdir}）⇒ 没有根挂载就无从起步
+   *       （P2 的可达前提）；
+   *   <li><b>逐决策人默认工作区</b>：{@code holder=宿主键}、{@code user=decision-maker:<id>}、 {@code
+   *       derivedFrom=根}、{@code dir=宿主根下的真子目录} —— M1 ✓（holder=创建者）、M2 ✓（血缘映射，见 {@link
+   *       #workspaceLineage}）、M10 ✓（派生来源在创建者自己切片里）、M9/W1 ✓（真子目录）。
+   * </ol>
+   *
+   * <p>★ <b>为什么由宿主做而不是 GM 手工做</b>：{@code mount_workspace} 的 schema 只有 {@code {name, parent, subdir,
+   * kind}}，<b>没有 {@code user}</b> ⇒ 工具门永远只能建 {@code user == 调用者自己}；给隔壁加参数 = 改他们的库（破 I2）。
+   *
+   * <p>★ <b>装配期只覆盖"此刻已存在的决策人"</b>：空库的 bootstrap 发生在 {@code Shell.start} <b>之后</b> （{@code
+   * ShellMain:162-168} 逐字），故那时可能一个 DM 都没有 ⇒ 装配之后才建的 DM 由 {@link #ensureDecisionMakerWorkspace}
+   * 在它**跑第一轮之前**补上（同一个幂等实现）。
+   *
+   * @param hostKey 宿主（MCP 口）身份键；<b>必须</b>与 {@link #WORKSPACE_HOST_KEY} 逐字一致（不一致当场抛：挂载的 {@code
+   *     holder} 与运行期调用者键对不上就永远解析不到，而"不可见"与"不存在"同码）
+   * @param docsRoot 文档物理根（宿主给的，如 {@code <store>/workspaces}）；根挂载落在 {@code <docsRoot>/gm}
+   * @param decisionMakerIds 此刻世界里的决策人 id（非法形态的跳过并计数——它们会把落点带出根外）
+   */
+  public static WorkspaceProvision provisionWorkspaces(
+      String hostKey, Path docsRoot, Collection<String> decisionMakerIds) {
+    Objects.requireNonNull(hostKey, "hostKey");
+    Objects.requireNonNull(docsRoot, "docsRoot");
+    Objects.requireNonNull(decisionMakerIds, "decisionMakerIds");
+    if (!WORKSPACE_HOST_KEY.equals(hostKey)) {
+      throw new IllegalStateException(
+          "工作区宿主身份键不一致：装配给的 "
+              + hostKey
+              + " ≠ "
+              + WORKSPACE_HOST_KEY
+              + " —— 挂载的 holder 必须与 MCP 口（Shell.gmCaller）的身份逐字一致，否则运行期连挂载都解析不到"
+              + "（M1：holder 恒为创建者本人；指南 §4 第 4 条）。");
+    }
+    ExternalWorkspaceHost host = ExternalWorkspaceHost.INSTANCE;
+    host.docsRoot = docsRoot;
+    int roots = host.mountRoot(docsRoot) ? 1 : 0;
+    int mounted = 0;
+    int skipped = 0;
+    for (String id : decisionMakerIds) {
+      if (id == null || !SAFE_DECISION_MAKER_ID.matcher(id).matches()) {
+        skipped++;
+        continue;
+      }
+      if (host.mountDecisionMaker(docsRoot, id)) {
+        mounted++;
+      }
+    }
+    return new WorkspaceProvision(roots, mounted, skipped);
+  }
+
+  /**
+   * 补一个决策人的默认工作区（**幂等、fail-soft**）：装配之后才建的 DM 在它跑第一轮之前补上。
+   *
+   * <p>★ <b>为什么 fail-soft（不抛）</b>：这条走在决策人每一轮的调用者装配路径上（{@code DecisionCallerFactory}）——
+   * 补挂失败**不该**让一个不碰文档的回合整轮失败。代价是"没补上"这件事只在文档工具被调用时以 {@code WORKSPACE_NOT_FOUND}
+   * 现形（那正是他们"不可见/不存在同码"的既有形态），且装配期没挂过根时本方法**直接不动** （用例自搭的壳不该被越界补）。
+   *
+   * @return true = 这次真挂了；false = 已存在 / 没根 / id 形态非法（都不改任何东西）
+   */
+  public static boolean ensureDecisionMakerWorkspace(String decisionMakerUserKey) {
+    Objects.requireNonNull(decisionMakerUserKey, "decisionMakerUserKey");
+    ExternalWorkspaceHost host = ExternalWorkspaceHost.INSTANCE;
+    Path root = host.docsRoot;
+    if (root == null
+        || !decisionMakerUserKey.startsWith(DecisionCallerFactory.INSTANCE_ID_PREFIX)) {
+      return false;
+    }
+    String id = decisionMakerUserKey.substring(DecisionCallerFactory.INSTANCE_ID_PREFIX.length());
+    return SAFE_DECISION_MAKER_ID.matcher(id).matches() && host.mountDecisionMaker(root, id);
+  }
+
+  /**
+   * 读回口径：某个使用者切片里**当前**的挂载（装配自检、控制方真机核对、用例断言用）。
+   *
+   * <p>★ 只读快照（{@code Mount} 是不可变记录）——<b>写入口只有</b> {@link #provisionWorkspaces} 与 {@link
+   * #ensureDecisionMakerWorkspace} 两个（不暴露注册表本体：那会变成第二条挂载路径）。
+   */
+  public static List<Mount> mountsOf(String userKey) {
+    Objects.requireNonNull(userKey, "userKey");
+    return ExternalWorkspaceHost.INSTANCE.registry.mounts(userKey);
+  }
+
+  /**
+   * 决策人的**文档资源范围**（{@code docs}/{@code docs-edit} 两个命名空间）：范围 = 它自己那些挂载的落点。
+   *
+   * <p>★ <b>为什么按挂载取而不是给整棵树</b>：可达面 = **它自己那块地**（他们按使用者切片本就把别人的挂载挡在外面， 这里只是把同一件事写进权限面）；没有挂载 ⇒ {@link
+   * ResourceScope#none()}（够不着，与"未表态"两种取值相反，fail-closed）。 ★ 单调性：DM 的范围 ⊆ 宿主（GM）的 {@code unlimited()}
+   * ⇒ 放行不多于父级。
+   */
+  public static ResourceScopeMap withDecisionMakerDocsScopes(
+      ResourceScopeMap base, String decisionMakerUserKey) {
+    Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(decisionMakerUserKey, "decisionMakerUserKey");
+    List<Path> dirs =
+        ExternalWorkspaceHost.INSTANCE.registry.mounts(decisionMakerUserKey).stream()
+            .map(Mount::dir)
+            .toList();
+    ResourceScope scope = dirs.isEmpty() ? ResourceScope.none() : ResourceScope.ofDirs(dirs);
+    return base.withNamespace(DOCS_NAMESPACE, scope).withNamespace(DOCS_EDIT_NAMESPACE, scope);
+  }
 
   /**
    * 工具面按角色分载（spec §八.3 的 N9/N11，**2026-09-22 起按 spec §2.1/§四.3 重划**）：**只有两档**。
@@ -546,6 +951,17 @@ public final class SimosToolSource implements ToolSource {
         addDecisionAgentWrites(built, core, calendarService, query, initiator, mapId);
       }
     }
+    // ★★ 2026-10-14 AgentLib Docs/Workspace 接入（设计书 §4.2）：外来工具面的**唯一注册点**，两行照设计书逐字落。
+    //   ① `doc_*` 7 条里 6 条声明 {GM, DM}（U2：「doc系列在指定工作区的情况下给dm自用」）⇒ 两桶都注册；
+    //      而 `doc_void` 声明 {GM} ⇒ **只进 GM 桶**（下面按角色表过滤，不搞"整库无条件 addAll"）。
+    //   ② 工作区 3 条声明 {GM}（U1：「工作区由gm维护」）⇒ 决策人那一趟过滤后一条不剩。
+    //   ★★ 分桶**由角色表派生**（不另写一份"哪条进哪个桶"的清单）：那张表就是这 10 条工具"谁能用"的唯一拼写点
+    //      （I1）——另立清单 = 第二处真相，本仓最贵的一类失效。
+    //   ★ 两条都用同一份注册表（ExternalWorkspaceHost）：GM 挂出来的工作区，决策人那条路看得见——否则 P2/P3 不可达。
+    //   ★★ 为什么不是"无条件 addAll"（设计书 §4.2 那两行照抄会炸）：`doc_void` 声明 {GM}，无条件塞进决策人桶会被
+    //      下面那行 requireFace 当场抓住（探针实测原文见账本 §「实测：照抄设计书那两行会炸」）。
+    built.addAll(adaptExternal(DocsTools.all(ExternalWorkspaceHost.registry()), role));
+    built.addAll(adaptExternal(WorkspaceTools.all(ExternalWorkspaceHost.registry()), role));
     // ★★ 2026-10-12 B4（设计书 §4.4 / 不变量 I-G3）：**装配完成处一次性校验本桶** —— 桶里每条工具都必须实现
     //   SimosTool 且 roles() 含本桶角色；不一致**当场抛**（fail-closed），不是静默少注册、也不是 warn。
     //   ★ 双桶那一半（"标了 DM 却没注册进 DM 桶"）单桶看不见，由 Shell 用 ToolRoleAudit.requireFaces 校验
@@ -558,6 +974,106 @@ public final class SimosToolSource implements ToolSource {
   private static DecisionAgentService requireDecisionAgent(DecisionAgentService decisionAgent) {
     return Objects.requireNonNull(
         decisionAgent, "decisionAgent（GM 面含 ga.RunDecision，需要决策人 agent 运行流）");
+  }
+
+  // ── 2026-10-14 外来工具面的适配三件套（角色 / gate / 注册）────────────────────────────────────
+
+  /**
+   * 把一批外来工具里<b>本桶该有的那些</b>逐条适配（{@link SimosToolAdapter}）：角色与 gate 都<b>逐条查表</b>。
+   *
+   * <p>★ <b>分桶口径</b>：角色表里声明了本桶角色的才进本桶（{@code {GM}} 的只进 GM 桶、{@code {GM, DM}} 的两桶都进）。 这条判据是"roles()
+   * 是唯一拼写点"（I1）的直接后果——装配面不再手抄第二份"哪条进哪个桶"。
+   *
+   * <p>★ 名字与其余七条行为由适配器<b>逐字委托</b>（I3）；本方法只补"角色"和"审批"这两件外来工具面没有的事。 ★ 查不到角色 ⇒ {@link #rolesOf}
+   * 当场抛（I6）。★ 他们的工具实例每次 {@code all(...)} 都是新的，但都指向同一份注册表。
+   *
+   * @param external 外来工具（{@code DocsTools.all(registry)} / {@code WorkspaceTools.all(registry)}
+   *     的一批）
+   * @param role 本趟装的是哪个桶（决定哪些工具进来）
+   */
+  private static List<AgentTool> adaptExternal(List<AgentTool> external, Role role) {
+    ToolRole face = role == Role.GM ? ToolRole.GM : ToolRole.DM;
+    List<AgentTool> adapted = new ArrayList<>(external.size());
+    for (AgentTool tool : external) {
+      String name = tool.name();
+      Set<ToolRole> roles = rolesOf(name);
+      if (!roles.contains(face)) {
+        continue;
+      }
+      adapted.add(new SimosToolAdapter(tool, roles, gatePolicyFor(name)));
+    }
+    return adapted;
+  }
+
+  /**
+   * 角色表查询（I6）：<b>查不到当场抛</b>——他们加一条工具，我们这边装配期就红，而不是静默给它一个默认角色。
+   *
+   * <p>★ 报错文案里带上补救动作（补进 {@link #EXTERNAL_TOOL_ROLES}），因为这条异常的意义就是"有人改了隔壁的工具面"。
+   */
+  private static Set<ToolRole> rolesOf(String toolName) {
+    Set<ToolRole> roles = EXTERNAL_TOOL_ROLES.get(toolName);
+    if (roles == null) {
+      throw new IllegalStateException(
+          "外来工具角色表里没有 "
+              + toolName
+              + "（AgentLib 侧新增或改名了工具？）—— 「这个工具能被谁用」必须逐条声明，"
+              + "不许有缺省角色（设计书 §4.2 / I6）：请把它补进 EXTERNAL_TOOL_ROLES。");
+    }
+    return roles;
+  }
+
+  /**
+   * 审批策略（设计书 §4.3）：读类 {@link ToolGate#ALLOW}；其余（4 条 doc 写 + 2 条工作区写） {@code Ask(工具名, 只含路径的 summary,
+   * SENSITIVE)}。
+   *
+   * <p>★ <b>为什么审批口在我们手里</b>（反编译核实）：他们的 {@code DocTool} 只覆写了 {@code spec()} / {@code resources()} /
+   * {@code execute()}——<b>没有覆写 {@code gate()}</b>，构造用的是 {@code ToolSpec.level(AccessToken.DEFAULT,
+   * …)} ⇒ 他们的工具默认不要求审批。所以"只给路径"（U3）做得成： summary 由本方法<b>自己合成</b>，不转发他们的（他们没有可转发的）。
+   *
+   * <p>★ <b>诚实标注</b>：{@code Mount/Unmount} 在设计书 §4.3 的表里没有单列 gate（那张表只点了 doc 系列）——
+   * 这里按同一条判据处理（"改盘上/注册表状态的都进审批链"，I4），GM 面那条链是 {@code GmAutoApproveGate} 无脑过 ⇒
+   * 行为上无额外摩擦。已记入账本「与设计书的偏差」。
+   */
+  private static Function<ToolContext, ToolGate> gatePolicyFor(String toolName) {
+    if (EXTERNAL_READ_TOOLS.contains(toolName)) {
+      return context -> ToolGate.ALLOW;
+    }
+    return context ->
+        new ToolGate.Ask(
+            toolName, pathOnlySummary(toolName, context.arguments()), AskKind.SENSITIVE);
+  }
+
+  /**
+   * ★★ <b>只含路径的审批摘要</b>（U3 用户裁定 / I5）：白名单取键 + <b>只认非空字符串值</b>。
+   *
+   * <p>★ <b>宁可少，绝不多</b>：任何"把整个 arguments 拼进去"的写法都会把正文 / 可见性轴 / 查询条件送进 GM 的审批面 （负向用例 N3
+   * 抓的正是这一条）。取不到就回落到只有工具名——少信息是安全的失效方向。值不是字符串（模型可以给对象） 时<b>不 stringify</b>、直接跳过：那可能是正文的另一种壳。
+   *
+   * <p>★ 诚实的代价（设计书 §4.3 要求写进交付说明）：GM 审批外来文档写时<b>只看到路径 ⇒ 看不到正文</b>， 只能按"路径 +
+   * 谁在写"判断，不能按内容判断。<b>这是用户的有意裁定（U3），不是缺陷</b>——但 GM 必须知道自己看不到什么。
+   */
+  private static String pathOnlySummary(String toolName, Map<String, Object> arguments) {
+    List<String> pathKeys = APPROVAL_PATH_KEYS.get(toolName);
+    if (pathKeys == null || arguments == null || arguments.isEmpty()) {
+      return toolName;
+    }
+    StringBuilder summary = new StringBuilder(toolName);
+    for (String key : pathKeys) {
+      Object raw = arguments.get(key);
+      if (!(raw instanceof String path) || path.isBlank()) {
+        continue;
+      }
+      summary.append(' ').append(key).append('=').append(oneLine(path));
+    }
+    return summary.toString();
+  }
+
+  /** 路径压成一行（换行会把 GM 的"一行摘要"读成多行）并按 {@link #SUMMARY_FIELD_LIMIT} 截断。 */
+  private static String oneLine(String path) {
+    String flat = path.replace('\n', ' ').replace('\r', ' ').strip();
+    return flat.length() <= SUMMARY_FIELD_LIMIT
+        ? flat
+        : flat.substring(0, SUMMARY_FIELD_LIMIT) + "…";
   }
 
   /** 通用写（spec §八.3）：submit / advance / fork —— 只有 {@link Role#GM} 有。 */
@@ -610,6 +1126,10 @@ public final class SimosToolSource implements ToolSource {
     built.add(new IssueDirectiveTool(gaWrites, gaIdentity, mapId));
     built.add(new SubmitVerdictTool(gaWrites, gaIdentity, mapId));
     built.add(new SetDecisionMakerAccessTool(gaWrites, gaIdentity, mapId));
+    // ★★ 2026-10-14 决策人互致消息（设计书 §4.1）：GM 授权两个决策人互通 —— 一次调用写**两条** DM 记录、
+    //   落**一条 revision** ⇒ 授权天然双向（不存在"A 能发 B、B 回不了"的半开态）。**只在 GM 桶**（配权是 GM 的活；
+    //   决策人不得给自己开闸）。底层机制仍是 accessLimit（零新存储/零新可见性/零新切片）。
+    built.add(new SetDecisionMakerPeerTool(gaWrites, gaIdentity, mapId));
     // 「把某个决策人的会话换一段新的」：只在 GM 桶——决策人不重置自己（那等于给自己开一个"忘掉刚才答应过什么"的按钮）。
     built.add(new ResetDecisionMakerConversationTool(gaWrites, gaIdentity, mapId));
     built.add(new StartDecisionTool(gaWrites, gaIdentity, mapId));
@@ -1060,10 +1580,19 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SubmitPacketTool(gaWrites, gaReads, gaIdentity));
     built.add(new PacketIntentTool(gaWrites, gaReads, gaIdentity));
     built.add(new MyPacketTool(gaReads, gaIdentity));
-    // ★★ D4（2026-10-22）：跨区上报写口——发送人=调用者身份（context.identity()），只写自己的
-    //   sd:decision-maker/<自己> 自指域；落一条 ga.PutInfo（key=report）= 一条 revision。
-    //   **只在决策人桶**；白名单即由该桶派生。
-    built.add(new SimosSdReportTool(gaWrites, gaReads, gaIdentity));
+    // ★★ 2026-10-14 决策人互致消息（设计书 §4.2/§4.3）：旧的 simos.sd.report 跨区上报**整族废弃**（用户原话
+    //   「把这个工具扔了得了……老的直接扔掉」），换成"GM 一次授权 ⇒ 两人双向互致消息、每 tick 每方向一条"。
+    //   **两条都只在决策人桶**（GM 不是决策人、没有 decision-maker: 身份 ⇒ 它读 info 全量、不需要这个收件箱）；
+    //   白名单即由该桶派生 ⇒ 两个工具自动进决策人可达面。
+    //   ★ send 的闸门是 **GM 事先授权**（accessLimit.peer），不是逐条审批 ⇒ 它**故意不继承 AbstractNarrowWriteTool**
+    //     （那个基类硬编码 Ask；继承会让"窄写 ⇒ 审批"出现例外，见 I7 与那个类的注释）。
+    built.add(new GaMessageSendTool(gaWrites, gaReads, gaIdentity));
+    //   ★ inbox 的可见性判据**不许自己写**（DecisionResultsVisibilityGuardTest 钉着"归属判据全仓恰一份"）
+    //     ⇒ 注入既有端口 GaToolQueries.infoVisibleToDecisionMaker（实现 = AppGaToolQueries）。
+    GaToolQueries gaQueries = new AppGaToolQueries(query, mapId);
+    built.add(new GaMessageInboxTool(gaQueries, gaReads, gaIdentity));
+    // ★★ 2026-10-14 决策人互致消息（设计书 §4.1）：GM 侧"授权两人互通"的窄写（一次写两条 DM 记录、一条 revision）。
+    //   **不在本桶**（roles={GM}，它是配权命令）⇒ 它注册在 addGmWrites。
   }
 
   private static List<AgentTool> readTools(
@@ -1092,7 +1621,6 @@ public final class SimosToolSource implements ToolSource {
     ToolReadPort gaReads = new QueryServiceToolReadPort(query);
     GaToolViews gaViews = new AppGaToolViews();
     GaToolQueries gaQueries = new AppGaToolQueries(query, mapId);
-    GaToolIdentity gaIdentity = new AppGaToolIdentity();
     ToolReadPort mapReads = new QueryServiceToolReadPort(query);
     MapToolViews mapViews = new AppMapToolViews();
     MapToolPerspective mapPerspective = new AppMapToolPerspective();
@@ -1189,10 +1717,8 @@ public final class SimosToolSource implements ToolSource {
         //   形状复用 ApiViews.diplomaticRelations / ApiViews.diplomaticEvents。
         new SdDiplomacyTool(gaReads, gaViews),
         new SdDiplomaticEventsTool(gaReads, gaViews),
-        // ★★ D4（2026-10-22）：跨区上报读口（simos.sd.reports）——**两桶共享**（决策人桶 + GM 桶；不标
-        //   GmOnlyRead）。决策人只看到 tags 含自己 / affiliations 含自己归属 / 自己发的报告，GM 读全部；
-        //   读报告不授予任何跨区原始数据读权（报告内容由发送方负责）。
-        new SimosSdReportsTool(gaReads, gaQueries, gaIdentity),
+        // ★★ 2026-10-14：旧读口 simos.sd.reports **整条删除**（旧族废弃，用户原话「老的直接扔掉」）；
+        //   接替它的是决策人桶里的 simos.ga.message.inbox（只读寄给自己的消息，不泄漏名册）。
         // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录读口（"当前 tick 在哪发生交战"的唯一直接读口）。
         //   四桶共享（世界状态、可回放）；逐条可见性按记录所在格判（ToolSupport.hexVisible）——看不见的格不进结果。
         //   形状与 GUI 同源（ApiViews.armyCombat）。

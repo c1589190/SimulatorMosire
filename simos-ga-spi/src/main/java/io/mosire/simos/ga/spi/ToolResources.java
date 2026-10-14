@@ -82,6 +82,39 @@ public final class ToolResources {
   public static final String ARMY_NAMESPACE = "army";
 
   /**
+   * ★★ <b>peer 资源所属的命名空间</b>（2026-10-14 决策人互致消息，设计书 §4.1）：目标资源 = {@code peer:<决策人id>}。
+   *
+   * <p>★ 它是"GM 一次授权 ⇒ 两决策人双向互致消息"的**唯一闸门**（零新机制）：授权把对方的 id 写进本命名空间的 {@code accessLimit} 前缀表，工具在
+   * {@code execute} 里按**参数**（收件人）断言 {@code peer:<to>}。
+   *
+   * <p>★ <b>它同时出现在三处表态里</b>（新命名空间必然的代价，逐条实测过）：
+   *
+   * <ol>
+   *   <li><b>工具声明</b>（{@link #PEER_WRITE}）——★ <b>策略必须是 {@code DENY}</b>，见那个常量的注释（选错 = fail-open）；
+   *   <li><b>决策人基础可达面</b>：{@code peer:<自己>}（自指域；不补则 {@code inbox} 被自己拒、自指断言永远判否）；
+   *   <li><b>GM 组</b>：{@code Shell#gmPermissionSet} 的逐命名空间表态。
+   * </ol>
+   */
+  public static final String PEER_NAMESPACE = "peer";
+
+  /**
+   * ★★ 决策人互致消息的工具声明（{@code peer} 域）。
+   *
+   * <p>★★ <b>策略必须取 {@code DENY}（不是 {@code UNRESTRICTED}）</b>——这是 2026-10-14 实测出来的 <b>fail-open
+   * 陷阱</b>：调用者**没有**在本命名空间表态（{@code declaredScope} 为 null）时， {@code ResourceAuthorizer} 回落**声明策略**：
+   *
+   * <pre>
+   * manifest = UNRESTRICTED ⇒ 未授权 DM 的 peer:任何人 = ✓✓✓（**未授权也能发信给任何人** ⇒ I2 整条失效）
+   * manifest = DENY         ⇒ 未授权 DM = 网关具名拒；补了自指域之后 = 只许 peer:自己
+   * </pre>
+   *
+   * ⇒ 取 {@code DENY}：**没被 GM 授权就够不着别人**，而自指域由决策人基础可达面单独给（见 {@link #PEER_NAMESPACE} 第 2 条）。原始实测见
+   * {@code impl-ledger.md}。
+   */
+  public static final ResourceManifest PEER_WRITE =
+      ResourceManifest.of(PEER_NAMESPACE, ResourcePolicy.DENY);
+
+  /**
    * 读工具的资源声明（spec §7.1：map + social + unit READ_ONLY）。
    *
    * <p>★★ <b>actor 一维也在这里，但缺省策略是 {@code DENY}</b>（Task 10 补）。不声明它时， {@code ResourceAuthorizer} 对
@@ -162,6 +195,16 @@ public final class ToolResources {
   /** sd 资源：{@code sd:<kind>/<id>}（kind ∈ decision-maker / nation / army / combat，spec §3.3）。 */
   public static ResourceId resourceSd(String kind, String id) {
     return ResourceId.of(SD_NAMESPACE, ResourcePaths.sd(kind, id));
+  }
+
+  /**
+   * peer 资源：{@code peer:<决策人id>}（★ **无子路径**——决策人 id 本身就是资源，与 {@link #resourceUnit} 同形）。
+   *
+   * <p>★ 拼串只此一处：{@code ResourceScope} 是段边界前缀匹配，多一个 {@code /} 或少一个段**不会抛任何异常**， 只会让"该通的通不了 /
+   * 不该通的通了"。
+   */
+  public static ResourceId resourcePeer(String decisionMakerId) {
+    return ResourceId.of(PEER_NAMESPACE, decisionMakerId);
   }
 
   // ── 资源断言（AgentTool 契约：真正读写前调 require，工具只调不判）──────────────────────

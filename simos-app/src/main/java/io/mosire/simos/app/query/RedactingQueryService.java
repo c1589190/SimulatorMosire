@@ -442,20 +442,20 @@ public final class RedactingQueryService {
   }
 
   /**
-   * ★★ <b>上报（D4 {@code simos.sd.reports}）的决策人可见性</b>：在 {@link #visible} 的 tags / 归属两轴之外，再加第三轴 「发送人
-   * = 自己」——自己发的报告自己看得到（{@code sd:doc.report-…} 的 {@code value.from}）。
+   * ★★ <b>一条 INFO 条目对一个决策人是否可见</b> = {@code tags} 命中 / 归属标签命中 / <b>发送人 = 自己</b> 三轴的并集：前两轴由 {@link
+   * #visible} 判定，第三轴在 {@code sender} 与调用者 ID 相等时成立。
    *
    * <p>★ <b>为什么复用 {@link #visible} 而不是在工具里再写一遍 tags/归属判定</b>：那两轴是"这条 INFO 记的是谁的事"的同一份判据 （唯一实现在本类，见
-   * {@code DecisionResultsVisibilityGuardTest} 的结构性护栏）；上报只在该并集上**多一支**发送人，不应把前两轴复制成第二份。
+   * {@code DecisionResultsVisibilityGuardTest} 的结构性护栏）；本方法只在该并集上**多一支**发送人，不应把前两轴复制成第二份。
    *
    * <p>★ <b>GM 不走本方法</b>：解不出决策人身份（{@code decisionMakerIdOf} 为空）时读全部，由调用方分派。
    *
    * @param entry 条目；不得为 null
    * @param actor 调用者决策人；不得为 null
    * @param affiliationLabels 调用者的**不透明受众标签集**（各模块自报的归属现拼；空集 ⇒ 该轴不参与）
-   * @param sender 报告 {@code value.from}（解析不出 ⇒ null，该轴不参与）
+   * @param sender 条目的 {@code value.from}（解析不出 ⇒ null，该轴不参与）
    */
-  public static boolean reportVisibleToDecisionMaker(
+  public static boolean infoVisibleToDecisionMaker(
       SdInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, String sender) {
     Objects.requireNonNull(entry, "entry");
     Objects.requireNonNull(actor, "actor");

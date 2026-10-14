@@ -33,9 +33,28 @@ class GmPermissionGroupTest {
   /**
    * GM 资源可达面的逐命名空间表态清单（与 {@code Shell#gmPermissionSet} 实际表态的命名空间同源，见 {@code ToolSupport} 的 manifest
    * 常量）：map / social / unit / sd / economy（R2a 起）/ actor（S1 阶段 2 起）/ army（D1 起）。
+   *
+   * <p>★★ <b>2026-10-14 AgentLib Docs/Workspace 接入 +3</b>：{@code workspaces} / {@code docs} /
+   * {@code docs-edit} ⇒ <b>8 → 11</b>（实测：{@code
+   * gmCaller().permissions().resourceScopes().namespaces()}）。
+   *
+   * <p>★ <b>为什么三个都要显式表态</b>（设计书 §8 现场提醒 4 / 指南 §4）：AgentLib 的权限面是 <b>fail-closed</b> 的 ——
+   * 命名空间**不在图上 = 不表态 = 判定走缺省分支**，工具门会当场拒。所以"GM 能挂工作区、 能读写文档"的必要条件就是这三条**都**在图上且不受限；少一条 ⇒ {@code
+   * doc_*}/{@code mount_*} 全线 fail-closed（不是"少个功能"）。
    */
   private static final List<String> GM_NAMESPACES =
-      List.of("map", "social", "unit", "sd", "economy", "actor", "army");
+      List.of(
+          "map",
+          "social",
+          "unit",
+          "sd",
+          "economy",
+          "actor",
+          "army",
+          // ★★ 2026-10-14：AgentLib Docs/Workspace 三个命名空间
+          "workspaces",
+          "docs",
+          "docs-edit");
 
   @Test
   void gmCallerDeclaresEveryNamespaceInsteadOfLeavingTheResourceDimensionSilent() {

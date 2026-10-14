@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
  * GM、显式声明才给 DM"。本用例就是那条翻转的负向证明：把 {@code derive} 改回"未打标记的也进 DM 面" ⇒ ②③ 两条断言<b>当场红</b>（变异自证见批报告）。
  *
  * <p>★ <b>纯单元测试</b>（合成 type 集合，不起真 {@code Shell}）：真装配面那三个面的具体计数由 {@code
- * AdjudicateTickToolTest}（66）/ {@code SimosToolsTest}（142）/ {@code McpCoverageTest}（142）另钉；
+ * AdjudicateTickToolTest}（66）/ {@code SimosToolsTest}（143）/ {@code McpCoverageTest}（143）另钉；
  * 本类只回答"<b>声明与四个面的推导关系对不对</b>"。
  */
 class CommandPermissionRulesTest {

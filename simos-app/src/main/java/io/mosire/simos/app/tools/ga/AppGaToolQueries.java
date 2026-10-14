@@ -23,7 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ <b>{@link GaToolQueries} 的 app 实现</b>（2026-10-12 B3 第七域）：把"决策人 / 令 / 判决 / 决策结果 / 文档 / 上报"
+ * ★★ <b>{@link GaToolQueries} 的 app 实现</b>（2026-10-12 B3 第七域）：把"决策人 / 令 / 判决 / 决策结果 / 文档 / 消息可见性"
  * 的读面**逐条转调既有的唯一实现**（{@link SdQueryService} 与 {@link RedactingQueryService}）。
  *
  * <p>★ <b>为什么这些查询不跟着工具进 ga</b>：{@code RedactingQueryService} 的裁剪切面要吃 {@code
@@ -118,9 +118,9 @@ public final class AppGaToolQueries implements GaToolQueries {
   }
 
   @Override
-  public boolean reportVisibleToDecisionMaker(
+  public boolean infoVisibleToDecisionMaker(
       SdInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, String sender) {
-    return RedactingQueryService.reportVisibleToDecisionMaker(
+    return RedactingQueryService.infoVisibleToDecisionMaker(
         entry, actor, affiliationLabels, sender);
   }
 

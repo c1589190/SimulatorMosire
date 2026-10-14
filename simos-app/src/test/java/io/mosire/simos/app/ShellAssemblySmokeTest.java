@@ -29,7 +29,9 @@ import org.junit.jupiter.api.io.TempDir;
  * <ol>
  *   <li>{@code SimosSdReportsTool.roles()} 被写成 {@code {GM}}，而它注册在 DM 桶 ⇒ 组合根装配当场抛 （{@code
  *       Shell.start(...)} 里那两个 {@code SimosToolSource} 的构造期）⇒ <b>从 {@code 3ee4aea5} 起 5 个提交里 GUI
- *       根本起不来</b>（{@code simos-app} 基线 445 红，其中 378 同此一因）；
+ *       根本起不来</b>（{@code simos-app} 基线 445 红，其中 378 同此一因）； ★ <b>该工具已于 2026-10-14
+ *       随旧上报族整族删除</b>（决策人互致消息批），故下面的变异自证改钉**当前**的边界锚点 （见 {@link #PEER} / {@link
+ *       #MESSAGE_SEND}）——历史那一例只作留痕，不再是可执行的变异；
  *   <li>{@code api.js:535} 引用已删除的函数 ⇒ {@code window.SimosaApi} 整个不发布（前端面，本用例不管）。
  * </ol>
  *
@@ -38,10 +40,9 @@ import org.junit.jupiter.api.io.TempDir;
  * {@link ToolRoleAudit#requireFaces}（装配完成处：工具名在 GM 桶 ⇔ {@code roles()} 含 {@code GM}；在决策人桶 ⇔ 含
  * {@code DM}，双向全量，不一致<b>当场抛</b>）。 本用例<b>真的调 {@link Shell#start(ShellConfig)}</b>（不是 {@code new
  * Shell(...)} 的一半装配），所以两道 check 必然被走到；能执行到 {@code start()} 之后的第一行断言，就是"它们跑过了、没抛"的证据。 ★
- * 这条因果由<b>变异自证</b>钉死：把 {@code SimosSdReportsTool.roles()} 改回 {@code Set.of(ToolRole.GM)} ⇒
- * 本用例当场红，异常文本 = 「工具面装配故障：simos.sd.reports 声明 [GM]（不含 DM），却注册在 DM 桶里」，真实栈 = {@code
- * ToolRoleAudit.requireFace(ToolRoleAudit.java:66)} → {@code
- * SimosToolSource.<init>(SimosToolSource.java:568)} → {@code Shell.start(Shell.java:1131)}。
+ * <b>当前</b>这条因果由本批的变异自证钉死：把 {@code GaMessageSendTool.roles()} 改宽成 {@code Set.of(ToolRole.GM,
+ * ToolRole.DM)}（而它只注册在 DM 桶）⇒ {@code Shell.start()} 里的双桶自审当场抛、本用例红。 ★ 变异命令、红在哪条断言、还原后的 md5 逐条记在本批
+ * {@code test-ledger.md}（本机留痕，不在版本库里）。
  *
  * <p>★ <b>为什么断言这么窄</b>：本文件<b>不是</b>功能验收用例（那是 {@code ShellSmokeTest}/{@code *EndToEndTest}
  * 的事），它只钉装配面的三件事 —— ① 组合根真的构造得出来；② 两桶与 {@code roles()} 声明逐条一致； ③ 几条<b>不许为了修绿而放宽</b>的桶归属锚点（见 {@link
@@ -59,8 +60,25 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class ShellAssemblySmokeTest {
 
-  /** 跨区上报读口：装配面里唯一一条<b>两桶都在</b>的 sd 读口（本用例的正向锚点）。 */
-  private static final String REPORTS = "simos.sd.reports";
+  /**
+   * ★★ <b>2026-10-14 决策人互致消息：正向锚点整组换掉</b> —— 旧锚点 {@code simos.sd.reports}（"装配面里唯一一条两桶都在的 sd
+   * 读口"）**已随旧上报族整族删除**，而本批三条新工具**没有一条是两桶共享**：
+   *
+   * <ul>
+   *   <li>{@code ga.SetDecisionMakerPeer} —— <b>GM-only</b>（配权是 GM 的活，设计书 §4.4 类1）；
+   *   <li>{@code simos.ga.message.send} / {@code simos.ga.message.inbox} ——
+   *       <b>DM-only</b>（决策人互致消息，设计书 §4.2/§4.3，{@code roles()={DM}}）。
+   * </ul>
+   *
+   * ⇒ 正向锚点从"一条工具在两桶"改成<b>"三条工具各自的桶归属（GM-only ⇔ DM-only 的极性）"</b>：它同样挡"为了修绿把 {@code roles()}
+   * 或挂桶改宽"，而且是本批**边界本身**的可执行形态（{@code send} 进 GM 桶、或 {@code peer} 进 DM 桶 ⇒ 当场红）。 ★
+   * 写成字面量（不引用生产常量）：本文件是**独立规格**，改名要有人显式改这里。
+   */
+  private static final String PEER = "ga.SetDecisionMakerPeer";
+
+  private static final String MESSAGE_SEND = "simos.ga.message.send";
+
+  private static final String MESSAGE_INBOX = "simos.ga.message.inbox";
 
   /**
    * ★ <b>GM-only 读口（7 条）</b>：它们是「为了修绿而放宽装配」的锚点 —— 谁把其中任何一条挪进决策人桶 （或从 GM 桶摘掉），本用例当场红，而不是静默变成权限面变化。
@@ -92,10 +110,26 @@ class ShellAssemblySmokeTest {
    * simos.army.stopReport} 读 / {@code simos.army.contactWatch} 窄写 / {@code simos.emergency.advance}
    * 通用写）⇒ **GM 桶 160 → 163**；决策人桶一条都不进 ⇒ **42 不动**。★ 与 `SimosToolsTest`、`McpServerTest`、
    * `McpPortTopologyTest` 同轮精确同步（`DecisionFaceGolden` 因"三条都不进决策人面"而**有意不动**）。
+   *
+   * <p>★★ <b>2026-10-14 AgentLib Docs/Workspace 接入</b>：GM 面 +10（7 条 {@code doc_*} + 3 条工作区）⇒ <b>163
+   * → 173</b>；决策人面 +6（{@code doc_list/read/query/append/create/edit}）⇒ <b>42 → 48</b>。 ★
+   * 本轮**不再是"决策人面不动"**：这是头一次往决策人面加工具，故两个锚点同时改。实测来源：真壳两桶计数。
+   *
+   * <p>★★ <b>2026-10-14 上游 R8（控制方裁定 §11.3）：两个锚点各 +2 ⇒ GM 173 → 175、决策人 48 → 50</b> —— {@code
+   * doc_guide} / {@code workspace_info} 两条"能力自述"工具都是纯读（{@code ResourceManifest.NONE} + {@code
+   * spec(DEFAULT,false,false)}）⇒ {@code {GM, DM}} + {@code gate=ALLOW}（{@code DM_FREE}）。 ★
+   * 实测来源：本条改前真跑，红在「Expected size: 173 but was: 175」（GM 桶）。
+   *
+   * <p>★★ <b>2026-10-14 决策人互致消息：两个锚点都**不动**（各是净 0，但成员换了）</b> —— GM 面 −{@code
+   * simos.sd.reports}（共享读）+{@code ga.SetDecisionMakerPeer}（GM 窄写）⇒ 仍 <b>173</b>；决策人面 −{@code
+   * simos.sd.report} −{@code simos.sd.reports} +{@code simos.ga.message.send} +{@code
+   * simos.ga.message.inbox} ⇒ 仍 <b>48</b>。★ 正因为"条数不变"，换名字这件事**只能**由上面的极性锚点 （{@link #PEER} / {@link
+   * #MESSAGE_SEND} / {@link #MESSAGE_INBOX}）与 `SimosToolsTest` 的 DM 桶 `contains`/`doesNotContain`
+   * 钉住 —— 只数条数会漏掉这种成员替换。
    */
-  private static final int GM_BUCKET_SIZE = 163;
+  private static final int GM_BUCKET_SIZE = 175;
 
-  private static final int DECISION_BUCKET_SIZE = 42;
+  private static final int DECISION_BUCKET_SIZE = 50;
 
   /** 八个 codec（map / social / unit / economy / actor / ga / gov / army）。 */
   private static final int MODULE_COUNT = 8;
@@ -129,9 +163,21 @@ class ShellAssemblySmokeTest {
           .as("两桶 ⇔ SimosTool.roles() 声明必须逐条一致（设计书 §4.4 / I-G3），不一致当场抛")
           .doesNotThrowAnyException();
 
-      // ① 正向：跨区上报读口在**两桶**（它就是这次装配缺陷的当事工具）。
-      assertThat(gmNames).as("%s 必须在 GM 桶", REPORTS).contains(REPORTS);
-      assertThat(decisionNames).as("%s 必须在决策人桶（它是决策人与 GM 共用的读口）", REPORTS).contains(REPORTS);
+      // ① 正向：本批三条新工具的桶归属 —— 授权命令是 GM 的活（GM-only），两条消息工具是决策人的活（DM-only）。
+      //    ★ 这就是"桶归属 ⇔ roles() 声明"那道装配自审在**本批边界上**的可执行形态：
+      //      谁把 message.send 挪进 GM 桶（或把 peer 挪进 DM 桶）⇒ 这里当场红，而不是静默变成权限面变化。
+      assertThat(gmNames).as("%s 必须在 GM 桶（GM 配权）", PEER).contains(PEER);
+      assertThat(decisionNames)
+          .as("反证：%s 是 GM-only 配权命令，**不许**进决策人桶（决策人不得给自己开闸）", PEER)
+          .doesNotContain(PEER);
+      assertThat(decisionNames)
+          .as("%s / %s 必须在决策人桶（决策人互致消息）", MESSAGE_SEND, MESSAGE_INBOX)
+          .contains(MESSAGE_SEND, MESSAGE_INBOX);
+      assertThat(gmNames)
+          .as(
+              "反证：%s / %s 是决策人面工具，**不许**进 GM 桶（GM 不是决策人、没有 decision-maker: 身份）",
+              MESSAGE_SEND, MESSAGE_INBOX)
+          .doesNotContain(MESSAGE_SEND, MESSAGE_INBOX);
 
       // ② 反证：6 条 GM-only 读口必须 GM=true 且 DM=false（防"为了修绿而放宽"）。
       for (String name : GM_ONLY_READS) {

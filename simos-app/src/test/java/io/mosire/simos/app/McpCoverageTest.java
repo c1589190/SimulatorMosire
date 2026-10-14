@@ -142,7 +142,9 @@ class McpCoverageTest {
    * ⇒ **144**（同源同上；★ 本条一开始就只报"catalog 集合 ≠ 表"这一个差异 —— 判据见 {@code CatalogTool} 已列该 type：属**本表陈旧**，不是
    * main 侧缺口）；★★ 追加裁定 12（2026-10-12 §21.9 D-1/D-3）删除旧三条 {@code gov.SetPortPolicy} / {@code
    * gov.SetAdministrationPlan} / {@code gov.SetBudgetPolicy}、新增通用写口 {@code
-   * economy.SetGovernmentPolicy} ⇒ **142**（-3 +1，与 SimosToolsTest 的扫描面同源同数）。
+   * economy.SetGovernmentPolicy} ⇒ **142**（-3 +1，与 SimosToolsTest 的扫描面同源同数）；★★ <b>2026-10-14
+   * 决策人互致消息</b>： 新增 {@code ga.SetDecisionMakerPeer}（新 handler + 新命令类型）⇒ 142 → <b>143</b>（同源同上；★
+   * 本批**工具面净 0** 而 **命令面 +1** —— 两个面不同源，别把 173/48 那两个工具计数混进来）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -210,6 +212,8 @@ class McpCoverageTest {
           "ga.ResetDecisionMakerConversation",
           "ga.RunDecision",
           "ga.SetDecisionMakerAccess",
+          // ★★ 2026-10-14 决策人互致消息：新命令类型（一次授权 = 两条 DM 记录 + 一条 revision）
+          "ga.SetDecisionMakerPeer",
           "ga.SetDecisionMakerProvider",
           "ga.SetDirectiveStatus",
           "ga.StartDecision",
@@ -341,6 +345,11 @@ class McpCoverageTest {
           "actor.RemitGovTreasury",
           "unit.SetFormationOffset",
           "ga.DeleteDecisionMaker",
+          // ★★ 2026-10-14 决策人互致消息：本夹具世界**只有一个**决策人（dm-cov）⇒ 载荷形状合法（dmA=已存在、
+          //   allowed 是布尔）但第二方不存在 ⇒ 必须具名拒「决策人不存在: …」且零 revision。
+          //   ★ 为什么不让它走正常覆盖：授权要**两个存在的**决策人，而本夹具的 id 都是为别的命令逐个备好的；
+          //     真跑「授权两决策人 → 互致消息」的端到端判据在 DmMessagingEndToEndTest（真 DM 身份 + 真资源面）。
+          "ga.SetDecisionMakerPeer",
           "actor.DeductHouseholdStock",
           "actor.TransferAccounts",
           "economy.RemoveHouseholdPeriodicAdjustment",
@@ -385,6 +394,11 @@ class McpCoverageTest {
           Map.entry(
               "gov.AssignDecisionMakerGov",
               "{\"decisionMakerId\":\"dm-cov\",\"govUnitId\":\"g-missing\"}"),
+          // ★★ 2026-10-14 决策人互致消息：dmA 存在（dm-cov）、dmB 不存在 ⇒ 具名拒「决策人不存在: dm-missing」
+          //   且零 revision（handler 在写任何一条记录**之前**就拒）。
+          Map.entry(
+              "ga.SetDecisionMakerPeer",
+              "{\"dmA\":\"dm-cov\",\"dmB\":\"dm-missing\",\"allowed\":true}"),
           Map.entry(
               "economy.SwitchMode",
               "{\"organizationId\":\"org-missing\",\"toModeId\":\"mode-missing\",\"retainOriginalPerMille\":1000,\"effectiveDay\":7,\"reason\":\"coverage\"}"),
@@ -1055,7 +1069,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 142 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = 141；★★ 2026-10-13 急停协议新增 army.SetArmyContactWatch ⇒ **142**）")
+            "catalog 列出的 type 与 Shell 注册的 143 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay；2026-10-09 按实测补入 A1/A2a/B2 的 8 条货币/市场区命令；W2 补入 economy.SetMarketZonePriceAlpha ⇒ 140 → 141；W5-fix6 补入 economy.SetGovernmentMintScale ⇒ 141 → 142；W5.5 补入 economy.SetMarketZoneLoanRateAlpha ⇒ 142 → 143；W10 补入 economy.SetEconomyPolicy ⇒ 143 → 144；追加裁定 12 删旧三条 gov.Set* 政策命令、新增 economy.SetGovernmentPolicy ⇒ 144 → 142；★★ 2026-10-13 收尾测试第 2 层：sd 整模块退役（决策族 7 条改挂 ga、外交 4 条改挂 gov、军身份/战斗 2 条改挂 army、战斗族 5 条退役）、乙收尾新增 3 条赋权命令 ⇒ 逐条按实测重列 = 141；★★ 2026-10-13 急停协议新增 army.SetArmyContactWatch ⇒ **142**；★★ 2026-10-14 决策人互致消息新增 ga.SetDecisionMakerPeer ⇒ **143**）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);

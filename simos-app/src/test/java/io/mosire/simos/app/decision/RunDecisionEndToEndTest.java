@@ -37,7 +37,6 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
-import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.id.DecisionPacketId;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
@@ -472,7 +471,11 @@ class RunDecisionEndToEndTest {
    */
   @Test
   void aRunawayModelIsReportedAsAbortedByBudget() throws Exception {
-    for (int i = 0; i < DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS; i++) {
+    // ★★ 2026-10-14 W4（设计书 §10.4）：本用例必须**撞上**回合预算才看得见"因预算中止"，而生产缺省已是 10000
+    //   （用户裁定）⇒ 用 Shell.start 的**显式给上限**那条重载把上限压到 RUNAWAY_BUDGET 再跑。
+    //   ★ 不许靠把生产缺省改小来"修"本用例——那会让用户的 10000 裁定失效（常量注释里写着）。
+    restartShellWithBudget(RUNAWAY_BUDGET);
+    for (int i = 0; i < RUNAWAY_BUDGET; i++) {
       llm.enqueue(LlmResponse.toolCall("call-" + i, "simos_map_hex", Map.of("q", 1, "r", 1)));
     }
 
@@ -482,7 +485,9 @@ class RunDecisionEndToEndTest {
     JsonNode body = errorBody(result);
     assertThat(body.get("result").asText()).isEqualTo("aborted");
     assertThat(body.get("abortedByBudget").asBoolean()).isTrue();
-    assertThat(body.get("llmCalls").asInt()).isEqualTo(DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS);
+    assertThat(body.get("llmCalls").asInt())
+        .as("烧到**本用例显式给的上限**为止（不是生产缺省 10000）")
+        .isEqualTo(RUNAWAY_BUDGET);
     assertThat(body.get("reason").asText()).isEqualTo("turn-budget");
     assertThat(head()).as("中止不产决策：只有触发事实那一条").isEqualTo(2L);
   }
@@ -601,6 +606,15 @@ class RunDecisionEndToEndTest {
 
   // ────────────────────────────── 夹具 ──────────────────────────────
 
+  /**
+   * 「跑飞」类用例的**小**回合上限（2026-10-14 W4，设计书 §10.4）。
+   *
+   * <p>★ 取值 20 = **旧的生产缺省**（2026-09-22 的现场算术 {@code 14+1+4+1}，见 {@code
+   * DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS} 的新旧对照）——现在它只是本用例的"小到几秒跑完"的上限， 与生产缺省（10000，用户裁定）无关。★
+   * 本用例的判别力不靠这个数字：它只要求"模型不收口 ⇒ 撞上限 ⇒ 如实报 abortedByBudget"。
+   */
+  private static final int RUNAWAY_BUDGET = 20;
+
   /** 在给定目录里起一套新壳（同一用例内换夹具世界/换决策人绑定时用：**换目录**，不往旧库上叠种）。 */
   private void restartWith(DecisionMaker maker, Path dir) {
     if (client != null) {
@@ -616,6 +630,31 @@ class RunDecisionEndToEndTest {
     llm = new RecordingLlmClient();
     // ★ 真壳 + 注入的 LLM 客户端来源（生产路径传 null ⇒ 按决策人的 providerId 解析真 provider）。
     shell = Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0), llm::provider);
+    client = newClient();
+  }
+
+  /**
+   * 在**同一个已种好的世界**上换一套壳，但把一轮的回合上限显式压小（2026-10-14 W4）。
+   *
+   * <p>★ 为什么不复用 {@link #restartWith}：那条会**再种一次 genesis**（往已有库上叠种 = 世界重复）。 本方法只换壳：store
+   * 一字不动，仅把装配参数（回合上限）换掉。
+   */
+  private void restartShellWithBudget(int maxLlmCalls) {
+    if (client != null) {
+      try {
+        client.closeGracefully();
+      } catch (Exception ignored) {
+        // 关停清理失败不影响用例判定（server 侧仍会被 shell.close() 收掉）
+      }
+      client = null;
+    }
+    if (shell != null) {
+      shell.close();
+      shell = null;
+    }
+    llm = new RecordingLlmClient();
+    shell =
+        Shell.start(ShellConfig.defaults(storeDir).withPorts(0, 0, 0), llm::provider, maxLlmCalls);
     client = newClient();
   }
 

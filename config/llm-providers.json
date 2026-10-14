@@ -13,6 +13,17 @@
       "capabilities": {
         "toolCalling": true
       }
+    },
+    {
+      "id": "gemma4-local",
+      "name": "本地 gemma4（llama.cpp @ 127.0.0.1:8080）",
+      "protocol": "openai-compatible",
+      "baseUrl": "http://127.0.0.1:8080/v1",
+      "model": "gemma4-local",
+      "timeoutMs": 300000,
+      "capabilities": {
+        "toolCalling": true
+      }
     }
   ]
 }
