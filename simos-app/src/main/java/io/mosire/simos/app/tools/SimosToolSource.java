@@ -553,8 +553,13 @@ public final class SimosToolSource implements ToolSource {
     }
   }
 
-  /** 角色表里的「两桶共享」（U2：doc 系列在<b>指定工作区</b>的情况下给 DM 自用）。 */
-  private static final Set<ToolRole> ROLES_GM_DM = Set.of(ToolRole.GM, ToolRole.DM);
+  /**
+   * 角色表里的「两桶共享」（U2：doc 系列在<b>指定工作区</b>的情况下给 DM 自用）。
+   *
+   * <p>★ 与各工具自己的 {@code roles()} <b>同集</b>（{@code {DM, GM}}）；<b>顺序无语义</b>（{@code Set.of} 本就无序 ——
+   * 这里的元素序只是与多数派 {@code roles()} 的拼法对齐，让读代码的人一眼看出是同一个集合，D1 / 设计书 §3.3）。
+   */
+  private static final Set<ToolRole> ROLES_GM_DM = Set.of(ToolRole.DM, ToolRole.GM);
 
   /** 角色表里的「GM 独有」（U1：<b>工作区由 GM 维护</b>；作废也是 GM 动作）。 */
   private static final Set<ToolRole> ROLES_GM = Set.of(ToolRole.GM);

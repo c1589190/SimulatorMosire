@@ -35,29 +35,35 @@ public ToolGate gate(ToolContext c) { return new ToolGate.Ask(...); }        // 
 
 ---
 
-## 2. 现状实测（回代码，HEAD `b88dc240`）
+## 2. 现状实测
 
-| 形状 | 条数 | 其中 `Ask` | 其中 `ALLOW` |
-|---|---|---|---|
-| 纯 `{GM}` | **137** | **109**（★ 用户裁定：**保留**，不碍事） | 28 |
-| `{DM,GM}` | **32** | **12** | **20** |
-| 纯 `{DM}` | **15** | **3** | 12 |
-| **合计** | **184** | 134（`Ask` 字面 66 ∪ 窄写基类 68） | — |
+### 2.1 ★★ 权威数字 = **真装配**（批 3a 实测，`140 / 17 / 37`）
 
-取数命令（可复核）：
-```bash
-git grep -l "Set<ToolRole> roles()" HEAD -- 'simos-*/src/main/**' | wc -l          # 184
-git grep -l "Set.of(ToolRole.GM)" HEAD -- 'simos-*/src/main/**' | wc -l             # 137
-git grep -l "ToolRole.DM, ToolRole.GM\|ToolRole.GM, ToolRole.DM" HEAD -- 'simos-*/src/main/**' | wc -l   # 32
+| 类 | 条数 | 组成 |
+|---|---|---|
+| **类1 `GM_ONLY`** | **140** | 136 条内部 `{GM}` 真工具 + **4 条外来 `{GM}`**（`doc_void` / `mount` / `unmount` / `list_workspaces`，取自具名常量 `ROLES_GM`） |
+| **类2 `DM_APPROVAL`** | **17** | `ga.IssueDirective` · `ga.SubmitVerdict` · 9 条 `simos.gov.*` · **3 条外来 doc 写**（`doc_append` / `doc_create` / `doc_edit`） · `gov.SetDiplomaticRelation` · `gov.RecordDiplomaticEvent` · `simos.gov.pay`（★ 后 3 条是纯 `{DM}` + `Ask`，按 §3.1 自动落类2 ✅） |
+| **类3 `DM_FREE`** | **37** | — |
+
+★★ **自洽硬证据（这就是它是权威数字的理由）**：分区与**两道既有桶锚点逐位吻合** ——
 ```
+GM 桶     = 140 + 39（共享）= 179 = ShellAssemblySmokeTest.GM_BUCKET_SIZE
+决策人桶  =  17 + 37        =  54 = ShellAssemblySmokeTest.DECISION_BUCKET_SIZE
+```
+⇒ 分区不是"另立一套数"，而是**与既有装配面锚点对得上**的。
 
-**那 3 条纯 `{DM}` + `Ask`**（★ 三分类的原始表述里没有这一格）：
-`gov.RecordDiplomaticEvent` · `gov.SetDiplomaticRelation` · `simos.gov.pay`
+### 2.2 我曾用的文件级 grep 取数法**系统性低估**（教训，写给后来者）
 
-**12 条 `{DM,GM}` + `Ask`（类2）**：
-`ga.IssueDirective` · `ga.SubmitVerdict` · `simos.gov.{assignPosts, defineCurrency, expandHousehold, issueMoney, openPostsToMarket, renameCurrency, setBudgetPolicy, setEstablishment, setFxRate}` · 外来 `workspace` 写
+控制方原稿给的是 `137 / 15 / 32`，**错了**（低估 +3/+2/+5）。三个原因，都是"按文件 grep"的固有缺陷：
 
-★ **全部 12 条 + 那 3 条都是 `AskKind.SENSITIVE`**（或经 `AbstractNarrowWriteTool`，它硬编码 `AskKind.SENSITIVE`）。
+| 原因 | 影响 |
+|---|---|
+| `git grep -l "Set.of(ToolRole.GM)"` 命中的 **137 个文件里有 1 个不是工具**（`SimosToolSource` 自己的常量声明） | 文件数 ≠ 工具数 |
+| **多工具文件**：一个文件里可能装多条工具（外来 AgentLib 工具的适配层就是），按文件数只会数成 1 | §2 把 3 条外来 doc 写数成 1 ⇒ −2 |
+| **具名常量**的 `roles`（如 `ROLES_GM` / `ROLES_GM_DM`）grep 不到 | 4 条外来 `{GM}` + 5 条外来 `{GM,DM}` 读口全漏 ⇒ −9 |
+
+⇒ ★ **纪律：工具面的条数一律以"真装配的分区实测"为准，不以文件 grep 为准。** 前者与桶锚点自洽，后者只能当粗估。
+（取数命令留档，仅供粗估：`git grep -l "Set<ToolRole> roles()" HEAD -- 'simos-*/src/main/**' | wc -l` = 184 个**文件**，而真工具是 **194** 条 = 140+17+37。）
 
 ---
 
@@ -95,7 +101,7 @@ git grep -l "ToolRole.DM, ToolRole.GM\|ToolRole.GM, ToolRole.DM" HEAD -- 'simos-
 |---|---|---|---|
 | D1 | `{DM,GM}` 有**两种拼法** | ★ **控制方复核后降级**：那"1 条反向拼法"是 `SimosToolSource:557` 的**具名常量** `ROLES_GM_DM`（外来 AgentLib 工具的角色表），不是随手字面量；而 `Set.of` **本就无序** ⇒ 两种写法**语义完全相同**。**这是纯外观，不是漂移风险。** | 把 `ROLES_GM_DM` 的元素顺序对齐多数派（1 行），并在常量注释里写明"与各工具 `roles()` 同集，顺序无语义"——**仅为读代码的人** |
 | D2 | `ga.CreateDecisionMaker` 的 description **声称 4 个必填**（含 `affiliation`），实际载荷只有 `{id, allowedTools, cadence}` 且 `affiliation` 会被拒 | `SetDecisionMakerAccessTool` / `SdCreateDecisionMakerTool` 的 `description()` | 按**真实载荷**改写 description |
-| D3 | `ga.IssueDirective` / `ga.SubmitVerdict` 的类注没写"**决策回合内不可达**" | 两者的类注 | 补一句：类2 只对**非回合路径**（真人/外部经决策通道）有意义；决策回合的工具面上没有它们（冻结回合只留决策包写） |
+| D3 | `ga.IssueDirective` / `ga.SubmitVerdict` 的类注没写清**哪种回合里不可达** | 两者的类注 | ★ **批 3a 实测纠正了控制方的措辞**：裁掉世界写的只有**同时决策（冻结）回合**（`ga.RunDecisionMakers`）；`ga.RunDecision` 与 GUI 单人跑是**非冻结**回合，**世界写仍在工具面上** ⇒ 类注只许写「**同时决策（冻结）回合里不在工具面上**」。类2 直写对「非冻结回合 + 真人/外部经决策通道」**是有意义的**，不是死格子 |
 | D4 | `social.household.members` 在 `ProposalCatalog` 里的必要性 | `ProposalCatalog` 初始清单（7 条） | ★ **本批不动**，随 3b 一起定 |
 
 ---
@@ -105,7 +111,10 @@ git grep -l "ToolRole.DM, ToolRole.GM\|ToolRole.GM, ToolRole.DM" HEAD -- 'simos-
 | 批 | 内容 | 可动范围 |
 |---|---|---|
 | **3a**（本批） | §3.1 分类口径 + §3.2 装配期审计 + D1/D2/D3 | 新 `ToolClass`/审计类（`simos-ga-spi` + `simos-ga`）· `SimosToolSource`/`Shell` 接线 · D1 涉及的 32 个 `roles()` 声明 · D2/D3 的 `description()`/类注 |
-| **3b**（后批，功能性） | ★ 把那 9 条 gov 类2 工具**加进 `ProposalCatalog`**（让类2 有**不阻塞**的第二条路，见 §5）· `ProposalCatalog` 的可达性是否补资源面 · `SocialHouseholdMembers` 去留 | `ProposalCatalog` · `AppGaProposalHost` · 相关 gov 工具（★ 9 条全部实测支持 `preview`，命中 11–16 处/文件 ⇒ 可行，但**逐条**要验 `preview=true` 真能跑通） |
+| **3b**（后批，功能性） | ★ 把那 9 条 gov 类2 工具**加进 `ProposalCatalog`**（让类2 有**不阻塞**的第二条路，见 §5）· `ProposalCatalog` 的可达性是否补资源面 · `SocialHouseholdMembers` 去留 | `ProposalCatalog` · `AppGaProposalHost` · 相关 gov 工具（★ 9 条全部实测支持 `preview`，命中 11–16 处/文件 ⇒ 可行，但**逐条**要验 `preview=true` 真能跑通） · **`GovCreateOfficePlan`（见下）**
+
+★★ **批 3a 顺带发现的活缺陷（未修，越出 3a 红线）**：`simos-gov/.../GovCreateOfficePlan.java:461-472` **仍在 `ga.CreateDecisionMaker` 的载荷里塞 `affiliation`**（由 `GovCreateOfficeTool:535` 批内提交），而 handler **具名拒绝该字段** ⇒ **`simos.gov.createOffice` 必坏**。
+★ 这正是 D2 的"下游"：**description 撒了谎，而有人照着那个谎写了代码**（描述声称 `affiliation` 必填）。⇒ **3b 必修**，并把"description ⇔ 真实载荷"的对账加进判据。
 
 ---
 
@@ -132,7 +141,7 @@ DM 回合里调一条类2工具
 
 | # | 不变量 | 判据 |
 |---|---|---|
-| **C1** | **零口径变更**：本批不删任何 `Ask`、不改任何 `roles()` 的**集合内容**（只统一拼法） | 类1=137 / 类2=15 / 类3=32；三格计数与 §2 实测逐字一致 |
+| **C1** | **零口径变更**：本批不删任何 `Ask`、不改任何 `roles()` 的**集合内容**（只统一拼法） | ★ **类1=140 / 类2=17 / 类3=37**（**真装配**实测，与两道桶锚点 `179` / `54` **自洽**）—— 以实测为准，**不是** §2 早期那版文件 grep 的 137/15/32 |
 | **C2** | **每条工具都落进三格之一** | 审计在装配期跑完不抛；负向：造一条"判不出类"的工具 ⇒ 装配期抛 |
 | **C3** | **审计与工具面同源**：清单从桶并集派生，**没有第二处手写清单** | 源码扫描：审计实现里没有工具名/条数的字面量 |
 | **C4** | **`roles()` 的拼法只有一种** | `grep -c "ToolRole.GM, ToolRole.DM"` = 0 |

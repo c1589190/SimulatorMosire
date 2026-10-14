@@ -18,6 +18,12 @@ import java.util.Set;
  *
  * <p>★ **资源声明 = sd 域的自己那一块**（T10）：交判决与出令同属**决策行为**（spec §2.2 的两条决策窄写）， 不是"直接改地图/单位数据"⇒
  * 不复用基类缺省的三命名空间粗断言（那条会让受限调用者**整调被拒**）。
+ *
+ * <p>★★ <b>同时决策（冻结回合）里它不在工具面上</b>（2026-10-15 批次 3a / 设计书 §3.3 D3）：{@code ga.RunDecisionMakers}
+ * 跑的冻结回合按 schema 判据把带 {@code expectedRevision} 的旧世界写**整族移出工具面**、执行口也拒绝 （{@code
+ * DecisionAgentRunner.frozenKindOf}：只留世界读 + 决策包七件套 + 无状态读口）⇒ 那一回合里本工具的「类2 = DM 需审批」**走不到**。★ 类2
+ * 的直写因此只对**非冻结回合路径**有意义：GM 触发的旧单人回合（{@code ga.RunDecision} / GUI 单人跑，那条路径**不裁**世界写）与真人 /
+ * 外部经**决策通道**（{@code DecisionChannel} 的两条落点之一）提交时。
  */
 public final class SubmitVerdictTool extends AbstractNarrowWriteTool implements SimosTool {
 

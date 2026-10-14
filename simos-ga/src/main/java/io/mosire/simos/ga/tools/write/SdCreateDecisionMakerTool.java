@@ -39,7 +39,7 @@ public final class SdCreateDecisionMakerTool extends AbstractNarrowWriteTool imp
 
   @Override
   public String description() {
-    return "建决策人：固定 ga.CreateDecisionMaker，载荷 {id, affiliation, allowedTools, cadence}（四者全必填；★ 创建期 accessLimit 恒为无额外限制、本命令不接受该字段，传了会被静默忽略；★ allowedTools 不得含通用写）";
+    return "建决策人：固定 ga.CreateDecisionMaker，载荷 {id, allowedTools, cadence}（三者全必填；★ affiliation 已整条删除、**不再接受**——传了会被具名拒绝，归属改用 gov.AssignDecisionMakerNation / gov.AssignDecisionMakerGov / army.AssignDecisionMakerArmy；★ 创建期 accessLimit 恒为无额外限制、本命令不接受该字段，传了会被静默忽略；★ allowedTools 不得含通用写）";
   }
 
   @Override

@@ -28,6 +28,12 @@ import java.util.Set;
  * 里、不可分割。★ 批次 3b-1 的过渡态（"同批第二条 {@code ga.PutInfo}" + {@code
  * AbstractNarrowWriteTool.companionRequests} 钩子）已整条删除，见 {@link
  * io.mosire.simos.ga.spi.IssueDirectiveHandler} 的类注。
+ *
+ * <p>★★ <b>同时决策（冻结回合）里它不在工具面上</b>（2026-10-15 批次 3a / 设计书 §3.3 D3）：{@code ga.RunDecisionMakers}
+ * 跑的冻结回合按 schema 判据把带 {@code expectedRevision} 的旧世界写**整族移出工具面**、执行口也拒绝 （{@code
+ * DecisionAgentRunner.frozenKindOf}：只留世界读 + 决策包七件套 + 无状态读口）⇒ 那一回合里本工具的「类2 = DM 需审批」**走不到**。★ 类2
+ * 的直写因此只对**非冻结回合路径**有意义：GM 触发的旧单人回合（{@code ga.RunDecision} / GUI 单人跑，那条路径**不裁**世界写）与真人 /
+ * 外部经**决策通道**（{@code DecisionChannel} 的两条落点之一）提交时。
  */
 public final class IssueDirectiveTool extends AbstractNarrowWriteTool implements SimosTool {
 

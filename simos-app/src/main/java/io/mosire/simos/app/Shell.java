@@ -149,6 +149,7 @@ import io.mosire.simos.ga.tools.GmAutoApproveGate;
 import io.mosire.simos.ga.tools.GmToolUsage;
 import io.mosire.simos.ga.tools.RecordingToolSource;
 import io.mosire.simos.ga.tools.ToolBuckets;
+import io.mosire.simos.ga.tools.ToolClassAudit;
 import io.mosire.simos.ga.tools.ToolRoleAudit;
 import io.mosire.simos.ga.tools.read.GaMessageInboxTool;
 import io.mosire.simos.ga.tools.write.GaMessageSendTool;
@@ -1389,6 +1390,12 @@ public final class Shell implements AutoCloseable {
     List<AgentTool> gmToolFace = new ArrayList<>(toolSource.listTools());
     gmToolFace.addAll(stopProtocolGmTools);
     ToolRoleAudit.requireFaces(gmToolFace, decisionAgentFace);
+    // ★★ 2026-10-15 批次 3a（设计书 §3.1 口径 / §3.2 接线）：**工具三分类的装配期 fail-closed 分区** ——
+    //   遍历两桶并集，按 (roles(), gate() 的**实得档**) 判类；判不出类的工具**当场抛**（不静默、不跳过）。
+    //   ★ 判据只来自真 gate()（探针上下文 = arguments() 空 Map，见 ToolClassAudit 的类注），**没有**第二处声明。
+    //   ★ 返回值是三份不可变清单（类1 GM_ONLY / 类2 DM_APPROVAL / 类3 DM_FREE），供后续批次（3b）与测试取用；
+    //     这里只取它"每条工具都落进三格之一"的装配期必过效果。
+    ToolClassAudit.requireClasses(gmToolFace, decisionAgentFace);
     // ★ T8：GM 交互界面的数据源（`gmToolUsage` 已在上方、两个工具源之前建好）——只包 GM 组的源 ⇒ 记录的就是
     //   "GM MCP 的工具使用"（spec §七.4 C22）。
     //   ★ 2026-10-13（B）：源改包**合并后的 GM 面**（含三条新工具）⇒ 它们与其余工具同吃 RecordingToolSource，
