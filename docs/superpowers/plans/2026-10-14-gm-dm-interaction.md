@@ -274,6 +274,46 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 
 ---
 
+### 3.9 ★★ 提交语义：**PENDING 不是锁**（2026-10-15 用户裁定，**取代** §3.2/§3.3 里"非 DRAFT 一律拒"的口径）
+
+**用户原话（逐字）**：
+
+> 「gm应当取最后一轮提交的决策，在这之前一直交流，提交多少轮都没问题，但是做完决策这个tick就不能再提交命令了——当然然，也交给gm负责」
+
+#### 3.9.1 裁定拆解
+
+| 子句 | 含义 |
+|---|---|
+| 「**gm 应当取最后一轮提交的决策**」 | DM 在同一 tick 可以提交**很多次**；GM 裁决时看到的**就是最后一次提交的内容**（包是累积的 ⇒ `gm.packet` 读到什么就是什么） |
+| 「**在这之前一直交流，提交多少轮都没问题**」 | ★★ **提交（PENDING）不是修改锁**。提交之后**照样可以继续 propose / revise / drop / intent**，然后再提交一次 |
+| 「**但是做完决策这个 tick 就不能再提交命令了**」 | ★ 真正的锁 = **该 tick 的决策已经做完**（GM 裁决，或推进到下一 tick） |
+| 「**当然，也交给 gm 负责**」 | 谁能提交、什么时候收口，**由 GM 掌握** ⇒ 工具只如实报状态，不替 GM 判断（与 §9-D"不加强制刹车"同口径） |
+
+#### 3.9.2 新语义（三态、两条边界）
+
+| 包状态 | `propose` / `revise` / `drop` / `intent` | `confirm` | `reopen` |
+|---|---|---|---|
+| **DRAFT**（草稿） | ✅ 直接改 | ✅ → PENDING（＝一次提交） | 幂等（已是草稿，返回现状、零 revision） |
+| **PENDING**（已提交，**可反复提交**） | ✅ ★ **自动撤回成 DRAFT 再改**（**隐式 reopen**，DM 不必自己调 `reopen`） | ✅ **幂等成功**（＝又提交一次，**覆盖上一次**） | ✅ → DRAFT（显式告诉 GM"我还没说完"；★ 内容一字不动） |
+| **已裁决**（`decidedBy` 非空 **或** APPROVED / REJECTED / MERGED / PARTIALLY_APPROVED） | ❌ 具名拒 | ❌ 具名拒 | ❌ 具名拒（不变量 I3） |
+
+★ **为什么"修改时自动撤回"而不是"让 DM 先调 `reopen`"**：用户说「提交多少轮都没问题」——每轮多一次 `reopen` 是无谓摩擦。`reopen` **保留**，但语义收窄为"**显式撤回提交标记**"（不改内容），用途 = 让 `simos.gm.round` 的 `pendingConfirmations` 里重新出现这个 DM，告诉 GM"它还在改"。
+
+★ **`DecisionTurnFinalizer` 不需要改**：`auto-no-submit` 在新语义下就是"DM 这一轮说完了 ⇒ 算它提交了一次"，后续还能改 ⇒ **零摩擦**。⇒ 收口批 H 报的「同 tick 第 2~4 轮 propose 撞状态边界」问题**在新语义下自动消失**。
+
+#### 3.9.3 ★ 新增的红线（由「这个 tick 就不能再提交命令了」推出来）
+
+- **修改 / 确认 / 撤回一律只许对"当前 tick 的包"**：`tick` 参数给出**不是当前世界 tick** ⇒ **具名拒**（`BAD_REQUEST`）。
+  ★ 理由：`pkt-<dm>-<tick>` 是按 tick 分的容器；若允许 `revise{tick: 359}` 在 tick 360 执行，DM 就能**改写历史 tick 的决策**——那正是"做完决策就不能再提交命令"要挡住的事。**历史 tick 的包只读**（`gm.packet` / `packet.my` 照常可读）。
+- **已裁决的包，四个修改工具也必须拒**（不只是 `reopen` 拒）：原实现只在"DRAFT 才放行"这条上挡住了它，改成"未裁决就放行"之后，**必须显式补上"已裁决 ⇒ 拒"**，否则 DM 能把 GM 已批的包改了。★ 这是本次语义变更**唯一的**风险点，实现方必须逐个工具补判据。
+
+#### 3.9.4 GM 侧三条读口的文案（必须改）
+
+`simos.gm.packet` / `simos.gm.packets` / `simos.gm.round` 的 `description()` 要写明：
+**「PENDING = 该决策人当前的提交；同一 tick 内它可以提交多次，GM 应以**最后一次**为准；已裁决（`decidedBy` 非空或终态）之后不能再改。」**
+
+---
+
 ## 4. 不变量（I 清单）
 
 | # | 不变量 | 守它的判据 |
@@ -290,6 +330,9 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 | **I10** | **确认是 DM 的动作**：`packet.confirm` 在回合内**不再被拦截**（拦截只留给…**删除**），PENDING 由它产生 | 回合内调 `confirm` ⇒ 返回 `submitted:true`；随后 `gm.packets{status:PENDING}` 能查到 |
 | **I11** | **不可见性不外泄**：DM 的 `inbox` 只回 `to == 自己` 的信；GM 的 `gm.inbox` 只回 `to == "gm"` 的信 | 正负各一条（peer DM 的信不出现在 `gm.inbox`） |
 | **I12** | **零新状态**：不新增 `GaState` 组件、不新增命令类型 | `GaRoundTripTest` 组件数不变；命令类型总数不变 |
+| **I13** ★ | **PENDING 不是修改锁**（§3.9）：四个修改工具在 PENDING 上**自动撤回成 DRAFT** 再改；`confirm` 可反复调且幂等；`reopen` 保留为"显式撤回提交标记"（不改内容） | 用例：PENDING 上 `revise` 成功且包回 DRAFT；`confirm` 连调两次两次都成功且第二次零 revision |
+| **I14** ★★ | **已裁决 ⇒ 四个修改工具也必须拒**（不只是 `reopen` 拒）——本次语义变更**唯一的**风险点 | 四种终态 × 四个修改工具，**16 条负向**逐一具名拒 + 零 revision |
+| **I15** ★★ | **只许动当前 tick 的包**：`tick` 给出非当前世界 tick ⇒ 具名拒；历史 tick 的包**只读** | 用例：历史 tick 上 `revise` / `confirm` / `reopen` 三条都拒；`gm.packet` / `packet.my` 读历史 tick 仍成功 |
 
 ---
 
@@ -343,7 +386,9 @@ msg-gm-dm1-5-0 msg-gm-dm1-5-1 msg-gm-dm1-5-10 msg-gm-dm1-5-11 msg-gm-dm1-5-2 …
 | **E** | **旧名/过时文案收口**（批 B 交账时发现的残留） | `simos-app/.../access/DecisionCallerFactory.java`（`GOAL` 里 4 个旧工具名）· `simos-app/.../tools/read/CatalogTool.java`（`:855,:858` 两处旧名）· `simos-ga/.../tools/read/GaMessageInboxTool.java`（`description()` 仍写"每 tick 每方向**至多一条**" ⇒ 128）· `simos-ga/.../tools/write/SetDecisionMakerPeerTool.java`（`description()` 同上）· `simos-ga/.../tools/read/GmPacketTool.java`（javadoc 指向 `simos.sd.packet.my`）· `simos-ga/.../tools/DecisionPacketViews.java`（同）· `simos-app/.../tools/SimosToolSource.java:1935`（注释同） | ✅ **已完成**（7 文件 +13/−9，全文本；控制方用 `grep -a` 在 **`.class` 常量池**里核到「每 tick 每方向最多 128 条」已折叠进去 ⇒ 模型真读到；`test-compile` rc=0） |
 | **F** | `sd` 权限域名改名（§3.8） | `simos-ga-spi/.../ToolResources.java` · `simos-util/.../ResourcePaths.java` · `simos-app/.../tools/ToolSupport.java` + 全仓 ~106 处引用 + `SimosToolSource:1570` 失真注释 | ✅ **已完成**（87 文件 +211/−213；金样本单文件 diff 为空；控制方 clean verify rc=0） |
 | **G** | GM 代打工具 `simos.gm.actAs`（§3.7 + §3.7.1 三条裁定） | 新 `simos-ga/.../tools/write/GmActAsTool.java` · `simos-app/.../tools/SimosToolSource.java`（注册，`addGmWrites`）· `simos-app/.../access/DecisionCallerFactory.java`（若需暴露 `callerFor` 的窄口） | ⬜ **下一批**（F 已完成） |
-| **D** | 测试面（**单独一个测试代理**） | `simos-app/src/test/**` · `simos-ga/src/test/**` | ⬜ **下一批**（覆盖 A/B/E；F/G 落地后再来一轮小的） |
+| **D** | 测试面（**单独一个测试代理**） | `simos-app/src/test/**` · `simos-ga/src/test/**` | ✅ **已完成两轮**：D=`816df952`（17 红修 16 + 14 判据）· H=`0b4976f9`（actAs G1–G10 + 上一批 8 条全落地 + 夹具；`clean verify` rc=0 / 3268/0/0/5） |
+| **I** ★ | **提交语义变更（§3.9）**：PENDING 不再是锁 | `simos-ga/.../tools/write/{ProposeCallTool, ReviseCallTool, DropCallTool, PacketIntentTool}.java`（守卫：`DRAFT` ⇒ **`未裁决`**，PENDING 自动撤回）· `ReopenPacketTool.java`（语义收窄为"撤回提交标记，不改内容"）· `ConfirmPacketTool.java`（反复提交幂等）· 三个 GM 读口的 `description()`（§3.9.4）· 新增"非当前 tick ⇒ 拒"判据（I15） | ⬜ **待派** |
+| **J** | I 的测试面 | `simos-app/src/test/**` · `simos-ga/src/test/**` | ⬜ 待 I（★ H 的 `N5 revise/drop PENDING ⇒ 具名拒` 在新语义下**变错**，必须翻向；并补 I13/I14/I15 的 16+3 条负向） |
 
 ★ **`DecisionAgentRunner.java` 在 A 与 B 各出现一次** ⇒ **A 必须先完成并提交**，B 再动它（一文件一 owner，见 §一 并发）。✅ 已满足。
 
