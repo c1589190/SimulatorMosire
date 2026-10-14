@@ -153,3 +153,49 @@ DM 回合里调一条类2工具
 
 **无。** 用户 2026-10-15 已定分类口径；§3.3 的 D1/D2/D3 是"照事实改文案/拼法"，无内容分歧；D4 推到 3b；§5 是**如实记录**不构成提问。
 ★ 唯一需要**控制方**当心的是：§3.1 把"纯 `{DM}` + `Ask`"判成类2 —— 这是我从用户原话（「GMDM都能做那肯定是DM的需审批命令」+ `{DM}` 与 `{DM,GM}` 在这一维等价）推出的**收敛**，若用户认为那 3 条该单列一格，本批的审计判据要改一行。
+
+---
+
+## 8. 批 3b 设计：让类2 的世界写也能走决策包（**纯加法**）
+
+### 8.0 用户意图（逐字）
+
+> 「这个决策包是何意味，难道DM调一个和世界修改有关的工具，GM必须立马批准才能继续做，而不是先标个假完成GM统一审批吗」（2026-10-15）
+
+⇒ 用户要的正是**决策包那条路**：**DM 先记录、继续干活、GM 统一批**。而类2 现在的机制是**反面**（当场写、当场等人点、5 分钟上限）。
+
+### 8.1 目标
+
+**让那 9 条 gov 类2 工具也能被 `propose`** ⇒ 无人值守时 DM 走 `propose`（**零阻塞**），GM 用 `gm.packet.decide` **真审**、`gm.packet.execute` 执行。
+
+### 8.2 ★★ 纯加法（这是本批的红线）
+
+| 不动 | 为什么 |
+|---|---|
+| `roles()` / `gate()` **一个都不改** | 类归属不动 ⇒ §2.1 的三格计数 `140/17/37` 不变 |
+| **不删类2 的直写路径** | 它对**有真人看着**的场合（真人经决策通道提交、GUI 点批准）仍然有意义 |
+| **不改审批链**（`AutoApproveGate → ConfirmGate`） | 与本批无关 |
+| **不动 `APPROVAL_TIMEOUT`** | ★ 用户说过"取消 5 分钟上限"，但**取消做不到他要的效果**：传 `null` ⇒ AgentLib 当 `ZERO` ⇒ **立刻拒**；给巨大值 ⇒ **死锁**（GM 卡在 `run-decision-makers` 里等 DM 批次，无法同时调 `gm.approve`）。⇒ **本批的正确解是"让阻塞路径根本不被走到"**，上限退化成兜底 |
+
+### 8.3 三件事
+
+1. ★ **9 条 gov 类2 工具加进 `ProposalCatalog`**：`simos.gov.{assignPosts, defineCurrency, expandHousehold, issueMoney, openPostsToMarket, renameCurrency, setBudgetPolicy, setEstablishment, setFxRate}`。
+   - ★ **逐条**验 `preview=true` 真能跑通（`preview` 命中 11–16 处/文件只是**静态迹象**，不是证据）；跑不通的**单列**并说明。
+   - 每条要给出 `DecisionProposable` 的 `preview` + `targets`（后者从 args+preview 递归提取，**照既有 7 条的配置形制**：`skipKeys` / `createsUnit`）。
+2. **`ProposalCatalog` 的可达性**：现在 `propose` 只查 `allowedTools`（白名单），**不查资源面** ⇒ 一个 DM 可以 propose 一条它**够不着**的调用（那条 call 在 GM 执行时才会失败）。⇒ **补资源面校验**（复用 `ProposalCatalog` 已有的 scope 校验段，别造第二份）。
+3. **`simos.social.household.members` 去留**：它与"世界写"不同（是查询），且已在 catalog 里 ⇒ 决定留还是移出（**要给出理由**）。
+
+### 8.4 判据
+
+| # | 判据 |
+|---|---|
+| **B1** | 9 条**逐条** `propose` 成功（真 preview + scope 通过）⇒ 包里出现该 call、`gm.packet` 可见 |
+| **B2** | ★ **零口径变更**：三格计数仍 `140/17/37`；`roles()`/`gate()` 的 `git diff` **为空** |
+| **B3** | ★★ **DM 侧零阻塞**：`propose` 路径**不产生任何 `Ask`/审批**（源码扫描 + 执行期断言） |
+| **B4** | GM 侧照旧：`gm.packet.decide` + `gm.packet.execute` 能把这条 call 执行掉（**一条 revision**） |
+| **B5** | 可达性：一个**够不着**目标的 DM propose ⇒ **具名拒**（`FORBIDDEN`），包不变 |
+| **B6** | A7 式源码扫描：catalog 里没有第二处手写清单（名单从 `ProposalCatalog` 一处派生） |
+
+### 8.5 同源缺陷（另开责任区，不在本批）
+
+`ProvinceApplyPlan:715-727` **仍在拼 `affiliation`**（`ProvinceApplyTool.buildBatch` 逐 GOV 调用）⇒ **`simos.province.apply` 很可能同样整批被拒**。同一个谎的产物 ⇒ **另派**，要求"**先复现红再修**"（照 `createOffice` 那两任的验收形制）。
