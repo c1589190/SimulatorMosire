@@ -199,3 +199,54 @@ DM 回合里调一条类2工具
 ### 8.5 同源缺陷（另开责任区，不在本批）
 
 `ProvinceApplyPlan:715-727` **仍在拼 `affiliation`**（`ProvinceApplyTool.buildBatch` 逐 GOV 调用）⇒ **`simos.province.apply` 很可能同样整批被拒**。同一个谎的产物 ⇒ **另派**，要求"**先复现红再修**"（照 `createOffice` 那两任的验收形制）。
+
+---
+
+## 9. ★★★ 批 3b 被 BLOCKED 揭出的**更严重的事**：`planOnly` 前置条件（2026-10-15）
+
+### 9.1 catalog 工具有一条**成文前置条件**：必须支持内部参数 `planOnly=true`
+
+`DecisionEffectExecutor` 类注（`:46-50`）写得很清楚：
+> 目标工具的 `preview=false` 路径直接 `submitBatch` —— 若执行器也走那条路，N 条 call 会落 N 条 revision，且不可能把 outcome 与效果写进同一批。**故目标工具新增内部参数 `planOnly=true`：走与 `preview=false` 完全相同的纯推导与组批，但在提交前把命令批返回给本执行器。**
+
+⇒ **`ProposalCatalog` 的每一条工具都必须支持它** —— 否则 `gm.packet.execute` 的"规划阶段"**会真落盘**。
+
+### 9.2 ★★ 实测：**现有 7 条里 4 条违反这条前置条件**（**在 main 里，今天就可达**）
+
+| 工具 | 是否真检查 `planOnly` |
+|---|---|
+| `GovRecruitTool` · `GovRetireStaffTool` · `GovSelectExamineesTool` · `GovDispatchTeamTool` | ❌ **收了参数、`apply` 里从不检查** ⇒ 直接 `submitBatchWithReceipt`（**写盘**） |
+| `RaiseUnitTool` · `LevyRegionTool` · `SocialHouseholdMembersTool` | ✅ 写之前先返回待提交命令批（★ 前者用 `if (planOnly)`、末者用 `request.planOnly()`） |
+
+**后果链（双写）**：
+```
+DM propose（这 4 条任一，已在 catalog 里）→ GM APPROVE → GM gm.packet.execute
+  → 执行器注入 planOnly=true（DecisionEffectExecutor:352），期望"只规划、不落盘、回传 plannedCommands"
+  → 那 4 条忽略 planOnly ⇒ **真的落盘了**（一条 revision 已经产生）
+  → 又不回传 plannedCommands ⇒ 执行器报 PLANNING_FAILED（:374-377）
+  → GM 看到失败、重试 ⇒ **再落一次**        ← ★★ 世界被写了两次，且 outcome 从未回写
+```
+★ **`GovBatchViews.planOnly(batch)`（`:34`）就是为此准备的现成件，而全仓零调用者** —— 四条工具把参数一路传下去、到 `apply` 丢掉。
+
+★ **为什么没被发现**：唯一跑 `gm.packet.execute` 的 `RealLlmGovScenarioTest` **被 `SIMOS_REAL_LLM` 默认跳过**；`simos-gov/src/test` 里 `planOnly` **零覆盖**。⇒ 与 §8.5 的 `province.apply` 同一个"门控 + 无覆盖"的死角。
+
+### 9.3 ★ 处置与优先级（控制方裁定）
+
+| 优先 | 内容 | 为什么这个顺序 |
+|---|---|---|
+| **P0** | **修那 4 条既有工具**，接上现成的 `GovBatchViews.planOnly` | 它们**今天就在 catalog 里、今天就可达** ⇒ 双写风险**已经在 main 里** |
+| **P1** | 给那 9 条 gov 类2工具补 `planOnly`（然后 3b 的补丁才能上） | 不补就上 3b = **把双写放进 main** ⇒ **禁止"先上一半"** |
+| **P2** | 3b 本体（`git apply .superpowers/sdd/2026-10-15-catalog-gov-tools/proposed-catalog-3b.patch`） | 它已验证 `git apply --check` 通过 |
+
+★ **硬性要求**：P0 与 P1 都必须**先复现红**（照 `createOffice`/`province.apply` 那两任的验收形制：仓库外夹具 → 真调 → 拿原文），并给出**"执行后世界只多一条 revision"**的判据。
+
+### 9.4 ★ 控制方自我更正（设计书 §8 两处错）
+
+1. **§8.3(1) 的可行性判据不成立**：我写"9 条全部实测支持 `preview`（命中 11–16 处/文件）⇒ 可行" —— **漏了 `planOnly` 这条前置条件**。`preview` 命中数只是静态迹象，**不是"能进 catalog"的证据**。
+2. **§8.3(3) 的事实错误**：我写"`simos.social.household.members` 是**查询**不是世界写" —— **错**。它是 `social.Add/Remove/TransferHouseholdMembers` **三条世界写的入口**（`SocialHouseholdMembersTool:29-34`）。⇒ **它留在 catalog**（已在、planOnly 合规、`householdId`/`from`/`to` 已被 scope 校验），**不移出**。
+
+### 9.5 本批**未做**（如实）
+
+- 补 `planOnly`（P0/P1，范围外）
+- **"工具面"那一维**：`validateCall` 在 `dm.allowedTools()` **为空时整条白名单检查被跳过** ⇒ DM 能 propose catalog 里**任何一条**。真封它要动 `DecisionCallerFactory.whitelistFor`（范围外，且会红 `GmActAsToolTest:94`）⇒ **单独立项**。
+- **资源面漏的三维**（逐条见 3b 台账 §3.3）：**币种**（`ResourcePaths` 无币种路径）· `issueMoney` 的 `actor:<q>_<r>` 国库格 · `assignPosts`/`openPostsToMarket` 的 `activity` 单位。
