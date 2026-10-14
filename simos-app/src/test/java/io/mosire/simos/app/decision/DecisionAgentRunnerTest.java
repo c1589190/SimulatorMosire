@@ -290,7 +290,7 @@ class DecisionAgentRunnerTest {
         LlmResponse.toolCall("call-world-write", "ga_IssueDirective", directiveArgs(frozenHead)),
         LlmResponse.toolCall(
             "call-packet",
-            "simos_sd_packet_intent",
+            "simos_ga_packet_intent",
             Map.of("text", "同时决策：先写包", "branch", "not-main", "expectedRevision", 999L)),
         LlmResponse.text("同时决策回合结束"));
 
@@ -302,7 +302,24 @@ class DecisionAgentRunnerTest {
     assertThat(sent)
         .as("世界写工具（sd.IssueDirective / GovPay 等）在冻结回合的工具面里必须消失")
         .doesNotContain("ga_IssueDirective")
-        .contains("simos_map_hex", "simos_sd_packet_intent", "simos_sd_packet_submit");
+        // ★★ 2026-10-14 批 B（设计书 §3.2 / I2）：**决策包七件套在冻结回合里一条都不能少**。
+        //   七个是：propose / revise / drop / intent / my / confirm / reopen —— 它们的分类由
+        //   DecisionToolNames.packetTools() 派生（DecisionAgentRunner.frozenKindOf）⇒ 漏一个就会被
+        //   整族移出冻结回合、DM 在问答期间改不了包，而**没有任何装配期错误提示**。故这里逐条写死七个。
+        .contains(
+            "simos_map_hex",
+            "simos_ga_packet_propose",
+            "simos_ga_packet_revise",
+            "simos_ga_packet_drop",
+            "simos_ga_packet_intent",
+            "simos_ga_packet_my",
+            "simos_ga_packet_confirm",
+            "simos_ga_packet_reopen")
+        .as(
+            "★★ 冻结回合的工具面**恰好 29 条** = 22 共享读 + 七个决策包工具（propose/revise/drop/intent/my/confirm/reopen）"
+                + "——多一条世界写就当场红。★ 旧文案写的『28』是手抄估计值，实测 29 ⇒ 以实测为准"
+                + "（本批真跑红在「Expected size: 28 but was: 29」；29 条逐条列在本轮 surefire 报告里）")
+        .hasSize(29);
 
     assertThat(turn.toolInvocations()).hasSize(3);
     assertThat(turn.toolInvocations().get(0).success())

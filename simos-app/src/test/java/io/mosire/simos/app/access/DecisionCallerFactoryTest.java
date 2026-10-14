@@ -27,7 +27,15 @@ import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.read.DecisionDocsTool;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
+import io.mosire.simos.ga.tools.write.AdjudicationAckTool;
+import io.mosire.simos.ga.tools.write.ConfirmPacketTool;
+import io.mosire.simos.ga.tools.write.DropCallTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
+import io.mosire.simos.ga.tools.write.MyPacketTool;
+import io.mosire.simos.ga.tools.write.PacketIntentTool;
+import io.mosire.simos.ga.tools.write.ProposeCallTool;
+import io.mosire.simos.ga.tools.write.ReopenPacketTool;
+import io.mosire.simos.ga.tools.write.ReviseCallTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.tools.write.UnitPlaceAtTool;
@@ -244,8 +252,10 @@ class DecisionCallerFactoryTest {
       //   它不再"跟着实现走"，而是钉住实现：漏一条/多一条都必须有人显式改规格。
       //   ★★ 2026-10-14 决策人互致消息：金名单**成员换了但条数不变**（−simos.sd.report −simos.sd.reports
       //     +simos.ga.message.send +simos.ga.message.inbox ⇒ 仍 48）⇒ 本行只把名字改对，判据一字未松。
+      //   ★★ 2026-10-14 决策自由化（批 B）：决策族改名 sd → ga（不计增）+ 净新增 revise / drop / reopen /
+      //     adjudication.ack ⇒ 金名单 50 → **54**（实测：真跑红在「Expected size: 51 but was: 54」）。
       assertThat(decisionFace)
-          .as("★ 决策人面 == 测试侧金名单（50 条，独立规格）")
+          .as("★ 决策人面 == 测试侧金名单（54 条，独立规格）")
           .containsExactlyInAnyOrderElementsOf(DecisionFaceGolden.ALL);
 
       Set<String> whitelist =
@@ -272,6 +282,29 @@ class DecisionCallerFactoryTest {
       assertThat(whitelist)
           .as("两条决策窄写必须在（语义就靠它们）")
           .contains(IssueDirectiveTool.NAME, SubmitVerdictTool.NAME);
+      // ★★ 2026-10-14 决策自由化（批 B）：**决策包七件套 + 推演确认**必须逐条钉死在决策人白名单里。
+      //   ★ 为什么单独一条：金名单相等断言已经覆盖了"多一条/少一条"，但这条把**是哪七条**写成可读的形状 ——
+      //     冻结回合里"七个决策包工具都能用"（设计书 §3.2/§4 I2）就靠它 + DecisionAgentRunnerTest 的冻结面用例两侧钉住。
+      assertThat(whitelist)
+          .as(
+              "★ 决策包七件套（propose/revise/drop/intent/my/confirm/reopen）+ 推演确认（adjudication.ack）"
+                  + "必须在决策人白名单里 —— 它们全是类3 DM_FREE（gate=ALLOW、零世界效果）")
+          .contains(
+              ProposeCallTool.NAME,
+              ReviseCallTool.NAME,
+              DropCallTool.NAME,
+              PacketIntentTool.NAME,
+              MyPacketTool.NAME,
+              ConfirmPacketTool.NAME,
+              ReopenPacketTool.NAME,
+              AdjudicationAckTool.NAME);
+      assertThat(whitelist)
+          .as("★ I2 反向：旧名一律不留（Alpha 不兼容旧档；旧名还在 = 命名收口没做完）")
+          .doesNotContain(
+              "simos.sd.propose",
+              "simos.sd.packet.intent",
+              "simos.sd.packet.my",
+              "simos.sd.packet.submit");
     }
   }
 

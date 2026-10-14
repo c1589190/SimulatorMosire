@@ -290,7 +290,10 @@ class AgentLibDocsWiringTest {
       // ① 装配期已为该 DM 挂上默认工作区（不是靠 GM 逐次手工）
       List<Mount> mounts = SimosToolSource.mountsOf(userKey(dmOneId));
       assertThat(mounts).as("① 装配期为 %s 挂了默认工作区（用户裁定：每个决策人开跑即有一块自己的地）", dmOneId).isNotEmpty();
-      assertThat(mounts.get(0).user()).as("I9：挂载的 user 必须等于决策人身份键").isEqualTo(userKey(dmOneId));
+      // ★★ 2026-10-14：按**挂载名**取私有工作区（`mounts` 是 ConcurrentHashMap 的哈希序 ⇒ `get(0)` 可能是 sim-log）。
+      assertThat(privateWorkspaceOf(dmOneId).user())
+          .as("I9：挂载的 user 必须等于决策人身份键")
+          .isEqualTo(userKey(dmOneId));
 
       SimulationState state = headState(shell);
       ToolContext ctx = factory.callerFor(dmOne, state, mapId());
@@ -421,13 +424,27 @@ class AgentLibDocsWiringTest {
       SimulationState state = headState(shell);
 
       // 两个 DM 的工作区是**两块不同的物理地**
-      List<Mount> one = SimosToolSource.mountsOf(userKey(dmOneId));
-      List<Mount> two = SimosToolSource.mountsOf(userKey(dmTwoId));
-      assertThat(one).as("DM1 有默认工作区").isNotEmpty();
-      assertThat(two).as("DM2 有默认工作区").isNotEmpty();
-      assertThat(one.get(0).dir())
-          .as("★ 两个 DM 的工作区必须是不同的物理目录（共用一块 = 越权）")
-          .isNotEqualTo(two.get(0).dir());
+      //
+      // ★★ 2026-10-14 修法（**按挂载名筛，不是"改顺序"**）：`SimosToolSource.mountsOf` 返回的是
+      //   `DefaultWorkspaceRegistry.mounts(user)` 的快照，而挂载表是 `ConcurrentHashMap` ⇒ **哈希序、不是插入序**。
+      //   每个决策人现在有**两条**挂载（私有 `workspace` + 公用 `sim-log`，后者是**有意共享同一物理目录**的）⇒
+      //   `get(0)` 会随机撞上 `sim-log`，让两个 DM 的 `get(0)` 拿到**同一个**公用目录 ⇒ 本用例假红
+      //   （实测：`/tmp/junit-*/…/workspaces/shared/sim-log` 两端逐字相等）。
+      //   ⇒ 判据改成"各自的**私有**工作区（mount name = `workspace`）必须是两块不同的物理地"——
+      //   这正是本条要守的东西（每个 DM 一块自己的地），而它**不**该被"公用推演日志是共享的"这件事干扰。
+      //   ★ 这不是放宽：`sim-log` 的共享是用户 2026-10-14 明确定的（"所有 DM/大部分 DM 都有读取权限"），
+      //     把共享目录当成"越权共用"才是判据搞错了对象。
+      Mount oneWorkspace = privateWorkspaceOf(dmOneId);
+      Mount twoWorkspace = privateWorkspaceOf(dmTwoId);
+      assertThat(SimosToolSource.mountsOf(userKey(dmOneId))).as("DM1 有挂载（含私有工作区）").isNotEmpty();
+      assertThat(SimosToolSource.mountsOf(userKey(dmTwoId))).as("DM2 有挂载（含私有工作区）").isNotEmpty();
+      assertThat(oneWorkspace.dir())
+          .as("★ 两个 DM 的**私有**工作区必须是不同的物理目录（共用一块 = 越权）")
+          .isNotEqualTo(twoWorkspace.dir());
+      // ★ 反证：公用推演日志**应当**是同一块物理地（否则共享就名不副实）—— 与上面那条一起把两个概念分开钉住。
+      assertThat(sharedSimLogOf(dmOneId).dir())
+          .as("★ 对照：公用推演日志（sim-log）**有意**是同一块物理地（用户 2026-10-14 裁定）")
+          .isEqualTo(sharedSimLogOf(dmTwoId).dir());
 
       ToolResult created =
           factory.execute(
@@ -540,6 +557,31 @@ class AgentLibDocsWiringTest {
   /** 决策人身份键（与 {@code DecisionCallerFactory.INSTANCE_ID_PREFIX} 同源；I9）。 */
   private static String userKey(String decisionMakerId) {
     return DecisionCallerFactory.INSTANCE_ID_PREFIX + decisionMakerId;
+  }
+
+  /**
+   * ★★ 某个决策人的**私有**工作区挂载（按挂载名筛，**不靠 {@code get(0)}**）。
+   *
+   * <p>★ 为什么必须按名字筛：{@code DefaultWorkspaceRegistry} 的挂载表是 {@code ConcurrentHashMap} ⇒ {@code
+   * mounts(user)} 是**哈希序不是插入序**；而每个决策人现在有两条挂载（私有 {@code workspace} + 公用 {@code sim-log}）⇒ {@code
+   * get(0)} 会随机拿到公用那条，把"两个 DM 共用一块地"这种**假越权**判成事实（真跑红过）。
+   */
+  private static Mount privateWorkspaceOf(String decisionMakerId) {
+    return mountNamed(decisionMakerId, SimosToolSource.DEFAULT_WORKSPACE_NAME);
+  }
+
+  /** 某个决策人身上的**公用推演日志**挂载（{@code sim-log}；有意与别人共享同一物理目录）。 */
+  private static Mount sharedSimLogOf(String decisionMakerId) {
+    return mountNamed(decisionMakerId, SimosToolSource.SHARED_SIM_LOG_NAME);
+  }
+
+  private static Mount mountNamed(String decisionMakerId, String mountName) {
+    return SimosToolSource.mountsOf(userKey(decisionMakerId)).stream()
+        .filter(mount -> mount.name().value().equals(mountName))
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new AssertionError("夹具：决策人 " + decisionMakerId + " 名下必须有名为 " + mountName + " 的挂载"));
   }
 
   /**

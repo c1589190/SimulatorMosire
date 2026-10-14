@@ -55,8 +55,12 @@ class McpPortTopologyTest {
           "simos.economy.hex",
           "simos.economy.ownership",
           "simos.gm.approvals",
+          // ★★ 2026-10-14 GM⇄DM 信件批：GM 侧收件箱（只读，GmOnlyRead）
+          "simos.gm.inbox",
           "simos.gm.packet",
           "simos.gm.packets",
+          // ★★ 2026-10-14 推演确认：GM 看板（只读，GmOnlyRead）
+          "simos.gm.round",
           "simos.gm.tool-usage",
           "simos.gov.info",
           "simos.llm.providers",
@@ -110,6 +114,8 @@ class McpPortTopologyTest {
           "simos.gm.adjustPopulation",
           "simos.gm.approve",
           "simos.gm.armyPayPolicy",
+          // ★★ 2026-10-14 GM⇄DM 信件批：GM 发信（写；非窄写 —— 不继承 AbstractNarrowWriteTool）
+          "simos.gm.message.send",
           "simos.gm.mergedPlan.apply",
           "simos.gm.mergedPlan.upsert",
           "simos.gm.packet.decide",
@@ -318,8 +324,8 @@ class McpPortTopologyTest {
 
       assertThat(toolNames(client))
           .as(
-              "J1：唯一口 = GM 组（173 条；★★ 2026-10-13 急停协议新增 3 条 GM-only 工具：stopReport 读 + contactWatch 窄写 + emergency.advance 通用写 ⇒ 163；"
-                  + "★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ **175**）")
+              "J1：唯一口 = GM 组（178 条；★★ 2026-10-13 急停协议新增 3 条 GM-only 工具：stopReport 读 + contactWatch 窄写 + emergency.advance 通用写 ⇒ 163；"
+                  + "★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ **175**；★★ 2026-10-14 GM⇄DM 信件 + 推演确认批 GM 面 +3（inbox 读 / message.send 写 / round 读）⇒ **178**，实测来源：本条真跑红在「Expected: 175 but was: 178」）")
           .containsExactlyInAnyOrderElementsOf(
               concat(
                   READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES, EXTERNAL_DOCS_WORKSPACE_TOOLS));

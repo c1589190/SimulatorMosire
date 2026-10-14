@@ -18,7 +18,7 @@ import java.util.Set;
  * 往决策人桶加/删任何一条工具而不同步本表 ⇒ 该用例当场红；反过来，改本表而没改 {@code roles()} 声明（或没挂桶）⇒ {@code
  * ToolRoleAudit.requireFaces} 在装配期当场抛。
  *
- * <p>★ <b>它是什么、不是什么</b>：它是**规格**（"决策人面就该是这 48 条"），不是生产常量的副本 —— 没有任何生产代码读它。 别处（{@code
+ * <p>★ <b>它是什么、不是什么</b>：它是**规格**（"决策人面就该是这 54 条"），不是生产常量的副本 —— 没有任何生产代码读它。 别处（{@code
  * GovToolsZ6Test} / {@code LlmToolNamesTest} 等）需要"决策人面的名字"却又不启 {@code Shell} 时也用它， 免得把同一份 44
  * 条抄成好几份。
  *
@@ -30,13 +30,19 @@ public final class DecisionFaceGolden {
   private DecisionFaceGolden() {}
 
   /**
-   * 决策人面的 50 条工具名（2026-10-12 B4b 冻结 44 条；★★ 2026-10-13 收尾测试第 3 层删掉幽灵 {@code simos.sd.combats} ⇒
+   * 决策人面的 54 条工具名（2026-10-12 B4b 冻结 44 条；★★ 2026-10-13 收尾测试第 3 层删掉幽灵 {@code simos.sd.combats} ⇒
    * 43；★★ 2026-10-13 取缔 Skill 系统删掉 Skill 读工具一条 ⇒ 42；★★ 2026-10-14 AgentLib Docs/Workspace 接入
    * +6（doc_list/read/query/append/create/edit）⇒ 48；★★ <b>2026-10-14 决策人互致消息</b>：旧上报族整族废弃 ⇒ 删 {@code
    * simos.sd.report}（写口）与 {@code simos.sd.reports}（读口）、加 {@code simos.ga.message.send} 与 {@code
    * simos.ga.message.inbox} ⇒ 那一步仍是 48（−2 +2，条数逐字不变但**成员换了**）；★★ <b>2026-10-14 上游 R8</b> （控制方裁定
    * §11.3）：{@code doc_guide} / {@code workspace_info} 两条"能力自述"工具都是纯读 ⇒ {@code {GM, DM}} ⇒ 48 →
-   * <b>50</b>。与 {@code roles()} 声明、两桶装配三处一致。
+   * <b>50</b>；★★ <b>2026-10-14 决策自由化（批 B）</b>：四件套改名 sd → ga（**改名不计增**）+ 净新增 revise / drop / reopen
+   * 与 adjudication.ack ⇒ <b>50 → 54</b>。与 {@code roles()} 声明、两桶装配三处一致。
+   *
+   * <p>★ <b>50 → 54 的算法（实测，不是照抄设计书）</b>：设计书 §7 只预测"DM 桶 50→51"，真跑读到的是 <b>54</b>。 逐条核过：决策族 4 → 8
+   * 条（改名 3 条不计增，净 +4：propose 之外新增 revise / drop / reopen 三条 + adjudication.ack 一条），其余 46 条一字未动 ⇒
+   * 54。★ 三条 GM 侧新工具（{@code gm.inbox} / {@code gm.message.send} / {@code gm.round}）{@code roles()}
+   * 只有 GM ⇒ 一条都不进本表。
    */
   public static final Set<String> ALL =
       Set.of(
@@ -100,10 +106,24 @@ public final class DecisionFaceGolden {
           "simos.gov.expandHousehold",
           "simos.gov.openPostsToMarket",
           // ★★ D2（2026-10-22 决策包计划）：决策包四件套。
-          "simos.sd.propose",
-          "simos.sd.packet.submit",
-          "simos.sd.packet.intent",
-          "simos.sd.packet.my",
+          // ★★ 2026-10-14 决策自由化（批 B）：四件套**改名** sd → ga，并长成**七件套 + 推演确认**。
+          //   改名（**不计增**，旧名一律不留 —— Alpha 不兼容旧档）：
+          //     simos.sd.propose        → simos.ga.packet.propose
+          //     simos.sd.packet.intent  → simos.ga.packet.intent
+          //     simos.sd.packet.my      → simos.ga.packet.my
+          //     simos.sd.packet.submit  → simos.ga.packet.confirm（"确认本 tick 全部决策"，DRAFT→PENDING）
+          //   净新增：revise / drop / reopen（自由改 / 删 / 撤回确认，都只在 DRAFT 上可用）
+          //   另加一条推演确认：simos.ga.adjudication.ack（{DM} + gate=ALLOW）。
+          "simos.ga.packet.propose",
+          "simos.ga.packet.revise",
+          "simos.ga.packet.drop",
+          "simos.ga.packet.intent",
+          "simos.ga.packet.my",
+          "simos.ga.packet.confirm",
+          "simos.ga.packet.reopen",
+          // ★★ 2026-10-14 推演确认（设计书 §3.5）：DM 对"GM 已推演"这件事表态 ⇒ 一条 PutInfo，
+          //   零世界效果、零新状态；GM 用 simos.gm.round 看谁确认了。
+          "simos.ga.adjudication.ack",
           // ★★ D4 的跨区上报写口 simos.sd.report **已随旧上报族整族废弃**（2026-10-14 决策人互致消息）
           //   ⇒ 它不在本表；取代它的是上面的 simos.ga.message.send（写感知层、闸门 = 事先授权）。
           // ★★ 2026-10-14 AgentLib Docs/Workspace 接入 +6：决策人能自由记录文档

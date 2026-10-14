@@ -126,10 +126,16 @@ class ShellAssemblySmokeTest {
    * simos.ga.message.inbox} ⇒ 仍 <b>48</b>。★ 正因为"条数不变"，换名字这件事**只能**由上面的极性锚点 （{@link #PEER} / {@link
    * #MESSAGE_SEND} / {@link #MESSAGE_INBOX}）与 `SimosToolsTest` 的 DM 桶 `contains`/`doesNotContain`
    * 钉住 —— 只数条数会漏掉这种成员替换。
+   *
+   * <p>★★ <b>2026-10-14 GM⇄DM 信件 + 推演确认批（A）+ 决策自由化（B）：GM 175 → 178、决策人 50 → 54</b> —— GM 面
+   * +3（{@code simos.gm.inbox} 读 / {@code simos.gm.message.send} 写 / {@code simos.gm.round} 读，三条
+   * {@code roles()} 只有 GM）；决策人面 +4（决策族 4 → 8 条：改名 3 条不计增，净新增 revise / drop / reopen 三条 + {@code
+   * simos.ga.adjudication.ack} 一条）。 ★ 实测来源：本条真跑，红在「GM 桶条数锚点 … Expected size: 175 but was:
+   * 178」与「决策人桶条数锚点 … Expected size: 50 but was: 54」（★ 设计书 §7 预测的是 DM 50→51，实测 54 ⇒ 以实测为准）。
    */
-  private static final int GM_BUCKET_SIZE = 175;
+  private static final int GM_BUCKET_SIZE = 178;
 
-  private static final int DECISION_BUCKET_SIZE = 50;
+  private static final int DECISION_BUCKET_SIZE = 54;
 
   /** 八个 codec（map / social / unit / economy / actor / ga / gov / army）。 */
   private static final int MODULE_COUNT = 8;

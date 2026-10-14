@@ -214,8 +214,14 @@ class SimosToolsTest {
           "simos.economy.hex",
           "simos.economy.ownership",
           "simos.gm.approvals",
+          // ★★ 2026-10-14 GM⇄DM 信件批：GM 侧两个新的**纯派生读口**（都实现 GmOnlyRead ⇒ 必进本名单）。
+          //   gm.inbox = 读 to=="gm" 的信（逐条带 answered）；gm.round = 看板（谁确认决策/有未答问题/确认推演）。
+          //   ★ 它们**没有**对应的"写"侧误会：漏登记会让 writeFaceCoveredByTheWriteGate() 把它们当写工具 ⇒
+          //     误要求 gate=Ask(classKey=SENSITIVE)，而它们实测是只读 ⇒ 那条用例当场红（真跑过）。
+          "simos.gm.inbox",
           "simos.gm.packet",
           "simos.gm.packets",
+          "simos.gm.round",
           "simos.gm.tool-usage",
           "simos.gov.info",
           "simos.llm.providers",
@@ -244,7 +250,7 @@ class SimosToolsTest {
           "simos.unit.list");
 
   /**
-   * ★ **只给 GM 桶的读工具**（实现 {@code GmOnlyRead} 的那些，15 条）。
+   * ★ **只给 GM 桶的读工具**（实现 {@code GmOnlyRead} 的那些，17 条）。
    *
    * <p>★★ 2026-10-13 急停协议：{@code simos.army.stopReport} 的 {@code payload.hex}
    * 是**视野之外**的军队位置（中央视角信息）， 决策人看不见（D-002 中央不设全视野）⇒ 它是 GM-only 读口，必须在这里登记（名单口径 = 实现 {@code
@@ -255,8 +261,13 @@ class SimosToolsTest {
           "simos.army.stopReport",
           "simos.economy.ownership",
           "simos.gm.approvals",
+          // ★★ 2026-10-14 GM⇄DM 信件批 +2（15 → 17）：两条新读口都实现 GmOnlyRead。
+          //   gm.inbox：`to=="gm"` 的信 + answered 派生列；gm.round：GM 看板（一次看"谁确认决策/谁有未答问题/谁确认推演"）。
+          //   ★ 口径 = 实现 GmOnlyRead 的那些（不是手挑），故它们必须在这里登记。
+          "simos.gm.inbox",
           "simos.gm.packet",
           "simos.gm.packets",
+          "simos.gm.round",
           "simos.gm.tool-usage",
           "simos.llm.providers",
           "simos.map.block",
@@ -269,7 +280,7 @@ class SimosToolsTest {
           "simos.sd.verdicts");
 
   /**
-   * 非窄写写工具（62 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
+   * 非窄写写工具（63 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
    *
    * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
    * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这批从差集里扣掉。
@@ -305,6 +316,11 @@ class SimosToolsTest {
           "simos.gm.approve",
           "simos.gm.armyPayPolicy",
           "simos.gm.govMarketMandate",
+          // ★★ 2026-10-14 GM⇄DM 信件批 +1（62 → 63）：GM 发信是**非窄写**（只 implements SimosTool，
+          //   不继承 AbstractNarrowWriteTool ⇒ 窄写扫描器扫不到它）。它是 GM 面上**唯一**新增的写工具
+          //   （另两条 gm.inbox / gm.round 是读）。★ 决策人面那 4 条（propose/revise/drop/reopen/confirm/
+          //   intent/my/adjudication.ack）**只有 DM** ⇒ 不进本名单。
+          "simos.gm.message.send",
           "simos.gm.mergedPlan.apply",
           "simos.gm.mergedPlan.upsert",
           "simos.gm.packet.decide",
@@ -1181,8 +1197,14 @@ class SimosToolsTest {
                 + "★★ 2026-10-14 AgentLib Docs/Workspace 接入：GM 面 **+10**（7 条 doc_* + 3 条工作区；"
                 + "doc_void 与 3 条工作区工具只有 GM）⇒ 163 → **173**（实测：真壳 GM_SIZE=173）；"
                 + "★★ 2026-10-14 上游 R8：{@code doc_guide} / {@code workspace_info} 两条能力自述工具 {GM, DM} + ALLOW"
-                + "（控制方裁定 §11.3）⇒ 173 → **175**（实测：本条改前真跑红在「Expected size: 173 but was: 175」）")
-        .hasSize(175);
+                + "（控制方裁定 §11.3）⇒ 173 → **175**（实测：本条改前真跑红在「Expected size: 173 but was: 175」）；"
+                + "★★ 2026-10-14 GM⇄DM 信件 + 推演确认批：GM 面 **+3**、决策人面 **+1**、磁盘扫描面 **+7** —— "
+                + "新增 {@code gm.inbox}（读，GmOnlyRead）/ {@code gm.message.send}（写，非窄写）/ {@code gm.round}（读，GmOnlyRead）"
+                + "三条**只有 GM**；{@code ga.adjudication.ack}（写，非窄写）**只有决策人** ⇒ GM 面 175 → **178**"
+                + "（实测：真壳 GM 桶 178 = 37 读 + 141 写；本条与 {@code everyToolClassOnDiskIsRegisteredInSomeBucket} "
+                + "的 174 → 181、{@code McpServerTest}/{@code McpPortTopologyTest} 的 175 → 178、"
+                + "{@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 同一次真跑读数）")
+        .hasSize(178);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1219,8 +1241,19 @@ class SimosToolsTest {
                 + "★★ 2026-10-14 决策人互致消息：**总数仍 48**（−simos.sd.report −simos.sd.reports +simos.ga.message.send +simos.ga.message.inbox）"
                 + "⇒ 那一步 hasSize 不动，但上面几行**逐条钉住了换的是哪两个名字**（只数条数会漏掉这种成员替换）；"
                 + "★★ 2026-10-14 上游 R8：{@code doc_guide} / {@code workspace_info} 两条也 {GM, DM} ⇒ 48 → **50**"
-                + "（实测：与本批的 GM 175 同一次真壳计数）")
-        .hasSize(50);
+                + "（实测：与本批的 GM 175 同一次真壳计数）；"
+                + "★★ 2026-10-14 GM⇄DM 信件 + 推演确认批：决策人面 **+4 ⇒ 54**（★ 先把**实测值**跑出来再写死，不是照抄"
+                + "设计书的预测值 —— 设计书 §7 只预测了「DM 桶 50→51」，实测 54，差 3 条）。"
+                + "决策族从「4 条」长成「8 条」：旧 {@code sd.packet.intent} / {@code sd.packet.my} 改名成 "
+                + "{@code ga.packet.intent} / {@code ga.packet.my}、旧 {@code sd.packet.submit} 改名成 "
+                + "{@code ga.packet.confirm}（**改名不计增**），净新增 {@code ga.packet.propose}（旧 "
+                + "{@code sd.propose} 改名）、{@code ga.packet.revise}、{@code ga.packet.drop}、"
+                + "{@code ga.packet.reopen}、{@code ga.adjudication.ack} 五条 ⇒ 50 + 4（8 − 4）= **54**。"
+                + "★ 三条 GM 侧新工具（{@code gm.inbox} / {@code gm.message.send} / {@code gm.round}）"
+                + "**一条都不进本桶**（roles 只有 GM）⇒ 本桶只由决策族驱动。"
+                + "实测：本条真跑红在「Expected size: 51 but was: 54」，上面那条是机械读数（与 "
+                + "{@code DecisionFaceGolden} 同一次读数）")
+        .hasSize(54);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -1337,7 +1370,10 @@ class SimosToolsTest {
         .as(
             "GM 窄写必须逐条等于 NARROW_WRITE_NAMES（66 条：其余 + 8 map + 8 economy + 28 unit + 15 sd + 1 peer；"
                 + "2026-10-13 急停协议 +1 条 army 窄写。★★ 2026-10-14 起外来 10 条在派生前就排除——"
-                + "它们不在本仓源码里，不是窄写类）")
+                + "它们不在本仓源码里，不是窄写类。★★ 2026-10-14 GM⇄DM 信件批：GM 面新增的**写**只有 "
+                + "{@code simos.gm.message.send} 一条，且它是**非窄写**（不继承基类）⇒ 已登记进 NON_NARROW_WRITE_NAMES"
+                + "（62 → 63），本名单（磁盘窄写类集合）**一条不动**；批 B 的 revise/drop/reopen/confirm/intent/my "
+                + "与 adjudication.ack 全是 {@code {DM}} ⇒ 不在 GM 桶，也不在磁盘窄写扫描面）")
         .containsExactlyInAnyOrderElementsOf(NARROW_WRITE_NAMES);
 
     // ★ D5：决策人桶里也有窄写（两条外交命令型窄工具）——它们同样必须在册，不能成为"扫描器盲区"。
@@ -1532,7 +1568,15 @@ class SimosToolsTest {
             new Case("simos.gov.info", Map.of(), "governments"),
             // ★★ 2026-10-13 急停协议：原因系统读口的最小形状。本进程还没急停过 ⇒ present=false
             //   （★ 进程内观测、重启即失 —— 读不到 ≠ 世界从没停过，见工具 description 的三处写明）。
-            new Case("simos.army.stopReport", Map.of(), "present"));
+            new Case("simos.army.stopReport", Map.of(), "present"),
+            // ★★ 2026-10-14 GM⇄DM 信件 + 推演确认批：GM 侧两个新读口的最小形状。
+            //   gm.inbox = `to=="gm"` 的信（+ 派生列 answered）；创世还没人写过信 ⇒ messages=[]、count=0
+            //   （空数组**就是**本轮的正确最小形状，不是"没测到"）。
+            new Case("simos.gm.inbox", Map.of(), "messages"),
+            //   gm.round = GM 看板：逐 DM 一行（packetStatus / callCount / openQuestions /
+            // adjudicationAcked）。
+            //   ★ 本夹具的决策人桶里**有**决策人（seedGenesis 种了 dm-m4）⇒ decisionMakers 非空路径真被走到。
+            new Case("simos.gm.round", Map.of(), "decisionMakers"));
     List<String> covered = new ArrayList<>();
     for (Case c : cases) {
       shell.toolRegistry().find(c.tool()).orElseThrow(); // 前置：名字必须真在注册表里
@@ -2076,8 +2120,14 @@ class SimosToolsTest {
                 + "{@code GaMessageInboxTool}（新收发两工具，+2）、新增 {@code SetDecisionMakerPeerTool}（GM 的授权命令"
                 + "工具，+1）⇒ **实测 173 → 174**（★ 判别力就在这个值本身：它由磁盘源码扫描给出，故『多写一个工具类却忘了"
                 + "注册』与『注册了源码里没有的名字』两侧都靠它钉着 —— 不改成正则/动态推导）；"
+                + "★★ 2026-10-14 GM⇄DM 信件 + 推演确认批：磁盘上 **+7 个 *Tool.java ⇒ 实测 174 → 181** —— "
+                + "批 A 4 条（{@code GmInboxTool} 读 / {@code GmMessageSendTool} 写 / {@code GmRoundTool} 读 / "
+                + "{@code AdjudicationAckTool} 写）+ 批 B 3 条（{@code ReviseCallTool} / {@code DropCallTool} / "
+                + "{@code ReopenPacketTool}，均写）；批 B 另把 {@code SubmitPacketTool} 用 {@code git mv} 改名成 "
+                + "{@code ConfirmPacketTool}（改名 ⇒ 计数不变）。★ 逐条核过：7 条全部已在磁盘、其中 4 条只有 GM、"
+                + "4 条只有 DM（{@code adjudication.ack} + 批 B 三件套）⇒ 与 GM 桶 175→178、决策人桶 50→51 三条读数自洽；"
                 + "扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(174);
+        .hasSize(181);
 
     List<String> union =
         Stream.concat(

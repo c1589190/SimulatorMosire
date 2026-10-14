@@ -69,6 +69,13 @@ class DmMessagingEndToEndTest {
   private static final List<String> OLD_REPORT_FAMILY =
       List.of("simos.sd.report", "simos.sd.reports");
 
+  /**
+   * ★★ 同 tick 同方向信件上限（设计书 §9-C 用户裁定「至少改成128」）—— ★ 本文件是**独立规格**，故写死字面量而**不**读 {@code
+   * GaMessageSendTool.MAX_MESSAGES_PER_TICK_PER_DIRECTION}：读常量的话，"上限被改成 1"这种变异会让本用例**跟着一起变小** （发 1
+   * 条、第 2 条被拒 ⇒ 照样绿），判别力归零。写死 128 ⇒ 上限被动过就当场红。
+   */
+  private static final int SAME_TICK_MESSAGE_LIMIT = 128;
+
   private final String suffix = Long.toHexString(System.nanoTime());
 
   /** A / B：被授权互通的一对（P1/P2/P4/P5）。 */
@@ -219,34 +226,55 @@ class DmMessagingEndToEndTest {
   // ── P4 ────────────────────────────────────────────────────────────────────────────────────
 
   /**
-   * ★★ <b>P4 每 tick 每方向一条（I1）</b>：A 在同一 tick 给 B 发第二条 ⇒ **命令期具名拒**（条目 id 已存在）， 且零 revision；B 的
-   * inbox 仍然只有第一条。
+   * ★★ <b>P4 同 tick 同方向上限 = 128 条（I9；设计书 §9-C 用户裁定）</b>：同一 tick 里 A→B 连发 <b>128</b> 条全部成功
+   * （问答要多轮，一条一条发不够用），<b>第 129 条</b> ⇒ <b>命令期具名拒</b>、<b>世界零变化</b>；B 的 inbox 仍然只有 128 条。
    *
-   * <p>★ 为什么"每 tick 一条"不需要自建限流器：条目 id = {@code msg-<from>-<to>-<tick>}，而 {@code PutInfoHandler} 对显式
-   * id **命令期重复即拒**。本用例就是那条机制的靶子（N2 变异：去掉显式 id ⇒ 本用例红）。
+   * <p>★★ <b>2026-10-14 换靶子</b>（用户原话「这个上限太傻逼了，至少改成128」）：旧判据是"同 tick 第二条即拒"， 机制是条目 id = {@code
+   * msg-<from>-<to>-<tick>}（无序号）⇒ {@code PutInfoHandler} 命令期重复即拒。批 A 把 id 改成 {@code
+   * msg-<from>-<to>-<tick>-<n>}（{@code n} = 0..127）⇒ 上限变成**命令期判的 128**。本条把靶子从"第 2 条"移到 "第
+   * <b>129</b> 条"——<b>判据强度不变</b>（仍是"命令期具名拒 + 世界零变化 + 收件箱不被污染"），只是上限值按裁定改了。
+   *
+   * <p>★ <b>为什么上限必须落在命令期、且必须真发到 129</b>：只在提示词里写"别发太多"等于没限（设计书 §9-C 明写"命令期判，不是提示词"）； 而"第 129
+   * 条被拒"只有真发到第 129 条才会现形 —— 少发一条、或多放一条，本条都红。★ 正向一侧（前 128 条**全部**成功）同样 不能省：只钉"第 129 条被拒"的话，一个"上限 =
+   * 3"的实现照样绿。
    */
   @Test
-  void p4_secondMessageInTheSameTickIsRejectedByNameAndLeavesNoRevision() {
+  void p4_the129thMessageInTheSameTickIsRejectedByNameAndLeavesNoRevision() {
     try (Shell shell = startShell(seedStoreWithDecisionMakers())) {
       authorize(shell, dmAId, dmBId);
-      assertThat(sendAs(shell, dmAId, dmBId, "第一条", "第一封").success()).as("前提：第一条成功").isTrue();
 
-      long beforeSecond = head(shell);
-      ToolResult second = sendAs(shell, dmAId, dmBId, "第二条", "第二封");
+      // ① 128 条必须**全部**成功（正向一侧：127 条也算不出 128 这个值）。
+      for (int i = 0; i < SAME_TICK_MESSAGE_LIMIT; i++) {
+        ToolResult sent = sendAs(shell, dmAId, dmBId, "第" + i + "条", "正文" + i);
+        assertThat(sent.success())
+            .as(
+                "★★ P4 上限的正向一侧：第 %d 条（上限 %d）必须成功；实得 %s",
+                i + 1, SAME_TICK_MESSAGE_LIMIT, sent.message())
+            .isTrue();
+      }
+      // ★ 窗口显式给足（缺省 20 会把"发送侧上限"测成"读口窗口"——两个数不是一回事）。
+      assertThat(count(inboxAs(shell, dmBId, SAME_TICK_MESSAGE_LIMIT)))
+          .as("P4：128 条全在 B 的收件箱里（多条不是被静默丢掉）")
+          .isEqualTo(SAME_TICK_MESSAGE_LIMIT);
 
-      assertThat(second.success()).as("★★ P4：同 tick 第二条必须被拒").isFalse();
-      assertThat(second.code())
-          .as("P4：拒在**命令期**（submission.result=rejected）")
-          .isEqualTo("REJECTED");
-      assertThat(second.message())
-          .as("★ P4：具名拒 —— 文案点出撞的是哪个条目 id")
-          .contains("INFO 条目 id 已存在")
-          .contains("msg-" + dmAId + "-" + dmBId + "-" + tick(shell));
-      assertThat(head(shell)).as("★★ P4：被拒 = 零 revision").isEqualTo(beforeSecond);
+      // ② 第 129 条 ⇒ 命令期具名拒 + 世界零变化。
+      long beforeOverflow = head(shell);
+      ToolResult overflow = sendAs(shell, dmAId, dmBId, "第129条", "超限的那一封");
 
-      ToolResult inboxB = inboxAs(shell, dmBId);
-      assertThat(count(inboxB)).as("P4：B 仍然只有第一条").isEqualTo(1L);
-      assertThat(inboxB.message()).contains("第一封").doesNotContain("第二封");
+      assertThat(overflow.success()).as("★★ P4：同 tick 第 129 条必须被拒").isFalse();
+      assertThat(overflow.code())
+          .as("P4：拒因是**用法错**（BAD_REQUEST = 改行为：等下一个 tick），不是资源够不着")
+          .isEqualTo("BAD_REQUEST");
+      assertThat(overflow.message())
+          .as("★ P4：具名拒 —— 文案点出上限（模型据此知道'够了'，而不是含糊地失败）")
+          .contains(String.valueOf(SAME_TICK_MESSAGE_LIMIT))
+          .contains("命令期拒、世界零变化");
+      assertThat(head(shell)).as("★★ P4：被拒 = 零 revision").isEqualTo(beforeOverflow);
+
+      ToolResult inboxB = inboxAs(shell, dmBId, SAME_TICK_MESSAGE_LIMIT);
+      assertThat(count(inboxB)).as("P4：B 仍然只有 128 条").isEqualTo(SAME_TICK_MESSAGE_LIMIT);
+      assertThat(inboxB.message()).as("★ P4：超限那一条的正文一个字都没落地").doesNotContain("超限的那一封");
+      assertThat(inboxB.message()).as("★ P4：第 128 条（最后一条合法信）必须在").contains("正文127");
     }
   }
 
@@ -645,6 +673,17 @@ class DmMessagingEndToEndTest {
 
   private ToolResult inboxAs(Shell shell, String dmId) {
     return dmCall(shell, dmId, INBOX, Map.of());
+  }
+
+  /**
+   * ★ 显式要一个**足够大的窗口**的收件箱（{@code GaMessageInboxTool.DEFAULT_LIMIT = 50}；P4 要一次看全 128 条）。
+   *
+   * <p>★ 为什么必须显式给：{@code inbox} 的缺省窗口是"最近 50 条"（硬上限 200，超限具名拒）—— 用缺省窗口去数 128 条 只会读到
+   * 50，那读到的就是**读口窗口**而不是**发送侧上限**，P4 的正向一侧会变成假红（实测踩到： 「expected: 128L but was: 50L」—— 50
+   * 正是缺省窗口）。窗口与上限是两件事，判据要的是后者。
+   */
+  private ToolResult inboxAs(Shell shell, String dmId, long limit) {
+    return dmCall(shell, dmId, INBOX, Map.of("limit", limit));
   }
 
   /** 以某个决策人的身份经**唯一入口**（{@code ToolCallAuthorizer}）调一条决策人面工具。 */

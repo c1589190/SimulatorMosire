@@ -194,11 +194,18 @@ class McpServerTest {
           "simos.gm.armyPayPolicy",
           "simos.gm.mergedPlan.apply",
           "simos.gm.mergedPlan.upsert",
+          // ★★ 2026-10-14 GM⇄DM 信件批：GM 侧收件箱（只读；列 `to=="gm"` 的信 + 派生列 answered）
+          "simos.gm.inbox",
+          // ★★ 2026-10-14 GM⇄DM 信件批：GM 发信（写，非窄写；gate=Ask 走 GM 链无脑过）
+          "simos.gm.message.send",
           "simos.gm.packet",
           "simos.gm.packet.decide",
           "simos.gm.packet.execute",
           "simos.gm.packets",
           "simos.gm.periodicAdjustment",
+          // ★★ 2026-10-14 推演确认（设计书 §3.5）：GM 看板（只读；逐 DM 一行的 packetStatus /
+          //   callCount / openQuestions / adjudicationAcked）
+          "simos.gm.round",
           "simos.gm.tool-usage",
           "simos.gm.vitalRates",
           "simos.gov.absorbUnit",
@@ -364,7 +371,7 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 175 条（★★ 2026-10-13 急停协议：三条新工具且 roles() 只有 GM ⇒ 160 → 163；★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条 ⇒ 161 → 160；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2；★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ 175）")
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 178 条（★★ 2026-10-13 急停协议：三条新工具且 roles() 只有 GM ⇒ 160 → 163；★★ 2026-10-13 取缔 Skill 系统：删掉 Skill 读工具一条 ⇒ 161 → 160；W2 按实测补 simos.economy.setMarketZonePriceAlpha；W5-fix6 按实测补 simos.economy.setGovernmentMintScale；W5.5 按实测补 simos.economy.setMarketZoneLoanRateAlpha；W10 按实测补 simos.economy.setEconomyPolicy；D1–D5 + C5b + S3a + Z6 后逐条同源 + 2026-10-09 实测补 A1/A2a/B2；★★ 2026-10-14 Docs/Workspace 接入 +10 ⇒ 173；★★ 2026-10-14 决策人互致消息 −simos.sd.reports +ga.SetDecisionMakerPeer ⇒ 仍 173；★★ 2026-10-14 上游 R8 两条能力自述工具 {GM, DM} ⇒ 175；★★ 2026-10-14 GM⇄DM 信件 + 推演确认批 GM 面 +3（inbox 读 / message.send 写 / round 读）⇒ **178**，实测来源：本条真跑红在「Expected size: 175 but was: 178」）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

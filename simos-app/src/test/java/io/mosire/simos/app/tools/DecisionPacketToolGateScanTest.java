@@ -1,0 +1,286 @@
+package io.mosire.simos.app.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import io.mosire.agentlib.tool.AgentTool;
+import io.mosire.simos.app.Shell;
+import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.ga.tools.ToolBuckets;
+import io.mosire.simos.ga.tools.read.DecisionDocsTool;
+import io.mosire.simos.ga.tools.read.DecisionResultsTool;
+import io.mosire.simos.ga.tools.read.GaMessageInboxTool;
+import io.mosire.simos.ga.tools.write.AdjudicationAckTool;
+import io.mosire.simos.ga.tools.write.ConfirmPacketTool;
+import io.mosire.simos.ga.tools.write.DropCallTool;
+import io.mosire.simos.ga.tools.write.GaMessageSendTool;
+import io.mosire.simos.ga.tools.write.MyPacketTool;
+import io.mosire.simos.ga.tools.write.PacketIntentTool;
+import io.mosire.simos.ga.tools.write.ProposeCallTool;
+import io.mosire.simos.ga.tools.write.ReopenPacketTool;
+import io.mosire.simos.ga.tools.write.ReviseCallTool;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * ★★ <b>§6.1 N10（I2 的机械判据）：决策人面的工具源码扫描 —— {@code gate()} 出现 {@code Ask} ⇒ 当场红； {@code roles()} 不是
+ * {@code {DM}} ⇒ 当场红</b>。
+ *
+ * <p>★ <b>为什么必须是「扫源码」而不是「跑一遍看行为」</b>（设计书 §6.1 N10 的原话："源码扫描当场红"）：行为用例只能证明 "这一条路径上没走到 Ask"；而 {@code
+ * gate()} 是一段**声明**，它的坏法恰恰是"在某个分支下返回 As k" ——那个分支可能只在无人值守/未绑定 provider 时走到（{@code
+ * AskKind.SENSITIVE} 的类注：「**永远到人**」， 无人值守时每调一次阻塞上限 5 分钟后 {@code APPROVAL_DENIED}）。⇒
+ * 只有把**源码文本**当判据，才能在装配期就把它钉死。
+ *
+ * <p>★★ <b>它守的是什么失效形态（G8 的原话）</b>：本批之前 {@code propose} / {@code packet.intent} / {@code
+ * packet.submit} 是 {@code Ask + SENSITIVE} ⇒ 决策-提交流程在无人值守时**根本走不完**。用户同日裁定"决策-提交流程属 DM 无条件执行" ⇒
+ * 这一族工具的 {@code gate()} 只能有 {@code ALLOW}。★ 这条扫描器就是那条裁定的可执行形态。
+ *
+ * <p>★ <b>形制照 {@code SimosToolsTest} 的既有扫描器</b>（{@code
+ * everyNarrowWriteToolClassIsWiredIntoTheGmBucket} / {@code
+ * everyToolClassOnDiskIsRegisteredInSomeBucket}）：按**相对模块目录**定位源码（surefire 的工作目录是 {@code
+ * simos-app/}）⇒ 主树与 worktree 里都成立；★ 并**先断言扫描面非空**（"空 == 空"恒真是本仓踩过的陷阱）。
+ */
+class DecisionPacketToolGateScanTest {
+
+  @TempDir Path tempDir;
+
+  /** 决策包七件套 + 推演确认：**必须** {@code gate()=ALLOW}、{@code roles()={DM}}（设计书 §5 类3 DM_FREE）。 */
+  private static final List<String> DM_FREE_TOOLS =
+      List.of(
+          ProposeCallTool.NAME,
+          ReviseCallTool.NAME,
+          DropCallTool.NAME,
+          PacketIntentTool.NAME,
+          MyPacketTool.NAME,
+          ConfirmPacketTool.NAME,
+          ReopenPacketTool.NAME,
+          AdjudicationAckTool.NAME,
+          // ★ 2026-10-14 批 A：DM→GM 发信也是类3（写的是自己的疑问，产物要经 GM 裁决才生效）
+          GaMessageSendTool.NAME,
+          GaMessageInboxTool.NAME);
+
+  /**
+   * 决策人面的**读**工具（类3 的另一半：{@code ALLOW} + {@code {DM}}）。★ 它们不在"七件套"里，但 I2 的判据 （"DM 面工具里没有一个 {@code
+   * gate().Ask}"）覆盖它们，故一并扫。
+   */
+  private static final List<String> DM_READ_TOOLS =
+      List.of(DecisionResultsTool.NAME, DecisionDocsTool.NAME);
+
+  /** 这十条的实现类（相对 {@code simos-ga/src/main/java/...} 的文件名）—— 扫描面由**显式清单**给出，不靠目录推断。 */
+  private static final Map<String, String> TOOL_CLASSES = new LinkedHashMap<>();
+
+  static {
+    TOOL_CLASSES.put(ProposeCallTool.NAME, "write/ProposeCallTool.java");
+    TOOL_CLASSES.put(ReviseCallTool.NAME, "write/ReviseCallTool.java");
+    TOOL_CLASSES.put(DropCallTool.NAME, "write/DropCallTool.java");
+    TOOL_CLASSES.put(PacketIntentTool.NAME, "write/PacketIntentTool.java");
+    TOOL_CLASSES.put(MyPacketTool.NAME, "write/MyPacketTool.java");
+    TOOL_CLASSES.put(ConfirmPacketTool.NAME, "write/ConfirmPacketTool.java");
+    TOOL_CLASSES.put(ReopenPacketTool.NAME, "write/ReopenPacketTool.java");
+    TOOL_CLASSES.put(AdjudicationAckTool.NAME, "write/AdjudicationAckTool.java");
+    TOOL_CLASSES.put(GaMessageSendTool.NAME, "write/GaMessageSendTool.java");
+    TOOL_CLASSES.put(GaMessageInboxTool.NAME, "read/GaMessageInboxTool.java");
+    TOOL_CLASSES.put(DecisionResultsTool.NAME, "read/DecisionResultsTool.java");
+    TOOL_CLASSES.put(DecisionDocsTool.NAME, "read/DecisionDocsTool.java");
+  }
+
+  /**
+   * ★★ <b>N10 主体：逐文件的 {@code gate()} / {@code roles()} 源码扫描</b>。
+   *
+   * <p>三条判据，每条都在**源码文本**上：
+   *
+   * <ol>
+   *   <li>{@code gate()} 方法体里不得出现 {@code Ask}（{@code ToolGate.Ask} / {@code AskKind}）⇒ 类3 只能是
+   *       ALLOW；
+   *   <li>{@code gate()} 方法体里必须有 {@code ToolGate.ALLOW}（★ 防"把 gate() 整个删掉" ⇒ 删掉后默认是什么？ 默认不是 ALLOW
+   *       而是走审批链的缺省 ⇒ 必须显式写出来）；
+   *   <li>{@code roles()} 方法体里必须是 {@code Set.of(ToolRole.DM)}（**恰好一条** DM）—— 出现 {@code ToolRole.GM}
+   *       或出现第二个角色 ⇒ 当场红。
+   * </ol>
+   */
+  @Test
+  void everyDecisionFaceToolDeclaresAllowAndDmOnlyInSource() throws IOException {
+    Path gaMain = gaMainJava();
+    System.out.println(
+        "[SCAN] cwd="
+            + Paths.get(".").toAbsolutePath()
+            + " root="
+            + gaMain.toAbsolutePath()
+            + " isDir="
+            + Files.isDirectory(gaMain));
+    assertThat(Files.isDirectory(gaMain))
+        .as("★ 扫描根必须存在（否则下面的'扫到 0 条'会伪装成通过）：%s", gaMain.toAbsolutePath())
+        .isTrue();
+
+    int scanned = 0;
+    int explicitGateCount = 0;
+    for (Map.Entry<String, String> entry : TOOL_CLASSES.entrySet()) {
+      String toolName = entry.getKey();
+      Path file = gaMain.resolve(entry.getValue());
+      assertThat(Files.isRegularFile(file))
+          .as("★ 扫描面必须命中（%s 的源码不在 %s ⇒ 扫描器静默 = 判据失效）", toolName, entry.getValue())
+          .isTrue();
+      String source = Files.readString(file);
+      assertThat(source)
+          .as("★ 命名判据：%s 的源码里必须逐字写着它自己的 NAME（改错文件时当场红）", toolName)
+          .contains("\"" + toolName + "\"");
+
+      // ★★ N10 第 1 条：gate() **里**不得出现 Ask。★ 分「显式覆写」与「走接口缺省」两种合法形态：
+      //   · 显式覆写（写工具，如 propose/confirm/...）⇒ 必须逐字写着 ToolGate.ALLOW；
+      //   · 完全没有 gate()（纯读工具，如 MyPacketTool / DecisionResultsTool / DecisionDocsTool /
+      //     GaMessageInboxTool）⇒ 走 `AgentTool.gate()` 的**接口缺省**，而那一条实测就是 `ToolGate.ALLOW`
+      //     （`javap -c io.mosire.agentlib.tool.AgentTool` ⇒ `getstatic ToolGate.ALLOW; areturn`）。
+      //   ★ 两种形态都满足"没有 Ask"；本条**不**要求每个类都显式写一遍 —— 那会变成第二处真相
+      //     （SimosTool 的类注原话：「审批链按**装配**决定…把它写进接口 = 第二处真相」）。
+      //   ★★ 变异靶子：把任一显式 gate() 的 `ToolGate.ALLOW` 改成 `new ToolGate.Ask(...)` ⇒ 本循环当场红。
+      String gateBody = optionalMethodBody(source, "gate");
+      if (gateBody != null) {
+        assertThat(gateBody)
+            .as("★★ N10（I2）：%s 的 gate() 里出现了 Ask —— 决策-提交流程属 DM 无条件执行（用户裁定），只能是 ALLOW", toolName)
+            .doesNotContain("Ask");
+        assertThat(gateBody)
+            .as("★ N10：%s 显式覆写了 gate() ⇒ 必须逐字返回 ToolGate.ALLOW", toolName)
+            .contains("ToolGate.ALLOW");
+        explicitGateCount++;
+      }
+
+      String rolesBody = methodBody(source, "roles");
+      assertThat(rolesBody)
+          .as("★★ N10：%s 的 roles() 必须是 {DM}（进 GM 桶 = 决策人面被放大）", toolName)
+          .contains("ToolRole.DM")
+          .doesNotContain("ToolRole.GM")
+          .doesNotContain("ToolRole.SYSTEM");
+      assertThat(countOccurrences(rolesBody, "ToolRole."))
+          .as("★★ N10：%s 的 roles() 必须**恰好一条**角色（多一条 = 可达面被静默放大）", toolName)
+          .isEqualTo(1);
+
+      scanned++;
+    }
+    assertThat(scanned)
+        .as("★ 扫描器自证：必须真的扫到全部 %d 条（扫到 0/漏文件 = 「空 == 空」陷阱）", TOOL_CLASSES.size())
+        .isEqualTo(TOOL_CLASSES.size());
+    // ★ 扫描器自证之二：**显式 gate() 的那一批**也要有预期条数——否则"gate() 全被删掉"会让本扫描器静默变成空转
+    //   （接口缺省仍是 ALLOW ⇒ 行为不变、扫描器也全绿 ⇒ 判据归零）。写死实测值，删一个当场红。
+    assertThat(explicitGateCount)
+        .as("★ 扫描器自证：必须有 %d 条**显式**覆写 gate() 的工具（实测值；全被删掉 ⇒ 本扫描器空转）", 8)
+        .isEqualTo(8);
+    assertThat(TOOL_CLASSES.keySet())
+        .as("★ 清单自洽：DM_FREE_TOOLS ∪ DM_READ_TOOLS 必须与扫描表逐条相同（加了工具却忘了进扫描面 ⇒ 这里红）")
+        .containsExactlyInAnyOrderElementsOf(
+            Stream.concat(DM_FREE_TOOLS.stream(), DM_READ_TOOLS.stream()).distinct().toList());
+  }
+
+  /**
+   * ★★ <b>N10 的行为侧对照（防止"源码扫过了、装配却没挂上"）</b>：这一族工具必须**真的**在决策人桶里、且**不在** GM 桶。
+   *
+   * <p>★ 为什么源码扫描之外还要这一条：扫描证的是"声明是对的"，装配证的是"声明真的被用上了"。两者之间那条缝 （{@code roles()} 写对但忘了 {@code
+   * addDecisionReads}/{@code addDecisionWrites}）**不会有任何报错**， 只会让工具静默消失（{@code DecisionFaceGolden}
+   * 的金名单相等断言也会红，但那条的失败信息不如这里点名清楚）。
+   */
+  @Test
+  void everyDecisionFaceToolIsInTheDecisionBucketAndNotInTheGmBucket() {
+    // ★ store 用 @TempDir（绝对路径）：装配期要挂工作区，相对路径会被 registry 具名拒
+    //   （实测：「挂载的物理落点必须是绝对路径」）。
+    try (Shell shell = Shell.start(ShellConfig.defaults(tempDir).withPorts(0, 0, 0))) {
+      Set<String> decisionFace =
+          ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
+      List<String> gmFace =
+          shell.toolsFor(SimosToolSource.Role.GM).stream().map(AgentTool::name).toList();
+
+      for (String name : Stream.concat(DM_FREE_TOOLS.stream(), DM_READ_TOOLS.stream()).toList()) {
+        assertThat(decisionFace).as("★★ N10：%s 必须在决策人桶里（声明对了但没挂桶 = 静默消失）", name).contains(name);
+        assertThat(gmFace).as("★★ N10：%s **不许**进 GM 桶（决策人面被放大 = I2 破）", name).doesNotContain(name);
+      }
+    }
+  }
+
+  // ────────────────────────────── 扫描小件 ──────────────────────────────
+
+  /**
+   * {@code simos-ga} 工具的源码根（surefire 工作目录 = {@code simos-app/}）。
+   *
+   * <p>★ 必须是**工具类所在的那个包目录**（{@code .../io/mosire/simos/ga/tools}），不是 {@code src/main/java} ——否则
+   * {@code resolve("write/XxxTool.java")} 谁也命中不了（本类第一版就踩了这个，真跑红在"扫描面必须命中"）。
+   */
+  private static Path gaMainJava() {
+    return Paths.get(
+        "..", "simos-ga", "src", "main", "java", "io", "mosire", "simos", "ga", "tools");
+  }
+
+  /**
+   * 抽一个方法的**方法体**（从签名后的第一个 {@code {} 到配对的 {@code }}}）。
+   *
+   * <p>★ 判据是"这个方法体里有没有 X"，所以必须**真的**切出方法体：整文件扫会扫到类注里的解释文字 （本仓的类注里恰好大量出现 {@code Ask}
+   * 这个词——正是为了解释"为什么不能是 Ask"）⇒ 整文件扫会**假红**。
+   */
+  private static String methodBody(String source, String methodName) {
+    Matcher signature =
+        Pattern.compile(
+                "(?:public|private|protected)\\s+[\\w<>,.\\[\\] ]+\\s+"
+                    + Pattern.quote(methodName)
+                    + "\\s*\\([^)]*\\)\\s*\\{")
+            .matcher(source);
+    assertThat(signature.find()).as("★ 源码里必须有 %s(...) 的方法体（找不到 = 判据扫的是空气）", methodName).isTrue();
+    int open = source.indexOf('{', signature.start());
+    int depth = 0;
+    for (int i = open; i < source.length(); i++) {
+      char c = source.charAt(i);
+      if (c == '{') {
+        depth++;
+      } else if (c == '}') {
+        depth--;
+        if (depth == 0) {
+          return source.substring(open, i + 1);
+        }
+      }
+    }
+    throw new AssertionError(methodName + " 的方法体括号不配对");
+  }
+
+  /** 同 {@link #methodBody}，但方法不存在时返回 {@code null}（用于"显式覆写 vs 走接口缺省"两种形态）。 */
+  private static String optionalMethodBody(String source, String methodName) {
+    Matcher signature =
+        Pattern.compile(
+                "(?:public|private|protected)\\s+[\\w<>,.\\[\\] ]+\\s+"
+                    + Pattern.quote(methodName)
+                    + "\\s*\\([^)]*\\)\\s*\\{")
+            .matcher(source);
+    if (!signature.find()) {
+      return null;
+    }
+    int open = source.indexOf('{', signature.start());
+    int depth = 0;
+    for (int i = open; i < source.length(); i++) {
+      char c = source.charAt(i);
+      if (c == '{') {
+        depth++;
+      } else if (c == '}') {
+        depth--;
+        if (depth == 0) {
+          return source.substring(open, i + 1);
+        }
+      }
+    }
+    throw new AssertionError(methodName + " 的方法体括号不配对");
+  }
+
+  private static int countOccurrences(String haystack, String needle) {
+    int count = 0;
+    int index = haystack.indexOf(needle);
+    while (index >= 0) {
+      count++;
+      index = haystack.indexOf(needle, index + needle.length());
+    }
+    return count;
+  }
+}

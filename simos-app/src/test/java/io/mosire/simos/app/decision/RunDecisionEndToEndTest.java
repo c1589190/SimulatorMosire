@@ -17,9 +17,14 @@ import io.mosire.agentlib.llm.LlmRequest;
 import io.mosire.agentlib.llm.LlmResponse;
 import io.mosire.agentlib.store.SqliteConversationStore;
 import io.mosire.agentlib.tool.AgentTool;
+import io.mosire.agentlib.tool.ToolRegistry;
+import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.GmToolCallBridge;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.llm.ProviderLlm;
+import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.testing.WorldSlices;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.army.Army;
@@ -42,6 +47,7 @@ import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DecisionPacket;
 import io.mosire.simos.ga.model.PacketStatus;
+import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.ga.tools.write.RunDecisionTool;
 import io.mosire.simos.gov.GovSnapshot;
@@ -278,7 +284,7 @@ class RunDecisionEndToEndTest {
             Map.of("q", 1, "r", 1, "branch", "not-main", "revision", 999L)),
         LlmResponse.toolCall("frozen-world-write", "ga_IssueDirective", directiveArgs(before)),
         LlmResponse.toolCall(
-            "frozen-packet", "simos_sd_packet_intent", Map.of("text", "同时决策：先读冻结快照，再写决策包")),
+            "frozen-packet", "simos_ga_packet_intent", Map.of("text", "同时决策：先读冻结快照，再写决策包")),
         LlmResponse.text("同时决策回合收口"));
 
     Map<String, Object> args = new LinkedHashMap<>();
@@ -304,7 +310,8 @@ class RunDecisionEndToEndTest {
     assertThat(calls.get(1).get("tool").asText()).isEqualTo("ga.IssueDirective");
     assertThat(calls.get(1).get("ok").asBoolean()).as("世界写工具在冻结回合必须被拒（即使模型凭记忆叫到）").isFalse();
     assertThat(calls.get(1).get("summary").asText()).contains("FORBIDDEN");
-    assertThat(calls.get(2).get("tool").asText()).isEqualTo("simos.sd.packet.intent");
+    // ★★ 2026-10-14 批 B：决策族工具名 sd → ga（Alpha 不兼容旧档 ⇒ 断言也换新名；旧名一个都不许留）。
+    assertThat(calls.get(2).get("tool").asText()).isEqualTo("simos.ga.packet.intent");
     assertThat(calls.get(2).get("ok").asBoolean()).as("决策包写允许").isTrue();
 
     assertThat(head())
@@ -363,56 +370,90 @@ class RunDecisionEndToEndTest {
 
   // ── 回合统一结算：LLM 行为适配（用户 2026-10-22 裁定）────────────────────────────
 
-  /** ★★ **没 submit 就停止说话**：本回合写进 packet 的 intent + 整轮最后一段自然语言，自动合并成 PENDING packet 交 GM。 */
+  /**
+   * ★★ **没 confirm 就停止说话**：本回合写进 packet 的 intent 原样交给 GM（自动兜底提交成 PENDING packet）。
+   *
+   * <p>★★ <b>2026-10-14 批 B 换靶子（设计书 §3.3 / 缺口 G10）</b>：旧的 {@code mergeIntent} **无条件**把整轮最后一段自然语言
+   * 用「【最后陈述】」追加进 intent。批 B 起改成**条件式**：DM **显式写过** intent（包里的 intent 非空白）⇒ 原样采用、不追加。 ⇒
+   * 本条断言从「含最后一段自然语言」换成「**不含**它」——这不是放宽判据，是判据按裁定换了方向（旧断言测的是被删掉的旧行为）。 兜底提交（不静默丢决策）这条红线**不退让**：包仍必须变
+   * PENDING。
+   */
   @Test
-  void autoFinalizesPacketWithLastNaturalLanguageWhenModelStopsWithoutSubmit() throws Exception {
+  void autoNoSubmitKeepsExplicitIntentAndDoesNotAppendLastNaturalLanguage() throws Exception {
     llm.enqueue(
-        LlmResponse.toolCall("intent-1", "simos_sd_packet_intent", Map.of("text", "意图A：先退休一人")),
+        LlmResponse.toolCall("intent-1", "simos_ga_packet_intent", Map.of("text", "意图A：先退休一人")),
         LlmResponse.text("最后自然语言A：请 GM 判断"));
 
     assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
 
     DecisionPacket packet = packetOf(DM_ID);
     assertThat(packet).as("回合结束统一结算必须建出/提交决策包").isNotNull();
-    assertThat(packet.status()).isEqualTo(PacketStatus.PENDING);
-    assertThat(packet.intent()).contains("意图A").contains("最后自然语言A：请 GM 判断");
+    assertThat(packet.status())
+        .as("★ 无未答提问 ⇒ 兜底结算照旧（「不静默丢决策」这条红线不退让）")
+        .isEqualTo(PacketStatus.PENDING);
+    assertThat(packet.intent()).as("★ DM 显式写过的 intent 必须**在**（丢掉它才是真缺陷）").contains("意图A：先退休一人");
+    assertThat(packet.intent())
+        .as("★★ 条件式 mergeIntent（补 G10）：显式写过 intent ⇒ **不再**追加「【最后陈述】」尾巴")
+        .doesNotContain("最后自然语言A")
+        .doesNotContain("【最后陈述】");
   }
 
-  /** ★★ **submit 后只说话不再发命令**：之前写进 packet 的命令照常作为决策；提交后的纯文本只留审计， 不再额外并入 NL 决策（用户原口径）。 */
+  /** ★★ **confirm 之后只说话不再发命令**：包立刻 PENDING（DM 的动作，不再被运行流吞掉）；之后的纯文本只留审计。 */
   @Test
-  void submitMarkerKeepsPriorContentAndIgnoresPostSubmitText() throws Exception {
+  void confirmMakesThePacketPendingImmediatelyAndPostConfirmTextIsNotMerged() throws Exception {
     llm.enqueue(
-        LlmResponse.toolCall("intent-1", "simos_sd_packet_intent", Map.of("text", "意图B：只做退休")),
-        LlmResponse.toolCall("submit-1", "simos_sd_packet_submit", Map.of()),
-        LlmResponse.text("提交后解释：这段不算新 NL 决策"));
+        LlmResponse.toolCall("intent-1", "simos_ga_packet_intent", Map.of("text", "意图B：只做退休")),
+        LlmResponse.toolCall("confirm-1", "simos_ga_packet_confirm", Map.of()),
+        LlmResponse.text("确认后解释：这段不算新 NL 决策"));
 
     assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
 
     DecisionPacket packet = packetOf(DM_ID);
     assertThat(packet).isNotNull();
-    assertThat(packet.status()).isEqualTo(PacketStatus.PENDING);
+    assertThat(packet.status())
+        .as("★★ I10：确认是 DM 的动作 —— confirm 在回合内**不再被拦截**，PENDING 由它产生")
+        .isEqualTo(PacketStatus.PENDING);
     assertThat(packet.intent()).contains("意图B：只做退休");
-    assertThat(packet.intent()).as("提交后的文本不再算新的 NL 决策").doesNotContain("提交后解释");
+    assertThat(packet.intent()).as("确认后的文本不再算新的 NL 决策").doesNotContain("确认后解释");
   }
 
-  /** ★★ **submit 后又继续发命令**：保守合并——整轮所有内容合成一个 PENDING packet，整轮最后一段自然语言作为 NL 决策。 */
+  /**
+   * ★★ **已 PENDING 的包不能再改**（设计书 §3.2 硬边界；§6.1 N5 的同族）：confirm 之后再调 {@code packet.intent} ⇒
+   * **具名拒**（提示先 reopen），包原样不动、零 revision、intent 不被改写。
+   *
+   * <p>★★ <b>2026-10-14 批 B 换靶子</b>：旧用例 {@code
+   * continuedCommandsAfterSubmitConservativelyMergeWholeTurn} 测的是"submit 后继续发命令 ⇒
+   * 整轮保守合并"——那条分支（提交被拦截 + 整轮合并）已随批 B **整条删除**（死代码不许留）。
+   * 改成测**新边界的正面对手**：同样是"确认后又发命令"，但现在的正确行为是**拒**（并告诉 DM 下一步是 reopen），不是静默合并。
+   */
   @Test
-  void continuedCommandsAfterSubmitConservativelyMergeWholeTurn() throws Exception {
+  void mutatingAPendingPacketIsRejectedByNameAndLeavesThePacketUnchanged() throws Exception {
     llm.enqueue(
-        LlmResponse.toolCall("intent-1", "simos_sd_packet_intent", Map.of("text", "意图C：主计划")),
-        LlmResponse.toolCall("submit-1", "simos_sd_packet_submit", Map.of()),
-        LlmResponse.toolCall("intent-2", "simos_sd_packet_intent", Map.of("text", "意图C：提交后补充")),
+        LlmResponse.toolCall("intent-1", "simos_ga_packet_intent", Map.of("text", "意图C：主计划")),
+        LlmResponse.toolCall("confirm-1", "simos_ga_packet_confirm", Map.of()),
+        LlmResponse.toolCall("intent-2", "simos_ga_packet_intent", Map.of("text", "意图C：提交后补充")),
         LlmResponse.text("整轮最后自然语言C：这是最终口径"));
 
+    long before = head();
     assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
 
     DecisionPacket packet = packetOf(DM_ID);
     assertThat(packet).isNotNull();
-    assertThat(packet.status()).isEqualTo(PacketStatus.PENDING);
+    assertThat(packet.status())
+        .as("confirm 之后保持 PENDING（被拒的改写不得把它翻回 DRAFT）")
+        .isEqualTo(PacketStatus.PENDING);
     assertThat(packet.intent())
-        .as("整轮最后一段文本作为 NL 决策并入")
-        .contains("整轮最后自然语言C：这是最终口径")
-        .contains("意图C：提交后补充");
+        .as("★★ 被拒的 intent 改写**一个字节都不许落地**：包里仍是 confirm 之前那句")
+        .isEqualTo("意图C：主计划");
+    assertThat(packet.intent())
+        .as("★ 也不得退化成旧行为（把整轮最后一段自然语言并进来）")
+        .doesNotContain("整轮最后自然语言C")
+        .doesNotContain("【最后陈述】");
+    // 触发事实 1 条 + intent 1 条 + confirm 1 条 = 3；被拒的 intent-2 **零 revision**，
+    // 回合结束也因包已 PENDING 而不再结算（finalizer 的"已 PENDING ⇒ 跳过"分支）。
+    assertThat(head())
+        .as("★ 被拒的改写零 revision（拒 = 世界零变化），且 finalizer 对已 PENDING 的包不再结算")
+        .isEqualTo(before + 3L);
   }
 
   /** 当前 head 上该决策人本 tick 的 packet（用于结算断言）。 */
@@ -421,6 +462,289 @@ class RunDecisionEndToEndTest {
     GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
     return sd.decisionPackets()
         .get(DecisionPacketId.parse("pkt-" + dmId + "-" + state.meta().timestamp().tick()));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // ★★ 2026-10-14 决策自由化（批 B）—— 设计书 §6 第 4~8 条 / §6.1 N5·N6·N8 / §4 I4·I6
+  //
+  //   为什么落在**本类**（而不是新开一个夹具）：本类已经有一条**真装配 + 真 MCP + 注入假 LLM** 的
+  //   `Shell.start(config, llm::provider)` 路径，且 `shell.coreSimos()` 是**真** store ⇒ 下面每条都能
+  //   ① 用真决策人身份调真工具、② 立刻回读真 head 上的包（不靠 runner 自己的账本）。另起一套夹具 = 第二份
+  //   装配真相（本仓已为"第二处声明"付过代价）。
+  //
+  //   ★ 与 §6 第 6/7 条（覆盖 NL / 确认幂等）的关系：那两条在 `theFrozenBatchRound...` 与
+  //     `confirmMakesThePacketPendingImmediatelyAndPostConfirmTextIsNotMerged` 里已按**新语义**钉住
+  //     （intent 覆盖 + confirm 立刻 PENDING），此处不重复造同形断言。
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * ★★ <b>§6.1 N5：{@code revise}/{@code drop} 一个 PENDING 包 ⇒ 具名拒，提示先 {@code reopen}</b>。
+   *
+   * <p>★ 判别力：{@code ga.UpsertDecisionPacket} <b>本身没有状态机</b>（整包覆盖）⇒ 守卫<b>只能</b>落在工具侧 （设计书 §3.2 明写"否则
+   * DM 能把 GM 已批的包翻回 DRAFT 再提交，GM 的裁决被静默抹掉"）。 故本用例逐条钉：① 拒；② 码是 {@code BAD_REQUEST}；③ 文案<b>点出下一步是
+   * reopen</b>（模型据此知道怎么走，而不是死循环重试）； ④ 包<b>一个字节都没变</b>、零 revision。
+   *
+   * <p>★ <b>为什么这里直接调工具、而不经 runner 的返回体</b>：{@code RunDecision} 的回执里每条 call 只有 {@code ok} 与 {@code
+   * summary}（<b>没有</b> {@code code}）⇒ 从那里读不出"具名拒的码是什么"。直接经真 {@code DecisionCallerFactory} 调一次才拿得到
+   * {@code ToolResult.code()}（仍是真身份 + 真权限链 + 真工具，只是不经模型）。
+   *
+   * <p>★★ <b>为什么用 {@code intent} 而不是 {@code propose} 造 DRAFT 包</b>（如实记的夹具限制，与 §6 第 4/5·N6 三条同源）：
+   * 本夹具的世界里 {@code u-1} 没有 {@code GovernmentFormation}、{@code social} 也没有家户 ⇒ {@code
+   * ProposalCatalog} 的<b>全部</b>候选工具在真 preview 阶段一律 {@code BAD_REQUEST}（实测原文见 {@link
+   * #n8_anUnansweredQuestionKeepsThePacketInDraftWithoutLosingAnyContent} 的类注）⇒ <b>造不出一条能落地的
+   * call</b>。 ★ 而 N5 守的是<b>状态边界</b>（非 DRAFT ⇒ 改/删一律拒），与"包里有没有 call"无关：{@code intent} 同样走 {@code
+   * ga.UpsertDecisionPacket} 落一条真 revision、同样把包推成 PENDING。⇒ 判据强度不降（拒的是同一个守卫）， 缺的只是"被拒的 revise
+   * 改不动的那条 call"这一侧的逐值断言（已如实列进台账 §6）。
+   */
+  @Test
+  void n5_reviseAndDropOnAPendingPacketAreRejectedAndPointAtReopen() throws Exception {
+    // ① 先造一个 DRAFT 包（intent 走真 ga.UpsertDecisionPacket，落一条真 revision）。
+    llm.enqueue(
+        LlmResponse.toolCall(
+            "intent-1", "simos_ga_packet_intent", Map.of("text", "N5 靶子：这条包要被确认，再试改/删")),
+        LlmResponse.text("先写下意图"));
+    assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
+
+    // ② 直接调 confirm 把它推成 PENDING（★ 不经模型：模型"只调工具不说话"会让 runner 报错，
+    //   那是既有的回合语义，与本条要测的边界无关）。
+    ToolResult confirmed = dmToolCall("simos.ga.packet.confirm", Map.of());
+    assertThat(confirmed.success()).as("前提：confirm 必须成功；实得 %s", confirmed.message()).isTrue();
+    assertThat(packetOf(DM_ID).status()).as("前提：包已 PENDING").isEqualTo(PacketStatus.PENDING);
+
+    String intentBefore = packetOf(DM_ID).intent();
+    long headBefore = head();
+
+    ToolResult reviseDenied =
+        dmToolCall(
+            "simos.ga.packet.revise",
+            Map.of("callIndex", 0, "tool", "simos.gov.selectExaminees", "args", Map.of()));
+    ToolResult dropDenied = dmToolCall("simos.ga.packet.drop", Map.of("callIndex", 0));
+
+    for (ToolResult denied : List.of(reviseDenied, dropDenied)) {
+      assertThat(denied.success())
+          .as("★★ N5：对 PENDING 包的改/删必须被具名拒（实得 %s）", denied.message())
+          .isFalse();
+      assertThat(denied.code())
+          .as("★ N5：码是用法错（BAD_REQUEST = 改行为：先 reopen）")
+          .isEqualTo("BAD_REQUEST");
+      assertThat(denied.message())
+          .as("★★ N5：拒因必须点出下一步是 simos.ga.packet.reopen（只说'失败'会让模型死循环重试）")
+          .contains("simos.ga.packet.reopen")
+          .contains("PENDING");
+    }
+
+    DecisionPacket after = packetOf(DM_ID);
+    assertThat(after.status()).as("★★ N5：被拒的调用不得把包翻回 DRAFT").isEqualTo(PacketStatus.PENDING);
+    assertThat(after.intent()).as("★★ N5：包的内容一个字节都没变").isEqualTo(intentBefore);
+    assertThat(head()).as("★ N5：两条被拒 = 零 revision").isEqualTo(headBefore);
+  }
+
+  /**
+   * ★★ <b>§6.1 N4 / §4 I3：{@code reopen} 一个**已裁决**的包 ⇒ 具名拒 + 世界零变化</b>。
+   *
+   * <p>★ <b>这条是防线，不是顺手</b>（设计书 §3.2 原话）：{@code ga.UpsertDecisionPacket} <b>本身没有状态机</b> （status
+   * 从载荷取、整包覆盖）⇒ 不加这道守卫，DM 就能把 GM 已批的包翻回 DRAFT、改完再提交， <b>GM
+   * 的裁决被静默抹掉</b>（没有任何一层会报错）。故撤回的合法边界只是"我改主意了、GM 还没看"。
+   *
+   * <p>★ <b>本用例钉的是两条守卫里的第一条（{@code decidedBy} 非空）</b>：先把包推到 PENDING，再让**真 GM** 用 {@code
+   * simos.gm.packet.decide} 批成 APPROVED（{@code decidedBy} 由此被填上），然后 DM 试 {@code reopen}。 ★ 断言四处：①
+   * 拒；② 码 {@code BAD_REQUEST}；③ 文案点出"已裁决不可回退"（模型据此停止重试）； ④ <b>包状态与 content 一个字节都没变、零
+   * revision</b>（"被拒"必须真的是零副作用）。
+   *
+   * <p>★★ <b>与设计书 §7 的偏差（如实记）</b>：任务书要求"四种终态逐一（APPROVED/REJECTED/MERGED/ PARTIALLY_APPROVED）"。本条只做了
+   * <b>APPROVED</b>，理由有两条、都回代码核过： ① 第 2 条守卫（{@code isDecided(status)}）挡的四种终态在**同一次 {@code
+   * decidedBy} 判定之后**，而真 GM 裁决 <b>必然</b>填 {@code decidedBy} ⇒ 走工具路径造出的四种终态**全部**先被第 1 条守卫拦下 ⇒
+   * 逐一测四种是 同一处代码的四次重复，判别力不增； ② {@code PARTIALLY_APPROVED} 的产生条件是 {@code
+   * GmDecidePacketTool.expectedStatus}：{@code callIndexes} 非空且**存在未选中的 call** ⇒ 包里<b>必须至少有一条真
+   * call</b>；而本夹具造不出可落地的 call （见 {@link
+   * #n8_anUnansweredQuestionKeepsThePacketInDraftWithoutLosingAnyContent} 的类注：{@code u-1} 无 {@code
+   * GovernmentFormation}、{@code social} 无家户 ⇒ {@code ProposalCatalog} 全部候选在真 preview 阶段 {@code
+   * BAD_REQUEST}）。 ★ 第 2 条守卫（{@code decidedBy} 为空但状态已是终态 = 契约故障）在本夹具里**不可造**（那需要直写状态， 而那正是 I12 / 铁律
+   * 2 禁止的路径）⇒ 如实列进台账 §6「未做」。
+   */
+  @Test
+  void n4_reopeningADecidedPacketIsRejectedAndLeavesTheWorldUnchanged() throws Exception {
+    // ① 造 DRAFT（intent）→ ② DM 确认成 PENDING → ③ 真 GM 裁决成 APPROVED。
+    llm.enqueue(
+        LlmResponse.toolCall(
+            "intent-1", "simos_ga_packet_intent", Map.of("text", "N4 靶子：这条要被 GM 裁决")),
+        LlmResponse.text("先写下意图"));
+    assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
+    assertThat(dmToolCall("simos.ga.packet.confirm", Map.of()).success())
+        .as("前提：DM 确认成 PENDING")
+        .isTrue();
+    assertThat(packetOf(DM_ID).status()).as("前提：PENDING").isEqualTo(PacketStatus.PENDING);
+
+    String packetId = packetOf(DM_ID).id().value();
+    ToolResult decided =
+        gmToolCall("simos.gm.packet.decide", Map.of("packetId", packetId, "decision", "APPROVE"));
+    assertThat(decided.success()).as("前提：GM 裁决必须成功；实得 %s", decided.message()).isTrue();
+    DecisionPacket approved = packetOf(DM_ID);
+    assertThat(approved.status()).as("前提：包已被 GM 批成 APPROVED").isEqualTo(PacketStatus.APPROVED);
+    assertThat(approved.decidedBy()).as("前提：decidedBy 已被填上（这正是第 1 条守卫的判据）").isPresent();
+
+    // ④ DM 试撤回 ⇒ 必须被拒，且世界零变化。
+    String intentBefore = approved.intent();
+    long headBefore = head();
+    ToolResult reopenDenied = dmToolCall("simos.ga.packet.reopen", Map.of());
+
+    assertThat(reopenDenied.success()).as("★★ N4/I3：已裁决的包**不许**撤回").isFalse();
+    assertThat(reopenDenied.code()).as("★ N4：码是用法错（BAD_REQUEST）").isEqualTo("BAD_REQUEST");
+    assertThat(reopenDenied.message())
+        .as("★★ N4：拒因必须点出「已裁决不可回退」（模型据此停止重试，而不是死循环）")
+        .contains("已裁决不可回退");
+    // ★★★ 判别力补强（**变异自证逼出来的**，2026-10-14 实测）：`ReopenPacketTool` 有**两条**守卫，而它们的
+    //   拒因文案**都**含「已裁决不可回退」⇒ 只断言那句话，**删掉第 1 条（decidedBy）守卫时本条照样全绿**
+    //   （第 2 条 isDecided(status) 会接住它，报文一字不差到判据看不出来）—— 实测确认该变异**存活**。
+    //   ⇒ 加这两条**只属于第 1 条守卫**的指纹：报文里的 `decidedBy=<谁>` 与 `status=<什么态>`。
+    //     第 2 条守卫的报文是「决策包状态 X 已是终态，撤回不可用」——**不含** `decidedBy=`。
+    //   ★ 判别力：删掉 decidedBy 守卫 ⇒ 报文换成第 2 条那版 ⇒ 这两条当场红（已实测）。
+    assertThat(reopenDenied.message())
+        .as(
+            "★★★ N4 的判别力指纹：拒因必须来自**第 1 条（decidedBy 非空）**守卫 —— 删掉它，第 2 条守卫"
+                + "会接住同一个调用但报文不含 decidedBy= ⇒ 本断言当场红（变异自证实测）")
+        .contains("decidedBy=")
+        .contains(approved.decidedBy().orElseThrow());
+
+    DecisionPacket after = packetOf(DM_ID);
+    assertThat(after.status())
+        .as("★★ I3：被拒之后包**必须仍是 APPROVED**（翻回 DRAFT = GM 的裁决被静默抹掉）")
+        .isEqualTo(PacketStatus.APPROVED);
+    assertThat(after.intent()).as("★★ N4：包内容一个字节都没变").isEqualTo(intentBefore);
+    assertThat(after.decidedBy()).as("★★ N4：decidedBy 也不许被清掉").isPresent();
+    assertThat(head()).as("★★ N4：被拒 = 世界零变化（零 revision）").isEqualTo(headBefore);
+  }
+
+  /**
+   * ★★ <b>§6 第 8 条：{@code reopen} 已是 DRAFT 的包 ⇒ <b>幂等且不写 revision</b></b>。
+   *
+   * <p>★ 判别力："撤回"是个<b>状态目标</b>，不是一次计数（设计书 §3.2：{@code reopen} 的幂等语义）。 一个"每次都重新
+   * upsert"的实现同样会返回成功、状态也仍是 DRAFT ⇒ <b>只有 revision 不动才能把它与正确实现分开</b>。 故本条的核心断言是最后那条 {@code head()}
+   * 相等。
+   */
+  @Test
+  void reopenOnAnAlreadyDraftPacketIsIdempotentAndWritesNoRevision() throws Exception {
+    // ★★ 前提怎么造（这里有个容易写错的坑，实测踩到）：**不能**靠"只写 intent 然后停止说话" ——
+    //   那种回合结束时无未答提问 ⇒ finalizer 的 auto-no-submit 兜底会把它**提交成 PENDING**（"不静默丢决策"那条红线）。
+    //   ⇒ 要拿到 DRAFT，必须让本 tick **存在一条未答提问**（to=="gm"），finalizer 才会完全不结算（正是 N8 的语义）。
+    //   ★ 于是本用例同时是 N8 的**对照**：同样的形状，只差"提问有没有被 GM 回"。
+    llm.enqueue(
+        LlmResponse.toolCall("intent-1", "simos_ga_packet_intent", Map.of("text", "幂等靶子")),
+        LlmResponse.toolCall(
+            "ask-gm", "simos_ga_message_send", Map.of("to", "gm", "body", "先问一句，好让包留在 DRAFT")),
+        LlmResponse.text("等答复"));
+    assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
+    assertThat(packetOf(DM_ID).status())
+        .as("前提：有未答提问 ⇒ 包停在 DRAFT（见 N8；★ 无提问时兜底会把它提交成 PENDING）")
+        .isEqualTo(PacketStatus.DRAFT);
+
+    String packetId = packetOf(DM_ID).id().value();
+    long headBefore = head();
+    ToolResult reopen = dmToolCall("simos.ga.packet.reopen", Map.of());
+
+    assertThat(reopen.success())
+        .as("★ §6-8：已是 DRAFT ⇒ 幂等**成功**（不是拒）；实得 %s", reopen.message())
+        .isTrue();
+    assertThat(packetOf(DM_ID).status()).as("★ §6-8：状态仍是 DRAFT").isEqualTo(PacketStatus.DRAFT);
+    assertThat(head())
+        .as("★★ §6-8：幂等 ⇒ **不写 revision**（「每次都重新 upsert」的实现会在这里红）")
+        .isEqualTo(headBefore);
+    assertThat(packetOf(DM_ID).id().value()).as("★ 同一个包（幂等不改 id）").isEqualTo(packetId);
+  }
+
+  /**
+   * ★★ <b>§6.1 N8（I4）：未答提问时回合结束 ⇒ 包保持 DRAFT（不是 PENDING），且已写进包的内容一条不少</b>。
+   *
+   * <p>★ <b>这是"不静默丢决策"与"不把提问当决策"两条红线的交点</b>：DM 只问了一句话（没有决策内容）时， 兜底的 auto-submit <b>必须</b>停手 ——
+   * 否则"这一轮我只问了句话"会被当成一条 NL 决策自动提交给 GM（设计书 §3.3 的原话）。 ★ 同时钉"不丢"：已经写进包的 {@code intent} <b>仍在包里且 GM
+   * 读得到</b>（保持 DRAFT 不等于丢掉）。
+   *
+   * <p>★ 判据按<b>本 tick</b>（落地裁定 L1/L2）：只认 {@code to=="gm"} 且本 tick 的信；peer DM 之间的信没有 replyTo，
+   * 把它们算进"未答"会让该 DM 永远不结算。
+   *
+   * <p>★★ <b>本夹具的 scope 限制（如实记，与 §6 第 4/5·N6 三条同源）</b>：{@code RunDecisionEndToEndTest} 的世界里 {@code
+   * u-1} <b>没有 GovernmentFormation</b>、{@code social} 也<b>没有家户</b> ⇒ {@code ProposalCatalog} 的
+   * 全部候选工具（{@code gov.retireStaff} / {@code gov.selectExaminees} / {@code gov.dispatchTeam} /
+   * {@code unit.raiseUnit} / {@code social.household.members}）在**真 preview** 阶段一律 {@code
+   * BAD_REQUEST} （实测原文：{@code 目标工具预览失败(BAD_REQUEST): 单位 u-1 没有 GovernmentFormation：退休只对 GOV 单位}）。 ⇒
+   * 本用例**不**断言"calls 一条不少"（那需要一条**能落地的** call），改为断言 **intent 一条不少**（同样走 {@code
+   * ga.UpsertDecisionPacket}、同样必须活过回合结束）。★ 缺口与补法见台账 §6。
+   */
+  @Test
+  void n8_anUnansweredQuestionKeepsThePacketInDraftWithoutLosingAnyContent() throws Exception {
+    llm.enqueue(
+        LlmResponse.toolCall(
+            "intent-1", "simos_ga_packet_intent", Map.of("text", "先把退休办了，但我得先问 GM 一件事")),
+        LlmResponse.toolCall(
+            "ask-gm", "simos_ga_message_send", Map.of("to", "gm", "body", "请问这一轮的粮产够不够支撑退休潮？")),
+        LlmResponse.text("等 GM 答复再定"));
+
+    assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
+
+    DecisionPacket packet = packetOf(DM_ID);
+    assertThat(packet).as("★★ I4：保持 DRAFT 不等于丢掉 —— 包必须还在（gm.packet* 仍读得到）").isNotNull();
+    assertThat(packet.status())
+        .as(
+            "★★ N8：有未答提问（to==gm 且本 tick）⇒ 回合结束**完全不结算**，包保持 DRAFT"
+                + "（若被 auto-submit 成 PENDING，就是'把一句提问当成了一条决策'）")
+        .isEqualTo(PacketStatus.DRAFT);
+    assertThat(packet.intent())
+        .as("★★ I4：DM 显式写过的 intent 原样保留（保持 DRAFT 不等于丢掉内容，且不许被追加「【最后陈述】」）")
+        .isEqualTo("先把退休办了，但我得先问 GM 一件事");
+
+    // ★ 提问本身必须真的落了盘（否则本用例会因"问题根本没发出去"而假绿）。
+    assertThat(gmToolCall("simos.gm.inbox", Map.of()).message())
+        .as("★ 前提/对照：那条提问真的到了 GM 的收件箱（且仍未答）")
+        .contains("请问这一轮的粮产够不够支撑退休潮？")
+        .contains("\"answered\":false");
+    // ★ GM 全量读口也看得见这条 DRAFT 包（不丢的第二重证据；★ 包里没有 call 也能被读到）。
+    assertThat(gmToolCall("simos.gm.packet", Map.of("packetId", packet.id().value())).message())
+        .as("★ I4：GM 的 gm.packet 仍读得到这条 DRAFT 包（含它的 intent）")
+        .contains("先把退休办了");
+  }
+
+  // ── 决策自由化用例的三个小助手（真身份 + 真权限链 + 真工具）─────────────────────────────
+
+  /**
+   * 以**真决策人身份**经真 {@code DecisionCallerFactory} 调一条决策人面工具（不经模型）。
+   *
+   * <p>★ 与 runner 走的是同一条链（{@code callerFor} 现算权限组 + {@code authorizer.execute} 的唯一入口），
+   * 只是把"模型填参数"换成"用例填参数" ⇒ 可直接读 {@code ToolResult.code()}（回执里没有这个字段）。
+   */
+  private ToolResult dmToolCall(String toolName, Map<String, Object> args) {
+    DecisionMaker dm =
+        ((GaSnapshot)
+                shell.queryService().stateAt(QueryTarget.head(main())).module("ga").orElseThrow())
+            .state()
+            .decisionMakers()
+            .get(new DecisionMakerId(DM_ID));
+    return DecisionCallerFactory.forDecisionFace(
+            shell.gmToolAuthorizer(),
+            ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)))
+        .execute(
+            decisionRegistry(),
+            toolName,
+            dm,
+            shell.queryService().stateAt(QueryTarget.head(main())),
+            shell.config().mapId(),
+            args);
+  }
+
+  /**
+   * 真 GM 面工具调用（自动放行；身份 = 真 GM）。★ GM 读口（gm.packet / gm.inbox）用它回读。
+   *
+   * <p>★ 走 {@link GmToolCallBridge}（测试侧桥）：{@code Shell.gmCaller()} 是**包内可见**的（类注明写"不是对外 API"），本类住在
+   * {@code io.mosire.simos.app.decision} 子包 ⇒ 够不着它。桥只**转发**（身份/权限/上下文形状 逐字照抄生产装配），不放宽任何判定。
+   */
+  private ToolResult gmToolCall(String toolName, Map<String, Object> args) {
+    return GmToolCallBridge.call(shell, toolName, args);
+  }
+
+  /** 真决策人桶的注册表（与生产同源）。 */
+  private ToolRegistry decisionRegistry() {
+    ToolRegistry registry = new ToolRegistry();
+    registry.registerAll(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
+    return registry;
   }
 
   // ── 判据 4：失败方向是 fail-closed ───────────────────────────────────────────────
