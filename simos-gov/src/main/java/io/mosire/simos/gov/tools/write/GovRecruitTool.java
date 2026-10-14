@@ -241,6 +241,12 @@ public final class GovRecruitTool implements SimosTool {
       boolean planOnly) {
     String batchId = UUID.randomUUID().toString();
     List<ToolWritePort.Request> batch = buildBatch(batchId, plan, reason);
+    // ★★ D3 执行器契约（DecisionEffectExecutor 类注）：planOnly=true 走与 preview=false **完全相同**的纯推导与组批，
+    //    但在提交**之前**把命令批交回执行器（一个字节都不写）。缺这一支 ⇒ 执行器的"规划阶段"真落盘 + 无
+    //    plannedCommands ⇒ PLANNING_FAILED ⇒ GM 重试再落一条（双写）。
+    if (planOnly) {
+      return ToolResults.ok(GovBatchViews.planOnly(batch));
+    }
 
     ToolWritePort.BatchReceipt receipt =
         support

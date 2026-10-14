@@ -156,6 +156,8 @@ public final class GovAssignPostsTool implements SimosTool {
     try {
       Map<String, Object> args = context.arguments();
       boolean preview = ToolSchema.optionalBoolean(args, "preview").orElse(true);
+      // ★ D3 内部参数：不进 jsonSchema / 工具描述，只被系统执行器注入（见 GovBatchViews#planOnly）。
+      boolean planOnly = !preview && ToolSchema.optionalBoolean(args, "planOnly").orElse(false);
       BranchId branch =
           new BranchId(ToolSchema.optionalText(args, "branch", ToolResources.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSchema.optionalLong(args, "expectedRevision");
@@ -252,6 +254,10 @@ public final class GovAssignPostsTool implements SimosTool {
               preview);
       if (preview) {
         return ToolResults.ok(view);
+      }
+      if (planOnly) {
+        // ★★ 只规划不提交：把执行器要的那批命令原样交回（组批与 preview=false 同源，一个字节都不写）。
+        return ToolResults.ok(GovBatchViews.planOnly(batch));
       }
       return support.submitBatch(view, batchId, branch, expectedRevision, batch);
     } catch (GovToolSupport.GovRejectedException e) {

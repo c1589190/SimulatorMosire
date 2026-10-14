@@ -136,6 +136,8 @@ public final class GovSetBudgetPolicyTool implements SimosTool {
       Map<String, Object> args = context.arguments();
       String payloadJson = ToolSchema.requiredText(args, "payloadJson");
       boolean preview = ToolSchema.optionalBoolean(args, "preview").orElse(true);
+      // ★ D3 内部参数：不进 jsonSchema / 工具描述，只被系统执行器注入（见 GovBatchViews#planOnly）。
+      boolean planOnly = !preview && ToolSchema.optionalBoolean(args, "planOnly").orElse(false);
       BranchId branch =
           new BranchId(ToolSchema.optionalText(args, "branch", ToolResources.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSchema.optionalLong(args, "expectedRevision");
@@ -161,11 +163,20 @@ public final class GovSetBudgetPolicyTool implements SimosTool {
         return ToolResults.ok(view);
       }
       if (projection.noop()) {
+        if (planOnly) {
+          // ★★ 幂等重放：preview=false 也不落 revision ⇒ 规划期同样交出**空**命令批（执行器记 empty，不落效果命令）。
+          return ToolResults.ok(GovBatchViews.planOnly(List.of()));
+        }
         view.put("preview", false);
         view.put("submitted", false);
         view.put("noop", true);
         view.put("noopReason", "逐值相同的幂等重放（changeSet 为空，不落 revision）");
         return ToolResults.ok(view);
+      }
+      if (planOnly) {
+        // ★★ 只规划不提交：单命令工具的批 = 一条（与 submitOne 落盘的那一条同源，一个字节都不写）。
+        return ToolResults.ok(
+            GovBatchViews.planOnly(List.of(GovToolSupport.request(commandType, effectivePayload))));
       }
       return support.submitOne(view, commandType, effectivePayload, branch, expectedRevision);
     } catch (GovToolSupport.GovRejectedException e) {

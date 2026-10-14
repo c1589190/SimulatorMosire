@@ -168,6 +168,8 @@ public final class GovSetFxRateTool implements SimosTool {
                 + sellPerMille);
       }
       boolean preview = ToolSchema.optionalBoolean(args, "preview").orElse(true);
+      // ★ D3 内部参数：不进 jsonSchema / 工具描述，只被系统执行器注入（见 GovBatchViews#planOnly）。
+      boolean planOnly = !preview && ToolSchema.optionalBoolean(args, "planOnly").orElse(false);
       BranchId branch =
           new BranchId(ToolSchema.optionalText(args, "branch", ToolResources.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSchema.optionalLong(args, "expectedRevision");
@@ -202,6 +204,11 @@ public final class GovSetFxRateTool implements SimosTool {
           view(preview, target, base, quote, buyPerMille, sellPerMille, existing, payloadJson);
       if (preview) {
         return ToolResults.ok(view);
+      }
+      if (planOnly) {
+        // ★★ 只规划不提交：单命令工具的批 = 一条（与 submitOne 落盘的那一条同源，一个字节都不写）。
+        return ToolResults.ok(
+            GovBatchViews.planOnly(List.of(GovToolSupport.request(commandType, payloadJson))));
       }
       return support.submitOne(view, commandType, payloadJson, branch, expectedRevision);
     } catch (GovToolSupport.GovRejectedException e) {
