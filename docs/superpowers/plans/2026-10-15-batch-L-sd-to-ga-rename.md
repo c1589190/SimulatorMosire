@@ -111,3 +111,74 @@
 | **L4** | ★ **旧名一律不留**（照 `DecisionCallerFactoryTest:302-307` 的 `doesNotContain` 形制，为 9 条各加一条**反向**断言） |
 | **L5** | ★ **全仓字面量扫描**：`src/test/**` 里旧名 = 0（**这就是"死角"的根治**） |
 | **L6** | 三格计数**不变**（本批**不动任何 `roles()`/`gate()`**） |
+
+---
+
+## 5. ★★ 派单后的三条裁定（2026-10-15，实现方报 BLOCKED 后）
+
+### 5.1 控制方的任务书**自相矛盾**，实现方报得对
+
+任务书同时要求：① 改 19 个 `Sd*` **public 类名** ② **禁碰 `src/test/**`** ③ `-DskipTests test-compile` **rc=0**。
+★ **三者不可同时满足**：`-DskipTests` **只跳执行、不跳编译**（根 `pom.xml:218` 的 `testCompile` 照跑），
+而 `src/test` 对这批类是**代码级标识符引用**（不是字符串）—— **16/19 个类被测试引用，合计 168 处 / 24 个文件**；
+且 §1.2 的**合并会删掉两个类**（`SdRecordDiplomaticEventTool` / `SdSetDiplomaticRelationTool`），
+测试里直接 `new` 它们 ⇒ **合并本身也破测试编译**。
+
+► **裁定：甲（授权机械标识符改名）**。理由：
+- 那是**同一次改名的另一半**（类名改了、引用没改 = 半成品），**不可分割**；
+- 乙（只保证 `compile` 绿）会**把树留在编译不过的状态**，且"编译过"这条验收等于没法验；
+- 丙的次序**物理上不可能**（测试侧要先引用一个还不存在的类）。
+★ **边界写死**：只改 `SdXxx` → 新名的**标识符 / import / 构造调用**；
+★ **不许动**任何**断言 / 期望值 / 字符串字面量**（旧**工具名字面量**仍归测试代理）。
+★ 台账里要**列出**旧工具名字面量在 `src/test` 的全部命中（供派测试代理）。
+
+### 5.2 `SdInfoEntry` 改名会与既有 `InfoEntry` **语义冲突** ⇒ 三个一起改成 `DecisionInfo*`
+
+实现方核出：`io.mosire.simos.util.info.InfoEntry` 已存在（`simos-util` 主源码），而 `SdInfoEntry` 的类注开宗明义写
+「**自造**、**不复用**全局 `InfoEntry`」⇒ 改名成 `InfoEntry` 会让那句注释**自己打脸**。
+► **裁定**：三个一起改成 **`DecisionInfoEntry` / `DecisionInfoId` / `DecisionInfoIds`**
+（保持三者的**成组性**；且与全局 `InfoEntry` **不再撞名**，注释那句话仍然成立）。
+
+### 5.3 ★★ 主源码还有 **7 条 `sd.` 前缀的工具名**，§1.1 漏了 ⇒ **改**（映射如下）
+
+实现方核出（**全是活工具名**，被 `SimosToolsTest` / `McpServerTest` / `McpPortTopologyTest` 当工具名断言）：
+```
+sd.VoidAdjudication · sd.AdjudicateTick · sd.SetArmyMasterGov · sd.CreateArmy
+sd.RejectDirective · sd.DecisionResults · sd.DecisionDocs
+```
+★ 其中 `SdCreateArmyTool` / `SdSetArmyMasterGovTool` **正是 §1.3 要改类名的两个** —— **类名改了、工具名里的 `sd.` 还留着**，本身就是半成品。
+► **裁定：改**（用户原话「但凡和被取缔的 sd 模块有关的就改」覆盖它们）。目标 = **`simos.ga.*` + camelCase**（与 `simos.ga.run-decision` / `simos.ga.packet.*` 同族）：
+| 现名 | 新名 |
+|---|---|
+| `sd.VoidAdjudication` | `simos.ga.voidAdjudication` |
+| `sd.AdjudicateTick` | `simos.ga.adjudicateTick` |
+| `sd.SetArmyMasterGov` | `simos.ga.setArmyMasterGov` |
+| `sd.CreateArmy` | `simos.ga.createArmy` |
+| `sd.RejectDirective` | `simos.ga.rejectDirective` |
+| `sd.DecisionResults` | `simos.ga.decisionResults` |
+| `sd.DecisionDocs` | `simos.ga.decisionDocs` |
+
+★★ **但先核清一件事**：这 7 个**是不是同时又是「命令类型」**（`DirectiveWhitelist:66` 的 `type.startsWith("sd.")` 说明确实存在 `sd.*` **命令类型**）。
+⇒ **命令类型不动**（铁律 2 的口径 + 用户「正常语义不用」）；**只改工具名**。核出重叠就**如实报备**，别顺手改命令类型。
+
+### 5.4 ★★ 控制方两条判据**会假绿**（实现方核出，接受更正）
+
+| # | 我写的 | 实际 | 正确写法 |
+|---|---|---|---|
+| **L1** | `git grep -n '"simos\.sd\.' -- 'simos-*/src/main'` | ★ **rc=1、零命中** —— 该通配 pathspec **匹配不到任何文件** ⇒ **静默假绿** | `git grep -n '"simos\.sd\.' -- ':(glob)simos-*/src/main/**'` ⇒ **9**（当前真实值） |
+| **L2** | 「前端 `api/sd/` = 0」 | 前端用 `API_BASE="/api"`（`webui/api.js:11`）+ **段路径** ⇒ 真断点是 **`"/sd/`**（`api.js` 11 处 + `decisionmodel.js` 3 处 = **14 处**）；而 `api/sd/` 在前端**只在注释里**（26 处） | 判据改成 **`"/sd/` 段路径 = 0** |
+
+★★ **这条教训要进纪律**：**「通配 pathspec 匹配不到 ⇒ `git grep`/`git diff` 返 0 而不报错」**
+—— 控制方**今晚自己就踩过同一个坑**（`git diff -- 'simos-*/src/main'` 静默空 ⇒ 我据它报了"`gate()` 零改动"的假绿，
+后来用无 pathspec 的 `git diff | grep` 才核出真相 7 增 7 删）。
+⇒ 纪律：**用通配 pathspec 做"零命中"判据时，必须先用一个已知存在的样本证明该 pathspec 真能匹配到文件**（否则 0 是假的）。
+
+### 5.5 实现方实测的基线（供复核）
+
+```
+L1 main "simos.sd.  = 9
+L2 java "/api/sd/   = 14（全在 GuiServer.java）
+L2 前端真断点 "/sd/ = 14
+L5 src/test 9 条旧工具名 = 51 处 / 6 文件
+L6 未实测（推导：类1 133→131 · 类2 24 不变 · 类3 37）★ 是推导不是实测
+```
