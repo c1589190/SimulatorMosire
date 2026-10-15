@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.agentlib.approval.ToolGate;
+import io.mosire.agentlib.permission.AccessToken;
+import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
@@ -37,7 +40,11 @@ import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolClass;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.ToolWritePort;
+import io.mosire.simos.ga.tools.ToolClassAudit;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -93,6 +100,7 @@ import io.mosire.simos.util.time.SimosTimestamp;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -161,6 +169,13 @@ class LevyRegionToolTest {
   private static final String REASON = "第一轮军粮与兵源";
 
   private static final ObjectMapper JSON = new ObjectMapper();
+
+  /**
+   * ★★ <b>探针上下文</b>：与 {@code ToolClassAudit#PROBE} <b>同形</b>（{@code arguments()} = 空 {@code Map}）——
+   * 本类用它读 {@code gate()} 的<b>实得档</b>。★ 独立重建而不是引用生产那个：判据要与装配期那次分类用同样的输入，但断言不该退化成"生产等于它自己"。
+   */
+  private static final ToolContext PROBE =
+      new ToolContext(AccessToken.SYSTEM, AgentPermissionSet.system(), Map.of(), Map.of());
 
   @TempDir Path tempDir;
 
@@ -671,15 +686,53 @@ class LevyRegionToolTest {
         .isZero();
   }
 
-  /** ★ 工具只在 GM 桶：GM 面有、决策人面无。 */
+  /**
+   * ★★ <b>2026-10-15 用户裁定「甲」后**重写**</b>（原名 {@code toolIsOnlyInTheGmBucket} —— 那个名字与它的 {@code
+   * doesNotContain} 断言<b>同时失效</b>，不是"把数值改一改"就能留的）。
+   *
+   * <p>★★ <b>新语义</b>：{@code simos.unit.levyRegion} 当年的 DM 标签是**漏打的**（征税是决策人的核心动作，且 {@code
+   * levyRegion} <b>同样是工具独有</b> —— 命令面只有 {@code unit.SetTaxRate}，移出提议名单 = DM 彻底不能征税）⇒ 用户 2026-10-15
+   * 裁定「甲」补 {@code roles={DM,GM}}。★ 它 {@code gate()} <b>一个字未改</b>（本来就是 {@code Ask}）⇒ 按 {@code
+   * (roles, gate)} 纯派生 <b>自动落类2 {@code DM_APPROVAL}</b>（用户口径：「DM/GM 混合就是要交给 GM 审核」）。
+   *
+   * <p>★ <b>本条钉住的四件事</b>（"只在 GM 桶"那条旧判据的新形态，判别力不降）：GM 桶里<b>仍然有</b>它（补标签没搬家）· 决策人桶里
+   * <b>现在有</b>它（旧断言的反面）· {@code roles()} <b>恰好</b> {@code {DM, GM}} · 真装配分区判它类2 且<b>不在</b>类1/类3。
+   *
+   * <p>★ <b>第 4 件为什么不能省</b>：{@code roles()} 含 DM 只说明"DM 够得着"；类2（要 GM 点头）还是类3（DM 随便用）完全由 {@code
+   * gate()} 决定 —— 只看标签会把"要审核"误读成"随便用"。★ {@code levyRegion} 还有一层世界效果（抽走家户粮 / 征银）⇒ 它更不该被误判成免审批。
+   */
   @Test
-  void toolIsOnlyInTheGmBucket() {
-    assertThat(shell.toolsFor(SimosToolSource.Role.GM).stream().map(AgentTool::name).toList())
+  void toolSitsInBothBucketsAndClassifiesAsClassTwoDmApproval() {
+    List<AgentTool> gmFace = shell.toolsFor(SimosToolSource.Role.GM);
+    List<AgentTool> decisionFace = shell.toolsFor(SimosToolSource.Role.DECISION_AGENT);
+    assertThat(gmFace.stream().map(AgentTool::name).toList())
+        .as("★ 裁定「甲」只补 DM 标签、不搬家：GM 桶里仍然有 %s", LevyRegionTool.NAME)
         .contains(LevyRegionTool.NAME);
-    assertThat(
-            shell.toolsFor(SimosToolSource.Role.DECISION_AGENT).stream()
-                .map(AgentTool::name)
-                .toList())
+    assertThat(decisionFace.stream().map(AgentTool::name).toList())
+        .as("★★ 裁定「甲」的落点：决策人桶里**现在有** %s（旧断言是 doesNotContain ⇒ 语义已废）", LevyRegionTool.NAME)
+        .contains(LevyRegionTool.NAME);
+
+    AgentTool onDecisionFace =
+        decisionFace.stream()
+            .filter(tool -> LevyRegionTool.NAME.equals(tool.name()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(((SimosTool) onDecisionFace).roles())
+        .as("★★ 它的 roles() 恰好是 {DM, GM}（漏打的那一半补上了；多一个少一个都不行）")
+        .containsExactlyInAnyOrder(ToolRole.DM, ToolRole.GM);
+    assertThat(onDecisionFace.gate(PROBE))
+        .as("★★ 它的 gate() 实得档必须是 Ask（= 类2「交给 GM 审核」）—— 若成 ALLOW 就是「DM 随便用」，与裁定「甲」的口径不符")
+        .isInstanceOf(ToolGate.Ask.class);
+
+    ToolClassAudit.Partition partition = ToolClassAudit.requireClasses(gmFace, decisionFace);
+    assertThat(namesOf(partition.toolsOf(ToolClass.DM_APPROVAL)))
+        .as("★★ 真装配的分区把它判成类2 DM_APPROVAL（roles 含 DM × gate=Ask 纯派生）")
+        .contains(LevyRegionTool.NAME);
+    assertThat(namesOf(partition.toolsOf(ToolClass.GM_ONLY)))
+        .as("★ 它**不再**是类1 GM_ONLY（旧名字说的那件事已经不成立）")
+        .doesNotContain(LevyRegionTool.NAME);
+    assertThat(namesOf(partition.toolsOf(ToolClass.DM_FREE)))
+        .as("★ 它**不是**类3 DM_FREE（gate=Ask ⇒ 仍要 GM 在审批面点头，没有变成 DM 随便用）")
         .doesNotContain(LevyRegionTool.NAME);
   }
 
@@ -999,6 +1052,15 @@ class LevyRegionToolTest {
   }
 
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────
+
+  /** 一份工具面/一格的工具名（{@link LinkedHashSet} ⇒ 可读且能查重）。 */
+  private static Set<String> namesOf(List<AgentTool> tools) {
+    Set<String> names = new LinkedHashSet<>();
+    for (AgentTool tool : tools) {
+      names.add(tool.name());
+    }
+    return names;
+  }
 
   private long head() {
     return shell.coreSimos().head(main()).orElseThrow().value();

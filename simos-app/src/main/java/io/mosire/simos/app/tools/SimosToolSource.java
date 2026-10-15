@@ -1,5 +1,6 @@
 package io.mosire.simos.app.tools;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.approval.ApprovalCoordinator;
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.PendingApprovals;
@@ -1231,7 +1232,20 @@ public final class SimosToolSource implements ToolSource {
    * 是**同一批实例**（决策人桶注册进目录的那个 List）。
    *
    * <p>★ 装配期审计（{@code ProposalDeclarationAudit.requireProposable}）读它做 C1/C2；诊断与用例也用它。
+   *
+   * <p>★ <b>为什么这里是有意豁免而不是改返回类型</b>：{@code ProposalCatalog} 自身没有致变途径——它是 {@code final} 类、字段只有 {@code
+   * private final Map<String, Entry> byName}（构造器里已包 {@code Collections.unmodifiableMap}）与一个 {@code
+   * final String mapId}，对外方法全是读（{@code contains}/{@code toolNames}/{@code requireTool}/{@code
+   * preview}/{@code targets}），类里没有任何 setter；{@link ProposalCatalog#toolNames()} 还返回 {@code
+   * List.copyOf} 拷贝。★ 唯一"看起来像 写"的 {@code preview} 也已被类注钉死只跑 {@code preview=true}（绝不落盘）。⇒
+   * 调用方拿到的引用改不动它，本访问口交出的本来就是只读件； SpotBugs 只是按**字段类型**判。
    */
+  // ★ 形制同 {@code Shell#artifactStore()}：EI_EXPOSE_REP 按字段类型判，而调用方无致变途径 ⇒ 豁免写在这一处。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "ProposalCatalog 是不可变件（final 类、唯一字段 byName 构造时已 unmodifiableMap、无任何 setter，"
+              + "toolNames() 返回 List.copyOf 拷贝）⇒ 调用方拿不到致变途径；本口只供装配期审计与诊断读。")
   public ProposalCatalog proposalCatalog() {
     return proposalCatalog;
   }

@@ -1263,8 +1263,17 @@ class SimosToolsTest {
                 + "★ 三条 GM 侧新工具（{@code gm.inbox} / {@code gm.message.send} / {@code gm.round}）"
                 + "**一条都不进本桶**（roles 只有 GM）⇒ 本桶只由决策族驱动。"
                 + "实测：本条真跑红在「Expected size: 51 but was: 54」，上面那条是机械读数（与 "
-                + "{@code DecisionFaceGolden} 同一次读数）")
-        .hasSize(54);
+                + "{@code DecisionFaceGolden} 同一次读数）；"
+                + "★★ 2026-10-15 用户裁定「甲」（批 K ①）：决策人面 **+7 ⇒ 61** —— "
+                + "{@code simos.unit.raiseUnit} / {@code simos.unit.levyRegion} / {@code simos.gov.recruit} / "
+                + "{@code simos.gov.retireStaff} / {@code simos.gov.selectExaminees} / {@code simos.gov.dispatchTeam} / "
+                + "{@code simos.social.household.members} 这 7 条当年的 **DM 标签是漏打的**（「DM/GM 混合就是要交给 GM 审核」）"
+                + "⇒ 补 {@code roles={DM,GM}}，{@code gate()} 一个字未改 ⇒ 自动成类2 {@code DM_APPROVAL}。"
+                + "★ 它们**本来就在 GM 桶里** ⇒ GM 桶 179 **一条不动**（与 {@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 同一次读数）；"
+                + "★ 共享（既在 GM 桶又含 DM）= 39 → **46**，与三格自洽：GM 桶 = 133(类1) + 46 = 179、本桶 = 24(类2) + 37(类3) = 61。"
+                + "★ 逐条成员见 {@code DecisionFaceGolden} 与 {@code ToolClassAuditAssemblyTest.DM_APPROVAL_NAMES}（三处同轮同步）。"
+                + "实测：本条真跑红在「Expected size: 54 but was: 61」")
+        .hasSize(61);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {

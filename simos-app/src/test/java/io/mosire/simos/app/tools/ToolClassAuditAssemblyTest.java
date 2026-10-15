@@ -40,9 +40,18 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>★★ <b>自洽硬证据</b>（这就是"计数对"的理由，而不是"跑出来是多少就是多少"）：
  *
  * <pre>
- * GM 桶     = 类1 140 + 共享 39 = 179 = ShellAssemblySmokeTest.GM_BUCKET_SIZE
- * 决策人桶  = 类2  17 + 类3 37 =  54 = ShellAssemblySmokeTest.DECISION_BUCKET_SIZE
+ * GM 桶     = 类1 133 + 共享 46 = 179 = ShellAssemblySmokeTest.GM_BUCKET_SIZE
+ * 决策人桶  = 类2  24 + 类3 37 =  61 = ShellAssemblySmokeTest.DECISION_BUCKET_SIZE
  * </pre>
+ *
+ * <p>★★ <b>2026-10-15 用户裁定「甲」后的新口径</b>（本类的前四个常量随之改）：{@code RaiseUnit} · {@code LevyRegion} · {@code
+ * GovRecruit} · {@code GovRetireStaff} · {@code SocialHouseholdMembers} · {@code
+ * GovSelectExaminees} · {@code GovDispatchTeam} 这 <b>7 条类1</b> 当年的 <b>DM
+ * 标签是漏打的</b>（它们本来就是决策人的核心动作：造兵 / 征税 / 招吏 / 辞退 / 选人 / 派队 / 家户成员直调）⇒ 补 {@code
+ * roles={DM,GM}}；它们<b>本来就是 {@code Ask}</b> ⇒ 自动成类2 {@code DM_APPROVAL}。⇒ 7 条同时离开类1（{@code 140 →
+ * 133}）、进入类2（{@code 17 → 24}）与共享（{@code 39 → 46}）； 类3 与两桶并集、GM 桶<b>一格未动</b>（{@code 37 / 194 /
+ * 179}）。★ GM 桶与并集的"不变"不是巧合而是算术自证：GM 桶 = 类1 + 共享 （{@code 133 + 46 = 179 = 140 + 39}），并集 =
+ * 三格之和（{@code 133 + 24 + 37 = 194 = 140 + 17 + 37}）。
  *
  * <p>★ <b>本类怎么读分区</b>：走**真装配**（{@link Shell#start(ShellConfig)}）拿两桶，再调 {@link
  * ToolClassAudit#requireClasses} 取 {@code Partition} —— 与 {@code Shell:1398}
@@ -56,7 +65,7 @@ class ToolClassAuditAssemblyTest {
   // ────────────────────────── ★★ 三格条数锚点（增删一条都要显式改本行并说明为什么） ──────────────────────────
 
   /**
-   * ★★ <b>类1 {@code GM_ONLY} = 140</b>（2026-10-15 批 3a 真装配实测；= 136 条内部 {@code {GM}} 真工具 + 4 条外来
+   * ★★ <b>类1 {@code GM_ONLY} = 133</b>（2026-10-15 用户裁定「甲」后真装配实测；= 129 条内部 {@code {GM}} 真工具 + 4 条外来
    * {@code {GM}}：{@code doc_void} / {@code mount_workspace} / {@code unmount_workspace} / {@code
    * list_workspaces}）。
    *
@@ -65,38 +74,58 @@ class ToolClassAuditAssemblyTest {
    *
    * <p>★★ <b>谁要改这个数</b>：工具面增删一条、或某条工具的 {@code roles()}/{@code gate()} 改了类归属 ⇒ 这里当场红。
    * 那时应当<b>显式</b>改本行并在提交说明里写清"哪一条、为什么换格"，<b>不是</b>把断言删掉/放宽。
+   *
+   * <p>★★ <b>本次变化（{@code 140 → 133}）来自用户 2026-10-15 裁定「甲」</b>：{@code RaiseUnit} · {@code
+   * LevyRegion} · {@code GovRecruit} · {@code GovRetireStaff} · {@code SocialHouseholdMembers} ·
+   * {@code GovSelectExaminees} · {@code GovDispatchTeam} 这 7 条<b>补了漏打的 DM 标签</b>（{@code
+   * roles={DM,GM}}，{@code gate()} 一个字未改）⇒ 它们不再是类1、自动落类2。★ 实测读数是「Expected size: 140 but was:
+   * 133」，与「7 条换格」逐条相符。
    */
-  private static final int GM_ONLY_SIZE = 140;
+  private static final int GM_ONLY_SIZE = 133;
 
-  /** ★★ <b>类2 {@code DM_APPROVAL} = 17</b>（具名清单见 {@link #DM_APPROVAL_NAMES}）。 */
-  private static final int DM_APPROVAL_SIZE = 17;
+  /**
+   * ★★ <b>类2 {@code DM_APPROVAL} = 24</b>（具名清单见 {@link #DM_APPROVAL_NAMES}）。★ 17 → 24 的全部增量 =
+   * 裁定「甲」的那 7 条。
+   */
+  private static final int DM_APPROVAL_SIZE = 24;
 
-  /** ★★ <b>类3 {@code DM_FREE} = 37</b>。 */
+  /** ★★ <b>类3 {@code DM_FREE} = 37</b>（★ 裁定「甲」<b>未动</b>本格：那 7 条本来就是 {@code Ask} ⇒ 落类2，不落类3）。 */
   private static final int DM_FREE_SIZE = 37;
 
-  /** ★ <b>共享 = 39</b>：既在 GM 桶、又在决策人桶的工具（内部 31 + 外来 8，{@code roles()} 含 {@code {GM, DM}} 两者）。 */
-  private static final int SHARED_SIZE = 39;
+  /**
+   * ★ <b>共享 = 46</b>：既在 GM 桶、又在决策人桶的工具（内部 38 + 外来 8，{@code roles()} 含 {@code {GM, DM}} 两者）。
+   *
+   * <p>★ 裁定「甲」把 7 条从「只在 GM 桶」搬进「两桶共享」⇒ {@code 39 → 46}。★ 它与 {@link #GM_ONLY_SIZE} 的算术是
+   * <b>双向钉死</b>的：GM 桶 = 类1 + 共享（{@code 133 + 46 = 179}）——只改一个数就会在下面的自洽断言里红。
+   */
+  private static final int SHARED_SIZE = 46;
 
-  /** ★ <b>两桶并集 = 194 = 140 + 17 + 37</b>（分区不重不漏的算术自证）。 */
+  /** ★ <b>两桶并集 = 194 = 133 + 24 + 37</b>（分区不重不漏的算术自证；★ 裁定「甲」只搬格、不改并集）。 */
   private static final int TOOL_UNION_SIZE = 194;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 逐字相同（那边是 {@code private} ⇒ 这里逐字重复而不是反射取）。 ★
-   * 两处**同时**红才说明"分区搬了家"：本类下面的断言把"桶条数"与"三格算术"钉在一起。
+   * 两处**同时**红才说明"分区搬了家"：本类下面的断言把"桶条数"与"三格算术"钉在一起。★ 裁定「甲」<b>未动</b>本数。
    */
   private static final int GM_BUCKET_SIZE = 179;
 
-  /** ★ 与 {@code ShellAssemblySmokeTest.DECISION_BUCKET_SIZE} 逐字相同。 */
-  private static final int DECISION_BUCKET_SIZE = 54;
+  /**
+   * ★ 与 {@code ShellAssemblySmokeTest.DECISION_BUCKET_SIZE} 逐字相同。★ 裁定「甲」：{@code 54 → 61}（= 类2 24 +
+   * 类3 37）。
+   */
+  private static final int DECISION_BUCKET_SIZE = 61;
 
   // ────────────────────────── ★★ 类2 具名清单（A2/A3） ──────────────────────────
 
   /**
-   * ★★ <b>类2 {@code DM_APPROVAL} 的**全部** 17 条工具名</b>（2026-10-15 真装配实测，逐条核过）。
+   * ★★ <b>类2 {@code DM_APPROVAL} 的**全部** 24 条工具名</b>（2026-10-15 用户裁定「甲」后真装配实测，逐条核过）。
    *
-   * <p>★ 组成（设计书 §2.1）：{@code ga.IssueDirective} · {@code ga.SubmitVerdict} · 9 条 {@code
-   * simos.gov.*} · 3 条外来 doc 写（{@code doc_append} / {@code doc_create} / {@code doc_edit}）· {@code
-   * gov.SetDiplomaticRelation} · {@code gov.RecordDiplomaticEvent} · {@code simos.gov.pay}。
+   * <p>★ 组成（设计书 §2.1 + §4 裁定甲）：{@code ga.IssueDirective} · {@code ga.SubmitVerdict} · 9 条 {@code
+   * simos.gov.*} 类2世界写 · 3 条外来 doc 写（{@code doc_append} / {@code doc_create} / {@code doc_edit}）·
+   * {@code gov.SetDiplomaticRelation} · {@code gov.RecordDiplomaticEvent} · {@code simos.gov.pay} ·
+   * ★★ <b>裁定「甲」补进来的 7 条</b>（原 7 条类1：{@code simos.unit.raiseUnit} / {@code simos.unit.levyRegion} /
+   * {@code simos.gov.recruit} / {@code simos.gov.retireStaff} / {@code simos.gov.selectExaminees} /
+   * {@code simos.gov.dispatchTeam} / {@code simos.social.household.members}）。
    *
    * <p>★★ <b>最后三条是"四格收敛成三格"的关键结论</b>（{@link #PURE_DM_APPROVAL_NAMES}）：它们是纯 {@code {DM}} + {@code
    * Ask}（DM 能用、但要问人）⇒ 按 §3.1 的口径**自动**落进类2，不需要为它们单列第四格、也不需要改它们的任何声明。
@@ -116,6 +145,16 @@ class ToolClassAuditAssemblyTest {
           "simos.gov.renameCurrency",
           "simos.gov.issueMoney",
           "simos.gov.setFxRate",
+          // ★★ 2026-10-15 用户裁定「甲」的 7 条（漏打 DM 标签的类1 ⇒ 补 {DM,GM} ⇒ 本来就是 Ask ⇒ 自动落类2）。
+          //   ★ 逐条即真装配读数（`classTwoRosterIsExactlyTheNamedTools` 的失败输出里那 7 条"unexpected elements"），
+          //     不是照抄设计书的清单：造兵 / 征税 / 招吏 / 辞退 / 选人 / 派队 / 家户成员直调。
+          "simos.unit.raiseUnit",
+          "simos.gov.recruit",
+          "simos.gov.retireStaff",
+          "simos.social.household.members",
+          "simos.unit.levyRegion",
+          "simos.gov.selectExaminees",
+          "simos.gov.dispatchTeam",
           "doc_append",
           "doc_create",
           "doc_edit",
@@ -263,17 +302,20 @@ class ToolClassAuditAssemblyTest {
     }
   }
 
-  // ────────────────────────── A2 + A3：类2 具名 17 条 ──────────────────────────
+  // ────────────────────────── A2 + A3：类2 具名 24 条 ──────────────────────────
 
   /**
-   * ★★ <b>A2：类2 的名单**恰好**是 {@link #DM_APPROVAL_NAMES} 那 17 条</b>（逐条相等，不是"至少含这 17 条"）。
+   * ★★ <b>A2：类2 的名单**恰好**是 {@link #DM_APPROVAL_NAMES} 那 24 条</b>（逐条相等，不是"至少含这 24 条"）。
+   *
+   * <p>★ <b>方法名为什么不带数字</b>：它原叫 {@code ...TheSeventeenNamedTools}，而 2026-10-15 裁定「甲」把类2 从 17 条推到 24
+   * 条 —— 名字里的数字与断言里的数字**只能有一个真相**；数字留在 {@link #DM_APPROVAL_SIZE} 与清单里，名字只描述判据。
    *
    * <p>★★ <b>A3：{@link #PURE_DM_APPROVAL_NAMES} 那三条纯 {@code {DM}} + {@code Ask} 必须在类2 里</b> ——
    * 它们不是"顺带在里面"，而是 §3.1「{@code {DM}} 与 {@code {DM,GM}} 在分类这一维等价」这条口径的**判别力落点**： 谁把口径改成"只有 {@code
    * {DM,GM}} 才算 DM 面"，这三条就会掉出去，这里当场红。
    */
   @Test
-  void classTwoRosterIsExactlyTheSeventeenNamedTools() {
+  void classTwoRosterIsExactlyTheNamedTools() {
     try (Shell shell = startShell()) {
       ToolClassAudit.Partition partition =
           ToolClassAudit.requireClasses(
@@ -282,14 +324,14 @@ class ToolClassAuditAssemblyTest {
 
       Set<String> classTwo = namesOf(partition.toolsOf(ToolClass.DM_APPROVAL));
       assertThat(classTwo)
-          .as("★★ A2：类2 的名单必须**恰好**是这 17 条（逐条具名；只数条数会漏掉「成员替换」）")
+          .as("★★ A2：类2 的名单必须**恰好**是这 24 条（逐条具名；只数条数会漏掉「成员替换」）")
           .containsExactlyInAnyOrderElementsOf(DM_APPROVAL_NAMES);
       assertThat(partition.toolsOf(ToolClass.DM_APPROVAL))
           .as("★ A2：类2 条数锚点")
           .hasSize(DM_APPROVAL_SIZE);
       assertThat(classTwo).as("★ A2：类2 无重名").hasSize(DM_APPROVAL_NAMES.size());
       assertThat(DM_APPROVAL_NAMES)
-          .as("★ 清单自洽：类2 清单**恰好** 17 条（常量写重了/漏了 ⇒ 这里红）")
+          .as("★ 清单自洽：类2 清单**恰好** 24 条（常量写重了/漏了 ⇒ 这里红）")
           .doesNotHaveDuplicates()
           .hasSize(DM_APPROVAL_SIZE);
 

@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.agentlib.approval.ToolGate;
+import io.mosire.agentlib.permission.AccessToken;
+import io.mosire.agentlib.permission.AgentPermissionSet;
+import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
@@ -34,6 +38,10 @@ import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.spi.SimosTool;
+import io.mosire.simos.ga.spi.ToolClass;
+import io.mosire.simos.ga.spi.ToolRole;
+import io.mosire.simos.ga.tools.ToolClassAudit;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -79,6 +87,7 @@ import io.mosire.simos.util.time.SimosTimestamp;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -144,6 +153,14 @@ class RaiseUnitToolTest {
   private static final String DECOY_INFO_ID = "unit:u-new#0";
 
   private static final ObjectMapper JSON = new ObjectMapper();
+
+  /**
+   * ★★ <b>探针上下文</b>：与 {@code ToolClassAudit#PROBE} <b>同形</b>（{@code arguments()} = 空 {@code Map}）——
+   * 本类用它读 {@code gate()} 的<b>实得档</b>（判类只看"属于谁 × 要不要问人"）。★ 独立重建而不是引用生产那个：判据要与装配期
+   * 那次分类<b>用同样的输入</b>，但断言不该退化成"生产等于它自己"。
+   */
+  private static final ToolContext PROBE =
+      new ToolContext(AccessToken.SYSTEM, AgentPermissionSet.system(), Map.of(), Map.of());
 
   private static final List<ModuleCodec> GENESIS_CODECS =
       List.of(
@@ -580,14 +597,63 @@ class RaiseUnitToolTest {
     assertStillZeroRevision(headBefore, rowsBefore);
   }
 
+  /**
+   * ★★ <b>2026-10-15 用户裁定「甲」后**重写**</b>（原名 {@code toolIsOnlyInTheGmBucket} —— 那个名字与它的 {@code
+   * doesNotContain} 断言<b>同时失效</b>，不是"把数值改一改"就能留的）。
+   *
+   * <p>★★ <b>新语义</b>：{@code simos.unit.raiseUnit} 当年的 DM 标签是**漏打的**（造兵是决策人的核心动作，且命令面 <b>没有</b>
+   * {@code unit.RaiseUnit} ⇒ 移出提议名单 = DM 彻底不能造兵）⇒ 用户 2026-10-15 裁定「甲」补 {@code roles={DM,GM}}。★ 它
+   * {@code gate()} <b>一个字未改</b>（本来就是 {@code Ask}）⇒ 按 {@code (roles, gate)} 纯派生 <b>自动落类2 {@code
+   * DM_APPROVAL}</b>（用户口径：「DM/GM 混合就是要交给 GM 审核」）。
+   *
+   * <p>★ <b>本条钉住的四件事</b>（逐件都是"只在 GM 桶"那条旧判据的新形态，判别力不降）：
+   *
+   * <ol>
+   *   <li>GM 桶里<b>仍然有</b>它（补标签**没有**把它从 GM 面挪走 —— 它是"两桶共享"，不是"搬家"）；
+   *   <li>决策人桶里<b>现在有</b>它（旧断言的反面，正是裁定「甲」的落点）；
+   *   <li>它的 {@code roles()} <b>恰好</b>是 {@code {DM, GM}}（不是 {@code {DM}} 单标签 —— 那会变成"DM 与 GM
+   *       等价"的另一种口径）；
+   *   <li>真装配的分区把它判成类2、且<b>不在</b>类1/类3（{@code Ask} 而不是 {@code ALLOW} ⇒ "要问人"，与用户口径一致）。
+   * </ol>
+   *
+   * <p>★ <b>为什么第 4 件不能只看 {@code roles()}</b>：{@code roles()} 含 DM 只说明"DM 够得着"；它落类2 还是类3 完全由 {@code
+   * gate()} 决定 —— 只看标签会把"要 GM 审核"误读成"DM 随便用"。
+   */
   @Test
-  void toolIsOnlyInTheGmBucket() {
-    assertThat(shell.toolsFor(SimosToolSource.Role.GM).stream().map(tool -> tool.name()).toList())
+  void toolSitsInBothBucketsAndClassifiesAsClassTwoDmApproval() {
+    List<AgentTool> gmFace = shell.toolsFor(SimosToolSource.Role.GM);
+    List<AgentTool> decisionFace = shell.toolsFor(SimosToolSource.Role.DECISION_AGENT);
+    assertThat(gmFace.stream().map(AgentTool::name).toList())
+        .as("★ 裁定「甲」只补 DM 标签、不搬家：GM 桶里仍然有 %s", RaiseUnitTool.NAME)
         .contains(RaiseUnitTool.NAME);
-    assertThat(
-            shell.toolsFor(SimosToolSource.Role.DECISION_AGENT).stream()
-                .map(tool -> tool.name())
-                .toList())
+    assertThat(decisionFace.stream().map(AgentTool::name).toList())
+        .as("★★ 裁定「甲」的落点：决策人桶里**现在有** %s（旧断言是 doesNotContain ⇒ 语义已废）", RaiseUnitTool.NAME)
+        .contains(RaiseUnitTool.NAME);
+
+    AgentTool onDecisionFace =
+        decisionFace.stream()
+            .filter(tool -> RaiseUnitTool.NAME.equals(tool.name()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(((SimosTool) onDecisionFace).roles())
+        .as("★★ 它的 roles() 恰好是 {DM, GM}（漏打标签的那一半补上了；多一个少一个都不行）")
+        .containsExactlyInAnyOrder(ToolRole.DM, ToolRole.GM);
+    assertThat(onDecisionFace.gate(PROBE))
+        .as("★★ 它的 gate() 实得档必须是 Ask（= 类2「交给 GM 审核」）—— 若成 ALLOW 就是「DM 随便用」，与裁定「甲」的口径不符")
+        .isInstanceOf(ToolGate.Ask.class);
+
+    ToolClassAudit.Partition partition = ToolClassAudit.requireClasses(gmFace, decisionFace);
+    Set<String> classOne = namesOf(partition.toolsOf(ToolClass.GM_ONLY));
+    Set<String> classTwo = namesOf(partition.toolsOf(ToolClass.DM_APPROVAL));
+    Set<String> classThree = namesOf(partition.toolsOf(ToolClass.DM_FREE));
+    assertThat(classTwo)
+        .as("★★ 真装配的分区把它判成类2 DM_APPROVAL（roles 含 DM × gate=Ask 纯派生）")
+        .contains(RaiseUnitTool.NAME);
+    assertThat(classOne)
+        .as("★ 它**不再**是类1 GM_ONLY（旧名字说的那件事已经不成立）")
+        .doesNotContain(RaiseUnitTool.NAME);
+    assertThat(classThree)
+        .as("★ 它**不是**类3 DM_FREE（gate=Ask ⇒ 仍要 GM 在审批面点头，没有变成 DM 随便用）")
         .doesNotContain(RaiseUnitTool.NAME);
   }
 
@@ -739,6 +805,15 @@ class RaiseUnitToolTest {
     assertThat(value.get("reason").asText()).isEqualTo(REASON);
     assertThat(entry.note()).isPresent();
     assertThat(entry.note().orElseThrow()).contains(NEW_UNIT.value()).contains(REASON);
+  }
+
+  /** 一份工具面/一格的工具名（{@link LinkedHashSet} ⇒ 可读且能查重）。 */
+  private static Set<String> namesOf(List<AgentTool> tools) {
+    Set<String> names = new LinkedHashSet<>();
+    for (AgentTool tool : tools) {
+      names.add(tool.name());
+    }
+    return names;
   }
 
   private static List<String> commandTypes(JsonNode node) {

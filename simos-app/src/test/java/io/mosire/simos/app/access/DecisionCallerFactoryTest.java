@@ -254,8 +254,13 @@ class DecisionCallerFactoryTest {
       //     +simos.ga.message.send +simos.ga.message.inbox ⇒ 仍 48）⇒ 本行只把名字改对，判据一字未松。
       //   ★★ 2026-10-14 决策自由化（批 B）：决策族改名 sd → ga（不计增）+ 净新增 revise / drop / reopen /
       //     adjudication.ack ⇒ 金名单 50 → **54**（实测：真跑红在「Expected size: 51 but was: 54」）。
+      //   ★★ 2026-10-15 用户裁定「甲」（批 K ①）：7 条漏打 DM 标签的类1 补 roles={DM,GM} ⇒ 金名单 54 → **61**
+      //     （实测：真跑红在「Expected size: 54 but was: 61」，actual-only 的那 7 条 = simos.unit.raiseUnit /
+      //     simos.unit.levyRegion / simos.gov.recruit / simos.gov.retireStaff /
+      // simos.gov.selectExaminees /
+      //     simos.gov.dispatchTeam / simos.social.household.members）。★ 判据一字未松：仍是逐条精确相等。
       assertThat(decisionFace)
-          .as("★ 决策人面 == 测试侧金名单（54 条，独立规格）")
+          .as("★ 决策人面 == 测试侧金名单（61 条，独立规格）")
           .containsExactlyInAnyOrderElementsOf(DecisionFaceGolden.ALL);
 
       Set<String> whitelist =

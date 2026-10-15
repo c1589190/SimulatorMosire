@@ -139,10 +139,21 @@ class ShellAssemblySmokeTest {
    * SimosToolsTest.NON_NARROW_WRITE_NAMES} +1，而 {@code NARROW_WRITE_NAMES} 与"磁盘窄写类集合"<b>一条不动</b>。 ★
    * 实测来源：本条真跑，红在「GM 桶条数锚点（增删工具须显式改本行）Expected size: 178 but was: 179」； ★ 决策人桶那条锚点<b>没有红</b> ——
    * 这正是"它只进 GM 桶"这一侧的判别力。
+   *
+   * <p>★★ <b>2026-10-15 用户裁定「甲」（批 K ①）：GM 179 <b>一条不动</b>、决策人 54 → 61</b> —— {@code RaiseUnit} ·
+   * {@code LevyRegion} · {@code GovRecruit} · {@code GovRetireStaff} · {@code
+   * SocialHouseholdMembers} · {@code GovSelectExaminees} · {@code GovDispatchTeam} 这 7 条当年的 <b>DM
+   * 标签是漏打的</b>（它们本来就是决策人的核心动作：造兵 / 征税 / 招吏 / 辞退 / 选人 / 派队 / 家户成员直调）⇒ 补 {@code roles={DM,GM}}（{@code
+   * gate()} 一个字未改 ⇒ 自动成类2 {@code DM_APPROVAL}）。 ★ 它们<b>本来就在 GM 桶里</b>（只是从"只有 GM"变成"两桶共享"）⇒ <b>GM
+   * 桶条数不变</b>，只有决策人桶 +7。 ★ 实测来源：本条真跑，红在「决策人桶条数锚点（增删工具须显式改本行）Expected size: 54 but was: 61」；★ <b>GM
+   * 桶那条锚点没有红</b> —— 这正是"7 条只是加了 DM 标签"这一侧的判别力（若它们本来不在 GM 桶，这里会一起红）。 ★ 与 {@code
+   * ToolClassAuditAssemblyTest} 的三格锚点同源：{@code 133(类1) + 24(类2) + 37(类3) = 194}、GM 桶 {@code = 133 +
+   * 46(共享) = 179}、决策人桶 {@code = 24 + 37 = 61}。
    */
   private static final int GM_BUCKET_SIZE = 179;
 
-  private static final int DECISION_BUCKET_SIZE = 54;
+  /** ★★ 2026-10-15 用户裁定「甲」：{@code 54 → 61}（= 类2 24 + 类3 37；那 7 条补了 DM 标签的工具进本桶）。 */
+  private static final int DECISION_BUCKET_SIZE = 61;
 
   /** 八个 codec（map / social / unit / economy / actor / ga / gov / army）。 */
   private static final int MODULE_COUNT = 8;

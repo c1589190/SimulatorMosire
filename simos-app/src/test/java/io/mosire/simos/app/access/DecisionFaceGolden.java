@@ -30,19 +30,28 @@ public final class DecisionFaceGolden {
   private DecisionFaceGolden() {}
 
   /**
-   * 决策人面的 54 条工具名（2026-10-12 B4b 冻结 44 条；★★ 2026-10-13 收尾测试第 3 层删掉幽灵 {@code simos.sd.combats} ⇒
+   * 决策人面的 61 条工具名（2026-10-12 B4b 冻结 44 条；★★ 2026-10-13 收尾测试第 3 层删掉幽灵 {@code simos.sd.combats} ⇒
    * 43；★★ 2026-10-13 取缔 Skill 系统删掉 Skill 读工具一条 ⇒ 42；★★ 2026-10-14 AgentLib Docs/Workspace 接入
    * +6（doc_list/read/query/append/create/edit）⇒ 48；★★ <b>2026-10-14 决策人互致消息</b>：旧上报族整族废弃 ⇒ 删 {@code
    * simos.sd.report}（写口）与 {@code simos.sd.reports}（读口）、加 {@code simos.ga.message.send} 与 {@code
    * simos.ga.message.inbox} ⇒ 那一步仍是 48（−2 +2，条数逐字不变但**成员换了**）；★★ <b>2026-10-14 上游 R8</b> （控制方裁定
    * §11.3）：{@code doc_guide} / {@code workspace_info} 两条"能力自述"工具都是纯读 ⇒ {@code {GM, DM}} ⇒ 48 →
    * <b>50</b>；★★ <b>2026-10-14 决策自由化（批 B）</b>：四件套改名 sd → ga（**改名不计增**）+ 净新增 revise / drop / reopen
-   * 与 adjudication.ack ⇒ <b>50 → 54</b>。与 {@code roles()} 声明、两桶装配三处一致。
+   * 与 adjudication.ack ⇒ <b>50 → 54</b>；★★ <b>2026-10-15 用户裁定「甲」（批 K ①）</b>：7 条漏打 DM 标签的类1 补 {@code
+   * roles={DM,GM}} ⇒ <b>54 → 61</b>。与 {@code roles()} 声明、两桶装配三处一致。
    *
    * <p>★ <b>50 → 54 的算法（实测，不是照抄设计书）</b>：设计书 §7 只预测"DM 桶 50→51"，真跑读到的是 <b>54</b>。 逐条核过：决策族 4 → 8
    * 条（改名 3 条不计增，净 +4：propose 之外新增 revise / drop / reopen 三条 + adjudication.ack 一条），其余 46 条一字未动 ⇒
    * 54。★ 三条 GM 侧新工具（{@code gm.inbox} / {@code gm.message.send} / {@code gm.round}）{@code roles()}
    * 只有 GM ⇒ 一条都不进本表。
+   *
+   * <p>★★ <b>54 → 61 的算法（实测，不是照抄设计书）</b>：用户 2026-10-15 裁定「甲」——{@code RaiseUnit} · {@code
+   * LevyRegion} · {@code GovRecruit} · {@code GovRetireStaff} · {@code SocialHouseholdMembers} ·
+   * {@code GovSelectExaminees} · {@code GovDispatchTeam} 这 7 条「当年的 DM 标签是**漏打的**」（它们本来就是决策人的核心动作：
+   * 造兵 / 征税 / 招吏 / 辞退 / 选人 / 派队 / 家户成员直调）⇒ 补 {@code roles={DM,GM}}。 ★ 逐条**是**真跑读数（{@code
+   * DecisionCallerFactoryTest} 的失败输出里那 7 条 actual-only 成员），不是从设计书抄的清单； ★ 它们 {@code gate()}
+   * <b>一个字未改</b> ⇒ 自动成类2 {@code DM_APPROVAL}（「DM/GM 混合就是要交给 GM 审核」），而不是类3。★ 与 {@code
+   * ToolClassAuditAssemblyTest.DM_APPROVAL_NAMES}（同样含这 7 条）同轮同步 —— 那一边按**装配分区**读，本表按**工具面**读，两处独立。
    */
   public static final Set<String> ALL =
       Set.of(
@@ -94,6 +103,19 @@ public final class DecisionFaceGolden {
           "gov.SetDiplomaticRelation",
           "gov.RecordDiplomaticEvent",
           "simos.gov.pay",
+          // ★★ 2026-10-15 用户裁定「甲」（批 K ①）：这 7 条**原本就在本表里**（它们是决策人的核心动作，D2
+          //   决策包计划第一天就在可提议清单里），只是当年的 roles() **漏打了 DM 标签** ⇒ 本轮补 {roles={DM,GM}}。
+          //   ★ 它们**不在 GM 桶之外**：本来就在 GM 桶里（{GM}）⇒ 补标签后成"两桶共享"，GM 桶条数不变（179）。
+          //   ★ gate() 一个字未改（本来就是 Ask）⇒ 自动成类2 DM_APPROVAL，与用户口径「DM/GM 混合就是要交给 GM 审核」一致。
+          //   逐条：造兵（命令面**没有** unit.RaiseUnit ⇒ 移出名单 = DM 彻底不能造兵）、征税（levyRegion 同样是工具独有）、
+          //   招吏、辞退、选人、派队、家户成员直调。
+          "simos.unit.raiseUnit",
+          "simos.gov.recruit",
+          "simos.gov.retireStaff",
+          "simos.social.household.members",
+          "simos.unit.levyRegion",
+          "simos.gov.selectExaminees",
+          "simos.gov.dispatchTeam",
           // ★★ A1 / A2a：货币身份三件套 + 官方汇率（只能作用于自己的 GOV）。
           "simos.gov.defineCurrency",
           "simos.gov.renameCurrency",
