@@ -64,6 +64,7 @@ import io.mosire.simos.ga.model.DirectiveCommand;
 import io.mosire.simos.ga.model.FormattedCall;
 import io.mosire.simos.ga.model.PacketStatus;
 import io.mosire.simos.ga.spi.IssueDirectiveHandler;
+import io.mosire.simos.ga.tools.read.GmPacketTool;
 import io.mosire.simos.ga.tools.write.GmDecidePacketTool;
 import io.mosire.simos.ga.tools.write.GmPacketExecuteTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
@@ -588,8 +589,25 @@ class RealLlmGovScenarioTest {
   }
 
   /**
-   * GM 批准本 tick 所有 PENDING 包，然后用一条 {@code gm.packet.execute} 执行全部已批准 call（生产路径：一 tick 一条世界效果
-   * revision）。返回可打印的执行账；没有可执行 call 时返回 {@code null}。
+   * ★★ GM 裁决本 tick 的 PENDING 包并执行：<b>逐 call 裁决</b>（{@code simos.gm.packet.decide} 带 {@code
+   * callIndexes}），然后用一条 {@code gm.packet.execute} 执行全部已批准 call（生产路径：一 tick 一条世界效果 revision）。
+   *
+   * <p>★★ <b>裁决判据全部来自 GM 自己能看到的工具输出</b>（禁止测试内幕）：
+   *
+   * <ul>
+   *   <li><b>逐 call 事实</b>来自 {@code simos.gm.packet}（= GM 读单包全量：`calls[].toolName / argsJson / args
+   *       / targets / preview / status`）——真 GM 裁决前读的就是这一份；测试**不读生产内部状态**。
+   *   <li><b>唯一裁决规则 = 按稳定序先到先得</b>（packetId 字符串序 → callIndex 升序，与 {@code gm.packet.execute}
+   *       自己的稳定序同口径）：一条 call 若声称要创建<b>同 tick 内已被前一条 call 占用的落点</b>（preview 里由工具自己算出的 `newUnitId` /
+   *       `householdId` / `newUnitId→householdId`），后到的那条**当冗余重复项具名 REJECT**。判据是"两条 call
+   *       会创建同一个东西"——这从 preview 逐字可读，不需要任何内幕。
+   *   <li>★ 为什么要这条规则：真实世界对"重复创建同一落点"的反应是**业务拒**（`家户已存在，拒绝重复创建` / `单位 id 已存在`），而 {@code
+   *       gm.packet.execute} 是**整批原子**——一条业务拒 ⇒ 本 tick 全部决策一起零效果。真 GM
+   *       在预览里看到两条一模一样的落点，做的正是"只批一条、另一条不再提"。
+   * </ul>
+   *
+   * <p>★ 只 REJECT 由上面规则点名的 call；其余一律 APPROVE（GM 不替世界做可行性判断——世界仍可业务拒，那时按原口径如实记 blocker
+   * 并停下）。返回可打印的执行账；没有已批准 call 时返回 {@code null}。
    */
   private Map<String, Object> approveAndExecutePackets(
       int round, long tick, List<DecisionPacket> packets) {
@@ -597,28 +615,84 @@ class RealLlmGovScenarioTest {
       return null;
     }
     Map<String, Boolean> centralByPacket = new LinkedHashMap<>();
-    List<JsonNode> decisionViews = new ArrayList<>();
-    long approvedCalls = 0L;
     for (DecisionPacket packet : packets) {
       centralByPacket.put(packet.id().value(), isCentralDecisionMaker(packet.proposerId().value()));
+    }
+    // ① GM 读包（真读口）：拿到逐 call 的 toolName/args/targets/preview —— 这是本方法的唯一事实来源。
+    Map<String, JsonNode> packetReads = new LinkedHashMap<>();
+    List<String> readFailures = new ArrayList<>();
+    for (DecisionPacket packet : packets) {
       if (packet.status() != PacketStatus.PENDING) {
         continue;
       }
       Map<String, Object> args = new LinkedHashMap<>();
       args.put("packetId", packet.id().value());
+      args.put("branch", MAIN.value());
+      args.put("expectedRevision", head());
+      try {
+        packetReads.put(packet.id().value(), callToolJson(GmPacketTool.NAME, args));
+      } catch (Exception e) {
+        readFailures.add("packet=" + packet.id().value() + ": " + truncate(e.getMessage(), 400));
+      }
+    }
+    Map<String, Object> readView = new LinkedHashMap<>();
+    readView.put("packetsRead", packetReads.size());
+    readView.put("failures", readFailures);
+    // ② 逐 call 裁决：稳定序先到先得，落点被前一条 call 占用的后到者具名 REJECT。
+    List<JsonNode> decisionViews = new ArrayList<>();
+    List<Map<String, Object>> rejectedViews = new ArrayList<>();
+    Set<String> claimedLandingIds = new LinkedHashSet<>();
+    long approvedCalls = 0L;
+    for (DecisionPacket packet : packets) {
+      if (packet.status() != PacketStatus.PENDING) {
+        continue;
+      }
+      JsonNode read = packetReads.get(packet.id().value());
+      if (read == null || !read.path("calls").isArray()) {
+        // 读不到 ⇒ 不裁（保持 PENDING，把它如实记进 blockers），绝不用内幕猜它的内容。
+        blockers.add("round " + round + " GM 读不到决策包（不裁决）: " + packet.id().value());
+        continue;
+      }
+      List<JsonNode> calls = new ArrayList<>();
+      for (JsonNode call : read.path("calls")) {
+        calls.add(call);
+      }
+      calls.sort(Comparator.comparingInt(call -> call.path("callIndex").asInt()));
+      CallSelection selection = selectApprovableCalls(calls, claimedLandingIds);
+      List<Integer> approveIndexes = selection.approveIndexes();
+      List<Map<String, Object>> rejected = new ArrayList<>();
+      for (Map<String, Object> row : selection.rejected()) {
+        Map<String, Object> enriched = new LinkedHashMap<>(row);
+        enriched.put("packetId", packet.id().value());
+        rejected.add(enriched);
+      }
+      Map<String, Object> args = new LinkedHashMap<>();
+      args.put("packetId", packet.id().value());
       args.put("decision", "APPROVE");
-      args.put("note", "阶段 13C GM 批准同时决策包 round=" + round);
+      args.put("note", "阶段 13C GM 逐 call 裁决同时决策包 round=" + round);
+      if (!rejected.isEmpty()) {
+        args.put("callIndexes", List.copyOf(approveIndexes));
+        args.put("note", args.get("note") + "；REJECT 冗余重复项 call=" + rejected);
+      }
       args.put("branch", MAIN.value());
       args.put("expectedRevision", head());
       try {
         decisionViews.add(callToolJson(GmDecidePacketTool.NAME, args));
-        approvedCalls += packet.calls().size();
+        approvedCalls += approveIndexes.size();
+        rejectedViews.addAll(rejected);
       } catch (Exception e) {
         blockers.add(
-            "round " + round + " 批准决策包失败 packet=" + packet.id().value() + ": " + e.getMessage());
+            "round " + round + " 裁决决策包失败 packet=" + packet.id().value() + ": " + e.getMessage());
       }
     }
     if (approvedCalls == 0L) {
+      System.out.println(
+          "[GOV-SCENARIO-GM-ADJUDICATE] round="
+              + round
+              + " read="
+              + json(readView)
+              + " approvedCalls=0 rejected="
+              + json(rejectedViews));
       return null;
     }
     long before = head();
@@ -627,12 +701,44 @@ class RealLlmGovScenarioTest {
     execArgs.put("tick", tick);
     execArgs.put("branch", MAIN.value());
     execArgs.put("expectedRevision", before);
-    JsonNode execution;
+    JsonNode execution = null;
+    String batchRejection = null;
     try {
-      execution = callToolJson(GmPacketExecuteTool.NAME, execArgs);
+      McpToolOutcome outcome = callToolOutcome(GmPacketExecuteTool.NAME, execArgs);
+      if (outcome.isError()) {
+        // ★ 整批被拒（世界业务拒 / CONFLICT）：原文照录 —— 不折成"未知错误"，也绝不静默重试。
+        batchRejection = truncate(outcome.raw(), 4000);
+        blockers.add("round " + round + " gm.packet.execute 失败: " + batchRejection);
+      } else {
+        execution = outcome.body();
+      }
     } catch (Exception e) {
-      blockers.add("round " + round + " gm.packet.execute 失败: " + e.getMessage());
-      return null;
+      blockers.add("round " + round + " gm.packet.execute 调用异常: " + e.getMessage());
+    }
+    // ★★ 打印 GM 逐 call 裁决账（读了几包 / 批了几条 / REJECT 了哪些重复落点）—— 这是本 harness 裁决方式的留痕。
+    System.out.println(
+        "[GOV-SCENARIO-GM-ADJUDICATE] round="
+            + round
+            + " read="
+            + json(readView)
+            + " approvedCalls="
+            + approvedCalls
+            + " rejectedDuplicates="
+            + json(rejectedViews)
+            + " batchRejection="
+            + (batchRejection == null ? "none" : batchRejection));
+    if (execution == null) {
+      long afterReject = head();
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("approvedCalls", approvedCalls);
+      view.put("decisions", decisionViews);
+      view.put("rejectedDuplicates", rejectedViews);
+      view.put("execute", null);
+      view.put("batchRejected", true);
+      view.put("batchRejection", batchRejection);
+      view.put("headBefore", before);
+      view.put("headAfter", afterReject);
+      return view;
     }
     long after = head();
     long populationAfter = socialTotal(stateAt(after));
@@ -664,8 +770,73 @@ class RealLlmGovScenarioTest {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("approvedCalls", approvedCalls);
     view.put("decisions", decisionViews);
+    view.put("rejectedDuplicates", rejectedViews);
+    view.put("headBefore", before);
+    view.put("headAfter", after);
     view.put("execute", execution);
     return view;
+  }
+
+  /**
+   * ★ 逐 call 裁决的判据：从 {@code simos.gm.packet} 给的 <b>preview</b>（工具自己算出的落点事实）里读出这条 call **会创建哪些落点
+   * id**。
+   *
+   * <p>只认"创建"语义的字段：{@code newUnitId}（建单位）与 {@code householdId}（随单位建的人口家户）。这两个键在 gov 四条 A 工具的
+   * preview 里逐字可见（真跑日志可核：{@code "newUnitId":"team-gov-province-0-0-5",
+   * "householdId":"hh-unit:team-gov-province-0-0-5"}）。★ 不读生产内部状态、不硬编码任何 id、不预判"第几条会失败"。
+   */
+  private static List<String> claimedLandings(JsonNode preview) {
+    List<String> out = new ArrayList<>(2);
+    if (preview == null || !preview.isObject()) {
+      return out;
+    }
+    for (String key : List.of("newUnitId", "householdId")) {
+      String value = preview.path(key).asText("");
+      if (!value.isBlank()) {
+        out.add(key + "=" + value);
+      }
+    }
+    return out;
+  }
+
+  /** 逐 call 裁决的产物：可批准的 callIndex（升序）+ 被具名 REJECT 的冗余重复项（无包 id，由调用方补）。 */
+  private record CallSelection(List<Integer> approveIndexes, List<Map<String, Object>> rejected) {}
+
+  /**
+   * ★★ <b>逐 call 裁决的唯一规则</b>（纯函数，可被 {@code govScenarioPerCallAdjudicationRejectsDuplicateLandings}
+   * 直接自证）：按稳定序（调用方已按 callIndex 升序排好）**先到先得**——一条 call 若其 preview 声称的落点 id 已被更早的 call 占用，则**具名
+   * REJECT**（它在本 tick 内只会撞「家户已存在 / 单位 id 已存在」，而 {@code gm.packet.execute} 是整批原子 ⇒ 一条业务拒会让本 tick
+   * 所有决策一起零效果）；否则标记该落点已被占用并批准。
+   *
+   * <p>★ 输入只有 {@code simos.gm.packet} 逐字给的 call 视图（{@code toolName} + {@code preview}）；{@code
+   * claimed} 由调用方跨包累积（保证"跨包同落点"也按同一稳定序收敛）。★ 无内幕：不读生产内部状态、不硬编码 id。
+   */
+  private static CallSelection selectApprovableCalls(List<JsonNode> calls, Set<String> claimed) {
+    List<Integer> approveIndexes = new ArrayList<>();
+    List<Map<String, Object>> rejected = new ArrayList<>();
+    for (JsonNode call : calls) {
+      int callIndex = call.path("callIndex").asInt();
+      List<String> landings = claimedLandings(call.path("preview"));
+      String clash = null;
+      for (String landing : landings) {
+        if (claimed.contains(landing)) {
+          clash = landing;
+          break;
+        }
+      }
+      if (clash != null) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("callIndex", callIndex);
+        row.put("tool", call.path("toolName").asText());
+        row.put("landing", clash);
+        row.put("reason", "落点已被本 tick 更早的 call 占用（preview 逐字可读）⇒ 冗余重复项，具名 REJECT");
+        rejected.add(row);
+        continue;
+      }
+      claimed.addAll(landings);
+      approveIndexes.add(callIndex);
+    }
+    return new CallSelection(List.copyOf(approveIndexes), List.copyOf(rejected));
   }
 
   private static boolean packetMentionsGoal(DecisionPacket packet) {
@@ -721,6 +892,53 @@ class RealLlmGovScenarioTest {
     assertThat(executions).as("四条工具各跑一次").hasSize(4);
     advanceOneTick(1);
     System.out.println("[GOV-SCENARIO-FIXTURE] ok executions=" + executions.size());
+  }
+
+  /**
+   * ★ <b>逐 call 裁决规则的自证</b>（纯逻辑，不起 Shell、不打 LLM）：喂进"同一 tick 里两条会创建<b>同一个落点</b>的 call"（真实形态：一次
+   * {@code propose} 报错但其实已落包 + 模型重试一次 ⇒ 包里两条 byte-identical 的调用），断言先到者被批准、后到者被具名 REJECT。
+   *
+   * <p>★ 为什么必须有它：1 轮/3 轮真跑里**是否出现重复项由模型决定**（本批两次冒烟都恰好没出现），只靠真跑等于这条规则**从未被验证**。 输入逐字取自 {@code
+   * simos.gm.packet} 的 call 视图形状（{@code callIndex / toolName / preview}）。
+   */
+  @Test
+  void govScenarioPerCallAdjudicationRejectsDuplicateLandings() throws Exception {
+    JsonNode calls =
+        JSON.readTree(
+            """
+            [
+              {"callIndex":0,"toolName":"simos.gov.dispatchTeam",
+               "preview":{"newUnitId":"team-gov-central-0-0-5","householdId":"hh-unit:team-gov-central-0-0-5"}},
+              {"callIndex":1,"toolName":"simos.gov.dispatchTeam",
+               "preview":{"newUnitId":"team-gov-central-0-0-5","householdId":"hh-unit:team-gov-central-0-0-5"}},
+              {"callIndex":2,"toolName":"simos.gov.selectExaminees",
+               "preview":{"newUnitId":"exam-gov-central-0-0-10","householdId":"hh-unit:exam-gov-central-0-0-10"}}
+            ]
+            """);
+    List<JsonNode> rows = new ArrayList<>();
+    for (JsonNode row : calls) {
+      rows.add(row);
+    }
+    Set<String> claimed = new LinkedHashSet<>();
+    CallSelection selection = selectApprovableCalls(rows, claimed);
+    assertThat(selection.approveIndexes()).as("先到者与落点不同的那条被批准").containsExactly(0, 2);
+    assertThat(selection.rejected()).as("后到的重复落点被具名 REJECT").hasSize(1);
+    assertThat(selection.rejected().get(0).get("callIndex")).isEqualTo(1);
+    assertThat(selection.rejected().get(0).get("landing"))
+        .isEqualTo("newUnitId=team-gov-central-0-0-5");
+    // ★ 负向对照：落点不同的另一条**不得**被牵连（规则只打重复项，不是"一律只批一条"）。
+    CallSelection second = selectApprovableCalls(List.of(rows.get(2)), new LinkedHashSet<>());
+    assertThat(second.approveIndexes()).containsExactly(2);
+    assertThat(second.rejected()).isEmpty();
+    // ★ 跨包累积：claimed 由调用方带着走 ⇒ 第二个包里同样的落点同样被拒。
+    CallSelection acrossPackets = selectApprovableCalls(List.of(rows.get(1)), claimed);
+    assertThat(acrossPackets.approveIndexes()).isEmpty();
+    assertThat(acrossPackets.rejected()).hasSize(1);
+    System.out.println(
+        "[GOV-SCENARIO-ADJUDICATE-SELFCHECK] approved="
+            + selection.approveIndexes()
+            + " rejected="
+            + json(selection.rejected()));
   }
 
   // ────────────────────────────── 夹具装配 ──────────────────────────────
