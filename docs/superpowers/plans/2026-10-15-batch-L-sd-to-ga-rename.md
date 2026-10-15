@@ -198,3 +198,20 @@ L6 未实测（推导：类1 133→131 · 类2 24 不变 · 类3 37）★ 是推
 - ★ **不造第三套**
 
 ★ 实施者：**先读 `IssueDirectiveTool` 与 `GovToolSupport.resolveDecisionMakerGov` 两处**，再动手。
+
+### 5.7 第二例重名冲突与合并的构造器形态（施工中早报，控制方**追认**）
+
+**① `SdQueryService` → `QueryService` 同包硬冲突**（不是语义软冲突）
+`io.mosire.simos.app.query.QueryService` **已存在**，且 `SdQueryService` 就是**包着它**的（`private final QueryService query;`）。
+⇒ 实施者按 **§5.2 同一判例**改名 **`DecisionQueryService`**。控制方**追认**：
+- 与 `SdInfo* → DecisionInfo*` **同一条规则**（`Sd` 语义化 ⇒ 必要时加 `Decision` 限定词避免撞名）；
+- 语义忠实（该类类注首行即「**决策人只读查询面**」）；
+- ★ 它把**其余 18 个新名逐个查过：零冲突**（`SdRecordDiplomaticEventTool`/`SdSetDiplomaticRelationTool` 的"冲突"正是**合并本身** —— 删 `Sd` 得到的恰是要合并进去的那个 DM 类名，一个类活下来，不构成重名）。
+
+**② 合并后只留一个构造器** `(writes, reads, identity, affiliations, mapId)`（5 参）
+- `DiplomaticWriteToolsTest` 用 5 参 ⇒ **不用动**；
+- `SimosToolsTest:1046-1047` 用旧的 GM 侧 3 参 ⇒ **必须补 `reads`/`affiliations` 两个实参**。
+⇒ 控制方**追认**：改的**只是构造调用**，不碰断言/期望值/字符串字面量 ⇒ **在裁定甲（§5.1）的授权内**；实施者已在台账**单列这一处**。
+
+★ **流程留痕**：实施者早报时说「你可随时推翻」—— ★ **但一次性 `subagent` 中途不可寻址，控制方实际推不翻**。
+⇒ 所以它"**开工前先报**"的做法是对的（事后追认 > 事后返工）；这也是第 5 次因不可寻址而只能事后处理的场景。
