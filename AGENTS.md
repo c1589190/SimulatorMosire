@@ -94,7 +94,8 @@
 | `docs/superpowers/plans/2026-09-16-simos-master-plan.md` | **实现计划**：M0 分解 + M1~M6 路线图 |
 | `docs/superpowers/specs/2026-10-02-architecture-design-source.md` | **用户设计原稿（D-xxx）＝ 最高权威** |
 | `docs/superpowers/specs/` 与 `plans/` 下的其余按日期文件 | 各阶段的 spec/plan：M1 util、M2 map、M3 social+unit、M4 core、M5 shell、M6 导入器、M7 webui、M8 地图编辑、M9 大图性能、M10 部署、Unit 扩容、SDSimos、工具面… |
-| `docs/superpowers/status/2026-10-15-gm-dm-tool-classes-progress.md` | **最近一段的存档与交接**：GM⇄DM 轮次协议 + 工具三分类（3a/3b）+ 两个同源缺陷 + planOnly 双写；含**未验证清单** / 下一步 / 口径要点 / 复跑命令（2026-10-15） |
+| `docs/superpowers/status/2026-10-16-work-state-after-gm-dm-tools.md` | ★★ **最新存档与交接（下次开工的唯一入口）**：批 K→V 六批全入账 · 门禁基线 3356/0/0/7 · ★ **`stash@{0}` 里未落盘的改动与恢复方法** · 环境事实（本地 LLM / 项目级 Maven 锁 / 三条工作树）· 今晚 9 条新纪律 · **待办 A–G 与待用户裁决** · **未验证/没做**清单（2026-10-16） |
+| `docs/superpowers/status/2026-10-15-gm-dm-tool-classes-progress.md` | **上一段存档**：GM⇄DM 轮次协议 + 工具三分类（3a/3b）+ 两个同源缺陷 + planOnly 双写；含**未验证清单** / 下一步 / 口径要点 / 复跑命令（2026-10-15） |
 | `docs/superpowers/status/2026-10-13-outstanding-work-survey.md` | **最新未完成清单**（口径以此为准） |
 | `docs/superpowers/status/2026-10-12-known-issues-code-verified.md` | **回代码核实版**：54 条说法逐条判定 + 16 处文档更正 + 好/没好分档 |
 | `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md` | "计划内未实现"总清单（**其经济部分已被上一份更正**） |
