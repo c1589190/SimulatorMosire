@@ -50,8 +50,13 @@ import java.util.UUID;
  * 3/4：领域模块只拥有自己的数据）。这与 {@code GovCreateOfficeTool}（{@code actor.EnsureHouseholdAccount} + {@code
  * economy.RegisterGovernment}）是同一形制。
  *
- * <p>★★ <b>权限不得放大（M6）</b>：只有<b>该币种的发行 GOV</b>能发它 —— ① 目标 GOV 由身份派生（决策人给别的 GOV ⇒ 具名拒）② handler 判
- * {@code Government.issuable} ③ GM 审批链。三层都过才落得下一条 revision。
+ * <p>★★ <b>权限不得放大（M6）</b>：只有<b>该币种的发行 GOV</b>能发它 —— ① 目标 GOV 由身份派生（决策人<b>直写</b>时给别的 GOV ⇒ 具名拒）②
+ * handler 判 {@code Government.issuable} ③ GM 审批链。三层都过才落得下一条 revision。
+ *
+ * <p>★★ <b>但「决策人可省 govUnitId」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose}
+ * 的真预览（{@code ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
+ * DecisionEffectExecutor.planCall}）都用 {@code AgentIdentity.external()} ⇒ 走 GM 分支、{@code govUnitId}
+ * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用 必须显式点名要操作的 GOV 单位）」。
  *
  * <p>★★ <b>它不是铸币生产方式（W5 起这句话有了执行面）</b>：本工具是"DM 定发多少"的<b>行政发行</b> + 审计 —— 它是约束设计书 §6.1 W5
  * 行点名的<b>唯一具名例外</b>（DM 明确授权 + 审批链 + 审计腿）。★ 与之并列的常规路径 是<b>铸币生产方式</b>：钱由产业产出（{@code
@@ -100,13 +105,18 @@ public final class GovIssueMoneyTool implements SimosTool {
   public String description() {
     return "DM 给自己所属 GOV 发行一笔新钱（国库余额 +amountMilli，并落一条 MoneyIssuance 审计；"
         + "一批两条命令 = 一条 revision，原子）：参数 "
-        + "{govUnitId?(GM 必填；决策人省略=自己的 GOV，给了必须等于自己的), currency(必填：必须在该 GOV 的 issuable 里), "
+        + "{govUnitId?(★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有【决策人直写】可省 = 自己的 GOV，"
+        + "给了必须等于自己的), currency(必填：必须在该 GOV 的 issuable 里), "
         + "amountMilli(必填，> 0), kind?(缺省 FISCAL_ISSUE；也可 INITIAL_ENDOWMENT / GENESIS_ENDOWMENT；"
         + "回笼与 MINT_PRODUCTION 由各自的生产路径写、本工具具名拒), reason?, preview?(缺省 true=只读), "
         + "branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。"
-        + "★ 需 GM 在审批面点头。★ 不是铸币生产方式（不做成色/铸熔/产业产出）；发给别国或不发行的币种 ⇒ 具名拒。";
+        + "★ 需 GM 在审批面点头。★ 不是铸币生产方式（不做成色/铸熔/产业产出）；发给别国或不发行的币种 ⇒ 具名拒。"
+        + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省 govUnitId（省略 = 自己的 GOV，给出别人的 GOV ⇒ 具名 "
+        + "REJECTED）；【GM 面调用】与【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）"
+        + "与 gm.packet.execute 的规划（DecisionEffectExecutor.planCall）都走 AgentIdentity.external()（GM 分支），"
+        + "省略 ⇒ BAD_REQUEST「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」。";
   }
 
   @Override
@@ -114,7 +124,10 @@ public final class GovIssueMoneyTool implements SimosTool {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put(
         "govUnitId",
-        ToolSchema.prop("string", "发行主体 GOV 单位 id（GM 必填；决策人省略 = 自己的 GOV，给出别的 GOV ⇒ 越权拒）"));
+        ToolSchema.prop(
+            "string",
+            "发行主体 GOV 单位 id（★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有决策人直写可省 = 自己的 GOV，"
+                + "给出别的 GOV ⇒ 越权拒）"));
     props.put("currency", ToolSchema.prop("string", "币种 id（必填；必须在该 GOV 的 issuable 里）"));
     props.put("amountMilli", ToolSchema.prop("integer", "发行金额（最小币值；必填；> 0；方向由 kind 表达，不用负号）"));
     props.put(

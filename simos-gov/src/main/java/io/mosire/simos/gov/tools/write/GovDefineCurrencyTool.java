@@ -31,15 +31,20 @@ import java.util.Set;
  * {@code economy.DefineCurrency} 的窄封装（preview / apply + expectedRevision）。
  *
  * <p>★★ <b>两面并列、门禁不同</b>（照 {@link GovSetEstablishmentTool}）：GM 桶调用走 {@code GmAutoApproveGate}
- * （直接批准）、必须显式给 {@code govUnitId}；决策人桶调用走 {@code AutoApproveGate → ConfirmGate →
+ * （直接批准）、必须显式给 {@code govUnitId}；决策人桶<b>直写</b>调用走 {@code AutoApproveGate → ConfirmGate →
  * PendingApprovals}（<b>需 GM 点头</b>），{@code govUnitId} 由身份派生、给别的 GOV ⇒ 具名 {@code REJECTED} （见 {@link
  * GovToolSupport}）。★ 本工具是<b>工具层</b>的（{@code DmUsableCommand} 是**命令层**标记，工具层没有它；工具的角色由工具自己的声明决定）：
  * 决策人用得了它，权限由审批链 + 身份派生兜。它提交的 {@code economy.DefineCurrency} 不打 {@code DmUsableCommand} ⇒ 仅
  * GM，"令里嵌不进去"这一层因此不放大。
  *
+ * <p>★★ <b>但「决策人可省」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
+ * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
+ * DecisionEffectExecutor.planCall}）都用 {@code AgentIdentity.external()} ⇒ 走 GM 分支、{@code govUnitId}
+ * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用 必须显式点名要操作的 GOV 单位）」。
+ *
  * <p>★ <b>写什么</b>：币种表 + 工具表 + 该 GOV 的 {@code issuable}（三处在同一条命令、同一条 revision 里； 详见 {@link
- * EconomyDefineCurrencyHandler} 的类注）。★ <b>只作用于自己所属 GOV</b>（M6）：决策人路径下载荷里的 {@code govUnitId}
- * 必须逐字等于自己的 GOV。
+ * EconomyDefineCurrencyHandler} 的类注）。★ <b>只作用于自己所属 GOV</b>（M6）：决策人<b>直写</b>路径下载荷里的 {@code
+ * govUnitId} 必须逐字等于自己的 GOV（propose 路径见上一段）。
  *
  * <p>★ <b>资源声明</b>：只声明 {@code economy} 命名空间（世界级词表没有格路径 ⇒ 断言 {@code economy:*}； 决策人的资源范围<b>未表态</b>
  * {@code economy} ⇒ 取工具缺省策略 = {@code UNRESTRICTED}，而 GM 侧 unlimited）。 ★ 这是"命名空间级"的粗断言，真正的收窄在 ①
@@ -81,11 +86,16 @@ public final class GovDefineCurrencyTool implements SimosTool {
     return "定义一个 GOV 的新币种（economy.DefineCurrency 的窄封装）：币种 id + 最小单位精度 + 显示名，"
         + "同时把发行权登记给该 GOV（一币一发行人；已存在的币种 ⇒ 具名拒，改显示名请用 "
         + GovRenameCurrencyTool.NAME
-        + "）。参数 {govUnitId?(GM 必填；决策人省略=自己的 GOV，给了必须等于自己的), currencyId(必填), scale(必填，≥0), "
+        + "）。参数 {govUnitId?(★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有【决策人直写】可省 = 自己的 GOV，"
+        + "给了必须等于自己的), currencyId(必填), scale(必填，≥0), "
         + "displayName(必填，非空白), reason?, preview?(缺省 true=只读), branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。"
-        + "★ 需 GM 在审批面点头（敏感工具，决策人链路会停在待批）。★ 只能作用于自己所属 GOV；币种身份建立后不可改（铁律 1）。";
+        + "★ 需 GM 在审批面点头（敏感工具，决策人链路会停在待批）。★ 只能作用于自己所属 GOV；币种身份建立后不可改（铁律 1）。"
+        + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省 govUnitId（省略 = 自己的 GOV，给出别人的 GOV ⇒ 具名 "
+        + "REJECTED）；【GM 面调用】与【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）"
+        + "与 gm.packet.execute 的规划（DecisionEffectExecutor.planCall）都走 AgentIdentity.external()（GM 分支），"
+        + "省略 ⇒ BAD_REQUEST「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」。";
   }
 
   @Override
@@ -93,7 +103,10 @@ public final class GovDefineCurrencyTool implements SimosTool {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put(
         "govUnitId",
-        ToolSchema.prop("string", "发行这种钱的 GOV 单位 id（GM 必填；决策人省略 = 自己的 GOV，给出别的 GOV ⇒ 越权拒）"));
+        ToolSchema.prop(
+            "string",
+            "发行这种钱的 GOV 单位 id（★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有决策人直写可省 = 自己的 GOV，"
+                + "给出别的 GOV ⇒ 越权拒）"));
     props.put("currencyId", ToolSchema.prop("string", "币种 id（必填；= 不可变身份，建立后不可改）"));
     props.put("scale", ToolSchema.prop("integer", "最小单位精度（必填；≥ 0；0 = 没有小数位）"));
     props.put("displayName", ToolSchema.prop("string", "显示名（必填；非空白；不要求唯一）"));

@@ -54,9 +54,14 @@ import java.util.UUID;
  *   <li>{@code economy.SetGovServiceCommitment}：写 {@code kind=GOV_SERVICE} 的全职承诺。
  * </ol>
  *
- * <p>★★ <b>身份与权限</b>：GM 必须显式 {@code govUnitId}；决策人身份派生只能自己所属 GOV（载荷指定别的 GOV ⇒ 越权 {@code
+ * <p>★★ <b>身份与权限</b>：GM 必须显式 {@code govUnitId}；决策人<b>直写</b>时身份派生只能自己所属 GOV（载荷指定别的 GOV ⇒ 越权 {@code
  * REJECTED}），且决策人链路是敏感工具 ⇒ 走 GM 审批（{@code AutoApproveGate → ConfirmGate → PendingApprovals}）。资源断言
  * 锚点 = 目标 GOV 的 {@code unit:<govUnitId>}（{@code GovScope} 只授自己单位）。
+ *
+ * <p>★★ <b>但「决策人可省」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
+ * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
+ * DecisionEffectExecutor.planCall}）都用 {@code AgentIdentity.external()} ⇒ 走 GM 分支、{@code govUnitId}
+ * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用 必须显式点名要操作的 GOV 单位）」。
  *
  * <p>★ <b>承诺小时口径</b>：缺省 = 该户当前 Social 权威劳动（全职）；显式 {@code laborMilli} 只能在 (0, 当前劳动] 内（超上限 ⇒ 具名
  * BAD_REQUEST）。
@@ -87,13 +92,18 @@ public final class GovOpenPostsToMarketTool implements SimosTool {
   public String description() {
     return "把外部家户挂到 GOV 外部岗位并写 GOV_SERVICE 承诺（一批 = 一条 revision："
         + "economy.SetHouseholdLabor? → unit.AssignExternalGovPost → economy.SetGovServiceCommitment）。"
-        + "参数 {govUnitId?(GM 必填；决策人省略=自己的 GOV，给出必须等于自己的 GOV), householdId(必填，Social/economy "
+        + "参数 {govUnitId?(★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有【决策人直写】可省 = 自己的 GOV，"
+        + "给出必须等于自己的 GOV), householdId(必填，Social/economy "
         + "都有行且不在该 GOV 的 Unit.households 里；保留原单位/位置), role(SCRIBE|YAMEN|POST), tierId?(可选，必须命中该 GOV "
         + "计划的 postTiers), level?(可选，缺省=该 GOV 编制层级), headOfGovernment?(缺省 false), laborMilli?(可选，缺省=该户"
         + "当前 Social 权威劳动；必须 ∈(0,当前劳动]), activity?(可选，缺省按 GOV 唯一 office unit 解析), reason(必填), "
         + "preview?(缺省 true), branch?, expectedRevision?(preview=false 必填)}。"
         + "外部户不改 Unit.households / Social 位置；工资沿用 ADMIN_SALARY 链；决策人只能自己的 GOV（越权具名拒）且必须过 GM 审批；"
-        + "V1 只做显式选户（队列/应募/竞价留 V2/V3）。";
+        + "V1 只做显式选户（队列/应募/竞价留 V2/V3）。"
+        + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省 govUnitId（省略 = 自己的 GOV，给出别人的 GOV ⇒ 具名 "
+        + "REJECTED）；【GM 面调用】与【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）"
+        + "与 gm.packet.execute 的规划（DecisionEffectExecutor.planCall）都走 AgentIdentity.external()（GM 分支），"
+        + "省略 ⇒ BAD_REQUEST「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」。";
   }
 
   @Override
@@ -101,7 +111,10 @@ public final class GovOpenPostsToMarketTool implements SimosTool {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put(
         "govUnitId",
-        ToolSchema.prop("string", "GOV 单位 id（GM 必填；决策人省略 = 自己的 GOV；给出必须等于自己的 GOV，否则越权拒）"));
+        ToolSchema.prop(
+            "string",
+            "GOV 单位 id（★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有决策人直写可省 = 自己的 GOV，"
+                + "给出别的 GOV ⇒ 越权拒）"));
     props.put(
         "householdId",
         ToolSchema.prop(

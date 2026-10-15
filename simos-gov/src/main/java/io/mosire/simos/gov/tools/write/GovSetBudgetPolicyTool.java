@@ -31,8 +31,13 @@ import java.util.Set;
  * economy.SetGovernmentPolicy} 的 {@code policies.budget} 子集窄封装（preview / apply、payloadJson
  * 逐字透传、expectedRevision；★★ 2026-10-12 追加裁定 12 §21.9 D-3 起预算政策改由 economy 的通用政府政策写口承接）。
  *
- * <p>★★ <b>两面并列、门禁不同</b>：GM 桶调用走 {@code GmAutoApproveGate}；决策人桶调用走 {@code AutoApproveGate →
- * ConfirmGate → PendingApprovals}（需 GM 点头）。身份派生与越权拒见 {@link GovToolSupport}。
+ * <p>★★ <b>两面并列、门禁不同</b>：GM 桶调用走 {@code GmAutoApproveGate}；决策人桶<b>直写</b>调用走 {@code AutoApproveGate
+ * → ConfirmGate → PendingApprovals}（需 GM 点头）。身份派生与越权拒见 {@link GovToolSupport}。
+ *
+ * <p>★★ <b>但「决策人可省 unitId」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
+ * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
+ * DecisionEffectExecutor.planCall}）都用 {@code AgentIdentity.external()} ⇒ 走 GM 分支、载荷 {@code unitId}
+ * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」。
  *
  * <p>★★ <b>命令仍是 GM-only 标记（控制方 2026-10-23 裁定）</b>：标记只影响令 / {@code RegisterEffect} / 决策人 catalog
  * 三条路径，不拦命令总线 ⇒ 决策人窄工具直接提交同一命令受控、且不放大任何路径。
@@ -67,15 +72,21 @@ public final class GovSetBudgetPolicyTool implements SimosTool {
   @Override
   public String description() {
     return "设置一个 GOV 的国库预算政策（economy.SetGovernmentPolicy 的 policies.budget 窄封装）。payloadJson："
-        + "{unitId(GM 必填；决策人可省=自己的 GOV，给出必须等于自己的 GOV), orderedCategories?"
+        + "{unitId(★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有【决策人直写】可省 = 自己的 GOV，"
+        + "给出必须等于自己的 GOV), orderedCategories?"
         + "[{category(ADMIN_STIPEND|MILITARY_STIPEND|ADMIN_SALARY|DEBT_SERVICE|OTHER), minPerCycle?,"
         + "capPerCycle?}](顺序即预算优先级), officialSalaryRule? "
         + "{grainMilliPerCommittedHour?, silverMilliPerCommittedHour?}, "
         + "remittancePerMilleToSuperior?(0..1000‰；周期末按本周期实收税上缴 superiorGov 国库)，"
         + "mode?(PATCH|REPLACE，缺省 PATCH)}。★ PATCH（缺省）：缺省字段保留现值——只改 remittance 不会清空类别表/工资规则，"
         + "要清空类别表须显式 orderedCategories:[]；REPLACE = 旧整表替换（缺省=空表/0/0/0）。工具另可传顶层 mode 参数覆盖 payloadJson 里的 mode。"
-        + "GM 调用需显式 unitId；决策人调用身份派生、只能自己的 GOV（越权 GOV 具名拒，且必须过 GM 审批）。"
-        + "preview=true（缺省）只算前后差异、不写；preview=false 必须给 expectedRevision，逐值相同的重放 = noop。";
+        + "GM 调用需显式 unitId；决策人直写调用身份派生、只能自己的 GOV（越权 GOV 具名拒，且必须过 GM 审批）。"
+        + "preview=true（缺省）只算前后差异、不写；preview=false 必须给 expectedRevision，逐值相同的重放 = noop。"
+        + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省载荷里的 unitId；【GM 面调用】与"
+        + "【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）与 "
+        + "gm.packet.execute 的规划（DecisionEffectExecutor.planCall）都走 AgentIdentity.external()（GM 分支），"
+        + "省略 ⇒ BAD_REQUEST「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」（★ 该正文里的字段名是 "
+        + "govUnitId，指的就是本载荷的 unitId）。";
   }
 
   @Override
@@ -85,7 +96,8 @@ public final class GovSetBudgetPolicyTool implements SimosTool {
         "payloadJson",
         ToolSchema.prop(
             "string",
-            "预算政策 JSON 文本（平铺；工具嵌成 economy.SetGovernmentPolicy 的 policies.budget）：{unitId,orderedCategories?["
+            "预算政策 JSON 文本（平铺；工具嵌成 economy.SetGovernmentPolicy 的 policies.budget）：{unitId（★ 必填："
+                + "GM 面与 simos.ga.packet.propose 路径都要显式给；只有决策人直写可省 = 自己的 GOV）,orderedCategories?["
                 + "{category,minPerCycle?,capPerCycle?}],officialSalaryRule?{grainMilliPerCommittedHour?,"
                 + "silverMilliPerCommittedHour?},remittancePerMilleToSuperior?(0..1000)，mode?(PATCH|REPLACE，缺省 PATCH)}；"
                 + "★ PATCH：缺省字段保留现值（orderedCategories:[] 才清空类别表；工资规则逐内层字段合并）；"

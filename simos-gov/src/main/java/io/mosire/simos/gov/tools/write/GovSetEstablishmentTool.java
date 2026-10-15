@@ -31,9 +31,14 @@ import java.util.Set;
  * economy.SetGovernmentPolicy} 的 {@code policies.administration} 子集窄封装（preview / apply、payloadJson
  * 逐字透传、expectedRevision；★★ 2026-10-12 追加裁定 12 §21.9 D-3 起编制计划改由 economy 的通用政府政策写口承接）。
  *
- * <p>★★ <b>两面并列、门禁不同</b>：GM 桶调用走 {@code GmAutoApproveGate}（直接批准）；决策人桶调用走 {@code AutoApproveGate →
- * ConfirmGate → PendingApprovals}（需 GM 在审批面点头）。身份派生与越权拒见 {@link GovToolSupport}：决策人只能操作自己所属
- * GOV；载荷若带别的 {@code govUnitId} ⇒ 具名 {@code REJECTED}。
+ * <p>★★ <b>两面并列、门禁不同</b>：GM 桶调用走 {@code GmAutoApproveGate}（直接批准）；决策人桶<b>直写</b>调用走 {@code
+ * AutoApproveGate → ConfirmGate → PendingApprovals}（需 GM 在审批面点头）。身份派生与越权拒见 {@link
+ * GovToolSupport}：决策人<b>直写</b>时只能操作自己所属 GOV；载荷若带别的 {@code govUnitId} ⇒ 具名 {@code REJECTED}。
+ *
+ * <p>★★ <b>但「决策人可省 unitId」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
+ * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
+ * DecisionEffectExecutor.planCall}）都用 {@code AgentIdentity.external()} ⇒ 走 GM 分支、载荷 {@code unitId}
+ * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」。
  *
  * <p>★★ <b>命令仍是 GM-only（控制方 2026-10-23 裁定，口径按批次 1 收尾更新）</b>：{@code economy.SetGovernmentPolicy}
  * <b>不打</b> {@code DmUsableCommand}（反默认 ⇒ 仅 GM），声明只影响 ga 规则层派生的令 / {@code RegisterEffect} / 决策人
@@ -78,13 +83,19 @@ public final class GovSetEstablishmentTool implements SimosTool {
   @Override
   public String description() {
     return "设置一个 GOV 的行政编制计划（economy.SetGovernmentPolicy 的 policies.administration 窄封装）。payloadJson："
-        + "{unitId(GM 必填；决策人可省=自己的 GOV，若给出必须等于自己的 GOV), securityPlannedLaborMilli?,"
+        + "{unitId(★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有【决策人直写】可省 = 自己的 GOV，"
+        + "若给出必须等于自己的 GOV), securityPlannedLaborMilli?,"
         + " paperworkPlannedLaborMilli?, postTiers?(恰 3 档 [{tierId,securityWeightPerMille,"
         + "paperworkWeightPerMille}]), securitySupplyStaticModifierPerMille?, paperworkSupplyStaticModifierPerMille?,"
         + " securityDemandStaticModifierPerMille?, paperworkDemandStaticModifierPerMille?,"
         + " supernumerarySqrtCoefficient?(k)}；缺省展开一次（计划 0 / 默认 3 档 / 修正 1000‰ / k=1）。"
-        + "GM 调用需显式 unitId；决策人调用身份派生、只能自己的 GOV（越权 GOV 具名拒，且必须过 GM 审批）。"
-        + "preview=true（缺省）只算前后差异、不写；preview=false 必须给 expectedRevision，逐值相同的重放 = noop。";
+        + "GM 调用需显式 unitId；决策人直写调用身份派生、只能自己的 GOV（越权 GOV 具名拒，且必须过 GM 审批）。"
+        + "preview=true（缺省）只算前后差异、不写；preview=false 必须给 expectedRevision，逐值相同的重放 = noop。"
+        + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省载荷里的 unitId；【GM 面调用】与"
+        + "【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）与 "
+        + "gm.packet.execute 的规划（DecisionEffectExecutor.planCall）都走 AgentIdentity.external()（GM 分支），"
+        + "省略 ⇒ BAD_REQUEST「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」（★ 该正文里的字段名是 "
+        + "govUnitId，指的就是本载荷的 unitId）。";
   }
 
   @Override
@@ -95,7 +106,8 @@ public final class GovSetEstablishmentTool implements SimosTool {
         ToolSchema.prop(
             "string",
             "编制计划 JSON 文本（平铺；工具嵌成 economy.SetGovernmentPolicy 的 policies.administration）："
-                + "{unitId,securityPlannedLaborMilli?,"
+                + "{unitId（★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有决策人直写可省 = 自己的 GOV）,"
+                + "securityPlannedLaborMilli?,"
                 + "paperworkPlannedLaborMilli?,postTiers?[{tierId,securityWeightPerMille,paperworkWeightPerMille}],"
                 + "securitySupplyStaticModifierPerMille?,paperworkSupplyStaticModifierPerMille?,"
                 + "securityDemandStaticModifierPerMille?,paperworkDemandStaticModifierPerMille?,"

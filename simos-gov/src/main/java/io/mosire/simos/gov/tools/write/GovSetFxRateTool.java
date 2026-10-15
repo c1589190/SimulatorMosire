@@ -35,10 +35,15 @@ import java.util.Set;
  * {@code economy.SetOfficialRate} 的窄封装（preview / apply + expectedRevision）。
  *
  * <p>★★ <b>两面并列、门禁不同</b>（照 {@link GovDefineCurrencyTool}）：GM 桶调用走 {@code GmAutoApproveGate}
- * （直接批准）、必须显式给 {@code govUnitId}；决策人桶调用走 {@code AutoApproveGate → ConfirmGate →
+ * （直接批准）、必须显式给 {@code govUnitId}；决策人桶<b>直写</b>调用走 {@code AutoApproveGate → ConfirmGate →
  * PendingApprovals}（<b>需 GM 点头</b>），{@code govUnitId} 由身份派生、给别的 GOV ⇒ 具名 {@code REJECTED} （见 {@link
  * GovToolSupport}）。★ 本工具是<b>工具层</b>的（{@code DmUsableCommand} 是**命令层**标记，工具层没有它）： 决策人用得了它，权限由审批链 +
  * 身份派生兜。
+ *
+ * <p>★★ <b>但「决策人可省」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
+ * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
+ * DecisionEffectExecutor.planCall}）都用 {@code AgentIdentity.external()} ⇒ 走 GM 分支、{@code govUnitId}
+ * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用 必须显式点名要操作的 GOV 单位）」。
  *
  * <p>★ <b>写什么</b>：只写该政府的 {@code officialRates} 里的一条（{@code base|quote} 键）。★ <b>只作用于自己所属 GOV</b> （与
  * {@code gov.defineCurrency} 同一条权限口径）。
@@ -82,13 +87,18 @@ public final class GovSetFxRateTool implements SimosTool {
   public String description() {
     return "定/改一个 GOV 的官方汇率（economy.SetOfficialRate 的窄封装）：币对 base/quote + 双边报价 "
         + "buyPerMille/sellPerMille（微刻度定点，per-mille：每 1000 个 base 最小单位应付多少 quote 最小单位；"
-        + "1000 = 最小单位 1:1）。参数 {govUnitId?(GM 必填；决策人省略=自己的 GOV，给了必须等于自己的), base(必填), "
+        + "1000 = 最小单位 1:1）。参数 {govUnitId?(★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；"
+        + "只有【决策人直写】可省 = 自己的 GOV，给了必须等于自己的), base(必填), "
         + "quote(必填), buyPerMille(必填 >0), sellPerMille(必填 >0), reason?, preview?(缺省 true=只读), branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。"
         + "★ 后果：该币对的外汇市场被激活 —— 政府外汇窗口按 bidP=buyPerMille / askP=sellPerMille 挂牌，"
         + "储备上限 = 该 GOV 对该币种累计发行量的 500‰；家户以官方报价为锚挂单（实际汇率 = 成交的加权均价，"
-        + "是读数、不落盘，未定汇率的世界没有外汇面）。★ 需 GM 在审批面点头（敏感工具）；★ 只能作用于自己所属 GOV。";
+        + "是读数、不落盘，未定汇率的世界没有外汇面）。★ 需 GM 在审批面点头（敏感工具）；★ 只能作用于自己所属 GOV。"
+        + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省 govUnitId（省略 = 自己的 GOV，给出别人的 GOV ⇒ 具名 "
+        + "REJECTED）；【GM 面调用】与【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）"
+        + "与 gm.packet.execute 的规划（DecisionEffectExecutor.planCall）都走 AgentIdentity.external()（GM 分支），"
+        + "省略 ⇒ BAD_REQUEST「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」。";
   }
 
   @Override
@@ -96,7 +106,10 @@ public final class GovSetFxRateTool implements SimosTool {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put(
         "govUnitId",
-        ToolSchema.prop("string", "报价的 GOV 单位 id（GM 必填；决策人省略 = 自己的 GOV，给出别的 GOV ⇒ 越权拒）"));
+        ToolSchema.prop(
+            "string",
+            "报价的 GOV 单位 id（★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有决策人直写可省 = 自己的 GOV，"
+                + "给出别的 GOV ⇒ 越权拒）"));
     props.put("base", ToolSchema.prop("string", "标的币 id（政府买入/卖出的那一种；必须在世界词表里）"));
     props.put("quote", ToolSchema.prop("string", "计价币 id（必须在世界词表里；不得等于 base）"));
     props.put(

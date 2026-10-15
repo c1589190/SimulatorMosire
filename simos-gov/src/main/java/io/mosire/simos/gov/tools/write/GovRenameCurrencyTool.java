@@ -35,11 +35,16 @@ import java.util.Set;
  * <p>★★ <b>它改不动的东西（这就是它的全部价值）</b>：币种 id、精度、工具表、任何余额/流水/债务/市场键。载荷里<b>没有</b>这些字段 ⇒
  * 模型给不出"顺手换身份"的调用；命令侧也只写 {@code currencies} 一张表（不变量 <b>I16</b> / 判据 <b>F1</b> / 负向用例 <b>M5</b>）。
  *
- * <p>★★ <b>权限不得放大（M6）</b>：只有<b>该币种的发行 GOV</b>能改它的显示名 —— 由 ① 身份派生（决策人只能自己的 GOV） ② handler 的 {@code
- * issuable} 判据（不是发行人 ⇒ 具名拒）③ GM 审批链三层共同保证。
+ * <p>★★ <b>权限不得放大（M6）</b>：只有<b>该币种的发行 GOV</b>能改它的显示名 —— 由 ① 身份派生（决策人<b>直写</b>时只能自己的 GOV） ② handler
+ * 的 {@code issuable} 判据（不是发行人 ⇒ 具名拒）③ GM 审批链三层共同保证。
  *
  * <p>★ 两面并列、门禁不同（同 {@link GovDefineCurrencyTool}）：GM 桶 {@code GmAutoApproveGate} + 显式 {@code
- * govUnitId}；决策人桶需 GM 审批 + 身份派生。
+ * govUnitId}；决策人桶<b>直写</b>需 GM 审批 + 身份派生。
+ *
+ * <p>★★ <b>但「决策人可省」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
+ * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
+ * DecisionEffectExecutor.planCall}）都用 {@code AgentIdentity.external()} ⇒ 走 GM 分支、{@code govUnitId}
+ * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用 必须显式点名要操作的 GOV 单位）」。
  */
 public final class GovRenameCurrencyTool implements SimosTool {
 
@@ -76,11 +81,16 @@ public final class GovRenameCurrencyTool implements SimosTool {
   public String description() {
     return "改一个 GOV 所发行币种的显示名（economy.RenameCurrency 的窄封装）：只改 displayName —— "
         + "币种 id / 精度 / 工具表 / 任何账（余额、流水、债务、市场键）都不动（I16）。参数 "
-        + "{govUnitId?(GM 必填；决策人省略=自己的 GOV，给了必须等于自己的), currencyId(必填), displayName(必填，新显示名), "
+        + "{govUnitId?(★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有【决策人直写】可省 = 自己的 GOV，"
+        + "给了必须等于自己的), currencyId(必填), displayName(必填，新显示名), "
         + "reason?, preview?(缺省 true=只读), branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。"
-        + "★ 需 GM 在审批面点头。★ 只有该币种的发行 GOV 能改它的显示名（越权 ⇒ 具名拒）。";
+        + "★ 需 GM 在审批面点头。★ 只有该币种的发行 GOV 能改它的显示名（越权 ⇒ 具名拒）。"
+        + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省 govUnitId（省略 = 自己的 GOV，给出别人的 GOV ⇒ 具名 "
+        + "REJECTED）；【GM 面调用】与【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）"
+        + "与 gm.packet.execute 的规划（DecisionEffectExecutor.planCall）都走 AgentIdentity.external()（GM 分支），"
+        + "省略 ⇒ BAD_REQUEST「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」。";
   }
 
   @Override
@@ -88,7 +98,10 @@ public final class GovRenameCurrencyTool implements SimosTool {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put(
         "govUnitId",
-        ToolSchema.prop("string", "该币种的发行 GOV 单位 id（GM 必填；决策人省略 = 自己的 GOV，给出别的 GOV ⇒ 越权拒）"));
+        ToolSchema.prop(
+            "string",
+            "该币种的发行 GOV 单位 id（★ 必填：GM 面与 simos.ga.packet.propose 路径都要显式给；只有决策人直写可省 = 自己的 GOV，"
+                + "给出别的 GOV ⇒ 越权拒）"));
     props.put("currencyId", ToolSchema.prop("string", "币种 id（必填；= 不可变身份，本工具改不动它）"));
     props.put("displayName", ToolSchema.prop("string", "新显示名（必填；非空白；不要求唯一）"));
     props.put("reason", ToolSchema.prop("string", "审计原因（可选；给出则必须非空白）"));

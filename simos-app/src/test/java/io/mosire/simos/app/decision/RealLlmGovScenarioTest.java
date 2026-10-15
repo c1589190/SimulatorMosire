@@ -35,6 +35,9 @@ import io.mosire.simos.app.tools.write.ActorAdjustAccountsTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.world.CompactThreeNationsWorld;
 import io.mosire.simos.app.world.EconomySeeder;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -2582,7 +2585,10 @@ class RealLlmGovScenarioTest {
                 "ga", new GaSnapshot(ref, T0, GaState.empty()),
                 "economy", new EconomySnapshot(ref, T0, EconomyData.empty()),
                 "actor", new ActorSnapshot(ref, T0, ActorData.empty()),
-                "gov", new GovSnapshot(ref, T0, GovState.empty())),
+                "gov", new GovSnapshot(ref, T0, GovState.empty()),
+                // ★★ 2026-10-15 测试面（P0 夹具修复）：补第 8 片 army —— 缺它时创世就抛「state 里没有 army
+                //   切片」（命令总线在切片缺席时响亮失败），整条门控 e2e 根本走不到 createOffice。
+                "army", new ArmySnapshot(ref, T0, ArmyData.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(storeDir)
         .write(
@@ -2596,7 +2602,8 @@ class RealLlmGovScenarioTest {
                     new GaCodec(),
                     new EconomyCodec(),
                     new ActorCodec(),
-                    new GovCodec())));
+                    new GovCodec(),
+                    new ArmyCodec())));
   }
 
   // ────────────────────────────── 小类型 ──────────────────────────────
