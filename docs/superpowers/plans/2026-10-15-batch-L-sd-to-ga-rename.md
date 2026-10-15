@@ -215,3 +215,28 @@ L6 未实测（推导：类1 133→131 · 类2 24 不变 · 类3 37）★ 是推
 
 ★ **流程留痕**：实施者早报时说「你可随时推翻」—— ★ **但一次性 `subagent` 中途不可寻址，控制方实际推不翻**。
 ⇒ 所以它"**开工前先报**"的做法是对的（事后追认 > 事后返工）；这也是第 5 次因不可寻址而只能事后处理的场景。
+
+### 5.8 ★★ 控制方设计漏掉的**两类活 `sd` 标识**（2026-10-15，② 施工中控制方自查发现）
+
+**① 包名 `io.mosire.simos.app.sd`（+ `io.mosire.simos.app.sd.channel`）**
+现场：`simos-app/src/main/java/io/mosire/simos/app/sd/`（`CommandDrain` 等）+ `.sd.channel`。
+★ ② 把**包里的类名**改了（`SdCommandDrain → CommandDrain`），**但包名还是 `sd`** ⇒ **半成品**。
+⇒ **改**（用户原话「但凡和被取缔的 sd 模块有关的就改」覆盖它）。**目标 `io.mosire.simos.app.ga`**
+（★ 不能叫 `...app.decision` —— 那个包**已存在**）。
+★ 影响：2 条 `package` 声明 + **全部 import**（`src/main` **与** `src/test` 都有）⇒ 属**生产 + 测试**跨面改动 ⇒ 单独一批。
+
+**② `simos-ga` 里 `SD_WRITE` / `SD_READ` 两个私有常量（56 处）**
+现场：`simos-ga/.../ga/tools/write/{ReopenPacketTool:75, ReviseCallTool:76, MyPacketTool:50}` ·
+`simos-ga/.../ga/tools/read/DiplomaticEventsTool:42` —— `private static final ResourceManifest SD_WRITE/SD_READ`。
+★ 批 F 改了 `SD_NAMESPACE → GA_NAMESPACE`，**漏了这两个**。
+⇒ **改**（`GA_WRITE` / `GA_READ`）。★ 它们是 **private** ⇒ 影响面仅 `simos-ga/src/main`，**零测试影响**。
+
+**③ ★ 明确不改（重要，免得后人乱动）**：`SdState` / `SdChangeSet` / `SdResolver` / `SdSnapshot` / `SdCodec`
+—— 控制方核查：**这些全在 javadoc/注释里**，是**对已退役类型的引用**（如 `ToolSupport:845`「批次 3d-2：`SdState sd` 形参取下（如实记）」、
+`ActorChangeSet:23` 列举历代 ChangeSet、`ArmyResolver:49`「同 `SdResolver` 的分工」）。
+⇒ ★ **它们不是活标识**，而且**在如实描述当年退役了什么** ⇒ **历史留痕不篡改**，**一律不动**。
+（判据：**活标识改、历史留痕不改** —— 与用户「正常语义不用」同向。）
+
+★ **纪律补充（写给后来者）**：本批的扫描方法一开始只扫了 `NAME` 常量与类名，**漏了包名与私有常量**。
+⇒ **收尾扫描必须按"标识出现的形态"分四类**：① 工具名 `NAME` 字面量 ② 类名 ③ **包名/目录名** ④ **私有常量/字段名**；
+并**把注释/字符串里的旧名单独列一档（不改，但要报出来）**，免得把历史留痕当漏网之鱼。
