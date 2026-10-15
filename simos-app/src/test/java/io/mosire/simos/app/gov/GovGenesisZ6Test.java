@@ -60,7 +60,11 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * ★★ <b>Z6a 创世/长跑真档用例（Z5 §8.1，设计书 §12.9）</b>：空 store → 真 {@code WorldRegistry.small-world} 生成器 → 真
  * {@code ShellMain.seedGenesisIfEmpty} → 真 core {@code bootstrapGenesis}；逐项钉 tick0 结构、第 1
- * 天结算读数/告警/国库、 {@code simos.gov.info} 真读、确定性/幂等与 120 天长跑。
+ * 天结算读数/告警/国库、 {@code simos.gov.info} 真读、确定性/幂等与 3 天长跑 smoke。
+ *
+ * <p>★★ <b>批 M（2026-10-15）</b>：原「120 天长跑」用例（一个 `@Test` 里逐日推 120 tick）已按用户裁定搬出 JUnit ⇒ {@code
+ * io.mosire.simos.app.sim.GovGenesis120DaySim}（跑 {@code tools/multitick-sim.sh gov-genesis-120d}）；
+ * 本类留 3 天 smoke（判据 M1 合规）。
  *
  * <p>★ <b>期望值来源</b>：Z5 探针（{@code /tmp/z5-probe}，85 checks 全绿）与设计书 §3/§6/§8/§9；数字是字面量，不拿被测实现当期望
  * （唯一例外是财政/公式的复算，用被测消费端同一份数据现算——见各断言注释）。
@@ -482,15 +486,28 @@ class GovGenesisZ6Test {
     }
   }
 
-  // ── 120 天长跑 ──────────────────────────────────────────────────────────────────────
+  // ── 长跑 smoke（★ 120 天那条已搬出 JUnit，见独立跑法）────────────────────────────────
 
+  /**
+   * ★★ <b>批 M（2026-10-15）缩编：3 天逐日推进的 smoke</b>。
+   *
+   * <p>★★ <b>为什么缩</b>：用户原话（逐字，2026-10-15）：「先停一停，我不是说，测试class里不要塞多tick吗？要跑全真世界模拟自己额外创世界跑， 别塞进测试里！」——
+   * 原 {@code oneHundredTwentyDaysAdvanceWithoutContractFailure} 在**一个 `@Test` 里逐日推 120 天 = 120
+   * tick**（判据 M1「≥60 tick = 违规」的"多次单日推进"形态；实测该类吃门禁 41.0s / 12.0%）。 整段连同**全部断言逐字**搬进 {@link
+   * io.mosire.simos.app.sim.GovGenesis120DaySim} （跑 {@code tools/multitick-sim.sh
+   * gov-genesis-120d}，独立进程 + 独立 store，不进 {@code clean verify}）。
+   *
+   * <p>★ <b>这里留什么</b>：3 天（3 tick &lt; 60；且全是**逐日**推进 ⇒ 多日段 0）跑同一批机制读数 —— 「每日恰一条 revision」（{@code
+   * World#advanceDays} 的推进没被吞/被拒）、GOV_SERVICE 承诺不被静默缩、 无 ADMIN_CONTRACT 危机、三省 GOV 在位、人口与家户表仍在。 ★
+   * 120 天那条真正的时间跨度靶子（跨 4 个 30 天官署关账周期）**只在独立跑法里** —— 3 天抓不到它，如实记。
+   */
   @Test
-  void oneHundredTwentyDaysAdvanceWithoutContractFailure() {
-    try (World world = GovZ6WorldFixture.smallWorldGenesis(tempDir.resolve("long"), "long")) {
-      long tick = world.advanceDays(120L);
+  void threeDaysAdvanceWithoutContractFailureAndCommitmentsIntact() {
+    try (World world = GovZ6WorldFixture.smallWorldGenesis(tempDir.resolve("short"), "short")) {
+      long tick = world.advanceDays(3L);
 
-      assertThat(tick).isEqualTo(120L);
-      assertThat(world.head()).as("每日恰一条 revision ⇒ head = 121").isEqualTo(121L);
+      assertThat(tick).isEqualTo(3L);
+      assertThat(world.head()).as("每日恰一条 revision ⇒ head = 4").isEqualTo(4L);
 
       SimulationState state = world.state();
       GovState gov = GovZ6WorldFixture.govSlice(state);
@@ -505,17 +522,17 @@ class GovGenesisZ6Test {
                 .mapToLong(HouseholdLaborCommitment::laborMilli)
                 .sum();
         assertThat(committed)
-            .as(govId.value() + " 120 天后 GOV_SERVICE 承诺仍为 32000（未被静默缩）")
+            .as(govId.value() + " 3 天后 GOV_SERVICE 承诺仍为 32000（未被静默缩）")
             .isEqualTo(32_000L);
         assertThat(gov.offices().get(govId)).isNotNull();
       }
       long socialPopulation = totalSocialPopulation(GovZ6WorldFixture.socialSlice(state));
-      assertThat(socialPopulation).as("120 天后 Social 人口仍为正（每日生死正常结算）").isPositive();
+      assertThat(socialPopulation).as("3 天后 Social 人口仍为正（每日生死正常结算）").isPositive();
       assertThat(GovZ6WorldFixture.socialSlice(state).households())
-          .as("120 天后 Social 家户表仍在（未被清空）")
+          .as("3 天后 Social 家户表仍在（未被清空）")
           .isNotEmpty();
       assertThat(economy.crisisSignals().values())
-          .as("120 天长跑无 ADMIN_CONTRACT 契约告警")
+          .as("3 天推进无 ADMIN_CONTRACT 契约告警（★ 120 天那条在独立跑法里）")
           .noneMatch(signal -> signal.kind() == HexCrisisSignal.Kind.ADMIN_CONTRACT);
       assertThat(economy.governments()).hasSize(3);
     }

@@ -8,7 +8,7 @@ import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
-import io.mosire.simos.app.testing.AppLogCapture;
+import io.mosire.simos.app.sim.SegmentEquivalenceSim;
 import io.mosire.simos.app.testing.GovZ6WorldFixture;
 import io.mosire.simos.app.world.SmallWorld;
 import io.mosire.simos.app.world.WorldRegistry;
@@ -28,14 +28,13 @@ import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ★★ <b>跨模块（经济 + GOV + Social）分段等价断言 —— 本仓原先缺的那条护栏</b>。
+ * ★★ <b>跨模块（经济 + GOV + Social）分段等价断言 —— 门禁里的 smoke（批 M 缩编，2026-10-15）</b>。
  *
  * <p>仓里既有的等价性断言只有 {@code UnitTimeParticipantTest} 的 {@code
  * multiDayAdvanceEqualsChainedSingleDayAdvancesIncludingTheWholeFormation}（对 Unit 那半边成立）； Z7
@@ -51,6 +50,17 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * </blockquote>
  *
+ * <p>★★ <b>批 M 缩了什么（用户原话，逐字 2026-10-15：「先停一停，我不是说，测试class里不要塞多tick吗？要跑全真世界模拟自己额外创世界跑，
+ * 别塞进测试里！」）</b>：原版本 {@code DAYS = 30}（一次 30 天 + 逐日 30 次 = 60 tick）、且有第二条用例 （{@code runOnceLog +
+ * runChainedLog + runOnce} = 90 tick）—— 两条都撞判据 M1（≥60 tick / ≥2 个多日段； 实测该类 13.5s）。**整段连同全部断言逐字搬到**
+ * {@link SegmentEquivalenceSim} （跑 {@code tools/multitick-sim.sh segment-equivalence}，独立进程 + 独立
+ * store，不进 {@code clean verify}）—— 含第二条用例的「户空官吏户 day30 仍足额发薪（paidGrain=320 shortfallGrain=0）」 （★
+ * 该形态在门禁里另有 {@code Z7RemittanceE2ETest} 30 tick 覆盖，故这里不留）。
+ *
+ * <p>★ <b>这里留什么</b>：同一个契约的<b>小窗口 smoke</b>（{@code DAYS = 5} ⇒ 一次 5 天 + 逐日 5 次 = 10 tick， 1 个多日段）——
+ * 判据逐字未改（四片模块状态逐字段相等），只是窗口缩到 5 天（跨一个市场例行轮 {@code day % 5 == 0}）；口径与代价见 {@code
+ * docs/agents/08-七-门禁与关账命令.md}。
+ *
  * <p>★ <b>为什么比较"模块状态"而不是"框架 record"</b>：{@code StateRef}/{@code timestamp} 是本轮 revision 的记账对象，
  * 两侧当然不同；{@code UnitSnapshot} 的<b>位置历史分段数</b>也允许不同（§十一 明文：事件链可以不同）。故断言取<b>各领域模块自己的 状态类型</b>：{@code
  * economy} / {@code social} / {@code gov} 逐字段相等（{@code UnitState} 的终态视图由既有的 Unit 侧用例覆盖）。
@@ -62,29 +72,29 @@ import org.junit.jupiter.api.io.TempDir;
 class SegmentEquivalenceAcrossEconomyGovSocialTest {
 
   private static final UnitId PROVINCE = UnitId.parse("gov-province");
-  private static final UnitId CENTRAL = UnitId.parse("gov-central");
   private static final HouseholdId CENTRAL_TREASURY = GovernmentHouseholds.of("gov-central");
-  private static final HouseholdId CENTRAL_OFFICIALS = new HouseholdId("hh-unit:gov-central");
+
   private static final io.mosire.simos.util.state.BranchId MAIN =
       new io.mosire.simos.util.state.BranchId("main");
 
-  /** 一次 30 天 / 逐日 30 次 —— 同一座真世界夹具、同一份创世。 */
-  private static final long DAYS = 30L;
+  /** ★ 批 M：一次 5 天 / 逐日 5 次（原为 30 —— 60 tick 撞判据 M1；30 天版本见 {@link SegmentEquivalenceSim}）。 */
+  private static final long DAYS = 5L;
 
   @TempDir Path tempDir;
 
   /**
-   * {@code advance(0→30)} 的终态 == 30 次单日 advance 的终态（经济 + GOV + Social 三片逐字段）。
+   * {@code advance(0→5)} 的终态 == 5 次单日 advance 的终态（经济 + GOV + Social 三片逐字段）。
    *
    * <p>装置 = 真 {@link Shell} + 真 {@code SmallWorld.state} + 真 {@code bootstrapGenesis}（与 Z7
    * 同款，含"中央国库被清空" 这一负向前提 ⇒ 官吏户在 day1..29 欠俸、按 Z7d-2 在 day3/day4 走人直到户空）。<b>户空之后</b>才是本用例真正压的地方：
-   * 职位与发薪依据必须继续存在（用户 2026-10-13 设计要求「就算是政府家户，0 人也发钱」）。
+   * 职位与发薪依据必须继续存在（用户 2026-10-13 设计要求「就算是政府家户，0 人也发钱」）。 ★ 5 天窗口包含 day3/day4 的走人，但 day30 的"0
+   * 人也发钱"那条落在独立跑法（见类注）。
    */
   @Test
-  void oneThirtyDayAdvanceEqualsThirtyChainedSingleDayAdvances() {
-    // ① 一次 30 天
+  void fiveDayAdvanceEqualsFiveChainedSingleDayAdvances() {
+    // ① 一次 5 天
     SimulationState once = runOnce();
-    // ② 30 次单日（同一夹具的新世界；逐日 advance 各落一条 revision）
+    // ② 5 次单日（同一夹具的新世界；逐日 advance 各落一条 revision）
     SimulationState chained = runChained();
 
     EconomyData economyOnce = GovZ6WorldFixture.economySlice(once);
@@ -124,29 +134,9 @@ class SegmentEquivalenceAcrossEconomyGovSocialTest {
         .isEqualTo(GovZ6WorldFixture.unitSlice(chained).units().keySet());
   }
 
-  /**
-   * ★★ 反向用例（负向前提的钉子）：户空的官吏户<b>照样</b>产出当天 {@code ADMIN_SALARY} 规则，且上缴到账的同一 tick 足额付清 —— 这正是用户裁定「0
-   * 人也发钱」的可观测形态，也是 Z7 day30 那条断言的机制。
-   *
-   * <p>两个切法都必须看到同一条：一次 30 天与逐日 30 次，day30 都必须是 {@code paidGrain=320 shortfallGrain=0}。
-   */
-  @Test
-  void emptyOfficialHouseholdStillDrawsItsFullSalaryOnBothSegmentations() {
-    assertThat(dayThirtySalaryLines(runOnceLog()))
-        .as("一次 30 天：户空后 day30 中央工资足额（0 人也发钱）")
-        .anyMatch(SegmentEquivalenceAcrossEconomyGovSocialTest::isFullCentralSalary);
-    assertThat(dayThirtySalaryLines(runChainedLog()))
-        .as("逐日 30 次：同一条工资行必须逐字相同（分段等价）")
-        .anyMatch(SegmentEquivalenceAcrossEconomyGovSocialTest::isFullCentralSalary);
-    // 官吏户 = 0 人（户空是前提，不是"没走人"）
-    assertThat(GovZ6WorldFixture.socialSlice(runOnce()).householdPopulation(CENTRAL_OFFICIALS))
-        .as("前提：中央官吏户已走光（0 人）—— 本用例断言的正是'0 人仍发钱'")
-        .isZero();
-  }
-
   // ── 装置 ────────────────────────────────────────────────────────────────────────────────
 
-  /** 一次 {@code advance(0→30)}；返回 head 的完整状态。 */
+  /** 一次 {@code advance(0→DAYS)}；返回 head 的完整状态。 */
   private SimulationState runOnce() {
     try (Shell shell = shellWithProvinceRate(tempDir.resolve("once"), 500L)) {
       advance(shell, 0L, DAYS, "once");
@@ -154,7 +144,7 @@ class SegmentEquivalenceAcrossEconomyGovSocialTest {
     }
   }
 
-  /** 30 次单日 advance；返回 head 的完整状态。 */
+  /** {@code DAYS} 次单日 advance；返回 head 的完整状态。 */
   private SimulationState runChained() {
     try (Shell shell = shellWithProvinceRate(tempDir.resolve("chained"), 500L)) {
       for (long day = 0L; day < DAYS; day++) {
@@ -162,41 +152,6 @@ class SegmentEquivalenceAcrossEconomyGovSocialTest {
       }
       return state(shell);
     }
-  }
-
-  /** 一次 30 天那次推进的 time-logger INFO 行（只取工资行）。 */
-  private List<String> runOnceLog() {
-    try (Shell shell = shellWithProvinceRate(tempDir.resolve("once-log"), 500L);
-        AppLogCapture log = AppLogCapture.appTime()) {
-      advance(shell, 0L, DAYS, "once-log");
-      return List.copyOf(log.messages());
-    }
-  }
-
-  /** 逐日 30 次推进的 time-logger INFO 行（只取工资行）。 */
-  private List<String> runChainedLog() {
-    try (Shell shell = shellWithProvinceRate(tempDir.resolve("chained-log"), 500L);
-        AppLogCapture log = AppLogCapture.appTime()) {
-      for (long day = 0L; day < DAYS; day++) {
-        advance(shell, day, day + 1L, "chained-log-" + day);
-      }
-      return List.copyOf(log.messages());
-    }
-  }
-
-  private static List<String> dayThirtySalaryLines(List<String> messages) {
-    return messages.stream()
-        .filter(line -> line.contains("event=GOV_ADMIN_SALARY_DAY"))
-        .filter(line -> line.contains("day=30"))
-        .filter(line -> line.contains("unit=gov-central"))
-        .toList();
-  }
-
-  private static boolean isFullCentralSalary(String line) {
-    return line.contains("paidGrain=320")
-        && line.contains("shortfallGrain=0")
-        && line.contains("paidSilver=32")
-        && line.contains("shortfallSilver=0");
   }
 
   // ── 夹具（与 Z7RemittanceE2ETest 同款：真空库 + 零中央国库 + 省 rate=500）────────────────────
