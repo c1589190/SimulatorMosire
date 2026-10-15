@@ -47,8 +47,10 @@ import java.util.Set;
  *
  * <p>★★ <b>收款人任意 GOV</b>：不同于决策令里嵌 {@code actor.RemitGovTreasury} 的"只能上缴给 superiorGov"（那是 {@code
  * AdjudicateTickTool} 的命令专属校验），本工具按 R5 语义只解析收款 GOV 的<b>当刻有效位置</b>；<b>是否放行由既有审批链
- * 决定</b>——本工具是敏感闸（{@link ToolGate.Ask}），决策人链路 = {@code AutoApproveGate → ConfirmGate → 待批}， <b>需 GM
- * 在审批面点头</b>。金额 / 余额 / 冻结 / 原子性的唯一口径在域层 {@link RemitGovTreasuryHandler}，工具不重写一遍。
+ * 决定</b>——本工具是敏感闸（{@link ToolGate.Ask}），决策人<b>直写</b>链路 = {@code AutoApproveGate → ConfirmGate →
+ * 待批}， <b>需 GM 在审批面点头</b>。★ <b>决策人只有直写这一条路径</b>：本工具<b>不在</b> {@code ProposalCatalog}（{@code
+ * simos.ga.packet.propose} 的可提议清单）里 ⇒ 没有"提议零审批"那条路（2026-10-15 回代码核实；别的 9 条 {@code simos.gov.*} 类2
+ * 工具在清单里，别按它们类推）。金额 / 余额 / 冻结 / 原子性的唯一口径在域层 {@link RemitGovTreasuryHandler}，工具不重写一遍。
  *
  * <p>★ <b>preview / apply 同一份解析</b>：{@code preview?} 缺省 {@code true}（只读：返回双方落点、请求量与源账可支配量，
  * 一个字节都不写）；{@code preview=false} 必须给 {@code expectedRevision}，提交一条 {@code actor.RemitGovTreasury}。
@@ -93,7 +95,9 @@ public final class GovPayTool implements SimosTool {
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。"
         + "调用者必须是隶属某个 GOV 的决策人（Army/Nation 归属不收）；付款/收款 GOV 都必须存在、带 GovernmentFormation 且有当刻有效位置。"
-        + "★ 需 GM 在审批面点头：本工具是敏感工具，决策人链路会停在待批。★ 金额/余额/冻结/原子由域层判。";
+        + "★ 需 GM 在审批面点头：本工具是敏感工具，决策人【直写】会停在待批（超时 APPROVAL_DENIED）。"
+        + "★ 决策人只有直写这一条路径（本工具不在 simos.ga.packet.propose 的可提议清单里 ⇒ 没有零审批的提议路径）；"
+        + "★ 金额/余额/冻结/原子由域层判。";
   }
 
   @Override
@@ -118,7 +122,7 @@ public final class GovPayTool implements SimosTool {
 
   @Override
   public ToolSpec spec() {
-    // 敏感写：决策人链路走 AutoApproveGate → ConfirmGate → 待批（需 GM 点头）。
+    // 敏感写：决策人【直写】走 AutoApproveGate → ConfirmGate → 待批（需 GM 点头）；本工具无提议路径（不在可提议清单里）。
     return ToolSpec.level(AccessToken.DEFAULT, true, false);
   }
 

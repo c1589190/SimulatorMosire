@@ -36,10 +36,11 @@ import java.util.Set;
  * 模型给不出"顺手换身份"的调用；命令侧也只写 {@code currencies} 一张表（不变量 <b>I16</b> / 判据 <b>F1</b> / 负向用例 <b>M5</b>）。
  *
  * <p>★★ <b>权限不得放大（M6）</b>：只有<b>该币种的发行 GOV</b>能改它的显示名 —— 由 ① 身份派生（决策人<b>直写</b>时只能自己的 GOV） ② handler
- * 的 {@code issuable} 判据（不是发行人 ⇒ 具名拒）③ GM 审批链三层共同保证。
+ * 的 {@code issuable} 判据（不是发行人 ⇒ 具名拒）③ GM 审批链（**直写路径**的那条；提议路径的等价物是 catalog 的目标/资源断言）三层共同保证。
  *
  * <p>★ 两面并列、门禁不同（同 {@link GovDefineCurrencyTool}）：GM 桶 {@code GmAutoApproveGate} + 显式 {@code
- * govUnitId}；决策人桶<b>直写</b>需 GM 审批 + 身份派生。
+ * govUnitId}；决策人桶<b>直写</b>需 GM 审批 + 身份派生。★ <b>「需 GM 审批」只对直写路径成立</b>：本工具在 {@code ProposalCatalog}
+ * 清单里，决策人改走 {@code simos.ga.packet.propose} 是<b>零审批、不阻塞</b>（2026-10-15 批 3b §11.2 B3 实测）。
  *
  * <p>★★ <b>但「决策人可省」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
  * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
@@ -86,7 +87,9 @@ public final class GovRenameCurrencyTool implements SimosTool {
         + "reason?, preview?(缺省 true=只读), branch?(缺省 "
         + ToolResources.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。"
-        + "★ 需 GM 在审批面点头。★ 只有该币种的发行 GOV 能改它的显示名（越权 ⇒ 具名拒）。"
+        + "★ 需 GM 在审批面点头只对【决策人直写】成立（该路径停在待批、阻塞等 GM，超时 APPROVAL_DENIED）；"
+        + "【决策人提议 simos.ga.packet.propose】零审批、不阻塞（本工具在可提议清单里）。"
+        + "★ 只有该币种的发行 GOV 能改它的显示名（越权 ⇒ 具名拒）。"
         + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省 govUnitId（省略 = 自己的 GOV，给出别人的 GOV ⇒ 具名 "
         + "REJECTED）；【GM 面调用】与【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）"
         + "与 gm.packet.execute 的规划（DecisionEffectExecutor.planCall）都走 AgentIdentity.external()（GM 分支），"
@@ -117,7 +120,7 @@ public final class GovRenameCurrencyTool implements SimosTool {
 
   @Override
   public ToolSpec spec() {
-    // 敏感写：决策人链路走 AutoApproveGate → ConfirmGate → 待批（需 GM 点头）。
+    // 敏感写：决策人【直写】走 AutoApproveGate → ConfirmGate → 待批（需 GM 点头）；【提议】simos.ga.packet.propose 零审批。
     return ToolSpec.level(AccessToken.DEFAULT, true, false);
   }
 
@@ -141,7 +144,7 @@ public final class GovRenameCurrencyTool implements SimosTool {
             + args.getOrDefault("preview", true)
             + " branch="
             + args.getOrDefault("branch", ToolResources.DEFAULT_BRANCH)
-            + "（只改显示名，不动账；需 GM 审批）",
+            + "（决策人直写：只改显示名、不动账，需 GM 审批；改走 simos.ga.packet.propose 则零审批）",
         AskKind.SENSITIVE);
   }
 

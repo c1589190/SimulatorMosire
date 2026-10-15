@@ -1532,8 +1532,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitUpdateCommandChainTool(unitWrites, mapId));
     built.add(new UnitApplyCasualtiesTool(unitWrites, mapId));
     // ★★ D3a（2026-10-02 / D-009 补裁）：GM 对单独 Unit 人力/装备直接变动的调试直通口（有符号增量，一条命令原子）。
-    //   **只在 GM 桶**；命令本身打 {@code DmUsableCommand}（与既有 unit 命令同待遇）。★ 工具名不是命令类型 ⇒ 不进
-    // catalog/PAYLOAD_HINTS。
+    //   **只在 GM 桶**；命令本身**不打** {@code DmUsableCommand}（控制器 2026-10-02 裁定收紧：它是 GM 调试直改原语 ⇒
+    //   不进令白名单 / {@code RegisterEffect} / 决策人命令目录；回代码核实见 {@code AdjustCompositionHandler} 类注与
+    //   {@code UnitAdjustCompositionTool} 类注 —— 两处都写"不打"）。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new UnitAdjustCompositionTool(unitWrites, mapId));
     // 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率。**只在 GM 桶**（与既有 unit 窄写同待遇）。
     built.add(new UnitSetJurisdictionTool(unitWrites, mapId));
@@ -1829,20 +1830,30 @@ public final class SimosToolSource implements ToolSource {
             new AppGovToolManpower(calendarService));
     built.add(new GovPayTool(gov));
     // ★★ Z3c-2（2026-10-23 政府服务模式）：五条政府配置窄写——与 GM 桶**同名注册**（同一份实现按身份派生：
-    //   GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 越权 REJECTED）。敏感工具 ⇒
-    //   AutoApproveGate → ConfirmGate → PendingApprovals（需 GM 点头）。
+    //   GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 越权 REJECTED）。敏感工具，但**两条路径不同**
+    //   （2026-10-15 批 3b §11.2 B3 实测）：
+    //   ①【决策人直写】AutoApproveGate → ConfirmGate → PendingApprovals：阻塞等 GM 在审批面点头
+    //      （上限 APPROVAL_TIMEOUT，到点 APPROVAL_DENIED、asks=1）；
+    //   ②【决策人提议】{@code simos.ga.packet.propose}：零审批、asks 不增、不阻塞。这几条都在
+    //      {@code ProposalCatalog} 清单里；GM 侧用 {@code simos.gm.packet.decide} 真审、{@code
+    // simos.gm.packet.execute} 执行。
     //   **桶**（本方法）就是权限组白名单的来源（由 {@code Shell} 派生，不另立清单）。
     built.add(new GovSetEstablishmentTool(gov));
     built.add(new GovSetBudgetPolicyTool(gov));
     built.add(new GovAssignPostsTool(gov));
     built.add(new GovExpandHouseholdTool(gov));
     // ★★ Z3d（2026-10-23）：外部户承接行政任务（B 路 V1=显式选户）——与 GM 桶同名注册；只写 externalPosts +
-    //   GOV_SERVICE 承诺，不改归属/位置；敏感工具 ⇒ AutoApproveGate → ConfirmGate → PendingApprovals。
+    //   GOV_SERVICE 承诺，不改归属/位置；敏感工具 ⇒ 两条路径同上（【决策人直写】AutoApproveGate → ConfirmGate →
+    //   PendingApprovals 停在待批等 GM 点头；【决策人提议】{@code simos.ga.packet.propose} 零审批 —— 本工具也在
+    //   {@code ProposalCatalog} 清单里）。
     //   **桶**（本方法）就是权限组白名单的来源（由 {@code Shell} 派生，不另立清单）。
     built.add(new GovOpenPostsToMarketTool(gov));
     // ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套的**决策人侧注册面**——与 GM 桶同名注册（同一份实现按身份
     //   派生：GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 具名 REJECTED）。三条都是敏感工具 ⇒
-    //   AutoApproveGate → ConfirmGate → PendingApprovals（需 GM 在审批面点头）。
+    //   **两条路径行为不同**（2026-10-15 批 3b §11.2 B3 实测）：【决策人直写】AutoApproveGate → ConfirmGate →
+    //   PendingApprovals ⇒ 阻塞等 GM 在审批面点头（到点 APPROVAL_DENIED）；【决策人提议】{@code simos.ga.packet.propose}
+    //   ⇒ 零审批、不阻塞（三条都在 {@code ProposalCatalog} 清单里；GM 用 {@code simos.gm.packet.decide} 审、
+    //   {@code simos.gm.packet.execute} 执行）。
     //   ★★ **桶（本方法）就是决策人白名单的来源**——{@code roles()} 是唯一声明，白名单由 {@code Shell}
     //      从这个桶派生（B4 起生产路径不再有手抄清单）。
     built.add(new GovDefineCurrencyTool(gov));

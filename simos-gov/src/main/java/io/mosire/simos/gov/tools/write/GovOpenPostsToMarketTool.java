@@ -34,7 +34,7 @@ import java.util.UUID;
 
 /**
  * ★★ <b>{@code simos.gov.openPostsToMarket}（Z3d，2026-10-23 用户裁定 B 路 V1）：把外部家户挂到 GOV 外部岗位并写 {@code
- * GOV_SERVICE} 承诺</b>（GM + 该 GOV 决策人，决策人走审批链）。
+ * GOV_SERVICE} 承诺</b>（GM + 该 GOV 决策人；决策人【直写】走审批链，【提议】{@code simos.ga.packet.propose} 零审批 —— 见下）。
  *
  * <pre>
  * V1 = 显式选户：外部家户（Social 家户表 + economy classes 行都存在、且<b>不在</b>该 GOV 的 Unit.households 里）
@@ -55,8 +55,10 @@ import java.util.UUID;
  * </ol>
  *
  * <p>★★ <b>身份与权限</b>：GM 必须显式 {@code govUnitId}；决策人<b>直写</b>时身份派生只能自己所属 GOV（载荷指定别的 GOV ⇒ 越权 {@code
- * REJECTED}），且决策人链路是敏感工具 ⇒ 走 GM 审批（{@code AutoApproveGate → ConfirmGate → PendingApprovals}）。资源断言
- * 锚点 = 目标 GOV 的 {@code unit:<govUnitId>}（{@code GovScope} 只授自己单位）。
+ * REJECTED}），且决策人<b>直写</b>是敏感工具 ⇒ 走 GM 审批（{@code AutoApproveGate → ConfirmGate →
+ * PendingApprovals}）。 ★ <b>但「需 GM 审批」只对直写路径成立</b>：本工具在 {@code ProposalCatalog} 清单里，决策人改走 {@code
+ * simos.ga.packet.propose} 是<b>零审批、不阻塞</b>（2026-10-15 批 3b §11.2 B3 实测：propose 成功且 asks 不增）。资源断言 锚点
+ * = 目标 GOV 的 {@code unit:<govUnitId>}（{@code GovScope} 只授自己单位）。
  *
  * <p>★★ <b>但「决策人可省」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
  * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
@@ -98,7 +100,9 @@ public final class GovOpenPostsToMarketTool implements SimosTool {
         + "计划的 postTiers), level?(可选，缺省=该 GOV 编制层级), headOfGovernment?(缺省 false), laborMilli?(可选，缺省=该户"
         + "当前 Social 权威劳动；必须 ∈(0,当前劳动]), activity?(可选，缺省按 GOV 唯一 office unit 解析), reason(必填), "
         + "preview?(缺省 true), branch?, expectedRevision?(preview=false 必填)}。"
-        + "外部户不改 Unit.households / Social 位置；工资沿用 ADMIN_SALARY 链；决策人只能自己的 GOV（越权具名拒）且必须过 GM 审批；"
+        + "外部户不改 Unit.households / Social 位置；工资沿用 ADMIN_SALARY 链；决策人只能自己的 GOV（越权具名拒）；★ 审批只对"
+        + "【决策人直写】是必须的（该路径停在待批、阻塞等 GM，超时 APPROVAL_DENIED）；【决策人提议 "
+        + "simos.ga.packet.propose】零审批、不阻塞（本工具在可提议清单里）；"
         + "V1 只做显式选户（队列/应募/竞价留 V2/V3）。"
         + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省 govUnitId（省略 = 自己的 GOV，给出别人的 GOV ⇒ 具名 "
         + "REJECTED）；【GM 面调用】与【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）"
@@ -169,7 +173,8 @@ public final class GovOpenPostsToMarketTool implements SimosTool {
             + args.getOrDefault("preview", true)
             + " branch="
             + args.getOrDefault("branch", ToolResources.DEFAULT_BRANCH)
-            + "（外部户保留原单位/位置；决策人只能自己的 GOV，需 GM 审批）",
+            + "（决策人直写：外部户保留原单位/位置，只能自己的 GOV，需 GM 审批；"
+            + "本工具在可提议清单里，改走 simos.ga.packet.propose 零审批）",
         AskKind.SENSITIVE);
   }
 

@@ -37,8 +37,9 @@ import java.util.Set;
  * <p>★★ <b>两面并列、门禁不同</b>（照 {@link GovDefineCurrencyTool}）：GM 桶调用走 {@code GmAutoApproveGate}
  * （直接批准）、必须显式给 {@code govUnitId}；决策人桶<b>直写</b>调用走 {@code AutoApproveGate → ConfirmGate →
  * PendingApprovals}（<b>需 GM 点头</b>），{@code govUnitId} 由身份派生、给别的 GOV ⇒ 具名 {@code REJECTED} （见 {@link
- * GovToolSupport}）。★ 本工具是<b>工具层</b>的（{@code DmUsableCommand} 是**命令层**标记，工具层没有它）： 决策人用得了它，权限由审批链 +
- * 身份派生兜。
+ * GovToolSupport}）。★ <b>但「需 GM 点头」只对这条直写路径成立</b>：本工具在 {@code ProposalCatalog} 清单里，决策人改走 {@code
+ * simos.ga.packet.propose} 是<b>零审批、不阻塞</b>（2026-10-15 批 3b §11.2 B3 实测：propose 成功且 asks 不增）。 ★
+ * 本工具是<b>工具层</b>的（{@code DmUsableCommand} 是**命令层**标记，工具层没有它）： 决策人用得了它，权限由审批链 + 身份派生兜。
  *
  * <p>★★ <b>但「决策人可省」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
  * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
@@ -94,7 +95,9 @@ public final class GovSetFxRateTool implements SimosTool {
         + "), expectedRevision?(preview=false 必填)}。"
         + "★ 后果：该币对的外汇市场被激活 —— 政府外汇窗口按 bidP=buyPerMille / askP=sellPerMille 挂牌，"
         + "储备上限 = 该 GOV 对该币种累计发行量的 500‰；家户以官方报价为锚挂单（实际汇率 = 成交的加权均价，"
-        + "是读数、不落盘，未定汇率的世界没有外汇面）。★ 需 GM 在审批面点头（敏感工具）；★ 只能作用于自己所属 GOV。"
+        + "是读数、不落盘，未定汇率的世界没有外汇面）。"
+        + "★ 需 GM 在审批面点头只对【决策人直写】成立（该路径停在待批、阻塞等 GM，超时 APPROVAL_DENIED）；"
+        + "【决策人提议 simos.ga.packet.propose】零审批、不阻塞（本工具在可提议清单里）；★ 只能作用于自己所属 GOV。"
         + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省 govUnitId（省略 = 自己的 GOV，给出别人的 GOV ⇒ 具名 "
         + "REJECTED）；【GM 面调用】与【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）"
         + "与 gm.packet.execute 的规划（DecisionEffectExecutor.planCall）都走 AgentIdentity.external()（GM 分支），"
@@ -132,7 +135,7 @@ public final class GovSetFxRateTool implements SimosTool {
 
   @Override
   public ToolSpec spec() {
-    // 敏感写：决策人链路走 AutoApproveGate → ConfirmGate → 待批（需 GM 点头）。
+    // 敏感写：决策人【直写】走 AutoApproveGate → ConfirmGate → 待批（需 GM 点头）；【提议】simos.ga.packet.propose 零审批。
     return ToolSpec.level(AccessToken.DEFAULT, true, false);
   }
 
@@ -160,7 +163,7 @@ public final class GovSetFxRateTool implements SimosTool {
             + args.getOrDefault("preview", true)
             + " branch="
             + args.getOrDefault("branch", ToolResources.DEFAULT_BRANCH)
-            + "（激活该币对的外汇市场，需 GM 审批）",
+            + "（决策人直写：激活该币对的外汇市场，需 GM 审批；改走 simos.ga.packet.propose 则零审批）",
         AskKind.SENSITIVE);
   }
 

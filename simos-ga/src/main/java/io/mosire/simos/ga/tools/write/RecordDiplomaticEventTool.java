@@ -25,7 +25,9 @@ import java.util.Set;
  * ToolContext#identity()}）；归属不是 Nation ⇒ 具名拒。规则本体与关系边那条共用 {@link DiplomaticWriteSignature}。
  *
  * <p>★ **资源声明 = sd 域的自己那一块**（同 {@code IssueDirectiveTool}）：{@code decisionWriteResources} + {@code
- * READ_ONLY} 缺省策略；ToolSpec 敏感 ⇒ 走决策人链路的既有审批（需 GM 在审批面点头）。
+ * READ_ONLY} 缺省策略；ToolSpec 敏感 ⇒ **决策人直写**走决策人链路的既有审批（{@code AutoApproveGate → ConfirmGate → 待批}，需
+ * GM 在审批面点头）。★ **决策人只有直写这一条路径**：本工具不在 {@code ProposalCatalog}（{@code simos.ga.packet.propose}
+ * 的可提议清单）里 ⇒ 没有"提议零审批"那条路（2026-10-15 回代码核实）。
  */
 public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool implements SimosTool {
 
@@ -74,7 +76,8 @@ public final class RecordDiplomaticEventTool extends AbstractNarrowWriteTool imp
     return "决策人追加一条外交事件记录（固定 gov.RecordDiplomaticEvent）："
         + "载荷 {eventId?,tick?,participants[],text}；participants ≥2 且不重复、必须包含调用者自己的 Nation（不许替别国记名）；"
         + "text 自然语言；tick 缺省=世界当前 tick 且不得记在未来；eventId 缺省按 tick 合成。"
-        + "需 GM 在审批面点头（敏感工具走既有审批链）。";
+        + "★ 决策人只有【直写】一条路径：它会停在待批、需 GM 在审批面点头（敏感工具走既有审批链；本工具不在 "
+        + "simos.ga.packet.propose 的可提议清单里，没有零审批的提议路径）。";
   }
 
   @Override

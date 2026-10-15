@@ -32,7 +32,9 @@ import java.util.Set;
  * 逐字透传、expectedRevision；★★ 2026-10-12 追加裁定 12 §21.9 D-3 起预算政策改由 economy 的通用政府政策写口承接）。
  *
  * <p>★★ <b>两面并列、门禁不同</b>：GM 桶调用走 {@code GmAutoApproveGate}；决策人桶<b>直写</b>调用走 {@code AutoApproveGate
- * → ConfirmGate → PendingApprovals}（需 GM 点头）。身份派生与越权拒见 {@link GovToolSupport}。
+ * → ConfirmGate → PendingApprovals}（需 GM 点头）。★ <b>但「需 GM 点头」只对这条直写路径成立</b>：本工具在 {@code
+ * ProposalCatalog} 清单里，决策人改走 {@code simos.ga.packet.propose} 是<b>零审批、不阻塞</b>（2026-10-15 批 3b §11.2
+ * B3 实测：propose 成功且 asks 不增）。身份派生与越权拒见 {@link GovToolSupport}。
  *
  * <p>★★ <b>但「决策人可省 unitId」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
  * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
@@ -80,7 +82,8 @@ public final class GovSetBudgetPolicyTool implements SimosTool {
         + "remittancePerMilleToSuperior?(0..1000‰；周期末按本周期实收税上缴 superiorGov 国库)，"
         + "mode?(PATCH|REPLACE，缺省 PATCH)}。★ PATCH（缺省）：缺省字段保留现值——只改 remittance 不会清空类别表/工资规则，"
         + "要清空类别表须显式 orderedCategories:[]；REPLACE = 旧整表替换（缺省=空表/0/0/0）。工具另可传顶层 mode 参数覆盖 payloadJson 里的 mode。"
-        + "GM 调用需显式 unitId；决策人直写调用身份派生、只能自己的 GOV（越权 GOV 具名拒，且必须过 GM 审批）。"
+        + "GM 调用需显式 unitId；决策人直写调用身份派生、只能自己的 GOV（越权 GOV 具名拒），且直写会停在待批、阻塞等 GM "
+        + "点头（超时 APPROVAL_DENIED）；【决策人提议 simos.ga.packet.propose】零审批、不阻塞（本工具在可提议清单里）。"
         + "preview=true（缺省）只算前后差异、不写；preview=false 必须给 expectedRevision，逐值相同的重放 = noop。"
         + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省载荷里的 unitId；【GM 面调用】与"
         + "【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）与 "
@@ -138,7 +141,7 @@ public final class GovSetBudgetPolicyTool implements SimosTool {
             + args.getOrDefault("mode", "payload")
             + " branch="
             + args.getOrDefault("branch", ToolResources.DEFAULT_BRANCH)
-            + "（决策人只能自己的 GOV，需 GM 审批）",
+            + "（决策人直写：只能自己的 GOV，需 GM 审批；本工具在可提议清单里，改走 simos.ga.packet.propose 零审批）",
         AskKind.SENSITIVE);
   }
 

@@ -46,8 +46,10 @@ import java.util.UUID;
  * </ol>
  *
  * <p>★★ <b>身份与权限</b>：GM 必须显式 {@code govUnitId}；决策人<b>直写</b>时身份派生只能自己所属 GOV（载荷指定别的 GOV ⇒ 越权 {@code
- * REJECTED}），且决策人链路是敏感工具 ⇒ 走 GM 审批（{@code AutoApproveGate → ConfirmGate → PendingApprovals}）。
- * 资源断言锚点 = 目标 GOV 的 {@code unit:<govUnitId>}（{@code GovScope} 只授自己单位）。
+ * REJECTED}），且决策人<b>直写</b>是敏感工具 ⇒ 走 GM 审批（{@code AutoApproveGate → ConfirmGate →
+ * PendingApprovals}）。 ★ <b>但「需 GM 审批」只对直写路径成立</b>：本工具在 {@code ProposalCatalog} 清单里，决策人改走 {@code
+ * simos.ga.packet.propose} 是<b>零审批、不阻塞</b>（2026-10-15 批 3b §11.2 B3 实测：propose 成功且 asks 不增）。 资源断言锚点
+ * = 目标 GOV 的 {@code unit:<govUnitId>}（{@code GovScope} 只授自己单位）。
  *
  * <p>★★ <b>但「决策人可省」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
  * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
@@ -87,7 +89,9 @@ public final class GovAssignPostsTool implements SimosTool {
         + "Unit.households 且 economy/Social 都有行), role(SCRIBE|YAMEN|POST), tierId?(可选，必须命中该 GOV 计划的 "
         + "postTiers), laborMilli?(可选，缺省=该户当前 Social 权威劳动；必须 ∈(0,当前劳动]), activity?(可选，缺省按 GOV 唯一 "
         + "office unit 解析), reason(必填), preview?(缺省 true), branch?, expectedRevision?(preview=false 必填)}。"
-        + "决策人只能自己的 GOV（越权具名拒）且必须过 GM 审批；不擅自编户/改位置/改 staff。"
+        + "决策人只能自己的 GOV（越权具名拒）；★ 审批只对【决策人直写】是必须的（该路径停在待批、阻塞等 GM，超时 "
+        + "APPROVAL_DENIED）；【决策人提议 simos.ga.packet.propose】零审批、不阻塞（本工具在可提议清单里）。"
+        + "不擅自编户/改位置/改 staff。"
         + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省 govUnitId（省略 = 自己的 GOV，给出别人的 GOV ⇒ 具名 "
         + "REJECTED）；【GM 面调用】与【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）"
         + "与 gm.packet.execute 的规划（DecisionEffectExecutor.planCall）都走 AgentIdentity.external()（GM 分支），"
@@ -154,7 +158,7 @@ public final class GovAssignPostsTool implements SimosTool {
             + args.getOrDefault("preview", true)
             + " branch="
             + args.getOrDefault("branch", ToolResources.DEFAULT_BRANCH)
-            + "（决策人只能自己的 GOV，需 GM 审批）",
+            + "（决策人直写：只能自己的 GOV，需 GM 审批；本工具在可提议清单里，改走 simos.ga.packet.propose 零审批）",
         AskKind.SENSITIVE);
   }
 

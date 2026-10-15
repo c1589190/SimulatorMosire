@@ -146,7 +146,7 @@ public final class GovToolSupport {
     }
   }
 
-  /** 载荷/参数层面的 GOV 解析（GM 面）：显式 {@code govUnitId} 必填、单位存在且带编制。 */
+  /** 载荷/参数层面的 GOV 解析（GM 面）：显式 GOV 单位 id 必填、单位存在且带编制。★ 键位按工具分叉（见下方报文）。 */
   public GovTarget resolveGov(
       ToolContext context, SimulationState state, String explicitGovUnitId) {
     Objects.requireNonNull(context, "context");
@@ -156,7 +156,11 @@ public final class GovToolSupport {
       return resolveDecisionMakerGov(state, decisionMakerId.get(), explicitGovUnitId);
     }
     if (explicitGovUnitId == null || explicitGovUnitId.isBlank()) {
-      throw new IllegalArgumentException("govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）");
+      throw new IllegalArgumentException(
+          "govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）。★ 键位按工具分叉："
+              + "simos.gov.setEstablishment / simos.gov.setBudgetPolicy 的该字段写在 payloadJson 里、名叫 unitId；"
+              + "其余 gov 工具写顶层 govUnitId。★ 只有【决策人直写】可省（省略 = 自己的 GOV）；"
+              + "GM 面调用、simos.ga.packet.propose 的真预览与 simos.gm.packet.execute 的规划都走 GM 分支 ⇒ 必填");
     }
     return target(state, UnitId.parse(explicitGovUnitId), false, null, null);
   }

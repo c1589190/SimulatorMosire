@@ -30,8 +30,9 @@ import java.util.Set;
  * sd:decision-maker/<自己>}（{@code decisionWriteResources}）；缺省策略取 {@code READ_ONLY} 使"未表态 sd"者
  * fail-closed。
  *
- * <p>★ <b>ToolSpec 敏感 + 既有审批链</b>（基类）：决策人链路 = {@code AutoApproveGate → ConfirmGate → 待批}，GM
- * 需在审批面点头。
+ * <p>★ <b>ToolSpec 敏感 + 既有审批链</b>（基类）：**决策人直写**链路 = {@code AutoApproveGate → ConfirmGate → 待批}，GM
+ * 需在审批面点头。★ **决策人只有直写这一条路径**：本工具不在 {@code ProposalCatalog}（{@code simos.ga.packet.propose} 的可提议清单）里
+ * ⇒ 没有"提议零审批"那条路（2026-10-15 回代码核实）。
  */
 public final class SetDiplomaticRelationTool extends AbstractNarrowWriteTool implements SimosTool {
 
@@ -80,7 +81,8 @@ public final class SetDiplomaticRelationTool extends AbstractNarrowWriteTool imp
     return "决策人写入/更新一条有向外交关系边（固定 gov.SetDiplomaticRelation）："
         + "载荷 {from,to,kind?,text,tick?}；from 必须是调用者自己的 Nation（不许冒名），to 必须是已存在的 Nation；"
         + "kind 自由文本可空、text 自然语言（谈判状态记这里）、tick 缺省=世界当前 tick 且不得记在未来。"
-        + "需 GM 在审批面点头（敏感工具走既有审批链）。";
+        + "★ 决策人只有【直写】一条路径：它会停在待批、需 GM 在审批面点头（敏感工具走既有审批链；本工具不在 "
+        + "simos.ga.packet.propose 的可提议清单里，没有零审批的提议路径）。";
   }
 
   @Override

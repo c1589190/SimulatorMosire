@@ -32,8 +32,10 @@ import java.util.Set;
  * 逐字透传、expectedRevision；★★ 2026-10-12 追加裁定 12 §21.9 D-3 起编制计划改由 economy 的通用政府政策写口承接）。
  *
  * <p>★★ <b>两面并列、门禁不同</b>：GM 桶调用走 {@code GmAutoApproveGate}（直接批准）；决策人桶<b>直写</b>调用走 {@code
- * AutoApproveGate → ConfirmGate → PendingApprovals}（需 GM 在审批面点头）。身份派生与越权拒见 {@link
- * GovToolSupport}：决策人<b>直写</b>时只能操作自己所属 GOV；载荷若带别的 {@code govUnitId} ⇒ 具名 {@code REJECTED}。
+ * AutoApproveGate → ConfirmGate → PendingApprovals}（需 GM 在审批面点头）。★ <b>但「需 GM 点头」只对这条直写路径成立</b>：
+ * 本工具在 {@code ProposalCatalog} 清单里，决策人改走 {@code simos.ga.packet.propose} 是<b>零审批、不阻塞</b>（2026-10-15
+ * 批 3b §11.2 B3 实测：propose 成功且 asks 不增）。身份派生与越权拒见 {@link GovToolSupport}：决策人<b>直写</b>时只能操作自己所属
+ * GOV；载荷若带别的 {@code govUnitId} ⇒ 具名 {@code REJECTED}。
  *
  * <p>★★ <b>但「决策人可省 unitId」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
  * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
@@ -42,7 +44,8 @@ import java.util.Set;
  *
  * <p>★★ <b>命令仍是 GM-only（控制方 2026-10-23 裁定，口径按批次 1 收尾更新）</b>：{@code economy.SetGovernmentPolicy}
  * <b>不打</b> {@code DmUsableCommand}（反默认 ⇒ 仅 GM），声明只影响 ga 规则层派生的令 / {@code RegisterEffect} / 决策人
- * catalog 三条路径；命令总线不认该标记， 因此决策人窄工具直接提交同一命令是受控的（审批链承担门禁）。标记不删 ⇒ 权限面不放大。
+ * catalog 三条路径；命令总线不认该标记， 因此决策人窄工具直接提交同一命令是受控的（**直写路径**的审批链承担门禁；提议路径由 {@code ProposalCatalog}
+ * 的目标/资源断言 + GM 的 {@code simos.gm.packet.decide} 承担）。标记不删 ⇒ 权限面不放大。
  *
  * <p>★ <b>preview 与 apply 同源</b>：两者都读同一坐标的 base 状态、跑 {@link GovPolicyPlanSupport}（与 handler 共用
  * {@code EconomyGovPolicyPayloads} 解析与 GOV 单位守卫），preview 不写状态、不发"已应用"日志；逐值相同的重放 = noop（不落空
@@ -89,7 +92,8 @@ public final class GovSetEstablishmentTool implements SimosTool {
         + "paperworkWeightPerMille}]), securitySupplyStaticModifierPerMille?, paperworkSupplyStaticModifierPerMille?,"
         + " securityDemandStaticModifierPerMille?, paperworkDemandStaticModifierPerMille?,"
         + " supernumerarySqrtCoefficient?(k)}；缺省展开一次（计划 0 / 默认 3 档 / 修正 1000‰ / k=1）。"
-        + "GM 调用需显式 unitId；决策人直写调用身份派生、只能自己的 GOV（越权 GOV 具名拒，且必须过 GM 审批）。"
+        + "GM 调用需显式 unitId；决策人直写调用身份派生、只能自己的 GOV（越权 GOV 具名拒），且直写会停在待批、阻塞等 GM "
+        + "点头（超时 APPROVAL_DENIED）；【决策人提议 simos.ga.packet.propose】零审批、不阻塞（本工具在可提议清单里）。"
         + "preview=true（缺省）只算前后差异、不写；preview=false 必须给 expectedRevision，逐值相同的重放 = noop。"
         + "★ 身份与路径（2026-10-15 实测）：只有【决策人直写】可省载荷里的 unitId；【GM 面调用】与"
         + "【simos.ga.packet.propose 提议】都必须显式给 —— propose 的真预览（ProposalCatalog.preview）与 "
@@ -125,7 +129,7 @@ public final class GovSetEstablishmentTool implements SimosTool {
 
   @Override
   public ToolSpec spec() {
-    // 敏感写：决策人链路会停在待批（需 GM 点头），GM 链路 GmAutoApproveGate 直接批准。
+    // 敏感写：决策人【直写】会停在待批（需 GM 点头）、【提议】simos.ga.packet.propose 零审批；GM 链路 GmAutoApproveGate 直接批准。
     return ToolSpec.level(AccessToken.DEFAULT, true, false);
   }
 
@@ -143,7 +147,7 @@ public final class GovSetEstablishmentTool implements SimosTool {
             + args.getOrDefault("preview", true)
             + " branch="
             + args.getOrDefault("branch", ToolResources.DEFAULT_BRANCH)
-            + "（决策人只能自己的 GOV，需 GM 审批）",
+            + "（决策人直写：只能自己的 GOV，需 GM 审批；本工具在可提议清单里，改走 simos.ga.packet.propose 零审批）",
         AskKind.SENSITIVE);
   }
 
