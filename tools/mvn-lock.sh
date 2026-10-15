@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # ★★ Maven 串行化锁（AGENTS.md §一.1：本机一次只能跑一个 Maven，两轮同抢 target/ 会让测试计数失真）。
-# ★ 作用域 = **本仓/同工作树**（用户 2026-10-23 更正：「那是隔壁项目，编译门禁只是用于同一个项目文件！」
-#   ⇒ 隔壁仓库的 Maven 不参与此锁、不阻塞本仓构建；本锁只串行化落在本仓的 Maven）。
+# ★★ 作用域 = **本项目**（同一个 `.git` 的**全部工作树**共享一把锁），**不是**单棵工作树。
+#   用户原话（2026-10-23）：「那是隔壁项目，编译门禁只是用于同一个项目文件！」
+#   ⇒ **隔壁仓库**（另一个 `.git`）不参与此锁、不阻塞本仓构建 ✔
+#   ⇒ ★★ 但**本仓的工作树**属于**同一个项目** ⇒ 它们**必须共用一把锁**，原因两条：
+#     ① 工作树们共享 `~/.m2/repository`（773 MB）—— **Maven 本地仓库不是并发安全的**，
+#        两个工作树同时构建会争它（per-tree 锁拦不住）⇒ 2026-10-16 实测并修掉；
+#     ② 同一项目的 target/ 与测试计数本来就该串行（本锁的初衷）。
+#   ★ 锁落在**共享 `.git`** 里（`$(git rev-parse --git-common-dir)`）⇒ 天然"一项目一把"。
 #
 # 用法：把 `./mvnw` 换成 `tools/mvn-lock.sh`，其余参数原样透传：
 #     tools/mvn-lock.sh -q -DskipTests compile -pl simos-economy -am
@@ -16,7 +22,18 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOCK_DIR="$ROOT/.mvn-lock.d"
+# ★★ 锁目录 = **共享 .git** 之下 ⇒ 同一项目的**所有工作树共用一把锁**（见文件头注释）。
+#   取不到 git（不是仓库 / 没装 git）⇒ 退化成"单棵工作树一把锁"（与旧行为一致，不会更坏）。
+GIT_COMMON="$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null || true)"
+if [ -n "$GIT_COMMON" ]; then
+  case "$GIT_COMMON" in
+    /*) : ;;                                  # 已是绝对路径
+    *)  GIT_COMMON="$ROOT/$GIT_COMMON" ;;    # 相对路径按本工作树解析
+  esac
+  LOCK_DIR="$GIT_COMMON/.mvn-lock.d"
+else
+  LOCK_DIR="$ROOT/.mvn-lock.d"
+fi
 WAIT_LIMIT="${MVN_LOCK_WAIT:-0}"   # 0 = 无限等
 SELF=$$
 
