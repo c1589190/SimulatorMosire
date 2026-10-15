@@ -46,18 +46,18 @@ import org.slf4j.Logger;
  * 解码期炸（表空着时测不到——故 {@code GaRoundTripTest} 的夹具必须让七张表非空）。键反序列化器照裁定 16 在<b>本模块</b>注册， 不进共享基座。
  *
  * <p>★★ <b>{@code info} 表的键是 {@code String}（canonical 地址串），不是自定义 id 类型</b> ⇒ <b>不注册</b> {@code
- * SdInfoId} 之类的键反序列化器（{@code SdInfoId} 是 {@code SdInfoEntry} 的<b>字段</b>，全仓无任何 {@code Map} 以它为键）。★ 批
- * 3b-2 的派单书写着"新注册 {@code DecisionMakerId} 与 {@code SdInfoId} 两个键读侧"—— 后者是**对树形状的误述**（树里没有这个键），本
- * codec 按实际形状只注册<b>一个</b>，不为不存在的键写凭空注册（该类自 3a 起的既有纪律）。
+ * DecisionInfoId} 之类的键反序列化器（{@code DecisionInfoId} 是 {@code DecisionInfoEntry} 的<b>字段</b>，全仓无任何
+ * {@code Map} 以它为键）。★ 批 3b-2 的派单书写着"新注册 {@code DecisionMakerId} 与 {@code DecisionInfoId} 两个键读侧"——
+ * 后者是**对树形状的误述**（树里没有这个键），本 codec 按实际形状只注册<b>一个</b>，不为不存在的键写凭空注册（该类自 3a 起的既有纪律）。
  *
  * <p>★ <b>值类型里没有嵌套自定义键</b>（{@code DecisionPacket} → {@code FormattedCall} 的 {@code targets} 是
  * {@code List<CommandTarget>}、{@code MergedEffectPlan} → {@code List<MergedEffect>}、{@code
  * Directive} → {@code List<DirectiveCommand>} 与 {@code Set<EffectId>}、{@code Verdict} → 无 {@code
- * Map}、{@code DecisionMaker} → 无 {@code Map}、{@code SdInfoEntry} → 无 {@code Map} （{@code
+ * Map}、{@code DecisionMaker} → 无 {@code Map}、{@code DecisionInfoEntry} → 无 {@code Map} （{@code
  * tags}/{@code affiliations} 是 {@code Set}）、{@code Effect} → 无 {@code Map}（{@code trigger}/{@code
  * action} 是 sealed 多态，注解钉在类型上），都不含 {@code Map}）⇒ 本 codec <b>只注册这六个键</b>， 不给不存在的键写凭空注册。★ 值类型（{@code
  * DecisionPacket} / {@code MergedEffectPlan} / {@code Directive} / {@code Verdict} / {@code
- * DecisionMaker} / {@code SdInfoEntry} / {@code EffectId} 及它们的 id）住在 {@code simos-sd}：它们仍被 sd
+ * DecisionMaker} / {@code DecisionInfoEntry} / {@code EffectId} 及它们的 id）住在 {@code simos-sd}：它们仍被 sd
  * 的其余组件与 sd 的测试引用，而 {@code sd} 不得依赖 {@code ga}（成环）⇒ 本模块<b>反向引用</b>它们（既有的 {@code ga → sd} 方向，不新增边）。
  * ★ <b>本批 3b-4 的例外</b>：{@code Effect}/{@code EffectKind}/{@code EffectStatus}/{@code
  * Trigger}/{@code Action} <b>整族搬进 {@code io.mosire.simos.ga.effect}</b>（sd 侧零引用 ⇒ 不产生 {@code sd →

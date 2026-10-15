@@ -36,9 +36,9 @@ import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.id.DirectiveId;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.AdjudicationStatus;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DirectiveStatus;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -481,7 +481,8 @@ class AdjudicateTickToolTest {
     long after = head();
     SimulationState state = core().replay(ref("main", after));
     GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
-    List<SdInfoEntry> entries = sd.info().get(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + past);
+    List<DecisionInfoEntry> entries =
+        sd.info().get(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + past);
     assertThat(entries).as("按 tick 归档 ⇒ 地址里带的就是那个 tick").isNotNull().hasSize(1);
     assertThat(entries.get(0).tick()).as("★ 条目带**过去**那个 tick（不是世界 tick）").isEqualTo(past);
     assertThat(entries.get(0).tags()).as("标签挂到本次涉及的决策人").containsExactly(DM_ARMY);
@@ -518,7 +519,7 @@ class AdjudicateTickToolTest {
     String address = AdjudicateTickTool.RESULT_ADDRESS_PREFIX + WORLD_TICK;
     SimulationState state = core().replay(ref("main", head()));
     GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
-    List<SdInfoEntry> entries = sd.info().get(address);
+    List<DecisionInfoEntry> entries = sd.info().get(address);
     assertThat(entries).as("同 tick 两条记录都在（留痕）").hasSize(2);
     assertThat(entries.stream().map(e -> e.id().value()))
         .as("★ id 是「该地址下第 n 条」，不是写死的 #0")
@@ -1184,11 +1185,11 @@ class AdjudicateTickToolTest {
     assertThat(sd.directives().get(new DirectiveId("d-army")).status())
         .as("③ 被它翻过的令退回待裁决（于是可以改判/重裁）")
         .isEqualTo(DirectiveStatus.ISSUED);
-    List<SdInfoEntry> entries =
+    List<DecisionInfoEntry> entries =
         sd.info().get(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + WORLD_TICK);
     assertThat(entries).as("④ 那条记录**不删**（留痕：「第 1 版被作废」本身要看得到）").hasSize(1);
     assertThat(entries.get(0).adjudicationStatus()).contains(AdjudicationStatus.VOIDED);
-    assertThat(SdInfoEntry.isEffective(entries.get(0))).as("⑤ 作废之后该 tick 没有生效裁决").isFalse();
+    assertThat(DecisionInfoEntry.isEffective(entries.get(0))).as("⑤ 作废之后该 tick 没有生效裁决").isFalse();
   }
 
   // ────────────────────────────── 助手 ──────────────────────────────
@@ -1295,9 +1296,10 @@ class AdjudicateTickToolTest {
   private JsonNode decisionResult(long revision, long tick) throws Exception {
     SimulationState state = core().replay(ref("main", revision));
     GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
-    List<SdInfoEntry> entries = sd.info().get(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + tick);
+    List<DecisionInfoEntry> entries =
+        sd.info().get(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + tick);
     assertThat(entries).as("tick %s 的决策结果条目", tick).isNotNull().hasSize(1);
-    SdInfoEntry entry = entries.get(0);
+    DecisionInfoEntry entry = entries.get(0);
     assertThat(entry.id().value())
         .as("id 由地址派生 ⇒ 一个 tick 一条")
         .isEqualTo(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + tick + "#0");

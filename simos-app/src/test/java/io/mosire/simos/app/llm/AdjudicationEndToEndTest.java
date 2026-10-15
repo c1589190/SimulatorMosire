@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import io.mosire.simos.app.sd.DecisionAdjudicationService;
+import io.mosire.simos.app.ga.DecisionAdjudicationService;
 import io.mosire.simos.app.testing.WorldSlices;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;

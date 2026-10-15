@@ -59,7 +59,7 @@ public final class RunDecisionTool extends AbstractNarrowWriteTool implements Si
   private static final int SUMMARY_MAX_CHARS = ToolResultTruncator.DEFAULT_MAX_CHARS;
 
   /** 本工具只碰 sd 命名空间；缺省策略取 {@code READ_ONLY}（未表态者不得**写**）——理由见 {@code IssueDirectiveTool}。 */
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final GaDecisionHost decisionAgent;
@@ -95,7 +95,7 @@ public final class RunDecisionTool extends AbstractNarrowWriteTool implements Si
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   /** ★ 触发事实写的是**该决策人**的决策域（{@code sd:decision-maker/<自己>}；GM 身份回落成整个决策人集合）。 */

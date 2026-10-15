@@ -30,7 +30,7 @@ public final class SubmitVerdictTool extends AbstractNarrowWriteTool implements 
   public static final String NAME = "ga.SubmitVerdict";
 
   /** 本工具只碰 sd 命名空间；缺省策略取 {@code READ_ONLY}（未表态者不得**写**）——理由见 {@code IssueDirectiveTool}。 */
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   public SubmitVerdictTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
@@ -54,7 +54,7 @@ public final class SubmitVerdictTool extends AbstractNarrowWriteTool implements 
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   /** ★ 写自己的决策域（{@code sd:decision-maker/<自己>}）；非决策人身份（GM）回落基类缺省，见基类 javadoc。 */

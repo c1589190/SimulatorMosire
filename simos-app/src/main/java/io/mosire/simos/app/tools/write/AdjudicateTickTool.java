@@ -62,7 +62,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * {@code sd.AdjudicateTick} 窄工具（第 3 波第 2 步）：**GM 把某 tick 里所有决策人的令一起判效果、一次落地**。
+ * {@code simos.ga.adjudicateTick} 窄工具（第 3 波第 2 步）：**GM 把某 tick 里所有决策人的令一起判效果、一次落地**。
  *
  * <p>★★ **用户裁定的四条语义**（本类是它们的唯一落点）：
  *
@@ -123,7 +123,7 @@ public final class AdjudicateTickTool implements SimosTool {
    * 工具名（全局唯一）。★ 它**不是**一条已注册的命令类型 ⇒ 不登记进 {@code PAYLOAD_HINTS}（它内部用的 {@code ga.SetDirectiveStatus}
    * 才是命令类型，由 {@code Shell} 注册）。
    */
-  public static final String NAME = "sd.AdjudicateTick";
+  public static final String NAME = "simos.ga.adjudicateTick";
 
   /**
    * 状态翻转用的命令类型。
@@ -752,7 +752,7 @@ public final class AdjudicateTickTool implements SimosTool {
    * 地址#该地址下条目数}）⇒ 同 tick 的第二条自然落成 {@code #1}，"至多一条生效"改由 {@link
    * io.mosire.simos.ga.model.AdjudicationStatus}（新条 EFFECTIVE、旧条被作废成 VOIDED）承担。
    *
-   * <p>★ {@code value} 是 **JSON 字符串**（{@code SdInfoEntry.value} 是裸 {@code Object}，只有标量往返有保证 ⇒
+   * <p>★ {@code value} 是 **JSON 字符串**（{@code DecisionInfoEntry.value} 是裸 {@code Object}，只有标量往返有保证 ⇒
    * 结构化内容必须自己序列化）。
    */
   private CommandEnvelope infoEnvelope(

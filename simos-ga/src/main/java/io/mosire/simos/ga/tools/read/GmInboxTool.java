@@ -11,7 +11,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
-import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.spi.GmOnlyRead;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
@@ -88,7 +88,7 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
   /** {@code limit} 硬上限：超限**具名拒**（静默截断会让调用方以为拿到了全部）。 */
   public static final int MAX_LIMIT = 200;
 
-  private static final ResourceManifest SD_READ =
+  private static final ResourceManifest GA_READ =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   /** 工具面事件的发射通道（分类 = {@link GaLog#tool()}，来源 = {@link GaLogSource#GA_TOOL_CALL}）。 */
@@ -141,7 +141,7 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
   /** ★ 声明 {@code sd} 只读（与 {@code simos.gm.packets} 同款；**不声明** {@code peer}，理由见类注）。 */
   @Override
   public ResourceManifest resources() {
-    return SD_READ;
+    return GA_READ;
   }
 
   @Override
@@ -257,7 +257,7 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
    * 末段是**十进制**序号，而 {@code "<tick>,<id>"} 的**字典序**会把 {@code 10} 排到 {@code 2} 前面 ⇒ 注入游标（"最后一条 id +
    * 1"）会**静默跳过**同一 tick 的第 10..N 条。故这里把序号**解析成数值**参与排序。
    */
-  public record Letter(SdInfoEntry entry, JsonNode value, int sequence) {
+  public record Letter(DecisionInfoEntry entry, JsonNode value, int sequence) {
 
     /** 条目 id（信件 id，回信时填进 {@code replyTo} 的就是它）。 */
     public String id() {
@@ -333,8 +333,8 @@ public final class GmInboxTool implements SimosTool, GmOnlyRead {
    */
   public static List<Letter> letters(GaState ga) {
     List<Letter> all = new ArrayList<>();
-    for (List<SdInfoEntry> entries : ga.info().values()) {
-      for (SdInfoEntry entry : entries) {
+    for (List<DecisionInfoEntry> entries : ga.info().values()) {
+      for (DecisionInfoEntry entry : entries) {
         if (!GaMessageSendTool.KEY_MESSAGE.equals(entry.key())) {
           continue;
         }

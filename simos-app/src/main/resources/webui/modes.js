@@ -69,20 +69,20 @@
       //   由 panels.js 的 decisionSubpage* 一族控制可见性（子页**不是**新模式、不改本表）。
       //
       // ★★ writes 恒为 **[]**（决策模式默认只读，fail-closed）：本模式的取数全走 T5 的只读查询面
-      //   （`/api/sd/decision-makers`），**不发任何 Command**。
+      //   （`/api/ga/decision-makers`），**不发任何 Command**。
       //   ★ 审批子页的「批准/驳回」打的是 `POST /api/approvals/{id}`——那是**审批裁决**，不是
       //     `Command → ChangeSet → Revision` 的世界写 ⇒ **不进本表**（本表只管命令类型），
       //     它作为**单独一条**显式列在 `api.js` 的 postJson 与 `write-allowlist.test.cjs` 的
       //     ALLOWED_APPROVAL_PREFIX 里（逐条精确列出，绝不放宽 isWriteAllowed）。
       //   ★ T10 起本表有**一条**：「开始决策」（ga.StartDecision，spec §四.2 "若 D5 选新命令，则加 ga.StartDecision"）。
-      //     它是真命令（落 revision，铁律 2）、由 GUI 窄端点 POST /api/sd/start-decision 发出（api.startDecision）。
+      //     它是真命令（落 revision，铁律 2）、由 GUI 窄端点 POST /api/ga/start-decision 发出（api.startDecision）。
       //     其余决策相关写仍不在本表：审批裁决打 /api/approvals/{id}（非命令写）；出令/配权只有 GM/决策人口。
       //   ★ 2026-09-23 起为**两条**：加「让它跑一轮」（ga.RunDecision）——它同样先落一条真触发事实（revision），
-      //     再由服务端跑那一轮（POST /api/sd/run-decision，api.runDecision）。此前它只存在于 GM 的 MCP 工具面
+      //     再由服务端跑那一轮（POST /api/ga/run-decision，api.runDecision）。此前它只存在于 GM 的 MCP 工具面
       //     ⇒ 界面上点不出来（"决策能生成"这件事只有 agent 做得到）。
       //     ★ 它**不是**"直接出令"：出令仍由决策人自己的 ga.IssueDirective 落（各进一次审批），本条只发起那一轮。
       //   ★ 2026-09-23 起为**三条**：加「上下文重置」（ga.ResetDecisionMakerConversation）——它也是真命令
-      //     （落 revision、会话世代 +1），由窄端点 POST /api/sd/reset-decision-maker-conversation 发出
+      //     （落 revision、会话世代 +1），由窄端点 POST /api/ga/reset-decision-maker-conversation 发出
       //     （api.resetDecisionConversation）。用户要的"重跑沿用上下文、只有点重置才清"里的那个"重置"就是它。
       id: "decision",
       label: "决策",

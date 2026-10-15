@@ -4,8 +4,8 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
-import io.mosire.simos.ga.model.SdInfoEntry;
-import io.mosire.simos.ga.model.SdInfoIds;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -101,12 +101,12 @@ public final class RunDecisionHandler implements CommandHandler {
       long tick = state.meta().timestamp().tick();
       RevisionId at = state.meta().ref().revision();
       String address = StartDecisionHandler.ADDRESS_PREFIX + decisionMakerId.value();
-      Map<String, List<SdInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
-      List<SdInfoEntry> entries = new ArrayList<>(nextInfo.getOrDefault(address, List.of()));
+      Map<String, List<DecisionInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
+      List<DecisionInfoEntry> entries = new ArrayList<>(nextInfo.getOrDefault(address, List.of()));
       // ★ 决策结果三件套（第 3 波第 1 步）：与 StartDecision 同形制（同址异 key），tags 挂**被触发的决策人**。
-      SdInfoEntry entry =
-          new SdInfoEntry(
-              SdInfoIds.synthesize(address, entries.size()),
+      DecisionInfoEntry entry =
+          new DecisionInfoEntry(
+              DecisionInfoIds.synthesize(address, entries.size()),
               tick,
               Set.of(decisionMakerId),
               Set.of(),

@@ -84,7 +84,7 @@ test("doc-entry-shows-both-visibility-axes", () => {
 test("doc-entry-keeps-the-raw-text-when-the-value-is-not-json", () => {
   const entry = P.decisionDocEntry({ docId: "d1", value: "手写的一整段设定（不是 JSON）" });
 
-  // ★ 不假装能解析：正文 schema 是**约定不是契约**（SdInfoEntry.value 只保证标量往返）。
+  // ★ 不假装能解析：正文 schema 是**约定不是契约**（DecisionInfoEntry.value 只保证标量往返）。
   assert.equal(entry.title, null);
   assert.equal(entry.bodyText, null);
   assert.equal(entry.raw, "手写的一整段设定（不是 JSON）");

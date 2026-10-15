@@ -13,8 +13,8 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.id.DirectiveId;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.ga.model.Directive;
-import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -40,7 +40,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * {@code sd.RejectDirective} 窄工具：**GM 把一个决策人的令打回**（用户 2026-09-23 裁定的"决策人一般流程"第 2 件）。
+ * {@code simos.ga.rejectDirective} 窄工具：**GM 把一个决策人的令打回**（用户 2026-09-23 裁定的"决策人一般流程"第 2 件）。
  *
  * <pre>{@code
  * {"branch":"main","expectedRevision":7,"directiveId":"d-shanghai-0002",
@@ -51,7 +51,7 @@ import java.util.UUID;
  *
  * <ol>
  *   <li><b>把 {@code reason} 作为一条 user 消息投进该决策人的会话</b> —— 复用 {@code say} 通道的**同一段实现**（{@link
- *       DecisionAgentService#appendUserMessage}，即 {@code POST /api/sd/decision-makers/{id}/say}
+ *       DecisionAgentService#appendUserMessage}，即 {@code POST /api/ga/decision-makers/{id}/say}
  *       背后那一段）；
  *   <li><b>该令标 {@code CANCELLED}</b>（不执行、不落世界观变更）—— 复用既有的 {@code ga.SetDirectiveStatus} 命令，
  *       **不另写一条状态转移**（它的 {@code ISSUED → CANCELLED} 守卫就是唯一那份判据）。
@@ -66,7 +66,7 @@ import java.util.UUID;
  * revision（{@link ToolWritePort#submitBatchWithReceipt}，原子）。
  *
  * <p>★ **审计条目**有意**不带 tags**（无主）：它是治理/审计记录，不是"裁决结果"（{@code ga:adjudication.<tick>} 那一族）—— 挂上决策人的
- * tag 会让它混进决策结果的读口（{@code sd.DecisionResults} 的判据是"tags 含自己"），而两者 {@code value} 的形状不同。
+ * tag 会让它混进决策结果的读口（{@code simos.ga.decisionResults} 的判据是"tags 含自己"），而两者 {@code value} 的形状不同。
  * 决策人知道"被打回"这件事 **走会话**（第 1 件事），不走结果列表。
  *
  * <p>★ **只在 GM 桶**（{@code Role.GM} = 运行时 MCP 口）：打回是 GM 的动作，决策人自己不打回自己的令。
@@ -78,7 +78,7 @@ import java.util.UUID;
 public final class RejectDirectiveTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它**不是**一条已注册的命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
-  public static final String NAME = "sd.RejectDirective";
+  public static final String NAME = "simos.ga.rejectDirective";
 
   /** 状态翻转用的命令类型（取自唯一的常量来源，不另写一个字面量）。 */
   private static final String STATUS_COMMAND_TYPE = SetDirectiveStatusHandler.TYPE;
@@ -90,7 +90,7 @@ public final class RejectDirectiveTool implements SimosTool {
   public static final String REJECTION_KEY = "rejection";
 
   /** 本工具的名字在 sd 域里只声明 sd 只读策略面（fail-closed：未表态 sd 的调用者在**写**上被拒）。 */
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final ToolWritePort writes;
@@ -143,7 +143,7 @@ public final class RejectDirectiveTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   @Override
@@ -236,7 +236,7 @@ public final class RejectDirectiveTool implements SimosTool {
     String conversationId = null;
     String conversationError = null;
     try {
-      // ★ 复用 say 通道的同一段实现（POST /api/sd/decision-makers/{id}/say 背后那一段）。
+      // ★ 复用 say 通道的同一段实现（POST /api/ga/decision-makers/{id}/say 背后那一段）。
       conversationId = decisionAgent.appendUserMessage(ref, directive.decisionMakerId(), reason);
     } catch (RuntimeException e) {
       conversationError = e.getClass().getSimpleName() + ": " + e.getMessage();
@@ -270,9 +270,9 @@ public final class RejectDirectiveTool implements SimosTool {
    * 审计条目（{@code ga.PutInfo}，地址 {@code ga:rejection.<directiveId>}）：**谁的令 / 第几版 / 理由文本 / 落在哪条
    * revision**。
    *
-   * <p>★ {@code value} 是 **JSON 字符串**（{@code SdInfoEntry.value} 是裸 {@code Object}，只有标量往返有保证）；{@code
-   * tick} 取**令自带的 tick**（归属正确，与 {@code AdjudicateTickTool} 的决策结果同口径）。 ★ **tags
-   * 故意留空**（无主）——见类注：它不是决策结果。
+   * <p>★ {@code value} 是 **JSON 字符串**（{@code DecisionInfoEntry.value} 是裸 {@code
+   * Object}，只有标量往返有保证）；{@code tick} 取**令自带的 tick**（归属正确，与 {@code AdjudicateTickTool} 的决策结果同口径）。 ★
+   * **tags 故意留空**（无主）——见类注：它不是决策结果。
    */
   private static ToolWritePort.Request auditRequest(
       Directive directive, int version, String reason, long resultRevision) {
@@ -290,7 +290,7 @@ public final class RejectDirectiveTool implements SimosTool {
     payload.put("address", canonical);
     payload.put("key", REJECTION_KEY);
     payload.put("value", ToolResults.json(value));
-    payload.put("id", SdInfoIds.synthesize(canonical, 0).value());
+    payload.put("id", DecisionInfoIds.synthesize(canonical, 0).value());
     payload.put("tick", directive.tick());
     return new ToolWritePort.Request("ga.PutInfo", ToolResults.json(payload));
   }
@@ -334,7 +334,7 @@ public final class RejectDirectiveTool implements SimosTool {
     String canonical = Address.parse(REJECTION_ADDRESS_PREFIX + directive.id().value()).canonical();
     Map<String, Object> info = new LinkedHashMap<>();
     info.put("address", canonical);
-    info.put("id", SdInfoIds.synthesize(canonical, 0).value());
+    info.put("id", DecisionInfoIds.synthesize(canonical, 0).value());
     info.put("key", REJECTION_KEY);
     view.put("info", info);
     Map<String, Object> conversation = new LinkedHashMap<>();

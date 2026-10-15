@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code simos.sd.diplomatic-events}（D5 / D-005 / R6）：**外交事件只读面**——多国谈判逐 tick 记录参与国与自然语言内容。
+ * {@code simos.ga.diplomatic-events}（D5 / D-005 / R6）：**外交事件只读面**——多国谈判逐 tick 记录参与国与自然语言内容。
  *
  * <p>形状复用 {@code ApiViews.diplomaticEvents}（GUI / 后续读口同源），本类只装配 {@code {"events":[…]}}。
  *
@@ -33,19 +33,19 @@ import java.util.Set;
  * 本类只把参数形状解析成"不透明国家引用 （{@code String}）+ tick"，筛选与排序由实现做（那里仍是"形状只有一处"）。★ 参数校验口径一字未改：{@code
  * NationId.parse} 原本只拒空白， 这里因此只判非空白。
  */
-public final class SdDiplomaticEventsTool implements SimosTool {
+public final class DiplomaticEventsTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
-  public static final String NAME = "simos.sd.diplomatic-events";
+  public static final String NAME = "simos.ga.diplomatic-events";
 
   /** 本工具读 sd 切片（世界级共享文本，不做逐格视野过滤）。 */
-  private static final ResourceManifest SD_READ =
+  private static final ResourceManifest GA_READ =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final ToolReadPort reads;
   private final GaToolViews views;
 
-  public SdDiplomaticEventsTool(ToolReadPort reads, GaToolViews views) {
+  public DiplomaticEventsTool(ToolReadPort reads, GaToolViews views) {
     this.reads = reads;
     this.views = views;
   }
@@ -72,7 +72,7 @@ public final class SdDiplomaticEventsTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_READ;
+    return GA_READ;
   }
 
   @Override

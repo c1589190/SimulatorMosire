@@ -5,11 +5,11 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
+import io.mosire.simos.ga.id.DecisionInfoId;
 import io.mosire.simos.ga.id.DirectiveId;
-import io.mosire.simos.ga.id.SdInfoId;
 import io.mosire.simos.ga.model.AdjudicationStatus;
-import io.mosire.simos.ga.model.SdInfoEntry;
-import io.mosire.simos.ga.model.SdInfoIds;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -44,8 +44,8 @@ import java.util.Set;
  * tick}/{@code tags}。{@code id} 与 {@code tags} 是**可选载荷**（向后兼容：旧调用不带这两个键照常成立）：
  *
  * <ul>
- *   <li>{@code id} 缺席 ⇒ {@link SdInfoIds#synthesize}（canonical 地址 + 该地址下追加序号，注入）；给了 ⇒ 用它，并在**命令期**
- *       **重复即拒**（见下）；
+ *   <li>{@code id} 缺席 ⇒ {@link DecisionInfoIds#synthesize}（canonical 地址 + 该地址下追加序号，注入）；给了 ⇒
+ *       用它，并在**命令期** **重复即拒**（见下）；
  *   <li>{@code tags} 缺席 ⇒ 空集（无主）；给了 ⇒ 逐字解析成 {@link DecisionMakerId}（**不**在此校验决策人是否存在——
  *       那是后续步骤的语义，本命令只认形状）；
  *   <li>{@code affiliations} <b>不透明的受众标签集</b>（2026-10-12 乙收尾改造）：缺席/null ⇒ 空集（不按归属发）；给了 ⇒
@@ -56,15 +56,16 @@ import java.util.Set;
  *   <li>{@code tick} 缺席 ⇒ **世界当前 tick**（第 3 波第 1 步的既有行为，向后兼容）；给了 ⇒ 用它，但 **不得记在未来** （{@code > 世界
  *       tick} ⇒ 拒，与 {@code ga.IssueDirective} 同口径）。**过去合法**（补记/滞后）；
  *   <li>{@code sourceDirective}（2026-10-12 批次 3b-1 新增的**可选**字段）缺席 ⇒ {@link
- *       SdInfoEntry#sourceDirective()} 为 空（旧调用一字不变）；给了 ⇒ 解析成 {@link DirectiveId} 写进去。★★ <b>3b-2
- *       起它不再是出令执行原文的载体</b>：{@code info} 表搬进 ga 后，{@code ga.IssueDirective} <b>一条命令**自己**写令 +
- *       执行原文</b>（见该类注），配套的 {@code DirectiveIntentInfo} 与 companion 机制已删除。 本字段作为**合法载荷口**保留（它是
- *       {@link SdInfoEntry} 的既有字段，读侧 {@code SdQueryService} / {@code VoidAdjudicationTool}
- *       仍按它索引）——删它等于缩载荷契约，与"行为等价"冲突。★ 本命令**不**校验该令是否存在 （它只认形状，与 {@code tags} 同口径）。
+ *       DecisionInfoEntry#sourceDirective()} 为 空（旧调用一字不变）；给了 ⇒ 解析成 {@link DirectiveId} 写进去。★★
+ *       <b>3b-2 起它不再是出令执行原文的载体</b>：{@code info} 表搬进 ga 后，{@code ga.IssueDirective} <b>一条命令**自己**写令
+ *       + 执行原文</b>（见该类注），配套的 {@code DirectiveIntentInfo} 与 companion 机制已删除。 本字段作为**合法载荷口**保留（它是
+ *       {@link DecisionInfoEntry} 的既有字段，读侧 {@code DecisionQueryService} / {@code
+ *       VoidAdjudicationTool} 仍按它索引）——删它等于缩载荷契约，与"行为等价"冲突。★ 本命令**不**校验该令是否存在 （它只认形状，与 {@code tags}
+ *       同口径）。
  * </ul>
  *
- * <p>★ 诚实边界（spec §六 + M4 裁定 38 同口径）：{@code SdInfoEntry.value} 是**裸 {@code Object}**，结构化值的 {@code
- * equals} 往返不满足 ⇒ 判据只覆盖标量值；结构化值列为挂起项。
+ * <p>★ 诚实边界（spec §六 + M4 裁定 38 同口径）：{@code DecisionInfoEntry.value} 是**裸 {@code Object}**，结构化值的
+ * {@code equals} 往返不满足 ⇒ 判据只覆盖标量值；结构化值列为挂起项。
  *
  * <p>拒绝：地址非法（{@link Address#parse} 抛）；{@code key} 空白；{@code value} 缺失；{@code id} 空白或与既有条目**撞 id**；
  * {@code tags}/{@code affiliations} 元素非法；{@code tick} 记在未来。
@@ -102,7 +103,8 @@ public final class PutInfoHandler implements CommandHandler {
       //   的根源，本批删掉）。解释与可见性判定只在 app 的 RedactingQueryService。
       Set<String> affiliations = GaPayloads.optionalTextSet(payload, "affiliations");
       Optional<AdjudicationStatus> adjudicationStatus = parseAdjudicationStatus(payload);
-      Optional<SdInfoId> explicitId = GaPayloads.optionalText(payload, "id").map(SdInfoId::parse);
+      Optional<DecisionInfoId> explicitId =
+          GaPayloads.optionalText(payload, "id").map(DecisionInfoId::parse);
       // ★ 可选来源引用（批次 3b′）：出令执行原文条目靠它挂回那条令（见类注）。
       Optional<DirectiveId> sourceDirective =
           GaPayloads.optionalText(payload, "sourceDirective").map(DirectiveId::parse);
@@ -125,9 +127,10 @@ public final class PutInfoHandler implements CommandHandler {
             tickForLog);
       }
       String mapKey = address.canonical();
-      Map<String, List<SdInfoEntry>> next = new LinkedHashMap<>(base.info());
-      List<SdInfoEntry> entries = new ArrayList<>(next.getOrDefault(mapKey, List.of()));
-      SdInfoId id = explicitId.orElseGet(() -> SdInfoIds.synthesize(mapKey, entries.size()));
+      Map<String, List<DecisionInfoEntry>> next = new LinkedHashMap<>(base.info());
+      List<DecisionInfoEntry> entries = new ArrayList<>(next.getOrDefault(mapKey, List.of()));
+      DecisionInfoId id =
+          explicitId.orElseGet(() -> DecisionInfoIds.synthesize(mapKey, entries.size()));
       infoIdForLog = id.value();
       if (containsInfoId(base.info(), id)) {
         // ★ 合成 id 按构造注入；只有**载荷显式给的** id 可能与既有条目撞车（连别人合成出来的也算）。
@@ -141,8 +144,8 @@ public final class PutInfoHandler implements CommandHandler {
             "key",
             keyForLog);
       }
-      SdInfoEntry entry =
-          new SdInfoEntry(
+      DecisionInfoEntry entry =
+          new DecisionInfoEntry(
               id,
               tick,
               tags,
@@ -228,9 +231,10 @@ public final class PutInfoHandler implements CommandHandler {
     return out;
   }
 
-  private static boolean containsInfoId(Map<String, List<SdInfoEntry>> info, SdInfoId id) {
-    for (List<SdInfoEntry> entries : info.values()) {
-      for (SdInfoEntry entry : entries) {
+  private static boolean containsInfoId(
+      Map<String, List<DecisionInfoEntry>> info, DecisionInfoId id) {
+    for (List<DecisionInfoEntry> entries : info.values()) {
+      for (DecisionInfoEntry entry : entries) {
         if (entry.id().equals(id)) {
           return true;
         }

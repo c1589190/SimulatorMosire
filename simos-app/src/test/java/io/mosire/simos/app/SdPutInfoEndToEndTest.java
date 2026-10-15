@@ -12,8 +12,8 @@ import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
-import io.mosire.simos.ga.id.SdInfoId;
-import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.id.DecisionInfoId;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
@@ -69,8 +69,8 @@ class SdPutInfoEndToEndTest {
     GaState replayed = sdState(core, 2);
     assertThat(replayed.info().get("map:Map1:region.r1"))
         .containsExactly(
-            new SdInfoEntry(
-                new SdInfoId("map:Map1:region.r1#0"),
+            new DecisionInfoEntry(
+                new DecisionInfoId("map:Map1:region.r1#0"),
                 0L,
                 Set.of(),
                 Set.of(),

@@ -1263,7 +1263,7 @@
   /**
    * 「可见范围（现算）」那一行的 **DOM 锚点 id**（**唯一拼写点**）。
    *
-   * <p>★ 为什么要跨文件：这一行的**内容**来自只读端点 `/api/sd/decision-makers/{id}/scope`，而拉它并画高亮的是
+   * <p>★ 为什么要跨文件：这一行的**内容**来自只读端点 `/api/ga/decision-makers/{id}/scope`，而拉它并画高亮的是
    * `map.js`（可见范围高亮与区域高亮共用同一层渲染）。两个文件只经这一个 id 交接，不互相持有状态、也不各拉一次
    * ——各拉一次就是"同一件事两份实现"的开端。
    */
@@ -1295,7 +1295,7 @@
 
   // ── 「开始决策」入口（T10，三件事模型 ④；2026-09-23 按用户裁定改造）────────────
   // ★ 目标 = 左栏当前展示的那个决策人（右栏点选 / 单位解析出的单个；国家多决策人时无单一目标）。
-  // ★ 写路径 = api.startDecision（POST /api/sd/start-decision 窄端点，服务端写死 ga.StartDecision）——
+  // ★ 写路径 = api.startDecision（POST /api/ga/start-decision 窄端点，服务端写死 ga.StartDecision）——
   //   本文件**不发通用命令写**（通用写只归 app 的 writeCommand）；审批裁决那条写另有其处（decideApproval）。
   //
   // ★★ **due 不再是闸门，只是提示**（用户 2026-09-23：「我在当前回合点开始决策」要随时可点）：
@@ -1492,7 +1492,7 @@
   //
   // ★★ **它补的是哪一处空白**：让某个决策人**真跑一轮**（真 LLM 自行读世界、出令）此前只有 GM 的 MCP 窄工具
   //   （ga.RunDecision）做得到 ⇒ 界面上**点不出来**。本入口把它接进工作台：写仍走**窄端点**
-  //   POST /api/sd/run-decision（服务端写死命令类型，前端不传 type）。
+  //   POST /api/ga/run-decision（服务端写死命令类型，前端不传 type）。
   //
   // ★★ **2026-09-23 起服务端那条变成异步**（用户要的"状态标识 + 可展开进度窗"）：POST **立即返回**，
   //   这一轮在服务端后台跑；进度与结局由 GET …/run-status **轮询**取得。
@@ -1712,7 +1712,7 @@
   //
   // ★★ 用户 2026-09-23：「跑完在下面生成**当前 tick** 这个决策人的完整决策（决心/理由/命令清单）；
   //   **左边没有额外的生成结果按钮**」⇒ 结果直接画在这条路径的下方，不另设入口。
-  // ★ 取的是 `GET /api/sd/directives?decisionMakerId=<id>` 的**最新一条**（服务端按 tick 降序、同 tick 按 id 字典序）。
+  // ★ 取的是 `GET /api/ga/directives?decisionMakerId=<id>` 的**最新一条**（服务端按 tick 降序、同 tick 按 id 字典序）。
   //   跑一轮若真出了令，那一条就是它这一轮落的（模型的 tick 现在被校验为**不得记在未来**）。
   function loadLatestDecision(makerId) {
     var mount = app.byId("decision-latest");
@@ -1986,7 +1986,7 @@
     );
   }
 
-  // ── 决策记录（GET /api/sd/directives，2026-09-23）──────────────────────
+  // ── 决策记录（GET /api/ga/directives，2026-09-23）──────────────────────
 
   var decisionDirectivesToken = 0;
   var expandedDirectiveId = null;
@@ -3166,7 +3166,7 @@
     startDecisionTargetId: function () {
       return startDecisionTarget ? String(startDecisionTarget.id) : null;
     },
-    // ★ 2026-09-23：「让它跑一轮」（ga.RunDecision）+ 决策记录（/api/sd/directives）的纯函数投影。
+    // ★ 2026-09-23：「让它跑一轮」（ga.RunDecision）+ 决策记录（/api/ga/directives）的纯函数投影。
     runDecisionGate: runDecisionGate,
     runDecision: decideRunDecision,
     runDecisionTargetId: function () {

@@ -8,9 +8,9 @@ import io.mosire.simos.army.ArmyAffiliations;
 import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.id.DirectiveId;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.Directive;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.gov.GovAffiliations;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.nation.Nation;
@@ -52,11 +52,11 @@ import java.util.Optional;
  * decisionCadenceTicks} 计算，**首次（无任何 Directive）恒 {@code due}**。这是**只读派生**—— 不写 {@code SdState}、不落
  * revision（铁律 2：本类没有写入口）。当前 tick 取**被查询快照**的 {@code meta().timestamp().tick()}（推进只改 tick，不产生决策标记）。
  */
-public final class SdQueryService {
+public final class DecisionQueryService {
 
   private final QueryService query;
 
-  public SdQueryService(QueryService query) {
+  public DecisionQueryService(QueryService query) {
     this.query = Objects.requireNonNull(query, "query");
   }
 
@@ -134,7 +134,7 @@ public final class SdQueryService {
   }
 
   /**
-   * **全部决策记录**（{@code GET /api/sd/directives} 的数据源）：按 {@link #order} 排（**新的在前**）。
+   * **全部决策记录**（{@code GET /api/ga/directives} 的数据源）：按 {@link #order} 排（**新的在前**）。
    *
    * <p>★ **它回答的是"这人到底下了什么令"**：此前 {@link DecisionMakerInfo} 只报 {@code lastDirectiveTick} / {@code
    * ticksSinceLast}（"最近一次在第几 tick"），**内容一个字都看不到**——决策的产出其实一直在世界状态里（{@code
@@ -207,8 +207,8 @@ public final class SdQueryService {
    */
   private static Map<DirectiveId, Map<String, String>> infoByDirective(GaState ga) {
     Map<DirectiveId, Map<String, String>> out = new LinkedHashMap<>();
-    for (List<SdInfoEntry> entries : ga.info().values()) {
-      for (SdInfoEntry entry : entries) {
+    for (List<DecisionInfoEntry> entries : ga.info().values()) {
+      for (DecisionInfoEntry entry : entries) {
         if (entry.sourceDirective().isEmpty()) {
           continue;
         }
@@ -235,8 +235,8 @@ public final class SdQueryService {
    *
    * <p>★★ 2026-10-12 乙收尾：判据从"看 {@code Affiliation} 的密封分支"改成"比**受众标签**"（{@code kind:ref}）——标签是
    * 各模块自报的串（唯一拼写点 {@code AppDecisionMakerAffiliations.label}），过滤词表（{@code
-   * ?affiliation=nation:…}）与它同源。★ 过滤词的 kind 仍是 app 的 GUI 词表（{@code SdQueryService.parseFilter}），
-   * 与"归属有几种"无关。
+   * ?affiliation=nation:…}）与它同源。★ 过滤词的 kind 仍是 app 的 GUI 词表（{@code
+   * DecisionQueryService.parseFilter}）， 与"归属有几种"无关。
    */
   private static boolean matches(
       List<AppDecisionMakerAffiliations.Claim> claims, AffiliationFilter filter) {

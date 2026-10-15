@@ -354,7 +354,7 @@ public final class DecisionAgentService {
    * required} 是同一族的病：模型不知道"我是谁"）。 故这里先把身份 user 消息落盘，再落用户输入。
    *
    * <p>★ **不改世界**：会话库是 append-only 的旁路存储（不在 {@code revision} 里），故本方法**不**经 {@code
-   * CoreSimos.submit}——它记的不是世界事实（与 {@code /api/sd/run-decision} 的"轨迹不落盘"同一口径）。
+   * CoreSimos.submit}——它记的不是世界事实（与 {@code /api/ga/run-decision} 的"轨迹不落盘"同一口径）。
    *
    * @param ref 世界版本（**用来查会话世代**：{@code ga.ResetDecisionMakerConversation} 会把它改掉）
    * @param decisionMakerId 决策人 id（查无 ⇒ 抛，与 {@link #conversationIdOf} 同口径）

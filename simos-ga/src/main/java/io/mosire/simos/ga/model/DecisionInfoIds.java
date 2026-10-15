@@ -1,9 +1,9 @@
 package io.mosire.simos.ga.model;
 
-import io.mosire.simos.ga.id.SdInfoId;
+import io.mosire.simos.ga.id.DecisionInfoId;
 
 /**
- * {@link SdInfoEntry} 的 ID 合成（第 3 波第 1 步）：**无显式 id 时** id 形态的唯一拼写点。
+ * {@link DecisionInfoEntry} 的 ID 合成（第 3 波第 1 步）：**无显式 id 时** id 形态的唯一拼写点。
  *
  * <p>★ 形制：{@code <canonical 地址>#<该地址下追加序号>}。**注入性由两半共同保证**——canonical 地址在 {@code SdState.info}
  * 的键里唯一（见 {@link io.mosire.simos.sd.state.SdState} 的类注），序号在同一地址的列表内**严格递增** （条目只追加、不删改，见各写路径）⇒
@@ -16,9 +16,9 @@ import io.mosire.simos.ga.id.SdInfoId;
  *
  * <p>★ 纯函数：id 只是 (地址, 序号) 的忠实标签，不携带随机/时间成分 ⇒ 可重放。
  */
-public final class SdInfoIds {
+public final class DecisionInfoIds {
 
-  private SdInfoIds() {}
+  private DecisionInfoIds() {}
 
   /**
    * 按 (canonical 地址, 该地址下的追加序号) 合成 id。
@@ -26,13 +26,13 @@ public final class SdInfoIds {
    * @param canonicalAddress {@code Address#canonical()}（同 {@code SdState.info} 的键）
    * @param ordinal 该地址下**追加前**的条目数（= 新条目的下标）
    */
-  public static SdInfoId synthesize(String canonicalAddress, int ordinal) {
+  public static DecisionInfoId synthesize(String canonicalAddress, int ordinal) {
     if (canonicalAddress == null || canonicalAddress.isBlank()) {
       throw new IllegalArgumentException("canonicalAddress 不得为空白");
     }
     if (ordinal < 0) {
       throw new IllegalArgumentException("ordinal 必须 ≥ 0: " + ordinal);
     }
-    return SdInfoId.parse(canonicalAddress + "#" + ordinal);
+    return DecisionInfoId.parse(canonicalAddress + "#" + ordinal);
   }
 }

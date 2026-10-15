@@ -20,13 +20,13 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.DecisionDocs}（Docs 系统，2026-09-23）：**决策人查看发给自己的设定文档**。
+ * {@code simos.ga.decisionDocs}（Docs 系统，2026-09-23）：**决策人查看发给自己的设定文档**。
  *
  * <p>★ **用户的诉求**：「Docs 系统则是限定范围到单个决策人的文档信息查看系统……为具体的决策人补全用于做决策的具体设定」。
  *
  * <p>★★ **可见性 = 喂给 {@code RedactingQueryService.docs}**（不是本类自己筛）：判据是「条目 {@code tags} 含调用者自己 **或**
  * 条目 {@code affiliations} 含调用者的归属」（用户裁定：「显式指派 + 归属自动，取并集」）。规则**只此一处**——GUI 的文档子页复用 同一个方法（照 {@code
- * sd.DecisionResults} 与决策结果子页的关系）。
+ * simos.ga.decisionResults} 与决策结果子页的关系）。
  *
  * <p>★ **调用者身份取自宿主已知的东西**（{@code context.identity()}）——**不由载荷自报**（载荷是模型写的，让它自报等于让它自己发文档给自己）。 解不出决策人
  * ⇒ 明确失败，不给数据。
@@ -42,13 +42,14 @@ import java.util.Set;
  * DecisionToolDefs.requireAll} 当场炸）。
  *
  * <p>★ **正文约定**（{@code DecisionDoc} 的类注）：{@code value} 是**原样的 {@code Object}**——本工具**不解析**它（与
- * {@code sd.DecisionResults} 同口径：{@code SdInfoEntry.value} 的契约是裸 {@code Object}）。按约定它是 JSON 文本，形如
- * {@code {"title":…,"body":…,"subject":{…},"effectiveTick":…,"author":…}}；读的一方自行解读，工具不假装能解析任意值。
+ * {@code simos.ga.decisionResults} 同口径：{@code DecisionInfoEntry.value} 的契约是裸 {@code Object}）。按约定它是
+ * JSON 文本，形如 {@code
+ * {"title":…,"body":…,"subject":{…},"effectiveTick":…,"author":…}}；读的一方自行解读，工具不假装能解析任意值。
  */
 public final class DecisionDocsTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
-  public static final String NAME = "sd.DecisionDocs";
+  public static final String NAME = "simos.ga.decisionDocs";
 
   /**
    * {@code limit} 的缺省/上限：**直接引用 {@link DecisionResultsTool} 的同名常量**。
@@ -61,7 +62,7 @@ public final class DecisionDocsTool implements SimosTool {
   public static final int MAX_LIMIT = DecisionResultsTool.MAX_LIMIT;
 
   /** 本工具的资源声明：sd 只读（见类注的 fail-closed 理由）。 */
-  private static final ResourceManifest SD_READ =
+  private static final ResourceManifest GA_READ =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final GaToolQueries queries;
@@ -103,7 +104,7 @@ public final class DecisionDocsTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_READ;
+    return GA_READ;
   }
 
   @Override

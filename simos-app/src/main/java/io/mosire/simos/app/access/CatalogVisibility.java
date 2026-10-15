@@ -10,7 +10,7 @@ import java.util.Set;
  * ★★ **catalog 的可见性判据（唯一一份）**：{@code simos.command.catalog} 对**哪个调用者**列出**哪些命令类型**。
  *
  * <p>★★ **用户 2026-09-23 裁定**：「改造现有 catalog，按调用者权限过滤」——理由：catalog 原本不认人，于是决策人能看到 {@code ga.PutInfo}
- * / {@code sd.AdjudicateTick} / {@code ga.CreateDecisionMaker} 这些**它根本执行不了**的类型。"系统允许你干什么"这半
+ * / {@code simos.ga.adjudicateTick} / {@code ga.CreateDecisionMaker} 这些**它根本执行不了**的类型。"系统允许你干什么"这半
  * 必须与**真权限面同源**，否则模型会照着目录去试，每一试都白烧一轮。
  *
  * <p>★★ **两条分支**：

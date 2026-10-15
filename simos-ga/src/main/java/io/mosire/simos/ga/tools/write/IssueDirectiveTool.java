@@ -56,7 +56,7 @@ public final class IssueDirectiveTool extends AbstractNarrowWriteTool implements
    * 那会把"谁能碰数据"搬进插件源码，而正确做法是调用者侧配 {@code ResourceScope.none()}）。{@code READ_ONLY} 既拿到同一条 fail-closed
    * 结论、又不越过那条边界。
    */
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   public IssueDirectiveTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
@@ -81,7 +81,7 @@ public final class IssueDirectiveTool extends AbstractNarrowWriteTool implements
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   /** ★ 写自己的决策域（{@code sd:decision-maker/<自己>}）；非决策人身份（GM）回落基类缺省，见基类 javadoc。 */

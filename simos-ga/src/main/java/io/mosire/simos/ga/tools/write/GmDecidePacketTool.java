@@ -57,7 +57,7 @@ public final class GmDecidePacketTool implements SimosTool {
   /** 合并裁决档（D3）：把本包当前 PENDING call 并入指定合并计划。 */
   public static final String MERGE = "MERGE";
 
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private final ToolWritePort writes;
@@ -113,7 +113,7 @@ public final class GmDecidePacketTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   @Override

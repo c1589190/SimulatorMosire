@@ -19,11 +19,11 @@ import java.util.Set;
  * <p>★ {@code allowedTools} 含通用写（{@code simos.command.submit}）即被拒（N9）；★ 创建期 {@code accessLimit}
  * 恒为**无额外限制**、本命令**不接受**该字段——传了会被**静默忽略**（无拒绝）。配权走 {@code ga.SetDecisionMakerAccess}。
  */
-public final class SdCreateDecisionMakerTool extends AbstractNarrowWriteTool implements SimosTool {
+public final class CreateDecisionMakerTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "ga.CreateDecisionMaker";
 
-  public SdCreateDecisionMakerTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
+  public CreateDecisionMakerTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
   }
 

@@ -128,7 +128,7 @@
 
   // ★ T7：决策人只读查询面（T5 落地的后端端点）——决策模式左栏/右栏共用，按 target 记忆化。
   function cachedDecisionMakers(target) {
-    return cachedGet("/sd/decision-makers", target);
+    return cachedGet("/ga/decision-makers", target);
   }
 
   /**
@@ -282,7 +282,7 @@
 
   /** 决策人列表（T5，只读）：{decisionMakers:[…]}；可带 ?affiliation=nation:<id>|army:<id>。 */
   function decisionMakers(affiliation, target) {
-    var path = "/sd/decision-makers";
+    var path = "/ga/decision-makers";
     if (affiliation) {
       path += "?affiliation=" + encodeURIComponent(affiliation);
     }
@@ -291,7 +291,7 @@
 
   /** 单个决策人详情（T5，只读）：id / affiliation（含显示名）/ allowedTools / cadence / accessLimit / due。 */
   function decisionMaker(id, target) {
-    return getJson(withTarget("/sd/decision-makers/" + encodeURIComponent(id), target));
+    return getJson(withTarget("/ga/decision-makers/" + encodeURIComponent(id), target));
   }
 
   /**
@@ -301,7 +301,7 @@
    * 前端**不得**自己从 overview 推一遍——那份推出来的东西不随 accessLimit 变，看起来对、其实是假的。
    */
   function decisionMakerScope(id, target) {
-    return getJson(withTarget("/sd/decision-makers/" + encodeURIComponent(id) + "/scope", target));
+    return getJson(withTarget("/ga/decision-makers/" + encodeURIComponent(id) + "/scope", target));
   }
 
   /**
@@ -312,7 +312,7 @@
    * <p>★ 顺序由服务端定（tick 降序 ⇒ 第一条就是"最近一次"）。前端**不重排**——重排会让"同一快照两次读数一致"这条前提破。
    */
   function directives(decisionMakerId, target) {
-    var path = "/sd/directives";
+    var path = "/ga/directives";
     if (decisionMakerId) {
       path += "?decisionMakerId=" + encodeURIComponent(decisionMakerId);
     }
@@ -376,7 +376,7 @@
   }
 
   /**
-   * 「开始决策」（T10，spec §四.5）：打 `POST /api/sd/start-decision`，体 {branch, expectedRevision,
+   * 「开始决策」（T10，spec §四.5）：打 `POST /api/ga/start-decision`，体 {branch, expectedRevision,
    * decisionMakerId, note?}。命令类型由服务端写死（窄写面 ⇒ 前端不传 type）；用户路径**直接生效**。
    */
   function startDecision(branch, expectedRevision, decisionMakerId, note) {
@@ -389,11 +389,11 @@
     if (note !== null && note !== undefined && note !== "") {
       body.note = note;
     }
-    return postJson("/sd/start-decision", body);
+    return postJson("/ga/start-decision", body);
   }
 
   /**
-   * 「让它跑一轮」（窄写）：打 `POST /api/sd/run-decision`，体 {branch, expectedRevision, decisionMakerId}。
+   * 「让它跑一轮」（窄写）：打 `POST /api/ga/run-decision`，体 {branch, expectedRevision, decisionMakerId}。
    * 命令类型由服务端写死（`ga.RunDecision` ⇒ 前端不传 type）；先落一条触发事实（revision），再让该决策人的 agent
    * 真跑一轮（真 LLM 自行调工具读世界、出令）。
    *
@@ -404,7 +404,7 @@
    */
   function runDecision(branch, expectedRevision, decisionMakerId) {
     invalidateState();
-    return postJson("/sd/run-decision", {
+    return postJson("/ga/run-decision", {
       branch: branch,
       expectedRevision: expectedRevision,
       decisionMakerId: decisionMakerId,
@@ -412,7 +412,7 @@
   }
 
   /**
-   * 决策人**这一轮跑到哪儿了**（只读，2026-09-23）：`GET /api/sd/decision-makers/{id}/run-status`。
+   * 决策人**这一轮跑到哪儿了**（只读，2026-09-23）：`GET /api/ga/decision-makers/{id}/run-status`。
    *
    * <p>返回体 `{decisionMakerId, running, done, llmCalls, toolCalls[{tool,ok,code,summary}], startedAt,
    * elapsedMs, result}`；`result` 在跑完之前是 `null`，跑完是 `{status, reason, detail, finalText,
@@ -423,14 +423,14 @@
   function runDecisionStatus(decisionMakerId, target) {
     return getJson(
       withTarget(
-        "/sd/decision-makers/" + encodeURIComponent(decisionMakerId) + "/run-status",
+        "/ga/decision-makers/" + encodeURIComponent(decisionMakerId) + "/run-status",
         target
       )
     );
   }
 
   /**
-   * ★ 跟决策人说一句话（2026-09-23，用户要的文本框）：`POST /api/sd/decision-makers/{id}/say`，体 {text}。
+   * ★ 跟决策人说一句话（2026-09-23，用户要的文本框）：`POST /api/ga/decision-makers/{id}/say`，体 {text}。
    *
    * <p>★ **它不是命令写**：这条消息落进**会话库**（append-only 的旁路存储），不进 revision、不改世界 ⇒ 没有 409
    * 这一说。`branch`/`revision` 只是用来查**会话世代**（重置过的决策人落在另一段会话上）；缺省 = 服务端取主分支 head。
@@ -443,7 +443,7 @@
     if (revision !== null && revision !== undefined) {
       body.revision = revision;
     }
-    return postJson("/sd/decision-makers/" + encodeURIComponent(decisionMakerId) + "/say", body);
+    return postJson("/ga/decision-makers/" + encodeURIComponent(decisionMakerId) + "/say", body);
   }
 
   /**
@@ -454,7 +454,7 @@
    */
   function resetDecisionConversation(branch, expectedRevision, decisionMakerId) {
     invalidateState();
-    return postJson("/sd/reset-decision-maker-conversation", {
+    return postJson("/ga/reset-decision-maker-conversation", {
       branch: branch,
       expectedRevision: expectedRevision,
       decisionMakerId: decisionMakerId,
@@ -467,7 +467,7 @@
 
   // ── LLM provider 配置（M11′ 对接版）：读写 AgentLib 的 ConfigStore ─────────
   // ★ 这些端点改的是 **app 基础设施配置**（`<store>/agentlib/config.json` 的 `llm.routes.*` / `keys.*`），
-  //   不是世界写（不落 revision、不进命令白名单）；决策人绑定那条是**世界写**（走 /sd/set-decision-maker-provider）。
+  //   不是世界写（不落 revision、不进命令白名单）；决策人绑定那条是**世界写**（走 /ga/set-decision-maker-provider）。
 
   /** provider 掩码列表（读 AgentLib 配置；坏条目也列出，带 errorCode）。 */
   function llmProviders() {
@@ -491,7 +491,7 @@
   /** 决策人绑定 provider（世界写，固定类型 ga.SetDecisionMakerProvider，落 revision）。 */
   function setDecisionMakerProvider(branch, expectedRevision, decisionMakerId, providerId) {
     invalidateState();
-    return postJson("/sd/set-decision-maker-provider", {
+    return postJson("/ga/set-decision-maker-provider", {
       branch: branch,
       expectedRevision: expectedRevision,
       decisionMakerId: decisionMakerId,

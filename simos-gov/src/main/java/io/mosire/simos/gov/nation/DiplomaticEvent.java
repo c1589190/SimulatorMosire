@@ -10,7 +10,7 @@ import java.util.List;
  *
  * <ul>
  *   <li>{@link #id}——事件 id（唯一键；同时是 {@code GovState.diplomaticEvents} 的 map key）；
- *   <li>{@link #tick}——该事件所属世界日（单位：日），与 {@code SdInfoEntry.tick} 同口径；
+ *   <li>{@link #tick}——该事件所属世界日（单位：日），与 {@code DecisionInfoEntry.tick} 同口径；
  *   <li>{@link #participants}——参与国（{@link NationId}）列表，**至少 2 个、不得重复**（D-005 的"多国谈判"；双边状态走
  *       关系边，不走本类型）；顺序按载荷给定保留；
  *   <li>{@link #text}——具体内容，自然语言。

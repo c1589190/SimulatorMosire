@@ -109,7 +109,7 @@ public final class CoreSimos implements AutoCloseable {
   /**
    * ★★ **急停路径的 drain 钩子**（2026-10-13 急停协议，口径 3 = (A)「只把 drain 接进急停路径」）。
    *
-   * <p>★ **为什么 Core 收它却不认识它**：drain 的实现在 app（{@code SdCommandDrain}），而 Core 不认识 app（铁律 4）⇒
+   * <p>★ **为什么 Core 收它却不认识它**：drain 的实现在 app（{@code CommandDrain}），而 Core 不认识 app（铁律 4）⇒
    * 由调用方**注入**（{@link #register(StopDrain)}），由 {@link TimeAdvance} 在"世界已落 revision、尚未报给
    * GM"那一步**调**。 缺省 {@link StopDrain#NONE} ⇒ 急停仍停、仍报，只是不 drain（后果记在账本"已知未修"一节）。
    *

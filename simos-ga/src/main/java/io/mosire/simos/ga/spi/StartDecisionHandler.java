@@ -5,8 +5,8 @@ import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
-import io.mosire.simos.ga.model.SdInfoEntry;
-import io.mosire.simos.ga.model.SdInfoIds;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -45,7 +45,7 @@ import java.util.Set;
  *
  * <p>★ **落点（INFO 覆盖层）**：地址 {@code ga:decision.<dmId>}（同 {@code ga.IssueDirective} 的 {@code
  * sd:directive.<id>} 形制），key 固定 {@value #START_INFO_KEY}，{@code value} 记本命令所在 tick（**标量串**—— {@link
- * SdInfoEntry#value()} 是裸 {@code Object}，数值类型跨 JSON 往返会 Long↔Integer 漂移，故取串），{@code note}
+ * DecisionInfoEntry#value()} 是裸 {@code Object}，数值类型跨 JSON 往返会 Long↔Integer 漂移，故取串），{@code note}
  * 记可选说明。这是**感知层**（供 UI / AAR 展示）记录，不影响 `due` 计算（`due` 只扫 {@code Directive}）。
  *
  * <p>拒绝：{@code decisionMakerId} 不存在；载荷不是合法 JSON / 缺字段。
@@ -83,13 +83,13 @@ public final class StartDecisionHandler implements CommandHandler {
       long tick = state.meta().timestamp().tick();
       RevisionId at = state.meta().ref().revision();
       String address = ADDRESS_PREFIX + decisionMakerId.value();
-      Map<String, List<SdInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
-      List<SdInfoEntry> entries = new ArrayList<>(nextInfo.getOrDefault(address, List.of()));
+      Map<String, List<DecisionInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
+      List<DecisionInfoEntry> entries = new ArrayList<>(nextInfo.getOrDefault(address, List.of()));
       // ★ 决策结果三件套（第 3 波第 1 步）：id 按 (地址, 序号) 合成；tick = 本条记录所在 tick；
       //   tags 挂**发起人**——"谁在哪个 tick 让哪个决策人开始决断"这条事实天然属于那个决策人。
-      SdInfoEntry entry =
-          new SdInfoEntry(
-              SdInfoIds.synthesize(address, entries.size()),
+      DecisionInfoEntry entry =
+          new DecisionInfoEntry(
+              DecisionInfoIds.synthesize(address, entries.size()),
               tick,
               Set.of(decisionMakerId),
               Set.of(),

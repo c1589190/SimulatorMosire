@@ -8,11 +8,11 @@ import io.mosire.simos.ga.id.DirectiveId;
 import io.mosire.simos.ga.id.EffectId;
 import io.mosire.simos.ga.id.MergedEffectPlanId;
 import io.mosire.simos.ga.id.VerdictId;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DecisionPacket;
 import io.mosire.simos.ga.model.Directive;
 import io.mosire.simos.ga.model.MergedEffectPlan;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.model.Verdict;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.ChangeSet;
@@ -36,8 +36,9 @@ import java.util.function.Function;
  * <p>★★ <b>旧档缺键 ⇒ {@link FieldDelta.Unchanged}</b>（照 {@code GovChangeSet} / {@code ActorChangeSet}
  * 的 fail-closed 读法）：没提该组件 = 没动它，<b>不抛</b>；重建时 {@code Unchanged} 直接返回 base、连键解析器都不会被调用。
  *
- * <p>★ <b>{@code info} 组件</b>：{@code GaState.info} 是 {@code Map<String, List<SdInfoEntry>>}（键 =
- * canonical 地址串，见 {@link GaState} 的类注），故差异值为 {@code List<SdInfoEntry>}，重建时键解析是恒等（String → String）。
+ * <p>★ <b>{@code info} 组件</b>：{@code GaState.info} 是 {@code Map<String, List<DecisionInfoEntry>>}（键
+ * = canonical 地址串，见 {@link GaState} 的类注），故差异值为 {@code List<DecisionInfoEntry>}，重建时键解析是恒等（String →
+ * String）。
  *
  * <p>★ {@link #applyTo(GaSnapshot, StateMeta)} 按 {@code ModuleCodec} 的 C28 契约把 <b>新的</b> {@code
  * ref} / {@code timestamp} 装上去（模块状态类型本身不带坐标）。
@@ -48,7 +49,7 @@ public record GaChangeSet(
     FieldDelta<Directive> directives,
     FieldDelta<Verdict> verdicts,
     FieldDelta<DecisionMaker> decisionMakers,
-    FieldDelta<List<SdInfoEntry>> info,
+    FieldDelta<List<DecisionInfoEntry>> info,
     FieldDelta<Effect> effects)
     implements ChangeSet {
 
@@ -105,7 +106,7 @@ public record GaChangeSet(
         FieldDelta.rebuild(base.verdicts(), cs.verdicts(), VerdictId::parse);
     Map<DecisionMakerId, DecisionMaker> decisionMakers =
         FieldDelta.rebuild(base.decisionMakers(), cs.decisionMakers(), DecisionMakerId::parse);
-    Map<String, List<SdInfoEntry>> info =
+    Map<String, List<DecisionInfoEntry>> info =
         FieldDelta.rebuild(base.info(), cs.info(), Function.identity());
     Map<EffectId, Effect> effects =
         FieldDelta.rebuild(base.effects(), cs.effects(), EffectId::parse);

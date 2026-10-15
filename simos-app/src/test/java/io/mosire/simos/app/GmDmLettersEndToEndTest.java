@@ -13,8 +13,8 @@ import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.world.SmallWorld;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.DecisionMakerId;
@@ -160,7 +160,7 @@ class GmDmLettersEndToEndTest {
       assertThat(inboxUnanswered(inboxAfter)).as("§6-2：未答计数归零").isZero();
 
       // ★ GM 的回信自己是**新的**一条（不是把提问改了），且 from 恒为 gm。
-      List<SdInfoEntry> messages = messagesInOverlay(shell);
+      List<DecisionInfoEntry> messages = messagesInOverlay(shell);
       assertThat(messages).as("§6-2：提问 + 回信 = 两条独立的信").hasSize(2);
       assertThat(messages)
           .as("★★ I7/I8：GM 侧发的信 from 恒为 \"gm\"（编译期常量，载荷里没有 from 键）")
@@ -548,10 +548,10 @@ class GmDmLettersEndToEndTest {
     return ToolBuckets.namesOf(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT));
   }
 
-  private static List<SdInfoEntry> messagesInOverlay(Shell shell) {
-    List<SdInfoEntry> out = new ArrayList<>();
-    for (List<SdInfoEntry> entries : gaState(shell).info().values()) {
-      for (SdInfoEntry entry : entries) {
+  private static List<DecisionInfoEntry> messagesInOverlay(Shell shell) {
+    List<DecisionInfoEntry> out = new ArrayList<>();
+    for (List<DecisionInfoEntry> entries : gaState(shell).info().values()) {
+      for (DecisionInfoEntry entry : entries) {
         if ("message".equals(entry.key())) {
           out.add(entry);
         }

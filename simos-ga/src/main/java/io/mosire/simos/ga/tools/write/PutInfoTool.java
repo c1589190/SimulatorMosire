@@ -19,11 +19,11 @@ import java.util.Set;
  * <p>★ 写的是**感知层**（供 UI / AAR 展示），ground truth 仍由领域模块持有；地址非法 / {@code key} 空白 / {@code value}
  * 缺失都在命令期被拒、理由原文到达调用方。
  */
-public final class SdPutInfoTool extends AbstractNarrowWriteTool implements SimosTool {
+public final class PutInfoTool extends AbstractNarrowWriteTool implements SimosTool {
 
   public static final String NAME = "ga.PutInfo";
 
-  public SdPutInfoTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
+  public PutInfoTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
   }
 

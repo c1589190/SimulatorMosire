@@ -32,7 +32,7 @@ import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
-import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
@@ -160,7 +160,7 @@ class FormatUnitToolTest {
       assertThat(entries(fx.unit(fx.stateAt(2L)).equipment())).containsExactlyElementsOf(expected);
 
       // ★ 同批 sd.PutInfo 审计：seed / 是否显式 / 前后两张表 / tick / reason。
-      SdInfoEntry entry = infoEntry(fx.stateAt(2L));
+      DecisionInfoEntry entry = infoEntry(fx.stateAt(2L));
       assertThat(entry.key()).isEqualTo("formatUnit");
       assertThat(entry.tick()).isEqualTo(7L);
       JsonNode value = JSON.readTree(entry.value().toString());
@@ -195,7 +195,7 @@ class FormatUnitToolTest {
       assertThat(view.get("seedProvided").asBoolean()).isFalse();
       assertThat(amounts(view.get("equipment"))).isEqualTo(amounts(preview.get("equipment")));
 
-      SdInfoEntry entry = infoEntry(fx.stateAt(2L));
+      DecisionInfoEntry entry = infoEntry(fx.stateAt(2L));
       JsonNode value = JSON.readTree(entry.value().toString());
       assertThat(value.get("seed").asLong()).isEqualTo(derivedSeed);
       assertThat(value.get("seedProvided").asBoolean()).isFalse();
@@ -390,11 +390,11 @@ class FormatUnitToolTest {
   }
 
   /** 从 replay 态读同批 PutInfo 的条目（地址 = 单位 canonical、key = formatUnit）。 */
-  private static SdInfoEntry infoEntry(SimulationState state) {
+  private static DecisionInfoEntry infoEntry(SimulationState state) {
     GaState sd = ((GaSnapshot) state.module("ga").orElseThrow()).state();
     // ★★ 2026-10-12 B3 收尾（C3）：`unitAddress` 是 unit 侧的**跨批次共享拼写点**
     //   （unit 批 D8：从 RaiseUnitPlan 移到 UnitToolReads，public）⇒ 改调该唯一拼写点。
-    List<SdInfoEntry> entries = sd.info().get(UnitToolReads.unitAddress("u-1"));
+    List<DecisionInfoEntry> entries = sd.info().get(UnitToolReads.unitAddress("u-1"));
     assertThat(entries).as("sd.PutInfo 必须落在单位 canonical 地址上").isNotNull().hasSize(1);
     return entries.get(0);
   }

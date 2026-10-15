@@ -7,11 +7,11 @@ import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.ga.id.DirectiveId;
 import io.mosire.simos.ga.id.EffectId;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.ga.model.Directive;
 import io.mosire.simos.ga.model.DirectiveCommand;
 import io.mosire.simos.ga.model.DirectiveStatus;
-import io.mosire.simos.ga.model.SdInfoEntry;
-import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
@@ -167,13 +167,14 @@ public final class IssueDirectiveHandler implements CommandHandler {
 
       RevisionId at = state.meta().ref().revision();
       String infoAddress = intentInfoAddressOf(id);
-      Map<String, List<SdInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
-      List<SdInfoEntry> entries = new ArrayList<>(nextInfo.getOrDefault(infoAddress, List.of()));
+      Map<String, List<DecisionInfoEntry>> nextInfo = new LinkedHashMap<>(base.info());
+      List<DecisionInfoEntry> entries =
+          new ArrayList<>(nextInfo.getOrDefault(infoAddress, List.of()));
       // ★ 决策结果三件套（第 3 波第 1 步）：执行原文就是这条决策的**结果**，故 tick 取**令自带的 tick**（不是世界 tick——
       //   令允许补记/滞后，见上面"令不得记在未来"的裁定；按世界 tick 归档会让同一条令随处理时刻漂移）；tags 挂**出令决策人**。
-      SdInfoEntry entry =
-          new SdInfoEntry(
-              SdInfoIds.synthesize(infoAddress, entries.size()),
+      DecisionInfoEntry entry =
+          new DecisionInfoEntry(
+              DecisionInfoIds.synthesize(infoAddress, entries.size()),
               tick,
               Set.of(decisionMakerId),
               Set.of(),

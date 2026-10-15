@@ -21,7 +21,7 @@ import java.util.Set;
  * 里那 5 条**无条件 add**（`sd.IssueDirective` 等）同时做 —— 不删那 5 条，前缀规则一撤， 它们就复活成"自指可嵌令"的后门。
  *
  * <p>★ {@link #isSdSelfReference} **保留**：它是**拒因措辞**用的纯谓词（{@code IssueDirectiveHandler} 与 {@code
- * sd.AdjudicateTick} 借它把"自指"与"白名单外"两种拒绝理由分开报），不是判据本身 —— 删了它，拒绝理由会退化成含糊的一句 "不在白名单里"。
+ * simos.ga.adjudicateTick} 借它把"自指"与"白名单外"两种拒绝理由分开报），不是判据本身 —— 删了它，拒绝理由会退化成含糊的一句 "不在白名单里"。
  *
  * <p>★ **不是恒真/恒假的装饰**：白名单是构造期从**调用方给的集合**推导的 —— 未注册的类型进不来（调用方只可能给它自己派生的面）、 通用写被拒；与 {@code
  * DirectiveCommand} 的 shapes 校验分工是"白名单判合法性、record 判形状"。

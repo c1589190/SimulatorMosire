@@ -8,7 +8,7 @@ import io.mosire.simos.util.state.StateRef;
 
 /**
  * ★★ <b>决策人运行口</b>（2026-10-12 B3 第 7 域）：GM 侧的触发工具（{@code ga.RunDecision} / {@code
- * simos.sd.run-decision-makers} / 打回令时往会话里投递理由）与运行流之间的唯一接缝。
+ * simos.ga.run-decision-makers} / 打回令时往会话里投递理由）与运行流之间的唯一接缝。
  *
  * <p>★ <b>为什么是端口而不是直接持 {@code DecisionAgentRunner}</b>：一轮的运行要 LLM 客户端、会话库、开场快照、权限链 —— 那些是 app
  * 的装配物（{@code DecisionAgentService} 按设计书 §4.5 判据留 app：它持有域工具实例与 LLM 装配）。本模块只保留**运行流的骨架** （{@link

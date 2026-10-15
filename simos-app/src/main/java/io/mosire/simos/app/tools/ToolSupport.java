@@ -1031,7 +1031,7 @@ public final class ToolSupport {
 
   /**
    * ★★ <b>army 切片</b>（2026-10-12 批次 3d-1）：{@code armies}（军队身份）自 {@code sd} 搬进 {@code army} ⇒ app
-   * 侧读它改走本方法（{@link io.mosire.simos.app.access.ArmyScope} 的归属裁定与 {@code SdQueryService}
+   * 侧读它改走本方法（{@link io.mosire.simos.app.access.ArmyScope} 的归属裁定与 {@code DecisionQueryService}
    * 的军队显示信息都走它）。
    *
    * <p>★ <b>缺切片/类型不对 = 装配故障，当场炸</b>（与 {@link #socialData} 同口径）：army 切片对可推进世界是必需的（{@code Shell} 注册

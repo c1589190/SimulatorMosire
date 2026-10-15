@@ -42,7 +42,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 
 /**
- * ★★ {@code simos.sd.run-decision-makers}（P7a，2026-10-01 后端 + MCP 稳定化计划）：<b>GM-only 显式名单批量派决策人</b>
+ * ★★ {@code simos.ga.run-decision-makers}（P7a，2026-10-01 后端 + MCP 稳定化计划）：<b>GM-only 显式名单批量派决策人</b>
  * ——输入一份显式 {@code decisionMakerIds} 名单，先同批落 N 条 {@code ga.RunDecision} 触发事实（一批 = 一条
  * revision），再让所有决策人在**同一触发 revision 的冻结快照**上跑一轮（{@code concurrency} 只影响墙钟并发）：世界写工具在
  * 决策期不可用，只允许写各自决策包；回合结束后由 {@link io.mosire.simos.app.decision.DecisionTurnFinalizer} 统一结算成一个
@@ -71,13 +71,13 @@ import java.util.concurrent.ThreadFactory;
  *
  * <p>★ <b>资源声明</b>：本工具只写 {@code sd} 命名空间（{@link ResourcePolicy#UNRESTRICTED}；GM 侧 sd 为 unlimited）。
  *
- * <p>★ <b>工具名不是命令类型</b>：{@code simos.sd.run-decision-makers} 不进 catalog / {@code
+ * <p>★ <b>工具名不是命令类型</b>：{@code simos.ga.run-decision-makers} 不进 catalog / {@code
  * PAYLOAD_HINTS}；它组的是既有 {@code ga.RunDecision} 命令。
  */
 public final class RunDecisionMakersTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
-  public static final String NAME = "simos.sd.run-decision-makers";
+  public static final String NAME = "simos.ga.run-decision-makers";
 
   /** 批内固定命令类型：与 {@link RunDecisionTool} 用同一个拼写点（工具名 == 命令类型）。 */
   private static final String TRIGGER_TYPE = RunDecisionTool.NAME;
@@ -92,7 +92,7 @@ public final class RunDecisionMakersTool implements SimosTool {
   private static final int MAX_CONCURRENCY = 16;
 
   /** 本工具只碰 sd 命名空间；GM 侧 sd 表态 unlimited。 */
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private static final List<ResourceId> WRITE_RESOURCES =
@@ -179,7 +179,7 @@ public final class RunDecisionMakersTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   @Override

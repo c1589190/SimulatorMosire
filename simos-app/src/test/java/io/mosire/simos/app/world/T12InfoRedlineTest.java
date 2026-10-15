@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
  *   <li><b>状态层不变量（runtime）</b>：把富世界经真引擎种入、再真读回，断言 {@code info == InMemoryInfoSystem.empty()}、{@code
  *       GaState.info()} 为空；并证明**它本来就不是空的**（世界非空 ⇒ "空"是实测 不是"没读到"）。
  *   <li><b>路径层不变量（structural / fail-closed）</b>：直接检查产生文档与富世界的**全部文件**里**没有 Info 写路径**——{@code
- *       docs/worlds/**} 下只有 {@code .md}、导出器与文档里不出现 {@code InfoSystem/InfoEntry/SdInfoEntry}
+ *       docs/worlds/**} 下只有 {@code .md}、导出器与文档里不出现 {@code InfoSystem/InfoEntry/DecisionInfoEntry}
  *       的**类型名**、rich-world 资源信封的 {@code info} 段为空。它覆盖"将来有人把文档灌进 Info"这类回归，且**不依赖**任何一个 方法被调用。
  * </ol>
  */
@@ -141,8 +141,8 @@ class T12InfoRedlineTest {
 
     // ② 文档与两个离线脚本里**不得出现任何 Info 写路径的引用**。
     //    判据分两层：
-    //      * `.md`（产出文档）：允许**提及** `InfoSystem`/`SdInfoEntry`（README 的红线声明就要写它们），
-    //        但不得出现写路径**形态**（`InfoSystem.`、`SdInfoEntry(`、`bySubject`）。
+    //      * `.md`（产出文档）：允许**提及** `InfoSystem`/`DecisionInfoEntry`（README 的红线声明就要写它们），
+    //        但不得出现写路径**形态**（`InfoSystem.`、`DecisionInfoEntry(`、`bySubject`）。
     //      * `.py`（离线脚本）：**一律不得出现裸符号**（脚本没有任何合法理由提到 Info 的类型名——
     //        它只读 node JSON、只写 md）。m4 的教训：只钉"形态"会被 `_X = "InfoSystem"` 绕过。
     assertThat(mdFiles()).as("产出文档至少 7 个（装置自证：读到了东西）").isNotEmpty();
@@ -152,19 +152,22 @@ class T12InfoRedlineTest {
       assertThat(text)
           .as("★ 红线：%s 里不得有 Info 写路径的引用形态", md.getFileName())
           .doesNotContain("InfoSystem.")
-          .doesNotContain("SdInfoEntry(")
+          .doesNotContain("DecisionInfoEntry(")
           .doesNotContain("bySubject");
     }
     for (Path py : List.of(docGenerator(), docChecker())) {
       String text = Files.readString(py, StandardCharsets.UTF_8);
       // ★ 用 AST 判"符号引用"而不是裸词扫描：脚本的 docstring/字符串里**合法地**写着
-      //   `InfoSystem` / `SdInfoEntry`（那是在声明"没进 Info"），裸词扫描会把声明本身当违规；
+      //   `InfoSystem` / `DecisionInfoEntry`（那是在声明"没进 Info"），裸词扫描会把声明本身当违规；
       //   而 m4 的绕过形态 `_X = "InfoSystem"` 也恰是字符串——两种情形只有 AST 分得开。
-      //   判据：源码里不出现 `InfoSystem`/`SdInfoEntry`/`bySubject` 这些**名字**（Name/Attribute/Import）。
+      //   判据：源码里不出现 `InfoSystem`/`DecisionInfoEntry`/`bySubject` 这些**名字**（Name/Attribute/Import）。
       java.util.List<String> symbols =
           pySymbolNames(py).stream()
               .filter(
-                  n -> n.equals("InfoSystem") || n.equals("SdInfoEntry") || n.equals("bySubject"))
+                  n ->
+                      n.equals("InfoSystem")
+                          || n.equals("DecisionInfoEntry")
+                          || n.equals("bySubject"))
               .sorted()
               .toList();
       assertThat(symbols).as("★ 红线：%s 是纯离线文档器，源码里不得出现 Info 的符号名", py.getFileName()).isEmpty();

@@ -13,8 +13,8 @@ import java.util.Optional;
  *
  * <ul>
  *   <li>**地址** = {@link #ADDRESS_PREFIX} + docId（本类给出，唯一）；
- *   <li>**正文** = {@code SdInfoEntry.value}。★ {@code value} 是裸 {@code Object}、**只保证标量往返**，故结构化内容一律
- *       **自行序列化成 JSON 字符串**再存（先例：{@code AdjudicateTickTool} 的决策结果）；
+ *   <li>**正文** = {@code DecisionInfoEntry.value}。★ {@code value} 是裸 {@code
+ *       Object}、**只保证标量往返**，故结构化内容一律 **自行序列化成 JSON 字符串**再存（先例：{@code AdjudicateTickTool} 的决策结果）；
  *   <li>**可见性** = {@code tags}（显式指派决策人）∪ {@code affiliations}（归属自动），判定只在 {@code
  *       RedactingQueryService#docs} 一处。
  * </ul>

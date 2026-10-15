@@ -67,7 +67,7 @@ public interface DecisionMakerAffiliationPort {
   /**
    * 一条归属（<b>不含种类名</b>——种类是各模块自己的事，ga 不需要也不该知道）。
    *
-   * @param label <b>不透明受众标签</b>（{@code SdInfoEntry.affiliations} 里用的就是同一套串；写入方自报、读取方只做集合成员判定）
+   * @param label <b>不透明受众标签</b>（{@code DecisionInfoEntry.affiliations} 里用的就是同一套串；写入方自报、读取方只做集合成员判定）
    * @param description 给人看的一句话（提示语/拒因里嵌的那段文本，由持有该归属的模块渲染）
    */
   record AffiliationClaim(String label, String description) {}

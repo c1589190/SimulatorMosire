@@ -1,4 +1,4 @@
-package io.mosire.simos.app.sd;
+package io.mosire.simos.app.ga;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,7 +47,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * C5 的端到端验收：sd 参与者只写 sd，跨模块效果经 {@link SdCommandDrain} 落成**真 revision**；drain 幂等（重放不重复提交）； 中途失败留下"sd
+ * C5 的端到端验收：sd 参与者只写 sd，跨模块效果经 {@link CommandDrain} 落成**真 revision**；drain 幂等（重放不重复提交）； 中途失败留下"sd
  * 已记 effect、unit 未改"的中间态（如实测，不假装原子）。
  */
 class SdCommandDrainTest {
@@ -81,7 +81,7 @@ class SdCommandDrainTest {
     long beforeDrain = revisionRowCount();
     assertThat(unitEquipment(core, atTick5)).as("推进本身不改 unit").isEqualTo(50);
 
-    List<CommandResult> drained = new SdCommandDrain(core).drainAfterAdvance(MAIN);
+    List<CommandResult> drained = new CommandDrain(core).drainAfterAdvance(MAIN);
 
     assertThat(drained).hasSize(1);
     assertThat(drained.get(0)).isInstanceOf(CommandResult.Committed.class);
@@ -90,7 +90,7 @@ class SdCommandDrainTest {
     assertThat(unitEquipment(core, atTick5 + 1)).as("unit 真的改了").isEqualTo(45);
     System.out.println("[C5] drain committed revision=" + (atTick5 + 1) + " equipment=45");
 
-    List<CommandResult> again = new SdCommandDrain(core).drainAfterAdvance(MAIN);
+    List<CommandResult> again = new CommandDrain(core).drainAfterAdvance(MAIN);
     assertThat(again).as("幂等：重复 drain 不重复提交（e2 仍 PLANNED、e1 已 drain）").isEmpty();
     assertThat(core.head(MAIN).orElseThrow().value()).isEqualTo(atTick5 + 1);
     assertThat(revisionRowCount()).isEqualTo(beforeDrain + 1);
@@ -106,14 +106,14 @@ class SdCommandDrainTest {
     long atTick5 = advanceDays(2, 5);
     long beforeDrain = revisionRowCount();
 
-    List<CommandResult> drained = new SdCommandDrain(core).drainAfterAdvance(MAIN);
+    List<CommandResult> drained = new CommandDrain(core).drainAfterAdvance(MAIN);
 
     assertThat(drained).hasSize(1);
     assertThat(drained.get(0)).as("越界战损被 unit 侧拒绝").isInstanceOf(CommandResult.Rejected.class);
     assertThat(revisionRowCount()).as("被拒不写行 ⇒ 无半写 revision").isEqualTo(beforeDrain);
     assertThat(unitEquipment(core, atTick5)).as("unit 未改（中间态）").isEqualTo(50);
     assertThat(effectStatus(core, atTick5, "e1")).as("sd 已记 effect FIRED（中间态）").isEqualTo("FIRED");
-    List<CommandResult> retry = new SdCommandDrain(core).drainAfterAdvance(MAIN);
+    List<CommandResult> retry = new CommandDrain(core).drainAfterAdvance(MAIN);
     assertThat(retry).as("被拒的指令下次 drain 会重试（不静默丢弃）").hasSize(1);
     System.out.println(
         "[C5] rejected-drain intermediate state: sd=FIRED equipment=50 rows=" + beforeDrain);

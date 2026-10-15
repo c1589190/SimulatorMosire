@@ -18,12 +18,12 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code simos.sd.decision-maker}（工具面 M4）：**单个决策人详情 + 现算可见范围**。
+ * {@code simos.ga.decision-maker}（工具面 M4）：**单个决策人详情 + 现算可见范围**。
  *
  * <p>与 {@link DecisionMakersTool} 同一缺口的两半（列表 / 详情）；未知 id ⇒ {@code NOT_FOUND}（**不是空对象**： 与 GUI 的 404
  * 同口径，不把"查无"折成"存在但空"）。
  *
- * <p>★★ **2026-09-25 工具面补齐：把 GUI 的 {@code GET /api/sd/decision-makers/{id}/scope}
+ * <p>★★ **2026-09-25 工具面补齐：把 GUI 的 {@code GET /api/ga/decision-makers/{id}/scope}
  * 并进本工具**（用户裁定"优先并入， 别为同一资源再造工具"）。{@code scope} 子对象回答的是 {@code ApiViews.decisionMaker}
  * 答不出的那个问题：决策人**实际能看见什么** （范围函数现算 ∩ GM 的 {@code accessLimit}，随世界状态变——正是 GUI {@code
  * decisionMakerScopeReply} 给的 {@code visible/namespaces/unparsedPrefixes}）。并入后 GM
@@ -32,7 +32,7 @@ import java.util.Set;
  * <p>★ **并入不另算**：范围取 {@code RedactingQueryService#computedScopeOf}，解码取 {@code DecisionScopeView}，
  * 投影取 {@code ApiViews.decisionScope}——与 GUI 同一条链（本类不自己算范围，也不另拼 scope 的 payload）。
  *
- * <p>★ **未并入的相邻端点**：{@code GET /api/sd/decision-makers/{id}/run-status} **有意不并**——它读的是进程内的 {@code
+ * <p>★ **未并入的相邻端点**：{@code GET /api/ga/decision-makers/{id}/run-status} **有意不并**——它读的是进程内的 {@code
  * DecisionRunRegistry}（"这一轮跑到哪儿了"，GUI 异步轮询用，进程重启即失），**不是世界状态**；且 MCP 的 {@code ga.RunDecision}
  * 是同步的（调用方等到整轮结束直接拿轨迹），agent 没有轮询需求。把运行时观测面塞进这条世界读工具会 把"不可回放的观测"伪装成"决策人的属性"。详见审计报告。
  *
@@ -42,7 +42,7 @@ import java.util.Set;
 public final class DecisionMakerTool implements SimosTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。 */
-  public static final String NAME = "simos.sd.decision-maker";
+  public static final String NAME = "simos.ga.decision-maker";
 
   private final GaToolQueries queries;
 
@@ -78,7 +78,7 @@ public final class DecisionMakerTool implements SimosTool, GmOnlyRead {
     try {
       Map<String, Object> args = context.arguments();
       String id = ToolSchema.requiredText(args, "decisionMakerId");
-      // ★ 与 GUI `/api/sd/decision-makers/{id}/scope` 同口径：解不出决策人或算不出范围 ⇒ 同一个 404（不折成空对象）。
+      // ★ 与 GUI `/api/ga/decision-makers/{id}/scope` 同口径：解不出决策人或算不出范围 ⇒ 同一个 404（不折成空对象）。
       Optional<Map<String, Object>> view =
           queries.decisionMaker(id, GaToolReads.branch(args), GaToolReads.revision(args));
       if (view.isEmpty()) {

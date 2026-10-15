@@ -13,9 +13,9 @@ import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.id.VerdictId;
 import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DisclosurePolicy;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.model.Verdict;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
@@ -284,7 +284,7 @@ public final class RedactingQueryService {
    *
    * <ol>
    *   <li>★ **归属**：{@code entry.tags()} **含该 actor 自己**。标签是"这条结果与谁有关"的唯一表述（写路径由 {@code
-   *       sd.AdjudicateTick} 按**本次涉及的决策人**落）。**无主（{@code tags} 为空）⇒ 不属于任何决策人 ⇒
+   *       simos.ga.adjudicateTick} 按**本次涉及的决策人**落）。**无主（{@code tags} 为空）⇒ 不属于任何决策人 ⇒
    *       对决策人一律不可见**——空集不是"大家都能看"；
    *   <li>**窗口**：{@code tick} / {@code [fromTick, toTick]} 闭区间（见 {@link DecisionResultWindow}）。
    * </ol>
@@ -295,9 +295,9 @@ public final class RedactingQueryService {
    * **一条独立的可见性轴**（"这条 INFO 记的是谁的事"，不是"这块资源你能不能碰"）。它**只此一处**：GUI 的决策结果子页与决策人读工具
    * 都走本方法，不各自再实现一遍（各写一份时两边都不报错、只会漂移，正是 {@code RedactingQueryService} 类注里那条口径）。
    *
-   * <p>★ **排序 = tick 降序、同 tick 按 id 升序**（新的在前；与 {@code SdQueryService.order()} 的读序同口径，界面/模型
-   * 拿到的第一条就是"最近那次裁决"）。同 tick 在**今天的写路径下不可能出现两条**（{@code sd.AdjudicateTick} 按地址派生 id 保证 一个 tick
-   * 一条），id 只是把"将来万一出现"定死成可复现的次序。**先排后截** ⇒ {@code limit} 截到的是**最近的 N 条**。
+   * <p>★ **排序 = tick 降序、同 tick 按 id 升序**（新的在前；与 {@code DecisionQueryService.order()} 的读序同口径，界面/模型
+   * 拿到的第一条就是"最近那次裁决"）。同 tick 在**今天的写路径下不可能出现两条**（{@code simos.ga.adjudicateTick} 按地址派生 id 保证 一个
+   * tick 一条），id 只是把"将来万一出现"定死成可复现的次序。**先排后截** ⇒ {@code limit} 截到的是**最近的 N 条**。
    *
    * <p>★ **只回生效的裁决**（2026-09-23，用户裁定「只有生效裁决和作废裁决」）：{@code adjudicationStatus = VOIDED}
    * 的条目**一条都不回**——它对应的世界变更已被撤销、令已退回待裁决，列出来只会让决策人按一条不作准的结局行动。 每条带上 {@code status} 字段（当前恒 {@code
@@ -306,23 +306,24 @@ public final class RedactingQueryService {
    * <p>★ **空结果返回空列表**（不是异常、也不是"什么都没有"的含混）：调用方据此给出**明确可读**的"没有可查看的决策结果"。
    *
    * @return 每条 {@code {tick, id, tags(升序), value(原样的 Object), at{branch, revision}}}；{@code value}
-   *     **不做 解析/改写**——{@link SdInfoEntry#value()} 的契约是裸 {@code Object}（只有标量往返有保证），本层不假装能解析任意值。
+   *     **不做 解析/改写**——{@link DecisionInfoEntry#value()} 的契约是裸 {@code
+   *     Object}（只有标量往返有保证），本层不假装能解析任意值。
    */
   public List<Map<String, Object>> decisionResults(
       DecisionMakerId actor, QueryTarget target, DecisionResultWindow window) {
     Objects.requireNonNull(actor, "actor");
     Objects.requireNonNull(window, "window");
     GaState sd = gaState(target);
-    List<SdInfoEntry> matched = new ArrayList<>();
-    for (Map.Entry<String, List<SdInfoEntry>> at : sd.info().entrySet()) {
+    List<DecisionInfoEntry> matched = new ArrayList<>();
+    for (Map.Entry<String, List<DecisionInfoEntry>> at : sd.info().entrySet()) {
       if (!at.getKey().startsWith(AdjudicateTickTool.RESULT_ADDRESS_PREFIX)) {
         continue;
       }
-      for (SdInfoEntry entry : at.getValue()) {
+      for (DecisionInfoEntry entry : at.getValue()) {
         // ★ 2026-09-23（用户裁定「只有生效裁决和作废裁决」）：**作废的不算结果**——它对应的世界变更已被撤销、
         //   令已退回待裁决，把它列成"我的决策结果"会让决策人按一条不再作准的结局行动。
-        //   判定入口是 SdInfoEntry#isEffective 这一个方法（缺省=生效：老档那批当时都生效）。
-        if (!SdInfoEntry.isEffective(entry)
+        //   判定入口是 DecisionInfoEntry#isEffective 这一个方法（缺省=生效：老档那批当时都生效）。
+        if (!DecisionInfoEntry.isEffective(entry)
             || !taggedFor(entry, actor)
             || !inWindow(entry.tick(), window)) {
           continue;
@@ -331,11 +332,11 @@ public final class RedactingQueryService {
       }
     }
     matched.sort(
-        Comparator.comparingLong(SdInfoEntry::tick)
+        Comparator.comparingLong(DecisionInfoEntry::tick)
             .reversed()
             .thenComparing(entry -> entry.id().value()));
     List<Map<String, Object>> out = new ArrayList<>();
-    for (SdInfoEntry entry : matched) {
+    for (DecisionInfoEntry entry : matched) {
       if (out.size() >= window.limit()) {
         break;
       }
@@ -383,12 +384,12 @@ public final class RedactingQueryService {
     Set<String> actorLabels =
         maker == null ? Set.of() : AppDecisionMakerAffiliations.labelsOf(actor, state);
     List<MatchedDoc> matched = new ArrayList<>();
-    for (Map.Entry<String, List<SdInfoEntry>> at : sd.info().entrySet()) {
+    for (Map.Entry<String, List<DecisionInfoEntry>> at : sd.info().entrySet()) {
       Optional<String> docId = DecisionDoc.docIdOf(at.getKey());
       if (docId.isEmpty()) {
         continue;
       }
-      for (SdInfoEntry entry : at.getValue()) {
+      for (DecisionInfoEntry entry : at.getValue()) {
         if (visible(entry, actor, actorLabels) && inWindow(entry.tick(), window)) {
           matched.add(new MatchedDoc(docId.get(), entry));
         }
@@ -409,7 +410,7 @@ public final class RedactingQueryService {
   }
 
   /** 命中的一条文档：**docId 与条目成对保留**——docId 来自地址（{@code sd.info()} 的键），条目本身不带它。 */
-  private record MatchedDoc(String docId, SdInfoEntry entry) {}
+  private record MatchedDoc(String docId, DecisionInfoEntry entry) {}
 
   /**
    * **tags 归属判据的唯一实现**：这条 INFO 是不是**显式指派给**该调用者的。
@@ -417,7 +418,7 @@ public final class RedactingQueryService {
    * <p>★ 抽成一个方法**不是**为了复用省字，而是为了让"判据恰一份"成为**结构性事实**（{@code DecisionResultsVisibilityGuardTest}
    * 用源码扫描钉住该判据形态全仓恰一处）：决策结果与文档**共用**这一支（那一端只是多了"归属"这第二支，见 {@link #visible}），两支不会各自演化。
    */
-  private static boolean taggedFor(SdInfoEntry entry, DecisionMakerId actor) {
+  private static boolean taggedFor(DecisionInfoEntry entry, DecisionMakerId actor) {
     return entry.tags().contains(actor);
   }
 
@@ -429,7 +430,7 @@ public final class RedactingQueryService {
    * 归属种类**（标签由写入方自报、由各模块的归属现拼）。
    */
   private static boolean visible(
-      SdInfoEntry entry, DecisionMakerId actor, Set<String> actorLabels) {
+      DecisionInfoEntry entry, DecisionMakerId actor, Set<String> actorLabels) {
     if (taggedFor(entry, actor)) {
       return true;
     }
@@ -456,7 +457,10 @@ public final class RedactingQueryService {
    * @param sender 条目的 {@code value.from}（解析不出 ⇒ null，该轴不参与）
    */
   public static boolean infoVisibleToDecisionMaker(
-      SdInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, String sender) {
+      DecisionInfoEntry entry,
+      DecisionMakerId actor,
+      Set<String> affiliationLabels,
+      String sender) {
     Objects.requireNonNull(entry, "entry");
     Objects.requireNonNull(actor, "actor");
     Objects.requireNonNull(affiliationLabels, "affiliationLabels");
@@ -468,7 +472,7 @@ public final class RedactingQueryService {
 
   /** 单条文档的视图（{@code at} 口径同 {@link #decisionResultView}）。 */
   private static Map<String, Object> docView(MatchedDoc doc, QueryTarget target) {
-    SdInfoEntry entry = doc.entry();
+    DecisionInfoEntry entry = doc.entry();
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("docId", doc.docId());
     view.put("id", entry.id().value());
@@ -498,15 +502,16 @@ public final class RedactingQueryService {
   }
 
   /**
-   * 单条决策结果的视图；{@code at} 取**被查分支** + 该条目**写入时所依据的基态** revision（{@code SdInfoEntry.at}）—— ★
+   * 单条决策结果的视图；{@code at} 取**被查分支** + 该条目**写入时所依据的基态** revision（{@code DecisionInfoEntry.at}）—— ★
    * 它是写入那一步的基态（写路径取当时 {@code state.meta().ref().revision()}），**可能小于**该条目最早可见的 revision， 也**不是**被查
    * revision。
    */
-  private static Map<String, Object> decisionResultView(SdInfoEntry entry, QueryTarget target) {
+  private static Map<String, Object> decisionResultView(
+      DecisionInfoEntry entry, QueryTarget target) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("tick", entry.tick());
     view.put("id", entry.id().value());
-    view.put("status", SdInfoEntry.isEffective(entry) ? "EFFECTIVE" : "VOIDED");
+    view.put("status", DecisionInfoEntry.isEffective(entry) ? "EFFECTIVE" : "VOIDED");
     view.put("tags", entry.tags().stream().map(DecisionMakerId::value).sorted().toList());
     view.put("value", entry.value());
     Map<String, Object> at = new LinkedHashMap<>();

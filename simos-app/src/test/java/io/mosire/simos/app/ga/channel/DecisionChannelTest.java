@@ -1,4 +1,4 @@
-package io.mosire.simos.app.sd.channel;
+package io.mosire.simos.app.ga.channel;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

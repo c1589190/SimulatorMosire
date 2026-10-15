@@ -42,7 +42,7 @@ import java.util.function.Function;
  * </ul>
  *
  * <p>★ <b>受众标签的唯一拼写点</b>：{@link #label(String, String)} = {@code kind + ":" + ref} （{@code
- * SdInfoEntry.affiliations} 里写的就是这串；写入方自报，读取方只做集合成员判定）。
+ * DecisionInfoEntry.affiliations} 里写的就是这串；写入方自报，读取方只做集合成员判定）。
  *
  * <p>★ <b>fail-closed 的分工</b>：<b>装配</b>问题（缺切片/类型不对）当场抛（{@link ToolSupport} 的口径）；<b>世界数据</b>问题
  * （没有这个决策人、表里那行指向的实体已不在）降权——各模块的 {@code resolve} 把那些行裁掉，读侧拿不到归属 ⇒ deny-all。
@@ -151,7 +151,7 @@ public final class AppDecisionMakerAffiliations implements DecisionMakerAffiliat
     return Set.copyOf(kinds);
   }
 
-  /** 该决策人此刻的<b>受众标签集</b>（{@code SdInfoEntry.affiliations} 用的那一套串）。 */
+  /** 该决策人此刻的<b>受众标签集</b>（{@code DecisionInfoEntry.affiliations} 用的那一套串）。 */
   public static Set<String> labelsOf(DecisionMakerId decisionMaker, SimulationState state) {
     Set<String> labels = new LinkedHashSet<>();
     for (Claim claim : claimsOf(decisionMaker, state)) {

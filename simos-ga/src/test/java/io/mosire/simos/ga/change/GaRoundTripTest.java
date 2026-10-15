@@ -11,16 +11,17 @@ import io.mosire.simos.ga.effect.Effect;
 import io.mosire.simos.ga.effect.EffectKind;
 import io.mosire.simos.ga.effect.EffectStatus;
 import io.mosire.simos.ga.effect.Trigger;
+import io.mosire.simos.ga.id.DecisionInfoId;
 import io.mosire.simos.ga.id.DecisionPacketId;
 import io.mosire.simos.ga.id.DirectiveId;
 import io.mosire.simos.ga.id.EffectId;
 import io.mosire.simos.ga.id.MergedEffectPlanId;
-import io.mosire.simos.ga.id.SdInfoId;
 import io.mosire.simos.ga.id.VerdictId;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.AdjudicationBreakpoint;
 import io.mosire.simos.ga.model.AdjudicationStatus;
 import io.mosire.simos.ga.model.CallStatus;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DecisionPacket;
 import io.mosire.simos.ga.model.Directive;
@@ -30,7 +31,6 @@ import io.mosire.simos.ga.model.FormattedCall;
 import io.mosire.simos.ga.model.MergedEffect;
 import io.mosire.simos.ga.model.MergedEffectPlan;
 import io.mosire.simos.ga.model.PacketStatus;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.model.Verdict;
 import io.mosire.simos.ga.model.VerdictMeta;
 import io.mosire.simos.map.hex.HexCoord;
@@ -75,7 +75,7 @@ import org.junit.jupiter.api.Test;
  * <p>★★ <b>本批 3b-4 新增的一面判别力</b>：{@code effects} 的<b>值是 sealed 多态</b>（{@code Trigger} / {@code
  * Action} 各带 {@code @class}）⇒ 夹具把三档 Trigger（时间 / 单位位置 / 合取）与两档 Action 各覆盖一次， 让"多态注解丢了 /
  * 某个子类型读不回来"这类缺陷在往返里现形（{@code value} 用<b>标量串</b>：它是裸 {@code Object}， 只有标量往返有保证，与 {@code
- * SdInfoEntry.value} 同一条注记）。
+ * DecisionInfoEntry.value} 同一条注记）。
  *
  * <p>★ <b>豁免集为空且被单独钉死</b>：{@code GaState} 的七个组件都必须进变更集，本类<b>不设</b>任何豁免项；写成一个被 {@link
  * #theExclusionListIsEmpty} 单独断言的集合，加名字是一次显式动作、在 diff 里现形（照 {@code GovRoundTripTest} 的"豁免口
@@ -220,7 +220,7 @@ class GaRoundTripTest {
     Map<DecisionMakerId, DecisionMaker> baseMakers = new LinkedHashMap<>();
     baseMakers.put(DM1, maker(DM1, "p-old", 1L, 0L));
     baseMakers.put(DM2, maker(DM2, "p-old", 1L, 0L));
-    Map<String, List<SdInfoEntry>> baseInfo = new LinkedHashMap<>();
+    Map<String, List<DecisionInfoEntry>> baseInfo = new LinkedHashMap<>();
     baseInfo.put(INFO_INTENT_A, List.of(infoEntry(INFO_INTENT_A, 0, D1, "向北推进", true)));
     baseInfo.put(INFO_INTENT_B, List.of(infoEntry(INFO_INTENT_B, 0, D2, "原地待命", false)));
     Map<EffectId, Effect> baseEffects = new LinkedHashMap<>();
@@ -256,7 +256,7 @@ class GaRoundTripTest {
     targetMakers.put(DM1, maker(DM1, "p-new", 4L, 2L));
     targetMakers.put(DM3, maker(DM3, "p-new", 1L, 0L));
     // INFO：第二条地址整条删掉、第一条地址被**覆盖**成两条、第三条地址新增。
-    Map<String, List<SdInfoEntry>> targetInfo = new LinkedHashMap<>();
+    Map<String, List<DecisionInfoEntry>> targetInfo = new LinkedHashMap<>();
     targetInfo.put(
         INFO_INTENT_A,
         List.of(
@@ -379,8 +379,8 @@ class GaRoundTripTest {
         .hasSize(2);
     assertThat(rebuilt.info().get(INFO_INTENT_A).get(0).value()).isEqualTo("向北推进（改写）");
     assertThat(rebuilt.info().get(INFO_INTENT_A).get(0).id())
-        .as("SdInfoId 活过往返")
-        .isEqualTo(SdInfoId.parse(INFO_INTENT_A + "#0"));
+        .as("DecisionInfoId 活过往返")
+        .isEqualTo(DecisionInfoId.parse(INFO_INTENT_A + "#0"));
     assertThat(rebuilt.info().get(INFO_INTENT_A).get(0).sourceDirective()).contains(D1);
     assertThat(rebuilt.info().get(INFO_INTENT_A).get(0).adjudicationStatus())
         .as("Optional<AdjudicationStatus> 活过往返")
@@ -578,7 +578,7 @@ class GaRoundTripTest {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(DM1, maker(DM1, "p-1", 1L, 0L));
     makers.put(DM2, maker(DM2, "p-2", 2L, 3L));
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
+    Map<String, List<DecisionInfoEntry>> info = new LinkedHashMap<>();
     info.put(INFO_INTENT_A, List.of(infoEntry(INFO_INTENT_A, 0, D1, "向北推进", true)));
     info.put(INFO_INTENT_B, List.of(infoEntry(INFO_INTENT_B, 0, D2, "原地待命", false)));
     // ★ 效果两张都非空（触发器覆盖时间档与单位位置档；D1 的 effects 引用 E1 ⇒ 与令那一维对得上）。
@@ -830,13 +830,13 @@ class GaRoundTripTest {
   /**
    * 一条 INFO 条目（{@code sd:directive.<id>} / {@code sd:doc.*} 形制的地址下第 {@code ordinal} 条）。
    *
-   * <p>★ {@code value} 用**标量串**：{@code SdInfoEntry.value} 是裸 {@code Object}，只有标量往返有保证（结构化值列为挂起项，见
-   * 该类类注）。
+   * <p>★ {@code value} 用**标量串**：{@code DecisionInfoEntry.value} 是裸 {@code
+   * Object}，只有标量往返有保证（结构化值列为挂起项，见 该类类注）。
    */
-  private static SdInfoEntry infoEntry(
+  private static DecisionInfoEntry infoEntry(
       String address, int ordinal, DirectiveId source, String value, boolean effective) {
-    return new SdInfoEntry(
-        SdInfoId.parse(address + "#" + ordinal),
+    return new DecisionInfoEntry(
+        DecisionInfoId.parse(address + "#" + ordinal),
         360L,
         new LinkedHashSet<>(List.of(DM1)),
         // ★★ 乙收尾：affiliations 是**不透明受众标签串**（写入方自报）——令的执行原文按国家发；

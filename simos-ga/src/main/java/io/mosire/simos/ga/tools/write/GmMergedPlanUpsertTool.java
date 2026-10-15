@@ -59,7 +59,7 @@ public final class GmMergedPlanUpsertTool implements SimosTool {
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.gm.mergedPlan.upsert";
 
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
@@ -133,7 +133,7 @@ public final class GmMergedPlanUpsertTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   @Override

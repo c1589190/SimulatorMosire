@@ -5,9 +5,9 @@ import io.mosire.simos.util.state.StateRef;
 /**
  * ★ **急停路径的 drain 钩子**（2026-10-13 急停协议，口径 3 = (A)「只把 drain 接进急停路径」）。
  *
- * <p>★★ **为什么是一个 SPI 而不是 Core 自己去 drain**：{@code drain} 的实现在 **app**（{@code SdCommandDrain}： 把
- * {@code Trigger} 命中后 {@code Action.EnqueueUnitCommand} 这类跨模块效果落地），而 **Core 不认识 app** （铁律 4 +
- * 模块边界）。所以"谁来 drain"由调用方注入，**"什么时候 drain"由 Core 保证**——这正是顺序铁律 ②→③→⑤ 里 Core 唯一能负责的那一半。
+ * <p>★★ **为什么是一个 SPI 而不是 Core 自己去 drain**：{@code drain} 的实现在 **app**（{@code CommandDrain}： 把 {@code
+ * Trigger} 命中后 {@code Action.EnqueueUnitCommand} 这类跨模块效果落地），而 **Core 不认识 app** （铁律 4 + 模块边界）。所以"谁来
+ * drain"由调用方注入，**"什么时候 drain"由 Core 保证**——这正是顺序铁律 ②→③→⑤ 里 Core 唯一能负责的那一半。
  *
  * <p>★★ **它在次序中的位置不可挪动**（用户原话：「急停的时候是**先世界里做完**，然后再报给GM的」）：
  *

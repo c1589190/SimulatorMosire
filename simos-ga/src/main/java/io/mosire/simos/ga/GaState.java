@@ -7,13 +7,13 @@ import io.mosire.simos.ga.id.EffectId;
 import io.mosire.simos.ga.id.MergedEffectPlanId;
 import io.mosire.simos.ga.id.VerdictId;
 import io.mosire.simos.ga.model.CallStatus;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DecisionPacket;
 import io.mosire.simos.ga.model.Directive;
 import io.mosire.simos.ga.model.DirectiveStatus;
 import io.mosire.simos.ga.model.FormattedCall;
 import io.mosire.simos.ga.model.MergedEffectPlan;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.model.Verdict;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import java.util.Collections;
@@ -43,13 +43,13 @@ import java.util.Set;
  * army.CreateArmy} 的 {@code masterGovUnitId} 同款口径。
  *
  * <p>★★ <b>值类型仍留 {@code simos-sd}</b>（{@link DecisionPacket} / {@link MergedEffectPlan} / {@link
- * Directive} / {@link Verdict} / {@link DecisionMaker} / {@link SdInfoEntry} / {@code EffectId}
- * 及它们的 id）：它们仍被 sd 的其余组件与 <b>sd 的测试</b>引用，而 {@code simos-sd} 不得依赖 {@code simos-ga} （那会与既有的 {@code
- * ga → sd} 成环，模块边界 enforcer 建图期直接拒）⇒ 本模块<b>反向引用</b>它们 （既有方向，不新增边，零 pom 改动）。★ 本批唯一的例外是 {@link
- * Effect} 整族（{@code Effect}/{@code EffectKind}/{@code EffectStatus}/{@code Trigger}/{@code
- * Action}）：它们<b>搬进本模块</b> （{@code io.mosire.simos.ga.effect}）—— 判据是"搬走后 sd 侧是否仍引用它"：{@code
- * Directive.effects()} 只引 {@code EffectId}（<b>留 sd</b>），其余四个类型 sd 侧零引用 ⇒ 搬它们不产生任何 {@code sd → ga}
- * 边。
+ * Directive} / {@link Verdict} / {@link DecisionMaker} / {@link DecisionInfoEntry} / {@code
+ * EffectId} 及它们的 id）：它们仍被 sd 的其余组件与 <b>sd 的测试</b>引用，而 {@code simos-sd} 不得依赖 {@code simos-ga}
+ * （那会与既有的 {@code ga → sd} 成环，模块边界 enforcer 建图期直接拒）⇒ 本模块<b>反向引用</b>它们 （既有方向，不新增边，零 pom 改动）。★
+ * 本批唯一的例外是 {@link Effect} 整族（{@code Effect}/{@code EffectKind}/{@code EffectStatus}/{@code
+ * Trigger}/{@code Action}）：它们<b>搬进本模块</b> （{@code io.mosire.simos.ga.effect}）—— 判据是"搬走后 sd
+ * 侧是否仍引用它"：{@code Directive.effects()} 只引 {@code EffectId}（<b>留 sd</b>），其余四个类型 sd 侧零引用 ⇒ 搬它们不产生任何
+ * {@code sd → ga} 边。
  *
  * <p>★ <b>七张表的键都必须等于值内 id</b>（{@code decisionMaker} 一条与其余五张同形；{@code info} 的键是 canonical 地址串、
  * 值是**该地址下的条目列表**——{@code FieldDelta} 的键约定是"各 key 类型的裸值 {@code toString()}"，而 {@code Address} 没有重写
@@ -79,7 +79,7 @@ public record GaState(
     Map<DirectiveId, Directive> directives,
     Map<VerdictId, Verdict> verdicts,
     Map<DecisionMakerId, DecisionMaker> decisionMakers,
-    Map<String, List<SdInfoEntry>> info,
+    Map<String, List<DecisionInfoEntry>> info,
     Map<EffectId, Effect> effects) {
 
   public GaState {
@@ -144,7 +144,7 @@ public record GaState(
    * ga.RunDecision} 与 {@code ga.IssueDirective} 的执行原文四条写路径的入口；★ 本批 3b-4 起 {@code GaTimeParticipant}
    * 的 {@code Action.PutInfo} 也走这里——它不再需要跨切片写口）。
    */
-  public GaState withInfo(Map<String, List<SdInfoEntry>> value) {
+  public GaState withInfo(Map<String, List<DecisionInfoEntry>> value) {
     return new GaState(
         decisionPackets, mergedEffectPlans, directives, verdicts, decisionMakers, value, effects);
   }
@@ -262,12 +262,13 @@ public record GaState(
    * <p>★ 条目列表按 {@code List.copyOf} 冻结（自 {@code SdState.copyInfo} 整条搬来，语义一字不改）：条目只追加、不删改， 故"该地址下第 n
    * 条"的序号在写入侧天然注入。
    */
-  private static Map<String, List<SdInfoEntry>> copyInfo(Map<String, List<SdInfoEntry>> source) {
+  private static Map<String, List<DecisionInfoEntry>> copyInfo(
+      Map<String, List<DecisionInfoEntry>> source) {
     if (source == null) {
       return new LinkedHashMap<>();
     }
-    Map<String, List<SdInfoEntry>> copy = new LinkedHashMap<>();
-    for (Map.Entry<String, List<SdInfoEntry>> entry : source.entrySet()) {
+    Map<String, List<DecisionInfoEntry>> copy = new LinkedHashMap<>();
+    for (Map.Entry<String, List<DecisionInfoEntry>> entry : source.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("info 的键与值都不得为 null: " + entry.getKey());
       }

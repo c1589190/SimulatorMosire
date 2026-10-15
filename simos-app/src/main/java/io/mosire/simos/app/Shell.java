@@ -36,17 +36,17 @@ import io.mosire.simos.app.access.LoggingApprovalChannel;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.decision.NationOpeningSnapshot;
 import io.mosire.simos.app.decision.ProposalDeclarationAudit;
+import io.mosire.simos.app.ga.CommandDrain;
+import io.mosire.simos.app.ga.DecisionAdjudicationService;
+import io.mosire.simos.app.ga.channel.CliDecisionChannel;
+import io.mosire.simos.app.ga.channel.GuiDecisionChannel;
+import io.mosire.simos.app.ga.channel.HttpDecisionChannel;
 import io.mosire.simos.app.gui.GuiServer;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.llm.LlmProviderResolver;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.ArtifactStore;
 import io.mosire.simos.app.render.RenderService;
-import io.mosire.simos.app.sd.DecisionAdjudicationService;
-import io.mosire.simos.app.sd.SdCommandDrain;
-import io.mosire.simos.app.sd.channel.CliDecisionChannel;
-import io.mosire.simos.app.sd.channel.GuiDecisionChannel;
-import io.mosire.simos.app.sd.channel.HttpDecisionChannel;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.time.PopulationUnitTimeParticipant;
 import io.mosire.simos.app.tools.CoreSimosToolWritePort;
@@ -387,7 +387,7 @@ public final class Shell implements AutoCloseable {
   /**
    * 跨模块效果落点（C5，spec §五.3）：{@code AdvanceTime} 提交成功后把 sd 的 pending 指令经 {@code submit} 落成真 revision。
    */
-  private final SdCommandDrain sdCommandDrain;
+  private final CommandDrain sdCommandDrain;
 
   /** 决策提交渠道（D5，spec §十三）：GUI / MCP / CLI / 外部 HTTP 各一实现——**新增渠道不改领域代码**。 */
   private final List<DecisionChannel> decisionChannels;
@@ -402,7 +402,7 @@ public final class Shell implements AutoCloseable {
 
   /**
    * **可嵌入令面**（= {@code CommandFaces.directiveTypes()}，由 handler 上的 {@code DmUsableCommand} 声明派生）：
-   * {@code IssueDirectiveHandler} 的 {@code DirectiveWhitelist}、{@code sd.AdjudicateTick}
+   * {@code IssueDirectiveHandler} 的 {@code DirectiveWhitelist}、{@code simos.ga.adjudicateTick}
    * 重建的白名单、决策人工具目录共用这一份。 ★ GM-only 命令仍注册在 Core、仍进 {@code commandTargets}，GM 的 {@code
    * simos.command.submit} 不受影响。
    */
@@ -416,7 +416,8 @@ public final class Shell implements AutoCloseable {
 
   /**
    * {@code 命令类型 → 目标声明}（第 3 波第 2 步）：从**已注册的 handler 清单**派生——实现了 {@link CommandTargets}
-   * 的那些把自己的目标交出来。{@code sd.AdjudicateTick} 拿它判"GM 代执行的这条命令动的 是谁"；**未实现者不在表里** ⇒ 工具侧 fail-closed 拒。
+   * 的那些把自己的目标交出来。{@code simos.ga.adjudicateTick} 拿它判"GM 代执行的这条命令动的 是谁"；**未实现者不在表里** ⇒ 工具侧
+   * fail-closed 拒。
    */
   private final Map<String, CommandTargets> commandTargets;
 
@@ -485,7 +486,7 @@ public final class Shell implements AutoCloseable {
       ToolCallAuthorizer toolAuthorizer,
       ToolCallAuthorizer gmToolAuthorizer,
       int registeredModuleCount,
-      SdCommandDrain sdCommandDrain,
+      CommandDrain sdCommandDrain,
       List<DecisionChannel> decisionChannels,
       Set<String> commandTypes,
       Set<String> directiveCommandTypes,
@@ -1011,7 +1012,7 @@ public final class Shell implements AutoCloseable {
                 new StartDecisionHandler(),
                 new RunDecisionHandler(),
                 // ★ 第 3 波最后一块：裁决用的状态翻转命令（ga.SetDirectiveStatus）。它不是对外窄工具——
-                //   由 sd.AdjudicateTick 内部编排产生；注册在此是为了它在批里能被 CommandBus 路由到。
+                //   由 simos.ga.adjudicateTick 内部编排产生；注册在此是为了它在批里能被 CommandBus 路由到。
                 new SetDirectiveStatusHandler(),
                 // ★★ 2026-10-12 批次 3d-1：**军队身份**的两条命令（{@code army.CreateArmy} /
                 //   {@code army.SetArmyMasterGov}）自 {@code simos-sd} 迁入 {@code simos-army}（用户裁定
@@ -1126,11 +1127,11 @@ public final class Shell implements AutoCloseable {
 
     // ★★ 2026-10-13 急停协议（B，设计书 §4.3 的口径 3=(A)/E3 更正）：**急停路径的 drain 接线就是这一行** ——
     //   Core 保证了次序（①跑完当天全部参与者 → ②落 revision（世界做完）→ ③本钩子 drain → ④聚合 Incident → ⑤报 GM），
-    //   而"怎么 drain"由组合根注入（Core 不认识 app 的 SdCommandDrain）。
+    //   而"怎么 drain"由组合根注入（Core 不认识 app 的 CommandDrain）。
     //   ★ 不装的后果（如实记）：停在 tick 5 时，第 5 天 FIRED 的跨模块效果永远悬着 ⇒ 每停一次多一条悬空（§4.5）。
     //   ★★ 既有的 /api/advance 与 simos.advance 走的**非急停**路径仍不 drain：那是口径 3=A 的**有意**范围裁剪
     //     （另开一批），本批一个字未动它们。
-    SdCommandDrain sdCommandDrain = new SdCommandDrain(coreSimos);
+    CommandDrain sdCommandDrain = new CommandDrain(coreSimos);
     coreSimos.register((worldRef, atTick) -> sdCommandDrain.drainAfterAdvance(worldRef.branch()));
 
     // 写前跨模块守卫（A6，spec §九）：带国家 tag 的区域不可删。
@@ -1458,7 +1459,7 @@ public final class Shell implements AutoCloseable {
             gmToolUsage,
             llmConfig,
             decisionAdjudicationService,
-            // ★ T11C 的运行流（不是判决定编）：/api/sd/run-decision 落地时就是拿它跑那一轮——与 GM 侧的
+            // ★ T11C 的运行流（不是判决定编）：/api/ga/run-decision 落地时就是拿它跑那一轮——与 GM 侧的
             //   ga.RunDecision 窄工具**同一个实例**（同一个会话库、同一条 provider 解析链）。
             decisionAgentService,
             // ★ C6a/D-020：GUI 三条读口与 MCP 单位/人口读口共用启动期 CalendarService.load 的**同一实例**——
@@ -1898,7 +1899,7 @@ public final class Shell implements AutoCloseable {
   }
 
   /** 跨模块效果落点（C5）：测试/调试面可直接调它（不经 {@code advanceAndDrain}）。 */
-  public SdCommandDrain sdCommandDrain() {
+  public CommandDrain sdCommandDrain() {
     return sdCommandDrain;
   }
 

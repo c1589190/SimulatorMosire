@@ -26,9 +26,9 @@ import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.AdjudicationStatus;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.SdInfoEntry;
-import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
@@ -250,8 +250,8 @@ class DecisionResultsToolTest {
   /** INFO 层里**全部**条目的 id（"那条确实在状态里"的前提断言用）。 */
   private List<String> allInfoIds() {
     List<String> out = new ArrayList<>();
-    for (List<SdInfoEntry> entries : sdState().info().values()) {
-      for (SdInfoEntry entry : entries) {
+    for (List<DecisionInfoEntry> entries : sdState().info().values()) {
+      for (DecisionInfoEntry entry : entries) {
         out.add(entry.id().value());
       }
     }
@@ -272,7 +272,7 @@ class DecisionResultsToolTest {
   }
 
   private static String idOf(String canonicalAddress, int ordinal) {
-    return SdInfoIds.synthesize(canonicalAddress, ordinal).value();
+    return DecisionInfoIds.synthesize(canonicalAddress, ordinal).value();
   }
 
   private static DecisionMaker nationDm(DecisionMakerId id, String nationId) {
@@ -309,7 +309,7 @@ class DecisionResultsToolTest {
     makers.put(DM_B, nationDm(DM_B, "alpha"));
     makers.put(DM_C, nationDm(DM_C, "alpha"));
 
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
+    Map<String, List<DecisionInfoEntry>> info = new LinkedHashMap<>();
     info.put(
         ADDR_7,
         List.of(
@@ -327,10 +327,10 @@ class DecisionResultsToolTest {
   }
 
   /** 一条**作废**的裁决条目：tags 照给，但状态是 VOIDED（读面必须把它挡在"结果"之外）。 */
-  private static SdInfoEntry voidedEntry(
+  private static DecisionInfoEntry voidedEntry(
       String canonicalAddress, int ordinal, long tick, Set<DecisionMakerId> tags) {
-    return new SdInfoEntry(
-        SdInfoIds.synthesize(canonicalAddress, ordinal),
+    return new DecisionInfoEntry(
+        DecisionInfoIds.synthesize(canonicalAddress, ordinal),
         tick,
         tags,
         Set.of(),
@@ -342,10 +342,10 @@ class DecisionResultsToolTest {
         Optional.of(AdjudicationStatus.VOIDED));
   }
 
-  private static SdInfoEntry entry(
+  private static DecisionInfoEntry entry(
       String canonicalAddress, int ordinal, long tick, Set<DecisionMakerId> tags, String marker) {
-    return new SdInfoEntry(
-        SdInfoIds.synthesize(canonicalAddress, ordinal),
+    return new DecisionInfoEntry(
+        DecisionInfoIds.synthesize(canonicalAddress, ordinal),
         tick,
         tags,
         Set.of(),

@@ -39,7 +39,7 @@ public final class GmPacketsTool implements SimosTool, GmOnlyRead {
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS。 */
   public static final String NAME = "simos.gm.packets";
 
-  private static final ResourceManifest SD_READ =
+  private static final ResourceManifest GA_READ =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final ToolReadPort reads;
@@ -79,7 +79,7 @@ public final class GmPacketsTool implements SimosTool, GmOnlyRead {
 
   @Override
   public ResourceManifest resources() {
-    return SD_READ;
+    return GA_READ;
   }
 
   @Override

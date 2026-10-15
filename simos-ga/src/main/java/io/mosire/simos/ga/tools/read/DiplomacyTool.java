@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code simos.sd.diplomacy}（D5 / D-003 / R6）：**外交关系边只读面**。
+ * {@code simos.ga.diplomacy}（D5 / D-003 / R6）：**外交关系边只读面**。
  *
  * <p>每个 Nation 对其他 Nation 一条**有向边**（{@code from → to}），内容 = 自然语言（含谈判状态）。形状复用 {@code
  * ApiViews.diplomaticRelations}——与 GUI / 后续读口同源，本类只装配 {@code {"relations":[…]}}。
@@ -30,19 +30,19 @@ import java.util.Set;
  * <p>★ <b>过滤</b>：{@code nation?} 只看 from 或 to 等于该 Nation 的边；缺省 = 全部。过滤参数只按形状解析（未知 Nation ⇒
  * 空结果），不做存在性查询——存在性约束是写命令的语义（{@code gov.SetDiplomaticRelation}）。
  */
-public final class SdDiplomacyTool implements SimosTool {
+public final class DiplomacyTool implements SimosTool {
 
   /** 工具名（全局唯一）。 */
-  public static final String NAME = "simos.sd.diplomacy";
+  public static final String NAME = "simos.ga.diplomacy";
 
   /** 本工具读 sd 切片（世界级共享文本，不做逐格视野过滤）。 */
-  private static final ResourceManifest SD_READ =
+  private static final ResourceManifest GA_READ =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final ToolReadPort reads;
   private final GaToolViews views;
 
-  public SdDiplomacyTool(ToolReadPort reads, GaToolViews views) {
+  public DiplomacyTool(ToolReadPort reads, GaToolViews views) {
     this.reads = reads;
     this.views = views;
   }
@@ -68,7 +68,7 @@ public final class SdDiplomacyTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_READ;
+    return GA_READ;
   }
 
   @Override

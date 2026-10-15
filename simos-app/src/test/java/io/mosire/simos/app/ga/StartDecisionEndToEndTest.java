@@ -1,4 +1,4 @@
-package io.mosire.simos.app.sd;
+package io.mosire.simos.app.ga;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,10 +29,10 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
-import io.mosire.simos.ga.id.SdInfoId;
+import io.mosire.simos.ga.id.DecisionInfoId;
 import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.spi.StartDecisionHandler;
 import io.mosire.simos.ga.tools.write.StartDecisionTool;
 import io.mosire.simos.gov.GovSnapshot;
@@ -187,8 +187,8 @@ class StartDecisionEndToEndTest {
     assertThat(sdState(2).info().get(StartDecisionHandler.ADDRESS_PREFIX + "dm-t10"))
         .as("发起记录落进 sd INFO 覆盖层（随 revision 重放）")
         .containsExactly(
-            new SdInfoEntry(
-                new SdInfoId(StartDecisionHandler.ADDRESS_PREFIX + "dm-t10#0"),
+            new DecisionInfoEntry(
+                new DecisionInfoId(StartDecisionHandler.ADDRESS_PREFIX + "dm-t10#0"),
                 7L,
                 Set.of(DM),
                 Set.of(),

@@ -35,14 +35,14 @@ import org.junit.jupiter.api.Test;
 class DecisionResultsVisibilityGuardTest {
 
   /**
-   * 归属判据的**代码形态**（{@code SdInfoEntry} 的 tags 成员判定）。全仓 {@code src/main} 里只许出现**一次**，且落在 {@link
+   * 归属判据的**代码形态**（{@code DecisionInfoEntry} 的 tags 成员判定）。全仓 {@code src/main} 里只许出现**一次**，且落在 {@link
    * RedactingQueryService}。
    */
   private static final String OWNERSHIP_TOKEN = "tags().contains(";
 
   /**
-   * **文档可见性的第二轴**（Docs，2026-09-23）的代码形态：{@code SdInfoEntry.affiliations} 的成员判定。同样**只许一处**， 同样落在
-   * {@link RedactingQueryService}（{@code docs} 走的那个 {@code visible} 私有方法）。
+   * **文档可见性的第二轴**（Docs，2026-09-23）的代码形态：{@code DecisionInfoEntry.affiliations} 的成员判定。同样**只许一处**，
+   * 同样落在 {@link RedactingQueryService}（{@code docs} 走的那个 {@code visible} 私有方法）。
    *
    * <p>★ 与 {@link #OWNERSHIP_TOKEN} 是**一条规则的两支**：文档可见 = tags 命中 ∪ 归属命中（并集）。两支都只此一处 ⇒
    * 决策结果子页/文档子页/两个读工具拿到的可见集合不可能漂移。

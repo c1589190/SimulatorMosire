@@ -1,4 +1,4 @@
-package io.mosire.simos.app.sd;
+package io.mosire.simos.app.ga;
 
 import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.llm.LlmProviderResolver;

@@ -54,10 +54,10 @@ import java.util.Objects;
  *       （清理路径在 map 自己的命令面；gov 只读 map 做检查，不反向写 map）。
  * </ol>
  *
- * <p>★★ <b>不作为硬引用的两类（如实记录，不假装已清）</b>：{@code SdInfoEntry.affiliations/tags} 是感知层归属标签（{@code info}
- * 覆盖层住 {@code GaState}，本命令只读归属裁定、不碰它）、 {@link DiplomaticEvent#participants()} 是历史事件记录；它们都不是 {@code
- * GovState} 构造期强制的引用。删国后这些历史条目 <b>保留原文</b>（不篡改留痕），读侧按既有 fail-closed 口径处理"指向不存在国家"的标签。若要连历史事件一起清，显式给
- * {@code clearDiplomaticReferences=true}（连关系边与外交事件一并删）。
+ * <p>★★ <b>不作为硬引用的两类（如实记录，不假装已清）</b>：{@code DecisionInfoEntry.affiliations/tags} 是感知层归属标签（{@code
+ * info} 覆盖层住 {@code GaState}，本命令只读归属裁定、不碰它）、 {@link DiplomaticEvent#participants()} 是历史事件记录；它们都不是
+ * {@code GovState} 构造期强制的引用。删国后这些历史条目 <b>保留原文</b>（不篡改留痕），读侧按既有 fail-closed
+ * 口径处理"指向不存在国家"的标签。若要连历史事件一起清，显式给 {@code clearDiplomaticReferences=true}（连关系边与外交事件一并删）。
  *
  * <p>★ <b>GM-only</b>：删国是行政原语，不开放给决策令直调。
  *

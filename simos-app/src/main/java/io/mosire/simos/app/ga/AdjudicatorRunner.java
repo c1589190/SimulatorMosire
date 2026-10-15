@@ -1,4 +1,4 @@
-package io.mosire.simos.app.sd;
+package io.mosire.simos.app.ga;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

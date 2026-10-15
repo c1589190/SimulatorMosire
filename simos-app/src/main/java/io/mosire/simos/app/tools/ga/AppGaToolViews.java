@@ -20,7 +20,7 @@ import java.util.Map;
  *
  * <p>★★ <b>2026-10-12 批次 3c：两条外交视图改"自己取 gov 切片 + 自己筛"</b>——外交三表与 {@code NationId} 搬进 {@code
  * simos-gov}，ga 看不见它们（enforcer 禁列）⇒ 接口只剩 {@code state + 不透明过滤串}，取表/筛序/排序都落在这里（app 同时看得见 gov 与
- * util）。★ <b>输出字节与迁入前逐字相同</b>：仍转调同一个 {@link ApiViews} 函数，筛法逐条照抄原 {@code SdDiplomaticEventsTool}
+ * util）。★ <b>输出字节与迁入前逐字相同</b>：仍转调同一个 {@link ApiViews} 函数，筛法逐条照抄原 {@code DiplomaticEventsTool}
  * 的循环（tick 命中 + participants 含该国家 + 保事件表插入序），而 {@code ApiViews.diplomaticEvents} 自己按 id 排序。
  */
 public final class AppGaToolViews implements GaToolViews {

@@ -235,7 +235,7 @@
     return null;
   }
 
-  /** 左栏决策人详情的字段投影（纯函数）：与 `GET /api/sd/decision-makers/{id}` 逐值一致。 */
+  /** 左栏决策人详情的字段投影（纯函数）：与 `GET /api/ga/decision-makers/{id}` 逐值一致。 */
   function decisionMakerFields(maker) {
     // ★ T9：`viewScope` → `accessLimit`（语义变了：不再是"绝对可见集合"，而是 GM 配的**额外限制**）。
     var limit = maker ? maker.accessLimit : null;
@@ -554,7 +554,7 @@
   }
 
   /**
-   * 本轮轨迹的字段投影（纯函数，与 `POST /api/sd/run-decision` 的返回体逐字段对应）。
+   * 本轮轨迹的字段投影（纯函数，与 `POST /api/ga/run-decision` 的返回体逐字段对应）。
    *
    * <p>★ 缺值一律 `—`（**不拿 0 / false / 空串顶替**）：`llmCalls` 取不到与"一次都没调"是两件事。
    */
@@ -587,7 +587,7 @@
     };
   }
 
-  /** 决策记录的字段投影（纯函数，与 `GET /api/sd/directives` 逐字段对应；缺值 `—`，不编造）。 */
+  /** 决策记录的字段投影（纯函数，与 `GET /api/ga/directives` 逐字段对应；缺值 `—`，不编造）。 */
   function directiveFields(directive) {
     var d = directive || {};
     var commands = Array.isArray(d.commands) ? d.commands : [];
@@ -623,7 +623,7 @@
     return "tick " + fields.tick + " · " + firstLine + "（" + fields.commands.length + " 条命令）";
   }
 
-  // ── 决策结果（B12，2026-09-23）：GET /api/sd/decision-results 的纯投影 ──────────
+  // ── 决策结果（B12，2026-09-23）：GET /api/ga/decision-results 的纯投影 ──────────
   //
   // ★ `value` 是**字符串化的 JSON**（内容由裁决工具写）⇒ 前端必须 `JSON.parse` 再逐条渲染。
   //   解析不了**不许抛**（一条坏条目不该让整页空白）⇒ 折成 parseError 文本、照常列出。
@@ -644,7 +644,7 @@
 
   /**
    * 决策结果查询 → 端点路径（纯函数）：
-   * `/sd/decision-results?as=…[&tick=N | &fromTick=A&toTick=B][&limit=N]`。
+   * `/ga/decision-results?as=…[&tick=N | &fromTick=A&toTick=B][&limit=N]`。
    *
    * <p>★ 窗口的**唯一**防线在这里：默认 limit=20、上限 200——超限**报错**（契约是服务端报错、不截断），
    *   前端先拦是为了让用户当场看见，而不是收到一个语焉不详的 4xx。`tick` 与 `fromTick/toTick` 二选一。
@@ -698,7 +698,7 @@
       query += "&fromTick=" + from.value + "&toTick=" + to.value;
     }
     query += "&limit=" + limitValue;
-    return { ok: true, path: "/sd/decision-results?" + query };
+    return { ok: true, path: "/ga/decision-results?" + query };
   }
 
   /**
@@ -717,7 +717,7 @@
   }
 
   /**
-   * 文档查询 → 端点路径（纯函数，Docs 系统）：`/sd/decision-docs?as=…[&docId=… | &limit=N]`。
+   * 文档查询 → 端点路径（纯函数，Docs 系统）：`/ga/decision-docs?as=…[&docId=… | &limit=N]`。
    *
    * <p>★ 缺 `as` ⇒ 拒绝：文档只有「以某决策人的视角读」这一种语义（**没有 GM 全量口径**）——
    * 这也正是"预览某决策人实际能看到哪些文档"的做法。
@@ -736,7 +736,7 @@
     var query = "as=" + encodeURIComponent(as);
     var docId = textOrNull(src.docId);
     if (docId !== null) {
-      return { ok: true, path: "/sd/decision-docs?" + query + "&docId=" + encodeURIComponent(docId) };
+      return { ok: true, path: "/ga/decision-docs?" + query + "&docId=" + encodeURIComponent(docId) };
     }
     var limit = intQuery(src.limit, "limit");
     if (limit.error) {
@@ -749,7 +749,7 @@
     if (limitValue > 200) {
       return { ok: false, reason: "limit 上限是 200（服务端不截断、直接报错，请调小）。" };
     }
-    return { ok: true, path: "/sd/decision-docs?" + query + "&limit=" + limitValue };
+    return { ok: true, path: "/ga/decision-docs?" + query + "&limit=" + limitValue };
   }
 
   /** 归属数组 → 可读文本（`国家：n1`／`军队：a1`）；非对象项跳过（不编造）。 */
@@ -776,7 +776,7 @@
   }
 
   /**
-   * 一条文档（纯函数，与端点逐字段对应）：`value` 按约定是 **JSON 文本**（`SdInfoEntry.value` 是裸
+   * 一条文档（纯函数，与端点逐字段对应）：`value` 按约定是 **JSON 文本**（`DecisionInfoEntry.value` 是裸
    * `Object`，只有标量往返有保证 ⇒ 结构化内容自行序列化）。故这里**尽力**解析出 title/body/subject 供
    * 展示；解析不了**不报错**（parseError 记因、`raw` 原样留着），因为正文的 schema 是约定不是契约。
    */

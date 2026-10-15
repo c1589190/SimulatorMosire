@@ -17,7 +17,7 @@ import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.ga.model.AdjudicationStatus;
-import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.map.MapSnapshot;
@@ -42,7 +42,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ {@code sd.VoidAdjudication}（**只在 GM 桶**，2026-09-23）：把某一 tick 的裁决**作废**——世界回滚、令退回待裁决、 记录标作废。
+ * ★★ {@code simos.ga.voidAdjudication}（**只在 GM 桶**，2026-09-23）：把某一 tick 的裁决**作废**——世界回滚、令退回待裁决、
+ * 记录标作废。
  *
  * <p>★★ **用户的模型**：「只有生效裁决和作废裁决」。一个 tick 可以留多条裁决记录，**至多一条生效**；作废是那"另一档"。
  *
@@ -67,13 +68,13 @@ import java.util.Set;
  * <p>★ **只允许作废"仍是最新一条 revision"的裁决**（tip-only）：逆变更是"当前 → 基态"，中间若还夹着别的 revision，
  * 一次撤销会把它们**一起**抹掉。非最新 ⇒ **响亮拒绝**并提示先 {@code simos.fork}。
  *
- * <p>★ **它不是一个命令类型**（与 {@code sd.AdjudicateTick} 同族）：固定的是"作废某一 tick"这一件事，载荷只有坐标 ⇒ 不进
+ * <p>★ **它不是一个命令类型**（与 {@code simos.ga.adjudicateTick} 同族）：固定的是"作废某一 tick"这一件事，载荷只有坐标 ⇒ 不进
  * catalog、不进令白名单，决策人够不着。
  */
 public final class VoidAdjudicationTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
-  public static final String NAME = "sd.VoidAdjudication";
+  public static final String NAME = "simos.ga.voidAdjudication";
 
   /** 结果条目 value 里记的"这次裁决落盘得到的 revision"（写路径见 {@code AdjudicateTickTool}）。 */
   private static final String RESULT_REVISION_FIELD = "resultRevision";
@@ -110,7 +111,7 @@ public final class VoidAdjudicationTool implements SimosTool {
 
   @Override
   public ToolSpec spec() {
-    // 敏感写（走审批门链）、可外发（noExport=false）——与 sd.AdjudicateTick / sd.RejectDirective 同制。
+    // 敏感写（走审批门链）、可外发（noExport=false）——与 simos.ga.adjudicateTick / simos.ga.rejectDirective 同制。
     return ToolSpec.level(AccessToken.DEFAULT, true, false);
   }
 
@@ -141,7 +142,7 @@ public final class VoidAdjudicationTool implements SimosTool {
   public ToolResult execute(ToolContext context) {
     try {
       Map<String, Object> args = context.arguments();
-      // ★ 与 sd.AdjudicateTick 同款：expectedRevision 是**独立载荷**（不是 ToolSupport.target 的 revision）
+      // ★ 与 simos.ga.adjudicateTick 同款：expectedRevision 是**独立载荷**（不是 ToolSupport.target 的 revision）
       //   ——作废必须对着调用方以为的那个 head 来，缺了它就没有"坐标没变"这一层保护。
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
@@ -161,12 +162,12 @@ public final class VoidAdjudicationTool implements SimosTool {
       }
       SimulationState current = core.replay(head);
       String address = Address.parse(AdjudicateTickTool.RESULT_ADDRESS_PREFIX + tick).canonical();
-      Optional<SdInfoEntry> effective = effectiveEntry(gaOf(current), address, tick);
+      Optional<DecisionInfoEntry> effective = effectiveEntry(gaOf(current), address, tick);
       if (effective.isEmpty()) {
         return ToolResult.error(
-            "TOOL_ERROR", "该 tick 没有生效裁决可作废: " + address + "（用 sd.DecisionResults 看有哪些）");
+            "TOOL_ERROR", "该 tick 没有生效裁决可作废: " + address + "（用 simos.ga.decisionResults 看有哪些）");
       }
-      SdInfoEntry entry = effective.get();
+      DecisionInfoEntry entry = effective.get();
       Optional<Long> resultRevision = resultRevisionOf(entry);
       if (resultRevision.isEmpty()) {
         return ToolResult.error(
@@ -217,7 +218,7 @@ public final class VoidAdjudicationTool implements SimosTool {
    * Replay/CommandBus} 的既定语义是"变更集里没提到的模块保持原样、坐标也不推进" ⇒ 少一个恒等分量不改变任何可观测结果。
    */
   private static WorldChangeSet changeSet(
-      SimulationState current, SimulationState base, SdInfoEntry entry, String address) {
+      SimulationState current, SimulationState base, DecisionInfoEntry entry, String address) {
     Map<String, ChangeSet> modules = new LinkedHashMap<>();
     modules.put(
         "map",
@@ -239,8 +240,8 @@ public final class VoidAdjudicationTool implements SimosTool {
     //   ① **逆变更**：基态的 directives 就是"令退回 ISSUED"的忠实来源（它们当时本就是 ISSUED），判决表同样回滚
     //      （判决由裁决产生，作废就该连它一起退）。判据与 map/unit/social 逐字相同；
     //   ② **显式改写**：那条裁决记录翻成 VOIDED（**不删**——留痕）。
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>(gaOf(base).info());
-    List<SdInfoEntry> atAddress = new ArrayList<>(info.getOrDefault(address, List.of()));
+    Map<String, List<DecisionInfoEntry>> info = new LinkedHashMap<>(gaOf(base).info());
+    List<DecisionInfoEntry> atAddress = new ArrayList<>(info.getOrDefault(address, List.of()));
     atAddress.add(voided(entry));
     info.put(address, List.copyOf(atAddress));
     modules.put("ga", GaChangeSet.between(gaOf(current), gaOf(base).withInfo(info)));
@@ -248,8 +249,8 @@ public final class VoidAdjudicationTool implements SimosTool {
   }
 
   /** 同一条记录、只换状态（**不删**——留痕）。 */
-  private static SdInfoEntry voided(SdInfoEntry entry) {
-    return new SdInfoEntry(
+  private static DecisionInfoEntry voided(DecisionInfoEntry entry) {
+    return new DecisionInfoEntry(
         entry.id(),
         entry.tick(),
         entry.tags(),
@@ -263,11 +264,11 @@ public final class VoidAdjudicationTool implements SimosTool {
   }
 
   /** 该地址下**生效**的那一条（至多一条；多条时取最后一条并把异常留给不变量去暴露）。 */
-  private static Optional<SdInfoEntry> effectiveEntry(GaState ga, String address, long tick) {
-    List<SdInfoEntry> entries = ga.info().getOrDefault(address, List.of());
-    SdInfoEntry found = null;
-    for (SdInfoEntry entry : entries) {
-      if (entry.tick() == tick && SdInfoEntry.isEffective(entry)) {
+  private static Optional<DecisionInfoEntry> effectiveEntry(GaState ga, String address, long tick) {
+    List<DecisionInfoEntry> entries = ga.info().getOrDefault(address, List.of());
+    DecisionInfoEntry found = null;
+    for (DecisionInfoEntry entry : entries) {
+      if (entry.tick() == tick && DecisionInfoEntry.isEffective(entry)) {
         found = entry;
       }
     }
@@ -275,7 +276,7 @@ public final class VoidAdjudicationTool implements SimosTool {
   }
 
   /** 记录里记的"这次裁决落盘得到的 revision"（value 是 JSON 字符串，见写路径）。 */
-  private static Optional<Long> resultRevisionOf(SdInfoEntry entry) {
+  private static Optional<Long> resultRevisionOf(DecisionInfoEntry entry) {
     Object raw = entry.value();
     if (!(raw instanceof String text) || text.isBlank()) {
       return Optional.empty();
@@ -290,7 +291,7 @@ public final class VoidAdjudicationTool implements SimosTool {
   }
 
   /** 被这次裁决翻过的令 id（只用于回执，让人看得见"哪几条被打回去了"）。 */
-  private static List<String> flippedIds(SdInfoEntry entry) {
+  private static List<String> flippedIds(DecisionInfoEntry entry) {
     Object raw = entry.value();
     if (!(raw instanceof String text) || text.isBlank()) {
       return List.of();

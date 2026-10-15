@@ -1,6 +1,6 @@
 package io.mosire.simos.ga.tools;
 
-import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -11,10 +11,10 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ <b>决策人读面的窄查询口</b>（2026-10-12 B3 第 7 域）：把 app 的 {@code SdQueryService}（决策人/令清单）与 {@code
+ * ★★ <b>决策人读面的窄查询口</b>（2026-10-12 B3 第 7 域）：把 app 的 {@code DecisionQueryService}（决策人/令清单）与 {@code
  * RedactingQueryService}（**按调用者视角裁剪**的判决 / 决策结果 / 文档 / 消息可见性）收成"给 id + 坐标、回**成品视图**"的一层。
  *
- * <p>★ <b>为什么回成品视图而不是领域对象</b>：那两条服务的返回值里混着 app 的类型（{@code SdQueryService.DecisionMakerInfo} /
+ * <p>★ <b>为什么回成品视图而不是领域对象</b>：那两条服务的返回值里混着 app 的类型（{@code DecisionQueryService.DecisionMakerInfo} /
  * {@code DirectiveInfo}、{@code ResourceScopeMap}、{@code DecisionScopeView}、{@code
  * GameMap}），而裁剪切面本身要吃 {@code DecisionScopeFunctions} + {@code PlanCatalog} + {@code ApiViews}（全是
  * app 的装配物与视图）⇒ 按 I-G2 只能住 app。<b>接口在 ga、实现在 app</b>：实现逐条转调既有唯一实现（裁剪判据不抄第二份——那是权限面）。
@@ -89,7 +89,7 @@ public interface GaToolQueries {
       DecisionMakerId actor, Window window, BranchId branch, RevisionId revision);
 
   /**
-   * 某个决策人**此刻该不该跑一轮**的读数据（{@code simos.sd.run-decision-makers} 的 preview 面）。
+   * 某个决策人**此刻该不该跑一轮**的读数据（{@code simos.ga.run-decision-makers} 的 preview 面）。
    *
    * @param id 决策人 id
    * @param providerId 绑定的 LLM provider（未绑定 ⇒ null）
@@ -133,7 +133,7 @@ public interface GaToolQueries {
    * @param sender 条目的 {@code value.from}（解析不出 ⇒ null，该轴不参与）
    */
   boolean infoVisibleToDecisionMaker(
-      SdInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, String sender);
+      DecisionInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, String sender);
 
   /**
    * ★★ <b>该决策人此刻的受众标签集</b>（2026-10-12 乙收尾新增）：由**各持有模块自报的归属**现拼（{@code kind:ref} 形）， 实现住 app（它同时看得见

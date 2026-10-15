@@ -1,7 +1,7 @@
 package io.mosire.simos.ga.model;
 
+import io.mosire.simos.ga.id.DecisionInfoId;
 import io.mosire.simos.ga.id.DirectiveId;
-import io.mosire.simos.ga.id.SdInfoId;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.RevisionId;
 import java.util.Collections;
@@ -23,7 +23,7 @@ import java.util.Set;
  * <p>★★ **决策结果三件套（第 3 波第 1 步）**：INFO 条目**本身就是决策结果**，不另起平行实体。三个新字段：
  *
  * <ul>
- *   <li>{@link #id}（{@link SdInfoId}）——**同类型内唯一**。写路径的合成/去重见 {@link SdInfoIds}；
+ *   <li>{@link #id}（{@link DecisionInfoId}）——**同类型内唯一**。写路径的合成/去重见 {@link DecisionInfoIds}；
  *   <li>{@link #tick}——该条目所属**世界日**（单位：日，2026-09-24 日制裁定；不是 {@link #at} 那个 revision：二者互不换算）；
  *   <li>{@link #tags}——挂 {@link DecisionMakerId}（**与既有权限模型同构**，**不开**自由字符串标签）。**可为空集 = 无主**，
  *       天然成立，不用 {@code Optional} 包一层；
@@ -52,8 +52,8 @@ import java.util.Set;
  *       不授予任何权限；重复也无害（老条目全是无主，不进裁决）。
  * </ul>
  */
-public record SdInfoEntry(
-    SdInfoId id,
+public record DecisionInfoEntry(
+    DecisionInfoId id,
     long tick,
     Set<DecisionMakerId> tags,
     Set<String> affiliations,
@@ -67,7 +67,7 @@ public record SdInfoEntry(
   /** 老档迁移 id 的前缀（见类注：区分"内容派生的旧 id"与写路径合成的 {@code 地址#序号}）。 */
   public static final String LEGACY_ID_PREFIX = "legacy:";
 
-  public SdInfoEntry {
+  public DecisionInfoEntry {
     if (key == null || key.isBlank()) {
       throw new IllegalArgumentException("key 不得为空白");
     }
@@ -93,7 +93,7 @@ public record SdInfoEntry(
     }
     // ★ 老档兼容（旧字节没有这两个键）——见类注的 fail-closed 缺省。此处**不抛**：抛了等于"整个世界打不开"。
     if (id == null) {
-      id = SdInfoId.parse(LEGACY_ID_PREFIX + key + "@" + at.value());
+      id = DecisionInfoId.parse(LEGACY_ID_PREFIX + key + "@" + at.value());
     }
     if (tags == null) {
       tags = Set.of();
@@ -132,11 +132,11 @@ public record SdInfoEntry(
    * <p>★ **只对 {@code sd:adjudication.*} 条目有意义**：普通 INFO 条目恒缺省 ⇒ 恒"生效"。拿它筛别的条目等于恒真。
    *
    * <p>★★ **它必须是 {@code static}、且必须收条目作参数**（不是 {@code entry.isEffective()}）：record 上任何 {@code
-   * isXxx()} 形状的实例方法都会被 Jackson 当成**属性 getter** ⇒ 序列化时多写一个 {@code "effective"} 字段， 而 `SdInfoEntry`
-   * 的编解码**不接受**这个字段（"Unrecognized field"）⇒ 整条变更集 JSON 非法、replay 当场挂 （真踩过：一次全量测试 13 条红）。static
-   * 方法不是属性，绕开这条。
+   * isXxx()} 形状的实例方法都会被 Jackson 当成**属性 getter** ⇒ 序列化时多写一个 {@code "effective"} 字段， 而
+   * `DecisionInfoEntry` 的编解码**不接受**这个字段（"Unrecognized field"）⇒ 整条变更集 JSON 非法、replay 当场挂 （真踩过：一次全量测试
+   * 13 条红）。static 方法不是属性，绕开这条。
    */
-  public static boolean isEffective(SdInfoEntry entry) {
+  public static boolean isEffective(DecisionInfoEntry entry) {
     Objects.requireNonNull(entry, "entry");
     return entry.adjudicationStatus().orElse(AdjudicationStatus.EFFECTIVE)
         == AdjudicationStatus.EFFECTIVE;

@@ -8,7 +8,7 @@ import io.mosire.simos.util.address.Address;
  * 效果动作（spec §三.6，R6）：trigger 达成时发生的事。v1 封闭集。
  *
  * <p>★ **跨模块效果**（如改 unit）落成 {@link EnqueueUnitCommand}——参与者（{@link GaTimeParticipant}）只写 ga，跨模块由
- * app 层 {@code SdCommandDrain} 经 {@code CoreSimos.submit} 落成真 revision（spec §五.3，铁律 3）。
+ * app 层 {@code CommandDrain} 经 {@code CoreSimos.submit} 落成真 revision（spec §五.3，铁律 3）。
  *
  * <p>★ **sealed 多态**：裸往返不可能（同 {@code FieldDelta}）⇒ 类型信息以注解钉在类型上。
  *

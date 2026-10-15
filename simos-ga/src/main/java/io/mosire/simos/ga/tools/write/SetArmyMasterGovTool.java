@@ -22,20 +22,20 @@ import java.util.Set;
  * <p>★ <b>只改 sd 侧</b>：本工具不碰 {@code unit.ArmyFormation}（unit 侧同步走 {@code simos.army.assignGov}
  * 组合工具）； 两者语义独立，命令面不替调用方发明跨域联动。
  */
-public final class SdSetArmyMasterGovTool extends AbstractNarrowWriteTool implements SimosTool {
+public final class SetArmyMasterGovTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /**
    * 工具名（★ 全局唯一，且**不随命令类型改名**）：它在工具面/白名单/MCP 覆盖表里是稳定身份，改名会动可观测面。
    *
    * <p>★ 2026-10-12 批次 3d-1：命令类型由 {@code sd.SetArmyMasterGov} 变 {@code
-   * army.SetArmyMasterGov}，但**工具名 一字未改**（同 {@link SdCreateArmyTool#NAME} 的口径）。
+   * army.SetArmyMasterGov}，但**工具名 一字未改**（同 {@link CreateArmyTool#NAME} 的口径）。
    */
-  public static final String NAME = "sd.SetArmyMasterGov";
+  public static final String NAME = "simos.ga.setArmyMasterGov";
 
   /** 本工具钉死的命令类型（2026-10-12 批次 3d-1 起 {@code army.SetArmyMasterGov}）。 */
   public static final String COMMAND_TYPE = "army.SetArmyMasterGov";
 
-  public SdSetArmyMasterGovTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
+  public SetArmyMasterGovTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
   }
 

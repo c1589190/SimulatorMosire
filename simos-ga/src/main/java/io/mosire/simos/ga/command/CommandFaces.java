@@ -12,7 +12,7 @@ import java.util.Set;
  *   <li>{@code catalogTypes} = <b>注册面</b>（全部已注册 handler 的 type，含 GM-only 与装配自身新增的那几条）—— {@code
  *       simos.command.catalog} 的 GM 面与 `simos.command.submit` 的目标表看它；
  *   <li>{@code directiveTypes} = <b>决策令可嵌面</b> —— {@code ga.IssueDirective} 的白名单、{@code
- *       sd.AdjudicateTick} 重建的白名单、决策人 catalog 的"令里可嵌"那一支看它；
+ *       simos.ga.adjudicateTick} 重建的白名单、决策人 catalog 的"令里可嵌"那一支看它；
  *   <li>{@code drainableTypes} = <b>效果可入队面</b> —— {@code sd.RegisterEffect} 的可入队白名单看它；
  *   <li>{@code landingPoints} = <b>决策落点面</b>（{@code ga.IssueDirective} / {@code
  *       ga.SubmitVerdict}）—— {@code ChannelAdmission.requireLandingPoint} 的落点集合。

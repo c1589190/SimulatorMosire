@@ -1,4 +1,4 @@
-package io.mosire.simos.app.sd;
+package io.mosire.simos.app.ga;
 
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -36,16 +36,16 @@ import java.util.Set;
  * <p>★★ <b>2026-10-12 批次 3b-4：取数切片 sd → ga（如实记）</b>：{@code effects} 表随整族值类型搬进 {@code
  * simos-ga}（{@code GaState} 第 7 组件）⇒ 本类改读 **ga 切片**；<b>drain 的语义、命令 id 形态（{@code "drain:" +
  * effectId}）、发起者串（{@code system:sd-drain}）、排序与重试口径一字未改</b>。★ 类名与包名保持 {@code
- * app.sd.SdCommandDrain}（APP 侧的类名不是命令类型、不进 catalog，改名要连带动装配面与用例 ⇒ 留待批次 3e 随 sd 空壳一起正名； 与 {@code
- * SdRegisterEffectTool} 同款处置）。
+ * app.sd.CommandDrain}（APP 侧的类名不是命令类型、不进 catalog，改名要连带动装配面与用例 ⇒ 留待批次 3e 随 sd 空壳一起正名； 与 {@code
+ * RegisterEffectTool} 同款处置）。
  */
-public final class SdCommandDrain {
+public final class CommandDrain {
 
   private static final String INITIATOR = "system:sd-drain";
 
   private final CoreSimos core;
 
-  public SdCommandDrain(CoreSimos core) {
+  public CommandDrain(CoreSimos core) {
     this.core = Objects.requireNonNull(core, "core");
   }
 

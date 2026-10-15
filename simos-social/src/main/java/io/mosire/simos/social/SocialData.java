@@ -132,7 +132,7 @@ public record SocialData(
           "SocialData.vitalRemainders 不得为 null（旧档缺此组件已作废，不做缺省兜底；空表请显式 List.of()）");
     }
     // ★ **老档兼容**（旧字节没有这个键，如 `worlds/v17levant.json` 与升级前落盘的每条 social revision）：
-    //   缺省 = 空表，**此处不抛** —— 抛了等于"整个世界打不开"（先例：SdInfoEntry 的 affiliations/adjudicationStatus）。
+    //   缺省 = 空表，**此处不抛** —— 抛了等于"整个世界打不开"（先例：DecisionInfoEntry 的 affiliations/adjudicationStatus）。
     //   方向是 fail-closed：旧档里没有城市，读回来就是没有城市。
     if (cities == null) {
       cities = Map.of();

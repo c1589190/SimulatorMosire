@@ -28,7 +28,7 @@ import java.util.Optional;
  * {"directiveId":"d2","status":"CANCELLED"}
  * }</pre>
  *
- * <p>★ **它不做对外的事**（有意划界，别在别处把它接成窄工具 / 端点）：它是**裁决的内部编排**——{@code sd.AdjudicateTick} 在裁决一个 tick
+ * <p>★ **它不做对外的事**（有意划界，别在别处把它接成窄工具 / 端点）：它是**裁决的内部编排**——{@code simos.ga.adjudicateTick} 在裁决一个 tick
  * 时，按每条令的命令结局生成对应的翻转命令，**与命令效果、决策结果条目同批**落盘（见 {@code AdjudicateTickTool}）。域里其余写路径都不会产生这种命令。
  *
  * <p>★★ **转移守卫**（本处理器唯一有语义的部分，逐条可读）：

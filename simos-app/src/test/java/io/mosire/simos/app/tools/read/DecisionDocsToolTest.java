@@ -28,9 +28,9 @@ import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.SdInfoEntry;
-import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.read.DecisionDocsTool;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -259,8 +259,8 @@ class DecisionDocsToolTest {
   /** INFO 层里**全部**条目的 id（"那条确实在状态里"的前提断言用）。 */
   private List<String> allInfoIds() {
     List<String> out = new ArrayList<>();
-    for (List<SdInfoEntry> entries : sdState().info().values()) {
-      for (SdInfoEntry entry : entries) {
+    for (List<DecisionInfoEntry> entries : sdState().info().values()) {
+      for (DecisionInfoEntry entry : entries) {
         out.add(entry.id().value());
       }
     }
@@ -280,7 +280,7 @@ class DecisionDocsToolTest {
   }
 
   private static String idOf(String canonicalAddress, int ordinal) {
-    return SdInfoIds.synthesize(canonicalAddress, ordinal).value();
+    return DecisionInfoIds.synthesize(canonicalAddress, ordinal).value();
   }
 
   /** 决策人路径的执行器（本用例证的是可见性，不是审批链）：走真壳那套审批装配。 */
@@ -311,7 +311,7 @@ class DecisionDocsToolTest {
     makers.put(DM_A, nationDm(DM_A, "alpha"));
     makers.put(DM_B, nationDm(DM_B, "beta"));
     makers.put(DM_C, nationDm(DM_C, "alpha"));
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
+    Map<String, List<DecisionInfoEntry>> info = new LinkedHashMap<>();
     info.put(ADDR_ALPHA, List.of(doc(ADDR_ALPHA, 0, 3, Set.of(DM_A), Set.of(), ALPHA_BODY)));
     info.put(
         ADDR_SHARED,
@@ -364,23 +364,23 @@ class DecisionDocsToolTest {
   }
 
   /**
-   * ★★ <b>2026-10-13 收尾测试第 1 层（机械修复）</b>：{@code SdInfoEntry.affiliations} 自乙收尾起是<b>不透明受众标签集</b>
-   * （{@code String}，形如 {@code nation:alpha}；唯一拼写点 = {@code AppDecisionMakerAffiliations.label(kind,
-   * ref)}）。
+   * ★★ <b>2026-10-13 收尾测试第 1 层（机械修复）</b>：{@code DecisionInfoEntry.affiliations}
+   * 自乙收尾起是<b>不透明受众标签集</b> （{@code String}，形如 {@code nation:alpha}；唯一拼写点 = {@code
+   * AppDecisionMakerAffiliations.label(kind, ref)}）。
    */
   private static String nation(String nationId) {
     return NationAffiliations.KIND + ":" + nationId;
   }
 
-  private static SdInfoEntry doc(
+  private static DecisionInfoEntry doc(
       String canonicalAddress,
       int ordinal,
       long tick,
       Set<DecisionMakerId> tags,
       Set<String> affiliations,
       String value) {
-    return new SdInfoEntry(
-        SdInfoIds.synthesize(canonicalAddress, ordinal),
+    return new DecisionInfoEntry(
+        DecisionInfoIds.synthesize(canonicalAddress, ordinal),
         tick,
         tags,
         affiliations,

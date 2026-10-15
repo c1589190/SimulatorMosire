@@ -73,7 +73,7 @@ public final class ReviseCallTool implements SimosTool {
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / PAYLOAD_HINTS。 */
   public static final String NAME = "simos.ga.packet.revise";
 
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private final ToolWritePort writes;
@@ -147,7 +147,7 @@ public final class ReviseCallTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   /** ★ 类3 {@code DM_FREE}：决策表达零世界效果（不变量 I1；设计书 §5 权限表）。 */

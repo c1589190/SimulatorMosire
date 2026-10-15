@@ -22,9 +22,9 @@ import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.SdInfoEntry;
-import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -385,9 +385,9 @@ class SdDecisionResultsApiTest {
   private List<String> infoIds() {
     SimulationState state = shell.queryService().stateAt(QueryTarget.head(new BranchId("main")));
     List<String> out = new ArrayList<>();
-    for (List<SdInfoEntry> entries :
+    for (List<DecisionInfoEntry> entries :
         ((GaSnapshot) state.module("ga").orElseThrow()).state().info().values()) {
-      for (SdInfoEntry entry : entries) {
+      for (DecisionInfoEntry entry : entries) {
         out.add(entry.id().value());
       }
     }
@@ -404,7 +404,7 @@ class SdDecisionResultsApiTest {
   }
 
   private static String idOf(String canonicalAddress, int ordinal) {
-    return SdInfoIds.synthesize(canonicalAddress, ordinal).value();
+    return DecisionInfoIds.synthesize(canonicalAddress, ordinal).value();
   }
 
   // ────────────────────────────── 夹具 ──────────────────────────────
@@ -472,7 +472,7 @@ class SdDecisionResultsApiTest {
     makers.put(DM_B, maker(DM_B));
     makers.put(DM_C, maker(DM_C));
 
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
+    Map<String, List<DecisionInfoEntry>> info = new LinkedHashMap<>();
     info.put(
         ADDR_7,
         List.of(
@@ -482,10 +482,10 @@ class SdDecisionResultsApiTest {
     return GaState.empty().withDecisionMakers(makers).withInfo(info);
   }
 
-  private static SdInfoEntry entry(
+  private static DecisionInfoEntry entry(
       String canonicalAddress, int ordinal, long tick, Set<DecisionMakerId> tags, String marker) {
-    return new SdInfoEntry(
-        SdInfoIds.synthesize(canonicalAddress, ordinal),
+    return new DecisionInfoEntry(
+        DecisionInfoIds.synthesize(canonicalAddress, ordinal),
         tick,
         tags,
         Set.of(),

@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code sd.DecisionResults}（第 3 波第 3 步）：**决策人查看自己的决策结果**——按 tick 看不同裁决的逐条结局。
+ * {@code simos.ga.decisionResults}（第 3 波第 3 步）：**决策人查看自己的决策结果**——按 tick 看不同裁决的逐条结局。
  *
  * <p>★★ **用户的原始诉求**：「允许决策人查看不同 tick 的不同决策结果是必要的」；「把能查看的决策结果列表以及相关查看组件做成 tool，Agent 决策人想看直接看」。本类就是那条
  * tool。
@@ -48,12 +48,12 @@ import java.util.Set;
 public final class DecisionResultsTool implements SimosTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
-  public static final String NAME = "sd.DecisionResults";
+  public static final String NAME = "simos.ga.decisionResults";
 
   /**
    * {@code limit} 的缺省：最近 20 条（一次对话要看的那一档；也保证缺省查询有界）。
    *
-   * <p>★ **公开是给 GUI 的决策结果子页复用**（{@code GET /api/sd/decision-results}）：那个端点与本工具是**同一份数据、两个入口**，
+   * <p>★ **公开是给 GUI 的决策结果子页复用**（{@code GET /api/ga/decision-results}）：那个端点与本工具是**同一份数据、两个入口**，
    * 边界必须是同一份。GUI 另写一组 20/200 就是"两份都对、只会漂移"的老形态。
    */
   public static final int DEFAULT_LIMIT = 20;
@@ -66,7 +66,7 @@ public final class DecisionResultsTool implements SimosTool {
   public static final int MAX_LIMIT = 200;
 
   /** 本工具的资源声明：sd 只读（见类注的 fail-closed 理由）。 */
-  private static final ResourceManifest SD_READ =
+  private static final ResourceManifest GA_READ =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   private final GaToolQueries queries;
@@ -108,7 +108,7 @@ public final class DecisionResultsTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_READ;
+    return GA_READ;
   }
 
   @Override

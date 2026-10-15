@@ -20,13 +20,12 @@ import java.util.Set;
  * fail-closed，**绝不静默兜底**。⇒ 工具层**有意不加**存在性校验：那份校验能被 {@code simos.command.submit}
  * 绕过（＝装饰），而「从工具面看不出写错了」这件事已写进 {@link #description()}。
  */
-public final class SdSetDecisionMakerProviderTool extends AbstractNarrowWriteTool
+public final class SetDecisionMakerProviderTool extends AbstractNarrowWriteTool
     implements SimosTool {
 
   public static final String NAME = "ga.SetDecisionMakerProvider";
 
-  public SdSetDecisionMakerProviderTool(
-      ToolWritePort writes, GaToolIdentity identity, String mapId) {
+  public SetDecisionMakerProviderTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
   }
 

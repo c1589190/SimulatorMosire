@@ -1,4 +1,4 @@
-package io.mosire.simos.app.sd.channel;
+package io.mosire.simos.app.ga.channel;
 
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;

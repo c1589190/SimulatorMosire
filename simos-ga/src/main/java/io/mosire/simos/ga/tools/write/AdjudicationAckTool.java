@@ -12,7 +12,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.GaState;
-import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
@@ -60,7 +60,7 @@ import java.util.Set;
  * 地址段与 {@code tags} 都用派生值 ⇒ 谁也不能替别人确认推演（与 {@code ConfirmPacketTool} 同形）。
  *
  * <p>★ <b>tick 不得记在未来</b>：与 {@code ga.PutInfo} 同口径（过去合法——"我刚才那轮没来得及确认"是真实场景）。 为负 ⇒ 直接 {@code
- * BAD_REQUEST}（{@code SdInfoEntry} 的构造期判据是 {@code tick ≥ 0}，但那会以 handler 的具名拒返回， 不如在工具侧说清）。
+ * BAD_REQUEST}（{@code DecisionInfoEntry} 的构造期判据是 {@code tick ≥ 0}，但那会以 handler 的具名拒返回， 不如在工具侧说清）。
  *
  * <p>★ <b>资源断言照抄 {@code ConfirmPacketTool}</b>：{@code sd:decision-packet/<自己>}（自指域，决策人基础可达面里已有它）
  * ——因为本工具落的是"我自己的决策流程"里的一条 INFO，不是别人的数据。
@@ -83,7 +83,7 @@ public final class AdjudicationAckTool implements SimosTool {
    * 写 {@code sd} 域（与 {@code ConfirmPacketTool} 同款：本工具钉死的 {@code ga.PutInfo} 只产 {@code
    * GaChangeSet}）。
    */
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private final ToolWritePort writes;
@@ -132,7 +132,7 @@ public final class AdjudicationAckTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   /** ★ 类3 {@code DM_FREE}：DM 的一次表态，零世界效果（设计书 §5 权限表）。 */
@@ -288,11 +288,11 @@ public final class AdjudicationAckTool implements SimosTool {
    * dm}/{@code tick} 不参与判定（它们只是给人看的回执）。
    */
   public static boolean isAcked(GaState ga, long tick, String decisionMakerId) {
-    List<SdInfoEntry> entries = ga.info().get(ackAddress(tick, decisionMakerId).canonical());
+    List<DecisionInfoEntry> entries = ga.info().get(ackAddress(tick, decisionMakerId).canonical());
     if (entries == null) {
       return false;
     }
-    for (SdInfoEntry entry : entries) {
+    for (DecisionInfoEntry entry : entries) {
       if (KEY_ACK.equals(entry.key())) {
         return true;
       }

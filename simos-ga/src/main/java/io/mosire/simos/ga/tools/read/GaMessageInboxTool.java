@@ -10,7 +10,7 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaState;
-import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolResources;
@@ -155,8 +155,8 @@ public final class GaMessageInboxTool implements SimosTool {
       // ★ 归属轴：受众标签集由端口现拼（ga 侧不认识任何归属种类），整轮只算一次。
       Set<String> affiliationLabels = queries.affiliationLabelsOf(self, state);
       List<MatchedMessage> matched = new ArrayList<>();
-      for (Map.Entry<String, List<SdInfoEntry>> at : ga.info().entrySet()) {
-        for (SdInfoEntry entry : at.getValue()) {
+      for (Map.Entry<String, List<DecisionInfoEntry>> at : ga.info().entrySet()) {
+        for (DecisionInfoEntry entry : at.getValue()) {
           if (!GaMessageSendTool.KEY_MESSAGE.equals(entry.key())) {
             continue;
           }
@@ -253,7 +253,7 @@ public final class GaMessageInboxTool implements SimosTool {
   }
 
   /** 命中的一条：条目与解析后的结构化值成对保留。 */
-  private record MatchedMessage(SdInfoEntry entry, JsonNode message) {}
+  private record MatchedMessage(DecisionInfoEntry entry, JsonNode message) {}
 
   /** ★ 「这个工具能被谁用」的唯一拼写点：**决策人面**（GM 不是决策人，它读 info 全量、不需要这个收件箱）。 */
   @Override

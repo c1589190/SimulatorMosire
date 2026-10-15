@@ -117,6 +117,9 @@ import io.mosire.simos.ga.tools.read.DecisionDocsTool;
 import io.mosire.simos.ga.tools.read.DecisionMakerTool;
 import io.mosire.simos.ga.tools.read.DecisionMakersTool;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
+import io.mosire.simos.ga.tools.read.DiplomacyTool;
+import io.mosire.simos.ga.tools.read.DiplomaticEventsTool;
+import io.mosire.simos.ga.tools.read.DirectivesTool;
 import io.mosire.simos.ga.tools.read.GaMessageInboxTool;
 import io.mosire.simos.ga.tools.read.GmApprovalsTool;
 import io.mosire.simos.ga.tools.read.GmInboxTool;
@@ -124,12 +127,13 @@ import io.mosire.simos.ga.tools.read.GmPacketTool;
 import io.mosire.simos.ga.tools.read.GmPacketsTool;
 import io.mosire.simos.ga.tools.read.GmRoundTool;
 import io.mosire.simos.ga.tools.read.GmToolUsageTool;
-import io.mosire.simos.ga.tools.read.SdDiplomacyTool;
-import io.mosire.simos.ga.tools.read.SdDiplomaticEventsTool;
-import io.mosire.simos.ga.tools.read.SdDirectivesTool;
-import io.mosire.simos.ga.tools.read.SdVerdictsTool;
+import io.mosire.simos.ga.tools.read.VerdictsTool;
 import io.mosire.simos.ga.tools.write.AdjudicationAckTool;
+import io.mosire.simos.ga.tools.write.CancelEffectTool;
 import io.mosire.simos.ga.tools.write.ConfirmPacketTool;
+import io.mosire.simos.ga.tools.write.CreateArmyTool;
+import io.mosire.simos.ga.tools.write.CreateDecisionMakerTool;
+import io.mosire.simos.ga.tools.write.CreateNationTool;
 import io.mosire.simos.ga.tools.write.DropCallTool;
 import io.mosire.simos.ga.tools.write.GaMessageSendTool;
 import io.mosire.simos.ga.tools.write.GmActAsTool;
@@ -143,25 +147,19 @@ import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
 import io.mosire.simos.ga.tools.write.MyPacketTool;
 import io.mosire.simos.ga.tools.write.PacketIntentTool;
 import io.mosire.simos.ga.tools.write.ProposeCallTool;
+import io.mosire.simos.ga.tools.write.PutInfoTool;
 import io.mosire.simos.ga.tools.write.RecordDiplomaticEventTool;
+import io.mosire.simos.ga.tools.write.RegisterEffectTool;
 import io.mosire.simos.ga.tools.write.RejectDirectiveTool;
 import io.mosire.simos.ga.tools.write.ReopenPacketTool;
 import io.mosire.simos.ga.tools.write.ResetDecisionMakerConversationTool;
 import io.mosire.simos.ga.tools.write.ReviseCallTool;
 import io.mosire.simos.ga.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.ga.tools.write.RunDecisionTool;
-import io.mosire.simos.ga.tools.write.SdCancelEffectTool;
-import io.mosire.simos.ga.tools.write.SdCreateArmyTool;
-import io.mosire.simos.ga.tools.write.SdCreateDecisionMakerTool;
-import io.mosire.simos.ga.tools.write.SdCreateNationTool;
-import io.mosire.simos.ga.tools.write.SdPutInfoTool;
-import io.mosire.simos.ga.tools.write.SdRecordDiplomaticEventTool;
-import io.mosire.simos.ga.tools.write.SdRegisterEffectTool;
-import io.mosire.simos.ga.tools.write.SdSetArmyMasterGovTool;
-import io.mosire.simos.ga.tools.write.SdSetDecisionMakerProviderTool;
-import io.mosire.simos.ga.tools.write.SdSetDiplomaticRelationTool;
+import io.mosire.simos.ga.tools.write.SetArmyMasterGovTool;
 import io.mosire.simos.ga.tools.write.SetDecisionMakerAccessTool;
 import io.mosire.simos.ga.tools.write.SetDecisionMakerPeerTool;
+import io.mosire.simos.ga.tools.write.SetDecisionMakerProviderTool;
 import io.mosire.simos.ga.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.ga.tools.write.StartDecisionTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
@@ -940,15 +938,15 @@ public final class SimosToolSource implements ToolSource {
   /**
    * 测试/旧路径：全缺省时钟（不读 store）；生产 Shell 必须用带 {@link CalendarService} 的重载（{@link CalendarService#load}）。
    *
-   * <p>决策人桶的装配（**不带目标表**）：{@link Role#DECISION_AGENT} 走这条——本桶不含 {@code sd.AdjudicateTick}（它是 GM
-   * 的活），故不需要 {@link CommandTargets}，也不需要运行流。
+   * <p>决策人桶的装配（**不带目标表**）：{@link Role#DECISION_AGENT} 走这条——本桶不含 {@code simos.ga.adjudicateTick}（它是
+   * GM 的活），故不需要 {@link CommandTargets}，也不需要运行流。
    *
-   * <p>★ GM 桶请用带 {@code commandTargets} 的那条：缺了它 {@code sd.AdjudicateTick} 会因"没有任何命令有目标声明"
+   * <p>★ GM 桶请用带 {@code commandTargets} 的那条：缺了它 {@code simos.ga.adjudicateTick} 会因"没有任何命令有目标声明"
    * 而**一律拒**（fail-closed，不会静默放行——但这显然不是想要的行为）。
    *
    * @param commandTypes E6b 起 = catalog 可见的**完整注册面**（含 GM-only）；只读
    * @param embeddableCommandTypes E6b 起 = **可嵌入令白名单的输入集**（注册面 − GM-only；{@code DirectiveWhitelist}
-   *     会再过滤 {@code sd.*} 自指与通用写）；{@code CatalogTool} 的决策人可见性判据与 {@code sd.AdjudicateTick} 的
+   *     会再过滤 {@code sd.*} 自指与通用写）；{@code CatalogTool} 的决策人可见性判据与 {@code simos.ga.adjudicateTick} 的
    *     whitelist 都用它（见 {@link #SimosToolSource} 的类注）
    */
   public SimosToolSource(
@@ -1021,7 +1019,7 @@ public final class SimosToolSource implements ToolSource {
    *
    * @param commandTypes catalog 可见的完整注册面（含 GM-only；E6b 起与 embeddableCommandTypes 拆开）
    * @param embeddableCommandTypes 可嵌入令白名单的输入集（注册面 − GM-only；E6b 起供 {@code CatalogTool} 的决策人过滤与
-   *     {@code sd.AdjudicateTick} 的 whitelist，两者各自经 {@code DirectiveWhitelist} 过滤自指/通用写）
+   *     {@code simos.ga.adjudicateTick} 的 whitelist，两者各自经 {@code DirectiveWhitelist} 过滤自指/通用写）
    * @param commandTargets {@code type → 目标声明}（**必须**由同一份已注册 handler 清单派生，见 {@link CommandTargets}）
    * @param decisionAgent **只被 {@link Role#GM} 用到**（触发工具只在 GM 面）；该角色下为 null ⇒ **当场抛**
    *     （装配故障不静默兜底），{@link Role#DECISION_AGENT} 下**无关**（它没有触发工具，也不需要运行流）
@@ -1676,11 +1674,11 @@ public final class SimosToolSource implements ToolSource {
     //   桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new AssignArmyGovTool(toolWrites, toolReads, armyPerspective));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
-    built.add(new SdCreateNationTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdCreateArmyTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdSetArmyMasterGovTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdCreateDecisionMakerTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdPutInfoTool(gaWrites, gaIdentity, mapId));
+    built.add(new CreateNationTool(gaWrites, gaIdentity, mapId));
+    built.add(new CreateArmyTool(gaWrites, gaIdentity, mapId));
+    built.add(new SetArmyMasterGovTool(gaWrites, gaIdentity, mapId));
+    built.add(new CreateDecisionMakerTool(gaWrites, gaIdentity, mapId));
+    built.add(new PutInfoTool(gaWrites, gaIdentity, mapId));
     // ★★ D2（2026-10-22 决策包计划）：GM 裁决决策包（写）。**只在 GM 桶**；工具名不是命令类型
     //   ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）。
     built.add(new GmDecidePacketTool(gaWrites, gaReads));
@@ -1697,15 +1695,21 @@ public final class SimosToolSource implements ToolSource {
     built.add(new GmMergedPlanUpsertTool(gaWrites, gaReads, gaProposal));
     built.add(new GmMergedPlanApplyTool(gaReads, initiator, gaEffects));
     built.add(new GmPacketExecuteTool(gaReads, initiator, gaEffects));
-    // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件的 GM 窄写。
-    //   **只在 GM 桶**；工具名（下面 5 条 = 3 条 ga.* + 2 条 simos.sd.*）不是命令类型 ⇒ 不进
-    //   catalog/PAYLOAD_HINTS；写面只声明 ga（2026-10-14 批次 F 由 sd 改名；此处原文写「工具名（simos.sd.*）」，与实况失真，一并纠正）。
-    //   决策人侧另有同名命令型的窄工具（见 addDecisionAgentWrites）。──
-    built.add(new SdSetDiplomaticRelationTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdRecordDiplomaticEventTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdRegisterEffectTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdCancelEffectTool(gaWrites, gaIdentity, mapId));
-    built.add(new SdSetDecisionMakerProviderTool(gaWrites, gaIdentity, mapId));
+    // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件的窄写。
+    //   ★★ 2026-10-15 批 L ②（设计书 §2 N2「乙 + 合并甲」/ §2.1）：原来"GM 一条 + 决策人一条"的两对**各自合并成一条**
+    //   —— roles()={DM, GM} ⇒ 在**两桶同名两处注册**（与 IssueDirectiveTool / SubmitVerdictTool 同制：GM 侧走
+    //   GmAutoApproveGate、决策人侧走既有审批链）；目标解析按调用者身份分支（DM ⇒ 身份派生 + 署名判定；GM ⇒ 显式点名），
+    //   分支判据与 GovToolSupport.resolveGov 逐字同形。下面 5 条 = 3 条 ga.* + 2 条 simos.gov.*。
+    //   工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 ga（2026-10-14 批次 F 由 sd 改名）。──
+    built.add(
+        new SetDiplomaticRelationTool(
+            gaWrites, gaReads, gaIdentity, AppDecisionMakerAffiliations.INSTANCE, mapId));
+    built.add(
+        new RecordDiplomaticEventTool(
+            gaWrites, gaReads, gaIdentity, AppDecisionMakerAffiliations.INSTANCE, mapId));
+    built.add(new RegisterEffectTool(gaWrites, gaIdentity, mapId));
+    built.add(new CancelEffectTool(gaWrites, gaIdentity, mapId));
+    built.add(new SetDecisionMakerProviderTool(gaWrites, gaIdentity, mapId));
     // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录写入（GM-only 命令 army.RecordCombat 的窄封装）。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 army 命名空间。
     built.add(new ArmyRecordCombatTool(toolWrites, mapId));
@@ -1894,9 +1898,13 @@ public final class SimosToolSource implements ToolSource {
 
   /**
    * 决策人组的写面（N9 + 用户 2026-09-22 的收窄 + D5 的三条新增）：**决策行为 + 外交/支付两条受限写入** —— {@code
-   * ga.IssueDirective}（出令）、{@code ga.SubmitVerdict}（裁决者冻结判决）、{@code gov.SetDiplomaticRelation}
-   * （以调用者 Nation 名义写外交边）、{@code gov.RecordDiplomaticEvent}（参与者必须含调用者 Nation）、 {@code
-   * simos.gov.pay}（付款人 = 调用者所属 GOV，身份派生；收款方由既有审批链把关）。
+   * ga.IssueDirective}（出令）、{@code ga.SubmitVerdict}（裁决者冻结判决）、{@code
+   * simos.gov.setDiplomaticRelation}（决策人调用时以调用者 Nation 名义写外交边）、{@code
+   * simos.gov.recordDiplomaticEvent}（决策人调用时参与者必须含调用者 Nation）、 {@code simos.gov.pay}（付款人 = 调用者所属
+   * GOV，身份派生；收款方由既有审批链把关）。
+   *
+   * <p>★★ <b>2026-10-15 批 L ②</b>：两条外交写与 {@link #addGmWrites} 里的**同名工具是同一批类**（{@code roles()={DM,
+   * GM}} + {@code Ask(SENSITIVE)} ⇒ 类2）——GM 面显式点名、决策人面身份派生，差别只在审批链（G-4 的口径）。
    *
    * <p>★ **无** `ga.SetDecisionMakerAccess`（配权是 GM 的活）、**无**通用写、**无** map/unit/sd
    * 的任何其他写工具：用户原话「决策人不能直接改地图等数据， 只能获取有限的、被 GM 权限层限制范围的信息」。指挥一律走 `ga.IssueDirective`（spec §八.2 的 D2
@@ -2031,7 +2039,7 @@ public final class SimosToolSource implements ToolSource {
     // ★★ 2026-10-12 B3 第七域（ga/sd 决策族）：读工具**已下放**（`io.mosire.simos.ga.tools.read`），
     //   这里只做装配——注入窄读口 + 三条 ga 自有的接缝：
     //   ① 视图口（ApiViews 的 combats/diplomacy/events/gmToolUsage 逐条转调，形状只此一份）；
-    //   ② 查询口（SdQueryService + RedactingQueryService 的裁剪读面；窗口类型是 ga 的镜像，转换只在此一处）；
+    //   ② 查询口（DecisionQueryService + RedactingQueryService 的裁剪读面；窗口类型是 ga 的镜像，转换只在此一处）；
     //   ③ 身份口（DecisionCallerFactory 的身份派生 + 自指域 kind）。
     ToolReadPort gaReads = new QueryServiceToolReadPort(query);
     GaToolViews gaViews = new AppGaToolViews();
@@ -2123,15 +2131,15 @@ public final class SimosToolSource implements ToolSource {
         new DecisionMakersTool(gaQueries),
         // ★ 2026-09-25：详情并入 GUI 的 `/{id}/scope`（现算可见范围）——同一资源的两个端点合成一条工具。
         new DecisionMakerTool(gaQueries),
-        // ★★ P7c（2026-10-01 后端 + MCP 稳定化计划）：决策记录清单（GUI GET /api/sd/directives 的 MCP 读口）。
+        // ★★ P7c（2026-10-01 后端 + MCP 稳定化计划）：决策记录清单（GUI GET /api/ga/directives 的 MCP 读口）。
         //   与 decision-makers/decision-maker 同属"读别人的底牌" ⇒ 只给 GM 桶（GmOnlyRead）；视图直接复用
         //   ApiViews.directives，不另写一份。
-        new SdDirectivesTool(gaQueries),
+        new DirectivesTool(gaQueries),
         // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件（世界级自然语言文本 ⇒
         //   四桶共享读；不标 GmOnlyRead；**不做逐格视野过滤**、也绝不借它给中央 DM 地图/单位视野——D-002）。
         //   形状复用 ApiViews.diplomaticRelations / ApiViews.diplomaticEvents。
-        new SdDiplomacyTool(gaReads, gaViews),
-        new SdDiplomaticEventsTool(gaReads, gaViews),
+        new DiplomacyTool(gaReads, gaViews),
+        new DiplomaticEventsTool(gaReads, gaViews),
         // ★★ 2026-10-14：旧读口 simos.sd.reports **整条删除**（旧族废弃，用户原话「老的直接扔掉」）；
         //   接替它的是决策人桶里的 simos.ga.message.inbox（只读寄给自己的消息，不泄漏名册）。
         // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录读口（"当前 tick 在哪发生交战"的唯一直接读口）。
@@ -2140,7 +2148,7 @@ public final class SimosToolSource implements ToolSource {
         new ArmyCombatsTool(armyReads, armyViews, armyPerspective, mapId),
         new ArmyCombatTool(armyReads, armyViews, armyPerspective, mapId),
         // ★ 判决（模型原始输出 + meta）：省略 actor = FULL 全量披露 ⇒ 只给 GM 桶（GmOnlyRead），见类注。
-        new SdVerdictsTool(gaQueries),
+        new VerdictsTool(gaQueries),
         // ★★ D2（2026-10-22 决策包计划）：GM 决策包两条读口（摘要列表 + 单包全量）。
         //   只给 GM 桶（GmOnlyRead）：决策包是 GM 的裁决工作面，决策人用 simos.ga.packet.my 读自己的。
         new GmPacketsTool(gaReads),

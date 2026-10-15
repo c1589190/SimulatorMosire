@@ -11,7 +11,7 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaState;
-import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.spi.PutInfoHandler;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolReadPort;
@@ -339,8 +339,8 @@ public final class GaMessageSendTool implements SimosTool {
   /**
    * 信件条目 id：{@code msg-<from>-<to>-<tick>-<n>}。
    *
-   * <p>★ <b>显式给 id</b>（不走 {@code SdInfoIds.synthesize}）：显式 id 在 {@code PutInfoHandler} 里**命令期查重**，
-   * 而"序号 = 该方向已有条数"保证同一 {@code (from,to,tick)} 下不会撞；不同方向/不同 tick 天然不同段。
+   * <p>★ <b>显式给 id</b>（不走 {@code DecisionInfoIds.synthesize}）：显式 id 在 {@code PutInfoHandler}
+   * 里**命令期查重**， 而"序号 = 该方向已有条数"保证同一 {@code (from,to,tick)} 下不会撞；不同方向/不同 tick 天然不同段。
    */
   public static String messageId(String from, String to, long tick, int sequence) {
     return "msg-" + from + "-" + to + "-" + tick + "-" + sequence;
@@ -404,8 +404,8 @@ public final class GaMessageSendTool implements SimosTool {
    */
   public static int countMessages(GaState ga, String from, String to, long tick) {
     int count = 0;
-    for (List<SdInfoEntry> entries : ga.info().values()) {
-      for (SdInfoEntry entry : entries) {
+    for (List<DecisionInfoEntry> entries : ga.info().values()) {
+      for (DecisionInfoEntry entry : entries) {
         if (!KEY_MESSAGE.equals(entry.key())) {
           continue;
         }

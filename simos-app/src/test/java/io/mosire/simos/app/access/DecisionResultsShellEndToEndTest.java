@@ -26,9 +26,9 @@ import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.SdInfoEntry;
-import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.ga.tools.read.DecisionResultsTool;
 import io.mosire.simos.gov.GovSnapshot;
@@ -206,9 +206,9 @@ class DecisionResultsShellEndToEndTest {
 
   private static List<String> infoIds(SimulationState state) {
     List<String> out = new java.util.ArrayList<>();
-    for (List<SdInfoEntry> entries :
+    for (List<DecisionInfoEntry> entries :
         ((GaSnapshot) state.module("ga").orElseThrow()).state().info().values()) {
-      for (SdInfoEntry entry : entries) {
+      for (DecisionInfoEntry entry : entries) {
         out.add(entry.id().value());
       }
     }
@@ -220,7 +220,7 @@ class DecisionResultsShellEndToEndTest {
   }
 
   private static String idOf(String canonicalAddress, int ordinal) {
-    return SdInfoIds.synthesize(canonicalAddress, ordinal).value();
+    return DecisionInfoIds.synthesize(canonicalAddress, ordinal).value();
   }
 
   private static StateRef ref(String branch, long revision) {
@@ -282,16 +282,16 @@ class DecisionResultsShellEndToEndTest {
   private static GaState sdState() {
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(DM, new DecisionMaker(DM, Set.of(), AccessLimit.empty(), 1));
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
+    Map<String, List<DecisionInfoEntry>> info = new LinkedHashMap<>();
     info.put(ADDR_8, List.of(entry(ADDR_8, 0, 8, Set.of(DM), "own@8")));
     info.put(ADDR_9, List.of(entry(ADDR_9, 0, 9, Set.of(), "unowned@9")));
     return GaState.empty().withDecisionMakers(makers).withInfo(info);
   }
 
-  private static SdInfoEntry entry(
+  private static DecisionInfoEntry entry(
       String canonicalAddress, int ordinal, long tick, Set<DecisionMakerId> tags, String marker) {
-    return new SdInfoEntry(
-        SdInfoIds.synthesize(canonicalAddress, ordinal),
+    return new DecisionInfoEntry(
+        DecisionInfoIds.synthesize(canonicalAddress, ordinal),
         tick,
         tags,
         Set.of(),

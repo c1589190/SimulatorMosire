@@ -379,7 +379,7 @@
             </fieldset>
           </div>
 
-          <!-- ★ B12 第 4 页「决策结果」：GET /api/sd/decision-results?as=<决策人>…
+          <!-- ★ B12 第 4 页「决策结果」：GET /api/ga/decision-results?as=<决策人>…
                可见性归服务端（端点只回 tags 含 as 的条目；无主条目不回任何人）——前端不筛。
                ★ 窗口：默认看最近 20 条（limit 缺省 20、上限 200），也能只看某一 tick。
                  读取一律**按 tick 分组、新的在前**；每条命令显示 结局（已执行 / 已驳回）+ 拒因。 -->
@@ -401,7 +401,7 @@
             <div id="decision-results-mount" class="decision-results"></div>
           </div>
 
-          <!-- ★ Docs 系统第 5 页「文档」：GET /api/sd/decision-docs?as=<决策人>…&docId?&limit=…
+          <!-- ★ Docs 系统第 5 页「文档」：GET /api/ga/decision-docs?as=<决策人>…&docId?&limit=…
                可见性归服务端（tags 含 as **或** affiliations 含 as 的归属；两轴都不命中的不回）——前端不筛。
                ★ 本页的用处就是**预览**：换个决策人看一遍，就知道 GM 写的文档有没有发对。 -->
           <div data-decision-subpage="docs" hidden>

@@ -20,7 +20,7 @@ import java.util.Set;
  * 不存在）都在**域层**判、逐条有可读文案——工具层不重复校验（同上）。 旧 {@code nationId} 键在域层具名拒并指路 {@code masterGovUnitId}/{@code
  * unit.SetArmyFormation}。
  */
-public final class SdCreateArmyTool extends AbstractNarrowWriteTool implements SimosTool {
+public final class CreateArmyTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /**
    * 工具名（★ 全局唯一，且**不随命令类型改名**）：它在工具面/白名单/MCP 覆盖表里是稳定身份，改名会动可观测面。
@@ -29,12 +29,12 @@ public final class SdCreateArmyTool extends AbstractNarrowWriteTool implements S
    * 但**工具名一字未改**——工具名与命令类型在本仓本来就是两个可独立的拼写（见 {@link
    * io.mosire.simos.ga.tools.write.AbstractNarrowWriteTool#toolName()} 的钩子）。
    */
-  public static final String NAME = "sd.CreateArmy";
+  public static final String NAME = "simos.ga.createArmy";
 
   /** 本工具钉死的命令类型（2026-10-12 批次 3d-1 起 {@code army.CreateArmy}）。 */
   public static final String COMMAND_TYPE = "army.CreateArmy";
 
-  public SdCreateArmyTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
+  public CreateArmyTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
   }
 

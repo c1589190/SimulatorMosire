@@ -28,8 +28,8 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
-import io.mosire.simos.ga.tools.write.SdCreateDecisionMakerTool;
-import io.mosire.simos.ga.tools.write.SdCreateNationTool;
+import io.mosire.simos.ga.tools.write.CreateDecisionMakerTool;
+import io.mosire.simos.ga.tools.write.CreateNationTool;
 import io.mosire.simos.ga.tools.write.SubmitVerdictTool;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
@@ -279,7 +279,7 @@ class ToolSurfaceGapTest {
     long head = head();
     assertThat(
             callNarrowWrite(
-                    SdCreateNationTool.NAME,
+                    CreateNationTool.NAME,
                     "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"r-nation\","
                         + "\"adminBudgetPerTick\":10}",
                     head)
@@ -287,7 +287,7 @@ class ToolSurfaceGapTest {
         .isTrue();
     assertThat(
             callNarrowWrite(
-                    SdCreateDecisionMakerTool.NAME,
+                    CreateDecisionMakerTool.NAME,
                     "{\"id\":\"dm-1\",\"allowedTools\":[\"ga.IssueDirective\"],\"cadence\":5}",
                     head + 1)
                 .success())

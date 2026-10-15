@@ -39,7 +39,7 @@ import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
-import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolClass;
 import io.mosire.simos.ga.spi.ToolRole;
@@ -351,9 +351,9 @@ class LevyRegionToolTest {
 
     SimulationState after = stateAt(2L);
     assertThat(sdState(after).info()).containsOnlyKeys("unit:u-1");
-    List<SdInfoEntry> infos = sdState(after).info().get("unit:u-1");
+    List<DecisionInfoEntry> infos = sdState(after).info().get("unit:u-1");
     assertThat(infos).hasSize(1);
-    SdInfoEntry entry = infos.get(0);
+    DecisionInfoEntry entry = infos.get(0);
     assertThat(entry.key()).isEqualTo("levyRegion");
     assertThat(entry.tick()).isEqualTo(7L);
     assertThat(entry.value()).as("sd 里 value 是 JSON 字符串").isInstanceOf(String.class);
@@ -538,7 +538,7 @@ class LevyRegionToolTest {
         .isEqualTo(before.accounts().get(hh2Key).frozenBalances())
         .isEmpty();
 
-    List<SdInfoEntry> infos = sdState(afterState).info().get("unit:u-1");
+    List<DecisionInfoEntry> infos = sdState(afterState).info().get("unit:u-1");
     assertThat(infos).as("sd 里恰有一条 levyRegion 行动记录").hasSize(1);
     JsonNode stored = JSON.readTree((String) infos.get(0).value());
     assertThat(stored.get("cloth").asLong())
@@ -677,7 +677,7 @@ class LevyRegionToolTest {
           .as("cloth=0 时每本账的 cloth 余额都不动")
           .isEqualTo(clothOf(before, account.getKey()));
     }
-    List<SdInfoEntry> infos = sdState(afterState).info().get("unit:u-1");
+    List<DecisionInfoEntry> infos = sdState(afterState).info().get("unit:u-1");
     assertThat(infos).as("grain-only apply 后 sd 里恰有一条行动记录").hasSize(1);
     JsonNode stored = JSON.readTree((String) infos.get(0).value());
     assertThat(stored.get("cloth").asLong()).as("grain-only apply 的 PutInfo 仍写 cloth=0").isZero();

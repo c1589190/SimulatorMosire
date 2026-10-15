@@ -47,12 +47,12 @@ import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.id.DirectiveId;
 import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.Directive;
 import io.mosire.simos.ga.model.DirectiveCommand;
 import io.mosire.simos.ga.model.DirectiveStatus;
-import io.mosire.simos.ga.model.SdInfoEntry;
-import io.mosire.simos.ga.model.SdInfoIds;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
 import io.mosire.simos.ga.tools.write.RunDecisionTool;
 import io.mosire.simos.gov.GovSnapshot;
@@ -1318,9 +1318,9 @@ class RealLlmUnitDecisionLoopTest {
     makers.put(DM, decisionMaker());
 
     String docAddress = DecisionDoc.addressOf("u1-brief-0");
-    SdInfoEntry brief =
-        new SdInfoEntry(
-            SdInfoIds.synthesize(docAddress, 0),
+    DecisionInfoEntry brief =
+        new DecisionInfoEntry(
+            DecisionInfoIds.synthesize(docAddress, 0),
             0L,
             Set.of(DM),
             Set.of(),
@@ -1330,7 +1330,7 @@ class RealLlmUnitDecisionLoopTest {
             new RevisionId(1),
             Optional.empty(),
             Optional.empty());
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>();
+    Map<String, List<DecisionInfoEntry>> info = new LinkedHashMap<>();
     info.put(docAddress, List.of(brief));
     return WorldSlices.of(
         new GovState(Map.of(), Map.of(), nations, Map.of(), Map.of(), Map.of(), Map.of()),

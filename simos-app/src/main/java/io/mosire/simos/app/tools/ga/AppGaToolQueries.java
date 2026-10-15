@@ -4,12 +4,12 @@ import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.gui.ApiViews;
+import io.mosire.simos.app.query.DecisionQueryService;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.query.RedactingQueryService;
-import io.mosire.simos.app.query.SdQueryService;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.tools.GaToolQueries;
 import io.mosire.simos.util.spi.DecisionMakerId;
 import io.mosire.simos.util.state.BranchId;
@@ -24,7 +24,7 @@ import java.util.Set;
 
 /**
  * ★★ <b>{@link GaToolQueries} 的 app 实现</b>（2026-10-12 B3 第七域）：把"决策人 / 令 / 判决 / 决策结果 / 文档 / 消息可见性"
- * 的读面**逐条转调既有的唯一实现**（{@link SdQueryService} 与 {@link RedactingQueryService}）。
+ * 的读面**逐条转调既有的唯一实现**（{@link DecisionQueryService} 与 {@link RedactingQueryService}）。
  *
  * <p>★ <b>为什么这些查询不跟着工具进 ga</b>：{@code RedactingQueryService} 的裁剪切面要吃 {@code
  * DecisionScopeFunctions}（范围函数 = 权限面）、{@code ApiViews}（视图）、{@code GameMap}/格/区（地图）⇒ 按 I-G2 只能住 app。
@@ -56,9 +56,10 @@ public final class AppGaToolQueries implements GaToolQueries {
   @Override
   public List<Map<String, Object>> decisionMakers(
       String affiliationFilterRaw, BranchId branch, RevisionId revision) {
-    SdQueryService.AffiliationFilter filter = SdQueryService.parseFilter(affiliationFilterRaw);
+    DecisionQueryService.AffiliationFilter filter =
+        DecisionQueryService.parseFilter(affiliationFilterRaw);
     return ApiViews.decisionMakers(
-        new SdQueryService(query).listDecisionMakers(filter, target(branch, revision)));
+        new DecisionQueryService(query).listDecisionMakers(filter, target(branch, revision)));
   }
 
   @Override
@@ -66,12 +67,12 @@ public final class AppGaToolQueries implements GaToolQueries {
       String decisionMakerIdRaw, BranchId branch, RevisionId revision) {
     QueryTarget at = target(branch, revision);
     DecisionMakerId makerId = new DecisionMakerId(decisionMakerIdRaw);
-    Optional<SdQueryService.DecisionMakerInfo> info =
-        new SdQueryService(query).decisionMaker(makerId, at);
+    Optional<DecisionQueryService.DecisionMakerInfo> info =
+        new DecisionQueryService(query).decisionMaker(makerId, at);
     Optional<io.mosire.agentlib.permission.ResourceScopeMap> scopes =
         redacting().computedScopeOf(makerId, at);
     if (info.isEmpty() || scopes.isEmpty()) {
-      // ★ 与 GUI `/api/sd/decision-makers/{id}/scope` 同口径：解不出决策人或算不出范围 ⇒ 同一个 404（不折成空对象）。
+      // ★ 与 GUI `/api/ga/decision-makers/{id}/scope` 同口径：解不出决策人或算不出范围 ⇒ 同一个 404（不折成空对象）。
       return Optional.empty();
     }
     SimulationState state = query.stateAt(at);
@@ -85,11 +86,11 @@ public final class AppGaToolQueries implements GaToolQueries {
   public Optional<List<Map<String, Object>>> directives(
       String decisionMakerIdRaw, BranchId branch, RevisionId revision) {
     QueryTarget at = target(branch, revision);
-    SdQueryService sd = new SdQueryService(query);
+    DecisionQueryService sd = new DecisionQueryService(query);
     if (decisionMakerIdRaw == null) {
       return Optional.of(ApiViews.directives(sd.listDirectives(at)));
     }
-    Optional<List<SdQueryService.DirectiveInfo>> only =
+    Optional<List<DecisionQueryService.DirectiveInfo>> only =
         sd.listDirectives(DecisionMakerId.parse(decisionMakerIdRaw), at);
     // ★ 未知 id ⇒ 空（调用方据此给 NOT_FOUND），不折成"这个人还没出过令"的空列表。
     return only.map(ApiViews::directives);
@@ -119,7 +120,10 @@ public final class AppGaToolQueries implements GaToolQueries {
 
   @Override
   public boolean infoVisibleToDecisionMaker(
-      SdInfoEntry entry, DecisionMakerId actor, Set<String> affiliationLabels, String sender) {
+      DecisionInfoEntry entry,
+      DecisionMakerId actor,
+      Set<String> affiliationLabels,
+      String sender) {
     return RedactingQueryService.infoVisibleToDecisionMaker(
         entry, actor, affiliationLabels, sender);
   }
@@ -131,12 +135,13 @@ public final class AppGaToolQueries implements GaToolQueries {
 
   @Override
   public List<MakerDue> makerDueSignals(BranchId branch, RevisionId revision) {
-    List<SdQueryService.DecisionMakerInfo> infos =
-        new SdQueryService(query).listDecisionMakers(SdQueryService.ALL, target(branch, revision));
+    List<DecisionQueryService.DecisionMakerInfo> infos =
+        new DecisionQueryService(query)
+            .listDecisionMakers(DecisionQueryService.ALL, target(branch, revision));
     List<MakerDue> out = new ArrayList<>(infos.size());
-    for (SdQueryService.DecisionMakerInfo info : infos) {
+    for (DecisionQueryService.DecisionMakerInfo info : infos) {
       DecisionMaker maker = info.maker();
-      SdQueryService.PendingSignal pending = info.pending();
+      DecisionQueryService.PendingSignal pending = info.pending();
       out.add(
           new MakerDue(
               maker.id().value(),

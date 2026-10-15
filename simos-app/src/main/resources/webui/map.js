@@ -943,7 +943,7 @@
     return reloadRegionHighlight(focus ? [focus] : [], REGION_EDIT_HIGHLIGHT);
   }
 
-  // ── 决策人可见范围高亮（只读端点 `/api/sd/decision-makers/{id}/scope`）─────────────
+  // ── 决策人可见范围高亮（只读端点 `/api/ga/decision-makers/{id}/scope`）─────────────
   // ★ 为什么要有这一层：决策人"看得见什么"= 服务端范围函数现算 ∩ GM 的 accessLimit。
   //   旧实现是**前端**按 affiliation 从 overview 自己推（国家的区域全高亮），军队级则什么都不画
   //   —— 那是第二份真相：GM 用 accessLimit 收窄过的范围，界面照样画整片国土。
@@ -974,7 +974,7 @@
   /**
    * ★ 纯函数：可见范围响应 ⇒ 地图高亮计划（**无 DOM、无 IO**，可直接单测）。
    *
-   * <p>输入是 `GET /api/sd/decision-makers/{id}/scope` 的体。格集**只来自服务端**（`visible.hexes`）——
+   * <p>输入是 `GET /api/ga/decision-makers/{id}/scope` 的体。格集**只来自服务端**（`visible.hexes`）——
    * 前端不补、不猜、不从 overview 推。`visible.hexCount` 含图外格，故文案报的是它、而画的是 `hexes`。
    */
   function buildDecisionScopeHighlight(scope) {

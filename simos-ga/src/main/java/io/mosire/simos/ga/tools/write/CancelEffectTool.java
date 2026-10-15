@@ -19,16 +19,16 @@ import java.util.Set;
  * <p>★ 只有**可取消状态**（{@code PLANNED} / {@code COMMITTED}）的效果才允许；已触发 / 已取消 / 已过期的被域层拒。
  *
  * <p>★★ <b>2026-10-12 批次 3b-4：工具名与命令类型 {@code sd.CancelEffect → ga.CancelEffect}</b>（同 {@link
- * SdRegisterEffectTool} 的类注：用户裁定「sd 整个弃用！」＋"命令必须与切片同名"）。★ 类名保持 {@code SdCancelEffectTool}（留待批次 3e 随
- * sd 空壳一起正名）。★ <b>已知债</b>：资源声明仍写 {@code sd} 命名空间而实际写 ga ——理由、影响与收口时点见 {@link SdRegisterEffectTool}
- * 的类注（与 3c §E.1 / 3d-1 §D.1 同族，留给批次 5）。
+ * RegisterEffectTool} 的类注：用户裁定「sd 整个弃用！」＋"命令必须与切片同名"）。★ 类名保持 {@code CancelEffectTool}（留待批次 3e 随 sd
+ * 空壳一起正名）。★ <b>已知债</b>：资源声明仍写 {@code sd} 命名空间而实际写 ga ——理由、影响与收口时点见 {@link RegisterEffectTool} 的类注（与
+ * 3c §E.1 / 3d-1 §D.1 同族，留给批次 5）。
  */
-public final class SdCancelEffectTool extends AbstractNarrowWriteTool implements SimosTool {
+public final class CancelEffectTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /** ★ 本批起 = 命令类型（{@code ga.CancelEffect}）。 */
   public static final String NAME = "ga.CancelEffect";
 
-  public SdCancelEffectTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
+  public CancelEffectTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
   }
 

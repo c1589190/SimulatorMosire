@@ -56,20 +56,20 @@ import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.id.DecisionPacketId;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DecisionPacket;
 import io.mosire.simos.ga.model.Directive;
 import io.mosire.simos.ga.model.DirectiveCommand;
 import io.mosire.simos.ga.model.FormattedCall;
 import io.mosire.simos.ga.model.PacketStatus;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.spi.IssueDirectiveHandler;
 import io.mosire.simos.ga.tools.write.GmDecidePacketTool;
 import io.mosire.simos.ga.tools.write.GmPacketExecuteTool;
 import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
+import io.mosire.simos.ga.tools.write.PutInfoTool;
 import io.mosire.simos.ga.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.ga.tools.write.RunDecisionTool;
-import io.mosire.simos.ga.tools.write.SdPutInfoTool;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -1059,7 +1059,7 @@ class RealLlmGovScenarioTest {
       payload.put("tags", List.of(dmId));
       McpToolOutcome outcome =
           callToolOutcome(
-              SdPutInfoTool.NAME,
+              PutInfoTool.NAME,
               Map.of(
                   "payloadJson",
                   json(payload),
@@ -2233,11 +2233,11 @@ class RealLlmGovScenarioTest {
   }
 
   private static String stateIntent(GaState sd, Directive directive) {
-    List<SdInfoEntry> entries = sd.info().get("sd:directive." + directive.id().value());
+    List<DecisionInfoEntry> entries = sd.info().get("sd:directive." + directive.id().value());
     if (entries == null) {
       return "";
     }
-    for (SdInfoEntry entry : entries) {
+    for (DecisionInfoEntry entry : entries) {
       if (IssueDirectiveHandler.INTENT_INFO_KEY.equals(entry.key())
           && entry.value() instanceof String text) {
         return text;

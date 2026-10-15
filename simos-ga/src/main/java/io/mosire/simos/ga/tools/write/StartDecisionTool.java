@@ -17,7 +17,7 @@ import java.util.Set;
  * <p>★ **只在 GM 桶**（{@code SimosToolSource.Role#GM}，装配面在 app）：决策人 Agent 口**没有**此工具（它不参与"
  * 开始决策"，只被异步发起后出令）。标 sensitive ⇒ GM Agent 经 MCP 发起时走**审批门链**（D6②）。
  *
- * <p>★ 用户经 GUI 点 ⇒ 走 {@code POST /api/sd/start-decision}（`initiator="player:gui"`，**直接生效**，不经审批）。
+ * <p>★ 用户经 GUI 点 ⇒ 走 {@code POST /api/ga/start-decision}（`initiator="player:gui"`，**直接生效**，不经审批）。
  */
 public final class StartDecisionTool extends AbstractNarrowWriteTool implements SimosTool {
 

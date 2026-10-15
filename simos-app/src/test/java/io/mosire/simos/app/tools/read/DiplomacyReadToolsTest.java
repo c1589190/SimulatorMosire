@@ -19,8 +19,8 @@ import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.tools.GaToolViews;
-import io.mosire.simos.ga.tools.read.SdDiplomacyTool;
-import io.mosire.simos.ga.tools.read.SdDiplomaticEventsTool;
+import io.mosire.simos.ga.tools.read.DiplomacyTool;
+import io.mosire.simos.ga.tools.read.DiplomaticEventsTool;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -162,8 +162,8 @@ class DiplomacyReadToolsTest {
 
     final CoreSimos core;
     final QueryService query;
-    final SdDiplomacyTool diplomacyTool;
-    final SdDiplomaticEventsTool eventsTool;
+    final DiplomacyTool diplomacyTool;
+    final DiplomaticEventsTool eventsTool;
 
     private Fixture(CoreSimos core) {
       this.core = core;
@@ -172,8 +172,8 @@ class DiplomacyReadToolsTest {
       //   ⇒ 构造器改吃注入端口，与生产装配（SimosToolSource）同源。
       ToolReadPort reads = new QueryServiceToolReadPort(query);
       GaToolViews views = new AppGaToolViews();
-      this.diplomacyTool = new SdDiplomacyTool(reads, views);
-      this.eventsTool = new SdDiplomaticEventsTool(reads, views);
+      this.diplomacyTool = new DiplomacyTool(reads, views);
+      this.eventsTool = new DiplomaticEventsTool(reads, views);
     }
 
     static Fixture open(Path storeDir) {

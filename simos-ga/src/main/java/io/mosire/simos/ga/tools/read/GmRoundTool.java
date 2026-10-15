@@ -74,7 +74,7 @@ public final class GmRoundTool implements SimosTool, GmOnlyRead {
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gm.round";
 
-  private static final ResourceManifest SD_READ =
+  private static final ResourceManifest GA_READ =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
   /** 工具面事件的发射通道（分类 = {@link GaLog#tool()}，来源 = {@link GaLogSource#GA_TOOL_CALL}）。 */
@@ -118,7 +118,7 @@ public final class GmRoundTool implements SimosTool, GmOnlyRead {
   /** ★ 声明 {@code sd} 只读（与 {@code simos.gm.packets} 同款；**不声明** {@code peer}，理由见类注）。 */
   @Override
   public ResourceManifest resources() {
-    return SD_READ;
+    return GA_READ;
   }
 
   @Override

@@ -89,7 +89,7 @@ public abstract class AbstractNarrowWriteTool implements AgentTool {
    * 工具名（缺省 = {@link #commandType()}）。
    *
    * <p>★ D1（2026-10-02）新增这个钩子：{@code simos.*} 风格的工具名与命令类型不同名（用户给定的 {@code
-   * simos.sd.set-diplomatic-relation} 等），而本基类的信封组装 / 资源断言 / 结局折叠三段仍照用。 只改名字，其余一字不动。
+   * simos.gov.setDiplomaticRelation} 等），而本基类的信封组装 / 资源断言 / 结局折叠三段仍照用。 只改名字，其余一字不动。
    */
   protected String toolName() {
     return commandType();

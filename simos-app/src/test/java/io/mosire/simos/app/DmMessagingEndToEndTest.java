@@ -13,8 +13,8 @@ import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.world.SmallWorld;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.tools.ToolBuckets;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.DecisionMakerId;
@@ -410,7 +410,7 @@ class DmMessagingEndToEndTest {
           .doesNotContain(dmBId);
 
       // ── P7 GM 看得见全部 ──
-      List<SdInfoEntry> overlay = messagesInOverlay(shell);
+      List<DecisionInfoEntry> overlay = messagesInOverlay(shell);
       assertThat(overlay).as("★ P7：GM 看得见全部两条（无过滤读 info 覆盖层）").hasSize(2);
       assertThat(overlay)
           .as("★ P7：两条的可见性轴 = {from, to}（I5：零新可见性机制），GM 不靠 tags")
@@ -773,10 +773,10 @@ class DmMessagingEndToEndTest {
    * {@code GaResolver} 不认 {@code ga:message.*} 地址 ⇒ GM 侧唯一的全量读法 就是**无过滤地读 {@code ga.info()}
    * 覆盖层**（GUI 的 info 面同理）。这里按那个读法读，键 = {@code "message"}。
    */
-  private static List<SdInfoEntry> messagesInOverlay(Shell shell) {
-    List<SdInfoEntry> out = new ArrayList<>();
-    for (List<SdInfoEntry> entries : gaState(shell).info().values()) {
-      for (SdInfoEntry entry : entries) {
+  private static List<DecisionInfoEntry> messagesInOverlay(Shell shell) {
+    List<DecisionInfoEntry> out = new ArrayList<>();
+    for (List<DecisionInfoEntry> entries : gaState(shell).info().values()) {
+      for (DecisionInfoEntry entry : entries) {
         if ("message".equals(entry.key())) {
           out.add(entry);
         }

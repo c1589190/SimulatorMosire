@@ -95,7 +95,7 @@ public final class ProposeCallTool implements SimosTool {
   public static final String NAME = "simos.ga.packet.propose";
 
   /** 本工具只写 sd 命名空间（自己的 packet 前缀由身份派生）。 */
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   /** 逐条意图写进包级 intent 时的标号前缀（见类注的合成规则第 1 条）。 */
@@ -181,7 +181,7 @@ public final class ProposeCallTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   /** ★ 类3 {@code DM_FREE}：决策表达零世界效果（不变量 I1；设计书 §5 权限表）。 */

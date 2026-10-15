@@ -14,13 +14,13 @@ import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.decision.DecisionAgentService;
+import io.mosire.simos.app.ga.DecisionAdjudicationService;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
+import io.mosire.simos.app.query.DecisionQueryService;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.query.RedactingQueryService;
-import io.mosire.simos.app.query.SdQueryService;
 import io.mosire.simos.app.query.WorldNotReadyException;
-import io.mosire.simos.app.sd.DecisionAdjudicationService;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.CombatRecord;
@@ -97,7 +97,7 @@ import java.util.function.Predicate;
  * {@code /api/*} JSON。
  *
  * <p>★ **写面唯一**：写端点（{@code /api/command}、{@code /api/advance}、{@code /api/fork} 与 T10 的窄写 {@code
- * /api/sd/start-decision}）一律经 {@link CoreSimos#submit}，身份 {@code initiator="player:gui"}、{@code
+ * /api/ga/start-decision}）一律经 {@link CoreSimos#submit}，身份 {@code initiator="player:gui"}、{@code
  * commandId=correlationId=新 UUID}（spec §九；C22 的"单命令链缺省"由调用方显式满足）。本类**不打开任何存储/时间线写面**——R1 的扫描对象。
  *
  * <p>★ **读面唯一**：所有读端点经 {@link QueryService}（每次重放，spec §5.1）。
@@ -131,14 +131,14 @@ public final class GuiServer implements AutoCloseable {
   private static final String REGION_DETAIL_PREFIX = "/api/map/region/";
 
   /**
-   * 决策人只读查询面（T5，spec §六.1）：{@code /api/sd/decision-makers} 与 {@code /api/sd/decision-makers/{id}}。
+   * 决策人只读查询面（T5，spec §六.1）：{@code /api/ga/decision-makers} 与 {@code /api/ga/decision-makers/{id}}。
    */
-  private static final String DECISION_MAKERS_PATH = "/api/sd/decision-makers";
+  private static final String DECISION_MAKERS_PATH = "/api/ga/decision-makers";
 
   private static final String DECISION_MAKER_DETAIL_PREFIX = DECISION_MAKERS_PATH + "/";
 
   /**
-   * 决策人**现算可见范围**（只读）：{@code /api/sd/decision-makers/{id}/scope}。
+   * 决策人**现算可见范围**（只读）：{@code /api/ga/decision-makers/{id}/scope}。
    *
    * <p>★ 它落在详情前缀**之下**（{@code …/{id}/scope}），故在 {@link #handleApi} 里必须**先于** {@link
    * #isDecisionMakerDetail} 判——后者是"前缀 + 非空"的粗判，会把本路径一并吞掉（吞掉后的症状是 "拿 {id}/scope 当 id 去查详情"⇒
@@ -147,9 +147,9 @@ public final class GuiServer implements AutoCloseable {
   private static final String DECISION_MAKER_SCOPE_SUFFIX = "/scope";
 
   /**
-   * 决策人**这一轮跑到哪儿了**（只读，2026-09-23）：{@code GET /api/sd/decision-makers/{id}/run-status}。
+   * 决策人**这一轮跑到哪儿了**（只读，2026-09-23）：{@code GET /api/ga/decision-makers/{id}/run-status}。
    *
-   * <p>★★ **它存在的前提是"GUI 那条跑一轮改成了异步"**：{@code POST /api/sd/run-decision} 现在**立即返回**
+   * <p>★★ **它存在的前提是"GUI 那条跑一轮改成了异步"**：{@code POST /api/ga/run-decision} 现在**立即返回**
    * （只在后台起跑），浏览器便只能靠轮询知道进度与结局。★ **GM 经 MCP 的那条仍是同步的**（{@code ga.RunDecision}
    * 窄工具：调用方等到整轮结束直接拿轨迹）——两条路语义不同是**有意的**，不是不一致：MCP 的调用方是 agent，它能等； 浏览器的调用方是人，等三十秒会以为界面卡死。
    *
@@ -159,7 +159,7 @@ public final class GuiServer implements AutoCloseable {
   private static final String DECISION_MAKER_RUN_STATUS_SUFFIX = "/run-status";
 
   /**
-   * **跟决策人说一句话**（2026-09-23，用户要的文本框）：{@code POST /api/sd/decision-makers/{id}/say}，体 {@code
+   * **跟决策人说一句话**（2026-09-23，用户要的文本框）：{@code POST /api/ga/decision-makers/{id}/say}，体 {@code
    * {text}}。
    *
    * <p>★★ **它不是命令写、也不该是**：这条消息落进 {@code ConversationStore}（append-only 的会话库，是**旁路**存储）， 不进 {@code
@@ -169,34 +169,34 @@ public final class GuiServer implements AutoCloseable {
   private static final String DECISION_MAKER_SAY_SUFFIX = "/say";
 
   /**
-   * **重置某决策人的会话上下文**（2026-09-23）：{@code POST /api/sd/reset-decision-maker-conversation}，体 {@code
+   * **重置某决策人的会话上下文**（2026-09-23）：{@code POST /api/ga/reset-decision-maker-conversation}，体 {@code
    * {branch, expectedRevision, decisionMakerId}}。
    *
    * <p>★ **它是一条真命令**（{@code ga.ResetDecisionMakerConversation}，落 revision ⇒ 会话世代 +1）：与 {@code
-   * /api/sd/start-decision} / {@code /api/sd/run-decision} 同族窄写，命令类型由服务端写死。旧会话**一条字节都不动**
+   * /api/ga/start-decision} / {@code /api/ga/run-decision} 同族窄写，命令类型由服务端写死。旧会话**一条字节都不动**
    * （append-only、可审计），换的是"下一个轮次落到哪一段"。
    */
   private static final String RESET_DECISION_CONVERSATION_PATH =
-      "/api/sd/reset-decision-maker-conversation";
+      "/api/ga/reset-decision-maker-conversation";
 
   /**
-   * **决策记录只读面**：{@code GET /api/sd/directives[?decisionMakerId=<id>]}——"这个人到底下了什么令"。
+   * **决策记录只读面**：{@code GET /api/ga/directives[?decisionMakerId=<id>]}——"这个人到底下了什么令"。
    *
-   * <p>★ 与 {@code /api/sd/decision-makers/{id}/scope} **同款拒 {@code as=}**：本端点是**审计/配置面**（GM 核对"决策人
+   * <p>★ 与 {@code /api/ga/decision-makers/{id}/scope} **同款拒 {@code as=}**：本端点是**审计/配置面**（GM 核对"决策人
    * 产出了什么"），不是数据面。{@code as=} 的语义是"以某人的视角读世界"，接在这里等于**用甲的身份读出乙下的令**—— 而决策原文（{@code
    * intentInfo}）恰恰是裁决者与 GM 才有权看的东西。接反了不报错、只静默泄露，故 fail-closed。
    */
-  private static final String DIRECTIVES_PATH = "/api/sd/directives";
+  private static final String DIRECTIVES_PATH = "/api/ga/directives";
 
   /**
-   * **「让它跑一轮」窄写面**：{@code POST /api/sd/run-decision}——命令类型固定为 {@code ga.RunDecision}，用户路径
-   * **直接生效**（与 {@code /api/sd/start-decision} 同制；GM Agent 走 MCP 窄工具的那条才过审批门链）。
+   * **「让它跑一轮」窄写面**：{@code POST /api/ga/run-decision}——命令类型固定为 {@code ga.RunDecision}，用户路径
+   * **直接生效**（与 {@code /api/ga/start-decision} 同制；GM Agent 走 MCP 窄工具的那条才过审批门链）。
    *
    * <p>★★ **但这一轮的内部不是无审批的**：决策人自己出的令（{@code ga.IssueDirective}）是敏感写 ⇒ 它各自进一次审批门链， 而审批是**阻塞等待**（上限 =
    * 壳的 {@code APPROVAL_TIMEOUT}）⇒ 本请求会在那里停住。界面必须显示"正在跑 / 可能在等审批"， **不能表现得像卡死**（前端 {@code panels.js}
    * 的 runDecision 状态行就是为这条写的）。
    */
-  private static final String RUN_DECISION_PATH = "/api/sd/run-decision";
+  private static final String RUN_DECISION_PATH = "/api/ga/run-decision";
 
   /** 审批代理路径：{@code /api/approvals} 或 {@code /api/approvals/{id}}（原样转给 AgentLib 端点）。 */
   private static final String APPROVAL_PATH = "/api/approvals";
@@ -205,10 +205,10 @@ public final class GuiServer implements AutoCloseable {
   private static final String GM_TOOL_USAGE_PATH = "/api/gm/tool-usage";
 
   /**
-   * 「开始决策」窄写面（T10，spec §四.5 / §六.3）：{@code POST /api/sd/start-decision}——用户路径，命令类型固定为 {@code
+   * 「开始决策」窄写面（T10，spec §四.5 / §六.3）：{@code POST /api/ga/start-decision}——用户路径，命令类型固定为 {@code
    * ga.StartDecision}，**直接生效**（不经审批；GM Agent 走 MCP 窄工具的那条才过审批门链，D6）。
    */
-  private static final String START_DECISION_PATH = "/api/sd/start-decision";
+  private static final String START_DECISION_PATH = "/api/ga/start-decision";
 
   /**
    * LLM provider 配置面（M11′ 对接版）：读写 AgentLib 的 {@code ConfigStore}（{@code llm.routes.*} / {@code
@@ -222,10 +222,10 @@ public final class GuiServer implements AutoCloseable {
 
   /** 决策人绑定 provider 窄写（世界写）：固定类型 {@code ga.SetDecisionMakerProvider}，落 revision。 */
   private static final String SET_DECISION_MAKER_PROVIDER_PATH =
-      "/api/sd/set-decision-maker-provider";
+      "/api/ga/set-decision-maker-provider";
 
   /**
-   * 决策结果只读面（第 3 波第 3 步的前端子页桥）：{@code GET /api/sd/decision-results[?as=<dmId>]}（＋ {@code tick} 或
+   * 决策结果只读面（第 3 波第 3 步的前端子页桥）：{@code GET /api/ga/decision-results[?as=<dmId>]}（＋ {@code tick} 或
    * {@code fromTick}/{@code toTick}，＋ {@code limit}）。
    *
    * <p>★★ **可见性只有一处**：本端点**直接调** {@link RedactingQueryService#decisionResults}——归属判据（条目 {@code
@@ -233,12 +233,12 @@ public final class GuiServer implements AutoCloseable {
    * DecisionResultsVisibilityGuardTest}）。本层只做**入参校验**，不碰归属判定。
    *
    * <p>★ **{@code as=} 必填**（与别的读端点的"可带可不带"不同）：决策结果只有"以某决策人视角读"这一种语义——**没有 GM 全量口径**
-   * （无主结果对谁都不出现）。解不出决策人 ⇒ 404（与 {@code /api/sd/decision-makers/{id}/scope} 同款）。
+   * （无主结果对谁都不出现）。解不出决策人 ⇒ 404（与 {@code /api/ga/decision-makers/{id}/scope} 同款）。
    */
-  private static final String DECISION_RESULTS_PATH = "/api/sd/decision-results";
+  private static final String DECISION_RESULTS_PATH = "/api/ga/decision-results";
 
   /**
-   * 决策文档只读面（Docs 系统，2026-09-23）：{@code GET /api/sd/decision-docs[?as=<dmId>]}（＋可选 {@code docId}，＋
+   * 决策文档只读面（Docs 系统，2026-09-23）：{@code GET /api/ga/decision-docs[?as=<dmId>]}（＋可选 {@code docId}，＋
    * {@code tick} 或 {@code fromTick}/{@code toTick}，＋ {@code limit}）。
    *
    * <p>★★ **本端点就是"以某个决策人的视角预览它实际能看到哪些文档"**（用户对 Docs 的原始表述是「限定范围到单个决策人的文档信息查看 系统」）：它**直接调** {@link
@@ -248,7 +248,7 @@ public final class GuiServer implements AutoCloseable {
    * <p>★ **{@code as=} 必填**（与 decision-results 同款）：文档只有"以某决策人视角读"这一种语义——**没有 GM 全量口径**。 解不出决策人 ⇒
    * 404。★ 这也正是 GM 校对自己写的文档有没有发对的方法：换个 {@code as} 再看一遍。
    */
-  private static final String DECISION_DOCS_PATH = "/api/sd/decision-docs";
+  private static final String DECISION_DOCS_PATH = "/api/ga/decision-docs";
 
   /**
    * ★★ <b>2026-10-12 批次 3d-2：{@code GET /api/sd/combats} <b>整条删除</b>（如实记）</b>——旧战斗族（sd 的 {@code
@@ -259,7 +259,7 @@ public final class GuiServer implements AutoCloseable {
    * /api/army/combats}，读 {@code ArmyData.combats}）；前端 {@code map.js} 早在 D2 就把 army 记录当真值、旧 sd
    * 列表只作兜底 ⇒ 删掉的是那条兜底路（本批同批改前端，见 {@code webui/api.js} / {@code map.js} / {@code panels.js}）。
    *
-   * <p>★ 与 {@code /api/sd/directives} 同款拒 {@code as=} 的口径<b>不变</b>，只是少了一条路由。
+   * <p>★ 与 {@code /api/ga/directives} 同款拒 {@code as=} 的口径<b>不变</b>，只是少了一条路由。
    */
 
   /**
@@ -274,7 +274,7 @@ public final class GuiServer implements AutoCloseable {
    * simos.army.combat} 同一份形状，本层不另拼字段清单）。纯只读（不经 {@code CoreSimos}、不写盘）；无记录 ⇒ {@code 200
    * {"combats":[]}}（不是 404/500）。
    *
-   * <p>★ 与 {@code /api/sd/directives} 同款拒 {@code as=}（未接视角 redaction ⇒ fail-closed，不静默给全量）。★
+   * <p>★ 与 {@code /api/ga/directives} 同款拒 {@code as=}（未接视角 redaction ⇒ fail-closed，不静默给全量）。★
    * 2026-10-12 批次 3d-2：旧的 {@code /api/sd/combats} 已随旧战斗族退役删除 ⇒ 本端点是交战记录在 GUI 侧的唯一读口。
    */
   private static final String ARMY_COMBATS_PATH = "/api/army/combats";
@@ -325,9 +325,9 @@ public final class GuiServer implements AutoCloseable {
           // ★ H0.6（2026-09-27）：逐格产权读数（与 simos.economy.ownership 共用 ApiViews.economyOwnership）。
           "/api/economy/ownership",
           "/api/timeline",
-          "/api/sd/decision-makers",
-          "/api/sd/directives",
-          "/api/sd/verdicts",
+          "/api/ga/decision-makers",
+          "/api/ga/directives",
+          "/api/ga/verdicts",
           // ★ D2（2026-10-02）：Army 交战记录只读面（地图交战层的真值来源；缺省 tick = 世界当前 tick）。
           //   ★ 2026-10-12 批次 3d-2：它现在是交战记录**唯一**的 GUI 读口——旧的 /api/sd/combats 随旧战斗族退役删除。
           ARMY_COMBATS_PATH,
@@ -341,20 +341,20 @@ public final class GuiServer implements AutoCloseable {
           "/api/command",
           "/api/advance",
           "/api/fork",
-          "/api/sd/start-decision",
-          "/api/sd/run-decision",
+          "/api/ga/start-decision",
+          "/api/ga/run-decision",
           RESET_DECISION_CONVERSATION_PATH,
           LLM_PROVIDERS_PATH,
           LLM_PROVIDERS_DELETE_PATH,
           LLM_PROVIDERS_TEST_PATH,
           SET_DECISION_MAKER_PROVIDER_PATH);
 
-  /** 判决只读面（T6，spec `C28`）：{@code GET /api/sd/verdicts[?as=<dmId>]}。 */
-  private static final String VERDICTS_PATH = "/api/sd/verdicts";
+  /** 判决只读面（T6，spec `C28`）：{@code GET /api/ga/verdicts[?as=<dmId>]}。 */
+  private static final String VERDICTS_PATH = "/api/ga/verdicts";
 
   private final QueryService queryService;
   private final RedactingQueryService redactingQueryService;
-  private final SdQueryService sdQueryService;
+  private final DecisionQueryService sdQueryService;
   private final CoreSimos core;
   private final String mapId;
 
@@ -374,17 +374,17 @@ public final class GuiServer implements AutoCloseable {
   /** LLM provider 配置门面（M11′）：读写 AgentLib 的 {@code ConfigStore}；null = 未接入（provider 面回 503）。 */
   private final AgentLibLlmConfig llmConfig;
 
-  /** 决策编排（T3）：{@code /api/sd/start-decision} 提交成功后跑 LLM 判决；null = 未接入（退回"只发起、不裁决"）。 */
+  /** 决策编排（T3）：{@code /api/ga/start-decision} 提交成功后跑 LLM 判决；null = 未接入（退回"只发起、不裁决"）。 */
   private final DecisionAdjudicationService decisionAdjudicationService;
 
   /**
-   * 决策人 agent 运行流（T11C 的装配点）：{@code /api/sd/run-decision} 提交成功后跑一轮真 LLM；null = 未接入（退回"只落
+   * 决策人 agent 运行流（T11C 的装配点）：{@code /api/ga/run-decision} 提交成功后跑一轮真 LLM；null = 未接入（退回"只落
    * 触发事实、不跑那一轮"）。
    */
   private final DecisionAgentService decisionAgentService;
 
   /**
-   * 「这一轮跑到哪儿了」的进程内留痕（2026-09-23）：{@code /api/sd/run-decision} 起跑时写、{@code …/run-status} 轮询读。
+   * 「这一轮跑到哪儿了」的进程内留痕（2026-09-23）：{@code /api/ga/run-decision} 起跑时写、{@code …/run-status} 轮询读。
    *
    * <p>★ **不是注入的**（与别的字段不同）：它没有任何外部依赖、也没有第二个使用者——本服务器自己起跑、自己读回； 把它挂进构造器只会让 8 个形参变 9 个，换不到任何可替换性。
    */
@@ -446,7 +446,7 @@ public final class GuiServer implements AutoCloseable {
    * 全参构造（M11′ 对接版）：带 LLM provider 配置门面与决策编排。
    *
    * @param llmConfig LLM provider 配置门面（{@code /api/llm/providers*} 的唯一数据源）；null = 未接入
-   * @param decisionAdjudicationService 决策编排（{@code /api/sd/start-decision} 提交后跑判决）；null = 不裁决
+   * @param decisionAdjudicationService 决策编排（{@code /api/ga/start-decision} 提交后跑判决）；null = 不裁决
    */
   public GuiServer(
       QueryService queryService,
@@ -526,7 +526,7 @@ public final class GuiServer implements AutoCloseable {
     this.redactingQueryService =
         new RedactingQueryService(
             queryService, DecisionScopeFunctions.defaults(), mapId, calendarService);
-    this.sdQueryService = new SdQueryService(queryService);
+    this.sdQueryService = new DecisionQueryService(queryService);
     this.gmToolUsage = Objects.requireNonNull(gmToolUsage, "gmToolUsage");
     this.approvalBaseUrl = approvalBaseUrl;
     this.approvalClient = HttpClient.newHttpClient();
@@ -901,7 +901,7 @@ public final class GuiServer implements AutoCloseable {
       rejectAs(path, asPresent);
       return llmProvidersReply();
     }
-    // ★ 必须在 isDecisionMakerDetail 之前：`/api/sd/decision-makers/{id}/scope` 也满足那个粗判。
+    // ★ 必须在 isDecisionMakerDetail 之前：`/api/ga/decision-makers/{id}/scope` 也满足那个粗判。
     if (isDecisionMakerScope(path)) {
       rejectAs(path, asPresent);
       return decisionMakerScopeReply(params, decisionMakerIdOfScopePath(path));
@@ -1024,14 +1024,14 @@ public final class GuiServer implements AutoCloseable {
     return path.startsWith(REGION_DETAIL_PREFIX) && path.length() > REGION_DETAIL_PREFIX.length();
   }
 
-  /** 决策人详情：{@code /api/sd/decision-makers/{id}}（T5）。 */
+  /** 决策人详情：{@code /api/ga/decision-makers/{id}}（T5）。 */
   private static boolean isDecisionMakerDetail(String path) {
     return path.startsWith(DECISION_MAKER_DETAIL_PREFIX)
         && path.length() > DECISION_MAKER_DETAIL_PREFIX.length();
   }
 
   /**
-   * 决策人现算范围：{@code /api/sd/decision-makers/{id}/scope}（**含** {@code /scope}、且 id 非空）。
+   * 决策人现算范围：{@code /api/ga/decision-makers/{id}/scope}（**含** {@code /scope}、且 id 非空）。
    *
    * <p>★ 三个条件缺一不可：少了 id 非空这一条，{@code …/decision-makers//scope} 会被当成 id 为空去查（得到一个语焉不详的 404，
    * 而不是"路径里没有 id"）。
@@ -1049,7 +1049,7 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * 决策人**这一轮跑到哪儿了**：{@code /api/sd/decision-makers/{id}/run-status}（**含** 后缀、且 id 非空）。
+   * 决策人**这一轮跑到哪儿了**：{@code /api/ga/decision-makers/{id}/run-status}（**含** 后缀、且 id 非空）。
    *
    * <p>★ 与 {@link #isDecisionMakerScope} 同一条三条件纪律（少了 id 非空那一条，空 id 会被拿去查，得到一个语焉不详的 404）。
    */
@@ -1057,7 +1057,7 @@ public final class GuiServer implements AutoCloseable {
     return isDecisionMakerSuffixed(path, DECISION_MAKER_RUN_STATUS_SUFFIX);
   }
 
-  /** **跟决策人说一句话**：{@code /api/sd/decision-makers/{id}/say}（**含** 后缀、且 id 非空）。 */
+  /** **跟决策人说一句话**：{@code /api/ga/decision-makers/{id}/say}（**含** 后缀、且 id 非空）。 */
   private static boolean isDecisionMakerSay(String path) {
     return isDecisionMakerSuffixed(path, DECISION_MAKER_SAY_SUFFIX);
   }
@@ -1348,27 +1348,28 @@ public final class GuiServer implements AutoCloseable {
 
   /**
    * 决策人列表（T5，spec §六.1）：{@code GET
-   * /api/sd/decision-makers[?affiliation=nation:<id>|army:<id>|gov:<unitId>]}。
+   * /api/ga/decision-makers[?affiliation=nation:<id>|army:<id>|gov:<unitId>]}。
    *
    * <p>★ **只读**（不经 {@code CoreSimos}、不写盘）。空库/无匹配 ⇒ {@code 200 {"decisionMakers":[]}}（不是 404/500）；
    * 过滤串坏掉 ⇒ {@link IllegalArgumentException} ⇒ 400（**fail-closed，不静默当空集合**）。
    */
   private Reply decisionMakersReply(Map<String, String> params) {
-    SdQueryService.AffiliationFilter filter = SdQueryService.parseFilter(params.get("affiliation"));
-    List<SdQueryService.DecisionMakerInfo> makers =
+    DecisionQueryService.AffiliationFilter filter =
+        DecisionQueryService.parseFilter(params.get("affiliation"));
+    List<DecisionQueryService.DecisionMakerInfo> makers =
         sdQueryService.listDecisionMakers(filter, target(params));
     return Reply.of(200, Map.of("decisionMakers", ApiViews.decisionMakers(makers)));
   }
 
   /**
-   * **决策记录只读面**：{@code GET /api/sd/directives[?decisionMakerId=<id>]}。
+   * **决策记录只读面**：{@code GET /api/ga/directives[?decisionMakerId=<id>]}。
    *
-   * <p>★ **它补的是哪一处空白**：{@code /api/sd/decision-makers/{id}} 只报 {@code lastDirectiveTick} / {@code
+   * <p>★ **它补的是哪一处空白**：{@code /api/ga/decision-makers/{id}} 只报 {@code lastDirectiveTick} / {@code
    * ticksSinceLast}——"最近一次在第几 tick"看得见，**令的内容一个字都看不见**。而 {@code Directive}（含执行原文 +
    * 结构化命令清单）本来就在世界状态里、本来就可回放，缺的只是这一个读口（铁律 1：文档/界面是视图，不是真相的第二份）。
    *
    * <p>★ **未知 {@code decisionMakerId} ⇒ 404**（**不是空列表**）：空列表只表示"这个人还没出过令"，折成同一个响应会把 "没查到"伪装成"不存在"（与
-   * {@code /api/sd/decision-makers/{id}} 同口径）。不筛 ⇒ {@code 200
+   * {@code /api/ga/decision-makers/{id}} 同口径）。不筛 ⇒ {@code 200
    * {"directives":[…]}}（空库同样是空列表——那是**集合**语义，没有"查无"可言）。
    */
   private Reply directivesReply(Map<String, String> params) {
@@ -1400,7 +1401,7 @@ public final class GuiServer implements AutoCloseable {
    * <p>★ {@code q}/{@code r} 可选过滤、必须成对给（半给 ⇒ 400，不静默当"没给"）——与 {@code simos.army.combats}
    * 同一口径。过滤后按记录 id **字典序**发出（记录表是插入序；不排序则响应字节不可复现，与读工具同款）。
    *
-   * <p>★ <b>可见性</b>：与 {@code /api/sd/directives} 同款——本端点未接视角 redaction，带 {@code as=} 时由路由层 {@link
+   * <p>★ <b>可见性</b>：与 {@code /api/ga/directives} 同款——本端点未接视角 redaction，带 {@code as=} 时由路由层 {@link
    * #rejectAs} **显式拒绝**（fail-closed，不静默给全量）；不带 {@code as=} 的是 GM 全量面。★ 2026-10-12 批次 3d-2 起它是交战记录在
    * GUI 侧的**唯一**读口（旧的 {@code /api/sd/combats} 随旧战斗族退役删除）。
    */
@@ -1427,7 +1428,7 @@ public final class GuiServer implements AutoCloseable {
     return Reply.of(200, Map.of("combats", combats));
   }
 
-  /** 决策人详情（T5）：{@code GET /api/sd/decision-makers/{id}}；不存在 ⇒ 404（与 unit/region 详情同口径）。 */
+  /** 决策人详情（T5）：{@code GET /api/ga/decision-makers/{id}}；不存在 ⇒ 404（与 unit/region 详情同口径）。 */
   private Reply decisionMakerReply(Map<String, String> params, String id) {
     DecisionMakerId makerId = DecisionMakerId.parse(id);
     return sdQueryService
@@ -1437,7 +1438,7 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * 决策人**现算可见范围**（只读）：{@code GET /api/sd/decision-makers/{id}/scope}；不存在 ⇒ 404。
+   * 决策人**现算可见范围**（只读）：{@code GET /api/ga/decision-makers/{id}/scope}；不存在 ⇒ 404。
    *
    * <p>★★ **它回答的是 {@link ApiViews#decisionMaker} 答不出的那个问题**：决策人实际能看见什么 = 范围函数现算 ∩ GM 的 {@code
    * accessLimit}（随世界状态变）。GM 因此第一次能在界面上核对"我配的权到底收成了多少"。
@@ -1445,14 +1446,15 @@ public final class GuiServer implements AutoCloseable {
    * <p>★ **同源**：范围取 {@link RedactingQueryService#computedScopeOf}（内部就是决策人工具链与 {@code as=} 读路径共用的
    * 那一个 {@code resourceScopesFor}），解码取 {@link DecisionScopeView}——**本层不算范围**。
    *
-   * <p>★ **为什么拒 {@code as=}**（与 {@code /api/sd/decision-makers} 同口径）：本端点是**配置面**，不是数据面。{@code as=}
+   * <p>★ **为什么拒 {@code as=}**（与 {@code /api/ga/decision-makers} 同口径）：本端点是**配置面**，不是数据面。{@code as=}
    * 的语义是"以某人的视角读世界"；把它接在这里，等于**用甲的身份读出乙的可见边界**（乙的国土、军队位置、视野圈）—— 而这份边界恰恰是
    * 甲**无权知道**的情报。接反了不会报错，只会静默泄露；故 fail-closed。
    */
   private Reply decisionMakerScopeReply(Map<String, String> params, String id) {
     DecisionMakerId makerId = DecisionMakerId.parse(id);
     QueryTarget target = target(params);
-    Optional<SdQueryService.DecisionMakerInfo> info = sdQueryService.decisionMaker(makerId, target);
+    Optional<DecisionQueryService.DecisionMakerInfo> info =
+        sdQueryService.decisionMaker(makerId, target);
     Optional<ResourceScopeMap> scopes = redactingQueryService.computedScopeOf(makerId, target);
     if (info.isEmpty() || scopes.isEmpty()) {
       return Reply.of(404, Map.of("error", "decision maker not found", "id", id));
@@ -1463,9 +1465,9 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * 决策结果子页的服务端（第 3 波第 3 步）：{@code GET /api/sd/decision-results}。响应形状 {@code
+   * 决策结果子页的服务端（第 3 波第 3 步）：{@code GET /api/ga/decision-results}。响应形状 {@code
    * {results:[{tick,id,tags,value,at{branch,revision}}], count, note?}}——与决策人读工具 {@code
-   * sd.DecisionResults} **逐字同形**（同一份数据、两个入口）。
+   * simos.ga.decisionResults} **逐字同形**（同一份数据、两个入口）。
    *
    * <p>★★ **本方法不判归属**：可见性（条目 {@code tags} 含该 {@code as}）由 {@link
    * RedactingQueryService#decisionResults} 一处承担——本层只解析/校验入参。在 GUI 里再筛一道是那类"两份都自洽、只会漂移" 的写法（{@code
@@ -1475,7 +1477,7 @@ public final class GuiServer implements AutoCloseable {
    * IllegalArgumentException}，由 {@link #handle} 折成 400 {@code {"error":…}}（与 {@code
    * requiredParam}/{@code intParam} 同款）；{@code as} 非空白但解不出决策人 ⇒ 404 {@code {"error":"decision maker
    * not found","id":…}}（与 {@link #decisionMakerScopeReply}、{@code
-   * /api/sd/directives?decisionMakerId=} 同款）。
+   * /api/ga/directives?decisionMakerId=} 同款）。
    */
   private Reply decisionResultsReply(Map<String, String> params) {
     String rawAs = requiredParam(params, "as");
@@ -1499,9 +1501,9 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * 文档子页的服务端（Docs，2026-09-23）：{@code GET /api/sd/decision-docs}。响应形状 {@code
+   * 文档子页的服务端（Docs，2026-09-23）：{@code GET /api/ga/decision-docs}。响应形状 {@code
    * {docs:[{docId,id,tick,tags,affiliations,key,value,note?,at{branch,revision}}], count,
-   * note?}}——与决策人读工具 {@code sd.DecisionDocs} **逐字同形**（同一份数据、两个入口）。
+   * note?}}——与决策人读工具 {@code simos.ga.decisionDocs} **逐字同形**（同一份数据、两个入口）。
    *
    * <p>★★ **本方法不判归属**：可见性（{@code tags} 含该 {@code as} **或** {@code affiliations} 含其归属）由 {@link
    * RedactingQueryService#docs} 一处承担——本层只解析/校验入参。在 GUI 里再筛一道是那类"两份都自洽、只会漂移"的写法。
@@ -1774,7 +1776,7 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * **「让它跑一轮」窄写**：{@code POST /api/sd/run-decision}，体 {@code {branch, expectedRevision,
+   * **「让它跑一轮」窄写**：{@code POST /api/ga/run-decision}，体 {@code {branch, expectedRevision,
    * decisionMakerId}}；命令类型由服务端写死为 {@code ga.RunDecision}（前端不传 type，与 {@link #startDecisionReply} 同制
    * ⇒ 工作台仍没有通用写面）。
    *
@@ -1847,7 +1849,7 @@ public final class GuiServer implements AutoCloseable {
     }
     // ★★ **后台跑，立即返回**（2026-09-23，用户要的"状态标识 + 可展开进度窗"）：这一轮里决策人若出令，那次工具调用
     //   会**阻塞式**等审批（上限 = 壳的 APPROVAL_TIMEOUT）⇒ 让 HTTP 请求停在那里，界面就只能表现为卡死。
-    //   进度与结局改由 `/api/sd/decision-makers/{id}/run-status` 轮询（同一个 executor：虚拟线程，一次请求一条，不饿着别处）。
+    //   进度与结局改由 `/api/ga/decision-makers/{id}/run-status` 轮询（同一个 executor：虚拟线程，一次请求一条，不饿着别处）。
     //   ★ 用 {@code execute}（**void**）而不是 {@code submit}（返回 Future）：这一轮自己会接住全部失败并写成结局
     //   ⇒ 没有 Future 要读；用 submit 就是把一个"异常被吞掉且无人读"的返回值凭空造出来（门禁实测报了它）。
     StateRef ref = committed.ref();
@@ -1923,9 +1925,9 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * **这一轮跑到哪儿了**（只读，2026-09-23）：{@code GET /api/sd/decision-makers/{id}/run-status}。
+   * **这一轮跑到哪儿了**（只读，2026-09-23）：{@code GET /api/ga/decision-makers/{id}/run-status}。
    *
-   * <p>★ 字段与 {@code POST /api/sd/run-decision} 旧同步版的**同名同形**（{@code llmCalls} / {@code toolCalls} /
+   * <p>★ 字段与 {@code POST /api/ga/run-decision} 旧同步版的**同名同形**（{@code llmCalls} / {@code toolCalls} /
    * {@code result}）——同一件事在两处呈现同一个形状，界面不必为"异步了"改写投影。
    *
    * <p>★★ **没有记录时如实报"没有"**：{@code startedAt=null} 且 {@code llmCalls=null}（**不拿 0 / false 顶替**）
@@ -1978,7 +1980,7 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * **跟决策人说一句话**（2026-09-23，用户要的文本框）：{@code POST /api/sd/decision-makers/{id}/say}，体 {@code
+   * **跟决策人说一句话**（2026-09-23，用户要的文本框）：{@code POST /api/ga/decision-makers/{id}/say}，体 {@code
    * {text}}（可选 {@code branch} / {@code revision}，缺省 = 主分支当前 head）。
    *
    * <p>★★ **它不改世界**（落会话库，不进 revision）⇒ 不经 {@code CoreSimos.submit}，故没有 409 冲突这一说：会话库是 append-only
@@ -2013,7 +2015,7 @@ public final class GuiServer implements AutoCloseable {
 
   /**
    * **重置某决策人的会话上下文**（2026-09-23）：固定类型 {@code ga.ResetDecisionMakerConversation}，落 revision （与
-   * {@code /api/sd/set-decision-maker-provider} 同制）。体 {@code {branch, expectedRevision,
+   * {@code /api/ga/set-decision-maker-provider} 同制）。体 {@code {branch, expectedRevision,
    * decisionMakerId}}。
    *
    * <p>★ 这是界面上"下一轮从空上下文开始"的**唯一**手段（"重跑沿用上下文、只有重置才清"）。
@@ -2065,7 +2067,7 @@ public final class GuiServer implements AutoCloseable {
   /** 新 head 上该决策人的当前态（绑定的 providerId 以它为准；不存在 ⇒ 领域错误）。 */
   private DecisionMaker decisionMakerAt(
       BranchId branch, RevisionId revision, String decisionMakerId) {
-    SdQueryService.DecisionMakerInfo info =
+    DecisionQueryService.DecisionMakerInfo info =
         sdQueryService
             .decisionMaker(new DecisionMakerId(decisionMakerId), QueryTarget.at(branch, revision))
             .orElseThrow(() -> new IllegalStateException("决策人不存在（提交后读回）: " + decisionMakerId));
@@ -2098,7 +2100,7 @@ public final class GuiServer implements AutoCloseable {
 
   /**
    * 决策人绑定 provider 窄写（M11′）：固定类型 {@code ga.SetDecisionMakerProvider}，落 revision（与 {@code
-   * /api/sd/start-decision} 同制）。体 {@code {branch, expectedRevision, decisionMakerId, providerId}}。
+   * /api/ga/start-decision} 同制）。体 {@code {branch, expectedRevision, decisionMakerId, providerId}}。
    */
   private Reply setDecisionMakerProviderReply(HttpExchange exchange) throws IOException {
     JsonNode root = readBody(exchange);

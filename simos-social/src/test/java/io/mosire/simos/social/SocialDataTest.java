@@ -102,7 +102,7 @@ class SocialDataTest {
 
   /**
    * ★ `cities` 为 null **不是**错误，而是**老档兼容的入口**：升级前的快照没有这个键（真档 `worlds/v17levant.json` 就是这样），Jackson
-   * 会把它绑成 null。此处必须收成空表 —— 抛了等于"整个世界打不开"（先例：SdInfoEntry 的 affiliations）。
+   * 会把它绑成 null。此处必须收成空表 —— 抛了等于"整个世界打不开"（先例：DecisionInfoEntry 的 affiliations）。
    */
   @Test
   void nullCitiesMeansEmptyCitiesForLegacyArchives() {
@@ -165,7 +165,7 @@ class SocialDataTest {
   /**
    * ★★ **R1 唯一保留的那一行兼容**（用户 2026-09-26 裁定：旧档重建也没关系，**只留这一行**）：升级前的快照没有 {@code groups} 这个键（随包的创世文件
    * {@code worlds/v17levant.json} 就是这样），Jackson 会把它绑成 null ⇒ 收成空表，**不抛** ——
-   * 抛了等于"整个世界打不开"（先例：SdInfoEntry 的 affiliations、本类的 cities）。
+   * 抛了等于"整个世界打不开"（先例：DecisionInfoEntry 的 affiliations、本类的 cities）。
    */
   @Test
   void nullGroupsMeansEmptyGroupsForLegacyArchives() {

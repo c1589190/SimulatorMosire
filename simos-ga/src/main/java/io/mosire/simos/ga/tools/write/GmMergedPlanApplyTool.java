@@ -45,7 +45,7 @@ public final class GmMergedPlanApplyTool implements SimosTool {
   /** 工具名（全局唯一）。 */
   public static final String NAME = "simos.gm.mergedPlan.apply";
 
-  private static final ResourceManifest SD_WRITE =
+  private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
   private final ToolReadPort reads;
@@ -90,7 +90,7 @@ public final class GmMergedPlanApplyTool implements SimosTool {
 
   @Override
   public ResourceManifest resources() {
-    return SD_WRITE;
+    return GA_WRITE;
   }
 
   @Override

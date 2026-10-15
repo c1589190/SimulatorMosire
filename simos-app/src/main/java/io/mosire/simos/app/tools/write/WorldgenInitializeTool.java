@@ -1147,7 +1147,7 @@ public final class WorldgenInitializeTool implements SimosTool {
     props.put("politicalMultiplier", city.politicalMultiplier());
     props.put("justification", city.justification());
     // ★ seed 走**字符串**：props 经 JSON 往返，而 Jackson 把整数按**幅值**绑成 Integer/Long/…，
-    //   一个超过 int 的 seed 会**静默换类型甚至丢值**（`SdInfoEntry.value` 的既定口径是"只保证标量往返"，
+    //   一个超过 int 的 seed 会**静默换类型甚至丢值**（`DecisionInfoEntry.value` 的既定口径是"只保证标量往返"，
     //   而 long 不在那个保证里）。字符串是逐字节往返的，且 props 的读者只需拿它去复现，不必做算术。
     props.put("seed", Long.toString(seed));
 

@@ -40,9 +40,9 @@ import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.id.DirectiveId;
 import io.mosire.simos.ga.model.AccessLimit;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.model.DirectiveStatus;
-import io.mosire.simos.ga.model.SdInfoEntry;
 import io.mosire.simos.ga.tools.write.RejectDirectiveTool;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
@@ -205,10 +205,10 @@ class RejectDirectiveToolTest {
 
     // ★ 审计留痕：谁的令 / 第几版 / 理由文本 / 落在哪条 revision。
     // ★ 地址前缀取自**唯一拼写点**（不手抄字面量）：批次 3e 把它从 `sd:rejection.` 改挂 `ga:rejection.`。
-    List<SdInfoEntry> entries =
+    List<DecisionInfoEntry> entries =
         sdAt(after).info().get(RejectDirectiveTool.REJECTION_ADDRESS_PREFIX + "d-shanghai-0001");
     assertThat(entries).as("审计条目存在").isNotNull().hasSize(1);
-    SdInfoEntry audit = entries.get(0);
+    DecisionInfoEntry audit = entries.get(0);
     assertThat(audit.key()).isEqualTo(RejectDirectiveTool.REJECTION_KEY);
     JsonNode value = JSON.readTree((String) audit.value());
     assertThat(value.get("directiveId").asText()).isEqualTo("d-shanghai-0001");

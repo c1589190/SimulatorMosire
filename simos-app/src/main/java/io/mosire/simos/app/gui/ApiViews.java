@@ -11,7 +11,7 @@ import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.household.HouseholdPositionResolver;
-import io.mosire.simos.app.query.SdQueryService;
+import io.mosire.simos.app.query.DecisionQueryService;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
@@ -5302,7 +5302,7 @@ public final class ApiViews {
   }
 
   /**
-   * 外交关系边清单（D-003 / R6；GUI 与 MCP 的 {@code simos.sd.diplomacy} 共用这一份形状）。
+   * 外交关系边清单（D-003 / R6；GUI 与 MCP 的 {@code simos.ga.diplomacy} 共用这一份形状）。
    *
    * <p>每条 = 一条**有向边** {@code from → to}：字段 {@code from}/{@code to}（Nation id 裸值）、{@code kind}（无
    * kind ⇒ {@code null}）、{@code text}（自然语言；谈判状态就记在它里面）、{@code updatedTick}。
@@ -5337,7 +5337,7 @@ public final class ApiViews {
   }
 
   /**
-   * 外交事件清单（D-005 / R6；GUI 与 MCP 的 {@code simos.sd.diplomatic-events} 共用这一份形状）。
+   * 外交事件清单（D-005 / R6；GUI 与 MCP 的 {@code simos.ga.diplomatic-events} 共用这一份形状）。
    *
    * <p>每条 = {@code {eventId,tick,participants,text}}；{@code participants} 按记录时的顺序发（自然语言事件记录的一部分）。
    *
@@ -5746,13 +5746,13 @@ public final class ApiViews {
   /**
    * 决策人列表（T5，spec §六.1）：{@code [{id,affiliation,allowedTools,cadence,accessLimit,due}…]}。
    *
-   * <p>★ 列表顺序**由服务端决定**（{@link SdQueryService#listDecisionMakers} 按 id 字典序）——本类只做装配，不重排，
+   * <p>★ 列表顺序**由服务端决定**（{@link DecisionQueryService#listDecisionMakers} 按 id 字典序）——本类只做装配，不重排，
    * 否则"同状态两次响应逐字节相同"这条前提会破。
    */
   public static List<Map<String, Object>> decisionMakers(
-      List<SdQueryService.DecisionMakerInfo> infos) {
+      List<DecisionQueryService.DecisionMakerInfo> infos) {
     List<Map<String, Object>> out = new ArrayList<>(infos.size());
-    for (SdQueryService.DecisionMakerInfo info : infos) {
+    for (DecisionQueryService.DecisionMakerInfo info : infos) {
       out.add(decisionMaker(info));
     }
     return out;
@@ -5768,11 +5768,11 @@ public final class ApiViews {
    * <p>★ <b>阶段 12</b>：Army 去 {@code NationId} 后，军队的 {@code nationId} 为 {@code null}，认领主子改看 {@code
    * masterGovUnitId}；Nation 的 {@code nationId} 照旧。两个槽位都显式给（不写空串顶替）。
    *
-   * <p>★ **T9 起 {@code due} 是真值**（D7 公式，由 {@link SdQueryService#listDecisionMakers} / {@link
-   * SdQueryService#decisionMaker} 算出），不再有占位：首次（无任何 Directive）⇒ {@code true}， {@code
+   * <p>★ **T9 起 {@code due} 是真值**（D7 公式，由 {@link DecisionQueryService#listDecisionMakers} / {@link
+   * DecisionQueryService#decisionMaker} 算出），不再有占位：首次（无任何 Directive）⇒ {@code true}， {@code
    * lastDirectiveTick}/{@code ticksSinceLast} 为 {@code null}。
    */
-  public static Map<String, Object> decisionMaker(SdQueryService.DecisionMakerInfo info) {
+  public static Map<String, Object> decisionMaker(DecisionQueryService.DecisionMakerInfo info) {
     DecisionMaker maker = info.maker();
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", maker.id().value());
@@ -5793,7 +5793,7 @@ public final class ApiViews {
     //   GM 据此知道"这个人换过几次会话"。派生**走那个唯一拼写点**，不在这里另拼一份（拼错了不报错、只失忆）。
     view.put("conversationGeneration", maker.conversationGeneration());
     view.put("conversationId", DecisionAgentRunner.conversationIdOf(maker));
-    SdQueryService.PendingSignal pending = info.pending();
+    DecisionQueryService.PendingSignal pending = info.pending();
     view.put("due", pending.due());
     view.put("lastDirectiveTick", pending.lastDirectiveTick());
     view.put("ticksSinceLast", pending.ticksSinceLast());
@@ -5801,17 +5801,18 @@ public final class ApiViews {
   }
 
   /**
-   * 决策记录列表（{@code GET /api/sd/directives}）：每条 = 一条真 {@link Directive} + 取回的执行原文。
+   * 决策记录列表（{@code GET /api/ga/directives}）：每条 = 一条真 {@link Directive} + 取回的执行原文。
    *
-   * <p>★ **顺序由服务端决定**（{@link SdQueryService#listDirectives} 按 tick 降序、同 tick 按 id 字典序）——本类只做
+   * <p>★ **顺序由服务端决定**（{@link DecisionQueryService#listDirectives} 按 tick 降序、同 tick 按 id 字典序）——本类只做
    * 装配，不重排，否则"同状态两次响应逐字节相同"这条前提会破（与 {@link #decisionMakers} 同口径）。
    *
-   * <p>★ P7c 起 MCP 读口 {@code simos.sd.directives} 也直接调它（工具在 {@code tools.read} 包）⇒ 公开；装配逻辑与 GUI
+   * <p>★ P7c 起 MCP 读口 {@code simos.ga.directives} 也直接调它（工具在 {@code tools.read} 包）⇒ 公开；装配逻辑与 GUI
    * 仍是同一行，不另写一份视图。
    */
-  public static List<Map<String, Object>> directives(List<SdQueryService.DirectiveInfo> infos) {
+  public static List<Map<String, Object>> directives(
+      List<DecisionQueryService.DirectiveInfo> infos) {
     List<Map<String, Object>> out = new ArrayList<>(infos.size());
-    for (SdQueryService.DirectiveInfo info : infos) {
+    for (DecisionQueryService.DirectiveInfo info : infos) {
       out.add(directive(info));
     }
     return out;
@@ -5828,7 +5829,7 @@ public final class ApiViews {
    * <p>★ **{@code intentInfoKey} 与 {@code intentInfo} 两样都报**：前者是 record 里真正存着的东西（INFO 覆盖层的
    * key），后者是照它取回来的原文。取不到原文而只报 key，界面就只能显示一个 key 名（"决策内容看不见"的老问题换个形状回来）。
    */
-  static Map<String, Object> directive(SdQueryService.DirectiveInfo info) {
+  static Map<String, Object> directive(DecisionQueryService.DirectiveInfo info) {
     Directive directive = info.directive();
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("directiveId", directive.id().value());
@@ -5877,7 +5878,7 @@ public final class ApiViews {
   }
 
   /**
-   * 决策人的**现算可见范围**视图：{@code GET /api/sd/decision-makers/{id}/scope} 的体。
+   * 决策人的**现算可见范围**视图：{@code GET /api/ga/decision-makers/{id}/scope} 的体。
    *
    * <p>★★ **与 {@link #accessLimit} 摘要的分工**：那个报"GM 配了什么"（限制原文的计数），这个报"**算出来收到了多少**"
    * ——限制是**交集**的一半，另一半是范围函数（随世界状态变：国家圈地、军队移动）。GM 要判断"我这条限制管不管用"， 只有这一个端点能回答。
@@ -5888,7 +5889,7 @@ public final class ApiViews {
    * 把"我没看懂"读成"没生效"。
    */
   public static Map<String, Object> decisionScope(
-      SdQueryService.DecisionMakerInfo info, StateRef ref, DecisionScopeView view) {
+      DecisionQueryService.DecisionMakerInfo info, StateRef ref, DecisionScopeView view) {
     Map<String, Object> maker = decisionMaker(info);
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("decisionMakerId", maker.get("id"));

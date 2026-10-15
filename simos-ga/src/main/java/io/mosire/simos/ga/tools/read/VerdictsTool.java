@@ -17,15 +17,16 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code simos.sd.verdicts}（工具面补齐，2026-09-25）：**判决只读面**。
+ * {@code simos.ga.verdicts}（工具面补齐，2026-09-25）：**判决只读面**。
  *
- * <p>补的是 GUI 读口 {@code GET /api/sd/verdicts[?as=&lt;dmId&gt;]}（{@code GuiServer:285} 常量、{@code
+ * <p>补的是 GUI 读口 {@code GET /api/ga/verdicts[?as=&lt;dmId&gt;]}（{@code GuiServer:285} 常量、{@code
  * GuiServer:612} 分支）在 MCP 侧的对应工具。数据源是 {@code SdState.verdicts}（{@code Verdict}：id / breakpoint /
  * subject / atRevision；FULL 披露下另含模型原始输出 {@code payload} 与 {@code meta}）。
  *
- * <p>★★ **它与 {@code sd.DecisionResults} 不是同一份数据**（所以不能并入）：{@code sd.DecisionResults}（{@link
- * DecisionResultsTool}）读的是 sd INFO 覆盖层里 {@code sd:adjudication.<tick>} 的**裁决结局摘要**（按 tags 归给决策人），
- * 而本工具读的是 {@code Verdict} 实体本身——**模型冻结下来的原始输出 + meta**。两者不可互相推导。
+ * <p>★★ **它与 {@code simos.ga.decisionResults} 不是同一份数据**（所以不能并入）：{@code
+ * simos.ga.decisionResults}（{@link DecisionResultsTool}）读的是 sd INFO 覆盖层里 {@code
+ * sd:adjudication.<tick>} 的**裁决结局摘要**（按 tags 归给决策人）， 而本工具读的是 {@code Verdict} 实体本身——**模型冻结下来的原始输出 +
+ * meta**。两者不可互相推导。
  *
  * <p>★★ **省略 {@code actor} = FULL 全量披露**（与 GUI 同口径：{@code GuiServer:612-616} 无 {@code as=} 走 {@code
  * RedactingQueryService.verdicts(target)}，后者写死 {@code DisclosurePolicy.FULL}，把 {@code payload} 与
@@ -34,14 +35,14 @@ import java.util.Set;
  * actor} ⇒ 走 {@code verdicts(actor, target)} 的 redaction（按该决策人的 adjudication 披露策略裁剪字段），语义与 GUI 的
  * {@code as=} 完全一致——★ **不把 {@code as=} 当成可省略的装饰**：给了就真裁剪。
  */
-public final class SdVerdictsTool implements SimosTool, GmOnlyRead {
+public final class VerdictsTool implements SimosTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。 */
-  public static final String NAME = "simos.sd.verdicts";
+  public static final String NAME = "simos.ga.verdicts";
 
   private final GaToolQueries queries;
 
-  public SdVerdictsTool(GaToolQueries queries) {
+  public VerdictsTool(GaToolQueries queries) {
     this.queries = queries;
   }
 

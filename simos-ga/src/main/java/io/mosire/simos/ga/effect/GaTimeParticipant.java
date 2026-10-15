@@ -6,8 +6,8 @@ import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.change.GaChangeSet;
 import io.mosire.simos.ga.id.EffectId;
-import io.mosire.simos.ga.model.SdInfoEntry;
-import io.mosire.simos.ga.model.SdInfoIds;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoIds;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
@@ -43,7 +43,7 @@ import java.util.Set;
  * at.tick()} 与参照点的差值即**日数**。
  *
  * <p>★ **能力边界**：<b>只写 ga</b>——{@code effects} 与 {@code info} 两张表<b>同住 {@code GaState}</b>（本批起）；
- * 跨模块效果仍落成 {@code Action.EnqueueUnitCommand}，由 app 层 {@code SdCommandDrain} 落真 revision（spec §五.3）；
+ * 跨模块效果仍落成 {@code Action.EnqueueUnitCommand}，由 app 层 {@code CommandDrain} 落真 revision（spec §五.3）；
  * 只读 unit 切片（{@code Trigger.UnitAtHex}）。
  *
  * <p>★★ <b>2026-10-12 批次 3b-4：本类自 {@code io.mosire.simos.sd.time.SdTimeParticipant} 整类迁入本包（{@code
@@ -65,10 +65,10 @@ import java.util.Set;
  *   <li><b>求值本体</b>：{@link TriggerEvaluator#evaluate} 逐字照用（五档存活语义未动）；
  *   <li><b>触发</b>：达标即整条替换成 {@code status = FIRED}（其余五个字段原样带过）、记 TRACE {@code SD_EFFECT_FIRED}，
  *       并执行动作；
- *   <li><b>动作落地</b>：{@code Action.PutInfo} → 往 {@code info} 的同地址条目表<b>追加</b>一条 {@code SdInfoEntry}
- *       （序号 = 追加前条目数、tick = 当日的 {@code at.tick()}、tags/affiliations 空集、note/sourceDirective/
- *       adjudicationStatus 皆空、{@code atRevision} = 本次推进的 base revision）；{@code
- *       Action.EnqueueUnitCommand} → <b>有意不处理</b>（跨模块写，交 app 层 drain）；
+ *   <li><b>动作落地</b>：{@code Action.PutInfo} → 往 {@code info} 的同地址条目表<b>追加</b>一条 {@code
+ *       DecisionInfoEntry} （序号 = 追加前条目数、tick = 当日的 {@code at.tick()}、tags/affiliations
+ *       空集、note/sourceDirective/ adjudicationStatus 皆空、{@code atRevision} = 本次推进的 base
+ *       revision）；{@code Action.EnqueueUnitCommand} → <b>有意不处理</b>（跨模块写，交 app 层 drain）；
  *   <li><b>读写声明</b>：{@code reads} 收 {@code ga:effect.<id>} 与触发条件引用的 {@code unit:<id>}／{@code
  *       map:<mapId>:hex.<q>_<r>}；{@code writes} 收 {@code ga:effect.<id>} 与被写 INFO 的 {@code
  *       ga:info.<key>} ——★ <b>唯一有意的字符串变化</b>：命名空间由 {@code sd} 换成 {@code ga}（表换了家，地址族随之；见 §"如实记"）；
@@ -165,7 +165,7 @@ public final class GaTimeParticipant implements TimeParticipant {
     Set<String> writes = new LinkedHashSet<>();
 
     Map<EffectId, Effect> effects = new LinkedHashMap<>(base.effects());
-    Map<String, List<SdInfoEntry>> info = new LinkedHashMap<>(base.info());
+    Map<String, List<DecisionInfoEntry>> info = new LinkedHashMap<>(base.info());
 
     // ★★ §十一（2026-09-25）：一次推进 N 天 ⇒ **从 from 逐日推到 to**——AfterTicks/AtOrAfterTick、effect 触发
     //   都按**日**推进。一次跳 100 天只按 to 求值，会把中间该发生的触发整段跳过（等价性当场破）。
@@ -273,22 +273,22 @@ public final class GaTimeParticipant implements TimeParticipant {
    * 触发器的动作落地（★ 2026-10-12 批次 3d-2：由 switch 收成单支；本批起写的是**本模块**的 {@code info} 表）。
    *
    * <p>今天 {@link Action} 只剩 {@code PutInfo} 与 {@code EnqueueUnitCommand} 两档，后者由 app 层 {@code
-   * SdCommandDrain} 处理（本方法**有意**不处理它——那是跨模块写，不是本参与者的活），故这里是穷尽两支。
+   * CommandDrain} 处理（本方法**有意**不处理它——那是跨模块写，不是本参与者的活），故这里是穷尽两支。
    */
   private void applyAction(
       Action action,
       RevisionId atRevision,
       long tick,
-      Map<String, List<SdInfoEntry>> info,
+      Map<String, List<DecisionInfoEntry>> info,
       Set<String> writes) {
     switch (action) {
       case Action.PutInfo putInfo -> {
         String address = putInfo.address().canonical();
-        List<SdInfoEntry> entries = new ArrayList<>(info.getOrDefault(address, List.of()));
+        List<DecisionInfoEntry> entries = new ArrayList<>(info.getOrDefault(address, List.of()));
         // ★ 决策结果三件套（第 3 波第 1 步）：效果写的 INFO 没有决策人上下文 ⇒ tags 空集（无主）。
         entries.add(
-            new SdInfoEntry(
-                SdInfoIds.synthesize(address, entries.size()),
+            new DecisionInfoEntry(
+                DecisionInfoIds.synthesize(address, entries.size()),
                 tick,
                 Set.of(),
                 Set.of(),
@@ -301,7 +301,7 @@ public final class GaTimeParticipant implements TimeParticipant {
         info.put(address, List.copyOf(entries));
         writes.add(infoAddress(putInfo.key()));
       }
-      // ★ 跨模块效果（Action.EnqueueUnitCommand）不在此落地：它由 app 层 SdCommandDrain 经 CoreSimos.submit
+      // ★ 跨模块效果（Action.EnqueueUnitCommand）不在此落地：它由 app 层 CommandDrain 经 CoreSimos.submit
       //   落成真 revision（spec §五.3，铁律 3）——这是既有分工，不是本批新加的分支。
       case Action.EnqueueUnitCommand ignored -> {}
     }

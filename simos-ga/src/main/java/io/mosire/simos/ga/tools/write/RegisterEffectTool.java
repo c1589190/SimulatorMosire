@@ -21,7 +21,7 @@ import java.util.Set;
  *
  * <p>★★ <b>2026-10-12 批次 3b-4：工具名与命令类型 {@code sd.RegisterEffect → ga.RegisterEffect}</b>（用户裁定「sd
  * 整个弃用！」；{@code effects} 表搬进 {@code GaState}，命令必须与切片同名——见 {@code GaCodec} 类注）。★ 类名保持 {@code
- * SdRegisterEffectTool}（工具名不是命令类型，改名它要连带动 app 的装配面与用例；留待批次 3e 随 sd 空壳一起正名）。
+ * RegisterEffectTool}（工具名不是命令类型，改名它要连带动 app 的装配面与用例；留待批次 3e 随 sd 空壳一起正名）。
  *
  * <p>★★ <b>已知债已还（2026-10-14 批次 F）</b>：本工具的资源声明原写 {@code sd} 命名空间（与 3c §E.1 / 3d-1 §D.1 同族）， 而这条命令的
  * handler 自 3b-4 起只产 {@code GaChangeSet}（**实际写 ga 命名空间**）—— 批次 F 把资源命名空间 {@code sd} → {@code ga}
@@ -29,12 +29,12 @@ import java.util.Set;
  * gaNamespaceWriteResources()}，两处同源、一起改），声明面与断言面**同时**落到 {@code ga}， 该债不再存在（3d-1 §D.1
  * 记过：两者不同步时失效方向是"该拒的放行"）。
  */
-public final class SdRegisterEffectTool extends AbstractNarrowWriteTool implements SimosTool {
+public final class RegisterEffectTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /** ★ 本批起 = 命令类型（{@code ga.RegisterEffect}）：类型前缀决定 {@code CommandBus} 把变更集喂给哪个 codec。 */
   public static final String NAME = "ga.RegisterEffect";
 
-  public SdRegisterEffectTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
+  public RegisterEffectTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {
     super(writes, identity, mapId);
   }
 

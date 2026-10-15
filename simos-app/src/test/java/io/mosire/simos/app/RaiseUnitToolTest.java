@@ -37,7 +37,7 @@ import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.ga.GaSnapshot;
 import io.mosire.simos.ga.GaState;
 import io.mosire.simos.ga.codec.GaCodec;
-import io.mosire.simos.ga.model.SdInfoEntry;
+import io.mosire.simos.ga.model.DecisionInfoEntry;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolClass;
 import io.mosire.simos.ga.spi.ToolRole;
@@ -782,11 +782,11 @@ class RaiseUnitToolTest {
       int moneySources,
       int manpowerSources)
       throws Exception {
-    Map<String, List<SdInfoEntry>> info = sdState(after).info();
+    Map<String, List<DecisionInfoEntry>> info = sdState(after).info();
     assertThat(info).containsOnlyKeys("unit:u-new");
-    List<SdInfoEntry> entries = info.get("unit:u-new");
+    List<DecisionInfoEntry> entries = info.get("unit:u-new");
     assertThat(entries).hasSize(1);
-    SdInfoEntry entry = entries.get(0);
+    DecisionInfoEntry entry = entries.get(0);
     assertThat(entry.key()).isEqualTo(RaiseUnitTool.INFO_KEY).isEqualTo("raiseUnit");
     assertThat(entry.tick()).isEqualTo(7L);
     assertThat(entry.value()).as("sd 里 value 是 JSON 字符串").isInstanceOf(String.class);

@@ -23,6 +23,7 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.render.ArtifactStore;
@@ -55,17 +56,17 @@ import io.mosire.simos.ga.codec.GaCodec;
 import io.mosire.simos.ga.spi.ToolReadPort;
 import io.mosire.simos.ga.spi.ToolWritePort;
 import io.mosire.simos.ga.tools.GaToolIdentity;
+import io.mosire.simos.ga.tools.write.CancelEffectTool;
+import io.mosire.simos.ga.tools.write.CreateArmyTool;
+import io.mosire.simos.ga.tools.write.CreateDecisionMakerTool;
+import io.mosire.simos.ga.tools.write.CreateNationTool;
 import io.mosire.simos.ga.tools.write.GaMessageSendTool;
-import io.mosire.simos.ga.tools.write.SdCancelEffectTool;
-import io.mosire.simos.ga.tools.write.SdCreateArmyTool;
-import io.mosire.simos.ga.tools.write.SdCreateDecisionMakerTool;
-import io.mosire.simos.ga.tools.write.SdCreateNationTool;
-import io.mosire.simos.ga.tools.write.SdPutInfoTool;
-import io.mosire.simos.ga.tools.write.SdRecordDiplomaticEventTool;
-import io.mosire.simos.ga.tools.write.SdRegisterEffectTool;
-import io.mosire.simos.ga.tools.write.SdSetArmyMasterGovTool;
-import io.mosire.simos.ga.tools.write.SdSetDecisionMakerProviderTool;
-import io.mosire.simos.ga.tools.write.SdSetDiplomaticRelationTool;
+import io.mosire.simos.ga.tools.write.PutInfoTool;
+import io.mosire.simos.ga.tools.write.RecordDiplomaticEventTool;
+import io.mosire.simos.ga.tools.write.RegisterEffectTool;
+import io.mosire.simos.ga.tools.write.SetArmyMasterGovTool;
+import io.mosire.simos.ga.tools.write.SetDecisionMakerProviderTool;
+import io.mosire.simos.ga.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -1036,18 +1037,23 @@ class SimosToolsTest {
     //   ⇒ 构造器改吃注入的窄写口 + ga 身份口，与生产装配（SimosToolSource:847+）**同源**。
     ToolWritePort gaWrites = new CoreSimosToolWritePort(core, TEST_INITIATOR);
     GaToolIdentity gaIdentity = new AppGaToolIdentity();
+    // ★ 2026-10-15 批 L ②（设计书 §2.1）：两条外交窄写**合并成一条** ⇒ 构造器由 3 参变 5 参（DM 分支要读世界状态核署名）。
+    //   这里与生产装配（SimosToolSource.addDecisionAgentWrites）传同一批接缝：QueryService 读口 + 归属读口。
+    ToolReadPort gaReads = new QueryServiceToolReadPort(shell.queryService());
     List<AgentTool> sdTools =
         List.of(
-            new SdCreateNationTool(gaWrites, gaIdentity, mapId),
-            new SdCreateArmyTool(gaWrites, gaIdentity, mapId),
-            new SdSetArmyMasterGovTool(gaWrites, gaIdentity, mapId),
-            new SdCreateDecisionMakerTool(gaWrites, gaIdentity, mapId),
-            new SdPutInfoTool(gaWrites, gaIdentity, mapId),
-            new SdSetDiplomaticRelationTool(gaWrites, gaIdentity, mapId),
-            new SdRecordDiplomaticEventTool(gaWrites, gaIdentity, mapId),
-            new SdRegisterEffectTool(gaWrites, gaIdentity, mapId),
-            new SdCancelEffectTool(gaWrites, gaIdentity, mapId),
-            new SdSetDecisionMakerProviderTool(gaWrites, gaIdentity, mapId));
+            new CreateNationTool(gaWrites, gaIdentity, mapId),
+            new CreateArmyTool(gaWrites, gaIdentity, mapId),
+            new SetArmyMasterGovTool(gaWrites, gaIdentity, mapId),
+            new CreateDecisionMakerTool(gaWrites, gaIdentity, mapId),
+            new PutInfoTool(gaWrites, gaIdentity, mapId),
+            new SetDiplomaticRelationTool(
+                gaWrites, gaReads, gaIdentity, AppDecisionMakerAffiliations.INSTANCE, mapId),
+            new RecordDiplomaticEventTool(
+                gaWrites, gaReads, gaIdentity, AppDecisionMakerAffiliations.INSTANCE, mapId),
+            new RegisterEffectTool(gaWrites, gaIdentity, mapId),
+            new CancelEffectTool(gaWrites, gaIdentity, mapId),
+            new SetDecisionMakerProviderTool(gaWrites, gaIdentity, mapId));
 
     assertThat(toolNames(sdTools))
         .as("15 条 GM-only sd 窄工具的登记名逐条等于 SD_WRITE_NAMES")
@@ -1439,7 +1445,7 @@ class SimosToolsTest {
           //   {@code return commandType();}。**只有覆写了 toolName() 的类**才用 NAME 常量当工具名。
           //   ⇒ 未覆写时读 {@code COMMAND_TYPE}（或 {@code NAME = XxxHandler.TYPE} 解析出的命令类型）；
           //     覆写时读 NAME 字面量。
-          //   ★ 这条修的是**真红**：{@code SdCreateArmyTool}/{@code SdSetArmyMasterGovTool} 的 NAME 常量
+          //   ★ 这条修的是**真红**：{@code CreateArmyTool}/{@code SetArmyMasterGovTool} 的 NAME 常量
           //     有意保留 {@code sd.} 前缀（工具面身份另批正名），但它们的 {@code name()} 实际返回
           //     {@code army.CreateArmy}/{@code army.SetArmyMasterGov} —— 旧扫描读 NAME 常量 ⇒
           // 与真工具面**对不上**，
@@ -2215,8 +2221,8 @@ class SimosToolsTest {
           String source = Files.readString(file);
           // ★★ 2026-10-13 收尾测试第 2 层：窄写工具的**运行时名字**是 {@code AbstractNarrowWriteTool.name()}
           //   = {@code toolName()}，其缺省实现返回 {@code commandType()}。未覆写 toolName() 的类即使留着
-          //   一个 {@code NAME} 常量，那个常量**也不是**它在桶里的名字（{@code SdCreateArmyTool} /
-          //   {@code SdSetArmyMasterGovTool} 就是这一形态：NAME 有意保留 {@code sd.} 前缀，name() 却是
+          //   一个 {@code NAME} 常量，那个常量**也不是**它在桶里的名字（{@code CreateArmyTool} /
+          //   {@code SetArmyMasterGovTool} 就是这一形态：NAME 有意保留 {@code sd.} 前缀，name() 却是
           //   {@code army.*}）⇒ 这里先读 {@code COMMAND_TYPE}，否则下面那条"GM 桶不得有源码里不存在的名字"
           //   会与真工具面**对不上**（旧写法正是如此）。
           if (source.contains("extends AbstractNarrowWriteTool")
@@ -2819,7 +2825,7 @@ class SimosToolsTest {
     assertThat(region.success()).as(region.message()).isTrue();
 
     assertDomainRejectedAndHeadUnchanged(
-        SdCreateNationTool.NAME,
+        CreateNationTool.NAME,
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"t3-region\","
             + "\"adminBudgetPerTick\":10}",
         "无国家 tag");
@@ -2832,11 +2838,11 @@ class SimosToolsTest {
   @Test
   void sdCreateArmyToolSurfacesTheNamedRejectionForTheRemovedNationId() throws Exception {
     // ★★ 2026-10-13 收尾测试第 2 层：本工具在注册表里的名字是**运行时名字** ——
-    //   `AbstractNarrowWriteTool.name()` 返回 `toolName()`，而 `SdCreateArmyTool` **没有覆写**它
+    //   `AbstractNarrowWriteTool.name()` 返回 `toolName()`，而 `CreateArmyTool` **没有覆写**它
     //   ⇒ 名字 = `commandType()` = `army.CreateArmy`。它的 `NAME` 常量有意保留 `sd.` 前缀（工具面身份，
     //   正名另批）⇒ **那个常量不是它的注册名**，拿它去 call 会 NoSuchElement。
     assertDomainRejectedAndHeadUnchanged(
-        SdCreateArmyTool.COMMAND_TYPE,
+        CreateArmyTool.COMMAND_TYPE,
         "{\"armyId\":\"a1\",\"nationId\":\"n1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}",
         "不再接受 nationId");
   }
@@ -2861,7 +2867,7 @@ class SimosToolsTest {
     assertThat(region.success()).as(region.message()).isTrue();
     ToolResult nation =
         callNarrowWrite(
-            SdCreateNationTool.NAME,
+            CreateNationTool.NAME,
             "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"t3-region\","
                 + "\"adminBudgetPerTick\":10}",
             2L);
@@ -2870,7 +2876,7 @@ class SimosToolsTest {
         .isTrue();
 
     assertDomainRejectedAndHeadUnchanged(
-        SdCreateDecisionMakerTool.NAME,
+        CreateDecisionMakerTool.NAME,
         "{\"id\":\"dm-1\"," + "\"allowedTools\":[\"simos.command.submit\"],\"cadence\":5}",
         "不得含通用写");
   }
@@ -2879,14 +2885,14 @@ class SimosToolsTest {
   @Test
   void sdPutInfoToolSurfacesThePayloadRejectionForAMalformedAddress() throws Exception {
     assertDomainRejectedAndHeadUnchanged(
-        SdPutInfoTool.NAME, "{\"address\":\"nope\",\"key\":\"k\",\"value\":\"v\"}", "地址至少两段");
+        PutInfoTool.NAME, "{\"address\":\"nope\",\"key\":\"k\",\"value\":\"v\"}", "地址至少两段");
   }
 
   /** ★ 坏载荷 = **effectId 不存在**（无需前置：效果表本来就是空的）。 */
   @Test
   void sdCancelEffectToolSurfacesTheDomainRejectionForAnUnknownEffect() throws Exception {
     assertDomainRejectedAndHeadUnchanged(
-        SdCancelEffectTool.NAME, "{\"effectId\":\"e-nope\"}", "效果不存在");
+        CancelEffectTool.NAME, "{\"effectId\":\"e-nope\"}", "效果不存在");
   }
 
   /**
@@ -2900,7 +2906,7 @@ class SimosToolsTest {
   void sdSetDecisionMakerProviderToolSurfacesTheDomainRejectionForAnUnknownDecisionMaker()
       throws Exception {
     assertDomainRejectedAndHeadUnchanged(
-        SdSetDecisionMakerProviderTool.NAME,
+        SetDecisionMakerProviderTool.NAME,
         "{\"decisionMakerId\":\"dm-nope\",\"providerId\":\"p-never-registered\"}",
         "决策人不存在");
   }
