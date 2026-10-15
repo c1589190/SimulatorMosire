@@ -149,8 +149,14 @@ class ShellAssemblySmokeTest {
    * 桶那条锚点没有红</b> —— 这正是"7 条只是加了 DM 标签"这一侧的判别力（若它们本来不在 GM 桶，这里会一起红）。 ★ 与 {@code
    * ToolClassAuditAssemblyTest} 的三格锚点同源：{@code 133(类1) + 24(类2) + 37(类3) = 194}、GM 桶 {@code = 133 +
    * 46(共享) = 179}、决策人桶 {@code = 24 + 37 = 61}。
+   *
+   * <p>★★ <b>2026-10-15 批 U（{@code 179 → 180}）：同步批 O 新增的 {@code simos.command.submitBatch}</b> —— 批
+   * O （{@code 12f23e68}）在 {@code SimosToolSource} 里加了一条 GM 薄工具（{@code roles()={GM}} ⇒
+   * 落<b>类1</b>，且<b>不继承</b> {@code AbstractNarrowWriteTool}），却只在自己的台账里留了锚点清单、<b>没同步任何测试</b>（批 O
+   * 未跑全量）。★ 本值 = <b>本条真跑实测</b>：红在「{@code GM 桶条数锚点（增删工具须显式改本行）Expected size: 179 but was: 180}」（批 U
+   * 台账 §1 有原始输出）；★ 决策人桶 <b>61 一条不动</b>（该工具 {@code roles()} 只有 GM ⇒ 那条锚点同一次跑没红）。
    */
-  private static final int GM_BUCKET_SIZE = 179;
+  private static final int GM_BUCKET_SIZE = 180;
 
   /** ★★ 2026-10-15 用户裁定「甲」：{@code 54 → 61}（= 类2 24 + 类3 37；那 7 条补了 DM 标签的工具进本桶）。 */
   private static final int DECISION_BUCKET_SIZE = 61;

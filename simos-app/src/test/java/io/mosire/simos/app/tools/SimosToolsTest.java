@@ -281,7 +281,7 @@ class SimosToolsTest {
           "simos.ga.verdicts");
 
   /**
-   * 非窄写写工具（63 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
+   * 非窄写写工具（64 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
    *
    * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
    * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这批从差集里扣掉。
@@ -307,6 +307,14 @@ class SimosToolsTest {
           "simos.army.startCombat",
           "simos.calendar.configure",
           "simos.command.submit",
+          // ★★ 2026-10-15 批 U（名单 63 → 64）：批 O（12f23e68）新增的 GM 薄工具
+          //   {@code simos.command.submitBatch}（CommandSubmitBatchTool）是**非窄写**（只 implements
+          //   SimosTool，不继承 AbstractNarrowWriteTool ⇒ 窄写扫描器扫不到它）。
+          //   ★ 不登记它 ⇒ 它以"孤儿窄写"身份出现在 everyNarrowWriteToolClassIsWiredIntoTheGmBucket
+          //     的差集里（真跑实测：unexpected elements: ["simos.command.submitBatch"]）；
+          //     NARROW_WRITE_NAMES / 磁盘窄写扫描面（66）一条不动。
+          //   ★ 它 roles()={GM} ⇒ 决策人面一条不动；★ 与它同族的 simos.command.submit 就在上一行。
+          "simos.command.submitBatch",
           "simos.economy.adjust",
           "simos.economy.upsertGovUnit",
           "simos.economy.upsertIndustry",
@@ -1247,8 +1255,11 @@ class SimosToolsTest {
                 + "{@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 同一次真跑读数）；"
                 + "★★ 2026-10-14 批 G（GM 代打 {@code simos.gm.actAs}）：该工具 {@code roles()={GM}} 且是**非窄写**"
                 + "（不继承 AbstractNarrowWriteTool）⇒ GM 面 **178 → 179**（= 37 读 + 142 写），决策人面 **54 一条不动**"
-                + "（★ 实测：本条真跑红在「Expected size: 178 but was: 179」；下面那条决策人桶断言同一次跑**没红**）")
-        .hasSize(179);
+                + "（★ 实测：本条真跑红在「Expected size: 178 but was: 179」；下面那条决策人桶断言同一次跑**没红**）；"
+                + "★★ 2026-10-15 批 U（同步批 O）：批 O 的 {@code simos.command.submitBatch}（{@code roles()={GM}}、"
+                + "非窄写）⇒ GM 面 **179 → 180**，决策人面 **61 一条不动**"
+                + "（★ 实测：本条真跑红在「Expected size: 179 but was: 180」；下面那条决策人桶断言同一次跑**没红**）")
+        .hasSize(180);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -2203,8 +2214,11 @@ class SimosToolsTest {
                 + "实测 182 → 180** —— 两条被合并掉的 GM 面实现类整类删除（{@code SdRecordDiplomaticEventTool} / "
                 + "{@code SdSetDiplomaticRelationTool}），留下的 {@code RecordDiplomaticEventTool} / "
                 + "{@code SetDiplomaticRelationTool} 是原来 DM 面那两个类（改名 + 拿角色标签，不新增）"
-                + "（★ 实测：本条真跑红在「Expected size: 182 but was: 180」）")
-        .hasSize(180);
+                + "（★ 实测：本条真跑红在「Expected size: 182 but was: 180」）；"
+                + "★★ 2026-10-15 批 U（同步批 O）：磁盘上 **+1 个 *Tool.java ⇒ 实测 180 → 181** —— "
+                + "{@code simos-app/.../tools/write/CommandSubmitBatchTool.java}（批 O 的 GM 薄工具，"
+                + "{@code roles()={GM}}、非窄写）（★ 实测：本条真跑红在「Expected size: 180 but was: 181」）")
+        .hasSize(181);
 
     List<String> union =
         Stream.concat(

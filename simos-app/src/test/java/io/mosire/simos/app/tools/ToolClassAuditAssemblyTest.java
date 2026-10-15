@@ -44,6 +44,9 @@ import org.junit.jupiter.api.io.TempDir;
  * 决策人桶  = 类2  24 + 类3 37 =  61 = ShellAssemblySmokeTest.DECISION_BUCKET_SIZE
  * </pre>
  *
+ * <p>★★ <b>2026-10-15 批 U 后的当前读数</b>（★ 真装配实测，见批 U 台账 §1）：{@code GM 桶 = 类1 132 + 共享 48 = 180} ·
+ * {@code 并集 = 132 + 24 + 37 = 193} · 决策人桶 {@code = 24 + 37 = 61}（不动）。
+ *
  * <p>★★ <b>2026-10-15 用户裁定「甲」后的新口径</b>（本类的前四个常量随之改）：{@code RaiseUnit} · {@code LevyRegion} · {@code
  * GovRecruit} · {@code GovRetireStaff} · {@code SocialHouseholdMembers} · {@code
  * GovSelectExaminees} · {@code GovDispatchTeam} 这 <b>7 条类1</b> 当年的 <b>DM
@@ -81,8 +84,13 @@ class ToolClassAuditAssemblyTest {
    * gov.SetDiplomaticRelation}）**合并成一条**、{@code roles={DM,GM}} ⇒ 这两条 GM-only 不再存在 ⇒ 类1 减 2。★
    * 实测读数是「Expected size: 133 but was: 131」；★ 与 {@link #SHARED_SIZE} 的联立是 131 + 48 = 179（GM
    * 桶**不动**，见 {@link #GM_BUCKET_SIZE}）。
+   *
+   * <p>★★ <b>2026-10-15 批 U（{@code 131 → 132}）：批 O 的 {@code simos.command.submitBatch}</b>（{@code
+   * 12f23e68}）是 {@code roles()={GM}} 的通用写（<b>不继承</b>窄写基类）⇒ 只进类1、只进 GM 桶、<b>不进</b>共享。★ 本值 =
+   * <b>本条真跑实测</b>：红在「{@code 类1 GM_ONLY 条数锚点 … Expected size: 131 but was: 132}」（批 U 台账 §1）；★
+   * 修后自洽：{@code 132 + 48(共享) = 180(GM 桶)}。
    */
-  private static final int GM_ONLY_SIZE = 131;
+  private static final int GM_ONLY_SIZE = 132;
 
   /**
    * ★★ <b>类2 {@code DM_APPROVAL} = 24</b>（具名清单见 {@link #DM_APPROVAL_NAMES}）。★ 17 → 24 的全部增量 =
@@ -106,16 +114,20 @@ class ToolClassAuditAssemblyTest {
   private static final int SHARED_SIZE = 48;
 
   /**
-   * ★ <b>两桶并集 = 192 = 131 + 24 + 37</b>（分区不重不漏的算术自证）。★★ 批 L ②：{@code 194 → 192}（合并把两条 GM-only 与两条
-   * DM-only 折成两条、并集净 −2）。
+   * ★ <b>两桶并集 = 193 = 132 + 24 + 37</b>（分区不重不漏的算术自证）。★★ 批 L ②：{@code 194 → 192}（合并把两条 GM-only 与两条
+   * DM-only 折成两条、并集净 −2）。★★ 2026-10-15 批 U：{@code 192 → 193}（批 O 的 {@code
+   * simos.command.submitBatch} 只进类1 ⇒ 并集 +1；★ 本条真跑实测：「{@code 扫描器自证之三 … Expected size: 192 but was:
+   * 193}」）。
    */
-  private static final int TOOL_UNION_SIZE = 192;
+  private static final int TOOL_UNION_SIZE = 193;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 逐字相同（那边是 {@code private} ⇒ 这里逐字重复而不是反射取）。 ★
-   * 两处**同时**红才说明"分区搬了家"：本类下面的断言把"桶条数"与"三格算术"钉在一起。★ 裁定「甲」<b>未动</b>本数。
+   * 两处**同时**红才说明"分区搬了家"：本类下面的断言把"桶条数"与"三格算术"钉在一起。★ 裁定「甲」<b>未动</b>本数。★★ 2026-10-15 批 U：{@code 179 →
+   * 180}（批 O 的 {@code simos.command.submitBatch}；本条真跑实测「{@code GM 桶条数 =
+   * ShellAssemblySmokeTest.GM_BUCKET_SIZE … Expected size: 179 but was: 180}」）。
    */
-  private static final int GM_BUCKET_SIZE = 179;
+  private static final int GM_BUCKET_SIZE = 180;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.DECISION_BUCKET_SIZE} 逐字相同。★ 裁定「甲」：{@code 54 → 61}（= 类2 24 +

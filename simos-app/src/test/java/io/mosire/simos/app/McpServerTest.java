@@ -167,6 +167,9 @@ class McpServerTest {
           "simos.calendar.info",
           "simos.command.catalog",
           "simos.command.submit",
+          // ★★ 2026-10-15 批 U（同步批 O）：GM 薄工具 simos.command.submitBatch（原子批；roles()={GM} ⇒ 只在 GM 面）。
+          //   ★ 不登记 ⇒ 本条真跑红在「unexpected elements: ["simos.command.submitBatch"]」（批 U 台账 §1）。
+          "simos.command.submitBatch",
           "simos.economy.adjust",
           "simos.economy.upsertGovUnit",
           "simos.economy.upsertIndustry",

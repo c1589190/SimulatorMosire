@@ -105,6 +105,8 @@ class McpPortTopologyTest {
           "simos.army.startCombat",
           "simos.calendar.configure",
           "simos.command.submit",
+          // ★★ 2026-10-15 批 U（同步批 O）：GM 薄工具 simos.command.submitBatch（原子批；非窄写；roles()={GM}）。
+          "simos.command.submitBatch",
           "simos.economy.adjust",
           "simos.economy.upsertGovUnit",
           "simos.economy.upsertIndustry",
