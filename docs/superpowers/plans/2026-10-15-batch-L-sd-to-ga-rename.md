@@ -51,24 +51,38 @@
 
 ---
 
-## 2. ★ 待裁定（命名是内容决定，控制方不代裁）
+## 2. ★ 已裁定（用户 2026-10-15）
 
-| # | 问题 | 选项 |
+| # | 问题 | **裁定** | 落地 |
+|---|---|---|---|
+| **N1** | 9 条工具名 | ★ **甲：`simos.sd.X` → `simos.ga.X`**（与批 F 的 4 条决策包工具同向） | 除下面两对外，其余 **7 条**按此改 |
+| **N2** | ★★ 那对"两面" | ★ **乙 + 合并甲**：**两条一起统一到 `simos.gov.*`**，且**合并成一条**（见 §2.1） | 两条命令各留**一条**工具 |
+| **N3** | 无前缀的 3 条 | ★ **甲：补 `simos.` 前缀** | `gov.CreateNation` → `simos.gov.createNation`（另两条由 N2 的合并吸收） |
+| **N4** | 9 条 `/api/sd/*` 路由 + 前端 6 文件 | ★ **甲：→ `/api/ga/*`** | 与工具名同向 |
+| **N5** | 19 个 `Sd*` 类名 | ★ **乙：按语义删掉 `Sd`**（`SdCreateArmyTool` → `CreateArmyTool` 等）—— 这些类**不属于 ga 的领域**，只是住在 ga 模块 | 逐个按语义命名 |
+
+### 2.1 ★★ 合并甲的确切形态（那两对）
+
+**控制方核过的事实**：两条**不是同一份实现** ——
+| | GM 面（`Sd*`，74 行） | DM 面（`gov.*`，103 行） |
 |---|---|---|
-| **N1** | 那 **9 条工具名**：`simos.sd.X` → **`simos.ga.X`**（同名后缀）可以吗？ | ★ 甲：`simos.ga.X`（与批 F 的 4 条决策包工具一致：`sd.packet.* → ga.packet.*`）· 乙：另有方案 |
-| **N2** | ★★ 那**一对两面**：GM 口改成 `simos.ga.record-diplomatic-event` 后，与 DM 口 `gov.RecordDiplomaticEvent` **命名仍不一致**（一个带 `simos.`、一个不带） | 甲：**两条一起统一**（例如都叫 `simos.gov.*`，因为命令本来就住 `simos-gov`）· 乙：只改 `sd` 那半（**你在 2026-10-14 说「正常语义不用」⇒ 不动 `gov.*`**）· 丙：其他 |
-| **N3** | 无前缀的 **3 条**工具名（`gov.RecordDiplomaticEvent` · `gov.CreateNation` · `gov.SetDiplomaticRelation`） | 甲：顺手补 `simos.` 前缀（与全仓一致）· 乙：**不动**（「正常语义不用」） |
-| **N4** | 9 条 `/api/sd/*` 路由 + 前端 6 文件 | 甲：→ `/api/ga/*`（与工具名同向）· 乙：换更准的域名词 |
-| **N5** | 17~19 个 `Sd*` **类名** | 甲：机械改成 `Ga*`（`SdCreateArmyTool` → `GaCreateArmyTool`？读起来怪）· 乙：按**语义**改（如 `SdCreateArmyTool` → `CreateArmyTool`/`ArmyCreateTool`）· 丙：只改确实带 `Sd` 语义的 |
+| 目标怎么定 | **显式点名** id | ★ **从身份派生**（`GaToolIdentity` + `DecisionMakerAffiliationPort`；归属不是 Nation ⇒ 具名拒） |
 
-★ **控制方的倾向（仅供参考，不代替裁定）**：
-- **N1 甲**：与批 F 已做的 4 条同向，机械、可全仓扫描验证。
-- **N2 甲**（两条一起统一到 `simos.gov.*`）：理由是**命令本来就住 `simos-gov`**，而"GM 口/DM 口"是**面**不是**域**；
-  但这一条**越过了你「正常语义不用」那句**，所以要你点头。
-- **N3 甲**：顺手统一，成本极低；同样越过「正常语义不用」。
-- **N4 甲**。
-- **N5 乙**（按语义）：`Sd*` 里的 `Sd` 是**旧模块名**，删掉后应留下**语义**（`CreateArmy` / `CreateNation` / …），
-  而不是把 `Sd` 换成 `Ga`（`GaCreateArmyTool` 无意义 —— 这些类**不属于 ga 的领域**，只是住在 ga 模块）。
+⇒ **合并成一条**，`roles={DM, GM}` + `gate=Ask(SENSITIVE)` ⇒ **类2**（"DM/GM 混合就是要交给 GM 审核"）；
+**目标解析按调用者身份分支**：
+- 调用者是 **DM** ⇒ 走身份派生（复用现成那套 `GaToolIdentity` + `DecisionMakerAffiliationPort` + `DiplomaticWriteSignature`）
+- 调用者是 **GM** ⇒ 显式点名
+
+★ **这不是新发明**：本仓**已有同一模式** —— `GovToolSupport.resolveDecisionMakerGov`（"给了 `decisionMakerId` 就从身份解，
+否则要求显式 `govUnitId`"），正是批 K ⑤-16 刚记录进文档的那一条。⇒ **合并 = 把两侧收敛到既有模式**，
+而不是造第三套。
+
+**两条命令的最终名**：`simos.gov.recordDiplomaticEvent` · `simos.gov.setDiplomaticRelation`。
+
+★★ **计数影响**：类1 **133 → 131**（两条 GM-only 消失）· 类2 **24 不变**（两条名字保留位置，只是改名）· 类3 **37**。
+⇒ 与批 K 的锚点**必须同步**（`ToolClassAuditAssemblyTest` 等）。
+★ 另：`SdRecordDiplomaticEventTool` 的类注还写着「写面只声明 **`sd`** 命名空间（handler 只产 sd 变更集）」
+—— **又一处旧名撒谎**，随合并一并改。
 
 ---
 
