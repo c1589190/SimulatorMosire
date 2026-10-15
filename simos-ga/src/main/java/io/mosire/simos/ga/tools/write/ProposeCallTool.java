@@ -291,7 +291,10 @@ public final class ProposeCallTool implements SimosTool {
       view.put("targets", targetsView(validated.get(0).call().targets()));
       view.put("preview", validated.get(0).preview());
       view.put("calls", callsView(proposals, validated));
-      if (!finalIntentText.isBlank()) {
+      // ★★ null 是**有意允许**的值（= "不动包里已有的 intent"，见上面 :265 的合成规则第 3 条）⇒ 视图里就不给
+      //   intent 字段（与 blank 同形）。★ 这里**必须** null-safe：写已经发生（上面那次 submitWithReceipt 已落
+      //   一条 revision）⇒ 此处再抛 ⇒ 工具报 TOOL_ERROR 而包已落盘，直接违反类注的"要么全成、要么全不成"。
+      if (finalIntentText != null && !finalIntentText.isBlank()) {
         view.put("intent", finalIntentText);
       }
       // ★ 隐式 reopen（I13）：包以 DRAFT 写回（见 newPacket），视图如实报出来 + 一句"改完记得再 confirm"。
