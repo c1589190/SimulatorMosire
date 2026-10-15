@@ -108,3 +108,16 @@
 | **V3** | 门禁**测试阶段耗时**给出前后实测对比 |
 | **V4** | ★ 新跑法**有文档**（怎么跑、跑多久、看什么），落在 `test-world/README.md` 或 `docs/agents/08-七-…` |
 | **V5** | 三格计数 / 桶锚点 / 其余 3307 用例**不受影响**（`clean verify` 仍 rc=0） |
+
+### 2.2 ★ 边界个案的裁定（用户 2026-10-15）
+
+`AdvanceStopProtocolTest#stoppedWorldIsReallyAtThatTickAndCanBeAdvancedFurther`（simos-core）
+按字面踩「≥2 段」（4→10 = 6 天 + 6→10 = 4 天 = **10 tick**），但装置全是**玩具**
+（`ToyCodec`/`ReportingParticipant`，**没有真世界**），两次推进是该"急停/续推"判据的**必要组成**。
+
+► **用户原话（逐字）：「10tick 留着呗，不耗费多少时间」** ⇒ ★ **裁定：合规、不搬**。
+- ★ **判据没有被改宽**：该用例**照字面报 `VIOLATION(ATTESTED)`**，理由具名登记在
+  `tools/multitick-scan-attestations.txt`（含**过期即 rc=3**），并且**曾上交用户复核后才维持**。
+- ★ **重审条件**：若它日后被改成**真世界装置**、或 tick 数上升 ⇒ 该豁免**须重审**（表头规则）。
+- 另一条豁免（`TimeAdvanceTest#absurdlyLongAdvanceIsRejectedWithTheCapInTheReason`）是**扫描器假阳性**：
+  36501 天超引擎上限（纯语法层拒）、36500 天那次装库探针当场抛 ⇒ 实际推进 **0 tick / 0 revision**。
