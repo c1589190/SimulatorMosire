@@ -107,7 +107,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ★★ **T11C 的端到端验收**：{@code sd.RunDecision} 这条窄工具**经真 MCP 口**触发一轮决策人 agent，并把**轨迹**交回来。
+ * ★★ **T11C 的端到端验收**：{@code ga.RunDecision} 这条窄工具**经真 MCP 口**触发一轮决策人 agent，并把**轨迹**交回来。
  *
  * <p>★ **为什么必须真装配**（比 {@code DecisionAgentRunnerTest} 更外面一层）：本任务最容易写成"看起来跑了一轮、其实只是把
  * 模型的话记下来"的形态。只有**真壳 + 真 MCP 口 + 真审批链 + 真工具面 + 真 store** 上的可观察副作用（revision 前进、会话落盘、
@@ -120,8 +120,8 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>★ **四条判据的证据形态**：
  *
  * <ol>
- *   <li>**真的跑了一轮**：① head 前进（触发事实 + 决策人自己的 {@code sd.IssueDirective} = 两条真 revision）；② revision 行真的
- *       写着 {@code sd.IssueDirective}（铁律 2：决策不是"记在对话里"）；③ 会话真的落盘（6 条：首条身份 + 本轮 5 条）；
+ *   <li>**真的跑了一轮**：① head 前进（触发事实 + 决策人自己的 {@code ga.IssueDirective} = 两条真 revision）；② revision 行真的
+ *       写着 {@code ga.IssueDirective}（铁律 2：决策不是"记在对话里"）；③ 会话真的落盘（6 条：首条身份 + 本轮 5 条）；
  *   <li>**轨迹可读回**（验收就靠它判"决策人看见了什么"）：{@code toolCalls[].summary} 里带着**夹具世界的真值** （{@code
  *       "desert"}）——编出来的轨迹不会恰是这个值；
  *   <li>**跨 tick 接得上**：用**它发出去的请求本身**当证据（{@link RecordingLlmClient} 记下每次 {@code LlmRequest}）；
@@ -199,9 +199,9 @@ class RunDecisionEndToEndTest {
   // ── 判据 1 + 2：经真 MCP 口触发一轮，轨迹可读回 ───────────────────────────────────
 
   /**
-   * ★★ **本任务的主判据**：GM 经 MCP 调 {@code sd.RunDecision} ⇒ 该决策人真的跑一轮 ⇒ 结果里带着**它看见了什么**。
+   * ★★ **本任务的主判据**：GM 经 MCP 调 {@code ga.RunDecision} ⇒ 该决策人真的跑一轮 ⇒ 结果里带着**它看见了什么**。
    *
-   * <p>脚本：模型先读一格（{@code simos.map.hex}）⇒ 再出令（{@code sd.IssueDirective}，base 取**触发事实落盘后的新 head**）⇒
+   * <p>脚本：模型先读一格（{@code simos.map.hex}）⇒ 再出令（{@code ga.IssueDirective}，base 取**触发事实落盘后的新 head**）⇒
    * 收口。
    */
   @Test
@@ -927,8 +927,8 @@ class RunDecisionEndToEndTest {
   /**
    * 经真 MCP 传输调用写工具，并**把这一轮里出现的每一条审批都答成"批一次"** ⇒ 取结果。
    *
-   * <p>★★ **为什么要循环答，而不是只答一条**：一轮里**不止一条**敏感写——外层是触发本身（{@code sd.RunDecision}），
-   * 内层还有决策人**自己**出的令（{@code sd.IssueDirective}）——它走的是**决策人链**（仍要人批，2026-09-24 用户裁定 只免了 GM
+   * <p>★★ **为什么要循环答，而不是只答一条**：一轮里**不止一条**敏感写——外层是触发本身（{@code ga.RunDecision}），
+   * 内层还有决策人**自己**出的令（{@code ga.IssueDirective}）——它走的是**决策人链**（仍要人批，2026-09-24 用户裁定 只免了 GM
    * 面）。故本助手仍循环应答内层的审批；只答第一条的写法会**卡死在内层那一条上**（T11C 首次运行实测： 20 秒超时，正是这条）。**外层触发（GM 面）不再进审批** ⇒
    * 本助手的循环对它是空转，断言见方法末。
    *

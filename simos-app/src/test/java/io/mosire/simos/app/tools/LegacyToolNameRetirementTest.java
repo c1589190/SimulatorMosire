@@ -75,9 +75,15 @@ class LegacyToolNameRetirementTest {
    * ★★ <b>与 {@link #OLD_TOOL_NAMES} 逐位对应的 19 条新名</b>（装配面的配对证据）。
    *
    * <p>★★ <b>两个例外如实写在这里</b>（不是漏配）：{@code sd.CreateArmy} / {@code sd.SetArmyMasterGov} 的"新名" {@code
-   * simos.ga.createArmy} / {@code simos.ga.setArmyMasterGov} 是 **{@code NAME} 常量、不是运行时的工具名** ——
-   * 那两个类**没有覆写 {@code toolName()}** ⇒ {@code name()} 返回的是命令类型（{@code army.CreateArmy} / {@code
-   * army.SetArmyMasterGov}）。⇒ 配对断言写的是**工具面上真实可见的那个名字**（见 impl-ledger §1.3 / §6 待裁定 #1）。
+   * simos.ga.createArmy} / {@code simos.ga.setArmyMasterGov} **曾经**是 {@code NAME}
+   * 常量的字面量、**从来不是**运行时的工具名 —— 那两个类**没有覆写 {@code toolName()}** ⇒ {@code name()} 返回的是命令类型（{@code
+   * army.CreateArmy} / {@code army.SetArmyMasterGov}）。⇒ 配对断言写的是**工具面上真实可见的那个名字**（见 impl-ledger §1.3
+   * / §6 待裁定 #1）。
+   *
+   * <p>★★ <b>2026-10-15 批 N ① 回代码核（原文说错，此处改正）</b>：上面那两个常量<b>已不存在</b> —— 批 N 把 {@code
+   * CreateArmyTool} / {@code SetArmyMasterGovTool} 的死 {@code NAME} 常量**删除**了（与真实工具名不一致 + 全仓零符号引用）。
+   * ⇒ 今天写到这两个类时，**没有任何 {@code NAME} 常量可读**：它们的工具名一律由 {@code commandType()}（= {@code
+   * COMMAND_TYPE}）给， 也就是下面这 19 条里的 {@code army.SetArmyMasterGov} / {@code army.CreateArmy} 两条。
    */
   private static final List<String> RENAMED_TOOL_NAMES =
       List.of(
@@ -92,7 +98,7 @@ class LegacyToolNameRetirementTest {
           "simos.gov.setDiplomaticRelation",
           "simos.ga.voidAdjudication",
           "simos.ga.adjudicateTick",
-          // ★ 死常量：真实工具名是命令类型（详见类注 / RENAMED_TOOL_NAMES 的 javadoc）
+          // ★ 无 NAME 常量（2026-10-15 批 N ① 已删）：真实工具名是命令类型（详见 RENAMED_TOOL_NAMES 的 javadoc）
           "army.SetArmyMasterGov",
           "army.CreateArmy",
           "simos.ga.rejectDirective",

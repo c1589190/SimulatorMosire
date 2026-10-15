@@ -19,8 +19,8 @@ import java.util.Set;
  * <p>★ <b>载荷</b>：{@code {armyId, masterGovUnitId?}}。{@code masterGovUnitId} 缺席/null/空串 =
  * 解除认领；给了必须存在且带 {@code GovernmentFormation}。前置（armyId 不存在 / 目标不是 GOV）都在**域层**判、 逐条有可读文案——工具层不重复校验。
  *
- * <p>★ <b>只改 sd 侧</b>：本工具不碰 {@code unit.ArmyFormation}（unit 侧同步走 {@code simos.army.assignGov}
- * 组合工具）； 两者语义独立，命令面不替调用方发明跨域联动。
+ * <p>★ <b>只改 army 侧</b>（2026-10-15 批 N2 正名，旧写「只改 sd 侧」）：本工具不碰 {@code unit.ArmyFormation}（unit 侧同步走
+ * {@code simos.army.assignGov} 组合工具）； 两者语义独立，命令面不替调用方发明跨域联动。
  */
 public final class SetArmyMasterGovTool extends AbstractNarrowWriteTool implements SimosTool {
 
@@ -62,7 +62,10 @@ public final class SetArmyMasterGovTool extends AbstractNarrowWriteTool implemen
   }
 
   /**
-   * ★ P0 资源对齐：本工具钉死的 {@code sd.*} 命令只产 {@code SdChangeSet}（实际只写 sd 命名空间），故写断言取 {@code sd:*}（GM 侧
+   * ★ P0 资源对齐（2026-10-15 批 N2 回代码核，原文写 {@code sd.*} / {@code SdChangeSet} / {@code sd:*} 三处均与事实不符）：
+   * 本工具钉死的 {@code army.SetArmyMasterGov} 命令产 {@code ArmyChangeSet}（{@code
+   * SetArmyMasterGovHandler}）， 实际只写 ga 命名空间（{@code ToolResources.GA_NAMESPACE = "ga"}，2026-10-14 批次
+   * F 由 {@code sd} 改名）⇒ 写断言取 {@code ga:*}（{@link #gaNamespaceWriteResources()}，GM 侧 ga 是
    * unlimited），不再沿用基类的三命名空间粗断言。
    */
   @Override

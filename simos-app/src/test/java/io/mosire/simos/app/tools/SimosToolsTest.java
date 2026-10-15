@@ -1484,11 +1484,15 @@ class SimosToolsTest {
           //   {@code return commandType();}。**只有覆写了 toolName() 的类**才用 NAME 常量当工具名。
           //   ⇒ 未覆写时读 {@code COMMAND_TYPE}（或 {@code NAME = XxxHandler.TYPE} 解析出的命令类型）；
           //     覆写时读 NAME 字面量。
-          //   ★ 这条修的是**真红**：{@code CreateArmyTool}/{@code SetArmyMasterGovTool} 的 NAME 常量
-          //     有意保留 {@code sd.} 前缀（工具面身份另批正名），但它们的 {@code name()} 实际返回
+          //   ★ 这条修的是**真红**（2026-10-13 当时）：{@code CreateArmyTool}/{@code SetArmyMasterGovTool} 的
+          // NAME
+          //     常量有意保留 {@code sd.} 前缀（工具面身份另批正名），但它们的 {@code name()} 实际返回
           //     {@code army.CreateArmy}/{@code army.SetArmyMasterGov} —— 旧扫描读 NAME 常量 ⇒
           // 与真工具面**对不上**，
           //     且 NAME/commandType 分叉这种缺陷本扫描器**看不见**。改正后两类名字都能还原。
+          //   ★★ 2026-10-15 批 N ① 回代码核（原文说错，此处改正）：那两个 NAME 常量**已被删除**（与真实工具名
+          //     不一致 + 全仓零符号引用）⇒ 这两类今天由上面的 {@code COMMAND_TYPE} 分支还原（都不覆写
+          //     {@code toolName()}），本条注释不再指向任何还活着的 NAME 常量。
           boolean overridesToolName = source.contains("protected String toolName()");
           if (overridesToolName) {
             Matcher matcher = nameConstant.matcher(source);
@@ -2265,10 +2269,11 @@ class SimosToolsTest {
           String source = Files.readString(file);
           // ★★ 2026-10-13 收尾测试第 2 层：窄写工具的**运行时名字**是 {@code AbstractNarrowWriteTool.name()}
           //   = {@code toolName()}，其缺省实现返回 {@code commandType()}。未覆写 toolName() 的类即使留着
-          //   一个 {@code NAME} 常量，那个常量**也不是**它在桶里的名字（{@code CreateArmyTool} /
-          //   {@code SetArmyMasterGovTool} 就是这一形态：NAME 有意保留 {@code sd.} 前缀，name() 却是
-          //   {@code army.*}）⇒ 这里先读 {@code COMMAND_TYPE}，否则下面那条"GM 桶不得有源码里不存在的名字"
-          //   会与真工具面**对不上**（旧写法正是如此）。
+          //   一个 {@code NAME} 常量，那个常量**也不是**它在桶里的名字 ⇒ 这里先读 {@code COMMAND_TYPE}，否则
+          //   下面那条"GM 桶不得有源码里不存在的名字"会与真工具面**对不上**（旧写法正是如此）。
+          //   ★★ 2026-10-15 批 N ① 回代码核（原文说错，此处改正）：当年正是 {@code CreateArmyTool} /
+          //   {@code SetArmyMasterGovTool} 这一形态（NAME 有意保留 {@code sd.} 前缀，name() 却是 {@code army.*}）；
+          //   那两个 NAME 常量**已被删除** ⇒ 它们今天也走这条 {@code COMMAND_TYPE} 分支（都不覆写 {@code toolName()}）。
           if (source.contains("extends AbstractNarrowWriteTool")
               && !source.contains("protected String toolName()")) {
             Matcher commandType =
@@ -2883,8 +2888,10 @@ class SimosToolsTest {
   void sdCreateArmyToolSurfacesTheNamedRejectionForTheRemovedNationId() throws Exception {
     // ★★ 2026-10-13 收尾测试第 2 层：本工具在注册表里的名字是**运行时名字** ——
     //   `AbstractNarrowWriteTool.name()` 返回 `toolName()`，而 `CreateArmyTool` **没有覆写**它
-    //   ⇒ 名字 = `commandType()` = `army.CreateArmy`。它的 `NAME` 常量有意保留 `sd.` 前缀（工具面身份，
-    //   正名另批）⇒ **那个常量不是它的注册名**，拿它去 call 会 NoSuchElement。
+    //   ⇒ 名字 = `commandType()` = `army.CreateArmy`。
+    //   ★★ 2026-10-15 批 N ① 回代码核（原文说错，此处改正）：当年那个 NAME 常量（有意保留 `sd.` 前缀）
+    //   **已被删除**（与真实工具名不一致 + 全仓零符号引用）⇒ 今天不存在"常量名 ≠ 注册名"这一形态，
+    //   注册名就是上面这条命令类型（拿旧的常量名字面量去 call 会 NoSuchElement 的告诫随之作废）。
     assertDomainRejectedAndHeadUnchanged(
         CreateArmyTool.COMMAND_TYPE,
         "{\"armyId\":\"a1\",\"nationId\":\"n1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}",
