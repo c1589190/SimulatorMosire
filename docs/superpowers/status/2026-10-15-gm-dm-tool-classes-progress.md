@@ -185,3 +185,18 @@ SIMOS_REAL_LLM=1 tools/mvn-lock.sh -pl simos-app -am \
    ⇒ 改描述要**连它导致的下游一起改**；`javac -Xdoclint:all` 可机检悬空 `{@link}`。
 6. **5 分钟审批上限不能"取消"**：传 `null` ⇒ AgentLib 当 `ZERO` ⇒ **立刻拒**；给巨大值 ⇒ **死锁**
    （GM 卡在 `run-decision-makers` 里等 DM 批次）。正确解 = **让阻塞路径根本不被走到**（3b 已做）。
+
+---
+
+## 八、④「未完工清单里的零件」现状与裁定（2026-10-15）
+
+控制方逐条回代码核过（不是照抄清单）：
+
+| # | 条目 | 现状（实测） | 裁定 |
+|---|---|---|---|
+| **1** | `simos.command.submitBatch`（GM 原子批薄工具） | ★ `git grep '"simos\.command\.submitBatch"'` = **0 命中** ⇒ 未做；★ 但**模板就在旁边**：`simos.command.submit`（`CommandSubmitTool`，`roles={GM}`）已有，且 `submitBatch` 底层能力在 **64 个 `src/main` 文件**里被用 | ✅ **已派（批 O）** |
+| **2** | `/gov` 页 + 决策包审阅/上报 GUI（清单第 10 条 D4.1） | `"/gov"` **0 命中**；`webui` 里提到 `packet` 的文件 = **0** | ★ **用户裁定：「放着，先不做 GUI」** ⇒ **不做**（★ 与更早那句「GUI 还是放着」是**两件不同的事**：那句指 GM⇄DM **消息/问答显示**，D4.1 指**政府页 + 决策包审阅**——本次用户对 GUI 再次确认放着） |
+| **3** | P4c：决策人**受限**军俸工具 + 审批链/白名单（catalog 归属未定） | 现有只有 **GM 侧** `GmArmyPayPolicyTool`（`simos-army`） | ★★ **用户裁定：甲 —— 类2**（`roles={DM,GM}` + `gate=Ask`）**且加进 `ProposalCatalog`**（DM 可提议 ⇒ 不阻塞路径）。★ 新增一条**类2** ⇒ 计数预期 **类2 24→25**，锚点要同步（归测试代理） |
+| **4** | `simos-ga-spi` 无 `src/test` | `simos-ga-spi/src` 下**只有 `main`** | ✅ 派（测试面） |
+
+★ **顺序**：① 在飞 ⇒ ③ **等 ① 交账**（两者都会碰 `simos-app` 的装配/注册面，避同一文件冲突）· ④ 可并行（纯 `simos-ga-spi/src/test`，文件集不相交）。
