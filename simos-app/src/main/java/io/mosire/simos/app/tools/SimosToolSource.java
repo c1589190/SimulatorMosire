@@ -63,6 +63,7 @@ import io.mosire.simos.app.tools.write.AppUnitToolCommandTypes;
 import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
 import io.mosire.simos.app.tools.write.AppUnitToolViews;
 import io.mosire.simos.app.tools.write.CalendarConfigureTool;
+import io.mosire.simos.app.tools.write.CommandSubmitBatchTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.ForkTool;
 import io.mosire.simos.app.tools.write.RegionClearDataTool;
@@ -1372,10 +1373,14 @@ public final class SimosToolSource implements ToolSource {
         : flat.substring(0, SUMMARY_FIELD_LIMIT) + "…";
   }
 
-  /** 通用写（spec §八.3）：submit / advance / fork —— 只有 {@link Role#GM} 有。 */
+  /** 通用写（spec §八.3）：submit / submitBatch / advance / fork —— 只有 {@link Role#GM} 有。 */
   private static void addGenericWrites(
       List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
     built.add(new CommandSubmitTool(core, initiator, mapId));
+    // ★ 批版兄弟（一批 = 一条 revision、整批原子）：与 simos.command.submit 同档（roles={GM}）——同一份载荷形状
+    //   （type/payloadJson）挪进 commands[]，branch/expectedRevision 留在批级（submitBatch 要求同批共享这两个坐标）。
+    //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；它只做"解析 → submitBatch → 折叠"，没有领域逻辑。
+    built.add(new CommandSubmitBatchTool(core, initiator, mapId));
     built.add(new AdvanceTool(core, initiator, mapId));
     built.add(new ForkTool(core, initiator));
   }
