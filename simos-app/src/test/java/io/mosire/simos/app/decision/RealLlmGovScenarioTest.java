@@ -150,8 +150,10 @@ class RealLlmGovScenarioTest {
   private static final String PROVIDER_ID = "mosire-flash";
 
   /**
-   * 同时决策回合的窄能力面：只给读 + 决策包 + 三类可 propose 的真实工具。★ 这是测试夹具对模型的硬预算： 不把 levyRegion 等长尾工具放进来，避免小模型在一次 20 次
-   * LLM 调用预算里反复勘察/提议、最后来不及 submit。
+   * 同时决策回合的窄能力面：只给读 + 决策包 + 三类可 propose 的真实工具。★ 这是测试夹具对模型的硬预算： 不把 levyRegion
+   * 等长尾工具放进来，避免小模型在一轮里反复勘察/提议、 最后来不及 {@code simos.ga.packet.confirm}（定稿）。★ 2026-10-15 批 R
+   * 更正旧措辞：这里说的是**工具调用次数**预算 （{@code DecisionAgentRunner.TOOL_CALL_BUDGET = 24} 次，不是决策条数；旧文写的"20 次
+   * LLM 调用预算"+「submit」两处都已过时）。
    */
   private static final List<String> DECISION_ALLOWED_TOOLS =
       List.of(
@@ -958,7 +960,15 @@ class RealLlmGovScenarioTest {
         + nf.capital.r()
         + "}；intent=中央示范：按政策让 1 名老吏退休回籍\n"
         + "3) 调用 simos.ga.packet.confirm 提交本 tick 决策包。\n"
-        + "【硬性预算】最多 4–6 次工具调用；只 propose 下面三类工具之一，然后立刻 submit；不要逐条试工具、不要在 args 里写 null。\n"
+        + "【包状态机（★ 2026-10-15 批 R 更正）】intent/propose 写出来的是**拟稿 DRAFT**；GM **不能裁决拟稿** ⇒ "
+        + "必须再调 simos.ga.packet.confirm 定稿（**DRAFT → PENDING**），GM 收齐所有包后才统一裁决/执行。"
+        + "confirm 之后还能改（改了再 confirm 一次，以最后一次为准），**GM 一旦裁决就改不了了**。\n"
+        + "【★ 同一条调用只提一次（2026-10-15 批 R 真跑实测的硬事实）】tool + args 完全相同的调用**不得重复 propose**"
+        + "（含只差 reason 文本的「探测」条目：落点 id 由 tool+args 派生 ⇒ 第二条会撞「家户已存在 / 单位 id 已存在」）；"
+        + "GM 把本 tick 所有包里的调用**在一条 revision 里整批执行** ⇒ 重复条目会让**整批**（含其他决策人的全部决策）被拒、本 tick 世界零效果。\n"
+        + "【硬性预算】上限 24 次**工具调用**——★ 管的是调用次数、**不是决策条数**（一次 propose 的 calls 数组可带多条决策，决策条数不设限）；"
+        + "★ 上限**不是目标**：正常一轮 3–6 次就够（读几次 → intent → propose → confirm），**立刻收口**；"
+        + "不要为了用满预算反复试工具或重复提交，不要在 args 里写 null（缺字段就省略）。\n"
         + "【权限边界】省级 GOV "
         + nf.provinceGov.value()
         + " 不在你的直接可达面；不要 propose 省资源（会被拒）。对省的调动只写进 intent，由系统转达；"
@@ -986,7 +996,15 @@ class RealLlmGovScenarioTest {
         + "}；intent=省级示范：让 1 名老吏退休回籍\n"
         + "   （也可改用 selectExaminees/dispatchTeam；参数以 simos.command.catalog 为准，不确定就不要乱填。）\n"
         + "3) 调用 simos.ga.packet.confirm 提交本 tick 决策包。\n"
-        + "【硬性预算】最多 4–6 次工具调用；只 propose 下面三类工具之一，然后立刻 submit；不要逐条试工具、不要在 args 里写 null。\n"
+        + "【包状态机（★ 2026-10-15 批 R 更正）】intent/propose 写出来的是**拟稿 DRAFT**；GM **不能裁决拟稿** ⇒ "
+        + "必须再调 simos.ga.packet.confirm 定稿（**DRAFT → PENDING**），GM 收齐所有包后才统一裁决/执行。"
+        + "confirm 之后还能改（改了再 confirm 一次，以最后一次为准），**GM 一旦裁决就改不了了**。\n"
+        + "【★ 同一条调用只提一次（2026-10-15 批 R 真跑实测的硬事实）】tool + args 完全相同的调用**不得重复 propose**"
+        + "（含只差 reason 文本的「探测」条目：落点 id 由 tool+args 派生 ⇒ 第二条会撞「家户已存在 / 单位 id 已存在」）；"
+        + "GM 把本 tick 所有包里的调用**在一条 revision 里整批执行** ⇒ 重复条目会让**整批**（含其他决策人的全部决策）被拒、本 tick 世界零效果。\n"
+        + "【硬性预算】上限 24 次**工具调用**——★ 管的是调用次数、**不是决策条数**（一次 propose 的 calls 数组可带多条决策，决策条数不设限）；"
+        + "★ 上限**不是目标**：正常一轮 3–6 次就够（读几次 → intent → propose → confirm），**立刻收口**；"
+        + "不要为了用满预算反复试工具或重复提交，不要在 args 里写 null（缺字段就省略）。\n"
         + "【权限】只提议自己 GOV 与辖区资源，越界会被拒。tick 一律填读工具给的世界 tick。\n";
   }
 
@@ -1091,7 +1109,7 @@ class RealLlmGovScenarioTest {
       result = callWithApproval(RunDecisionTool.NAME, runDecisionArgs(dmId, headBefore));
       raw = wireText(result);
     } catch (Exception e) {
-      error = "sd.RunDecision 调用失败: " + e.getClass().getSimpleName() + ": " + e.getMessage();
+      error = "ga.RunDecision 调用失败: " + e.getClass().getSimpleName() + ": " + e.getMessage();
     }
     long headAfter = head();
     List<ToolTrace> traces =
@@ -1106,7 +1124,7 @@ class RealLlmGovScenarioTest {
       }
       triggerError = result.isError();
       if (triggerError && error == null) {
-        error = "sd.RunDecision 返回 error: " + truncate(raw, 1200);
+        error = "ga.RunDecision 返回 error: " + truncate(raw, 1200);
       }
     }
     List<String> runApprovals = List.copyOf(approvals);
@@ -2233,7 +2251,10 @@ class RealLlmGovScenarioTest {
   }
 
   private static String stateIntent(GaState sd, Directive directive) {
-    List<DecisionInfoEntry> entries = sd.info().get("sd:directive." + directive.id().value());
+    // ★ 2026-10-15 批 R 修：执行原文条目的 canonical 地址是 "ga:directive.<id>"
+    //   （唯一拼写点 IssueDirectiveHandler.INTENT_INFO_ADDRESS_PREFIX，包内可见 ⇒ 这里用字面量）。
+    //   旧写法读的是 "sd:directive.<id>" ⇒ 静默 null（读到的是空串，退化成"模型 args 里的 intent"）。
+    List<DecisionInfoEntry> entries = sd.info().get("ga:directive." + directive.id().value());
     if (entries == null) {
       return "";
     }
@@ -2768,7 +2789,7 @@ class RealLlmGovScenarioTest {
 
   private record McpToolOutcome(boolean isError, String raw, JsonNode body) {}
 
-  /** 仅调试：脚本回放（每个决策人每轮“可选一次越权探测 + 一条 sd.IssueDirective + 收口”），不联网。 */
+  /** 仅调试：脚本回放（每个决策人每轮“可选一次越权探测 + 一条 ga.IssueDirective + 收口”），不联网。 */
   private final class ScriptedGovLlmClients implements DecisionAgentService.LlmClients {
 
     @Override

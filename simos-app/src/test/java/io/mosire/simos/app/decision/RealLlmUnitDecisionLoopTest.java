@@ -14,6 +14,7 @@ import io.mosire.agentlib.approval.ApprovalDecision;
 import io.mosire.agentlib.approval.ApprovalRequest;
 import io.mosire.agentlib.llm.ContentPart;
 import io.mosire.agentlib.llm.LlmMessage;
+import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.store.SqliteConversationStore;
 import io.mosire.simos.actor.ActorData;
@@ -21,6 +22,9 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.access.AppArmyAffiliations;
+import io.mosire.simos.app.access.AppDecisionMakerAffiliations;
+import io.mosire.simos.app.access.AppDecisionMakerExistence;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.docs.DecisionDoc;
@@ -32,6 +36,8 @@ import io.mosire.simos.army.Army;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmyId;
 import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
+import io.mosire.simos.army.spi.AssignDecisionMakerArmyHandler;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
@@ -57,6 +63,7 @@ import io.mosire.simos.ga.tools.write.IssueDirectiveTool;
 import io.mosire.simos.ga.tools.write.RunDecisionTool;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.gov.nation.Nation;
 import io.mosire.simos.gov.nation.NationId;
 import io.mosire.simos.gov.nation.NationTag;
@@ -90,9 +97,12 @@ import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.spi.DecisionMakerId;
+import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.Segment;
@@ -149,21 +159,35 @@ import org.junit.jupiter.api.io.TempDir;
  *       jurisdiction{r-core:0‰, caps 1000/1000/1000, admin 1000}}**；区外单位 {@code u-out} 在 {@code
  *       (2,2)}；
  *   <li>social：4 格各一条人口序列 + 各一条人口批次（人数不同，便于模型读出差异）；
- *   <li>sd：Nation FRA + Army a1（rootUnit=u-1）+ DecisionMaker {@code dm-u1}（{@code
- *       Affiliation.Army(a1)}、 {@code allowedTools=Set.of()}、{@code
- *       providerId=mosire-flash}）；另有**一条发给 dm-u1 的任务简报（Docs）**， 让"这一轮该做什么"有明确出处（{@code
- *       sd.RunDecision} 的载荷只有 decisionMakerId，没有任务字段）。
+ *   <li>gov/army/ga：Nation FRA（gov 片）+ Army a1（army 片，rootUnit=u-1）+ **两个**决策人（ga 片）：{@code
+ *       dm-u1}（{@code allowedTools=Set.of()}、{@code providerId=mosire-flash}，**归属 = 一条真的 army
+ *       归属行**，见下）与 {@code dm-bare}（**裸决策人**：{@code ga.CreateDecisionMaker} 会造出的那种身份，任何模块的归属表里都没有它
+ *       —— deny-all 的对照）；另有**一条发给 dm-u1 的任务简报（Docs）**，让"这一轮该做什么"有明确出处（{@code ga.RunDecision} 的载荷只有
+ *       decisionMakerId，没有任务字段）。
  * </ul>
  *
- * <p>★★ **范围怎么定（本任务的核心约束）**：生产范围函数仍是 {@code ArmyScope}（根单位位置 + visionRadius 圈），GM 限制 {@code
- * accessLimit} 显式收紧到 {@code Region.hexes()} 派生的前缀（map：r-core 各 hex；social： r-core 各格；unit：{@code
- * u-1}）。两者语义是**交集**（{@code ResourceScopeMap#narrowTo}）⇒ 区外格 {@code (2,2)} 与区外单位 {@code u-out}
- * 在视野圈内也**不可达**。★ **本任务不改生产范围代码**：{@code jurisdiction → scope} 的自动接线尚未做， 本测试只是把真值挂上 {@code
+ * <p>★★ **归属行怎么落（★ 2026-10-15 批 R 修）**：{@code dm-u1} 的军队归属**不再写在决策人身上**（{@code
+ * DecisionMaker.affiliation} 字段已于 2026-10-12 删除，用户裁定「归属肯定归模块」）——它住 army 自己的表 {@code
+ * ArmyData.armyAffiliations()}，写口是工单 {@code army.AssignDecisionMakerArmy}。夹具因此**调生产写口本身**：{@link
+ * AssignDecisionMakerArmyHandler}（唯一写入方）+ {@link ArmyCodec} 把它的变更集折进创世状态（与 {@code CommandBus} 的
+ * handler → changeSet → codec.apply 同语义），**不手搓快照**。★ 旧夹具没写这一行 ⇒ {@code dm-u1} 是裸的 ⇒ 按设计 deny-all ⇒
+ * 范围断言"出生即红"（且因门控从不跑，从未被告知）。
+ *
+ * <p>★★ **范围怎么定（本任务的核心约束）**：生产范围函数仍是 {@code ArmyScope}（**归属行** → 根单位位置 + visionRadius 圈），GM 限制
+ * {@code accessLimit} 显式收紧到 {@code Region.hexes()} 派生的前缀（map：r-core 各 hex；social： r-core 各格；unit：
+ * {@code u-1}）。两者语义是**交集**（{@code ResourceScopeMap#narrowTo}）⇒ 区外格 {@code (2,2)} 与区外单位 {@code
+ * u-out} 在视野圈内也**不可达**。★ **本任务不改生产范围代码**：{@code jurisdiction → scope} 的自动接线尚未做， 本测试只是把真值挂上 {@code
  * Unit.jurisdiction} 并显式写 accessLimit（为下一阶段接线留真值）。
  *
+ * <p>★★ **两条范围判据（一条正、一条负，都是用户裁定的落地）**：① {@code fixtureScopeIsWiredAndOutOfScopeControlIsReal}
+ * ——**有归属 ⇒ 有范围**（ArmyScope ∩ accessLimit 只放 r-core 三格 / u-1）；② {@code
+ * bareDecisionMakerIsDenyAllNotUnrestricted}——**没有归属 ⇒ deny-all**：{@code dm-bare} 的四个命名空间全是 {@code
+ * ResourceScope.none()}，**不抛、不回落（不给"不限"）、不给全量**，哪怕它的 accessLimit 与 dm-u1 逐字相同（accessLimit
+ * 只能收窄、不能凭空加范围）。
+ *
  * <p>★★ **2026-09-30 实测结论（本轮）**：**默认单轮全链绿** —— 白板 {@code dm-u1} 经真 provider 读到真值（辖区三格人口
- * 12000/23000/34000、{@code u-1} 的 member/position）、{@code sd.IssueDirective} 进审批并落真 revision、GM 经
- * MCP {@code sd.AdjudicateTick} 执行 {@code unit.SetTaxRate}（税率 0‰→100‰）。**多轮（≥2 轮）原有 thinking
+ * 12000/23000/34000、{@code u-1} 的 member/position）、{@code ga.IssueDirective} 进审批并落真 revision、GM 经
+ * MCP {@code simos.ga.adjudicateTick} 执行 {@code unit.SetTaxRate}（税率 0‰→100‰）。**多轮（≥2 轮）原有 thinking
  * 回传缺陷已修**： 2026-09-30 首次实测时，模型某次收口 assistant 消息没有 {@code reasoning_content}，AgentLib 回放省略该键 ⇒
  * 下一次请求 HTTP 400 {@code The reasoning_content in the thinking mode must be passed back to the
  * API}；AgentLib 修复后由路由能力位 {@code capabilities.echoReasoningContent=true} 对每条 assistant
@@ -197,6 +221,11 @@ class RealLlmUnitDecisionLoopTest {
   private static final UnitId U_OUT = new UnitId("u-out");
 
   private static final DecisionMakerId DM = new DecisionMakerId(DM_ID);
+
+  /** ★★ **裸决策人**（任何模块的归属表里都没有它）——「没有归属 ⇒ deny-all」对照用例的被判对象。 */
+  private static final String DM_BARE_ID = "dm-bare";
+
+  private static final DecisionMakerId DM_BARE = new DecisionMakerId(DM_BARE_ID);
   private static final ArmyId A1 = new ArmyId("a1");
   private static final NationId FRA = new NationId("FRA");
   private static final RegionId R_CORE = new RegionId(REGION_CORE);
@@ -353,18 +382,101 @@ class RealLlmUnitDecisionLoopTest {
     assertThat(scopes.declaredScope("social").allows("2_2")).isFalse();
     assertThat(scopes.declaredScope("unit").allows("u-1")).isTrue();
     assertThat(scopes.declaredScope("unit").allows("u-out")).isFalse();
+
+    // ★★ 归属行的**落盘证据**（2026-10-15 批 R）：dm-u1 → a1 走的是 army 自己的表（写口 army.AssignDecisionMakerArmy）
+    //    ——没有这一行，上面的四条 allows 全是恒假（裸决策人 = deny-all）。
+    assertThat(ToolSupport.armyData(state).armyAffiliations())
+        .as("dm-u1 必须有一条真的 army 归属行（army.AssignDecisionMakerArmy 写的）")
+        .containsEntry(DM, A1);
+    assertThat(AppArmyAffiliations.armyOf(DM, state)).as("army 侧裁定后归属仍然成立（军队 a1 在场）").contains(A1);
+  }
+
+  /**
+   * ★★ **负向对照（不打 LLM）：「没有归属 ⇒ deny-all」**（用户裁定「允许创建没有更多附加状态的单个决策人」；{@code DecisionScopeFunctions}
+   * 类注的三条失败语义之①）。
+   *
+   * <p>★ <b>为什么必须有这一条</b>：上一条用例证明"有归属 ⇒ 有范围"；如果只有它，把范围函数改成"没归属就给全量"也能绿。 本用例把反向钉死——{@code dm-bare}
+   * 是世界里真实存在的决策人，**任何模块的归属表里都没有它**，而且它的 {@code accessLimit} 与 {@code dm-u1} **逐字相同**（同样的 r-core 三格
+   * + u-1）：
+   *
+   * <ul>
+   *   <li>四个命名空间（map/unit/social/actor）全部 {@link ResourceScope#none()} —— 不是"不限"、不是"空集回落"；
+   *   <li>accessLimit **只能收窄、不能凭空加范围** ⇒ 它的前缀一个都不生效（{@code none() ∩ X = none()}）；
+   *   <li>**不抛**：不抛 {@code IllegalStateException}（那是"归属种类没注册范围函数"的装配故障，与本条不同）。
+   * </ul>
+   */
+  @Test
+  void bareDecisionMakerIsDenyAllNotUnrestricted() {
+    SimulationState state = shell.coreSimos().replay(ref("main", 1));
+    DecisionMaker bare = sdAt(1).decisionMakers().get(DM_BARE);
+    assertThat(bare).as("夹具必须有裸决策人 %s", DM_BARE_ID).isNotNull();
+
+    // ★ 前提自证：它**真的**没有任何归属（三张表都没有它）——否则下面的 deny-all 断言就是在测别的东西。
+    assertThat(AppDecisionMakerAffiliations.kindsOf(DM_BARE, state))
+        .as("裸决策人不得有任何模块的归属（有归属就不是本用例的被判对象了）")
+        .isEmpty();
+    assertThat(AppArmyAffiliations.armyOf(DM_BARE, state)).isEmpty();
+    assertThat(ToolSupport.govState(state).nationAffiliations()).doesNotContainKey(DM_BARE);
+    assertThat(ToolSupport.govState(state).govAffiliations()).doesNotContainKey(DM_BARE);
+
+    // ★ 它的 accessLimit 与 dm-u1 逐字相同 ⇒ "deny-all 是因为没归属，不是因为没配权限"。
+    assertThat(bare.accessLimit().prefixesByNamespace())
+        .as("对照的有效性前提：裸决策人的 accessLimit 与 dm-u1 相同（权限配了也没用）")
+        .isEqualTo(accessLimit().prefixesByNamespace());
+
+    ResourceScopeMap scopes =
+        DecisionCallerFactory.resourceScopesFor(
+            DecisionScopeFunctions.defaults(), bare, state, MAP_ID);
+
+    // 四个命名空间逐个断言：表态了（declaredScope 非 null）、不是"不限"、前缀为空、候选一律不许。
+    for (String namespace : List.of("map", "unit", "social", "actor")) {
+      ResourceScope declared = scopes.declaredScope(namespace);
+      assertThat(declared).as("命名空间 %s 必须被显式表态（null = 回落工具缺省 = 静默放宽）", namespace).isNotNull();
+      assertThat(declared.unrestricted()).as("命名空间 %s 不得是「不限」", namespace).isFalse();
+      assertThat(declared.prefixes()).as("命名空间 %s 的前缀集必须为空 = none()", namespace).isEmpty();
+      // ★ "不回落"：AgentLib 的 scopeOrUnrestricted 对未表态的命名空间给 unrestricted ⇒ 这里必须仍是不受限之外。
+      assertThat(scopes.scopeOrUnrestricted(namespace).unrestricted())
+          .as("命名空间 %s 不得回落到「不限」（缺省策略）", namespace)
+          .isFalse();
+    }
+    // ★ 权限里明明白白写着这些资源（与 dm-u1 同一份 accessLimit）——裸决策人一个也够不着。
+    for (String candidate :
+        List.of("Map1/hex/1_1", "Map1/hex/1_2", "Map1/hex/2_1", "Map1/region/r-core", "u-1")) {
+      assertThat(scopes.declaredScope("map").allows(candidate))
+          .as("裸决策人不得够到 %s（accessLimit 只能收窄，不能加范围）", candidate)
+          .isFalse();
+    }
+    assertThat(scopes.declaredScope("unit").allows("u-1")).isFalse();
+    assertThat(scopes.declaredScope("social").allows("1_1")).isFalse();
+    assertThat(scopes.declaredScope("actor").allows("actor:dm-bare")).isFalse();
+
+    System.out.println(
+        "[REAL-LLM-DENY-ALL] dm="
+            + DM_BARE_ID
+            + " map="
+            + scopeLabel(scopes.declaredScope("map"))
+            + " unit="
+            + scopeLabel(scopes.declaredScope("unit"))
+            + " social="
+            + scopeLabel(scopes.declaredScope("social"))
+            + " actor="
+            + scopeLabel(scopes.declaredScope("actor"))
+            + " kinds="
+            + AppDecisionMakerAffiliations.kindsOf(DM_BARE, state)
+            + " accessLimitNamespaces="
+            + bare.accessLimit().prefixesByNamespace().keySet());
   }
 
   // ── 用例 2/3：真 LLM 连续三轮（信息 → 出令 → 审批 → 裁决 → 稳定性矩阵）──────────────
 
   /**
-   * ★★ **主判据**：连续 3 轮 {@code sd.RunDecision}（真 provider、真 MCP 口、真审批链、真工具面）——
+   * ★★ **主判据**：连续 3 轮 {@code ga.RunDecision}（真 provider、真 MCP 口、真审批链、真工具面）——
    *
    * <ol>
    *   <li>每轮：模型必须至少成功读到一个带**夹具真值**的读工具结果（信息获取）；
-   *   <li>模型若出令（{@code sd.IssueDirective}）：它必须进审批、必须落一条真 revision（{@code commandType =
-   *       sd.IssueDirective}）；
-   *   <li>令里若有合法且在范围内的命令：GM 经 MCP 调 {@code sd.AdjudicateTick} 执行，断言目标状态真的变（例：{@code
+   *   <li>模型若出令（{@code ga.IssueDirective}）：它必须进审批、必须落一条真 revision（{@code commandType =
+   *       ga.IssueDirective}）；
+   *   <li>令里若有合法且在范围内的命令：GM 经 MCP 调 {@code simos.ga.adjudicateTick} 执行，断言目标状态真的变（例：{@code
    *       unit.SetTaxRate} ⇒ u-1 的 r-core 税率逐值改变）；
    *   <li>越界探测（读区外 hex/单位）若发生 ⇒ 结果必须是拒/不可见；
    *   <li>三轮无 TOOL_ERROR / 无未捕获异常 / 无预算中止（稳定性硬判据）。
@@ -456,7 +568,7 @@ class RealLlmUnitDecisionLoopTest {
         blockers.add(
             "round "
                 + round
-                + " sd.RunDecision 返回 error: "
+                + " ga.RunDecision 返回 error: "
                 + triggerRaw.substring(0, Math.min(triggerRaw.length(), 800)));
         view.put("blocker", "trigger-error");
         if (triggerRaw.contains("reasoning_content")) {
@@ -514,7 +626,7 @@ class RealLlmUnitDecisionLoopTest {
       view.put("readsRefused", readsRefused);
       view.put("outOfScopeAttempts", outOfScope);
 
-      // 出令：轨迹里出现 sd.IssueDirective（无论成否）都必须进审批；成功则必须落真 revision。
+      // 出令：轨迹里出现 ga.IssueDirective（无论成否）都必须进审批；成功则必须落真 revision。
       boolean directiveCall =
           roundTraces.stream()
               .anyMatch(t -> IssueDirectiveTool.NAME.equals(realToolName(t.tool())));
@@ -524,7 +636,7 @@ class RealLlmUnitDecisionLoopTest {
       if (directiveCall) {
         anyDirectiveCall = true;
         if (!approvals.contains(IssueDirectiveTool.NAME)) {
-          scopeViolations.add("round " + round + " sd.IssueDirective 出现但审批记录里没有它");
+          scopeViolations.add("round " + round + " ga.IssueDirective 出现但审批记录里没有它");
         }
       }
       long headAfterTrigger = head();
@@ -555,7 +667,7 @@ class RealLlmUnitDecisionLoopTest {
         view.put("directiveTick", directive.tick());
         view.put("directiveCommands", commandTypes(directive));
         if (!directiveRevisionsExist(headBefore, headAfterTrigger)) {
-          scopeViolations.add("round " + round + " 令已落世界但没有 sd.IssueDirective revision 行");
+          scopeViolations.add("round " + round + " 令已落世界但没有 ga.IssueDirective revision 行");
         }
         System.out.println(
             "[REAL-LLM-DIRECTIVE] round="
@@ -675,7 +787,7 @@ class RealLlmUnitDecisionLoopTest {
 
     // ── 机制侧硬判据（模型侧行为只记录，不粉饰）──────────────────────────────────────
     assertThat(committedRounds)
-        .as("至少一轮 sd.RunDecision 真跑通（provider 可达、触发事实已落）；traces=%s", allTraces)
+        .as("至少一轮 ga.RunDecision 真跑通（provider 可达、触发事实已落）；traces=%s", allTraces)
         .isGreaterThan(0);
     assertThat(blockers).as("不得有 TOOL_ERROR / 未捕获异常 / 回合预算中止（发现即命中，不重试掩盖）").isEmpty();
     assertThat(scopeViolations).as("越界探测若发生必须被拒；决策人出令必须进审批且落真 revision").isEmpty();
@@ -705,7 +817,7 @@ class RealLlmUnitDecisionLoopTest {
   }
 
   /**
-   * 经真 MCP 传输调工具，并**把这一轮里出现的每条审批都答成"批一次"**（内层 {@code sd.IssueDirective} 走决策人链， 仍要人批；GM 面的触发/裁决由
+   * 经真 MCP 传输调工具，并**把这一轮里出现的每条审批都答成"批一次"**（内层 {@code ga.IssueDirective} 走决策人链， 仍要人批；GM 面的触发/裁决由
    * {@code GmAutoApproveGate} 无脑过，不出现在这里）。
    */
   private McpSchema.CallToolResult callWithApproval(String toolName, Map<String, Object> args)
@@ -770,7 +882,7 @@ class RealLlmUnitDecisionLoopTest {
   /**
    * 从会话库里取本轮新增的消息，逐条打印并合成 {@link ToolTrace}（工具名 + 原始参数 + 成败 + 原始返回）。
    *
-   * <p>★ 为什么不能只看 {@code sd.RunDecision} 的 {@code toolCalls[]}：那份轨迹**没有参数**（只有工具名/成败/摘要），
+   * <p>★ 为什么不能只看 {@code ga.RunDecision} 的 {@code toolCalls[]}：那份轨迹**没有参数**（只有工具名/成败/摘要），
    * 而本任务要判"越界探测"与"嵌套 payload"，参数是承重证据。
    */
   private List<ToolTrace> collectTraces(int round, int fromIndex) {
@@ -1113,7 +1225,7 @@ class RealLlmUnitDecisionLoopTest {
         .orElse(Long.MIN_VALUE);
   }
 
-  /** 触发前后是否真的有 {@code sd.IssueDirective} 的 revision 行（铁律 2 的落盘证据）。 */
+  /** 触发前后是否真的有 {@code ga.IssueDirective} 的 revision 行（铁律 2 的落盘证据）。 */
   private boolean directiveRevisionsExist(long headBefore, long headAfter) {
     try (SqliteStore store = SqliteStore.open(storeDir.resolve(CoreSimos.DB_FILE_NAME))) {
       Timeline timeline = new Timeline(store, CHECKPOINT_INTERVAL);
@@ -1182,18 +1294,54 @@ class RealLlmUnitDecisionLoopTest {
                 "economy", new EconomySnapshot(ref("main", 1), T7, EconomyData.empty()),
                 "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty())),
             InMemoryInfoSystem.empty());
+    // ★★ 归属行：dm-u1 → a1 经**army 自己的写口**（army.AssignDecisionMakerArmy）写进 army 自己的表 ——
+    //    不手搓快照、不在决策人身上塞归属（那字段 2026-10-12 已删）。
+    genesis = assignArmyAffiliationThroughProductionPort(genesis);
     new CheckpointStore(storeDir)
         .write(
             ref("main", 1),
             CheckpointEncoder.encode(
                 genesis,
+                // ★ 信封里的每个切片都要有 codec（信封与本实例的 codec 表必须同源）：2026-10-15 批 R 补 gov/army
+                //   —— 缺则创世当场炸「checkpoint 信封要写的模块没有装配 codec: gov」。
                 List.of(
                     new MapCodec(),
                     new SocialCodec(),
                     new UnitCodec(),
                     new GaCodec(),
                     new EconomyCodec(),
-                    new ActorCodec())));
+                    new ActorCodec(),
+                    new GovCodec(),
+                    new ArmyCodec())));
+  }
+
+  /**
+   * ★★ <b>用生产写口落军队归属</b>（2026-10-15 批 R）：直接调 {@link AssignDecisionMakerArmyHandler}（{@code
+   * army.AssignDecisionMakerArmy} 的**唯一写入方**）+ {@link ArmyCodec} 把它的变更集折进状态 —— 与 {@code CommandBus}
+   * 的 {@code handler.handle → ChangeSet → codec.apply} 逐段同语义；手搭创世没有命令总线可走（同 {@code SmallWorld}
+   * 的取舍）。
+   *
+   * <p>★ 被拒**当场抛**：创世不能带一条被拒的赋权命令继续（否则后面所有范围断言都在测一个没有归属的世界）。
+   */
+  private static SimulationState assignArmyAffiliationThroughProductionPort(SimulationState state) {
+    String payload = "{\"decisionMakerId\":\"" + DM_ID + "\",\"armyId\":\"" + A1.value() + "\"}";
+    HandlerOutcome outcome =
+        new AssignDecisionMakerArmyHandler(AppDecisionMakerExistence.INSTANCE)
+            .handle(state, payload);
+    if (outcome instanceof HandlerOutcome.Rejected rejected) {
+      throw new IllegalStateException(
+          "夹具的 " + AssignDecisionMakerArmyHandler.TYPE + " 被拒（决策人/军队不在场？）: " + rejected.reason());
+    }
+    ChangeSet changeSet = ((HandlerOutcome.Applied) outcome).changeSet();
+    ArmySnapshot base =
+        (ArmySnapshot)
+            state
+                .module("army")
+                .orElseThrow(() -> new IllegalStateException("创世装配故障：状态里没有 army 切片"));
+    Snapshot next = new ArmyCodec().apply(changeSet, base, state.meta());
+    Map<String, Snapshot> modules = new LinkedHashMap<>(state.modules());
+    modules.put("army", next);
+    return new SimulationState(state.meta(), modules, state.info());
   }
 
   /** u-1：(1,1)、visionRadius=2、真挂 jurisdiction{r-core: 0‰, caps 1000/1000/1000, admin 1000}。 */
@@ -1316,6 +1464,8 @@ class RealLlmUnitDecisionLoopTest {
     armies.put(A1, new Army(A1, Optional.empty(), U1, "军队 a1"));
     Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>();
     makers.put(DM, decisionMaker());
+    // ★★ 裸决策人（对照）：身份在场、归属表里没有它 —— 「没有归属 ⇒ deny-all」的被判对象。
+    makers.put(DM_BARE, bareDecisionMaker());
 
     String docAddress = DecisionDoc.addressOf("u1-brief-0");
     DecisionInfoEntry brief =
@@ -1339,7 +1489,7 @@ class RealLlmUnitDecisionLoopTest {
   }
 
   /**
-   * ★ **发给 dm-u1 的任务简报**：{@code sd.RunDecision} 的载荷只有 decisionMakerId（没有任务字段），生产里"这一局该做什么" 的正规出处就是
+   * ★ **发给 dm-u1 的任务简报**：{@code ga.RunDecision} 的载荷只有 decisionMakerId（没有任务字段），生产里"这一局该做什么" 的正规出处就是
    * Docs。简报把任务收敛到"核实 → 用合规命令把 r-core 税率调到 100‰ → 顺带核对区外 (2,2)/u-out 不可见"，
    * 使"能不能出正确决策"这条判据不落在模型的自由发挥上。
    */
@@ -1363,8 +1513,28 @@ class RealLlmUnitDecisionLoopTest {
     return json(brief);
   }
 
+  /** 人读的范围标签：{@code none()} / {@code unlimited} / 前缀清单（{@code none()} 的 summary 是空串，看不出所以然）。 */
+  private static String scopeLabel(ResourceScope scope) {
+    if (scope == null) {
+      return "UNSET(回落缺省)";
+    }
+    if (scope.unrestricted()) {
+      return "UNLIMITED";
+    }
+    return scope.prefixes().isEmpty() ? "none()" : scope.summary();
+  }
+
   private static DecisionMaker decisionMaker() {
     return new DecisionMaker(DM, Set.of(), accessLimit(), 1, Optional.of(PROVIDER_ID), 0L);
+  }
+
+  /**
+   * ★★ <b>裸决策人</b>：{@code ga.CreateDecisionMaker} 造出来的那种身份（不带任何归属）——{@code allowedTools}
+   * 空（沿用全局白名单）、 {@code accessLimit} 与 {@code dm-u1} **逐字相同**（★ 有意的：这样"够不着"就不可能被解释成"没配权限"）、未绑
+   * provider。
+   */
+  private static DecisionMaker bareDecisionMaker() {
+    return new DecisionMaker(DM_BARE, Set.of(), accessLimit(), 1, Optional.empty(), 0L);
   }
 
   /**
