@@ -23,15 +23,16 @@ import java.util.Set;
 public final class CreateArmyTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /**
-   * 工具名（★ 全局唯一，且**不随命令类型改名**）：它在工具面/白名单/MCP 覆盖表里是稳定身份，改名会动可观测面。
+   * ★★ <b>本类的真实工具名由 {@link #commandType()} 给</b>（= {@link #COMMAND_TYPE} = {@code
+   * army.CreateArmy}）：本类**不覆写** {@code toolName()} ⇒ 基类缺省实现返回命令类型 —— 那就是工具面 / 两桶名单 / 白名单 / MCP
+   * 覆盖表里逐字可见的那个名字。
    *
-   * <p>★ 2026-10-12 批次 3d-1：命令类型由 {@code sd.CreateArmy} 变 {@code army.CreateArmy}（军队身份搬进 army），
-   * 但**工具名一字未改**——工具名与命令类型在本仓本来就是两个可独立的拼写（见 {@link
-   * io.mosire.simos.ga.tools.write.AbstractNarrowWriteTool#toolName()} 的钩子）。
+   * <p>★★ 2026-10-15 批 N ①：此处原有的 {@code public static final String NAME = "simos.ga.createArmy"}
+   * 已**删除** —— 它与真实 工具名不一致（批 L 只把字面量由 {@code sd.CreateArmy} 换成另一个错名 {@code
+   * simos.ga.createArmy}），而全仓 {@code src/main} / {@code src/test} / JS 对它**零符号引用**（无 javadoc 链接、无
+   * {@code import static}、无反射）⇒ 它不撒谎的唯一形态是 "不存在"。★ 不改成"覆写 {@code toolName()} 让那个常量成真"：那会改工具面身份 /
+   * 两桶名单 / 白名单（超出批 N）。
    */
-  public static final String NAME = "simos.ga.createArmy";
-
-  /** 本工具钉死的命令类型（2026-10-12 批次 3d-1 起 {@code army.CreateArmy}）。 */
   public static final String COMMAND_TYPE = "army.CreateArmy";
 
   public CreateArmyTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {

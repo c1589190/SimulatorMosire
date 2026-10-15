@@ -25,14 +25,14 @@ import java.util.Set;
 public final class SetArmyMasterGovTool extends AbstractNarrowWriteTool implements SimosTool {
 
   /**
-   * 工具名（★ 全局唯一，且**不随命令类型改名**）：它在工具面/白名单/MCP 覆盖表里是稳定身份，改名会动可观测面。
+   * ★★ <b>本类的真实工具名由 {@link #commandType()} 给</b>（= {@link #COMMAND_TYPE} = {@code
+   * army.SetArmyMasterGov}）：本类**不覆写** {@code toolName()} ⇒ 基类缺省实现返回命令类型 —— 那就是工具面 / 两桶名单 / 白名单 /
+   * MCP 覆盖表里逐字可见的那个名字。
    *
-   * <p>★ 2026-10-12 批次 3d-1：命令类型由 {@code sd.SetArmyMasterGov} 变 {@code
-   * army.SetArmyMasterGov}，但**工具名 一字未改**（同 {@link CreateArmyTool#NAME} 的口径）。
+   * <p>★★ 2026-10-15 批 N ①：此处原有的 {@code public static final String NAME =
+   * "simos.ga.setArmyMasterGov"} 已**删除** （与 {@link CreateArmyTool}
+   * 同一处置、同一理由：**零符号引用**的死常量，且与真实工具名不一致）。★ 原交叉引用 {@code CreateArmyTool#NAME} 随之删除 —— 被指向的常量已不存在。
    */
-  public static final String NAME = "simos.ga.setArmyMasterGov";
-
-  /** 本工具钉死的命令类型（2026-10-12 批次 3d-1 起 {@code army.SetArmyMasterGov}）。 */
   public static final String COMMAND_TYPE = "army.SetArmyMasterGov";
 
   public SetArmyMasterGovTool(ToolWritePort writes, GaToolIdentity identity, String mapId) {

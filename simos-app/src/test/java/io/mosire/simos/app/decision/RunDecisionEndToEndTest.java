@@ -271,7 +271,7 @@ class RunDecisionEndToEndTest {
   }
 
   /**
-   * ★★ **同时决策批次的硬约束**：{@code simos.sd.run-decision-makers} 触发批成功后，所有决策人在**触发 revision 的冻结快照**
+   * ★★ **同时决策批次的硬约束**：{@code simos.ga.run-decision-makers} 触发批成功后，所有决策人在**触发 revision 的冻结快照**
    * 上跑；世界写工具从工具面移除、执行口也拒；只有决策包写能落 revision。
    */
   @Test

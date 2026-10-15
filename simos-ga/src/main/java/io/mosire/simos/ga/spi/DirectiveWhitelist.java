@@ -23,6 +23,17 @@ import java.util.Set;
  * <p>★ {@link #isSdSelfReference} **保留**：它是**拒因措辞**用的纯谓词（{@code IssueDirectiveHandler} 与 {@code
  * simos.ga.adjudicateTick} 借它把"自指"与"白名单外"两种拒绝理由分开报），不是判据本身 —— 删了它，拒绝理由会退化成含糊的一句 "不在白名单里"。
  *
+ * <p>★★ <b>2026-10-15 批 N ②：{@link #isSdSelfReference} 今天**不是**恒假的死码</b>（回代码逐处核过，如实记）—— 它判的输入
+ * **不是**"已注册的命令类型集合"，而是**调用方给的载荷文本**：{@code commands[].type} 由 {@code
+ * GaPayloads.optionalDirectiveCommands} 从 {@code ga.IssueDirective} 的载荷里读出、**只校验非空白**（{@link
+ * io.mosire.simos.ga.model.DirectiveCommand} 的紧凑构造器），不要求已注册。⇒ 全仓**已注册类型**的前缀直方图 {@code sd = 0}
+ * （economy31 / social15 / unit13 / ga7 / army7 / map5 / actor5 / gov3）**推不出**它恒假。★ 活路两段：(a) {@code
+ * ga.IssueDirective} 里这条判在**白名单判之前** ⇒ 模型送 {@code sd.} 前缀的任意类型得到的是"自指"、不是"不在白名单"——现场真发生过（决策人 {@code
+ * dm-osman} 第一次出令就用了 {@code sd.RegisterEffect}）；(b) 每条身份消息都在**教**这条规则（{@code
+ * DecisionAgentRunner}：{@code commands} 里不得放 {@code sd.} 前缀的命令类型）。★ 且 <b>{@code
+ * DecisionAgentRunnerTest} 有用例逐字断言那次拒绝的正文含"自指"</b>。⇒ **保留**：删了它，{@code sd.X} 的拒绝理由会退化成"不在白名单" ——
+ * 那是**可观测的行为改动**（拒绝文案 = 业务拒绝的 INFO 留痕），且与身份消息的教法自相矛盾。
+ *
  * <p>★ **不是恒真/恒假的装饰**：白名单是构造期从**调用方给的集合**推导的 —— 未注册的类型进不来（调用方只可能给它自己派生的面）、 通用写被拒；与 {@code
  * DirectiveCommand} 的 shapes 校验分工是"白名单判合法性、record 判形状"。
  */
