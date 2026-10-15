@@ -155,6 +155,10 @@ b82535e3 test 急停协议 + 拆 Skill + 分段等价 测试面
 tools/mvn-lock.sh clean verify
 
 # 真 LLM（★ 建议在独立工作树跑，免被在飞的批污染）
+#   ★★ 不需要本机 GPU：RealLlm* 的 PROVIDER_ID 默认 = "mosire-flash"（config/llm-providers.json 里指向【远程中转站】）
+#   用户 2026-10-15 明确：本机 llama.cpp（5070 Ti）**跑起来很吵，默认不开** ⇒ 一律走远程中转站，别去折腾本地端点。
+#   实测（2026-10-15 22:2x）：本机 8080 已关；远程中转站在线（HTTP 200 / 1.3s）。
+#   `SIMOS_GOV_SCENARIO_MODEL` 只覆盖【模型名】，**不覆盖 baseUrl** ⇒ 换不了站，别指望用它切到本机。
 git worktree add --detach /tmp/simos-realllm HEAD
 cd /tmp/simos-realllm
 SIMOS_REAL_LLM=1 tools/mvn-lock.sh -pl simos-app -am \
