@@ -17,7 +17,7 @@ import java.util.Set;
  * <p>★ **取代 {@code sd.SetViewScope}**（用户 2026-09-22 裁定③）：旧工具配的是 GM **绝对指定**的可见集合；本工具配的是 **额外限制**——与
  * app 层范围函数现算的结果做交集（{@code narrowTo}）⇒ GM 只能额外收紧。
  *
- * <p>★ **{@code NAME} 必须是字面量**（与 sd 侧 handler 的 {@code type()} 一样）：两侧各有一条**派生式同源判据**按源码字面量扫描 ——
+ * <p>★ **{@code NAME} 必须是字面量**（与 ga 侧 handler 的 {@code type()} 一样）：两侧各有一条**派生式同源判据**按源码字面量扫描 ——
  * 窄写工具集合 == GM 桶的窄写工具集合（{@code SimosToolsTest}）、catalog 的 type 集合 == 全部 handler 的 {@code
  * type()}。它们才是把三处名字钉在一起的东西（写成常量引用会让扫描器当场判"抽不到"）。
  */
@@ -51,8 +51,11 @@ public final class SetDecisionMakerAccessTool extends AbstractNarrowWriteTool im
   }
 
   /**
-   * ★ P0 资源对齐：本工具钉死的 {@code sd.*} 命令只产 {@code SdChangeSet}（实际只写 sd 命名空间），故写断言取 {@code sd:*}（GM 侧
-   * unlimited），不再沿用基类的三命名空间粗断言。
+   * ★ P0 资源对齐（2026-10-15 批 N3 回代码核，原文写 {@code sd.*} / {@code SdChangeSet} / {@code sd:*} 三处均与事实不符）：
+   * 本工具钉死的 {@code ga.SetDecisionMakerAccess} 命令产 {@code GaChangeSet}（{@code
+   * SetDecisionMakerAccessHandler}，写 {@code decisionMakers} 组件），实际只写 ga 命名空间（{@code
+   * ToolResources.GA_NAMESPACE = "ga"}，2026-10-14 批次 F 由 {@code sd} 改名）⇒ 写断言取 {@code ga:*}（{@link
+   * #gaNamespaceWriteResources()}，GM 侧 ga 是 unlimited），不再沿用基类的三命名空间粗断言。
    */
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {

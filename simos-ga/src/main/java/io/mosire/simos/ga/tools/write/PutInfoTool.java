@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code ga.PutInfo} 窄工具（M3，spec §六/§八.3）：**写 sd 侧 INFO** 的唯一窄写面。
+ * {@code ga.PutInfo} 窄工具（M3，spec §六/§八.3）：**写 ga 侧 INFO** 的唯一窄写面。
  *
  * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
@@ -53,8 +53,10 @@ public final class PutInfoTool extends AbstractNarrowWriteTool implements SimosT
   }
 
   /**
-   * ★ P0 资源对齐：本工具钉死的 {@code sd.*} 命令只产 {@code SdChangeSet}（实际只写 sd 命名空间），故写断言取 {@code sd:*}（GM 侧
-   * unlimited），不再沿用基类的三命名空间粗断言。
+   * ★ P0 资源对齐（2026-10-15 批 N3 回代码核，原文写 {@code sd.*} / {@code SdChangeSet} / {@code sd:*} 三处均与事实不符）：
+   * 本工具钉死的 {@code ga.PutInfo} 命令产 {@code GaChangeSet}（{@code PutInfoHandler}，写 {@code info}
+   * 组件），实际只写 ga 命名空间（{@code ToolResources.GA_NAMESPACE = "ga"}，2026-10-14 批次 F 由 {@code sd} 改名）⇒
+   * 写断言取 {@code ga:*}（{@link #gaNamespaceWriteResources()}，GM 侧 ga 是 unlimited），不再沿用基类的三命名空间粗断言。
    */
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {

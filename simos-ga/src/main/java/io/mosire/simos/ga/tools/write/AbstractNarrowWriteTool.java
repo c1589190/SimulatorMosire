@@ -123,8 +123,9 @@ public abstract class AbstractNarrowWriteTool implements AgentTool {
   }
 
   /**
-   * **GM 专用 ga 窄写**共用的资源声明（P0 对齐）：这些工具各自钉死一条 {@code sd.*} 命令，命令 handler 只产 {@code SdChangeSet} ⇒
-   * 实际只写 ga 命名空间（2026-10-14 批次 F 由 {@code sd} 改名），不能再沿用基类的三命名空间粗断言。
+   * **GM 专用 ga 窄写**共用的资源声明（P0 对齐）：这些工具各自钉死一条命令——大多是 {@code ga.*}（{@code CreateNationTool} 是 {@code
+   * gov.CreateNation}）——命令 handler 只产 {@code GaChangeSet}（{@code CreateNationHandler} 产 {@code
+   * GovChangeSet}）；声明的命名空间是 {@code ga}（2026-10-14 批次 F 由 {@code sd} 改名），不能再沿用基类的三命名空间粗断言。
    *
    * <p>★ 写操作取 {@link ResourcePolicy#UNRESTRICTED}（不是 {@code IssueDirective}/{@code SubmitVerdict}
    * 那两条决策窄写的 {@code READ_ONLY}）：它们只在 GM 桶，调用者的 ga 表态是 unlimited；取只读会把"未表态 ga 的系统身份"整调拒掉。
@@ -152,8 +153,8 @@ public abstract class AbstractNarrowWriteTool implements AgentTool {
    *
    * <ul>
    *   <li>调用者是**决策人**（身份 {@code decision-maker:<id>}）⇒ 只声明它**自己**的决策域 {@code
-   *       sd:decision-maker/<自己>}——出令/交判决是决策行为，不是改地图数据；且决策人只能以**自己**名义决策；
-   *   <li>其余身份（**GM**）⇒ 声明**整个决策人集合** {@code sd:decision-maker}（GM 的 sd 是 unlimited ⇒ 放行； 而决策人自己的前缀
+   *       ga:decision-maker/<自己>}——出令/交判决是决策行为，不是改地图数据；且决策人只能以**自己**名义决策；
+   *   <li>其余身份（**GM**）⇒ 声明**整个决策人集合** {@code ga:decision-maker}（GM 的 ga 是 unlimited ⇒ 放行； 而决策人自己的前缀
    *       **不覆盖**这个粗路径 ⇒ 决策人走不到这一支）。含义是"GM 可以为任意决策人落决策"。
    * </ul>
    *
@@ -170,7 +171,7 @@ public abstract class AbstractNarrowWriteTool implements AgentTool {
   /**
    * **署名（subject）校验钩子**（T11B）：缺省不校验；载荷里带"决策人署名"的窄写在这里拒"以别人名义落决策"。
    *
-   * <p>★ 规则住在 sd 域（{@link DecisionSignature}），这里只负责把"调用者是谁"喂进去——身份只能从 {@link ToolContext} 取（spec
+   * <p>★ 规则住在 ga 域（{@link DecisionSignature}），这里只负责把"调用者是谁"喂进去——身份只能从 {@link ToolContext} 取（spec
    * §4.3：不由参数自报），而 {@code CommandHandler} 结构性看不见调用者。
    *
    * @return 拒绝理由；不校验 / 不构成冒名 ⇒ 空

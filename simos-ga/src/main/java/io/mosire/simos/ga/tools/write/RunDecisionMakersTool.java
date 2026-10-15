@@ -62,14 +62,14 @@ import java.util.concurrent.ThreadFactory;
  *       预算中止）如实记进该人的结果，不静默；{@code continueOnError=false} 时在第一个失败处停止， 并用 {@code stoppedAfter} 记下是谁。
  * </ol>
  *
- * <p>★★ <b>触发事实与运行轮分开记</b>：触发批只落 {@code ga.RunDecision}（每条 = 一条 {@code sd.InfoEntry}）；决策人这一轮的产出仍走
- * 运行流内部的既有链路（{@code ga.IssueDirective} 等，含人工审批）——本工具<b>不</b>在这里提交 {@code ga.IssueDirective}
- * 或任何其他命令。运行轮各自产生的世界写入各自带 revision，本工具不汇总 revision 数。
+ * <p>★★ <b>触发事实与运行轮分开记</b>：触发批只落 {@code ga.RunDecision}（每条 = 一条 {@code DecisionInfoEntry}，落 {@code
+ * GaState.info}）；决策人这一轮的产出仍走 运行流内部的既有链路（{@code ga.IssueDirective} 等，含人工审批）——本工具<b>不</b>在这里提交 {@code
+ * ga.IssueDirective} 或任何其他命令。运行轮各自产生的世界写入各自带 revision，本工具不汇总 revision 数。
  *
- * <p>★★ <b>并发与幂等</b>：本工具不做跨调用锁、不做自动重试。GM 并发对同一 DM 触发两次时，触发命令的 sd 语义与 {@code submitBatch}
+ * <p>★★ <b>并发与幂等</b>：本工具不做跨调用锁、不做自动重试。GM 并发对同一 DM 触发两次时，触发命令的 ga 语义与 {@code submitBatch}
  * 的乐观并发各自决定结局（同 expectedRevision 只有一个批能提交；不同的 expected 由真实 head 判冲突），如实报告。
  *
- * <p>★ <b>资源声明</b>：本工具只写 {@code sd} 命名空间（{@link ResourcePolicy#UNRESTRICTED}；GM 侧 sd 为 unlimited）。
+ * <p>★ <b>资源声明</b>：本工具只写 {@code ga} 命名空间（{@link ResourcePolicy#UNRESTRICTED}；GM 侧 ga 为 unlimited）。
  *
  * <p>★ <b>工具名不是命令类型</b>：{@code simos.ga.run-decision-makers} 不进 catalog / {@code
  * PAYLOAD_HINTS}；它组的是既有 {@code ga.RunDecision} 命令。
@@ -91,7 +91,7 @@ public final class RunDecisionMakersTool implements SimosTool {
   /** 并发上限：再高只会把 provider 限流/会话库写锁变成重试，收益递减。 */
   private static final int MAX_CONCURRENCY = 16;
 
-  /** 本工具只碰 sd 命名空间；GM 侧 sd 表态 unlimited。 */
+  /** 本工具只碰 ga 命名空间；GM 侧 ga 表态 unlimited。 */
   private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 

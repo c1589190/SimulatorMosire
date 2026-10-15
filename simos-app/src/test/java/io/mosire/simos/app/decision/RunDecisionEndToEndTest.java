@@ -241,7 +241,7 @@ class RunDecisionEndToEndTest {
 
     // ★ 可观察副作用之一：两条真 revision（触发事实 + 决策人自己的出令）。
     assertThat(head())
-        .as("触发事实 1 条 + 决策人的 sd.IssueDirective 1 条 + 回合结束统一结算（自动 NL 决策包）1 条")
+        .as("触发事实 1 条 + 决策人的 ga.IssueDirective 1 条 + 回合结束统一结算（自动 NL 决策包）1 条")
         .isEqualTo(4L);
     try (SqliteStore store = SqliteStore.open(dbFile())) {
       Timeline timeline = new Timeline(store, CHECKPOINT_INTERVAL);
@@ -266,7 +266,7 @@ class RunDecisionEndToEndTest {
 
     // ★★ 审批面（2026-09-24 用户裁定后的口径）：**决策人自己出的令仍要审批**（不是"在运行流里偷偷写"），
     //   而**外层触发（GM 面）不再审批**（无脑过）——两条链的区别在这一行里看得见。
-    assertThat(approvals).as("内层决策人的 sd.IssueDirective 进了审批").contains("ga.IssueDirective");
+    assertThat(approvals).as("内层决策人的 ga.IssueDirective 进了审批").contains("ga.IssueDirective");
     assertThat(approvals).as("外层 GM 触发不进审批（无脑过）").doesNotContain(RunDecisionTool.NAME);
   }
 

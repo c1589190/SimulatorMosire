@@ -58,7 +58,7 @@ public final class RunDecisionTool extends AbstractNarrowWriteTool implements Si
   /** 每条轨迹摘要的上限（沿用 AgentLib 的截断惯例；截断点由它给，本类不另立阈值）。 */
   private static final int SUMMARY_MAX_CHARS = ToolResultTruncator.DEFAULT_MAX_CHARS;
 
-  /** 本工具只碰 sd 命名空间；缺省策略取 {@code READ_ONLY}（未表态者不得**写**）——理由见 {@code IssueDirectiveTool}。 */
+  /** 本工具只碰 ga 命名空间；缺省策略取 {@code READ_ONLY}（未表态者不得**写**）——理由见 {@code IssueDirectiveTool}。 */
   private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
@@ -98,7 +98,7 @@ public final class RunDecisionTool extends AbstractNarrowWriteTool implements Si
     return GA_WRITE;
   }
 
-  /** ★ 触发事实写的是**该决策人**的决策域（{@code sd:decision-maker/<自己>}；GM 身份回落成整个决策人集合）。 */
+  /** ★ 触发事实写的是**该决策人**的决策域（{@code ga:decision-maker/<自己>}；GM 身份回落成整个决策人集合）。 */
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return decisionWriteResources(context);

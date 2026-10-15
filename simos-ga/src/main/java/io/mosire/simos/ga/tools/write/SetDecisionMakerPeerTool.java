@@ -18,7 +18,7 @@ import java.util.Set;
  * <p>★ <b>一次授权 = 双向可通</b>：命令侧一次写两条 DM 记录、一条 revision（见 {@code SetDecisionMakerPeerHandler} 的类注）⇒
  * 不存在"半开"态。本工具只是那条命令的薄封装（载荷原样透传）。
  *
- * <p>★ <b>{@code NAME} 必须是字面量</b>（与 sd 侧 handler 的 {@code type()} 一样）：两侧各有一条**派生式同源判据**按源码字面量扫描
+ * <p>★ <b>{@code NAME} 必须是字面量</b>（与 ga 侧 handler 的 {@code type()} 一样）：两侧各有一条**派生式同源判据**按源码字面量扫描
  * ——窄写工具集合 == GM 桶的窄写工具集合（{@code SimosToolsTest}）、catalog 的 type 集合 == 全部 handler 的 {@code
  * type()}。写成常量引用会让扫描器当场判"抽不到"。
  *
@@ -61,8 +61,11 @@ public final class SetDecisionMakerPeerTool extends AbstractNarrowWriteTool impl
   }
 
   /**
-   * ★ 本工具钉死的 {@code ga.SetDecisionMakerPeer} 只产 {@code GaChangeSet}（实际写 sd 命名空间的决策人表）⇒ 写断言取 {@code
-   * sd:*}（GM 侧 unlimited），与 {@code ga.SetDecisionMakerAccess} 逐字同款。
+   * ★ P0 资源对齐（2026-10-15 批 N3 回代码核，原文写 {@code sd} 命名空间 / {@code sd:*} 两处均与事实不符）：本工具钉死的 {@code
+   * ga.SetDecisionMakerPeer} 命令产 {@code GaChangeSet}（{@code SetDecisionMakerPeerHandler}，写 {@code
+   * decisionMakers} 组件），实际只写 ga 命名空间（{@code ToolResources.GA_NAMESPACE = "ga"}，2026-10-14 批次 F 由
+   * {@code sd} 改名）⇒ 写断言取 {@code ga:*}（{@link #gaNamespaceWriteResources()}，GM 侧 ga 是 unlimited），与
+   * {@code ga.SetDecisionMakerAccess} 逐字同款。
    */
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {

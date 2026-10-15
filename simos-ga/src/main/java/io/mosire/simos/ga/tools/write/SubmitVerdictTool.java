@@ -16,7 +16,7 @@ import java.util.Set;
 /**
  * {@code ga.SubmitVerdict} 窄工具（spec §八.3，N9）：裁决者冻结判决的**唯一**写面。
  *
- * <p>★ **资源声明 = sd 域的自己那一块**（T10）：交判决与出令同属**决策行为**（spec §2.2 的两条决策窄写）， 不是"直接改地图/单位数据"⇒
+ * <p>★ **资源声明 = ga 域的自己那一块**（T10）：交判决与出令同属**决策行为**（spec §2.2 的两条决策窄写）， 不是"直接改地图/单位数据"⇒
  * 不复用基类缺省的三命名空间粗断言（那条会让受限调用者**整调被拒**）。
  *
  * <p>★★ <b>同时决策（冻结回合）里它不在工具面上</b>（2026-10-15 批次 3a / 设计书 §3.3 D3）：{@code ga.RunDecisionMakers}
@@ -29,7 +29,7 @@ public final class SubmitVerdictTool extends AbstractNarrowWriteTool implements 
 
   public static final String NAME = "ga.SubmitVerdict";
 
-  /** 本工具只碰 sd 命名空间；缺省策略取 {@code READ_ONLY}（未表态者不得**写**）——理由见 {@code IssueDirectiveTool}。 */
+  /** 本工具只碰 ga 命名空间；缺省策略取 {@code READ_ONLY}（未表态者不得**写**）——理由见 {@code IssueDirectiveTool}。 */
   private static final ResourceManifest GA_WRITE =
       ResourceManifest.of(ToolResources.GA_NAMESPACE, ResourcePolicy.READ_ONLY);
 
@@ -57,7 +57,7 @@ public final class SubmitVerdictTool extends AbstractNarrowWriteTool implements 
     return GA_WRITE;
   }
 
-  /** ★ 写自己的决策域（{@code sd:decision-maker/<自己>}）；非决策人身份（GM）回落基类缺省，见基类 javadoc。 */
+  /** ★ 写自己的决策域（{@code ga:decision-maker/<自己>}）；非决策人身份（GM）回落基类缺省，见基类 javadoc。 */
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {
     return decisionWriteResources(context);

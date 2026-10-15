@@ -48,8 +48,11 @@ public final class CreateDecisionMakerTool extends AbstractNarrowWriteTool imple
   }
 
   /**
-   * ★ P0 资源对齐：本工具钉死的 {@code sd.*} 命令只产 {@code SdChangeSet}（实际只写 sd 命名空间），故写断言取 {@code sd:*}（GM 侧
-   * unlimited），不再沿用基类的三命名空间粗断言。
+   * ★ P0 资源对齐（2026-10-15 批 N3 回代码核，原文写 {@code sd.*} / {@code SdChangeSet} / {@code sd:*} 三处均与事实不符）：
+   * 本工具钉死的 {@code ga.CreateDecisionMaker} 命令产 {@code GaChangeSet}（{@code
+   * CreateDecisionMakerHandler}，写 {@code decisionMakers} 组件），实际只写 ga 命名空间（{@code
+   * ToolResources.GA_NAMESPACE = "ga"}，2026-10-14 批次 F 由 {@code sd} 改名）⇒ 写断言取 {@code ga:*}（{@link
+   * #gaNamespaceWriteResources()}，GM 侧 ga 是 unlimited），不再沿用基类的三命名空间粗断言。
    */
   @Override
   protected List<ResourceId> writeResources(ToolContext context) {

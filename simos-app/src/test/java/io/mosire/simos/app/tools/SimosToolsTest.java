@@ -1252,8 +1252,8 @@ class SimosToolsTest {
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
-                + "只留两条决策行为（sd.IssueDirective / sd.SubmitVerdict）+ 两条只读面"
-                + "（第 3 波第 3 步的 sd.DecisionResults、Docs 系统的 sd.DecisionDocs）")
+                + "只留两条决策行为（ga.IssueDirective / ga.SubmitVerdict）+ 两条只读面"
+                + "（第 3 波第 3 步的 simos.ga.decisionResults、Docs 系统的 simos.ga.decisionDocs）")
         .doesNotContain("simos.command.submit", "simos.advance", "simos.fork")
         .doesNotContain(
             "ga.SetDecisionMakerAccess",
