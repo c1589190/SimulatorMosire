@@ -8,7 +8,9 @@
  *
  * <ul>
  *   <li><b>运行流本体</b>：{@code DecisionAgentRunner}（回合循环）、{@code DecisionRunRegistry}（进度留痕）、 {@code
- *       DecisionToolDefs}（工具面 → {@code ToolDef}）、{@code DecisionProposable}（可 propose 的预览入口契约）；
+ *       DecisionToolDefs}（工具面 → {@code ToolDef}）；★ 「可被 propose」的声明（{@code
+ *       io.mosire.simos.ga.spi.DecisionProposable}）**已搬去 {@code ga-spi}**（批 K ① —— 实现者是**工具自己**，
+ *       而工具住各域模块 {@code unit}/{@code social}/{@code gov}，只有契约层能被它们实现）；
  *   <li><b>宿主注入面</b>（本模块定接口、{@code simos-app} 给实现，设计书 §4.5 I-G2）： {@link
  *       io.mosire.simos.ga.decision.DecisionToolCaller}（权限链执行 + 全局白名单）、 {@link
  *       io.mosire.simos.ga.decision.DecisionToolNames}（工具名声明）、 {@link

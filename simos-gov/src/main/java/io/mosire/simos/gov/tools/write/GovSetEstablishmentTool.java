@@ -9,6 +9,7 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -51,7 +52,7 @@ import java.util.Set;
  * {@code EconomyGovPolicyPayloads} 解析与 GOV 单位守卫），preview 不写状态、不发"已应用"日志；逐值相同的重放 = noop（不落空
  * revision）。
  */
-public final class GovSetEstablishmentTool implements SimosTool {
+public final class GovSetEstablishmentTool implements SimosTool, DecisionProposable {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.setEstablishment}）。 */
   public static final String NAME = "simos.gov.setEstablishment";

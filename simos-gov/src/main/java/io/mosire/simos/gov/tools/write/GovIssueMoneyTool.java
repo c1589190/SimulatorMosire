@@ -14,6 +14,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
+import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -62,7 +63,8 @@ import java.util.UUID;
  * <p>★★ <b>但「决策人可省 govUnitId」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose}
  * 的真预览（{@code ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
  * DecisionEffectExecutor.planCall}）都用 {@code AgentIdentity.external()} ⇒ 走 GM 分支、{@code govUnitId}
- * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用 必须显式点名要操作的 GOV 单位）」。
+ * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」（★ 逐字引用该报文的**首句**；正文其后还有「★
+ * 键位按工具分叉」一段）。
  *
  * <p>★★ <b>它不是铸币生产方式（W5 起这句话有了执行面）</b>：本工具是"DM 定发多少"的<b>行政发行</b> + 审计 —— 它是约束设计书 §6.1 W5
  * 行点名的<b>唯一具名例外</b>（DM 明确授权 + 审批链 + 审计腿）。★ 与之并列的常规路径 是<b>铸币生产方式</b>：钱由产业产出（{@code
@@ -74,7 +76,7 @@ import java.util.UUID;
  * 可达面天然含"自己 + superiorGov 的国库格"（{@link io.mosire.simos.app.access.GovScope}）⇒ 自己那一笔必过、别人的必拒；GM 侧两面都
  * unlimited。
  */
-public final class GovIssueMoneyTool implements SimosTool {
+public final class GovIssueMoneyTool implements SimosTool, DecisionProposable {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.issueMoney";

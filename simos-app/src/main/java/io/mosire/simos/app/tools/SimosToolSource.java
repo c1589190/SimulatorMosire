@@ -931,6 +931,12 @@ public final class SimosToolSource implements ToolSource {
   private final GaToolSource source;
 
   /**
+   * ★★ <b>本档的可提议目录</b>（批 K ①，2026-10-15）：名单从**本档工具面**派生（{@code instanceof DecisionProposable}），
+   * 实例与桶里是同一批（见 {@link #decisionProposalTools}）；装配完成处由 {@code ProposalDeclarationAudit} 审计。
+   */
+  private final ProposalCatalog proposalCatalog;
+
+  /**
    * 测试/旧路径：全缺省时钟（不读 store）；生产 Shell 必须用带 {@link CalendarService} 的重载（{@link CalendarService#load}）。
    *
    * <p>决策人桶的装配（**不带目标表**）：{@link Role#DECISION_AGENT} 走这条——本桶不含 {@code sd.AdjudicateTick}（它是 GM
@@ -1163,40 +1169,41 @@ public final class SimosToolSource implements ToolSource {
                     llmConfig,
                     pendingApprovals),
                 role));
-    switch (role) {
-      case GM -> {
-        addGenericWrites(built, core, initiator, mapId);
-        addGmWrites(
-            built,
-            core,
-            calendarService,
-            query,
-            initiator,
-            mapId,
-            worldgenConfigFile,
-            embeddableCommandTypes,
-            commandTargets,
-            requireDecisionAgent(decisionAgent),
-            pendingApprovals,
-            approvalCoordinator,
-            // ★ 2026-10-14 批 G（GM 代打）：这两个依赖只在这一档（GM）用得上——见全参构造器的 javadoc。
-            requireDecisionToolCaller(decisionToolCaller),
-            requireDecisionToolRegistry(decisionToolRegistry));
-      }
-      case DECISION_AGENT -> {
-        // ★ 第 3 波第 3 步：决策人**只读**自己能看的决策结果（用户原话「允许决策人查看不同 tick 的不同决策结果」）。
-        //   **只在决策人桶**——GM 侧看不到它（GM 有 GUI 面与 sd 只读全权，不靠这条）；它的可见性判据在
-        //   RedactingQueryService#decisionResults（tags 含调用者自己）。
-        GaToolQueries gaQueries = new AppGaToolQueries(query, mapId);
-        GaToolIdentity gaIdentity = new AppGaToolIdentity();
-        built.add(new DecisionResultsTool(gaQueries, gaIdentity));
-        // ★ Docs 系统（2026-09-23）：决策人**只读**发给自己的设定文档。同样**只在决策人桶**（GM 侧有 GUI 的文档子页，
-        //   可按任意决策人的视角预览实际可见集合）；可见性判据在 RedactingQueryService#docs
-        //   （tags 含调用者自己 **或** affiliations 含调用者归属，两轴取并集）。
-        built.add(new DecisionDocsTool(gaQueries, gaIdentity));
-        addDecisionAgentWrites(built, core, calendarService, query, initiator, mapId);
-      }
-    }
+    ProposalCatalog catalog =
+        switch (role) {
+          case GM -> {
+            addGenericWrites(built, core, initiator, mapId);
+            yield addGmWrites(
+                built,
+                core,
+                calendarService,
+                query,
+                initiator,
+                mapId,
+                worldgenConfigFile,
+                embeddableCommandTypes,
+                commandTargets,
+                requireDecisionAgent(decisionAgent),
+                pendingApprovals,
+                approvalCoordinator,
+                // ★ 2026-10-14 批 G（GM 代打）：这两个依赖只在这一档（GM）用得上——见全参构造器的 javadoc。
+                requireDecisionToolCaller(decisionToolCaller),
+                requireDecisionToolRegistry(decisionToolRegistry));
+          }
+          case DECISION_AGENT -> {
+            // ★ 第 3 波第 3 步：决策人**只读**自己能看的决策结果（用户原话「允许决策人查看不同 tick 的不同决策结果」）。
+            //   **只在决策人桶**——GM 侧看不到它（GM 有 GUI 面与 sd 只读全权，不靠这条）；它的可见性判据在
+            //   RedactingQueryService#decisionResults（tags 含调用者自己）。
+            GaToolQueries gaQueries = new AppGaToolQueries(query, mapId);
+            GaToolIdentity gaIdentity = new AppGaToolIdentity();
+            built.add(new DecisionResultsTool(gaQueries, gaIdentity));
+            // ★ Docs 系统（2026-09-23）：决策人**只读**发给自己的设定文档。同样**只在决策人桶**（GM 侧有 GUI 的文档子页，
+            //   可按任意决策人的视角预览实际可见集合）；可见性判据在 RedactingQueryService#docs
+            //   （tags 含调用者自己 **或** affiliations 含调用者归属，两轴取并集）。
+            built.add(new DecisionDocsTool(gaQueries, gaIdentity));
+            yield addDecisionAgentWrites(built, core, calendarService, query, initiator, mapId);
+          }
+        };
     // ★★ 2026-10-14 AgentLib Docs/Workspace 接入（设计书 §4.2）：外来工具面的**唯一注册点**，两行照设计书逐字落。
     //   ① `doc_*` 7 条里 6 条声明 {GM, DM}（U2：「doc系列在指定工作区的情况下给dm自用」）⇒ 两桶都注册；
     //      而 `doc_void` 声明 {GM} ⇒ **只进 GM 桶**（下面按角色表过滤，不搞"整库无条件 addAll"）。
@@ -1213,7 +1220,20 @@ public final class SimosToolSource implements ToolSource {
     //   ★ 双桶那一半（"标了 DM 却没注册进 DM 桶"）单桶看不见，由 Shell 用 ToolRoleAudit.requireFaces 校验
     //     （那里同时拿得到两桶）。★ 校验是 O(n) 一次，不是每条工具建的时候各查一遍。
     ToolRoleAudit.requireFace(built, role == Role.GM ? ToolRole.GM : ToolRole.DM);
+    // ★★ 批 K ①（2026-10-15）：本档的**可提议目录**（名单从工具面派生）——暴露给 Shell，供装配完成处的
+    //   `ProposalDeclarationAudit` 把「目录成员 ⇔ 工具面上的 DecisionProposable 实现者」逐条钉死（C1/C2）。
+    this.proposalCatalog = catalog;
     this.source = GaToolSource.of(built);
+  }
+
+  /**
+   * ★★ <b>本档的可提议目录</b>（批 K ①）：名单由工具面里实现 {@code DecisionProposable} 的工具派生 ⇒ 与 {@link #listTools()}
+   * 是**同一批实例**（决策人桶注册进目录的那个 List）。
+   *
+   * <p>★ 装配期审计（{@code ProposalDeclarationAudit.requireProposable}）读它做 C1/C2；诊断与用例也用它。
+   */
+  public ProposalCatalog proposalCatalog() {
+    return proposalCatalog;
   }
 
   /** GM 面必须带上决策人运行流（{@code ga.RunDecision} 没有它就只是半条工具）——缺了当场抛，不静默少一条。 */
@@ -1359,7 +1379,7 @@ public final class SimosToolSource implements ToolSource {
    * <p>★ **M3（spec §八.3）：sd 域余下的写命令也在此追加**——命令类型固定、与 map/unit 窄写同形。★ **新窄写一律加在这里**， 加完**不必回来改本注**
    * （**本注刻意不写条数**：数字是漂移源；M3 起本文件与 {@code Shell} 的工具面注释一律不钉条数）。
    */
-  private static void addGmWrites(
+  private static ProposalCatalog addGmWrites(
       List<AgentTool> built,
       CoreSimos core,
       CalendarService calendarService,
@@ -1653,8 +1673,11 @@ public final class SimosToolSource implements ToolSource {
     // ★★ D3（2026-10-22 合并计划契约 §9）：三条 GM 决策效果工具——建计划 / 执行计划 / 执行已批准 call。
     //   **只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）；
     //   执行器复用决策人桶同源的 ProposalCatalog（真工具实例 + 目标清单 fail-closed）。
+    // ★★ 批 K ①（2026-10-15）：目录的名单**从工具面派生**（`instanceof DecisionProposable`），不再手抄 16 条 ——
+    //   这里取**可提议工具族的唯一构造点**（{@link #decisionProposalTools}），与决策人桶注册的是同一批类/同一份接缝束。
     ProposalCatalog gmProposalCatalog =
-        new ProposalCatalog(core, calendarService, query, initiator, mapId);
+        new ProposalCatalog(
+            decisionProposalTools(core, calendarService, query, initiator, mapId), mapId);
     GaProposalHost gaProposal = new AppGaProposalHost(gmProposalCatalog);
     GaEffectExecution gaEffects = new AppGaEffectExecution(core, gmProposalCatalog);
     built.add(new GmMergedPlanUpsertTool(gaWrites, gaReads, gaProposal));
@@ -1775,6 +1798,84 @@ public final class SimosToolSource implements ToolSource {
     //     不进 catalog/PAYLOAD_HINTS；资源声明 NONE（没有对应的世界命名空间，见 CalendarConfigureTool 类注）。
     //   ★ 敏感写 + ToolGate.Ask（classKey = 工具名）；GM 面的审批放行与 GmToolUsage 留痕见类注。
     built.add(new CalendarConfigureTool(query, calendarService));
+    // ★ 批 K ①：本档（GM）的可提议目录随本档工具面一起交回（装配期审计读它；实例见 decisionProposalTools）。
+    return gmProposalCatalog;
+  }
+
+  /**
+   * ★★ <b>可提议工具族：唯一构造点</b>（批 K ① 根治版，设计书 §3.2；用户 2026-10-15：「这玩意不是在程序代码上已经写死了吗……为啥额外要张表？」）。
+   *
+   * <p>★ <b>为什么是"一个方法"而不是"两张清单"</b>：这 16 条工具的实例**只在这里 {@code new} 一次** —— 决策人桶用 {@code
+   * built.addAll(...)} 注册**这一批对象**，{@code ProposalCatalog} 用**同一个 List** 建索引 ⇒
+   * 「谁在可提议名单里」不再有第二处手写清单；「我能不能被提议」的唯一声明是**工具自己的** {@code implements
+   * io.mosire.simos.ga.spi.DecisionProposable}（目录按 {@code instanceof} 派生，本方法不写任何名单语义）。
+   *
+   * <p>★ <b>顺序 = 内容</b>：与历史目录的成员序逐条一致（unit/social 三条旧的 + 批 3b 的九条 {@code simos.gov.*}
+   * 类2），便于与既往证据对读。★ 这 16 条**全部** {@code roles()} 含 DM：前 7 条是 2026-10-15 用户裁定「甲」补的 DM 标签
+   * （它们本来就是决策人的核心动作：造兵 / 征税 / 招吏 / 辞退 / 选人 / 派队 / 家户成员直调），后 9 条是批 3b 进目录的类2 世界写。
+   *
+   * <p>★ <b>为什么前 7 条也必须进决策人桶</b>：{@code ToolRoleAudit.requireFaces} 把「桶 ⇔ {@code roles()}」双向钉死 ——
+   * 声明了 DM 却不注册进决策人桶 = 装配期当场抛。★ 注册进桶**不会**让 DM 绕过 GM：它们的 {@code gate()} 全是 {@code Ask} ⇒ 自动成**类2
+   * {@code DM_APPROVAL}**（直写停在待批等 GM 点头；或走 {@code simos.ga.packet.propose} 由 GM 统一批）。
+   *
+   * <p>★ <b>依赖</b>：五类接缝束都在本方法里现建（窄写口 / 窄读口 / unit 五口 / gov 七口）——与两桶的装配同形， 不引入第二份适配器实现。
+   *
+   * @param core 组合根（窄写口的落点）
+   * @param calendarService 历法时钟（unit 视图口与人力口要用生产历法判年龄档）
+   * @param query 查询层（窄读口的落点）
+   * @param initiator 命令发起者（写口装配用；预览/规划路径绝不落盘）
+   * @param mapId 本世界的 map 称谓
+   * @return 可提议工具族的**不可变**实例清单（顺序见上）；不是"名单"——能不能被提议仍由目录按接口派生
+   */
+  public static List<AgentTool> decisionProposalTools(
+      CoreSimos core,
+      CalendarService calendarService,
+      QueryService query,
+      String initiator,
+      String mapId) {
+    ToolWritePort writes = new CoreSimosToolWritePort(core, initiator);
+    ToolReadPort reads = new QueryServiceToolReadPort(query);
+    // unit 五口（视图/视角/分摊/命令类型 + 读）——与 addGmWrites 同形，唯一实现在 app。
+    UnitToolViews unitViews = new AppUnitToolViews(calendarService);
+    UnitToolPerspective unitPerspective = new AppUnitToolPerspective();
+    UnitToolAllocations unitAllocations = new AppUnitToolAllocations(calendarService);
+    UnitToolCommandTypes unitCommandTypes = new AppUnitToolCommandTypes();
+    // gov 七口（写/读/视图/视角/经济/命令类型/人力）——与两桶的接缝束同一形制。
+    GovToolSupport gov =
+        new GovToolSupport(
+            new CoreSimosToolWritePort(core, initiator),
+            new QueryServiceToolReadPort(query),
+            new AppGovToolViews(),
+            new AppGovToolPerspective(),
+            new AppGovToolEconomy(),
+            new AppGovToolCommandTypes(),
+            new AppGovToolManpower(calendarService));
+    return List.of(
+        // ── ① 2026-10-15 裁定「甲」补 DM 标签的 7 条（本来就该是 DM 能提议的决策人核心动作）──
+        //   造兵：命令面**没有** unit.RaiseUnit（本工具独有）⇒ 移出名单 = DM 彻底不能造兵；
+        //   征税：levyRegion 同样是工具独有；招吏/辞退：命令面有对应命令，但仍以本工具为受支持的完整调用面。
+        new RaiseUnitTool(
+            writes, reads, unitViews, unitPerspective, unitAllocations, unitCommandTypes),
+        new GovRecruitTool(gov, mapId),
+        new GovRetireStaffTool(gov, mapId),
+        new SocialHouseholdMembersTool(writes, reads),
+        new LevyRegionTool(writes, reads, unitViews, unitPerspective, unitAllocations),
+        new GovSelectExamineesTool(gov, mapId),
+        new GovDispatchTeamTool(gov, mapId),
+        // ── ② 批 3b（设计书 §8.3 第 1 条）进目录的九条 `simos.gov.*` 类2（`{DM,GM}` + `gate=Ask(SENSITIVE)`）──
+        //   无人值守时 DM 走 `simos.ga.packet.propose`（**零阻塞**）、GM 用 `gm.packet.decide` 真审、
+        //   `gm.packet.execute` 执行；类2 的直写路径**一条没删**（有真人看着的场合照旧可用）。
+        //   ★ 九条都不建单位（`expandHousehold` 建的是**家户**、不是单位）⇒ `createsUnit=false`、`skipKeys` 空：
+        //     它们的参数/预览里没有"将要成为的目标的新 id"，只有既存资源（GOV 单位 / 家户 / 国库 / 格）。
+        new GovSetEstablishmentTool(gov),
+        new GovSetBudgetPolicyTool(gov),
+        new GovAssignPostsTool(gov),
+        new GovExpandHouseholdTool(gov),
+        new GovOpenPostsToMarketTool(gov),
+        new GovDefineCurrencyTool(gov),
+        new GovRenameCurrencyTool(gov),
+        new GovIssueMoneyTool(gov),
+        new GovSetFxRateTool(gov));
   }
 
   /**
@@ -1795,7 +1896,7 @@ public final class SimosToolSource implements ToolSource {
    * {@code DmUsableCommand} ⇒ 令白名单 / {@code RegisterEffect} / 决策人 catalog
    * 三条路径同样排除。三层同源收窄，缺一层就等于留一条绕过政治能力的入口。
    */
-  private static void addDecisionAgentWrites(
+  private static ProposalCatalog addDecisionAgentWrites(
       List<AgentTool> built,
       CoreSimos core,
       CalendarService calendarService,
@@ -1829,39 +1930,28 @@ public final class SimosToolSource implements ToolSource {
             new AppGovToolCommandTypes(),
             new AppGovToolManpower(calendarService));
     built.add(new GovPayTool(gov));
-    // ★★ Z3c-2（2026-10-23 政府服务模式）：五条政府配置窄写——与 GM 桶**同名注册**（同一份实现按身份派生：
-    //   GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 越权 REJECTED）。敏感工具，但**两条路径不同**
-    //   （2026-10-15 批 3b §11.2 B3 实测）：
-    //   ①【决策人直写】AutoApproveGate → ConfirmGate → PendingApprovals：阻塞等 GM 在审批面点头
-    //      （上限 APPROVAL_TIMEOUT，到点 APPROVAL_DENIED、asks=1）；
-    //   ②【决策人提议】{@code simos.ga.packet.propose}：零审批、asks 不增、不阻塞。这几条都在
-    //      {@code ProposalCatalog} 清单里；GM 侧用 {@code simos.gm.packet.decide} 真审、{@code
-    // simos.gm.packet.execute} 执行。
+    // ★★ 批 K ①（2026-10-15 根治版，设计书 §3.2）：**可提议工具族**（16 条）在这里**一次注册**，并与
+    //   `ProposalCatalog` 共用**同一个 List**（下一段 `new ProposalCatalog(proposable, mapId)`）⇒ 目录的成员
+    //   =「本桶里实现了 `DecisionProposable` 的工具」，**不再有第二处手写清单**（唯一构造点见 `decisionProposalTools`）。
+    //   ★ 组成 ①（2026-10-15 用户裁定「甲」）：raiseUnit / levyRegion / gov.recruit / gov.retireStaff /
+    //     gov.selectExaminees / gov.dispatchTeam / social.household.members —— 这 7
+    // 条**本来就是决策人的核心动作**
+    //     （造兵、征税在命令面**没有**对应命令 ⇒ 移出名单 = DM 彻底做不到），当年只是漏打了 DM 标签；它们**本来就是
+    //     gate=Ask** ⇒ 补上标签后自动成**类2 DM_APPROVAL**（「DM/GM 混合就是要交给 GM 审核」，与用户口径一致）。
+    //   ★ 组成 ②（批 3b / Z3c-2 / Z3d / A1 / A2a）：九条 `simos.gov.*` 类2 —— setEstablishment /
+    // setBudgetPolicy /
+    //     assignPosts / expandHousehold / openPostsToMarket / defineCurrency / renameCurrency /
+    // issueMoney / setFxRate。
+    //   ★ 两条路径（2026-10-15 批 3b §11.2 B3 实测）：
+    //     ①【决策人直写】AutoApproveGate → ConfirmGate → PendingApprovals：阻塞等 GM 在审批面点头
+    //        （上限 APPROVAL_TIMEOUT，到点 APPROVAL_DENIED、asks=1）；
+    //     ②【决策人提议】{@code simos.ga.packet.propose}：零审批、asks 不增、不阻塞。GM 侧用
+    //        {@code simos.gm.packet.decide} 真审、{@code simos.gm.packet.execute} 执行。
+    //   ★ 身份派生仍逐条由工具自己负责（GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 具名 REJECTED）。
     //   **桶**（本方法）就是权限组白名单的来源（由 {@code Shell} 派生，不另立清单）。
-    built.add(new GovSetEstablishmentTool(gov));
-    built.add(new GovSetBudgetPolicyTool(gov));
-    built.add(new GovAssignPostsTool(gov));
-    built.add(new GovExpandHouseholdTool(gov));
-    // ★★ Z3d（2026-10-23）：外部户承接行政任务（B 路 V1=显式选户）——与 GM 桶同名注册；只写 externalPosts +
-    //   GOV_SERVICE 承诺，不改归属/位置；敏感工具 ⇒ 两条路径同上（【决策人直写】AutoApproveGate → ConfirmGate →
-    //   PendingApprovals 停在待批等 GM 点头；【决策人提议】{@code simos.ga.packet.propose} 零审批 —— 本工具也在
-    //   {@code ProposalCatalog} 清单里）。
-    //   **桶**（本方法）就是权限组白名单的来源（由 {@code Shell} 派生，不另立清单）。
-    built.add(new GovOpenPostsToMarketTool(gov));
-    // ★★ A1（2026-10-08 汇率阶段 2 §3.1-3）：货币身份三件套的**决策人侧注册面**——与 GM 桶同名注册（同一份实现按身份
-    //   派生：GM 必须显式 govUnitId；决策人省略 = 自己的 GOV、给出别的 GOV ⇒ 具名 REJECTED）。三条都是敏感工具 ⇒
-    //   **两条路径行为不同**（2026-10-15 批 3b §11.2 B3 实测）：【决策人直写】AutoApproveGate → ConfirmGate →
-    //   PendingApprovals ⇒ 阻塞等 GM 在审批面点头（到点 APPROVAL_DENIED）；【决策人提议】{@code simos.ga.packet.propose}
-    //   ⇒ 零审批、不阻塞（三条都在 {@code ProposalCatalog} 清单里；GM 用 {@code simos.gm.packet.decide} 审、
-    //   {@code simos.gm.packet.execute} 执行）。
-    //   ★★ **桶（本方法）就是决策人白名单的来源**——{@code roles()} 是唯一声明，白名单由 {@code Shell}
-    //      从这个桶派生（B4 起生产路径不再有手抄清单）。
-    built.add(new GovDefineCurrencyTool(gov));
-    built.add(new GovRenameCurrencyTool(gov));
-    built.add(new GovIssueMoneyTool(gov));
-    //   ★★ A2a（2026-10-08 汇率阶段 2 §3.3）：官方汇率 —— 同一形制（GM 桶 + 决策人桶同名两处注册 +
-    //     决策人侧白名单/审批链）。★ 定下它就是"激活这个币对的外汇市场"（没定过 ⇒ 没有外汇面，逐值退回）。
-    built.add(new GovSetFxRateTool(gov));
+    List<AgentTool> proposable =
+        decisionProposalTools(core, calendarService, query, initiator, mapId);
+    built.addAll(proposable);
     // ★★ D2（2026-10-22 决策包计划）+ 2026-10-14 批 B（设计书 §3.2/§3.3）决策族定型：**七件套**
     //   propose / revise / drop / intent / confirm / reopen / my。
     //   **只在决策人桶**；白名单即由该桶派生（roles() 是唯一声明）。
@@ -1870,8 +1960,7 @@ public final class SimosToolSource implements ToolSource {
     //     包/INFO 覆盖层），真正的闸门在 GM 侧（gm.packet.decide / mergedPlan.* / packet.execute 本批一处不放松）；
     //     my 是只读口（无 gate 覆写）。
     //   ★ 相对次序保持原样（propose → confirm → intent → my），三条新工具**追加在 my 之后**。
-    ProposalCatalog proposalCatalog =
-        new ProposalCatalog(core, calendarService, query, initiator, mapId);
+    ProposalCatalog proposalCatalog = new ProposalCatalog(proposable, mapId);
     GaProposalHost gaProposal = new AppGaProposalHost(proposalCatalog);
     ProposeCallTool propose = new ProposeCallTool(gaWrites, gaReads, mapId, gaProposal, gaIdentity);
     built.add(propose);
@@ -1903,6 +1992,8 @@ public final class SimosToolSource implements ToolSource {
     built.add(new AdjudicationAckTool(gaWrites, gaReads, gaIdentity));
     // ★★ 2026-10-14 决策人互致消息（设计书 §4.1）：GM 侧"授权两人互通"的窄写（一次写两条 DM 记录、一条 revision）。
     //   **不在本桶**（roles={GM}，它是配权命令）⇒ 它注册在 addGmWrites。
+    // ★ 批 K ①：本档（决策人）的可提议目录随本档工具面一起交回（成员即上面那批 proposable 实例）。
+    return proposalCatalog;
   }
 
   private static List<AgentTool> readTools(

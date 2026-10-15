@@ -34,6 +34,11 @@ import java.util.Set;
  * DecisionAgentRunner.frozenKindOf}：只留世界读 + 决策包七件套 + 无状态读口）⇒ 那一回合里本工具的「类2 = DM 需审批」**走不到**。★ 类2
  * 的直写因此只对**非冻结回合路径**有意义：GM 触发的旧单人回合（{@code ga.RunDecision} / GUI 单人跑，那条路径**不裁**世界写）与真人 /
  * 外部经**决策通道**（{@code DecisionChannel} 的两条落点之一）提交时。
+ *
+ * <p>★★ <b>那条判据裁的是「整族」，不是本条工具</b>（批 K ①，2026-10-15 回代码核实）：{@code DecisionAgentRunner.frozenKindOf}
+ * 只看 **schema 里有没有 {@code expectedRevision}**（且不在决策包七件套里）——凡带它的世界写工具 **一律**被移出冻结回合，与工具名无关。⇒ 「类2
+ * 直写只在非冻结回合存在」这句话对**全部类2**（九条 {@code simos.gov.*} 配置窄写、 {@code ga.IssueDirective} 等）都成立，不是本工具的个例；★
+ * 反过来，**提议路径（决策包七件套）在冻结回合里照样可用** —— 这正是「DM 无人值守时走 {@code simos.ga.packet.propose}」那条路不受冻结回合影响的原因。
  */
 public final class IssueDirectiveTool extends AbstractNarrowWriteTool implements SimosTool {
 

@@ -11,42 +11,15 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.time.CalendarService;
-import io.mosire.simos.app.tools.CoreSimosToolWritePort;
-import io.mosire.simos.app.tools.QueryServiceToolReadPort;
+import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.app.tools.gov.AppGovToolCommandTypes;
-import io.mosire.simos.app.tools.gov.AppGovToolEconomy;
-import io.mosire.simos.app.tools.gov.AppGovToolPerspective;
-import io.mosire.simos.app.tools.gov.AppGovToolViews;
-import io.mosire.simos.app.tools.write.AppGovToolManpower;
-import io.mosire.simos.app.tools.write.AppUnitToolAllocations;
-import io.mosire.simos.app.tools.write.AppUnitToolCommandTypes;
-import io.mosire.simos.app.tools.write.AppUnitToolPerspective;
-import io.mosire.simos.app.tools.write.AppUnitToolViews;
 import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.ga.decision.DecisionProposable;
-import io.mosire.simos.gov.tools.GovToolSupport;
-import io.mosire.simos.gov.tools.write.GovAssignPostsTool;
-import io.mosire.simos.gov.tools.write.GovDefineCurrencyTool;
-import io.mosire.simos.gov.tools.write.GovDispatchTeamTool;
-import io.mosire.simos.gov.tools.write.GovExpandHouseholdTool;
-import io.mosire.simos.gov.tools.write.GovIssueMoneyTool;
-import io.mosire.simos.gov.tools.write.GovOpenPostsToMarketTool;
-import io.mosire.simos.gov.tools.write.GovRecruitTool;
-import io.mosire.simos.gov.tools.write.GovRenameCurrencyTool;
-import io.mosire.simos.gov.tools.write.GovRetireStaffTool;
-import io.mosire.simos.gov.tools.write.GovSelectExamineesTool;
-import io.mosire.simos.gov.tools.write.GovSetBudgetPolicyTool;
-import io.mosire.simos.gov.tools.write.GovSetEstablishmentTool;
-import io.mosire.simos.gov.tools.write.GovSetFxRateTool;
+import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.household.Household;
-import io.mosire.simos.social.tools.write.SocialHouseholdMembersTool;
-import io.mosire.simos.unit.tools.write.LevyRegionTool;
-import io.mosire.simos.unit.tools.write.RaiseUnitTool;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.ResourcePaths;
@@ -63,8 +36,15 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * **决策人可提议工具目录**（D2 决策包计划 §3.3）：初始清单的每条工具都现场构造一个真实例，用一个**系统预览上下文** 跑目标工具的真 {@code preview=true}
- * 路径（不落盘），并从 args + preview 递归提取目标资源。
+ * **决策人可提议工具目录**（D2 决策包计划 §3.3）：收集工具面上**自己声明了可被提议**的工具实例（{@link DecisionProposable}），用一个**系统预览上下文**
+ * 跑目标工具的真 {@code preview=true} 路径（不落盘），并从 args + preview 递归提取目标资源。
+ *
+ * <p>★★ <b>批 K ①「让声明成为唯一真相」（用户 2026-10-15：「这玩意不是在程序代码上已经写死了吗……为啥额外要张表？」）</b>： 本类的名单**从工具面派生**——遍历
+ * {@code face}，把实现了 {@link DecisionProposable} 的工具逐个包成 {@link Entry}； **源码里没有一个工具名字面量、也没有一条 {@code
+ * new XxxTool(...)}**（「谁可被提议」的唯一拼写点 = 工具自己的 {@code implements} 声明，不变量 K1）。以前那张 16 条手写 {@code
+ * List.of(...)} 是**第二处声明**：它与工具自己的 {@code roles()} 互不相干、漂移无症状（原始清单里 7 条是 GM-only
+ * 却照样能被提议，没有任何东西拦）。装配期由 {@code ProposalDeclarationAudit} fail-closed 校验（实现者 {@code roles()} 必须含
+ * DM，不变量 K2）。
  *
  * <p>★★ **为什么必须真调目标工具**：另写一套"预览推导"就是第二份业务真相（AGENTS 铁律 4 同族）——目标工具改口径时不会有人 记得同步它，且两边的漂移**不会报错**。本类的
  * preview 只做三件事：拼系统上下文、转发 args、把成功结果解析成 Map。
@@ -142,81 +122,54 @@ public final class ProposalCatalog {
   private final Map<String, Entry> byName;
   private final String mapId;
 
+  /**
+   * ★★ <b>唯一形态：名单**从工具面派生**</b>（批 K ① / 不变量 K1）——遍历 {@code face}，把**实现了 {@link
+   * DecisionProposable}** 的工具实例逐个包成 {@link Entry}。
+   *
+   * <p>★ <b>没有第二处名单</b>：本类源码里**一个工具名字面量、一条 {@code new XxxTool(...)} 都没有**（`git grep` 可证）；「我能不能被提议」
+   * 的唯一拼写点是工具自己的 {@code implements DecisionProposable}。★ 没实现它的工具**缺省不可提议**——这是"没声明就进不来"，不是靠一张排除名单。
+   *
+   * <p>★ 工具实例**取自工具面本身**（不是另造一份）：装配期 {@code SimosToolSource} 把可提议工具族 {@code addAll} 进桶、再用**同一个
+   * List** 构造本目录 ⇒ 桶里的实例与目录里的实例是同一批对象（"实例现成的"，设计书 §3.2）。
+   *
+   * @param face 工具面（决策人桶的写面；可提议族必须在其上——装配期由 {@code ProposalDeclarationAudit} 的 C1/C2 钉死）
+   * @param mapId 本世界的 map 称谓（目标提取拼 {@code map:} 路径用）
+   * @throws IllegalStateException 同一个工具名在面上出现两次（名单按名索引 ⇒ 重名 = 装配故障，不静默取一条）
+   */
+  public ProposalCatalog(List<AgentTool> face, String mapId) {
+    Objects.requireNonNull(face, "face");
+    this.mapId = Objects.requireNonNull(mapId, "mapId");
+    Map<String, Entry> byName = new LinkedHashMap<>();
+    for (AgentTool tool : face) {
+      if (!(tool instanceof DecisionProposable declaration)) {
+        continue; // 「不可提议」是缺省：没实现接口就进不来（不靠一张"排除名单"）。
+      }
+      Entry entry = new Entry(tool, declaration);
+      if (byName.putIfAbsent(tool.name(), entry) != null) {
+        throw new IllegalStateException(
+            "可提议工具面装配故障："
+                + tool.name()
+                + " 在工具面上出现两次 —— 本目录按工具名索引，重名会让「这条工具在不在名单里」取决于遍历序（装配故障，不静默取一条）。");
+      }
+    }
+    this.byName = Collections.unmodifiableMap(byName);
+  }
+
+  /**
+   * 兼容形（用例与诊断**直接建目录**、不经过两桶）：工具面取装配的**同一个唯一构造点** {@link SimosToolSource#decisionProposalTools}。
+   *
+   * <p>★ 它不是第二条声明路径：可提议族的实例只在那个方法里 {@code new} 一次（决策人桶注册与两个目录都取它）⇒ 「谁能被提议」仍然只由工具自己的 {@code
+   * implements DecisionProposable} 决定。
+   */
   public ProposalCatalog(
       CoreSimos core,
       CalendarService calendarService,
       QueryService query,
       String initiator,
       String mapId) {
-    Objects.requireNonNull(core, "core");
-    Objects.requireNonNull(calendarService, "calendarService");
-    Objects.requireNonNull(query, "query");
-    Objects.requireNonNull(initiator, "initiator");
-    this.mapId = Objects.requireNonNull(mapId, "mapId");
-    // ★★ 2026-10-12 B3 第六域（gov）：四条可 propose 的 gov 工具**已下放**（`gov.tools.write`），
-    //   这里注入同一个接缝束（与 SimosToolSource 的装配同形：写口/读口/视图口/视角口/经济口/命令类型口/人力口）。
-    GovToolSupport gov =
-        new GovToolSupport(
-            new CoreSimosToolWritePort(core, initiator),
-            new QueryServiceToolReadPort(query),
-            new AppGovToolViews(),
-            new AppGovToolPerspective(),
-            new AppGovToolEconomy(),
-            new AppGovToolCommandTypes(),
-            new AppGovToolManpower(calendarService));
-    List<Entry> entries =
-        List.of(
-            entry(
-                new RaiseUnitTool(
-                    new CoreSimosToolWritePort(core, initiator),
-                    new QueryServiceToolReadPort(query),
-                    new AppUnitToolViews(calendarService),
-                    new AppUnitToolPerspective(),
-                    new AppUnitToolAllocations(calendarService),
-                    new AppUnitToolCommandTypes()),
-                Set.of("newUnitId"),
-                true),
-            entry(new GovRecruitTool(gov, mapId), Set.of(), false),
-            entry(new GovRetireStaffTool(gov, mapId), Set.of(), false),
-            entry(
-                new SocialHouseholdMembersTool(
-                    new CoreSimosToolWritePort(core, initiator),
-                    new QueryServiceToolReadPort(query)),
-                Set.of(),
-                false),
-            entry(
-                new LevyRegionTool(
-                    new CoreSimosToolWritePort(core, initiator),
-                    new QueryServiceToolReadPort(query),
-                    new AppUnitToolViews(calendarService),
-                    new AppUnitToolPerspective(),
-                    new AppUnitToolAllocations(calendarService)),
-                Set.of(),
-                false),
-            entry(new GovSelectExamineesTool(gov, mapId), Set.of("newUnitId"), true),
-            entry(new GovDispatchTeamTool(gov, mapId), Set.of("newUnitId"), true),
-            // ★★ 2026-10-15 批 3b（设计书 §8.3 第 1 条）：九条 `simos.gov.*` **类2**（`{DM,GM}` +
-            // `gate=Ask(SENSITIVE)`）的
-            //   世界写加进清单 ⇒ 无人值守时 DM 走 `simos.ga.packet.propose`（**零阻塞**）、GM 用 `gm.packet.decide` 真审、
-            //   `gm.packet.execute` 执行；类2 的直写路径**一条没删**（有真人看着的场合照旧可用）。
-            //   ★ 纯加法：这九条的 `roles()`/`gate()`/审批链/上限**一个字没动** ⇒ 三格计数仍是 140/17/37。
-            //   ★ 九条都不建单位（`expandHousehold` 建的是**家户**、不是单位）⇒ `createsUnit=false`、`skipKeys` 空：
-            //     它们的参数/预览里没有"将要成为的目标的新 id"，只有既存资源（GOV 单位 / 家户 / 国库 / 格）。
-            //   ★ 顺序 = `SimosToolSource` 里 gov 写工具的注册顺序（§8.3 名单的保序展开，便于两边对读）。
-            entry(new GovSetEstablishmentTool(gov), Set.of(), false),
-            entry(new GovSetBudgetPolicyTool(gov), Set.of(), false),
-            entry(new GovAssignPostsTool(gov), Set.of(), false),
-            entry(new GovExpandHouseholdTool(gov), Set.of(), false),
-            entry(new GovOpenPostsToMarketTool(gov), Set.of(), false),
-            entry(new GovDefineCurrencyTool(gov), Set.of(), false),
-            entry(new GovRenameCurrencyTool(gov), Set.of(), false),
-            entry(new GovIssueMoneyTool(gov), Set.of(), false),
-            entry(new GovSetFxRateTool(gov), Set.of(), false));
-    Map<String, Entry> byName = new LinkedHashMap<>();
-    for (Entry value : entries) {
-      byName.put(value.toolName(), value);
-    }
-    this.byName = Collections.unmodifiableMap(byName);
+    this(
+        SimosToolSource.decisionProposalTools(core, calendarService, query, initiator, mapId),
+        mapId);
   }
 
   /** 工具是否在本批初始清单里（propose 的第一道具名拒）。 */
@@ -283,10 +236,6 @@ public final class ProposalCatalog {
     if (newUnitId != null) {
       out.add(newUnitId);
     }
-  }
-
-  private Entry entry(AgentTool tool, Set<String> skipKeys, boolean createsUnit) {
-    return new Entry(tool.name(), tool, skipKeys, createsUnit, this);
   }
 
   private Entry require(String toolName) {
@@ -461,31 +410,33 @@ public final class ProposalCatalog {
     return Optional.of((int) asLong);
   }
 
-  /** 目录条目（工具名 + 真实例 + 目标提取配置）；实现 {@link DecisionProposable} 的预览/目标入口。 */
-  private record Entry(
-      String toolName,
-      AgentTool tool,
-      Set<String> skipKeys,
-      boolean createsUnit,
-      ProposalCatalog owner)
-      implements DecisionProposable {
+  /**
+   * 目录条目：**工具实例**（预览与执行都用它）+ 它**自己声明**的两个目标提取开关。
+   *
+   * <p>★ 批 K ① 起本记录**不再实现** {@link DecisionProposable}：接口已由**工具自己**实现（那里才是"我能不能被提议"的声明处），
+   * 本记录只是"这条工具在名单里"的索引项——两个开关**从工具读**（{@code declaration}），不在目录里另立一份配置。 {@code preview}/{@code
+   * targets} 的**唯一实现**仍在本类（不变量 K3）。
+   */
+  private record Entry(AgentTool tool, DecisionProposable declaration) {
 
     private Entry {
-      Objects.requireNonNull(toolName, "toolName");
       Objects.requireNonNull(tool, "tool");
-      Objects.requireNonNull(owner, "owner");
-      skipKeys = Set.copyOf(skipKeys);
+      Objects.requireNonNull(declaration, "declaration");
     }
 
-    @Override
-    public Map<String, Object> preview(SimulationState state, Map<String, Object> args) {
-      return owner.preview(toolName, state, args);
+    /** 工具名（索引键即 {@link AgentTool#name()}，不从别处抄一遍）。 */
+    String toolName() {
+      return tool.name();
     }
 
-    @Override
-    public List<CommandTarget> targets(
-        SimulationState state, Map<String, Object> args, Map<String, Object> preview) {
-      return owner.targets(toolName, state, args, preview);
+    /** 目标提取时整键跳过的字段（**从工具自己读**）。 */
+    Set<String> skipKeys() {
+      return declaration.skipKeys();
+    }
+
+    /** 是否创建型（**从工具自己读**）。 */
+    boolean createsUnit() {
+      return declaration.createsUnit();
     }
   }
 

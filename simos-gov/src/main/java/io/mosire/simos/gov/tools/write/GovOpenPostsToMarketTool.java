@@ -9,6 +9,7 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -63,14 +64,15 @@ import java.util.UUID;
  * <p>★★ <b>但「决策人可省」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
  * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
  * DecisionEffectExecutor.planCall}）都用 {@code AgentIdentity.external()} ⇒ 走 GM 分支、{@code govUnitId}
- * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用 必须显式点名要操作的 GOV 单位）」。
+ * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」（★ 逐字引用该报文的**首句**；正文其后还有「★
+ * 键位按工具分叉」一段）。
  *
  * <p>★ <b>承诺小时口径</b>：缺省 = 该户当前 Social 权威劳动（全职）；显式 {@code laborMilli} 只能在 (0, 当前劳动] 内（超上限 ⇒ 具名
  * BAD_REQUEST）。
  *
  * <p>★ <b>V2/V3 不做</b>：队列/应募/竞价原语；本工具只做显式选户。
  */
-public final class GovOpenPostsToMarketTool implements SimosTool {
+public final class GovOpenPostsToMarketTool implements SimosTool, DecisionProposable {
 
   /** 工具名（全局唯一；设计书 §5 的 {@code simos.gov.openPostsToMarket}）。 */
   public static final String NAME = "simos.gov.openPostsToMarket";

@@ -11,6 +11,7 @@ import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.ga.spi.DecisionProposable;
 import io.mosire.simos.ga.spi.SimosTool;
 import io.mosire.simos.ga.spi.ToolResources;
 import io.mosire.simos.ga.spi.ToolResults;
@@ -41,7 +42,8 @@ import java.util.Set;
  * <p>★★ <b>但「决策人可省」只在直写路径成立</b>（2026-10-15 实测）：{@code simos.ga.packet.propose} 的真预览（{@code
  * ProposalCatalog.preview}）与 {@code gm.packet.execute} 的规划（{@code
  * DecisionEffectExecutor.planCall}）都用 {@code AgentIdentity.external()} ⇒ 走 GM 分支、{@code govUnitId}
- * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用 必须显式点名要操作的 GOV 单位）」。
+ * 必填，省略 ⇒ {@code BAD_REQUEST}「govUnitId 必填（GM 调用必须显式点名要操作的 GOV 单位）」（★ 逐字引用该报文的**首句**；正文其后还有「★
+ * 键位按工具分叉」一段）。
  *
  * <p>★ <b>写什么</b>：币种表 + 工具表 + 该 GOV 的 {@code issuable}（三处在同一条命令、同一条 revision 里； 详见 {@link
  * EconomyDefineCurrencyHandler} 的类注）。★ <b>只作用于自己所属 GOV</b>（M6）：决策人<b>直写</b>路径下载荷里的 {@code
@@ -51,7 +53,7 @@ import java.util.Set;
  * {@code economy} ⇒ 取工具缺省策略 = {@code UNRESTRICTED}，而 GM 侧 unlimited）。 ★ 这是"命名空间级"的粗断言，真正的收窄在 ①
  * 身份派生（只能自己的 GOV）② GM 审批链 ③ handler 的守卫。
  */
-public final class GovDefineCurrencyTool implements SimosTool {
+public final class GovDefineCurrencyTool implements SimosTool, DecisionProposable {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gov.defineCurrency";

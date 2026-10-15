@@ -35,6 +35,7 @@ import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.LoggingApprovalChannel;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.decision.NationOpeningSnapshot;
+import io.mosire.simos.app.decision.ProposalDeclarationAudit;
 import io.mosire.simos.app.gui.GuiServer;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.llm.LlmProviderResolver;
@@ -1278,21 +1279,21 @@ public final class Shell implements AutoCloseable {
     //   —— 白名单不再手抄 44 条（唯一拼写点是每条工具自己的 SimosTool.roles()），生产里**没有第二份工具名清单**
     //   （B4 留下的静态 44 条副本已在 B4b 删除：那种"启动期校验过的副本"仍是第二处声明）。
     //   下面由 ToolRoleAudit.requireFaces 把**桶 ⇔ roles() 声明**双向全量钉死：漏一条/多一条**当场抛**，不会静默成旁路。
-    List<AgentTool> decisionAgentFace =
+    SimosToolSource decisionToolSource =
         new SimosToolSource(
-                coreSimos,
-                calendarService,
-                queryService,
-                config.mcpInitiator(),
-                config.mapId(),
-                WORLDGEN_CONFIG_FILE,
-                catalogCommandTypes,
-                directiveCommandTypes,
-                renderService,
-                gmToolUsage,
-                llmConfig,
-                SimosToolSource.Role.DECISION_AGENT)
-            .listTools();
+            coreSimos,
+            calendarService,
+            queryService,
+            config.mcpInitiator(),
+            config.mapId(),
+            WORLDGEN_CONFIG_FILE,
+            catalogCommandTypes,
+            directiveCommandTypes,
+            renderService,
+            gmToolUsage,
+            llmConfig,
+            SimosToolSource.Role.DECISION_AGENT);
+    List<AgentTool> decisionAgentFace = decisionToolSource.listTools();
     DecisionCallerFactory decisionCallerFactory =
         DecisionCallerFactory.forDecisionFace(
             toolAuthorizer, ToolBuckets.namesOf(decisionAgentFace));
@@ -1396,6 +1397,18 @@ public final class Shell implements AutoCloseable {
     //   ★ 返回值是三份不可变清单（类1 GM_ONLY / 类2 DM_APPROVAL / 类3 DM_FREE），供后续批次（3b）与测试取用；
     //     这里只取它"每条工具都落进三格之一"的装配期必过效果。
     ToolClassAudit.requireClasses(gmToolFace, decisionAgentFace);
+    // ★★ 2026-10-15 批 K ①（设计书 §3.3 / 不变量 K2）：**可提议声明的装配期 fail-closed 审计**（照上面 ToolClassAudit
+    // 的接线形制）。
+    //   C1：工具面上每个实现了 `DecisionProposable` 的工具，其 `roles()` 必须含 DM（用户口径「没有 DM 标签的工具不该出现在
+    //       提议名单里」）——以前没东西拦，现在装配期当场拦；
+    //   C2：两个档的目录成员 ⇔ 各自工具面上实现了该接口的工具（双向、不重不漏）——「声明了可提议」与「装配面注册了它」
+    //       必须逐条一致，缺一条就是静默的能力丢失（目录里没有实参可预览/执行）。
+    //   ★ 判据只来自两处**活的**声明（工具面的 instanceof + 工具自己的 roles()），没有第二处名单；违反 ⇒ 当场抛，不降级成日志。
+    ProposalDeclarationAudit.requireProposable(
+        gmToolFace,
+        decisionAgentFace,
+        toolSource.proposalCatalog(),
+        decisionToolSource.proposalCatalog());
     // ★ T8：GM 交互界面的数据源（`gmToolUsage` 已在上方、两个工具源之前建好）——只包 GM 组的源 ⇒ 记录的就是
     //   "GM MCP 的工具使用"（spec §七.4 C22）。
     //   ★ 2026-10-13（B）：源改包**合并后的 GM 面**（含三条新工具）⇒ 它们与其余工具同吃 RecordingToolSource，
