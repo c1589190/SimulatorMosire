@@ -41,15 +41,15 @@
 | `simos-map` | `simos-util`（★ 详见 `01-〇` §simos-map） |
 | `simos-calendar` | `simos-util` + `simos-map`（★ 详见 `01-〇` §simos-calendar） |
 | `simos-social-api` | `simos-map`（+ jackson-annotations）（★ 详见 `01-〇` §simos-social-api） |
-| `simos-social` | util + map + `simos-social-api` + economy-api + `simos-calendar`（★ 详见 `01-〇` §simos-social） |
-| `simos-unit` | util + map + `simos-social-api` + `simos-social`（实现）（★ 详见 `01-〇` §simos-unit） |
+| `simos-social` | util + map + `simos-social-api` + economy-api + `simos-calendar` + **`simos-ga-spi`**（★ 详见 `01-〇` §simos-social） |
+| `simos-unit` | util + map + `simos-social-api` + `simos-social`（实现）+ **`simos-ga-spi`**（★ 详见 `01-〇` §simos-unit） |
 | ~~`simos-sd`~~ | ——（已整模块退役；★ 详见 `01-〇` §simos-sd） |
 | `simos-core` | **main scope**：util + `agentlib-mosire` + jackson-databind + sqlite-jdbc（map/social/unit 仅 test scope；★ 详见 `01-〇` §simos-core） |
 | `simos-actor-api` | **不声明任何主依赖**（★ 详见 `01-〇` §simos-actor-api） |
 | `simos-actor` | actor-api + util + map + economy-api + `simos-social-api` + jackson（★ 详见 `01-〇` §simos-actor） |
 | `simos-economy-api` | **actor-api** + util + map + `simos-social-api`（★ 详见 `01-〇` §simos-economy-api） |
 | `simos-economy` | actor-api + util + economy-api + **map** + `simos-social-api` + `simos-social`（★ 详见 `01-〇` §simos-economy） |
-| `simos-gov` | util + map + unit + social + `economy-api`（★ 详见 `01-〇` §simos-gov） |
+| `simos-gov` | util + map + unit + social + `economy-api` + **`simos-ga-spi`**（★ 详见 `01-〇` §simos-gov） |
 | `simos-army` | util + map + unit + social **+ gov**（★ 详见 `01-〇` §simos-army） |
 | ~~`simos-ledger`~~ | ——（已于 2026-09-27 退役；★ 详见 `01-〇` §simos-ledger） |
 | `simos-app`（组合根） | **全部 15 个 simos 模块**（core + util + ga-spi + map + calendar + social-api + social + unit + actor-api + actor + economy-api + economy + gov + army + **ga**）+ agentlib + mcp-core + mcp-json-jackson2 + jackson + 日志实现（不设 enforcer；★ 详见 `01-〇` §simos-app） |
