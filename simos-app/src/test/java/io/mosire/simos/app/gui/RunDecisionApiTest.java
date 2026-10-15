@@ -88,8 +88,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 「让它跑一轮」窄写端到端验收：{@code POST /api/sd/run-decision} + 轮询 {@code GET
- * /api/sd/decision-makers/{id}/run-status}。
+ * 「让它跑一轮」窄写端到端验收：{@code POST /api/ga/run-decision} + 轮询 {@code GET
+ * /api/ga/decision-makers/{id}/run-status}。
  *
  * <p>★ **它补的是哪一处空白**：让某个决策人真跑一轮（真 LLM 自行读世界、出令）此前**只有 GM 的 MCP 窄工具做得到** ⇒ 界面上点不出来。本端点把同一条路接进工作台。
  *
@@ -108,7 +108,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>★ **2026-09-24（E4）新增第五条**：连点两次同一个决策人 ⇒ 第二次**明确拒绝**、第一轮的账**不被覆盖**。它是本条端点上的**真并发** 缺陷（见 {@code
  * runDecisionReply} 的并发闸门），故落在这里；用"假 LLM 卡在第一次调用"把第一轮**摁在 running** 上，好让第二次点击 确实发生在"正在跑"的窗口里。
  */
-class SdRunDecisionApiTest {
+class RunDecisionApiTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
@@ -165,7 +165,7 @@ class SdRunDecisionApiTest {
   void theRoundRunsInTheBackgroundAndTheTraceIsPolledFromRunStatus() throws Exception {
     // ★ **跑之前**：这个人从没跑过 ⇒ run-status 如实报"没有记录"（`startedAt`/`llmCalls` 都是 null，
     //   **不拿 0 / false 顶替**："一次都没调"与"本进程从没见过它跑"是两件事）。
-    JsonNode before = JSON.readTree(get("/api/sd/decision-makers/" + DM_ID + "/run-status").body());
+    JsonNode before = JSON.readTree(get("/api/ga/decision-makers/" + DM_ID + "/run-status").body());
     assertThat(before.get("startedAt").isNull()).as("没跑过 ⇒ startedAt 必须 null").isTrue();
     assertThat(before.get("llmCalls").isNull()).as("没跑过 ⇒ llmCalls 必须 null（不是 0）").isTrue();
     assertThat(before.get("done").asBoolean()).isFalse();
@@ -174,7 +174,7 @@ class SdRunDecisionApiTest {
     llm.enqueue(LlmResponse.toolCall("call-1", "simos_map_hex", Map.of("q", 1, "r", 1)));
     llm.enqueue(LlmResponse.text("已读图，本 tick 无动作"));
 
-    HttpResponse<String> response = post("/api/sd/run-decision", runDecisionBody(DM_ID, 1L));
+    HttpResponse<String> response = post("/api/ga/run-decision", runDecisionBody(DM_ID, 1L));
 
     // ★★ **POST 只报"触发事实已落盘 + 起跑了"**：HTTP 状态码只反映**世界写**的结局；这一轮自己在后台。
     assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
@@ -228,7 +228,7 @@ class SdRunDecisionApiTest {
 
   @Test
   void anUnknownDecisionMakerIsRejectedAndLandsNoTriggerFact() throws Exception {
-    HttpResponse<String> response = post("/api/sd/run-decision", runDecisionBody("dm-nope", 1L));
+    HttpResponse<String> response = post("/api/ga/run-decision", runDecisionBody("dm-nope", 1L));
 
     assertThat(response.statusCode()).as("领域拒绝 ⇒ 422（与 /api/command 同表）").isEqualTo(422);
     JsonNode body = JSON.readTree(response.body());
@@ -255,18 +255,18 @@ class SdRunDecisionApiTest {
     llm.gate(entered, release);
     scriptOneRound();
 
-    HttpResponse<String> first = post("/api/sd/run-decision", runDecisionBody(DM_ID, 1L));
+    HttpResponse<String> first = post("/api/ga/run-decision", runDecisionBody(DM_ID, 1L));
     assertThat(first.statusCode()).as(first.body()).isEqualTo(200);
     assertThat(entered.await(5, TimeUnit.SECONDS)).as("第一轮必须真的进了 LLM 调用（否则'正在跑'的窗口是假的）").isTrue();
     assertThat(
-            JSON.readTree(get("/api/sd/decision-makers/" + DM_ID + "/run-status").body())
+            JSON.readTree(get("/api/ga/decision-makers/" + DM_ID + "/run-status").body())
                 .get("running")
                 .asBoolean())
         .as("第一轮此刻正在跑")
         .isTrue();
 
     // ★ 连点第二次：用**当前 head（2）**当 expectedRevision（否则会先撞 409 游标过期，测不到并发闸门）。
-    HttpResponse<String> second = post("/api/sd/run-decision", runDecisionBody(DM_ID, 2L));
+    HttpResponse<String> second = post("/api/ga/run-decision", runDecisionBody(DM_ID, 2L));
     assertThat(second.statusCode()).as(second.body()).isEqualTo(422);
     JsonNode rejected = JSON.readTree(second.body());
     assertThat(rejected.get("result").asText()).isEqualTo("rejected");
@@ -310,7 +310,7 @@ class SdRunDecisionApiTest {
     // ③ 对照组：显式重置（真命令、落 revision、会话世代 +1）之后，上下文才清。
     long headBeforeReset = head();
     HttpResponse<String> reset =
-        post("/api/sd/reset-decision-maker-conversation", resetBody(DM_ID, headBeforeReset));
+        post("/api/ga/reset-decision-maker-conversation", resetBody(DM_ID, headBeforeReset));
     assertThat(reset.statusCode()).as(reset.body()).isEqualTo(200);
     assertThat(JSON.readTree(reset.body()).get("result").asText()).isEqualTo("committed");
 
@@ -333,7 +333,7 @@ class SdRunDecisionApiTest {
   // ── 夹具 ─────────────────────────────────────────────────────────────
 
   /**
-   * ★★ **第一轮之前先说一句**（用户要的文本框，2026-09-23）：{@code POST /api/sd/decision-makers/{id}/say}。
+   * ★★ **第一轮之前先说一句**（用户要的文本框，2026-09-23）：{@code POST /api/ga/decision-makers/{id}/say}。
    *
    * <p>★★ 它钉的是一条**顺序**要求：空会话若直接落这条 user 消息，会话就不再为空 ⇒ {@code DecisionAgentRunner} 会认为身份已经说过了 ⇒
    * 模型收到一段**没有 system 消息**的上下文（不知道自己是谁——与现场那次 {@code HTTP 400: field messages is required}
@@ -344,7 +344,7 @@ class SdRunDecisionApiTest {
   @Test
   void sayingSomethingBeforeTheFirstRoundKeepsTheIdentityMessageFirst() throws Exception {
     HttpResponse<String> response =
-        post("/api/sd/decision-makers/" + DM_ID + "/say", "{\"text\":\"先守住北面的渡口\"}");
+        post("/api/ga/decision-makers/" + DM_ID + "/say", "{\"text\":\"先守住北面的渡口\"}");
 
     assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
     JsonNode body = JSON.readTree(response.body());
@@ -354,7 +354,7 @@ class SdRunDecisionApiTest {
     assertThat(body.get("length").asInt()).isEqualTo("先守住北面的渡口".length());
 
     scriptOneRound();
-    post("/api/sd/run-decision", runDecisionBody(DM_ID, head()));
+    post("/api/ga/run-decision", runDecisionBody(DM_ID, head()));
     awaitDone(DM_ID);
 
     List<LlmMessage> first = llm.requests().get(0).messages();
@@ -376,7 +376,7 @@ class SdRunDecisionApiTest {
   /** 跑一轮（等到 done）并返回**这一轮第一个请求**的 messages 条数。 */
   private int runOneRoundAndFirstRequestMessageCount() throws Exception {
     int before = llm.requestMessageCounts().size();
-    HttpResponse<String> response = post("/api/sd/run-decision", runDecisionBody(DM_ID, head()));
+    HttpResponse<String> response = post("/api/ga/run-decision", runDecisionBody(DM_ID, head()));
     assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
     awaitDone(DM_ID);
     assertThat(llm.requestMessageCounts().size())
@@ -389,7 +389,7 @@ class SdRunDecisionApiTest {
   private JsonNode awaitDone(String decisionMakerId) throws Exception {
     for (int attempt = 0; attempt < 100; attempt++) {
       JsonNode status =
-          JSON.readTree(get("/api/sd/decision-makers/" + decisionMakerId + "/run-status").body());
+          JSON.readTree(get("/api/ga/decision-makers/" + decisionMakerId + "/run-status").body());
       if (status.get("done").asBoolean()) {
         return status;
       }

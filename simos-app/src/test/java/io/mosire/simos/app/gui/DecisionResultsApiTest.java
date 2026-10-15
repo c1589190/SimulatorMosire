@@ -81,7 +81,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 决策结果子页端点端到端验收（第 3 波第 3 步的前端桥）：{@code GET /api/sd/decision-results}。
+ * 决策结果子页端点端到端验收（第 3 波第 3 步的前端桥）：{@code GET /api/ga/decision-results}。
  *
  * <p>★ 起真 {@link Shell}（三端口全 0），用 JDK {@link HttpClient} 打真 HTTP；夹具直接种入创世 checkpoint（测的是**读路径的归属**，
  * 不是命令写路径）。INFO 层里预置"同一 tick 两个决策人各一条 + 一条共同 + 一条无主"（见 {@link #genesis()}）， 让"同一端点、不同 {@code as=} ⇒
@@ -93,7 +93,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>★ **前提断言**：每条"看不到"之前先断言那些条目**确实在服务端状态里**（经 {@code shell.queryService()} 读回），
  * 否则"过滤器坏了"与"夹具里根本没那条"分不开。
  */
-class SdDecisionResultsApiTest {
+class DecisionResultsApiTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
@@ -136,21 +136,21 @@ class SdDecisionResultsApiTest {
 
   @Test
   void aMissingOrInvalidActorParameterIsRejected() throws Exception {
-    HttpResponse<String> missing = get("/api/sd/decision-results");
+    HttpResponse<String> missing = get("/api/ga/decision-results");
     assertThat(missing.statusCode()).as("as 缺失 ⇒ 400（决策结果没有 GM 全量口径）").isEqualTo(400);
     assertThat(error(missing)).contains("as");
 
-    HttpResponse<String> blank = get("/api/sd/decision-results?as=");
+    HttpResponse<String> blank = get("/api/ga/decision-results?as=");
     assertThat(blank.statusCode()).as("as 空白 ⇒ 400（同 requiredParam 口径）").isEqualTo(400);
     assertThat(error(blank)).contains("as");
   }
 
   @Test
   void anUnknownActorIsNotFoundNotAnEmptyList() throws Exception {
-    HttpResponse<String> response = get("/api/sd/decision-results?as=dm-ghost");
+    HttpResponse<String> response = get("/api/ga/decision-results?as=dm-ghost");
 
     assertThat(response.statusCode())
-        .as("解不出决策人 ⇒ 404（与 /api/sd/decision-makers/{id}/scope 同款，**不是**空列表）")
+        .as("解不出决策人 ⇒ 404（与 /api/ga/decision-makers/{id}/scope 同款，**不是**空列表）")
         .isEqualTo(404);
     JsonNode body = JSON.readTree(response.body());
     assertThat(body.get("error").asText()).contains("not found");
@@ -161,11 +161,11 @@ class SdDecisionResultsApiTest {
 
   @Test
   void tickAndRangeAreMutuallyExclusive() throws Exception {
-    HttpResponse<String> both = get("/api/sd/decision-results?as=dm-a&tick=7&fromTick=7");
+    HttpResponse<String> both = get("/api/ga/decision-results?as=dm-a&tick=7&fromTick=7");
     assertThat(both.statusCode()).as("tick 与区间同给 ⇒ 400").isEqualTo(400);
     assertThat(error(both)).contains("互斥");
 
-    HttpResponse<String> reversed = get("/api/sd/decision-results?as=dm-a&fromTick=9&toTick=8");
+    HttpResponse<String> reversed = get("/api/ga/decision-results?as=dm-a&fromTick=9&toTick=8");
     assertThat(reversed.statusCode()).as("fromTick > toTick ⇒ 400").isEqualTo(400);
     assertThat(error(reversed)).contains("不得大于");
   }
@@ -174,21 +174,21 @@ class SdDecisionResultsApiTest {
 
   @Test
   void aLimitAboveTheCapIsRejectedNotSilentlyTruncated() throws Exception {
-    assertThat(get("/api/sd/decision-results?as=dm-a&limit=20").statusCode())
+    assertThat(get("/api/ga/decision-results?as=dm-a&limit=20").statusCode())
         .as("边界内照常 200")
         .isEqualTo(200);
-    assertThat(get("/api/sd/decision-results?as=dm-a&limit=200").statusCode())
+    assertThat(get("/api/ga/decision-results?as=dm-a&limit=200").statusCode())
         .as("恰在上限也 200")
         .isEqualTo(200);
 
-    HttpResponse<String> over = get("/api/sd/decision-results?as=dm-a&limit=201");
+    HttpResponse<String> over = get("/api/ga/decision-results?as=dm-a&limit=201");
     assertThat(over.statusCode()).as("超上限 ⇒ 400").isEqualTo(400);
     assertThat(error(over)).contains("200");
 
-    HttpResponse<String> zero = get("/api/sd/decision-results?as=dm-a&limit=0");
+    HttpResponse<String> zero = get("/api/ga/decision-results?as=dm-a&limit=0");
     assertThat(zero.statusCode()).as("limit=0 ⇒ 400（正数才合法）").isEqualTo(400);
 
-    HttpResponse<String> notANumber = get("/api/sd/decision-results?as=dm-a&limit=abc");
+    HttpResponse<String> notANumber = get("/api/ga/decision-results?as=dm-a&limit=abc");
     assertThat(notANumber.statusCode()).as("非整数 ⇒ 400").isEqualTo(400);
     assertThat(error(notANumber)).contains("整数");
   }
@@ -197,7 +197,7 @@ class SdDecisionResultsApiTest {
 
   @Test
   void aKnownActorWithNoResultGetsAnExplicitNote() throws Exception {
-    JsonNode body = getJson("/api/sd/decision-results?as=dm-c");
+    JsonNode body = getJson("/api/ga/decision-results?as=dm-c");
 
     assertThat(body.get("results")).as("dm-c 没有任何命中").isEmpty();
     assertThat(body.get("count").asInt()).isZero();
@@ -212,8 +212,8 @@ class SdDecisionResultsApiTest {
   void twoDecisionMakersInTheSameTickEachSeeOnlyTheirOwnResult() throws Exception {
     assertThat(infoIds()).as("前提：tick7 的两条确实在服务端状态里").contains(idOf(ADDR_7, 0), idOf(ADDR_7, 1));
 
-    JsonNode a = getJson("/api/sd/decision-results?as=dm-a&tick=7");
-    JsonNode b = getJson("/api/sd/decision-results?as=dm-b&tick=7");
+    JsonNode a = getJson("/api/ga/decision-results?as=dm-a&tick=7");
+    JsonNode b = getJson("/api/ga/decision-results?as=dm-b&tick=7");
 
     assertThat(ids(a)).as("★ dm-a 只看到 tags 含自己的那条").containsExactly(idOf(ADDR_7, 0));
     assertThat(ids(b)).as("★ dm-b 只看到自己那条（与 dm-a 的不是同一条）").containsExactly(idOf(ADDR_7, 1));
@@ -229,7 +229,7 @@ class SdDecisionResultsApiTest {
     assertThat(infoIds()).as("前提：无主条目确实在服务端状态里").contains(idOf(ADDR_9, 0));
 
     for (String actor : List.of("dm-a", "dm-b", "dm-c")) {
-      JsonNode body = getJson("/api/sd/decision-results?as=" + actor + "&tick=9");
+      JsonNode body = getJson("/api/ga/decision-results?as=" + actor + "&tick=9");
       assertThat(ids(body)).as("★ %s 看不到无主结果（空集 ≠ 大家都能看）", actor).isEmpty();
       assertThat(body.get("note").asText()).as("%s 得到明确空态", actor).isNotEmpty();
     }
@@ -257,12 +257,12 @@ class SdDecisionResultsApiTest {
     submitPutInfo(ADDR_7, idOf(ADDR_7, 2), "later@7", 7L);
     assertThat(head()).as("追加命令落了一条 revision").isEqualTo(2L);
 
-    JsonNode atHead = getJson("/api/sd/decision-results?as=dm-a");
+    JsonNode atHead = getJson("/api/ga/decision-results?as=dm-a");
     assertThat(ids(atHead))
         .as("head=2：tick8 那条 + tick7 的两条（#0 创世 + #2 后加；#1 是 dm-b 的，dm-a 看不到）")
         .containsExactly(idOf(ADDR_8, 0), idOf(ADDR_7, 0), idOf(ADDR_7, 2));
 
-    JsonNode atRev1 = getJson("/api/sd/decision-results?as=dm-a&revision=1");
+    JsonNode atRev1 = getJson("/api/ga/decision-results?as=dm-a&revision=1");
     assertThat(ids(atRev1))
         .as("★ 读历史 revision=1：后加的那条**不该出现**（忽略 revision 的实现会多出它）")
         .containsExactly(idOf(ADDR_8, 0), idOf(ADDR_7, 0));
@@ -283,7 +283,7 @@ class SdDecisionResultsApiTest {
 
   @Test
   void responseShapeMatchesTheFrontendContract() throws Exception {
-    JsonNode body = getJson("/api/sd/decision-results?as=dm-a");
+    JsonNode body = getJson("/api/ga/decision-results?as=dm-a");
     // ★ 把真响应打一行出来当"样例"（前端子页据此开发；value 是字符串、note 只在空结果时出现）。
     System.out.println("[decision-results sample] " + body);
 

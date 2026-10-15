@@ -70,9 +70,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 决策记录只读面端到端验收：{@code GET /api/sd/directives[?decisionMakerId=<id>]}。
+ * 决策记录只读面端到端验收：{@code GET /api/ga/directives[?decisionMakerId=<id>]}。
  *
- * <p>★ **本端点存在的理由**：{@code /api/sd/decision-makers/{id}} 只报 {@code lastDirectiveTick} / {@code
+ * <p>★ **本端点存在的理由**：{@code /api/ga/decision-makers/{id}} 只报 {@code lastDirectiveTick} / {@code
  * ticksSinceLast}——"最近一次在第几 tick"看得见，**令的内容一个字都看不见**。而 {@code Directive}（执行原文 +
  * 结构化命令清单）本来就在世界状态里、本来就可回放，缺的只是这一个读口（铁律 1：界面是视图，不是真相的第二份）。
  *
@@ -82,7 +82,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>★ **本轮只留两条**（用户 2026-09-23：少做测试，写完直接编译、我直接看）：一条钉返回形状 + 降序 + 过滤，一条钉 fail-closed 的两个方向（未知 id ⇒
  * 404、{@code as=} ⇒ 400）。
  */
-class SdDirectivesApiTest {
+class DirectivesApiTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
@@ -138,7 +138,7 @@ class SdDirectivesApiTest {
         "{\"directiveId\":\"d-2\",\"decisionMakerId\":\"dm-1\",\"tick\":5,"
             + "\"intentInfo\":\"就地固守，等援军\",\"commands\":[]}");
 
-    JsonNode all = directivesJson("/api/sd/directives");
+    JsonNode all = directivesJson("/api/ga/directives");
     assertThat(all).as("两条真指令逐条读出（不多不少）").hasSize(2);
     // ★ 顺序由服务端定（tick 降序）⇒ 界面上第一条就是"最近一次出令"。前端不重排。
     JsonNode newest = all.get(0);
@@ -169,7 +169,7 @@ class SdDirectivesApiTest {
     assertThat(newest.get("intentInfo").asText()).isEqualTo("就地固守，等援军");
 
     // 过滤：同一个人的那条链上写的就是这两条。
-    assertThat(directivesJson("/api/sd/directives?decisionMakerId=dm-1"))
+    assertThat(directivesJson("/api/ga/directives?decisionMakerId=dm-1"))
         .as("按决策人过滤 == 不筛（本夹具只有一个决策人）")
         .hasSize(2);
   }
@@ -178,13 +178,13 @@ class SdDirectivesApiTest {
   void failClosedOnUnknownDecisionMakerAndOnTheActorParameter() throws Exception {
     createFixture();
 
-    HttpResponse<String> unknown = get("/api/sd/directives?decisionMakerId=dm-nope");
+    HttpResponse<String> unknown = get("/api/ga/directives?decisionMakerId=dm-nope");
     assertThat(unknown.statusCode())
         .as("未知决策人 ⇒ 404（**不是空列表**：空列表只表示「这个人还没出过令」，折成同一个响应会把没查到伪装成不存在）")
         .isEqualTo(404);
     assertThat(JSON.readTree(unknown.body()).get("error").asText()).contains("not found");
 
-    HttpResponse<String> withActor = get("/api/sd/directives?as=dm-1");
+    HttpResponse<String> withActor = get("/api/ga/directives?as=dm-1");
     assertThat(withActor.statusCode())
         .as("审计/配置面接 as= 等于「用甲的身份读出乙下的令」⇒ fail-closed 400，不静默忽略")
         .isEqualTo(400);

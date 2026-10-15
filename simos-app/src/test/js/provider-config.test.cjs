@@ -177,11 +177,14 @@ test("provider-endpoints-are-exported-and-call-the-declared-paths", async () => 
   assert.deepEqual(
     calls.map((c) => c.method + " " + c.url).sort(),
     [
+      // ★ 2026-10-15 批 L ②：`setDecisionMakerProvider` 的段路径 sd → ga；★ 本数组是按
+      //   `calls.map(...).sort()` 的**字典序**逐字比对的 ⇒ `/api/ga/*` 排在 `/api/llm/*` 之前
+      //   （'g' < 'l'）。只挪位置，判据（逐字相等）一字未松。
       "GET /api/llm/providers",
+      "POST /api/ga/set-decision-maker-provider",
       "POST /api/llm/providers",
       "POST /api/llm/providers/delete",
       "POST /api/llm/providers/test",
-      "POST /api/sd/set-decision-maker-provider",
     ]
   );
 });

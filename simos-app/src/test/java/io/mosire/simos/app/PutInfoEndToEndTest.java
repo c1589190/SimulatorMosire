@@ -38,7 +38,7 @@ import org.junit.jupiter.api.io.TempDir;
  * A5 的端到端验收：{@code sd.PutInfo} 经**真** {@code CoreSimos.submit} 落 revision，再经**真** {@code Replay} 读回
  * ⇒ INFO 条目逐字段相等（R14 / 铁律 5）。★ 这是"info 组件随 revision 重放"的实测，不是夹具直接落盘。
  */
-class SdPutInfoEndToEndTest {
+class PutInfoEndToEndTest {
 
   private static final BranchId MAIN = new BranchId("main");
 

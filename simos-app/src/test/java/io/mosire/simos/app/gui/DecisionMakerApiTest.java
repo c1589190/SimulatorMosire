@@ -93,7 +93,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>★ **fail-closed 的判别力**：坏过滤串（未知 kind / 缺冒号 / 空 id）⇒ **400**，与"合法但不存在的 id ⇒ 200 空列表"是**不同**结果
  * ——把前者折成空列表会让"查询坏掉"与"确实没有决策人"不可区分。
  */
-class SdDecisionMakerApiTest {
+class DecisionMakerApiTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
@@ -133,7 +133,7 @@ class SdDecisionMakerApiTest {
 
   @Test
   void emptyLibraryGivesEmptyListNotAnError() throws Exception {
-    HttpResponse<String> response = get("/api/sd/decision-makers");
+    HttpResponse<String> response = get("/api/ga/decision-makers");
 
     assertThat(response.statusCode()).as("空库不是错误").isEqualTo(200);
     JsonNode body = JSON.readTree(response.body());
@@ -146,7 +146,7 @@ class SdDecisionMakerApiTest {
   void listReturnsAllDecisionMakersSortedByIdWithResolvedAffiliation() throws Exception {
     createFixture();
 
-    JsonNode makers = getJson("/api/sd/decision-makers").get("decisionMakers");
+    JsonNode makers = getJson("/api/ga/decision-makers").get("decisionMakers");
 
     assertThat(makers).hasSize(2);
     // ★ 字典序：dm-army < dm-nation（插入序相反也无所谓——排序是实现的一部分）。
@@ -207,7 +207,7 @@ class SdDecisionMakerApiTest {
     createFixture();
 
     JsonNode makers =
-        getJson("/api/sd/decision-makers?affiliation=nation:n1").get("decisionMakers");
+        getJson("/api/ga/decision-makers?affiliation=nation:n1").get("decisionMakers");
 
     assertThat(makers).as("恰一条，且是 dm-nation（不过滤的实现会回 2 条）").hasSize(1);
     assertThat(makers.get(0).get("id").asText()).isEqualTo("dm-nation");
@@ -218,7 +218,7 @@ class SdDecisionMakerApiTest {
   void filterByArmyReturnsOnlyThatArmysDecisionMakers() throws Exception {
     createFixture();
 
-    JsonNode makers = getJson("/api/sd/decision-makers?affiliation=army:a1").get("decisionMakers");
+    JsonNode makers = getJson("/api/ga/decision-makers?affiliation=army:a1").get("decisionMakers");
 
     assertThat(makers).as("恰一条，且是 dm-army").hasSize(1);
     assertThat(makers.get(0).get("id").asText()).isEqualTo("dm-army");
@@ -231,7 +231,7 @@ class SdDecisionMakerApiTest {
     createFixture();
 
     HttpResponse<String> response =
-        get("/api/sd/decision-makers?affiliation=nation:no-such-nation");
+        get("/api/ga/decision-makers?affiliation=nation:no-such-nation");
 
     assertThat(response.statusCode()).as("合法过滤、无匹配 ⇒ 200").isEqualTo(200);
     assertThat(JSON.readTree(response.body()).get("decisionMakers")).isEmpty();
@@ -243,7 +243,7 @@ class SdDecisionMakerApiTest {
   void filterWithUnknownKindIsRejectedNotSilentlyEmpty() throws Exception {
     createFixture();
 
-    HttpResponse<String> response = get("/api/sd/decision-makers?affiliation=kingdom:n1");
+    HttpResponse<String> response = get("/api/ga/decision-makers?affiliation=kingdom:n1");
 
     assertThat(response.statusCode()).as("未知 kind 必须显式失败，不得当空集合").isEqualTo(400);
     assertThat(JSON.readTree(response.body()).get("error")).isNotNull();
@@ -253,7 +253,7 @@ class SdDecisionMakerApiTest {
   void filterWithoutColonIsRejected() throws Exception {
     createFixture();
 
-    HttpResponse<String> response = get("/api/sd/decision-makers?affiliation=bogus");
+    HttpResponse<String> response = get("/api/ga/decision-makers?affiliation=bogus");
 
     assertThat(response.statusCode()).isEqualTo(400);
   }
@@ -262,7 +262,7 @@ class SdDecisionMakerApiTest {
   void filterWithEmptyIdIsRejected() throws Exception {
     createFixture();
 
-    HttpResponse<String> response = get("/api/sd/decision-makers?affiliation=nation:");
+    HttpResponse<String> response = get("/api/ga/decision-makers?affiliation=nation:");
 
     assertThat(response.statusCode()).as("空 id 不得当空集合").isEqualTo(400);
   }
@@ -302,7 +302,7 @@ class SdDecisionMakerApiTest {
   void detailForUnknownIdGives404() throws Exception {
     createFixture();
 
-    HttpResponse<String> response = get("/api/sd/decision-makers/dm-nope");
+    HttpResponse<String> response = get("/api/ga/decision-makers/dm-nope");
 
     assertThat(response.statusCode()).isEqualTo(404);
     assertThat(JSON.readTree(response.body()).get("error").asText())
@@ -313,7 +313,7 @@ class SdDecisionMakerApiTest {
   void listEndpointOnlyAllowsGet() throws Exception {
     createFixture();
 
-    HttpResponse<String> response = post("/api/sd/decision-makers", "{}");
+    HttpResponse<String> response = post("/api/ga/decision-makers", "{}");
 
     assertThat(response.statusCode()).isEqualTo(405);
     assertThat(response.headers().firstValue("Allow")).hasValue("GET");
@@ -323,8 +323,8 @@ class SdDecisionMakerApiTest {
   void twoListCallsAreByteIdentical() throws Exception {
     createFixture();
 
-    HttpResponse<String> first = get("/api/sd/decision-makers");
-    HttpResponse<String> second = get("/api/sd/decision-makers");
+    HttpResponse<String> first = get("/api/ga/decision-makers");
+    HttpResponse<String> second = get("/api/ga/decision-makers");
 
     JsonNode makers = JSON.readTree(first.body()).get("decisionMakers");
     assertThat(makers).as("先断言聚合非空，别把空==空当成功").hasSize(2);
@@ -417,7 +417,7 @@ class SdDecisionMakerApiTest {
     advance(7, 9);
 
     List<String> dueIds = new ArrayList<>();
-    for (JsonNode maker : getJson("/api/sd/decision-makers").get("decisionMakers")) {
+    for (JsonNode maker : getJson("/api/ga/decision-makers").get("decisionMakers")) {
       if (maker.get("due").asBoolean()) {
         dueIds.add(maker.get("id").asText());
       }
@@ -430,7 +430,7 @@ class SdDecisionMakerApiTest {
   void listAndDetailAgreeOnDue() throws Exception {
     pendingFixture();
 
-    JsonNode listed = getJson("/api/sd/decision-makers").get("decisionMakers");
+    JsonNode listed = getJson("/api/ga/decision-makers").get("decisionMakers");
     for (JsonNode maker : listed) {
       JsonNode detail = detailJson(maker.get("id").asText());
       assertThat(maker.get("due").asBoolean()).isEqualTo(detail.get("due").asBoolean());
@@ -576,7 +576,7 @@ class SdDecisionMakerApiTest {
   }
 
   private JsonNode detailJson(String id) throws Exception {
-    HttpResponse<String> response = get("/api/sd/decision-makers/" + id);
+    HttpResponse<String> response = get("/api/ga/decision-makers/" + id);
     assertThat(response.statusCode()).as("详情 %s", id).isEqualTo(200);
     return JSON.readTree(response.body());
   }

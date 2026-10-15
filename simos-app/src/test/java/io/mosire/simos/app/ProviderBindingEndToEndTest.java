@@ -43,7 +43,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>★ 这是"绑定是**世界事实**"（铁律 2）的端到端证据：判据落在 `revisions` 行与重放出的 {@link GaState} 上，不是回显。
  */
-class SdProviderBindingEndToEndTest {
+class ProviderBindingEndToEndTest {
 
   private static final BranchId MAIN = new BranchId("main");
   private static final DecisionMakerId DM1 = new DecisionMakerId("dm1");

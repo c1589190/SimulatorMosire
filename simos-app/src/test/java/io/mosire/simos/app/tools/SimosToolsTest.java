@@ -234,13 +234,13 @@ class SimosToolsTest {
           "simos.map.region",
           "simos.map.render",
           "simos.province.divide",
-          "simos.sd.decision-maker",
-          "simos.sd.decision-makers",
-          "simos.sd.diplomacy",
-          "simos.sd.diplomatic-events",
-          "simos.sd.directives",
+          "simos.ga.decision-maker",
+          "simos.ga.decision-makers",
+          "simos.ga.diplomacy",
+          "simos.ga.diplomatic-events",
+          "simos.ga.directives",
           // ★★ 2026-10-14：simos.sd.reports **已删**（旧上报读口整族废弃）。
-          "simos.sd.verdicts",
+          "simos.ga.verdicts",
           "simos.social.households",
           "simos.social.population",
           "simos.state.facets",
@@ -275,10 +275,10 @@ class SimosToolsTest {
           "simos.map.overlaps",
           "simos.map.path",
           "simos.province.divide",
-          "simos.sd.decision-maker",
-          "simos.sd.decision-makers",
-          "simos.sd.directives",
-          "simos.sd.verdicts");
+          "simos.ga.decision-maker",
+          "simos.ga.decision-makers",
+          "simos.ga.directives",
+          "simos.ga.verdicts");
 
   /**
    * 非窄写写工具（63 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
@@ -297,9 +297,9 @@ class SimosToolsTest {
    */
   private static final List<String> NON_NARROW_WRITE_NAMES =
       List.of(
-          "sd.AdjudicateTick",
-          "sd.RejectDirective",
-          "sd.VoidAdjudication",
+          "simos.ga.adjudicateTick",
+          "simos.ga.rejectDirective",
+          "simos.ga.voidAdjudication",
           "simos.advance",
           "simos.army.assignGov",
           "simos.army.formatUnit",
@@ -360,7 +360,7 @@ class SimosToolsTest {
           "simos.region.clearData",
           "simos.region.clearStructures",
           "simos.region.seed",
-          "simos.sd.run-decision-makers",
+          "simos.ga.run-decision-makers",
           "simos.social.demand",
           "simos.social.household.create",
           "simos.social.household.members",
@@ -497,24 +497,49 @@ class SimosToolsTest {
           "unit.SetGovSuperior");
 
   /**
-   * GM 桶的 15 条 {@code Sd*} 窄写：**只进 GM 组**（决策人桶不得含；IssueDirective/SubmitVerdict 两条决策共用窄写 另列在 {@link
-   * #NARROW_WRITE_NAMES}）。
+   * ★★ 旧名 {@code SD_WRITE_NAMES}（批 L ② 按 §5.8④「私有常量/字段名」形态改成 {@code GA_WRITE_NAMES}）：
+   * <b>决策/政府族</b>的 10 条窄写 —— 即 {@link #sdNarrowWriteToolsAreNamedAfterTheirFixedCommandType}
+   * 里**手工构造**的那 10 条 （手工表与清单逐条相等，顺序敏感）。★ 其中 **8 条只进 GM 组**（见 {@link #GM_ONLY_GA_WRITE_NAMES}）；★★ 另
+   * **2 条外交窄写在批 L ② 合并后是 {@code {DM,GM}}** ⇒ **两个桶都在**（见 {@link
+   * #SHARED_GA_WRITE_NAMES}）。IssueDirective/SubmitVerdict 两条决策共用窄写 另列在 {@link #NARROW_WRITE_NAMES}。
    */
-  private static final List<String> SD_WRITE_NAMES =
+  private static final List<String> GA_WRITE_NAMES =
       List.of(
-          "gov.CreateNation",
+          "simos.gov.createNation",
           "army.CreateArmy",
           "army.SetArmyMasterGov",
           "ga.CreateDecisionMaker",
           "ga.PutInfo",
-          "simos.sd.set-diplomatic-relation",
-          "simos.sd.record-diplomatic-event",
+          "simos.gov.setDiplomaticRelation",
+          "simos.gov.recordDiplomaticEvent",
           "ga.RegisterEffect",
           "ga.CancelEffect",
           "ga.SetDecisionMakerProvider");
 
-  /** {@link #SD_WRITE_NAMES} 对应的 15 个命令类型。 */
-  private static final List<String> SD_WRITE_COMMAND_TYPES =
+  /**
+   * ★ {@link #GA_WRITE_NAMES} 里那 **8 条只进 GM 组**的（决策人桶**不得**含）—— 反向断言的落点。
+   *
+   * <p>★★ 批 L ② 显式收窄：{@code SD_WRITE_NAMES} 原先把 10 条**全部**当"只进 GM 组"用，而"两对外交工具合并"（设计书 §2.1 裁定
+   * N2）之后，{@code simos.gov.setDiplomaticRelation} / {@code simos.gov.recordDiplomaticEvent} 拿到 DM
+   * 那一半 ⇒ 它们**合法地** 出现在决策人桶里。★ 这不是放宽：那两条"必须在决策人桶"由 {@link #SHARED_GA_WRITE_NAMES} 的**正向**断言钉住。
+   */
+  private static final List<String> GM_ONLY_GA_WRITE_NAMES =
+      List.of(
+          "simos.gov.createNation",
+          "army.CreateArmy",
+          "army.SetArmyMasterGov",
+          "ga.CreateDecisionMaker",
+          "ga.PutInfo",
+          "ga.RegisterEffect",
+          "ga.CancelEffect",
+          "ga.SetDecisionMakerProvider");
+
+  /** ★★ 批 L ② 合并出来的两条外交窄写（{@code roles={DM,GM}}）：GM 桶与决策人桶**都必须在**（"同一模式"的另一半证据）。 */
+  private static final List<String> SHARED_GA_WRITE_NAMES =
+      List.of("simos.gov.setDiplomaticRelation", "simos.gov.recordDiplomaticEvent");
+
+  /** {@link #GA_WRITE_NAMES} 对应的 10 个命令类型（★ 命令类型**一律不动**：它们不是工具名，是新旧同名两义里"不许改"的那一义）。 */
+  private static final List<String> GA_WRITE_COMMAND_TYPES =
       List.of(
           "gov.CreateNation",
           "army.CreateArmy",
@@ -565,7 +590,7 @@ class SimosToolsTest {
           "ga.SetDecisionMakerProvider",
           "ga.StartDecision",
           "ga.SubmitVerdict",
-          "gov.CreateNation",
+          "simos.gov.createNation",
           "map.CreateRegion",
           "map.DeleteRegion",
           "map.RandomizeRegion",
@@ -586,8 +611,8 @@ class SimosToolsTest {
           "simos.economy.setGovernmentMintScale",
           "simos.economy.setMarketZoneLoanRateAlpha",
           "simos.economy.setMarketZonePriceAlpha",
-          "simos.sd.record-diplomatic-event",
-          "simos.sd.set-diplomatic-relation",
+          "simos.gov.recordDiplomaticEvent",
+          "simos.gov.setDiplomaticRelation",
           "simos.unit.adjust-composition",
           "simos.unit.set-composition",
           "simos.unit.set-state-description",
@@ -1056,19 +1081,21 @@ class SimosToolsTest {
             new SetDecisionMakerProviderTool(gaWrites, gaIdentity, mapId));
 
     assertThat(toolNames(sdTools))
-        .as("15 条 GM-only sd 窄工具的登记名逐条等于 SD_WRITE_NAMES")
-        .containsExactlyElementsOf(SD_WRITE_NAMES);
+        .as("这 10 条决策/政府族窄写的登记名逐条等于 GA_WRITE_NAMES（手工构造表 ⇔ 清单，顺序敏感）")
+        .containsExactlyElementsOf(GA_WRITE_NAMES);
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
         .as("同一批名字在 GM 桶里按名可寻")
-        .containsAll(SD_WRITE_NAMES);
+        .containsAll(GA_WRITE_NAMES);
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)))
-        .as("★ 决策人桶不得含 GM-only sd 窄写（两条共用窄写 IssueDirective/SubmitVerdict 另列）")
-        .doesNotContainAnyElementsOf(SD_WRITE_NAMES);
+        .as("★ 决策人桶不得含那 8 条 GM-only 窄写（两条共用窄写 IssueDirective/SubmitVerdict 另列）")
+        .doesNotContainAnyElementsOf(GM_ONLY_GA_WRITE_NAMES)
+        // ★★ 批 L ② 合并的正向证据（与上面那条反向断言配对，不是放宽）：合并后那两条 {DM,GM} ⇒ **必须在**决策人桶。
+        .containsAll(SHARED_GA_WRITE_NAMES);
 
     JsonNode types = JSON.readTree(call("simos.command.catalog", Map.of()).message()).get("types");
     assertThat(textValues(types))
-        .as("15 个 sd 命令类型都已在 catalog 里（⇒ 名字能到达已注册 handler）")
-        .containsAll(SD_WRITE_COMMAND_TYPES);
+        .as("这 10 个命令类型都已在 catalog 里（⇒ 名字能到达已注册 handler）")
+        .containsAll(GA_WRITE_COMMAND_TYPES);
   }
 
   @Test
@@ -1195,9 +1222,9 @@ class SimosToolsTest {
             "ga.ResetDecisionMakerConversation",
             "ga.StartDecision",
             "ga.RunDecision",
-            "sd.AdjudicateTick",
-            "sd.RejectDirective")
-        .containsAll(SD_WRITE_NAMES)
+            "simos.ga.adjudicateTick",
+            "simos.ga.rejectDirective")
+        .containsAll(GA_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
         .as(
@@ -1233,9 +1260,13 @@ class SimosToolsTest {
             "ga.ResetDecisionMakerConversation",
             "ga.StartDecision",
             "ga.RunDecision",
-            "sd.AdjudicateTick",
-            "sd.RejectDirective")
-        .contains("ga.IssueDirective", "ga.SubmitVerdict", "sd.DecisionResults", "sd.DecisionDocs")
+            "simos.ga.adjudicateTick",
+            "simos.ga.rejectDirective")
+        .contains(
+            "ga.IssueDirective",
+            "ga.SubmitVerdict",
+            "simos.ga.decisionResults",
+            "simos.ga.decisionDocs")
         // ★★ 2026-10-14 决策人互致消息：决策人面的**成员**换了两处（条数不变 ⇒ 只靠 hasSize 看不出来，
         //   故这里逐条钉住换的是哪两条）：新的收发两工具**必须在**、旧上报族**必须不在**。
         .contains("simos.ga.message.send", "simos.ga.message.inbox")
@@ -1243,12 +1274,16 @@ class SimosToolsTest {
         .contains(DocsTools.DOC_GUIDE, WorkspaceTools.WORKSPACE_INFO)
         .doesNotContain("simos.sd.report", "simos.sd.reports")
         .doesNotContain("ga.SetDecisionMakerPeer")
-        // ★ D5：决策人侧的三条受限写（两条外交 + 给 XXX 政府钱）必须恰在此桶（GM 桶另有同名命令型的
-        //   simos.sd.* 工具，不在本桶）。
-        .contains("gov.SetDiplomaticRelation", "gov.RecordDiplomaticEvent", "simos.gov.pay")
+        // ★★ D5 + 批 L ②（设计书 §2.1 裁定 N2）：决策人侧的三条受限写（两条外交 + 给 XXX 政府钱）必须恰在此桶。
+        //   ★ 合并前这里写的是"GM 桶另有同名命令型的 simos.sd.* 工具，不在本桶" —— 那句**已随合并失效**：
+        //     两条外交工具现在**只有一条**（工具名 simos.gov.*，命令类型仍是 gov.*），{DM,GM} ⇒ **两个桶都在**。
+        .contains(
+            "simos.gov.setDiplomaticRelation", "simos.gov.recordDiplomaticEvent", "simos.gov.pay")
         .doesNotContainAnyElementsOf(UNIT_WRITE_NAMES)
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
-        .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
+        // ★★ 批 L ②：反向断言收窄到那 **8 条真正 GM-only** 的（两条外交窄写合并后 {DM,GM} ⇒ 它们**该在**本桶，
+        //   证据就是上面那条 contains；把 10 条一起"不得含"是合并前的旧事实）。
+        .doesNotContainAnyElementsOf(GM_ONLY_GA_WRITE_NAMES)
         .doesNotContainAnyElementsOf(GM_ONLY_READ_NAMES)
         .as(
             "★ Z6 后：决策人桶 = 30 共享读 + 14 写（含 Z2/Z3 双桶 gov 工具，以及 2026-10-09 按实测补入的 4 条 A1/A2a 货币工具）= 44；"
@@ -1379,8 +1414,12 @@ class SimosToolsTest {
                 + "（★ 旧文案里的『70』与实际值 66 早有偏差，本次只把实测值改对）；"
                 + "★★ 2026-10-14 决策人互致消息：ga 新增 1 个窄写类（SetDecisionMakerPeerTool，真继承基类）⇒ 67 → **68**"
                 + "（★ 同批的 GaMessageSendTool 也住在 tools/write/ 但**不继承**基类 ⇒ 扫描器扫不到它，这正是 I7 要的形状）；"
+                + "★★ 2026-10-15 批 L ②（设计书 §2.1 裁定 N2「两对外交工具合并成一条」）：磁盘上**净 −2** 个窄写类 —— "
+                + "删 {@code SdRecordDiplomaticEventTool} / {@code SdSetDiplomaticRelationTool}（GM 面那两条实现，−2）、"
+                + "留下的 {@code RecordDiplomaticEventTool} / {@code SetDiplomaticRelationTool} 本就是窄写 ⇒ 不增 "
+                + "⇒ **实测 68 → 66**（本条真跑红在「Expected size: 68 but was: 66」）；"
                 + "扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）")
-        .hasSize(68);
+        .hasSize(66);
 
     // 真工具面派生的 GM 窄写 = GM 桶 ∖ 读名单 ∖ 非窄写写工具 ∖ 外来工具。
     // ★★ 2026-10-14：外来工具（doc_*/工作区）既不是本仓窄写类、也不在磁盘扫描面里 ⇒ 必须显式排除，
@@ -1410,8 +1449,8 @@ class SimosToolsTest {
         .containsExactlyInAnyOrder(
             "ga.IssueDirective",
             "ga.SubmitVerdict",
-            "gov.SetDiplomaticRelation",
-            "gov.RecordDiplomaticEvent");
+            "simos.gov.setDiplomaticRelation",
+            "simos.gov.recordDiplomaticEvent");
     Set<String> union = new LinkedHashSet<>(gmNarrow);
     union.addAll(decisionNarrow);
     assertThat(union)
@@ -1488,8 +1527,8 @@ class SimosToolsTest {
    *
    * <p>★★ 2026-10-12 B3：工具实现**全部下放到各自的域模块**（试点 map + army + economy + social + unit + gov + ga
    * 共七批）⇒ 扫描面必须跟着架构走。只扫 app 会让下放的工具**静默漏出**扫描面（本仓踩过的"扫描器静默"陷阱）， 故这里把 **app + 七个域**逐条列出；★
-   * **计数（{@link #everyNarrowWriteToolClassIsWiredIntoTheGmBucket} 的 {@code hasSize(68)}；2026-10-14
-   * 决策人互致消息前是 67、2026-10-13 急停协议前是 66）不随下放改动** —— 下放只移动落点、不增减工具（漏一个根 ⇒ 当场红，见该用例的变异自证）。
+   * **计数（{@link #everyNarrowWriteToolClassIsWiredIntoTheGmBucket} 的 {@code hasSize(66)}；2026-10-14
+   * 决策人互致消息前是 68、2026-10-13 急停协议前是 66）不随下放改动** —— 下放只移动落点、不增减工具（漏一个根 ⇒ 当场红，见该用例的变异自证）。
    *
    * <p>★ 路径相对 {@code simos-app/}（surefire 的工作目录）：自己的树写 {@code src/…}，兄弟模块写 {@code
    * ../simos-<模块>/…}（与 {@link #commandHandlerSourceRoots()} 同款，主树与 worktree 里都成立）。
@@ -1560,18 +1599,18 @@ class SimosToolsTest {
             new Case("simos.economy.hex", Map.of("q", 1L, "r", 1L), "industries"),
             // ★ H0.6：产权读口的最小形状 = 三个键之一（accounts 可以为空数组 —— 那正是本轮的正确状态）。
             new Case("simos.economy.ownership", Map.of("q", 1L, "r", 1L), "accounts"),
-            new Case("simos.sd.decision-makers", Map.of(), "decisionMakers"),
+            new Case("simos.ga.decision-makers", Map.of(), "decisionMakers"),
             // ★★ 2026-10-13 收尾测试第 2 层：旧 {@code simos.sd.combats} 读工具**已随旧战斗族退役**
             //   （批次 3d-2：唯一的交战读口是 {@code simos.army.combats}，见下面那条）⇒ 本表删掉该行。
             //   ★ 不是漏测：它守的"交战读口最小形状"由 {@code simos.army.combats} 那一行原样承担。
             // ★ P7c（2026-10-01）：决策记录清单（只给 GM 桶）。
-            new Case("simos.sd.directives", Map.of(), "directives"),
+            new Case("simos.ga.directives", Map.of(), "directives"),
             // ★★ D5（2026-10-02 / R6）：外交关系边 + 外交事件（四桶共享）。
-            new Case("simos.sd.diplomacy", Map.of(), "relations"),
-            new Case("simos.sd.diplomatic-events", Map.of(), "events"),
+            new Case("simos.ga.diplomacy", Map.of(), "relations"),
+            new Case("simos.ga.diplomatic-events", Map.of(), "events"),
             // ★★ D1（2026-10-02 / D-012）：Army 交战记录读口（四桶共享）。
             new Case("simos.army.combats", Map.of(), "combats"),
-            new Case("simos.sd.verdicts", Map.of(), "verdicts"),
+            new Case("simos.ga.verdicts", Map.of(), "verdicts"),
             new Case("simos.gm.tool-usage", Map.of(), "entries"),
             // ★ P7b（2026-10-01）：待裁决审批清单（只给 GM 桶）。
             new Case("simos.gm.approvals", Map.of(), "pending"),
@@ -1614,10 +1653,10 @@ class SimosToolsTest {
       covered.add(c.tool());
     }
     // 需要特定实体的那两条：未知 id ⇒ 可读的 NOT_FOUND（同样是**真调用**，不是跳过）
-    ToolResult missing = call("simos.sd.decision-maker", Map.of("decisionMakerId", "dm-m4-none"));
+    ToolResult missing = call("simos.ga.decision-maker", Map.of("decisionMakerId", "dm-m4-none"));
     assertThat(missing.success()).as("未知决策人不得静默给空对象").isFalse();
     assertThat(missing.code()).isEqualTo("NOT_FOUND");
-    covered.add("simos.sd.decision-maker");
+    covered.add("simos.ga.decision-maker");
     // ★★ D1：单条 Army 交战详情也是按 id 读；未知 id ⇒ NOT_FOUND（不是静默空对象）。
     ToolResult missingCombat = call("simos.army.combat", Map.of("id", "c-m4-none"));
     assertThat(missingCombat.success()).as("未知交战记录不得静默给空对象").isFalse();
@@ -2155,8 +2194,13 @@ class SimosToolsTest {
                 + "扫到 0/漏文件是『扫描器静默』陷阱）；"
                 + "★★ 2026-10-14 批 G（GM 代打）：磁盘上 **+1 个 *Tool.java ⇒ 实测 181 → 182** —— "
                 + "{@code simos-ga/.../tools/write/GmActAsTool.java}（{@code roles()={GM}}，只 implements SimosTool）"
-                + "（★ 实测：本条真跑红在「Expected size: 181 but was: 182」）")
-        .hasSize(182);
+                + "（★ 实测：本条真跑红在「Expected size: 181 but was: 182」）；"
+                + "★★ 2026-10-15 批 L ②（设计书 §2.1 裁定 N2「两对外交工具合并成一条」）：磁盘上 **净 −2 个 *Tool.java ⇒ "
+                + "实测 182 → 180** —— 两条被合并掉的 GM 面实现类整类删除（{@code SdRecordDiplomaticEventTool} / "
+                + "{@code SdSetDiplomaticRelationTool}），留下的 {@code RecordDiplomaticEventTool} / "
+                + "{@code SetDiplomaticRelationTool} 是原来 DM 面那两个类（改名 + 拿角色标签，不新增）"
+                + "（★ 实测：本条真跑红在「Expected size: 182 but was: 180」）")
+        .hasSize(180);
 
     List<String> union =
         Stream.concat(

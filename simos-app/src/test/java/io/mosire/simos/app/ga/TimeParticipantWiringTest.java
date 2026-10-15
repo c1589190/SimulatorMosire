@@ -42,7 +42,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * C4 的装配判据：**每个 namespace 恰一个 participant**——注册第二个 {@code sd} 参与者 ⇒ 封存期 {@code TimeAdvance} 构造抛。
  */
-class SdTimeParticipantWiringTest {
+class TimeParticipantWiringTest {
 
   private static final BranchId MAIN = new BranchId("main");
   private static final SimosTimestamp T = SimosTimestamp.of(0);

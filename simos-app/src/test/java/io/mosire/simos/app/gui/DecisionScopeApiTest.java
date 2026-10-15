@@ -77,7 +77,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 决策人**可见范围**只读面端到端验收：{@code GET /api/sd/decision-makers/{id}/scope}。
+ * 决策人**可见范围**只读面端到端验收：{@code GET /api/ga/decision-makers/{id}/scope}。
  *
  * <p>★ **本端点存在的理由**：某决策人"能看见什么"由**范围函数现算 ∩ GM 的 {@code accessLimit}** 决定，而这份结果此前 **只活在运行时**（MCP
  * 工具链与 GUI 的 {@code as=} 路径里）。GM 因此看不见自己配的权收到了多少。本端点把**算出来的那一个对象** 直接摊开给 GM。
@@ -91,7 +91,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>★ **本轮只留两条**（用户 2026-09-23：少做测试，写完直接编译、我直接看）：一条钉返回形状 + 同源 + 交集，一条钉 404。
  */
-class SdDecisionScopeApiTest {
+class DecisionScopeApiTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
@@ -197,7 +197,7 @@ class SdDecisionScopeApiTest {
   void unknownDecisionMakerIsNotFound() throws Exception {
     createFixture();
 
-    HttpResponse<String> response = get("/api/sd/decision-makers/dm-nope/scope");
+    HttpResponse<String> response = get("/api/ga/decision-makers/dm-nope/scope");
 
     assertThat(response.statusCode()).as("未知决策人 ⇒ 404（与详情端点同口径），绝不回一份空范围").isEqualTo(404);
     assertThat(JSON.readTree(response.body()).get("error").asText()).contains("not found");
@@ -262,7 +262,7 @@ class SdDecisionScopeApiTest {
   }
 
   private JsonNode scopeJson(String id) throws Exception {
-    HttpResponse<String> response = get("/api/sd/decision-makers/" + id + "/scope");
+    HttpResponse<String> response = get("/api/ga/decision-makers/" + id + "/scope");
     assertThat(response.statusCode()).as("范围 %s: %s", id, response.body()).isEqualTo(200);
     return JSON.readTree(response.body());
   }

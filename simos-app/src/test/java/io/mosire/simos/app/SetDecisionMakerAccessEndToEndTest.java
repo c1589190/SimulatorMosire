@@ -43,7 +43,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>★ **断言逐条换成了新语义**（不是删掉几条）：旧用例断言"可见格被写进去了"（{@code visibleHexes} 含 (2,3)）；新命令写的是 **前缀 +
  * 披露档**，故断言换成前缀逐值与披露档逐值。
  */
-class SdSetDecisionMakerAccessEndToEndTest {
+class SetDecisionMakerAccessEndToEndTest {
 
   private static final BranchId MAIN = new BranchId("main");
 

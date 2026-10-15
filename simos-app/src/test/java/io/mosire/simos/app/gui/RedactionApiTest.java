@@ -190,9 +190,9 @@ class RedactionApiTest {
 
   @Test
   void verdictDisclosureGatesTheVisibleContent() throws Exception {
-    JsonNode withheld = getJson("/api/sd/verdicts?as=" + DM_WITHHELD).get("verdicts");
-    JsonNode perception = getJson("/api/sd/verdicts?as=" + DM_PERCEPTION).get("verdicts");
-    JsonNode full = getJson("/api/sd/verdicts?as=" + DM_FULL).get("verdicts");
+    JsonNode withheld = getJson("/api/ga/verdicts?as=" + DM_WITHHELD).get("verdicts");
+    JsonNode perception = getJson("/api/ga/verdicts?as=" + DM_PERCEPTION).get("verdicts");
+    JsonNode full = getJson("/api/ga/verdicts?as=" + DM_FULL).get("verdicts");
 
     assertThat(withheld).as("WITHHELD ⇒ 判决整条不出现").isEmpty();
 
@@ -208,7 +208,7 @@ class RedactionApiTest {
 
   @Test
   void verdictsWithoutActorAreFullDisclosure() throws Exception {
-    JsonNode body = getJson("/api/sd/verdicts").get("verdicts");
+    JsonNode body = getJson("/api/ga/verdicts").get("verdicts");
 
     assertThat(body).hasSize(1);
     assertThat(body.get(0).has("payload")).isTrue();
@@ -273,18 +273,18 @@ class RedactionApiTest {
   @Test
   void endpointsWithoutRedactionRejectTheAsParameter() throws Exception {
     HttpResponse<String> path = get("/api/map/path?unit=u-1&q=1&r=2&as=" + DM_FULL);
-    HttpResponse<String> makers = get("/api/sd/decision-makers?as=" + DM_FULL);
-    HttpResponse<String> maker = get("/api/sd/decision-makers/" + DM_FULL + "?as=" + DM_FULL);
+    HttpResponse<String> makers = get("/api/ga/decision-makers?as=" + DM_FULL);
+    HttpResponse<String> maker = get("/api/ga/decision-makers/" + DM_FULL + "?as=" + DM_FULL);
 
     assertThat(path.statusCode()).as("/api/map/path 未接 ⇒ 400").isEqualTo(400);
-    assertThat(makers.statusCode()).as("/api/sd/decision-makers 未接 ⇒ 400").isEqualTo(400);
-    assertThat(maker.statusCode()).as("/api/sd/decision-makers/{id} 未接 ⇒ 400").isEqualTo(400);
+    assertThat(makers.statusCode()).as("/api/ga/decision-makers 未接 ⇒ 400").isEqualTo(400);
+    assertThat(maker.statusCode()).as("/api/ga/decision-makers/{id} 未接 ⇒ 400").isEqualTo(400);
     assertThat(JSON.readTree(path.body()).get("error")).isNotNull();
   }
 
   @Test
   void unsupportedEndpointsStillWorkWithoutTheAsParameter() throws Exception {
-    assertThat(get("/api/sd/decision-makers").statusCode()).isEqualTo(200);
+    assertThat(get("/api/ga/decision-makers").statusCode()).isEqualTo(200);
     assertThat(get("/api/map/path?unit=u-1&q=1&r=2").statusCode()).isEqualTo(200);
   }
 

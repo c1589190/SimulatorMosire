@@ -147,7 +147,7 @@ class ToolSurfaceGapTest {
     submitVerdict();
 
     // 省略 actor ⇒ FULL：模型原始输出与 meta 都在。
-    JsonNode full = read("simos.sd.verdicts", Map.of()).get("verdicts");
+    JsonNode full = read("simos.ga.verdicts", Map.of()).get("verdicts");
     assertThat(full).hasSize(1);
     JsonNode verdict = full.get(0);
     assertThat(verdict.get("id").asText()).isEqualTo("v1");
@@ -160,7 +160,7 @@ class ToolSurfaceGapTest {
     assertThat(verdict.get("meta").get("promptVersion").asText()).isEqualTo("v9");
 
     // 带 actor（默认 AccessLimit ⇒ WITHHELD）⇒ 整条不出现（不是"给个空 payload"）。
-    JsonNode withheld = read("simos.sd.verdicts", Map.of("actor", "dm-1")).get("verdicts");
+    JsonNode withheld = read("simos.ga.verdicts", Map.of("actor", "dm-1")).get("verdicts");
     assertThat(withheld).as("WITHHELD ⇒ 判决对持有者完全不披露（整条不出现）").isEmpty();
   }
 
@@ -170,7 +170,7 @@ class ToolSurfaceGapTest {
   void decisionMakerToolMergesTheComputedVisibleScope() throws Exception {
     seedNationAndDecisionMaker();
 
-    JsonNode body = read("simos.sd.decision-maker", Map.of("decisionMakerId", "dm-1"));
+    JsonNode body = read("simos.ga.decision-maker", Map.of("decisionMakerId", "dm-1"));
 
     assertThat(body.get("id").asText()).isEqualTo("dm-1");
     JsonNode scope = body.get("scope");

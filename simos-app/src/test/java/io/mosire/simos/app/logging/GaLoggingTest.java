@@ -73,7 +73,7 @@ import org.junit.jupiter.api.Test;
  * <p>★ {@link #logLinesAreActuallyCaptured()} 是前提断言：log4j2 没有配置时 root level 是 ERROR，只挂 appender 不抬
  * level 会收到空集；空集上"不含某串"会假绿（core 的 {@code CommandBusLoggingTest} 已记过这个坑）。
  */
-class SdLoggingTest {
+class GaLoggingTest {
 
   private static final String APPENDER_NAME = "sd-logging-capture";
   private static final String MAP_ID = "Map1";

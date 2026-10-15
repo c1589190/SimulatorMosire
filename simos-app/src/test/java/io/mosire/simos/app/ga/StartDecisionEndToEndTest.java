@@ -96,7 +96,7 @@ import org.junit.jupiter.api.io.TempDir;
  * T10 的三条判据端到端（spec `C18` ①②③，D5/D6）：「开始决策」= 新命令 {@code sd.StartDecision}。
  *
  * <ul>
- *   <li>① 用户经 GUI（{@code POST /api/sd/start-decision}，{@code initiator="player:gui"}）⇒ **直接落
+ *   <li>① 用户经 GUI（{@code POST /api/ga/start-decision}，{@code initiator="player:gui"}）⇒ **直接落
  *       revision**，不经审批；
  *   <li>② GM Agent 经 GM MCP 口（真 {@link ToolCallAuthorizer}）⇒ **直接生效、不进审批**（★ 2026-09-24 用户裁定
  *       「MCP/GM Agent 无脑过」；原口径"未批不落 revision、批准后 +1"已作废，见 {@code GmAutoApproveGate}）；
@@ -168,7 +168,7 @@ class StartDecisionEndToEndTest {
     HttpResponse<String> response =
         post(
             shell.boundGuiPort(),
-            "/api/sd/start-decision",
+            "/api/ga/start-decision",
             "{\"branch\":\"main\",\"expectedRevision\":1,\"decisionMakerId\":\"dm-t10\","
                 + "\"note\":\"用户发起\"}");
 
@@ -205,7 +205,7 @@ class StartDecisionEndToEndTest {
     HttpResponse<String> response =
         post(
             shell.boundGuiPort(),
-            "/api/sd/start-decision",
+            "/api/ga/start-decision",
             "{\"branch\":\"main\",\"expectedRevision\":1,\"decisionMakerId\":\"dm-nope\"}");
 
     assertThat(response.statusCode()).as("未知决策人 ⇒ 422").isEqualTo(422);
@@ -263,7 +263,7 @@ class StartDecisionEndToEndTest {
     assertThat(
             post(
                     shell.boundGuiPort(),
-                    "/api/sd/start-decision",
+                    "/api/ga/start-decision",
                     "{\"branch\":\"main\",\"expectedRevision\":1,\"decisionMakerId\":\"dm-t10\"}")
                 .statusCode())
         .isEqualTo(200);

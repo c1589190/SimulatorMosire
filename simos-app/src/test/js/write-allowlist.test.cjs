@@ -19,8 +19,8 @@ const ALLOWED = [
   "/api/advance",
   "/api/command",
   "/api/fork",
-  "/api/sd/run-decision",
-  "/api/sd/start-decision",
+  "/api/ga/run-decision",
+  "/api/ga/start-decision",
 ];
 // ★ M11′：LLM provider 基础设施配置（**非命令写**）——改的是 AgentLib 的 ConfigStore（`llm.routes.*` / `keys.*`），
 //   不落 revision、不进命令白名单。逐条精确列出。
@@ -33,13 +33,13 @@ const ALLOWED_LLM_CONFIG = [
 ];
 // 固定类型的**世界写**窄端点（落 revision，但前端不传 type）——逐条精确列出，与命令 allowlist 同族对待。
 const ALLOWED_NARROW_WRITES = [
-  "/api/sd/set-decision-maker-provider",
-  "/api/sd/reset-decision-maker-conversation",
+  "/api/ga/set-decision-maker-provider",
+  "/api/ga/reset-decision-maker-conversation",
 ];
 // ★ 2026-09-23：「跟决策人说一句话」`POST /api/sd/decision-makers/{id}/say`——它**不是命令写**（落的是会话库，
 //   不进 revision）。路径里带 id ⇒ 扫描器看到的是**前缀字面量**，故这里按"前缀 + 必须是 /say 结尾"精确放行
 //   （比裸前缀严：`/api/sd/decision-makers/x` 这种 POST 形态不放行）。
-const SAY_PREFIX = "/api/sd/decision-makers/";
+const SAY_PREFIX = "/api/ga/decision-makers/";
 const SAY_SUFFIX = "/say";
 // ★ T7：审批裁决面（**非命令写**）——逐条精确列出，唯一一条。
 //   决策模式的「批准/驳回」打 POST /api/approvals/{id}；它不走 Command → ChangeSet → Revision，
@@ -52,14 +52,17 @@ const DECLARED_WRITES = [
   "/api/approvals/",
   "/api/command",
   "/api/fork",
+  // ★ 2026-10-15 批 L ②：段路径 sd → ga（5 条窄写随路由改名）。★ 本数组与 `scanPostEndpoints` 的
+  //   `Array.from(out).sort()` **逐字比对**（deepEqual）⇒ `/api/ga/*` 必须排在 `/api/llm/*` **之前**
+  //   （'g' < 'l'）。只挪了位置，判据（逐字相等、12 条）一字未松。
+  "/api/ga/decision-makers/",
+  "/api/ga/reset-decision-maker-conversation",
+  "/api/ga/run-decision",
+  "/api/ga/set-decision-maker-provider",
+  "/api/ga/start-decision",
   "/api/llm/providers",
   "/api/llm/providers/delete",
   "/api/llm/providers/test",
-  "/api/sd/decision-makers/",
-  "/api/sd/reset-decision-maker-conversation",
-  "/api/sd/run-decision",
-  "/api/sd/set-decision-maker-provider",
-  "/api/sd/start-decision",
 ];
 const WRITE_FUNCTIONS = [
   "submitCommand",
@@ -156,10 +159,10 @@ test("scanner-has-teeth-on-undeclared-endpoint", () => {
   assert.equal(isAllowedWrite("/api/approvalsx/pm-1"), false, "错前缀不放行");
   assert.equal(isAllowedWrite("/api/approvals/pm-1"), true, "恰是前缀 + 非空 id ⇒ 放行");
   // ★ say 前缀也必须是"前缀 + 非空 id + /say 后缀"（裸前缀 / 少后缀 / 空 id 都不放行）。
-  assert.equal(isAllowedWrite("/api/sd/decision-makers/"), false, "只有前缀不放行");
-  assert.equal(isAllowedWrite("/api/sd/decision-makers/dm-1"), false, "没有 /say 后缀不放行");
-  assert.equal(isAllowedWrite("/api/sd/decision-makers//say"), false, "空 id 不放行");
-  assert.equal(isAllowedWrite("/api/sd/decision-makers/dm-1/say"), true, "前缀 + id + /say ⇒ 放行");
+  assert.equal(isAllowedWrite("/api/ga/decision-makers/"), false, "只有前缀不放行");
+  assert.equal(isAllowedWrite("/api/ga/decision-makers/dm-1"), false, "没有 /say 后缀不放行");
+  assert.equal(isAllowedWrite("/api/ga/decision-makers//say"), false, "空 id 不放行");
+  assert.equal(isAllowedWrite("/api/ga/decision-makers/dm-1/say"), true, "前缀 + id + /say ⇒ 放行");
 });
 
 test("scanner-detects-a-missing-declared-endpoint", () => {
@@ -219,14 +222,15 @@ test("dynamic-write-functions-hit-only-allowed-endpoints", async () => {
       "/api/approvals/pm-1",
       "/api/command",
       "/api/fork",
+      // ★ 同上：`posts` 也经 `.sort()` ⇒ `/api/ga/*` 在 `/api/llm/*` 之前。只挪位置，逐字相等未松。
+      "/api/ga/decision-makers/dm-1/say",
+      "/api/ga/reset-decision-maker-conversation",
+      "/api/ga/run-decision",
+      "/api/ga/set-decision-maker-provider",
+      "/api/ga/start-decision",
       "/api/llm/providers",
       "/api/llm/providers/delete",
       "/api/llm/providers/test",
-      "/api/sd/decision-makers/dm-1/say",
-      "/api/sd/reset-decision-maker-conversation",
-      "/api/sd/run-decision",
-      "/api/sd/set-decision-maker-provider",
-      "/api/sd/start-decision",
     ],
     "写函数只能打已声明的写面"
   );

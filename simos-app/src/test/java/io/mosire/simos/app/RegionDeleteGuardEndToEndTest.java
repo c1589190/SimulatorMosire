@@ -48,7 +48,7 @@ import org.junit.jupiter.api.io.TempDir;
  * A6 的端到端验收：经 **{@code Shell}**（真装配点）提交 {@code map.DeleteRegion}，带国家 tag 的区域被 {@code
  * RegionDeleteGuard} 拒、去 tag 的放行。★ 判别力在"Shell 真的装了这个 guard"（m1：删掉那行装配 ⇒ 第一条应删除成功 ⇒ 红）。
  */
-class SdRegionDeleteGuardEndToEndTest {
+class RegionDeleteGuardEndToEndTest {
 
   private static final BranchId MAIN = new BranchId("main");
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);

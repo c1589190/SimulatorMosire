@@ -159,10 +159,10 @@ class RealLlmGovScenarioTest {
           "simos.unit.get",
           "simos.map.hex",
           "simos.social.households",
-          "simos.sd.packet.intent",
-          "simos.sd.propose",
-          "simos.sd.packet.submit",
-          "simos.sd.packet.my",
+          "simos.ga.packet.intent",
+          "simos.ga.packet.propose",
+          "simos.ga.packet.confirm",
+          "simos.ga.packet.my",
           "simos.gov.retireStaff",
           "simos.gov.selectExaminees",
           "simos.gov.dispatchTeam");
@@ -945,11 +945,11 @@ class RealLlmGovScenarioTest {
         + "【本轮规则】这是同时决策回合：所有决策人读同一冻结世界快照，谁都不能在决策期直接改世界；决策只出包，"
         + "世界效果由 GM 收齐所有包后统一合并执行。\n"
         + "【必须按顺序做三步】\n"
-        + "1) 调用 simos.sd.packet.intent，text 里写清你对四类人员流转的部署：selectExaminees（科举选人）、"
+        + "1) 调用 simos.ga.packet.intent，text 里写清你对四类人员流转的部署：selectExaminees（科举选人）、"
         + "dispatchTeam（派调查组）、absorbUnit（吸收人口入编）、retireStaff（老吏退休回籍），并写清要省 GOV "
         + nf.provinceGov.value()
         + " 执行什么、各多少。\n"
-        + "2) 调用 simos.sd.propose，只提议你**自己范围内**的一条真实调用。照抄下面示例（q/r 已按你的首都填好）：\n"
+        + "2) 调用 simos.ga.packet.propose，只提议你**自己范围内**的一条真实调用。照抄下面示例（q/r 已按你的首都填好）：\n"
         + "   tool=simos.gov.retireStaff；args={\"unitId\":\""
         + nf.centralGov.value()
         + "\",\"role\":\"SCRIBE\",\"count\":1,\"reinsertQ\":"
@@ -957,7 +957,7 @@ class RealLlmGovScenarioTest {
         + ",\"reinsertR\":"
         + nf.capital.r()
         + "}；intent=中央示范：按政策让 1 名老吏退休回籍\n"
-        + "3) 调用 simos.sd.packet.submit 提交本 tick 决策包。\n"
+        + "3) 调用 simos.ga.packet.confirm 提交本 tick 决策包。\n"
         + "【硬性预算】最多 4–6 次工具调用；只 propose 下面三类工具之一，然后立刻 submit；不要逐条试工具、不要在 args 里写 null。\n"
         + "【权限边界】省级 GOV "
         + nf.provinceGov.value()
@@ -974,9 +974,9 @@ class RealLlmGovScenarioTest {
         + "【本轮规则】这是同时决策回合：所有决策人读同一冻结世界快照，决策只出包；"
         + "世界效果由 GM 收齐所有包后统一合并执行。\n"
         + "【必须按顺序做三步】\n"
-        + "1) 调用 simos.sd.packet.intent，text 里写你的服从与执行计划，并点到四类目标：selectExaminees、"
+        + "1) 调用 simos.ga.packet.intent，text 里写你的服从与执行计划，并点到四类目标：selectExaminees、"
         + "dispatchTeam、absorbUnit、retireStaff。\n"
-        + "2) 调用 simos.sd.propose，提议你辖区内的真实调用。照抄下面示例（q/r 已按你的省会填好）：\n"
+        + "2) 调用 simos.ga.packet.propose，提议你辖区内的真实调用。照抄下面示例（q/r 已按你的省会填好）：\n"
         + "   tool=simos.gov.retireStaff；args={\"unitId\":\""
         + nf.provinceGov.value()
         + "\",\"role\":\"SCRIBE\",\"count\":1,\"reinsertQ\":"
@@ -985,7 +985,7 @@ class RealLlmGovScenarioTest {
         + nf.provinceSeat.r()
         + "}；intent=省级示范：让 1 名老吏退休回籍\n"
         + "   （也可改用 selectExaminees/dispatchTeam；参数以 simos.command.catalog 为准，不确定就不要乱填。）\n"
-        + "3) 调用 simos.sd.packet.submit 提交本 tick 决策包。\n"
+        + "3) 调用 simos.ga.packet.confirm 提交本 tick 决策包。\n"
         + "【硬性预算】最多 4–6 次工具调用；只 propose 下面三类工具之一，然后立刻 submit；不要逐条试工具、不要在 args 里写 null。\n"
         + "【权限】只提议自己 GOV 与辖区资源，越界会被拒。tick 一律填读工具给的世界 tick。\n";
   }
@@ -1351,8 +1351,8 @@ class RealLlmGovScenarioTest {
             "simos.map.region",
             "simos.social.population",
             "simos.command.catalog",
-            "sd.DecisionDocs",
-            "sd.DecisionResults")
+            "simos.ga.decisionDocs",
+            "simos.ga.decisionResults")
         .contains(real);
   }
 

@@ -72,13 +72,13 @@ class McpPortTopologyTest {
           "simos.map.region",
           "simos.map.render",
           "simos.province.divide",
-          "simos.sd.decision-maker",
-          "simos.sd.decision-makers",
-          "simos.sd.diplomacy",
-          "simos.sd.diplomatic-events",
-          "simos.sd.directives",
+          "simos.ga.decision-maker",
+          "simos.ga.decision-makers",
+          "simos.ga.diplomacy",
+          "simos.ga.diplomatic-events",
+          "simos.ga.directives",
           // ★★ 2026-10-14 决策人互致消息：旧上报读口 simos.sd.reports **已删**（读侧 −1）
-          "simos.sd.verdicts",
+          "simos.ga.verdicts",
           "simos.social.households",
           "simos.social.population",
           "simos.state.facets",
@@ -95,9 +95,9 @@ class McpPortTopologyTest {
    */
   private static final List<String> NON_NARROW_WRITES =
       List.of(
-          "sd.AdjudicateTick",
-          "sd.RejectDirective",
-          "sd.VoidAdjudication",
+          "simos.ga.adjudicateTick",
+          "simos.ga.rejectDirective",
+          "simos.ga.voidAdjudication",
           "simos.advance",
           "simos.army.assignGov",
           "simos.army.formatUnit",
@@ -148,7 +148,7 @@ class McpPortTopologyTest {
           "simos.region.clearData",
           "simos.region.clearStructures",
           "simos.region.seed",
-          "simos.sd.run-decision-makers",
+          "simos.ga.run-decision-makers",
           "simos.social.demand",
           "simos.social.household.create",
           "simos.social.household.members",
@@ -207,8 +207,14 @@ class McpPortTopologyTest {
           "unit.SetGovPolicy",
           "unit.SetGovSuperior");
 
-  /** sd 的 22 条窄写（进 GM 桶；D5 两条外交工具名不是命令类型）。 */
-  private static final List<String> SD_NARROW_WRITES =
+  /**
+   * 决策/政府族的窄写（进 GM 桶；D5 两条外交工具的**工具名**不是命令类型）。
+   *
+   * <p>★★ 旧名 {@code SD_NARROW_WRITES}（批 L ② 按 §5.8④「私有常量/字段名」形态改成 {@code
+   * GA_NARROW_WRITES}）：它列的是工具**名字** （{@code ga.*} / {@code simos.gov.*} / {@code army.*}），本批把其中 6
+   * 条旧 {@code simos.sd.*} 改成了新名；两条外交窄写随 §2.1 的合并改成 {@code simos.gov.*}。
+   */
+  private static final List<String> GA_NARROW_WRITES =
       List.of(
           "ga.IssueDirective",
           "ga.SubmitVerdict",
@@ -218,13 +224,13 @@ class McpPortTopologyTest {
           "ga.ResetDecisionMakerConversation",
           "ga.StartDecision",
           "ga.RunDecision",
-          "gov.CreateNation",
+          "simos.gov.createNation",
           "army.CreateArmy",
           "army.SetArmyMasterGov",
           "ga.CreateDecisionMaker",
           "ga.PutInfo",
-          "simos.sd.set-diplomatic-relation",
-          "simos.sd.record-diplomatic-event",
+          "simos.gov.setDiplomaticRelation",
+          "simos.gov.recordDiplomaticEvent",
           "ga.RegisterEffect",
           "ga.CancelEffect",
           "ga.SetDecisionMakerProvider");
@@ -266,7 +272,7 @@ class McpPortTopologyTest {
    */
   private static final List<String> GM_NARROW_WRITES =
       concat(
-          concat(SD_NARROW_WRITES, MAP_WRITES),
+          concat(GA_NARROW_WRITES, MAP_WRITES),
           concat(ECONOMY_ZONE_WRITES, concat(UNIT_WRITES, OTHER_NARROW_WRITES)));
 
   /**

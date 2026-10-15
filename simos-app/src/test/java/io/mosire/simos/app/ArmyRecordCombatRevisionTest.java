@@ -36,7 +36,7 @@ import org.junit.jupiter.api.io.TempDir;
  * handler 折 {@code HandlerOutcome} 再 {@code ArmyChangeSet.apply}，**从不经过 core**，因此"这条命令到底落不落
  * revision、落几条" 没有护栏）。
  *
- * <p>形制照 {@link SdPutInfoEndToEndTest}（本仓现成的"经 core 提交并断言 revision"形态，{@code simos-app/src/test}
+ * <p>形制照 {@link PutInfoEndToEndTest}（本仓现成的"经 core 提交并断言 revision"形态，{@code simos-app/src/test}
  * 下同包）：真 {@link CoreSimos} + 真 {@code bootstrapGenesis} + {@link CommandEnvelope} → 断言 {@link
  * CommandResult.Committed} 的新坐标 + {@code core.head} + {@code core.revisions} 行数 + {@code
  * core.replay} 回读。**不自创第二套提交夹具。**
@@ -165,7 +165,7 @@ class ArmyRecordCombatRevisionTest {
     assertThat(armyState(core, 1).combats()).isEmpty();
   }
 
-  // ── 夹具（照 SdPutInfoEndToEndTest：真 CoreSimos + bootstrapGenesis + submit）──────────
+  // ── 夹具（照 PutInfoEndToEndTest：真 CoreSimos + bootstrapGenesis + submit）──────────
 
   private CoreSimos start() {
     core = new CoreSimos(new CoreConfig(tempDir, 100, SimosObjectMapper.create()));

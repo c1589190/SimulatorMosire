@@ -80,8 +80,8 @@ public final class DecisionFaceGolden {
           // ★ R2a：逐格经济读数（视野由工具内收窄，不越界）。
           "simos.economy.hex",
           // ★★ D5：两条外交读口（世界级自然语言、四桶共享读）。
-          "simos.sd.diplomacy",
-          "simos.sd.diplomatic-events",
+          "simos.ga.diplomacy",
+          "simos.ga.diplomatic-events",
           // ★★ D4 的跨区上报读口 simos.sd.reports 与写口 simos.sd.report **已随旧上报族整族废弃**
           //   （2026-10-14 决策人互致消息，用户原话「老的直接扔掉」）⇒ 这里**删掉那两条**。
           // ★★ 2026-10-14 决策人互致消息（设计书 §4.2/§4.3）：决策人面新增两条消息工具 ——
@@ -92,16 +92,16 @@ public final class DecisionFaceGolden {
           "simos.gov.info",
           // ── 决策人专属读口与决策方法论 ────────────────────────────────────────────────
           // ★ 第 10 条：决策人查看**自己**的决策结果（"决策 → 看结果 → 再决策"的回路）。
-          "sd.DecisionResults",
+          "simos.ga.decisionResults",
           // ★ 第 11 条：Docs 系统——发给自己的设定文档（"这一局我该怎么做"）。
-          "sd.DecisionDocs",
+          "simos.ga.decisionDocs",
           // ── 决策行为（两条，语义就靠它们）────────────────────────────────────────────
           "ga.IssueDirective",
           "ga.SubmitVerdict",
           // ── 受限窄写（身份派生 + 审批链；进了白名单也**不放大**权限）──────────────────────
           // ★★ D5（D-003 / D-004 / D-005 / R5 / R6）：外交边 / 外交事件 / 向本 GOV 付款。
-          "gov.SetDiplomaticRelation",
-          "gov.RecordDiplomaticEvent",
+          "simos.gov.setDiplomaticRelation",
+          "simos.gov.recordDiplomaticEvent",
           "simos.gov.pay",
           // ★★ 2026-10-15 用户裁定「甲」（批 K ①）：这 7 条**原本就在本表里**（它们是决策人的核心动作，D2
           //   决策包计划第一天就在可提议清单里），只是当年的 roles() **漏打了 DM 标签** ⇒ 本轮补 {roles={DM,GM}}。

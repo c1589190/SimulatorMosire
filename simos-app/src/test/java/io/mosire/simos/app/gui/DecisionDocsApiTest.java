@@ -33,14 +33,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 决策文档只读面端到端验收：{@code GET /api/sd/decision-docs}（Docs 系统，2026-09-23）。
+ * 决策文档只读面端到端验收：{@code GET /api/ga/decision-docs}（Docs 系统，2026-09-23）。
  *
  * <p>★★ **本端点就是"以某个决策人的视角预览它实际能看到哪些文档"**（用户对 Docs 的原始表述是「限定范围到单个决策人的文档信息查看
  * 系统」）。夹具刻意造出三条轴都齐的形态——**显式指派**（tags）、**归属自动**（affiliations）、**无主**（两轴都空）—— 只报其一的实现在这里会红。
  *
  * <p>★ **文档经真写路径种入**（{@code POST /api/command} 发 {@code sd.PutInfo}），不是直接拼状态：可见性判据读的是真条目。
  */
-class SdDecisionDocsApiTest {
+class DecisionDocsApiTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -113,9 +113,9 @@ class SdDecisionDocsApiTest {
   void aMissingActorIsRejectedAndAnUnknownActorIsNotFound() throws Exception {
     createFixture();
 
-    assertThat(get("/api/sd/decision-docs").statusCode()).as("as 必填").isEqualTo(400);
-    assertThat(get("/api/sd/decision-docs?as=%20").statusCode()).as("as 空白 ⇒ 400").isEqualTo(400);
-    HttpResponse<String> unknown = get("/api/sd/decision-docs?as=dm-nope");
+    assertThat(get("/api/ga/decision-docs").statusCode()).as("as 必填").isEqualTo(400);
+    assertThat(get("/api/ga/decision-docs?as=%20").statusCode()).as("as 空白 ⇒ 400").isEqualTo(400);
+    HttpResponse<String> unknown = get("/api/ga/decision-docs?as=dm-nope");
     assertThat(unknown.statusCode()).as("未知决策人 ⇒ 404（不是空列表）").isEqualTo(404);
     assertThat(error(unknown)).as("与既有决策人面同款文案").contains("decision maker not found");
   }
@@ -157,7 +157,7 @@ class SdDecisionDocsApiTest {
   // ────────────────────────────── 助手 ──────────────────────────────
 
   private static String docs(String actor) {
-    return "/api/sd/decision-docs?as=" + actor;
+    return "/api/ga/decision-docs?as=" + actor;
   }
 
   private HttpResponse<String> get(String path) throws Exception {

@@ -133,16 +133,16 @@ test("decision-results-request-builds-a-bounded-window", () => {
   assert.equal(P.decisionResultsRequest({}).ok, false);
   assert.equal(P.decisionResultsRequest({ as: "" }).ok, false);
   // 缺 limit ⇒ 缺省 20（默认窗口，绝不无界拉全部历史）。
-  assert.equal(P.decisionResultsRequest({ as: "dm1" }).path, "/sd/decision-results?as=dm1&limit=20");
+  assert.equal(P.decisionResultsRequest({ as: "dm1" }).path, "/ga/decision-results?as=dm1&limit=20");
   // 只看某一 tick。
   assert.equal(
     P.decisionResultsRequest({ as: "dm1", tick: 8, limit: 5 }).path,
-    "/sd/decision-results?as=dm1&tick=8&limit=5"
+    "/ga/decision-results?as=dm1&tick=8&limit=5"
   );
   // 区间：成对给出。
   assert.equal(
     P.decisionResultsRequest({ as: "dm1", fromTick: 3, toTick: 8 }).path,
-    "/sd/decision-results?as=dm1&fromTick=3&toTick=8&limit=20"
+    "/ga/decision-results?as=dm1&fromTick=3&toTick=8&limit=20"
   );
   // ★ limit 超上限 ⇒ **报错**（契约是服务端报错、不是截断；前端先拦让用户当场看见）。
   const over = P.decisionResultsRequest({ as: "dm1", limit: 201 });

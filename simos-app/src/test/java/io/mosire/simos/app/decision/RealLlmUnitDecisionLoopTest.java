@@ -232,8 +232,8 @@ class RealLlmUnitDecisionLoopTest {
           "simos.state.facets",
           "simos.timeline.revisions",
           "simos.timeline.branches",
-          "sd.DecisionDocs",
-          "sd.DecisionResults",
+          "simos.ga.decisionDocs",
+          "simos.ga.decisionResults",
           "simos.economy.hex");
 
   /** 夹具真值标记（出现在**成功**读结果里 ⇒ 读到的是这个白板世界，不是编的）。 */
@@ -1350,7 +1350,7 @@ class RealLlmUnitDecisionLoopTest {
         "body",
         "你是军队 a1（根单位 u-1）的决策人，辖地是区域 r-core（(1,1)/(1,2)/(2,1) 三格）。本轮任务："
             + "① 先用读工具（command.catalog / map.hex / unit.get / social.population / decision docs）核实辖区人口与单位状态；"
-            + "② 然后出令 sd.IssueDirective，用 unit.SetTaxRate 把 r-core 的长期税率从 0‰ 调到 100‰（unitId=u-1，regionId=r-core）；"
+            + "② 然后出令 ga.IssueDirective，用 unit.SetTaxRate 把 r-core 的长期税率从 0‰ 调到 100‰（unitId=u-1，regionId=r-core）；"
             + "③ tick 填你从时间轴读到的当前世界 tick，不要猜；"
             + "④ commands 只放领域命令，不得含 sd.*；"
             + "⑤ 顺带核对：区域 r-out、格 (2,2) 与单位 u-out 不在你的管辖内——若系统拒绝就是不可见，把它们当作不存在，不要写进决心，也不要试图绕过。"

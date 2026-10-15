@@ -27,14 +27,14 @@ test("docs-request-needs-an-actor", () => {
 test("docs-request-with-a-doc-id-is-exact-and-carries-no-limit", () => {
   const req = P.decisionDocsRequest({ as: "dm-a", docId: "alpha-brief", limit: "999" });
   assert.equal(req.ok, true);
-  assert.equal(req.path, "/sd/decision-docs?as=dm-a&docId=alpha-brief");
+  assert.equal(req.path, "/ga/decision-docs?as=dm-a&docId=alpha-brief");
   // ★ limit 被忽略：按 id 精确定位不能被截断（服务端也按这条口径）。
   assert.equal(req.path.includes("limit"), false);
 });
 
 test("docs-request-escapes-the-actor-and-defaults-the-limit", () => {
-  assert.equal(P.decisionDocsRequest({ as: "dm a/b" }).path, "/sd/decision-docs?as=dm%20a%2Fb&limit=20");
-  assert.equal(P.decisionDocsRequest({ as: "dm-a", limit: "5" }).path, "/sd/decision-docs?as=dm-a&limit=5");
+  assert.equal(P.decisionDocsRequest({ as: "dm a/b" }).path, "/ga/decision-docs?as=dm%20a%2Fb&limit=20");
+  assert.equal(P.decisionDocsRequest({ as: "dm-a", limit: "5" }).path, "/ga/decision-docs?as=dm-a&limit=5");
 });
 
 test("docs-request-rejects-an-out-of-range-limit", () => {

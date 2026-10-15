@@ -48,7 +48,7 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code Replay} 读回 ⇒ 判决**逐字节相同**、{@code atRevision} 正确；**回放路径不调用任何 LLM 客户端**（调用计数 = 0）； meta 空白 /
  * subject 越面 ⇒ 拒绝且 head 不动。
  */
-class SdVerdictFreezeEndToEndTest {
+class VerdictFreezeEndToEndTest {
 
   private static final BranchId MAIN = new BranchId("main");
 

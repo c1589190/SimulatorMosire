@@ -91,8 +91,8 @@ class ShellAssemblySmokeTest {
           "simos.map.path",
           "simos.map.block",
           "simos.map.overlaps",
-          "simos.sd.decision-makers",
-          "simos.sd.directives",
+          "simos.ga.decision-makers",
+          "simos.ga.directives",
           "simos.economy.ownership",
           "simos.army.stopReport");
 

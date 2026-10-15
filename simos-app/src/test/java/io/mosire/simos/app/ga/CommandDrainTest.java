@@ -50,7 +50,7 @@ import org.junit.jupiter.api.io.TempDir;
  * C5 的端到端验收：sd 参与者只写 sd，跨模块效果经 {@link CommandDrain} 落成**真 revision**；drain 幂等（重放不重复提交）； 中途失败留下"sd
  * 已记 effect、unit 未改"的中间态（如实测，不假装原子）。
  */
-class SdCommandDrainTest {
+class CommandDrainTest {
 
   private static final BranchId MAIN = new BranchId("main");
   private static final SimosTimestamp T = SimosTimestamp.of(0);

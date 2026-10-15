@@ -75,13 +75,14 @@ class ToolClassAuditAssemblyTest {
    * <p>★★ <b>谁要改这个数</b>：工具面增删一条、或某条工具的 {@code roles()}/{@code gate()} 改了类归属 ⇒ 这里当场红。
    * 那时应当<b>显式</b>改本行并在提交说明里写清"哪一条、为什么换格"，<b>不是</b>把断言删掉/放宽。
    *
-   * <p>★★ <b>本次变化（{@code 140 → 133}）来自用户 2026-10-15 裁定「甲」</b>：{@code RaiseUnit} · {@code
-   * LevyRegion} · {@code GovRecruit} · {@code GovRetireStaff} · {@code SocialHouseholdMembers} ·
-   * {@code GovSelectExaminees} · {@code GovDispatchTeam} 这 7 条<b>补了漏打的 DM 标签</b>（{@code
-   * roles={DM,GM}}，{@code gate()} 一个字未改）⇒ 它们不再是类1、自动落类2。★ 实测读数是「Expected size: 140 but was:
-   * 133」，与「7 条换格」逐条相符。
+   * <p>★★ <b>本次变化（{@code 133 → 131}）来自批 L ②「两对外交工具合并」</b>（设计书 §2.1 裁定 N2「乙 + 合并甲」）：原来 <b>GM
+   * 面独占</b>的两条（{@code simos.sd.record-diplomatic-event} / {@code
+   * simos.sd.set-diplomatic-relation}）与 <b>DM 面</b>那两条（{@code gov.RecordDiplomaticEvent} / {@code
+   * gov.SetDiplomaticRelation}）**合并成一条**、{@code roles={DM,GM}} ⇒ 这两条 GM-only 不再存在 ⇒ 类1 减 2。★
+   * 实测读数是「Expected size: 133 but was: 131」；★ 与 {@link #SHARED_SIZE} 的联立是 131 + 48 = 179（GM
+   * 桶**不动**，见 {@link #GM_BUCKET_SIZE}）。
    */
-  private static final int GM_ONLY_SIZE = 133;
+  private static final int GM_ONLY_SIZE = 131;
 
   /**
    * ★★ <b>类2 {@code DM_APPROVAL} = 24</b>（具名清单见 {@link #DM_APPROVAL_NAMES}）。★ 17 → 24 的全部增量 =
@@ -97,11 +98,18 @@ class ToolClassAuditAssemblyTest {
    *
    * <p>★ 裁定「甲」把 7 条从「只在 GM 桶」搬进「两桶共享」⇒ {@code 39 → 46}。★ 它与 {@link #GM_ONLY_SIZE} 的算术是
    * <b>双向钉死</b>的：GM 桶 = 类1 + 共享（{@code 133 + 46 = 179}）——只改一个数就会在下面的自洽断言里红。
+   *
+   * <p>★★ <b>本次变化（{@code 46 → 48}）来自批 L ②「两对外交工具合并」</b>：两条合并出来的工具 {@code roles={DM,GM}} ⇒ 它们**既在 GM
+   * 桶、又含 DM** ⇒ 共享 +2。★ 与被减 2 的 {@link #GM_ONLY_SIZE} 联立后 GM 桶**仍是 179**（{@code 131 + 48 = 179}）——
+   * 这正是"两个桶锚点不动、只有格在搬家"的算术。
    */
-  private static final int SHARED_SIZE = 46;
+  private static final int SHARED_SIZE = 48;
 
-  /** ★ <b>两桶并集 = 194 = 133 + 24 + 37</b>（分区不重不漏的算术自证；★ 裁定「甲」只搬格、不改并集）。 */
-  private static final int TOOL_UNION_SIZE = 194;
+  /**
+   * ★ <b>两桶并集 = 192 = 131 + 24 + 37</b>（分区不重不漏的算术自证）。★★ 批 L ②：{@code 194 → 192}（合并把两条 GM-only 与两条
+   * DM-only 折成两条、并集净 −2）。
+   */
+  private static final int TOOL_UNION_SIZE = 192;
 
   /**
    * ★ 与 {@code ShellAssemblySmokeTest.GM_BUCKET_SIZE} 逐字相同（那边是 {@code private} ⇒ 这里逐字重复而不是反射取）。 ★
@@ -158,13 +166,31 @@ class ToolClassAuditAssemblyTest {
           "doc_append",
           "doc_create",
           "doc_edit",
-          "gov.SetDiplomaticRelation",
-          "gov.RecordDiplomaticEvent",
+          "simos.gov.setDiplomaticRelation",
+          "simos.gov.recordDiplomaticEvent",
           "simos.gov.pay");
 
-  /** ★ A3 点名的三条**纯 {@code {DM}} + {@code Ask}**（四格收敛成三格的证据；它们必须落类2、且不在类3）。 */
-  private static final List<String> PURE_DM_APPROVAL_NAMES =
-      List.of("gov.RecordDiplomaticEvent", "gov.SetDiplomaticRelation", "simos.gov.pay");
+  /**
+   * ★ A3 点名的**纯 {@code {DM}} + {@code Ask}**（四格收敛成三格的证据；它们必须落类2、且不在类3）。
+   *
+   * <p>★★ <b>批 L ② 显式收窄（三条 → 一条）</b>：{@code simos.gov.recordDiplomaticEvent} / {@code
+   * simos.gov.setDiplomaticRelation} 原本与 {@code simos.gov.pay} 同为"纯 {@code {DM}} + {@code Ask}"的三条；
+   * 合并之后那两条**拿到了 GM 那一半**（{@code roles={DM,GM}}，设计书 §2.1 裁定 N2）⇒ 它们**不再是**"纯 {@code {DM}}"。 ★
+   * 这不是放宽：本清单只负责"纯 {@code {DM}} ⇒ 落类2"这一维，而**合并后那两条仍在类2**这一事实由新增的 {@link #MERGED_DIPLOMATIC_NAMES}
+   * 断言逐条钉住（{@code roles()} 必须**恰好** {@code {DM,GM}}、{@code gate} 必须 {@code Ask}）。
+   */
+  private static final List<String> PURE_DM_APPROVAL_NAMES = List.of("simos.gov.pay");
+
+  /**
+   * ★★ <b>批 L ② 合并出来的两条（设计书 §2.1 裁定 N2「乙 + 合并甲」）</b>：两条命令各留**一条**工具、{@code roles={DM,GM}}、 {@code
+   * gate=Ask(SENSITIVE)} ⇒ 落类2。
+   *
+   * <p>★ 它钉的是合并的**直接可执行后果**：① 旧 GM 面工具名（{@code simos.sd.*}）与旧 DM 面工具名（{@code gov.*}）都不得再出现； ②
+   * 新名**恰好**在类2；③ {@code roles()} 恰好 {@code {DM,GM}}（多一个/少一个都在这里红）；④ {@code gate()} 实得档是 {@code
+   * Ask}（"DM/GM 混合就是要交给 GM 审核"）。
+   */
+  private static final List<String> MERGED_DIPLOMATIC_NAMES =
+      List.of("simos.gov.recordDiplomaticEvent", "simos.gov.setDiplomaticRelation");
 
   /**
    * ★★ <b>探针上下文</b>：独立重建的、与设计书 §3.2 同形的探针（{@code arguments()} = 空 {@code Map}）。
@@ -335,7 +361,7 @@ class ToolClassAuditAssemblyTest {
           .doesNotHaveDuplicates()
           .hasSize(DM_APPROVAL_SIZE);
 
-      // ★★ A3：三条纯 {DM} + Ask ⇒ 必须在类2，且**不在**类3（四格收敛成三格）
+      // ★★ A3：纯 {DM} + Ask ⇒ 必须在类2，且**不在**类3（四格收敛成三格）
       Map<String, AgentTool> classTwoTools = byName(partition.toolsOf(ToolClass.DM_APPROVAL));
       Set<String> classThree = namesOf(partition.toolsOf(ToolClass.DM_FREE));
       for (String name : PURE_DM_APPROVAL_NAMES) {
@@ -350,6 +376,25 @@ class ToolClassAuditAssemblyTest {
             .as("★ A3：%s 的 gate() 实得档必须是 Ask（要问人 ⇒ 类2 而不是类3）", name)
             .isInstanceOf(ToolGate.Ask.class);
       }
+
+      // ★★ A3-合并：批 L ② 那两条（GM 面 + DM 面统一成一条）必须**恰好**在类2、roles 恰好 {DM,GM}、gate 实得 Ask。
+      for (String name : MERGED_DIPLOMATIC_NAMES) {
+        assertThat(classTwo)
+            .as("★★ A3-合并：%s 是「两对面合并成一条」的产物 ⇒ 必须落类2（{DM,GM} + Ask）", name)
+            .contains(name);
+        assertThat(classThree).as("★ A3-合并：%s 落类2 ⇒ 不许同时出现在类3", name).doesNotContain(name);
+        assertThat(rolesOf(classTwoTools.get(name)))
+            .as("★★ A3-合并：%s 的 roles() 必须**恰好** {DM,GM}（合并后两个面都能用，多一个/少一个都在这里红）", name)
+            .containsExactlyInAnyOrder(ToolRole.DM, ToolRole.GM);
+        assertThat(classTwoTools.get(name).gate(PROBE))
+            .as("★★ A3-合并：%s 的 gate() 实得档必须是 Ask（DM/GM 混合 ⇒ 交给 GM 审核）", name)
+            .isInstanceOf(ToolGate.Ask.class);
+      }
+      // ★ 反向断言（"旧名一律不留"）**不写在这里**：它按 L4 集中于 {@link LegacyToolNameRetirementTest}
+      //   —— 那里对**两个桶的并集**逐条钉 19 条旧名，并且**扫 {@code src/test} 源码文本**（门控用例的死角根治）。
+      //   ★ 为什么不在本类里再写一份：本类的源码扫描面（{@code theAuditSourceCarriesNoToolNamesAndNoClassCounts}）
+      //     只扫生产侧；而测试源码扫描器要求"旧名字面量只允许出现在**一个**持有反向断言数据的文件里" ——
+      //     在这里再写一份旧名字面量会把那条不变量打破（实测：扫描器当场报出本文件）。
     }
   }
 

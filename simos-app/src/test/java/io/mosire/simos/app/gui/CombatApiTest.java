@@ -80,7 +80,7 @@ import org.junit.jupiter.api.io.TempDir;
  * hex/阶段/participants 与记录逐值一致（★ 记录在案的格是真值，不再靠 GUI 推断）；③ 参与单位**不在交战格**时，单位详情 {@code
  * combat.atHex=false} 且仍能读出 combatId/currentStage/hex（引擎允许交战双方不同格）。
  */
-class SdCombatApiTest {
+class CombatApiTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
