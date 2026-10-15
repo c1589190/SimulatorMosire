@@ -182,3 +182,19 @@ L2 前端真断点 "/sd/ = 14
 L5 src/test 9 条旧工具名 = 51 处 / 6 文件
 L6 未实测（推导：类1 133→131 · 类2 24 不变 · 类3 37）★ 是推导不是实测
 ```
+
+### 5.6 ★ 合并的**更贴近先例**（上一任在 BLOCKED 时已把合并设计好，供实施者直接用）
+
+控制方原指向 `GovToolSupport.resolveDecisionMakerGov`；上一任找到**更同形**的仓内先例：
+**`IssueDirectiveTool`** —— 它本身就是「`{DM,GM}` + 身份分支」：
+- `roles() = {DM, GM}`（`IssueDirectiveTool:110` 同形）
+- `resources() = GA_NAMESPACE, READ_ONLY` + `decisionWriteResources(context)` —— **`resources()` 本身就是身份分支**
+- `gate` 继承基类 ⇒ `Ask(SENSITIVE)` ⇒ **类2**
+
+**它的合并方案（未落码）**：
+- `signatureViolation` 里判 `identity().decisionMakerIdOf(...).isEmpty()`：**空（= GM）⇒ 不判署名**（GM 显式点名）；**非空（= DM）⇒ 走现成的 `DiplomaticWriteSignature`**
+- `commandType()` **保持** `gov.RecordDiplomaticEvent` / `gov.SetDiplomaticRelation`（命令类型不动）
+- 另覆写 `toolName()` 返回新名 `simos.gov.recordDiplomaticEvent` / `simos.gov.setDiplomaticRelation`
+- ★ **不造第三套**
+
+★ 实施者：**先读 `IssueDirectiveTool` 与 `GovToolSupport.resolveDecisionMakerGov` 两处**，再动手。
