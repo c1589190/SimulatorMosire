@@ -28,6 +28,13 @@ CLAUDE.local.md
 
 # Maven 串行化锁（tools/mvn-lock.sh 用；放在仓根以便不受 clean 影响）
 .mvn-lock.d/
+.mvn-lock.d.worktrees/
+.git/.mvn-lock.d/
+
+# ★★ 每棵工作树【自己的】Maven 本地仓库（tools/mvn-lock.sh 首次用时用 `cp -al` 从 ~/.m2/repository
+#   hardlink 播种；实测 8267 文件 / 表观 736M，**真实占用仅 11 MB**）⇒ 跨树编译**不再争 ~/.m2**。
+#   ★ 必须忽略：否则 8267 个文件会污染 git status。
+.m2-repo/
 
 # omo/codegraph 运行时（会话延续 + 代码图缓存）—— 本机专用，可随时重建，不进仓库
 .omo/

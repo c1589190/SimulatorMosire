@@ -1,39 +1,50 @@
 #!/usr/bin/env bash
-# ★★ Maven 串行化锁（AGENTS.md §一.1：本机一次只能跑一个 Maven，两轮同抢 target/ 会让测试计数失真）。
-# ★★ 作用域 = **本项目**（同一个 `.git` 的**全部工作树**共享一把锁），**不是**单棵工作树。
-#   用户原话（2026-10-23）：「那是隔壁项目，编译门禁只是用于同一个项目文件！」
-#   ⇒ **隔壁仓库**（另一个 `.git`）不参与此锁、不阻塞本仓构建 ✔
-#   ⇒ ★★ 但**本仓的工作树**属于**同一个项目** ⇒ 它们**必须共用一把锁**，原因两条：
-#     ① 工作树们共享 `~/.m2/repository`（773 MB）—— **Maven 本地仓库不是并发安全的**，
-#        两个工作树同时构建会争它（per-tree 锁拦不住）⇒ 2026-10-16 实测并修掉；
-#     ② 同一项目的 target/ 与测试计数本来就该串行（本锁的初衷）。
-#   ★ 锁落在**共享 `.git`** 里（`$(git rev-parse --git-common-dir)`）⇒ 天然"一项目一把"。
+# ★★ Maven 包装器：**每棵工作树各自一个本地仓库** ⇒ **各树可以【同时】编译**（不再互相排队）。
+#
+# 用户裁定（2026-10-16）：「要不把协作原则改成那种能各自跑编译的类型？」⇒ 本文即该项落地。
+#
+# ── 模型（三段，缺一不可）────────────────────────────────────────────────
+# ① **每棵树自己的 Maven 本地仓库** `$ROOT/.m2-repo`：
+#    首次用时从 `~/.m2/repository` 用 **`cp -al`（hardlink）播种** ⇒ 块共享、几乎不占盘
+#    （★ 实测：8267 文件 / 表观 736 MB / **真实占用仅 11 MB** / 播种 0.2 s）。
+#    ⇒ 树与树之间**不再争 `~/.m2`**（Maven 本地仓库不是并发安全的，这是本来的病根）。
+# ② **锁 = 每棵树一把**（`$ROOT/.mvn-lock.d`）：同一棵树内仍串行（防两轮同抢 `target/` 让计数失真），
+#    但**跨树不再互相阻塞** ⇒ ★ 这才是"各自跑编译"。
+# ③ ★★ **副产品（安全收益，比提速更值钱）**：新树的仓库里**没有本项目自己的构件** ⇒
+#    本仓那条著名陷阱 —— 「`-pl` 不带 `-am` ⇒ Maven 从 `~/.m2` 拿到**旧字节码**、你验的不是工作树里的改动」
+#    —— **结构上不可能再发生**：它会**响亮地失败**（找不到构件），而不是**静默测旧件**。
+#
+# ★ 作用域说明（邻居口径不变）：`~/.m2` 只被**读**（hardlink 播种）⇒ **隔壁仓库**照旧不受影响；
+#   本包装器只作用于**它所在的那棵树**。
 #
 # 用法：把 `./mvnw` 换成 `tools/mvn-lock.sh`，其余参数原样透传：
 #     tools/mvn-lock.sh -q -DskipTests compile -pl simos-economy -am
 #     tools/mvn-lock.sh clean verify
+# ★ 调用方自己给了 `-Dmaven.repo.local=…` ⇒ 尊重它、不覆盖。
+# ★ 可用 `MVN_TREE_REPO=<path>` 换本树的仓库位置；`MVN_SEED_REPO=<path>` 换播种源。
 #
-# 行为：拿不到锁就等（默认等到天荒地老；用 MVN_LOCK_WAIT 秒数设上限）。
-#   ★ 这不是为了并发加速，而是为了**允许多个子 Agent 并行改代码**时，
-#     它们的编译动作自动排队 —— 编辑可以并行，Maven 必须串行。
-#
-# ★ 为什么不用 `flock` 命令：本机可能没有 util-linux 的 flock；
-#   这里用 mkdir 的原子性做锁（POSIX 保证 mkdir 是原子的），兼容面最大。
+# 行为：拿不到锁就等（默认等到天荒地老；用 `MVN_LOCK_WAIT` 秒数设上限）。
+# ★ 为什么不用 `flock`：本机可能没有 util-linux 的 flock；
+#   这里用 mkdir 的原子性做锁（POSIX 保证 mkdir 原子），兼容面最大。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# ★★ 锁目录 = **共享 .git** 之下 ⇒ 同一项目的**所有工作树共用一把锁**（见文件头注释）。
-#   取不到 git（不是仓库 / 没装 git）⇒ 退化成"单棵工作树一把锁"（与旧行为一致，不会更坏）。
-GIT_COMMON="$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null || true)"
-if [ -n "$GIT_COMMON" ]; then
-  case "$GIT_COMMON" in
-    /*) : ;;                                  # 已是绝对路径
-    *)  GIT_COMMON="$ROOT/$GIT_COMMON" ;;    # 相对路径按本工作树解析
-  esac
-  LOCK_DIR="$GIT_COMMON/.mvn-lock.d"
-else
-  LOCK_DIR="$ROOT/.mvn-lock.d"
+
+# ── ① 本树自己的 Maven 本地仓库 ────────────────────────────────────────────
+TREE_REPO="${MVN_TREE_REPO:-$ROOT/.m2-repo}"
+SEED_REPO="${MVN_SEED_REPO:-$HOME/.m2/repository}"
+if [ ! -d "$TREE_REPO" ]; then
+  if [ -d "$SEED_REPO" ]; then
+    # hardlink 播种（块共享）。★ 失败不致命：退化成空仓库，Maven 自己会下。
+    cp -al "$SEED_REPO" "$TREE_REPO" 2>/dev/null || mkdir -p "$TREE_REPO"
+  else
+    mkdir -p "$TREE_REPO"
+  fi
 fi
+[ -d "$TREE_REPO" ] || mkdir -p "$TREE_REPO"
+
+# ── ② 锁：**每棵树一把**（跨树并行；同树内串行）────────────────────────────
+LOCK_DIR="$ROOT/.mvn-lock.d"
 WAIT_LIMIT="${MVN_LOCK_WAIT:-0}"   # 0 = 无限等
 SELF=$$
 
@@ -58,7 +69,7 @@ while [ "$acquired" -eq 0 ]; do
     echo "[mvn-lock] 等锁超过 ${WAIT_LIMIT}s，放弃" >&2
     exit 75
   fi
-  [ "$waited" -eq 0 ] && echo "[mvn-lock] 另一个 Maven 在跑，排队等锁…" >&2
+  [ "$waited" -eq 0 ] && echo "[mvn-lock] 同一棵树里另一个 Maven 在跑，排队等锁…" >&2
   sleep 5
   waited=$((waited + 5))
 done
@@ -70,6 +81,10 @@ cd "$ROOT"
 # ★ **不能用 `exec`**：exec 会用 mvnw 替换本进程，EXIT trap 随之失效 ⇒ 锁永远不释放（实测踩到）。
 #   这里保留本 shell 作为持锁者，跑完再退出，trap 才有机会跑。
 set +e
-./mvnw "$@"
+if printf '%s ' "$@" | grep -q -- '-Dmaven.repo.local'; then
+  ./mvnw "$@"                                   # 调用方指定了仓库 ⇒ 尊重
+else
+  ./mvnw "-Dmaven.repo.local=$TREE_REPO" "$@"
+fi
 status=$?
 exit "$status"
