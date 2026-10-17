@@ -15,6 +15,7 @@ import io.mosire.simos.util.log.LogEvent;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 工具源装饰器（T8）：把委托源的每个工具**执行**记进 {@link GmToolUsage}，其余语义逐字转交。
@@ -23,8 +24,13 @@ import java.util.Objects;
  * 记录的就是"GM MCP 的工具使用"。决策人**不经 MCP**（spec §四.3：决策人没有暴露 MCP），故不存在"另一个口混入"的问题。
  *
  * <p>★ **只碰 {@code execute}**：{@code name}/{@code description}/{@code jsonSchema}/{@code
- * spec}/{@code gate}/ {@code resources}/{@code ledgerArgs} 全部原样转交——工具面（{@code
- * tools/list}）、权限判定、审批闸位、资源声明与 脱敏参数视图不因装饰而变。这是"包装不改变被包装者"的落点（登记进 {@code ToolRegistry} 的是装饰后的实例）。
+ * spec}/{@code gate}/ {@code resources}/{@code ledgerArgs}/{@code roles} 全部原样转交——工具面（{@code
+ * tools/list}）、权限判定、审批闸位、资源声明、**角色声明**与 脱敏参数视图不因装饰而变。这是"包装不改变被包装者"的落点（登记进 {@code ToolRegistry} 的是装饰后的实例）。
+ *
+ * <p>★★ <b>2026-10-17 批 R（计划 §4.2 / 审核 P1-1）：{@code roles()} 必须转发</b>。库的判定读的是 {@link AgentTool#roles()}：
+ * 记录壳不转发 ⇒ 包装后的真实注册表里声明变成空集（= 本维不表态）⇒ 角色判定被静默跳过（审核探针实测
+ * {@code raw_roles=[GM]; wrapped_roles=[]}）。★ 记录壳不是 {@link io.mosire.simos.ga.spi.SimosTool}，这里透传的是**库的方法**，
+ * 不违反"领域工具不得自行覆写 {@code roles()}"。
  *
  * <p>★ **失败也记**：{@code ToolResult} 带 code = 失败，照记（含 code）。工具抛出的**意外**异常不记、原样外泄——工具契约要求 把边界错误折成
  * {@link ToolResult}，异常是违约，不伪装成一条"工具使用"（与"工具不存在的调用不记"同口径）。
@@ -108,6 +114,19 @@ public final class RecordingToolSource implements ToolSource {
     @Override
     public Map<String, Object> ledgerArgs(ToolContext context) {
       return delegate.ledgerArgs(context);
+    }
+
+    /**
+     * ★★ 2026-10-17 批 R（计划 §4.2 / 审核 P1-1）：角色声明**原样转发**。
+     *
+     * <p>库的判定（{@code ToolExecutionGuard} → {@code PermissionChecker}）读的是 {@link AgentTool#roles()}；记录壳不转发的一天，
+     * 包装后的真实注册表里每条工具都成了"本维不表态"⇒ 角色不相交的调用者照样能过（审核探针实测
+     * {@code DM_wrapped_denied=false}）。★ 这里只转交，不做任何增删——角色仍只从被包装工具的
+     * {@code SimosTool.toolRoles()} 派生。
+     */
+    @Override
+    public Set<String> roles() {
+      return delegate.roles();
     }
 
     @Override

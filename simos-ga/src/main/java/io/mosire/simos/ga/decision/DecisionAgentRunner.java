@@ -25,6 +25,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.ga.GaLog;
 import io.mosire.simos.ga.GaLogSource;
 import io.mosire.simos.ga.llm.LlmToolNames;
+import io.mosire.simos.ga.llm.SystemPromptPolicy;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.spi.DecisionMakerAffiliationPort;
 import io.mosire.simos.ga.spi.GaSnapshots;
@@ -1373,7 +1374,8 @@ public final class DecisionAgentRunner {
   private AgentConfig agentConfigFor(DecisionMaker dm) {
     return AgentConfig.builder(dm.id().value())
         .description("")
-        .systemPrompt(" ")
+        // ★ 单空格 system 硬约束（用户 2026-10-17）：唯一生产来源 SystemPromptPolicy（别处不再写 " " 字面量）。
+        .systemPrompt(SystemPromptPolicy.SINGLE_SPACE)
         .model(llmClient.model())
         .allowedTools(toolWhitelist)
         .deniedTools(Set.of())

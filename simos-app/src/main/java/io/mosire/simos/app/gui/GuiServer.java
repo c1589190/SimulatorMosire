@@ -34,6 +34,7 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.ga.adjudication.Judgement;
 import io.mosire.simos.ga.decision.DecisionAgentRunner;
 import io.mosire.simos.ga.decision.DecisionRunRegistry;
+import io.mosire.simos.ga.llm.SystemPromptPolicy;
 import io.mosire.simos.ga.model.AccessLimit;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.ga.tools.GmToolUsage;
@@ -2188,7 +2189,11 @@ public final class GuiServer implements AutoCloseable {
       io.mosire.agentlib.llm.LlmResponse response =
           client.chat(
               new io.mosire.agentlib.llm.LlmRequest(
-                  List.of(io.mosire.agentlib.llm.LlmMessage.user("只回复一个 JSON 对象，表示连接正常。"))));
+                  List.of(
+                      // ★ 单空格 system 硬约束（用户 2026-10-17）：连接自检也是本项目发出的 LLM 请求，
+                      //   同样恰有一条 system 消息、内容取唯一生产来源 SystemPromptPolicy.SINGLE_SPACE。
+                      io.mosire.agentlib.llm.LlmMessage.system(SystemPromptPolicy.SINGLE_SPACE),
+                      io.mosire.agentlib.llm.LlmMessage.user("只回复一个 JSON 对象，表示连接正常。"))));
       body.put("ok", true);
       body.put("detail", "连接成功（model=" + response.model() + "）");
     } catch (RuntimeException e) {

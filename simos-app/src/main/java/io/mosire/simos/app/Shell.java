@@ -15,6 +15,8 @@ import io.mosire.agentlib.permission.AgentIdentity;
 import io.mosire.agentlib.permission.AgentPermissionSet;
 import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
+import io.mosire.agentlib.permission.RoleCatalogAudit;
+import io.mosire.agentlib.permission.RoleSet;
 import io.mosire.agentlib.store.SqliteConversationStore;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolCallAuthorizer;
@@ -143,6 +145,7 @@ import io.mosire.simos.ga.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.ga.spi.StartDecisionHandler;
 import io.mosire.simos.ga.spi.SubmitDecisionPacketHandler;
 import io.mosire.simos.ga.spi.SubmitVerdictHandler;
+import io.mosire.simos.ga.spi.ToolRole;
 import io.mosire.simos.ga.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.ga.spi.UpsertMergedEffectPlanHandler;
 import io.mosire.simos.ga.tools.GaToolSource;
@@ -1419,6 +1422,36 @@ public final class Shell implements AutoCloseable {
         McpSourceBridge.bind(
             RecordingToolSource.record(GaToolSource.of(gmToolFace), gmToolUsage), toolRegistry);
 
+    // ★★ 2026-10-17 批 R（计划 §4.4 / 审核 P1-1、P1-2）：**包装后**的角色审计 —— 两个**独立观察面**，装配期当场抛。
+    //   ① 面校验（post-wrap）：读的是**记录壳之后**的真实注册表实例（GM 面 = 上面绑进 MCP 的那份 `toolRegistry`）与
+    //      装配给决策人的实例（`decisionTools`，决策人不经 MCP）。语义同 `ToolRoleAudit.requireFaces`（某面工具 ⇔ 该面角色），
+    //      但读 `AgentTool.roles()` 字符串、不再强转 `SimosTool` ⇒ 记录壳也能过这一关；丢角色（空声明 = 本维不表态）当场红。
+    //   ② 库侧 `RoleCatalogAudit`：输入 A = 两面的**实际实例**读 `roles()` 派生的「角色名 → 工具名」；输入 B = 实际的
+    //      GM / 决策人桶成员投影。A 与 B 独立收集 ⇒ "声明写成另一个已知角色 / 改成空、桶没动"能被对账抓红；未知 / 拼错的
+    //      角色名同样失败。两桶同名工具：由 ① 逐实例各验自己那面（不合并任选），② 的目录对账再做第二道。
+    //   ★ 位置：在两个注册表都已就绪之后、MCP 口对外服务之前 —— 失败 = 装配失败，不带着漂移的角色面启动。
+    List<AgentTool> wrappedGmFace = toolRegistry.list();
+    List<AgentTool> assembledDecisionFace = decisionTools.list();
+    ToolRoleAudit.requireFacesOnAgentTools(wrappedGmFace, assembledDecisionFace);
+    RoleCatalogAudit.Report roleCatalogReport =
+        RoleCatalogAudit.of(toolRegistry, Set.of(ToolRole.GM.name(), ToolRole.DM.name()))
+            .withDerivation(
+                // 输入 A：run() 传进来的注册表快照（= 记录壳后的 GM 面）+ 装配给决策人的面，逐个实例读 roles()。
+                registry -> ToolRoleAudit.declaredRoleCatalog(registry.list(), assembledDecisionFace))
+            .withHandwrittenCatalog(
+                // 输入 B：实际桶成员投影（不新建手抄清单；两份桶名单就是上面校验过的两个面）。
+                Map.of(
+                    ToolRole.GM.name(), ToolBuckets.namesOf(wrappedGmFace),
+                    ToolRole.DM.name(), ToolBuckets.namesOf(assembledDecisionFace)))
+            .run();
+    if (roleCatalogReport.hasFailures()) {
+      throw new IllegalStateException(
+          "装订期角色审计失败（计划 §4.4 / 审核 P1-2）："
+              + String.join("；", roleCatalogReport.failures())
+              + "。声明面（实际实例的 AgentTool.roles()）与桶面（实际桶成员）必须逐条一致；"
+              + "未知 / 拼错的角色名同样当场失败。");
+    }
+
     // MCP 服务（T7，spec §3.2 第 6 步）：**唯一的**口 = GM 组；authorizer 是带审批的那个。
     // ★ 决策人**不开 MCP**（spec §2.2 的 C3：caller 在 startHttp 时定死，一个端口一份权限集 ⇒ 表达不了"每个决策人一份权限"；
     //   而范围随世界状态变 ⇒ 进程内现算是唯一可行路径）。
@@ -1734,6 +1767,11 @@ public final class Shell implements AutoCloseable {
    *
    * <p>★ **身份仍是 {@link AgentIdentity#external()}**（用户裁定①）：它是**审批面语义**（"这不是本进程派生的下级"），
    * 与权限**级别**正交。GM 若是经 MCP 连入的外部 agent，这个身份是对的。
+   *
+   * <p>★★ <b>2026-10-17 批 R（计划 §4.3 / C2）：调用者身份挂 {@code {GM}}</b>。AgentLib 0.2.1 的角色判定 = {@code 调用者角色 ∩
+   * 工具声明角色 ≠ ∅}；调用者侧空集是 **⊥ = 谁都不是（fail-closed）** ⇒ 漏挂这一行，GM 面所有声明了角色的工具一律拒。
+   * 角色名**只从 `ToolRole.GM.name()` 派生**（不手写 {@code "GM"} 字面量）。★ 与决策人那条（{@code
+   * DecisionCallerFactory.permissionSetOf} 的 {@code {DM}}）成对：两条缺一，对应面的角色维就是死的。
    */
   private static AgentPermissionSet gmPermissionSet() {
     return AgentPermissionSet.builder(AccessToken.DEFAULT)
@@ -1761,6 +1799,8 @@ public final class Shell implements AutoCloseable {
                     WorkspacePermissions.WORKSPACES, ResourceScope.unlimited(),
                     SimosToolSource.DOCS_NAMESPACE, ResourceScope.unlimited(),
                     SimosToolSource.DOCS_EDIT_NAMESPACE, ResourceScope.unlimited())))
+        // ★ 2026-10-17 批 R（C2）：GM / MCP 口 = {GM}（角色名从枚举派生，唯一拼写点仍是 ga-spi 的 ToolRole）。
+        .roles(RoleSet.of(ToolRole.GM.name()))
         .build();
   }
 

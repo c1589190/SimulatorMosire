@@ -14,6 +14,7 @@ import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.ga.adjudication.DecisionAdjudicator;
 import io.mosire.simos.ga.adjudication.LlmDecisionAdjudicator;
+import io.mosire.simos.ga.llm.SystemPromptPolicy;
 import io.mosire.simos.ga.model.DecisionMaker;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogChannel;
@@ -170,6 +171,10 @@ public final class LlmProviderResolver {
    * <p>★ **不走工具**：判决不需要工具目录（给了工具反而会得到"只有工具调用、没有文本"，见 {@code text()} 的 {@code NO_TEXT} 说明）。故请求永远只有
    * system + user 两条消息。
    *
+   * <p>★ **system 只能是单空格**（用户 2026-10-17 硬约束）：出站 system 取 {@link
+   * SystemPromptPolicy#SINGLE_SPACE}，与决策人运行流**共用同一个唯一生产来源**；身份 / 简报 / schema / 命令白名单等全部在 user
+   * 消息里。裁决请求边界（ga 的 {@code LlmRequest}）已先拒绝任何非单空格，本处不再透传请求字段。
+   *
    * <p>★ **采样**：{@code temperature=0}（判决要可复现，需求 A2）+ {@code maxTokens=4096}（推理模型给足思维链空间）。
    */
   public io.mosire.simos.ga.adjudication.LlmClient llmClientFor(String providerId) {
@@ -187,7 +192,10 @@ public final class LlmProviderResolver {
         observing.text(
             new LlmRequest(
                     List.of(
-                        LlmMessage.system(request.systemPrompt()),
+                        // ★ 单空格 system 硬约束（用户 2026-10-17）：出站 system 只取唯一生产来源
+                        //   SystemPromptPolicy.SINGLE_SPACE，不再逐字透传 request.systemPrompt()；
+                        //   两条生产路径（决策人运行流 / 裁决器）共用这一个来源。
+                        LlmMessage.system(SystemPromptPolicy.SINGLE_SPACE),
                         LlmMessage.user(request.userPrompt())))
                 .withTemperature(0)
                 .withMaxTokens(MAX_OUTPUT_TOKENS));
