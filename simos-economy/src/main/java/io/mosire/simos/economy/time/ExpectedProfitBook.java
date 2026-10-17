@@ -9,11 +9,13 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MarketZoneId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.market.MarketRegion;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -24,6 +26,7 @@ import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.MarketTable;
+import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.MerchantTradeTemplate;
 import io.mosire.simos.economy.model.OwnershipStake;
@@ -31,19 +34,25 @@ import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.model.ProductionWageDefault;
+import io.mosire.simos.economy.model.ProductionWagePosting;
 import io.mosire.simos.economy.model.ProductionWageQuote;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
+import io.mosire.simos.economy.model.WagePostingKey;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.ExternalAttributeFacts;
 import io.mosire.simos.production.contract.HouseholdProductionConditions;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionEfficiencyState;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionModeDefinitionView;
 import io.mosire.simos.production.contract.ProductionProbeRequest;
 import io.mosire.simos.production.contract.ProductionProbeResult;
 import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.ProductionRuntime;
+import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.math.BigInteger;
@@ -146,6 +155,7 @@ public final class ExpectedProfitBook {
       long revenueMilli,
       long inputCostMilli,
       long laborCostMilli,
+      long expectedWageCostMilli,
       long rentMilli,
       long netMilli,
       long laborNeedMilli,
@@ -163,9 +173,14 @@ public final class ExpectedProfitBook {
       if (feasible && positionId == null) {
         throw new IllegalArgumentException("feasible Prospect 必须有 positionId");
       }
-      if (feasibleScale < 0L || laborNeedMilli < 0L) {
+      if (feasibleScale < 0L || laborNeedMilli < 0L || expectedWageCostMilli < 0L) {
         throw new IllegalArgumentException(
-            "Prospect.feasibleScale/laborNeedMilli 不得为负: " + feasibleScale + "/" + laborNeedMilli);
+            "Prospect.feasibleScale/laborNeedMilli/expectedWageCostMilli 不得为负: "
+                + feasibleScale
+                + "/"
+                + laborNeedMilli
+                + "/"
+                + expectedWageCostMilli);
       }
       plannedOutputMilli =
           Collections.unmodifiableMap(copyNonNegative(plannedOutputMilli, "plannedOutputMilli"));
@@ -285,6 +300,9 @@ public final class ExpectedProfitBook {
     Objects.requireNonNull(runtime, "runtime（§15.12 B：物理量必须取自 production 的试算）");
     // ★★ R2：一次评估只派生一份资产预算；现有 unit 的预计/工资雇主规模都读同一份分配结果。
     AssetBudgetBook.AssetBudget assetBudget = AssetBudgetBook.allocate(units, shares);
+    // ★★★ D-032 D3 §5.1（W1）：工资报价/目标只从 W2a 的当刻读口取一份快照；实例存在时读 posting，
+    //   实例存在前读候选 default。缺报价/缺目标一律具名，绝不按 0 静默。
+    WageTermsSource wageTermsSource = WageTermsSource.of(base);
     if (day < 0L) {
       throw new IllegalArgumentException("ExpectedProfitBook.prospect 的 day 不得为负: " + day);
     }
@@ -338,13 +356,15 @@ public final class ExpectedProfitBook {
           topology,
           day,
           accounts,
-          assetBudget);
+          assetBudget,
+          wageTermsSource);
     }
     if (industry == null) {
       return infeasible(household, modeId, position.id(), hex, null, "NO_INDUSTRY");
     }
     if (isWagePosition(position)) {
       return wageProspect(
+          base,
           household,
           householdEconomy,
           modeId,
@@ -354,9 +374,11 @@ public final class ExpectedProfitBook {
           marketOrNull,
           units,
           relations,
-          assetBudget);
+          assetBudget,
+          wageTermsSource);
     }
     return productionProspect(
+        base,
         household,
         householdEconomy,
         modeId,
@@ -371,7 +393,8 @@ public final class ExpectedProfitBook {
         units,
         relations,
         runtime,
-        assetBudget);
+        assetBudget,
+        wageTermsSource);
   }
 
   // ── 生产位置（OWNER / SURPLUS_RECEIVER / TENANCY）─────────────────────────────────────────
@@ -407,6 +430,7 @@ public final class ExpectedProfitBook {
    * SCALE_ZERO}）。
    */
   private static Prospect productionProspect(
+      EconomyDayView base,
       HouseholdId household,
       HouseholdEconomy householdEconomy,
       ProductionModeId modeId,
@@ -421,7 +445,8 @@ public final class ExpectedProfitBook {
       Map<ProductionUnitId, ProductionProcess> units,
       Map<ProductionUnitId, ProductionRules> relations,
       ProductionRuntime runtime,
-      AssetBudgetBook.AssetBudget assetBudget) {
+      AssetBudgetBook.AssetBudget assetBudget,
+      WageTermsSource wageTermsSource) {
     long horizonDays = industry.cycleDays();
     long laborPerUnit = industry.recipe().laborPerUnit();
     ActorRef operator = HouseholdActors.of(household);
@@ -459,6 +484,16 @@ public final class ExpectedProfitBook {
               candidateUsableAssets(industry, household, shares, claimedByEnterprises));
       carry = Optional.empty(); // 候选：没有实例 ⇒ 没有精度余数行
     }
+    // ★★★ D-032 D3 §5.1（W1）：全部 MONEY_WAGE 角色的预计应付工资进入成本；在算成本之前先做
+    //   payer 级地点预检（existing ∪ candidate）；>1 地点 ⇒ 候选不可行、零工资成本/净额。
+    WageEstimate wageEstimate =
+        estimateEmployerWageCost(
+            base, industry, existingUnit, hex, operator, units, horizonDays, wageTermsSource);
+    if (wageEstimate.rejection().isPresent()) {
+      return infeasible(
+          household, modeId, position.id(), hex, industry.id(), wageEstimate.rejection().get());
+    }
+
     // ★ 资产那道闸（与改前同一判据：min_k ⌊可用_k ÷ capacityPerUnit_k⌋ < 1 ⇒ NO_ASSET:<industry>）。
     long assetScale = assetScaleOf(industry, occupancy);
     if (assetScale < 1L) {
@@ -578,15 +613,21 @@ public final class ExpectedProfitBook {
             inputCost,
             laborNeed,
             false);
-    long laborCost = Math.addExact(subsistenceLaborCost, obligations.laborWageMilli());
+    // ★ D3 §5.4：laborCostMilli 只保留"生存/非工资劳动折算"；预计工资单独成项。
+    long laborCost = subsistenceLaborCost;
+    long expectedWageCost = wageEstimate.amountMilli();
     long rent = obligations.rentMilli();
     long net =
         Math.subtractExact(
-            Math.subtractExact(Math.subtractExact(revenue, inputCost), laborCost), rent);
+            Math.subtractExact(
+                Math.subtractExact(Math.subtractExact(revenue, inputCost), laborCost),
+                expectedWageCost),
+            rent);
     boolean demandCapped = demandCapped(remainingTotal, sellableTotal);
     String reason =
         joinReasons(
             obligations.notes(),
+            wageEstimate.notes(),
             priceMissing ? List.of("NO_PRICE") : List.of(),
             inputPriceMissing ? List.of("NO_INPUT_PRICE") : List.of(),
             grainPriceMissing ? List.of("NO_GRAIN_PRICE") : List.of(),
@@ -605,6 +646,7 @@ public final class ExpectedProfitBook {
         revenue,
         inputCost,
         laborCost,
+        expectedWageCost,
         rent,
         net,
         laborNeed,
@@ -617,6 +659,7 @@ public final class ExpectedProfitBook {
   // ── 工资位置（WAGE_EARNER / DIRECT_LABORER / PROVIDER）──────────────────────────────────────
 
   private static Prospect wageProspect(
+      EconomyDayView base,
       HouseholdId household,
       HouseholdEconomy householdEconomy,
       ProductionModeId modeId,
@@ -626,7 +669,8 @@ public final class ExpectedProfitBook {
       MarketTable market,
       Map<ProductionUnitId, ProductionProcess> units,
       Map<ProductionUnitId, ProductionRules> relations,
-      AssetBudgetBook.AssetBudget assetBudget) {
+      AssetBudgetBook.AssetBudget assetBudget,
+      WageTermsSource wageTermsSource) {
     long horizonDays = industry.cycleDays();
     long laborPerUnit = industry.recipe().laborPerUnit();
     Employer employer = employerOf(modeId, industry, hex, household, units, assetBudget);
@@ -655,49 +699,79 @@ public final class ExpectedProfitBook {
         laborPerUnit <= 0L
             ? 0L
             : Math.multiplyExact(Math.multiplyExact(laborPerUnit, scale), horizonDays);
-    ProductionRules relation =
-        relationFor(
-            relations, employer.unitId(), modeId, industry, householdEconomy, employer.operator());
+    ProductionProcess employerUnit = units.get(employer.unitId());
+    List<ProductionRoleDefinition> moneyRoles = moneyWageRoles(industry);
     long income = 0L;
     boolean priceMissing = false;
     List<String> notes = new ArrayList<>();
-    if (relation == null) {
-      notes.add("NO_RELATION");
-    } else {
-      for (CompensationRule rule : relation.rules()) {
-        if (!isWorkerPayee(rule.recipient(), household, householdEconomy, hex)) {
-          continue;
-        }
-        switch (rule.type()) {
-          case FIXED_MONEY_WAGE -> income = Math.addExact(income, rule.fixedAmount());
-          case FIXED_IN_KIND_PER_LABOR -> {
-            CommodityId commodity = rule.commodity().orElse(null);
-            long price = market == null || commodity == null ? 0L : market.bidPriceOf(commodity);
-            if (price <= 0L) {
-              priceMissing = true;
-              continue;
-            }
-            long due = SubsistenceObligation.perLaborDue(laborNeed, rule.fixedAmount());
-            income =
-                Math.addExact(
-                    income,
-                    Math.multiplyExact(due, price) / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
-          }
-          case OUTPUT_SHARE -> {
-            // ★ 这是具名近似：分账池要"本受方劳动 ÷ Σ劳动"，而本计算器拿不到该 unit 的全部劳动
-            //   ⇒ 按"这份产出全归本受方"的上界计入，并标 WAGE_SHARE_ESTIMATE（不静默）。
-            long employerOutputValue = grossOutputValue(industry, employer.scale(), market);
-            long share = Math.multiplyExact(employerOutputValue, rule.ratePerMille()) / 1000L;
-            income = Math.addExact(income, share);
-            notes.add("WAGE_SHARE_ESTIMATE");
-          }
-          default -> {
-            // 其余规则（租金/自留）不是劳动者的收入来源，跳过。
-          }
-        }
+    if (!moneyRoles.isEmpty()) {
+      // ★★★ D-032 D3 §5.2（W1）：MONEY_WAGE worker 的预计应收 = quote × 预计可工作劳动 × cycleDays / 1000。
+      //   先做 payer（雇主）级地点预检；>1 地点 ⇒ 候选 skip/具名拒绝，不进入收入计算。
+      WageEstimate wageEstimate =
+          estimateWorkerWageIncome(
+              base,
+              industry,
+              employer,
+              employerUnit,
+              hex,
+              householdEconomy,
+              laborPerUnit,
+              horizonDays,
+              moneyRoles,
+              units,
+              wageTermsSource);
+      if (wageEstimate.rejection().isPresent()) {
+        return infeasible(
+            household, modeId, position.id(), hex, industry.id(), wageEstimate.rejection().get());
       }
-      if (income == 0L) {
-        notes.add("NO_WAGE_RULE");
+      income = wageEstimate.amountMilli();
+      notes.addAll(wageEstimate.notes());
+    } else {
+      // ★ 旧非名册路径仍保留可计价非货币收入（in-kind/share）；但 FIXED_MONEY_WAGE 绝不回读（D3 §2.2.1）。
+      ProductionRules relation =
+          relationFor(
+              relations,
+              employer.unitId(),
+              modeId,
+              industry,
+              householdEconomy,
+              employer.operator());
+      notes.add("wage-quote-missing");
+      if (relation == null) {
+        notes.add("NO_RELATION");
+      } else {
+        for (CompensationRule rule : relation.rules()) {
+          if (!isWorkerPayee(rule.recipient(), household, householdEconomy, hex)) {
+            continue;
+          }
+          switch (rule.type()) {
+            case FIXED_MONEY_WAGE -> notes.add("LEGACY_MONEY_WAGE_IGNORED");
+            case FIXED_IN_KIND_PER_LABOR -> {
+              CommodityId commodity = rule.commodity().orElse(null);
+              long price = market == null || commodity == null ? 0L : market.bidPriceOf(commodity);
+              if (price <= 0L) {
+                priceMissing = true;
+                continue;
+              }
+              long due = SubsistenceObligation.perLaborDue(laborNeed, rule.fixedAmount());
+              income =
+                  Math.addExact(
+                      income,
+                      Math.multiplyExact(due, price) / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
+            }
+            case OUTPUT_SHARE -> {
+              // ★ 具名近似：分账池要"本受方劳动 ÷ Σ劳动"，而本计算器拿不到该 unit 的全部劳动
+              //   ⇒ 按"这份产出全归本受方"的上界计入，并标 WAGE_SHARE_ESTIMATE（不静默）。
+              long employerOutputValue = grossOutputValue(industry, employer.scale(), market);
+              long share = Math.multiplyExact(employerOutputValue, rule.ratePerMille()) / 1000L;
+              income = Math.addExact(income, share);
+              notes.add("WAGE_SHARE_ESTIMATE");
+            }
+            default -> {
+              // 其余规则（租金/自留）不是劳动者的收入来源，跳过。
+            }
+          }
+        }
       }
     }
     if (priceMissing) {
@@ -714,6 +788,7 @@ public final class ExpectedProfitBook {
         Map.of(),
         Map.of(),
         income,
+        0L,
         0L,
         0L,
         0L,
@@ -797,7 +872,8 @@ public final class ExpectedProfitBook {
       MarketTopology topology,
       long day,
       AccountSession accounts,
-      AssetBudgetBook.AssetBudget assetBudget) {
+      AssetBudgetBook.AssetBudget assetBudget,
+      WageTermsSource wageTermsSource) {
     IndustryDefinitionView trade =
         industryOrNull != null && isMerchantRegime(industryOrNull)
             ? industryOrNull
@@ -828,6 +904,7 @@ public final class ExpectedProfitBook {
     }
     if (isWagePosition(position)) {
       return wageProspect(
+          base,
           household,
           householdEconomy,
           modeId,
@@ -837,7 +914,8 @@ public final class ExpectedProfitBook {
           market,
           units,
           relations,
-          assetBudget);
+          assetBudget,
+          wageTermsSource);
     }
     ActorRef actor = HouseholdActors.of(household);
     // ★★★ W7 / 两把尺统一（用户派单 ④）：运力 = {@link MerchantCapacityPool#providerCapacityMilli} —— **决策层与
@@ -855,6 +933,22 @@ public final class ExpectedProfitBook {
         firmEnterprise != null && firmEnterprise.unitId().isPresent()
             ? firmEnterprise.unitId().get()
             : ProductionUnitId.idOf(trade.id(), actor);
+    // ★★★ D-032 D3 §5.1（W1）：跑商经营候选同样把全部 MONEY_WAGE 角色的预计应付工资计入成本，
+    //   并在算成本之前做 payer 级地点预检（existing ∪ candidate）。
+    WageEstimate wageEstimate =
+        estimateEmployerWageCost(
+            base,
+            trade,
+            units.get(unitId),
+            hex,
+            actor,
+            units,
+            Math.max(1L, trade.cycleDays()),
+            wageTermsSource);
+    if (wageEstimate.rejection().isPresent()) {
+      return infeasible(
+          household, modeId, position.id(), hex, trade.id(), wageEstimate.rejection().get());
+    }
     long assetUpkeep =
         shipCattleUpkeepOf(
             firmEnterprise == null ? List.of() : firmEnterprise.assetSources(), shares);
@@ -914,14 +1008,21 @@ public final class ExpectedProfitBook {
             assetUpkeep);
     long laborNeed =
         Math.multiplyExact(householdEconomy.participationAdjustedLaborMilli(), horizonDays);
+    long expectedWageCost = wageEstimate.amountMilli();
     long net =
         Math.subtractExact(
-            Math.subtractExact(Math.subtractExact(revenue, upkeep), obligations.laborWageMilli()),
+            Math.subtractExact(
+                Math.subtractExact(
+                    Math.subtractExact(revenue, upkeep), obligations.laborWageMilli()),
+                expectedWageCost),
             obligations.rentMilli());
     boolean demandCapped = requested > capacity;
     String reason =
         joinReasons(
-            notes, obligations.notes(), demandCapped ? List.of("DEMAND_CAPPED") : List.of());
+            notes,
+            obligations.notes(),
+            wageEstimate.notes(),
+            demandCapped ? List.of("DEMAND_CAPPED") : List.of());
     return new Prospect(
         household,
         modeId,
@@ -935,6 +1036,7 @@ public final class ExpectedProfitBook {
         revenue,
         0L,
         Math.addExact(upkeep, obligations.laborWageMilli()),
+        expectedWageCost,
         obligations.rentMilli(),
         net,
         laborNeed,
@@ -1138,9 +1240,9 @@ public final class ExpectedProfitBook {
           }
         }
         case FIXED_MONEY_WAGE -> {
-          if (includeWages) {
-            wages = Math.addExact(wages, rule.fixedAmount());
-          }
+          // ★★★ D-032 D3 §2.2.1/§5.1（W1）：运行时不得回读旧 FIXED_MONEY_WAGE.fixedAmount。
+          //   工资义务改由 MONEY_WAGE 角色的 default/posting 报价逐角色进入 expectedWageCostMilli。
+          notes.add("LEGACY_MONEY_WAGE_IGNORED");
         }
         case OUTPUT_SHARE -> {
           CommodityId commodity = rule.commodity().orElse(null);
@@ -1195,6 +1297,377 @@ public final class ExpectedProfitBook {
       Objects.requireNonNull(notes, "notes");
       notes = List.copyOf(notes);
     }
+  }
+
+  // ── D-032 D3 §5.1（W1）：工资前置估值 / payer 地点预检 ───────────────────────────────────────
+
+  /**
+   * ★★★ <b>一个 MONEY_WAGE 角色的报价与目标劳动</b>（D-032 D3 §2.1/§5.1）。
+   *
+   * <p>量纲：{@code wagePerLaborMilli} = 毫货币/小时；{@code targetLaborMilliPerDay} = 毫小时/日。 ★ 0 报价合法（U18），
+   * 缺报价/缺目标用 {@link WageTermsResult#rejection()} 具名，绝不用 0 冒充。
+   */
+  private record WageTerms(long wagePerLaborMilli, long targetLaborMilliPerDay) {
+    private WageTerms {
+      if (wagePerLaborMilli < 0L) {
+        throw new IllegalArgumentException(
+            "WageTerms.wagePerLaborMilli 不得为负（0 是合法报价）: " + wagePerLaborMilli);
+      }
+      if (targetLaborMilliPerDay < 0L) {
+        throw new IllegalArgumentException(
+            "WageTerms.targetLaborMilliPerDay 不得为负: " + targetLaborMilliPerDay);
+      }
+    }
+
+    private boolean zeroQuote() {
+      return wagePerLaborMilli == 0L;
+    }
+  }
+
+  /**
+   * 报价读取结论：成功给 {@link WageTerms}，失败给稳定拒绝词（{@code wage-quote-missing:*}/{@code
+   * wage-target-missing:*}）。
+   */
+  private record WageTermsResult(Optional<WageTerms> terms, Optional<String> rejection) {
+    private WageTermsResult {
+      Objects.requireNonNull(terms, "terms");
+      Objects.requireNonNull(rejection, "rejection");
+    }
+
+    private static WageTermsResult ok(WageTerms terms) {
+      return new WageTermsResult(Optional.of(terms), Optional.empty());
+    }
+
+    private static WageTermsResult rejected(String reason) {
+      return new WageTermsResult(Optional.empty(), Optional.of(reason));
+    }
+  }
+
+  /**
+   * ★★★ <b>W2a 工资读口的 W1 只读组合</b>（D-032 D3 §2.2.1/§2.3/§5.1）。
+   *
+   * <p>★ 两类来源严格分开：实例存在 ⇒ 只读 {@code productionWagePostings}（执行期唯一权威）；实例存在前 ⇒ 只读 {@code
+   * productionWageDefaults}（候选级默认）。**不互相回退**。
+   *
+   * <p>★ <b>为什么同时持有 posting 表</b>：W2a 的 {@link ProductionWageBook} 暴露了 quote 与 default，但 posting 的
+   * {@code targetLaborMilliPerDay} 尚无独立读口；W1 需要目标劳动才能算周期工资成本。这里只读同一份冻结视图里的 posting
+   * 目标，不建立第二份报价权威、不写状态。
+   */
+  private static final class WageTermsSource {
+
+    private final ProductionWageBook book;
+    private final Map<WagePostingKey, ProductionWagePosting> postings;
+
+    private WageTermsSource(
+        ProductionWageBook book, Map<WagePostingKey, ProductionWagePosting> postings) {
+      this.book = Objects.requireNonNull(book, "book");
+      this.postings = Objects.requireNonNull(postings, "postings");
+    }
+
+    private static WageTermsSource of(EconomyDayView view) {
+      Objects.requireNonNull(view, "view");
+      // ★ 与 ProductionWageBook 同一 tick 的冻结：报价与目标必须来自同一份只读快照。
+      Map<WagePostingKey, ProductionWagePosting> postings =
+          Collections.unmodifiableMap(new LinkedHashMap<>(view.productionWagePostings()));
+      return new WageTermsSource(new ProductionWageBook(view), postings);
+    }
+
+    private WageTermsResult lookup(
+        IndustryDefinitionView plan,
+        ProductionRoleId role,
+        ProductionProcess existingUnit,
+        MarketZoneId zone) {
+      if (existingUnit != null) {
+        Optional<ProductionWageQuote> quote = book.quoteFor(existingUnit.id(), role);
+        if (quote.isEmpty()) {
+          return WageTermsResult.rejected("wage-quote-missing:" + role.value());
+        }
+        ProductionWagePosting posting = postings.get(new WagePostingKey(existingUnit.id(), role));
+        if (posting == null) {
+          // 报价存在但目标读不到：具名缺目标，不把"缺"当 0。
+          return WageTermsResult.rejected("wage-target-missing:" + role.value());
+        }
+        return WageTermsResult.ok(
+            new WageTerms(quote.get().wagePerLaborMilli(), posting.targetLaborMilliPerDay()));
+      }
+      if (zone == null) {
+        return WageTermsResult.rejected("wage-quote-missing:" + role.value());
+      }
+      Optional<ProductionWageDefault> defaults = book.defaultFor(plan.id(), role, zone);
+      if (defaults.isEmpty()) {
+        return WageTermsResult.rejected("wage-quote-missing:" + role.value());
+      }
+      ProductionWageDefault value = defaults.get();
+      return WageTermsResult.ok(
+          new WageTerms(value.initialWagePerLaborMilli(), value.initialTargetLaborMilliPerDay()));
+    }
+  }
+
+  /** 工资估值结论：金额（毫货币/周期）+ 具名拒绝 + 读数标记（如 {@code WAGE_QUOTE_ZERO}）。 */
+  private record WageEstimate(long amountMilli, Optional<String> rejection, List<String> notes) {
+    private WageEstimate {
+      if (amountMilli < 0L) {
+        throw new IllegalArgumentException("WageEstimate.amountMilli 不得为负: " + amountMilli);
+      }
+      Objects.requireNonNull(rejection, "rejection");
+      Objects.requireNonNull(notes, "notes");
+      notes = List.copyOf(notes);
+    }
+
+    private static WageEstimate none() {
+      return new WageEstimate(0L, Optional.empty(), List.of());
+    }
+
+    private static WageEstimate rejected(String reason) {
+      return new WageEstimate(0L, Optional.of(reason), List.of());
+    }
+  }
+
+  /** 方案内的 MONEY_WAGE 角色，按稳定角色 id 升序（D3 E10；不靠定义表插入序）。 */
+  private static List<ProductionRoleDefinition> moneyWageRoles(IndustryDefinitionView plan) {
+    List<ProductionRoleDefinition> roles = new ArrayList<>();
+    for (ProductionRoleDefinition role : plan.roles()) {
+      if (role.payment() instanceof RolePayment.MoneyWage) {
+        roles.add(role);
+      }
+    }
+    roles.sort(Comparator.comparing(role -> role.id().value()));
+    return roles;
+  }
+
+  /** 候选格的显式地点（与 {@code ProductionProcess.location} 同形：{@code <q>_<r>}）。 */
+  private static ProductionLocation locationOfHex(HexCoord hex) {
+    return new ProductionLocation(IndustryHexKeys.hexKey(hex.q(), hex.r()));
+  }
+
+  /**
+   * ★ 把实例的显式地点读回 {@link HexCoord}（只服务"该实例所在市场区"的只读派生）。
+   *
+   * <p>★ fail-closed：不是规范 {@code <q>_<r>} 形状 ⇒ {@code null}（调用方按"缺市场区"具名，不猜一个格子）。
+   */
+  private static HexCoord hexOfLocation(ProductionLocation location) {
+    if (location == null || !location.isSpecified()) {
+      return null;
+    }
+    String value = location.value();
+    int separator = value.indexOf('_');
+    if (separator <= 0
+        || separator == value.length() - 1
+        || value.indexOf('_', separator + 1) >= 0) {
+      return null;
+    }
+    try {
+      return new HexCoord(
+          Integer.parseInt(value.substring(0, separator)),
+          Integer.parseInt(value.substring(separator + 1)));
+    } catch (NumberFormatException invalid) {
+      return null;
+    }
+  }
+
+  /**
+   * ★★★ <b>当前 revision 中该 payer 的全部已有 settlement location</b>（D-032 D3 §6.9.1/F-01）。
+   *
+   * <p>汇总口径（只读、<b>不扫账户</b>）：
+   *
+   * <ol>
+   *   <li>{@code operator == payer} 的全部 unit 的 {@link ProductionProcess#location()}；
+   *   <li>{@code productionRosters} 的 organizer == payer 的 unit 地点（unit 不在工作副本时退回方案地点）；
+   *   <li>{@code productionWagePostings} 指向的、由该 payer 经营的 unit 地点。
+   * </ol>
+   *
+   * <p>★ 本方法只返回"已有"；候选地点由调用方另加，再交 {@link WagePayerLocationPrecheck#standard()}。禁止调用方只传候选单点。
+   */
+  private static Set<ProductionLocation> existingSettlementLocations(
+      EconomyDayView base, Map<ProductionUnitId, ProductionProcess> units, ActorRef payer) {
+    Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(units, "units");
+    Objects.requireNonNull(payer, "payer");
+    LinkedHashSet<ProductionLocation> locations = new LinkedHashSet<>();
+    List<ProductionUnitId> unitIds = new ArrayList<>(units.keySet());
+    unitIds.sort(Comparator.comparing(ProductionUnitId::value));
+    for (ProductionUnitId unitId : unitIds) {
+      ProductionProcess unit = units.get(unitId);
+      if (unit != null && unit.operator().equals(payer)) {
+        locations.add(unit.location());
+      }
+    }
+    List<ProductionUnitId> rosterIds = new ArrayList<>(base.productionRosters().keySet());
+    rosterIds.sort(Comparator.comparing(ProductionUnitId::value));
+    for (ProductionUnitId unitId : rosterIds) {
+      ProductionRoster roster = base.productionRosters().get(unitId);
+      if (roster == null || !HouseholdActors.of(roster.organizerHousehold()).equals(payer)) {
+        continue;
+      }
+      ProductionProcess unit = units.get(unitId);
+      if (unit != null) {
+        locations.add(unit.location());
+      } else {
+        ProductionLocation.ofPlan(roster.plan()).ifPresent(locations::add);
+      }
+    }
+    List<WagePostingKey> postingKeys = new ArrayList<>(base.productionWagePostings().keySet());
+    postingKeys.sort(Comparator.comparing(WagePostingKey::toString));
+    for (WagePostingKey key : postingKeys) {
+      ProductionProcess unit = units.get(key.unit());
+      if (unit != null && unit.operator().equals(payer)) {
+        locations.add(unit.location());
+      }
+    }
+    return Collections.unmodifiableSet(locations);
+  }
+
+  /**
+   * ★★ <b>W1/W2b/W3 共享的"已有 settlement location"只读构造入口</b>（D-032 D3 §6.9.1/F-01）。
+   *
+   * <p>{@code rosterIncomes} 的完整重载与后续 W2b/W3 装配点都应经本方法构造 {@code existingSettlementLocations}，
+   * 而不是自己只传候选 unit 的地点。口径见 {@link #existingSettlementLocations(EconomyDayView, Map, ActorRef)}。
+   */
+  public static Set<ProductionLocation> existingSettlementLocationsOf(
+      EconomyDayView base, Map<ProductionUnitId, ProductionProcess> units, ActorRef payer) {
+    return existingSettlementLocations(base, units, payer);
+  }
+
+  /**
+   * ★★★ <b>W1 雇主候选：全部 MONEY_WAGE 角色的周期预计工资成本</b>（D-032 D3 §5.1/A1）。
+   *
+   * <pre>
+   * expectedWageCostMilli = Σ_role floor(quote.wagePerLaborMilli × targetLaborMilliPerDay × cycleDays / 1000)
+   * </pre>
+   *
+   * <p>★ 先做 payer 级地点预检（existing ∪ candidate）；&gt;1 settlement location ⇒ {@code
+   * wage-payer-location-unsupported}，零成本/零净额、不调用任何库存 lookup。★ 缺 quote/target ⇒ 具名拒绝；显式 0 则成本 0 但保留
+   * {@code WAGE_QUOTE_ZERO} 读数。★ 整数精确、向下取整；溢出 ⇒ {@code wage-quote-overflow} fail-closed。
+   */
+  private static WageEstimate estimateEmployerWageCost(
+      EconomyDayView base,
+      IndustryDefinitionView plan,
+      ProductionProcess existingUnit,
+      HexCoord candidateHex,
+      ActorRef payer,
+      Map<ProductionUnitId, ProductionProcess> units,
+      long cycleDays,
+      WageTermsSource source) {
+    List<ProductionRoleDefinition> moneyRoles = moneyWageRoles(plan);
+    if (moneyRoles.isEmpty()) {
+      return WageEstimate.none();
+    }
+    ProductionLocation candidateLocation =
+        existingUnit == null ? locationOfHex(candidateHex) : existingUnit.location();
+    WagePayerLocationSnapshot snapshot =
+        new WagePayerLocationSnapshot(
+            payer, existingSettlementLocations(base, units, payer), Set.of(candidateLocation));
+    if (WagePayerLocationPrecheck.standard().evaluate(snapshot)
+        == WagePayerLocationDecision.MULTIPLE_LOCATIONS) {
+      return WageEstimate.rejected("wage-payer-location-unsupported");
+    }
+    HexCoord zoneHex = existingUnit == null ? candidateHex : hexOfLocation(existingUnit.location());
+    MarketZoneId zone =
+        zoneHex == null ? null : MarketTables.marketIdAt(base, zoneHex).orElse(null);
+    long total = 0L;
+    List<String> notes = new ArrayList<>();
+    for (ProductionRoleDefinition role : moneyRoles) {
+      WageTermsResult terms = source.lookup(plan, role.id(), existingUnit, zone);
+      if (terms.rejection().isPresent()) {
+        return WageEstimate.rejected(terms.rejection().get());
+      }
+      WageTerms value = terms.terms().orElseThrow();
+      long amount;
+      try {
+        amount =
+            wageAmountMilli(value.wagePerLaborMilli(), value.targetLaborMilliPerDay(), cycleDays);
+        total = Math.addExact(total, amount);
+      } catch (ArithmeticException overflow) {
+        return WageEstimate.rejected("wage-quote-overflow");
+      }
+      if (value.zeroQuote()) {
+        notes.add("WAGE_QUOTE_ZERO");
+      }
+    }
+    notes.add("WAGE_COST_INCLUDED");
+    return new WageEstimate(total, Optional.empty(), notes);
+  }
+
+  /**
+   * ★★★ <b>W1 雇工候选：MONEY_WAGE worker 的周期预计应收</b>（D-032 D3 §5.2/A1）。
+   *
+   * <pre>
+   * expectedWorkableLaborMilliPerCycle
+   *   = min(本户每日可分配劳动, targetLaborMilliPerDay, 该角色在共享 unit cap 下的日容量) × cycleDays
+   * wageIncomeMilli = floor(quote.wagePerLaborMilli × expectedWorkableLaborMilliPerCycle / 1000)
+   * </pre>
+   *
+   * <p>★ 先做 payer（雇主）级地点预检；&gt;1 地点 ⇒ 候选 skip/具名拒绝。★ 本批不做匹配算法：多 MONEY_WAGE 角色时取稳定 id 升序第一个并具名
+   * {@code WAGE_ROLE_FIRST_ONLY}，不虚构多角色同时受雇。
+   */
+  private static WageEstimate estimateWorkerWageIncome(
+      EconomyDayView base,
+      IndustryDefinitionView plan,
+      Employer employer,
+      ProductionProcess employerUnit,
+      HexCoord candidateHex,
+      HouseholdEconomy householdEconomy,
+      long laborPerUnit,
+      long cycleDays,
+      List<ProductionRoleDefinition> moneyRoles,
+      Map<ProductionUnitId, ProductionProcess> units,
+      WageTermsSource source) {
+    ProductionLocation candidateLocation =
+        employerUnit == null ? locationOfHex(candidateHex) : employerUnit.location();
+    WagePayerLocationSnapshot snapshot =
+        new WagePayerLocationSnapshot(
+            employer.operator(),
+            existingSettlementLocations(base, units, employer.operator()),
+            Set.of(candidateLocation));
+    if (WagePayerLocationPrecheck.standard().evaluate(snapshot)
+        == WagePayerLocationDecision.MULTIPLE_LOCATIONS) {
+      return WageEstimate.rejected("wage-payer-location-unsupported");
+    }
+    HexCoord zoneHex = employerUnit == null ? candidateHex : hexOfLocation(employerUnit.location());
+    MarketZoneId zone =
+        zoneHex == null ? null : MarketTables.marketIdAt(base, zoneHex).orElse(null);
+    ProductionRoleDefinition role = moneyRoles.get(0);
+    WageTermsResult terms = source.lookup(plan, role.id(), employerUnit, zone);
+    if (terms.rejection().isPresent()) {
+      return WageEstimate.rejected(terms.rejection().get());
+    }
+    WageTerms value = terms.terms().orElseThrow();
+    long employerCapacityPerDay =
+        laborPerUnit <= 0L ? Long.MAX_VALUE : Math.multiplyExact(employer.scale(), laborPerUnit);
+    long workablePerDay =
+        Math.min(
+            householdEconomy.participationAdjustedLaborMilli(),
+            Math.min(value.targetLaborMilliPerDay(), employerCapacityPerDay));
+    long amount;
+    try {
+      amount = wageAmountMilli(value.wagePerLaborMilli(), workablePerDay, cycleDays);
+    } catch (ArithmeticException overflow) {
+      return WageEstimate.rejected("wage-quote-overflow");
+    }
+    List<String> notes = new ArrayList<>();
+    if (value.zeroQuote()) {
+      notes.add("WAGE_QUOTE_ZERO");
+    }
+    notes.add("WAGE_INCOME_ESTIMATE");
+    if (moneyRoles.size() > 1) {
+      notes.add("WAGE_ROLE_FIRST_ONLY");
+    }
+    return new WageEstimate(amount, Optional.empty(), notes);
+  }
+
+  /**
+   * ★ 精确周期工资：{@code floor(quote × targetLaborMilliPerDay × cycleDays / 1000)}。
+   *
+   * <p>★ 用 {@link BigInteger} 做乘加（D3 §2.4 的精确乘加口径），避免中间溢出；结果超出 {@code long} 抛 {@link
+   * ArithmeticException}（调用方折 {@code wage-quote-overflow}）。
+   */
+  private static long wageAmountMilli(
+      long wagePerLaborMilli, long laborMilliPerDay, long cycleDays) {
+    BigInteger numerator =
+        BigInteger.valueOf(wagePerLaborMilli)
+            .multiply(BigInteger.valueOf(laborMilliPerDay))
+            .multiply(BigInteger.valueOf(cycleDays));
+    return numerator.divide(BigInteger.valueOf(1000L)).longValueExact();
   }
 
   // ── 位置 / 产业 / 雇主 ────────────────────────────────────────────────────────────────────
@@ -1607,6 +2080,7 @@ public final class ExpectedProfitBook {
         0L,
         0L,
         0L,
+        0L,
         false,
         false,
         reason);
@@ -1702,10 +2176,12 @@ public final class ExpectedProfitBook {
       long productShareValueMilli,
       long wageReceivableMilli,
       long wagePayableMilli,
+      long expectedWageCostMilli,
       long inputBurdenMilli,
       long expectedNetMilli,
       boolean negative,
       Set<CommodityId> unpricedCommodities,
+      Set<String> wageReasons,
       Optional<String> rejection) {
 
     public RosterHouseholdIncome {
@@ -1715,7 +2191,20 @@ public final class ExpectedProfitBook {
       Objects.requireNonNull(role, "role");
       productShareMilli = Collections.unmodifiableMap(new LinkedHashMap<>(productShareMilli));
       unpricedCommodities = Collections.unmodifiableSet(new LinkedHashSet<>(unpricedCommodities));
+      Objects.requireNonNull(wageReasons, "wageReasons");
+      List<String> orderedReasons = new ArrayList<>(new LinkedHashSet<>(wageReasons));
+      orderedReasons.sort(Comparator.naturalOrder());
+      wageReasons = Collections.unmodifiableSet(new LinkedHashSet<>(orderedReasons));
       rejection = Objects.requireNonNull(rejection, "rejection");
+      if (wageReceivableMilli < 0L || wagePayableMilli < 0L || expectedWageCostMilli < 0L) {
+        throw new IllegalArgumentException(
+            "RosterHouseholdIncome 的工资读数不得为负: receivable="
+                + wageReceivableMilli
+                + " payable="
+                + wagePayableMilli
+                + " expectedWageCost="
+                + expectedWageCostMilli);
+      }
       if (negative != (expectedNetMilli < 0L)) {
         throw new IllegalArgumentException(
             "RosterHouseholdIncome.negative 必须与 expectedNetMilli 同号");
@@ -1758,10 +2247,58 @@ public final class ExpectedProfitBook {
       io.mosire.simos.util.state.RevisionId expectedRevision,
       long day,
       ProductionRuntime runtime) {
+    return rosterIncomes(
+        plan,
+        unit,
+        roster,
+        assetShares,
+        accounts,
+        relations,
+        market,
+        wageQuoteLookup,
+        participantAttributes,
+        assetOccupancyLookup,
+        expectedRevision,
+        Map.of(),
+        Set.of(),
+        day,
+        runtime);
+  }
+
+  /**
+   * ★★★ <b>W1 名册工资估值的完整重载</b>：多带 {@code posting 目标表}与 {@code 已有 settlement location}。
+   *
+   * <p>★ <b>为什么 posting 目标表是独立入参</b>：W2a 的 {@link ProductionWageQuoteLookup} 只暴露 quote；D3 §8.2 的
+   * 组织者应付还需要 posting 的 {@code targetLaborMilliPerDay}。本重载由调用方（W4/C3 装配点）传 {@code
+   * base.productionWagePostings()} 与 {@code
+   * existingSettlementLocationsOf(...)}；旧签名以空表委托（fail-closed： 报价缺失时具名 {@code
+   * wage-quote-missing:<role>}，不会静默按 0）。
+   *
+   * <p>★ <b>已有地点必须完整</b>：{@code existingSettlementLocations} 必须来自当前 revision 该 payer 的全部已有
+   * unit/roster/posting 地点；不得只传候选。集合空 = 不知道已有地点（fail-open 仅限"没有工资角色"的旧调用方）。
+   */
+  public static List<RosterHouseholdIncome> rosterIncomes(
+      IndustryDefinitionView plan,
+      ProductionProcess unit,
+      ProductionRoster roster,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      AccountSession accounts,
+      Map<ProductionUnitId, ProductionRules> relations,
+      MarketTable market,
+      ProductionWageQuoteLookup wageQuoteLookup,
+      Map<HouseholdId, ExternalAttributeFacts> participantAttributes,
+      AssetOccupancyLookup assetOccupancyLookup,
+      io.mosire.simos.util.state.RevisionId expectedRevision,
+      Map<WagePostingKey, ProductionWagePosting> wagePostings,
+      Set<ProductionLocation> existingSettlementLocations,
+      long day,
+      ProductionRuntime runtime) {
     Objects.requireNonNull(plan, "plan");
     Objects.requireNonNull(unit, "unit");
     Objects.requireNonNull(roster, "roster");
     Objects.requireNonNull(runtime, "runtime");
+    Objects.requireNonNull(wagePostings, "wagePostings");
+    Objects.requireNonNull(existingSettlementLocations, "existingSettlementLocations");
     long cycleDays = Math.max(1L, plan.cycleDays());
     Map<HouseholdId, ExternalAttributeFacts> facts =
         participantAttributes == null ? Map.of() : participantAttributes;
@@ -1876,24 +2413,74 @@ public final class ExpectedProfitBook {
       sharesByParticipant.putAll(distribution.shares());
       unallocated.putAll(distribution.unallocated());
     }
-    // 5) 工资报价（C2：默认 lookup 永远 empty ⇒ wage-quote-missing，不按 0）。
+    // 5) ★ W1：payer 级地点预检先于工资读口/估值（D3 §5.1/§6.9.1）；>1 地点 ⇒ 具名拒绝，零 lookup/零工资读数。
+    List<ProductionRoleDefinition> moneyRoles = moneyWageRoles(plan);
+    String wageRejection = null;
+    Set<String> wageReasons = new LinkedHashSet<>();
+    if (!moneyRoles.isEmpty()) {
+      ActorRef payer = HouseholdActors.of(roster.organizerHousehold());
+      WagePayerLocationSnapshot snapshot =
+          new WagePayerLocationSnapshot(
+              payer, existingSettlementLocations, Set.of(unit.location()));
+      if (WagePayerLocationPrecheck.standard().evaluate(snapshot)
+          == WagePayerLocationDecision.MULTIPLE_LOCATIONS) {
+        wageRejection = "wage-payer-location-unsupported";
+      }
+    }
+    // 5b) 工资报价/目标：实例已存在 ⇒ posting 是执行期唯一权威；缺 quote/缺目标具名，不按 0 静默。
     Map<io.mosire.simos.economy.api.production.ProductionRoleId, ProductionWageQuote> wageQuotes =
         new LinkedHashMap<>();
-    String wageRejection = null;
-    for (io.mosire.simos.production.contract.ProductionRoleDefinition role : plan.roles()) {
-      if (!(role.payment() instanceof io.mosire.simos.production.contract.RolePayment.MoneyWage)) {
-        continue;
-      }
-      Optional<ProductionWageQuote> quote =
-          wageQuoteLookup == null
-              ? Optional.empty()
-              : wageQuoteLookup.quoteFor(unit.id(), role.id());
-      if (quote.isEmpty()) {
-        if (wageRejection == null) {
-          wageRejection = "wage-quote-missing:" + role.id().value();
+    Map<io.mosire.simos.economy.api.production.ProductionRoleId, Long> wageTargets =
+        new LinkedHashMap<>();
+    if (wageRejection == null) {
+      for (ProductionRoleDefinition role : moneyRoles) {
+        Optional<ProductionWageQuote> quote =
+            wageQuoteLookup == null
+                ? Optional.empty()
+                : wageQuoteLookup.quoteFor(unit.id(), role.id());
+        if (quote.isEmpty()) {
+          if (wageRejection == null) {
+            wageRejection = "wage-quote-missing:" + role.id().value();
+          }
+          continue;
         }
-      } else {
+        ProductionWagePosting posting = wagePostings.get(new WagePostingKey(unit.id(), role.id()));
+        if (posting == null) {
+          if (wageRejection == null) {
+            wageRejection = "wage-target-missing:" + role.id().value();
+          }
+          continue;
+        }
         wageQuotes.put(role.id(), quote.get());
+        wageTargets.put(role.id(), posting.targetLaborMilliPerDay());
+        if (quote.get().wagePerLaborMilli() == 0L) {
+          wageReasons.add("WAGE_QUOTE_ZERO");
+        }
+      }
+    }
+    if (wageRejection != null) {
+      wageReasons.add(wageRejection);
+    }
+    // 5c) 组织者周期预计应付：Σ quote × posting.targetLaborMilliPerDay × cycleDays / 1000（D3 §5.1/A1）。
+    long organizerWageCost = 0L;
+    if (wageRejection == null) {
+      for (Map.Entry<io.mosire.simos.economy.api.production.ProductionRoleId, ProductionWageQuote>
+          wage : wageQuotes.entrySet()) {
+        Long target = wageTargets.get(wage.getKey());
+        if (target == null) {
+          continue;
+        }
+        try {
+          organizerWageCost =
+              Math.addExact(
+                  organizerWageCost,
+                  wageAmountMilli(wage.getValue().wagePerLaborMilli(), target, cycleDays));
+        } catch (ArithmeticException overflow) {
+          organizerWageCost = 0L;
+          wageRejection = "wage-quote-overflow";
+          wageReasons.add(wageRejection);
+          break;
+        }
       }
     }
     // 6) 逐户预计所得（负净额保留）。
@@ -1946,16 +2533,7 @@ public final class ExpectedProfitBook {
         receivable = Math.multiplyExact(quote.wagePerLaborMilli(), labor) / 1000L;
       }
       if (participant.organizer()) {
-        for (Map.Entry<io.mosire.simos.economy.api.production.ProductionRoleId, ProductionWageQuote>
-            wage : wageQuotes.entrySet()) {
-          payable =
-              Math.addExact(
-                  payable,
-                  Math.multiplyExact(
-                          wage.getValue().wagePerLaborMilli(),
-                          wageLaborByRole.getOrDefault(wage.getKey(), 0L))
-                      / 1000L);
-        }
+        payable = organizerWageCost;
       }
       long participantInputBurden =
           inputSupplierHousehold.orElse(organizer).equals(participant.household())
@@ -1966,6 +2544,7 @@ public final class ExpectedProfitBook {
               Math.addExact(productValue, receivable),
               Math.addExact(payable, participantInputBurden));
       String rowRejection = rejection != null ? rejection : wageRejection;
+      Set<String> rowWageReasons = new LinkedHashSet<>(wageReasons);
       incomes.add(
           new RosterHouseholdIncome(
               unit.id(),
@@ -1977,10 +2556,12 @@ public final class ExpectedProfitBook {
               productValue,
               receivable,
               payable,
+              payable,
               participantInputBurden,
               net,
               net < 0L,
               unpriced,
+              rowWageReasons,
               Optional.ofNullable(rowRejection)));
     }
     return Collections.unmodifiableList(incomes);
