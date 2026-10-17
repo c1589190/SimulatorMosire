@@ -476,3 +476,19 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **编译/格式**：economy/app `-DskipTests compile` rc=0；spotless `-pl simos-economy,simos-app -am` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
 - **已知阻塞**：app `EconomySeeder.debtContractNode` 仍未写 `source`，非空债务 seed 会被 `debt-source-missing` 拒；测试因 `DebtContract.source`/`DebtContractBook.upsert` 新签名需 W5 迁移；旧 B2 断言需复核。
 - **下一步**：W4（tick/Social：`PopulationEconomyTimeParticipant`/`EconomyDayStepper`/`EconomySettlement.step` 调用顺序、Social 下一 tick 投影/失败语义、`WageSettlementReadout` app 只读、app debt seed source=ORDINARY_LOAN）；只编译 app，不写/不跑测试、不提交。随后 W5 全量测试/门禁。
+
+## 三十三、2026-10-17 23:xx W4 tick/Social 接线检查点
+
+> **性质**：W4 app/economy 调用面已接合并编译；未跑测试，仍有局部投影契约/属性源/时序偏差。
+
+- **提交**：`081676b5 feat(app,economy)!: W4 tick/Social接线、debt seed source与工资readout`（已推送）。
+- **tick**：Social composition/labor/naturalNeeds → `updateSurvivalSocialFacts` → `productionRuntime.beginTick` → `stepper.step`；W3 WageSettlement 仍在 driveProductionDay 后、市场/还债前，同日工资债排除保留。
+- **debt seed**：`EconomySeeder.debtContractNode` 显式 `source: ORDINARY_LOAN`；`TestConditions.InitialDebt` 无来源字段按普通贷款。
+- **Social**：app 生成下一 tick `NextTickSubsistenceNeed`/劳动预算；`LaborQueueSettlement` 用真实资源/可达价/既有债事实调用 W2b evaluator；evaluator 只填 `idleEligible`，`idleChosen` 仍由 `SURVIVAL_IDLE_POLICY` 写；缺输入具名 fail-closed。
+- **readout**：`WageSettlementReadoutFeed` + `EconomyDayStepper.lastWageSettlementReadouts()` + app 只读 `wageSettlementReadouts`/status/reason，不重算。
+- **编译/格式**：app `-DskipTests compile -am` rc=0；spotless app rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **局部 BLOCKED/偏差**：
+  1. `NextTickIncomeProjection` 仍无条件要求 quote/target，不能只承载 product-share；W4 的 product-share 走 W1 prospect adapter，违反“唯一转换器”严格口径，需 W2b owner 修投影契约。
+  2. `ParticipantAttributeLookup` 仍 Unavailable（真实 Social 属性源不存在）；生产条件 fail-closed。
+  3. `PLANTING_DRAWS_BEFORE_CONSUMPTION=true` 使抽料仍在劳动匹配前，与 D3 §7.1“匹配→抽料”表冲突；D2 v2 冻结未改，需用户/设计裁定。
+- **下一步**：W5 独立测试 owner：全量 test-compile 迁移 + `simos-app -am clean verify`/前端门禁；只改测试，生产 bug/BLOCKED 如实报告；通过后才可写全项目验收。
