@@ -10,6 +10,7 @@ import io.mosire.simos.economy.EconomyBoundaryView;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -34,11 +35,13 @@ import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionConsumerPort;
 import io.mosire.simos.production.contract.ProductionDefinitionLookup;
+import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.production.contract.ProductionStateLookup;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
+import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.ArrayList;
@@ -257,10 +260,9 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
    * <p>★★ <b>不复制任何公式</b>：角色份额 / 两层分配 / 产品估值 / 工资应收应付 / 投入负担全部由 economy 的 {@code rosterIncomes}
    * 一处算出；本类只负责**装配输入**（state → 定义/实例/名册/账户会话/市场表/只读 lookup） 与**形状化输出**。不写任何状态、不产生变更集。
    *
-   * <p>★★ <b>D4-C / W2a 未接时的诚实读数</b>：{@link AppProductionLookups#ASSET_OCCUPANCY} / {@link
-   * AppProductionLookups#WAGE_QUOTES} 当前都是 Unavailable 适配器 ⇒ 逐户行会带具名 {@code
-   * asset-occupancy-unavailable} / {@code wage-quote-missing:<role>}，<b>不按 0 冒充</b>。这正是 D2 §10.2
-   * 的失败语义；D4-I/W2a 落真实实现后本方法自动给出真实预计值。
+   * <p>★★ <b>D4-Ib2b 起</b>：资产占用与工资报价都经 {@link AppProductionLookups} 注入同一 revision 的真实只读实现；
+   * 读口只装配输入，不复写工资/分配/估值公式。账户/占用不可用时仍由 economy 具名拒绝（{@code asset-occupancy-unavailable} / {@code
+   * wage-quote-missing:<role>}），<b>不按 0 冒充</b>。
    *
    * @param state 当刻状态（只读）
    * @param units 要读的名册 unit（无名册的 unit 自动跳过；顺序按 unit id 稳定排序）
@@ -286,6 +288,7 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
     ActorData actors = actorOf(state);
     ProductionRuntimeEngine runtime = new ProductionRuntimeEngine(productionDataOf(state));
     long day = state.meta().timestamp().tick();
+    RevisionId revision = AppProductionLookups.expectedRevision(state);
     List<ProductionUnitId> ordered = new ArrayList<>(units);
     ordered.sort((left, right) -> left.value().compareTo(right.value()));
     List<Map<String, Object>> readouts = new ArrayList<>();
@@ -310,6 +313,12 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
                               + instance.plan().value()));
       AccountSession accounts = readOnlyAccounts(economy, actors, roster);
       MarketTable market = marketTableOf(economy, instance);
+      // ★★★ D4-Ib2b：真实资产占用 + W2a posting 报价；同一份 accounts 也是工资可支付库存读口的账户来源。
+      AppProductionLookups.Lookups lookups =
+          AppProductionLookups.forEconomy(economy, definitions, runtime, accounts, revision, day);
+      Set<ProductionLocation> existingSettlementLocations =
+          ExpectedProfitBook.existingSettlementLocationsOf(
+              boundary, instances, HouseholdActors.of(roster.organizerHousehold()));
       List<RosterHouseholdIncome> incomes =
           ExpectedProfitBook.rosterIncomes(
               plan,
@@ -319,10 +328,12 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
               accounts,
               economy.relations(),
               market,
-              AppProductionLookups.WAGE_QUOTES,
+              lookups.wageQuotes(),
               Map.of(),
-              AppProductionLookups.ASSET_OCCUPANCY,
-              AppProductionLookups.expectedRevision(state),
+              lookups.assetOccupancy(),
+              revision,
+              economy.productionWagePostings(),
+              existingSettlementLocations,
               day,
               runtime);
       readouts.add(rosterReadoutView(roster, incomes));

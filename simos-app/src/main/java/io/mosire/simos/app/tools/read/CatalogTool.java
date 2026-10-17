@@ -518,6 +518,20 @@ public final class CatalogTool implements SimosTool {
                   + " configured-weight-invalid / wage-target-missing / household-labor-overcommitted 等；"
                   + "★ GM-only（不进令/RegisterEffect/决策人目录）—— 名册是'谁参与生产'的结构事实，不得由决策人自行改写）"),
           Map.entry(
+              "economy.SetProductionWageDefault",
+              "plan(方案稳定 id), marketZone(市场区 id), roles[{role, initialWagePerLaborMilli(毫货币/小时，≥0),"
+                  + " initialTargetLaborMilliPerDay(毫小时/日，>0)}]（★ D-032 D3 §2.2.1/§2.10：整表替换该"
+                  + " (plan, marketZone) 的候选级工资默认；roles: [] = 清空。只写 economy.productionWageDefaults，"
+                  + " 不隐式创建实例、不写执行期 posting；★ GM-only（不进令/RegisterEffect/决策人目录））"),
+          Map.entry(
+              "economy.SetProductionWagePosting",
+              "unit(生产实例稳定 id), postings[{role, targetLaborMilliPerDay(毫小时/日，≥0),"
+                  + " currency(可省略；给出须等于 unit 市场区法定币), wagePerLaborMilli(毫货币/小时，≥0),"
+                  + " quoteSource?(SEED|EXPLICIT|GENERATED|DEFAULT_MATERIALIZED)}]（★ D-032 D3 §2.7：整表替换该"
+                  + " unit 的 execution posting；postings: [] = 清空；unit 必须已存在，不隐式创建实例；不得写"
+                  + " shortageStreak/satisfiedStreak/lastAdjustedTick/lastObserved* 等锁定字段；★ GM-only"
+                  + "（不进令/RegisterEffect/决策人目录））"),
+          Map.entry(
               "economy.SetMarketNumeraire",
               "marketId, numeraire(币种 id，须在世界词表里)（★ W1：逐区；GM-only —— 把**某个市场**的计价币改成另一种币；"
                   + "市场必须已存在，否则拒 market-missing；币种不在词表 ⇒ 拒 unknown-currency；"

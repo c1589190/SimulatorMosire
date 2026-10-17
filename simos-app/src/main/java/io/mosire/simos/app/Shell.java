@@ -111,6 +111,8 @@ import io.mosire.simos.economy.spi.EconomySetMarketZonePriceAlphaHandler;
 import io.mosire.simos.economy.spi.EconomySetOfficialRateHandler;
 import io.mosire.simos.economy.spi.EconomySetPlanSourcesHandler;
 import io.mosire.simos.economy.spi.EconomySetProductionRosterHandler;
+import io.mosire.simos.economy.spi.EconomySetProductionWageDefaultHandler;
+import io.mosire.simos.economy.spi.EconomySetProductionWagePostingHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
 import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
@@ -896,6 +898,12 @@ public final class Shell implements AutoCloseable {
                 //   ★ schema / 具名拒 / 跨切片校验的唯一权威 = {@link EconomySetProductionRosterHandler} 与
                 //     {@code EconomyReferenceValidation#validateProductionRosters}，本组合根只注册、不复制校验。
                 new EconomySetProductionRosterHandler(),
+                // ★★★ D-032 W2a：工资默认（第 33 组件）与执行期 posting（第 34 组件）的两条 GM 写口。
+                //   ★ 两条 handler 都不实现 {@code DmUsableCommand} ⇒ 仅 GM（不进令白名单 / RegisterEffect /
+                //   决策人目录）；schema/具名拒/跨切片校验的唯一权威在 handler 与 EconomyReferenceValidation，
+                //   组合根只注册，不复制公式。
+                new EconomySetProductionWageDefaultHandler(),
+                new EconomySetProductionWagePostingHandler(),
                 // ★★ 2026-10-13 批次 4（② 凭空注入/改写经济对象）：需求账本两条**摘掉**
                 //   {@code DmUsableCommand} ⇒ 仅 GM（两条的 handler 类注本就写明 GM 路径）。
                 //   ★★★ B2c（D-032 §13.12.2 裁定八）：候选面**整体退役** —— `ProductionCandidate` 类型、

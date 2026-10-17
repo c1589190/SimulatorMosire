@@ -199,6 +199,10 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
             //   ★ 实例/经验/解锁/效率/覆盖的读与写此后一律走 `ProductionRuntime` 自己的口；
             //     本域变更集由 `ProductionChangeSet.between(段首基态, 当刻候选态)` 派生（铁律 5）。
             productionDataOf(state));
+    // ★★★ D-032 D4-Ib2b：同一 revision 的真实只读依赖一次装好（资产占用/工资报价/可支付库存）。
+    //   备用推进路径与主路径共用同一装配点，不出现"一条真、一条空"的分叉。
+    AppProductionLookups.Lookups productionLookups =
+        AppProductionLookups.forState(state, productionRuntime, session);
     EconomyDayStepper stepper =
         new EconomyDayStepper(
             economy,
@@ -209,11 +213,10 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
             MarketTopologyBook.from(state),
             io.mosire.simos.economy.time.EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
             io.mosire.simos.economy.time.EconomyParallelism.singleThreaded(),
-            // ★★★ D-032 C3：三类跨切片只读依赖由组合根唯一装配点显式注入（当前 = Unavailable 适配器；
-            //   D4-I/W2a 落真实实现后只改 AppProductionLookups —— 备用推进路径与主路径口径一致）。
-            AppProductionLookups.ASSET_OCCUPANCY,
-            AppProductionLookups.WAGE_QUOTES,
-            AppProductionLookups.PARTICIPANT_ATTRIBUTES,
+            // ★★★ D-032 D4-Ib2b：四类跨切片只读依赖由组合根唯一装配点显式注入；资产占用与工资报价已是真实实现。
+            productionLookups.assetOccupancy(),
+            productionLookups.wageQuotes(),
+            productionLookups.participantAttributes(),
             AppProductionLookups.expectedRevision(state));
     ActorData books = migratedBooks;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {

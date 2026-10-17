@@ -63,6 +63,7 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.InventoryReservation;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.MarketTables;
@@ -71,7 +72,9 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionWagePosting;
 import io.mosire.simos.economy.time.AssetBudgetBook;
+import io.mosire.simos.economy.time.AssetOccupancyView;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
 import io.mosire.simos.economy.time.DebtCapacityBook;
@@ -162,6 +165,7 @@ import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -1224,6 +1228,11 @@ public final class ApiViews {
     AssetBudgetBook.AssetBudget assetBudget =
         AssetBudgetBook.allocate(productionUnits, data.assetShares());
     view.put("assetBudget", assetBudgetView(assetBudget));
+    // ★★★ D-032 D4-Ib2b：占用/预留只读视图 —— 只用 AssetOccupancyView 的权威派生与稳定序，不在读口重算分配。
+    view.put("assetOccupancies", assetOccupancyViews(data, productionUnits, coord));
+    view.put("inventoryReservations", inventoryReservationViews(data, productionUnits, coord));
+    // ★ D-032 W2a：本格实例的执行期工资 posting 只读输出（候选级 default 是 plan×zone 事实，不混进逐格视图）。
+    view.put("productionWagePostings", productionWagePostingViews(data, productionUnits, coord));
     view.put("activated", data.meta().isPresent());
     // ★★ M2.7：把读数的坐标与窗口随视图发出去（此前读口没有 tick，读者无法判断"这个数属于哪一天"）。
     view.put("tick", tick < 0L ? null : tick);
@@ -3714,6 +3723,109 @@ public final class ApiViews {
                 (HouseholdId key) -> data.classes().get(key).view().residence().value())
             .thenComparing(key -> data.classes().get(key).view().stratum().value()));
     return keys;
+  }
+
+  /** 本格占用授予的只读视图（{@link AssetOccupancyView#listOf} 已按 unit/share/区间/id 稳定排序）。 */
+  private static List<Map<String, Object>> assetOccupancyViews(
+      EconomyData data, Map<ProductionUnitId, ProductionProcess> productionUnits, HexCoord coord) {
+    String hexKey = io.mosire.simos.economy.api.id.IndustryHexKeys.hexKey(coord.q(), coord.r());
+    List<AssetOccupancyView> views =
+        AssetOccupancyView.listOf(data.assetOccupancies(), data.assetShares(), productionUnits);
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (AssetOccupancyView occupancy : views) {
+      if (!hexKey.equals(occupancy.location().value())) {
+        continue;
+      }
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("grantId", occupancy.grantId().value());
+      row.put("shareId", occupancy.shareId().value());
+      row.put("industry", occupancy.industry().value());
+      row.put("assetKind", occupancy.assetKind().name());
+      row.put("owner", actorRefView(occupancy.owner()));
+      row.put("operator", actorRefView(occupancy.operator()));
+      row.put("location", occupancy.location().value());
+      row.put("unit", occupancy.unitId().value());
+      row.put("quantity", occupancy.quantity());
+      row.put("fromTick", occupancy.fromTick());
+      row.put("toTickExclusive", occupancy.toTickExclusive());
+      row.put("status", occupancy.status().name());
+      out.add(Collections.unmodifiableMap(row));
+    }
+    return Collections.unmodifiableList(out);
+  }
+
+  /** 本格库存预留的只读视图；排序键固定，内容相同 ⇒ 字节相同。 */
+  private static List<Map<String, Object>> inventoryReservationViews(
+      EconomyData data, Map<ProductionUnitId, ProductionProcess> productionUnits, HexCoord coord) {
+    String hexKey = io.mosire.simos.economy.api.id.IndustryHexKeys.hexKey(coord.q(), coord.r());
+    List<InventoryReservation> reservations =
+        new ArrayList<>(data.inventoryReservations().values());
+    reservations.sort(
+        Comparator.comparing((InventoryReservation row) -> row.unitId().value())
+            .thenComparing(row -> row.payer().toString())
+            .thenComparing(row -> row.commodity().value())
+            .thenComparing(row -> row.location().value())
+            .thenComparingLong(InventoryReservation::fromTick)
+            .thenComparingLong(InventoryReservation::toTickExclusive)
+            .thenComparing(row -> row.id().value()));
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (InventoryReservation reservation : reservations) {
+      if (!hexKey.equals(reservation.location().value())) {
+        continue;
+      }
+      if (!productionUnits.containsKey(reservation.unitId())) {
+        throw new IllegalStateException(
+            "inventory-reservation-unit-missing: " + reservation.id().value());
+      }
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("id", reservation.id().value());
+      row.put("unit", reservation.unitId().value());
+      row.put("payer", actorRefView(reservation.payer()));
+      row.put("location", reservation.location().value());
+      row.put("commodity", reservation.commodity().value());
+      row.put("quantity", reservation.quantity());
+      row.put("fromTick", reservation.fromTick());
+      row.put("toTickExclusive", reservation.toTickExclusive());
+      row.put("status", reservation.status().name());
+      row.put("releasedAtTick", reservation.releasedAtTick());
+      out.add(Collections.unmodifiableMap(row));
+    }
+    return Collections.unmodifiableList(out);
+  }
+
+  /** 本格生产实例的工资 posting 只读视图（按 unit、role 升序；不重算调价/工资）。 */
+  private static List<Map<String, Object>> productionWagePostingViews(
+      EconomyData data, Map<ProductionUnitId, ProductionProcess> productionUnits, HexCoord coord) {
+    String hexKey = io.mosire.simos.economy.api.id.IndustryHexKeys.hexKey(coord.q(), coord.r());
+    List<ProductionWagePosting> postings = new ArrayList<>(data.productionWagePostings().values());
+    postings.sort(
+        Comparator.comparing((ProductionWagePosting row) -> row.unit().value())
+            .thenComparing(row -> row.role().value()));
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (ProductionWagePosting posting : postings) {
+      ProductionProcess unit = productionUnits.get(posting.unit());
+      if (unit == null
+          || !unit.location().isSpecified()
+          || !hexKey.equals(unit.location().value())) {
+        continue;
+      }
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("unit", posting.unit().value());
+      row.put("role", posting.role().value());
+      row.put("targetLaborMilliPerDay", posting.targetLaborMilliPerDay());
+      row.put("currency", posting.currency().value());
+      row.put("wagePerLaborMilli", posting.wagePerLaborMilli());
+      row.put("quoteSource", posting.quoteSource().name());
+      row.put("shortageStreak", posting.shortageStreak());
+      row.put("satisfiedStreak", posting.satisfiedStreak());
+      row.put("lastAdjustedTick", posting.lastAdjustedTick());
+      row.put("lastAdjustmentDelta", posting.lastAdjustmentDelta());
+      row.put("lastObservedMatchedLabor", posting.lastObservedMatchedLabor());
+      row.put("lastObservedEffectiveTarget", posting.lastObservedEffectiveTarget());
+      row.put("lastMaxAbsorbable", posting.lastMaxAbsorbable());
+      out.add(Collections.unmodifiableMap(row));
+    }
+    return Collections.unmodifiableList(out);
   }
 
   /** ★★ <b>R2：资产预算只读视图</b>（allocations / unallocated / rejections 一次发出；不把整池资产复制成每 unit 一份）。 */

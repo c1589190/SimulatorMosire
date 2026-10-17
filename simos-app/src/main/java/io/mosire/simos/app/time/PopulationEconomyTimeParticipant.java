@@ -587,6 +587,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       writes.add(accountAddress(key));
     }
     AccountSession session = OwnershipBooks.loadAccountSession(economy, migratedBooks);
+    // ★★★ D-032 D4-Ib2b：同一 revision 的真实只读依赖一次装好（资产占用/工资报价/可支付库存）。
+    //   账户读口绑定本段推进的 AccountSession；不得另造余额表，也不得在缺账户时回退成 0。
+    AppProductionLookups.Lookups productionLookups =
+        AppProductionLookups.forState(state, productionRuntime, session);
     // ★★ S3 缺陷修复：会话登记过的账户当天终值由 landAccountSession 的**绝对值**落回覆盖；
     //   这些账户上的 ledger 条目不能再对 actor 基准叠一遍（否则跨区到货等"只写会话"的当天流入会让付方被误判透支）。
     //   非会话账户（承运人、未播种经营者等）仍按 ledger 条目逐笔折入 actor 账。
@@ -614,11 +618,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               flightTopology,
               EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
               parallelism,
-              // ★★★ D-032 C3：三类跨切片只读依赖由组合根的**唯一装配点**显式注入（当前 = Unavailable 适配器；
-              //   D4-I/W2a 落真实实现后只改 AppProductionLookups，不再出现"某条推进路径漏接"）。
-              AppProductionLookups.ASSET_OCCUPANCY,
-              AppProductionLookups.WAGE_QUOTES,
-              AppProductionLookups.PARTICIPANT_ATTRIBUTES,
+              // ★★★ D-032 D4-Ib2b：四类跨切片只读依赖由组合根唯一装配点显式注入；资产占用与工资报价已是真实实现。
+              productionLookups.assetOccupancy(),
+              productionLookups.wageQuotes(),
+              productionLookups.participantAttributes(),
               AppProductionLookups.expectedRevision(state));
       try {
         // ★ 装配行可读：实际 workerCount 与"是否真的并行"都在这里（1 = 单线程退化路径）。
