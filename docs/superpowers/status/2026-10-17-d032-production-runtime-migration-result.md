@@ -361,3 +361,17 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **已知边界**：真实 `LaborQueueSettlement` 尚无 Social 下一 tick 逐需求投影适配器，只读/dry-run 入口已备；W3 未接；D4-I 前 wage lookup empty 使工资候选 skip；B2 用 `IllegalStateException` 承载稳定 reason；app 仍用旧 `rosterIncomes` 签名。
 - **测试影响**：34 组件/旧 `EconomyData` 构造、旧 queue/idle 词表、MONEY_WAGE 真实 tick fail-closed 断言需 W5；未写/未跑测试。
 - **下一步**：D4-I（OwnershipStake.location、AssetOccupancyGrant/InventoryReservation/AssetOccupancyBook、EconomyData 36/37、真实 Asset/Wage lookup、R2 统一入口/旧路径清零、app seed location）；只编译 economy/app，不写/不跑测试、不提交。随后 D4-T→W3→W4→W5。
+
+## 二十四、2026-10-17 22:xx D4-Ia OwnershipStake.location 检查点
+
+> **性质**：D4-Ia 生产代码已实现并编译/格式检查通过；未跑测试，未实现 36/37 占用/预留与真实 lookup。
+
+- **提交**：`5615b3e1 feat(economy)!: D4-Ia OwnershipStake.location、份额身份与跨地点合并收口`（已推送）。
+- **形状**：`OwnershipStake` 必填 `ProductionLocation location`；null/UNSPECIFIED/非法 `<q>_<r>` ⇒ `asset-location-missing`；`AssetShareId` 唯一拼写点加入 location；旧 id/旧档不兼容。
+- **合并/迁移**：`OwnershipStakeBook.ShareTuple`、目标键、`buildTupleIndex`、`nextShareId` 全部带 location；Move/split/rebuild/transfer 保持 `source.location()`；Transfer 改地点 ⇒ `asset-relocation-unsupported`；不同地点不合并。
+- **入口**：`EconomyPayloads.addOwnershipStake`、`EconomyGovUnitUpserts`、`EconomyEntrySettlement`、`EconomySettlement`、`EconomyCodec`、`EconomySeeder`、`TestConditions` 的 main 构造/seed/id 预测已逐点补齐；seed 缺 location 创世前 fail-closed。
+- **校验**：`EconomyReferenceValidation` 校验 location 规范与 id/location 一致（`asset-location-id-mismatch`）。
+- **编译/格式**：economy/app `-DskipTests compile` rc=0；spotless `-pl simos-economy,simos-app -am` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **已知边界**：`EconomyCodec` 旧 capacity 合成路径用 `ProductionLocation.ofPlan(industry)`（历史旧档；新写面均显式 location）；D4-Ib 才实现 36/37 grant/reservation、AssetOccupancyBook、真实 Asset/Wage lookup、R2 分配。
+- **测试影响**：大量旧 `OwnershipStake`/`AssetShareId.idOf` 构造、seed JSON、golden 需 W5 迁移；未写/未跑测试。
+- **下一步**：D4-Ib（AssetOccupancyGrant/InventoryReservation/AssetOccupancyBook、EconomyData 36/37、`AssetOccupancyLookupImpl`/`WagePayableInventoryLookupImpl`、R2 消费同源/旧路径 guard；D4-T 前不删除 `asset-scope-shared:awaiting-D4` 证据）；只编译 economy/app，不写/不跑测试、不提交。
