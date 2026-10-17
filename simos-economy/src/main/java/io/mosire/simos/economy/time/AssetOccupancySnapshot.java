@@ -55,9 +55,15 @@ public record AssetOccupancySnapshot(
               + " >= "
               + toTickExclusive);
     }
-    allocation = freezeAssetQuantities("allocation", allocation);
-    committed = freezeAssetQuantities("committed", committed);
-    unallocated = freezeAssetQuantities("unallocated", unallocated);
+    allocation =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeAssetQuantities("allocation", allocation)));
+    committed =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeAssetQuantities("committed", committed)));
+    unallocated =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeAssetQuantities("unallocated", unallocated)));
     rejection = Objects.requireNonNull(rejection, "AssetOccupancySnapshot.rejection 不得为 null");
   }
 

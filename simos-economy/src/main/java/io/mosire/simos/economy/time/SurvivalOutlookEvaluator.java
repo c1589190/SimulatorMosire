@@ -275,13 +275,11 @@ final class StandardSurvivalOutlookEvaluator implements SurvivalOutlookEvaluator
                 Math.addExact(fromInventory, fromInKind),
                 Math.addExact(fromProductShare, fromMoney));
         long coverPerMille =
-            required == 0L
-                ? 1000L
-                : BigInteger.valueOf(lineCovered)
-                    .multiply(BigInteger.valueOf(1000L))
-                    .divide(BigInteger.valueOf(required))
-                    .min(BigInteger.valueOf(1000L))
-                    .longValue();
+            BigInteger.valueOf(lineCovered)
+                .multiply(BigInteger.valueOf(1000L))
+                .divide(BigInteger.valueOf(required))
+                .min(BigInteger.valueOf(1000L))
+                .longValue();
         covered.put(line.key(), lineCovered);
         perMille.put(line.key(), coverPerMille);
         provenance.put(

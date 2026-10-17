@@ -124,8 +124,12 @@ public final class ProductionWageBook
   /** 从当刻日视图构造一个 tick 的只读快照（carry 为工作副本）。 */
   public ProductionWageBook(EconomyDayView view) {
     Objects.requireNonNull(view, "view");
-    this.postings = freeze(view.productionWagePostings(), "productionWagePostings");
-    this.defaults = freeze(view.productionWageDefaults(), "productionWageDefaults");
+    this.postings =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freeze(view.productionWagePostings(), "productionWagePostings")));
+    this.defaults =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freeze(view.productionWageDefaults(), "productionWageDefaults")));
     this.carries = carryCopy(view.wageCarryRemainders());
   }
 
@@ -134,8 +138,8 @@ public final class ProductionWageBook
       Map<WagePostingKey, ProductionWagePosting> postings,
       Map<WageDefaultKey, ProductionWageDefault> defaults,
       Map<WageCarryKey, Long> carries) {
-    this.postings = freeze(postings, "postings");
-    this.defaults = freeze(defaults, "defaults");
+    this.postings = Collections.unmodifiableMap(new LinkedHashMap<>(freeze(postings, "postings")));
+    this.defaults = Collections.unmodifiableMap(new LinkedHashMap<>(freeze(defaults, "defaults")));
     this.carries = carryCopy(carries);
   }
 

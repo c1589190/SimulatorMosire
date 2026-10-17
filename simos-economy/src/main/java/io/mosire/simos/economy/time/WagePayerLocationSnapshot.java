@@ -31,9 +31,13 @@ public record WagePayerLocationSnapshot(
   public WagePayerLocationSnapshot {
     Objects.requireNonNull(payer, "WagePayerLocationSnapshot.payer 不得为 null");
     existingSettlementLocations =
-        freeze(existingSettlementLocations, "existingSettlementLocations");
+        Collections.unmodifiableSet(
+            new LinkedHashSet<>(
+                freeze(existingSettlementLocations, "existingSettlementLocations")));
     candidateSettlementLocations =
-        freeze(candidateSettlementLocations, "candidateSettlementLocations");
+        Collections.unmodifiableSet(
+            new LinkedHashSet<>(
+                freeze(candidateSettlementLocations, "candidateSettlementLocations")));
   }
 
   /**

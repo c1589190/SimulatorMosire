@@ -15,10 +15,16 @@ public record NextTickIncomeProjectionResult(
     long incomeAvailableAtTick) {
 
   public NextTickIncomeProjectionResult {
-    expectedMoneyIncomeMilli = freezeMoney(expectedMoneyIncomeMilli, "expectedMoneyIncomeMilli");
-    expectedInKindMilli = freezeCommodity(expectedInKindMilli, "expectedInKindMilli");
+    expectedMoneyIncomeMilli =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeMoney(expectedMoneyIncomeMilli, "expectedMoneyIncomeMilli")));
+    expectedInKindMilli =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeCommodity(expectedInKindMilli, "expectedInKindMilli")));
     expectedProductShareMilli =
-        freezeCommodity(expectedProductShareMilli, "expectedProductShareMilli");
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(
+                freezeCommodity(expectedProductShareMilli, "expectedProductShareMilli")));
     if (incomeAvailableAtTick < 0L) {
       throw new IllegalArgumentException("incomeAvailableAtTick 不得为负: " + incomeAvailableAtTick);
     }

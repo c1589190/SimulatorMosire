@@ -267,7 +267,7 @@ public final class EconomyDayStepper implements AutoCloseable {
 
   /** ★ D-032 W4：最近一次 {@link #step(long)} 的 W3 逐义务只读读数（稳定序由 W3 保证；空表 = 当日无义务）。 */
   public List<WageSettlementReadout> lastWageSettlementReadouts() {
-    return lastWageSettlementReadouts;
+    return List.copyOf(lastWageSettlementReadouts);
   }
 
   /**

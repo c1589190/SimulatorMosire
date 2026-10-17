@@ -431,7 +431,6 @@ final class LaborQueueSettlement {
       }
       MarketTable market = marketOf(householdEconomy, candidateUnits, markets);
       List<LaborQueueBook.Offer> offers = new ArrayList<>();
-      Set<ProductionUnitId> queuedUnits = new LinkedHashSet<>();
       Set<UnitRole> queuedSlots = new LinkedHashSet<>();
       for (LaborSlot slot : candidates) {
         ProductionProcess unit = slot.unit();
@@ -559,7 +558,6 @@ final class LaborQueueSettlement {
                 session);
         if (!LaborQueueBook.isPreservedByQueue(offer)) {
           offers.add(offer);
-          queuedUnits.add(unit.id());
           queuedSlots.add(new UnitRole(unit.id(), slot.role()));
         }
       }
@@ -574,7 +572,6 @@ final class LaborQueueSettlement {
           TradeArbitrageActivity.evaluate(
               household, householdEconomy, valuations, arbitrageSnapshots.get(household));
       offers.add(arbitrageOffer(arbitrageUnit, arbitrage));
-      queuedUnits.add(arbitrageUnit);
       arbitrage.activity().ifPresent(activity -> arbitrageByHousehold.put(household, activity));
       if (arbitrage.hasOpportunity() && EconomyLog.settlement().isDebugEnabled()) {
         logArbitrageDecision(day, household, arbitrageUnit, arbitrage);

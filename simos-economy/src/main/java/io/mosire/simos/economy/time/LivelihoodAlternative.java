@@ -37,11 +37,17 @@ public record LivelihoodAlternative(
       Objects.requireNonNull(claim, "LivelihoodAlternative.resourceClaims 不得含 null");
       claims.add(claim);
     }
-    resourceClaims = Collections.unmodifiableSet(claims);
-    expectedMoneyIncomeMilli = freezeMoney(expectedMoneyIncomeMilli, "expectedMoneyIncomeMilli");
-    expectedInKindMilli = freezeCommodity(expectedInKindMilli, "expectedInKindMilli");
+    resourceClaims = Collections.unmodifiableSet(new LinkedHashSet<>(claims));
+    expectedMoneyIncomeMilli =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeMoney(expectedMoneyIncomeMilli, "expectedMoneyIncomeMilli")));
+    expectedInKindMilli =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeCommodity(expectedInKindMilli, "expectedInKindMilli")));
     expectedProductShareMilli =
-        freezeCommodity(expectedProductShareMilli, "expectedProductShareMilli");
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(
+                freezeCommodity(expectedProductShareMilli, "expectedProductShareMilli")));
     for (CommodityId commodity : expectedInKindMilli.keySet()) {
       if (expectedProductShareMilli.containsKey(commodity)) {
         throw new IllegalArgumentException(

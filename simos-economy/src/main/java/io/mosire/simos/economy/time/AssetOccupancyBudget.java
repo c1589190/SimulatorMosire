@@ -48,14 +48,27 @@ public record AssetOccupancyBudget(
           .thenComparing(grant -> grant.id().value());
 
   public AssetOccupancyBudget {
-    allocations = freezeUnitQuantities("allocations", allocations);
-    committed = freezeUnitQuantities("committed", committed);
-    available = freezeScopeQuantities("available", available);
-    occupied = freezeScopeQuantities("occupied", occupied);
-    unallocated = freezeScopeQuantities("unallocated", unallocated);
-    rejections = freezeRejections(rejections);
-    grantsToWrite = freezeGrants("grantsToWrite", grantsToWrite);
-    grantsToRelease = freezeGrants("grantsToRelease", grantsToRelease);
+    allocations =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeUnitQuantities("allocations", allocations)));
+    committed =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeUnitQuantities("committed", committed)));
+    available =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeScopeQuantities("available", available)));
+    occupied =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeScopeQuantities("occupied", occupied)));
+    unallocated =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeScopeQuantities("unallocated", unallocated)));
+    rejections = Collections.unmodifiableMap(new LinkedHashMap<>(freezeRejections(rejections)));
+    grantsToWrite =
+        Collections.unmodifiableList(new ArrayList<>(freezeGrants("grantsToWrite", grantsToWrite)));
+    grantsToRelease =
+        Collections.unmodifiableList(
+            new ArrayList<>(freezeGrants("grantsToRelease", grantsToRelease)));
   }
 
   /** 某 unit 的分配表；没有条目 ⇒ 空表（权威空 = 合法 0）。 */

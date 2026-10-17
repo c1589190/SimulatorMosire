@@ -13,8 +13,12 @@ public record SurvivalCoverage(
     long bottleneckCoveragePerMille) {
 
   public SurvivalCoverage {
-    coveredQuantityMilli = freezeLong(coveredQuantityMilli, "coveredQuantityMilli");
-    coveragePerMille = freezeLong(coveragePerMille, "coveragePerMille");
+    coveredQuantityMilli =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeLong(coveredQuantityMilli, "coveredQuantityMilli")));
+    coveragePerMille =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeLong(coveragePerMille, "coveragePerMille")));
     Objects.requireNonNull(provenance, "SurvivalCoverage.provenance 不得为 null");
     LinkedHashMap<SubsistenceNeedKey, SurvivalCoverageLine> lines = new LinkedHashMap<>();
     provenance.forEach(
@@ -23,7 +27,7 @@ public record SurvivalCoverage(
           Objects.requireNonNull(value, "SurvivalCoverage.provenance 不得含 null 行");
           lines.put(key, value);
         });
-    provenance = Collections.unmodifiableMap(lines);
+    provenance = Collections.unmodifiableMap(new LinkedHashMap<>(lines));
     if (bottleneckCoveragePerMille < 0L || bottleneckCoveragePerMille > 1000L) {
       throw new IllegalArgumentException(
           "SurvivalCoverage.bottleneckCoveragePerMille 必须在 0..1000: " + bottleneckCoveragePerMille);

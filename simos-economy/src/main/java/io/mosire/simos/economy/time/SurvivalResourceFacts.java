@@ -11,8 +11,12 @@ import java.util.Objects;
 public record SurvivalResourceFacts(
     Map<CommodityId, Long> usableInventoryMilli, Map<CurrencyId, Long> spendableMoneyMilli) {
   public SurvivalResourceFacts {
-    usableInventoryMilli = freezeCommodity(usableInventoryMilli, "usableInventoryMilli");
-    spendableMoneyMilli = freezeCurrency(spendableMoneyMilli, "spendableMoneyMilli");
+    usableInventoryMilli =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeCommodity(usableInventoryMilli, "usableInventoryMilli")));
+    spendableMoneyMilli =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freezeCurrency(spendableMoneyMilli, "spendableMoneyMilli")));
   }
 
   private static Map<CommodityId, Long> freezeCommodity(

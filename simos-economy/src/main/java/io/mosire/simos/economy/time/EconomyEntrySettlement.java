@@ -1504,10 +1504,6 @@ final class EconomyEntrySettlement {
     return goods == null ? 0L : goods.getOrDefault(commodity, 0L);
   }
 
-  private static String hexKeyOf(IndustryId industryId) {
-    return IndustryHexKeys.hexKeyOf(industryId).orElse("");
-  }
-
   /** 工作副本组（plan 用浅拷贝、只收本批模拟写且返回即丢；execute 用会话真副本）。 */
   private record Tables(
       Map<IndustryId, IndustryDefinitionView> industries,

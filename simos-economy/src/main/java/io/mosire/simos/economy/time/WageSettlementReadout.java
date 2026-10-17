@@ -73,8 +73,11 @@ public record WageSettlementReadout(
               + " arrears="
               + arrearsMilli);
     }
-    barterQuantity = freeze(barterQuantity, "barterQuantity");
-    barterPaidValueMilli = freeze(barterPaidValueMilli, "barterPaidValueMilli");
+    barterQuantity =
+        Collections.unmodifiableMap(new LinkedHashMap<>(freeze(barterQuantity, "barterQuantity")));
+    barterPaidValueMilli =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(freeze(barterPaidValueMilli, "barterPaidValueMilli")));
     Objects.requireNonNull(debtContractId, "WageSettlementReadout.debtContractId 不得为 null");
     Objects.requireNonNull(reasons, "WageSettlementReadout.reasons 不得为 null");
     reasons = List.copyOf(reasons);

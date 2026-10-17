@@ -2436,7 +2436,6 @@ public final class ExpectedProfitBook {
     // 4) 角色两层分配（planned labor / rights / weights）。
     Map<io.mosire.simos.production.contract.ProductionParticipantKey, Map<CommodityId, Long>>
         sharesByParticipant = new LinkedHashMap<>();
-    Map<CommodityId, Long> unallocated = new LinkedHashMap<>();
     Map<io.mosire.simos.production.contract.ProductionParticipantKey, Long> plannedByParticipant =
         new LinkedHashMap<>();
     Map<io.mosire.simos.production.contract.ProductionParticipantKey, Long> rightsWeights =
@@ -2471,7 +2470,6 @@ public final class ExpectedProfitBook {
               new io.mosire.simos.production.contract.RoleDistributionRequest(
                   plan, distributionParticipants, plannedByParticipant, rightsWeights, netPools));
       sharesByParticipant.putAll(distribution.shares());
-      unallocated.putAll(distribution.unallocated());
     }
     // 5) ★ W1：payer 级地点预检先于工资读口/估值（D3 §5.1/§6.9.1）；>1 地点 ⇒ 具名拒绝，零 lookup/零工资读数。
     List<ProductionRoleDefinition> moneyRoles = moneyWageRoles(plan);
@@ -2686,25 +2684,6 @@ public final class ExpectedProfitBook {
       }
     }
     return Optional.empty();
-  }
-
-  /** 数量 × 本地 bid ÷ 1000（毫商品 → 毫钱）；缺价/0 价 ⇒ 0。与 {@code productionProspect} 同一口径。 */
-  private static long bidValueMilli(MarketTable market, Map<CommodityId, Long> quantities) {
-    if (market == null) {
-      return 0L;
-    }
-    long total = 0L;
-    for (Map.Entry<CommodityId, Long> entry : quantities.entrySet()) {
-      if (!market.hasPrice(entry.getKey())) {
-        continue;
-      }
-      total =
-          Math.addExact(
-              total,
-              Math.multiplyExact(entry.getValue(), market.bidPriceOf(entry.getKey()))
-                  / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
-    }
-    return total;
   }
 
   /** 逐商品 bid 估值（唯一口径）：缺价记入 {@code unpriced}、0 价按 0；只返回 >0 行。 */
