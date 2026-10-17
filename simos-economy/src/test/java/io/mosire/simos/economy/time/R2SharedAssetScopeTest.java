@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
@@ -51,7 +52,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.event.Level;
 
@@ -69,13 +69,14 @@ import org.slf4j.event.Level;
  *   <tr><td>P3</td><td>两 unit 不同 (industry, operator)，各有 100 ⇒ 各得 100</td><td>{@link #differentScopesEachKeepTheirOwnPool()}</td></tr>
  *   <tr><td>P4</td><td>共享 scope 的预计/排队：无可生产 offer、无劳动分配</td><td>{@link #sharedScopeOfferIsNamedInfeasibleAndGetsNoLabor()}</td></tr>
  *   <tr><td>P4</td><td>共享 scope 的预计（ExpectedProfitBook）不把整池复制给现有 unit</td><td>{@link #sharedScopeExistingUnitProspectIsNamedInfeasible()}</td></tr>
- *   <tr><td>P5</td><td>共享 scope 的实际执行：无产出/进度/经验/实际劳动/周期投入</td><td>{@link #sharedScopeUnitsAreRejectedBeforeAnyProductionWrite()}</td></tr>
+ *   <tr><td>P5</td><td>共享 scope 的实际执行：D4 真实 500/500 授予，允许逐 unit progress=1；本日无产出/经验/实际劳动/周期投入</td><td>{@link #sharedScopeUnitsUseRealD4AllocationWithoutDoubleGranting()}</td></tr>
  *   <tr><td>P7</td><td>同输入同输出、稳定序、纯函数可复算</td><td>{@link #assetBudgetIsAPureStableDerivation()}</td></tr>
  * </table>
  *
  * <p>★★ <b>D4-Ib2a 迁移口径</b>：{@link AssetBudgetBook} 的 {@code asset-scope-shared:awaiting-D4} 仍只作为
- * <b>纯预算派生</b>的历史边界读数（P2 的 {@code AssetBudgetBook} 层），<b>不再</b>被当作新多实例路径的唯一结果。预计/排队/执行三条 新路径按
- * D4-Ib2a 的当刻语义断言具名 {@code asset-occupancy-request-missing:<unit>}；真实占用授予/释放判据仍由 D4-T 追加。
+ * <b>纯预算派生</b>的历史边界读数（P2 的 {@code AssetBudgetBook} 层），<b>不再</b>被当作新多实例路径的唯一结果。预计/排队路径按 D4-Ib2a
+ * 的当刻语义断言具名 {@code asset-occupancy-request-missing:<unit>}；执行路径则断言真实 D4 授予（500/500）与 逐 unit
+ * progress=1，且不得把旧 guard 当成通过结论。
  */
 class R2SharedAssetScopeTest {
 
@@ -266,14 +267,10 @@ class R2SharedAssetScopeTest {
     assertThat(prospect.plannedOutputMilli()).as("P4：不可行时不得有预计产出").isEmpty();
   }
 
-  // ── P5：执行前拒绝、零半状态 ─────────────────────────────────────────────────────────
+  // ── P5：D4-Ib2a 真实分配（允许 progress=1），无产出/经验/投入半写 ───────────────────────
 
-  @Disabled(
-      "D4-T 待重写: D4-Ib2a 的真实占用路径会按名册/劳动事实分配并允许 unit 写 progress（实测旧的"
-          + "『两 unit 都零半状态』断言得 progressDays=1）；须按真实分配/逐 unit 拒绝重写，不能把旧"
-          + "asset-scope-shared:awaiting-D4 当新路径结果。")
   @Test
-  void sharedScopeUnitsAreRejectedBeforeAnyProductionWrite() {
+  void sharedScopeUnitsUseRealD4AllocationWithoutDoubleGranting() {
     SharedDayWorld world = sharedDayWorld();
     ProductionRuntimeEngine engine = world.engine();
     long experienceBefore = engine.state().experienceOf(HOUSEHOLD, world.trackId());
@@ -282,52 +279,65 @@ class R2SharedAssetScopeTest {
     try (TestLogCapture log =
         TestLogCapture.attach(EconomyLog.SETTLEMENT_LOGGER_NAME, Level.INFO)) {
       ProductionLedger dayOne = world.stepper().step(1L);
-      // ★ P5 的判别点必须在**第 1 天结束当刻**读实例：若实现"先推进再拒绝"，第二天关账时 progress 会
-      //   被重置成 0（1 天周期）或重置/继续，只在最后读会漏掉第一天的半状态。
+
+      // D4-Ib2a 当刻真实行为：两个实例都按劳动事实得到 500/500 的 ACTIVE grant，并各自推进 1 天 progress；
+      // 但本日没有逐户实际劳动/周期投入/产出/经验写入。这里断言真实分配，不把旧 sharing guard 当结论。
       ProductionProcess firstAfterDayOne = engine.units().get(world.firstId());
       ProductionProcess secondAfterDayOne = engine.units().get(world.secondId());
       assertThat(firstAfterDayOne.progressDays())
-          .as("P5：第 1 天结束时 unit1 没有进度写入（若执行后拒绝这里会是 1）")
-          .isZero();
-      assertThat(secondAfterDayOne.progressDays()).as("P5：第 1 天结束时 unit2 没有进度写入").isZero();
-      assertThat(firstAfterDayOne.cycleContributions()).as("P5：第 1 天 unit1 无逐户实际劳动写入").isEmpty();
-      assertThat(secondAfterDayOne.cycleContributions()).as("P5：第 1 天 unit2 无逐户实际劳动写入").isEmpty();
-      assertThat(firstAfterDayOne.cycleInputUsedMilli()).as("P5：第 1 天 unit1 无周期投入写入").isEmpty();
-      assertThat(secondAfterDayOne.cycleInputUsedMilli()).as("P5：第 1 天 unit2 无周期投入写入").isEmpty();
+          .as("P5：D4-Ib2a 真实分配允许实例写 1 天进度（不是旧『两 unit 都零半状态』）")
+          .isEqualTo(1L);
+      assertThat(secondAfterDayOne.progressDays()).isEqualTo(1L);
+      assertThat(firstAfterDayOne.cycleContributions()).as("P5：本日无逐户实际劳动写入").isEmpty();
+      assertThat(secondAfterDayOne.cycleContributions()).isEmpty();
+      assertThat(firstAfterDayOne.cycleInputUsedMilli()).as("P5：本日无周期投入写入").isEmpty();
+      assertThat(secondAfterDayOne.cycleInputUsedMilli()).isEmpty();
       assertThat(engine.state().experienceOf(HOUSEHOLD, world.trackId()))
-          .as("P5：第 1 天没有经验增长（执行前拒绝，不是 progress 之后再拒）")
+          .as("P5：本日没有经验增长")
           .isEqualTo(experienceBefore);
-
-      ProductionLedger dayTwo = world.stepper().step(2L);
 
       assertThat(gross(dayOne, FARM, GRAIN)).as("P5：第 1 天无产出").isZero();
-      assertThat(gross(dayTwo, FARM, GRAIN)).as("P5：第 2 天仍无产出").isZero();
       assertThat(inputOf(dayOne, FARM, GRAIN)).as("P5：第 1 天无周期投入扣减").isZero();
-      assertThat(inputOf(dayTwo, FARM, GRAIN)).as("P5：第 2 天无周期投入扣减").isZero();
       assertThat(world.stepper().accounts().householdGoods().get(HOUSEHOLD).get(GRAIN))
-          .as("P5：家户投入库存一字未动（执行前拒绝，不是扣完再拒）")
+          .as("P5：家户投入库存一字未动")
           .isEqualTo(grainBefore);
 
-      ProductionProcess first = engine.units().get(world.firstId());
-      ProductionProcess second = engine.units().get(world.secondId());
-      assertThat(first.progressDays()).as("P5：共享 scope unit1 没有进度写入（若执行后拒绝这里会是 1/2）").isZero();
-      assertThat(second.progressDays()).as("P5：共享 scope unit2 没有进度写入").isZero();
-      assertThat(first.cycleContributions()).as("P5：unit1 无逐户实际劳动写入").isEmpty();
-      assertThat(second.cycleContributions()).as("P5：unit2 无逐户实际劳动写入").isEmpty();
-      assertThat(first.cycleInputUsedMilli()).as("P5：unit1 无周期投入写入").isEmpty();
-      assertThat(second.cycleInputUsedMilli()).as("P5：unit2 无周期投入写入").isEmpty();
-      assertThat(engine.state().experienceOf(HOUSEHOLD, world.trackId()))
-          .as("P5：没有经验增长（执行前拒绝，不是 progress 之后再拒）")
-          .isEqualTo(experienceBefore);
-
+      var grants = world.stepper().data().assetOccupancies().values();
+      assertThat(grants).as("P5/P22：两个实例各有一条真实 D4 grant").hasSize(2);
+      assertThat(grants.stream().mapToLong(g -> g.quantity()).sum())
+          .as("★★ P22：实占合计 = 实有 LAND 1000，不是每个实例各 1000/Σ=2000")
+          .isEqualTo(1_000L);
+      assertThat(grants)
+          .allSatisfy(
+              grant -> {
+                assertThat(grant.quantity()).as("★ 每个实例只拿预算分到的 500，不复制整池 1000").isEqualTo(500L);
+                assertThat(grant.fromTick()).isEqualTo(1L);
+                assertThat(grant.toTickExclusive()).isEqualTo(3L);
+              });
+      assertThat(grants.stream().map(g -> g.shareId()).distinct())
+          .as("两个实例引用同一份 LAND 份额")
+          .hasSize(1);
       assertThat(log.lines())
-          .as("P5：INFO 具名记录共享 scope 拒绝")
-          .anySatisfy(
-              line ->
-                  assertThat(line)
-                      .contains("PRODUCTION_DAY_REJECTED")
-                      .contains(OCCUPANCY_REQUEST_MISSING_PREFIX));
+          .as("D4 新多实例路径不得把 asset-scope-shared:awaiting-D4 当唯一通过结果")
+          .noneMatch(line -> line.contains(SHARED));
     }
+  }
+
+  @Test
+  void sharedScopeSecondDayMustReuseCommittedBudgetWithoutOverlapFault() {
+    SharedDayWorld world = sharedDayWorld();
+    world.stepper().step(1L);
+
+    assertThatCode(() -> world.stepper().step(2L))
+        .as(
+            "★★ P3/P8：两个 unit 在同一 share 的 ACTIVE grant 可以并存（Σ≤quantity），"
+                + "下一天必须作为 committed 重用，不得误报 asset-occupancy-overlap")
+        .doesNotThrowAnyException();
+
+    var grants = world.stepper().data().assetOccupancies().values();
+    assertThat(grants.stream().mapToLong(g -> g.quantity()).sum())
+        .as("跨 revision 后仍只有实有 LAND=1000 被两个实例合计占用")
+        .isEqualTo(1_000L);
   }
 
   // ── P7：纯函数 + 稳定序 ─────────────────────────────────────────────────────────────

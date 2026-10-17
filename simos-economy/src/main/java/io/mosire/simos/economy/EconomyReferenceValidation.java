@@ -191,15 +191,73 @@ public final class EconomyReferenceValidation {
       for (int j = i + 1; j < active.size(); j++) {
         AssetOccupancyGrant right = active.get(j);
         if (left.shareId().equals(right.shareId())
+            && left.unitId().equals(right.unitId())
             && left.overlaps(right.fromTick(), right.toTickExclusive())) {
           throw new IllegalArgumentException(
               label
-                  + " 的同一 share 同时段存在重叠 ACTIVE grant（asset-occupancy-overlap）: share="
+                  + " 的同一 share 同一 unit 同时段存在重叠 ACTIVE grant（asset-occupancy-overlap:"
                   + left.shareId().value()
-                  + " grants="
+                  + ":"
+                  + left.unitId().value()
+                  + "）: grants="
                   + left.id().value()
                   + "/"
                   + right.id().value());
+        }
+      }
+    }
+    validateActiveOccupancyQuantities(active, candidate, label);
+  }
+
+  /**
+   * 同一 share 上不同 unit 的 ACTIVE grant 可以重叠，但任意时刻的合计数量不得超过 share.quantity。
+   *
+   * <p>只在 grant 起点处取并集：ACTIVE 合计只在某个 grant 起点单调增加，随后只会在终点减少，因此逐个起点检查即可覆盖所有 时刻的最大并发占用。
+   */
+  private static void validateActiveOccupancyQuantities(
+      List<AssetOccupancyGrant> active, EconomyData candidate, String label) {
+    Map<io.mosire.simos.economy.api.id.AssetShareId, java.util.List<AssetOccupancyGrant>> byShare =
+        new java.util.LinkedHashMap<>();
+    for (AssetOccupancyGrant grant : active) {
+      byShare.computeIfAbsent(grant.shareId(), ignored -> new java.util.ArrayList<>()).add(grant);
+    }
+    for (Map.Entry<io.mosire.simos.economy.api.id.AssetShareId, java.util.List<AssetOccupancyGrant>>
+        entry : byShare.entrySet()) {
+      OwnershipStake share = candidate.assetShares().get(entry.getKey());
+      java.util.List<AssetOccupancyGrant> grants = entry.getValue();
+      java.util.List<Long> moments = new java.util.ArrayList<>();
+      for (AssetOccupancyGrant grant : grants) {
+        moments.add(grant.fromTick());
+      }
+      moments.sort(Long::compare);
+      for (long moment : moments) {
+        long sum = 0L;
+        for (AssetOccupancyGrant grant : grants) {
+          if (grant.fromTick() <= moment && moment < grant.toTickExclusive()) {
+            try {
+              sum = Math.addExact(sum, grant.quantity());
+            } catch (ArithmeticException overflow) {
+              throw new IllegalArgumentException(
+                  label
+                      + " 的 ACTIVE quantity 合计溢出（asset-occupancy-quantity-overflow）: share="
+                      + share.id().value()
+                      + " tick="
+                      + moment);
+            }
+          }
+        }
+        if (sum > share.quantity()) {
+          throw new IllegalArgumentException(
+              label
+                  + " 的同一 share 在任何时刻的 ACTIVE 合计不得超过 share.quantity"
+                  + "（asset-occupancy-overcommit）: share="
+                  + share.id().value()
+                  + " tick="
+                  + moment
+                  + " activeQuantity="
+                  + sum
+                  + " shareQuantity="
+                  + share.quantity());
         }
       }
     }

@@ -40,7 +40,8 @@ import org.slf4j.Logger;
  *   <li>多 unit 按请求量比例分配，整数最大余数（{@code r_i desc, unitId asc}），所有加乘使用 exact 算术；
  *   <li>按 share id 升序拆 grant；每份 share 的 ACTIVE + 本批新授予 ≤ share.quantity；不修改 {@code
  *       OwnershipStake.quantity}；
- *   <li>释放/到期把 grant 置 RELEASED 并回填 unallocated；同 share 同 interval 不产生重叠 ACTIVE。
+ *   <li>释放/到期把 grant 置 RELEASED 并回填 unallocated；同 share 同 unit 同时段不产生重叠 ACTIVE（不同 unit 可在同一 share
+ *       上合法重叠，但同一时刻的合计不得超过 share.quantity）。
  * </ul>
  *
  * <p>★ <b>确定性</b>：所有集合按 D4 §5.4 的稳定序处理；无随机、无时钟、无 UUID、无 HashMap 迭代序参与决策。
@@ -889,15 +890,64 @@ public final class AssetOccupancyBook {
           continue;
         }
         if (left.shareId().equals(right.shareId())
+            && left.unitId().equals(right.unitId())
             && left.overlaps(right.fromTick(), right.toTickExclusive())) {
           contractFault(
-              "asset-occupancy-overlap",
-              "同一 share 同时段存在两条 ACTIVE grant: " + left.id().value() + " / " + right.id().value(),
+              "asset-occupancy-overlap:" + left.shareId().value() + ":" + left.unitId().value(),
+              "同一 share 同一 unit 同时段存在两条 ACTIVE grant: "
+                  + left.id().value()
+                  + " / "
+                  + right.id().value(),
               left.unitId());
         }
       }
     }
+    validateActiveShareQuantities(active, shares);
     return active;
+  }
+
+  /**
+   * 同一 share 上不同 unit 的 ACTIVE grant 可以重叠，但任意时刻的合计数量不得超过 share.quantity。
+   *
+   * <p>只在 grant 起点处取并集：ACTIVE 合计只在某个 grant 起点单调增加，随后只会在终点减少，因此逐个起点检查即可覆盖所有 时刻的最大并发占用。
+   */
+  private static void validateActiveShareQuantities(
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> active,
+      Map<AssetShareId, OwnershipStake> shares) {
+    Map<AssetShareId, List<AssetOccupancyGrant>> byShare = new LinkedHashMap<>();
+    for (AssetOccupancyGrant grant : active.values()) {
+      byShare.computeIfAbsent(grant.shareId(), ignored -> new ArrayList<>()).add(grant);
+    }
+    for (Map.Entry<AssetShareId, List<AssetOccupancyGrant>> entry : byShare.entrySet()) {
+      OwnershipStake share = shares.get(entry.getKey());
+      List<AssetOccupancyGrant> grants = entry.getValue();
+      List<Long> moments = new ArrayList<>();
+      for (AssetOccupancyGrant grant : grants) {
+        moments.add(grant.fromTick());
+      }
+      moments.sort(Long::compare);
+      for (long moment : moments) {
+        long sum = 0L;
+        for (AssetOccupancyGrant grant : grants) {
+          if (grant.fromTick() <= moment && moment < grant.toTickExclusive()) {
+            sum = addExact(sum, grant.quantity(), "activeShareQuantity", null, grant.unitId());
+          }
+        }
+        if (sum > share.quantity()) {
+          contractFault(
+              "asset-occupancy-overcommit",
+              "份额 "
+                  + share.id().value()
+                  + " 在 tick "
+                  + moment
+                  + " 的 ACTIVE 合计 "
+                  + sum
+                  + " 超过 quantity "
+                  + share.quantity(),
+              null);
+        }
+      }
+    }
   }
 
   private static Map<AssetShareId, OwnershipStake> validatedShares(

@@ -11,9 +11,12 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryHexKeys;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.LaborCommitmentKind;
 import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
@@ -26,6 +29,7 @@ import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -162,24 +166,13 @@ class UnifiedBudgetNoDoubleBookingTest {
   // ── ④ R2 最小修复：同方案两实例不再重复获得整份资产 ──────────────────────────────────────
 
   /**
-   * ★★★ <b>R2 的修复后载体（D-032 R2-min；约束设计书 §2.2/§4.1 P2）</b>。
+   * ★★★ <b>R2 的 D4-aware 载体（D-032 D4 §5.4 P3/P22）</b>。
    *
    * <p>★★ <b>语义已变（旧断言必须改写，不是放宽）</b>：改前这条用例断言「同一 LAND 份额、同经营者两个实例 ⇒ 每个 unit 各得整份数量，合计 200（实有
-   * 100）」，那是<b>缺陷现状</b>。R2 最小修复后，同 {@code (industry, operator)} scope 内只要有多于一个 unit，就按 fail-closed
-   * 处理：
+   * 100）」，那是<b>缺陷现状</b>。D4-Ib2a 后两个实例都带显式非资产劳动事实（规模 5），统一预算必须按请求量比例 真实分配：{@code LAND=1000 ⇒
+   * 500/500}，{@code unallocated=0}，两条 grant 引用同一 share 且合计 1000，不超占。
    *
-   * <pre>
-   * 两个 unit 的 allocations 都为空
-   * scope 汇总（LAND=1,000）保留在 unallocated（只读，不搬走、不改 OwnershipStake）
-   * 两个 unit 都得到具名拒绝 asset-scope-shared:awaiting-D4
-   * 每个 unit 的可用资产/产能规模 = 0（不再是各 1、合计 2）
-   * </pre>
-   *
-   * <p>★★ <b>D4-T 待重写（C4a 明确标 BLOCKED，不把旧 guard 当新路径通过）</b>：当前 {@code
-   * SettlementIndex.assetRejectionOf} 仍返回 {@code asset-scope-shared:awaiting-D4}；D4-Ib2a 的新多实例路径应以
-   * {@code asset-occupancy-request-missing:<unit>}（或真实占用分配）表达。生产修复前本条禁用，判据保留。
-   *
-   * <p>★ <b>判别力</b>：若实现把整池复制回每个 unit，{@code usableAssetsOf} 会重新出现 LAND=1,000、规模 变成 1+1=2 ⇒ 本条当场红。
+   * <p>★ <b>判别力</b>：若实现把整池复制回每个 unit，两个 allocation 都会是 1000、Σ=2000 ⇒ 本条当场红。
    */
   @Test
   void r2SamePlanTwoInstancesNoLongerDoubleBookTheSameAssetStake() {
@@ -203,15 +196,43 @@ class UnifiedBudgetNoDoubleBookingTest {
     Map<io.mosire.simos.economy.api.id.AssetShareId, OwnershipStake> stakes =
         Map.of(sharedLand.id(), sharedLand);
 
-    // ★ 同一方案、同一经营者、两个实例（unit id 不同；industry/operator 同 scope）。
+    // ★ D4-aware 构建：两个实例都有显式非资产劳动事实（5,000 毫劳动 ÷ 1,000 毫/规模 = 规模 5），
+    //   因此不是「无请求事实」路径；D4 必须按请求量比例真实分配，而不是复制整池。
     ProductionProcess first = unit(FARM, "unit-r2-first");
     ProductionProcess second = unit(FARM, "unit-r2-second");
+    PeopleLotId lot = new PeopleLotId("n9:rural:0_0:MALE:1");
+    Map<LaborAllocationId, HouseholdLaborCommitment> labor = new LinkedHashMap<>();
+    labor.put(
+        new LaborAllocationId("alloc-n9-first"),
+        new HouseholdLaborCommitment(
+            new LaborAllocationId("alloc-n9-first"),
+            lot,
+            H,
+            OPERATOR,
+            first.id().value(),
+            5_000L,
+            1L,
+            LaborCommitmentKind.PRODUCTION,
+            Optional.of(ProductionRoleId.parse("operator"))));
+    labor.put(
+        new LaborAllocationId("alloc-n9-second"),
+        new HouseholdLaborCommitment(
+            new LaborAllocationId("alloc-n9-second"),
+            lot,
+            H,
+            OPERATOR,
+            second.id().value(),
+            5_000L,
+            1L,
+            LaborCommitmentKind.PRODUCTION,
+            Optional.of(ProductionRoleId.parse("operator"))));
+
     SettlementIndex index =
         SettlementIndex.build(
             Map.of(first.id(), first, second.id(), second),
             Map.of(FARM, plan(FARM)),
             stakes,
-            Map.of(),
+            labor,
             Map.of(),
             Map.of(),
             Map.of(),
@@ -220,28 +241,31 @@ class UnifiedBudgetNoDoubleBookingTest {
             Map.of(),
             0L);
 
-    assertThat(index.usableAssetsOf(first)).as("R2 修复后：第一个实例的可用资产为空（不再拿整份 1,000）").isEmpty();
-    assertThat(index.usableAssetsOf(second)).as("R2 修复后：第二个实例的可用资产也为空").isEmpty();
     assertThat(index.d4AssetOccupancyBudget()).as("D4-Ib2a 统一占用预算必须在场").isPresent();
-    assertThat(index.d4AssetOccupancyBudget().orElseThrow().unallocated().values())
-        .as("★ 整池 1,000 保留在 D4 unallocated（只读可见，不静默丢弃、不搬给任一实例）")
-        .anySatisfy(kinds -> assertThat(kinds).containsEntry(AssetKind.LAND, 1_000L));
+    AssetOccupancyBudget d4 =
+        index.d4AssetOccupancyBudget().orElseThrow(() -> new AssertionError("missing D4 budget"));
+    assertThat(d4.allocationOf(first.id()))
+        .as("D4 真实分配：共享 LAND=1000 按 1:1 请求量分给两个实例")
+        .containsExactly(Map.entry(AssetKind.LAND, 500L));
+    assertThat(d4.allocationOf(second.id())).containsExactly(Map.entry(AssetKind.LAND, 500L));
+    assertThat(
+            d4.allocationOf(first.id()).getOrDefault(AssetKind.LAND, 0L)
+                + d4.allocationOf(second.id()).getOrDefault(AssetKind.LAND, 0L))
+        .as("★★ Σ实占 = 1000 = 实有量（不是 1000+1000=2000）")
+        .isEqualTo(1_000L);
+    assertThat(d4.grantsToWrite()).hasSize(2);
+    assertThat(d4.grantsToWrite().stream().mapToLong(g -> g.quantity()).sum())
+        .as("两条 grant 合计引用同一份 1000，不超占")
+        .isEqualTo(1_000L);
+    assertThat(d4.unallocated().values())
+        .as("P3：比例分配后 unallocated=0（不是整池留在旧 guard）")
+        .allSatisfy(kinds -> assertThat(kinds).containsEntry(AssetKind.LAND, 0L));
     assertThat(index.assetRejectionOf(first.id()))
-        .as("第一个实例得到 D4-Ib2a 具名拒绝 = 没有资产占用请求")
-        .contains("asset-occupancy-request-missing:" + first.id().value());
-    assertThat(index.assetRejectionOf(second.id()))
-        .as("第二个实例得到同一个 D4-Ib2a 具名拒绝")
-        .contains("asset-occupancy-request-missing:" + second.id().value());
-
-    long firstScale = ProductionProcessBook.capacityScaleOf(first, plan(FARM), index);
-    long secondScale = ProductionProcessBook.capacityScaleOf(second, plan(FARM), index);
-    assertThat(firstScale).as("每个实例的产能规模 = 0（不再各算 1）").isZero();
-    assertThat(secondScale).isZero();
-    assertThat(firstScale + secondScale)
-        .as("★★ Σ产能规模 = 0（旧缺陷是 1 + 1 = 2 > 实有规模 1）：同一份 1,000 LAND 不再被两个实例各占一遍；" + "多实例真实分配仍归 D4/A")
-        .isZero();
+        .as("真实分配路径不应再以旧 asset-scope-shared:awaiting-D4 作为结论")
+        .isEmpty();
+    assertThat(index.assetRejectionOf(second.id())).isEmpty();
     assertThat(stakes.get(sharedLand.id()))
-        .as("★★ R2-I5：OwnershipStake 的 quantity/owner/operator/kind 一字不改（只读派生）")
+        .as("D4-I1：OwnershipStake 的 quantity/owner/operator/kind/location 一字不改")
         .isEqualTo(sharedLand);
   }
 

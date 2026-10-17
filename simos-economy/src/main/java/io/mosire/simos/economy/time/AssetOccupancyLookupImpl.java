@@ -140,37 +140,39 @@ public final class AssetOccupancyLookupImpl implements AssetOccupancyLookup {
         contractFault(
             "asset-occupancy-snapshot-mismatch", "grant 键必须等于行内 id: " + entry.getKey(), unit);
       }
-      OwnershipStake share = matchingShares.get(grant.shareId());
+      OwnershipStake share = assetShares.get(grant.shareId());
       if (share == null) {
-        OwnershipStake anyShare = assetShares.get(grant.shareId());
-        if (anyShare == null) {
-          contractFault(
-              "asset-occupancy-snapshot-mismatch", "grant 指名悬空 share: " + grant.id().value(), unit);
-        }
-        if (anyShare.industry().equals(process.industry())
-            && anyShare.operator().equals(process.operator())
-            && anyShare.location().equals(location)) {
+        contractFault(
+            "asset-occupancy-snapshot-mismatch", "grant 指名悬空 share: " + grant.id().value(), unit);
+      }
+      boolean inRequestedScope =
+          share.industry().equals(process.industry())
+              && share.operator().equals(process.operator())
+              && share.location().equals(location);
+      if (!inRequestedScope) {
+        if (grant.unitId().equals(unit)) {
+          // 本 unit 的 grant 必须落在 production 派生作用域内；错 location/industry/operator
+          // 一律 ERROR，不得静默跳过。
           contractFault(
               "asset-occupancy-snapshot-mismatch",
               "grant share 与 unit 作用域不一致: " + grant.id().value(),
               unit);
         }
+        // 其它 unit 的合法 grant 属于别的作用域，不参与本 unit 快照。
         continue;
       }
-      if (grant.unitId().equals(unit)) {
-        ProductionProcess grantUnit = units.get(grant.unitId());
-        if (grantUnit == null) {
-          contractFault(
-              "asset-occupancy-snapshot-mismatch", "grant 指名悬空 unit: " + grant.id().value(), unit);
-        }
-        if (!grantUnit.location().equals(location)
-            || !grantUnit.industry().equals(process.industry())
-            || !grantUnit.operator().equals(process.operator())) {
-          contractFault(
-              "asset-occupancy-snapshot-mismatch",
-              "grant unit/share scope 不一致: " + grant.id().value(),
-              unit);
-        }
+      ProductionProcess grantUnit = units.get(grant.unitId());
+      if (grantUnit == null) {
+        contractFault(
+            "asset-occupancy-snapshot-mismatch", "grant 指名悬空 unit: " + grant.id().value(), unit);
+      }
+      if (!grantUnit.location().equals(share.location())
+          || !grantUnit.industry().equals(share.industry())
+          || !grantUnit.operator().equals(share.operator())) {
+        contractFault(
+            "asset-occupancy-snapshot-mismatch",
+            "grant unit/share scope 不一致: " + grant.id().value(),
+            unit);
       }
       if (grant.status() == AssetOccupancyStatus.ACTIVE
           && grant.overlaps(fromTick, toTickExclusive)) {
