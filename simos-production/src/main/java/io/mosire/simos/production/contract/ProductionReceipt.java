@@ -5,8 +5,10 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.social.api.id.HouseholdId;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -39,13 +41,16 @@ import java.util.Objects;
  * @param consumedInputs 实际消耗的原料（毫单位）；未关账 ⇒ 本次投入，关账 ⇒ 本周期累计投入；不得为 null
  * @param grossOutput 实毛产（物理量，毫单位；按 {@code scale} = {@code finalScale} 算）；未关账 ⇒ 空表；不得为 null
  * @param mintCandidates 铸币候选数量（毫货币）；未关账或无铸币路 ⇒ 空表；不得为 null
- * @param laborContributionsMilli ★ <b>本次</b>实际出工家户与各自贡献（千分劳动·日）；不得为 null、值必须为正
- * @param cycleContributions ★★ <b>本周期</b>逐家户实际贡献台账（含"按各 tick 当刻效率<b>精确加权</b>的劳动"）
- *     ——关账时它是整周期的事实（不是最后一天），未关账时它是"到本次为止"的累计； 不得为 null。★ 它是复核裁决 §5 第 3 条"整周期逐家户贡献及其当时生效效率必须可重建"的回执面
+ * @param laborContributionsMilli ★ <b>本次 tick</b>逐 (家户×角色) 实际劳动（只含 &gt;0 项）；不得为 null。
+ *     不得成为第二权威：按户合计只经 {@link #laborByHouseholdMilli()} 派生
+ * @param cycleContributions ★★ <b>本周期</b>逐 (家户×角色) 实际贡献台账（含"按各 tick 当刻效率<b>精确加权</b>的劳动"）
+ *     ——关账时它是整周期的事实（不是最后一天），未关账时它是"到本次为止"的累计； 不得为 null。★ 键必须与值内 家户/角色一致；同一户同角色多次出工累计、不同角色分行
  * @param cycleLaborMilli 本周期累计实际劳动（含本次）；不得为负
  * @param efficiencyState 推进后的效率精度余数（本域状态的回执读数；null = 缺行）
  * @param experienceGrowth 本次因实际贡献产生的经验增长（家户×经验条 → 增量）；不得为 null、值必须为正 （0 不进表——★ 未凑成整经验点的那部分在 {@code
  *     ProductionExperienceFeature.remainder} 里结转，不在这里虚报）
+ * @param experienceGrowthLines ★ 可审计的逐角色经验增长明细（家户×角色×经验条×增量）；不得为 null。它按 {@code (household, track)}
+ *     汇总后必须逐项等于 {@link #experienceGrowth()}
  * @param newlyUnlocked 本次新解锁的方案（永久记忆，I7）；不得为 null
  */
 public record ProductionReceipt(
@@ -59,11 +64,12 @@ public record ProductionReceipt(
     Map<CommodityId, Long> consumedInputs,
     Map<CommodityId, Long> grossOutput,
     Map<CurrencyId, Long> mintCandidates,
-    Map<HouseholdId, Long> laborContributionsMilli,
-    Map<HouseholdId, CycleContribution> cycleContributions,
+    Map<ProductionParticipantKey, Long> laborContributionsMilli,
+    Map<ProductionParticipantKey, CycleContribution> cycleContributions,
     long cycleLaborMilli,
     ProductionEfficiencyState efficiencyState,
     Map<HouseholdExperienceKey, Long> experienceGrowth,
+    List<ProductionExperienceGrowthLine> experienceGrowthLines,
     java.util.Set<IndustryId> newlyUnlocked) {
 
   public ProductionReceipt {
@@ -85,6 +91,7 @@ public record ProductionReceipt(
         || laborContributionsMilli == null
         || cycleContributions == null
         || experienceGrowth == null
+        || experienceGrowthLines == null
         || newlyUnlocked == null) {
       throw new IllegalArgumentException("ProductionReceipt 的各表都不得为 null（空用空表；efficiencyState 可缺）");
     }
@@ -134,31 +141,32 @@ public record ProductionReceipt(
     }
     mintCandidates = Collections.unmodifiableMap(mintCopy); // ★ 冻在赋值处
 
-    Map<HouseholdId, Long> laborCopy = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, Long> entry : laborContributionsMilli.entrySet()) {
+    Map<ProductionParticipantKey, Long> laborCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionParticipantKey, Long> entry : laborContributionsMilli.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException(
             "ProductionReceipt.laborContributionsMilli 的键与值都不得为 null");
       }
       if (entry.getValue() <= 0L) {
         throw new IllegalArgumentException(
-            "ProductionReceipt.laborContributionsMilli 的贡献必须为正（0 贡献的家户不进表）: " + entry.getKey());
+            "ProductionReceipt.laborContributionsMilli 的贡献必须为正（0 贡献的参与项不进表）: " + entry.getKey());
       }
       laborCopy.put(entry.getKey(), entry.getValue());
     }
     laborContributionsMilli = Collections.unmodifiableMap(laborCopy); // ★ 冻在赋值处
 
-    Map<HouseholdId, CycleContribution> contributionCopy = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, CycleContribution> entry : cycleContributions.entrySet()) {
+    Map<ProductionParticipantKey, CycleContribution> contributionCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionParticipantKey, CycleContribution> entry :
+        cycleContributions.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("ProductionReceipt.cycleContributions 的键与值都不得为 null");
       }
-      if (!entry.getKey().equals(entry.getValue().household())) {
+      if (!entry.getKey().equals(entry.getValue().participantKey())) {
         throw new IllegalArgumentException(
-            "ProductionReceipt.cycleContributions 的键必须与家户一致：键="
+            "ProductionReceipt.cycleContributions 的键必须与值内家户/角色一致：键="
                 + entry.getKey()
                 + "，值内="
-                + entry.getValue().household());
+                + entry.getValue().participantKey());
       }
       if (entry.getValue().laborMilli() <= 0L) {
         throw new IllegalArgumentException(
@@ -193,6 +201,25 @@ public record ProductionReceipt(
     }
     experienceGrowth = Collections.unmodifiableMap(growthCopy); // ★ 冻在赋值处
 
+    List<ProductionExperienceGrowthLine> growthLineCopy = new ArrayList<>();
+    Map<HouseholdExperienceKey, Long> lineTotals = new LinkedHashMap<>();
+    for (ProductionExperienceGrowthLine line : experienceGrowthLines) {
+      if (line == null) {
+        throw new IllegalArgumentException("ProductionReceipt.experienceGrowthLines 不得含 null");
+      }
+      growthLineCopy.add(line);
+      HouseholdExperienceKey key = new HouseholdExperienceKey(line.household(), line.track());
+      lineTotals.merge(key, line.delta(), Math::addExact);
+    }
+    experienceGrowthLines = Collections.unmodifiableList(growthLineCopy);
+    if (!lineTotals.equals(experienceGrowth)) {
+      throw new IllegalArgumentException(
+          "ProductionReceipt.experienceGrowthLines 按 (household,track) 汇总必须等于 experienceGrowth: lines="
+              + lineTotals
+              + " growth="
+              + experienceGrowth);
+    }
+
     java.util.Set<IndustryId> unlockCopy = new java.util.LinkedHashSet<>();
     for (IndustryId unlocked : newlyUnlocked) {
       if (unlocked == null) {
@@ -206,5 +233,14 @@ public record ProductionReceipt(
   /** ★ 是否发生了"真的产出了东西"（关账且有毛产）——经济侧据此决定要不要走收益分配。 */
   public boolean harvested() {
     return cycleClosed;
+  }
+
+  /** ★ <b>本 tick 出工劳动的按户派生合计</b>：同一户多角色合并；不另存第二份权威。 */
+  public Map<HouseholdId, Long> laborByHouseholdMilli() {
+    Map<HouseholdId, Long> byHousehold = new LinkedHashMap<>();
+    for (Map.Entry<ProductionParticipantKey, Long> entry : laborContributionsMilli.entrySet()) {
+      byHousehold.merge(entry.getKey().household(), entry.getValue(), Math::addExact);
+    }
+    return Collections.unmodifiableMap(byHousehold);
   }
 }

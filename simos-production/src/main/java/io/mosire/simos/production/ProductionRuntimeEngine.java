@@ -8,15 +8,19 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.production.contract.CycleContribution;
+import io.mosire.simos.production.contract.ExperienceGrowth;
 import io.mosire.simos.production.contract.ExperienceState;
 import io.mosire.simos.production.contract.ExperienceTrack;
 import io.mosire.simos.production.contract.ExperienceTrackId;
 import io.mosire.simos.production.contract.ExternalAttributeFacts;
+import io.mosire.simos.production.contract.GrowthBasis;
 import io.mosire.simos.production.contract.HouseholdExperienceKey;
 import io.mosire.simos.production.contract.HouseholdProductionConditions;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.MoneyOutput;
+import io.mosire.simos.production.contract.ParticipantContribution;
 import io.mosire.simos.production.contract.ProductionAvailabilityCondition;
 import io.mosire.simos.production.contract.ProductionContractFault;
 import io.mosire.simos.production.contract.ProductionCreationRequest;
@@ -27,20 +31,24 @@ import io.mosire.simos.production.contract.ProductionEfficiencyState;
 import io.mosire.simos.production.contract.ProductionExecutionOutcome;
 import io.mosire.simos.production.contract.ProductionExecutionRequest;
 import io.mosire.simos.production.contract.ProductionExperienceFeature;
+import io.mosire.simos.production.contract.ProductionExperienceGrowthLine;
 import io.mosire.simos.production.contract.ProductionExperienceMoveOutcome;
 import io.mosire.simos.production.contract.ProductionExperienceUse;
 import io.mosire.simos.production.contract.ProductionInstanceOutcome;
+import io.mosire.simos.production.contract.ProductionParticipantKey;
 import io.mosire.simos.production.contract.ProductionPlanOutcome;
 import io.mosire.simos.production.contract.ProductionProbeRequest;
 import io.mosire.simos.production.contract.ProductionProbeResult;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.production.contract.ProductionReceipt;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.ProductionRuntime;
 import io.mosire.simos.production.contract.ProductionTickCondition;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.ChangeSet;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -141,13 +149,14 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
   // ── ★★ A′ 批：同 tick 的"家户×经验条"经验归并账（§13.8 末段 / §13.7 第 1 条 / 复核 §2.1）────────
 
   /**
-   * <b>本 tick 已归并的实际贡献</b>（键 = 家户 × 经验条；值 = 该键在本 tick 累计到的实际劳动）。
+   * <b>本 tick 已归并的精确经验增长分子</b>（键 = 家户 × 经验条；值 = 该键在本 tick 累计的“千分之一经验”分子）。
    *
-   * <p>★ <b>它是派生账、不是状态</b>（同 {@link #advancedThisTick} 的性质）：归并结果永远由 "本 tick 起点的特征 + 汇总劳动"算出（{@code
-   * ProductionExperience.accrueFrom}），故引擎重建后 从当刻状态继续累加也得到同一结果。★ 开启 tick 时清空；未开启 tick（手搭夹具直调）时 <b>一次
-   * execute 自成一窗</b>（见 {@link #execute} 开头）。
+   * <p>★ <b>它是派生账、不是状态</b>（同 {@link #advancedThisTick} 的性质）：归并结果永远由 “本 tick 起点的特征 +
+   * 汇总精确分子”算出（{@code ProductionExperience.accrueFromExactNumerator}），故引擎重建后从当刻状态继续累加也得到同一结果。 ★ 开启
+   * tick 时清空；未开启 tick（手搭夹具直调）时 <b>一次 execute 自成一窗</b>（见 {@link #execute} 开头）。
    */
-  private final Map<HouseholdExperienceKey, Long> pendingLaborThisTick = new LinkedHashMap<>();
+  private final Map<HouseholdExperienceKey, Long> pendingExactGrowthThisTick =
+      new LinkedHashMap<>();
 
   /**
    * <b>本 tick 起点（衰减后）的经验特征</b>（键 = 家户 × 经验条；首次触达时登记）。
@@ -796,19 +805,68 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     //   ★ "无任何条件、无需解锁 ⇒ 不做额外检查"：主体只在方案确实要读经验面时才反查（不对无条件方案多解析
     //     经营者 id，那会改变无条件方案的可达行为）。
     HouseholdId subject =
-        requiresExperienceSubject(plan) ? householdSubjectOf(instance.operator()) : null;
+        requiresExperienceSubject(plan) || hasExternalAttributeCondition(plan)
+            ? householdSubjectOf(instance.operator())
+            : null;
+    ExternalAttributeFacts planFacts =
+        subject == null
+            ? request.attributes()
+            : request.participantAttributes().getOrDefault(subject, ExternalAttributeFacts.EMPTY);
     String qualificationFailure =
         qualificationFailure(
-            plan, subject, track -> current.experienceOf(subject, track), request.attributes());
+            plan, subject, track -> current.experienceOf(subject, track), planFacts);
     if (qualificationFailure != null) {
       // ★ 业务拒绝（INFO）+ 零残留：走到这里 current 尚未被本请求改过（实例未建、进度/经验/投入/占用均未动）。
       return reject(qualificationFailure, instance.id().value());
+    }
+
+    // ★★ C1/D2 §6.2/§7.3：角色级资格、管理劳动事实与归一化经验预算必须在<b>任何写入之前</b>查完。
+    //   下列任一失败都整实例业务拒绝、零状态变化（不是“部分角色满足就生产”）。
+    Map<ProductionRoleId, ProductionRoleDefinition> rolesById = rolesById(plan);
+    Map<HouseholdId, ExternalAttributeFacts> participantFacts = request.participantAttributes();
+    for (ParticipantContribution contribution : request.laborContributionsMilli()) {
+      HouseholdId household = contribution.household();
+      ProductionRoleDefinition role = rolesById.get(contribution.role());
+      if (role == null) {
+        return reject("role-unknown:" + contribution.role().value(), instance.id().value());
+      }
+      ExternalAttributeFacts facts =
+          participantFacts.getOrDefault(household, ExternalAttributeFacts.EMPTY);
+      String roleFailure =
+          roleQualificationFailure(
+              plan, role, household, track -> current.experienceOf(household, track), facts);
+      if (roleFailure != null) {
+        return reject(
+            "role-qualification:" + role.id().value() + ":" + household.value() + ":" + roleFailure,
+            instance.id().value());
+      }
+      ExperienceGrowth growth = role.experienceGrowth().orElse(null);
+      if (growth == null) {
+        continue;
+      }
+      if (current.experienceTracks().get(growth.track()) == null) {
+        contractFault(
+            "growth-references-unknown-track", role.id().value() + " → " + growth.track().value());
+      }
+      if (growth.countsManagement() && !request.managementLaborMilli().containsKey(household)) {
+        return reject(
+            "management-labor-missing:" + role.id().value() + ":" + household.value(),
+            instance.id().value());
+      }
+      if (growth.basis() == GrowthBasis.NORMALIZED_PARTICIPATION) {
+        Long budget = request.householdLaborBudgetMilli().get(household);
+        if (budget == null || budget <= 0L) {
+          return reject(
+              "household-labor-budget-missing:" + role.id().value() + ":" + household.value(),
+              instance.id().value());
+        }
+      }
     }
     if (created) {
       current = current.withInstance(instance);
     }
 
-    Map<HouseholdId, Long> contributions = request.laborContributionsMilli();
+    List<ParticipantContribution> contributions = request.laborContributionsMilli();
     long progressBefore = instance.progressDays();
     long progressAfter = Math.addExact(progressBefore, 1L);
     Map<CommodityId, Long> cycleInputs = new LinkedHashMap<>(instance.cycleInputUsedMilli());
@@ -816,57 +874,100 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
       cycleInputs.merge(entry.getKey(), entry.getValue(), Math::addExact);
     }
 
-    // ── ★★ A′ 批：逐 tick 累计"实际贡献 + 精确加权劳动"；经验按 家户×经验条 归并后一次换算 ────────
-    //   ★ 加权劳动 = 劳动 × 当刻效率，<b>不除 1000、不截断</b>（旧形态在这里截断并结转"折算余数"，
-    //     余数按<b>实例</b>存放 ⇒ 同一实例多户出工共享一个累加器；A′ 批把它整段删掉）。
+    // ── ★★ C1：逐 (家户×角色) 累计实际贡献与精确加权劳动；经验按 roles[].experienceGrowth 逐角色算后
+    //    按 (家户×经验条) 一次换算 ────────────────────────────────────────────────────────────
+    //   ★ 加权劳动 = 劳动 × 当刻效率，<b>不除 1000、不截断</b>；经验增长分子也保持整数精确，归并后只做一次除法/余数结转。
     if (condition == null) {
       // ★ 未开启 tick（手搭夹具直调）：一次 execute = 一个生产日 ⇒ 本调用自成一窗（开启 tick 时由
       //   beginTick 清窗，本 tick 内跨实例的贡献才会先归并、再一次性换算经验）。
-      pendingLaborThisTick.clear();
+      pendingExactGrowthThisTick.clear();
       tickBaselineExperience.clear();
     }
-    Map<HouseholdId, CycleContribution> cycleContributions =
+    Map<ProductionParticipantKey, CycleContribution> cycleContributions =
         new LinkedHashMap<>(instance.cycleContributions());
-    Map<HouseholdExperienceKey, Long> growth = new LinkedHashMap<>();
+    Map<ProductionParticipantKey, Long> tickLaborByParticipant = new LinkedHashMap<>();
+    Map<HouseholdExperienceKey, Long> exactGrowthByTrack = new LinkedHashMap<>();
+    Map<HouseholdExperienceKey, Map<ProductionRoleId, Long>> roleNumeratorsByTrack =
+        new LinkedHashMap<>();
     Set<IndustryId> newlyUnlocked = new LinkedHashSet<>();
-    for (Map.Entry<HouseholdId, Long> entry : contributions.entrySet()) {
-      HouseholdId household = entry.getKey();
-      long labor = entry.getValue();
+
+    for (ParticipantContribution contribution : contributions) {
+      HouseholdId household = contribution.household();
+      ProductionParticipantKey participantKey = contribution.participantKey();
+      long labor = contribution.laborMilli();
       long efficiency = efficiencyScaleFor(plan, household, null);
       long weightedLabor = Math.multiplyExact(labor, efficiency);
-      CycleContribution contribution = cycleContributions.get(household);
+      tickLaborByParticipant.put(participantKey, labor);
+      CycleContribution cycleContribution = cycleContributions.get(participantKey);
       cycleContributions.put(
-          household,
-          contribution == null
-              ? new CycleContribution(household, labor, weightedLabor)
-              : contribution.plus(labor, weightedLabor));
-      // ★★ A′ 批（§13.8 末段 / §13.7 第 1 条）：先把本 tick 的实际贡献按<b>家户 × 经验条</b>汇总，
-      //    再从"本 tick 起点的特征"一次性换算经验增量并结转余数 ⇒ 同户同条只换算一次、与实例
-      //    遍历顺序无关；分布在多个实例上的实际劳动只累加一次（不重复计）。
-      for (ExperienceTrackId track : tracksToGrow(plan.experience())) {
-        HouseholdExperienceKey key = new HouseholdExperienceKey(household, track);
-        long aggregated = Math.addExact(pendingLaborThisTick.getOrDefault(key, 0L), labor);
-        pendingLaborThisTick.put(key, aggregated);
-        ProductionExperienceFeature baseline = tickBaselineExperience.get(key);
-        if (baseline == null) {
-          baseline = current.experienceFeatureOf(household, track);
-          tickBaselineExperience.put(key, baseline);
-        }
-        ProductionExperienceFeature before = current.experienceFeatureOf(household, track);
-        current = ProductionExperience.accrueFrom(current, key, baseline, aggregated);
-        ProductionExperienceFeature after = current.experienceFeatureOf(household, track);
-        long delta = after.value() - before.value();
-        if (delta > 0L) {
-          growth.merge(key, delta, Math::addExact);
-        }
+          participantKey,
+          cycleContribution == null
+              ? new CycleContribution(household, contribution.role(), labor, weightedLabor)
+              : cycleContribution.plus(labor, weightedLabor));
+
+      ProductionRoleDefinition role = rolesById.get(contribution.role());
+      ExperienceGrowth growthConfig = role.experienceGrowth().orElse(null);
+      if (growthConfig == null || growthConfig.coefficientPerMille() <= 0L) {
+        continue;
       }
+      long managementLabor =
+          growthConfig.countsManagement()
+              ? request.managementLaborMilli().getOrDefault(household, 0L)
+              : 0L;
+      long effectiveLabor =
+          effectiveLaborForExperience(
+              labor,
+              managementLabor,
+              growthConfig,
+              request.householdLaborBudgetMilli().get(household));
+      ExperienceTrack track = current.experienceTracks().get(growthConfig.track());
+      long exactNumerator =
+          ProductionExperience.capExactGrowthNumerator(
+              ProductionExperience.exactGrowthNumerator(
+                  track, effectiveLabor, growthConfig.coefficientPerMille()),
+              growthConfig.maxPerTickValue());
+      if (exactNumerator <= 0L) {
+        continue;
+      }
+      HouseholdExperienceKey experienceKey =
+          new HouseholdExperienceKey(household, growthConfig.track());
+      exactGrowthByTrack.merge(experienceKey, exactNumerator, Math::addExact);
+      roleNumeratorsByTrack
+          .computeIfAbsent(experienceKey, ignored -> new LinkedHashMap<>())
+          .merge(contribution.role(), exactNumerator, Math::addExact);
+    }
+
+    Map<HouseholdExperienceKey, Long> growth = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdExperienceKey, Long> entry : exactGrowthByTrack.entrySet()) {
+      HouseholdExperienceKey key = entry.getKey();
+      ProductionExperienceFeature baseline = tickBaselineExperience.get(key);
+      if (baseline == null) {
+        baseline = current.experienceFeatureOf(key.household(), key.track());
+        tickBaselineExperience.put(key, baseline);
+      }
+      long aggregated =
+          Math.addExact(pendingExactGrowthThisTick.getOrDefault(key, 0L), entry.getValue());
+      pendingExactGrowthThisTick.put(key, aggregated);
+      ProductionExperienceFeature before =
+          current.experienceFeatureOf(key.household(), key.track());
+      current = ProductionExperience.accrueFromExactNumerator(current, key, baseline, aggregated);
+      ProductionExperienceFeature after = current.experienceFeatureOf(key.household(), key.track());
+      long delta = after.value() - before.value();
+      if (delta > 0L) {
+        growth.merge(key, delta, Math::addExact);
+      }
+    }
+    for (ParticipantContribution contribution : contributions) {
       // ★ 门槛在周期中达到即可授予（复核裁决 §2 第 7 项 / §5 第 5 条）：同样是本 tick 判。
-      Set<IndustryId> granted = ProductionExperience.grantUnlocks(current, household);
+      Set<IndustryId> granted =
+          ProductionExperience.grantUnlocks(current, contribution.household());
       if (!granted.isEmpty()) {
-        current = ProductionExperience.applyUnlocks(current, household, granted);
+        current = ProductionExperience.applyUnlocks(current, contribution.household(), granted);
         newlyUnlocked.addAll(granted);
       }
     }
+    List<ProductionExperienceGrowthLine> experienceGrowthLines =
+        experienceGrowthLines(roleNumeratorsByTrack, growth);
 
     long cycleLabor = 0L;
     for (CycleContribution contribution : cycleContributions.values()) {
@@ -891,11 +992,12 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
               request.finalInputsMilli(),
               Map.of(),
               Map.of(),
-              contributions,
+              tickLaborByParticipant,
               cycleContributions,
               cycleLabor,
               current.efficiencyOf(advanced.id()).orElse(null),
               growth,
+              experienceGrowthLines,
               newlyUnlocked);
       if (LOG.isDebugEnabled()) {
         EventLog.channel(LOG)
@@ -911,10 +1013,10 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
                     plan.cycleDays(),
                     "cycleLaborMilli",
                     cycleLabor,
-                    "households",
+                    "participants",
                     cycleContributions.size(),
                     "experienceGrowthLines",
-                    growth.size(),
+                    experienceGrowthLines.size(),
                     "newUnlocks",
                     newlyUnlocked.size()));
       }
@@ -924,9 +1026,10 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     // ── 周期关账：实际规模由<b>整周期累计</b>决定（I6；复核裁决 §5 第 3 条）──────────────────
     Map<HouseholdId, Long> laborByHousehold = new LinkedHashMap<>();
     Map<HouseholdId, Long> weightedLaborByHousehold = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, CycleContribution> entry : cycleContributions.entrySet()) {
-      laborByHousehold.put(entry.getKey(), entry.getValue().laborMilli());
-      weightedLaborByHousehold.put(entry.getKey(), entry.getValue().efficiencyWeightedLaborMilli());
+    for (CycleContribution contribution : cycleContributions.values()) {
+      laborByHousehold.merge(contribution.household(), contribution.laborMilli(), Math::addExact);
+      weightedLaborByHousehold.merge(
+          contribution.household(), contribution.efficiencyWeightedLaborMilli(), Math::addExact);
     }
     long assetScaleRaw = capacityScaleOf(plan, request.assetOccupancy());
     // ★★ 唯一入口（试算/实际/家户利润比较共用）：三通道都不乘 E 求 baseScale，再整体乘一次得 finalScale。
@@ -967,11 +1070,12 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
             cycleInputs,
             gross,
             minted,
-            contributions,
+            tickLaborByParticipant,
             cycleContributions,
             cycleLabor,
             evaluation.nextCarry(),
             growth,
+            experienceGrowthLines,
             newlyUnlocked);
     if (LOG.isDebugEnabled()) {
       EventLog.channel(LOG)
@@ -993,7 +1097,7 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
                   cycleLabor,
                   "cycleEfficiencyWeightedLaborMilli",
                   evaluation.efficiencyWeightedLaborMilli(),
-                  "households",
+                  "participants",
                   cycleContributions.size(),
                   "efficiencyPerMille",
                   evaluation.efficiencyScalePerMille(),
@@ -1004,7 +1108,7 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
                   "mintLines",
                   minted.size(),
                   "experienceGrowthLines",
-                  growth.size(),
+                  experienceGrowthLines.size(),
                   "newUnlocks",
                   newlyUnlocked.size()));
     }
@@ -1036,7 +1140,7 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     decayedThisTick = false;
     advancedThisTick.clear();
     // ★★ A′ 批：经验归并账按 tick 重开（衰减之后才登记基线 ⇒ 基线是"本 tick 起点、已衰减"的特征）。
-    pendingLaborThisTick.clear();
+    pendingExactGrowthThisTick.clear();
     tickBaselineExperience.clear();
     // ★★★ DEF-T2a-3 修复：衰减走私有 {@link #decayOnce()}，**不**走公共 {@link #advanceTick()} —— 后者的首行守卫
     //   要求"已经开启过 tick"（读 {@link #lastAdvancedTick}/{@link #condition}），而这两者按日序要在**衰减之后**
@@ -1379,14 +1483,6 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     return track == null ? 0L : tickCondition.experienceOf(household, track);
   }
 
-  /** ★ 实际生产要在哪些经验条上累计：专门条 a 与共用条 b <b>都</b>累（U4 的"共用经验条"落形）。 */
-  private static Set<ExperienceTrackId> tracksToGrow(ProductionExperienceUse use) {
-    Set<ExperienceTrackId> tracks = new LinkedHashSet<>();
-    use.primaryTrack().ifPresent(tracks::add);
-    use.sharedTrack().ifPresent(tracks::add);
-    return tracks;
-  }
-
   /**
    * ★★ <b>方案自带地点与实例地点必须一致</b>（A 批新增守卫）：方案 id 里带 {@code <kind>@<q>_<r>} 时， 它与实例地点是"同一件事的两种说法"⇒
    * 不一致就是状态自相矛盾（契约故障 ERROR，不静默取一个）。
@@ -1412,6 +1508,143 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
               + "，实例地点 "
               + location.value());
     }
+  }
+
+  /** ★ 方案内角色索引（保序；构造期已保证 id 唯一，这里只防御性复核）。 */
+  private static Map<ProductionRoleId, ProductionRoleDefinition> rolesById(
+      IndustryDefinitionView plan) {
+    Map<ProductionRoleId, ProductionRoleDefinition> roles = new LinkedHashMap<>();
+    for (ProductionRoleDefinition role : plan.roles()) {
+      if (roles.put(role.id(), role) != null) {
+        contractFault("role-definition-duplicate", role.id().value());
+      }
+    }
+    return roles;
+  }
+
+  /**
+   * ★ <b>角色级资格</b>（D2 §6.2/§7.3）：逐条求值 {@code roles[].conditions}，主体是该参与户；缺属性事实
+   * fail-closed。返回第一条不满足的具名理由（null = 有资格）。
+   */
+  private String roleQualificationFailure(
+      IndustryDefinitionView plan,
+      ProductionRoleDefinition role,
+      HouseholdId household,
+      ToLongFunction<ExperienceTrackId> experienceOfTrack,
+      ExternalAttributeFacts attributes) {
+    if (role.conditions().isEmpty()) {
+      return null;
+    }
+    return unsatisfiedConditions(role.conditions(), plan, experienceOfTrack, attributes);
+  }
+
+  /**
+   * ★ <b>经验增长的有效劳动</b>（D2 §9.1）：
+   *
+   * <ul>
+   *   <li>{@code ACTUAL_LABOR}：直接使用该角色实际劳动（必要时加管理劳动）；
+   *   <li>{@code NORMALIZED_PARTICIPATION}：{@code min(labor+management, budget) × 1000 /
+   *       budget}，即“全时当量毫劳动”。
+   * </ul>
+   *
+   * <p>★ 归一化分母缺失或 ≤0 已在 execute 的业务拒绝前置检查里拦下；这里仍 fail-closed（防御调用点绕过）。
+   */
+  private static long effectiveLaborForExperience(
+      long laborMilli,
+      long managementLaborMilli,
+      ExperienceGrowth growth,
+      Long householdLaborBudgetMilli) {
+    try {
+      long countedLabor = Math.addExact(laborMilli, managementLaborMilli);
+      if (growth.basis() == GrowthBasis.ACTUAL_LABOR) {
+        return countedLabor;
+      }
+      if (householdLaborBudgetMilli == null || householdLaborBudgetMilli <= 0L) {
+        contractFault(
+            "household-labor-budget-missing",
+            growth.track().value() + " 的归一化经验分母缺失/≤0: " + householdLaborBudgetMilli);
+      }
+      long capped = Math.min(countedLabor, householdLaborBudgetMilli);
+      long numerator = Math.multiplyExact(capped, 1_000L);
+      return numerator / householdLaborBudgetMilli;
+    } catch (ArithmeticException ex) {
+      contractFault("experience-growth-overflow", ex.getMessage());
+      return 0L; // 不可达（contractFault 恒抛）
+    }
+  }
+
+  /**
+   * ★ <b>把逐角色精确增长分子拆成可审计的 {@link ProductionExperienceGrowthLine}</b>。
+   *
+   * <p>经验主值增量按 {@code (household,track)} 换算一次；同一 tick 同一 track 有多个角色时，用最大余数法把该 整数增量分给各角色，保证 lines
+   * 汇总与 {@code growth} 逐项相等。分母为各角色自己的精确增长分子。
+   */
+  private static List<ProductionExperienceGrowthLine> experienceGrowthLines(
+      Map<HouseholdExperienceKey, Map<ProductionRoleId, Long>> roleNumeratorsByTrack,
+      Map<HouseholdExperienceKey, Long> growth) {
+    List<ProductionExperienceGrowthLine> lines = new ArrayList<>();
+    for (Map.Entry<HouseholdExperienceKey, Long> entry : growth.entrySet()) {
+      HouseholdExperienceKey key = entry.getKey();
+      long totalDelta = entry.getValue();
+      if (totalDelta <= 0L) {
+        continue;
+      }
+      Map<ProductionRoleId, Long> numerators = roleNumeratorsByTrack.getOrDefault(key, Map.of());
+      if (numerators.isEmpty()) {
+        contractFault(
+            "experience-growth-lines-missing", "有经验增量但没有角色增长分子: " + key + " delta=" + totalDelta);
+      }
+      Map<ProductionRoleId, Long> deltas = allocateByNumerators(totalDelta, numerators);
+      for (Map.Entry<ProductionRoleId, Long> delta : deltas.entrySet()) {
+        if (delta.getValue() > 0L) {
+          lines.add(
+              new ProductionExperienceGrowthLine(
+                  key.household(), delta.getKey(), key.track(), delta.getValue()));
+        }
+      }
+    }
+    return List.copyOf(lines);
+  }
+
+  /** 按权重（角色精确增长分子）用最大余数法拆一个整数总量；余数降序、角色 id 升序破平。 */
+  private static Map<ProductionRoleId, Long> allocateByNumerators(
+      long total, Map<ProductionRoleId, Long> numerators) {
+    long sum = 0L;
+    for (long value : numerators.values()) {
+      sum = Math.addExact(sum, value);
+    }
+    if (sum <= 0L) {
+      contractFault("experience-growth-lines-zero-weight", "角色增长分子合计必须 >0");
+    }
+    Map<ProductionRoleId, Long> base = new LinkedHashMap<>();
+    Map<ProductionRoleId, Long> remainders = new LinkedHashMap<>();
+    long allocated = 0L;
+    BigInteger bigTotal = BigInteger.valueOf(total);
+    BigInteger bigSum = BigInteger.valueOf(sum);
+    for (Map.Entry<ProductionRoleId, Long> entry : numerators.entrySet()) {
+      BigInteger product = bigTotal.multiply(BigInteger.valueOf(entry.getValue()));
+      long quotient = product.divide(bigSum).longValueExact();
+      long remainder = product.remainder(bigSum).longValueExact();
+      base.put(entry.getKey(), quotient);
+      remainders.put(entry.getKey(), remainder);
+      allocated = Math.addExact(allocated, quotient);
+    }
+    long leftover = Math.subtractExact(total, allocated);
+    if (leftover < 0L || leftover > numerators.size()) {
+      contractFault(
+          "experience-growth-line-remainder",
+          "经验增长行整数余数越界: " + leftover + "，角色数=" + numerators.size());
+    }
+    List<ProductionRoleId> order = new ArrayList<>(numerators.keySet());
+    order.sort(
+        java.util.Comparator.comparingLong((ProductionRoleId id) -> remainders.get(id))
+            .reversed()
+            .thenComparing(ProductionRoleId::value));
+    for (int i = 0; i < leftover; i++) {
+      ProductionRoleId role = order.get(i);
+      base.merge(role, 1L, Math::addExact);
+    }
+    return base;
   }
 
   /**
@@ -1445,7 +1678,8 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     if (subject == null && requiresExperienceSubject(plan)) {
       return "condition-subject-unknown";
     }
-    String conditionFailure = unsatisfiedCondition(plan, experienceOfTrack, attributes);
+    String conditionFailure =
+        unsatisfiedConditions(plan.availability(), plan, experienceOfTrack, attributes);
     if (conditionFailure != null) {
       return conditionFailure;
     }
@@ -1464,6 +1698,16 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
     }
     for (ProductionAvailabilityCondition condition : plan.availability()) {
       if (condition instanceof ProductionAvailabilityCondition.MinimumExperience) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** ★ 计划级外部属性条件需要 organizer 家户的属性事实（非家户主体仍退回请求级 attributes）。 */
+  private static boolean hasExternalAttributeCondition(IndustryDefinitionView plan) {
+    for (ProductionAvailabilityCondition condition : plan.availability()) {
+      if (condition instanceof ProductionAvailabilityCondition.ExternalAttribute) {
         return true;
       }
     }
@@ -1507,11 +1751,12 @@ public final class ProductionRuntimeEngine implements ProductionRuntime {
    *
    * <p>★ 经验条未登记 ⇒ {@code condition-references-unknown-track} 契约故障（不是"条件不满足"：引用悬空是配置错误）。
    */
-  private String unsatisfiedCondition(
+  private String unsatisfiedConditions(
+      List<ProductionAvailabilityCondition> conditions,
       IndustryDefinitionView plan,
       ToLongFunction<ExperienceTrackId> experienceOfTrack,
       ExternalAttributeFacts attributes) {
-    for (ProductionAvailabilityCondition condition : plan.availability()) {
+    for (ProductionAvailabilityCondition condition : conditions) {
       if (condition instanceof ProductionAvailabilityCondition.ExternalAttribute) {
         ExternalAttributeFacts.Verdict verdict = attributes.evaluate(condition);
         if (!verdict.satisfied()) {

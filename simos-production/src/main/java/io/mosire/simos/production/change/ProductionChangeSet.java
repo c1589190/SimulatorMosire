@@ -37,8 +37,9 @@ import java.util.Set;
  * industries} 维无需第二套 diff。
  *
  * <p>★★ <b>A′ 批的结转状态全在这 8 个组件之内</b>（§13.8 末段）：经验侧的结转 = {@code householdExperience} 的值 {@link
- * ProductionExperienceFeature#remainder()}（键 = 家户 × 经验条）；实例侧的结转 = {@code instances} 里的逐家户加权劳动与
- * {@code efficiency} 的三段余数。⇒ 本记录<b>没有</b>新增组件， 组件数仍为 8（与 {@link ProductionData} 的 record 组件一一对应）。
+ * ProductionExperienceFeature#remainder()}（键 = 家户 × 经验条）；实例侧的结转 = {@code instances} 里的逐 (家户×角色)
+ * 加权劳动与 {@code efficiency} 的三段余数。⇒ 本记录<b>没有</b>新增组件， 组件数仍为 8（与 {@link ProductionData} 的 record
+ * 组件一一对应）。
  *
  * <p>★ <b>缺键（null）⇒ {@link FieldDelta.Unchanged}</b>：Jackson 对缺失组件绑成 null 时归一成"一字未动"，不抛。
  *

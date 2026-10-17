@@ -6,9 +6,12 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★ <b>② 执行：请求</b>（D-032 约束设计书 §4.2「执行(实例ID 或 新建请求, <b>最终投入</b>) → 回执」）。
@@ -32,23 +35,31 @@ import java.util.Optional;
  *     ProductionProbeResult.scale}（产出规模）<b>不是</b>同一个口径：分配要多少资源请以 {@code laborRequiredMilli}/{@code
  *     assetRequired}/{@code inputRequired} 三件为准。 ★
  *     它<b>只</b>用于"本次允许投入多少"的预算与对账回显——周期关账时的实际规模仍由<b>实际累计投入</b> 决定（I6：不得用预测值顶替实际值）
- * @param laborContributionsMilli <b>实际出工家户与各自贡献</b>（千分劳动·日）；不得为 null、值必须为正 （0 贡献的家户不进表）；空表 =
- *     本次没有任何家户出工
+ * @param laborContributionsMilli <b>逐参与户×角色的实际劳动贡献</b>（保序不可变；{@code (household,role)} 唯一； 逐项
+ *     &gt;0，毫小时/日）；不得为 null；空表 = 本次没有任何家户出工
  * @param assetOccupancy ★ <b>资产占用</b>（按种类的实际占用；§4.2 原文"最终投入（劳动分配、原料、<b>资产占用</b>）"）； 不得为
  *     null、值必须为正（0 不进表）。它是"这一格、这个经营者为此实例实占的生产资料"， 周期关账时的产能那一路规模由它算
  * @param finalInputsMilli 本次最终投入的原料（毫单位）；不得为 null、逐值必须为正（0 不进表）
- * @param attributes 外部属性事实（执行与试算共用同一份口径）；不得为 null。★ R3（§15.3）起 {@code execute} 用它判方案声明的 {@code
- *     ExternalAttribute} 可用性条件（缺事实 ⇒ fail-closed，具名 {@code condition-unsatisfied:...}）；正式日循环若仍传
- *     {@link ExternalAttributeFacts#EMPTY}，则声明外部属性条件的方案在 实际执行里一律具名拒——那是 §4.5 的 fail-closed 口径，不是缺陷
+ * @param attributes 方案级/非家户主体的外部属性事实（probe 原样使用；execute 在主体是家户时优先用 {@link #participantAttributes()}
+ *     中该户的事实，非家户主体才用它）；不得为 null
+ * @param participantAttributes 逐参与户外部属性事实；不得为 null（无条件/无户用空表）。角色级资格条件缺事实 ⇒ fail-closed；计划级资格的主体 =
+ *     organizer 家户，也读本表
+ * @param householdLaborBudgetMilli 逐户当日可用劳动预算（毫小时/日）；不得为 null。归一化经验口径 （{@code
+ *     NORMALIZED_PARTICIPATION}）缺该户或值 ≤0 ⇒ 业务拒绝，不按 0 静默
+ * @param managementLaborMilli 逐户管理劳动（毫小时/日）；不得为 null。仅 {@code countsManagement=true} 的角色读取；
+ *     该角色需要而该户缺项 ⇒ 业务拒绝
  */
 public record ProductionExecutionRequest(
     Optional<ProductionUnitId> instance,
     Optional<ProductionCreationRequest> creation,
     long grantedScale,
-    Map<HouseholdId, Long> laborContributionsMilli,
+    List<ParticipantContribution> laborContributionsMilli,
     Map<AssetKind, Long> assetOccupancy,
     Map<CommodityId, Long> finalInputsMilli,
-    ExternalAttributeFacts attributes) {
+    ExternalAttributeFacts attributes,
+    Map<HouseholdId, ExternalAttributeFacts> participantAttributes,
+    Map<HouseholdId, Long> householdLaborBudgetMilli,
+    Map<HouseholdId, Long> managementLaborMilli) {
 
   public ProductionExecutionRequest {
     if (instance == null) {
@@ -75,22 +86,21 @@ public record ProductionExecutionRequest(
       throw new IllegalArgumentException(
           "ProductionExecutionRequest.laborContributionsMilli 不得为 null（无出工用空表）");
     }
-    Map<HouseholdId, Long> laborCopy = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, Long> entry : laborContributionsMilli.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
+    List<ParticipantContribution> contributionCopy = new java.util.ArrayList<>();
+    Set<ProductionParticipantKey> participantKeys = new LinkedHashSet<>();
+    for (ParticipantContribution contribution : laborContributionsMilli) {
+      if (contribution == null) {
         throw new IllegalArgumentException(
-            "ProductionExecutionRequest.laborContributionsMilli 的键与值都不得为 null");
+            "ProductionExecutionRequest.laborContributionsMilli 不得含 null");
       }
-      if (entry.getValue() <= 0L) {
+      if (!participantKeys.add(contribution.participantKey())) {
         throw new IllegalArgumentException(
-            "ProductionExecutionRequest.laborContributionsMilli 的贡献必须为正（0 不进表）: "
-                + entry.getKey()
-                + " = "
-                + entry.getValue());
+            "ProductionExecutionRequest.laborContributionsMilli 的 (household,role) 不得重复: "
+                + contribution.participantKey());
       }
-      laborCopy.put(entry.getKey(), entry.getValue());
+      contributionCopy.add(contribution);
     }
-    laborContributionsMilli = Collections.unmodifiableMap(laborCopy); // ★ 冻在赋值处
+    laborContributionsMilli = Collections.unmodifiableList(contributionCopy); // ★ 冻在赋值处
 
     if (assetOccupancy == null) {
       throw new IllegalArgumentException(
@@ -137,18 +147,62 @@ public record ProductionExecutionRequest(
     Objects.requireNonNull(
         attributes,
         "ProductionExecutionRequest.attributes 不得为 null（无属性用 ExternalAttributeFacts.EMPTY）");
+
+    if (participantAttributes == null) {
+      throw new IllegalArgumentException(
+          "ProductionExecutionRequest.participantAttributes 不得为 null（无属性用空表）");
+    }
+    Map<HouseholdId, ExternalAttributeFacts> participantAttributesCopy = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, ExternalAttributeFacts> entry : participantAttributes.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "ProductionExecutionRequest.participantAttributes 的键与值都不得为 null");
+      }
+      participantAttributesCopy.put(entry.getKey(), entry.getValue());
+    }
+    participantAttributes = Collections.unmodifiableMap(participantAttributesCopy); // ★ 冻在赋值处
+
+    householdLaborBudgetMilli =
+        freezeNonNegativeByHousehold(householdLaborBudgetMilli, "householdLaborBudgetMilli");
+    managementLaborMilli =
+        freezeNonNegativeByHousehold(managementLaborMilli, "managementLaborMilli");
   }
 
-  /** ★ 本次实际出工的家户数（协作生产只记一份总产出，但贡献明细必须留下——I9）。 */
+  private static Map<HouseholdId, Long> freezeNonNegativeByHousehold(
+      Map<HouseholdId, Long> source, String field) {
+    if (source == null) {
+      throw new IllegalArgumentException(
+          "ProductionExecutionRequest." + field + " 不得为 null（无值用空表）");
+    }
+    Map<HouseholdId, Long> copy = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, Long> entry : source.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "ProductionExecutionRequest." + field + " 的键与值都不得为 null");
+      }
+      if (entry.getValue() < 0L) {
+        throw new IllegalArgumentException(
+            "ProductionExecutionRequest." + field + " 不得为负: " + entry.getKey());
+      }
+      copy.put(entry.getKey(), entry.getValue());
+    }
+    return Collections.unmodifiableMap(copy);
+  }
+
+  /** ★ 本次实际出工的家户数（同户多角色只算一户；协作生产只记一份总产出，但贡献明细必须留下——I9）。 */
   public int contributingHouseholds() {
-    return laborContributionsMilli.size();
+    Set<HouseholdId> households = new LinkedHashSet<>();
+    for (ParticipantContribution contribution : laborContributionsMilli) {
+      households.add(contribution.household());
+    }
+    return households.size();
   }
 
-  /** ★ 本次实际投入的劳动合计（千分劳动·日）。 */
+  /** ★ 本次实际投入的劳动合计（毫小时/日；由参与项派生，不另存）。 */
   public long totalLaborMilli() {
     long total = 0L;
-    for (long value : laborContributionsMilli.values()) {
-      total = Math.addExact(total, value);
+    for (ParticipantContribution contribution : laborContributionsMilli) {
+      total = Math.addExact(total, contribution.laborMilli());
     }
     return total;
   }

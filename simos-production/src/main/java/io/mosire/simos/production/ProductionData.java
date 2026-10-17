@@ -37,8 +37,8 @@ import java.util.Set;
  *   <li>{@code industries}：<b>方案定义</b>（投入/产出/周期/资产需求/劳动/铸币/制度条件/引用的经验条与公式/ 可用性条件）——唯一权威；economy
  *       不得另存一份可独立修改的副本；
  *   <li>{@code modes}：生产方式（制度引用）；
- *   <li>{@code instances}：★ <b>生产实例</b>（方案稳定 ID 引用、经营者引用、地点、进度、周期实际劳动与实际投入 累计）——<b>本批从 {@code
- *       EconomyData.units} 迁出</b>；
+ *   <li>{@code instances}：★ <b>生产实例</b>（方案稳定 ID 引用、经营者引用、地点、进度、逐 (家户×角色) 周期实际劳动与实际投入 累计）——<b>本批从
+ *       {@code EconomyData.units} 迁出</b>；
  *   <li>{@code experienceTracks}：<b>经验条定义</b>（上限/增长换算/衰减规则/熟练度解释公式）；
  *   <li>{@code householdExperience}：<b>家户经验账</b>（{@code (家户, 经验条) → 经验特征 = 主值 + 精度余数}； ★ A 批按复核裁决
  *       §4 把值从裸 {@code long} 升级为 {@link ProductionExperienceFeature}： "足够精度累计 +

@@ -49,10 +49,39 @@ final class ProductionExperience {
    * #accrueFrom}）负责把分数部分结转——<b>不</b>在这里先除一次（那就是旧的系统性丢失）。
    */
   static long exactGrowthNumerator(ExperienceTrack track, long laborMilli) {
-    if (laborMilli <= 0L || track.growthPerLaborMilli() <= 0L) {
+    return exactGrowthNumerator(track, laborMilli, 1_000L);
+  }
+
+  /**
+   * ★★ <b>角色增长配置下的精确增长分子</b>：{@code effectiveLaborMilli × growthPerLaborMilli × coefficientPerMille
+   * ÷ 1000}，单位为“千分之一经验”（后续与余数相加后除以 1000 得主值）。
+   *
+   * <p>★ 角色系数先乘再一次性进入 {@code (household,track)} 汇总；同一 tick 同一经验条只在 {@link
+   * #accrueFromExactNumerator} 做一次主值/余数换算。系数 0 ⇒ 0（该角色不增长）。溢出 ⇒ {@link ArithmeticException}
+   * fail-closed。
+   */
+  static long exactGrowthNumerator(
+      ExperienceTrack track, long effectiveLaborMilli, long coefficientPerMille) {
+    if (effectiveLaborMilli <= 0L
+        || track.growthPerLaborMilli() <= 0L
+        || coefficientPerMille <= 0L) {
       return 0L;
     }
-    return Math.multiplyExact(laborMilli, track.growthPerLaborMilli());
+    long base = Math.multiplyExact(effectiveLaborMilli, track.growthPerLaborMilli());
+    long scaled = Math.multiplyExact(base, coefficientPerMille);
+    return scaled / PER_MILLE;
+  }
+
+  /**
+   * ★ <b>单角色单 tick 增长上限</b>：{@code maxPerTickValue > 0} 时把精确增长分子夹到 {@code maxPerTickValue × 1000}；0
+   * = 不设额外上限。
+   */
+  static long capExactGrowthNumerator(long exactNumerator, long maxPerTickValue) {
+    if (exactNumerator <= 0L || maxPerTickValue <= 0L) {
+      return Math.max(0L, exactNumerator);
+    }
+    long cap = Math.multiplyExact(maxPerTickValue, PER_MILLE);
+    return Math.min(exactNumerator, cap);
   }
 
   /**
@@ -100,11 +129,37 @@ final class ProductionExperience {
     if (definition == null) {
       return state;
     }
-    long exact = exactGrowthNumerator(definition, aggregatedLaborMilli);
-    if (exact <= 0L) {
+    return accrueFromExactNumerator(
+        state, key, tickBaseline, exactGrowthNumerator(definition, aggregatedLaborMilli));
+  }
+
+  /**
+   * ★★ <b>按已归并的精确增长分子写回一条经验账</b>（D2 §9.1）。
+   *
+   * <p>{@code exactGrowthNumerator} 的单位 = 千分之一经验：调用方已按角色算出 {@code effectiveLabor × growth ×
+   * coefficient ÷ 1000}，并按 {@code (household,track)} 汇总。本方法只做 <b>一次</b> {@code numerator + 旧余数}
+   * 的整数除法与余数结转；不新增第二套经验余数表。
+   *
+   * <p>★ 上限/衰减语义与 {@link #accrueFrom} 逐字相同：到顶后溢出的整数不藏进余数；剩余余数是本次输入自身的 千分余数。
+   */
+  static ProductionData accrueFromExactNumerator(
+      ProductionData state,
+      HouseholdExperienceKey key,
+      ProductionExperienceFeature tickBaseline,
+      long exactGrowthNumerator) {
+    if (key == null || tickBaseline == null) {
+      throw new IllegalArgumentException(
+          "ProductionExperience.accrueFromExactNumerator 的键与基线不得为 null");
+    }
+    if (exactGrowthNumerator < 0L) {
+      throw new IllegalArgumentException(
+          "ProductionExperience.accrueFromExactNumerator 的增长分子不得为负: " + exactGrowthNumerator);
+    }
+    ExperienceTrack definition = state.experienceTracks().get(key.track());
+    if (definition == null || exactGrowthNumerator <= 0L) {
       return state;
     }
-    long numerator = Math.addExact(exact, tickBaseline.remainder());
+    long numerator = Math.addExact(exactGrowthNumerator, tickBaseline.remainder());
     long whole = numerator / PER_MILLE;
     long nextRemainder = numerator % PER_MILLE;
     long grown = Math.addExact(tickBaseline.value(), whole);

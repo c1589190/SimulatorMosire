@@ -86,8 +86,8 @@ public record ProductionSnapshot(StateRef ref, SimosTimestamp timestamp, Product
   /**
    * 当刻全部生产实例（不可变视图）。
    *
-   * <p>★ <b>实例侧的结转状态在这里</b>（A′ 批登记面）：{@link ProductionProcess#cycleContributions()} 的 逐家户加权劳动（不截断）与
-   * {@link #efficiency()} 的三段精度余数。
+   * <p>★ <b>实例侧的结转状态在这里</b>（A′ 批登记面）：{@link ProductionProcess#cycleContributions()} 的 逐 (家户×角色)
+   * 加权劳动（不截断）与 {@link #efficiency()} 的三段精度余数。
    */
   @Override
   public Map<ProductionUnitId, ProductionProcess> instances() {

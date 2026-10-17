@@ -16,6 +16,7 @@ import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.production.change.ProductionChangeSet;
 import io.mosire.simos.production.contract.ExperienceTrackId;
 import io.mosire.simos.production.contract.HouseholdExperienceKey;
+import io.mosire.simos.production.contract.ProductionParticipantKey;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.log.EventLog;
@@ -36,11 +37,11 @@ import org.slf4j.Logger;
  * ProductionSnapshot#namespace()} <b>同字面</b>——{@code SimulationState} 构造期校验"modules 的键 ==
  * snapshot.namespace()"，写歪当场抛。改一处必须同时改另一处。
  *
- * <p>★★ <b>D-032：树里的自定义 Map 键有六类</b>（{@code IndustryId} / {@code ProductionModeId} / {@code
+ * <p>★★ <b>D-032：树里的自定义 Map 键有七类</b>（{@code IndustryId} / {@code ProductionModeId} / {@code
  * ProductionUnitId} / {@code ExperienceTrackId} / {@code HouseholdId} / {@code
- * HouseholdExperienceKey}）+ 定义内层表的 {@code CommodityId} / {@code CurrencyId}。它们都重写了裸 {@code
- * toString()}，与各自的 {@code static parse} 互逆 ⇒ <b>只注册读侧</b>（写侧 Jackson 默认键序列化器调 {@code toString()}
- * 恰好就对）。漏注册任一个，都会在<b>对应表非空</b>时于解码期炸（表空着时测不到——故 往返夹具必须让每张表非空）。
+ * HouseholdExperienceKey} / {@code ProductionParticipantKey}）+ 定义内层表的 {@code CommodityId} / {@code
+ * CurrencyId}。它们都重写了裸 {@code toString()}，与各自的 {@code static parse} 互逆 ⇒ <b>只注册读侧</b> （写侧 Jackson
+ * 默认键序列化器调 {@code toString()} 恰好就对）。漏注册任一个，都会在<b>对应表非空</b>时于解码期炸 （表空着时测不到——故往返夹具必须让每张表非空）。
  *
  * <p>★ <b>值类型不靠 mapper mixin</b>：{@code ProductionData} / {@code IndustryDefinitionView} / {@code
  * ProductionProcess} / {@code ExperienceTrack} / {@code ProductionEfficiencyState} 都是
@@ -101,6 +102,8 @@ public final class ProductionCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(HouseholdId.class, keyDeserializer(HouseholdId::parse));
     module.addKeyDeserializer(
         HouseholdExperienceKey.class, keyDeserializer(HouseholdExperienceKey::parse));
+    module.addKeyDeserializer(
+        ProductionParticipantKey.class, keyDeserializer(ProductionParticipantKey::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
     module.addKeyDeserializer(CurrencyId.class, keyDeserializer(CurrencyId::parse));
     return module;

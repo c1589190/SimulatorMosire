@@ -6,10 +6,12 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * ★★★ <b>批量驱动口：一个生产日的全部实例请求</b>（D-032 约束设计书 §13.2 第 1 条；复核裁决 §2.2）。
@@ -58,21 +60,28 @@ public record ProductionDayRequest(List<Step> steps) {
    * @param instance 既有实例 ID；新建步为 empty
    * @param creation 新建实例请求；既有实例步为 empty
    * @param grantedScale 本次实际授予的规模（基准规模上限；见 {@link ProductionExecutionRequest}）
-   * @param laborContributionsMilli 实际出工家户与各自贡献（千分劳动·日）；不得为 null、值必须为正 （0 贡献的家户不进表）
+   * @param laborContributionsMilli 逐参与户×角色的实际劳动贡献（保序、{@code (household,role)} 唯一、逐项 &gt;0）
    * @param assetOccupancy 资产占用（按种类）；不得为 null、值必须为正（0 不进表）
    * @param finalInputsMilli 本次最终投入的原料（毫单位）；不得为 null、值必须为正（0 不进表）
-   * @param attributes 外部属性事实（原样传进 {@link ProductionExecutionRequest#attributes()}；★ R3 起 {@code
-   *     execute} 真的用它判外部属性条件——传 {@link ExternalAttributeFacts#EMPTY} 时声明了外部属性条件的方案会被 具名拒，这是 §4.5 的
-   *     fail-closed 口径）
+   * @param attributes 方案级/非家户主体外部属性事实（原样传进 {@link ProductionExecutionRequest#attributes()}）
+   * @param participantAttributes 逐参与户外部属性事实（原样传进 {@link
+   *     ProductionExecutionRequest#participantAttributes()}）
+   * @param householdLaborBudgetMilli 逐户当日可用劳动预算（原样传进 {@link
+   *     ProductionExecutionRequest#householdLaborBudgetMilli()}）
+   * @param managementLaborMilli 逐户管理劳动（原样传进 {@link
+   *     ProductionExecutionRequest#managementLaborMilli()}）
    */
   public record Step(
       Optional<ProductionUnitId> instance,
       Optional<ProductionCreationRequest> creation,
       long grantedScale,
-      Map<HouseholdId, Long> laborContributionsMilli,
+      List<ParticipantContribution> laborContributionsMilli,
       Map<AssetKind, Long> assetOccupancy,
       Map<CommodityId, Long> finalInputsMilli,
-      ExternalAttributeFacts attributes) {
+      ExternalAttributeFacts attributes,
+      Map<HouseholdId, ExternalAttributeFacts> participantAttributes,
+      Map<HouseholdId, Long> householdLaborBudgetMilli,
+      Map<HouseholdId, Long> managementLaborMilli) {
 
     public Step {
       if (instance == null) {
@@ -100,22 +109,21 @@ public record ProductionDayRequest(List<Step> steps) {
         throw new IllegalArgumentException(
             "ProductionDayRequest.Step.laborContributionsMilli 不得为 null（无出工用空表）");
       }
-      Map<HouseholdId, Long> laborCopy = new LinkedHashMap<>();
-      for (Map.Entry<HouseholdId, Long> entry : laborContributionsMilli.entrySet()) {
-        if (entry.getKey() == null || entry.getValue() == null) {
+      List<ParticipantContribution> contributionCopy = new java.util.ArrayList<>();
+      Set<ProductionParticipantKey> participantKeys = new LinkedHashSet<>();
+      for (ParticipantContribution contribution : laborContributionsMilli) {
+        if (contribution == null) {
           throw new IllegalArgumentException(
-              "ProductionDayRequest.Step.laborContributionsMilli 的键与值都不得为 null");
+              "ProductionDayRequest.Step.laborContributionsMilli 不得含 null");
         }
-        if (entry.getValue() <= 0L) {
+        if (!participantKeys.add(contribution.participantKey())) {
           throw new IllegalArgumentException(
-              "ProductionDayRequest.Step.laborContributionsMilli 的贡献必须为正（0 不进表）: "
-                  + entry.getKey()
-                  + " = "
-                  + entry.getValue());
+              "ProductionDayRequest.Step.laborContributionsMilli 的 (household,role) 不得重复: "
+                  + contribution.participantKey());
         }
-        laborCopy.put(entry.getKey(), entry.getValue());
+        contributionCopy.add(contribution);
       }
-      laborContributionsMilli = Collections.unmodifiableMap(laborCopy); // ★ 冻在赋值处
+      laborContributionsMilli = Collections.unmodifiableList(contributionCopy); // ★ 冻在赋值处
 
       if (assetOccupancy == null) {
         throw new IllegalArgumentException(
@@ -158,6 +166,46 @@ public record ProductionDayRequest(List<Step> steps) {
         inputCopy.put(entry.getKey(), entry.getValue());
       }
       finalInputsMilli = Collections.unmodifiableMap(inputCopy); // ★ 冻在赋值处
+
+      if (participantAttributes == null) {
+        throw new IllegalArgumentException(
+            "ProductionDayRequest.Step.participantAttributes 不得为 null（无属性用空表）");
+      }
+      Map<HouseholdId, ExternalAttributeFacts> participantAttributesCopy = new LinkedHashMap<>();
+      for (Map.Entry<HouseholdId, ExternalAttributeFacts> entry :
+          participantAttributes.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException(
+              "ProductionDayRequest.Step.participantAttributes 的键与值都不得为 null");
+        }
+        participantAttributesCopy.put(entry.getKey(), entry.getValue());
+      }
+      participantAttributes = Collections.unmodifiableMap(participantAttributesCopy); // ★ 冻在赋值处
+      householdLaborBudgetMilli =
+          freezeNonNegativeByHousehold(householdLaborBudgetMilli, "householdLaborBudgetMilli");
+      managementLaborMilli =
+          freezeNonNegativeByHousehold(managementLaborMilli, "managementLaborMilli");
+    }
+
+    private static Map<HouseholdId, Long> freezeNonNegativeByHousehold(
+        Map<HouseholdId, Long> source, String field) {
+      if (source == null) {
+        throw new IllegalArgumentException(
+            "ProductionDayRequest.Step." + field + " 不得为 null（无值用空表）");
+      }
+      Map<HouseholdId, Long> copy = new LinkedHashMap<>();
+      for (Map.Entry<HouseholdId, Long> entry : source.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException(
+              "ProductionDayRequest.Step." + field + " 的键与值都不得为 null");
+        }
+        if (entry.getValue() < 0L) {
+          throw new IllegalArgumentException(
+              "ProductionDayRequest.Step." + field + " 不得为负: " + entry.getKey());
+        }
+        copy.put(entry.getKey(), entry.getValue());
+      }
+      return Collections.unmodifiableMap(copy);
     }
 
     /** ★ 把本步还原成引擎真正消费的那一个请求（两个分支共用 {@link ProductionExecutionRequest}）。 */
@@ -169,7 +217,10 @@ public record ProductionDayRequest(List<Step> steps) {
           laborContributionsMilli,
           assetOccupancy,
           finalInputsMilli,
-          attributes);
+          attributes,
+          participantAttributes,
+          householdLaborBudgetMilli,
+          managementLaborMilli);
     }
 
     /** ★ 本步指向的实例 ID（新建步取创建请求里的那一个）——拒绝记录与日志用它。 */

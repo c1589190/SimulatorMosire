@@ -1,5 +1,6 @@
 package io.mosire.simos.production.contract;
 
+import io.mosire.simos.economy.api.production.ProductionRoleId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Objects;
 
@@ -43,15 +44,20 @@ import java.util.Objects;
  * 中性），供读数/回执核对；不是独立状态。
  *
  * @param household 家户稳定身份；不得为 null
- * @param laborMilli 本周期该家户实际投入的劳动（千分劳动·日）；不得为负
- * @param efficiencyWeightedLaborMilli 本周期该家户按各 tick 当刻效率倍率加权后的劳动累计 （千分劳动·日 × 千分倍率；<b>不</b>除
+ * @param role 本项贡献的生产角色；不得为 null。同一户不同角色必须分行，不得合并
+ * @param laborMilli 本周期该家户在该角色上实际投入的劳动（毫小时/日）；不得为负
+ * @param efficiencyWeightedLaborMilli 本周期该家户在该角色上按各 tick 当刻效率倍率加权后的劳动累计 （毫小时/日 × 千分倍率；<b>不</b>除
  *     1000、<b>不</b>截断）；不得为负
  */
 public record CycleContribution(
-    HouseholdId household, long laborMilli, long efficiencyWeightedLaborMilli) {
+    HouseholdId household,
+    ProductionRoleId role,
+    long laborMilli,
+    long efficiencyWeightedLaborMilli) {
 
   public CycleContribution {
     Objects.requireNonNull(household, "CycleContribution.household 不得为 null");
+    Objects.requireNonNull(role, "CycleContribution.role 不得为 null");
     if (laborMilli < 0L) {
       throw new IllegalArgumentException("CycleContribution.laborMilli 不得为负: " + laborMilli);
     }
@@ -61,7 +67,12 @@ public record CycleContribution(
     }
   }
 
-  /** ★ 本周期该家户的代表效率倍率（千分制；劳动为 0 ⇒ 1000 中性）——派生值，不参与状态。 */
+  /** 本贡献的复合键（家户 × 角色）。 */
+  public ProductionParticipantKey participantKey() {
+    return new ProductionParticipantKey(household, role);
+  }
+
+  /** ★ 本周期该家户在该角色上的代表效率倍率（千分制；劳动为 0 ⇒ 1000 中性）——派生值，不参与状态。 */
   public long efficiencyPerMille() {
     if (laborMilli <= 0L) {
       return 1_000L;
@@ -81,6 +92,7 @@ public record CycleContribution(
     }
     return new CycleContribution(
         household,
+        role,
         Math.addExact(laborMilli, deltaLaborMilli),
         Math.addExact(efficiencyWeightedLaborMilli, deltaEfficiencyWeightedLaborMilli));
   }
