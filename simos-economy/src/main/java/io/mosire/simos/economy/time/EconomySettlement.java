@@ -2060,12 +2060,18 @@ public final class EconomySettlement {
     WagePayableInventoryLookup wagePayableInventoryLookup =
         new WagePayableInventoryLookupImpl(
             dayView.inventoryReservations(), day, () -> Optional.of(wageAccountSnapshot));
+    // ★★★ W5-A（缺陷：W3 用 tick 前 unit 快照）：这里**必须**读当刻权威候选态，不得传日结算入口抓的 `units`。
+    //   本 tick 更早的阶段（进入执行 / 自动组织 / 模式变迁 / 迁移搬迁）会经契约口 `createInstance` 新建实例；
+    //   它们的 ProductionReceipt 就在 `productionDay` 里。旧快照看不见那些实例 ⇒ collectObligations 会把
+    //   "回执 unit 不在表里" 误报成 `wage-posting-unit-unknown`（或跳过本应支付的工资义务）。
+    //   ★ 只换数据来源：W3 的支付/抵物/债公式与调用参数一律不动。
+    Map<ProductionUnitId, ProductionProcess> wageSettlementUnits = session.sheet().units();
     WageSettlement.Result wageSettlement =
         WageSettlement.settle(
             day,
             dueCycle,
             dayView,
-            units,
+            wageSettlementUnits,
             wageAccountSnapshot,
             householdGoods,
             householdMoney,
@@ -4403,6 +4409,13 @@ public final class EconomySettlement {
     Map<String, List<io.mosire.simos.production.contract.ParticipantContribution>>
         contributionsByUnit = new LinkedHashMap<>();
     for (HouseholdLaborCommitment commitment : laborCommitments.values()) {
+      // ★★★ W5-A（缺陷：GOV_SERVICE 被当成生产承诺）：本驱动只接 `LaborCommitmentKind.PRODUCTION`。
+      //   `GOV_SERVICE` 按契约**禁止** productionRole（见 HouseholdLaborCommitment 的 kind 注），也不喂任何生产
+      //   unit ⇒ 必须在角色校验与生产提交之前跳过：既不抛，也不进 contributionsByUnit。
+      //   ★ 本判断**只**收窄本驱动的输入面：GOV_SERVICE 的配额/守恒/政府逻辑不在本方法，逐字不受影响。
+      if (commitment.kind() != LaborCommitmentKind.PRODUCTION) {
+        continue;
+      }
       long amount = commitment.laborMilli();
       if (amount <= 0L) {
         continue;

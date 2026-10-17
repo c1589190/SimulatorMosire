@@ -150,7 +150,9 @@ public final class WageSettlement {
    * @param day 世界日；不得为负
    * @param dueCycle 新工资债的到期周期（调用方给的当前周期 + 1）
    * @param dayView 当刻经济只读视图（posting / roster / definitions / markets）
-   * @param units 当刻生产实例读口（payer 已有地点汇总）
+   * @param units ★★ <b>本 tick 回执所在同一 revision 的当刻生产实例读口</b>（payer 已有地点汇总 + 回执 unit 地点解析）。调用方必须在
+   *     {@code driveProductionDay} 之后取当刻权威候选态（{@code session.sheet().units()}），<b>不得</b>传日结算入口抓的
+   *     tick 前快照 —— 本 tick 内 {@code createInstance} 新建的 unit 只存在于前者。
    * @param accountSnapshot W3 开始时的账户只读快照（货币腿的唯一余额来源）
    * @param householdGoods 家户商品活表（唯一写口 {@link EconomySettlement#applyTransfer} 会写它）
    * @param householdMoney 家户货币活表
@@ -514,6 +516,8 @@ public final class WageSettlement {
         // ★ 名册路径之外是旧 ProductionSettlement 的保留路径；W3 不参与，避免双付。
         continue;
       }
+      // ★★ W5-A：`units` = 回执同一 revision 的当刻实例表（调用方从 session.sheet().units() 取）。
+      //   这里查不到 = 真的跨切片不一致（不是"快照过期"）⇒ 仍按契约故障 fail-closed。
       ProductionProcess process = units.get(receipt.unit());
       if (process == null) {
         throw contractFault(

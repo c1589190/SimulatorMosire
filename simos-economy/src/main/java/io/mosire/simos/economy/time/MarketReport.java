@@ -10,7 +10,10 @@ import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import java.lang.ref.ReferenceQueue;
+import java.lang.ref.WeakReference;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,17 +85,21 @@ public record MarketReport(
   public static final boolean CROSS_REGION_SETTLEMENT_IMMEDIATE = true;
 
   /**
-   * ★★ <b>D-027：逐票"区级税费"读数快照</b>（identity 键 → 毫计价货币税费）。
+   * ★★ <b>D-027：逐票"区级税费"读数快照</b>（按<b>报告实例引用身份</b> → 毫计价货币税费）。
    *
    * <p>★ 它是 record 组件之外的<b>派生只读件</b>：record 不许有实例字段，故不进 {@code toString}/{@code equals}/
    * 序列化形状；键用<b>引用身份</b>（不是 {@code equals}），不会把两份等值报告串味。{@link #withRegulatedTariff}
    * 是唯一写入点；其余构造路径这里没有条目 ⇒ 读数为 0。
+   *
+   * <p>★★ W5-A：旁表改为 {@link ReportSidecar} —— 弱键的 referent 就是<b>报告实例本身</b>（不是每次读临时 new
+   * 的键包装对象），值仍是强引用。旧实现的 {@code WeakHashMap} 只弱引用那个临时 {@code IdentityKey} ⇒ 一次 GC 就能把活报告的税读数丢掉。
    */
-  private static final Map<Object, Map<Fill, Long>> REGULATED_TARIFF_BY_REPORT =
-      java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+  private static final ReportSidecar<Map<Fill, Long>> REGULATED_TARIFF_BY_REPORT =
+      new ReportSidecar<>();
 
   /**
-   * ★★ <b>P-T1b：逐层税项的只读快照</b>（identity 键 → 税项列表；形制与 {@link #REGULATED_TARIFF_BY_REPORT} 逐字相同）。
+   * ★★ <b>P-T1b：逐层税项的只读快照</b>（按<b>报告实例引用身份</b> → 税项列表；形制与 {@link #REGULATED_TARIFF_BY_REPORT}
+   * 逐字相同）。
    *
    * <p>★★ <b>它回答什么</b>（计划 §2.5 的读口判据）："这笔货被抽了哪些税、各多少、<b>进哪个国库</b>、什么币" —— 层（{@link
    * MarketTaxLayer}）/ 金额 / 币种 / 收款政府<b>逐项列出</b>，且这些项的总额<b>就是买方多付的那一部分</b> （买方实付 = 货款 + 运费 +
@@ -100,8 +107,7 @@ public record MarketReport(
    *
    * <p>★ <b>按币分列（I-C10）</b>：金额只以<b>该笔的买方支付币</b>表达，求和一律按币分组（{@link #taxByCurrency()}）， 禁跨币相加。
    */
-  private static final Map<Object, List<TaxItem>> TAX_ITEMS_BY_REPORT =
-      java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+  private static final ReportSidecar<List<TaxItem>> TAX_ITEMS_BY_REPORT = new ReportSidecar<>();
 
   /**
    * ★★ <b>P-T1b：一条税项</b>（读口形状 = 层 / 金额 / 币种 / 收款政府；另带商品与区，便于逐项追溯）。
@@ -215,22 +221,65 @@ public record MarketReport(
     return copy;
   }
 
-  /** 只按<b>引用身份</b>相等的外部键（见 {@link #REGULATED_TARIFF_BY_REPORT}）。 */
-  private static final class IdentityKey {
-    private final Object target;
+  /**
+   * ★★★ <b>W5-A：按<b>报告实例引用身份</b>的弱键旁表</b>（record 不许有实例字段 ⇒ 税读数只能挂在报告外面）。
+   *
+   * <p>★★ <b>旧实现的病根</b>：{@code WeakHashMap} 的键是每次写入/读取<b>临时 new</b> 的 {@code IdentityKey} 包装器；包装器只被
+   * WeakHashMap 自己弱引用、没有任何强引用持有 ⇒ 一次 GC 就能把键回收，活着的报告的 {@link #taxItems()}/{@link #taxByCurrency()}
+   * 变成空表（全量套件偶发红）。
+   *
+   * <p>★★ <b>本实现</b>：键 {@link IdentityWeakKey} 是<b>报告实例的弱引用</b>（referent = 报告，因此报告活着 ⇒
+   * 条目就一定活着；报告被回收 ⇒ 键入引用队列、下次访问时清掉，不跨 revision 积累旧事实）。索引仍按 <b>引用身份</b>（{@link
+   * System#identityHashCode} + referent {@code ==}）⇒ 两份内容相等但实例不同的报告
+   * <b>不会串味</b>；值仍是强引用（已冻结的只读快照）。{@link #put}/{@link #get} 全程 {@code synchronized}， 与旧 {@code
+   * synchronizedMap} 的线程语义一致；同一报告实例永远读到同一份快照（确定性）。
+   */
+  private static final class ReportSidecar<V> {
+    private final Map<IdentityWeakKey, V> entries = new HashMap<>();
+    private final ReferenceQueue<MarketReport> collected = new ReferenceQueue<>();
 
-    IdentityKey(Object target) {
-      this.target = target;
+    synchronized void put(MarketReport report, V value) {
+      expunge();
+      entries.put(new IdentityWeakKey(report, collected), value);
     }
 
-    @Override
-    public boolean equals(Object other) {
-      return other instanceof IdentityKey key && key.target == target;
+    synchronized V get(MarketReport report) {
+      expunge();
+      return entries.get(new IdentityWeakKey(report, null));
+    }
+
+    /** 只在同步块内调用：把已被 GC 的报告键从强引用索引里摘掉。 */
+    private void expunge() {
+      for (Object stale; (stale = collected.poll()) != null; ) {
+        entries.remove(stale);
+      }
+    }
+  }
+
+  /** 只按<b>报告引用身份</b>相等的弱键（referent = 报告实例；哈希在构造时固定，不随 GC 变化）。 */
+  private static final class IdentityWeakKey extends WeakReference<MarketReport> {
+    private final int hash;
+
+    IdentityWeakKey(MarketReport report, ReferenceQueue<MarketReport> collected) {
+      super(Objects.requireNonNull(report, "报告键不得为 null"), collected);
+      this.hash = System.identityHashCode(report);
     }
 
     @Override
     public int hashCode() {
-      return System.identityHashCode(target);
+      return hash;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) {
+        return true;
+      }
+      if (!(other instanceof IdentityWeakKey key)) {
+        return false;
+      }
+      MarketReport mine = get();
+      return mine != null && mine == key.get();
     }
   }
 
@@ -382,7 +431,7 @@ public record MarketReport(
       for (TaxItem item : taxItems) {
         copy.add(Objects.requireNonNull(item, "taxItems 不得含 null"));
       }
-      TAX_ITEMS_BY_REPORT.put(new IdentityKey(report), Collections.unmodifiableList(copy));
+      TAX_ITEMS_BY_REPORT.put(report, Collections.unmodifiableList(copy));
     }
     if (tariffByFill == null || tariffByFill.isEmpty() || report.fills.isEmpty()) {
       return report;
@@ -401,7 +450,7 @@ public record MarketReport(
       byFill.put(fill, tariff);
     }
     if (!byFill.isEmpty()) {
-      REGULATED_TARIFF_BY_REPORT.put(new IdentityKey(report), byFill);
+      REGULATED_TARIFF_BY_REPORT.put(report, byFill);
     }
     return report;
   }
@@ -412,7 +461,7 @@ public record MarketReport(
    * <p>★ 读口形状 = <b>层 / 金额 / 币种 / 收款政府</b>（另带商品与区）；这些项的总额就是"买方多付的部分"。
    */
   public List<TaxItem> taxItems() {
-    List<TaxItem> items = TAX_ITEMS_BY_REPORT.get(new IdentityKey(this));
+    List<TaxItem> items = TAX_ITEMS_BY_REPORT.get(this);
     return items == null ? List.of() : items;
   }
 
@@ -460,7 +509,7 @@ public record MarketReport(
    * <p>★★ <b>为什么是逐币表</b>（I-C10）：多币世界里把不同币的税加起来就是把两种钱当一种（P-T4 的负向守卫 N5）。
    */
   public Map<CurrencyId, Long> taxByCurrency() {
-    List<TaxItem> items = TAX_ITEMS_BY_REPORT.get(new IdentityKey(this));
+    List<TaxItem> items = TAX_ITEMS_BY_REPORT.get(this);
     Map<CurrencyId, Long> totals = new LinkedHashMap<>();
     if (items != null) {
       for (TaxItem item : items) {
@@ -476,7 +525,7 @@ public record MarketReport(
    * <p>★ 键是 {@code (层, 政府, 币种)} 三元组：任一项不同就是不同的钱（禁跨币相加、禁把两个政府的税合成一条）。 ★ 空表 = 本轮没有收税（不是 0）。
    */
   public Map<TaxKey, Long> taxByLayerGovernmentCurrency() {
-    List<TaxItem> items = TAX_ITEMS_BY_REPORT.get(new IdentityKey(this));
+    List<TaxItem> items = TAX_ITEMS_BY_REPORT.get(this);
     Map<TaxKey, Long> totals = new LinkedHashMap<>();
     if (items != null) {
       for (TaxItem item : items) {
@@ -539,7 +588,7 @@ public record MarketReport(
    * 的事。没有调控/没有成交 ⇒ <b>空表</b>（不是 0）。
    */
   public Map<CurrencyId, Long> regulatedTariffByCurrency() {
-    Map<Fill, Long> byFill = REGULATED_TARIFF_BY_REPORT.get(new IdentityKey(this));
+    Map<Fill, Long> byFill = REGULATED_TARIFF_BY_REPORT.get(this);
     Map<CurrencyId, Long> totals = new LinkedHashMap<>();
     if (byFill != null) {
       for (Map.Entry<Fill, Long> entry : byFill.entrySet()) {
