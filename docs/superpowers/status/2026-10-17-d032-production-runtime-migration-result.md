@@ -346,3 +346,18 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **编译/格式**：economy/app `-DskipTests compile` rc=0；economy spotless rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
 - **测试影响**：`ExpectedProfitBookEmployerOfTest` 旧 `FIXED_MONEY_WAGE` 收入断言、`Prospect`/`RosterHouseholdIncome` 新组件构造、`laborCostMilli` 不含工资的新口径、迁移速度基准可能漂移；W1 未写/未跑测试。
 - **下一步**：W2b（第 35 `wageCarryRemainders`、`SurvivalOutlook`/`NextTickIncomeProjection`、角色级匹配/idle/U20、B2 整 tick fail-closed；不实现 W3 支付）；只编译 economy，不写/不跑测试、不提交。
+
+## 二十三、2026-10-17 22:xx W2b 角色级匹配/idle/U20/carry 检查点
+
+> **性质**：W2b 生产代码已实现并编译/格式检查通过；未跑测试，未接 W3 支付/D4-I 真实 lookup/W4 Social 投影。
+
+- **提交**：`23de923f feat(economy)!: W2b SurvivalOutlook/NextTick、角色级匹配/idle/U20 与第35 carry`（已推送）。
+- **第 35 组件**：`EconomyData.wageCarryRemainders`（`WageCarryKey(unit,role,worker)`，0..999）；ChangeSet/Codec/DayView/BoundaryView/StateBuilder/clear/seed 全接；无 36/37。
+- **carry/U20**：`ProductionWageBook.dueFor` 精确乘加，`due=num/1000`、`carry=num%1000`，溢出 `wage-quote-overflow`；`WagePricingPolicy` 只产下一 tick posting；降价 `satisfiedStreak > decreaseDelayTicks`，不追溯已完成 due。
+- **SurvivalOutlook**：纯只读 evaluator + 逐需求行 coverage/provenance/`idleEligible`，预计货币/实物/产品份额接入，去重/缺价/不可达/供需耗尽/`maxCombinations=4096` 超限 `survival-combination-limit`；`NextTickIncomeProjection` 只计 `incomeAvailableAtTick <= nextTick`，周期末产品份额不提前算。
+- **匹配/idle**：`LaborQueueBook` 角色级 offer、`IdleOption`、`Plan.idleChosen`、`SURVIVAL_IDLE_POLICY` 默认 `PREFER_IDLE_WHEN_SUBSISTENCE_UNMET`；零/负收益不再经济预过滤，具名 `GRANTED_ZERO`/`GRANTED_NEGATIVE`；W2a 地点预检与 D4-C lookup empty 语义接入。
+- **B2**：`EconomySettlement.settleOneDayInto` 最前段若存在 MONEY_WAGE 角色/非空 posting 且 W3 未启用 ⇒ 整 tick `wage-settlement-not-implemented`，消费/抽料/写回/进度/经验/实际劳动前零写入。
+- **编译/格式**：economy/app `-DskipTests compile` rc=0；economy spotless rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **已知边界**：真实 `LaborQueueSettlement` 尚无 Social 下一 tick 逐需求投影适配器，只读/dry-run 入口已备；W3 未接；D4-I 前 wage lookup empty 使工资候选 skip；B2 用 `IllegalStateException` 承载稳定 reason；app 仍用旧 `rosterIncomes` 签名。
+- **测试影响**：34 组件/旧 `EconomyData` 构造、旧 queue/idle 词表、MONEY_WAGE 真实 tick fail-closed 断言需 W5；未写/未跑测试。
+- **下一步**：D4-I（OwnershipStake.location、AssetOccupancyGrant/InventoryReservation/AssetOccupancyBook、EconomyData 36/37、真实 Asset/Wage lookup、R2 统一入口/旧路径清零、app seed location）；只编译 economy/app，不写/不跑测试、不提交。随后 D4-T→W3→W4→W5。
