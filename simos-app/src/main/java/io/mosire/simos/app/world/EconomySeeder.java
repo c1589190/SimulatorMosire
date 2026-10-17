@@ -59,7 +59,10 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.production.contract.IntraRoleSplitRule;
 import io.mosire.simos.production.contract.ProductionModeDefinitionView;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
+import io.mosire.simos.production.contract.RolePayment;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -626,9 +629,10 @@ public final class EconomySeeder {
   /**
    * ★★ <b>R4-B.3a：佃租/匠户分成率（‰）：{@code 300}</b>。
    *
-   * <p>佃农 unit 的规则 = {@code OUTPUT_SHARE × GROSS_OUTPUT × grain × 本值‰ × 受方=地主家户}；匠户 unit 的同型规则 以
-   * {@code cloth} 付给作坊主。★ 它是<b>一条显式 {@link CompensationRule} 的出厂参数</b>，与 {@code RegimeRelations} 的
-   * {@code FEUDAL_RENT_PER_MILLE}（庄园地租 300‰）同量级但各自独立 —— 本轮不改 {@code RegimeRelations}、不改结算。
+   * <p>佃农 unit 的旧规则 = {@code OUTPUT_SHARE × GROSS_OUTPUT × grain × 本值‰ × 受方=地主家户}；匠户 unit 的同型规则以
+   * {@code cloth} 付给作坊主。★ 它是<b>旧 {@link CompensationRule} 的出厂参数</b>，与 {@code RegimeRelations} 的
+   * {@code FEUDAL_RENT_PER_MILLE}（庄园地租 300‰）同量级但各自独立。★★ D-032 C3 起它先经 {@code legacyRuleRoleNodes}
+   * 审计/映射；映射成功则旧 rules 清空、由 plan-level 角色承接；不可表示时创世具名失败。
    */
   public static final int TENANT_RENT_PER_MILLE = 300;
 
@@ -1106,6 +1110,7 @@ public final class EconomySeeder {
       List<Map<String, Object>> debtContracts,
       List<Map<String, Object>> pledges,
       List<Map<String, Object>> extraMoneyIssuances,
+      List<Map<String, Object>> productionRosters,
       TestConditions.Report conditionReport) {
 
     /**
@@ -1193,6 +1198,16 @@ public final class EconomySeeder {
         }
       }
       extraMoneyIssuances = Collections.unmodifiableList(extraMoneyIssuancesCopy);
+      // ★★★ D-032 C3（D2 §5.5）：创世名册节点（§5.4 同形）。空表合法 = 单角色 unit 走 C2 自动名册；
+      //   多角色 unit 必须在发出前由 {@link #requireRostersForMultiRoleUnits} 校验（缺 ⇒ seed-roster-missing）。
+      List<Map<String, Object>> productionRostersCopy =
+          new ArrayList<>(productionRosters == null ? List.of() : productionRosters);
+      for (Map<String, Object> node : productionRostersCopy) {
+        if (node == null) {
+          throw new IllegalArgumentException("Seed.productionRosters 的元素不得为 null");
+        }
+      }
+      productionRosters = Collections.unmodifiableList(productionRostersCopy);
       conditionReport = conditionReport == null ? TestConditions.Report.EMPTY : conditionReport;
     }
 
@@ -1214,6 +1229,7 @@ public final class EconomySeeder {
           debtContracts,
           pledges,
           extraMoneyIssuances,
+          productionRosters,
           conditionReport);
     }
 
@@ -1254,7 +1270,10 @@ public final class EconomySeeder {
           if (element instanceof Map<?, ?> planNode) {
             @SuppressWarnings("unchecked")
             Map<String, Object> node = (Map<String, Object>) planNode;
-            industryNodes.add(node);
+            // ★★★ D-032 C3（C0 顶层 unknown-key 缺口由 seed 裁剪处理）：只把 production 认识的键送进
+            //   production.Seed —— economy 的实例/关系键（operator / relation / capacity 等）不跨域塞进去，
+            //   也不改 production parser 的"多余键不读"语义。
+            industryNodes.add(productionIndustryNode(node));
           }
         }
       }
@@ -1539,7 +1558,10 @@ public final class EconomySeeder {
       List<Map<String, Object>> debtContracts,
       List<Map<String, Object>> pledges,
       List<Map<String, Object>> extraMoneyIssuances,
+      List<Map<String, Object>> productionRosters,
       TestConditions.Report conditionReport) {
+    // ★★★ D-032 C3（D2 §5.5）：多角色 plan 的 unit 缺显式名册 ⇒ 创世失败（seed-roster-missing:<unit>）。
+    requireRostersForMultiRoleUnits(entries, productionRosters);
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("mapId", mapId);
     // ★★ P10.1：新档写当前 7 hex 运行时版本（唯一拼写点在 {@code EconomyMeta}）。
@@ -1550,6 +1572,9 @@ public final class EconomySeeder {
       marketNodes.put(atMarket.getKey().value(), marketNode(atMarket.getValue()));
     }
     payload.put("markets", marketNodes);
+    // ★★★ D-032 C3（D2 §5.5）：顶层 productionRosters[]（每项与 §5.4 同形；plan 不由载荷给）。
+    //   空表 = 单角色 unit 走 C2 自动名册；多角色 unit 必须显式（上面的守卫已判）。
+    payload.put("productionRosters", productionRosters == null ? List.of() : productionRosters);
     // ★★ E3：政府与 INITIAL_ENDOWMENT 发行记录（缺省长（ENDOWMENT=零）时只有 governments；旧载荷缺这两个键 ⇒ 空表）。
     payload.put("governments", governmentNodes(governments));
     List<Map<String, Object>> issuances =
@@ -3757,6 +3782,9 @@ public final class EconomySeeder {
       List<Map<String, Object>> units = new ArrayList<>();
       List<Map<String, Object>> assetShares = new ArrayList<>();
       List<Map<String, Object>> splitAllocations = new ArrayList<>();
+      // ★★★ D-032 C3（裁定选项 (a)）：逐 plan 收集**主 unit + 全部副 unit** 的旧规则；全部 unit 建好后由
+      //   {@link #applyLegacyRoleMapping} 统一决定"整体映射并清空"或"原样保留走旧路径"。
+      Map<String, List<CompensationRule>> legacyRulesByPlan = new LinkedHashMap<>();
       for (IndustrySplit split : splits) {
         IndustryPlan plan = split.plan();
         // 主 unit：载荷逐字段与 B.2 同形（operator 不变），capacity 变成"剩余"量（体现在 assetShares）。
@@ -3770,6 +3798,11 @@ public final class EconomySeeder {
                 case WEAVE -> weaveMainRelation;
                 default -> null;
               };
+          if (mainRelation != null) {
+            legacyRulesByPlan
+                .computeIfAbsent(plan.id(), ignored -> new ArrayList<>())
+                .addAll(mainRelation.rules());
+          }
           units.add(
               mainRelation == null ? unitOf(plan) : unitOf(plan, plan.operator(), mainRelation));
         }
@@ -3777,6 +3810,9 @@ public final class EconomySeeder {
         // 副 unit：owner/operator/kind 显式落 assetShares；relation 显式随 unit 发出。
         for (HouseholdUnit secondary : split.secondaries()) {
           units.add(unitOf(plan, secondary));
+          legacyRulesByPlan
+              .computeIfAbsent(plan.id(), ignored -> new ArrayList<>())
+              .addAll(secondary.relation().rules());
           for (Map.Entry<String, Long> asset : secondary.quantities().entrySet()) {
             assetShares.add(
                 ownershipStakeNode(
@@ -3796,6 +3832,8 @@ public final class EconomySeeder {
         }
       }
       allocations.addAll(splitAllocations);
+      // ★★★ D-032 C3：plan 级映射/回退（可映射 ⇒ roles + 清空旧 rules；不可表示 ⇒ 原样保留旧 rules + INFO BLOCKED）。
+      applyLegacyRoleMapping(plans, units, legacyRulesByPlan);
       // ★★ M-A1：商号行（merchantFirms）已退役 —— 创世不再为城市格播商号状态。运力改由**派生量**给出
       //   （MerchantCapacityPool：该格"选了跑商"的家户的劳动投入 + 工具可投入量）。
       //   ★ 保留：本格的 trade 产业（{@link #TRADE}）与它的作业资本（SMALL_TOOL）份额 —— 那是 merchant 生产方式的产业落点、
@@ -3924,6 +3962,11 @@ public final class EconomySeeder {
     Map<MarketZoneId, MarketTable> markets = derivedMarketTables(hexesByNumeraire);
     AppliedConditions applied =
         applyTestConditions(mapId, entries, householdStocks, householdMoney, conditions);
+    // ★★★ D-032 C3（D2 §5.5）：创世名册节点。当前播种器的全部方案都是**单角色**（production 的
+    //   defaultOperator）⇒ 单角色 unit 由 C2 自动路径补默认名册，这里发空表；若将来出现多角色 plan，
+    //   必须在这里显式给出参与者（{unit, participants[]}），否则 economyPayload() 的
+    //   requireRostersForMultiRoleUnits 会以 seed-roster-missing:<unit> 整体拒绝。
+    List<Map<String, Object>> productionRosters = List.of();
     if (LOG.isDebugEnabled()) {
       io.mosire.simos.util.log.EventLog.channel(LOG)
           .debug(
@@ -3968,6 +4011,7 @@ public final class EconomySeeder {
         applied.debtContracts(),
         applied.pledges(),
         applied.extraMoneyIssuances(),
+        productionRosters,
         applied.report());
   }
 
@@ -4149,14 +4193,29 @@ public final class EconomySeeder {
     payload.put("cycleInputPerUnit", Map.of(AssetKind.WORKSHOP.name(), mintInput));
     payload.put("allocation", allocation);
     payload.put("slots", slots);
+    // ★★★ D-032 C3：铸币同样是生产方案 ⇒ 显式单 operator 角色（source = production defaultOperator）。
+    payload.put("roles", singleOperatorRoleNodes());
+    ProductionUnitId mintUnitId = ProductionUnitId.idOf(mintId, operator);
     Map<String, Object> unit = new LinkedHashMap<>();
-    unit.put("id", ProductionUnitId.idOf(mintId, operator).value());
+    unit.put("id", mintUnitId.value());
     unit.put("industry", mintId.value());
     unit.put("operator", actorNode(operator));
     unit.put("modeKey", mintId.value());
     unit.put("progressDays", 0);
     unit.put("cycleLaborMilli", 0);
     unit.put("cycleInputUsedMilli", Map.of());
+    // ★★★ D-032 C3 / D2-I17：显式写成空规则关系（不再依赖 regime 模板的缺省推导）——
+    //   名册方案的旧 rules 必须为空；铸币的产出（货币）走 MintSettlement，不参与角色产品份额。
+    unit.put(
+        "relation",
+        relationNode(
+            new ProductionRules(
+                mintUnitId,
+                operator,
+                new Payee.ToActor(operator),
+                List.of(),
+                operator,
+                LaborSource.SELF)));
     // ① 铸币的产能：整额 OWNED 给组织者（与其余产业同一条"capacity 物化成份额"的口径）
     Map<String, Object> share =
         ownershipStakeNode(
@@ -5034,6 +5093,11 @@ public final class EconomySeeder {
     payload.put("cycleInputPerUnit", cycleInputPerUnit);
     payload.put("allocation", allocation);
     payload.put("slots", slots);
+    // ★★★ D-032 C3（D2 §5.2/§5.5）：产业定义必须携带角色 —— 单户方案的缺省形态 = C0/D1 的
+    //   {@link ProductionRoleDefinition#defaultOperator()}（id=operator、share=1000、PRODUCT_SHARE）。
+    //   ★ 多角色方案必须显式 roles（本播种器当前没有多角色方案；若将来出现，见
+    //   {@link #requireRostersForMultiRoleUnits} 的 seed-roster-missing 守卫）。
+    payload.put("roles", singleOperatorRoleNodes());
     // ★★ R3B.2：**模板不再带 operator/capacity/progress/cycleState** —— 这些是 unit/份额的事实：
     //   经营者 = RegimeOperators 的默认（与 operatorSeed 同源）；进度/劳动/投入由 unitOf(plan) 显式发出；
     //   产能总量由 ownershipStakesOf(plan) 整额 OWNED 物化。这样新载荷不会触发"旧形状"兼容路径。
@@ -5055,6 +5119,412 @@ public final class EconomySeeder {
     }
     return new IndustryPlan(
         kind, id, regime, operator, capacityLongs, capacityPerUnitLongs, payload);
+  }
+
+  /**
+   * ★★★ <b>D-032 C3（D1 §2.2 / D2 §5.2）：单户方案的默认角色节点（唯一的 wire 拼写点）</b>。
+   *
+   * <p>值的来源是 production 的 {@link ProductionRoleDefinition#defaultOperator()}（id={@code operator}、
+   * share=1000‰、{@code intraRoleSplit=equal}、{@code standardLaborMilliPerCycle=0}、{@code
+   * payment=product_share}） —— 单户/单经营者方案的缺省形态。★ 多角色方案**必须显式给 roles**，不得用本方法。
+   *
+   * <p>本方法同时服务 {@code economy.Seed} 的产业节点与 {@code production.Seed} 的产业节点：两边读的字段名与 {@code
+   * ProductionDefinitionPayloads.role} 逐字对应（不在这里发明第二套字段名）。
+   */
+  public static List<Map<String, Object>> singleOperatorRoleNodes() {
+    ProductionRoleDefinition role = ProductionRoleDefinition.defaultOperator();
+    if (!(role.payment() instanceof RolePayment.ProductShare)) {
+      throw new IllegalStateException(
+          "单户默认角色的支付形态必须是 PRODUCT_SHARE（production 契约已变？）: " + role.id().value());
+    }
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("id", role.id().value());
+    node.put("name", role.name());
+    node.put("sharePerMille", role.sharePerMille());
+    node.put("intraRoleSplit", role.intraRoleSplit().key());
+    node.put("standardLaborMilliPerCycle", role.standardLaborMilliPerCycle());
+    node.put("payment", "product_share");
+    return List.of(Collections.unmodifiableMap(node));
+  }
+
+  /**
+   * ★★★ <b>D-032 C3 / D2 §4.3：把旧的 {@code CompensationRule} 规则表映射成 plan-level 角色节点</b>。
+   *
+   * <p>映射表（逐条对应 D2 §4.3 的处置表）：
+   *
+   * <ul>
+   *   <li>{@code OUTPUT_SHARE} → {@code PRODUCT_SHARE} 角色；{@code ratePerMille} → {@code
+   *       sharePerMille}；{@code LABOR_AMOUNT → BY_RECOGNIZED_LABOR}、{@code NONE/EQUAL → EQUAL}；
+   *   <li>{@code FIXED_MONEY_WAGE} → {@code MONEY_WAGE} 角色（share=0；quote/target 归 W2a）；
+   *   <li>{@code SELF_RETENTION} → 不建角色（residual 归 organizer）；
+   *   <li>其余（含 {@code FIXED_IN_KIND_PER_LABOR} / {@code FIXED_IN_KIND_RENT} / {@code
+   *       FIXED_MONEY_RENT}、 未知权重 / share 合计 &gt; 1000 / organizer 无 PRODUCT_SHARE 角色）→
+   *       <b>本方法不抛异常</b>，返回 {@link LegacyRoleMapping#blocked(String)} 的具名原因，由调用方走旧路径。
+   * </ul>
+   *
+   * <p>★★ <b>角色 id/名称只从 seed 事实派生</b>：cohort 受方取 {@code stratum.value()}、家户受方取 {@code household}、
+   * actor 受方取 {@code actor.id}；重名在同一 plan 内追加稳定序号。没有"猜"出来的角色名。
+   *
+   * <p>★ 纯函数：不读状态、不写账户；**唯一输出** = 可映射的 roles 或 blocked 原因。不可表示不是创世故障， 而是"这个 plan 继续走旧 rules
+   * 路径"的具名状态（控制方 2026-10-17 裁定选项 (a)）。
+   */
+  static LegacyRoleMapping legacyRuleRoleNodes(
+      IndustryPlan plan, List<CompensationRule> rules, ActorRef operator) {
+    Objects.requireNonNull(plan, "plan");
+    Objects.requireNonNull(rules, "rules");
+    Objects.requireNonNull(operator, "operator");
+    if (rules.isEmpty()) {
+      return LegacyRoleMapping.mapped(singleOperatorRoleNodes());
+    }
+    List<Map<String, Object>> roles = new ArrayList<>();
+    Set<String> usedRoleIds = new LinkedHashSet<>();
+    long productShareTotal = 0L;
+    boolean organizerCovered = false;
+    for (CompensationRule rule : rules) {
+      switch (rule.type()) {
+        case SELF_RETENTION -> {
+          // 不建角色：residual 归 organizer（D2 §4.3 的 SELF_RETENTION 行）。
+        }
+        case OUTPUT_SHARE -> {
+          if (rule.ratePerMille() <= 0L) {
+            return LegacyRoleMapping.blocked("OUTPUT_SHARE:share-zero");
+          }
+          if (productShareTotal > 1_000L - rule.ratePerMille()) {
+            // ★ 不在累加处抛 ArithmeticException：超额本身就是"走旧路径"的具名原因。
+            return LegacyRoleMapping.blocked("OUTPUT_SHARE:share-total:>1000");
+          }
+          productShareTotal += rule.ratePerMille();
+          roles.add(
+              productShareRoleNode(
+                  uniqueRoleId(rule, usedRoleIds),
+                  roleNameOf(rule),
+                  rule.ratePerMille(),
+                  intraRoleSplitOf(rule.weight())));
+          if (payeeIsOperator(rule.recipient(), operator)) {
+            organizerCovered = true;
+          }
+        }
+        case FIXED_MONEY_WAGE -> {
+          roles.add(moneyWageRoleNode(uniqueRoleId(rule, usedRoleIds), roleNameOf(rule)));
+          if (payeeIsOperator(rule.recipient(), operator)) {
+            organizerCovered = true;
+          }
+        }
+        case FIXED_IN_KIND_PER_LABOR, FIXED_IN_KIND_RENT, FIXED_MONEY_RENT -> {
+          return LegacyRoleMapping.blocked(rule.type().name());
+        }
+        default -> {
+          return LegacyRoleMapping.blocked(rule.type().name());
+        }
+      }
+    }
+    if (productShareTotal > 1_000L) {
+      return LegacyRoleMapping.blocked("OUTPUT_SHARE:share-total:" + productShareTotal);
+    }
+    if (productShareTotal < 1_000L) {
+      // 余数归 organizer（D2 §8.3）：显式给一个 organizer 角色，保证 D2-I3/I4 的"组织者是 PRODUCT_SHARE 角色"。
+      roles.add(
+          productShareRoleNode(
+              ProductionRoleDefinition.defaultOperator().id().value(),
+              ProductionRoleDefinition.defaultOperator().name(),
+              1_000L - productShareTotal,
+              IntraRoleSplitRule.EQUAL));
+    } else if (!organizerCovered) {
+      return LegacyRoleMapping.blocked("OUTPUT_SHARE:organizer-role-missing");
+    }
+    return LegacyRoleMapping.mapped(Collections.unmodifiableList(roles));
+  }
+
+  /**
+   * ★★★ <b>D-032 C3：plan 级旧规则映射的唯一应用点</b>（控制方 2026-10-17 裁定选项 (a)）。
+   *
+   * <p>逐 plan 收集**主 unit + 全部副 unit** 的旧规则，然后：
+   *
+   * <ul>
+   *   <li><b>可安全整体映射</b>（无不可表示项、product share 合计 ≤ 1000、organizer 有 PRODUCT_SHARE 角色）⇒ 写 plan-level
+   *       roles、清空该 plan 所有 unit 的旧 rules（不双分）；
+   *   <li><b>否则</b> ⇒ <b>原样保留旧 rules</b>、不添加新 roles/roster（roles 保持 {@code industry(...)} 的 C0 单
+   *       operator 默认），并记 INFO 具名事件 {@code LEGACY_COMPENSATION_RULE_BLOCKED} （reason = {@code
+   *       legacy-compensation-rule-blocked:<plan>:<detail>}）。
+   * </ul>
+   *
+   * <p>★ 不抛异常、不阻断创世：不可表示的 plan 继续走既有旧 {@code ProductionRules.rules} 结算路径；C2 的自动名册只在 {@code rules}
+   * 空时触发，因此不会出现"旧规则 + 名册双分"。
+   */
+  static void applyLegacyRoleMapping(
+      List<IndustryPlan> plans,
+      List<Map<String, Object>> units,
+      Map<String, List<CompensationRule>> legacyRulesByPlan) {
+    Objects.requireNonNull(plans, "plans");
+    Objects.requireNonNull(units, "units");
+    Objects.requireNonNull(legacyRulesByPlan, "legacyRulesByPlan");
+    for (IndustryPlan plan : plans) {
+      List<CompensationRule> rules = legacyRulesByPlan.getOrDefault(plan.id(), List.of());
+      LegacyRoleMapping mapping = legacyRuleRoleNodes(plan, rules, plan.operator());
+      if (mapping.mapped() && mapping.roles().size() > 1) {
+        // ★ 多角色 plan 必须同时有显式 productionRosters（D2 §5.4/§5.5）；C3 不在这里造 roster
+        //   （planned labor/participants 需要逐 unit 劳动事实）⇒ 安全回退旧路径，避免
+        //   `seed-roster-missing` 在后续创世校验里把世界挡住。
+        mapping = LegacyRoleMapping.blocked("roles-require-explicit-roster");
+      }
+      if (mapping.mapped()) {
+        plan.payload().put("roles", mapping.roles());
+        if (!rules.isEmpty()) {
+          clearLegacyRules(units, plan.id());
+        }
+        continue;
+      }
+      // ★ 选项 (a)：原样保留旧 rules；roles 保持 C0 单 operator 默认；不写 roster。
+      plan.payload().put("roles", singleOperatorRoleNodes());
+      String reason =
+          "legacy-compensation-rule-blocked:" + plan.id() + ":" + mapping.blockedReason();
+      io.mosire.simos.util.log.EventLog.channel(LOG)
+          .info(
+              io.mosire.simos.util.log.LogEvent.of(
+                  "LEGACY_COMPENSATION_RULE_BLOCKED",
+                  io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                  "plan",
+                  plan.id(),
+                  "reason",
+                  reason));
+    }
+  }
+
+  /** 把某 plan 全部 unit 的 relation 节点里的旧 {@code rules} 清空（只在 plan 级映射成功时调用）。 */
+  private static void clearLegacyRules(List<Map<String, Object>> units, String planId) {
+    for (Map<String, Object> unit : units) {
+      if (!planId.equals(unit.get("industry"))) {
+        continue;
+      }
+      Object relation = unit.get("relation");
+      if (relation instanceof Map<?, ?> relationNode) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> node = (Map<String, Object>) relationNode;
+        node.put("rules", List.of());
+      }
+    }
+  }
+
+  /** D-032 C3 的映射结果：{@code blockedReason == null} ⇔ 可整体映射。 */
+  record LegacyRoleMapping(List<Map<String, Object>> roles, String blockedReason) {
+    LegacyRoleMapping {
+      Objects.requireNonNull(roles, "roles");
+      roles = Collections.unmodifiableList(new ArrayList<>(roles));
+    }
+
+    static LegacyRoleMapping mapped(List<Map<String, Object>> roles) {
+      return new LegacyRoleMapping(roles, null);
+    }
+
+    static LegacyRoleMapping blocked(String reason) {
+      if (reason == null || reason.isBlank()) {
+        throw new IllegalArgumentException("LegacyRoleMapping.blocked 的 reason 不得为空白");
+      }
+      return new LegacyRoleMapping(List.of(), reason);
+    }
+
+    boolean mapped() {
+      return blockedReason == null;
+    }
+  }
+
+  private static IntraRoleSplitRule intraRoleSplitOf(Weight weight) {
+    return switch (weight) {
+      case LABOR_AMOUNT -> IntraRoleSplitRule.BY_RECOGNIZED_LABOR;
+      case NONE, EQUAL -> IntraRoleSplitRule.EQUAL;
+        // ★ D2 §4.3 表里的 ASSET_QUANTITY→BY_RIGHTS 在当前 economy-api 已不可达：
+        //   Weight.ASSET_QUANTITY 随产权表在 H0.5 整块退役（Weight 类注明写"不许加回来"）⇒ 没有可映射的旧规则形态。
+    };
+  }
+
+  private static Map<String, Object> productShareRoleNode(
+      String id, String name, long sharePerMille, IntraRoleSplitRule split) {
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("id", id);
+    node.put("name", name);
+    node.put("sharePerMille", sharePerMille);
+    node.put("intraRoleSplit", split.key());
+    node.put("standardLaborMilliPerCycle", 0L);
+    node.put("payment", "product_share");
+    return Collections.unmodifiableMap(node);
+  }
+
+  private static Map<String, Object> moneyWageRoleNode(String id, String name) {
+    Map<String, Object> payment = new LinkedHashMap<>();
+    payment.put("kind", "money_wage");
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("id", id);
+    node.put("name", name);
+    node.put("sharePerMille", 0L);
+    node.put("intraRoleSplit", IntraRoleSplitRule.EQUAL.key());
+    node.put("standardLaborMilliPerCycle", 0L);
+    node.put("payment", Collections.unmodifiableMap(payment));
+    return Collections.unmodifiableMap(node);
+  }
+
+  /** 角色 id 只从受方身份机械派生（cohort stratum / household / actor）；同 plan 内重名追加稳定序号。 */
+  private static String uniqueRoleId(CompensationRule rule, Set<String> used) {
+    String base = sanitizeRoleId(roleBaseId(rule.recipient()));
+    String candidate = base;
+    int suffix = 2;
+    while (!used.add(candidate)) {
+      candidate = base + "_" + suffix;
+      suffix++;
+    }
+    return candidate;
+  }
+
+  private static String roleBaseId(Payee recipient) {
+    return switch (recipient) {
+      case Payee.ToCohort cohort -> cohort.cohort().stratum().value();
+      case Payee.ToHousehold household -> "household_" + household.household().value();
+      case Payee.ToActor actor -> "actor_" + actor.actor().id();
+    };
+  }
+
+  private static String roleNameOf(CompensationRule rule) {
+    return roleBaseId(rule.recipient());
+  }
+
+  private static String sanitizeRoleId(String text) {
+    String sanitized = text == null ? "" : text.replaceAll("[^A-Za-z0-9_-]", "_");
+    return sanitized.isBlank() ? "role" : sanitized;
+  }
+
+  private static boolean payeeIsOperator(Payee recipient, ActorRef operator) {
+    return switch (recipient) {
+      case Payee.ToCohort cohort ->
+          HouseholdActors.of(
+                  HouseholdIds.ofSeed(
+                      cohort.cohort().hex(),
+                      cohort.cohort().residence(),
+                      cohort.cohort().stratum()))
+              .equals(operator);
+      case Payee.ToHousehold household ->
+          HouseholdActors.of(household.household()).equals(operator);
+      case Payee.ToActor actor -> actor.actor().equals(operator);
+    };
+  }
+
+  /**
+   * ★★★ <b>D-032 C3：{@code production.Seed.industries[]} 的节点裁剪（唯一拼写点）</b>。
+   *
+   * <p>economy 的 {@code plans[]} 节点是"production 定义 + economy 实例/关系键"的合集（后者由 {@code
+   * plan.payload().put("operator"/"relation", …)} 追加）。production 的解析器当前对顶层多余键是<b>不读</b> （D1 的宽松
+   * Seed 习惯），但跨域键本就不该出现在 production 载荷里 ⇒ C3 在这里只挑 production 认识的键。
+   *
+   * <p>★ <b>不改 production 的解析语义</b>（`requireKnownFields` 等一个字不动）；本方法是纯拷贝，不生成任何 新值，也不替 production
+   * 做缺省推导。
+   */
+  static Map<String, Object> productionIndustryNode(Map<String, Object> planNode) {
+    Objects.requireNonNull(planNode, "planNode");
+    Map<String, Object> node = new LinkedHashMap<>();
+    for (String key : PRODUCTION_INDUSTRY_KEYS) {
+      if (planNode.containsKey(key)) {
+        node.put(key, planNode.get(key));
+      }
+    }
+    return Collections.unmodifiableMap(node);
+  }
+
+  /**
+   * {@code ProductionDefinitionPayloads.industry(JsonNode)} 读取的全部字段名（唯一清单）。
+   *
+   * <p>★ 它只服务上面的裁剪；新增 production 定义字段时必须同步本表 + {@code productionPayload()}，否则该字段
+   * 会在创世时被静默丢掉（本仓"声明式清单不随别处自动延伸"的那类静默面）。
+   */
+  private static final List<String> PRODUCTION_INDUSTRY_KEYS =
+      List.of(
+          "id",
+          "name",
+          "regime",
+          "skill",
+          "cycleDays",
+          "buildDays",
+          "acceptedRightKinds",
+          "capacityPerUnit",
+          "laborPerUnit",
+          "dailyInputPerUnit",
+          "dailyLaborPerUnit",
+          "outputPerUnit",
+          "moneyOutputPerUnit",
+          "cycleInputPerUnit",
+          "slots",
+          "allocation",
+          "experience",
+          "availability",
+          "roles",
+          "roleShareRemainderRule",
+          "upgradesTo",
+          "mode");
+
+  /**
+   * ★★★ <b>D-032 C3（D2 §5.5）：创世名册的唯一守卫</b>。
+   *
+   * <p>规则：<b>多角色 plan 的 unit 必须在 {@code productionRosters} 里有显式名册</b>，缺失 ⇒ 具名 {@code
+   * seed-roster-missing:<unit>}（整体失败，不静默生成单户名册）。单角色 plan 由 C2 的自动路径 （{@code
+   * EconomyEnterpriseSettlement} / {@code EconomyEntrySettlement}）补默认名册，本方法不管。
+   *
+   * <p>★ 只读：只看本次载荷的 plan / unit 节点与准备发出的名册节点，不写任何状态；跨切片完整校验（角色存在、份额 owner、全局劳动预算、旧规则禁用）仍在 economy 的
+   * {@code EconomyReferenceValidation}。
+   */
+  static void requireRostersForMultiRoleUnits(
+      List<Map<String, Object>> entries, List<Map<String, Object>> productionRosters) {
+    Objects.requireNonNull(entries, "entries");
+    List<Map<String, Object>> rosters = productionRosters == null ? List.of() : productionRosters;
+    Set<String> rosterUnits = new LinkedHashSet<>();
+    for (Map<String, Object> roster : rosters) {
+      Object unit = roster == null ? null : roster.get("unit");
+      if (unit instanceof String text && !text.isBlank()) {
+        rosterUnits.add(text);
+      }
+    }
+    Map<String, Integer> roleCountByPlan = new LinkedHashMap<>();
+    Map<String, String> planByUnit = new LinkedHashMap<>();
+    for (Map<String, Object> entry : entries) {
+      Object rawPlans = entry.get("plans");
+      if (rawPlans instanceof List<?> planList) {
+        for (Object element : planList) {
+          if (!(element instanceof Map<?, ?> planNode)) {
+            continue;
+          }
+          Object id = planNode.get("id");
+          if (!(id instanceof String planId) || planId.isBlank()) {
+            continue;
+          }
+          int roles = 1; // 缺 roles 键 = production 的单 operator 缺省（D1 §2.2）
+          Object rawRoles = planNode.get("roles");
+          if (rawRoles instanceof List<?> roleList) {
+            roles = roleList.size();
+          }
+          roleCountByPlan.put(planId, roles);
+        }
+      }
+      Object rawUnits = entry.get("units");
+      if (rawUnits instanceof List<?> unitList) {
+        for (Object element : unitList) {
+          if (!(element instanceof Map<?, ?> unitNode)) {
+            continue;
+          }
+          Object id = unitNode.get("id");
+          Object industry = unitNode.get("industry");
+          if (id instanceof String unitId && industry instanceof String planId) {
+            planByUnit.put(unitId, planId);
+          }
+        }
+      }
+    }
+    for (Map.Entry<String, String> unit : planByUnit.entrySet()) {
+      Integer roles = roleCountByPlan.get(unit.getValue());
+      if (roles != null && roles > 1 && !rosterUnits.contains(unit.getKey())) {
+        throw new IllegalStateException(
+            "seed-roster-missing:"
+                + unit.getKey()
+                + "（多角色 plan "
+                + unit.getValue()
+                + " 的 unit 必须在 economy.Seed.productionRosters 里给显式名册，不静默生成单户名册）");
+      }
+    }
   }
 
   /**
@@ -5204,6 +5674,17 @@ public final class EconomySeeder {
    * ★★ <b>主 unit 的显式关系</b>（P2-A §13.3）：{@code operator}/{@code residualOwner} = 组织者家户， {@code
    * inputSupplier} 仍指原产业主体 actor（它在 {@code supplierAccountsOf} 里代理到 unit 名下劳动家户，
    * 播种期的"谁出种/出料"因此逐字不变）。
+   *
+   * <p>★★★ <b>D-032 C3（控制方 2026-10-17 裁定选项 (a)）：本方法只产出**旧关系原样**</b>；映射/清空/回退统一由 {@link
+   * #applyLegacyRoleMapping} 在全部 unit 建好后按 plan 决定：
+   *
+   * <ul>
+   *   <li>可整体映射 ⇒ {@code roles} 写入 plan、旧 {@code rules} 清空（D2-I17，不双分）；
+   *   <li>不可表示（{@code FIXED_IN_KIND_*} / 合计 &gt; 1000 / 副 unit 覆盖不了等）⇒ <b>原样保留旧 rules</b>、 不加新
+   *       roles/roster、INFO 记 {@code legacy-compensation-rule-blocked:<plan>:<reason>}，继续创世。
+   * </ul>
+   *
+   * <p>★ 因此本方法不抛"不可表示"异常、不阻断创世。
    */
   private static ProductionRules organizerRelation(
       IndustryPlan plan, Set<ResidenceKind> residences, ActorRef inputSupplierOrg) {
@@ -5212,48 +5693,16 @@ public final class EconomySeeder {
     ProductionRules base =
         RegimeRelations.defaultRelation(
             new RegimeId(plan.regime()), activity, industryId, plan.operator(), residences);
+    // ★★★ D-032 C3（控制方裁定选项 (a)）：这里**只产出旧关系**；plan-level 的
+    //   {@link #applyLegacyRoleMapping} 在全部 unit 建好后统一决定"整体映射并清空 rules"或"原样保留走旧路径"。
+    //   因此本方法不抛异常、不在此处清空 rules、也不在此处写 roles。
     return new ProductionRules(
         base.activity(),
         base.operator(),
         new Payee.ToActor(inputSupplierOrg),
-        withoutSelfPayments(base.rules(), plan.operator()),
+        base.rules(),
         base.residualOwner(),
         base.laborSource());
-  }
-
-  /**
-   * ★★ <b>剔除"受方 == 本条关系的 operator"的规则</b>（P2-E）：这类规则对余额是恒等变换，而 {@code Transfer}
-   * 的两端不得相等（自转移是坏数据）。P2-A 起主 farm/craft unit 的 operator 就是组织者家户，而 FEUDAL/HANDICRAFT 默认模板里"付给该家户所在
-   * cohort"的给养/地租/工资就是自付 —— 不剔除会在首个收获日当场抛。
-   *
-   * <p>★ 口径与 {@code EconomyEnterpriseSettlement.normalizePayees} 逐条相同（那里管自动组织新建的 unit， 这里管 seeder
-   * 创世载荷）；本类不另立第二套判定。
-   */
-  private static List<CompensationRule> withoutSelfPayments(
-      List<CompensationRule> rules, ActorRef operator) {
-    List<CompensationRule> kept = new ArrayList<>(rules.size());
-    for (CompensationRule rule : rules) {
-      if (!paysOperator(rule.recipient(), operator)) {
-        kept.add(rule);
-      }
-    }
-    return List.copyOf(kept);
-  }
-
-  /** 一条规则的受方是否就是 operator（cohort 受方按创世家户 id 的同一拼写点还原）。 */
-  private static boolean paysOperator(Payee recipient, ActorRef operator) {
-    return switch (recipient) {
-      case Payee.ToHousehold toHousehold ->
-          HouseholdActors.of(toHousehold.household()).equals(operator);
-      case Payee.ToActor toActor -> toActor.actor().equals(operator);
-      case Payee.ToCohort toCohort ->
-          HouseholdActors.of(
-                  HouseholdIds.ofSeed(
-                      toCohort.cohort().hex(),
-                      toCohort.cohort().residence(),
-                      toCohort.cohort().stratum()))
-              .equals(operator);
-    };
   }
 
   /**
@@ -5451,6 +5900,8 @@ public final class EconomySeeder {
       Map<String, Long> quantities,
       long landlordPopulation) {
     ActorRef operator = HouseholdActors.of(household);
+    // ★ D-032 C3（控制方裁定选项 (a)）：副 unit 的旧规则先原样产出；plan-level 的
+    //   {@link #applyLegacyRoleMapping} 在全部 unit 建好后统一决定"整体映射并清空"或"原样保留走旧路径"。
     return switch (plan.kind()) {
       case FARM -> farmTenantUnit(plan, hex, household, operator, quantities, landlordPopulation);
       case WEAVE ->
@@ -5478,6 +5929,8 @@ public final class EconomySeeder {
                   ProductionUnitId.idOf(new IndustryId(plan.id()), operator),
                   operator,
                   new Payee.ToActor(plan.operator()),
+                  // 旧 OUTPUT_SHARE（给作坊主 300‰ 布）：plan 级可整体映射时由角色承接并清空；
+                  // 否则原样保留走旧路径（不静默丢、不双分）。
                   List.of(outputShareRule(new Payee.ToActor(plan.operator()), COMMODITY_CLOTH)),
                   operator,
                   LaborSource.TENANT));
@@ -5514,6 +5967,8 @@ public final class EconomySeeder {
             ProductionUnitId.idOf(new IndustryId(plan.id()), operator),
             operator,
             new Payee.ToHousehold(household),
+            // ★ D2 §4.3：旧 OUTPUT_SHARE 租规则（300‰ 粮给地主）先保留用于映射审计；
+            //   通过 plan-level 角色覆盖检查后由 {@link #householdUnit} 清空（不双分）。
             List.of(outputShareRule(rentPayee, COMMODITY_GRAIN)),
             operator,
             LaborSource.TENANT);

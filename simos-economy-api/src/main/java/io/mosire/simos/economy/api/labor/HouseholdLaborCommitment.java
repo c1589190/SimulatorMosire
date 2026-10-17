@@ -64,12 +64,12 @@ public record HouseholdLaborCommitment(
     Optional<ProductionRoleId> productionRole) {
 
   /**
-   * ★★ <b>旧 7 参便利构造器</b>（Z1b 兼容位）：{@code kind} 缺省 = {@link LaborCommitmentKind#PRODUCTION}，
-   * {@code productionRole} 缺省 = {@link Optional#empty()}。
+   * ★★ <b>旧 7 参便利构造器</b>（Z1b 兼容位）：{@code kind} 缺省 = {@link LaborCommitmentKind#PRODUCTION}， {@code
+   * productionRole} 缺省 = {@link Optional#empty()}。
    *
-   * <p>★★ <b>D-032 D2 §5.6 起本构造器只对 {@code GOV_SERVICE} 合法</b>：生产承诺必须携带角色，否则同户同 unit
-   * 多角色会静默撞 id。构造期守卫会把 {@code PRODUCTION + empty} 当场拒掉 —— 新代码请走 {@link
-   * #idOfProduction(ProductionUnitId, ProductionRoleId, PeopleLotId, HouseholdId)} 与 9 参主构造器。
+   * <p>★★ <b>D-032 D2 §5.6 起本构造器只对 {@code GOV_SERVICE} 合法</b>：生产承诺必须携带角色，否则同户同 unit 多角色会静默撞
+   * id。构造期守卫会把 {@code PRODUCTION + empty} 当场拒掉 —— 新代码请走 {@link #idOfProduction(ProductionUnitId,
+   * ProductionRoleId, PeopleLotId, HouseholdId)} 与 9 参主构造器。
    *
    * <p>★★ <b>拷贝纪律（最贵教训同款）</b>：本构造器只服务"新生产承诺 / 旧调用点"。<b>凡从一条既有承诺复制字段 （{@code
    * with*}/缩放/迁移/拆分）一律必须显式带过 {@code kind} 与 {@code productionRole}</b>——漏带 = {@code GOV_SERVICE}
@@ -138,17 +138,13 @@ public record HouseholdLaborCommitment(
           "LaborAllocation.kind 不得为 null（旧档缺省由 EconomyCodec 补 PRODUCTION）");
     }
     Objects.requireNonNull(
-        productionRole,
-        "LaborAllocation.productionRole 不得为 null（GOV_SERVICE 用 Optional.empty()）");
+        productionRole, "LaborAllocation.productionRole 不得为 null（GOV_SERVICE 用 Optional.empty()）");
     // ★★ D-032 D2 §5.6：kind ⇔ role 的对应是构造期硬不变量。
     //   PRODUCTION ⇒ 必带角色（否则同户同 unit 多角色会撞 id / 静默合并）；
     //   GOV_SERVICE ⇒ 必须为空（政府岗位不属于方案角色）。
     if (kind == LaborCommitmentKind.PRODUCTION && productionRole.isEmpty()) {
       throw new IllegalArgumentException(
-          "PRODUCTION 劳动承诺必须携带 productionRole（D2 §5.6）：id="
-              + id.value()
-              + " activity="
-              + activity);
+          "PRODUCTION 劳动承诺必须携带 productionRole（D2 §5.6）：id=" + id.value() + " activity=" + activity);
     }
     if (kind == LaborCommitmentKind.GOV_SERVICE && productionRole.isPresent()) {
       throw new IllegalArgumentException(
@@ -210,19 +206,15 @@ public record HouseholdLaborCommitment(
   }
 
   /**
-   * ★★ <b>D-032 D2 §5.6：生产承诺 id 的唯一拼写点（角色入 id）</b>：
-   * {@code alloc-<unit>-<role>-<批次>-<家户>}。
+   * ★★ <b>D-032 D2 §5.6：生产承诺 id 的唯一拼写点（角色入 id）</b>： {@code alloc-<unit>-<role>-<批次>-<家户>}。
    *
-   * <p>★ <b>为什么角色必须在 id 里</b>：同一户可以在同一 unit 上同时担任多个角色（例如地主兼经营者）；若 id 只按
-   * {@code (unit, group, household)} 拼，两条配额会撞同一个键 ⇒ {@code FieldDelta} 的 map 键撞车 = 静默丢一条劳动。
+   * <p>★ <b>为什么角色必须在 id 里</b>：同一户可以在同一 unit 上同时担任多个角色（例如地主兼经营者）；若 id 只按 {@code (unit, group,
+   * household)} 拼，两条配额会撞同一个键 ⇒ {@code FieldDelta} 的 map 键撞车 = 静默丢一条劳动。
    *
    * <p>★ <b>不引入第二个 role 字符串</b>：生产承诺的角色只住在 {@link #productionRole()} 这一处，id 只是它的确定性派生。
    */
   public static LaborAllocationId idOfProduction(
-      ProductionUnitId unit,
-      ProductionRoleId role,
-      PeopleLotId group,
-      HouseholdId household) {
+      ProductionUnitId unit, ProductionRoleId role, PeopleLotId group, HouseholdId household) {
     if (unit == null) {
       throw new IllegalArgumentException("LaborAllocation.idOfProduction 的 unit 不得为 null");
     }

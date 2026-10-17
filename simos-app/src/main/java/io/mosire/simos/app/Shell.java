@@ -110,6 +110,7 @@ import io.mosire.simos.economy.spi.EconomySetMarketZoneLoanRateAlphaHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketZonePriceAlphaHandler;
 import io.mosire.simos.economy.spi.EconomySetOfficialRateHandler;
 import io.mosire.simos.economy.spi.EconomySetPlanSourcesHandler;
+import io.mosire.simos.economy.spi.EconomySetProductionRosterHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
 import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
@@ -888,6 +889,13 @@ public final class Shell implements AutoCloseable {
                 //   （= 旧候选缺省，逐值不变，I14）。GM-only（不打 {@code DmUsableCommand}）⇒ 排除出令白名单 /
                 //   RegisterEffect / 决策人目录；窄工具 simos.economy.setPlanSources 照常可用。──
                 new EconomySetPlanSourcesHandler(),
+                // ★★★ D-032 C3（D2 §5.4）：**生产参与名册**的 GM 写口（economy.SetProductionRoster）——
+                //   整表替换某 unit 的 participants（[] = 清除）；plan 不由载荷给（从 production 当刻实例读出）。
+                //   ★ GM-only：不打 {@code DmUsableCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；
+                //     这是 D2 §5.4 的权限边界（名册 = 谁参与生产，不能让决策人自行改写）。
+                //   ★ schema / 具名拒 / 跨切片校验的唯一权威 = {@link EconomySetProductionRosterHandler} 与
+                //     {@code EconomyReferenceValidation#validateProductionRosters}，本组合根只注册、不复制校验。
+                new EconomySetProductionRosterHandler(),
                 // ★★ 2026-10-13 批次 4（② 凭空注入/改写经济对象）：需求账本两条**摘掉**
                 //   {@code DmUsableCommand} ⇒ 仅 GM（两条的 handler 类注本就写明 GM 路径）。
                 //   ★★★ B2c（D-032 §13.12.2 裁定八）：候选面**整体退役** —— `ProductionCandidate` 类型、

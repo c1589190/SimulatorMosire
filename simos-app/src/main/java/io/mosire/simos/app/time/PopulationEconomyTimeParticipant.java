@@ -17,6 +17,7 @@ import io.mosire.simos.app.household.HouseholdPositionResolver;
 import io.mosire.simos.app.household.HouseholdSatietyBridge;
 import io.mosire.simos.app.household.HouseholdUnitConsistency;
 import io.mosire.simos.app.household.MigrationSocialBridge;
+import io.mosire.simos.app.production.AppProductionLookups;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyProductionDefinitions;
@@ -612,7 +613,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               session,
               flightTopology,
               EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
-              parallelism);
+              parallelism,
+              // ★★★ D-032 C3：三类跨切片只读依赖由组合根的**唯一装配点**显式注入（当前 = Unavailable 适配器；
+              //   D4-I/W2a 落真实实现后只改 AppProductionLookups，不再出现"某条推进路径漏接"）。
+              AppProductionLookups.ASSET_OCCUPANCY,
+              AppProductionLookups.WAGE_QUOTES,
+              AppProductionLookups.PARTICIPANT_ATTRIBUTES,
+              AppProductionLookups.expectedRevision(state));
       try {
         // ★ 装配行可读：实际 workerCount 与"是否真的并行"都在这里（1 = 单线程退化路径）。
         TIME.info(

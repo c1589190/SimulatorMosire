@@ -506,6 +506,18 @@ public final class CatalogTool implements SimosTool {
                   + " 权威）/实例/家户/债务/市场一个数都不动；不做版本、不做窗口；★ GM-only"
                   + "（不进令/RegisterEffect/决策人目录），窄工具 simos.economy.setPlanSources 可用）"),
           Map.entry(
+              "economy.SetProductionRoster",
+              "unit(生产实例稳定 id；plan 不给 —— 从 production 当刻实例读出), participants[{household, role,"
+                  + " organizer(整份名册恰一个 true), plannedLaborMilliPerDay(毫小时/日，≥0),"
+                  + " rightsStakes[AssetShareId](仅 BY_RIGHTS 用，不得跨 participant 重复),"
+                  + " configuredWeight(仅 CONFIGURED_WEIGHTS 用，≥0)}]（★ D-032 D2 §5.4：**整表替换**某 unit 的"
+                  + " 参与名册；participants: [] = **清除**该 unit 名册。角色 id / 份额 / 经验只从 production 方案定义读，"
+                  + "本命令**不复制**任何分配/估值公式。具名拒：unit-unknown / roster-locked（progressDays>0 周期内冻结）/"
+                  + " role-unknown / organizer-missing / organizer-multiple / role-unfilled（仅 PRODUCT_SHARE 角色无"
+                  + " participant）/ participant-duplicate / rights-not-owned / planned-labor-negative /"
+                  + " configured-weight-invalid / wage-target-missing / household-labor-overcommitted 等；"
+                  + "★ GM-only（不进令/RegisterEffect/决策人目录）—— 名册是'谁参与生产'的结构事实，不得由决策人自行改写）"),
+          Map.entry(
               "economy.SetMarketNumeraire",
               "marketId, numeraire(币种 id，须在世界词表里)（★ W1：逐区；GM-only —— 把**某个市场**的计价币改成另一种币；"
                   + "市场必须已存在，否则拒 market-missing；币种不在词表 ⇒ 拒 unknown-currency；"

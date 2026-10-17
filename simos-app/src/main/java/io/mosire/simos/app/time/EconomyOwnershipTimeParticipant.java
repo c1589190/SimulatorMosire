@@ -6,6 +6,7 @@ import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
+import io.mosire.simos.app.production.AppProductionLookups;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -205,7 +206,15 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
             productionRuntime,
             session,
             // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
-            MarketTopologyBook.from(state));
+            MarketTopologyBook.from(state),
+            io.mosire.simos.economy.time.EconomySettlement.PLANTING_DRAWS_BEFORE_CONSUMPTION,
+            io.mosire.simos.economy.time.EconomyParallelism.singleThreaded(),
+            // ★★★ D-032 C3：三类跨切片只读依赖由组合根唯一装配点显式注入（当前 = Unavailable 适配器；
+            //   D4-I/W2a 落真实实现后只改 AppProductionLookups —— 备用推进路径与主路径口径一致）。
+            AppProductionLookups.ASSET_OCCUPANCY,
+            AppProductionLookups.WAGE_QUOTES,
+            AppProductionLookups.PARTICIPANT_ATTRIBUTES,
+            AppProductionLookups.expectedRevision(state));
     ActorData books = migratedBooks;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       // ── ★★ D-032（D2 直接删）：备用经济路径上的"文化加成中性接线点"（CultureAptitudeBridge）已随

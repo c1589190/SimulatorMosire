@@ -206,6 +206,13 @@ import java.util.function.Predicate;
  */
 public final class ApiViews {
 
+  /**
+   * ★★★ D-032 C3：名册只读读数的宿主（无状态、每次调用现取 state）。只用于 {@code economyHex} 的 {@code productionRosters}
+   * 栏；唯一消费 {@code ExpectedProfitBook.rosterIncomes}，不复制公式。
+   */
+  private static final io.mosire.simos.app.production.AppProductionConsumerPort
+      PRODUCTION_CONSUMER = new io.mosire.simos.app.production.AppProductionConsumerPort();
+
   /** 粮食商品 id（与 {@code EconomySeeder.COMMODITY_GRAIN} / 结算侧同字面量：粮 = 1 公斤，库存按毫粮）。 */
   private static final CommodityId GRAIN = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
 
@@ -1168,19 +1175,36 @@ public final class ApiViews {
     EconomyData data = economyData(state);
     ActorData actors = actorData(state);
     long tick = state.meta().timestamp().tick();
+    Map<
+            io.mosire.simos.economy.api.id.ProductionUnitId,
+            io.mosire.simos.production.contract.ProductionProcess>
+        productionUnits =
+            io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances();
     // ★★ R3a：旧市场读数组件（MarketReadoutAssembly / MarketReadout / MarketReportFeed）已随旧撮合引擎删除；
     //   production-runtime 生产路径不产生进程内市场报告 ⇒ 这一栏具名不可得，不填 0、不假装空数组。
-    return economyHex(
-        coord,
-        data,
-        io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
-        // ★★ D-032 B4（§13.14.2 裁定十五）：定义只经 production 的**契约来源**传（economy 的副本已删）——
-        //   底下既要"本格产业"（键集），也要把它喂给读口（capacitiesForState / HouseholdCondition.derive）。
-        io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
-        actors,
-        Optional.empty(),
-        tick,
-        "R3a 起旧市场读数组件已删除（production-runtime 生产路径不产生进程内市场报告）⇒ 没有区级市场读数");
+    Map<String, Object> view =
+        economyHex(
+            coord,
+            data,
+            productionUnits,
+            // ★★ D-032 B4（§13.14.2 裁定十五）：定义只经 production 的**契约来源**传（economy 的副本已删）——
+            //   底下既要"本格产业"（键集），也要把它喂给读口（capacitiesForState / HouseholdCondition.derive）。
+            io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
+            actors,
+            Optional.empty(),
+            tick,
+            "R3a 起旧市场读数组件已删除（production-runtime 生产路径不产生进程内市场报告）⇒ 没有区级市场读数");
+    // ★★★ D-032 C3：本格名册 + 逐户预计所得（唯一只读消费点 = AppProductionConsumerPort.rosterReadouts →
+    //   ExpectedProfitBook.rosterIncomes）。只读；无 D4-C/W2a 真实实现时逐行带具名 unavailable 拒绝，不按 0。
+    String hexKey = io.mosire.simos.economy.api.id.IndustryHexKeys.hexKey(coord.q(), coord.r());
+    List<io.mosire.simos.economy.api.id.ProductionUnitId> rosterUnits = new ArrayList<>();
+    for (io.mosire.simos.production.contract.ProductionProcess unit : productionUnits.values()) {
+      if (unit.location().isSpecified() && hexKey.equals(unit.location().value())) {
+        rosterUnits.add(unit.id());
+      }
+    }
+    view.put("productionRosters", PRODUCTION_CONSUMER.rosterReadouts(state, rosterUnits));
+    return view;
   }
 
   private static Map<String, Object> economyHex(

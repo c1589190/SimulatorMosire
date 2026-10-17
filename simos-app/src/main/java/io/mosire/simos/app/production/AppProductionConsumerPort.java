@@ -1,30 +1,55 @@
 package io.mosire.simos.app.production;
 
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.AppLogSource;
+import io.mosire.simos.economy.EconomyBoundaryView;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyProductionDefinitions;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassStructure;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.MarketTable;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionParticipant;
 import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRoster;
+import io.mosire.simos.economy.time.AccountSession;
+import io.mosire.simos.economy.time.ExpectedProfitBook;
+import io.mosire.simos.economy.time.ExpectedProfitBook.RosterHouseholdIncome;
+import io.mosire.simos.production.ProductionData;
+import io.mosire.simos.production.ProductionRuntimeEngine;
+import io.mosire.simos.production.ProductionSnapshot;
+import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionConsumerPort;
+import io.mosire.simos.production.contract.ProductionDefinitionLookup;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.production.contract.ProductionStateLookup;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
 import org.slf4j.Logger;
 
 /**
@@ -221,5 +246,227 @@ public final class AppProductionConsumerPort implements ProductionConsumerPort {
                 "reason",
                 reason));
     return new IllegalStateException("ProductionConsumerPort: " + reason);
+  }
+
+  // ── ★★★ D-032 C3：名册只读消费（唯一调用 economy 的 ExpectedProfitBook.rosterIncomes 的 app 点）────────
+
+  /**
+   * ★★★ <b>按 unit 输出名册与逐户预计所得（只读）</b> —— {@code ExpectedProfitBook.rosterIncomes(...)} 的 <b>app
+   * 侧唯一消费点</b>（D2 §8.1/§8.2）。
+   *
+   * <p>★★ <b>不复制任何公式</b>：角色份额 / 两层分配 / 产品估值 / 工资应收应付 / 投入负担全部由 economy 的 {@code rosterIncomes}
+   * 一处算出；本类只负责**装配输入**（state → 定义/实例/名册/账户会话/市场表/只读 lookup） 与**形状化输出**。不写任何状态、不产生变更集。
+   *
+   * <p>★★ <b>D4-C / W2a 未接时的诚实读数</b>：{@link AppProductionLookups#ASSET_OCCUPANCY} / {@link
+   * AppProductionLookups#WAGE_QUOTES} 当前都是 Unavailable 适配器 ⇒ 逐户行会带具名 {@code
+   * asset-occupancy-unavailable} / {@code wage-quote-missing:<role>}，<b>不按 0 冒充</b>。这正是 D2 §10.2
+   * 的失败语义；D4-I/W2a 落真实实现后本方法自动给出真实预计值。
+   *
+   * @param state 当刻状态（只读）
+   * @param units 要读的名册 unit（无名册的 unit 自动跳过；顺序按 unit id 稳定排序）
+   * @return 每个有名册 unit 一行（空表 = 这些 unit 还没有名册）
+   */
+  public List<Map<String, Object>> rosterReadouts(
+      SimulationState state, Collection<ProductionUnitId> units) {
+    Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(units, "units");
+    EconomyData economy = economyOf(state);
+    if (economy.meta().isEmpty()) {
+      return List.of(); // 未激活世界：没有名册，也没有可读的经济事实（不是错误）
+    }
+    ProductionDefinitionLookup definitions = EconomyProductionDefinitions.of(state);
+    // ★ 只读视图装配：EconomyData + production 定义来源 ⇒ EconomyDayView（C2 的 BoundaryView 是唯一装配形态）。
+    EconomyBoundaryView boundary = EconomyBoundaryView.of(economy, definitions);
+    Map<ProductionUnitId, ProductionRoster> rosters = boundary.productionRosters();
+    if (rosters.isEmpty()) {
+      return List.of();
+    }
+    Map<ProductionUnitId, ProductionProcess> instances =
+        EconomyProductionDefinitions.stateOf(state).instances();
+    ActorData actors = actorOf(state);
+    ProductionRuntimeEngine runtime = new ProductionRuntimeEngine(productionDataOf(state));
+    long day = state.meta().timestamp().tick();
+    List<ProductionUnitId> ordered = new ArrayList<>(units);
+    ordered.sort((left, right) -> left.value().compareTo(right.value()));
+    List<Map<String, Object>> readouts = new ArrayList<>();
+    for (ProductionUnitId unitId : ordered) {
+      ProductionRoster roster = rosters.get(unitId);
+      if (roster == null) {
+        continue; // 单角色 unit 在 C2 自动名册生成前没有行；"还没有名册"不是故障
+      }
+      ProductionProcess instance = instances.get(unitId);
+      if (instance == null) {
+        throw assemblyFault("名册指名了不存在的生产实例: unit=" + unitId.value());
+      }
+      IndustryDefinitionView plan =
+          definitions
+              .industry(instance.plan())
+              .orElseThrow(
+                  () ->
+                      assemblyFault(
+                          "名册实例的方案定义不存在: unit="
+                              + unitId.value()
+                              + " plan="
+                              + instance.plan().value()));
+      AccountSession accounts = readOnlyAccounts(economy, actors, roster);
+      MarketTable market = marketTableOf(economy, instance);
+      List<RosterHouseholdIncome> incomes =
+          ExpectedProfitBook.rosterIncomes(
+              plan,
+              instance,
+              roster,
+              economy.assetShares(),
+              accounts,
+              economy.relations(),
+              market,
+              AppProductionLookups.WAGE_QUOTES,
+              Map.of(),
+              AppProductionLookups.ASSET_OCCUPANCY,
+              AppProductionLookups.expectedRevision(state),
+              day,
+              runtime);
+      readouts.add(rosterReadoutView(roster, incomes));
+    }
+    return Collections.unmodifiableList(readouts);
+  }
+
+  /**
+   * 名册只读视图（唯一形状拼写点）：参与者 + 逐户预计所得。
+   *
+   * <p>★ 键序固定（参与者按名册保序；商品表按 id 升序）⇒ 同一份状态的输出是内容的纯函数。
+   */
+  private static Map<String, Object> rosterReadoutView(
+      ProductionRoster roster, List<RosterHouseholdIncome> incomes) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("unit", roster.unit().value());
+    view.put("plan", roster.plan().value());
+    List<Map<String, Object>> participants = new ArrayList<>();
+    for (ProductionParticipant participant : roster.participants()) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("household", participant.household().value());
+      row.put("role", participant.role().value());
+      row.put("organizer", participant.organizer());
+      row.put("plannedLaborMilliPerDay", participant.plannedLaborMilliPerDay());
+      row.put("rightsStakes", sortedStakeIds(participant.rightsStakes()));
+      row.put("configuredWeight", participant.configuredWeight());
+      participants.add(Collections.unmodifiableMap(row));
+    }
+    view.put("participants", Collections.unmodifiableList(participants));
+    List<Map<String, Object>> incomeViews = new ArrayList<>(incomes.size());
+    for (RosterHouseholdIncome income : incomes) {
+      incomeViews.add(incomeView(income));
+    }
+    view.put("expectedIncomes", Collections.unmodifiableList(incomeViews));
+    return Collections.unmodifiableMap(view);
+  }
+
+  private static Map<String, Object> incomeView(RosterHouseholdIncome income) {
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("unit", income.unit().value());
+    row.put("plan", income.plan().value());
+    row.put("household", income.household().value());
+    row.put("role", income.role().value());
+    row.put("organizer", income.organizer());
+    row.put("productShareMilli", sortedCommodityAmounts(income.productShareMilli()));
+    row.put("productShareValueMilli", income.productShareValueMilli());
+    row.put("wageReceivableMilli", income.wageReceivableMilli());
+    row.put("wagePayableMilli", income.wagePayableMilli());
+    row.put("inputBurdenMilli", income.inputBurdenMilli());
+    row.put("expectedNetMilli", income.expectedNetMilli());
+    row.put("negative", income.negative());
+    row.put("unpricedCommodities", sortedCommodityIds(income.unpricedCommodities()));
+    row.put("rejection", income.rejection().orElse(null));
+    return Collections.unmodifiableMap(row);
+  }
+
+  private static List<String> sortedStakeIds(
+      List<io.mosire.simos.economy.api.id.AssetShareId> stakes) {
+    List<String> ids = new ArrayList<>(stakes.size());
+    for (io.mosire.simos.economy.api.id.AssetShareId stake : stakes) {
+      ids.add(stake.value());
+    }
+    Collections.sort(ids);
+    return Collections.unmodifiableList(ids);
+  }
+
+  private static Map<String, Long> sortedCommodityAmounts(Map<CommodityId, Long> amounts) {
+    Map<String, Long> sorted = new TreeMap<>();
+    for (Map.Entry<CommodityId, Long> entry : amounts.entrySet()) {
+      sorted.put(entry.getKey().value(), entry.getValue());
+    }
+    return Collections.unmodifiableMap(sorted);
+  }
+
+  private static List<String> sortedCommodityIds(Set<CommodityId> commodities) {
+    List<String> ids = new ArrayList<>(commodities.size());
+    for (CommodityId commodity : commodities) {
+      ids.add(commodity.value());
+    }
+    Collections.sort(ids);
+    return Collections.unmodifiableList(ids);
+  }
+
+  /**
+   * 只读账户会话：只为名册参与户登记当刻账（缺账的户跳过 —— 读口不因一个未播种账户而整页 500； 预计所得里该户的输入按 0 读，与 {@code
+   * ProductionProbeInputs.inputsOf} 的 null 口径一致）。
+   *
+   * <p>★ 不调 {@code OwnershipBooks.loadAccountSession}（那会要求**全部**家户都有账，对读口过强）；
+   * 本方法只注册名册相关户、只读、同一线程内即用即弃。
+   */
+  private static AccountSession readOnlyAccounts(
+      EconomyData economy, ActorData actors, ProductionRoster roster) {
+    AccountSession session = AccountSession.empty();
+    for (HouseholdId household : roster.households()) {
+      HouseholdEconomy row = economy.classes().get(household);
+      HouseholdInventory inventory = actors.accounts().get(new HouseholdAccountKey(household));
+      if (row == null || inventory == null) {
+        continue;
+      }
+      session.registerHousehold(
+          household,
+          row.view().hex(),
+          inventory.balances(),
+          inventory.money(),
+          inventory.frozenBalances(),
+          inventory.frozenMoney());
+    }
+    return session;
+  }
+
+  /** unit 所在格的市场表（没有 ⇒ null = 读口不估值；不把"没有市场"读成 0 价）。 */
+  private static MarketTable marketTableOf(EconomyData economy, ProductionProcess unit) {
+    if (!unit.location().isSpecified()) {
+      return null;
+    }
+    String hexKey = unit.location().value();
+    for (MarketTable table : economy.marketTables().values()) {
+      for (io.mosire.simos.map.hex.HexCoord hex : table.hexes()) {
+        if (hexKey.equals(hex.q() + "_" + hex.r())) {
+          return table;
+        }
+      }
+    }
+    return null;
+  }
+
+  /** actor 切片（装配故障 ⇒ ERROR + 抛，不降级）。 */
+  private static ActorData actorOf(SimulationState state) {
+    Snapshot slice = state.module("actor").orElse(null);
+    if (!(slice instanceof ActorSnapshot snapshot)) {
+      throw assemblyFault(
+          "state 里没有 actor 切片（或类型不符）: " + (slice == null ? "null" : slice.getClass().getName()));
+    }
+    return snapshot.data();
+  }
+
+  /** production 切片内部状态（只读；D-032 B1 起由组合根本地读，不交给 economy）。 */
+  private static ProductionData productionDataOf(SimulationState state) {
+    Snapshot slice = state.module("production").orElse(null);
+    if (!(slice instanceof ProductionSnapshot snapshot)) {
+      throw assemblyFault(
+          "state 里没有 production 切片（或类型不符）: "
+              + (slice == null ? "null" : slice.getClass().getName()));
+    }
+    return snapshot.state();
   }
 }

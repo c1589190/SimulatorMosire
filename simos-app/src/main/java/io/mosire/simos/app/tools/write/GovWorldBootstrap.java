@@ -6,6 +6,7 @@ import io.mosire.simos.actor.spi.AdjustAccountsHandler;
 import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
 import io.mosire.simos.app.production.AppProductionConsumerPort;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.app.world.HouseholdSeeder;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyCommodities;
@@ -688,6 +689,9 @@ public final class GovWorldBootstrap {
     slot.put("laborParticipationPerMille", 1000);
     slots.add(slot);
     payload.put("slots", slots);
+    // ★★★ D-032 C3（D1 §2.2）：官署方案也是生产方案 ⇒ 显式单 operator 角色（唯一拼写点 =
+    //   EconomySeeder.singleOperatorRoleNodes，值来自 production 的 defaultOperator）。
+    payload.put("roles", EconomySeeder.singleOperatorRoleNodes());
     Map<String, Object> allocation = new LinkedHashMap<>();
     allocation.put("@class", "split");
     allocation.put("meansWeightPerMille", 500);
