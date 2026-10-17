@@ -31,7 +31,9 @@ import io.mosire.simos.production.contract.ProductionExperienceFeature;
 import io.mosire.simos.production.contract.ProductionExperienceUse;
 import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionModeDefinitionView;
+import io.mosire.simos.production.contract.ProductionParticipantKey;
 import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
@@ -507,8 +509,9 @@ class ProductionRoundTripTest {
         .as("ProductionLocation 组件往返")
         .isEqualTo(LOC_0_0);
     assertThat(decoded.state().instances().get(U1).cycleContributions().keySet())
-        .as("实例内层逐家户贡献台账也过 JSON")
-        .containsExactly(H1);
+        .as("实例内层逐 (家户×角色) 贡献台账也过 JSON")
+        .containsExactly(
+            new ProductionParticipantKey(H1, ProductionRoleDefinition.defaultOperator().id()));
     assertThat(decoded.state().experienceTracks().keySet())
         .as("ExperienceTrackId 键读回来了")
         .containsExactly(TRACK_A, TRACK_B);
@@ -647,9 +650,13 @@ class ProductionRoundTripTest {
 
   private static ProductionProcess instance(
       ProductionUnitId id, IndustryId plan, ActorRef operator, long progressDays) {
-    Map<io.mosire.simos.social.api.id.HouseholdId, CycleContribution> contributions =
-        new LinkedHashMap<>();
-    contributions.put(H1, new CycleContribution(H1, 100L, 100L * 1_000L));
+    Map<ProductionParticipantKey, CycleContribution> contributions = new LinkedHashMap<>();
+    ProductionParticipantKey participantKey =
+        new ProductionParticipantKey(H1, ProductionRoleDefinition.defaultOperator().id());
+    contributions.put(
+        participantKey,
+        new CycleContribution(
+            H1, ProductionRoleDefinition.defaultOperator().id(), 100L, 100L * 1_000L));
     return new ProductionProcess(
         id,
         plan,

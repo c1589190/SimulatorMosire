@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.production.contract.ExpressionDefinition;
 import io.mosire.simos.production.contract.ExternalAttributeFacts;
+import io.mosire.simos.production.contract.ParticipantContribution;
 import io.mosire.simos.production.contract.ProductionDayRequest;
 import io.mosire.simos.production.contract.ProductionDayResult;
 import io.mosire.simos.production.contract.ProductionEffectScope;
@@ -14,6 +15,7 @@ import io.mosire.simos.production.contract.ProductionExecutionOutcome;
 import io.mosire.simos.production.contract.ProductionExecutionRequest;
 import io.mosire.simos.production.contract.ProductionExperienceUse;
 import io.mosire.simos.production.contract.ProductionReceipt;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.production.contract.ProductionTickCondition;
 import io.mosire.simos.production.contract.RestrictedExpression;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -180,10 +182,14 @@ class ProductionRuntimeTickFreezeR5Test {
         Optional.of(unit),
         Optional.empty(),
         Long.MAX_VALUE,
-        Map.of(H1, 100L),
+        List.of(
+            new ParticipantContribution(H1, ProductionRoleDefinition.defaultOperator().id(), 100L)),
         Map.of(LAND, 200L),
         Map.of(),
-        ExternalAttributeFacts.EMPTY);
+        ExternalAttributeFacts.EMPTY,
+        Map.of(),
+        Map.of(),
+        Map.of());
   }
 
   /** 一天两步（按给定序）。 */
@@ -196,10 +202,15 @@ class ProductionRuntimeTickFreezeR5Test {
                         Optional.of(unit),
                         Optional.empty(),
                         Long.MAX_VALUE,
-                        Map.of(H1, 100L),
+                        List.of(
+                            new ParticipantContribution(
+                                H1, ProductionRoleDefinition.defaultOperator().id(), 100L)),
                         Map.of(LAND, 200L),
                         Map.of(),
-                        ExternalAttributeFacts.EMPTY))
+                        ExternalAttributeFacts.EMPTY,
+                        Map.of(),
+                        Map.of(),
+                        Map.of()))
             .toList();
     return new ProductionDayRequest(steps);
   }

@@ -8,17 +8,21 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.production.change.ProductionChangeSet;
 import io.mosire.simos.production.contract.ExternalAttributeFacts;
+import io.mosire.simos.production.contract.ParticipantContribution;
 import io.mosire.simos.production.contract.ProductionContractFault;
 import io.mosire.simos.production.contract.ProductionEffectScope;
 import io.mosire.simos.production.contract.ProductionExecutionOutcome;
 import io.mosire.simos.production.contract.ProductionExecutionRequest;
+import io.mosire.simos.production.contract.ProductionParticipantKey;
 import io.mosire.simos.production.contract.ProductionProbeRequest;
 import io.mosire.simos.production.contract.ProductionProbeResult;
 import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateMeta;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -267,7 +271,8 @@ class ProductionRuntimeProbeTest {
         .isEqualTo(1L);
     assertThat(first.units().get(ProductionTestFixtures.U1).cycleContributions())
         .as("周期贡献台账按<每个生产日>累加（不是关账日才有）")
-        .containsKey(H1);
+        .containsKey(
+            new ProductionParticipantKey(H1, ProductionRoleDefinition.defaultOperator().id()));
 
     // 另一次装配（同一 revision 起点）看不到别人的推进：没有静态/共享可变权威。
     ProductionRuntimeEngine second = new ProductionRuntimeEngine(base);
@@ -409,9 +414,14 @@ class ProductionRuntimeProbeTest {
         Optional.of(ProductionTestFixtures.U1),
         Optional.empty(),
         Long.MAX_VALUE,
-        Map.of(H1, laborMilli),
+        List.of(
+            new ParticipantContribution(
+                H1, ProductionRoleDefinition.defaultOperator().id(), laborMilli)),
         assetOccupancy,
         finalInputs,
-        ExternalAttributeFacts.EMPTY);
+        ExternalAttributeFacts.EMPTY,
+        Map.of(),
+        Map.of(),
+        Map.of());
   }
 }

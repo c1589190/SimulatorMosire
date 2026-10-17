@@ -7,14 +7,17 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.production.contract.ExternalAttributeFacts;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ParticipantContribution;
 import io.mosire.simos.production.contract.ProductionEffectScope;
 import io.mosire.simos.production.contract.ProductionExecutionOutcome;
 import io.mosire.simos.production.contract.ProductionExecutionRequest;
 import io.mosire.simos.production.contract.ProductionProbeRequest;
 import io.mosire.simos.production.contract.ProductionProbeResult;
 import io.mosire.simos.production.contract.ProductionReceipt;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -97,10 +100,15 @@ class SingleOutputEntryHandCalcTest {
                     Optional.of(ProductionTestFixtures.U1),
                     Optional.empty(),
                     probe.scale(),
-                    Map.of(H1, LABOR_MILLI),
+                    List.of(
+                        new ParticipantContribution(
+                            H1, ProductionRoleDefinition.defaultOperator().id(), LABOR_MILLI)),
                     Map.of(LAND, LAND_MILLI),
                     Map.of(SEED, probe.inputRequired().get(SEED)),
-                    ExternalAttributeFacts.EMPTY));
+                    ExternalAttributeFacts.EMPTY,
+                    Map.of(),
+                    Map.of(),
+                    Map.of()));
     ProductionReceipt receipt = executed.receipt();
 
     assertThat(receipt.scale()).as("★★ 执行 scale 与试算逐值相同（150）").isEqualTo(probe.scale());
@@ -134,10 +142,15 @@ class SingleOutputEntryHandCalcTest {
                     Optional.of(ProductionTestFixtures.U1),
                     Optional.empty(),
                     probe.scale(),
-                    Map.of(H1, LABOR_MILLI),
+                    List.of(
+                        new ParticipantContribution(
+                            H1, ProductionRoleDefinition.defaultOperator().id(), LABOR_MILLI)),
                     Map.of(LAND, LAND_MILLI),
                     Map.of(SEED, probe.inputRequired().get(SEED)),
-                    ExternalAttributeFacts.EMPTY));
+                    ExternalAttributeFacts.EMPTY,
+                    Map.of(),
+                    Map.of(),
+                    Map.of()));
     assertThat(executed.receipt().grossOutput())
         .as("执行段逐商品与试算相同（不是只对 GRAIN 一行）")
         .isEqualTo(probe.expectedOutput());

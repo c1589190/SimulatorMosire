@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.production.change.ProductionChangeSet;
 import io.mosire.simos.production.contract.ExternalAttributeFacts;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
+import io.mosire.simos.production.contract.ParticipantContribution;
 import io.mosire.simos.production.contract.ProductionAvailabilityCondition;
 import io.mosire.simos.production.contract.ProductionCreationRequest;
 import io.mosire.simos.production.contract.ProductionDayRequest;
@@ -23,6 +24,7 @@ import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionProbeRequest;
 import io.mosire.simos.production.contract.ProductionProbeResult;
 import io.mosire.simos.production.contract.ProductionReceipt;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.List;
 import java.util.Map;
@@ -430,10 +432,14 @@ class ProductionRuntimeQualificationR3Test {
         Optional.of(unit),
         Optional.empty(),
         Long.MAX_VALUE,
-        Map.of(H1, 100L),
+        List.of(
+            new ParticipantContribution(H1, ProductionRoleDefinition.defaultOperator().id(), 100L)),
         Map.of(LAND, 200L),
         Map.of(),
-        attributes);
+        attributes,
+        Map.of(H1, attributes),
+        Map.of(),
+        Map.of());
   }
 
   /** 新建请求（一天）：由给定经营者创建并推进。 */
@@ -445,10 +451,14 @@ class ProductionRuntimeQualificationR3Test {
             new ProductionCreationRequest(
                 plan, unit, new ProductionLocation("0_0"), operator, "mode:" + plan.value())),
         Long.MAX_VALUE,
-        Map.of(H1, 100L),
+        List.of(
+            new ParticipantContribution(H1, ProductionRoleDefinition.defaultOperator().id(), 100L)),
         Map.of(LAND, 200L),
         Map.of(),
-        ExternalAttributeFacts.EMPTY);
+        ExternalAttributeFacts.EMPTY,
+        Map.of(H1, ExternalAttributeFacts.EMPTY),
+        Map.of(),
+        Map.of());
   }
 
   /** 日循环的一步（既有实例）。 */
@@ -458,9 +468,13 @@ class ProductionRuntimeQualificationR3Test {
         Optional.of(unit),
         Optional.empty(),
         Long.MAX_VALUE,
-        Map.of(H1, 100L),
+        List.of(
+            new ParticipantContribution(H1, ProductionRoleDefinition.defaultOperator().id(), 100L)),
         Map.of(LAND, 200L),
         Map.of(),
-        attributes);
+        attributes,
+        Map.of(H1, attributes),
+        Map.of(),
+        Map.of());
   }
 }

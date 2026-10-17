@@ -32,7 +32,9 @@ import io.mosire.simos.production.contract.ProductionExperienceFeature;
 import io.mosire.simos.production.contract.ProductionExperienceUse;
 import io.mosire.simos.production.contract.ProductionLocation;
 import io.mosire.simos.production.contract.ProductionModeDefinitionView;
+import io.mosire.simos.production.contract.ProductionParticipantKey;
 import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.production.contract.ProductionRoleDefinition;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
@@ -155,11 +157,18 @@ class ProductionRoundTripNewComponentsTest {
     assertThat(rebuilt.instances().get(U1).cycleInputUsedMilli())
         .containsOnlyKeys(GRAIN)
         .containsEntry(GRAIN, 7L);
-    assertThat(rebuilt.instances().get(U1).cycleContributions()).containsOnlyKeys(H1);
-    assertThat(rebuilt.instances().get(U1).cycleContributions().get(H1).laborMilli())
+    ProductionParticipantKey participantKey =
+        new ProductionParticipantKey(H1, ProductionRoleDefinition.defaultOperator().id());
+    assertThat(rebuilt.instances().get(U1).cycleContributions()).containsOnlyKeys(participantKey);
+    assertThat(rebuilt.instances().get(U1).cycleContributions().get(participantKey).laborMilli())
         .isEqualTo(100L);
     assertThat(
-            rebuilt.instances().get(U1).cycleContributions().get(H1).efficiencyWeightedLaborMilli())
+            rebuilt
+                .instances()
+                .get(U1)
+                .cycleContributions()
+                .get(participantKey)
+                .efficiencyWeightedLaborMilli())
         .as("加权劳动（未除 1000 的精确分子）也逐值往返")
         .isEqualTo(150_000L);
     assertThat(rebuilt.instances().get(U2).location()).isEqualTo(LOC_0_0);
@@ -225,7 +234,13 @@ class ProductionRoundTripNewComponentsTest {
     instances.put(U1, instance(U1, FARM, LOC_0_0, 0L, Map.of(), Map.of()));
     instances.put(
         U2,
-        instance(U2, MILL, LOC_3_7, 1L, Map.of(H1, contribution(50L, 60_000L)), Map.of(GRAIN, 3L)));
+        instance(
+            U2,
+            MILL,
+            LOC_3_7,
+            1L,
+            Map.of(participantKey(), contribution(50L, 60_000L)),
+            Map.of(GRAIN, 3L)));
     Map<ExperienceTrackId, ExperienceTrack> tracks = new LinkedHashMap<>();
     tracks.put(FARMING, track(FARMING, 3L));
     tracks.put(MILLING, track(MILLING, 5L));
@@ -254,7 +269,12 @@ class ProductionRoundTripNewComponentsTest {
     instances.put(
         U1,
         instance(
-            U1, FARM, LOC_3_7, 2L, Map.of(H1, contribution(100L, 150_000L)), Map.of(GRAIN, 7L)));
+            U1,
+            FARM,
+            LOC_3_7,
+            2L,
+            Map.of(participantKey(), contribution(100L, 150_000L)),
+            Map.of(GRAIN, 7L)));
     instances.put(U2, instance(U2, MILL, LOC_0_0, 0L, Map.of(), Map.of()));
     Map<ExperienceTrackId, ExperienceTrack> tracks = new LinkedHashMap<>();
     tracks.put(FARMING, track(FARMING, 3L));
@@ -309,7 +329,7 @@ class ProductionRoundTripNewComponentsTest {
       IndustryId plan,
       ProductionLocation location,
       long progressDays,
-      Map<HouseholdId, CycleContribution> contributions,
+      Map<ProductionParticipantKey, CycleContribution> contributions,
       Map<CommodityId, Long> cycleInputUsedMilli) {
     return new ProductionProcess(
         unit,
@@ -322,8 +342,13 @@ class ProductionRoundTripNewComponentsTest {
         cycleInputUsedMilli);
   }
 
+  private static ProductionParticipantKey participantKey() {
+    return new ProductionParticipantKey(H1, ProductionRoleDefinition.defaultOperator().id());
+  }
+
   private static CycleContribution contribution(long laborMilli, long weightedLaborMilli) {
-    return new CycleContribution(H1, laborMilli, weightedLaborMilli);
+    return new CycleContribution(
+        H1, ProductionRoleDefinition.defaultOperator().id(), laborMilli, weightedLaborMilli);
   }
 
   private static boolean changedOf(ProductionChangeSet changeSet, String component) {
