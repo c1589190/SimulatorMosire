@@ -562,16 +562,16 @@ final class EconomyEnterpriseSettlement {
           REASON_UNIT_ID_TAKEN + ":" + unitId.value());
     }
 
-    // ★★ R2：同一 (industry, operator) 已有别的 unit（旧档 opaque id / 坏路径）⇒ 不得自动创建第二个同 scope
-    //   unit 并复制整池资产。显式种子若已形成共享 scope，后续预计/执行会按同一拒绝词 fail-closed。
-    if (AssetBudgetBook.hasUnitInScope(units, industryId, organizer)) {
+    // ★★ D4：同一 (industry, operator) 已有别的 unit ⇒ 候选不在同一 revision 预算里；必须补显式占用请求，
+    //   不得自动创建第二个同 scope unit 或回退整池份额。
+    if (hasUnitInScope(units, industryId, organizer)) {
       return shortageResult(
           orgId,
           mode,
           positionId,
           household,
           shareIdsOf(industryId, organizer, assetShares),
-          AssetBudgetBook.SHARED_SCOPE_REJECTION);
+          "asset-occupancy-request-missing:" + unitId.value());
     }
 
     // ★★★ D-032 D2 §5.4 / I16：多角色 plan 没有显式名册 ⇒ 具名 `roster-required`，不得按角色各建一份组织，
@@ -654,10 +654,10 @@ final class EconomyEnterpriseSettlement {
           inputReason == null ? REASON_NO_INPUT + ":unknown" : inputReason);
     }
     long target = Math.min(laborScale, inputScale);
-    Map<AssetKind, Long> usable =
-        ProductionProcessBook.usableAssets(industryId, organizer, assetShares);
-    long ownCapacity =
-        ProductionProcessBook.capacityScaleOf(industryId, organizer, industry, assetShares);
+    // 候选尚未进入 D4 预算：这里只派生候选计划的自有份额表（非资产计划规模已由 labor/input 夹出）。
+    // 运行时既有 unit 的资产读口仍只走 AssetOccupancyBudget allocation。
+    Map<AssetKind, Long> usable = candidateOwnAssets(industryId, organizer, assetShares);
+    long ownCapacity = ProductionProcessBook.capacityScaleOf(usable, industry);
     // ★★ P2-E：**已被某个生产 unit 使用的 (industry, operator) 作用域** —— 该作用域下的 OWNED 份额
     //   是那条 unit 的产能来源，不是"闲置可租"的份额（否则自动组织会把别人正在用的 unit 拆空）。
     Set<ActorRef> operatorsWithUnit = new LinkedHashSet<>();
@@ -1523,6 +1523,29 @@ final class EconomyEnterpriseSettlement {
   // ── 小工具 ───────────────────────────────────────────────────────────────────────────────
 
   /** 一个组织指名的资产份额列表（同产业、同 operator；按 id 升序 ⇒ 字节可复现）。 */
+  /** 同一 {@code (industry, operator)} 是否已有生产实例；只做 scope 守卫，不读资产数量。 */
+  private static boolean hasUnitInScope(
+      Map<ProductionUnitId, ProductionProcess> units, IndustryId industry, ActorRef operator) {
+    for (ProductionProcess unit : units.values()) {
+      if (unit.industry().equals(industry) && unit.operator().equals(operator)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 候选进入前的自有份额计划表；不冒充运行时 D4 allocation。 */
+  private static Map<AssetKind, Long> candidateOwnAssets(
+      IndustryId industry, ActorRef operator, Map<AssetShareId, OwnershipStake> assetShares) {
+    Map<AssetKind, Long> assets = new LinkedHashMap<>();
+    for (OwnershipStake share : assetShares.values()) {
+      if (share.industry().equals(industry) && share.operator().equals(operator)) {
+        assets.merge(share.asset(), share.quantity(), Math::addExact);
+      }
+    }
+    return assets;
+  }
+
   private static List<AssetShareId> shareIdsOf(
       IndustryId industryId, ActorRef operator, Map<AssetShareId, OwnershipStake> assetShares) {
     List<AssetShareId> ids = new ArrayList<>();

@@ -190,53 +190,21 @@ public final class MarketDemandBook {
   }
 
   /**
-   * ★★ 构建需求簿（唯一公开静态入口；只读入参、不写状态、同输入同输出）。
+   * ★★★ <b>构建需求簿（唯一公开静态入口）</b>：只读入参、不写状态、同输入同输出；生产引致投入需求只读同一 revision 的 D4 {@link
+   * AssetOccupancyBudget} 逐 unit allocation，不再各自扫份额整池。
    *
    * @param reports 本周期逐日市场报告（保序；可为空表；只取最后一条非 null 作"上一轮"）
    * @param topology 区域拓扑（区归属的唯一来源；退化单格拓扑每格自成一区）
    * @param rows 家户表（自然需求的来源）
    * @param units 生产单元表（生产引致需求的来源）
    * @param industries 产业模板（配方）
-   * @param shares 实物资产份额（判 unit 的产能规模）
+   * @param shares 实物资产份额（只读；D4 grant/作用域解析用，规模只读 budget）
    * @param shipments 在途批次
    * @param accounts 账户会话（家户/经营者库存；只读）
    * @param markets 市场表（有市场的格参与区归属）
    * @param day 当前世界日（在途判据 {@code arrivalTick > day}）
    * @param horizonDays 视界（天）；必须 ≥ 1
-   */
-  public static Book build(
-      List<MarketReport> reports,
-      MarketTopology topology,
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, IndustryDefinitionView> industries,
-      Map<AssetShareId, OwnershipStake> shares,
-      Map<ShipmentId, ShipmentBatch> shipments,
-      AccountSession accounts,
-      Map<MarketZoneId, MarketTable> markets,
-      long day,
-      long horizonDays) {
-    Objects.requireNonNull(units, "units");
-    Objects.requireNonNull(shares, "shares");
-    AssetBudgetBook.AssetBudget assetBudget = AssetBudgetBook.allocate(units, shares);
-    return buildWithAllocation(
-        reports,
-        topology,
-        householdEconomies,
-        units,
-        industries,
-        shares,
-        shipments,
-        accounts,
-        markets,
-        day,
-        horizonDays,
-        unit -> assetBudget.allocationOf(unit.id()));
-  }
-
-  /**
-   * ★★★ <b>D4-Ib2a：与日结算共用同一份 {@link AssetOccupancyBudget}</b> 的需求簿入口。生产引致投入需求只读 budget 的逐 unit
-   * allocation，不再各自扫份额整池。
+   * @param assetBudget 同一 revision/tick 的 D4 占用预算；不可缺省
    */
   public static Book build(
       List<MarketReport> reports,

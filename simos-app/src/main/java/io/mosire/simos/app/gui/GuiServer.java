@@ -1177,7 +1177,8 @@ public final class GuiServer implements AutoCloseable {
             ApiViews.economyData(state),
             io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
             io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
-            ApiViews.actorData(state)));
+            ApiViews.actorData(state),
+            state.meta().timestamp().tick()));
   }
 
   private Reply mapHexReply(Map<String, String> params, DecisionMakerId actor, boolean asPresent) {

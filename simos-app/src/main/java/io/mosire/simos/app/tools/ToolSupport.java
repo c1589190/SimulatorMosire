@@ -1084,6 +1084,7 @@ public final class ToolSupport {
         io.mosire.simos.economy.EconomyProductionDefinitions.stateOf(state).instances(),
         // ★★ D-032 B4（裁定十五）：定义来源（production.contract）显式传入 —— economy 侧的副本已删。
         io.mosire.simos.economy.EconomyProductionDefinitions.of(state),
-        ApiViews.actorData(state));
+        ApiViews.actorData(state),
+        state.meta().timestamp().tick());
   }
 }

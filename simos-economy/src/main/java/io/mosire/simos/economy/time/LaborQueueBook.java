@@ -467,7 +467,7 @@ public final class LaborQueueBook {
         new HouseholdProductionConditions(
             household,
             laborMilli,
-            ProductionProbeInputs.positiveAssets(index.usableAssetsOf(unit)),
+            ProductionProbeInputs.positiveAssets(index.assetAllocationOf(unit)),
             inputs,
             ProductionProbeInputs.masteryOf(runtime, household, industry),
             ProductionProbeInputs.experienceOf(runtime, household, industry));
@@ -639,7 +639,7 @@ public final class LaborQueueBook {
   /** 物理/资格不可授予的稳定读数；可进入策略比较时返回 null。 */
   private static String nonGrantableOutcome(Offer offer) {
     if (offer.maxAbsorbableLaborMilli() <= 0L) {
-      return offer.reason().startsWith(AssetBudgetBook.SHARED_SCOPE_REJECTION)
+      return isAssetOccupancyRejection(offer.reason())
           ? "REJECTED:" + offer.reason()
           : "IDLE_MAX_ABSORBABLE_ZERO";
     }
@@ -885,13 +885,18 @@ public final class LaborQueueBook {
    * 承诺的 activity 根本不进候选 / 不计入比例缩），不经过本方法。
    */
   public static boolean isPreservedByQueue(Offer offer) {
-    // ★★ R2：共享 scope 的具名拒绝**不是**“估不出价 ⇒ 原样保留”；它必须进队列并以 maxAbsorbable=0
-    //   清掉既有劳动配额，最后在执行段再次 fail-closed。
-    if (offer.reason().startsWith(AssetBudgetBook.SHARED_SCOPE_REJECTION)) {
+    // ★★ D4：任何资产占用具名拒绝（不可用/缺请求/份额不足）都不是“估不出价 ⇒ 原样保留”；
+    //   它必须进队列并以 maxAbsorbable=0 清掉既有劳动配额，最后在执行段再次 fail-closed。
+    if (isAssetOccupancyRejection(offer.reason())) {
       return false;
     }
     return offer.reason().startsWith("LABOR_FREE")
         || offer.reason().startsWith("NO_RECIPE_OUTPUT")
         || !offer.outputPriced();
+  }
+
+  /** D4 资产占用失败词统一前缀；不得把旧 shared-scope 词当业务结果。 */
+  private static boolean isAssetOccupancyRejection(String reason) {
+    return reason != null && reason.startsWith("asset-");
   }
 }

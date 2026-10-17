@@ -45,7 +45,7 @@ import java.util.function.Function;
  * <pre>
  * 配方口径（该家户有可解析的 operator unit 时）：
  *   nextRoundNecessaryInput = Σ_{(industry, operator=本户)} ⌊plannedCapacityScale × industry.inputPerUnit[GRAIN]⌋
- *   其中 plannedCapacityScale = ProductionProcessBook.plannedCapacityScaleOf(unit, industry, OwnershipStake 总账, OperatorCondition)
+ *   其中 plannedCapacityScale = ProductionProcessBook.plannedCapacityScaleOf(unit, industry, D4 AssetOccupancyBudget, OperatorCondition)
  * 代理口径（该家户名下没有任何可解析 operator unit 时）：
  *   nextRoundNecessaryInput = max(0, 本周期 consumed[grain] − cycleNaturalNeedMilli)
  * </pre>
@@ -139,6 +139,8 @@ public final class DebtCapacityBook {
   /**
    * ★★ <b>读口便捷入口</b>：从 {@link EconomyData} 的当前值算全部家户的容量（时点口径；E4b 的库存由 app 传入）。
    *
+   * <p>资产规模只读同一 revision 的 D4 {@link AssetOccupancyBudget}；缺预算 ⇒ 调用方必须 fail-closed，绝不在本类重扫份额。
+   *
    * <p>窗口：{@code afterAllocationGrainIncome}／{@code consumed}／{@code taxPaid} 直接读 {@code
    * FlowRow}（本周期已实现／本周期实缴），{@code basicRation} 读 {@code HouseholdEconomy.cycleNaturalNeedMilli}
    * （本周期累计）；库存在函数被调用的那一刻读（时点）。
@@ -147,11 +149,13 @@ public final class DebtCapacityBook {
       EconomyData data,
       Map<ProductionUnitId, ProductionProcess> units,
       ProductionDefinitionLookup definitions,
+      AssetOccupancyBudget assetBudget,
       Function<HouseholdId, OptionalLong> grainStockMilliOf) {
     return capacitiesForState(
         data,
         units,
         definitions,
+        assetBudget,
         grainStockMilliOf,
         DebtCapacity.PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED,
         NO_UNIT_PRICES);
@@ -162,16 +166,19 @@ public final class DebtCapacityBook {
       EconomyData data,
       Map<ProductionUnitId, ProductionProcess> units,
       ProductionDefinitionLookup definitions,
+      AssetOccupancyBudget assetBudget,
       Function<HouseholdId, OptionalLong> grainStockMilliOf,
       long pledgeableAssetPolicyValue,
       DebtUnitValueLookup debtUnitValueLookup) {
     Objects.requireNonNull(data, "data 不得为 null");
     Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
     Objects.requireNonNull(definitions, "definitions（定义权威在 production，D-032 B4 起必须显式注入）");
+    Objects.requireNonNull(assetBudget, "assetBudget 不得为 null（D4 预算不可用时 fail-closed）");
     return capacitiesForState(
         data,
         units,
         definitions,
+        assetBudget,
         data.classes().keySet(),
         grainStockMilliOf,
         pledgeableAssetPolicyValue,
@@ -188,12 +195,14 @@ public final class DebtCapacityBook {
       EconomyData data,
       Map<ProductionUnitId, ProductionProcess> units,
       ProductionDefinitionLookup definitions,
+      AssetOccupancyBudget assetBudget,
       Iterable<HouseholdId> householdKeys,
       Function<HouseholdId, OptionalLong> grainStockMilliOf) {
     return capacitiesForState(
         data,
         units,
         definitions,
+        assetBudget,
         householdKeys,
         grainStockMilliOf,
         DebtCapacity.PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED,
@@ -205,6 +214,7 @@ public final class DebtCapacityBook {
       EconomyData data,
       Map<ProductionUnitId, ProductionProcess> units,
       ProductionDefinitionLookup definitions,
+      AssetOccupancyBudget assetBudget,
       Iterable<HouseholdId> householdKeys,
       Function<HouseholdId, OptionalLong> grainStockMilliOf,
       long pledgeableAssetPolicyValue,
@@ -212,6 +222,7 @@ public final class DebtCapacityBook {
     Objects.requireNonNull(data, "data 不得为 null");
     Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
     Objects.requireNonNull(definitions, "definitions（定义权威在 production，D-032 B4 起必须显式注入）");
+    Objects.requireNonNull(assetBudget, "assetBudget 不得为 null（D4 预算不可用时 fail-closed）");
     Objects.requireNonNull(householdKeys, "householdKeys 不得为 null");
     Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>();
     Map<HouseholdId, Long> income = new LinkedHashMap<>();
@@ -250,12 +261,14 @@ public final class DebtCapacityBook {
         definitions.industries(),
         data.assetShares(),
         data.operatorConditions(),
+        assetBudget,
         pledgeableAssetPolicyValue,
         debtUnitValueLookup);
   }
 
   /**
-   * ★★ <b>唯一算法</b>：逐家户算 {@link DebtCapacity}。调用方负责把三个“流量”取成正确的窗口值：
+   * ★★★ <b>唯一算法</b>：逐家户算 {@link DebtCapacity}，资产规模只读同一 revision 的 D4 {@link AssetOccupancyBudget}
+   * allocation。调用方负责把三个“流量”取成正确的窗口值：
    *
    * <ul>
    *   <li>{@code afterAllocationGrainIncome}：将写进终态 {@code FlowRow.income[grain]} 的本周期值（含当日）；没有 = 0；
@@ -272,86 +285,12 @@ public final class DebtCapacityBook {
    * @param debts 债务合同表（只读）
    * @param units 生产单元表（只读；配方口径用）
    * @param industries 产业模板表（只读；配方口径用）
-   * @param assetShares 实物资产总账（只读；规模由它派生）
+   * @param assetShares 实物资产总账（只读；D4 grant 引用与退出解析用，规模只读 D4 budget）
    * @param operatorConditions 经营者状态（只读；计划规模系数用；缺键按 ACTIVE）
+   * @param assetBudget 同一 revision/tick 的 D4 占用预算；不可缺省
    * @param pledgeableAssetPolicyValue 可质押资产政策价值钩子（毫粮；E4b 恒 0）
    * @param debtUnitValueLookup 债务折粮钩子；旧读口用 {@link #NO_UNIT_PRICES}，生产借贷路径用 {@link
    *     #marketPriceLookup(Map)}
-   */
-  public static Map<HouseholdId, DebtCapacity> capacities(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<HouseholdId, Long> afterAllocationGrainIncome,
-      Map<HouseholdId, Long> cycleToDateGrainConsumed,
-      Map<HouseholdId, Long> taxPaidFromFlowRow,
-      Function<HouseholdId, OptionalLong> grainStockMilliOf,
-      Map<HouseholdId, Long> cycleDaysByHousehold,
-      Map<DebtContractId, DebtContract> debts,
-      Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, IndustryDefinitionView> industries,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      Map<ProductionUnitId, OperatorCondition> operatorConditions,
-      long pledgeableAssetPolicyValue,
-      DebtUnitValueLookup debtUnitValueLookup) {
-    Objects.requireNonNull(units, "units 不得为 null");
-    Objects.requireNonNull(assetShares, "assetShares 不得为 null");
-    return capacities(
-        householdEconomies,
-        afterAllocationGrainIncome,
-        cycleToDateGrainConsumed,
-        taxPaidFromFlowRow,
-        grainStockMilliOf,
-        cycleDaysByHousehold,
-        debts,
-        units,
-        industries,
-        assetShares,
-        operatorConditions,
-        AssetBudgetBook.allocate(units, assetShares),
-        pledgeableAssetPolicyValue,
-        debtUnitValueLookup);
-  }
-
-  /**
-   * ★★ <b>R2：与日结算共用同一份资产预算的入口</b>。{@code assetBudget} 必须来自同一 revision 的 {@link
-   * AssetBudgetBook#allocate(Map, Map)}（或 {@link SettlementIndex#assetBudget()}）；共享 scope 的 unit
-   * 不产生下一轮粮投入需求。
-   */
-  public static Map<HouseholdId, DebtCapacity> capacities(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<HouseholdId, Long> afterAllocationGrainIncome,
-      Map<HouseholdId, Long> cycleToDateGrainConsumed,
-      Map<HouseholdId, Long> taxPaidFromFlowRow,
-      Function<HouseholdId, OptionalLong> grainStockMilliOf,
-      Map<HouseholdId, Long> cycleDaysByHousehold,
-      Map<DebtContractId, DebtContract> debts,
-      Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, IndustryDefinitionView> industries,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      Map<ProductionUnitId, OperatorCondition> operatorConditions,
-      AssetBudgetBook.AssetBudget assetBudget,
-      long pledgeableAssetPolicyValue,
-      DebtUnitValueLookup debtUnitValueLookup) {
-    Objects.requireNonNull(assetBudget, "assetBudget 不得为 null");
-    return capacitiesWithAllocation(
-        householdEconomies,
-        afterAllocationGrainIncome,
-        cycleToDateGrainConsumed,
-        taxPaidFromFlowRow,
-        grainStockMilliOf,
-        cycleDaysByHousehold,
-        debts,
-        units,
-        industries,
-        assetShares,
-        operatorConditions,
-        unit -> assetBudget.allocationOf(unit.id()),
-        pledgeableAssetPolicyValue,
-        debtUnitValueLookup);
-  }
-
-  /**
-   * ★★★ <b>D4-Ib2a：与日结算共用同一份 {@link AssetOccupancyBudget}</b> 的入口。下一轮粮投入的规模只看该 budget 的逐 unit
-   * allocation；共享 scope 的 unit 不再扫整池，也不按实例条数倍增。
    */
   public static Map<HouseholdId, DebtCapacity> capacities(
       Map<HouseholdId, HouseholdEconomy> householdEconomies,

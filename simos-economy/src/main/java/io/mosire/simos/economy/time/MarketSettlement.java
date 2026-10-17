@@ -4881,7 +4881,10 @@ final class MarketSettlement {
    * 一次性写进日志与异常正文。字段一律是身份与计数，不含载荷明文。
    */
   private static IllegalStateException unresolvedMarketSubject(
-      MarketRound round, ProductionUnitId unitId, ActorRef operator, Map<AssetKind, Long> usable) {
+      MarketRound round,
+      ProductionUnitId unitId,
+      ActorRef operator,
+      Map<AssetKind, Long> assetAllocation) {
     ProductionProcess unit = round.units.get(unitId);
     ProductionRules relation = round.relations.get(unitId);
     List<String> shareOwners = new ArrayList<>();
@@ -4929,8 +4932,8 @@ final class MarketSettlement {
                 unit == null ? "none" : unit.industry(),
                 "modeKey",
                 unit == null ? "none" : unit.modeKey(),
-                "usableAssets",
-                usable,
+                "assetAllocation",
+                assetAllocation,
                 "shareOwners",
                 shareOwners,
                 "shareOperators",
@@ -4963,8 +4966,8 @@ final class MarketSettlement {
             + (unit == null ? "none" : unit.industry())
             + " modeKey="
             + (unit == null ? "none" : unit.modeKey())
-            + " usableAssets="
-            + usable
+            + " assetAllocation="
+            + assetAllocation
             + " shareOwners="
             + shareOwners
             + " shareOperators="
@@ -9769,9 +9772,10 @@ final class MarketSettlement {
             //   "有经营者、无资产、不生产"是合法状态，资产可以被全部转走；0 产能的份额也走这里）。
             //   它没有库存可卖、没有产能可买投入，因此不生成任何订单 —— 具名跳过，不静默当成
             //   "零库存参与者"，也不把它当坏数据。有正资产或有劳动却解析不到家户 ⇒ 仍走下面的具名抛。
-            Map<AssetKind, Long> usable = round.index.usableAssetsOf(unitId);
+            Map<AssetKind, Long> assetAllocation = round.index.assetAllocationOf(unitId);
             boolean hasCapacity =
-                usable.values().stream().anyMatch(quantity -> quantity != null && quantity > 0L);
+                assetAllocation.values().stream()
+                    .anyMatch(quantity -> quantity != null && quantity > 0L);
             if (!hasCapacity) {
               EventLog.channel(MARKET)
                   .warn(
@@ -9812,15 +9816,15 @@ final class MarketSettlement {
                           round.units.get(unitId) == null
                               ? "none"
                               : round.units.get(unitId).industry(),
-                          "usableAssets",
-                          usable,
+                          "assetAllocation",
+                          assetAllocation,
                           "laborAllocations",
                           round.index.allocationsOfUnit(unitId).size(),
                           "reason",
                           "aggregate-operator-without-any-household-row-is-not-a-market-subject"));
               continue;
             }
-            throw unresolvedMarketSubject(round, unitId, entry.getKey(), usable);
+            throw unresolvedMarketSubject(round, unitId, entry.getKey(), assetAllocation);
           }
           // ② 集体经营（如家户纺织主 unit）：**by design 不是市场主体**（2026-10-23 裁定 B）—— 该聚合
           //    unit 的产出/库存已按劳动落各成员家户账，成员家户各自入市；这里静默跳过，只留一条默认

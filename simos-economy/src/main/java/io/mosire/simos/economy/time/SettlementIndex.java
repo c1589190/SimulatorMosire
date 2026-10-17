@@ -2,8 +2,6 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
-import io.mosire.simos.economy.EconomyLog;
-import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.DebtContractId;
@@ -26,8 +24,6 @@ import io.mosire.simos.production.contract.IndustryDefinitionView;
 import io.mosire.simos.production.contract.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
-import io.mosire.simos.util.log.EventLog;
-import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -62,13 +58,12 @@ import java.util.Set;
 final class SettlementIndex {
 
   // ── 资产生成 ─────────────────────────────────────────────────────────────────────────
-  /** ★★ R2：一次 revision 内只算一次的旧最小预算（D4-T 前保留为证据/fallback）。 */
-  private final AssetBudgetBook.AssetBudget assetBudget;
-
-  /** ★★ D4-Ib2a：同一 revision/tick 的唯一 D4 占用预算；旧 build 重载（窄夹具）为空。 */
+  /** ★★ 同一 revision/tick 的唯一 D4 占用预算；仅无资产的窄路径（人口回写）为空。 */
   private final java.util.Optional<AssetOccupancyBudget> assetOccupancyBudget;
 
-  private final Map<ProductionUnitId, Map<AssetKind, Long>> usableAssetsByUnit;
+  /** D4 budget 的逐 unit allocation 只读索引；无预算时为空表（调用方必须先读 rejection）。 */
+  private final Map<ProductionUnitId, Map<AssetKind, Long>> allocationByUnit;
+
   private final Map<ProductionUnitId, Long> capacityScaleByUnit;
   private final Map<ProductionUnitId, List<AssetShareId>> ownershipStakeIdsByProcess;
 
@@ -96,9 +91,8 @@ final class SettlementIndex {
   private final Map<ActorRef, List<ProductionEnterprise>> enterprisesByActor;
 
   private SettlementIndex(
-      AssetBudgetBook.AssetBudget assetBudget,
       AssetOccupancyBudget assetOccupancyBudget,
-      Map<ProductionUnitId, Map<AssetKind, Long>> usableAssetsByUnit,
+      Map<ProductionUnitId, Map<AssetKind, Long>> allocationByUnit,
       Map<ProductionUnitId, Long> capacityScaleByUnit,
       Map<ProductionUnitId, List<AssetShareId>> ownershipStakeIdsByProcess,
       Map<ProductionUnitId, HouseholdId> economicHouseholdByUnit,
@@ -116,10 +110,12 @@ final class SettlementIndex {
       Map<HouseholdId, List<DebtContract>> debtsByDebtor,
       Map<ActorRef, List<ProductionUnitId>> unitsByParty,
       Map<ActorRef, List<ProductionEnterprise>> enterprisesByActor) {
-    this.assetBudget = Objects.requireNonNull(assetBudget, "assetBudget");
     this.assetOccupancyBudget = java.util.Optional.ofNullable(assetOccupancyBudget);
-    this.usableAssetsByUnit = usableAssetsByUnit;
-    this.capacityScaleByUnit = capacityScaleByUnit;
+    this.allocationByUnit =
+        Collections.unmodifiableMap(new LinkedHashMap<>(Objects.requireNonNull(allocationByUnit)));
+    this.capacityScaleByUnit =
+        Collections.unmodifiableMap(
+            new LinkedHashMap<>(Objects.requireNonNull(capacityScaleByUnit)));
     this.ownershipStakeIdsByProcess = ownershipStakeIdsByProcess;
     this.economicHouseholdByUnit = economicHouseholdByUnit;
     this.laborCommitmentsByUnit = laborCommitmentsByUnit;
@@ -151,8 +147,74 @@ final class SettlementIndex {
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<DebtContractId, DebtContract> debts,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies,
+      Map<ProductionUnitId, ProductionRoster> productionRosters,
+      long today) {
+    Objects.requireNonNull(units, "units");
+    Objects.requireNonNull(industries, "industries");
+    Objects.requireNonNull(assetShares, "assetShares");
+    Objects.requireNonNull(laborCommitments, "allocations");
+    Objects.requireNonNull(householdEconomies, "rows");
+    Objects.requireNonNull(relations, "relations");
+    Objects.requireNonNull(enterprises, "organizations");
+    Objects.requireNonNull(assetOccupancies, "assetOccupancies（无占用用空表）");
+    Objects.requireNonNull(productionRosters, "productionRosters（无名册用空表）");
+    if (today < 0L) {
+      throw new IllegalArgumentException("asset-occupancy-invalid-tick: today 不得为负: " + today);
+    }
+
+    AssetOccupancyBudget d4Budget =
+        ProductionProcessBook.assetOccupancyBudget(
+            units,
+            assetShares,
+            assetOccupancies,
+            industries,
+            productionRosters,
+            laborCommitments,
+            today);
+    Map<ProductionUnitId, Map<AssetKind, Long>> allocations = d4Budget.allocations();
+    Map<ProductionUnitId, Long> capacity = capacityScale(units, industries, allocations);
+    Map<ProductionUnitId, List<AssetShareId>> shareIds =
+        ownershipStakeIdsByProcess(units, assetShares);
+    Map<ActorRef, HouseholdId> householdOfActor = householdByActor(householdEconomies);
+    return new SettlementIndex(
+        d4Budget,
+        allocations,
+        capacity,
+        shareIds,
+        economicHouseholds(units, relations, assetShares, shareIds, householdOfActor),
+        laborCommitmentsByUnit(laborCommitments),
+        allocationIdsByUnit(laborCommitments),
+        allocationIdsByGroup(laborCommitments),
+        householdsByUnit(laborCommitments, householdEconomies),
+        unitsByHousehold(units, laborCommitments, householdEconomies),
+        unitsByGroup(units, laborCommitments),
+        laborByUnit(laborCommitments),
+        householdOfActor,
+        unitsByHex(units),
+        hexByUnit(units),
+        industriesByHex(industries),
+        debtsByDebtor(debts),
+        unitsByParty(units, relations, assetShares, shareIds),
+        enterprisesByActor(enterprises, units));
+  }
+
+  /**
+   * ★★ <b>无资产读口的窄索引</b>：只服务人口回写（它只读批次↔unit、格↔unit 等非资产派生量）。
+   *
+   * <p>本入口不构造 D4 budget；任何资产消费者若误用会得到具名 {@code asset-occupancy-unavailable}，绝不回退整池扫描。
+   */
+  static SettlementIndex buildWithoutAssetOccupancy(
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<IndustryId, IndustryDefinitionView> industries,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<DebtContractId, DebtContract> debts,
       Map<ProductionUnitId, ProductionRules> relations) {
-    return build(
+    return buildWithoutAssetOccupancy(
         units,
         industries,
         assetShares,
@@ -163,11 +225,8 @@ final class SettlementIndex {
         Map.of());
   }
 
-  /**
-   * ★★ <b>P2：带生产组织只读视图的构建重载</b>。旧调用点（不关心组织的主体解析）继续走上面的重载， 行为逐值不变；日结算入口传 {@code
-   * session.sheet().productionOrganizations()}，让今天的 E2 组织也能被旧 DebtPartyResolver 的同类解析看见。
-   */
-  static SettlementIndex build(
+  /** 同上，带生产组织只读视图的窄索引。 */
+  static SettlementIndex buildWithoutAssetOccupancy(
       Map<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, IndustryDefinitionView> industries,
       Map<AssetShareId, OwnershipStake> assetShares,
@@ -176,36 +235,6 @@ final class SettlementIndex {
       Map<DebtContractId, DebtContract> debts,
       Map<ProductionUnitId, ProductionRules> relations,
       Map<ProductionOrganizationId, ProductionEnterprise> enterprises) {
-    return build(
-        units,
-        industries,
-        assetShares,
-        laborCommitments,
-        householdEconomies,
-        debts,
-        relations,
-        enterprises,
-        Map.of(),
-        Map.of(),
-        null);
-  }
-
-  /**
-   * ★★★ <b>D4-Ib2a 生产路径入口</b>：同一 revision/tick 构造一次旧 R2 最小预算与 D4 统一占用预算。 {@code today == null}
-   * 仅保留给不接 D4 的窄夹具；生产日结算必须显式给 tick。
-   */
-  static SettlementIndex build(
-      Map<ProductionUnitId, ProductionProcess> units,
-      Map<IndustryId, IndustryDefinitionView> industries,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<DebtContractId, DebtContract> debts,
-      Map<ProductionUnitId, ProductionRules> relations,
-      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
-      Map<AssetOccupancyGrantId, AssetOccupancyGrant> assetOccupancies,
-      Map<ProductionUnitId, ProductionRoster> productionRosters,
-      Long today) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(assetShares, "assetShares");
@@ -213,37 +242,13 @@ final class SettlementIndex {
     Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(relations, "relations");
     Objects.requireNonNull(enterprises, "organizations");
-    Objects.requireNonNull(assetOccupancies, "assetOccupancies（无占用用空表）");
-    Objects.requireNonNull(productionRosters, "productionRosters（无名册用空表）");
-
-    AssetBudgetBook.AssetBudget assetBudget = AssetBudgetBook.allocate(units, assetShares);
-    AssetOccupancyBudget d4Budget =
-        today == null
-            ? null
-            : ProductionProcessBook.assetOccupancyBudget(
-                units,
-                assetShares,
-                assetOccupancies,
-                industries,
-                productionRosters,
-                laborCommitments,
-                today);
-    if (d4Budget == null) {
-      // 旧窄夹具/未接 D4：保留 R2 最小证据日志。生产路径已有 D4 预算时不得再用旧 scope 拒绝词冒充本轮结果。
-      logAssetBudget(assetBudget);
-      logAssetShares(assetShares, assetBudget);
-    }
-    Map<ProductionUnitId, Map<AssetKind, Long>> usable =
-        d4Budget == null ? assetBudget.allocations() : d4Budget.allocations();
-    Map<ProductionUnitId, Long> capacity = capacityScale(units, industries, usable);
     Map<ProductionUnitId, List<AssetShareId>> shareIds =
         ownershipStakeIdsByProcess(units, assetShares);
     Map<ActorRef, HouseholdId> householdOfActor = householdByActor(householdEconomies);
     return new SettlementIndex(
-        assetBudget,
-        d4Budget,
-        usable,
-        capacity,
+        null,
+        Map.of(),
+        Map.of(),
         shareIds,
         economicHouseholds(units, relations, assetShares, shareIds, householdOfActor),
         laborCommitmentsByUnit(laborCommitments),
@@ -271,9 +276,8 @@ final class SettlementIndex {
     Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(laborCommitments, "allocations");
     return new SettlementIndex(
-        assetBudget,
         assetOccupancyBudget.orElse(null),
-        usableAssetsByUnit,
+        allocationByUnit,
         capacityScaleByUnit,
         ownershipStakeIdsByProcess,
         economicHouseholdByUnit,
@@ -297,9 +301,8 @@ final class SettlementIndex {
   SettlementIndex withDebtContracts(Map<DebtContractId, DebtContract> debts) {
     Objects.requireNonNull(debts, "debts");
     return new SettlementIndex(
-        assetBudget,
         assetOccupancyBudget.orElse(null),
-        usableAssetsByUnit,
+        allocationByUnit,
         capacityScaleByUnit,
         ownershipStakeIdsByProcess,
         economicHouseholdByUnit,
@@ -321,21 +324,22 @@ final class SettlementIndex {
 
   // ── 读口（一律 O(1) 查表；缺项返回空/0，与旧“无份额/无配额”口径同侧）────────────────────
 
-  Map<AssetKind, Long> usableAssetsOf(ProductionProcess unit) {
-    return usableAssetsOf(unit.id());
+  /** 同一 revision 的 D4 分配表；无 D4 预算时为空表，调用方必须先用 {@link #assetRejectionOf} fail-closed。 */
+  Map<AssetKind, Long> assetAllocationOf(ProductionProcess unit) {
+    return assetAllocationOf(unit.id());
   }
 
-  Map<AssetKind, Long> usableAssetsOf(ProductionUnitId unit) {
-    return assetOccupancyBudget
-        .map(budget -> budget.allocationOf(unit))
-        .orElseGet(() -> assetBudget.allocationOf(unit));
+  Map<AssetKind, Long> assetAllocationOf(ProductionUnitId unit) {
+    Objects.requireNonNull(unit, "unit");
+    return allocationByUnit.getOrDefault(unit, Map.of());
   }
 
-  /** ★★★ D4 统一占用预算的该 unit 具名拒绝；无 D4 预算才回退旧 R2 最小拒绝。 */
+  /** ★★★ D4 统一占用预算的该 unit 具名拒绝；无 D4 预算 ⇒ 具名 {@code asset-occupancy-unavailable}。 */
   Optional<String> assetRejectionOf(ProductionUnitId unit) {
+    Objects.requireNonNull(unit, "unit");
     return assetOccupancyBudget
         .map(budget -> budget.rejectionOf(unit))
-        .orElseGet(() -> assetBudget.rejectionOf(unit));
+        .orElseGet(() -> Optional.of("asset-occupancy-unavailable"));
   }
 
   Optional<String> assetRejectionOf(ProductionProcess unit) {
@@ -345,11 +349,6 @@ final class SettlementIndex {
   /** ★★ D4-Ib2a：同一 revision/tick 的统一占用预算（生产路径必读；旧窄夹具可能为空）。 */
   Optional<AssetOccupancyBudget> d4AssetOccupancyBudget() {
     return assetOccupancyBudget;
-  }
-
-  /** ★★ R2：D4-T 前的旧最小资产预算（证据/fallback；新路径优先读 {@link #d4AssetOccupancyBudget()}）。 */
-  AssetBudgetBook.AssetBudget assetBudget() {
-    return assetBudget;
   }
 
   Long capacityScaleOf(ProductionUnitId unit) {
@@ -438,118 +437,10 @@ final class SettlementIndex {
   // ── 构建（静态 helper；顺序口径都写在注释里）──────────────────────────────────────────
 
   /**
-   * ★★ R2：共享 scope 的业务拒绝在索引建立时记 INFO（世界照常推进；每个 unit 一条具名理由）；逐 unit 分配 DEBUG； 逐作用域汇总 TRACE。日志只读到已冻结的
-   * {@code AssetBudget}，不改任何状态。
-   */
-  private static void logAssetBudget(AssetBudgetBook.AssetBudget budget) {
-    if (EconomyLog.settlement().isInfoEnabled()) {
-      for (String reason : new java.util.LinkedHashSet<>(budget.rejections().values())) {
-        long units = 0L;
-        for (String candidate : budget.rejections().values()) {
-          if (candidate.equals(reason)) {
-            units++;
-          }
-        }
-        EventLog.channel(EconomyLog.settlement())
-            .info(
-                LogEvent.of(
-                    "ASSET_SCOPE_REJECTED",
-                    EconomyLogSource.ECONOMY_SETTLEMENT,
-                    "phase",
-                    "asset-budget-build",
-                    "reason",
-                    reason,
-                    "units",
-                    units));
-      }
-      for (Map.Entry<ProductionUnitId, String> rejection : budget.rejections().entrySet()) {
-        EventLog.channel(EconomyLog.settlement())
-            .info(
-                LogEvent.of(
-                    "ASSET_SCOPE_REJECTED_UNIT",
-                    EconomyLogSource.ECONOMY_SETTLEMENT,
-                    "phase",
-                    "asset-budget-build",
-                    "unit",
-                    rejection.getKey().value(),
-                    "reason",
-                    rejection.getValue()));
-      }
-    }
-    if (EconomyLog.settlement().isDebugEnabled()) {
-      for (Map.Entry<ProductionUnitId, Map<AssetKind, Long>> allocation :
-          budget.allocations().entrySet()) {
-        EventLog.channel(EconomyLog.settlement())
-            .debug(
-                LogEvent.of(
-                    "ASSET_BUDGET_ALLOCATED",
-                    EconomyLogSource.ECONOMY_SETTLEMENT,
-                    "phase",
-                    "asset-budget-build",
-                    "unit",
-                    allocation.getKey().value(),
-                    "assets",
-                    allocation.getValue(),
-                    "rejected",
-                    budget.rejections().containsKey(allocation.getKey())));
-      }
-    }
-    if (EconomyLog.trace().isTraceEnabled()) {
-      for (Map.Entry<AssetBudgetBook.AssetScope, Map<AssetKind, Long>> entry :
-          budget.unallocated().entrySet()) {
-        EventLog.channel(EconomyLog.trace())
-            .trace(
-                LogEvent.of(
-                    "ASSET_BUDGET_UNALLOCATED",
-                    EconomyLogSource.ECONOMY_SETTLEMENT,
-                    "phase",
-                    "asset-budget-build",
-                    "industry",
-                    entry.getKey().industry().value(),
-                    "operator",
-                    entry.getKey().operator(),
-                    "assets",
-                    entry.getValue()));
-      }
-    }
-  }
-
-  /** ★★ R2：TRACE 逐份额记录它进入 allocations 还是 unallocated；只读、不影响状态。 */
-  private static void logAssetShares(
-      Map<AssetShareId, OwnershipStake> assetShares, AssetBudgetBook.AssetBudget assetBudget) {
-    if (!EconomyLog.trace().isTraceEnabled()) {
-      return;
-    }
-    for (OwnershipStake share : assetShares.values()) {
-      AssetBudgetBook.AssetScope scope =
-          new AssetBudgetBook.AssetScope(share.industry(), share.operator());
-      EventLog.channel(EconomyLog.trace())
-          .trace(
-              LogEvent.of(
-                  "ASSET_SHARE_BUDGETED",
-                  EconomyLogSource.ECONOMY_SETTLEMENT,
-                  "phase",
-                  "asset-budget-build",
-                  "share",
-                  share.id().value(),
-                  "industry",
-                  share.industry().value(),
-                  "operator",
-                  share.operator(),
-                  "asset",
-                  share.asset().name(),
-                  "quantity",
-                  share.quantity(),
-                  "unallocated",
-                  assetBudget.unallocated().containsKey(scope)));
-    }
-  }
-
-  /**
    * 逐 unit 的份额 id（{@code (industry, operator)} 作用域，序 = 全局份额表序）。
    *
-   * <p>★ 与 {@link #usableAssets} 同一套作用域判定：一个作用域下的每个 unit 都拿到同一串 id（同 scope 多 unit 是合法形态）； 退出处置用 id
-   * 回活表取当前行，绝不缓存 record（处置会改 {@code operator}）。
+   * <p>★ 与 {@link #assetAllocationOf} 同一套作用域判定：一个作用域下的每个 unit 都拿到同一串 id（同 scope 多 unit 是合法形态）；
+   * 退出处置用 id 回活表取当前行，绝不缓存 record（处置会改 {@code operator}）。
    */
   private static Map<ProductionUnitId, List<AssetShareId>> ownershipStakeIdsByProcess(
       Map<ProductionUnitId, ProductionProcess> units,

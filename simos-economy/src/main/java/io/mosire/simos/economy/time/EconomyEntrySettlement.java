@@ -495,11 +495,12 @@ final class EconomyEntrySettlement {
       }
       // ★★ R2：同一 (industry, operator) 已有 unit ⇒ 不自动创建第二个同 scope unit（旧档 opaque id 也要拦住）。
       //   显式种子若已形成共享 scope，预计/执行仍按同一具名理由 fail-closed。
-      if (AssetBudgetBook.hasUnitInScope(context.tables.units, industryId, actor)) {
-        return Attempt.rejection(
-            reject(context, household, plan, AssetBudgetBook.SHARED_SCOPE_REJECTION));
-      }
       ProductionUnitId unitId = ProductionUnitId.idOf(industryId, actor);
+      if (hasUnitInScope(context.tables.units, industryId, actor)) {
+        // 同一 revision 的 D4 预算只含既有 unit；候选没有显式占用请求 ⇒ 具名拒绝，不回退整池份额。
+        return Attempt.rejection(
+            reject(context, household, plan, "asset-occupancy-request-missing:" + unitId.value()));
+      }
       if (context.tables.units.containsKey(unitId)) {
         return Attempt.rejection(reject(context, household, plan, "UNIT_ID_EXISTS"));
       }
@@ -1027,6 +1028,17 @@ final class EconomyEntrySettlement {
   }
 
   /** 本户自有可用资产：该格物化定义 id 下、accepted kind、owner 或 operator = 本户 actor（按归属索引查，不扫全表）。 */
+  /** 同一 {@code (industry, operator)} 是否已有生产实例；只做 scope 守卫，不读资产数量。 */
+  private static boolean hasUnitInScope(
+      Map<ProductionUnitId, ProductionProcess> units, IndustryId industry, ActorRef operator) {
+    for (ProductionProcess unit : units.values()) {
+      if (unit.industry().equals(industry) && unit.operator().equals(operator)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private static Map<AssetKind, Long> ownAssets(
       ActorRef actor,
       IndustryId industryId,
@@ -1420,10 +1432,9 @@ final class EconomyEntrySettlement {
 
   /**
    * ★★ <b>E5a 如实边界：本方法仍是份额表的直接写入点，不委托 {@link OwnershipStakeBook}</b>。理由：进入动作要把来源主体
-   * 名下的空闲份额<b>改登记到本格物化定义</b>（{@code intent.industryId()}）后交给本户经营，这样新 unit 才 通过 {@code
-   * ProductionProcessBook.usableAssets} 的 {@code industry==unit.industry} 判据看见它；而 Book 的守恒式是 逐
-   * {@code (industry, asset)} 的，跨产业的重新登记不在它的语义内。这是记为遗留的显式例外，不是新增写路径； E5b 清算新增的转移/拆分一律只走 {@link
-   * OwnershipStakeBook}。
+   * 名下的空闲份额<b>改登记到本格物化定义</b>（{@code intent.industryId()}）后交给本户经营，这样新 unit 才 通过 {@code D4 资产占用预算} 的
+   * {@code industry/operator/location} 作用域判据看见它；而 Book 的守恒式是 逐 {@code (industry, asset)}
+   * 的，跨产业的重新登记不在它的语义内。这是记为遗留的显式例外，不是新增写路径； E5b 清算新增的转移/拆分一律只走 {@link OwnershipStakeBook}。
    */
   private static AssetShareId nextShareId(
       Tables tables,

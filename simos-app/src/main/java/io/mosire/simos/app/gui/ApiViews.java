@@ -73,7 +73,8 @@ import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionWagePosting;
-import io.mosire.simos.economy.time.AssetBudgetBook;
+import io.mosire.simos.economy.time.AssetOccupancyBudget;
+import io.mosire.simos.economy.time.AssetOccupancyScope;
 import io.mosire.simos.economy.time.AssetOccupancyView;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
@@ -1224,9 +1225,9 @@ public final class ApiViews {
       long tick,
       String readoutUnavailable) {
     Map<String, Object> view = hexCoord(coord);
-    // ★★ R2：本格的资产预算只派生一次；逐 unit 资产、共享 scope 拒绝与 unallocated 都读这一份。
-    AssetBudgetBook.AssetBudget assetBudget =
-        AssetBudgetBook.allocate(productionUnits, data.assetShares());
+    // ★★ D4：本格的资产预算只派生一次；逐 unit 资产、unallocated 与 rejection 都读这一份。
+    AssetOccupancyBudget assetBudget =
+        assetOccupancyBudgetOrNull(data, productionUnits, productionDefinitions, tick);
     view.put("assetBudget", assetBudgetView(assetBudget));
     // ★★★ D-032 D4-Ib2b：占用/预留只读视图 —— 只用 AssetOccupancyView 的权威派生与稳定序，不在读口重算分配。
     view.put("assetOccupancies", assetOccupancyViews(data, productionUnits, coord));
@@ -1290,7 +1291,7 @@ public final class ApiViews {
       }
       units.sort(Comparator.comparing(unit -> unit.id().value()));
       // ★★ R3B.2：土地不再是**产业模板**的产能，而是 unit 从 OwnershipStake 派生的可用资产 ⇒ 该格的亩数
-      //   由各 unit 的 usableAssets[LAND] 求和（一产业一 unit 时与旧 capacity 逐值相同）。
+      //   由各 unit 的 D4 allocation[LAND] 求和（一产业一 unit 时与旧 capacity 逐值相同）。
       Map<AssetKind, Long> unitAssets = new TreeMap<>();
       Map<String, Long> cycleInputUsed = new TreeMap<>();
       for (ProductionProcess unit : units) {
@@ -1517,16 +1518,23 @@ public final class ApiViews {
     // ★★ E4b：逐户 debtCapacity（F 四项 / 可质押余粮 / 既有债 / unpriced / headroom；唯一算法在
     //   {@link DebtCapacityBook}）。库存从 actor 侧账本现取：账缺席 ⇒ 该行的 pledgeable/headroom 记 null +
     //   具名原因（{@link #DEBT_CAPACITY_STOCK_UNREADABLE}），不填 0 冒充。
-    Map<HouseholdId, DebtCapacity> debtCapacities =
-        DebtCapacityBook.capacitiesForState(
-            data,
-            productionUnits,
-            productionDefinitions,
-            classKeys,
-            key ->
-                grainStockByHousehold.containsKey(key)
-                    ? OptionalLong.of(grainStockByHousehold.get(key))
-                    : OptionalLong.empty());
+    Map<HouseholdId, DebtCapacity> debtCapacities;
+    if (assetBudget == null) {
+      debtCapacities = Map.of();
+      view.put("debtCapacityUnavailable", "asset-occupancy-unavailable");
+    } else {
+      debtCapacities =
+          DebtCapacityBook.capacitiesForState(
+              data,
+              productionUnits,
+              productionDefinitions,
+              assetBudget,
+              classKeys,
+              key ->
+                  grainStockByHousehold.containsKey(key)
+                      ? OptionalLong.of(grainStockByHousehold.get(key))
+                      : OptionalLong.empty());
+    }
     for (int i = 0; i < classKeys.size(); i++) {
       classes
           .get(i)
@@ -1538,7 +1546,10 @@ public final class ApiViews {
     Map<String, Object> debtCapacityBlock = debtCapacityBlockView(classKeys, debtCapacities);
     view.put("debtCapacity", debtCapacityBlock);
     // ★ 索引一次、逐户 O(1)：读口一格里通常 4 行，但分类要扫 UsesRight/配额/租规则，不能每户各扫一遍。
-    HouseholdClassRule.Index classIndex = HouseholdClassRule.Index.of(data, productionUnits);
+    HouseholdClassRule.Index classIndex =
+        assetBudget == null
+            ? null
+            : HouseholdClassRule.Index.of(data, productionUnits, assetBudget);
     List<Map<String, Object>> householdConditions = new ArrayList<>();
     List<Map<String, Object>> classifications = new ArrayList<>();
     for (HouseholdId key : householdKeys) {
@@ -1550,6 +1561,15 @@ public final class ApiViews {
       HouseholdCondition condition =
           HouseholdCondition.derive(
               data, productionUnits, productionDefinitions, key, dayLedger, grainStockMilli);
+      if (classIndex == null) {
+        householdConditions.add(
+            householdConditionView(
+                condition,
+                householdEconomy == null ? null : householdEconomy.view().stratum().value()));
+        classifications.add(
+            Map.of("household", key.value(), "unavailable", "asset-occupancy-unavailable"));
+        continue;
+      }
       HouseholdClassRule.Classification classification = classIndex.classify(key, dayLedger);
       householdConditions.add(householdConditionView(condition, classification.stratum().value()));
       classifications.add(
@@ -3629,6 +3649,22 @@ public final class ApiViews {
           productionUnits,
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       ActorData actors) {
+    return economyOwnership(coord, economy, productionUnits, definitions, actors, -1L);
+  }
+
+  /** 带当前 tick 的产权读口：debtCapacity / 分类只读同一 revision D4 budget。 */
+  public static Map<String, Object> economyOwnership(
+      HexCoord coord,
+      EconomyData economy,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      ActorData actors,
+      long tick) {
+    AssetOccupancyBudget assetBudget =
+        assetOccupancyBudgetOrNull(economy, productionUnits, definitions, tick);
     Map<String, Object> view = hexCoord(coord);
     List<HouseholdInventory> atHex = inventoriesAt(economy, actors, coord);
     List<Map<String, Object>> inventories = new ArrayList<>(atHex.size());
@@ -3670,8 +3706,16 @@ public final class ApiViews {
     // ★★ E4b：本格每户/合计 debtCapacity（与 economyHex 同一份读数与窗口；见 DebtCapacityBlock）。
     //   ★★ E6c：容量与块视图一次算好，dashboard.derived.creditPosition 复用同一份（不重跑 F/headroom 算法）。
     List<HouseholdId> householdKeys = cohortKeysAt(economy, coord);
-    DebtCapacityReadout capacityReadout =
-        debtCapacityReadout(economy, productionUnits, definitions, actors, coord, householdKeys);
+    DebtCapacityReadout capacityReadout;
+    if (assetBudget == null) {
+      capacityReadout =
+          new DebtCapacityReadout(Map.of(), debtCapacityBlockView(householdKeys, Map.of()));
+      view.put("debtCapacityUnavailable", "asset-occupancy-unavailable");
+    } else {
+      capacityReadout =
+          debtCapacityReadout(
+              economy, productionUnits, definitions, actors, coord, householdKeys, assetBudget);
+    }
     view.put("debtCapacity", capacityReadout.block());
     view.put("rowGoodsTotal", rowGoodsTotal);
     // ★★ E6c：统一 dashboard（本入口没有 SimulationState ⇒ 进程内参考口径具名缺失；其余仍从现值现算）。
@@ -3828,10 +3872,39 @@ public final class ApiViews {
     return Collections.unmodifiableList(out);
   }
 
+  /** 同一 revision/tick 的 D4 预算；tick 尚未激活/负值 ⇒ null（读口具名 unavailable）。 */
+  private static AssetOccupancyBudget assetOccupancyBudgetOrNull(
+      EconomyData data,
+      Map<
+              io.mosire.simos.economy.api.id.ProductionUnitId,
+              io.mosire.simos.production.contract.ProductionProcess>
+          productionUnits,
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      long tick) {
+    if (tick < 0L) {
+      return null;
+    }
+    return ProductionProcessBook.assetOccupancyBudget(
+        productionUnits,
+        data.assetShares(),
+        data.assetOccupancies(),
+        definitions.industries(),
+        data.productionRosters(),
+        data.allocations(),
+        tick);
+  }
+
   /** ★★ <b>R2：资产预算只读视图</b>（allocations / unallocated / rejections 一次发出；不把整池资产复制成每 unit 一份）。 */
-  private static Map<String, Object> assetBudgetView(AssetBudgetBook.AssetBudget budget) {
+  private static Map<String, Object> assetBudgetView(AssetOccupancyBudget budget) {
     Map<String, Object> view = new LinkedHashMap<>();
     Map<String, Object> allocations = new TreeMap<>();
+    if (budget == null) {
+      view.put("allocations", allocations);
+      view.put("unallocated", new TreeMap<>());
+      view.put("rejections", new TreeMap<>());
+      view.put("unavailable", "asset-occupancy-unavailable");
+      return view;
+    }
     for (Map.Entry<ProductionUnitId, Map<AssetKind, Long>> entry :
         budget.allocations().entrySet()) {
       Map<String, Long> assets = new TreeMap<>();
@@ -3841,13 +3914,26 @@ public final class ApiViews {
       allocations.put(entry.getKey().value(), assets);
     }
     Map<String, Object> unallocated = new TreeMap<>();
-    for (Map.Entry<AssetBudgetBook.AssetScope, Map<AssetKind, Long>> entry :
+    for (Map.Entry<AssetOccupancyScope, Map<AssetKind, Long>> entry :
         budget.unallocated().entrySet()) {
       Map<String, Long> assets = new TreeMap<>();
       for (Map.Entry<AssetKind, Long> asset : entry.getValue().entrySet()) {
         assets.put(asset.getKey().name(), asset.getValue());
       }
-      unallocated.put(entry.getKey().industry().value() + "|" + entry.getKey().operator(), assets);
+      AssetOccupancyScope scope = entry.getKey();
+      unallocated.put(
+          scope.industry().value()
+              + "|"
+              + scope.operator()
+              + "|"
+              + scope.location().value()
+              + "|"
+              + scope.assetKind().name()
+              + "|"
+              + scope.fromTick()
+              + "|"
+              + scope.toTickExclusive(),
+          assets);
     }
     view.put("allocations", allocations);
     view.put("unallocated", unallocated);
@@ -3861,13 +3947,13 @@ public final class ApiViews {
 
   /**
    * ★★ <b>R3B.2：一个 unit 的读口行</b>（{@code id/industry/operator/modeKey/progressDays/cycleLaborMilli/
-   * cycleInputUsedMilli/assets/condition/relation}）。资产走 {@link ProductionProcessBook#usableAssets}
-   * 纯派生。
+   * cycleInputUsedMilli/assets/condition/relation}）。资产走同一 revision 的 D4 {@link
+   * AssetOccupancyBudget} allocation 纯派生。
    */
   private static Map<String, Object> productionProcessView(
       ProductionProcess unit,
       IndustryDefinitionView industry,
-      AssetBudgetBook.AssetBudget assetBudget,
+      AssetOccupancyBudget budget,
       ProductionRules relation,
       OperatorCondition condition) {
     Map<String, Object> view = new LinkedHashMap<>();
@@ -3880,11 +3966,17 @@ public final class ApiViews {
     view.put("cycleLaborMilli", unit.cycleLaborMilli());
     view.put("cycleInputUsedMilli", sortedCommodities(unit.cycleInputUsedMilli()));
     Map<String, Object> assets = new TreeMap<>();
-    for (Map.Entry<AssetKind, Long> entry : assetBudget.allocationOf(unit.id()).entrySet()) {
-      assets.put(entry.getKey().name(), entry.getValue());
+    if (budget != null) {
+      for (Map.Entry<AssetKind, Long> entry : budget.allocationOf(unit.id()).entrySet()) {
+        assets.put(entry.getKey().name(), entry.getValue());
+      }
     }
     view.put("assets", assets);
-    view.put("assetRejection", assetBudget.rejectionOf(unit.id()).orElse(null));
+    view.put(
+        "assetRejection",
+        budget == null
+            ? "asset-occupancy-unavailable"
+            : budget.rejectionOf(unit.id()).orElse(null));
     view.put("condition", condition == null ? null : operatorConditionView(condition));
     view.put("relation", relation == null ? null : relationView(relation));
     return view;
@@ -4282,7 +4374,8 @@ public final class ApiViews {
       io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
       ActorData actors,
       HexCoord coord,
-      List<HouseholdId> householdKeys) {
+      List<HouseholdId> householdKeys,
+      AssetOccupancyBudget assetBudget) {
     Map<ActorRef, HouseholdId> householdOfActorAtHex = new LinkedHashMap<>();
     for (HouseholdId key : householdKeys) {
       householdOfActorAtHex.put(HouseholdActors.of(key), key);
@@ -4300,6 +4393,7 @@ public final class ApiViews {
             data,
             productionUnits,
             definitions,
+            assetBudget,
             householdKeys,
             key ->
                 grainStockByHousehold.containsKey(key)

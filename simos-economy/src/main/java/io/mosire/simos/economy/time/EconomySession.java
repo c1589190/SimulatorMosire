@@ -40,7 +40,7 @@ public final class EconomySession {
   /**
    * ★★★ <b>D-032 D4-C / D2 §8.4：本会话的资产占用唯一只读读口</b>。组合根未装配 D4-I 时必须注入 {@link
    * UnavailableAssetOccupancyLookup}；名册执行路径读到 {@code Optional.empty()} ⇒ 具名 {@code
-   * asset-occupancy-unavailable}，<b>不得</b>回退 {@code usableAssets} 整池扫描。
+   * asset-occupancy-unavailable}，<b>不得</b>回退整池份额扫描。
    */
   private final AssetOccupancyLookup assetOccupancyLookup;
 

@@ -207,7 +207,11 @@ public record MarketReadout(
             data.allocations(),
             data.classes(),
             data.debtContracts(),
-            data.relations());
+            data.relations(),
+            data.productionOrganizations(),
+            data.assetOccupancies(),
+            data.productionRosters(),
+            tick);
     // ★★ R1：读口与结算**同源**注入政府市场授权计划（同一 {MarketMandatePlan.of}）—— 否则读口会显示
     //   一套订单、日结算下另一套（"看到的订单 == 会下的订单"）。
     GovernmentMarketMandatePlan govMandatePlan =

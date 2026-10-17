@@ -4287,8 +4287,8 @@ public final class EconomySettlement {
    * <ul>
    *   <li><b>劳动贡献</b>：逐 {@code HouseholdLaborCommitment}（{@code activity == unit id}）按家户汇总 ——
    *       <b>不是</b>一个总数。（I9：回执必须保留各家户实际贡献；经验也按<b>实际贡献</b>累加。）
-   *   <li><b>资产占用</b>：{@link ProductionProcessBook#usableAssets} 给出的该 unit 可用资产（与 economy
-   *       自己算产能规模读的是同一份表 —— 预计与实际同源）。
+   *   <li><b>资产占用</b>：{@link AssetOccupancyBudget} 给出的该 unit 资产分配（与 economy 自己算产能规模读的是同一份表 ——
+   *       预计与实际同源）。
    *   <li><b>原料投入</b>：现扣阶段实际扣到的量（读当刻候选态的 {@code cycleInputUsedMilli}）。
    * </ul>
    *
@@ -4770,7 +4770,7 @@ public final class EconomySettlement {
     //   （真档月度 6,000+ 条 × 44,000+ 配额）。这里在入口建一次只读索引：批次→unit、格→unit、
     //   unit→配额，随后每条 change 只碰与自己目标集合相关的行。
     SettlementIndex index =
-        SettlementIndex.build(
+        SettlementIndex.buildWithoutAssetOccupancy(
             session.sheet().units(),
             session.sheet().industries(),
             assetShares,
@@ -6739,47 +6739,10 @@ public final class EconomySettlement {
     addGoods(consumedGoods, supplierKey, commodity, drawn);
   }
 
-  /**
-   * ★★ <b>该产业"本格产能"折出的规模</b>（K3 之后"产能"只有这一处）：{@code min over k ∈ capacityPerUnit:
-   * ⌊industry.capacity[k] ÷ capacityPerUnit[k]⌋}。
-   *
-   * <p>★ 与收获日公式（{@link ProductionEfficiencyBook}）的产能那一路是**同一个算式**（只是那里还要对劳动与投入取 min）—— 于是"一次想扣多少"
-   * 与产业"能产多少"用同一把尺。
-   *
-   * <p>★ M2.1 起 {@link MarketSettlement} 也算经营者的"必要生产投入"（= 本方法 × {@code inputPerUnit}），故它从 {@code
-   * private} 放宽到包内可见；算法一字未改。
-   *
-   * <p>★★ <b>R2 窄入口</b>：本重载只给可证明 scope 内只有一个 unit 的夹具/无索引入口；生产日、预计、排队、执行、 app 读口、债务容量必须走 {@link
-   * SettlementIndex} 或 {@link AssetBudgetBook.AssetBudget} 版本。
-   */
-  static long capacityScaleOf(
-      ProductionProcess unit,
-      IndustryDefinitionView industry,
-      Map<AssetShareId, OwnershipStake> assetShares) {
-    // ★★ R3B.2：产能从**实物总账**派生（{@link ProductionProcessBook} 是唯一拼写点）。
-    return ProductionProcessBook.capacityScaleOf(unit, industry, assetShares);
-  }
-
   /** ★★ 索引口径的产能规模（R4-B.3a-perf；算式仍由 {@link ProductionProcessBook} 唯一拼写点给出）。 */
   static long capacityScaleOf(
       ProductionProcess unit, IndustryDefinitionView industry, SettlementIndex index) {
     return ProductionProcessBook.capacityScaleOf(unit, industry, index);
-  }
-
-  /**
-   * ★★ <b>S3：计划规模</b> = 技术产能规模 × 状态机的计划系数（{@link StressPolicy}）。
-   *
-   * <p>★ 缩产/停业只影响"本周期的计划"（投入需求、劳动需求、收获规模），<b>不销毁</b> {@code capacity} / {@code OwnershipStake}：
-   * 条件缺失（旧档）或状态回到 {@code ACTIVE} ⇒ 系数 1000‰ ⇒ 与旧行为逐值相同。
-   *
-   * <p>★★ <b>R2 窄入口</b>：直接扫描份额的重载只允许单 unit 夹具/无索引路径；正式生产面走索引预算版本。
-   */
-  static long plannedCapacityScaleOf(
-      ProductionProcess unit,
-      IndustryDefinitionView industry,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      OperatorCondition condition) {
-    return ProductionProcessBook.plannedCapacityScaleOf(unit, industry, assetShares, condition);
   }
 
   /** ★★ 索引口径的计划规模（R4-B.3a-perf；产能规模查入口索引，计划系数算式不变）。 */
@@ -6789,33 +6752,6 @@ public final class EconomySettlement {
       SettlementIndex index,
       OperatorCondition condition) {
     return ProductionProcessBook.plannedCapacityScaleOf(unit, industry, index, condition);
-  }
-
-  /**
-   * ★★ <b>S3：本周期"投入没凑齐"的可观察事实</b>（在周期状态被清零之前捕获）：按状态机的计划规模系数（缩产/停业）算应投， 与 {@code
-   * cycleInputUsedMilli} 比。停业（系数 0）⇒ 不投也不构成"投入不足"（那是主动停，不是失败）。
-   */
-  static boolean inputShortfallOf(
-      ProductionProcess unit,
-      IndustryDefinitionView industry,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      OperatorCondition condition) {
-    long planned =
-        ProductionProcessBook.plannedCapacityScaleOf(unit, industry, assetShares, condition);
-    if (planned <= 0L) {
-      return false;
-    }
-    for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
-      if (entry.getValue() <= 0L) {
-        continue;
-      }
-      long required = entry.getValue() * planned;
-      long used = unit.cycleInputUsedMilli().getOrDefault(entry.getKey(), 0L);
-      if (used < required) {
-        return true;
-      }
-    }
-    return false;
   }
 
   /** ★★ 索引口径的“投入没凑齐”判据（R4-B.3a-perf；算式与旧签名逐字相同，只是计划规模查索引）。 */
@@ -8392,7 +8328,7 @@ public final class EconomySettlement {
    * ★ <b>一个 unit "这一周期真的用得上的劳动"</b>（千分劳动·日）= {@code min(产能那一路, 投入那几路) × laborPerUnit}。
    *
    * <pre>
-   * usableScale = min( ⌊usableAssets[k] ÷ capacityPerUnit[k]⌋ …, ⌊cycleInputUsedMilli[j] ÷ inputPerUnit[j]⌋ … )
+   * usableScale = min( ⌊assetAllocation[k] ÷ capacityPerUnit[k]⌋ …, ⌊cycleInputUsedMilli[j] ÷ inputPerUnit[j]⌋ … )
    * need        = usableScale × 配方.laborPerUnit
    * </pre>
    *

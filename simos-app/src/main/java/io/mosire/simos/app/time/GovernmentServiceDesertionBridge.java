@@ -21,7 +21,7 @@ import io.mosire.simos.economy.model.MarketTables;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.time.AccountSession;
-import io.mosire.simos.economy.time.AssetBudgetBook;
+import io.mosire.simos.economy.time.AssetOccupancyBudget;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.ExpectedProfitBook;
 import io.mosire.simos.economy.time.MarketDemandBook;
@@ -234,7 +234,8 @@ public final class GovernmentServiceDesertionBridge {
       Set<AssetShareId> claimedByEnterprises,
       MarketDemandBook.Book demand,
       AccountSession accounts,
-      io.mosire.simos.production.contract.ProductionRuntime productionRuntime) {
+      io.mosire.simos.production.contract.ProductionRuntime productionRuntime,
+      AssetOccupancyBudget assetOccupancyBudget) {
 
     DestinationContext {
       Objects.requireNonNull(rows, "rows");
@@ -243,6 +244,7 @@ public final class GovernmentServiceDesertionBridge {
       Objects.requireNonNull(accounts, "accounts");
       Objects.requireNonNull(
           productionRuntime, "productionRuntime（§15.12 B：去向排序的物理量必须取自 production 的试算）");
+      Objects.requireNonNull(assetOccupancyBudget, "assetOccupancyBudget（D4 预算不可用时 fail-closed）");
     }
   }
 
@@ -717,6 +719,15 @@ public final class GovernmentServiceDesertionBridge {
     Set<AssetShareId> claimed =
         ModeMigrationPolicy.claimedOwnershipStakes(
             economy.productionOrganizations(), productionUnits, economy.assetShares());
+    AssetOccupancyBudget assetBudget =
+        ProductionProcessBook.assetOccupancyBudget(
+            productionUnits,
+            economy.assetShares(),
+            economy.assetOccupancies(),
+            definitions.industries(),
+            economy.productionRosters(),
+            economy.allocations(),
+            day);
     MarketDemandBook.Book demand;
     try {
       demand =
@@ -733,11 +744,13 @@ public final class GovernmentServiceDesertionBridge {
               accounts,
               economy.marketTables(),
               day,
-              DEMAND_HORIZON_DAYS);
+              DEMAND_HORIZON_DAYS,
+              assetBudget);
     } catch (RuntimeException failure) {
       demand = MarketDemandBook.Book.empty(day, DEMAND_HORIZON_DAYS);
     }
-    return new DestinationContext(economy.classes(), claimed, demand, accounts, productionRuntime);
+    return new DestinationContext(
+        economy.classes(), claimed, demand, accounts, productionRuntime, assetBudget);
   }
 
   /**
@@ -776,7 +789,14 @@ public final class GovernmentServiceDesertionBridge {
       if (destinationRow == null || destinationRow.population() <= 0L) {
         continue; // 经济家户必须真的有人可吸收；0 人壳户（含逃亡后的旧官吏户壳）不是去向。
       }
-      long margin = absorbableLaborMargin(destination, hex, economy, productionUnits, definitions);
+      long margin =
+          absorbableLaborMargin(
+              destination,
+              hex,
+              economy,
+              productionUnits,
+              definitions,
+              context.assetOccupancyBudget());
       long profit =
           expectedProfitPerLabor(
               destination, hex, economy, definitions, productionUnits, topology, day, context);
@@ -818,11 +838,10 @@ public final class GovernmentServiceDesertionBridge {
               io.mosire.simos.economy.api.id.ProductionUnitId,
               io.mosire.simos.production.contract.ProductionProcess>
           productionUnits,
-      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions) {
+      io.mosire.simos.production.contract.ProductionDefinitionLookup definitions,
+      AssetOccupancyBudget assetBudget) {
     ActorRef operator = HouseholdActors.of(household);
     String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
-    AssetBudgetBook.AssetBudget assetBudget =
-        AssetBudgetBook.allocate(productionUnits, economy.assetShares());
     long margin = 0L;
     for (ProductionProcess process : productionUnits.values()) {
       if (!process.operator().equals(operator)) {
@@ -835,6 +854,9 @@ public final class GovernmentServiceDesertionBridge {
       // ★★★ D-032 B3：同上 —— 产业定义读 production 的当刻权威。
       IndustryDefinitionView industry = definitions.industry(process.industry()).orElse(null);
       if (industry == null) {
+        continue;
+      }
+      if (assetBudget.rejectionOf(process.id()).isPresent()) {
         continue;
       }
       long scale = ProductionProcessBook.capacityScaleOf(process, industry, assetBudget);

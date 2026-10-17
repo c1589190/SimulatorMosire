@@ -1,13 +1,11 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.MarketTable;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.production.contract.IndustryDefinitionView;
@@ -116,41 +114,8 @@ public final class ProducerCostBook {
   }
 
   /**
-   * 按计划公式算单位成本估计。{@code market} 提供参考价（{@code prices}）；{@code market == null} ⇒ 所有投入都缺价（逐项按
-   * 0、标记缺失），不抛 —— 读口要能对"这一格没有市场表"如实给估计。
-   *
-   * @param unit 生产单元（可用资产从 OwnershipStake 派生）；不得为 null
-   * @param industry 产业模板（配方）；不得为 null
-   * @param assetShares 实物总账（产能规模的来源）；不得为 null
-   * @param market 本格市场（参考价唯一真值源）；可为 null（= 没有价表）
-   * @param relation 生产关系（固定租规则的来源）；可为 null
-   */
-  public static Estimate estimate(
-      ProductionProcess unit,
-      IndustryDefinitionView industry,
-      Map<AssetShareId, OwnershipStake> assetShares,
-      MarketTable market,
-      ProductionRules relation) {
-    if (unit == null) {
-      throw new IllegalArgumentException("ProducerCostBook.estimate 的 unit 不得为 null");
-    }
-    if (industry == null) {
-      throw new IllegalArgumentException("ProducerCostBook.estimate 的 industry 不得为 null");
-    }
-    if (assetShares == null) {
-      throw new IllegalArgumentException("ProducerCostBook.estimate 的 assetShares 不得为 null");
-    }
-    return estimate(
-        unit,
-        industry,
-        market,
-        relation,
-        () -> EconomySettlement.capacityScaleOf(unit, industry, assetShares));
-  }
-
-  /**
-   * ★★ <b>索引口径的单位成本估计</b>（R4-B.3a-perf）：产能规模从日结算入口的 {@link SettlementIndex} 查，不再逐 unit 扫 {@code
-   * OwnershipStake}。除“规模从哪里来”以外，公式、量纲、缺价读数与旧签名逐字相同。
+   * ★★ <b>索引口径的单位成本估计</b>（R4-B.3a-perf）：产能规模从日结算入口的 {@link SettlementIndex} 查，不再逐 unit 扫 {@code D4
+   * AssetOccupancyBudget}。公式、量纲与缺价读数不变。
    */
   public static Estimate estimate(
       ProductionProcess unit,
@@ -166,7 +131,7 @@ public final class ProducerCostBook {
         industry,
         market,
         relation,
-        () -> EconomySettlement.capacityScaleOf(unit, industry, index));
+        () -> ProductionProcessBook.capacityScaleOf(unit, industry, index));
   }
 
   /** 单位成本估计的唯一算式：{@code capacityScale} 作为延迟取值在**与旧实现相同的位置**调用，故异常/取整顺序都保持不变。 */

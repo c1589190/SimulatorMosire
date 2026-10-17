@@ -6,7 +6,7 @@ import java.util.Optional;
 
 /**
  * ★★ <b>D-032 D4-C 资产占用唯一只读读口</b>（D4 §7.0 / D2 §8.1）：C2 只依赖本接口取得 unit 的冻结占用， 不复制临时接口、不回退旧 {@code
- * usableAssets} 扫描。
+ * 整池份额扫描。
  *
  * <p>★★ <b>不可用与零的区分</b>：{@link Optional#empty()} 只表示接口未装配 / D4-I 未实现 / 权威事实不可用， 调用方必须具名 {@code
  * asset-occupancy-unavailable} 且不得读成 0；返回快照中的空 map 才表示有权威结果且确实没有分配。

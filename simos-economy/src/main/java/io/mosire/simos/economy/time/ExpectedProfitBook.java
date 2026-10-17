@@ -459,7 +459,7 @@ public final class ExpectedProfitBook {
    *
    * <pre>
    * 劳动       = 家户 participationAdjustedLaborMilli × horizonDays      （本周期累计；probe 内部 ÷cycleDays）
-   * 占用       = 既有 unit 的 usableAssets（★ R2/E2 替换点：统一分配后必须换成分配结果）
+   * 占用       = 既有 unit 的 D4 AssetOccupancyBudget allocation（同一 revision/tick）
    *              候选：与 assetScaleOf **同一判据**的可用资产表（自有自营 + 同格可租闲置、claimed 排除）
    * 投入       = 本户账户里方案投入键上的库存（缺账户/缺键 ⇒ 0）
    * 熟练度/经验 = 本 tick 冻结条件优先（R5），否则运行时读口（ProductionProbeInputs 的唯一拼写点）
@@ -515,14 +515,15 @@ public final class ExpectedProfitBook {
       carry = runtime.efficiencyOf(unitId);
     } else {
       // ★★ R2：同一个 (industry, operator) 已有别的 unit（旧档 opaque id/坏路径）⇒ 不得把候选再叠成共享实例。
-      if (AssetBudgetBook.hasUnitInScope(units, industry.id(), operator)) {
+      if (hasUnitInScope(units, industry.id(), operator)) {
+        // 候选不在同一 revision 的 D4 预算里 ⇒ 不得回退整池份额；要求调用方补显式请求。
         return infeasible(
             household,
             modeId,
             position.id(),
             hex,
             industry.id(),
-            AssetBudgetBook.SHARED_SCOPE_REJECTION);
+            "asset-occupancy-request-missing:" + unitId.value());
       }
       // 候选：自有自营 + 同格可租闲置（闲置判据的唯一拼写点在 ModeMigrationPolicy）。
       // ★★ D-024 修复 1：claimed 由调用方从当天工作副本 enterprises 算出并传入，本类不再从 base 重算。
@@ -1095,6 +1096,17 @@ public final class ExpectedProfitBook {
 
   // ── 规模 / 关系 / 义务 ────────────────────────────────────────────────────────────────────
 
+  /** 同一 {@code (industry, operator)} 是否已有生产实例；只做 scope 守卫，不读资产数量。 */
+  private static boolean hasUnitInScope(
+      Map<ProductionUnitId, ProductionProcess> units, IndustryId industry, ActorRef operator) {
+    for (ProductionProcess unit : units.values()) {
+      if (unit.industry().equals(industry) && unit.operator().equals(operator)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * ★★★ <b>§15.12 B：候选可用资产表</b>（自有自营 + 同格可租闲置，判据与 {@link ModeMigrationPolicy#isIdleShare} 逐字同源）——
    * "返回资产表"的<b>唯一拼写点</b>。
@@ -1130,9 +1142,9 @@ public final class ExpectedProfitBook {
   /**
    * ★★ <b>资产表的产能规模（唯一算式）</b>：{@code min_k ⌊可用资产[k] ÷ capacityPerUnit[k]⌋}（缺键 = 0；空表 = 0）。
    *
-   * <p>★ 与 {@code ProductionRuntimeEngine} 的资产通道逐字同式（E=1000 时既有的 {@code 资产规模} 读数不变）；既有 unit 的
-   * 可用资产表由 {@link ProductionProcessBook#usableAssets(ProductionProcess, Map)} 给（同 industry +
-   * operator 的份额合计）。
+   * <p>★ 与 {@code ProductionRuntimeEngine} 的资产通道逐字同式（E=1000 时既有的 {@code 资产规模} 读数不变）；既有 unit 的 既有
+   * unit 的占用表只读 {@link AssetOccupancyBudget#allocationOf(ProductionUnitId)}；候选计划表是进入前的
+   * 非资产规模派生，不是运行时可用资产回退。
    */
   private static long assetScaleOf(
       IndustryDefinitionView industry, Map<AssetKind, Long> availableAssets) {
@@ -2358,7 +2370,7 @@ public final class ExpectedProfitBook {
     // ★ D2 §7.3：角色级资格逐户检查（计划级资格由 probe 的 organizer 主体判；execute 会再查一次）。
     Optional<String> qualificationRejection =
         roleQualificationRejection(plan, roster, runtime, facts);
-    // 1) 资产占用（D4-C）：不可用 ⇒ 具名拒绝（不读成 0、不回退 usableAssets）。
+    // 1) 资产占用（D4-C）：不可用 ⇒ 具名拒绝（不读成 0、不回退整池份额扫描）。
     Map<AssetKind, Long> occupancy = Map.of();
     String occupancyRejection = null;
     if (assetOccupancyLookup == null || expectedRevision == null) {

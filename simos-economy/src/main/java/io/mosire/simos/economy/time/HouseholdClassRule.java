@@ -272,8 +272,8 @@ public final class HouseholdClassRule {
     /** ★ R4-B.3a-perf：结算入口的只读派生索引；{@code null} = 读口/测试的无索引窄入口。 */
     private final SettlementIndex settlementIndex;
 
-    /** ★★ R2：无索引入口也从同一纯函数派生一次资产预算，不在循环里逐 unit 重扫份额。 */
-    private final AssetBudgetBook.AssetBudget assetBudget;
+    /** 无 SettlementIndex 的读口所持同一 revision D4 预算；null = 不可用（读取资产时 fail-closed）。 */
+    private final AssetOccupancyBudget assetOccupancyBudget;
 
     private Index(
         Map<AssetShareId, OwnershipStake> assetShares,
@@ -282,9 +282,10 @@ public final class HouseholdClassRule {
         Map<ProductionUnitId, ProductionRules> relations,
         Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<DebtContractId, DebtContract> debts,
-        SettlementIndex settlementIndex) {
+        SettlementIndex settlementIndex,
+        AssetOccupancyBudget assetOccupancyBudget) {
       this.settlementIndex = settlementIndex;
-      this.assetBudget = AssetBudgetBook.allocate(units, assetShares);
+      this.assetOccupancyBudget = assetOccupancyBudget;
       this.householdEconomies = new LinkedHashMap<>(householdEconomies);
       for (ProductionProcess unit : units.values()) {
         unitsByIndustryOperator
@@ -387,9 +388,9 @@ public final class HouseholdClassRule {
           if (unit == null) {
             continue;
           }
-          // ★★ R3B.2：经营身份对应的产能从 **OwnershipStake 纯派生**（unit 的可用资产），不再读
-          //   {@code IndustryDefinitionView.capacity} —— 实物总账只有一个来源，分类与结算不可能漂开。
-          for (Map.Entry<AssetKind, Long> usable : usableAssetsOf(unit, assetShares).entrySet()) {
+          // ★★ 经营身份对应的产能只读同一 revision 的 D4 budget allocation；不再读
+          //   {@code IndustryDefinitionView.capacity}，也不扫描整池份额。
+          for (Map.Entry<AssetKind, Long> usable : assetAllocationOf(unit).entrySet()) {
             if (usable.getValue() <= 0L) {
               continue;
             }
@@ -410,7 +411,7 @@ public final class HouseholdClassRule {
         if (unit == null || entry.getValue().isEmpty()) {
           continue;
         }
-        long land = usableAssetsOf(unit, assetShares).getOrDefault(AssetKind.LAND, 0L);
+        long land = assetAllocationOf(unit).getOrDefault(AssetKind.LAND, 0L);
         if (land <= 0L) {
           continue;
         }
@@ -526,7 +527,55 @@ public final class HouseholdClassRule {
       Objects.requireNonNull(debts, "debts");
       // ★ B.4：industries 形参保留（结算/读口的公开重载不换签名），但 Index 不再读 IndustryDefinitionView.slots。
       return new Index(
-          assetShares, laborCommitments, units, relations, householdEconomies, debts, null);
+          assetShares, laborCommitments, units, relations, householdEconomies, debts, null, null);
+    }
+
+    /** 无索引读口：显式要求同一 revision 的 D4 预算；缺预算不得回退整池扫描。 */
+    public static Index of(
+        EconomyData data,
+        Map<ProductionUnitId, ProductionProcess> units,
+        AssetOccupancyBudget assetOccupancyBudget) {
+      Objects.requireNonNull(data, "data");
+      Objects.requireNonNull(units, "units（production 实例的只读投影，B2b 起必填）");
+      Objects.requireNonNull(assetOccupancyBudget, "assetOccupancyBudget（D4 预算不可用时 fail-closed）");
+      return of(
+          data.assetShares(),
+          data.allocations(),
+          units,
+          Map.of(),
+          data.relations(),
+          data.classes(),
+          data.debtContracts(),
+          assetOccupancyBudget);
+    }
+
+    /** 结算/读口显式预算入口（7 个状态分量 + 同一 revision D4 预算）。 */
+    public static Index of(
+        Map<AssetShareId, OwnershipStake> assetShares,
+        Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+        Map<ProductionUnitId, ProductionProcess> units,
+        Map<IndustryId, IndustryDefinitionView> industries,
+        Map<ProductionUnitId, ProductionRules> relations,
+        Map<HouseholdId, HouseholdEconomy> householdEconomies,
+        Map<DebtContractId, DebtContract> debts,
+        AssetOccupancyBudget assetOccupancyBudget) {
+      Objects.requireNonNull(assetShares, "assetShares");
+      Objects.requireNonNull(laborCommitments, "allocations");
+      Objects.requireNonNull(units, "units");
+      Objects.requireNonNull(industries, "industries");
+      Objects.requireNonNull(relations, "relations");
+      Objects.requireNonNull(householdEconomies, "classes");
+      Objects.requireNonNull(debts, "debts");
+      Objects.requireNonNull(assetOccupancyBudget, "assetOccupancyBudget（D4 预算不可用时 fail-closed）");
+      return new Index(
+          assetShares,
+          laborCommitments,
+          units,
+          relations,
+          householdEconomies,
+          debts,
+          null,
+          assetOccupancyBudget);
     }
 
     /**
@@ -558,18 +607,25 @@ public final class HouseholdClassRule {
           relations,
           householdEconomies,
           debts,
-          settlementIndex);
+          settlementIndex,
+          settlementIndex.d4AssetOccupancyBudget().orElse(null));
     }
 
-    /**
-     * 资产汇总的唯一取值口：有结算索引走索引；无索引读口也读本 Index 构造时一次派生的 {@link AssetBudgetBook.AssetBudget} （共享 scope
-     * 与结算路径同样具名零分配，不再各自扫描份额）。
-     */
-    private Map<AssetKind, Long> usableAssetsOf(
-        ProductionProcess unit, Map<AssetShareId, OwnershipStake> assetShares) {
-      return settlementIndex == null
-          ? ProductionProcessBook.usableAssets(unit, assetBudget)
-          : ProductionProcessBook.usableAssets(unit, settlementIndex);
+    /** 资产分配的唯一取值口：同一 revision 的 D4 预算；不可用 ⇒ 具名 fail-closed，绝不扫描份额。 */
+    private Map<AssetKind, Long> assetAllocationOf(ProductionProcess unit) {
+      if (settlementIndex != null) {
+        if (settlementIndex.d4AssetOccupancyBudget().isEmpty()) {
+          throw new IllegalStateException(
+              "asset-occupancy-unavailable: household-class unit=" + unit.id().value());
+        }
+        // budget 可用时，该 unit 的具名 rejection 对应权威零分配（不是“读口不可用”）。
+        return settlementIndex.assetAllocationOf(unit);
+      }
+      if (assetOccupancyBudget == null) {
+        throw new IllegalStateException(
+            "asset-occupancy-unavailable: household-class unit=" + unit.id().value());
+      }
+      return assetOccupancyBudget.allocationOf(unit.id());
     }
 
     /** 按上面的可观察量给一家户分档；{@code ledger} 只用于租金实付读数（读不到 ⇒ empty，不填 0）。 */
