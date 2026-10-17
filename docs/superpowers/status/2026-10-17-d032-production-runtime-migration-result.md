@@ -280,3 +280,17 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **边界**：`Optional.empty()` = 不可用；空 Map = 合法零分配；接口不做 revision/地点/区间匹配判断（D4-I/调用方判 mismatch）；未引用 EconomyData/AssetBudgetBook/真实实现。
 - **编译/格式**：economy/app `-DskipTests compile` rc=0；`spotless:check` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
 - **下一步**：按 D2 §13 先做 C1（production 角色执行：participant 契约/逐角色经验/Receipt/RoleDistribution），只编译 production；C1 后再 C2(32) 等共享 economy 组件。
+
+## 十八、2026-10-17 22:xx C1 production 角色执行检查点
+
+> **性质**：C1 production 主代码已实现并编译/格式检查通过；未跑测试，economy/app 下游待 C2 接线。
+
+- **提交**：`59bd7161 feat(production)!: C1 逐参与户角色执行、逐角色经验与 RoleDistribution`（已推送）。
+- **参与契约**：新增 `ParticipantContribution`/`ProductionParticipantKey`/`ProductionExperienceGrowthLine`；`ProductionExecutionRequest`/`ProductionDayRequest.Step` 的劳动从 `Map<HouseholdId,Long>` 改为逐 `(household, role)` 列表；新增 participantAttributes/householdLaborBudgetMilli/managementLaborMilli。
+- **实例/回执**：`CycleContribution` 加 role；`ProductionProcess.cycleContributions`/`ProductionReceipt.cycleContributions` 改 `Map<ProductionParticipantKey,CycleContribution>`；本次 tick 劳动 map 与派生 `laborByHouseholdMilli()`；`experienceGrowthLines` 可审计。
+- **经验**：`ProductionExperience` 按 `roles[].experienceGrowth` 逐角色 ACTUAL_LABOR/NORMALIZED_PARTICIPATION 计算，按 `(household,track)` 一次归并；管理劳动、归一化预算缺失具名拒。
+- **分配**：`RoleDistribution.allocate` 纯函数，角色池+角色内最大余数法；TO_LAST_ROLE/UNALLOCATED/零权重池显式，逐商品守恒由 `RoleDistributionResult` 构造器校验。
+- **编译/格式**：production `-DskipTests compile -pl simos-production -am` rc=0；`spotless:check -pl simos-production` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **已知下游断点**：economy `EconomySettlement.java:4285` 仍用旧 7 参 `ProductionDayRequest.Step`（旧 Map 劳动表），`simos-economy,simos-app -am` compile rc=1；按 D2 §13 归 C2 接线，C1 不改 economy/app。
+- **测试影响**：production 8 个旧 Request/Step/CycleContribution 测试、economy 2 个旧参与表测试需 C4 迁移；C1 未写/未跑测试。
+- **下一步**：C2（economy 32 `productionRosters`/名册命令/单户默认名册/预计所得/角色分配接线/旧 Step 调用改造）；只编译 economy，不写/不跑测试、不提交。
