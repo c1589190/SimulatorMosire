@@ -246,3 +246,15 @@ tools/mvn-lock.sh -pl simos-app -am clean verify
 - **关键边界**：`AssetOccupancySnapshot` 带 `RevisionId`，跨 revision/地点/区间 mismatch 具名 ERROR；W1/W2b/W3 共用 payer 全地点快照预检；`SurvivalOutlook` 只计 `incomeAvailableAtTick <= nextTick`；工资债 0‰ + `DebtSource.WAGE_ARREARS`；普通贷款/租金按各自 source/terms。
 - **未做**：没有任何代码落形；未编译、未跑测试/仿真/门禁；未修 R2 完整功能；`WagePayableInventoryLookup`/`AssetOccupancyLookup`/D4 occupancy/DebtSource/SurvivalOutlook 仍未实现；主树未同步。
 - **下一步**：按 owner 顺序派 C0/C0-A（production 定义形状 + `AssetKind` 词表）单 owner，只写生产代码到编译，不写/不跑测试；然后 D4-C、C2、W2a… 串行。提交/推送按小分支检查点继续；C0 派单前需确认当前设计提交/工作树边界。
+
+## 十五、2026-10-17 21:xx C0-A `AssetKind` 词表落形检查点
+
+> **性质**：C0-A 生产代码已实现并编译/格式检查通过；未跑测试，未实现角色/份额/工资/占用。
+
+- **提交**：`4a01326a feat(actor-api,economy,production,app)!: C0-A AssetKind 词表 SMALL_TOOL/LARGE_TOOL 落形`（已推送）。
+- **词表**：`AssetKind = LAND, CATTLE, SMALL_TOOL, LARGE_TOOL, WORKSHOP, MACHINE, SHIP`；`TOOL` 退役。`AssetKind.parse` 是唯一文本解析点，旧 `TOOL` ⇒ `asset-kind-retired:TOOL`，未知值 ⇒ `asset-kind-unknown:<text>`；不做别名/兼容位。
+- **旧引用**：`simos-*/src/main` 开工 26 处 → 收工仅 `AssetKind.java` 的 `RETIRED_TOOL = "TOOL"` 拒绝字面量；enum/载荷/seed/迁移/分类旧引用清零。所有旧通用工具默认映射 `SMALL_TOOL`，未发现明确大型设备上下文。
+- **编译/格式**：`tools/mvn-lock.sh -q -DskipTests compile -pl simos-app -am` rc=0；`spotless:check` rc=0；`git diff --check` rc=0。未跑 test/verify/gate。
+- **已知边界**：`HouseholdClassRule` 仅把 `SMALL_TOOL` 纳入 tool/workshop 分类，`LARGE_TOOL` 暂无 seed/生产者，未扩大行为面；`LARGE_TOOL` 的 seed/recipe/分类/测试归 C0/C1/C2/C4 后续确认。`ModeMigrationSettlement.isMobileAsset` 把 `SMALL_TOOL`/`LARGE_TOOL` 都视为可移动；当前无 LARGE_TOOL 生产者。
+- **测试影响**：C4 需迁移至少 10 个测试文件的 `AssetKind.TOOL` 引用；C0-A 未写/未跑测试。
+- **下一步**：C0（D1 落形：economy-api `ProductionRoleId` + production 角色/份额/经验/支付/条件/`RoleDistribution` 契约/state/ChangeSet/codec/payload/GM）单 owner；只编译、不写/不跑测试、不提交。之后 D4-C、C2、W2a… 串行。
