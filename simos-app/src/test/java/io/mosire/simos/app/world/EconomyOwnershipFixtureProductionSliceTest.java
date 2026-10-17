@@ -12,6 +12,8 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.production.contract.ProductionProcess;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
@@ -46,6 +48,7 @@ class EconomyOwnershipFixtureProductionSliceTest {
     EconomyData economy = economyOf(genesis);
     ActorData actor = actorOf(genesis);
     ProductionData production = productionOf(genesis);
+    SocialData social = socialOf(genesis);
 
     // ── 起点读数（判别力前提：世界必须真的有实例，否则"进度变了"可能恒真/恒假）──
     assertThat(production.instances()).as("小世界创世必须已有生产实例").isNotEmpty();
@@ -54,7 +57,8 @@ class EconomyOwnershipFixtureProductionSliceTest {
     assertThat(totalBefore).as("★ 起点进度合计必须是 0（否则'增加'没有判别力）").isZero();
 
     EconomyOwnershipFixture.Result result =
-        EconomyOwnershipFixture.advance(economy, actor, production, SmallWorld.MAP_ID, 0L, 1L);
+        EconomyOwnershipFixture.advance(
+            economy, actor, production, social, SmallWorld.MAP_ID, 0L, 1L);
 
     // ── ① production 片真的被 apply：进度合计 = 被执行的实例数（每个执行的实例恰 +1 天）──
     Map<ProductionUnitId, Long> progressAfter = progressByUnit(result.production());
@@ -121,6 +125,11 @@ class EconomyOwnershipFixtureProductionSliceTest {
   private static ProductionData productionOf(SimulationState state) {
     Snapshot snapshot = state.module("production").orElseThrow();
     return ((ProductionSnapshot) snapshot).state();
+  }
+
+  private static SocialData socialOf(SimulationState state) {
+    Snapshot snapshot = state.module("social").orElseThrow();
+    return ((SocialSnapshot) snapshot).data();
   }
 
   private static Map<ProductionUnitId, Long> progressByUnit(ProductionData data) {

@@ -4,12 +4,14 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.app.time.EconomyOwnershipTimeParticipant;
+import io.mosire.simos.app.time.SocialSurvivalFacts;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.production.ProductionData;
 import io.mosire.simos.production.ProductionSnapshot;
 import io.mosire.simos.production.change.ProductionChangeSet;
+import io.mosire.simos.social.SocialData;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.spi.WorldTimeProposal;
 import io.mosire.simos.util.state.BranchId;
@@ -52,11 +54,14 @@ final class EconomyOwnershipFixture {
    * @param economy 结算前的经济状态（必须已在 {@code fromTick} 那一刻）
    * @param actor 落账前的 actor 状态
    * @param production 推进前的 production 状态（★ 实例/经验/效率权威；缺它参与者当场抛装配故障）
+   * @param social 与本次推进同一份 Social 基态；夹具用 {@link SocialSurvivalFacts#forNextTick} 逐日现算下一 tick
+   *     需求/劳动预算，绝不把缺 facts 的 fail-closed 路径当成通过。
    */
   static Result advance(
       EconomyData economy,
       ActorData actor,
       ProductionData production,
+      SocialData social,
       String mapId,
       long fromTick,
       long toTick) {
@@ -69,7 +74,8 @@ final class EconomyOwnershipFixture {
                 "production", productionSnap(production, fromTick)),
             InMemoryInfoSystem.empty());
     WorldTimeProposal proposal =
-        new EconomyOwnershipTimeParticipant(mapId)
+        new EconomyOwnershipTimeParticipant(
+                mapId, nextTick -> SocialSurvivalFacts.forNextTick(social, nextTick))
             .simulateWorld(
                 state,
                 new TimeRange(SimosTimestamp.of(fromTick), Optional.of(SimosTimestamp.of(toTick))));
@@ -138,10 +144,19 @@ final class EconomyOwnershipFixture {
    * 常量因此删除：它代表的世界已经不存在了，留着只会把一个必炸的入参摆在手边）。
    *
    * <p>★★ <b>D-032 T8 起 {@code production} 也是必填的</b>：实例/进度/经验/效率的唯一权威在 production，参与者会读它并产出它的变更集。
+   *
+   * <p>★★ <b>D-032 W5-C 起 {@code social} 也是必填的</b>：协调器必须收到与 Social 下一 tick 一致的 {@code
+   * SurvivalSocialFacts}；用单参 {@code EconomyOwnershipTimeParticipant(mapId)} 会把缺投影的 fail-closed
+   * 误当正常世界。
    */
   static EconomyData advanceEconomy(
-      EconomyData base, ActorData books, ProductionData production, String mapId, long days) {
-    return advance(base, books, production, mapId, 0L, days).economy();
+      EconomyData base,
+      ActorData books,
+      ProductionData production,
+      SocialData social,
+      String mapId,
+      long days) {
+    return advance(base, books, production, social, mapId, 0L, days).economy();
   }
 
   private static final BranchId MAIN = new BranchId("main");
